@@ -6,7 +6,7 @@ import { CelestialMotion } from '../../physics/celestial-motion';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import type { CapKind } from './dynamic-entity/entity-kind';
+import { ENTITY_CAP, type CapKind } from './dynamic-entity/entity-kind';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
 import { AmmoPickup } from './dynamic-entity/ammo-pickup';
 import { RcsFuelPickup } from './dynamic-entity/rcs-fuel-pickup';
@@ -16,8 +16,7 @@ import { restorationFor } from './dynamic-entity/entity-dictionary';
 import { ProteinEnemy } from './dynamic-entity/protein-enemy';
 import { Bullet } from './dynamic-entity/bullet';
 import { Base } from './dynamic-entity/base';
-import { InstancedPool } from '../../render/instanced-pool';
-import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources, debrisFragmentResources } from '../../render/ships';
+import { InstancedPools } from './dynamic-entity/instanced-pools';
 import { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
 import type { Input } from '../../input/input';
@@ -37,14 +36,6 @@ import type { OrbitReference } from '../orbit-reference';
 import type { ProteinMotionFrameSample } from '../protein/protein-motion-metrics';
 import type { ProteinMotionLod } from '../protein/protein-motion-controller';
 
-// 枠ごとに同時に存在してよい個体数。超えた分はその枠の古いものから落ちる。
-const CAP: Record<CapKind, number> = {
-  bullet: 1200,
-  casing: 260,
-  debris: 600,
-  booster: 64,
-};
-
 // 個体を実体化してよいかを答える述語。何を待つかは、待つと決めた側だけが知っていればよい。
 export type SpawnGate = () => boolean;
 
@@ -56,15 +47,8 @@ export class DynamicSystem {
   // 数え直すので、フレームに何度も読む側は受けた配列を持ち回る。
   public get controllables(): readonly Controllable[] { return this.entities.filter(isControllable); }
 
-  // 弾本体・弾ハロー・プラズマ弾・薬莢は geometry/material を全個体で共有するので、
-  // 種別ごとに InstancedMesh 1本のプールで描く。
-  private readonly bulletBodyPool: InstancedPool;
-  private readonly bulletHaloPool: InstancedPool;
-  private readonly plasmaPool: InstancedPool;
-  private readonly casingPool: InstancedPool;
-  // 破片(fragment)はバリアントごとに geometry が異なるため、バリアント数だけプールを持つ。
-  // DebrisPiece.fragmentVariant が添字。
-  private readonly debrisFragmentPools: InstancedPool[];
+  // プールで描く種別の描画資源。どの種別がどのプールへ積むかは個体自身が知っている。
+  private readonly instancedPools: InstancedPools;
 
   // フラッシュ・破片の生成窓口。破片は entity なので、その配列を持つこちらが所有する。
   readonly effects: EffectsSystem;
@@ -77,19 +61,7 @@ export class DynamicSystem {
     markerManager: MarkerManager,
     saved?: GameSaveData,
   ) {
-    // 弾・薬莢・破片が共有する描画資源。
-    const bulletBody = bulletBodyResources();
-    const bulletHalo = bulletHaloResources();
-    const plasmaBody = plasmaBodyResources();
-    const casingBody = casingBodyResources();
-    const debrisFragment = debrisFragmentResources();
-    this.bulletBodyPool = new InstancedPool(scene, bulletBody.geometry, bulletBody.material, CAP.bullet);
-    this.bulletHaloPool = new InstancedPool(scene, bulletHalo.geometry, bulletHalo.material, CAP.bullet);
-    this.plasmaPool = new InstancedPool(scene, plasmaBody.geometry, plasmaBody.material, CAP.bullet);
-    this.casingPool = new InstancedPool(
-      scene, casingBody.geometry, casingBody.material, CAP.casing, false, 0, true);
-    this.debrisFragmentPools = debrisFragment.geometries.map(
-      (geo) => new InstancedPool(scene, geo, debrisFragment.material, CAP.debris, true, 0, true));
+    this.instancedPools = new InstancedPools(scene);
     this.effects = new EffectsSystem(scene, this, worldSfx);
     if (saved) this.restoreFromSave(saved, hud, worldSfx, scene, markerManager);
   }
@@ -192,7 +164,7 @@ export class DynamicSystem {
       if (cap === null || !entity.alive) continue;
       const rank = live[cap] + 1;
       live[cap] = rank;
-      if (rank > CAP[cap]) entity.alive = false;
+      if (rank > ENTITY_CAP[cap]) entity.alive = false;
     }
   }
 
@@ -336,51 +308,18 @@ export class DynamicSystem {
   }
 
   // 操作対象候補以外のメッシュを displayTime 時点の状態へ同期し、プールで描く種別は
-  // 対応する InstancedPool へ積む。
+  // 対応する InstancedPool へ積ませる。
   private syncOtherEntities(
     fo: FloatingOrigin, displayTime: number, viewer: Viewpoint, proteinVibrationEnabled: boolean,
   ): void {
-    this.bulletBodyPool.beginFrame();
-    this.bulletHaloPool.beginFrame();
-    this.plasmaPool.beginFrame();
-    this.casingPool.beginFrame();
-    for (const pool of this.debrisFragmentPools) pool.beginFrame();
-
+    this.instancedPools.beginFrame();
     // 操作対象候補は専用の同期パス(syncControllables)を持つ。
     for (const e of this.entities) {
       if (isControllable(e)) continue;
       e.sync(fo, displayTime, viewer, proteinVibrationEnabled);
-      if (e instanceof Bullet) this.pushBullet(e);
-      else if (e instanceof DebrisPiece) this.pushDebrisPiece(e);
+      e.pushInstances(this.instancedPools);
     }
-
-    this.bulletBodyPool.endFrame();
-    this.bulletHaloPool.endFrame();
-    this.plasmaPool.endFrame();
-    this.casingPool.endFrame();
-    for (const pool of this.debrisFragmentPools) pool.endFrame();
-  }
-
-  // 弾種に対応するプールへ、同期済みの変換を積む。
-  private pushBullet(bullet: Bullet): void {
-    if (!bullet.renderObject.visible) return;
-    if (bullet.type === 'plasma') {
-      this.plasmaPool.push(bullet.renderObject);
-      return;
-    }
-    // 本体+ハローの Group。シーン外なので matrixWorld は自前で更新する必要があり、
-    // 親で1回呼べば子(本体・ハロー)まで連鎖して更新される。
-    bullet.renderObject.updateMatrixWorld();
-    this.bulletBodyPool.push(bullet.renderObject.children[0]!);
-    this.bulletHaloPool.push(bullet.renderObject.children[1]!);
-  }
-
-  // 薬莢と破片(fragment)を、対応するプールへ積む。
-  private pushDebrisPiece(piece: DebrisPiece): void {
-    if (piece.kind === 'casing') this.casingPool.push(piece.renderObject);
-    else if (piece.kind === 'fragment') {
-      this.debrisFragmentPools[piece.fragmentVariant]!.push(piece.renderObject, piece.fragmentColor!);
-    }
+    this.instancedPools.endFrame();
   }
 
   // 保持する全エンティティと描画資源プールを、生死によらず破棄する。
@@ -390,11 +329,7 @@ export class DynamicSystem {
     // 待ち行列の build は scene などを掴んだままなので、実体化されないまま残さない。
     this.pendingSpawns.length = 0;
 
-    this.bulletBodyPool.dispose();
-    this.bulletHaloPool.dispose();
-    this.plasmaPool.dispose();
-    this.casingPool.dispose();
-    for (const pool of this.debrisFragmentPools) pool.dispose();
+    this.instancedPools.dispose();
 
     this.effects.dispose();
     this.bumpCollectionRevision();
