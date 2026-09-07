@@ -557,8 +557,6 @@ export class Game {
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const { displayTime, simTime } = displayWindow;
     const celestialBodies = this.celestialSystem.celestialMotions;
-    // sync フェーズの frameTransformAt 呼び出しは、天体メッシュと同じ表示時刻で天体を引く。
-    this.frameAnchors.update(displayTime);
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
     this.cameraSystem.sync();

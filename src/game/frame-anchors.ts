@@ -29,7 +29,7 @@ export class FrameAnchors implements FrameAnchorSource {
   bodiesPivot = 0;
 
   private readonly roleHolds = new Map<FrameRole, RoleHold>();
-  // update() ごとに進む通し番号。役割トークンの猶予とキャッシュの有効範囲をフレームで区切る。
+  // フレームごとに進む通し番号。役割トークンの猶予とキャッシュの有効範囲をフレームで区切る。
   private frameIndex = 0;
   private attractorCacheKey: string | null = null;
   private attractorCacheValue: string | null = null;
@@ -41,7 +41,8 @@ export class FrameAnchors implements FrameAnchorSource {
 
   get bodies(): readonly CelestialMotion[] { return this.celestialSystem.celestialMotions; }
 
-  // 天体の位置を厳密に引く表示時刻を差し込む。update / sync それぞれの先頭で1度呼ぶ。
+  // このフレームが天体の位置を厳密に引く表示時刻を差し込む。フレームの先頭で1度だけ呼ぶ —
+  // 役割トークンの猶予とキャッシュの区切りがこの呼び出し回数で決まる。
   update(bodiesPivot: number): void {
     this.bodiesPivot = bodiesPivot;
     this.frameIndex++;
