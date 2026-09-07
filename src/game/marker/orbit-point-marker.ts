@@ -9,7 +9,9 @@ import type { Vec3 } from '../../math/vec3';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { ProjectFn } from '../camera/camera-system';
-import type { ObjectCommands } from '../pickable/object-commands';
+import type { ControlSelection } from '../control-selection';
+import type { ObjectAuthoring } from '../stages/stage';
+import type { PlanEditor } from '../plan/plan-editor';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
@@ -98,12 +100,15 @@ export abstract class OrbitPointMarker implements ObjectPickable {
     ];
   }
 
-  // 加速とノード追加は、通過時刻が求まっているフレームで効く。
-  public runMenu(act: MenuAction, commands: ObjectCommands): void {
+  // 加速とノード追加は、通過時刻が求まっていて、計画を編集できるビューにいるフレームで効く。
+  public runMenu(
+    act: MenuAction, _controlSelection: ControlSelection, _authoring: ObjectAuthoring | null,
+    planEditor: PlanEditor | null,
+  ): void {
     const t = this.time;
-    if (t === null) return;
-    if (act === 'warp') commands.warpTo(t);
-    else if (act === 'addNode') commands.addNodeAt(t);
+    if (t === null || planEditor === null) return;
+    if (act === 'warp') planEditor.warpTo(t);
+    else if (act === 'addNode') planEditor.addNodeAt(t);
   }
 
   // プロパティウィンドウに出す行。示す値は具象が決める。

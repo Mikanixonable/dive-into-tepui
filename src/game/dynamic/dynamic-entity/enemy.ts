@@ -40,7 +40,8 @@ import type { MarkerManager } from '../../marker/marker-manager';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import type { CombatTarget } from './combat-target';
 import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { ObjectCommands } from '../../pickable/object-commands';
+import type { ControlSelection } from '../../control-selection';
+import type { ObjectAuthoring } from '../../stages/stage';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window';
 import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
@@ -524,10 +525,12 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   }
 
   // menuItems が出した操作を実行する。削除と軌道線の表示は自分の状態を、残りは commands を通す。
-  public runMenu(act: MenuAction, commands: ObjectCommands): void {
+  public runMenu(
+    act: MenuAction, _controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
+  ): void {
     if (act === 'delete') this.alive = false;
     else if (act === 'toggleTrajectoryLine') this.showTrajectoryLine = !this.showTrajectoryLine;
-    else if (act === 'duplicate') commands.duplicate(this.mapKind, this.state);
+    else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.mapKind, this.state);
   }
 
   // プロパティウィンドウに出す行。装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、
