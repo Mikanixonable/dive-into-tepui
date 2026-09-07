@@ -30,7 +30,7 @@ export type CloudFieldLod = {
 
 // 全球場と局所場の重みを滑らかに適用する共通処理。局所場は重みが 0 の遠景では分岐ごと
 // 省略し、全球場だけを読む。
-export function blendCloudSamples(
+function blendCloudSamples(
   global: Vec4Node, localAt: () => Vec4Node, localWeight: FloatNode,
 ): Vec4Node {
   const sample = global.toVar();
