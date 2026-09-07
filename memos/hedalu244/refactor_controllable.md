@@ -137,37 +137,6 @@
 ## 手順
 
 
-### 手順 3. `DynamicSystem` の per-frame 処理を `Controllable` で束ねる
-
-#### 目的
-
-`DynamicSystem` から「艦か基地か」の知識を落とす。**この時点で挙動は変えない。**
-`Game` は `controlledBase ?? player`(いまと同じ値)を渡す — 手順5でフィールドを1つにするのは
-このあとで、**先に1値へまとめてから渡すと、決めたこと 2 のフォールバックが1手順早く入り、
-挙動変化がどの手順のものか分からなくなる。**
-
-#### 変更が必要な箇所
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/dynamic-entity/dynamic-entity.ts` | `public readonly mapKind: DynamicEntityKind \| null = null` を足す(いまは各具象クラスが個別に宣言している。`null` は表示トグルを持たない種別) |
-| `src/game/dynamic/dynamic-entity/{player,enemy,base,ammo-pickup,rcs-fuel-pickup}.ts` の `mapKind` 宣言 | `override` を付ける(型は `DynamicEntityKind` のまま — 具象側で非 null に狭める) |
-| `src/game/dynamic/dynamic-entity/controllable.ts` | 型ガード `isControllable(e: DynamicEntity): e is DynamicEntity & Controllable` を export する。判定は `DynamicEntity` に足す `readonly controllable: boolean = false` を読む(`Player` / `Base` が `true` で override) |
-| `src/game/dynamic/dynamic-system.ts` | `get controllables(): readonly Controllable[]`(56-62 の index 群へ追加)。`updatePlayers`(313)+`updateBases`(332)→`updateControllables(active, input, operable, dt, simDt, activeStage, celestialSystem)` の1本へ。`clearTransientCommands`(346)を `controllables` の1ループへ。`sync`(353)の引数を `active: Controllable \| null` の1つへ。`syncPlayers`(370)+`syncBases`(394)→`syncControllables`(可視判定は `visibilityPolicy?.entity(c.mapKind, c === active)`)。`applyVisibility`(408)を「`mapKind !== null` の全個体を1ループ」へ。`syncOtherEntities`(453)の除外条件を `isControllable(e) \|\| e instanceof DetachedBooster` へ(**Base はいま除外されておらず二重に同期されている** — 束ねると1回になる)。`getCombatTargets`(200)/`rebuildCombatTargetsIfNeeded`(216) の `excludePlayer: Player` を `exclude: Controllable` へ、組み立てを `[...enemies, ...controllables]` へ |
-| `src/game/game.ts` | `advanceSimulation`(463-469)の2本の呼び出しを `updateControllables` 1本へ。`playerInput`(463)の三項を削除。`sync`(571-574)の `dynamicSystem.sync` 引数を1つへ |
-| `src/game/view/combat-view.ts` | `getCombatTargets(player)`(90)の引数型が広がるだけ(変更不要の確認) |
-
-#### 達成条件と検証
-
-- 達成目標 5 の grep が 0 件。
-- `grep -n "instanceof Base" src/game/dynamic/dynamic-system.ts` が `bases` getter の1件だけ。
-- `npm run typecheck`、`npm run test:game`。
-- `npm run dev` で戦闘ビューを開き、**基地を操作対象にしたときにプルームと RCS パフが出る**
-  ことを目視(`syncControllable` の `isControlled` が正しく渡っている確認)。
-  マップビューで「基地」カテゴリトグルを OFF → 基地のメッシュが消える。
-
----
-
 ### 手順 4. 分離ブースターの名指し処理を消す
 
 #### 目的
