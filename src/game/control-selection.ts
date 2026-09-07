@@ -5,7 +5,7 @@ import type { DynamicSystem } from './dynamic/dynamic-system';
 import type { CameraSystem } from './camera/camera-system';
 import type { NavTarget } from './nav-target';
 import type { WorldSfx } from '../audio/sfx/world-sfx';
-import type { Hud } from './hud/hud';
+import type { Notifier } from '../hud/notifier';
 
 export class ControlSelection {
   private _current: Controllable | null;
@@ -18,7 +18,7 @@ export class ControlSelection {
     private readonly cameraSystem: CameraSystem,
     private readonly navTarget: NavTarget,
     private readonly worldSfx: WorldSfx,
-    private readonly hud?: Hud,
+    private readonly hud?: Notifier,
   ) {
     const candidates = dynamicSystem.controllables;
     this._current = candidates.find((c) => c.id === savedId) ?? candidates.find((c) => c.alive) ?? null;

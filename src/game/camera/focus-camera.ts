@@ -7,7 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { Vec3, add, addScaled, cross, len, lenSq, norm, projectOntoPlane, scale, sub, v3 } from '../../math/vec3';
 import { CELESTIAL_SHELL_RADIUS } from '../../render/stars';
-import { Hud } from '../hud/hud';
+import type { Notifier } from '../../hud/notifier';
 import { MouseDelta } from '../../input/input';
 import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../math/projection';
 import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, rotationSourceKey, toFrameDir, toInertialDir } from '../../physics/frame';
@@ -195,7 +195,7 @@ export class FocusCamera {
   // あればその値から、無ければ既定の見下ろし視点から組む。座標系は必ず frames.frameOf 経由で
   // 解決する — ReferenceFrame をリテラルで組むと参照同一性が崩れる(frame.ts 参照)。
   constructor(
-    private readonly _hud: Hud,
+    private readonly _hud: Notifier,
     private readonly celestialSystem: CelestialSystem,
     private readonly config: FocusCameraConfig,
     saved?: FocusCameraSaveData,

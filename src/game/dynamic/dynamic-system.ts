@@ -24,7 +24,7 @@ import type { RenderStyle } from '../../render/render-style';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import type { EntitySaveDataUnion, GameSaveData } from '../save/save-data';
-import type { Hud } from '../hud/hud';
+import type { Notifier } from '../../hud/notifier';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../vfx/flash-effects';
 import type { MarkerManager } from '../marker/marker-manager';
@@ -52,7 +52,7 @@ export class DynamicSystem implements EntityRegistry {
   // 描画資源のプールと前進の機構を組んでから、saved があればその顔ぶれを復元する。
   constructor(
     scene: THREE.Scene,
-    hud: Hud,
+    hud: Notifier,
     worldSfx: WorldSfx,
     flash: FlashEffects,
     markerManager: MarkerManager,
@@ -70,7 +70,7 @@ export class DynamicSystem implements EntityRegistry {
   // スナップショットの顔ぶれを復元する。組み立て方は種別ごとの辞書が答え、知らない種別は
   // 読み飛ばす。
   private restoreFromSave(
-    save: GameSaveData, hud: Hud, worldSfx: WorldSfx, flash: FlashEffects, scene: THREE.Scene,
+    save: GameSaveData, hud: Notifier, worldSfx: WorldSfx, flash: FlashEffects, scene: THREE.Scene,
     markerManager: MarkerManager,
   ): void {
     for (const data of save.entities) {

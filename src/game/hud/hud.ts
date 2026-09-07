@@ -17,12 +17,13 @@ import type { OverlayLayers } from '../../hud/overlay-layer';
 import type { HudShell } from '../../hud/hud-shell';
 import { TEMP_WINDOW_GROUP, type OverlayManager } from '../../hud/overlay-manager';
 import type { HelpPanel } from './windows/help-panel';
+import type { Notifier } from '../../hud/notifier';
 
 // 軌道分析ウィンドウを開く既定位置 [px]。
 const ANALYSIS_WINDOW_OPEN_X = 320;
 const ANALYSIS_WINDOW_OPEN_Y = 100;
 
-export class Hud {
+export class Hud implements Notifier {
   public get root(): HTMLElement { return this.shell.root; }
   public get layers(): OverlayLayers { return this.shell.layers; }
   public get overlayManager(): OverlayManager { return this.shell.overlayManager; }

@@ -12,7 +12,7 @@ import type { DynamicEntity } from './dynamic-entity';
 import type { EntitySaveDataUnion } from '../../save/save-data';
 import type { SpawnGate } from '../entity-registry';
 import type { FlashEffects } from '../../vfx/flash-effects';
-import type { Hud } from '../../hud/hud';
+import type { Notifier } from '../../../hud/notifier';
 import type { MarkerManager } from '../../marker/marker-manager';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 
@@ -28,7 +28,7 @@ export function restorationFor(
   data: EntitySaveDataUnion,
   simTime: number,
   scene: THREE.Scene,
-  hud: Hud,
+  hud: Notifier,
   worldSfx: WorldSfx,
   markerManager: MarkerManager,
   effects: FlashEffects,

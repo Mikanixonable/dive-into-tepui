@@ -6,7 +6,7 @@ import { add, len, lenSq, randVec, rotateAxis, sub, v3 } from '../../../math/vec
 import { AmmoPickup, AMMO_PICKUP_RADIUS, isAmmoPickup } from '../../dynamic/dynamic-entity/ammo-pickup';
 import { isRcsFuelPickup, RcsFuelPickup, RCS_FUEL_PICKUP_RADIUS, RCS_FUEL_PICKUP_AMOUNT } from '../../dynamic/dynamic-entity/rcs-fuel-pickup';
 import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';
-import { Hud } from '../../hud/hud';
+import type { Notifier } from '../../../hud/notifier';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { UiSfx } from '../../../audio/sfx/ui-sfx';
 import { Player } from '../../player/player';
@@ -37,7 +37,7 @@ export class Logistics {
 
   // saved があればその状態(次回投入判定時刻・自動投入の有効/無効)から始める。
   constructor(
-    private readonly _hud: Hud,
+    private readonly _hud: Notifier,
     private readonly _worldSfx: WorldSfx,
     private readonly _uiSfx: UiSfx,
     private readonly _scene: THREE.Scene,

@@ -10,7 +10,7 @@ import { qInvert, qRotate } from '../../../math/quat';
 import { add, len, sub, v3, Vec3 } from '../../../math/vec3';
 import type { Ray } from '../../../math/ray';
 import { buildBaseModel } from '../../../render/base-station-model';
-import type { Hud } from '../../hud/hud';
+import type { Notifier } from '../../../hud/notifier';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { MarkerManager } from '../../marker/marker-manager';
 import type { BaseSaveData } from '../../save/save-data';
@@ -144,7 +144,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   constructor(
     init: BaseInit,
     scene: THREE.Scene,
-    hud: Hud,
+    hud: Notifier,
     worldSfx: WorldSfx,
     private readonly markerManager: MarkerManager,
   ) {

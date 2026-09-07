@@ -4,7 +4,7 @@ import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { pickCombatEntityAtPoint } from '../pickable/combat-pick';
 import { PlanGuide } from '../plan/plan-guide';
 import type { Input } from '../../input/input';
-import type { Hud } from '../hud/hud';
+import type { Notifier } from '../../hud/notifier';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { TouchControls } from '../hud/touch-controls';
 import type { CameraSystem } from '../camera/camera-system';
@@ -40,7 +40,7 @@ export class CombatView implements ViewFrame {
     private readonly planPath: PlanPath,
     private readonly celestialSystem: CelestialSystem,
     private readonly simSpeedManager: SimSpeedManager,
-    private readonly hud: Hud,
+    private readonly hud: Notifier,
     uiSfx: UiSfx,
     markerManager: MarkerManager,
   ) {

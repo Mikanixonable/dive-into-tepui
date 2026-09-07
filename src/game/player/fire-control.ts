@@ -9,7 +9,7 @@ import { add, addScaled, dot, lenSq, norm, randPerp, randVec, scale, v3, Vec3 } 
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import { Hud } from '../hud/hud';
+import type { Notifier } from '../../hud/notifier';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { Ship, PLAYER_MASS } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
@@ -92,7 +92,7 @@ export class FireControl {
   // 復元するスナップショットか、新規配置の初期積載を受け取る。どちらも省略すれば既定積載。
   constructor(
     private readonly player: Player,
-    private readonly _hud: Hud,
+    private readonly _hud: Notifier,
     private readonly _worldSfx: WorldSfx,
     private readonly _scene: THREE.Scene,
     private readonly _fx: FlashEffects,
