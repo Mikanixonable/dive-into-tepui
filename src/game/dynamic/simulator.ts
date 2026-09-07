@@ -88,7 +88,6 @@ export class Simulator {
     this.entityContactPhysics.participants = 0;
     const targetTime = this.simTime + simDt;
     // 天体の顔ぶれと表面候補の絞り込みはこのフレームで1組だけ組んで全サブステップで使い回す。
-    // 位置を厳密に引く pivot はサブステップごとに進むので、外挿幅は subDt/2 のまま。
     if (this.simTime < targetTime) {
       this.bodies.resetFrame(this.windows, this.simTime, simDt);
       this.lastGravitySourceCount = this.bodies.gravitySourceCount;
