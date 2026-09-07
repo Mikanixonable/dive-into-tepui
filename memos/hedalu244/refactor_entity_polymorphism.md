@@ -106,25 +106,6 @@ incompatible`)になる — 同じ形を再現して確認済み。この option
 
 ## 手順
 
-### 手順2. `save-data.ts` の `kind` を判別可能にする
-
-**目的**: `EntitySaveDataUnion` という判別可能な union を作れるように、`kind` フィールドの型を
-各インタフェースで実際に書き込まれているリテラルへ絞る。**この時点では挙動を変えない** —
-`EntitySaveDataUnion` はまだどこからも参照されない、型だけの追加。
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/game/save/save-data.ts` | `PlayerSaveData`(83行目)に `kind: 'player';` を明示して上書きする。`AmmoPickupSaveData`(163行目)に `kind: 'ammo';` を追加する。`RcsFuelPickupSaveData`(166行目)に `kind: 'rcs-fuel';` を追加する。`EntitySaveData` の `kind`(26行目)の union へ `'base'` を足す。`BaseSaveData`(114行目)に新規フィールド `kind: 'base';` を追加し、**112-113行目の理由コメントを削除する**(継承しない理由になっていないため。決めたこと E)。継承そのものは `q?` / `w?` の必須化と不可分なので手順3で入れる。`export type EntitySaveDataUnion = PlayerSaveData \| MetalEnemySaveData \| ProteinEnemySaveData \| AmmoPickupSaveData \| RcsFuelPickupSaveData \| DetachedBoosterSaveData \| BaseSaveData;` を追加する。 |
-| `src/game/dynamic/dynamic-entity/base.ts` | `serialize()`(296行目)の返り値へ `kind: 'base',` を追加する(新規必須フィールドの唯一の生成元)。 |
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `npm run test:game` が通る。
-- `grep -n "基地は艦" src/game/save/save-data.ts` が0件。
-
 ### 手順3. `DynamicEntity.serialize()` を基底へ持たせ、復元辞書を作り、`GameSaveData` を1本の `entities` 配列へ畳む
 
 **目的**: 手順1・2で用意した性質を使い、直列化・復元の両方を多態化し、`Game` /
@@ -206,7 +187,7 @@ incompatible`)になる — 同じ形を再現して確認済み。この option
 | 手順 | 対象ファイル数 | 内訳 | 目安 diff |
 | --- | --- | --- | --- |
 | 手順1 | 9(実測) | — | 21行(実測、8bf3caf9) |
-| 手順2 | 2 | 型追加・フィールド追加(各数行) | 約15行 |
+| 手順2 | 2(実測) | — | 19行(実測、86f4516c) |
 | 手順3 | 15 | 新規1ファイル(約60行)+ 改名/override付与9ファイル(各1〜5行)+ DynamicSystem書き直し(約40行)+ Game/stage.ts(各1〜7行)+ 削除2ファイル+ launcher側2ファイル(各5〜10行)+ `BaseSaveData` の継承化(`save-data.ts` / `base.ts` で約15行) | 約195行 |
 
 合計 約230行の diff(新規ファイル1件、削除ファイル2件を含む)。
