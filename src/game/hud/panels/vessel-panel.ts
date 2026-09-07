@@ -182,7 +182,7 @@ export class VesselPanel {
   public sync(
     target: Controllable | null, activeStage: Stage, cameraSystem: CameraSystem, isMapView: boolean,
   ): void {
-        this.power = target?.power ?? null;
+    this.power = target?.power ?? null;
     this.radiator = target?.radiator ?? null;
     if (!target) {
       this.els.get('hud-vessel-status')?.classList.add('hidden');
