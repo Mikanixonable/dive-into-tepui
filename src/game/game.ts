@@ -578,26 +578,20 @@ export class Game {
       this.markerManager,
     );
 
-    this.dynamicSystem.syncPlayers(player, fo, this.cameraSystem, displayTime, style, visibilityPolicy, orbitRef);
-    this.dynamicSystem.syncDetachedBoosters(fo, this.cameraSystem, displayTime, style, visibilityPolicy);
-    this.dynamicSystem.syncBases(
-      this.controlledBase, fo, this.cameraSystem, displayTime, style, visibilityPolicy,
+    // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。
+    const timeLabel = timeLabelSettingOf(displayWindow);
+    this.dynamicSystem.sync(
+      player, this.controlledBase, fo, this.cameraSystem, displayTime, style, visibilityPolicy,
+      orbitRef, this.frameAnchors, timeLabel, graphics.proteinVibration,
     );
-    this.dynamicSystem.sync(fo, displayTime, this.cameraSystem.activeViewpoint, graphics.proteinVibration);
-    this.dynamicSystem.applyVisibility(visibilityPolicy, player);
-
-    this.dynamicSystem.effects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
 
     this.targeter.sync(player, this.cameraSystem);
     this.targeter.syncTargetMarkers(
       player, combatTargets, this.dynamicSystem.ammoPickups, this.dynamicSystem.rcsFuelPickups, displayTime, simTime, this.cameraSystem, visibilityPolicy,
       celestialBodies, this.celestialMarkers,
     );
-    // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。
-    const timeLabel = timeLabelSettingOf(displayWindow);
     this.navTarget.sync(
       this.cameraSystem, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, timeLabel);
-    this.dynamicSystem.syncEquatorNodes(this.cameraSystem, this.frameAnchors, timeLabel);
 
     // 戦闘中に開いたプロパティウィンドウも最新値を表示し続ける必要があるので、ビューに依らず呼ぶ。
     this.objectWindows.sync(simTime, displayTime);

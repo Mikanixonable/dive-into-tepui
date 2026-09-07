@@ -356,9 +356,26 @@ export class DynamicSystem {
     for (const base of this.bases) base.clearTransientCommands();
   }
 
+  // このフレームの表示物を同期する。可視性の上書きはメッシュを触る同期が可視にしたものを
+  // 伏せ直すので、それらより後に通す。
+  sync(
+    activePlayer: Player | null, controlledBase: Base | null, fo: FloatingOrigin,
+    cameraSystem: CameraSystem, displayTime: number, style: RenderStyle,
+    visibilityPolicy: MapVisibilityPolicy | null, orbitRef: OrbitReference | undefined,
+    frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting, proteinVibrationEnabled: boolean,
+  ): void {
+    this.syncPlayers(activePlayer, fo, cameraSystem, displayTime, style, visibilityPolicy, orbitRef);
+    this.syncDetachedBoosters(fo, cameraSystem, displayTime, style, visibilityPolicy);
+    this.syncBases(controlledBase, fo, cameraSystem, displayTime, style, visibilityPolicy);
+    this.syncOtherEntities(fo, displayTime, cameraSystem.activeViewpoint, proteinVibrationEnabled);
+    this.applyVisibility(visibilityPolicy, activePlayer);
+    this.effects.sync(fo, cameraSystem.activeCamera, cameraSystem.zoomActive);
+    this.syncEquatorNodes(cameraSystem, frameAnchors, timeLabel);
+  }
+
   // 全自機のメッシュ・エフェクト・マーカーを、どれが操作対象かを添えて同期する(方向マーカーと
   // 照準ズームは操作艦のもの)。
-  syncPlayers(
+  private syncPlayers(
     activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
     displayTime: number, style: RenderStyle, visibilityPolicy: MapVisibilityPolicy | null, orbitRef?: OrbitReference,
   ): void {
@@ -371,7 +388,7 @@ export class DynamicSystem {
   }
 
   // 分離済みブースターは通常メッシュに加えて個別ノズル位置のプルームも同期する。
-  syncDetachedBoosters(
+  private syncDetachedBoosters(
     fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number, style: RenderStyle,
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
@@ -382,7 +399,7 @@ export class DynamicSystem {
   }
 
   // 全基地のメッシュ・エフェクト(推力プルーム・RCS音・パフ)を同期する。
-  syncBases(
+  private syncBases(
     controlledBase: Base | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
     displayTime: number, style: RenderStyle, visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
@@ -396,7 +413,7 @@ export class DynamicSystem {
   }
 
   // 天体クラス別トグルに応じて自機・敵・弾薬・基地のメッシュ表示を揃える。
-  applyVisibility(visibilityPolicy: MapVisibilityPolicy | null, activePlayer: Player | null): void {
+  private applyVisibility(visibilityPolicy: MapVisibilityPolicy | null, activePlayer: Player | null): void {
     if (!visibilityPolicy) return;
     for (const ship of this.players) if (!visibilityPolicy.entity('player', ship === activePlayer).category) ship.renderObject.visible = false;
     for (const enemy of this.enemies) if (!visibilityPolicy.entity('enemy').category) enemy.renderObject.visible = false;
@@ -430,7 +447,7 @@ export class DynamicSystem {
   }
 
   // このフレームに求まった赤道交点マーカーを置く。
-  syncEquatorNodes(
+  private syncEquatorNodes(
     cameraSystem: CameraSystem, frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting,
   ): void {
     const project = cameraSystem.activeCameraProjection;
@@ -442,7 +459,9 @@ export class DynamicSystem {
 
   // 自機・分離ブースター以外のメッシュを displayTime 時点の状態へ同期し、プールで描く種別は
   // 対応する InstancedPool へ積む。
-  sync(fo: FloatingOrigin, displayTime: number, viewer?: Viewpoint, proteinVibrationEnabled = true): void {
+  private syncOtherEntities(
+    fo: FloatingOrigin, displayTime: number, viewer: Viewpoint, proteinVibrationEnabled: boolean,
+  ): void {
     this.bulletBodyPool.beginFrame();
     this.bulletHaloPool.beginFrame();
     this.plasmaPool.beginFrame();
