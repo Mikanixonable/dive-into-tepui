@@ -1,8 +1,8 @@
 // 全ステージ共通の骨格。撃破数による勝利判定・常時解放・HUD補助表示なしを既定実装として持ち、
 // 必要なステージだけ override する。
 import * as THREE from 'three/webgpu';
-import { Enemy } from '../dynamic/dynamic-entity/enemy';
-import { Player, type PlayerInit } from '../player/player';
+import { Enemy, isEnemy } from '../dynamic/dynamic-entity/enemy';
+import { isPlayer, Player, type PlayerInit } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
@@ -237,7 +237,7 @@ export abstract class Stage {
   protected get ship(): Player | null {
     const controlled = this._controlSelection.current;
     if (controlled instanceof Player) return controlled;
-    return this._dynamicSystem.players.find((p) => p.alive) ?? null;
+    return this._dynamicSystem.all().filter(isPlayer).find((p) => p.alive) ?? null;
   }
 
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、
@@ -264,7 +264,7 @@ export abstract class Stage {
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。同一集団の判定に使う母集団は、
   // このフレームの顔ぶれを1度だけ取って全機で共有する。
   protected behaveAllEnemies(player: Player, dynamicSystem: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
-    const enemies = dynamicSystem.enemies;
+    const enemies = dynamicSystem.all().filter(isEnemy);
     for (const e of enemies) {
       if (e.alive) e.behave(simTime, player, dynamicSystem, enemies, simSpeed, this._celestialSystem);
     }

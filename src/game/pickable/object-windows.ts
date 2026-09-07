@@ -24,6 +24,7 @@ import type { ControlSelection } from '../control-selection';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { Stage } from '../stages/stage';
 import { Player } from '../player/player';
+import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { Targeter } from '../targeter';
 import { EmptySpacePickable } from './empty-space-pickable';
@@ -81,7 +82,7 @@ export class ObjectWindows implements ObjectCommands {
       (clientX, clientY, target) => this.open(clientX, clientY, target, pickables.lastSimTime),
     );
     this.hud.enemiesPanel.onSelectRight = (id, clientX, clientY) => {
-      const enemy = this.dynamicSystem.enemies.find((e) => e.id === id);
+      const enemy = this.dynamicSystem.all().filter(isEnemy).find((e) => e.id === id);
       if (enemy) this.open(clientX, clientY, enemy, this.pickables.lastSimTime);
     };
     this.hud.targetPanel.onSelectRight = (clientX, clientY) => {
