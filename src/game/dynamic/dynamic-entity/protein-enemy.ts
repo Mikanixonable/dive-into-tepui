@@ -3,7 +3,7 @@ import { KinematicState, kinematicState } from '../../../physics/kinematic-state
 import { v3, type Vec3 } from '../../../math/vec3';
 import { apparentSizePx, metersPerPixel, type Viewpoint } from '../../../math/projection';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
-import { EffectsSystem } from '../../vfx/effects-system';
+import { FlashEffects } from '../../vfx/flash-effects';
 import { collisionDamageFraction } from './contact-damage';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
 import { proteinMotionModeDisplacements } from '../../protein/protein-motion-modes';
@@ -91,7 +91,7 @@ export class ProteinEnemy extends Enemy {
   public constructor(
     init: ProteinEnemyPlacement | EnemyRestore,
     worldSfx: WorldSfx,
-    fx: EffectsSystem,
+    fx: FlashEffects,
     scene?: THREE.Scene,
   ) {
     const assetId = 'saved' in init ? (init.saved as ProteinEnemySaveData).assetId : init.assetId;

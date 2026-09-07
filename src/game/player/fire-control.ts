@@ -15,7 +15,7 @@ import { Ship, PLAYER_MASS } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { EntityRegistry } from '../dynamic/dynamic-system';
 import { MUZZLE_OFFSETS } from '../../render/ships';
-import { EffectsSystem } from '../vfx/effects-system';
+import { FlashEffects } from '../vfx/flash-effects';
 import type { Stage } from '../stages/stage';
 import { Player } from './player';
 import type { FireSaveData } from '../save/save-data';
@@ -95,7 +95,7 @@ export class FireControl {
     private readonly _hud: Hud,
     private readonly _worldSfx: WorldSfx,
     private readonly _scene: THREE.Scene,
-    private readonly _fx: EffectsSystem,
+    private readonly _fx: FlashEffects,
     init: FireInit = {},
   ) {
     if ('saved' in init) {
