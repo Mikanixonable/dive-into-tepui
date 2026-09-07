@@ -4,7 +4,7 @@ import { TouchControls } from '../hud/touch-controls';
 import type { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { DisplayWindowManager } from '../display-window-manager';
-import type { ActiveControllableController } from '../active-controllable-controller';
+import type { ControlSelection } from '../control-selection';
 import { setPanelCollapsedView } from '../hud/panel-shell';
 import type { View, ViewFrame } from './view';
 
@@ -22,7 +22,7 @@ export class ViewManager {
     private readonly hud: Hud,
     private readonly touchControls: TouchControls | null,
     private readonly displayWindow: DisplayWindowManager,
-    private readonly activePlayers: ActiveControllableController,
+    private readonly controlSelection: ControlSelection,
     private readonly views: Record<View, ViewFrame>,
     requestedView?: View,
   ) {
@@ -77,7 +77,7 @@ export class ViewManager {
         this.hud.hint('操作できる艦または基地がいません');
         return;
       }
-      const nodeCount = this.activePlayers.currentControllable?.plan.nodes.length ?? 0;
+      const nodeCount = this.controlSelection.current?.plan.nodes.length ?? 0;
       if (nodeCount > 0) {
         this.hud.hint(`マニューバ計画 ${nodeCount} 件確定 — [${K.autoWarpToNode.label}] で直近ノードへ自動ワープ`, 4500);
       }

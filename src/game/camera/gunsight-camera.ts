@@ -2,7 +2,7 @@
 // yaw/pitch/dist のような内部状態を持たず、機体姿勢のみから毎フレーム視点を求める。
 import { addScaled, norm, v3 } from '../../math/vec3';
 import { LOCAL_FORWARD, LOCAL_UP, qRotate } from '../../math/quat';
-import { Player } from '../player/player';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import { Viewpoint } from '../../math/projection';
 
 const ZOOM_FOV = 6; // [Z]キー長押し時の照準ズーム画角 [deg]
@@ -17,10 +17,10 @@ export class GunsightCamera {
   };
 
   // 機体姿勢のみから視点を求め、viewpoint へ書き戻す。
-  update(player: Player): void {
-    const boreFwd = qRotate(player.att.q, LOCAL_FORWARD);
-    const boreUp = qRotate(player.att.q, LOCAL_UP);
-    const center = player.state.r;
+  update(controlled: Controllable): void {
+    const boreFwd = qRotate(controlled.att.q, LOCAL_FORWARD);
+    const boreUp = qRotate(controlled.att.q, LOCAL_UP);
+    const center = controlled.state.r;
     this.viewpoint = {
       position: center,
       up: norm(boreUp),

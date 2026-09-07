@@ -6,8 +6,6 @@ import {
   generateMolniyaEnemy,
   generatePhasedEnemy,
 } from './spawner/enemy-generator';
-import type { Player } from '../player/player';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { StageSaveData } from '../save/save-data';
 import { COLOR_ENEMY_ORBIT_LINE } from '../lines/entity-line-manager';
@@ -40,25 +38,24 @@ export class Stage2 extends Stage {
   }
 
   // 自機を置き、通常軌道の敵とモルニヤ級軌道の敵を混成配置する。
-  protected init(entities: DynamicSystem): void {
+  protected init(): void {
     const player = this.addPlayer();
     const base = player.state;
     const worldSfx = this._worldSfx;
     const fx = this._fx;
     const scene = this._scene;
     // 通常軌道の敵
-    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1800, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
-    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2600, 3000, 0xff7a2d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
+    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1800, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
+    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2600, 3000, 0xff7a2d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
     // モルニヤ級の高楕円軌道の敵
-    this.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', base.t, 0.4, 2.6, 0xe0409f, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
-    this.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', base.t, 2.5, 0.9, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
-    this.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', base.t, 4.6, 3.8, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
+    this.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', base.t, 0.4, 2.6, 0xe0409f, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
+    this.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', base.t, 2.5, 0.9, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
+    this.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', base.t, 4.6, 3.8, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
   }
-  // 敵の行動と補給品の湧きを進める。
-  update(_dt: number, player: Player | null, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  // 補給品の湧きを進める。
+  update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
+    const player = this.ship;
     if (!player) return;
-
-    this.behaveAllEnemies(player, entities, simTime, simSpeed);
 
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }

@@ -1,13 +1,16 @@
 // 実体弾とプラズマ弾。飛翔と寿命・接触の帰結を持ち、残像として見える向きを毎フレーム組む。
 import * as THREE from 'three/webgpu';
 import { DynamicEntity } from './dynamic-entity';
+import type { InstancedPools } from '../instanced-pools';
+import type { Controllable } from './controllable';
+import type { MapVisibilityPolicy } from '../../map/visibility-policy';
+import type { EntityRegistry } from '../dynamic-system';
 import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { CelestialMotion } from '../../../physics/celestial-motion';
 
 import { FloatingOrigin } from '../../camera/floating-origin';
 import type { Stage } from '../../stages/stage';
-import type { Contact } from './contact';
 import { Vec3, lenSq, sub } from '../../../math/vec3';
 import { buildBulletMesh, buildPlasmaMesh } from '../../../render/ships';
 import { orientProjectile } from '../../../render/projectile-orientation';
@@ -78,7 +81,7 @@ export class Bullet extends DynamicEntity {
     }
 
     // 弾自身は接触したら消える。相手への作用は相手の collideWithEntity が書く。
-    public collideWithEntity(_other: DynamicEntity, _contact: Contact): void {
+    public collideWithEntity(): void {
         this.alive = false;
     }
 
@@ -96,31 +99,46 @@ export class Bullet extends DynamicEntity {
     // 消滅条件は「自機から離れすぎた」が主で、寿命は保険。敵弾が自機の至近を通過した瞬間の
     // 判定もここで行う(substep ごとの位置だけを見る、意図的に雑な最接近判定)。
     public checkLoss(
-        _dt: number, simTime: number, _activeStage: Stage, playerPos: Vec3,
-        _atmosphereBodies: readonly CelestialMotion[],
+        _dt: number, simTime: number, _activeStage: Stage, _registry: EntityRegistry,
+        viewerPos: Vec3, _atmosphereBodies: readonly CelestialMotion[],
     ): void {
         if (!this.alive) return;
         if (this.shooter === 'enemy' && !this.passedClose
-          && lenSq(sub(this.state.r, playerPos)) < BULLET_CLOSE_PASS_DIST * BULLET_CLOSE_PASS_DIST) {
+          && lenSq(sub(this.state.r, viewerPos)) < BULLET_CLOSE_PASS_DIST * BULLET_CLOSE_PASS_DIST) {
             this.passedClose = true;
             if (this.type === 'plasma') this._worldSfx.magneticInterference();
         }
         // 至近通過音は消滅判定より先に評価する — 同じ substep で寿命が尽きる弾でも通過音は鳴らす。
-        if (lenSq(sub(this.state.r, playerPos)) > ENGAGEMENT_RANGE * ENGAGEMENT_RANGE) { this.alive = false; return; }
+        if (lenSq(sub(this.state.r, viewerPos)) > ENGAGEMENT_RANGE * ENGAGEMENT_RANGE) { this.alive = false; return; }
         if (simTime >= this.expiresAt) this.alive = false;
     }
 
     // 弾は姿勢を持たず、見る側に対する相対速度の向きへ伸びて見える(SPEC/COMBAT.md)。
-    public sync(fo: FloatingOrigin, displayTime: number): void {
-        // 表示できる時刻の範囲外なら非表示にする
-        const s = this.stateAt(displayTime);
-        if (s === null) {
-            this.renderObject.visible = false;
+    protected override orientModel(fo: FloatingOrigin, s: KinematicState): void {
+        // 速度が定まらないフレームは向きを据え置く。
+        if (orientProjectile(tmpQuat, fo.VtoThreeV3(s.v))) this.renderObject.quaternion.copy(tmpQuat);
+    }
+
+    // 同期し終えた変換は、そのまま弾種に対応するプールへ積む。
+    protected override syncModel(
+        fo: FloatingOrigin, displayTime: number, active: Controllable | null,
+        visibilityPolicy: MapVisibilityPolicy | null, pools: InstancedPools,
+    ): void {
+        this.placeModel(fo, displayTime, active, visibilityPolicy);
+        if (!this.renderObject.visible) return;
+        if (this.type === 'plasma') {
+            pools.pushPlasma(this.renderObject);
             return;
         }
-        this.renderObject.visible = true;
-        this.renderObject.position.copy(fo.RtoThreeV3(s.r));
-        if (!orientProjectile(tmpQuat, fo.VtoThreeV3(s.v))) return;
-        this.renderObject.quaternion.copy(tmpQuat);
+        // 本体+ハローの Group。シーン外なので matrixWorld は自前で更新する必要があり、
+        // 親で1回呼べば子(本体・ハロー)まで連鎖して更新される。
+        this.renderObject.updateMatrixWorld();
+        pools.pushBulletBody(this.renderObject.children[0]!);
+        pools.pushBulletHalo(this.renderObject.children[1]!);
     }
+}
+
+// この個体が弾か。顔ぶれから弾だけを絞るときに使う。
+export function isBullet(entity: DynamicEntity): entity is Bullet {
+  return entity instanceof Bullet;
 }

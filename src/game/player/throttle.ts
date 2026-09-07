@@ -1,4 +1,4 @@
-// プレイヤーの並進スロットル・姿勢制御(RCS)・プログレードホールド。
+// 操作対象の並進スロットル・姿勢制御(RCS)・プログレードホールド。
 import { Attitude, attitudeAlignTorque } from '../../physics/attitude';
 import { qRotate } from '../../math/quat';
 import { Vec3, add, norm, scale, v3 } from '../../math/vec3';
@@ -59,7 +59,7 @@ function isThrustKillSwitchActive(input: Input): boolean {
   return THRUST_AXIS_PAIRS.some(([a, b]) => input.down(a) && input.down(b));
 }
 
-export class PlayerThrottle {
+export class Throttle {
   rcsDamp = true;
   throttleIdx = THROTTLE_DEFAULT_IDX;
   progradeHold = true;
@@ -109,8 +109,7 @@ export class PlayerThrottle {
     for (const key of Object.keys(this.lastThrustPressTime)) delete this.lastThrustPressTime[key];
   }
 
-  // 推力ゼロの状態へ戻す。噴射が実際に無い(または許可されない)ときの唯一の入口
-  // (プルーム・エンジン音は ThrustEffects.sync が ship.thrust を直接見て毎フレーム同期する)。
+  // 推力ゼロの状態へ戻す。噴射が実際に無い、または許可されないときに通す。
   stopThrust(): void {
     this.thrustAccelVec = v3();
   }

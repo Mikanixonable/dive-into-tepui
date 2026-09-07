@@ -5,6 +5,9 @@ import { kinematicState, type KinematicState } from '../../../physics/kinematic-
 import { add, scale, v3 } from '../../../math/vec3';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { CameraSystem } from '../../camera/camera-system';
+import type { Controllable } from './controllable';
+import type { MapVisibilityPolicy } from '../../map/visibility-policy';
+import type { InstancedPools } from '../instanced-pools';
 import type { DetachedBoosterSaveData } from '../../save/save-data';
 import {
   BoosterStack,
@@ -18,6 +21,7 @@ import {
   buildBoosterStage,
   type BoosterStage as BoosterStageModel,
 } from '../../../render/booster';
+import type { DynamicEntityKind } from './entity-kind';
 import { DynamicEntity, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS_BULK_DENSITY, SMALL_DEBRIS_SPECIFIC_HEAT, SMALL_DEBRIS_RADIATING_AREA_PER_MASS, SMALL_DEBRIS_MAX_TEMP } from './dynamic-entity';
 import type { RenderStyle } from '../../../render/render-style';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
@@ -35,6 +39,8 @@ type DetachedBoosterInit =
 
 // 分離後の一段。接続時の燃料・点火状態を引き継ぎ、燃料切れまで自律的に燃焼する。
 export class DetachedBooster extends DynamicEntity {
+  // 自機から切り離されたものなので、表示は自機の種別トグルに従う。
+  public override readonly mapKind: DynamicEntityKind = 'player';
   override readonly bcInv = 0.006;
   override readonly capKind = 'booster';
   protected readonly srpCoeff = SMALL_DEBRIS_SRP_COEFF;
@@ -87,7 +93,7 @@ export class DetachedBooster extends DynamicEntity {
     this.collisionEnableAt = restored
       ? (init.saved.collisionEnableAt ?? init.simTime)
       : init.collisionEnableAt;
-    this.name = '分離ブースター';
+    this.setName('分離ブースター');
     this.radius = BOOSTER_COLLISION_RADIUS;
     this.contactDamageWeight = 0.35;
     this.doPreciseReentry = true;
@@ -103,8 +109,8 @@ export class DetachedBooster extends DynamicEntity {
     return this.thrust !== null;
   }
 
-  // Game のフレーム更新から積分前に呼ぶ。点火状態は操作対象でなくても進み続ける。
-  updateBurn(simDt: number): void {
+  // 積分の前に呼ぶ。点火状態は操作対象でなくても進み続ける。
+  override updateThrust(simDt: number): void {
     const massBefore = this.stack.totalMass;
     const result = this.stack.step(simDt);
     this.refreshMass();
@@ -132,18 +138,21 @@ export class DetachedBooster extends DynamicEntity {
     return simTime > this.collisionEnableAt;
   }
 
-  syncBooster(
-    fo: FloatingOrigin, displayTime: number, camera: CameraSystem, categoryVisible: boolean, style: RenderStyle,
+  // ノズル位置のプルーム。未来位置を描いているフレームでは炎を出さない — 燃焼は現在時刻の
+  // 状態でしか定義されていない。
+  protected override syncModel(
+    fo: FloatingOrigin, displayTime: number, active: Controllable | null,
+    visibilityPolicy: MapVisibilityPolicy | null, _pools: InstancedPools, camera: CameraSystem,
+    style: RenderStyle,
   ): void {
-    super.sync(fo, displayTime);
-    this.renderObject.visible &&= categoryVisible;
-    const displayState = this.stateAt(displayTime);
+    const displayState = this.placeModel(fo, displayTime, active, visibilityPolicy);
     const effectAtCurrentTime = Math.abs(displayTime - this.state.t) <= 1e-6;
     if (displayState === null || !this.renderObject.visible || this.thrust === null
       || !effectAtCurrentTime || camera.zoomActive) {
       this.plume.hide();
       return;
     }
+    // ノズル位置と噴射の向きは、機体中心を原点とする寸法から現在の姿勢で世界へ起こす。
     const centerZ = (BOOSTER_STAGE_DIMENSIONS.frontZ + BOOSTER_STAGE_DIMENSIONS.aftZ) / 2;
     const nozzleFromCenter = BOOSTER_STAGE_DIMENSIONS.nozzleExitZ - centerZ;
     const nozzleWorld = add(displayState.r, qRotate(this.att.q, v3(0, 0, nozzleFromCenter)));
@@ -156,7 +165,8 @@ export class DetachedBooster extends DynamicEntity {
     }, camera.activeCamera.quaternion, style);
   }
 
-  serialize(): DetachedBoosterSaveData {
+  // セーブデータへ変換する。
+  public override serialize(): DetachedBoosterSaveData {
     return {
       id: this.id,
       name: this.name,

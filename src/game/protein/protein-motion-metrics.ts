@@ -3,6 +3,8 @@
 // Render Lab と runtime が同じ形式で controller CPU 時間・upload bytes・LOD 体数を記録する。
 
 import { LODS_FINE_TO_COARSE, type ProteinMotionLod } from './protein-motion-controller';
+import { ProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
 type ProteinMotionLodCounts = Readonly<Record<ProteinMotionLod, number>>;
 
@@ -13,6 +15,24 @@ export interface ProteinMotionFrameSample {
   readonly uploadBytes: number;
   /** LOD ごとの、motion 更新対象の敵体数。 */
   readonly lodCounts: Partial<ProteinMotionLodCounts>;
+}
+
+// 顔ぶれの中の全タンパク質敵から、直近の sync 時点の計測値を足し合わせ、LOD ごとの体数を数える。
+export function proteinMotionFrameSample(
+  entities: readonly DynamicEntity[],
+): ProteinMotionFrameSample {
+  let cpuMs = 0;
+  let uploadBytes = 0;
+  const lodCounts: Partial<Record<ProteinMotionLod, number>> = {};
+  // CPU 時間と転送量は総和、体数は LOD ごとに数える。
+  for (const entity of entities) {
+    if (!(entity instanceof ProteinEnemy)) continue;
+    const metrics = entity.motionMetrics;
+    cpuMs += metrics.cpuMs;
+    uploadBytes += metrics.uploadBytes;
+    lodCounts[metrics.lod] = (lodCounts[metrics.lod] ?? 0) + 1;
+  }
+  return { cpuMs, uploadBytes, lodCounts };
 }
 
 interface ProteinMotionMetricsSink {

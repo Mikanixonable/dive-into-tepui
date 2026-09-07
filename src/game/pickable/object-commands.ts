@@ -1,9 +1,8 @@
 // 被選択物が起動できる操作と、項目のラベル・可否を決めるために要る現在の操作状態を差し出す口。
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { View } from '../view/view';
-import type { Base } from '../dynamic/dynamic-entity/base';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
-import type { Player } from '../player/player';
 import type { ObjectPickable } from './object-pickable';
 
 export interface ObjectCommands {
@@ -19,24 +18,18 @@ export interface ObjectCommands {
   warpTo(t: number): void;
   // 時刻 t の計画軌道へノードを置く。
   addNodeAt(t: number): void;
-  // 操作対象の自艦を切り替える。null で未操作へ戻す。
-  setActivePlayer(ship: Player | null): void;
-  // 自艦を世界から取り除く。
-  removePlayer(ship: Player): void;
-  // 操作対象の基地を切り替える。null で未操作へ戻す。
-  setControlledBase(base: Base | null): void;
-  // 基地を世界から取り除き、その基地を指していた操作対象も外す。
-  removeBase(base: Base): void;
+  // 操作対象を切り替える。null で未操作へ戻す。
+  setControlled(target: Controllable | null): void;
+  // 操作対象になりうるものを世界から取り除き、指していた操作対象も外す。
+  removeControlled(target: Controllable): void;
   // state の軌道要素をプリセットした物体配置パネルを、kind の種類で開く。
   duplicate(kind: DynamicEntityKind, state: KinematicState): void;
   // 現在のフォーカスを基準天体の初期値として物体配置パネルを開く。
   openObjectPlacer(): void;
   openSettings(): void;
 
-  // 操作中の自艦。未操作なら null。
-  readonly activePlayer: Player | null;
-  // 操作中の基地。未操作なら null。
-  readonly controlledBase: Base | null;
+  // いま操作している対象。未操作なら null。
+  readonly controlled: Controllable | null;
   // 物体の配置・複製を許すステージか。
   readonly canAuthor: boolean;
   // 軌道計画の実行を持つステージか。

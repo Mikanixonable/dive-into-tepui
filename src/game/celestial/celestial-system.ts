@@ -14,7 +14,7 @@ import { KinematicState } from '../../physics/kinematic-state';
 import { norm, sub, v3, Vec3 } from '../../math/vec3';
 import { EllipseLine } from '../lines/ellipse-line';
 import { CELESTIAL_SHELL_SCALE, createStars, Stars } from '../../render/stars';
-import { CelestialGrid, CelestialGridVisibility } from '../../render/celestial-grid';
+import { CelestialGrid, CelestialGridVisibility, DEFAULT_GRID_VISIBILITY } from '../../render/celestial-grid';
 import { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
 import { FloatingOrigin } from '../camera/floating-origin';
@@ -137,6 +137,8 @@ export class CelestialSystem implements CelestialMotions {
   private zeroVelocityLines!: ZeroVelocityLines;
   // 軌道ガイドタブの設定の写し。静止軌道リング・ラベルの表示可否を持つ。
   private orbitGuideSettings: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
+  // 表示パネルの天球グリッド設定の写し。星・面・極・目安グリッドの表示可否を持つ。
+  private gridVisibility: CelestialGridVisibility = DEFAULT_GRID_VISIBILITY;
 
   // entities はこの星系の全天体(宣言順)、origin はその中の ECI 中心天体。phaseOffsets は motion を
   // 組むのに使った初期位相で、セーブでそのまま返すために保持する。epoch は simTime=0 が指す絶対時刻。
@@ -353,6 +355,11 @@ export class CelestialSystem implements CelestialMotions {
     this.zeroVelocityLines.setSettings(settings.zeroVelocity);
   }
 
+  // 天球グリッド(表示パネル5.1節)の設定。変更のたびに渡す。
+  setGridVisibility(visibility: CelestialGridVisibility): void {
+    this.gridVisibility = visibility;
+  }
+
   // 公転天体1体につき1本の参照軌道線。線を持つ個体を列挙する。
   get referenceEllipseLines(): readonly { readonly id: string; readonly line: EllipseLine }[] {
     return this.entities.flatMap((b) => (b.referenceLine === null ? [] : [{ id: b.id, line: b.referenceLine }]));
@@ -377,7 +384,6 @@ export class CelestialSystem implements CelestialMotions {
     cameraSystem: CameraSystem,
     graphics: GraphicsSettingsData,
     style: RenderStyle,
-    gridVisibility: CelestialGridVisibility,
     visibilityPolicy: MapVisibilityPolicy | null,
     markerManager: MarkerManager | null,
   ): void {
@@ -417,7 +423,7 @@ export class CelestialSystem implements CelestialMotions {
     } else if (this.pointFieldBuilt) {
       pointField?.hide();
     }
-    this.syncStars(fixedBrightnessScale, gridVisibility.stars);
+    this.syncStars(fixedBrightnessScale, this.gridVisibility.stars);
     const geostationaryOrbitVisible = this.orbitGuideSettings.geostationary;
     this.syncReferenceLines(
       displayTime, floatingOrigin, visibilityPolicy,
@@ -431,9 +437,9 @@ export class CelestialSystem implements CelestialMotions {
     this.orbitGuideLines.sync(style, displayTime, cameraSystem.view, floatingOrigin, cameraSystem.activeCamera);
     this.zeroVelocityLines.sync(displayTime, cameraSystem.view, floatingOrigin, cameraSystem.activeCamera);
     this.celestialGrid.sync(
-      style, gridVisibility, cameraSystem.activeCamera,
+      style, this.gridVisibility, cameraSystem.activeCamera,
       CELESTIAL_SHELL_SCALE);
-    this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this, gridVisibility);
+    this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this, this.gridVisibility);
   }
 
   // 天体照の光源の候補を組んで選定へ渡し、選ばれたものを描画座標へ移してライティング側の
