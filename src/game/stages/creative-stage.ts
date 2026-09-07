@@ -1,7 +1,6 @@
 // クリエイティブモード: 勝敗判定を発生させず、物体配置と軌道計画を自由に試すためのステージ。
 import { Stage, type ObjectAuthoring, type StageDeps, STORY_EPOCH } from './stage';
 import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
@@ -167,21 +166,20 @@ export class CreativeStage extends Stage {
     const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
     if (shapeDefinition === undefined) return;
     if (shapeDefinition.kind === 'drifting') {
-      this.addEnemy(generateDriftingEnemy(name, state, color, color, this._worldSfx, this._fx, this._scene), this._dynamicSystem);
+      this.addEnemy(generateDriftingEnemy(name, state, color, color, this._worldSfx, this._fx, this._scene));
       return;
     }
     if (shapeDefinition.kind === 'protein') {
       this.spawnEnemyWhenReady(
         proteinAssetGate(shapeDefinition.assetId),
         () => generateProteinEnemy(name, state, shapeDefinition.assetId, this.proteinDisplay, this._worldSfx, this._fx, this._scene),
-        this._dynamicSystem,
       );
       return;
     }
     this.addEnemy(generateApproachingEnemy(
       name, state, color, color, shapeDefinition.typeIndex, undefined,
       this._worldSfx, this._fx, this._scene,
-    ), this._dynamicSystem);
+    ));
   }
 
   // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機前方に一括スポーンする。
@@ -198,7 +196,7 @@ export class CreativeStage extends Stage {
     const name = `FORMATION-${++this.manualFormationCount}`;
     const formationId = name;
     for (const { assetId, build } of proteinFormationSpawns(name, state, player.state.r, this.proteinDisplay, formationId, this._worldSfx, this._fx, this._scene)) {
-      this.spawnEnemyWhenReady(proteinAssetGate(assetId), build, this._dynamicSystem);
+      this.spawnEnemyWhenReady(proteinAssetGate(assetId), build);
     }
   }
 
@@ -433,15 +431,15 @@ export class CreativeStage extends Stage {
 
   // 補給の投入と、既に出ている敵の AI を進める。波状攻撃のトグルが決めるのは新しいウェーブが
   // 出るかどうかで、OFF にしても既に出ている敵は残る。
-  update(dt: number, _dynamicSystem: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  update(dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (player) {
       this.logistics.updateLogistics(simTime, player, simSpeed, true);
-      this.behaveAllEnemies(player, this._dynamicSystem, simTime, simSpeed);
+      this.behaveAllEnemies(player, simTime, simSpeed);
       if (this.waveAttackEnabled) {
         this.waveAttack.update(
           dt, player, this._dynamicSystem.all().filter(isEnemy), simTime, this,
-          (enemy) => this.addEnemy(enemy, this._dynamicSystem));
+          (enemy) => this.addEnemy(enemy));
       }
     }
   }
