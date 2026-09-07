@@ -99,7 +99,7 @@ export class Predictor {
   private advanceBudget(
     e: DynamicEntity, budgetSteps: number, simTime: number, horizon: number, maxStep: number,
   ): number {
-    const arc = e.ensurePredictedArc(this.celestialBodies);
+    const arc = e.ensurePredictedArc(this.celestialBodies.celestialMotions);
     if (arc === null) return 0;
     arc.requiredEnd = simTime + horizon;
     arc.retainFrom = simTime - ARC_RETAIN_MARGIN;

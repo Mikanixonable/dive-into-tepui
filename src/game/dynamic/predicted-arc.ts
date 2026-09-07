@@ -13,7 +13,7 @@ import { firstSurfaceContact } from '../../physics/surface-contact';
 import { keplerPeriod } from '../../physics/elements';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { dot, len, sub } from '../../math/vec3';
-import { ArcCelestialBodies, type ArcCelestialBodyWindow, type FutureCelestialBodyProvider } from './arc-celestial-bodies';
+import { ArcCelestialBodies, type ArcCelestialBodyWindow } from './arc-celestial-bodies';
 import { atmosphericMaxStep, SUBSTEP_MAX_DT, ARC_MIN_STEP_DT } from './time-step';
 import type { CelestialBody } from '../../physics/celestial-body';
 
@@ -96,7 +96,7 @@ export class PredictedArc {
   // 合わせ、表示期間由来の項を使わない。
   constructor(
     readonly state0: KinematicState,
-    sources: FutureCelestialBodyProvider,
+    sources: readonly CelestialBody[],
     private readonly radius: number,
     private readonly bcInv: number,
     private readonly srpCoeff: number,

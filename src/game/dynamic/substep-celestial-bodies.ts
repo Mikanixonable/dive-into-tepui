@@ -6,7 +6,7 @@
 // 距離の比較なので、判定距離へフレームの移動ぶんを織り込めばフレーム全体で使い回せる。物理が
 // 読む位置はサブステップの中点から引くので、外挿の幅は subDt/2 に収まる。
 import { nearestAtmosphereBody } from '../../physics/attractor';
-import { CelestialMotions } from '../../physics/celestial-body';
+import type { FrameCelestialBodies } from '../celestial/celestial-bodies';
 import { Vec3 } from '../../math/vec3';
 import { ClassifiedAttractors, attractorsNearInto, classifyAttractors } from './attractors';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -25,7 +25,7 @@ export class SubstepCelestialBodies {
 
   // フレームの時間送り dt ぶんの区間 [simTime, simTime + dt] で使う顔ぶれを組む。重力源の分類も
   // 大気・表面・遮蔽体の一覧も、この区間のどのサブステップからも使い回せる。
-  resetFrame(windows: CelestialMotions, simTime: number, dt: number): void {
+  resetFrame(windows: FrameCelestialBodies, simTime: number, dt: number): void {
     this._framePivot = simTime + dt / 2;
     const sources = windows.gravityMotions;
     this._gravitySourceCount = sources.length;

@@ -1,7 +1,7 @@
 // 戦闘ビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。呼ぶ位置と順序は
 // Game / ViewManager が持つ。
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import type { CelestialMotions } from '../../physics/celestial-body';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { pickCombatEntityAtPoint } from '../pickable/combat-pick';
 import { PlanGuide } from '../plan/plan-guide';
 import type { Input } from '../../input/input';
@@ -39,7 +39,7 @@ export class CombatView implements ViewFrame {
     private readonly touchControls: TouchControls | null,
     private readonly controlSelection: ControlSelection,
     private readonly planPath: PlanPath,
-    private readonly celestialBodies: CelestialMotions,
+    private readonly celestialBodies: readonly CelestialBody[],
     private readonly simSpeedManager: SimSpeedManager,
     private readonly notifier: Notifier,
     uiSfx: UiSfx,
@@ -102,7 +102,7 @@ export class CombatView implements ViewFrame {
   // 直近ノードの消化・接近通知を進める。
   public update(displayWindow: DisplayWindow): void {
     this.planGuide.update(
-      this.controlSelection.current, displayWindow.simTime, this.celestialBodies.celestialMotions,
+      this.controlSelection.current, displayWindow.simTime, this.celestialBodies,
     );
   }
 

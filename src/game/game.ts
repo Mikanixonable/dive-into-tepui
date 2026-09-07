@@ -256,7 +256,7 @@ export class Game {
       this.displayWindowManager, this._hud.overlayManager, this.frameAnchors,
     );
     this.targeter = new Targeter(
-      this.markerManager, this.navTarget, this.dynamicSystem, celestialSystem, this.celestialMarkers,
+      this.markerManager, this.navTarget, this.dynamicSystem, celestialSystem.celestialMotions, this.celestialMarkers,
     );
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this.navball.onOrbitGuideSettingsChange = (settings) => this._celestialSystem.setOrbitGuideSettings(settings);
@@ -305,7 +305,7 @@ export class Game {
     const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.objectWindows, this.dynamicSystem,
       this.celestialMarkers, this.touchControls,
-      this.controlSelection, this.planDisplay.path, celestialSystem,
+      this.controlSelection, this.planDisplay.path, celestialSystem.celestialMotions,
       this.simSpeedManager, this._hud, uiSfx, this.markerManager,
     );
     const mapView = new MapView(

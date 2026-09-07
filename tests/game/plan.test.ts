@@ -36,7 +36,7 @@ export function register(): void {
 
     const plan = new Plan();
     const orbitDisplayDuration = { durationSec: (referencePeriod: number) => referencePeriod };
-    assert.ok(Math.abs(plan.nodeTimeRange(0, state, system, orbitDisplayDuration).max - (t + expected)) < 1e-6);
+    assert.ok(Math.abs(plan.nodeTimeRange(0, state, system.celestialMotions, orbitDisplayDuration).max - (t + expected)) < 1e-6);
 
     const el = orbitalElementsOf(state, center, t)!;
     assert.equal(el.center.def.mu, MU_MOON);
@@ -75,11 +75,11 @@ export function register(): void {
 
     // 'orbit' 相当のスタブ: 参照期間(起点の軌道周期)をそのまま返す
     const orbitDuration = { durationSec: (referencePeriod: number) => referencePeriod };
-    assert.ok(Math.abs(plan.nodeTimeRange(0, state, system, orbitDuration).max - (t + period)) < 1e-6);
+    assert.ok(Math.abs(plan.nodeTimeRange(0, state, system.celestialMotions, orbitDuration).max - (t + period)) < 1e-6);
 
     // 固定プリセット相当のスタブ: 参照期間によらず一定値を返す
     const fixedDuration = { durationSec: () => 86400 };
-    assert.equal(plan.nodeTimeRange(0, state, system, fixedDuration).max, t + 86400);
+    assert.equal(plan.nodeTimeRange(0, state, system.celestialMotions, fixedDuration).max, t + 86400);
   });
 
   test('plan: 起点が凍結されるのはノードがある間だけ', () => {
