@@ -5,6 +5,7 @@ import { CelestialMotion } from '../../physics/celestial-motion';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import type { EntityRegistry, SpawnGate } from './entity-registry';
 import { ENTITY_CAP, type CapKind, type EntityCountKind } from './dynamic-entity/entity-kind';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
 import { isEnemy } from './dynamic-entity/enemy';
@@ -30,15 +31,6 @@ import type { MarkerManager } from '../marker/marker-manager';
 import type { EquatorNodeInputs } from '../marker/equator-node-marker-pair';
 import type { PerfCounts } from '../perf-counts';
 import type { OrbitReference } from '../orbit-reference';
-
-// 個体を実体化してよいかを答える述語。何を待つかは、待つと決めた側だけが知っていればよい。
-export type SpawnGate = () => boolean;
-
-// 生んだ個体を顔ぶれへ入れる口。
-export interface EntityRegistry {
-  add(entity: DynamicEntity): void;
-  spawnWhenReady(gate: SpawnGate | null, build: () => DynamicEntity, onSpawned?: () => void): void;
-}
 
 export class DynamicSystem implements EntityRegistry {
   // 保持する全エンティティを追加順に並べた、顔ぶれの正本。枠ごとの上限はこの並びから導く。

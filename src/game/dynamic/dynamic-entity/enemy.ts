@@ -33,7 +33,7 @@ import type { DynamicEntityKind } from './entity-kind';
 import type { GroupedMarkerItem, MarkerRole } from '../../marker/grouped-markers';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { EnemyDeathCause, Stage } from '../../stages/stage';
-import type { EntityRegistry, SpawnGate } from '../dynamic-system';
+import type { EntityRegistry, SpawnGate } from '../entity-registry';
 import type { EnemySaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import type { MarkerManager } from '../../marker/marker-manager';
