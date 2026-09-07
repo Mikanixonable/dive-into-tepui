@@ -36,7 +36,6 @@ import { CelestialSystem } from './celestial/celestial-system';
 import { ViewManager } from './view/view-manager';
 import { CombatView } from './view/combat-view';
 import { MapView } from './view/map-view';
-import { NanWatchdog } from './dynamic/nan-watchdog';
 import { NavTarget } from './nav-target';
 import { FrameAnchors } from './frame-anchors';
 import { autoOrbitReference, OrbitReferenceSelector } from './orbit-reference';
@@ -97,7 +96,6 @@ export class Game {
   private readonly flashEffects: FlashEffects;
   private readonly entityLines: EntityLineManager;
   private readonly predictor: Predictor;
-  private readonly nanWatchdog: NanWatchdog;
   private readonly viewBadge: ViewBadge;
   private readonly frameControls: FrameControls;
   // 計測区間の境界を打つ先。
@@ -342,7 +340,6 @@ export class Game {
       initialSave?.camera?.view,
     );
 
-    this.nanWatchdog = new NanWatchdog(this._hud);
     this.viewBadge = new ViewBadge(
       this._hud.viewBadgeRow, this._hud.layers.notify, this.viewManager, this._hud.overlayManager,
       this._hud.renderStyle, this.dynamicSystem, celestialSystem,
@@ -466,29 +463,13 @@ export class Game {
     const canShipAct = this.simSpeedManager.canShipAct;
     const canEngage = this.simSpeedManager.canEngage;
     const controlled = this.activeControllable;
-    this.nanWatchdog.checkControlled('frameStart', controlled, this.dynamicSystem.simTime, dt, this.dynamicSystem.lastSimDt);
     // 台本が世界を編集してから、その顔ぶれで1フレーム進める。湧いた個体もこのフレームの
     // 指令決定と積分に乗る。
     this.sections.enter(SECTION.stage);
     this.activeStage.update(dt, this.dynamicSystem.simTime, this.simSpeedManager);
     this.sections.exit(SECTION.stage);
-    this.nanWatchdog.checkControlled('activeStage.update', controlled, this.dynamicSystem.simTime, dt, this.dynamicSystem.lastSimDt);
-
-    this.sections.enter(SECTION.command);
     this.dynamicSystem.update(
-      controlled, this.input, canShipAct, dt, simDt, this.dynamicSystem.simTime, this.activeStage);
-    this.nanWatchdog.checkControlled(
-      'controllable.updateControls',
-      controlled,
-      this.dynamicSystem.simTime,
-      dt,
-      this.dynamicSystem.lastSimDt,
-    );
-    this.sections.exit(SECTION.command);
-
-    this.dynamicSystem.advance(dt, simDt, controlled, this.activeStage, canEngage, this.nanWatchdog);
-    // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
-    this.nanWatchdog.checkAll('simulator.advance', controlled, this.dynamicSystem, this.dynamicSystem.simTime, dt, simDt);
+      controlled, this.input, canShipAct, dt, simDt, canEngage, this.activeStage);
 
     this.targeter.updateBoardMarks(dt, controlled);
     this.controlSelection.reclaimDead();
@@ -496,7 +477,6 @@ export class Game {
     this.sections.enter(SECTION.effects);
     this.flashEffects.update(dt, this.dynamicSystem.simTime);
     this.sections.exit(SECTION.effects);
-
   }
 
   // ポインタ入力を現在のビューへ配る。このフレームの cameraSystem.update が終わって初めて投影が

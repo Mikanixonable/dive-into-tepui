@@ -19,7 +19,6 @@
 import { Hud } from '../hud/hud';
 import type { Controllable } from './dynamic-entity/controllable';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import { DynamicSystem } from './dynamic-system';
 import { Vec3 } from '../../math/vec3';
 
 // 全成分が有限値かどうかを返す。
@@ -56,11 +55,11 @@ export class NanWatchdog {
   // 全エンティティを走査する重い検査。操作対象より先に汚染されるのは他のエンティティ
   // (薬莢・破片・弾)であることが多く、それが接触を通じて操作対象へ伝播する。
   // フレームにつき一度だけ呼ぶこと。
-  checkAll(phase: string, controlled: Controllable | null, dynamicSystem: DynamicSystem, simTime: number, dt: number, simDt: number): void {
+  checkAll(phase: string, controlled: Controllable | null, entities: readonly DynamicEntity[], simTime: number, dt: number, simDt: number): void {
     if (this.tripped) return;
     this.checkControlled(phase, controlled, simTime, dt, simDt);
     if (this.tripped) return;
-    for (const e of dynamicSystem.all()) {
+    for (const e of entities) {
       if (finiteVec(e.state.r) && finiteVec(e.state.v)) continue;
       this.trip(phase, `${e.constructor.name} ${describe(e)}`, dt, simDt);
       return;
