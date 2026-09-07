@@ -18,7 +18,8 @@ import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { orbitRows } from '../../pickable/orbit-rows';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { ObjectCommands } from '../../pickable/object-commands';
+import type { ControlSelection } from '../../control-selection';
+import type { ObjectAuthoring } from '../../stages/stage';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window';
 import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
@@ -158,9 +159,11 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
   }
 
   // menuItems が出した操作を実行する。削除は自分の alive を落とし、残りは commands を通す。
-  public runMenu(act: MenuAction, commands: ObjectCommands): void {
+  public runMenu(
+    act: MenuAction, _controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
+  ): void {
     if (act === 'delete') this.alive = false;
-    else if (act === 'duplicate') commands.duplicate(this.mapKind, this.state);
+    else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.mapKind, this.state);
   }
 
   // プロパティウィンドウに出す行。自艦からの距離と補給量を主要行とし、軌道要素は「軌道」
