@@ -22,7 +22,7 @@ import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import type { ActivePlayerController } from '../active-controllable-controller';
+import type { ControlSelection } from '../control-selection';
 import type { PredictedArc } from '../dynamic/predicted-arc';
 import type { PerfCounts } from '../perf-counts';
 
@@ -92,7 +92,7 @@ export class PlanDisplay {
     private readonly markerManager: MarkerManager,
     private readonly celestialSystem: CelestialSystem,
     displayDuration: DisplayDurationSource,
-    private readonly activePlayers: ActivePlayerController,
+    private readonly controlSelection: ControlSelection,
   ) {
     this.path = new PlanPath(scene, displayDuration);
   }
@@ -100,7 +100,7 @@ export class PlanDisplay {
   // 計画折れ線を再積分し、アプシスアイコンと操作対象の赤道交点を求め直す。
   // 折れ線は戦闘ビューでも描く — 計画どおりに機体を動かすのは戦闘ビューだから。
   update(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource, view: View): void {
-    const ship = this.activePlayers.currentControllable;
+    const ship = this.controlSelection.current;
     this.displayedPlan = this.planToDisplay(ship, view);
     if (this.displayedPlan === null) this.clearDisplay();
     else this.updateDisplay(this.displayedPlan, displayWindow, ship, frameAnchors);

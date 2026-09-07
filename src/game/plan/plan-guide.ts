@@ -11,7 +11,7 @@ import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { ProjectFn } from '../camera/camera-system';
 import { MarkerManager, MARKER_DIR_DIST } from '../marker/marker-manager';
 import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH, COLOR_MARKER_NODE } from '../marker/marker-identity';
-import type { Player } from '../player/player';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { PlanPath } from './plan-path';
 import { THROTTLE_LEVELS } from '../player/player-throttle';
 import { NODE_APPROACH_LEAD } from './plan';
@@ -38,28 +38,28 @@ export class PlanGuide {
   }
 
   // 実行時刻を過ぎたノードを計画から落とし、直近ノードへの接近と計画軌道の達成を
-  // ノードごとに一度だけ通知する。player がいなければ何もしない。
-  update(player: Player | null, simTime: number, celestialBodies: readonly CelestialMotion[]): void {
-    if (!player) return;
-    const plan = player.plan;
-    plan.consumeNodesUpTo(simTime - NODE_EXPIRE_GRACE, player.state);
+  // ノードごとに一度だけ通知する。controlled がいなければ何もしない。
+  update(controlled: Controllable | null, simTime: number, celestialBodies: readonly CelestialMotion[]): void {
+    if (!controlled) return;
+    const plan = controlled.plan;
+    plan.consumeNodesUpTo(simTime - NODE_EXPIRE_GRACE, controlled.state);
 
     const node = plan.firstNode();
     // 実行の窓に入るまでは通知しない。窓の手前では自機はまだ噴射前の軌道にいるので、
     // 目標軌道との近さを見ても達成の判定にならない。
     if (node && simTime >= node.t - NODE_APPROACH_LEAD) {
       this.notifyApproach(node);
-      this.notifyAchieved(node, player, celestialBodies, simTime);
+      this.notifyAchieved(node, controlled, celestialBodies, simTime);
     }
   }
 
   // 直近ノードの NODE・BURN マーカーを同期する。位置と方向は path の表示変換を通す —
   // 同じ計画を描いた折れ線とマーカーが同じ座標系に載っていなければ、線の上に立たない。
   sync(
-    player: Player | null, simTime: number, project: ProjectFn, path: PlanPath,
+    controlled: Controllable | null, simTime: number, project: ProjectFn, path: PlanPath,
   ): void {
-    const node = player?.plan.firstNode();
-    if (!player || !node) {
+    const node = controlled?.plan.firstNode();
+    if (!controlled || !node) {
       this.markerManager.hide('nd');
       this.markerManager.hide('burn');
       this.markerManager.hide('burn-bearing');
@@ -69,16 +69,16 @@ export class PlanGuide {
     // NODE マーカー: ノードまでの残り時間を表示する。
     const tRem = node.t - simTime;
     const tLabel = tRem >= 0 ? `T-${fmtTime(tRem)}` : `T+${fmtTime(-tRem)}`;
-    const queued = player.plan.nodes.length;
+    const queued = controlled.plan.nodes.length;
     const more = queued > 1 ? ` (+${queued - 1})` : '';
 
     // BURN マーカー: 目標速度との差分ベクトルを噴射方向として表示する。
-    const dvRem = sub(node.v, player.state.v);
+    const dvRem = sub(node.v, controlled.state.v);
     const mag = len(dvRem);
-    const nodeDist = len(sub(node.r, player.state.r));
+    const nodeDist = len(sub(node.r, controlled.state.r));
     const maxAccel = THROTTLE_LEVELS[THROTTLE_LEVELS.length - 1] ?? 1;
     const burnTime = maxAccel > 0 ? mag / maxAccel : 0;
-    const shipPos = path.toDisplay(player.state.r, simTime);
+    const shipPos = path.toDisplay(controlled.state.r, simTime);
     const burnDir = path.toDisplayDir(dvRem, simTime);
     this.markerManager.setPosition(
       'nd', 'mk-mnode', ORBIT_POINT_GLYPH.maneuverNode, path.toDisplay(node.r, node.t), project,
@@ -108,21 +108,21 @@ export class PlanGuide {
   // 自機の軌道が目標軌道に十分近づいていれば達成を通知する。ノードと自機で最も強く引く
   // 天体が違えば、要素同士の比較自体が意味を持たないので判定しない。
   private notifyAchieved(
-    node: KinematicState, player: Player,
+    node: KinematicState, controlled: Controllable,
     celestialBodies: readonly CelestialMotion[], pivot: number,
   ): void {
     if (this.achievedNotified === node) return;
-    const plan = player.plan;
-    const playerCenter = strongestAttractor(player.state.r, celestialBodies, pivot);
+    const plan = controlled.plan;
+    const controlledCenter = strongestAttractor(controlled.state.r, celestialBodies, pivot);
     const nodeCenter = strongestAttractor(node.r, celestialBodies, pivot);
-    if (playerCenter.id !== nodeCenter.id) return;
+    if (controlledCenter.id !== nodeCenter.id) return;
     const targetEl = orbitalElementsOf(node, nodeCenter, pivot);
-    const playerEl = player.orbitalElementsAround(playerCenter, pivot);
-    if (!playerEl || !targetEl || !orbitalElementsClose(playerEl, targetEl)) return;
+    const controlledEl = controlled.orbitalElementsAround(controlledCenter, pivot);
+    if (!controlledEl || !targetEl || !orbitalElementsClose(controlledEl, targetEl)) return;
     this.achievedNotified = node;
     // 計画軌道へ到達したノードは、その場で実行済みとして削除する。同時刻のノードが複数あれば
     // まとめて落ちるので、残り件数は落とした後の実数を読む。
-    plan.consumeNodesUpTo(node.t, player.state);
+    plan.consumeNodesUpTo(node.t, controlled.state);
     const remain = plan.nodes.length;
     if (remain === 0) {
       this._hud.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);

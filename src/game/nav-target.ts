@@ -8,7 +8,7 @@ import { FrameAnchorSource, frameOfCelestialBody, toFrameState, unbakeToDisplayP
 import { LagrangeLabel, lagrangeStateOf, secondaryFrameOf } from '../physics/lagrange';
 import { LOCAL_FORWARD, qRotate } from '../math/quat';
 import { goldenSectionMin } from '../math/optimize';
-import { Player } from './player/player';
+import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import { DisplayWindow } from './display-window-manager';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import type { CombatTarget } from './targeter';
@@ -121,7 +121,7 @@ export class NavTarget {
     this._hud.hint(entity ? `ターゲット固定: ${entity.name}` : 'ターゲット固定解除');
   }
 
-  // 対象消滅を伴わない一括解除(操作対象艦の切替など)。ヒントは出さない。
+  // 対象消滅を伴わない一括解除(操作対象の切替など)。ヒントは出さない。
   clear(): void {
     this.setInternal(null, null);
   }
@@ -152,24 +152,24 @@ export class NavTarget {
   }
 
   // 自機軌道要素と対象の軌道面法線から相対 AN/DN の位置・通過時刻を求め直す。
-  // 対象の軌道面が定まらない(地球・太陽自身など)場合や自機軌道要素が無い場合は、
+  // 対象の軌道面が定まらない(地球・太陽自身など)場合や操作対象の軌道要素が無い場合は、
   // どちらの交点も解けていない状態にする。
   update(
-    player: Player | null, entities: DynamicSystem, celestialSystem: CelestialSystem, displayWindow: DisplayWindow,
+    controlled: Controllable | null, entities: DynamicSystem, celestialSystem: CelestialSystem, displayWindow: DisplayWindow,
     frameAnchors: FrameAnchorSource,
   ): void {
     const { simTime, displayTime, frame } = displayWindow;
-    const ownerName = player?.name ?? null;
+    const ownerName = controlled?.name ?? null;
     for (const marker of this.nodeMarkers) marker.place(null, null, ownerName, this.name);
     if (!this.targetId) { this.setReaderEntity(null); return; }
-    // ターゲット自身の赤道交点は、自機の軌道要素が求まるかどうかとは無関係に出す。
+    // ターゲット自身の赤道交点は、操作対象の軌道要素が求まるかどうかとは無関係に出す。
     const target = entities.findAliveCombatTarget(this.targetId);
     this.setReaderEntity(target);
     target?.ensureEquatorNodes(this.markerManager)
       .updateOnEllipse(displayTime, celestialSystem, frameAnchors);
-    if (!player) return;
+    if (!controlled) return;
     const stateCelestialBodies = celestialSystem.celestialMotions;
-    const playerCenter = strongestAttractor(player.state.r, stateCelestialBodies, simTime);
+    const controlledCenter = strongestAttractor(controlled.state.r, stateCelestialBodies, simTime);
     const unbakeTf = celestialSystem.frames.transformAt(frame, displayTime, frameAnchors);
     // 通過時刻で焼いた点を、表示時刻の座標系へ un-bake する。
     const toDisplay = (r: Vec3, t: number): Vec3 =>
@@ -177,28 +177,28 @@ export class NavTarget {
 
     // 再接近点は AN/DN(軌道面が定まる必要がある)とは独立した条件 — 同じ中心天体さえ
     // 周回していれば、円軌道や軌道面がほぼ一致する場合でも求まる。
-    if (target && strongestAttractor(target.state.r, stateCelestialBodies, simTime).id === playerCenter.id) {
-      const found = findClosestApproach(player, target, celestialSystem, simTime);
+    if (target && strongestAttractor(target.state.r, stateCelestialBodies, simTime).id === controlledCenter.id) {
+      const found = findClosestApproach(controlled, target, celestialSystem, simTime);
       if (found) this.closestApproach.place(toDisplay(found.pos, found.t), found.t, ownerName, this.name);
     }
 
-    const playerEl = player.orbitalElementsAround(playerCenter, simTime);
-    if (!playerEl) return;
+    const controlledEl = controlled.orbitalElementsAround(controlledCenter, simTime);
+    if (!controlledEl) return;
 
     const targetHat = this.resolvePlaneNormal(this.targetId, entities, celestialSystem, simTime);
     if (!targetHat) return;
 
-    const nodes = nodeAnomalies(playerEl, targetHat);
+    const nodes = nodeAnomalies(controlledEl, targetHat);
     if (!nodes) return;
 
-    const tf = frameOfCelestialBody(playerCenter, simTime);
-    const nu0 = trueAnomalyAt(playerEl, toFrameState(tf, player.state).r);
-    const anT = simTime + tofBetween(playerEl, nu0, nodes.asc);
-    const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
+    const tf = frameOfCelestialBody(controlledCenter, simTime);
+    const nu0 = trueAnomalyAt(controlledEl, toFrameState(tf, controlled.state).r);
+    const anT = simTime + tofBetween(controlledEl, nu0, nodes.asc);
+    const dnT = simTime + tofBetween(controlledEl, nu0, nodes.desc);
     // 交点は中心天体基準なので、通過時刻における中心天体の精密な ECI 位置へ足す — 概算の弾道
     // pivot からの外挿だと表示側の un-bake と基準がずれ、月周回では通過までの時間ぶん位置がずれる。
-    const anEci = add(celestialSystem.stateAt(playerCenter.id, anT).r, positionOnOrbit(playerEl, nodes.asc));
-    const dnEci = add(celestialSystem.stateAt(playerCenter.id, dnT).r, positionOnOrbit(playerEl, nodes.desc));
+    const anEci = add(celestialSystem.stateAt(controlledCenter.id, anT).r, positionOnOrbit(controlledEl, nodes.asc));
+    const dnEci = add(celestialSystem.stateAt(controlledCenter.id, dnT).r, positionOnOrbit(controlledEl, nodes.desc));
     this.ascendingNode.place(toDisplay(anEci, anT), anT, ownerName, this.name);
     this.descendingNode.place(toDisplay(dnEci, dnT), dnT, ownerName, this.name);
   }
