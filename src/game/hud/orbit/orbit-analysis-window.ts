@@ -53,6 +53,8 @@ export class OrbitAnalysisWindow {
   // analysisPanelReader を立てている個体(操作対象・接近/投影タブのターゲット)。
   private readerEntity: DynamicEntity | null = null;
   private readerTargetEntity: DynamicEntity | null = null;
+  // 直前に描いた操作対象。切り替わったフレームでタブの表示範囲を開き直す。
+  private drawnEntity: DynamicEntity | null = null;
 
   // ESC・外側クリック・✕ ボタンのどの経路で閉じても発火する。
   public onClose: (() => void) | null = null;
@@ -89,26 +91,33 @@ export class OrbitAnalysisWindow {
     for (const tab of this.tabs) tab.dispose();
   }
 
-  // 操作対象とターゲットを解決し、選べるタブを出し直してから、選択中のタブへ描画を委ねる。
+  // 見ている個体へ analysisPanelReader を立て、外れた個体から降ろす。予測の伸長対象は
+  // このフラグで決まるので、予測を進める前に呼ぶ。
+  public update(game: Game): void {
+    const entity = game.activeControllableEntity;
+    this.readerEntity = applyReader(this.readerEntity, entity);
+    const target = entity ? resolveApproachTarget(game) : null;
+    this.readerTargetEntity = applyReader(
+      this.readerTargetEntity, target?.kind === 'entity' ? target.entity : null,
+    );
+  }
+
+  // 選べるタブを出し直してから、選択中のタブへ描画を委ねる。
   public sync(game: Game): void {
     if (!this.throttle.due()) return;
     const entity = game.activeControllableEntity;
     // 別の対象を見ることになるので、各タブの表示範囲を開き直す。
-    if (entity !== this.readerEntity) {
+    if (entity !== this.drawnEntity) {
       for (const tab of this.tabs) tab.resetView();
     }
-    this.readerEntity = applyReader(this.readerEntity, entity);
+    this.drawnEntity = entity;
     if (!entity) {
-      this.readerTargetEntity = applyReader(this.readerTargetEntity, null);
       this.offerTabs([this.altitudeTab]);
       this.altitudeTab.drawMessage('操作対象がありません');
       return;
     }
 
     const target = resolveApproachTarget(game);
-    this.readerTargetEntity = applyReader(
-      this.readerTargetEntity, target?.kind === 'entity' ? target.entity : null,
-    );
     const reference = game.orbitReference.resolve(
       entity.state.r, game.celestialSystem.celestialMotions, game.navTarget,
       game.dynamicSystem, game.celestialSystem, entity.state.t,
