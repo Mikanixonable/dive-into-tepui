@@ -43,7 +43,8 @@ import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { orbitRows } from '../../pickable/orbit-rows';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { ObjectCommands } from '../../pickable/object-commands';
+import type { ControlSelection } from '../../control-selection';
+import type { ObjectAuthoring } from '../../stages/stage';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window';
 import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
@@ -82,6 +83,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   fineAttitude = false;
   // 除去の前に注視・操作対象の参照を引き継ぐ必要があるので、所有者側に回収させる。
   public override readonly reclaimedByOwner = true;
+  readonly releaseHint = '基地の操作を解除しました';
   // 基地は自機と操作キーの並びが違うので、選んだ時点で案内を出す。
   get controlHint(): string {
     return `基地「${this.name}」の操作モードに入りました (WASDQE: 噴射 / IJKLUO: 姿勢制御 / T: RCS減衰 / C: プログレード)`;
@@ -358,21 +360,20 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     ];
   }
 
-  // menuItems が出した操作を実行する。軌道線の表示だけ自分の状態を書き換え、残りは commands を通す。
-  public runMenu(act: MenuAction, commands: ObjectCommands): void {
+  // 軌道線の表示だけ自分の状態を書き換える。
+  public runMenu(
+    act: MenuAction, controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
+  ): void {
     if (act === 'activate') {
-      commands.setControlled(this);
+      controlSelection.select(this);
     } else if (act === 'deactivate') {
-      if (commands.controlled === this) {
-        commands.setControlled(null);
-        commands.hint('基地の操作を解除しました');
-      }
+      controlSelection.release(this);
     } else if (act === 'toggleTrajectoryLine') {
       this.showTrajectoryLine = !this.showTrajectoryLine;
     } else if (act === 'delete') {
-      commands.removeControlled(this);
+      controlSelection.remove(this);
     } else if (act === 'duplicate') {
-      commands.duplicate(this.mapKind, this.state);
+      authoring?.openObjectPlacerForDuplicate(this.mapKind, this.state);
     }
   }
 

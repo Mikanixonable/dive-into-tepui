@@ -2,7 +2,6 @@
 import { v3, type Vec3 } from '../../math/vec3';
 import { MARKER_VISIBILITY, type MapVisibility } from '../map/visibility-policy';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
-import type { ObjectCommands } from './object-commands';
 import type { ObjectPickable } from './object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window';
@@ -39,14 +38,7 @@ export class EmptySpacePickable implements ObjectPickable {
     ];
   }
 
-  // 選ばれた操作を実行する。物体配置パネルと設定メニューを開く操作を持つ。
-  public runMenu(act: MenuAction, commands: ObjectCommands): void {
-    if (act === 'openObjectPlacer') {
-      commands.openObjectPlacer();
-    } else if (act === 'openSettings') {
-      commands.openSettings();
-    }
-  }
+  public readonly runMenu = null;
 
   // 宇宙空間そのものを指すので、示せる値は空になる。
   public propertyRows(): readonly PropertyRow[] { return []; }

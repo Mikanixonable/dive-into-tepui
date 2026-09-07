@@ -107,14 +107,14 @@ export class PlanEditor {
 
     // メニューとギズモのコールバック
     this.orbitMenu.onSelect = (act, state) => {
-      if (act === 'warp') this.warpTo(state.t, '指定位置まで自動ワープ開始');
+      if (act === 'warp') this.warpTo(state.t);
     };
     this.wireNodeGizmo();
   }
 
-  // 時刻 t まで自動ワープを始め、始まれば startedHint を出す。既に通過した時刻ならその旨を出す。
-  private warpTo(t: number, startedHint: string): void {
-    if (this.simSpeedManager.startAutoWarpTo(t, this.simTime)) this.hud.hint(startedHint);
+  // 時刻 t まで自動ワープを始める。既に通過した時刻ならその旨を出すだけで何もしない。
+  public warpTo(t: number): void {
+    if (this.simSpeedManager.startAutoWarpTo(t, this.simTime)) this.hud.hint('指定時刻まで自動ワープ開始');
     else this.hud.hint('この時刻は既に通過しています');
   }
 
@@ -138,7 +138,7 @@ export class PlanEditor {
     // ノードのコンテキストメニューの項目
     g.onMenuWarpTo = (idx) => {
       const n = this.plan?.nodes[idx];
-      if (n) this.warpTo(n.t, '指定時刻まで自動ワープ開始');
+      if (n) this.warpTo(n.t);
     };
     g.onMenuDelete = (idx) => {
       this.deleteNode(idx);

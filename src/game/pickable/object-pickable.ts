@@ -10,7 +10,10 @@ import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-polic
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
-import type { ObjectCommands } from './object-commands';
+import type { ObjectWindows } from './object-windows';
+import type { ControlSelection } from '../control-selection';
+import type { ObjectAuthoring } from '../stages/stage';
+import type { PlanEditor } from '../plan/plan-editor';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { MapListSection } from '../hud/panels/physical-object-list-panel';
@@ -59,9 +62,13 @@ export interface ObjectPickable {
   menuItems(
     celestialSystem: CelestialSystem, viewer: Controllable | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[];
-  // 自分に固有の操作を実行する。フォーカス・ターゲット・複製など、対象によらない操作は
-  // 窓側が実行するのでここへは来ない。固有の操作を持たない対象は null。
-  readonly runMenu: ((act: MenuAction, commands: ObjectCommands) => void) | null;
+  // 自分に固有の操作を実行する。フォーカス・ターゲットなど対象によらない操作は窓側が
+  // 実行するのでここへは来ない。固有の操作を持たない対象は null。authoring と planEditor は
+  // マップでしか差し出されないので、戦闘ビューでは null。
+  readonly runMenu: ((
+    act: MenuAction, controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
+    planEditor: PlanEditor | null,
+  ) => void) | null;
 
   // プロパティウィンドウに出す行。simTime は天体位置を厳密に引く時刻、displayTime は
   // 候補の位置を引き直す時刻。
@@ -72,9 +79,9 @@ export interface ObjectPickable {
   readonly rename: ((name: string) => void) | null;
 
   // マップの左クリックで選ばれたときの振る舞い。左クリックで掴めない対象は null。
-  readonly onMapSelect: ((commands: ObjectCommands, clientX: number, clientY: number) => void) | null;
+  readonly onMapSelect: ((windows: ObjectWindows, clientX: number, clientY: number) => void) | null;
   // マップの注視点が自分へ移ったときに、注視の移動に加えて起きること。何も起きない対象は null。
-  readonly onMapFocus: ((commands: ObjectCommands) => void) | null;
+  readonly onMapFocus: ((controlSelection: ControlSelection) => void) | null;
 
   // 視線が、pos に描かれているこの対象の本体へ当たるか。pos は posAt が答えた、いま
   // 描かれている位置。本体を持たず、マーカーだけで示される対象は常に false。

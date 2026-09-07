@@ -43,6 +43,13 @@ export class ControlSelection {
     this.worldSfx.setRcs(false);
   }
 
+  // 操作対象を手で外す。外れたときだけ案内を出す(全滅による喪失とは別の経路)。
+  release(target: Controllable): void {
+    if (this._current !== target) return;
+    this.clear();
+    if (target.releaseHint !== null) this.hud?.hint(target.releaseHint);
+  }
+
   // 操作対象が居ない間に増えたものを、そのまま操作対象にする。既に居れば何もしない。
   claimIfNone(target: Controllable): void {
     if (this._current === null) this.select(target);

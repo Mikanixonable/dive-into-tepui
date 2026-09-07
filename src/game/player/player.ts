@@ -66,7 +66,9 @@ import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { orbitRows } from '../pickable/orbit-rows';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import type { ObjectCommands } from '../pickable/object-commands';
+import type { ControlSelection } from '../control-selection';
+import type { ObjectAuthoring } from '../stages/stage';
+import type { ObjectWindows } from '../pickable/object-windows';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window';
 import type { MapListSection } from '../hud/panels/physical-object-list-panel';
@@ -145,6 +147,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   fineAttitude = false;
   // 自機の操作方法は HUD とヘルプが常設で示しているので、選び直しても案内は出さない。
   readonly controlHint = null;
+  readonly releaseHint = null;
 
   // init 省略時は無作為な名前と既定軌道の新規艦になる。id を省いたときは name がそのまま
   // 艦の識別子になるので、複数隻を並べるなら name も分ける。
@@ -728,21 +731,23 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     ];
   }
 
-  // menuItems が出した操作を実行する。軌道線の表示と計画実行モードは自分の状態を、残りは commands を通す。
-  public runMenu(act: MenuAction, commands: ObjectCommands): void {
+  // 軌道線の表示と計画実行モードは自分の状態を書き換える。
+  public runMenu(
+    act: MenuAction, controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
+  ): void {
     if (act === 'toggleTrajectoryLine') {
       this.showTrajectoryLine = !this.showTrajectoryLine;
     } else if (act === 'activate') {
-      commands.setControlled(this);
+      controlSelection.select(this);
     } else if (act === 'deactivate') {
-      if (this === commands.controlled) commands.setControlled(null);
+      controlSelection.release(this);
     } else if (act === 'planExecCycle') {
       const i = PLAN_EXECUTION_MODES.indexOf(this.planExecution);
       this.planExecution = PLAN_EXECUTION_MODES[(i + 1) % PLAN_EXECUTION_MODES.length]!;
     } else if (act === 'duplicate') {
-      commands.duplicate(this.mapKind, this.state);
+      authoring?.openObjectPlacerForDuplicate(this.mapKind, this.state);
     } else if (act === 'delete') {
-      commands.removeControlled(this);
+      controlSelection.remove(this);
     }
   }
 
@@ -768,14 +773,14 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   public readonly rename = (name: string): void => { this.setName(name); };
 
   // 単クリックはプロパティウィンドウを開くだけに留め、操作対象は変えない。
-  public readonly onMapSelect = (commands: ObjectCommands, clientX: number, clientY: number): void => {
-    commands.openProperties(this, clientX, clientY);
+  public readonly onMapSelect = (windows: ObjectWindows, clientX: number, clientY: number): void => {
+    windows.openProperties(this, clientX, clientY);
   };
 
   // 注視されたら操作対象にもなる(操作艦を切り替える最速の手段)。
-  public readonly onMapFocus = (commands: ObjectCommands): void => {
-    commands.setControlled(this);
-    commands.hint(`${this.name} を操作対象に設定`);
+  public readonly onMapFocus = (controlSelection: ControlSelection): void => {
+    controlSelection.select(this);
+    this._hud.hint(`${this.name} を操作対象に設定`);
   };
 }
 

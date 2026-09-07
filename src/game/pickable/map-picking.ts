@@ -18,6 +18,7 @@ import type { NavTarget } from '../nav-target';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { ControlSelection } from '../control-selection';
 import { rayThroughScreen } from '../../math/projection';
 
 const OBJECT_PICK_PX_SQ = 600; // 被選択物(ObjectPickable)の右クリック判定半径の2乗 [px^2]
@@ -43,6 +44,7 @@ export class MapPicking {
     private readonly pickables: ObjectPickables,
     private readonly linePickables: LinePickables,
     private readonly objectWindows: ObjectWindows,
+    private readonly controlSelection: ControlSelection,
   ) {
     this.listPanel = new PhysicalObjectListPanel(hud.mapRoot, celestialSystem);
     // 一覧の行は隠れている対象でも操作できる(SPEC/MAP.md §10) — pickable によるマップ上の
@@ -146,7 +148,7 @@ export class MapPicking {
   private focusTarget(id: string, target: ObjectPickable | undefined): void {
     this.frameControls.setFocus({ kind: 'object', id });
     this.hud.hint(`${target?.name ?? id} にフォーカス`);
-    target?.onMapFocus?.(this.objectWindows);
+    target?.onMapFocus?.(this.controlSelection);
   }
 
   // 軌道物体一覧を、このフレームの候補列で組み直す。
