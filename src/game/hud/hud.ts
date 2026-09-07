@@ -104,6 +104,7 @@ export class Hud {
       this.enemiesPanel.sync(game);
     }
     this.orbitAnalysisWindow?.sync(game);
+    this.tick();
   }
 
   // 表に出す HUD ルートを戦闘/マップで切り替える。
@@ -151,7 +152,7 @@ export class Hud {
   }
 
   // 控えられたトーストを表示し、表示期限を過ぎたトーストをフェードアウトさせる。
-  public tick(): void {
+  private tick(): void {
     const toast = document.getElementById('hud-toast');
     if (!toast) return;
     const now = performance.now();
