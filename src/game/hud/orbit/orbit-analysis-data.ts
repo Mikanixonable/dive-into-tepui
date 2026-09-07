@@ -1,7 +1,7 @@
 // 軌道分析パネルがプロットする点列(高度タブ・接近タブ・投影タブ)を、既存の伝播・外挿の
 // 仕組みから導出する。距離は [m]、時間は [s]、角度は内部では [rad](公開する relIncDeg だけ [deg])。
 import { strongestAttractor } from '../../../physics/attractor';
-import { CelestialMotion } from '../../../physics/celestial-motion';
+import type { CelestialBody } from '../../../physics/celestial-body';
 import { orbitalElementsOf } from '../../../physics/elements';
 import type { OrbitalElements } from '../../../physics/elements';
 import { semiMajorFromPeriod } from '../../../physics/elements';
@@ -36,10 +36,10 @@ interface ApproachSeries {
 // approachSeries が null を返すので、この union に含めない。
 export type ApproachTargetSource =
   | { readonly kind: 'entity'; readonly entity: DynamicEntity }
-  | { readonly kind: 'celestialBody'; readonly body: CelestialMotion };
+  | { readonly kind: 'celestialBody'; readonly body: CelestialBody };
 
 // center 相対の高度。
-function altitudeOf(state: KinematicState, centerState: KinematicState, center: CelestialMotion): number {
+function altitudeOf(state: KinematicState, centerState: KinematicState, center: CelestialBody): number {
   return len(sub(state.r, centerState.r)) - center.def.radius;
 }
 
@@ -112,10 +112,10 @@ export function resolveTarget(
 export function sharedAttractor(
   ship: DynamicEntity,
   target: ApproachTargetSource,
-  celestialBodies: readonly CelestialMotion[],
+  celestialBodies: readonly CelestialBody[],
   celestialSystem: CelestialSystem,
   now: number,
-): CelestialMotion | null {
+): CelestialBody | null {
   const targetR = resolveTarget(target, celestialSystem, now).currentR;
   const shipCenter = strongestAttractor(ship.state.r, celestialBodies, now);
   return shipCenter.id === strongestAttractor(targetR, celestialBodies, now).id ? shipCenter : null;
@@ -136,7 +136,7 @@ export function sharedAttractor(
 export function approachSeries(
   ship: DynamicEntity,
   target: ApproachTargetSource,
-  celestialBodies: readonly CelestialMotion[],
+  celestialBodies: readonly CelestialBody[],
   celestialSystem: CelestialSystem,
   now: number,
   spanSec: number,

@@ -12,7 +12,8 @@ import { MouseDelta } from '../../input/input';
 import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../math/projection';
 import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, rotationSourceKey, toFrameDir, toInertialDir } from '../../physics/frame';
 import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';
-import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion';
+import { OrbitingMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, Quat, qFromBasis, qRotate } from '../../math/quat';
 import { PolarEuler, sphericalOffset } from '../../math/polar-euler';
@@ -447,7 +448,7 @@ export class FocusCamera {
   }
 
   // 天体 id の運動。登録されていない id(機体・役割トークン・ラグランジュ点)には null。
-  private readonly celestialMotionOf = (id: string): CelestialMotion | null => (
+  private readonly celestialMotionOf = (id: string): CelestialBody | null => (
     this.celestialSystem.find(id)?.motion ?? null
   );
 

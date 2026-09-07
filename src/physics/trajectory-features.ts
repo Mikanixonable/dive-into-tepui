@@ -3,7 +3,7 @@
 // 積分結果と一致させたい特徴点はここで求める。赤道交点(findEquatorCrossings)はサンプル列
 // (折れ線)を走査して求め、アプシス(apsisCrossing/ApsisTrack)は積分の1ステップごとに動径速度の
 // 符号反転を直接見て求める — どちらも同じ黄金分割探索/二分法の補間機構を使う。
-import type { CelestialMotion } from './celestial-motion';
+import type { CelestialBody } from './celestial-body';
 import { hermiteInterpolate, KinematicState } from './kinematic-state';
 import { goldenSectionMin } from '../math/optimize';
 import { dot, len, sub, Vec3 } from '../math/vec3';
@@ -47,7 +47,7 @@ interface ApsisCrossing {
 // (正→負)が遠地点で、どちらでもなければ null。中心天体自身も動いている場合が
 // あるので、位置だけでなく速度も中心天体の値を差し引いた相対量で判定する。
 export function apsisCrossing(
-  center: CelestialMotion, centerPivot: number, prev: KinematicState, next: KinematicState,
+  center: CelestialBody, centerPivot: number, prev: KinematicState, next: KinematicState,
   centerStateAt: CenterStateAt = (t) => center.stateAt(centerPivot, t),
 ): ApsisCrossing | null {
   const radialVel = (s: KinematicState): number => {
@@ -77,19 +77,19 @@ function dropBefore<T extends { readonly state: KinematicState }>(states: T[], t
 // 場合に検出済みの値が古い中心位置基準のままずれ続けるため。dropBefore で範囲の先頭より前を
 // 落とすので、periapsis/apoapsis は常に「いま答える範囲で最初の極値」を返す。
 export class ApsisTrack {
-  private readonly periapsides: { readonly state: KinematicState; readonly center: CelestialMotion }[] = [];
-  private readonly apoapsides: { readonly state: KinematicState; readonly center: CelestialMotion }[] = [];
-  private _center: CelestialMotion | null = null;
+  private readonly periapsides: { readonly state: KinematicState; readonly center: CelestialBody }[] = [];
+  private readonly apoapsides: { readonly state: KinematicState; readonly center: CelestialBody }[] = [];
+  private _center: CelestialBody | null = null;
 
   // 直近の observe に渡された中心天体。まだ observe を1度も呼んでいなければ null。
-  public get center(): CelestialMotion | null {
+  public get center(): CelestialBody | null {
     return this._center;
   }
 
   // prev→next の1ステップを、その瞬間の中心天体 center を使って apsisCrossing に掛け、
   // 見つかった極値を種類ごとの列へ追加する。
   public observe(
-    center: CelestialMotion, centerPivot: number, prev: KinematicState, next: KinematicState,
+    center: CelestialBody, centerPivot: number, prev: KinematicState, next: KinematicState,
     centerStateAt: CenterStateAt = (t) => center.stateAt(centerPivot, t),
   ): void {
     this._center = center;
@@ -109,7 +109,7 @@ export class ApsisTrack {
     return this.periapsides[0]?.state ?? null;
   }
 
-  public get periapsisCenter(): CelestialMotion | null {
+  public get periapsisCenter(): CelestialBody | null {
     return this.periapsides[0]?.center ?? null;
   }
 
@@ -118,7 +118,7 @@ export class ApsisTrack {
     return this.apoapsides[0]?.state ?? null;
   }
 
-  public get apoapsisCenter(): CelestialMotion | null {
+  public get apoapsisCenter(): CelestialBody | null {
     return this.apoapsides[0]?.center ?? null;
   }
 }
