@@ -9,7 +9,8 @@ import { frameOfCelestialBody, toFrameState } from '../../physics/frame';
 import { Projected } from '../../math/projection';
 import { Vec3, add, dot, len, sub, v3 } from '../../math/vec3';
 import { pickNearest } from '../pickable/object-pickable';
-import { Hud } from '../hud/hud';
+import type { HudLayers } from '../hud/hud-layers';
+import type { Notifier } from '../../hud/notifier';
 import { ContextMenu, MenuAction, MenuCommon } from '../hud/windows';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { Input } from '../../input/input';
@@ -79,7 +80,7 @@ export class PlanEditor {
   // ノードギズモと計画パネルの DOM を組み立て、両者のコールバックを配線する。
   // path は描かれている計画折れ線 — ノードの配置・移動・画面座標はそのサンプル列から解く。
   public constructor(
-    private readonly hud: Hud,
+    private readonly hud: HudLayers & Notifier,
     private readonly uiSfx: UiSfx,
     private readonly simSpeedManager: SimSpeedManager,
     private readonly celestialBodies: CelestialBodies,

@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { Hud } from '../hud/hud';
+import type { HudLayers } from '../hud/hud-layers';
+import type { Notifier } from '../../hud/notifier';
 import { GunsightCamera } from './gunsight-camera';
 import { defaultMapViewInitial, FocusCamera, FOCUS_CAMERA_MIN_DIST } from './focus-camera';
 import type { FocusTarget } from './focus-target';
@@ -195,7 +196,7 @@ export class CameraSystem {
   // ViewManager より先に生成されるため、参照でなく遅延評価で受ける。
   // attitudeOf はフォーカス機体の姿勢追従に使う解決関数(FocusCameraConfig 参照)。
   constructor(
-    private readonly hud: Hud,
+    private readonly hud: HudLayers & Notifier,
     celestialBodies: CelestialBodies,
     private readonly currentView: () => View,
     attitudeOf: (id: string, t: number) => Quat | null,

@@ -1,7 +1,8 @@
 // マップビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。
 import { MapPicking } from '../pickable/map-picking';
 import type { Input } from '../../input/input';
-import type { Hud } from '../hud/hud';
+import type { HudLayers } from '../hud/hud-layers';
+import type { Notifier } from '../../hud/notifier';
 import type { CameraSystem } from '../camera/camera-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
@@ -49,7 +50,7 @@ export class MapView implements ViewFrame {
     simSpeedManager: SimSpeedManager,
     planDisplay: PlanDisplay,
     scene: THREE.Scene,
-    hud: Hud,
+    hud: HudLayers & Notifier,
     uiSfx: UiSfx,
     navTarget: NavTarget,
   ) {

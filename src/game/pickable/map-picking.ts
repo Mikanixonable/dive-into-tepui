@@ -1,6 +1,7 @@
 // マップ上のクリックを候補列へ当て、当たった被選択物のウィンドウ・注視へ配る。軌道物体一覧
 // パネルと軌道線のプロパティウィンドウは、どちらもマップにしか出ないのでここが持つ。
-import type { Hud } from '../hud/hud';
+import type { HudLayers } from '../hud/hud-layers';
+import type { Notifier } from '../../hud/notifier';
 import { ObjectPickable, pickFrontmostBody, pickNearest, projectMarker } from './object-pickable';
 import { pickNearestLine } from './line-pickable';
 import type { LinePickables } from './line-pickables';
@@ -36,7 +37,7 @@ export class MapPicking {
 
   // 候補列と、当たった対象の落とし先(ObjectWindows)を参照として受け取る。
   constructor(
-    private readonly hud: Hud,
+    private readonly hud: HudLayers & Notifier,
     private readonly cameraSystem: CameraSystem,
     private readonly dynamicSystem: DynamicSystem,
     private readonly celestialBodies: CelestialBodies,

@@ -2,6 +2,7 @@
 // 毎フレーム game の状態へ同期して、トースト・ヘルプを出す。
 import type { RenderStyleSetting } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
+import type { HudLayers } from './hud-layers';
 import type { View } from '../view/view';
 import { VesselPanel } from './panels/vessel-panel';
 import { OrbitPanel } from './orbit/orbit-panel';
@@ -23,7 +24,7 @@ import type { Notifier } from '../../hud/notifier';
 const ANALYSIS_WINDOW_OPEN_X = 320;
 const ANALYSIS_WINDOW_OPEN_Y = 100;
 
-export class Hud implements Notifier {
+export class Hud implements HudLayers, Notifier {
   public get root(): HTMLElement { return this.shell.root; }
   public get layers(): OverlayLayers { return this.shell.layers; }
   public get overlayManager(): OverlayManager { return this.shell.overlayManager; }

@@ -4,7 +4,7 @@ import { PropertyWindow } from '../../hud/windows/property-window';
 import type { PropertyWindowContent, PropertyWindowItem } from '../../hud/windows/property-window-content';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { ControlSelection } from '../control-selection';
-import type { Hud } from '../hud/hud';
+import type { HudLayers } from '../hud/hud-layers';
 import type { Part } from '../dynamic/dynamic-entity/parts';
 import type { Player } from '../player/player';
 
@@ -41,7 +41,7 @@ export class PartWindows {
   private readonly windows = new Map<string, PartWindowEntry>();
 
   constructor(
-    private readonly hud: Hud,
+    private readonly hud: HudLayers,
     private readonly controlSelection: ControlSelection,
   ) {}
 
