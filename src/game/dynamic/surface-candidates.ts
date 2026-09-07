@@ -10,7 +10,7 @@
 //     (参加者が1つなら into と同じ判定を二度やることになる)。
 import { CelestialMotion } from '../../physics/celestial-motion';
 import { KinematicState } from '../../physics/kinematic-state';
-import { Vec3, add, len, scale, sub, v3 } from '../../math/vec3';
+import { Vec3, add, distSq, len, scale, sub, v3 } from '../../math/vec3';
 
 // 区間の始点位置と、そこから表面が区間内に届きうる距離。
 type BodyReach = {
@@ -91,11 +91,8 @@ export class SurfaceCandidates {
     const { prevState } = participant;
     const reach = participant.radius + intervalReach(prevState, participant.state);
     for (const candidate of this.reachable) {
-      const dx = prevState.r.x - candidate.r0.x;
-      const dy = prevState.r.y - candidate.r0.y;
-      const dz = prevState.r.z - candidate.r0.z;
       const limit = reach + candidate.reach;
-      if (dx * dx + dy * dy + dz * dz <= limit * limit) out.push(candidate.body);
+      if (distSq(prevState.r, candidate.r0) <= limit * limit) out.push(candidate.body);
     }
     return out;
   }

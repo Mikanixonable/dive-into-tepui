@@ -205,6 +205,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     this.mass = 3e6;
     this.radius = BASE_COLLISION_RADIUS;
     this.collides = true;
+    this.engagementAnchor = true;
     this.name = name;
     this.baseFuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : BASE_MAX_FUEL;
     this.throttle = new PlayerThrottle(hud, 'saved' in init ? init.saved.throttle : undefined);
