@@ -10,7 +10,7 @@ import type {
 import { TEMP_WINDOW_GROUP } from '../../hud/overlay-manager';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { focusTargetId } from '../camera/focus-target';
-import { DynamicSystem } from '../dynamic/dynamic-system';
+import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { NavTarget } from '../nav-target';
 import { CameraSystem } from '../camera/camera-system';
@@ -55,7 +55,7 @@ export class ObjectWindows {
   // 構築時ではなく毎回そこから引く。
   constructor(
     private readonly hud: Hud,
-    private readonly dynamicSystem: DynamicSystem,
+    private readonly roster: EntityRoster,
     private readonly celestialBodies: CelestialBodies,
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,
@@ -70,7 +70,7 @@ export class ObjectWindows {
     this.menu.onSelect = (act, target) => this.runAct(target, act);
     this.partWindows = new PartWindows(hud, controlSelection);
     this.hud.enemiesPanel.onSelectRight = (id, clientX, clientY) => {
-      const enemy = this.dynamicSystem.all().filter(isEnemy).find((e) => e.id === id);
+      const enemy = this.roster.all().filter(isEnemy).find((e) => e.id === id);
       if (enemy) this.open(clientX, clientY, enemy, this.simTime);
     };
     this.hud.targetPanel.onSelectRight = (clientX, clientY) => {
@@ -208,7 +208,7 @@ export class ObjectWindows {
       switch (it.act) {
         case 'target':
           return this.navTarget.canTarget(
-            target.id, this.dynamicSystem, this.celestialBodies, simTime);
+            target.id, this.roster, this.celestialBodies, simTime);
         case 'duplicate':
         case 'openObjectPlacer':
           return this.authoring !== null;

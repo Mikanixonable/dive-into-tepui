@@ -9,7 +9,7 @@ import type { Notifier } from '../../hud/notifier';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { TouchControls } from '../hud/touch-controls';
 import type { CameraSystem } from '../camera/camera-system';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { EntityRoster } from '../dynamic/entity-roster';
 import type { ObjectWindows } from '../pickable/object-windows';
 import type { CelestialMarkers } from '../marker/celestial-markers';
 import type { MarkerSlots } from '../marker/marker-slots';
@@ -34,7 +34,7 @@ export class CombatView implements ViewFrame {
     private readonly cameraSystem: CameraSystem,
     private readonly targeter: Targeter,
     private readonly objectWindows: ObjectWindows,
-    private readonly dynamicSystem: DynamicSystem,
+    private readonly dynamicSystem: EntityRoster,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly touchControls: TouchControls | null,
     private readonly controlSelection: ControlSelection,

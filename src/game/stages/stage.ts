@@ -31,8 +31,8 @@ export const STORY_EPOCH: TdbJulianDate =
 import { solarSystem } from '../celestial/solar-system/solar-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { PhaseOffsets } from '../../physics/celestial-body-def';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
-import type { SpawnGate } from '../dynamic/entity-registry';
+import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRegistry, SpawnGate } from '../dynamic/entity-registry';
 
 export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
 
@@ -57,7 +57,7 @@ export type StageDeps = [
   worldSfx: WorldSfx,
   uiSfx: UiSfx,
   scene: THREE.Scene,
-  dynamicSystem: DynamicSystem,
+  dynamicSystem: EntityRegistry & EntityRoster,
   fx: FlashEffects,
   markers: MarkerSlots,
   celestialSystem: CelestialSystem,
@@ -156,7 +156,7 @@ export abstract class Stage {
   protected readonly _uiSfx: UiSfx;
   protected readonly _scene: THREE.Scene;
   protected readonly _fx: FlashEffects;
-  protected readonly _dynamicSystem: DynamicSystem;
+  protected readonly _dynamicSystem: EntityRegistry & EntityRoster;
   protected readonly _markers: MarkerSlots;
   protected readonly _celestialSystem: CelestialSystem;
   protected readonly _controlSelection: ControlSelection;

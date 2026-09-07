@@ -6,6 +6,7 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import type { EntityRoster } from './entity-roster';
 import type { EntityRegistry, SpawnGate } from './entity-registry';
 import { ENTITY_CAP, type CapKind, type EntityCountKind } from './dynamic-entity/entity-kind';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
@@ -33,7 +34,7 @@ import type { EquatorNodeInputs } from '../marker/equator-node-marker-pair';
 import type { PerfCounts } from '../perf-counts';
 import type { OrbitReference } from '../orbit-reference';
 
-export class DynamicSystem implements EntityRegistry {
+export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 保持する全エンティティを追加順に並べた、顔ぶれの正本。枠ごとの上限はこの並びから導く。
   private readonly entities: DynamicEntity[] = [];
 
