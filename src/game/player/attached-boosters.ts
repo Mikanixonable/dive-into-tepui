@@ -15,7 +15,7 @@ import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
-import { EffectsSystem } from '../vfx/effects-system';
+import { FlashEffects } from '../vfx/flash-effects';
 import type { EntityRegistry } from '../dynamic/dynamic-system';
 import { DetachedBooster } from '../dynamic/dynamic-entity/detached-booster';
 import { PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from '../dynamic/dynamic-entity/ship';
@@ -65,7 +65,7 @@ export class AttachedBoosters {
     private readonly _hud: Hud,
     private readonly _worldSfx: WorldSfx,
     private readonly _scene: THREE.Scene,
-    private readonly _fx: EffectsSystem,
+    private readonly _fx: FlashEffects,
     saved?: BoosterStackData,
   ) {
     this.stack = saved ? BoosterStack.importData(saved) : new BoosterStack();

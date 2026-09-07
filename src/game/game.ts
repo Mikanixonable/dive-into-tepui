@@ -15,6 +15,7 @@ import { PlanDisplay } from './plan/plan-display';
 import { DisplayWindowManager, timeLabelSettingOf } from './display-window-manager';
 import { SimSpeedManager } from './dynamic/sim-speed-manager';
 import { DynamicSystem } from './dynamic/dynamic-system';
+import { FlashEffects } from './vfx/flash-effects';
 import { isEnemy } from './dynamic/dynamic-entity/enemy';
 import { isBase } from './dynamic/dynamic-entity/base';
 import { isPlayer } from './player/player';
@@ -93,6 +94,8 @@ export class Game {
   private readonly frameAnchors: FrameAnchors;
   readonly orbitReference = new OrbitReferenceSelector();
   readonly dynamicSystem: DynamicSystem;
+  // 物理に乗らない一過性の見た目。顔ぶれには載らないので DynamicSystem の外で持つ。
+  private readonly flashEffects: FlashEffects;
   private readonly entityLines: EntityLineManager;
   readonly simulator: Simulator;
   private readonly predictor: Predictor;
@@ -223,7 +226,9 @@ export class Game {
 
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
-    this.dynamicSystem = new DynamicSystem(this._scene, this._hud, this._worldSfx, this.markerManager, initialSave);
+    this.flashEffects = new FlashEffects(this._scene);
+    this.dynamicSystem = new DynamicSystem(
+      this._scene, this._hud, this._worldSfx, this.flashEffects, this.markerManager, initialSave);
     this.entityLines = new EntityLineManager(this.dynamicSystem);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, celestialSystem);
 
@@ -304,7 +309,7 @@ export class Game {
 
     this.activeStage = new stageClass(
       initialSave?.stage, this._hud, this._worldSfx, uiSfx, this._scene, this.dynamicSystem,
-      this.dynamicSystem.effects, this.markerManager, celestialSystem, this.simulator, this.controlSelection,
+      this.flashEffects, this.markerManager, celestialSystem, this.simulator, this.controlSelection,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage の authoring/executesPlans を読むので、その直後に生成する。
@@ -383,6 +388,7 @@ export class Game {
     this.cameraSystem.dispose();
     this.displayWindowManager.dispose();
     this.dynamicSystem.dispose();
+    this.flashEffects.dispose();
     this.markerManager.dispose();
   }
 
@@ -494,7 +500,7 @@ export class Game {
     this.controlSelection.reclaimDead();
 
     this.sections.enter(SECTION.effects);
-    this.dynamicSystem.effects.update(dt, this.simulator.simTime);
+    this.flashEffects.update(dt, this.simulator.simTime);
     this.sections.exit(SECTION.effects);
 
   }
@@ -572,6 +578,8 @@ export class Game {
       controlled, fo, this.cameraSystem, displayTime, style, visibilityPolicy,
       orbitRef, this.frameAnchors, timeLabel, graphics.proteinVibration,
     );
+    // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraSystem.sync より後に通す。
+    this.flashEffects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
 
     this.targeter.sync(controlled, this.cameraSystem, displayTime, simTime, visibilityPolicy);
     this.navTarget.sync(

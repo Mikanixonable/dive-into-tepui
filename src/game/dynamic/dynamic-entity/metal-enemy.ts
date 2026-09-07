@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { buildEnemyShip, buildStage0EnemyShip } from '../../../render/ships';
 import { v3, type Vec3 } from '../../../math/vec3';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
-import { EffectsSystem } from '../../vfx/effects-system';
+import { FlashEffects } from '../../vfx/flash-effects';
 import {
   Enemy, ENEMY_SCALE, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore,
 } from './enemy';
@@ -35,7 +35,7 @@ export class MetalEnemy extends Enemy {
   public constructor(
     init: MetalEnemyPlacement | EnemyRestore,
     worldSfx: WorldSfx,
-    fx: EffectsSystem,
+    fx: FlashEffects,
     scene?: THREE.Scene,
   ) {
     const typeIndex = 'saved' in init ? (init.saved as MetalEnemySaveData).typeIndex : init.typeIndex;
