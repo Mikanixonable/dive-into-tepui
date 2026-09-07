@@ -45,7 +45,7 @@ export class RelativeNodeMarker extends OrbitPointMarker {
 
   // 所属軌道・交点を定める相手の名前・通過までの残り時間。
   public propertyRows(
-    _celestialSystem: CelestialBodies, _viewer: OrbitingObject | null, simTime: number,
+    _celestialBodies: CelestialBodies, _viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
     return [
       ...this.ownerRows(),

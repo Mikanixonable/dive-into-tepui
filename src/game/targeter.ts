@@ -53,7 +53,7 @@ export class Targeter {
   constructor(
     private readonly markerManager: MarkerManager,
     private readonly navTarget: NavTarget, private readonly dynamicSystem: DynamicSystem,
-    private readonly celestialSystem: CelestialMotions,
+    private readonly celestialBodies: CelestialMotions,
     private readonly celestialMarkers: CelestialMarkers,
   ) {}
 
@@ -126,7 +126,7 @@ export class Targeter {
     const targets = this.dynamicSystem.all().filter(isCombatTarget);
     const ammoPickups = this.dynamicSystem.all().filter(isAmmoPickup);
     const fuelPickups = this.dynamicSystem.all().filter(isRcsFuelPickup);
-    const celestialBodies = this.celestialSystem.celestialMotions;
+    const celestialBodies = this.celestialBodies.celestialMotions;
     const view = cameraSystem.view;
     const mapView = view === 'map';
     const project = cameraSystem.activeCameraProjection;
