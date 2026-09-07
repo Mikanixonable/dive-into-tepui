@@ -163,7 +163,6 @@ export class DebugInfoWindow {
     this.gpu.enabled = true;
     this.frames = 0;
     this.lastFlush = performance.now();
-    this.activeTab = 'metrics';
     this.win = new PropertyWindow(this.root, DEFAULT_X, DEFAULT_Y, {
       title: 'デバッグ',
       rows: this.rows,
@@ -176,9 +175,8 @@ export class DebugInfoWindow {
     };
     // 選択は窓を閉じている間も pipeline 側に残るので、開くたびにそちらから引き直す。
     this.renderTarget.setSelected(this.debugTargetHost.debugTarget);
-    this.tabBar.setSelected(this.activeTab);
-    this.renderTarget.element.hidden = true;
     this.win.setControls(this.controls);
+    this.selectTab('metrics');
   }
 
   // 窓を閉じ、計測も止める。
@@ -204,7 +202,7 @@ export class DebugInfoWindow {
   private selectTab(tab: DebugInfoTab): void {
     this.activeTab = tab;
     this.tabBar.setSelected(tab);
-    this.renderTarget.element.hidden = tab !== 'render';
+    this.renderTarget.element.classList.toggle('hidden', tab !== 'render');
     this.win?.syncRows(tab === 'metrics' ? this.rows : []);
   }
 
