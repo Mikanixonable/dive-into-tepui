@@ -306,8 +306,7 @@ export class DynamicSystem {
     // 操作対象候補は専用の同期パス(syncControllables)を持つ。
     for (const e of this.entities) {
       if (isControllable(e)) continue;
-      e.sync(fo, displayTime, viewer, proteinVibrationEnabled);
-      e.pushInstances(this.instancedPools);
+      e.sync(fo, displayTime, this.instancedPools, viewer, proteinVibrationEnabled);
     }
     this.instancedPools.endFrame();
   }
