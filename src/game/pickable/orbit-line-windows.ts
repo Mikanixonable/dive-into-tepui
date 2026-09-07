@@ -5,7 +5,7 @@ import { PropertyWindow } from '../../hud/windows/property-window';
 import type { InspectedObject } from './inspected-object';
 import type { PropertyWindowContent, PropertyWindowRelatedItem } from '../../hud/windows/property-window-content';
 import type { MenuAction } from '../hud/windows/menu-actions';
-import type { Hud } from '../hud/hud';
+import type { HudLayers } from '../hud/hud-layers';
 import type { LinePickable } from './line-pickable';
 import type { LinePickables } from './line-pickables';
 import type { ObjectPickables } from './object-pickables';
@@ -23,7 +23,7 @@ export class OrbitLineWindows {
   // focusOwner / openOwnerWindow は「所属」欄から持ち主へ注視を移す・そのプロパティ
   // ウィンドウを開く手続き。
   constructor(
-    private readonly hud: Hud,
+    private readonly hud: HudLayers,
     private readonly linePickables: LinePickables,
     private readonly pickables: ObjectPickables,
     private readonly focusOwner: (id: string, name: string) => void,
