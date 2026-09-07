@@ -39,6 +39,7 @@ type RcsFuelPickupInit =
 // 軌道上の RCS 燃料補給。接近すると燃料を艦のタンクへ移す。
 export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
   public override readonly mapKind: DynamicEntityKind = 'fuel';
+  public override readonly pickable = true;
 
   override readonly bcInv = SMALL_DEBRIS_BCINV;
   protected readonly srpCoeff = SMALL_DEBRIS_SRP_COEFF;
