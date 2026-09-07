@@ -14,13 +14,13 @@ export class ControlSelection {
   // 操作できるものが1つも無ければ null。
   constructor(
     savedId: string | null | undefined,
-    private readonly entities: DynamicSystem,
+    private readonly dynamicSystem: DynamicSystem,
     private readonly cameraSystem: CameraSystem,
     private readonly navTarget: NavTarget,
     private readonly worldSfx: WorldSfx,
     private readonly hud?: Hud,
   ) {
-    const candidates = entities.controllables;
+    const candidates = dynamicSystem.controllables;
     this._current = candidates.find((c) => c.id === savedId) ?? candidates.find((c) => c.alive) ?? null;
   }
 
@@ -57,7 +57,7 @@ export class ControlSelection {
       target.clearTransientCommands();
       this._current = null;
     }
-    this.entities.remove(target);
+    this.dynamicSystem.remove(target);
     if (wasActive) this.reclaimAfterLoss();
   }
 
@@ -65,7 +65,7 @@ export class ControlSelection {
   reclaimDead(): void {
     let lostActive = false;
     // remove() が顔ぶれを触るので、走査は開始時の並びの写しに対して行う。
-    for (const lost of [...this.entities.controllables]) {
+    for (const lost of [...this.dynamicSystem.controllables]) {
       if (lost.alive) continue;
       if (this._current === lost) {
         this._current = null;
@@ -78,7 +78,7 @@ export class ControlSelection {
 
   // 操作対象を失った直後に呼ぶ。他に生存しているものがあれば引き継ぎ、無ければ未操作へ戻す。
   private reclaimAfterLoss(): void {
-    const next = this.entities.controllables.find((c) => c.alive) ?? null;
+    const next = this.dynamicSystem.controllables.find((c) => c.alive) ?? null;
     if (next) this.select(next);
     else this.clear();
   }

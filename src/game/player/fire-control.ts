@@ -150,7 +150,7 @@ export class FireControl {
     dt: number,
     input: Input,
     activeStage: Stage,
-    entities: DynamicSystem,
+    dynamicSystem: DynamicSystem,
     celestialSystem: CelestialSystem,
   ): void {
     this.tickReloadTimer(dt);
@@ -182,7 +182,7 @@ export class FireControl {
       return;
     }
 
-    this.fireCycle(activeStage, entities, celestialSystem);
+    this.fireCycle(activeStage, dynamicSystem, celestialSystem);
   }
 
   // クールダウンタイマーを dt だけ減らす。
@@ -194,7 +194,7 @@ export class FireControl {
   // クールダウン込みの発射サイクルを1回進める。スピンアップ中・クールダウン中は発射しない。
   private fireCycle(
     activeStage: Stage,
-    entities: DynamicSystem,
+    dynamicSystem: DynamicSystem,
     celestialSystem: CelestialSystem,
   ): void {
     const justStartedFiring = !this.wasFiring;
@@ -215,7 +215,7 @@ export class FireControl {
 
     const result = this.consume();
 
-    this.fireGun(activeStage, entities, celestialSystem);
+    this.fireGun(activeStage, dynamicSystem, celestialSystem);
     switch (result) {
       case 'empty':
       case 'normal':
@@ -276,7 +276,7 @@ export class FireControl {
   // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、発射数を記録する。
   private fireGun(
     activeStage: Stage,
-    entities: DynamicSystem,
+    dynamicSystem: DynamicSystem,
     celestialSystem: CelestialSystem,
   ): void {
     const fwd = qRotate(this.player.att.q, LOCAL_FORWARD);
@@ -286,7 +286,7 @@ export class FireControl {
     this.muzzleIdx = (this.muzzleIdx + 1) % MUZZLE_OFFSETS.length;
     const muzzle = add(this.player.state.r, qRotate(this.player.att.q, v3(mo.x, mo.y, mo.z)));
 
-    this.spawnBullet(this.player, muzzle, fwd, entities, celestialSystem);
+    this.spawnBullet(this.player, muzzle, fwd, dynamicSystem, celestialSystem);
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv(瞬間的な速度変更なので時刻は据え置き)
     this.player.state = kinematicState<'eci'>(
       this.player.state.t,
@@ -304,7 +304,7 @@ export class FireControl {
 
   // 弾丸: 機首方向 + 散布界
   private spawnBullet(
-    ship: Ship, muzzle: Vec3, fwd: Vec3, entities: DynamicSystem, celestialSystem: CelestialSystem,
+    ship: Ship, muzzle: Vec3, fwd: Vec3, dynamicSystem: DynamicSystem, celestialSystem: CelestialSystem,
   ): void {
     const sunDir = celestialSystem.sunDirFrom(ship.state.r, ship.state.t);
     const spreadScale = sunGlareSpreadScale(muzzle, fwd, sunDir);
@@ -324,7 +324,7 @@ export class FireControl {
       this._worldSfx,
       this._scene,
     );
-    entities.add(bullet);
+    dynamicSystem.add(bullet);
   }
 
   // 薬莢: -X 側へ排出(+X 側はマガジンベルトの給弾があるため)。

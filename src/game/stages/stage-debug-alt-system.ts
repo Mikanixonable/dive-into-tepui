@@ -122,7 +122,7 @@ export class StageDebugAltSystem extends Stage {
     });
   }
 
-  update(_dt: number, _entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  update(_dt: number, _dynamicSystem: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
     this.logistics.updateLogistics(simTime, player, simSpeed);

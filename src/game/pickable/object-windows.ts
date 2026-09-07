@@ -59,7 +59,7 @@ export class ObjectWindows implements ObjectCommands {
   // 候補集合(pickables)と、メニュー項目の実行先を参照として受け取る。
   constructor(
     private readonly hud: Hud,
-    private readonly entities: DynamicSystem,
+    private readonly dynamicSystem: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,
@@ -81,7 +81,7 @@ export class ObjectWindows implements ObjectCommands {
       (clientX, clientY, target) => this.open(clientX, clientY, target, pickables.lastSimTime),
     );
     this.hud.enemiesPanel.onSelectRight = (id, clientX, clientY) => {
-      const enemy = this.entities.enemies.find((e) => e.id === id);
+      const enemy = this.dynamicSystem.enemies.find((e) => e.id === id);
       if (enemy) this.open(clientX, clientY, enemy, this.pickables.lastSimTime);
     };
     this.hud.targetPanel.onSelectRight = (clientX, clientY) => {
@@ -325,6 +325,6 @@ export class ObjectWindows implements ObjectCommands {
   }
 
   canNavTarget(id: string, simTime: number): boolean {
-    return this.navTarget.canTarget(id, this.entities, this.celestialSystem, simTime);
+    return this.navTarget.canTarget(id, this.dynamicSystem, this.celestialSystem, simTime);
   }
 }

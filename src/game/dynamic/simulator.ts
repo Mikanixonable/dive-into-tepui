@@ -56,9 +56,9 @@ export class Simulator {
   // このサブステップの天体窓。
   private readonly bodies = new SubstepCelestialBodies();
 
-  // entities/windows/sections は参照として保持する。initialSimTime はシミュレーションの開始時刻。
+  // dynamicSystem/windows/sections は参照として保持する。initialSimTime はシミュレーションの開始時刻。
   constructor(
-    private readonly entities: DynamicSystem,
+    private readonly dynamicSystem: DynamicSystem,
     private readonly windows: CelestialMotions,
     private readonly sections: FrameSections,
     initialSimTime = 0,
@@ -96,7 +96,7 @@ export class Simulator {
     }
     while (this.simTime < targetTime) {
       const maxStep = simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT);
-      const eventTime = this.nextEventTime.at(this.simTime, activeStage, this.entities);
+      const eventTime = this.nextEventTime.at(this.simTime, activeStage, this.dynamicSystem);
       const subDt = simulationStepDuration(this.simTime, targetTime, maxStep, eventTime);
       // 丸めで前進しない刻みになったイベントは現在時刻で消費して前進を保証する。**絶対秒の
       // しきい値では判定しない** — simTime の分解能は |simTime|·2⁻⁵² なので、固定の ε は
@@ -114,12 +114,12 @@ export class Simulator {
         if (this.consecutiveZeroSteps > SIMULATION_STALL_MAX_ZERO_STEPS) {
           console.error(
             `[Simulator] ゼロ刻みが${this.consecutiveZeroSteps}回連続。simTime=${this.simTime} `
-            + `eventTime=${eventTime} entities=${this.entities.all().length} — このフレームぶんを一括消費`);
+            + `eventTime=${eventTime} dynamicSystem=${this.dynamicSystem.all().length} — このフレームぶんを一括消費`);
           this.simTime = targetTime;
           this.consecutiveZeroSteps = 0;
         }
         activeStage.applySimulationEvents(this.simTime);
-        this.entities.cleanup(
+        this.dynamicSystem.cleanup(
           0, this.simTime, activeStage, controlled?.state.r ?? v3(), this.atmosphereBodies());
         continue;
       }
@@ -148,12 +148,12 @@ export class Simulator {
       nanWatchdog.checkControlled('simulator.advance(天体接触)', controlled, this.simTime, dt, subDt);
       // 接触代理を組むのも交戦圏があるときだけ。交戦圏の組まれない倍率で組むと、代理が
       // substep 幅そのままの粗い刻みで解かれて発散する。
-      const zones = engagementZones(this.entities.all(), canEngage);
+      const zones = engagementZones(this.dynamicSystem.all(), canEngage);
       if (zones.length > 0) {
         this.sections.enter(SECTION.entityContact);
         // 接触代理は DynamicSystem に載らないので、この場で参加者へ合流させ、解決後に戻す。
         this.contactEntitiesScratch.length = 0;
-        for (const entity of this.entities.all()) {
+        for (const entity of this.dynamicSystem.all()) {
           this.contactEntitiesScratch.push(entity);
           if (entity.alive) {
             for (const proxy of entity.contactProxies(this.simTime, subDt)) {
@@ -163,7 +163,7 @@ export class Simulator {
         }
         this.entityContactPhysics.resolveEntityContacts(
           this.simTime, this.contactEntitiesScratch, zones, activeStage);
-        for (const entity of this.entities.all()) {
+        for (const entity of this.dynamicSystem.all()) {
           if (entity.alive) entity.applyContactProxies(subDt);
         }
         this.sections.exit(SECTION.entityContact);
@@ -171,7 +171,7 @@ export class Simulator {
       }
       activeStage.applySimulationEvents(this.simTime);
       // 期限切れ弾が同じsubstepの接触解決へ進まないよう、既知境界の直後に回収する。
-      this.entities.cleanup(
+      this.dynamicSystem.cleanup(
         subDt, this.simTime, activeStage, controlled?.state.r ?? v3(), this.atmosphereBodies());
     }
 
@@ -200,7 +200,7 @@ export class Simulator {
   // なる。残りを引く形なら、近い2つの差は誤差なく求まるので必ず endTime へ着地する。
   private substep(endTime: number, dt: number, activeStage: Stage): void {
     this.sharedIntervalScratch.length = 0;
-    for (const e of this.entities.all()) {
+    for (const e of this.dynamicSystem.all()) {
       if (!e.alive) continue;
       // 抗力をもう積めない個体は、進める前に失う — 積んでも正確な軌道は得られない。
       if (e.outpacedByDrag(dt, this.bodies.atmosphere, this.bodies.pivot)) {
