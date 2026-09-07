@@ -8,7 +8,7 @@ import { addScaled, dot, len, norm, sub } from '../../math/vec3';
 import { Hud } from '../hud/hud';
 import { fmtDist, fmtSpeed, fmtTime } from '../../hud/utils';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
-import { ProjectFn } from '../camera/camera-system';
+import type { ProjectFn } from '../../math/projection';
 import { MarkerManager, MARKER_DIR_DIST } from '../marker/marker-manager';
 import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH, COLOR_MARKER_NODE } from '../marker/marker-identity';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';

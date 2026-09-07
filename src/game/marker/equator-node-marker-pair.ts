@@ -10,7 +10,7 @@ import { solveEquatorCrossings } from '../../physics/orbit-solvers';
 import { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarker } from './equator-node-marker';
 import type { MarkerManager } from './marker-manager';
-import type { ProjectFn } from '../camera/camera-system';
+import type { ProjectFn } from '../../math/projection';
 import { ObjectPickable } from '../pickable/object-pickable';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 

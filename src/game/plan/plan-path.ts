@@ -16,7 +16,7 @@ import { isOccluded } from '../../physics/occlusion';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { TrajectoryLine } from '../lines/trajectory-line';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
-import { ProjectFn, ScaleFn } from '../camera/camera-system';
+import type { ProjectFn, ScaleFn } from '../../math/projection';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
 import { BodyImpact, PredictedArc } from '../dynamic/predicted-arc';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';

@@ -8,7 +8,7 @@
 import { Vec3, len, sub } from '../../math/vec3';
 import type { View } from '../view/view';
 import { Projected } from '../../math/projection';
-import type { ProjectFn, ScaleFn } from '../camera/camera-system';
+import type { ProjectFn, ScaleFn } from '../../math/projection';
 import type { ActiveCelestialLabel } from './celestial-markers';
 import type { MarkerManager } from './marker-manager';
 import { DIRECTION_GLYPH } from './marker-identity';

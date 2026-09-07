@@ -5,7 +5,7 @@ import { len, sub, type Vec3 } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { ProjectFn } from '../camera/camera-system';
+import type { ProjectFn } from '../../math/projection';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { GroupedMarkerItem, GroupedMarkers } from './grouped-markers';
 import type { MarkerManager } from './marker-manager';

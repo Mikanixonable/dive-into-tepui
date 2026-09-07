@@ -2,7 +2,7 @@
 // 画面座標から実体の形へ視線を通し、最も手前のものを選ぶ。
 import { isCombatTarget, type CombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
-import type { ProjectFn } from '../camera/camera-system';
+import type { ProjectFn } from '../../math/projection';
 import { rayThroughScreen, type Viewpoint } from '../../math/projection';
 import { len, sub } from '../../math/vec3';
 

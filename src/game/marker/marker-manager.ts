@@ -5,11 +5,10 @@
 //
 // setPosition/setDirection は、3D空間上の「位置」「方向」を示すマーカーの
 // 投影手順(project → set)を一元化したもの。headingRotationDeg は進行方向(ECI 速度)を
-// 向くグリフの回転角を求める。camera-system.ts が MarkerManager に依存しているため、
-// ProjectFn/ScaleFn 型を直接 import せず同形の関数型で受ける(循環 import を避ける)。
+// 向くグリフの回転角を求める。
 import { Vec3, addScaled, len, norm, sub } from '../../math/vec3';
 import type { View } from '../view/view';
-import { Projected } from '../../math/projection';
+import { Projected, type ProjectFn, type ScaleFn } from '../../math/projection';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
 import { isOccluded } from '../../physics/occlusion';
@@ -24,9 +23,6 @@ export const MARKER_DIR_DIST = 5e4;
 
 // 画面外の対象を指す方位マーカーを置く円の半径(画面短辺の半分に対する比)
 const MARKER_BEARING_RING_RATIO = 0.8;
-
-type ProjectFn = (worldPos: Vec3) => Projected;
-type ScaleFn = (worldPos: Vec3) => number;
 
 interface MarkerRecord {
   key: string;

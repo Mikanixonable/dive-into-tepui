@@ -3,7 +3,7 @@
 import { lenSq, sub, type Vec3 } from '../../math/vec3';
 import type { Ray } from '../../math/ray';
 import type { Projected } from '../../math/projection';
-import type { ProjectFn } from '../camera/camera-system';
+import type { ProjectFn } from '../../math/projection';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';

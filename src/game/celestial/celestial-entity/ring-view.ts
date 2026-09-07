@@ -17,7 +17,7 @@ import {
 } from '../../../render/ring';
 import { ringPixelCoverage } from '../../../render/screen-lod';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
-import { ScaleFn } from '../../camera/camera-system';
+import type { ScaleFn } from '../../../math/projection';
 
 type CoverageBand = {
   readonly widthMeters: number;

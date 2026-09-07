@@ -8,7 +8,7 @@ import { fmtTime } from '../../hud/utils';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { ProjectFn } from '../camera/camera-system';
+import type { ProjectFn } from '../../math/projection';
 import type { ControlSelection } from '../control-selection';
 import type { ObjectAuthoring } from '../stages/stage';
 import type { PlanEditor } from '../plan/plan-editor';
