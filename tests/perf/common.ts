@@ -2,7 +2,7 @@
 // 天体窓の生成、刻み幅固定の積分、結果の比較と整形を持つ。
 import { solarSystemParts } from '../physics/test-helpers';
 import { nearestAtmosphereBody } from '../../src/physics/attractor';
-import { CelestialMotions } from '../../src/physics/celestial-motion';
+import { CelestialMotions } from '../../src/physics/celestial-body';
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';

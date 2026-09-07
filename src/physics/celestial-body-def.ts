@@ -2,9 +2,9 @@
 // 2次重力場・形状・環系)、および宣言を simTime 基準へ畳む変換。
 import { JULIAN_CENTURY, KeplerOrbit, keplerOrbitForSimZero } from './kepler-orbit';
 import { SatelliteOrbit, satelliteOrbitForSimZero } from './satellite-orbit';
-import type { AtmosphereDef } from './atmosphere';
 import { SECONDS_PER_DAY } from './time';
 import { Vec3, v3 } from '../math/vec3';
+import type { AtmosphereDef } from './atmosphere';
 
 // 自転軸と自転位相の決め方。'eciPole' は ECI の極軸そのもの(この座標系を定義している天体)で、
 // 自転角速度 spinRate [rad/s] をその天体が与える。'cassini' は同期回転する衛星のカッシーニ状態で、
@@ -52,7 +52,6 @@ export interface Degree2GravityDef {
   readonly c22: number; // 0 なら軸対称
   readonly refRadius: number; // 係数が定義された基準半径 [m]
 }
-
 
 // 天体の形状(歪み)。省略時は `radius` による真球。'spheroid' は回転楕円体(赤道半径=極半径
 // の2値)、'triaxial' は三軸楕円体(a >= b >= c、a が最長の赤道軸、b が残りの赤道軸、

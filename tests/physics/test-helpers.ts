@@ -9,11 +9,9 @@ import {
 } from '../../src/physics/lagrange';
 import { CelestialMotion, OrbitingMotion } from '../../src/physics/celestial-motion';
 import { CelestialBodyDef, PhaseOffsets, StarDef } from '../../src/physics/celestial-body-def';
-import { BodyOrientation, CelestialKind } from '../../src/physics/celestial-body';
+import { BodyOrientation, CelestialKind, FrameRotation, type Degree2Gravity } from '../../src/physics/celestial-body';
 import { EciTransform } from '../../src/physics/eci-transform';
 import type { Atmosphere } from '../../src/physics/atmosphere';
-import type { Degree2Gravity } from '../../src/physics/celestial-body';
-import { FrameRotation } from '../../src/physics/celestial-body';
 import type { ReferenceFrames } from '../../src/game/celestial/reference-frames';
 // 回帰テストが simTime = 0 に置く瞬間の、J2000 からの秒数。地球から見て太陽が +X 方向
 // (昼側)にある — すなわち地球の日心黄経が π になる — 瞬間へ合わせてある。

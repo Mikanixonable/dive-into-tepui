@@ -1,7 +1,7 @@
 // 重力源一覧を、位置に依らず常に加算する天体と、到達量の内側で加算する天体へ分類し、ある位置へ
 // 効きうる天体を取り出す。分類1回を多数の問い合わせ位置で使い回すことが成立条件。
-import type { CelestialBody } from '../../physics/celestial-body';
 import { Vec3, distSq, len, lenSq, sub } from '../../math/vec3';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 // 一覧から落とす天体1体の寄与の上限 [m/s^2]。
 export const GRAVITY_NEGLIGIBLE_ACCEL = 1e-8;

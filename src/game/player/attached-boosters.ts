@@ -62,7 +62,7 @@ export class AttachedBoosters {
   // saved を渡せば段の構成と燃料・点火状態を復元する。省略時は段なしで始まる。
   constructor(
     private readonly player: Player,
-    private readonly _hud: Notifier,
+    private readonly _notifier: Notifier,
     private readonly _worldSfx: WorldSfx,
     private readonly _scene: THREE.Scene,
     private readonly _fx: FlashEffects,
@@ -81,7 +81,7 @@ export class AttachedBoosters {
   // 燃焼管理パネルから標準ブースターを最後尾へ追加する。
   attach(): void {
     if (this.stack.stages.length >= MAX_ATTACHED) {
-      this._hud.hint(`ブースターは最大 ${MAX_ATTACHED} 段です`);
+      this._notifier.hint(`ブースターは最大 ${MAX_ATTACHED} 段です`);
       return;
     }
     this.stack.attach({
@@ -96,19 +96,19 @@ export class AttachedBoosters {
     this.rebuildModels();
     this.refreshMassAndInertia();
     this.player.invalidatePrediction();
-    this._hud.hint(`ブースターを追加: ${this.stack.stages.length} 段`);
+    this._notifier.hint(`ブースターを追加: ${this.stack.stages.length} 段`);
   }
 
   // 最後尾段の点火を切り替える。点けられなかった理由は HUD のヒントで返す。
   toggleIgnition(): void {
     const active = this.activeStage();
     if (!active) {
-      this._hud.hint('点火できるブースターがありません');
+      this._notifier.hint('点火できるブースターがありません');
       return;
     }
     const ignited = this.stack.toggleIgnition();
     this.player.invalidatePrediction();
-    this._hud.hint(active.fuel <= 0
+    this._notifier.hint(active.fuel <= 0
       ? '最後尾ブースターは燃料切れです'
       : `ブースター燃焼: ${ignited ? 'ON' : 'OFF'}`);
   }
@@ -117,7 +117,7 @@ export class AttachedBoosters {
   decouple(registry: EntityRegistry): void {
     const stageIndex = this.stack.stages.length - 1;
     if (stageIndex < 0) {
-      this._hud.hint('分離できるブースターがありません');
+      this._notifier.hint('分離できるブースターがありません');
       return;
     }
     const player = this.player;
@@ -159,7 +159,7 @@ export class AttachedBoosters {
     this._fx.spawnGasPuff(kinematicState<'eci'>(t, jointR, player.state.v));
     this._worldSfx.decouple();
     player.invalidatePrediction();
-    this._hud.hint(`ブースター分離: 残り ${this.stack.stages.length} 段`);
+    this._notifier.hint(`ブースター分離: 残り ${this.stack.stages.length} 段`);
   }
 
   // 段間カバーと爆砕ボルトを接続点から切り離し、径方向へ散らす。joint は接続面の中心(ECI)。

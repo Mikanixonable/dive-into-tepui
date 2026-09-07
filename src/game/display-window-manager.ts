@@ -5,14 +5,13 @@
 // ならない — 座標系が消費者ごとに違えば同じ画面に並べた線が比較できず、表示時刻が違えば
 // メッシュとマーカーが別の瞬間を指す。
 import { PredictPanel } from './hud/panels/predict-panel';
-import type { CelestialBodies } from './celestial/celestial-bodies';
 import { buildTicks } from './hud/orbit/tick-scale';
 import { epochUnixSeconds } from '../hud/utils';
 import type { TickLabelMode, TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import { strongestAttractor } from '../physics/attractor';
 import { ReferenceFrame } from '../physics/frame';
-
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
+import type { CelestialBodies } from './celestial/celestial-bodies';
 
 export const DISPLAY_DURATION_MAX = 365 * 86400; // 手動レンジで指定できる表示期間の上限 [s](1年)
 // 周期を持たない軌道(双曲線・放物線)で、1周期の代わりに区間の長さとして使う値 [s]。
@@ -95,10 +94,10 @@ export class DisplayWindowManager {
   // 操作パネルを構築し、期間選択・スライダー・任意期間入力・T+ジャンプ入力の反映先を自身にする。
   constructor(
     hudRoot: HTMLElement,
-    private readonly celestialSystem: CelestialBodies,
+    private readonly celestialBodies: CelestialBodies,
   ) {
-    this._frame = celestialSystem.frames.inertialFrame;
-    this.epochUnixSec = epochUnixSeconds(celestialSystem.epoch);
+    this._frame = celestialBodies.frames.inertialFrame;
+    this.epochUnixSec = epochUnixSeconds(celestialBodies.epoch);
     this._current = {
       frame: this._frame, simTime: 0, referencePeriod: NaN,
       duration: APERIODIC_ARC_DURATION, pastDuration: 0, displayTime: 0,
@@ -255,7 +254,7 @@ export class DisplayWindowManager {
   // durationSec 側のフォールバックに委ねる。
   private currentOrbitPeriod(controlled: DynamicEntity | null, simTime: number): number {
     if (!controlled) return NaN;
-    const center = strongestAttractor(controlled.state.r, this.celestialSystem.celestialMotions, simTime);
+    const center = strongestAttractor(controlled.state.r, this.celestialBodies.celestialMotions, simTime);
     return controlled.orbitalElementsAround(center, simTime)?.period ?? NaN;
   }
 

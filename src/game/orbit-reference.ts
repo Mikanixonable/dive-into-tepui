@@ -1,13 +1,13 @@
 // 軌道要素・軌道要素アイコンの表示基準(自動/地球/月/航法ターゲット)の選択と解決。
 // 選択状態そのものを持ち、モードに応じて基準天体・対象の状態(KinematicState)を解決する。
 import { strongestAttractor } from '../physics/attractor';
-import type { CelestialBody } from '../physics/celestial-body';
 import type { CelestialSystem } from './celestial/celestial-system';
 import { KinematicState } from '../physics/kinematic-state';
 import type { Vec3 } from '../math/vec3';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { NavTarget } from './nav-target';
 import type { DynamicSystem } from './dynamic/dynamic-system';
+import type { CelestialBody } from '../physics/celestial-body';
 
 export type OrbitReferenceMode = 'auto' | 'earth' | 'moon' | 'target';
 

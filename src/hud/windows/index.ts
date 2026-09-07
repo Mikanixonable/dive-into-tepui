@@ -2,8 +2,4 @@
 export { DraggableWindow, type DraggableWindowOptions } from './draggable-window';
 export { PauseMenu } from './pause-menu';
 export { PropertyWindow } from './property-window';
-export {
-  type PropertyRow, type PropertyWindowItem, type PropertyWindowRelatedItem,
-  type PropertyWindowContent,
-} from './property-window-content';
 export { SettingsView } from './settings-view';

@@ -3,11 +3,10 @@
 import { kinematicState, KinematicState } from '../../physics/kinematic-state';
 import { Vec3, add } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
-import { CelestialMotions } from '../../physics/celestial-motion';
-import type { CelestialBody } from '../../physics/celestial-body';
+import { CelestialMotions } from '../../physics/celestial-body';
 import { orbitalElementsOf } from '../../physics/elements';
+import type { CelestialBody } from '../../physics/celestial-body';
 
-// segmentDurationFrom が要求する表示窓の部分だけを切り出した形。
 // 計画をどう実行するか。'off': ノードを消化しない。
 // 'instant': ノード時刻ちょうどで絶対状態へ乗り移る(自動実行)。
 export type PlanExecutionMode = 'off' | 'instant';
@@ -16,6 +15,7 @@ export type PlanExecutionMode = 'off' | 'instant';
 // 自動ワープの解除がこの1点を共有する。
 export const NODE_APPROACH_LEAD = 10;
 
+// segmentDurationFrom が要求する表示窓の部分だけを切り出した形。
 export interface DisplayDurationSource {
   durationSec(referencePeriod: number): number;
 }

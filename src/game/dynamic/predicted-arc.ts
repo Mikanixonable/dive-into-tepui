@@ -9,13 +9,13 @@
 import { KinematicState, hermiteInterpolate } from '../../physics/kinematic-state';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { nearestAtmosphereBody, strongestAttractor } from '../../physics/attractor';
-import type { CelestialBody } from '../../physics/celestial-body';
 import { firstSurfaceContact } from '../../physics/surface-contact';
 import { keplerPeriod } from '../../physics/elements';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { dot, len, sub } from '../../math/vec3';
 import { ArcCelestialBodies, type ArcCelestialBodyWindow, type FutureCelestialBodyProvider } from './arc-celestial-bodies';
 import { atmosphericMaxStep, SUBSTEP_MAX_DT, ARC_MIN_STEP_DT } from './time-step';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 // 積分済みのサンプル列が、要求区間の求める間引き間隔に対して何倍まで粗くてよいか
 // (PredictedArc.represents 用)。表示期間を短くしたときは積分結果を捨てず答える範囲だけを

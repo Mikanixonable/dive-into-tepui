@@ -1,8 +1,9 @@
-// マップ上で掴める物体。候補に出るかどうかの自己申告と、掴まれたときの振る舞いを持つ。
+// マップ上で掴める物体。候補に出る条件の自己申告と、左クリック・注視移動・視線判定への応答を
+// 答える。
 import type { Ray } from '../../math/ray';
 import type { Vec3 } from '../../math/vec3';
 import type { ControlSelection } from '../control-selection';
-import type { Viewer } from '../dynamic/dynamic-entity/viewer';
+import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { ObjectWindows } from './object-windows';
@@ -16,7 +17,7 @@ export interface MapPickable extends PickCandidate {
   readonly onlyInFocusedSystem: boolean;
 
   // 表示トグルによる可否。viewer は操作中の対象を例外扱いする判定に使う。
-  mapVisibility(policy: MapVisibilityPolicy, viewer: Viewer | null): MapVisibility;
+  mapVisibility(policy: MapVisibilityPolicy, viewer: OrbitingObject | null): MapVisibility;
   // 直前のフレームで画面にマーカーが出ていたか。出ていない対象はマップ上で掴めない。
   shownOnMap(markers: MarkerManager): boolean;
 

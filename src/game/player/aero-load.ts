@@ -1,8 +1,8 @@
 // 自機が浴びている空力荷重。動圧と、それが構造限界を超えたかどうかを持つ。**熱ではない** —
 // 外殻の熱収支は DynamicEntity の温度が受け持つ。
-import type { CelestialBody } from '../../physics/celestial-body';
 import { airflow } from '../../physics/atmosphere';
 import { Vec3, sub } from '../../math/vec3';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 export const MAX_DYN_PRESSURE = 35e3; // 超過で空力破壊 [Pa]
 
