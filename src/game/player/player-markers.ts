@@ -6,7 +6,7 @@ import type { View } from '../view/view';
 import { KinematicState, kinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { scale, sub } from '../../math/vec3';
 import type { OrbitReference } from '../orbit-reference';
-import type { ProjectFn } from '../camera/camera-system';
+import type { ProjectFn } from '../../math/projection';
 import type { MarkerManager } from '../marker/marker-manager';
 import { DIRECTION_GLYPH } from '../marker/marker-identity';
 
