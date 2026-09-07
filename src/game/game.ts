@@ -277,9 +277,9 @@ export class Game {
       initialSave?.activePlayerId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._worldSfx, this._hud,
     );
     this._hud.burnManagementPanel.setHandlers({
-      onAttach: () => { this.player?.boosters.attach(); },
-      onToggleIgnition: () => { this.player?.boosters.toggleIgnition(); },
-      onDecouple: () => { this.player?.boosters.decouple(this.dynamicSystem); },
+      onAttach: () => { this.activeControllableEntity?.boosters?.attach(); },
+      onToggleIgnition: () => { this.activeControllableEntity?.boosters?.toggleIgnition(); },
+      onDecouple: () => { this.activeControllableEntity?.boosters?.decouple(this.dynamicSystem); },
     });
     this.planDisplay = new PlanDisplay(
       this._scene, this.markerManager, celestialSystem, this.displayWindowManager, this.activePlayers,
@@ -465,10 +465,10 @@ export class Game {
       this.player, playerInput, canShipAct, dt, simDt, this.activeStage, this._celestialSystem,
     );
     this.dynamicSystem.updateBases(
-      this.controlledBase, this.input, canShipAct, dt, simDt,
+      this.controlledBase, this.input, canShipAct, dt, simDt, this.activeStage, this._celestialSystem,
     );
     this.nanWatchdog.checkPlayer(
-      'player.updatePlayerControls',
+      'player.updateControls',
       this.player,
       this.simulator.simTime,
       dt,
