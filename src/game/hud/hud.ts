@@ -39,7 +39,10 @@ export class Hud {
   public readonly enemiesPanel: EnemiesPanel;
   public readonly burnManagementPanel: BurnManagementPanel;
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
-  private toastUntil = 0;
+  // 次の tick() で表示するトースト。
+  private pendingToast: { readonly html: string; readonly durationMs: number } | null = null;
+  // 表示中のトーストの期限 [ms, performance.now() 基準]。
+  private toastUntil: number | null = null;
 
   // 画面の器の上に、ゲームの HUD の DOM を組む。
   public constructor(
@@ -126,21 +129,17 @@ export class Hud {
 
   // 見出しを持たないメッセージのみ型トーストを durationMs だけ表示する。
   public hint(text: string, durationMs = 1800): void {
-    this.showToast(text, durationMs);
+    this.requestToast(text, durationMs);
   }
 
   // 見出し+本文を持つタイトル-説明型トースト(HTML)を durationMs だけ表示する。
   public toast(html: string, durationMs = 8000): void {
-    this.showToast(html, durationMs);
+    this.requestToast(html, durationMs);
   }
 
-  // トースト DOM の内容と表示期限を差し替える(hint/toast 共通の下請け)。
-  private showToast(html: string, durationMs: number): void {
-    const e = document.getElementById('hud-toast');
-    if (!e) return;
-    e.innerHTML = html;
-    e.style.opacity = '1';
-    this.toastUntil = performance.now() + durationMs;
+  // 表示したい文言と表示時間を控える。同じフレームに複数控えられたら最後のものが表示される。
+  private requestToast(html: string, durationMs: number): void {
+    this.pendingToast = { html, durationMs };
   }
 
   // ヘルプ表示キーの押下エッジを受け取る。
@@ -148,13 +147,19 @@ export class Hud {
     this.helpPanel.handleInput(input);
   }
 
-  // 表示期限を過ぎたトーストをフェードアウトさせる。
+  // 控えられたトーストを表示し、表示期限を過ぎたトーストをフェードアウトさせる。
   public tick(): void {
-    const now = performance.now();
     const toast = document.getElementById('hud-toast');
-    if (toast && this.toastUntil && now > this.toastUntil) {
+    if (!toast) return;
+    const now = performance.now();
+    if (this.pendingToast) {
+      toast.innerHTML = this.pendingToast.html;
+      toast.style.opacity = '1';
+      this.toastUntil = now + this.pendingToast.durationMs;
+      this.pendingToast = null;
+    } else if (this.toastUntil !== null && now > this.toastUntil) {
       toast.style.opacity = '0';
-      this.toastUntil = 0;
+      this.toastUntil = null;
     }
   }
 }
