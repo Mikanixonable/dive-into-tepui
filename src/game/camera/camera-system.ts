@@ -213,7 +213,7 @@ export class CameraSystem {
         angles: COMBAT_CAMERA_INIT_ANGLES,
         dist: COMBAT_CAMERA_INIT_DIST,
         fovDeg: COMBAT_CAMERA_FOV,
-        focus: { kind: 'object', id: frameRoleAnchorId('activeShip') },
+        focus: { kind: 'object', id: frameRoleAnchorId('controlled') },
         follow: { kind: 'attitude' },
       },
       attitudeOf,

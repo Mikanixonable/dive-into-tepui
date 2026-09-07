@@ -5,7 +5,8 @@ import { fmtDist, fmtTime } from '../../hud/utils';
 import { SaveStore } from './save-store';
 import { SaveSlots } from './save-slots';
 import { isEphemerisContextRestorable } from '../../physics/ephemeris/ephemeris-context';
-import type { AmmoPickupSaveData, GameSaveData, RcsFuelPickupSaveData } from '../../game/save/save-data';
+import type { AmmoPickupSaveData, ChaseSaveDataV1, FocusCameraSaveData, GameSaveData, RcsFuelPickupSaveData } from '../../game/save/save-data';
+import { frameRoleAnchorId } from '../../physics/frame';
 import type { SnapshotKind, SnapshotMeta } from './slot-data';
 
 // スナップショットの出し入れを担う。撮るときは索引のメタを組んでスロットへ収め、読むときは
@@ -49,7 +50,7 @@ export class SnapshotService {
     const data = this.store.readSnapshot(snapshotId);
     if (data === null) return null;
     if (data.version !== SAVE_VERSION) return null;
-    const normalizedData = normalizePickupKeys(data);
+    const normalizedData = normalizePickupKeys(renameControlledRole(data));
     if (normalizedData === null) return null;
     if (expectedStageId !== normalizedData.stageId) return null;
     // 暦情報が無いスナップショットは互換復元で読む。元期は継承するので照合しないが、
@@ -59,6 +60,30 @@ export class SnapshotService {
     )) return null;
     return normalizedData;
   }
+}
+
+// 参照フレームの役割トークンは保存形へそのまま載るので、旧名 @activeShip を現在の
+// @controlled へ読み替える。読み替えないと注視対象が解決できず、戦闘カメラが最後に
+// 解決できた位置で固まる。
+function renameControlledRole(data: GameSaveData): GameSaveData {
+  const OLD = '@activeShip';
+  const NEW = frameRoleAnchorId('controlled');
+  const swap = (id: string): string => (id === OLD ? NEW : id);
+  const renameCamera = <T extends FocusCameraSaveData | ChaseSaveDataV1>(camera: T): T => {
+    if (!('focus' in camera)) return camera;
+    const focus = camera.focus.kind === 'object'
+      ? { ...camera.focus, id: swap(camera.focus.id) }
+      : { ...camera.focus, center: swap(camera.focus.center), rotatingWith: renameSource(camera.focus.rotatingWith) };
+    return { ...camera, focus, rotatingWith: renameSource(camera.rotatingWith) };
+  };
+  const renameSource = <T>(source: T): T => (
+    typeof source === 'object' && source !== null && 'id' in source
+      ? { ...source, id: swap((source as { id: string }).id) }
+      : source
+  );
+  const camera = data.camera;
+  if (camera === undefined) return data;
+  return { ...data, camera: { ...camera, chase: renameCamera(camera.chase), overview: renameCamera(camera.overview) } };
 }
 
 // 旧形式の補給キーと、RCS燃料追加前の欠落フィールドを読み込み境界で正規化する。

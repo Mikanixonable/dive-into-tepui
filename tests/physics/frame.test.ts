@@ -240,7 +240,7 @@ export function register(): void {
   // FrameAnchorSource: 役割トークン・機体など登録天体でない基準・回転対象の解決(frame-anchors.ts の
   // 実装が満たすべき契約)。transformAt/anchorStateAt 自身は毎回 source.stateOf を引くだけで
   // 状態を持たないので、"直前の状態を保つ" 側の責務は呼び出す source のスタブが担う。
-  const SHIP: string = '@activeShip';
+  const SHIP: string = '@controlled';
 
   test('frame: center が役割トークンのとき、source が返した状態が原点になる', () => {
     const t = 4321;
@@ -290,10 +290,10 @@ export function register(): void {
   });
 
   // 「操作対象の船」を基準・「操作対象の船の公転」で回す座標系(マップビューの自船予測線が使う)。
-  // AnchorTargets.activeShipState が問い合わせ時刻の状態を返す限り、船自身はこの座標系の
+  // AnchorTargets.controlledState が問い合わせ時刻の状態を返す限り、船自身はこの座標系の
   // 原点に常に一致するはず — 予測線の各サンプルは異なる未来時刻で問い合わせるため、
   // 現在の状態を固定で返す実装だと未来のサンプルほど原点からずれて軌道半径ぶん潰れなくなる。
-  test('frame: @activeShip 基準・@activeShip 公転の座標系は、未来の複数時刻すべてで船自身を原点へ潰す', () => {
+  test('frame: @controlled 基準・@controlled 公転の座標系は、未来の複数時刻すべてで船自身を原点へ潰す', () => {
     const t0 = 10000;
     const r = 7e6;
     const omega = Math.sqrt(MU_EARTH / (r * r * r));
@@ -306,7 +306,7 @@ export function register(): void {
     };
     const anchors = new FrameAnchors(windows, {
       entityState: () => null,
-      activeShipState: (t) => shipStateAt(t),
+      controlledState: (t) => shipStateAt(t),
       navTargetState: () => null,
     });
     const frame = referenceFrames.frameOf(SHIP, { kind: 'revolution', id: SHIP });

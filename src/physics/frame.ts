@@ -26,7 +26,7 @@ export type ReferenceFrame = {
 
 // 参照フレームの基準・回転対象を、特定の対象を名指しせず役割で指すためのもの。予約 id では
 // '@' を頭に付ける — 天体・機体の id は小文字 ASCII と '-'/':' だけで組まれる。
-export type FrameRole = 'activeShip' | 'navTarget';
+export type FrameRole = 'controlled' | 'navTarget';
 
 // 何の回転に合わせて座標系を回すか。
 export type FrameRotationSource =
@@ -34,7 +34,7 @@ export type FrameRotationSource =
   | { readonly kind: 'spin'; readonly id: string };       // 自転(天体のみ)
 
 // 役割トークンの全種。役割を列挙するときの唯一の出所。
-export const FRAME_ROLES: readonly FrameRole[] = ['activeShip', 'navTarget'];
+export const FRAME_ROLES: readonly FrameRole[] = ['controlled', 'navTarget'];
 
 // 役割を、参照フレームの基準 id として書いた形。
 export function frameRoleAnchorId(role: FrameRole): string {

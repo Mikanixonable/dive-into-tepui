@@ -234,7 +234,7 @@ export class Game {
       this._hud, celestialSystem, () => this.viewManager.current,
       (id, t) => {
         const role = frameRoleOf(id);
-        const entity = role === 'activeShip' ? this.activeControllable
+        const entity = role === 'controlled' ? this.activeControllable
           : role === 'navTarget'
             ? this.navTarget.resolveState(this.dynamicSystem, celestialSystem, celestialSystem.celestialMotions, t)?.entity ?? null
             : this.dynamicSystem.all().find((e) => e.id === id) ?? null;
@@ -250,7 +250,7 @@ export class Game {
     // 先頭で毎フレーム表示時刻を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
     this.frameAnchors = new FrameAnchors(celestialSystem, {
       entityState: (id, t) => this.dynamicSystem.all().find((e) => e.id === id && e.alive)?.stateAt(t, celestialSystem) ?? null,
-      activeShipState: (t) => this.activeControllable?.stateAt(t, celestialSystem) ?? null,
+      controlledState: (t) => this.activeControllable?.stateAt(t, celestialSystem) ?? null,
       navTargetState: (bodies, t) => this.navTarget.resolveState(this.dynamicSystem, celestialSystem, bodies, t)?.state ?? null,
     });
     this.frameControls = new FrameControls(
