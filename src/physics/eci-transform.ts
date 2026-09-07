@@ -9,12 +9,13 @@ import { KinematicState, toEci } from './kinematic-state';
 import { TimeCacheStats, TimeRing } from './time-ring';
 import { Vec3, sub } from '../math/vec3';
 
-// ECI 原点天体が時刻 t に答える、原点を引くための一式。どちらも太陽系重心中心だが、
-// **供給源が違えば同じ天体に別の位置を答える**ので、ECI 化は必ず同じ経路どうしで差を取る。
+// ECI 原点天体が時刻 t に答える、原点を引くための一式。**供給源が違えば同じ天体に別の位置を
+// 答える**ので、ECI 化は必ず同じ経路どうしで差を取る。解析経路は主星相対で持つ — 恒星の重心
+// 相対位置は差で厳密に相殺するので、全惑星系のケプラー解を解いても ECI の答えは変わらない。
 // numeric が null の時刻は、全天体が解析経路へ落ちる。
 type OriginState = {
   readonly numeric: KinematicState<'numeric'> | null;
-  readonly analytic: KinematicState<'analytic'>;
+  readonly starRel: KinematicState<'starRel'>;
   readonly accel: Vec3;
 };
 
@@ -47,7 +48,7 @@ export class EciTransform {
     const originNumeric = origin.numeric;
     const numeric = originNumeric === null ? null : motion.numericStateAt(t);
     return numeric === null || originNumeric === null
-      ? toEci(t, motion.analyticStateAt(t), origin.analytic)
+      ? toEci(t, motion.analyticStarRelStateAt(t), origin.starRel)
       : toEci(t, numeric, originNumeric);
   }
 
@@ -57,7 +58,7 @@ export class EciTransform {
     if (cached !== undefined) return cached;
     return this.originCache.put(t, {
       numeric: this.origin.numericStateAt(t),
-      analytic: this.origin.analyticStateAt(t),
+      starRel: this.origin.analyticStarRelStateAt(t),
       accel: this.origin.analyticAccelAt(t),
     });
   }

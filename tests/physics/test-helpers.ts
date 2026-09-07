@@ -162,6 +162,12 @@ class FixedMotion extends CelestialMotion {
     );
   }
 
+  // 主星を置かない道具なので、主星相対と太陽系重心相対は同じ値。
+  analyticStarRelStateAt(t: number): KinematicState<'starRel'> {
+    const state = this.analyticStateAt(t);
+    return kinematicState<'starRel'>(t, state.r, state.v);
+  }
+
   analyticAccelAt(): Vec3 { return this.accel; }
 
   orientationAt(): BodyOrientation | null { return null; }
