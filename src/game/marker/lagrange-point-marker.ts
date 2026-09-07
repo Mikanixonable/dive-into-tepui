@@ -1,6 +1,7 @@
 // ラグランジュ点を指す、実体を持たない被選択物。生成元が解いた時刻の位置を持ち、天体と同じ
 // 名前空間の id と、マップのマーカーへ出す二行表記を答える。
 import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { Viewer } from '../dynamic/dynamic-entity/viewer';
 import { len, sub, type Vec3 } from '../../math/vec3';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
@@ -9,7 +10,7 @@ import { fmtDist } from '../../hud/utils';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { ENTITY_GLYPH } from './marker-identity';
 import { MARKER_PRIORITY } from './crowding';
-import type { CelestialSystem } from '../celestial/celestial-system';
+
 import type { MapListSection, ObjectPickerGenre } from '../pickable/pickable-listing';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
@@ -65,7 +66,7 @@ export class LagrangePointMarker implements ObjectPickable {
 
   // メニューに出す操作項目。ヘッダーの副題には、この地点を定める2天体の対を出す。
   public menuItems(
-    celestialSystem: CelestialSystem, _viewer: Viewer | null, navTargetId: string | null,
+    celestialSystem: CelestialBodies, _viewer: Viewer | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
     const primaryId = celestialSystem.bodyParentId(this.parentId);
     const subLabel = primaryId === undefined || primaryId === null
@@ -83,7 +84,7 @@ export class LagrangePointMarker implements ObjectPickable {
 
   // 自艦からの距離と種別。自艦がいない、あるいは位置が解けていないフレームは距離が落ちる。
   public propertyRows(
-    _celestialSystem: CelestialSystem, viewer: Viewer | null,
+    _celestialSystem: CelestialBodies, viewer: Viewer | null,
   ): readonly PropertyRow[] {
     const pos = this.posAt();
     const rows: PropertyRow[] = [];
@@ -102,7 +103,7 @@ export class LagrangePointMarker implements ObjectPickable {
 
   // 一覧の検索が照合する、自艦からの距離と中心天体の名前。
   public listSearchText(
-    celestialSystem: CelestialSystem, viewer: Viewer | null, displayTime: number,
+    celestialSystem: CelestialBodies, viewer: Viewer | null, displayTime: number,
   ): string {
     return this.pos === null ? '' : bodySearchText(celestialSystem, this.pos, viewer, displayTime);
   }

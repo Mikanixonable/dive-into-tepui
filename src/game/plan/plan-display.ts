@@ -1,13 +1,14 @@
 // 操作対象の軌道計画の姿の表示(両ビュー常駐)。どの計画をいつ描くかを決め、計画折れ線
 // (PlanPath)を駆動して、表示時刻の計画上の自機位置ゴースト(⬢ plannedPlayer マーカー)を置く。
 import * as THREE from 'three/webgpu';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { View } from '../view/view';
 import { Vec3, len, sub } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { isOccluded } from '../../physics/occlusion';
 import { Projected } from '../../math/projection';
-import type { CelestialSystem } from '../celestial/celestial-system';
+
 import { fmtMarkerDist } from '../../hud/utils';
 import { TickRank, TimeLabelSetting, calendarBoundaries, tickLabel } from '../hud/orbit/calendar-ticks';
 import { ApsisMarker } from '../marker/apsis-marker';
@@ -93,7 +94,7 @@ export class PlanDisplay {
   constructor(
     scene: THREE.Scene,
     private readonly markerManager: MarkerManager,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialSystem: CelestialBodies,
     displayDuration: DisplayDurationSource,
     private readonly controlSelection: ControlSelection,
   ) {

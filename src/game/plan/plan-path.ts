@@ -5,12 +5,13 @@
 // 書き換えだけで済ませる — どちらの場合も折れ線はその区間の TrajectoryLine プールを使い回す。
 // 画面判定も同じ表示変換を通すため描画とずれない。
 import * as THREE from 'three/webgpu';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { KinematicState } from '../../physics/kinematic-state';
 import { bodyAnchorSource } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { Vec3, v3 } from '../../math/vec3';
 import { FrameAnchorSource, FrameTransform, ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
-import type { CelestialSystem } from '../celestial/celestial-system';
+
 import { Projected } from '../../math/projection';
 import { isOccluded } from '../../physics/occlusion';
 import { FloatingOrigin } from '../camera/floating-origin';
@@ -85,7 +86,7 @@ export class PlanPath {
   private frame: ReferenceFrame = { center: 'earth', rotatingWith: null };
   // 折れ線が載っている座標系。
   get displayFrame(): ReferenceFrame { return this.frame; }
-  private celestialSystem: CelestialSystem | null = null;
+  private celestialSystem: CelestialBodies | null = null;
   private unbakeTime = 0;
   // un-bake は update() が受け取った displayTime に固定される。同じフレーム中に ghost/impact/apsis/tick と
   // 折れ線同期・ポインタ判定が何度も参照するため、update 単位で1回だけ組み立てる。天体を引く
@@ -122,7 +123,7 @@ export class PlanPath {
   // 参照)。表示変換の文脈(座標系・un-bake 時刻)もこのフレームのものに更新する。
   update(
     planData: PlanData, ship: Controllable | null,
-    celestialSystem: CelestialSystem, frame: ReferenceFrame, simTime: number, displayTime: number,
+    celestialSystem: CelestialBodies, frame: ReferenceFrame, simTime: number, displayTime: number,
     frameAnchors: FrameAnchorSource, displayDurationSec: number,
   ): void {
     this.frame = frame;
@@ -496,7 +497,7 @@ export class PlanPath {
 // 末尾の1本は segmentDurationFrom ぶん伸びる。
 function buildSegments(
   planData: PlanData,
-  celestialSystem: CelestialSystem, displayDuration: DisplayDurationSource,
+  celestialSystem: CelestialBodies, displayDuration: DisplayDurationSource,
 ): Segment[] {
   const segments: Segment[] = [];
   let state0 = planData.anchor;
