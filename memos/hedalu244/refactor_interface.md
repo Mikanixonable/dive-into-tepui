@@ -1,269 +1,398 @@
-# 依存グラフの単純化 — 段 A・段 B を実施したあとの現況
+# 段 C の計画 — 指標を「近傍」へ入れ替え、hub を面で受け切る
 
-測定時点: `3edc8b43`(branch `workspace4`, 2026-09-08)。着手前は `e66c32fe`。
-以下の数字はすべてこの2点の `src/` を**同じスクリプトで**機械的に走査して出したもので、
-**コードが動けば古くなる。** 再測定の手順は末尾「測り方」に置く。
+測定時点: `ecc730f0`(branch `workspace4`)。比較の基準点は着手前の `e66c32fe`。
+以下の数字は `src/` の相対 import を有向グラフに組んで機械的に出したもので、**コードが動けば
+古くなる。** 測り直しは `npm run dep-metrics`(`--against <ref>` で ref の木と、`--file <path>`
+でファイル単位、`--merge <面>=<実装>` で「面を実装へ畳んだ場合」と比べられる)。
 
-段 A(型の置き場所)と段 B(具象型で受けるのをやめる)は実施済み。**段 C は未着手。**
+**手順1〜3 は実施済み。** そこで確定した前提:
 
----
-
-## 0. 結論(先に)
-
-**型の工夫で取れるものはほぼ取り切った。残っているのは責務の向きの問題だけになった。**
-
-| 指標 | 着手前 | いま |
-| --- | --- | --- |
-| 強連結成分(全辺) | **153**, 9, 4, 2, 2 | **150**, 2, 2, 2 |
-| 強連結成分(値の辺だけ) | **22**, 3, 2 | **8**, 3, 2 |
-| 最大 SCC を解く帰還辺 | 119 / 内部 857(型のみ 63) | 98 / 内部 747(型のみ 54) |
-| ts ファイル / 辺 | 515 / 3,008 | 526 / 3,068 |
-
-**読み方が2つある。**
-
-- **値の辺で見た循環は 22 → 8 に落ちた。** ここが本当の進捗で、
-  「型の工夫で到達できる下限」と見ていた 22 を下回っている。残った 8 は
-  自機・武装・エンティティが互いを `new` する相互所有で、**インターフェイスでは直らない。**
-- **全辺で見た最大の塊は 153 → 150 でほとんど動いていない。** 型を葉へ追い出しても、
-  その型を引く側も同じ塊の中に居るなら、塊の大きさは変わらない。
-
-**`physics/` の 9-SCC と `hud/windows/` の 4-SCC は消えた。** 残る 2 は3つとも
-「互いに相手を値で必要とする2ファイル」で、性質が違う(§4)。
+- 計測は `tools/dep-metrics.mjs` に入った。**以降の手順でこのスクリプトを触らない** —
+  途中で実装が変わると、手順どうしの数字が比較できなくなる。
+- `CelestialBodies` に `findMotion` / `bodyClassOf` / `starId` / `originId` を足し、
+  `CelestialSystem` を型として受けるファイルは **33 → 6**。`ctx2` 平均は **4,400 → 4,099 行**。
+- **面の判定は消費者にだけ当たり、生産者には当たらない。** `stage.ts` は
+  `createCelestialSystem` が具象を返すので面へ移せない。**「その型を作る側」は具象を知っていて
+  よい**(`CODING-RULE` 1.3)。
+- **面へ移せるかは、そのファイルが渡す先の一番広い型で決まる。** 自分では1メンバも使わない
+  ファイル(`anchor-zone` / 座標系パネル2枚 / `map-view`)が、渡した先の都合で具象に縛られていた。
+  **「使っているメンバ」で移せるファイルを数えると外れる** — 手順5〜7 では渡し先から先に潰す。
 
 ---
 
-## 1. 何が効いて、何が効かなかったか
+## 目的
 
-**これが今回いちばん学びのあった数字。** 同じ「型を葉へ移す」でも、効果が二極化した。
+段 A(型の置き場所)・段 B(具象型で受けるのをやめる)の効果を**正しい指標で測り直し**、
+そのうえで段 C を実施する。
 
-### 効いたもの — 塊の外に居るファイルを切り離す
+段 A・B の評価に使っていた「強連結成分の大きさ」は、**この規模のコードでは効果を測れない
+指標だった。** 153 → 150 という数字を見て「型の工夫で取れるものは取り切った」と結論したが、
+これは誤りである。近傍(下記の `ctx`)で測り直すと、段 A・B は**全ファイルの 4 割を改善して
+いた。**
 
-推移的依存が減ったファイルは **69 個**。上位はすべて、**塊の外に居るのに hub の型を1つ
-引いていたせいで塊ごと背負っていた**ファイル。
-
-```
-game/player/altitude-alarm.ts              462 → 9    (-453)
-game/pickable/line-pickable.ts             462 → 9    (-453)
-game/pickable/body-search-text.ts          462 → 26   (-436)
-game/dynamic/sim-speed-manager.ts          462 → 15   (-447)
-game/lines/trajectory-line.ts              462 → 39   (-423)
-game/celestial/celestial-entity/ring-view.ts 462 → 40 (-422)
-```
-
-`line-pickable.ts` は import が4本しかないのに、そのうち1本
-(`ProjectFn`)のせいで `src/` の 9 割を引いていた。`altitude-alarm.ts` は `Hud` 1本で
-同じことになっていた。**この形が段 A・段 B の本命だった。**
-
-### 効かなかったもの — 塊の内側での引っ越し
-
-推移的依存が増えたファイルは 184 個あるが、**うち 178 個がちょうど +11**
-(= 今回新設した葉ファイル 11 枚ぶん)で、**中身は1つも増えていない。**
-150-SCC の中に居るファイルは、塊の全部と塊より下の全部を引くので、
-**塊が解けるまでこの数字は動かない。**
-
-だから次のような変更は、正しい直し方ではあっても**推移的依存には効かなかった**:
-
-- `EntityRegistry` / `SpawnGate` を `dynamic-system.ts` から葉へ(引く側 14 ファイルが全部塊の中)
-- `MapListSection` / `ObjectPickerGenre` を表示側から申告側へ(同上)
-- 天体の宣言型を `celestial-motion.ts` から `celestial-body-def.ts` へ(同上)
-- `ObjectPickable` を4面へ割る(受け手も塊の中)
-
-**やる価値が無かったという意味ではない** — 契約は読みやすくなり、責務の置き場所は正しくなった。
-ただ**「依存グラフを軽くする」目的で測るなら、効くのは塊の外に居る受け手を切るときだけ。**
-
----
-
-## 2. いまの hub
-
-`importer(うち型のみ)/ 自分の import 数` を、着手前 → いま で並べる。
-
-| モジュール | 着手前 | いま |
-| --- | --- | --- |
-| `physics/celestial-motion.ts` | 82(27)/ 15 | **26(0)/ 15** |
-| `game/celestial/celestial-system.ts` | 65(62)/ 42 | **36(33)/ 43** |
-| `game/camera/camera-system.ts` | 42(26)/ 18 | 31(18)/ 18 |
-| `game/dynamic/dynamic-entity/controllable.ts` | 39(38)/ 15 | 26(25)/ 14 |
-| `game/dynamic/dynamic-system.ts` | 33(29)/ 30 | 20(16)/ 31 |
-| `game/pickable/object-pickable.ts` | 32(24)/ **19** | 22(15)/ **8** |
-| `game/hud/hud.ts` | 31(11)/ 17 | **12(5)/ 18** |
-| `game/game.ts` | 17(13)/ 50 | 12(8)/ 50 |
-| `game/player/player.ts` | 22(6)/ **67** | 20(4)/ **67** |
-| `game/dynamic/dynamic-entity/dynamic-entity.ts` | 41(24)/ 44 | 42(25)/ 45 |
-| `game/stages/stage.ts` | 37(27)/ 25 | 39(29)/ 26 |
-| `game/marker/marker-manager.ts` | 30(26)/ 11 | 30(26)/ 11 |
-
-**下がっていないのが `player.ts`(out 67)・`game.ts`(out 50)・`dynamic-entity.ts`(out 45)・
-`stage.ts`(out 26)。** どれも「入ってくる型」ではなく「出ていく値」が多い。
-**型の面では手が付けられない** — これが段 C の正体。
-
-`marker-manager.ts`(30 importer)は今回まったく動いていない。使われるのは
-`shows` / `hide` / `setPosition` 中心なので、同じ手が効く余地がある。
-
-### 今回入れた面
-
-| 面 | 場所 | 何を答えるか | 葉か |
+| 指標 | `e66c32fe` | `ecc730f0` | 変化 |
 | --- | --- | --- | --- |
-| `CelestialBody` / `OrbitingCelestialBody` / `EphemerisBody` / `CelestialMotions` | `physics/celestial-body.ts` | 天体1体の状態・姿勢・暦と、星系の一覧 | 葉(推移的 5) |
-| `CelestialBodies` | `game/celestial/celestial-bodies.ts` | 星系の名前・系統・状態 | 葉(推移的 22) |
-| `OrbitingObject` | `game/dynamic/dynamic-entity/orbiting-object.ts` | 個体の位置・同一性・接触軌道 | 葉(推移的 8) |
-| `Notifier` | `hud/notifier.ts` | 一時的な告知(hint / toast) | 葉(推移的 0) |
-| `EntityRegistry` | `game/dynamic/entity-registry.ts` | 生んだ個体を顔ぶれへ入れる口 | 塊の中 |
-| `PickCandidate` | `game/pickable/pick-candidate.ts` | 候補の芯(名前・記号・位置) | **葉(推移的 3)** |
-| `ListedObject` | `game/pickable/listed-object.ts` | 一覧・選択ウィジェットへの申告 | **葉(推移的 27)** |
-| `InspectedObject` | `game/pickable/inspected-object.ts` | 窓に出す中身 | 塊の中(推移的 473) |
-| `MapPickable` | `game/pickable/map-pickable.ts` | マップでの候補と掴み | 塊の中(推移的 473) |
+| 強連結成分(全辺) | 153, 9, 4, 2, 2 | 150, 2, 2, 2 | **-2%** |
+| 強連結成分(値の辺) | 22, 3, 2 | 8, 3, 2 | -64% |
+| 辺の総数 / うち型のみ | 3,008 / 990 | 3,068 / 1,078 | **+60 / +88** |
+| **ctx2 中央値** | 1,323 行 | 908 行 | **-31%** |
+| **ctx2 平均** | 5,587 行 | 4,400 行 | **-21%** |
+| **ctx2 p90** | 17,906 行 | 14,495 行 | -19% |
+| ctx3 中央値 / 平均 | 1,810 / 12,766 | 1,032 / 10,030 | -43% / -21% |
+| ctx1 中央値 / 平均 | 548 / 1,147 | 450 / 998 | -18% / -13% |
 
-**`ObjectPickable` の4面のうち、葉になったのは2面だけ。** 窓とマップの面は引数の型
-(`ObjectWindows` / `PlanEditor` / `ControlSelection` / `MarkerManager`)が塊の中にあるので、
-面を割っても葉にならない。**面を割る前にそれらの置き場所を直す必要がある。**
+ファイル単位では **212 個が改善、39 個が悪化(最大 +365 行)、264 個が不変。** 改善の上位は
+すべて「塊の内側に居るから効かなかった」と書いていたファイルである:
+
+```
+game/pickable/object-pickable.ts        27,163 → 8,387   (-18,776)
+game/marker/lagrange-point-marker.ts    18,418 → 5,407   (-13,011)
+game/pickable/body-search-text.ts       12,846 → 1,467   (-11,379)
+game/dynamic/dynamic-entity/base.ts     33,971 → 22,631  (-11,340)
+game/player/player.ts                   35,108 → 24,885  (-10,223)
+```
+
+**段 A・B は効いていた。効いていないと読めたのは指標のせいである。**
 
 ---
 
-## 3. 残った循環(全辺)
+## 決めたこと
+
+### 1. 指標を「強連結成分」から「近傍 `ctx_k`」へ入れ替える
+
+**`ctx_k(f)` = ファイル `f` から import 辺を `k` 歩以内で到達できるファイルの総行数**(`f` 自身は
+除く)と定義する。全ファイルの中央値・平均・p90 で見る。
+
+なぜこれか:
+
+- **循環の有無は「読む量」を測っていない。** 150-SCC の中に居るファイルは、塊が解けるまで推移的
+  依存が飽和したままなので、内側でどれだけ責務を移しても数字が動かない。上の表で SCC が -2% しか
+  動いていないのに ctx2 が -31% 動いたのがその証拠。**塊の中の改善は `k=1,2,3` でしか見えない。**
+- **「循環を切るためだけの `import type`」を正しく罰する。** 型のみ辺も 1 辺として数える —
+  読む手間は `type` でも値でも変わらないため。実際、段 A・B で辺は +60 本、うち型のみは +88 本
+  **増えた。** それでも ctx が下がったのは、増えた辺の行き先が葉だったから。**辺の本数ではなく、
+  辺を辿った先の行数で測れば、両者を1つの数字で扱える。**
+- `k=1` は「その型を手で追うのに開くファイル」、`k=2` は「その面が何であるかを納得するのに開く
+  ファイル」に対応する。`k=∞` は塊の中で飽和するので、**塊から出たかどうかの判定にだけ使う。**
+
+**この指標は手順1でリポジトリへ入れる。** 使い捨てスクリプトのままでは、次に同じ議論をするときに
+また作り直すことになり、前後比較が別実装になって数字が比較できなくなる。
+
+### 2. 実装が1つしかない面でも、実装とは別のファイルに置く
+
+段 A・B で作った面を「実装の隣へ畳んだら近傍がどうなるか」を機械的に試した。**全件で悪化した。**
+
+| 畳む案 | 受け手数 | ctx1 | ctx2 | ctx∞ |
+| --- | --- | --- | --- | --- |
+| `CelestialBodies` → `celestial-system.ts` | 29 | +16,819 | **+147,895** | +196,261 |
+| `OrbitingObject` → `dynamic-entity.ts` | 22 | +11,659 | +62,972 | +132,107 |
+| `Notifier` → `hud.ts` | 20 | +3,241 | +55,204 | +135,779 |
+| `PickCandidate` → `object-pickable.ts` | 4 | +325 | +2,749 | +66,114 |
+| `InspectedObject` → `object-pickable.ts` | 3 | +1,481 | +7,288 | **-35** |
+| `MapPickable` → `object-pickable.ts` | 1 | +943 | +5,287 | **-32** |
+| `pickable-listing` → `listed-object.ts` | 11 | +163 | **-12** | -12 |
+
+**「増える見込みがないなら実装の隣でよいのではないか」への答えは、測ると no。** 面が軽いのは
+中身が小さいからではなく、**実装が引いている依存を引かずに書けるから**であって、実装ファイルへ
+入れた瞬間その性質は失われる。`Notifier` は 8 行・実装1つ・値 import ゼロだが、20 ファイルを
+HUD の DOM 世界から切り離している。**細切れかどうかは行数ではなく、依存の切れ目に置けているかで
+判断する。**
+
+ただし表の下 3 行は違う話をしている。`InspectedObject` と `MapPickable` は畳んでも ctx∞ が
+動かない(±35 行) — **1〜2 歩の絶縁しか買っていない。** とくに `MapPickable` は、
+**引数の型として受けている消費者が 0 である**(唯一の import 元は `object-pickable.ts` で、
+`ObjectPickable` を組むためだけに引いている)。`map-picking.ts` は `MapPickable` ではなく
+`ObjectPickable` を受けている。
+
+**よって `CODING-RULE.md` 1.12 の判定に4つ目を足す:**
+
+> - **受け手が居るか。** その面を**引数・フィールドの型として受ける消費者**が実際に居るか。
+>   union の材料としてしか使われていない面は、面ではなく見出しである。
+
+`pickable-listing.ts`(12 行)は畳んでも ctx が動かない — **どちらでもよいので、動かさない。**
+churn だけが残る変更はしない。
+
+### 3. `CelestialMotions` と `CelestialBodies` の平行は解消する
+
+**「2つあるのは過剰ではないか」は当たっている。ただし理由は予想と違う。**
+
+- **`physics/` の内側に `CelestialMotions` の利用者は1つも無い。** 定義されているのが
+  `physics/celestial-body.ts` というだけで、消費者は全部 `game/` に居る。**フォルダ境界は
+  この2つを分ける根拠になっていない。**
+- **消費者 6 のうち 5 が、3 メンバのうち 1 つしか使っていない。**
 
 ```
-150  src/game/ の本体
-  2  physics/celestial-motion.ts ↔ physics/planet-system.ts
-  2  render/protein-ribbon.ts ↔ render/protein-ribbon-color.ts
-  2  game/protein/protein-asset-catalog.generated.ts ↔ protein-asset-loader.ts
+game/dynamic/substep-celestial-bodies.ts   celestialMotions gravityMotions atmosphereMotions
+game/dynamic/simulator.ts                  atmosphereMotions (+ substep へそのまま渡す)
+game/plan/plan.ts                          celestialMotions
+game/targeter.ts                           celestialMotions
+game/view/combat-view.ts                   celestialMotions
+game/stages/stage-utils/wave-attack.ts     celestialMotions
 ```
 
-**残る 2 は3つとも「互いに相手を値で必要とする2ファイル」で、型の面では直らない。**
+- **1 メンバだけの写しがすでに別に生えている。** `game/dynamic/arc-celestial-bodies.ts` の
+  `FutureCelestialBodyProvider = { readonly celestialMotions: readonly CelestialBody[] }` が
+  それで、**コード自身が「本当に要る面は 1 メンバ」と投票している。**
 
-`celestial-motion ↔ planet-system` は、恒星が惑星系(`PlanetSystem`)を持ち、惑星系が
-`new PlanetMotion(...)` で本体の運動を作る相互所有(`planet-system.ts` の生成関数)。
-`PlanetSystem` の生成をどちらの持ち物にするかを決めれば切れる。
+決めたこと:
 
-**150-SCC を解くのに切る必要がある辺は 98 本**(内部 747 辺のうち。近似最小フィードバック辺
-集合。貪欲法なので実行ごとに ±2 本ぶれる)。**うち 54 本が型のみ**で、着手前(119 本中 63 本)
-からあまり減っていない。逆流の宛先:
+1. **1 メンバしか使わない 4 ファイルと `FutureCelestialBodyProvider` は、面をやめて
+   `readonly CelestialBody[]` を直接受ける。** 配列より狭い面は無い。
+2. **3 メンバ全部を要るのは `simulator` → `substep` の 1 経路だけ**なので、面自体は残す。ただし
+   `CelestialBody` の複数形が2つある状態は解消する — **`FrameCelestialBodies` へ改名し、
+   `game/celestial/celestial-bodies.ts` へ移して `CelestialBodies extends FrameCelestialBodies`
+   とする。** 「フレームに1組の顔ぶれ」という `substep` 側の呼び名に合わせ、既存の
+   `SubstepCelestialBodies` / `ArcCelestialBodies` と語形も揃う(`CODING-RULE` 2.2「天体は
+   `celestialBody`」)。ファイルは1つ減る。
+3. **ただしこの3つは ctx をほとんど動かさない。** 4 ファイルはどのみち要素型 `CelestialBody` の
+   ために `physics/celestial-body.ts` を引き続ける。**これは近傍のための変更ではなく、概念の数を
+   減らすための変更である** — そう自覚したうえでやる。
 
-```
-15  game/player/player.ts
- 7  game/dynamic/dynamic-system.ts
- 7  game/dynamic/dynamic-entity/enemy.ts
- 7  game/game.ts
- 6  game/stages/stage.ts
- 5  game/camera/camera-system.ts
- 4  game/celestial/celestial-system.ts
- 3  game/dynamic/dynamic-entity/controllable.ts
- 3  game/dynamic/dynamic-entity/dynamic-entity.ts
- 3  game/plan/plan-editor.ts
-```
+### 4. 段 C の目標を「値の循環を切る」から「近傍を縮める」へ置き換える
 
-**一番の逆流先は変わらず `Player` と `Game`。** `memos/hedalu244/refactor_game.md` が扱って
-いる問題と同じものの別の断面。
+残った値循環は 8 / 3 / 2 の3つ。うち 3 と 2 の2つ、および 8 の中の 1 本は**定数と共有ヘルパの
+置き場所の問題**で、小さく切れる(手順8)。残る 8 ファイルの相互所有(自機・武装・弾・破片・敵が
+互いを `new` している)は**設計の作り替えで、この計画には入れない** — 面では直らないうえ、
+`memos/hedalu244/refactor_game.md` が扱っている問題と同じものなので、そちらと一緒に決める。
 
-ディレクトリ単位で相互 import している対は 85 → 81。**`game/dynamic/dynamic-entity` が
-4つの対に出てくる**(`game/dynamic` 18/22、`game/player` 16/23、`game/marker` 22/9、
-`game/pickable` 14/13、`game` 20/8)。フォルダの境界が依存の境界になっていない。
+かわりに近傍をいちばん縮めるのは、**まだ具象クラスで受けられている hub を面で受け切ること。**
+機械的に試した結果:
+
+| 施策 | 対象 | ctx1 | ctx2 | ctx∞ | 全体平均 ctx2 |
+| --- | --- | --- | --- | --- | --- |
+| `CelestialSystem` → `CelestialBodies`(29 ファイル) | 29 | -16,182 | **-152,558** | -262,607 | 4,400 → 4,050 |
+| `MarkerSlots` を新設 | 21 | -9,960 | -28,584 | -22,317 | 4,400 → 4,275 |
+| `EntityRoster` を新設 | 16 | -6,680 | -44,145 | -32,010 | 4,400 → 4,285 |
+| `HudLayers` を新設 | 8 | -1,812 | -29,515 | -86,234 | 4,400 → 4,316 |
+
+`HudLayers` は ctx2 の減りは中位だが、**ctx∞ の全体平均を 24,439 → 21,403(-12%)と最も大きく
+動かす** — `Hud` を受けることが、多くのファイルを描画と DOM の世界へ引きずり込んでいる。
 
 ---
 
-## 4. 段 C — 残った値依存(未着手)
+## 達成目標
 
-値の辺だけで見た循環は3つ。**着手前の 22 が 8 まで落ちたので、輪郭がはっきりした。**
+全手順の実施後、次が全部満たされていること。
 
-### 4.1 自機・武装・エンティティの相互所有(8ファイル)
-
-```
-player.ts  fire-control.ts  attached-boosters.ts  belt.ts  ammo-status.ts
-bullet.ts  debris-piece.ts  enemy.ts
-```
-
-閉じている辺(値):
-
-```
-player          -> bullet / debris-piece / attached-boosters / belt / fire-control / ammo-status
-fire-control    -> bullet / debris-piece / player
-attached-boosters -> debris-piece / player
-belt            -> fire-control
-bullet          -> enemy / player
-debris-piece    -> bullet / player
-enemy           -> bullet / debris-piece
-ammo-status     -> fire-control
-```
-
-**着手前にここを閉じていた `player → hud/hud.ts` と `fire-control → hud/hud.ts` は
-`Notifier` で消えた。** 残っているのは、
-**撃つ側・撃たれる側・生成物(弾・破片)が互いを直接 `new` している**構造そのもの。
-
-- `player → hud/ammo-status.ts → fire-control` の輪だけは性質が違う。HUD の整形関数が
-  弾倉容量の定数を `fire-control` から引き、`player` がその整形関数を呼んでいる。
-  **弾薬の諸元(容量・表示単位)を葉へ切り出せば切れる。規模 S。**
-- 残りは **「誰が弾や破片を生むか」の置き場所の問題。** 生成を `EntityRegistry` 越しの
-  依頼に寄せる(生む側が具象クラスを知らない)形にできるかが論点。**規模 L。**
-
-### 4.2 基準系パネルの相互参照(3ファイル)
-
-```
-frame-controls.ts ↔ camera-frame-panel.ts / trajectory-frame-panel.ts
-```
-
-親(`frame-controls`)から `buildPanel` を子が引き、子を親が組んでいる。
-**共有ヘルパを葉へ出せば切れる。規模 S。**
-
-### 4.3 表示窓と予測パネル(2ファイル)
-
-```
-display-window-manager.ts ↔ hud/panels/predict-panel.ts
-```
-
-定数と型の相互参照。**規模 S。**
-
-### 4.4 型では直らないが、面の分割が待っているもの
-
-`InspectedObject` / `MapPickable` を葉にするには、`ObjectWindows` / `PlanEditor` /
-`ControlSelection` / `MarkerManager` が塊から出ている必要がある。
-**4.1 と同じ「責務の向き」の問題なので、そちらを先に決める。**
+1. **(達成)** `npm run dep-metrics` が走り、ctx1/ctx2/ctx3 の中央値・平均・p90 と、
+   指定ファイルの内訳を出す。
+2. **(達成)** `CelestialSystem` を**型として**受けているファイルが **33 → 6**
+   (`git grep -l "import type { CelestialSystem }" src`)。残る 6 は、星系を作る側
+   (`stage.ts`)、見た目の一覧が要る側(`celestial-markers` / `line-pickables` /
+   `celestial-entity`)、宣言の全体が要る側(`object-placer-panel`)、それを渡すだけの側
+   (`map-view`)。**`object-placer-panel` は `CelestialBodyDef` 全体を要る** —
+   面に `defOf` を足すと `celestial-bodies.ts` の ctx1 が 796 → 約 1,770 行に膨れて
+   55 ファイル全部が払うので、1ファイルのために足さない。
+3. `MarkerManager` を型として受けているファイルが **21 → 7 以下**、`Hud` が **9 → 3 以下**、
+   `DynamicSystem` が **16 → 5 以下**。
+4. `FutureCelestialBodyProvider` と `CelestialMotions` が `src/` と `tests/` から **0 件**。
+5. `MapPickable` を**引数の型として**受けるファイルが **1 以上**(`map-picking.ts`)。
+   0 のままなら手順9の判断で `object-pickable.ts` へ畳む。
+6. 値の辺だけで見た強連結成分が **8 の1つだけ**(3 と 2 が消える)。
+7. **ctx2 の全ファイル平均が 4,400 → 3,900 行以下。** 上表の個別シミュレーションの和は -674 で
+   3,726 になるが、施策どうしの重なりを見込んで割り引いた値を目標にする。
+8. `npm run typecheck` と `npm run test` が通る。
 
 ---
 
-## 5. 「何でもインターフェイスにすべきではない」への答え
+## 手順
 
-**判定は `DEVELOP/CODING-RULE.md` 1.12 に条文として入れた**(narrow か / 葉に置けるか /
-契約の写しでないか)。ここでは、今回それを当ててみて分かったことだけを残す。
+### 手順 4. `CelestialMotions` を畳む
 
-- **判定2(葉に置けるか)は事前に必ず確かめること。** 今回、
-  `ObjectPickable` の4面のうち2面、`EntityRegistry` は葉にならなかった。
-  **葉にならない面を作っても、循環にも推移的依存にも効かない。**
-- **`EnemyClass` は移せなかった。** `new (...): Enemy` を含む静的側インターフェイスなので
-  `Enemy` 自身を引く。判定2に落ちる例。
-- **判定1(narrow か)は「メンバ数」で測らないほうがよい。** `CelestialSystem` は
-  28 メンバ中 17 メンバを `CelestialBodies` へ出した(数の上では半分残っている)が、
-  **`render/` と THREE を引き連れるメンバを全部落とせた**ので効果は大きかった。
-  数ではなく、**落とせる依存の重さ**で測る。
-- **面に `CelestialBodyDef` のような「宣言の全体」を入れると循環が戻る。**
-  天体の読み取り面は `def` を `{ id, mu, radius }` だけに絞ってある。
-  面 → `celestial-body-def` → `kepler-orbit` → `elements` → 面 の輪ができるため。
-- **面が配列や集合を答えるときは、要素の型も面にする。** `CelestialBodies` は
-  最初 `celestialMotions: readonly CelestialMotion[]`(具象クラス)を継いでいて、
-  受けた 30 ファイルが結局 `celestial-motion.ts` を背負っていた。**要素が具象なら面は葉にならない。**
-- **「1メンバも触らない引数は消せる」は、この規模のコードでは成り立たなかった。**
-  `celestialSystem` を受けて1メンバも使っていない 18 ファイルを調べたが、**全部が
-  渡した先で実際に使われていた。** `CODING-RULE` 1.3 の「渡した先に作らせる」は、
-  星系や HUD のように**1つしかない持ち物**には効かない。消すのではなく、
-  渡した先が要る一番狭い面まで**連鎖で狭める**のが正しい直し方。
+**目的** — 「決めたこと 3」の実施。**近傍ではなく概念の数を減らす手順で、ctx はほとんど動かない。**
+挙動は変えない。
 
-**インターフェイス以外の道具も効いた。** 天体を選ぶだけの `selectShadowBodies` /
-`selectPlanetLights` は generics にして、呼び出し側が渡した型をそのまま返すようにした
-(`pickNearest` と同じ形)。**「幾何で選ぶ」に被選択物の具象型は要らない。**
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `physics/celestial-body.ts` | `CelestialMotions` を削除 |
+| `game/celestial/celestial-bodies.ts` | `FrameCelestialBodies`(3 メンバ)を定義し、`CelestialBodies extends FrameCelestialBodies` |
+| `game/dynamic/simulator.ts` / `substep-celestial-bodies.ts` | `FrameCelestialBodies` を受ける |
+| `game/plan/plan.ts` / `game/targeter.ts` / `game/view/combat-view.ts` / `game/stages/stage-utils/wave-attack.ts` | 引数を `readonly CelestialBody[]` へ。呼び出し元で `.celestialMotions` を渡す |
+| `game/dynamic/arc-celestial-bodies.ts` | `FutureCelestialBodyProvider` を削除、`readonly CelestialBody[]` を受ける |
+| `game/dynamic/predicted-arc.ts` / `dynamic-entity/dynamic-entity.ts` | 同上に追随 |
+| `tests/game/predicted-arc.test.ts` / `tests/physics/window-agreement.test.ts` | `earthOnlyProvider` 等を配列へ |
+
+**達成条件と検証** — `npm run typecheck` / `npm run test:game` / `npm run test:physics`。
+`git grep -n "CelestialMotions\|FutureCelestialBodyProvider" src tests` が **0 件**。
+
+---
+
+### 手順 5. `MarkerSlots` を新設する
+
+**目的** — `MarkerManager`(377 行、ctx1 1,353)を型として受けている 21 ファイルのうち 15 は、
+マーカーを置く・消す・出ているか訊くだけである。**挙動は変えない。**
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `game/marker/marker-slots.ts`(新規) | `set` / `setPosition` / `setDirection` / `shows` / `hide` / `fadeOut` / `remove` の面。引く型は `Vec3` と `ProjectFn` だけなので葉になる |
+| `game/marker/marker-manager.ts` | `implements MarkerSlots` |
+| 下記 15 ファイル | 型を `MarkerSlots` へ |
+
+`shows` しか使わない 6 ファイル(`celestial-entity.ts` / `ammo-pickup.ts` / `enemy.ts` /
+`rcs-fuel-pickup.ts` / `lagrange-point-marker.ts` / `empty-space-pickable.ts`)、
+置く系 9 ファイル(`geostationary-overlay.ts` / `base.ts` / `celestial-markers.ts` /
+`celestial-sub-labels.ts` / `equator-node-marker-pair.ts` / `lead-markers.ts` /
+`plan-display.ts` / `plan-guide.ts` / `player-markers.ts`)。
+
+残す 6(`game.ts` は所有者、`player.ts` は `sync`/`dispose`、`grouped-markers.ts` は内部、
+`targeter.ts` / `map-view.ts` は `combatMarkers`、`orbit-point-marker.ts` は `setNodePosition`)。
+
+**達成条件と検証** — `npm run typecheck` / `npm run test:game`。
+`git grep -c ": MarkerManager" src` が 7 以下。ctx2 合計 503,349 → 474,765 付近。
+**実行時の見た目は変えていないので描画の確認は要らない。**
+
+---
+
+### 手順 6. `HudLayers` を新設する
+
+**目的** — `Hud`(ctx1 3,502 / ctx2 21,861)を受けている 8 ファイルが要るのは、
+**DOM の取り付け先と `Notifier` だけ**である。`overlay-layer.ts` と `overlay-manager.ts` は
+どちらも import ゼロの葉なので、面は完全な葉になる。**挙動は変えない。**
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `game/hud/hud-layers.ts`(新規) | `layers: OverlayLayers` / `overlayManager: OverlayManager` / `mapRoot: HTMLElement` / `combatRoot: HTMLElement` / `root: HTMLElement` |
+| `game/hud/hud.ts` | `implements HudLayers`(既に全部 public) |
+| `pickable/orbit-line-windows.ts` / `pickable/part-windows.ts` | `HudLayers` だけで足りる |
+| `camera/camera-system.ts` / `pickable/map-picking.ts` / `plan/plan-editor.ts` | `HudLayers` + `Notifier` の2引数へ |
+| `stages/stage.ts` | `combatRoot` を `HudLayers` から、`hint`/`toast` を `Notifier` から |
+
+残す 3(`game.ts` は所有者、`object-windows.ts` は `enemiesPanel`/`targetPanel`、
+`view-manager.ts` は `setView`)。
+
+**達成条件と検証** — `npm run typecheck` / `npm run test:game`。
+`git grep -c ": Hud\b" src` が 3 以下。ctx∞ の全体平均が 24,439 → 21,500 付近まで落ちる。
+
+---
+
+### 手順 7. `EntityRoster` を新設する
+
+**目的** — `DynamicSystem`(ctx2 24,107)を受けている 16 ファイルのうち **11 は `all` しか
+使っていない。** 面は `DynamicEntity` を引くので葉にはならないが、ctx2 は大きく減る
+(シミュレーションで -44,145)。**挙動は変えない。**
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `game/dynamic/entity-roster.ts`(新規) | `readonly all: readonly DynamicEntity[]` |
+| `game/dynamic/dynamic-system.ts` | `implements EntityRoster`(`EntityRegistry` と並ぶ2つ目の面) |
+| 下記 11 ファイル | 型を `EntityRoster` へ |
+
+```
+dynamic/predictor.ts        hud/panels/enemies-panel.ts   hud/view-badge.ts
+lines/entity-line-manager.ts nav-target.ts                pickable/combat-pick.ts
+pickable/line-pickables.ts  pickable/object-pickables.ts  pickable/object-windows.ts
+targeter.ts                 dynamic/simulator.ts(`cleanup` も要るので要判断)
+```
+
+`next-event-time.ts`(`collectionRevision`)、`control-selection.ts`(`controllables`/`remove`)、
+`logistics.ts` / `stage.ts`(`add`/`spawnWhenReady` = `EntityRegistry` 側)、`game.ts`(所有者)は
+残す。**`stage.ts` と `logistics.ts` は `EntityRegistry` + `EntityRoster` の2面で受けられるか
+確かめる** — できるなら `DynamicSystem` の受け手は 3 まで落ちる。
+
+**達成条件と検証** — `npm run typecheck` / `npm run test:game`。
+`git grep -c ": DynamicSystem" src` が 5 以下。
+
+---
+
+### 手順 8. 小さい値循環を3つ切る
+
+**目的** — 定数と共有ヘルパが hub 側に置かれているために閉じている輪を切る。
+**どれも定数/関数の引っ越しだけで、挙動は変えない。**
+
+**変更が必要な箇所**
+
+| 輪 | ファイル | 何をするか |
+| --- | --- | --- |
+| `frame-controls ↔ camera-frame-panel / trajectory-frame-panel` | `game/hud/frame/frame-panel.ts`(新規) | `buildPanel` を移す。両パネルと `frame-controls` はここから引く |
+| `display-window-manager ↔ predict-panel` | `game/display-window-duration.ts`(新規) | `DisplayDurationKey` / `DisplayPastDurationKey` / `DISPLAY_DURATION_MAX` / `APERIODIC_ARC_DURATION` を移す |
+| `player → hud/ammo-status → fire-control` | `game/player/ammo-spec.ts`(新規) | `MAG_ROUNDS` を移す。`ammo-status.ts` は ctx2 5,710 → 0 付近の葉になる |
+
+**達成条件と検証** — `npm run typecheck` / `npm run test:game`。
+`npm run dep-metrics` の値の辺の強連結成分が **8 の1つだけ**になる。
+`frame-controls.ts` は手順3で `CelestialBodies` へ移っているので、`CelestialSystem` は残らない。
+
+---
+
+### 手順 9. 面の棚卸し — 受け手の居ない面を始末する
+
+**目的** — 「決めたこと 2」の判定4を、いま在る面へ当てる。手順5・6で `MarkerManager` と `Hud` が
+軽くなり、`MapPickable` / `InspectedObject` が葉になれる条件が変わっているので、最後に置く。
+
+**変更が必要な箇所**
+
+| ファイル | 何をするか |
+| --- | --- |
+| `DEVELOP/CODING-RULE.md` 1.12 | 判定4「受け手が居るか」を追記 |
+| `game/pickable/map-picking.ts` | `ObjectPickable` ではなく `MapPickable` を受ける(`MapPickable` に初めて受け手ができる) |
+| `game/pickable/map-pickable.ts` | `shownOnMap(markers: MarkerSlots)` へ(手順5の面) |
+| `game/pickable/inspected-object.ts` / `map-pickable.ts` | 残る重い引数型(`ObjectWindows` ctx2 30,966 / `PlanEditor` 16,823 / `ControlSelection` 13,304)を測り直し、**葉になるなら面を割る、ならないなら `object-pickable.ts` へ畳む**。`ControlSelection.current` は `Controllable`(ctx2 16,378)を返すので、`Controllable` を先に狭めない限り葉にはならない — **その場合は畳む** |
+| `game/pickable/pickable-listing.ts` | **動かさない**(畳んでも ctx2 が -12 しか動かない) |
+
+**達成条件と検証** — `npm run typecheck` / `npm run test:game`。
+`git grep -n "MapPickable" src` に、`object-pickable.ts` 以外の引数型としての用例が 1 件以上ある
+(または `map-pickable.ts` が消えている)。`npm run dep-metrics` の ctx2 全体平均が **3,900 以下**。
+
+---
+
+## 見積り
+
+手順ごとの編集箇所を、grep で数えた実数から出す。
+
+| 手順 | 新規 | 編集ファイル | 編集箇所 | 見込む ctx2 全体平均 |
+| --- | --- | --- | --- | --- |
+| 1〜3(実測) | 1(`tools/`) | 31 | 面 4 メンバ + 定数1個の移動 + 約 60 箇所 | **4,099**(見込み 4,050) |
+| 4 | 0(1 減) | 10 + テスト 2 | 約 20 | 4,099(変化なし) |
+| 5 | 1 | 16 | 15 ファイル × 2 + 面 7 メンバ | 3,970 |
+| 6 | 1 | 7 | 6 ファイル × 2〜3 + 面 5 メンバ | 3,890 |
+| 7 | 1 | 12 | 11 ファイル × 2 + 面 1 メンバ | 3,780 |
+| 8 | 3 | 8 | 定数・関数 6 個の移動 | 3,780 |
+| 9 | 0(0〜2 減) | 4 + 規約 1 | 判断込み | 3,740 |
+
+最終行の 3,740 は、手順1〜3 の実測 4,099 から手順5〜7 の個別シミュレーション(-359)を引いたもの。
+**施策どうしで到達先が重なるので実際はこれより悪くなる** — 達成目標は 3,900 に置いてある。
+
+`ctx∞` の全体平均は 24,439 → 21,000 付近(手順6 の -3,036 が支配的)。
+
+---
+
+## リスクと落とし穴
+
+| リスク | 影響 | 露見する場所 |
+| --- | --- | --- |
+| `findMotion`(null を返す)と `motionOf`(未登録で例外)の使い分けを取り違える | 未登録 id で例外になっていた箇所が黙って `null` を流し、マーカーや軌道線が**無言で消える** | 手順3。差し替えた 44 箇所を、元が `find(id)?.motion`(null 許容)か `entityOf(id).motion`(例外)かで分けて確認する |
+| `bodyClass` / `starId` の追加で `celestial-bodies.ts` が `CelestialEntity` を引く | 面が葉でなくなり、手順2・3 の効果が丸ごと消える | 手順3。`npm run dep-metrics --file src/game/celestial/celestial-bodies.ts` の ctx1 が 900 を超えたら失敗 |
+| `MarkerSlots` の `set` / `setPosition` / `setDirection` は引数が 12〜14 個ある。面へ写すと**契約の写し**になり、両方を直す手間だけが増える | `CODING-RULE` 1.12「契約の写しは負債」に抵触 | 手順5。**引数列の整理はこの計画でやらない** — 写しになるのを承知で写し、整理は別途 |
+| `Hud` を `HudLayers` + `Notifier` の2引数に割ると、引数が増えただけで近傍が減らない場合がある | 手数の割に効果ゼロ | 手順6。1ファイル直すごとに `dep-metrics --file` で ctx2 を確認し、下がらないファイルは元に戻す |
+| `EntityRoster` は `DynamicEntity` を引くので葉にならない | 「葉に置けるか」の判定2 に落ちる面を作ることになる | 手順7。ctx2 が -44,145 動く**見込みだけ**が根拠なので、実測が -20,000 を下回ったら手順ごと取り消す |
+| `CelestialMotions` → `FrameCelestialBodies` の改名がテストへ波及 | `npm run test` だけが落ちて `typecheck` は通る | 手順4。`tests/` の 2 ファイルを変更箇所に入れてある |
+| ctx を下げること自体が目的化して、受け手の居ない面が増える | 段 A・B と同じ失敗を、別の指標で繰り返す | 手順9。判定4 を規約へ入れてから棚卸しする |
+| 手順の途中で `dep-metrics` の実装を直すと、前後の数字が比較できなくなる | 全手順の合否判定が無意味になる | 手順1。**手順2 以降で `tools/dep-metrics.mjs` を触らない** |
+| `PowerShell` で `src/` を書き換えると日本語が化け、改行も潰れる | 差分が巨大になり、レビューが不能になる | 全手順。編集は Edit か Python で行う |
 
 ---
 
 ## 測り方(再現手順)
 
-上の数字は全部、`src/` の相対 import を正規表現で拾って有向グラフを組み、
-Tarjan で SCC、Eades-Lin-Smyth の貪欲法で近似最小フィードバック辺集合を出したもの。
-`import type` と値 import を区別して数えている。スクリプトは調査用の使い捨てで、
-リポジトリには残していない。再測定するなら:
+手順1 で `tools/dep-metrics.mjs` に入れる規則。上の数字はすべてこれと同じ規則で出してある。
 
-- 辺の抽出: `import (type )?{...} from '相対パス'` と `export ... from '相対パス'` を拾い、
-  `.ts` / `/index.ts` へ解決する。節内の識別子が全部 `type` 前置なら型のみ辺とみなす。
-- hub のメンバ利用率: `名前: 型名` で束縛される変数名を集め、`変数名.メンバ` を数える。
-  `extends` / `implements` は「利用0」に出るので、pass-through と読み違えないこと。
-  **配列に対する `map` / `filter` / `push` / `length` も「メンバ」に出る**ので、
-  型そのものの面と混ぜないこと。
-- **前後比較は必ず同じスクリプトで両方を測る。** 片方だけ測ると、
-  新設ファイルぶんの増分(今回は全ファイル一律 +11)を効果と読み違える。
+- **辺の抽出** — `import (type )?{...} from '相対パス'` と `export ... from '相対パス'` を拾い、
+  `.ts` / `/index.ts` へ解決する。節内の識別子が全部 `type` 前置なら型のみ辺とみなすが、
+  **`ctx_k` では型のみ辺も 1 辺として数える。**
+- **`ctx_k(f)`** — `f` から `k` 歩以内で到達できるファイルの総行数(`f` 自身は除く)。
+  全ファイルの中央値・平均・p90 を出す。
+- **`k` の使い分け** — `k=1,2,3` は塊の内側の改善が見える。`k=∞` は塊の中で飽和するので、
+  **「塊から出たか」の判定にだけ使う。**
+- **前後比較は必ず同じ実装で両方を測る。** 片方だけ測ると、新設ファイルぶんの増分を効果と
+  読み違える(段 A・B では全ファイル一律 +11 ファイルぶんの増分が出た)。
+- **面の判断に使う3つの数字** — 受け手数(`git grep -c ": 型名" src`)、面自身の ctx1、
+  「実装の隣へ畳んだとき」の ctx 差分。3つ目は、受け手の import 先を実装ファイルへ張り替えた
+  グラフを組んで差を取る。
 - 数字は `git rev-parse --short HEAD` を添えて、いつの時点かを必ず明示する。
