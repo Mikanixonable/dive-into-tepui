@@ -28,7 +28,8 @@ import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../t
 // 強弱(0 中心の高周波、x が粒・y が網目)、対流の活発度はその強弱がどれだけ強く現れるか 0..1、
 // 圧縮は気団の境目の押し縮まり(1 で何も起きていない)、帯は気団の折り目に立つ雲の帯の強さ 0..1
 // (温帯では前線、眼を持つ渦のまわりでは雨帯。1 で飽和)、暖気の流入は出身地からの緯度の差 [rad]
-// (負で寒気)、金床は平らな天蓋の濃さ 0..1、圏界面はその緯度の対流の天井 [m]。
+// (負で寒気)、金床は平らな天蓋の濃さ 0..1、平年の雲量と陸らしさは気候の分布 0..1、圏界面は
+// その緯度の対流の天井 [m]。
 export type WeatherSample = {
   readonly pressure: FloatNode;
   readonly surfaceWind: Vec2Node;
@@ -41,6 +42,8 @@ export type WeatherSample = {
   readonly band: FloatNode;
   readonly warmth: FloatNode;
   readonly anvil: FloatNode;
+  readonly meanCloudiness: FloatNode;
+  readonly landFraction: FloatNode;
   readonly tropopause: FloatNode;
 };
 
@@ -363,6 +366,7 @@ export class WeatherModel {
     // 歪まない。
     const advected = this.advected(direction, surfaceWind, upperWind, convectionWind);
     const meanCloudiness = this.climate.meanCloudiness(direction);
+    const landFraction = this.climate.landFraction(direction);
     const eye = this.cyclones.eyeAt(direction);
     const anvil = this.cyclones.anvilAt(direction);
     const deviation = advected.surfaceHumidity.sub(SURFACE_HUMIDITY_BASE);
@@ -390,6 +394,8 @@ export class WeatherModel {
       band,
       warmth,
       anvil,
+      meanCloudiness,
+      landFraction,
       tropopause: tropopauseAt(latitude),
     };
   }
