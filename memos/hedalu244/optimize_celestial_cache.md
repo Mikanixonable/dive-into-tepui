@@ -153,14 +153,15 @@ Part 0 の内訳から、183 µs の大半は**その瞬間の物理が読まな
 
 - `git log` で `11950a77` の revert が入り、`src/` に案1の痕跡が無い:
   `grep -rn "フレームの天体窓\|1フレームの時間送りぶんの天体の窓" src` が 0 件、
-  `src/game/dynamic/simulator.ts` の `this.bodies.reset` が `while` ループの内側にある。
+  `src/game/dynamic/simulator.ts` が天体の窓の pivot を `while` ループの内側で進める
+  (`1bd1ef2c` の時点では `this.bodies.reset`、第3の案 (b) の後は `beginSubstep`)。
 - `npm run typecheck` / `npm run test:game` / `npm run test:physics` が通る。
 - プローブが残り、再現できる: 上記コマンドで Part 0 の (i) が 183 µs の ±20% に入る(マシン依存)。
 
 ## 手順
 
 **全手順を実施済み。** この文書は以降、案1・案2の評価結果(「決めたこと」1・2)と、そこから
-起こした `optimize_celestial_cost` の根拠(「決めたこと」3・4 と「根拠」節の実測)として残る。
+起こして実施した費用削減・加速度の是正の根拠(「決めたこと」3・4 と「根拠」節の実測)として残る。
 
 ## 見積り
 
