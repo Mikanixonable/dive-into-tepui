@@ -152,6 +152,7 @@ export class DetachedBooster extends DynamicEntity {
       this.plume.hide();
       return;
     }
+    // ノズル位置と噴射の向きは、機体中心を原点とする寸法から現在の姿勢で世界へ起こす。
     const centerZ = (BOOSTER_STAGE_DIMENSIONS.frontZ + BOOSTER_STAGE_DIMENSIONS.aftZ) / 2;
     const nozzleFromCenter = BOOSTER_STAGE_DIMENSIONS.nozzleExitZ - centerZ;
     const nozzleWorld = add(displayState.r, qRotate(this.att.q, v3(0, 0, nozzleFromCenter)));
