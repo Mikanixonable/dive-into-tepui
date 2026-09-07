@@ -6,7 +6,7 @@ import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { orbitPointLabel, type TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { fmtTime } from '../../hud/utils';
 import type { Vec3 } from '../../math/vec3';
-import type { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { ProjectFn } from '../../math/projection';
 import type { ControlSelection } from '../control-selection';
@@ -79,7 +79,7 @@ export abstract class OrbitPointMarker implements ObjectPickable {
   // マーカーを解いた位置へ置く。解けていないフレームと、天体に遮られたフレームは隠す。
   public sync(
     markers: MarkerManager, project: ProjectFn, cameraPos: Vec3,
-    celestialBodies: readonly CelestialMotion[], pivot: number, occludeByBodies: boolean,
+    celestialBodies: readonly CelestialBody[], pivot: number, occludeByBodies: boolean,
     timeLabel: TimeLabelSetting,
   ): void {
     if (this.pos === null) { markers.hide(this.id); return; }

@@ -2,7 +2,7 @@
 // 当て、当事者へ collideWithCelestialBody を呼ぶ。天体は状態を書き換えられないので個体ごとに
 // 独立に解け、解決の順序も件数の上限も要らない — 物体どうしの接触
 // (entity-contact-physics.ts)とは機構を共有しない。
-import { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { distributeFixedContact } from '../../physics/collision-response';
 import { firstSurfaceContact } from '../../physics/surface-contact';
 import { kinematicState } from '../../physics/kinematic-state';
@@ -24,7 +24,7 @@ function isParticipant(e: DynamicEntity): boolean {
 }
 
 // 位置・速度・半径が有限か。
-function isFiniteCelestialBody(a: CelestialMotion, pivot: number): boolean {
+function isFiniteCelestialBody(a: CelestialBody, pivot: number): boolean {
   const { r, v } = a.stateAt(pivot);
   return Number.isFinite(r.x) && Number.isFinite(r.y) && Number.isFinite(r.z)
     && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z)
@@ -34,9 +34,9 @@ function isFiniteCelestialBody(a: CelestialMotion, pivot: number): boolean {
 export class SurfaceContactPhysics {
   // 解決は区間ごとに同期的に完了するので、作業配列を使い回せる。
   private readonly participantScratch: DynamicEntity[] = [];
-  private readonly bodyScratch: CelestialMotion[] = [];
+  private readonly bodyScratch: CelestialBody[] = [];
   private readonly candidates = new SurfaceCandidates();
-  private readonly nearbyScratch: CelestialMotion[] = [];
+  private readonly nearbyScratch: CelestialBody[] = [];
   // 天体の位置を厳密に引く時刻。beginSubstep が受け取り、そのサブステップの解決すべてで使う。
   private pivot = 0;
   // 負荷確認ウィンドウが読む、絞り込みを通した延べ候補天体数。フレーム頭で Simulator が 0 へ戻す。
@@ -50,7 +50,7 @@ export class SurfaceContactPhysics {
   // 中点から引いた位置はフレーム中点から引いた位置と 3 次以上の項ぶんずれ、そのずれは掃引の
   // (n·h)²/6 倍以下(最高段の月で 9%)なので、掃引ぶんの余裕がそれを覆う。
   beginFrame(
-    celestialBodies: readonly CelestialMotion[], framePivot: number, tStart: number, tEnd: number,
+    celestialBodies: readonly CelestialBody[], framePivot: number, tStart: number, tEnd: number,
   ): void {
     this.collectCelestialBodies(celestialBodies, framePivot, this.bodyScratch);
     this.candidates.resetSpan(this.bodyScratch, framePivot, tStart, tEnd, SPAN_REACH_MARGIN);
@@ -123,7 +123,7 @@ export class SurfaceContactPhysics {
 
   // 判定できる天体だけを out へ写す。out は呼び出し側が所有する。
   private collectCelestialBodies(
-    source: readonly CelestialMotion[], pivot: number, out: CelestialMotion[],
+    source: readonly CelestialBody[], pivot: number, out: CelestialBody[],
   ): void {
     out.length = 0;
     for (const celestialBody of source) {

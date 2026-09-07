@@ -9,7 +9,7 @@ import { LAGRANGE_MIN_CLEARANCE_RATIO } from '../celestial/lagrange-id';
 import { LagrangePointMarker } from './lagrange-point-marker';
 import { CelestialSubLabels, type CelestialLabelState } from './celestial-sub-labels';
 import { CrowdingGrid, DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, type ProjectedLabel } from './crowding';
-import type { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapDisplayToggles } from '../map/display-toggles';
 import type { ObjectPickable } from '../pickable/object-pickable';
@@ -278,7 +278,7 @@ export class CelestialMarkers {
 
   // 混雑で画面から消えた船・敵機・基地を、天体ラベルの下のサブ行として描き足す。
   syncSubLabels(
-    groupedMarkers: GroupedMarkers, celestialBodies: readonly CelestialMotion[], pivot: number,
+    groupedMarkers: GroupedMarkers, celestialBodies: readonly CelestialBody[], pivot: number,
     project: ProjectFn, cameraPos: Vec3,
   ): void {
     this.subLabels.sync(

@@ -1,6 +1,6 @@
 // 軌道エンティティの基準・軌道要素・相対情報を導出する純粋関数群。
 import { strongestAttractor } from '../physics/attractor';
-import { CelestialMotion } from '../physics/celestial-motion';
+import type { CelestialBody } from '../physics/celestial-body';
 import { apsisAltitudes } from '../physics/elements';
 import { kinematicState } from '../physics/kinematic-state';
 import { dot, len, sub, Vec3 } from '../math/vec3';
@@ -58,7 +58,7 @@ interface RelativeInfo {
 // 双方の基準天体(strongestAttractor)が一致するときのみ意味を持ち、異なる場合は NaN にする。
 export function relativeInfo(
   self: DynamicEntity, other: DynamicEntity,
-  celestialBodies: readonly CelestialMotion[], pivot: number,
+  celestialBodies: readonly CelestialBody[], pivot: number,
 ): RelativeInfo {
   const selfCenter = strongestAttractor(self.state.r, celestialBodies, pivot);
   const otherCenter = strongestAttractor(other.state.r, celestialBodies, pivot);

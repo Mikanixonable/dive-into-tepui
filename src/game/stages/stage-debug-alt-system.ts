@@ -4,7 +4,8 @@
 import * as THREE from 'three/webgpu';
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import { CelestialMotion, OrbitingMotion, SatelliteMotion, StarMotion } from '../../physics/celestial-motion';
+import { OrbitingMotion, SatelliteMotion, StarMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { PhaseOffsets, PlanetDef, SatelliteDef, StarDef, planetDefForSimZero, satelliteDefForSimZero } from '../../physics/celestial-body-def';
 import { planetSystem } from '../../physics/planet-system';
 import { planetOrbit } from '../../physics/kepler-orbit';
@@ -65,7 +66,7 @@ const ZEPHYRUS_I: SatelliteDef = {
 };
 
 // 架空星系の運動を組む。
-function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialMotion[] {
+function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialBody[] {
   const aeolus = new StarMotion(AEOLUS);
   const zephyrus = planetSystem(planetDefForSimZero(ZEPHYRUS, phases, 0), aeolus);
   const zephyrusI = new SatelliteMotion(satelliteDefForSimZero(ZEPHYRUS_I, phases, 0), zephyrus);
@@ -73,7 +74,7 @@ function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialMotion[]
 }
 
 // 架空天体の見た目: 恒星なら太陽の見た目、それ以外は単色球。表示名は id をそのまま使う。
-function fallbackEntity(motion: CelestialMotion): CelestialEntity {
+function fallbackEntity(motion: CelestialBody): CelestialEntity {
   // 色の手がかりを持たない架空の恒星なので、無彩色で目盛りの基準どおりの明るさにする。
   if (motion instanceof StarMotion) {
     return new StarEntity(

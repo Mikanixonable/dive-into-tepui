@@ -2,7 +2,7 @@
 import { KinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements } from '../../physics/elements';
 import { strongestAttractor } from '../../physics/attractor';
-import { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { orbitalElementsOf } from '../../physics/elements';
 import { addScaled, dot, len, norm, sub } from '../../math/vec3';
 import type { Notifier } from '../../hud/notifier';
@@ -39,7 +39,7 @@ export class PlanGuide {
 
   // 実行時刻を過ぎたノードを計画から落とし、直近ノードへの接近と計画軌道の達成を
   // ノードごとに一度だけ通知する。操作対象がいなければ何もしない。
-  update(controlled: Controllable | null, simTime: number, celestialBodies: readonly CelestialMotion[]): void {
+  update(controlled: Controllable | null, simTime: number, celestialBodies: readonly CelestialBody[]): void {
     if (!controlled) return;
     const plan = controlled.plan;
     plan.consumeNodesUpTo(simTime - NODE_EXPIRE_GRACE, controlled.state);
@@ -109,7 +109,7 @@ export class PlanGuide {
   // 天体が違えば、要素同士の比較自体が意味を持たないので判定しない。
   private notifyAchieved(
     node: KinematicState, controlled: Controllable,
-    celestialBodies: readonly CelestialMotion[], pivot: number,
+    celestialBodies: readonly CelestialBody[], pivot: number,
   ): void {
     if (this.achievedNotified === node) return;
     const plan = controlled.plan;

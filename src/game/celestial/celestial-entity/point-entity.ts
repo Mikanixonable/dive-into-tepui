@@ -1,7 +1,8 @@
 // 戦闘ビューで肉眼の「明るい星」程度にしか見えない惑星の見た目。見かけ直径が閾値未満なら実体を
 // 隠し、戦闘ビューでは星殻上の輝点スプライトへ切り替える。
 import * as THREE from 'three/webgpu';
-import { CelestialMotion, OrbitingMotion } from '../../../physics/celestial-motion';
+import { OrbitingMotion } from '../../../physics/celestial-motion';
+import type { CelestialBody } from '../../../physics/celestial-body';
 import { shapeAxes } from '../../../physics/celestial-body-def';
 import { CameraSystem } from '../../camera/camera-system';
 import { FloatingOrigin } from '../../camera/floating-origin';
@@ -212,7 +213,7 @@ export class PointEntity extends CelestialEntity {
   // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期する。
   public override syncMapOverlay(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
-    markerManager: MarkerManager | null, celestialBodies: readonly CelestialMotion[], visible: boolean,
+    markerManager: MarkerManager | null, celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
     this.mapOverlay?.sync(
       this.motion, displayTime, fo, cameraSystem, markerManager, celestialBodies, visible);

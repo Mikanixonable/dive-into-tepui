@@ -1,5 +1,5 @@
 // 軌道上の特徴点(赤道交点 EqAN/EqDN、相対交点 AN/DN など)の計算を行う純粋物理計算層。
-import type { CelestialMotion } from './celestial-motion';
+import type { CelestialBody } from './celestial-body';
 import { frameOfCelestialBody } from './frame';
 import { orbitalElementsOf } from './elements';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from './elements';
@@ -28,7 +28,7 @@ interface OrbitCrossingsResult {
 // 不十分(表示側が数値暦で un-bake すると、この弾道外挿との差がそのまま交点位置のズレになる)。
 export function solveEquatorCrossings(
   state: KinematicState,
-  center: CelestialMotion,
+  center: CelestialBody,
   centerPivot: number,
   eqNormal: Vec3,
   paths: readonly (readonly KinematicState[])[] = [],

@@ -2,7 +2,8 @@
 // リサジュー軌道の折れ線群(表示パネルの軌道ガイドタブ、静止軌道を除く)。設定の kinds
 // (族 id → 表示設定)を1つの経路で回し、族ごとに独立した種類関数を呼ぶ形は取らない。
 import * as THREE from 'three/webgpu';
-import { CelestialMotion, OrbitingMotion } from '../../../physics/celestial-motion';
+import { OrbitingMotion } from '../../../physics/celestial-motion';
+import type { CelestialBody } from '../../../physics/celestial-body';
 import { CollinearPoint, SecondaryFrame, secondaryFrameOf } from '../../../physics/lagrange';
 import type { CelestialSystem } from '../celestial-system';
 import { Vec3 } from '../../../math/vec3';
@@ -352,7 +353,7 @@ export class OrbitGuideLines {
   }
 
   // 地球の運動。地球を持たない星系では null(地球専用の参照軌道は描かない)。
-  private earthBodyAt(_t: number): CelestialMotion | null {
+  private earthBodyAt(_t: number): CelestialBody | null {
     return this.celestialSystem.has('earth') ? this.celestialSystem.motionOf('earth') : null;
   }
 
@@ -362,7 +363,7 @@ export class OrbitGuideLines {
   }
 
   // 地球の運動。地球を持たない星系では null(地球専用の参照軌道は描かない)。
-  private earthMotion(): CelestialMotion | null {
+  private earthMotion(): CelestialBody | null {
     return this.celestialSystem.find('earth')?.motion ?? null;
   }
 

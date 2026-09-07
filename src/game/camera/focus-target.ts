@@ -2,7 +2,7 @@
 // 表す 'point' の判別共用体を持ち、毎フレームそれを ECI の位置と速度へ解決する。
 import { FrameAnchorSource, FramePoint, ReferenceFrame, toFramePoint, toInertialPoint } from '../../physics/frame';
 import { add, cross, sub, Vec3, v3 } from '../../math/vec3';
-import type { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ReferenceFrames } from '../celestial/reference-frames';
 
@@ -59,7 +59,7 @@ export function resolveFocusTarget(
   displayTime: number,
   frameAnchors: FrameAnchorSource,
   frames: ReferenceFrames,
-  celestialMotionOf: (id: string) => CelestialMotion | null,
+  celestialMotionOf: (id: string) => CelestialBody | null,
   celestialStateOf: (id: string, t: number) => KinematicState,
   state: FocusResolveState,
 ): FocusResolveResult {

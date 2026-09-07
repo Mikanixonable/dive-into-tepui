@@ -5,14 +5,14 @@
 // ため、過去方向の履歴にも未来方向の予測列にも同じ実装をそのまま使える。
 import { KinematicState, kinematicState } from './kinematic-state';
 import { StateQueue } from './state-queue';
-import type { CelestialMotion } from './celestial-motion';
+import type { CelestialBody } from './celestial-body';
 import { extrapolatedRelativeState } from './kepler-extrapolation';
 import { Vec3, add } from '../math/vec3';
 import { stepDynamics } from './dynamics';
 
 // 先端を二体ケプラー軌道とみなすときの中心天体と、それを厳密に引いた時刻。
 export type ExtrapolationCenter = {
-  readonly celestialBody: CelestialMotion;
+  readonly celestialBody: CelestialBody;
   readonly pivot: number;
 };
 
@@ -54,16 +54,16 @@ export class DynamicTrajectory {
   // extrapolationCenter は extrapolatedAt が使う中心天体(省略時 null)。
   step(
     dt: number,
-    attractors: readonly CelestialMotion[],
-    occluders: readonly CelestialMotion[],
-    atmosphereBody: CelestialMotion | null,
+    attractors: readonly CelestialBody[],
+    occluders: readonly CelestialBody[],
+    atmosphereBody: CelestialBody | null,
     pivot: number,
     bcInv: number,
     srpCoeff: number,
     thrust: Vec3 | null,
     sampleInterval: number,
     keepDuration: number,
-    extrapolationCenter: CelestialMotion | null = null,
+    extrapolationCenter: CelestialBody | null = null,
   ): void {
     const next = stepDynamics(
       this.state, dt, attractors, occluders, atmosphereBody, pivot, bcInv, srpCoeff, thrust);

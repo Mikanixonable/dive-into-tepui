@@ -19,7 +19,7 @@ import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { Notifier } from '../../hud/notifier';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
-import { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
@@ -294,7 +294,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 艦の各下位系を1フレーム分進める。喪失した艦では何も進めない。
   protected override stepEnvironment(
-    dt: number, atmosphereBody: CelestialMotion | null, atmospherePivot: number,
+    dt: number, atmosphereBody: CelestialBody | null, atmospherePivot: number,
     sunlit: number, sunDir: Vec3,
   ): void {
     if (!this.alive) return;
@@ -407,7 +407,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 天体の固体表面への接触。相手の種別による重みが無いので接近速度がそのまま根拠になる。
   collideWithCelestialBody(
-    _body: CelestialMotion, contact: Contact, activeStage: Stage, registry: EntityRegistry,
+    _body: CelestialBody, contact: Contact, activeStage: Stage, registry: EntityRegistry,
   ): void {
     if (!this.alive) return;
     this.damagedByContact(
@@ -470,7 +470,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 動圧が構造限界を超えたことによる喪失。
   checkLoss(
     _dt: number, _simTime: number, activeStage: Stage, registry: EntityRegistry,
-    _viewerPos: Vec3, _atmosphereBodies: readonly CelestialMotion[],
+    _viewerPos: Vec3, _atmosphereBodies: readonly CelestialBody[],
   ): void {
     if (!this.alive) return;
     if (!this.aero.overStructuralLimit) return;

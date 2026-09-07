@@ -3,7 +3,7 @@
 // 役割トークンは毎フレームその時点の対象へ解決されるので、操作対象の乗り換えやターゲットの
 // 付け替えをまたいでも同じ基準を指し続ける(DEVELOP/SPEC/CELESTIAL.md 8節)。
 import { orbitingAttractorOf } from '../physics/attractor';
-import { CelestialMotion } from '../physics/celestial-motion';
+import type { CelestialBody } from '../physics/celestial-body';
 import { FrameAnchorSource, FrameRole, frameRoleOf } from '../physics/frame';
 import { KinematicState } from '../physics/kinematic-state';
 import type { CelestialSystem } from './celestial/celestial-system';
@@ -15,7 +15,7 @@ interface AnchorTargets {
   // 操作対象の時刻 t における状態。乗り換え中などで定まらなければ null。
   controlledState(t: number): KinematicState | null;
   // 航法ターゲットの時刻 t における状態。設定されていない・消滅していれば null。
-  navTargetState(bodies: readonly CelestialMotion[], t: number): KinematicState | null;
+  navTargetState(bodies: readonly CelestialBody[], t: number): KinematicState | null;
 }
 
 // 役割トークンが一時的に解決できないあいだ直前の状態を保つ枠。連続ミスはフレームで数える —
@@ -37,7 +37,7 @@ export class FrameAnchors implements FrameAnchorSource {
     private readonly targets: AnchorTargets,
   ) {}
 
-  get bodies(): readonly CelestialMotion[] { return this.celestialSystem.celestialMotions; }
+  get bodies(): readonly CelestialBody[] { return this.celestialSystem.celestialMotions; }
 
   // このフレームが天体の位置を厳密に引く表示時刻を差し込む。フレームの先頭で1度だけ呼ぶ —
   // 役割トークンの猶予とキャッシュの区切りがこの呼び出し回数で決まる。

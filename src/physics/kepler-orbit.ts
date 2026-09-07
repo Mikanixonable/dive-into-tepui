@@ -8,6 +8,7 @@
 // 上で測る。位置・速度だけでなく軌道法線・回転基準系もこの1つの回転を経由するので、
 // 基準面を変えても表示・ラグランジュ点・回転座標系が食い違うことはない。
 import { AU } from './astronomical-unit';
+import type { FrameRotation } from './celestial-body';
 import { Quat, qFromAxisAngle, qMul, qRotate } from '../math/quat';
 import { Q_ECL_TO_ECI } from './ecliptic';
 import { eccentricAnomalyFromMean, positionFromOrbitalElements } from './elements';
@@ -42,10 +43,6 @@ export type KeplerOrbit = {
   readonly l0: number; // t=0 の平均黄経 L [rad]
   readonly lRate: number; // 平均黄経の変化率 [rad/s](= 2π/公転周期)
 };
-
-// 天体に固定した回転基準系の、ECI に対する姿勢 q と角速度 omega [rad/s](ECI 成分)。
-// 回転軸が一定とは限らないので、軸と回転角の対ではなくこの対で扱う。
-export type FrameRotation = { readonly q: Quat; readonly omega: Vec3 };
 
 type OrbitAngles = {
   readonly a: number;

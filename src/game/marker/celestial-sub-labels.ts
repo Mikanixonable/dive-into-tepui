@@ -3,7 +3,7 @@
 // ぶら下げるかは対象を最も強く引く天体から辿り、そのラベルが出ていなければ親天体へ繰り上げる。
 import { len, sub, type Vec3 } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
-import type { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { ProjectFn } from '../../math/projection';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
@@ -57,7 +57,7 @@ export class CelestialSubLabels {
   sync(
     groupedMarkers: GroupedMarkers,
     labelStateOf: (id: string) => CelestialLabelState | null,
-    celestialBodies: readonly CelestialMotion[],
+    celestialBodies: readonly CelestialBody[],
     pivot: number,
     project: ProjectFn,
     cameraPos: Vec3,

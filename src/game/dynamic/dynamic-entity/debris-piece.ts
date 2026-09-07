@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Attitude } from '../../../physics/attitude';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
-import { CelestialMotion } from '../../../physics/celestial-motion';
+import type { CelestialBody } from '../../../physics/celestial-body';
 import { add, randVec, v3, Vec3 } from '../../../math/vec3';
 import { randomQuat } from '../../../math/quat';
 import { randSym } from '../../../math/random';
@@ -208,7 +208,7 @@ export class DebrisPiece extends DynamicEntity {
   // 再突入判定に加え、寿命を持つデブリは表示時間の超過でも消す。
   checkLoss(
     dt: number, simTime: number, activeStage: Stage, registry: EntityRegistry,
-    viewerPos: Vec3, atmosphereBodies: readonly CelestialMotion[],
+    viewerPos: Vec3, atmosphereBodies: readonly CelestialBody[],
   ): void {
     super.checkLoss(dt, simTime, activeStage, registry, viewerPos, atmosphereBodies);
     if (!this.alive) return;

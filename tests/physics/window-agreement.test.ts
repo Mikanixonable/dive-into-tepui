@@ -12,7 +12,7 @@ import { stepDynamics } from '../../src/physics/dynamics';
 import { ArcCelestialBodies, type FutureCelestialBodyProvider } from '../../src/game/dynamic/arc-celestial-bodies';
 import { attractorsNearInto, classifyAttractors, GRAVITY_NEGLIGIBLE_ACCEL } from '../../src/game/dynamic/attractors';
 import { SurfaceCandidates, type SurfaceParticipant } from '../../src/game/dynamic/surface-candidates';
-import { CelestialMotion } from '../../src/physics/celestial-motion';
+import type { CelestialBody } from '../../src/physics/celestial-body';
 import type { KinematicState } from '../../src/physics/kinematic-state';
 import type { Vec3 } from '../../src/math/vec3';
 import { SUBSTEP_MAX_DT } from '../../src/game/dynamic/time-step';
@@ -91,12 +91,12 @@ const SITES: readonly Site[] = [
 
 // 天体一式が位置 r へ及ぼす ECI 加速度の和。素の引力ではなく、運動方程式に実際に現れる寄与で
 // 比べるために attractorAccel を使う。
-function gravitySum(bodies: readonly CelestialMotion[], r: Vec3, t: number): Vec3 {
+function gravitySum(bodies: readonly CelestialBody[], r: Vec3, t: number): Vec3 {
   return bodies.reduce((sum, body) => add(sum, attractorAccel(r, body, 0, t)), v3());
 }
 
 // bodies にあって others に無い天体を、その1体ぶんの寄与の大きさとともに並べた文字列。
-function onlyIn(bodies: readonly CelestialMotion[], others: readonly CelestialMotion[], r: Vec3, t: number): string {
+function onlyIn(bodies: readonly CelestialBody[], others: readonly CelestialBody[], r: Vec3, t: number): string {
   const known = new Set(others.map((b) => b.id));
   const missing = bodies.filter((b) => !known.has(b.id))
     .map((b) => `${b.id}(${len(attractorAccel(r, b, 0, t)).toExponential(2)})`);

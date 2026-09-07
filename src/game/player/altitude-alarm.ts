@@ -1,6 +1,6 @@
 // 自機の高度低下の監視と警告。離心率による短周期の高度振動で誤反応しないよう、高度も変化率も
 // 指数移動平均で平滑化する。**熱ではない** — 温度も動圧も見ない。
-import { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { ellipsoidAltitude } from '../../physics/atmosphere';
 import { Vec3, sub } from '../../math/vec3';
 import type { Notifier } from '../../hud/notifier';
@@ -32,7 +32,7 @@ export class AltitudeAlarm {
   // 位置 r の高度を atmosphereBody の基準楕円体から測り、平滑化して警告を出す。大気天体が
   // いなければ「大気の底」が無いので何もしない。
   update(
-    dt: number, r: Vec3, atmosphereBody: CelestialMotion | null, atmospherePivot: number,
+    dt: number, r: Vec3, atmosphereBody: CelestialBody | null, atmospherePivot: number,
   ): void {
     if (atmosphereBody === null) return;
     const atm = atmosphereBody.atmosphereAt(atmospherePivot);

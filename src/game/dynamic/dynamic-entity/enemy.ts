@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import type { View } from '../../view/view';
 import { Ship, MUZZLE_SPEED } from './ship';
-import { CelestialMotion } from '../../../physics/celestial-motion';
+import type { CelestialBody } from '../../../physics/celestial-body';
 import { DynamicEntity } from './dynamic-entity';
 import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import { closingSpeed, type Contact } from './contact';
@@ -307,7 +307,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 天体の固体表面への接触。沈めば自然損耗(collision)として記録する。
   public collideWithCelestialBody(
-    _body: CelestialMotion, contact: Contact, activeStage: Stage, registry: EntityRegistry,
+    _body: CelestialBody, contact: Contact, activeStage: Stage, registry: EntityRegistry,
   ): void {
     if (!this.alive) return;
     this.damagedByContact(closingSpeed(contact), contact.selfState.t, 'collision', activeStage, registry);

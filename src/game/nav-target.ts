@@ -3,7 +3,8 @@
 import { Vec3, add, len, sub } from '../math/vec3';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
 import { strongestAttractor } from '../physics/attractor';
-import { CelestialMotion, OrbitingMotion } from '../physics/celestial-motion';
+import { OrbitingMotion } from '../physics/celestial-motion';
+import type { CelestialBody } from '../physics/celestial-body';
 import { FrameAnchorSource, frameOfCelestialBody, toFrameState, unbakeToDisplayPoint } from '../physics/frame';
 import { LagrangeLabel, lagrangeStateOf, secondaryFrameOf } from '../physics/lagrange';
 import { LOCAL_FORWARD, qRotate } from '../math/quat';
@@ -214,7 +215,7 @@ export class NavTarget {
   // られるよう entity 自身も添える。ターゲット未設定・解決不能なら null。
   resolveState(
     dynamicSystem: DynamicSystem, celestialSystem: CelestialSystem,
-    celestialBodies: readonly CelestialMotion[], t: number,
+    celestialBodies: readonly CelestialBody[], t: number,
   ): OrbitReference | null {
     const id = this.targetId;
     if (id === null) return null;
@@ -280,7 +281,7 @@ export class NavTarget {
   // AN/DN・再接近点のマーカーを置く。マップビューでは天体に遮蔽された点を隠す。
   // celestialBodies は遮蔽判定に使う天体で、celestialBodiesPivot はその位置を引く時刻。
   sync(
-    cameraSystem: CameraSystem, celestialBodies: readonly CelestialMotion[],
+    cameraSystem: CameraSystem, celestialBodies: readonly CelestialBody[],
     celestialBodiesPivot: number, timeLabel: TimeLabelSetting,
   ): void {
     for (const marker of this.nodeMarkers) {

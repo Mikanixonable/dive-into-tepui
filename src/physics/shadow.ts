@@ -3,7 +3,7 @@
 // r から見た太陽円盤とその天体の円盤の重なり面積比で減光率を出す — 本影(重なり=太陽円盤全体)・
 // 金環(天体の円盤が太陽円盤に内包)・半影(部分的に重なる)・完全日照(重なり無し)が場合分け
 // 無しに1つの閉じた式から出る。
-import type { CelestialMotion } from './celestial-motion';
+import type { CelestialBody } from './celestial-body';
 import { Vec3 } from '../math/vec3';
 
 // 2円(半径 r1, r2、中心距離 d、すべて同じ角度単位)の交差面積。
@@ -26,7 +26,7 @@ function shadowedFraction(
   r: Vec3,
   sunDirX: number, sunDirY: number, sunDirZ: number,
   sunDist: number, sinSunAng: number, sunAngRadius: number,
-  body: CelestialMotion, pivot: number,
+  body: CelestialBody, pivot: number,
 ): number {
   if (body.kind === 'star' || body.def.radius <= 0) return 1; // 恒星自身・半径0の天体は影を落とさない
   const b = body.positionAt(pivot);
@@ -57,7 +57,7 @@ function shadowedFraction(
 // 変わると、body 自身の夜側のように影の落ちた先が見えている位置関係でも 0 になってしまう。
 // 恒星自身と半径 0 の天体は影を落とさず、天体の内側からは恒星が完全に隠れる。
 export function maxShadowedFraction(
-  r: Vec3, star: CelestialMotion, body: CelestialMotion, pivot: number,
+  r: Vec3, star: CelestialBody, body: CelestialBody, pivot: number,
 ): number {
   if (body.kind === 'star' || body.def.radius <= 0) return 0;
   const s = star.positionAt(pivot);
@@ -77,7 +77,7 @@ export function maxShadowedFraction(
 // 複数天体の影は各々の減光率の積で合成する — 2天体が同時に太陽面へ重なって
 // 掩蔽し合う状況は現実的に起きないため、重なり領域を厳密に扱うより素直な近似とした。
 export function sunlitFactor(
-  r: Vec3, star: CelestialMotion, celestialBodies: readonly CelestialMotion[], pivot: number,
+  r: Vec3, star: CelestialBody, celestialBodies: readonly CelestialBody[], pivot: number,
 ): number {
   const s = star.positionAt(pivot);
   const tx = s.x - r.x, ty = s.y - r.y, tz = s.z - r.z;

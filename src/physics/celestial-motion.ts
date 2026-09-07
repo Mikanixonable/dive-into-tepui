@@ -7,15 +7,15 @@ import { qFromForwardUp } from '../math/quat';
 import { PointEphemeris, boundBaryStateAt } from './ephemeris/point';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
-import {
-  FrameRotation, JULIAN_CENTURY, KeplerOrbit, keplerOrbitAccel, keplerOrbitMeanDirection,
-  keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState,
-} from './kepler-orbit';
+import { JULIAN_CENTURY, KeplerOrbit, keplerOrbitAccel, keplerOrbitMeanDirection, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
+import { FrameRotation } from './celestial-body';
 import { collinearClearanceRatio, hasStableTriangularPoints } from './lagrange';
+import { CelestialBodyDef, PlanetDef, SatelliteDef, StarDef, spinRateOf } from './celestial-body-def';
+import { Degree2Gravity } from './celestial-body';
 import {
-  CelestialBodyDef, Degree2Gravity, PlanetDef, SatelliteDef, StarDef, spinRateOf,
-} from './celestial-body-def';
-import { CelestialKind, type BodyOrientation } from './celestial-body';
+  CelestialKind, type BodyOrientation, type CelestialBody, type EphemerisBody,
+  type OrbitingCelestialBody,
+} from './celestial-body';
 import {
   KinematicState, addPrimaryRelative, fromStarRelative, kinematicState, toPrimaryRelative,
 } from './kinematic-state';
@@ -65,7 +65,7 @@ export interface CelestialMotions {
   readonly atmosphereMotions: readonly CelestialMotion[];
 }
 
-export abstract class CelestialMotion {
+export abstract class CelestialMotion implements CelestialBody, EphemerisBody {
   abstract readonly def: CelestialBodyDef;
   abstract readonly kind: CelestialKind;
 
@@ -280,7 +280,7 @@ export class StarMotion extends CelestialMotion {
   }
 }
 
-export abstract class OrbitingMotion extends CelestialMotion {
+export abstract class OrbitingMotion extends CelestialMotion implements OrbitingCelestialBody {
   abstract readonly def: PlanetDef | SatelliteDef;
 
   // 主天体。惑星なら恒星、衛星ならその惑星。公転している以上、必ず持つ。

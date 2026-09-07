@@ -1,5 +1,5 @@
 // ECI 位置から最寄りの登録惑星までの距離と、マップ用の距離フェードを求める。
-import { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { Vec3 } from '../../math/vec3';
 
 const MAP_PLANET_SHIP_LABEL_START = 5e8;
@@ -7,7 +7,7 @@ const MAP_PLANET_SHIP_LABEL_END = 1e9;
 
 // position から最寄りの惑星までの距離 [m]。惑星が1体も無ければ null。
 export function nearestPlanetDistance(
-  position: Vec3, celestialBodies: readonly CelestialMotion[], pivot: number,
+  position: Vec3, celestialBodies: readonly CelestialBody[], pivot: number,
 ): number | null {
   let nearest: number | null = null;
   for (const celestialBody of celestialBodies) {

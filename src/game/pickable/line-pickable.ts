@@ -4,7 +4,7 @@
 // 「何を描いた線か」のラベル。
 import { Vec3 } from '../../math/vec3';
 import { isOccluded } from '../../physics/occlusion';
-import type { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { ProjectFn } from '../../math/projection';
 
 type LinePickKind = 'orbit-body' | 'orbit-ship' | 'orbit-guide';
@@ -42,7 +42,7 @@ function distanceSqToSegment(px: number, py: number, ax: number, ay: number, bx:
 // 表示時刻を渡す。
 export function pickNearestLine(
   orbits: readonly LinePickable[], x: number, y: number, project: ProjectFn, radiusPxSq: number,
-  cameraPos: Vec3, celestialBodies: readonly CelestialMotion[], pivot: number,
+  cameraPos: Vec3, celestialBodies: readonly CelestialBody[], pivot: number,
 ): LinePickable | null {
   let best: LinePickable | null = null;
   let bestDistSq = radiusPxSq;
