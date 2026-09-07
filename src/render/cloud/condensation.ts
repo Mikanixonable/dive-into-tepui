@@ -61,6 +61,10 @@ const TOWER_ONSET = 0.015;
 const TOWER_WIDTH = 0.09;
 // 塔を閉じる沈降の門 [m/s]。高気圧の吹きおろす所では、粒の峰が立っても深い対流にはならない。
 const TOWER_LIFT_GATE = 0.005;
+// 海洋性層積雲へ移る湿度の門。湿った海で、沈降と低い対流が重なるほど閉じた細胞の板へ寄せる。
+const STRATOCUMULUS_SUBSIDENCE_SCALE = 50;
+const STRATOCUMULUS_HUMIDITY_ONSET = 0.42;
+const STRATOCUMULUS_HUMIDITY_WIDTH = 0.20;
 // 対流の形が網目から粒へ渡る湿度。雲の少ない所では細胞の壁(網目)、多い所では細胞の芯(粒)が
 // 見える。**形を決める量は粒より低周波でなければならない** — 粒ごとに形が変わると並びが読めない
 // ので、粒を足す前の湿度で決める。渡り始めは覆いの効き始めの少し下、渡り終わりはその 1 単位ぶん上。
@@ -98,11 +102,16 @@ export function condense(weather: WeatherSample): CloudSample {
     .mul(inverseSqrt(network.mul(network).add(shape.mul(shape))));
   const peak = convection.mul(weather.convectiveActivity);
   const granularity = peak.mul(CONVECTION_GAIN).mul(weather.band.mul(BAND_GRAIN_FADE).oneMinus());
-  // 沈降する湿った低活発度の空では海洋性層積雲へ連続的に移り、前線帯ではその性質を薄める。
+  // 沈降する湿った海洋の低活発度の空では海洋性層積雲へ連続的に移り、前線帯ではその性質を薄める。
   const subsidence = max(weather.lift.negate(), 0);
-  const stratocumulus = smoothstep(0.42, 0.62, weather.surfaceHumidity)
-    .mul(tanh(subsidence.mul(CLOUD_TOP_LIFT)))
-    .mul(float(1).sub(weather.convectiveActivity)).mul(weather.band.oneMinus());
+  const stratocumulus = smoothstep(
+    STRATOCUMULUS_HUMIDITY_ONSET,
+    STRATOCUMULUS_HUMIDITY_ONSET + STRATOCUMULUS_HUMIDITY_WIDTH,
+    weather.surfaceHumidity,
+  )
+    .mul(tanh(subsidence.mul(STRATOCUMULUS_SUBSIDENCE_SCALE)))
+    .mul(float(1).sub(weather.convectiveActivity))
+    .mul(weather.band.oneMinus());
   // 層状の雲: 上昇流と暖気の流入と折り目の帯が持ち上げる高さに、対流の起伏が乗る。
   const convectionRelief = mix(float(1), weather.convectiveActivity, stratocumulus);
   const depth = max(weather.lift, 0).mul(CLOUD_TOP_LIFT).add(weather.warmth.mul(WARM_TOP))
