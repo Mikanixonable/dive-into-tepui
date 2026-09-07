@@ -1,9 +1,10 @@
 // 軌道物体一覧パネルの行ツリー: 種別ごとの一覧行を、既存 DOM を使い回しながら id 差分だけで
 // 同期・剪定する。見出し・検索欄・フィルタ UI の組み立てはパネル本体が持つ。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../../../hud/widgets';
+import type { ListedObject } from '../../pickable/listed-object';
 import type { Viewer } from '../../dynamic/dynamic-entity/viewer';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { ObjectPickable } from '../../pickable/object-pickable';
+
 import type { PhysicalObjectListOrder } from './physical-object-list-order';
 
 const EMPTY_IDS: readonly string[] = [];
@@ -42,7 +43,7 @@ export class PhysicalObjectListTree {
   public constructor(
     private readonly celestialSystem: CelestialSystem,
     private readonly order: PhysicalObjectListOrder,
-    private readonly itemsById: ReadonlyMap<string, ObjectPickable>,
+    private readonly itemsById: ReadonlyMap<string, ListedObject>,
     private readonly actions: RowTreeActions,
   ) {}
 
