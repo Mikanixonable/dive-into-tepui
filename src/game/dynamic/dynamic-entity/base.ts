@@ -297,6 +297,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   serialize(): BaseSaveData {
     return {
       id: this.id,
+      kind: 'base',
       name: this.name,
       r: { ...this.state.r },
       v: { ...this.state.v },
