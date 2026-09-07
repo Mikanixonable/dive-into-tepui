@@ -73,6 +73,7 @@ type BaseInit =
 export class Base extends DynamicEntity implements Controllable, ObjectPickable {
   public override readonly mapKind: DynamicEntityKind = 'base';
   public override readonly controllable = true;
+  public override readonly pickable = true;
 
   protected readonly predictedForGhost = true;
   protected readonly baseHistoryDuration = DEFAULT_HISTORY_DURATION;

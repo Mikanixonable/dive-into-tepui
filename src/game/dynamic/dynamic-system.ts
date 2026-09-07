@@ -8,6 +8,7 @@ import { FloatingOrigin } from '../camera/floating-origin';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { CapKind } from './dynamic-entity/entity-kind';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
+import { isObjectPickable, type ObjectPickable } from '../pickable/object-pickable';
 import { AmmoPickup } from './dynamic-entity/ammo-pickup';
 import { RcsFuelPickup } from './dynamic-entity/rcs-fuel-pickup';
 import { DebrisPiece } from './dynamic-entity/debris-piece';
@@ -64,6 +65,8 @@ export class DynamicSystem {
   public get detachedBoosters(): readonly DetachedBooster[] { return this.entities.filter((e): e is DetachedBooster => e instanceof DetachedBooster); }
   // 操作されうる個体。どれが操作対象かは持たない — それは呼び出し側が渡す。
   public get controllables(): readonly Controllable[] { return this.entities.filter(isControllable); }
+  // マップから選べる個体。
+  public get objectPickables(): readonly ObjectPickable[] { return this.entities.filter(isObjectPickable); }
 
   // 弾本体・弾ハロー・プラズマ弾・薬莢は geometry/material を全個体で共有するので、
   // 種別ごとに InstancedMesh 1本のプールで描く。
