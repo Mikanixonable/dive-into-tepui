@@ -64,6 +64,7 @@ export class ControlSelection {
   // 喪失した操作対象候補を回収・整理する。
   reclaimDead(): void {
     let lostActive = false;
+    // remove() が顔ぶれを触るので、走査は開始時の並びの写しに対して行う。
     for (const lost of [...this.entities.controllables]) {
       if (lost.alive) continue;
       if (this._current === lost) {
@@ -75,6 +76,7 @@ export class ControlSelection {
     if (lostActive) this.reclaimAfterLoss();
   }
 
+  // 操作対象を失った直後に呼ぶ。他に生存しているものがあれば引き継ぎ、無ければ未操作へ戻す。
   private reclaimAfterLoss(): void {
     const next = this.entities.controllables.find((c) => c.alive) ?? null;
     if (next) this.select(next);

@@ -41,6 +41,7 @@ function swapCameraRoles<T extends FocusCameraSaveData | ChaseSaveDataV1>(camera
 
 // 保存されたスナップショットを今の形へ揃える。形として読めないものは null を返す。
 export function normalizeSaveData(data: GameSaveData): GameSaveData | null {
+  // 旧いキーも読めるよう、いったん両方を持つ形として受ける。読み替えた旧キーは最後に落とす。
   const stored = data as GameSaveData & LegacyKeys;
   const ammoPickups = stored.ammoPickups ?? stored.ammos;
   if (!Array.isArray(ammoPickups)) return null;
