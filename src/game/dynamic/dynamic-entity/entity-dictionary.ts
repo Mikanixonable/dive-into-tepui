@@ -13,7 +13,7 @@ import type { EntitySaveDataUnion } from '../../save/save-data';
 import type { SpawnGate } from '../entity-registry';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import type { Notifier } from '../../../hud/notifier';
-import type { MarkerManager } from '../../marker/marker-manager';
+import type { MarkerSlots } from '../../marker/marker-slots';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 
 // 1体ぶんの復元手順。実体化(build)は、要る外部資源が揃うまで遅らせてよい。
@@ -30,14 +30,14 @@ export function restorationFor(
   scene: THREE.Scene,
   notifier: Notifier,
   worldSfx: WorldSfx,
-  markerManager: MarkerManager,
+  markers: MarkerSlots,
   effects: FlashEffects,
 ): EntityRestoration | null {
   switch (data.kind) {
     case 'player':
       return {
         gate: null,
-        build: () => new Player(notifier, worldSfx, scene, effects, markerManager, { saved: data, simTime }),
+        build: () => new Player(notifier, worldSfx, scene, effects, markers, { saved: data, simTime }),
       };
     case 'metal-enemy':
     case 'protein-enemy': {
@@ -57,7 +57,7 @@ export function restorationFor(
     case 'base':
       return {
         gate: null,
-        build: () => new Base({ saved: data, simTime }, scene, notifier, worldSfx, markerManager),
+        build: () => new Base({ saved: data, simTime }, scene, notifier, worldSfx, markers),
       };
     default:
       return skipUnknownKind(data);

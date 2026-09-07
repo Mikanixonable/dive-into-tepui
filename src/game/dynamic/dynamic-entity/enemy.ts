@@ -31,7 +31,7 @@ import type { GroupedMarkerItem, MarkerRole } from '../../marker/grouped-markers
 import type { EnemyDeathCause, Stage } from '../../stages/stage';
 import type { EnemySaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/crowding';
-import type { MarkerManager } from '../../marker/marker-manager';
+import type { MarkerSlots } from '../../marker/marker-slots';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import type { CombatTarget } from './combat-target';
 import type { ObjectPickable } from '../../pickable/object-pickable';
@@ -479,7 +479,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     return this.stateAt(displayTime)?.r ?? null;
   }
 
-  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
+  public shownOnMap(markers: MarkerSlots): boolean { return markers.shows(this.markerKey); }
 
   // 自艦から見た距離と相対速度。自艦がいなければ空。
   public listDetail(

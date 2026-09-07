@@ -14,7 +14,7 @@ import type { PlanEditor } from '../plan/plan-editor';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
-import type { MarkerManager } from './marker-manager';
+import type { MarkerSlots } from './marker-slots';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 
@@ -74,11 +74,11 @@ export abstract class OrbitPointMarker implements ObjectPickable {
   public hitBodyByRay(): boolean { return false; }
 
   public mapVisibility(): MapVisibility { return MARKER_VISIBILITY; }
-  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.id); }
+  public shownOnMap(markers: MarkerSlots): boolean { return markers.shows(this.id); }
 
   // マーカーを解いた位置へ置く。解けていないフレームと、天体に遮られたフレームは隠す。
   public sync(
-    markers: MarkerManager, project: ProjectFn, cameraPos: Vec3,
+    markers: MarkerSlots, project: ProjectFn, cameraPos: Vec3,
     celestialBodies: readonly CelestialBody[], pivot: number, occludeByBodies: boolean,
     timeLabel: TimeLabelSetting,
   ): void {

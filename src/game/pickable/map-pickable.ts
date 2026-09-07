@@ -5,7 +5,7 @@ import type { Vec3 } from '../../math/vec3';
 import type { ControlSelection } from '../control-selection';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
-import type { MarkerManager } from '../marker/marker-manager';
+import type { MarkerSlots } from '../marker/marker-slots';
 import type { ObjectWindows } from './object-windows';
 import type { PickCandidate } from './pick-candidate';
 
@@ -19,7 +19,7 @@ export interface MapPickable extends PickCandidate {
   // 表示トグルによる可否。viewer は操作中の対象を例外扱いする判定に使う。
   mapVisibility(policy: MapVisibilityPolicy, viewer: OrbitingObject | null): MapVisibility;
   // 直前のフレームで画面にマーカーが出ていたか。出ていない対象はマップ上で掴めない。
-  shownOnMap(markers: MarkerManager): boolean;
+  shownOnMap(markers: MarkerSlots): boolean;
 
   // マップの左クリックで選ばれたときの振る舞い。左クリックで掴めない対象は null。
   readonly onMapSelect: ((windows: ObjectWindows, clientX: number, clientY: number) => void) | null;

@@ -13,7 +13,7 @@ import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
-import type { MarkerManager } from '../marker/marker-manager';
+import type { MarkerSlots } from '../marker/marker-slots';
 import type { StageSaveData } from '../save/save-data';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
@@ -58,7 +58,7 @@ export type StageDeps = [
   scene: THREE.Scene,
   dynamicSystem: DynamicSystem,
   fx: FlashEffects,
-  markerManager: MarkerManager,
+  markers: MarkerSlots,
   celestialSystem: CelestialSystem,
   controlSelection: ControlSelection,
 ];
@@ -156,7 +156,7 @@ export abstract class Stage {
   protected readonly _scene: THREE.Scene;
   protected readonly _fx: FlashEffects;
   protected readonly _dynamicSystem: DynamicSystem;
-  protected readonly _markerManager: MarkerManager;
+  protected readonly _markers: MarkerSlots;
   protected readonly _celestialSystem: CelestialSystem;
   protected readonly _controlSelection: ControlSelection;
 
@@ -182,14 +182,14 @@ export abstract class Stage {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, worldSfx, uiSfx, scene, dynamicSystem, fx, markerManager, celestialSystem, controlSelection] = deps;
+    const [hud, worldSfx, uiSfx, scene, dynamicSystem, fx, markers, celestialSystem, controlSelection] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
     this._scene = scene;
     this._fx = fx;
     this._dynamicSystem = dynamicSystem;
-    this._markerManager = markerManager;
+    this._markers = markers;
     this._celestialSystem = celestialSystem;
     this._controlSelection = controlSelection;
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
@@ -239,7 +239,7 @@ export abstract class Stage {
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、
   // 何隻をどこへ置くかはステージ自身の宣言。
   protected addPlayer(init?: PlayerInit): Player {
-    const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, this._markerManager, init);
+    const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, this._markers, init);
     this._dynamicSystem.add(ship);
     this._controlSelection.claimIfNone(ship);
     return ship;

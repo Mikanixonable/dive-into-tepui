@@ -12,7 +12,7 @@ import type { MapListSection, ObjectPickerGenre } from '../pickable/pickable-lis
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
-import type { MarkerManager } from './marker-manager';
+import type { MarkerSlots } from './marker-slots';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 
@@ -61,7 +61,7 @@ export class LagrangePointMarker implements ObjectPickable {
 
   // ラグランジュ点は天体と別の表示トグルを持つ。
   public mapVisibility(policy: MapVisibilityPolicy): MapVisibility { return policy.body(this.id); }
-  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.id); }
+  public shownOnMap(markers: MarkerSlots): boolean { return markers.shows(this.id); }
 
   // メニューに出す操作項目。ヘッダーの副題には、この地点を定める2天体の対を出す。
   public menuItems(

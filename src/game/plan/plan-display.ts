@@ -11,7 +11,7 @@ import { fmtMarkerDist } from '../../hud/utils';
 import { TickRank, TimeLabelSetting, calendarBoundaries, tickLabel } from '../hud/orbit/calendar-ticks';
 import { ApsisMarker } from '../marker/apsis-marker';
 import type { DisplayedPath } from '../marker/equator-node-marker-pair';
-import { MarkerManager } from '../marker/marker-manager';
+import { MarkerSlots } from '../marker/marker-slots';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-identity';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
@@ -92,7 +92,7 @@ export class PlanDisplay {
   // 計画折れ線(PlanPath)を構築する。
   constructor(
     scene: THREE.Scene,
-    private readonly markerManager: MarkerManager,
+    private readonly markers: MarkerSlots,
     private readonly celestialBodies: CelestialBodies,
     displayDuration: DisplayDurationSource,
     private readonly controlSelection: ControlSelection,
@@ -180,11 +180,11 @@ export class PlanDisplay {
   // 計画に属する表示物をすべて畳む。
   private hide(): void {
     this.path.setVisible(false);
-    this.markerManager.hide('plannedPlayer');
-    this.markerManager.hide(this.apsisPe.id);
-    this.markerManager.hide(this.apsisAp.id);
-    for (const key of IMPACT_MARKER_KEYS) this.markerManager.hide(key);
-    for (const key of this.lastTickKeys) this.markerManager.remove(key);
+    this.markers.hide('plannedPlayer');
+    this.markers.hide(this.apsisPe.id);
+    this.markers.hide(this.apsisAp.id);
+    for (const key of IMPACT_MARKER_KEYS) this.markers.hide(key);
+    for (const key of this.lastTickKeys) this.markers.remove(key);
     this.lastTickKeys = [];
   }
 
@@ -212,14 +212,14 @@ export class PlanDisplay {
   ): void {
     const ghost = this.ghostAt(displayTime, simTime);
     if (!ghost) {
-      this.markerManager.hide('plannedPlayer');
+      this.markers.hide('plannedPlayer');
       return;
     }
     if (view === 'map' && this.occludedByCelestialBody(cameraPos, ghost.pos, displayTime)) {
-      this.markerManager.fadeOut('plannedPlayer');
+      this.markers.fadeOut('plannedPlayer');
       return;
     }
-    this.markerManager.setPosition(
+    this.markers.setPosition(
       'plannedPlayer', 'mk-planned', ENTITY_GLYPH.ghost, ghost.pos, project, ghost.label,
       1, undefined, undefined, false, false, undefined, cameraPos,
     );
@@ -333,7 +333,7 @@ export class PlanDisplay {
     const celestialBodies = this.celestialBodies.celestialMotions;
     for (const marker of [this.apsisPe, this.apsisAp]) {
       marker.sync(
-        this.markerManager, project, cameraPos, celestialBodies, displayTime, view === 'map', timeLabel,
+        this.markers, project, cameraPos, celestialBodies, displayTime, view === 'map', timeLabel,
       );
     }
   }
@@ -346,11 +346,11 @@ export class PlanDisplay {
     for (const key of IMPACT_MARKER_KEYS) {
       const icon = impactIcons.find((m) => m.key === key);
       if (!icon) {
-        this.markerManager.hide(key);
+        this.markers.hide(key);
       } else if (view === 'map' && this.occludedByCelestialBody(cameraPos, icon.pos, displayTime)) {
-        this.markerManager.fadeOut(key);
+        this.markers.fadeOut(key);
       } else {
-        this.markerManager.setPosition(
+        this.markers.setPosition(
           key, 'mk-impact', ORBIT_POINT_GLYPH.impact, icon.pos, project, icon.label,
           1, undefined, undefined, false, false, undefined, cameraPos,
         );
@@ -392,21 +392,21 @@ export class PlanDisplay {
       const icon = icons[i]!;
       const occluded = view === 'map' && this.occludedByCelestialBody(cameraPos, icon.pos, displayTime);
       if (!shown[i] || occluded) {
-        if (occluded) this.markerManager.fadeOut(icon.key);
-        else this.markerManager.hide(icon.key);
+        if (occluded) this.markers.fadeOut(icon.key);
+        else this.markers.hide(icon.key);
         continue;
       }
       const p = projected[i]!;
       const depth = finestShown === null ? 0 : Math.min(Math.max(icon.rank - finestShown, 0), maxDepth);
       const label = this.isFarFromShown(projected, shown, i, labelMinPxSq) ? icon.label : '';
-      this.markerManager.set(
+      this.markers.set(
         icon.key, 'mk-plantick', tickSvg(PLAN_TICK_RADIUS_PX[depth]!), p.x, p.y, true,
         label, 1, undefined, undefined, true,
       );
     }
     // 候補の暦区切り自体が入れ替わった分は、二度と使わないキーなので remove で消す。
     const keys = icons.map((icon) => icon.key);
-    for (const key of this.lastTickKeys) if (!keys.includes(key)) this.markerManager.remove(key);
+    for (const key of this.lastTickKeys) if (!keys.includes(key)) this.markers.remove(key);
     this.lastTickKeys = keys;
   }
 

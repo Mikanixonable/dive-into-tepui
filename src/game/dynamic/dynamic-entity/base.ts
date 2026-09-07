@@ -14,7 +14,7 @@ import type { Ray } from '../../../math/ray';
 import { buildBaseModel } from '../../../render/base-station-model';
 import type { Notifier } from '../../../hud/notifier';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
-import type { MarkerManager } from '../../marker/marker-manager';
+import type { MarkerSlots } from '../../marker/marker-slots';
 import type { BaseSaveData } from '../../save/save-data';
 import { Plan, type PlanExecutionMode } from '../../plan/plan';
 import { generateRandomName } from '../../random-name';
@@ -148,7 +148,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     scene: THREE.Scene,
     notifier: Notifier,
     worldSfx: WorldSfx,
-    private readonly markerManager: MarkerManager,
+    private readonly markers: MarkerSlots,
   ) {
     const { state, name, att, id } = 'saved' in init
       ? {
@@ -284,8 +284,8 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       this.thrustEffects.dispose(this.scene);
       this.rcsEffects.dispose(this.scene);
     }
-    this.markerManager.remove(this.markerKey);
-    this.markerManager.remove(`${this.markerKey}-bearing`);
+    this.markers.remove(this.markerKey);
+    this.markers.remove(`${this.markerKey}-bearing`);
   }
 
   // セーブデータへ変換する。
@@ -322,7 +322,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     return this.stateAt(displayTime)?.r ?? null;
   }
 
-  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
+  public shownOnMap(markers: MarkerSlots): boolean { return markers.shows(this.markerKey); }
 
   // 自艦がいれば自艦からの距離。いなければ出さない。
   public listDetail(

@@ -17,9 +17,7 @@ import { LabelDeclutter, canHideIconClass, isCombatClass } from './label-declutt
 import { LabelLayout } from './label-layout';
 import { strongestAttractor } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
-
-// 方向マーカーを投影する仮想距離 [m]。実在の位置ではなく方向のみを示す。
-export const MARKER_DIR_DIST = 5e4;
+import { MARKER_DIR_DIST, type MarkerSlots } from './marker-slots';
 
 // 画面外の対象を指す方位マーカーを置く円の半径(画面短辺の半分に対する比)
 const MARKER_BEARING_RING_RATIO = 0.8;
@@ -71,7 +69,7 @@ function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLE
   return e;
 }
 
-export class MarkerManager {
+export class MarkerManager implements MarkerSlots {
   private markerDictionary = new Map<string, MarkerRecord>();
   private readonly occlusionFadeTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly declutter = new LabelDeclutter();
@@ -165,7 +163,6 @@ export class MarkerManager {
   }
 
   // 3D空間上の「位置」を示すマーカー(敵機・補給・ノードなど、実在の座標そのもの)。
-  // worldPos を project して set するだけの手順を一元化する。
   setPosition(
     key: string,
     cls: string,
@@ -207,9 +204,7 @@ export class MarkerManager {
     }
   }
 
-  // 3D空間上の「方向」を示すマーカー(プログレード/ボアサイト/BURN など、実在の位置を
-  // 持たない)。origin から dir(単位ベクトル)方向へ MARKER_DIR_DIST だけ離れた仮想点を
-  // 投影する。origin は自機位置で統一する。
+  // 3D空間上の「方向」を示すマーカー。origin から dir 方向へ MARKER_DIR_DIST だけ離れた仮想点を投影する。
   setDirection(
     key: string,
     cls: string,
@@ -254,10 +249,7 @@ export class MarkerManager {
     return (Math.atan2(dy, dx) * 180) / Math.PI + 90;
   }
 
-  // 画面外(背面を含む)の対象を、画面中心から見た方位として画面端の円周上に置く。
-  // 画面内に居るあいだは隠す — 実位置を指す setPosition と対で使い、そちらが front=false や
-  // 画面外へ出て見えなくなったぶんを補う。
-  // sym は**上向きの記号**を渡すこと(方位角に 90° 足して回すため)。
+  // 方位角に 90° 足して回すので、sym は上向きの記号でなければならない。
   setBearing(
     key: string,
     cls: string,
@@ -293,8 +285,7 @@ export class MarkerManager {
     return m !== undefined && !m.hidden && !m.occlusionHidden && !this.occlusionFadeTimers.has(key);
   }
 
-  // マーカーを隠す。要素は残るので、キーが有限で使い回す対象(方向マーカー・補給スロットなど)に
-  // 使う。キーが対象ごとに増え続けるものは remove で要素ごと捨てること。
+  // マーカーを隠す。要素は残るので、キーが有限で使い回す対象に使う。
   hide(key: string): void {
     const m = this.markerDictionary.get(key);
     if (!m) return;
@@ -304,8 +295,7 @@ export class MarkerManager {
     m.root.style.display = 'none';
   }
 
-  // 天体遮蔽で見えなくなるマーカーを、いきなり消さずに約300msで透明化する。
-  // フェード完了後は通常の hide と同じく衝突判定の対象から外す。
+  // 透明化は CSS の遷移に任せるので、畳むのは遷移が終わる 300ms 後になる。
   fadeOut(key: string): void {
     const m = this.markerDictionary.get(key);
     if (!m || m.occlusionHidden || m.hidden || this.occlusionFadeTimers.has(key)) return;

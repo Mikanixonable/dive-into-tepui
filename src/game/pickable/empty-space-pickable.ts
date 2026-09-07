@@ -5,7 +5,7 @@ import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import type { ObjectPickable } from './object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
-import type { MarkerManager } from '../marker/marker-manager';
+import type { MarkerSlots } from '../marker/marker-slots';
 
 const ORIGIN = v3(0, 0, 0); // ECI [m]
 
@@ -27,7 +27,7 @@ export class EmptySpacePickable implements ObjectPickable {
   public hitBodyByRay(): boolean { return false; }
 
   public mapVisibility(): MapVisibility { return MARKER_VISIBILITY; }
-  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.id); }
+  public shownOnMap(markers: MarkerSlots): boolean { return markers.shows(this.id); }
 
   // メニューに出す操作項目。配置の項目を出せるかは窓側が決める。
   public menuItems(): readonly MenuItem<MenuAction>[] {

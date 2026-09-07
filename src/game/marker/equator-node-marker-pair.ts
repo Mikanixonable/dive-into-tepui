@@ -7,7 +7,7 @@ import { Vec3 } from '../../math/vec3';
 import { solveEquatorCrossings } from '../../physics/orbit-solvers';
 import { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarker } from './equator-node-marker';
-import type { MarkerManager } from './marker-manager';
+import type { MarkerSlots } from './marker-slots';
 import { ObjectPickable } from '../pickable/object-pickable';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
@@ -33,7 +33,7 @@ export interface EquatorNodeInputs {
   readonly displayTime: number;
   readonly celestialBodies: CelestialBodies;
   readonly frameAnchors: FrameAnchorSource;
-  readonly markerManager: MarkerManager;
+  readonly markers: MarkerSlots;
   readonly paths: DisplayedPathSource;
 }
 
@@ -42,7 +42,7 @@ export class EquatorNodeMarkerPair {
   private readonly descending: EquatorNodeMarker;
 
   // owner は交点を求める対象の軌道の持ち主。
-  constructor(private readonly owner: DynamicEntity, private readonly markerManager: MarkerManager) {
+  constructor(private readonly owner: DynamicEntity, private readonly markers: MarkerSlots) {
     this.ascending = new EquatorNodeMarker(owner.id, 'ascending');
     this.descending = new EquatorNodeMarker(owner.id, 'descending');
   }
@@ -114,7 +114,7 @@ export class EquatorNodeMarkerPair {
   ): void {
     for (const marker of [this.ascending, this.descending]) {
       marker.sync(
-        this.markerManager, project, cameraPos, celestialBodies, celestialBodiesPivot,
+        this.markers, project, cameraPos, celestialBodies, celestialBodiesPivot,
         occludeByBodies, timeLabel,
       );
     }
@@ -123,7 +123,7 @@ export class EquatorNodeMarkerPair {
   // マーカー要素ごと取り除く。
   dispose(): void {
     this.retire();
-    this.markerManager.remove(this.ascending.id);
-    this.markerManager.remove(this.descending.id);
+    this.markers.remove(this.ascending.id);
+    this.markers.remove(this.descending.id);
   }
 }

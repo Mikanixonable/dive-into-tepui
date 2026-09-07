@@ -6,7 +6,7 @@ import type { View } from '../view/view';
 import { KinematicState, kinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { scale, sub } from '../../math/vec3';
 import type { OrbitReference } from '../orbit-reference';
-import type { MarkerManager } from '../marker/marker-manager';
+import type { MarkerSlots } from '../marker/marker-slots';
 import { DIRECTION_GLYPH } from '../marker/marker-identity';
 import type { ProjectFn } from '../../math/projection';
 
@@ -15,7 +15,7 @@ const COMBAT_KEYS = ['pro', 'retro', 'nrm', 'anm', 'radout', 'radin', 'bore'] as
 
 export class PlayerMarkers {
   constructor(
-    private readonly markerManager: MarkerManager,
+    private readonly markers: MarkerSlots,
     private readonly id: string,
   ) { }
 
@@ -26,7 +26,7 @@ export class PlayerMarkers {
     rounds = 0, beltLinks = 0, muzzleSpeed = 0, orbitRef?: OrbitReference,
   ): void {
     if (view === 'map') {
-      if (isActive) for (const key of COMBAT_KEYS) this.markerManager.hide(`${key}-${this.id}`);
+      if (isActive) for (const key of COMBAT_KEYS) this.markers.hide(`${key}-${this.id}`);
       return;
     }
     if (!isActive) return;
@@ -36,7 +36,7 @@ export class PlayerMarkers {
 
   // キーは艦ごとに一意で増え続けるため、hide ではなく remove で DOM ごと片付ける。
   dispose(): void {
-    for (const key of COMBAT_KEYS) this.markerManager.remove(`${key}-${this.id}`);
+    for (const key of COMBAT_KEYS) this.markers.remove(`${key}-${this.id}`);
   }
 
   // prograde/retrograde/normal/antinormal/radial in-out の6方向マーカーを配置する。
@@ -49,14 +49,14 @@ export class PlayerMarkers {
       : state;
     const { pro: proDir, nrm: nrmDir, radOut: radDir } = orbitAxes(relState);
 
-    this.markerManager.setDirection(`pro-${this.id}`, 'mk-pro', DIRECTION_GLYPH.prograde, pr, proDir, project, 'PROGRADE');
-    this.markerManager.setDirection(`retro-${this.id}`, 'mk-retro', DIRECTION_GLYPH.retrograde, pr, scale(proDir, -1), project, 'RETROGRADE');
+    this.markers.setDirection(`pro-${this.id}`, 'mk-pro', DIRECTION_GLYPH.prograde, pr, proDir, project, 'PROGRADE');
+    this.markers.setDirection(`retro-${this.id}`, 'mk-retro', DIRECTION_GLYPH.retrograde, pr, scale(proDir, -1), project, 'RETROGRADE');
 
-    this.markerManager.setDirection(`nrm-${this.id}`, 'mk-nrm', DIRECTION_GLYPH.normal, pr, nrmDir, project, 'NORMAL');
-    this.markerManager.setDirection(`anm-${this.id}`, 'mk-nrm', DIRECTION_GLYPH.antinormal, pr, scale(nrmDir, -1), project, 'ANTINORMAL');
+    this.markers.setDirection(`nrm-${this.id}`, 'mk-nrm', DIRECTION_GLYPH.normal, pr, nrmDir, project, 'NORMAL');
+    this.markers.setDirection(`anm-${this.id}`, 'mk-nrm', DIRECTION_GLYPH.antinormal, pr, scale(nrmDir, -1), project, 'ANTINORMAL');
 
-    this.markerManager.setDirection(`radout-${this.id}`, 'mk-rad', DIRECTION_GLYPH.radialOut, pr, radDir, project, 'RADIAL OUT');
-    this.markerManager.setDirection(`radin-${this.id}`, 'mk-rad', DIRECTION_GLYPH.radialIn, pr, scale(radDir, -1), project, 'RADIAL IN');
+    this.markers.setDirection(`radout-${this.id}`, 'mk-rad', DIRECTION_GLYPH.radialOut, pr, radDir, project, 'RADIAL OUT');
+    this.markers.setDirection(`radin-${this.id}`, 'mk-rad', DIRECTION_GLYPH.radialIn, pr, scale(radDir, -1), project, 'RADIAL IN');
   }
 
   // 機首方向にボアサイトマーカーを置く。
@@ -66,6 +66,6 @@ export class PlayerMarkers {
     // 塗りつぶしや長方形の輪郭は使わず、各アームを独立した線分として描く。
     const star = '<svg viewBox="0 0 24 24" width="48" height="48" aria-label="照準"><g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="butt"><path d="M12 9.7V2"/><path d="M12 9.7V2" transform="rotate(120 12 12)"/><path d="M12 9.7V2" transform="rotate(240 12 12)"/></g></svg>';
     const label = `AMMO ${Math.max(0, rounds)}\nBELT ${Math.max(0, beltLinks)}\n${muzzleSpeed.toFixed(0)} m/s`;
-    this.markerManager.setDirection(`bore-${this.id}`, 'mk-boresight', star, state.r, fwd, project, label, 1, undefined, undefined, true, true);
+    this.markers.setDirection(`bore-${this.id}`, 'mk-boresight', star, state.r, fwd, project, label, 1, undefined, undefined, true, true);
   }
 }
