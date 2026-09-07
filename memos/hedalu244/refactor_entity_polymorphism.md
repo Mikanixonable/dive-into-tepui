@@ -104,93 +104,17 @@ incompatible`)になる — 同じ形を再現して確認済み。この option
    する」趣旨のコメントが残っていない。
 6. `npm run typecheck` と `npm run test:game` が通る。
 
-## 手順
+## 実績
 
-### 手順3. `DynamicEntity.serialize()` を基底へ持たせ、復元辞書を作り、`GameSaveData` を1本の `entities` 配列へ畳む
-
-**目的**: 手順1・2で用意した性質を使い、直列化・復元の両方を多態化し、`Game` /
-`DynamicSystem.restoreFromSave` から種別の一覧を消す。`SAVE_VERSION` を上げるので、この手順は
-挙動(セーブデータの形式)を変える。版上げで読み手を失う `BaseSaveData` の `q?` / `w?` を必須へ
-戻し、`EntitySaveData` の派生に戻すのもここで行う(決めたこと E)。
-
-**変更が必要な箇所**
-
-*エンティティ側(直列化を多態化)*
-
-| ファイル | 変更 |
-| --- | --- |
-| `dynamic-entity.ts` | `checkLoss`(632-636行目)の並びに `public serialize(): EntitySaveDataUnion \| null { return null; }` を追加する。`import type { EntitySaveDataUnion } from '../../save/save-data';` を追加する。 |
-| `player/player.ts`(608行目) | `serialize(): PlayerSaveData` に `public override` を付す。 |
-| `dynamic-entity/enemy.ts`(418-441行目) | `public serialize(): EnemySaveData` を `protected serializeEnemyFields(): EnemySaveData` へ改名する(具象が共通項目を足すためのヘルパーへ位置づけを変える。`DynamicEntity.serialize()` の override ではなくなる)。冒頭コメントもヘルパーとしての説明へ書き直す。 |
-| `dynamic-entity/metal-enemy.ts`(75行目) | `...super.serialize()` を `...this.serializeEnemyFields()` へ変更する。 |
-| `dynamic-entity/protein-enemy.ts`(236行目) | 同様に `...super.serialize()` を `...this.serializeEnemyFields()` へ変更する。 |
-| `dynamic-entity/ammo-pickup.ts`(73行目) | `public override` を付す。 |
-| `dynamic-entity/rcs-fuel-pickup.ts`(70行目) | `public override` を付す。 |
-| `dynamic-entity/detached-booster.ts`(162行目) | `public override` を付す。 |
-| `dynamic-entity/base.ts`(296行目) | `public override` を付す。 |
-
-*復元の辞書(新規)*
-
-| ファイル | 変更 |
-| --- | --- |
-| `dynamic/dynamic-entity/entity-dictionary.ts`(新規) | `interface EntityRestoration { readonly pendingAssetId: ProteinAssetId \| null; build(): DynamicEntity; }` と `function restorationFor(data: EntitySaveDataUnion, simTime: number, scene: THREE.Scene, hud: Hud, worldSfx: WorldSfx, markerManager: MarkerManager, effects: EffectsSystem): EntityRestoration \| null` を export する。`data.kind` の網羅的な switch で `Player` / (`findEnemyClass` 経由の) Enemy 具象 / `AmmoPickup` / `RcsFuelPickup` / `DetachedBooster` / `Base` を組み立てる各分岐を書く。`enemy-dictionary.ts` の `findEnemyClass` を import する(具象 Enemy クラスは直接 import しない)。 |
-
-*`DynamicSystem`*
-
-| ファイル | 変更 |
-| --- | --- |
-| `dynamic-system.ts`(15行目) | `import { findEnemyClass } from './dynamic-entity/enemy-dictionary';` を `import { restorationFor } from './dynamic-entity/entity-dictionary';` へ差し替える。 |
-| `dynamic-system.ts`(64行目) | `detachedBoosters` ゲッタを削除する。`DetachedBooster` の import(20行目)も削除する(他に使用箇所が無いことを確認済み)。 |
-| `dynamic-system.ts`(106-135行目) | `restoreFromSave` を、`save.entities` を1本の `for` で回して `restorationFor(...)` → `this.spawnWhenReady(restoration.pendingAssetId, restoration.build)` する形へ書き直す。`restorationFor` が `null` を返す(未知の `kind`)場合は読み飛ばす。 |
-| `dynamic-system.ts`(161-186行目) | `spawnEnemyWhenReady` を `spawnWhenReady` へ改名し、`build` の型を `() => Enemy` から `() => DynamicEntity` へ、`pendingEnemySpawns` の要素型も同様に広げる(内部の分岐ロジックは変えない)。 |
-| `dynamic-system.ts`(新規メソッド、`all()` の近く) | `serialize(): readonly EntitySaveDataUnion[]` を追加する(`this.entities.map((e) => e.serialize())` から `null` を除いたもの)。 |
-
-*呼び出し元*
-
-| ファイル | 変更 |
-| --- | --- |
-| `stages/stage.ts`(262行目) | `dynamicSystem.spawnEnemyWhenReady(...)` を `dynamicSystem.spawnWhenReady(...)` へ変更する(`Stage` 自身が持つ同名メソッド `spawnEnemyWhenReady`〈261行目の定義〉は改名しない — Stage の呼び出し口としては引き続き Enemy 専用の名で正しい)。 |
-| `game.ts`(162-169行目) | 種別ごとの6行を `entities: this.dynamicSystem.serialize(),` の1行へ置き換える。 |
-
-*セーブデータの型(`GameSaveData` の形と `BaseSaveData` の継承)*
-
-| ファイル | 変更 |
-| --- | --- |
-| `save-data.ts` | `SAVE_VERSION` を `2` から `3` へ。`GameSaveData` の `players` / `enemies` / `ammoPickups` / `rcsFuelPickups?` / `detachedBoosters?` / `bases` の6フィールドを `entities: EntitySaveDataUnion[]` の1本へ置き換える。 |
-| `save-data.ts`(114-127行目) | `BaseSaveData` の `q?` / `w?` を必須(`q` / `w`)へ戻し、`export interface BaseSaveData extends EntitySaveData` にする。`EntitySaveData` と重複する `id` / `name?` / `r` / `v` の宣言を落とし、`kind: 'base';`(手順2で追加)・`money` / `fuel?` / `throttle?` / `showTrajectoryLine?` だけを残す。 |
-| `dynamic/dynamic-entity/base.ts`(158-167行目) | `savedAtt` の組み立てから `init.saved.q` の真偽分岐と `init.saved.w ? … : v3()` の既定値を落とす(`q` / `w` が欠けることがなくなるため)。`savedAtt` は `'saved' in init` だけで決まる。 |
-
-*旧形式の移行コードの整理*
-
-| ファイル | 変更 |
-| --- | --- |
-| `save/normalize-save.ts` | 削除する。 |
-| `tests/game/normalize-save.test.ts` | 削除する。 |
-| `launcher/save/snapshot-service.ts` | `normalizeSaveData` の import と呼び出しを削除する。version チェック後の `data` をそのまま `isEphemerisContextRestorable(data.ephemerisContext)` へ渡し、`stageId` の一致確認と返り値も `data` に対して行う。 |
-| `launcher/save/legacy-save.ts`(66-68行目) | `data.bases.reduce(...)` / `data.players.length` / `data.enemies.filter(...)` を、`data.entities` を `kind` でフィルタする形へ書き直す — `money` は `kind === 'base'` の `money` 合計、`playerCount` は `kind === 'player'` の件数、`enemyAliveCount` は `kind` が `'metal-enemy'` または `'protein-enemy'` かつ `alive` の件数。 |
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `npm run test:game` が通る。
-- `grep -n "\.serialize()" src/game/game.ts` の該当行が `this.dynamicSystem.serialize()` の1件だけになっている(`activeStage.serialize()` / `cameraSystem.serialize()` / `celestialSystem.serialize()` は別責務の直列化なので対象外)。
-- `grep -n "players:\|enemies:\|ammoPickups:\|rcsFuelPickups?:\|detachedBoosters?:\|bases:" src/game/save/save-data.ts` に `GameSaveData` のフィールドとしての出現が無い(`StageSaveData` 系など無関係な型は対象外)。
-- `grep -rn "dynamicSystem.spawnEnemyWhenReady" src` が0件。
-- `grep -n "q?:\|w?:" src/game/save/save-data.ts` が0件(`BaseSaveData` の姿勢が必須へ戻っている)。
-- `grep -n "interface BaseSaveData extends EntitySaveData" src/game/save/save-data.ts` が1件。
-- 手動確認(`npm run dev`): 新規に開始 → セーブ → 一覧から同じスロットをロード、を行い、自機・敵・弾薬・RCS燃料・分離ブースター・基地がそれぞれ復元されることを目視する。**この確認で使う既存のセーブスロットは version 不一致で読めなくなる**ので、確認は今回の変更を含むビルドで新規に作ったセーブを対象に行う。
-
-## 見積り
-
-編集ファイル数と、ファイルあたりの目安行数(diff 行数)から見積もる。
-
-| 手順 | 対象ファイル数 | 内訳 | 目安 diff |
+| 手順 | 変更ファイル数 | diff 行数 | commit |
 | --- | --- | --- | --- |
-| 手順1 | 9(実測) | — | 21行(実測、8bf3caf9) |
-| 手順2 | 2(実測) | — | 19行(実測、86f4516c) |
-| 手順3 | 15 | 新規1ファイル(約60行)+ 改名/override付与9ファイル(各1〜5行)+ DynamicSystem書き直し(約40行)+ Game/stage.ts(各1〜7行)+ 削除2ファイル+ launcher側2ファイル(各5〜10行)+ `BaseSaveData` の継承化(`save-data.ts` / `base.ts` で約15行) | 約195行 |
+| 手順1 被選択物の多態化 | 9 | 21 | `8bf3caf9` |
+| 手順2 kind の判別可能化 | 2 | 19 | `86f4516c` |
+| 手順3 直列化・復元の多態化 | 19 | 400 | `1ba693fa` |
+| 事後の /refactor(公開範囲の明示) | 7 | 16 | `314fc820` |
 
-合計 約230行の diff(新規ファイル1件、削除ファイル2件を含む)。
+合計 21 ファイル・166 追加 / 274 削除(新規1件、削除2件を含む)。見積り(約230行)に対し、
+実際は削除が多く純減した。
 
 ## リスクと落とし穴
 
