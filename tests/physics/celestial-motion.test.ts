@@ -3,7 +3,8 @@
 // 個々の軌道モデルの精度は kepler-orbit.test.ts / satellite-orbit.test.ts が担う。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { PlanetDef, PlanetMotion, SatelliteDef } from '../../src/physics/celestial-motion';
+import { PlanetMotion } from '../../src/physics/celestial-motion';
+import { PlanetDef, SatelliteDef } from '../../src/physics/celestial-body-def';
 import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import {
   MU_EARTH, MU_MOON, MU_SUN as MU_SUN_LOCAL, SIDEREAL_DAY,

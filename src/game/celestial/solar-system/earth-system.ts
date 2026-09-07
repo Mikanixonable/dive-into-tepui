@@ -5,9 +5,8 @@ import cloudFieldUrl from '../../../assets/cloud-field.png';
 import earthSmoothnessUrl from '../../../assets/earth-smoothness.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import { AtmosphereDef } from '../../../physics/atmosphere';
-import {
-  PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero, SatelliteMotion, StarMotion,
-} from '../../../physics/celestial-motion';
+import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
+import { PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { satelliteOrbit } from '../../../physics/satellite-orbit';
