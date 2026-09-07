@@ -55,7 +55,7 @@ export class OrbitPanel {
   public sync(game: Game): void {
     this.game = game;
     const celestialBodies = game.celestialSystem.celestialMotions;
-    const entity = game.activeControllableEntity;
+    const entity = game.activeControllable;
     const el = this.els.get('hud-orbit');
     if (!entity) {
       el?.classList.add('hidden');

@@ -137,34 +137,6 @@
 ## 手順
 
 
-### 手順 4. 分離ブースターの名指し処理を消す
-
-#### 目的
-
-`updatePlayers` の中に埋まっている `updateBurn`(`dynamic-system.ts:317`)と、専用の同期パス
-`syncDetachedBoosters`(383)、そして敵トグルへの誤った追従(418の TODO)を同時に外す。
-**表示トグルの挙動だけが変わる**(手順1で SPEC に書いた規則へ揃う)。
-
-#### 変更が必要な箇所
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/dynamic-entity/dynamic-entity.ts` | `updateThrust(_simDt: number): void {}`(自律的に決まる推力を1フレーム進める既定の空実装)と `syncEffects(_fo, _displayTime, _cameraSystem, _style): void {}`(カメラと描画スタイルを要る付随表示。可視性の上書きより後に呼ばれる)を足す |
-| `src/game/dynamic/dynamic-entity/detached-booster.ts` | `mapKind = 'player'` を宣言(決めたこと 3)。`updateBurn`(107)→`updateThrust` の override へ。`syncBooster`(135)を分割 — メッシュ位置は基底の `sync` に任せて override を消し、プルームだけを `syncEffects` の override にする(`categoryVisible` の自前判定は `applyVisibility` へ渡すので削除。`this.renderObject.visible` が false のときは `plume.hide()`) |
-| `src/game/dynamic/dynamic-system.ts` | `updateThrusts(simDt)`(全個体へ `updateThrust`)を足し、`updateControllables` から booster ループを外す。`syncDetachedBoosters`(383)を削除。`sync`(353)の順を「`syncControllables` → `syncOtherEntities` → `applyVisibility` → `syncEffects` の全体ループ → `effects.sync` → `syncEquatorNodes`」にする。`syncOtherEntities` の除外から `DetachedBooster` を落とす。418の TODO を削除 |
-| `src/game/game.ts` | `advanceSimulation` で `updateControllables` の直前に `dynamicSystem.updateThrusts(simDt)` を呼ぶ |
-
-#### 達成条件と検証
-
-- `grep -n "DetachedBooster" src/game/dynamic/dynamic-system.ts` が
-  import・`restoreFromSave`・`detachedBoosters` getter の3件だけ。
-- `grep -rn "syncBooster\|updateBurn\|TODO: 分離ブースター" src` が 0 件。
-- `npm run typecheck`、`npm run test:game`。
-- `npm run dev` で `[6]` 点火 → `[5]` 分離し、**分離後もブースターが燃え続け、プルームが出る**
-  ことを目視。マップビューで「敵」トグル OFF → ブースターは残る。「自艦」トグル OFF → 消える。
-
----
-
 ### 手順 5. 操作対象を1つに束ねる(`ControlSelection`)
 
 #### 目的

@@ -6,7 +6,7 @@ import type { FrameAnchorSource } from '../../physics/frame';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import { FloatingOrigin } from '../camera/floating-origin';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
-import { Player } from '../player/player';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import { currentThemePalette } from '../../theme';
 import type { CombatTarget } from '../targeter';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
@@ -61,7 +61,7 @@ export class EntityLineManager {
 
   // 出す/消す/スタイルを決める。
   private applyLines(
-    activePlayer: Player | null, primaryTarget: CombatTarget | null,
+    active: Controllable | null, primaryTarget: CombatTarget | null,
     view: View, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
     orbitRef: OrbitReference | undefined,
   ): void {
@@ -104,7 +104,7 @@ export class EntityLineManager {
     };
 
     for (const ship of this.entities.players) {
-      const isActive = ship === activePlayer;
+      const isActive = ship === active;
       const visibility = visibilityPolicy?.entity('player', isActive);
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
       const trajectoryEligible = isActive || (view === 'map' && ship.showTrajectoryLine);
@@ -132,15 +132,15 @@ export class EntityLineManager {
   }
 
   // 各個体が持つべき線を揃えてから、その形状と変換をこのフレームの表示状態へ合わせる。
-  // 判断材料(表示可否・ターゲット・操作艦・ビュー)はこのフレームの確定値を渡す。
+  // 判断材料(表示可否・ターゲット・操作対象・ビュー)はこのフレームの確定値を渡す。
   sync(
-    activePlayer: Player | null, primaryTarget: CombatTarget | null,
+    active: Controllable | null, primaryTarget: CombatTarget | null,
     view: View, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
     orbitRef: OrbitReference | undefined,
     fo: FloatingOrigin, camera: THREE.Camera,
     frameAnchors: FrameAnchorSource, celestialSystem: CelestialSystem,
   ): void {
-    this.applyLines(activePlayer, primaryTarget, view, displayWindow, visibilityPolicy, orbitRef);
+    this.applyLines(active, primaryTarget, view, displayWindow, visibilityPolicy, orbitRef);
     const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
     for (const group of this.lineOwners) {
       for (const entity of group) {

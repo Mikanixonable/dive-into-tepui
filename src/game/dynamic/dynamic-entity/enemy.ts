@@ -10,7 +10,8 @@ import { KinematicState, kinematicState } from '../../../physics/kinematic-state
 import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../../math/vec3';
 import { solveLeadTime } from '../../../physics/intercept';
 import { EffectsSystem } from '../../vfx/effects-system';
-import { Player } from '../../player/player';
+import type { Controllable } from './controllable';
+import type { Player } from '../../player/player';
 import { Bullet } from './bullet';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { R_EARTH_EQ } from '../../celestial/solar-system/constants';
@@ -462,26 +463,26 @@ export abstract class Enemy extends Ship implements ObjectPickable {
 
   // 自艦から見た距離と相対速度。自艦がいなければ空。
   public listDetail(
-    _celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+    _celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
   ): string {
-    if (activePlayer === null) return '';
-    const viewer = activePlayer.state;
-    const d = len(sub(this.posAt(displayTime) ?? this.state.r, viewer.r));
-    const label = this.listCounted(activePlayer, displayTime) ? '接近' : '距離';
-    return `${label} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.state.v, viewer.v)))}`;
+    if (viewer === null) return '';
+    const viewerState = viewer.state;
+    const d = len(sub(this.posAt(displayTime) ?? this.state.r, viewerState.r));
+    const label = this.listCounted(viewer, displayTime) ? '接近' : '距離';
+    return `${label} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.state.v, viewerState.v)))}`;
   }
 
   // 検索が照合する文字列。行の補助表示と同じ。
   public listSearchText(
-    celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+    celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
   ): string {
-    return this.listDetail(celestialSystem, activePlayer, displayTime);
+    return this.listDetail(celestialSystem, viewer, displayTime);
   }
 
   // 自艦へ接近中と扱う距離まで寄っているか。
-  public listCounted(activePlayer: Player | null, displayTime: number): boolean {
-    if (activePlayer === null) return false;
-    const d = len(sub(this.posAt(displayTime) ?? this.state.r, activePlayer.state.r));
+  public listCounted(viewer: Controllable | null, displayTime: number): boolean {
+    if (viewer === null) return false;
+    const d = len(sub(this.posAt(displayTime) ?? this.state.r, viewer.state.r));
     return d < ENEMY_APPROACH_DIST;
   }
 
@@ -513,7 +514,7 @@ export abstract class Enemy extends Ship implements ObjectPickable {
   public propertyRows(
     commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
   ): readonly PropertyRow[] {
-    const viewer = commands.activePlayer;
+    const viewer = commands.controlled;
     const rel = viewer ? relativeInfo(viewer, this, celestialSystem.celestialMotions, simTime) : null;
     const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(this.hp)} / ${this.maxHp}` }];
     // 自艦との相対量。

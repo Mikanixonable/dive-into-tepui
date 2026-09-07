@@ -96,7 +96,7 @@ export class OrbitAnalysisWindow {
   // 見ている個体へ analysisPanelReader を立て、外れた個体から降ろす。予測の伸長対象は
   // このフラグで決まるので、予測を進める前に呼ぶ。
   public update(game: Game): void {
-    const entity = game.activeControllableEntity;
+    const entity = game.activeControllable;
     this.readerEntity = applyReader(this.readerEntity, entity);
     const target = entity ? resolveApproachTarget(game) : null;
     this.readerTargetEntity = applyReader(
@@ -107,7 +107,7 @@ export class OrbitAnalysisWindow {
   // 選べるタブを出し直してから、選択中のタブへ描画を委ねる。
   public sync(game: Game): void {
     if (!this.throttle.due()) return;
-    const entity = game.activeControllableEntity;
+    const entity = game.activeControllable;
     // 別の対象を見ることになるので、各タブの表示範囲を開き直す。
     if (entity !== this.drawnEntity) {
       for (const tab of this.tabs) tab.resetView();

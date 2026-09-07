@@ -24,7 +24,7 @@ import { DisplayDurationSource, Plan } from './plan';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import type { ActivePlayerController } from '../active-controllable-controller';
+import type { ControlSelection } from '../control-selection';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { PlanPath } from './plan-path';
 
@@ -41,7 +41,7 @@ export class PlanEditor {
   // 実行済みとして列の前方から取り除かれた場合も、同じ同一性判定で追随できる。
   private selectedNode: KinematicState | null = null;
 
-  // 直前の update() で操作対象だった艦/基地。切替の検出だけに使う(正本は ActivePlayerController)。
+  // 直前の update() で操作対象だったもの。切替の検出だけに使う(正本は ControlSelection)。
   private lastSeenShip: Controllable | null = null;
 
   // 選択中ノードの現在の index。列に無ければ null。
@@ -59,11 +59,11 @@ export class PlanEditor {
 
   // 操作対象(自機船または基地)。ノードの起点として状態が要るときだけ引く。
   private get ship(): Controllable | null {
-    return this.activePlayers.currentControllable;
+    return this.controlSelection.current;
   }
 
   // 操作対象自身の計画。操作対象を切り替えると編集対象もその計画へ切り替わる。
-  private get plan(): Plan | null { return this.activePlayers.currentControllable?.plan ?? null; }
+  private get plan(): Plan | null { return this.controlSelection.current?.plan ?? null; }
 
   private readonly gizmo3d: PlanGizmo3D;
 
@@ -84,7 +84,7 @@ export class PlanEditor {
     private readonly simSpeedManager: SimSpeedManager,
     private readonly celestialSystem: CelestialSystem,
     scene: THREE.Scene,
-    private readonly activePlayers: ActivePlayerController,
+    private readonly controlSelection: ControlSelection,
     private readonly displayDuration: DisplayDurationSource,
     private readonly frameControls: FrameControls,
     private readonly path: PlanPath,
