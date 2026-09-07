@@ -115,26 +115,19 @@
    噴射でき、プルームと RCS パフが出る。基地へ 300 m 以内まで艦を寄せても、
    軸線・リング・`◎` マーカーが出ない。
 
-## 手順
+## 実測(全手順 実施後)
 
-## 見積り
+`948f8b76..720f0cd2` の差分。
 
-**削除される行数.** 実測(`wc -l`)。
-
-| 区分 | 内訳 | 行 |
-| --- | --- | --- |
-| 全削除(手順2) | `docking.ts` 339 + `docking-guide.ts` 131 | 470 |
-| 全削除(手順3) | `base-view.ts` 430 + `-parts-tab` 319 + `-shared` 165 + `-vessels-tab` 134 + `-shop-tab` 93 + `resource-transfer-dialog` 378 + `rcs-fuel-transfer` 58 | 1,577 |
-| 部分削除 | `base.ts` ≈110 / `object-windows.ts` ≈60 / `player.ts` ≈25 / `object-commands.ts` ≈20 / `game.ts` ≈15 / `menu-actions.ts` ≈10 / `dynamic-system.ts` ≈8 / `save-data.ts` ≈8 / `settings-view-style.ts` 12 / その他6ファイル ≈8 | ≈276 |
-| **合計** | | **≈2,320** |
-
-**触るファイル数.** 削除9 + 編集15 = **24**(SPEC 7ファイルは別)。
-
-**手順ごとの規模.**
-
-| 手順 | 削除ファイル | 編集ファイル | 削除行 |
+| 区分 | ファイル | 追加 | 削除 |
 | --- | --- | --- | --- |
-| 5 | 0 | 未定 | — |
+| `src/` | 28(削除9・編集19) | 30 | 2,423 |
+| `DEVELOP/SPEC/` | 7 | 20 | 53 |
+| **合計** | **35** | **50** | **2,476** |
+
+見積り(≈2,320行 / 24ファイル)に対し、削除行はほぼ一致。ファイルが増えたのは、
+実施中に見つかった死んだ拡張点(`PropertyWindow.setExpandedPanel`)と、
+焼け残ったコメント(`draggable-window.ts` / `active-controllable-controller.ts`)を足したため。
 
 ## リスクと落とし穴
 
