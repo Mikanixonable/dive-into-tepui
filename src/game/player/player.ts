@@ -127,7 +127,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   private readonly contactProxyScratch: DynamicEntity[] = [];
 
   private readonly thrustEffects: ThrustEffects;
-  private rcsThrust: Vec3 | null = null;
   private readonly rcsEffects: RcsEffects;
   private readonly reentryEffects: ReentryEffects;
   private readonly markers: PlayerMarkers;
@@ -296,11 +295,11 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     this.fire.updateFireState(dt, input, activeStage, entities, celestialSystem);
 
     this.throttle.updateThrustLatches(input);
-    this.rcsThrust = this.throttle.updateThrustState(input, this.att, simDt, this);
+    const rcsThrust = this.throttle.updateThrustState(input, this.att, simDt, this);
     const boosterThrust = this.boosters.thrust;
-    this.thrust = this.rcsThrust && boosterThrust
-      ? add(this.rcsThrust, boosterThrust)
-      : this.rcsThrust ?? boosterThrust;
+    this.thrust = rcsThrust && boosterThrust
+      ? add(rcsThrust, boosterThrust)
+      : rcsThrust ?? boosterThrust;
     // 噴射中は毎フレーム破棄する — 次の Predictor がその時点の実状態を種に作り直す。
     if (this.thrust !== null) this.invalidatePrediction();
   }
@@ -334,7 +333,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 角速度によるcoast自体は継続する。
   clearTransientCommands(): void {
     this.thrust = null;
-    this.rcsThrust = null;
     this.boosters.clearThrust();
     this.torque = v3();
     this.throttle.clearTransientState();
@@ -566,10 +564,12 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     const effectState = displayState ?? this.state;
     const effectVisible = displayState !== null && mapEntityVisible;
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
-    this.thrustEffects.sync(fo, effectState.r, this.rcsThrust, maxAccel, effectVisible, false, camera, style);
+    const rcsAccel = this.throttle.thrustAccelVec;
+    const rcsThrust = len(rcsAccel) > 0 ? rcsAccel : null;
+    this.thrustEffects.sync(fo, effectState.r, rcsThrust, maxAccel, effectVisible, false, camera, style);
     this.boosters.sync(fo, effectState.r, displayTime, effectVisible, camera, style);
     if (isActive) {
-      this._worldSfx.setThrust(effectVisible && (this.rcsThrust !== null || this.boosters.thrust !== null));
+      this._worldSfx.setThrust(effectVisible && (rcsThrust !== null || this.boosters.thrust !== null));
     }
     this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isActive);
     this.reentryEffects.sync(fo, effectState.r, effectState.v, this.aero.qdyn, effectVisible, camera);
