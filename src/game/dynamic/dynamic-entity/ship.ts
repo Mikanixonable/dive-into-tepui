@@ -43,6 +43,7 @@ const FIRE_INTERVAL = 0.06; // 発射間隔 [s]
 const ENEMY_BULLET_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメージ [HP]。武器部品の damage の初期値
 
 export abstract class Ship extends DynamicEntity {
+  public override readonly combatTarget = true;
   public override readonly bcInv = SHIP_BCINV;
   protected readonly srpCoeff = SHIP_SRP_COEFF;
   protected readonly baseHistoryDuration = DEFAULT_HISTORY_DURATION;
