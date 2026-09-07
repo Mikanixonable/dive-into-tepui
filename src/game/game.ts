@@ -38,7 +38,7 @@ import { MapView } from './view/map-view';
 import { NanWatchdog } from './dynamic/nan-watchdog';
 import { NavTarget } from './nav-target';
 import { FrameAnchors } from './frame-anchors';
-import { autoOrbitReference, OrbitReferenceSelector, type OrbitReference } from './orbit-reference';
+import { autoOrbitReference, OrbitReferenceSelector } from './orbit-reference';
 import { ObjectPickables } from './pickable/object-pickables';
 import { LinePickables } from './pickable/line-pickables';
 import { ObjectWindows } from './pickable/object-windows';
@@ -97,8 +97,6 @@ export class Game {
   readonly navTarget: NavTarget;
   private readonly frameAnchors: FrameAnchors;
   readonly orbitReference = new OrbitReferenceSelector();
-  // このフレームの軌道要素・軌道線の基準。update が確定させ、同じ animate() の sync が読む。
-  private orbitRef: OrbitReference | undefined;
   readonly dynamicSystem: DynamicSystem;
   private readonly entityLines: EntityLineManager;
   readonly simulator: Simulator;
@@ -458,21 +456,6 @@ export class Game {
     this.sections.enter(SECTION.pointer);
     this.handlePointerInput();
     this.sections.exit(SECTION.pointer);
-
-    // 基地操作中もその基地を基準に軌道パネルが解決するのと揃える(orbit-panel.ts も同じ
-    // activeControllableEntity を使う) — player だけを見ると、基地操作中は常に undefined になり
-    // 軌道パネルの表示と3D軌道線の基準がずれる。
-    this.orbitRef = activeControllable
-      ? this.orbitReference.resolve(
-        activeControllable.state.r, this.celestialSystem.celestialMotions, this.navTarget,
-        this.dynamicSystem, this.celestialSystem, activeControllable.state.t,
-      )
-      : undefined;
-    // 表示可否・ターゲット・操作艦・ビューがこのフレームの確定値になった後に判断する。
-    this.entityLines.update(
-      this.player, this.targeter.aliveTarget,
-      view, displayWindow, this.viewManager.activeView.visibilityPolicy, this.orbitRef,
-    );
   }
 
   // 自機の行動 → ステージ → 積分 → エフェクトの順に1フレーム進める
@@ -589,6 +572,16 @@ export class Game {
     // マーカー描画は操作艦自身も他の船と同列に扱うので、ターゲット選定用(自分自身は除外)とは
     // 別に、除外なしの一覧を使う。
     const combatTargets = this.dynamicSystem.getCombatTargets(null);
+    // 基地操作中もその基地を基準に軌道パネルが解決するのと揃える(orbit-panel.ts も同じ
+    // activeControllableEntity を使う) — player だけを見ると、基地操作中は常に undefined になり
+    // 軌道パネルの表示と3D軌道線の基準がずれる。
+    const activeControllable = this.activeControllableEntity;
+    const orbitRef = activeControllable
+      ? this.orbitReference.resolve(
+        activeControllable.state.r, celestialBodies, this.navTarget,
+        this.dynamicSystem, this._celestialSystem, activeControllable.state.t,
+      )
+      : undefined;
 
     this._celestialSystem.sync(
       fo, displayTime,
@@ -596,7 +589,7 @@ export class Game {
       this.markerManager,
     );
 
-    this.dynamicSystem.syncPlayers(player, fo, this.cameraSystem, displayTime, style, visibilityPolicy, this.orbitRef);
+    this.dynamicSystem.syncPlayers(player, fo, this.cameraSystem, displayTime, style, visibilityPolicy, orbitRef);
     this.dynamicSystem.syncDetachedBoosters(fo, this.cameraSystem, displayTime, style, visibilityPolicy);
     this.dynamicSystem.syncBases(
       this.controlledBase, fo, this.cameraSystem, displayTime, style, visibilityPolicy,
@@ -620,7 +613,8 @@ export class Game {
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     this.entityLines.sync(
-      displayWindow, fo, this.cameraSystem.activeCamera, this.frameAnchors, this._celestialSystem);
+      player, this.targeter.aliveTarget, this.viewManager.current, displayWindow, visibilityPolicy, orbitRef,
+      fo, this.cameraSystem.activeCamera, this.frameAnchors, this._celestialSystem);
     // ビュー専用のパネル・表示物と軌道線の右クリック候補。軌道線が今フレーム焼いたサンプルを
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
     this.viewManager.activeView.syncPanels(displayWindow, fo);
