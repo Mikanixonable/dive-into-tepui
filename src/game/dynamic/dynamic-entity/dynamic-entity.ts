@@ -601,8 +601,12 @@ export class DynamicEntity {
     return predicted.extrapolatedAt(t, celestialSystem.stateAt(center.celestialBody.id, t));
   }
 
-  // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。
-  sync(fo: FloatingOrigin, displayTime: number, _viewer?: Viewpoint, _proteinVibrationEnabled = true): void {
+  // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。プールで描く種別は、
+  // 同期し終えた自分の変換をこの中で pools へ積む。
+  sync(
+    fo: FloatingOrigin, displayTime: number, _pools: InstancedPools, _viewer?: Viewpoint,
+    _proteinVibrationEnabled = true,
+  ): void {
     const s = this.stateAt(displayTime);
     if (s === null) {
       this.renderObject.visible = false;
@@ -613,9 +617,6 @@ export class DynamicEntity {
     this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
     this.syncThermalAppearance();
   }
-
-  // 同期し終えた自分の変換を、自分を描くプールへ積む。プールで描かない種別は何もしない。
-  pushInstances(_pools: InstancedPools): void {}
 
   // カメラ・描画スタイルを要する付随表示(推力プルームなど)を同期する。表示可否の上書きが
   // 済んだ後に呼ばれるので、renderObject.visible をそのまま読んでよい。
