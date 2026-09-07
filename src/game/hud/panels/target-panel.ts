@@ -38,18 +38,18 @@ export class TargetPanel {
   // 固定対象の有無を毎フレーム反映し、値の更新は間引く。
   public sync(game: Game): void {
     const celestialBodies = game.celestialSystem.celestialMotions;
-    const player = game.activeControllable;
-    const target = player ? game.targeter.aliveTarget : null;
+    const viewer = game.activeControllable;
+    const target = viewer ? game.targeter.aliveTarget : null;
     // 表示/非表示はターゲット固定の有無に直結するので、更新間隔とは別に毎フレーム反映する。
     this.els.get('hud-target')?.classList.toggle('hidden', target === null);
 
     if (!this.throttle.due()) return;
 
-    if (!player || !target) {
+    if (!viewer || !target) {
       this.syncTarget(null);
       return;
     }
-    const relative = relativeInfo(player, target, celestialBodies, player.state.t);
+    const relative = relativeInfo(viewer, target, celestialBodies, viewer.state.t);
     this.syncTarget({
       name: target.name,
       distanceM: relative.dist,

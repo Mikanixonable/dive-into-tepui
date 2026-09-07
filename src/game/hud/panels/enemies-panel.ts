@@ -34,11 +34,11 @@ export class EnemiesPanel {
 
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {}
 
-  // 残存数の見出しと、距離順の敵一覧を同期する。自機が無ければパネルごと隠す。
+  // 残存数の見出しと、距離順の敵一覧を同期する。操作対象が無ければパネルごと隠す。
   public sync(game: Game): void {
-    const player = game.activeControllable;
+    const viewer = game.activeControllable;
     const panel = this.els.get('hud-enemies');
-    if (!player) {
+    if (!viewer) {
       this.hasContacts = false;
       panel?.classList.add('hidden');
       return;
@@ -57,7 +57,7 @@ export class EnemiesPanel {
       const primaryTarget = game.targeter.aliveTarget;
       const rows = this.buildEnemyRows(
         game.dynamicSystem.all().filter(isEnemy).filter((enemy) => enemy.alive),
-        player.state.r,
+        viewer.state.r,
         primaryTarget,
       );
       this.hasContacts = rows.length > 0;
@@ -73,13 +73,13 @@ export class EnemiesPanel {
   // waveId 不在の敵は個別の行になる。ターゲットが波のメンバーなら、その波の行を強調する側に倒す。
   private buildEnemyRows(
     enemies: readonly Enemy[],
-    playerPositionEci: Vec3,
+    viewerPositionEci: Vec3,
     primaryTarget: CombatTarget | null,
   ): EnemyRow[] {
     const singles: EnemyRow[] = [];
     const waves = new Map<number, { count: number; nearestDistanceM: number; targeted: boolean }>();
     for (const enemy of enemies) {
-      const distanceM = len(sub(enemy.state.r, playerPositionEci));
+      const distanceM = len(sub(enemy.state.r, viewerPositionEci));
       const targeted = enemy === primaryTarget;
       if (enemy.waveId === undefined) {
         singles.push({ kind: 'single', id: enemy.id, name: enemy.name, distanceM, targeted });

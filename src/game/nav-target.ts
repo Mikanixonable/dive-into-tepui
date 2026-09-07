@@ -35,11 +35,11 @@ const CLOSEST_APPROACH_REFINE_ITERATIONS = 20;
 // 極小になる時刻と、その時点の自艦位置。どちらかの予測がその時刻まで届かない、または区間内に
 // 極小が無ければ null(まだ近づいている途中、あるいは既に最接近を過ぎている)。
 function findClosestApproach(
-  player: DynamicEntity, target: DynamicEntity, celestialSystem: CelestialSystem, simTime: number,
+  controlled: DynamicEntity, target: DynamicEntity, celestialSystem: CelestialSystem, simTime: number,
 ): { readonly pos: Vec3; readonly t: number } | null {
   // 時刻 t の相対距離。どちらかの予測が t まで届いていなければ null。
   const distAt = (t: number): number | null => {
-    const p = player.stateAt(t, celestialSystem);
+    const p = controlled.stateAt(t, celestialSystem);
     const q = target.stateAt(t, celestialSystem);
     return p && q ? len(sub(p.r, q.r)) : null;
   };
@@ -56,7 +56,7 @@ function findClosestApproach(
     const lo = simTime + (i - 1) * step;
     const hi = simTime + (i + 1) * step;
     const tMin = goldenSectionMin(lo, hi, (t) => distAt(t) ?? Infinity, CLOSEST_APPROACH_REFINE_ITERATIONS);
-    const p = player.stateAt(tMin, celestialSystem);
+    const p = controlled.stateAt(tMin, celestialSystem);
     return p ? { pos: p.r, t: tMin } : null;
   }
   return null;
@@ -272,7 +272,7 @@ export class NavTarget {
     return entity.orbitalElementsAround(center, t)?.hHat ?? null;
   }
 
-  // 右クリック対象として公開する AN/DN・再接近点アイコン。計算できているぶんだけ返す。
+  // 右クリック対象として公開する AN/DN・再接近点アイコン。出す理由が残っているぶんを返す。
   pickables(): readonly ObjectPickable[] {
     return this.nodeMarkers.filter((marker) => !marker.gone);
   }

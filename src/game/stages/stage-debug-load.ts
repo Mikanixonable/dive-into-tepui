@@ -49,6 +49,7 @@ export class StageDebugLoad extends Stage {
     }
   }
 
+  // 補給を1フレーム分進める。自艦がいなければ何もしない。
   update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;

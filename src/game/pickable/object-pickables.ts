@@ -53,9 +53,9 @@ export class ObjectPickables {
     this._visibilityPolicy = null;
   }
 
-  // 候補列を組み直す(表示中の天体・ラグランジュ点 + 生存中の自艦・敵船・弾薬・基地 + AN/DN
-  // アイコン + 近地点・遠地点アイコン)。天体側も表示と同じ MapVisibilityPolicy を通し、
-  // 非表示にした対象を選べない状態にする。物理積分の後に呼ぶ: 積分前に組むと、同フレームで
+  // 候補列を組み直す(表示中の天体・ラグランジュ点 + 被選択物を名乗る個体 + 航法ターゲット
+  // + AN/DN アイコン + 近地点・遠地点アイコン)。天体側も表示と同じ MapVisibilityPolicy を
+  // 通し、非表示にした対象を選べない状態にする。物理積分の後に呼ぶ: 積分前に組むと、同フレームで
   // sync されるメッシュと座標が1ステップずれる。
   refresh(displayWindow: DisplayWindow): void {
     const { simTime, displayTime } = displayWindow;

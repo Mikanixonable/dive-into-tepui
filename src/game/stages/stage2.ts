@@ -52,7 +52,7 @@ export class Stage2 extends Stage {
     this.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', base.t, 2.5, 0.9, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
     this.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', base.t, 4.6, 3.8, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
   }
-  // 敵の行動と補給品の湧きを進める。
+  // 補給品の湧きを進める。
   update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;

@@ -48,7 +48,7 @@ interface PrevInput {
 // 一覧の1行が今フレームどこに並ぶかを決める値。候補そのものは ObjectPickable が持つ。
 interface ListSortKey {
   readonly priority: number;         // 小さいほど先に出る
-  readonly distance: number;         // 自艦から [m]。自艦がいなければ 0
+  readonly distance: number;         // 操作対象から [m]。操作対象がいなければ 0
   readonly distanceFromStar: number; // 恒星から [m]。恒星が無ければ distance と同値
   readonly inFocusedSystem: boolean;
 }
@@ -131,7 +131,7 @@ export class PhysicalObjectListOrder {
     return changed;
   }
 
-  // 今フレームの自艦・表示時刻から、候補ごとの並べ替え基準を導き直す。恒星からの距離は
+  // 今フレームの操作対象・表示時刻から、候補ごとの並べ替え基準を導き直す。恒星からの距離は
   // 太陽系順、操作対象からの距離は近さ順、所属系は人工物と敵の絞り込みが読む。
   private rebuildSortKeys(
     items: readonly ObjectPickable[], viewer: Controllable | null, displayTime: number,
@@ -224,7 +224,7 @@ export class PhysicalObjectListOrder {
       return a.point - b.point;
     }
 
-    // 太陽系順は恒星からの距離。恒星の無いレジストリでは距離が自機基準になるので、
+    // 太陽系順は恒星からの距離。恒星の無いレジストリでは距離が操作対象基準になるので、
     // 近さ順へ自然に委譲される。
     const aDistance = this.sort === 'solar' ? aKey.distanceFromStar : aKey.distance;
     const bDistance = this.sort === 'solar' ? bKey.distanceFromStar : bKey.distance;
