@@ -28,6 +28,9 @@ import type { SphereHit } from '../../../math/triangle-mesh';
 import { BASE_COLLISION_RADIUS, baseRaycast, baseSphereCollide } from './base-collision';
 import { PlayerThrottle } from '../../player/player-throttle';
 import type { Controllable } from './controllable';
+import type { DynamicSystem } from '../dynamic-system';
+import type { OrbitReference } from '../../orbit-reference';
+import type { Stage } from '../../stages/stage';
 import type { Input } from '../../../input/input';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { ThrustEffects } from '../../player/thrust-effects';
@@ -95,8 +98,9 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   readonly hp = null;
   readonly maxHp = null;
 
-  // 基地は機関砲・太陽電池パドル・放熱板を持たず、大気も受けない。
+  // 基地は機関砲・分離式ブースター・太陽電池パドル・放熱板を持たず、大気も受けない。
   readonly fire = null;
+  readonly boosters = null;
   readonly power = null;
   readonly radiator = null;
   readonly aero = null;
@@ -179,8 +183,12 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // --- 操作制御 ---
 
-  // 毎フレーム、操作対象の基地に対して1度だけ呼ぶ。input が null なら操作されない。
-  updateBaseControls(input: Input | null, dt: number, simDt: number): void {
+  // 毎フレーム、全ての基地に対して1度だけ呼ぶ。input が null なら操作されない。
+  // 射撃も補給も持たないので、entities / activeStage / celestialSystem は受け取るだけで使わない。
+  updateControls(
+    input: Input | null, dt: number, simDt: number,
+    _entities: DynamicSystem, _activeStage: Stage, _celestialSystem: CelestialSystem,
+  ): void {
     if (input === null) {
       this.clearTransientCommands();
       return;
@@ -216,14 +224,16 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     });
   }
 
-  // 基地のメッシュ・推力プルーム・RCS パフ・音・軌道線を同期する。
-  syncBase(
+  // 基地のメッシュ・推力プルーム・RCS パフ・音・軌道線を同期する。方位マーカーを持たないので
+  // orbitRef は受け取るだけで使わない。
+  syncControllable(
     fo: FloatingOrigin,
     camera: CameraSystem,
     displayTime: number,
     isControlled: boolean,
     style: RenderStyle,
-    visibility: MapVisibility | null = null,
+    visibility: MapVisibility | null,
+    _orbitRef?: OrbitReference,
   ): void {
     const displayState = this.stateAt(displayTime);
     const mapEntityVisible = camera.view !== 'map' || visibility === null || visibility.category;
