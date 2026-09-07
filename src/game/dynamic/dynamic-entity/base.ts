@@ -6,7 +6,7 @@ import type { DynamicEntityKind } from './entity-kind';
 import { EntityIdAllocator } from './entity-id';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { Attitude } from '../../../physics/attitude';
-import { qRotate } from '../../../math/quat';
+import { qInvert, qRotate } from '../../../math/quat';
 import { add, len, sub, v3, Vec3 } from '../../../math/vec3';
 import type { Ray } from '../../../math/ray';
 import type { AnyPart, Part } from './parts';
@@ -27,8 +27,8 @@ import type { MarkerRole } from '../../targeter';
 import { fmtDist, fmtMarkerDist } from '../../../hud/utils';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
-import type { RayHit, SphereHit } from '../../../math/triangle-mesh';
-import { BaseCollisionGeometry } from './base-collision';
+import type { SphereHit } from '../../../math/triangle-mesh';
+import { BASE_COLLISION_RADIUS, baseRaycast, baseSphereCollide } from './base-collision';
 import { PlayerThrottle } from '../../player/player-throttle';
 import type { Controllable } from './controllable';
 import type { Input } from '../../../input/input';
@@ -107,7 +107,6 @@ type BaseInit =
 export class Base extends DynamicEntity implements Controllable, ObjectPickable {
   public readonly mapKind: DynamicEntityKind = 'base';
 
-  readonly collisionGeom = new BaseCollisionGeometry();
   protected readonly predictedForGhost = true;
   protected readonly baseHistoryDuration = DEFAULT_HISTORY_DURATION;
   readonly plan = new Plan();
@@ -149,18 +148,23 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     return actual / amount;
   }
 
-  raycast(rayOrigin: Vec3, rayDir: Vec3, maxDist: number, warpLevel = 1): RayHit | null {
-    return this.collisionGeom.raycast(rayOrigin, rayDir, maxDist, this.state.r, this.att.q, warpLevel);
-  }
-
   // 基地は外接球の中が大きく空いているので、メッシュへ当たったかまで見る。
   override hitBodyByRay(ray: Ray, pos: Vec3): boolean {
+    const toLocal = qInvert(this.att.q);
     const reach = len(sub(pos, ray.origin)) + this.radius;
-    return this.collisionGeom.raycast(ray.origin, ray.dir, reach, pos, this.att.q, 1) !== null;
+    return baseRaycast(qRotate(toLocal, sub(ray.origin, pos)), qRotate(toLocal, ray.dir), reach) !== null;
   }
 
-  testSphereCollision(sphereCenter: Vec3, sphereRadius: number, warpLevel = 1): SphereHit | null {
-    return this.collisionGeom.testSphereCollision(sphereCenter, sphereRadius, this.state.r, this.att.q, warpLevel);
+  // 球が基地の当たり形状へ触れているか。中心はワールド ECI で受け、点と法線も ECI で返す。
+  // 触れていなければ null。
+  testSphereCollision(sphereCenter: Vec3, sphereRadius: number): SphereHit | null {
+    const toLocal = qInvert(this.att.q);
+    const hit = baseSphereCollide(qRotate(toLocal, sub(sphereCenter, this.state.r)), sphereRadius);
+    return hit === null ? null : {
+      point: add(this.state.r, qRotate(this.att.q, hit.point)),
+      normal: qRotate(this.att.q, hit.normal),
+      depth: hit.depth,
+    };
   }
 
   // 基地は接触で押されない。mass は推力加速度の分母を兼ねるので、そちらとは別に持つ。
@@ -199,8 +203,9 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       this.att = { ...this.att, inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z) };
     }
     this.mass = 3e6;
-    this.radius = 330;
+    this.radius = BASE_COLLISION_RADIUS;
     this.collides = true;
+    this.engagementAnchor = true;
     this.name = name;
     this.baseFuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : BASE_MAX_FUEL;
     this.throttle = new PlayerThrottle(hud, 'saved' in init ? init.saved.throttle : undefined);

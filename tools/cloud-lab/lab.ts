@@ -26,10 +26,10 @@ const VIEW_WIDTH = GLOBE_WIDTH + CAP_SIZE;
 // 全球の面と cap の面の境目(キャンバスの幅に対する比)。
 const SPLIT_U = GLOBE_WIDTH / VIEW_WIDTH;
 
-// cap の既定 [°]。台風の初期位置(15°N・140°E)を中心に、LEO(高度 400 km)の地平線 19.8° に
-// 近い半径で開く。
-const DEFAULT_CAP_LATITUDE = 15;
-const DEFAULT_CAP_LONGITUDE = 140;
+// cap の既定 [°]。時刻 0 の熱帯低気圧の最盛期の位置(19°N・136°E)を中心に、LEO(高度 400 km)の
+// 地平線 19.8° に近い半径で開く。
+const DEFAULT_CAP_LATITUDE = 19;
+const DEFAULT_CAP_LONGITUDE = 136;
 const DEFAULT_CAP_RADIUS = 20;
 
 export class CloudLabCanvas {

@@ -8,9 +8,8 @@ import { collisionDamageFraction } from './contact-damage';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
 import { proteinMotionModeDisplacements } from '../../protein/protein-motion-modes';
 import { ProteinRuntime } from '../../protein/protein-runtime';
-import { ProteinRibbonCollisionGeometry } from '../../protein/protein-ribbon-collision';
+import { ProteinSphereCollisionGeometry } from '../../protein/protein-sphere-collision';
 import { createProteinMotionBinding } from '../../../render/protein-motion-material';
-import { disposeOwnedRenderResources } from '../../../render/dispose-owned-render-resources';
 import { DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings } from '../../protein/protein-display';
 import {
   Enemy, ENEMY_SCALE, PLASMA_BULLET_DAMAGE,
@@ -24,7 +23,7 @@ import type { ProteinMotionLod } from '../../protein/protein-motion-controller';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { EnemySaveData, ProteinEnemySaveData } from '../../save/save-data';
 
-// タンパク質の構造は揺らぐが、判定形状は常に静止したリボンに固定するので、慣性も1つでよい。
+// タンパク質の構造は揺らぐが、判定形状は常に静止した1つに固定するので、慣性も1つでよい。
 // 漂流機体と同じく非対称にして、ジャニベコフ効果(中間軸不安定性)で無秩序に回らせる。
 const PROTEIN_INERTIA = v3(1, 1.1, 1.05);
 
@@ -72,7 +71,7 @@ function displayOf(init: ProteinEnemyPlacement | EnemyRestore): ProteinDisplaySe
 }
 
 // タンパク質の敵。機能部位ごとに破壊できる被弾モデル(ProteinCombatState)が HP の正本で、
-// 判定形状は表示形態によらず静止したリボンに固定する。
+// 判定形状は表示形態によらず、アセットが持つ球列に固定する。
 export class ProteinEnemy extends Enemy {
   public static readonly kind = 'protein-enemy';
   public static pendingAssetId(saved: EnemySaveData): ProteinAssetId {
@@ -81,10 +80,10 @@ export class ProteinEnemy extends Enemy {
 
   private readonly assetId: ProteinAssetId;
   private readonly runtime: ProteinRuntime;
-  private readonly ribbonCollision: ProteinRibbonCollisionGeometry;
+  private readonly collision: ProteinSphereCollisionGeometry;
   private displaySettings: ProteinDisplaySettings;
 
-  // 表示メッシュとリボン衝突形状を組む。アセットが未取得なら投げるので、
+  // 表示メッシュを組み、アセットが持つ球列へ判定形状を当てる。アセットが未取得なら投げるので、
   // EnemyClass.pendingAssetId で準備完了を待ってから構築すること。
   public constructor(
     init: ProteinEnemyPlacement | EnemyRestore,
@@ -100,20 +99,18 @@ export class ProteinEnemy extends Enemy {
       proteinMotionModeDisplacements(definition.motion),
       definition.motion.modes.length,
     );
-    const renderObject = definition.buildRenderObject(display, motionBinding);
+    const renderObject = definition.buildRenderObject(display, motionBinding ?? undefined);
     renderObject.scale.setScalar(ENEMY_SCALE);
-    // 表示が原子模型へ切り替わっても、判定形状は常に同じリボンに固定する。
-    const collisionSource = definition.buildCollisionObject();
-    const ribbonCollision = new ProteinRibbonCollisionGeometry(collisionSource, ENEMY_SCALE);
-    disposeOwnedRenderResources(collisionSource);
+    // 表示が原子模型へ切り替わっても、判定形状は常に同じ球列に固定する。
+    const collision = new ProteinSphereCollisionGeometry(definition.collisionSpheres, ENEMY_SCALE);
     // 新規生成のときだけ、タンパク質固有の名称を陣形役割・識別番号などの既存識別子の前へ冠する。
     super(
       'saved' in init ? init : { ...init, name: `${definition.asset.displayName} ${init.name}` },
-      renderObject, PROTEIN_INERTIA, ribbonCollision.outerRadius, worldSfx, fx, scene,
+      renderObject, PROTEIN_INERTIA, collision.outerRadius, worldSfx, fx, scene,
     );
     this.assetId = assetId;
     this.displaySettings = display;
-    this.ribbonCollision = ribbonCollision;
+    this.collision = collision;
     this.runtime = new ProteinRuntime(
       this.renderObject, definition.asset, definition.motion,
       'saved' in init ? (init.saved as ProteinEnemySaveData).protein : undefined,
@@ -135,7 +132,7 @@ export class ProteinEnemy extends Enemy {
   public setDisplay(display: ProteinDisplaySettings): void {
     this.displaySettings = display;
     this.runtime.clearVisuals();
-    definitionFor(this.assetId).recolorRenderObject(this.renderObject, display, this.runtime.motionBinding);
+    definitionFor(this.assetId).recolorRenderObject(this.renderObject, display, this.runtime.motionBinding ?? undefined);
     this.runtime.rebuildVisuals();
   }
 
@@ -178,14 +175,14 @@ export class ProteinEnemy extends Enemy {
   }
 
   public override testCustomSphereCollision(sphereCenter: Vec3, sphereRadius: number, selfState: KinematicState) {
-    return this.ribbonCollision.testSphereCollision(sphereCenter, sphereRadius, selfState.r, this.att.q);
+    return this.collision.testSphereCollision(sphereCenter, sphereRadius, selfState.r, this.att.q);
   }
 
   public override testCustomSweptSphereCollision(
     previousSphereCenter: Vec3, sphereCenter: Vec3, sphereRadius: number,
     previousSelfState: KinematicState, selfState: KinematicState,
   ) {
-    return this.ribbonCollision.testSweptSphereCollision(
+    return this.collision.testSweptSphereCollision(
       previousSphereCenter, sphereCenter, sphereRadius, previousSelfState, selfState, this.att.q,
     );
   }

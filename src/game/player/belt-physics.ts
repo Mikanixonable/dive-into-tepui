@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
 import { LOCAL_RIGHT, Q_IDENTITY, qFromUnitVectors, qInvert, qMul, qRotate, Quat } from '../../math/quat';
-import { kinematicState } from '../../physics/kinematic-state';
+import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3 } from '../../math/vec3';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../render/ships';
 import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
@@ -21,9 +21,11 @@ function clamp(v: number, lo: number, hi: number): number {
 
 // ベルトのリンク節点を剛体接触に参加させるためのプロキシ。
 export class BeltSection extends DynamicEntity {
-  // 節点インデックス beltIndex に対応するプロキシを、吊り元の艦 owner とともに生成する。
-  constructor(readonly beltIndex: number, private readonly owner: DynamicEntity) {
-    super(kinematicState<'eci'>(0, v3(), v3()), new THREE.Object3D());
+  // 吊り元の艦 owner にぶら下がる節点のプロキシを生成する。
+  // state は生成時点の実際の world 状態 — 仮の状態で始めると、最初に置き直した substep の
+  // prevState がその仮位置になり、そこからの偽の区間を掃引してしまう。
+  constructor(private readonly owner: DynamicEntity, state: KinematicState) {
+    super(state, new THREE.Object3D());
     this.mass = 5;
     this.radius = 0.8;
     this.collides = true;
@@ -41,7 +43,6 @@ export class BeltPhysics {
   // 機体座標系の節点位置。
   readonly beltPos: Vec3[] = [];
   private readonly beltPrevPos: Vec3[] = [];
-  private beltInit = false;
   // 各リンクのチェーン軸まわりのねじれ角 [rad]。常に ±MAG_CHAIN_MAX_ROLL_DEG に収まる。
   readonly beltTwist: number[] = [];
 
@@ -50,7 +51,16 @@ export class BeltPhysics {
   // 給弾進みに応じて動く根本の固定点(機体座標系)。
   anchor: Vec3 = v3(MAG_BELT_ANCHOR_X, 0, 0);
 
-  constructor(private readonly linkCount: number, private readonly owner: DynamicEntity) {}
+  // 節点はアンカーから等間隔に伸ばした形で始める。表示も接触も update より先に問われうるので、
+  // 「まだ並べていない」状態を持たせない。
+  constructor(private readonly linkCount: number, private readonly owner: DynamicEntity) {
+    for (let i = 0; i < linkCount; i++) {
+      const p = v3(MAG_BELT_ANCHOR_X + (i + 1) * MAG_BELT_PITCH, 0, 0);
+      this.beltPos.push(p);
+      this.beltPrevPos.push(p);
+      this.beltTwist.push(0);
+    }
+  }
 
   // リンクを1つ手前へ詰め、末尾に新しいリンクを継ぎ足す。
   shiftBeltNodes(): void {
@@ -78,8 +88,6 @@ export class BeltPhysics {
   // スピンが生む慣性力(並進慣性 -a、遠心力 -ω×(ω×r)、オイラー力 -α×r、コリオリ力 -2ω×v)
   // だけがベルトを機体座標系の中で揺らす。
   update(dt: number, att: Attitude, thrustAccelVec: Vec3, beltFeed: number): void {
-    this.initNodesOnce();
-
     const invDt = dt > 1e-6 ? 1 / dt : 0;
     this.estimateAngularAccel(att.w, invDt);
 
@@ -90,18 +98,6 @@ export class BeltPhysics {
     this.relaxDistanceConstraints();
 
     this.advanceOrientationConstraints(dt, att, beltFeed);
-  }
-
-  // 初回のみ、節点をアンカーから等間隔に並べて初期化する。
-  private initNodesOnce(): void {
-    if (this.beltInit) return;
-    this.beltInit = true;
-    for (let i = 0; i < this.linkCount; i++) {
-      const p = v3(MAG_BELT_ANCHOR_X + (i + 1) * MAG_BELT_PITCH, 0, 0);
-      this.beltPos.push(p);
-      this.beltPrevPos.push((p));
-      this.beltTwist.push(0);
-    }
   }
 
   // 前フレームとの角速度差から角加速度を推定する。
@@ -235,47 +231,41 @@ export class BeltPhysics {
   private readonly sections: BeltSection[] = [];
 
   // 各節点の機体座標系での位置・速度をワールド KinematicState に変換し、衝突判定用の
-  // プロキシ配列を返す。
-  collisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
-    // プロキシを節点数まで拡張する
-    while (this.sections.length < this.beltPos.length) {
-      this.sections.push(new BeltSection(this.sections.length, this.owner));
-    }
+  // プロキシ配列を返す。t は接触代理の KinematicState.t に使う現在時刻(掃引判定の区間を成す)。
+  contactSections(t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
     const invDt = 1 / dt;
-    for (const s of this.sections) {
-      const bp = this.beltPos[s.beltIndex]!;
-      const bpPrev = this.beltPrevPos[s.beltIndex]!;
-      // 機体座標系での速度: Verlet変位による速度 + 機体回転による接線速度
-      const v_verlet = v3((bp.x - bpPrev.x) * invDt, (bp.y - bpPrev.y) * invDt, (bp.z - bpPrev.z) * invDt);
-      const v_tangential = cross(att.w, bp);
-      const v_body_total = add(v_verlet, v_tangential);
+    for (const [i, bp] of this.beltPos.entries()) {
+      const bpPrev = this.beltPrevPos[i]!;
+      // 節点は機体座標系の中で Verlet 変位ぶん動き、機体そのものの回転で接線方向にも動く。
+      const verletVel = v3((bp.x - bpPrev.x) * invDt, (bp.y - bpPrev.y) * invDt, (bp.z - bpPrev.z) * invDt);
+      const bodyVel = add(verletVel, cross(att.w, bp));
 
-      // ワールド座標系へ変換する
-      s.state = kinematicState<'eci'>(
-        s.state.t,
+      const world = kinematicState<'eci'>(
+        t,
         add(baseR, qRotate(att.q, bp)),
-        add(baseV, qRotate(att.q, v_body_total)),
+        add(baseV, qRotate(att.q, bodyVel)),
       );
+      const section = this.sections[i];
+      if (section === undefined) this.sections.push(new BeltSection(this.owner, world));
+      else section.state = world;
     }
     return this.sections;
   }
 
   // 衝突解決後のワールド状態を機体座標系の節点位置・速度へ書き戻す。
-  applyCollisionSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
+  applyContactSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
     const qInv = qInvert(att.q);
-    for (const s of this.sections) {
-      // ワールド座標系から機体座標系へ変換する
+    for (const [i, s] of this.sections.entries()) {
       const bpLocal = qRotate(qInv, sub(s.state.r, baseR));
-      const v_body_total = qRotate(qInv, sub(s.state.v, baseV));
-      const v_tangential = cross(att.w, bpLocal);
-      const v_verlet = sub(v_body_total, v_tangential);
+      const bodyVel = qRotate(qInv, sub(s.state.v, baseV));
+      const verletVel = sub(bodyVel, cross(att.w, bpLocal));
 
-      // Verlet 積分と整合する前フレーム位置へ戻す
-      this.beltPos[s.beltIndex] = bpLocal;
-      this.beltPrevPos[s.beltIndex] = v3(
-        bpLocal.x - v_verlet.x * dt,
-        bpLocal.y - v_verlet.y * dt,
-        bpLocal.z - v_verlet.z * dt,
+      // Verlet は前後2つの位置で速度を表すので、速度は前フレーム位置へ畳んで返す。
+      this.beltPos[i] = bpLocal;
+      this.beltPrevPos[i] = v3(
+        bpLocal.x - verletVel.x * dt,
+        bpLocal.y - verletVel.y * dt,
+        bpLocal.z - verletVel.z * dt,
       );
     }
   }
