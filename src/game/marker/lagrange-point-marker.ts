@@ -14,7 +14,7 @@ import type { ObjectPickerGenre } from '../hud/object-groups';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import type { PropertyRow } from '../../hud/windows/property-window';
+import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { MarkerManager } from './marker-manager';
 
 export class LagrangePointMarker implements ObjectPickable {

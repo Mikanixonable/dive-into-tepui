@@ -33,7 +33,7 @@ import type { StarEntity } from './star-entity';
 import type { CelestialSystem } from '../celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { MenuItem } from '../../hud/windows/context-menu';
-import type { PropertyRow } from '../../../hud/windows/property-window';
+import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../../hud/object-groups';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
