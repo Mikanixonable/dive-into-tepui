@@ -460,7 +460,7 @@ export class Game {
     this.sections.exit(SECTION.pointer);
   }
 
-  // 自機の行動 → ステージ → 積分 → エフェクトの順に1フレーム進める
+  // ステージ → 指令決定 → 積分 → エフェクトの順に1フレーム進める
   // (残骸・弾の先端時刻はどの状況でも進め続ける)。
   private advanceSimulation(dt: number): void {
     // このフレームで使う倍率を最初に一度だけ確定する。燃料消費・操作ゲート・積分が
@@ -470,8 +470,15 @@ export class Game {
     const canShipAct = this.simSpeedManager.canShipAct;
     const canEngage = this.simSpeedManager.canEngage;
     const controlled = this.activeControllable;
-    this.sections.enter(SECTION.command);
     this.nanWatchdog.checkControlled('frameStart', controlled, this.simulator.simTime, dt, this.simulator.lastSimDt);
+    // 台本が世界を編集してから、その顔ぶれで1フレーム進める。湧いた個体もこのフレームの
+    // 指令決定と積分に乗る。
+    this.sections.enter(SECTION.stage);
+    this.activeStage.update(dt, this.simulator.simTime, this.simSpeedManager);
+    this.sections.exit(SECTION.stage);
+    this.nanWatchdog.checkControlled('activeStage.update', controlled, this.simulator.simTime, dt, this.simulator.lastSimDt);
+
+    this.sections.enter(SECTION.command);
     this.dynamicSystem.update(
       controlled, this.input, canShipAct, dt, simDt, this.simulator.simTime, this.activeStage);
     this.nanWatchdog.checkControlled(
@@ -483,10 +490,6 @@ export class Game {
     );
     this.sections.exit(SECTION.command);
 
-    this.sections.enter(SECTION.stage);
-    this.activeStage.update(dt, this.simulator.simTime, this.simSpeedManager);
-    this.sections.exit(SECTION.stage);
-    this.nanWatchdog.checkControlled('activeStage.update', controlled, this.simulator.simTime, dt, this.simulator.lastSimDt);
     this.sections.enter(SECTION.integrate);
     this.simulator.advance(
       dt, simDt, controlled, this.activeStage,
