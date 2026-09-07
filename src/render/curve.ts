@@ -21,7 +21,7 @@ export type CurveColorSampler = (t: number, out: THREE.Color) => void;
 
 // 適応分割が目標にする、弦に対する曲線の膨らみ(サジッタ)の上限 [px]。1px を下回っていれば、
 // 隣り合う画素の間に収まる。
-export const MAX_SAGITTA_PX = 0.5;
+const MAX_SAGITTA_PX = 0.5;
 
 // 1辺あたりに許す折れ角の上限 [rad]。サジッタと並ぶもう一つの分割基準で、こちらは画面上の
 // 大きさに依らず効くため、遠ズームでの粗さを決める。
@@ -108,20 +108,17 @@ function buildHermiteCurve(knots: CurveKnots, maxCount: number): HermiteCurve {
   return { sample, ts };
 }
 
-// 点 p から線分 ab への最短距離の2乗。
-function distanceSqPointToSegment(
+// 点 p を線分 ab へ射影した点(線分の外へ出るぶんは端点へ丸める)を out へ書く。
+function projectToSegment(
   px: number, py: number, pz: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number,
-): number {
+  out: THREE.Vector3,
+): THREE.Vector3 {
   const dx = bx - ax, dy = by - ay, dz = bz - az;
   const lenSq = dx * dx + dy * dy + dz * dz;
-  if (lenSq <= 0) {
-    const ex = px - ax, ey = py - ay, ez = pz - az;
-    return ex * ex + ey * ey + ez * ez;
-  }
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / lenSq));
-  const cx = ax + dx * t, cy = ay + dy * t, cz = az + dz * t;
-  const ex = px - cx, ey = py - cy, ez = pz - cz;
-  return ex * ex + ey * ey + ez * ez;
+  const t = lenSq > 0
+    ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / lenSq))
+    : 0;
+  return out.set(ax + dx * t, ay + dy * t, az + dz * t);
 }
 
 export class Curve {
@@ -164,6 +161,9 @@ export class Curve {
   // 基準点をカメラから離した距離が、そのまま画面上のずれとして出る。
   private readonly pivot = new THREE.Vector3();
 
+  // sample の座標系で見たカメラ位置。区間の逸脱を画面上の大きさへ直す尺度と pivot がこれを読む。
+  private readonly localCam = new THREE.Vector3();
+
   // setTransform が要求した sample→ワールドの変換。line.position/quaternion へはこれに pivot
   // 分を補って書き込むので、sample の座標系を扱う計算はこちらを読む。
   private readonly reqPosition = new THREE.Vector3();
@@ -174,7 +174,8 @@ export class Curve {
   private readonly scratchColor = new THREE.Color();
   private readonly scratchStyleColor = new THREE.Color();
   private readonly scratchWorld = new THREE.Vector3();
-  private readonly scratchLocalCam = new THREE.Vector3();
+  private readonly scratchFoot = new THREE.Vector3();
+  private readonly scratchNearest = new THREE.Vector3();
   private readonly scratchInvQuat = new THREE.Quaternion();
   private readonly scratchPivotWorld = new THREE.Vector3();
 
@@ -244,10 +245,10 @@ export class Curve {
     return cam.at(this.scratchWorld.x, this.scratchWorld.y, this.scratchWorld.z);
   }
 
-  // カメラのワールド位置を sample の座標系へ戻す。
-  private localCameraPos(cam: CameraScale, out: THREE.Vector3): THREE.Vector3 {
+  // カメラのワールド位置を sample の座標系へ戻して localCam へ書く。
+  private updateLocalCam(cam: CameraScale): void {
     this.scratchInvQuat.copy(this.reqQuaternion).invert();
-    return out.copy(cam.position).sub(this.reqPosition).applyQuaternion(this.scratchInvQuat);
+    this.localCam.copy(cam.position).sub(this.reqPosition).applyQuaternion(this.scratchInvQuat);
   }
 
   // 要求された変換と現在の pivot から、line の実際の position/quaternion を書き直す。
@@ -292,9 +293,15 @@ export class Curve {
     sample((t0 + t1) / 2, this.scratchM);
     const mx = this.scratchM.x, my = this.scratchM.y, mz = this.scratchM.z;
 
-    const sagSq = distanceSqPointToSegment(mx, my, mz, x0, y0, z0, x1, y1, z1);
-    const mpp = this.scaleAtLocal(cam, mx, my, mz);
-    const sagittaPx = mpp > 0 ? Math.sqrt(sagSq) / mpp : 0;
+    const foot = projectToSegment(mx, my, mz, x0, y0, z0, x1, y1, z1, this.scratchFoot);
+    const sagitta = Math.hypot(mx - foot.x, my - foot.y, mz - foot.z);
+    // サジッタを画面上の大きさへ直す尺度は、弦のうちカメラに最も近い点で測る。1区間は軌道の
+    // 何分の一もの長さを持つので、中点で測ると、カメラの至近を通る弦のずれを何十倍も小さく
+    // 見積もって分割が止まり、線が対象から離れたまま残る。
+    const nearest = projectToSegment(
+      this.localCam.x, this.localCam.y, this.localCam.z, x0, y0, z0, x1, y1, z1, this.scratchNearest);
+    const mpp = this.scaleAtLocal(cam, nearest.x, nearest.y, nearest.z);
+    const sagittaPx = mpp > 0 ? sagitta / mpp : 0;
 
     const ax = mx - x0, ay = my - y0, az = mz - z0;
     const bx = x1 - mx, by = y1 - my, bz = z1 - mz;
@@ -370,8 +377,9 @@ export class Curve {
   ): void {
     this.sampler = sample;
     const cam = new CameraScale(camera);
+    this.updateLocalCam(cam);
     this.rebake(sample, ts, cam, colorAt);
-    this.pivot.copy(this.localCameraPos(cam, this.scratchLocalCam));
+    this.pivot.copy(this.localCam);
     this.applyTransform();
     this.writePositions();
   }
