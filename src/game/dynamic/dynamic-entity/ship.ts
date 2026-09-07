@@ -39,8 +39,8 @@ export const PLAYER_INERTIA_YAW = 1.6; // ヨー軸(Y)
 export const PLAYER_INERTIA_ROLL = 0.5; // ロール軸(Z、機体前後)。細長い形状に見合って最小
 
 export const MUZZLE_SPEED = 1000; // 機関砲初速 [m/s]
-export const FIRE_INTERVAL = 0.06; // 発射間隔 [s]
-export const ENEMY_BULLET_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメージ [HP]。武器部品の damage の初期値
+const FIRE_INTERVAL = 0.06; // 発射間隔 [s]
+const ENEMY_BULLET_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメージ [HP]。武器部品の damage の初期値
 
 export abstract class Ship extends DynamicEntity {
   public override readonly bcInv = SHIP_BCINV;
@@ -138,8 +138,8 @@ export abstract class Ship extends DynamicEntity {
     this.updateOverallHp();
   }
 
-  // パーツの換装・セーブ復元後にだけ呼ぶ type 別参照を再構築する。parts 配列は
-  // BasePanel/Player の換装経路で splice され、その直後に refreshFromParts が呼ばれる。
+  // parts が入れ替わったあとにだけ呼ぶ type 別参照の再構築。既定構成の組み立てと
+  // セーブ復元の2経路が、parts を並べ替えた直後に refreshFromParts を呼ぶ。
   private rebuildPartReferences(): void {
     this.thrusterPartRefs.length = 0;
     this.rcsTankPartRefs.length = 0;
@@ -234,11 +234,10 @@ export abstract class Ship extends DynamicEntity {
     this.updateOverallHp();
   }
 
-  // 自然回復の対象外にする部品種別。外装パネルは機上で直せず、基地ドックの修理を要する。
+  // 自然回復の対象外にする部品種別。外装パネルは機上で直せず、いまは直す手段がない。
   private static readonly SELF_REPAIR_EXCLUDED: readonly PartType[] = ['radiator', 'solar_panel'];
 
-  // amount [HP] を自然回復できる損傷部品へ均等に配る。全損した部品は対象外で、
-  // 復旧にはドックでの修理が要る。
+  // amount [HP] を自然回復できる損傷部品へ均等に配る。全損した部品は対象外で、復旧しない。
   protected selfRepair(amount: number): void {
     const targets = this.parts.filter(
       p => p.hp > 0 && p.hp < p.maxHp && !Ship.SELF_REPAIR_EXCLUDED.includes(p.type));

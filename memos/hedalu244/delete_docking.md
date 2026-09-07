@@ -117,66 +117,6 @@
 
 ## 手順
 
-### 手順 2. `Docking` と `DockingGuide` を消し、配線を切る
-
-**目的.** 機能の入口を全部落とす。この手順が終われば、ゲーム中からドッキングへ到達する手段が
-一つも残らない。`base-view*` と `resource-transfer-dialog` は参照ゼロの孤児になるが、
-**この手順では消さない**(手順3で消す) — 一度に触るファイルを増やさないため。
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/docking/docking.ts` | **ファイルごと削除**(339行)。`src/game/docking/` は空になるのでフォルダごと消える |
-| `src/game/docking/docking-guide.ts` | **ファイルごと削除**(131行) |
-| `src/game/game.ts` | 54行の import、104行の `docking` フィールド、325-331行の生成と `setDocking`、336行の `this.docking.guide` 引数、381行の `dispose`、495行の `updateDockedPhysics()` を落とす |
-| `src/game/view/combat-view.ts` | 17行の import、41行のコンストラクタ引数 `dockingGuide`、68行の `hide()`、129行の `sync()` を落とす。`onLeave()` は空になるが**メソッドは残す**(`ViewFrame` の必須メンバ) |
-| `src/game/pickable/object-windows.ts` | 24・35行の import、63-67行の `setDocking`/`docking` フィールド、131行の `closePanel()`、162-168行の `collapseBasePanel()`、304-306行の `selectBase`、310-321行の `toggleBasePanel`、352行の `clearActiveBaseIf`、356-369行の `dock`/`undock`/`transferResources`、397-406行の `dockState`/`isBasePanelExpanded`、55行の `expandedBaseWindowKey` を落とす。128-134行の `onClose` は `partWindows.closeFor` と `forgetWindow` だけを残す |
-| `src/game/pickable/object-commands.ts` | 11行の `DockState` 型、21行 `selectBase`、23行 `toggleBasePanel`、39行 `dock`、41行 `undock`、43行 `transferResources`、63行 `dockState`、65行 `isBasePanelExpanded` を落とす。`Base` の import は `setControlledBase`/`removeBase` が残るので保持 |
-| `src/game/hud/windows/menu-actions.ts` | `MenuAction` から `'toggleBasePanel'`(19行) `'dock'`(21) `'undock'`(22) `'storeInBase'`(23) `'transferResources'`(24) を落とす。`MenuCommon` から `dock`(44) `undock`(45) `storeInBase`(46) `transferResources`(47) を落とす。**`storeInBase` はどのメニューにも置かれていない死んだ項目**で、ここで一緒に消える |
-| `src/game/player/player.ts` | 711-715行の `dockState`/`dockItems`、723行の `...dockItems`、738-743行の `'dock'`/`'undock'`/`'transferResources'` 分岐を落とす |
-| `src/game/dynamic/dynamic-entity/base.ts` | 465-466行の `dockItems`、472行の `...dockItems`、473-476行の「基地パネルを展開/収納」項目、493-496行の `'toggleBasePanel'`/`'dock'` 分岐を落とす。529-533行の `onMapSelect` を `null` にする(→ 決めたこと 6)。`ObjectCommands` の import は残る |
-| `src/game/dynamic/dynamic-system.ts` | 190-196行の `park()` を落とす(唯一の呼び出し元が `docking.ts:281`)。232-235行の `findPlayer` は 247行に内部呼び出しが残るので**消さず** `private` にする |
-
-**達成条件と検証.**
-
-- `git grep -nE 'Docking|DockingGuide|dockState|DockState|toggleBasePanel|isBasePanelExpanded|selectBase|storeInBase|transferResources' -- src` が 0 件。
-- `git grep -nE '\.park\(' -- src` が 0 件。
-- `src/game/docking/` が存在しない。
-- `npm run typecheck` が通る。`npm run test:game` `npm run test:render` が通る。
-- **目視**: creative で基地と自艦を置き、両方を右クリックする。「ドッキング」「ドッキング解除」
-  「基地パネルを展開」「物資・電力の融通」が出ない。基地へ 300 m 以内へ寄せても軸線・リング・
-  `◎` マーカーが出ない。
-
-### 手順 3. HUD からドッキング由来のものを落とす
-
-**目的.** 手順2で参照ゼロになった HUD モジュールと、それに引きずられて死んだ拡張点・
-死んだ CSS を落とす。**この手順で挙動は変わらない**(すでに到達できないものを消すだけ)。
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/hud/panels/base-view.ts` | **削除**(430行) |
-| `src/game/hud/panels/base-view-vessels-tab.ts` | **削除**(134行) |
-| `src/game/hud/panels/base-view-parts-tab.ts` | **削除**(319行) |
-| `src/game/hud/panels/base-view-shop-tab.ts` | **削除**(93行)。`SHOP_CATALOG` を読む唯一の場所 |
-| `src/game/hud/panels/base-view-shared.ts` | **削除**(165行)。13個の export すべて、この5ファイル以外からの参照が 0 |
-| `src/game/hud/windows/resource-transfer-dialog.ts` | **削除**(378行) |
-| `src/game/hud/windows/rcs-fuel-transfer.ts` | **削除**(58行)。唯一の使い手が上のダイアログ |
-| `src/game/hud/windows/index.ts` | 4行目の `ResourceTransferDialog` の再 export を落とす |
-| `src/theme.ts` | 319行 `Z_RESOURCE_TRANSFER_DIALOG`、441行 `'--z-resource-transfer-dialog'` を落とす |
-| `src/game/stages/stage.ts` | 148行 `freeProcurement` を落とす。読み手は `docking.ts:218` の1箇所しかなかった |
-| `src/game/stages/creative-stage.ts` | 56行 `readonly freeProcurement = true;` を落とす |
-| `src/game/dynamic/dynamic-entity/ship.ts` | 42行 `FIRE_INTERVAL` / 43行 `ENEMY_BULLET_DAMAGE` から `export` を外す(外部の参照元は `base-view-shared.ts` だけだった。ファイル内 124行の自己利用は残る)。141-142行のコメント「parts 配列は BasePanel/Player の換装経路で splice され」を、実際に残る経路(コンストラクタとセーブ復元)へ直す。237行「基地ドックの修理を要する」・240-241行「復旧にはドックでの修理が要る」を、**回復手段が無い**という事実へ直す |
-| `src/game/hud/style/map-panel-style.ts` | 84行 `#hud.dock-mode #hud-predict-toggle { display: none; }` を落とす。`dock-mode` クラスを付ける側は**すでに存在しない**(旧ドックビューの残骸) |
-| `src/hud/style/settings-view-style.ts` | 10-24行の `.settings-dock` 一式(12行)を落とす。同じく付ける側が存在しない |
-
-**達成条件と検証.**
-
-- 削除対象7ファイルが存在しない。
-- 達成目標 1 の検索(3つの除外つき)の残りが、`base.ts` の接続点まわり(手順4で消す)だけになる。
-- `git grep -nE 'freeProcurement|SHOP_CATALOG|NEW_VESSEL_COST|REPAIR_COST_PER_HP|rcsFuelTotals|balanceRcsFuel' -- src` が 0 件。
-- `npm run typecheck` が通る。`npm run test:game` `npm run test:render` が通る。
-- **目視**: 設定ビューを開き、コンパクト幅(横 640px 以下)まで縮めて崩れないこと
-  (`.settings-dock` は付いていないので変わらないはずだが、消した後に確かめる)。
-
 ### 手順 4. `Base` から接続点・格納艦・在庫を、`Player` からポートを落とす
 
 **目的.** 実体側に残った、もう誰も読まない状態と幾何を落とす。ここまでで「ドッキング」を
@@ -245,8 +185,6 @@
 
 | 手順 | 削除ファイル | 編集ファイル | 削除行 |
 | --- | --- | --- | --- |
-| 2 | 2 | 8 | ≈590 |
-| 3 | 7 | 7 | ≈1,600 |
 | 4 | 0 | 4 | ≈145 |
 | 5 | 0 | 未定 | — |
 
