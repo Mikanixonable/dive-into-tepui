@@ -639,7 +639,7 @@ export class DynamicEntity {
   }
 
   // セーブデータへ変換する。保存へ載らない種別(弾・薬莢・破片)は null を返す。
-  serialize(): EntitySaveDataUnion | null {
+  public serialize(): EntitySaveDataUnion | null {
     return null;
   }
 

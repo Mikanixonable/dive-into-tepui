@@ -69,7 +69,7 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
   }
 
   // セーブデータへ変換する。
-  override serialize(): RcsFuelPickupSaveData {
+  public override serialize(): RcsFuelPickupSaveData {
     return {
       id: this.id,
       ...(this.name !== 'RCS燃料' ? { name: this.name } : {}),

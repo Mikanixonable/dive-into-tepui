@@ -71,7 +71,7 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
   }
 
   // セーブデータへ変換する。
-  override serialize(): AmmoPickupSaveData {
+  public override serialize(): AmmoPickupSaveData {
     return {
       id: this.id,
       kind: 'ammo',

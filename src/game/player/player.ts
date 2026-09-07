@@ -606,7 +606,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   // 現在の艦状態を保存用データへ変換する。
-  override serialize(): PlayerSaveData {
+  public override serialize(): PlayerSaveData {
     return {
       id: this.id,
       name: this.name,

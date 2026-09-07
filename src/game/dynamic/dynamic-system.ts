@@ -118,7 +118,7 @@ export class DynamicSystem {
   }
 
   // 顔ぶれを保存形へ畳む。保存へ載らない種別は落ちる。
-  serialize(): EntitySaveDataUnion[] {
+  public serialize(): EntitySaveDataUnion[] {
     return this.entities
       .map((e) => e.serialize())
       .filter((data): data is EntitySaveDataUnion => data !== null);
@@ -148,7 +148,7 @@ export class DynamicSystem {
 
   // 個体を1体足す。assetId のアセットがまだ揃っていなければ、取得を起こして待ち行列へ回す。
   // onSpawned は実体化した直後に1度だけ呼ぶ。
-  spawnWhenReady(assetId: ProteinAssetId | null, build: () => DynamicEntity, onSpawned?: () => void): void {
+  public spawnWhenReady(assetId: ProteinAssetId | null, build: () => DynamicEntity, onSpawned?: () => void): void {
     if (assetId === null || isProteinAssetReady(assetId)) {
       this.add(build());
       onSpawned?.();
