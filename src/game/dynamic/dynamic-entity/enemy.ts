@@ -27,7 +27,7 @@ import type { DynamicEntityKind } from './entity-kind';
 import type { GroupedMarkerItem, MarkerRole } from '../../marker/grouped-markers';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { EnemyDeathCause, Stage } from '../../stages/stage';
-import type { DynamicSystem, SpawnGate } from '../dynamic-system';
+import type { EntityRegistry, SpawnGate } from '../dynamic-system';
 import type { SimSpeedManager } from '../sim-speed-manager';
 import type { EnemySaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/crowding';
@@ -327,7 +327,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 行動関数。enemies は同一集団の同時攻撃数を数える母集団、dynamicSystem は弾の追加先。
   public behave(
-    simTime: number, player: Player, dynamicSystem: DynamicSystem, enemies: readonly Enemy[],
+    simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
     simSpeed: SimSpeedManager, celestialSystem: CelestialSystem,
   ): void {
     // 射撃間隔は simulation time で測る。wall dt を混ぜると、同じゲーム内時間でも
@@ -348,7 +348,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     if (this.burstLeft && this.burstLeft > 0) {
       this.burstDelay = (this.burstDelay ?? 0) - behaviorDt;
       if (this.burstDelay <= 0) {
-        this.firePlasma(simTime, player, dynamicSystem, celestialSystem);
+        this.firePlasma(simTime, player, registry, celestialSystem);
         this.burstLeft--;
         this.burstDelay = ENEMY_BURST_INTERVAL;
       }
@@ -365,7 +365,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     const counts = ENEMY_BURST_COUNTS;
     this.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
     this.burstDelay = ENEMY_BURST_INTERVAL;
-    this.firePlasma(simTime, player, dynamicSystem, celestialSystem);
+    this.firePlasma(simTime, player, registry, celestialSystem);
   }
 
   // enemies のうち、自分と同じ accent でバースト射撃中の個体数を数える。
@@ -381,7 +381,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   protected muzzleEffect(_muzzleState: KinematicState): void {}
 
   // player へ向けた見越し射撃でプラズマ弾を1発生成し、dynamicSystem に追加する。
-  private firePlasma(simTime: number, player: Player, dynamicSystem: DynamicSystem, celestialSystem: CelestialSystem): void {
+  private firePlasma(simTime: number, player: Player, registry: EntityRegistry, celestialSystem: CelestialSystem): void {
     const r = this.muzzlePosition();
     const v = this.state.v;
     const toPlayer = sub(player.state.r, r);
@@ -413,7 +413,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     );
     this.muzzleEffect(kinematicState<'eci'>(simTime, r, v));
 
-    dynamicSystem.add(pb);
+    registry.add(pb);
   }
 
   // 敵に共通する保存項目。具象の serialize() がこれへ自分の項目を足す。

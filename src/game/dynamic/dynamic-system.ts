@@ -29,7 +29,14 @@ import type { OrbitReference } from '../orbit-reference';
 // 個体を実体化してよいかを答える述語。何を待つかは、待つと決めた側だけが知っていればよい。
 export type SpawnGate = () => boolean;
 
-export class DynamicSystem {
+// 個体を顔ぶれへ登録する口。生んだものを世界へ入れるだけの側は、顔ぶれの読み出しも回収も
+// 要らないので、これだけを受け取る。
+export interface EntityRegistry {
+  add(entity: DynamicEntity): void;
+  spawnWhenReady(gate: SpawnGate | null, build: () => DynamicEntity, onSpawned?: () => void): void;
+}
+
+export class DynamicSystem implements EntityRegistry {
   // 保持する全エンティティを追加順に並べた、顔ぶれの正本。枠ごとの上限はこの並びから導く。
   private readonly entities: DynamicEntity[] = [];
 

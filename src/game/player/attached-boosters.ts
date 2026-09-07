@@ -13,7 +13,7 @@ import type { RenderStyle } from '../../render/render-style';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { EffectsSystem } from '../vfx/effects-system';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { EntityRegistry } from '../dynamic/dynamic-system';
 import { DetachedBooster } from '../dynamic/dynamic-entity/detached-booster';
 import { PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from '../dynamic/dynamic-entity/ship';
 import type { BurnManagementViewModel } from '../hud/panels/burn-management-panel';
@@ -107,7 +107,7 @@ export class AttachedBoosters {
   }
 
   // 最後尾の段だけを独立エンティティへ移し、爆砕ボルトの相対速度を質量比で配る。
-  decouple(dynamicSystem: DynamicSystem): void {
+  decouple(registry: EntityRegistry): void {
     const stageIndex = this.stack.stages.length - 1;
     if (stageIndex < 0) {
       this._hud.hint('分離できるブースターがありません');
@@ -134,7 +134,7 @@ export class AttachedBoosters {
     const t = player.state.t;
     player.state = kinematicState<'eci'>(t, player.state.r, separated.player);
     this._fx.spawnBoosterSeparation(t, jointR, separated.player, separated.booster, player.att);
-    dynamicSystem.add(new DetachedBooster({
+    registry.add(new DetachedBooster({
       stage: detachedStage,
       state: kinematicState<'eci'>(t, boosterR, separated.booster),
       att: {

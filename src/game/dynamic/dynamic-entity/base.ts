@@ -25,7 +25,7 @@ import type { SphereHit } from '../../../math/triangle-mesh';
 import { BASE_COLLISION_RADIUS, baseRaycast, baseSphereCollide } from './base-collision';
 import { Throttle } from '../../player/throttle';
 import type { Controllable } from './controllable';
-import type { DynamicSystem } from '../dynamic-system';
+import type { EntityRegistry } from '../dynamic-system';
 import type { OrbitReference } from '../../orbit-reference';
 import type { Stage } from '../../stages/stage';
 import type { Input } from '../../../input/input';
@@ -189,10 +189,10 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // --- 操作制御 ---
 
   // 毎フレーム、全ての基地に対して1度だけ呼ぶ。input が null なら操作されない。
-  // 射撃も補給も持たないので、dynamicSystem / activeStage / celestialSystem は受け取るだけで使わない。
+  // 射撃も補給も持たないので、registry / activeStage / celestialSystem は受け取るだけで使わない。
   updateControls(
     input: Input | null, dt: number, simDt: number,
-    _dynamicSystem: DynamicSystem, _activeStage: Stage, _celestialSystem: CelestialSystem,
+    _registry: EntityRegistry, _activeStage: Stage, _celestialSystem: CelestialSystem,
   ): void {
     if (input === null) {
       this.clearTransientCommands();

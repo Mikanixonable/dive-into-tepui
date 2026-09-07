@@ -11,7 +11,7 @@ import { Ship, SHIP_RADIATING_AREA_PER_MASS, PLAYER_MASS, PLAYER_INERTIA_PITCH, 
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { EntityRegistry } from '../dynamic/dynamic-system';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
 import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
 import { Input } from '../../input/input';
@@ -260,12 +260,12 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     input: Input | null,
     dt: number,
     simDt: number,
-    dynamicSystem: DynamicSystem,
+    registry: EntityRegistry,
     activeStage: Stage,
     celestialSystem: CelestialSystem,
   ): void {
     this.hpRegen(dt);
-    if (input !== null) this.handleEdgeInput(input, dynamicSystem);
+    if (input !== null) this.handleEdgeInput(input, registry);
     // ブースターの燃焼は操作の可否によらず進むので、指令を畳んだあとに進める。
     if (input === null) {
       this.clearTransientCommands();
@@ -276,7 +276,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     this.boosters.step(simDt);
     this.updateTorque(input, dt, simDt);
 
-    this.fire.updateFireState(dt, input, activeStage, dynamicSystem, celestialSystem);
+    this.fire.updateFireState(dt, input, activeStage, registry, celestialSystem);
 
     this.throttle.updateThrustLatches(input);
     const rcsThrust = this.throttle.updateThrustState(input, this.att, simDt, this);
@@ -331,12 +331,12 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   // 自機側のキー(RCS減衰・プログレード・スロットル等)を1フレーム分消費する。
-  private handleEdgeInput(input: Input, dynamicSystem: DynamicSystem): void {
-    input.takeKeys((code) => this.handleEdgePress(code, dynamicSystem));
+  private handleEdgeInput(input: Input, registry: EntityRegistry): void {
+    input.takeKeys((code) => this.handleEdgePress(code, registry));
   }
 
   // 自機側キー1個を処理する。処理したキーは true を返し input.takeKeys に消費させる。
-  private handleEdgePress(code: string, dynamicSystem: DynamicSystem): boolean {
+  private handleEdgePress(code: string, registry: EntityRegistry): boolean {
     switch (code) {
       case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return true;
       case K.progradeReset.code: this.throttle.enableProgradeReset(); return true;
@@ -346,7 +346,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       case K.throttleMid.code: this.throttle.setThrottlePreset(1); return true;
       case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return true;
       case K.throttleMax.code: this.throttle.setThrottlePreset(3); return true;
-      case K.boosterDecouple.code: this.boosters.decouple(dynamicSystem); return true;
+      case K.boosterDecouple.code: this.boosters.decouple(registry); return true;
       case K.boosterIgnitionToggle.code: this.boosters.toggleIgnition(); return true;
       case K.radiatorDeployLeft.code: this.radiator.toggle('up'); return true;
       case K.radiatorDeployRight.code: this.radiator.toggle('down'); return true;
