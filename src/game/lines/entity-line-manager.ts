@@ -1,7 +1,6 @@
 // どのエンティティに、どんな見た目の軌道線・予測線・過去線を出すかを決め、出ている線の
 // 形状と変換を合わせる。
 import * as THREE from 'three/webgpu';
-import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { View } from '../view/view';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
@@ -15,10 +14,10 @@ import { currentThemePalette } from '../../theme';
 import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { DisplayWindow } from '../display-window-manager';
-
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import { orbitLineBasisOf, type OrbitReference } from '../orbit-reference';
 import { COLOR_BASE } from '../marker/marker-identity';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 
 export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
 const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線
@@ -143,7 +142,7 @@ export class EntityLineManager {
     view: View, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
     orbitRef: OrbitReference | undefined,
     fo: FloatingOrigin, camera: THREE.Camera,
-    frameAnchors: FrameAnchorSource, celestialSystem: CelestialBodies,
+    frameAnchors: FrameAnchorSource, celestialBodies: CelestialBodies,
   ): void {
     this.applyLines(active, primaryTarget, view, displayWindow, visibilityPolicy, orbitRef);
     const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
@@ -152,8 +151,8 @@ export class EntityLineManager {
         // 予測が伸びきっていないフレームでは終端時刻を渡さず、届いたところまでで描かせる。
         const predictedTo = entity.predictionTruncated ? null : simTime + duration;
         entity.syncTrajectoryLines(
-          frame, simTime, displayTime, pastDuration, predictedTo, celestialSystem, fo, camera, frameAnchors);
-        entity.syncOrbitLine(displayTime, celestialSystem, fo, camera, frameAnchors);
+          frame, simTime, displayTime, pastDuration, predictedTo, celestialBodies, fo, camera, frameAnchors);
+        entity.syncOrbitLine(displayTime, celestialBodies, fo, camera, frameAnchors);
       }
     }
   }

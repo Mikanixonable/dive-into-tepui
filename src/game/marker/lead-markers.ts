@@ -2,11 +2,11 @@
 // 状態に依存するため、Enemy にも Targeter にも属さない独立責務として切り出してある。
 import { leadPoint } from '../../physics/intercept';
 import type { View } from '../view/view';
-import type { ProjectFn } from '../../math/projection';
 import type { MarkerManager } from './marker-manager';
 import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import { Player } from '../player/player';
 import { COLOR_MARKER_ALLY } from './marker-identity';
+import type { ProjectFn } from '../../math/projection';
 
 const LEAD_MAX_TIME = 25; // これより先にしか当たらない見越し解は表示しない [s]
 

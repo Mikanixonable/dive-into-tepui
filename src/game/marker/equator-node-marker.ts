@@ -1,13 +1,12 @@
 // 1つのオブジェクトの軌道が中心天体の赤道面を横切る点(EqAN/EqDN)を指す、実体を持たない
 // 被選択物。持ち主と中心天体を冠した呼称を答える。
-import type { Viewer } from '../dynamic/dynamic-entity/viewer';
-import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { ORBIT_ELEMENT_LABELS, type OrbitLabelSpec } from '../hud/orbit/orbit-labels';
 import { ORBIT_POINT_GLYPH } from './marker-identity';
 import { OrbitPointMarker } from './orbit-point-marker';
 import type { Vec3 } from '../../math/vec3';
-
 import type { PropertyRow } from '../../hud/windows/property-window-content';
+import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 
 // 交点種別ごとの、マーカーのキーに使う接頭辞と、軌道要素としてのラベル。
 const EQUATOR_NODE_LABELS = {
@@ -49,7 +48,7 @@ export class EquatorNodeMarker extends OrbitPointMarker {
 
   // 所属軌道・中心天体の名前・通過までの残り時間。
   public propertyRows(
-    _celestialSystem: CelestialBodies, _viewer: Viewer | null, simTime: number,
+    _celestialSystem: CelestialBodies, _viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
     return [
       ...this.ownerRows(),

@@ -1,14 +1,11 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import { Q_IDENTITY } from '../../../math/quat';
-import type { CelestialBodies } from '../../celestial/celestial-bodies';
-import type { Viewer } from './viewer';
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { OrbitalElements } from '../../../physics/elements';
 import { Attitude, stepAttitude } from '../../../physics/attitude';
 import { DynamicTrajectory } from '../../../physics/dynamic-trajectory';
 import { localOrbitPeriod, strongestAttractor } from '../../../physics/attractor';
-import type { CelestialBody } from '../../../physics/celestial-body';
 import { orbitalElementsOf } from '../../../physics/elements';
 import { airflow } from '../../../physics/atmosphere';
 import {
@@ -27,10 +24,8 @@ import { TargetRelativeLine } from '../../lines/target-relative-line';
 import { TrajectoryLine } from '../../lines/trajectory-line';
 import { LineStyle } from '../../../render/line-style';
 import { FrameAnchorSource, ReferenceFrame } from '../../../physics/frame';
-
 import type { CapKind, DynamicEntityKind } from './entity-kind';
 import type { InstancedPools } from '../instanced-pools';
-import type { EntityRegistry } from '../entity-registry';
 import { PredictedArc, trajectorySampleInterval } from '../predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from '../time-step';
 import type { FutureCelestialBodyProvider } from '../arc-celestial-bodies';
@@ -50,6 +45,10 @@ import type { GraphicsSettingsData } from '../../../render/graphics-settings';
 import type { OrbitReference } from '../../orbit-reference';
 import { MARKER_VISIBILITY, type MapVisibility, type MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { Controllable } from './controllable';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
+import type { OrbitingObject } from './orbiting-object';
+import type { CelestialBody } from '../../../physics/celestial-body';
+import type { EntityRegistry } from '../entity-registry';
 
 // 弾道係数 bcInv に織り込まれている抗力係数。よどみ点の曲率半径と断面積の比を bcInv から
 // 戻すのに使う。物体ごとに変えると bcInv の意味が種別で変わってしまうので、1つに固定する。
@@ -327,19 +326,19 @@ export class DynamicEntity {
   // 先なら、表示用の予測状態を使って船体と同じ時刻に揃える。対象への直線は未来予測に依存しない
   // ので、対象の未来が引けなければ対象のいまの位置で結ぶ。
   syncOrbitLine(
-    displayTime: number, celestialSystem: CelestialBodies, fo: FloatingOrigin, camera: THREE.Camera,
+    displayTime: number, celestialBodies: CelestialBodies, fo: FloatingOrigin, camera: THREE.Camera,
     frameAnchors: FrameAnchorSource,
   ): void {
     const orbitLine = this._orbitLine;
     if (orbitLine === null) return;
-    const state = this.stateAt(displayTime, celestialSystem);
+    const state = this.stateAt(displayTime, celestialBodies);
     if (state === null) {
       orbitLine.line.hide();
       return;
     }
     if (orbitLine.kind === 'relative') {
       const { target } = orbitLine;
-      const targetPos = target.stateAt(displayTime, celestialSystem)?.r ?? target.state.r;
+      const targetPos = target.stateAt(displayTime, celestialBodies)?.r ?? target.state.r;
       orbitLine.line.sync(state.r, targetPos, fo, camera);
       return;
     }
@@ -394,18 +393,18 @@ export class DynamicEntity {
   // simTime は描く区間の境目、displayTime は座標系から慣性系へ戻す時刻。
   syncTrajectoryLines(
     frame: ReferenceFrame, simTime: number, displayTime: number, pastDuration: number, predictedTo: number | null,
-    celestialSystem: CelestialBodies, fo: FloatingOrigin, camera: THREE.Camera, frameAnchors: FrameAnchorSource,
+    celestialBodies: CelestialBodies, fo: FloatingOrigin, camera: THREE.Camera, frameAnchors: FrameAnchorSource,
   ): void {
     if (this.predictedLine !== null) {
-      this.predictedLine.syncGeometry(this.predicted, simTime, predictedTo, frame, celestialSystem, frameAnchors);
-      this.predictedLine.syncTransform(frame, displayTime, celestialSystem, fo, frameAnchors);
+      this.predictedLine.syncGeometry(this.predicted, simTime, predictedTo, frame, celestialBodies, frameAnchors);
+      this.predictedLine.syncTransform(frame, displayTime, celestialBodies, fo, frameAnchors);
       this.predictedLine.sync(camera);
     }
     if (this.actualLine !== null) {
       this.actualLine.syncGeometry(
-        this.actual, simTime - pastDuration, simTime, frame, celestialSystem, frameAnchors,
+        this.actual, simTime - pastDuration, simTime, frame, celestialBodies, frameAnchors,
       );
-      this.actualLine.syncTransform(frame, displayTime, celestialSystem, fo, frameAnchors);
+      this.actualLine.syncTransform(frame, displayTime, celestialBodies, fo, frameAnchors);
       this.actualLine.sync(camera);
     }
   }
@@ -594,23 +593,23 @@ export class DynamicEntity {
   // 任意時刻 t の状態。実測列の内挿(過去)・予測列の内挿・予測列の先端を二体ケプラー軌道と
   // みなした外挿を、呼び出し側が意識せず1呼び出しで引く。未来を予測しない種別と、予測が
   // 打ち切られた(天体表面へ到達した)先の時刻では求まらない。外挿には中心天体の ECI 状態が
-  // 要るので、celestialSystem を渡さなければ予測列が持つ範囲までを答える。
-  stateAt(t: number, celestialSystem?: CelestialBodies): KinematicState | null {
+  // 要るので、celestialBodies を渡さなければ予測列が持つ範囲までを答える。
+  stateAt(t: number, celestialBodies?: CelestialBodies): KinematicState | null {
     if (t <= this.state.t) return this.actual.at(t);
     const predicted = this.predicted;
     if (predicted === null) return null;
     // 予測列の先端以前は内挿で足りる。外挿が要るときにだけ中心天体の状態を引く。
     if (t <= predicted.state.t) return predicted.at(t);
-    if (this.predictionTruncated || celestialSystem === undefined) return null;
+    if (this.predictionTruncated || celestialBodies === undefined) return null;
     // 中心天体は予測列が運んでいるものだけが正しい — 相対状態はその天体を原点に解かれている。
     const center = predicted.extrapolationCenter;
     if (center === null) return null;
-    return predicted.extrapolatedAt(t, celestialSystem.stateAt(center.celestialBody.id, t));
+    return predicted.extrapolatedAt(t, celestialBodies.stateAt(center.celestialBody.id, t));
   }
 
   // マップの表示トグルがこの個体をどう扱うか。トグルを持たない種別(弾・薬莢・破片)は
   // すべて出す判定を返す。viewer はいま操作している個体。
-  public mapVisibility(policy: MapVisibilityPolicy, viewer: Viewer | null): MapVisibility {
+  public mapVisibility(policy: MapVisibilityPolicy, viewer: OrbitingObject | null): MapVisibility {
     if (this.mapKind === null) return MARKER_VISIBILITY;
     // 多態 this 型は「Controllable も実装している」ことを約束しないので、同一性は基底型で比べる。
     const self: DynamicEntity = this;

@@ -8,13 +8,11 @@ import { PointEphemeris, boundBaryStateAt } from './ephemeris/point';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
 import { JULIAN_CENTURY, KeplerOrbit, keplerOrbitAccel, keplerOrbitMeanDirection, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
-import { FrameRotation } from './celestial-body';
 import { collinearClearanceRatio, hasStableTriangularPoints } from './lagrange';
 import { CelestialBodyDef, PlanetDef, SatelliteDef, StarDef, spinRateOf } from './celestial-body-def';
-import { Degree2Gravity } from './celestial-body';
 import {
-  CelestialKind, type BodyOrientation, type CelestialBody, type EphemerisBody,
-  type OrbitingCelestialBody,
+  CelestialKind, Degree2Gravity, FrameRotation, type BodyOrientation, type CelestialBody,
+  type EphemerisBody, type OrbitingCelestialBody,
 } from './celestial-body';
 import {
   KinematicState, addPrimaryRelative, fromStarRelative, kinematicState, toPrimaryRelative,
@@ -52,17 +50,6 @@ function extrapolatedState(eci: EciValues, t: number): KinematicState {
   const s = t - eci.state.t;
   if (s === 0) return eci.state;
   return kinematicState<'eci'>(t, extrapolatedPosition(eci, t), addScaled(eci.state.v, eci.accel, s));
-}
-
-// 星系の天体を役割ごとの一覧として答える窓。積分・接触判定・抗力は個体ではなくこの一覧に
-// 対して回る。並びは天体の宣言順で、時刻ごとの解決は天体1体が畳む。
-export interface CelestialMotions {
-  // 全登録天体。中心天体は原点に静止。
-  readonly celestialMotions: readonly CelestialMotion[];
-  // mu が 0 でない天体。
-  readonly gravityMotions: readonly CelestialMotion[];
-  // 大気を持つ天体。
-  readonly atmosphereMotions: readonly CelestialMotion[];
 }
 
 export abstract class CelestialMotion implements CelestialBody, EphemerisBody {

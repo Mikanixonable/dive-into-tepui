@@ -92,7 +92,7 @@ export class FireControl {
   // 復元するスナップショットか、新規配置の初期積載を受け取る。どちらも省略すれば既定積載。
   constructor(
     private readonly player: Player,
-    private readonly _hud: Notifier,
+    private readonly _notifier: Notifier,
     private readonly _worldSfx: WorldSfx,
     private readonly _scene: THREE.Scene,
     private readonly _fx: FlashEffects,
@@ -156,7 +156,7 @@ export class FireControl {
     input: Input,
     activeStage: Stage,
     registry: EntityRegistry,
-    celestialSystem: CelestialBodies,
+    celestialBodies: CelestialBodies,
   ): void {
     this.tickReloadTimer(dt);
 
@@ -172,7 +172,7 @@ export class FireControl {
     if (this.player.totalFireRate <= 0) {
       if (!this.wasEmptyClick) {
         this._worldSfx.emptyClick();
-        this._hud.hint('武装が損傷しており発射できない', 3000);
+        this._notifier.hint('武装が損傷しており発射できない', 3000);
         this.wasEmptyClick = true;
       }
       return;
@@ -181,13 +181,13 @@ export class FireControl {
     if (!this.left) {
       if (!this.wasEmptyClick) {
         this._worldSfx.emptyClick();
-        this._hud.hint('弾薬切れ — 軌道上の補給 ▣ を回収せよ', 3000);
+        this._notifier.hint('弾薬切れ — 軌道上の補給 ▣ を回収せよ', 3000);
         this.wasEmptyClick = true;
       }
       return;
     }
 
-    this.fireCycle(activeStage, registry, celestialSystem);
+    this.fireCycle(activeStage, registry, celestialBodies);
   }
 
   // クールダウンタイマーを dt だけ減らす。
@@ -200,7 +200,7 @@ export class FireControl {
   private fireCycle(
     activeStage: Stage,
     registry: EntityRegistry,
-    celestialSystem: CelestialBodies,
+    celestialBodies: CelestialBodies,
   ): void {
     const justStartedFiring = !this.wasFiring;
     this.wasFiring = true;
@@ -220,7 +220,7 @@ export class FireControl {
 
     const result = this.consume();
 
-    this.fireGun(activeStage, registry, celestialSystem);
+    this.fireGun(activeStage, registry, celestialBodies);
     switch (result) {
       case 'empty':
       case 'normal':
@@ -282,7 +282,7 @@ export class FireControl {
   private fireGun(
     activeStage: Stage,
     registry: EntityRegistry,
-    celestialSystem: CelestialBodies,
+    celestialBodies: CelestialBodies,
   ): void {
     const fwd = qRotate(this.player.att.q, LOCAL_FORWARD);
 
@@ -291,7 +291,7 @@ export class FireControl {
     this.muzzleIdx = (this.muzzleIdx + 1) % MUZZLE_OFFSETS.length;
     const muzzle = add(this.player.state.r, qRotate(this.player.att.q, v3(mo.x, mo.y, mo.z)));
 
-    this.spawnBullet(this.player, muzzle, fwd, registry, celestialSystem);
+    this.spawnBullet(this.player, muzzle, fwd, registry, celestialBodies);
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv(瞬間的な速度変更なので時刻は据え置き)
     this.player.state = kinematicState<'eci'>(
       this.player.state.t,
@@ -309,9 +309,9 @@ export class FireControl {
 
   // 弾丸: 機首方向 + 散布界
   private spawnBullet(
-    ship: Ship, muzzle: Vec3, fwd: Vec3, registry: EntityRegistry, celestialSystem: CelestialBodies,
+    ship: Ship, muzzle: Vec3, fwd: Vec3, registry: EntityRegistry, celestialBodies: CelestialBodies,
   ): void {
-    const sunDir = celestialSystem.sunDirFrom(ship.state.r, ship.state.t);
+    const sunDir = celestialBodies.sunDirFrom(ship.state.r, ship.state.t);
     const spreadScale = sunGlareSpreadScale(muzzle, fwd, sunDir);
     // 機首方向に散布角を加えた発射方向
     const spread = Math.abs(randSym(BULLET_SPREAD)) * spreadScale;

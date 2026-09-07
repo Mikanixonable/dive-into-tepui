@@ -3,13 +3,11 @@
 // 被選択物のウィンドウと共存させる。
 import { PropertyWindow } from '../../hud/windows/property-window';
 import type { InspectedObject } from './inspected-object';
-
 import type { PropertyWindowContent, PropertyWindowRelatedItem } from '../../hud/windows/property-window-content';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { Hud } from '../hud/hud';
 import type { LinePickable } from './line-pickable';
 import type { LinePickables } from './line-pickables';
-
 import type { ObjectPickables } from './object-pickables';
 
 const KIND_LABEL: Record<LinePickable['kind'], string> = {

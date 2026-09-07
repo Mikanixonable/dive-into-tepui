@@ -24,7 +24,7 @@ export function focusPoint(
 }
 
 // 注視点の候補。ObjectPickable はこの形を構造的に満たすので、呼び出し側はそのまま渡せる。
-// **ObjectPickable 型そのものを受け取ってはいけない** — object-pickable.ts は camera-system.ts を
+// **ObjectPickable 型そのものを受け取ってはいけない** — 窓の面が plan-editor と stage を
 // 型 import しており、それが three/webgpu を引き込む。tsconfig.test.json の include へ
 // object-pickable.ts が入ると型検査が DOM 定義を要求して壊れる。
 export interface FocusCandidate {

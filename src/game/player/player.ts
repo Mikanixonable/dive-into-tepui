@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 
-import type { Viewer } from '../dynamic/dynamic-entity/viewer';
+import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { View } from '../view/view';
 import { Attitude } from '../../physics/attitude';
 import { qFromBasis } from '../../math/quat';
@@ -138,7 +138,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   readonly plan = new Plan();
   planExecution: PlanExecutionMode = 'instant';
 
-  private readonly _hud: Notifier;
+  private readonly _notifier: Notifier;
   private readonly _worldSfx: WorldSfx;
   private readonly _fx: FlashEffects;
   private readonly playerScene: THREE.Scene;
@@ -151,7 +151,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // init 省略時は無作為な名前と既定軌道の新規艦になる。id を省いたときは name がそのまま
   // 艦の識別子になるので、複数隻を並べるなら name も分ける。
   constructor(
-    _hud: Notifier, _worldSfx: WorldSfx, _scene: THREE.Scene, _fx: FlashEffects, markerManager: MarkerManager,
+    _notifier: Notifier, _worldSfx: WorldSfx, _scene: THREE.Scene, _fx: FlashEffects, markerManager: MarkerManager,
     init: PlayerInit = {},
   ) {
     const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
@@ -164,7 +164,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       : Player.progradeAttitude(state);
 
     super(name, state, buildPlayerShip(), att, PLAYER_HULL_RADIUS, PLAYER_MAX_HP, _scene, id);
-    this._hud = _hud;
+    this._notifier = _notifier;
     this._worldSfx = _worldSfx;
     this._fx = _fx;
     this.playerScene = _scene;
@@ -174,11 +174,11 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     this.doPreciseReentry = true;
 
     const saved = 'saved' in init ? init.saved : undefined;
-    this.throttle = new Throttle(_hud, saved?.throttle);
-    this.fire = new FireControl(this, _hud, _worldSfx, _scene, _fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
+    this.throttle = new Throttle(_notifier, saved?.throttle);
+    this.fire = new FireControl(this, _notifier, _worldSfx, _scene, _fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
     this.belt = new Belt(this.renderObject, this);
     this.aero = new AeroLoad();
-    this.altitudeAlarm = new AltitudeAlarm(_hud, _worldSfx);
+    this.altitudeAlarm = new AltitudeAlarm(_notifier, _worldSfx);
     this.temperature = saved?.thermal.hullTemp ?? HULL_START_TEMP;
     this.radiator = new RadiatorSystem(this.renderObject, this, saved?.radiator);
     this.power = new PowerSystem(this.renderObject, saved?.power);
@@ -187,7 +187,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     this.reentryEffects = new ReentryEffects(_scene);
     this.markers = new PlayerMarkers(markerManager, this.id);
     // 段の模型を船体へ足し、段のぶんの質量と慣性を載せるので、船体側の部品より後に組む。
-    this.boosters = new AttachedBoosters(this, _hud, _worldSfx, _scene, _fx, saved?.boosters);
+    this.boosters = new AttachedBoosters(this, _notifier, _worldSfx, _scene, _fx, saved?.boosters);
 
     if (saved) {
       // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。'powered' だった
@@ -212,7 +212,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
           const idx = this.plan.addNode(kinematicState<'eci'>(n.t, v3(n.r.x, n.r.y, n.r.z), v3(n.v.x, n.v.y, n.v.z)), anchor);
           if (idx < 0) rejected++;
         }
-        if (rejected > 0) _hud.hint(`${this.name}: 起点より前のマニューバノード ${rejected} 件を復元できません`);
+        if (rejected > 0) _notifier.hint(`${this.name}: 起点より前のマニューバノード ${rejected} 件を復元できません`);
       }
     }
   }
@@ -269,7 +269,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     simDt: number,
     registry: EntityRegistry,
     activeStage: Stage,
-    celestialSystem: CelestialBodies,
+    celestialBodies: CelestialBodies,
   ): void {
     this.hpRegen(dt);
     if (input !== null) this.handleEdgeInput(input, registry);
@@ -283,7 +283,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     this.boosters.step(simDt);
     this.updateTorque(input, dt, simDt);
 
-    this.fire.updateFireState(dt, input, activeStage, registry, celestialSystem);
+    this.fire.updateFireState(dt, input, activeStage, registry, celestialBodies);
 
     this.throttle.updateThrustLatches(input);
     const rcsThrust = this.throttle.updateThrustState(input, this.att, simDt, this);
@@ -334,7 +334,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 姿勢微調整モードの ON/OFF を切り替える。
   toggleFineAttitude(): void {
     this.fineAttitude = !this.fineAttitude;
-    this._hud.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
+    this._notifier.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
   }
 
   // 自機側のキー(RCS減衰・プログレード・スロットル等)を1フレーム分消費する。
@@ -543,7 +543,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       dt,
       simDt,
       this,
-      () => this._hud.hint('進行方向ホールド解除(手動操作)'),
+      () => this._notifier.hint('進行方向ホールド解除(手動操作)'),
     );
   }
 
@@ -686,26 +686,26 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
 
   // 残 HP と、いま最も強く引かれている天体を中心とした近地点高度。
-  public listDetail(celestialSystem: CelestialBodies): string {
-    const center = strongestAttractor(this.state.r, celestialSystem.celestialMotions, this.state.t);
+  public listDetail(celestialBodies: CelestialBodies): string {
+    const center = strongestAttractor(this.state.r, celestialBodies.celestialMotions, this.state.t);
     const el = this.orbitalElementsAround(center, this.state.t);
     const pe = el ? fmtDist(apsisAltitudes(el).pe) : '—';
     return `HP ${Math.round(this.hp)}/${Math.round(this.maxHp)} · PE ${pe}`;
   }
 
   // 検索が照合する文字列。行の補助表示と同じ。
-  public listSearchText(celestialSystem: CelestialBodies): string {
-    return this.listDetail(celestialSystem);
+  public listSearchText(celestialBodies: CelestialBodies): string {
+    return this.listDetail(celestialBodies);
   }
 
   // 操作中の自艦を一覧の先頭へ出す。
-  public listPriority(viewer: Viewer | null): number {
+  public listPriority(viewer: OrbitingObject | null): number {
     return this === viewer ? -100 : 0;
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
-    _celestialSystem: CelestialBodies, viewer: Viewer | null, navTargetId: string | null,
+    _celestialBodies: CelestialBodies, viewer: OrbitingObject | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
     const isActive = this === viewer;
     const activate: MenuItem<MenuAction> = isActive
@@ -753,7 +753,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // プロパティウィンドウに出す行。装甲・温度・電力・弾薬を主要行とし、操作対象か・計画実行は
   // 詳細トグル、軌道要素は「軌道」グループの下に畳む。
   public propertyRows(
-    celestialSystem: CelestialBodies, viewer: Viewer | null, simTime: number,
+    celestialBodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
     return [
       {
@@ -765,7 +765,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       { key: 'temp', label: '温度', value: `${this.temperature.toFixed(0)} K` },
       { key: 'power', label: '電力', value: fmtEnergy(this.power.chargeJ) },
       { key: 'ammo', label: '弾薬', value: fmtAmmoStatus(this.roundsInMag, this.magsLeft, this.reloadTimer) },
-      ...orbitRows(this, celestialSystem, simTime),
+      ...orbitRows(this, celestialBodies, simTime),
     ];
   }
 
@@ -779,7 +779,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 注視されたら操作対象にもなる(操作艦を切り替える最速の手段)。
   public readonly onMapFocus = (controlSelection: ControlSelection): void => {
     controlSelection.select(this);
-    this._hud.hint(`${this.name} を操作対象に設定`);
+    this._notifier.hint(`${this.name} を操作対象に設定`);
   };
 }
 

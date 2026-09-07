@@ -2,11 +2,11 @@
 // その場の軌道時間スケール。天体の位置は pivot で厳密に引いた値からその時刻へ外挿したものを
 // 使うので、呼び出し側は一覧を解決した時刻を pivot として渡す。
 // THREE/DOM 非依存の純関数群。
-import type { CelestialBody } from './celestial-body';
 import { KinematicState } from './kinematic-state';
 import { keplerPeriod, orbitalElementsOf } from './elements';
 import type { FrameAnchorSource } from './frame';
 import { Vec3, len, lenSq, sub, v3 } from '../math/vec3';
+import type { CelestialBody } from './celestial-body';
 
 // 天体 attractor が位置 r の運動方程式へ寄与する加速度 μ[(r_b − r)/|r_b − r|³ − r_b/|r_b|³]。
 // ECI は原点(地球)自身が他の天体に引かれて加速する非慣性系なので、直接引力(第1項)から

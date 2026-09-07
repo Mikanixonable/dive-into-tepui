@@ -2,7 +2,6 @@
 // 隠し、戦闘ビューでは星殻上の輝点スプライトへ切り替える。
 import * as THREE from 'three/webgpu';
 import { OrbitingMotion } from '../../../physics/celestial-motion';
-import type { CelestialBody } from '../../../physics/celestial-body';
 import { shapeAxes } from '../../../physics/celestial-body-def';
 import { CameraSystem } from '../../camera/camera-system';
 import { FloatingOrigin } from '../../camera/floating-origin';
@@ -32,6 +31,7 @@ import type { ShadowCumulus } from '../../../render/pipeline/shadow/cumulus-shad
 import type { RenderStyle } from '../../../render/render-style';
 import type { AtmosphereClouds, AtmosphereOptics } from '../../../render/atmosphere';
 import type { Vec3 } from '../../../math/vec3';
+import type { CelestialBody } from '../../../physics/celestial-body';
 
 // 輝点スプライトの一辺 [m]。星殻上へ置くので、点像の角の広がりへ星殻半径を掛けたもの。
 const POINT_SPRITE_SIZE = POINT_IMAGE_ANGULAR_SIZE * STAR_SHELL_RADIUS;

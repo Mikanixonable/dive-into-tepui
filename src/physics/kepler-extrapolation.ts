@@ -1,5 +1,4 @@
 // 予測列の先端を中心天体まわりの二体ケプラー軌道とみなして外挿する純関数群。THREE/DOM 非依存。
-import type { CelestialBody } from './celestial-body';
 import { orbitalElementsOf } from './elements';
 import {
   OrbitalElements,
@@ -9,6 +8,7 @@ import {
   velocityOnOrbit,
 } from './elements';
 import { KinematicState, kinematicState } from './kinematic-state';
+import type { CelestialBody } from './celestial-body';
 
 // この外挿が前提とする離心率の上限。eccentricAnomalyFromMean のニュートン法が収束するとみなす
 // 範囲(既存の楕円ケプラーソルバの前提)。

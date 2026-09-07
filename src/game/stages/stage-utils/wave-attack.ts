@@ -2,7 +2,7 @@
 // 交戦圏内数に応じた周期湧き(active_combat)の3フェーズを進めるフェーズ機械と、
 // ウェーブ1回分の隻数・編成・接近軌道の生成。
 import * as THREE from 'three/webgpu';
-import type { CelestialMotions } from '../../../physics/celestial-motion';
+import type { CelestialMotions } from '../../../physics/celestial-body';
 import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { ENGAGEMENT_RANGE } from '../../dynamic/engagement-zone';
 import { Player } from '../../player/player';
@@ -63,7 +63,7 @@ export class WaveAttack {
 
   // saved があればその状態(フェーズ・タイマー・ウェーブ数)から始める。
   public constructor(
-    private readonly hud: Notifier,
+    private readonly notifier: Notifier,
     private readonly worldSfx: WorldSfx,
     private readonly fx: FlashEffects,
     private readonly scene: THREE.Scene,
@@ -97,7 +97,7 @@ export class WaveAttack {
     if (player.magsLeft <= 0 && player.roundsInMag <= 0) return;
     this.waveState = 'spawning_enemies';
     this.spawnTimer = STAGE00_SPAWN_DELAY;
-    this.hud.toast('弾薬を確保した。敵部隊が接近中...', 3000);
+    this.notifier.toast('弾薬を確保した。敵部隊が接近中...', 3000);
   }
 
   // 遅延タイマーが尽きたら最初のウェーブを湧かせ、active_combat フェーズへ進める。
@@ -126,7 +126,7 @@ export class WaveAttack {
     if (this.spawnTimer > 0) return;
     this.spawnWave(player, addEnemy);
     this.spawnTimer = STAGE00_SPAWN_INTERVAL;
-    this.hud.toast(`波状攻撃 第${this._waveCount}波 接近中！`, 3000);
+    this.notifier.toast(`波状攻撃 第${this._waveCount}波 接近中！`, 3000);
   }
 
   public serialize(): WaveAttackSaveData {

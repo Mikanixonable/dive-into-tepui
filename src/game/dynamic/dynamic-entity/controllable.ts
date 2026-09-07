@@ -8,7 +8,6 @@ import type { RadiatorSystem } from '../../player/radiator';
 import type { AeroLoad } from '../../player/aero-load';
 import type { AltitudeAlarm } from '../../player/altitude-alarm';
 import type { Input } from '../../../input/input';
-
 import type { Stage } from '../../stages/stage';
 import type { EntityRegistry } from '../entity-registry';
 import type { CombatTarget } from './combat-target';
@@ -40,10 +39,10 @@ export interface Controllable extends CombatTarget {
   consumeFuel(amount: number): number;
 
   // 毎フレーム1度だけ呼ぶ。input が null なら、このフレーム操作されない個体として指令を畳む。
-  // registry / activeStage / celestialSystem は射撃と補給の判定に使う。
+  // registry / activeStage / celestialBodies は射撃と補給の判定に使う。
   updateControls(
     input: Input | null, dt: number, simDt: number,
-    registry: EntityRegistry, activeStage: Stage, celestialSystem: CelestialBodies,
+    registry: EntityRegistry, activeStage: Stage, celestialBodies: CelestialBodies,
   ): void;
 
   // 次のフレームへ持ち越してはならない連続指令(推力・トルク・射撃)を畳む。

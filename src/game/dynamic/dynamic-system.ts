@@ -53,30 +53,30 @@ export class DynamicSystem implements EntityRegistry {
   // 描画資源のプールと前進の機構を組んでから、saved があればその顔ぶれを復元する。
   constructor(
     scene: THREE.Scene,
-    hud: Notifier,
+    notifier: Notifier,
     worldSfx: WorldSfx,
     flash: FlashEffects,
     markerManager: MarkerManager,
-    private readonly celestialSystem: CelestialBodies,
+    private readonly celestialBodies: CelestialBodies,
     private readonly sections: FrameSections,
     initialSimTime: number,
     saved?: GameSaveData,
   ) {
     this.instancedPools = new InstancedPools(scene);
-    this.simulator = new Simulator(this, celestialSystem, sections, initialSimTime);
-    this.nanWatchdog = new NanWatchdog(hud);
-    if (saved) this.restoreFromSave(saved, hud, worldSfx, flash, scene, markerManager);
+    this.simulator = new Simulator(this, celestialBodies, sections, initialSimTime);
+    this.nanWatchdog = new NanWatchdog(notifier);
+    if (saved) this.restoreFromSave(saved, notifier, worldSfx, flash, scene, markerManager);
   }
 
   // スナップショットの顔ぶれを復元する。組み立て方は種別ごとの辞書が答え、知らない種別は
   // 読み飛ばす。
   private restoreFromSave(
-    save: GameSaveData, hud: Notifier, worldSfx: WorldSfx, flash: FlashEffects, scene: THREE.Scene,
+    save: GameSaveData, notifier: Notifier, worldSfx: WorldSfx, flash: FlashEffects, scene: THREE.Scene,
     markerManager: MarkerManager,
   ): void {
     for (const data of save.entities) {
       const restoration = restorationFor(
-        data, save.simTime, scene, hud, worldSfx, markerManager, flash);
+        data, save.simTime, scene, notifier, worldSfx, markerManager, flash);
       if (restoration === null) continue;
       this.spawnWhenReady(restoration.gate, () => restoration.build());
     }
@@ -274,7 +274,7 @@ export class DynamicSystem implements EntityRegistry {
         simDt,
         this,
         activeStage,
-        this.celestialSystem,
+        this.celestialBodies,
       );
     }
   }
@@ -286,7 +286,7 @@ export class DynamicSystem implements EntityRegistry {
     if (player === null) return;
     const enemies = this.entities.filter(isEnemy);
     for (const e of enemies) {
-      if (e.alive) e.behave(this.simTime, player, this, enemies, operable, this.celestialSystem);
+      if (e.alive) e.behave(this.simTime, player, this, enemies, operable, this.celestialBodies);
     }
   }
 

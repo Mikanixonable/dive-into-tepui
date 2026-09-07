@@ -70,7 +70,7 @@ export class Throttle {
   private readonly latchedThrustKeys = new Set<string>();
   private readonly lastThrustPressTime: Partial<Record<string, number>> = {};
 
-  constructor(private readonly _hud: Notifier, saved?: ThrottleSaveData) {
+  constructor(private readonly _notifier: Notifier, saved?: ThrottleSaveData) {
     if (saved) {
       this.throttleIdx = saved.throttleIdx;
       this.rcsDamp = saved.rcsDamp ?? true;
@@ -81,25 +81,25 @@ export class Throttle {
   // RCS 回転制動の ON/OFF を切り替える。
   toggleRcsDamp(): void {
     this.rcsDamp = !this.rcsDamp;
-    this._hud.hint(`RCS 回転制動: ${this.rcsDamp ? 'ON' : 'OFF'}`);
+    this._notifier.hint(`RCS 回転制動: ${this.rcsDamp ? 'ON' : 'OFF'}`);
   }
 
   // プログレードホールドを ON にする。
   enableProgradeReset(): void {
     this.progradeHold = true;
-    this._hud.hint('プログレード姿勢リセット(機首を進行方向へ)');
+    this._notifier.hint('プログレード姿勢リセット(機首を進行方向へ)');
   }
 
   // プログレードホールドの ON/OFF を切り替える。
   toggleProgradeHold(): void {
     this.progradeHold = !this.progradeHold;
-    this._hud.hint(`進行方向ホールド: ${this.progradeHold ? 'ON (機首をプログレードへ保持)' : 'OFF'}`);
+    this._notifier.hint(`進行方向ホールド: ${this.progradeHold ? 'ON (機首をプログレードへ保持)' : 'OFF'}`);
   }
 
   // 並進出力のプリセットを idx 段階目へ切り替える。
   setThrottlePreset(idx: number): void {
     this.throttleIdx = idx;
-    this._hud.hint(`並進出力: ${THROTTLE_LABELS[idx]!} (${THROTTLE_LEVELS[idx]!.toFixed(1)} m/s²)`);
+    this._notifier.hint(`並進出力: ${THROTTLE_LABELS[idx]!} (${THROTTLE_LEVELS[idx]!.toFixed(1)} m/s²)`);
   }
 
   // スラスト方向の表示用状態と噴射ラッチを初期化する。

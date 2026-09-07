@@ -18,7 +18,7 @@ export class ControlSelection {
     private readonly cameraSystem: CameraSystem,
     private readonly navTarget: NavTarget,
     private readonly worldSfx: WorldSfx,
-    private readonly hud?: Notifier,
+    private readonly notifier?: Notifier,
   ) {
     const candidates = dynamicSystem.controllables;
     this._current = candidates.find((c) => c.id === savedId) ?? candidates.find((c) => c.alive) ?? null;
@@ -32,7 +32,7 @@ export class ControlSelection {
     this._current?.clearTransientCommands();
     this._current = target;
     this.navTarget.clear();
-    if (target.controlHint !== null) this.hud?.hint(target.controlHint);
+    if (target.controlHint !== null) this.notifier?.hint(target.controlHint);
   }
 
   // 未操作状態(全滅、または操作対象の手動解除)へ戻す。
@@ -47,7 +47,7 @@ export class ControlSelection {
   release(target: Controllable): void {
     if (this._current !== target) return;
     this.clear();
-    if (target.releaseHint !== null) this.hud?.hint(target.releaseHint);
+    if (target.releaseHint !== null) this.notifier?.hint(target.releaseHint);
   }
 
   // 操作対象が居ない間に増えたものを、そのまま操作対象にする。既に居れば何もしない。

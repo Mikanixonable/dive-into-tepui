@@ -1,10 +1,8 @@
 // 天体1体。運動(CelestialMotion)と表示名・表示クラスを持ち、見た目(メッシュ・輝点スプライト・
 // 環など)をその運動へ同期する。位置・姿勢の正本は motion で、sync のたびにそこから引く。
 import * as THREE from 'three/webgpu';
-import type { Viewer } from '../../dynamic/dynamic-entity/viewer';
 import { CelestialMotion } from '../../../physics/celestial-motion';
-import { CelestialBodyDef } from '../../../physics/celestial-body-def';
-import { shapeSpheroidRadii } from '../../../physics/celestial-body-def';
+import { CelestialBodyDef, shapeSpheroidRadii } from '../../../physics/celestial-body-def';
 import { apsisAltitudes, OrbitalElements, orbitalElementsOf } from '../../../physics/elements';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { EllipseLine } from '../../lines/ellipse-line';
@@ -38,6 +36,7 @@ import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
+import type { OrbitingObject } from '../../dynamic/dynamic-entity/orbiting-object';
 
 // 公転天体の参照軌道線の色。同じ種別の天体はすべて同じ色で引く。
 const SATELLITE_REFERENCE_LINE_COLOR = 0xaab3c0;
@@ -272,14 +271,14 @@ export abstract class CelestialEntity implements ObjectPickable {
 
   // 一覧の検索が照合する、自艦からの距離と中心天体の名前。
   public listSearchText(
-    celestialSystem: CelestialSystem, viewer: Viewer | null, displayTime: number,
+    celestialSystem: CelestialSystem, viewer: OrbitingObject | null, displayTime: number,
   ): string {
     return bodySearchText(celestialSystem, this.posAt(displayTime), viewer, displayTime);
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
-    celestialSystem: CelestialSystem, _viewer: Viewer | null, navTargetId: string | null,
+    celestialSystem: CelestialSystem, _viewer: OrbitingObject | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
     // 副題は星系の中での役どころ。
     const subLabel = this.id === celestialSystem.origin.id ? '母星 (中心天体)'
@@ -299,7 +298,7 @@ export abstract class CelestialEntity implements ObjectPickable {
   // プロパティウィンドウに出す行。種別・μ・半径を主要行とし、公転していれば軌道要素を
   // 「軌道」グループの下に畳む。viewer が null なら距離の行は落ちる。
   public propertyRows(
-    _celestialSystem: CelestialSystem, viewer: Viewer | null, simTime: number, displayTime: number,
+    _celestialSystem: CelestialSystem, viewer: OrbitingObject | null, simTime: number, displayTime: number,
   ): readonly PropertyRow[] {
     const motion = this.motion;
     const def = motion.def;

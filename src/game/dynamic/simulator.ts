@@ -16,8 +16,7 @@
 import type { DynamicSystem } from './dynamic-system';
 import type { Controllable } from './dynamic-entity/controllable';
 import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import { CelestialMotions } from '../../physics/celestial-motion';
-import type { CelestialBody } from '../../physics/celestial-body';
+import { CelestialMotions } from '../../physics/celestial-body';
 import type { Stage } from '../stages/stage';
 import { EntityContactPhysics } from './entity-contact-physics';
 import { engagementZones } from './engagement-zone';
@@ -29,6 +28,7 @@ import { simulationMaxStep, simulationStepDuration, SUBSTEP_MAX_DT, SUBSTEP_MAX_
 import type { NanWatchdog } from './nan-watchdog';
 import { FrameSections, SECTION } from '../frame-sections';
 import type { PerfCounts } from '../perf-counts';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 // ゼロ長サブステップ(丸めで刻みが0になったイベント消費)が連続してこの回数を超えたら
 // Simulator.advance が simTime を強制前進させる。イベント予告と実際の消滅判定が

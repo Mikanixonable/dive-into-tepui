@@ -2,8 +2,8 @@
 // ドーンダスク・モルニヤ・ツンドラ)の軌道要素を組む。いずれも中心天体の重心を原点とした
 // OrbitalElements を返し、実際の天体位置への配置は呼び出し側(orbit-guide.ts)が行う。
 // 中心天体の重力・扁平・自転周期は呼び出し側から受け取る。
-import type { CelestialBody } from './celestial-body';
 import { orbitalElementsFromClassical, OrbitalElements, semiMajorFromPeriod } from './elements';
+import type { CelestialBody } from './celestial-body';
 
 // 太陽に対する昇交点の歳差が一致すべき角速度の基準となる回帰年 [s]。
 const TROPICAL_YEAR_SEC = 365.2422 * 86400;

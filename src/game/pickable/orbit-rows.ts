@@ -11,12 +11,12 @@ import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
 // simTime は天体位置を厳密に引く時刻。
 export function orbitRows(
-  entity: DynamicEntity, celestialSystem: CelestialBodies, simTime: number,
+  entity: DynamicEntity, celestialBodies: CelestialBodies, simTime: number,
 ): PropertyRow[] {
-  const celestialBodies = celestialSystem.celestialMotions;
+  const motions = celestialBodies.celestialMotions;
   const oi = orbitInfo(
-    entity, autoOrbitReference(entity.state.r, celestialBodies, simTime), simTime,
-    (id: string) => celestialSystem.nameOf(id));
+    entity, autoOrbitReference(entity.state.r, motions, simTime), simTime,
+    (id: string) => celestialBodies.nameOf(id));
   const apSpec = getApsisLabelSpec('ap', oi.centerId);
   const peSpec = getApsisLabelSpec('pe', oi.centerId);
   const group = '軌道';

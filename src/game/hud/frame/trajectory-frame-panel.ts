@@ -1,16 +1,14 @@
 // マップビューの「軌道フレーム」パネル。計画折れ線・予測軌道線の描画基準(中心天体・回転系)とカメラ追随設定を担当する。
 import { FrameRole, frameRoleOf } from '../../../physics/frame';
-import type { ListedObject } from '../../pickable/listed-object';
-
 import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { ToggleSwitch } from '../../../hud/widgets';
 import { frameRoleName, rotationSourceLabel } from './frame-labels';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-
 import type { DisplayWindowManager } from '../../display-window-manager';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { buildPanel } from './frame-controls';
+import type { ListedObject } from '../../pickable/listed-object';
 
 export class TrajectoryFramePanel {
   private readonly panel: HTMLElement;

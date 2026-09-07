@@ -3,9 +3,9 @@
 //
 // 天体を相手にするので天体の運動を読むが、**依存はこの向きだけ**である — 重力のモジュールは
 // 何が何を引くかにだけ答え、何が何に触れたかには答えない。
-import type { CelestialBody } from './celestial-body';
 import { ContactGeometry, sphereContactGeometry } from './collision-response';
 import { KinematicState } from './kinematic-state';
+import type { CelestialBody } from './celestial-body';
 
 // 区間内で最初に触れた天体と、その接触の幾何。
 interface SurfaceContact {

@@ -3,10 +3,10 @@
 // 役割トークンは毎フレームその時点の対象へ解決されるので、操作対象の乗り換えやターゲットの
 // 付け替えをまたいでも同じ基準を指し続ける(DEVELOP/SPEC/CELESTIAL.md 8節)。
 import { orbitingAttractorOf } from '../physics/attractor';
-import type { CelestialBody } from '../physics/celestial-body';
 import { FrameAnchorSource, FrameRole, frameRoleOf } from '../physics/frame';
 import { KinematicState } from '../physics/kinematic-state';
 import type { CelestialSystem } from './celestial/celestial-system';
+import type { CelestialBody } from '../physics/celestial-body';
 
 // 解決に要る問い合わせをまとめた受け口。いずれも ECI 状態を答える。
 interface AnchorTargets {

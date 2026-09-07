@@ -28,7 +28,7 @@ export function restorationFor(
   data: EntitySaveDataUnion,
   simTime: number,
   scene: THREE.Scene,
-  hud: Notifier,
+  notifier: Notifier,
   worldSfx: WorldSfx,
   markerManager: MarkerManager,
   effects: FlashEffects,
@@ -37,7 +37,7 @@ export function restorationFor(
     case 'player':
       return {
         gate: null,
-        build: () => new Player(hud, worldSfx, scene, effects, markerManager, { saved: data, simTime }),
+        build: () => new Player(notifier, worldSfx, scene, effects, markerManager, { saved: data, simTime }),
       };
     case 'metal-enemy':
     case 'protein-enemy': {
@@ -57,7 +57,7 @@ export function restorationFor(
     case 'base':
       return {
         gate: null,
-        build: () => new Base({ saved: data, simTime }, scene, hud, worldSfx, markerManager),
+        build: () => new Base({ saved: data, simTime }, scene, notifier, worldSfx, markerManager),
       };
     default:
       return skipUnknownKind(data);

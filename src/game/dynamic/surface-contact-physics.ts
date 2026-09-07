@@ -2,17 +2,17 @@
 // 当て、当事者へ collideWithCelestialBody を呼ぶ。天体は状態を書き換えられないので個体ごとに
 // 独立に解け、解決の順序も件数の上限も要らない — 物体どうしの接触
 // (entity-contact-physics.ts)とは機構を共有しない。
-import type { CelestialBody } from '../../physics/celestial-body';
 import { distributeFixedContact } from '../../physics/collision-response';
 import { firstSurfaceContact } from '../../physics/surface-contact';
 import { kinematicState } from '../../physics/kinematic-state';
 import { add, sameVec, scale } from '../../math/vec3';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import type { EntityRegistry } from './entity-registry';
 import type { Stage } from '../stages/stage';
 import { contactTime, isFiniteParticipant } from './contact-participant';
 import { SurfaceCandidates } from './surface-candidates';
 import { CONTACT_RESTITUTION } from './entity-contact-response';
+import type { CelestialBody } from '../../physics/celestial-body';
+import type { EntityRegistry } from './entity-registry';
 
 // フレームの区間で取る到達範囲の倍率。1 は掃引そのもの。
 const SPAN_REACH_MARGIN = 2;

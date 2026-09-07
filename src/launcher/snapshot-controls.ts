@@ -10,7 +10,7 @@ import { SnapshotService } from './save/snapshot-service';
 // その回で Game が消費しなかった入力エッジだけを見る。
 export class SnapshotControls {
   constructor(
-    private readonly hud: Notifier,
+    private readonly notifier: Notifier,
     private readonly pauseMenu: PauseMenu,
     private readonly browser: SaveBrowser,
     private readonly service: SnapshotService,
@@ -38,10 +38,10 @@ export class SnapshotControls {
     // そのまま代入するだけで結果画面を出し直さないので、ロードすると結果画面の無いまま
     // 決着済みのステージが続くことになる。
     if (!game.activeStage.isPlaying) {
-      this.hud.hint('決着後はスナップショットを残せません');
+      this.notifier.hint('決着後はスナップショットを残せません');
       return;
     }
     const snap = this.service.capture(game, 'manual', null, true);
-    this.hud.hint(snap ? `クリップしました: ${snap.name}` : 'クリップに失敗しました');
+    this.notifier.hint(snap ? `クリップしました: ${snap.name}` : 'クリップに失敗しました');
   }
 }

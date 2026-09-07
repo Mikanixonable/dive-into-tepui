@@ -1,10 +1,9 @@
 // ListedObject の列を、選択ウィジェット(ObjectPicker)向けのジャンル別グループへ組む純関数。
 // どのジャンルへ入るかは候補自身(pickerGenre)が答えるので、ここは並べ替えと空グループの除去を行う。
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { ListedObject } from '../pickable/listed-object';
-
 import type { ObjectPickerGroup } from './windows/object-picker';
 import { OBJECT_PICKER_GENRES, type ObjectPickerGenre } from '../pickable/pickable-listing';
+import type { ListedObject } from '../pickable/listed-object';
 
 // items をジャンル別にグループ分けする。値は ListedObject.id。空のグループは返さない。
 export function groupPickables(

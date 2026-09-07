@@ -2,7 +2,7 @@
 // 導かれる回転追従(慣性系・公転・自転・姿勢)を持つ。
 //
 // **chase は「動く実体を追っている視点」を指す語。** 天体や空間上の固定点ではなく機体
-// (艦・敵・基地・弾薬)をフォーカスしている状態のことで、DOM id(#hud-chase-reset)・
+// (艦・敵・基地・弾薬)をフォーカスしている状態のことで、DOM id(#notifier-chase-reset)・
 // セーブキー(camera.chase)はこの意味で使う。カメラの実装が2つあった頃の名残ではない。
 import * as THREE from 'three/webgpu';
 import { Vec3, add, addScaled, cross, len, lenSq, norm, projectOntoPlane, scale, sub, v3 } from '../../math/vec3';
@@ -196,7 +196,7 @@ export class FocusCamera {
   // あればその値から、無ければ既定の見下ろし視点から組む。座標系は必ず frames.frameOf 経由で
   // 解決する — ReferenceFrame をリテラルで組むと参照同一性が崩れる(frame.ts 参照)。
   constructor(
-    private readonly _hud: Notifier,
+    private readonly _notifier: Notifier,
     private readonly celestialSystem: CelestialSystem,
     private readonly config: FocusCameraConfig,
     saved?: FocusCameraSaveData,
@@ -398,7 +398,7 @@ export class FocusCamera {
     up = norm(up);
     this.setRotationBasis(offset, up);
     this.resetPan();
-    this._hud.hint(view === 'above' ? '基準面の真上を表示' : '基準面の真横を表示');
+    this._notifier.hint(view === 'above' ? '基準面の真上を表示' : '基準面の真横を表示');
   }
 
   // CameraSystem.sync が読む近クリップ距離。dist に比例させることで、どのズーム段でも
@@ -438,7 +438,7 @@ export class FocusCamera {
     const projectedUp = norm(projectOntoPlane(up, offset));
     this.setRotationBasis(offset, projectedUp);
     this.resetPan();
-    this._hud.hint('マップビューの視点をリセット');
+    this._notifier.hint('マップビューの視点をリセット');
   }
 
   // パン変位をゼロに戻す。

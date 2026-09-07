@@ -6,13 +6,12 @@
 // 個体1つと解析天体の関係(引く天体・表面到達・大気での焼失・刻みの上限)は実シミュレーション
 // と同じ答えでなければならない。
 import { DynamicSystem } from './dynamic-system';
-import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { Controllable } from './dynamic-entity/controllable';
 import { simulationMaxStep, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT } from './time-step';
-
 import { PredictedArc } from './predicted-arc';
 import type { PerfCounts } from '../perf-counts';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 
 // 消費される弧が、消費前線より過去側にも保持しておく余裕 [s]。保持窓の左端が前線に一致すると
 // at(前線) を挟む補間区間が消える。予測線の下端は simTime なので、余分に保持しても描画は変わらない。
@@ -41,7 +40,7 @@ export class Predictor {
 
   constructor(
     private readonly dynamicSystem: DynamicSystem,
-    private readonly celestialSystem: CelestialBodies,
+    private readonly celestialBodies: CelestialBodies,
   ) {}
 
   // このフレームぶんの積分予算を、操作対象の弧・計画の弧・その他の個体へ配って伸ばす。ポーズ中・
@@ -100,7 +99,7 @@ export class Predictor {
   private advanceBudget(
     e: DynamicEntity, budgetSteps: number, simTime: number, horizon: number, maxStep: number,
   ): number {
-    const arc = e.ensurePredictedArc(this.celestialSystem);
+    const arc = e.ensurePredictedArc(this.celestialBodies);
     if (arc === null) return 0;
     arc.requiredEnd = simTime + horizon;
     arc.retainFrom = simTime - ARC_RETAIN_MARGIN;

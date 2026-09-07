@@ -4,10 +4,10 @@
 import { FrameRole, FrameRotationSource, rotationSourceKey } from '../../../physics/frame';
 import { SegmentedControl } from '../../../hud/widgets';
 import { frameRoleName } from './frame-labels';
-import type { CelestialBody } from '../../../physics/celestial-body';
 import type { CelestialEntity } from '../../celestial/celestial-entity/celestial-entity';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import { rotationFollowKey, type CameraRotationFollow } from '../../camera/focus-camera';
+import type { CelestialBody } from '../../../physics/celestial-body';
 
 export class RotationZone {
   public readonly element: HTMLElement;

@@ -7,12 +7,12 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, scale, sameVec } from '../../math/vec3';
 import { HierarchicalSpatialGrid } from '../../math/hierarchical-spatial-grid';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import type { EntityRegistry } from './entity-registry';
 import type { EngagementZone } from './engagement-zone';
 import type { CollisionResponse } from '../../physics/collision-response';
 import { contactTime, isFiniteParticipant } from './contact-participant';
 import { entityContactResponse } from './entity-contact-response';
 import type { Stage } from '../stages/stage';
+import type { EntityRegistry } from './entity-registry';
 
 // 1 substep のあいだに1つの交戦圏で解決する接触の上限。TOI(接触時刻)昇順で解決し、これを
 // 超えた分は次の substep でグリッドから列挙し直されて改めて候補になる。

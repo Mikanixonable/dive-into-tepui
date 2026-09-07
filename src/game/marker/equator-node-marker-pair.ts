@@ -1,19 +1,18 @@
 // 1つのオブジェクトの軌道が中心天体の赤道面を横切る2点(EqAN/EqDN)の算出と、△▽ マーカー
 // としての表示・被選択物としての公開。
 import { strongestAttractor } from '../../physics/attractor';
-import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { CelestialBody } from '../../physics/celestial-body';
 import { FrameAnchorSource, ReferenceFrame, unbakeToDisplayPoint } from '../../physics/frame';
-
 import type { KinematicState } from '../../physics/kinematic-state';
 import { Vec3 } from '../../math/vec3';
 import { solveEquatorCrossings } from '../../physics/orbit-solvers';
 import { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarker } from './equator-node-marker';
 import type { MarkerManager } from './marker-manager';
-import type { ProjectFn } from '../../math/projection';
 import { ObjectPickable } from '../pickable/object-pickable';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { CelestialBody } from '../../physics/celestial-body';
+import type { ProjectFn } from '../../math/projection';
 
 // 画面に出ている折れ線と、それが載っている座標系。
 export interface DisplayedPath {
@@ -32,7 +31,7 @@ export interface DisplayedPathSource {
 // 個体ごとの違いは paths が答える。
 export interface EquatorNodeInputs {
   readonly displayTime: number;
-  readonly celestialSystem: CelestialBodies;
+  readonly celestialBodies: CelestialBodies;
   readonly frameAnchors: FrameAnchorSource;
   readonly markerManager: MarkerManager;
   readonly paths: DisplayedPathSource;
@@ -54,7 +53,7 @@ export class EquatorNodeMarkerPair {
   update(inputs: EquatorNodeInputs): void {
     const path = inputs.paths.displayedPathOf(this.owner);
     if (path !== null) this.solve(inputs, path.frame, this.owner.state, path.samples);
-    else this.solve(inputs, null, this.owner.stateAt(inputs.displayTime, inputs.celestialSystem), []);
+    else this.solve(inputs, null, this.owner.stateAt(inputs.displayTime, inputs.celestialBodies), []);
   }
 
   // paths(区間ごとのサンプル列、時刻昇順)が空なら state の軌道要素から求める。frame は
@@ -63,26 +62,26 @@ export class EquatorNodeMarkerPair {
     inputs: EquatorNodeInputs, frame: ReferenceFrame | null,
     state: KinematicState | null, paths: readonly (readonly KinematicState[])[],
   ): void {
-    const { displayTime, celestialSystem, frameAnchors } = inputs;
+    const { displayTime, celestialBodies, frameAnchors } = inputs;
     this.clearCrossings();
     if (state === null) return;
     // 中心天体は state 自身の時刻で選ぶ — 解析楕円は displayTime、折れ線は simTime の
     // 状態ベクトルから作るので、揃えないと中心の選定だけが別の瞬間のものになる。
     const centerPivot = state.t;
-    const center = strongestAttractor(state.r, celestialSystem.celestialMotions, centerPivot);
+    const center = strongestAttractor(state.r, celestialBodies.celestialMotions, centerPivot);
     const eqNormal = center.degree2At(centerPivot)?.pole;
     if (!eqNormal) return;
 
-    const displayFrame = frame ?? celestialSystem.frames.frameFor(center.id);
-    const unbakeTf = celestialSystem.frames.transformAt(displayFrame, displayTime, frameAnchors);
+    const displayFrame = frame ?? celestialBodies.frames.frameFor(center.id);
+    const unbakeTf = celestialBodies.frames.transformAt(displayFrame, displayTime, frameAnchors);
     const crossings = solveEquatorCrossings(
       state, center, centerPivot, eqNormal, paths,
-      (t) => celestialSystem.stateAt(center.id, t).r);
+      (t) => celestialBodies.stateAt(center.id, t).r);
     if (!crossings) return;
 
-    const centerName = celestialSystem.nameOf(center.id);
+    const centerName = celestialBodies.nameOf(center.id);
     const toDisplay = (r: Vec3, t: number): Vec3 =>
-      unbakeToDisplayPoint(unbakeTf, celestialSystem.frames.transformAt(displayFrame, t, frameAnchors), r);
+      unbakeToDisplayPoint(unbakeTf, celestialBodies.frames.transformAt(displayFrame, t, frameAnchors), r);
 
     this.ascending.place(
       toDisplay(crossings.asc.r, crossings.asc.t), crossings.asc.t, this.owner.name, centerName);

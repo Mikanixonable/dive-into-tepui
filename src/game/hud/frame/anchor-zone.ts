@@ -2,10 +2,7 @@
 // 敵・基地・弾薬まで含む全候補から選ぶプルダウン(ObjectPicker)、下段はいまカメラがいる
 // 系の天体だけに絞ったクイックボタン(SegmentedControl)。
 import { FRAME_ROLES, frameRoleAnchorId } from '../../../physics/frame';
-import type { ListedObject } from '../../pickable/listed-object';
-
 import type { CelestialSystem } from '../../celestial/celestial-system';
-
 import { SegmentedControl } from '../../../hud/widgets';
 import { injectOnce } from '../../../hud/widgets/inject-style';
 import { frameRoleName } from './frame-labels';
@@ -13,6 +10,7 @@ import { LagrangePointMarker } from '../../marker/lagrange-point-marker';
 import { groupPickables } from '../object-groups';
 import { ObjectPicker, ObjectPickerGroup } from '../windows/object-picker';
 import type { OverlayManager } from '../../../hud/overlay-manager';
+import type { ListedObject } from '../../pickable/listed-object';
 
 // プルダウン先頭に置く役割グループ。役割は毎フレーム対象へ解決されるので、乗り換え・付け替えを
 // またいで選択が保たれる(MAP.md 3節)。

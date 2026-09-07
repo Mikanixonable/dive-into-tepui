@@ -2,7 +2,6 @@
 // デバッグ表示の選択。窓が開いている間だけ計測が走る(`on` が計測の可否そのもの)。
 import type { WebGPURenderer } from 'three/webgpu';
 import { PropertyWindow } from '../hud/windows/property-window';
-import type { PropertyRow } from '../hud/windows/property-window-content';
 import { SegmentedControl } from '../hud/widgets';
 import { DEBUG_TARGETS, type DebugTargetHost, type DebugTargetId } from '../render/pipeline/debug-target';
 import type { RenderStyleSetting } from '../render/render-style';
@@ -16,6 +15,7 @@ import { ProteinMotionMetricsRecorder } from '../game/protein/protein-motion-met
 import { LODS_FINE_TO_COARSE } from '../game/protein/protein-motion-controller';
 import type { PerfCounts, PerfCountSource } from '../game/perf-counts';
 import type { EntityCountKind } from '../game/dynamic/dynamic-entity/entity-kind';
+import type { PropertyRow } from '../hud/windows/property-window-content';
 
 // エンティティ数の行。並び順と表示名はここで決める。
 const ENTITY_COUNT_ROWS: readonly { key: EntityCountKind; label: string }[] = [

@@ -3,7 +3,6 @@
 // (族 id → 表示設定)を1つの経路で回し、族ごとに独立した種類関数を呼ぶ形は取らない。
 import * as THREE from 'three/webgpu';
 import { OrbitingMotion } from '../../../physics/celestial-motion';
-import type { CelestialBody } from '../../../physics/celestial-body';
 import { CollinearPoint, SecondaryFrame, secondaryFrameOf } from '../../../physics/lagrange';
 import type { CelestialSystem } from '../celestial-system';
 import { Vec3 } from '../../../math/vec3';
@@ -25,6 +24,7 @@ import {
 import { combinedCandidateIds, parseGuideKindId } from './orbit-guide-kind-ids';
 import { OrbitGuideCatalog } from './orbit-guide-catalog';
 import { DirectionMarkers } from './direction-markers';
+import type { CelestialBody } from '../../../physics/celestial-body';
 
 // リサジューの頂点数の打ち切り。周回数ぶんだけ経路が伸びるので、1周ぶんの曲線と違って
 // 適応分割は収束しない。最大周回数(30)でも1周あたり数十頂点は残る水準を採る。

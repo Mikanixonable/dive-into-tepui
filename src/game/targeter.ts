@@ -1,8 +1,6 @@
 // 戦闘ターゲットの選定と、戦闘対象・弾薬・燃料の画面マーカーの同期。ターゲットに紐づく
 // 表示(方位マーカー・見越し点・的通過マーク)もここが受け持つ。
 import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../math/vec3';
-import type { CelestialMotions } from '../physics/celestial-motion';
-import type { Viewer } from './dynamic/dynamic-entity/viewer';
 import { Enemy } from './dynamic/dynamic-entity/enemy';
 import { isBullet } from './dynamic/dynamic-entity/bullet';
 import { isAmmoPickup } from './dynamic/dynamic-entity/ammo-pickup';
@@ -13,19 +11,20 @@ import { Player } from './player/player';
 import { isCombatTarget, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import { Input } from '../input/input';
 import { CameraSystem } from './camera/camera-system';
-import type { ProjectFn } from '../math/projection';
 import type { GroupedMarkerItem, MarkerRole } from './marker/grouped-markers';
 import type { CelestialMarkers } from './marker/celestial-markers';
 import { MARKER_PRIORITY } from './marker/crowding';
 import type { MarkerManager } from './marker/marker-manager';
 import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
 import { pickNearest } from './pickable/object-pickable';
-
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
 import { isOccluded } from '../physics/occlusion';
 import type { NavTarget } from './nav-target';
+import type { CelestialMotions } from '../physics/celestial-body';
+import type { OrbitingObject } from './dynamic/dynamic-entity/orbiting-object';
+import type { ProjectFn } from '../math/projection';
 
 // ターゲット位置に自機側を向けて置いた仮想標的面(的)を弾が通過した点のマーカー。
 const BOARD_MARK_LIFETIME = 5.0; // 表示時間 [s]
@@ -65,7 +64,7 @@ export class Targeter {
   }
 
   // Tキーで、照準中心にもっとも近い対象をターゲットにする。操作中の艦自身は候補から外す。
-  handleTargetSelectKey(input: Input, viewer: Viewer, project: ProjectFn): void {
+  handleTargetSelectKey(input: Input, viewer: OrbitingObject, project: ProjectFn): void {
     if (!input.takeKey(K.targetSelect)) return;
     const targets = this.dynamicSystem.all()
       .filter(isCombatTarget).filter((e) => e.alive && e !== viewer);
@@ -75,7 +74,7 @@ export class Targeter {
   }
 
   // 発射弾が標的面を自機側から通過した点をターゲット相対で記録し、既存の記録の寿命を進める。
-  updateBoardMarks(dt: number, viewer: Viewer | null): void {
+  updateBoardMarks(dt: number, viewer: OrbitingObject | null): void {
     const target = this.aliveTarget;
     if (!viewer || !target) {
       this.boardMarks.length = 0;
@@ -107,7 +106,7 @@ export class Targeter {
   // ターゲットに紐づく表示物(的通過マーク・方位マーカー)と、全戦闘対象のマーカー集合を
   // まとめて更新する。
   sync(
-    viewer: Viewer | null, cameraSystem: CameraSystem, displayTime: number, simTime: number,
+    viewer: OrbitingObject | null, cameraSystem: CameraSystem, displayTime: number, simTime: number,
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const project = cameraSystem.activeCameraProjection;
@@ -119,7 +118,7 @@ export class Targeter {
   // 全戦闘対象のマーカー集合(ターゲットの役割を含む)と LEAD マーカーを同期する。位置は
   // 機体メッシュと同じ stateAt — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
   private syncTargetMarkers(
-    viewer: Viewer | null, displayTime: number, simTime: number, cameraSystem: CameraSystem,
+    viewer: OrbitingObject | null, displayTime: number, simTime: number, cameraSystem: CameraSystem,
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     // マーカーは操作対象自身も他の船と同列に扱う。自分自身を候補から外すのは、ターゲット選定
@@ -235,7 +234,7 @@ export class Targeter {
   }
 
   // ターゲットとその反対方向を指す方向マーカーを、自機位置を原点に置く。マップビューでは伏せる。
-  private syncTargetDirMarkers(viewer: Viewer | null, mapView: boolean, project: ProjectFn): void {
+  private syncTargetDirMarkers(viewer: OrbitingObject | null, mapView: boolean, project: ProjectFn): void {
     const tgt = this.aliveTarget;
     if (mapView || !tgt || !viewer) {
       this.markerManager.hide('tgtdir');

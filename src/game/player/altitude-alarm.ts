@@ -25,7 +25,7 @@ export class AltitudeAlarm {
   private readonly warnedThresholds = new Set<number>();
 
   constructor(
-    private readonly _hud: Notifier,
+    private readonly _notifier: Notifier,
     private readonly _worldSfx: WorldSfx,
   ) {}
 
@@ -57,7 +57,7 @@ export class AltitudeAlarm {
       if (this.altEma < threshold) {
         if (this.warnedThresholds.has(threshold)) continue;
         this.warnedThresholds.add(threshold);
-        this._hud.hint(`警告: 高度が${Math.round(threshold / 1000)}km以下です`, 3000);
+        this._notifier.hint(`警告: 高度が${Math.round(threshold / 1000)}km以下です`, 3000);
         this._worldSfx.altAlarm();
       } else if (this.altEma > threshold + ALT_WARN_HYSTERESIS) {
         this.warnedThresholds.delete(threshold);

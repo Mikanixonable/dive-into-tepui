@@ -4,9 +4,9 @@ import {
   Atmosphere, airspeed, atmosphericDensity, atmosphericScaleHeight, ellipsoidAltitude,
 } from '../../physics/atmosphere';
 import { nearestAtmosphereBody } from '../../physics/attractor';
-import type { CelestialBody } from '../../physics/celestial-body';
 import { KinematicState } from '../../physics/kinematic-state';
 import { Vec3, dot, len, sub } from '../../math/vec3';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 // 1サブステップの最大秒数 [s]。
 export const SUBSTEP_MAX_DT = 20;

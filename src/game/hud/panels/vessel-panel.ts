@@ -4,9 +4,6 @@
 // キー押下と同じ経路(Input.tapKey)で発火するボタンとしてここに持つ — タッチでも到達できるよう
 // にするための、キー入力の代替 UI。
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
-import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
-import type { Stage } from '../../stages/stage';
-import type { CameraSystem } from '../../camera/camera-system';
 import { Button, SegmentedControl } from '../../../hud/widgets';
 import { fmtAmmoStatus } from '../ammo-status';
 import { setElementText } from '../../../hud/utils';
@@ -17,6 +14,9 @@ import type { RadiatorSide, RadiatorSystem } from '../../player/radiator';
 import type { SolarSide, PowerSystem } from '../../player/power';
 import { THROTTLE_LEVELS, THROTTLE_LABELS } from '../../player/throttle';
 import { MAX_DYN_PRESSURE } from '../../player/aero-load';
+import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
+import type { Stage } from '../../stages/stage';
+import type { CameraSystem } from '../../camera/camera-system';
 
 const SYNC_INTERVAL_MS = 100;
 

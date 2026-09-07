@@ -413,7 +413,7 @@ export class Game {
     this.sections.enter(SECTION.plan);
     this.dynamicSystem.updateEquatorNodes({
       displayTime: displayWindow.displayTime,
-      celestialSystem: this._celestialSystem,
+      celestialBodies: this._celestialSystem,
       frameAnchors: this.frameAnchors,
       markerManager: this.markerManager,
       paths: this.planDisplay,
