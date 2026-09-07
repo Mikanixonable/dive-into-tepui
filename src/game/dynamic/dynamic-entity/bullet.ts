@@ -7,7 +7,7 @@ import type { MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { EntityRegistry } from '../entity-registry';
 import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import { KinematicState } from '../../../physics/kinematic-state';
-import { CelestialMotion } from '../../../physics/celestial-motion';
+import type { CelestialBody } from '../../../physics/celestial-body';
 
 import { FloatingOrigin } from '../../camera/floating-origin';
 import type { Stage } from '../../stages/stage';
@@ -100,7 +100,7 @@ export class Bullet extends DynamicEntity {
     // 判定もここで行う(substep ごとの位置だけを見る、意図的に雑な最接近判定)。
     public checkLoss(
         _dt: number, simTime: number, _activeStage: Stage, _registry: EntityRegistry,
-        viewerPos: Vec3, _atmosphereBodies: readonly CelestialMotion[],
+        viewerPos: Vec3, _atmosphereBodies: readonly CelestialBody[],
     ): void {
         if (!this.alive) return;
         if (this.shooter === 'enemy' && !this.passedClose

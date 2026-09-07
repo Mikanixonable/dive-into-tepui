@@ -1,7 +1,7 @@
 // エンティティの保持・追加・上限管理・寿命回収と、1フレームぶんの前進(指令決定と積分)・描画同期。
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../math/vec3';
-import { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
@@ -187,7 +187,7 @@ export class DynamicSystem implements EntityRegistry {
   // 全エンティティの寿命判定と上限判定を行い、死亡したものを破棄・除去する。
   public cleanup(
     dt: number, simTime: number, activeStage: Stage, viewerPos: Vec3,
-    atmosphereBodies: readonly CelestialMotion[],
+    atmosphereBodies: readonly CelestialBody[],
   ): void {
     this.processPendingSpawns();
     // 判定は開始時の顔ぶれに対して行う。死の演出が破片を足すので、生配列を反復すると

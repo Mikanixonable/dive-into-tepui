@@ -2,7 +2,7 @@
 // ドーンダスク・モルニヤ・ツンドラ)の軌道要素を組む。いずれも中心天体の重心を原点とした
 // OrbitalElements を返し、実際の天体位置への配置は呼び出し側(orbit-guide.ts)が行う。
 // 中心天体の重力・扁平・自転周期は呼び出し側から受け取る。
-import type { CelestialMotion } from './celestial-motion';
+import type { CelestialBody } from './celestial-body';
 import { orbitalElementsFromClassical, OrbitalElements, semiMajorFromPeriod } from './elements';
 
 // 太陽に対する昇交点の歳差が一致すべき角速度の基準となる回帰年 [s]。
@@ -16,7 +16,7 @@ const CRITICAL_INCLINATION_DEG = (Math.acos(1 / Math.sqrt(5)) * 180) / Math.PI;
 // (太陽方向を基準にした角度)。両条件を同時に満たす実数の傾斜角が存在しなければ null。
 // 昇交点の歳差は扁平が生むので、2次重力場を持たない天体では解が存在しない。
 function sunSynchronousElements(
-  repeatDays: number, revsPerRepeat: number, raanOffsetDeg: number, planet: CelestialMotion, planetPivot: number,
+  repeatDays: number, revsPerRepeat: number, raanOffsetDeg: number, planet: CelestialBody, planetPivot: number,
 ): OrbitalElements | null {
   const degree2 = planet.degree2At(planetPivot);
   if (degree2 === null) return null;
@@ -50,7 +50,7 @@ export function sunSyncRevsPerDayRange(
 
 // 太陽同期準回帰軌道。昇交点の絶対位置はガイド線の形に影響しないので 0° に固定する。
 export function sunSyncRepeatGroundTrackElements(
-  repeatDays: number, revsPerRepeat: number, planet: CelestialMotion, planetPivot: number,
+  repeatDays: number, revsPerRepeat: number, planet: CelestialBody, planetPivot: number,
 ): OrbitalElements | null {
   return sunSynchronousElements(repeatDays, revsPerRepeat, 0, planet, planetPivot);
 }
@@ -61,7 +61,7 @@ export type LocalTime = 'dawn' | 'dusk';
 // その瞬間の太陽方向の昇交点赤経(呼び出し側が現在時刻の天体暦から求めて渡す)。
 export function dawnDuskElements(
   repeatDays: number, revsPerRepeat: number, localTime: LocalTime, sunRaanDeg: number,
-  planet: CelestialMotion, planetPivot: number,
+  planet: CelestialBody, planetPivot: number,
 ): OrbitalElements | null {
   return sunSynchronousElements(
     repeatDays, revsPerRepeat, sunRaanDeg + (localTime === 'dawn' ? -90 : 90), planet, planetPivot);
@@ -70,7 +70,7 @@ export function dawnDuskElements(
 // 傾斜角・近地点引数を臨界値(63.4°・270°)に固定し、周期 period から長半径を、近地点高度から
 // 離心率を求める。モルニヤ・ツンドラ軌道はこの周期だけが異なる。
 function criticalInclinationElements(
-  perigeeAltitude: number, raanDeg: number, period: number, planet: CelestialMotion, planetPivot: number,
+  perigeeAltitude: number, raanDeg: number, period: number, planet: CelestialBody, planetPivot: number,
 ): OrbitalElements {
   const a = semiMajorFromPeriod(period, planet.def.mu);
   const e = 1 - (planet.def.radius + perigeeAltitude) / a;
@@ -80,14 +80,14 @@ function criticalInclinationElements(
 
 // モルニヤ軌道: 周期は中心天体の自転周期 spinPeriod [s] の半分(1自転に2周)。
 export function molniyaElements(
-  perigeeAltitude: number, raanDeg: number, planet: CelestialMotion, planetPivot: number, spinPeriod: number,
+  perigeeAltitude: number, raanDeg: number, planet: CelestialBody, planetPivot: number, spinPeriod: number,
 ): OrbitalElements {
   return criticalInclinationElements(perigeeAltitude, raanDeg, spinPeriod / 2, planet, planetPivot);
 }
 
 // ツンドラ軌道: 周期は中心天体の自転周期 spinPeriod [s](1自転に1周)。
 export function tundraElements(
-  perigeeAltitude: number, raanDeg: number, planet: CelestialMotion, planetPivot: number, spinPeriod: number,
+  perigeeAltitude: number, raanDeg: number, planet: CelestialBody, planetPivot: number, spinPeriod: number,
 ): OrbitalElements {
   return criticalInclinationElements(perigeeAltitude, raanDeg, spinPeriod, planet, planetPivot);
 }

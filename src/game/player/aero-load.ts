@@ -1,6 +1,6 @@
 // 自機が浴びている空力荷重。動圧と、それが構造限界を超えたかどうかを持つ。**熱ではない** —
 // 外殻の熱収支は DynamicEntity の温度が受け持つ。
-import { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { airflow } from '../../physics/atmosphere';
 import { Vec3, sub } from '../../math/vec3';
 
@@ -17,7 +17,7 @@ export class AeroLoad {
   // 位置 r・速度 v の機体が浴びる動圧を求め直す。atmosphereBody は抗力を及ぼすただ1体の
   // 大気天体(null なら真空)。
   update(
-    r: Vec3, v: Vec3, atmosphereBody: CelestialMotion | null, atmospherePivot: number,
+    r: Vec3, v: Vec3, atmosphereBody: CelestialBody | null, atmospherePivot: number,
   ): void {
     const atm = atmosphereBody === null ? null : atmosphereBody.atmosphereAt(atmospherePivot);
     if (atmosphereBody === null || atm === null) {
