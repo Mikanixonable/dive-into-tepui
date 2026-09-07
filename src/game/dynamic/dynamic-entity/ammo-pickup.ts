@@ -189,3 +189,8 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
   public readonly onMapSelect = null;
   public readonly onMapFocus = null;
 }
+
+// この個体が弾薬補給か。顔ぶれから弾薬補給だけを絞るときに使う。
+export function isAmmoPickup(entity: DynamicEntity): entity is AmmoPickup {
+  return entity instanceof AmmoPickup;
+}

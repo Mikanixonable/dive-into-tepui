@@ -3,7 +3,7 @@ import { len, sub } from '../../../math/vec3';
 import { fmtDist } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
 import type { Vec3 } from '../../../math/vec3';
-import type { Enemy } from '../../dynamic/dynamic-entity/enemy';
+import { isEnemy, type Enemy } from '../../dynamic/dynamic-entity/enemy';
 import type { CombatTarget } from '../../dynamic/dynamic-entity/combat-target';
 import type { Game } from '../../game';
 
@@ -56,7 +56,7 @@ export class EnemiesPanel {
       }
       const primaryTarget = game.targeter.aliveTarget;
       const rows = this.buildEnemyRows(
-        game.dynamicSystem.enemies.filter((enemy) => enemy.alive),
+        game.dynamicSystem.all().filter(isEnemy).filter((enemy) => enemy.alive),
         player.state.r,
         primaryTarget,
       );
