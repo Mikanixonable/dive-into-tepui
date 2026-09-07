@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import type { Viewer } from '../dynamic/dynamic-entity/viewer';
 import type { View } from '../view/view';
 import { Attitude } from '../../physics/attitude';
 import { qFromBasis } from '../../math/quat';
@@ -696,13 +697,13 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   // 操作中の自艦を一覧の先頭へ出す。
-  public listPriority(viewer: Controllable | null): number {
+  public listPriority(viewer: Viewer | null): number {
     return this === viewer ? -100 : 0;
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
-    _celestialSystem: CelestialSystem, viewer: Controllable | null, navTargetId: string | null,
+    _celestialSystem: CelestialSystem, viewer: Viewer | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
     const isActive = this === viewer;
     const activate: MenuItem<MenuAction> = isActive
@@ -750,7 +751,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // プロパティウィンドウに出す行。装甲・温度・電力・弾薬を主要行とし、操作対象か・計画実行は
   // 詳細トグル、軌道要素は「軌道」グループの下に畳む。
   public propertyRows(
-    celestialSystem: CelestialSystem, viewer: Controllable | null, simTime: number,
+    celestialSystem: CelestialSystem, viewer: Viewer | null, simTime: number,
   ): readonly PropertyRow[] {
     return [
       {

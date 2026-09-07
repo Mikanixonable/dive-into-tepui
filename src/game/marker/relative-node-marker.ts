@@ -1,11 +1,11 @@
 // 自機軌道上の、ターゲットの軌道面に対する昇交点・降交点と、ターゲットへの再接近点を指す、
 // 実体を持たない被選択物。
+import type { Viewer } from '../dynamic/dynamic-entity/viewer';
 import { ORBIT_ELEMENT_LABELS, type OrbitLabelSpec } from '../hud/orbit/orbit-labels';
 import { ORBIT_POINT_GLYPH } from './marker-identity';
 import { OrbitPointMarker } from './orbit-point-marker';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
 
 // 交点種別ごとの、一覧やマーカーで名乗る呼称と、軌道要素としてのラベル。
@@ -45,7 +45,7 @@ export class RelativeNodeMarker extends OrbitPointMarker {
 
   // 所属軌道・交点を定める相手の名前・通過までの残り時間。
   public propertyRows(
-    _celestialSystem: CelestialSystem, _viewer: Controllable | null, simTime: number,
+    _celestialSystem: CelestialSystem, _viewer: Viewer | null, simTime: number,
   ): readonly PropertyRow[] {
     return [
       ...this.ownerRows(),

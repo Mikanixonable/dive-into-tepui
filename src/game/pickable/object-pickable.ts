@@ -1,6 +1,7 @@
 // 右クリック・一覧・選択ウィジェットから選べる物体の共通形と、画面上で最も近い候補を選ぶ処理。
 // マップでしか通らない面だけ map / list を冠し、両ビューで通る面は無標にする。
 import { lenSq, sub, type Vec3 } from '../../math/vec3';
+import type { Viewer } from '../dynamic/dynamic-entity/viewer';
 import type { Ray } from '../../math/ray';
 import type { Projected } from '../../math/projection';
 import type { ProjectFn } from '../../math/projection';
@@ -8,7 +9,6 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import type { MarkerManager } from '../marker/marker-manager';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { ObjectWindows } from './object-windows';
 import type { ControlSelection } from '../control-selection';
@@ -42,24 +42,24 @@ export interface ObjectPickable {
   // 表示時刻の ECI 位置。求まらないフレームは null で、その回は候補に出ない。
   posAt(displayTime: number): Vec3 | null;
   // 表示トグルによる可否。viewer は操作中の対象を例外扱いする判定に使う。
-  mapVisibility(policy: MapVisibilityPolicy, viewer: Controllable | null): MapVisibility;
+  mapVisibility(policy: MapVisibilityPolicy, viewer: Viewer | null): MapVisibility;
   // 直前のフレームで画面にマーカーが出ていたか。出ていない対象はマップ上で掴めない。
   shownOnMap(markers: MarkerManager): boolean;
 
   // 軌道物体一覧の行へ添える補助表示。
-  listDetail(celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number): string;
+  listDetail(celestialSystem: CelestialSystem, viewer: Viewer | null, displayTime: number): string;
   // 軌道物体一覧の検索が照合する文字列。行に出さない情報を含めてよい。
-  listSearchText(celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number): string;
+  listSearchText(celestialSystem: CelestialSystem, viewer: Viewer | null, displayTime: number): string;
   // 区画見出しの内訳(接近 N・回収可 N)に数えるか。
-  listCounted(viewer: Controllable | null, displayTime: number): boolean;
+  listCounted(viewer: Viewer | null, displayTime: number): boolean;
   // 軌道物体一覧での表示順の優先度。小さいほど先に出る。
-  listPriority(viewer: Controllable | null): number;
+  listPriority(viewer: Viewer | null): number;
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。先頭の header 項目は
   // ウィンドウのタイトル/サブタイトルへ抜き出される。出せない項目を自分で間引く必要はない
   // — 出せるかどうか(航法ターゲットの可否・物体の配置の可否)は窓側が絞る。
   menuItems(
-    celestialSystem: CelestialSystem, viewer: Controllable | null, navTargetId: string | null,
+    celestialSystem: CelestialSystem, viewer: Viewer | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[];
   // 自分に固有の操作を実行する。フォーカス・ターゲットなど対象によらない操作は窓側が
   // 実行するのでここへは来ない。固有の操作を持たない対象は null。authoring と planEditor は
@@ -72,7 +72,7 @@ export interface ObjectPickable {
   // プロパティウィンドウに出す行。simTime は天体位置を厳密に引く時刻、displayTime は
   // 候補の位置を引き直す時刻。
   propertyRows(
-    celestialSystem: CelestialSystem, viewer: Controllable | null, simTime: number, displayTime: number,
+    celestialSystem: CelestialSystem, viewer: Viewer | null, simTime: number, displayTime: number,
   ): readonly PropertyRow[];
   // 名前を書き換えられる対象だけが持つ。改名できない対象は null。
   readonly rename: ((name: string) => void) | null;

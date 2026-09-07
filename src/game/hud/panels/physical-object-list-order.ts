@@ -1,10 +1,10 @@
 import { CelestialEntity } from '../../celestial/celestial-entity/celestial-entity';
+import type { Viewer } from '../../dynamic/dynamic-entity/viewer';
 import { LagrangePointMarker } from '../../marker/lagrange-point-marker';
 import type { CelestialClass } from '../../celestial/celestial-entity/celestial-entity-def';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { MapListSection } from '../../pickable/pickable-listing';
-import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
 import { len, sub } from '../../../math/vec3';
 
 // 1区画ぶんの表示順と親子構造を id で持つ。表示値(距離・詳細)は毎フレーム
@@ -69,7 +69,7 @@ export class PhysicalObjectListOrder {
   private prevFilter: PhysicalObjectListFilter | null | undefined = undefined;
   // 今フレームの並べ替え・絞り込みの基準。refreshInputs が候補列から導き直す。
   private readonly sortKeys = new Map<string, ListSortKey>();
-  private viewer: Controllable | null = null;
+  private viewer: Viewer | null = null;
   private displayTime = 0;
   // rebuildOrder() は毎フレーム呼ばれうるが、これらは組み直し中だけ使う scratch であり、
   // 呼び出し元へ参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
@@ -105,7 +105,7 @@ export class PhysicalObjectListOrder {
   // 距離・所属系・優先度も候補列から導き直すので、他のメソッドより先に呼ぶこと。
   public refreshInputs(
     items: readonly ObjectPickable[], parentOf: ReadonlyMap<string, string>,
-    viewer: Controllable | null, displayTime: number, focusId: string | undefined,
+    viewer: Viewer | null, displayTime: number, focusId: string | undefined,
   ): boolean {
     this.rebuildSortKeys(items, viewer, displayTime, focusId);
     let changed = this.prevInputs.length !== items.length || this.prevSort !== this.sort || this.prevFilter !== this.filter;
@@ -134,7 +134,7 @@ export class PhysicalObjectListOrder {
   // 今フレームの操作対象・表示時刻から、候補ごとの並べ替え基準を導き直す。恒星からの距離は
   // 太陽系順、操作対象からの距離は近さ順、所属系は人工物と敵の絞り込みが読む。
   private rebuildSortKeys(
-    items: readonly ObjectPickable[], viewer: Controllable | null, displayTime: number,
+    items: readonly ObjectPickable[], viewer: Viewer | null, displayTime: number,
     focusId: string | undefined,
   ): void {
     this.viewer = viewer;

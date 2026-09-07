@@ -1,5 +1,6 @@
 // 軌道上の拠点。自艦と同じく操作でき、資金を持つ。
 import * as THREE from 'three/webgpu';
+import type { Viewer } from './viewer';
 import type { View } from '../../view/view';
 import { DynamicEntity } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
@@ -324,7 +325,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // 自艦がいれば自艦からの距離。いなければ出さない。
   public listDetail(
-    _celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
+    _celestialSystem: CelestialSystem, viewer: Viewer | null, displayTime: number,
   ): string {
     if (viewer === null) return '';
     return fmtDist(len(sub(this.posAt(displayTime) ?? this.state.r, viewer.state.r)));
@@ -332,14 +333,14 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // 検索が照合する文字列。行の補助表示と同じ。
   public listSearchText(
-    celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
+    celestialSystem: CelestialSystem, viewer: Viewer | null, displayTime: number,
   ): string {
     return this.listDetail(celestialSystem, viewer, displayTime);
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
-    _celestialSystem: CelestialSystem, viewer: Controllable | null, navTargetId: string | null,
+    _celestialSystem: CelestialSystem, viewer: Viewer | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
     const subLabel = `基地 / 所持金: ${this.baseState.money.toLocaleString()} Cr`;
     const controlItem: MenuItem<MenuAction> = viewer === this
@@ -378,7 +379,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // プロパティウィンドウに出す行。所持金・自艦からの距離を主要行とし、操作対象かは
   // 詳細トグル、軌道要素は「軌道」グループの下に畳む。自艦がいなければ距離の行は落ちる。
   public propertyRows(
-    celestialSystem: CelestialSystem, viewer: Controllable | null, simTime: number,
+    celestialSystem: CelestialSystem, viewer: Viewer | null, simTime: number,
   ): readonly PropertyRow[] {
     const rows: PropertyRow[] = [
       {

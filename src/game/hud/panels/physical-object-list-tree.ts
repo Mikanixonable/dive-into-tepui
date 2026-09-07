@@ -1,9 +1,9 @@
 // 軌道物体一覧パネルの行ツリー: 種別ごとの一覧行を、既存 DOM を使い回しながら id 差分だけで
 // 同期・剪定する。見出し・検索欄・フィルタ UI の組み立てはパネル本体が持つ。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../../../hud/widgets';
+import type { Viewer } from '../../dynamic/dynamic-entity/viewer';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
 import type { PhysicalObjectListOrder } from './physical-object-list-order';
 
 const EMPTY_IDS: readonly string[] = [];
@@ -47,10 +47,10 @@ export class PhysicalObjectListTree {
   ) {}
 
   // 補助表示の導出に要る今フレームの操作対象と表示時刻。syncRow より先に渡すこと。
-  private viewer: Controllable | null = null;
+  private viewer: Viewer | null = null;
   private displayTime = 0;
 
-  public setFrame(viewer: Controllable | null, displayTime: number): void {
+  public setFrame(viewer: Viewer | null, displayTime: number): void {
     this.viewer = viewer;
     this.displayTime = displayTime;
   }

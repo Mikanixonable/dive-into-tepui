@@ -1,6 +1,7 @@
 // マップ上のクリックを候補列へ当て、当たった被選択物のウィンドウ・注視へ配る。軌道物体一覧
 // パネルと軌道線のプロパティウィンドウは、どちらもマップにしか出ないのでここが持つ。
 import type { Hud } from '../hud/hud';
+import type { Viewer } from '../dynamic/dynamic-entity/viewer';
 import { ObjectPickable, pickFrontmostBody, pickNearest, projectMarker } from './object-pickable';
 import { pickNearestLine } from './line-pickable';
 import type { LinePickables } from './line-pickables';
@@ -18,7 +19,6 @@ import type { MarkerManager } from '../marker/marker-manager';
 import type { NavTarget } from '../nav-target';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FrameControls } from '../hud/frame/frame-controls';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ControlSelection } from '../control-selection';
 import { rayThroughScreen } from '../../math/projection';
 
@@ -166,7 +166,7 @@ export class MapPicking {
   }
 
   // 軌道物体一覧を、このフレームの候補列で組み直す。
-  sync(displayTime: number, viewer: Controllable | null): void {
+  sync(displayTime: number, viewer: Viewer | null): void {
     // 親が無ければ(恒星、もしくは主天体が未登録)載せず、根として扱う。
     const parentOf = new Map<string, string>();
     for (const item of this.celestialMarkers.allItems) {
