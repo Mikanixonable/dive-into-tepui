@@ -7,7 +7,7 @@ import { frameRoleName, rotationSourceLabel } from './frame-labels';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { DisplayWindowManager } from '../../display-window-manager';
 import type { OverlayManager } from '../../../hud/overlay-manager';
-import { buildPanel } from './frame-controls';
+import { buildPanel } from './frame-panel';
 import type { ListedObject } from '../../pickable/listed-object';
 
 export class TrajectoryFramePanel {

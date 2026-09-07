@@ -6,7 +6,7 @@ import { Vec3, len, scale, sub } from '../../math/vec3';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH, buildMagazineMesh } from '../../render/ships';
 import { BeltPhysics, BeltSection } from './belt-physics';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
-import { MAG_ROUNDS } from './fire-control';
+import { MAG_ROUNDS } from './ammo-spec';
 
 const BELT_MAX_VISIBLE = 18; // ベルト描画の最大リンク数
 

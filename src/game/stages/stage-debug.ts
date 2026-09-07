@@ -6,7 +6,7 @@ import { Button, ToggleSwitch } from '../../hud/widgets';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { StageSaveData } from '../save/save-data';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
-import { MAG_ROUNDS } from '../player/fire-control';
+import { MAG_ROUNDS } from '../player/ammo-spec';
 import { STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST } from './stage-utils/logistics';
 
 export class StageDebug extends Stage {

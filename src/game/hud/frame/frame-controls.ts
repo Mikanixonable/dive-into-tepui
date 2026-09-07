@@ -9,24 +9,11 @@ import { FocusCamera } from '../../camera/focus-camera';
 import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-target';
 import type { DisplayWindowManager } from '../../display-window-manager';
 import type { OverlayManager } from '../../../hud/overlay-manager';
-import { hudRail } from '../hud-root';
 import { CameraFramePanel } from './camera-frame-panel';
 import { TrajectoryFramePanel } from './trajectory-frame-panel';
 import type { ListedObject } from '../../pickable/listed-object';
 
 // 見出しだけを持つ空のパネルを左レールへ足して返す。中身は返り値へ足す。
-export function buildPanel(root: HTMLElement, id: string, titleText: string): HTMLElement {
-  const panel = document.createElement('div');
-  panel.id = id;
-  panel.className = 'panel hud-frame-controls';
-  panel.addEventListener('pointerdown', (e) => e.stopPropagation());
-  const title = document.createElement('h3');
-  title.textContent = titleText;
-  panel.appendChild(title);
-  hudRail(root, 'left').appendChild(panel);
-  return panel;
-}
-
 export class FrameControls {
   private readonly cameraPanel: CameraFramePanel;
   private readonly trajectoryPanel: TrajectoryFramePanel;
