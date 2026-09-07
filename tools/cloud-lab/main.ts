@@ -2,22 +2,53 @@
 import { CloudLabCanvas } from './lab';
 import { CLOUD_LAB_VIEWS, type CloudLabViewId } from './views';
 import { buildButtonRow, buildSlider, buildToggleField } from '../lab-controls';
+import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from '../../src/render/cloud/cyclone-tracks';
+import type { CyclonePlacement } from '../../src/render/cloud/cyclone-tracks';
 
-// 時刻スライダーの上限 [h] と、再生中に実時間 1 秒あたり進める時刻 [h]。
-const MAX_HOURS = 72;
+const HOURS_PER_DAY = 24;
+// 再生中に実時間 1 秒あたり進める時刻 [h]。
 const PLAY_HOURS_PER_SECOND = 1;
 
 declare global {
   interface Window {
-    // 撮影の駆動(tools/cloud-lab-shot.mjs)が CDP から読む入口。
+    // 撮影の駆動(tools/cloud-lab-shot.mjs・tools/cloud-lab-compare.mjs)が CDP から読む入口。
     cloudLab?: {
       views: readonly CloudLabViewId[];
       show: (id: CloudLabViewId) => void;
       setTime: (hours: number) => void;
       aimCap: (latitude: number, longitude: number, radius: number) => void;
       capture: () => Promise<string>;
+      // 時刻 [h] の低気圧の谷の配置。撮影の駆動が中心の位置を統計の範囲の切り分けに使う。
+      cyclonesAt: (hours: number) => {
+        readonly tropical: CyclonePlacement | null;
+        readonly lows: readonly (CyclonePlacement | null)[];
+      };
     };
   }
+}
+
+// 時刻を決めるつまみ 1 本。0 から maxHours [h] までの区間を指す。
+interface TimeSlider {
+  readonly maxHours: number;
+  readonly hours: number;
+  // 指す時刻 [h] を置き直し、つまみと読み出しを合わせる。
+  set: (hours: number) => void;
+}
+
+// 時刻のつまみを 1 本組む。format は指している時刻 [h] を読み出しの文字にし、人がつまみを
+// 動かしたときに change が呼ばれる。
+function buildTimeSlider(
+  label: string, maxHours: number, stepHours: number,
+  format: (hours: number) => string, change: () => void,
+): TimeSlider {
+  let hours = 0;
+  const setKnob = buildSlider('time', label, 0, maxHours, stepHours,
+    () => format(hours), (value) => { hours = value; change(); });
+  return {
+    maxHours,
+    get hours(): number { return hours; },
+    set: (value) => { hours = value; setKnob(value); },
+  };
 }
 
 // 器を起こし、操作部品を配線し、撮影の入口を window へ出す。
@@ -29,18 +60,41 @@ async function init(): Promise<void> {
     markView(id);
     canvas.show(id);
   });
-  const setSlider = buildSlider('time', '時刻', 0, MAX_HOURS, 0.1,
-    () => `${canvas.hours.toFixed(1)} h`, (hours) => canvas.setTime(hours));
+
+  // 時刻は 3 本のつまみの和。細い側が短い周期の動きを刻み、粗い側がその窓を先へ送る。
+  const applyTime = (): void => {
+    canvas.setTime(timeSliders.reduce((sum, slider) => sum + slider.hours, 0));
+  };
+  const shortTermSlider = buildTimeSlider('72 時間', 72, 0.1,
+    (hours) => `${hours.toFixed(1)} h`, applyTime);
+  const timeSliders: readonly TimeSlider[] = [
+    shortTermSlider,
+    buildTimeSlider('30 日', 30 * HOURS_PER_DAY, HOURS_PER_DAY / 10,
+      (hours) => `${(hours / HOURS_PER_DAY).toFixed(1)} d`, applyTime),
+    buildTimeSlider('1 年', 365 * HOURS_PER_DAY, HOURS_PER_DAY,
+      (hours) => `${(hours / HOURS_PER_DAY).toFixed(0)} d`, applyTime),
+  ];
+  // 時刻 [h] を 3 本へ割り振って入れ直す。細い側から順にその幅で割った余りを取り、いちばん
+  // 粗い 1 本が残りを受けるので、和は元の時刻に戻る。
+  const setTime = (hours: number): void => {
+    let rest = hours;
+    for (const [index, slider] of timeSliders.entries()) {
+      const part = index === timeSliders.length - 1 ? rest : rest % slider.maxHours;
+      slider.set(part);
+      rest -= part;
+    }
+    applyTime();
+  };
 
   let playing = false;
   let lastFrameMs = 0;
-  // 再生中の 1 フレーム。実時間に比例して時刻を進め、上限で頭から繰り返す。
+  // 再生中の 1 フレーム。いちばん細いつまみを実時間に比例して進め、上限で頭から繰り返す。
   const advance = (nowMs: number): void => {
     if (!playing) return;
-    const hours = (canvas.hours + ((nowMs - lastFrameMs) / 1000) * PLAY_HOURS_PER_SECOND) % MAX_HOURS;
+    const elapsedHours = ((nowMs - lastFrameMs) / 1000) * PLAY_HOURS_PER_SECOND;
     lastFrameMs = nowMs;
-    canvas.setTime(hours);
-    setSlider(hours);
+    shortTermSlider.set((shortTermSlider.hours + elapsedHours) % shortTermSlider.maxHours);
+    applyTime();
     requestAnimationFrame(advance);
   };
   const markPlaying = buildToggleField('time', '再生', (on) => {
@@ -63,7 +117,7 @@ async function init(): Promise<void> {
     (radius) => canvas.aimCap(canvas.capCenterLatitude, canvas.capCenterLongitude, radius));
 
   markView(canvas.currentView);
-  setSlider(canvas.hours);
+  setTime(canvas.hours);
   setCapLatitude(canvas.capCenterLatitude);
   setCapLongitude(canvas.capCenterLongitude);
   setCapRadius(canvas.capAngularRadius);
@@ -72,7 +126,7 @@ async function init(): Promise<void> {
   window.cloudLab = {
     views: CLOUD_LAB_VIEWS.map((view) => view.id),
     show: (id) => { markView(id); canvas.show(id); },
-    setTime: (hours) => { canvas.setTime(hours); setSlider(hours); },
+    setTime,
     aimCap: (latitude, longitude, radius) => {
       canvas.aimCap(latitude, longitude, radius);
       setCapLatitude(latitude);
@@ -80,6 +134,10 @@ async function init(): Promise<void> {
       setCapRadius(radius);
     },
     capture: () => canvas.capture(),
+    cyclonesAt: (hours) => ({
+      tropical: tropicalPlacementAt(hours * 3600),
+      lows: Array.from({ length: LOW_COUNT }, (_, index) => lowPlacementAt(index, hours * 3600)),
+    }),
   };
 }
 

@@ -1,0 +1,8 @@
+/* 日本語を含む字形を担う書体。太さは 400 だけを読み込む(theme.ts の FONT_FAMILY)。 */
+@font-face {
+  font-family: 'HackGen';
+  src: url('@sarap422/font-hackgen/HackGen-Regular.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
