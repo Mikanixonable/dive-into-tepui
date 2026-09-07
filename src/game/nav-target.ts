@@ -12,7 +12,7 @@ import { OrbitingMotion } from '../physics/celestial-motion';
 import { LOCAL_FORWARD, qRotate } from '../math/quat';
 import { goldenSectionMin } from '../math/optimize';
 import { Player } from './player/player';
-import { DisplayWindow, timeLabelSettingOf } from './display-window-manager';
+import { DisplayWindow } from './display-window-manager';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import type { CombatTarget } from './targeter';
 import { Hud } from './hud/hud';
@@ -75,14 +75,6 @@ export class NavTarget {
   // 自艦とターゲットの相対距離が最初に極小になる点。同じ中心天体を周回していない、または
   // 区間内に極小が見つからなければ解けない。
   private readonly closestApproach = new RelativeNodeMarker('ca');
-  // update が求めた時点の CelestialMotion[]。sync でのマップビュー遮蔽判定に使う。
-  private celestialBodies: readonly CelestialMotion[] = [];
-  // celestialBodies の位置を厳密に引く時刻。
-  private celestialBodiesPivot = 0;
-  // 通過時刻ラベルの設定。update ごとに表示窓から組み直し、sync のラベル組み立てで読む。
-  private timeLabel: TimeLabelSetting = {
-    mode: 'absolute', show: false, nowSimTime: 0, epochUnixSec: 0,
-  };
   // 戦闘ビューでもターゲットの未来の軌道計算を止めないため navTargetReader を立てている個体。
   private readerEntity: DynamicEntity | null = null;
 
@@ -173,15 +165,12 @@ export class NavTarget {
     const { simTime, displayTime, frame } = displayWindow;
     const ownerName = player?.name ?? null;
     for (const marker of this.nodeMarkers) marker.place(null, null, ownerName, this.name);
-    this.timeLabel = timeLabelSettingOf(displayWindow);
-    this.celestialBodies = frameAnchors.bodies;
-    this.celestialBodiesPivot = frameAnchors.bodiesPivot;
     if (!this.targetId) { this.setReaderEntity(null); return; }
     // ターゲット自身の赤道交点は、自機の軌道要素が求まるかどうかとは無関係に出す。
     const target = entities.findAliveCombatTarget(this.targetId);
     this.setReaderEntity(target);
     target?.ensureEquatorNodes(this.markerManager)
-      .updateOnEllipse(displayTime, celestialSystem, frameAnchors, this.timeLabel);
+      .updateOnEllipse(displayTime, celestialSystem, frameAnchors);
     if (!player) return;
     const stateCelestialBodies = celestialSystem.celestialMotions;
     const playerCenter = strongestAttractor(player.state.r, stateCelestialBodies, simTime);
@@ -285,11 +274,15 @@ export class NavTarget {
   }
 
   // マップビューでは、天体に遮蔽されて画面上見えていない AN/DN・再接近点を隠す(戦闘ビューでは効かせない)。
-  sync(cameraSystem: CameraSystem): void {
+  // celestialBodies は遮蔽判定に使う天体で、pivot はその位置を引く時刻。
+  sync(
+    cameraSystem: CameraSystem, celestialBodies: readonly CelestialMotion[],
+    celestialBodiesPivot: number, timeLabel: TimeLabelSetting,
+  ): void {
     for (const marker of this.nodeMarkers) {
       marker.sync(
         this.markerManager, cameraSystem.activeCameraProjection, cameraSystem.activeCameraPos,
-        this.celestialBodies, this.celestialBodiesPivot, cameraSystem.view === 'map', this.timeLabel,
+        celestialBodies, celestialBodiesPivot, cameraSystem.view === 'map', timeLabel,
       );
     }
   }

@@ -27,7 +27,8 @@ import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
+import { DisplayWindow } from '../display-window-manager';
+import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import type { GameSaveData } from '../save/save-data';
 import type { Hud } from '../hud/hud';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
@@ -415,17 +416,20 @@ export class DynamicSystem {
   updateBaseEquatorNodes(
     displayWindow: DisplayWindow, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
   ): void {
-    const timeLabel = timeLabelSettingOf(displayWindow);
     for (const base of this.bases) {
-      if (base.alive) base.equatorNodes?.updateOnEllipse(displayWindow.displayTime, celestialSystem, frameAnchors, timeLabel);
+      if (base.alive) base.equatorNodes?.updateOnEllipse(displayWindow.displayTime, celestialSystem, frameAnchors);
     }
   }
 
   // このフレームに求まった赤道交点マーカーを置く。求め直されなかったものは自動的に隠れる。
-  syncEquatorNodes(cameraSystem: CameraSystem): void {
+  syncEquatorNodes(
+    cameraSystem: CameraSystem, frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting,
+  ): void {
     const project = cameraSystem.activeCameraProjection;
     const cameraPos = cameraSystem.activeCameraPos;
-    for (const e of this.all()) e.equatorNodes?.sync(project, cameraPos);
+    for (const e of this.all()) {
+      e.equatorNodes?.sync(project, cameraPos, frameAnchors.bodies, frameAnchors.bodiesPivot, timeLabel);
+    }
   }
 
   // 自機以外のメッシュを displayTime 時点の状態に同期する。自機はエフェクト・ベルト・
