@@ -148,12 +148,12 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
-    commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number,
+    _celestialSystem: CelestialSystem, _viewer: Controllable | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
     return [
       MenuCommon.focus(),
-      ...MenuCommon.targetItems(commands, this.id, simTime),
-      ...MenuCommon.duplicateItems(commands),
+      MenuCommon.target(navTargetId === this.id),
+      MenuCommon.duplicate(),
       { label: '削除', act: 'delete' },
       MenuCommon.cancel(),
     ];
@@ -163,8 +163,6 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
   public runMenu(act: MenuAction, commands: ObjectCommands): void {
     if (act === 'delete') this.alive = false;
     else if (act === 'duplicate') commands.duplicate(this.mapKind, this.state);
-    else if (act === 'focus') commands.focus(this.id, this.name);
-    else if (act === 'target') commands.toggleNavTarget(this.id, this.name);
   }
 
   // プロパティウィンドウに出す行。自艦からの距離を主要行とし、軌道要素は「軌道」グループの

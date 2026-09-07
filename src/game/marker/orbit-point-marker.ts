@@ -98,18 +98,12 @@ export abstract class OrbitPointMarker implements ObjectPickable {
     ];
   }
 
-  // 選ばれた操作を実行する。加速とノード追加は、通過時刻が求まっているフレームで効く。
+  // 加速とノード追加は、通過時刻が求まっているフレームで効く。
   public runMenu(act: MenuAction, commands: ObjectCommands): void {
     const t = this.time;
-    if (act === 'warp') {
-      if (t !== null) commands.warpTo(t);
-    } else if (act === 'addNode') {
-      if (t !== null) commands.addNodeAt(t);
-    } else if (act === 'focus') {
-      commands.focus(this.id, this.name);
-    } else if (act === 'target') {
-      commands.toggleNavTarget(this.id, this.name);
-    }
+    if (t === null) return;
+    if (act === 'warp') commands.warpTo(t);
+    else if (act === 'addNode') commands.addNodeAt(t);
   }
 
   // プロパティウィンドウに出す行。示す値は具象が決める。

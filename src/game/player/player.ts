@@ -703,29 +703,26 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
-    commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number,
+    _celestialSystem: CelestialSystem, viewer: Controllable | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
-    const isActive = this === commands.controlled;
+    const isActive = this === viewer;
     const activate: MenuItem<MenuAction> = isActive
       ? { label: '操作対象を解除', act: 'deactivate' }
       : { label: '操作対象にする', act: 'activate' };
     const remove: readonly MenuItem<MenuAction>[] = isActive ? [] : [{ label: '削除', act: 'delete' }];
     const planExecLabel = `軌道計画の実行: ${planExecutionLabel(this.planExecution)}`;
-    const planExec: readonly MenuItem<MenuAction>[] = commands.executesPlans
-      ? [{ label: planExecLabel, act: 'planExecCycle', keepOpen: true }]
-      : [];
 
     // 操作対象の自艦は予測線・過去線に固定されるので、トグルは非操作艦にだけ出す。
     const trajectoryItem: readonly MenuItem<MenuAction>[] = isActive
       ? [] : [MenuCommon.trajectoryLine(this.showTrajectoryLine)];
 
     return [
-      ...MenuCommon.targetItems(commands, this.id, simTime),
-      ...planExec,
+      MenuCommon.target(navTargetId === this.id),
+      { label: planExecLabel, act: 'planExecCycle', keepOpen: true },
       activate,
       MenuCommon.focus(),
       ...trajectoryItem,
-      ...MenuCommon.duplicateItems(commands),
+      MenuCommon.duplicate(),
       ...remove,
       MenuCommon.cancel(),
     ];
@@ -746,10 +743,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       commands.duplicate(this.mapKind, this.state);
     } else if (act === 'delete') {
       commands.removeControlled(this);
-    } else if (act === 'focus') {
-      commands.focus(this.id, this.name);
-    } else if (act === 'target') {
-      commands.toggleNavTarget(this.id, this.name);
     }
   }
 

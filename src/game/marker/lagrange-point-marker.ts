@@ -11,7 +11,6 @@ import { MARKER_PRIORITY } from './crowding';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapListSection } from '../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../hud/object-groups';
-import type { ObjectCommands } from '../pickable/object-commands';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
@@ -67,7 +66,7 @@ export class LagrangePointMarker implements ObjectPickable {
 
   // メニューに出す操作項目。ヘッダーの副題には、この地点を定める2天体の対を出す。
   public menuItems(
-    commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
+    celestialSystem: CelestialSystem, _viewer: Controllable | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
     const primaryId = celestialSystem.bodyParentId(this.parentId);
     const subLabel = primaryId === undefined || primaryId === null
@@ -76,19 +75,12 @@ export class LagrangePointMarker implements ObjectPickable {
     return [
       { type: 'header', label: this.name, subLabel },
       MenuCommon.focus(),
-      ...MenuCommon.targetItems(commands, this.id, simTime),
+      MenuCommon.target(navTargetId === this.id),
       MenuCommon.cancel(),
     ];
   }
 
-  // 選ばれた操作を実行する。フォーカスの移動と航法ターゲットの設定・解除を持つ。
-  public runMenu(act: MenuAction, commands: ObjectCommands): void {
-    if (act === 'focus') {
-      commands.focus(this.id, this.name);
-    } else if (act === 'target') {
-      commands.toggleNavTarget(this.id, this.name);
-    }
-  }
+  public readonly runMenu = null;
 
   // 自艦からの距離と種別。自艦がいない、あるいは位置が解けていないフレームは距離が落ちる。
   public propertyRows(
