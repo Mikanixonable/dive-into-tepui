@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { OrbitingMotion } from '../../../physics/celestial-motion';
 import { CollinearPoint, SecondaryFrame, secondaryFrameOf } from '../../../physics/lagrange';
-import type { CelestialSystem } from '../celestial-system';
+import type { CelestialBodies } from '../celestial-bodies';
 import { Vec3 } from '../../../math/vec3';
 import {
   catalogLoop, dawnDuskGuideLoop, GuideLoop, guideSecondary, lissajousLoop,
@@ -207,7 +207,7 @@ export class OrbitGuideLines {
   private lastCatalogGeneration = -1;
   private onLineCountChange: ((count: number) => void) | null = null;
 
-  public constructor(private readonly scene: THREE.Scene, private readonly celestialSystem: CelestialSystem) {
+  public constructor(private readonly scene: THREE.Scene, private readonly celestialBodies: CelestialBodies) {
     this.markers = new DirectionMarkers(scene, MARKER_POOL_CAPACITY, LINE_RENDER_ORDER.reference);
   }
 
@@ -313,7 +313,7 @@ export class OrbitGuideLines {
       const d = settings.dawnDusk;
       const earth = this.earthBodyAt(t);
       return earth === null ? null : dawnDuskGuideLoop(
-        earth, t, (r: Vec3, tt: number) => this.celestialSystem.sunDirFrom(r, tt),
+        earth, t, (r: Vec3, tt: number) => this.celestialBodies.sunDirFrom(r, tt),
         d.repeatDays, d.revsPerRepeat, d.localTime);
     }
     if (entry.familyId === 'molniya') {
@@ -343,18 +343,18 @@ export class OrbitGuideLines {
   private guideFrameOf(system: CatalogSystemId, t: number): SecondaryFrame | null {
     const motion = this.guideSecondaryOf(system);
     return motion === null ? null
-      : secondaryFrameOf(this.celestialSystem.celestialMotions, t, motion, t);
+      : secondaryFrameOf(this.celestialBodies.celestialMotions, t, motion, t);
   }
 
   // 系の副天体の運動。星系に居ない・公転していないなら null(その系のガイドは描かない)。
   private guideSecondaryOf(system: CatalogSystemId): OrbitingMotion | null {
-    const motion = this.celestialSystem.find(guideSecondary(system))?.motion;
+    const motion = this.celestialBodies.findMotion(guideSecondary(system));
     return motion instanceof OrbitingMotion ? motion : null;
   }
 
   // 地球の運動。地球を持たない星系では null(地球専用の参照軌道は描かない)。
   private earthBodyAt(_t: number): CelestialBody | null {
-    return this.celestialSystem.has('earth') ? this.celestialSystem.motionOf('earth') : null;
+    return this.celestialBodies.has('earth') ? this.celestialBodies.motionOf('earth') : null;
   }
 
   // 地球の自転角速度 [rad/s]。自転モデルを持たない・地球が居ないなら null。
@@ -364,7 +364,7 @@ export class OrbitGuideLines {
 
   // 地球の運動。地球を持たない星系では null(地球専用の参照軌道は描かない)。
   private earthMotion(): CelestialBody | null {
-    return this.celestialSystem.find('earth')?.motion ?? null;
+    return this.celestialBodies.findMotion('earth');
   }
 
   // その線をいま描くべき色・不透明度・進行方向マーカーの出し方を、現在の設定から組む。

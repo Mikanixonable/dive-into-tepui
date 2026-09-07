@@ -34,7 +34,7 @@ import type { CelestialSystem } from '../celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
-import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
+import { BODY_PICKER_GENRES, type MapListSection, type ObjectPickerGenre } from '../../pickable/pickable-listing';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { OrbitingObject } from '../../dynamic/dynamic-entity/orbiting-object';
 
@@ -51,15 +51,6 @@ const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
 
 // 参照軌道線が完全表示のときの不透明度。
 const REFERENCE_LINE_OPACITY = 0.3;
-
-// 天体分類ごとの、選択ウィジェットの見出し。
-const BODY_PICKER_GENRES: Readonly<Record<CelestialClass, ObjectPickerGenre>> = {
-  star: '恒星',
-  planet: '惑星',
-  dwarf: '準惑星',
-  satellite: '衛星',
-  smallBody: '小天体',
-};
 
 // 惑星 > 準惑星 > 衛星・小惑星・彗星。恒星は太陽系の基準点なので、惑星と同じ最上位に置く。
 const BODY_LABEL_PRIORITY: Readonly<Record<CelestialClass, number>> = {

@@ -1,7 +1,7 @@
 // 軌道要素・軌道要素アイコンの表示基準(自動/地球/月/航法ターゲット)の選択と解決。
 // 選択状態そのものを持ち、モードに応じて基準天体・対象の状態(KinematicState)を解決する。
 import { strongestAttractor } from '../physics/attractor';
-import type { CelestialSystem } from './celestial/celestial-system';
+import type { CelestialBodies } from './celestial/celestial-bodies';
 import { KinematicState } from '../physics/kinematic-state';
 import type { Vec3 } from '../math/vec3';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
@@ -41,9 +41,9 @@ export function orbitLineBasisOf(ref: OrbitReference | undefined, self: DynamicE
 // 常に strongestAttractor で基準を選ぶ(切替不可の場面向け)。プロパティウィンドウの
 // 「軌道」欄など、常設パネルの基準選択とは独立に軌道要素を出す場所が使う。
 export function autoOrbitReference(
-  r: Vec3, celestialBodies: readonly CelestialBody[], pivot: number,
+  r: Vec3, attractors: readonly CelestialBody[], pivot: number,
 ): OrbitReference {
-  const center = strongestAttractor(r, celestialBodies, pivot);
+  const center = strongestAttractor(r, attractors, pivot);
   return {
     id: center.id, state: center.stateAt(pivot), hasMass: true, attractor: center,
     entity: null, fixed: false,
@@ -64,21 +64,21 @@ export class OrbitReferenceSelector {
   // r 位置のエンティティに対する現在の基準を解決する。地球・月が登録に無い、または航法
   // ターゲットが未設定・解決不能なときは自動選択(strongestAttractor)へフォールバックする。
   resolve(
-    r: Vec3, celestialBodies: readonly CelestialBody[], navTarget: NavTarget, dynamicSystem: DynamicSystem,
-    celestialSystem: CelestialSystem, t: number,
+    r: Vec3, attractors: readonly CelestialBody[], navTarget: NavTarget, dynamicSystem: DynamicSystem,
+    celestialBodies: CelestialBodies, t: number,
   ): OrbitReference {
     if (this.mode === 'earth' || this.mode === 'moon') {
-      const found = celestialSystem.find(this.mode)?.motion;
-      if (found !== undefined) {
+      const found = celestialBodies.findMotion(this.mode);
+      if (found !== null) {
         return {
           id: found.id, state: found.stateAt(t), hasMass: true, attractor: found,
           entity: null, fixed: true,
         };
       }
     } else if (this.mode === 'target') {
-      const resolved = navTarget.resolveState(dynamicSystem, celestialSystem, celestialBodies, t);
+      const resolved = navTarget.resolveState(dynamicSystem, celestialBodies, attractors, t);
       if (resolved) return resolved;
     }
-    return autoOrbitReference(r, celestialBodies, t);
+    return autoOrbitReference(r, attractors, t);
   }
 }
