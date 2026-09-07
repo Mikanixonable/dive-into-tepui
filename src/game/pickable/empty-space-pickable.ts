@@ -4,7 +4,7 @@ import { MARKER_VISIBILITY, type MapVisibility } from '../map/visibility-policy'
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import type { ObjectPickable } from './object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
-import type { PropertyRow } from '../../hud/windows/property-window';
+import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { MarkerManager } from '../marker/marker-manager';
 
 const ORIGIN = v3(0, 0, 0); // ECI [m]

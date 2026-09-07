@@ -70,7 +70,7 @@ import type { ControlSelection } from '../control-selection';
 import type { ObjectAuthoring } from '../stages/stage';
 import type { ObjectWindows } from '../pickable/object-windows';
 import type { MenuItem } from '../hud/windows/context-menu';
-import type { PropertyRow } from '../../hud/windows/property-window';
+import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { MapListSection } from '../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../hud/object-groups';
 
