@@ -1,6 +1,8 @@
 # 操作対象(Controllable)まわりのリファクタリング
 
-行番号・件数はすべて `38329adc` 時点のもの。食い違ったらコードを信じる。
+**全手順を実施済み**(`38329adc`..`5cdd3283`、11 commit)。残っているのは、達成目標のうち
+コードから判定できない2件と、リスク表の目視項目だけ。行番号・件数は着手時点(`38329adc`)の
+もので、いまのコードとは合わない。
 
 ## 目的
 
@@ -98,9 +100,10 @@
 
 ### 6. 共有される操作系から `Player` 接頭を落とす
 
-`PlayerThrottle` は `Base`(`base.ts:29,85,169`)と `Ship`(`ship.ts:18`)も使う。
-`PlayerFire` / `PlayerBoosters` は `Controllable` の口に載る(手順2)。
-どれも自艦専用ではないので、`Throttle` / `Fire` / `Boosters` へ改名する。
+`PlayerThrottle` は `Base` と `Ship` も使い、`PlayerFire` / `PlayerBoosters` は `Controllable`
+の口に載る。どれも自艦専用ではないので接頭を落とす — `Throttle` / `FireControl` /
+`AttachedBoosters`。`Fire` 単独では炎と射撃のどちらとも読めるので射撃管制の定訳を採り、
+`Boosters` は同居する `BoosterStack` / `DetachedBooster` と紛れるので、分離済みと対にした。
 
 **ディレクトリは動かさない。** `src/game/player/` に共有部品が置かれたままになるのは歪みだが、
 移動先(`src/game/control/`?)を決めるには「自艦専用と共有の線をどこに引くか」を先に決める必要が
@@ -134,58 +137,31 @@
 
 ---
 
-## 手順
+## 残っている確認
 
+コードから判定できないので、実機で見る。
 
-## 見積り
+| 見るもの | 期待 |
+| --- | --- |
+| マップの「敵」カテゴリトグルを OFF | 分離ブースターは残る(達成目標 11) |
+| マップの「自艦」カテゴリトグルを OFF | 分離ブースターも消える。燃焼中でもプルームごと消える |
+| 戦闘ビューで `[T]` を連打 | ターゲットの巡回順が変わっている(敵 → 追加順の操作対象) |
+| マップで未来スライダーを予測の届かない先へ | 基地が消える(束ねる前はカテゴリだけで判定していた) |
+| CREATIVE で艦だけを削除 | Control 欄に基地名が出て、WASDQE が基地へ届く |
+| CREATIVE で基地を削除 | 次のフレームでマーカー・一覧から消え、その基地を指していた航法ターゲットも外れる |
+| 基地を操作しながら戦闘ビューでターゲット設定 | ターゲットパネルの距離が基地からの距離になる(ECI 原点からではない) |
+| 基地の近くで敵に撃たせる | 弾が基地の手前で消えない |
+| 攻略ステージで基地を操作 | 敵の行動と補給の投入が止まらない |
+| 改名前に保存したスナップショットを読む | 戦闘カメラが操作対象へ追従し、操作対象の艦も保存時のものに戻る |
 
-**実行時コスト。** 手順4で `updateThrust` の全個体走査が1本増える。個体数の上限は
-弾 1200 + 薬莢 260 + 破片 600 + その他 ≒ **2100 個体**、空の仮想呼び出し1回を 2ns として
-**2100 × 2ns ≒ 4µs/frame**(60fps の 1 フレーム 16.7ms の 0.03%)。既に
-`clearEquatorNodes` / `syncEquatorNodes` / `requestHistoryDuration` / `cleanup` が同じ規模の
-全個体走査を毎フレーム4本回しているので、5本目が増える形になる。
-`syncEffects` の全体ループも同じ規模で **+4µs/frame**。
+## 残る歪み
 
-一方で減る側: `syncPlayers`+`syncBases`+`syncDetachedBoosters`+`applyVisibility` の5ブロックが
-`syncControllables` + `applyVisibility` の2ループになり、`players` / `bases` /
-`detachedBoosters` getter が組む**フィルタ配列の生成が毎フレーム 5 本から 2 本へ減る**
-(getter は呼ぶたびに `entities.filter` で新しい配列を作る — `dynamic-system.ts:56-62`)。
-差し引きで悪化しない見込みだが、**測っていない**。`npm run dev` の perf-meter で
-`sync` 区間を改修前後で読み比べること。
-
-**作業量**(grep で数えた変更箇所)。
-
-| 手順 | ファイル数 | 変更箇所 |
-| --- | --- | --- |
-| 1 | 1 | 1 |
-| 2 | 6 | 12 |
-| 3 | 9 | 24 |
-| 4 | 4 | 12 |
-| 5 | 約 25 | 約 70 |
-| 6 | 3 | 6 |
-| 7 | 約 20 | 約 45 |
-| 8 | 6 | 10 |
-| 9 | 3 + 参照 10 | 20 |
-
-手順5が突出しているが、**分割できない** — フィールドを1つにした瞬間に、
-`player` / `controlledBase` を読む全箇所が同時に壊れる。
-
----
-
-## リスクと落とし穴
-
-| リスク | 影響 | 露見する場所 |
-| --- | --- | --- |
-| `getCombatTargets` の並びが `[敵, 自艦, 基地]` から `[敵, 追加順の操作対象]` へ変わる | `[T]` のターゲット巡回順が変わる。壊れはしないが、順序に依存したテストがあれば落ちる | 手順3。`npm run test:game` と、戦闘ビューで `[T]` を連打して巡回することの目視 |
-| Base がいま `syncControllable`(旧 `syncBase`)と `syncOtherEntities` の**両方**で同期されている | 束ねると1回になる。いまは後から走る汎用 `sync` が `renderObject.visible = true` を上書きし、その後の `applyVisibility` がカテゴリだけ伏せ直している。束ねた後は `syncControllable` の判定がそのまま残るので、**基地の表示条件がカテゴリだけから「カテゴリ + 表示時刻の状態が求まること」へ変わる** | 手順3。マップビューで未来スライダーを予測の届かない先まで動かし、基地が消えることを確認(消えるのが正しい) |
-| `applyVisibility` を `mapKind !== null` の全個体ループにすると、弾・薬莢・破片(`mapKind` 無し)が確実に除外されているかが暗黙になる | 除外し損ねると弾が丸ごと消える | 手順3。戦闘ビューで射撃して弾が見えることの目視 |
-| 分離ブースターのプルームが `applyVisibility` の後に同期されるよう順序を組み替える | 順序を誤ると、カテゴリ OFF でもプルームだけが残る | 手順4。マップで「自艦」トグル OFF → 燃焼中のブースターのプルームも消えること |
-| `claimIfNone` が基地を受けるようになる(決めたこと 2) | 艦を全喪失した直後に基地の操作へ移る。CREATIVE で艦を消すと基地が勝手に操作対象になる | 手順5。CREATIVE で艦だけを削除し、Control 欄に基地名が出ることを確認(出るのが期待) |
-| `Base.reclaimedByOwner = true` にすると、`prune` が基地を消さなくなる | `ControlSelection.reclaimDead()` が呼ばれる経路(`game.ts:492`)を落とすと、**死んだ基地が永久に残る** | 手順5。CREATIVE で基地を削除し、次のフレームでマーカー・一覧から消えることを確認 |
-| `save-data.ts` の `activePlayerId` → `activeControlledId` 改名 | 旧スナップショットは操作対象 id を読めず、**先頭の Controllable から再開する**(壊れはしないが、複数艦を置いた周回では操作対象が変わる) | 手順5。改名前に複数艦のスナップショットを保存し、改名後に読んで確認。許容できないなら `snapshot-service.ts` の正規化へ `activeControlledId: data.activeControlledId ?? data.activePlayerId` を足す |
-| `checkLoss` の `viewerPos` が「基地操作中は ECI 原点」から「操作対象の位置」へ変わる | 弾の遠方消滅距離(`bullet.ts:109` `ENGAGEMENT_RANGE`)の基準が変わる。**基地操作中に弾が即座に消えていた**のが直る | 手順7。基地の近くで敵に撃たせ、弾が基地の手前で消えないことを目視 |
-| `targeter` の `viewer` が基地を受けるようになる | ターゲット距離・方位マーカーの基準が原点から基地へ変わる(直る側) | 手順7。基地操作中にターゲットパネルの距離が妥当な値になること |
-| `@activeShip` の正規化漏れ(手順8) | **例外もログも出ない。** 戦闘カメラのフォーカスが解決できず `'hold'` で最後の位置に固定され、操作対象が軌道速度で流れて即フレームアウトする | 手順8。改名前に保存したスナップショットを改名後に読む |
-| `ActivePlayerController` エイリアス経由の import が 6 ファイルに残る(`stage.ts:24`, `plan-display.ts:25`, `plan-editor.ts:27`, `object-pickables.ts:12`, `object-windows.ts:24`, `part-windows.ts:5`) | エイリアスを消した瞬間に型検査で落ちる(静かには壊れない) | 手順5。`npm run typecheck` |
-| `Controllable.hp` / `maxHp` が `null` を取りうる(`base.ts:95-96`)ので、`runSummary` の HP 比を畳み方次第で常に 0 にしてしまう | 記録一覧の HP バーが、自艦を操作している周回でも空になる。**型検査は通る** | 手順5。艦を操作している状態でスナップショットを保存し、記録一覧の HP 表示が埋まることを確認 |
-| `Stage.ship` が「操作対象が艦ならそれ、でなければ生存中の先頭」を返す(手順5) | 基地を操作している間も敵が艦を追い、補給が投入されるようになる(いまは `player` が null で止まっていた) | 手順5。攻略ステージで基地を操作し、敵が止まらないことを目視 |
+- **`src/game/player/` に共有部品が residual で残る。** `throttle.ts` / `fire-control.ts` /
+  `attached-boosters.ts` / `thrust-effects.ts` / `rcs-effects.ts` は基地も使う。移動先を決めるには
+  「自機専用と共有の線をどこに引くか」を先に決める必要がある。
+- **`PlanExecutionMode` が `player/player.ts` にある。** `Controllable` と `Plan` の双方が読む値
+  なので、`plan/plan.ts` が持ち場。
+- **`game.ts` に配線でないメンバーが残る**(`advanceSimulation` / `handlePointerInput` /
+  `proteinMotionFrameSample`)。本計画の射程外で、`memos/hedalu244/refactor_game.md` 論点3 が同じ話。
+- **`Controllable.syncControllable` は型名を重ねている**(規約 2.2)。`DynamicEntity.sync` と
+  引数が違って override できないため、名前を分けるしかなかった。
