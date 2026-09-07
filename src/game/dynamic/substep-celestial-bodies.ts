@@ -6,10 +6,10 @@
 // 距離の比較なので、判定距離へフレームの移動ぶんを織り込めばフレーム全体で使い回せる。物理が
 // 読む位置はサブステップの中点から引くので、外挿の幅は subDt/2 に収まる。
 import { nearestAtmosphereBody } from '../../physics/attractor';
-import { CelestialMotions } from '../../physics/celestial-motion';
-import type { CelestialBody } from '../../physics/celestial-body';
+import { CelestialMotions } from '../../physics/celestial-body';
 import { Vec3 } from '../../math/vec3';
 import { ClassifiedAttractors, attractorsNearInto, classifyAttractors } from './attractors';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 export class SubstepCelestialBodies {
   private classified: ClassifiedAttractors = classifyAttractors([], 0, 0, 0);

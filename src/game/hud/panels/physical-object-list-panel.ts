@@ -1,6 +1,4 @@
 import { hudRail } from '../hud-root';
-import type { ListedObject } from '../../pickable/listed-object';
-import type { Viewer } from '../../dynamic/dynamic-entity/viewer';
 import {
   Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, SegmentedControl, type CollapseToggleLabels,
 } from '../../../hud/widgets';
@@ -11,10 +9,11 @@ import { MQ_COARSE } from '../../../hud/breakpoints';
 import { PhysicalObjectListTree } from './physical-object-list-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-
 import type { RowNode } from './physical-object-list-tree';
 import type { PhysicalObjectListFilter, PhysicalObjectListSort, SectionOrder } from './physical-object-list-order';
 import type { MapListSection } from '../../pickable/pickable-listing';
+import type { ListedObject } from '../../pickable/listed-object';
+import type { OrbitingObject } from '../../dynamic/dynamic-entity/orbiting-object';
 
 const SECTIONS: readonly { section: MapListSection; label: string }[] = [
   { section: 'body', label: '天体' },
@@ -287,7 +286,7 @@ export class PhysicalObjectListPanel {
     items: readonly ListedObject[],
     focusId: string | undefined,
     parentOf: ReadonlyMap<string, string>,
-    viewer: Viewer | null,
+    viewer: OrbitingObject | null,
     displayTime: number,
   ): void {
     // 本体が畳まれている間は完全に不可視(CSS が display:none)なので、行ツリーの差分同期を
@@ -390,7 +389,7 @@ export class PhysicalObjectListPanel {
   // (区画本体もあわせて隠す — 天体区画の一括開閉ボタンなど、見出し以外の常設要素が
   // 見出しだけ消えた場所に浮いて残らないようにする)。
   private syncHeader(
-    section: Section, sectionKey: MapListSection, label: string, viewer: Viewer | null,
+    section: Section, sectionKey: MapListSection, label: string, viewer: OrbitingObject | null,
     displayTime: number,
   ): void {
     const ids = section.order.ids;

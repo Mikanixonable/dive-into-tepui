@@ -1,12 +1,11 @@
-// 天体1体を外から見たときの型。分類の札・姿勢・回転基準系と、時刻から状態を答える口を持つ。
-// 運動をどう合成するか(解析暦と数値暦の切り替え、キャッシュ、ECI 原点の解決)には関与しない
-// ので、天体の位置を問い合わせたいだけの側はこちらを受け取る。
+// 天体1体を外から見たときの契約。分類の札・自転姿勢・回転基準系・2次重力場と、時刻を与えると
+// ECI の位置・速度・大気を答える口。星系を役割ごとの一覧として答える窓もここに置く。
 import type { Quat } from '../math/quat';
 import type { Vec3 } from '../math/vec3';
 import type { Atmosphere } from './atmosphere';
 import type { KinematicState } from './kinematic-state';
 
-// 天体の分類。網羅的な分岐を書きたい呼び出し側のための札で、運動の合成そのものはクラスが担う。
+// 天体の分類。網羅的な分岐を書ける札で、運動の合成そのものはクラスが担う。
 export type CelestialKind = 'star' | 'planet' | 'satellite';
 
 // 天体の自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。
@@ -39,8 +38,8 @@ export interface Degree2Gravity {
 export interface CelestialBody {
   readonly id: string;
   readonly kind: CelestialKind;
-  // 重力定数 [m³/s²] と表面半径 [m]。どの天体も必ず持つ2つで、二体の幾何はこれだけで組める。
-  readonly def: { readonly mu: number; readonly radius: number };
+  // どの天体も必ず持つ宣言の部分。二体の幾何と表面からの高度はこれで組める。
+  readonly def: { readonly id: string; readonly mu: number; readonly radius: number };
   // 主天体。惑星なら恒星、衛星ならその惑星、恒星自身は null。
   readonly primary: CelestialBody | null;
   // pivot で厳密に引いた値から時刻 t へ外挿した ECI 位置・速度。t を省くと pivot 自身の厳密な値。
@@ -57,6 +56,17 @@ export interface CelestialBody {
   spinRotationAt(t: number): FrameRotation | null;
   // 自転角速度 [rad/s]。逆行自転では負。自転モデルを持たない天体は null。
   readonly spinRate: number | null;
+}
+
+// 星系の天体を役割ごとの一覧として答える窓。積分・接触判定・抗力は個体ではなくこの一覧に
+// 対して回る。並びは天体の宣言順で、時刻ごとの解決は天体1体が畳む。
+export interface CelestialMotions {
+  // 全登録天体。中心天体は原点に静止。
+  readonly celestialMotions: readonly CelestialBody[];
+  // mu が 0 でない天体。
+  readonly gravityMotions: readonly CelestialBody[];
+  // 大気を持つ天体。
+  readonly atmosphereMotions: readonly CelestialBody[];
 }
 
 // 公転している天体。公転面と、それに乗る回転基準系を答える。

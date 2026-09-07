@@ -1,9 +1,6 @@
 import * as THREE from 'three/webgpu';
-import type { CelestialBodies } from '../../celestial/celestial-bodies';
-import type { Viewer } from './viewer';
 import type { View } from '../../view/view';
 import { Ship, MUZZLE_SPEED } from './ship';
-import type { CelestialBody } from '../../../physics/celestial-body';
 import { DynamicEntity } from './dynamic-entity';
 import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import { closingSpeed, type Contact } from './contact';
@@ -30,11 +27,8 @@ import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, ENEMY_DESTROY_FRAG_COLOR,
 } from '../../../render/vfx-style';
 import type { Quat } from '../../../math/quat';
-import type { DynamicEntityKind, FormationRole } from './entity-kind';
 import type { GroupedMarkerItem, MarkerRole } from '../../marker/grouped-markers';
-
 import type { EnemyDeathCause, Stage } from '../../stages/stage';
-import type { EntityRegistry, SpawnGate } from '../entity-registry';
 import type { EnemySaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import type { MarkerManager } from '../../marker/marker-manager';
@@ -46,6 +40,11 @@ import type { ObjectAuthoring } from '../../stages/stage';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
+import type { OrbitingObject } from './orbiting-object';
+import type { CelestialBody } from '../../../physics/celestial-body';
+import type { DynamicEntityKind, FormationRole } from './entity-kind';
+import type { EntityRegistry, SpawnGate } from '../entity-registry';
 
 // 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。降下してくる艦がこの温度に
 // 達するのは、地球の大気では高度 80 km 付近。
@@ -349,7 +348,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   // operable が偽の間は指令を決めない。
   public behave(
     simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
-    operable: boolean, celestialSystem: CelestialBodies,
+    operable: boolean, celestialBodies: CelestialBodies,
   ): void {
     // 射撃間隔は simulation time で測る。wall dt を混ぜると、同じゲーム内時間でも
     // warp 段によって弾数が変わる。
@@ -369,7 +368,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     if (this.burstLeft && this.burstLeft > 0) {
       this.burstDelay = (this.burstDelay ?? 0) - behaviorDt;
       if (this.burstDelay <= 0) {
-        this.firePlasma(simTime, player, registry, celestialSystem);
+        this.firePlasma(simTime, player, registry, celestialBodies);
         this.burstLeft--;
         this.burstDelay = ENEMY_BURST_INTERVAL;
       }
@@ -386,7 +385,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     const counts = ENEMY_BURST_COUNTS;
     this.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
     this.burstDelay = ENEMY_BURST_INTERVAL;
-    this.firePlasma(simTime, player, registry, celestialSystem);
+    this.firePlasma(simTime, player, registry, celestialBodies);
   }
 
   // enemies のうち、自分と同じ accent でバースト射撃中の個体数を数える。
@@ -403,7 +402,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // player へ向けた見越し射撃でプラズマ弾を1発生成し、registry へ足す。
   private firePlasma(
-    simTime: number, player: Player, registry: EntityRegistry, celestialSystem: CelestialBodies,
+    simTime: number, player: Player, registry: EntityRegistry, celestialBodies: CelestialBodies,
   ): void {
     const r = this.muzzlePosition();
     const v = this.state.v;
@@ -419,7 +418,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     const predictedRelPos = add(toPlayer, scale(relV, leadTime));
     const aimDir = norm(predictedRelPos);
 
-    const sunDir = celestialSystem.sunDirFrom(r, simTime);
+    const sunDir = celestialBodies.sunDirFrom(r, simTime);
     const spreadScale = sunGlareSpreadScale(r, aimDir, sunDir);
 
     // 散布界をスケール適用
@@ -484,7 +483,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 自艦から見た距離と相対速度。自艦がいなければ空。
   public listDetail(
-    _celestialSystem: CelestialBodies, viewer: Viewer | null, displayTime: number,
+    _celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number,
   ): string {
     if (viewer === null) return '';
     const viewerState = viewer.state;
@@ -495,13 +494,13 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 検索が照合する文字列。行の補助表示と同じ。
   public listSearchText(
-    celestialSystem: CelestialBodies, viewer: Viewer | null, displayTime: number,
+    celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number,
   ): string {
-    return this.listDetail(celestialSystem, viewer, displayTime);
+    return this.listDetail(celestialBodies, viewer, displayTime);
   }
 
   // 自艦へ接近中と扱う距離まで寄っているか。
-  public listCounted(viewer: Viewer | null, displayTime: number): boolean {
+  public listCounted(viewer: OrbitingObject | null, displayTime: number): boolean {
     if (viewer === null) return false;
     const d = len(sub(this.posAt(displayTime) ?? this.state.r, viewer.state.r));
     return d < ENEMY_APPROACH_DIST;
@@ -509,7 +508,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
-    _celestialSystem: CelestialBodies, _viewer: Viewer | null, navTargetId: string | null,
+    _celestialBodies: CelestialBodies, _viewer: OrbitingObject | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
     return [
       MenuCommon.target(navTargetId === this.id),
@@ -533,9 +532,9 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   // プロパティウィンドウに出す行。装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、
   // 軌道要素と相対傾斜角は「軌道」グループの下に畳む。viewer が null なら相対量の行は落ちる。
   public propertyRows(
-    celestialSystem: CelestialBodies, viewer: Viewer | null, simTime: number,
+    celestialBodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
-    const rel = viewer ? relativeInfo(viewer, this, celestialSystem.celestialMotions, simTime) : null;
+    const rel = viewer ? relativeInfo(viewer, this, celestialBodies.celestialMotions, simTime) : null;
     const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(this.hp)} / ${this.maxHp}` }];
     // 自艦との相対量。
     if (rel) {
@@ -545,7 +544,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
         { key: 'relspeed', label: '相対速度', value: fmtSpeed(rel.relSpeed), collapsible: true },
       );
     }
-    rows.push(...orbitRows(this, celestialSystem, simTime));
+    rows.push(...orbitRows(this, celestialBodies, simTime));
     // 相対傾斜角は自艦の軌道面が基準なので、軌道要素と同じグループへ並べる。
     if (rel) {
       rows.push({

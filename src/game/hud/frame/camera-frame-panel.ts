@@ -1,7 +1,5 @@
 // マップビューの「カメラ」パネル。カメラの注視対象・回転追従・平行/透視投影・画角・基準面設定を担当する。
 import { frameRoleOf } from '../../../physics/frame';
-import type { ListedObject } from '../../pickable/listed-object';
-
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import { CameraReferencePlane, CameraReferenceView, FocusCamera, FOCUS_CAMERA_FOV_MIN, FOCUS_CAMERA_FOV_MAX } from '../../camera/focus-camera';
 import { focusTargetId } from '../../camera/focus-target';
@@ -9,9 +7,9 @@ import { AnchorZone } from './anchor-zone';
 import { CameraRotationZone } from './rotation-zone';
 import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from '../../../hud/widgets';
 import { frameRoleName, rotationFollowLabel } from './frame-labels';
-
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { buildPanel } from './frame-controls';
+import type { ListedObject } from '../../pickable/listed-object';
 
 const FOCUS_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻み [deg]
 

@@ -35,7 +35,7 @@ function describe(entity: DynamicEntity): string {
 export class NanWatchdog {
   private tripped = false;
 
-  constructor(private readonly _hud: Notifier) { }
+  constructor(private readonly _notifier: Notifier) { }
 
   // 操作対象と simTime だけを見る軽い検査。update の各フェーズ境界で呼ぶ。
   // phase には「直前に何が走ったか」を渡す(そこが発生源だと分かる)。操作対象がいなければ何もしない。
@@ -73,6 +73,6 @@ export class NanWatchdog {
     this.tripped = true;
     const message = `シミュレーション状態が壊れました(NaN/Infinity)。phase=${phase} dt=${dt} simDt=${simDt} — ${detail}`;
     console.error('[NanWatchdog]', message);
-    this._hud.toast(`<b>内部エラー: ${message}</b>`, 60000);
+    this._notifier.toast(`<b>内部エラー: ${message}</b>`, 60000);
   }
 }

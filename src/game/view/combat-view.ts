@@ -1,7 +1,7 @@
 // 戦闘ビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。呼ぶ位置と順序は
 // Game / ViewManager が持つ。
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import type { CelestialMotions } from '../../physics/celestial-motion';
+import type { CelestialMotions } from '../../physics/celestial-body';
 import { pickCombatEntityAtPoint } from '../pickable/combat-pick';
 import { PlanGuide } from '../plan/plan-guide';
 import type { Input } from '../../input/input';
@@ -41,11 +41,11 @@ export class CombatView implements ViewFrame {
     private readonly planPath: PlanPath,
     private readonly celestialSystem: CelestialMotions,
     private readonly simSpeedManager: SimSpeedManager,
-    private readonly hud: Notifier,
+    private readonly notifier: Notifier,
     uiSfx: UiSfx,
     markerManager: MarkerManager,
   ) {
-    this.planGuide = new PlanGuide(hud, uiSfx, markerManager);
+    this.planGuide = new PlanGuide(notifier, uiSfx, markerManager);
   }
 
   public readonly pickables: readonly ObjectPickable[] = [];
@@ -80,7 +80,7 @@ export class CombatView implements ViewFrame {
     if (!plan || plan.nodes.length <= 0) return;
     plan.clear();
     this.simSpeedManager.cancelAutoWarp();
-    this.hud.hint('マニューバ計画を破棄');
+    this.notifier.hint('マニューバ計画を破棄');
   }
 
   // 照準キーと右クリックの配分。操作対象がいなければ照準先が無いので配らない。

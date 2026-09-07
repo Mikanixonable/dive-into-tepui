@@ -3,8 +3,8 @@
 // r から見た太陽円盤とその天体の円盤の重なり面積比で減光率を出す — 本影(重なり=太陽円盤全体)・
 // 金環(天体の円盤が太陽円盤に内包)・半影(部分的に重なる)・完全日照(重なり無し)が場合分け
 // 無しに1つの閉じた式から出る。
-import type { CelestialBody } from './celestial-body';
 import { Vec3 } from '../math/vec3';
+import type { CelestialBody } from './celestial-body';
 
 // 2円(半径 r1, r2、中心距離 d、すべて同じ角度単位)の交差面積。
 function circleOverlapArea(r1: number, r2: number, d: number): number {

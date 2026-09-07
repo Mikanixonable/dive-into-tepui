@@ -5,7 +5,6 @@ import * as THREE from 'three/webgpu';
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { OrbitingMotion, SatelliteMotion, StarMotion } from '../../physics/celestial-motion';
-import type { CelestialBody } from '../../physics/celestial-body';
 import { PhaseOffsets, PlanetDef, SatelliteDef, StarDef, planetDefForSimZero, satelliteDefForSimZero } from '../../physics/celestial-body-def';
 import { planetSystem } from '../../physics/planet-system';
 import { planetOrbit } from '../../physics/kepler-orbit';
@@ -26,6 +25,7 @@ import { SphereEntity } from '../celestial/celestial-entity/sphere-entity';
 import { StarEntity } from '../celestial/celestial-entity/star-entity';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../render/pipeline/sun-light';
 import { MAG_ROUNDS } from '../player/fire-control';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 const STAR_ID = 'aeolus';
 const PRIMARY_ID = 'zephyrus';
