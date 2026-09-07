@@ -9,7 +9,6 @@ import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import { ENTITY_CAP, type CapKind, type EntityCountKind } from './dynamic-entity/entity-kind';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
 import { restorationFor } from './dynamic-entity/entity-dictionary';
-import { ProteinEnemy } from './dynamic-entity/protein-enemy';
 import { InstancedPools } from './dynamic-entity/instanced-pools';
 import type { Stage } from '../stages/stage';
 import type { Input } from '../../input/input';
@@ -26,8 +25,6 @@ import type { MarkerManager } from '../marker/marker-manager';
 import type { EquatorNodeInputs } from '../marker/equator-node-marker-pair';
 import type { PerfCounts } from '../perf-counts';
 import type { OrbitReference } from '../orbit-reference';
-import type { ProteinMotionFrameSample } from '../protein/protein-motion-metrics';
-import type { ProteinMotionLod } from '../protein/protein-motion-controller';
 
 // 個体を実体化してよいかを答える述語。何を待つかは、待つと決めた側だけが知っていればよい。
 export type SpawnGate = () => boolean;
@@ -339,21 +336,5 @@ export class DynamicSystem {
       entities[kind] = (entities[kind] ?? 0) + 1;
     }
     return { entities };
-  }
-
-  // 直近 sync() 時点のタンパク質敵モーションの集計値。
-  proteinMotionFrameSample(): ProteinMotionFrameSample {
-    // 全タンパク質敵の直近の計測値を足し合わせ、LOD ごとの体数を数える。
-    let cpuMs = 0;
-    let uploadBytes = 0;
-    const lodCounts: Partial<Record<ProteinMotionLod, number>> = {};
-    for (const entity of this.entities) {
-      if (!(entity instanceof ProteinEnemy)) continue;
-      const metrics = entity.motionMetrics;
-      cpuMs += metrics.cpuMs;
-      uploadBytes += metrics.uploadBytes;
-      lodCounts[metrics.lod] = (lodCounts[metrics.lod] ?? 0) + 1;
-    }
-    return { cpuMs, uploadBytes, lodCounts };
   }
 }
