@@ -16,8 +16,7 @@ import type { ObjectAuthoring } from '../stages/stage';
 import type { PlanEditor } from '../plan/plan-editor';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
-import type { MapListSection } from '../hud/panels/physical-object-list-panel';
-import type { ObjectPickerGenre } from '../hud/object-groups';
+import type { MapListSection, ObjectPickerGenre } from './pickable-listing';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
 
 export interface ObjectPickable {
