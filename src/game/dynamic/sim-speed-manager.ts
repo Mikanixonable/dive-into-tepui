@@ -2,7 +2,7 @@
 // 「マニューバノードの実行時刻まで自動的に加速する」機能を担う。
 // マップビューの計画データそのものには依存しない — [N] キーの受け口と
 // どのノード時刻へ自動ワープするかは呼び出し側が決めて渡す。
-import { Hud } from '../hud/hud';
+import type { Notifier } from '../../hud/notifier';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { KinematicState } from '../../physics/kinematic-state';
 import type { Input } from '../../input/input';
@@ -22,7 +22,7 @@ export class SimSpeedManager {
   private autoWarpUntil: number | null = null;
 
   constructor(
-    private readonly _hud: Hud,
+    private readonly _hud: Notifier,
     private readonly _uiSfx: UiSfx,
   ) { }
 

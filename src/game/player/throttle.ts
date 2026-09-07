@@ -4,7 +4,7 @@ import { qRotate } from '../../math/quat';
 import { Vec3, add, norm, scale, v3 } from '../../math/vec3';
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../../input/key-mapping';
-import { Hud } from '../hud/hud';
+import type { Notifier } from '../../hud/notifier';
 import type { ThrottleSaveData } from '../save/save-data';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 
@@ -70,7 +70,7 @@ export class Throttle {
   private readonly latchedThrustKeys = new Set<string>();
   private readonly lastThrustPressTime: Partial<Record<string, number>> = {};
 
-  constructor(private readonly _hud: Hud, saved?: ThrottleSaveData) {
+  constructor(private readonly _hud: Notifier, saved?: ThrottleSaveData) {
     if (saved) {
       this.throttleIdx = saved.throttleIdx;
       this.rcsDamp = saved.rcsDamp ?? true;

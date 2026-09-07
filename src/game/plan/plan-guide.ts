@@ -5,7 +5,7 @@ import { strongestAttractor } from '../../physics/attractor';
 import { CelestialMotion } from '../../physics/celestial-motion';
 import { orbitalElementsOf } from '../../physics/elements';
 import { addScaled, dot, len, norm, sub } from '../../math/vec3';
-import { Hud } from '../hud/hud';
+import type { Notifier } from '../../hud/notifier';
 import { fmtDist, fmtSpeed, fmtTime } from '../../hud/utils';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import type { ProjectFn } from '../../math/projection';
@@ -31,7 +31,7 @@ export class PlanGuide {
   private achievedNotified: KinematicState | null = null;
 
   constructor(
-    private readonly _hud: Hud,
+    private readonly _hud: Notifier,
     private readonly _uiSfx: UiSfx,
     private readonly markerManager: MarkerManager,
   ) {

@@ -13,7 +13,7 @@ import { add, addScaled, scale, v3, Vec3 } from '../../math/vec3';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
-import { Hud } from '../hud/hud';
+import type { Notifier } from '../../hud/notifier';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { FlashEffects } from '../vfx/flash-effects';
 import type { EntityRegistry } from '../dynamic/entity-registry';
@@ -62,7 +62,7 @@ export class AttachedBoosters {
   // saved を渡せば段の構成と燃料・点火状態を復元する。省略時は段なしで始まる。
   constructor(
     private readonly player: Player,
-    private readonly _hud: Hud,
+    private readonly _hud: Notifier,
     private readonly _worldSfx: WorldSfx,
     private readonly _scene: THREE.Scene,
     private readonly _fx: FlashEffects,

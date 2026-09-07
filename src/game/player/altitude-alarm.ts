@@ -3,7 +3,7 @@
 import { CelestialMotion } from '../../physics/celestial-motion';
 import { ellipsoidAltitude } from '../../physics/atmosphere';
 import { Vec3, sub } from '../../math/vec3';
-import { Hud } from '../hud/hud';
+import type { Notifier } from '../../hud/notifier';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 
 // 高度低下警告のしきい値(降順)。EMA 高度がこれを下回るたびに一度だけ警告する [m]
@@ -25,7 +25,7 @@ export class AltitudeAlarm {
   private readonly warnedThresholds = new Set<number>();
 
   constructor(
-    private readonly _hud: Hud,
+    private readonly _hud: Notifier,
     private readonly _worldSfx: WorldSfx,
   ) {}
 
