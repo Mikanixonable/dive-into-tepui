@@ -295,7 +295,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   }
 
   // セーブデータへ変換する。
-  override serialize(): BaseSaveData {
+  public override serialize(): BaseSaveData {
     return {
       id: this.id,
       kind: 'base',
