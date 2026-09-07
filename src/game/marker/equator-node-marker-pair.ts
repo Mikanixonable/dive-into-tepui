@@ -110,12 +110,12 @@ export class EquatorNodeMarkerPair {
   // 遮蔽判定に使う天体で、celestialBodiesPivot はその位置を引く時刻。
   sync(
     project: ProjectFn, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
-    celestialBodiesPivot: number, timeLabel: TimeLabelSetting,
+    celestialBodiesPivot: number, occludeByBodies: boolean, timeLabel: TimeLabelSetting,
   ): void {
     for (const marker of [this.ascending, this.descending]) {
       marker.sync(
         this.markerManager, project, cameraPos, celestialBodies, celestialBodiesPivot,
-        true, timeLabel,
+        occludeByBodies, timeLabel,
       );
     }
   }
