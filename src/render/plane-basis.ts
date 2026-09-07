@@ -12,6 +12,7 @@ export interface PlaneBasis {
   readonly pole: THREE.Vector3;
 }
 
+// math/vec3 の Vec3 を THREE.Vector3 へ写す。
 function axis(v: Vec3): THREE.Vector3 {
   return new THREE.Vector3(v.x, v.y, v.z);
 }
@@ -30,13 +31,14 @@ export const ECLIPTIC_BASIS: PlaneBasis = {
   pole: axis(eclToEci(0, 0, 1)),
 };
 
-// 法線だけが与えられる面(月軌道面・月赤道面)の基底。経度の原点を決める基準が無いので
-// e1 の向きは任意で、経度の目盛りを持たない面にだけ使える。
+// 法線だけが与えられる面の基底。経度の原点を決める基準が無く e1 の向きは任意になるので、
+// 経度の目盛りを持たない面に使う。
 export function planeBasisFromPole(poleInput: THREE.Vector3): PlaneBasis {
   const pole = poleInput.clone().normalize();
   const e1 = new THREE.Vector3(1, 0, 0).projectOnPlane(pole);
   if (e1.lengthSq() < 1e-8) e1.set(0, 0, 1).projectOnPlane(pole);
   e1.normalize();
+  // e1×e2 = pole の右手系にする — makeBasis→setFromRotationMatrix は回転行列しか四元数化できない。
   const e2 = pole.clone().cross(e1).normalize();
   return { e1, e2, pole };
 }

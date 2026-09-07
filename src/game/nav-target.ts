@@ -1,14 +1,11 @@
 // マップ上のターゲット(任意の ObjectPickable — 月・ラグランジュ点なども含む)の保持と、
 // 自機軌道との相対 AN/DN(昇交点・降交点)・再接近点の算出・マーカー表示・被選択物としての公開。
-// ターゲットが敵・自艦・基地(CombatTarget)の場合は、Targeter の射撃・照準補助の基準にもなる。
 import { Vec3, add, len, sub } from '../math/vec3';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
 import { strongestAttractor } from '../physics/attractor';
-import { CelestialMotion } from '../physics/celestial-motion';
-import { frameOfCelestialBody } from '../physics/frame';
+import { CelestialMotion, OrbitingMotion } from '../physics/celestial-motion';
+import { FrameAnchorSource, frameOfCelestialBody, toFrameState, unbakeToDisplayPoint } from '../physics/frame';
 import { LagrangeLabel, lagrangeStateOf, secondaryFrameOf } from '../physics/lagrange';
-import { FrameAnchorSource, toFrameState, unbakeToDisplayPoint } from '../physics/frame';
-import { OrbitingMotion } from '../physics/celestial-motion';
 import { LOCAL_FORWARD, qRotate } from '../math/quat';
 import { goldenSectionMin } from '../math/optimize';
 import { Player } from './player/player';
@@ -31,16 +28,16 @@ import type { OrbitReference } from './orbit-reference';
 const CLOSEST_APPROACH_SPAN_SEC = 86400;
 const CLOSEST_APPROACH_SAMPLES = 200;
 // 黄金分割探索の反復回数。固定回数にしているのは、収束判定にすると反復回数がフレームごとに
-// 変動し、その分だけ結果がわずかに揺れるため(trajectory-features.ts の REFINE_ITERATIONS と同じ理由)。
+// 変動し、その分だけ結果がわずかに揺れるため。
 const CLOSEST_APPROACH_REFINE_ITERATIONS = 20;
 
 // 自艦とターゲットの相対距離が、今から CLOSEST_APPROACH_SPAN_SEC 先までのあいだで最初に
-// 極小になる時刻と、その時点の自艦位置。粗いサンプル列で極小を挟む区間を見つけ、黄金分割
-// 探索で追い込む。どちらかの予測がその時刻まで届かない、または区間内に極小が無ければ null
-// (まだ近づいている途中、あるいは既に最接近を過ぎている)。
+// 極小になる時刻と、その時点の自艦位置。どちらかの予測がその時刻まで届かない、または区間内に
+// 極小が無ければ null(まだ近づいている途中、あるいは既に最接近を過ぎている)。
 function findClosestApproach(
   player: DynamicEntity, target: DynamicEntity, celestialSystem: CelestialSystem, simTime: number,
 ): { readonly pos: Vec3; readonly t: number } | null {
+  // 時刻 t の相対距離。どちらかの予測が t まで届いていなければ null。
   const distAt = (t: number): number | null => {
     const p = player.stateAt(t, celestialSystem);
     const q = target.stateAt(t, celestialSystem);
@@ -80,14 +77,17 @@ export class NavTarget {
 
   constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {}
 
+  // 現在のターゲットの id。未設定なら null。
   get id(): string | null {
     return this.targetId;
   }
 
+  // 現在のターゲットの表示名。未設定なら null。
   get name(): string | null {
     return this.targetName;
   }
 
+  // ターゲットの id と表示名を差し替える。
   private setInternal(id: string | null, name: string | null): void {
     this.targetId = id;
     this.targetName = name;
@@ -96,7 +96,7 @@ export class NavTarget {
     this.setReaderEntity(null);
   }
 
-  // 旧対象のフラグを降ろし、新対象に立て直す。
+  // 未来予測を依頼する個体を entity 一つに絞る。
   private setReaderEntity(entity: DynamicEntity | null): void {
     if (entity === this.readerEntity) return;
     if (this.readerEntity) this.readerEntity.navTargetReader = false;
@@ -146,6 +146,7 @@ export class NavTarget {
     return entity && entity.alive ? entity : null;
   }
 
+  // AN・DN・再接近点のマーカー。
   private get nodeMarkers(): readonly RelativeNodeMarker[] {
     return [this.ascendingNode, this.descendingNode, this.closestApproach];
   }
@@ -153,11 +154,6 @@ export class NavTarget {
   // 自機軌道要素と対象の軌道面法線から相対 AN/DN の位置・通過時刻を求め直す。
   // 対象の軌道面が定まらない(地球・太陽自身など)場合や自機軌道要素が無い場合は、
   // どちらの交点も解けていない状態にする。
-  // positionOnOrbit は中心天体基準の相対位置を返すので、CelestialMotion.stateAt で通過時刻
-  // anT/dnT における中心天体の精密な ECI 位置を求めて足し合わせ、絶対位置に直す — 概算の弾道
-  // pivot からの外挿を使うと、表示側が数値暦で un-bake するのと基準がずれて、
-  // 月周回では通過までの時間ぶん位置がずれる。位置は通過時刻で bake し、displayWindow の
-  // 表示時刻で un-bake して描画座標系へ移す。
   update(
     player: Player | null, entities: DynamicSystem, celestialSystem: CelestialSystem, displayWindow: DisplayWindow,
     frameAnchors: FrameAnchorSource,
@@ -175,6 +171,7 @@ export class NavTarget {
     const stateCelestialBodies = celestialSystem.celestialMotions;
     const playerCenter = strongestAttractor(player.state.r, stateCelestialBodies, simTime);
     const unbakeTf = celestialSystem.frames.transformAt(frame, displayTime, frameAnchors);
+    // 通過時刻で焼いた点を、表示時刻の座標系へ un-bake する。
     const toDisplay = (r: Vec3, t: number): Vec3 =>
       unbakeToDisplayPoint(unbakeTf, celestialSystem.frames.transformAt(frame, t, frameAnchors), r);
 
@@ -198,12 +195,15 @@ export class NavTarget {
     const nu0 = trueAnomalyAt(playerEl, toFrameState(tf, player.state).r);
     const anT = simTime + tofBetween(playerEl, nu0, nodes.asc);
     const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
+    // 交点は中心天体基準なので、通過時刻における中心天体の精密な ECI 位置へ足す — 概算の弾道
+    // pivot からの外挿だと表示側の un-bake と基準がずれ、月周回では通過までの時間ぶん位置がずれる。
     const anEci = add(celestialSystem.stateAt(playerCenter.id, anT).r, positionOnOrbit(playerEl, nodes.asc));
     const dnEci = add(celestialSystem.stateAt(playerCenter.id, dnT).r, positionOnOrbit(playerEl, nodes.desc));
     this.ascendingNode.place(toDisplay(anEci, anT), anT, ownerName, this.name);
     this.descendingNode.place(toDisplay(dnEci, dnT), dnT, ownerName, this.name);
   }
 
+  // id がいまのターゲットなら解除する。
   clearIfTargeting(id: string): void {
     if (this.targetId === id) this.setInternal(null, null);
   }
@@ -217,10 +217,12 @@ export class NavTarget {
   ): OrbitReference | null {
     const id = this.targetId;
     if (id === null) return null;
+    // 登録天体なら、その運動から直接引く。
     const attractor = celestialSystem.find(id)?.motion;
     if (attractor instanceof OrbitingMotion) {
       return { id, state: attractor.stateAt(t), hasMass: true, attractor, entity: null, fixed: true };
     }
+    // ラグランジュ点は副天体の回転系から解く。
     const lagrange = lagrangePointOf(id);
     if (lagrange !== null) {
       const secondary = celestialSystem.find(lagrange.parentId)?.motion ?? null;
@@ -234,6 +236,7 @@ export class NavTarget {
         };
       }
     }
+    // 残りは生存中の艦・基地。
     const entity = entities.findAliveCombatTarget(id);
     if (!entity) return null;
     return {
@@ -273,8 +276,8 @@ export class NavTarget {
     return this.nodeMarkers.filter((marker) => !marker.gone);
   }
 
-  // マップビューでは、天体に遮蔽されて画面上見えていない AN/DN・再接近点を隠す(戦闘ビューでは効かせない)。
-  // celestialBodies は遮蔽判定に使う天体で、pivot はその位置を引く時刻。
+  // AN/DN・再接近点のマーカーを置く。マップビューでは天体に遮蔽された点を隠す。
+  // celestialBodies は遮蔽判定に使う天体で、celestialBodiesPivot はその位置を引く時刻。
   sync(
     cameraSystem: CameraSystem, celestialBodies: readonly CelestialMotion[],
     celestialBodiesPivot: number, timeLabel: TimeLabelSetting,

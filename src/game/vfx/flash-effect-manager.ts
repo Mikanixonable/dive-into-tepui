@@ -1,10 +1,10 @@
 // 爆発・マズルフラッシュなどの一時エフェクト。
-import * as THREE from "three/webgpu";
-import { KinematicState, kinematicState } from "../../physics/kinematic-state";
-import { addScaled } from "../../math/vec3";
-import { flashResources } from "../../render/billboard";
-import { InstancedPool } from "../../render/instanced-pool";
-import { FloatingOrigin } from "../camera/floating-origin";
+import * as THREE from 'three/webgpu';
+import { KinematicState, kinematicState } from '../../physics/kinematic-state';
+import { addScaled } from '../../math/vec3';
+import { flashResources } from '../../render/billboard';
+import { InstancedPool } from '../../render/instanced-pool';
+import { FloatingOrigin } from '../camera/floating-origin';
 
 const ZOOM_MUZZLE_FLASH_SCALE = 0.02; // ズーム中のマズルフラッシュ最大不透明度倍率(完全には消さない)
 
@@ -14,25 +14,26 @@ const MAX_FLASHES = 128; // 同時に存在しうるフラッシュ(発砲・命
 const scratchTransform = new THREE.Object3D();
 const scratchColor = new THREE.Color();
 
-// 軌道速度で流れないよう、発生源の速度で移流させる。位置は時刻つきの state として
-// 持ち、その時刻から現在の simTime までを毎フレーム移流させる。
+// 一時エフェクト1件。軌道速度で流れて見えないよう、時刻つきの state を持ち、発生源の
+// 速度で現在の simTime まで移流させる。
 export interface FlashEffect {
-  baseColor: string | number;
+  readonly baseColor: string | number;
   state: KinematicState;
   age: number;
-  duration: number;
-  size0: number;
-  size1: number;
-  peakBrightness: number; // 発生直後の最大の明るさ倍率
-  dimsInGunsight: boolean; // ガンサイトズーム中に減光するか
+  readonly duration: number;
+  readonly size0: number;
+  readonly size1: number;
+  readonly peakBrightness: number; // 発生直後の最大の明るさ倍率
+  readonly dimsInGunsight: boolean; // ガンサイトズーム中に減光するか
 }
 
 export class FlashEffectManager {
-  effects: FlashEffect[] = [];
+  private effects: FlashEffect[] = [];
   private readonly pool: InstancedPool;
   private readonly geometry: THREE.BufferGeometry;
   private readonly material: THREE.Material;
 
+  // フラッシュ用のインスタンス群を scene へ1つ置く。
   constructor(scene: THREE.Scene) {
     const { geometry, material } = flashResources();
     this.geometry = geometry;
