@@ -26,7 +26,7 @@ import type { GeostationaryOverlay } from './geostationary-overlay';
 import type { StarEntity } from './star-entity';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
 import type { LineOverlay } from '../../../render/line-overlay';
-import type { MarkerManager } from '../../marker/marker-manager';
+import type { MarkerSlots } from '../../marker/marker-slots';
 import type { ShadowCumulus } from '../../../render/pipeline/shadow/cumulus-shadow';
 import type { RenderStyle } from '../../../render/render-style';
 import type { AtmosphereClouds, AtmosphereOptics } from '../../../render/atmosphere';
@@ -213,10 +213,10 @@ export class PointEntity extends CelestialEntity {
   // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期する。
   public override syncMapOverlay(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
-    markerManager: MarkerManager | null, celestialBodies: readonly CelestialBody[], visible: boolean,
+    markers: MarkerSlots | null, celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
     this.mapOverlay?.sync(
-      this.motion, displayTime, fo, cameraSystem, markerManager, celestialBodies, visible);
+      this.motion, displayTime, fo, cameraSystem, markers, celestialBodies, visible);
   }
 
   // オーロラの波打ち・明滅を表示時刻へ進める。

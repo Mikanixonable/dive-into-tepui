@@ -43,7 +43,7 @@ import { RcsEffects } from './rcs-effects';
 import { ReentryEffects } from './reentry-effects';
 import { PlayerMarkers } from './player-markers';
 import type { OrbitReference } from '../orbit-reference';
-import type { MarkerManager } from '../marker/marker-manager';
+import type { MarkerSlots } from '../marker/marker-slots';
 import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
 
@@ -151,7 +151,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // init 省略時は無作為な名前と既定軌道の新規艦になる。id を省いたときは name がそのまま
   // 艦の識別子になるので、複数隻を並べるなら name も分ける。
   constructor(
-    _notifier: Notifier, _worldSfx: WorldSfx, _scene: THREE.Scene, _fx: FlashEffects, markerManager: MarkerManager,
+    _notifier: Notifier, _worldSfx: WorldSfx, _scene: THREE.Scene, _fx: FlashEffects, markers: MarkerSlots,
     init: PlayerInit = {},
   ) {
     const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
@@ -185,7 +185,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     this.thrustEffects = new ThrustEffects(_scene, _worldSfx);
     this.rcsEffects = new RcsEffects(_scene, _worldSfx);
     this.reentryEffects = new ReentryEffects(_scene);
-    this.markers = new PlayerMarkers(markerManager, this.id);
+    this.markers = new PlayerMarkers(markers, this.id);
     // 段の模型を船体へ足し、段のぶんの質量と慣性を載せるので、船体側の部品より後に組む。
     this.boosters = new AttachedBoosters(this, _notifier, _worldSfx, _scene, _fx, saved?.boosters);
 
@@ -683,7 +683,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     return this.stateAt(displayTime)?.r ?? null;
   }
 
-  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
+  public shownOnMap(markers: MarkerSlots): boolean { return markers.shows(this.markerKey); }
 
   // 残 HP と、いま最も強く引かれている天体を中心とした近地点高度。
   public listDetail(celestialBodies: CelestialBodies): string {

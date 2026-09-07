@@ -9,7 +9,7 @@ import type { Notifier } from '../../hud/notifier';
 import { fmtDist, fmtSpeed, fmtTime } from '../../hud/utils';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import type { ProjectFn } from '../../math/projection';
-import { MarkerManager, MARKER_DIR_DIST } from '../marker/marker-manager';
+import { MarkerSlots, MARKER_DIR_DIST } from '../marker/marker-slots';
 import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH, COLOR_MARKER_NODE } from '../marker/marker-identity';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { PlanPath } from './plan-path';
@@ -33,7 +33,7 @@ export class PlanGuide {
   constructor(
     private readonly _notifier: Notifier,
     private readonly _uiSfx: UiSfx,
-    private readonly markerManager: MarkerManager,
+    private readonly markers: MarkerSlots,
   ) {
   }
 
@@ -60,9 +60,9 @@ export class PlanGuide {
   ): void {
     const node = controlled?.plan.firstNode();
     if (!controlled || !node) {
-      this.markerManager.hide('nd');
-      this.markerManager.hide('burn');
-      this.markerManager.hide('burn-bearing');
+      this.markers.hide('nd');
+      this.markers.hide('burn');
+      this.markers.hide('burn-bearing');
       return;
     }
 
@@ -80,11 +80,11 @@ export class PlanGuide {
     const burnTime = maxAccel > 0 ? mag / maxAccel : 0;
     const shipPos = path.toDisplay(controlled.state.r, simTime);
     const burnDir = path.toDisplayDir(dvRem, simTime);
-    this.markerManager.setPosition(
+    this.markers.setPosition(
       'nd', 'mk-mnode', ORBIT_POINT_GLYPH.maneuverNode, path.toDisplay(node.r, node.t), project,
       `NODE${more}\nBURN ${fmtTime(burnTime)}\nDIST ${fmtDist(nodeDist)}\nTIME ${tLabel}`,
     );
-    this.markerManager.setDirection(
+    this.markers.setDirection(
       'burn',
       'mk-burn',
       ORBIT_POINT_GLYPH.burnPoint,
@@ -95,7 +95,7 @@ export class PlanGuide {
     );
     // 噴射方向が視界外(背面を含む)なら、敵・弾薬と同じ画面端の方位ガイドを出す。
     const burnPoint = project(addScaled(shipPos, norm(burnDir), MARKER_DIR_DIST));
-    this.markerManager.setBearing('burn-bearing', 'mk-dir', DIRECTION_GLYPH.bearing, burnPoint, '', 0.7, COLOR_MARKER_NODE);
+    this.markers.setBearing('burn-bearing', 'mk-dir', DIRECTION_GLYPH.bearing, burnPoint, '', 0.7, COLOR_MARKER_NODE);
   }
 
   // 実行の窓に入ったことを通知する。
