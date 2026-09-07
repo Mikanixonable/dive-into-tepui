@@ -14,7 +14,7 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapDisplayToggles } from '../map/display-toggles';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
-import type { ProjectFn } from '../camera/camera-system';
+import type { ProjectFn } from '../../math/projection';
 import type { GroupedMarkers } from './grouped-markers';
 import type { MarkerManager } from './marker-manager';
 

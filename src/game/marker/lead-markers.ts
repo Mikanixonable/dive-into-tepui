@@ -2,7 +2,7 @@
 // 状態に依存するため、Enemy にも Targeter にも属さない独立責務として切り出してある。
 import { leadPoint } from '../../physics/intercept';
 import type { View } from '../view/view';
-import type { ProjectFn } from '../camera/camera-system';
+import type { ProjectFn } from '../../math/projection';
 import type { MarkerManager } from './marker-manager';
 import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import { Player } from '../player/player';
