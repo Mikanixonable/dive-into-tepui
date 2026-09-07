@@ -1,5 +1,4 @@
 // クリエイティブモード: 勝敗判定を発生させず、物体配置と軌道計画を自由に試すためのステージ。
-import type * as THREE from 'three/webgpu';
 import { Stage, type ObjectAuthoring, type StageDeps, STORY_EPOCH } from './stage';
 import type { Player } from '../player/player';
 import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
@@ -18,7 +17,7 @@ import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import { Vec3, add, addScaled } from '../../math/vec3';
 import { isOccluded } from '../../physics/occlusion';
 import { hudRail } from '../hud/hud-root';
-import type { CameraSystem, ProjectFn } from '../camera/camera-system';
+import type { CameraSystem } from '../camera/camera-system';
 import { AmmoPickup } from '../dynamic/dynamic-entity/ammo-pickup';
 import { RcsFuelPickup } from '../dynamic/dynamic-entity/rcs-fuel-pickup';
 import { Base } from '../dynamic/dynamic-entity/base';
@@ -42,12 +41,13 @@ const MAX_PLACED_SHIPS = 50;
 
 const DEG = Math.PI / 180;
 
+// 手動スポーンで敵を出す、自機前方の既定距離 [m]。
 const STAGE_CONTROL_DEFAULT_ENEMY_SPAWN_DISTANCE = 2000;
 
 export class CreativeStage extends Stage {
   static readonly id = 'creative' as const;
   static readonly epoch = STORY_EPOCH;
-  // 開始日時の指定画面を挟む唯一のステージ(GAME.md 9.0)。epoch はその欄の既定値になる。
+  // 開始日時の指定画面を挟む(SPEC GAME.md 9.0)。epoch はその欄の既定値になる。
   static readonly picksStartEpoch = true;
   static readonly selectLabel = 'CREATIVE';
   static readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
@@ -58,10 +58,10 @@ export class CreativeStage extends Stage {
   readonly authoring: ObjectAuthoring = this;
 
   private readonly placerPanel: ObjectPlacerPanel;
-  // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。マップビューでだけ出す。
+  // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。
   private readonly stageControlsPanel: StageControlsPanel;
   private readonly waveAttack: WaveAttack;
-  // 敵の波状攻撃を発生させるかどうか。既定 OFF — ON の間だけ update が WaveAttack を進める。
+  // 敵の波状攻撃を発生させるかどうか(既定 OFF)。
   private waveAttackEnabled: boolean;
   private readonly previewEllipseLine: EllipseLine;
   private readonly playerIdAllocator = new EntityIdAllocator('creative-player-');
@@ -70,21 +70,21 @@ export class CreativeStage extends Stage {
   private manualEnemyCount = 0;
   private manualFormationCount = 0;
   private manualEnemySpawnDistance = STAGE_CONTROL_DEFAULT_ENEMY_SPAWN_DISTANCE;
-  // 手動スポーンで使うタンパク質の表示設定。ステージ操作パネルの選択と onProteinDisplayChange で同期する。
+  // 手動スポーンで使うタンパク質の表示設定。
   private proteinDisplay: ProteinDisplaySettings = DEFAULT_PROTEIN_DISPLAY;
 
+  // ステージ開始時に出すブリーフィングの本文(HTML)。
   briefingHtml(): string {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
   }
 
-  // saved の型を StageSaveData に留めるのは stage.ts の StageClass 一覧に
-  // 収める都合(具象ごとの拡張型では構築シグネチャが揃わない)。
+  // 配置パネルとステージ操作パネルを組み、保存データがあればそこから状態を戻す。
+  // saved の型が StageSaveData なのは、復元の構築シグネチャを全ステージで揃えるため。
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     const savedCreative = saved as CreativeStageSaveData | undefined;
 
-    // 以後の新規配置が既存 id と衝突しないよう、この時点で存在する艦・補給の id を予約する
-    // (スナップショットからの再開では entities が復元済み — 新規開始では空なので何もしない)。
+    // 以後の新規配置が既存 id と衝突しないよう、復元済みの艦・補給の id を予約する。
     for (const p of this._entities.players) this.playerIdAllocator.next(p.id);
     for (const ammoPickup of this._entities.ammoPickups) this.ammoPickupIdAllocator.next(ammoPickup.id);
     for (const pickup of this._entities.rcsFuelPickups) this.rcsFuelPickupIdAllocator.next(pickup.id);
@@ -121,12 +121,14 @@ export class CreativeStage extends Stage {
     this.begin();
   }
 
+  // 出ているタンパク質の敵すべてへ、選ばれた表示設定を反映する。
   private applyProteinDisplay(display: ProteinDisplaySettings): void {
     for (const enemy of this._entities.enemies) {
       if (enemy instanceof ProteinEnemy) enemy.setDisplay(display);
     }
   }
 
+  // 操作艦の弾薬を満載にする。操作艦がいなければトーストで知らせる。
   private refillActivePlayerAmmo(): void {
     const player = this._activePlayers.current;
     if (player === null || !player.alive) {
@@ -136,6 +138,7 @@ export class CreativeStage extends Stage {
     player.refillAmmo();
   }
 
+  // 操作艦の RCS 燃料を満タンにする。操作艦がいなければトーストで知らせる。
   private refillActivePlayerRcsFuel(): void {
     const player = this._activePlayers.current;
     if (player === null || !player.alive) {
@@ -145,17 +148,20 @@ export class CreativeStage extends Stage {
     player.refuelFuel(player.totalMaxFuel);
   }
 
+  // shape で選んだ形の敵を1体、自機の前方へ出す。操作艦がいなければトーストで知らせる。
   private spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void {
     const player = this._activePlayers.current;
     if (player === null || !player.alive) {
       this._hud.hint('操作艦がいないため敵をスポーンできません');
       return;
     }
+    // 自機の前方、同じ速度で置く。
     const color = Number(colorValue);
     const forward = qRotate(player.att.q, LOCAL_FORWARD);
     const position = addScaled(player.state.r, forward, this.manualEnemySpawnDistance);
     const state = kinematicState<'eci'>(player.state.t, position, player.state.v);
     const name = `MANUAL-${++this.manualEnemyCount}`;
+    // 形ごとに生成器が違い、タンパク質はアセットが揃うのを待ってから出す。
     const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
     if (shapeDefinition === undefined) return;
     if (shapeDefinition.kind === 'drifting') {
@@ -183,6 +189,7 @@ export class CreativeStage extends Stage {
       this._hud.hint('操作艦がいないため敵をスポーンできません');
       return;
     }
+    // 3役はいずれも自機の前方、同じ速度から始める。
     const forward = qRotate(player.att.q, LOCAL_FORWARD);
     const position = addScaled(player.state.r, forward, this.manualEnemySpawnDistance);
     const state = kinematicState<'eci'>(player.state.t, position, player.state.v);
@@ -212,11 +219,7 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.setSpawnButtonsEnabled(player !== null && player.alive);
     this.mountStageControlsPanel(cameraSystem.view === 'map');
     const form = this.placerPanel.isOpen ? this.placerPanel.getForm() : null;
-    this.syncPreview(
-      form, fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
-      cameraSystem.view === 'map', cameraSystem.activeCameraPos,
-      this._celestialSystem.celestialMotions, displayTime,
-    );
+    this.syncPreview(form, fo, cameraSystem, displayTime);
     this.placerPanel.setIssues(form ? this.computeFieldIssues(form) : []);
     this.stageControlsPanel.element.classList.remove('hidden');
   }
@@ -227,11 +230,9 @@ export class CreativeStage extends Stage {
     this.placerPanel.open(focusId !== undefined ? { kind: 'body', celestialBody: focusId as ReferenceCelestialBody } : undefined);
   }
 
-  // 右クリックメニューの「複製」。state を軌道要素へ逆算でき、
-  // かつ基地の基準天体制約(validateBaseReferenceFields — 月基準かラグランジュ点のみ)を
-  // 満たす値が求まったときだけ、その値をプリセットして開く。逆算できない状態(双曲線軌道など)や、
-  // 基地なのに基準天体が月でない(地球が支配的な複製元など)ときは、値だけを引き継ぐと
-  // 制約に反した軌道が黙って配置できてしまうので、種類だけを引き継いで通常の新規配置として開く。
+  // 右クリックメニューの「複製」。state を軌道要素へ逆算でき、基地の基準天体制約も満たす値が
+  // 求まったときは、その値をプリセットして開く。逆算できない軌道(双曲線など)や制約に反する
+  // 複製元では、値を引き継ぐと制約外の軌道が黙って配置できてしまうので、種類だけを引き継ぐ。
   openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void {
     const form = elementsFormFromState(
       state, this._celestialSystem, state.t, this._celestialSystem.origin.id);
@@ -257,12 +258,14 @@ export class CreativeStage extends Stage {
     }
   }
 
-  // フォーム値をフィールド単位で検証する。assertValidForm(確定時、最初の問題で例外を投げる)と
-  // 同じ検証呼び出しを共有し、両者が食い違うことを防ぐ。
+  // フォーム値をフィールド単位で検証する。assertValidForm と同じ検証を通し、
+  // 入力中の表示と確定時の可否が食い違わないようにする。
   private computeFieldIssues(form: ObjectPlacerForm): PlacementFieldIssue[] {
+    // 配置方法によらず効く、種類ごとの基準天体の制約。
     const issues = [...validateBaseReferenceFields(
       form.entityKind, form.placementMode, form.placementMode === 'elements' ? form.celestialBody : undefined,
     )];
+    // 配置方法ごとの制約。
     if (form.placementMode === 'elements') {
       const center = this.referenceCelestialBody(form);
       const common = {
@@ -288,9 +291,7 @@ export class CreativeStage extends Stage {
   // フォーム値から求めた配置プレビューの軌道線と ▷ マーカーを同期する。
   // form が null か、プレビューを出せない値のときは、軌道線とマーカーを消す。
   private syncPreview(
-    form: ObjectPlacerForm | null, fo: FloatingOrigin, project: ProjectFn, camera: THREE.Camera,
-    mapView: boolean, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
-    displayTime: number,
+    form: ObjectPlacerForm | null, fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
   ): void {
     const preview = form ? this.computePreview(form) : null;
     if (!preview) {
@@ -298,14 +299,16 @@ export class CreativeStage extends Stage {
       this._markerManager.fadeOut('creative-preview');
       return;
     }
-    this.previewEllipseLine.sync(preview.elements, fo, camera);
-    if (mapView
-      && isOccluded(cameraPos, preview.pos, celestialBodies, displayTime)) {
+    // 軌道線は常に出し、▷ マーカーは天体に隠れていないときだけ出す。
+    const cameraPos = cameraSystem.activeCameraPos;
+    this.previewEllipseLine.sync(preview.elements, fo, cameraSystem.activeCamera);
+    if (cameraSystem.view === 'map'
+      && isOccluded(cameraPos, preview.pos, this._celestialSystem.celestialMotions, displayTime)) {
       this._markerManager.hide('creative-preview');
       return;
     }
     this._markerManager.setPosition(
-      'creative-preview', 'mk-self', ENTITY_GLYPH.preview, preview.pos, project,
+      'creative-preview', 'mk-self', ENTITY_GLYPH.preview, preview.pos, cameraSystem.activeCameraProjection,
       'PREVIEW', 1, COLOR_MARKER_ALLY, 0, false, false, undefined, cameraPos,
     );
   }
@@ -321,6 +324,7 @@ export class CreativeStage extends Stage {
       const state = this.buildInitialState(form);
       this.assertFiniteEllipticState(state);
       
+      // 種類ごとに実体を作って登録し、配置したことを知らせる。
       if (form.entityKind === 'player') {
         const id = this.playerIdAllocator.next();
         const finalName = name.trim() || generateRandomName('player');
@@ -356,15 +360,14 @@ export class CreativeStage extends Stage {
     }
   }
 
-  // フォームの placementMode に応じて軌道要素指定(stateFromOrbitalElements)かラグランジュ点指定
-  // (haloState/lissajousState)のどちらかで KinematicState を組み立てる。
+  // フォームの placementMode に応じて、軌道要素指定かラグランジュ点指定で初期状態を組む。
   private buildInitialState(form: ObjectPlacerForm): KinematicState {
     if (form.placementMode === 'lagrange') return this.buildLagrangeState(form);
     return this.buildElementsState(form);
   }
 
-  // 副天体・点・軌道種別・振幅から、ラグランジュ点まわりのハロー/リサジュー軌道の初期状態を組む。
-  // ハローの面内振幅は三次の振幅拘束で面外振幅から決まるので、フォーム自体に面内振幅の値がない。
+  // ラグランジュ点まわりのハロー/リサジュー軌道の初期状態を組む。ハローの面内振幅は
+  // 三次の振幅拘束で面外振幅から決まるので、フォームに面内振幅の欄がない。
   private buildLagrangeState(form: LagrangeForm): KinematicState {
     const motion = this._celestialSystem.entityOf(form.lagrangeSecondary).motion;
     if (!(motion instanceof OrbitingMotion)) {
@@ -381,18 +384,16 @@ export class CreativeStage extends Stage {
     return lissajousState(system, { point: form.lagrangePoint, ax: form.axKm * 1e3, az: form.azKm * 1e3 });
   }
 
-  // フォームの基準天体(地球 or 月)を、その時刻の重力源として引く。μ・半径・ECI 化に
-  // 要る情報がすべてここから出る。
+  // フォームが選んだ基準天体の運動を引く。
   private referenceCelestialBody(form: ElementsForm): CelestialMotion {
     return this._celestialSystem.motionOf(form.celestialBody);
   }
 
-  // フォームが選んだサイズ/形の組から長半径・離心率を導出し、要素→状態変換
-  // (stateFromOrbitalElements)で基準天体中心の相対状態を組んでから、基準天体自身の位置・速度を
-  // 足して ECI 化する(地球基準では位置・速度とも厳密に 0 なので、実質そのまま返る)。
+  // フォームのサイズ/形の指定から軌道要素を組み、基準天体中心の状態を ECI へ直して返す。
   private buildElementsState(form: ElementsForm): KinematicState {
     const center = this.referenceCelestialBody(form);
     const centerState = center.stateAt(this._simulator.simTime);
+    // サイズの指定方法ごとに長半径と離心率を出す。
     let a: number;
     let e: number;
     if (form.sizeMode === 'apsides') {
@@ -408,6 +409,7 @@ export class CreativeStage extends Stage {
       e = form.eccentricity;
     }
 
+    // 基準天体中心の相対状態を組み、基準天体自身の位置・速度を足して ECI にする。
     const rel = stateFromOrbitalElements(
       this._simulator.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG,
       form.nuDeg * DEG, center.def.mu,
@@ -416,21 +418,20 @@ export class CreativeStage extends Stage {
       this._simulator.simTime, add(centerState.r, rel.r), add(centerState.v, rel.v));
   }
 
-  // フォームの値が物理的に成立するか検証する。computeFieldIssues と同じ検証呼び出しを共有し、
-  // 不正なら最初の問題を理由に例外を投げる。
+  // フォームの値が物理的に成立するか検証し、不正なら最初の問題を理由に例外を投げる。
   private assertValidForm(form: ObjectPlacerForm): void {
     const [firstIssue] = this.computeFieldIssues(form);
     if (firstIssue) throw new Error(firstIssue.message);
   }
 
+  // 位置・速度に非有限値が混じっていたら例外を投げる。
   private assertFiniteEllipticState(state: KinematicState): void {
     const values = [state.r.x, state.r.y, state.r.z, state.v.x, state.v.y, state.v.z];
     if (!values.every(Number.isFinite)) throw new Error('有限の状態を作れませんでした');
   }
 
-  // 通常ステージと同じ残弾監視・回収・遠方補給の再投入を行う。既存敵の AI 行動は常に進める。
-  // トグルが制御するのは新規ウェーブの発生のみ(OFF の間は waveAttack.update を止め、既に出ている
-  // 敵はそのまま残る)。ノードの消化は Simulator のイベント境界(applySimulationEvents)で行う。
+  // 補給の投入と、既に出ている敵の AI を進める。波状攻撃のトグルが決めるのは新しいウェーブが
+  // 出るかどうかで、OFF にしても既に出ている敵は残る。
   update(dt: number, player: Player | null, _entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     if (player) {
       this.logistics.updateLogistics(simTime, player, simSpeed, true);
@@ -441,8 +442,8 @@ export class CreativeStage extends Stage {
     }
   }
 
-  // 'instant' の艦のノード時刻ちょうどを Simulator の既知イベントとして返し、simTime が
-  // その時刻ちょうどで積分を切るようにする。
+  // 'instant' の艦が次に消化するノードの時刻。積分をその時刻ちょうどで切らせるために返す。
+  // 待っているノードが1つも無ければ null。
   nextSimulationEventTime(simTime: number): number | null {
     let next: number | null = null;
     for (const ship of this._entities.players) {
@@ -471,21 +472,22 @@ export class CreativeStage extends Stage {
     }
   }
 
+  // 勝利条件を持たないモードなので、常に false。
   checkWin(): boolean {
     return false;
   }
 
-  // 勝敗のないモードなので、艦を喪失しても敗北画面は出さず通知だけにする。
+  // 艦を喪失したことを、トーストで知らせる。
   recordPlayerLost(reason: string): void {
     this._hud.hint(reason);
   }
 
-  // クリエイティブモードの戦闘ビューでステータスウィンドウ(状況表示・自機装甲/温度/電力ゲージ・放熱板操作)を明示的に表示する。
+  // ステータス表示の副題に出す文字列。
   hudSubStatus(): string {
     return this.waveAttackEnabled ? '波状攻撃: ON' : 'クリエイティブ';
   }
 
-  // 配置プレビューの軌道線・設定パネル・物体配置パネルを片付けたうえで super.dispose() を呼ぶ。
+  // このステージが持つ表示物とパネルを片付ける。
   dispose(): void {
     super.dispose();
     this.previewEllipseLine.line.removeFromParent();
@@ -494,6 +496,7 @@ export class CreativeStage extends Stage {
     this.placerPanel.dispose();
   }
 
+  // 共通のステージ保存データへ、波状攻撃のトグルと進行状況を足して返す。
   serialize(): CreativeStageSaveData {
     return {
       ...super.serialize(),
