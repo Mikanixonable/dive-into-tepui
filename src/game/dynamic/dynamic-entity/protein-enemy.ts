@@ -16,7 +16,7 @@ import {
   type EnemyPlacement, type EnemyRestore, type FormationRole,
 } from './enemy';
 import { proteinAssetGate, type ProteinAssetId } from '../../protein/protein-asset-loader';
-import type { InstancedPools } from './instanced-pools';
+import type { InstancedPools } from '../instanced-pools';
 import type { SpawnGate } from '../dynamic-system';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
