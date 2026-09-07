@@ -137,35 +137,6 @@
 ## 手順
 
 
-### 手順 8. 役割トークン `@activeShip` を `@controlled` へ改名する
-
-#### 目的
-
-役割トークンは「特定の対象を名指しせず役割で指す」ためのもの(`physics/frame.ts:27-28`)なのに、
-その役割名自体が船を名指ししている。**セーブに載る文字列なので、読み込み境界で正規化する。**
-
-#### 変更が必要な箇所
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/physics/frame.ts` | `FrameRole`(29)と `FRAME_ROLES`(37)の `'activeShip'` → `'controlled'` |
-| `src/game/frame-anchors.ts` | `FrameAnchorTargets.activeShipState`(16)→ `controlledState`。`resolveRoleState`(78)の分岐。冒頭コメント(2)の `@activeShip` |
-| `src/game/hud/frame/frame-labels.ts` | 8行の `'操作対象の船'` → `'操作対象'` |
-| `src/game/camera/camera-system.ts` | `frameRoleAnchorId('activeShip')`(217) |
-| `src/game/game.ts` | 241/257 の役割解決 |
-| `src/launcher/save/snapshot-service.ts` | `normalizePickupKeys`(65)と同じ層に、保存済みの `@activeShip` を `@controlled` へ書き換える正規化を足す。対象は `camera.chase` と `camera.overview` の**4箇所** — `focus.id`(`kind: 'object'`)、`focus.center`(`kind: 'point'`)、`focus.rotatingWith.id`、`FocusCameraSaveData.rotatingWith.id`(`save-data.ts:233-241`) |
-
-#### 達成条件と検証
-
-- `grep -rn "activeShip" src DEVELOP` が 0 件。
-- `npm run typecheck`、`npm run test:physics`、`npm run test:game`。
-- **改名前に**スナップショットを1件保存しておき、改名後に読み込んで
-  **戦闘カメラが操作対象へ追従する**ことを確認する(正規化を落とすと、フォーカスが解決できず
-  `focusLossPolicy: 'hold'` により最後の位置で固まる — 例外もログも出ない)。
-- マップの座標系パネルの基準ドロップダウンに「操作対象」が出て、選ぶと追従する。
-
----
-
 ### 手順 9. 共有される操作系から `Player` 接頭を落とす
 
 #### 目的

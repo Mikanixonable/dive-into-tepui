@@ -13,7 +13,7 @@ import type { Input } from '../../../input/input';
 import type { KeyBinding } from '../../../input/key-mapping';
 import type { RadiatorSide, RadiatorSystem } from '../../player/radiator';
 import type { SolarSide, PowerSystem } from '../../player/power';
-import { THROTTLE_LEVELS, THROTTLE_LABELS } from '../../player/player-throttle';
+import { THROTTLE_LEVELS, THROTTLE_LABELS } from '../../player/throttle';
 import { MAX_DYN_PRESSURE } from '../../player/aero-load';
 
 const SYNC_INTERVAL_MS = 100;

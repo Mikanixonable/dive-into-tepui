@@ -15,7 +15,7 @@ import type {
   WeaponPart,
 } from './parts';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
-import { THROTTLE_LEVELS, MAX_ANG_ACCEL } from '../../player/player-throttle';
+import { THROTTLE_LEVELS, MAX_ANG_ACCEL } from '../../player/throttle';
 
 // 艦の材質・空力。大気抵抗は弾道係数の逆数 Cd·A/m [m^2/kg]、太陽輻射圧は輻射圧係数 ×
 // 断面積質量比 C_R·A/m [m^2/kg] で表す。
