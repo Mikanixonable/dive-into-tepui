@@ -25,7 +25,7 @@ interface EntitySaveData {
   id: string;
   name?: string;
   // 具象クラスのタグ。
-  kind: 'player' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel' | 'booster';
+  kind: 'player' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel' | 'booster' | 'base';
   r: Vec3SaveData;
   v: Vec3SaveData;
   q: QuatSaveData;
@@ -81,6 +81,7 @@ export interface ThrottleSaveData {
 }
 
 export interface PlayerSaveData extends EntitySaveData {
+  kind: 'player';
   fire: FireSaveData;
   thermal: ThermalSaveData;
   radiator: RadiatorSaveData;
@@ -109,10 +110,9 @@ export interface DetachedBoosterSaveData extends EntitySaveData {
   collisionEnableAt?: number;
 }
 
-// 基地は艦(EntitySaveData)と持ち物が根本的に異なる(所持金・燃料)ため、
-// kind で分岐する EntitySaveData の派生ではなく独立した型にする。
 export interface BaseSaveData {
   id: string;
+  kind: 'base';
   // 旧セーブデータには無いフィールドなので任意。無ければ既定名。
   name?: string;
   r: Vec3SaveData;
@@ -161,10 +161,22 @@ export interface ProteinEnemySaveData extends EnemySaveData {
 }
 
 export interface AmmoPickupSaveData extends EntitySaveData {
+  kind: 'ammo';
 }
 
 export interface RcsFuelPickupSaveData extends EntitySaveData {
+  kind: 'rcs-fuel';
 }
+
+// 顔ぶれ1体分の保存形。kind で具象を判別する。
+export type EntitySaveDataUnion =
+  | PlayerSaveData
+  | MetalEnemySaveData
+  | ProteinEnemySaveData
+  | AmmoPickupSaveData
+  | RcsFuelPickupSaveData
+  | DetachedBoosterSaveData
+  | BaseSaveData;
 
 export interface ScoreCounterSaveData {
   shots: number;
