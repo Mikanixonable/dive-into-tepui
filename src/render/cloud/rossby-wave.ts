@@ -53,12 +53,6 @@ export class RossbyWave {
     return eastAt(direction).mul(eastWind).add(northAt(direction).mul(northWind));
   }
 
-  // 流線関数 ψ [m²/s]。風摂動の位相と包絡を確認する必要がある読み手向けに、波の本体を公開する。
-  public streamfunctionAt(direction: Vec3Node): FloatNode {
-    const latitude = latitudeOf(direction);
-    return float(STREAMFUNCTION_AMPLITUDE).mul(this.envelopeAt(latitude)).mul(sin(this.phaseAt(direction)));
-  }
-
   // 経度方向の位相。equirect の経度の継ぎ目は、周期関数へ入ることで連続につながる。
   private phaseAt(direction: Vec3Node): FloatNode {
     const longitude = equirectUvFromDirection(direction).x.sub(0.5).mul(2 * Math.PI);
