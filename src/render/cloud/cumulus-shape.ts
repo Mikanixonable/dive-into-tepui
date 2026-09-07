@@ -23,7 +23,7 @@ EMPTY_CLOUD_FIELD.needsUpdate = true;
 // 柱の光学的厚みへ直すときに割合へ張る上限。
 const MAX_COLUMN_COVERAGE = 0.99;
 
-// 場の G(雲頂高度)が張る高さ [m]。
+// 場の G(雲頂高度)を実寸へ戻す上限 [m]。場の G 自体は 0..1 で持つ。
 export const CLOUD_TOP_SPAN = 15000;
 
 // 被覆率を二値化する境目(center)と、その前後でディザへ渡す半幅(halfWidth)。被覆率が
