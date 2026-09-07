@@ -1,5 +1,4 @@
-import type { Plan } from '../../plan/plan';
-import type { PlanExecutionMode } from '../../player/player';
+import type { Plan, PlanExecutionMode } from '../../plan/plan';
 import type { Throttle } from '../../player/throttle';
 import type { FireControl } from '../../player/fire-control';
 import type { AttachedBoosters } from '../../player/attached-boosters';

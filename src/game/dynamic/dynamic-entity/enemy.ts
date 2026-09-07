@@ -29,7 +29,7 @@ import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, ENEMY_DESTROY_FRAG_COLOR,
 } from '../../../render/vfx-style';
 import type { Quat } from '../../../math/quat';
-import type { DynamicEntityKind } from './entity-kind';
+import type { DynamicEntityKind, FormationRole } from './entity-kind';
 import type { GroupedMarkerItem, MarkerRole } from '../../marker/grouped-markers';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { EnemyDeathCause, Stage } from '../../stages/stage';
@@ -69,9 +69,6 @@ const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
 
 // 軌道物体一覧で接近中として扱う、自艦との距離 [m]。
 const ENEMY_APPROACH_DIST = 2e5;
-
-// タンパク質陣形における敵の役割。
-export type FormationRole = 'attacker' | 'shield' | 'energy';
 
 // スナップショットからの再開。復元の腕は全具象で共通でなければならない。
 export type EnemyRestore = { readonly saved: EnemySaveData; readonly simTime: number };
