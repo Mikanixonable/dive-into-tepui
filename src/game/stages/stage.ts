@@ -2,7 +2,6 @@
 // 必要なステージだけ override する。
 import * as THREE from 'three/webgpu';
 import { Enemy } from '../dynamic/dynamic-entity/enemy';
-import type { ProteinAssetId } from '../protein/protein-asset-loader';
 import { Player, type PlayerInit } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
@@ -11,7 +10,7 @@ import { EffectsSystem } from '../vfx/effects-system';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { DynamicSystem, SpawnGate } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
@@ -256,10 +255,10 @@ export abstract class Stage {
     this.scoreCounter.recordSpawnEnemy();
   }
 
-  // タンパク質アセットの fetch 待ちで実体化を遅らせうる敵を登録する。準備が整い次第
-  // dynamicSystem へ登録され、そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
-  protected spawnEnemyWhenReady(assetId: ProteinAssetId | null, build: () => Enemy, dynamicSystem: DynamicSystem): void {
-    dynamicSystem.spawnWhenReady(assetId, build, () => this.scoreCounter.recordSpawnEnemy());
+  // 外部資源の取得待ちで実体化を遅らせうる敵を登録する。gate が通り次第 dynamicSystem へ
+  // 登録され、そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
+  protected spawnEnemyWhenReady(gate: SpawnGate | null, build: () => Enemy, dynamicSystem: DynamicSystem): void {
+    dynamicSystem.spawnWhenReady(gate, build, () => this.scoreCounter.recordSpawnEnemy());
   }
 
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。同一集団の判定に使う母集団は、

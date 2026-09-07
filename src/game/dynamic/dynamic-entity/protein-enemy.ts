@@ -15,7 +15,8 @@ import {
   Enemy, ENEMY_SCALE, PLASMA_BULLET_DAMAGE,
   type EnemyPlacement, type EnemyRestore, type FormationRole,
 } from './enemy';
-import type { ProteinAssetId } from '../../protein/protein-asset-loader';
+import { proteinAssetGate, type ProteinAssetId } from '../../protein/protein-asset-loader';
+import type { SpawnGate } from '../dynamic-system';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
@@ -74,8 +75,9 @@ function displayOf(init: ProteinEnemyPlacement | EnemyRestore): ProteinDisplaySe
 // 判定形状は表示形態によらず、アセットが持つ球列に固定する。
 export class ProteinEnemy extends Enemy {
   public static readonly kind = 'protein-enemy';
-  public static pendingAssetId(saved: EnemySaveData): ProteinAssetId {
-    return (saved as ProteinEnemySaveData).assetId;
+  // その体のアセットの取得を起こし、実体化してよいかを答える関門を返す。
+  public static spawnGate(saved: EnemySaveData): SpawnGate {
+    return proteinAssetGate((saved as ProteinEnemySaveData).assetId);
   }
 
   private readonly assetId: ProteinAssetId;
@@ -84,7 +86,7 @@ export class ProteinEnemy extends Enemy {
   private displaySettings: ProteinDisplaySettings;
 
   // 表示メッシュを組み、アセットが持つ球列へ判定形状を当てる。アセットが未取得なら投げるので、
-  // EnemyClass.pendingAssetId で準備完了を待ってから構築すること。
+  // EnemyClass.spawnGate で準備完了を待ってから構築すること。
   public constructor(
     init: ProteinEnemyPlacement | EnemyRestore,
     worldSfx: WorldSfx,
