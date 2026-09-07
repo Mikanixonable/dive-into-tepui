@@ -16,7 +16,7 @@
 // 「最初に壊れた対象」をその場で記録することが、原因特定の唯一の近道になる。
 //
 // 一度検出したら以後は何もしない(ログの洪水と、汚染後の無意味な検査を避ける)。
-import { Hud } from '../hud/hud';
+import type { Notifier } from '../../hud/notifier';
 import type { Controllable } from './dynamic-entity/controllable';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import { Vec3 } from '../../math/vec3';
@@ -35,7 +35,7 @@ function describe(entity: DynamicEntity): string {
 export class NanWatchdog {
   private tripped = false;
 
-  constructor(private readonly _hud: Hud) { }
+  constructor(private readonly _hud: Notifier) { }
 
   // 操作対象と simTime だけを見る軽い検査。update の各フェーズ境界で呼ぶ。
   // phase には「直前に何が走ったか」を渡す(そこが発生源だと分かる)。操作対象がいなければ何もしない。

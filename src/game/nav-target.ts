@@ -12,7 +12,7 @@ import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import { DisplayWindow } from './display-window-manager';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import { aliveCombatTarget, combatTargetById, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
-import { Hud } from './hud/hud';
+import type { Notifier } from '../hud/notifier';
 import { TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import { MarkerManager } from './marker/marker-manager';
 import { RelativeNodeMarker } from './marker/relative-node-marker';
@@ -75,7 +75,7 @@ export class NavTarget {
   // 戦闘ビューでもターゲットの未来の軌道計算を止めないため navTargetReader を立てている個体。
   private readerEntity: DynamicEntity | null = null;
 
-  constructor(private readonly _hud: Hud, private readonly markerManager: MarkerManager) {}
+  constructor(private readonly _hud: Notifier, private readonly markerManager: MarkerManager) {}
 
   // 現在のターゲットの id。未設定なら null。
   get id(): string | null {

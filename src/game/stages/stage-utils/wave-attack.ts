@@ -6,7 +6,7 @@ import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { ENGAGEMENT_RANGE } from '../../dynamic/engagement-zone';
 import { Player } from '../../player/player';
 import type { Stage } from '../stage';
-import type { Hud } from '../../hud/hud';
+import type { Notifier } from '../../../hud/notifier';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import type { CelestialSystem } from '../../celestial/celestial-system';
@@ -62,7 +62,7 @@ export class WaveAttack {
 
   // saved があればその状態(フェーズ・タイマー・ウェーブ数)から始める。
   public constructor(
-    private readonly hud: Hud,
+    private readonly hud: Notifier,
     private readonly worldSfx: WorldSfx,
     private readonly fx: FlashEffects,
     private readonly scene: THREE.Scene,
