@@ -87,8 +87,7 @@ export class CombatView implements ViewFrame {
     const controlled = this.controlSelection.current;
     if (!controlled) return;
     const project = this.cameraSystem.activeCameraProjection;
-    const combatTargets = this.dynamicSystem.getCombatTargets(controlled);
-    this.targeter.handleTargetSelectKey(this.input, combatTargets, project);
+    this.targeter.handleTargetSelectKey(this.input, controlled, project);
     this.input.takeRightClicks((p) => {
       const hit = pickCombatEntityAtPoint(
         this.dynamicSystem, this.cameraSystem.activeViewpoint, project, p.x, p.y);
