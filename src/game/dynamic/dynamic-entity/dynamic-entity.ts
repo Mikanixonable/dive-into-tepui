@@ -45,6 +45,8 @@ import { syncThermalState } from '../../../render/thermal-emissive';
 import { DISPLAY_DURATION_MAX } from '../../display-window-manager';
 import type { CameraSystem, ProjectFn } from '../../camera/camera-system';
 import type { RenderStyle } from '../../../render/render-style';
+import { MARKER_VISIBILITY, type MapVisibility, type MapVisibilityPolicy } from '../../map/visibility-policy';
+import type { Controllable } from './controllable';
 
 // 弾道係数 bcInv に織り込まれている抗力係数。よどみ点の曲率半径と断面積の比を bcInv から
 // 戻すのに使う。物体ごとに変えると bcInv の意味が種別で変わってしまうので、1つに固定する。
@@ -601,6 +603,16 @@ export class DynamicEntity {
     const center = predicted.extrapolationCenter;
     if (center === null) return null;
     return predicted.extrapolatedAt(t, celestialSystem.stateAt(center.celestialBody.id, t));
+  }
+
+  // マップの表示トグルがこの個体をどう扱うか。トグルを持たない種別(弾・薬莢・破片)は伏せる
+  // 理由が無いので、すべて出す判定を返す。viewer はいま操作している個体 — 自艦だけは、操作中に
+  // 限ってカテゴリを閉じても現在位置を失わない。
+  public mapVisibility(policy: MapVisibilityPolicy, viewer: Controllable | null): MapVisibility {
+    if (this.mapKind === null) return MARKER_VISIBILITY;
+    // 多態 this 型は「Controllable も実装している」ことを約束しないので、同一性は基底型で比べる。
+    const self: DynamicEntity = this;
+    return policy.entity(this.mapKind, self === viewer);
   }
 
   // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。プールで描く種別は、

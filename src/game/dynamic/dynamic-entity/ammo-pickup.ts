@@ -23,7 +23,6 @@ import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window';
 import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../../hud/object-groups';
-import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { Controllable } from './controllable';
 
 const AMMO_PHYS_RADIUS = 1.3; // 物理接触用の半径 [m](見た目に近い実寸)
@@ -120,11 +119,6 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
   // 表示時刻の ECI 位置。予測が届かない時刻では null。
   public posAt(displayTime: number): Vec3 | null {
     return this.stateAt(displayTime)?.r ?? null;
-  }
-
-  // 弾薬カテゴリの表示トグルによる可否。
-  public mapVisibility(policy: MapVisibilityPolicy): MapVisibility {
-    return policy.entity(this.mapKind);
   }
 
   public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
