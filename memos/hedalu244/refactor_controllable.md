@@ -137,46 +137,6 @@
 ## 手順
 
 
-### 手順 7. 残った `Player` 名指しを、責務の持ち主へ寄せる
-
-#### 目的
-
-`Game` が `activeControllable` 1つになったことで、`Player` を要求する下位の口が残っていると
-上位で狭め直す羽目になる。**「操作対象の位置・状態」を要るだけの口はすべて `Controllable` へ広げ、
-「自艦であること」を本当に要る口(照準の弾速・搭載部品・敵の追跡先)だけを `Player` のまま残す。**
-基地を操作している間に `null` が渡っていた口は、ここで実際の操作対象を受けるようになる
-(下の「リスク」参照)。
-
-#### 変更が必要な箇所
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/targeter.ts` | `updateBoardMarks(dt, player)`(83)と `sync(player, ...)`(114)、`syncTargetMarkers`(127)、`syncTargetDirMarkers`(244)の引数を `viewer: Controllable \| null` へ。`tgt instanceof Player`(153)は残す(自艦のマーカーだけ `isActive` を渡す形)。`leadMarkers.sync`(193)は `viewer` が `Player` のときだけ呼ぶ(弾速が要るため) |
-| `src/game/dynamic/nan-watchdog.ts` | `checkPlayer`(45)→ `checkControlled(phase, controlled: Controllable \| null, ...)`。`checkAll`(59)の引数も同様 |
-| `src/game/dynamic/simulator.ts` | `advance`(77)の `player: Player \| null` → `viewer: Controllable \| null`。`player?.state.r ?? v3()`(123, 175)はそのまま |
-| `src/game/dynamic/dynamic-system.ts` / `dynamic-entity.ts` / `bullet.ts` / `debris-piece.ts` | `cleanup`(278)と `checkLoss`(609)の `playerPos` を `viewerPos` へ改名(意味が「操作対象の位置」になるため) |
-| `src/game/dynamic/predictor.ts` | `update`(51)/`perfCounts`(126)の `player: Player \| null` → `interactive: Controllable \| null`。`interactiveShip`(62)→ `interactive` |
-| `src/game/display-window-manager.ts` | `resolve`(217)/`sync`(235)/`currentOrbitPeriod`(255)/`predictionCoverageRatio`(262)の引数名 `player` → `controlled` |
-| `src/game/lines/entity-line-manager.ts` | `sync`(136)/`applyLines`(63)の `activePlayer: Player \| null` → `active: Controllable \| null`。3つのループ(106/116/125)は**そのまま残す**(種別ごとの線種はこのモジュールの責務そのもの)。125行の基地の `lineVisible` を `category && orbit` へ揃える(`computeEntity` はカテゴリが閉じていれば `orbit` も false を返すので挙動は同じ) |
-| `src/game/pickable/object-pickables.ts` | `activePlayer`(79, 84)→ `controlled`。96/100 の2ループを `entities.controllables` の1ループへ |
-| `src/game/pickable/line-pickables.ts` | 47/49 の2ループを `controllables` の1ループへ |
-| `src/game/nav-target.ts` | 135-136 の2つの `some` を `controllables.some` へ |
-| `src/game/pickable/object-pickable.ts` | `mapVisibility`(42)/`listDetail`(47)/`listSearchText`(49)/`listCounted`(51)/`listPriority`(53)の `activePlayer: Player \| null` → `viewer: Controllable \| null`。実装側(`celestial-entity.ts`, `ammo-pickup.ts`, `rcs-fuel-pickup.ts`, `enemy.ts`, `base.ts`, `player.ts`, `lagrange-point-marker.ts`, `body-search-text.ts`, `physical-object-list-{order,tree,panel}.ts`)を追随 |
-| `src/game/game.ts` | 上記の呼び出し(462-492, 576)を `activeControllable` で通す |
-
-#### 達成条件と検証
-
-- `grep -rln "Player" src/game/pickable/ src/game/dynamic/{simulator,predictor,nan-watchdog}.ts` が
-  `object-windows.ts`(搭載部品の判定)だけになる。
-- `npm run typecheck`、`npm run test:game`、`npm run test:physics`。
-- `npm run dev`:
-  - 基地を操作しながら戦闘ビューでターゲットを設定 → **ターゲットパネルの距離が基地からの距離**
-    になる(いまは ECI 原点からの距離という誤りが出ていた)。
-  - 基地を操作しながら射撃 → 偏差マーカーは出ない(弾速を持たないため)。
-  - マップの軌道物体一覧で、基地操作中も距離列が埋まる。
-
----
-
 ### 手順 8. 役割トークン `@activeShip` を `@controlled` へ改名する
 
 #### 目的

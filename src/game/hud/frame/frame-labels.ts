@@ -5,7 +5,7 @@ import type { CelestialSystem } from '../../celestial/celestial-system';
 
 // 役割の日本語表示名。
 export function frameRoleName(role: FrameRole): string {
-  return role === 'activeShip' ? '操作対象の船' : 'ターゲット';
+  return role === 'controlled' ? '操作対象' : 'ターゲット';
 }
 
 // 回転ゾーンの選択を日本語表記へ変換する。天体を指す選択の表示名は celestialSystem から引く。
