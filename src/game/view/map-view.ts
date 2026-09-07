@@ -5,7 +5,7 @@ import type { HudLayers } from '../hud/hud-layers';
 import type { Notifier } from '../../hud/notifier';
 import type { CameraSystem } from '../camera/camera-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { EntityRoster } from '../dynamic/entity-roster';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import { ObjectPickables } from '../pickable/object-pickables';
 import { LinePickables } from '../pickable/line-pickables';
@@ -39,7 +39,7 @@ export class MapView implements ViewFrame {
     private readonly input: Input,
     private readonly cameraSystem: CameraSystem,
     private readonly objectWindows: ObjectWindows,
-    dynamicSystem: DynamicSystem,
+    dynamicSystem: EntityRoster,
     private readonly celestialSystem: CelestialSystem,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly markerManager: MarkerManager,

@@ -12,7 +12,7 @@ import { focusTargetId } from '../camera/focus-target';
 import { PhysicalObjectListPanel } from '../hud/panels/physical-object-list-panel';
 import type { Input } from '../../input/input';
 import { pickRadiusSq } from '../../input/pointer-precision';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { CelestialMarkers } from '../marker/celestial-markers';
 import type { MarkerSlots } from '../marker/marker-slots';
@@ -39,7 +39,7 @@ export class MapPicking {
   constructor(
     private readonly hud: HudLayers & Notifier,
     private readonly cameraSystem: CameraSystem,
-    private readonly dynamicSystem: DynamicSystem,
+    private readonly dynamicSystem: EntityRoster,
     private readonly celestialBodies: CelestialBodies,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly markers: MarkerSlots,

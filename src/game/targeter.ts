@@ -6,7 +6,7 @@ import { isBullet } from './dynamic/dynamic-entity/bullet';
 import { isAmmoPickup } from './dynamic/dynamic-entity/ammo-pickup';
 import { isRcsFuelPickup } from './dynamic/dynamic-entity/rcs-fuel-pickup';
 import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
-import type { DynamicSystem } from './dynamic/dynamic-system';
+import type { EntityRoster } from './dynamic/entity-roster';
 import { Player } from './player/player';
 import { isCombatTarget, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import { Input } from '../input/input';
@@ -52,7 +52,7 @@ export class Targeter {
 
   constructor(
     private readonly markerManager: MarkerManager,
-    private readonly navTarget: NavTarget, private readonly dynamicSystem: DynamicSystem,
+    private readonly navTarget: NavTarget, private readonly roster: EntityRoster,
     private readonly celestialBodies: readonly CelestialBody[],
     private readonly celestialMarkers: CelestialMarkers,
   ) {}
@@ -60,13 +60,13 @@ export class Targeter {
   // 航法ターゲットを生存中の敵・自艦・基地として解決したもの。戦闘対象になれない対象
   // (天体・ラグランジュ点)や撃破済みなら null。
   get aliveTarget(): CombatTarget | null {
-    return this.navTarget.resolveCombatTarget(this.dynamicSystem);
+    return this.navTarget.resolveCombatTarget(this.roster);
   }
 
   // Tキーで、照準中心にもっとも近い対象をターゲットにする。操作中の艦自身は候補から外す。
   handleTargetSelectKey(input: Input, viewer: OrbitingObject, project: ProjectFn): void {
     if (!input.takeKey(K.targetSelect)) return;
-    const targets = this.dynamicSystem.all()
+    const targets = this.roster.all()
       .filter(isCombatTarget).filter((e) => e.alive && e !== viewer);
     this.navTarget.setCombatTarget(pickNearest(
       targets, (target) => project(target.state.r),
@@ -88,7 +88,7 @@ export class Targeter {
     if (lenSq(n) < 0.5) return;
 
     // 各弾について、前フレームと今フレームの位置が的面をどちら向きに跨いだかを見る。
-    for (const b of this.dynamicSystem.all().filter(isBullet)) {
+    for (const b of this.roster.all().filter(isBullet)) {
       if (b.type !== 'normal' || !b.alive) continue; // 的通過マーカーは通常弾のみ対象
       const prevR = b.prevState.r;
       const d0 = dot(sub(prevR, target.state.r), n);
@@ -123,9 +123,9 @@ export class Targeter {
   ): void {
     // マーカーは操作対象自身も他の船と同列に扱う。自分自身を候補から外すのは、ターゲット選定
     // (handleTargetSelectKey)の側だけ。
-    const targets = this.dynamicSystem.all().filter(isCombatTarget);
-    const ammoPickups = this.dynamicSystem.all().filter(isAmmoPickup);
-    const fuelPickups = this.dynamicSystem.all().filter(isRcsFuelPickup);
+    const targets = this.roster.all().filter(isCombatTarget);
+    const ammoPickups = this.roster.all().filter(isAmmoPickup);
+    const fuelPickups = this.roster.all().filter(isRcsFuelPickup);
     const view = cameraSystem.view;
     const mapView = view === 'map';
     const project = cameraSystem.activeCameraProjection;
