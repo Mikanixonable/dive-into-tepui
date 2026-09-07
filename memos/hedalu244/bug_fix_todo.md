@@ -78,26 +78,3 @@ LEADマーカーは「その方向に撃ったら対応する敵に当たるは�
 `MapView.syncPanels` は `displayWindowManager.sync` / `picking.sync` へ
 `activePlayers.current`(艦)を渡す。表示窓の解決対象は `currentControllable` なので、
 基地を操作している間だけ両者が食い違う。上の一件と同じ「艦 vs 操作対象」のずれ。
-
-## ラジエーター全損時の破片が、描画原点ぶんずれた位置に出る
-
-`player/radiator.ts` の `tipWorldPosition` は、THREE の `getWorldPosition` で得た値へ
-さらに `shipR` を足している。
-
-```ts
-fold.getWorldPosition(worldPos);                                   // = r - fo.r + R·offset
-return v3(shipR.x + worldPos.x, shipR.y + worldPos.y, shipR.z + worldPos.z);
-```
-
-`fold` は `renderObject` の子で、`renderObject.position` には `fo.RtoThreeV3(r)`(= `r - fo.r`)が
-入る(`player.ts` の sync)。したがって戻り値は **`2·shipR - fo.r + R·offset`** で、`shipR` を
-二重に足し描画原点を引いている(規約 1.8)。
-
-**引数の `_att` が使われていないことが徴候。** 正しい形は同じファイルの `collisionFolds` が
-既に書いている `add(shipR, qRotate(att.q, foldLocalPosition(side, last, even, odd)))`。
-
-影響: 呼び出し元は `player.ts` の `radiatorBreakEffect` 1箇所で、全損の瞬間に
-`scatterFragments` の発生位置と `worldSfx.hit` の距離へ渡る。描画原点(= カメラ)が自機から
-離れているほど破片の湧く位置がずれ、距離が伸びたぶん効果音も減衰する。
-
-直すこと自体は3行だが、見た目が変わるので実機で確かめてから入れる。
