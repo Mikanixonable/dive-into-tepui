@@ -1,7 +1,8 @@
 // 内惑星(水星・金星)。静的事実・運動・見た目を1体につき1箇所で組む。
 import mercuryTextureUrl from '../../../assets/2k_mercury.jpg';
 import venusTextureUrl from '../../../assets/2k_venus_atmosphere.jpg';
-import { PhaseOffsets, PlanetDef, planetDefForSimZero, StarMotion } from '../../../physics/celestial-motion';
+import { StarMotion } from '../../../physics/celestial-motion';
+import { PhaseOffsets, PlanetDef, planetDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
