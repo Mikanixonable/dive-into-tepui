@@ -137,47 +137,6 @@
 ## 手順
 
 
-### 手順 5. 操作対象を1つに束ねる(`ControlSelection`)
-
-#### 目的
-
-本計画の背骨。2フィールドを1つにし、`Game` の3つの答えを1つにする。同時に、
-規約 1.11 が禁じている旧名エイリアス(`active-controllable-controller.ts:115-116` の
-`export type ActivePlayerController`)を消す。**決めたこと 2 の挙動変化がここで入る。**
-
-#### 変更が必要な箇所
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/control-selection.ts`(新規) | `active-controllable-controller.ts` を改名して移す。`class ControlSelection`。フィールドは `private _current: Controllable \| null` の1つ。API は `get current()`, `select(target: Controllable)`, `clear()`, `claimIfNone(target: Controllable)`, `remove(target: Controllable)`, `reclaimDead()`。構築時の解決は「`activeControlledId` に一致する `controllables`、無ければ生存中の先頭」。`setBase` の基地ヒント文は `select()` の中で「対象が `fire === null` のとき」に出す |
-| `src/game/active-controllable-controller.ts` | 削除 |
-| `src/game/dynamic/dynamic-entity/base.ts` | `reclaimedByOwner = true` を足す(`Player` と揃える。`ControlSelection.remove` が航法ターゲットとフォーカスの引き継ぎを済ませてから消すため) |
-| `src/game/save/save-data.ts` | `activePlayerId` → `activeControlledId` へ改名(**セーブの形が変わる** — 下の「リスク」参照) |
-| `src/game/game.ts` | フィールド `activePlayers`(69)→ `controlSelection`。getter `player`(70)/`controlledBase`(71)/`activeControllableEntity`(73-75)の3つを削除し、`get activeControllable(): Controllable \| null` 1つにする。`serialize`(170)、`runSummary`(186-206、`magazines` は `fire?.mags ?? 0`、`hpRatio`/`maxHp` は手順2で足した `hp` / `maxHp` が `null` を取りうるので明示的に畳む)、`camera` の解決関数(241)、`frameAnchors`(257)、`advanceSimulation`(462-492)、`sync`(533-576)、`perfCounts`(613)を `activeControllable` 一本へ |
-| `src/game/pickable/object-commands.ts` | `setActivePlayer`(23)/`removePlayer`(25)/`setControlledBase`(27)/`removeBase`(29)と `activePlayer`(37)/`controlledBase`(39)を、`setControlled(target: Controllable \| null)` / `removeControlled(target: Controllable)` / `readonly controlled: Controllable \| null` の3つへ |
-| `src/game/pickable/object-windows.ts` | 上の実装(295-311, 325-326)。`relatedItemsFor`(221-227)と `relatedTitleFor`(257)は `target === this.controlSelection.current && target instanceof Player` で明示的に狭める(搭載部品は艦にしかない) |
-| `src/game/dynamic/dynamic-entity/base.ts` / `src/game/player/player.ts` | `menuItems` / `runMenu` / `propertyRows`(base 338-386, player 688-744)を新しい `ObjectCommands` の口へ |
-| `src/game/stages/stage.ts` | 型・フィールド(24, 66, 165, 189, 199)を `ControlSelection` へ。`update`(270)/`sync`(223)から `player` 引数を落とし、**Stage 自身が操作対象の艦を引く** `protected get ship(): Player \| null`(操作対象が `Player` ならそれ、でなければ生存中の先頭)を足す |
-| `src/game/stages/{stage0,stage1,stage2,stage00,stage-debug,stage-debug-load,stage-debug-alt-system,creative-stage}.ts` | `update` シグネチャから `player` を落とし、`this.ship` を読む |
-| `src/game/plan/{plan-display,plan-editor}.ts` / `src/game/view/{view-manager,combat-view,map-view}.ts` / `src/game/pickable/{object-pickables,part-windows}.ts` | 型名と `currentControllable` → `current` の置き換え |
-| `src/game/hud/{hud.ts, panels/enemies-panel.ts, panels/target-panel.ts, panels/vessel-panel.ts, orbit/orbit-panel.ts, orbit/orbit-analysis-window.ts}` | `game.player` / `game.activeControllableEntity` → `game.activeControllable` |
-| `src/game/hud/view-badge.ts` の呼び出し(`game.ts:538`) | `this.controlledBase ?? this.player` → `this.activeControllable` |
-
-#### 達成条件と検証
-
-- 達成目標 1・2・3・8 の grep がすべて満たされる。
-- `grep -rn "currentControllable" src` が 0 件。
-- `npm run typecheck`、`npm run test:game`。
-- `npm run dev`:
-  - CREATIVE で基地を配置 → 右クリック「操作対象にする」→ ビューバッジの Control 欄に基地名が
-    出て、WASDQE が基地へ届く。「操作対象を解除」→ Control 欄が `—` になる。
-  - 艦を1隻置いて基地と両方ある状態で艦を選択 → 基地の操作が外れることを Control 欄で確認。
-  - 基地だけの状態でリロード(スナップショット復元)→ 基地が操作対象として復元される
-    (決めたこと 2 の挙動)。
-  - 航法ターゲットに設定した基地を削除 → ターゲットが外れる(`remove` の引き継ぎ)。
-
----
-
 ### 手順 6. `CameraSystem` から `Player` を落とす
 
 #### 目的
