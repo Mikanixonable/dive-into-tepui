@@ -23,12 +23,11 @@ import {
 const EJECTED_MAG_PHYS_RADIUS = 1.4; // 排出された空マガジンの物理接触用の半径 [m]
 
 // フラッシュ・破片エフェクトの生成窓口。scene への注入をここに一元化し、破片は
-// entities へ追加する。フラッシュの毎フレーム更新・寿命管理は FlashEffectManager が持つ。
+// entities へ追加する。
 export class EffectsSystem {
   private readonly _flashEffects: FlashEffectManager;
 
-  // scene への注入元と、破片の追加先となる entities を受け取る。worldSfx/自身(fx)は DebrisPiece
-  // (接触音・弾命中エフェクト)へそのまま渡す。
+  // 生成した破片は entities へ、その描画物は scene へ入る。
   constructor(
     private readonly _scene: THREE.Scene,
     private readonly entities: DynamicSystem,
@@ -70,14 +69,13 @@ export class EffectsSystem {
       BULLET_IMPACT_FLASH_COLOR);
   }
 
-  // ガスのような気体が放出されるエフェクト（被弾時やデブリ命中時用）
+  // 気体が噴き出すエフェクト。大きさと色の違う2枚のパフを重ねる。
   spawnGasPuff(state: KinematicState): void {
     this.spawnFlash(state, GAS_PUFF1_SIZE0, GAS_PUFF1_SIZE1, GAS_PUFF1_DURATION, GAS_PUFF_COLOR_1, GAS_PUFF1_BRIGHTNESS);
     this.spawnFlash(state, GAS_PUFF2_SIZE0, GAS_PUFF2_SIZE1, GAS_PUFF2_DURATION, GAS_PUFF_COLOR_2, GAS_PUFF2_BRIGHTNESS);
   }
 
-  // 段間カバーと爆砕ボルトを接続点から切り離し、径方向へ散らす。カバーは内側段側へ、
-  // ボルトは両段の平均速度を基準にするので、分離後も接続面に留まらず画面で読める。
+  // 段間カバーと爆砕ボルトを接続点から切り離し、径方向へ散らす。joint は接続面の中心(ECI)。
   spawnBoosterSeparation(
     t: number,
     joint: Vec3,
@@ -89,6 +87,7 @@ export class EffectsSystem {
     const boltBaseZ = BOOSTER_STAGE_DIMENSIONS.length + BOOSTER_INTERSTAGE_BOLT_Z;
     const averageVelocity = scale(add(playerVelocity, boosterVelocity), 0.5);
 
+    // カバー・ボルトとも周方向へ等分に並んでいるので、1周ぶんを角度で回しながら生む。
     for (let i = 0; i < BOOSTER_INTERSTAGE_COVER_SEGMENTS; i++) {
       const angle = (i * Math.PI * 2) / BOOSTER_INTERSTAGE_COVER_SEGMENTS;
       const radialLocal = v3(Math.cos(angle), Math.sin(angle), 0);
@@ -96,6 +95,7 @@ export class EffectsSystem {
       const radial = qRotate(att.q, radialLocal);
       const tangent = qRotate(att.q, tangentLocal);
 
+      // 段間カバーは自機側の速度を基準に、径方向へ散らす。
       const coverPosition = add(joint, qRotate(att.q, v3(
         Math.cos(angle) * BOOSTER_INTERSTAGE_COVER_RADIUS,
         Math.sin(angle) * BOOSTER_INTERSTAGE_COVER_RADIUS,
@@ -112,6 +112,7 @@ export class EffectsSystem {
         { q: att.q, w: v3(randSym(0.8), randSym(1.8), randSym(0.8)), inertia: v3(1, 1.7, 2.4) },
       );
 
+      // 爆砕ボルトは両段の平均速度を基準に、カバーより速く径方向と機軸方向へ。
       const boltPosition = add(joint, qRotate(att.q, v3(
         Math.cos(angle) * (BOOSTER_INTERSTAGE_COVER_RADIUS + 0.08),
         Math.sin(angle) * (BOOSTER_INTERSTAGE_COVER_RADIUS + 0.08),
@@ -134,7 +135,7 @@ export class EffectsSystem {
     }
   }
 
-  // マズルフラッシュを生成する。ガンサイトズーム中は sync 側で減光される。
+  // マズルフラッシュを生成する(ガンサイトズーム中は減光される)。
   spawnMuzzleFlash(state: KinematicState): void {
     this.spawnFlash(
       state,
@@ -147,6 +148,7 @@ export class EffectsSystem {
     );
   }
 
+  // タンパク質の状態遷移フラッシュ。kind('critical' / 'dissociated' / その他)で色を分ける。
   spawnProteinStateFlash(state: KinematicState, kind: string): void {
     const color = kind === 'critical' ? 0xff3d88 : kind === 'dissociated' ? 0xa76dff : 0x59e7ff;
     this.spawnFlash(state, 2.5, 13, 0.34, color, 0.9, true);
@@ -170,9 +172,7 @@ export class EffectsSystem {
     this._flashEffects.addFlash(fx);
   }
 
-  // DebrisPiece を組み立てて追加する共通処理。fragment/barrel/magazineFrame/casing の
-  // 各 spawnXxx はすべてこれの薄いラッパー — kind ごとの見た目・寿命判定の違いは
-  // DebrisPiece/DebrisKind(debris-piece.ts)側の責務。
+  // DebrisPiece を組み立てて entities へ追加する。
   private spawnDebrisPiece(state: KinematicState, kind: DebrisKind, att: Attitude, radius?: number): void {
     this.entities.add(new DebrisPiece(state, kind, att, this._worldSfx, this, radius, this._scene));
   }
@@ -201,13 +201,11 @@ export class EffectsSystem {
     }
   }
 
-  // 撃破デブリ: 非対称な慣性テンソル + 中間軸まわり回転 → ジャニベコフ効果。
-  // 敵機は自機の ENEMY_SCALE 倍サイズなので、爆発・破片も見合った大きさにする(scale)。
+  // 撃破時の閃光2発と破片。scale は機体の大きさ倍率(敵機は自機の ENEMY_SCALE 倍)。
   spawnShipDestroyEffect(state: KinematicState, scale: number, accent: string | number): void {
     const { t, r, v } = state;
     this.spawnFlash(state, DESTROY_FLASH1_SIZE0 * scale, DESTROY_FLASH1_SIZE1 * scale, DESTROY_FLASH1_DURATION, DESTROY_FLASH_COLOR_1);
     this.spawnFlash(state, DESTROY_FLASH2_SIZE0 * scale, DESTROY_FLASH2_SIZE1 * scale, DESTROY_FLASH2_DURATION, DESTROY_FLASH_COLOR_2);
-    // 破片のサイズを 1/3 に縮小し、拡散の初速(spread)を大きくして散らせる
     this.scatterFragments(t, r, v, 11, accent, (DESTROY_FRAG_SIZE_MIN * scale) / 3, (DESTROY_FRAG_SIZE_MAX * scale) / 3, 20.0);
   }
 

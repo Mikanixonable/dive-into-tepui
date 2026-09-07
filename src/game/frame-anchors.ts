@@ -8,8 +8,7 @@ import { FrameAnchorSource, FrameRole, frameRoleOf } from '../physics/frame';
 import { KinematicState } from '../physics/kinematic-state';
 import type { CelestialSystem } from './celestial/celestial-system';
 
-// 解決に要る問い合わせをまとめた受け口。ゲーム側の型ではなく状態だけを受け取ることで、
-// 参照フレームの解決がエンティティ管理や航法ターゲットの都合から独立する。
+// 解決に要る問い合わせをまとめた受け口。いずれも ECI 状態を答える。
 interface AnchorTargets {
   // 生存中のエンティティ id の時刻 t における状態。見つからなければ null。
   entityState(id: string, t: number): KinematicState | null;
@@ -19,13 +18,12 @@ interface AnchorTargets {
   navTargetState(bodies: readonly CelestialMotion[], t: number): KinematicState | null;
 }
 
-// 役割トークンが一時的に解決できないあいだ直前の状態を保つ枠。misses は連続ミスの数、
-// missFrame はそれを最後に数えたフレーム — 猶予を呼び出し回数で数えると、同じフレームで
-// 重ねて問われただけで使い切ってしまう。
+// 役割トークンが一時的に解決できないあいだ直前の状態を保つ枠。連続ミスはフレームで数える —
+// 呼び出し回数で数えると、同じフレームに重ねて問われただけで猶予を使い切る。
 type RoleHold = { state: KinematicState | null; misses: number; missFrame: number };
 
 export class FrameAnchors implements FrameAnchorSource {
-  // bodies の位置を厳密に引く時刻。update が表示時刻で置く。
+  // bodies の位置を厳密に引く時刻 [s]。
   bodiesPivot = 0;
 
   private readonly roleHolds = new Map<FrameRole, RoleHold>();
@@ -68,14 +66,14 @@ export class FrameAnchors implements FrameAnchorSource {
     return result;
   }
 
-  // attractorOf のキャッシュを介さない本体。
+  // 主天体を実際に探索する。
   private computeAttractorOf(id: string, t: number): string | null {
     const state = this.stateOf(id, t);
     return state !== null
       ? orbitingAttractorOf(state, this.bodies, this.bodiesPivot)?.id ?? null : null;
   }
 
-  // 役割そのものの解決。猶予は掛かっていない生の結果を返す。
+  // 役割トークンをその時点の対象へ解決した、猶予を掛ける前の結果。
   private resolveRoleState(role: FrameRole, t: number): KinematicState | null {
     if (role === 'activeShip') return this.targets.activeShipState(t);
     return this.targets.navTargetState(this.bodies, t);

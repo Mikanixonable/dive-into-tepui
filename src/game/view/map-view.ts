@@ -26,8 +26,7 @@ import type { PerfCounts } from '../perf-counts';
 export class MapView implements ViewFrame {
   private readonly picking: MapPicking;
 
-  // マップのクリックの当て先は、マップビューにいる間しか働かないので、受け取った材料から
-  // ここで組んで持つ。
+  // クリックの当て先は、受け取った材料からここで組んで持つ。
   public constructor(
     private readonly input: Input,
     private readonly cameraSystem: CameraSystem,
@@ -56,7 +55,7 @@ export class MapView implements ViewFrame {
   public get pickables(): readonly ObjectPickable[] { return this.objectPickables.pickables; }
   public get visibilityPolicy(): MapVisibilityPolicy | null { return this.objectPickables.visibilityPolicy; }
 
-  // 負荷確認ウィンドウが読む、マップの候補列の長さと表示中の天体ラベル数。
+  // マップの候補列の長さと、表示中の天体ラベル数。
   public perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'> {
     return {
       mapMode: true,
@@ -70,7 +69,7 @@ export class MapView implements ViewFrame {
     return true;
   }
 
-  // 前回の選択を引き継がず、ノード未選択で始める。
+  // ノード未選択で始める。
   public onEnter(): void {
     this.editor.selectedNodeIdx = null;
   }
@@ -104,14 +103,14 @@ export class MapView implements ViewFrame {
   // 赤道交点(ターゲット・基地)を求め直し、選択候補と可視性ポリシーを組む。
   // 交点アイコンは候補列に載るので、objectPickables.refresh より先に求める。
   public update(displayWindow: DisplayWindow): void {
-    this.targeter.updateEquatorNodes(displayWindow, this.celestialSystem, this.frameAnchors);
-    this.dynamicSystem.updateBaseEquatorNodes(displayWindow, this.celestialSystem, this.frameAnchors);
+    this.targeter.updateEquatorNodes(displayWindow.displayTime, this.celestialSystem, this.frameAnchors);
+    this.dynamicSystem.updateBaseEquatorNodes(displayWindow.displayTime, this.celestialSystem, this.frameAnchors);
     this.objectPickables.refresh(displayWindow);
     this.frameControls.update(displayWindow.displayTime);
     this.editor.update(displayWindow.simTime);
   }
 
-  // 天体ラベルの間引きと表示。この後のマーカー同期が近接判定に読む。
+  // 天体ラベルの間引きと表示。
   public syncLabels(displayWindow: DisplayWindow): void {
     const visibilityPolicy = this.visibilityPolicy;
     if (visibilityPolicy === null) { this.celestialMarkers.hideLabels(); return; }

@@ -18,13 +18,13 @@ import type { ProjectFn } from '../camera/camera-system';
 import type { GroupedMarkers } from './grouped-markers';
 import type { MarkerManager } from './marker-manager';
 
-// 天体ラベルからこれより画面上で近いラグランジュ点ラベルは、天体ラベルを優先して隠す [px]
+// 名前の混雑判定の半径 [px]。これより近い名前どうしは、優先度の低いほうを隠す。
 const LABEL_CROWDING_PX = 40;
 
-// 位置の点(アイコン)側の混雑判定。名前より小さい値にし、名前だけが間引かれて点は残る距離帯を作る。
+// アイコンの混雑判定の半径 [px]。名前より小さくして、名前だけが消える距離帯を作る。
 const ICON_CROWDING_PX = 16;
 
-// ラベル集合の1件ぶんに要る性質。天体とラグランジュ点マーカーが実装する。
+// ラベル集合の1件ぶんに要る性質。
 interface CelestialMarkerItem {
   readonly id: string;
   // マップのマーカーへ描く表記。
@@ -38,7 +38,7 @@ interface CelestialMarkerItem {
   posAt(displayTime: number): Vec3 | null;
 }
 
-// 他のマーカー集合が天体ラベルとの近接を測るために読む、今フレームの1件ぶん。
+// 今フレームに描いた天体ラベル1件ぶんの、画面上の位置と表示状態。
 export interface ActiveCelestialLabel {
   readonly id: string;
   readonly x: number;
@@ -61,7 +61,7 @@ interface CelestialLabel {
   pickable: boolean;
 }
 
-// 投影の結果。同じフレーム内でラベル同期とサブ行が読む。
+// ラベル1件の投影結果(画面座標と遮蔽の具合)。
 interface LabelProjection {
   readonly occluded: boolean;
   readonly opacity: number;
@@ -76,23 +76,22 @@ export class CelestialMarkers {
     readonly motion: OrbitingMotion;
     readonly markers: readonly LagrangePointMarker[];
   }[];
-  // トグル・フォーカスに関わらない全ラベル(天体とラグランジュ点、親を先に並べたもの)。
+  // 天体とラグランジュ点の全ラベル。親を先にした階層順で並ぶ。
   private readonly labels: readonly CelestialLabel[];
-  // 同じ並びの対象そのもの。id から親子関係を引くための一覧。
+  // labels と同じ並びの対象そのもの。
   readonly allItems: readonly CelestialMarkerItem[];
   private readonly labelsById = new Map<string, CelestialLabel>();
-  // このフレームで表示する対象に絞ったラベル。選択候補と同じ対象から syncLabels が組む。
+  // このフレームで表示する対象に絞ったラベル。
   private shownLabels: readonly CelestialLabel[] = [];
   // 直前のフレームに表示していたラベル id(集合から外れたものを隠すため)。
   private prevShownIds: readonly string[] = [];
 
-  // update が座標を求めた天体とラグランジュ点マーカー。表示ポリシーを通ったものだけが並ぶ。
+  // このフレームの選択候補に出す天体とラグランジュ点マーカー(表示ポリシーを通ったもの)。
   private readonly bodyPickableItems: ObjectPickable[] = [];
   private readonly frameScratch = new Map<string, LabelProjection>();
   private readonly distScratch = new Map<string, number>();
   private readonly projectedForLabel: ProjectedLabel[] = [];
   private readonly projectedForIcon: ProjectedLabel[] = [];
-  // 名前の間引きとアイコンの間引きは混雑半径が異なるため、グリッドとヒステリシス状態を別々に持つ。
   private readonly labelCrowding = new CrowdingGrid(LABEL_CROWDING_PX, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO);
   private readonly iconCrowding = new CrowdingGrid(ICON_CROWDING_PX, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO);
   private shownIdsScratch: string[] = [];
@@ -103,17 +102,15 @@ export class CelestialMarkers {
   get shownLabelCount(): number { return this.shownLabels.length; }
   get activeLabels(): readonly ActiveCelestialLabel[] { return this.activeCelestialLabels; }
 
-  // update が座標を求めた天体・ラグランジュ点マーカー。
   get bodyPickables(): readonly ObjectPickable[] { return this.bodyPickableItems; }
 
-  // 星系の全天体とラグランジュ点からラベルの全集合を1度だけ組む。ラグランジュ点は5点まとめてでは
-  // なく、共線点・三角点それぞれの成立条件を満たす点だけを持たせる。
+  // 星系の全天体とラグランジュ点からラベルの全集合を組む。ラグランジュ点は、共線点・三角点
+  // それぞれの成立条件を満たす点だけを持つ。
   constructor(private readonly markerManager: MarkerManager, private readonly celestialSystem: CelestialSystem) {
     this.subLabels = new CelestialSubLabels(markerManager, celestialSystem);
     this.lagrangeSources = celestialSystem.entities.flatMap((body) => {
       const motion = body.motion;
-      // ラグランジュ点を出すと宣言した系だけが起点になる。全公転天体で出すと点の数が
-      // 天体数の数倍になり、ラベルが画面を埋める。
+      // 全公転天体で出すと点の数が天体数の数倍になり、ラベルが画面を埋める。
       if (!(motion instanceof OrbitingMotion) || motion.def.lagrangeLabels !== true) return [];
       const points = [
         ...(motion.hasUsableCollinearPoints(LAGRANGE_MIN_CLEARANCE_RATIO) ? [1, 2, 3] as const : []),
@@ -123,7 +120,7 @@ export class CelestialMarkers {
       return markers.length === 0 ? [] : [{ motion, markers }];
     });
 
-    // 親の直後にその子とラグランジュ点が続く並び。深さは星系が持つものをそのまま使う。
+    // 親の直後にその子とラグランジュ点が続く並び。
     const markersOf = new Map(this.lagrangeSources.map((s) => [s.markers[0]!.parentId, s.markers]));
     const labels: CelestialLabel[] = [];
     for (const { entity, depth } of celestialSystem.orderedEntities) {
@@ -141,8 +138,7 @@ export class CelestialMarkers {
   }
 
   // 表示時刻 t のラグランジュ点を解き直し、選択候補に出す天体とマーカーを絞り込む。
-  // visibilityPolicy は同じフレームの update 位相で確定させた表示ポリシーを渡す。マーカー・
-  // 選択候補・参照線が同じインスタンスを読むことで、個別実装の解釈ずれをなくす。
+  // visibilityPolicy には、同じフレームで確定した表示ポリシーを渡す。
   update(t: number, toggles: MapDisplayToggles, visibilityPolicy: MapVisibilityPolicy): void {
     const celestialBodies = this.celestialSystem.celestialMotions;
     this.bodyPickableItems.length = 0;
@@ -152,7 +148,7 @@ export class CelestialMarkers {
       if (!visibilityPolicy.body(body.id).pickable) continue;
       this.bodyPickableItems.push(body);
     }
-    // ラグランジュ点。回転系が組めない期間は座標を失うので、place(null) で位置を降ろす。
+    // ラグランジュ点。回転系が組めない期間は座標を失う。
     if (toggles.lagrangeVisible && toggles.lagrangeName) {
       for (const { motion, markers } of this.lagrangeSources) {
         if (!visibilityPolicy.body(markers[0]!.parentId).category) continue;
@@ -176,9 +172,11 @@ export class CelestialMarkers {
   ): void {
     this.refreshShownLabels(displayTime, visibilityPolicy);
     this.projectLabels(project, cameraPos, displayTime);
+    // 名前とアイコンは混雑半径が違うので、間引きも別々に判定する。
     const hiddenLabels = this.labelCrowding.compute(this.projectedForLabel);
     const hiddenIcons = this.iconCrowding.compute(this.projectedForIcon);
 
+    // 判定に従って1件ずつ置き、集合から外れたものを畳む。
     const shownIds = this.shownIdsScratch;
     shownIds.length = 0;
     this.activeCelestialLabels.length = 0;
@@ -219,6 +217,7 @@ export class CelestialMarkers {
       const occluded = opacity <= 0;
       const p = project(label.pos);
       this.frameScratch.set(label.item.id, { occluded, opacity, x: p.x, y: p.y, front: p.front });
+      // 混雑判定に加わるのは、遮蔽されず画面手前にあるものまで。
       if (occluded || !p.front) continue;
       const dist = len(sub(label.pos, cameraPos));
       this.distScratch.set(label.item.id, dist);
@@ -243,7 +242,7 @@ export class CelestialMarkers {
       else this.markerManager.hide(id);
       return;
     }
-    // 名前とアイコンは別々の混雑半径で間引く。どちらも残らなければマーカーごと畳む。
+    // 名前とアイコンのどちらも残らなければ、マーカーごと畳む。
     const labelVisible = label.showLabel && !hiddenLabels.has(id);
     const iconVisible = label.showIcon && !hiddenIcons.has(id);
     if (!labelVisible && !iconVisible) {
@@ -252,7 +251,6 @@ export class CelestialMarkers {
       return;
     }
     label.pickable = true;
-    // 他のマーカー集合はこの一覧を読んで、天体ラベルとの近接を測る。
     if (projected.front) {
       this.activeCelestialLabels.push({
         id, x: projected.x, y: projected.y, priority: label.item.labelPriority,
@@ -305,7 +303,7 @@ export class CelestialMarkers {
     };
   }
 
-  // マップビューを抜けたときの後始末。天体ラベルはマップビューだけの表示物。
+  // 出している天体ラベルをすべて畳む。
   hideLabels(): void {
     this.activeCelestialLabels.length = 0;
     for (const label of this.labels) this.markerManager.hide(label.item.id);

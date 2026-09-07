@@ -1,6 +1,5 @@
 // OrbitalElements から軌道楕円を描画する。頂点は中心天体(OrbitalElements.center)相対座標のまま
 // 保持し、フローティングオリジンによる Object3D 平行移動でその天体の ECI 位置へ置く。
-// 線の解像度は Curve が決める。
 import * as THREE from 'three/webgpu';
 import { OrbitalElements } from '../../physics/elements';
 import { add, v3, Vec3 } from '../../math/vec3';
@@ -8,9 +7,7 @@ import { FloatingOrigin } from '../camera/floating-origin';
 import { Curve, CurveSampler } from '../../render/curve';
 import { LineStyle } from '../../render/line-style';
 
-// 離心近点角 E=t·2π を軌道要素で位置へ写す、閉曲線サンプラ。頂点は中心天体相対の ECI
-// オフセットで、表示座標系の回転はカメラ側が担う。これにより回転座標系でも楕円が慣性空間上の
-// 同じ軌道を保つ。
+// 離心近点角 E=t·2π を、中心天体相対の ECI オフセットへ写す閉曲線サンプラ。
 function ellipseSampler(el: OrbitalElements): CurveSampler {
   const b = el.a * Math.sqrt(1 - el.e * el.e);
   return (t, out) => {
@@ -28,31 +25,23 @@ function ellipseSampler(el: OrbitalElements): CurveSampler {
 export class EllipseLine {
   private readonly curve: Curve;
   readonly line: THREE.Object3D;
-  // いま描いている楕円の軌道要素。sync だけが書き換え、当たり判定のサンプル点がこれを読む。
+  // いま描いている楕円の軌道要素。非表示のあいだは null。
   private elements: OrbitalElements | null = null;
 
-  // style.renderOrder は、この線が他の線と重なったときにどちらを手前へ描くかを決める —
-  // 透明描画どうしの前後は描画順でしか決まらない。
+  // 線を1本組む。最初の sync まで頂点を持たないので、その間は隠れたままになる。
   constructor(style: LineStyle) {
     this.curve = new Curve(style);
     this.line = this.curve.object;
   }
 
+  // 線の色・不透明度・描画順を差し替える。
   setStyle(style: LineStyle): void {
     this.curve.setStyle(style);
   }
 
-  // 不透明度を書き換える。天体からの距離に応じて描画側がフェードさせる。
+  // 不透明度 [0,1] を書き換える。
   setOpacity(opacity: number): void {
     this.curve.setOpacity(opacity);
-  }
-
-  setColor(color: string | number): void {
-    this.curve.setColor(color);
-  }
-
-  setRenderOrder(renderOrder: number): void {
-    this.curve.setRenderOrder(renderOrder);
   }
 
   // 曲線を消し、当たり判定向けのサンプル点も空にする(次回 sync までは何も返さない)。
@@ -61,18 +50,16 @@ export class EllipseLine {
     this.curve.setVisible(false);
   }
 
-  // 毎フレーム呼ぶ。fo = 描画のフローティングオリジン、camera = 画面上のサジッタを実距離へ
-  // 換算するための描画カメラ。楕円として描けない要素(離心率が 1 に近い・a が非有限か非正)を
-  // 渡したときは消える。
+  // 毎フレーム呼ぶ。楕円として描けない要素(離心率が 1 に近い、a が非有限か非正)を渡すと
+  // hide() と同じ状態になる。
   sync(el: OrbitalElements, fo: FloatingOrigin, camera: THREE.Camera): void {
     if (el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.hide();
       return;
     }
 
-    // EllipseLine の頂点はECI相対、シーンもECI基準なので、回転クォータニオンは恒等にする。
-    // 回転座標系はFocusCameraの視点・姿勢で表現する。ここへ現在時刻のフレーム回転を掛けると、
-    // 焼いた軌道形状だけが回転し続け、船の現在位置から外れていく。
+    // 頂点もシーンも ECI 基準なので回転は掛けない。ここへフレーム回転を掛けると、焼いた
+    // 軌道形状だけが回り続けて船の現在位置から外れていく。
     this.curve.setTransform(fo.RtoThreeV3(el.centerState.r));
     this.elements = el;
     this.curve.setAnalyticCurve(ellipseSampler(el), camera);
@@ -94,6 +81,7 @@ export class EllipseLine {
     return points;
   }
 
+  // 描画資源を解放する。以後この線は描けない。
   dispose(): void {
     this.curve.dispose();
   }

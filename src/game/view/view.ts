@@ -1,5 +1,4 @@
-// ビュー(戦闘/マップ)固有の処理の口。フレーム処理は update/sync の固定位置で現在のビューの
-// 実装だけが呼ばれ、遷移フックは setView() の中で呼ばれる。
+// ビュー(戦闘/マップ)固有のフレーム処理と遷移フックの口。
 import type { DisplayWindow } from '../display-window-manager';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { Input } from '../../input/input';
@@ -14,7 +13,7 @@ export interface ViewFrame {
   readonly pickables: readonly ObjectPickable[];
   // 同じ回の表示・選択可否。表示トグルを持たないビューは null。
   readonly visibilityPolicy: MapVisibilityPolicy | null;
-  // 負荷確認ウィンドウが読む、このビューの候補列/ラベル数。
+  // このビューの候補列/ラベル数。
   perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'>;
 
   // このビューへ遷移できるか。
@@ -29,7 +28,7 @@ export interface ViewFrame {
   handlePointer(simTime: number): void;
   // update フェーズ: カメラ更新の後。選択候補と可視性ポリシーの確定。
   update(displayWindow: DisplayWindow): void;
-  // sync フェーズ前半: 天体ラベル。マーカー同期が近接判定に読むため、その前に呼ばれる。
+  // sync フェーズ前半: 天体ラベル。マーカー同期より先に呼ばれる。
   syncLabels(displayWindow: DisplayWindow): void;
   // sync フェーズ後半: ビュー専用の常設パネル・表示物。軌道線の同期より後に呼ばれる。
   syncPanels(displayWindow: DisplayWindow, fo: FloatingOrigin): void;

@@ -18,7 +18,7 @@ export class EquatorNodeMarkerPair {
   private readonly ascending: EquatorNodeMarker;
   private readonly descending: EquatorNodeMarker;
 
-  // owner は交点を求める対象の軌道の持ち主。昇交点・降交点のマーカーを1つずつ持ち続ける。
+  // owner は交点を求める対象の軌道の持ち主。
   constructor(private readonly owner: DynamicEntity, private readonly markerManager: MarkerManager) {
     this.ascending = new EquatorNodeMarker(owner.id, 'ascending');
     this.descending = new EquatorNodeMarker(owner.id, 'descending');
@@ -44,8 +44,8 @@ export class EquatorNodeMarkerPair {
   ): void {
     this.clearCrossings();
     if (state === null) return;
-    // 中心天体は state 自身の時刻の天体位置で選ぶ — 解析楕円は displayTime、折れ線は
-    // simTime の状態ベクトルから作るので、時刻を揃えないと中心の選定だけが別の瞬間になる。
+    // 中心天体は state 自身の時刻で選ぶ — 解析楕円は displayTime、折れ線は simTime の
+    // 状態ベクトルから作るので、揃えないと中心の選定だけが別の瞬間のものになる。
     const centerPivot = state.t;
     const center = strongestAttractor(state.r, celestialSystem.celestialMotions, centerPivot);
     const eqNormal = center.degree2At(centerPivot)?.pole;
@@ -79,8 +79,8 @@ export class EquatorNodeMarkerPair {
     return [this.ascending, this.descending].filter((marker) => !marker.gone);
   }
 
-  // △▽ マーカーを update が求めた位置に置く。求まっていない交点は隠れる。
-  // celestialBodies はマップビューの遮蔽判定に使う天体で、pivot はその位置を引く時刻。
+  // 求まっている交点へ △▽ マーカーを置き、求まっていない交点は隠す。celestialBodies は
+  // 遮蔽判定に使う天体で、celestialBodiesPivot はその位置を引く時刻。
   sync(
     project: ProjectFn, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
     celestialBodiesPivot: number, timeLabel: TimeLabelSetting,
