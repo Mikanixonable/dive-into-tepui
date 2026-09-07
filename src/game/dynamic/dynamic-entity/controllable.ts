@@ -8,12 +8,7 @@ import type { RadiatorSystem } from '../../player/radiator';
 import type { AeroLoad } from '../../player/aero-load';
 import type { AltitudeAlarm } from '../../player/altitude-alarm';
 import type { Input } from '../../../input/input';
-import type { RenderStyle } from '../../../render/render-style';
-import type { CameraSystem } from '../../camera/camera-system';
-import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { MapVisibility } from '../../map/visibility-policy';
-import type { OrbitReference } from '../../orbit-reference';
 import type { Stage } from '../../stages/stage';
 import type { EntityRegistry } from '../dynamic-system';
 import type { CombatTarget } from './combat-target';
@@ -51,13 +46,6 @@ export interface Controllable extends CombatTarget {
 
   // 次のフレームへ持ち越してはならない連続指令(推力・トルク・射撃)を畳む。
   clearTransientCommands(): void;
-
-  // メッシュ・エフェクト・マーカーを displayTime の状態へ同期する。isActive はこの個体が
-  // 操作対象かどうか。orbitRef は方位マーカーが指す軌道座標系で、持たない種別は無視する。
-  syncControllable(
-    fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number, isActive: boolean,
-    style: RenderStyle, visibility: MapVisibility | null, orbitRef?: OrbitReference,
-  ): void;
 }
 
 // この個体が操作対象になりうるか。顔ぶれから操作対象だけを絞るときに使う。

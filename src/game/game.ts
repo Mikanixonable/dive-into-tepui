@@ -575,8 +575,8 @@ export class Game {
     // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。
     const timeLabel = timeLabelSettingOf(displayWindow);
     this.dynamicSystem.sync(
-      controlled, fo, this.cameraSystem, displayTime, style, visibilityPolicy,
-      orbitRef, this.frameAnchors, timeLabel, graphics.proteinVibration,
+      fo, displayTime, controlled, visibilityPolicy, this.cameraSystem, style, graphics,
+      orbitRef, this.frameAnchors, timeLabel,
     );
     // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraSystem.sync より後に通す。
     this.flashEffects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);

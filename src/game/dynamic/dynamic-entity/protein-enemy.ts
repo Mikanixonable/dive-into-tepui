@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { v3, type Vec3 } from '../../../math/vec3';
-import { apparentSizePx, metersPerPixel, type Viewpoint } from '../../../math/projection';
+import { apparentSizePx, metersPerPixel } from '../../../math/projection';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { FlashEffects } from '../../vfx/flash-effects';
 import { collisionDamageFraction } from './contact-damage';
@@ -17,6 +17,11 @@ import {
 } from './enemy';
 import { proteinAssetGate, type ProteinAssetId } from '../../protein/protein-asset-loader';
 import type { InstancedPools } from '../instanced-pools';
+import type { Controllable } from './controllable';
+import type { MapVisibilityPolicy } from '../../map/visibility-policy';
+import type { CameraSystem } from '../../camera/camera-system';
+import type { RenderStyle } from '../../../render/render-style';
+import type { GraphicsSettingsData } from '../../../render/graphics-settings';
 import type { SpawnGate } from '../dynamic-system';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
@@ -160,21 +165,21 @@ export class ProteinEnemy extends Enemy {
     }));
   }
 
-  // 表示物を displayTime の状態へ合わせる。viewer を渡すと投影サイズからゆらぎの LOD を決め、
-  // proteinVibrationEnabled が false なら静止した構造で描く。
-  public override sync(
-    fo: FloatingOrigin, displayTime: number, pools: InstancedPools, viewer?: Viewpoint,
-    proteinVibrationEnabled = true,
+  // 表示物を displayTime の状態へ合わせる。ゆらぎの LOD は画面上の投影サイズで決め、
+  // 画質設定のタンパク質の揺らぎが切られていれば静止した構造で描く。
+  protected override syncModel(
+    fo: FloatingOrigin, displayTime: number, active: Controllable | null,
+    visibilityPolicy: MapVisibilityPolicy | null, _pools: InstancedPools,
+    cameraSystem: CameraSystem, _style: RenderStyle, graphics: GraphicsSettingsData,
   ): void {
-    super.sync(fo, displayTime, pools);
-    if (!this.renderObject.visible) return;
-    const displayed = this.stateAt(displayTime);
-    const projectedDiameterPx = viewer && displayed
-      ? apparentSizePx(this.radius * 2, metersPerPixel(viewer, displayed.r, window.innerHeight))
-      : Number.POSITIVE_INFINITY;
+    const displayed = this.placeModel(fo, displayTime, active, visibilityPolicy);
+    if (displayed === null || !this.renderObject.visible) return;
+    const projectedDiameterPx = apparentSizePx(
+      this.radius * 2,
+      metersPerPixel(cameraSystem.activeViewpoint, displayed.r, window.innerHeight));
     // marker LOD(ゆらぎが見えない投影サイズ)まで落ちた敵は、ゆらぎの更新を止める。
     if (this.runtime.updateLod(projectedDiameterPx) !== 'marker') {
-      this.runtime.updateVisual(displayTime, proteinVibrationEnabled);
+      this.runtime.updateVisual(displayTime, graphics.proteinVibration);
     }
   }
 

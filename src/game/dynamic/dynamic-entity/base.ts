@@ -26,7 +26,6 @@ import { BASE_COLLISION_RADIUS, baseRaycast, baseSphereCollide } from './base-co
 import { Throttle } from '../../player/throttle';
 import type { Controllable } from './controllable';
 import type { EntityRegistry } from '../dynamic-system';
-import type { OrbitReference } from '../../orbit-reference';
 import type { Stage } from '../../stages/stage';
 import type { Input } from '../../../input/input';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
@@ -35,7 +34,8 @@ import { RcsEffects } from '../../player/rcs-effects';
 import type { CameraSystem } from '../../camera/camera-system';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { RenderStyle } from '../../../render/render-style';
-import type { MapVisibility } from '../../map/visibility-policy';
+import type { MapVisibilityPolicy } from '../../map/visibility-policy';
+import type { InstancedPools } from '../instanced-pools';
 import { currentThemePalette } from '../../../theme';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
 import { MARKER_PRIORITY } from '../../marker/crowding';
@@ -229,27 +229,21 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     });
   }
 
-  // 基地のメッシュ・推力プルーム・RCS パフ・音・軌道線を同期する。方位マーカーを持たないので
-  // orbitRef は受け取るだけで使わない。
-  syncControllable(
+  // 基地のメッシュ・推力プルーム・RCS パフ・音を同期する。方位マーカーを持たないので orbitRef は
+  // 使わない。プルームと音は操作中だけ変わるので、操作対象かどうかを active から引く。
+  protected override syncModel(
     fo: FloatingOrigin,
-    camera: CameraSystem,
     displayTime: number,
-    isControlled: boolean,
+    active: Controllable | null,
+    visibilityPolicy: MapVisibilityPolicy | null,
+    _pools: InstancedPools,
+    camera: CameraSystem,
     style: RenderStyle,
-    visibility: MapVisibility | null,
-    _orbitRef?: OrbitReference,
   ): void {
-    const displayState = this.stateAt(displayTime);
-    const mapEntityVisible = camera.view !== 'map' || visibility === null || visibility.category;
-    this.renderObject.visible = displayState !== null && mapEntityVisible;
-    if (displayState !== null) {
-      this.renderObject.position.copy(fo.RtoThreeV3(displayState.r));
-      this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
-    }
-
+    const displayState = this.placeModel(fo, displayTime, active, visibilityPolicy);
+    const isControlled = this === active;
     const effectState = displayState ?? this.state;
-    const effectVisible = displayState !== null && mapEntityVisible;
+    const effectVisible = this.renderObject.visible;
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
     this.thrustEffects.sync(fo, effectState.r, this.thrust, maxAccel, effectVisible, isControlled, camera, style, 6.0);
     this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isControlled, 6.0);
