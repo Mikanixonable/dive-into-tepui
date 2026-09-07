@@ -751,7 +751,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     ];
   }
 
-  public readonly rename = (name: string): void => { this.name = name; };
+  public readonly rename = (name: string): void => { this.setName(name); };
 
   // 単クリックはプロパティウィンドウを開くだけに留め、操作対象は変えない。
   public readonly onMapSelect = (commands: ObjectCommands, clientX: number, clientY: number): void => {
