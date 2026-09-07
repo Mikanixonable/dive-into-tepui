@@ -349,7 +349,7 @@ export class CreativeStage extends Stage {
         this._hud.hint(`${finalName} を配置`);
       } else if (form.entityKind === 'base') {
         const finalName = name.trim() || generateRandomName('base');
-        const base = new Base({ state, name: finalName }, this._scene, this._hud, this._worldSfx, this._fx, this._markerManager);
+        const base = new Base({ state, name: finalName }, this._scene, this._hud, this._worldSfx, this._markerManager);
         this._entities.add(base);
         this._hud.hint(`${base.name} を配置`);
       }

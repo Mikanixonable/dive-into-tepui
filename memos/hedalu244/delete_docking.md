@@ -117,35 +117,6 @@
 
 ## 手順
 
-### 手順 4. `Base` から接続点・格納艦・在庫を、`Player` からポートを落とす
-
-**目的.** 実体側に残った、もう誰も読まない状態と幾何を落とす。ここまでで「ドッキング」を
-指すものがコードから消える。
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/dynamic/dynamic-entity/base.ts` | 55行 `BASE_MAX_VESSELS`、64-66行 `BASE_HATCH_LOCAL_POS`/`NORMAL`、68-79行 `BaseDockSlot`/`BASE_DOCK_SLOTS`、81-91行 `DockedVesselEntry`、93-97行 `BaseState` から `inventory` と `dockedVessels`、117-121行の初期値から同2つ、216-235行のセーブ復元から `inventory`/`dockedVessels` の復元(`Player` の再構築と `attachDockedVesselMesh` を含む)、238-295行の7メソッド(`getHatchWorldPos`/`getHatchWorldNormal`/`getSlotWorldPos`/`getSlotWorldNormal`/`getAvailableSlotIndex`/`attachDockedVesselMesh`/`detachDockedVesselMesh`)、394-396行の `dispose` の格納艦回収、410-411行の `serialize` の `inventory`/`dockedVessels` を落とす。1行目のファイル冒頭コメント(「艦艇のドッキングと格納、部品と資金の保有、そこからの発艦を持つ」)を実態へ書き直す。441-447行 `listDetail` は自艦なしのとき `''` を返す(敵・補給と同じ形)。460-461行のメニュー副題から「格納艦艇: N隻」を落とす。520行のプロパティ行「格納艦艇数」と、それを説明する 508-509行のコメントを落とす。173-180行のコンストラクタのコメントと引数 `fx` を落とす(下の注記) |
-| `src/game/player/player.ts` | 76行 `SHIP_PORT_OFFSET`、250-258行 `getPortWorldPos`/`getPortWorldNormal` とその上のコメントを落とす。4行目の import から `LOCAL_FORWARD` を落とす(**player.ts での使用箇所は 257行だけ**。`qFromBasis`/`qRotate` は残る) |
-| `src/game/save/save-data.ts` | 126-131行の `inventory?` / `dockedVessels` / `dockedShips` と、それらを説明するコメントを落とす。**1行目の `AnyPart` の import は残す** — 89行の `EntitySaveData.parts` が使っている |
-| `src/game/dynamic/dynamic-system.ts` | 422-423行のコメント「基地は常設の軌道構造物で、接近・ドッキングは軌道面合わせそのものなので」から理由付けを直す(**挙動=常設は残す**) |
-
-**コンストラクタ引数 `fx` は落ちる。** `base.ts` の中で `fx`(`EffectsSystem`)を使うのは
-222行の格納艦生成 `new Player(hud, worldSfx, scene, fx, markerManager, …)` **だけ**なので、
-180行の引数と18行の import ごと落とす。`hud` は 211行(`PlayerThrottle`)、`worldSfx` は
-212-213行(`ThrustEffects`/`RcsEffects`)で使い続けるので**残す**。
-落とした引数は生成側2箇所 — `dynamic-system.ts:129` と `creative-stage.ts:353` — から外す。
-173-174行のコメント(「hud/worldSfx/fx/markerManager は格納艦(Player)の組み立てに要る」)は
-説明する対象が消えるので、コメントごと落とす。
-
-**達成条件と検証.**
-
-- 達成目標 1 の検索(3つの除外つき)が **0 件**。
-- `git grep -nE 'BASE_MAX_VESSELS|DockedVesselEntry|getPortWorld|SHIP_PORT_OFFSET|baseState\.inventory' -- src` が 0 件。
-- `npm run typecheck` が通る。`npm run test:game` `npm run test:render` が通る。
-- **目視**: creative で基地を配置 → 右クリックのプロパティウィンドウに「所持金」「距離」と
-  軌道要素が出て、「格納艦艇数」が出ない。マップの物体一覧で、自艦がいないときの基地行の
-  補助表示が空になる。基地を保存 → 読み込みして、位置・姿勢・所持金・軌道線トグルが復元される。
-
 ### 手順 5. 規約点検とコメント点検
 
 **目的.** 削除で焼け残った命名・コメント・責務の歪みを直す。**挙動は変えない。**
@@ -185,7 +156,6 @@
 
 | 手順 | 削除ファイル | 編集ファイル | 削除行 |
 | --- | --- | --- | --- |
-| 4 | 0 | 4 | ≈145 |
 | 5 | 0 | 未定 | — |
 
 ## リスクと落とし穴
