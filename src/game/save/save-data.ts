@@ -109,7 +109,7 @@ export interface DetachedBoosterSaveData extends EntitySaveData {
   collisionEnableAt?: number;
 }
 
-// 基地は艦(EntitySaveData)と持ち物が根本的に異なる(所持金・在庫・収容艦)ため、
+// 基地は艦(EntitySaveData)と持ち物が根本的に異なる(所持金・燃料)ため、
 // kind で分岐する EntitySaveData の派生ではなく独立した型にする。
 export interface BaseSaveData {
   id: string;
@@ -123,12 +123,6 @@ export interface BaseSaveData {
   money: number;
   // 基地の燃料。旧セーブには無いため任意。
   fuel?: number;
-  // 倉庫在庫部品。旧セーブには無いため任意。
-  inventory?: AnyPart[];
-  // 格納中の艦は entities.players に含まれないため、艦本体(軌道状態・parts・弾薬・計画)を
-  // まるごとここへ保存する。復元時に Player を作り直し、DockedVesselEntry.player を張り直す。
-  dockedVessels: PlayerSaveData[];
-  dockedShips?: PlayerSaveData[];
   throttle?: ThrottleSaveData;
   // プロパティウィンドウの軌道線表示トグル。旧セーブには無いため任意(既定 false)。
   showTrajectoryLine?: boolean;
