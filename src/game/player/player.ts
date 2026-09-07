@@ -44,7 +44,7 @@ import type { MarkerManager } from '../marker/marker-manager';
 import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import { Plan } from '../plan/plan';
+import { Plan, type PlanExecutionMode } from '../plan/plan';
 import type { PlayerSaveData, PlanSaveData } from '../save/save-data';
 import { partFromSaveData, type AnyPart } from '../dynamic/dynamic-entity/parts';
 import { DIRECTION_GLYPH, ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
@@ -88,9 +88,6 @@ const ALLY_BEARING_MAX_DISTANCE = 20e3; // 味方機の画面外方位マーカ�
 
 const PLAYER_MAX_HP = 1000;
 const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
-
-// 'off': ノードを消化しない。'instant': ノード時刻ちょうどで絶対状態へ乗り移る(自動実行)。
-export type PlanExecutionMode = 'off' | 'instant';
 
 // 軌道計画の実行モードの巡回順。ボタン1つで次のモードへ進める。
 const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['off', 'instant'];
