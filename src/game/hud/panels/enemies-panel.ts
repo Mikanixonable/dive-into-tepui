@@ -1,11 +1,14 @@
 // 常設 CONTACTS パネル(#hud-enemies)の同期: コンタクト中の敵を距離順で示す。戦闘ビュー専用。
 import { len, sub } from '../../../math/vec3';
+import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
+import type { Stage } from '../../stages/stage';
+import type { DynamicSystem } from '../../dynamic/dynamic-system';
+import type { Targeter } from '../../targeter';
 import { fmtDist } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
 import type { Vec3 } from '../../../math/vec3';
 import { isEnemy, type Enemy } from '../../dynamic/dynamic-entity/enemy';
 import type { CombatTarget } from '../../dynamic/dynamic-entity/combat-target';
-import type { Game } from '../../game';
 
 const SYNC_INTERVAL_MS = 250;
 
@@ -35,9 +38,11 @@ export class EnemiesPanel {
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {}
 
   // 残存数の見出しと、距離順の敵一覧を同期する。操作対象が無ければパネルごと隠す。
-  public sync(game: Game): void {
-    const viewer = game.activeControllable;
-    const panel = this.els.get('hud-enemies');
+  public sync(
+    viewer: Controllable | null, activeStage: Stage, dynamicSystem: DynamicSystem,
+    targeter: Targeter, isMapView: boolean,
+  ): void {
+        const panel = this.els.get('hud-enemies');
     if (!viewer) {
       this.hasContacts = false;
       panel?.classList.add('hidden');
@@ -47,16 +52,16 @@ export class EnemiesPanel {
     // 間引き周期でのみ一覧を組み直す。
     if (this.throttle.due()) {
 
-      const { kills, totalEnemiesSpawned } = game.activeStage.scoreCounter;
+      const { kills, totalEnemiesSpawned } = activeStage.scoreCounter;
       const remainingCount = totalEnemiesSpawned - kills;
       const count = this.els.get('count');
       if (count) {
         count.textContent = `${remainingCount} / ${totalEnemiesSpawned}`;
         count.setAttribute('aria-label', `残存 ${remainingCount}、合計 ${totalEnemiesSpawned}`);
       }
-      const primaryTarget = game.targeter.aliveTarget;
+      const primaryTarget = targeter.aliveTarget;
       const rows = this.buildEnemyRows(
-        game.dynamicSystem.all().filter(isEnemy).filter((enemy) => enemy.alive),
+        dynamicSystem.all().filter(isEnemy).filter((enemy) => enemy.alive),
         viewer.state.r,
         primaryTarget,
       );
@@ -66,7 +71,7 @@ export class EnemiesPanel {
 
     // 更新間隔中も直前の敵有無を維持する。ここで戦闘ビュー判定だけを行うと、
     // 敵0件で隠したパネルを次のフレームに再表示してしまう。
-    panel?.classList.toggle('hidden', game.viewManager.isMapView || !this.hasContacts);
+    panel?.classList.toggle('hidden', isMapView || !this.hasContacts);
   }
 
   // waveId を持つ敵ごとに「第N波」1行へ集約して組み立てる。

@@ -1,11 +1,13 @@
 // 常設 TARGET パネル(#hud-target)の同期。ロック中ターゲットの名前・装甲・距離・
 // 接近速度・相対速度を、ターゲットが固定されている間だけ表示する。
 import { fmtDist, fmtSpeed, setElementText } from '../../../hud/utils';
+import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
+import type { Targeter } from '../../targeter';
 import { SyncThrottle } from '../sync-throttle';
 import { relativeInfo } from '../../orbit-info';
 import { ProteinEnemy } from '../../dynamic/dynamic-entity/protein-enemy';
 import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
-import type { Game } from '../../game';
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
 
 const SYNC_INTERVAL_MS = 100;
@@ -36,10 +38,8 @@ export class TargetPanel {
   }
 
   // 固定対象の有無を毎フレーム反映し、値の更新は間引く。
-  public sync(game: Game): void {
-    const celestialBodies = game.celestialSystem.celestialMotions;
-    const viewer = game.activeControllable;
-    const target = viewer ? game.targeter.aliveTarget : null;
+  public sync(viewer: Controllable | null, celestialBodies: CelestialBodies, targeter: Targeter): void {
+        const target = viewer ? targeter.aliveTarget : null;
     // 表示/非表示はターゲット固定の有無に直結するので、更新間隔とは別に毎フレーム反映する。
     this.els.get('hud-target')?.classList.toggle('hidden', target === null);
 
@@ -49,7 +49,7 @@ export class TargetPanel {
       this.syncTarget(null);
       return;
     }
-    const relative = relativeInfo(viewer, target, celestialBodies, viewer.state.t);
+    const relative = relativeInfo(viewer, target, celestialBodies.celestialMotions, viewer.state.t);
     this.syncTarget({
       name: target.name,
       distanceM: relative.dist,
