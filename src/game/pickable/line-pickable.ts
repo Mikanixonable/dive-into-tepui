@@ -5,7 +5,7 @@
 import { Vec3 } from '../../math/vec3';
 import { isOccluded } from '../../physics/occlusion';
 import type { CelestialMotion } from '../../physics/celestial-motion';
-import type { ProjectFn } from '../camera/camera-system';
+import type { ProjectFn } from '../../math/projection';
 
 type LinePickKind = 'orbit-body' | 'orbit-ship' | 'orbit-guide';
 export type LineCalcMethod = 'analytic' | 'predicted' | 'guide';

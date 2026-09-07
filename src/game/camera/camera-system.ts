@@ -13,7 +13,7 @@ import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { FloatingOrigin } from './floating-origin';
 import { Vec3, len, sub, v3 } from '../../math/vec3';
 import {
-  metersPerPixel, metersPerPixelAtDistance, ndcToScreen, Projected, projectToNdc, Viewpoint,
+  metersPerPixel, metersPerPixelAtDistance, ndcToScreen, ProjectFn, projectToNdc, ScaleFn, Viewpoint,
 } from '../../math/projection';
 import type { FrameAnchorSource } from '../../physics/frame';
 import type { Quat } from '../../math/quat';
@@ -66,9 +66,6 @@ const CAM_KEY_YAW_RATE = 1.4;
 const CAM_KEY_PITCH_RATE = 1.0;
 const CAM_KEY_ROLL_RATE = 1.4; // テンキー0/1での視点ロール [rad/s]
 const CAM_KEY_PAN_RATE = 600; // @/:/;/]での視点平行移動、中クリックドラッグと同じ px/s 換算で加算
-
-export type ProjectFn = (worldPos: Vec3) => Projected;
-export type ScaleFn = (worldPos: Vec3) => number;
 
 // 論理カメラの状態(Viewpoint)を、描画原点 origin を差し引いて THREE カメラへ反映する。
 // near/far はサブカメラ自身の near/far getter(固定値、または FocusCamera のように dist に
