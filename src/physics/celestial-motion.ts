@@ -201,15 +201,13 @@ export abstract class CelestialMotion {
   // 解析暦が答える太陽系重心中心の位置・速度。
   abstract analyticStateAt(t: number): KinematicState<'analytic'>;
 
-  // 解析暦が答える主星中心の位置・速度。**解析経路の ECI 化はこちらどうしの差で組む** —
-  // 恒星の重心相対位置は差で厳密に相殺するので、全惑星系のケプラー解を解いても ECI の答えは
-  // 変わらない。
+  // 解析暦が答える主星中心の位置・速度。**解析経路の ECI 化はこちらどうしの差で組む。**
   abstract analyticStarRelStateAt(t: number): KinematicState<'starRel'>;
 
   // 解析暦が答える加速度。用途は pivot から各段の時刻へ位置を外挿する2次項なので、**位置
   // モデルの二階微分に揃える** — 二体部分は軌道の n²a³ から取り、惑星本体には衛星から受ける
-  // 加速度を入れる。位置モデルのうち二階微分に載らないのは衛星の周期補正項だけで、その残差は
-  // 外挿幅の2乗で効く(月で 1 歩 20 s のとき数 mm)。
+  // 加速度を入れる。二階微分に載らない衛星の周期補正項ぶんの残差は、外挿幅の2乗で効く
+  // (月で 1 歩 20 s のとき数 mm)。
   abstract analyticAccelAt(t: number): Vec3;
 
   // 自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。自転モデルを持たない天体は null。
@@ -304,8 +302,7 @@ export class StarMotion extends CelestialMotion {
     return this.analyticCache.put(t, this.computeAnalyticStateAt(t));
   }
 
-  // 恒星は主星相対系の原点なので、その系での加速度は厳密に 0。ECI 加速度は主星相対どうしの
-  // 差で組むので、重心のまわりに描く運動はここに現れない。
+  // 恒星は主星相対系の原点なので、その系での加速度は厳密に 0。
   analyticAccelAt(): Vec3 {
     return v3();
   }
@@ -536,7 +533,7 @@ export class PlanetMotion extends OrbitingMotion {
   // 惑星本体の主星相対状態。系の重心から衛星ぶんの重心補正を差し引いた位置で、
   // 補正が全衛星に依存するので系がまとめて畳んでいる。
   analyticStarRelStateAt(t: number): KinematicState<'starRel'> {
-    return this.system.membersAt(t).body;
+    return this.system.bodyStarRelStateAt(t);
   }
 
   // 系の重心の主星まわりの二体加速度に、衛星が本体を引く加速度を足したもの。位置モデル

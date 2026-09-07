@@ -12,11 +12,12 @@
 import { Vec3, addScaled, v3 } from '../math/vec3';
 import { PointEphemeris, boundBaryStateAt } from './ephemeris/point';
 import { PlanetDef, PlanetMotion, SatelliteMotion, StarMotion } from './celestial-motion';
-import { KeplerOrbit, keplerOrbitAccel, keplerOrbitState } from './kepler-orbit';
+import {
+  KeplerOrbit, PlanetAngles, keplerOrbitAccel, keplerOrbitState, planetAngles,
+} from './kepler-orbit';
 import {
   KinematicState, addPrimaryRelative, fromStarRelative, kinematicState,
 } from './kinematic-state';
-import { PlanetAngles, planetAngles } from './kepler-orbit';
 import { SatelliteOrbit, satelliteState } from './satellite-orbit';
 import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
 
@@ -81,23 +82,20 @@ export class PlanetSystem {
     return fromStarRelative(this.body.star.analyticStateAt(t), this.starRelStateAt(t));
   }
 
-  // 系に属する天体の主星相対状態。重心補正が系の全衛星に依存するので、1体ぶんだけを
-  // 引くことはできず、系まるごと1件へ畳む。
-  membersAt(t: number): SystemMembers {
-    const cached = this.membersCache.get(t);
-    if (cached !== undefined) return cached;
-    return this.membersCache.put(t, this.computeMembers(t));
+  // 惑星本体の主星相対状態。
+  bodyStarRelStateAt(t: number): KinematicState<'starRel'> {
+    return this.membersAt(t).body;
   }
 
   // 衛星 index の主星相対状態。index は addSatellite が返した登録順。
   satelliteStarRelStateAt(index: number, t: number): KinematicState<'starRel'> {
     const members = this.membersAt(t);
-    return addPrimaryRelative(members.body, this.relFrom(members, index, t));
+    return addPrimaryRelative(members.body, this.relFrom(members, index));
   }
 
   // 衛星 index の惑星本体相対の位置・速度。
   satelliteRelStateAt(index: number, t: number): KinematicState<'primaryRel'> {
-    return this.relFrom(this.membersAt(t), index, t);
+    return this.relFrom(this.membersAt(t), index);
   }
 
   // 惑星本体が衛星から受ける加速度。位置の重心補正 −Σ w_i·ρ_i の 2 階微分そのもので、
@@ -109,7 +107,7 @@ export class PlanetSystem {
     // 符号は位置と同じ −w_i。本体は重心の反対側へ振れるので、加速度は衛星の側を向く。
     for (const index of this.offsettingMoons) {
       const moon = this.moons[index]!;
-      const rel = this.relFrom(members, index, t);
+      const rel = this.relFrom(members, index);
       accel = addScaled(
         accel, keplerOrbitAccel(moon.def.orbit.kepler, t, rel.r), -moon.def.mu / muTotal);
     }
@@ -143,13 +141,20 @@ export class PlanetSystem {
     return { body: kinematicState<'starRel'>(t, r, v), angles, rels };
   }
 
-  // 衛星 index の惑星本体相対状態を作業表から引く。まだ無ければ解いて埋める。
-  private relFrom(
-    members: SystemMembers, index: number, t: number,
-  ): KinematicState<'primaryRel'> {
+  // この時刻の成員表。惑星本体は重心補正が系の衛星に依存するので、1体ぶんだけを引くことは
+  // できず、系まるごと1件へ畳む。
+  private membersAt(t: number): SystemMembers {
+    const cached = this.membersCache.get(t);
+    if (cached !== undefined) return cached;
+    return this.membersCache.put(t, this.computeMembers(t));
+  }
+
+  // 衛星 index の惑星本体相対状態を作業表から引く。まだ無ければ解いて埋める。時刻は
+  // 表そのものが持つので、表と食い違う時刻で引かれることはない。
+  private relFrom(members: SystemMembers, index: number): KinematicState<'primaryRel'> {
     const cached = members.rels[index];
     if (cached !== undefined) return cached;
-    const rel = satelliteState(this.moons[index]!.def.orbit, members.angles, t);
+    const rel = satelliteState(this.moons[index]!.def.orbit, members.angles, members.body.t);
     members.rels[index] = rel;
     return rel;
   }
