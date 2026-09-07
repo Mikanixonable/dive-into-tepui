@@ -17,8 +17,7 @@ import type { BaseSaveData } from '../../save/save-data';
 import { Plan } from '../../plan/plan';
 import type { PlanExecutionMode } from '../../player/player';
 import { generateRandomName } from '../../random-name';
-import type { GroupedMarkerItem } from '../../marker/grouped-markers';
-import type { MarkerRole } from '../../targeter';
+import type { GroupedMarkerItem, MarkerRole } from '../../marker/grouped-markers';
 import { fmtDist, fmtMarkerDist } from '../../../hud/utils';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
@@ -72,6 +71,7 @@ type BaseInit =
 
 export class Base extends DynamicEntity implements Controllable, ObjectPickable {
   public override readonly mapKind: DynamicEntityKind = 'base';
+  public override readonly combatTarget = true;
   public override readonly controllable = true;
   public override readonly pickable = true;
 

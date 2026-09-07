@@ -24,7 +24,7 @@ import { currentThemePalette } from '../../../theme';
 import { ENEMY_DESTROY_FRAG_COLOR } from '../../../render/vfx-style';
 import type { Quat } from '../../../math/quat';
 import type { DynamicEntityKind } from './entity-kind';
-import type { GroupedMarkerItem } from '../../marker/grouped-markers';
+import type { GroupedMarkerItem, MarkerRole } from '../../marker/grouped-markers';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { EnemyDeathCause, Stage } from '../../stages/stage';
 import type { DynamicSystem, SpawnGate } from '../dynamic-system';
@@ -33,6 +33,7 @@ import type { EnemySaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import type { MarkerManager } from '../../marker/marker-manager';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
+import type { CombatTarget } from './combat-target';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { ObjectCommands } from '../../pickable/object-commands';
 import type { MenuItem } from '../../hud/windows/context-menu';
@@ -111,7 +112,7 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
 
 // 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、交戦圏
 // 離脱・焼失・衝突の記録。機体が何でできているか(メッシュ・被弾モデル・判定形状)は具象が持つ。
-export abstract class Enemy extends Ship implements ObjectPickable {
+export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable {
   public override readonly mapKind: DynamicEntityKind = 'enemy';
   public override readonly pickable = true;
 
@@ -216,7 +217,7 @@ export abstract class Enemy extends Ship implements ObjectPickable {
   // 敵のマーカー表示項目を組み立てる。pos/vel には機体メッシュと同じ表示時刻の状態
   // (stateAt 経由)を渡すこと。
   public markerItem(
-    role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, _isActive: boolean,
+    role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, _isActive: boolean,
   ): GroupedMarkerItem {
     // 距離は優先度(近いほど高)とラベル表示の両方に使う
     const dist = len(sub(pos, viewerPos));

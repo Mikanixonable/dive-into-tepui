@@ -4,9 +4,10 @@ import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import { Player } from './player/player';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
+import type { CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import { Input } from '../input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
-import type { GroupedMarkerItem } from './marker/grouped-markers';
+import type { GroupedMarkerItem, MarkerRole } from './marker/grouped-markers';
 import type { CelestialMarkers } from './marker/celestial-markers';
 import { MARKER_PRIORITY } from './marker/crowding';
 import type { MarkerManager } from './marker/marker-manager';
@@ -28,11 +29,6 @@ const MAP_AMMO_FADE_START = 5e7;
 const MAP_AMMO_FADE_END = 1e8;
 
 const PROTEIN_SITE_MARKER_RANGE = 3000; // タンパク質敵の機能部位マーカーを表示する距離上限 [m]
-
-export type CombatTarget = Enemy | Controllable;
-
-// マーカー上での対象の役割。ターゲットは色と字形が変わる。
-export type MarkerRole = 'none' | 'primary';
 
 // マップ上の弾薬・燃料マーカーの不透明度。MAP_AMMO_FADE_START から薄れ、MAP_AMMO_FADE_END で消える。
 function ammoFadeOpacity(distance: number): number {

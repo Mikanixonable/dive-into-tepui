@@ -16,28 +16,18 @@ import type { MapVisibility } from '../../map/visibility-policy';
 import type { OrbitReference } from '../../orbit-reference';
 import type { Stage } from '../../stages/stage';
 import type { DynamicSystem } from '../dynamic-system';
-import type { Vec3 } from '../../../math/vec3';
-import type { View } from '../../view/view';
-import type { GroupedMarkerItem } from '../../marker/grouped-markers';
-import type { MarkerRole } from '../../targeter';
-import type { DynamicEntityKind } from './entity-kind';
-import type { ObjectPickable } from '../../pickable/object-pickable';
+import type { CombatTarget } from './combat-target';
 import type { DynamicEntity } from './dynamic-entity';
 
-// 操作対象(自艦・基地)が答えるもの。世界に実体を持ち(DynamicEntity)、マップから選べる
-// (ObjectPickable)ものだけが実装できる。搭載していない装備は null で答える。
-export interface Controllable extends DynamicEntity, ObjectPickable {
-  // 操作対象は必ずマップの表示トグルを持つ種別に属する。
-  readonly mapKind: DynamicEntityKind;
+// 操作対象(自艦・基地)が答えるもの。戦闘の対象になれる個体(CombatTarget)だけが
+// 実装できる。搭載していない装備は null で答える。
+export interface Controllable extends CombatTarget {
   readonly totalThrust: number;
   readonly totalTorque: number;
   readonly totalFuelConsumptionRate: number;
   // 全 RCS タンクの残量・容量 [kg]。
   readonly totalFuel: number;
   readonly totalMaxFuel: number;
-  // 削れる耐久値を持たない種別は null。
-  readonly hp: number | null;
-  readonly maxHp: number | null;
   readonly throttle: Throttle;
   readonly fire: FireControl | null;
   readonly boosters: AttachedBoosters | null;
@@ -61,12 +51,6 @@ export interface Controllable extends DynamicEntity, ObjectPickable {
 
   // 次のフレームへ持ち越してはならない連続指令(推力・トルク・射撃)を畳む。
   clearTransientCommands(): void;
-
-  // 画面マーカー・一覧に出す項目。pos/vel にはメッシュと同じ表示時刻の状態を渡すこと。
-  // isActive はこの個体が操作対象かどうか(マップ上の塗り分けに使う)。
-  markerItem(
-    role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, isActive: boolean,
-  ): GroupedMarkerItem;
 
   // メッシュ・エフェクト・マーカーを displayTime の状態へ同期する。isActive はこの個体が
   // 操作対象かどうか。orbitRef は方位マーカーが指す軌道座標系で、持たない種別は無視する。

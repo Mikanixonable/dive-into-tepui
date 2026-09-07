@@ -8,7 +8,7 @@ import { FloatingOrigin } from '../camera/floating-origin';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import { currentThemePalette } from '../../theme';
-import type { CombatTarget } from '../targeter';
+import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { DisplayWindow } from '../display-window-manager';
 import type { CelestialSystem } from '../celestial/celestial-system';

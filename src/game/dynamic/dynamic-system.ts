@@ -8,6 +8,7 @@ import { FloatingOrigin } from '../camera/floating-origin';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { CapKind } from './dynamic-entity/entity-kind';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
+import { aliveCombatTarget, isCombatTarget, type CombatTarget } from './dynamic-entity/combat-target';
 import { isObjectPickable, type ObjectPickable } from '../pickable/object-pickable';
 import { AmmoPickup } from './dynamic-entity/ammo-pickup';
 import { RcsFuelPickup } from './dynamic-entity/rcs-fuel-pickup';
@@ -22,7 +23,6 @@ import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBo
 import { Player } from '../player/player';
 import type { Stage } from '../stages/stage';
 import type { Input } from '../../input/input';
-import type { CombatTarget } from '../targeter';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
@@ -189,7 +189,7 @@ export class DynamicSystem {
   // ターゲットとなり得るエンティティ(敵・自機・基地)の一覧。呼ぶたびに組み直すので、
   // フレームに何度も読む側は受けた配列を持ち回る。
   getCombatTargets(): CombatTarget[] {
-    return [...this.enemies, ...this.controllables];
+    return this.entities.filter(isCombatTarget);
   }
 
   // id で名指しされた敵を返す。見つからなければ null。
@@ -200,10 +200,7 @@ export class DynamicSystem {
   // id で名指しされた、生存中の戦闘対象(敵・自機・基地)を返す。天体・ラグランジュ点は
   // 実体を持たないため対象外。
   findAliveCombatTarget(id: string): CombatTarget | null {
-    const enemy = this.findEnemy(id);
-    return (enemy?.alive ? enemy : null)
-      ?? this.controllables.find((c) => c.id === id && c.alive)
-      ?? null;
+    return aliveCombatTarget(this.entities, id);
   }
 
   // 上限付きの個体が追加されてから、まだ上限を確かめていないか。枠が増えるのは追加のときだけ

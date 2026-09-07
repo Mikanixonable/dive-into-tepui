@@ -11,7 +11,7 @@ import { goldenSectionMin } from '../math/optimize';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import { DisplayWindow } from './display-window-manager';
 import type { DynamicSystem } from './dynamic/dynamic-system';
-import type { CombatTarget } from './targeter';
+import type { CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import { Hud } from './hud/hud';
 import { TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import { MarkerManager } from './marker/marker-manager';

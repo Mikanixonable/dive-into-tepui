@@ -4,7 +4,7 @@ import { fmtDist } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
 import type { Vec3 } from '../../../math/vec3';
 import type { Enemy } from '../../dynamic/dynamic-entity/enemy';
-import type { CombatTarget } from '../../targeter';
+import type { CombatTarget } from '../../dynamic/dynamic-entity/combat-target';
 import type { Game } from '../../game';
 
 const SYNC_INTERVAL_MS = 250;
