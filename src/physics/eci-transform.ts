@@ -10,9 +10,8 @@ import { TimeCacheStats, TimeRing } from './time-ring';
 import { Vec3, sub } from '../math/vec3';
 
 // ECI 原点天体が時刻 t に答える、原点を引くための一式。**供給源が違えば同じ天体に別の位置を
-// 答える**ので、ECI 化は必ず同じ経路どうしで差を取る。解析経路は主星相対で持つ — 恒星の重心
-// 相対位置は差で厳密に相殺するので、全惑星系のケプラー解を解いても ECI の答えは変わらない。
-// numeric が null の時刻は、全天体が解析経路へ落ちる。
+// 答える**ので、ECI 化は必ず同じ経路どうしで差を取る。解析経路は主星相対で持つ
+// (kinematic-state の starRel)。numeric が null の時刻は、全天体が解析経路へ落ちる。
 type OriginState = {
   readonly numeric: KinematicState<'numeric'> | null;
   readonly starRel: KinematicState<'starRel'>;

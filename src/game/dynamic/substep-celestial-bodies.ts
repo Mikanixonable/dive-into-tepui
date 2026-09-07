@@ -3,8 +3,8 @@
 // 問い合わせ位置で使い回すことが、絞り込みが得になる条件そのものだから。
 //
 // **顔ぶれはフレームに1組、位置を厳密に引く pivot はサブステップごと。** 顔ぶれの判定は
-// 距離の比較でしかないので、判定距離へフレームの移動ぶんを織り込めばフレーム全体で使い回せる。
-// 物理が読む位置はサブステップの中点から引くので、外挿の幅は今までどおり subDt/2 に収まる。
+// 距離の比較なので、判定距離へフレームの移動ぶんを織り込めばフレーム全体で使い回せる。物理が
+// 読む位置はサブステップの中点から引くので、外挿の幅は subDt/2 に収まる。
 import { nearestAtmosphereBody } from '../../physics/attractor';
 import { CelestialMotion, CelestialMotions } from '../../physics/celestial-motion';
 import { Vec3 } from '../../math/vec3';
