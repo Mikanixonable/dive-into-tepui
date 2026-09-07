@@ -1,5 +1,6 @@
 // エンティティの保持・追加・上限管理・寿命回収と、1フレームぶんの前進(指令決定と積分)・描画同期。
 import * as THREE from 'three/webgpu';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { FrameAnchorSource } from '../../physics/frame';
@@ -21,7 +22,7 @@ import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CameraSystem } from '../camera/camera-system';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
-import type { CelestialSystem } from '../celestial/celestial-system';
+
 import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import type { EntitySaveDataUnion, GameSaveData } from '../save/save-data';
 import type { Notifier } from '../../hud/notifier';
@@ -56,7 +57,7 @@ export class DynamicSystem implements EntityRegistry {
     worldSfx: WorldSfx,
     flash: FlashEffects,
     markerManager: MarkerManager,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialSystem: CelestialBodies,
     private readonly sections: FrameSections,
     initialSimTime: number,
     saved?: GameSaveData,
