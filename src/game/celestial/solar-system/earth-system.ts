@@ -133,14 +133,16 @@ export const EARTH_ATMOSPHERE_OPTICS: AtmosphereOptics = {
   mieAnisotropy: 0.8,
 };
 
-// 地表・薄い雲・積雲の殻を合わせたアルベドの測光。倍率は、殻に覆われずに残る地表の平均輝度
-// 0.1937 へこれを掛け、殻(アルベド 0.8)が覆う 0.1274 ぶんを足すと A_B=0.306 になる値。
-// averageHue はその合成の色み。平均はどれもテクスチャ上を緯度余弦で重み付けて測る。
+// 地表・雲の殻を合わせたアルベドの測光。倍率は、雲(不透明な積雲の殻・巻雲の殻・積雲の中間調の
+// 殻)がアルベド 0.8 で覆う 0.2912 ぶんを A_B=0.306 から引いた残りを、雲に覆われずに残る地表の
+// 平均輝度 0.08027 へ割り当てる値。averageHue はその合成の色み。平均はどれもテクスチャ上を
+// 緯度余弦で重み付けて測る(不透明な積雲 0.1361・巻雲 0.1056・中間調 0.0494 の順に覆う)。
+// TODO: 半透明な殻はアルベドと立つ高さを目で追い込む途中なので、追い込みを終えてから測り直す。
 export const EARTH_TEXTURE: CelestialTexture = {
   url: earthTextureUrl,
-  albedoScale: 1.0536,
+  albedoScale: 0.9102,
   bondAlbedo: 0.306,
-  averageHue: [0.9611, 0.9927, 1.1863],
+  averageHue: [0.9703, 0.9940, 1.1471],
 };
 
 // 地球のオーロラ。オーバル緯度は磁極の配置、発光高度は降り込む粒子が大気を励起する層、
@@ -185,12 +187,12 @@ export function earthSystem(
   earthSpinPhase0 = 0,
 ): Record<EarthSystemBodyId, CelestialEntity> {
   const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
-  // 雲の場は殻が持ち、地表はその実体を借りて薄い雲を焼き込む。
+  // 雲の場は殻が持ち、地表・影・大気の殻はその実体を借りて読む。
   const cumulus = new CumulusShell(cloudFieldUrl, R_EARTH_EQ);
   return {
     earth: new PointEntity(
       earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
-      CelestialSurface.clouded(EARTH_TEXTURE, cumulus.field, earthSmoothnessUrl),
+      CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl),
       EARTH_ATMOSPHERE_OPTICS, new EarthCoastline(), earthAuroras(),
       GeostationaryOverlay.of(earth.body), cumulus,
     ),

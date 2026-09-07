@@ -14,6 +14,7 @@ import { BodyGraticule } from '../../../render/body-graticule';
 import { showsPhysicalSphere } from '../../../render/screen-lod';
 import { CelestialEntity } from './celestial-entity';
 import { writeBodyFromWorld } from '../body-frame';
+import type { RingMaterials } from '../../../render/ring';
 import { RingView } from './ring-view';
 import { DEFAULT_ALBEDO, rec709Luminance, type Albedo } from '../../../render/celestial-albedo';
 import { SUN_IRRADIANCE_1AU } from '../../../render/pipeline/sun-light';
@@ -26,10 +27,9 @@ import type { StarEntity } from './star-entity';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
 import type { LineOverlay } from '../../../render/line-overlay';
 import type { MarkerManager } from '../../marker/marker-manager';
-import type { SunLight } from '../../../render/pipeline/sun-light';
-import type { CumulusShadow, SunOcclusion } from '../../../render/pipeline/sun-occlusion';
+import type { ShadowCumulus } from '../../../render/pipeline/shadow/cumulus-shadow';
 import type { RenderStyle } from '../../../render/render-style';
-import type { AtmosphereOptics } from '../../../render/atmosphere';
+import type { AtmosphereClouds, AtmosphereOptics } from '../../../render/atmosphere';
 import type { Vec3 } from '../../../math/vec3';
 
 // 輝点スプライトの一辺 [m]。星殻上へ置くので、点像の角の広がりへ星殻半径を掛けたもの。
@@ -71,7 +71,7 @@ export class PointEntity extends CelestialEntity {
   private readonly axes: THREE.Vector3;
   // 模式図スタイルでだけ見せる経緯度グリッド。姿勢は group の子として自然に追従する。
   private readonly graticule = new BodyGraticule();
-  // 描画座標のベクトルを天体固定の向きへ戻す回転。遮蔽パスへ渡すあいだだけ生きていればよい。
+  // 描画座標のベクトルを天体固定の向きへ戻す回転。影パスへ渡すあいだだけ生きていればよい。
   private readonly bodyFromWorld = new THREE.Matrix4();
 
   // surface はマップビューで見せる実体。実半径・歪みの形状・環は motion の定義から引き、
@@ -106,7 +106,7 @@ export class PointEntity extends CelestialEntity {
   public get surfaceTextureUrl(): string | null { return this.surface.textureUrl; }
 
   // マップビュー用の実体表面と輝点用ビルボードをシーンへ一度だけ登録する。
-  public build(scene: THREE.Scene, sunOcclusion: SunOcclusion, sunLight: SunLight): void {
+  public build(scene: THREE.Scene, ringMaterials: RingMaterials): void {
     // 輝点は単色(SPEC/RENDERING.md「画面上の大きさに基づく詳細度」節)。
     this.billboard = new Billboard(0xffffff, -9);
     this.surface.addTo(this.shapeGroup);
@@ -118,7 +118,7 @@ export class PointEntity extends CelestialEntity {
     scene.add(this.group);
     if (this.rings !== null) {
       this.ring = new RingView(
-        this.rings, this.radius, this.group.renderOrder + 1, sunOcclusion, sunLight,
+        this.rings, this.radius, this.group.renderOrder + 1, ringMaterials,
       );
       scene.add(this.ring.group);
     }
@@ -143,7 +143,7 @@ export class PointEntity extends CelestialEntity {
     if (!this.group.visible && !this.billboard.mesh.visible) return;
     const pos = this.stateAt(displayTime).r;
     const apparentDiameterPx = this.lodApparentDiameterPx(
-      2 * this.outerRadius, cameraSystem.activeCameraScale(pos), graphics);
+      2 * this.outerRadius, cameraSystem.activeCameraRadialScale(pos), graphics);
     // 閾値未満は実体を畳み、戦闘ビューなら輝点だけを置く。
     if (!showsPhysicalSphere(apparentDiameterPx)) {
       this.hidePhysical();
@@ -156,7 +156,6 @@ export class PointEntity extends CelestialEntity {
     }
     // 表面の分割段と雲。
     this.surface.syncLod(apparentDiameterPx);
-    this.surface.setCloudAmount(graphics.clouds ? 1 : 0);
     if (graphics.clouds) {
       this.cumulus?.setDetail(graphics.cumulusDetail);
       this.cumulus?.syncLod(apparentDiameterPx);
@@ -184,9 +183,10 @@ export class PointEntity extends CelestialEntity {
     );
   }
 
-  // 遮蔽パスへ渡す積雲の殻。姿勢は自転位相まで込みで組む — 軸だけでは場が地表と一緒に回らない。
-  public override cumulusShadowAt(fo: FloatingOrigin, displayTime: number): CumulusShadow | null {
-    if (this.cumulus === null) return null;
+  // 影パスへ渡す積雲の殻。**描いている殻だけが影を落とす。** 姿勢は自転位相まで込みで組む —
+  // 軸だけでは場が地表と一緒に回らない。
+  public override cumulusShadowAt(fo: FloatingOrigin, displayTime: number): ShadowCumulus | null {
+    if (this.cumulus === null || !this.group.visible || !this.cumulus.visible) return null;
     writeBodyFromWorld(this.bodyFromWorld, this.motion, displayTime);
     return {
       center: fo.RtoThreeV3(this.stateAt(displayTime).r),
@@ -195,6 +195,17 @@ export class PointEntity extends CelestialEntity {
       topAltitude: this.cumulus.topAltitude,
       bodyFromWorld: this.bodyFromWorld,
       field: this.cumulus.field,
+    };
+  }
+
+  // 大気の散乱へ立てる雲。**描いている殻だけが立つ。** 姿勢は自転位相まで込みで組む —
+  // 軸だけでは場が地表と一緒に回らない。**姿勢はこの1体ぶんの実体で返す** — 大気パスが読むのは
+  // 描画のときなので、影へ渡す使い回しの実体を渡すと、同期のあいだに書き換わる。
+  public override atmosphereCloudsAt(displayTime: number): AtmosphereClouds | null {
+    if (this.cumulus === null || !this.group.visible || !this.cumulus.visible) return null;
+    return {
+      field: this.cumulus.field,
+      bodyFromWorld: writeBodyFromWorld(new THREE.Matrix4(), this.motion, displayTime),
     };
   }
 

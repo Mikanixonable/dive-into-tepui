@@ -1,8 +1,8 @@
 // HUD の font-family(theme.ts の FONT_FAMILY)は 'JetBrains Mono' → 'HackGen' の順で、
-// 前者がラテン字形を、後者が日本語を含む残り全てを担う。太さは 400 のみを読み込み、
-// bold 指定はブラウザの合成に任せる。
+// 前者がラテン字形を、後者が日本語を含む残り全てを担う。太さは 400 を読み込み、bold 指定は
+// ブラウザの合成に任せる。
 import '@fontsource/jetbrains-mono/latin-400.css';
-import '@sarap422/font-hackgen';
+import './hackgen-400.css';
 // 低軌道シューティング: エントリポイント。WebGPU シーン初期化・ステージ選択・
 // rAF ループ(Game.update → sync → render の駆動)を統括する。
 import { createGameScene, GameScene } from './render/scene';
@@ -60,9 +60,9 @@ function startAnimationLoop(
     const t0 = perf.on ? performance.now() : 0;
     try {
       sections.beginFrame();
-      game.update(dt, graphics.current);
+      game.update(dt);
       sections.endFrame();
-      // このフレームで Game が消費しなかった入力エッジだけが残っている。
+      // Game が消費した入力エッジは、この時点で取り除かれている。
       snapshotControls.handleInput(game.input, game);
       launcher.handleInput(game.input);
       // 入力の処理中に周回が畳まれたら(再出撃キーなど)、捨てた Game には触らずこのフレームを終える。
@@ -84,8 +84,7 @@ function startAnimationLoop(
         perf.record(game, t1 - t0, t2 - t1, t3 - t2, t3);
       }
       completedFrames++;
-      // Dependency-free browser smoke test が「例外なく60フレーム完走」を判定する印。
-      // 60フレーム目に一度だけDOMへ書き、通常プレイ中の毎フレーム更新は避ける。
+      // 例外なく60フレーム完走したことを、外から読めるようにする印。
       if (completedFrames === 60) document.documentElement.dataset.gameReady = 'true';
       requestAnimationFrame(animate);
     } catch (e) {
@@ -130,6 +129,7 @@ function initSaveSlots(store: LocalStorageSaveStore): SaveSlots {
   return slots;
 }
 
+// 起動時に一度だけ走る、全システムの生成と配線。
 async function main() {
   const unlockManager = new UnlockManager();
   const saveStore = new LocalStorageSaveStore();
@@ -138,23 +138,20 @@ async function main() {
   const graphics = new GraphicsSettings();
   const renderStyle = new RenderStyleSetting();
   const gs = await initScene(graphics.current);
-  // 描画品質設定の押し出し先の登録は、設定を持っている側の配線。
   graphics.bind(gs);
   const { shell, hud, audioEngine, bgm, pauseMenu, settingsView } = initHud(graphics, renderStyle);
   const sections = new FrameSections();
 
   const launcher = new Launcher(
     shell, hud, gs, audioEngine, bgm, pauseMenu, settingsView, unlockManager, sections,
-    slots, snapshotService,
+    slots, snapshotService, graphics,
   );
 
-  // 「ゲームを中断してタイトル画面に戻る」
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
   pauseMenu.onOpenSettings = () => {
     pauseMenu.toggle(false);
     settingsView.toggle(true);
   };
-  // タイトル画面にはまだ Game が無いので、launcher.current は null を返す。
   pauseMenu.onPauseMenuOpenChange = (open) => {
     if (open) launcher.current?.pause();
     else launcher.current?.resume();
@@ -177,7 +174,6 @@ async function main() {
   const perf = new PerfMeter(
     shell.layers.window, gs.renderer, sections, gs.gpu, shell.overlayManager, gs.pipeline, renderStyle,
   );
-  // 負荷確認ウィンドウは非モーダルなので、設定メニューを閉じてから前面へ出すだけ。
   pauseMenu.onOpenPerfWindow = () => {
     pauseMenu.toggle(false);
     perf.open();
