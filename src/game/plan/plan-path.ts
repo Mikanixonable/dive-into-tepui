@@ -219,6 +219,9 @@ export class PlanPath {
   sync(fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, cameraPos: Vec3, camera: THREE.Camera): void {
     this.project = project;
     this.cameraPos = cameraPos;
+    // ノードの無い計画は操作対象の現在軌道そのものなので、折れ線は出さない。それでも
+    // project の更新までは通す — 止めると、クリック当たり判定が古い視点のまま残る。
+    this.setVisible(this._nodeCount > 0);
     if (this.celestialSystem === null) return;
     for (let i = 0; i < this.activeCount; i++) {
       const source = this.sources[i]!;
