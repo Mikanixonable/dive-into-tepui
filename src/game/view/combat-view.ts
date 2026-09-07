@@ -14,7 +14,6 @@ import type { CelestialMarkers } from '../marker/celestial-markers';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Targeter } from '../targeter';
 import type { ActiveControllableController } from '../active-controllable-controller';
-import type { DockingGuide } from '../docking/docking-guide';
 import type { PlanPath } from '../plan/plan-path';
 import type { UiSfx } from '../../audio/sfx/ui-sfx';
 import type { CelestialSystem } from '../celestial/celestial-system';
@@ -38,7 +37,6 @@ export class CombatView implements ViewFrame {
     private readonly celestialMarkers: CelestialMarkers,
     private readonly touchControls: TouchControls | null,
     private readonly activePlayers: ActiveControllableController,
-    private readonly dockingGuide: DockingGuide,
     private readonly planPath: PlanPath,
     private readonly celestialSystem: CelestialSystem,
     private readonly simSpeedManager: SimSpeedManager,
@@ -63,10 +61,7 @@ export class CombatView implements ViewFrame {
 
   public onEnter(): void {}
 
-  // 戦闘専用の表示物を畳む。
-  public onLeave(): void {
-    this.dockingGuide.hide();
-  }
+  public onLeave(): void {}
 
   // 計画キー: [Del] は計画全体の破棄、[N] は直近ノードへの自動ワープのトグル。
   public handleInput(input: Input, _dt: number, simTime: number): void {
@@ -115,8 +110,8 @@ export class CombatView implements ViewFrame {
     this.celestialMarkers.hideLabels();
   }
 
-  // 戦闘ビュー専用の常設表示(タッチのモードボタン・ノード実行ガイド・ドッキングガイド)。
-  public syncPanels(displayWindow: DisplayWindow, fo: FloatingOrigin): void {
+  // 戦闘ビュー専用の常設表示(タッチのモードボタン・ノード実行ガイド)。
+  public syncPanels(displayWindow: DisplayWindow, _fo: FloatingOrigin): void {
     const player = this.activePlayers.current;
     if (player) {
       this.touchControls?.syncModeButtons(
@@ -126,7 +121,6 @@ export class CombatView implements ViewFrame {
     }
     const project = this.cameraSystem.activeCameraProjection;
     this.planGuide.sync(player, displayWindow.simTime, project, this.planPath);
-    this.dockingGuide.sync(player, fo, project);
   }
 
   public dispose(): void {}
