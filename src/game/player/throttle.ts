@@ -1,4 +1,4 @@
-// プレイヤーの並進スロットル・姿勢制御(RCS)・プログレードホールド。
+// 操作対象の並進スロットル・姿勢制御(RCS)・プログレードホールド。
 import { Attitude, attitudeAlignTorque } from '../../physics/attitude';
 import { qRotate } from '../../math/quat';
 import { Vec3, add, norm, scale, v3 } from '../../math/vec3';
@@ -59,7 +59,7 @@ function isThrustKillSwitchActive(input: Input): boolean {
   return THRUST_AXIS_PAIRS.some(([a, b]) => input.down(a) && input.down(b));
 }
 
-export class PlayerThrottle {
+export class Throttle {
   rcsDamp = true;
   throttleIdx = THROTTLE_DEFAULT_IDX;
   progradeHold = true;

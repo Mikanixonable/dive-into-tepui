@@ -25,7 +25,7 @@ import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
 import type { SphereHit } from '../../../math/triangle-mesh';
 import { BASE_COLLISION_RADIUS, baseRaycast, baseSphereCollide } from './base-collision';
-import { PlayerThrottle } from '../../player/player-throttle';
+import { Throttle } from '../../player/throttle';
 import type { Controllable } from './controllable';
 import type { DynamicSystem } from '../dynamic-system';
 import type { OrbitReference } from '../../orbit-reference';
@@ -91,7 +91,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public baseState: BaseState = { money: 100000 };
 
   // --- Controllable 実装 ---
-  readonly throttle: PlayerThrottle;
+  readonly throttle: Throttle;
   readonly thrustEffects: ThrustEffects;
   readonly rcsEffects: RcsEffects;
   private baseFuel: number;
@@ -176,7 +176,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     this.engagementAnchor = true;
     this.name = name;
     this.baseFuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : BASE_MAX_FUEL;
-    this.throttle = new PlayerThrottle(hud, 'saved' in init ? init.saved.throttle : undefined);
+    this.throttle = new Throttle(hud, 'saved' in init ? init.saved.throttle : undefined);
     this.thrustEffects = new ThrustEffects(scene, worldSfx);
     this.rcsEffects = new RcsEffects(scene, worldSfx);
     this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
