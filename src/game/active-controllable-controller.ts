@@ -64,7 +64,7 @@ export class ActiveControllableController {
     if (this._current === null && this._controlledBase === null) this.set(ship);
   }
 
-  // ship が null なら未配置状態(全滅・未収容、または操作対象の手動解除)へ戻す。
+  // ship が null なら未配置状態(全滅、または操作対象の手動解除)へ戻す。
   setOrNull(ship: Player | null): void {
     if (ship) {
       this.set(ship);
