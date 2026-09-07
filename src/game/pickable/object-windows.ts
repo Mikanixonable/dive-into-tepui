@@ -21,7 +21,6 @@ import { NavTarget } from '../nav-target';
 import { CameraSystem } from '../camera/camera-system';
 import { PlanEditor } from '../plan/plan-editor';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import type { Docking } from '../docking/docking';
 import type { ActivePlayerController } from '../active-controllable-controller';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { Stage } from '../stages/stage';
@@ -32,10 +31,9 @@ import { orbitingAttractorOf } from '../../physics/attractor';
 import type { ObjectPickables } from './object-pickables';
 import { PartWindows } from './part-windows';
 import { OrbitLineWindows } from './orbit-line-windows';
-import type { DockState, ObjectCommands } from './object-commands';
+import type { ObjectCommands } from './object-commands';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
 // 開いているプロパティウィンドウ本体と、その対象。対象は同じ同一性を保ち続けるので、
 // 行・項目の再導出も消滅の判定もこの参照を経由する。
@@ -52,19 +50,11 @@ export class ObjectWindows implements ObjectCommands {
   private readonly windows = new Map<string, WindowEntry>();
   private readonly partWindows: PartWindows;
   private readonly orbitLineWindows: OrbitLineWindows;
-  private expandedBaseWindowKey: string | null = null;
   // どの被選択物にも当たらなかった右クリックの落ち先。位置を持たないので1つを使い回す。
   private readonly emptySpace: ObjectPickable = new EmptySpacePickable();
   // 直近のマップフォーカス — プロパティウィンドウのバッジ判定に使う。マップを離れている間は
   // 最後にマップ視点だった時点の値のまま据え置く。
   private lastFocusId: string | undefined = undefined;
-
-  // ドッキングの実行先を登録する。登録するまでドッキング関連の項目は効かない。
-  setDocking(docking: Docking): void {
-    this.docking = docking;
-    docking.basePanel.onClose = () => this.collapseBasePanel();
-  }
-  private docking: Docking | null = null;
 
   // 候補集合(pickables)と、メニュー項目の実行先を参照として受け取る。
   constructor(
@@ -126,10 +116,6 @@ export class ObjectWindows implements ObjectCommands {
       if (act === 'delete' || (!w.clipped && !keepOpen)) this.closeWindow(key);
     };
     w.onClose = () => {
-      if (this.expandedBaseWindowKey === key) {
-        this.expandedBaseWindowKey = null;
-        this.docking?.closePanel();
-      }
       this.partWindows.closeFor(entry.target.id);
       this.forgetWindow(key);
     };
@@ -159,14 +145,6 @@ export class ObjectWindows implements ObjectCommands {
     entry.win.close();
   }
 
-  private collapseBasePanel(): void {
-    if (this.expandedBaseWindowKey !== null) {
-      this.windows.get(this.expandedBaseWindowKey)?.win.setExpandedPanel(null);
-      this.expandedBaseWindowKey = null;
-    }
-    this.docking?.closePanel();
-  }
-
   // 開いている全プロパティウィンドウの値を最新化する。対象そのものが消滅していれば
   // (撃破・回収・削除)閉じる — 未来ゴースト時刻で位置が求まらないだけのフレーム
   // (posAt が null)は候補列から外れるだけで消滅ではないので、生存判定は対象の gone で行う。
@@ -189,8 +167,7 @@ export class ObjectWindows implements ObjectCommands {
     this.orbitLineWindows.sync();
   }
 
-  // 開いたままのメニュー・ウィンドウを畳む。マップビューを離れるときと、ドッキングで対象が
-  // 世界から消えるときに呼ぶ。
+  // 開いたままのメニュー・ウィンドウを畳む。マップビューを離れるときに呼ぶ。
   close(): void {
     this.menu.close();
     for (const key of [...this.windows.keys()]) this.closeWindow(key);
@@ -301,25 +278,6 @@ export class ObjectWindows implements ObjectCommands {
     this.open(clientX, clientY, target, this.pickables.lastSimTime);
   }
 
-  selectBase(base: Base): void {
-    this.docking?.selectBase(base);
-  }
-
-  // 展開済みの基地パネルを畳むか、その基地のプロパティウィンドウへ新しく開く。基地パネルは
-  // 同時に1枚だけなので、別の基地のものが開いていれば先に畳む。
-  toggleBasePanel(base: Base): void {
-    if (this.expandedBaseWindowKey === base.id) {
-      this.collapseBasePanel();
-      return;
-    }
-    const entry = this.windows.get(base.id);
-    if (!entry || !this.docking) return;
-    this.collapseBasePanel();
-    entry.win.setExpandedPanel(this.docking.openPanel(base));
-    this.expandedBaseWindowKey = base.id;
-    entry.win.bringToFront();
-  }
-
   toggleNavTarget(id: string, name: string): void {
     this.navTarget.toggleTarget(id, name);
   }
@@ -349,23 +307,7 @@ export class ObjectWindows implements ObjectCommands {
 
   removeBase(base: Base): void {
     if (this.activePlayers.controlledBase === base) this.activePlayers.setBase(null);
-    this.docking?.clearActiveBaseIf(base);
     base.alive = false;
-  }
-
-  dock(target: DynamicEntity): void {
-    const ship = this.activePlayers.current;
-    if (ship) this.docking?.dockTo(ship, target);
-  }
-
-  undock(): void {
-    const ship = this.activePlayers.current;
-    if (ship) this.docking?.undock(ship);
-  }
-
-  transferResources(target: Player): void {
-    const ship = this.activePlayers.current;
-    if (ship) this.docking?.openTransfer(ship, target);
   }
 
   duplicate(kind: DynamicEntityKind, state: KinematicState): void {
@@ -392,16 +334,5 @@ export class ObjectWindows implements ObjectCommands {
 
   canNavTarget(id: string, simTime: number): boolean {
     return this.navTarget.canTarget(id, this.entities, this.celestialSystem, simTime);
-  }
-
-  dockState(target: DynamicEntity): DockState {
-    const ship = this.activePlayers.current;
-    if (ship === null || this.docking === null || ship === target) return 'none';
-    if (this.docking.getDockedTarget(ship) === target) return 'docked';
-    return this.docking.canDock(ship, target) ? 'dockable' : 'none';
-  }
-
-  isBasePanelExpanded(base: Base): boolean {
-    return this.expandedBaseWindowKey === base.id;
   }
 }
