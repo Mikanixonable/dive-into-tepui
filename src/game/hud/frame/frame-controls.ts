@@ -4,7 +4,7 @@ import { bodyAnchorSource } from '../../../physics/attractor';
 import { FRAME_ROLES, FrameRole, FrameRotationSource, frameRoleOf } from '../../../physics/frame';
 import type { FrameAnchorSource } from '../../../physics/frame';
 import { Vec3 } from '../../../math/vec3';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import { FocusCamera } from '../../camera/focus-camera';
 import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-target';
 import type { DisplayWindowManager } from '../../display-window-manager';
@@ -37,15 +37,15 @@ export class FrameControls {
   public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialBodies: CelestialBodies,
     private readonly mapCamera: FocusCamera,
     private readonly displayWindow: DisplayWindowManager,
     overlayManager: OverlayManager,
     private readonly frameAnchors: FrameAnchorSource,
   ) {
-    this.cameraPanel = new CameraFramePanel(panelRoot, popupRoot, celestialSystem, mapCamera, overlayManager);
+    this.cameraPanel = new CameraFramePanel(panelRoot, popupRoot, celestialBodies, mapCamera, overlayManager);
     this.trajectoryPanel = new TrajectoryFramePanel(
-      panelRoot, popupRoot, celestialSystem, displayWindow, overlayManager,
+      panelRoot, popupRoot, celestialBodies, displayWindow, overlayManager,
     );
 
     this.cameraPanel.onSelectCenter = (id) => this.selectCameraCenter(id);
@@ -70,12 +70,12 @@ export class FrameControls {
       this.setFocus({ kind: 'object', id });
       return;
     }
-    const frames = this.celestialSystem.frames;
-    const star = this.celestialSystem.star;
-    const frame = star !== null ? frames.frameOf(star.id, null) : frames.inertialFrame;
+    const frames = this.celestialBodies.frames;
+    const starId = this.celestialBodies.starId;
+    const frame = starId !== null ? frames.frameOf(starId, null) : frames.inertialFrame;
     // 回さないので基準は必ず登録天体で、機体・役割トークンを解く材料が要らない。
     this.setFocus(focusPoint(
-      this.celestialSystem.frames, frame, this.mapCamera.resolvedFocus, this.lastTime, bodyAnchorSource([], this.lastTime),
+      this.celestialBodies.frames, frame, this.mapCamera.resolvedFocus, this.lastTime, bodyAnchorSource([], this.lastTime),
     ));
   }
 
@@ -85,15 +85,15 @@ export class FrameControls {
     this.mapCamera.setFocusTarget(target);
     if (!this.trajectoryPanel.followCamera) return;
     const id = focusTargetId(target);
-    if (id !== undefined && this.celestialSystem.has(id)) {
-      this.displayWindow.frame = this.celestialSystem.frames.frameOf(id, this.displayWindow.frame.rotatingWith);
+    if (id !== undefined && this.celestialBodies.has(id)) {
+      this.displayWindow.frame = this.celestialBodies.frames.frameOf(id, this.displayWindow.frame.rotatingWith);
     }
   }
 
   // 軌道フレームが選んでいる役割の公転が成立しなくなったら、慣性系へ落とす。
   public update(displayTime: number): void {
     if (this.isStaleRole(this.displayWindow.frame.rotatingWith, this.validRevolutionRoles(displayTime))) {
-      this.displayWindow.frame = this.celestialSystem.frames.frameOf(this.displayWindow.frame.center, null);
+      this.displayWindow.frame = this.celestialBodies.frames.frameOf(this.displayWindow.frame.center, null);
     }
   }
 
@@ -103,7 +103,7 @@ export class FrameControls {
     simTime: number, displayTime: number,
   ): void {
     this.lastTime = simTime;
-    const members = this.celestialSystem.systemMembersAt(cameraPos, displayTime);
+    const members = this.celestialBodies.systemMembersAt(cameraPos, displayTime);
     this.cameraPanel.sync(pickables, members, displayTime);
     this.trajectoryPanel.sync(pickables, members, displayTime, this.validRevolutionRoles(displayTime));
   }
