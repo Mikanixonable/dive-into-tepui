@@ -410,6 +410,9 @@ export class Game {
     // カメラ位置だけが絶対 ECI に取り残され、追従対象が軌道速度で流れて即フレームアウトする。
     const activeControllable = this.activeControllable;
     const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, activeControllable);
+    // 過去表示に要る履歴の長さを要求する。次の積分がサンプルを積むまでに立っていればよいので、
+    // 窓が確定したこの場で渡す。
+    this.dynamicSystem.requestHistoryDuration(displayWindow.pastDuration);
     const view = this.viewManager.current;
     const canDisplayFuture = !this.displayWindowManager.forceCurrent;
     // このフレームが天体を引く表示時刻を差し込む: 以降の frameTransformAt 呼び出しは
@@ -460,9 +463,6 @@ export class Game {
   // 自機の行動 → ステージ → 積分 → エフェクトの順に1フレーム進める
   // (残骸・弾の先端時刻はどの状況でも進め続ける)。
   private advanceSimulation(dt: number): void {
-    // 過去表示に要る履歴の長さを、積分がサンプルを積む前に要求しておく。表示窓は前フレームの
-    // 確定値でよい — 保持窓が1フレーム遅れても描ける区間は変わらない。
-    this.dynamicSystem.requestHistoryDuration(this.displayWindowManager.current.pastDuration);
     // このフレームで使う倍率を最初に一度だけ確定する。燃料消費・操作ゲート・積分が
     // 自動ワープの段階変更を跨いで別の倍率を読むと、同じ区間を表さなくなる。
     this.simSpeedManager.update(this.simulator.simTime);
