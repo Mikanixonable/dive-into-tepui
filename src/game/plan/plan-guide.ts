@@ -38,7 +38,7 @@ export class PlanGuide {
   }
 
   // 実行時刻を過ぎたノードを計画から落とし、直近ノードへの接近と計画軌道の達成を
-  // ノードごとに一度だけ通知する。controlled がいなければ何もしない。
+  // ノードごとに一度だけ通知する。操作対象がいなければ何もしない。
   update(controlled: Controllable | null, simTime: number, celestialBodies: readonly CelestialMotion[]): void {
     if (!controlled) return;
     const plan = controlled.plan;
