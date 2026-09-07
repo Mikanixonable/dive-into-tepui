@@ -87,8 +87,8 @@ const TRANSLUCENT_LIMIT = 0.63;
 // weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した伝達関数から、
 // 雲頂高度は 層状の雲から立つ塔と、渦の芯が敷く金床の高いほうから出る — 覆う広さは湿度が、
 // 層の高さは上昇流と暖気の流入と気団の折り目の帯が、塔は粒の峰が、平らな天蓋は渦の芯が決める。
-// **対流の活発度が効くのは被覆率と塔で、層状の雲頂は活発度に依らず対流をそのまま受ける** —
-// 一面に覆われた空も一様な白い面にはならない(`DEVELOP/SPEC/RENDERING.md`「雲の描画」)。
+// **対流の活発度は被覆率と塔へ効き、沈降する海洋性層積雲では層状の起伏も低くなる** — 一面に
+// 覆われた空も一様な白い面にはならない(`DEVELOP/SPEC/RENDERING.md`「雲の描画」)。
 export function condense(weather: WeatherSample): CloudSample {
   // 網目と粒を湿度で混ぜる。混ぜると振れ幅が落ちるので、二乗和の平方根で戻す — 戻さないと
   // 渡りの中間(半々)に、粒の消えた平坦な帯ができる。
@@ -98,9 +98,16 @@ export function condense(weather: WeatherSample): CloudSample {
     .mul(inverseSqrt(network.mul(network).add(shape.mul(shape))));
   const peak = convection.mul(weather.convectiveActivity);
   const granularity = peak.mul(CONVECTION_GAIN).mul(weather.band.mul(BAND_GRAIN_FADE).oneMinus());
+  // 沈降する湿った低活発度の空では海洋性層積雲へ連続的に移り、前線帯ではその性質を薄める。
+  const subsidence = max(weather.lift.negate(), 0);
+  const stratocumulus = smoothstep(0.42, 0.62, weather.surfaceHumidity)
+    .mul(tanh(subsidence.mul(CLOUD_TOP_LIFT)))
+    .mul(float(1).sub(weather.convectiveActivity)).mul(weather.band.oneMinus());
   // 層状の雲: 上昇流と暖気の流入と折り目の帯が持ち上げる高さに、対流の起伏が乗る。
+  const convectionRelief = mix(float(1), weather.convectiveActivity, stratocumulus);
   const depth = max(weather.lift, 0).mul(CLOUD_TOP_LIFT).add(weather.warmth.mul(WARM_TOP))
-    .add(weather.band.mul(BAND_TOP)).add(convection.mul(CLOUD_TOP_RELIEF)).sub(CLOUD_TOP_BIAS);
+    .add(weather.band.mul(BAND_TOP)).add(convection.mul(CLOUD_TOP_RELIEF).mul(convectionRelief))
+    .sub(CLOUD_TOP_BIAS);
   const layered = float(1).add(exp(depth.negate())).reciprocal().mul(LAYER_TOP_SPAN).add(CLOUD_BASE_HEIGHT);
   // 塔: 粒の正の側(細胞の芯)が柱として立ち、いちばん高いものが圏界面へ届く。高さは層状の雲から
   // 圏界面までを二乗で渡すので、低い塔が多く高い塔は少ない。**塔は、その場が覆われるほど湿っていて、
@@ -114,7 +121,7 @@ export function condense(weather: WeatherSample): CloudSample {
   const anvil = weather.anvil.mul(weather.tropopause);
   // 被覆率は、湿度が効き始めを超えた分を幅で割った t が張る、晴れている割合の補。下端は傾き 0 で
   // 0 から離れ、上端は 1 へ代数の裾で漸近する — 覆われた空にも湿度の差が階調として残る。
-  const moistened = weather.surfaceHumidity.add(granularity);
+  const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(COVERAGE_WIDTH));
   const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
   const clear = excess.mul(excess).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
   // 薄い雲: 靄の項と筋の項の和を、上限へ漸近させる。
