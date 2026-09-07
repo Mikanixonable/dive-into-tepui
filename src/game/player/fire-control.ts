@@ -20,8 +20,13 @@ import type { Stage } from '../stages/stage';
 import { Player } from './player';
 import type { FireSaveData } from '../save/save-data';
 import { HULL_EMISS, ENV_TEMP } from '../dynamic/dynamic-entity/dynamic-entity';
-import { BARREL_SPECIFIC_HEAT, BARREL_RADIATING_AREA_PER_MASS } from '../dynamic/dynamic-entity/debris-piece';
+import { BARREL_SPECIFIC_HEAT, BARREL_RADIATING_AREA_PER_MASS, DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 
+
+// 排出物の剛体接触半径 [m]。薬莢は実物同様に軽く小さい。
+const CASING_PHYS_RADIUS = 0.2;
+const BARREL_PHYS_RADIUS = 0.8;
+const EJECTED_MAG_PHYS_RADIUS = 1.4;
 
 const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりに外殻へ入る熱量 [J]
 
@@ -222,14 +227,14 @@ export class FireControl {
         this.cooldown = 1 / this.player.totalFireRate;
         return;
       case 'mag-reload':
-        this.spawnEjectedMagazineFrame(this.player);
+        this.spawnEjectedMagazineFrame(this.player, registry);
         this._worldSfx.magFeed();
         this.cooldown = 1 / this.player.totalFireRate;
         return;
       case 'barrel-reload':
-        this.spawnEjectedMagazineFrame(this.player);
+        this.spawnEjectedMagazineFrame(this.player, registry);
         this.cooldown = RELOAD_TIME;
-        this.dropBarrel(this.player);
+        this.dropBarrel(this.player, registry);
         this._worldSfx.playReload();
         return;
     }
@@ -256,7 +261,7 @@ export class FireControl {
   }
 
   // 手動リロードを試みる。開始できたら true。
-  manualReload(): boolean {
+  manualReload(registry: EntityRegistry): boolean {
     if (this.cooldown > 0) return false;
 
     // 予備マガジンがあり、かつ装填中のマガジンに実際に補充の余地があるときだけリロードする
@@ -267,7 +272,7 @@ export class FireControl {
     this.barrel = MAGS_PER_BARREL;
     this.cooldown = RELOAD_TIME;
     this._worldSfx.playReload();
-    this.dropBarrel(this.player);
+    this.dropBarrel(this.player, registry);
     return true;
   }
 
@@ -293,7 +298,7 @@ export class FireControl {
       this.player.state.r,
       addScaled(this.player.state.v, fwd, -RECOIL_DV),
     );
-    this.dropCasing(this.player, muzzle);
+    this.dropCasing(this.player, muzzle, registry);
     this.spawnMuzzleFlash(this.player, muzzle, fwd);
 
     activeStage.scoreCounter.recordShot();
@@ -329,11 +334,11 @@ export class FireControl {
 
   // 薬莢: -X 側へ排出(+X 側はマガジンベルトの給弾があるため)。
   // 初速は抑えてゆっくり漂わせる一方、回転速度は個体ごとに大きくばらつかせる。
-  private dropCasing(ship: Ship, muzzle: Vec3): void {
+  private dropCasing(ship: Ship, muzzle: Vec3, registry: EntityRegistry): void {
     // 機体姿勢基準の左右・上方向
     const right = qRotate(ship.att.q, LOCAL_RIGHT);
     const up = qRotate(ship.att.q, LOCAL_UP);
-    this._fx.spawnCasing(
+    registry.add(new DebrisPiece(
       kinematicState<'eci'>(
         ship.state.t,
         add(muzzle, scale(right, -1.4)),
@@ -342,13 +347,14 @@ export class FireControl {
           add(scale(right, -(0.5 + Math.random() * 0.3)), add(scale(up, randSym(0.2)), randVec(0.1))),
         ),
       ),
+      { kind: 'casing', bornSim: ship.state.t },
       {
         q: randomQuat(),
         w: v3(randSym(6.0), randSym(6.0), randSym(6.0)),
         inertia: v3(0.85, 0.3, 1.15), // 円筒: 長軸(y)が最小。x/z も非対称にしジャニベコフ効果を起こす
       },
-      ship.state.t,
-    );
+      this._worldSfx, this._fx, CASING_PHYS_RADIUS, this._scene,
+    ));
   }
 
   // マズルフラッシュ: 発射した側の砲口の少し先に出す。
@@ -378,23 +384,27 @@ export class FireControl {
 
   // バレル交換時に円柱アイテムをデブリとして放出する。装着していた砲身の温度は、そのまま
   // 排出されたデブリへ移る。
-  dropBarrel(ship: Ship): void {
+  dropBarrel(ship: Ship, registry: EntityRegistry): void {
     // 下方に少し勢いをつけて放出
     const down = qRotate(ship.att.q, v3(0, -1, 0));
-    this._fx.spawnBarrel(
+    registry.add(new DebrisPiece(
       kinematicState<'eci'>(
         ship.state.t,
         add(ship.state.r, qRotate(ship.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
         add(ship.state.v, add(scale(down, 3.0), randVec(0.5))),
       ),
       {
+        kind: 'barrel',
+        bornTemperature: this.barrelTemperature,
+        bornThermalDeviation: this.barrelDeviation,
+      },
+      {
         q: ship.att.q,
         w: v3(randSym(2), randSym(2), randSym(2)),
         inertia: v3(1, 0.2, 1), // 円柱
       },
-      this.barrelTemperature,
-      this.barrelDeviation,
-    );
+      this._worldSfx, this._fx, BARREL_PHYS_RADIUS, this._scene,
+    ));
     this.barrelTemperature = ENV_TEMP;
     this.barrelDeviation = 0;
     this.pendingBarrelJoules = 0;
@@ -402,21 +412,23 @@ export class FireControl {
 
   // マガジン1個を撃ち尽くした瞬間、-X 側(薬莢と同じ側)の位置から
   // 空になったマガジンの外枠(弾なし)をデブリとして放出する。
-  private spawnEjectedMagazineFrame(ship: Ship): void {
+  private spawnEjectedMagazineFrame(ship: Ship, registry: EntityRegistry): void {
     // 排出ポートの位置と初速
     const right = qRotate(ship.att.q, LOCAL_RIGHT);
     const portWorld = add(ship.state.r, qRotate(ship.att.q, v3(-0.9, 0, 0)));
-    this._fx.spawnMagazineFrame(
+    registry.add(new DebrisPiece(
       kinematicState<'eci'>(
         ship.state.t,
         portWorld,
         add(ship.state.v, add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15))),
       ),
+      { kind: 'magazineFrame' },
       {
         q: ship.att.q,
         w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
         inertia: v3(1, 1.2, 1.4),
       },
-    );
+      this._worldSfx, this._fx, EJECTED_MAG_PHYS_RADIUS, this._scene,
+    ));
   }
 }
