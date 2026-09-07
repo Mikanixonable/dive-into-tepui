@@ -30,13 +30,10 @@ export class EmptySpacePickable implements ObjectPickable {
   public mapVisibility(): MapVisibility { return MARKER_VISIBILITY; }
   public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.id); }
 
-  // メニューに出す操作項目。物体を置けるステージのマップ視点では、配置の項目が加わる。
-  public menuItems(commands: ObjectCommands): readonly MenuItem<MenuAction>[] {
-    const placeItem: readonly MenuItem<MenuAction>[] = commands.canAuthor && commands.view === 'map'
-      ? [{ label: 'オブジェクトを配置する', act: 'openObjectPlacer', shortcut: 'Enter' }]
-      : [];
+  // メニューに出す操作項目。配置の項目を出せるかは窓側が決める。
+  public menuItems(): readonly MenuItem<MenuAction>[] {
     return [
-      ...placeItem,
+      { label: 'オブジェクトを配置する', act: 'openObjectPlacer', shortcut: 'Enter' },
       { label: '設定メニューを開く', act: 'openSettings' },
       MenuCommon.cancel(),
     ];

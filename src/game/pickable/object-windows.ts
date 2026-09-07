@@ -22,7 +22,7 @@ import { PlanEditor } from '../plan/plan-editor';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ControlSelection } from '../control-selection';
 import type { FrameControls } from '../hud/frame/frame-controls';
-import type { Stage } from '../stages/stage';
+import type { ObjectAuthoring, Stage } from '../stages/stage';
 import { Player } from '../player/player';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
@@ -33,6 +33,7 @@ import type { ObjectPickables } from './object-pickables';
 import { PartWindows } from './part-windows';
 import { OrbitLineWindows } from './orbit-line-windows';
 import type { ObjectCommands } from './object-commands';
+import type { MenuItem } from '../hud/windows/context-menu';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 
@@ -75,10 +76,10 @@ export class ObjectWindows implements ObjectCommands {
     private readonly targeter: Targeter,
   ) {
     this.menu = new ContextMenu<ObjectPickable, MenuAction>(hud.layers.popup, hud.overlayManager);
-    this.menu.onSelect = (act, target) => target.runMenu(act, this);
+    this.menu.onSelect = (act, target) => this.runAct(target, act);
     this.partWindows = new PartWindows(hud, controlSelection);
     this.orbitLineWindows = new OrbitLineWindows(
-      hud, linePickables, pickables, this,
+      hud, linePickables, pickables, (id, name) => this.focus(id, name),
       (clientX, clientY, target) => this.open(clientX, clientY, target, pickables.lastSimTime),
     );
     this.hud.enemiesPanel.onSelectRight = (id, clientX, clientY) => {
@@ -113,7 +114,7 @@ export class ObjectWindows implements ObjectCommands {
     // 操作項目のクリックは、クリップ済みか keepOpen(排他選択肢の切り替え)なら開いたままにする。
     // 「削除」は対象自体が消えるのでどちらでも閉じる。
     w.onSelect = (act, keepOpen) => {
-      entry.target.runMenu(act, this);
+      this.runAct(entry.target, act);
       if (act === 'delete' || (!w.clipped && !keepOpen)) this.closeWindow(key);
     };
     w.onClose = () => {
@@ -130,7 +131,7 @@ export class ObjectWindows implements ObjectCommands {
   // 何にも当たらなかった右クリックの落ち先。マップ・戦闘のどちらもここへ落ちる。
   openEmptySpaceMenu(clientX: number, clientY: number, simTime: number): void {
     const target = this.emptySpace;
-    this.menu.open(clientX, clientY, target, target.menuItems(this, this.celestialSystem, simTime));
+    this.menu.open(clientX, clientY, target, this.offeredItems(target, simTime));
   }
 
   // 台帳から外すだけで DOM 破棄はしない — ✕ ボタン自身が dispose 済みのときに呼ぶ経路。
@@ -201,7 +202,7 @@ export class ObjectWindows implements ObjectCommands {
   private windowParts(
     target: ObjectPickable, simTime: number,
   ): { title: string; subtitle?: string; items: PropertyWindowItem<MenuAction>[] } {
-    const all = target.menuItems(this, this.celestialSystem, simTime);
+    const all = this.offeredItems(target, simTime);
     const header = all.find((it) => it.type === 'header');
     // 戦闘ビューで開いたウィンドウは項目ショートカットを持たせない — [F]/[T] は自機の
     // 進行方向リセット/ターゲット選択が既に使っており、同じキーを両方へは配れない。
@@ -214,6 +215,41 @@ export class ObjectWindows implements ObjectCommands {
         selected: it.selected, keepOpen: it.keepOpen,
       }));
     return { title: header?.label ?? target.name, subtitle: header?.subLabel, items };
+  }
+
+  // 対象が組んだ項目のうち、いま実際に選べるものだけを残す。対象によらない可否
+  // (航法ターゲットにできるか・物体を配置できるか・計画を実行できるステージか)は
+  // 対象ではなくこのランの状態で決まるので、対象には判定させずここで絞る。
+  private offeredItems(target: ObjectPickable, simTime: number): readonly MenuItem<MenuAction>[] {
+    const all = target.menuItems(
+      this.celestialSystem, this.controlSelection.current, this.navTarget.id);
+    return all.filter((it) => {
+      switch (it.act) {
+        case 'target':
+          return this.navTarget.canTarget(
+            target.id, this.dynamicSystem, this.celestialSystem, simTime);
+        case 'duplicate':
+        case 'openObjectPlacer':
+          return this.authoring !== null;
+        case 'planExecCycle':
+          return this.activeStage.executesPlans;
+        default:
+          return true;
+      }
+    });
+  }
+
+  // 選ばれた操作を実行する。対象によらない操作はここで済ませ、残りを対象へ渡す。
+  private runAct(target: ObjectPickable, act: MenuAction): void {
+    if (act === 'focus') this.focus(target.id, target.name);
+    else if (act === 'target') this.navTarget.toggleTarget(target.id, target.name);
+    else target.runMenu?.(act, this);
+  }
+
+  // 物体の配置・複製を差し出せるならその口。配置パネルはマップの操作面なので、戦闘ビューでは
+  // 持っているステージでも差し出さない。
+  private get authoring(): ObjectAuthoring | null {
+    return this.cameraSystem.view === 'map' ? this.activeStage.authoring : null;
   }
 
   // 天体プロパティーの先頭に表示する、現在その天体を周回している物体。
