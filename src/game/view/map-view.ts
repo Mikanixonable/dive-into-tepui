@@ -107,6 +107,7 @@ export class MapView implements ViewFrame {
     this.targeter.updateEquatorNodes(displayWindow, this.celestialSystem, this.frameAnchors);
     this.dynamicSystem.updateBaseEquatorNodes(displayWindow, this.celestialSystem, this.frameAnchors);
     this.objectPickables.refresh(displayWindow);
+    this.frameControls.update(displayWindow.displayTime);
     this.editor.update(displayWindow.simTime);
   }
 

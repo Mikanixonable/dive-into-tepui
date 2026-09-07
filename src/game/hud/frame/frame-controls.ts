@@ -93,6 +93,14 @@ export class FrameControls {
     }
   }
 
+  // 軌道フレームで選択中の役割の公転が条件を崩したら、既存の onSelect と同じ経路
+  // (frame の差し替え)で慣性系へ落とす。カメラ側の同種の検査はカメラ自身が持つ。
+  public update(displayTime: number): void {
+    if (this.isStaleRole(this.displayWindow.frame.rotatingWith, this.validRevolutionRoles(displayTime))) {
+      this.displayWindow.frame = this.celestialSystem.frames.frameOf(this.displayWindow.frame.center, null);
+    }
+  }
+
   // 両パネルの選択肢と選択表示を、他モジュールの状態へ合わせる。
   public sync(
     pickables: readonly ObjectPickable[], cameraPos: Vec3,
@@ -100,16 +108,8 @@ export class FrameControls {
   ): void {
     this.lastTime = simTime;
     const members = this.celestialSystem.systemMembersAt(cameraPos, displayTime);
-    const validRoles = this.validRevolutionRoles(displayTime);
-
-    // 軌道フレームで選択中の役割の公転が条件を崩したら、既存の onSelect と同じ経路
-    // (frame の差し替え)で慣性系へ落とす。カメラ側の同種の検査はカメラ自身が持つ。
-    if (this.isStaleRole(this.displayWindow.frame.rotatingWith, validRoles)) {
-      this.displayWindow.frame = this.celestialSystem.frames.frameOf(this.displayWindow.frame.center, null);
-    }
-
     this.cameraPanel.sync(pickables, members, displayTime);
-    this.trajectoryPanel.sync(pickables, members, displayTime, validRoles);
+    this.trajectoryPanel.sync(pickables, members, displayTime, this.validRevolutionRoles(displayTime));
   }
 
   // 両パネルと、保持している座標系選択ゾーンを片付ける。
