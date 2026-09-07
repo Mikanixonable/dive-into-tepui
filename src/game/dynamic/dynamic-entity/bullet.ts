@@ -1,6 +1,7 @@
 // 実体弾とプラズマ弾。飛翔と寿命・接触の帰結を持ち、残像として見える向きを毎フレーム組む。
 import * as THREE from 'three/webgpu';
 import { DynamicEntity } from './dynamic-entity';
+import type { InstancedPools } from './instanced-pools';
 import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { CelestialMotion } from '../../../physics/celestial-motion';
@@ -122,6 +123,20 @@ export class Bullet extends DynamicEntity {
         this.renderObject.position.copy(fo.RtoThreeV3(s.r));
         if (!orientProjectile(tmpQuat, fo.VtoThreeV3(s.v))) return;
         this.renderObject.quaternion.copy(tmpQuat);
+    }
+
+    // 弾種に対応するプールへ、同期済みの変換を積む。
+    public override pushInstances(pools: InstancedPools): void {
+        if (!this.renderObject.visible) return;
+        if (this.type === 'plasma') {
+            pools.pushPlasma(this.renderObject);
+            return;
+        }
+        // 本体+ハローの Group。シーン外なので matrixWorld は自前で更新する必要があり、
+        // 親で1回呼べば子(本体・ハロー)まで連鎖して更新される。
+        this.renderObject.updateMatrixWorld();
+        pools.pushBulletBody(this.renderObject.children[0]!);
+        pools.pushBulletHalo(this.renderObject.children[1]!);
     }
 }
 

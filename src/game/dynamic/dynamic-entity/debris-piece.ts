@@ -18,6 +18,7 @@ import {
   buildBoosterExplosiveBoltMesh,
   buildBoosterInterstageCoverPanelMesh,
 } from '../../../render/booster';
+import type { InstancedPools } from './instanced-pools';
 import { DynamicEntity, SMALL_DEBRIS_BCINV, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS_BULK_DENSITY, SMALL_DEBRIS_SPECIFIC_HEAT, SMALL_DEBRIS_RADIATING_AREA_PER_MASS, SMALL_DEBRIS_MAX_TEMP } from './dynamic-entity';
 import { Player } from '../../player/player';
 import { Bullet } from './bullet';
@@ -104,7 +105,7 @@ export class DebrisPiece extends DynamicEntity {
   }
 
   // fragment のみ意味を持つ: どのバリアントジオメトリを使うか、InstancedPool の
-  // per-instance color へ渡す色。DynamicSystem.sync が variant ごとのプールへ push する。
+  // per-instance color へ渡す色。
   readonly fragmentVariant: number;
   readonly fragmentColor: THREE.Color | null;
   override readonly capKind: CapKind;
@@ -157,6 +158,14 @@ export class DebrisPiece extends DynamicEntity {
   }
 
   get kind(): DebrisKind['kind'] { return this.debrisKind.kind; }
+
+  // 薬莢と破片(fragment)を、対応するプールへ積む。他の種別は自前のメッシュで描かれる。
+  override pushInstances(pools: InstancedPools): void {
+    if (this.kind === 'casing') pools.pushCasing(this.renderObject);
+    else if (this.kind === 'fragment') {
+      pools.pushDebrisFragment(this.fragmentVariant, this.renderObject, this.fragmentColor!);
+    }
+  }
 
   // 弾が当たったらガスパフを噴いて消える(弾自身の消滅は Bullet.collideWithEntity が書く)。
   // 薬莢が艦(操作対象に限らず Player 全般)に触れたときは、からんと音を鳴らす。
