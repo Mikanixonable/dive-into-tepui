@@ -234,10 +234,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   // -------------------------------------------------------- 移動/射撃 状態
-  get rcsDamp(): boolean { return this.throttle.rcsDamp; }
-  get throttleIdx(): number { return this.throttle.throttleIdx; }
-  get progradeHold(): boolean { return this.throttle.progradeHold; }
-
   get roundsInMag(): number { return this.fire.rounds; }
   get magsLeft(): number { return this.fire.mags; }
   get magsLeftInBarrel(): number { return this.fire.barrel; }
@@ -256,7 +252,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 毎フレーム、全ての自機に対して1度だけ呼ぶ。input が null の艦は、このフレーム操作されない
   // 艦として畳む。
-  public updatePlayerControls(
+  public updateControls(
     input: Input | null,
     dt: number,
     simDt: number,
@@ -518,13 +514,13 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 自機のメッシュ・エフェクト・ベルト・マーカーを displayTime の状態へ同期する。
   // isActive はこの艦が操作対象かどうか(ガンサイト時の非表示・方位マーカー・RCS 音が変わる)。
-  syncPlayer(
+  syncControllable(
     fo: FloatingOrigin,
     camera: CameraSystem,
     displayTime: number,
     isActive: boolean,
     style: RenderStyle,
-    visibility: MapVisibility | null = null,
+    visibility: MapVisibility | null,
     orbitRef?: OrbitReference,
   ): void {
     // メッシュ本体の位置・姿勢

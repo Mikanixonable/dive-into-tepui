@@ -115,7 +115,7 @@ export class CombatView implements ViewFrame {
     const player = this.activePlayers.current;
     if (player) {
       this.touchControls?.syncModeButtons(
-        player.rcsDamp, player.fineAttitude, player.progradeHold,
+        player.throttle.rcsDamp, player.fineAttitude, player.throttle.progradeHold,
         (key) => player.throttle.isThrustLatched(key),
       );
     }

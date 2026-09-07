@@ -309,7 +309,7 @@ export class DynamicSystem {
     for (const e of this.all()) e.requestHistoryDuration(sec);
   }
 
-  // 毎フレーム、全ての自機へ updatePlayerControls を1度ずつ通す。
+  // 毎フレーム、全ての自機へ updateControls を1度ずつ通す。
   updatePlayers(
     activePlayer: Player | null, input: Input | null, operable: boolean,
     dt: number, simDt: number, activeStage: Stage, celestialSystem: CelestialSystem,
@@ -317,7 +317,7 @@ export class DynamicSystem {
     for (const booster of this.detachedBoosters) if (booster.alive) booster.updateBurn(simDt);
     // 「操作対象でない」と「操作できないワープ倍率」は同じ状態なので、input を渡すかで一つに束ねる。
     for (const ship of this.players) {
-      ship.updatePlayerControls(
+      ship.updateControls(
         ship === activePlayer && operable ? input : null,
         dt,
         simDt,
@@ -328,16 +328,20 @@ export class DynamicSystem {
     }
   }
 
-  // 毎フレーム、全ての基地へ updateBaseControls を1度ずつ通す。input が渡るのは操作対象の基地。
+  // 毎フレーム、全ての基地へ updateControls を1度ずつ通す。input が渡るのは操作対象の基地。
   updateBases(
     controlledBase: Base | null, input: Input, operable: boolean, dt: number, simDt: number,
+    activeStage: Stage, celestialSystem: CelestialSystem,
   ): void {
     for (const base of this.bases) {
       if (!base.alive) continue;
-      base.updateBaseControls(
+      base.updateControls(
         base === controlledBase && operable ? input : null,
         dt,
         simDt,
+        this,
+        activeStage,
+        celestialSystem,
       );
     }
   }
@@ -372,7 +376,7 @@ export class DynamicSystem {
     displayTime: number, style: RenderStyle, visibilityPolicy: MapVisibilityPolicy | null, orbitRef?: OrbitReference,
   ): void {
     for (const ship of this.players) {
-      ship.syncPlayer(
+      ship.syncControllable(
         fo, cameraSystem, displayTime, ship === activePlayer, style,
         visibilityPolicy?.entity('player', ship === activePlayer) ?? null, orbitRef,
       );
@@ -397,7 +401,7 @@ export class DynamicSystem {
   ): void {
     for (const base of this.bases) {
       if (!base.alive) continue;
-      base.syncBase(
+      base.syncControllable(
         fo, cameraSystem, displayTime, base === controlledBase, style,
         visibilityPolicy?.entity('base') ?? null,
       );
