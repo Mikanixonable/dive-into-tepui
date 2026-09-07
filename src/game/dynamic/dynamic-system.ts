@@ -187,14 +187,6 @@ export class DynamicSystem {
     entity.dispose();
   }
 
-  // 艦を取り除くが破棄はしない(基地への収容など、後で add で復帰させる場合)。
-  // 顔ぶれから外れると毎フレームの同期が届かなくなるので、マーカーはここで畳む。
-  public park(entity: DynamicEntity): void {
-    if (!this.detach(entity)) return;
-    entity.equatorNodes?.dispose();
-    entity.equatorNodes = null;
-  }
-
   // 顔ぶれから外す。保持していなければ false。
   private detach(entity: DynamicEntity): boolean {
     const i = this.entities.indexOf(entity);
@@ -230,7 +222,7 @@ export class DynamicSystem {
   }
 
   // id で名指しされた自機を返す。見つからなければ null。
-  findPlayer(id: string): Player | null {
+  private findPlayer(id: string): Player | null {
     return this.players.find((p) => p.id === id) ?? null;
   }
 
