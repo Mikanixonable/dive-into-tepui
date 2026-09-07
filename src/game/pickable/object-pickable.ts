@@ -54,12 +54,14 @@ export interface ObjectPickable {
   listPriority(viewer: Controllable | null): number;
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。先頭の header 項目は
-  // ウィンドウのタイトル/サブタイトルへ抜き出される。
+  // ウィンドウのタイトル/サブタイトルへ抜き出される。出せない項目を自分で間引く必要はない
+  // — 出せるかどうか(航法ターゲットの可否・物体の配置の可否)は窓側が絞る。
   menuItems(
-    commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
+    celestialSystem: CelestialSystem, viewer: Controllable | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[];
-  // 選ばれた操作を実行する。自分が出していない act では何もしない。
-  runMenu(act: MenuAction, commands: ObjectCommands): void;
+  // 自分に固有の操作を実行する。フォーカス・ターゲット・複製など、対象によらない操作は
+  // 窓側が実行するのでここへは来ない。固有の操作を持たない対象は null。
+  readonly runMenu: ((act: MenuAction, commands: ObjectCommands) => void) | null;
 
   // プロパティウィンドウに出す行。simTime は天体位置を厳密に引く時刻、displayTime は
   // 候補の位置を引き直す時刻。

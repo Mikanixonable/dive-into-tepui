@@ -339,20 +339,20 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
-    commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number,
+    _celestialSystem: CelestialSystem, viewer: Controllable | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
     const subLabel = `基地 / 所持金: ${this.baseState.money.toLocaleString()} Cr`;
-    const controlItem: MenuItem<MenuAction> = commands.controlled === this
+    const controlItem: MenuItem<MenuAction> = viewer === this
       ? { label: '操作対象を解除', act: 'deactivate' }
       : { label: '操作対象にする', act: 'activate' };
 
     return [
       { type: 'header', label: this.name, subLabel },
-      ...MenuCommon.targetItems(commands, this.id, simTime),
+      MenuCommon.target(navTargetId === this.id),
       controlItem,
       MenuCommon.focus(),
       MenuCommon.trajectoryLine(this.showTrajectoryLine),
-      ...MenuCommon.duplicateItems(commands),
+      MenuCommon.duplicate(),
       { label: '削除', act: 'delete' },
       MenuCommon.cancel(),
     ];
@@ -373,10 +373,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       commands.removeControlled(this);
     } else if (act === 'duplicate') {
       commands.duplicate(this.mapKind, this.state);
-    } else if (act === 'focus') {
-      commands.focus(this.id, this.name);
-    } else if (act === 'target') {
-      commands.toggleNavTarget(this.id, this.name);
     }
   }
 
