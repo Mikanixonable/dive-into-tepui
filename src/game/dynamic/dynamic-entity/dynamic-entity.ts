@@ -27,7 +27,7 @@ import { TrajectoryLine } from '../../lines/trajectory-line';
 import { LineStyle } from '../../../render/line-style';
 import { FrameAnchorSource, ReferenceFrame } from '../../../physics/frame';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { CapKind } from './entity-kind';
+import type { CapKind, DynamicEntityKind } from './entity-kind';
 import { PredictedArc, trajectorySampleInterval } from '../predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from '../time-step';
 import type { FutureCelestialBodyProvider } from '../arc-celestial-bodies';
@@ -101,6 +101,10 @@ export class DynamicEntity {
   alive = true;
   // 同時に存在してよい数のどの枠から取るか。null = 上限なし。
   public readonly capKind: CapKind | null = null;
+  // マップの表示トグルがこの個体を分類する種別。null = トグルを持たない(弾・薬莢・破片)。
+  public readonly mapKind: DynamicEntityKind | null = null;
+  // Controllable を実装しているか。isControllable() がこれを読む。
+  public readonly controllable: boolean = false;
   // 死亡しても顔ぶれに残り、所有者が取り除くまで破棄されないか。散った参照の掃除や次の個体への
   // 引き継ぎが要る種別が立てる。
   public readonly reclaimedByOwner: boolean = false;
