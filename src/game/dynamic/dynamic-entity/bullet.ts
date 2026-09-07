@@ -1,7 +1,7 @@
 // 実体弾とプラズマ弾。飛翔と寿命・接触の帰結を持ち、残像として見える向きを毎フレーム組む。
 import * as THREE from 'three/webgpu';
 import { DynamicEntity } from './dynamic-entity';
-import type { InstancedPools } from './instanced-pools';
+import type { InstancedPools } from '../instanced-pools';
 import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { CelestialMotion } from '../../../physics/celestial-motion';
