@@ -67,7 +67,6 @@ export class StageDebug extends Stage {
     const player = this.ship;
     if (!player) return;
     for (const e of this._dynamicSystem.all().filter(isEnemy)) e.fireEnabled = this.enemyFireEnabled;
-    this.behaveAllEnemies(player, simTime, simSpeed);
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }
 
