@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import type { View } from '../view/view';
 import { Attitude } from '../../physics/attitude';
-import { LOCAL_FORWARD, qFromBasis, qRotate } from '../../math/quat';
+import { qFromBasis } from '../../math/quat';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
 import { Vec3, add, v3, len, sub } from '../../math/vec3';
@@ -72,9 +72,6 @@ const HULL_START_TEMP = 273; // 初期機体温度 [K]
 
 const INITIAL_ALT = 420e3; // 初期高度 [m]
 const INITIAL_INC_DEG = 97.0; // 初期軌道傾斜角 [deg]
-// 艦首(+Z)の船体外側に置く単一の接続ポート。位置は姿勢から導出し、保存しない。
-const SHIP_PORT_OFFSET = v3(0, 0, 3.0);
-
 // 展開中の放熱板に当たった1発が放熱板パーツへ与えるダメージ [HP]。薄く大きい構造物なので
 // 船体への直撃(PLASMA_BULLET_DAMAGE)より軽い。
 const RADIATOR_BULLET_DAMAGE = 0.25;
@@ -246,16 +243,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   get magsLeftInBarrel(): number { return this.fire.barrel; }
   get reloadTimer(): number { return this.fire.cooldown; }
   get isFiring(): boolean { return this.fire.isFiring; }
-
-  // 機首(+Z)に固定された単一ドッキングポートの位置(ECI)。姿勢から毎回導出する。
-  getPortWorldPos(): Vec3 {
-    return add(this.state.r, qRotate(this.att.q, SHIP_PORT_OFFSET));
-  }
-
-  // ドッキングポートの向き(ECI、単位ベクトル)。
-  getPortWorldNormal(): Vec3 {
-    return qRotate(this.att.q, LOCAL_FORWARD);
-  }
 
   // 弾薬ピックアップで得たマグ数を加算する。
   onPickup(mags: number): void {
@@ -708,19 +695,12 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       ? [{ label: planExecLabel, act: 'planExecCycle', keepOpen: true }]
       : [];
 
-    const dockState = commands.dockState(this);
-    const dockItems: readonly MenuItem<MenuAction>[] =
-      dockState === 'docked' ? [MenuCommon.transferResources(), MenuCommon.undock()]
-        : dockState === 'dockable' ? [MenuCommon.dock()]
-          : [];
-
     // 操作対象の自艦は予測線・過去線に固定されるので、トグルは非操作艦にだけ出す。
     const trajectoryItem: readonly MenuItem<MenuAction>[] = isActive
       ? [] : [MenuCommon.trajectoryLine(this.showTrajectoryLine)];
 
     return [
       ...MenuCommon.targetItems(commands, this.id, simTime),
-      ...dockItems,
       ...planExec,
       activate,
       MenuCommon.focus(),
@@ -735,12 +715,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   public runMenu(act: MenuAction, commands: ObjectCommands): void {
     if (act === 'toggleTrajectoryLine') {
       this.showTrajectoryLine = !this.showTrajectoryLine;
-    } else if (act === 'dock') {
-      commands.dock(this);
-    } else if (act === 'undock') {
-      commands.undock();
-    } else if (act === 'transferResources') {
-      commands.transferResources(this);
     } else if (act === 'activate') {
       commands.setActivePlayer(this);
     } else if (act === 'deactivate') {

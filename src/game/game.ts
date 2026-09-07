@@ -51,7 +51,6 @@ import { LoadingProgress } from './loading-progress';
 import { createJulianDate, type TdbJulianDate } from '../physics/time';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { frameRoleOf } from '../physics/frame';
-import { Docking } from './docking/docking';
 import { ViewBadge } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
 
@@ -101,7 +100,6 @@ export class Game {
   readonly simulator: Simulator;
   private readonly predictor: Predictor;
   private readonly nanWatchdog: NanWatchdog;
-  private readonly docking: Docking;
   private readonly viewBadge: ViewBadge;
   private readonly frameControls: FrameControls;
   // 計測区間の境界を打つ先。
@@ -326,18 +324,10 @@ export class Game {
       this.activePlayers, this.frameControls, this.activeStage, this.targeter,
     );
 
-    this.docking = new Docking(
-      this._hud, this._worldSfx, this._scene, this.dynamicSystem.effects, this.markerManager,
-      this.dynamicSystem, this.objectWindows, this.cameraSystem,
-      (view) => this.viewManager.setView(view),
-      this.activePlayers, this.activeStage,
-    );
-    this.objectWindows.setDocking(this.docking);
-
     const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.objectWindows, this.dynamicSystem,
       this.celestialMarkers, this.touchControls,
-      this.activePlayers, this.docking.guide, this.planDisplay.path, celestialSystem,
+      this.activePlayers, this.planDisplay.path, celestialSystem,
       this.simSpeedManager, this._hud, uiSfx, this.markerManager,
     );
     const mapView = new MapView(
@@ -382,7 +372,6 @@ export class Game {
   dispose(): void {
     this.viewBadge.dispose();
     this.viewManager.dispose();
-    this.docking.dispose();
     this.objectWindows.dispose();
     this.activeStage.dispose();
     // Hud はこのゲームより長生きするので、書き換えたクラスと差し込んだ参照を元へ戻す。
@@ -496,7 +485,6 @@ export class Game {
       dt, simDt, this.player, this.activeStage,
       canEngage, this.nanWatchdog);
     this.sections.exit(SECTION.integrate);
-    this.docking.updateDockedPhysics();
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
     this.nanWatchdog.checkAll('simulator.advance', this.player, this.dynamicSystem, this.simulator.simTime, dt, simDt);
 

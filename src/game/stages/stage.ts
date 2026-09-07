@@ -144,8 +144,6 @@ export abstract class Stage {
   }
   public get id(): StageId { return this.stageClass.id; }
 
-  // ドックでの購入・修理・燃料補給を無償にするか。既定では通貨を消費する。
-  public readonly freeProcurement: boolean = false;
   // 艦の軌道計画を自動実行させるか。既定では実行しない。
   public readonly executesPlans: boolean = false;
   // オブジェクトの配置・複製に対応するステージは自身の編集口を返す。既定では非対応。

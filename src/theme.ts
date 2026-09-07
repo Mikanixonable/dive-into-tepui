@@ -316,7 +316,6 @@ export const Z_HUD_NODE_GIZMO = 5; // #hud 内部だが overlay-layer の層を�
 const Z_HUD_RAIL_TOGGLE = 20; // 同上
 const Z_HUD_TITLE_MENU = 110;
 export const Z_STAGE_SELECT = 100;
-const Z_RESOURCE_TRANSFER_DIALOG = 100;
 export const Z_LOADING_OVERLAY = 200;
 export const Z_FATAL_ERROR = 1000;
 
@@ -438,7 +437,6 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--z-hud': String(Z_HUD),
   '--z-hud-title-menu': String(Z_HUD_TITLE_MENU),
   '--z-hud-rail-toggle': String(Z_HUD_RAIL_TOGGLE),
-  '--z-resource-transfer-dialog': String(Z_RESOURCE_TRANSFER_DIALOG),
   '--safe-t': SAFE_AREA_TOP,
   '--safe-r': SAFE_AREA_RIGHT,
   '--safe-b': SAFE_AREA_BOTTOM,

@@ -154,7 +154,7 @@ export class DraggableWindow implements OverlayHandle {
     this.clipBtn.element.setAttribute('aria-label', 'クリップ');
     this.clipBtn.element.classList.toggle('clipped', this._clipped);
 
-    // ✕ は他の3窓(格納庫/セーブブラウザ/設定)と同じ見た目に統一する。
+    // ✕ は他の窓(セーブブラウザ/設定)と同じ見た目に統一する。
     const closeBtn = new CloseButton(() => this.close());
 
     header.appendChild(title);

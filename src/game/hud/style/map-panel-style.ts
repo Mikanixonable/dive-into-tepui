@@ -81,7 +81,6 @@ export const MAP_PANEL_STYLE = `
   background: var(--surface); color: var(--color-primary);
 }
 #hud .hud-map-root.active #hud-predict-toggle { display: block; }
-#hud.dock-mode #hud-predict-toggle { display: none; }
 #hud-predict .predict-row1, #hud-predict .predict-row2 { display: flex; align-items: center; gap: var(--space-3); }
 #hud-predict .predict-row1 { flex-wrap: wrap; margin-bottom: var(--space-2); }
 #hud-predict .predict-pills { display: inline-flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
