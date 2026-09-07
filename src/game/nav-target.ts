@@ -129,19 +129,19 @@ export class NavTarget {
   // セーブデータからの復元用。id が敵・自機・基地を指していた場合はそれが生存していないと
   // 復元しない(撃墜・破壊されていれば未選択に戻す)。天体・ラグランジュ点など消滅しない対象は
   // 常に復元する。ヒントは出さない。
-  restore(data: { id: string; name: string } | null | undefined, entities: DynamicSystem): void {
+  restore(data: { id: string; name: string } | null | undefined, dynamicSystem: DynamicSystem): void {
     if (!data) return;
-    const wasEntityId = entities.findEnemy(data.id) !== null
-      || entities.controllables.some((c) => c.id === data.id);
-    if (wasEntityId && !entities.findAliveCombatTarget(data.id)) return;
+    const wasEntityId = dynamicSystem.findEnemy(data.id) !== null
+      || dynamicSystem.controllables.some((c) => c.id === data.id);
+    if (wasEntityId && !dynamicSystem.findAliveCombatTarget(data.id)) return;
     this.setInternal(data.id, data.name);
   }
 
   // 現在のターゲットを、生存中の戦闘対象(敵・自艦・基地)として解決する。天体・ラグランジュ点
   // など戦闘対象になれない対象がターゲットの場合は null。
-  resolveCombatTarget(entities: DynamicSystem): CombatTarget | null {
+  resolveCombatTarget(dynamicSystem: DynamicSystem): CombatTarget | null {
     if (this.targetId === null) return null;
-    const entity = entities.findAliveCombatTarget(this.targetId);
+    const entity = dynamicSystem.findAliveCombatTarget(this.targetId);
     return entity && entity.alive ? entity : null;
   }
 
@@ -159,7 +159,7 @@ export class NavTarget {
   // 対象の軌道面が定まらない(地球・太陽自身など)場合や操作対象の軌道要素が無い場合は、
   // どちらの交点も解けていない状態にする。
   update(
-    controlled: Controllable | null, entities: DynamicSystem, celestialSystem: CelestialSystem, displayWindow: DisplayWindow,
+    controlled: Controllable | null, dynamicSystem: DynamicSystem, celestialSystem: CelestialSystem, displayWindow: DisplayWindow,
     frameAnchors: FrameAnchorSource,
   ): void {
     const { simTime, displayTime, frame } = displayWindow;
@@ -168,7 +168,7 @@ export class NavTarget {
     // 相対交点はターゲットと操作対象の両方が揃って初めて定義できる。片方でも欠ければ
     // 出す理由そのものが無い。
     if (!this.targetId) { this.setReaderEntity(null); this.retireNodeMarkers(); return; }
-    const target = entities.findAliveCombatTarget(this.targetId);
+    const target = dynamicSystem.findAliveCombatTarget(this.targetId);
     this.setReaderEntity(target);
     if (!controlled) { this.retireNodeMarkers(); return; }
     const stateCelestialBodies = celestialSystem.celestialMotions;
@@ -188,7 +188,7 @@ export class NavTarget {
     const controlledEl = controlled.orbitalElementsAround(controlledCenter, simTime);
     if (!controlledEl) return;
 
-    const targetHat = this.resolvePlaneNormal(this.targetId, entities, celestialSystem, simTime);
+    const targetHat = this.resolvePlaneNormal(this.targetId, dynamicSystem, celestialSystem, simTime);
     if (!targetHat) return;
 
     const nodes = nodeAnomalies(controlledEl, targetHat);
@@ -215,7 +215,7 @@ export class NavTarget {
   // ラグランジュ点・船・基地は hasMass=false で返る。船・基地は軌道線を相対軌跡へ切り替え
   // られるよう entity 自身も添える。ターゲット未設定・解決不能なら null。
   resolveState(
-    entities: DynamicSystem, celestialSystem: CelestialSystem,
+    dynamicSystem: DynamicSystem, celestialSystem: CelestialSystem,
     celestialBodies: readonly CelestialMotion[], t: number,
   ): OrbitReference | null {
     const id = this.targetId;
@@ -240,7 +240,7 @@ export class NavTarget {
       }
     }
     // 残りは生存中の艦・基地。
-    const entity = entities.findAliveCombatTarget(id);
+    const entity = dynamicSystem.findAliveCombatTarget(id);
     if (!entity) return null;
     return {
       id, state: entity.stateAt(t, celestialSystem) ?? entity.state, hasMass: false,
@@ -249,14 +249,14 @@ export class NavTarget {
   }
 
   // id がターゲットになれる(軌道面が定まる)かどうか。
-  canTarget(id: string, entities: DynamicSystem, celestialSystem: CelestialSystem, t: number): boolean {
-    return this.resolvePlaneNormal(id, entities, celestialSystem, t) !== null;
+  canTarget(id: string, dynamicSystem: DynamicSystem, celestialSystem: CelestialSystem, t: number): boolean {
+    return this.resolvePlaneNormal(id, dynamicSystem, celestialSystem, t) !== null;
   }
 
   // id から対象の軌道面法線を求める。船・基地は自身の軌道要素、公転している天体(惑星・衛星)
   // はその公転面法線、ラグランジュ点(`${副天体}-l${n}`)は副天体の公転面法線を使う。
   // 面が定まらない対象(恒星、および軌道要素の無い天体・存在しない船)は null。
-  private resolvePlaneNormal(id: string, entities: DynamicSystem, celestialSystem: CelestialSystem, t: number): Vec3 | null {
+  private resolvePlaneNormal(id: string, dynamicSystem: DynamicSystem, celestialSystem: CelestialSystem, t: number): Vec3 | null {
     const idMotion = celestialSystem.find(id)?.motion;
     if (idMotion instanceof OrbitingMotion) {
       return idMotion.orbitNormalAt(t);
@@ -268,7 +268,7 @@ export class NavTarget {
     if (secondaryMotion instanceof OrbitingMotion) {
       return qRotate(secondaryMotion.orbitFrameRotationAt(t).q, LOCAL_FORWARD);
     }
-    const entity = entities.findAliveCombatTarget(id);
+    const entity = dynamicSystem.findAliveCombatTarget(id);
     if (!entity) return null;
     const center = strongestAttractor(entity.state.r, celestialSystem.celestialMotions, t);
     return entity.orbitalElementsAround(center, t)?.hHat ?? null;

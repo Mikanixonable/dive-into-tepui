@@ -38,7 +38,7 @@ export class ObjectPickables {
   // 候補の供給元を参照として受け取る。
   constructor(
     private readonly controlSelection: ControlSelection,
-    private readonly entities: DynamicSystem,
+    private readonly dynamicSystem: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,
@@ -74,7 +74,7 @@ export class ObjectPickables {
     this._visibilityPolicy = visibilityPolicy;
     this.celestialMarkers.update(displayTime, this.cameraSystem.mapDisplayToggles, visibilityPolicy);
     this.navTarget.update(
-      this.controlSelection.current, this.entities, this.celestialSystem, displayWindow, this.frameAnchors);
+      this.controlSelection.current, this.dynamicSystem, this.celestialSystem, displayWindow, this.frameAnchors);
 
     const controlled = this.controlSelection.current;
     // 候補1件を、消滅・表示トグル・位置の有無・所属系・遮蔽の順に通してこのフレームの候補列へ積む。
@@ -93,13 +93,13 @@ export class ObjectPickables {
 
     this.candidateItems.length = 0;
     for (const body of this.celestialMarkers.bodyPickables) append(body);
-    for (const enemy of this.entities.enemies) append(enemy);
-    for (const ammoPickup of this.entities.ammoPickups) append(ammoPickup);
-    for (const fuelPickup of this.entities.rcsFuelPickups) append(fuelPickup);
-    for (const controllable of this.entities.controllables) append(controllable);
+    for (const enemy of this.dynamicSystem.enemies) append(enemy);
+    for (const ammoPickup of this.dynamicSystem.ammoPickups) append(ammoPickup);
+    for (const fuelPickup of this.dynamicSystem.rcsFuelPickups) append(fuelPickup);
+    for (const controllable of this.dynamicSystem.controllables) append(controllable);
     for (const node of this.navTarget.pickables()) append(node);
     for (const apsis of this.planDisplay.apsisMarkers) append(apsis);
-    for (const e of this.entities.all()) {
+    for (const e of this.dynamicSystem.all()) {
       for (const node of e.equatorNodePickables()) append(node);
     }
   }

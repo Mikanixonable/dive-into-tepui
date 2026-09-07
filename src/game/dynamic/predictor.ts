@@ -39,7 +39,7 @@ export class Predictor {
   private lastRevisits = 0; // そのうち期限到来で訪問したものの数
 
   constructor(
-    private readonly entities: DynamicSystem,
+    private readonly dynamicSystem: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
   ) {}
 
@@ -58,7 +58,7 @@ export class Predictor {
     const maxStep = simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT);
     // 伸ばすのは未来を読む消費者がいる個体だけ。線の有無は前フレームの状態を読むことになるが、
     // 弧は何フレームもかけて伸びるので、伸ばし始めが1フレーム遅れても描かれる線は変わらない。
-    const targets = this.entities.all().filter((e) => e.hasFutureReader(canDisplayFuture));
+    const targets = this.dynamicSystem.all().filter((e) => e.hasFutureReader(canDisplayFuture));
     const interactive = controlled !== null && controlled.hasFutureReader(canDisplayFuture) ? controlled : null;
 
     // interactive 枠: 操作対象の弧 → 計画の弧(時刻順)。他に伸ばす対象がいなければ全額を渡す。
@@ -129,7 +129,7 @@ export class Predictor {
     // 先端が要求終端へ届いた個体と、打ち切られた個体を「完了」と数える。
     let tracked = 0;
     let finished = 0;
-    for (const e of this.entities.all()) {
+    for (const e of this.dynamicSystem.all()) {
       if (!e.predictsFuture) continue;
       tracked++;
       const reachedHorizon = e.predicted !== null && e.predicted.state.t >= simTime + horizon;

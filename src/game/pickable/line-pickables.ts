@@ -23,7 +23,7 @@ export class LinePickables {
   get pickables(): readonly LinePickable[] { return this.items; }
 
   constructor(
-    private readonly entities: DynamicSystem,
+    private readonly dynamicSystem: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
   ) {}
 
@@ -44,8 +44,8 @@ export class LinePickables {
       this.items.push({ key: `orbit-body:${id}`, kind: 'orbit-body', method: 'analytic', ownerKeys: [id], points });
     }
 
-    for (const enemy of this.entities.enemies) this.addShipOrbit(enemy, frame, displayTime, frameAnchors);
-    for (const c of this.entities.controllables) this.addShipOrbit(c, frame, displayTime, frameAnchors);
+    for (const enemy of this.dynamicSystem.enemies) this.addShipOrbit(enemy, frame, displayTime, frameAnchors);
+    for (const c of this.dynamicSystem.controllables) this.addShipOrbit(c, frame, displayTime, frameAnchors);
 
     for (const guide of this.celestialSystem.orbitGuide.visibleLines(ORBIT_PICK_SAMPLES)) {
       this.items.push({
