@@ -17,7 +17,7 @@ import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
 import { pickNearest } from './pickable/object-pickable';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { FrameAnchorSource } from '../physics/frame';
-import { DisplayWindow, timeLabelSettingOf } from './display-window-manager';
+import { DisplayWindow } from './display-window-manager';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
@@ -81,9 +81,8 @@ export class Targeter {
   updateEquatorNodes(
     displayWindow: DisplayWindow, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
   ): void {
-    const timeLabel = timeLabelSettingOf(displayWindow);
     this.aliveTarget?.ensureEquatorNodes(this.markerManager)
-      .updateOnEllipse(displayWindow.displayTime, celestialSystem, frameAnchors, timeLabel);
+      .updateOnEllipse(displayWindow.displayTime, celestialSystem, frameAnchors);
   }
 
   // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、発射弾がその面を自機側から

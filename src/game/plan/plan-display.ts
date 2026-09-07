@@ -201,7 +201,7 @@ export class PlanDisplay {
     if (!ship) return;
     ship.ensureEquatorNodes(this.markerManager).updateOnPath(
       displayWindow.frame, displayWindow.displayTime, this.celestialSystem, frameAnchors,
-      ship.state, this.path.displayedSamples(), timeLabelSettingOf(displayWindow),
+      ship.state, this.path.displayedSamples(),
     );
   }
 
