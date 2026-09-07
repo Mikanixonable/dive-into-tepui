@@ -13,12 +13,11 @@ import { AmmoPickup } from './dynamic-entity/ammo-pickup';
 import { RcsFuelPickup } from './dynamic-entity/rcs-fuel-pickup';
 import { DebrisPiece } from './dynamic-entity/debris-piece';
 import { Enemy } from './dynamic-entity/enemy';
-import { findEnemyClass } from './dynamic-entity/enemy-dictionary';
+import { restorationFor } from './dynamic-entity/entity-dictionary';
 import { ProteinEnemy } from './dynamic-entity/protein-enemy';
 import { isProteinAssetReady, requestProteinAsset, type ProteinAssetId } from '../protein/protein-asset-loader';
 import { Bullet } from './dynamic-entity/bullet';
 import { Base } from './dynamic-entity/base';
-import { DetachedBooster } from './dynamic-entity/detached-booster';
 import { InstancedPool } from '../../render/instanced-pool';
 import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources, debrisFragmentResources } from '../../render/ships';
 import { Player } from '../player/player';
@@ -30,7 +29,7 @@ import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
-import type { GameSaveData } from '../save/save-data';
+import type { EntitySaveDataUnion, GameSaveData } from '../save/save-data';
 import type { Hud } from '../hud/hud';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import { EffectsSystem } from '../vfx/effects-system';
@@ -62,7 +61,6 @@ export class DynamicSystem {
   public get bullets(): readonly Bullet[] { return this.entities.filter((e): e is Bullet => e instanceof Bullet); }
   public get ammoPickups(): readonly AmmoPickup[] { return this.entities.filter((e): e is AmmoPickup => e instanceof AmmoPickup); }
   public get rcsFuelPickups(): readonly RcsFuelPickup[] { return this.entities.filter((e): e is RcsFuelPickup => e instanceof RcsFuelPickup); }
-  public get detachedBoosters(): readonly DetachedBooster[] { return this.entities.filter((e): e is DetachedBooster => e instanceof DetachedBooster); }
   // 操作されうる個体。どれが操作対象かは持たない — それは呼び出し側が渡す。
   public get controllables(): readonly Controllable[] { return this.entities.filter(isControllable); }
   // マップから選べる個体。
@@ -106,35 +104,24 @@ export class DynamicSystem {
     if (saved) this.restoreFromSave(saved, hud, worldSfx, scene, markerManager);
   }
 
-  // スナップショットから自機・敵・弾薬・RCS燃料・基地を復元する。
+  // スナップショットの顔ぶれを復元する。組み立て方は種別ごとの辞書が答え、知らない種別は
+  // 読み飛ばす。
   private restoreFromSave(
     save: GameSaveData, hud: Hud, worldSfx: WorldSfx, scene: THREE.Scene, markerManager: MarkerManager,
   ): void {
-    const simTime = save.simTime;
-    for (const data of save.players) {
-      this.add(new Player(hud, worldSfx, scene, this.effects, markerManager, { saved: data, simTime }));
+    for (const data of save.entities) {
+      const restoration = restorationFor(
+        data, save.simTime, scene, hud, worldSfx, markerManager, this.effects);
+      if (restoration === null) continue;
+      this.spawnWhenReady(restoration.pendingAssetId, () => restoration.build());
     }
-    for (const data of save.enemies) {
-      // 種別タグから具象クラスを引き、知らない種別の敵は読み飛ばす。
-      const enemyClass = findEnemyClass(data.kind);
-      if (enemyClass === null) continue;
-      this.spawnEnemyWhenReady(
-        enemyClass.pendingAssetId(data),
-        () => new enemyClass({ saved: data, simTime }, worldSfx, this.effects, scene),
-      );
-    }
-    for (const data of save.ammoPickups) {
-      this.add(new AmmoPickup({ saved: data, simTime }, scene));
-    }
-    for (const data of save.rcsFuelPickups ?? []) {
-      this.add(new RcsFuelPickup({ saved: data, simTime }, scene));
-    }
-    for (const data of save.detachedBoosters ?? []) {
-      this.add(new DetachedBooster({ saved: data, simTime }, scene));
-    }
-    for (const data of save.bases) {
-      this.add(new Base({ saved: data, simTime }, scene, hud, worldSfx, markerManager));
-    }
+  }
+
+  // 顔ぶれを保存形へ畳む。保存へ載らない種別は落ちる。
+  serialize(): EntitySaveDataUnion[] {
+    return this.entities
+      .map((e) => e.serialize())
+      .filter((data): data is EntitySaveDataUnion => data !== null);
   }
 
   private _collectionRevision = 0;
@@ -155,13 +142,13 @@ export class DynamicSystem {
     this.invalidateCaches();
   }
 
-  // 生成に fetch 未完了のタンパク質アセットが要る敵の待ち行列。実体化(Enemy の生成そのもの)は
+  // 生成に fetch 未完了のタンパク質アセットが要る個体の待ち行列。実体化(生成そのもの)は
   // アセットが揃うまで遅らせる(SPEC/PROTEIN.md「出現」節)。
-  private readonly pendingEnemySpawns: { readonly assetId: ProteinAssetId; readonly build: () => Enemy; readonly onSpawned?: () => void }[] = [];
+  private readonly pendingSpawns: { readonly assetId: ProteinAssetId; readonly build: () => DynamicEntity; readonly onSpawned?: () => void }[] = [];
 
-  // 敵を1体足す。assetId のアセットがまだ揃っていなければ、取得を起こして待ち行列へ回す。
+  // 個体を1体足す。assetId のアセットがまだ揃っていなければ、取得を起こして待ち行列へ回す。
   // onSpawned は実体化した直後に1度だけ呼ぶ。
-  spawnEnemyWhenReady(assetId: ProteinAssetId | null, build: () => Enemy, onSpawned?: () => void): void {
+  spawnWhenReady(assetId: ProteinAssetId | null, build: () => DynamicEntity, onSpawned?: () => void): void {
     if (assetId === null || isProteinAssetReady(assetId)) {
       this.add(build());
       onSpawned?.();
@@ -169,23 +156,23 @@ export class DynamicSystem {
     }
     // 積むだけでは誰も取りに行かないので、待ちに入れるのと同時に取得を起こす。
     void requestProteinAsset(assetId);
-    this.pendingEnemySpawns.push({ assetId, build, onSpawned });
+    this.pendingSpawns.push({ assetId, build, onSpawned });
   }
 
   // 待ち行列のうち、アセットが揃ったものを実体化して顔ぶれへ足す。
-  private processPendingEnemySpawns(): void {
-    if (this.pendingEnemySpawns.length === 0) return;
+  private processPendingSpawns(): void {
+    if (this.pendingSpawns.length === 0) return;
     let w = 0;
     // 揃わなかったものは前へ詰めて待ち行列に残す。
-    for (const pending of this.pendingEnemySpawns) {
+    for (const pending of this.pendingSpawns) {
       if (isProteinAssetReady(pending.assetId)) {
         this.add(pending.build());
         pending.onSpawned?.();
       } else {
-        this.pendingEnemySpawns[w++] = pending;
+        this.pendingSpawns[w++] = pending;
       }
     }
-    this.pendingEnemySpawns.length = w;
+    this.pendingSpawns.length = w;
   }
 
   // エンティティを取り除き、メッシュを破棄する。
@@ -276,7 +263,7 @@ export class DynamicSystem {
     dt: number, simTime: number, activeStage: Stage, viewerPos: Vec3,
     atmosphereBodies: readonly CelestialMotion[],
   ): void {
-    this.processPendingEnemySpawns();
+    this.processPendingSpawns();
     // 判定は開始時の顔ぶれに対して行う。死の演出が破片を足すので、生配列を反復すると
     // 生まれたばかりの個体まで同じパスで判定してしまい、生成が連鎖すれば終わらなくなる。
     for (let i = 0, n = this.entities.length; i < n; i++) {

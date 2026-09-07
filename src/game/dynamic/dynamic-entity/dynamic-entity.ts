@@ -37,6 +37,7 @@ import { EntityIdAllocator } from './entity-id';
 import { EquatorNodeMarkerPair, type EquatorNodeInputs } from '../../marker/equator-node-marker-pair';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { TimeLabelSetting } from '../../hud/orbit/calendar-ticks';
+import type { EntitySaveDataUnion } from '../../save/save-data';
 import { disposeOwnedRenderResources } from '../../../render/dispose-owned-render-resources';
 import { syncThermalState } from '../../../render/thermal-emissive';
 import { DISPLAY_DURATION_MAX } from '../../display-window-manager';
@@ -635,6 +636,11 @@ export class DynamicEntity {
     _dt: number, _simTime: number, _activeStage: Stage, _viewerPos: Vec3,
     _atmosphereBodies: readonly CelestialMotion[],
   ): void {
+  }
+
+  // セーブデータへ変換する。保存へ載らない種別(弾・薬莢・破片)は null を返す。
+  serialize(): EntitySaveDataUnion | null {
+    return null;
   }
 
   // 自分がこの相手と接触しうるか。既定 true。両側が true を返したときだけ接触する。
