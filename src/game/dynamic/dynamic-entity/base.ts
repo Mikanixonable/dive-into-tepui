@@ -260,7 +260,10 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   private get markerKey(): string { return `base-${this.id}`; }
 
   // 基地のマーカー表示項目。pos/vel には構造メッシュと同じ表示時刻の状態を渡すこと。
-  markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View): GroupedMarkerItem {
+  // 基地は操作中でも見た目を変えないので isActive は使わない。
+  markerItem(
+    role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, _isActive: boolean,
+  ): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
     const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.BASE - dist / 1e9;
     return {

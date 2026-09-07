@@ -1,7 +1,7 @@
 import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../math/vec3';
 import { Enemy } from './dynamic/dynamic-entity/enemy';
-import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
 import type { Base } from './dynamic/dynamic-entity/base';
+import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import { Player } from './player/player';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
@@ -151,9 +151,7 @@ export class Targeter {
       // 戦闘ビューのカメラ直下にいる操作艦は、マーカーを重ねると視界を潰す。
       if (!mapView && tgt === viewer) continue;
       const role: MarkerRole = tgt === this.aliveTarget ? 'primary' : 'none';
-      const item = tgt instanceof Player
-        ? tgt.markerItem(role, viewerPos, ds.r, ds.v, view, tgt === viewer)
-        : tgt.markerItem(role, viewerPos, ds.r, ds.v, view);
+      const item = tgt.markerItem(role, viewerPos, ds.r, ds.v, view, tgt === viewer);
       const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, ds.r, celestialBodies, displayTime);
       const mapOpacity = mapOccluded
         ? 0
