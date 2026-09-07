@@ -383,14 +383,17 @@ export class DynamicSystem {
     for (const e of this.all()) e.updateEquatorNodes(inputs, e === controlled);
   }
 
-  // このフレームに求まった赤道交点マーカーを置く。
+  // このフレームに求まった赤道交点マーカーを置く。天体の裏に隠れた交点を伏せるのは
+  // マップビューだけで、戦闘ビューでは地球の向こう側の交点も出す。
   private syncEquatorNodes(
     cameraSystem: CameraSystem, frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting,
   ): void {
     const project = cameraSystem.activeCameraProjection;
     const cameraPos = cameraSystem.activeCameraPos;
+    const occludeByBodies = cameraSystem.view === 'map';
     for (const e of this.all()) {
-      e.syncEquatorNodes(project, cameraPos, frameAnchors.bodies, frameAnchors.bodiesPivot, timeLabel);
+      e.syncEquatorNodes(
+        project, cameraPos, frameAnchors.bodies, frameAnchors.bodiesPivot, occludeByBodies, timeLabel);
     }
   }
 
