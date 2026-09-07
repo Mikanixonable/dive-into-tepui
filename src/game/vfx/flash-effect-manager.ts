@@ -1,37 +1,39 @@
 // 爆発・マズルフラッシュなどの一時エフェクト。
-import * as THREE from "three/webgpu";
-import { KinematicState, kinematicState } from "../../physics/kinematic-state";
-import { addScaled } from "../../math/vec3";
-import { flashResources } from "../../render/billboard";
-import { InstancedPool } from "../../render/instanced-pool";
-import { FloatingOrigin } from "../camera/floating-origin";
+import * as THREE from 'three/webgpu';
+import { KinematicState, kinematicState } from '../../physics/kinematic-state';
+import { addScaled } from '../../math/vec3';
+import { flashResources } from '../../render/billboard';
+import { InstancedPool } from '../../render/instanced-pool';
+import { FloatingOrigin } from '../camera/floating-origin';
 
 const ZOOM_MUZZLE_FLASH_SCALE = 0.02; // ズーム中のマズルフラッシュ最大不透明度倍率(完全には消さない)
 
 const MAX_FLASHES = 128; // 同時に存在しうるフラッシュ(発砲・命中・撃破・ガス)の上限。超過分は描画されない
 
-// 軌道速度で流れないよう、発生源の速度で移流させる。位置は時刻つきの state として
-// 持ち、その時刻から現在の simTime までを毎フレーム移流させる。transform は
-// InstancedPool へ push するための姿勢の置き場所であり、描画資源は持たない。
+// 生存中のフラッシュ1件を InstancedPool へ積むための姿勢と色の置き場所。
+const scratchTransform = new THREE.Object3D();
+const scratchColor = new THREE.Color();
+
+// 一時エフェクト1件。軌道速度で流れて見えないよう、時刻つきの state を持ち、発生源の
+// 速度で現在の simTime まで移流させる。
 export interface FlashEffect {
-  transform: THREE.Object3D;
-  baseColor: THREE.Color;
-  color: THREE.Color;
+  readonly baseColor: string | number;
   state: KinematicState;
   age: number;
-  duration: number;
-  size0: number;
-  size1: number;
-  peakBrightness: number; // 発生直後の最大の明るさ倍率
-  dimsInGunsight: boolean; // ガンサイトズーム中に減光するか
+  readonly duration: number;
+  readonly size0: number;
+  readonly size1: number;
+  readonly peakBrightness: number; // 発生直後の最大の明るさ倍率
+  readonly dimsInGunsight: boolean; // ガンサイトズーム中に減光するか
 }
 
 export class FlashEffectManager {
-  effects: FlashEffect[] = [];
+  private effects: FlashEffect[] = [];
   private readonly pool: InstancedPool;
   private readonly geometry: THREE.BufferGeometry;
   private readonly material: THREE.Material;
 
+  // フラッシュ用のインスタンス群を scene へ1つ置く。
   constructor(scene: THREE.Scene) {
     const { geometry, material } = flashResources();
     this.geometry = geometry;
@@ -66,14 +68,14 @@ export class FlashEffectManager {
       const size = fx.size0 + (fx.size1 - fx.size0) * Math.sqrt(t);
       const zoomScale = zoomActive && fx.dimsInGunsight ? ZOOM_MUZZLE_FLASH_SCALE : 1;
       const brightness = fx.peakBrightness * (1 - t) * zoomScale;
-      fx.transform.position.copy(fo.RtoThreeV3(fx.state.r));
-      fx.transform.scale.setScalar(size);
-      fx.transform.quaternion.copy(camQuat);
+      scratchTransform.position.copy(fo.RtoThreeV3(fx.state.r));
+      scratchTransform.scale.setScalar(size);
+      scratchTransform.quaternion.copy(camQuat);
       // **明るさは色に載せ、不透明度は 1 のままにする**(render/billboard.ts と同じ規約)。
       // 加算ブレンドでは 最終色 = テクスチャ × material.color × instanceColor なので、
       // 寿命による減衰も instanceColor 一本へ畳める。
-      fx.color.copy(fx.baseColor).multiplyScalar(brightness);
-      this.pool.push(fx.transform, fx.color);
+      scratchColor.set(fx.baseColor).multiplyScalar(brightness);
+      this.pool.push(scratchTransform, scratchColor);
     }
     this.pool.endFrame();
   }

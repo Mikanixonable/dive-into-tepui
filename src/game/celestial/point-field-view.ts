@@ -1,41 +1,33 @@
 // 小惑星帯・トロヤ群・ヒルダ群・カイパーベルト・散乱円盤の点群のマップビュー表示。位置は
-// point-field.ts の軌道要素から引き、群ごとに1つの InstancedMesh の instanceMatrix へ書き込む。
-// 群を分けるのは、内側(メインベルト 2.5 AU)と外側(カイパーベルト 40 AU)とで見合う描画半径・色が
-// 大きく異なるため — 群ごとの見た目は表示専用のこの層だけが持ち、point-field.ts の分布定義は
-// THREE 非依存に保つ。
+// point-field.ts の軌道要素から引き、群ごとに1つの InstancedMesh へ書き込む。描画半径と色は
+// 群ごとに持つ — 内側(メインベルト 2.5 AU)と外側(カイパーベルト 40 AU)とで見合う見た目が
+// 大きく異なる。
 import * as THREE from 'three/webgpu';
-import { Vec3, v3 } from '../../math/vec3';
+import { Vec3 } from '../../math/vec3';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { PointElements, PointField, PointFieldGroup, pointPositionAt } from './point-field';
 
 // 1フレームで位置を引き直す点の割合の逆数。外側の群ほど公転が遅いので、マップのズーム域では
-// 数フレーム遅れた位置と現在位置は1画素も違わない。点数がメインベルト+トロヤ群単体の頃の倍に
-// 増えた分、値も倍にしてある。
+// 数フレーム遅れた位置と現在位置は1画素も違わない。
 const UPDATE_FRACTION = 8;
 
 // 群1つぶんの InstancedMesh と、そこへ書き込む位置のラウンドロビン更新を持つ。
 class PointFieldGroupView {
   private readonly points: readonly PointElements[];
-  // 太陽中心の位置。ECI 化に要る太陽位置は毎フレーム変わるので、ここには太陽中心のまま持つ。
-  private readonly positions: Vec3[];
   private readonly mesh: THREE.InstancedMesh;
   private readonly material: THREE.MeshBasicMaterial;
-  // 順応を打ち消す前の色。sync がこれへ倍率を掛けて材質色を書く。
+  // 順応を打ち消す倍率を掛ける前の色。
   private readonly baseColor: THREE.Color;
   private readonly matrix = new THREE.Matrix4();
-  // update で位置を再評価したインスタンスだけを sync で GPU へ書き戻す。
-  // 配列は毎フレーム作り直さず、clear 後も容量を再利用する。
-  private readonly dirtyIndices: number[] = [];
+  // ラウンドロビンで次に引き直す点の先頭。
   private cursor = 0;
-  private sunPos: Vec3 = v3(0, 0, 0);
-  // 初回の update だけは全点を評価する — ラウンドロビンに任せると、マップを開いた直後の
-  // 数フレームは未評価の点(太陽中心の零ベクトル)が太陽位置に固まって描かれる。
+  // 初回の sync で全点を評価済みか。ラウンドロビンに任せると、マップを開いた直後の数フレームは
+  // 未評価の点(零ベクトル)が太陽位置に固まって描かれる。
   private primed = false;
 
   // 群1つぶんの InstancedMesh を、その群の描画半径・色で組む。
   constructor(group: PointFieldGroup) {
     this.points = group.points;
-    this.positions = this.points.map(() => v3(0, 0, 0));
     // 正四面体を使うのは、全インスタンスが同じ姿勢で並ぶため — 平板だと視線方向によっては
     // 群全体が同時に消える。
     const geom = new THREE.TetrahedronGeometry(group.drawRadius);
@@ -54,39 +46,29 @@ class PointFieldGroupView {
     scene.add(this.mesh);
   }
 
-  // 表示時刻 t の点の位置を、ラウンドロビンで一部だけ引き直す。sunPos は呼び出し元が
-  // 群をまたいで1回だけ求めた値を渡す。forceAll はマップ再入場時に使う。
-  update(t: number, sunPos: Vec3, forceAll = false): void {
-    this.sunPos = sunPos;
+  // 表示時刻 t の点の位置を、ラウンドロビンで一部ずつ引き直して置く。starPos はこの星系の恒星の
+  // ECI 位置。点は恒星中心のローカル座標に置き、浮動原点との差は mesh の位置が吸う。
+  sync(fo: FloatingOrigin, t: number, starPos: Vec3, fixedBrightnessScale: number): void {
+    this.mesh.visible = true;
+    this.material.color.copy(this.baseColor).multiplyScalar(fixedBrightnessScale);
+    this.mesh.position.copy(fo.RtoThreeV3(starPos));
+    // このフレームの持ち分を引き直す。
     const n = this.points.length;
-    if (forceAll) this.dirtyIndices.length = 0;
-    const count = forceAll || !this.primed ? n : Math.ceil(n / UPDATE_FRACTION);
+    const count = this.primed ? Math.ceil(n / UPDATE_FRACTION) : n;
     this.primed = true;
     for (let i = 0; i < count; i++) {
       const idx = (this.cursor + i) % n;
-      this.positions[idx] = pointPositionAt(this.points[idx]!, t);
-      this.dirtyIndices.push(idx);
-    }
-    this.cursor = (this.cursor + count) % n;
-  }
-
-  // update が求めた位置へ、再評価されたインスタンスだけを置く。点群の太陽中心からの位置は
-  // InstancedMesh のローカル座標に残し、太陽の ECI 位置と FloatingOrigin の差分は mesh の
-  // 親位置へ移す。これにより浮動原点が毎フレーム変わっても全インスタンスを更新せずに済む。
-  sync(fo: FloatingOrigin, visible: boolean, fixedBrightnessScale: number): void {
-    this.mesh.visible = visible;
-    if (!visible) return;
-    this.material.color.copy(this.baseColor).multiplyScalar(fixedBrightnessScale);
-    this.mesh.position.copy(fo.RtoThreeV3(this.sunPos));
-    for (const idx of this.dirtyIndices) {
-      const p = this.positions[idx]!;
+      const p = pointPositionAt(this.points[idx]!, t);
       this.matrix.makeTranslation(p.x, p.y, p.z);
       this.mesh.setMatrixAt(idx, this.matrix);
     }
-    if (this.dirtyIndices.length > 0) {
-      this.mesh.instanceMatrix.needsUpdate = true;
-      this.dirtyIndices.length = 0;
-    }
+    this.cursor = (this.cursor + count) % n;
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  // メッシュを描画対象から外す。
+  hide(): void {
+    this.mesh.visible = false;
   }
 
   // メッシュを親から外し、インスタンスバッファと自前の geometry/material を解放する。
@@ -99,15 +81,10 @@ class PointFieldGroupView {
 }
 
 export class PointFieldView {
-  // 群ごとの描画。**11,200点の軌道要素と instance buffer は build まで確保しない** —
-  // マップを一度も開かないプレイでは要らないため。
+  // 群ごとの描画。軌道要素と instance buffer は build で確保する。
   private groups: readonly PointFieldGroupView[] = [];
-  // 現在の星系に恒星が実在するか。無ければ点群は太陽中心の座標を持てないので非表示にする。
-  private hasStar = true;
-  // update は描かれるフレームでだけ呼ばれるため、false から true へ戻るフレームを再入場とみなす。
-  private updated = false;
 
-  // field はこの星系に付随する生成済みの点群。どんな分布から作られたかはここでは問わない。
+  // field はこの星系に付随する生成済みの点群。
   constructor(private readonly field: PointField) {}
 
   // 群ごとに描画用の InstancedMesh を組んでシーンへ登録する。
@@ -116,26 +93,15 @@ export class PointFieldView {
     for (const group of this.groups) group.build(scene);
   }
 
-  // 表示時刻 t の点の位置を引き直す。starPos はこの星系の恒星の ECI 位置で、恒星を持たない星系では
-  // null。
-  update(t: number, starPos: Vec3 | null): void {
-    this.hasStar = starPos !== null;
-    if (starPos === null) {
-      this.updated = false;
-      return;
-    }
-    const sunPos = starPos;
-    const reentered = !this.updated;
-    this.updated = true;
-    for (const group of this.groups) group.update(t, sunPos, reentered);
+  // 表示時刻 t の点の位置を引き直して各インスタンスを置く。starPos はこの星系の恒星の ECI 位置。
+  // fixedBrightnessScale は露出の順応を打ち消す倍率で、点の明るさをどこから見ても同じに保つ。
+  sync(fo: FloatingOrigin, t: number, starPos: Vec3, fixedBrightnessScale: number): void {
+    for (const group of this.groups) group.sync(fo, t, starPos, fixedBrightnessScale);
   }
 
-  // update が求めた位置へ各インスタンスを置く。太陽の平行移動は mesh.position、個々の点の
-  // 更新は instanceMatrix に分担させる。fixedBrightnessScale は露出の順応を打ち消す倍率で、
-  // 読ませるために選んだ明るさをどこから見ても同じに保つ。
-  sync(fo: FloatingOrigin, show: boolean, smallBodyVisible: boolean, fixedBrightnessScale: number): void {
-    const visible = show && this.hasStar && smallBodyVisible;
-    for (const group of this.groups) group.sync(fo, visible, fixedBrightnessScale);
+  // 全群の InstancedMesh を描画対象から外す。
+  hide(): void {
+    for (const group of this.groups) group.hide();
   }
 
   // 全群の InstancedMesh を解放する。

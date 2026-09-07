@@ -1,5 +1,5 @@
-// どのエンティティに、どんな見た目の軌道線・予測線・過去線を出すかを決める。
-// update が出す/消す/スタイルを決め、sync は既に出ている線の形状と変換を合わせる。
+// どのエンティティに、どんな見た目の軌道線・予測線・過去線を出すかを決め、出ている線の
+// 形状と変換を合わせる。
 import * as THREE from 'three/webgpu';
 import type { View } from '../view/view';
 import type { FrameAnchorSource } from '../../physics/frame';
@@ -25,8 +25,7 @@ const LINE_STYLE = {
   baseLine: { color: COLOR_BASE, opacity: 0.35, renderOrder: LINE_RENDER_ORDER.shipOrbit },
 } as const satisfies Record<string, LineStyle>;
 
-// ターゲットの軌道はほぼ自機の軌道と重なることが多く(近傍ランデブーを狙うため)、
-// 埋もれて見えなくならないよう不透明度を上げる。
+// ターゲットの軌道は自機の軌道とほぼ重なりがちなので、埋もれないよう不透明度を上げる。
 const TARGET_LINE_OPACITY = 0.9;
 
 // 解析楕円・予測線・過去線それぞれの見た目。
@@ -36,7 +35,7 @@ interface TrajectoryStyles {
   readonly actual: LineStyle;
 }
 
-// 3種の線を区別なく同じ見た目にする(自艦以外はアクティブ/非アクティブで色分けしないため)。
+// 3種の線を同じ見た目にする。
 function sameTrajectoryStyle(style: LineStyle): TrajectoryStyles {
   return { ellipse: style, predicted: style, actual: style };
 }
@@ -60,16 +59,15 @@ function applyOrbitLine(
 export class EntityLineManager {
   constructor(private readonly entities: DynamicSystem) {}
 
-  // 出す/消す/スタイルを決める。判断材料(表示可否・ターゲット・操作艦・ビュー)が
-  // このフレームの確定値になった後に呼ぶ。
-  update(
+  // 出す/消す/スタイルを決める。
+  private applyLines(
     activePlayer: Player | null, primaryTarget: CombatTarget | null,
     view: View, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
     orbitRef: OrbitReference | undefined,
   ): void {
     const { pastDuration } = displayWindow;
     // マップビューは軌道情報パネルの固定設定に従わず、常に自動選択(最も強く引く天体)で描く
-    // (ORBIT.md「軌道線(3D描画)の基準天体」)。数値表示・軌道要素アイコンはこの絞り込みを受けない。
+    // (ORBIT.md「軌道線(3D描画)の基準天体」)。
     const lineOrbitRef = view === 'map' ? undefined : orbitRef;
     const palette = currentThemePalette();
     const primaryStyle: LineStyle = { color: palette.signal, opacity: TARGET_LINE_OPACITY, renderOrder: LINE_RENDER_ORDER.target };
@@ -83,10 +81,9 @@ export class EntityLineManager {
     const playerActualStyleOf = (isActive: boolean): LineStyle => (
       { color: isActive ? palette.accent : COLOR_PLAYER_ORBIT_LINE_INACTIVE, opacity: 0.3, renderOrder: LINE_RENDER_ORDER.predicted }
     );
-    // 1体分の判定材料から、軌道線/予測線/過去線の出す/消す/スタイルを決める。ターゲットである間は
-    // 常に asTarget のスタイルで軌道線を維持し、予測線・過去線には切り替えない。lineVisible は
-    // ターゲット強調時にも及ぶ表示可否、visibleWhenUntargeted はそれに加えてターゲットでないときだけ
-    // 課される表示可否(敵の生存判定など)を表す。
+    // 1体分の判定材料から、軌道線/予測線/過去線の出す/消す/スタイルを決める。lineVisible は
+    // ターゲット強調時にも及ぶ表示可否、visibleWhenUntargeted はターゲットでないときにだけ
+    // 課される表示可否(敵の生存判定など)。
     const applyEntityLines = (
       entity: DynamicEntity, asTarget: LineStyle | null, lineVisible: boolean, visibleWhenUntargeted: boolean,
       trajectoryEligible: boolean, styles: TrajectoryStyles,
@@ -110,8 +107,6 @@ export class EntityLineManager {
       const isActive = ship === activePlayer;
       const visibility = visibilityPolicy?.entity('player', isActive);
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
-      // マップビューでは操作艦だけが既定で予測線・過去線を使う。それ以外の自艦は、
-      // プロパティウィンドウのトグル(showTrajectoryLine)がONのときだけ同様に使う。
       const trajectoryEligible = isActive || (view === 'map' && ship.showTrajectoryLine);
       applyEntityLines(
         ship, targetStyleOf(ship), lineVisible, lineVisible, trajectoryEligible,
@@ -136,15 +131,20 @@ export class EntityLineManager {
     }
   }
 
-  // 既に出ている線の形状と変換を合わせる。どの線を持つかは update が決めきっているので、
-  // ここでは全個体へ一律に呼ぶ。
+  // 各個体が持つべき線を揃えてから、その形状と変換をこのフレームの表示状態へ合わせる。
+  // 判断材料(表示可否・ターゲット・操作艦・ビュー)はこのフレームの確定値を渡す。
   sync(
-    displayWindow: DisplayWindow, fo: FloatingOrigin, camera: THREE.Camera,
+    activePlayer: Player | null, primaryTarget: CombatTarget | null,
+    view: View, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
+    orbitRef: OrbitReference | undefined,
+    fo: FloatingOrigin, camera: THREE.Camera,
     frameAnchors: FrameAnchorSource, celestialSystem: CelestialSystem,
   ): void {
+    this.applyLines(activePlayer, primaryTarget, view, displayWindow, visibilityPolicy, orbitRef);
     const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
     for (const group of this.lineOwners) {
       for (const entity of group) {
+        // 予測が伸びきっていないフレームでは終端時刻を渡さず、届いたところまでで描かせる。
         const predictedTo = entity.predictionTruncated ? null : simTime + duration;
         entity.syncTrajectoryLines(
           frame, simTime, displayTime, pastDuration, predictedTo, celestialSystem, fo, camera, frameAnchors);
@@ -153,7 +153,7 @@ export class EntityLineManager {
     }
   }
 
-  // 線を持ちうるエンティティ。sync は種別を問わず同じ呼び出しで済むので、まとめて辿る。
+  // 線を持ちうるエンティティ。
   private get lineOwners(): readonly (readonly DynamicEntity[])[] {
     return [this.entities.players, this.entities.enemies, this.entities.bases];
   }
