@@ -1,5 +1,5 @@
-// マップ上のクリックを候補列へ当て、当たった被選択物のウィンドウ・注視・軌道線ウィンドウへ配る。
-// 軌道物体一覧パネルも、行が候補列から出るここが持つ。
+// マップ上のクリックを候補列へ当て、当たった被選択物のウィンドウ・注視へ配る。軌道物体一覧
+// パネルと軌道線のプロパティウィンドウは、どちらもマップにしか出ないのでここが持つ。
 import type { Hud } from '../hud/hud';
 import { ObjectPickable, pickFrontmostBody, pickNearest, projectMarker } from './object-pickable';
 import { pickNearestLine } from './line-pickable';
