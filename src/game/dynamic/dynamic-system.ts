@@ -8,7 +8,6 @@ import { FloatingOrigin } from '../camera/floating-origin';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { CapKind } from './dynamic-entity/entity-kind';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
-import { isObjectPickable, type ObjectPickable } from '../pickable/object-pickable';
 import { AmmoPickup } from './dynamic-entity/ammo-pickup';
 import { RcsFuelPickup } from './dynamic-entity/rcs-fuel-pickup';
 import { DebrisPiece } from './dynamic-entity/debris-piece';
@@ -53,19 +52,9 @@ export class DynamicSystem {
   // 保持する全エンティティを追加順に並べた、顔ぶれの正本。枠ごとの上限はこの並びから導く。
   private readonly entities: DynamicEntity[] = [];
 
-  // 型別の絞り込み。呼ぶたびに数え直すので、フレームに何度も読む側は受けた配列を持ち回る。
-
-  // 自機。操作対象も他の艦と対等に、積分・衝突・寿命判定・予測を通る。
-  public get players(): readonly Player[] { return this.entities.filter((e): e is Player => e instanceof Player); }
-  public get enemies(): readonly Enemy[] { return this.entities.filter((e): e is Enemy => e instanceof Enemy); }
-  public get bases(): readonly Base[] { return this.entities.filter((e): e is Base => e instanceof Base); }
-  public get bullets(): readonly Bullet[] { return this.entities.filter((e): e is Bullet => e instanceof Bullet); }
-  public get ammoPickups(): readonly AmmoPickup[] { return this.entities.filter((e): e is AmmoPickup => e instanceof AmmoPickup); }
-  public get rcsFuelPickups(): readonly RcsFuelPickup[] { return this.entities.filter((e): e is RcsFuelPickup => e instanceof RcsFuelPickup); }
-  // 操作されうる個体。どれが操作対象かは持たない — それは呼び出し側が渡す。
+  // 操作されうる個体。どれが操作対象かは持たない — それは呼び出し側が渡す。呼ぶたびに
+  // 数え直すので、フレームに何度も読む側は受けた配列を持ち回る。
   public get controllables(): readonly Controllable[] { return this.entities.filter(isControllable); }
-  // マップから選べる個体。
-  public get objectPickables(): readonly ObjectPickable[] { return this.entities.filter(isObjectPickable); }
 
   // 弾本体・弾ハロー・プラズマ弾・薬莢は geometry/material を全個体で共有するので、
   // 種別ごとに InstancedMesh 1本のプールで描く。
@@ -436,9 +425,9 @@ export class DynamicSystem {
     let cpuMs = 0;
     let uploadBytes = 0;
     const lodCounts: Partial<Record<ProteinMotionLod, number>> = {};
-    for (const enemy of this.enemies) {
-      if (!(enemy instanceof ProteinEnemy)) continue;
-      const metrics = enemy.motionMetrics;
+    for (const entity of this.entities) {
+      if (!(entity instanceof ProteinEnemy)) continue;
+      const metrics = entity.motionMetrics;
       cpuMs += metrics.cpuMs;
       uploadBytes += metrics.uploadBytes;
       lodCounts[metrics.lod] = (lodCounts[metrics.lod] ?? 0) + 1;

@@ -124,3 +124,8 @@ export class Bullet extends DynamicEntity {
         this.renderObject.quaternion.copy(tmpQuat);
     }
 }
+
+// この個体が弾か。顔ぶれから弾だけを絞るときに使う。
+export function isBullet(entity: DynamicEntity): entity is Bullet {
+  return entity instanceof Bullet;
+}

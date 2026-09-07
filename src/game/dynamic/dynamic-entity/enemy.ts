@@ -543,3 +543,8 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   public readonly onMapSelect = null;
   public readonly onMapFocus = null;
 }
+
+// この個体が敵か。顔ぶれから敵だけを絞るときに使う。
+export function isEnemy(entity: DynamicEntity): entity is Enemy {
+  return entity instanceof Enemy;
+}
