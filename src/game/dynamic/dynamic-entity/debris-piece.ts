@@ -187,10 +187,10 @@ export class DebrisPiece extends DynamicEntity {
 
   // 再突入判定に加え、寿命を持つデブリは表示時間の超過でも消す。
   checkLoss(
-    dt: number, simTime: number, activeStage: Stage, playerPos: Vec3,
+    dt: number, simTime: number, activeStage: Stage, viewerPos: Vec3,
     atmosphereBodies: readonly CelestialMotion[],
   ): void {
-    super.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);
+    super.checkLoss(dt, simTime, activeStage, viewerPos, atmosphereBodies);
     if (!this.alive) return;
     const expiresAt = this.expiresAt;
     if (expiresAt !== null && simTime >= expiresAt) this.alive = false;
