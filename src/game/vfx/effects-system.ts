@@ -164,9 +164,7 @@ export class EffectsSystem {
     dimsInGunsight = false,
   ): void {
     const fx: FlashEffect = {
-      transform: new THREE.Object3D(),
-      baseColor: new THREE.Color(color),
-      color: new THREE.Color(),
+      baseColor: color,
       state, age: 0, duration, size0, size1, peakBrightness, dimsInGunsight,
     };
     this._flashEffects.addFlash(fx);
