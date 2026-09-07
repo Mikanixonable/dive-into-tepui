@@ -88,11 +88,11 @@ export class Hud {
     this.orbitAnalysisWindow?.update(game);
   }
 
-  // view で表に出ている常設パネルを game の現在状態へ合わせる。
+  // view で表に出ている常設パネルと、控えられたトーストを game の現在状態へ合わせる。
   public syncPanels(view: View, game: Game): void {
     const map = view === 'map';
     // 両ビュー共通のパネル。
-    this.burnManagementPanel.sync(game.player?.boosters.managementViewModel() ?? null);
+    this.burnManagementPanel.sync(game.activeControllable?.boosters?.managementViewModel() ?? null);
     this.topBar.sync(game);
     this.orbitPanel.sync(game);
     // ビュー固有のパネル。
@@ -104,6 +104,7 @@ export class Hud {
       this.enemiesPanel.sync(game);
     }
     this.orbitAnalysisWindow?.sync(game);
+    this.tick();
   }
 
   // 表に出す HUD ルートを戦闘/マップで切り替える。
@@ -151,7 +152,7 @@ export class Hud {
   }
 
   // 控えられたトーストを表示し、表示期限を過ぎたトーストをフェードアウトさせる。
-  public tick(): void {
+  private tick(): void {
     const toast = document.getElementById('hud-toast');
     if (!toast) return;
     const now = performance.now();

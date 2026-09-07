@@ -2,26 +2,24 @@
 // 必要なステージだけ override する。
 import * as THREE from 'three/webgpu';
 import { Enemy } from '../dynamic/dynamic-entity/enemy';
-import type { ProteinAssetId } from '../protein/protein-asset-loader';
-import { Player, type PlayerInit } from '../player/player';
+import { isPlayer, Player, type PlayerInit } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
-import { EffectsSystem } from '../vfx/effects-system';
+import { FlashEffects } from '../vfx/flash-effects';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { DynamicSystem, SpawnGate } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { MarkerManager } from '../marker/marker-manager';
-import type { Simulator } from '../dynamic/simulator';
 import type { StageSaveData } from '../save/save-data';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { ActivePlayerController } from '../active-controllable-controller';
+import type { ControlSelection } from '../control-selection';
 import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
 import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
@@ -58,12 +56,11 @@ export type StageDeps = [
   worldSfx: WorldSfx,
   uiSfx: UiSfx,
   scene: THREE.Scene,
-  entities: DynamicSystem,
-  fx: EffectsSystem,
+  dynamicSystem: DynamicSystem,
+  fx: FlashEffects,
   markerManager: MarkerManager,
   celestialSystem: CelestialSystem,
-  simulator: Simulator,
-  activePlayers: ActivePlayerController,
+  controlSelection: ControlSelection,
 ];
 
 // ステージクラスの静的側。起動時の設定はここから読む。
@@ -157,12 +154,11 @@ export abstract class Stage {
   protected readonly _worldSfx: WorldSfx;
   protected readonly _uiSfx: UiSfx;
   protected readonly _scene: THREE.Scene;
-  protected readonly _fx: EffectsSystem;
-  protected readonly _entities: DynamicSystem;
+  protected readonly _fx: FlashEffects;
+  protected readonly _dynamicSystem: DynamicSystem;
   protected readonly _markerManager: MarkerManager;
   protected readonly _celestialSystem: CelestialSystem;
-  protected readonly _simulator: Simulator;
-  protected readonly _activePlayers: ActivePlayerController;
+  protected readonly _controlSelection: ControlSelection;
 
   private _phase: GamePhase;
   public get phase(): GamePhase { return this._phase; }
@@ -186,21 +182,20 @@ export abstract class Stage {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, worldSfx, uiSfx, scene, entities, fx, markerManager, celestialSystem, simulator, activePlayers] = deps;
+    const [hud, worldSfx, uiSfx, scene, dynamicSystem, fx, markerManager, celestialSystem, controlSelection] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
     this._scene = scene;
     this._fx = fx;
-    this._entities = entities;
+    this._dynamicSystem = dynamicSystem;
     this._markerManager = markerManager;
     this._celestialSystem = celestialSystem;
-    this._simulator = simulator;
-    this._activePlayers = activePlayers;
+    this._controlSelection = controlSelection;
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
     this._phase = saved?.phase ?? 'playing';
     this.restored = saved !== undefined;
-    this.logistics = new Logistics(hud, worldSfx, uiSfx, scene, entities, saved?.logistics);
+    this.logistics = new Logistics(hud, worldSfx, uiSfx, scene, dynamicSystem, saved?.logistics);
     this.statusPanel = new StatusPanel(hud.combatRoot);
   }
 
@@ -208,7 +203,7 @@ export abstract class Stage {
   // 末尾で必ずこれを呼ぶ — 初期配置は具象側のフィールドが揃ってからでないと走らせられない。
   protected begin(): void {
     if (this.restored) return;
-    this.init(this._entities);
+    this.init();
     this._hud.toast(this.briefingHtml(), BRIEFING_TOAST_MS);
   }
 
@@ -220,54 +215,53 @@ export abstract class Stage {
   // ステータスパネルを同期する。fo・displayTime・visibilityPolicy は配置プレビューなど
   // ステージ固有の描画物を持つサブクラスが使う。
   public sync(
-    player: Player | null, _fo: FloatingOrigin, cameraSystem: CameraSystem, _displayTime: number,
+    _fo: FloatingOrigin, cameraSystem: CameraSystem, _displayTime: number,
     _visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    this.syncStatusPanel(player, cameraSystem.view === 'map');
+    this.syncStatusPanel(cameraSystem.view === 'map');
   }
 
   // hudSubStatus() が null のとき、またはマップビューのときはパネルを畳む。
-  private syncStatusPanel(player: Player | null, mapView: boolean): void {
+  private syncStatusPanel(mapView: boolean): void {
     const message = this.hudSubStatus();
     const show = message !== null && !mapView;
-    this.statusPanel.sync(show ? player : null, message ?? '', this.scoreCounter.kills);
+    this.statusPanel.sync(show ? this.ship : null, message ?? '', this.scoreCounter.kills);
+  }
+
+  // 台本が相手にする自艦。補給の投入先・敵の追跡先・ステータスパネルの表示対象はどれもこれ。
+  // 操作対象が基地でも台本は止まらないので、そのときは生存中の先頭の艦を使う。
+  protected get ship(): Player | null {
+    const controlled = this._controlSelection.current;
+    if (controlled instanceof Player) return controlled;
+    return this._dynamicSystem.all().filter(isPlayer).find((p) => p.alive) ?? null;
   }
 
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、
   // 何隻をどこへ置くかはステージ自身の宣言。
   protected addPlayer(init?: PlayerInit): Player {
     const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, this._markerManager, init);
-    this._entities.add(ship);
-    this._activePlayers.claimIfNone(ship);
+    this._dynamicSystem.add(ship);
+    this._controlSelection.claimIfNone(ship);
     return ship;
   }
 
-  // 敵を entities へ登録し、出撃数をスコアへ記録する。
-  protected addEnemy(enemy: Enemy, entities: DynamicSystem): void {
-    entities.add(enemy);
+  // 敵を登録し、出撃数をスコアへ記録する。
+  protected addEnemy(enemy: Enemy): void {
+    this._dynamicSystem.add(enemy);
     this.scoreCounter.recordSpawnEnemy();
   }
 
-  // タンパク質アセットの fetch 待ちで実体化を遅らせうる敵を登録する。準備が整い次第
-  // entities へ登録され、そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
-  protected spawnEnemyWhenReady(assetId: ProteinAssetId | null, build: () => Enemy, entities: DynamicSystem): void {
-    entities.spawnEnemyWhenReady(assetId, build, () => this.scoreCounter.recordSpawnEnemy());
-  }
-
-  // 生存中の敵全てに AI 行動を1フレーム分実行させる。同一集団の判定に使う母集団は、
-  // このフレームの顔ぶれを1度だけ取って全機で共有する。
-  protected behaveAllEnemies(player: Player, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
-    const enemies = entities.enemies;
-    for (const e of enemies) {
-      if (e.alive) e.behave(simTime, player, entities, enemies, simSpeed, this._celestialSystem);
-    }
+  // 外部資源の取得待ちで実体化を遅らせうる敵を登録する。gate が通り次第登録され、
+  // そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
+  protected spawnEnemyWhenReady(gate: SpawnGate | null, build: () => Enemy): void {
+    this._dynamicSystem.spawnWhenReady(gate, build, () => this.scoreCounter.recordSpawnEnemy());
   }
 
   protected abstract briefingHtml(): string;
   // 初期配置。既定では何も置かない。
-  protected init(_entities: DynamicSystem): void { }
-  // 毎フレーム呼ぶ。艦が1隻も無い間は player が null になる。
-  public abstract update(dt: number, player: Player | null, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void;
+  protected init(): void { }
+  // 毎フレーム呼ぶ。台本が相手にする自艦は this.ship から引く。
+  public abstract update(dt: number, simTime: number, simSpeed: SimSpeedManager): void;
 
   // Simulator がsubstepをイベント直前で切るためのhook。通常ステージには時刻固定イベントがない。
   public nextSimulationEventTime(_simTime: number): number | null { return null; }

@@ -16,6 +16,9 @@ import { CelestialMotion } from '../../physics/celestial-motion';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from './crowding';
 
+// マーカー上での対象の役割。ターゲットは色と字形が変わる。
+export type MarkerRole = 'none' | 'primary';
+
 export interface GroupedMarkerItem {
   key: string; // 対象を一意に識別するマーカーキー
   readonly kind: DynamicEntityKind; // 天体ラベル下のサブ行が内訳を数えるための種別

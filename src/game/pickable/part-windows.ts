@@ -2,7 +2,7 @@
 // 展開/収納を実行する。排他グループを持たせず、被選択物のウィンドウと共存させる。
 import { PropertyWindow, type PropertyWindowContent, type PropertyWindowItem } from '../../hud/windows/property-window';
 import type { MenuAction } from '../hud/windows/menu-actions';
-import type { ActivePlayerController } from '../active-controllable-controller';
+import type { ControlSelection } from '../control-selection';
 import type { Hud } from '../hud/hud';
 import type { Part } from '../dynamic/dynamic-entity/parts';
 import type { Player } from '../player/player';
@@ -41,7 +41,7 @@ export class PartWindows {
 
   constructor(
     private readonly hud: Hud,
-    private readonly activePlayers: ActivePlayerController,
+    private readonly controlSelection: ControlSelection,
   ) {}
 
   // 部品のウィンドウを開く。既に開いていればクリック位置へ動かして最前面に出すだけにする。
@@ -74,7 +74,7 @@ export class PartWindows {
   sync(): void {
     for (const entry of [...this.windows.values()]) {
       const { ship, part } = entry;
-      if (!ship.alive || ship !== this.activePlayers.current || !ship.parts.includes(part)) {
+      if (!ship.alive || ship !== this.controlSelection.current || !ship.parts.includes(part)) {
         entry.win.close();
         continue;
       }

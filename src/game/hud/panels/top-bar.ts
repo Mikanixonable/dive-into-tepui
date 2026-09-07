@@ -15,13 +15,13 @@ export class TopBar {
   // MET を毎フレーム、時間加速と NODE WARP の残りを間引いて反映する。
   public sync(game: Game): void {
     const epochUnixSec = game.displayWindowManager.current.epochUnixSec;
-    setElementText(this.els, 'met', `${fmtDateTime(epochUnixSec + game.simulator.simTime)} / T+ ${fmtElapsedUnits(game.simulator.simTime)}`);
+    setElementText(this.els, 'met', `${fmtDateTime(epochUnixSec + game.simTime)} / T+ ${fmtElapsedUnits(game.simTime)}`);
 
     if (!this.throttle.due()) return;
 
     // 時間加速セレクトを初回だけ選択肢で満たし、以後は選択値と表示を現在の速度へ合わせる。
     const simSpeedLabel = `×${game.simSpeedManager.simSpeed}`;
-    const autoWarpRealRemain = game.simSpeedManager.estimatedRealSecondsToWarpEnd(game.simulator.simTime);
+    const autoWarpRealRemain = game.simSpeedManager.estimatedRealSecondsToWarpEnd(game.simTime);
     const simSpeedEl = this.els.get('sim-speed');
     if (simSpeedEl instanceof HTMLSelectElement) {
       if (simSpeedEl.dataset['speedOptions'] !== 'ready') {
@@ -40,7 +40,7 @@ export class TopBar {
       simSpeedEl.classList.toggle('sim-speed-hot', simSpeedLabel !== '×1' || game.isPaused);
     }
     // NODE WARP の残り時間表示。
-    const autoWarpSimRemain = game.simSpeedManager.remainingSimulationSeconds(game.simulator.simTime);
+    const autoWarpSimRemain = game.simSpeedManager.remainingSimulationSeconds(game.simTime);
     const nodeWarpEl = this.els.get('node-warp-remain');
     if (nodeWarpEl) {
       nodeWarpEl.textContent = autoWarpSimRemain === null ? '—' : fmtTime(autoWarpSimRemain);

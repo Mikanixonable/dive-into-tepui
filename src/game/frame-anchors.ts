@@ -1,5 +1,5 @@
 // 天体レジストリに載らない参照フレームの基準・回転対象 — 生存中の重力天体・機体・役割トークン
-// (@activeShip / @navTarget)— を ECI 状態と主天体へ解決する FrameAnchorSource。
+// (@controlled / @navTarget)— を ECI 状態と主天体へ解決する FrameAnchorSource。
 // 役割トークンは毎フレームその時点の対象へ解決されるので、操作対象の乗り換えやターゲットの
 // 付け替えをまたいでも同じ基準を指し続ける(DEVELOP/SPEC/CELESTIAL.md 8節)。
 import { orbitingAttractorOf } from '../physics/attractor';
@@ -12,8 +12,8 @@ import type { CelestialSystem } from './celestial/celestial-system';
 interface AnchorTargets {
   // 生存中のエンティティ id の時刻 t における状態。見つからなければ null。
   entityState(id: string, t: number): KinematicState | null;
-  // 操作対象の船の時刻 t における状態。乗り換え中などで定まらなければ null。
-  activeShipState(t: number): KinematicState | null;
+  // 操作対象の時刻 t における状態。乗り換え中などで定まらなければ null。
+  controlledState(t: number): KinematicState | null;
   // 航法ターゲットの時刻 t における状態。設定されていない・消滅していれば null。
   navTargetState(bodies: readonly CelestialMotion[], t: number): KinematicState | null;
 }
@@ -75,7 +75,7 @@ export class FrameAnchors implements FrameAnchorSource {
 
   // 役割トークンをその時点の対象へ解決した、猶予を掛ける前の結果。
   private resolveRoleState(role: FrameRole, t: number): KinematicState | null {
-    if (role === 'activeShip') return this.targets.activeShipState(t);
+    if (role === 'controlled') return this.targets.controlledState(t);
     return this.targets.navTargetState(this.bodies, t);
   }
 

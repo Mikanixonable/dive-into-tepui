@@ -209,13 +209,13 @@ export class DisplayWindowManager {
     return FIXED_DURATION_SEC[this.pastDurationKey];
   }
 
-  // このフレームの表示窓を確定させて返す。表示窓の各値は現在の時刻・操作艦・設定から
+  // このフレームの表示窓を確定させて返す。表示窓の各値は現在の時刻・操作対象・設定から
   // 軽量に導けるため、直前の結果を条件付きで再利用せず、呼ぶたびに組み直す。_current は
   // update と sync の間、および DOM イベントから直近の窓を読むためのフレームスナップショット
   // であり、導出値のキャッシュではない。表示時刻はスライダーが立っている間だけ未来を指し、
   // forceCurrent または原点では simTime そのもの。
-  resolve(simTime: number, player: DynamicEntity | null): DisplayWindow {
-    const referencePeriod = this.currentOrbitPeriod(player, simTime);
+  resolve(simTime: number, controlled: DynamicEntity | null): DisplayWindow {
+    const referencePeriod = this.currentOrbitPeriod(controlled, simTime);
     const duration = this.durationSec(referencePeriod);
     this._current = {
       frame: this._frame,
@@ -232,7 +232,7 @@ export class DisplayWindowManager {
   }
 
   // 毎フレーム呼ぶ。操作パネル(期間・スクラバー・目盛り)の表示/非表示と内容を押し出す。
-  sync(player: DynamicEntity | null): void {
+  sync(controlled: DynamicEntity | null): void {
     this.panel.render({
       visible: !this._forceCurrent,
       durationKey: this.durationKey,
@@ -245,22 +245,22 @@ export class DisplayWindowManager {
       epochUnixSec: this.epochUnixSec,
       sliderSteps: this.sliderSteps(),
       sliderT: this.sliderT,
-      predictionRatio: this.predictionCoverageRatio(player),
+      predictionRatio: this.predictionCoverageRatio(controlled),
       ticks: buildTicks(this._current.duration, TICK_MAX_COUNT),
     });
   }
 
-  // 操作艦・基地の現在軌道の周期 [s]。対象がいない、または有限な周期が求まらない間は NaN —
+  // 操作対象の現在軌道の周期 [s]。対象がいない、または有限な周期が求まらない間は NaN —
   // durationSec 側のフォールバックに委ねる。
-  private currentOrbitPeriod(player: DynamicEntity | null, simTime: number): number {
-    if (!player) return NaN;
-    const center = strongestAttractor(player.state.r, this.celestialSystem.celestialMotions, simTime);
-    return player.orbitalElementsAround(center, simTime)?.period ?? NaN;
+  private currentOrbitPeriod(controlled: DynamicEntity | null, simTime: number): number {
+    if (!controlled) return NaN;
+    const center = strongestAttractor(controlled.state.r, this.celestialSystem.celestialMotions, simTime);
+    return controlled.orbitalElementsAround(center, simTime)?.period ?? NaN;
   }
 
   // 操作対象の予測軌道が表示期間のどこまで届いているかの割合(0..1)。
-  private predictionCoverageRatio(player: DynamicEntity | null): number {
-    const end = player?.predicted?.state.t;
+  private predictionCoverageRatio(controlled: DynamicEntity | null): number {
+    const end = controlled?.predicted?.state.t;
     if (end === undefined || this._current.duration <= 0) return 1;
     return Math.max(0, Math.min(1, (end - this._current.simTime) / this._current.duration));
   }

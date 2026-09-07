@@ -83,6 +83,8 @@ export class PlanPath {
   private _nodeCount = 0;
   // update() で実際のレジストリの慣性系に置き換わるまでの暫定値。
   private frame: ReferenceFrame = { center: 'earth', rotatingWith: null };
+  // 折れ線が載っている座標系。
+  get displayFrame(): ReferenceFrame { return this.frame; }
   private celestialSystem: CelestialSystem | null = null;
   private unbakeTime = 0;
   // un-bake は update() が受け取った displayTime に固定される。同じフレーム中に ghost/impact/apsis/tick と
@@ -219,6 +221,9 @@ export class PlanPath {
   sync(fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, cameraPos: Vec3, camera: THREE.Camera): void {
     this.project = project;
     this.cameraPos = cameraPos;
+    // ノードの無い計画は操作対象の現在軌道そのものなので、折れ線は出さない。それでも
+    // project の更新までは通す — 止めると、クリック当たり判定が古い視点のまま残る。
+    this.setVisible(this._nodeCount > 0);
     if (this.celestialSystem === null) return;
     for (let i = 0; i < this.activeCount; i++) {
       const source = this.sources[i]!;
@@ -411,8 +416,8 @@ export class PlanPath {
     return { state: refined ?? best.state, arcIdx: best.arcIdx };
   }
 
-  // update() がまだ呼ばれていない経路にも、従来どおり遅延評価で対応する。ただし通常の
-  // 表示経路では update() が先に値を入れるため、同一フレーム内の再生成は起きない。
+  // un-bake の座標系変換。無効化されていれば unbakeTime で組み直し、以後は同じものを返す。
+  // 星系がまだ渡されていなければ null。
   private currentUnbakeTransform(): FrameTransform | null {
     if (!this.celestialSystem) return null;
     if (this.unbakeTransform === null) {

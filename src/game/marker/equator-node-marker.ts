@@ -15,8 +15,7 @@ const EQUATOR_NODE_LABELS = {
 } as const;
 
 export class EquatorNodeMarker extends OrbitPointMarker {
-  public readonly glyph = ORBIT_POINT_GLYPH.descendingNode;
-  protected readonly markerGlyph: string;
+  public readonly glyph: string;
   protected readonly markerClass = 'mk-node';
   public readonly markerLabel: string;
 
@@ -29,7 +28,7 @@ export class EquatorNodeMarker extends OrbitPointMarker {
     super(`${EQUATOR_NODE_LABELS[node].idPrefix}-${ownerId}`);
     this.spec = EQUATOR_NODE_LABELS[node].spec;
     this.markerLabel = this.spec.short;
-    this.markerGlyph = EQUATOR_NODE_LABELS[node].glyph;
+    this.glyph = EQUATOR_NODE_LABELS[node].glyph;
   }
 
   // 今フレームの解を記録する。求まらなかったフレームはすべての引数に null を渡す。

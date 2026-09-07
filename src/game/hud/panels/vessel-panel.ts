@@ -13,7 +13,7 @@ import type { Input } from '../../../input/input';
 import type { KeyBinding } from '../../../input/key-mapping';
 import type { RadiatorSide, RadiatorSystem } from '../../player/radiator';
 import type { SolarSide, PowerSystem } from '../../player/power';
-import { THROTTLE_LEVELS, THROTTLE_LABELS } from '../../player/player-throttle';
+import { THROTTLE_LEVELS, THROTTLE_LABELS } from '../../player/throttle';
 import { MAX_DYN_PRESSURE } from '../../player/aero-load';
 
 const SYNC_INTERVAL_MS = 100;
@@ -178,7 +178,7 @@ export class VesselPanel {
 
   // 操作対象の状態を VESSEL パネルへ反映する。操作対象が無ければパネルごと隠す。
   public sync(game: Game): void {
-    const target = game.activeControllableEntity;
+    const target = game.activeControllable;
     this.power = target?.power ?? null;
     this.radiator = target?.radiator ?? null;
     if (!target) {

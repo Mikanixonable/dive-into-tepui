@@ -3,8 +3,6 @@
 // 依存していないことを実演する。タイトルの通常ボタン列には出ない。
 import * as THREE from 'three/webgpu';
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
-import type { Player } from '../player/player';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import {
   CelestialMotion, OrbitingMotion, PhaseOffsets, PlanetDef, SatelliteDef, StarDef,
@@ -28,7 +26,7 @@ import type { TdbJulianDate } from '../../physics/time';
 import { SphereEntity } from '../celestial/celestial-entity/sphere-entity';
 import { StarEntity } from '../celestial/celestial-entity/star-entity';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../render/pipeline/sun-light';
-import { MAG_ROUNDS } from '../player/player-fire';
+import { MAG_ROUNDS } from '../player/fire-control';
 
 const STAR_ID = 'aeolus';
 const PRIMARY_ID = 'zephyrus';
@@ -113,7 +111,7 @@ export class StageDebugAltSystem extends Stage {
 
   // 自機を zephyrus の低軌道へ置く(このレジストリでは既定の地球 LEO に意味が無い)。
   protected init(): void {
-    const t = this._simulator.simTime;
+    const t = this._dynamicSystem.simTime;
     const primary = this._celestialSystem.motionOf(PRIMARY_ID);
     const primaryState = primary.stateAt(t);
     const rel = stateFromOrbitalElements(t, PRIMARY_RADIUS + 5e5, 0, 0, 0, 0, 0, primary.def.mu);
@@ -123,7 +121,9 @@ export class StageDebugAltSystem extends Stage {
     });
   }
 
-  update(_dt: number, player: Player | null, _entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  // 補給を1フレーム分進める。自艦がいなければ何もしない。
+  update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
+    const player = this.ship;
     if (!player) return;
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }

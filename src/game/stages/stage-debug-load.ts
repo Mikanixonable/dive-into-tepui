@@ -1,8 +1,6 @@
 // デバッグ用ステージ: 破片を多数配置し、積分するエンティティ数の高負荷を常時再現する。
 // タイトルの通常ボタン列には出ない。
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
-import type { Player } from '../player/player';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import { randomQuat } from '../../math/quat';
@@ -13,7 +11,7 @@ import type { StageSaveData } from '../save/save-data';
 import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN,
 } from '../../render/vfx-style';
-import { MAG_ROUNDS } from '../player/player-fire';
+import { MAG_ROUNDS } from '../player/fire-control';
 
 // 破片は衛星の破壊直後の雲を想定し、自機の周囲に留める。
 const DEBRIS_COUNT = 500;
@@ -39,7 +37,7 @@ export class StageDebugLoad extends Stage {
   }
 
   // 自機を置き、破片を自機の周囲へ散らす。
-  protected init(entities: DynamicSystem): void {
+  protected init(): void {
     const player = this.addPlayer({ ammo: { mags: 20, rounds: MAG_ROUNDS } });
     const rand = mulberry32(RNG_SEED);
     for (let i = 0; i < DEBRIS_COUNT; i++) {
@@ -47,11 +45,13 @@ export class StageDebugLoad extends Stage {
       const state = kinematicState<'eci'>(player.state.t, add(player.state.r, offset), player.state.v);
       const size = DESTROY_FRAG_SIZE_MIN + rand() * (DESTROY_FRAG_SIZE_MAX - DESTROY_FRAG_SIZE_MIN);
       const att = { q: randomQuat(rand), w: v3(0, 0, 0), inertia: v3(1, 1, 1) };
-      entities.add(new DebrisPiece(state, { kind: 'fragment', accent: 0x888888, size }, att, this._worldSfx, this._fx, undefined, this._scene));
+      this._dynamicSystem.add(new DebrisPiece(state, { kind: 'fragment', accent: 0x888888, size }, att, this._worldSfx, this._fx, undefined, this._scene));
     }
   }
 
-  update(_dt: number, player: Player | null, _entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  // 補給を1フレーム分進める。自艦がいなければ何もしない。
+  update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
+    const player = this.ship;
     if (!player) return;
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }

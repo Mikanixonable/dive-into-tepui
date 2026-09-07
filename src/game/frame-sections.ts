@@ -4,7 +4,7 @@
 // 区間の識別子。並びは update での呼び出し順。
 export const SECTION = {
   input: 0,
-  player: 1,
+  command: 1,
   stage: 2,
   integrate: 3,
   orbit: 4,
@@ -24,7 +24,7 @@ export type SectionId = (typeof SECTION)[keyof typeof SECTION];
 // 表示名。並びは SECTION の値の順。積分の内訳4区間は、合計が親を成さないことを崩さないまま
 // 並びだけ字下げする。
 export const SECTION_LABELS: readonly string[] = [
-  '入力', '自機', 'ステージ', '積分',
+  '入力', '指令', 'ステージ', '積分',
   '　軌道積分', '　天体接触', '　物体接触', '　姿勢',
   '予測', '演出', '計画', 'マップ候補', 'カメラ', 'ポインタ',
 ];

@@ -23,8 +23,7 @@ import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window';
 import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../../hud/object-groups';
-import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
-import type { Player } from '../../player/player';
+import type { Controllable } from './controllable';
 
 const RCS_FUEL_PHYS_RADIUS = 1.3; // 補給の物理接触用の半径 [m]
 export const RCS_FUEL_PICKUP_RADIUS = 100; // 取り込み距離 [m]
@@ -33,12 +32,13 @@ export const RCS_FUEL_PICKUP_AMOUNT = 1000; // 1 個の取り込みで増える 
 const idAllocator = new EntityIdAllocator('rcs-fuel-');
 
 type RcsFuelPickupInit =
-  | { readonly state: KinematicState; readonly att?: Attitude; readonly id?: string }
+  | { readonly state: KinematicState; readonly att?: Attitude; readonly id?: string; readonly name?: string }
   | { readonly saved: RcsFuelPickupSaveData; readonly simTime: number };
 
 // 軌道上の RCS 燃料補給。接近すると燃料を艦のタンクへ移す。
 export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
-  public readonly mapKind: DynamicEntityKind = 'fuel';
+  public override readonly mapKind: DynamicEntityKind = 'fuel';
+  public override readonly pickable = true;
 
   override readonly bcInv = SMALL_DEBRIS_BCINV;
   protected readonly srpCoeff = SMALL_DEBRIS_SRP_COEFF;
@@ -51,22 +51,24 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
   protected readonly predictedForGhost = true;
 
   public constructor(init: RcsFuelPickupInit, scene: THREE.Scene) {
-    const { state, att, id } = 'saved' in init
+    const { state, att, id, name } = 'saved' in init
       ? {
         state: kinematicState<'eci'>(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
         att: { q: { ...init.saved.q }, w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z), inertia: v3(1, 1, 1) } as Attitude,
         id: init.saved.id || undefined,
+        name: init.saved.name || undefined,
       }
-      : { state: init.state, att: init.att, id: init.id };
+      : { state: init.state, att: init.att, id: init.id, name: init.name };
     super(state, buildRcsFuelPickup(), scene, att, idAllocator.next(id));
-    this.name = ('saved' in init && init.saved.name) ? init.saved.name : 'RCS燃料';
+    this.setName(name ?? 'RCS燃料');
     this.mass = 0;
     this.radius = RCS_FUEL_PHYS_RADIUS;
     this.collides = true;
     this.contactDamageWeight = 0;
   }
 
-  serialize(): RcsFuelPickupSaveData {
+  // セーブデータへ変換する。
+  public override serialize(): RcsFuelPickupSaveData {
     return {
       id: this.id,
       ...(this.name !== 'RCS燃料' ? { name: this.name } : {}),
@@ -117,33 +119,28 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
     return this.stateAt(displayTime)?.r ?? null;
   }
 
-  // 燃料カテゴリの表示トグルによる可否。
-  public mapVisibility(policy: MapVisibilityPolicy): MapVisibility {
-    return policy.entity(this.mapKind);
-  }
-
   public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
 
   // 自艦からの距離と回収圏内かどうか。自艦がいなければ空。
   public listDetail(
-    _celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+    _celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
   ): string {
-    if (activePlayer === null) return '';
-    const d = len(sub(this.posAt(displayTime) ?? this.state.r, activePlayer.state.r));
-    return `${fmtDist(d)}${this.listCounted(activePlayer, displayTime) ? ' · 回収可能' : ''}`;
+    if (viewer === null) return '';
+    const d = len(sub(this.posAt(displayTime) ?? this.state.r, viewer.state.r));
+    return `${fmtDist(d)}${this.listCounted(viewer, displayTime) ? ' · 回収可能' : ''}`;
   }
 
   // 検索が照合する文字列。行の補助表示と同じ。
   public listSearchText(
-    celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+    celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
   ): string {
-    return this.listDetail(celestialSystem, activePlayer, displayTime);
+    return this.listDetail(celestialSystem, viewer, displayTime);
   }
 
   // 自艦が回収圏内に入っているか。
-  public listCounted(activePlayer: Player | null, displayTime: number): boolean {
-    if (activePlayer === null) return false;
-    const d = len(sub(this.posAt(displayTime) ?? this.state.r, activePlayer.state.r));
+  public listCounted(viewer: Controllable | null, displayTime: number): boolean {
+    if (viewer === null) return false;
+    const d = len(sub(this.posAt(displayTime) ?? this.state.r, viewer.state.r));
     return d <= RCS_FUEL_PICKUP_RADIUS;
   }
 
@@ -173,7 +170,7 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
   public propertyRows(
     commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
   ): readonly PropertyRow[] {
-    const viewer = commands.activePlayer;
+    const viewer = commands.controlled;
     const rows: PropertyRow[] = [];
     if (viewer) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(this.state.r, viewer.state.r))) });
     rows.push({ key: 'amount', label: '補給量', value: `${RCS_FUEL_PICKUP_AMOUNT.toLocaleString()} kg` });
@@ -184,4 +181,9 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
   public readonly rename = null;
   public readonly onMapSelect = null;
   public readonly onMapFocus = null;
+}
+
+// この個体が RCS 燃料補給か。顔ぶれから RCS 燃料補給だけを絞るときに使う。
+export function isRcsFuelPickup(entity: DynamicEntity): entity is RcsFuelPickup {
+  return entity instanceof RcsFuelPickup;
 }

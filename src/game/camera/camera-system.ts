@@ -3,7 +3,6 @@ import { Hud } from '../hud/hud';
 import { GunsightCamera } from './gunsight-camera';
 import { defaultMapViewInitial, FocusCamera, FOCUS_CAMERA_MIN_DIST } from './focus-camera';
 import type { FocusTarget } from './focus-target';
-import { Player } from '../player/player';
 import { frameRoleAnchorId } from '../../physics/frame';
 import { ViewOptionsPanel } from '../hud/panels/view-options-panel';
 import { catalogFamilyIndex } from '../celestial/orbit-guide/orbit-guide-catalog';
@@ -21,7 +20,7 @@ import type { Quat } from '../../math/quat';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { View } from '../view/view';
 import { CameraSaveData } from '../save/save-data';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 
 const BODY_CLASS_TOGGLES_STORAGE_KEY = 'tepui.mapDisplayToggles';
 
@@ -214,7 +213,7 @@ export class CameraSystem {
         angles: COMBAT_CAMERA_INIT_ANGLES,
         dist: COMBAT_CAMERA_INIT_DIST,
         fovDeg: COMBAT_CAMERA_FOV,
-        focus: { kind: 'object', id: frameRoleAnchorId('activeShip') },
+        focus: { kind: 'object', id: frameRoleAnchorId('controlled') },
         follow: { kind: 'attitude' },
       },
       attitudeOf,
@@ -273,14 +272,15 @@ export class CameraSystem {
 
   // 入力からカメラの向き・ズームを更新する。ビューに応じてどちらか一方のインスタンスだけを
   // 駆動する。displayTime/frameAnchors は座標系変換に使う — 線・メッシュと同じ表示時刻でないと
-  // 回転系選択時にカメラだけが現在時刻に取り残される。
+  // 回転系選択時にカメラだけが現在時刻に取り残される。controlled は照準ズームの可否と
+  // その視点を決める。
   update(
-    player: DynamicEntity | null,
     displayTime: number,
     input: Input,
     dt: number,
     focusCandidates: readonly FocusCandidate[],
     frameAnchors: FrameAnchorSource,
+    controlled: Controllable | null,
   ): void {
     // 中クリックで視点リセット
     input.takeMiddleClicks(() => {
@@ -322,8 +322,9 @@ export class CameraSystem {
       return;
     }
     this._zoomActive = input.down(K.gunsightZoom);
-    // 操作対象艦がいなければ照準先が無いので、ズーム要求は無視して軌道視点のままにする。
-    const useGunsight = this._zoomActive && player instanceof Player;
+    // 照準ズームは機関砲の照準器なので、砲を積んでいる操作対象にしか無い。持たない相手を
+    // 操作している間はズーム要求を無視して軌道視点のままにする。
+    const useGunsight = this._zoomActive && controlled?.fire != null;
     // ガンサイト中の視点操作は、覗いていない軌道視点へ届かせない(解除時に視点が跳ぶ)。
     const stillMouse = { ...mouse, dx: 0, dy: 0, wheel: 0, panDx: 0, panDy: 0, roll: 0 };
     this.combatCamera.update(
@@ -332,7 +333,7 @@ export class CameraSystem {
       useGunsight ? 0 : keyPitchRad,
       displayTime, focusCandidates, frameAnchors,
     );
-    if (useGunsight) this.gunsightCamera.update(player);
+    if (useGunsight) this.gunsightCamera.update(controlled);
     const target = useGunsight ? this.gunsightCamera.viewpoint : this.combatCamera.viewpoint;
     this.combatViewpoint = lerpViewpointFov(this.combatViewpoint, target, dt);
   }

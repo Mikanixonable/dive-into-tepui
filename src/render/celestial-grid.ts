@@ -23,6 +23,19 @@ export interface CelestialGridVisibility {
   readonly moonEquatorScaleGrid: boolean;
 }
 
+// 何も選んでいない状態。星だけを出す。
+export const DEFAULT_GRID_VISIBILITY: CelestialGridVisibility = {
+  stars: true,
+  ecliptic: false,
+  eclipticPlane: false, eclipticPole: false, eclipticGrid: false,
+  equator: false,
+  equatorPlane: false, equatorPole: false, equatorGrid: false,
+  eclipticScaleGrid: false,
+  equatorScaleGrid: false,
+  moonOrbitScaleGrid: false,
+  moonEquatorScaleGrid: false,
+};
+
 // 黄道・赤道それぞれのカテゴリトグルと、配下の面・極・グリッドの対応。子が1つでも ON なら
 // カテゴリは ON、全て OFF なら OFF になる。
 interface GridCategory {

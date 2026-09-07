@@ -1,7 +1,4 @@
 // マヌーバ噴射プルーム: 推力方向の逆側に置く発光ビルボード 2 枚(コア+アウター)+ エンジン音。
-// DynamicEntity 自身が持つ this.thrust(今フレームの推力ベクトルそのもの)を直接読む —
-// PlayerThrottle 固有の状態(thrustVizDir/throttleIdx)には依存しない(RcsEffects が
-// PlayerThrottle 経由ではなく ship.torque を直接読むのと同じ理由・同じ形)。
 import * as THREE from 'three/webgpu';
 import { Vec3, addScaled, len, scale } from '../../math/vec3';
 import { Billboard } from '../../render/billboard';
@@ -32,9 +29,8 @@ export class ThrustEffects {
 
   // 噴射プルーム・エンジン音を thrust(今フレームの推力ベクトル、非噴射時は null)に合わせて
   // 同期する。maxAccel は出力比(プルームの大きさ)を求めるための全開加速度。style が模式図
-  // なら、ビルボードの代わりに輪郭抽出へ拾われるコーンを出す。ズームガンサイト表示中や
-  // 自機死亡時はどちらも隠す。audible は共有音源を鳴らすかどうか(RcsEffects.sync と同じ役割
-  // — 全艦のプルームは描画するが、音は操作対象だけ)。
+  // なら、ビルボードの代わりに輪郭抽出へ拾われるコーンを出す。visible=false のときは
+  // どちらも隠し、audible=false のときは共有のエンジン音へ触れない。
   sync(
     fo: FloatingOrigin, playerPos: Vec3, thrust: Vec3 | null, maxAccel: number,
     visible: boolean, audible: boolean, camera: CameraSystem, style: RenderStyle, plumeScale = 1.0,

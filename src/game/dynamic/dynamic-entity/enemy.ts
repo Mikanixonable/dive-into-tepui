@@ -9,8 +9,10 @@ import { contactDamageSpeed } from './contact-damage';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../../math/vec3';
 import { solveLeadTime } from '../../../physics/intercept';
-import { EffectsSystem } from '../../vfx/effects-system';
-import { Player } from '../../player/player';
+import { FlashEffects } from '../../vfx/flash-effects';
+import { buildDestroyFragments } from './debris-piece';
+import type { Controllable } from './controllable';
+import type { Player } from '../../player/player';
 import { Bullet } from './bullet';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { R_EARTH_EQ } from '../../celestial/solar-system/constants';
@@ -20,26 +22,29 @@ import { orbitRows } from '../../pickable/orbit-rows';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import { shipMarkerSvg } from '../../marker/marker-shapes';
 import { currentThemePalette } from '../../../theme';
-import { ENEMY_DESTROY_FRAG_COLOR } from '../../../render/vfx-style';
+import {
+  DESTROY_FLASH1_DURATION, DESTROY_FLASH1_SIZE0, DESTROY_FLASH1_SIZE1,
+  DESTROY_FLASH2_DURATION, DESTROY_FLASH2_SIZE0, DESTROY_FLASH2_SIZE1,
+  DESTROY_FLASH_COLOR_1, DESTROY_FLASH_COLOR_2,
+  DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, ENEMY_DESTROY_FRAG_COLOR,
+} from '../../../render/vfx-style';
 import type { Quat } from '../../../math/quat';
 import type { DynamicEntityKind } from './entity-kind';
-import type { GroupedMarkerItem } from '../../marker/grouped-markers';
+import type { GroupedMarkerItem, MarkerRole } from '../../marker/grouped-markers';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { EnemyDeathCause, Stage } from '../../stages/stage';
-import type { DynamicSystem } from '../dynamic-system';
-import type { SimSpeedManager } from '../sim-speed-manager';
+import type { EntityRegistry, SpawnGate } from '../dynamic-system';
 import type { EnemySaveData } from '../../save/save-data';
-import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import type { MarkerManager } from '../../marker/marker-manager';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
+import type { CombatTarget } from './combat-target';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { ObjectCommands } from '../../pickable/object-commands';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window';
 import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../../hud/object-groups';
-import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 
 // 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。降下してくる艦がこの温度に
 // 達するのは、地球の大気では高度 80 km 付近。
@@ -89,9 +94,9 @@ export type EnemyPlacement = {
 export interface EnemyClass {
   // セーブへ書く具象タグ。
   readonly kind: EnemySaveData['kind'];
-  // 復元に fetch 済みアセットが要るなら、その id。要らなければ null。
-  pendingAssetId(saved: EnemySaveData): ProteinAssetId | null;
-  new (init: EnemyRestore, worldSfx: WorldSfx, fx: EffectsSystem, scene?: THREE.Scene): Enemy;
+  // 復元に外部資源の取得が要るなら、それが揃ったかを答える述語。要らなければ null。
+  spawnGate(saved: EnemySaveData): SpawnGate | null;
+  new (init: EnemyRestore, worldSfx: WorldSfx, fx: FlashEffects, scene?: THREE.Scene): Enemy;
 }
 
 // 太陽グレアによるプラズマ弾の散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが甘くなり、
@@ -111,8 +116,9 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
 
 // 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、交戦圏
 // 離脱・焼失・衝突の記録。機体が何でできているか(メッシュ・被弾モデル・判定形状)は具象が持つ。
-export abstract class Enemy extends Ship implements ObjectPickable {
-  public readonly mapKind: DynamicEntityKind = 'enemy';
+export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable {
+  public override readonly mapKind: DynamicEntityKind = 'enemy';
+  public override readonly pickable = true;
 
   // 敵機は熱防御を持たないので、自機より低い温度で構造が保たなくなる。
   protected readonly maxTemperature = ENEMY_MAX_TEMP;
@@ -131,7 +137,7 @@ export abstract class Enemy extends Ship implements ObjectPickable {
   public fireEnabled = true;
 
   protected readonly _worldSfx: WorldSfx;
-  protected readonly _fx: EffectsSystem;
+  protected readonly _fx: FlashEffects;
 
   // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径)を受けて、
   // 敵に共通する識別・色・陣形所属を初期化する。復元時は保存済みの生死・バースト状態も戻す。
@@ -141,7 +147,7 @@ export abstract class Enemy extends Ship implements ObjectPickable {
     inertia: Vec3,
     radius: number,
     worldSfx: WorldSfx,
-    fx: EffectsSystem,
+    fx: FlashEffects,
     scene?: THREE.Scene,
   ) {
     // 復元と新規配置を同じ形へ均してから基底へ渡す。
@@ -214,7 +220,9 @@ export abstract class Enemy extends Ship implements ObjectPickable {
 
   // 敵のマーカー表示項目を組み立てる。pos/vel には機体メッシュと同じ表示時刻の状態
   // (stateAt 経由)を渡すこと。
-  public markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View): GroupedMarkerItem {
+  public markerItem(
+    role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, _isActive: boolean,
+  ): GroupedMarkerItem {
     // 距離は優先度(近いほど高)とラベル表示の両方に使う
     const dist = len(sub(pos, viewerPos));
     // 代表選出の優先度: ターゲット > 距離が近い順 (天体 > 船・エンティティ)
@@ -250,14 +258,27 @@ export abstract class Enemy extends Ship implements ObjectPickable {
   }
 
   // 撃破時の爆発音・エフェクトを発生させる。
-  private destroyEffect(): void {
+  private destroyEffect(registry: EntityRegistry): void {
     this._worldSfx.explosion();
     // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
-    this._fx.spawnShipDestroyEffect(this.state, ENEMY_SCALE, ENEMY_DESTROY_FRAG_COLOR);
+    const { t, r, v } = this.state;
+    this._fx.spawnFlash(
+      this.state, DESTROY_FLASH1_SIZE0 * ENEMY_SCALE, DESTROY_FLASH1_SIZE1 * ENEMY_SCALE,
+      DESTROY_FLASH1_DURATION, DESTROY_FLASH_COLOR_1);
+    this._fx.spawnFlash(
+      this.state, DESTROY_FLASH2_SIZE0 * ENEMY_SCALE, DESTROY_FLASH2_SIZE1 * ENEMY_SCALE,
+      DESTROY_FLASH2_DURATION, DESTROY_FLASH_COLOR_2);
+    for (const piece of buildDestroyFragments(
+      t, r, v, 11, ENEMY_DESTROY_FRAG_COLOR,
+      (DESTROY_FRAG_SIZE_MIN * ENEMY_SCALE) / 3, (DESTROY_FRAG_SIZE_MAX * ENEMY_SCALE) / 3, 20.0,
+      this._worldSfx, this._fx, this.scene,
+    )) registry.add(piece);
   }
 
   // 被弾によるダメージ・致死判定。
-  private attackedByBullet(bullet: Bullet, impactPoint: Vec3, simTime: number, activeStage: Stage): void {
+  private attackedByBullet(
+    bullet: Bullet, impactPoint: Vec3, simTime: number, activeStage: Stage, registry: EntityRegistry,
+  ): void {
     activeStage.scoreCounter.recordHit();
     this.applyBulletDamage(bullet.damage, impactPoint);
     if (this.hp > 0) {
@@ -268,32 +289,37 @@ export abstract class Enemy extends Ship implements ObjectPickable {
     // HP が尽きたので撃破処理へ
     this.alive = false;
     activeStage.recordEnemyDeath(this, simTime, 'killed');
-    this.destroyEffect();
+    this.destroyEffect(registry);
   }
 
   // 他の実体との接触。ダメージはゲームバランスの量で、物理の質量からは導かない。
-  public collideWithEntity(other: DynamicEntity, contact: Contact, activeStage: Stage): void {
+  public collideWithEntity(
+    other: DynamicEntity, contact: Contact, activeStage: Stage, registry: EntityRegistry,
+  ): void {
     if (!this.alive) return;
     const simTime = contact.selfState.t;
 
     if (other instanceof Bullet) {
-      this.attackedByBullet(other, contact.point, simTime, activeStage);
+      this.attackedByBullet(other, contact.point, simTime, activeStage, registry);
       return;
     }
 
     // 他の実体との接触で沈めば、交戦の結果として記録する。
-    this.damagedByContact(contactDamageSpeed(other, contact), simTime, 'killed', activeStage);
+    this.damagedByContact(contactDamageSpeed(other, contact), simTime, 'killed', activeStage, registry);
   }
 
   // 天体の固体表面への接触。沈めば自然損耗(collision)として記録する。
-  public collideWithCelestialBody(_body: CelestialMotion, contact: Contact, activeStage: Stage): void {
+  public collideWithCelestialBody(
+    _body: CelestialMotion, contact: Contact, activeStage: Stage, registry: EntityRegistry,
+  ): void {
     if (!this.alive) return;
-    this.damagedByContact(closingSpeed(contact), contact.selfState.t, 'collision', activeStage);
+    this.damagedByContact(closingSpeed(contact), contact.selfState.t, 'collision', activeStage, registry);
   }
 
   // 接触ダメージを当て、HP が残れば音とパフ、尽きたら cause の撃破として記録する。
   private damagedByContact(
     damageSpeed: number, simTime: number, cause: EnemyDeathCause, activeStage: Stage,
+    registry: EntityRegistry,
   ): void {
     if (!this.applyImpactDamage(damageSpeed)) return;
     if (this.hp > 0) {
@@ -304,7 +330,7 @@ export abstract class Enemy extends Ship implements ObjectPickable {
 
     this.alive = false;
     activeStage.recordEnemyDeath(this, simTime, cause);
-    this.destroyEffect();
+    this.destroyEffect(registry);
   }
 
   // 交戦圏外への離脱によるデスポーン。
@@ -315,22 +341,23 @@ export abstract class Enemy extends Ship implements ObjectPickable {
   }
 
   // 大気での焼失による自然死。固体表面への接触は collideWithCelestialBody が扱う。
-  protected override burnUp(activeStage: Stage): void {
+  protected override burnUp(activeStage: Stage, registry: EntityRegistry): void {
     this.alive = false;
-    this.destroyEffect();
+    this.destroyEffect(registry);
     activeStage.recordEnemyDeath(this, this.state.t, 'burnup');
   }
 
-  // 行動関数。enemies は同一集団の同時攻撃数を数える母集団、entities は弾の追加先。
+  // 行動関数。enemies は同一集団の同時攻撃数を数える母集団、registry は弾の追加先。
+  // operable が偽の間は指令を決めない。
   public behave(
-    simTime: number, player: Player, entities: DynamicSystem, enemies: readonly Enemy[],
-    simSpeed: SimSpeedManager, celestialSystem: CelestialSystem,
+    simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
+    operable: boolean, celestialSystem: CelestialSystem,
   ): void {
     // 射撃間隔は simulation time で測る。wall dt を混ぜると、同じゲーム内時間でも
     // warp 段によって弾数が変わる。
     const behaviorDt = this.lastBehaviorSim === undefined ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
     this.lastBehaviorSim = simTime;
-    if (!simSpeed.canShipAct) return;
+    if (!operable) return;
     if (!this.fireEnabled) return;
     if (!this.canFire(enemies)) {
       this.burstLeft = undefined;
@@ -344,7 +371,7 @@ export abstract class Enemy extends Ship implements ObjectPickable {
     if (this.burstLeft && this.burstLeft > 0) {
       this.burstDelay = (this.burstDelay ?? 0) - behaviorDt;
       if (this.burstDelay <= 0) {
-        this.firePlasma(simTime, player, entities, celestialSystem);
+        this.firePlasma(simTime, player, registry, celestialSystem);
         this.burstLeft--;
         this.burstDelay = ENEMY_BURST_INTERVAL;
       }
@@ -361,7 +388,7 @@ export abstract class Enemy extends Ship implements ObjectPickable {
     const counts = ENEMY_BURST_COUNTS;
     this.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
     this.burstDelay = ENEMY_BURST_INTERVAL;
-    this.firePlasma(simTime, player, entities, celestialSystem);
+    this.firePlasma(simTime, player, registry, celestialSystem);
   }
 
   // enemies のうち、自分と同じ accent でバースト射撃中の個体数を数える。
@@ -376,8 +403,10 @@ export abstract class Enemy extends Ship implements ObjectPickable {
   // 発砲の演出。既定では何も出さない。
   protected muzzleEffect(_muzzleState: KinematicState): void {}
 
-  // player へ向けた見越し射撃でプラズマ弾を1発生成し、entities に追加する。
-  private firePlasma(simTime: number, player: Player, entities: DynamicSystem, celestialSystem: CelestialSystem): void {
+  // player へ向けた見越し射撃でプラズマ弾を1発生成し、registry へ足す。
+  private firePlasma(
+    simTime: number, player: Player, registry: EntityRegistry, celestialSystem: CelestialSystem,
+  ): void {
     const r = this.muzzlePosition();
     const v = this.state.v;
     const toPlayer = sub(player.state.r, r);
@@ -409,11 +438,11 @@ export abstract class Enemy extends Ship implements ObjectPickable {
     );
     this.muzzleEffect(kinematicState<'eci'>(simTime, r, v));
 
-    entities.add(pb);
+    registry.add(pb);
   }
 
-  // セーブデータへ変換する。具象は super.serialize() へ自分の項目を足して override する。
-  public serialize(): EnemySaveData {
+  // 敵に共通する保存項目。具象の serialize() がこれへ自分の項目を足す。
+  protected serializeEnemyFields(): EnemySaveData {
     return {
       id: this.id,
       name: this.name,
@@ -453,35 +482,30 @@ export abstract class Enemy extends Ship implements ObjectPickable {
     return this.stateAt(displayTime)?.r ?? null;
   }
 
-  // 敵カテゴリの表示トグルによる可否。
-  public mapVisibility(policy: MapVisibilityPolicy): MapVisibility {
-    return policy.entity(this.mapKind);
-  }
-
   public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
 
   // 自艦から見た距離と相対速度。自艦がいなければ空。
   public listDetail(
-    _celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+    _celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
   ): string {
-    if (activePlayer === null) return '';
-    const viewer = activePlayer.state;
-    const d = len(sub(this.posAt(displayTime) ?? this.state.r, viewer.r));
-    const label = this.listCounted(activePlayer, displayTime) ? '接近' : '距離';
-    return `${label} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.state.v, viewer.v)))}`;
+    if (viewer === null) return '';
+    const viewerState = viewer.state;
+    const d = len(sub(this.posAt(displayTime) ?? this.state.r, viewerState.r));
+    const label = this.listCounted(viewer, displayTime) ? '接近' : '距離';
+    return `${label} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.state.v, viewerState.v)))}`;
   }
 
   // 検索が照合する文字列。行の補助表示と同じ。
   public listSearchText(
-    celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+    celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
   ): string {
-    return this.listDetail(celestialSystem, activePlayer, displayTime);
+    return this.listDetail(celestialSystem, viewer, displayTime);
   }
 
   // 自艦へ接近中と扱う距離まで寄っているか。
-  public listCounted(activePlayer: Player | null, displayTime: number): boolean {
-    if (activePlayer === null) return false;
-    const d = len(sub(this.posAt(displayTime) ?? this.state.r, activePlayer.state.r));
+  public listCounted(viewer: Controllable | null, displayTime: number): boolean {
+    if (viewer === null) return false;
+    const d = len(sub(this.posAt(displayTime) ?? this.state.r, viewer.state.r));
     return d < ENEMY_APPROACH_DIST;
   }
 
@@ -513,7 +537,7 @@ export abstract class Enemy extends Ship implements ObjectPickable {
   public propertyRows(
     commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
   ): readonly PropertyRow[] {
-    const viewer = commands.activePlayer;
+    const viewer = commands.controlled;
     const rel = viewer ? relativeInfo(viewer, this, celestialSystem.celestialMotions, simTime) : null;
     const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(this.hp)} / ${this.maxHp}` }];
     // 自艦との相対量。
@@ -538,4 +562,9 @@ export abstract class Enemy extends Ship implements ObjectPickable {
   public readonly rename = null;
   public readonly onMapSelect = null;
   public readonly onMapFocus = null;
+}
+
+// この個体が敵か。顔ぶれから敵だけを絞るときに使う。
+export function isEnemy(entity: DynamicEntity): entity is Enemy {
+  return entity instanceof Enemy;
 }

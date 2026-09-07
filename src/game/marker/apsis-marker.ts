@@ -11,7 +11,6 @@ import type { PropertyRow } from '../../hud/windows/property-window';
 
 export class ApsisMarker extends OrbitPointMarker {
   public readonly glyph = ORBIT_POINT_GLYPH.apsis;
-  protected readonly markerGlyph = ORBIT_POINT_GLYPH.apsis;
   protected readonly markerClass = 'mk-apsis';
 
   private centerId: string | null = null;

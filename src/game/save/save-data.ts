@@ -25,7 +25,7 @@ interface EntitySaveData {
   id: string;
   name?: string;
   // 具象クラスのタグ。
-  kind: 'player' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel' | 'booster';
+  kind: 'player' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel' | 'booster' | 'base';
   r: Vec3SaveData;
   v: Vec3SaveData;
   q: QuatSaveData;
@@ -81,6 +81,7 @@ export interface ThrottleSaveData {
 }
 
 export interface PlayerSaveData extends EntitySaveData {
+  kind: 'player';
   fire: FireSaveData;
   thermal: ThermalSaveData;
   radiator: RadiatorSaveData;
@@ -109,17 +110,8 @@ export interface DetachedBoosterSaveData extends EntitySaveData {
   collisionEnableAt?: number;
 }
 
-// 基地は艦(EntitySaveData)と持ち物が根本的に異なる(所持金・燃料)ため、
-// kind で分岐する EntitySaveData の派生ではなく独立した型にする。
-export interface BaseSaveData {
-  id: string;
-  // 旧セーブデータには無いフィールドなので任意。無ければ既定名。
-  name?: string;
-  r: Vec3SaveData;
-  v: Vec3SaveData;
-  // 姿勢と角速度。旧セーブには無いため任意。
-  q?: QuatSaveData;
-  w?: Vec3SaveData;
+export interface BaseSaveData extends EntitySaveData {
+  kind: 'base';
   money: number;
   // 基地の燃料。旧セーブには無いため任意。
   fuel?: number;
@@ -161,10 +153,22 @@ export interface ProteinEnemySaveData extends EnemySaveData {
 }
 
 export interface AmmoPickupSaveData extends EntitySaveData {
+  kind: 'ammo';
 }
 
 export interface RcsFuelPickupSaveData extends EntitySaveData {
+  kind: 'rcs-fuel';
 }
+
+// 顔ぶれ1体分の保存形。kind で具象を判別する。
+export type EntitySaveDataUnion =
+  | PlayerSaveData
+  | MetalEnemySaveData
+  | ProteinEnemySaveData
+  | AmmoPickupSaveData
+  | RcsFuelPickupSaveData
+  | DetachedBoosterSaveData
+  | BaseSaveData;
 
 export interface ScoreCounterSaveData {
   shots: number;
@@ -207,7 +211,7 @@ export interface CreativeStageSaveData extends StageSaveData {
 
 // GameSaveData の形式バージョン。値が変わった時点で、それ以前に書かれたスナップショットは
 // 読めなくなる。
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 // chase にこの形が入っている保存データは読み捨て、戦闘視点を既定で組む。
 export interface ChaseSaveDataV1 {
@@ -275,15 +279,9 @@ export interface GameSaveData {
   phaseOffsets: Partial<Record<string, number>>;
   /** 旧スナップショットには無い。存在しなければ地球の自転初期位相は復元されない。 */
   earthSpinPhase0?: number;
-  players: PlayerSaveData[];
-  activePlayerId: string | null;
-  enemies: EnemySaveData[];
-  ammoPickups: AmmoPickupSaveData[];
-  // 旧スナップショットには無い。読み込み時に空配列へ正規化する。
-  rcsFuelPickups?: RcsFuelPickupSaveData[];
-  // 旧スナップショットには無い。読み込み時は空配列として扱う。
-  detachedBoosters?: DetachedBoosterSaveData[];
-  bases: BaseSaveData[];
+  // 顔ぶれ。種別は各要素の kind が持つ。
+  entities: EntitySaveDataUnion[];
+  activeControlledId: string | null;
   stage: StageSaveData;
   // 旧セーブデータには無いフィールドなので任意。無ければ視点は既定のまま始まる。
   camera?: CameraSaveData;

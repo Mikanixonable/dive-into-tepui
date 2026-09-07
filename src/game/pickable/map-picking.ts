@@ -17,7 +17,7 @@ import type { MarkerManager } from '../marker/marker-manager';
 import type { NavTarget } from '../nav-target';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FrameControls } from '../hud/frame/frame-controls';
-import type { Player } from '../player/player';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import { rayThroughScreen } from '../../math/projection';
 
 const OBJECT_PICK_PX_SQ = 600; // 被選択物(ObjectPickable)の右クリック判定半径の2乗 [px^2]
@@ -34,7 +34,7 @@ export class MapPicking {
   constructor(
     private readonly hud: Hud,
     private readonly cameraSystem: CameraSystem,
-    private readonly entities: DynamicSystem,
+    private readonly dynamicSystem: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly markerManager: MarkerManager,
@@ -52,7 +52,7 @@ export class MapPicking {
     };
     this.listPanel.onNavTarget = (id) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
-      if (target && this.navTarget.canTarget(id, this.entities, this.celestialSystem, this.pickables.lastSimTime)) {
+      if (target && this.navTarget.canTarget(id, this.dynamicSystem, this.celestialSystem, this.pickables.lastSimTime)) {
         this.navTarget.toggleTarget(id, target.name);
       }
     };
@@ -150,7 +150,7 @@ export class MapPicking {
   }
 
   // 軌道物体一覧を、このフレームの候補列で組み直す。
-  sync(displayTime: number, player: Player | null): void {
+  sync(displayTime: number, viewer: Controllable | null): void {
     // 親が無ければ(恒星、もしくは主天体が未登録)載せず、根として扱う。
     const parentOf = new Map<string, string>();
     for (const item of this.celestialMarkers.allItems) {
@@ -160,7 +160,7 @@ export class MapPicking {
     this.listPanel.setVisible(true);
     this.listPanel.sync(
       this.pickables.pickables, focusTargetId(this.cameraSystem.mapCamera.focus),
-      parentOf, player, displayTime);
+      parentOf, viewer, displayTime);
   }
 
   // 一覧を畳む。マップビューを離れるときに呼ぶ。

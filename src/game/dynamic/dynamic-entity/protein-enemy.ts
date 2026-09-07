@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { v3, type Vec3 } from '../../../math/vec3';
-import { apparentSizePx, metersPerPixel, type Viewpoint } from '../../../math/projection';
+import { apparentSizePx, metersPerPixel } from '../../../math/projection';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
-import { EffectsSystem } from '../../vfx/effects-system';
+import { FlashEffects } from '../../vfx/flash-effects';
 import { collisionDamageFraction } from './contact-damage';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
 import { proteinMotionModeDisplacements } from '../../protein/protein-motion-modes';
@@ -15,7 +15,14 @@ import {
   Enemy, ENEMY_SCALE, PLASMA_BULLET_DAMAGE,
   type EnemyPlacement, type EnemyRestore, type FormationRole,
 } from './enemy';
-import type { ProteinAssetId } from '../../protein/protein-asset-loader';
+import { proteinAssetGate, type ProteinAssetId } from '../../protein/protein-asset-loader';
+import type { InstancedPools } from '../instanced-pools';
+import type { Controllable } from './controllable';
+import type { MapVisibilityPolicy } from '../../map/visibility-policy';
+import type { CameraSystem } from '../../camera/camera-system';
+import type { RenderStyle } from '../../../render/render-style';
+import type { GraphicsSettingsData } from '../../../render/graphics-settings';
+import type { SpawnGate } from '../dynamic-system';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
@@ -74,8 +81,9 @@ function displayOf(init: ProteinEnemyPlacement | EnemyRestore): ProteinDisplaySe
 // 判定形状は表示形態によらず、アセットが持つ球列に固定する。
 export class ProteinEnemy extends Enemy {
   public static readonly kind = 'protein-enemy';
-  public static pendingAssetId(saved: EnemySaveData): ProteinAssetId {
-    return (saved as ProteinEnemySaveData).assetId;
+  // その体のアセットの取得を起こし、実体化してよいかを答える関門を返す。
+  public static spawnGate(saved: EnemySaveData): SpawnGate {
+    return proteinAssetGate((saved as ProteinEnemySaveData).assetId);
   }
 
   private readonly assetId: ProteinAssetId;
@@ -84,11 +92,11 @@ export class ProteinEnemy extends Enemy {
   private displaySettings: ProteinDisplaySettings;
 
   // 表示メッシュを組み、アセットが持つ球列へ判定形状を当てる。アセットが未取得なら投げるので、
-  // EnemyClass.pendingAssetId で準備完了を待ってから構築すること。
+  // EnemyClass.spawnGate で準備完了を待ってから構築すること。
   public constructor(
     init: ProteinEnemyPlacement | EnemyRestore,
     worldSfx: WorldSfx,
-    fx: EffectsSystem,
+    fx: FlashEffects,
     scene?: THREE.Scene,
   ) {
     const assetId = 'saved' in init ? (init.saved as ProteinEnemySaveData).assetId : init.assetId;
@@ -157,20 +165,21 @@ export class ProteinEnemy extends Enemy {
     }));
   }
 
-  // 表示物を displayTime の状態へ合わせる。viewer を渡すと投影サイズからゆらぎの LOD を決め、
-  // proteinVibrationEnabled が false なら静止した構造で描く。
-  public override sync(
-    fo: FloatingOrigin, displayTime: number, viewer?: Viewpoint, proteinVibrationEnabled = true,
+  // 表示物を displayTime の状態へ合わせる。ゆらぎの LOD は画面上の投影サイズで決め、
+  // 画質設定のタンパク質の揺らぎが切られていれば静止した構造で描く。
+  protected override syncModel(
+    fo: FloatingOrigin, displayTime: number, active: Controllable | null,
+    visibilityPolicy: MapVisibilityPolicy | null, _pools: InstancedPools,
+    cameraSystem: CameraSystem, _style: RenderStyle, graphics: GraphicsSettingsData,
   ): void {
-    super.sync(fo, displayTime);
-    if (!this.renderObject.visible) return;
-    const displayed = this.stateAt(displayTime);
-    const projectedDiameterPx = viewer && displayed
-      ? apparentSizePx(this.radius * 2, metersPerPixel(viewer, displayed.r, window.innerHeight))
-      : Number.POSITIVE_INFINITY;
+    const displayed = this.placeModel(fo, displayTime, active, visibilityPolicy);
+    if (displayed === null || !this.renderObject.visible) return;
+    const projectedDiameterPx = apparentSizePx(
+      this.radius * 2,
+      metersPerPixel(cameraSystem.activeViewpoint, displayed.r, window.innerHeight));
     // marker LOD(ゆらぎが見えない投影サイズ)まで落ちた敵は、ゆらぎの更新を止める。
     if (this.runtime.updateLod(projectedDiameterPx) !== 'marker') {
-      this.runtime.updateVisual(displayTime, proteinVibrationEnabled);
+      this.runtime.updateVisual(displayTime, graphics.proteinVibration);
     }
   }
 
@@ -233,7 +242,7 @@ export class ProteinEnemy extends Enemy {
 
   public override serialize(): ProteinEnemySaveData {
     return {
-      ...super.serialize(),
+      ...this.serializeEnemyFields(),
       kind: ProteinEnemy.kind,
       assetId: this.assetId,
       display: this.displaySettings,

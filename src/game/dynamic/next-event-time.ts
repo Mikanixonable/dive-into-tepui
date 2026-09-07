@@ -11,9 +11,9 @@ export class NextEventTime {
 
   // simTime 以降で最も早い締切。無ければ null。ステージ側の時刻は艦の現在の Δv と加速度から
   // 毎回決まる生きた値なので、毎回引き直す。
-  at(simTime: number, activeStage: Stage, entities: DynamicSystem): number | null {
+  at(simTime: number, activeStage: Stage, dynamicSystem: DynamicSystem): number | null {
     const stage = activeStage.nextSimulationEventTime(simTime);
-    const entity = this.entityEventTime(simTime, entities);
+    const entity = this.entityEventTime(simTime, dynamicSystem);
     if (stage === null) return entity;
     if (entity === null) return stage;
     return Math.min(stage, entity);
@@ -21,15 +21,15 @@ export class NextEventTime {
 
   // 個体側の締切は固定の絶対時刻なので、控えた時刻を simTime が越えたときと、顔ぶれの世代が
   // 変わったときにだけ全走査で引き直す。
-  private entityEventTime(simTime: number, entities: DynamicSystem): number | null {
-    const revision = entities.collectionRevision;
+  private entityEventTime(simTime: number, dynamicSystem: DynamicSystem): number | null {
+    const revision = dynamicSystem.collectionRevision;
     const stale = !this.valid
       || this.revision !== revision
       || (this.cached !== null && this.cached <= simTime);
     if (!stale) return this.cached;
 
     let next: number | null = null;
-    for (const e of entities.all()) {
+    for (const e of dynamicSystem.all()) {
       if (!e.alive) continue;
       const t = e.nextSimulationEventTime(simTime);
       if (t !== null && (next === null || t < next)) next = t;

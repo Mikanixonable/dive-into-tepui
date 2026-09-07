@@ -3,8 +3,8 @@ import * as THREE from 'three/webgpu';
 import { randomQuat } from '../../../math/quat';
 import { randSym } from '../../../math/random';
 import { add, len, lenSq, randVec, rotateAxis, sub, v3 } from '../../../math/vec3';
-import { AmmoPickup, AMMO_PICKUP_RADIUS } from '../../dynamic/dynamic-entity/ammo-pickup';
-import { RcsFuelPickup, RCS_FUEL_PICKUP_RADIUS, RCS_FUEL_PICKUP_AMOUNT } from '../../dynamic/dynamic-entity/rcs-fuel-pickup';
+import { AmmoPickup, AMMO_PICKUP_RADIUS, isAmmoPickup } from '../../dynamic/dynamic-entity/ammo-pickup';
+import { isRcsFuelPickup, RcsFuelPickup, RCS_FUEL_PICKUP_RADIUS, RCS_FUEL_PICKUP_AMOUNT } from '../../dynamic/dynamic-entity/rcs-fuel-pickup';
 import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { Hud } from '../../hud/hud';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
@@ -41,7 +41,7 @@ export class Logistics {
     private readonly _worldSfx: WorldSfx,
     private readonly _uiSfx: UiSfx,
     private readonly _scene: THREE.Scene,
-    private readonly entities: DynamicSystem,
+    private readonly dynamicSystem: DynamicSystem,
     saved?: LogisticsSaveData,
   ) {
     this.resupplyCheckAt = saved?.resupplyCheckAt ?? 0;
@@ -77,7 +77,7 @@ export class Logistics {
       this._scene,
     );
     // 投入して演出とヒントを出す
-    this.entities.add(ammoPickup);
+    this.dynamicSystem.add(ammoPickup);
     this._uiSfx.warp();
     this._hud.hint('付近の軌道に補給が投入された — ▣ 弾薬マーカーへ接近して回収', 5000);
   }
@@ -107,7 +107,7 @@ export class Logistics {
       },
       this._scene,
     );
-    this.entities.add(fuelPickup);
+    this.dynamicSystem.add(fuelPickup);
     this._uiSfx.warp();
     this._hud.hint('付近の軌道に RCS 燃料補給が投入された — ◈ 燃料マーカーへ接近して回収', 5000);
   }
@@ -148,14 +148,14 @@ export class Logistics {
   // 生存中の補給の数を返す。
   private liveAmmoPickupCount(): number {
     let count = 0;
-    for (const ammoPickup of this.entities.ammoPickups) if (ammoPickup.alive) count++;
+    for (const ammoPickup of this.dynamicSystem.all().filter(isAmmoPickup)) if (ammoPickup.alive) count++;
     return count;
   }
 
   // 生存中の RCS 燃料補給の数を返す。
   private liveRcsFuelPickupCount(): number {
     let count = 0;
-    for (const pickup of this.entities.rcsFuelPickups) if (pickup.alive) count++;
+    for (const pickup of this.dynamicSystem.all().filter(isRcsFuelPickup)) if (pickup.alive) count++;
     return count;
   }
 
@@ -166,7 +166,7 @@ export class Logistics {
 
   // 回収半径内の生存中補給を吸収し、ベルトへ弾を追加する。
   private absorbNearbyAmmoPickups(player: Player): void {
-    for (const ammoPickup of this.entities.ammoPickups) {
+    for (const ammoPickup of this.dynamicSystem.all().filter(isAmmoPickup)) {
       if (!ammoPickup.alive) continue;
       if (
         lenSq(sub(ammoPickup.state.r, player.state.r))
@@ -181,7 +181,7 @@ export class Logistics {
 
   // 回収半径内の生存中 RCS 燃料補給を吸収し、タンクへ燃料を追加する。
   private absorbNearbyRcsFuelPickups(player: Player): void {
-    for (const pickup of this.entities.rcsFuelPickups) {
+    for (const pickup of this.dynamicSystem.all().filter(isRcsFuelPickup)) {
       if (!pickup.alive) continue;
       if (
         lenSq(sub(pickup.state.r, player.state.r))
@@ -198,7 +198,7 @@ export class Logistics {
   private despawnFarAmmoPickups(player: Player, respawnOnDespawn: boolean): void {
     let respawn = 0;
     // デスポーン距離を超えた分を消し、再投入すべき数を数える
-    for (const ammoPickup of this.entities.ammoPickups) {
+    for (const ammoPickup of this.dynamicSystem.all().filter(isAmmoPickup)) {
       if (!ammoPickup.alive) continue;
       if (len(sub(ammoPickup.state.r, player.state.r)) <= LOGISTICS_DESPAWN_DIST) continue;
       ammoPickup.alive = false;
@@ -216,7 +216,7 @@ export class Logistics {
   // デスポーン距離を超えた燃料補給を消し、respawnOnDespawn が真なら同数を再投入する。
   private despawnFarRcsFuelPickups(player: Player, respawnOnDespawn: boolean): void {
     let respawn = 0;
-    for (const pickup of this.entities.rcsFuelPickups) {
+    for (const pickup of this.dynamicSystem.all().filter(isRcsFuelPickup)) {
       if (!pickup.alive) continue;
       if (len(sub(pickup.state.r, player.state.r)) <= LOGISTICS_DESPAWN_DIST) continue;
       pickup.alive = false;

@@ -8,7 +8,8 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import type { MarkerManager } from '../marker/marker-manager';
-import type { Player } from '../player/player';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { ObjectCommands } from './object-commands';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
@@ -38,19 +39,19 @@ export interface ObjectPickable {
 
   // 表示時刻の ECI 位置。求まらないフレームは null で、その回は候補に出ない。
   posAt(displayTime: number): Vec3 | null;
-  // 表示トグルによる可否。activePlayer は操作中の自艦を例外扱いする判定に使う。
-  mapVisibility(policy: MapVisibilityPolicy, activePlayer: Player | null): MapVisibility;
+  // 表示トグルによる可否。viewer は操作中の対象を例外扱いする判定に使う。
+  mapVisibility(policy: MapVisibilityPolicy, viewer: Controllable | null): MapVisibility;
   // 直前のフレームで画面にマーカーが出ていたか。出ていない対象はマップ上で掴めない。
   shownOnMap(markers: MarkerManager): boolean;
 
   // 軌道物体一覧の行へ添える補助表示。
-  listDetail(celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number): string;
+  listDetail(celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number): string;
   // 軌道物体一覧の検索が照合する文字列。行に出さない情報を含めてよい。
-  listSearchText(celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number): string;
+  listSearchText(celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number): string;
   // 区画見出しの内訳(接近 N・回収可 N)に数えるか。
-  listCounted(activePlayer: Player | null, displayTime: number): boolean;
+  listCounted(viewer: Controllable | null, displayTime: number): boolean;
   // 軌道物体一覧での表示順の優先度。小さいほど先に出る。
-  listPriority(activePlayer: Player | null): number;
+  listPriority(viewer: Controllable | null): number;
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。先頭の header 項目は
   // ウィンドウのタイトル/サブタイトルへ抜き出される。
@@ -61,7 +62,7 @@ export interface ObjectPickable {
   runMenu(act: MenuAction, commands: ObjectCommands): void;
 
   // プロパティウィンドウに出す行。simTime は天体位置を厳密に引く時刻、displayTime は
-  // 候補の位置を引き直す時刻。操作中の自艦・基地に依る行は commands から引く。
+  // 候補の位置を引き直す時刻。操作対象に依る行は commands から引く。
   propertyRows(
     commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number, displayTime: number,
   ): readonly PropertyRow[];
@@ -76,6 +77,11 @@ export interface ObjectPickable {
   // 視線が、pos に描かれているこの対象の本体へ当たるか。pos は posAt が答えた、いま
   // 描かれている位置。本体を持たず、マーカーだけで示される対象は常に false。
   hitBodyByRay(ray: Ray, pos: Vec3): boolean;
+}
+
+// この個体が被選択物として公開されるか。顔ぶれから被選択物だけを絞るときに使う。
+export function isObjectPickable(entity: DynamicEntity): entity is DynamicEntity & ObjectPickable {
+  return entity.pickable;
 }
 
 // items を screenPosOf で画面へ射影し、(x, y) から半径 radiusPxSq [px^2] 以内で最も近いものを

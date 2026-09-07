@@ -9,25 +9,24 @@ import { Attitude } from '../../../physics/attitude';
 import { qInvert, qRotate } from '../../../math/quat';
 import { add, len, sub, v3, Vec3 } from '../../../math/vec3';
 import type { Ray } from '../../../math/ray';
-import { Player } from '../../player/player';
 import { buildBaseModel } from '../../../render/base-station-model';
 import type { Hud } from '../../hud/hud';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { MarkerManager } from '../../marker/marker-manager';
-import { EquatorNodeMarkerPair } from '../../marker/equator-node-marker-pair';
 import type { BaseSaveData } from '../../save/save-data';
 import { Plan } from '../../plan/plan';
 import type { PlanExecutionMode } from '../../player/player';
 import { generateRandomName } from '../../random-name';
-import type { GroupedMarkerItem } from '../../marker/grouped-markers';
-import type { MarkerRole } from '../../targeter';
+import type { GroupedMarkerItem, MarkerRole } from '../../marker/grouped-markers';
 import { fmtDist, fmtMarkerDist } from '../../../hud/utils';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
 import type { SphereHit } from '../../../math/triangle-mesh';
 import { BASE_COLLISION_RADIUS, baseRaycast, baseSphereCollide } from './base-collision';
-import { PlayerThrottle } from '../../player/player-throttle';
+import { Throttle } from '../../player/throttle';
 import type { Controllable } from './controllable';
+import type { EntityRegistry } from '../dynamic-system';
+import type { Stage } from '../../stages/stage';
 import type { Input } from '../../../input/input';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { ThrustEffects } from '../../player/thrust-effects';
@@ -35,7 +34,8 @@ import { RcsEffects } from '../../player/rcs-effects';
 import type { CameraSystem } from '../../camera/camera-system';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { RenderStyle } from '../../../render/render-style';
-import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
+import type { MapVisibilityPolicy } from '../../map/visibility-policy';
+import type { InstancedPools } from '../instanced-pools';
 import { currentThemePalette } from '../../../theme';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
 import { MARKER_PRIORITY } from '../../marker/crowding';
@@ -70,19 +70,28 @@ type BaseInit =
   | { readonly saved: BaseSaveData; readonly simTime: number };
 
 export class Base extends DynamicEntity implements Controllable, ObjectPickable {
-  public readonly mapKind: DynamicEntityKind = 'base';
+  public override readonly mapKind: DynamicEntityKind = 'base';
+  public override readonly combatTarget = true;
+  public override readonly controllable = true;
+  public override readonly pickable = true;
 
   protected readonly predictedForGhost = true;
   protected readonly baseHistoryDuration = DEFAULT_HISTORY_DURATION;
   readonly plan = new Plan();
   planExecution: PlanExecutionMode = 'off';
   fineAttitude = false;
-  // 基地は常に赤道交点マーカーを出すので、コンストラクタで必ず組む。
-  declare equatorNodes: EquatorNodeMarkerPair;
+  // 除去の前に注視・操作対象の参照を引き継ぐ必要があるので、所有者側に回収させる。
+  public override readonly reclaimedByOwner = true;
+  // 基地は自機と操作キーの並びが違うので、選んだ時点で案内を出す。
+  get controlHint(): string {
+    return `基地「${this.name}」の操作モードに入りました (WASDQE: 噴射 / IJKLUO: 姿勢制御 / T: RCS減衰 / C: プログレード)`;
+  }
+  // 基地は常設の軌道構造物なので、選択の有無に関わらず赤道交点マーカーを出す。
+  public override readonly showsEquatorNodesAlways = true;
   public baseState: BaseState = { money: 100000 };
 
   // --- Controllable 実装 ---
-  readonly throttle: PlayerThrottle;
+  readonly throttle: Throttle;
   readonly thrustEffects: ThrustEffects;
   readonly rcsEffects: RcsEffects;
   private baseFuel: number;
@@ -95,8 +104,9 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   readonly hp = null;
   readonly maxHp = null;
 
-  // 基地は機関砲・太陽電池パドル・放熱板を持たず、大気も受けない。
+  // 基地は機関砲・分離式ブースター・太陽電池パドル・放熱板を持たず、大気も受けない。
   readonly fire = null;
+  readonly boosters = null;
   readonly power = null;
   readonly radiator = null;
   readonly aero = null;
@@ -146,10 +156,10 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
         id: init.saved.id,
       }
       : { state: init.state, name: init.name ?? generateRandomName('base'), att: init.att, id: init.id };
-    const savedAtt: Attitude | undefined = 'saved' in init && init.saved.q
+    const savedAtt: Attitude | undefined = 'saved' in init
       ? {
         q: { ...init.saved.q },
-        w: init.saved.w ? v3(init.saved.w.x, init.saved.w.y, init.saved.w.z) : v3(),
+        w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z),
         inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z),
       }
       : undefined;
@@ -164,12 +174,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     this.radius = BASE_COLLISION_RADIUS;
     this.collides = true;
     this.engagementAnchor = true;
-    this.name = name;
+    this.setName(name);
     this.baseFuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : BASE_MAX_FUEL;
-    this.throttle = new PlayerThrottle(hud, 'saved' in init ? init.saved.throttle : undefined);
+    this.throttle = new Throttle(hud, 'saved' in init ? init.saved.throttle : undefined);
     this.thrustEffects = new ThrustEffects(scene, worldSfx);
     this.rcsEffects = new RcsEffects(scene, worldSfx);
-    this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
 
     if ('saved' in init) {
       this.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;
@@ -179,8 +188,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // --- 操作制御 ---
 
-  // 毎フレーム、操作対象の基地に対して1度だけ呼ぶ。input が null なら操作されない。
-  updateBaseControls(input: Input | null, dt: number, simDt: number): void {
+  // 毎フレーム、全ての基地に対して1度だけ呼ぶ。input が null なら操作されない。
+  updateControls(
+    input: Input | null, dt: number, simDt: number,
+    _registry: EntityRegistry, _activeStage: Stage, _celestialSystem: CelestialSystem,
+  ): void {
     if (input === null) {
       this.clearTransientCommands();
       return;
@@ -216,25 +228,21 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     });
   }
 
-  // 基地のメッシュ・推力プルーム・RCS パフ・音・軌道線を同期する。
-  syncBase(
+  // 基地のメッシュ・推力プルーム・RCS パフ・音を同期する。プルームと音は操作中だけ変わるので、
+  // 操作対象かどうかを active から引く。
+  protected override syncModel(
     fo: FloatingOrigin,
-    camera: CameraSystem,
     displayTime: number,
-    isControlled: boolean,
+    active: Controllable | null,
+    visibilityPolicy: MapVisibilityPolicy | null,
+    _pools: InstancedPools,
+    camera: CameraSystem,
     style: RenderStyle,
-    visibility: MapVisibility | null = null,
   ): void {
-    const displayState = this.stateAt(displayTime);
-    const mapEntityVisible = camera.view !== 'map' || visibility === null || visibility.category;
-    this.renderObject.visible = displayState !== null && mapEntityVisible;
-    if (displayState !== null) {
-      this.renderObject.position.copy(fo.RtoThreeV3(displayState.r));
-      this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
-    }
-
+    const displayState = this.placeModel(fo, displayTime, active, visibilityPolicy);
+    const isControlled = this === active;
     const effectState = displayState ?? this.state;
-    const effectVisible = displayState !== null && mapEntityVisible;
+    const effectVisible = this.renderObject.visible;
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
     this.thrustEffects.sync(fo, effectState.r, this.thrust, maxAccel, effectVisible, isControlled, camera, style, 6.0);
     this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isControlled, 6.0);
@@ -244,7 +252,9 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   private get markerKey(): string { return `base-${this.id}`; }
 
   // 基地のマーカー表示項目。pos/vel には構造メッシュと同じ表示時刻の状態を渡すこと。
-  markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View): GroupedMarkerItem {
+  markerItem(
+    role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, _isActive: boolean,
+  ): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
     const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.BASE - dist / 1e9;
     return {
@@ -276,9 +286,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     this.markerManager.remove(`${this.markerKey}-bearing`);
   }
 
-  serialize(): BaseSaveData {
+  // セーブデータへ変換する。
+  public override serialize(): BaseSaveData {
     return {
       id: this.id,
+      kind: 'base',
       name: this.name,
       r: { ...this.state.r },
       v: { ...this.state.v },
@@ -308,26 +320,21 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     return this.stateAt(displayTime)?.r ?? null;
   }
 
-  // 基地カテゴリの表示トグルによる可否。
-  public mapVisibility(policy: MapVisibilityPolicy): MapVisibility {
-    return policy.entity(this.mapKind);
-  }
-
   public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
 
   // 自艦がいれば自艦からの距離。いなければ出さない。
   public listDetail(
-    _celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+    _celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
   ): string {
-    if (activePlayer === null) return '';
-    return fmtDist(len(sub(this.posAt(displayTime) ?? this.state.r, activePlayer.state.r)));
+    if (viewer === null) return '';
+    return fmtDist(len(sub(this.posAt(displayTime) ?? this.state.r, viewer.state.r)));
   }
 
   // 検索が照合する文字列。行の補助表示と同じ。
   public listSearchText(
-    celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+    celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
   ): string {
-    return this.listDetail(celestialSystem, activePlayer, displayTime);
+    return this.listDetail(celestialSystem, viewer, displayTime);
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
@@ -335,7 +342,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number,
   ): readonly MenuItem<MenuAction>[] {
     const subLabel = `基地 / 所持金: ${this.baseState.money.toLocaleString()} Cr`;
-    const controlItem: MenuItem<MenuAction> = commands.controlledBase === this
+    const controlItem: MenuItem<MenuAction> = commands.controlled === this
       ? { label: '操作対象を解除', act: 'deactivate' }
       : { label: '操作対象にする', act: 'activate' };
 
@@ -354,13 +361,16 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // menuItems が出した操作を実行する。軌道線の表示だけ自分の状態を書き換え、残りは commands を通す。
   public runMenu(act: MenuAction, commands: ObjectCommands): void {
     if (act === 'activate') {
-      commands.setControlledBase(this);
+      commands.setControlled(this);
     } else if (act === 'deactivate') {
-      if (commands.controlledBase === this) commands.setControlledBase(null);
+      if (commands.controlled === this) {
+        commands.setControlled(null);
+        commands.hint('基地の操作を解除しました');
+      }
     } else if (act === 'toggleTrajectoryLine') {
       this.showTrajectoryLine = !this.showTrajectoryLine;
     } else if (act === 'delete') {
-      commands.removeBase(this);
+      commands.removeControlled(this);
     } else if (act === 'duplicate') {
       commands.duplicate(this.mapKind, this.state);
     } else if (act === 'focus') {
@@ -375,11 +385,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public propertyRows(
     commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
   ): readonly PropertyRow[] {
-    const viewer = commands.activePlayer;
+    const viewer = commands.controlled;
     const rows: PropertyRow[] = [
       {
         key: 'operated', label: '操作対象か',
-        value: commands.controlledBase === this ? 'はい' : 'いいえ', collapsible: true,
+        value: commands.controlled === this ? 'はい' : 'いいえ', collapsible: true,
       },
       { key: 'money', label: '所持金', value: `${this.baseState.money.toLocaleString()} Cr` },
     ];
@@ -388,10 +398,15 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     return rows;
   }
 
-  public readonly rename = (name: string): void => { this.name = name; };
+  public readonly rename = (name: string): void => { this.setName(name); };
 
   public readonly onMapSelect = null;
 
   // 注視されても操作対象にはならない。
   public readonly onMapFocus = null;
+}
+
+// この個体が基地か。顔ぶれから基地だけを絞るときに使う。
+export function isBase(entity: DynamicEntity): entity is Base {
+  return entity instanceof Base;
 }

@@ -13,9 +13,8 @@ import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialMarkers } from '../marker/celestial-markers';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { NavTarget } from '../nav-target';
-import type { Targeter } from '../targeter';
 import type { PlanEditor } from '../plan/plan-editor';
-import type { ActiveControllableController } from '../active-controllable-controller';
+import type { ControlSelection } from '../control-selection';
 import type { DisplayWindow, DisplayWindowManager } from '../display-window-manager';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { FrameAnchors } from '../frame-anchors';
@@ -30,10 +29,9 @@ export class MapView implements ViewFrame {
   public constructor(
     private readonly input: Input,
     private readonly cameraSystem: CameraSystem,
-    private readonly targeter: Targeter,
     private readonly editor: PlanEditor,
     private readonly objectWindows: ObjectWindows,
-    private readonly dynamicSystem: DynamicSystem,
+    dynamicSystem: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
     private readonly objectPickables: ObjectPickables,
     private readonly linePickables: LinePickables,
@@ -42,7 +40,7 @@ export class MapView implements ViewFrame {
     private readonly displayWindowManager: DisplayWindowManager,
     private readonly frameControls: FrameControls,
     private readonly frameAnchors: FrameAnchors,
-    private readonly activePlayers: ActiveControllableController,
+    private readonly controlSelection: ControlSelection,
     hud: Hud,
     navTarget: NavTarget,
   ) {
@@ -100,11 +98,8 @@ export class MapView implements ViewFrame {
     this.picking.handleEmptySpaceRightClick(this.input, simTime);
   }
 
-  // 赤道交点(ターゲット・基地)を求め直し、選択候補と可視性ポリシーを組む。
-  // 交点アイコンは候補列に載るので、objectPickables.refresh より先に求める。
+  // 選択候補と可視性ポリシーを組み、時刻に追従する操作パネルを更新する。
   public update(displayWindow: DisplayWindow): void {
-    this.targeter.updateEquatorNodes(displayWindow.displayTime, this.celestialSystem, this.frameAnchors);
-    this.dynamicSystem.updateBaseEquatorNodes(displayWindow.displayTime, this.celestialSystem, this.frameAnchors);
     this.objectPickables.refresh(displayWindow);
     this.frameControls.update(displayWindow.displayTime);
     this.editor.update(displayWindow.simTime);
@@ -125,8 +120,8 @@ export class MapView implements ViewFrame {
   public syncPanels(displayWindow: DisplayWindow, fo: FloatingOrigin): void {
     // 編集 UI と常設パネル
     this.editor.sync(this.cameraSystem.mapCamera.dist, fo);
-    this.displayWindowManager.sync(this.activePlayers.current);
-    this.picking.sync(displayWindow.displayTime, this.activePlayers.current);
+    this.displayWindowManager.sync(this.controlSelection.current);
+    this.picking.sync(displayWindow.displayTime, this.controlSelection.current);
     this.frameControls.sync(
       this.objectPickables.pickables, this.cameraSystem.activeCameraPos,
       displayWindow.simTime, displayWindow.displayTime,

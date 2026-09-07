@@ -3,7 +3,7 @@
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../../../hud/widgets';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { Player } from '../../player/player';
+import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
 import type { PhysicalObjectListOrder } from './physical-object-list-order';
 
 const EMPTY_IDS: readonly string[] = [];
@@ -46,12 +46,12 @@ export class PhysicalObjectListTree {
     private readonly actions: RowTreeActions,
   ) {}
 
-  // 補助表示の導出に要る今フレームの自艦と表示時刻。syncRow より先に渡すこと。
-  private activePlayer: Player | null = null;
+  // 補助表示の導出に要る今フレームの操作対象と表示時刻。syncRow より先に渡すこと。
+  private viewer: Controllable | null = null;
   private displayTime = 0;
 
-  public setFrame(activePlayer: Player | null, displayTime: number): void {
-    this.activePlayer = activePlayer;
+  public setFrame(viewer: Controllable | null, displayTime: number): void {
+    this.viewer = viewer;
     this.displayTime = displayTime;
   }
 
@@ -94,7 +94,7 @@ export class PhysicalObjectListTree {
       }
     }
     if (node.label.textContent !== item.name) node.label.textContent = item.name;
-    const detailText = item.listDetail(this.celestialSystem, this.activePlayer, this.displayTime);
+    const detailText = item.listDetail(this.celestialSystem, this.viewer, this.displayTime);
     if (node.detail.textContent !== detailText) node.detail.textContent = detailText;
     node.detail.classList.toggle('hidden', detailText === '');
     node.row.classList.toggle('tgt', item.id === focusId);

@@ -8,10 +8,10 @@ import { FrameAnchorSource, frameOfCelestialBody, toFrameState, unbakeToDisplayP
 import { LagrangeLabel, lagrangeStateOf, secondaryFrameOf } from '../physics/lagrange';
 import { LOCAL_FORWARD, qRotate } from '../math/quat';
 import { goldenSectionMin } from '../math/optimize';
-import { Player } from './player/player';
+import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import { DisplayWindow } from './display-window-manager';
 import type { DynamicSystem } from './dynamic/dynamic-system';
-import type { CombatTarget } from './targeter';
+import { aliveCombatTarget, combatTargetById, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import { Hud } from './hud/hud';
 import { TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import { MarkerManager } from './marker/marker-manager';
@@ -35,11 +35,11 @@ const CLOSEST_APPROACH_REFINE_ITERATIONS = 20;
 // 極小になる時刻と、その時点の自艦位置。どちらかの予測がその時刻まで届かない、または区間内に
 // 極小が無ければ null(まだ近づいている途中、あるいは既に最接近を過ぎている)。
 function findClosestApproach(
-  player: DynamicEntity, target: DynamicEntity, celestialSystem: CelestialSystem, simTime: number,
+  controlled: DynamicEntity, target: DynamicEntity, celestialSystem: CelestialSystem, simTime: number,
 ): { readonly pos: Vec3; readonly t: number } | null {
   // 時刻 t の相対距離。どちらかの予測が t まで届いていなければ null。
   const distAt = (t: number): number | null => {
-    const p = player.stateAt(t, celestialSystem);
+    const p = controlled.stateAt(t, celestialSystem);
     const q = target.stateAt(t, celestialSystem);
     return p && q ? len(sub(p.r, q.r)) : null;
   };
@@ -56,7 +56,7 @@ function findClosestApproach(
     const lo = simTime + (i - 1) * step;
     const hi = simTime + (i + 1) * step;
     const tMin = goldenSectionMin(lo, hi, (t) => distAt(t) ?? Infinity, CLOSEST_APPROACH_REFINE_ITERATIONS);
-    const p = player.stateAt(tMin, celestialSystem);
+    const p = controlled.stateAt(tMin, celestialSystem);
     return p ? { pos: p.r, t: tMin } : null;
   }
   return null;
@@ -121,7 +121,7 @@ export class NavTarget {
     this._hud.hint(entity ? `ターゲット固定: ${entity.name}` : 'ターゲット固定解除');
   }
 
-  // 対象消滅を伴わない一括解除(操作対象艦の切替など)。ヒントは出さない。
+  // 対象消滅を伴わない一括解除(操作対象の切替など)。ヒントは出さない。
   clear(): void {
     this.setInternal(null, null);
   }
@@ -129,21 +129,18 @@ export class NavTarget {
   // セーブデータからの復元用。id が敵・自機・基地を指していた場合はそれが生存していないと
   // 復元しない(撃墜・破壊されていれば未選択に戻す)。天体・ラグランジュ点など消滅しない対象は
   // 常に復元する。ヒントは出さない。
-  restore(data: { id: string; name: string } | null | undefined, entities: DynamicSystem): void {
+  restore(data: { id: string; name: string } | null | undefined, dynamicSystem: DynamicSystem): void {
     if (!data) return;
-    const wasEntityId = entities.findEnemy(data.id) !== null
-      || entities.players.some((p) => p.id === data.id)
-      || entities.bases.some((b) => b.id === data.id);
-    if (wasEntityId && !entities.findAliveCombatTarget(data.id)) return;
+    const wasTarget = combatTargetById(dynamicSystem.all(), data.id);
+    if (wasTarget !== null && !wasTarget.alive) return;
     this.setInternal(data.id, data.name);
   }
 
   // 現在のターゲットを、生存中の戦闘対象(敵・自艦・基地)として解決する。天体・ラグランジュ点
   // など戦闘対象になれない対象がターゲットの場合は null。
-  resolveCombatTarget(entities: DynamicSystem): CombatTarget | null {
+  resolveCombatTarget(dynamicSystem: DynamicSystem): CombatTarget | null {
     if (this.targetId === null) return null;
-    const entity = entities.findAliveCombatTarget(this.targetId);
-    return entity && entity.alive ? entity : null;
+    return aliveCombatTarget(dynamicSystem.all(), this.targetId);
   }
 
   // AN・DN・再接近点のマーカー。
@@ -151,25 +148,29 @@ export class NavTarget {
     return [this.ascendingNode, this.descendingNode, this.closestApproach];
   }
 
+  // 相対交点を出す理由が無くなったことを、3つのマーカーへ記録する。
+  private retireNodeMarkers(): void {
+    for (const marker of this.nodeMarkers) marker.retire();
+  }
+
   // 自機軌道要素と対象の軌道面法線から相対 AN/DN の位置・通過時刻を求め直す。
-  // 対象の軌道面が定まらない(地球・太陽自身など)場合や自機軌道要素が無い場合は、
+  // 対象の軌道面が定まらない(地球・太陽自身など)場合や操作対象の軌道要素が無い場合は、
   // どちらの交点も解けていない状態にする。
   update(
-    player: Player | null, entities: DynamicSystem, celestialSystem: CelestialSystem, displayWindow: DisplayWindow,
+    controlled: Controllable | null, dynamicSystem: DynamicSystem, celestialSystem: CelestialSystem, displayWindow: DisplayWindow,
     frameAnchors: FrameAnchorSource,
   ): void {
     const { simTime, displayTime, frame } = displayWindow;
-    const ownerName = player?.name ?? null;
+    const ownerName = controlled?.name ?? null;
     for (const marker of this.nodeMarkers) marker.place(null, null, ownerName, this.name);
-    if (!this.targetId) { this.setReaderEntity(null); return; }
-    // ターゲット自身の赤道交点は、自機の軌道要素が求まるかどうかとは無関係に出す。
-    const target = entities.findAliveCombatTarget(this.targetId);
+    // 相対交点はターゲットと操作対象の両方が揃って初めて定義できる。片方でも欠ければ
+    // 出す理由そのものが無い。
+    if (!this.targetId) { this.setReaderEntity(null); this.retireNodeMarkers(); return; }
+    const target = aliveCombatTarget(dynamicSystem.all(), this.targetId);
     this.setReaderEntity(target);
-    target?.ensureEquatorNodes(this.markerManager)
-      .updateOnEllipse(displayTime, celestialSystem, frameAnchors);
-    if (!player) return;
+    if (!controlled) { this.retireNodeMarkers(); return; }
     const stateCelestialBodies = celestialSystem.celestialMotions;
-    const playerCenter = strongestAttractor(player.state.r, stateCelestialBodies, simTime);
+    const controlledCenter = strongestAttractor(controlled.state.r, stateCelestialBodies, simTime);
     const unbakeTf = celestialSystem.frames.transformAt(frame, displayTime, frameAnchors);
     // 通過時刻で焼いた点を、表示時刻の座標系へ un-bake する。
     const toDisplay = (r: Vec3, t: number): Vec3 =>
@@ -177,28 +178,28 @@ export class NavTarget {
 
     // 再接近点は AN/DN(軌道面が定まる必要がある)とは独立した条件 — 同じ中心天体さえ
     // 周回していれば、円軌道や軌道面がほぼ一致する場合でも求まる。
-    if (target && strongestAttractor(target.state.r, stateCelestialBodies, simTime).id === playerCenter.id) {
-      const found = findClosestApproach(player, target, celestialSystem, simTime);
+    if (target && strongestAttractor(target.state.r, stateCelestialBodies, simTime).id === controlledCenter.id) {
+      const found = findClosestApproach(controlled, target, celestialSystem, simTime);
       if (found) this.closestApproach.place(toDisplay(found.pos, found.t), found.t, ownerName, this.name);
     }
 
-    const playerEl = player.orbitalElementsAround(playerCenter, simTime);
-    if (!playerEl) return;
+    const controlledEl = controlled.orbitalElementsAround(controlledCenter, simTime);
+    if (!controlledEl) return;
 
-    const targetHat = this.resolvePlaneNormal(this.targetId, entities, celestialSystem, simTime);
+    const targetHat = this.resolvePlaneNormal(this.targetId, dynamicSystem, celestialSystem, simTime);
     if (!targetHat) return;
 
-    const nodes = nodeAnomalies(playerEl, targetHat);
+    const nodes = nodeAnomalies(controlledEl, targetHat);
     if (!nodes) return;
 
-    const tf = frameOfCelestialBody(playerCenter, simTime);
-    const nu0 = trueAnomalyAt(playerEl, toFrameState(tf, player.state).r);
-    const anT = simTime + tofBetween(playerEl, nu0, nodes.asc);
-    const dnT = simTime + tofBetween(playerEl, nu0, nodes.desc);
+    const tf = frameOfCelestialBody(controlledCenter, simTime);
+    const nu0 = trueAnomalyAt(controlledEl, toFrameState(tf, controlled.state).r);
+    const anT = simTime + tofBetween(controlledEl, nu0, nodes.asc);
+    const dnT = simTime + tofBetween(controlledEl, nu0, nodes.desc);
     // 交点は中心天体基準なので、通過時刻における中心天体の精密な ECI 位置へ足す — 概算の弾道
     // pivot からの外挿だと表示側の un-bake と基準がずれ、月周回では通過までの時間ぶん位置がずれる。
-    const anEci = add(celestialSystem.stateAt(playerCenter.id, anT).r, positionOnOrbit(playerEl, nodes.asc));
-    const dnEci = add(celestialSystem.stateAt(playerCenter.id, dnT).r, positionOnOrbit(playerEl, nodes.desc));
+    const anEci = add(celestialSystem.stateAt(controlledCenter.id, anT).r, positionOnOrbit(controlledEl, nodes.asc));
+    const dnEci = add(celestialSystem.stateAt(controlledCenter.id, dnT).r, positionOnOrbit(controlledEl, nodes.desc));
     this.ascendingNode.place(toDisplay(anEci, anT), anT, ownerName, this.name);
     this.descendingNode.place(toDisplay(dnEci, dnT), dnT, ownerName, this.name);
   }
@@ -212,7 +213,7 @@ export class NavTarget {
   // ラグランジュ点・船・基地は hasMass=false で返る。船・基地は軌道線を相対軌跡へ切り替え
   // られるよう entity 自身も添える。ターゲット未設定・解決不能なら null。
   resolveState(
-    entities: DynamicSystem, celestialSystem: CelestialSystem,
+    dynamicSystem: DynamicSystem, celestialSystem: CelestialSystem,
     celestialBodies: readonly CelestialMotion[], t: number,
   ): OrbitReference | null {
     const id = this.targetId;
@@ -237,7 +238,7 @@ export class NavTarget {
       }
     }
     // 残りは生存中の艦・基地。
-    const entity = entities.findAliveCombatTarget(id);
+    const entity = aliveCombatTarget(dynamicSystem.all(), id);
     if (!entity) return null;
     return {
       id, state: entity.stateAt(t, celestialSystem) ?? entity.state, hasMass: false,
@@ -246,14 +247,14 @@ export class NavTarget {
   }
 
   // id がターゲットになれる(軌道面が定まる)かどうか。
-  canTarget(id: string, entities: DynamicSystem, celestialSystem: CelestialSystem, t: number): boolean {
-    return this.resolvePlaneNormal(id, entities, celestialSystem, t) !== null;
+  canTarget(id: string, dynamicSystem: DynamicSystem, celestialSystem: CelestialSystem, t: number): boolean {
+    return this.resolvePlaneNormal(id, dynamicSystem, celestialSystem, t) !== null;
   }
 
   // id から対象の軌道面法線を求める。船・基地は自身の軌道要素、公転している天体(惑星・衛星)
   // はその公転面法線、ラグランジュ点(`${副天体}-l${n}`)は副天体の公転面法線を使う。
   // 面が定まらない対象(恒星、および軌道要素の無い天体・存在しない船)は null。
-  private resolvePlaneNormal(id: string, entities: DynamicSystem, celestialSystem: CelestialSystem, t: number): Vec3 | null {
+  private resolvePlaneNormal(id: string, dynamicSystem: DynamicSystem, celestialSystem: CelestialSystem, t: number): Vec3 | null {
     const idMotion = celestialSystem.find(id)?.motion;
     if (idMotion instanceof OrbitingMotion) {
       return idMotion.orbitNormalAt(t);
@@ -265,13 +266,13 @@ export class NavTarget {
     if (secondaryMotion instanceof OrbitingMotion) {
       return qRotate(secondaryMotion.orbitFrameRotationAt(t).q, LOCAL_FORWARD);
     }
-    const entity = entities.findAliveCombatTarget(id);
+    const entity = aliveCombatTarget(dynamicSystem.all(), id);
     if (!entity) return null;
     const center = strongestAttractor(entity.state.r, celestialSystem.celestialMotions, t);
     return entity.orbitalElementsAround(center, t)?.hHat ?? null;
   }
 
-  // 右クリック対象として公開する AN/DN・再接近点アイコン。計算できているぶんだけ返す。
+  // 右クリック対象として公開する AN/DN・再接近点アイコン。出す理由が残っているぶんを返す。
   pickables(): readonly ObjectPickable[] {
     return this.nodeMarkers.filter((marker) => !marker.gone);
   }

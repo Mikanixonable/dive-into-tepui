@@ -4,8 +4,6 @@ import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { generateCluster, STAGE0_PER_GROUP, STAGE0_MAX_RANGE, COLOR_STAGE0_GROUP_ACCENTS } from './spawner/enemy-spawner';
 import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
 import type { ScoreCounter } from './stage-utils/score-counter';
-import type { Player } from '../player/player';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { Stage0SaveData, StageSaveData } from '../save/save-data';
 
@@ -50,19 +48,18 @@ export class Stage0 extends Stage {
   }
 
   // 弾薬ゼロの自機を置き、初期補給と敵クラスタを配置する。
-  protected init(entities: DynamicSystem): void {
+  protected init(): void {
     const player = this.addPlayer({ ammo: { mags: 0, rounds: 0 } });
     for (let i = 0; i < STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
       this.logistics.spawnForPlayer(player, STAGE0_LOGISTICS_MIN_DIST, STAGE0_LOGISTICS_MAX_DIST);
     }
     const enemies = generateCluster(player.state, this._worldSfx, this._fx, this._scene);
-    for (const enemy of enemies) this.addEnemy(enemy, entities);
+    for (const enemy of enemies) this.addEnemy(enemy);
   }
-  // 敵の行動・補給・制限時間を1フレーム分進める。
-  update(dt: number, player: Player | null, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  // 補給と制限時間を1フレーム分進める。
+  update(dt: number, simTime: number, simSpeed: SimSpeedManager): void {
+    const player = this.ship;
     if (!player) return;
-
-    this.behaveAllEnemies(player, entities, simTime, simSpeed);
 
     this.logistics.updateLogistics(simTime, player, simSpeed);
 

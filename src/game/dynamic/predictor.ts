@@ -7,7 +7,7 @@
 // と同じ答えでなければならない。
 import { DynamicSystem } from './dynamic-system';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import { Player } from '../player/player';
+import type { Controllable } from './dynamic-entity/controllable';
 import { simulationMaxStep, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT } from './time-step';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { PredictedArc } from './predicted-arc';
@@ -21,7 +21,7 @@ const ARC_RETAIN_MARGIN = 300;
 // 予測・計画が1フレームに使うのは ~15〜33ms まで。消費されている個体を追い抜かせないだけで
 // 1体あたり SUBSTEP_MAX_COUNT(=64)歩/フレームが要り、ホライズンへ伸ばすぶんはその上に乗る。
 export const ARC_STEP_BUDGET = 600;
-// 1フレームの予算のうち、操作艦の弧+計画軌道の弧(interactive 枠)に割ける割合の上限。優先は
+// 1フレームの予算のうち、操作対象の弧+計画軌道の弧(interactive 枠)に割ける割合の上限。優先は
 // するが独占はさせない — 計画の弧は他個体の予測を重力源・衝突判定の相手として読むので、編集
 // 直後の計画に全額を食わせると、その依存先の予測の成長が止まる。
 export const ARC_INTERACTIVE_RATIO = 0.5;
@@ -39,16 +39,16 @@ export class Predictor {
   private lastRevisits = 0; // そのうち期限到来で訪問したものの数
 
   constructor(
-    private readonly entities: DynamicSystem,
+    private readonly dynamicSystem: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
   ) {}
 
-  // このフレームぶんの積分予算を、操作艦の弧・計画の弧・その他の個体へ配って伸ばす。ポーズ中・
+  // このフレームぶんの積分予算を、操作対象の弧・計画の弧・その他の個体へ配って伸ばす。ポーズ中・
   // 決着後も呼んでよい。simDt はこのフレームの時間送りで、消費される弧の刻み上限を実シミュレー
   // ションと揃えるのに使う。horizon は simTime から先へ予測する長さ [s]、canDisplayFuture は
   // 表示時刻が現在より先へ動けるか。planArcs は時刻順に並べた計画の弧。
   update(
-    simTime: number, simDt: number, player: Player | null, horizon: number, canDisplayFuture: boolean,
+    simTime: number, simDt: number, controlled: Controllable | null, horizon: number, canDisplayFuture: boolean,
     planArcs: readonly PredictedArc[],
   ): void {
     this.lastSteps = 0;
@@ -58,16 +58,16 @@ export class Predictor {
     const maxStep = simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT);
     // 伸ばすのは未来を読む消費者がいる個体だけ。線の有無は前フレームの状態を読むことになるが、
     // 弧は何フレームもかけて伸びるので、伸ばし始めが1フレーム遅れても描かれる線は変わらない。
-    const targets = this.entities.all().filter((e) => e.hasFutureReader(canDisplayFuture));
-    const interactiveShip = player !== null && player.hasFutureReader(canDisplayFuture) ? player : null;
+    const targets = this.dynamicSystem.all().filter((e) => e.hasFutureReader(canDisplayFuture));
+    const interactive = controlled !== null && controlled.hasFutureReader(canDisplayFuture) ? controlled : null;
 
-    // interactive 枠: 操作艦の弧 → 計画の弧(時刻順)。他に伸ばす対象がいなければ全額を渡す。
-    const others = targets.some((e) => e !== interactiveShip);
+    // interactive 枠: 操作対象の弧 → 計画の弧(時刻順)。他に伸ばす対象がいなければ全額を渡す。
+    const others = targets.some((e) => e !== interactive);
     let interactiveBudget = others
       ? Math.floor(ARC_STEP_BUDGET * ARC_INTERACTIVE_RATIO) : ARC_STEP_BUDGET;
     let budget = ARC_STEP_BUDGET;
-    if (interactiveShip) {
-      const consumed = this.advanceBudget(interactiveShip, interactiveBudget, simTime, horizon, maxStep);
+    if (interactive) {
+      const consumed = this.advanceBudget(interactive, interactiveBudget, simTime, horizon, maxStep);
       budget -= consumed;
       interactiveBudget -= consumed;
     }
@@ -85,7 +85,7 @@ export class Predictor {
     let visited = 0;
     while (budget > 0 && visited < targets.length) {
       const e = targets[(this.cursor + visited) % targets.length]!;
-      if (e !== interactiveShip) {
+      if (e !== interactive) {
         const share = Math.max(ARC_MIN_ITEM_STEPS, Math.floor(budget / (targets.length - visited)));
         budget -= this.advanceBudget(e, Math.min(budget, share), simTime, horizon, maxStep);
       }
@@ -123,13 +123,13 @@ export class Predictor {
 
   // 直近フレームの予測伸長の集計値。planSteps は計画の弧ぶんの積分step数。horizon は予測の
   // 要求終端までの長さで、先端が届いた個体を数えるのに使う。
-  perfCounts(simTime: number, horizon: number, player: Player | null): Pick<PerfCounts,
+  perfCounts(simTime: number, horizon: number, controlled: Controllable | null): Pick<PerfCounts,
   'predicted' | 'predictComplete' | 'predictorSteps' | 'planSteps'
   | 'arcCelestialBodies' | 'arcRevisits' | 'arcLead'> {
     // 先端が要求終端へ届いた個体と、打ち切られた個体を「完了」と数える。
     let tracked = 0;
     let finished = 0;
-    for (const e of this.entities.all()) {
+    for (const e of this.dynamicSystem.all()) {
       if (!e.predictsFuture) continue;
       tracked++;
       const reachedHorizon = e.predicted !== null && e.predicted.state.t >= simTime + horizon;
@@ -142,7 +142,7 @@ export class Predictor {
       planSteps: this.lastPlanSteps,
       arcCelestialBodies: this.lastBodies,
       arcRevisits: this.lastRevisits,
-      arcLead: player !== null && player.predicted !== null ? player.predicted.state.t - simTime : null,
+      arcLead: controlled !== null && controlled.predicted !== null ? controlled.predicted.state.t - simTime : null,
     };
   }
 }

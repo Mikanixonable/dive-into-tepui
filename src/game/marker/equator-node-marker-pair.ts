@@ -14,6 +14,29 @@ import type { ProjectFn } from '../camera/camera-system';
 import { ObjectPickable } from '../pickable/object-pickable';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
+// 画面に出ている折れ線と、それが載っている座標系。
+export interface DisplayedPath {
+  readonly frame: ReferenceFrame;
+  // 区間ごとのサンプル列、時刻昇順。
+  readonly samples: readonly (readonly KinematicState[])[];
+}
+
+// ある個体について、いま画面に折れ線が出ているかを答える口。null は折れ線が出ていない
+// ことを意味し、その個体には解析軌道楕円が出ている。
+export interface DisplayedPathSource {
+  displayedPathOf(owner: DynamicEntity): DisplayedPath | null;
+}
+
+// 赤道交点を解くのに要る、そのフレームの材料。個体によって変わらないものだけを持ち、
+// 個体ごとの違いは paths が答える。
+export interface EquatorNodeInputs {
+  readonly displayTime: number;
+  readonly celestialSystem: CelestialSystem;
+  readonly frameAnchors: FrameAnchorSource;
+  readonly markerManager: MarkerManager;
+  readonly paths: DisplayedPathSource;
+}
+
 export class EquatorNodeMarkerPair {
   private readonly ascending: EquatorNodeMarker;
   private readonly descending: EquatorNodeMarker;
@@ -24,24 +47,22 @@ export class EquatorNodeMarkerPair {
     this.descending = new EquatorNodeMarker(owner.id, 'descending');
   }
 
-  // 解析軌道楕円の上に交点を置く。楕円は中心天体に固定して描かれるので、交点もその天体の
-  // 慣性系で表示時刻へ写す。
-  updateOnEllipse(
-    displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
-  ): void {
-    this.updateOnPath(
-      null, displayTime, celestialSystem, frameAnchors,
-      this.owner.stateAt(displayTime, celestialSystem), [],
-    );
+  // 交点を、この個体について画面に出ている線の上で求め直す。折れ線が出ていれば表示中の
+  // 全区間が対象で、出ていなければ解析軌道楕円 — 楕円は中心天体に固定して描かれるので、
+  // 交点もその天体の慣性系で表示時刻へ写す。
+  update(inputs: EquatorNodeInputs): void {
+    const path = inputs.paths.displayedPathOf(this.owner);
+    if (path !== null) this.solve(inputs, path.frame, this.owner.state, path.samples);
+    else this.solve(inputs, null, this.owner.stateAt(inputs.displayTime, inputs.celestialSystem), []);
   }
 
-  // 表示中の折れ線の上に交点を置く。paths(区間ごとのサンプル列、時刻昇順)が空なら state の
-  // 軌道要素から求める。frame は交点位置を表示時刻へ写す座標系で、null なら中心天体の慣性系
-  // (= 解析軌道楕円の置き方)。
-  updateOnPath(
-    frame: ReferenceFrame | null, displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
+  // paths(区間ごとのサンプル列、時刻昇順)が空なら state の軌道要素から求める。frame は
+  // 交点位置を表示時刻へ写す座標系で、null なら中心天体の慣性系。
+  private solve(
+    inputs: EquatorNodeInputs, frame: ReferenceFrame | null,
     state: KinematicState | null, paths: readonly (readonly KinematicState[])[],
   ): void {
+    const { displayTime, celestialSystem, frameAnchors } = inputs;
     this.clearCrossings();
     if (state === null) return;
     // 中心天体は state 自身の時刻で選ぶ — 解析楕円は displayTime、折れ線は simTime の
@@ -68,13 +89,19 @@ export class EquatorNodeMarkerPair {
       toDisplay(crossings.desc.r, crossings.desc.t), crossings.desc.t, this.owner.name, centerName);
   }
 
-  // 交点を、このフレームは求まらなかった状態にする。求め直す前に必ず通す。
-  clearCrossings(): void {
+  // 交点を出す理由が無くなったことを記録する。
+  retire(): void {
+    this.ascending.retire();
+    this.descending.retire();
+  }
+
+  // 交点を、求まらなかった状態にする。
+  private clearCrossings(): void {
     this.ascending.place(null, null, null, null);
     this.descending.place(null, null, null, null);
   }
 
-  // 右クリック対象として公開する EqAN/EqDN アイコン(交点が求まっていなければ空)。
+  // 右クリック対象として公開する EqAN/EqDN アイコン。出す理由が残っているぶんを返す。
   pickables(): readonly ObjectPickable[] {
     return [this.ascending, this.descending].filter((marker) => !marker.gone);
   }
@@ -83,18 +110,19 @@ export class EquatorNodeMarkerPair {
   // 遮蔽判定に使う天体で、celestialBodiesPivot はその位置を引く時刻。
   sync(
     project: ProjectFn, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
-    celestialBodiesPivot: number, timeLabel: TimeLabelSetting,
+    celestialBodiesPivot: number, occludeByBodies: boolean, timeLabel: TimeLabelSetting,
   ): void {
     for (const marker of [this.ascending, this.descending]) {
       marker.sync(
         this.markerManager, project, cameraPos, celestialBodies, celestialBodiesPivot,
-        true, timeLabel,
+        occludeByBodies, timeLabel,
       );
     }
   }
 
   // マーカー要素ごと取り除く。
   dispose(): void {
+    this.retire();
     this.markerManager.remove(this.ascending.id);
     this.markerManager.remove(this.descending.id);
   }

@@ -13,6 +13,7 @@ import {
 import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
 import type { Stage } from '../stages/stage';
+import type { EntityRegistry } from '../dynamic/dynamic-system';
 import type { Player } from './player';
 import type { RadiatorSaveData } from '../save/save-data';
 
@@ -68,8 +69,10 @@ class RadiatorFold extends DynamicEntity {
   }
 
   // 折りへの接触は、その side の放熱板が受けた接触として艦へ返す。
-  collideWithEntity(other: DynamicEntity, contact: Contact, activeStage: Stage): void {
-    this.owner.collideAtRadiatorWithEntity(this.side, other, contact, activeStage);
+  collideWithEntity(
+    other: DynamicEntity, contact: Contact, activeStage: Stage, registry: EntityRegistry,
+  ): void {
+    this.owner.collideAtRadiatorWithEntity(this.side, other, contact, activeStage, registry);
   }
 }
 
