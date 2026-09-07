@@ -1,4 +1,5 @@
 import type { ViewManager } from '../view/view-manager';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { View } from '../view/view';
 import { ContextMenu, MenuItem } from './windows/context-menu';
 import type { OverlayManager } from '../../hud/overlay-manager';
@@ -9,7 +10,6 @@ import { frameRoleName } from './frame/frame-labels';
 import { focusTargetId, type FocusTarget } from '../camera/focus-target';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
-import type { CelestialSystem } from '../celestial/celestial-system';
 
 const GAME_TITLE = 'Dive into Tepui';
 const GAME_VERSION = `v${__APP_VERSION__}`;
@@ -67,7 +67,7 @@ export class ViewBadge {
   public constructor(
     container: HTMLElement, popupLayer: HTMLElement, private readonly viewManager: ViewManager,
     overlayManager: OverlayManager, renderStyle: RenderStyleSetting,
-    private readonly dynamicSystem: DynamicSystem, private readonly celestialSystem: CelestialSystem,
+    private readonly dynamicSystem: DynamicSystem, private readonly celestialSystem: CelestialBodies,
   ) {
     this.menu = new ContextMenu<true, View>(popupLayer, overlayManager);
     // タイトル・モード名・ビュー切替ボタンと、現在の対象の欄を横に並べる。

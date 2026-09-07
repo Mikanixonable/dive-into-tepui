@@ -1,6 +1,7 @@
 // 軌道計画の編集(ノードの配置・時刻移動・Δv 調整・選択・削除)と、ノードギズモ・3D 矢印・
 // 計画パネルへの反映。ノードの配置・移動先は、描かれている計画折れ線のサンプル列から選ぶ。
 import type * as THREE from 'three/webgpu';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { KinematicState, fromOrbitAxes, kinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { OrbitalElements, orbitalElementsOf, positionOnOrbit } from '../../physics/elements';
 import { atmosphericDensity, ellipsoidAltitude } from '../../physics/atmosphere';
@@ -21,7 +22,7 @@ import { AxisDragGizmo } from './plan-axis-drag';
 import { PlanGizmo3D } from './plan-gizmo-3d';
 import { PlanPanel } from './plan-panel';
 import { DisplayDurationSource, Plan } from './plan';
-import type { CelestialSystem } from '../celestial/celestial-system';
+
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ControlSelection } from '../control-selection';
@@ -82,7 +83,7 @@ export class PlanEditor {
     private readonly hud: Hud,
     private readonly uiSfx: UiSfx,
     private readonly simSpeedManager: SimSpeedManager,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialSystem: CelestialBodies,
     scene: THREE.Scene,
     private readonly controlSelection: ControlSelection,
     private readonly displayDuration: DisplayDurationSource,
