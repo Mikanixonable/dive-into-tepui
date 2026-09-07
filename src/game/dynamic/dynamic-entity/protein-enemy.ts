@@ -22,7 +22,7 @@ import type { MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { CameraSystem } from '../../camera/camera-system';
 import type { RenderStyle } from '../../../render/render-style';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
-import type { SpawnGate } from '../dynamic-system';
+import type { SpawnGate } from '../entity-registry';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
