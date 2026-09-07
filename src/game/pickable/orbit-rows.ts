@@ -4,7 +4,7 @@ import { fmtDist, fmtSpeed, fmtTime } from '../../hud/utils';
 import { orbitInfo } from '../orbit-info';
 import { autoOrbitReference } from '../orbit-reference';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../hud/orbit/orbit-labels';
-import type { PropertyRow } from '../../hud/windows/property-window';
+import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
