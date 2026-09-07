@@ -147,7 +147,7 @@ export function register(): void {
     test(`gravity-window: ${site.name}で弧と実シミュレーションの重力和は GRAVITY_NEGLIGIBLE_ACCEL 以内で一致する`, () => {
       for (const t of SAMPLE_TIMES) {
         const from = site.stateAt(t);
-        const sim = attractorsNearInto(from.r, classifyAttractors(WINDOWS.gravityMotions, 0), []);
+        const sim = attractorsNearInto(from.r, classifyAttractors(WINDOWS.gravityMotions, 0, 0, 0), []);
         // 成員は最初の解決で確定するので、場所ごと・時刻ごとに弧を組み直す。
         const arc = new ArcCelestialBodies(ARC_SOURCES).resolve(t, from, 0).gravity;
         const diff = len(sub(gravitySum(sim, from.r, t), gravitySum(arc, from.r, t)));
