@@ -10,7 +10,6 @@ import { MarkerManager } from './marker/marker-manager';
 import { CelestialMarkers } from './marker/celestial-markers';
 import { ControlSelection } from './control-selection';
 import { Targeter } from './targeter';
-import { PlanEditor } from './plan/plan-editor';
 import { PlanDisplay } from './plan/plan-display';
 import { DisplayWindowManager, timeLabelSettingOf } from './display-window-manager';
 import { SimSpeedManager } from './dynamic/sim-speed-manager';
@@ -39,8 +38,6 @@ import { MapView } from './view/map-view';
 import { NavTarget } from './nav-target';
 import { FrameAnchors } from './frame-anchors';
 import { autoOrbitReference, OrbitReferenceSelector } from './orbit-reference';
-import { ObjectPickables } from './pickable/object-pickables';
-import { LinePickables } from './pickable/line-pickables';
 import { ObjectWindows } from './pickable/object-windows';
 import { Navball } from './navball/navball';
 import { GameSaveData, SAVE_VERSION } from './save/save-data';
@@ -281,17 +278,6 @@ export class Game {
     this.planDisplay = new PlanDisplay(
       this._scene, this.markerManager, celestialSystem, this.displayWindowManager, this.controlSelection,
     );
-    const editor = new PlanEditor(
-      this._hud,
-      uiSfx,
-      this.simSpeedManager,
-      celestialSystem,
-      this._scene,
-      this.controlSelection,
-      this.displayWindowManager,
-      this.frameControls,
-      this.planDisplay.path,
-    );
     this.input = new Input(gs.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
     this.input.onPointerKindChange = (kind) => this.touchControls?.setPointerKind(kind);
@@ -308,15 +294,11 @@ export class Game {
       this.flashEffects, this.markerManager, celestialSystem, this.controlSelection,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
-    // activeStage の authoring/executesPlans を読むので、その直後に生成する。
-    const objectPickables = new ObjectPickables(
-      this.controlSelection, this.dynamicSystem, celestialSystem, this.navTarget, this.cameraSystem,
-      this.celestialMarkers, this.planDisplay, this.frameAnchors,
-    );
-    const linePickables = new LinePickables(this.dynamicSystem, this._celestialSystem);
+    // activeStage の authoring/executesPlans を読むので、その直後に生成する。候補列と計画の
+    // 編集口はマップビューが持つので、ビューより先に組み上がるここへは遅延評価で渡す。
     this.objectWindows = new ObjectWindows(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
-      this.cameraSystem, editor, this.pauseMenu, objectPickables, linePickables,
+      this.cameraSystem, () => this.viewManager.activeView, this.pauseMenu,
       this.controlSelection, this.frameControls, this.activeStage, this.targeter,
     );
 
@@ -327,10 +309,11 @@ export class Game {
       this.simSpeedManager, this._hud, uiSfx, this.markerManager,
     );
     const mapView = new MapView(
-      this.input, this.cameraSystem, editor, this.objectWindows,
-      this.dynamicSystem, celestialSystem, objectPickables, linePickables,
+      this.input, this.cameraSystem, this.objectWindows,
+      this.dynamicSystem, celestialSystem,
       this.celestialMarkers, this.markerManager, this.displayWindowManager, this.frameControls,
-      this.frameAnchors, this.controlSelection, this._hud, this.navTarget,
+      this.frameAnchors, this.controlSelection, this.simSpeedManager, this.planDisplay,
+      this._scene, this._hud, uiSfx, this.navTarget,
     );
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
     // 置かれるので、戦闘ビューへ入れるかどうかはその後でなければ判定できない。
