@@ -114,6 +114,7 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
 // 離脱・焼失・衝突の記録。機体が何でできているか(メッシュ・被弾モデル・判定形状)は具象が持つ。
 export abstract class Enemy extends Ship implements ObjectPickable {
   public override readonly mapKind: DynamicEntityKind = 'enemy';
+  public override readonly pickable = true;
 
   // 敵機は熱防御を持たないので、自機より低い温度で構造が保たなくなる。
   protected readonly maxTemperature = ENEMY_MAX_TEMP;

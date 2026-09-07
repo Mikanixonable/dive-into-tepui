@@ -93,10 +93,7 @@ export class ObjectPickables {
 
     this.candidateItems.length = 0;
     for (const body of this.celestialMarkers.bodyPickables) append(body);
-    for (const enemy of this.dynamicSystem.enemies) append(enemy);
-    for (const ammoPickup of this.dynamicSystem.ammoPickups) append(ammoPickup);
-    for (const fuelPickup of this.dynamicSystem.rcsFuelPickups) append(fuelPickup);
-    for (const controllable of this.dynamicSystem.controllables) append(controllable);
+    for (const pickable of this.dynamicSystem.objectPickables) append(pickable);
     for (const node of this.navTarget.pickables()) append(node);
     for (const apsis of this.planDisplay.apsisMarkers) append(apsis);
     for (const e of this.dynamicSystem.all()) {
