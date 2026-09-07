@@ -2,7 +2,9 @@ import * as THREE from 'three/webgpu';
 import { Attitude } from '../../../physics/attitude';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { CelestialMotion } from '../../../physics/celestial-motion';
-import { Vec3 } from '../../../math/vec3';
+import { add, randVec, v3, Vec3 } from '../../../math/vec3';
+import { randomQuat } from '../../../math/quat';
+import { randSym } from '../../../math/random';
 import type { Stage } from '../../stages/stage';
 import type { Contact } from './contact';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
@@ -21,6 +23,7 @@ import {
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { Viewpoint } from '../../../math/projection';
 import type { InstancedPools } from '../instanced-pools';
+import type { EntityRegistry } from '../dynamic-system';
 import { DynamicEntity, SMALL_DEBRIS_BCINV, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS_BULK_DENSITY, SMALL_DEBRIS_SPECIFIC_HEAT, SMALL_DEBRIS_RADIATING_AREA_PER_MASS, SMALL_DEBRIS_MAX_TEMP } from './dynamic-entity';
 import { Player } from '../../player/player';
 import { Bullet } from './bullet';
@@ -203,12 +206,42 @@ export class DebrisPiece extends DynamicEntity {
 
   // 再突入判定に加え、寿命を持つデブリは表示時間の超過でも消す。
   checkLoss(
-    dt: number, simTime: number, activeStage: Stage, viewerPos: Vec3,
-    atmosphereBodies: readonly CelestialMotion[],
+    dt: number, simTime: number, activeStage: Stage, registry: EntityRegistry,
+    viewerPos: Vec3, atmosphereBodies: readonly CelestialMotion[],
   ): void {
-    super.checkLoss(dt, simTime, activeStage, viewerPos, atmosphereBodies);
+    super.checkLoss(dt, simTime, activeStage, registry, viewerPos, atmosphereBodies);
     if (!this.alive) return;
     const expiresAt = this.expiresAt;
     if (expiresAt !== null && simTime >= expiresAt) this.alive = false;
   }
+}
+
+// 撃破・破損で飛び散る破片を組み立てて返す(世界へ入れるのは呼び出し側)。t は発生時刻で、
+// 壊れた個体の state.t をそのまま渡す。spread は初速のばらつき、accent は破片の色。
+export function buildDestroyFragments(
+  t: number,
+  origin: Vec3,
+  baseVel: Vec3,
+  count: number,
+  accent: string | number,
+  sizeMin: number,
+  sizeMax: number,
+  spread: number,
+  worldSfx: WorldSfx,
+  fx: EffectsSystem,
+  scene?: THREE.Scene,
+): DebrisPiece[] {
+  const pieces: DebrisPiece[] = [];
+  // 非対称な慣性テンソル + 中間軸まわり回転 → ジャニベコフ効果。
+  for (let i = 0; i < count; i++) {
+    const size = sizeMin + Math.random() * (sizeMax - sizeMin);
+    const state = kinematicState<'eci'>(t, add(origin, randVec(2.5)), add(baseVel, randVec(spread)));
+    const att = {
+      q: randomQuat(),
+      w: v3(randSym(0.25), (1.4 + Math.random() * 1.2) * (Math.random() < 0.5 ? -1 : 1), randSym(0.25)),
+      inertia: v3(1, 2.05, 3.0), // 中間軸 = y: ここに主回転を与えると周期的に反転する
+    };
+    pieces.push(new DebrisPiece(state, { kind: 'fragment', accent, size }, att, worldSfx, fx, undefined, scene));
+  }
+  return pieces;
 }

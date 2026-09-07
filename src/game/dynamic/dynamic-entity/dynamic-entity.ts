@@ -29,6 +29,7 @@ import { FrameAnchorSource, ReferenceFrame } from '../../../physics/frame';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { CapKind, DynamicEntityKind } from './entity-kind';
 import type { InstancedPools } from '../instanced-pools';
+import type { EntityRegistry } from '../dynamic-system';
 import { PredictedArc, trajectorySampleInterval } from '../predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from '../time-step';
 import type { FutureCelestialBodyProvider } from '../arc-celestial-bodies';
@@ -466,6 +467,7 @@ export class DynamicEntity {
     star: CelestialMotion | null,
     pivot: number,
     activeStage: Stage,
+    registry: EntityRegistry,
   ): boolean {
     const integrated = !this.followPredicted(this.state.t + dt, celestialBodies, pivot);
     if (integrated) {
@@ -489,7 +491,7 @@ export class DynamicEntity {
       ? 0 : sunlitFactor(this.state.r, sun, occluders, pivot);
     // 環境を先に進める。放熱面の展開のように、熱収支が読む値をここで書き換える種別がある。
     this.stepEnvironment(dt, atmosphereBody, pivot, sunlit, sunDir);
-    this.stepThermal(dt, atmosphereBody, pivot, sunDist, sunlit, sunDir, activeStage);
+    this.stepThermal(dt, atmosphereBody, pivot, sunDist, sunlit, sunDir, activeStage, registry);
     return integrated;
   }
 
@@ -500,7 +502,7 @@ export class DynamicEntity {
   }
 
   // 温度が上限を超えて失われる。死因を記録する種別が override する。
-  protected burnUp(_activeStage: Stage): void {
+  protected burnUp(_activeStage: Stage, _registry: EntityRegistry): void {
     this.alive = false;
   }
 
@@ -512,7 +514,7 @@ export class DynamicEntity {
   // 速いので、粗い区間の終わりだけを見ると、加熱の山で上限を越えて戻ってきた個体を取り逃がす。
   private stepThermal(
     dt: number, atmosphereBody: CelestialMotion | null, atmospherePivot: number,
-    sunDist: number, sunlit: number, sunDir: Vec3, activeStage: Stage,
+    sunDist: number, sunlit: number, sunDir: Vec3, activeStage: Stage, registry: EntityRegistry,
   ): void {
     if (this.specificHeat <= 0) return;
     const atm = atmosphereBody?.atmosphereAt(atmospherePivot) ?? null;
@@ -537,7 +539,7 @@ export class DynamicEntity {
     this.thermalDeviation = stepThermalDeviation(
       this.thermalDeviation, this.temperature, this.emissivity, this.radiatingAreaPerMass,
       this.specificHeat, dt);
-    if (this.temperature > this.maxTemperature) this.burnUp(activeStage);
+    if (this.temperature > this.maxTemperature) this.burnUp(activeStage, registry);
   }
 
   // 同じ区間ぶん、位置と姿勢から決まる受動的な環境(放熱面の展開・電力など)を進める。既定
@@ -640,8 +642,8 @@ export class DynamicEntity {
   // 寿命や距離のような、状態から直接は決まらない事情だけ。viewerPos は「操作対象からの距離」で
   // 消える種別(弾)のために一律で渡す。atmosphereBodies はその時刻の大気天体一覧。
   checkLoss(
-    _dt: number, _simTime: number, _activeStage: Stage, _viewerPos: Vec3,
-    _atmosphereBodies: readonly CelestialMotion[],
+    _dt: number, _simTime: number, _activeStage: Stage, _registry: EntityRegistry,
+    _viewerPos: Vec3, _atmosphereBodies: readonly CelestialMotion[],
   ): void {
   }
 
@@ -681,11 +683,15 @@ export class DynamicEntity {
 
   // 個体どうしの接触で自分に何が起きるかを記述する。相手に何が起きるかは書かない(相手の
   // collideWithEntity が書く)。既定は何も起きない。
-  collideWithEntity(_other: DynamicEntity, _contact: Contact, _activeStage: Stage): void {
+  collideWithEntity(
+    _other: DynamicEntity, _contact: Contact, _activeStage: Stage, _registry: EntityRegistry,
+  ): void {
   }
 
   // 天体の固体表面へ触れたときに自分に何が起きるか。既定は失われる。
-  collideWithCelestialBody(_body: CelestialMotion, _contact: Contact, _activeStage: Stage): void {
+  collideWithCelestialBody(
+    _body: CelestialMotion, _contact: Contact, _activeStage: Stage, _registry: EntityRegistry,
+  ): void {
     this.alive = false;
   }
 
