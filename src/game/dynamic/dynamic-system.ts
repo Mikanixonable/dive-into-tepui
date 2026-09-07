@@ -9,7 +9,7 @@ import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import { ENTITY_CAP, type CapKind, type EntityCountKind } from './dynamic-entity/entity-kind';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
 import { restorationFor } from './dynamic-entity/entity-dictionary';
-import { InstancedPools } from './dynamic-entity/instanced-pools';
+import { InstancedPools } from './instanced-pools';
 import type { Stage } from '../stages/stage';
 import type { Input } from '../../input/input';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';

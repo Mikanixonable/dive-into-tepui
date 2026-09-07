@@ -2,12 +2,12 @@
 // 種別ごとに InstancedMesh 1本へまとめて描くためのプール一式。個体は毎フレーム、自分の sync の
 // 中で同期し終えた変換をここへ積む。
 import * as THREE from 'three/webgpu';
-import { InstancedPool } from '../../../render/instanced-pool';
+import { InstancedPool } from '../../render/instanced-pool';
 import {
   bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources,
   debrisFragmentResources,
-} from '../../../render/ships';
-import { ENTITY_CAP } from './entity-kind';
+} from '../../render/ships';
+import { ENTITY_CAP } from './dynamic-entity/entity-kind';
 
 export class InstancedPools {
   private readonly bulletBody: InstancedPool;

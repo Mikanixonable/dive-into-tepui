@@ -20,7 +20,7 @@ import {
 } from '../../../render/booster';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { Viewpoint } from '../../../math/projection';
-import type { InstancedPools } from './instanced-pools';
+import type { InstancedPools } from '../instanced-pools';
 import { DynamicEntity, SMALL_DEBRIS_BCINV, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS_BULK_DENSITY, SMALL_DEBRIS_SPECIFIC_HEAT, SMALL_DEBRIS_RADIATING_AREA_PER_MASS, SMALL_DEBRIS_MAX_TEMP } from './dynamic-entity';
 import { Player } from '../../player/player';
 import { Bullet } from './bullet';
