@@ -16,8 +16,7 @@ const RELATIVE_NODE_LABELS = {
 } as const;
 
 export class RelativeNodeMarker extends OrbitPointMarker {
-  public readonly glyph = ORBIT_POINT_GLYPH.ascendingNode;
-  protected readonly markerGlyph: string;
+  public readonly glyph: string;
   protected readonly markerClass = 'mk-node';
   public readonly markerLabel: string;
   public readonly name: string;
@@ -32,7 +31,7 @@ export class RelativeNodeMarker extends OrbitPointMarker {
     this.name = RELATIVE_NODE_LABELS[node].name;
     this.spec = RELATIVE_NODE_LABELS[node].spec;
     this.markerLabel = this.spec.short;
-    this.markerGlyph = RELATIVE_NODE_LABELS[node].glyph;
+    this.glyph = RELATIVE_NODE_LABELS[node].glyph;
   }
 
   // 今フレームの解を記録する。求まらなかったフレームは位置と時刻に null を渡す。
