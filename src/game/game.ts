@@ -70,22 +70,21 @@ export class Game {
   private readonly activePlayers: ActiveControllableController;
   get player(): Player | null { return this.activePlayers.current; }
   get controlledBase(): Base | null { return this.activePlayers.controlledBase; }
+  // いま操作している対象。操作中の基地、無ければ操作対象艦、それも無ければ生存中の基地。
   get activeControllableEntity(): Controllable | null {
     return this.controlledBase ?? this.player ?? this.dynamicSystem.bases.find((b) => b.alive) ?? null;
   }
   readonly simSpeedManager: SimSpeedManager;
 
   private readonly planDisplay: PlanDisplay;
-  // このフレームの表示座標系・表示時刻窓と、表示側の重力源窓。update で確定させ sync でも読む。
-  // HUD(軌道分析パネルの投影タブなど)が current 経由で表示期間を読むため公開する。
+  // このフレームの表示座標系・表示時刻窓と、表示側の重力源窓。update で確定させ、sync が読む。
   readonly displayWindowManager: DisplayWindowManager;
   readonly viewManager: ViewManager;
   private readonly objectWindows: ObjectWindows;
 
   readonly activeStage: Stage;
-  // ポーズは Game 自身の状態として持つ。SIM_SPEED_LEVELS は離散段で 0 を表現できないうえ、
-  // 「時間を止めるか」と「どの倍率まで相互作用を成立させるか」は別の関心事なので、
-  // SimSpeedManager へは寄せない。
+  // ポーズは Game 自身の状態として持つ。「時間を止めるか」と「どの倍率まで相互作用を成立させるか」
+  // は別の関心事。
   private _isPaused = false;
   get isPaused(): boolean { return this._isPaused; }
 
@@ -105,7 +104,7 @@ export class Game {
   private readonly docking: Docking;
   private readonly viewBadge: ViewBadge;
   private readonly frameControls: FrameControls;
-  // 計測区間の境界を打つ先。集計と保持はこのオブジェクトが持つ。
+  // 計測区間の境界を打つ先。
   private readonly sections: FrameSections;
 
   // 星系を組んでから、このランを組み立てる。段の切れ目で描画を明け渡すので、
@@ -123,9 +122,9 @@ export class Game {
     progress: LoadingProgress,
   ): Promise<Game> {
     await progress.enter('system');
-    // このランの元期。スナップショットを読むならその元期をそのまま継ぐ(照合はしない) —
-    // 保存されている simTime はその元期からの経過秒なので、別の元期で組むと全天体がずれる。
-    // 次に開始日時の指定、最後にステージの宣言。**星系を組む前に決まっていなければならない。**
+    // このランの元期。スナップショットを読むならその元期をそのまま継ぐ — 保存されている simTime
+    // はその元期からの経過秒なので、別の元期で組むと全天体がずれる。次に開始日時の指定、最後に
+    // ステージの宣言。星系を組む前に決まっていなければならない。
     const savedJdTdb = initialSave?.ephemerisContext?.epochJdTdb;
     const epoch = savedJdTdb !== undefined ? createJulianDate('TDB', savedJdTdb) : startEpoch ?? stageClass.epoch;
     // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
@@ -141,9 +140,8 @@ export class Game {
     );
     await progress.enter('run');
     const game = new Game(gs, stageClass, hud, audioEngine, pauseMenu, sections, celestialSystem, initialSave);
-    // シェーダを組む前に、最初に描かれるフレームと同じ表示状態を作る。時間の進まない 1 フレーム
-    // として通す — 天体表面の分割段やベルトのリンク数のように、update/sync が決めるまで
-    // 隠れている表示物は、通さなければ事前コンパイルから漏れる。
+    // シェーダを組む前に、最初に描かれるフレームと同じ表示状態を時間の進まない1フレームで作る —
+    // 天体表面の分割段のように update/sync が決めるまで現れない表示物が、事前コンパイルから漏れる。
     const style = hud.renderStyle.current;
     game.update(0);
     game.sync(graphics, style);
@@ -159,9 +157,7 @@ export class Game {
     return game;
   }
 
-  // このランを1件ぶんのセーブ本体へ畳む。各サブシステム自身の serialize を集める —
-  // 何を持っているかを知っているのは持ち主だけなので、dispose と同じくここに書く。
-  // どこへ何件残すかはランの外側が決める。
+  // このランを1件ぶんのセーブ本体へ畳む。
   serialize(): GameSaveData {
     const { phaseOffsets, earthSpinPhase0 } = this._celestialSystem.serialize();
     return {
@@ -171,6 +167,7 @@ export class Game {
       ephemerisContext: { ...ephemerisContextFor(this._celestialSystem.epoch) },
       phaseOffsets,
       earthSpinPhase0,
+      // 顔ぶれは種別ごとに、個体自身へ畳ませる。
       players: this.dynamicSystem.players.map((p) => p.serialize()),
       activePlayerId: this.player ? this.player.id : null,
       enemies: this.dynamicSystem.enemies.map((e) => e.serialize()),
@@ -187,6 +184,7 @@ export class Game {
   // ランの外側が一覧へ描くための要約。自機が居ない周回でも値が欠けないよう、
   // 軌道の項は星系の原点へ寄せる。
   runSummary(): RunSummary {
+    // 自機が居る周回なら、軌道の項もそこから解く。
     const player = this.player;
     const celestial = this._celestialSystem;
     const info = player === null ? null : orbitInfo(
@@ -237,7 +235,6 @@ export class Game {
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, celestialSystem);
 
     // ビューの正本(ViewManager)はカメラより後に組み上がるため、遅延評価で渡す。
-    // ViewManager 生成前にカメラの update/sync は呼ばれない。
     // 姿勢は現在値しか持たないため、解決はフォーカス id → 生存エンティティの現在姿勢。
     this.cameraSystem = new CameraSystem(
       this._hud, celestialSystem, () => this.viewManager.current,
@@ -313,7 +310,7 @@ export class Game {
       this.dynamicSystem.effects, this.markerManager, celestialSystem, this.simulator, this.activePlayers,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
-    // activeStage(authoring/executesPlans を読む)を要るので、その直後に生成する。
+    // activeStage の authoring/executesPlans を読むので、その直後に生成する。
     const objectPickables = new ObjectPickables(
       this.activePlayers, this.dynamicSystem, celestialSystem, this.navTarget, this.cameraSystem,
       this.celestialMarkers, this.planDisplay, this.frameAnchors,
@@ -359,17 +356,16 @@ export class Game {
       this._hud.renderStyle, this.dynamicSystem, celestialSystem,
     );
 
-    // ロード復元時の focus は FocusCamera が直接持つだけで frameControls.setFocus() を経由しないため、
-    // ここで明示的に同期しないと軌道表示の基準系がフォーカス天体に追随しない。
+    // 復元した focus を、軌道表示の基準系へも通しておく。
     this.frameControls.setFocus(this.cameraSystem.mapCamera.focus);
   }
 
   // ------------------------------------------------------------------ lifecycle
 
+  // 時間を止め、連続指令を畳む。
   pause(): void {
     this.simulator.lastSimDt = 0;
     this._worldSfx.setThrust(false);
-    // 一時停止へ入る際に、全自機の連続指令を畳む。
     this.dynamicSystem.clearTransientCommands();
     this._isPaused = true;
   }
@@ -377,9 +373,8 @@ export class Game {
   resume(): void { this._isPaused = false; }
 
   // このゲームが scene・Hud・window/document/canvas へ足したものを残らず取り除く。呼んだ後の
-  // このインスタンスは使えない。構築の逆順で辿るのは、後から組んだものほど先に組んだものを
-  // 参照しているため。マーカープールを最後に空にするのは、各エンティティ・各表示物が自分の
-  // dispose の中で自分のキーを外していくのを先に済ませるため。
+  // このインスタンスは使えない。構築の逆順で辿る — 後から組んだものほど先に組んだものを参照する。
+  // マーカープールは最後 — 各表示物が自分の dispose で自分のキーを外していくため。
   dispose(): void {
     this.viewBadge.dispose();
     this.viewManager.dispose();
@@ -387,7 +382,6 @@ export class Game {
     this.objectWindows.dispose();
     this.activeStage.dispose();
     // Hud はこのゲームより長生きするので、書き換えたクラスと差し込んだ参照を元へ戻す。
-    // BGM は周回の外側が決めるものなので触らない。
     this._hud.root.classList.remove('creative-mode');
     this._hud.vesselPanel.setInput(null);
     this._hud.burnManagementPanel.setHandlers({});
@@ -417,9 +411,8 @@ export class Game {
     this.sections.exit(SECTION.input);
 
     if (!this._isPaused && this.activeStage.isPlaying) this.advanceSimulation(dt);
-    // ポーズ中も決着後も飛ばせない。決着は積分を止めないので、飛ばすと描画原点になるカメラ位置
-    // だけが絶対 ECI に取り残され、追従対象もフォーカス天体も軌道速度で流れて即フレームアウトする。
-    // ポーズ中は積分が止まるが、カメラの旋回・ズーム・パンの入力をここで消化している。
+    // ここから先はポーズ中も決着後も通す。決着は積分を止めないので、飛ばすと描画原点になる
+    // カメラ位置だけが絶対 ECI に取り残され、追従対象が軌道速度で流れて即フレームアウトする。
     const activeControllable = this.activeControllableEntity;
     const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, activeControllable);
     const view = this.viewManager.current;
@@ -451,9 +444,7 @@ export class Game {
     this.sections.exit(SECTION.camera);
     // カメラ更新の後に置く: 候補列の組み直しが読む近傍系抽出・遮蔽判定・可視マーカー更新は
     // cameraSystem.activeCameraPos を使うので、先に組むとこのフレームの sync が1フレーム古い
-    // カメラ位置基準の判定を読むことになる。フォーカス解決(候補配列を機体の位置として読むこと)
-    // はこの順序に依存しない — resolveFocusTarget が機体・役割トークンを frameAnchors.stateOf
-    // で直接解決するため、カメラへ渡る候補列が1フレーム古くても遅延は生じない。
+    // カメラ位置基準の判定を読むことになる。
     this.sections.enter(SECTION.mapPick);
     this.viewManager.activeView.update(displayWindow);
     this.sections.exit(SECTION.mapPick);
@@ -478,7 +469,7 @@ export class Game {
     this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
     const playerInput = this.controlledBase !== null ? null : this.input;
     this.dynamicSystem.updatePlayers(
-      this.player, playerInput, canShipAct, dt, simDt, this.activeStage, this.celestialSystem,
+      this.player, playerInput, canShipAct, dt, simDt, this.activeStage, this._celestialSystem,
     );
     this.dynamicSystem.updateBases(
       this.controlledBase, this.input, canShipAct, dt, simDt,
@@ -514,9 +505,8 @@ export class Game {
 
   }
 
-  // ポインタ入力を現在のビューへ配る。このフレームの cameraSystem.update が終わって
-  // 初めて投影がこのフレームの値になるので、update の末尾に置く。ポーズ中、または入力を
-  // ゲートするオーバーレイ(セーブブラウザ・基地画面等)が開いている間は配らない(背景の誤操作を防ぐ)。
+  // ポインタ入力を現在のビューへ配る。このフレームの cameraSystem.update が終わって初めて投影が
+  // このフレームの値になるので、update の末尾に置く。ポーズ中と入力ゲート中はそのまま戻る。
   private handlePointerInput(): void {
     if (this._isPaused || this._hud.overlayManager.isInputGated()) return;
     this.viewManager.activeView.handlePointer(this.simulator.simTime);
@@ -528,8 +518,7 @@ export class Game {
   // どのキー/クリックが何をするかは各モジュールが持つ。ここで配るのは、決着後・ポーズ中も
   // 効くべき操作(設定・ヘルプ・再出撃・ワープ・マップ開閉・計画破棄・計画のΔv編集)。
   private handleInput(dt: number): void {
-    // ESC の持ち主はここ一箇所だけ: 開いているオーバーレイがあれば最前面を閉じ、
-    // 何も無ければ一時停止メニューを開く。個々のオーバーレイの開閉判断は持たない。
+    // ESC: 開いているオーバーレイがあれば最前面を閉じ、何も無ければ一時停止メニューを開く。
     if (this.input.takeKey(K.pauseMenu)) {
       if (!this._hud.overlayManager.closeTopmostOnEscape()) this.pauseMenu.toggle(true);
     }
@@ -550,8 +539,7 @@ export class Game {
 
   sync(graphics: GraphicsSettingsData, style: RenderStyle): void {
     const player = this.player;
-    // update() と sync() は同一の animate() 呼び出し内で同期的に実行されるため、
-    // update() が確定させた表示窓をそのまま読める。
+    // update() が確定させた、このフレームの表示窓。
     const displayWindow = this.displayWindowManager.current;
     this.viewBadge.sync(
       this.activeStage.stageClass.selectLabel, this.cameraSystem.activeFocus,
@@ -560,7 +548,7 @@ export class Game {
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const { displayTime, simTime } = displayWindow;
-    const celestialBodies = this.celestialSystem.celestialMotions;
+    const celestialBodies = this._celestialSystem.celestialMotions;
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
     this.cameraSystem.sync();
@@ -574,9 +562,8 @@ export class Game {
     // マーカー描画は操作艦自身も他の船と同列に扱うので、ターゲット選定用(自分自身は除外)とは
     // 別に、除外なしの一覧を使う。
     const combatTargets = this.dynamicSystem.getCombatTargets(null);
-    // 基地操作中もその基地を基準に軌道パネルが解決するのと揃える(orbit-panel.ts も同じ
-    // activeControllableEntity を使う) — player だけを見ると、基地操作中は常に undefined になり
-    // 軌道パネルの表示と3D軌道線の基準がずれる。
+    // 軌道パネルと同じ基準で解く — player だけを見ると、基地操作中は常に undefined になり、
+    // パネルの表示と3D軌道線の基準がずれる。
     const activeControllable = this.activeControllableEntity;
     const orbitRef = activeControllable
       ? this.orbitReference.resolve(
@@ -641,7 +628,7 @@ export class Game {
 
   // ------------------------------------------------------------------ debug
 
-  // 負荷確認ウィンドウが読む値。各数値はそれを持つモジュールが答え、ここは合流させるだけ。
+  // 各モジュールが答えた計測値を1つに合流させる。
   perfCounts(): PerfCounts {
     return {
       ...this.dynamicSystem.perfCounts(),
@@ -649,13 +636,14 @@ export class Game {
         this.simulator.simTime, this.displayWindowManager.current.duration, this.player),
       ...this.simulator.perfCounts(),
       ...this.planDisplay.perfCounts(),
-      ...this.celestialSystem.perfCounts(),
+      ...this._celestialSystem.perfCounts(),
       ...this.viewManager.activeView.perfCounts(),
       displayDurationSec: this.displayWindowManager.current.duration,
       warp: this.simSpeedManager.simSpeed,
     };
   }
 
+  // タンパク質敵モーションの集計値。
   proteinMotionFrameSample(): ProteinMotionFrameSample {
     return this.dynamicSystem.proteinMotionFrameSample();
   }

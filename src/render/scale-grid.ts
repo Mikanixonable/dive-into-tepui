@@ -1,6 +1,5 @@
-// 空間に浮かぶ十字マーカー状の縮尺グリッド。天球グリッド(celestial-grid.ts)の経緯線とは
-// 異なり、呼び出し側が与えた1点を通る固定平面として描く。黄道面・赤道面は向きが固定で、
-// 月軌道面・月赤道面は毎フレーム法線を受け取る。
+// 空間に浮かぶ十字マーカー状の縮尺グリッド。呼び出し側が与えた1点を通る固定平面として描き、
+// 黄道面・赤道面は向きが固定、月軌道面・月赤道面は毎フレーム法線を受け取る。
 import * as THREE from 'three/webgpu';
 import { ECLIPTIC_BASIS, EQUATOR_BASIS, planeBasisFromPole, type PlaneBasis } from './plane-basis';
 import { CameraScale } from './camera-scale';
@@ -36,6 +35,7 @@ const GRID_FULL_PX = 24;
 const GRID_FULL_OUT_PX = 80;
 const GRID_FADE_OUT_PX = 180;
 
+// 1段ぶんの十字群を描く LineSegments。頂点は呼び出し側が入れる。
 function makeLine(color: number): { line: THREE.LineSegments; material: THREE.LineBasicMaterial } {
   const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false });
   const line = new THREE.LineSegments(new THREE.BufferGeometry(), material);
@@ -45,11 +45,13 @@ function makeLine(color: number): { line: THREE.LineSegments; material: THREE.Li
   return { line, material };
 }
 
+// spacing 間隔で並ぶ格子点それぞれに置く十字の頂点列。basis の面内に張った描画座標で返す。
 function crossPoints(basis: PlaneBasis, spacing: number): Float32Array {
   const halfCross = spacing * GRID_CROSS_HALF_LENGTH;
   const count = GRID_CROSS_CELLS * 2 + 1;
   const values = new Float32Array(count * count * 4 * 3);
   let offset = 0;
+  // 面内座標の2点を、線分1本ぶんの頂点として書き足す。
   const write = (u1: number, v1: number, u2: number, v2: number): void => {
     values[offset++] = basis.e1.x * u1 + basis.e2.x * v1;
     values[offset++] = basis.e1.y * u1 + basis.e2.y * v1;
@@ -69,11 +71,13 @@ function crossPoints(basis: PlaneBasis, spacing: number): Float32Array {
   return values;
 }
 
+// edge0→edge1 を 0→1 へ滑らかに写す(範囲外はクランプ)。
 function smoothstep(edge0: number, edge1: number, value: number): number {
   const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
 }
 
+// 目盛り間隔 [m] を km 表記の文字列にする。
 function spacingLabel(spacing: number): string {
   return `${(spacing / 1e3).toLocaleString('ja-JP')} km`;
 }
@@ -83,8 +87,9 @@ class ScaleGridPlane {
   private readonly initialBasis: PlaneBasis;
   private readonly label: HTMLDivElement;
   private basis: PlaneBasis;
-  private basisRotation = new THREE.Quaternion();
+  private readonly basisRotation = new THREE.Quaternion();
 
+  // 全ズーム段ぶんの十字群を scene へ、縮尺ラベルを document.body へ置く。
   public constructor(scene: THREE.Scene, basis: PlaneBasis, color: number, name: string) {
     this.initialBasis = basis;
     this.basis = basis;
@@ -96,6 +101,7 @@ class ScaleGridPlane {
       scene.add(made.line);
       return { spacing, line: made.line, material: made.material };
     });
+    // 縮尺ラベルは DOM 側に持ち、sync で画面座標へ載せる。
     this.label = document.createElement('div');
     this.label.className = 'scale-grid-label';
     Object.assign(this.label.style, {
@@ -107,6 +113,7 @@ class ScaleGridPlane {
     document.body.appendChild(this.label);
   }
 
+  // 面の向きを差し替える。頂点は生成時の基底で焼いてあるので、差は Object3D の回転で吸収する。
   private setBasis(basis: PlaneBasis): void {
     if (this.basis.pole.dot(basis.pole) > 1 - 1e-10 && this.basis.e1.dot(basis.e1) > 1 - 1e-10) return;
     this.basis = basis;
@@ -126,6 +133,7 @@ class ScaleGridPlane {
     camera: THREE.Camera, cameraDistance: number,
   ): void {
     this.setBasis(basis);
+    // 各段の濃さを画面上の目盛り間隔から決め、いちばん濃い段を覚えておく。
     const metersPerPixel = new CameraScale(camera).atDepth(cameraDistance);
     let bestLevel: GridLevel | null = null;
     let bestOpacity = 0;
@@ -145,6 +153,7 @@ class ScaleGridPlane {
     }
     this.label.style.display = 'none';
     if (!visible || bestLevel === null) return;
+    // ラベルは格子の斜め方向へ数マス離して置く。
     const labelOffset = bestLevel.spacing * 5;
     const projected = new THREE.Vector3(
       origin.x + (this.basis.e1.x + this.basis.e2.x) * labelOffset,
@@ -162,7 +171,7 @@ class ScaleGridPlane {
   }
 
   // 全ズーム段の線を親から外して解放し、スケールラベルを document.body から外す。
-  dispose(): void {
+  public dispose(): void {
     for (const level of this.levels) {
       level.line.removeFromParent();
       level.line.geometry.dispose();
@@ -178,6 +187,7 @@ export class ScaleGrid {
   private readonly moonOrbit: ScaleGridPlane;
   private readonly moonEquator: ScaleGridPlane;
 
+  // 4面ぶんの ScaleGridPlane を scene へ置く。月の 2 面は向きが決まるまで黄道面で始める。
   public constructor(scene: THREE.Scene) {
     this.ecliptic = new ScaleGridPlane(scene, ECLIPTIC_BASIS, 0xc0a878, '黄道面');
     this.equator = new ScaleGridPlane(scene, EQUATOR_BASIS, 0x8b93a0, '赤道面');
@@ -201,7 +211,7 @@ export class ScaleGrid {
   }
 
   // 4面ぶんの ScaleGridPlane を解放する。
-  dispose(): void {
+  public dispose(): void {
     this.ecliptic.dispose();
     this.equator.dispose();
     this.moonOrbit.dispose();

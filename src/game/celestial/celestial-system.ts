@@ -56,7 +56,7 @@ const UP_VECTOR = new THREE.Vector3(0, 1, 0);
 
 // 数値暦が収録している点を、結び先のノードへ配る。暦は id ごとに天体本体を収録している場合と
 // 惑星系の重心を収録している場合があり、宣言と食い違う点へ結ぶとその系がまるごと重心オフセット
-// ぶんずれるので、ephemerisPointOf は種別が合ったときだけ暦を返す。
+// ぶんずれる。
 function bindEphemerides(motions: readonly CelestialMotion[], points: EphemerisPoints): void {
   for (const motion of motions) {
     motion.bindEphemeris(ephemerisPointOf(points, motion.id, 'body'));
@@ -70,9 +70,8 @@ function bindEphemerides(motions: readonly CelestialMotion[], points: EphemerisP
   }
 }
 
-// 星系は実行時に差し替えられるので、親子関係が循環していても停止し、同じ天体が一度だけ
-// 並ぶよう追加済みを覚えておく。主星を持たない孤立した天体(親が登録されていない星系・
-// 循環した星系)も落とさない。
+// 親を先に、その子を続けて並べた列と、主星を 0 とする階層の深さ。親子関係が循環していても
+// 停止し、主星を持たない孤立した天体は深さ 0 で拾う。
 function orderedEntitiesOf(
   entities: readonly CelestialEntity[],
 ): readonly { readonly entity: CelestialEntity; readonly depth: number }[] {
@@ -113,14 +112,13 @@ export class CelestialSystem implements CelestialMotions {
   private ambient!: AmbientSource;
   private atmosphere!: AtmospherePass;
   private readonly entitiesById: ReadonlyMap<string, CelestialEntity>;
-  // 全登録天体の運動(entities と同じ宣言順)。重力源配列・一覧の順序もこの並びで決まる。
+  // 全登録天体の運動(entities と同じ宣言順)。
   readonly celestialMotions: readonly CelestialMotion[];
   // 親を先に、その子を続けて並べた天体の列と、主星を 0 とする階層の深さ。
   readonly orderedEntities: readonly { readonly entity: CelestialEntity; readonly depth: number }[];
   // 主星の個体。恒星を持たない星系では null。
   private readonly starEntity: StarEntity | null;
-  // 天体の値を ECI へ移す変換器。**どの天体を原点に置くかは系レベルの選択**なので正本はここが
-  // 持ち、個体へは参照を配る。
+  // 天体の値を ECI へ移す変換器。どの天体を原点に置くかは系レベルの選択なので、正本はここが持つ。
   private readonly eciTransform: EciTransform;
   // 座標系の同一性。entities の motion から組む。
   private readonly referenceFrames: ReferenceFrames;
@@ -130,20 +128,20 @@ export class CelestialSystem implements CelestialMotions {
   private readonly gravityMotionList: readonly CelestialMotion[];
   private readonly atmosphereMotionList: readonly CelestialMotion[];
 
-  // 点群をシーンへ登録済みか。マップへ入るまで登録しない。
+  // 点群をシーンへ登録済みか。登録は最初にマップを描くとき。
   private pointFieldBuilt = false;
 
   // ラグランジュ点まわりの周期・準周期軌道のガイド線(表示パネルの軌道ガイドタブ、静止軌道を除く)。
   private orbitGuideLines!: OrbitGuideLines;
   // ゼロ速度曲線(ガイドタブ5.3節)。
   private zeroVelocityLines!: ZeroVelocityLines;
-  // 軌道ガイドタブの正本の鏡映し。静止軌道リング・ラベルの表示可否だけをここから読む。
+  // 軌道ガイドタブの設定の写し。静止軌道リング・ラベルの表示可否を持つ。
   private orbitGuideSettings: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
 
   // entities はこの星系の全天体(宣言順)、origin はその中の ECI 中心天体。phaseOffsets は motion を
   // 組むのに使った初期位相で、セーブでそのまま返すために保持する。epoch は simTime=0 が指す絶対時刻。
-  // pointFieldView は付随する小天体の点群(持たない星系では null)で、シーンへの登録は最初の
-  // マップ更新まで遅らせる。ephemerisPoints は数値暦が収録している点の一覧。
+  // pointFieldView は付随する小天体の点群(持たない星系では null)、ephemerisPoints は数値暦が
+  // 収録している点の一覧。
   constructor(
     public readonly entities: readonly CelestialEntity[],
     public readonly origin: CelestialEntity,
@@ -168,8 +166,8 @@ export class CelestialSystem implements CelestialMotions {
   }
 
   // シーンとライティングパスの値オブジェクト(RenderPipeline が所有)を受け取り、全天体の
-  // メッシュ・星野・グリッドをシーンへ登録する。Game の構築中に1度だけ呼ぶ —
-  // update / sync はこの後でないと呼べない。
+  // メッシュ・星野・グリッドをシーンへ登録する。1度だけ呼ぶ — update / sync はこの後でないと
+  // 呼べない。
   build(
     scene: THREE.Scene, sunLight: SunLight, exposure: Exposure,
     bodyShadow: BodyShadow, ringShadow: RingShadow, cumulusShadow: CumulusShadow,
@@ -220,7 +218,7 @@ export class CelestialSystem implements CelestialMotions {
   // ---------------------------------------------------------------- 系の所属
 
   // 天体の木を親子関係と重力の効き方から辿り、「何がどの系に属するか」「いまどの系にいるか」を
-  // 答える。可視性・選択候補・一覧の並びがここを共有する。
+  // 答える。
 
   // focusId と同じ親を持つ天体・その親・focusId 自身の id 集合。focusId 未指定なら空集合。
   sameSystemIds(focusId: string | undefined): ReadonlySet<string> {
@@ -283,7 +281,7 @@ export class CelestialSystem implements CelestialMotions {
   }
 
   // chain の列に、各天体の子(恒星の子は除く)を合わせた集合。近い順・各天体→その子の順に並ぶ
-  // 配列で返す(呼び出し側の選択肢が毎フレーム揺れないよう順序を固定する)。
+  // 配列で返す。
   membersFrom(chain: readonly string[]): readonly string[] {
     const seen = new Set<string>();
     const result: string[] = [];
@@ -355,7 +353,7 @@ export class CelestialSystem implements CelestialMotions {
     this.zeroVelocityLines.setSettings(settings.zeroVelocity);
   }
 
-  // 公転天体1体につき1本の参照軌道線。線を持つ個体だけを列挙する。
+  // 公転天体1体につき1本の参照軌道線。線を持つ個体を列挙する。
   get referenceEllipseLines(): readonly { readonly id: string; readonly line: EllipseLine }[] {
     return this.entities.flatMap((b) => (b.referenceLine === null ? [] : [{ id: b.id, line: b.referenceLine }]));
   }
@@ -371,8 +369,8 @@ export class CelestialSystem implements CelestialMotions {
   }
 
   // 天体ビュー・星・照明・影・参照線・天球グリッドを、この1フレームの表示状態に同期する。
-  // visibilityPolicy は**マップビューのとき非 null、戦闘ビューのとき null** を渡す。描かれる
-  // 対象と選べる対象が同じ判定から出るよう、同じフレームの update 位相で確定させたものを渡す。
+  // visibilityPolicy はマップビューでは非 null、戦闘ビューでは null。描かれる対象と選べる対象が
+  // 同じ判定から出るよう、同じフレームの update 位相で確定させたものを渡す。
   sync(
     floatingOrigin: FloatingOrigin,
     displayTime: number,
@@ -384,14 +382,13 @@ export class CelestialSystem implements CelestialMotions {
     markerManager: MarkerManager | null,
   ): void {
     const star = this.starEntity;
-    const starMotion = star?.motion ?? null;
     for (const body of this.entities) {
       body.setVisible(visibilityPolicy === null || visibilityPolicy.body(body.id).category);
       body.sync(floatingOrigin, displayTime, cameraSystem, star, graphics, style);
     }
     // 主星が無いレジストリでは、描画原点から見た恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
     // (基準強度どおりの放射照度が届き、影パスは誰も遮らないと答える)。
-    const starPos = starMotion === null ? null : this.stateAt(starMotion.id, displayTime).r;
+    const starPos = star === null ? null : this.stateAt(star.id, displayTime).r;
     const sunPos = starPos === null
       ? this.toThreeNormal(this.sunDirFrom(floatingOrigin.r, displayTime))
         .multiplyScalar(STARLESS_SUN_DISTANCE)
@@ -425,7 +422,7 @@ export class CelestialSystem implements CelestialMotions {
     this.syncReferenceLines(
       displayTime, floatingOrigin, visibilityPolicy,
       cameraSystem.activeCamera, cameraSystem.activeCameraPos);
-    // 地球の静止軌道リングなど、天体固有のマップ付随表示。出すかどうかの判断はここが持つ。
+    // 地球の静止軌道リングなど、天体固有のマップ付随表示。
     for (const body of this.entities) {
       body.syncMapOverlay(
         floatingOrigin, displayTime, cameraSystem, markerManager, this.celestialMotions,
@@ -439,8 +436,8 @@ export class CelestialSystem implements CelestialMotions {
     this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this, gridVisibility);
   }
 
-  // 天体照の光源の候補を組んで選定へ渡し、**選ばれたものだけ**を描画座標へ移してライティング
-  // 側のスロットへ入れる。基準点は露出と同じ注視点。
+  // 天体照の光源の候補を組んで選定へ渡し、選ばれたものを描画座標へ移してライティング側の
+  // スロットへ入れる。基準点は露出と同じ注視点。
   private syncPlanetLights(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem): void {
     // 全天体を候補にし、注視点から見た明るさで選ぶ。
     const candidates = this.celestialMotions.map((celestialBody) => ({
@@ -458,9 +455,8 @@ export class CelestialSystem implements CelestialMotions {
     })));
   }
 
-  // 影パスへ、この1フレームの影を落とす天体と環の帯を渡す。候補を組んで選定へ回し、**選ばれた
-  // ものだけ**を描画座標へ移す。focusPos はマップの注視点で、艦など天体でない対象を注視して
-  // いるなら null。
+  // 影パスへ、この1フレームの影を落とす天体と環の帯を渡す。候補を組んで選定へ回し、選ばれた
+  // ものを描画座標へ移す。
   private syncShadowSources(
     fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, graphics: GraphicsSettingsData,
   ): void {
@@ -551,9 +547,8 @@ export class CelestialSystem implements CelestialMotions {
     return new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
   }
 
-  // マップビューのときだけ参照軌道線を表示する。実体も濃さも個体が持ち、ここは表示ポリシー
-  // から「出すか」だけを決めて個体へ指示する。
-  // cameraPos は個体がフェードを測る基準(カメラの真の ECI 位置)。
+  // 参照軌道線を出すかを表示ポリシーから決めて個体へ指示する。マップビュー以外では実体ごと
+  // 解放させる。cameraPos は個体がフェードを測る基準(カメラの真の ECI 位置)。
   private syncReferenceLines(
     simTime: number, fo: FloatingOrigin, visibilityPolicy: MapVisibilityPolicy | null,
     camera: THREE.Camera, cameraPos: Vec3,
@@ -572,7 +567,7 @@ export class CelestialSystem implements CelestialMotions {
     }
   }
 
-  // 点群はマップを一度も開かないプレイでは不要。最初のマップ更新時にだけシーンへ登録する。
+  // 最初にマップへ描くときにシーンへ登録する。
   private buildPointField(pointField: PointFieldView): void {
     if (this.pointFieldBuilt) return;
     this.pointFieldBuilt = true;
