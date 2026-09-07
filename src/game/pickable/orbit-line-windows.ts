@@ -2,12 +2,14 @@
 // 「所属」欄からその軌道の持ち主のウィンドウを開けるようにする。排他グループを持たせず、
 // 被選択物のウィンドウと共存させる。
 import { PropertyWindow } from '../../hud/windows/property-window';
+import type { InspectedObject } from './inspected-object';
+
 import type { PropertyWindowContent, PropertyWindowRelatedItem } from '../../hud/windows/property-window-content';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { Hud } from '../hud/hud';
 import type { LinePickable } from './line-pickable';
 import type { LinePickables } from './line-pickables';
-import type { ObjectPickable } from './object-pickable';
+
 import type { ObjectPickables } from './object-pickables';
 
 const KIND_LABEL: Record<LinePickable['kind'], string> = {
@@ -27,7 +29,7 @@ export class OrbitLineWindows {
     private readonly linePickables: LinePickables,
     private readonly pickables: ObjectPickables,
     private readonly focusOwner: (id: string, name: string) => void,
-    private readonly openOwnerWindow: (clientX: number, clientY: number, target: ObjectPickable) => void,
+    private readonly openOwnerWindow: (clientX: number, clientY: number, target: InspectedObject) => void,
   ) {}
 
   // 軌道線のウィンドウを開く。既に開いていればクリック位置へ動かして最前面に出すだけにする。

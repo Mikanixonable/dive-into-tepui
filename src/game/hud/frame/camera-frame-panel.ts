@@ -1,5 +1,7 @@
 // マップビューの「カメラ」パネル。カメラの注視対象・回転追従・平行/透視投影・画角・基準面設定を担当する。
 import { frameRoleOf } from '../../../physics/frame';
+import type { ListedObject } from '../../pickable/listed-object';
+
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import { CameraReferencePlane, CameraReferenceView, FocusCamera, FOCUS_CAMERA_FOV_MIN, FOCUS_CAMERA_FOV_MAX } from '../../camera/focus-camera';
 import { focusTargetId } from '../../camera/focus-target';
@@ -7,7 +9,7 @@ import { AnchorZone } from './anchor-zone';
 import { CameraRotationZone } from './rotation-zone';
 import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from '../../../hud/widgets';
 import { frameRoleName, rotationFollowLabel } from './frame-labels';
-import type { ObjectPickable } from '../../pickable/object-pickable';
+
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { buildPanel } from './frame-controls';
 
@@ -117,7 +119,7 @@ export class CameraFramePanel {
 
   // 各ウィジェットの選択・有効状態を、渡された時刻・カメラ状態へ合わせる。
   public sync(
-    pickables: readonly ObjectPickable[], members: readonly string[], displayTime: number,
+    pickables: readonly ListedObject[], members: readonly string[], displayTime: number,
   ): void {
     // カメラ基準は表示設定に左右されず、登録済みの全天体を選択できるようにする。
     this.cameraCenterZone.setItems(pickables, true);
