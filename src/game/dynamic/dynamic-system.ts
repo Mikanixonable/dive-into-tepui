@@ -126,7 +126,7 @@ export class DynamicSystem {
       this.add(new DetachedBooster({ saved: data, simTime }, scene));
     }
     for (const data of save.bases) {
-      this.add(new Base({ saved: data, simTime }, scene, hud, worldSfx, this.effects, markerManager));
+      this.add(new Base({ saved: data, simTime }, scene, hud, worldSfx, markerManager));
     }
   }
 
@@ -187,14 +187,6 @@ export class DynamicSystem {
     entity.dispose();
   }
 
-  // 艦を取り除くが破棄はしない(基地への収容など、後で add で復帰させる場合)。
-  // 顔ぶれから外れると毎フレームの同期が届かなくなるので、マーカーはここで畳む。
-  public park(entity: DynamicEntity): void {
-    if (!this.detach(entity)) return;
-    entity.equatorNodes?.dispose();
-    entity.equatorNodes = null;
-  }
-
   // 顔ぶれから外す。保持していなければ false。
   private detach(entity: DynamicEntity): boolean {
     const i = this.entities.indexOf(entity);
@@ -230,7 +222,7 @@ export class DynamicSystem {
   }
 
   // id で名指しされた自機を返す。見つからなければ null。
-  findPlayer(id: string): Player | null {
+  private findPlayer(id: string): Player | null {
     return this.players.find((p) => p.id === id) ?? null;
   }
 
@@ -436,8 +428,7 @@ export class DynamicSystem {
     for (const e of this.all()) e.equatorNodes?.clearCrossings();
   }
 
-  // 全基地の赤道交点マーカーを求め直す。基地は常設の軌道構造物で、接近・ドッキングは
-  // 軌道面合わせそのものなので、選択の有無に関わらず出す。
+  // 全基地の赤道交点マーカーを求め直す。基地は常設の軌道構造物なので、選択の有無に関わらず出す。
   updateBaseEquatorNodes(
     displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
   ): void {
