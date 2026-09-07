@@ -5,6 +5,9 @@ import { kinematicState, type KinematicState } from '../../../physics/kinematic-
 import { add, scale, v3 } from '../../../math/vec3';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { CameraSystem } from '../../camera/camera-system';
+import type { Controllable } from './controllable';
+import type { MapVisibilityPolicy } from '../../map/visibility-policy';
+import type { InstancedPools } from '../instanced-pools';
 import type { DetachedBoosterSaveData } from '../../save/save-data';
 import {
   BoosterStack,
@@ -137,10 +140,12 @@ export class DetachedBooster extends DynamicEntity {
 
   // ノズル位置のプルーム。未来位置を描いているフレームでは炎を出さない — 燃焼は現在時刻の
   // 状態でしか定義されていない。
-  override syncEffects(
-    fo: FloatingOrigin, displayTime: number, camera: CameraSystem, style: RenderStyle,
+  protected override syncModel(
+    fo: FloatingOrigin, displayTime: number, active: Controllable | null,
+    visibilityPolicy: MapVisibilityPolicy | null, _pools: InstancedPools, camera: CameraSystem,
+    style: RenderStyle,
   ): void {
-    const displayState = this.stateAt(displayTime);
+    const displayState = this.placeModel(fo, displayTime, active, visibilityPolicy);
     const effectAtCurrentTime = Math.abs(displayTime - this.state.t) <= 1e-6;
     if (displayState === null || !this.renderObject.visible || this.thrust === null
       || !effectAtCurrentTime || camera.zoomActive) {

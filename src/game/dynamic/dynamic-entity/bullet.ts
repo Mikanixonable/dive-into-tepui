@@ -2,6 +2,8 @@
 import * as THREE from 'three/webgpu';
 import { DynamicEntity } from './dynamic-entity';
 import type { InstancedPools } from '../instanced-pools';
+import type { Controllable } from './controllable';
+import type { MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { EntityRegistry } from '../dynamic-system';
 import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import { KinematicState } from '../../../physics/kinematic-state';
@@ -118,8 +120,11 @@ export class Bullet extends DynamicEntity {
     }
 
     // 同期し終えた変換は、そのまま弾種に対応するプールへ積む。
-    public override sync(fo: FloatingOrigin, displayTime: number, pools: InstancedPools): void {
-        super.sync(fo, displayTime, pools);
+    protected override syncModel(
+        fo: FloatingOrigin, displayTime: number, active: Controllable | null,
+        visibilityPolicy: MapVisibilityPolicy | null, pools: InstancedPools,
+    ): void {
+        this.placeModel(fo, displayTime, active, visibilityPolicy);
         if (!this.renderObject.visible) return;
         if (this.type === 'plasma') {
             pools.pushPlasma(this.renderObject);
