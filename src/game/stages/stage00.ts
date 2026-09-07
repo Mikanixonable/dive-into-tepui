@@ -51,7 +51,6 @@ export class Stage00 extends Stage {
     const player = this.ship;
     if (!player) return;
 
-    this.behaveAllEnemies(player, simTime, simSpeed);
     this.logistics.updateLogistics(simTime, player, simSpeed, true);
     this.waveAttack.update(dt, player, this._dynamicSystem.all().filter(isEnemy), simTime, this, (enemy) => this.addEnemy(enemy));
   }

@@ -7,6 +7,8 @@ import { FloatingOrigin } from '../camera/floating-origin';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import { ENTITY_CAP, type CapKind, type EntityCountKind } from './dynamic-entity/entity-kind';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
+import { isEnemy } from './dynamic-entity/enemy';
+import { isPlayer, Player } from '../player/player';
 import { restorationFor } from './dynamic-entity/entity-dictionary';
 import { InstancedPools } from './instanced-pools';
 import type { Stage } from '../stages/stage';
@@ -210,14 +212,15 @@ export class DynamicSystem implements EntityRegistry {
     for (const e of this.all()) e.requestHistoryDuration(sec);
   }
 
-  // 顔ぶれを1フレーム進める。個体が自分で決める推力を先に確定させてから、操作されうる個体へ
-  // 指令を配る — 推力は自分の状態だけで決まるので、操作の可否に依らず先に済ませられる。
+  // 顔ぶれを1フレーム進める。個体が自分で決める推力を先に確定させてから、操作されうる個体と
+  // 敵へ指令を決めさせる — 推力は自分の状態だけで決まるので、操作の可否に依らず先に済ませられる。
   update(
     active: Controllable | null, input: Input, operable: boolean,
-    dt: number, simDt: number, activeStage: Stage,
+    dt: number, simDt: number, simTime: number, activeStage: Stage,
   ): void {
     this.updateThrusts(simDt);
     this.updateControllables(active, input, operable, dt, simDt, activeStage);
+    this.behaveAll(active, operable, simTime);
   }
 
   // 自分で決まる推力を持つ個体を1フレーム進める。
@@ -242,6 +245,23 @@ export class DynamicSystem implements EntityRegistry {
         this.celestialSystem,
       );
     }
+  }
+
+  // 生存中の敵全てに AI 行動を1フレーム分実行させる。追跡先の艦が1隻も無ければ何もしない。
+  // 同一集団の判定に使う母集団は、このフレームの顔ぶれを1度だけ取って全機で共有する。
+  private behaveAll(active: Controllable | null, operable: boolean, simTime: number): void {
+    const player = this.trackedShip(active);
+    if (player === null) return;
+    const enemies = this.entities.filter(isEnemy);
+    for (const e of enemies) {
+      if (e.alive) e.behave(simTime, player, this, enemies, operable, this.celestialSystem);
+    }
+  }
+
+  // 敵が追う自艦。操作対象が基地でも敵は止まらないので、そのときは生存中の先頭の艦を使う。
+  private trackedShip(active: Controllable | null): Player | null {
+    if (active instanceof Player) return active;
+    return this.entities.filter(isPlayer).find((p) => p.alive) ?? null;
   }
 
   // 操作できない間、連続指令(推力・トルク・射撃・噴射ラッチ)を畳む。

@@ -61,8 +61,6 @@ export class Stage0 extends Stage {
     const player = this.ship;
     if (!player) return;
 
-    this.behaveAllEnemies(player, simTime, simSpeed);
-
     this.logistics.updateLogistics(simTime, player, simSpeed);
 
     if (this.timer.update(dt)) {
