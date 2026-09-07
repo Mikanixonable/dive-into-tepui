@@ -1,7 +1,8 @@
 // 負荷確認ウィンドウ: フレーム時間の計測・集計と、その表示、そして描画パスの中間結果を映す
 // デバッグ表示の選択。窓が開いている間だけ計測が走る(`on` が計測の可否そのもの)。
 import type { WebGPURenderer } from 'three/webgpu';
-import { PropertyRow, PropertyWindow } from '../hud/windows/property-window';
+import { PropertyWindow } from '../hud/windows/property-window';
+import type { PropertyRow } from '../hud/windows/property-window-content';
 import { SegmentedControl } from '../hud/widgets';
 import { DEBUG_TARGETS, type DebugTargetHost, type DebugTargetId } from '../render/pipeline/debug-target';
 import type { RenderStyleSetting } from '../render/render-style';

@@ -2,7 +2,7 @@
 // DOM を組み直し、選択されたら onSelect へ通知する。項目ショートカット文字列とキー入力の一致
 // 判定(dispatchShortcut)も併せて持つ。
 import { shortcutKeyLabel } from './shortcut-hint';
-import type { PropertyWindowItem } from './property-window';
+import type { PropertyWindowItem } from './property-window-content';
 
 export class PropertyWindowItems<A extends string = string> {
   public readonly element: HTMLDivElement;

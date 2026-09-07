@@ -15,7 +15,7 @@ import type { PlanEditor } from '../plan/plan-editor';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
-import type { PropertyRow } from '../../hud/windows/property-window';
+import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { MarkerManager } from './marker-manager';
 
 export abstract class OrbitPointMarker implements ObjectPickable {
