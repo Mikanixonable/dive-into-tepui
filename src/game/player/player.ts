@@ -46,7 +46,7 @@ import type { PlayerSaveData, PlanSaveData } from '../save/save-data';
 import { partFromSaveData, type AnyPart } from '../dynamic/dynamic-entity/parts';
 import { DIRECTION_GLYPH, ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import { shipMarkerSvg } from '../marker/marker-shapes';
-import type { GroupedMarkerItem } from '../marker/grouped-markers';
+import type { GroupedMarkerItem, MarkerRole } from '../marker/grouped-markers';
 import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, PLAYER_DESTROY_FRAG_COLOR,
 } from '../../render/vfx-style';
@@ -568,7 +568,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 画面マーカー・一覧に出すこの艦の項目。role はターゲット強調の有無、isActive は
   // マップ上で自艦と僚艦を塗り分けるための操作対象フラグ。
-  markerItem(role: 'none' | 'primary', viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, isActive: boolean): GroupedMarkerItem {
+  markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, isActive: boolean): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
     const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.PLAYER;
     const kindCls = isActive ? 'mk-self' : 'mk-ally';
