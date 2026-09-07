@@ -123,7 +123,8 @@ export class EntityLineManager {
       );
     }
     for (const base of this.entities.bases) {
-      const lineVisible = visibilityPolicy?.entity('base').orbit ?? false;
+      const visibility = visibilityPolicy?.entity('base');
+      const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
       applyEntityLines(
         base, targetStyleOf(base), lineVisible, lineVisible, view === 'map' && base.showTrajectoryLine,
         sameTrajectoryStyle(LINE_STYLE.baseLine),

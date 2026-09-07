@@ -44,9 +44,8 @@ export class LinePickables {
       this.items.push({ key: `orbit-body:${id}`, kind: 'orbit-body', method: 'analytic', ownerKeys: [id], points });
     }
 
-    for (const ship of this.entities.players) this.addShipOrbit(ship, frame, displayTime, frameAnchors);
     for (const enemy of this.entities.enemies) this.addShipOrbit(enemy, frame, displayTime, frameAnchors);
-    for (const base of this.entities.bases) this.addShipOrbit(base, frame, displayTime, frameAnchors);
+    for (const c of this.entities.controllables) this.addShipOrbit(c, frame, displayTime, frameAnchors);
 
     for (const guide of this.celestialSystem.orbitGuide.visibleLines(ORBIT_PICK_SAMPLES)) {
       this.items.push({
