@@ -18,7 +18,8 @@ import { MUZZLE_OFFSETS } from '../../render/ships';
 import { EffectsSystem } from '../vfx/effects-system';
 import type { Stage } from '../stages/stage';
 import { Player } from './player';
-import type { FireSaveData } from '../save/save-data';import { HULL_EMISS, ENV_TEMP } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { FireSaveData } from '../save/save-data';
+import { HULL_EMISS, ENV_TEMP } from '../dynamic/dynamic-entity/dynamic-entity';
 import { BARREL_SPECIFIC_HEAT, BARREL_RADIATING_AREA_PER_MASS } from '../dynamic/dynamic-entity/debris-piece';
 
 
@@ -66,7 +67,7 @@ function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
   return 1;
 }
 
-export class PlayerFire {
+export class FireControl {
   rounds = MAG_ROUNDS;
   mags = INITIAL_MAGS - 1;
   barrel = MAGS_PER_BARREL;

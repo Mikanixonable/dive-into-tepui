@@ -25,8 +25,8 @@ import type { RenderStyle } from '../../render/render-style';
 import type { MapVisibility } from '../map/visibility-policy';
 import { generateRandomName } from '../random-name';
 import type { Stage } from '../stages/stage';
-import { PlayerThrottle } from './player-throttle';
-import { PlayerFire, type AmmoLoad } from './player-fire';
+import { Throttle } from './throttle';
+import { FireControl, type AmmoLoad } from './fire-control';
 import { Belt } from './belt';
 import { AeroLoad } from './aero-load';
 import { AltitudeAlarm } from './altitude-alarm';
@@ -50,7 +50,7 @@ import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, PLAYER_DESTROY_FRAG_COLOR,
 } from '../../render/vfx-style';
-import { PlayerBoosters } from './player-boosters';
+import { AttachedBoosters } from './attached-boosters';
 import { MARKER_PRIORITY } from '../marker/crowding';
 import { strongestAttractor } from '../../physics/attractor';
 import { apsisAltitudes } from '../../physics/elements';
@@ -111,14 +111,14 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 除去の前に注視・操作対象の参照を次の艦へ引き継ぐ必要があるので、所有者側に回収させる。
   public override readonly reclaimedByOwner = true;
 
-  readonly throttle: PlayerThrottle;
-  readonly fire: PlayerFire;
+  readonly throttle: Throttle;
+  readonly fire: FireControl;
   readonly belt: Belt;
   readonly aero: AeroLoad;
   readonly altitudeAlarm: AltitudeAlarm;
   readonly radiator: RadiatorSystem;
   readonly power: PowerSystem;
-  readonly boosters: PlayerBoosters;
+  readonly boosters: AttachedBoosters;
 
   // contactProxies が返す一覧。区間ごとに置き直すので使い回す。
   private readonly contactProxyScratch: DynamicEntity[] = [];
@@ -166,8 +166,8 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     this.doPreciseReentry = true;
 
     const saved = 'saved' in init ? init.saved : undefined;
-    this.throttle = new PlayerThrottle(_hud, saved?.throttle);
-    this.fire = new PlayerFire(this, _hud, _worldSfx, _scene, _fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
+    this.throttle = new Throttle(_hud, saved?.throttle);
+    this.fire = new FireControl(this, _hud, _worldSfx, _scene, _fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
     this.belt = new Belt(this.renderObject, this);
     this.aero = new AeroLoad();
     this.altitudeAlarm = new AltitudeAlarm(_hud, _worldSfx);
@@ -179,7 +179,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     this.reentryEffects = new ReentryEffects(_scene);
     this.markers = new PlayerMarkers(markerManager, this.id);
     // 段の模型を船体へ足し、段のぶんの質量と慣性を載せるので、船体側の部品より後に組む。
-    this.boosters = new PlayerBoosters(this, _hud, _worldSfx, _scene, _fx, saved?.boosters);
+    this.boosters = new AttachedBoosters(this, _hud, _worldSfx, _scene, _fx, saved?.boosters);
 
     if (saved) {
       // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。'powered' だった

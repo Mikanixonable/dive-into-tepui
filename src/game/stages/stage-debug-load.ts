@@ -12,7 +12,7 @@ import type { StageSaveData } from '../save/save-data';
 import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN,
 } from '../../render/vfx-style';
-import { MAG_ROUNDS } from '../player/player-fire';
+import { MAG_ROUNDS } from '../player/fire-control';
 
 // 破片は衛星の破壊直後の雲を想定し、自機の周囲に留める。
 const DEBRIS_COUNT = 500;
