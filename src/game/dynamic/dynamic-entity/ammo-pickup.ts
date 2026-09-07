@@ -41,6 +41,7 @@ type AmmoPickupInit =
 // 軌道上の補給(接近すると取り込んでベルトを延長できる)
 export class AmmoPickup extends DynamicEntity implements ObjectPickable {
   public override readonly mapKind: DynamicEntityKind = 'ammo';
+  public override readonly pickable = true;
 
   override readonly bcInv = SMALL_DEBRIS_BCINV;
   protected readonly srpCoeff = SMALL_DEBRIS_SRP_COEFF;

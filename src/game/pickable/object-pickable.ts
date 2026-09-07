@@ -9,6 +9,7 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { ObjectCommands } from './object-commands';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
@@ -76,6 +77,11 @@ export interface ObjectPickable {
   // 視線が、pos に描かれているこの対象の本体へ当たるか。pos は posAt が答えた、いま
   // 描かれている位置。本体を持たず、マーカーだけで示される対象は常に false。
   hitBodyByRay(ray: Ray, pos: Vec3): boolean;
+}
+
+// この個体が被選択物として公開されるか。顔ぶれから被選択物だけを絞るときに使う。
+export function isObjectPickable(entity: DynamicEntity): entity is DynamicEntity & ObjectPickable {
+  return entity.pickable;
 }
 
 // items を screenPosOf で画面へ射影し、(x, y) から半径 radiusPxSq [px^2] 以内で最も近いものを

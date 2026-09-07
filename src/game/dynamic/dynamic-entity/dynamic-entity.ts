@@ -113,6 +113,8 @@ export class DynamicEntity {
   public readonly mapKind: DynamicEntityKind | null = null;
   // Controllable を実装しているか。isControllable() がこれを読む。
   public readonly controllable: boolean = false;
+  // ObjectPickable を実装しているか。isObjectPickable() がこれを読む。
+  public readonly pickable: boolean = false;
   // 死亡しても顔ぶれに残り、所有者が取り除くまで破棄されないか。散った参照の掃除や次の個体への
   // 引き継ぎが要る種別が立てる。
   public readonly reclaimedByOwner: boolean = false;
