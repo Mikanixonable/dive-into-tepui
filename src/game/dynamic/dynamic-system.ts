@@ -59,7 +59,7 @@ export class DynamicSystem implements EntityRegistry {
     saved?: GameSaveData,
   ) {
     this.instancedPools = new InstancedPools(scene);
-    this.effects = new EffectsSystem(scene, this, worldSfx);
+    this.effects = new EffectsSystem(scene);
     if (saved) this.restoreFromSave(saved, hud, worldSfx, scene, markerManager);
   }
 
@@ -184,7 +184,7 @@ export class DynamicSystem implements EntityRegistry {
     // 判定は開始時の顔ぶれに対して行う。死の演出が破片を足すので、生配列を反復すると
     // 生まれたばかりの個体まで同じパスで判定してしまい、生成が連鎖すれば終わらなくなる。
     for (let i = 0, n = this.entities.length; i < n; i++) {
-      this.entities[i]!.checkLoss(dt, simTime, activeStage, viewerPos, atmosphereBodies);
+      this.entities[i]!.checkLoss(dt, simTime, activeStage, this, viewerPos, atmosphereBodies);
     }
     this.enforceCaps();
     this.prune();

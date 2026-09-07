@@ -2,13 +2,13 @@
 import * as THREE from 'three/webgpu';
 import { DynamicEntity } from './dynamic-entity';
 import type { InstancedPools } from '../instanced-pools';
+import type { EntityRegistry } from '../dynamic-system';
 import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { CelestialMotion } from '../../../physics/celestial-motion';
 
 import { FloatingOrigin } from '../../camera/floating-origin';
 import type { Stage } from '../../stages/stage';
-import type { Contact } from './contact';
 import { Vec3, lenSq, sub } from '../../../math/vec3';
 import { buildBulletMesh, buildPlasmaMesh } from '../../../render/ships';
 import { orientProjectile } from '../../../render/projectile-orientation';
@@ -79,7 +79,7 @@ export class Bullet extends DynamicEntity {
     }
 
     // 弾自身は接触したら消える。相手への作用は相手の collideWithEntity が書く。
-    public collideWithEntity(_other: DynamicEntity, _contact: Contact): void {
+    public collideWithEntity(): void {
         this.alive = false;
     }
 
@@ -97,8 +97,8 @@ export class Bullet extends DynamicEntity {
     // 消滅条件は「自機から離れすぎた」が主で、寿命は保険。敵弾が自機の至近を通過した瞬間の
     // 判定もここで行う(substep ごとの位置だけを見る、意図的に雑な最接近判定)。
     public checkLoss(
-        _dt: number, simTime: number, _activeStage: Stage, viewerPos: Vec3,
-        _atmosphereBodies: readonly CelestialMotion[],
+        _dt: number, simTime: number, _activeStage: Stage, _registry: EntityRegistry,
+        viewerPos: Vec3, _atmosphereBodies: readonly CelestialMotion[],
     ): void {
         if (!this.alive) return;
         if (this.shooter === 'enemy' && !this.passedClose
