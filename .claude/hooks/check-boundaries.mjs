@@ -16,7 +16,7 @@
 // 繰り返すので、配線で占められる位置は移っていく。移ったらこの表を書き換える —
 // 表から外すのも正しい直し方のうちで、外れたモジュールは普通のモジュールとして見る。
 const ORCHESTRATORS = new Map([
-  ['src/game/game.ts', ['pause', 'resume', 'handleInput', 'perfCounts', 'runSummary']],
+  ['src/game/game.ts', ['pause', 'resume', 'handleInput', 'perfCounts', 'proteinMotionFrameSample', 'runSummary']],
 ]);
 
 // 持ち主にしか書けないもの。何をいくつ持っているかを知っているのは持ち主だけなので、
