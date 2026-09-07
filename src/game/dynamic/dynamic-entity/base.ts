@@ -189,7 +189,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // --- 操作制御 ---
 
   // 毎フレーム、全ての基地に対して1度だけ呼ぶ。input が null なら操作されない。
-  // 射撃も補給も持たないので、registry / activeStage / celestialSystem は受け取るだけで使わない。
   updateControls(
     input: Input | null, dt: number, simDt: number,
     _registry: EntityRegistry, _activeStage: Stage, _celestialSystem: CelestialSystem,
@@ -229,8 +228,8 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     });
   }
 
-  // 基地のメッシュ・推力プルーム・RCS パフ・音を同期する。方位マーカーを持たないので orbitRef は
-  // 使わない。プルームと音は操作中だけ変わるので、操作対象かどうかを active から引く。
+  // 基地のメッシュ・推力プルーム・RCS パフ・音を同期する。プルームと音は操作中だけ変わるので、
+  // 操作対象かどうかを active から引く。
   protected override syncModel(
     fo: FloatingOrigin,
     displayTime: number,
@@ -253,7 +252,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   private get markerKey(): string { return `base-${this.id}`; }
 
   // 基地のマーカー表示項目。pos/vel には構造メッシュと同じ表示時刻の状態を渡すこと。
-  // 基地は操作中でも見た目を変えないので isActive は使わない。
   markerItem(
     role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, _isActive: boolean,
   ): GroupedMarkerItem {

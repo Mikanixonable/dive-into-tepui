@@ -1,5 +1,5 @@
-// 爆発・マズルフラッシュなどの一時エフェクト。物理に乗らず、寿命のあいだ発生源の速度で
-// 移流しながらビルボードで描かれる。同時に存在しうるぶんを InstancedPool 1本へまとめる。
+// 爆発・マズルフラッシュなどの一時エフェクト。寿命のあいだ発生源の速度で移流しながら、
+// ビルボードとして描かれる。
 import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { addScaled } from '../../math/vec3';
