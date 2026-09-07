@@ -756,12 +756,12 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // プロパティウィンドウに出す行。装甲・温度・電力・弾薬を主要行とし、操作対象か・計画実行は
   // 詳細トグル、軌道要素は「軌道」グループの下に畳む。
   public propertyRows(
-    commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
+    celestialSystem: CelestialSystem, viewer: Controllable | null, simTime: number,
   ): readonly PropertyRow[] {
     return [
       {
         key: 'operated', label: '操作対象か',
-        value: this === commands.controlled ? 'はい' : 'いいえ', collapsible: true,
+        value: this === viewer ? 'はい' : 'いいえ', collapsible: true,
       },
       { key: 'follow', label: '計画実行', value: planExecutionLabel(this.planExecution), collapsible: true },
       { key: 'hp', label: '装甲', value: `${Math.floor(this.hp)} / ${this.maxHp}` },

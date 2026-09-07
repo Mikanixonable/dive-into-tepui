@@ -5,7 +5,7 @@ import { ORBIT_POINT_GLYPH } from './marker-identity';
 import { OrbitPointMarker } from './orbit-point-marker';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { ObjectCommands } from '../pickable/object-commands';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { PropertyRow } from '../../hud/windows/property-window';
 
 // 交点種別ごとの、マーカーのキーに使う接頭辞と、軌道要素としてのラベル。
@@ -48,7 +48,7 @@ export class EquatorNodeMarker extends OrbitPointMarker {
 
   // 所属軌道・中心天体の名前・通過までの残り時間。
   public propertyRows(
-    _commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number,
+    _celestialSystem: CelestialSystem, _viewer: Controllable | null, simTime: number,
   ): readonly PropertyRow[] {
     return [
       ...this.ownerRows(),

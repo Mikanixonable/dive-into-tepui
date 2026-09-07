@@ -10,6 +10,7 @@ import type { CelestialMotion } from '../../physics/celestial-motion';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { ProjectFn } from '../camera/camera-system';
 import type { ObjectCommands } from '../pickable/object-commands';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window';
@@ -113,7 +114,7 @@ export abstract class OrbitPointMarker implements ObjectPickable {
 
   // プロパティウィンドウに出す行。示す値は具象が決める。
   public abstract propertyRows(
-    commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
+    celestialSystem: CelestialSystem, viewer: Controllable | null, simTime: number,
   ): readonly PropertyRow[];
 
   // 所属軌道の行。持ち主が分からないフレームは行を作らない。

@@ -159,8 +159,8 @@ export class ObjectWindows implements ObjectCommands {
       entry.win.syncHeader(title, subtitle);
       entry.win.syncRelatedItems(
         this.relatedItemsFor(entry.target, simTime), this.relatedTitleFor(entry.target));
-      entry.win.syncRows(
-        entry.target.propertyRows(this, this.celestialSystem, simTime, displayTime));
+      entry.win.syncRows(entry.target.propertyRows(
+        this.celestialSystem, this.controlSelection.current, simTime, displayTime));
       entry.win.syncItems(menuItems);
       entry.win.syncBadge(entry.target.id === this.lastFocusId);
     }

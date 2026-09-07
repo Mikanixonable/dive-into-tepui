@@ -535,9 +535,8 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   // プロパティウィンドウに出す行。装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、
   // 軌道要素と相対傾斜角は「軌道」グループの下に畳む。viewer が null なら相対量の行は落ちる。
   public propertyRows(
-    commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
+    celestialSystem: CelestialSystem, viewer: Controllable | null, simTime: number,
   ): readonly PropertyRow[] {
-    const viewer = commands.controlled;
     const rel = viewer ? relativeInfo(viewer, this, celestialSystem.celestialMotions, simTime) : null;
     const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(this.hp)} / ${this.maxHp}` }];
     // 自艦との相対量。
