@@ -27,7 +27,7 @@ type MetalEnemyPlacement = EnemyPlacement & { readonly typeIndex: number | null 
 // 金属機体の敵。艦と同じパーツ式の被弾モデルを持ち、判定形状は機体メッシュのバウンディング球。
 export class MetalEnemy extends Enemy {
   public static readonly kind = 'metal-enemy';
-  public static pendingAssetId(): null { return null; }
+  public static spawnGate(): null { return null; }
 
   private readonly typeIndex: number | null;
 

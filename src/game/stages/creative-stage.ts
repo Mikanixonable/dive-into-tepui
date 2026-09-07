@@ -22,6 +22,7 @@ import { RcsFuelPickup } from '../dynamic/dynamic-entity/rcs-fuel-pickup';
 import { Base } from '../dynamic/dynamic-entity/base';
 import { generateApproachingEnemy, generateDriftingEnemy, generateProteinEnemy, proteinFormationSpawns } from './spawner/enemy-generator';
 import { DEFAULT_PROTEIN_DISPLAY, type ProteinDisplaySettings } from '../protein/protein-display';
+import { proteinAssetGate } from '../protein/protein-asset-loader';
 import { ProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
 import { WaveAttack } from './stage-utils/wave-attack';
 import { generateRandomName } from '../random-name';
@@ -168,7 +169,7 @@ export class CreativeStage extends Stage {
     }
     if (shapeDefinition.kind === 'protein') {
       this.spawnEnemyWhenReady(
-        shapeDefinition.assetId,
+        proteinAssetGate(shapeDefinition.assetId),
         () => generateProteinEnemy(name, state, shapeDefinition.assetId, this.proteinDisplay, this._worldSfx, this._fx, this._scene),
         this._dynamicSystem,
       );
@@ -194,7 +195,7 @@ export class CreativeStage extends Stage {
     const name = `FORMATION-${++this.manualFormationCount}`;
     const formationId = name;
     for (const { assetId, build } of proteinFormationSpawns(name, state, player.state.r, this.proteinDisplay, formationId, this._worldSfx, this._fx, this._scene)) {
-      this.spawnEnemyWhenReady(assetId, build, this._dynamicSystem);
+      this.spawnEnemyWhenReady(proteinAssetGate(assetId), build, this._dynamicSystem);
     }
   }
 
