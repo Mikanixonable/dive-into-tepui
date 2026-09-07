@@ -28,6 +28,7 @@
 | [CELESTIAL.md](CELESTIAL.md) | 天体・暦・座標系・天球表示 |
 | [MAP.md](MAP.md) | マップビューの表示・選択・座標系 |
 | [PLAN.md](PLAN.md) | 軌道計画(マニューバノード)と未来予測表示 |
+| [MARKERS.md](MARKERS.md) | 画面に重ねる記号・ラベルと、混雑したときの捌き方 |
 | [UI-DESIGN.md](UI-DESIGN.md) | HUD / UI のデザイン規約 |
 | [RENDERING.md](RENDERING.md) | 描画品質・LOD・描画パイプライン |
 | [PROTEIN.md](PROTEIN.md) | タンパク質型の敵の見せ方・揺らぎ・戦闘状態 |
