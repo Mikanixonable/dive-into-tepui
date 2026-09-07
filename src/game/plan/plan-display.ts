@@ -115,9 +115,6 @@ export class PlanDisplay {
     const cameraPos = cameraSystem.activeCameraPos;
     const { simTime, displayTime } = displayWindow;
     const timeLabel = timeLabelSettingOf(displayWindow);
-    // ノードの無い計画は自機の現在軌道そのものなので折れ線は隠す。それでも path.sync は毎フレーム
-    // 呼ぶ — 画面判定に使う project を更新しないと、クリック当たり判定が古い視点のまま残る。
-    this.path.setVisible(this.path.nodeCount > 0);
     this.path.sync(
       fo, project, cameraSystem.activeCameraScale, cameraPos, cameraSystem.activeCamera,
     );
