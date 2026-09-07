@@ -460,7 +460,7 @@ export class Game {
     const canEngage = this.simSpeedManager.canEngage;
     this.sections.enter(SECTION.player);
     this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-    this.dynamicSystem.updateDetachedBoosterBurns(simDt);
+    this.dynamicSystem.updateThrusts(simDt);
     this.dynamicSystem.updateControllables(
       this.controlledBase ?? this.player, this.input, canShipAct, dt, simDt,
       this.activeStage, this._celestialSystem,

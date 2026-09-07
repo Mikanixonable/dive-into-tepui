@@ -39,6 +39,8 @@ import type { MarkerManager } from '../../marker/marker-manager';
 import { disposeOwnedRenderResources } from '../../../render/dispose-owned-render-resources';
 import { syncThermalState } from '../../../render/thermal-emissive';
 import { DISPLAY_DURATION_MAX } from '../../display-window-manager';
+import type { CameraSystem } from '../../camera/camera-system';
+import type { RenderStyle } from '../../../render/render-style';
 
 // 弾道係数 bcInv に織り込まれている抗力係数。よどみ点の曲率半径と断面積の比を bcInv から
 // 戻すのに使う。物体ごとに変えると bcInv の意味が種別で変わってしまうので、1つに固定する。
@@ -598,6 +600,17 @@ export class DynamicEntity {
     this.renderObject.position.copy(fo.RtoThreeV3(s.r));
     this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
     this.syncThermalAppearance();
+  }
+
+  // カメラ・描画スタイルを要する付随表示(推力プルームなど)を同期する。表示可否の上書きが
+  // 済んだ後に呼ばれるので、renderObject.visible をそのまま読んでよい。
+  syncEffects(
+    _fo: FloatingOrigin, _displayTime: number, _cameraSystem: CameraSystem, _style: RenderStyle,
+  ): void {
+  }
+
+  // 自分で決まる推力を1フレーム進める。操作を受けない種別が自律的に燃焼するときに使う。
+  updateThrust(_simDt: number): void {
   }
 
   // いまの温度と局所的な過熱をメッシュへ配る。

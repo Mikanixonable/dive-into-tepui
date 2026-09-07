@@ -309,9 +309,9 @@ export class DynamicSystem {
     for (const e of this.all()) e.requestHistoryDuration(sec);
   }
 
-  // 分離済みブースターの燃焼を1フレーム進める。点火状態は操作対象でなくても進み続ける。
-  updateDetachedBoosterBurns(simDt: number): void {
-    for (const booster of this.detachedBoosters) if (booster.alive) booster.updateBurn(simDt);
+  // 自分で決まる推力を持つ個体を1フレーム進める。積分より前に1度だけ呼ぶ。
+  updateThrusts(simDt: number): void {
+    for (const entity of this.entities) if (entity.alive) entity.updateThrust(simDt);
   }
 
   // 毎フレーム、操作されうる全個体へ updateControls を1度ずつ通す。「操作対象でない」と
@@ -347,9 +347,9 @@ export class DynamicSystem {
     frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting, proteinVibrationEnabled: boolean,
   ): void {
     this.syncControllables(active, fo, cameraSystem, displayTime, style, visibilityPolicy, orbitRef);
-    this.syncDetachedBoosters(fo, cameraSystem, displayTime, style, visibilityPolicy);
     this.syncOtherEntities(fo, displayTime, cameraSystem.activeViewpoint, proteinVibrationEnabled);
     this.applyVisibility(visibilityPolicy, active);
+    for (const entity of this.entities) entity.syncEffects(fo, displayTime, cameraSystem, style);
     this.effects.sync(fo, cameraSystem.activeCamera, cameraSystem.zoomActive);
     this.syncEquatorNodes(cameraSystem, frameAnchors, timeLabel);
   }
@@ -371,17 +371,6 @@ export class DynamicSystem {
     }
   }
 
-  // 分離済みブースターは通常メッシュに加えて個別ノズル位置のプルームも同期する。
-  private syncDetachedBoosters(
-    fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number, style: RenderStyle,
-    visibilityPolicy: MapVisibilityPolicy | null,
-  ): void {
-    const categoryVisible = visibilityPolicy?.entity('enemy').category ?? true;
-    for (const booster of this.detachedBoosters) {
-      booster.syncBooster(fo, displayTime, cameraSystem, categoryVisible, style);
-    }
-  }
-
   // 種別ごとの表示トグルに応じてメッシュ表示を揃える。トグルを持たない種別(mapKind が null)は
   // 対象外。
   private applyVisibility(visibilityPolicy: MapVisibilityPolicy | null, active: Controllable | null): void {
@@ -390,10 +379,6 @@ export class DynamicSystem {
       const kind = entity.mapKind;
       if (kind === null) continue;
       if (!visibilityPolicy.entity(kind, entity === active).category) entity.renderObject.visible = false;
-    }
-    // TODO: 分離ブースターは自機由来なのに敵トグルへ従っている。妥当なトグルを決めて直す。
-    for (const booster of this.detachedBoosters) {
-      if (!visibilityPolicy.entity('enemy').category) booster.renderObject.visible = false;
     }
   }
 
@@ -423,7 +408,7 @@ export class DynamicSystem {
     }
   }
 
-  // 操作対象候補・分離ブースター以外のメッシュを displayTime 時点の状態へ同期し、プールで描く種別は
+  // 操作対象候補以外のメッシュを displayTime 時点の状態へ同期し、プールで描く種別は
   // 対応する InstancedPool へ積む。
   private syncOtherEntities(
     fo: FloatingOrigin, displayTime: number, viewer: Viewpoint, proteinVibrationEnabled: boolean,
@@ -434,9 +419,9 @@ export class DynamicSystem {
     this.casingPool.beginFrame();
     for (const pool of this.debrisFragmentPools) pool.beginFrame();
 
-    // 操作対象候補と分離ブースターは専用の同期パス(syncControllables / syncDetachedBoosters)を持つ。
+    // 操作対象候補は専用の同期パス(syncControllables)を持つ。
     for (const e of this.entities) {
-      if (isControllable(e) || e instanceof DetachedBooster) continue;
+      if (isControllable(e)) continue;
       e.sync(fo, displayTime, viewer, proteinVibrationEnabled);
       if (e instanceof Bullet) this.pushBullet(e);
       else if (e instanceof DebrisPiece) this.pushDebrisPiece(e);
