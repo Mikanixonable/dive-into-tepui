@@ -6,11 +6,10 @@ import { SaveStore } from './save-store';
 import { SaveSlots } from './save-slots';
 import { isEphemerisContextRestorable } from '../../physics/ephemeris/ephemeris-context';
 import type { GameSaveData } from '../../game/save/save-data';
-import { normalizeSaveData } from '../../game/save/normalize-save';
 import type { SnapshotKind, SnapshotMeta } from './slot-data';
 
 // スナップショットの出し入れを担う。撮るときは索引のメタを組んでスロットへ収め、読むときは
-// 保存形式を検証して正規化する。
+// 保存形式を検証する。
 export class SnapshotService {
   constructor(private readonly store: SaveStore, private readonly slots: SaveSlots) {}
 
@@ -50,15 +49,13 @@ export class SnapshotService {
     const data = this.store.readSnapshot(snapshotId);
     if (data === null) return null;
     if (data.version !== SAVE_VERSION) return null;
-    const normalizedData = normalizeSaveData(data);
-    if (normalizedData === null) return null;
-    if (expectedStageId !== normalizedData.stageId) return null;
+    if (expectedStageId !== data.stageId) return null;
     // 暦情報が無いスナップショットは互換復元で読む。元期は継承するので照合しないが、
     // その元期が選ぶ暦データがいま手元にあるものと違うなら、絶対天体状態が曖昧になるので拒否する。
     if (!isEphemerisContextRestorable(
-      (normalizedData as { ephemerisContext?: unknown }).ephemerisContext,
+      (data as { ephemerisContext?: unknown }).ephemerisContext,
     )) return null;
-    return normalizedData;
+    return data;
   }
 }
 

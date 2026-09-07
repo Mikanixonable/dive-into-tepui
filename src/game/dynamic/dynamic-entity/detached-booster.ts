@@ -159,7 +159,8 @@ export class DetachedBooster extends DynamicEntity {
     }, camera.activeCamera.quaternion, style);
   }
 
-  serialize(): DetachedBoosterSaveData {
+  // セーブデータへ変換する。
+  override serialize(): DetachedBoosterSaveData {
     return {
       id: this.id,
       name: this.name,
