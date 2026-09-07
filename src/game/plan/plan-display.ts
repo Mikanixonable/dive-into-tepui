@@ -11,6 +11,7 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import { fmtMarkerDist } from '../../hud/utils';
 import { TickRank, TimeLabelSetting, calendarBoundaries, tickLabel } from '../hud/orbit/calendar-ticks';
 import { ApsisMarker } from '../marker/apsis-marker';
+import type { DisplayedPath } from '../marker/equator-node-marker-pair';
 import { MarkerManager } from '../marker/marker-manager';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-identity';
 import { CameraSystem, ProjectFn } from '../camera/camera-system';
@@ -22,6 +23,7 @@ import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
 import type { CelestialMotion } from '../../physics/celestial-motion';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { ControlSelection } from '../control-selection';
 import type { PredictedArc } from '../dynamic/predicted-arc';
 import type { PerfCounts } from '../perf-counts';
@@ -97,14 +99,20 @@ export class PlanDisplay {
     this.path = new PlanPath(scene, displayDuration);
   }
 
-  // 計画折れ線を再積分し、アプシスアイコンと操作対象の赤道交点を求め直す。
+  // 計画折れ線を再積分し、アプシスアイコンを求め直す。
   // 折れ線は戦闘ビューでも描く — 計画どおりに機体を動かすのは戦闘ビューだから。
   update(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource, view: View): void {
     const ship = this.controlSelection.current;
     this.displayedPlan = this.planToDisplay(ship, view);
     if (this.displayedPlan === null) this.clearDisplay();
     else this.updateDisplay(this.displayedPlan, displayWindow, ship, frameAnchors);
-    this.updateEquatorNodes(displayWindow, frameAnchors, ship);
+  }
+
+  // owner の計画折れ線がこのフレームに出ていれば、その座標系とサンプル列。出ていなければ null。
+  displayedPathOf(owner: DynamicEntity): DisplayedPath | null {
+    if (this.displayedPlan === null || this.controlSelection.current !== owner) return null;
+    const samples = this.path.displayedSamples();
+    return samples.length === 0 ? null : { frame: this.path.displayFrame, samples };
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコン・目盛を、焼かれた折れ線から組んで置く。
@@ -165,18 +173,6 @@ export class PlanDisplay {
   private clearDisplay(): void {
     this.path.clear();
     this.placeApsisMarkers(null);
-  }
-
-  // 操作対象の赤道交点マーカーを、いま描かれている計画の折れ線の上で求め直す。折れ線が
-  // 出ていない間は現在の軌道要素から求める。
-  private updateEquatorNodes(
-    displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource, ship: Controllable | null,
-  ): void {
-    if (!ship) return;
-    ship.ensureEquatorNodes(this.markerManager).updateOnPath(
-      displayWindow.frame, displayWindow.displayTime, this.celestialSystem, frameAnchors,
-      ship.state, this.path.displayedSamples(),
-    );
   }
 
   // 計画に属する表示物をすべて畳む。
