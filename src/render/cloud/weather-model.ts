@@ -15,6 +15,7 @@ import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
 import { ConvectiveActivity } from './convective-activity';
 import { Cyclones } from './cyclones';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
+import { RossbyWave } from './rossby-wave';
 import { FRICTION_RATE, balancedWind, isobarAt, windStep } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { NoiseOctave } from './circulating-noise';
@@ -262,6 +263,7 @@ const MEAN_CLOUDINESS_WET = 0.85;
 export class WeatherModel {
   private readonly surfaceCirculation = new Circulation(SURFACE_BANDS);
   private readonly upperCirculation = new Circulation(UPPER_BANDS);
+  private readonly rossbyWave = new RossbyWave();
   private readonly cyclones = new Cyclones();
   // ノイズは焼く先の texel で標本化できない段を畳むので、写しの持ち方が決まってから組む。
   private readonly pressureNoise: CirculatingNoise;
@@ -318,6 +320,7 @@ export class WeatherModel {
   public syncTime(seconds: number): void {
     this.surfaceCirculation.syncTime(seconds);
     this.upperCirculation.syncTime(seconds);
+    this.rossbyWave.syncTime(seconds);
     this.cyclones.syncTime(seconds);
     const cycle = (seconds / ADVECTION_PERIOD) % 1;
     this.advectionCycle.value = cycle < 0 ? cycle + 1 : cycle;
@@ -343,7 +346,8 @@ export class WeatherModel {
     const upperWind: BalancedWind = {
       velocity: surfaceWind.velocity
         .add(east.mul(upperMean.x.mul(cos(latitude)).mul(BAND_RATE_TO_SPEED)))
-        .add(north.mul(upperMean.y.mul(BAND_RATE_TO_SPEED))),
+        .add(north.mul(upperMean.y.mul(BAND_RATE_TO_SPEED)))
+        .add(this.rossbyWave.windAt(direction)),
       turn: surfaceWind.turn,
     };
 
