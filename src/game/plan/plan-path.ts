@@ -154,7 +154,7 @@ export class PlanPath {
         // SHIP_SRP_COEFF)で積分する。外挿の尾は持たない(keplerTail=false) — 尾の上にノードを
         // 置くと、実際に積分し直した次のノードと繋がらなくなるため。
         arc = new PredictedArc(
-          seg.state0, celestialBodies, PLAYER_HULL_RADIUS, SHIP_BCINV, SHIP_SRP_COEFF,
+          seg.state0, celestialBodies.celestialMotions, PLAYER_HULL_RADIUS, SHIP_BCINV, SHIP_SRP_COEFF,
           /* keplerTail */ false, /* consumable */ false,
         );
         this.lastRebuiltArcs++;
