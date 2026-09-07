@@ -23,6 +23,7 @@
     "src/physics/attitude.ts",
     "src/physics/atmosphere.ts",
     "src/game/plan/plan.ts",
+    "src/game/save/normalize-save.ts",
     "src/game/protein/protein-schema.ts",
     "src/game/protein/protein-combat-state.ts",
     "src/game/dynamic/dynamic-entity/contact-damage.ts",
