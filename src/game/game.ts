@@ -612,7 +612,7 @@ export class Game {
 
     // 戦闘中に開いたプロパティウィンドウも最新値を表示し続ける必要があるので、ビューに依らず呼ぶ。
     this.objectWindows.sync(simTime, displayTime);
-    this.planDisplay.sync(this.cameraSystem, fo);
+    this.planDisplay.sync(this.cameraSystem, fo, displayWindow);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     this.entityLines.sync(
