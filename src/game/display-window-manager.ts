@@ -12,20 +12,16 @@ import { strongestAttractor } from '../physics/attractor';
 import { ReferenceFrame } from '../physics/frame';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { CelestialBodies } from './celestial/celestial-bodies';
+import {
+  APERIODIC_ARC_DURATION,
+  type DisplayDurationKey, type DisplayPastDurationKey,
+} from './display-window-duration';
 
-export const DISPLAY_DURATION_MAX = 365 * 86400; // 手動レンジで指定できる表示期間の上限 [s](1年)
-// 周期を持たない軌道(双曲線・放物線)で、1周期の代わりに区間の長さとして使う値 [s]。
-export const APERIODIC_ARC_DURATION = 86400;
 
 const DISPLAY_DUR_DAY = 86400; // 1日
 const DISPLAY_DUR_TEN_DAY = 10 * 86400; // 10日
 const DISPLAY_DUR_MONTH = 30 * 86400; // 1ヶ月
 const DISPLAY_DUR_THREE_MONTH = 90 * 86400; // 3ヶ月
-
-export type DisplayDurationKey = 'orbit' | 'day' | 'tenDay' | 'month' | 'threeMonth' | 'custom';
-
-// 過去方向の表示期間の選択。'none'(既定)は過去を描かない。
-export type DisplayPastDurationKey = 'none' | DisplayDurationKey;
 
 // 1フレーム分の「どこを・いつを表示しているか」。simTime/referencePeriod から派生する
 // duration/displayTime を呼び出し側ごとに計算し直させないための束。

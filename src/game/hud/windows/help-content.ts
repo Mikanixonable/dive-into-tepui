@@ -4,7 +4,7 @@
 import { KEY_MAPPING as K, type KeyBinding } from '../../../input/key-mapping';
 import { MAX_PHYS_SIM_SPEED } from '../../dynamic/sim-speed-manager';
 import { THROTTLE_LABELS } from '../../player/throttle';
-import { MAG_ROUNDS } from '../../player/fire-control';
+import { MAG_ROUNDS } from '../../player/ammo-spec';
 import type { View } from '../../view/view';
 
 export type HelpInput = 'keyboard' | 'mouse' | 'touch';

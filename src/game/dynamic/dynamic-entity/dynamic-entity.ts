@@ -37,7 +37,7 @@ import type { TimeLabelSetting } from '../../hud/orbit/calendar-ticks';
 import type { EntitySaveDataUnion } from '../../save/save-data';
 import { disposeOwnedRenderResources } from '../../../render/dispose-owned-render-resources';
 import { syncThermalState } from '../../../render/thermal-emissive';
-import { DISPLAY_DURATION_MAX } from '../../display-window-manager';
+import { DISPLAY_DURATION_MAX } from '../../display-window-duration';
 import type { CameraSystem } from '../../camera/camera-system';
 import type { RenderStyle } from '../../../render/render-style';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
