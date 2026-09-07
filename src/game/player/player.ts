@@ -450,7 +450,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 動圧が構造限界を超えたことによる喪失。
   checkLoss(
-    _dt: number, _simTime: number, activeStage: Stage, _playerPos: Vec3,
+    _dt: number, _simTime: number, activeStage: Stage, _viewerPos: Vec3,
     _atmosphereBodies: readonly CelestialMotion[],
   ): void {
     if (!this.alive) return;

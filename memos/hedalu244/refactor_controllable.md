@@ -137,32 +137,6 @@
 ## 手順
 
 
-### 手順 6. `CameraSystem` から `Player` を落とす
-
-#### 目的
-
-`update` の先頭引数 `player: DynamicEntity | null`(`camera-system.ts:278`)は、名前が実態
-(操作対象)とずれ、型が広すぎ(照準ズームの判定にしか使わない)、位置が先頭。
-**この時点で挙動は変えない** — `instanceof Player` と `fire !== null` は現状同値
-(`Player.fire` は非 null、`Base.fire` は `null`、`Controllable` の実装は他に無い)。
-
-#### 変更が必要な箇所
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/camera/camera-system.ts` | `update`(277-284)の引数 `player` を `controlled: Controllable \| null` へ改名し、**引数列の末尾へ移す**。`player instanceof Player`(326)を `controlled?.fire != null` へ。`import { Player }`(6)と `import type { DynamicEntity }`(24)を削除し、`Controllable` を型 import |
-| `src/game/camera/gunsight-camera.ts` | `update(player: Player)`(20)→ `update(controlled: Controllable)`。`import { Player }`(5)を削除 |
-| `src/game/game.ts` | `cameraSystem.update`(433-436)の引数順を合わせる |
-
-#### 達成条件と検証
-
-- 達成目標 4 の grep が 0 件。
-- `npm run typecheck`、`npm run test:render`。
-- `npm run dev` の戦闘ビューで `[Z]` 長押し → 照準ズームに入る。基地を操作している間は
-  `[Z]` を押しても軌道視点のまま(いまと同じ)。
-
----
-
 ### 手順 7. 残った `Player` 名指しを、責務の持ち主へ寄せる
 
 #### 目的

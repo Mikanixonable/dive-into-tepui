@@ -621,10 +621,10 @@ export class DynamicEntity {
   }
 
   // 種別ごとの自然死。大気による焼失は温度が決めるので(stepSimulation)、ここに残るのは
-  // 寿命や距離のような、状態から直接は決まらない事情だけ。playerPos は「自機からの距離」で
+  // 寿命や距離のような、状態から直接は決まらない事情だけ。viewerPos は「操作対象からの距離」で
   // 消える種別(弾)のために一律で渡す。atmosphereBodies はその時刻の大気天体一覧。
   checkLoss(
-    _dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3,
+    _dt: number, _simTime: number, _activeStage: Stage, _viewerPos: Vec3,
     _atmosphereBodies: readonly CelestialMotion[],
   ): void {
   }

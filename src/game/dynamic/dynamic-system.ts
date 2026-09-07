@@ -275,14 +275,14 @@ export class DynamicSystem {
 
   // 全エンティティの寿命判定と上限判定を行い、死亡したものを破棄・除去する。
   public cleanup(
-    dt: number, simTime: number, activeStage: Stage, playerPos: Vec3,
+    dt: number, simTime: number, activeStage: Stage, viewerPos: Vec3,
     atmosphereBodies: readonly CelestialMotion[],
   ): void {
     this.processPendingEnemySpawns();
     // 判定は開始時の顔ぶれに対して行う。死の演出が破片を足すので、生配列を反復すると
     // 生まれたばかりの個体まで同じパスで判定してしまい、生成が連鎖すれば終わらなくなる。
     for (let i = 0, n = this.entities.length; i < n; i++) {
-      this.entities[i]!.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);
+      this.entities[i]!.checkLoss(dt, simTime, activeStage, viewerPos, atmosphereBodies);
     }
     this.enforceCaps();
     this.prune();
