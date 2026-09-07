@@ -1,5 +1,6 @@
 // 軌道上の拠点。自艦と同じく操作でき、資金を持つ。
 import * as THREE from 'three/webgpu';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { Viewer } from './viewer';
 import type { View } from '../../view/view';
 import { DynamicEntity } from './dynamic-entity';
@@ -41,7 +42,7 @@ import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { orbitRows } from '../../pickable/orbit-rows';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { ControlSelection } from '../../control-selection';
 import type { ObjectAuthoring } from '../../stages/stage';
@@ -192,7 +193,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // 毎フレーム、全ての基地に対して1度だけ呼ぶ。input が null なら操作されない。
   updateControls(
     input: Input | null, dt: number, simDt: number,
-    _registry: EntityRegistry, _activeStage: Stage, _celestialSystem: CelestialSystem,
+    _registry: EntityRegistry, _activeStage: Stage, _celestialSystem: CelestialBodies,
   ): void {
     if (input === null) {
       this.clearTransientCommands();
@@ -325,7 +326,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // 自艦がいれば自艦からの距離。いなければ出さない。
   public listDetail(
-    _celestialSystem: CelestialSystem, viewer: Viewer | null, displayTime: number,
+    _celestialSystem: CelestialBodies, viewer: Viewer | null, displayTime: number,
   ): string {
     if (viewer === null) return '';
     return fmtDist(len(sub(this.posAt(displayTime) ?? this.state.r, viewer.state.r)));
@@ -333,14 +334,14 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // 検索が照合する文字列。行の補助表示と同じ。
   public listSearchText(
-    celestialSystem: CelestialSystem, viewer: Viewer | null, displayTime: number,
+    celestialSystem: CelestialBodies, viewer: Viewer | null, displayTime: number,
   ): string {
     return this.listDetail(celestialSystem, viewer, displayTime);
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
-    _celestialSystem: CelestialSystem, viewer: Viewer | null, navTargetId: string | null,
+    _celestialSystem: CelestialBodies, viewer: Viewer | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
     const subLabel = `基地 / 所持金: ${this.baseState.money.toLocaleString()} Cr`;
     const controlItem: MenuItem<MenuAction> = viewer === this
@@ -379,7 +380,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // プロパティウィンドウに出す行。所持金・自艦からの距離を主要行とし、操作対象かは
   // 詳細トグル、軌道要素は「軌道」グループの下に畳む。自艦がいなければ距離の行は落ちる。
   public propertyRows(
-    celestialSystem: CelestialSystem, viewer: Viewer | null, simTime: number,
+    celestialSystem: CelestialBodies, viewer: Viewer | null, simTime: number,
   ): readonly PropertyRow[] {
     const rows: PropertyRow[] = [
       {

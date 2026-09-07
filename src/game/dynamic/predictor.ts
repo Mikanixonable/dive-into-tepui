@@ -6,10 +6,11 @@
 // 個体1つと解析天体の関係(引く天体・表面到達・大気での焼失・刻みの上限)は実シミュレーション
 // と同じ答えでなければならない。
 import { DynamicSystem } from './dynamic-system';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { Controllable } from './dynamic-entity/controllable';
 import { simulationMaxStep, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT } from './time-step';
-import type { CelestialSystem } from '../celestial/celestial-system';
+
 import { PredictedArc } from './predicted-arc';
 import type { PerfCounts } from '../perf-counts';
 
@@ -40,7 +41,7 @@ export class Predictor {
 
   constructor(
     private readonly dynamicSystem: DynamicSystem,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialSystem: CelestialBodies,
   ) {}
 
   // このフレームぶんの積分予算を、操作対象の弧・計画の弧・その他の個体へ配って伸ばす。ポーズ中・

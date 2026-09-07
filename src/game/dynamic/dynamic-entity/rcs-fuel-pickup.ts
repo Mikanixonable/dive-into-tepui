@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { Viewer } from './viewer';
 import type { View } from '../../view/view';
 import { kinematicState } from '../../../physics/kinematic-state';
@@ -17,7 +18,7 @@ import { MARKER_PRIORITY } from '../../marker/crowding';
 import type { MarkerManager } from '../../marker/marker-manager';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { orbitRows } from '../../pickable/orbit-rows';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { ControlSelection } from '../../control-selection';
 import type { ObjectAuthoring } from '../../stages/stage';
@@ -123,7 +124,7 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
 
   // 自艦からの距離と回収圏内かどうか。自艦がいなければ空。
   public listDetail(
-    _celestialSystem: CelestialSystem, viewer: Viewer | null, displayTime: number,
+    _celestialSystem: CelestialBodies, viewer: Viewer | null, displayTime: number,
   ): string {
     if (viewer === null) return '';
     const d = len(sub(this.posAt(displayTime) ?? this.state.r, viewer.state.r));
@@ -132,7 +133,7 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
 
   // 検索が照合する文字列。行の補助表示と同じ。
   public listSearchText(
-    celestialSystem: CelestialSystem, viewer: Viewer | null, displayTime: number,
+    celestialSystem: CelestialBodies, viewer: Viewer | null, displayTime: number,
   ): string {
     return this.listDetail(celestialSystem, viewer, displayTime);
   }
@@ -146,7 +147,7 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
-    _celestialSystem: CelestialSystem, _viewer: Viewer | null, navTargetId: string | null,
+    _celestialSystem: CelestialBodies, _viewer: Viewer | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
     return [
       MenuCommon.focus(),
@@ -168,7 +169,7 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
   // プロパティウィンドウに出す行。自艦からの距離と補給量を主要行とし、軌道要素は「軌道」
   // グループの下に畳む。viewer が null なら距離の行は落ちる。
   public propertyRows(
-    celestialSystem: CelestialSystem, viewer: Viewer | null, simTime: number,
+    celestialSystem: CelestialBodies, viewer: Viewer | null, simTime: number,
   ): readonly PropertyRow[] {
     const rows: PropertyRow[] = [];
     if (viewer) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(this.state.r, viewer.state.r))) });

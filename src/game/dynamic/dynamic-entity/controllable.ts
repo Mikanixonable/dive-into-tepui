@@ -1,4 +1,5 @@
 import type { Plan, PlanExecutionMode } from '../../plan/plan';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { Throttle } from '../../player/throttle';
 import type { FireControl } from '../../player/fire-control';
 import type { AttachedBoosters } from '../../player/attached-boosters';
@@ -7,7 +8,7 @@ import type { RadiatorSystem } from '../../player/radiator';
 import type { AeroLoad } from '../../player/aero-load';
 import type { AltitudeAlarm } from '../../player/altitude-alarm';
 import type { Input } from '../../../input/input';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+
 import type { Stage } from '../../stages/stage';
 import type { EntityRegistry } from '../entity-registry';
 import type { CombatTarget } from './combat-target';
@@ -42,7 +43,7 @@ export interface Controllable extends CombatTarget {
   // registry / activeStage / celestialSystem は射撃と補給の判定に使う。
   updateControls(
     input: Input | null, dt: number, simDt: number,
-    registry: EntityRegistry, activeStage: Stage, celestialSystem: CelestialSystem,
+    registry: EntityRegistry, activeStage: Stage, celestialSystem: CelestialBodies,
   ): void;
 
   // 次のフレームへ持ち越してはならない連続指令(推力・トルク・射撃)を畳む。
