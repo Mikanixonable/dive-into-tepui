@@ -1,6 +1,6 @@
 // マップビューの「カメラ」パネル。カメラの注視対象・回転追従・平行/透視投影・画角・基準面設定を担当する。
 import { frameRoleOf } from '../../../physics/frame';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import { CameraReferencePlane, CameraReferenceView, FocusCamera, FOCUS_CAMERA_FOV_MIN, FOCUS_CAMERA_FOV_MAX } from '../../camera/focus-camera';
 import { focusTargetId } from '../../camera/focus-target';
 import { AnchorZone } from './anchor-zone';
@@ -36,18 +36,18 @@ export class CameraFramePanel {
   public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialBodies: CelestialBodies,
     private readonly mapCamera: FocusCamera,
     overlayManager: OverlayManager,
   ) {
     this.panel = buildPanel(panelRoot, 'hud-camera-controls', 'カメラ');
 
-    this.cameraCenterZone = new AnchorZone(popupRoot, '基準', celestialSystem, '固定を解除', overlayManager);
+    this.cameraCenterZone = new AnchorZone(popupRoot, '基準', celestialBodies, '固定を解除', overlayManager);
     this.cameraCenterZone.element.classList.add('hud-frame-origin-zone');
     this.cameraCenterZone.onSelect = (id) => this.onSelectCenter?.(id);
     this.panel.appendChild(this.cameraCenterZone.element);
 
-    this.cameraRotationZone = new CameraRotationZone('回転追従', celestialSystem);
+    this.cameraRotationZone = new CameraRotationZone('回転追従', celestialBodies);
     this.cameraRotationZone.element.classList.add('hud-frame-rotation-zone');
     this.cameraRotationZone.onSelect = (follow) => mapCamera.setRotationFollow(follow);
     this.panel.appendChild(this.cameraRotationZone.element);
@@ -108,10 +108,10 @@ export class CameraFramePanel {
     const camId = focusTargetId(this.mapCamera.focus);
     const camRole = camId === undefined ? null : frameRoleOf(camId);
     const camCenter = camId === undefined ? '固定なし'
-      : camRole !== null ? frameRoleName(camRole) : this.celestialSystem.nameOf(camId);
+      : camRole !== null ? frameRoleName(camRole) : this.celestialBodies.nameOf(camId);
     const modeText = this.mapCamera.cameraRotationMode === 'euler' ? 'オイラー' : 'クォータニオン';
     const projectionText = this.mapCamera.projection === 'orthographic' ? '平行' : '透視';
-    const rotationText = rotationFollowLabel(this.celestialSystem, this.mapCamera.rotationFollow);
+    const rotationText = rotationFollowLabel(this.celestialBodies, this.mapCamera.rotationFollow);
     return `基準: ${camCenter}・${rotationText} / ${modeText}・${projectionText}・画角 ${this.mapCamera.fov.toFixed(0)}°`;
   }
 

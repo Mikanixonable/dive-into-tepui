@@ -5,6 +5,7 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { TdbJulianDate } from '../../physics/time';
 import type { Vec3 } from '../../math/vec3';
+import type { CelestialClass } from './celestial-entity/celestial-entity-def';
 import type { ReferenceFrames } from './reference-frames';
 
 export interface CelestialBodies extends CelestialMotions {
@@ -19,6 +20,14 @@ export interface CelestialBodies extends CelestialMotions {
   has(id: string): boolean;
   // 天体 id の運動。未登録の id を渡すと例外になる。
   motionOf(id: string): CelestialBody;
+  // 天体 id の運動。未登録の id では null。id が登録済みだと言い切れないときはこちらを使う。
+  findMotion(id: string): CelestialBody | null;
+  // 天体 id の分類。未登録の id では null。
+  bodyClassOf(id: string): CelestialClass | null;
+  // 主星の天体 id。恒星を持たない星系では null。
+  readonly starId: string | null;
+  // ECI の原点に静止している天体の id。
+  readonly originId: string;
   // 天体 id の、pivot で厳密に引いた値から時刻 t へ外挿した ECI 位置・速度。
   stateAt(id: string, pivot: number, t?: number): KinematicState;
   // ECI の点 r から見た恒星方向の単位ベクトル。

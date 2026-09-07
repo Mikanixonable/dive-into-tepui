@@ -3,7 +3,7 @@
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../../../hud/widgets';
 import type { ListedObject } from '../../pickable/listed-object';
 import type { OrbitingObject } from '../../dynamic/dynamic-entity/orbiting-object';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { PhysicalObjectListOrder } from './physical-object-list-order';
 
 const EMPTY_IDS: readonly string[] = [];
@@ -40,7 +40,7 @@ export interface RowNode {
 // 軌道物体一覧の入れ子行ツリーを、既存 DOM を使い回しながら id 差分だけで同期・剪定する。
 export class PhysicalObjectListTree {
   public constructor(
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialBodies: CelestialBodies,
     private readonly order: PhysicalObjectListOrder,
     private readonly itemsById: ReadonlyMap<string, ListedObject>,
     private readonly actions: RowTreeActions,
@@ -94,7 +94,7 @@ export class PhysicalObjectListTree {
       }
     }
     if (node.label.textContent !== item.name) node.label.textContent = item.name;
-    const detailText = item.listDetail(this.celestialSystem, this.viewer, this.displayTime);
+    const detailText = item.listDetail(this.celestialBodies, this.viewer, this.displayTime);
     if (node.detail.textContent !== detailText) node.detail.textContent = detailText;
     node.detail.classList.toggle('hidden', detailText === '');
     node.row.classList.toggle('tgt', item.id === focusId);

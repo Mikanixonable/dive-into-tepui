@@ -17,7 +17,7 @@ import {
 } from '../../math/projection';
 import type { FrameAnchorSource } from '../../physics/frame';
 import type { Quat } from '../../math/quat';
-import type { CelestialSystem } from '../celestial/celestial-system';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { View } from '../view/view';
 import { CameraSaveData } from '../save/save-data';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
@@ -196,7 +196,7 @@ export class CameraSystem {
   // attitudeOf はフォーカス機体の姿勢追従に使う解決関数(FocusCameraConfig 参照)。
   constructor(
     private readonly hud: Hud,
-    celestialSystem: CelestialSystem,
+    celestialBodies: CelestialBodies,
     private readonly currentView: () => View,
     attitudeOf: (id: string, t: number) => Quat | null,
     saved?: Pick<CameraSaveData, 'chase' | 'overview'>,
@@ -204,7 +204,7 @@ export class CameraSystem {
     // ChaseSaveDataV1 形の戦闘視点は読み捨て、既定視点で組む。
     const savedChase = saved?.chase;
     const combatSaved = savedChase !== undefined && !('rot' in savedChase) ? savedChase : undefined;
-    this.combatCamera = new FocusCamera(hud, celestialSystem, {
+    this.combatCamera = new FocusCamera(hud, celestialBodies, {
       focusLossPolicy: 'hold',
       initial: {
         angles: COMBAT_CAMERA_INIT_ANGLES,
@@ -216,8 +216,8 @@ export class CameraSystem {
       attitudeOf,
     }, combatSaved);
     this.mapCamera = new FocusCamera(
-      hud, celestialSystem,
-      { focusLossPolicy: 'fallToOrigin', initial: defaultMapViewInitial(celestialSystem), attitudeOf },
+      hud, celestialBodies,
+      { focusLossPolicy: 'fallToOrigin', initial: defaultMapViewInitial(celestialBodies), attitudeOf },
       saved?.overview,
     );
     // 表示パネルと天体クラス側操作のコールバック

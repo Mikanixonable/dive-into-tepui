@@ -9,7 +9,7 @@ import { KinematicState } from '../../../physics/kinematic-state';
 import { Vec3, dot, len, sub } from '../../../math/vec3';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
 import type { CelestialEntity } from '../../celestial/celestial-entity/celestial-entity';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { OrbitReference } from '../../orbit-reference';
 import { relativeInclinationDeg } from '../../orbit-info';
 import type { CelestialBody } from '../../../physics/celestial-body';
@@ -52,7 +52,7 @@ function altitudeOf(state: KinematicState, centerState: KinematicState, center: 
 export function altitudeSeries(
   entity: DynamicEntity,
   reference: OrbitReference,
-  celestialSystem: CelestialSystem,
+  celestialBodies: CelestialBodies,
   now: number,
   spanSec: number,
   sampleCount: number,
@@ -64,15 +64,14 @@ export function altitudeSeries(
   }
 
   const currentAlt = altitudeOf(entity.state, reference.state, center);
-  const centerEntity = celestialSystem.entityOf(center.id);
   const samples: AltitudeSample[] = [];
   let truncated = false;
   for (let i = 0; i <= sampleCount; i++) {
     const t = now + (i * spanSec) / sampleCount;
     // 外挿できない時刻に達したら、そこで列を止める(0/NaN で埋めない)。
-    const state = entity.stateAt(t, celestialSystem);
+    const state = entity.stateAt(t, celestialBodies);
     if (state === null) { truncated = true; break; }
-    const centerState = centerEntity.stateAt(t);
+    const centerState = celestialBodies.stateAt(center.id, t);
     samples.push({ t: t - now, alt: altitudeOf(state, centerState, center) });
   }
   return { samples, currentAlt, truncated };
@@ -91,18 +90,17 @@ function phaseAngleOn(el: OrbitalElements, positionRelCenter: Vec3): number {
 
 // ターゲット(target)の状態と軌道要素を、他の対象と同じ形(状態取得関数 + 軌道要素)へ揃える。
 export function resolveTarget(
-  target: ApproachTargetSource, celestialSystem: CelestialSystem, now: number,
+  target: ApproachTargetSource, celestialBodies: CelestialBodies, now: number,
 ): { stateAt: (t: number) => KinematicState | null; currentR: KinematicState['r'] } {
   // 艦・基地は predicted(将来は外挿できないことがある)、天体は自身の運動(常に解析的に解ける)。
   if (target.kind === 'entity') {
     return {
-      stateAt: (t) => target.entity.stateAt(t, celestialSystem),
+      stateAt: (t) => target.entity.stateAt(t, celestialBodies),
       currentR: target.entity.state.r,
     };
   }
-  const targetEntity = celestialSystem.entityOf(target.body.id);
   return {
-    stateAt: (t) => targetEntity.stateAt(t),
+    stateAt: (t) => celestialBodies.stateAt(target.body.id, t),
     currentR: target.body.stateAt(now).r,
   };
 }
@@ -112,13 +110,13 @@ export function resolveTarget(
 export function sharedAttractor(
   ship: DynamicEntity,
   target: ApproachTargetSource,
-  celestialBodies: readonly CelestialBody[],
-  celestialSystem: CelestialSystem,
+  attractors: readonly CelestialBody[],
+  celestialBodies: CelestialBodies,
   now: number,
 ): CelestialBody | null {
-  const targetR = resolveTarget(target, celestialSystem, now).currentR;
-  const shipCenter = strongestAttractor(ship.state.r, celestialBodies, now);
-  return shipCenter.id === strongestAttractor(targetR, celestialBodies, now).id ? shipCenter : null;
+  const targetR = resolveTarget(target, celestialBodies, now).currentR;
+  const shipCenter = strongestAttractor(ship.state.r, attractors, now);
+  return shipCenter.id === strongestAttractor(targetR, attractors, now).id ? shipCenter : null;
 }
 
 // 接近タブ: ship と target が同じ主天体 C を周回しているときだけ、C まわりの位相差を
@@ -136,15 +134,15 @@ export function sharedAttractor(
 export function approachSeries(
   ship: DynamicEntity,
   target: ApproachTargetSource,
-  celestialBodies: readonly CelestialBody[],
-  celestialSystem: CelestialSystem,
+  attractors: readonly CelestialBody[],
+  celestialBodies: CelestialBodies,
   now: number,
   spanSec: number,
   sampleCount: number,
 ): ApproachSeries | null {
-  const center = sharedAttractor(ship, target, celestialBodies, celestialSystem, now);
+  const center = sharedAttractor(ship, target, attractors, celestialBodies, now);
   if (center === null) return null;
-  const resolved = resolveTarget(target, celestialSystem, now);
+  const resolved = resolveTarget(target, celestialBodies, now);
 
   const selfEl = ship.orbitalElementsAround(center, now);
   const targetEl = target.kind === 'entity'
@@ -159,17 +157,16 @@ export function approachSeries(
     return { samples: [], relIncDeg, truncated: true };
   }
 
-  const centerEntity = celestialSystem.entityOf(center.id);
   const samples: (ApproachSample | null)[] = [];
   let truncated = false;
   let lastTheta: number | null = null;
   for (let i = 0; i <= sampleCount; i++) {
     const t = now + (i * spanSec) / sampleCount;
     // どちらかが外挿できなくなった時点で列を止める。
-    const shipState = ship.stateAt(t, celestialSystem);
+    const shipState = ship.stateAt(t, celestialBodies);
     const targetState = resolved.stateAt(t);
     if (shipState === null || targetState === null) { truncated = true; break; }
-    const centerState = centerEntity.stateAt(t);
+    const centerState = celestialBodies.stateAt(center.id, t);
     const shipRel = sub(shipState.r, centerState.r);
     const targetRel = sub(targetState.r, centerState.r);
     const theta = wrapAngle(phaseAngleOn(targetEl, shipRel) - phaseAngleOn(targetEl, targetRel));

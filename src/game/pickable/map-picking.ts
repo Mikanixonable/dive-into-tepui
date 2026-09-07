@@ -12,7 +12,7 @@ import { PhysicalObjectListPanel } from '../hud/panels/physical-object-list-pane
 import type { Input } from '../../input/input';
 import { pickRadiusSq } from '../../input/pointer-precision';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
-import type { CelestialSystem } from '../celestial/celestial-system';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { CelestialMarkers } from '../marker/celestial-markers';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { NavTarget } from '../nav-target';
@@ -39,7 +39,7 @@ export class MapPicking {
     private readonly hud: Hud,
     private readonly cameraSystem: CameraSystem,
     private readonly dynamicSystem: DynamicSystem,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialBodies: CelestialBodies,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly markerManager: MarkerManager,
     private readonly navTarget: NavTarget,
@@ -49,7 +49,7 @@ export class MapPicking {
     private readonly objectWindows: ObjectWindows,
     private readonly controlSelection: ControlSelection,
   ) {
-    this.listPanel = new PhysicalObjectListPanel(hud.mapRoot, celestialSystem);
+    this.listPanel = new PhysicalObjectListPanel(hud.mapRoot, celestialBodies);
     this.orbitLineWindows = new OrbitLineWindows(
       hud, linePickables, pickables, (id, name) => this.focusOwner(id, name),
       (clientX, clientY, target) => this.objectWindows.open(
@@ -62,7 +62,7 @@ export class MapPicking {
     };
     this.listPanel.onNavTarget = (id) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
-      if (target && this.navTarget.canTarget(id, this.dynamicSystem, this.celestialSystem, this.pickables.lastSimTime)) {
+      if (target && this.navTarget.canTarget(id, this.dynamicSystem, this.celestialBodies, this.pickables.lastSimTime)) {
         this.navTarget.toggleTarget(id, target.name);
       }
     };
@@ -109,7 +109,7 @@ export class MapPicking {
       const orbit = pickNearestLine(
         this.linePickables.pickables, p.x, p.y, this.cameraSystem.activeCameraProjection,
         pickRadiusSq(ORBIT_LINE_PICK_PX_SQ, ORBIT_LINE_PICK_PX_SQ_COARSE),
-        this.cameraSystem.activeCameraPos, this.celestialSystem.celestialMotions,
+        this.cameraSystem.activeCameraPos, this.celestialBodies.celestialMotions,
         this.pickables.lastDisplayTime,
       );
       if (!orbit) return false;
@@ -170,7 +170,7 @@ export class MapPicking {
     // 親が無ければ(恒星、もしくは主天体が未登録)載せず、根として扱う。
     const parentOf = new Map<string, string>();
     for (const item of this.celestialMarkers.allItems) {
-      const parent = this.celestialSystem.bodyParentId(item.id);
+      const parent = this.celestialBodies.bodyParentId(item.id);
       if (parent !== undefined && parent !== null) parentOf.set(item.id, parent);
     }
     this.listPanel.setVisible(true);

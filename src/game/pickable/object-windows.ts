@@ -11,7 +11,7 @@ import { TEMP_WINDOW_GROUP } from '../../hud/overlay-manager';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { focusTargetId } from '../camera/focus-target';
 import { DynamicSystem } from '../dynamic/dynamic-system';
-import type { CelestialSystem } from '../celestial/celestial-system';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { NavTarget } from '../nav-target';
 import { CameraSystem } from '../camera/camera-system';
 import type { PlanEditor } from '../plan/plan-editor';
@@ -56,7 +56,7 @@ export class ObjectWindows {
   constructor(
     private readonly hud: Hud,
     private readonly dynamicSystem: DynamicSystem,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialBodies: CelestialBodies,
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,
     private readonly activeView: () => ViewFrame,
@@ -144,7 +144,7 @@ export class ObjectWindows {
       entry.win.syncRelatedItems(
         this.relatedItemsFor(entry.target, simTime), this.relatedTitleFor(entry.target));
       entry.win.syncRows(entry.target.propertyRows(
-        this.celestialSystem, this.controlSelection.current, simTime, displayTime));
+        this.celestialBodies, this.controlSelection.current, simTime, displayTime));
       entry.win.syncItems(menuItems);
       entry.win.syncBadge(entry.target.id === this.lastFocusId);
     }
@@ -203,12 +203,12 @@ export class ObjectWindows {
   // 対象ではなくこのランの状態で決まるので、対象には判定させずここで絞る。
   private offeredItems(target: InspectedObject, simTime: number): readonly MenuItem<MenuAction>[] {
     const all = target.menuItems(
-      this.celestialSystem, this.controlSelection.current, this.navTarget.id);
+      this.celestialBodies, this.controlSelection.current, this.navTarget.id);
     return all.filter((it) => {
       switch (it.act) {
         case 'target':
           return this.navTarget.canTarget(
-            target.id, this.dynamicSystem, this.celestialSystem, simTime);
+            target.id, this.dynamicSystem, this.celestialBodies, simTime);
         case 'duplicate':
         case 'openObjectPlacer':
           return this.authoring !== null;
@@ -264,8 +264,8 @@ export class ObjectWindows {
       // 天体・ラグランジュ点の親は静的に決まる。人工物は現在状態から引く。
       const state = item.orbitState;
       const isOrbiting = state === null
-        ? this.celestialSystem.bodyParentId(item.id) === target.id
-        : orbitingAttractorOf(state, this.celestialSystem.celestialMotions, pivot)?.id === target.id;
+        ? this.celestialBodies.bodyParentId(item.id) === target.id
+        : orbitingAttractorOf(state, this.celestialBodies.celestialMotions, pivot)?.id === target.id;
       if (isOrbiting) related.push({ item, label: item.name });
     }
     related.sort((a, b) => a.label.localeCompare(b.label));

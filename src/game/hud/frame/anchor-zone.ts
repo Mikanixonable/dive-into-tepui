@@ -2,7 +2,7 @@
 // 敵・基地・弾薬まで含む全候補から選ぶプルダウン(ObjectPicker)、下段はいまカメラがいる
 // 系の天体だけに絞ったクイックボタン(SegmentedControl)。
 import { FRAME_ROLES, frameRoleAnchorId } from '../../../physics/frame';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import { SegmentedControl } from '../../../hud/widgets';
 import { injectOnce } from '../../../hud/widgets/inject-style';
 import { frameRoleName } from './frame-labels';
@@ -34,7 +34,7 @@ export class AnchorZone {
   // popupRoot は ObjectPicker のポップアップの親、title はプルダウンの見出し。releaseLabel が
   // null なら「解除」の選択肢そのものを出さない(プルダウン先頭・クイックボタン先頭の両方)。
   public constructor(
-    popupRoot: HTMLElement, title: string, private readonly celestialSystem: CelestialSystem,
+    popupRoot: HTMLElement, title: string, private readonly celestialBodies: CelestialBodies,
     private readonly releaseLabel: string | null,
     overlayManager: OverlayManager,
   ) {
@@ -55,7 +55,7 @@ export class AnchorZone {
     const groups: ObjectPickerGroup<string | null>[] = [
       ...(this.releaseLabel !== null ? [{ label: '', items: [[null, this.releaseLabel] as const] }] : []),
       ROLE_GROUP,
-      ...groupPickables(this.celestialSystem, pickables, includeAllCelestialBodies),
+      ...groupPickables(this.celestialBodies, pickables, includeAllCelestialBodies),
     ];
     this.picker.setGroups(groups);
   }

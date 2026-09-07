@@ -8,7 +8,7 @@ import { loadPanelCollapsed, savePanelCollapsed, wirePanelCollapse } from '../pa
 import { MQ_COARSE } from '../../../hud/breakpoints';
 import { PhysicalObjectListTree } from './physical-object-list-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { RowNode } from './physical-object-list-tree';
 import type { PhysicalObjectListFilter, PhysicalObjectListSort, SectionOrder } from './physical-object-list-order';
 import type { MapListSection } from '../../pickable/pickable-listing';
@@ -130,10 +130,10 @@ export class PhysicalObjectListPanel {
   private readonly emptyState: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
 
-  public constructor(root: HTMLElement, celestialSystem: CelestialSystem) {
+  public constructor(root: HTMLElement, celestialBodies: CelestialBodies) {
     injectOnce('physical-object-list-panel', STYLE);
-    this.order = new PhysicalObjectListOrder(celestialSystem);
-    this.rowTree = new PhysicalObjectListTree(celestialSystem, this.order, this.itemsByIdScratch, {
+    this.order = new PhysicalObjectListOrder(celestialBodies);
+    this.rowTree = new PhysicalObjectListTree(celestialBodies, this.order, this.itemsByIdScratch, {
       onFocus: (id) => this.onFocus?.(id),
       onNavTarget: (id) => this.onNavTarget?.(id),
       onSelectRight: (id, clientX, clientY) => this.onSelectRight?.(id, clientX, clientY),
