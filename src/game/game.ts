@@ -431,6 +431,8 @@ export class Game {
     this.sections.enter(SECTION.plan);
     this.planDisplay.update(displayWindow, this.frameAnchors, view);
     this.sections.exit(SECTION.plan);
+    // 予測の伸長対象は軌道分析ウィンドウが見ている個体を含むので、予測より先に確定させる。
+    this._hud.updateAnalysisReaders(this);
     // ポーズ中・決着後も無条件に呼ぶ: simTime が止まっている間はサブステップも進まず、
     // 消費も期限切れの張り直しも起きないので、予測は伸び切ったところで止まるだけで害はない。
     this.sections.enter(SECTION.predict);

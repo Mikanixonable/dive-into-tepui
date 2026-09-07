@@ -84,6 +84,11 @@ export class Hud {
     this.orbitAnalysisWindow = win;
   }
 
+  // 軌道分析ウィンドウが見ている個体を、このフレームの操作対象・ターゲットへ合わせる。
+  public updateAnalysisReaders(game: Game): void {
+    this.orbitAnalysisWindow?.update(game);
+  }
+
   // アクティブなビューの常設パネル一式を game の現在状態へ合わせる。DOM ルートの表示切替は
   // setView が持ち、ここでは表に出ているパネルだけを毎フレーム更新する。
   public syncPanels(view: View, game: Game): void {
