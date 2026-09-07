@@ -12,7 +12,7 @@ import type { CameraSystem } from '../camera/camera-system';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { ObjectWindows } from '../pickable/object-windows';
 import type { CelestialMarkers } from '../marker/celestial-markers';
-import type { MarkerManager } from '../marker/marker-manager';
+import type { MarkerSlots } from '../marker/marker-slots';
 import type { Targeter } from '../targeter';
 import type { ControlSelection } from '../control-selection';
 import type { PlanPath } from '../plan/plan-path';
@@ -43,9 +43,9 @@ export class CombatView implements ViewFrame {
     private readonly simSpeedManager: SimSpeedManager,
     private readonly notifier: Notifier,
     uiSfx: UiSfx,
-    markerManager: MarkerManager,
+    markers: MarkerSlots,
   ) {
-    this.planGuide = new PlanGuide(notifier, uiSfx, markerManager);
+    this.planGuide = new PlanGuide(notifier, uiSfx, markers);
   }
 
   public readonly pickables: readonly ObjectPickable[] = [];

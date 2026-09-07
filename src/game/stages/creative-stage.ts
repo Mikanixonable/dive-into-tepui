@@ -297,7 +297,7 @@ export class CreativeStage extends Stage {
     const preview = form ? this.computePreview(form) : null;
     if (!preview) {
       this.previewEllipseLine.hide();
-      this._markerManager.fadeOut('creative-preview');
+      this._markers.fadeOut('creative-preview');
       return;
     }
     // 軌道線は常に出し、▷ マーカーは天体に隠れていないときだけ出す。
@@ -305,10 +305,10 @@ export class CreativeStage extends Stage {
     this.previewEllipseLine.sync(preview.elements, fo, cameraSystem.activeCamera);
     if (cameraSystem.view === 'map'
       && isOccluded(cameraPos, preview.pos, this._celestialSystem.celestialMotions, displayTime)) {
-      this._markerManager.hide('creative-preview');
+      this._markers.hide('creative-preview');
       return;
     }
-    this._markerManager.setPosition(
+    this._markers.setPosition(
       'creative-preview', 'mk-self', ENTITY_GLYPH.preview, preview.pos, cameraSystem.activeCameraProjection,
       'PREVIEW', 1, COLOR_MARKER_ALLY, 0, false, false, undefined, cameraPos,
     );
@@ -349,7 +349,7 @@ export class CreativeStage extends Stage {
         this._hud.hint(`${finalName} を配置`);
       } else if (form.entityKind === 'base') {
         const finalName = name.trim() || generateRandomName('base');
-        const base = new Base({ state, name: finalName }, this._scene, this._hud, this._worldSfx, this._markerManager);
+        const base = new Base({ state, name: finalName }, this._scene, this._hud, this._worldSfx, this._markers);
         this._dynamicSystem.add(base);
         this._hud.hint(`${base.name} を配置`);
       }

@@ -8,7 +8,7 @@ import { LINE_RENDER_ORDER } from '../../../render/line-style';
 import { CameraSystem } from '../../camera/camera-system';
 import { FloatingOrigin } from '../../camera/floating-origin';
 import { EllipseLine } from '../../lines/ellipse-line';
-import type { MarkerManager } from '../../marker/marker-manager';
+import type { MarkerSlots } from '../../marker/marker-slots';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import type { CelestialBody } from '../../../physics/celestial-body';
 
@@ -58,7 +58,7 @@ export class GeostationaryOverlay {
     return new GeostationaryOverlay(motion, a);
   }
 
-  // リングをシーンへ一度だけ登録する。ラベルは MarkerManager が持つので登録は要らない。
+  // リングをシーンへ一度だけ登録する。ラベルは MarkerSlots が持つので登録は要らない。
   build(scene: THREE.Scene): void {
     scene.add(this.line.line);
   }
@@ -67,7 +67,7 @@ export class GeostationaryOverlay {
   // (マップ視点 かつ 同期軌道トグル ON)。
   sync(
     center: CelestialBody, pivot: number, fo: FloatingOrigin, cameraSystem: CameraSystem,
-    markerManager: MarkerManager | null, celestialBodies: readonly CelestialBody[], visible: boolean,
+    markers: MarkerSlots | null, celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
     const centerPos = center.positionAt(pivot);
     const elements = this.elementsAround(center, pivot);
@@ -80,7 +80,7 @@ export class GeostationaryOverlay {
       this.line.hide();
     }
     this.syncLabel(
-      elements, centerPos, pivot, fade, cameraSystem, markerManager, celestialBodies, visible);
+      elements, centerPos, pivot, fade, cameraSystem, markers, celestialBodies, visible);
   }
 
   // リングを親から外して解放する。
@@ -98,14 +98,14 @@ export class GeostationaryOverlay {
   // 軌道上の1点へ、高度を書いた半透明の小さな文字ラベルを置く。
   private syncLabel(
     elements: OrbitalElements, centerPos: Vec3, pivot: number, fade: number,
-    cameraSystem: CameraSystem, markerManager: MarkerManager | null,
+    cameraSystem: CameraSystem, markers: MarkerSlots | null,
     celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
-    if (markerManager === null) return;
+    if (markers === null) return;
     // 消えるほど薄いラベルは、射影も遮蔽判定もせずに畳む。
     const opacity = LABEL_OPACITY * fade;
     if (!visible || opacity <= 0.02) {
-      markerManager.hide(MARKER_KEY);
+      markers.hide(MARKER_KEY);
       return;
     }
     const r = this.semiMajorAxis;
@@ -114,10 +114,10 @@ export class GeostationaryOverlay {
     const cameraPos = cameraSystem.activeCameraPos;
     const p = cameraSystem.activeCameraProjection(pos);
     if (!p.front || isOccluded(cameraPos, pos, celestialBodies, pivot)) {
-      markerManager.hide(MARKER_KEY);
+      markers.hide(MARKER_KEY);
       return;
     }
-    markerManager.set(
+    markers.set(
       MARKER_KEY, 'mk-geolabel', this.label, p.x, p.y, p.front, '', opacity,
       undefined, undefined, false, true, MARKER_PRIORITY.ORBITAL_NODE, len(sub(pos, cameraPos)));
   }

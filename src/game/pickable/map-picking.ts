@@ -14,7 +14,7 @@ import { pickRadiusSq } from '../../input/pointer-precision';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { CelestialMarkers } from '../marker/celestial-markers';
-import type { MarkerManager } from '../marker/marker-manager';
+import type { MarkerSlots } from '../marker/marker-slots';
 import type { NavTarget } from '../nav-target';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FrameControls } from '../hud/frame/frame-controls';
@@ -41,7 +41,7 @@ export class MapPicking {
     private readonly dynamicSystem: DynamicSystem,
     private readonly celestialBodies: CelestialBodies,
     private readonly celestialMarkers: CelestialMarkers,
-    private readonly markerManager: MarkerManager,
+    private readonly markers: MarkerSlots,
     private readonly navTarget: NavTarget,
     private readonly frameControls: FrameControls,
     private readonly pickables: ObjectPickables,
@@ -79,7 +79,7 @@ export class MapPicking {
     const project = this.cameraSystem.activeCameraProjection;
     const displayTime = this.pickables.lastDisplayTime;
     const marker = pickNearest(
-      candidates.filter((item) => item.shownOnMap(this.markerManager)),
+      candidates.filter((item) => item.shownOnMap(this.markers)),
       (item) => projectMarker(item, displayTime, project),
       x, y, pickRadiusSq(OBJECT_PICK_PX_SQ, OBJECT_PICK_PX_SQ_COARSE),
     );
