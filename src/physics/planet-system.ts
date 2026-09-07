@@ -9,10 +9,10 @@
 // (NEGLIGIBLE_BODY_OFFSET)。落とす変位の合計はその定数以下で、系の天体はまとめてその量だけ
 // 主星に対してずれる。**系の内側の相対幾何は動かない** — 衛星も同じ本体から組むため。
 // THREE/DOM 非依存。
-import { Vec3, addScaled } from '../math/vec3';
+import { Vec3, addScaled, v3 } from '../math/vec3';
 import { PointEphemeris, boundBaryStateAt } from './ephemeris/point';
 import { PlanetDef, PlanetMotion, SatelliteMotion, StarMotion } from './celestial-motion';
-import { KeplerOrbit, keplerOrbitState } from './kepler-orbit';
+import { KeplerOrbit, keplerOrbitAccel, keplerOrbitState } from './kepler-orbit';
 import {
   KinematicState, addPrimaryRelative, fromStarRelative, kinematicState,
 } from './kinematic-state';
@@ -98,6 +98,21 @@ export class PlanetSystem {
   // 衛星 index の惑星本体相対の位置・速度。
   satelliteRelStateAt(index: number, t: number): KinematicState<'primaryRel'> {
     return this.relFrom(this.membersAt(t), index, t);
+  }
+
+  // 惑星本体が衛星から受ける加速度。位置の重心補正 −Σ w_i·ρ_i の 2 階微分そのもので、
+  // **顔ぶれは補正と同じ** — 位置と加速度で入れる衛星がずれると、2 次外挿が位置モデルから外れる。
+  bodyAccelFromSatellitesAt(t: number): Vec3 {
+    const members = this.membersAt(t);
+    const muTotal = this.mu;
+    let accel: Vec3 = v3();
+    for (const index of this.offsettingMoons) {
+      const moon = this.moons[index]!;
+      const rel = this.relFrom(members, index, t);
+      accel = addScaled(
+        accel, keplerOrbitAccel(moon.def.orbit.kepler, t, rel.r), -moon.def.mu / muTotal);
+    }
+    return accel;
   }
 
   // 負荷確認ウィンドウが読む、系が持つ時刻キャッシュのヒット/ミス累計。
