@@ -1,14 +1,14 @@
 // 常設 TARGET パネル(#hud-target)の同期。ロック中ターゲットの名前・装甲・距離・
 // 接近速度・相対速度を、ターゲットが固定されている間だけ表示する。
 import { fmtDist, fmtSpeed, setElementText } from '../../../hud/utils';
-import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
-import type { CelestialBodies } from '../../celestial/celestial-bodies';
-import type { Targeter } from '../../targeter';
 import { SyncThrottle } from '../sync-throttle';
 import { relativeInfo } from '../../orbit-info';
 import { ProteinEnemy } from '../../dynamic/dynamic-entity/protein-enemy';
 import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
+import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
+import type { Targeter } from '../../targeter';
 
 const SYNC_INTERVAL_MS = 100;
 

@@ -4,10 +4,10 @@
 // 片方を数値・片方を解析で引くと、その差がそのまま相対位置の誤りになる。原点が数値暦で
 // 引ける時刻だけ両者を数値暦で引き、それ以外は両者を解析へ揃える。
 // THREE/DOM 非依存。
-import type { EphemerisBody } from './celestial-body';
 import { KinematicState, toEci } from './kinematic-state';
 import { TimeCacheStats, TimeRing } from './time-ring';
 import { Vec3, sub } from '../math/vec3';
+import type { EphemerisBody } from './celestial-body';
 
 // ECI 原点天体が時刻 t に答える、原点を引くための一式。**供給源が違えば同じ天体に別の位置を
 // 答える**ので、ECI 化は必ず同じ経路どうしで差を取る。解析経路は主星相対で持つ

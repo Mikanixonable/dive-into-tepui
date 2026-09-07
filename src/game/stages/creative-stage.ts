@@ -5,7 +5,6 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
-import type { CelestialBody } from '../../physics/celestial-body';
 import { orbitalElementsOf } from '../../physics/elements';
 import { haloState, lissajousState } from '../../physics/halo';
 import { secondaryFrameOf } from '../../physics/lagrange';
@@ -36,6 +35,7 @@ import { EllipseLine } from '../lines/ellipse-line';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 // 軌道上へ配置できる自機の上限隻数。
 const MAX_PLACED_SHIPS = 50;

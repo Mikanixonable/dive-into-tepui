@@ -2,9 +2,9 @@
 // 画面座標から実体の形へ視線を通し、最も手前のものを選ぶ。
 import { isCombatTarget, type CombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
-import type { ProjectFn } from '../../math/projection';
 import { rayThroughScreen, type Viewpoint } from '../../math/projection';
 import { len, sub } from '../../math/vec3';
+import type { ProjectFn } from '../../math/projection';
 
 // 中心からこの半径 [px] 以内のクリックは、形を外していても当たったものとして扱う。
 // これが無いと、遠方で数ピクセルにしか写らない実体を掴めない。

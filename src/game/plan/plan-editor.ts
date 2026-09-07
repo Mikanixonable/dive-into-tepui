@@ -1,7 +1,6 @@
 // 軌道計画の編集(ノードの配置・時刻移動・Δv 調整・選択・削除)と、ノードギズモ・3D 矢印・
 // 計画パネルへの反映。ノードの配置・移動先は、描かれている計画折れ線のサンプル列から選ぶ。
 import type * as THREE from 'three/webgpu';
-import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { KinematicState, fromOrbitAxes, kinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { OrbitalElements, orbitalElementsOf, positionOnOrbit } from '../../physics/elements';
 import { atmosphericDensity, ellipsoidAltitude } from '../../physics/atmosphere';
@@ -22,12 +21,12 @@ import { AxisDragGizmo } from './plan-axis-drag';
 import { PlanGizmo3D } from './plan-gizmo-3d';
 import { PlanPanel } from './plan-panel';
 import { DisplayDurationSource, Plan } from './plan';
-
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ControlSelection } from '../control-selection';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { PlanPath } from './plan-path';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 
 const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
 
@@ -83,7 +82,7 @@ export class PlanEditor {
     private readonly hud: Hud,
     private readonly uiSfx: UiSfx,
     private readonly simSpeedManager: SimSpeedManager,
-    private readonly celestialSystem: CelestialBodies,
+    private readonly celestialBodies: CelestialBodies,
     scene: THREE.Scene,
     private readonly controlSelection: ControlSelection,
     private readonly displayDuration: DisplayDurationSource,
@@ -147,7 +146,7 @@ export class PlanEditor {
     g.onMenuFocus = (idx) => {
       const n = this.plan?.nodes[idx];
       if (!n) return;
-      const frames = this.celestialSystem.frames;
+      const frames = this.celestialBodies.frames;
       this.frameControls.setFocus(focusPoint(frames, frames.inertialFrame, n.r, n.t, bodyAnchorSource([], n.t)));
     };
   }
@@ -305,7 +304,7 @@ export class PlanEditor {
     const arriving = this.path.arrivalStates();
     const picked = this.path.nearestSample(
       clientX, clientY, Infinity, node.t,
-      ship.plan.nodeTimeRange(idx, ship.state, this.celestialSystem, this.displayDuration),
+      ship.plan.nodeTimeRange(idx, ship.state, this.celestialBodies, this.displayDuration),
     );
     // Δv を保ったまま移動先へ置き換える
     if (picked) {
@@ -329,7 +328,7 @@ export class PlanEditor {
     if (!node) return;
     const hasDownstreamNodes = idx < plan.nodes.length - 1;
     const targetT = this.simTime + secondsFromNow;
-    const range = plan.nodeTimeRange(idx, ship.state, this.celestialSystem, this.displayDuration);
+    const range = plan.nodeTimeRange(idx, ship.state, this.celestialBodies, this.displayDuration);
     const epsilon = 1e-6;
     if (targetT < range.min - epsilon || targetT > range.max + epsilon) {
       this.hud.hint('ノード位置は許可された軌道区間内で指定してください');
@@ -441,7 +440,7 @@ export class PlanEditor {
 
   // 軌道要素と Δv 方向を解釈するための中心天体相対状態。中心はその位置で最も強く引く天体。
   private bodyState(state: KinematicState): KinematicState {
-    const center = strongestAttractor(state.r, this.celestialSystem.celestialMotions, state.t);
+    const center = strongestAttractor(state.r, this.celestialBodies.celestialMotions, state.t);
     const rel = toFrameState(frameOfCelestialBody(center, state.t), state);
     return kinematicState<'eci'>(state.t, rel.r, rel.v);
   }
@@ -529,7 +528,7 @@ export class PlanEditor {
     let selEl: OrbitalElements | null = null;
     let peInAtmosphere = false;
     if (node && localDv) {
-      const center = strongestAttractor(node.r, this.celestialSystem.celestialMotions, node.t);
+      const center = strongestAttractor(node.r, this.celestialBodies.celestialMotions, node.t);
       selEl = orbitalElementsOf(node, center, node.t);
       peInAtmosphere = selEl !== null && this.peInAtmosphere(selEl, node.t);
     }

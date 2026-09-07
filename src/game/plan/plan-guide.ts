@@ -31,7 +31,7 @@ export class PlanGuide {
   private achievedNotified: KinematicState | null = null;
 
   constructor(
-    private readonly _hud: Notifier,
+    private readonly _notifier: Notifier,
     private readonly _uiSfx: UiSfx,
     private readonly markerManager: MarkerManager,
   ) {
@@ -102,7 +102,7 @@ export class PlanGuide {
   private notifyApproach(node: KinematicState): void {
     if (this.approachNotified === node) return;
     this.approachNotified = node;
-    this._hud.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000);
+    this._notifier.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000);
   }
 
   // 操作対象の軌道が目標軌道に十分近づいていれば達成を通知する。ノードと操作対象で最も強く引く
@@ -125,9 +125,9 @@ export class PlanGuide {
     plan.consumeNodesUpTo(node.t, controlled.state);
     const remain = plan.nodes.length;
     if (remain === 0) {
-      this._hud.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);
+      this._notifier.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);
     } else {
-      this._hud.hint(`✓ ノード達成 — 残り ${remain} 件`, 4000);
+      this._notifier.hint(`✓ ノード達成 — 残り ${remain} 件`, 4000);
     }
     this._uiSfx.warp();
   }

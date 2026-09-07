@@ -1,12 +1,12 @@
 // 軌道エンティティの基準・軌道要素・相対情報を導出する純粋関数群。
 import { strongestAttractor } from '../physics/attractor';
-import type { Viewer } from './dynamic/dynamic-entity/viewer';
-import type { CelestialBody } from '../physics/celestial-body';
 import { apsisAltitudes } from '../physics/elements';
 import { kinematicState } from '../physics/kinematic-state';
 import { dot, len, sub, Vec3 } from '../math/vec3';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { OrbitReference } from './orbit-reference';
+import type { OrbitingObject } from './dynamic/dynamic-entity/orbiting-object';
+import type { CelestialBody } from '../physics/celestial-body';
 
 export interface OrbitInfo {
   centerId: string;
@@ -58,7 +58,7 @@ interface RelativeInfo {
 // self から見た other の距離・接近速度・相対速度・相対傾斜角を導出する。相対傾斜角は
 // 双方の基準天体(strongestAttractor)が一致するときのみ意味を持ち、異なる場合は NaN にする。
 export function relativeInfo(
-  self: Viewer, other: Viewer,
+  self: OrbitingObject, other: OrbitingObject,
   celestialBodies: readonly CelestialBody[], pivot: number,
 ): RelativeInfo {
   const selfCenter = strongestAttractor(self.state.r, celestialBodies, pivot);

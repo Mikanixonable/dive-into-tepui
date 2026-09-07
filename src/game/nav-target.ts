@@ -76,7 +76,7 @@ export class NavTarget {
   // 戦闘ビューでもターゲットの未来の軌道計算を止めないため navTargetReader を立てている個体。
   private readerEntity: DynamicEntity | null = null;
 
-  constructor(private readonly _hud: Notifier, private readonly markerManager: MarkerManager) {}
+  constructor(private readonly _notifier: Notifier, private readonly markerManager: MarkerManager) {}
 
   // 現在のターゲットの id。未設定なら null。
   get id(): string | null {
@@ -109,17 +109,17 @@ export class NavTarget {
   toggleTarget(id: string, name: string): void {
     if (this.targetId === id) {
       this.setInternal(null, null);
-      this._hud.hint('ターゲット解除');
+      this._notifier.hint('ターゲット解除');
     } else {
       this.setInternal(id, name);
-      this._hud.hint(`ターゲット: ${name}`);
+      this._notifier.hint(`ターゲット: ${name}`);
     }
   }
 
   // Tキーなど、絶対値で敵・自艦・基地をターゲットに設定/解除する経路用。
   setCombatTarget(entity: CombatTarget | null): void {
     this.setInternal(entity?.id ?? null, entity?.name ?? null);
-    this._hud.hint(entity ? `ターゲット固定: ${entity.name}` : 'ターゲット固定解除');
+    this._notifier.hint(entity ? `ターゲット固定: ${entity.name}` : 'ターゲット固定解除');
   }
 
   // 対象消滅を伴わない一括解除(操作対象の切替など)。ヒントは出さない。

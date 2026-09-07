@@ -2,12 +2,12 @@
 // 解決する代わりに、いま効きうる天体だけを成員として保持する。成員は解決するついでに抜ける
 // 条件を見る。成員でない候補は「最短でもこの時刻までは効き得ない」期限を持ち、その時刻が
 // 来たときだけ解決して入る条件を見る。
-import { CelestialMotion } from '../../physics/celestial-motion';
-import type { CelestialBodyDef } from '../../physics/celestial-body-def';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { len, sub } from '../../math/vec3';
 import { gravityReachOf } from './attractors';
 import { ARC_MIN_STEP_DT } from './time-step';
+import type { CelestialBodyDef } from '../../physics/celestial-body-def';
 
 // 一覧の外にある天体が「いつまで効き得ないか」を見積もるときの、相対速さの安全率と下限 [m/s]。
 // 見積りは保守的でありさえすればよく、精密である必要はない — 外れても訪問が1回増えるだけで、
@@ -23,20 +23,20 @@ const ARC_BODY_LEAD_STEPS = 4;
 // 弧が天体を引く相手。候補の顔ぶれは弧を作った時点で確定する。
 export type FutureCelestialBodyProvider = {
   // 積分が引きうる天体の運動(宣言順)。mu が 0 の天体は重力源にならない。
-  readonly celestialMotions: readonly CelestialMotion[];
+  readonly celestialMotions: readonly CelestialBody[];
 };
 
 // 弧の1歩が読む天体一式。gravity は引力を持つ天体、collision は表面到達の相手、
 // pivot はこの一式を解決した(= 天体の位置を厳密に引いた)時刻。
 export type ArcCelestialBodyWindow = {
   readonly pivot: number;
-  readonly gravity: readonly CelestialMotion[];
-  readonly collision: readonly CelestialMotion[];
+  readonly gravity: readonly CelestialBody[];
+  readonly collision: readonly CelestialBody[];
 };
 
 // 候補1体ぶんの成員判定の状態。
 type Watch = {
-  readonly motion: CelestialMotion;
+  readonly motion: CelestialBody;
   readonly candidate: Pick<CelestialBodyDef, 'id' | 'mu' | 'radius'>;
   // 引力の寄与を無視できると言い切れる距離 [m]。
   readonly gravityReach: number;
@@ -48,7 +48,7 @@ type Watch = {
 
 // 候補の状態が「効き始める」までの猶予 [s]。重力(寄与が無視できなくなる距離まで)と表面到達
 // (半径まで)のうち早いほうを、保守的に見積もった接近速度で割る。
-function slackTime(w: Watch, body: CelestialMotion, pivot: number, from: KinematicState): number {
+function slackTime(w: Watch, body: CelestialBody, pivot: number, from: KinematicState): number {
   const state = body.stateAt(pivot);
   const dist = len(sub(state.r, from.r));
   // 原点補正項は問い合わせ位置に依らず天体の原点距離だけで決まるので、近いほうの距離で見る。
@@ -102,8 +102,8 @@ export class ArcCelestialBodies {
   resolve(t: number, from: KinematicState, stepDt: number): ArcCelestialBodyWindow {
     // 次の歩で表面へ届きうる天体が一覧の外に残らないよう、刻み幅の数歩ぶん先まで入れておく。
     const lead = Math.max(stepDt, ARC_MIN_STEP_DT) * ARC_BODY_LEAD_STEPS;
-    const gravity: CelestialMotion[] = [];
-    const collision: CelestialMotion[] = [];
+    const gravity: CelestialBody[] = [];
+    const collision: CelestialBody[] = [];
     this.lastResolved = 0;
     this.lastRevisited = 0;
     for (const w of this.watches) {

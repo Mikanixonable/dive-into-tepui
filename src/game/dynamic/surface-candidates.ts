@@ -8,9 +8,9 @@
 //     組み直さずにそのまま使える。
 //  2. narrow — 参加者の顔ぶれで決まる。区間を共有する多数を同じ窓で解くときだけ得になる
 //     (参加者が1つなら into と同じ判定を二度やることになる)。
-import type { CelestialBody } from '../../physics/celestial-body';
 import { KinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, distSq, len, scale, sub, v3 } from '../../math/vec3';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 // 区間の始点位置と、そこから表面が区間内に届きうる距離。
 type BodyReach = {
