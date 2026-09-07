@@ -24,7 +24,7 @@ import type { TdbJulianDate } from '../../physics/time';
 import { SphereEntity } from '../celestial/celestial-entity/sphere-entity';
 import { StarEntity } from '../celestial/celestial-entity/star-entity';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../render/pipeline/sun-light';
-import { MAG_ROUNDS } from '../player/fire-control';
+import { MAG_ROUNDS } from '../player/ammo-spec';
 import type { CelestialBody } from '../../physics/celestial-body';
 
 const STAR_ID = 'aeolus';

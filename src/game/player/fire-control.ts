@@ -11,6 +11,7 @@ import { add, addScaled, dot, lenSq, norm, randPerp, randVec, scale, v3, Vec3 } 
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { Notifier } from '../../hud/notifier';
+import { MAG_ROUNDS } from './ammo-spec';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { Ship, PLAYER_MASS } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
@@ -35,7 +36,6 @@ const GUN_BARREL_HEAT_PER_ROUND = 1.0e6;
 
 const BARREL_MASS = 300; // [kg]
 
-export const MAG_ROUNDS = 32; // 1 マガジンの装弾数
 export const INITIAL_MAGS = 3; // ゲーム開始時に連結されているマガジン数
 const SPINUP_TIME = 0.15; // 発射開始から実際に撃ち始めるまでの起動遅延 [s]
 const BULLET_SPREAD = 0.002; // 散布界 [rad]
