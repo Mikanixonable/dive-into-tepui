@@ -15,7 +15,7 @@ import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { MapVisibility } from '../../map/visibility-policy';
 import type { OrbitReference } from '../../orbit-reference';
 import type { Stage } from '../../stages/stage';
-import type { DynamicSystem } from '../dynamic-system';
+import type { EntityRegistry } from '../dynamic-system';
 import type { CombatTarget } from './combat-target';
 import type { DynamicEntity } from './dynamic-entity';
 
@@ -43,10 +43,10 @@ export interface Controllable extends CombatTarget {
   consumeFuel(amount: number): number;
 
   // 毎フレーム1度だけ呼ぶ。input が null なら、このフレーム操作されない個体として指令を畳む。
-  // dynamicSystem / activeStage / celestialSystem は射撃と補給の判定に要る — 使わない種別は無視する。
+  // registry / activeStage / celestialSystem は射撃と補給の判定に要る — 使わない種別は無視する。
   updateControls(
     input: Input | null, dt: number, simDt: number,
-    dynamicSystem: DynamicSystem, activeStage: Stage, celestialSystem: CelestialSystem,
+    registry: EntityRegistry, activeStage: Stage, celestialSystem: CelestialSystem,
   ): void;
 
   // 次のフレームへ持ち越してはならない連続指令(推力・トルク・射撃)を畳む。
