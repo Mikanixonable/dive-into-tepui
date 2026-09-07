@@ -28,7 +28,7 @@ import { LineStyle } from '../../../render/line-style';
 import { FrameAnchorSource, ReferenceFrame } from '../../../physics/frame';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { CapKind, DynamicEntityKind } from './entity-kind';
-import type { InstancedPools } from './instanced-pools';
+import type { InstancedPools } from '../instanced-pools';
 import { PredictedArc, trajectorySampleInterval } from '../predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from '../time-step';
 import type { FutureCelestialBodyProvider } from '../arc-celestial-bodies';
