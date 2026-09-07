@@ -462,18 +462,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     const controlItem: MenuItem<MenuAction> = commands.controlledBase === this
       ? { label: '操作対象を解除', act: 'deactivate' }
       : { label: '操作対象にする', act: 'activate' };
-    const dockItems: readonly MenuItem<MenuAction>[] =
-      commands.dockState(this) === 'dockable' ? [MenuCommon.dock()] : [];
 
     return [
       { type: 'header', label: this.name, subLabel },
       ...MenuCommon.targetItems(commands, this.id, simTime),
       controlItem,
-      ...dockItems,
-      {
-        label: commands.isBasePanelExpanded(this) ? '基地パネルを収納' : '基地パネルを展開',
-        act: 'toggleBasePanel', keepOpen: true,
-      },
       MenuCommon.focus(),
       MenuCommon.trajectoryLine(this.showTrajectoryLine),
       ...MenuCommon.duplicateItems(commands),
@@ -490,10 +483,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       if (commands.controlledBase === this) commands.setControlledBase(null);
     } else if (act === 'toggleTrajectoryLine') {
       this.showTrajectoryLine = !this.showTrajectoryLine;
-    } else if (act === 'toggleBasePanel') {
-      commands.toggleBasePanel(this);
-    } else if (act === 'dock') {
-      commands.dock(this);
     } else if (act === 'delete') {
       commands.removeBase(this);
     } else if (act === 'duplicate') {
@@ -526,11 +515,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   public readonly rename = (name: string): void => { this.name = name; };
 
-  // 単クリックは選択までに留め、基地パネルは展開しない。
-  public readonly onMapSelect = (commands: ObjectCommands): void => {
-    commands.selectBase(this);
-    commands.hint(`${this.name} を選択`);
-  };
+  public readonly onMapSelect = null;
 
   // 注視されても操作対象にはならない。
   public readonly onMapFocus = null;
