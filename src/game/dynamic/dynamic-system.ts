@@ -12,7 +12,7 @@ import { isPlayer, Player } from '../player/player';
 import { restorationFor } from './dynamic-entity/entity-dictionary';
 import { InstancedPools } from './instanced-pools';
 import { Simulator } from './simulator';
-import type { NanWatchdog } from './nan-watchdog';
+import { NanWatchdog } from './nan-watchdog';
 import { FrameSections, SECTION } from '../frame-sections';
 import type { Stage } from '../stages/stage';
 import type { Input } from '../../input/input';
@@ -55,6 +55,9 @@ export class DynamicSystem implements EntityRegistry {
   // 顔ぶれを1フレームずつ進める積分機構。simTime の正本はここが持つ。
   private readonly simulator: Simulator;
 
+  // 個体の状態が非有限値に汚染された瞬間を捕まえる見張り。下の各境界で検査する。
+  private readonly nanWatchdog: NanWatchdog;
+
   // 描画資源のプールを組んでから、saved があればその顔ぶれを復元する。
   constructor(
     scene: THREE.Scene,
@@ -69,6 +72,7 @@ export class DynamicSystem implements EntityRegistry {
   ) {
     this.instancedPools = new InstancedPools(scene);
     this.simulator = new Simulator(this, celestialSystem, sections, initialSimTime);
+    this.nanWatchdog = new NanWatchdog(hud);
     if (saved) this.restoreFromSave(saved, hud, worldSfx, flash, scene, markerManager);
   }
 
@@ -80,16 +84,6 @@ export class DynamicSystem implements EntityRegistry {
   pause(): void {
     this.simulator.lastSimDt = 0;
     for (const controllable of this.controllables) controllable.clearTransientCommands();
-  }
-
-  // 生存する全個体を simDt だけ進め、その間の接触を解く。
-  advance(
-    dt: number, simDt: number, controlled: Controllable | null, activeStage: Stage,
-    canEngage: boolean, nanWatchdog: NanWatchdog,
-  ): void {
-    this.sections.enter(SECTION.integrate);
-    this.simulator.advance(dt, simDt, controlled, activeStage, canEngage, nanWatchdog);
-    this.sections.exit(SECTION.integrate);
   }
 
   // スナップショットの顔ぶれを復元する。組み立て方は種別ごとの辞書が答え、知らない種別は
@@ -241,15 +235,29 @@ export class DynamicSystem implements EntityRegistry {
     for (const e of this.all()) e.requestHistoryDuration(sec);
   }
 
-  // 顔ぶれを1フレーム進める。個体が自分で決める推力を先に確定させてから、操作されうる個体と
-  // 敵へ指令を決めさせる — 推力は自分の状態だけで決まるので、操作の可否に依らず先に済ませられる。
+  // 顔ぶれを1フレーム進める。個体が自分で決める推力を先に確定させ、操作されうる個体と敵へ
+  // 指令を決めさせてから積分する — 推力は自分の状態だけで決まるので、操作の可否に依らず先に
+  // 済ませられる。
+  //
+  // 各段の境界で自機を検査する。どの境界で落ちたかが、汚染したのがどの段かを一意に決める
+  // (「入口」で落ちれば、このフレームで先に走った呼び出し側の処理が汚染源)。
   update(
     active: Controllable | null, input: Input, operable: boolean,
-    dt: number, simDt: number, simTime: number, activeStage: Stage,
+    dt: number, simDt: number, canEngage: boolean, activeStage: Stage,
   ): void {
+    this.nanWatchdog.checkControlled('update(入口)', active, this.simTime, dt, this.lastSimDt);
+    this.sections.enter(SECTION.command);
     this.updateThrusts(simDt);
     this.updateControllables(active, input, operable, dt, simDt, activeStage);
-    this.behaveAll(active, operable, simTime);
+    this.behaveAll(active, operable, this.simTime);
+    this.sections.exit(SECTION.command);
+    this.nanWatchdog.checkControlled('update(指令決定)', active, this.simTime, dt, this.lastSimDt);
+
+    this.sections.enter(SECTION.integrate);
+    this.simulator.advance(dt, simDt, active, activeStage, canEngage, this.nanWatchdog);
+    this.sections.exit(SECTION.integrate);
+    // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全個体を見る。
+    this.nanWatchdog.checkAll('update(積分)', active, this.entities, this.simTime, dt, simDt);
   }
 
   // 自分で決まる推力を持つ個体を1フレーム進める。
