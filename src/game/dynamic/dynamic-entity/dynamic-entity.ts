@@ -744,7 +744,7 @@ export class DynamicEntity {
   // 個体は交点を伏せる。フレームに1度だけ呼ぶ。
   updateEquatorNodes(inputs: EquatorNodeInputs, controlled: boolean): void {
     if (!this.showsEquatorNodes(controlled)) { this.equatorNodes?.retire(); return; }
-    (this.equatorNodes ??= new EquatorNodeMarkerPair(this, inputs.markerManager)).update(inputs);
+    (this.equatorNodes ??= new EquatorNodeMarkerPair(this, inputs.markers)).update(inputs);
   }
 
   // このフレームに求まった赤道交点マーカーを置く。天体の裏に隠れた交点を伏せるのはマップビュー

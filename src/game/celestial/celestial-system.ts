@@ -40,7 +40,7 @@ import { OrbitGuideLines } from './orbit-guide/orbit-guide-lines';
 import { ZeroVelocityLines } from './orbit-guide/zero-velocity-lines';
 import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide/orbit-guide-settings';
 import type { TdbJulianDate } from '../../physics/time';
-import type { MarkerManager } from '../marker/marker-manager';
+import type { MarkerSlots } from '../marker/marker-slots';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { PointFieldView } from './point-field-view';
@@ -397,7 +397,7 @@ export class CelestialSystem implements CelestialBodies {
     graphics: GraphicsSettingsData,
     style: RenderStyle,
     visibilityPolicy: MapVisibilityPolicy | null,
-    markerManager: MarkerManager | null,
+    markers: MarkerSlots | null,
   ): void {
     const star = this.starEntity;
     for (const body of this.entities) {
@@ -443,7 +443,7 @@ export class CelestialSystem implements CelestialBodies {
     // 地球の静止軌道リングなど、天体固有のマップ付随表示。
     for (const body of this.entities) {
       body.syncMapOverlay(
-        floatingOrigin, displayTime, cameraSystem, markerManager, this.celestialMotions,
+        floatingOrigin, displayTime, cameraSystem, markers, this.celestialMotions,
         cameraSystem.view === 'map' && geostationaryOrbitVisible);
     }
     this.orbitGuideLines.sync(style, displayTime, cameraSystem.view, floatingOrigin, cameraSystem.activeCamera);

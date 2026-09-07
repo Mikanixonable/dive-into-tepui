@@ -415,7 +415,7 @@ export class Game {
       displayTime: displayWindow.displayTime,
       celestialBodies: this._celestialSystem,
       frameAnchors: this.frameAnchors,
-      markerManager: this.markerManager,
+      markers: this.markerManager,
       paths: this.planDisplay,
     }, activeControllable);
     this.sections.exit(SECTION.plan);

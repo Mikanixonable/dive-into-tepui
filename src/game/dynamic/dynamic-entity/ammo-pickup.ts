@@ -13,7 +13,7 @@ import type { Attitude } from '../../../physics/attitude';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import type { AmmoPickupSaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/crowding';
-import type { MarkerManager } from '../../marker/marker-manager';
+import type { MarkerSlots } from '../../marker/marker-slots';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { orbitRows } from '../../pickable/orbit-rows';
 import type { ObjectPickable } from '../../pickable/object-pickable';
@@ -121,7 +121,7 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
     return this.stateAt(displayTime)?.r ?? null;
   }
 
-  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
+  public shownOnMap(markers: MarkerSlots): boolean { return markers.shows(this.markerKey); }
 
   // 自艦からの距離と回収圏内かどうか。自艦がいなければ空。
   public listDetail(

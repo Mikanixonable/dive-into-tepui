@@ -8,7 +8,7 @@ import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ProjectFn } from '../../math/projection';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { GroupedMarkerItem, GroupedMarkers } from './grouped-markers';
-import type { MarkerManager } from './marker-manager';
+import type { MarkerSlots } from './marker-slots';
 
 // これより天体が遠ければ、サブ行を記号と個数だけの1行へ畳む [m]。
 const STAGE2_DIST = 5e9;
@@ -48,7 +48,7 @@ export class CelestialSubLabels {
   private readonly entriesByBody = new Map<string, SubLabelEntry[]>();
 
   constructor(
-    private readonly markerManager: MarkerManager,
+    private readonly markers: MarkerSlots,
     private readonly celestialBodies: CelestialBodies,
   ) {}
 
@@ -78,7 +78,7 @@ export class CelestialSubLabels {
       const stage2 = len(sub(label.pos, cameraPos)) >= STAGE2_DIST;
       const subDivs = stage2 ? countLine(entries) : listedLines(entries);
       if (!label.drawable) continue;
-      this.markerManager.setPosition(
+      this.markers.setPosition(
         bodyId, label.markerClass, label.glyph, label.pos, project,
         `<span class="lbl-main">${label.markerLabel}</span>${subDivs.join('')}`,
         label.opacity, undefined, undefined, false, false, label.priority, cameraPos,
