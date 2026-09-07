@@ -62,7 +62,7 @@ export class StageDebug extends Stage {
     this.addStatusPanelWidget(spawnFuelBtn.element);
   }
 
-  // 敵の行動を進め、射撃許可を毎フレーム自ステージの敵全体へ反映する。
+  // 射撃許可を毎フレーム自ステージの敵全体へ反映し、補給を進める。
   update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;

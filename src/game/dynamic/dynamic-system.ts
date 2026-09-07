@@ -34,8 +34,7 @@ import type { OrbitReference } from '../orbit-reference';
 // 個体を実体化してよいかを答える述語。何を待つかは、待つと決めた側だけが知っていればよい。
 export type SpawnGate = () => boolean;
 
-// 個体を顔ぶれへ登録する口。生んだものを世界へ入れるだけの側は、顔ぶれの読み出しも回収も
-// 要らないので、これだけを受け取る。
+// 生んだ個体を顔ぶれへ入れる口。
 export interface EntityRegistry {
   add(entity: DynamicEntity): void;
   spawnWhenReady(gate: SpawnGate | null, build: () => DynamicEntity, onSpawned?: () => void): void;
@@ -45,8 +44,8 @@ export class DynamicSystem implements EntityRegistry {
   // 保持する全エンティティを追加順に並べた、顔ぶれの正本。枠ごとの上限はこの並びから導く。
   private readonly entities: DynamicEntity[] = [];
 
-  // 操作されうる個体。どれが操作対象かは持たない — それは呼び出し側が渡す。呼ぶたびに
-  // 数え直すので、フレームに何度も読む側は受けた配列を持ち回る。
+  // 操作されうる個体。呼ぶたびに顔ぶれから数え直すので、フレームに何度も読むなら受けた配列を
+  // 持ち回る。
   public get controllables(): readonly Controllable[] { return this.entities.filter(isControllable); }
 
   // プールで描く種別の描画資源。どの種別がどのプールへ積むかは個体自身が知っている。
@@ -113,7 +112,11 @@ export class DynamicSystem implements EntityRegistry {
 
   // 実体化に外部資源の取得が要る個体の待ち行列。生成そのものを gate が通るまで遅らせるので、
   // その間その個体は顔ぶれのどこにも現れない。
-  private readonly pendingSpawns: { readonly gate: SpawnGate; readonly build: () => DynamicEntity; readonly onSpawned?: () => void }[] = [];
+  private readonly pendingSpawns: {
+    readonly gate: SpawnGate;
+    readonly build: () => DynamicEntity;
+    readonly onSpawned?: () => void;
+  }[] = [];
 
   // 個体を1体足す。gate がまだ通らなければ、通るまで待ち行列へ回す。onSpawned は実体化した
   // 直後に1度だけ呼ぶ。待つものが無ければ gate は null。
@@ -239,8 +242,7 @@ export class DynamicSystem implements EntityRegistry {
   // 指令を決めさせてから積分する — 推力は自分の状態だけで決まるので、操作の可否に依らず先に
   // 済ませられる。
   //
-  // 各段の境界で自機を検査する。どの境界で落ちたかが、汚染したのがどの段かを一意に決める
-  // (「入口」で落ちれば、このフレームで先に走った呼び出し側の処理が汚染源)。
+  // 各段の境界で操作対象を検査する。どの境界で落ちたかが、汚染したのがどの段かを一意に決める。
   update(
     active: Controllable | null, input: Input, operable: boolean,
     dt: number, simDt: number, canEngage: boolean, activeStage: Stage,

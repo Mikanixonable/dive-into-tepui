@@ -37,8 +37,6 @@ export class NanWatchdog {
 
   constructor(private readonly _hud: Hud) { }
 
-  get hasTripped(): boolean { return this.tripped; }
-
   // 操作対象と simTime だけを見る軽い検査。update の各フェーズ境界で呼ぶ。
   // phase には「直前に何が走ったか」を渡す(そこが発生源だと分かる)。操作対象がいなければ何もしない。
   checkControlled(phase: string, controlled: Controllable | null, simTime: number, dt: number, simDt: number): void {
@@ -49,13 +47,17 @@ export class NanWatchdog {
       && finiteVec(w)
       && Number.isFinite(simTime);
     if (ok) return;
-    this.trip(phase, `controlled ${describe(controlled)} q=(${q.x},${q.y},${q.z},${q.w}) w=(${w.x},${w.y},${w.z}) simTime=${simTime}`, dt, simDt);
+    const attitude = `q=(${q.x},${q.y},${q.z},${q.w}) w=(${w.x},${w.y},${w.z})`;
+    this.trip(phase, `controlled ${describe(controlled)} ${attitude} simTime=${simTime}`, dt, simDt);
   }
 
   // 全エンティティを走査する重い検査。操作対象より先に汚染されるのは他のエンティティ
   // (薬莢・破片・弾)であることが多く、それが接触を通じて操作対象へ伝播する。
   // フレームにつき一度だけ呼ぶこと。
-  checkAll(phase: string, controlled: Controllable | null, entities: readonly DynamicEntity[], simTime: number, dt: number, simDt: number): void {
+  checkAll(
+    phase: string, controlled: Controllable | null, entities: readonly DynamicEntity[],
+    simTime: number, dt: number, simDt: number,
+  ): void {
     if (this.tripped) return;
     this.checkControlled(phase, controlled, simTime, dt, simDt);
     if (this.tripped) return;

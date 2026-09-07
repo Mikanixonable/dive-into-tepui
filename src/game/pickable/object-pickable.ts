@@ -62,7 +62,7 @@ export interface ObjectPickable {
   runMenu(act: MenuAction, commands: ObjectCommands): void;
 
   // プロパティウィンドウに出す行。simTime は天体位置を厳密に引く時刻、displayTime は
-  // 候補の位置を引き直す時刻。操作中の自艦・基地に依る行は commands から引く。
+  // 候補の位置を引き直す時刻。操作対象に依る行は commands から引く。
   propertyRows(
     commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number, displayTime: number,
   ): readonly PropertyRow[];
