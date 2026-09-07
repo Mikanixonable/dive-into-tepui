@@ -269,6 +269,8 @@ export class Game {
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this.navball.onOrbitGuideSettingsChange = (settings) => this._celestialSystem.setOrbitGuideSettings(settings);
     this._celestialSystem.setOrbitGuideSettings(this.navball.orbitGuideSettings);
+    this.navball.onGridVisibilityChange = (visibility) => this._celestialSystem.setGridVisibility(visibility);
+    this._celestialSystem.setGridVisibility(this.navball.gridVisibility);
     // 線が増えすぎたときの警告を UI へ戻す。
     this._celestialSystem.orbitGuide.setOnLineCountChange(
       (count) => this.cameraSystem.viewOptionsPanel.setOrbitGuideLineCount(count),
@@ -573,8 +575,7 @@ export class Game {
 
     this._celestialSystem.sync(
       fo, displayTime,
-      this.cameraSystem, graphics, style, this.navball.gridVisibility, visibilityPolicy,
-      this.markerManager,
+      this.cameraSystem, graphics, style, visibilityPolicy, this.markerManager,
     );
 
     // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。
