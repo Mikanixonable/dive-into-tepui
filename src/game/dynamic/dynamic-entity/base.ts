@@ -9,7 +9,6 @@ import { Attitude } from '../../../physics/attitude';
 import { qInvert, qRotate } from '../../../math/quat';
 import { add, len, sub, v3, Vec3 } from '../../../math/vec3';
 import type { Ray } from '../../../math/ray';
-import { Player } from '../../player/player';
 import { buildBaseModel } from '../../../render/base-station-model';
 import type { Hud } from '../../hud/hud';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
@@ -81,6 +80,12 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   readonly plan = new Plan();
   planExecution: PlanExecutionMode = 'off';
   fineAttitude = false;
+  // 除去の前に注視・操作対象の参照を引き継ぐ必要があるので、所有者側に回収させる。
+  public override readonly reclaimedByOwner = true;
+  // 基地は自機と操作キーの並びが違うので、選んだ時点で案内を出す。
+  get controlHint(): string {
+    return `基地「${this.name}」の操作モードに入りました (WASDQE: 噴射 / IJKLUO: 姿勢制御 / T: RCS減衰 / C: プログレード)`;
+  }
   // 基地は常に赤道交点マーカーを出すので、コンストラクタで必ず組む。
   declare equatorNodes: EquatorNodeMarkerPair;
   public baseState: BaseState = { money: 100000 };
@@ -328,17 +333,17 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // 自艦がいれば自艦からの距離。いなければ出さない。
   public listDetail(
-    _celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+    _celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
   ): string {
-    if (activePlayer === null) return '';
-    return fmtDist(len(sub(this.posAt(displayTime) ?? this.state.r, activePlayer.state.r)));
+    if (viewer === null) return '';
+    return fmtDist(len(sub(this.posAt(displayTime) ?? this.state.r, viewer.state.r)));
   }
 
   // 検索が照合する文字列。行の補助表示と同じ。
   public listSearchText(
-    celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+    celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
   ): string {
-    return this.listDetail(celestialSystem, activePlayer, displayTime);
+    return this.listDetail(celestialSystem, viewer, displayTime);
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
@@ -346,7 +351,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number,
   ): readonly MenuItem<MenuAction>[] {
     const subLabel = `基地 / 所持金: ${this.baseState.money.toLocaleString()} Cr`;
-    const controlItem: MenuItem<MenuAction> = commands.controlledBase === this
+    const controlItem: MenuItem<MenuAction> = commands.controlled === this
       ? { label: '操作対象を解除', act: 'deactivate' }
       : { label: '操作対象にする', act: 'activate' };
 
@@ -365,13 +370,16 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // menuItems が出した操作を実行する。軌道線の表示だけ自分の状態を書き換え、残りは commands を通す。
   public runMenu(act: MenuAction, commands: ObjectCommands): void {
     if (act === 'activate') {
-      commands.setControlledBase(this);
+      commands.setControlled(this);
     } else if (act === 'deactivate') {
-      if (commands.controlledBase === this) commands.setControlledBase(null);
+      if (commands.controlled === this) {
+        commands.setControlled(null);
+        commands.hint('基地の操作を解除しました');
+      }
     } else if (act === 'toggleTrajectoryLine') {
       this.showTrajectoryLine = !this.showTrajectoryLine;
     } else if (act === 'delete') {
-      commands.removeBase(this);
+      commands.removeControlled(this);
     } else if (act === 'duplicate') {
       commands.duplicate(this.mapKind, this.state);
     } else if (act === 'focus') {
@@ -386,11 +394,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public propertyRows(
     commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
   ): readonly PropertyRow[] {
-    const viewer = commands.activePlayer;
+    const viewer = commands.controlled;
     const rows: PropertyRow[] = [
       {
         key: 'operated', label: '操作対象か',
-        value: commands.controlledBase === this ? 'はい' : 'いいえ', collapsible: true,
+        value: commands.controlled === this ? 'はい' : 'いいえ', collapsible: true,
       },
       { key: 'money', label: '所持金', value: `${this.baseState.money.toLocaleString()} Cr` },
     ];

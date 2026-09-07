@@ -4,6 +4,7 @@ import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
 import type { Base } from './dynamic/dynamic-entity/base';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import { Player } from './player/player';
+import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import { Input } from '../input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
 import type { GroupedMarkerItem } from './marker/grouped-markers';
@@ -80,9 +81,9 @@ export class Targeter {
   }
 
   // 発射弾が標的面を自機側から通過した点をターゲット相対で記録し、既存の記録の寿命を進める。
-  updateBoardMarks(dt: number, player: Player | null): void {
+  updateBoardMarks(dt: number, viewer: Controllable | null): void {
     const target = this.aliveTarget;
-    if (!player || !target) {
+    if (!viewer || !target) {
       this.boardMarks.length = 0;
       return;
     }
@@ -90,7 +91,7 @@ export class Targeter {
       m.age += dt;
       return m.age < BOARD_MARK_LIFETIME;
     });
-    const n = norm(sub(target.state.r, player.state.r)); // 的の法線 = 視線方向
+    const n = norm(sub(target.state.r, viewer.state.r)); // 的の法線 = 視線方向
     if (lenSq(n) < 0.5) return;
 
     // 各弾について、前フレームと今フレームの位置が的面をどちら向きに跨いだかを見る。
@@ -112,22 +113,22 @@ export class Targeter {
   // ターゲットに紐づく表示物(的通過マーク・方位マーカー)と、全戦闘対象のマーカー集合を
   // まとめて更新する。
   sync(
-    player: Player | null, cameraSystem: CameraSystem, displayTime: number, simTime: number,
+    viewer: Controllable | null, cameraSystem: CameraSystem, displayTime: number, simTime: number,
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const project = cameraSystem.activeCameraProjection;
     this.syncBoardMarkers(project);
-    this.syncTargetDirMarkers(player, cameraSystem.view === 'map', project);
-    this.syncTargetMarkers(player, displayTime, simTime, cameraSystem, visibilityPolicy);
+    this.syncTargetDirMarkers(viewer, cameraSystem.view === 'map', project);
+    this.syncTargetMarkers(viewer, displayTime, simTime, cameraSystem, visibilityPolicy);
   }
 
   // 全戦闘対象のマーカー集合(ターゲットの役割を含む)と LEAD マーカーを同期する。位置は
   // 機体メッシュと同じ stateAt — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
   private syncTargetMarkers(
-    player: Player | null, displayTime: number, simTime: number, cameraSystem: CameraSystem,
+    viewer: Controllable | null, displayTime: number, simTime: number, cameraSystem: CameraSystem,
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    // マーカーは操作艦自身も他の船と同列に扱うので、ターゲット選定用(自分自身は除外)とは
+    // マーカーは操作対象自身も他の船と同列に扱うので、ターゲット選定用(自分自身は除外)とは
     // 別に、除外なしの一覧を使う。
     const targets = this.entities.getCombatTargets(null);
     const ammoPickups = this.entities.ammoPickups;
@@ -137,7 +138,7 @@ export class Targeter {
     const mapView = view === 'map';
     const project = cameraSystem.activeCameraProjection;
     const screenScale = cameraSystem.activeCameraScale;
-    const viewerPos = player?.state.r ?? v3();
+    const viewerPos = viewer?.state.r ?? v3();
     this.aliveScratch.length = 0;
     this.markerItemScratch.length = 0;
     for (const tgt of targets) {
@@ -145,13 +146,13 @@ export class Targeter {
       this.aliveScratch.push(tgt);
       const ds = tgt.stateAt(displayTime);
       if (!ds) continue;
-      const visibility = visibilityPolicy?.entity(tgt.mapKind, tgt === player);
+      const visibility = visibilityPolicy?.entity(tgt.mapKind, tgt === viewer);
       if (visibility && !visibility.pickable) continue;
       // 戦闘ビューのカメラ直下にいる操作艦は、マーカーを重ねると視界を潰す。
-      if (!mapView && tgt === player) continue;
+      if (!mapView && tgt === viewer) continue;
       const role: MarkerRole = tgt === this.aliveTarget ? 'primary' : 'none';
       const item = tgt instanceof Player
-        ? tgt.markerItem(role, viewerPos, ds.r, ds.v, view, tgt === player)
+        ? tgt.markerItem(role, viewerPos, ds.r, ds.v, view, tgt === viewer)
         : tgt.markerItem(role, viewerPos, ds.r, ds.v, view);
       const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, ds.r, celestialBodies, displayTime);
       const mapOpacity = mapOccluded
@@ -189,8 +190,9 @@ export class Targeter {
       this.markerItemScratch, project, view, screenScale, celestialLabels, celestialBodies,
       cameraSystem.activeCameraPos,
     );
-    if (player) {
-      this.markerManager.leadMarkers.sync(player, this.aliveScratch, this.aliveTarget, simTime, view, project);
+    // 見越し点は弾速から解くので、砲を積んでいる艦を操作している間だけ出る。
+    if (viewer instanceof Player) {
+      this.markerManager.leadMarkers.sync(viewer, this.aliveScratch, this.aliveTarget, simTime, view, project);
     }
   }
 
@@ -241,15 +243,15 @@ export class Targeter {
   }
 
   // ターゲットとその反対方向を指す方向マーカーを、自機位置を原点に置く。マップビューでは伏せる。
-  private syncTargetDirMarkers(player: Player | null, mapView: boolean, project: ProjectFn): void {
+  private syncTargetDirMarkers(viewer: Controllable | null, mapView: boolean, project: ProjectFn): void {
     const tgt = this.aliveTarget;
-    if (mapView || !tgt || !player) {
+    if (mapView || !tgt || !viewer) {
       this.markerManager.hide('tgtdir');
       this.markerManager.hide('atgdir');
       return;
     }
-    const tgtDir = norm(sub(tgt.state.r, player.state.r));
-    this.markerManager.setDirection('tgtdir', 'mk-tgtdir', DIRECTION_GLYPH.target, player.state.r, tgtDir, project);
-    this.markerManager.setDirection('atgdir', 'mk-tgtdir', DIRECTION_GLYPH.antiTarget, player.state.r, scale(tgtDir, -1), project);
+    const tgtDir = norm(sub(tgt.state.r, viewer.state.r));
+    this.markerManager.setDirection('tgtdir', 'mk-tgtdir', DIRECTION_GLYPH.target, viewer.state.r, tgtDir, project);
+    this.markerManager.setDirection('atgdir', 'mk-tgtdir', DIRECTION_GLYPH.antiTarget, viewer.state.r, scale(tgtDir, -1), project);
   }
 }

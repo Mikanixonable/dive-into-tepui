@@ -17,7 +17,7 @@
 //
 // 一度検出したら以後は何もしない(ログの洪水と、汚染後の無意味な検査を避ける)。
 import { Hud } from '../hud/hud';
-import { Player } from '../player/player';
+import type { Controllable } from './dynamic-entity/controllable';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import { DynamicSystem } from './dynamic-system';
 import { Vec3 } from '../../math/vec3';
@@ -40,25 +40,25 @@ export class NanWatchdog {
 
   get hasTripped(): boolean { return this.tripped; }
 
-  // 自機と simTime だけを見る軽い検査。update の各フェーズ境界で呼ぶ。
-  // phase には「直前に何が走ったか」を渡す(そこが発生源だと分かる)。艦がいなければ何もしない。
-  checkPlayer(phase: string, player: Player | null, simTime: number, dt: number, simDt: number): void {
-    if (this.tripped || !player) return;
-    const { q, w } = player.att;
-    const ok = finiteVec(player.state.r) && finiteVec(player.state.v)
+  // 操作対象と simTime だけを見る軽い検査。update の各フェーズ境界で呼ぶ。
+  // phase には「直前に何が走ったか」を渡す(そこが発生源だと分かる)。操作対象がいなければ何もしない。
+  checkControlled(phase: string, controlled: Controllable | null, simTime: number, dt: number, simDt: number): void {
+    if (this.tripped || !controlled) return;
+    const { q, w } = controlled.att;
+    const ok = finiteVec(controlled.state.r) && finiteVec(controlled.state.v)
       && Number.isFinite(q.x) && Number.isFinite(q.y) && Number.isFinite(q.z) && Number.isFinite(q.w)
       && finiteVec(w)
       && Number.isFinite(simTime);
     if (ok) return;
-    this.trip(phase, `player ${describe(player)} q=(${q.x},${q.y},${q.z},${q.w}) w=(${w.x},${w.y},${w.z}) simTime=${simTime}`, dt, simDt);
+    this.trip(phase, `controlled ${describe(controlled)} q=(${q.x},${q.y},${q.z},${q.w}) w=(${w.x},${w.y},${w.z}) simTime=${simTime}`, dt, simDt);
   }
 
-  // 全エンティティを走査する重い検査。自機より先に汚染されるのは他のエンティティ
-  // (薬莢・破片・弾)であることが多く、それが接触を通じて自機へ伝播する。
+  // 全エンティティを走査する重い検査。操作対象より先に汚染されるのは他のエンティティ
+  // (薬莢・破片・弾)であることが多く、それが接触を通じて操作対象へ伝播する。
   // フレームにつき一度だけ呼ぶこと。
-  checkAll(phase: string, player: Player | null, entities: DynamicSystem, simTime: number, dt: number, simDt: number): void {
+  checkAll(phase: string, controlled: Controllable | null, entities: DynamicSystem, simTime: number, dt: number, simDt: number): void {
     if (this.tripped) return;
-    this.checkPlayer(phase, player, simTime, dt, simDt);
+    this.checkControlled(phase, controlled, simTime, dt, simDt);
     if (this.tripped) return;
     for (const e of entities.all()) {
       if (finiteVec(e.state.r) && finiteVec(e.state.v)) continue;
