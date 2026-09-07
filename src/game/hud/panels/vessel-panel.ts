@@ -4,11 +4,13 @@
 // キー押下と同じ経路(Input.tapKey)で発火するボタンとしてここに持つ — タッチでも到達できるよう
 // にするための、キー入力の代替 UI。
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
+import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
+import type { Stage } from '../../stages/stage';
+import type { CameraSystem } from '../../camera/camera-system';
 import { Button, SegmentedControl } from '../../../hud/widgets';
 import { fmtAmmoStatus } from '../ammo-status';
 import { setElementText } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
-import type { Game } from '../../game';
 import type { Input } from '../../../input/input';
 import type { KeyBinding } from '../../../input/key-mapping';
 import type { RadiatorSide, RadiatorSystem } from '../../player/radiator';
@@ -177,9 +179,10 @@ export class VesselPanel {
   }
 
   // 操作対象の状態を VESSEL パネルへ反映する。操作対象が無ければパネルごと隠す。
-  public sync(game: Game): void {
-    const target = game.activeControllable;
-    this.power = target?.power ?? null;
+  public sync(
+    target: Controllable | null, activeStage: Stage, cameraSystem: CameraSystem, isMapView: boolean,
+  ): void {
+        this.power = target?.power ?? null;
     this.radiator = target?.radiator ?? null;
     if (!target) {
       this.els.get('hud-vessel-status')?.classList.add('hidden');
@@ -188,7 +191,7 @@ export class VesselPanel {
     // 通常のマップビューでは艦固有の情報をプロパティウィンドウで参照するので畳む。
     // クリエイティブでは配置後の艦を常に操作できるため、マップビューでも VESSEL を表示する。
     // CSS 側でも同じ条件を持つが、未配置状態からの復帰時は JS で明示的に戻す。
-    if (!game.viewManager.isMapView || game.activeStage.id === 'creative') {
+    if (!isMapView || activeStage.id === 'creative') {
       this.els.get('hud-vessel-status')?.classList.remove('hidden');
     }
 
@@ -226,7 +229,7 @@ export class VesselPanel {
 
     // 微調整・視点追従・進行方向ホールドの状態語。
     this.syncState('fine', target.fineAttitude, 'near');
-    const cameraFollowsAttitude = game.cameraSystem.combatCamera.rotationFollow?.kind === 'attitude';
+    const cameraFollowsAttitude = cameraSystem.combatCamera.rotationFollow?.kind === 'attitude';
     this.syncState('camfollow', cameraFollowsAttitude, 'signal');
     this.followButton?.setOn(cameraFollowsAttitude);
     this.syncState('prohold', target.throttle.progradeHold, 'near');

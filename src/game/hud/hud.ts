@@ -94,15 +94,16 @@ export class Hud implements Notifier {
     const map = view === 'map';
     // 両ビュー共通のパネル。
     this.burnManagementPanel.sync(game.activeControllable?.boosters?.managementViewModel() ?? null);
-    this.topBar.sync(game);
+    this.topBar.sync(game.displayWindowManager, game.simSpeedManager, game.simTime, game.isPaused);
     this.orbitPanel.sync(game);
     // ビュー固有のパネル。
     if (map) {
-      this.mapScaleBadge.sync(game);
+      this.mapScaleBadge.sync(map, game.cameraSystem);
     } else {
-      this.vesselPanel.sync(game);
-      this.targetPanel.sync(game);
-      this.enemiesPanel.sync(game);
+      this.vesselPanel.sync(game.activeControllable, game.activeStage, game.cameraSystem, map);
+      this.targetPanel.sync(game.activeControllable, game.celestialSystem, game.targeter);
+      this.enemiesPanel.sync(
+        game.activeControllable, game.activeStage, game.dynamicSystem, game.targeter, map);
     }
     this.orbitAnalysisWindow?.sync(game);
     this.tick();
