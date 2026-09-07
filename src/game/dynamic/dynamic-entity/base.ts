@@ -1,4 +1,4 @@
-// 軌道上の拠点。艦艇のドッキングと格納、部品と資金の保有、そこからの発艦を持つ。
+// 軌道上の拠点。自艦と同じく操作でき、資金を持つ。
 import * as THREE from 'three/webgpu';
 import type { View } from '../../view/view';
 import { DynamicEntity } from './dynamic-entity';
@@ -9,13 +9,10 @@ import { Attitude } from '../../../physics/attitude';
 import { qInvert, qRotate } from '../../../math/quat';
 import { add, len, sub, v3, Vec3 } from '../../../math/vec3';
 import type { Ray } from '../../../math/ray';
-import type { AnyPart, Part } from './parts';
-import { partFromSaveData } from './parts';
 import { Player } from '../../player/player';
 import { buildBaseModel } from '../../../render/base-station-model';
 import type { Hud } from '../../hud/hud';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
-import type { EffectsSystem } from '../../vfx/effects-system';
 import type { MarkerManager } from '../../marker/marker-manager';
 import { EquatorNodeMarkerPair } from '../../marker/equator-node-marker-pair';
 import type { BaseSaveData } from '../../save/save-data';
@@ -52,7 +49,6 @@ import type { PropertyRow } from '../../../hud/windows/property-window';
 import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../../hud/object-groups';
 
-export const BASE_MAX_VESSELS = 4; // 基地が保有・格納できる艦艇の最大数
 const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
 const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）
 const BASE_FUEL_RATE = 0.5;     // 基地の燃料消費レート
@@ -61,39 +57,8 @@ const BASE_INERTIA_X = 1e8;     // 基地の慣性モーメント（ほぼ対称
 const BASE_INERTIA_Y = 1e8;
 const BASE_INERTIA_Z = 1.2e8;   // 長軸方向はやや大きい
 
-// 基地のドッキングハッチのローカル位置および外向き法線ベクトル (中腹ドッキングパレット上部, 3倍スケール対応)
-const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 21.0, 0);
-const BASE_HATCH_LOCAL_NORMAL: Vec3 = v3(0, 1, 0);
-
-interface BaseDockSlot {
-  readonly id: number;
-  readonly localPos: Vec3;
-  readonly localNormal: Vec3;
-}
-
-const BASE_DOCK_SLOTS: readonly BaseDockSlot[] = [
-  { id: 0, localPos: v3(-16.5, 21.0, -16.5), localNormal: v3(0, 1, 0) },
-  { id: 1, localPos: v3( 16.5, 21.0, -16.5), localNormal: v3(0, 1, 0) },
-  { id: 2, localPos: v3(-16.5, 21.0,  16.5), localNormal: v3(0, 1, 0) },
-  { id: 3, localPos: v3( 16.5, 21.0,  16.5), localNormal: v3(0, 1, 0) },
-];
-
-// 収容中の艦のエントリ。parts は player.parts と同一参照(修理は艦へ直接反映される)。
-// hp/maxHp は艦一覧タブ表示用の集計値で、修理のたびに書き戻す。
-export interface DockedVesselEntry {
-  readonly id: string;
-  readonly name: string;
-  hp: number;
-  maxHp: number;
-  readonly parts: Part[];
-  readonly player: Player;
-  slotIndex: number;
-}
-
 interface BaseState {
   money: number;
-  inventory: AnyPart[];
-  dockedVessels: DockedVesselEntry[];
 }
 
 const idAllocator = new EntityIdAllocator('base-');
@@ -114,11 +79,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   fineAttitude = false;
   // 基地は常に赤道交点マーカーを出すので、コンストラクタで必ず組む。
   declare equatorNodes: EquatorNodeMarkerPair;
-  public baseState: BaseState = {
-    money: 100000,
-    inventory: [],
-    dockedVessels: []
-  };
+  public baseState: BaseState = { money: 100000 };
 
   // --- Controllable 実装 ---
   readonly throttle: PlayerThrottle;
@@ -170,14 +131,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // 基地は接触で押されない。mass は推力加速度の分母を兼ねるので、そちらとは別に持つ。
   override get contactMass(): number { return Infinity; }
 
-  // hud/worldSfx/fx/markerManager は格納艦(Player)の組み立てに要る。格納艦は entities.players へ
-  // 入らない — それが「格納中」の定義であり、艦自身の状態としては何も倒さない。
   constructor(
     init: BaseInit,
     scene: THREE.Scene,
     hud: Hud,
     worldSfx: WorldSfx,
-    fx: EffectsSystem,
     private readonly markerManager: MarkerManager,
   ) {
     const { state, name, att, id } = 'saved' in init
@@ -216,82 +174,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     if ('saved' in init) {
       this.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;
       this.baseState.money = init.saved.money;
-      this.baseState.inventory = (init.saved.inventory ?? []).map(partFromSaveData);
-      const savedVessels = init.saved.dockedVessels ?? init.saved.dockedShips ?? [];
-      this.baseState.dockedVessels = savedVessels.map((shipData, idx) => {
-        const player = new Player(hud, worldSfx, scene, fx, markerManager, { saved: shipData, simTime: init.simTime });
-        const slotIndex = idx < BASE_MAX_VESSELS ? idx : 0;
-        this.attachDockedVesselMesh(player, slotIndex);
-        return {
-          id: player.id,
-          name: player.name,
-          hp: player.hp,
-          maxHp: player.maxHp,
-          parts: player.parts,
-          player,
-          slotIndex,
-        };
-      });
     }
-  }
-
-  // 基地のドッキングハッチのワールド座標を取得する
-  getHatchWorldPos(): Vec3 {
-    return add(this.state.r, qRotate(this.att.q, BASE_HATCH_LOCAL_POS));
-  }
-
-  // 基地のドッキングハッチのワールド正面法線ベクトルを取得する
-  getHatchWorldNormal(): Vec3 {
-    return qRotate(this.att.q, BASE_HATCH_LOCAL_NORMAL);
-  }
-
-  // 指定スロットのワールド位置を取得する
-  getSlotWorldPos(slotIndex: number): Vec3 {
-    const slot = BASE_DOCK_SLOTS[slotIndex] ?? BASE_DOCK_SLOTS[0]!;
-    return add(this.state.r, qRotate(this.att.q, slot.localPos));
-  }
-
-  // 指定スロットの外向き法線ベクトルを取得する
-  getSlotWorldNormal(slotIndex: number): Vec3 {
-    const slot = BASE_DOCK_SLOTS[slotIndex] ?? BASE_DOCK_SLOTS[0]!;
-    return qRotate(this.att.q, slot.localNormal);
-  }
-
-  // 利用可能な空きスロット番号(0..3)を返す。満杯なら null。
-  getAvailableSlotIndex(): number | null {
-    const occupied = new Set(this.baseState.dockedVessels.map((s) => s.slotIndex));
-    for (let i = 0; i < BASE_MAX_VESSELS; i++) {
-      if (!occupied.has(i)) return i;
-    }
-    return null;
-  }
-
-  // 格納艦の 3D メッシュを基地ドックスロットへアタッチ表示する
-  attachDockedVesselMesh(ship: Player, slotIndex: number): void {
-    const slot = BASE_DOCK_SLOTS[slotIndex] ?? BASE_DOCK_SLOTS[0]!;
-    const shipObj = ship.renderObject;
-    shipObj.visible = true;
-    shipObj.position.set(slot.localPos.x, slot.localPos.y, slot.localPos.z);
-
-    const dir = new THREE.Vector3(slot.localNormal.x, slot.localNormal.y, slot.localNormal.z);
-    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
-    shipObj.quaternion.copy(q);
-
-    if (shipObj.parent !== this.renderObject) {
-      this.renderObject.add(shipObj);
-    }
-  }
-
-  // 発進時、格納艦の 3D メッシュを基地ドックスロットから分離し、ワールド Scene へ復帰させる
-  detachDockedVesselMesh(ship: Player): void {
-    const shipObj = ship.renderObject;
-    if (shipObj.parent === this.renderObject) {
-      this.renderObject.remove(shipObj);
-    }
-    if (this.scene && shipObj.parent !== this.scene) {
-      this.scene.add(shipObj);
-    }
-    shipObj.visible = true;
   }
 
   // --- 操作制御 ---
@@ -391,12 +274,8 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     }
     this.markerManager.remove(this.markerKey);
     this.markerManager.remove(`${this.markerKey}-bearing`);
-    // 格納艦は entities.players から外れているため、ここでしか回収できない。
-    for (const entry of this.baseState.dockedVessels) entry.player.dispose();
-    this.baseState.dockedVessels = [];
   }
 
-  // セーブデータへ変換する。格納艦は player.serialize() に委ねる。
   serialize(): BaseSaveData {
     return {
       id: this.id,
@@ -407,8 +286,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       w: { ...this.att.w },
       money: this.baseState.money,
       fuel: this.baseFuel,
-      inventory: this.baseState.inventory.map(p => ({ ...p })),
-      dockedVessels: this.baseState.dockedVessels.map(entry => entry.player.serialize()),
       throttle: this.throttle.serialize(),
       showTrajectoryLine: this.showTrajectoryLine,
     };
@@ -438,11 +315,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
 
-  // 自艦がいれば自艦からの距離、いなければ格納中の艦艇数。
+  // 自艦がいれば自艦からの距離。いなければ出さない。
   public listDetail(
     _celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
   ): string {
-    if (activePlayer === null) return `格納 ${this.baseState.dockedVessels.length} 艇`;
+    if (activePlayer === null) return '';
     return fmtDist(len(sub(this.posAt(displayTime) ?? this.state.r, activePlayer.state.r)));
   }
 
@@ -457,23 +334,15 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public menuItems(
     commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number,
   ): readonly MenuItem<MenuAction>[] {
-    const { money, dockedVessels } = this.baseState;
-    const subLabel = `基地 / 所持金: ${money.toLocaleString()} Cr / 格納艦艇: ${dockedVessels.length}隻`;
+    const subLabel = `基地 / 所持金: ${this.baseState.money.toLocaleString()} Cr`;
     const controlItem: MenuItem<MenuAction> = commands.controlledBase === this
       ? { label: '操作対象を解除', act: 'deactivate' }
       : { label: '操作対象にする', act: 'activate' };
-    const dockItems: readonly MenuItem<MenuAction>[] =
-      commands.dockState(this) === 'dockable' ? [MenuCommon.dock()] : [];
 
     return [
       { type: 'header', label: this.name, subLabel },
       ...MenuCommon.targetItems(commands, this.id, simTime),
       controlItem,
-      ...dockItems,
-      {
-        label: commands.isBasePanelExpanded(this) ? '基地パネルを収納' : '基地パネルを展開',
-        act: 'toggleBasePanel', keepOpen: true,
-      },
       MenuCommon.focus(),
       MenuCommon.trajectoryLine(this.showTrajectoryLine),
       ...MenuCommon.duplicateItems(commands),
@@ -490,10 +359,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       if (commands.controlledBase === this) commands.setControlledBase(null);
     } else if (act === 'toggleTrajectoryLine') {
       this.showTrajectoryLine = !this.showTrajectoryLine;
-    } else if (act === 'toggleBasePanel') {
-      commands.toggleBasePanel(this);
-    } else if (act === 'dock') {
-      commands.dock(this);
     } else if (act === 'delete') {
       commands.removeBase(this);
     } else if (act === 'duplicate') {
@@ -505,7 +370,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     }
   }
 
-  // プロパティウィンドウに出す行。所持金・格納艦艇数・自艦からの距離を主要行とし、操作対象かは
+  // プロパティウィンドウに出す行。所持金・自艦からの距離を主要行とし、操作対象かは
   // 詳細トグル、軌道要素は「軌道」グループの下に畳む。自艦がいなければ距離の行は落ちる。
   public propertyRows(
     commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
@@ -517,7 +382,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
         value: commands.controlledBase === this ? 'はい' : 'いいえ', collapsible: true,
       },
       { key: 'money', label: '所持金', value: `${this.baseState.money.toLocaleString()} Cr` },
-      { key: 'vessels', label: '格納艦艇数', value: `${this.baseState.dockedVessels.length}` },
     ];
     if (viewer) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(this.state.r, viewer.state.r))) });
     rows.push(...orbitRows(this, celestialSystem, simTime));
@@ -526,11 +390,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   public readonly rename = (name: string): void => { this.name = name; };
 
-  // 単クリックは選択までに留め、基地パネルは展開しない。
-  public readonly onMapSelect = (commands: ObjectCommands): void => {
-    commands.selectBase(this);
-    commands.hint(`${this.name} を選択`);
-  };
+  public readonly onMapSelect = null;
 
   // 注視されても操作対象にはならない。
   public readonly onMapFocus = null;
