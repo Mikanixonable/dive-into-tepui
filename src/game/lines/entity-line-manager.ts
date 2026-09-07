@@ -1,6 +1,7 @@
 // どのエンティティに、どんな見た目の軌道線・予測線・過去線を出すかを決め、出ている線の
 // 形状と変換を合わせる。
 import * as THREE from 'three/webgpu';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { View } from '../view/view';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
@@ -14,7 +15,7 @@ import { currentThemePalette } from '../../theme';
 import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { DisplayWindow } from '../display-window-manager';
-import type { CelestialSystem } from '../celestial/celestial-system';
+
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import { orbitLineBasisOf, type OrbitReference } from '../orbit-reference';
 import { COLOR_BASE } from '../marker/marker-identity';
@@ -142,7 +143,7 @@ export class EntityLineManager {
     view: View, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
     orbitRef: OrbitReference | undefined,
     fo: FloatingOrigin, camera: THREE.Camera,
-    frameAnchors: FrameAnchorSource, celestialSystem: CelestialSystem,
+    frameAnchors: FrameAnchorSource, celestialSystem: CelestialBodies,
   ): void {
     this.applyLines(active, primaryTarget, view, displayWindow, visibilityPolicy, orbitRef);
     const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;

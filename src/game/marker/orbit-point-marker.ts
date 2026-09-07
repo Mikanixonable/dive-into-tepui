@@ -2,13 +2,14 @@
 // 生成元が解いた位置と通過時刻を place 系メソッドで受け取り、マップのマーカーと右クリック
 // メニューとして公開する。呼称・字形・示す値は具象が与える。
 import { MARKER_VISIBILITY, type MapVisibility } from '../map/visibility-policy';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { Viewer } from '../dynamic/dynamic-entity/viewer';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { orbitPointLabel, type TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { fmtTime } from '../../hud/utils';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
-import type { CelestialSystem } from '../celestial/celestial-system';
+
 import type { ProjectFn } from '../../math/projection';
 import type { ControlSelection } from '../control-selection';
 import type { ObjectAuthoring } from '../stages/stage';
@@ -113,7 +114,7 @@ export abstract class OrbitPointMarker implements ObjectPickable {
 
   // プロパティウィンドウに出す行。示す値は具象が決める。
   public abstract propertyRows(
-    celestialSystem: CelestialSystem, viewer: Viewer | null, simTime: number,
+    celestialSystem: CelestialBodies, viewer: Viewer | null, simTime: number,
   ): readonly PropertyRow[];
 
   // 所属軌道の行。持ち主が分からないフレームは行を作らない。
