@@ -1,7 +1,7 @@
 import { Game } from '../game/game';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { Hud } from '../game/hud/hud';
+import type { Notifier } from '../hud/notifier';
 import { PauseMenu } from '../hud/windows';
 import { SaveBrowser } from './save-browser/save-browser';
 import { SnapshotService } from './save/snapshot-service';
@@ -10,7 +10,7 @@ import { SnapshotService } from './save/snapshot-service';
 // その回で Game が消費しなかった入力エッジだけを見る。
 export class SnapshotControls {
   constructor(
-    private readonly hud: Hud,
+    private readonly hud: Notifier,
     private readonly pauseMenu: PauseMenu,
     private readonly browser: SaveBrowser,
     private readonly service: SnapshotService,

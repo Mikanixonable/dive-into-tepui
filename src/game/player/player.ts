@@ -16,7 +16,7 @@ import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
 import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import { Hud } from '../hud/hud';
+import type { Notifier } from '../../hud/notifier';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { buildPlayerShip } from '../../render/ships';
 import { CelestialMotion } from '../../physics/celestial-motion';
@@ -135,7 +135,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   readonly plan = new Plan();
   planExecution: PlanExecutionMode = 'instant';
 
-  private readonly _hud: Hud;
+  private readonly _hud: Notifier;
   private readonly _worldSfx: WorldSfx;
   private readonly _fx: FlashEffects;
   private readonly playerScene: THREE.Scene;
@@ -148,7 +148,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // init 省略時は無作為な名前と既定軌道の新規艦になる。id を省いたときは name がそのまま
   // 艦の識別子になるので、複数隻を並べるなら name も分ける。
   constructor(
-    _hud: Hud, _worldSfx: WorldSfx, _scene: THREE.Scene, _fx: FlashEffects, markerManager: MarkerManager,
+    _hud: Notifier, _worldSfx: WorldSfx, _scene: THREE.Scene, _fx: FlashEffects, markerManager: MarkerManager,
     init: PlayerInit = {},
   ) {
     const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
