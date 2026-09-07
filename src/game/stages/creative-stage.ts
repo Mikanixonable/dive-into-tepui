@@ -83,10 +83,10 @@ export class CreativeStage extends Stage {
     const savedCreative = saved as CreativeStageSaveData | undefined;
 
     // 以後の新規配置が既存 id と衝突しないよう、復元済みの艦・補給の id を予約する。
-    for (const p of this._entities.players) this.playerIdAllocator.next(p.id);
-    for (const ammoPickup of this._entities.ammoPickups) this.ammoPickupIdAllocator.next(ammoPickup.id);
-    for (const pickup of this._entities.rcsFuelPickups) this.rcsFuelPickupIdAllocator.next(pickup.id);
-    const restoredProtein = this._entities.enemies.find((enemy) => enemy instanceof ProteinEnemy);
+    for (const p of this._dynamicSystem.players) this.playerIdAllocator.next(p.id);
+    for (const ammoPickup of this._dynamicSystem.ammoPickups) this.ammoPickupIdAllocator.next(ammoPickup.id);
+    for (const pickup of this._dynamicSystem.rcsFuelPickups) this.rcsFuelPickupIdAllocator.next(pickup.id);
+    const restoredProtein = this._dynamicSystem.enemies.find((enemy) => enemy instanceof ProteinEnemy);
     if (restoredProtein) this.proteinDisplay = restoredProtein.display;
 
     this.previewEllipseLine = new EllipseLine({ color: 0xffffff, opacity: 0.6, renderOrder: LINE_RENDER_ORDER.plan });
@@ -121,7 +121,7 @@ export class CreativeStage extends Stage {
 
   // 出ているタンパク質の敵すべてへ、選ばれた表示設定を反映する。
   private applyProteinDisplay(display: ProteinDisplaySettings): void {
-    for (const enemy of this._entities.enemies) {
+    for (const enemy of this._dynamicSystem.enemies) {
       if (enemy instanceof ProteinEnemy) enemy.setDisplay(display);
     }
   }
@@ -163,21 +163,21 @@ export class CreativeStage extends Stage {
     const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
     if (shapeDefinition === undefined) return;
     if (shapeDefinition.kind === 'drifting') {
-      this.addEnemy(generateDriftingEnemy(name, state, color, color, this._worldSfx, this._fx, this._scene), this._entities);
+      this.addEnemy(generateDriftingEnemy(name, state, color, color, this._worldSfx, this._fx, this._scene), this._dynamicSystem);
       return;
     }
     if (shapeDefinition.kind === 'protein') {
       this.spawnEnemyWhenReady(
         shapeDefinition.assetId,
         () => generateProteinEnemy(name, state, shapeDefinition.assetId, this.proteinDisplay, this._worldSfx, this._fx, this._scene),
-        this._entities,
+        this._dynamicSystem,
       );
       return;
     }
     this.addEnemy(generateApproachingEnemy(
       name, state, color, color, shapeDefinition.typeIndex, undefined,
       this._worldSfx, this._fx, this._scene,
-    ), this._entities);
+    ), this._dynamicSystem);
   }
 
   // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機前方に一括スポーンする。
@@ -194,7 +194,7 @@ export class CreativeStage extends Stage {
     const name = `FORMATION-${++this.manualFormationCount}`;
     const formationId = name;
     for (const { assetId, build } of proteinFormationSpawns(name, state, player.state.r, this.proteinDisplay, formationId, this._worldSfx, this._fx, this._scene)) {
-      this.spawnEnemyWhenReady(assetId, build, this._entities);
+      this.spawnEnemyWhenReady(assetId, build, this._dynamicSystem);
     }
   }
 
@@ -314,7 +314,7 @@ export class CreativeStage extends Stage {
 
   // フォーム値から KinematicState を組み立て、配置する。
   private placeObject(name: string, form: ObjectPlacerForm): void {
-    if (form.entityKind === 'player' && this._entities.players.length >= MAX_PLACED_SHIPS) {
+    if (form.entityKind === 'player' && this._dynamicSystem.players.length >= MAX_PLACED_SHIPS) {
       this._hud.hint(`配置数が上限(${MAX_PLACED_SHIPS}隻)に達しています`);
       return;
     }
@@ -332,23 +332,23 @@ export class CreativeStage extends Stage {
       } else if (form.entityKind === 'enemy') {
         const finalName = name.trim() || generateRandomName('enemy');
         const enemy = generateDriftingEnemy(finalName, state, '#ff6a00', '#ff6a00', this._worldSfx, this._fx, this._scene);
-        this._entities.add(enemy);
+        this._dynamicSystem.add(enemy);
         this._hud.hint(`${enemy.name} を配置`);
       } else if (form.entityKind === 'ammo') {
         const id = this.ammoPickupIdAllocator.next();
         const ammoPickup = new AmmoPickup({ state, id }, this._scene);
-        this._entities.add(ammoPickup);
+        this._dynamicSystem.add(ammoPickup);
         const finalName = name.trim() || generateRandomName('ammo');
         this._hud.hint(`${finalName} を配置`);
       } else if (form.entityKind === 'fuel') {
         const id = this.rcsFuelPickupIdAllocator.next();
         const finalName = name.trim() || generateRandomName('fuel');
-        this._entities.add(new RcsFuelPickup({ state, id, name: finalName }, this._scene));
+        this._dynamicSystem.add(new RcsFuelPickup({ state, id, name: finalName }, this._scene));
         this._hud.hint(`${finalName} を配置`);
       } else if (form.entityKind === 'base') {
         const finalName = name.trim() || generateRandomName('base');
         const base = new Base({ state, name: finalName }, this._scene, this._hud, this._worldSfx, this._markerManager);
-        this._entities.add(base);
+        this._dynamicSystem.add(base);
         this._hud.hint(`${base.name} を配置`);
       }
     } catch (error) {
@@ -429,13 +429,13 @@ export class CreativeStage extends Stage {
 
   // 補給の投入と、既に出ている敵の AI を進める。波状攻撃のトグルが決めるのは新しいウェーブが
   // 出るかどうかで、OFF にしても既に出ている敵は残る。
-  update(dt: number, _entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  update(dt: number, _dynamicSystem: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (player) {
       this.logistics.updateLogistics(simTime, player, simSpeed, true);
-      this.behaveAllEnemies(player, this._entities, simTime, simSpeed);
+      this.behaveAllEnemies(player, this._dynamicSystem, simTime, simSpeed);
       if (this.waveAttackEnabled) {
-        this.waveAttack.update(dt, player, this._entities.enemies, simTime, this, (enemy) => this.addEnemy(enemy, this._entities));
+        this.waveAttack.update(dt, player, this._dynamicSystem.enemies, simTime, this, (enemy) => this.addEnemy(enemy, this._dynamicSystem));
       }
     }
   }
@@ -444,7 +444,7 @@ export class CreativeStage extends Stage {
   // 待っているノードが1つも無ければ null。
   nextSimulationEventTime(simTime: number): number | null {
     let next: number | null = null;
-    for (const ship of this._entities.players) {
+    for (const ship of this._dynamicSystem.players) {
       const t = ship.planExecution === 'instant' ? ship.plan.firstNode()?.t : undefined;
       if (t !== undefined && t >= simTime && (next === null || t < next)) next = t;
     }
@@ -453,7 +453,7 @@ export class CreativeStage extends Stage {
 
   // ノード時刻ちょうどでノードの絶対状態へ乗り移る。
   applySimulationEvents(simTime: number): void {
-    for (const ship of this._entities.players) {
+    for (const ship of this._dynamicSystem.players) {
       if (ship.planExecution !== 'instant') continue;
       const node = ship.plan.firstNode();
       if (!node || node.t > simTime + 1e-9) continue;

@@ -37,23 +37,23 @@ export class Stage00 extends Stage {
   }
 
   // 自機・弾薬ピックアップ・初期の敵ウェーブを配置する。
-  protected init(entities: DynamicSystem): void {
+  protected init(dynamicSystem: DynamicSystem): void {
     const player = this.addPlayer();
     for (let i = 0; i < MAX_ACTIVE_AMMO_PICKUPS; i++) {
       this.logistics.spawnForPlayer(player, STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST);
     }
     // 初期状態でもランダムに敵を配置する
-    this.waveAttack.spawnWave(player, (enemy) => this.addEnemy(enemy, entities), 'random');
+    this.waveAttack.spawnWave(player, (enemy) => this.addEnemy(enemy, dynamicSystem), 'random');
   }
 
   // 敵の行動・補給・波状攻撃の更新を行う。
-  update(dt: number, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  update(dt: number, dynamicSystem: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
 
-    this.behaveAllEnemies(player, entities, simTime, simSpeed);
+    this.behaveAllEnemies(player, dynamicSystem, simTime, simSpeed);
     this.logistics.updateLogistics(simTime, player, simSpeed, true);
-    this.waveAttack.update(dt, player, entities.enemies, simTime, this, (enemy) => this.addEnemy(enemy, entities));
+    this.waveAttack.update(dt, player, dynamicSystem.enemies, simTime, this, (enemy) => this.addEnemy(enemy, dynamicSystem));
   }
 
   checkWin(): boolean { return false; }
