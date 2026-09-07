@@ -2,7 +2,8 @@
 // CelestialSystem を返す。ECI の中心(originId)は呼び出し側の選択で、同じ太陽系を別の原点で
 // 組める。数値暦を渡すと、収録された天体はその有効期間で数値暦経路を通る。
 import { EphemerisPoints } from '../../../physics/ephemeris/point';
-import { PhaseOffsets, StarMotion } from '../../../physics/celestial-motion';
+import { StarMotion } from '../../../physics/celestial-motion';
+import { PhaseOffsets } from '../../../physics/celestial-body-def';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-light';
 import { CelestialSystem } from '../celestial-system';
 import { ephemerisSeconds, TdbJulianDate } from '../../../physics/time';

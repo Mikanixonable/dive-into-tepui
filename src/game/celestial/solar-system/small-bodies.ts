@@ -1,7 +1,6 @@
 // 彗星核・小惑星・太陽系外縁天体。静的事実・運動・見た目を1体につき1箇所で組む。
-import {
-  PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero, SatelliteMotion, StarMotion,
-} from '../../../physics/celestial-motion';
+import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
+import { PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { keplerPeriod } from '../../../physics/elements';
 import { JULIAN_CENTURY, KeplerOrbit } from '../../../physics/kepler-orbit';

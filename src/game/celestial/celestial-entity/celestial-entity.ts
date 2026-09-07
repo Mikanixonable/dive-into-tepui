@@ -1,7 +1,8 @@
 // 天体1体。運動(CelestialMotion)と表示名・表示クラスを持ち、見た目(メッシュ・輝点スプライト・
 // 環など)をその運動へ同期する。位置・姿勢の正本は motion で、sync のたびにそこから引く。
 import * as THREE from 'three/webgpu';
-import { CelestialBodyDef, CelestialMotion } from '../../../physics/celestial-motion';
+import { CelestialMotion } from '../../../physics/celestial-motion';
+import { CelestialBodyDef } from '../../../physics/celestial-body-def';
 import { shapeSpheroidRadii } from '../../../physics/celestial-body-def';
 import { apsisAltitudes, OrbitalElements, orbitalElementsOf } from '../../../physics/elements';
 import { KinematicState } from '../../../physics/kinematic-state';

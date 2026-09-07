@@ -1,9 +1,8 @@
 // 土星系(土星と15個の衛星)。静的事実・運動・見た目を1体につき1箇所で組む。
 import saturnTextureUrl from '../../../assets/2k_saturn.jpg';
 import titanTextureUrl from '../../../assets/2k_titan.jpg';
-import {
-  PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero, SatelliteMotion, StarMotion,
-} from '../../../physics/celestial-motion';
+import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
+import { PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';

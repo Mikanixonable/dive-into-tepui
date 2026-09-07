@@ -4,10 +4,8 @@
 import * as THREE from 'three/webgpu';
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import {
-  CelestialMotion, OrbitingMotion, PhaseOffsets, PlanetDef, SatelliteDef, StarDef,
-  planetDefForSimZero, satelliteDefForSimZero, SatelliteMotion, StarMotion,
-} from '../../physics/celestial-motion';
+import { CelestialMotion, OrbitingMotion, SatelliteMotion, StarMotion } from '../../physics/celestial-motion';
+import { PhaseOffsets, PlanetDef, SatelliteDef, StarDef, planetDefForSimZero, satelliteDefForSimZero } from '../../physics/celestial-body-def';
 import { planetSystem } from '../../physics/planet-system';
 import { planetOrbit } from '../../physics/kepler-orbit';
 import { AU } from '../../physics/astronomical-unit';
