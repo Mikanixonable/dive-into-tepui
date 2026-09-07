@@ -132,8 +132,7 @@ export class NavTarget {
   restore(data: { id: string; name: string } | null | undefined, entities: DynamicSystem): void {
     if (!data) return;
     const wasEntityId = entities.findEnemy(data.id) !== null
-      || entities.players.some((p) => p.id === data.id)
-      || entities.bases.some((b) => b.id === data.id);
+      || entities.controllables.some((c) => c.id === data.id);
     if (wasEntityId && !entities.findAliveCombatTarget(data.id)) return;
     this.setInternal(data.id, data.name);
   }

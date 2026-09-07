@@ -96,17 +96,17 @@ export class Bullet extends DynamicEntity {
     // 消滅条件は「自機から離れすぎた」が主で、寿命は保険。敵弾が自機の至近を通過した瞬間の
     // 判定もここで行う(substep ごとの位置だけを見る、意図的に雑な最接近判定)。
     public checkLoss(
-        _dt: number, simTime: number, _activeStage: Stage, playerPos: Vec3,
+        _dt: number, simTime: number, _activeStage: Stage, viewerPos: Vec3,
         _atmosphereBodies: readonly CelestialMotion[],
     ): void {
         if (!this.alive) return;
         if (this.shooter === 'enemy' && !this.passedClose
-          && lenSq(sub(this.state.r, playerPos)) < BULLET_CLOSE_PASS_DIST * BULLET_CLOSE_PASS_DIST) {
+          && lenSq(sub(this.state.r, viewerPos)) < BULLET_CLOSE_PASS_DIST * BULLET_CLOSE_PASS_DIST) {
             this.passedClose = true;
             if (this.type === 'plasma') this._worldSfx.magneticInterference();
         }
         // 至近通過音は消滅判定より先に評価する — 同じ substep で寿命が尽きる弾でも通過音は鳴らす。
-        if (lenSq(sub(this.state.r, playerPos)) > ENGAGEMENT_RANGE * ENGAGEMENT_RANGE) { this.alive = false; return; }
+        if (lenSq(sub(this.state.r, viewerPos)) > ENGAGEMENT_RANGE * ENGAGEMENT_RANGE) { this.alive = false; return; }
         if (simTime >= this.expiresAt) this.alive = false;
     }
 
