@@ -162,12 +162,12 @@ function part0(parts: SolarSystemParts): void {
 
   // (i) Simulator が1サブステップで払うぶん: 分類 + 全天体の stateAt。
   const resolveAll = meanMicrosPerPivot((pivot) => {
-    classifyAttractors(gravity, pivot);
+    classifyAttractors(gravity, pivot, pivot, pivot);
     for (const m of motions) m.stateAt(pivot);
   }, COST_PIVOT_COUNT, 0);
   // (ii) 分類だけ(pivot 更新込み)。
   const classifyOnly = meanMicrosPerPivot((pivot) => {
-    classifyAttractors(gravity, pivot);
+    classifyAttractors(gravity, pivot, pivot, pivot);
   }, COST_PIVOT_COUNT, 1e6);
   // (iii) 恒星の位置だけ(重心相対位置の畳み込み = 全惑星系のケプラー解)。
   const sun = motionOf(parts, 'sun');
@@ -209,7 +209,7 @@ function part0(parts: SolarSystemParts): void {
 
   // (v) 文脈用: always 側の重力源で stepDynamics を1回呼ぶ費用。
   const stepPivot = 4e6;
-  const always = classifyAttractors(gravity, stepPivot).always;
+  const always = classifyAttractors(gravity, stepPivot, stepPivot, stepPivot).always;
   const leoAtZero = leoState(parts);
   const leo = kinematicState<'eci'>(stepPivot, leoAtZero.r, leoAtZero.v);
   let acc = 0;
