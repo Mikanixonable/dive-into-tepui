@@ -1,13 +1,15 @@
 // マップビューの「カメラ」「軌道フレーム」2パネルを所有し、カメラの視点と未来表示の描画基準を
 // 選ばせる。カメラのフォーカス変更への軌道フレームの追随など、2パネル間の連動もここが持つ。
 import { bodyAnchorSource } from '../../../physics/attractor';
+import type { ListedObject } from '../../pickable/listed-object';
+
 import { FRAME_ROLES, FrameRole, FrameRotationSource, frameRoleOf } from '../../../physics/frame';
 import type { FrameAnchorSource } from '../../../physics/frame';
 import { Vec3 } from '../../../math/vec3';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import { FocusCamera } from '../../camera/focus-camera';
 import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-target';
-import type { ObjectPickable } from '../../pickable/object-pickable';
+
 import type { DisplayWindowManager } from '../../display-window-manager';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { hudRail } from '../hud-root';
@@ -99,7 +101,7 @@ export class FrameControls {
 
   // 両パネルの選択肢と選択表示を、いまの天体系とカメラ位置へ合わせる。
   public sync(
-    pickables: readonly ObjectPickable[], cameraPos: Vec3,
+    pickables: readonly ListedObject[], cameraPos: Vec3,
     simTime: number, displayTime: number,
   ): void {
     this.lastTime = simTime;

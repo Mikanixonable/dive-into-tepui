@@ -2,6 +2,7 @@
 // 最新化し、被選択物が組んだメニュー項目のうちいま選べるものを絞って、選ばれた操作を実行する。
 // どのクリックがどの対象に当たったかは、ビュー側が決めて open() へ渡す。
 import { Hud } from '../hud/hud';
+import type { InspectedObject } from './inspected-object';
 import { ContextMenu, MenuAction } from '../hud/windows';
 import {
   PropertyWindow, PropertyWindowContent, PropertyWindowItem,
@@ -9,7 +10,7 @@ import {
 } from '../../hud/windows';
 import { TEMP_WINDOW_GROUP } from '../../hud/overlay-manager';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
-import { ObjectPickable } from './object-pickable';
+
 import { focusTargetId } from '../camera/focus-target';
 import { DynamicSystem } from '../dynamic/dynamic-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
@@ -32,18 +33,18 @@ import type { MenuItem } from '../hud/windows/context-menu';
 // 行・項目の再導出も消滅の判定もこの参照を経由する。
 interface WindowEntry {
   readonly win: PropertyWindow<MenuAction>;
-  readonly target: ObjectPickable;
+  readonly target: InspectedObject;
 }
 
 export class ObjectWindows {
   // 宇宙空間そのものはプロパティを持たないので、右クリックの落ち先には ContextMenu を使う。
-  private readonly menu: ContextMenu<ObjectPickable, MenuAction>;
+  private readonly menu: ContextMenu<InspectedObject, MenuAction>;
   // 開いているプロパティウィンドウ。対象の id でオブジェクト1つにつき高々1枚に保つ
   // (一時ウィンドウの排他自体は OverlayManager が持つ — ここは対象との対応づけのみ)。
   private readonly windows = new Map<string, WindowEntry>();
   private readonly partWindows: PartWindows;
   // どの被選択物にも当たらなかった右クリックの落ち先。位置を持たないので1つを使い回す。
-  private readonly emptySpace: ObjectPickable = new EmptySpacePickable();
+  private readonly emptySpace: InspectedObject = new EmptySpacePickable();
   // 直近のマップフォーカス — プロパティウィンドウのバッジ判定に使う。マップを離れている間は
   // 最後にマップ視点だった時点の値のまま据え置く。
   private lastFocusId: string | undefined = undefined;
@@ -66,7 +67,7 @@ export class ObjectWindows {
     private readonly activeStage: Stage,
     private readonly targeter: Targeter,
   ) {
-    this.menu = new ContextMenu<ObjectPickable, MenuAction>(hud.layers.popup, hud.overlayManager);
+    this.menu = new ContextMenu<InspectedObject, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => this.runAct(target, act);
     this.partWindows = new PartWindows(hud, controlSelection);
     this.hud.enemiesPanel.onSelectRight = (id, clientX, clientY) => {
@@ -82,7 +83,7 @@ export class ObjectWindows {
   // 対象1つにつきウィンドウは高々1枚: 既存があればクリック位置へ動かして最前面に出すだけで
   // 新規には開かない。一時ウィンドウ(非クリップ)どうしの排他は PropertyWindow 自身が
   // OverlayManager の TEMP_WINDOW_GROUP を通じて保つ。
-  open(clientX: number, clientY: number, target: ObjectPickable, simTime: number): void {
+  open(clientX: number, clientY: number, target: InspectedObject, simTime: number): void {
     const key = target.id;
     const existing = this.windows.get(key);
     if (existing) {
@@ -166,7 +167,7 @@ export class ObjectWindows {
 
   // itemsFor の出力をプロパティウィンドウの形へ組み替える: header 項目はタイトル/サブタイトルへ
   // 抜き出す。開いた直後から sync 時と同じ経路(windowParts)で求める。
-  private buildContent(target: ObjectPickable, simTime: number): PropertyWindowContent<MenuAction> {
+  private buildContent(target: InspectedObject, simTime: number): PropertyWindowContent<MenuAction> {
     const { title, subtitle, items } = this.windowParts(target, simTime);
     return {
       title, subtitle, icon: target.glyphSvg ?? target.glyph, rows: [], items,
@@ -181,7 +182,7 @@ export class ObjectWindows {
   // 必要があるが、呼び出しは1回にまとめる(header 項目からタイトル/サブタイトルを抜き出し、
   // 残りを操作項目とする)。
   private windowParts(
-    target: ObjectPickable, simTime: number,
+    target: InspectedObject, simTime: number,
   ): { title: string; subtitle?: string; items: PropertyWindowItem<MenuAction>[] } {
     const all = this.offeredItems(target, simTime);
     const header = all.find((it) => it.type === 'header');
@@ -201,7 +202,7 @@ export class ObjectWindows {
   // 対象が組んだ項目のうち、いま実際に選べるものだけを残す。対象によらない可否
   // (航法ターゲットにできるか・物体を配置できるか・計画を実行できるステージか)は
   // 対象ではなくこのランの状態で決まるので、対象には判定させずここで絞る。
-  private offeredItems(target: ObjectPickable, simTime: number): readonly MenuItem<MenuAction>[] {
+  private offeredItems(target: InspectedObject, simTime: number): readonly MenuItem<MenuAction>[] {
     const all = target.menuItems(
       this.celestialSystem, this.controlSelection.current, this.navTarget.id);
     return all.filter((it) => {
@@ -221,7 +222,7 @@ export class ObjectWindows {
   }
 
   // 選ばれた操作を実行する。対象によらない操作はここで済ませ、残りを対象へ渡す。
-  private runAct(target: ObjectPickable, act: MenuAction): void {
+  private runAct(target: InspectedObject, act: MenuAction): void {
     if (act === 'focus') this.focus(target.id, target.name);
     else if (act === 'target') this.navTarget.toggleTarget(target.id, target.name);
     else if (act === 'openSettings') this.pauseMenu.toggle(true);
@@ -246,7 +247,7 @@ export class ObjectWindows {
 
   // 天体プロパティーの先頭に表示する、現在その天体を周回している物体。
   // 天体は静的な primaryOf、人工物は現在状態から orbitingAttractorOf で判定する。
-  private relatedItemsFor(target: ObjectPickable, pivot: number): readonly PropertyWindowRelatedItem[] {
+  private relatedItemsFor(target: InspectedObject, pivot: number): readonly PropertyWindowRelatedItem[] {
     const controlled = this.controlSelection.current;
     // 搭載部品を持つのは艦だけなので、操作中の基地では周回物体の一覧へ落ちる。
     if (controlled instanceof Player && target === controlled) {
@@ -258,7 +259,7 @@ export class ObjectWindows {
       }));
     }
     if (!(target instanceof CelestialEntity)) return [];
-    const related: { item: ObjectPickable; label: string }[] = [];
+    const related: { item: InspectedObject; label: string }[] = [];
     for (const item of this.activeView().pickables) {
       if (item.id === target.id) continue;
       // 天体・ラグランジュ点の親は静的に決まる。人工物は現在状態から引く。
@@ -283,7 +284,7 @@ export class ObjectWindows {
     }));
   }
 
-  private relatedTitleFor(target: ObjectPickable): string {
+  private relatedTitleFor(target: InspectedObject): string {
     const controlled = this.controlSelection.current;
     return controlled instanceof Player && target === controlled ? '搭載部品' : '周回物体';
   }
@@ -300,7 +301,7 @@ export class ObjectWindows {
   }
 
   // target のプロパティウィンドウを開く。被選択物が自分の左クリック時の振る舞いから呼ぶ。
-  openProperties(target: ObjectPickable, clientX: number, clientY: number): void {
+  openProperties(target: InspectedObject, clientX: number, clientY: number): void {
     this.open(clientX, clientY, target, this.simTime);
   }
 }
