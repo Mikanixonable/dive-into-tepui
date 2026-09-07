@@ -106,35 +106,6 @@ incompatible`)になる — 同じ形を再現して確認済み。この option
 
 ## 手順
 
-### 手順1. 被選択物(`ObjectPickable`)の集約を多態化する
-
-**目的**: `ObjectPickables.refresh()` が種別ごとに読んでいる4本のループを、`DynamicEntity` 自身が
-「自分は被選択物か」を答える1つの性質へ置き換える。挙動は変えない(候補集合は変わらず、配列の
-並び順だけが「種別ごとにまとまった順」から「保持順」に変わる — 消費側はすべて `find` /
-`pickNearest` / `pickFrontmostBody` か、`physical-object-list-order.ts` による並べ替えを経由して
-おり、配列順に依存しないことをコードから確認済み)。
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/game/pickable/object-pickable.ts` | `controllable.ts` の `isControllable` に倣い、`isObjectPickable(entity: DynamicEntity): entity is DynamicEntity & ObjectPickable`(`entity.pickable` を読む)を追加する。 |
-| `src/game/dynamic/dynamic-entity/dynamic-entity.ts` | `controllable`(115行目付近)と並べて `public readonly pickable: boolean = false;` を追加する。`ObjectPickable` 型は38行目で import 済み。 |
-| `src/game/player/player.ts` | `Player`(108行目)に `public override readonly pickable = true;` を追加する。 |
-| `src/game/dynamic/dynamic-entity/enemy.ts` | `Enemy`(115行目)に同様に追加する(`MetalEnemy` / `ProteinEnemy` 両方に効く)。 |
-| `src/game/dynamic/dynamic-entity/ammo-pickup.ts` | `AmmoPickup`(42行目)に同様に追加する。 |
-| `src/game/dynamic/dynamic-entity/rcs-fuel-pickup.ts` | 該当クラスに同様に追加する。 |
-| `src/game/dynamic/dynamic-entity/base.ts` | `Base`(73行目)に同様に追加する。 |
-| `src/game/dynamic/dynamic-system.ts` | `controllables` ゲッタ(66行目)の並びに `public get objectPickables(): readonly ObjectPickable[] { return this.entities.filter(isObjectPickable); }` を追加する。`isObjectPickable` と `ObjectPickable` 型を import する。 |
-| `src/game/pickable/object-pickables.ts` | `refresh()`(96-99行目)の `enemies` / `ammoPickups` / `rcsFuelPickups` / `controllables` を読む4本の `for` を、`for (const p of this.dynamicSystem.objectPickables) append(p);` の1本へ置き換える。 |
-
-**達成条件と検証**
-
-- `npm run typecheck` が通る。
-- `npm run test:game` が通る。
-- `grep -n "dynamicSystem\.\(enemies\|ammoPickups\|rcsFuelPickups\|controllables\)" src/game/pickable/object-pickables.ts` が0件。
-- `grep -n "dynamicSystem.objectPickables" src/game/pickable/object-pickables.ts` が1件。
-
 ### 手順2. `save-data.ts` の `kind` を判別可能にする
 
 **目的**: `EntitySaveDataUnion` という判別可能な union を作れるように、`kind` フィールドの型を
@@ -234,7 +205,7 @@ incompatible`)になる — 同じ形を再現して確認済み。この option
 
 | 手順 | 対象ファイル数 | 内訳 | 目安 diff |
 | --- | --- | --- | --- |
-| 手順1 | 8 | フィールド追加7ファイル(各1〜2行)+ ループ置換1ファイル(4行→1行) | 約20行 |
+| 手順1 | 9(実測) | — | 21行(実測、8bf3caf9) |
 | 手順2 | 2 | 型追加・フィールド追加(各数行) | 約15行 |
 | 手順3 | 15 | 新規1ファイル(約60行)+ 改名/override付与9ファイル(各1〜5行)+ DynamicSystem書き直し(約40行)+ Game/stage.ts(各1〜7行)+ 削除2ファイル+ launcher側2ファイル(各5〜10行)+ `BaseSaveData` の継承化(`save-data.ts` / `base.ts` で約15行) | 約195行 |
 
