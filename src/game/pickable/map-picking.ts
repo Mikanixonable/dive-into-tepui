@@ -6,6 +6,7 @@ import { pickNearestLine } from './line-pickable';
 import type { LinePickables } from './line-pickables';
 import type { ObjectPickables } from './object-pickables';
 import type { ObjectWindows } from './object-windows';
+import { OrbitLineWindows } from './orbit-line-windows';
 import { focusTargetId } from '../camera/focus-target';
 import { PhysicalObjectListPanel } from '../hud/panels/physical-object-list-panel';
 import type { Input } from '../../input/input';
@@ -30,6 +31,8 @@ const ORBIT_LINE_PICK_PX_SQ_COARSE = 1936;
 
 export class MapPicking {
   private readonly listPanel: PhysicalObjectListPanel;
+  // 軌道線のプロパティウィンドウ。線が出るのはマップだけなので、ここが持つ。
+  private readonly orbitLineWindows: OrbitLineWindows;
 
   // 候補列と、当たった対象の落とし先(ObjectWindows)を参照として受け取る。
   constructor(
@@ -47,6 +50,11 @@ export class MapPicking {
     private readonly controlSelection: ControlSelection,
   ) {
     this.listPanel = new PhysicalObjectListPanel(hud.mapRoot, celestialSystem);
+    this.orbitLineWindows = new OrbitLineWindows(
+      hud, linePickables, pickables, (id, name) => this.focusOwner(id, name),
+      (clientX, clientY, target) => this.objectWindows.open(
+        clientX, clientY, target, this.pickables.lastSimTime),
+    );
     // 一覧の行は隠れている対象でも操作できる(SPEC/MAP.md §10) — pickable によるマップ上の
     // 衝突判定はマーカーのヒットテストにだけ適用され、一覧からの id 一致には適用しない。
     this.listPanel.onFocus = (id) => {
@@ -105,7 +113,7 @@ export class MapPicking {
         this.pickables.lastDisplayTime,
       );
       if (!orbit) return false;
-      this.objectWindows.openLine(p.x, p.y, orbit);
+      this.orbitLineWindows.open(p.x, p.y, orbit);
       return true;
     });
   }
@@ -142,6 +150,12 @@ export class MapPicking {
     });
   }
 
+  // 軌道線ウィンドウの「所属」欄から、その持ち主へ注視を移す。
+  private focusOwner(id: string, name: string): void {
+    this.frameControls.setFocus({ kind: 'object', id });
+    this.hud.hint(`${name} にフォーカス`);
+  }
+
   // マップ視点のフォーカスを対象へ移す。対象が自艦なら操作対象にもなる(SPEC/MAP.md §10)。
   // ダブルクリックと一覧パネルのフォーカス行はどちらもここを通す。id は一覧側が候補列に
   // 頼らず持っている値、target は見つかっていれば名前・種別の解決に使う。
@@ -163,11 +177,13 @@ export class MapPicking {
     this.listPanel.sync(
       this.pickables.pickables, focusTargetId(this.cameraSystem.mapCamera.focus),
       parentOf, viewer, displayTime);
+    this.orbitLineWindows.sync();
   }
 
-  // 一覧を畳む。マップビューを離れるときに呼ぶ。
+  // 一覧と軌道線のウィンドウを畳む。マップビューを離れるときに呼ぶ。
   close(): void {
     this.listPanel.setVisible(false);
+    this.orbitLineWindows.close();
   }
 
   dispose(): void {

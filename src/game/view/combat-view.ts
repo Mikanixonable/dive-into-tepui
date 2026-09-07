@@ -49,6 +49,7 @@ export class CombatView implements ViewFrame {
 
   public readonly pickables: readonly ObjectPickable[] = [];
   public readonly visibilityPolicy = null;
+  public readonly planEditor = null;
 
   public perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'> {
     return { mapMode: false, mapItems: 0, mapLabels: 0 };
