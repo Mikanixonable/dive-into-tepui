@@ -10,6 +10,7 @@ import {
 } from '../../src/game/celestial/solar-system/constants';
 import { EPS } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
+import { NEGLIGIBLE_BODY_OFFSET } from '../../src/physics/planet-system';
 import {
   JULIAN_CENTURY, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitNormal, keplerOrbitState,
 } from '../../src/physics/kepler-orbit';
@@ -105,12 +106,24 @@ export function register(): void {
 
   // 上のテストは衛星が1体の系しか見ないので、Σ の重み μ_k/μ_sys を μ_k/(μ_p+μ_k) と
   // 取り違えても値が一致してしまう。**系重心は対ごとではなく全員で1点**なので、衛星を複数
-  // 持つ系まで含めて押さえる。許容は f64 の丸め(実測の最大はエリスの 2.0e-3 m)に対して5倍。
+  // 持つ系まで含めて押さえる。
+  //
+  // 許容の導出: 惑星本体は重心補正へ全衛星を入れず、落とす変位の合計を
+  // NEGLIGIBLE_BODY_OFFSET に収めている(planet-system.ts)。このとき Σμ_i·R_i は重心から
+  // ちょうど落とした変位ぶんだけ外れるので、位置の上限はその定数そのもの。速度側は
+  // 落とした衛星の位置寄与に平均運動を掛けた量が上限で、ケプラー楕円では
+  // v_max = n·r_max/√(1−e²) ≤ 2n·r_max(e ≤ 0.87)なので、系の最大平均運動 n_max を使って
+  // 2·n_max·定数。重みの取り違えは位置で 1e3〜1e6 m ずれるので、この緩めでも判別力は落ちない。
   test('celestial-motion: 系の重心不変条件(衛星を複数持つ系でも Σμ_i·R_i = μ_sys·R_b)', () => {
     for (const planet of systemsWithSatellites(parts)) {
       const moons = planet.system.satellites;
       let muSys = planet.def.mu;
-      for (const moon of moons) muSys += moon.def.mu;
+      let maxMeanMotion = 0;
+      for (const moon of moons) {
+        muSys += moon.def.mu;
+        maxMeanMotion = Math.max(maxMeanMotion, Math.abs(moon.def.orbit.kepler.lRate));
+      }
+      const vLimit = 2 * maxMeanMotion * NEGLIGIBLE_BODY_OFFSET;
       for (const t of BARYCENTER_TIMES) {
         const body = planet.analyticStateAt(t);
         let r: Vec3 = scale(body.r, planet.def.mu / muSys);
@@ -121,8 +134,10 @@ export function register(): void {
           v = addScaled(v, moonState.v, moon.def.mu / muSys);
         }
         const bary = planet.system.analyticStateAt(t);
-        assert.ok(len(sub(r, bary.r)) < 1e-2, `${planet.id} の重心位置 (t=${t}): ${len(sub(r, bary.r))} m`);
-        assert.ok(len(sub(v, bary.v)) < 1e-9, `${planet.id} の重心速度 (t=${t}): ${len(sub(v, bary.v))} m/s`);
+        assert.ok(len(sub(r, bary.r)) < NEGLIGIBLE_BODY_OFFSET,
+          `${planet.id} の重心位置 (t=${t}): ${len(sub(r, bary.r))} m`);
+        assert.ok(len(sub(v, bary.v)) < vLimit,
+          `${planet.id} の重心速度 (t=${t}): ${len(sub(v, bary.v))} m/s`);
       }
     }
   });
@@ -213,7 +228,8 @@ export function register(): void {
         assert.ok(moonState !== null, `${moon.id} の数値暦経路が引けない (t=${t})`);
         r = addScaled(r, moonState.r, moon.def.mu / muSys);
       }
-      assert.ok(len(sub(r, bary.r)) < 1e-2, `木星系の重心位置 (t=${t}): ${len(sub(r, bary.r))} m`);
+      assert.ok(len(sub(r, bary.r)) < NEGLIGIBLE_BODY_OFFSET,
+        `木星系の重心位置 (t=${t}): ${len(sub(r, bary.r))} m`);
     }
   });
 
