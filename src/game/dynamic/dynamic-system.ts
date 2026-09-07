@@ -11,6 +11,9 @@ import { isEnemy } from './dynamic-entity/enemy';
 import { isPlayer, Player } from '../player/player';
 import { restorationFor } from './dynamic-entity/entity-dictionary';
 import { InstancedPools } from './instanced-pools';
+import { Simulator } from './simulator';
+import type { NanWatchdog } from './nan-watchdog';
+import { FrameSections, SECTION } from '../frame-sections';
 import type { Stage } from '../stages/stage';
 import type { Input } from '../../input/input';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
@@ -49,6 +52,9 @@ export class DynamicSystem implements EntityRegistry {
   // プールで描く種別の描画資源。どの種別がどのプールへ積むかは個体自身が知っている。
   private readonly instancedPools: InstancedPools;
 
+  // 顔ぶれを1フレームずつ進める積分機構。simTime の正本はここが持つ。
+  private readonly simulator: Simulator;
+
   // 描画資源のプールを組んでから、saved があればその顔ぶれを復元する。
   constructor(
     scene: THREE.Scene,
@@ -57,10 +63,33 @@ export class DynamicSystem implements EntityRegistry {
     flash: FlashEffects,
     markerManager: MarkerManager,
     private readonly celestialSystem: CelestialSystem,
+    private readonly sections: FrameSections,
+    initialSimTime: number,
     saved?: GameSaveData,
   ) {
     this.instancedPools = new InstancedPools(scene);
+    this.simulator = new Simulator(this, celestialSystem, sections, initialSimTime);
     if (saved) this.restoreFromSave(saved, hud, worldSfx, flash, scene, markerManager);
+  }
+
+  // 顔ぶれをどこまで進めたか。積分の先端時刻と、直前のフレームで進めた長さ [sim s]。
+  get simTime(): number { return this.simulator.simTime; }
+  get lastSimDt(): number { return this.simulator.lastSimDt; }
+
+  // 時間が止まったことを記録し、次のフレームへ持ち越してはならない連続指令を畳む。
+  pause(): void {
+    this.simulator.lastSimDt = 0;
+    for (const controllable of this.controllables) controllable.clearTransientCommands();
+  }
+
+  // 生存する全個体を simDt だけ進め、その間の接触を解く。
+  advance(
+    dt: number, simDt: number, controlled: Controllable | null, activeStage: Stage,
+    canEngage: boolean, nanWatchdog: NanWatchdog,
+  ): void {
+    this.sections.enter(SECTION.integrate);
+    this.simulator.advance(dt, simDt, controlled, activeStage, canEngage, nanWatchdog);
+    this.sections.exit(SECTION.integrate);
   }
 
   // スナップショットの顔ぶれを復元する。組み立て方は種別ごとの辞書が答え、知らない種別は
@@ -264,11 +293,6 @@ export class DynamicSystem implements EntityRegistry {
     return this.entities.filter(isPlayer).find((p) => p.alive) ?? null;
   }
 
-  // 操作できない間、連続指令(推力・トルク・射撃・噴射ラッチ)を畳む。
-  clearTransientCommands(): void {
-    for (const controllable of this.controllables) controllable.clearTransientCommands();
-  }
-
   // このフレームの表示物を同期する。何をどう出すかは個体が答えるので、ここは顔ぶれを1度だけ
   // 辿るだけ。プールへ積むのも個体自身なので、その前後をこの走査で挟む。
   public sync(
@@ -307,13 +331,13 @@ export class DynamicSystem implements EntityRegistry {
   // 枠ごとの現在の個体数。個体は自分がどの枠・どの種別に属するかを既に宣言しているので、
   // 顔ぶれを1度だけ辿ってそのとおりに数える。枠を持つ個体を枠の側で数えるのは、切り離した
   // ブースターのように「表示トグルは自機だが数は別に見たい」種別があるため。
-  perfCounts(): Pick<PerfCounts, 'entities'> {
+  perfCounts(): Pick<PerfCounts, 'entities'> & ReturnType<Simulator['perfCounts']> {
     const entities: Partial<Record<EntityCountKind, number>> = {};
     for (const e of this.entities) {
       const kind = e.capKind ?? e.mapKind;
       if (kind === null) continue;
       entities[kind] = (entities[kind] ?? 0) + 1;
     }
-    return { entities };
+    return { entities, ...this.simulator.perfCounts() };
   }
 }
