@@ -46,7 +46,6 @@ import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window';
 import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../../hud/object-groups';
-import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 
 // 敵機は熱防御を持たないので、艦より低い温度で構造が保たなくなる。降下してくる艦がこの温度に
 // 達するのは、地球の大気では高度 80 km 付近。
@@ -475,11 +474,6 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   // 表示時刻の ECI 位置。予測が届かない時刻では null。
   public posAt(displayTime: number): Vec3 | null {
     return this.stateAt(displayTime)?.r ?? null;
-  }
-
-  // 敵カテゴリの表示トグルによる可否。
-  public mapVisibility(policy: MapVisibilityPolicy): MapVisibility {
-    return policy.entity(this.mapKind);
   }
 
   public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
