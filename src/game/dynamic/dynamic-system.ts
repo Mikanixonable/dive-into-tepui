@@ -34,6 +34,7 @@ import type { Hud } from '../hud/hud';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import { EffectsSystem } from '../vfx/effects-system';
 import type { MarkerManager } from '../marker/marker-manager';
+import type { EquatorNodeInputs } from '../marker/equator-node-marker-pair';
 import type { PerfCounts } from '../perf-counts';
 import type { OrbitReference } from '../orbit-reference';
 import type { ProteinMotionFrameSample } from '../protein/protein-motion-metrics';
@@ -376,21 +377,10 @@ export class DynamicSystem {
     }
   }
 
-  // 全個体の赤道交点を、このフレームは求まっていない状態へ戻す。交点を解く各所より先に
-  // 通す — このフレームに誰も解かなかった個体の交点は、そのまま隠れる。
-  clearEquatorNodes(): void {
-    for (const e of this.all()) e.equatorNodes?.clearCrossings();
-  }
-
-  // 常設の軌道構造物の赤道交点マーカーを求め直す。選択の有無に関わらず出す。
-  updateStructureEquatorNodes(
-    displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
-  ): void {
-    for (const entity of this.entities) {
-      if (entity.alive && entity.showsEquatorNodesAlways) {
-        entity.equatorNodes?.updateOnEllipse(displayTime, celestialSystem, frameAnchors);
-      }
-    }
+  // 全個体の赤道交点マーカーを求め直す。出すかどうかも、どの線の上で解くかも個体が答えるので、
+  // 折れ線を組み終えた後・選択候補を組む前に1度だけ通す。
+  updateEquatorNodes(inputs: EquatorNodeInputs, controlled: Controllable | null): void {
+    for (const e of this.all()) e.updateEquatorNodes(inputs, e === controlled);
   }
 
   // このフレームに求まった赤道交点マーカーを置く。
@@ -400,7 +390,7 @@ export class DynamicSystem {
     const project = cameraSystem.activeCameraProjection;
     const cameraPos = cameraSystem.activeCameraPos;
     for (const e of this.all()) {
-      e.equatorNodes?.sync(project, cameraPos, frameAnchors.bodies, frameAnchors.bodiesPivot, timeLabel);
+      e.syncEquatorNodes(project, cameraPos, frameAnchors.bodies, frameAnchors.bodiesPivot, timeLabel);
     }
   }
 

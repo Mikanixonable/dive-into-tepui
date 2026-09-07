@@ -83,6 +83,8 @@ export class PlanPath {
   private _nodeCount = 0;
   // update() で実際のレジストリの慣性系に置き換わるまでの暫定値。
   private frame: ReferenceFrame = { center: 'earth', rotatingWith: null };
+  // 折れ線が載っている座標系。
+  get displayFrame(): ReferenceFrame { return this.frame; }
   private celestialSystem: CelestialSystem | null = null;
   private unbakeTime = 0;
   // un-bake は update() が受け取った displayTime に固定される。同じフレーム中に ghost/impact/apsis/tick と
