@@ -316,7 +316,7 @@ export class Game {
     const linePickables = new LinePickables(this.dynamicSystem, this._celestialSystem);
     this.objectWindows = new ObjectWindows(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
-      this.cameraSystem, editor, this.simSpeedManager, this.pauseMenu, objectPickables, linePickables,
+      this.cameraSystem, editor, this.pauseMenu, objectPickables, linePickables,
       this.controlSelection, this.frameControls, this.activeStage, this.targeter,
     );
 
