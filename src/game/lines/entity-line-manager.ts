@@ -57,7 +57,7 @@ function applyOrbitLine(
 }
 
 export class EntityLineManager {
-  constructor(private readonly entities: DynamicSystem) {}
+  constructor(private readonly dynamicSystem: DynamicSystem) {}
 
   // 出す/消す/スタイルを決める。
   private applyLines(
@@ -103,7 +103,7 @@ export class EntityLineManager {
       else entity.hideActualLine();
     };
 
-    for (const ship of this.entities.players) {
+    for (const ship of this.dynamicSystem.players) {
       const isActive = ship === active;
       const visibility = visibilityPolicy?.entity('player', isActive);
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
@@ -113,7 +113,7 @@ export class EntityLineManager {
         { ellipse: playerOrbitStyleOf(isActive), predicted: playerPredictedStyleOf(isActive), actual: playerActualStyleOf(isActive) },
       );
     }
-    for (const enemy of this.entities.enemies) {
+    for (const enemy of this.dynamicSystem.enemies) {
       const visibility = visibilityPolicy?.entity('enemy');
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
       const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyLine, color: enemy.orbitLineColor };
@@ -122,7 +122,7 @@ export class EntityLineManager {
         sameTrajectoryStyle(enemyLineStyle),
       );
     }
-    for (const base of this.entities.bases) {
+    for (const base of this.dynamicSystem.bases) {
       const visibility = visibilityPolicy?.entity('base');
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
       applyEntityLines(
@@ -156,6 +156,6 @@ export class EntityLineManager {
 
   // 線を持ちうるエンティティ。
   private get lineOwners(): readonly (readonly DynamicEntity[])[] {
-    return [this.entities.players, this.entities.enemies, this.entities.bases];
+    return [this.dynamicSystem.players, this.dynamicSystem.enemies, this.dynamicSystem.bases];
   }
 }

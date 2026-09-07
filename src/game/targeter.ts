@@ -50,7 +50,7 @@ export class Targeter {
 
   constructor(
     private readonly markerManager: MarkerManager,
-    private readonly navTarget: NavTarget, private readonly entities: DynamicSystem,
+    private readonly navTarget: NavTarget, private readonly dynamicSystem: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
     private readonly celestialMarkers: CelestialMarkers,
   ) {}
@@ -58,7 +58,7 @@ export class Targeter {
   // 航法ターゲットを生存中の敵・自艦・基地として解決したもの。戦闘対象になれない対象
   // (天体・ラグランジュ点)や撃破済みなら null。
   get aliveTarget(): CombatTarget | null {
-    return this.navTarget.resolveCombatTarget(this.entities);
+    return this.navTarget.resolveCombatTarget(this.dynamicSystem);
   }
 
   // Tキーで、照準中心にもっとも近い対象をターゲットにする。
@@ -84,7 +84,7 @@ export class Targeter {
     if (lenSq(n) < 0.5) return;
 
     // 各弾について、前フレームと今フレームの位置が的面をどちら向きに跨いだかを見る。
-    for (const b of this.entities.bullets) {
+    for (const b of this.dynamicSystem.bullets) {
       if (b.type !== 'normal' || !b.alive) continue; // 的通過マーカーは通常弾のみ対象
       const prevR = b.prevState.r;
       const d0 = dot(sub(prevR, target.state.r), n);
@@ -119,9 +119,9 @@ export class Targeter {
   ): void {
     // マーカーは操作対象自身も他の船と同列に扱うので、ターゲット選定用(自分自身は除外)とは
     // 別に、除外なしの一覧を使う。
-    const targets = this.entities.getCombatTargets(null);
-    const ammoPickups = this.entities.ammoPickups;
-    const fuelPickups = this.entities.rcsFuelPickups;
+    const targets = this.dynamicSystem.getCombatTargets(null);
+    const ammoPickups = this.dynamicSystem.ammoPickups;
+    const fuelPickups = this.dynamicSystem.rcsFuelPickups;
     const celestialBodies = this.celestialSystem.celestialMotions;
     const view = cameraSystem.view;
     const mapView = view === 'map';

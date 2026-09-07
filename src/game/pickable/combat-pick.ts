@@ -12,14 +12,14 @@ const GRAB_RADIUS_PX = 12;
 
 // 画面上の座標 (clientX, clientY) に最も手前でヒットした生存中の実体を返す。当たらなければ null。
 export function pickCombatEntityAtPoint(
-  entities: DynamicSystem, view: Viewpoint, project: ProjectFn, clientX: number, clientY: number,
+  dynamicSystem: DynamicSystem, view: Viewpoint, project: ProjectFn, clientX: number, clientY: number,
 ): CombatTarget | null {
   const ray = rayThroughScreen(view, clientX, clientY, window.innerWidth, window.innerHeight);
 
   let bestEntity: CombatTarget | null = null;
   let minDepth = Infinity;
 
-  for (const entity of entities.getCombatTargets(null)) {
+  for (const entity of dynamicSystem.getCombatTargets(null)) {
     if (!entity.alive) continue;
     const pos = entity.state.r;
     const proj = project(pos);

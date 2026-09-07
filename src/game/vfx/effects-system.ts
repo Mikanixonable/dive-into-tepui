@@ -23,14 +23,14 @@ import {
 const EJECTED_MAG_PHYS_RADIUS = 1.4; // 排出された空マガジンの物理接触用の半径 [m]
 
 // フラッシュ・破片エフェクトの生成窓口。scene への注入をここに一元化し、破片は
-// entities へ追加する。
+// dynamicSystem へ追加する。
 export class EffectsSystem {
   private readonly _flashEffects: FlashEffectManager;
 
-  // 生成した破片は entities へ、その描画物は scene へ入る。
+  // 生成した破片は dynamicSystem へ、その描画物は scene へ入る。
   constructor(
     private readonly _scene: THREE.Scene,
-    private readonly entities: DynamicSystem,
+    private readonly dynamicSystem: DynamicSystem,
     private readonly _worldSfx: WorldSfx,
   ) {
     this._flashEffects = new FlashEffectManager(_scene);
@@ -172,9 +172,9 @@ export class EffectsSystem {
     this._flashEffects.addFlash(fx);
   }
 
-  // DebrisPiece を組み立てて entities へ追加する。
+  // DebrisPiece を組み立てて dynamicSystem へ追加する。
   private spawnDebrisPiece(state: KinematicState, kind: DebrisKind, att: Attitude, radius?: number): void {
-    this.entities.add(new DebrisPiece(state, kind, att, this._worldSfx, this, radius, this._scene));
+    this.dynamicSystem.add(new DebrisPiece(state, kind, att, this._worldSfx, this, radius, this._scene));
   }
 
   // t は発生時刻(破片 state のエポック)。破壊された entity の state.t をそのまま渡す。

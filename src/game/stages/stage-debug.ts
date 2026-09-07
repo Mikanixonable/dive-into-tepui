@@ -32,10 +32,10 @@ export class StageDebug extends Stage {
   }
 
   // 自機を置き、敵集団を1つだけ生成し、射撃切替トグルをステータスウィンドウ左部へ追加する。
-  protected init(entities: DynamicSystem): void {
+  protected init(dynamicSystem: DynamicSystem): void {
     const player = this.addPlayer({ ammo: { mags: 20, rounds: MAG_ROUNDS } });
     const enemies = generateWave(player.state, this.waveCount++, this._celestialSystem, this._worldSfx, this._fx, this._scene, 'random');
-    for (const enemy of enemies) this.addEnemy(enemy, entities);
+    for (const enemy of enemies) this.addEnemy(enemy, dynamicSystem);
 
     // 切替は enemyFireEnabled へ入るだけで、敵への反映は update が毎フレーム行う
     this.fireToggle = new ToggleSwitch('敵射撃', (on) => { this.enemyFireEnabled = on; });
@@ -45,7 +45,7 @@ export class StageDebug extends Stage {
     // 敵集団をスポーンするボタン
     const spawnEnemyBtn = new Button('敵集団をスポーン', () => {
       const newEnemies = generateWave(player.state, this.waveCount++, this._celestialSystem, this._worldSfx, this._fx, this._scene, 'random');
-      for (const enemy of newEnemies) this.addEnemy(enemy, entities);
+      for (const enemy of newEnemies) this.addEnemy(enemy, dynamicSystem);
     });
     this.addStatusPanelWidget(spawnEnemyBtn.element);
 
@@ -63,11 +63,11 @@ export class StageDebug extends Stage {
   }
 
   // 敵の行動を進め、射撃許可を毎フレーム自ステージの敵全体へ反映する。
-  update(_dt: number, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  update(_dt: number, dynamicSystem: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
-    for (const e of entities.enemies) e.fireEnabled = this.enemyFireEnabled;
-    this.behaveAllEnemies(player, entities, simTime, simSpeed);
+    for (const e of dynamicSystem.enemies) e.fireEnabled = this.enemyFireEnabled;
+    this.behaveAllEnemies(player, dynamicSystem, simTime, simSpeed);
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }
 

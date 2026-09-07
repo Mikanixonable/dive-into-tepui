@@ -38,7 +38,7 @@ export class StageDebugLoad extends Stage {
   }
 
   // 自機を置き、破片を自機の周囲へ散らす。
-  protected init(entities: DynamicSystem): void {
+  protected init(dynamicSystem: DynamicSystem): void {
     const player = this.addPlayer({ ammo: { mags: 20, rounds: MAG_ROUNDS } });
     const rand = mulberry32(RNG_SEED);
     for (let i = 0; i < DEBRIS_COUNT; i++) {
@@ -46,11 +46,11 @@ export class StageDebugLoad extends Stage {
       const state = kinematicState<'eci'>(player.state.t, add(player.state.r, offset), player.state.v);
       const size = DESTROY_FRAG_SIZE_MIN + rand() * (DESTROY_FRAG_SIZE_MAX - DESTROY_FRAG_SIZE_MIN);
       const att = { q: randomQuat(rand), w: v3(0, 0, 0), inertia: v3(1, 1, 1) };
-      entities.add(new DebrisPiece(state, { kind: 'fragment', accent: 0x888888, size }, att, this._worldSfx, this._fx, undefined, this._scene));
+      dynamicSystem.add(new DebrisPiece(state, { kind: 'fragment', accent: 0x888888, size }, att, this._worldSfx, this._fx, undefined, this._scene));
     }
   }
 
-  update(_dt: number, _entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  update(_dt: number, _dynamicSystem: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
     this.logistics.updateLogistics(simTime, player, simSpeed);

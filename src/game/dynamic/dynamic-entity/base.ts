@@ -188,10 +188,10 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // --- 操作制御 ---
 
   // 毎フレーム、全ての基地に対して1度だけ呼ぶ。input が null なら操作されない。
-  // 射撃も補給も持たないので、entities / activeStage / celestialSystem は受け取るだけで使わない。
+  // 射撃も補給も持たないので、dynamicSystem / activeStage / celestialSystem は受け取るだけで使わない。
   updateControls(
     input: Input | null, dt: number, simDt: number,
-    _entities: DynamicSystem, _activeStage: Stage, _celestialSystem: CelestialSystem,
+    _dynamicSystem: DynamicSystem, _activeStage: Stage, _celestialSystem: CelestialSystem,
   ): void {
     if (input === null) {
       this.clearTransientCommands();

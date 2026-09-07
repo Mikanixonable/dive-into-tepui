@@ -107,7 +107,7 @@ export class AttachedBoosters {
   }
 
   // 最後尾の段だけを独立エンティティへ移し、爆砕ボルトの相対速度を質量比で配る。
-  decouple(entities: DynamicSystem): void {
+  decouple(dynamicSystem: DynamicSystem): void {
     const stageIndex = this.stack.stages.length - 1;
     if (stageIndex < 0) {
       this._hud.hint('分離できるブースターがありません');
@@ -134,7 +134,7 @@ export class AttachedBoosters {
     const t = player.state.t;
     player.state = kinematicState<'eci'>(t, player.state.r, separated.player);
     this._fx.spawnBoosterSeparation(t, jointR, separated.player, separated.booster, player.att);
-    entities.add(new DetachedBooster({
+    dynamicSystem.add(new DetachedBooster({
       stage: detachedStage,
       state: kinematicState<'eci'>(t, boosterR, separated.booster),
       att: {

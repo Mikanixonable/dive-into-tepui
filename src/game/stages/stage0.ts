@@ -49,20 +49,20 @@ export class Stage0 extends Stage {
   }
 
   // 弾薬ゼロの自機を置き、初期補給と敵クラスタを配置する。
-  protected init(entities: DynamicSystem): void {
+  protected init(dynamicSystem: DynamicSystem): void {
     const player = this.addPlayer({ ammo: { mags: 0, rounds: 0 } });
     for (let i = 0; i < STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
       this.logistics.spawnForPlayer(player, STAGE0_LOGISTICS_MIN_DIST, STAGE0_LOGISTICS_MAX_DIST);
     }
     const enemies = generateCluster(player.state, this._worldSfx, this._fx, this._scene);
-    for (const enemy of enemies) this.addEnemy(enemy, entities);
+    for (const enemy of enemies) this.addEnemy(enemy, dynamicSystem);
   }
   // 敵の行動・補給・制限時間を1フレーム分進める。
-  update(dt: number, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  update(dt: number, dynamicSystem: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
 
-    this.behaveAllEnemies(player, entities, simTime, simSpeed);
+    this.behaveAllEnemies(player, dynamicSystem, simTime, simSpeed);
 
     this.logistics.updateLogistics(simTime, player, simSpeed);
 

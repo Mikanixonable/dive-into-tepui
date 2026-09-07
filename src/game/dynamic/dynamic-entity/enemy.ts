@@ -324,9 +324,9 @@ export abstract class Enemy extends Ship implements ObjectPickable {
     activeStage.recordEnemyDeath(this, this.state.t, 'burnup');
   }
 
-  // 行動関数。enemies は同一集団の同時攻撃数を数える母集団、entities は弾の追加先。
+  // 行動関数。enemies は同一集団の同時攻撃数を数える母集団、dynamicSystem は弾の追加先。
   public behave(
-    simTime: number, player: Player, entities: DynamicSystem, enemies: readonly Enemy[],
+    simTime: number, player: Player, dynamicSystem: DynamicSystem, enemies: readonly Enemy[],
     simSpeed: SimSpeedManager, celestialSystem: CelestialSystem,
   ): void {
     // 射撃間隔は simulation time で測る。wall dt を混ぜると、同じゲーム内時間でも
@@ -347,7 +347,7 @@ export abstract class Enemy extends Ship implements ObjectPickable {
     if (this.burstLeft && this.burstLeft > 0) {
       this.burstDelay = (this.burstDelay ?? 0) - behaviorDt;
       if (this.burstDelay <= 0) {
-        this.firePlasma(simTime, player, entities, celestialSystem);
+        this.firePlasma(simTime, player, dynamicSystem, celestialSystem);
         this.burstLeft--;
         this.burstDelay = ENEMY_BURST_INTERVAL;
       }
@@ -364,7 +364,7 @@ export abstract class Enemy extends Ship implements ObjectPickable {
     const counts = ENEMY_BURST_COUNTS;
     this.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
     this.burstDelay = ENEMY_BURST_INTERVAL;
-    this.firePlasma(simTime, player, entities, celestialSystem);
+    this.firePlasma(simTime, player, dynamicSystem, celestialSystem);
   }
 
   // enemies のうち、自分と同じ accent でバースト射撃中の個体数を数える。
@@ -379,8 +379,8 @@ export abstract class Enemy extends Ship implements ObjectPickable {
   // 発砲の演出。既定では何も出さない。
   protected muzzleEffect(_muzzleState: KinematicState): void {}
 
-  // player へ向けた見越し射撃でプラズマ弾を1発生成し、entities に追加する。
-  private firePlasma(simTime: number, player: Player, entities: DynamicSystem, celestialSystem: CelestialSystem): void {
+  // player へ向けた見越し射撃でプラズマ弾を1発生成し、dynamicSystem に追加する。
+  private firePlasma(simTime: number, player: Player, dynamicSystem: DynamicSystem, celestialSystem: CelestialSystem): void {
     const r = this.muzzlePosition();
     const v = this.state.v;
     const toPlayer = sub(player.state.r, r);
@@ -412,7 +412,7 @@ export abstract class Enemy extends Ship implements ObjectPickable {
     );
     this.muzzleEffect(kinematicState<'eci'>(simTime, r, v));
 
-    entities.add(pb);
+    dynamicSystem.add(pb);
   }
 
   // セーブデータへ変換する。具象は super.serialize() へ自分の項目を足して override する。
