@@ -10,6 +10,7 @@ import { KinematicState, kinematicState } from '../../../physics/kinematic-state
 import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../../math/vec3';
 import { solveLeadTime } from '../../../physics/intercept';
 import { EffectsSystem } from '../../vfx/effects-system';
+import { buildDestroyFragments } from './debris-piece';
 import type { Controllable } from './controllable';
 import type { Player } from '../../player/player';
 import { Bullet } from './bullet';
@@ -21,7 +22,12 @@ import { orbitRows } from '../../pickable/orbit-rows';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import { shipMarkerSvg } from '../../marker/marker-shapes';
 import { currentThemePalette } from '../../../theme';
-import { ENEMY_DESTROY_FRAG_COLOR } from '../../../render/vfx-style';
+import {
+  DESTROY_FLASH1_DURATION, DESTROY_FLASH1_SIZE0, DESTROY_FLASH1_SIZE1,
+  DESTROY_FLASH2_DURATION, DESTROY_FLASH2_SIZE0, DESTROY_FLASH2_SIZE1,
+  DESTROY_FLASH_COLOR_1, DESTROY_FLASH_COLOR_2,
+  DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, ENEMY_DESTROY_FRAG_COLOR,
+} from '../../../render/vfx-style';
 import type { Quat } from '../../../math/quat';
 import type { DynamicEntityKind } from './entity-kind';
 import type { GroupedMarkerItem, MarkerRole } from '../../marker/grouped-markers';
@@ -254,14 +260,23 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   }
 
   // 撃破時の爆発音・エフェクトを発生させる。
-  private destroyEffect(): void {
+  private destroyEffect(registry: EntityRegistry): void {
     this._worldSfx.explosion();
     // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
-    this._fx.spawnShipDestroyEffect(this.state, ENEMY_SCALE, ENEMY_DESTROY_FRAG_COLOR);
+    const { t, r, v } = this.state;
+    this._fx.spawnFlash(this.state, DESTROY_FLASH1_SIZE0 * ENEMY_SCALE, DESTROY_FLASH1_SIZE1 * ENEMY_SCALE, DESTROY_FLASH1_DURATION, DESTROY_FLASH_COLOR_1);
+    this._fx.spawnFlash(this.state, DESTROY_FLASH2_SIZE0 * ENEMY_SCALE, DESTROY_FLASH2_SIZE1 * ENEMY_SCALE, DESTROY_FLASH2_DURATION, DESTROY_FLASH_COLOR_2);
+    for (const piece of buildDestroyFragments(
+      t, r, v, 11, ENEMY_DESTROY_FRAG_COLOR,
+      (DESTROY_FRAG_SIZE_MIN * ENEMY_SCALE) / 3, (DESTROY_FRAG_SIZE_MAX * ENEMY_SCALE) / 3, 20.0,
+      this._worldSfx, this._fx, this.scene,
+    )) registry.add(piece);
   }
 
   // 被弾によるダメージ・致死判定。
-  private attackedByBullet(bullet: Bullet, impactPoint: Vec3, simTime: number, activeStage: Stage): void {
+  private attackedByBullet(
+    bullet: Bullet, impactPoint: Vec3, simTime: number, activeStage: Stage, registry: EntityRegistry,
+  ): void {
     activeStage.scoreCounter.recordHit();
     this.applyBulletDamage(bullet.damage, impactPoint);
     if (this.hp > 0) {
@@ -272,32 +287,37 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     // HP が尽きたので撃破処理へ
     this.alive = false;
     activeStage.recordEnemyDeath(this, simTime, 'killed');
-    this.destroyEffect();
+    this.destroyEffect(registry);
   }
 
   // 他の実体との接触。ダメージはゲームバランスの量で、物理の質量からは導かない。
-  public collideWithEntity(other: DynamicEntity, contact: Contact, activeStage: Stage): void {
+  public collideWithEntity(
+    other: DynamicEntity, contact: Contact, activeStage: Stage, registry: EntityRegistry,
+  ): void {
     if (!this.alive) return;
     const simTime = contact.selfState.t;
 
     if (other instanceof Bullet) {
-      this.attackedByBullet(other, contact.point, simTime, activeStage);
+      this.attackedByBullet(other, contact.point, simTime, activeStage, registry);
       return;
     }
 
     // 他の実体との接触で沈めば、交戦の結果として記録する。
-    this.damagedByContact(contactDamageSpeed(other, contact), simTime, 'killed', activeStage);
+    this.damagedByContact(contactDamageSpeed(other, contact), simTime, 'killed', activeStage, registry);
   }
 
   // 天体の固体表面への接触。沈めば自然損耗(collision)として記録する。
-  public collideWithCelestialBody(_body: CelestialMotion, contact: Contact, activeStage: Stage): void {
+  public collideWithCelestialBody(
+    _body: CelestialMotion, contact: Contact, activeStage: Stage, registry: EntityRegistry,
+  ): void {
     if (!this.alive) return;
-    this.damagedByContact(closingSpeed(contact), contact.selfState.t, 'collision', activeStage);
+    this.damagedByContact(closingSpeed(contact), contact.selfState.t, 'collision', activeStage, registry);
   }
 
   // 接触ダメージを当て、HP が残れば音とパフ、尽きたら cause の撃破として記録する。
   private damagedByContact(
     damageSpeed: number, simTime: number, cause: EnemyDeathCause, activeStage: Stage,
+    registry: EntityRegistry,
   ): void {
     if (!this.applyImpactDamage(damageSpeed)) return;
     if (this.hp > 0) {
@@ -308,7 +328,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
     this.alive = false;
     activeStage.recordEnemyDeath(this, simTime, cause);
-    this.destroyEffect();
+    this.destroyEffect(registry);
   }
 
   // 交戦圏外への離脱によるデスポーン。
@@ -319,9 +339,9 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   }
 
   // 大気での焼失による自然死。固体表面への接触は collideWithCelestialBody が扱う。
-  protected override burnUp(activeStage: Stage): void {
+  protected override burnUp(activeStage: Stage, registry: EntityRegistry): void {
     this.alive = false;
-    this.destroyEffect();
+    this.destroyEffect(registry);
     activeStage.recordEnemyDeath(this, this.state.t, 'burnup');
   }
 
