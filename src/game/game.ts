@@ -564,7 +564,7 @@ export class Game {
     this.cameraSystem.sync();
     const fo = this.cameraSystem.getFloatingOrigin();
     // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
-    this.viewManager.activeView.syncLabels();
+    this.viewManager.activeView.syncLabels(displayWindow);
 
     // 表示・選択可否はこのフレームの update フェーズで現在のビューが確定させたものを読む
     // (選べる対象と描かれる対象が同じ判定から出るようにする)。
