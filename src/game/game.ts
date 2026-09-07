@@ -1,7 +1,7 @@
 // ゲーム全体のオーケストレーション: 各システムの生成・保持と、フレームごとの呼び出し順序の決定。
 import * as THREE from 'three/webgpu';
 import type { PerfCounts } from './perf-counts';
-import type { ProteinMotionFrameSample } from './protein/protein-motion-metrics';
+import { proteinMotionFrameSample, type ProteinMotionFrameSample } from './protein/protein-motion-metrics';
 import { FrameSections, SECTION } from './frame-sections';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import { CameraSystem } from './camera/camera-system';
@@ -622,6 +622,6 @@ export class Game {
 
   // タンパク質敵モーションの集計値。
   proteinMotionFrameSample(): ProteinMotionFrameSample {
-    return this.dynamicSystem.proteinMotionFrameSample();
+    return proteinMotionFrameSample(this.dynamicSystem.all());
   }
 }
