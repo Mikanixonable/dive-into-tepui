@@ -26,10 +26,8 @@ export abstract class OrbitPointMarker implements ObjectPickable {
   public readonly onMapSelect = null;
   public readonly onMapFocus = null;
 
-  // 一覧・プロパティウィンドウに添える記号。
+  // マップのマーカー・一覧・プロパティウィンドウに描く字形。
   public abstract readonly glyph: string;
-  // マップのマーカーへ描く字形。交点の昇降を描き分けるので glyph とは別に持つ。
-  protected abstract readonly markerGlyph: string;
   // マーカーの CSS クラス。
   protected abstract readonly markerClass: string;
   // マーカーへ添える略称。
@@ -83,7 +81,7 @@ export abstract class OrbitPointMarker implements ObjectPickable {
   ): void {
     if (this.pos === null) { markers.hide(this.id); return; }
     markers.setNodePosition(
-      this.id, this.markerClass, this.markerGlyph, this.pos, project, cameraPos, celestialBodies, pivot,
+      this.id, this.markerClass, this.glyph, this.pos, project, cameraPos, celestialBodies, pivot,
       occludeByBodies, orbitPointLabel(this.markerLabel, this.time, timeLabel),
     );
   }
