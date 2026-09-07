@@ -1,4 +1,4 @@
-// エンティティの保持・追加・上限管理・寿命回収・描画同期。
+// エンティティの保持・追加・上限管理・寿命回収と、1フレームぶんの前進(指令決定と積分)・描画同期。
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../math/vec3';
 import { CelestialMotion } from '../../physics/celestial-motion';
@@ -58,7 +58,7 @@ export class DynamicSystem implements EntityRegistry {
   // 個体の状態が非有限値に汚染された瞬間を捕まえる見張り。下の各境界で検査する。
   private readonly nanWatchdog: NanWatchdog;
 
-  // 描画資源のプールを組んでから、saved があればその顔ぶれを復元する。
+  // 描画資源のプールと前進の機構を組んでから、saved があればその顔ぶれを復元する。
   constructor(
     scene: THREE.Scene,
     hud: Hud,
@@ -74,16 +74,6 @@ export class DynamicSystem implements EntityRegistry {
     this.simulator = new Simulator(this, celestialSystem, sections, initialSimTime);
     this.nanWatchdog = new NanWatchdog(hud);
     if (saved) this.restoreFromSave(saved, hud, worldSfx, flash, scene, markerManager);
-  }
-
-  // 顔ぶれをどこまで進めたか。積分の先端時刻と、直前のフレームで進めた長さ [sim s]。
-  get simTime(): number { return this.simulator.simTime; }
-  get lastSimDt(): number { return this.simulator.lastSimDt; }
-
-  // 時間が止まったことを記録し、次のフレームへ持ち越してはならない連続指令を畳む。
-  pause(): void {
-    this.simulator.lastSimDt = 0;
-    for (const controllable of this.controllables) controllable.clearTransientCommands();
   }
 
   // スナップショットの顔ぶれを復元する。組み立て方は種別ごとの辞書が答え、知らない種別は
@@ -235,6 +225,16 @@ export class DynamicSystem implements EntityRegistry {
     for (const e of this.all()) e.requestHistoryDuration(sec);
   }
 
+  // 顔ぶれをどこまで進めたか。積分の先端時刻と、直前のフレームで進めた長さ [sim s]。
+  get simTime(): number { return this.simulator.simTime; }
+  get lastSimDt(): number { return this.simulator.lastSimDt; }
+
+  // 時間が止まったことを記録し、次のフレームへ持ち越してはならない連続指令を畳む。
+  pause(): void {
+    this.simulator.lastSimDt = 0;
+    for (const controllable of this.controllables) controllable.clearTransientCommands();
+  }
+
   // 顔ぶれを1フレーム進める。個体が自分で決める推力を先に確定させ、操作されうる個体と敵へ
   // 指令を決めさせてから積分する — 推力は自分の状態だけで決まるので、操作の可否に依らず先に
   // 済ませられる。
@@ -249,7 +249,7 @@ export class DynamicSystem implements EntityRegistry {
     this.sections.enter(SECTION.command);
     this.updateThrusts(simDt);
     this.updateControllables(active, input, operable, dt, simDt, activeStage);
-    this.behaveAll(active, operable, this.simTime);
+    this.behaveAll(active, operable);
     this.sections.exit(SECTION.command);
     this.nanWatchdog.checkControlled('update(指令決定)', active, this.simTime, dt, this.lastSimDt);
 
@@ -286,12 +286,12 @@ export class DynamicSystem implements EntityRegistry {
 
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。追跡先の艦が1隻も無ければ何もしない。
   // 同一集団の判定に使う母集団は、このフレームの顔ぶれを1度だけ取って全機で共有する。
-  private behaveAll(active: Controllable | null, operable: boolean, simTime: number): void {
+  private behaveAll(active: Controllable | null, operable: boolean): void {
     const player = this.trackedShip(active);
     if (player === null) return;
     const enemies = this.entities.filter(isEnemy);
     for (const e of enemies) {
-      if (e.alive) e.behave(simTime, player, this, enemies, operable, this.celestialSystem);
+      if (e.alive) e.behave(this.simTime, player, this, enemies, operable, this.celestialSystem);
     }
   }
 
