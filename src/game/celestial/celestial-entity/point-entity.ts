@@ -164,6 +164,10 @@ export class PointEntity extends CelestialEntity {
     } else {
       this.cumulus?.setCloudsVisible(false);
     }
+    this.cumulus?.setAtmosphereCloudsVisible(
+      graphics.clouds && graphics.cirrus,
+      graphics.clouds && graphics.translucentCumulus,
+    );
     // 模式図の重ね書きとオーロラ。
     this.graticule.setVisible(style === 'schematic');
     this.surfaceMarkings?.setVisible(style === 'schematic');
