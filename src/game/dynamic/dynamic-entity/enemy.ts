@@ -511,13 +511,13 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
-    commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number,
+    _celestialSystem: CelestialSystem, _viewer: Controllable | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
     return [
-      ...MenuCommon.targetItems(commands, this.id, simTime),
+      MenuCommon.target(navTargetId === this.id),
       MenuCommon.focus(),
       MenuCommon.trajectoryLine(this.showTrajectoryLine),
-      ...MenuCommon.duplicateItems(commands),
+      MenuCommon.duplicate(),
       { label: '削除', act: 'delete' },
       MenuCommon.cancel(),
     ];
@@ -528,8 +528,6 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     if (act === 'delete') this.alive = false;
     else if (act === 'toggleTrajectoryLine') this.showTrajectoryLine = !this.showTrajectoryLine;
     else if (act === 'duplicate') commands.duplicate(this.mapKind, this.state);
-    else if (act === 'focus') commands.focus(this.id, this.name);
-    else if (act === 'target') commands.toggleNavTarget(this.id, this.name);
   }
 
   // プロパティウィンドウに出す行。装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、

@@ -6,7 +6,6 @@ import type { MenuAction } from '../hud/windows/menu-actions';
 import type { Hud } from '../hud/hud';
 import type { LinePickable } from './line-pickable';
 import type { LinePickables } from './line-pickables';
-import type { ObjectCommands } from './object-commands';
 import type { ObjectPickable } from './object-pickable';
 import type { ObjectPickables } from './object-pickables';
 
@@ -20,12 +19,13 @@ const CALC_METHOD_LABEL: Record<LinePickable['method'], string> = {
 export class OrbitLineWindows {
   private readonly windows = new Map<string, PropertyWindow<MenuAction>>();
 
-  // openOwnerWindow は「所属」欄から持ち主のプロパティウィンドウを開く手続き。
+  // focusOwner / openOwnerWindow は「所属」欄から持ち主へ注視を移す・そのプロパティ
+  // ウィンドウを開く手続き。
   constructor(
     private readonly hud: Hud,
     private readonly linePickables: LinePickables,
     private readonly pickables: ObjectPickables,
-    private readonly commands: ObjectCommands,
+    private readonly focusOwner: (id: string, name: string) => void,
     private readonly openOwnerWindow: (clientX: number, clientY: number, target: ObjectPickable) => void,
   ) {}
 
@@ -79,7 +79,7 @@ export class OrbitLineWindows {
       items.push({
         id: ownerId,
         label: target.name,
-        onFocus: () => this.commands.focus(target.id, target.name),
+        onFocus: () => this.focusOwner(target.id, target.name),
         onContextMenu: (clientX, clientY) => {
           const current = this.pickables.pickables.find((candidate) => candidate.id === ownerId);
           if (current) this.openOwnerWindow(clientX, clientY, current);

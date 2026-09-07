@@ -1,6 +1,5 @@
 // 被選択物が起動できる操作と、項目のラベル・可否を決めるために要る現在の操作状態を差し出す口。
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { View } from '../view/view';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { ObjectPickable } from './object-pickable';
@@ -8,12 +7,8 @@ import type { ObjectPickable } from './object-pickable';
 export interface ObjectCommands {
   // 画面へ通知を出す。
   hint(text: string): void;
-  // マップの注視点を id へ移し、name で通知する。
-  focus(id: string, name: string): void;
   // target のプロパティウィンドウを (clientX, clientY) へ開く。
   openProperties(target: ObjectPickable, clientX: number, clientY: number): void;
-  // 航法ターゲットを設定・解除する。
-  toggleNavTarget(id: string, name: string): void;
   // 時刻 t まで時間を加速する。既に通過していれば通知だけ出す。
   warpTo(t: number): void;
   // 時刻 t の計画軌道へノードを置く。
@@ -30,13 +25,4 @@ export interface ObjectCommands {
 
   // いま操作している対象。未操作なら null。
   readonly controlled: Controllable | null;
-  // 物体の配置・複製を許すステージか。
-  readonly canAuthor: boolean;
-  // 軌道計画の実行を持つステージか。
-  readonly executesPlans: boolean;
-  // 現在のビュー。
-  readonly view: View;
-  isNavTarget(id: string): boolean;
-  // 航法ターゲットに設定できるか。軌道面が定まらない対象では false。
-  canNavTarget(id: string, simTime: number): boolean;
 }
