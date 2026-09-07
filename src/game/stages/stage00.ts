@@ -2,7 +2,6 @@
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
-import type { Player } from '../player/player';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { WaveAttack } from './stage-utils/wave-attack';
 import type { Stage00SaveData, StageSaveData } from '../save/save-data';
@@ -48,7 +47,8 @@ export class Stage00 extends Stage {
   }
 
   // 敵の行動・補給・波状攻撃の更新を行う。
-  update(dt: number, player: Player | null, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  update(dt: number, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+    const player = this.ship;
     if (!player) return;
 
     this.behaveAllEnemies(player, entities, simTime, simSpeed);

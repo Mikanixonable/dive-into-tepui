@@ -9,7 +9,7 @@ import type { FrameAnchorSource } from '../../physics/frame';
 import { CameraSystem } from '../camera/camera-system';
 import type { CelestialMarkers } from '../marker/celestial-markers';
 import { PlanDisplay } from '../plan/plan-display';
-import type { ActivePlayerController } from '../active-controllable-controller';
+import type { ControlSelection } from '../control-selection';
 import { isOccluded } from '../../physics/occlusion';
 import { NearbySystemTracker } from '../celestial/nearby-system-tracker';
 import { MapVisibilityPolicy } from '../map/visibility-policy';
@@ -37,7 +37,7 @@ export class ObjectPickables {
 
   // 候補の供給元を参照として受け取る。
   constructor(
-    private readonly activePlayers: ActivePlayerController,
+    private readonly controlSelection: ControlSelection,
     private readonly entities: DynamicSystem,
     private readonly celestialSystem: CelestialSystem,
     private readonly navTarget: NavTarget,
@@ -74,14 +74,14 @@ export class ObjectPickables {
     this._visibilityPolicy = visibilityPolicy;
     this.celestialMarkers.update(displayTime, this.cameraSystem.mapDisplayToggles, visibilityPolicy);
     this.navTarget.update(
-      this.activePlayers.current, this.entities, this.celestialSystem, displayWindow, this.frameAnchors);
+      this.controlSelection.current, this.entities, this.celestialSystem, displayWindow, this.frameAnchors);
 
-    const activePlayer = this.activePlayers.current;
+    const controlled = this.controlSelection.current;
     // 候補1件を、消滅・表示トグル・位置の有無・所属系・遮蔽の順に通してこのフレームの候補列へ積む。
     // 所属系と遮蔽をどう扱うかは候補自身が答える — 表示側と同じ判定なので、地球の裏側の
     // 自艦は表示・選択でき、土星系の自艦はどちらにも現れない。
     const append = (item: ObjectPickable): void => {
-      if (item.gone || !item.mapVisibility(visibilityPolicy, activePlayer).pickable) return;
+      if (item.gone || !item.mapVisibility(visibilityPolicy, controlled).pickable) return;
       const pos = item.posAt(displayTime);
       if (pos === null) return;
       if (item.onlyInFocusedSystem

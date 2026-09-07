@@ -43,6 +43,8 @@ export interface Controllable extends DynamicEntity {
   readonly plan: Plan;
   planExecution: PlanExecutionMode;
   fineAttitude: boolean;
+  // 操作対象になったときに出す案内。出すものが無ければ null。
+  readonly controlHint: string | null;
   consumeFuel(amount: number): number;
 
   // 毎フレーム1度だけ呼ぶ。input が null なら、このフレーム操作されない個体として指令を畳む。

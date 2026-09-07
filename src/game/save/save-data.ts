@@ -276,7 +276,7 @@ export interface GameSaveData {
   /** 旧スナップショットには無い。存在しなければ地球の自転初期位相は復元されない。 */
   earthSpinPhase0?: number;
   players: PlayerSaveData[];
-  activePlayerId: string | null;
+  activeControlledId: string | null;
   enemies: EnemySaveData[];
   ammoPickups: AmmoPickupSaveData[];
   // 旧スナップショットには無い。読み込み時に空配列へ正規化する。

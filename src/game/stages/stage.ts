@@ -21,7 +21,7 @@ import type { StageSaveData } from '../save/save-data';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { ActivePlayerController } from '../active-controllable-controller';
+import type { ControlSelection } from '../control-selection';
 import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
 import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
@@ -63,7 +63,7 @@ export type StageDeps = [
   markerManager: MarkerManager,
   celestialSystem: CelestialSystem,
   simulator: Simulator,
-  activePlayers: ActivePlayerController,
+  controlSelection: ControlSelection,
 ];
 
 // ステージクラスの静的側。起動時の設定はここから読む。
@@ -162,7 +162,7 @@ export abstract class Stage {
   protected readonly _markerManager: MarkerManager;
   protected readonly _celestialSystem: CelestialSystem;
   protected readonly _simulator: Simulator;
-  protected readonly _activePlayers: ActivePlayerController;
+  protected readonly _controlSelection: ControlSelection;
 
   private _phase: GamePhase;
   public get phase(): GamePhase { return this._phase; }
@@ -186,7 +186,7 @@ export abstract class Stage {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, worldSfx, uiSfx, scene, entities, fx, markerManager, celestialSystem, simulator, activePlayers] = deps;
+    const [hud, worldSfx, uiSfx, scene, entities, fx, markerManager, celestialSystem, simulator, controlSelection] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
@@ -196,7 +196,7 @@ export abstract class Stage {
     this._markerManager = markerManager;
     this._celestialSystem = celestialSystem;
     this._simulator = simulator;
-    this._activePlayers = activePlayers;
+    this._controlSelection = controlSelection;
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
     this._phase = saved?.phase ?? 'playing';
     this.restored = saved !== undefined;
@@ -220,17 +220,25 @@ export abstract class Stage {
   // ステータスパネルを同期する。fo・displayTime・visibilityPolicy は配置プレビューなど
   // ステージ固有の描画物を持つサブクラスが使う。
   public sync(
-    player: Player | null, _fo: FloatingOrigin, cameraSystem: CameraSystem, _displayTime: number,
+    _fo: FloatingOrigin, cameraSystem: CameraSystem, _displayTime: number,
     _visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    this.syncStatusPanel(player, cameraSystem.view === 'map');
+    this.syncStatusPanel(cameraSystem.view === 'map');
   }
 
   // hudSubStatus() が null のとき、またはマップビューのときはパネルを畳む。
-  private syncStatusPanel(player: Player | null, mapView: boolean): void {
+  private syncStatusPanel(mapView: boolean): void {
     const message = this.hudSubStatus();
     const show = message !== null && !mapView;
-    this.statusPanel.sync(show ? player : null, message ?? '', this.scoreCounter.kills);
+    this.statusPanel.sync(show ? this.ship : null, message ?? '', this.scoreCounter.kills);
+  }
+
+  // 台本が相手にする自艦。補給の投入先・敵の追跡先・ステータスパネルの表示対象はどれもこれ。
+  // 操作対象が基地でも台本は止まらないので、そのときは生存中の先頭の艦を使う。
+  protected get ship(): Player | null {
+    const controlled = this._controlSelection.current;
+    if (controlled instanceof Player) return controlled;
+    return this._entities.players.find((p) => p.alive) ?? null;
   }
 
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、
@@ -238,7 +246,7 @@ export abstract class Stage {
   protected addPlayer(init?: PlayerInit): Player {
     const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, this._markerManager, init);
     this._entities.add(ship);
-    this._activePlayers.claimIfNone(ship);
+    this._controlSelection.claimIfNone(ship);
     return ship;
   }
 
@@ -266,8 +274,8 @@ export abstract class Stage {
   protected abstract briefingHtml(): string;
   // 初期配置。既定では何も置かない。
   protected init(_entities: DynamicSystem): void { }
-  // 毎フレーム呼ぶ。艦が1隻も無い間は player が null になる。
-  public abstract update(dt: number, player: Player | null, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void;
+  // 毎フレーム呼ぶ。台本が相手にする自艦は this.ship から引く。
+  public abstract update(dt: number, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void;
 
   // Simulator がsubstepをイベント直前で切るためのhook。通常ステージには時刻固定イベントがない。
   public nextSimulationEventTime(_simTime: number): number | null { return null; }

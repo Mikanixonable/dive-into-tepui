@@ -13,7 +13,7 @@ import type { ObjectWindows } from '../pickable/object-windows';
 import type { CelestialMarkers } from '../marker/celestial-markers';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { Targeter } from '../targeter';
-import type { ActiveControllableController } from '../active-controllable-controller';
+import type { ControlSelection } from '../control-selection';
 import type { PlanPath } from '../plan/plan-path';
 import type { UiSfx } from '../../audio/sfx/ui-sfx';
 import type { CelestialSystem } from '../celestial/celestial-system';
@@ -36,7 +36,7 @@ export class CombatView implements ViewFrame {
     private readonly dynamicSystem: DynamicSystem,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly touchControls: TouchControls | null,
-    private readonly activePlayers: ActiveControllableController,
+    private readonly controlSelection: ControlSelection,
     private readonly planPath: PlanPath,
     private readonly celestialSystem: CelestialSystem,
     private readonly simSpeedManager: SimSpeedManager,
@@ -56,7 +56,7 @@ export class CombatView implements ViewFrame {
 
   // 戦闘ビューは操作対象(艦または基地)が必要。
   public canEnter(): boolean {
-    return this.activePlayers.currentControllable !== null;
+    return this.controlSelection.current !== null;
   }
 
   public onEnter(): void {}
@@ -67,27 +67,27 @@ export class CombatView implements ViewFrame {
   public handleInput(input: Input, _dt: number, simTime: number): void {
     if (input.takeKey(K.deleteNode)) this.clearPlan();
     if (input.takeKey(K.autoWarpToNode)) {
-      const plan = this.activePlayers.currentControllable?.plan;
+      const plan = this.controlSelection.current?.plan;
       this.simSpeedManager.toggleAutoWarpToFirstNode(plan?.firstNode(), simTime);
     }
   }
 
   // 確定済みのマニューバ計画を破棄し、進行中の自動ワープも解く。
   private clearPlan(): void {
-    const plan = this.activePlayers.currentControllable?.plan;
+    const plan = this.controlSelection.current?.plan;
     if (!plan || plan.nodes.length <= 0) return;
     plan.clear();
     this.simSpeedManager.cancelAutoWarp();
     this.hud.hint('マニューバ計画を破棄');
   }
 
-  // 照準キーと右クリックの配分。操作艦がいなければ照準先が無いので配らない。
+  // 照準キーと右クリックの配分。操作対象がいなければ照準先が無いので配らない。
   // 右クリックは実体に当たればそのプロパティウィンドウを、外れれば空域メニューを開く。
   public handlePointer(simTime: number): void {
-    const player = this.activePlayers.current;
-    if (!player) return;
+    const controlled = this.controlSelection.current;
+    if (!controlled) return;
     const project = this.cameraSystem.activeCameraProjection;
-    const combatTargets = this.dynamicSystem.getCombatTargets(player);
+    const combatTargets = this.dynamicSystem.getCombatTargets(controlled);
     this.targeter.handleTargetSelectKey(this.input, combatTargets, project);
     this.input.takeRightClicks((p) => {
       const hit = pickCombatEntityAtPoint(
@@ -101,7 +101,7 @@ export class CombatView implements ViewFrame {
   // 直近ノードの消化・接近通知を進める。
   public update(displayWindow: DisplayWindow): void {
     this.planGuide.update(
-      this.activePlayers.current, displayWindow.simTime, this.celestialSystem.celestialMotions,
+      this.controlSelection.current, displayWindow.simTime, this.celestialSystem.celestialMotions,
     );
   }
 
@@ -112,15 +112,15 @@ export class CombatView implements ViewFrame {
 
   // 戦闘ビュー専用の常設表示(タッチのモードボタン・ノード実行ガイド)。
   public syncPanels(displayWindow: DisplayWindow, _fo: FloatingOrigin): void {
-    const player = this.activePlayers.current;
-    if (player) {
+    const controlled = this.controlSelection.current;
+    if (controlled) {
       this.touchControls?.syncModeButtons(
-        player.throttle.rcsDamp, player.fineAttitude, player.throttle.progradeHold,
-        (key) => player.throttle.isThrustLatched(key),
+        controlled.throttle.rcsDamp, controlled.fineAttitude, controlled.throttle.progradeHold,
+        (key) => controlled.throttle.isThrustLatched(key),
       );
     }
     const project = this.cameraSystem.activeCameraProjection;
-    this.planGuide.sync(player, displayWindow.simTime, project, this.planPath);
+    this.planGuide.sync(controlled, displayWindow.simTime, project, this.planPath);
   }
 
   public dispose(): void {}

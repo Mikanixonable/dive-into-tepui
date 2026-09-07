@@ -3,14 +3,12 @@ import * as THREE from 'three/webgpu';
 import type { PerfCounts } from './perf-counts';
 import type { ProteinMotionFrameSample } from './protein/protein-motion-metrics';
 import { FrameSections, SECTION } from './frame-sections';
-import { Player } from './player/player';
-import { Base } from './dynamic/dynamic-entity/base';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import { CameraSystem } from './camera/camera-system';
 import { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
 import { CelestialMarkers } from './marker/celestial-markers';
-import { ActiveControllableController } from './active-controllable-controller';
+import { ControlSelection } from './control-selection';
 import { Targeter } from './targeter';
 import { PlanEditor } from './plan/plan-editor';
 import { PlanDisplay } from './plan/plan-display';
@@ -65,14 +63,10 @@ export class Game {
   private readonly markerManager: MarkerManager;
   private readonly celestialMarkers: CelestialMarkers;
   readonly cameraSystem: CameraSystem;
-  // 操作対象艦(0..n 隻のうちどれを操作するか)の切替を持つ。
-  private readonly activePlayers: ActiveControllableController;
-  get player(): Player | null { return this.activePlayers.current; }
-  get controlledBase(): Base | null { return this.activePlayers.controlledBase; }
-  // いま操作している対象。操作中の基地、無ければ操作対象艦、それも無ければ生存中の基地。
-  get activeControllableEntity(): Controllable | null {
-    return this.controlledBase ?? this.player ?? this.dynamicSystem.bases.find((b) => b.alive) ?? null;
-  }
+  // 操作対象(艦 0..n 隻と基地のうちどれを操作するか)の切替を持つ。
+  private readonly controlSelection: ControlSelection;
+  // いま操作している対象。操作しているものが無ければ null。
+  get activeControllable(): Controllable | null { return this.controlSelection.current; }
   readonly simSpeedManager: SimSpeedManager;
 
   private readonly planDisplay: PlanDisplay;
@@ -167,7 +161,7 @@ export class Game {
       earthSpinPhase0,
       // 顔ぶれは種別ごとに、個体自身へ畳ませる。
       players: this.dynamicSystem.players.map((p) => p.serialize()),
-      activePlayerId: this.player ? this.player.id : null,
+      activeControlledId: this.activeControllable?.id ?? null,
       enemies: this.dynamicSystem.enemies.map((e) => e.serialize()),
       ammoPickups: this.dynamicSystem.ammoPickups.map((pickup) => pickup.serialize()),
       rcsFuelPickups: this.dynamicSystem.rcsFuelPickups.map((pickup) => pickup.serialize()),
@@ -182,13 +176,13 @@ export class Game {
   // ランの外側が一覧へ描くための要約。自機が居ない周回でも値が欠けないよう、
   // 軌道の項は星系の原点へ寄せる。
   runSummary(): RunSummary {
-    // 自機が居る周回なら、軌道の項もそこから解く。
-    const player = this.player;
+    // 操作対象が居る周回なら、軌道の項もそこから解く。
+    const controlled = this.activeControllable;
     const celestial = this._celestialSystem;
-    const info = player === null ? null : orbitInfo(
-      player,
-      autoOrbitReference(player.state.r, celestial.celestialMotions, player.state.t),
-      player.state.t, (id: string) => celestial.nameOf(id),
+    const info = controlled === null ? null : orbitInfo(
+      controlled,
+      autoOrbitReference(controlled.state.r, celestial.celestialMotions, controlled.state.t),
+      controlled.state.t, (id: string) => celestial.nameOf(id),
     );
     return {
       simTime: this.simTime,
@@ -197,9 +191,11 @@ export class Game {
       centerBodyName: info ? info.centerName : celestial.nameOf(celestial.origin.id),
       altitude: info ? info.alt : 0,
       speed: info ? info.spd : 0,
-      hpRatio: player !== null && player.maxHp > 0 ? Math.max(0, player.hp) / player.maxHp : 0,
-      maxHp: player ? player.maxHp : 0,
-      magazines: player ? player.magsLeft : 0,
+      hpRatio: controlled !== null && controlled.hp !== null && controlled.maxHp !== null && controlled.maxHp > 0
+        ? Math.max(0, controlled.hp) / controlled.maxHp
+        : 0,
+      maxHp: controlled?.maxHp ?? 0,
+      magazines: controlled?.fire?.mags ?? 0,
       money: this.dynamicSystem.bases.reduce((sum, b) => sum + b.baseState.money, 0),
       playerCount: this.dynamicSystem.players.length,
       enemyAliveCount: this.dynamicSystem.enemies.filter((e) => e.alive).length,
@@ -238,7 +234,7 @@ export class Game {
       this._hud, celestialSystem, () => this.viewManager.current,
       (id, t) => {
         const role = frameRoleOf(id);
-        const entity = role === 'activeShip' ? this.activeControllableEntity
+        const entity = role === 'activeShip' ? this.activeControllable
           : role === 'navTarget'
             ? this.navTarget.resolveState(this.dynamicSystem, celestialSystem, celestialSystem.celestialMotions, t)?.entity ?? null
             : this.dynamicSystem.all().find((e) => e.id === id) ?? null;
@@ -254,7 +250,7 @@ export class Game {
     // 先頭で毎フレーム表示時刻を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
     this.frameAnchors = new FrameAnchors(celestialSystem, {
       entityState: (id, t) => this.dynamicSystem.all().find((e) => e.id === id && e.alive)?.stateAt(t, celestialSystem) ?? null,
-      activeShipState: (t) => this.activeControllableEntity?.stateAt(t, celestialSystem) ?? null,
+      activeShipState: (t) => this.activeControllable?.stateAt(t, celestialSystem) ?? null,
       navTargetState: (bodies, t) => this.navTarget.resolveState(this.dynamicSystem, celestialSystem, bodies, t)?.state ?? null,
     });
     this.frameControls = new FrameControls(
@@ -273,16 +269,16 @@ export class Game {
     this._celestialSystem.orbitGuide.setOnLineCountChange(
       (count) => this.cameraSystem.viewOptionsPanel.setOrbitGuideLineCount(count),
     );
-    this.activePlayers = new ActiveControllableController(
-      initialSave?.activePlayerId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._worldSfx, this._hud,
+    this.controlSelection = new ControlSelection(
+      initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._worldSfx, this._hud,
     );
     this._hud.burnManagementPanel.setHandlers({
-      onAttach: () => { this.activeControllableEntity?.boosters?.attach(); },
-      onToggleIgnition: () => { this.activeControllableEntity?.boosters?.toggleIgnition(); },
-      onDecouple: () => { this.activeControllableEntity?.boosters?.decouple(this.dynamicSystem); },
+      onAttach: () => { this.activeControllable?.boosters?.attach(); },
+      onToggleIgnition: () => { this.activeControllable?.boosters?.toggleIgnition(); },
+      onDecouple: () => { this.activeControllable?.boosters?.decouple(this.dynamicSystem); },
     });
     this.planDisplay = new PlanDisplay(
-      this._scene, this.markerManager, celestialSystem, this.displayWindowManager, this.activePlayers,
+      this._scene, this.markerManager, celestialSystem, this.displayWindowManager, this.controlSelection,
     );
     const editor = new PlanEditor(
       this._hud,
@@ -290,7 +286,7 @@ export class Game {
       this.simSpeedManager,
       celestialSystem,
       this._scene,
-      this.activePlayers,
+      this.controlSelection,
       this.displayWindowManager,
       this.frameControls,
       this.planDisplay.path,
@@ -309,37 +305,37 @@ export class Game {
 
     this.activeStage = new stageClass(
       initialSave?.stage, this._hud, this._worldSfx, uiSfx, this._scene, this.dynamicSystem,
-      this.dynamicSystem.effects, this.markerManager, celestialSystem, this.simulator, this.activePlayers,
+      this.dynamicSystem.effects, this.markerManager, celestialSystem, this.simulator, this.controlSelection,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage の authoring/executesPlans を読むので、その直後に生成する。
     const objectPickables = new ObjectPickables(
-      this.activePlayers, this.dynamicSystem, celestialSystem, this.navTarget, this.cameraSystem,
+      this.controlSelection, this.dynamicSystem, celestialSystem, this.navTarget, this.cameraSystem,
       this.celestialMarkers, this.planDisplay, this.frameAnchors,
     );
     const linePickables = new LinePickables(this.dynamicSystem, this._celestialSystem);
     this.objectWindows = new ObjectWindows(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
       this.cameraSystem, editor, this.simSpeedManager, this.pauseMenu, objectPickables, linePickables,
-      this.activePlayers, this.frameControls, this.activeStage, this.targeter,
+      this.controlSelection, this.frameControls, this.activeStage, this.targeter,
     );
 
     const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.objectWindows, this.dynamicSystem,
       this.celestialMarkers, this.touchControls,
-      this.activePlayers, this.planDisplay.path, celestialSystem,
+      this.controlSelection, this.planDisplay.path, celestialSystem,
       this.simSpeedManager, this._hud, uiSfx, this.markerManager,
     );
     const mapView = new MapView(
       this.input, this.cameraSystem, this.targeter, editor, this.objectWindows,
       this.dynamicSystem, celestialSystem, objectPickables, linePickables,
       this.celestialMarkers, this.markerManager, this.displayWindowManager, this.frameControls,
-      this.frameAnchors, this.activePlayers, this._hud, this.navTarget,
+      this.frameAnchors, this.controlSelection, this._hud, this.navTarget,
     );
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
     // 置かれるので、戦闘ビューへ入れるかどうかはその後でなければ判定できない。
     this.viewManager = new ViewManager(
-      this._hud, this.touchControls, this.displayWindowManager, this.activePlayers,
+      this._hud, this.touchControls, this.displayWindowManager, this.controlSelection,
       { combat: combatView, map: mapView },
       initialSave?.camera?.view,
     );
@@ -406,7 +402,7 @@ export class Game {
     if (!this._isPaused && this.activeStage.isPlaying) this.advanceSimulation(dt);
     // ここから先はポーズ中も決着後も通す。決着は積分を止めないので、飛ばすと描画原点になる
     // カメラ位置だけが絶対 ECI に取り残され、追従対象が軌道速度で流れて即フレームアウトする。
-    const activeControllable = this.activeControllableEntity;
+    const activeControllable = this.activeControllable;
     const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, activeControllable);
     const view = this.viewManager.current;
     const canDisplayFuture = !this.displayWindowManager.forceCurrent;
@@ -425,7 +421,7 @@ export class Game {
     // 消費も期限切れの張り直しも起きないので、予測は伸び切ったところで止まるだけで害はない。
     this.sections.enter(SECTION.predict);
     this.predictor.update(
-      this.simulator.simTime, this.simulator.lastSimDt, this.player, displayWindow.duration,
+      this.simulator.simTime, this.simulator.lastSimDt, activeControllable, displayWindow.duration,
       canDisplayFuture, this.planDisplay.growableArcs(),
     );
     this.sections.exit(SECTION.predict);
@@ -458,16 +454,16 @@ export class Game {
     const simDt = dt * this.simSpeedManager.simSpeed;
     const canShipAct = this.simSpeedManager.canShipAct;
     const canEngage = this.simSpeedManager.canEngage;
+    const controlled = this.activeControllable;
     this.sections.enter(SECTION.player);
-    this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+    this.nanWatchdog.checkControlled('frameStart', controlled, this.simulator.simTime, dt, this.simulator.lastSimDt);
     this.dynamicSystem.updateThrusts(simDt);
     this.dynamicSystem.updateControllables(
-      this.controlledBase ?? this.player, this.input, canShipAct, dt, simDt,
-      this.activeStage, this._celestialSystem,
+      controlled, this.input, canShipAct, dt, simDt, this.activeStage, this._celestialSystem,
     );
-    this.nanWatchdog.checkPlayer(
-      'player.updateControls',
-      this.player,
+    this.nanWatchdog.checkControlled(
+      'controllable.updateControls',
+      controlled,
       this.simulator.simTime,
       dt,
       this.simulator.lastSimDt,
@@ -475,19 +471,19 @@ export class Game {
     this.sections.exit(SECTION.player);
 
     this.sections.enter(SECTION.stage);
-    this.activeStage.update(dt, this.player, this.dynamicSystem, this.simulator.simTime, this.simSpeedManager);
+    this.activeStage.update(dt, this.dynamicSystem, this.simulator.simTime, this.simSpeedManager);
     this.sections.exit(SECTION.stage);
-    this.nanWatchdog.checkPlayer('activeStage.update', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
+    this.nanWatchdog.checkControlled('activeStage.update', controlled, this.simulator.simTime, dt, this.simulator.lastSimDt);
     this.sections.enter(SECTION.integrate);
     this.simulator.advance(
-      dt, simDt, this.player, this.activeStage,
+      dt, simDt, controlled, this.activeStage,
       canEngage, this.nanWatchdog);
     this.sections.exit(SECTION.integrate);
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
-    this.nanWatchdog.checkAll('simulator.advance', this.player, this.dynamicSystem, this.simulator.simTime, dt, simDt);
+    this.nanWatchdog.checkAll('simulator.advance', controlled, this.dynamicSystem, this.simulator.simTime, dt, simDt);
 
-    this.targeter.updateBoardMarks(dt, this.player);
-    this.activePlayers.reclaimDead();
+    this.targeter.updateBoardMarks(dt, controlled);
+    this.controlSelection.reclaimDead();
 
     this.sections.enter(SECTION.effects);
     this.dynamicSystem.effects.update(dt, this.simulator.simTime);
@@ -528,12 +524,12 @@ export class Game {
   // ------------------------------------------------------------------ sync
 
   sync(graphics: GraphicsSettingsData, style: RenderStyle): void {
-    const player = this.player;
+    const controlled = this.activeControllable;
     // update() が確定させた、このフレームの表示窓。
     const displayWindow = this.displayWindowManager.current;
     this.viewBadge.sync(
       this.activeStage.stageClass.selectLabel, this.cameraSystem.activeFocus,
-      this.controlledBase ?? this.player, this.navTarget.name,
+      controlled, this.navTarget.name,
     );
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
@@ -549,13 +545,11 @@ export class Game {
     // 表示・選択可否はこのフレームの update フェーズで現在のビューが確定させたものを読む
     // (選べる対象と描かれる対象が同じ判定から出るようにする)。
     const visibilityPolicy = this.viewManager.activeView.visibilityPolicy;
-    // 軌道パネルと同じ基準で解く — player だけを見ると、基地操作中は常に undefined になり、
-    // パネルの表示と3D軌道線の基準がずれる。
-    const activeControllable = this.activeControllableEntity;
-    const orbitRef = activeControllable
+    // 3D 軌道線を軌道パネルと同じ基準で解く。
+    const orbitRef = controlled
       ? this.orbitReference.resolve(
-        activeControllable.state.r, celestialBodies, this.navTarget,
-        this.dynamicSystem, this._celestialSystem, activeControllable.state.t,
+        controlled.state.r, celestialBodies, this.navTarget,
+        this.dynamicSystem, this._celestialSystem, controlled.state.t,
       )
       : undefined;
 
@@ -567,11 +561,11 @@ export class Game {
     // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。
     const timeLabel = timeLabelSettingOf(displayWindow);
     this.dynamicSystem.sync(
-      this.controlledBase ?? player, fo, this.cameraSystem, displayTime, style, visibilityPolicy,
+      controlled, fo, this.cameraSystem, displayTime, style, visibilityPolicy,
       orbitRef, this.frameAnchors, timeLabel, graphics.proteinVibration,
     );
 
-    this.targeter.sync(player, this.cameraSystem, displayTime, simTime, visibilityPolicy);
+    this.targeter.sync(controlled, this.cameraSystem, displayTime, simTime, visibilityPolicy);
     this.navTarget.sync(
       this.cameraSystem, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, timeLabel);
 
@@ -581,13 +575,13 @@ export class Game {
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     this.entityLines.sync(
-      player, this.targeter.aliveTarget, this.viewManager.current, displayWindow, visibilityPolicy, orbitRef,
+      controlled, this.targeter.aliveTarget, this.viewManager.current, displayWindow, visibilityPolicy, orbitRef,
       fo, this.cameraSystem.activeCamera, this.frameAnchors, this._celestialSystem);
     // ビュー専用のパネル・表示物と軌道線の右クリック候補。軌道線が今フレーム焼いたサンプルを
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
     this.viewManager.activeView.syncPanels(displayWindow, fo);
 
-    this.activeStage.sync(player, fo, this.cameraSystem, displayTime, visibilityPolicy);
+    this.activeStage.sync(fo, this.cameraSystem, displayTime, visibilityPolicy);
 
     this._hud.syncPanels(this.viewManager.current, this);
 
@@ -608,7 +602,7 @@ export class Game {
     return {
       ...this.dynamicSystem.perfCounts(),
       ...this.predictor.perfCounts(
-        this.simulator.simTime, this.displayWindowManager.current.duration, this.player),
+        this.simulator.simTime, this.displayWindowManager.current.duration, this.activeControllable),
       ...this.simulator.perfCounts(),
       ...this.planDisplay.perfCounts(),
       ...this._celestialSystem.perfCounts(),

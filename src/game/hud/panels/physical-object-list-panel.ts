@@ -11,7 +11,7 @@ import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { DynamicEntityKind } from '../../dynamic/dynamic-entity/entity-kind';
-import type { Player } from '../../player/player';
+import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
 import type { RowNode } from './physical-object-list-tree';
 import type { PhysicalObjectListFilter, PhysicalObjectListSort, SectionOrder } from './physical-object-list-order';
 
@@ -289,7 +289,7 @@ export class PhysicalObjectListPanel {
     items: readonly ObjectPickable[],
     focusId: string | undefined,
     parentOf: ReadonlyMap<string, string>,
-    activePlayer: Player | null,
+    viewer: Controllable | null,
     displayTime: number,
   ): void {
     // 本体が畳まれている間は完全に不可視(CSS が display:none)なので、行ツリーの差分同期を
@@ -310,8 +310,8 @@ export class PhysicalObjectListPanel {
     this.breadcrumb.textContent = crumbs.length ? crumbs.reverse().join(' › ') : 'フォーカス: なし';
     const focusChanged = focusId !== this.lastFocusId;
     this.lastFocusId = focusId;
-    const inputsChanged = this.order.refreshInputs(items, parentOf, activePlayer, displayTime, focusId);
-    this.rowTree.setFrame(activePlayer, displayTime);
+    const inputsChanged = this.order.refreshInputs(items, parentOf, viewer, displayTime, focusId);
+    this.rowTree.setFrame(viewer, displayTime);
 
     // フォーカスが切り替わった瞬間だけ、そこへ至る枝を自動展開する対象として渡す
     // (毎フレーム渡すとユーザーが畳んだ直後に開き直ってしまう)。
@@ -357,7 +357,7 @@ export class PhysicalObjectListPanel {
         section.expanded = true;
         this.applyExpanded(section);
       }
-      this.syncHeader(section, sectionKey, label, activePlayer, displayTime);
+      this.syncHeader(section, sectionKey, label, viewer, displayTime);
       totalMatched += section.order.ids.length;
 
       // 行は区画ごとの平坦な台帳が持つ。根から辿って今フレーム現れた id を集め、最後に
@@ -392,7 +392,7 @@ export class PhysicalObjectListPanel {
   // (区画本体もあわせて隠す — 天体区画の一括開閉ボタンなど、見出し以外の常設要素が
   // 見出しだけ消えた場所に浮いて残らないようにする)。
   private syncHeader(
-    section: Section, sectionKey: MapListSection, label: string, activePlayer: Player | null,
+    section: Section, sectionKey: MapListSection, label: string, viewer: Controllable | null,
     displayTime: number,
   ): void {
     const ids = section.order.ids;
@@ -403,7 +403,7 @@ export class PhysicalObjectListPanel {
     let state = '';
     if (summaryLabel !== undefined) {
       let count = 0;
-      for (const id of ids) if (this.itemsByIdScratch.get(id)?.listCounted(activePlayer, displayTime)) count++;
+      for (const id of ids) if (this.itemsByIdScratch.get(id)?.listCounted(viewer, displayTime)) count++;
       state = ` · ${summaryLabel} ${count}`;
     }
     // 行側と同じく、変わっていなければ書き換えない(毎フレームの再代入はレイアウト再計算の元)。

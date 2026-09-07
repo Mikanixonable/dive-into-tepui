@@ -3,7 +3,6 @@
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { generateWave } from './stage-utils/wave-attack';
 import { Button, ToggleSwitch } from '../../hud/widgets';
-import type { Player } from '../player/player';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { StageSaveData } from '../save/save-data';
@@ -64,7 +63,8 @@ export class StageDebug extends Stage {
   }
 
   // 敵の行動を進め、射撃許可を毎フレーム自ステージの敵全体へ反映する。
-  update(_dt: number, player: Player | null, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  update(_dt: number, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+    const player = this.ship;
     if (!player) return;
     for (const e of entities.enemies) e.fireEnabled = this.enemyFireEnabled;
     this.behaveAllEnemies(player, entities, simTime, simSpeed);

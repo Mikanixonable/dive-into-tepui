@@ -1,6 +1,5 @@
 // クリエイティブモード: 勝敗判定を発生させず、物体配置と軌道計画を自由に試すためのステージ。
 import { Stage, type ObjectAuthoring, type StageDeps, STORY_EPOCH } from './stage';
-import type { Player } from '../player/player';
 import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
@@ -129,7 +128,7 @@ export class CreativeStage extends Stage {
 
   // 操作艦の弾薬を満載にする。操作艦がいなければトーストで知らせる。
   private refillActivePlayerAmmo(): void {
-    const player = this._activePlayers.current;
+    const player = this.ship;
     if (player === null || !player.alive) {
       this._hud.hint('操作艦がいないため弾薬を補充できません');
       return;
@@ -139,7 +138,7 @@ export class CreativeStage extends Stage {
 
   // 操作艦の RCS 燃料を満タンにする。操作艦がいなければトーストで知らせる。
   private refillActivePlayerRcsFuel(): void {
-    const player = this._activePlayers.current;
+    const player = this.ship;
     if (player === null || !player.alive) {
       this._hud.hint('操作艦がいないためRCS燃料を補充できません');
       return;
@@ -149,7 +148,7 @@ export class CreativeStage extends Stage {
 
   // shape で選んだ形の敵を1体、自機の前方へ出す。操作艦がいなければトーストで知らせる。
   private spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void {
-    const player = this._activePlayers.current;
+    const player = this.ship;
     if (player === null || !player.alive) {
       this._hud.hint('操作艦がいないため敵をスポーンできません');
       return;
@@ -183,7 +182,7 @@ export class CreativeStage extends Stage {
 
   // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機前方に一括スポーンする。
   private spawnProteinFormation(): void {
-    const player = this._activePlayers.current;
+    const player = this.ship;
     if (player === null || !player.alive) {
       this._hud.hint('操作艦がいないため敵をスポーンできません');
       return;
@@ -211,11 +210,12 @@ export class CreativeStage extends Stage {
 
   // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカーを同期する。
   sync(
-    player: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
+    fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
-    this.stageControlsPanel.setSpawnButtonsEnabled(player !== null && player.alive);
+    super.sync(fo, cameraSystem, displayTime, visibilityPolicy);
+    const ship = this.ship;
+    this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.alive);
     this.mountStageControlsPanel(cameraSystem.view === 'map');
     const form = this.placerPanel.isOpen ? this.placerPanel.getForm() : null;
     this.syncPreview(form, fo, cameraSystem, displayTime);
@@ -431,7 +431,8 @@ export class CreativeStage extends Stage {
 
   // 補給の投入と、既に出ている敵の AI を進める。波状攻撃のトグルが決めるのは新しいウェーブが
   // 出るかどうかで、OFF にしても既に出ている敵は残る。
-  update(dt: number, player: Player | null, _entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  update(dt: number, _entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+    const player = this.ship;
     if (player) {
       this.logistics.updateLogistics(simTime, player, simSpeed, true);
       this.behaveAllEnemies(player, this._entities, simTime, simSpeed);

@@ -15,7 +15,7 @@ import type { MarkerManager } from '../marker/marker-manager';
 import type { NavTarget } from '../nav-target';
 import type { Targeter } from '../targeter';
 import type { PlanEditor } from '../plan/plan-editor';
-import type { ActiveControllableController } from '../active-controllable-controller';
+import type { ControlSelection } from '../control-selection';
 import type { DisplayWindow, DisplayWindowManager } from '../display-window-manager';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { FrameAnchors } from '../frame-anchors';
@@ -42,7 +42,7 @@ export class MapView implements ViewFrame {
     private readonly displayWindowManager: DisplayWindowManager,
     private readonly frameControls: FrameControls,
     private readonly frameAnchors: FrameAnchors,
-    private readonly activePlayers: ActiveControllableController,
+    private readonly controlSelection: ControlSelection,
     hud: Hud,
     navTarget: NavTarget,
   ) {
@@ -125,8 +125,8 @@ export class MapView implements ViewFrame {
   public syncPanels(displayWindow: DisplayWindow, fo: FloatingOrigin): void {
     // 編集 UI と常設パネル
     this.editor.sync(this.cameraSystem.mapCamera.dist, fo);
-    this.displayWindowManager.sync(this.activePlayers.current);
-    this.picking.sync(displayWindow.displayTime, this.activePlayers.current);
+    this.displayWindowManager.sync(this.controlSelection.current);
+    this.picking.sync(displayWindow.displayTime, this.controlSelection.current);
     this.frameControls.sync(
       this.objectPickables.pickables, this.cameraSystem.activeCameraPos,
       displayWindow.simTime, displayWindow.displayTime,

@@ -14,7 +14,7 @@
 // 関係(どの天体が引くか・表面へ到達したか・大気で焼失したか・刻みをどこまで広げてよいか)。
 // 探し方が違うのは同時性から来る正当な差だが、答えが違ってよい理由はない。
 import { DynamicSystem } from './dynamic-system';
-import { Player } from '../player/player';
+import type { Controllable } from './dynamic-entity/controllable';
 import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import { CelestialMotion, CelestialMotions } from '../../physics/celestial-motion';
 import type { Stage } from '../stages/stage';
@@ -74,7 +74,7 @@ export class Simulator {
   advance(
     dt: number,
     simDt: number,
-    player: Player | null,
+    controlled: Controllable | null,
     activeStage: Stage,
     canEngage: boolean,
     nanWatchdog: NanWatchdog,
@@ -120,7 +120,7 @@ export class Simulator {
         }
         activeStage.applySimulationEvents(this.simTime);
         this.entities.cleanup(
-          0, this.simTime, activeStage, player?.state.r ?? v3(), this.atmosphereBodies());
+          0, this.simTime, activeStage, controlled?.state.r ?? v3(), this.atmosphereBodies());
         continue;
       }
       this.consecutiveZeroSteps = 0;
@@ -138,14 +138,14 @@ export class Simulator {
       this.simTime = endTime;
       this.sections.exit(SECTION.orbit);
       this.lastSubsteps++;
-      nanWatchdog.checkPlayer('simulator.advance(個体の前進)', player, this.simTime, dt, subDt);
+      nanWatchdog.checkControlled('simulator.advance(個体の前進)', controlled, this.simTime, dt, subDt);
       // 天体との接触は倍率にも種別にも依らず、物体どうしの接触より先に解く。細分した個体は
       // 内側の刻みで解き終えているので、ここで解くのは1歩で渡った側だけ — 二重に解くと反発が
       // 二度当たる。
       this.sections.enter(SECTION.celestialContact);
       this.surfaceContactPhysics.resolveShared(this.sharedIntervalScratch, activeStage);
       this.sections.exit(SECTION.celestialContact);
-      nanWatchdog.checkPlayer('simulator.advance(天体接触)', player, this.simTime, dt, subDt);
+      nanWatchdog.checkControlled('simulator.advance(天体接触)', controlled, this.simTime, dt, subDt);
       // 接触代理を組むのも交戦圏があるときだけ。交戦圏の組まれない倍率で組むと、代理が
       // substep 幅そのままの粗い刻みで解かれて発散する。
       const zones = engagementZones(this.entities.all(), canEngage);
@@ -167,12 +167,12 @@ export class Simulator {
           if (entity.alive) entity.applyContactProxies(subDt);
         }
         this.sections.exit(SECTION.entityContact);
-        nanWatchdog.checkPlayer('simulator.advance(接触)', player, this.simTime, dt, subDt);
+        nanWatchdog.checkControlled('simulator.advance(接触)', controlled, this.simTime, dt, subDt);
       }
       activeStage.applySimulationEvents(this.simTime);
       // 期限切れ弾が同じsubstepの接触解決へ進まないよう、既知境界の直後に回収する。
       this.entities.cleanup(
-        subDt, this.simTime, activeStage, player?.state.r ?? v3(), this.atmosphereBodies());
+        subDt, this.simTime, activeStage, controlled?.state.r ?? v3(), this.atmosphereBodies());
     }
 
     this.lastSimDt = simDt;

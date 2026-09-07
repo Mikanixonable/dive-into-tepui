@@ -137,6 +137,8 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   private readonly playerScene: THREE.Scene;
 
   fineAttitude = false;
+  // 自機の操作方法は HUD とヘルプが常設で示しているので、選び直しても案内は出さない。
+  readonly controlHint = null;
 
   // init 省略時は無作為な名前と既定軌道の新規艦になる。id を省いたときは name がそのまま
   // 艦の識別子になるので、複数隻を並べるなら name も分ける。
@@ -654,8 +656,8 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   // 自艦カテゴリの表示トグルによる可否。操作中の自艦は例外扱いになる。
-  public mapVisibility(policy: MapVisibilityPolicy, activePlayer: Player | null): MapVisibility {
-    return policy.entity(this.mapKind, this === activePlayer);
+  public mapVisibility(policy: MapVisibilityPolicy, viewer: Controllable | null): MapVisibility {
+    return policy.entity(this.mapKind, this === viewer);
   }
 
   public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
@@ -674,15 +676,15 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   // 操作中の自艦を一覧の先頭へ出す。
-  public listPriority(activePlayer: Player | null): number {
-    return this === activePlayer ? -100 : 0;
+  public listPriority(viewer: Controllable | null): number {
+    return this === viewer ? -100 : 0;
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
     commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number,
   ): readonly MenuItem<MenuAction>[] {
-    const isActive = this === commands.activePlayer;
+    const isActive = this === commands.controlled;
     const activate: MenuItem<MenuAction> = isActive
       ? { label: '操作対象を解除', act: 'deactivate' }
       : { label: '操作対象にする', act: 'activate' };
@@ -713,16 +715,16 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     if (act === 'toggleTrajectoryLine') {
       this.showTrajectoryLine = !this.showTrajectoryLine;
     } else if (act === 'activate') {
-      commands.setActivePlayer(this);
+      commands.setControlled(this);
     } else if (act === 'deactivate') {
-      if (this === commands.activePlayer) commands.setActivePlayer(null);
+      if (this === commands.controlled) commands.setControlled(null);
     } else if (act === 'planExecCycle') {
       const i = PLAN_EXECUTION_MODES.indexOf(this.planExecution);
       this.planExecution = PLAN_EXECUTION_MODES[(i + 1) % PLAN_EXECUTION_MODES.length]!;
     } else if (act === 'duplicate') {
       commands.duplicate(this.mapKind, this.state);
     } else if (act === 'delete') {
-      commands.removePlayer(this);
+      commands.removeControlled(this);
     } else if (act === 'focus') {
       commands.focus(this.id, this.name);
     } else if (act === 'target') {
@@ -738,7 +740,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     return [
       {
         key: 'operated', label: '操作対象か',
-        value: this === commands.activePlayer ? 'はい' : 'いいえ', collapsible: true,
+        value: this === commands.controlled ? 'はい' : 'いいえ', collapsible: true,
       },
       { key: 'follow', label: '計画実行', value: planExecutionLabel(this.planExecution), collapsible: true },
       { key: 'hp', label: '装甲', value: `${Math.floor(this.hp)} / ${this.maxHp}` },
@@ -758,7 +760,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 注視されたら操作対象にもなる(操作艦を切り替える最速の手段)。
   public readonly onMapFocus = (commands: ObjectCommands): void => {
-    commands.setActivePlayer(this);
+    commands.setControlled(this);
     commands.hint(`${this.name} を操作対象に設定`);
   };
 }

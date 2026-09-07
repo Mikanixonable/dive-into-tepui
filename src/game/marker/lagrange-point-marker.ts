@@ -14,7 +14,7 @@ import type { ObjectPickerGenre } from '../hud/object-groups';
 import type { ObjectCommands } from '../pickable/object-commands';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
-import type { Player } from '../player/player';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { PropertyRow } from '../../hud/windows/property-window';
 import type { MarkerManager } from './marker-manager';
 
@@ -91,7 +91,7 @@ export class LagrangePointMarker implements ObjectPickable {
 
   // 自艦からの距離と種別。自艦がいない、あるいは位置が解けていないフレームは距離が落ちる。
   public propertyRows(commands: ObjectCommands): readonly PropertyRow[] {
-    const viewer = commands.activePlayer;
+    const viewer = commands.controlled;
     const pos = this.posAt();
     const rows: PropertyRow[] = [];
     if (viewer && pos) {
@@ -109,9 +109,9 @@ export class LagrangePointMarker implements ObjectPickable {
 
   // 一覧の検索が照合する、自艦からの距離と中心天体の名前。
   public listSearchText(
-    celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+    celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
   ): string {
-    return this.pos === null ? '' : bodySearchText(celestialSystem, this.pos, activePlayer, displayTime);
+    return this.pos === null ? '' : bodySearchText(celestialSystem, this.pos, viewer, displayTime);
   }
 
   public listCounted(): boolean { return false; }

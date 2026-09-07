@@ -8,7 +8,7 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import type { MarkerManager } from '../marker/marker-manager';
-import type { Player } from '../player/player';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ObjectCommands } from './object-commands';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
@@ -38,19 +38,19 @@ export interface ObjectPickable {
 
   // 表示時刻の ECI 位置。求まらないフレームは null で、その回は候補に出ない。
   posAt(displayTime: number): Vec3 | null;
-  // 表示トグルによる可否。activePlayer は操作中の自艦を例外扱いする判定に使う。
-  mapVisibility(policy: MapVisibilityPolicy, activePlayer: Player | null): MapVisibility;
+  // 表示トグルによる可否。viewer は操作中の対象を例外扱いする判定に使う。
+  mapVisibility(policy: MapVisibilityPolicy, viewer: Controllable | null): MapVisibility;
   // 直前のフレームで画面にマーカーが出ていたか。出ていない対象はマップ上で掴めない。
   shownOnMap(markers: MarkerManager): boolean;
 
   // 軌道物体一覧の行へ添える補助表示。
-  listDetail(celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number): string;
+  listDetail(celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number): string;
   // 軌道物体一覧の検索が照合する文字列。行に出さない情報を含めてよい。
-  listSearchText(celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number): string;
+  listSearchText(celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number): string;
   // 区画見出しの内訳(接近 N・回収可 N)に数えるか。
-  listCounted(activePlayer: Player | null, displayTime: number): boolean;
+  listCounted(viewer: Controllable | null, displayTime: number): boolean;
   // 軌道物体一覧での表示順の優先度。小さいほど先に出る。
-  listPriority(activePlayer: Player | null): number;
+  listPriority(viewer: Controllable | null): number;
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。先頭の header 項目は
   // ウィンドウのタイトル/サブタイトルへ抜き出される。

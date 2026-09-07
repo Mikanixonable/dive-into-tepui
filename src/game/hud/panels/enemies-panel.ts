@@ -36,7 +36,7 @@ export class EnemiesPanel {
 
   // 残存数の見出しと、距離順の敵一覧を同期する。自機が無ければパネルごと隠す。
   public sync(game: Game): void {
-    const player = game.player;
+    const player = game.activeControllable;
     const panel = this.els.get('hud-enemies');
     if (!player) {
       this.hasContacts = false;

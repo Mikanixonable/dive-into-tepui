@@ -24,7 +24,7 @@ import type { PropertyRow } from '../../../hud/windows/property-window';
 import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
 import type { ObjectPickerGenre } from '../../hud/object-groups';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
-import type { Player } from '../../player/player';
+import type { Controllable } from './controllable';
 
 const AMMO_PHYS_RADIUS = 1.3; // 物理接触用の半径 [m](見た目に近い実寸)
 // 取り込み距離 [m]。ゲームプレイ上の吸収判定で、物理サイズではない。
@@ -130,24 +130,24 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
 
   // 自艦からの距離と回収圏内かどうか。自艦がいなければ空。
   public listDetail(
-    _celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+    _celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
   ): string {
-    if (activePlayer === null) return '';
-    const d = len(sub(this.posAt(displayTime) ?? this.state.r, activePlayer.state.r));
-    return `${fmtDist(d)}${this.listCounted(activePlayer, displayTime) ? ' · 回収可能' : ''}`;
+    if (viewer === null) return '';
+    const d = len(sub(this.posAt(displayTime) ?? this.state.r, viewer.state.r));
+    return `${fmtDist(d)}${this.listCounted(viewer, displayTime) ? ' · 回収可能' : ''}`;
   }
 
   // 検索が照合する文字列。行の補助表示と同じ。
   public listSearchText(
-    celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+    celestialSystem: CelestialSystem, viewer: Controllable | null, displayTime: number,
   ): string {
-    return this.listDetail(celestialSystem, activePlayer, displayTime);
+    return this.listDetail(celestialSystem, viewer, displayTime);
   }
 
   // 自艦が回収圏内に入っているか。
-  public listCounted(activePlayer: Player | null, displayTime: number): boolean {
-    if (activePlayer === null) return false;
-    const d = len(sub(this.posAt(displayTime) ?? this.state.r, activePlayer.state.r));
+  public listCounted(viewer: Controllable | null, displayTime: number): boolean {
+    if (viewer === null) return false;
+    const d = len(sub(this.posAt(displayTime) ?? this.state.r, viewer.state.r));
     return d <= AMMO_PICKUP_RADIUS;
   }
 
@@ -177,7 +177,7 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
   public propertyRows(
     commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
   ): readonly PropertyRow[] {
-    const viewer = commands.activePlayer;
+    const viewer = commands.controlled;
     const rows: PropertyRow[] = [];
     if (viewer) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(this.state.r, viewer.state.r))) });
     rows.push(...orbitRows(this, celestialSystem, simTime));
