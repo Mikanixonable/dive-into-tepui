@@ -524,7 +524,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     ];
   }
 
-  // menuItems が出した操作を実行する。削除と軌道線の表示は自分の状態を、残りは commands を通す。
+  // 削除と軌道線の表示は自分の状態を書き換える。
   public runMenu(
     act: MenuAction, _controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
   ): void {
