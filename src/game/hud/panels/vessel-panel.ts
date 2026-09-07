@@ -178,7 +178,7 @@ export class VesselPanel {
 
   // 操作対象の状態を VESSEL パネルへ反映する。操作対象が無ければパネルごと隠す。
   public sync(game: Game): void {
-    const target = game.activeControllableEntity;
+    const target = game.activeControllable;
     this.power = target?.power ?? null;
     this.radiator = target?.radiator ?? null;
     if (!target) {

@@ -7,7 +7,6 @@ import {
   generateEllipticEnemy,
   generatePhasedEnemy,
 } from './spawner/enemy-generator';
-import type { Player } from '../player/player';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { StageSaveData } from '../save/save-data';
@@ -49,7 +48,8 @@ export class Stage1 extends Stage {
     this.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, 60000, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), entities);
   }
   // 1フレーム分、敵の行動と補給ロジスティクスを進める。
-  update(_dt: number, player: Player | null, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  update(_dt: number, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+    const player = this.ship;
     if (!player) return;
 
     this.behaveAllEnemies(player, entities, simTime, simSpeed);

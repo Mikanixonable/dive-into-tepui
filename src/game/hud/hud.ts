@@ -92,7 +92,7 @@ export class Hud {
   public syncPanels(view: View, game: Game): void {
     const map = view === 'map';
     // 両ビュー共通のパネル。
-    this.burnManagementPanel.sync(game.activeControllableEntity?.boosters?.managementViewModel() ?? null);
+    this.burnManagementPanel.sync(game.activeControllable?.boosters?.managementViewModel() ?? null);
     this.topBar.sync(game);
     this.orbitPanel.sync(game);
     // ビュー固有のパネル。
