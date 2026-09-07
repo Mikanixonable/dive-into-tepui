@@ -1,16 +1,17 @@
 // 軌道上の実体に共通する軌道要素の行(基準天体・高度・速度・AP/PE/INC/PRD)。
 // 「軌道」グループにまとめ、プロパティウィンドウ先頭の折り畳みセクションへ描かれる。
 import { fmtDist, fmtSpeed, fmtTime } from '../../hud/utils';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { orbitInfo } from '../orbit-info';
 import { autoOrbitReference } from '../orbit-reference';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../hud/orbit/orbit-labels';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
-import type { CelestialSystem } from '../celestial/celestial-system';
+
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
 // simTime は天体位置を厳密に引く時刻。
 export function orbitRows(
-  entity: DynamicEntity, celestialSystem: CelestialSystem, simTime: number,
+  entity: DynamicEntity, celestialSystem: CelestialBodies, simTime: number,
 ): PropertyRow[] {
   const celestialBodies = celestialSystem.celestialMotions;
   const oi = orbitInfo(

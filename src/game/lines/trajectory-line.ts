@@ -19,9 +19,10 @@
 // THREE の合成は world = position + quaternion·vertex なので、原点まわりの un-bake 回転 →
 // 平行移動の順で正しい。
 import * as THREE from 'three/webgpu';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { FrameAnchorSource, framePoint, ReferenceFrame, toFrameState, toInertialPoint } from '../../physics/frame';
-import type { CelestialSystem } from '../celestial/celestial-system';
+
 import type { ReferenceFrames } from '../celestial/reference-frames';
 import { DynamicTrajectory, ExtrapolationCenter } from '../../physics/dynamic-trajectory';
 import { extrapolatedRelativeStates } from '../../physics/kepler-extrapolation';
@@ -57,7 +58,7 @@ function extrapolationTargetInterval(baseInterval: number, span: number): number
 // 双曲線などで外挿できない場合は空配列。
 function extrapolatedTailStates(
   tip: KinematicState, center: ExtrapolationCenter, to: number,
-  baseInterval: number, celestialSystem: CelestialSystem,
+  baseInterval: number, celestialSystem: CelestialBodies,
 ): KinematicState[] {
   const span = to - tip.t;
   const target = extrapolationTargetInterval(baseInterval, span);
@@ -107,7 +108,7 @@ export class TrajectoryLine {
   // だけで見た目には出ない。
   syncGeometry(
     trajectory: DynamicTrajectory | null, from: number | null, to: number | null, frame: ReferenceFrame,
-    celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
+    celestialSystem: CelestialBodies, frameAnchors: FrameAnchorSource,
   ): void {
     const samples = trajectory?.samplesOldestFirst() ?? NO_SAMPLES;
     const tip = samples.length > 0 ? samples[samples.length - 1]! : null;
@@ -185,7 +186,7 @@ export class TrajectoryLine {
   // 毎フレーム: 剛体 un-bake(回転) + フローティングオリジン補正(平行移動 = 座標系原点)。
   // currentTime = 描画時刻(通常 simTime)。
   syncTransform(
-    frame: ReferenceFrame, currentTime: number, celestialSystem: CelestialSystem, fo: FloatingOrigin,
+    frame: ReferenceFrame, currentTime: number, celestialSystem: CelestialBodies, fo: FloatingOrigin,
     frameAnchors: FrameAnchorSource,
   ): void {
     const tf = celestialSystem.frames.transformAt(frame, currentTime, frameAnchors);

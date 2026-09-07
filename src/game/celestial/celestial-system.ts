@@ -1,11 +1,12 @@
 // 天体系(天体ビュー・星・天球グリッド・参照軌道線・環境光)の構築と毎フレーム更新。
 import * as THREE from 'three/webgpu';
-import { CelestialMotion, CelestialMotions, OrbitingMotion, PlanetMotion } from '../../physics/celestial-motion';
+import { CelestialMotion, OrbitingMotion, PlanetMotion } from '../../physics/celestial-motion';
 import { CelestialBodyDef, PhaseOffsets, shapeOf } from '../../physics/celestial-body-def';
 import { strongestAttractor } from '../../physics/attractor';
 import { EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
 import { EciTransform } from '../../physics/eci-transform';
 import { ReferenceFrames } from './reference-frames';
+import type { CelestialBodies } from './celestial-bodies';
 import { isLagrangeId, lagrangeParentId } from './lagrange-id';
 import { addTimeCacheStats } from '../../physics/time-ring';
 import { KinematicState } from '../../physics/kinematic-state';
@@ -90,7 +91,7 @@ function orderedEntitiesOf(
   return ordered;
 }
 
-export class CelestialSystem implements CelestialMotions {
+export class CelestialSystem implements CelestialBodies {
   private scene!: THREE.Scene;
   private stars!: Stars;
   celestialGrid!: CelestialGrid;

@@ -1,9 +1,10 @@
 // 1つのオブジェクトの軌道が中心天体の赤道面を横切る2点(EqAN/EqDN)の算出と、△▽ マーカー
 // としての表示・被選択物としての公開。
 import { strongestAttractor } from '../../physics/attractor';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { FrameAnchorSource, ReferenceFrame, unbakeToDisplayPoint } from '../../physics/frame';
-import type { CelestialSystem } from '../celestial/celestial-system';
+
 import type { KinematicState } from '../../physics/kinematic-state';
 import { Vec3 } from '../../math/vec3';
 import { solveEquatorCrossings } from '../../physics/orbit-solvers';
@@ -31,7 +32,7 @@ export interface DisplayedPathSource {
 // 個体ごとの違いは paths が答える。
 export interface EquatorNodeInputs {
   readonly displayTime: number;
-  readonly celestialSystem: CelestialSystem;
+  readonly celestialSystem: CelestialBodies;
   readonly frameAnchors: FrameAnchorSource;
   readonly markerManager: MarkerManager;
   readonly paths: DisplayedPathSource;

@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { Viewer } from './viewer';
 import type { View } from '../../view/view';
 import { Ship, MUZZLE_SPEED } from './ship';
@@ -31,7 +32,7 @@ import {
 import type { Quat } from '../../../math/quat';
 import type { DynamicEntityKind, FormationRole } from './entity-kind';
 import type { GroupedMarkerItem, MarkerRole } from '../../marker/grouped-markers';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+
 import type { EnemyDeathCause, Stage } from '../../stages/stage';
 import type { EntityRegistry, SpawnGate } from '../entity-registry';
 import type { EnemySaveData } from '../../save/save-data';
@@ -348,7 +349,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   // operable が偽の間は指令を決めない。
   public behave(
     simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
-    operable: boolean, celestialSystem: CelestialSystem,
+    operable: boolean, celestialSystem: CelestialBodies,
   ): void {
     // 射撃間隔は simulation time で測る。wall dt を混ぜると、同じゲーム内時間でも
     // warp 段によって弾数が変わる。
@@ -402,7 +403,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // player へ向けた見越し射撃でプラズマ弾を1発生成し、registry へ足す。
   private firePlasma(
-    simTime: number, player: Player, registry: EntityRegistry, celestialSystem: CelestialSystem,
+    simTime: number, player: Player, registry: EntityRegistry, celestialSystem: CelestialBodies,
   ): void {
     const r = this.muzzlePosition();
     const v = this.state.v;
@@ -483,7 +484,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 自艦から見た距離と相対速度。自艦がいなければ空。
   public listDetail(
-    _celestialSystem: CelestialSystem, viewer: Viewer | null, displayTime: number,
+    _celestialSystem: CelestialBodies, viewer: Viewer | null, displayTime: number,
   ): string {
     if (viewer === null) return '';
     const viewerState = viewer.state;
@@ -494,7 +495,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 検索が照合する文字列。行の補助表示と同じ。
   public listSearchText(
-    celestialSystem: CelestialSystem, viewer: Viewer | null, displayTime: number,
+    celestialSystem: CelestialBodies, viewer: Viewer | null, displayTime: number,
   ): string {
     return this.listDetail(celestialSystem, viewer, displayTime);
   }
@@ -508,7 +509,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
-    _celestialSystem: CelestialSystem, _viewer: Viewer | null, navTargetId: string | null,
+    _celestialSystem: CelestialBodies, _viewer: Viewer | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
     return [
       MenuCommon.target(navTargetId === this.id),
@@ -532,7 +533,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   // プロパティウィンドウに出す行。装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、
   // 軌道要素と相対傾斜角は「軌道」グループの下に畳む。viewer が null なら相対量の行は落ちる。
   public propertyRows(
-    celestialSystem: CelestialSystem, viewer: Viewer | null, simTime: number,
+    celestialSystem: CelestialBodies, viewer: Viewer | null, simTime: number,
   ): readonly PropertyRow[] {
     const rel = viewer ? relativeInfo(viewer, this, celestialSystem.celestialMotions, simTime) : null;
     const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(this.hp)} / ${this.maxHp}` }];

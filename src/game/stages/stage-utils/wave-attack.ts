@@ -2,6 +2,7 @@
 // 交戦圏内数に応じた周期湧き(active_combat)の3フェーズを進めるフェーズ機械と、
 // ウェーブ1回分の隻数・編成・接近軌道の生成。
 import * as THREE from 'three/webgpu';
+import type { CelestialMotions } from '../../../physics/celestial-motion';
 import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { ENGAGEMENT_RANGE } from '../../dynamic/engagement-zone';
 import { Player } from '../../player/player';
@@ -9,7 +10,7 @@ import type { Stage } from '../stage';
 import type { Notifier } from '../../../hud/notifier';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../../vfx/flash-effects';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { apsisAltitudes } from '../../../physics/elements';
 import { R_EARTH } from '../../celestial/solar-system/constants';
@@ -66,7 +67,7 @@ export class WaveAttack {
     private readonly worldSfx: WorldSfx,
     private readonly fx: FlashEffects,
     private readonly scene: THREE.Scene,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialSystem: CelestialMotions,
     saved?: WaveAttackSaveData,
   ) {
     this.waveState = saved?.waveState ?? 'waiting_for_ammo';
@@ -194,7 +195,7 @@ function makeFlybyVelocity(player: KinematicState, centerR: Vec3, wave: number):
 }
 
 // 近地点高度が REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN を下回らないよう Δv の大きさを二分探索で縮める。
-function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, celestialSystem: CelestialSystem): Vec3 {
+function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, celestialSystem: CelestialMotions): Vec3 {
   const minPeAlt = REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN;
   const center = strongestAttractor(centerR, celestialSystem.celestialMotions, t);
   // 与えた速度での近地点高度が最低ラインを満たすか判定する。
@@ -283,7 +284,7 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
 }
 
 // ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
-export function generateWave(player: KinematicState, waveNumber: number, celestialSystem: CelestialSystem, worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
+export function generateWave(player: KinematicState, waveNumber: number, celestialSystem: CelestialMotions, worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
   const calculatedCount = STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * STAGE00_WAVE_SHIPS_PER_WAVE);
   const shipCount = Math.min(calculatedCount, STAGE00_WAVE_MAX_SHIPS);
   const centerR = pickWaveCenter(player, waveNumber);

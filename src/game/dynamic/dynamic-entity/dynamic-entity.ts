@@ -1,5 +1,6 @@
 // ゲーム内エンティティの定義。位置・速度は ECI 座標系 [m, m/s]。
 import { Q_IDENTITY } from '../../../math/quat';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { Viewer } from './viewer';
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../../physics/kinematic-state';
@@ -26,7 +27,7 @@ import { TargetRelativeLine } from '../../lines/target-relative-line';
 import { TrajectoryLine } from '../../lines/trajectory-line';
 import { LineStyle } from '../../../render/line-style';
 import { FrameAnchorSource, ReferenceFrame } from '../../../physics/frame';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+
 import type { CapKind, DynamicEntityKind } from './entity-kind';
 import type { InstancedPools } from '../instanced-pools';
 import type { EntityRegistry } from '../entity-registry';
@@ -326,7 +327,7 @@ export class DynamicEntity {
   // 先なら、表示用の予測状態を使って船体と同じ時刻に揃える。対象への直線は未来予測に依存しない
   // ので、対象の未来が引けなければ対象のいまの位置で結ぶ。
   syncOrbitLine(
-    displayTime: number, celestialSystem: CelestialSystem, fo: FloatingOrigin, camera: THREE.Camera,
+    displayTime: number, celestialSystem: CelestialBodies, fo: FloatingOrigin, camera: THREE.Camera,
     frameAnchors: FrameAnchorSource,
   ): void {
     const orbitLine = this._orbitLine;
@@ -393,7 +394,7 @@ export class DynamicEntity {
   // simTime は描く区間の境目、displayTime は座標系から慣性系へ戻す時刻。
   syncTrajectoryLines(
     frame: ReferenceFrame, simTime: number, displayTime: number, pastDuration: number, predictedTo: number | null,
-    celestialSystem: CelestialSystem, fo: FloatingOrigin, camera: THREE.Camera, frameAnchors: FrameAnchorSource,
+    celestialSystem: CelestialBodies, fo: FloatingOrigin, camera: THREE.Camera, frameAnchors: FrameAnchorSource,
   ): void {
     if (this.predictedLine !== null) {
       this.predictedLine.syncGeometry(this.predicted, simTime, predictedTo, frame, celestialSystem, frameAnchors);
@@ -594,7 +595,7 @@ export class DynamicEntity {
   // みなした外挿を、呼び出し側が意識せず1呼び出しで引く。未来を予測しない種別と、予測が
   // 打ち切られた(天体表面へ到達した)先の時刻では求まらない。外挿には中心天体の ECI 状態が
   // 要るので、celestialSystem を渡さなければ予測列が持つ範囲までを答える。
-  stateAt(t: number, celestialSystem?: CelestialSystem): KinematicState | null {
+  stateAt(t: number, celestialSystem?: CelestialBodies): KinematicState | null {
     if (t <= this.state.t) return this.actual.at(t);
     const predicted = this.predicted;
     if (predicted === null) return null;

@@ -1,12 +1,13 @@
 // プレイヤーの射撃・弾薬(マガジン/リロード)状態。発砲・排莢・バレル交換の演出もここで組み立てる。
 import * as THREE from 'three/webgpu';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, qRotate, randomQuat } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
 import { R_EARTH_EQ } from '../celestial/solar-system/constants';
 import { randSym } from '../../math/random';
 import { radiativeCooling, stepTemperature, stepThermalDeviation } from '../../physics/thermal';
 import { add, addScaled, dot, lenSq, norm, randPerp, randVec, scale, v3, Vec3 } from '../../math/vec3';
-import type { CelestialSystem } from '../celestial/celestial-system';
+
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { Notifier } from '../../hud/notifier';
@@ -21,7 +22,6 @@ import { Player } from './player';
 import type { FireSaveData } from '../save/save-data';
 import { HULL_EMISS, ENV_TEMP } from '../dynamic/dynamic-entity/dynamic-entity';
 import { BARREL_SPECIFIC_HEAT, BARREL_RADIATING_AREA_PER_MASS, DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
-
 
 // 排出物の剛体接触半径 [m]。薬莢は実物同様に軽く小さい。
 const CASING_PHYS_RADIUS = 0.2;
@@ -156,7 +156,7 @@ export class FireControl {
     input: Input,
     activeStage: Stage,
     registry: EntityRegistry,
-    celestialSystem: CelestialSystem,
+    celestialSystem: CelestialBodies,
   ): void {
     this.tickReloadTimer(dt);
 
@@ -200,7 +200,7 @@ export class FireControl {
   private fireCycle(
     activeStage: Stage,
     registry: EntityRegistry,
-    celestialSystem: CelestialSystem,
+    celestialSystem: CelestialBodies,
   ): void {
     const justStartedFiring = !this.wasFiring;
     this.wasFiring = true;
@@ -282,7 +282,7 @@ export class FireControl {
   private fireGun(
     activeStage: Stage,
     registry: EntityRegistry,
-    celestialSystem: CelestialSystem,
+    celestialSystem: CelestialBodies,
   ): void {
     const fwd = qRotate(this.player.att.q, LOCAL_FORWARD);
 
@@ -309,7 +309,7 @@ export class FireControl {
 
   // 弾丸: 機首方向 + 散布界
   private spawnBullet(
-    ship: Ship, muzzle: Vec3, fwd: Vec3, registry: EntityRegistry, celestialSystem: CelestialSystem,
+    ship: Ship, muzzle: Vec3, fwd: Vec3, registry: EntityRegistry, celestialSystem: CelestialBodies,
   ): void {
     const sunDir = celestialSystem.sunDirFrom(ship.state.r, ship.state.t);
     const spreadScale = sunGlareSpreadScale(muzzle, fwd, sunDir);

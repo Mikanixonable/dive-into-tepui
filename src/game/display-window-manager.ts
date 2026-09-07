@@ -5,12 +5,13 @@
 // ならない — 座標系が消費者ごとに違えば同じ画面に並べた線が比較できず、表示時刻が違えば
 // メッシュとマーカーが別の瞬間を指す。
 import { PredictPanel } from './hud/panels/predict-panel';
+import type { CelestialBodies } from './celestial/celestial-bodies';
 import { buildTicks } from './hud/orbit/tick-scale';
 import { epochUnixSeconds } from '../hud/utils';
 import type { TickLabelMode, TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import { strongestAttractor } from '../physics/attractor';
 import { ReferenceFrame } from '../physics/frame';
-import type { CelestialSystem } from './celestial/celestial-system';
+
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 
 export const DISPLAY_DURATION_MAX = 365 * 86400; // 手動レンジで指定できる表示期間の上限 [s](1年)
@@ -94,7 +95,7 @@ export class DisplayWindowManager {
   // 操作パネルを構築し、期間選択・スライダー・任意期間入力・T+ジャンプ入力の反映先を自身にする。
   constructor(
     hudRoot: HTMLElement,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialSystem: CelestialBodies,
   ) {
     this._frame = celestialSystem.frames.inertialFrame;
     this.epochUnixSec = epochUnixSeconds(celestialSystem.epoch);
