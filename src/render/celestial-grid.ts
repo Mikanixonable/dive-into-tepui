@@ -23,10 +23,8 @@ export interface CelestialGridVisibility {
   readonly moonEquatorScaleGrid: boolean;
 }
 
-// 黄道・赤道それぞれのカテゴリトグルと、配下の面・極・グリッドの対応。表示パネルのボタン構成も
-// この表を正本として組み立てる。子は1つでもONならカテゴリを自動でONにし、全てOFFになれば
-// 自動でOFFにする(applyGridToggle/normalizeGridVisibility)。stars・縮尺グリッド系はどの
-// カテゴリにも属さない独立トグルなのでここには含まれない。
+// 黄道・赤道それぞれのカテゴリトグルと、配下の面・極・グリッドの対応。子が1つでも ON なら
+// カテゴリは ON、全て OFF なら OFF になる。
 interface GridCategory {
   readonly category: keyof CelestialGridVisibility;
   readonly children: readonly (keyof CelestialGridVisibility)[];
@@ -37,8 +35,8 @@ const GRID_CATEGORIES: readonly GridCategory[] = [
   { category: 'equator', children: ['equatorPlane', 'equatorPole', 'equatorGrid'] },
 ];
 
-// クリックされたキー1つの反映。子キーならカテゴリを子の状態から再計算し、カテゴリキー
-// そのものなら子を全て同じ値へ揃える(表示パネルの唯一の更新口)。
+// キー1つの切り替えを反映する。子キーならカテゴリを子の状態から計算し直し、カテゴリキー
+// そのものなら子を全て同じ値へ揃える。
 export function applyGridToggle(
   current: CelestialGridVisibility, key: keyof CelestialGridVisibility, on: boolean,
 ): CelestialGridVisibility {
@@ -70,6 +68,7 @@ const GRID_LABEL_STEP_DEG = 30; // 座標ラベルは間隔を空けて表示
 const CIRCLE_SEGMENTS = 64; // 円1本あたりの分割数
 const POLE_MARKER_HALF_LEN = STAR_SHELL_RADIUS * 0.04; // 極マーカーの殻面からの突き出し長さ
 
+// basis の面での緯度 latRad・経度 lonRad・半径 radius の点。経度は e1 から e2 へ増える。
 function planePoint(basis: PlaneBasis, radius: number, latRad: number, lonRad: number): THREE.Vector3 {
   const c = radius * Math.cos(latRad);
   const s = radius * Math.sin(latRad);
@@ -82,13 +81,14 @@ function planePoint(basis: PlaneBasis, radius: number, latRad: number, lonRad: n
   );
 }
 
+// 星殻に乗せる折れ線1本。頂点は setLinePoints で後から入れる。
 function makeLine(color: number, opacity: number): THREE.Line {
   const geo = new THREE.BufferGeometry();
   const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
   const line = new THREE.Line(geo, mat);
   markOverlay(line);
-  // 常にカメラを中心とする殻として置く(sync が position をカメラ位置へ毎フレーム合わせる)ため、
-  // 外接球によるフラスタム判定は常に「視界内」を返し意味を持たない。
+  // 描画原点に固定した星殻と同じ大きさの殻なので、外接球によるフラスタム判定は
+  // 常に「視界内」を返し意味を持たない。
   line.frustumCulled = false;
   line.renderOrder = 0;
   return line;
@@ -101,12 +101,13 @@ function makeLineSegments(color: number, opacity: number): THREE.LineSegments {
   const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
   const line = new THREE.LineSegments(geo, mat);
   markOverlay(line);
-  // makeLine と同じ理由(常にカメラ中心の殻)。
+  // 描画原点に固定した殻なので、外接球によるフラスタム判定は意味を持たない。
   line.frustumCulled = false;
   line.renderOrder = 0;
   return line;
 }
 
+// 頂点列を新しい BufferGeometry へ焼き直し、前の geometry を解放する。
 function setLinePoints(line: THREE.Line, points: readonly THREE.Vector3[]): void {
   const arr = new Float32Array(points.length * 3);
   for (let i = 0; i < points.length; i++) {
@@ -121,12 +122,12 @@ function setLinePoints(line: THREE.Line, points: readonly THREE.Vector3[]): void
   line.geometry = geo;
 }
 
-// 緯度・経度の交点における東西・南北の短い十字を、LineSegments 用の
-// 頂点対4つ([東西の2点, 南北の2点])として返す。全周の線を描かないことで、
-// 天球上の座標密度を保ちつつ視界を塞がない。
+// 緯度・経度の交点における東西・南北の短い十字を、LineSegments 用の頂点対4つ
+// ([東西の2点, 南北の2点])として返す。交点だけを示すので視界を塞がずに済む。
 function intersectionCrossPoints(basis: PlaneBasis, radius: number, latRad: number, lonRad: number): THREE.Vector3[] {
   const p = planePoint(basis, radius, latRad, lonRad);
   const eps = radius * 0.012;
+  // その点における経度方向・緯度方向の接ベクトル。十字の腕の向きになる。
   const dLon = new THREE.Vector3(
     -Math.sin(lonRad) * basis.e1.x + Math.cos(lonRad) * basis.e2.x,
     -Math.sin(lonRad) * basis.e1.y + Math.cos(lonRad) * basis.e2.y,
@@ -159,13 +160,11 @@ function poleCrossPoints(basis: PlaneBasis, radius: number, sign: 1 | -1): THREE
 }
 
 // 面 1 枚ぶんの表示物: 基準円(plane)・緯線経線の交点網(grid)・両極マーカー(pole)。
-// 3 種とも独立した可視トグルを持つため束ねずに別オブジェクトとして保持するが、
-// grid/pole はそれぞれ内部の全セグメントを1つの LineSegments に詰め、
-// トグル1つあたり描画1回で済むようにする。
+// 3 種は独立した可視トグルを持つので、別オブジェクトとして保つ。
 class GridPlane {
-  readonly planeLine: THREE.Line;
-  readonly gridLine: THREE.LineSegments;
-  readonly poleLine: THREE.LineSegments;
+  private readonly planeLine: THREE.Line;
+  private readonly gridLine: THREE.LineSegments;
+  private readonly poleLine: THREE.LineSegments;
   private readonly labelLayer: HTMLDivElement;
   private readonly labels: HTMLDivElement[] = [];
   private readonly gridLabels: { el: HTMLDivElement; lat: number; lon: number }[] = [];
@@ -173,6 +172,7 @@ class GridPlane {
   private readonly realisticColor: string;
   private readonly styleGate = new RenderStyleGate();
 
+  // 面 1 枚ぶんの線を scene へ、ラベル層を document.body へ組み立てる。
   constructor(scene: THREE.Scene, basis: PlaneBasis, color: number, name: string) {
     this.basis = basis;
     this.realisticColor = `#${color.toString(16).padStart(6, '0')}`;
@@ -180,6 +180,7 @@ class GridPlane {
     this.labelLayer.className = 'celestial-grid-labels';
     Object.assign(this.labelLayer.style, { position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: '8' });
     document.body.appendChild(this.labelLayer);
+    // 基準円: 緯度 0 の全周。
     this.planeLine = makeLine(color, 0.35);
     setLinePoints(this.planeLine, (() => {
       const pts: THREE.Vector3[] = [];
@@ -188,9 +189,8 @@ class GridPlane {
     })());
     scene.add(this.planeLine);
 
-    // 交点ごとの東西・南北の線分(setLinePoints が組む頂点対)を1本の
-    // LineSegments へ連結する。連続した1本の折れ線にすると線分間が斜めに
-    // 接続され「4」のように見えるため、頂点対を独立したセグメントとして保つ。
+    // 交点ごとの東西・南北の線分を1本の LineSegments へ連結する。連続した1本の折れ線に
+    // すると線分間が斜めに繋がり「4」のように見えるので、頂点対のまま独立させておく。
     const gridPoints: THREE.Vector3[] = [];
     for (let lat = -75; lat <= 75; lat += GRID_LAT_STEP_DEG) {
       for (let lon = 0; lon < 360; lon += GRID_LON_STEP_DEG) {
@@ -202,6 +202,7 @@ class GridPlane {
     setLinePoints(this.gridLine, gridPoints);
     scene.add(this.gridLine);
 
+    // 両極マーカー: 殻面から内側へ突き出す短い線分。
     const polePoints: THREE.Vector3[] = [];
     for (const sign of [1, -1]) {
       const tip = new THREE.Vector3(basis.pole.x * STAR_SHELL_RADIUS * sign, basis.pole.y * STAR_SHELL_RADIUS * sign, basis.pole.z * STAR_SHELL_RADIUS * sign);
@@ -215,6 +216,7 @@ class GridPlane {
     this.poleLine = makeLineSegments(color, 0.7);
     setLinePoints(this.poleLine, polePoints);
     scene.add(this.poleLine);
+    // ラベル1枚を作ってラベル層へ入れ、labels の末尾へ積む。並び順が sync 側の索引になる。
     const addLabel = (text: string, cls = '') => {
       const el = document.createElement('div');
       el.textContent = text; el.className = `celestial-grid-label ${cls}`;
@@ -223,7 +225,7 @@ class GridPlane {
     };
     addLabel(`${name} PLANE`, 'plane');
     addLabel(`⇧ ${name} N`, 'pole-n'); addLabel(`⇩ ${name} S`, 'pole-s');
-    // グリッドの全交点に座標ラベルを置く。画面端に固定した代表ラベルは使わない。
+    // グリッドの全交点に座標ラベルを置く。
     for (let lat = -60; lat <= 60; lat += GRID_LABEL_STEP_DEG) {
       if (lat === 0) continue;
       for (let lon = 0; lon < 360; lon += GRID_LABEL_STEP_DEG) {
@@ -256,6 +258,7 @@ class GridPlane {
     }
   }
 
+  // 3 種の線とラベルを、この面の可視トグルとカメラへ合わせる。scale は星殻半径への倍率。
   sync(
     style: RenderStyle, planeVisible: boolean, poleVisible: boolean, gridVisible: boolean,
     scale: number, camera: THREE.Camera,
@@ -269,6 +272,7 @@ class GridPlane {
       obj.scale.setScalar(scale);
     }
     this.labels.forEach((el) => { el.style.display = 'none'; });
+    // 殻座標の点 p へラベルを置く。視錐台の外なら出さない。
     const show = (el: HTMLDivElement, p: THREE.Vector3, below = false) => {
       const w = window.innerWidth, h = window.innerHeight;
       const v = new THREE.Vector3(p.x * scale, p.y * scale, p.z * scale).project(camera);
@@ -305,11 +309,9 @@ class GridPlane {
         let angle = Math.atan2(hy, hx) * 180 / Math.PI;
         if (angle > 90) angle -= 180;
         if (angle < -90) angle += 180;
-        // 画面端へ押し込む代表ラベルは作らず、交点そのものが画面内にある時だけ表示。
         if (sx < 8 || sx > w - 8 || sy < 8 || sy > h - 8) continue;
-        // ラベルは画面の右下へ固定せず、交点におけるグリッド接線の合成方向へ
-        // 一定距離だけオフセットする。これによりグリッドの向きに追従し、
-        // カメラの回転や投影変化でも交点との対応が崩れない。
+        // ラベルは交点におけるグリッド接線の合成方向へ逃がす。グリッドの向きに追従するので、
+        // カメラの回転や投影が変わっても交点との対応が崩れない。
         const tangentX = dxLon + dxLat;
         const tangentY = dyLon + dyLat;
         const tangentLen = Math.hypot(tangentX, tangentY) || 1;
@@ -327,6 +329,7 @@ export class CelestialGrid {
   private readonly equator: GridPlane;
   private readonly ecliptic: GridPlane;
 
+  // 赤道面・黄道面の 2 枚を scene へ置く。
   constructor(scene: THREE.Scene) {
     this.equator = new GridPlane(scene, EQUATOR_BASIS, 0x8b93a0, 'EQUATOR');
     this.ecliptic = new GridPlane(scene, ECLIPTIC_BASIS, 0xc0a878, 'ECLIPTIC');
