@@ -9,7 +9,7 @@ import { contactDamageSpeed } from './contact-damage';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../../math/vec3';
 import { solveLeadTime } from '../../../physics/intercept';
-import { EffectsSystem } from '../../vfx/effects-system';
+import { FlashEffects } from '../../vfx/flash-effects';
 import { buildDestroyFragments } from './debris-piece';
 import type { Controllable } from './controllable';
 import type { Player } from '../../player/player';
@@ -98,7 +98,7 @@ export interface EnemyClass {
   readonly kind: EnemySaveData['kind'];
   // 復元に外部資源の取得が要るなら、それが揃ったかを答える述語。要らなければ null。
   spawnGate(saved: EnemySaveData): SpawnGate | null;
-  new (init: EnemyRestore, worldSfx: WorldSfx, fx: EffectsSystem, scene?: THREE.Scene): Enemy;
+  new (init: EnemyRestore, worldSfx: WorldSfx, fx: FlashEffects, scene?: THREE.Scene): Enemy;
 }
 
 // 太陽グレアによるプラズマ弾の散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが甘くなり、
@@ -139,7 +139,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   public fireEnabled = true;
 
   protected readonly _worldSfx: WorldSfx;
-  protected readonly _fx: EffectsSystem;
+  protected readonly _fx: FlashEffects;
 
   // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径)を受けて、
   // 敵に共通する識別・色・陣形所属を初期化する。復元時は保存済みの生死・バースト状態も戻す。
@@ -149,7 +149,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     inertia: Vec3,
     radius: number,
     worldSfx: WorldSfx,
-    fx: EffectsSystem,
+    fx: FlashEffects,
     scene?: THREE.Scene,
   ) {
     // 復元と新規配置を同じ形へ均してから基底へ渡す。

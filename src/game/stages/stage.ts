@@ -6,7 +6,7 @@ import { isPlayer, Player, type PlayerInit } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
-import { EffectsSystem } from '../vfx/effects-system';
+import { FlashEffects } from '../vfx/flash-effects';
 import { Hud } from '../hud/hud';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
@@ -58,7 +58,7 @@ export type StageDeps = [
   uiSfx: UiSfx,
   scene: THREE.Scene,
   dynamicSystem: DynamicSystem,
-  fx: EffectsSystem,
+  fx: FlashEffects,
   markerManager: MarkerManager,
   celestialSystem: CelestialSystem,
   simulator: Simulator,
@@ -156,7 +156,7 @@ export abstract class Stage {
   protected readonly _worldSfx: WorldSfx;
   protected readonly _uiSfx: UiSfx;
   protected readonly _scene: THREE.Scene;
-  protected readonly _fx: EffectsSystem;
+  protected readonly _fx: FlashEffects;
   protected readonly _dynamicSystem: DynamicSystem;
   protected readonly _markerManager: MarkerManager;
   protected readonly _celestialSystem: CelestialSystem;

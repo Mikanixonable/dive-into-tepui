@@ -31,7 +31,7 @@ import { Belt } from './belt';
 import { AeroLoad } from './aero-load';
 import { AltitudeAlarm } from './altitude-alarm';
 import { currentThemePalette } from '../../theme';
-import { EffectsSystem } from '../vfx/effects-system';
+import { FlashEffects } from '../vfx/flash-effects';
 import { buildDestroyFragments } from '../dynamic/dynamic-entity/debris-piece';
 import { ThrustEffects } from './thrust-effects';
 import { RcsEffects } from './rcs-effects';
@@ -138,7 +138,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   private readonly _hud: Hud;
   private readonly _worldSfx: WorldSfx;
-  private readonly _fx: EffectsSystem;
+  private readonly _fx: FlashEffects;
   private readonly playerScene: THREE.Scene;
 
   fineAttitude = false;
@@ -148,7 +148,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // init 省略時は無作為な名前と既定軌道の新規艦になる。id を省いたときは name がそのまま
   // 艦の識別子になるので、複数隻を並べるなら name も分ける。
   constructor(
-    _hud: Hud, _worldSfx: WorldSfx, _scene: THREE.Scene, _fx: EffectsSystem, markerManager: MarkerManager,
+    _hud: Hud, _worldSfx: WorldSfx, _scene: THREE.Scene, _fx: FlashEffects, markerManager: MarkerManager,
     init: PlayerInit = {},
   ) {
     const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));

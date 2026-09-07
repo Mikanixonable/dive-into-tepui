@@ -8,7 +8,7 @@ import { randSym } from '../../../math/random';
 import type { Stage } from '../../stages/stage';
 import type { Contact } from './contact';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
-import type { EffectsSystem } from '../../vfx/effects-system';
+import type { FlashEffects } from '../../vfx/flash-effects';
 import type { CapKind } from './entity-kind';
 import {
   buildBarrelMesh,
@@ -122,7 +122,7 @@ export class DebrisPiece extends DynamicEntity {
     readonly debrisKind: DebrisKind,
     att: Attitude,
     private readonly _worldSfx: WorldSfx,
-    private readonly _fx: EffectsSystem,
+    private readonly _fx: FlashEffects,
     radius?: number,
     scene?: THREE.Scene,
   ) {
@@ -228,7 +228,7 @@ export function buildDestroyFragments(
   sizeMax: number,
   spread: number,
   worldSfx: WorldSfx,
-  fx: EffectsSystem,
+  fx: FlashEffects,
   scene?: THREE.Scene,
 ): DebrisPiece[] {
   const pieces: DebrisPiece[] = [];

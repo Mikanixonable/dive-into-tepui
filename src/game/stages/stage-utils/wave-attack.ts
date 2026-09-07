@@ -8,7 +8,7 @@ import { Player } from '../../player/player';
 import type { Stage } from '../stage';
 import type { Hud } from '../../hud/hud';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
-import type { EffectsSystem } from '../../vfx/effects-system';
+import type { FlashEffects } from '../../vfx/flash-effects';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { apsisAltitudes } from '../../../physics/elements';
@@ -64,7 +64,7 @@ export class WaveAttack {
   public constructor(
     private readonly hud: Hud,
     private readonly worldSfx: WorldSfx,
-    private readonly fx: EffectsSystem,
+    private readonly fx: FlashEffects,
     private readonly scene: THREE.Scene,
     private readonly celestialSystem: CelestialSystem,
     saved?: WaveAttackSaveData,
@@ -283,7 +283,7 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
 }
 
 // ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
-export function generateWave(player: KinematicState, waveNumber: number, celestialSystem: CelestialSystem, worldSfx: WorldSfx, fx: EffectsSystem, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
+export function generateWave(player: KinematicState, waveNumber: number, celestialSystem: CelestialSystem, worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
   const calculatedCount = STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * STAGE00_WAVE_SHIPS_PER_WAVE);
   const shipCount = Math.min(calculatedCount, STAGE00_WAVE_MAX_SHIPS);
   const centerR = pickWaveCenter(player, waveNumber);

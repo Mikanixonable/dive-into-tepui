@@ -20,7 +20,7 @@ import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import type { EntitySaveDataUnion, GameSaveData } from '../save/save-data';
 import type { Hud } from '../hud/hud';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
-import { EffectsSystem } from '../vfx/effects-system';
+import type { FlashEffects } from '../vfx/flash-effects';
 import type { MarkerManager } from '../marker/marker-manager';
 import type { EquatorNodeInputs } from '../marker/equator-node-marker-pair';
 import type { PerfCounts } from '../perf-counts';
@@ -47,30 +47,28 @@ export class DynamicSystem implements EntityRegistry {
   // プールで描く種別の描画資源。どの種別がどのプールへ積むかは個体自身が知っている。
   private readonly instancedPools: InstancedPools;
 
-  // フラッシュ・破片の生成窓口。破片は entity なので、その配列を持つこちらが所有する。
-  readonly effects: EffectsSystem;
-
-  // 描画資源のプールを組み、演出窓口を作ってから、saved があればその顔ぶれを復元する。
+  // 描画資源のプールを組んでから、saved があればその顔ぶれを復元する。
   constructor(
     scene: THREE.Scene,
     hud: Hud,
     worldSfx: WorldSfx,
+    flash: FlashEffects,
     markerManager: MarkerManager,
     saved?: GameSaveData,
   ) {
     this.instancedPools = new InstancedPools(scene);
-    this.effects = new EffectsSystem(scene);
-    if (saved) this.restoreFromSave(saved, hud, worldSfx, scene, markerManager);
+    if (saved) this.restoreFromSave(saved, hud, worldSfx, flash, scene, markerManager);
   }
 
   // スナップショットの顔ぶれを復元する。組み立て方は種別ごとの辞書が答え、知らない種別は
   // 読み飛ばす。
   private restoreFromSave(
-    save: GameSaveData, hud: Hud, worldSfx: WorldSfx, scene: THREE.Scene, markerManager: MarkerManager,
+    save: GameSaveData, hud: Hud, worldSfx: WorldSfx, flash: FlashEffects, scene: THREE.Scene,
+    markerManager: MarkerManager,
   ): void {
     for (const data of save.entities) {
       const restoration = restorationFor(
-        data, save.simTime, scene, hud, worldSfx, markerManager, this.effects);
+        data, save.simTime, scene, hud, worldSfx, markerManager, flash);
       if (restoration === null) continue;
       this.spawnWhenReady(restoration.gate, () => restoration.build());
     }
@@ -252,7 +250,6 @@ export class DynamicSystem implements EntityRegistry {
     this.syncOtherEntities(fo, displayTime, cameraSystem.activeViewpoint, proteinVibrationEnabled);
     this.applyVisibility(visibilityPolicy, active);
     for (const entity of this.entities) entity.syncEffects(fo, displayTime, cameraSystem, style);
-    this.effects.sync(fo, cameraSystem.activeCamera, cameraSystem.zoomActive);
     this.syncEquatorNodes(cameraSystem, frameAnchors, timeLabel);
   }
 
@@ -327,7 +324,6 @@ export class DynamicSystem implements EntityRegistry {
 
     this.instancedPools.dispose();
 
-    this.effects.dispose();
     this.bumpCollectionRevision();
   }
 

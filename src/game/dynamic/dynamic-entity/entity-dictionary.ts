@@ -12,7 +12,7 @@ import { Player } from '../../player/player';
 import type { DynamicEntity } from './dynamic-entity';
 import type { EntitySaveDataUnion } from '../../save/save-data';
 import type { SpawnGate } from '../dynamic-system';
-import type { EffectsSystem } from '../../vfx/effects-system';
+import type { FlashEffects } from '../../vfx/flash-effects';
 import type { Hud } from '../../hud/hud';
 import type { MarkerManager } from '../../marker/marker-manager';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
@@ -32,7 +32,7 @@ export function restorationFor(
   hud: Hud,
   worldSfx: WorldSfx,
   markerManager: MarkerManager,
-  effects: EffectsSystem,
+  effects: FlashEffects,
 ): EntityRestoration | null {
   switch (data.kind) {
     case 'player':
