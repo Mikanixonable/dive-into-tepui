@@ -708,19 +708,12 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       ? [{ label: planExecLabel, act: 'planExecCycle', keepOpen: true }]
       : [];
 
-    const dockState = commands.dockState(this);
-    const dockItems: readonly MenuItem<MenuAction>[] =
-      dockState === 'docked' ? [MenuCommon.transferResources(), MenuCommon.undock()]
-        : dockState === 'dockable' ? [MenuCommon.dock()]
-          : [];
-
     // 操作対象の自艦は予測線・過去線に固定されるので、トグルは非操作艦にだけ出す。
     const trajectoryItem: readonly MenuItem<MenuAction>[] = isActive
       ? [] : [MenuCommon.trajectoryLine(this.showTrajectoryLine)];
 
     return [
       ...MenuCommon.targetItems(commands, this.id, simTime),
-      ...dockItems,
       ...planExec,
       activate,
       MenuCommon.focus(),
@@ -735,12 +728,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   public runMenu(act: MenuAction, commands: ObjectCommands): void {
     if (act === 'toggleTrajectoryLine') {
       this.showTrajectoryLine = !this.showTrajectoryLine;
-    } else if (act === 'dock') {
-      commands.dock(this);
-    } else if (act === 'undock') {
-      commands.undock();
-    } else if (act === 'transferResources') {
-      commands.transferResources(this);
     } else if (act === 'activate') {
       commands.setActivePlayer(this);
     } else if (act === 'deactivate') {

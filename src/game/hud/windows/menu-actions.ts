@@ -16,12 +16,7 @@ export type MenuAction =
   | 'delete'
   | 'cancel'
   | 'openObjectPlacer'
-  | 'toggleBasePanel'
   | 'openSettings'
-  | 'dock'
-  | 'undock'
-  | 'storeInBase'
-  | 'transferResources'
   | 'deployPart'
   | 'stowPart';
 
@@ -41,10 +36,6 @@ export const MenuCommon = {
   trajectoryLine: (on: boolean): MenuItem<MenuAction> => ({
     label: '予測線・過去線で表示', act: 'toggleTrajectoryLine', selected: on, keepOpen: true,
   }),
-  dock: (): MenuItem<MenuAction> => ({ label: 'ドッキング', act: 'dock' }),
-  undock: (): MenuItem<MenuAction> => ({ label: 'ドッキング解除', act: 'undock' }),
-  storeInBase: (): MenuItem<MenuAction> => ({ label: '基地に収納', act: 'storeInBase' }),
-  transferResources: (): MenuItem<MenuAction> => ({ label: '物資・電力の融通', act: 'transferResources' }),
   // ターゲットに設定/解除する項目。軌道面が定まらない対象では項目自体を出さない。
   targetItems: (commands: ObjectCommands, id: string, simTime: number): readonly MenuItem<MenuAction>[] => {
     if (commands.isNavTarget(id)) return [MenuCommon.target(true)];
