@@ -427,8 +427,8 @@ export class Game {
     this.sections.exit(SECTION.predict);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
-      activeControllable, displayWindow.displayTime, this.input, dt, this.viewManager.activeView.pickables,
-      this.frameAnchors,
+      displayWindow.displayTime, this.input, dt, this.viewManager.activeView.pickables,
+      this.frameAnchors, activeControllable,
     );
     this.sections.exit(SECTION.camera);
     // カメラ更新の後に置く: 候補列の組み直しが読む近傍系抽出・遮蔽判定・可視マーカー更新は
