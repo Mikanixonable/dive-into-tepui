@@ -11,7 +11,7 @@ import { goldenSectionMin } from '../math/optimize';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import { DisplayWindow } from './display-window-manager';
 import type { DynamicSystem } from './dynamic/dynamic-system';
-import type { CombatTarget } from './dynamic/dynamic-entity/combat-target';
+import { aliveCombatTarget, combatTargetById, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import { Hud } from './hud/hud';
 import { TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import { MarkerManager } from './marker/marker-manager';
@@ -131,9 +131,8 @@ export class NavTarget {
   // 常に復元する。ヒントは出さない。
   restore(data: { id: string; name: string } | null | undefined, dynamicSystem: DynamicSystem): void {
     if (!data) return;
-    const wasEntityId = dynamicSystem.findEnemy(data.id) !== null
-      || dynamicSystem.controllables.some((c) => c.id === data.id);
-    if (wasEntityId && !dynamicSystem.findAliveCombatTarget(data.id)) return;
+    const wasTarget = combatTargetById(dynamicSystem.all(), data.id);
+    if (wasTarget !== null && !wasTarget.alive) return;
     this.setInternal(data.id, data.name);
   }
 
@@ -141,8 +140,7 @@ export class NavTarget {
   // など戦闘対象になれない対象がターゲットの場合は null。
   resolveCombatTarget(dynamicSystem: DynamicSystem): CombatTarget | null {
     if (this.targetId === null) return null;
-    const entity = dynamicSystem.findAliveCombatTarget(this.targetId);
-    return entity && entity.alive ? entity : null;
+    return aliveCombatTarget(dynamicSystem.all(), this.targetId);
   }
 
   // AN・DN・再接近点のマーカー。
@@ -168,7 +166,7 @@ export class NavTarget {
     // 相対交点はターゲットと操作対象の両方が揃って初めて定義できる。片方でも欠ければ
     // 出す理由そのものが無い。
     if (!this.targetId) { this.setReaderEntity(null); this.retireNodeMarkers(); return; }
-    const target = dynamicSystem.findAliveCombatTarget(this.targetId);
+    const target = aliveCombatTarget(dynamicSystem.all(), this.targetId);
     this.setReaderEntity(target);
     if (!controlled) { this.retireNodeMarkers(); return; }
     const stateCelestialBodies = celestialSystem.celestialMotions;
@@ -240,7 +238,7 @@ export class NavTarget {
       }
     }
     // 残りは生存中の艦・基地。
-    const entity = dynamicSystem.findAliveCombatTarget(id);
+    const entity = aliveCombatTarget(dynamicSystem.all(), id);
     if (!entity) return null;
     return {
       id, state: entity.stateAt(t, celestialSystem) ?? entity.state, hasMass: false,
@@ -268,7 +266,7 @@ export class NavTarget {
     if (secondaryMotion instanceof OrbitingMotion) {
       return qRotate(secondaryMotion.orbitFrameRotationAt(t).q, LOCAL_FORWARD);
     }
-    const entity = dynamicSystem.findAliveCombatTarget(id);
+    const entity = aliveCombatTarget(dynamicSystem.all(), id);
     if (!entity) return null;
     const center = strongestAttractor(entity.state.r, celestialSystem.celestialMotions, t);
     return entity.orbitalElementsAround(center, t)?.hHat ?? null;

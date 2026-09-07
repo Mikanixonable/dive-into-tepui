@@ -4,7 +4,7 @@ import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import { Player } from './player/player';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
-import type { CombatTarget } from './dynamic/dynamic-entity/combat-target';
+import { isCombatTarget, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import { Input } from '../input/input';
 import { CameraSystem, ProjectFn } from './camera/camera-system';
 import type { GroupedMarkerItem, MarkerRole } from './marker/grouped-markers';
@@ -60,7 +60,8 @@ export class Targeter {
   // Tキーで、照準中心にもっとも近い対象をターゲットにする。操作中の艦自身は候補から外す。
   handleTargetSelectKey(input: Input, viewer: Controllable, project: ProjectFn): void {
     if (!input.takeKey(K.targetSelect)) return;
-    const targets = this.dynamicSystem.getCombatTargets().filter((e) => e.alive && e !== viewer);
+    const targets = this.dynamicSystem.all()
+      .filter(isCombatTarget).filter((e) => e.alive && e !== viewer);
     this.navTarget.setCombatTarget(pickNearest(
       targets, (target) => project(target.state.r),
       window.innerWidth * 0.5, window.innerHeight * 0.5, Infinity));
@@ -116,7 +117,7 @@ export class Targeter {
   ): void {
     // マーカーは操作対象自身も他の船と同列に扱う。自分自身を候補から外すのは、ターゲット選定
     // (handleTargetSelectKey)の側だけ。
-    const targets = this.dynamicSystem.getCombatTargets();
+    const targets = this.dynamicSystem.all().filter(isCombatTarget);
     const ammoPickups = this.dynamicSystem.ammoPickups;
     const fuelPickups = this.dynamicSystem.rcsFuelPickups;
     const celestialBodies = this.celestialSystem.celestialMotions;
