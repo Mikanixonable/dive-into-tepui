@@ -20,7 +20,7 @@ import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../../hud/orbit/orbit-l
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { hitsSphere, type Ray } from '../../../math/ray';
 import type { RingSystemDef } from '../../../physics/celestial-body-def';
-import type { MarkerManager } from '../../marker/marker-manager';
+import type { MarkerSlots } from '../../marker/marker-slots';
 import type { AtmosphereCandidate, AtmosphereClouds, AtmosphereOptics } from '../../../render/atmosphere';
 import type { Albedo } from '../../../render/celestial-albedo';
 import type { CelestialClass } from './celestial-entity-def';
@@ -203,7 +203,7 @@ export abstract class CelestialEntity implements ObjectPickable {
   // マップ専用の付随表示(静止軌道リングなど)のフック。既定では何も持たない。
   public syncMapOverlay(
     _fo: FloatingOrigin, _displayTime: number, _cameraSystem: CameraSystem,
-    _markerManager: MarkerManager | null, _celestialBodies: readonly CelestialMotion[], _visible: boolean,
+    _markerManager: MarkerSlots | null, _celestialBodies: readonly CelestialMotion[], _visible: boolean,
   ): void {}
 
   // pos が恒星から受けている放射照度(render/pipeline/sun-light.ts の単位)。恒星を持たない
@@ -258,7 +258,7 @@ export abstract class CelestialEntity implements ObjectPickable {
     return policy.body(this.id);
   }
 
-  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.id); }
+  public shownOnMap(markers: MarkerSlots): boolean { return markers.shows(this.id); }
 
   // 一覧の検索が照合する、自艦からの距離と中心天体の名前。
   public listSearchText(

@@ -15,7 +15,7 @@ import type { DynamicSystem } from './dynamic/dynamic-system';
 import { aliveCombatTarget, combatTargetById, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import type { Notifier } from '../hud/notifier';
 import { TimeLabelSetting } from './hud/orbit/calendar-ticks';
-import { MarkerManager } from './marker/marker-manager';
+import { MarkerSlots } from './marker/marker-slots';
 import { RelativeNodeMarker } from './marker/relative-node-marker';
 import { CameraSystem } from './camera/camera-system';
 import { ObjectPickable } from './pickable/object-pickable';
@@ -76,7 +76,7 @@ export class NavTarget {
   // 戦闘ビューでもターゲットの未来の軌道計算を止めないため navTargetReader を立てている個体。
   private readerEntity: DynamicEntity | null = null;
 
-  constructor(private readonly _notifier: Notifier, private readonly markerManager: MarkerManager) {}
+  constructor(private readonly _notifier: Notifier, private readonly markers: MarkerSlots) {}
 
   // 現在のターゲットの id。未設定なら null。
   get id(): string | null {
@@ -286,7 +286,7 @@ export class NavTarget {
   ): void {
     for (const marker of this.nodeMarkers) {
       marker.sync(
-        this.markerManager, cameraSystem.activeCameraProjection, cameraSystem.activeCameraPos,
+        this.markers, cameraSystem.activeCameraProjection, cameraSystem.activeCameraPos,
         occluders, occludersPivot, cameraSystem.view === 'map', timeLabel,
       );
     }
