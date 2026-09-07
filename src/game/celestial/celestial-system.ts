@@ -49,6 +49,7 @@ import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-li
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialBodies } from './celestial-bodies';
+import type { CelestialClass } from './celestial-entity/celestial-entity-def';
 
 const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);
@@ -213,6 +214,12 @@ export class CelestialSystem implements CelestialBodies {
   // 主星の個体。恒星を持たない星系では null。
   get star(): StarEntity | null { return this.starEntity; }
 
+  // 主星の天体 id。恒星を持たない星系では null。
+  get starId(): string | null { return this.starEntity?.id ?? null; }
+
+  // ECI の原点に静止している天体の id。
+  get originId(): string { return this.origin.id; }
+
   // 全登録天体の定義(宣言順)。
   get defs(): readonly CelestialBodyDef[] { return this.entities.map((b) => b.def); }
 
@@ -318,6 +325,12 @@ export class CelestialSystem implements CelestialBodies {
 
   // 天体 id の運動。未登録の id を渡すと例外になる。
   motionOf(id: string): CelestialMotion { return this.entityOf(id).motion; }
+
+  // 天体 id の運動。未登録の id では null。
+  findMotion(id: string): CelestialMotion | null { return this.entitiesById.get(id)?.motion ?? null; }
+
+  // 天体 id の分類。未登録の id では null。
+  bodyClassOf(id: string): CelestialClass | null { return this.entitiesById.get(id)?.bodyClass ?? null; }
 
   // 天体 id の、pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと
   // pivot 自身の厳密な値。|t − pivot| は積分1歩の幅程度に収めること。

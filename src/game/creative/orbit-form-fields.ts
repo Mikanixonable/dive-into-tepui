@@ -4,23 +4,23 @@ import { OrbitingMotion } from '../../physics/celestial-motion';
 import { type CelestialBodyDef } from '../../physics/celestial-body-def';
 import { EARTH } from '../celestial/solar-system/earth-system';
 import { J2_EARTH, MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
-import type { CelestialSystem } from '../celestial/celestial-system';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { LAGRANGE_MIN_CLEARANCE_RATIO } from '../celestial/lagrange-id';
 
 // ラグランジュ点を持てる天体(惑星 + 衛星)を副天体として列挙する。軌道要素指定の基準天体も
 // これを使う(公転していない恒星を周回の中心には選べない)。
-export function orbitingIdsOf(celestialSystem: CelestialSystem): readonly string[] {
-  return celestialSystem.entities.filter((b) => b.motion.kind !== 'star').map((b) => b.id);
+export function orbitingIdsOf(celestialBodies: CelestialBodies): readonly string[] {
+  return celestialBodies.celestialMotions.filter((b) => b.kind !== 'star').map((b) => b.id);
 }
 
 // 天体の候補をクラス別のまとまりへ組む。先頭は「いま選んでいる系」— 実際に選ばれるのは
 // ほぼ常に同じ系の別天体なので、1クリック目に置く。
 export function bodyGroupsOf(
-  celestialSystem: CelestialSystem, items: readonly (readonly [string, string])[], selected: string,
+  celestialBodies: CelestialBodies, items: readonly (readonly [string, string])[], selected: string,
 ): readonly ObjectPickerGroup<string>[] {
-  const near0 = celestialSystem.sameSystemIds(selected);
+  const near0 = celestialBodies.sameSystemIds(selected);
   const near = items.filter(([id]) => near0.has(id));
-  const byClass = (cls: CelestialClass) => items.filter(([id]) => celestialSystem.entityOf(id).bodyClass === cls);
+  const byClass = (cls: CelestialClass) => items.filter(([id]) => celestialBodies.bodyClassOf(id) === cls);
   return [
     { label: 'いま選んでいる系', items: near },
     { label: '惑星', items: byClass('planet') },
@@ -30,20 +30,20 @@ export function bodyGroupsOf(
   ].filter((g) => g.items.length > 0);
 }
 
-// 表示名を「中心天体名-自分の名」として celestialSystem から組む。
+// 表示名を「中心天体名-自分の名」として celestialBodies から組む。
 export function lagrangeSystemItemsOf(
-  celestialSystem: CelestialSystem, orbitingIds: readonly string[],
+  celestialBodies: CelestialBodies, orbitingIds: readonly string[],
 ): readonly (readonly [string, string])[] {
   // 共線点が行き先として意味を持つ系だけを出す。重力を無視すると宣言した天体(μ = 0)では
   // 質量比が 0 になり、共線点の距離比を解く反復が収束せず NaN の状態を返す。
   const usable = (id: string): boolean => {
-    const motion = celestialSystem.entityOf(id).motion;
+    const motion = celestialBodies.motionOf(id);
     return motion instanceof OrbitingMotion && motion.hasUsableCollinearPoints(LAGRANGE_MIN_CLEARANCE_RATIO);
   };
   return orbitingIds.filter(usable).map((id) => {
-    const primary = celestialSystem.entityOf(id).motion.primary?.id ?? null;
-    const primaryName = celestialSystem.nameOf(primary ?? id);
-    return [id, `${primaryName}-${celestialSystem.nameOf(id)}`] as const;
+    const primary = celestialBodies.motionOf(id).primary?.id ?? null;
+    const primaryName = celestialBodies.nameOf(primary ?? id);
+    return [id, `${primaryName}-${celestialBodies.nameOf(id)}`] as const;
   });
 }
 
