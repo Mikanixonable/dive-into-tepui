@@ -46,7 +46,7 @@ export class Stage1 extends Stage {
     this.addEnemy(generateEllipticEnemy('HOSTILE-δ', base, 5000, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
     this.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, 60000, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
   }
-  // 1フレーム分、敵の行動と補給ロジスティクスを進める。
+  // 1フレーム分、補給ロジスティクスを進める。
   update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;

@@ -16,8 +16,6 @@ import { LODS_FINE_TO_COARSE } from '../game/protein/protein-motion-controller';
 import type { PerfCounts, PerfCountSource } from '../game/perf-counts';
 import type { EntityCountKind } from '../game/dynamic/dynamic-entity/entity-kind';
 
-// フレームごとに数え直される項目。集計期間の1フレームだけを覗くと実態を取り違えるので、
-// ms系と同じく毎フレーム積んで avg/max で出す。
 // エンティティ数の行。並び順と表示名はここで決める。
 const ENTITY_COUNT_ROWS: readonly { key: EntityCountKind; label: string }[] = [
   { key: 'player', label: 'players' },
@@ -31,6 +29,8 @@ const ENTITY_COUNT_ROWS: readonly { key: EntityCountKind; label: string }[] = [
   { key: 'base', label: 'bases' },
 ];
 
+// フレームごとに数え直される項目。集計期間の1フレームだけを覗くと実態を取り違えるので、
+// ms系と同じく毎フレーム積んで avg/max で出す。
 const RATE_COUNTS: readonly { key: string; label: string; group: string; read: (c: PerfCounts) => number }[] = [
   { key: 'plan-arcs', label: '再生成区間', group: '計画軌道', read: (c) => c.planArcs },
   { key: 'plan-steps', label: '積分step', group: '計画軌道', read: (c) => c.planSteps },
