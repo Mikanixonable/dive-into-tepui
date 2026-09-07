@@ -683,7 +683,7 @@ export class DynamicEntity {
   // 赤道交点マーカーを、この個体について画面に出ている線の上で求め直す。出す条件を満たさない
   // 個体は交点を伏せる。フレームに1度だけ呼ぶ。
   updateEquatorNodes(inputs: EquatorNodeInputs, controlled: boolean): void {
-    if (!this.showsEquatorNodes(controlled)) { this.equatorNodes?.clearCrossings(); return; }
+    if (!this.showsEquatorNodes(controlled)) { this.equatorNodes?.retire(); return; }
     (this.equatorNodes ??= new EquatorNodeMarkerPair(this, inputs.markerManager)).update(inputs);
   }
 

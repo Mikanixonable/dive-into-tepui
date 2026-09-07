@@ -169,10 +169,11 @@ export class PlanDisplay {
     this.placeApsisMarkers(ship?.name ?? null);
   }
 
-  // 折れ線と近地点・遠地点アイコンを、求まらなかった状態にする。
+  // 折れ線を畳み、近地点・遠地点アイコンを出す理由が無くなった状態にする。
   private clearDisplay(): void {
     this.path.clear();
-    this.placeApsisMarkers(null);
+    this.apsisPe.retire();
+    this.apsisAp.retire();
   }
 
   // 計画に属する表示物をすべて畳む。
