@@ -108,6 +108,7 @@ export type PlayerInit =
 export class Player extends Ship implements Controllable, ObjectPickable {
   public override readonly mapKind: DynamicEntityKind = 'player';
   public override readonly controllable = true;
+  public override readonly pickable = true;
   // 除去の前に注視・操作対象の参照を次の艦へ引き継ぐ必要があるので、所有者側に回収させる。
   public override readonly reclaimedByOwner = true;
 
