@@ -28,6 +28,7 @@ import { LineStyle } from '../../../render/line-style';
 import { FrameAnchorSource, ReferenceFrame } from '../../../physics/frame';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { CapKind, DynamicEntityKind } from './entity-kind';
+import type { InstancedPools } from './instanced-pools';
 import { PredictedArc, trajectorySampleInterval } from '../predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from '../time-step';
 import type { FutureCelestialBodyProvider } from '../arc-celestial-bodies';
@@ -612,6 +613,9 @@ export class DynamicEntity {
     this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
     this.syncThermalAppearance();
   }
+
+  // 同期し終えた自分の変換を、自分を描くプールへ積む。プールで描かない種別は何もしない。
+  pushInstances(_pools: InstancedPools): void {}
 
   // カメラ・描画スタイルを要する付随表示(推力プルームなど)を同期する。表示可否の上書きが
   // 済んだ後に呼ばれるので、renderObject.visible をそのまま読んでよい。
