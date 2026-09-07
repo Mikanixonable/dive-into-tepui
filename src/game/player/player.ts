@@ -352,7 +352,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       case K.radiatorDeployRight.code: this.radiator.toggle('down'); return true;
       case K.solarDeployLeft.code: this.power.toggle('up'); return true;
       case K.solarDeployRight.code: this.power.toggle('down'); return true;
-      case K.reload.code: return this.fire.manualReload();
+      case K.reload.code: return this.fire.manualReload(registry);
       default: return false;
     }
   }
