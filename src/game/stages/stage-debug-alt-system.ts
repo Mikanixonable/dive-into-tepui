@@ -3,7 +3,6 @@
 // 依存していないことを実演する。タイトルの通常ボタン列には出ない。
 import * as THREE from 'three/webgpu';
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import {
   CelestialMotion, OrbitingMotion, PhaseOffsets, PlanetDef, SatelliteDef, StarDef,
@@ -122,7 +121,7 @@ export class StageDebugAltSystem extends Stage {
     });
   }
 
-  update(_dt: number, _dynamicSystem: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
     this.logistics.updateLogistics(simTime, player, simSpeed);

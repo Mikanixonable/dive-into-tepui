@@ -7,7 +7,6 @@ import {
   generateEllipticEnemy,
   generatePhasedEnemy,
 } from './spawner/enemy-generator';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { StageSaveData } from '../save/save-data';
 import { COLOR_ENEMY_ORBIT_LINE } from '../lines/entity-line-manager';
@@ -34,25 +33,25 @@ export class Stage1 extends Stage {
   }
 
   // 自機と5機の敵を初期配置する。
-  protected init(dynamicSystem: DynamicSystem): void {
+  protected init(): void {
     const player = this.addPlayer();
     const base = player.state;
     const worldSfx = this._worldSfx;
     const fx = this._fx;
     const scene = this._scene;
     // 各種軌道パターンの敵を配置する
-    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1400, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), dynamicSystem);
-    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2800, 2500, 0xff7a2d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), dynamicSystem);
-    this.addEnemy(generateCrossingEnemy('HOSTILE-γ', base, 2200, 0xe0409f, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), dynamicSystem);
-    this.addEnemy(generateEllipticEnemy('HOSTILE-δ', base, 5000, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), dynamicSystem);
-    this.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, 60000, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene), dynamicSystem);
+    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1400, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
+    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2800, 2500, 0xff7a2d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
+    this.addEnemy(generateCrossingEnemy('HOSTILE-γ', base, 2200, 0xe0409f, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
+    this.addEnemy(generateEllipticEnemy('HOSTILE-δ', base, 5000, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
+    this.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, 60000, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
   }
   // 1フレーム分、敵の行動と補給ロジスティクスを進める。
-  update(_dt: number, dynamicSystem: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
 
-    this.behaveAllEnemies(player, dynamicSystem, simTime, simSpeed);
+    this.behaveAllEnemies(player, simTime, simSpeed);
 
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }
