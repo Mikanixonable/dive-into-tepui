@@ -18,7 +18,6 @@ import { SOLAR_CONSTANT } from '../../../physics/srp';
 import { ApsisTrack } from '../../../physics/trajectory-features';
 import { Vec3, len, scale, sub, v3 } from '../../../math/vec3';
 import { hitsSphere, type Ray } from '../../../math/ray';
-import type { Viewpoint } from '../../../math/projection';
 import type { SphereHit } from '../../../math/triangle-mesh';
 import { FloatingOrigin } from '../../camera/floating-origin';
 import { EllipseLine } from '../../lines/ellipse-line';
@@ -27,18 +26,28 @@ import { TrajectoryLine } from '../../lines/trajectory-line';
 import { LineStyle } from '../../../render/line-style';
 import { FrameAnchorSource, ReferenceFrame } from '../../../physics/frame';
 import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { CapKind } from './entity-kind';
+import type { CapKind, DynamicEntityKind } from './entity-kind';
+import type { InstancedPools } from '../instanced-pools';
+import type { EntityRegistry } from '../dynamic-system';
 import { PredictedArc, trajectorySampleInterval } from '../predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from '../time-step';
 import type { FutureCelestialBodyProvider } from '../arc-celestial-bodies';
 import type { Stage } from '../../stages/stage';
 import type { Contact } from './contact';
 import { EntityIdAllocator } from './entity-id';
-import { EquatorNodeMarkerPair } from '../../marker/equator-node-marker-pair';
-import type { MarkerManager } from '../../marker/marker-manager';
+import { EquatorNodeMarkerPair, type EquatorNodeInputs } from '../../marker/equator-node-marker-pair';
+import type { ObjectPickable } from '../../pickable/object-pickable';
+import type { TimeLabelSetting } from '../../hud/orbit/calendar-ticks';
+import type { EntitySaveDataUnion } from '../../save/save-data';
 import { disposeOwnedRenderResources } from '../../../render/dispose-owned-render-resources';
 import { syncThermalState } from '../../../render/thermal-emissive';
 import { DISPLAY_DURATION_MAX } from '../../display-window-manager';
+import type { CameraSystem } from '../../camera/camera-system';
+import type { RenderStyle } from '../../../render/render-style';
+import type { GraphicsSettingsData } from '../../../render/graphics-settings';
+import type { OrbitReference } from '../../orbit-reference';
+import { MARKER_VISIBILITY, type MapVisibility, type MapVisibilityPolicy } from '../../map/visibility-policy';
+import type { Controllable } from './controllable';
 
 // 弾道係数 bcInv に織り込まれている抗力係数。よどみ点の曲率半径と断面積の比を bcInv から
 // 戻すのに使う。物体ごとに変えると bcInv の意味が種別で変わってしまうので、1つに固定する。
@@ -90,8 +99,13 @@ export class DynamicEntity {
 
   // 一意な識別子。表示名(name)とは別の概念。
   readonly id: string;
-  // マーカー・一覧・ウィンドウに出す表示名。既定は id で、名前を持つ種別がコンストラクタで上書きする。
-  name: string;
+  // マーカー・一覧・ウィンドウに出す表示名。既定は id で、名前を持つ種別がコンストラクタで
+  // setName() を通して上書きする。外から書き換える口は ObjectPickable.rename だけ。
+  private _name: string;
+  get name(): string { return this._name; }
+  protected setName(name: string): void { this._name = name; }
+  // 常設の軌道構造物として、選択の有無に関わらず赤道交点マーカーを出すか。
+  readonly showsEquatorNodesAlways: boolean = false;
   att: Attitude;
   // 姿勢を積分する種別か。false の個体は att を進めず、向きを別の規則で決める
   // (弾は速度方向を向く)。
@@ -101,6 +115,14 @@ export class DynamicEntity {
   alive = true;
   // 同時に存在してよい数のどの枠から取るか。null = 上限なし。
   public readonly capKind: CapKind | null = null;
+  // マップの表示トグルがこの個体を分類する種別。null = トグルを持たない(弾・薬莢・破片)。
+  public readonly mapKind: DynamicEntityKind | null = null;
+  // CombatTarget を実装しているか。
+  public readonly combatTarget: boolean = false;
+  // Controllable を実装しているか。
+  public readonly controllable: boolean = false;
+  // ObjectPickable を実装しているか。
+  public readonly pickable: boolean = false;
   // 死亡しても顔ぶれに残り、所有者が取り除くまで破棄されないか。散った参照の掃除や次の個体への
   // 引き継ぎが要る種別が立てる。
   public readonly reclaimedByOwner: boolean = false;
@@ -157,7 +179,7 @@ export class DynamicEntity {
   // 予測線・過去線を表示する。
   showTrajectoryLine = false;
   // 自身の軌道と中心天体の赤道面との交点マーカー。null = まだ出す必要が生じていない。
-  equatorNodes: EquatorNodeMarkerPair | null = null;
+  private equatorNodes: EquatorNodeMarkerPair | null = null;
   // 弾道係数の逆数 Cd·A/m(既定 0 = 抵抗なし)。抗力が要求する刻みを外から引けるよう公開する。
   readonly bcInv: number = 0;
   protected readonly srpCoeff: number = 0;
@@ -250,7 +272,7 @@ export class DynamicEntity {
   ) {
     this.actual = new DynamicTrajectory(state);
     this.id = id ?? DynamicEntity.idAllocator.next();
-    this.name = this.id;
+    this._name = this.id;
     this.att = att;
     this.renderObject = renderObject;
     this.scene = scene;
@@ -448,6 +470,7 @@ export class DynamicEntity {
     star: CelestialMotion | null,
     pivot: number,
     activeStage: Stage,
+    registry: EntityRegistry,
   ): boolean {
     const integrated = !this.followPredicted(this.state.t + dt, celestialBodies, pivot);
     if (integrated) {
@@ -471,7 +494,7 @@ export class DynamicEntity {
       ? 0 : sunlitFactor(this.state.r, sun, occluders, pivot);
     // 環境を先に進める。放熱面の展開のように、熱収支が読む値をここで書き換える種別がある。
     this.stepEnvironment(dt, atmosphereBody, pivot, sunlit, sunDir);
-    this.stepThermal(dt, atmosphereBody, pivot, sunDist, sunlit, sunDir, activeStage);
+    this.stepThermal(dt, atmosphereBody, pivot, sunDist, sunlit, sunDir, activeStage, registry);
     return integrated;
   }
 
@@ -482,7 +505,7 @@ export class DynamicEntity {
   }
 
   // 温度が上限を超えて失われる。死因を記録する種別が override する。
-  protected burnUp(_activeStage: Stage): void {
+  protected burnUp(_activeStage: Stage, _registry: EntityRegistry): void {
     this.alive = false;
   }
 
@@ -494,7 +517,7 @@ export class DynamicEntity {
   // 速いので、粗い区間の終わりだけを見ると、加熱の山で上限を越えて戻ってきた個体を取り逃がす。
   private stepThermal(
     dt: number, atmosphereBody: CelestialMotion | null, atmospherePivot: number,
-    sunDist: number, sunlit: number, sunDir: Vec3, activeStage: Stage,
+    sunDist: number, sunlit: number, sunDir: Vec3, activeStage: Stage, registry: EntityRegistry,
   ): void {
     if (this.specificHeat <= 0) return;
     const atm = atmosphereBody?.atmosphereAt(atmospherePivot) ?? null;
@@ -519,7 +542,7 @@ export class DynamicEntity {
     this.thermalDeviation = stepThermalDeviation(
       this.thermalDeviation, this.temperature, this.emissivity, this.radiatingAreaPerMass,
       this.specificHeat, dt);
-    if (this.temperature > this.maxTemperature) this.burnUp(activeStage);
+    if (this.temperature > this.maxTemperature) this.burnUp(activeStage, registry);
   }
 
   // 同じ区間ぶん、位置と姿勢から決まる受動的な環境(放熱面の展開・電力など)を進める。既定
@@ -583,17 +606,68 @@ export class DynamicEntity {
     return predicted.extrapolatedAt(t, celestialSystem.stateAt(center.celestialBody.id, t));
   }
 
-  // displayTime の描画位置・姿勢を fo 経由でメッシュへ同期する。
-  sync(fo: FloatingOrigin, displayTime: number, _viewer?: Viewpoint, _proteinVibrationEnabled = true): void {
-    const s = this.stateAt(displayTime);
-    if (s === null) {
-      this.renderObject.visible = false;
-      return;
+  // マップの表示トグルがこの個体をどう扱うか。トグルを持たない種別(弾・薬莢・破片)は
+  // すべて出す判定を返す。viewer はいま操作している個体。
+  public mapVisibility(policy: MapVisibilityPolicy, viewer: Controllable | null): MapVisibility {
+    if (this.mapKind === null) return MARKER_VISIBILITY;
+    // 多態 this 型は「Controllable も実装している」ことを約束しないので、同一性は基底型で比べる。
+    const self: DynamicEntity = this;
+    return policy.entity(this.mapKind, self === viewer);
+  }
+
+  // このフレームの表示物を同期する。この個体が持つ表示物(メッシュ・エフェクト・交点マーカー)は
+  // すべてこの1呼び出しの中で片付き、何をどう出すかは個体自身が答える。
+  public sync(
+    fo: FloatingOrigin, displayTime: number, active: Controllable | null,
+    visibilityPolicy: MapVisibilityPolicy | null, pools: InstancedPools, cameraSystem: CameraSystem,
+    style: RenderStyle, graphics: GraphicsSettingsData, orbitRef: OrbitReference | undefined,
+    frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting,
+  ): void {
+    // 死んだ個体(所有者が回収するまで顔ぶれに残る自艦・基地)は本体の同期を止める。交点マーカーは
+    // retire しただけでは画面から消えず、この sync が伏せるので、生死によらず通す。
+    if (this.alive) {
+      this.syncModel(
+        fo, displayTime, active, visibilityPolicy, pools, cameraSystem, style, graphics, orbitRef);
     }
-    this.renderObject.visible = true;
+    this.syncEquatorNodes(cameraSystem, frameAnchors, timeLabel);
+  }
+
+  // メッシュと、それに付随する表示物(プルーム・ベルト・マーカー)を displayTime の状態へ合わせ、
+  // プールで描く種別は同期し終えた変換をここで pools へ積む。付随表示を持つ種別はこれを
+  // 差し替え、**必ず placeModel を呼んでから**自分のぶんを載せる。
+  protected syncModel(
+    fo: FloatingOrigin, displayTime: number, active: Controllable | null,
+    visibilityPolicy: MapVisibilityPolicy | null, _pools: InstancedPools,
+    _cameraSystem: CameraSystem, _style: RenderStyle, _graphics: GraphicsSettingsData,
+    _orbitRef: OrbitReference | undefined,
+  ): void {
+    this.placeModel(fo, displayTime, active, visibilityPolicy);
+  }
+
+  // 本体メッシュを displayTime の位置・姿勢へ置き、表示トグルに従って表示可否を決める。
+  // 返すのは置いた状態で、付随表示を載せる側が stateAt を引き直さないため(描けなければ null)。
+  protected placeModel(
+    fo: FloatingOrigin, displayTime: number, active: Controllable | null,
+    visibilityPolicy: MapVisibilityPolicy | null,
+  ): KinematicState | null {
+    const s = this.stateAt(displayTime);
+    this.renderObject.visible = s !== null
+      && (visibilityPolicy === null || this.mapVisibility(visibilityPolicy, active).category);
+    if (s === null) return null;
     this.renderObject.position.copy(fo.RtoThreeV3(s.r));
-    this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
+    this.orientModel(fo, s);
     this.syncThermalAppearance();
+    return s;
+  }
+
+  // 表示時刻の状態からメッシュの向きを決める。姿勢を積分しない種別(hasAttitude が false)は、
+  // これを差し替えて別の規則で向きを決める。
+  protected orientModel(_fo: FloatingOrigin, _s: KinematicState): void {
+    this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
+  }
+
+  // 自分で決まる推力を1フレーム進める。操作を受けない種別が自律的に燃焼するときに使う。
+  updateThrust(_simDt: number): void {
   }
 
   // いまの温度と局所的な過熱をメッシュへ配る。
@@ -604,12 +678,17 @@ export class DynamicEntity {
   }
 
   // 種別ごとの自然死。大気による焼失は温度が決めるので(stepSimulation)、ここに残るのは
-  // 寿命や距離のような、状態から直接は決まらない事情だけ。playerPos は「自機からの距離」で
+  // 寿命や距離のような、状態から直接は決まらない事情だけ。viewerPos は「操作対象からの距離」で
   // 消える種別(弾)のために一律で渡す。atmosphereBodies はその時刻の大気天体一覧。
   checkLoss(
-    _dt: number, _simTime: number, _activeStage: Stage, _playerPos: Vec3,
-    _atmosphereBodies: readonly CelestialMotion[],
+    _dt: number, _simTime: number, _activeStage: Stage, _registry: EntityRegistry,
+    _viewerPos: Vec3, _atmosphereBodies: readonly CelestialMotion[],
   ): void {
+  }
+
+  // セーブデータへ変換する。保存へ載らない種別(弾・薬莢・破片)は null を返す。
+  public serialize(): EntitySaveDataUnion | null {
+    return null;
   }
 
   // 自分がこの相手と接触しうるか。既定 true。両側が true を返したときだけ接触する。
@@ -643,17 +722,46 @@ export class DynamicEntity {
 
   // 個体どうしの接触で自分に何が起きるかを記述する。相手に何が起きるかは書かない(相手の
   // collideWithEntity が書く)。既定は何も起きない。
-  collideWithEntity(_other: DynamicEntity, _contact: Contact, _activeStage: Stage): void {
+  collideWithEntity(
+    _other: DynamicEntity, _contact: Contact, _activeStage: Stage, _registry: EntityRegistry,
+  ): void {
   }
 
   // 天体の固体表面へ触れたときに自分に何が起きるか。既定は失われる。
-  collideWithCelestialBody(_body: CelestialMotion, _contact: Contact, _activeStage: Stage): void {
+  collideWithCelestialBody(
+    _body: CelestialMotion, _contact: Contact, _activeStage: Stage, _registry: EntityRegistry,
+  ): void {
     this.alive = false;
   }
 
-  // 赤道交点マーカーを用意して返す。出す必要が生じた側が呼ぶ。
-  ensureEquatorNodes(markerManager: MarkerManager): EquatorNodeMarkerPair {
-    return this.equatorNodes ??= new EquatorNodeMarkerPair(this, markerManager);
+  // 赤道交点マーカーを出す条件を満たしているか。常設の軌道構造物、操作対象、航法/戦闘
+  // ターゲットの3つ。
+  private showsEquatorNodes(controlled: boolean): boolean {
+    return this.alive && (this.showsEquatorNodesAlways || controlled || this.navTargetReader);
+  }
+
+  // 赤道交点マーカーを、この個体について画面に出ている線の上で求め直す。出す条件を満たさない
+  // 個体は交点を伏せる。フレームに1度だけ呼ぶ。
+  updateEquatorNodes(inputs: EquatorNodeInputs, controlled: boolean): void {
+    if (!this.showsEquatorNodes(controlled)) { this.equatorNodes?.retire(); return; }
+    (this.equatorNodes ??= new EquatorNodeMarkerPair(this, inputs.markerManager)).update(inputs);
+  }
+
+  // このフレームに求まった赤道交点マーカーを置く。天体の裏に隠れた交点を伏せるのはマップビュー
+  // だけで、戦闘ビューでは地球の向こう側の交点も出す。投影関数は引くたびに作られるので、
+  // 交点を持つ個体でだけ引く。
+  private syncEquatorNodes(
+    cameraSystem: CameraSystem, frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting,
+  ): void {
+    if (this.equatorNodes === null) return;
+    this.equatorNodes.sync(
+      cameraSystem.activeCameraProjection, cameraSystem.activeCameraPos,
+      frameAnchors.bodies, frameAnchors.bodiesPivot, cameraSystem.view === 'map', timeLabel);
+  }
+
+  // 右クリック対象として公開する赤道交点アイコン。
+  equatorNodePickables(): readonly ObjectPickable[] {
+    return this.equatorNodes?.pickables() ?? [];
   }
 
   // メッシュを scene から、マーカーを HUD から取り除く。配下メッシュのジオメトリ・マテリアルも

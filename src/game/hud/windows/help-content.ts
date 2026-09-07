@@ -3,8 +3,8 @@
 // 検索・フィルタ判定の純関数。
 import { KEY_MAPPING as K, type KeyBinding } from '../../../input/key-mapping';
 import { MAX_PHYS_SIM_SPEED } from '../../dynamic/sim-speed-manager';
-import { THROTTLE_LABELS } from '../../player/player-throttle';
-import { MAG_ROUNDS } from '../../player/player-fire';
+import { THROTTLE_LABELS } from '../../player/throttle';
+import { MAG_ROUNDS } from '../../player/fire-control';
 import type { View } from '../../view/view';
 
 export type HelpInput = 'keyboard' | 'mouse' | 'touch';

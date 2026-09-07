@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { buildEnemyShip, buildStage0EnemyShip } from '../../../render/ships';
 import { v3, type Vec3 } from '../../../math/vec3';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
-import { EffectsSystem } from '../../vfx/effects-system';
+import { FlashEffects } from '../../vfx/flash-effects';
 import {
   Enemy, ENEMY_SCALE, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore,
 } from './enemy';
@@ -27,7 +27,7 @@ type MetalEnemyPlacement = EnemyPlacement & { readonly typeIndex: number | null 
 // 金属機体の敵。艦と同じパーツ式の被弾モデルを持ち、判定形状は機体メッシュのバウンディング球。
 export class MetalEnemy extends Enemy {
   public static readonly kind = 'metal-enemy';
-  public static pendingAssetId(): null { return null; }
+  public static spawnGate(): null { return null; }
 
   private readonly typeIndex: number | null;
 
@@ -35,7 +35,7 @@ export class MetalEnemy extends Enemy {
   public constructor(
     init: MetalEnemyPlacement | EnemyRestore,
     worldSfx: WorldSfx,
-    fx: EffectsSystem,
+    fx: FlashEffects,
     scene?: THREE.Scene,
   ) {
     const typeIndex = 'saved' in init ? (init.saved as MetalEnemySaveData).typeIndex : init.typeIndex;
@@ -72,6 +72,6 @@ export class MetalEnemy extends Enemy {
   }
 
   public override serialize(): MetalEnemySaveData {
-    return { ...super.serialize(), kind: MetalEnemy.kind, typeIndex: this.typeIndex };
+    return { ...this.serializeEnemyFields(), kind: MetalEnemy.kind, typeIndex: this.typeIndex };
   }
 }
