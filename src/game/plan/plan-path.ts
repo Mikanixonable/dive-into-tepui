@@ -416,8 +416,8 @@ export class PlanPath {
     return { state: refined ?? best.state, arcIdx: best.arcIdx };
   }
 
-  // update() がまだ呼ばれていない経路にも、従来どおり遅延評価で対応する。ただし通常の
-  // 表示経路では update() が先に値を入れるため、同一フレーム内の再生成は起きない。
+  // un-bake の座標系変換。無効化されていれば unbakeTime で組み直し、以後は同じものを返す。
+  // 星系がまだ渡されていなければ null。
   private currentUnbakeTransform(): FrameTransform | null {
     if (!this.celestialSystem) return null;
     if (this.unbakeTransform === null) {

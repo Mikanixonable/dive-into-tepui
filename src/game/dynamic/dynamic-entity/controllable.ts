@@ -38,7 +38,7 @@ export interface Controllable extends CombatTarget {
   consumeFuel(amount: number): number;
 
   // 毎フレーム1度だけ呼ぶ。input が null なら、このフレーム操作されない個体として指令を畳む。
-  // registry / activeStage / celestialSystem は射撃と補給の判定に要る — 使わない種別は無視する。
+  // registry / activeStage / celestialSystem は射撃と補給の判定に使う。
   updateControls(
     input: Input | null, dt: number, simDt: number,
     registry: EntityRegistry, activeStage: Stage, celestialSystem: CelestialSystem,

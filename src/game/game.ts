@@ -92,7 +92,7 @@ export class Game {
   private readonly frameAnchors: FrameAnchors;
   readonly orbitReference = new OrbitReferenceSelector();
   readonly dynamicSystem: DynamicSystem;
-  // 物理に乗らない一過性の見た目。顔ぶれには載らないので DynamicSystem の外で持つ。
+  // 閃光・ガスパフなど、寿命だけで消えていく一過性の見た目。
   private readonly flashEffects: FlashEffects;
   private readonly entityLines: EntityLineManager;
   private readonly predictor: Predictor;

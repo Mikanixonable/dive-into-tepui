@@ -45,7 +45,7 @@ export class PlanGuide {
     plan.consumeNodesUpTo(simTime - NODE_EXPIRE_GRACE, controlled.state);
 
     const node = plan.firstNode();
-    // 実行の窓に入るまでは通知しない。窓の手前では自機はまだ噴射前の軌道にいるので、
+    // 実行の窓に入るまでは通知しない。窓の手前では操作対象はまだ噴射前の軌道にいるので、
     // 目標軌道との近さを見ても達成の判定にならない。
     if (node && simTime >= node.t - NODE_APPROACH_LEAD) {
       this.notifyApproach(node);
@@ -105,7 +105,7 @@ export class PlanGuide {
     this._hud.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000);
   }
 
-  // 自機の軌道が目標軌道に十分近づいていれば達成を通知する。ノードと自機で最も強く引く
+  // 操作対象の軌道が目標軌道に十分近づいていれば達成を通知する。ノードと操作対象で最も強く引く
   // 天体が違えば、要素同士の比較自体が意味を持たないので判定しない。
   private notifyAchieved(
     node: KinematicState, controlled: Controllable,

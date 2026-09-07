@@ -108,8 +108,8 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.onToggleResupply = (on) => { this.logistics.resupplyEnabled = on; };
     this.stageControlsPanel.onToggleFuelResupply = (on) => { this.logistics.rcsFuelResupplyEnabled = on; };
     this.stageControlsPanel.onToggleWaveAttack = (on) => { this.waveAttackEnabled = on; };
-    this.stageControlsPanel.onRefillAmmo = () => this.refillActivePlayerAmmo();
-    this.stageControlsPanel.onRefillFuel = () => this.refillActivePlayerRcsFuel();
+    this.stageControlsPanel.onRefillAmmo = () => this.refillShipAmmo();
+    this.stageControlsPanel.onRefillFuel = () => this.refillShipRcsFuel();
     this.stageControlsPanel.onSpawnDistanceChange = (distance) => { this.manualEnemySpawnDistance = distance; };
     this.stageControlsPanel.onSpawnEnemy = (shape, colorValue) => this.spawnManualEnemy(shape, colorValue);
     this.stageControlsPanel.onSpawnFormation = () => this.spawnProteinFormation();
@@ -130,7 +130,7 @@ export class CreativeStage extends Stage {
   }
 
   // 操作艦の弾薬を満載にする。操作艦がいなければトーストで知らせる。
-  private refillActivePlayerAmmo(): void {
+  private refillShipAmmo(): void {
     const player = this.ship;
     if (player === null || !player.alive) {
       this._hud.hint('操作艦がいないため弾薬を補充できません');
@@ -140,7 +140,7 @@ export class CreativeStage extends Stage {
   }
 
   // 操作艦の RCS 燃料を満タンにする。操作艦がいなければトーストで知らせる。
-  private refillActivePlayerRcsFuel(): void {
+  private refillShipRcsFuel(): void {
     const player = this.ship;
     if (player === null || !player.alive) {
       this._hud.hint('操作艦がいないためRCS燃料を補充できません');
@@ -429,8 +429,8 @@ export class CreativeStage extends Stage {
     if (!values.every(Number.isFinite)) throw new Error('有限の状態を作れませんでした');
   }
 
-  // 補給の投入と、既に出ている敵の AI を進める。波状攻撃のトグルが決めるのは新しいウェーブが
-  // 出るかどうかで、OFF にしても既に出ている敵は残る。
+  // 補給の投入と波状攻撃を進める。波状攻撃のトグルが決めるのは新しいウェーブが出るかどうかで、
+  // OFF にしても既に出ている敵は残る。
   update(dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (player) {

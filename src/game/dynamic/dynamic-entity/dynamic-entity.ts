@@ -117,11 +117,11 @@ export class DynamicEntity {
   public readonly capKind: CapKind | null = null;
   // マップの表示トグルがこの個体を分類する種別。null = トグルを持たない(弾・薬莢・破片)。
   public readonly mapKind: DynamicEntityKind | null = null;
-  // CombatTarget を実装しているか。isCombatTarget() がこれを読む。
+  // CombatTarget を実装しているか。
   public readonly combatTarget: boolean = false;
-  // Controllable を実装しているか。isControllable() がこれを読む。
+  // Controllable を実装しているか。
   public readonly controllable: boolean = false;
-  // ObjectPickable を実装しているか。isObjectPickable() がこれを読む。
+  // ObjectPickable を実装しているか。
   public readonly pickable: boolean = false;
   // 死亡しても顔ぶれに残り、所有者が取り除くまで破棄されないか。散った参照の掃除や次の個体への
   // 引き継ぎが要る種別が立てる。
@@ -606,9 +606,8 @@ export class DynamicEntity {
     return predicted.extrapolatedAt(t, celestialSystem.stateAt(center.celestialBody.id, t));
   }
 
-  // マップの表示トグルがこの個体をどう扱うか。トグルを持たない種別(弾・薬莢・破片)は伏せる
-  // 理由が無いので、すべて出す判定を返す。viewer はいま操作している個体 — 自艦だけは、操作中に
-  // 限ってカテゴリを閉じても現在位置を失わない。
+  // マップの表示トグルがこの個体をどう扱うか。トグルを持たない種別(弾・薬莢・破片)は
+  // すべて出す判定を返す。viewer はいま操作している個体。
   public mapVisibility(policy: MapVisibilityPolicy, viewer: Controllable | null): MapVisibility {
     if (this.mapKind === null) return MARKER_VISIBILITY;
     // 多態 this 型は「Controllable も実装している」ことを約束しないので、同一性は基底型で比べる。

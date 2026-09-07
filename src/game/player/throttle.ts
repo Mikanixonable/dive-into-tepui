@@ -109,8 +109,7 @@ export class Throttle {
     for (const key of Object.keys(this.lastThrustPressTime)) delete this.lastThrustPressTime[key];
   }
 
-  // 推力ゼロの状態へ戻す。噴射が実際に無い(または許可されない)ときの唯一の入口
-  // (プルーム・エンジン音は ThrustEffects.sync が ship.thrust を直接見て毎フレーム同期する)。
+  // 推力ゼロの状態へ戻す。噴射が実際に無い、または許可されないときに通す。
   stopThrust(): void {
     this.thrustAccelVec = v3();
   }

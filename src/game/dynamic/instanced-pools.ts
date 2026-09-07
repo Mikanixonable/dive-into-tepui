@@ -19,7 +19,7 @@ export class InstancedPools {
 
   // 枠ごとの上限をそのままプールの容量にする。上限を超えた個体は顔ぶれから落ちるので、
   // 同時に積まれうる数はその枠を超えない。
-  constructor(scene: THREE.Scene) {
+  public constructor(scene: THREE.Scene) {
     // 弾・薬莢・破片が共有する描画資源。
     const bulletBody = bulletBodyResources();
     const bulletHalo = bulletHaloResources();
@@ -36,7 +36,7 @@ export class InstancedPools {
   }
 
   // このフレームぶんを積み始める。積む前に1度だけ呼ぶ。
-  beginFrame(): void {
+  public beginFrame(): void {
     this.bulletBody.beginFrame();
     this.bulletHalo.beginFrame();
     this.plasma.beginFrame();
@@ -45,7 +45,7 @@ export class InstancedPools {
   }
 
   // このフレームぶんを積み終える。積み終えたら1度だけ呼ぶ。
-  endFrame(): void {
+  public endFrame(): void {
     this.bulletBody.endFrame();
     this.bulletHalo.endFrame();
     this.plasma.endFrame();
@@ -53,18 +53,18 @@ export class InstancedPools {
     for (const pool of this.debrisFragments) pool.endFrame();
   }
 
-  pushBulletBody(renderObject: THREE.Object3D): void { this.bulletBody.push(renderObject); }
-  pushBulletHalo(renderObject: THREE.Object3D): void { this.bulletHalo.push(renderObject); }
-  pushPlasma(renderObject: THREE.Object3D): void { this.plasma.push(renderObject); }
-  pushCasing(renderObject: THREE.Object3D): void { this.casing.push(renderObject); }
+  public pushBulletBody(renderObject: THREE.Object3D): void { this.bulletBody.push(renderObject); }
+  public pushBulletHalo(renderObject: THREE.Object3D): void { this.bulletHalo.push(renderObject); }
+  public pushPlasma(renderObject: THREE.Object3D): void { this.plasma.push(renderObject); }
+  public pushCasing(renderObject: THREE.Object3D): void { this.casing.push(renderObject); }
 
   // variant はどのバリアントジオメトリで描くか、color は個体ごとの色。
-  pushDebrisFragment(variant: number, renderObject: THREE.Object3D, color: THREE.Color): void {
+  public pushDebrisFragment(variant: number, renderObject: THREE.Object3D, color: THREE.Color): void {
     this.debrisFragments[variant]!.push(renderObject, color);
   }
 
   // 全プールの InstancedMesh と、それが握っている描画資源を解放する。
-  dispose(): void {
+  public dispose(): void {
     this.bulletBody.dispose();
     this.bulletHalo.dispose();
     this.plasma.dispose();

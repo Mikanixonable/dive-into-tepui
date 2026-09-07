@@ -273,7 +273,7 @@ export class CameraSystem {
   // 入力からカメラの向き・ズームを更新する。ビューに応じてどちらか一方のインスタンスだけを
   // 駆動する。displayTime/frameAnchors は座標系変換に使う — 線・メッシュと同じ表示時刻でないと
   // 回転系選択時にカメラだけが現在時刻に取り残される。controlled は照準ズームの可否と
-  // その視点を決めるためだけに要る。
+  // その視点を決める。
   update(
     displayTime: number,
     input: Input,

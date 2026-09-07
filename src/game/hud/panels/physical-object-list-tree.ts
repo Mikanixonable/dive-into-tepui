@@ -46,7 +46,7 @@ export class PhysicalObjectListTree {
     private readonly actions: RowTreeActions,
   ) {}
 
-  // 補助表示の導出に要る今フレームの自艦と表示時刻。syncRow より先に渡すこと。
+  // 補助表示の導出に要る今フレームの操作対象と表示時刻。syncRow より先に渡すこと。
   private viewer: Controllable | null = null;
   private displayTime = 0;
 

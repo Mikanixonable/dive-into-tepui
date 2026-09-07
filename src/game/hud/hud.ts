@@ -88,7 +88,7 @@ export class Hud {
     this.orbitAnalysisWindow?.update(game);
   }
 
-  // view で表に出ている常設パネルを game の現在状態へ合わせる。
+  // view で表に出ている常設パネルと、控えられたトーストを game の現在状態へ合わせる。
   public syncPanels(view: View, game: Game): void {
     const map = view === 'map';
     // 両ビュー共通のパネル。

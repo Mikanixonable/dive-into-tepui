@@ -1,5 +1,4 @@
-// セーブの種別タグから、その1体を組み立て直す手順を引く。種別を増やしたらここへ分岐を足す
-// — 足し忘れは default の never 代入がコンパイルエラーにする。
+// セーブの種別タグから、その1体を組み立て直す手順を引く。
 // 敵の具象は enemy-dictionary.ts 越しにしか触らない(直接 import すると
 // enemy.ts → 具象 → enemy.ts の実行時循環に落ちる)。
 import * as THREE from 'three/webgpu';

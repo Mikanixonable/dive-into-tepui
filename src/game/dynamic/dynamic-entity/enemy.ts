@@ -262,8 +262,12 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     this._worldSfx.explosion();
     // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
     const { t, r, v } = this.state;
-    this._fx.spawnFlash(this.state, DESTROY_FLASH1_SIZE0 * ENEMY_SCALE, DESTROY_FLASH1_SIZE1 * ENEMY_SCALE, DESTROY_FLASH1_DURATION, DESTROY_FLASH_COLOR_1);
-    this._fx.spawnFlash(this.state, DESTROY_FLASH2_SIZE0 * ENEMY_SCALE, DESTROY_FLASH2_SIZE1 * ENEMY_SCALE, DESTROY_FLASH2_DURATION, DESTROY_FLASH_COLOR_2);
+    this._fx.spawnFlash(
+      this.state, DESTROY_FLASH1_SIZE0 * ENEMY_SCALE, DESTROY_FLASH1_SIZE1 * ENEMY_SCALE,
+      DESTROY_FLASH1_DURATION, DESTROY_FLASH_COLOR_1);
+    this._fx.spawnFlash(
+      this.state, DESTROY_FLASH2_SIZE0 * ENEMY_SCALE, DESTROY_FLASH2_SIZE1 * ENEMY_SCALE,
+      DESTROY_FLASH2_DURATION, DESTROY_FLASH_COLOR_2);
     for (const piece of buildDestroyFragments(
       t, r, v, 11, ENEMY_DESTROY_FRAG_COLOR,
       (DESTROY_FRAG_SIZE_MIN * ENEMY_SCALE) / 3, (DESTROY_FRAG_SIZE_MAX * ENEMY_SCALE) / 3, 20.0,
@@ -399,8 +403,10 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   // 発砲の演出。既定では何も出さない。
   protected muzzleEffect(_muzzleState: KinematicState): void {}
 
-  // player へ向けた見越し射撃でプラズマ弾を1発生成し、dynamicSystem に追加する。
-  private firePlasma(simTime: number, player: Player, registry: EntityRegistry, celestialSystem: CelestialSystem): void {
+  // player へ向けた見越し射撃でプラズマ弾を1発生成し、registry へ足す。
+  private firePlasma(
+    simTime: number, player: Player, registry: EntityRegistry, celestialSystem: CelestialSystem,
+  ): void {
     const r = this.muzzlePosition();
     const v = this.state.v;
     const toPlayer = sub(player.state.r, r);

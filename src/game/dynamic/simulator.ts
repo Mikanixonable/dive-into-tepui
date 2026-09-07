@@ -56,7 +56,7 @@ export class Simulator {
   // このサブステップの天体窓。
   private readonly bodies = new SubstepCelestialBodies();
 
-  // dynamicSystem/windows/sections は参照として保持する。initialSimTime はシミュレーションの開始時刻。
+  // initialSimTime はシミュレーションの開始時刻。
   constructor(
     private readonly dynamicSystem: DynamicSystem,
     private readonly windows: CelestialMotions,
@@ -69,8 +69,7 @@ export class Simulator {
   // dt 分のシミュレーションを進める。simDt をサブステップへ割り、各サブステップで全個体を
   // 進めてから剛体接触(弾命中含む)を解く。
   // 交戦圏は canEngage のときだけ組まれ、物体どうしの接触はその内側で解く。
-  // nanWatchdog は個体の前進・天体接触・物体どうしの接触の各境界ごとに自機を検査する
-  // (checkPlayer は軽量なので substep ごとに呼んでよい)。
+  // nanWatchdog は個体の前進・天体接触・物体どうしの接触の各境界ごとに操作対象を検査する。
   advance(
     dt: number,
     simDt: number,
@@ -114,7 +113,7 @@ export class Simulator {
         if (this.consecutiveZeroSteps > SIMULATION_STALL_MAX_ZERO_STEPS) {
           console.error(
             `[Simulator] ゼロ刻みが${this.consecutiveZeroSteps}回連続。simTime=${this.simTime} `
-            + `eventTime=${eventTime} dynamicSystem=${this.dynamicSystem.all().length} — このフレームぶんを一括消費`);
+            + `eventTime=${eventTime} entities=${this.dynamicSystem.all().length} — このフレームぶんを一括消費`);
           this.simTime = targetTime;
           this.consecutiveZeroSteps = 0;
         }

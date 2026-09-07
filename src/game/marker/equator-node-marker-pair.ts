@@ -101,7 +101,7 @@ export class EquatorNodeMarkerPair {
     this.descending.place(null, null, null, null);
   }
 
-  // 右クリック対象として公開する EqAN/EqDN アイコン(交点が求まっていなければ空)。
+  // 右クリック対象として公開する EqAN/EqDN アイコン。出す理由が残っているぶんを返す。
   pickables(): readonly ObjectPickable[] {
     return [this.ascending, this.descending].filter((marker) => !marker.gone);
   }

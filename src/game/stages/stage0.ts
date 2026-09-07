@@ -56,7 +56,7 @@ export class Stage0 extends Stage {
     const enemies = generateCluster(player.state, this._worldSfx, this._fx, this._scene);
     for (const enemy of enemies) this.addEnemy(enemy);
   }
-  // 敵の行動・補給・制限時間を1フレーム分進める。
+  // 補給と制限時間を1フレーム分進める。
   update(dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
