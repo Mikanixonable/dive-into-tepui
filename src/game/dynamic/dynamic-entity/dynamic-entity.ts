@@ -628,8 +628,14 @@ export class DynamicEntity {
     }
     this.renderObject.visible = true;
     this.renderObject.position.copy(fo.RtoThreeV3(s.r));
-    this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
+    this.orientModel(fo, s);
     this.syncThermalAppearance();
+  }
+
+  // 表示時刻の状態からメッシュの向きを決める。姿勢を積分しない種別(hasAttitude が false)は、
+  // これを差し替えて別の規則で向きを決める。
+  protected orientModel(_fo: FloatingOrigin, _s: KinematicState): void {
+    this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
   }
 
   // カメラ・描画スタイルを要する付随表示(推力プルームなど)を同期する。表示可否の上書きが
