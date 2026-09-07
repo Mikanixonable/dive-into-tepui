@@ -44,14 +44,10 @@ export const ARC_MIN_ITEM_STEPS = 16;
 export class Predictor {
   private cursor = 0;
 
-  tracked = 0; // 予測対象の個体数
-  finished = 0; // 先端がホライズンに達した/打ち切られた個体数
   lastSteps = 0; // 実体側で消費した積分ステップ数
   lastPlanSteps = 0; // 計画の弧で消費した積分ステップ数
   lastBodies = 0; // 弧が解決した天体の延べ数
   lastRevisits = 0; // そのうち期限到来で訪問したものの数
-  // 操作艦の予測先端が simTime よりどれだけ先か [s]。弧が無ければ null。
-  lastArcLead: number | null = null;
 
   constructor(
     private readonly entities: DynamicSystem,
@@ -69,20 +65,11 @@ export class Predictor {
     simTime: number, simDt: number, player: Player | null, horizon: number, canDisplayFuture: boolean,
     planArcs: readonly PredictedArc[],
   ): void {
-    this.tracked = 0;
-    this.finished = 0;
     this.lastSteps = 0;
     this.lastPlanSteps = 0;
     this.lastBodies = 0;
     this.lastRevisits = 0;
     const maxStep = simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT);
-    for (const e of this.entities.all()) {
-      if (!e.predictsFuture) continue;
-      this.tracked++;
-      const reachedHorizon = e.predicted !== null && e.predicted.state.t >= simTime + horizon;
-      if (reachedHorizon || e.predictionTruncated) this.finished++;
-    }
-
     // 伸ばすのは未来を読む消費者がいる個体だけ。線の有無は前フレームの状態を読むことになるが、
     // 弧は何フレームもかけて伸びるので、伸ばし始めが1フレーム遅れても描かれる線は変わらない。
     const targets = this.entities.all().filter((e) => e.hasFutureReader(canDisplayFuture));
@@ -122,9 +109,6 @@ export class Predictor {
       visited++;
     }
     this.cursor = targets.length > 0 ? (this.cursor + visited) % targets.length : 0;
-
-    this.lastArcLead = player !== null && player.predicted !== null
-      ? player.predicted.state.t - simTime : null;
   }
 
   // budgetSteps を上限に予測列を1歩ずつ伸ばし、消費した歩数を実体側の集計へ積んで返す。
@@ -158,17 +142,26 @@ export class Predictor {
 
   // 負荷確認ウィンドウが読む、直近フレームの予測伸長の集計値。planSteps は計画の弧ぶんの
   // 積分step数 — 区間の再生成数(planArcs)は plan/plan-trajectory.ts が答える。
-  perfCounts(): Pick<PerfCounts,
+  // horizon は予測の要求終端までの長さで、先端が届いた個体を数えるのに使う。
+  perfCounts(simTime: number, horizon: number, player: Player | null): Pick<PerfCounts,
   'predicted' | 'predictComplete' | 'predictorSteps' | 'planSteps'
   | 'arcCelestialBodies' | 'arcRevisits' | 'arcLead'> {
+    let tracked = 0;
+    let finished = 0;
+    for (const e of this.entities.all()) {
+      if (!e.predictsFuture) continue;
+      tracked++;
+      const reachedHorizon = e.predicted !== null && e.predicted.state.t >= simTime + horizon;
+      if (reachedHorizon || e.predictionTruncated) finished++;
+    }
     return {
-      predicted: this.tracked,
-      predictComplete: this.finished,
+      predicted: tracked,
+      predictComplete: finished,
       predictorSteps: this.lastSteps,
       planSteps: this.lastPlanSteps,
       arcCelestialBodies: this.lastBodies,
       arcRevisits: this.lastRevisits,
-      arcLead: this.lastArcLead,
+      arcLead: player?.predicted != null ? player.predicted.state.t - simTime : null,
     };
   }
 }
