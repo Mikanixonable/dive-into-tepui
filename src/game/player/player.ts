@@ -106,7 +106,8 @@ export type PlayerInit =
 // プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、それらを反映した
 // 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
 export class Player extends Ship implements Controllable, ObjectPickable {
-  public readonly mapKind: DynamicEntityKind = 'player';
+  public override readonly mapKind: DynamicEntityKind = 'player';
+  public override readonly controllable = true;
   // 除去の前に注視・操作対象の参照を次の艦へ引き継ぐ必要があるので、所有者側に回収させる。
   public override readonly reclaimedByOwner = true;
 
