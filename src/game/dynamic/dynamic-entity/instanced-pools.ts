@@ -1,6 +1,6 @@
 // 弾本体・弾ハロー・プラズマ弾・薬莢・破片のように geometry/material を全個体で共有する種別を、
-// 種別ごとに InstancedMesh 1本へまとめて描くためのプール一式。個体は毎フレーム、同期し終えた
-// 自分の変換をここへ積む(DynamicEntity.pushInstances)。
+// 種別ごとに InstancedMesh 1本へまとめて描くためのプール一式。個体は毎フレーム、自分の sync の
+// 中で同期し終えた変換をここへ積む。
 import * as THREE from 'three/webgpu';
 import { InstancedPool } from '../../../render/instanced-pool';
 import {

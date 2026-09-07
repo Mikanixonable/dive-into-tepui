@@ -16,6 +16,7 @@ import {
   type EnemyPlacement, type EnemyRestore, type FormationRole,
 } from './enemy';
 import { proteinAssetGate, type ProteinAssetId } from '../../protein/protein-asset-loader';
+import type { InstancedPools } from './instanced-pools';
 import type { SpawnGate } from '../dynamic-system';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
@@ -162,9 +163,10 @@ export class ProteinEnemy extends Enemy {
   // 表示物を displayTime の状態へ合わせる。viewer を渡すと投影サイズからゆらぎの LOD を決め、
   // proteinVibrationEnabled が false なら静止した構造で描く。
   public override sync(
-    fo: FloatingOrigin, displayTime: number, viewer?: Viewpoint, proteinVibrationEnabled = true,
+    fo: FloatingOrigin, displayTime: number, pools: InstancedPools, viewer?: Viewpoint,
+    proteinVibrationEnabled = true,
   ): void {
-    super.sync(fo, displayTime);
+    super.sync(fo, displayTime, pools);
     if (!this.renderObject.visible) return;
     const displayed = this.stateAt(displayTime);
     const projectedDiameterPx = viewer && displayed

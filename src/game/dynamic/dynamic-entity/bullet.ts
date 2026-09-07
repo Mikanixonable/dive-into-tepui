@@ -112,7 +112,8 @@ export class Bullet extends DynamicEntity {
     }
 
     // 弾は姿勢を持たず、見る側に対する相対速度の向きへ伸びて見える(SPEC/COMBAT.md)。
-    public sync(fo: FloatingOrigin, displayTime: number): void {
+    // 同期し終えた変換は、そのまま弾種に対応するプールへ積む。
+    public override sync(fo: FloatingOrigin, displayTime: number, pools: InstancedPools): void {
         // 表示できる時刻の範囲外なら非表示にする
         const s = this.stateAt(displayTime);
         if (s === null) {
@@ -121,13 +122,8 @@ export class Bullet extends DynamicEntity {
         }
         this.renderObject.visible = true;
         this.renderObject.position.copy(fo.RtoThreeV3(s.r));
-        if (!orientProjectile(tmpQuat, fo.VtoThreeV3(s.v))) return;
-        this.renderObject.quaternion.copy(tmpQuat);
-    }
-
-    // 弾種に対応するプールへ、同期済みの変換を積む。
-    public override pushInstances(pools: InstancedPools): void {
-        if (!this.renderObject.visible) return;
+        // 速度が定まらないフレームは向きを据え置く。
+        if (orientProjectile(tmpQuat, fo.VtoThreeV3(s.v))) this.renderObject.quaternion.copy(tmpQuat);
         if (this.type === 'plasma') {
             pools.pushPlasma(this.renderObject);
             return;
