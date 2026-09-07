@@ -3,7 +3,7 @@ import { LagrangePointMarker } from '../../marker/lagrange-point-marker';
 import type { CelestialClass } from '../../celestial/celestial-entity/celestial-entity-def';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { MapListSection } from './physical-object-list-panel';
+import type { MapListSection } from '../../pickable/pickable-listing';
 import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
 import { len, sub } from '../../../math/vec3';
 
