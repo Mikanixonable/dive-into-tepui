@@ -7,7 +7,7 @@ import { isEnemy, type Enemy } from '../../dynamic/dynamic-entity/enemy';
 import type { CombatTarget } from '../../dynamic/dynamic-entity/combat-target';
 import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
 import type { Stage } from '../../stages/stage';
-import type { DynamicSystem } from '../../dynamic/dynamic-system';
+import type { EntityRoster } from '../../dynamic/entity-roster';
 import type { Targeter } from '../../targeter';
 
 const SYNC_INTERVAL_MS = 250;
@@ -39,7 +39,7 @@ export class EnemiesPanel {
 
   // 残存数の見出しと、距離順の敵一覧を同期する。操作対象が無ければパネルごと隠す。
   public sync(
-    viewer: Controllable | null, activeStage: Stage, dynamicSystem: DynamicSystem,
+    viewer: Controllable | null, activeStage: Stage, roster: EntityRoster,
     targeter: Targeter, isMapView: boolean,
   ): void {
     const panel = this.els.get('hud-enemies');
@@ -61,7 +61,7 @@ export class EnemiesPanel {
       }
       const primaryTarget = targeter.aliveTarget;
       const rows = this.buildEnemyRows(
-        dynamicSystem.all().filter(isEnemy).filter((enemy) => enemy.alive),
+        roster.all().filter(isEnemy).filter((enemy) => enemy.alive),
         viewer.state.r,
         primaryTarget,
       );

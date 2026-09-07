@@ -8,7 +8,7 @@ import { frameRoleOf } from '../../physics/frame';
 import { frameRoleName } from './frame/frame-labels';
 import { focusTargetId, type FocusTarget } from '../camera/focus-target';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 
 const GAME_TITLE = 'Dive into Tepui';
@@ -63,11 +63,11 @@ export class ViewBadge {
   private readonly unsubscribeRenderStyle: () => void;
 
   // container(トップバー1行目の行)へバッジの中身を、遷移メニューを popupLayer へ組み立てて配線する。
-  // dynamicSystem と celestialBodies は注視対象の表示名を引くために持つ。
+  // entities と celestialBodies は注視対象の表示名を引くために持つ。
   public constructor(
     container: HTMLElement, popupLayer: HTMLElement, private readonly viewManager: ViewManager,
     overlayManager: OverlayManager, renderStyle: RenderStyleSetting,
-    private readonly dynamicSystem: DynamicSystem, private readonly celestialBodies: CelestialBodies,
+    private readonly roster: EntityRoster, private readonly celestialBodies: CelestialBodies,
   ) {
     this.menu = new ContextMenu<true, View>(popupLayer, overlayManager);
     // タイトル・モード名・ビュー切替ボタンと、現在の対象の欄を横に並べる。
@@ -131,7 +131,7 @@ export class ViewBadge {
     if (role !== null) return frameRoleName(role);
     const pickable = this.viewManager.activeView.pickables.find((item) => item.id === id);
     if (pickable) return pickable.name;
-    const entity = this.dynamicSystem.all().find((item) => item.id === id);
+    const entity = this.roster.all().find((item) => item.id === id);
     if (entity) return entity.name;
     return this.celestialBodies.nameOf(id);
   }

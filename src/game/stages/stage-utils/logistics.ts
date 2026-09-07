@@ -10,7 +10,8 @@ import type { Notifier } from '../../../hud/notifier';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { UiSfx } from '../../../audio/sfx/ui-sfx';
 import { Player } from '../../player/player';
-import type { DynamicSystem } from '../../dynamic/dynamic-system';
+import type { EntityRoster } from '../../dynamic/entity-roster';
+import type { EntityRegistry } from '../../dynamic/entity-registry';
 import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
 import type { LogisticsSaveData } from '../../save/save-data';
 
@@ -41,7 +42,7 @@ export class Logistics {
     private readonly _worldSfx: WorldSfx,
     private readonly _uiSfx: UiSfx,
     private readonly _scene: THREE.Scene,
-    private readonly dynamicSystem: DynamicSystem,
+    private readonly dynamicSystem: EntityRegistry & EntityRoster,
     saved?: LogisticsSaveData,
   ) {
     this.resupplyCheckAt = saved?.resupplyCheckAt ?? 0;

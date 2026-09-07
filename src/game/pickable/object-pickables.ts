@@ -2,7 +2,7 @@
 // その回の表示可否(MapVisibilityPolicy)を答える。
 import { isObjectPickable, ObjectPickable } from './object-pickable';
 import { focusTargetId } from '../camera/focus-target';
-import { DynamicSystem } from '../dynamic/dynamic-system';
+import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { NavTarget } from '../nav-target';
 import type { FrameAnchorSource } from '../../physics/frame';
@@ -38,7 +38,7 @@ export class ObjectPickables {
   // 候補の供給元を参照として受け取る。
   constructor(
     private readonly controlSelection: ControlSelection,
-    private readonly dynamicSystem: DynamicSystem,
+    private readonly roster: EntityRoster,
     private readonly celestialBodies: CelestialBodies,
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,
@@ -74,7 +74,7 @@ export class ObjectPickables {
     this._visibilityPolicy = visibilityPolicy;
     this.celestialMarkers.update(displayTime, this.cameraSystem.mapDisplayToggles, visibilityPolicy);
     this.navTarget.update(
-      this.controlSelection.current, this.dynamicSystem, this.celestialBodies, displayWindow, this.frameAnchors);
+      this.controlSelection.current, this.roster, this.celestialBodies, displayWindow, this.frameAnchors);
 
     const controlled = this.controlSelection.current;
     // 候補1件を、消滅・表示トグル・位置の有無・所属系・遮蔽の順に通してこのフレームの候補列へ積む。
@@ -93,10 +93,10 @@ export class ObjectPickables {
 
     this.candidateItems.length = 0;
     for (const body of this.celestialMarkers.bodyPickables) append(body);
-    for (const pickable of this.dynamicSystem.all().filter(isObjectPickable)) append(pickable);
+    for (const pickable of this.roster.all().filter(isObjectPickable)) append(pickable);
     for (const node of this.navTarget.pickables()) append(node);
     for (const apsis of this.planDisplay.apsisMarkers) append(apsis);
-    for (const e of this.dynamicSystem.all()) {
+    for (const e of this.roster.all()) {
       for (const node of e.equatorNodePickables()) append(node);
     }
   }

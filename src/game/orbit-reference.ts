@@ -6,7 +6,7 @@ import { KinematicState } from '../physics/kinematic-state';
 import type { Vec3 } from '../math/vec3';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { NavTarget } from './nav-target';
-import type { DynamicSystem } from './dynamic/dynamic-system';
+import type { EntityRoster } from './dynamic/entity-roster';
 import type { CelestialBody } from '../physics/celestial-body';
 
 export type OrbitReferenceMode = 'auto' | 'earth' | 'moon' | 'target';
@@ -64,7 +64,7 @@ export class OrbitReferenceSelector {
   // r 位置のエンティティに対する現在の基準を解決する。地球・月が登録に無い、または航法
   // ターゲットが未設定・解決不能なときは自動選択(strongestAttractor)へフォールバックする。
   resolve(
-    r: Vec3, attractors: readonly CelestialBody[], navTarget: NavTarget, dynamicSystem: DynamicSystem,
+    r: Vec3, attractors: readonly CelestialBody[], navTarget: NavTarget, dynamicSystem: EntityRoster,
     celestialBodies: CelestialBodies, t: number,
   ): OrbitReference {
     if (this.mode === 'earth' || this.mode === 'moon') {
