@@ -1,4 +1,4 @@
-// 設定画面(#hud-settings-view、ドック版を含む)の CSS。
+// 設定画面(#hud-settings-view)の CSS。
 import { MQ_MEDIUM_DOWN } from '../breakpoints';
 
 export const SETTINGS_VIEW_STYLE = `
@@ -7,21 +7,6 @@ export const SETTINGS_VIEW_STYLE = `
   padding: clamp(24px, 7vh, 72px) max(var(--space-6), 6vw); padding: clamp(24px, 7dvh, 72px) max(var(--space-6), 6vw);
   border-radius: 0; background: var(--scrim); box-shadow: none;
 }
-#hud-settings-view.settings-dock {
-  inset: auto; width: 100%; max-height: min(70dvh, 720px); padding: var(--space-4);
-  overflow-y: auto; background: var(--surface-0); border: 1px solid var(--edge);
-  border-radius: var(--radius-panel); box-shadow: none; backdrop-filter: none;
-}
-#hud-settings-view.settings-dock .sv-header { padding-bottom: var(--space-3); }
-#hud-settings-view.settings-dock .sv-header h2 { font-size: var(--font-l); }
-#hud-settings-view.settings-dock .sv-brand,
-#hud-settings-view.settings-dock .sv-eyebrow,
-#hud-settings-view.settings-dock .sv-description { display: none; }
-#hud-settings-view.settings-dock .sv-tabs { margin-top: var(--space-4); }
-#hud-settings-view.settings-dock .sv-tabs .w-btn { min-height: var(--hit-target-min); padding: var(--space-4) var(--space-2) var(--space-3); font-size: var(--font-xs); }
-#hud-settings-view.settings-dock .sv-section { margin-top: var(--space-4); padding: var(--space-4); }
-#hud-settings-view.settings-dock .sv-theme-options { grid-template-columns: 1fr; }
-#hud-settings-view.settings-dock .sv-theme-button { min-height: var(--hit-target-min); padding-inline: var(--space-3); }
 #hud-settings-view .sv-brand,
 #hud-settings-view .sv-header,
 #hud-settings-view .sv-description,
