@@ -690,9 +690,10 @@ export class DynamicEntity {
   // このフレームに求まった赤道交点マーカーを置く。
   syncEquatorNodes(
     project: ProjectFn, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
-    celestialBodiesPivot: number, timeLabel: TimeLabelSetting,
+    celestialBodiesPivot: number, occludeByBodies: boolean, timeLabel: TimeLabelSetting,
   ): void {
-    this.equatorNodes?.sync(project, cameraPos, celestialBodies, celestialBodiesPivot, timeLabel);
+    this.equatorNodes?.sync(
+      project, cameraPos, celestialBodies, celestialBodiesPivot, occludeByBodies, timeLabel);
   }
 
   // 右クリック対象として公開する赤道交点アイコン。
