@@ -427,6 +427,8 @@ export class Game {
     // このフレームが天体を引く表示時刻を差し込む: 以降の frameTransformAt 呼び出しは
     // すべてこの frameAnchors を通す。
     this.frameAnchors.update(displayWindow.displayTime);
+    // 赤道交点は計画・ターゲット・基地がそれぞれ解くので、解き手より先に全件を伏せる。
+    this.dynamicSystem.clearEquatorNodes();
     // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
     this.sections.enter(SECTION.plan);
     this.planDisplay.update(displayWindow, this.frameAnchors, view);

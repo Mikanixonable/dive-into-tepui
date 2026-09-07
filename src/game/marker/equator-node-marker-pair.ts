@@ -17,9 +17,6 @@ import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 export class EquatorNodeMarkerPair {
   private readonly ascending: EquatorNodeMarker;
   private readonly descending: EquatorNodeMarker;
-  // 直前の sync 以降に update が交点を書き込んだか。求め直されなかったフレームで交点を
-  // 捨てるために持つ。
-  private solvedSinceSync = false;
 
   // owner は交点を求める対象の軌道の持ち主。昇交点・降交点のマーカーを1つずつ持ち続ける。
   constructor(private readonly owner: DynamicEntity, private readonly markerManager: MarkerManager) {
@@ -69,11 +66,10 @@ export class EquatorNodeMarkerPair {
       toDisplay(crossings.asc.r, crossings.asc.t), crossings.asc.t, this.owner.name, centerName);
     this.descending.place(
       toDisplay(crossings.desc.r, crossings.desc.t), crossings.desc.t, this.owner.name, centerName);
-    this.solvedSinceSync = true;
   }
 
-  // 交点を、このフレームは求まらなかった状態にする。
-  private clearCrossings(): void {
+  // 交点を、このフレームは求まらなかった状態にする。求め直す前に必ず通す。
+  clearCrossings(): void {
     this.ascending.place(null, null, null, null);
     this.descending.place(null, null, null, null);
   }
@@ -83,14 +79,12 @@ export class EquatorNodeMarkerPair {
     return [this.ascending, this.descending].filter((marker) => !marker.gone);
   }
 
-  // △▽ マーカーを update が求めた位置に置く。求め直されなかったフレームは交点を捨てて隠す。
+  // △▽ マーカーを update が求めた位置に置く。求まっていない交点は隠れる。
   // celestialBodies はマップビューの遮蔽判定に使う天体で、pivot はその位置を引く時刻。
   sync(
     project: ProjectFn, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
     celestialBodiesPivot: number, timeLabel: TimeLabelSetting,
   ): void {
-    if (!this.solvedSinceSync) this.clearCrossings();
-    this.solvedSinceSync = false;
     for (const marker of [this.ascending, this.descending]) {
       marker.sync(
         this.markerManager, project, cameraPos, celestialBodies, celestialBodiesPivot,

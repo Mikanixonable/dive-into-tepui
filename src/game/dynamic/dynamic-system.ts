@@ -411,6 +411,12 @@ export class DynamicSystem {
     for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
   }
 
+  // 全個体の赤道交点を、このフレームは求まっていない状態へ戻す。交点を解く各所より先に
+  // 通す — このフレームに誰も解かなかった個体の交点は、そのまま隠れる。
+  clearEquatorNodes(): void {
+    for (const e of this.all()) e.equatorNodes?.clearCrossings();
+  }
+
   // 全基地の赤道交点マーカーを求め直す。基地は常設の軌道構造物で、接近・ドッキングは
   // 軌道面合わせそのものなので、選択の有無に関わらず出す。
   updateBaseEquatorNodes(
