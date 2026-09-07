@@ -156,10 +156,10 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
         id: init.saved.id,
       }
       : { state: init.state, name: init.name ?? generateRandomName('base'), att: init.att, id: init.id };
-    const savedAtt: Attitude | undefined = 'saved' in init && init.saved.q
+    const savedAtt: Attitude | undefined = 'saved' in init
       ? {
         q: { ...init.saved.q },
-        w: init.saved.w ? v3(init.saved.w.x, init.saved.w.y, init.saved.w.z) : v3(),
+        w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z),
         inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z),
       }
       : undefined;
@@ -294,7 +294,8 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     this.markerManager.remove(`${this.markerKey}-bearing`);
   }
 
-  serialize(): BaseSaveData {
+  // セーブデータへ変換する。
+  override serialize(): BaseSaveData {
     return {
       id: this.id,
       kind: 'base',

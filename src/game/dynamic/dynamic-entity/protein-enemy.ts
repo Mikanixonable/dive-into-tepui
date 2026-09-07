@@ -233,7 +233,7 @@ export class ProteinEnemy extends Enemy {
 
   public override serialize(): ProteinEnemySaveData {
     return {
-      ...super.serialize(),
+      ...this.serializeEnemyFields(),
       kind: ProteinEnemy.kind,
       assetId: this.assetId,
       display: this.displaySettings,

@@ -72,6 +72,6 @@ export class MetalEnemy extends Enemy {
   }
 
   public override serialize(): MetalEnemySaveData {
-    return { ...super.serialize(), kind: MetalEnemy.kind, typeIndex: this.typeIndex };
+    return { ...this.serializeEnemyFields(), kind: MetalEnemy.kind, typeIndex: this.typeIndex };
   }
 }

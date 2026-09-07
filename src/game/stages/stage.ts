@@ -259,7 +259,7 @@ export abstract class Stage {
   // タンパク質アセットの fetch 待ちで実体化を遅らせうる敵を登録する。準備が整い次第
   // dynamicSystem へ登録され、そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
   protected spawnEnemyWhenReady(assetId: ProteinAssetId | null, build: () => Enemy, dynamicSystem: DynamicSystem): void {
-    dynamicSystem.spawnEnemyWhenReady(assetId, build, () => this.scoreCounter.recordSpawnEnemy());
+    dynamicSystem.spawnWhenReady(assetId, build, () => this.scoreCounter.recordSpawnEnemy());
   }
 
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。同一集団の判定に使う母集団は、

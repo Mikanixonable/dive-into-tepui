@@ -416,8 +416,8 @@ export abstract class Enemy extends Ship implements ObjectPickable {
     dynamicSystem.add(pb);
   }
 
-  // セーブデータへ変換する。具象は super.serialize() へ自分の項目を足して override する。
-  public serialize(): EnemySaveData {
+  // 敵に共通する保存項目。具象の serialize() がこれへ自分の項目を足す。
+  protected serializeEnemyFields(): EnemySaveData {
     return {
       id: this.id,
       name: this.name,

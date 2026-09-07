@@ -159,14 +159,9 @@ export class Game {
       ephemerisContext: { ...ephemerisContextFor(this._celestialSystem.epoch) },
       phaseOffsets,
       earthSpinPhase0,
-      // 顔ぶれは種別ごとに、個体自身へ畳ませる。
-      players: this.dynamicSystem.players.map((p) => p.serialize()),
+      // 顔ぶれは個体自身へ畳ませる。
+      entities: this.dynamicSystem.serialize(),
       activeControlledId: this.activeControllable?.id ?? null,
-      enemies: this.dynamicSystem.enemies.map((e) => e.serialize()),
-      ammoPickups: this.dynamicSystem.ammoPickups.map((pickup) => pickup.serialize()),
-      rcsFuelPickups: this.dynamicSystem.rcsFuelPickups.map((pickup) => pickup.serialize()),
-      detachedBoosters: this.dynamicSystem.detachedBoosters.map((booster) => booster.serialize()),
-      bases: this.dynamicSystem.bases.map((b) => b.serialize()),
       stage: this.activeStage.serialize(),
       camera: { view: this.viewManager.current, ...this.cameraSystem.serialize() },
       navTarget: this.navTarget.id !== null ? { id: this.navTarget.id, name: this.navTarget.name! } : null,

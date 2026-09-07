@@ -110,16 +110,8 @@ export interface DetachedBoosterSaveData extends EntitySaveData {
   collisionEnableAt?: number;
 }
 
-export interface BaseSaveData {
-  id: string;
+export interface BaseSaveData extends EntitySaveData {
   kind: 'base';
-  // 旧セーブデータには無いフィールドなので任意。無ければ既定名。
-  name?: string;
-  r: Vec3SaveData;
-  v: Vec3SaveData;
-  // 姿勢と角速度。旧セーブには無いため任意。
-  q?: QuatSaveData;
-  w?: Vec3SaveData;
   money: number;
   // 基地の燃料。旧セーブには無いため任意。
   fuel?: number;
@@ -219,7 +211,7 @@ export interface CreativeStageSaveData extends StageSaveData {
 
 // GameSaveData の形式バージョン。値が変わった時点で、それ以前に書かれたスナップショットは
 // 読めなくなる。
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 // chase にこの形が入っている保存データは読み捨て、戦闘視点を既定で組む。
 export interface ChaseSaveDataV1 {
@@ -287,15 +279,9 @@ export interface GameSaveData {
   phaseOffsets: Partial<Record<string, number>>;
   /** 旧スナップショットには無い。存在しなければ地球の自転初期位相は復元されない。 */
   earthSpinPhase0?: number;
-  players: PlayerSaveData[];
+  // 顔ぶれ。種別は各要素の kind が持つ。
+  entities: EntitySaveDataUnion[];
   activeControlledId: string | null;
-  enemies: EnemySaveData[];
-  ammoPickups: AmmoPickupSaveData[];
-  // 旧スナップショットには無い。読み込み時に空配列へ正規化する。
-  rcsFuelPickups?: RcsFuelPickupSaveData[];
-  // 旧スナップショットには無い。読み込み時は空配列として扱う。
-  detachedBoosters?: DetachedBoosterSaveData[];
-  bases: BaseSaveData[];
   stage: StageSaveData;
   // 旧セーブデータには無いフィールドなので任意。無ければ視点は既定のまま始まる。
   camera?: CameraSaveData;
