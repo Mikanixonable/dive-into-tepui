@@ -9,7 +9,7 @@ import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, MU_MOON, MU_SUN, R_EARTH, R_MOON } from '../../src/game/celestial/solar-system/constants';
 import { add, addScaled, cross, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
-import { ArcCelestialBodies, type FutureCelestialBodyProvider } from '../../src/game/dynamic/arc-celestial-bodies';
+import { ArcCelestialBodies } from '../../src/game/dynamic/arc-celestial-bodies';
 import { attractorsNearInto, classifyAttractors, GRAVITY_NEGLIGIBLE_ACCEL } from '../../src/game/dynamic/attractors';
 import { SurfaceCandidates, type SurfaceParticipant } from '../../src/game/dynamic/surface-candidates';
 import type { CelestialBody } from '../../src/physics/celestial-body';
@@ -28,7 +28,7 @@ const PARTS = solarSystemParts();
 const WINDOWS = PARTS.system;
 
 // 弧が候補として引く天体一式。実シミュレーション側の窓と同じ運動から組む。
-const ARC_SOURCES: FutureCelestialBodyProvider = { celestialMotions: PARTS.system.celestialMotions };
+const ARC_SOURCES = PARTS.system.celestialMotions;
 
 const DAY = 86400;
 // 天体の配置そのものが入れ替わるよう、数か月の間を置いた時刻でも見る。

@@ -20,12 +20,6 @@ const ARC_BODY_CLOSING_MARGIN = 2000;
 // 天体が一覧の外に残ると、その歩の掃引到達判定がその天体を見ないまま通り抜ける。
 const ARC_BODY_LEAD_STEPS = 4;
 
-// 弧が天体を引く相手。候補の顔ぶれは弧を作った時点で確定する。
-export type FutureCelestialBodyProvider = {
-  // 積分が引きうる天体の運動(宣言順)。mu が 0 の天体は重力源にならない。
-  readonly celestialMotions: readonly CelestialBody[];
-};
-
 // 弧の1歩が読む天体一式。gravity は引力を持つ天体、collision は表面到達の相手、
 // pivot はこの一式を解決した(= 天体の位置を厳密に引いた)時刻。
 export type ArcCelestialBodyWindow = {
@@ -83,10 +77,10 @@ export class ArcCelestialBodies {
   lastRevisited = 0;
 
   // 候補の顔ぶれを構築時に確定させ、以後は1体ぶんの状態だけを sources へ問う。
-  constructor(sources: FutureCelestialBodyProvider) {
-    const candidates = sources.celestialMotions.map((m) => m.def);
+  constructor(sources: readonly CelestialBody[]) {
+    const candidates = sources.map((m) => m.def);
     const pinnedId = heaviestGravityId(candidates);
-    this.watches = sources.celestialMotions.map((motion) => ({
+    this.watches = sources.map((motion) => ({
       motion,
       candidate: motion.def,
       gravityReach: gravityReachOf(motion.def.mu),

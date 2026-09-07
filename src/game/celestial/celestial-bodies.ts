@@ -1,6 +1,5 @@
 // 星系の天体を id で引く索引。天体の表示名・主天体・所属する系・時刻ごとの ECI 状態と、
-// 座標系の解決役を答える。
-import type { CelestialMotions } from '../../physics/celestial-body';
+// 座標系の解決役を答える。1フレームぶんの積分が読む役割別の一覧もここが答える。
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { TdbJulianDate } from '../../physics/time';
@@ -8,7 +7,18 @@ import type { Vec3 } from '../../math/vec3';
 import type { CelestialClass } from './celestial-entity/celestial-entity-def';
 import type { ReferenceFrames } from './reference-frames';
 
-export interface CelestialBodies extends CelestialMotions {
+// 1フレームの積分が読む天体を、役割ごとの一覧として答える顔ぶれ。重力・接触判定・抗力は
+// 個体ではなくこの一覧に対して回る。並びは天体の宣言順で、時刻ごとの解決は天体1体が畳む。
+export interface FrameCelestialBodies {
+  // 全登録天体。中心天体は原点に静止。
+  readonly celestialMotions: readonly CelestialBody[];
+  // mu が 0 でない天体。
+  readonly gravityMotions: readonly CelestialBody[];
+  // 大気を持つ天体。
+  readonly atmosphereMotions: readonly CelestialBody[];
+}
+
+export interface CelestialBodies extends FrameCelestialBodies {
   // simTime=0 が指す絶対時刻。
   readonly epoch: TdbJulianDate;
   // 座標系の同一性(同じ対に同じ参照)と、天体でない基準の解決。

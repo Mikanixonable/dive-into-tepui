@@ -3,9 +3,8 @@
 import { kinematicState, KinematicState } from '../../physics/kinematic-state';
 import { Vec3, add } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
-import { CelestialMotions } from '../../physics/celestial-body';
-import { orbitalElementsOf } from '../../physics/elements';
 import type { CelestialBody } from '../../physics/celestial-body';
+import { orbitalElementsOf } from '../../physics/elements';
 
 // 計画をどう実行するか。'off': ノードを消化しない。
 // 'instant': ノード時刻ちょうどで絶対状態へ乗り移る(自動実行)。
@@ -159,10 +158,10 @@ export class Plan {
   // idx 番目のノードを置ける実行時刻の範囲。直前の状態(前のノード、無ければ起点)の時刻から、
   // その状態を起点に描かれている末尾区間の折れ線が尽きるところまで。起点の借り方は anchorOr と同じ。
   nodeTimeRange(
-    idx: number, from: KinematicState, windows: CelestialMotions, displayDuration: DisplayDurationSource,
+    idx: number, from: KinematicState, celestialBodies: readonly CelestialBody[], displayDuration: DisplayDurationSource,
   ): TimeRange {
     const prev = this.data?.nodes[idx - 1] ?? this.anchorOr(from);
-    const celestialBodies = windows.celestialMotions;
+    
     return { min: prev.t, max: prev.t + segmentDurationFrom(prev, celestialBodies, displayDuration) };
   }
 
