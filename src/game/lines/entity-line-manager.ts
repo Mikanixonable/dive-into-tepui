@@ -1,5 +1,5 @@
-// どのエンティティに、どんな見た目の軌道線・予測線・過去線を出すかを決める。
-// update が出す/消す/スタイルを決め、sync は既に出ている線の形状と変換を合わせる。
+// どのエンティティに、どんな見た目の軌道線・予測線・過去線を出すかを決め、出ている線の
+// 形状と変換を合わせる。
 import * as THREE from 'three/webgpu';
 import type { View } from '../view/view';
 import type { FrameAnchorSource } from '../../physics/frame';
@@ -60,9 +60,8 @@ function applyOrbitLine(
 export class EntityLineManager {
   constructor(private readonly entities: DynamicSystem) {}
 
-  // 出す/消す/スタイルを決める。判断材料(表示可否・ターゲット・操作艦・ビュー)が
-  // このフレームの確定値になった後に呼ぶ。
-  update(
+  // 出す/消す/スタイルを決める。
+  private applyLines(
     activePlayer: Player | null, primaryTarget: CombatTarget | null,
     view: View, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
     orbitRef: OrbitReference | undefined,
@@ -136,12 +135,16 @@ export class EntityLineManager {
     }
   }
 
-  // 既に出ている線の形状と変換を合わせる。どの線を持つかは update が決めきっているので、
-  // ここでは全個体へ一律に呼ぶ。
+  // 各個体が持つべき線を揃えてから、その形状と変換をこのフレームの表示状態へ合わせる。
+  // 判断材料(表示可否・ターゲット・操作艦・ビュー)はこのフレームの確定値を渡す。
   sync(
-    displayWindow: DisplayWindow, fo: FloatingOrigin, camera: THREE.Camera,
+    activePlayer: Player | null, primaryTarget: CombatTarget | null,
+    view: View, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
+    orbitRef: OrbitReference | undefined,
+    fo: FloatingOrigin, camera: THREE.Camera,
     frameAnchors: FrameAnchorSource, celestialSystem: CelestialSystem,
   ): void {
+    this.applyLines(activePlayer, primaryTarget, view, displayWindow, visibilityPolicy, orbitRef);
     const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
     for (const group of this.lineOwners) {
       for (const entity of group) {
