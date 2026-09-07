@@ -13,7 +13,7 @@ import { MarkerManager, MARKER_DIR_DIST } from '../marker/marker-manager';
 import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH, COLOR_MARKER_NODE } from '../marker/marker-identity';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { PlanPath } from './plan-path';
-import { THROTTLE_LEVELS } from '../player/player-throttle';
+import { THROTTLE_LEVELS } from '../player/throttle';
 import { NODE_APPROACH_LEAD } from './plan';
 
 // マニューバ達成判定(計画軌道への接近許容)

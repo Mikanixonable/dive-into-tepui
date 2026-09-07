@@ -1,8 +1,8 @@
 import type { Plan } from '../../plan/plan';
 import type { PlanExecutionMode } from '../../player/player';
-import type { PlayerThrottle } from '../../player/player-throttle';
-import type { PlayerFire } from '../../player/player-fire';
-import type { PlayerBoosters } from '../../player/player-boosters';
+import type { Throttle } from '../../player/throttle';
+import type { FireControl } from '../../player/fire-control';
+import type { AttachedBoosters } from '../../player/attached-boosters';
 import type { PowerSystem } from '../../player/power';
 import type { RadiatorSystem } from '../../player/radiator';
 import type { AeroLoad } from '../../player/aero-load';
@@ -33,9 +33,9 @@ export interface Controllable extends DynamicEntity {
   // 削れる耐久値を持たない種別は null。
   readonly hp: number | null;
   readonly maxHp: number | null;
-  readonly throttle: PlayerThrottle;
-  readonly fire: PlayerFire | null;
-  readonly boosters: PlayerBoosters | null;
+  readonly throttle: Throttle;
+  readonly fire: FireControl | null;
+  readonly boosters: AttachedBoosters | null;
   readonly power: PowerSystem | null;
   readonly radiator: RadiatorSystem | null;
   readonly aero: AeroLoad | null;

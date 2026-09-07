@@ -1,4 +1,4 @@
-// 自機に接続された分離式ブースターの運用。段スタック(BoosterStack)の上に、既定段の諸元・
+// 接続中の分離式ブースターの運用。段スタック(BoosterStack)の上に、既定段の諸元・
 // 船体への模型の取り付け・質量と慣性への反映・分離・プルーム・燃焼管理パネルの文言を載せる。
 //
 // 質量と慣性は自機のものを直接書き換える。段の増減と燃焼のたびに追随させる必要があり、
@@ -45,7 +45,7 @@ const MOUNT_Z = -4.0; // 船体中心から最初の段の前端まで [m]
 const SEPARATION_SPEED = 8; // 爆砕ボルトによる相対分離速度 [m/s]
 const COLLISION_GRACE = 0.5; // 分離直後に接続面同士が再衝突しない猶予 [s]
 
-export class PlayerBoosters {
+export class AttachedBoosters {
   private readonly stack: BoosterStack;
   private readonly plumes: BoosterPlumeSet;
   private readonly models: BoosterStageModel[] = [];
