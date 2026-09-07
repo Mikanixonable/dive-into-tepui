@@ -1,6 +1,8 @@
 # ドッキング機能一式の破棄
 
-行番号はすべて `origin/main` = `50a623be` 時点のもの。
+行番号はすべて `a701460d`(`origin/main` = `84517bbf` を取り込んだマージ commit)時点のもの。
+
+**「決めたこと」の 1〜6 は 2026-09-07 にユーザーが承認済み。** 実施中に問い返さない。
 
 ## 目的
 
@@ -49,7 +51,7 @@
 
 ### 3. `money` は残し、`inventory` と `dockedVessels` は消す
 
-- `money` は基地の外に読み手が3つある — `RunSummary.money`(`game.ts:191`)→
+- `money` は基地の外に読み手が3つある — `RunSummary.money`(`game.ts:205`)→
   `SnapshotMeta.money`(`launcher/save/slot-data.ts:26`)→ 記録一覧の「所持金 N Cr」表示
   (`launcher/save-browser/snapshot-pane.ts:201`)。消すと**セーブ索引の形が変わる**ため、
   既存の索引を捨てることになる。基地ビューを作り直せばすぐ戻る値なので、残すほうが安い。
@@ -59,7 +61,7 @@
 
 **残る歪み**: 増減させる経路が消えるので、`money` は常に「100,000 × 基地数」になる。
 覆されたら手順4で `money` も落とし、`RunSummary` / `SnapshotMeta` / `snapshot-pane` /
-`legacy-save.ts:66` の4箇所を追う(セーブ索引版の扱いも決め直す)。
+`legacy-save.ts:66` / `snapshot-service.ts:36` の5箇所を追う(セーブ索引版の扱いも決め直す)。
 
 ### 4. `SAVE_VERSION` は上げない
 
@@ -79,7 +81,7 @@
 
 ### 6. 基地の左クリックは「何も起きない」にする
 
-`Base.onMapSelect`(`base.ts:525-528`)は `commands.selectBase()` とヒントを出しているが、
+`Base.onMapSelect`(`base.ts:529-533`)は `commands.selectBase()` とヒントを出しているが、
 `selectBase` の先は `Docking._activeBase` を書くだけで、**今も観測できる効果はヒントだけ**。
 `onMapSelect = null` にして、敵・補給・天体と同じ「左クリックで掴めない対象」へ揃える。
 
@@ -120,13 +122,14 @@
 **目的.** 仕様はコードより先行する。破棄すると決めた以上、SPEC から先に落とす。
 **この手順ではコードを変えない。**
 
-`GAME.md` §7 は「基地とドック」から**基地だけの節**へ縮める。ドッキングポート・ドッキング・
+`GAME.md` §7「基地と基地パネル」を**基地だけの節**へ縮める。ドッキングポート・ドッキング・
 ドッキングガイド・アクティブな基地・基地パネル(3タブ)・発進の項を落とし、基地本体・画面マーカー・
 ターゲットの3項だけを残す。節の名前も「基地」へ変える。
+**基地本体の下にある「当たり形状」の項は残す** — 当たり判定の話でドッキングと独立している。
 
 | ファイル | 何をするか |
 | --- | --- |
-| `DEVELOP/SPEC/GAME.md` | 3行目の要約から「基地とドック」→「基地」。122行(「基地パネルはシミュレーションを停止しない」)を落とす。§7(140-176行)を上記のとおり縮める。310-311行・320-321行の「基地へ収容して操縦できる艦が無くなったときだけマップビューへ自動的に移る」を落とす。314行の「基地パネルはビューではない」を落とす。末尾「未確定の案」(329行〜)へ**1行足す** — 「基地を操作する画面を、戦闘・マップと並列な第三のビュー(基地ビュー)として持つこと。」 |
+| `DEVELOP/SPEC/GAME.md` | 3行目の要約から「基地とドック」→「基地」。125行(「基地パネルはシミュレーションを停止しない」)を落とす。§7(143-180行)を上記のとおり縮める。314-315行・325-326行の「基地へ収容して操縦できる艦が無くなったときだけマップビューへ自動的に移る」を落とす。319行の「基地パネルはビューではない」を落とす。末尾「未確定の案」(334行〜)へ**1行足す** — 「基地を操作する画面を、戦闘・マップと並列な第三のビュー(基地ビュー)として持つこと。」 |
 | `DEVELOP/SPEC/FLIGHT.md` | 86行「基地ドックでの修理でのみ回復する」→ **「自然回復しない」**。132-133行「基地ドックでの修理でしか回復しない」→ 同様。140行「基地ドックで部品を換装すれば」→ 部品構成が変われば挙動が変わることだけ残し、換装手段への言及を落とす |
 | `DEVELOP/SPEC/MAP.md` | 490行の理由付け「(接近・ドッキングそのものが軌道面合わせのマニューバであるため)」を落とす(**挙動=基地の赤道交点常設は残す**)。561行「基地パネルの展開」を落とす。597行「基地(所持金・ドック中の艦数・距離・軌道要素)」→ 艦数を落とす。613行「自艦はドック対象の基地選択・」を落とす。559-568行の左クリックの記述から基地を落とす(→ 決めたこと 6) |
 | `DEVELOP/SPEC/CONTROLS.md` | 96-99行から「基地はドック候補として選ばれる」「ドックへの進入のような」を落とす |
@@ -149,14 +152,14 @@
 | --- | --- |
 | `src/game/docking/docking.ts` | **ファイルごと削除**(339行)。`src/game/docking/` は空になるのでフォルダごと消える |
 | `src/game/docking/docking-guide.ts` | **ファイルごと削除**(131行) |
-| `src/game/game.ts` | 54行の import、107行の `docking` フィールド、312-318行の生成と `setDocking`、323行の `this.docking.guide` 引数、370行の `dispose`、500行の `updateDockedPhysics()` を落とす |
+| `src/game/game.ts` | 54行の import、104行の `docking` フィールド、325-331行の生成と `setDocking`、336行の `this.docking.guide` 引数、381行の `dispose`、495行の `updateDockedPhysics()` を落とす |
 | `src/game/view/combat-view.ts` | 17行の import、41行のコンストラクタ引数 `dockingGuide`、68行の `hide()`、129行の `sync()` を落とす。`onLeave()` は空になるが**メソッドは残す**(`ViewFrame` の必須メンバ) |
 | `src/game/pickable/object-windows.ts` | 24・35行の import、63-67行の `setDocking`/`docking` フィールド、131行の `closePanel()`、162-168行の `collapseBasePanel()`、304-306行の `selectBase`、310-321行の `toggleBasePanel`、352行の `clearActiveBaseIf`、356-369行の `dock`/`undock`/`transferResources`、397-406行の `dockState`/`isBasePanelExpanded`、55行の `expandedBaseWindowKey` を落とす。128-134行の `onClose` は `partWindows.closeFor` と `forgetWindow` だけを残す |
 | `src/game/pickable/object-commands.ts` | 11行の `DockState` 型、21行 `selectBase`、23行 `toggleBasePanel`、39行 `dock`、41行 `undock`、43行 `transferResources`、63行 `dockState`、65行 `isBasePanelExpanded` を落とす。`Base` の import は `setControlledBase`/`removeBase` が残るので保持 |
 | `src/game/hud/windows/menu-actions.ts` | `MenuAction` から `'toggleBasePanel'`(19行) `'dock'`(21) `'undock'`(22) `'storeInBase'`(23) `'transferResources'`(24) を落とす。`MenuCommon` から `dock`(44) `undock`(45) `storeInBase`(46) `transferResources`(47) を落とす。**`storeInBase` はどのメニューにも置かれていない死んだ項目**で、ここで一緒に消える |
 | `src/game/player/player.ts` | 711-715行の `dockState`/`dockItems`、723行の `...dockItems`、738-743行の `'dock'`/`'undock'`/`'transferResources'` 分岐を落とす |
-| `src/game/dynamic/dynamic-entity/base.ts` | 460-461行の `dockItems`、466行の `...dockItems`、468-471行の「基地パネルを展開/収納」項目、488-491行の `'toggleBasePanel'`/`'dock'` 分岐を落とす。525-528行の `onMapSelect` を `null` にする(→ 決めたこと 6)。`ObjectCommands` の import は残る |
-| `src/game/dynamic/dynamic-system.ts` | 186-192行の `park()` を落とす(唯一の呼び出し元が `docking.ts:281`)。228-231行の `findPlayer` は 242行に内部呼び出しが残るので**消さず** `private` にする |
+| `src/game/dynamic/dynamic-entity/base.ts` | 465-466行の `dockItems`、472行の `...dockItems`、473-476行の「基地パネルを展開/収納」項目、493-496行の `'toggleBasePanel'`/`'dock'` 分岐を落とす。529-533行の `onMapSelect` を `null` にする(→ 決めたこと 6)。`ObjectCommands` の import は残る |
+| `src/game/dynamic/dynamic-system.ts` | 190-196行の `park()` を落とす(唯一の呼び出し元が `docking.ts:281`)。232-235行の `findPlayer` は 247行に内部呼び出しが残るので**消さず** `private` にする |
 
 **達成条件と検証.**
 
@@ -206,17 +209,17 @@
 
 | ファイル | 何をするか |
 | --- | --- |
-| `src/game/dynamic/dynamic-entity/base.ts` | 55行 `BASE_MAX_VESSELS`、64-66行 `BASE_HATCH_LOCAL_POS`/`NORMAL`、68-79行 `BaseDockSlot`/`BASE_DOCK_SLOTS`、81-91行 `DockedVesselEntry`、93-97行 `BaseState` から `inventory` と `dockedVessels`、118-122行の初期値から同2つ、211-230行のセーブ復元から `inventory`/`dockedVessels` の復元(`Player` の再構築と `attachDockedVesselMesh` を含む)、233-290行の7メソッド(`getHatchWorldPos`/`getHatchWorldNormal`/`getSlotWorldPos`/`getSlotWorldNormal`/`getAvailableSlotIndex`/`attachDockedVesselMesh`/`detachDockedVesselMesh`)、389-391行の `dispose` の格納艦回収、405-406行の `serialize` の `inventory`/`dockedVessels` を落とす。1行目のファイル冒頭コメント(「艦艇のドッキングと格納、部品と資金の保有、そこからの発艦を持つ」)を実態へ書き直す。436-442行 `listDetail` は自艦なしのとき `''` を返す(敵・補給と同じ形)。455-456行のメニュー副題から「格納艦艇: N隻」を落とす。515行のプロパティ行「格納艦艇数」を落とす。169-176行のコンストラクタのコメントと引数 `fx` を落とす(下の注記) |
-| `src/game/player/player.ts` | 76行 `SHIP_PORT_OFFSET`、249-257行 `getPortWorldPos`/`getPortWorldNormal` とその上のコメントを落とす。4行目の import から `LOCAL_FORWARD` を落とす(**player.ts での使用箇所は 256行だけ**。`qFromBasis`/`qRotate` は残る) |
+| `src/game/dynamic/dynamic-entity/base.ts` | 55行 `BASE_MAX_VESSELS`、64-66行 `BASE_HATCH_LOCAL_POS`/`NORMAL`、68-79行 `BaseDockSlot`/`BASE_DOCK_SLOTS`、81-91行 `DockedVesselEntry`、93-97行 `BaseState` から `inventory` と `dockedVessels`、117-121行の初期値から同2つ、216-235行のセーブ復元から `inventory`/`dockedVessels` の復元(`Player` の再構築と `attachDockedVesselMesh` を含む)、238-295行の7メソッド(`getHatchWorldPos`/`getHatchWorldNormal`/`getSlotWorldPos`/`getSlotWorldNormal`/`getAvailableSlotIndex`/`attachDockedVesselMesh`/`detachDockedVesselMesh`)、394-396行の `dispose` の格納艦回収、410-411行の `serialize` の `inventory`/`dockedVessels` を落とす。1行目のファイル冒頭コメント(「艦艇のドッキングと格納、部品と資金の保有、そこからの発艦を持つ」)を実態へ書き直す。441-447行 `listDetail` は自艦なしのとき `''` を返す(敵・補給と同じ形)。460-461行のメニュー副題から「格納艦艇: N隻」を落とす。520行のプロパティ行「格納艦艇数」と、それを説明する 508-509行のコメントを落とす。173-180行のコンストラクタのコメントと引数 `fx` を落とす(下の注記) |
+| `src/game/player/player.ts` | 76行 `SHIP_PORT_OFFSET`、250-258行 `getPortWorldPos`/`getPortWorldNormal` とその上のコメントを落とす。4行目の import から `LOCAL_FORWARD` を落とす(**player.ts での使用箇所は 257行だけ**。`qFromBasis`/`qRotate` は残る) |
 | `src/game/save/save-data.ts` | 126-131行の `inventory?` / `dockedVessels` / `dockedShips` と、それらを説明するコメントを落とす。**1行目の `AnyPart` の import は残す** — 89行の `EntitySaveData.parts` が使っている |
-| `src/game/dynamic/dynamic-system.ts` | 417-418行のコメント「基地は常設の軌道構造物で、接近・ドッキングは軌道面合わせそのものなので」から理由付けを直す(**挙動=常設は残す**) |
+| `src/game/dynamic/dynamic-system.ts` | 422-423行のコメント「基地は常設の軌道構造物で、接近・ドッキングは軌道面合わせそのものなので」から理由付けを直す(**挙動=常設は残す**) |
 
 **コンストラクタ引数 `fx` は落ちる。** `base.ts` の中で `fx`(`EffectsSystem`)を使うのは
-217行の格納艦生成 `new Player(hud, worldSfx, scene, fx, markerManager, …)` **だけ**なので、
-176行の引数と18行の import ごと落とす。`hud` は 206行(`PlayerThrottle`)、`worldSfx` は
-207-208行(`ThrustEffects`/`RcsEffects`)で使い続けるので**残す**。
-落とした引数は生成側2箇所 — `dynamic-system.ts:129` と `creative-stage.ts:352` — から外す。
-169-170行のコメント(「hud/worldSfx/fx/markerManager は格納艦(Player)の組み立てに要る」)は
+222行の格納艦生成 `new Player(hud, worldSfx, scene, fx, markerManager, …)` **だけ**なので、
+180行の引数と18行の import ごと落とす。`hud` は 211行(`PlayerThrottle`)、`worldSfx` は
+212-213行(`ThrustEffects`/`RcsEffects`)で使い続けるので**残す**。
+落とした引数は生成側2箇所 — `dynamic-system.ts:129` と `creative-stage.ts:353` — から外す。
+173-174行のコメント(「hud/worldSfx/fx/markerManager は格納艦(Player)の組み立てに要る」)は
 説明する対象が消えるので、コメントごと落とす。
 
 **達成条件と検証.**
@@ -281,9 +284,9 @@
 | 放熱板・太陽電池パドルと全損部品の**修理手段が世界から消える** | 一度損耗したら永久に戻らない。`ship.ts` の `SELF_REPAIR_EXCLUDED` は残るので、除外の理由だけが宙に浮く | 手順1(SPEC の記述)と手順3(`ship.ts` のコメント)。両方直さないと実装とコメントが矛盾する(規約 3.3) |
 | `Base` のコンストラクタ引数 `hud`/`worldSfx` を、`fx` と一緒に**まとめて落としてしまう** | `PlayerThrottle` が `hud` を、`ThrustEffects`/`RcsEffects` が `worldSfx` を要る。落とすと基地の推力プルームと RCS パフが消える | 手順4。落とすのは `fx` だけ。typecheck では気付けるが、生成側2箇所の引数順を同時に間違えると通ってしまう |
 | `MenuAction` から値を落とすとき、`storeInBase` のように**どこにも置かれていない項目**を「使われている」と誤認して残す | 死んだ識別子が残る | 手順2。`git grep "'storeInBase'"` で置き場所が `menu-actions.ts` だけであることを確かめてから落とす |
-| `findPlayer` を「外部参照 0」だけを見て**削除してしまう** | `dynamic-system.ts:242` に内部呼び出しが残っている | 手順2。`private` にするだけで、消さない |
+| `findPlayer` を「外部参照 0」だけを見て**削除してしまう** | `dynamic-system.ts:247` に内部呼び出しが残っている | 手順2。`private` にするだけで、消さない |
 | `dock` の全文検索が、生成物・アセットの base64 と、残すと決めた `buildDockingBay` に**当たって 0 件にならない** | 達成目標 1 が判定できなくなり、消し残しがあるのか除外漏れなのか分からなくなる | 手順2〜4。検索は必ず達成目標 1 の**3つの除外を付けた形**で打ち、それ以外の除外を足さない |
-| `MAP.md:490` / `dynamic-system.ts:417` の「基地の赤道交点は常設」という**挙動まで一緒に落とす** | 基地の昇交点△・降交点▽が出なくなる。ドッキングとは独立した表示なので残すべき | 手順1・手順4。**理由付けの文だけを直し、挙動には触らない** |
+| `MAP.md:490` / `dynamic-system.ts:422` の「基地の赤道交点は常設」という**挙動まで一緒に落とす** | 基地の昇交点△・降交点▽が出なくなる。ドッキングとは独立した表示なので残すべき | 手順1・手順4。**理由付けの文だけを直し、挙動には触らない** |
 | `Base.listDetail` を空文字にしたことで、マップ物体一覧の基地行が**自艦なしのとき無表示になる** | 一覧が寂しくなる。敵・補給と同じ振る舞いなので不整合ではないが、変化ではある | 手順4 |
 | `money` に増減経路が無くなり、記録一覧の「所持金」が**常に 100,000 × 基地数** | 一覧の情報量がゼロになる。判断(決めたこと 3)どおりだが、見た人は壊れたと思う | 手順4 |
 | `#hud.dock-mode` / `.settings-dock` を「使われているかもしれない」と**残す** | 旧ドックビューの残骸が生き延びる。付ける側のコードは既に存在しない | 手順3。`git grep 'dock-mode\|settings-dock'` の結果がスタイル定義側だけであることを確かめる |
