@@ -63,6 +63,12 @@ export function len(a: Vec3): number {
   return Math.sqrt(lenSq(a));
 }
 
+// 2点間の距離の2乗
+export function distSq(a: Vec3, b: Vec3): number {
+  const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
+  return dx * dx + dy * dy + dz * dz;
+}
+
 // ゼロベクトル安全な正規化
 export function norm(a: Vec3): Vec3 {
   const l = len(a);

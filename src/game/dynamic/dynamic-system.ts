@@ -27,7 +27,7 @@ import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
+import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import type { GameSaveData } from '../save/save-data';
 import type { Hud } from '../hud/hud';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
@@ -52,8 +52,7 @@ export class DynamicSystem {
 
   // 型別の絞り込み。呼ぶたびに数え直すので、フレームに何度も読む側は受けた配列を持ち回る。
 
-  // 自機。操作対象(Game.player)も他の艦と対等に、積分・衝突・寿命判定・予測を通る。
-  // ステージモードでは1隻だけが入る。
+  // 自機。操作対象も他の艦と対等に、積分・衝突・寿命判定・予測を通る。
   public get players(): readonly Player[] { return this.entities.filter((e): e is Player => e instanceof Player); }
   public get enemies(): readonly Enemy[] { return this.entities.filter((e): e is Enemy => e instanceof Enemy); }
   public get bases(): readonly Base[] { return this.entities.filter((e): e is Base => e instanceof Base); }
@@ -62,8 +61,8 @@ export class DynamicSystem {
   public get rcsFuelPickups(): readonly RcsFuelPickup[] { return this.entities.filter((e): e is RcsFuelPickup => e instanceof RcsFuelPickup); }
   public get detachedBoosters(): readonly DetachedBooster[] { return this.entities.filter((e): e is DetachedBooster => e instanceof DetachedBooster); }
 
-  // 弾本体・弾ハロー・プラズマ弾・薬莢は geometry/material を全個体で共有するため、
-  // 個別の scene 追加ではなく InstancedMesh 1本ずつのプールで描画する(sync が push する)。
+  // 弾本体・弾ハロー・プラズマ弾・薬莢は geometry/material を全個体で共有するので、
+  // 種別ごとに InstancedMesh 1本のプールで描く。
   private readonly bulletBodyPool: InstancedPool;
   private readonly bulletHaloPool: InstancedPool;
   private readonly plasmaPool: InstancedPool;
@@ -83,6 +82,7 @@ export class DynamicSystem {
     markerManager: MarkerManager,
     saved?: GameSaveData,
   ) {
+    // 弾・薬莢・破片が共有する描画資源。
     const bulletBody = bulletBodyResources();
     const bulletHalo = bulletHaloResources();
     const plasmaBody = plasmaBodyResources();
@@ -148,11 +148,12 @@ export class DynamicSystem {
     this.invalidateCaches();
   }
 
-  // 生成に fetch 未完了のタンパク質アセットが要る敵は、準備が整うまで実体化(Enemy の
-  // 生成そのもの)を遅らせる。SPEC/PROTEIN.md「出現」節: 準備中はentities.enemies は
-  // もちろん保有しない。通常スポーン・セーブ復元の双方がここを通る。
+  // 生成に fetch 未完了のタンパク質アセットが要る敵の待ち行列。実体化(Enemy の生成そのもの)は
+  // アセットが揃うまで遅らせる(SPEC/PROTEIN.md「出現」節)。
   private readonly pendingEnemySpawns: { readonly assetId: ProteinAssetId; readonly build: () => Enemy; readonly onSpawned?: () => void }[] = [];
 
+  // 敵を1体足す。assetId のアセットがまだ揃っていなければ、取得を起こして待ち行列へ回す。
+  // onSpawned は実体化した直後に1度だけ呼ぶ。
   spawnEnemyWhenReady(assetId: ProteinAssetId | null, build: () => Enemy, onSpawned?: () => void): void {
     if (assetId === null || isProteinAssetReady(assetId)) {
       this.add(build());
@@ -164,9 +165,11 @@ export class DynamicSystem {
     this.pendingEnemySpawns.push({ assetId, build, onSpawned });
   }
 
+  // 待ち行列のうち、アセットが揃ったものを実体化して顔ぶれへ足す。
   private processPendingEnemySpawns(): void {
     if (this.pendingEnemySpawns.length === 0) return;
     let w = 0;
+    // 揃わなかったものは前へ詰めて待ち行列に残す。
     for (const pending of this.pendingEnemySpawns) {
       if (isProteinAssetReady(pending.assetId)) {
         this.add(pending.build());
@@ -201,11 +204,12 @@ export class DynamicSystem {
     return true;
   }
 
-  // ターゲットとなり得るエンティティの一覧を取得する。
+  // ターゲットとなり得るエンティティ(敵・自機・基地)の一覧。返る配列は読み取り専用として扱う。
   getCombatTargets(excludePlayer: Player | null): CombatTarget[] {
     this.rebuildCombatTargetsIfNeeded();
     if (excludePlayer === null) return this.cachedCombatTargets;
 
+    // 除外指定つきの一覧は、除く相手ごとに組んで憶える。
     let targets = this.cachedCombatTargetsByExcludedPlayer.get(excludePlayer);
     if (targets) return targets;
     targets = [];
@@ -216,6 +220,7 @@ export class DynamicSystem {
     return targets;
   }
 
+  // 顔ぶれの世代が進んでいれば、戦闘対象の一覧を組み直す。
   private rebuildCombatTargetsIfNeeded(): void {
     if (this.combatTargetsRevision === this._collectionRevision) return;
     this.cachedCombatTargets.length = 0;
@@ -250,10 +255,10 @@ export class DynamicSystem {
 
   // 上限を超えた個体を、枠ごとに古いものから落とす。配列は追加順なので、末尾から数えて上限を
   // 超えたところがその枠の最古になる。
-  // ここで演出を起こすと、1体落とすたびに新しい個体が生まれて上限が発振する。
   private enforceCaps(): void {
     if (!this.capsUncheckedSinceAdd) return;
     this.capsUncheckedSinceAdd = false;
+    // 落とすのは alive を下ろすところまで — ここで演出を起こすと、破片が生まれて上限が発振する。
     const live: Record<CapKind, number> = { bullet: 0, casing: 0, debris: 0, booster: 0 };
     const entities = this.all();
     for (let i = entities.length - 1; i >= 0; i--) {
@@ -266,6 +271,7 @@ export class DynamicSystem {
     }
   }
 
+  // 顔ぶれが変わったことを世代へ記録する。
   private invalidateCaches(): void {
     this._collectionRevision++;
   }
@@ -290,11 +296,11 @@ export class DynamicSystem {
     this.prune();
   }
 
-  // 死亡した個体を破棄して取り除く。生存分は追加順のまま前へ詰める。所有者が回収する種別は
-  // 死亡していても残す。
+  // 死亡した個体を破棄して取り除く。生存分は追加順のまま前へ詰める。
   private prune(): void {
     let w = 0;
     let changed = false;
+    // 所有者が回収する種別は、死亡していても残す。
     for (const x of this.entities) {
       if (!x.alive && !x.reclaimedByOwner) {
         x.dispose();
@@ -311,14 +317,13 @@ export class DynamicSystem {
     for (const e of this.all()) e.requestHistoryDuration(sec);
   }
 
-  // 毎フレーム、全ての自機へ updatePlayerControls を1度ずつ通す。操作できるのは操作対象艦だけで、
-  // 操作できないワープ倍率ではどの艦も操作できない — その2つは同じ「操作できない」状態なので、
-  // input を渡すかどうかの1つの判断にまとめる。
+  // 毎フレーム、全ての自機へ updatePlayerControls を1度ずつ通す。
   updatePlayers(
     activePlayer: Player | null, input: Input | null, operable: boolean,
     dt: number, simDt: number, activeStage: Stage, celestialSystem: CelestialSystem,
   ): void {
     for (const booster of this.detachedBoosters) if (booster.alive) booster.updateBurn(simDt);
+    // 「操作対象でない」と「操作できないワープ倍率」は同じ状態なので、input を渡すかで一つに束ねる。
     for (const ship of this.players) {
       ship.updatePlayerControls(
         ship === activePlayer && operable ? input : null,
@@ -331,8 +336,7 @@ export class DynamicSystem {
     }
   }
 
-  // 毎フレーム、操作対象の基地へ updateBaseControls を1度ずつ通す。
-  // 操作対象でない基地は clearTransientCommands で慣性飛行に戻る。
+  // 毎フレーム、全ての基地へ updateBaseControls を1度ずつ通す。input が渡るのは操作対象の基地。
   updateBases(
     controlledBase: Base | null, input: Input, operable: boolean, dt: number, simDt: number,
   ): void {
@@ -352,8 +356,8 @@ export class DynamicSystem {
     for (const base of this.bases) base.clearTransientCommands();
   }
 
-  // 全自機のメッシュ・エフェクト・マーカーを同期する。方向マーカーや照準ズームは操作艦だけの
-  // ものなので、どれが操作対象かを各艦へ渡す。
+  // 全自機のメッシュ・エフェクト・マーカーを、どれが操作対象かを添えて同期する(方向マーカーと
+  // 照準ズームは操作艦のもの)。
   syncPlayers(
     activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
     displayTime: number, style: RenderStyle, visibilityPolicy: MapVisibilityPolicy | null, orbitRef?: OrbitReference,
@@ -391,8 +395,7 @@ export class DynamicSystem {
     }
   }
 
-  // 天体クラス別トグルに応じて自機・敵・弾薬・基地のメッシュ表示を揃える。visibilityPolicy が
-  // null(戦闘ビュー)のときは非表示扱いを一切かけない。
+  // 天体クラス別トグルに応じて自機・敵・弾薬・基地のメッシュ表示を揃える。
   applyVisibility(visibilityPolicy: MapVisibilityPolicy | null, activePlayer: Player | null): void {
     if (!visibilityPolicy) return;
     for (const ship of this.players) if (!visibilityPolicy.entity('player', ship === activePlayer).category) ship.renderObject.visible = false;
@@ -410,27 +413,35 @@ export class DynamicSystem {
     for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
   }
 
+  // 全個体の赤道交点を、このフレームは求まっていない状態へ戻す。交点を解く各所より先に
+  // 通す — このフレームに誰も解かなかった個体の交点は、そのまま隠れる。
+  clearEquatorNodes(): void {
+    for (const e of this.all()) e.equatorNodes?.clearCrossings();
+  }
+
   // 全基地の赤道交点マーカーを求め直す。基地は常設の軌道構造物で、接近・ドッキングは
   // 軌道面合わせそのものなので、選択の有無に関わらず出す。
   updateBaseEquatorNodes(
-    displayWindow: DisplayWindow, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
+    displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
   ): void {
-    const timeLabel = timeLabelSettingOf(displayWindow);
     for (const base of this.bases) {
-      if (base.alive) base.equatorNodes?.updateOnEllipse(displayWindow.displayTime, celestialSystem, frameAnchors, timeLabel);
+      if (base.alive) base.equatorNodes?.updateOnEllipse(displayTime, celestialSystem, frameAnchors);
     }
   }
 
-  // このフレームに求まった赤道交点マーカーを置く。求め直されなかったものは自動的に隠れる。
-  syncEquatorNodes(cameraSystem: CameraSystem): void {
+  // このフレームに求まった赤道交点マーカーを置く。
+  syncEquatorNodes(
+    cameraSystem: CameraSystem, frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting,
+  ): void {
     const project = cameraSystem.activeCameraProjection;
     const cameraPos = cameraSystem.activeCameraPos;
-    for (const e of this.all()) e.equatorNodes?.sync(project, cameraPos);
+    for (const e of this.all()) {
+      e.equatorNodes?.sync(project, cameraPos, frameAnchors.bodies, frameAnchors.bodiesPivot, timeLabel);
+    }
   }
 
-  // 自機以外のメッシュを displayTime 時点の状態に同期する。自機はエフェクト・ベルト・
-  // 軌道線まで持つので Player.syncPlayer が担当する。弾本体・弾ハロー・プラズマ弾・薬莢・
-  // 破片(fragment)の変換は各エンティティの renderObject に同期された後、InstancedPool へ push する。
+  // 自機・分離ブースター以外のメッシュを displayTime 時点の状態へ同期し、プールで描く種別は
+  // 対応する InstancedPool へ積む。
   sync(fo: FloatingOrigin, displayTime: number, viewer?: Viewpoint, proteinVibrationEnabled = true): void {
     this.bulletBodyPool.beginFrame();
     this.bulletHaloPool.beginFrame();
@@ -467,7 +478,7 @@ export class DynamicSystem {
     this.bulletHaloPool.push(bullet.renderObject.children[1]!);
   }
 
-  // 薬莢と破片(fragment)を、対応するプールへ積む。他の破片は個別に scene へ載っている。
+  // 薬莢と破片(fragment)を、対応するプールへ積む。
   private pushDebrisPiece(piece: DebrisPiece): void {
     if (piece.kind === 'casing') this.casingPool.push(piece.renderObject);
     else if (piece.kind === 'fragment') {
@@ -475,8 +486,7 @@ export class DynamicSystem {
     }
   }
 
-  // 保持する全エンティティと描画資源プールを破棄する。cleanup/prune は死亡した
-  // エンティティしか片付けないため、生存中のまま呼ばれるケースをここで担う。
+  // 保持する全エンティティと描画資源プールを、生死によらず破棄する。
   dispose(): void {
     for (const e of this.entities) e.dispose();
     this.entities.length = 0;
@@ -491,8 +501,9 @@ export class DynamicSystem {
     this.invalidateCaches();
   }
 
-  // 負荷確認ウィンドウが読む、種別ごとの現在の個体数。
+  // 種別ごとの現在の個体数。
   perfCounts(): Pick<PerfCounts, 'players' | 'enemies' | 'bullets' | 'casings' | 'debris' | 'ammoPickups' | 'rcsFuelPickups' | 'bases'> {
+    // 顔ぶれを1度だけ辿って数える。破片は薬莢とそれ以外に分ける。
     const counts = {
       players: 0, enemies: 0, bullets: 0, casings: 0,
       debris: 0, ammoPickups: 0, rcsFuelPickups: 0, bases: 0,
@@ -509,8 +520,9 @@ export class DynamicSystem {
     return counts;
   }
 
-  // 負荷確認ウィンドウが読む、直近 sync() 時点のタンパク質敵モーションの集計値。
+  // 直近 sync() 時点のタンパク質敵モーションの集計値。
   proteinMotionFrameSample(): ProteinMotionFrameSample {
+    // 全タンパク質敵の直近の計測値を足し合わせ、LOD ごとの体数を数える。
     let cpuMs = 0;
     let uploadBytes = 0;
     const lodCounts: Partial<Record<ProteinMotionLod, number>> = {};

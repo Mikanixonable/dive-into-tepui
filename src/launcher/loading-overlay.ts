@@ -11,6 +11,7 @@ const GAUGE_THICKNESS = 6;
 let overlay: HTMLElement | null = null;
 let gauge: HTMLElement | null = null;
 let percentText: HTMLElement | null = null;
+let noteText: HTMLElement | null = null;
 
 function gaugeBackground(ratio: number): string {
   const deg = Math.max(0, Math.min(1, ratio)) * 360;
@@ -36,14 +37,16 @@ export function showLoading(): void {
   overlay = div;
   gauge = div.children[1] as HTMLElement;
   percentText = gauge.firstElementChild as HTMLElement;
+  noteText = div.children[2] as HTMLElement;
 }
 
-// 進捗(0..1)を円形ゲージへ反映する。表示中でなければ何もしない。
-export function setLoadingProgress(ratio: number): void {
+// 進捗(0..1)を円形ゲージへ、note をゲージ下の注記へ反映する。表示中でなければ何もしない。
+export function setLoadingProgress(ratio: number, note?: string): void {
   if (!gauge || !percentText) return;
   const clamped = Math.max(0, Math.min(1, ratio));
   gauge.style.background = gaugeBackground(clamped);
   percentText.textContent = `${Math.round(clamped * 100)}%`;
+  if (noteText && note !== undefined) noteText.textContent = note;
 }
 
 // ローディング表示を片付ける。出ていなければ何もしない。
@@ -52,4 +55,5 @@ export function hideLoading(): void {
   overlay = null;
   gauge = null;
   percentText = null;
+  noteText = null;
 }

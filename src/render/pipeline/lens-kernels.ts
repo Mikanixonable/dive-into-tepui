@@ -4,7 +4,7 @@
 // 半精度浮動小数点の上限(65504)を跨ぐことも構造的に起きない。
 import * as THREE from 'three/webgpu';
 import { and, greaterThan, lessThan, screenSize, screenUV, select, texture, vec2, vec3 } from 'three/tsl';
-import type { Vec2Node, Vec2Uniform, Vec3Node } from '../tsl-types';
+import type { FloatNode, FloatUniform, Vec2Node, Vec2Uniform, Vec3Node } from '../tsl-types';
 
 // 条の 1 パスあたりのタップ数。**パスをまたぐ刻みをこの数と同じにする。**
 const STREAK_TAPS = 12;
@@ -85,10 +85,12 @@ const GHOSTS: readonly Ghost[] = [
 
 // ノードの和。**平衡木で畳む** — 左畳みにすると括弧が項数ぶん深く入れ子になり、WGSL の
 // パーサが再帰の上限に当たってシェーダの生成ごと落ちる(例外ではなく検証エラーとして出る)。
-function sumOf(terms: readonly Vec3Node[]): Vec3Node {
+function sumOf(terms: readonly Vec3Node[]): Vec3Node;
+function sumOf(terms: readonly FloatNode[]): FloatNode;
+function sumOf(terms: readonly (FloatNode | Vec3Node)[]): FloatNode | Vec3Node {
   let level = terms;
   while (level.length > 1) {
-    const merged: Vec3Node[] = [];
+    const merged: (FloatNode | Vec3Node)[] = [];
     for (let i = 0; i < level.length; i += 2) {
       merged.push(i + 1 < level.length ? level[i]!.add(level[i + 1]!) : level[i]!);
     }
@@ -109,9 +111,15 @@ function sampleInside(source: THREE.Texture, uv: Vec2Node): Vec3Node {
   return select(inside, texture(source, uv).rgb, vec3(0));
 }
 
-// 光を広げる側のタップ。(x, y) は読み元のテクセル数で測る。
+// 光を広げる側のタップ。offset は読み元のテクセル数で測る。
+function spreadBy(source: THREE.Texture, texel: Vec2Uniform, offset: Vec2Node): Vec3Node {
+  return sampleInside(source, screenUV.add(offset.mul(texel)));
+}
+
+// 位置が定数のタップ。**定数は WGSL の本文へ焼かれる**ので、(x, y) を数値で渡してよいのは
+// フィルタをまたいで同じ値のときだけ。
 function spreadAt(source: THREE.Texture, texel: Vec2Uniform, x: number, y: number): Vec3Node {
-  return sampleInside(source, screenUV.add(vec2(x, y).mul(texel)));
+  return spreadBy(source, texel, vec2(x, y));
 }
 
 // **縮小のタップはマスクを通さない。** 縮小がしているのは「画面の中を平均する」再サンプリング
@@ -146,7 +154,12 @@ export function tentUpsample(source: THREE.Texture, texel: Vec2Uniform): Vec3Nod
   return sumOf([corners, edges.mul(2), tap(0, 0).mul(4)]).mul(1 / 16);
 }
 
-// 条の 1 パス。angle の向きへ、パス番号で決まる刻みのタップを**片側だけ**積む。**向きは光源
+// 条 1 パスぶんの刻み [読み元のテクセル]。**パスをまたいでタップ数倍になる。**
+export function streakStride(pass: number): number {
+  return STREAK_TAPS ** pass;
+}
+
+// 条の 1 パス。direction の向きへ stride 刻みのタップを**片側だけ**積む。**向きは光源
 // ではなく画面が決める** — カメラを回しても条は光源に貼り付いて回らない。
 //
 // **1 つのパスの中では刻みを空けない。** 空けるとタップ 1 つ 1 つが光源の複製として点々に見え、
@@ -164,20 +177,17 @@ export function tentUpsample(source: THREE.Texture, texel: Vec2Uniform): Vec3Nod
 // **鎖どうしを混ぜないこと。** 1 つのパスで複数の向きをまとめて処理すると、次のパスがその結果を
 // さらに別の向きへ広げて「星の星」になる。
 export function streakPass(
-  source: THREE.Texture, texel: Vec2Uniform, angle: number, pass: number,
+  source: THREE.Texture, texel: Vec2Uniform, direction: Vec2Uniform, stride: FloatUniform,
 ): Vec3Node {
-  const stride = STREAK_TAPS ** pass;
   const taps: Vec3Node[] = [];
-  let total = 0;
+  const weights: FloatNode[] = [];
   for (let step = 0; step < STREAK_TAPS; step++) {
-    const distance = step * stride;
-    const weight = Math.exp(-distance / STREAK_FALLOFF);
-    const x = Math.cos(angle) * distance;
-    const y = Math.sin(angle) * distance;
-    taps.push(spreadAt(source, texel, x, y).mul(weight));
-    total += weight;
+    const distance = stride.mul(step);
+    const weight = distance.div(-STREAK_FALLOFF).exp();
+    taps.push(spreadBy(source, texel, direction.mul(distance)).mul(weight));
+    weights.push(weight);
   }
-  return sumOf(taps).mul(1 / total);
+  return sumOf(taps).div(sumOf(weights));
 }
 
 // 1 枚ぶんの像。**読む位置への倍率を半径だけの関数にする**ので、写像は光軸まわりの回転と可換に

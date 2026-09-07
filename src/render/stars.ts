@@ -2,6 +2,7 @@
 // 単一ジオメトリで描く(レンダラー非依存で確実)。
 import * as THREE from 'three/webgpu';
 import starsTextureUrl from '../assets/8k_stars.jpg';
+import { DeferredTexture } from './deferred-texture';
 import { WORLD_BACKGROUND_LAYER } from './pipeline/lit-layer';
 
 export const STAR_SHELL_RADIUS = 3.5e7; // [m] 自機中心に固定するので視差は出ない
@@ -24,11 +25,11 @@ export interface Stars {
 // 星空の球殻メッシュを構築する。
 export function createStars(): Stars {
   const geo = new THREE.SphereGeometry(STAR_SHELL_RADIUS, 64, 64);
-  const texture = new THREE.TextureLoader().load(starsTextureUrl);
-  texture.colorSpace = THREE.SRGBColorSpace;
+  const texture = new DeferredTexture(starsTextureUrl, THREE.SRGBColorSpace);
+  texture.request();
 
   const mat = new THREE.MeshBasicMaterial({
-    map: texture,
+    map: texture.texture,
     side: THREE.BackSide,
     depthWrite: false,
     // 殻がカメラから 0.9*far の距離にあり、深度クリア値付近の量子化丸めで LESS テストが

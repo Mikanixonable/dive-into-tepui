@@ -1,83 +1,63 @@
-// 重力源一覧を、位置に依らず常に加算する天体と空間グリッドに載せる天体へ分類し、ある位置から
-// 効きうる天体だけを取り出す。分類1回を多数の問い合わせ位置で使い回すことが成立条件。
+// 重力源一覧を、位置に依らず常に加算する天体と、到達量の内側で加算する天体へ分類し、ある位置へ
+// 効きうる天体を取り出す。分類1回を多数の問い合わせ位置で使い回すことが成立条件。
 import { CelestialMotion } from '../../physics/celestial-motion';
-import { SpatialGrid } from '../../math/spatial-grid';
-import { Vec3 } from '../../math/vec3';
+import { Vec3, distSq, lenSq } from '../../math/vec3';
 
-// 位置に依らず常に加算する重力源の本数。mu の重い順にこの数を採る。既定のレジストリでは
-// 月が14位なので、これを下回ると地球圏外の艦で月の寄与が消える。
-const GRAVITY_ALWAYS_COUNT = 15;
-
-// グリッドへ載せた天体を落としてよい引力の上限 [m/s^2]。セル一辺は、載せた天体の引力が
-// この値まで落ちる距離として天体構成から導かれる。
+// 一覧から落とす天体1体の寄与の上限 [m/s^2]。
 export const GRAVITY_NEGLIGIBLE_ACCEL = 1e-8;
 
-// 重力源一覧を、常に含める天体(always)と空間グリッドに載せる天体(grid)へ分けたもの。
-export type ClassifiedAttractors = {
-  readonly always: readonly CelestialMotion[];
-  readonly grid: SpatialGrid<CelestialMotion>;
+// 引力 mu の天体の寄与が GRAVITY_NEGLIGIBLE_ACCEL を割ると言い切れる距離(到達量)[m]。直達項 mu/d²
+// と ECI 原点補正項 mu/D² の和は 2mu/min(d,D)² を超えないので、min(d,D) がこれを上回れば寄与は
+// 無視できる。
+export function gravityReachOf(mu: number): number {
+  return Math.sqrt(2 * mu / GRAVITY_NEGLIGIBLE_ACCEL);
+}
+
+// 到達量の内側で加算する天体。r は分類した時刻の ECI 位置 [m]、reachSq は到達量の2乗 [m²]。
+type RangedAttractor = {
+  readonly motion: CelestialMotion;
+  readonly r: Vec3;
+  readonly reachSq: number;
 };
 
-// mu の重い順 GRAVITY_ALWAYS_COUNT 本目の値。同値の天体をまとめて always 側へ入れるため、
-// 順位ではなく mu の値を返す。
-function alwaysThresholdMu(attractors: readonly CelestialMotion[]): number {
-  if (attractors.length <= GRAVITY_ALWAYS_COUNT) return 0;
-  muScratch.length = 0;
-  for (const a of attractors) muScratch.push(a.def.mu);
-  muScratch.sort((x, y) => y - x);
-  return muScratch[GRAVITY_ALWAYS_COUNT - 1] ?? 0;
-}
+// 重力源一覧を、常に含める天体(always)と到達量の内側で含める天体(ranged)へ分けたもの。
+export type ClassifiedAttractors = {
+  readonly always: readonly CelestialMotion[];
+  readonly ranged: readonly RangedAttractor[];
+};
 
-// alwaysThresholdMu 専用の作業領域。値はこの関数の外へ出ない。
-const muScratch: number[] = [];
-
-// classifyAttractors 専用の作業領域。grid へ挿入し終えた時点で不要になり、外へ出ない。
-const griddedScratch: CelestialMotion[] = [];
-
-// グリッドへ載せた天体のうち最も重いものの引力が GRAVITY_NEGLIGIBLE_ACCEL まで落ちる距離。
-// gridded が空のときのセル一辺は結果に影響しないので任意の正数でよい。
-function gridCellSize(gridded: readonly CelestialMotion[]): number {
-  let heaviestMu = 0;
-  for (const a of gridded) heaviestMu = Math.max(heaviestMu, a.def.mu);
-  return heaviestMu > 0 ? Math.sqrt(heaviestMu / GRAVITY_NEGLIGIBLE_ACCEL) : 1;
-}
-
-// 重力源一覧を、mu の重い順 GRAVITY_ALWAYS_COUNT 本(always)と残り(grid)へ分類する。しきい値
-// もセル一辺も一覧全体から導くので、ある天体がどちらへ入るかは他の天体しだいで決まる。grid の
-// 天体はセルの27近傍からしか加算されない — 遠い問い合わせ位置で落とす直達項 mu/d² はセル一辺で
-// GRAVITY_NEGLIGIBLE_ACCEL 以下、同時に落ちる ECI 原点補正項 mu/D² は D > d の間これより小さい。
+// 重力源一覧を、時刻 pivot の位置で分類する。ECI 原点を到達量の内側に持つ天体は、原点補正項
+// mu/D² が問い合わせ位置に依らず残るので always へ入る(原点天体は D = 0 なので必ず入る)。
+// 残りは、問い合わせ位置が到達量の内側に来たときに効く ranged へ入る。
 //
-// **分類は計算量オーダーを下げるためのもので、1回の分類を多数の問い合わせ位置で使い回すことが
-// 成立条件。** 重力源 N 体を M 点で素朴に総当たりすると O(NM) だが、分類を1回だけ払えば
-// (コストは mu の全ソートに支配され O(N log N))、以降は各点が always の本数と自セル近傍の
-// 密度しか見ないので N に依らない。したがって1点ごとに分類し直す使い方は、O(N) の線形走査を
-// O(N log N) へ置き換えるだけで常に損になる — その場合は窓をそのまま走査する。
+// **1回の分類を多数の問い合わせ位置で使い回すことが成立条件。** 分類が全天体の位置解決を1回
+// 払い、以降の問い合わせは解決済みの位置との距離比較で済む。1点ごとに分類し直すと、その1点の
+// ために全天体を解決し直すので、一覧をそのまま走査する費用に分類の費用が上乗せになる。
 export function classifyAttractors(
   attractors: readonly CelestialMotion[], pivot: number,
 ): ClassifiedAttractors {
-  const thresholdMu = alwaysThresholdMu(attractors);
   const always: CelestialMotion[] = [];
-  const gridded = griddedScratch;
-  gridded.length = 0;
-  for (const a of attractors) {
-    if (a.def.mu >= thresholdMu) always.push(a);
-    else gridded.push(a);
+  const ranged: RangedAttractor[] = [];
+  for (const motion of attractors) {
+    const r = motion.positionAt(pivot);
+    const reach = gravityReachOf(motion.def.mu);
+    const reachSq = reach * reach;
+    // 原点との距離で振り分け、ranged には問い合わせ側の距離比較に要る位置と到達量を添える。
+    if (lenSq(r) <= reachSq) always.push(motion);
+    else ranged.push({ motion, r, reachSq });
   }
-  // セル一辺が grid 側の顔ぶれで決まるため、集め終えてからグリッドを作る。
-  const grid = new SpatialGrid<CelestialMotion>(gridCellSize(gridded));
-  for (const a of gridded) grid.insert(a, a.positionAt(pivot));
-  return { always, grid };
+  return { always, ranged };
 }
 
-// 位置 pos から見た重力源一覧 = 常に含める天体 + pos の27近傍グリッドに載っている天体を、
-// out へ書き込む。out は呼び出し側が所有し、この呼び出しの完了後に保持してはいけない。
+// 位置 pos から見た重力源一覧 = 常に含める天体 + pos を到達量の内側に置く天体を、out へ
+// 書き込む。out は呼び出し側が所有する作業領域で、空にしてから書き込む。
 export function attractorsNearInto(
-  pos: Vec3,
-  classified: ClassifiedAttractors,
-  out: CelestialMotion[],
+  pos: Vec3, classified: ClassifiedAttractors, out: CelestialMotion[],
 ): CelestialMotion[] {
   out.length = 0;
   for (const a of classified.always) out.push(a);
-  classified.grid.appendNeighborsInto(pos, out);
+  for (const a of classified.ranged) {
+    if (distSq(pos, a.r) <= a.reachSq) out.push(a.motion);
+  }
   return out;
 }

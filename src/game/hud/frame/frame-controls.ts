@@ -1,6 +1,5 @@
-// マップビューの「カメラ」「軌道フレーム」パネル オーケストレーター。
-// マップカメラの視点 (CameraFramePanel) と未来表示の描画基準 (TrajectoryFramePanel) を所有し、
-// カメラフォーカス変更時の軌道フレーム自動追随などの連動を疎結合に調停する。
+// マップビューの「カメラ」「軌道フレーム」2パネルを所有し、カメラの視点と未来表示の描画基準を
+// 選ばせる。カメラのフォーカス変更への軌道フレームの追随など、2パネル間の連動もここが持つ。
 import { bodyAnchorSource } from '../../../physics/attractor';
 import { FRAME_ROLES, FrameRole, FrameRotationSource, frameRoleOf } from '../../../physics/frame';
 import type { FrameAnchorSource } from '../../../physics/frame';
@@ -15,8 +14,7 @@ import { hudRail } from '../hud-root';
 import { CameraFramePanel } from './camera-frame-panel';
 import { TrajectoryFramePanel } from './trajectory-frame-panel';
 
-// カメラ・軌道フレーム両パネル共通の枠組みを組み立てる(id/クラス付与・pointerdown 抑止・
-// タイトル生成・hudRail への追加)。中身の子要素は各パネル側が追加する。
+// 見出しだけを持つ空のパネルを左レールへ足して返す。中身は返り値へ足す。
 export function buildPanel(root: HTMLElement, id: string, titleText: string): HTMLElement {
   const panel = document.createElement('div');
   panel.id = id;
@@ -35,7 +33,7 @@ export class FrameControls {
   // 固定解除は DOM イベント(フレームの外)から起きるので、直近の sync が見た時刻を控える。
   private lastTime = 0;
 
-  // panelRoot・popupRoot はカメラ/軌道フレーム両パネルへそのまま渡す設置先。
+  // 2パネルを panelRoot へ組む。各パネルのポップアップは popupRoot へ出る。
   public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
@@ -53,21 +51,20 @@ export class FrameControls {
     this.cameraPanel.onSelectCenter = (id) => this.selectCameraCenter(id);
   }
 
-  // 離心率1未満の周回軌道にある役割だけを、回転ゾーンの「役割の公転」選択肢として返す。
+  // 時刻 t に周回軌道を描いている役割を、回転の基準の選択肢として返す。
   private validRevolutionRoles(t: number): readonly FrameRole[] {
     return FRAME_ROLES.filter((role) => this.frameAnchors.attractorOf(`@${role}`, t) !== null);
   }
 
-  // いま選ばれている回転が、もう周回していない役割の公転を指しているか。天体を指す回転と
-  // 慣性系は対象外(条件で消えることがない)。
+  // いま選ばれている回転が、もう周回していない役割の公転を指しているか。
   private isStaleRole(rotatingWith: FrameRotationSource | null, validRoles: readonly FrameRole[]): boolean {
     if (rotatingWith === null || rotatingWith.kind !== 'revolution') return false;
     const role = frameRoleOf(rotatingWith.id);
     return role !== null && !validRoles.includes(role);
   }
 
-  // カメラの基準を選び直す。解除は、いま見ている位置を恒星中心の慣性系へ焼き込んだ
-  // 固定点にする — どの天体にも追随しないが、視線はその場に留まる。
+  // カメラの基準を選び直す。id が null なら、いま見ている位置を恒星中心の慣性系へ
+  // 焼き込んだ固定点にする。
   private selectCameraCenter(id: string | null): void {
     if (id !== null) {
       this.setFocus({ kind: 'object', id });
@@ -76,7 +73,7 @@ export class FrameControls {
     const frames = this.celestialSystem.frames;
     const star = this.celestialSystem.star;
     const frame = star !== null ? frames.frameOf(star.id, null) : frames.inertialFrame;
-    // 回さない(rotatingWith: null)ので基準は必ず登録天体 — 機体・役割トークンの解決は要らない。
+    // 回さないので基準は必ず登録天体で、機体・役割トークンを解く材料が要らない。
     this.setFocus(focusPoint(
       this.celestialSystem.frames, frame, this.mapCamera.resolvedFocus, this.lastTime, bodyAnchorSource([], this.lastTime),
     ));
@@ -93,26 +90,25 @@ export class FrameControls {
     }
   }
 
-  // 両パネルの選択肢と選択表示を、他モジュールの状態へ合わせる。
+  // 軌道フレームが選んでいる役割の公転が成立しなくなったら、慣性系へ落とす。
+  public update(displayTime: number): void {
+    if (this.isStaleRole(this.displayWindow.frame.rotatingWith, this.validRevolutionRoles(displayTime))) {
+      this.displayWindow.frame = this.celestialSystem.frames.frameOf(this.displayWindow.frame.center, null);
+    }
+  }
+
+  // 両パネルの選択肢と選択表示を、いまの天体系とカメラ位置へ合わせる。
   public sync(
     pickables: readonly ObjectPickable[], cameraPos: Vec3,
     simTime: number, displayTime: number,
   ): void {
     this.lastTime = simTime;
     const members = this.celestialSystem.systemMembersAt(cameraPos, displayTime);
-    const validRoles = this.validRevolutionRoles(displayTime);
-
-    // 軌道フレームで選択中の役割の公転が条件を崩したら、既存の onSelect と同じ経路
-    // (frame の差し替え)で慣性系へ落とす。カメラ側の同種の検査はカメラ自身が持つ。
-    if (this.isStaleRole(this.displayWindow.frame.rotatingWith, validRoles)) {
-      this.displayWindow.frame = this.celestialSystem.frames.frameOf(this.displayWindow.frame.center, null);
-    }
-
     this.cameraPanel.sync(pickables, members, displayTime);
-    this.trajectoryPanel.sync(pickables, members, displayTime, validRoles);
+    this.trajectoryPanel.sync(pickables, members, displayTime, this.validRevolutionRoles(displayTime));
   }
 
-  // 両パネルと、保持している座標系選択ゾーンを片付ける。
+  // 両パネルを片付ける。
   public dispose(): void {
     this.cameraPanel.dispose();
     this.trajectoryPanel.dispose();

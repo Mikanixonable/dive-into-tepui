@@ -7,9 +7,9 @@ import { InspectorBase, TimestampQuery, type WebGPURenderer } from 'three/webgpu
 
 // パスの識別子。並びは描画フェーズでの実行順。
 export const GPU_PASS = {
-  shadow: 0,
+  shadowMap: 0,
   gbuffer: 1,
-  occlusion: 2,
+  shadow: 2,
   lighting: 3,
   material: 4,
   atmosphere: 5,
@@ -23,7 +23,7 @@ export const GPU_PASS = {
 export type GpuPassId = (typeof GPU_PASS)[keyof typeof GPU_PASS];
 
 // 表示名。並びは GPU_PASS の値の順。
-export const GPU_PASS_LABELS: readonly string[] = ['影', 'Gバッファ', '遮蔽', 'ライティング', 'マテリアル', '大気', 'ワールド', 'レンズ', '合成', '3D UI', 'アンチエイリアス'];
+export const GPU_PASS_LABELS: readonly string[] = ['影マップ', 'Gバッファ', '影', 'ライティング', 'マテリアル', '大気', 'ワールド', 'レンズ', '合成', '3D UI', 'アンチエイリアス'];
 
 export const GPU_PASS_COUNT = GPU_PASS_LABELS.length;
 

@@ -17,19 +17,8 @@ import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 export class EquatorNodeMarkerPair {
   private readonly ascending: EquatorNodeMarker;
   private readonly descending: EquatorNodeMarker;
-  // update が求めた時点の CelestialMotion[]。sync でのマップビュー遮蔽判定に使う。
-  private celestialBodies: readonly CelestialMotion[] = [];
-  // celestialBodies の位置を厳密に引く時刻。
-  private celestialBodiesPivot = 0;
-  // 通過時刻ラベルの設定。update ごとに渡され、sync のラベル組み立てで読む。
-  private timeLabel: TimeLabelSetting = {
-    mode: 'absolute', show: false, nowSimTime: 0, epochUnixSec: 0,
-  };
-  // 直前の sync 以降に update が交点を書き込んだか。求め直されなかったフレームで交点を
-  // 捨てるために持つ。
-  private solvedSinceSync = false;
 
-  // owner は交点を求める対象の軌道の持ち主。昇交点・降交点のマーカーを1つずつ持ち続ける。
+  // owner は交点を求める対象の軌道の持ち主。
   constructor(private readonly owner: DynamicEntity, private readonly markerManager: MarkerManager) {
     this.ascending = new EquatorNodeMarker(owner.id, 'ascending');
     this.descending = new EquatorNodeMarker(owner.id, 'descending');
@@ -39,11 +28,10 @@ export class EquatorNodeMarkerPair {
   // 慣性系で表示時刻へ写す。
   updateOnEllipse(
     displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
-    timeLabel: TimeLabelSetting,
   ): void {
     this.updateOnPath(
       null, displayTime, celestialSystem, frameAnchors,
-      this.owner.stateAt(displayTime, celestialSystem), [], timeLabel,
+      this.owner.stateAt(displayTime, celestialSystem), [],
     );
   }
 
@@ -53,15 +41,11 @@ export class EquatorNodeMarkerPair {
   updateOnPath(
     frame: ReferenceFrame | null, displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
     state: KinematicState | null, paths: readonly (readonly KinematicState[])[],
-    timeLabel: TimeLabelSetting,
   ): void {
     this.clearCrossings();
-    this.celestialBodies = frameAnchors.bodies;
-    this.celestialBodiesPivot = frameAnchors.bodiesPivot;
-    this.timeLabel = timeLabel;
     if (state === null) return;
-    // 中心天体は state 自身の時刻の天体位置で選ぶ — 解析楕円は displayTime、折れ線は
-    // simTime の状態ベクトルから作るので、時刻を揃えないと中心の選定だけが別の瞬間になる。
+    // 中心天体は state 自身の時刻で選ぶ — 解析楕円は displayTime、折れ線は simTime の
+    // 状態ベクトルから作るので、揃えないと中心の選定だけが別の瞬間のものになる。
     const centerPivot = state.t;
     const center = strongestAttractor(state.r, celestialSystem.celestialMotions, centerPivot);
     const eqNormal = center.degree2At(centerPivot)?.pole;
@@ -82,11 +66,10 @@ export class EquatorNodeMarkerPair {
       toDisplay(crossings.asc.r, crossings.asc.t), crossings.asc.t, this.owner.name, centerName);
     this.descending.place(
       toDisplay(crossings.desc.r, crossings.desc.t), crossings.desc.t, this.owner.name, centerName);
-    this.solvedSinceSync = true;
   }
 
-  // 交点を、このフレームは求まらなかった状態にする。
-  private clearCrossings(): void {
+  // 交点を、このフレームは求まらなかった状態にする。求め直す前に必ず通す。
+  clearCrossings(): void {
     this.ascending.place(null, null, null, null);
     this.descending.place(null, null, null, null);
   }
@@ -96,14 +79,16 @@ export class EquatorNodeMarkerPair {
     return [this.ascending, this.descending].filter((marker) => !marker.gone);
   }
 
-  // △▽ マーカーを update が求めた位置に置く。求め直されなかったフレームは交点を捨てて隠す。
-  sync(project: ProjectFn, cameraPos: Vec3): void {
-    if (!this.solvedSinceSync) this.clearCrossings();
-    this.solvedSinceSync = false;
+  // 求まっている交点へ △▽ マーカーを置き、求まっていない交点は隠す。celestialBodies は
+  // 遮蔽判定に使う天体で、celestialBodiesPivot はその位置を引く時刻。
+  sync(
+    project: ProjectFn, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
+    celestialBodiesPivot: number, timeLabel: TimeLabelSetting,
+  ): void {
     for (const marker of [this.ascending, this.descending]) {
       marker.sync(
-        this.markerManager, project, cameraPos, this.celestialBodies, this.celestialBodiesPivot,
-        true, this.timeLabel,
+        this.markerManager, project, cameraPos, celestialBodies, celestialBodiesPivot,
+        true, timeLabel,
       );
     }
   }

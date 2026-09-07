@@ -11,7 +11,7 @@ import { NODE_APPROACH_LEAD } from '../plan/plan';
 
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
 export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072, 524288, 2097152, 8388608, 33554432];
-// 推進・射撃・衝突解決・敵AIが有効な最大タイムワープ(下の can* が参照)。
+// 推進・射撃・交戦圏・敵AIが有効な最大タイムワープ(下の can* が参照)。
 export const MAX_PHYS_SIM_SPEED = 4;
 
 const AUTOWARP_MARGIN = 2;
@@ -50,8 +50,8 @@ export class SimSpeedManager {
     return this.simSpeed <= MAX_PHYS_SIM_SPEED;
   }
 
-  // 現在のワープ倍率で剛体衝突を解決してよいかどうか。
-  get canResolvePhysicalCollisions(): boolean {
+  // 現在のワープ倍率で交戦圏が存在するかどうか。
+  get canEngage(): boolean {
     return this.simSpeed <= MAX_PHYS_SIM_SPEED;
   }
 

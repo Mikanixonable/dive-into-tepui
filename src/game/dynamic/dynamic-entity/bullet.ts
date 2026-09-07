@@ -1,6 +1,7 @@
 // 実体弾とプラズマ弾。飛翔と寿命・接触の帰結を持ち、残像として見える向きを毎フレーム組む。
 import * as THREE from 'three/webgpu';
 import { DynamicEntity } from './dynamic-entity';
+import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { CelestialMotion } from '../../../physics/celestial-motion';
 
@@ -17,7 +18,6 @@ import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 const BULLET_BCINV = 2e-4; // 弾道係数の逆数 Cd·A/m [m^2/kg]。高弾道係数でほとんど減速しない
 const BULLET_MASS = 0.1; // 剛体接触用質量 [kg](実体弾・プラズマ弾とも共通)
 const BULLET_RADIUS = 0.02; // 剛体接触用半径 [m]
-const BULLET_MAX_DIST = 30e3; // 自機からこれ以上離れた弾を消す [m]
 const SELF_CONTACT_GRACE = 2.0; // 自弾が自機に当たり得るまでの猶予 [sim s]
 const BULLET_CLOSE_PASS_DIST = 40; // 敵弾が艦の至近を通過したとみなす距離 [m]
 
@@ -106,7 +106,7 @@ export class Bullet extends DynamicEntity {
             if (this.type === 'plasma') this._worldSfx.magneticInterference();
         }
         // 至近通過音は消滅判定より先に評価する — 同じ substep で寿命が尽きる弾でも通過音は鳴らす。
-        if (lenSq(sub(this.state.r, playerPos)) > BULLET_MAX_DIST * BULLET_MAX_DIST) { this.alive = false; return; }
+        if (lenSq(sub(this.state.r, playerPos)) > ENGAGEMENT_RANGE * ENGAGEMENT_RANGE) { this.alive = false; return; }
         if (simTime >= this.expiresAt) this.alive = false;
     }
 
