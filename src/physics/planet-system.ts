@@ -4,23 +4,42 @@
 // 評価の依存はこのノードを根に一方向へ流れる: 重心の主星相対二体解(軌道だけで決まる)→
 // 衛星の惑星相対(重心の平均角から太陽方向を取る)→ 惑星本体(重心 − 衛星ぶん)→ 衛星の主星相対。
 // 太陽系重心相対はどれも「主星の重心相対位置 + 主星相対」で導く。
+//
+// **採用した近似**: 惑星本体を組む重心補正 Σ に、本体を動かさない衛星を入れない
+// (NEGLIGIBLE_BODY_OFFSET)。落とす変位の合計はその定数以下で、系の天体はまとめてその量だけ
+// 主星に対してずれる。**系の内側の相対幾何は動かない** — 衛星も同じ本体から組むため。
 // THREE/DOM 非依存。
 import { Vec3, addScaled } from '../math/vec3';
 import { PointEphemeris, boundBaryStateAt } from './ephemeris/point';
 import { PlanetDef, PlanetMotion, SatelliteMotion, StarMotion } from './celestial-motion';
 import { KeplerOrbit, keplerOrbitState } from './kepler-orbit';
 import {
-  KinematicState, addPrimaryRelative, fromStarRelative, kinematicState, toPrimaryRelative,
+  KinematicState, addPrimaryRelative, fromStarRelative, kinematicState,
 } from './kinematic-state';
 import { PlanetAngles, planetAngles } from './kepler-orbit';
-import { satelliteState } from './satellite-orbit';
+import { SatelliteOrbit, satelliteState } from './satellite-orbit';
 import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
 
-// 系に属する天体1時刻ぶんの位置・速度。**どれも主星相対**で、惑星本体相対の二体解は
-// これを組む途中の一時値として現れるだけ。satellites の並びは addSatellite の登録順。
+// 惑星本体の位置を組むとき、重心補正から落としてよい変位の合計 [m]。衛星の惑星相対軌道は
+// 平均要素の二体解へ周期補正項を重ねたモデルで、真値との差は km の桁ある(satellite-orbit.ts
+// の到達精度)。ここで落とす量はその 1/1000 未満で、最小の登録天体の半径 245 m にも届かない。
+// 0 にすると全衛星が補正に入り、落とすことによる差は無くなる。
+export const NEGLIGIBLE_BODY_OFFSET = 1;
+
+// 衛星が惑星本体から離れうる距離の上限 [m]。二体部分の遠点に動径補正項の振幅和を足したもので、
+// 周期項は動径へ加算で重なるだけなのでこれを超えない。
+function maxPrimaryDistance(orbit: SatelliteOrbit): number {
+  let dist = orbit.kepler.a * (1 + orbit.kepler.e);
+  for (const term of orbit.distTerms) dist += Math.abs(term.amp);
+  return dist;
+}
+
+// 系に属する天体1時刻ぶん。body は主星相対、rels は惑星本体相対で、**引かれた衛星だけが
+// 埋まる作業表**(並びは addSatellite の登録順)。重心補正に入る衛星は body を組む時点で埋まる。
 type SystemMembers = {
   readonly body: KinematicState<'starRel'>;
-  readonly satellites: readonly KinematicState<'starRel'>[];
+  readonly angles: PlanetAngles;
+  readonly rels: (KinematicState<'primaryRel'> | undefined)[];
 };
 
 export class PlanetSystem {
@@ -28,6 +47,8 @@ export class PlanetSystem {
   private readonly starRelCache = new TimeRing<KinematicState<'starRel'>>();
   private readonly membersCache = new TimeRing<SystemMembers>();
   private planetBody: PlanetMotion | null = null;
+  // 重心補正に入れる衛星の登録順。衛星が増えるたびに組み直す。
+  private offsetting: readonly number[] | null = null;
 
   // 系の重心を直接収録した数値暦。収録されていなければ null。
   private baryEphemeris: PointEphemeris | null = null;
@@ -70,14 +91,13 @@ export class PlanetSystem {
 
   // 衛星 index の主星相対状態。index は addSatellite が返した登録順。
   satelliteStarRelStateAt(index: number, t: number): KinematicState<'starRel'> {
-    return this.membersAt(t).satellites[index]!;
+    const members = this.membersAt(t);
+    return addPrimaryRelative(members.body, this.relFrom(members, index, t));
   }
 
-  // 惑星本体相対の位置・速度。主星相対どうしの引き算で作る — 同じ系の中の引き算なので
-  // 桁落ちは効かない(最遠のエリス-ディスノミアでも相対 6e-11)。
+  // 衛星 index の惑星本体相対の位置・速度。
   satelliteRelStateAt(index: number, t: number): KinematicState<'primaryRel'> {
-    const members = this.membersAt(t);
-    return toPrimaryRelative(t, members.satellites[index]!, members.body);
+    return this.relFrom(this.membersAt(t), index, t);
   }
 
   // 負荷確認ウィンドウが読む、系が持つ時刻キャッシュのヒット/ミス累計。
@@ -85,34 +105,59 @@ export class PlanetSystem {
     return addTimeCacheStats(this.starRelCache.stats, this.membersCache.stats);
   }
 
-  // 系の重心から、惑星本体ぶんと衛星ぶんへ配る。惑星本体は重心から Σ(μ_衛星/μ_系)·r_衛星
-  // (r は惑星本体相対)を差し引いた位置にあり、衛星はその本体へ r を足した位置にある。
+  // 系の重心から惑星本体を組む。惑星本体は重心から Σ(μ_衛星/μ_系)·r_衛星(r は惑星本体相対)を
+  // 差し引いた位置にあり、衛星はその本体へ r を足した位置にある。Σ に入るのは重心を
+  // NEGLIGIBLE_BODY_OFFSET 以上動かす衛星だけで、残りの r は引かれたときに rels へ埋まる。
   private computeMembers(t: number): SystemMembers {
     const bary = this.starRelStateAt(t);
-    const moons = this.moons;
-    if (moons.length === 0) return { body: bary, satellites: [] };
-
     const angles = this.anglesAt(t);
-    const rels = moons.map((moon) => satelliteState(moon.def.orbit, angles, t));
-
-    const body = this.bodyFromBarycenter(bary, rels);
-    return { body, satellites: rels.map((rel) => addPrimaryRelative(body, rel)) };
-  }
-
-  // 重心を分け合う全質量(惑星本体 + 全衛星)に対する各衛星の比で、重心から差し引く量を決める。
-  private bodyFromBarycenter(
-    bary: KinematicState<'starRel'>, rels: readonly KinematicState<'primaryRel'>[],
-  ): KinematicState<'starRel'> {
+    const rels: (KinematicState<'primaryRel'> | undefined)[] = new Array(this.moons.length);
     const muTotal = this.mu;
     // 位置 − 変位 = 位置。演算の途中は札の落ちた素の Vec3 で、名乗り直すのは kinematicState。
     let r: Vec3 = bary.r;
     let v: Vec3 = bary.v;
-    for (let i = 0; i < rels.length; i++) {
-      const w = this.moons[i]!.def.mu / muTotal;
-      r = addScaled(r, rels[i]!.r, -w);
-      v = addScaled(v, rels[i]!.v, -w);
+    for (const index of this.offsettingMoons) {
+      const moon = this.moons[index]!;
+      const rel = satelliteState(moon.def.orbit, angles, t);
+      rels[index] = rel;
+      const w = moon.def.mu / muTotal;
+      r = addScaled(r, rel.r, -w);
+      v = addScaled(v, rel.v, -w);
     }
-    return kinematicState<'starRel'>(bary.t, r, v);
+    return { body: kinematicState<'starRel'>(t, r, v), angles, rels };
+  }
+
+  // 衛星 index の惑星本体相対状態を作業表から引く。まだ無ければ解いて埋める。
+  private relFrom(
+    members: SystemMembers, index: number, t: number,
+  ): KinematicState<'primaryRel'> {
+    const cached = members.rels[index];
+    if (cached !== undefined) return cached;
+    const rel = satelliteState(this.moons[index]!.def.orbit, members.angles, t);
+    members.rels[index] = rel;
+    return rel;
+  }
+
+  // 重心補正に入れる衛星の登録順。「その衛星が本体を動かす量の上限 w_i·max|r_i|」の小さい順に、
+  // 落とす合計が NEGLIGIBLE_BODY_OFFSET に収まる範囲まで落とす。
+  private get offsettingMoons(): readonly number[] {
+    const cached = this.offsetting;
+    if (cached !== null) return cached;
+    const muTotal = this.mu;
+    const bounds = this.moons.map((moon, index) => ({
+      index, offset: (moon.def.mu / muTotal) * maxPrimaryDistance(moon.def.orbit),
+    }));
+    // 落とす順は上限の小さい側から。合計で測るので、個々が定数を下回るだけでは足りない。
+    bounds.sort((a, b) => a.offset - b.offset);
+    let dropped = 0;
+    let kept = 0;
+    while (kept < bounds.length && dropped + bounds[kept]!.offset <= NEGLIGIBLE_BODY_OFFSET) {
+      dropped += bounds[kept]!.offset;
+      kept++;
+    }
+    const offsetting = bounds.slice(kept).map((b) => b.index).sort((a, b) => a - b);
+    this.offsetting = offsetting;
+    return offsetting;
   }
 
   // この系が重心を分け合う全質量(惑星本体 + 全衛星)。衛星は構築のたびに増えるので、
@@ -156,6 +201,7 @@ export class PlanetSystem {
     if (this.body.def.mu <= 0) {
       throw new Error(`PlanetSystem: μ を持たない ${this.id} へ衛星 ${satellite.def.id} は登録できない`);
     }
+    this.offsetting = null;
     return this.moons.push(satellite) - 1;
   }
 }
