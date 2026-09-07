@@ -17,11 +17,11 @@ import {
   Degree2Gravity, Degree2GravityDef, PoleModel, RingSystemDef, ShapeDef, poleModelForSimZero,
 } from './celestial-body-def';
 import {
-  KinematicState, addPrimaryRelative, kinematicState, toPrimaryRelative,
+  KinematicState, addPrimaryRelative, fromStarRelative, kinematicState, toPrimaryRelative,
 } from './kinematic-state';
 import { SECONDS_PER_DAY } from './time';
 import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
-import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub, v3 } from '../math/vec3';
+import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, v3 } from '../math/vec3';
 import type { EciTransform } from './eci-transform';
 import type { PlanetSystem } from './planet-system';
 
@@ -208,6 +208,11 @@ export abstract class CelestialMotion {
   // 解析暦が答える太陽系重心中心の位置・速度。
   abstract analyticStateAt(t: number): KinematicState<'analytic'>;
 
+  // 解析暦が答える主星中心の位置・速度。**解析経路の ECI 化はこちらどうしの差で組む** —
+  // 恒星の重心相対位置は差で厳密に相殺するので、全惑星系のケプラー解を解いても ECI の答えは
+  // 変わらない。
+  abstract analyticStarRelStateAt(t: number): KinematicState<'starRel'>;
+
   // 解析暦が答える加速度。解析式の厳密な二階微分ではなく主天体まわりの二体近似 — 用途は RK4 の
   // 各段の時刻へ位置を外挿する2次補正項なので、この近似の誤差(太陽の潮汐項を落とすぶん、
   // 月で0.5%程度)は結果に効かない。
@@ -305,10 +310,15 @@ export class StarMotion extends CelestialMotion {
     return this.analyticCache.put(t, this.computeAnalyticStateAt(t));
   }
 
-  // 恒星が重心のまわりに描く運動は加速度としては入れない。用途は積分1歩ぶんの2次外挿項で、
-  // 木星が恒星へ及ぼす 2e-7 m/s² は1歩の幅では mm に満たない。
+  // 恒星は主星相対系の原点なので、その系での加速度は厳密に 0。ECI 加速度は主星相対どうしの
+  // 差で組むので、重心のまわりに描く運動はここに現れない。
   analyticAccelAt(): Vec3 {
     return v3();
+  }
+
+  // 主星は自分中心の座標系の原点。
+  analyticStarRelStateAt(t: number): KinematicState<'starRel'> {
+    return kinematicState<'starRel'>(t, v3(), v3());
   }
 
   // 重心相対位置のキャッシュは恒星1体につき1つなので、ここで一緒に数える。
@@ -318,8 +328,6 @@ export class StarMotion extends CelestialMotion {
 
   // 恒星の太陽系重心相対位置 −Σ(μ_i/μ_total)·r_i。r_i は各系の重心の**主星相対**位置なので、
   // 自分の位置を経由せず循環しない。系の内訳(惑星本体と衛星)は各系の重心が畳んでいる。
-  // 解いた r_i は捨てず、自分の位置が決まった時点で各系の太陽系重心状態へ組み直して配る —
-  // **主星相対の値がここから外へ出ないのはこのため。**
   private computeAnalyticStateAt(t: number): KinematicState<'analytic'> {
     // μ = 0 は「重力を無視すると宣言した」の意。その恒星は重心を動かさないので原点に置く。
     if (this.def.mu <= 0) return kinematicState<'analytic'>(t, v3(), v3());
@@ -327,22 +335,17 @@ export class StarMotion extends CelestialMotion {
     let muTotal = this.def.mu;
     for (const system of this.systems) muTotal += system.mu;
 
-    const solved: { system: PlanetSystem; rel: KinematicState<'primaryRel'> }[] = [];
     let r = v3();
     let v = v3();
     for (const system of this.systems) {
       // 重力を無視すると宣言した系は重心を動かさないので、二体解を解く前に抜ける。
       const w = system.mu / muTotal;
       if (w === 0) continue;
-      const rel = keplerOrbitState(system.orbit, t);
-      solved.push({ system, rel });
+      const rel = system.starRelStateAt(t);
       r = addScaled(r, rel.r, -w);
       v = addScaled(v, rel.v, -w);
     }
-
-    const state = kinematicState<'analytic'>(t, r, v);
-    for (const { system, rel } of solved) system.receiveAnalyticState(addPrimaryRelative(state, rel));
-    return state;
+    return kinematicState<'analytic'>(t, r, v);
   }
 
   // 恒星は自転姿勢を持たない。
@@ -528,22 +531,23 @@ export class PlanetMotion extends OrbitingMotion {
     const bary = this.system.ownNumericStateAt(t);
     if (bary === null) return null;
     return addPrimaryRelative(
-      bary, toPrimaryRelative(t, this.analyticStateAt(t), this.system.analyticStateAt(t)));
+      bary, toPrimaryRelative(t, this.analyticStarRelStateAt(t), this.system.starRelStateAt(t)));
   }
 
-  // 惑星本体の太陽系重心状態。系の重心から衛星ぶんの重心補正を差し引いた位置で、
-  // 補正が全衛星に依存するので系がまとめて畳んでいる。
+  // 惑星本体の太陽系重心状態。
   analyticStateAt(t: number): KinematicState<'analytic'> {
+    return fromStarRelative(this.star.analyticStateAt(t), this.analyticStarRelStateAt(t));
+  }
+
+  // 惑星本体の主星相対状態。系の重心から衛星ぶんの重心補正を差し引いた位置で、
+  // 補正が全衛星に依存するので系がまとめて畳んでいる。
+  analyticStarRelStateAt(t: number): KinematicState<'starRel'> {
     return this.system.membersAt(t).body;
   }
 
-  // 主星まわりの二体加速度。原点は太陽系重心なので、二体の相対位置は主星の位置を引いて
-  // 組む — 絶対位置をそのまま渡すと恒星の重心相対位置ぶん(この太陽系では 100 万 km 前後)誤る。
+  // 主星まわりの二体加速度。
   analyticAccelAt(t: number): Vec3 {
-    const star = this.star;
-    return twoBodyAccel(
-      sub(this.analyticStateAt(t).r, star.analyticStateAt(t).r), star.def.mu + this.def.mu,
-    );
+    return twoBodyAccel(this.analyticStarRelStateAt(t).r, this.star.def.mu + this.def.mu);
   }
 
   // 系のキャッシュは惑星本体と1対1なので、ここで一緒に数える。
@@ -573,7 +577,12 @@ export class SatelliteMotion extends OrbitingMotion {
 
   // 衛星の太陽系重心状態。
   analyticStateAt(t: number): KinematicState<'analytic'> {
-    return this.system.satelliteStateAt(this.index, t);
+    return fromStarRelative(this.planet.star.analyticStateAt(t), this.analyticStarRelStateAt(t));
+  }
+
+  // 衛星の主星相対状態。惑星本体へ惑星相対モデルを足した位置で、系がまとめて畳んでいる。
+  analyticStarRelStateAt(t: number): KinematicState<'starRel'> {
+    return this.system.satelliteStarRelStateAt(this.index, t);
   }
 
   // 惑星本体相対の実状態。周期摂動項を含む(平均要素の二体解ではない)。
