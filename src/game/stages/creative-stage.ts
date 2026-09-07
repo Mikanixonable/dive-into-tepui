@@ -64,14 +64,9 @@ export class CreativeStage extends Stage {
   // 敵の波状攻撃を発生させるかどうか。既定 OFF — ON の間だけ update が WaveAttack を進める。
   private waveAttackEnabled: boolean;
   private readonly previewEllipseLine: EllipseLine;
-  // 物体配置パネルのフォーム値から求めた配置プレビュー。出すものが無ければ null。
-  private preview: { readonly elements: OrbitalElements; readonly pos: Vec3 } | null = null;
-  // 現在のフォーム値に対するフィールド単位の検証結果。パネルが閉じている間は空。
-  private issues: readonly PlacementFieldIssue[] = [];
   private readonly playerIdAllocator = new EntityIdAllocator('creative-player-');
   private readonly ammoPickupIdAllocator = new EntityIdAllocator('creative-ammo-');
   private readonly rcsFuelPickupIdAllocator = new EntityIdAllocator('creative-rcs-fuel-');
-  private activePlayer: Player | null = null;
   private manualEnemyCount = 0;
   private manualFormationCount = 0;
   private manualEnemySpawnDistance = STAGE_CONTROL_DEFAULT_ENEMY_SPAWN_DISTANCE;
@@ -133,7 +128,7 @@ export class CreativeStage extends Stage {
   }
 
   private refillActivePlayerAmmo(): void {
-    const player = this.activePlayer;
+    const player = this._activePlayers.current;
     if (player === null || !player.alive) {
       this._hud.hint('操作艦がいないため弾薬を補充できません');
       return;
@@ -142,7 +137,7 @@ export class CreativeStage extends Stage {
   }
 
   private refillActivePlayerRcsFuel(): void {
-    const player = this.activePlayer;
+    const player = this._activePlayers.current;
     if (player === null || !player.alive) {
       this._hud.hint('操作艦がいないためRCS燃料を補充できません');
       return;
@@ -151,7 +146,7 @@ export class CreativeStage extends Stage {
   }
 
   private spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void {
-    const player = this.activePlayer;
+    const player = this._activePlayers.current;
     if (player === null || !player.alive) {
       this._hud.hint('操作艦がいないため敵をスポーンできません');
       return;
@@ -183,7 +178,7 @@ export class CreativeStage extends Stage {
 
   // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機前方に一括スポーンする。
   private spawnProteinFormation(): void {
-    const player = this.activePlayer;
+    const player = this._activePlayers.current;
     if (player === null || !player.alive) {
       this._hud.hint('操作艦がいないため敵をスポーンできません');
       return;
@@ -214,15 +209,15 @@ export class CreativeStage extends Stage {
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     super.sync(player, fo, cameraSystem, displayTime, visibilityPolicy);
-    this.activePlayer = player;
     this.stageControlsPanel.setSpawnButtonsEnabled(player !== null && player.alive);
     this.mountStageControlsPanel(cameraSystem.view === 'map');
+    const form = this.placerPanel.isOpen ? this.placerPanel.getForm() : null;
     this.syncPreview(
-      fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
+      form, fo, cameraSystem.activeCameraProjection, cameraSystem.activeCamera,
       cameraSystem.view === 'map', cameraSystem.activeCameraPos,
       this._celestialSystem.celestialMotions, displayTime,
     );
-    this.placerPanel.setIssues(this.issues);
+    this.placerPanel.setIssues(form ? this.computeFieldIssues(form) : []);
     this.stageControlsPanel.element.classList.remove('hidden');
   }
 
@@ -290,25 +285,27 @@ export class CreativeStage extends Stage {
     return issues;
   }
 
-  // 配置プレビューの軌道線と ▷ マーカーを update が求めた値へ同期する。
+  // フォーム値から求めた配置プレビューの軌道線と ▷ マーカーを同期する。
+  // form が null か、プレビューを出せない値のときは、軌道線とマーカーを消す。
   private syncPreview(
-    fo: FloatingOrigin, project: ProjectFn, camera: THREE.Camera,
+    form: ObjectPlacerForm | null, fo: FloatingOrigin, project: ProjectFn, camera: THREE.Camera,
     mapView: boolean, cameraPos: Vec3, celestialBodies: readonly CelestialMotion[],
     displayTime: number,
   ): void {
-    if (!this.preview) {
+    const preview = form ? this.computePreview(form) : null;
+    if (!preview) {
       this.previewEllipseLine.hide();
       this._markerManager.fadeOut('creative-preview');
       return;
     }
-    this.previewEllipseLine.sync(this.preview.elements, fo, camera);
+    this.previewEllipseLine.sync(preview.elements, fo, camera);
     if (mapView
-      && isOccluded(cameraPos, this.preview.pos, celestialBodies, displayTime)) {
+      && isOccluded(cameraPos, preview.pos, celestialBodies, displayTime)) {
       this._markerManager.hide('creative-preview');
       return;
     }
     this._markerManager.setPosition(
-      'creative-preview', 'mk-self', ENTITY_GLYPH.preview, this.preview.pos, project,
+      'creative-preview', 'mk-self', ENTITY_GLYPH.preview, preview.pos, project,
       'PREVIEW', 1, COLOR_MARKER_ALLY, 0, false, false, undefined, cameraPos,
     );
   }
@@ -431,10 +428,9 @@ export class CreativeStage extends Stage {
     if (!values.every(Number.isFinite)) throw new Error('有限の状態を作れませんでした');
   }
 
-  // 通常ステージと同じ残弾監視・回収・遠方補給の再投入を行い、配置プレビューとフォームの
-  // フィールド単位の検証結果を求め直す。既存敵の AI 行動は常に進める。トグルが制御するのは
-  // 新規ウェーブの発生のみ(OFF の間は waveAttack.update を止め、既に出ている敵はそのまま残る)。
-  // ノードの消化は Simulator のイベント境界(applySimulationEvents)で行う。
+  // 通常ステージと同じ残弾監視・回収・遠方補給の再投入を行う。既存敵の AI 行動は常に進める。
+  // トグルが制御するのは新規ウェーブの発生のみ(OFF の間は waveAttack.update を止め、既に出ている
+  // 敵はそのまま残る)。ノードの消化は Simulator のイベント境界(applySimulationEvents)で行う。
   update(dt: number, player: Player | null, _entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
     if (player) {
       this.logistics.updateLogistics(simTime, player, simSpeed, true);
@@ -443,9 +439,6 @@ export class CreativeStage extends Stage {
         this.waveAttack.update(dt, player, this._entities.enemies, simTime, this, (enemy) => this.addEnemy(enemy, this._entities));
       }
     }
-    const form = this.placerPanel.isOpen ? this.placerPanel.getForm() : null;
-    this.preview = form ? this.computePreview(form) : null;
-    this.issues = form ? this.computeFieldIssues(form) : [];
   }
 
   // 'instant' の艦のノード時刻ちょうどを Simulator の既知イベントとして返し、simTime が
