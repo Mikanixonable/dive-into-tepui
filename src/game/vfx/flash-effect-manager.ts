@@ -10,13 +10,14 @@ const ZOOM_MUZZLE_FLASH_SCALE = 0.02; // ズーム中のマズルフラッシュ
 
 const MAX_FLASHES = 128; // 同時に存在しうるフラッシュ(発砲・命中・撃破・ガス)の上限。超過分は描画されない
 
+// 生存中のフラッシュ1件を InstancedPool へ積むための姿勢と色の置き場所。
+const scratchTransform = new THREE.Object3D();
+const scratchColor = new THREE.Color();
+
 // 軌道速度で流れないよう、発生源の速度で移流させる。位置は時刻つきの state として
-// 持ち、その時刻から現在の simTime までを毎フレーム移流させる。transform は
-// InstancedPool へ push するための姿勢の置き場所であり、描画資源は持たない。
+// 持ち、その時刻から現在の simTime までを毎フレーム移流させる。
 export interface FlashEffect {
-  transform: THREE.Object3D;
-  baseColor: THREE.Color;
-  color: THREE.Color;
+  baseColor: string | number;
   state: KinematicState;
   age: number;
   duration: number;
@@ -66,14 +67,14 @@ export class FlashEffectManager {
       const size = fx.size0 + (fx.size1 - fx.size0) * Math.sqrt(t);
       const zoomScale = zoomActive && fx.dimsInGunsight ? ZOOM_MUZZLE_FLASH_SCALE : 1;
       const brightness = fx.peakBrightness * (1 - t) * zoomScale;
-      fx.transform.position.copy(fo.RtoThreeV3(fx.state.r));
-      fx.transform.scale.setScalar(size);
-      fx.transform.quaternion.copy(camQuat);
+      scratchTransform.position.copy(fo.RtoThreeV3(fx.state.r));
+      scratchTransform.scale.setScalar(size);
+      scratchTransform.quaternion.copy(camQuat);
       // **明るさは色に載せ、不透明度は 1 のままにする**(render/billboard.ts と同じ規約)。
       // 加算ブレンドでは 最終色 = テクスチャ × material.color × instanceColor なので、
       // 寿命による減衰も instanceColor 一本へ畳める。
-      fx.color.copy(fx.baseColor).multiplyScalar(brightness);
-      this.pool.push(fx.transform, fx.color);
+      scratchColor.set(fx.baseColor).multiplyScalar(brightness);
+      this.pool.push(scratchTransform, scratchColor);
     }
     this.pool.endFrame();
   }
