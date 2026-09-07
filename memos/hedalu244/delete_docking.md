@@ -117,28 +117,6 @@
 
 ## 手順
 
-### 手順 5. 規約点検とコメント点検
-
-**目的.** 削除で焼け残った命名・コメント・責務の歪みを直す。**挙動は変えない。**
-
-- 触った範囲へ `/refactor` を通す(判断基準は `DEVELOP/CODING-RULE.md`)。特に見るところ:
-  - `ObjectWindows` のコンストラクタ引数(削除前は14個、規約 1.4)が減っているか。
-  - `ObjectCommands` に残ったメンバの並びとコメントが実態に合っているか。
-  - `Docking` が握っていた `Hud` / `WorldSfx` / `EffectsSystem` / `MarkerManager` /
-    `CameraSystem` への参照が、`Game` 側で他の誰も要らなくなっていないか。
-- 触った範囲へ `/comment-cleanup` を通す。特に「ドック」「格納」「収容」「発進」を指す
-  コメントが残っていないか。
-- `refactor_modules.md` 論点22(基地パネル状態の三重持ち)が構造ごと消えたことを確認する
-  — 3つの持ち主のうち2つ(`Docking._activeBase` / `BasePanel.currentBase`)がファイルごと、
-  1つ(`ObjectWindows.expandedBaseWindowKey`)がフィールドごと消えている。
-  **`memos/` の書き換えは指示があるまでしない。**
-
-**達成条件と検証.**
-
-- 「達成目標」の 1〜6 をすべて当てる。
-- `npm run typecheck` が通る。`npm run test:game` `npm run test:render` が通る。
-- main へ送るときは `/send-pr`(全層のテスト + `npm run build`)。
-
 ## 見積り
 
 **削除される行数.** 実測(`wc -l`)。
