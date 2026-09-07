@@ -48,7 +48,7 @@ export class EquatorNodeMarker extends OrbitPointMarker {
 
   // 所属軌道・中心天体の名前・通過までの残り時間。
   public propertyRows(
-    _celestialSystem: CelestialBodies, _viewer: OrbitingObject | null, simTime: number,
+    _celestialBodies: CelestialBodies, _viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
     return [
       ...this.ownerRows(),
