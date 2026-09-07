@@ -32,7 +32,7 @@ export function register(): void {
     points.forEach((p, i) => grid.insert(i, p));
 
     for (let i = 0; i < points.length; i++) {
-      const found = new Set(grid.neighbors(points[i]!));
+      const found = new Set(grid.neighborsInto(points[i]!, []));
       for (let j = 0; j < points.length; j++) {
         if (i === j) continue;
         if (len(sub(points[j]!, points[i]!)) <= cellSize) {
@@ -53,12 +53,12 @@ export function register(): void {
     const radiusOnlyGrid = new SpatialGrid<string>(2 * radius);
     radiusOnlyGrid.insert('a', aEnd);
     radiusOnlyGrid.insert('c', cPos);
-    assert.ok(!radiusOnlyGrid.neighbors(aEnd).includes('c'), '半径和だけのセルサイズでは取りこぼすはずの境界');
+    assert.ok(!radiusOnlyGrid.neighborsInto(aEnd, []).includes('c'), '半径和だけのセルサイズでは取りこぼすはずの境界');
 
     const sweptAwareGrid = new SpatialGrid<string>(2 * (radius + move));
     sweptAwareGrid.insert('a', aEnd);
     sweptAwareGrid.insert('c', cPos);
-    assert.ok(sweptAwareGrid.neighbors(aEnd).includes('c'), '半径和+区間移動量の2倍なら取りこぼさない');
+    assert.ok(sweptAwareGrid.neighborsInto(aEnd, []).includes('c'), '半径和+区間移動量の2倍なら取りこぼさない');
   });
 
   test('spatial-grid: 負の座標をまたぐ近傍も取りこぼさない', () => {
@@ -70,7 +70,7 @@ export function register(): void {
     points.forEach((p, i) => grid.insert(i, p));
 
     for (let i = 0; i < points.length; i++) {
-      const found = new Set(grid.neighbors(points[i]!));
+      const found = new Set(grid.neighborsInto(points[i]!, []));
       for (let j = 0; j < points.length; j++) {
         if (i === j) continue;
         if (len(sub(points[j]!, points[i]!)) <= cellSize) {
@@ -92,8 +92,8 @@ export function register(): void {
     grid.insert('shiftY', v3(far.x, far.y + 1e7, far.z));
     grid.insert('shiftZ', v3(far.x, far.y, far.z + 1e7));
 
-    assert.deepEqual(grid.neighbors(far), ['far']);
-    assert.deepEqual(grid.neighbors(v3(0, 0, 0)), ['near']);
+    assert.deepEqual(grid.neighborsInto(far, []), ['far']);
+    assert.deepEqual(grid.neighborsInto(v3(0, 0, 0), []), ['near']);
   });
 
   test('spatial-grid: reset 後に前回の要素は残らない', () => {
@@ -102,13 +102,13 @@ export function register(): void {
     grid.insert('old2', v3(100, -100, 100));
 
     grid.reset(10);
-    assert.deepEqual(grid.neighbors(v3(0, 0, 0)), []);
-    assert.deepEqual(grid.neighbors(v3(100, -100, 100)), []);
+    assert.deepEqual(grid.neighborsInto(v3(0, 0, 0), []), []);
+    assert.deepEqual(grid.neighborsInto(v3(100, -100, 100), []), []);
 
     grid.insert('new', v3(0, 0, 0));
-    assert.deepEqual(grid.neighbors(v3(0, 0, 0)), ['new']);
+    assert.deepEqual(grid.neighborsInto(v3(0, 0, 0), []), ['new']);
     // 挿入し直しても、前回のセルが復活しないこと。
-    assert.deepEqual(grid.neighbors(v3(100, -100, 100)), []);
+    assert.deepEqual(grid.neighborsInto(v3(100, -100, 100), []), []);
   });
 
   test('spatial-grid: 27近傍列挙は同じ要素を二重に返さない', () => {
@@ -119,8 +119,38 @@ export function register(): void {
     points.forEach((p, i) => grid.insert(i, p));
 
     for (let i = 0; i < points.length; i++) {
-      const found = grid.neighbors(points[i]!);
+      const found = grid.neighborsInto(points[i]!, []);
       assert.equal(found.length, new Set(found).size);
+    }
+  });
+
+  test('spatial-grid: pairsInto は距離<=セルサイズの全ペアを各1回ずつ返す', () => {
+    const rand = mulberry32(4);
+    const cellSize = 10;
+    const points = randomPoints(rand, 200, 60);
+    const grid = new SpatialGrid<number>(cellSize);
+    points.forEach((p, i) => grid.insert(i, p));
+
+    // -1 はどの点の添字でもないので、out の既存内容が捨てられたことも同時に見る。
+    const pairs = grid.pairsInto([-1]);
+    assert.equal(pairs.length % 2, 0, 'ペアが2要素ずつ平らに詰まっていない');
+
+    const found = new Set<string>();
+    for (let k = 0; k < pairs.length; k += 2) {
+      const a = pairs[k]!;
+      const b = pairs[k + 1]!;
+      assert.notEqual(a, b, `点 ${a} が自分自身とのペアで返っている`);
+      const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+      assert.ok(!found.has(key), `ペア ${key} を二度返している`);
+      found.add(key);
+    }
+
+    for (let i = 0; i < points.length; i++) {
+      for (let j = i + 1; j < points.length; j++) {
+        if (len(sub(points[j]!, points[i]!)) <= cellSize) {
+          assert.ok(found.has(`${i}-${j}`), `距離<=cellSize のペア ${i}-${j} が列挙されていない`);
+        }
+      }
     }
   });
 }

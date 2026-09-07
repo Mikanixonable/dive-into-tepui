@@ -19,6 +19,7 @@ import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import { CelestialMotion, CelestialMotions } from '../../physics/celestial-motion';
 import type { Stage } from '../stages/stage';
 import { EntityContactPhysics } from './entity-contact-physics';
+import { engagementZones } from './engagement-zone';
 import { SurfaceContactPhysics } from './surface-contact-physics';
 import { SubstepCelestialBodies } from './substep-celestial-bodies';
 import { NextEventTime } from './next-event-time';
@@ -67,8 +68,7 @@ export class Simulator {
 
   // dt 分のシミュレーションを進める。simDt をサブステップへ割り、各サブステップで全個体を
   // 進めてから剛体接触(弾命中含む)を解く。
-  // 物体どうしの接触を解決してよいかは呼び出し側が決めて canResolveEntityContacts で渡す
-  // (天体との接触は倍率に依らず常に解く)。
+  // 交戦圏は canEngage のときだけ組まれ、物体どうしの接触はその内側で解く。
   // nanWatchdog は個体の前進・天体接触・物体どうしの接触の各境界ごとに自機を検査する
   // (checkPlayer は軽量なので substep ごとに呼んでよい)。
   advance(
@@ -76,7 +76,7 @@ export class Simulator {
     simDt: number,
     player: Player | null,
     activeStage: Stage,
-    canResolveEntityContacts: boolean,
+    canEngage: boolean,
     nanWatchdog: NanWatchdog,
   ): void {
     this.lastSubsteps = 0;
@@ -85,6 +85,7 @@ export class Simulator {
     this.lastFollowedSteps = 0;
     this.surfaceContactPhysics.candidateBodies = 0;
     this.entityContactPhysics.candidatePairs = 0;
+    this.entityContactPhysics.participants = 0;
     const targetTime = this.simTime + simDt;
     while (this.simTime < targetTime) {
       const maxStep = simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT);
@@ -143,7 +144,10 @@ export class Simulator {
       this.surfaceContactPhysics.resolveShared(this.sharedIntervalScratch, activeStage);
       this.sections.exit(SECTION.celestialContact);
       nanWatchdog.checkPlayer('simulator.advance(天体接触)', player, this.simTime, dt, subDt);
-      if (canResolveEntityContacts) {
+      // 接触代理を組むのも交戦圏があるときだけ。交戦圏の組まれない倍率で組むと、代理が
+      // substep 幅そのままの粗い刻みで解かれて発散する。
+      const zones = engagementZones(this.entities.all(), canEngage);
+      if (zones.length > 0) {
         this.sections.enter(SECTION.entityContact);
         // 接触代理は DynamicSystem に載らないので、この場で参加者へ合流させ、解決後に戻す。
         this.contactEntitiesScratch.length = 0;
@@ -156,7 +160,7 @@ export class Simulator {
           }
         }
         this.entityContactPhysics.resolveEntityContacts(
-          this.simTime, this.contactEntitiesScratch, activeStage);
+          this.simTime, this.contactEntitiesScratch, zones, activeStage);
         for (const entity of this.entities.all()) {
           if (entity.alive) entity.applyContactProxies(subDt);
         }
@@ -226,7 +230,7 @@ export class Simulator {
   // 負荷確認ウィンドウが読む、直近フレームの積分規模と接触候補の件数。
   perfCounts(): Pick<PerfCounts,
   'simSubsteps' | 'simIntegrated' | 'simFollowed' | 'gravitySources'
-  | 'surfaceCandidates' | 'contactPairs'> {
+  | 'surfaceCandidates' | 'contactPairs' | 'contactParticipants'> {
     return {
       simSubsteps: this.lastSubsteps,
       simIntegrated: this.lastIntegratedSteps,
@@ -234,6 +238,7 @@ export class Simulator {
       gravitySources: this.lastGravitySourceCount,
       surfaceCandidates: this.surfaceContactPhysics.candidateBodies,
       contactPairs: this.entityContactPhysics.candidatePairs,
+      contactParticipants: this.entityContactPhysics.participants,
     };
   }
 }

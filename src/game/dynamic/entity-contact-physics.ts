@@ -1,26 +1,24 @@
-// 物体どうしの剛体接触の列挙・解決。collides を立てた DynamicEntity どうしを参加者とし、反発が
-// 起きた当事者へ collideWithEntity を呼ぶ。ダメージ・音・エフェクトはそれぞれの DynamicEntity
-// 自身の責務。1 substep 内の接触は TOI(接触時刻)昇順で解決する — 参加者は互いの状態を
-// 書き換えるので、天体との接触(surface-contact-physics.ts)と違って作業列と解決回数の
-// 上限が要る。
+// 物体どうしの剛体接触の列挙・解決。交戦圏ごとに、その内側で collides を立てた DynamicEntity
+// どうしを参加者とし、反発が起きた当事者へ collideWithEntity を呼ぶ。ダメージ・音・エフェクトは
+// それぞれの DynamicEntity 自身の責務。1 substep 内の接触は TOI(接触時刻)昇順で解決する —
+// 参加者は互いの状態を書き換えるので、天体との接触(surface-contact-physics.ts)と違って作業列と
+// 解決回数の上限が要る。
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, scale, sameVec } from '../../math/vec3';
-import { SpatialGrid } from '../../math/spatial-grid';
+import { HierarchicalSpatialGrid } from '../../math/hierarchical-spatial-grid';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import type { EngagementZone } from './engagement-zone';
 import type { CollisionResponse } from '../../physics/collision-response';
 import { contactTime, isFiniteParticipant } from './contact-participant';
 import { entityContactResponse } from './entity-contact-response';
 import type { Stage } from '../stages/stage';
 
-// 1 substep あたりに解決する接触の上限。TOI(接触時刻)昇順で解決し、これを超えた分は
-// 次の substep へ持ち越す(次回呼び出し時に空間グリッドから改めて列挙し直されるので、
-// 明示的な繰越処理は不要)。
+// 1 substep のあいだに1つの交戦圏で解決する接触の上限。TOI(接触時刻)昇順で解決し、これを
+// 超えた分は次の substep でグリッドから列挙し直されて改めて候補になる。
 const CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP = 8;
 
-// 27近傍グリッドのセル一辺の下限 [m]。全参加者の半径も相対変位も 0 という退化ケースで
-// 一辺が 0 になるのを避けるためだけの値で、そのとき接触しうる距離自体が 0 なのでどんな正数でも
-// 判定は正しい。セルを細かく取っても空セルは持たない構造なので、最小の実用値として 1m を取る。
-const CONTACT_GRID_CELL_SIZE_FLOOR = 1;
+// 接触の候補を引く階層グリッドの、最も細かい段の一辺 [m]。
+const CONTACT_GRID_MIN_CELL_SIZE = 1;
 
 // 1 substep 分の接触候補1件。当事者は参加者列の添字 ai / bi で指す。response が null なのは
 // 現在の状態では接触しないという意味で、当事者の状態が変われば非 null になりうる。
@@ -48,27 +46,13 @@ function replaceIfMoved(
   if (!changed.includes(i)) changed.push(i);
 }
 
-// 27近傍グリッドのセル一辺。接触の成否を決めるのは参加者どうしの相対変位なので、参加者集合に
-// 共通する変位(平均 Δ̄)を差し引いた量で測る。ペア (a,b) が区間内で接触するなら、区間終端の
-// 距離は 半径和 + |Δa−Δ̄| + |Δb−Δ̄| 以下 — つまり各参加者の到達量 半径+|Δ−Δ̄| の最大値の2倍を
-// 一辺に取れば、27近傍の外のペアはどちらの判定式でも接触しえない。
-function contactCellSize(all: readonly DynamicEntity[], working: readonly KinematicState[]): number {
-  const n = all.length;
-  let mx = 0, my = 0, mz = 0;
-  for (let i = 0; i < n; i++) {
-    const w = working[i]!.r, p = all[i]!.prevState.r;
-    mx += w.x - p.x; my += w.y - p.y; mz += w.z - p.z;
-  }
-  mx /= n; my /= n; mz /= n;
-
-  let maxReach = 0;
-  for (let i = 0; i < n; i++) {
-    const w = working[i]!.r, p = all[i]!.prevState.r;
-    const dx = w.x - p.x - mx, dy = w.y - p.y - my, dz = w.z - p.z - mz;
-    const reach = all[i]!.radius + Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (reach > maxReach) maxReach = reach;
-  }
-  return 2 * maxReach || CONTACT_GRID_CELL_SIZE_FLOOR;
+// 参加者 1 体の到達量 [m]。半径に、区間 prevState→working の変位から基準変位 reference を引いた
+// 大きさを足したもの。ペア (a,b) が区間内で接触するなら、区間終端の中心距離は両者の到達量の和
+// 以下になる。
+function contactReach(entity: DynamicEntity, working: KinematicState, reference: Vec3): number {
+  const w = working.r, p = entity.prevState.r;
+  const dx = w.x - p.x - reference.x, dy = w.y - p.y - reference.y, dz = w.z - p.z - reference.z;
+  return entity.radius + Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
 export class EntityContactPhysics {
@@ -77,26 +61,35 @@ export class EntityContactPhysics {
   private readonly participantScratch: DynamicEntity[] = [];
   private readonly workingScratch: KinematicState[] = [];
   private readonly changedScratch: number[] = [];
-  private readonly neighborScratch: number[] = [];
-  private readonly gridScratch = new SpatialGrid<number>(1);
+  private readonly pairScratch: number[] = [];
+  private readonly gridScratch = new HierarchicalSpatialGrid<number>(CONTACT_GRID_MIN_CELL_SIZE);
   private readonly candidateScratch: Candidate[] = [];
   // 負荷確認ウィンドウが読む、列挙した延べ候補ペア数。フレーム頭で Simulator が 0 へ戻す。
   public candidatePairs = 0;
+  // 負荷確認ウィンドウが読む、交戦圏ごとの参加者数の延べ数。フレーム頭で Simulator が 0 へ戻す。
+  public participants = 0;
 
-  // 1 substep ぶんの物体どうしの接触解決。ワープ倍率によるゲートは呼び出し側の判断で、
-  // ここには倍率を見る条件を持たない。
-  resolveEntityContacts(
-    simTime: number, entities: readonly DynamicEntity[], activeStage: Stage,
+  // 交戦圏ごとに、その内側にいる参加者どうしの 1 substep ぶんの接触を解く。交戦圏どうしは
+  // 独立した系なので、解決回数の上限も交戦圏ごとに掛かる。
+  public resolveEntityContacts(
+    simTime: number, entities: readonly DynamicEntity[],
+    zones: readonly EngagementZone<DynamicEntity>[], activeStage: Stage,
   ): void {
-    this.collectParticipants(entities, this.participantScratch);
-    this.resolveInOrder(this.participantScratch, simTime, activeStage);
+    for (const zone of zones) {
+      this.collectParticipants(entities, zone, this.participantScratch);
+      this.participants += this.participantScratch.length;
+      this.resolveInOrder(this.participantScratch, simTime, zone.referenceDisplacement, activeStage);
+    }
   }
 
-  // 接触を解ける個体だけを out へ詰め直す。out の元の中身は捨てる。
-  private collectParticipants(source: readonly DynamicEntity[], out: DynamicEntity[]): void {
+  // 交戦圏の内側にいて接触を解ける個体だけを out へ詰め直す。out の元の中身は捨てる。
+  private collectParticipants(
+    source: readonly DynamicEntity[], zone: EngagementZone<DynamicEntity>, out: DynamicEntity[],
+  ): void {
     out.length = 0;
     for (const entity of source) {
-      if (entity.alive && entity.collides && isFiniteParticipant(entity)) out.push(entity);
+      if (!entity.alive || !entity.collides || !isFiniteParticipant(entity)) continue;
+      if (zone.contains(entity.state.r)) out.push(entity);
     }
   }
 
@@ -107,21 +100,18 @@ export class EntityContactPhysics {
   private resolveInOrder(
     all: readonly DynamicEntity[],
     simTime: number,
+    reference: Vec3,
     activeStage: Stage,
   ): void {
-    const n = all.length;
-    if (n === 0) return;
+    if (all.length === 0) return;
     const working = this.workingScratch;
     working.length = 0;
     for (const e of all) working.push(e.state);
     const changed = this.changedScratch;
     changed.length = 0;
 
-    const grid = this.gridScratch;
-    grid.reset(contactCellSize(all, working));
-    for (let k = 0; k < n; k++) grid.insert(k, working[k]!.r);
-
-    const count = this.collectCandidates(all, simTime, working, grid);
+    this.insertParticipants(all, working, reference);
+    const count = this.collectCandidates(all, simTime, working);
     this.candidatePairs += count;
     // 直前の解決で状態が変わった当事者。これを含まない候補の response は引き直しても同じ値に
     // なるので、含む候補だけを引き直す。-1 は「まだ無い」。
@@ -141,26 +131,33 @@ export class EntityContactPhysics {
     this.candidateScratch.length = count;
   }
 
-  // grid の27近傍からペアを集め、contactsWith を通ったものだけを候補列へ詰め直して件数を返す。
-  // 接触しない組み合わせも response=null の候補として残す — 当事者の状態が変われば接触しうるため。
+  // 参加者を到達量つきでグリッドへ登録し直す。接触の成否を決めるのは参加者どうしの相対変位なので、
+  // 到達量は交戦圏の基準変位 reference を差し引いた量で測る。
+  private insertParticipants(
+    all: readonly DynamicEntity[], working: readonly KinematicState[], reference: Vec3,
+  ): void {
+    this.gridScratch.reset();
+    for (let i = 0; i < all.length; i++) {
+      this.gridScratch.insert(i, working[i]!.r, contactReach(all[i]!, working[i]!, reference));
+    }
+  }
+
+  // グリッドが返すペアのうち、contactsWith を両向きに通ったものだけを候補列へ詰め直して件数を
+  // 返す。接触しない組み合わせも response=null の候補として残す — 当事者の状態が変われば
+  // 接触しうるため。
   private collectCandidates(
     all: readonly DynamicEntity[],
     simTime: number,
     working: readonly KinematicState[],
-    grid: SpatialGrid<number>,
   ): number {
+    const pairs = this.gridScratch.pairsInto(this.pairScratch);
     let count = 0;
-    const n = all.length;
-    for (let i = 0; i < n; i++) {
-      const a = all[i]!;
-      for (const j of grid.neighborsInto(working[i]!.r, this.neighborScratch)) {
-        // j<=i は、(j,i) 側の反復で同じペアを二重に検討しないためのガード(自分自身も除く)。
-        if (j <= i) continue;
-        const b = all[j]!;
-        if (!a.contactsWith(b, simTime) || !b.contactsWith(a, simTime)) continue;
-        this.pushCandidate(
-          count++, i, j, entityContactResponse(a, working[i]!, b, working[j]!));
-      }
+    for (let k = 0; k < pairs.length; k += 2) {
+      // グリッドの返す順は不定で、a と b の役は対称でないので、a 側を参加者の並びで固定する。
+      const ai = Math.min(pairs[k]!, pairs[k + 1]!), bi = Math.max(pairs[k]!, pairs[k + 1]!);
+      const a = all[ai]!, b = all[bi]!;
+      if (!a.contactsWith(b, simTime) || !b.contactsWith(a, simTime)) continue;
+      this.pushCandidate(count++, ai, bi, entityContactResponse(a, working[ai]!, b, working[bi]!));
     }
 
     return count;

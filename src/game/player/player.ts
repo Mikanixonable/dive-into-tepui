@@ -164,6 +164,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     this.playerScene = _scene;
     this.mass = PLAYER_MASS;
     this.collides = true;
+    this.engagementAnchor = true;
     this.doPreciseReentry = true;
 
     const saved = 'saved' in init ? init.saved : undefined;
