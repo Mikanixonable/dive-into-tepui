@@ -111,8 +111,13 @@ export class MapView implements ViewFrame {
   }
 
   // 天体ラベルの間引きと表示。この後のマーカー同期が近接判定に読む。
-  public syncLabels(): void {
-    this.celestialMarkers.syncLabels(this.cameraSystem.activeCameraProjection, this.cameraSystem.activeCameraPos);
+  public syncLabels(displayWindow: DisplayWindow): void {
+    const visibilityPolicy = this.visibilityPolicy;
+    if (visibilityPolicy === null) { this.celestialMarkers.hideLabels(); return; }
+    this.celestialMarkers.syncLabels(
+      this.cameraSystem.activeCameraProjection, this.cameraSystem.activeCameraPos,
+      displayWindow.displayTime, visibilityPolicy,
+    );
   }
 
   // マップ専用の編集 UI と常設パネル(未来表示・座標系・軌道物体一覧)・天体ラベルのサブ行・

@@ -30,7 +30,7 @@ export interface ViewFrame {
   // update フェーズ: カメラ更新の後。選択候補と可視性ポリシーの確定。
   update(displayWindow: DisplayWindow): void;
   // sync フェーズ前半: 天体ラベル。マーカー同期が近接判定に読むため、その前に呼ばれる。
-  syncLabels(): void;
+  syncLabels(displayWindow: DisplayWindow): void;
   // sync フェーズ後半: ビュー専用の常設パネル・表示物。軌道線の同期より後に呼ばれる。
   syncPanels(displayWindow: DisplayWindow, fo: FloatingOrigin): void;
   // このビューが保持する表示物・DOM を片付ける。
