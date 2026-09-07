@@ -1,5 +1,8 @@
-// 天体1体の静的な記述を組み立てる部品: 自転極モデル・2次重力場・形状・環系。
-import { JULIAN_CENTURY } from './kepler-orbit';
+// 天体1体の静的な記述。恒星・惑星・衛星それぞれの宣言と、その部品(自転極モデル・
+// 2次重力場・形状・環系)、および宣言を simTime 基準へ畳む変換。
+import { JULIAN_CENTURY, KeplerOrbit, keplerOrbitForSimZero } from './kepler-orbit';
+import { SatelliteOrbit, satelliteOrbitForSimZero } from './satellite-orbit';
+import type { AtmosphereDef } from './atmosphere';
 import { SECONDS_PER_DAY } from './time';
 import { Vec3, v3 } from '../math/vec3';
 
@@ -122,4 +125,70 @@ export function shapeSpheroidRadii(
 ): { readonly equatorRadius: number; readonly polarRadius: number } {
   const axes = shapeAxes(radius, shape);
   return { equatorRadius: Math.min(axes.x, axes.z), polarRadius: axes.y };
+}
+
+// 天体ごとの平均黄経の初期位相 [rad]。未指定の天体は 0 として扱う。
+export type PhaseOffsets = Partial<Record<string, number>>;
+
+export interface StarDef {
+  readonly id: string;
+  readonly mu: number;
+  readonly radius: number;
+}
+export interface PlanetDef {
+  readonly id: string;
+  readonly mu: number;
+  readonly radius: number;
+  readonly orbit: KeplerOrbit; // 中心は必ず恒星で、乗っているのは惑星本体ではなく惑星-衛星系の重心
+  readonly pole?: PoleModel; // 省略時は自転軸を持たない
+  readonly degree2?: Degree2GravityDef; // 省略時は質点として扱う
+  readonly shape?: ShapeDef; // 省略時は radius による真球
+  readonly atmosphere?: AtmosphereDef; // 省略時は大気を持たない(抗力・焼失ともに起きない)
+  readonly rings?: RingSystemDef; // 省略時は環を持たない
+  // ラグランジュ点をフォーカス対象のラベルとして出すかどうか(省略時 = 出さない)。全公転天体で
+  // 出すと 5 点 × 天体数のラベルが画面を埋めるので、実際に軌道設計の目標になる系だけを立てる。
+  readonly lagrangeLabels?: boolean;
+}
+// 中心は必ず惑星で、その関係は SatelliteMotion が持つ参照が表す。
+export type SatelliteDef = Omit<PlanetDef, 'orbit'> & { readonly orbit: SatelliteOrbit };
+export type CelestialBodyDef = StarDef | PlanetDef | SatelliteDef;
+
+// 天体の形(歪み)。恒星は形を持たず、`radius` による真球として扱う。
+export function shapeOf(def: CelestialBodyDef): ShapeDef | undefined {
+  return 'shape' in def ? def.shape : undefined;
+}
+
+// pole 定義から自転角速度 [rad/s] を取り出す。自転モデルを持たない天体は null。符号は自転の
+// 向きを表し、逆行自転する天体では負になる。同期回転の衛星は本初子午線が公転の平均黄経を追うので、
+// 自転角速度は公転の平均運動と一致する。歳差は自転の 10⁻⁷ 倍未満なので織り込まない。
+export function spinRateOf(def: CelestialBodyDef): number | null {
+  if (!('pole' in def)) return null;
+  const pole = def.pole;
+  if (pole === undefined) return null;
+  if (pole.kind === 'eciPole') return pole.spinRate;
+  if (pole.kind === 'iau') return (pole.wRateDegPerDay * Math.PI) / 180 / 86400;
+  // カッシーニ状態の同期回転は衛星だけが持つ。
+  return 'kepler' in def.orbit ? def.orbit.kepler.lRate : null;
+}
+
+// 天体の宣言を、平均黄経の初期位相と元期オフセットを畳み込んだ宣言へ写す。これを通した宣言
+// だけが CelestialMotion へ渡ってよい — 軌道も自転モデルも simTime そのものを引数に取る形に
+// なり、評価のたびに巨大な定数を足し直さずに済む。
+export function planetDefForSimZero(def: PlanetDef, phases: PhaseOffsets, simZeroEt: number): PlanetDef {
+  return {
+    ...def,
+    orbit: keplerOrbitForSimZero(def.orbit, phases[def.id] ?? 0, simZeroEt),
+    pole: poleModelForSimZero(def.pole, simZeroEt),
+  };
+}
+
+// 衛星の宣言を、同じ規約で simTime 基準の宣言へ写す。
+export function satelliteDefForSimZero(
+  def: SatelliteDef, phases: PhaseOffsets, simZeroEt: number,
+): SatelliteDef {
+  return {
+    ...def,
+    orbit: satelliteOrbitForSimZero(def.orbit, phases[def.id] ?? 0, simZeroEt),
+    pole: poleModelForSimZero(def.pole, simZeroEt),
+  };
 }

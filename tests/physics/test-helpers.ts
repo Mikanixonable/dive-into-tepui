@@ -7,10 +7,9 @@ import { KinematicState } from '../../src/physics/kinematic-state';
 import {
   LagrangePoints, SecondaryFrame, lagrangePointsOf, secondaryFrameOf,
 } from '../../src/physics/lagrange';
-import {
-  BodyOrientation, CelestialBodyDef, CelestialKind, CelestialMotion, OrbitingMotion, PhaseOffsets,
-  StarDef,
-} from '../../src/physics/celestial-motion';
+import { CelestialMotion, OrbitingMotion } from '../../src/physics/celestial-motion';
+import { CelestialBodyDef, PhaseOffsets, StarDef } from '../../src/physics/celestial-body-def';
+import { BodyOrientation, CelestialKind } from '../../src/physics/celestial-body';
 import { EciTransform } from '../../src/physics/eci-transform';
 import type { Atmosphere } from '../../src/physics/atmosphere';
 import type { Degree2Gravity } from '../../src/physics/celestial-body-def';

@@ -1,6 +1,7 @@
 import { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 import { ObjectPickerGroup } from '../hud/windows/object-picker';
-import { OrbitingMotion, type CelestialBodyDef } from '../../physics/celestial-motion';
+import { OrbitingMotion } from '../../physics/celestial-motion';
+import { type CelestialBodyDef } from '../../physics/celestial-body-def';
 import { EARTH } from '../celestial/solar-system/earth-system';
 import { J2_EARTH, MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
 import type { CelestialSystem } from '../celestial/celestial-system';
