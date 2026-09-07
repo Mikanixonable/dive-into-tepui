@@ -223,14 +223,10 @@ export class RadiatorSystem {
     return result;
   }
 
-  // side の蛇腹の先端付近の world 座標を shipR 基準の Vec3 で返す。sync() 後の状態を前提にする。
-  tipWorldPosition(side: RadiatorSide, shipR: Vec3, _att: Attitude): Vec3 {
-    const fold = this.folds[side][this.folds[side].length - 1];
-    if (!fold) return shipR;
-    fold.updateWorldMatrix(true, false);
-    const worldPos = new THREE.Vector3();
-    fold.getWorldPosition(worldPos);
-    return v3(shipR.x + worldPos.x, shipR.y + worldPos.y, shipR.z + worldPos.z);
+  // side の蛇腹の一番先の折りの world 座標。
+  tipWorldPosition(side: RadiatorSide, shipR: Vec3, att: Attitude): Vec3 {
+    const { even, odd } = this.foldThetas(side);
+    return add(shipR, qRotate(att.q, foldLocalPosition(side, RADIATOR_FOLD_COUNT - 1, even, odd)));
   }
 
   // HUD 表示用。
