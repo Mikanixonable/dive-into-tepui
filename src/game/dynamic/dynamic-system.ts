@@ -7,6 +7,7 @@ import type { FrameAnchorSource } from '../../physics/frame';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { CapKind } from './dynamic-entity/entity-kind';
+import { isControllable, type Controllable } from './dynamic-entity/controllable';
 import { AmmoPickup } from './dynamic-entity/ammo-pickup';
 import { RcsFuelPickup } from './dynamic-entity/rcs-fuel-pickup';
 import { DebrisPiece } from './dynamic-entity/debris-piece';
@@ -60,6 +61,8 @@ export class DynamicSystem {
   public get ammoPickups(): readonly AmmoPickup[] { return this.entities.filter((e): e is AmmoPickup => e instanceof AmmoPickup); }
   public get rcsFuelPickups(): readonly RcsFuelPickup[] { return this.entities.filter((e): e is RcsFuelPickup => e instanceof RcsFuelPickup); }
   public get detachedBoosters(): readonly DetachedBooster[] { return this.entities.filter((e): e is DetachedBooster => e instanceof DetachedBooster); }
+  // 操作されうる個体。どれが操作対象かは持たない — それは呼び出し側が渡す。
+  public get controllables(): readonly Controllable[] { return this.entities.filter(isControllable); }
 
   // 弾本体・弾ハロー・プラズマ弾・薬莢は geometry/material を全個体で共有するので、
   // 種別ごとに InstancedMesh 1本のプールで描く。
@@ -139,7 +142,7 @@ export class DynamicSystem {
   }
 
   private readonly cachedCombatTargets: CombatTarget[] = [];
-  private readonly cachedCombatTargetsByExcludedPlayer = new Map<Player, CombatTarget[]>();
+  private readonly cachedCombatTargetsByExcluded = new Map<Controllable, CombatTarget[]>();
 
   // エンティティを登録する。上限を持つ枠の超過分は、次の cleanup で古いものから落ちる。
   public add(entity: DynamicEntity): void {
@@ -197,18 +200,15 @@ export class DynamicSystem {
   }
 
   // ターゲットとなり得るエンティティ(敵・自機・基地)の一覧。返る配列は読み取り専用として扱う。
-  getCombatTargets(excludePlayer: Player | null): CombatTarget[] {
+  getCombatTargets(exclude: Controllable | null): CombatTarget[] {
     this.rebuildCombatTargetsIfNeeded();
-    if (excludePlayer === null) return this.cachedCombatTargets;
+    if (exclude === null) return this.cachedCombatTargets;
 
     // 除外指定つきの一覧は、除く相手ごとに組んで憶える。
-    let targets = this.cachedCombatTargetsByExcludedPlayer.get(excludePlayer);
+    let targets = this.cachedCombatTargetsByExcluded.get(exclude);
     if (targets) return targets;
-    targets = [];
-    for (const enemy of this.enemies) targets.push(enemy);
-    for (const player of this.players) if (player !== excludePlayer) targets.push(player);
-    for (const base of this.bases) targets.push(base);
-    this.cachedCombatTargetsByExcludedPlayer.set(excludePlayer, targets);
+    targets = this.cachedCombatTargets.filter((t) => t !== exclude);
+    this.cachedCombatTargetsByExcluded.set(exclude, targets);
     return targets;
   }
 
@@ -217,7 +217,7 @@ export class DynamicSystem {
     if (this.combatTargetsRevision === this._collectionRevision) return;
     this.cachedCombatTargets.length = 0;
     this.cachedCombatTargets.push(...this.enemies, ...this.players, ...this.bases);
-    this.cachedCombatTargetsByExcludedPlayer.clear();
+    this.cachedCombatTargetsByExcluded.clear();
     this.combatTargetsRevision = this._collectionRevision;
   }
 
@@ -309,16 +309,21 @@ export class DynamicSystem {
     for (const e of this.all()) e.requestHistoryDuration(sec);
   }
 
-  // 毎フレーム、全ての自機へ updateControls を1度ずつ通す。
-  updatePlayers(
-    activePlayer: Player | null, input: Input | null, operable: boolean,
+  // 分離済みブースターの燃焼を1フレーム進める。点火状態は操作対象でなくても進み続ける。
+  updateDetachedBoosterBurns(simDt: number): void {
+    for (const booster of this.detachedBoosters) if (booster.alive) booster.updateBurn(simDt);
+  }
+
+  // 毎フレーム、操作されうる全個体へ updateControls を1度ずつ通す。「操作対象でない」と
+  // 「操作できないワープ倍率」は同じ状態なので、input を渡すかどうかで一つに束ねる。
+  updateControllables(
+    active: Controllable | null, input: Input, operable: boolean,
     dt: number, simDt: number, activeStage: Stage, celestialSystem: CelestialSystem,
   ): void {
-    for (const booster of this.detachedBoosters) if (booster.alive) booster.updateBurn(simDt);
-    // 「操作対象でない」と「操作できないワープ倍率」は同じ状態なので、input を渡すかで一つに束ねる。
-    for (const ship of this.players) {
-      ship.updateControls(
-        ship === activePlayer && operable ? input : null,
+    for (const controllable of this.controllables) {
+      if (!controllable.alive) continue;
+      controllable.updateControls(
+        controllable === active && operable ? input : null,
         dt,
         simDt,
         this,
@@ -328,57 +333,40 @@ export class DynamicSystem {
     }
   }
 
-  // 毎フレーム、全ての基地へ updateControls を1度ずつ通す。input が渡るのは操作対象の基地。
-  updateBases(
-    controlledBase: Base | null, input: Input, operable: boolean, dt: number, simDt: number,
-    activeStage: Stage, celestialSystem: CelestialSystem,
-  ): void {
-    for (const base of this.bases) {
-      if (!base.alive) continue;
-      base.updateControls(
-        base === controlledBase && operable ? input : null,
-        dt,
-        simDt,
-        this,
-        activeStage,
-        celestialSystem,
-      );
-    }
-  }
-
-  // 操作できない間、全自機・操作中基地の連続指令(推力・トルク・射撃・噴射ラッチ)を畳む。
+  // 操作できない間、連続指令(推力・トルク・射撃・噴射ラッチ)を畳む。
   clearTransientCommands(): void {
-    for (const ship of this.players) ship.clearTransientCommands();
-    for (const base of this.bases) base.clearTransientCommands();
+    for (const controllable of this.controllables) controllable.clearTransientCommands();
   }
 
   // このフレームの表示物を同期する。可視性の上書きはメッシュを触る同期が可視にしたものを
   // 伏せ直すので、それらより後に通す。
   sync(
-    activePlayer: Player | null, controlledBase: Base | null, fo: FloatingOrigin,
+    active: Controllable | null, fo: FloatingOrigin,
     cameraSystem: CameraSystem, displayTime: number, style: RenderStyle,
     visibilityPolicy: MapVisibilityPolicy | null, orbitRef: OrbitReference | undefined,
     frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting, proteinVibrationEnabled: boolean,
   ): void {
-    this.syncPlayers(activePlayer, fo, cameraSystem, displayTime, style, visibilityPolicy, orbitRef);
+    this.syncControllables(active, fo, cameraSystem, displayTime, style, visibilityPolicy, orbitRef);
     this.syncDetachedBoosters(fo, cameraSystem, displayTime, style, visibilityPolicy);
-    this.syncBases(controlledBase, fo, cameraSystem, displayTime, style, visibilityPolicy);
     this.syncOtherEntities(fo, displayTime, cameraSystem.activeViewpoint, proteinVibrationEnabled);
-    this.applyVisibility(visibilityPolicy, activePlayer);
+    this.applyVisibility(visibilityPolicy, active);
     this.effects.sync(fo, cameraSystem.activeCamera, cameraSystem.zoomActive);
     this.syncEquatorNodes(cameraSystem, frameAnchors, timeLabel);
   }
 
-  // 全自機のメッシュ・エフェクト・マーカーを、どれが操作対象かを添えて同期する(方向マーカーと
-  // 照準ズームは操作艦のもの)。
-  private syncPlayers(
-    activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
-    displayTime: number, style: RenderStyle, visibilityPolicy: MapVisibilityPolicy | null, orbitRef?: OrbitReference,
+  // 操作されうる全個体のメッシュ・エフェクト・マーカーを、どれが操作対象かを添えて同期する
+  // (方向マーカー・照準ズーム・RCS 音は操作対象のもの)。
+  private syncControllables(
+    active: Controllable | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
+    displayTime: number, style: RenderStyle, visibilityPolicy: MapVisibilityPolicy | null,
+    orbitRef?: OrbitReference,
   ): void {
-    for (const ship of this.players) {
-      ship.syncControllable(
-        fo, cameraSystem, displayTime, ship === activePlayer, style,
-        visibilityPolicy?.entity('player', ship === activePlayer) ?? null, orbitRef,
+    for (const controllable of this.controllables) {
+      if (!controllable.alive) continue;
+      const isActive = controllable === active;
+      controllable.syncControllable(
+        fo, cameraSystem, displayTime, isActive, style,
+        visibilityPolicy?.entity(controllable.mapKind, isActive) ?? null, orbitRef,
       );
     }
   }
@@ -394,36 +382,19 @@ export class DynamicSystem {
     }
   }
 
-  // 全基地のメッシュ・エフェクト(推力プルーム・RCS音・パフ)を同期する。
-  private syncBases(
-    controlledBase: Base | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
-    displayTime: number, style: RenderStyle, visibilityPolicy: MapVisibilityPolicy | null,
-  ): void {
-    for (const base of this.bases) {
-      if (!base.alive) continue;
-      base.syncControllable(
-        fo, cameraSystem, displayTime, base === controlledBase, style,
-        visibilityPolicy?.entity('base') ?? null,
-      );
-    }
-  }
-
-  // 天体クラス別トグルに応じて自機・敵・弾薬・基地のメッシュ表示を揃える。
-  private applyVisibility(visibilityPolicy: MapVisibilityPolicy | null, activePlayer: Player | null): void {
+  // 種別ごとの表示トグルに応じてメッシュ表示を揃える。トグルを持たない種別(mapKind が null)は
+  // 対象外。
+  private applyVisibility(visibilityPolicy: MapVisibilityPolicy | null, active: Controllable | null): void {
     if (!visibilityPolicy) return;
-    for (const ship of this.players) if (!visibilityPolicy.entity('player', ship === activePlayer).category) ship.renderObject.visible = false;
-    for (const enemy of this.enemies) if (!visibilityPolicy.entity('enemy').category) enemy.renderObject.visible = false;
-    for (const ammoPickup of this.ammoPickups) {
-      if (!visibilityPolicy.entity('ammo').category) ammoPickup.renderObject.visible = false;
-    }
-    for (const pickup of this.rcsFuelPickups) {
-      if (!visibilityPolicy.entity('fuel').category) pickup.renderObject.visible = false;
+    for (const entity of this.entities) {
+      const kind = entity.mapKind;
+      if (kind === null) continue;
+      if (!visibilityPolicy.entity(kind, entity === active).category) entity.renderObject.visible = false;
     }
     // TODO: 分離ブースターは自機由来なのに敵トグルへ従っている。妥当なトグルを決めて直す。
     for (const booster of this.detachedBoosters) {
       if (!visibilityPolicy.entity('enemy').category) booster.renderObject.visible = false;
     }
-    for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
   }
 
   // 全個体の赤道交点を、このフレームは求まっていない状態へ戻す。交点を解く各所より先に
@@ -452,7 +423,7 @@ export class DynamicSystem {
     }
   }
 
-  // 自機・分離ブースター以外のメッシュを displayTime 時点の状態へ同期し、プールで描く種別は
+  // 操作対象候補・分離ブースター以外のメッシュを displayTime 時点の状態へ同期し、プールで描く種別は
   // 対応する InstancedPool へ積む。
   private syncOtherEntities(
     fo: FloatingOrigin, displayTime: number, viewer: Viewpoint, proteinVibrationEnabled: boolean,
@@ -463,9 +434,9 @@ export class DynamicSystem {
     this.casingPool.beginFrame();
     for (const pool of this.debrisFragmentPools) pool.beginFrame();
 
-    // 自機と分離ブースターは専用の同期パス(syncPlayers / syncDetachedBoosters)を持つ。
+    // 操作対象候補と分離ブースターは専用の同期パス(syncControllables / syncDetachedBoosters)を持つ。
     for (const e of this.entities) {
-      if (e instanceof Player || e instanceof DetachedBooster) continue;
+      if (isControllable(e) || e instanceof DetachedBooster) continue;
       e.sync(fo, displayTime, viewer, proteinVibrationEnabled);
       if (e instanceof Bullet) this.pushBullet(e);
       else if (e instanceof DebrisPiece) this.pushDebrisPiece(e);

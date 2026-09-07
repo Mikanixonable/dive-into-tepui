@@ -460,12 +460,10 @@ export class Game {
     const canEngage = this.simSpeedManager.canEngage;
     this.sections.enter(SECTION.player);
     this.nanWatchdog.checkPlayer('frameStart', this.player, this.simulator.simTime, dt, this.simulator.lastSimDt);
-    const playerInput = this.controlledBase !== null ? null : this.input;
-    this.dynamicSystem.updatePlayers(
-      this.player, playerInput, canShipAct, dt, simDt, this.activeStage, this._celestialSystem,
-    );
-    this.dynamicSystem.updateBases(
-      this.controlledBase, this.input, canShipAct, dt, simDt, this.activeStage, this._celestialSystem,
+    this.dynamicSystem.updateDetachedBoosterBurns(simDt);
+    this.dynamicSystem.updateControllables(
+      this.controlledBase ?? this.player, this.input, canShipAct, dt, simDt,
+      this.activeStage, this._celestialSystem,
     );
     this.nanWatchdog.checkPlayer(
       'player.updateControls',
@@ -569,7 +567,7 @@ export class Game {
     // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。
     const timeLabel = timeLabelSettingOf(displayWindow);
     this.dynamicSystem.sync(
-      player, this.controlledBase, fo, this.cameraSystem, displayTime, style, visibilityPolicy,
+      this.controlledBase ?? player, fo, this.cameraSystem, displayTime, style, visibilityPolicy,
       orbitRef, this.frameAnchors, timeLabel, graphics.proteinVibration,
     );
 

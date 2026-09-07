@@ -16,11 +16,14 @@ import type { MapVisibility } from '../../map/visibility-policy';
 import type { OrbitReference } from '../../orbit-reference';
 import type { Stage } from '../../stages/stage';
 import type { DynamicSystem } from '../dynamic-system';
+import type { DynamicEntityKind } from './entity-kind';
 import type { DynamicEntity } from './dynamic-entity';
 
 // 操作対象(自艦・基地)が答えるもの。DynamicEntity を継承しているので、世界に実体を持つ
 // ものだけが実装できる。搭載していない装備は null で答える。
 export interface Controllable extends DynamicEntity {
+  // 操作対象は必ずマップの表示トグルを持つ種別に属する。
+  readonly mapKind: DynamicEntityKind;
   readonly totalThrust: number;
   readonly totalTorque: number;
   readonly totalFuelConsumptionRate: number;
@@ -58,4 +61,9 @@ export interface Controllable extends DynamicEntity {
     fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number, isActive: boolean,
     style: RenderStyle, visibility: MapVisibility | null, orbitRef?: OrbitReference,
   ): void;
+}
+
+// この個体が操作対象になりうるか。顔ぶれから操作対象だけを絞るときに使う。
+export function isControllable(entity: DynamicEntity): entity is Controllable {
+  return entity.controllable;
 }
