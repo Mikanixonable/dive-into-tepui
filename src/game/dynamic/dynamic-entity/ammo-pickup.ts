@@ -62,7 +62,7 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
       }
       : { state: init.state, att: init.att, id: init.id };
     super(state, buildAmmoPickup(), scene, att, idAllocator.next(id));
-    this.name = '弾薬';
+    this.setName('弾薬');
     this.mass = 0; // 試験粒子。回収しに近づいた艦を押さない
     this.radius = AMMO_PHYS_RADIUS;
     this.collides = true;

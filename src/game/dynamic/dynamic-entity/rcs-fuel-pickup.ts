@@ -33,7 +33,7 @@ export const RCS_FUEL_PICKUP_AMOUNT = 1000; // 1 個の取り込みで増える 
 const idAllocator = new EntityIdAllocator('rcs-fuel-');
 
 type RcsFuelPickupInit =
-  | { readonly state: KinematicState; readonly att?: Attitude; readonly id?: string }
+  | { readonly state: KinematicState; readonly att?: Attitude; readonly id?: string; readonly name?: string }
   | { readonly saved: RcsFuelPickupSaveData; readonly simTime: number };
 
 // 軌道上の RCS 燃料補給。接近すると燃料を艦のタンクへ移す。
@@ -51,15 +51,16 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
   protected readonly predictedForGhost = true;
 
   public constructor(init: RcsFuelPickupInit, scene: THREE.Scene) {
-    const { state, att, id } = 'saved' in init
+    const { state, att, id, name } = 'saved' in init
       ? {
         state: kinematicState<'eci'>(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
         att: { q: { ...init.saved.q }, w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z), inertia: v3(1, 1, 1) } as Attitude,
         id: init.saved.id || undefined,
+        name: init.saved.name || undefined,
       }
-      : { state: init.state, att: init.att, id: init.id };
+      : { state: init.state, att: init.att, id: init.id, name: init.name };
     super(state, buildRcsFuelPickup(), scene, att, idAllocator.next(id));
-    this.name = ('saved' in init && init.saved.name) ? init.saved.name : 'RCS燃料';
+    this.setName(name ?? 'RCS燃料');
     this.mass = 0;
     this.radius = RCS_FUEL_PHYS_RADIUS;
     this.collides = true;

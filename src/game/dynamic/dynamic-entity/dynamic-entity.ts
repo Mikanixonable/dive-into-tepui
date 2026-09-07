@@ -92,8 +92,13 @@ export class DynamicEntity {
 
   // 一意な識別子。表示名(name)とは別の概念。
   readonly id: string;
-  // マーカー・一覧・ウィンドウに出す表示名。既定は id で、名前を持つ種別がコンストラクタで上書きする。
-  name: string;
+  // マーカー・一覧・ウィンドウに出す表示名。既定は id で、名前を持つ種別がコンストラクタで
+  // setName() を通して上書きする。外から書き換える口は ObjectPickable.rename だけ。
+  private _name: string;
+  get name(): string { return this._name; }
+  protected setName(name: string): void { this._name = name; }
+  // 常設の軌道構造物として、選択の有無に関わらず赤道交点マーカーを出すか。
+  readonly showsEquatorNodesAlways: boolean = false;
   att: Attitude;
   // 姿勢を積分する種別か。false の個体は att を進めず、向きを別の規則で決める
   // (弾は速度方向を向く)。
@@ -256,7 +261,7 @@ export class DynamicEntity {
   ) {
     this.actual = new DynamicTrajectory(state);
     this.id = id ?? DynamicEntity.idAllocator.next();
-    this.name = this.id;
+    this._name = this.id;
     this.att = att;
     this.renderObject = renderObject;
     this.scene = scene;

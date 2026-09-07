@@ -1,6 +1,5 @@
 import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../math/vec3';
 import { Enemy } from './dynamic/dynamic-entity/enemy';
-import type { Base } from './dynamic/dynamic-entity/base';
 import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import { Player } from './player/player';
@@ -31,7 +30,7 @@ const MAP_AMMO_FADE_END = 1e8;
 
 const PROTEIN_SITE_MARKER_RANGE = 3000; // タンパク質敵の機能部位マーカーを表示する距離上限 [m]
 
-export type CombatTarget = Enemy | Player | Base;
+export type CombatTarget = Enemy | Controllable;
 
 // マーカー上での対象の役割。ターゲットは色と字形が変わる。
 export type MarkerRole = 'none' | 'primary';

@@ -137,29 +137,6 @@
 ## 手順
 
 
-### 手順 9. 共有される操作系から `Player` 接頭を落とす
-
-#### 目的
-
-`Controllable` の口に載っている型が `Player*` を名乗っていると、共通基底の意味が名前で否定される。
-**この時点で挙動は変えない**(純粋な改名)。
-
-#### 変更が必要な箇所
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/player/player-throttle.ts` → `src/game/player/throttle.ts` | `PlayerThrottle` → `Throttle` |
-| `src/game/player/player-fire.ts` → `src/game/player/fire.ts` | `PlayerFire` → `Fire` |
-| `src/game/player/player-boosters.ts` → `src/game/player/boosters.ts` | `PlayerBoosters` → `Boosters` |
-| 参照側(型名 + import パスで grep 実測 31 箇所) | `controllable.ts`, `player.ts`, `base.ts`, `ship.ts`, `hud/ammo-status.ts`, `hud/panels/vessel-panel.ts`, `hud/windows/help-content.ts`, `plan/plan-guide.ts`, `stages/stage-debug*.ts`, `player/booster-stack.ts` |
-
-#### 達成条件と検証
-
-- 達成目標 9 の grep が 0 件。`grep -rn "player-throttle\|player-fire\|player-boosters" src` も 0 件。
-- `npm run typecheck`、`npm run test`(全層 — 改名の取りこぼしはどの層でも落ちうる)。
-
----
-
 ## 見積り
 
 **実行時コスト。** 手順4で `updateThrust` の全個体走査が1本増える。個体数の上限は

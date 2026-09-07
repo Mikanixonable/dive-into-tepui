@@ -342,10 +342,8 @@ export class CreativeStage extends Stage {
         this._hud.hint(`${finalName} を配置`);
       } else if (form.entityKind === 'fuel') {
         const id = this.rcsFuelPickupIdAllocator.next();
-        const pickup = new RcsFuelPickup({ state, id }, this._scene);
-        this._entities.add(pickup);
         const finalName = name.trim() || generateRandomName('fuel');
-        pickup.name = finalName;
+        this._entities.add(new RcsFuelPickup({ state, id, name: finalName }, this._scene));
         this._hud.hint(`${finalName} を配置`);
       } else if (form.entityKind === 'base') {
         const finalName = name.trim() || generateRandomName('base');

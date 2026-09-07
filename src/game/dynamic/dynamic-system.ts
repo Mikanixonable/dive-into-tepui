@@ -216,14 +216,9 @@ export class DynamicSystem {
   private rebuildCombatTargetsIfNeeded(): void {
     if (this.combatTargetsRevision === this._collectionRevision) return;
     this.cachedCombatTargets.length = 0;
-    this.cachedCombatTargets.push(...this.enemies, ...this.players, ...this.bases);
+    this.cachedCombatTargets.push(...this.enemies, ...this.controllables);
     this.cachedCombatTargetsByExcluded.clear();
     this.combatTargetsRevision = this._collectionRevision;
-  }
-
-  // id で名指しされた自機を返す。見つからなければ null。
-  private findPlayer(id: string): Player | null {
-    return this.players.find((p) => p.id === id) ?? null;
   }
 
   // id で名指しされた敵を返す。見つからなければ null。
@@ -236,8 +231,7 @@ export class DynamicSystem {
   findAliveCombatTarget(id: string): CombatTarget | null {
     const enemy = this.findEnemy(id);
     return (enemy?.alive ? enemy : null)
-      ?? this.findPlayer(id)
-      ?? this.bases.find((b) => b.id === id && b.alive)
+      ?? this.controllables.find((c) => c.id === id && c.alive)
       ?? null;
   }
 
@@ -388,12 +382,14 @@ export class DynamicSystem {
     for (const e of this.all()) e.equatorNodes?.clearCrossings();
   }
 
-  // 全基地の赤道交点マーカーを求め直す。基地は常設の軌道構造物なので、選択の有無に関わらず出す。
-  updateBaseEquatorNodes(
+  // 常設の軌道構造物の赤道交点マーカーを求め直す。選択の有無に関わらず出す。
+  updateStructureEquatorNodes(
     displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
   ): void {
-    for (const base of this.bases) {
-      if (base.alive) base.equatorNodes?.updateOnEllipse(displayTime, celestialSystem, frameAnchors);
+    for (const entity of this.entities) {
+      if (entity.alive && entity.showsEquatorNodesAlways) {
+        entity.equatorNodes?.updateOnEllipse(displayTime, celestialSystem, frameAnchors);
+      }
     }
   }
 

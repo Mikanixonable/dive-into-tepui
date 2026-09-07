@@ -104,7 +104,7 @@ export class MapView implements ViewFrame {
   // 交点アイコンは候補列に載るので、objectPickables.refresh より先に求める。
   public update(displayWindow: DisplayWindow): void {
     this.targeter.updateEquatorNodes(displayWindow.displayTime, this.celestialSystem, this.frameAnchors);
-    this.dynamicSystem.updateBaseEquatorNodes(displayWindow.displayTime, this.celestialSystem, this.frameAnchors);
+    this.dynamicSystem.updateStructureEquatorNodes(displayWindow.displayTime, this.celestialSystem, this.frameAnchors);
     this.objectPickables.refresh(displayWindow);
     this.frameControls.update(displayWindow.displayTime);
     this.editor.update(displayWindow.simTime);
