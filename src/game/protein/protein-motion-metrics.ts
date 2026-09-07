@@ -24,6 +24,7 @@ export function proteinMotionFrameSample(
   let cpuMs = 0;
   let uploadBytes = 0;
   const lodCounts: Partial<Record<ProteinMotionLod, number>> = {};
+  // CPU 時間と転送量は総和、体数は LOD ごとに数える。
   for (const entity of entities) {
     if (!(entity instanceof ProteinEnemy)) continue;
     const metrics = entity.motionMetrics;
