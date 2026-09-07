@@ -8,8 +8,8 @@ import { PointEphemeris, boundBaryStateAt } from './ephemeris/point';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
 import {
-  FrameRotation, JULIAN_CENTURY, KeplerOrbit, keplerOrbitMeanDirection, keplerOrbitNormal,
-  keplerOrbitForSimZero, keplerOrbitRotation, keplerOrbitState,
+  FrameRotation, JULIAN_CENTURY, KeplerOrbit, keplerOrbitAccel, keplerOrbitMeanDirection,
+  keplerOrbitNormal, keplerOrbitForSimZero, keplerOrbitRotation, keplerOrbitState,
 } from './kepler-orbit';
 import { collinearClearanceRatio, hasStableTriangularPoints } from './lagrange';
 import { SatelliteOrbit, satelliteOrbitForSimZero } from './satellite-orbit';
@@ -118,13 +118,6 @@ export function spinRateOf(def: CelestialBodyDef): number | null {
   return 'kepler' in def.orbit ? def.orbit.kepler.lRate : null;
 }
 
-// 主天体まわりの二体相対加速度 -mu·d/|d|³。d は主天体からの相対位置、mu は両者の mu の和。
-function twoBodyAccel(d: Vec3, mu: number): Vec3 {
-  const d2 = lenSq(d);
-  if (d2 < 1) return v3();
-  return scale(d, -mu / (d2 * Math.sqrt(d2)));
-}
-
 // 天体の宣言を、平均黄経の初期位相と元期オフセットを畳み込んだ宣言へ写す。これを通した宣言
 // だけが CelestialMotion へ渡ってよい — 軌道も自転モデルも simTime そのものを引数に取る形に
 // なり、評価のたびに巨大な定数を足し直さずに済む。
@@ -213,9 +206,10 @@ export abstract class CelestialMotion {
   // 変わらない。
   abstract analyticStarRelStateAt(t: number): KinematicState<'starRel'>;
 
-  // 解析暦が答える加速度。解析式の厳密な二階微分ではなく主天体まわりの二体近似 — 用途は RK4 の
-  // 各段の時刻へ位置を外挿する2次補正項なので、この近似の誤差(太陽の潮汐項を落とすぶん、
-  // 月で0.5%程度)は結果に効かない。
+  // 解析暦が答える加速度。用途は pivot から各段の時刻へ位置を外挿する2次項なので、**位置
+  // モデルの二階微分に揃える** — 二体部分は軌道の n²a³ から取り、惑星本体には衛星から受ける
+  // 加速度を入れる。位置モデルのうち二階微分に載らないのは衛星の周期補正項だけで、その残差は
+  // 外挿幅の2乗で効く(月で 1 歩 20 s のとき数 mm)。
   abstract analyticAccelAt(t: number): Vec3;
 
   // 自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。自転モデルを持たない天体は null。
@@ -545,9 +539,13 @@ export class PlanetMotion extends OrbitingMotion {
     return this.system.membersAt(t).body;
   }
 
-  // 主星まわりの二体加速度。
+  // 系の重心の主星まわりの二体加速度に、衛星が本体を引く加速度を足したもの。位置モデル
+  // 「系の重心 − Σ w_i·ρ_i」の 2 階微分そのもので、加速度を引くのは本体の位置ではなく重心。
   analyticAccelAt(t: number): Vec3 {
-    return twoBodyAccel(this.analyticStarRelStateAt(t).r, this.star.def.mu + this.def.mu);
+    return add(
+      keplerOrbitAccel(this.system.orbit, t, this.system.starRelStateAt(t).r),
+      this.system.bodyAccelFromSatellitesAt(t),
+    );
   }
 
   // 系のキャッシュは惑星本体と1対1なので、ここで一緒に数える。
@@ -594,7 +592,7 @@ export class SatelliteMotion extends OrbitingMotion {
   analyticAccelAt(t: number): Vec3 {
     return add(
       this.planet.analyticAccelAt(t),
-      twoBodyAccel(this.system.satelliteRelStateAt(this.index, t).r, this.planet.def.mu + this.def.mu),
+      keplerOrbitAccel(this.def.orbit.kepler, t, this.system.satelliteRelStateAt(this.index, t).r),
     );
   }
 
