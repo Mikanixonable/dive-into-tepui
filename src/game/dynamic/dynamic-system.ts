@@ -54,6 +54,7 @@ export class DynamicSystem implements EntityRegistry {
     worldSfx: WorldSfx,
     flash: FlashEffects,
     markerManager: MarkerManager,
+    private readonly celestialSystem: CelestialSystem,
     saved?: GameSaveData,
   ) {
     this.instancedPools = new InstancedPools(scene);
@@ -209,16 +210,26 @@ export class DynamicSystem implements EntityRegistry {
     for (const e of this.all()) e.requestHistoryDuration(sec);
   }
 
-  // 自分で決まる推力を持つ個体を1フレーム進める。積分より前に1度だけ呼ぶ。
-  updateThrusts(simDt: number): void {
+  // 顔ぶれを1フレーム進める。個体が自分で決める推力を先に確定させてから、操作されうる個体へ
+  // 指令を配る — 推力は自分の状態だけで決まるので、操作の可否に依らず先に済ませられる。
+  update(
+    active: Controllable | null, input: Input, operable: boolean,
+    dt: number, simDt: number, activeStage: Stage,
+  ): void {
+    this.updateThrusts(simDt);
+    this.updateControllables(active, input, operable, dt, simDt, activeStage);
+  }
+
+  // 自分で決まる推力を持つ個体を1フレーム進める。
+  private updateThrusts(simDt: number): void {
     for (const entity of this.entities) if (entity.alive) entity.updateThrust(simDt);
   }
 
-  // 毎フレーム、操作されうる全個体へ updateControls を1度ずつ通す。「操作対象でない」と
+  // 操作されうる全個体へ updateControls を1度ずつ通す。「操作対象でない」と
   // 「操作できないワープ倍率」は同じ状態なので、input を渡すかどうかで一つに束ねる。
-  updateControllables(
+  private updateControllables(
     active: Controllable | null, input: Input, operable: boolean,
-    dt: number, simDt: number, activeStage: Stage, celestialSystem: CelestialSystem,
+    dt: number, simDt: number, activeStage: Stage,
   ): void {
     for (const controllable of this.controllables) {
       if (!controllable.alive) continue;
@@ -228,7 +239,7 @@ export class DynamicSystem implements EntityRegistry {
         simDt,
         this,
         activeStage,
-        celestialSystem,
+        this.celestialSystem,
       );
     }
   }
