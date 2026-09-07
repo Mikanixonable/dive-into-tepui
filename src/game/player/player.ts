@@ -71,8 +71,7 @@ import type { ObjectAuthoring } from '../stages/stage';
 import type { ObjectWindows } from '../pickable/object-windows';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
-import type { MapListSection } from '../hud/panels/physical-object-list-panel';
-import type { ObjectPickerGenre } from '../hud/object-groups';
+import type { MapListSection, ObjectPickerGenre } from '../pickable/pickable-listing';
 
 export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]
 const HULL_START_TEMP = 273; // 初期機体温度 [K]

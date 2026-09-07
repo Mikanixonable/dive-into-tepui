@@ -22,8 +22,7 @@ import type { ControlSelection } from '../../control-selection';
 import type { ObjectAuthoring } from '../../stages/stage';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
-import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
-import type { ObjectPickerGenre } from '../../hud/object-groups';
+import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
 import type { Controllable } from './controllable';
 
 const RCS_FUEL_PHYS_RADIUS = 1.3; // 補給の物理接触用の半径 [m]

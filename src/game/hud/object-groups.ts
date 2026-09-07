@@ -3,11 +3,7 @@
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { ObjectPickerGroup } from './windows/object-picker';
-
-const GROUP_LABELS = ['恒星', '惑星', '準惑星', '衛星', '小天体', 'ラグランジュ点', '自艦', '敵', '基地', '弾薬', 'RCS燃料'] as const;
-
-// 選択ウィジェットのジャンル。並びはこの表の順で、見出しの文字列がそのまま鍵になる。
-export type ObjectPickerGenre = typeof GROUP_LABELS[number];
+import { OBJECT_PICKER_GENRES, type ObjectPickerGenre } from '../pickable/pickable-listing';
 
 // items をジャンル別にグループ分けする。値は ObjectPickable.id。空のグループは返さない。
 export function groupPickables(
@@ -35,7 +31,7 @@ export function groupPickables(
     }
   }
 
-  return GROUP_LABELS
+  return OBJECT_PICKER_GENRES
     .map((label) => ({ label, items: byGenre.get(label) ?? [] }))
     .filter((g) => g.items.length > 0);
 }

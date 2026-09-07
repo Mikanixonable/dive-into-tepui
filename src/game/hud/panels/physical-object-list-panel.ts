@@ -10,13 +10,10 @@ import { PhysicalObjectListTree } from './physical-object-list-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { DynamicEntityKind } from '../../dynamic/dynamic-entity/entity-kind';
 import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
 import type { RowNode } from './physical-object-list-tree';
 import type { PhysicalObjectListFilter, PhysicalObjectListSort, SectionOrder } from './physical-object-list-order';
-
-// 軌道物体一覧の区画。天体はクラスをまたいで1区画にまとめ、人工物は種別ごとに分ける。
-export type MapListSection = 'body' | DynamicEntityKind;
+import type { MapListSection } from '../../pickable/pickable-listing';
 
 const SECTIONS: readonly { section: MapListSection; label: string }[] = [
   { section: 'body', label: '天体' },

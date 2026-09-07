@@ -47,8 +47,7 @@ import type { ControlSelection } from '../../control-selection';
 import type { ObjectAuthoring } from '../../stages/stage';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
-import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
-import type { ObjectPickerGenre } from '../../hud/object-groups';
+import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
 
 const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
 const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）
