@@ -1,6 +1,6 @@
 // 戦闘ビューでの右クリックが、生存中の実体(自艦・敵艦・基地)のどれに当たったかを判定する。
 // 画面座標から実体の形へ視線を通し、最も手前のものを選ぶ。
-import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
+import { isCombatTarget, type CombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { ProjectFn } from '../camera/camera-system';
 import { rayThroughScreen, type Viewpoint } from '../../math/projection';
@@ -19,8 +19,8 @@ export function pickCombatEntityAtPoint(
   let bestEntity: CombatTarget | null = null;
   let minDepth = Infinity;
 
-  for (const entity of dynamicSystem.getCombatTargets()) {
-    if (!entity.alive) continue;
+  for (const entity of dynamicSystem.all()) {
+    if (!isCombatTarget(entity) || !entity.alive) continue;
     const pos = entity.state.r;
     const proj = project(pos);
     if (!proj.front) continue;

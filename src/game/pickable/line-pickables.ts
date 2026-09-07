@@ -10,6 +10,7 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
 import type { VisibleGuideLine } from '../celestial/orbit-guide/orbit-guide-lines';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import { isCombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import { LineCalcMethod, LinePickable } from './line-pickable';
 
 // 当たり判定用サンプル点数。描画の適応分割ほどの精度は要らず、画面上のピクセル半径内かの判定さえ
@@ -44,8 +45,9 @@ export class LinePickables {
       this.items.push({ key: `orbit-body:${id}`, kind: 'orbit-body', method: 'analytic', ownerKeys: [id], points });
     }
 
-    for (const enemy of this.dynamicSystem.enemies) this.addShipOrbit(enemy, frame, displayTime, frameAnchors);
-    for (const c of this.dynamicSystem.controllables) this.addShipOrbit(c, frame, displayTime, frameAnchors);
+    for (const ship of this.dynamicSystem.all().filter(isCombatTarget)) {
+      this.addShipOrbit(ship, frame, displayTime, frameAnchors);
+    }
 
     for (const guide of this.celestialSystem.orbitGuide.visibleLines(ORBIT_PICK_SAMPLES)) {
       this.items.push({
