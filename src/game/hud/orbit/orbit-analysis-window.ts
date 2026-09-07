@@ -1,6 +1,6 @@
-// 軌道分析パネル: 高度・接近・投影の3タブを束ねるドラッグ可能ウィンドウ。選べるタブを毎 sync
-// 選び直してタブバーへ出し、選択中のタブへ描画を委ねる。戦闘ビューでも未来の軌道が伸び続ける
-// よう、操作対象と接近タブのターゲットに analysisPanelReader を立てるのもここが持つ。
+// 軌道分析のドラッグ可能ウィンドウ。高度・接近・投影の3タブのうち、いま選べるものをタブバーへ
+// 出し、選択中のタブへ描画を委ねる。見ている個体(操作対象と接近タブのターゲット)へ
+// analysisPanelReader を立て、戦闘ビューでもその軌道が伸び続けるようにするのもここが持つ。
 import { SyncThrottle } from '../sync-throttle';
 import { DraggableWindow } from '../../../hud/windows/draggable-window';
 import { MQ_COMPACT } from '../../../hud/breakpoints';
@@ -23,7 +23,7 @@ const STYLE = `
 }
 `;
 
-// 旧対象の analysisPanelReader を降ろし、新対象に立て直す。
+// analysisPanelReader を prev から降ろして next へ立て、いま立てている側(next)を返す。
 function applyReader(prev: DynamicEntity | null, next: DynamicEntity | null): DynamicEntity | null {
   if (prev === next) return prev;
   if (prev) prev.analysisPanelReader = false;
@@ -31,8 +31,8 @@ function applyReader(prev: DynamicEntity | null, next: DynamicEntity | null): Dy
   return next;
 }
 
-// 現在の航法ターゲットを、接近・投影タブが扱える形(艦・基地 or 天体)へ解決する。
-// ラグランジュ点など質量を持たない対象は解決しない。
+// 現在の航法ターゲットを、接近・投影タブが扱える形(天体 or 個体)へ解決する。
+// 質量を持たない対象(ラグランジュ点など)と、ターゲット未選択のときは null。
 function resolveApproachTarget(game: Game): ApproachTargetSource | null {
   const id = game.navTarget.id;
   if (id === null) return null;
@@ -53,15 +53,18 @@ export class OrbitAnalysisWindow {
   // analysisPanelReader を立てている個体(操作対象・接近/投影タブのターゲット)。
   private readerEntity: DynamicEntity | null = null;
   private readerTargetEntity: DynamicEntity | null = null;
+  // 直前に描いた操作対象。切り替わったフレームでタブの表示範囲を開き直す。
+  private drawnEntity: DynamicEntity | null = null;
 
   // ESC・外側クリック・✕ ボタンのどの経路で閉じても発火する。
   public onClose: (() => void) | null = null;
 
-  // ウィンドウとタブバーを組み立て、3つのタブの要素を積む(見えるのは選択中の1つだけ)。
+  // (clientX, clientY) にウィンドウを開き、高度タブを選んだ状態にする。
   public constructor(
     root: HTMLElement, clientX: number, clientY: number,
     overlayManager: OverlayManager, tempWindowGroup: string,
   ) {
+    // ウィンドウの器。
     injectOnce('orbit-analysis-window', STYLE);
     this.win = new DraggableWindow(
       root, clientX, clientY, { title: '軌道分析', initiallyClipped: true, tempWindowGroup }, overlayManager,
@@ -69,6 +72,7 @@ export class OrbitAnalysisWindow {
     this.win.element.classList.add('orbit-analysis');
     this.win.onClose = () => this.onClose?.();
 
+    // 3タブを積み、選択中の1つだけが見える状態にする。
     this.tabs = [this.altitudeTab, new ApproachTab(), new ProjectionTab()];
     this.tabBar = new TabBar<AnalysisTab>([[this.altitudeTab, this.altitudeTab.label]], (tab) => this.select(tab));
     this.win.body.appendChild(this.tabBar.element);
@@ -76,7 +80,7 @@ export class OrbitAnalysisWindow {
     this.select(this.altitudeTab);
   }
 
-  // 呼び出し側から見た「引き上げて最前面へ」— Orbit パネルのボタンが2枚目を開かないために使う。
+  // ウィンドウを最前面へ持ち上げる。
   public bringToFront(): void {
     this.win.bringToFront();
   }
@@ -89,26 +93,33 @@ export class OrbitAnalysisWindow {
     for (const tab of this.tabs) tab.dispose();
   }
 
-  // 操作対象とターゲットを解決し、選べるタブを出し直してから、選択中のタブへ描画を委ねる。
+  // 見ている個体へ analysisPanelReader を立て、外れた個体から降ろす。予測の伸長対象は
+  // このフラグで決まるので、予測を進める前に呼ぶ。
+  public update(game: Game): void {
+    const entity = game.activeControllableEntity;
+    this.readerEntity = applyReader(this.readerEntity, entity);
+    const target = entity ? resolveApproachTarget(game) : null;
+    this.readerTargetEntity = applyReader(
+      this.readerTargetEntity, target?.kind === 'entity' ? target.entity : null,
+    );
+  }
+
+  // 選べるタブを出し直してから、選択中のタブへ描画を委ねる。
   public sync(game: Game): void {
     if (!this.throttle.due()) return;
     const entity = game.activeControllableEntity;
     // 別の対象を見ることになるので、各タブの表示範囲を開き直す。
-    if (entity !== this.readerEntity) {
+    if (entity !== this.drawnEntity) {
       for (const tab of this.tabs) tab.resetView();
     }
-    this.readerEntity = applyReader(this.readerEntity, entity);
+    this.drawnEntity = entity;
     if (!entity) {
-      this.readerTargetEntity = applyReader(this.readerTargetEntity, null);
       this.offerTabs([this.altitudeTab]);
       this.altitudeTab.drawMessage('操作対象がありません');
       return;
     }
 
     const target = resolveApproachTarget(game);
-    this.readerTargetEntity = applyReader(
-      this.readerTargetEntity, target?.kind === 'entity' ? target.entity : null,
-    );
     const reference = game.orbitReference.resolve(
       entity.state.r, game.celestialSystem.celestialMotions, game.navTarget,
       game.dynamicSystem, game.celestialSystem, entity.state.t,
