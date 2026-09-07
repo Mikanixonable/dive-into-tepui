@@ -1,6 +1,7 @@
 // 戦闘ターゲットの選定と、戦闘対象・弾薬・燃料の画面マーカーの同期。ターゲットに紐づく
 // 表示(方位マーカー・見越し点・的通過マーク)もここが受け持つ。
 import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../math/vec3';
+import type { CelestialMotions } from '../physics/celestial-motion';
 import type { Viewer } from './dynamic/dynamic-entity/viewer';
 import { Enemy } from './dynamic/dynamic-entity/enemy';
 import { isBullet } from './dynamic/dynamic-entity/bullet';
@@ -19,7 +20,7 @@ import { MARKER_PRIORITY } from './marker/crowding';
 import type { MarkerManager } from './marker/marker-manager';
 import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
 import { pickNearest } from './pickable/object-pickable';
-import type { CelestialSystem } from './celestial/celestial-system';
+
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
@@ -53,7 +54,7 @@ export class Targeter {
   constructor(
     private readonly markerManager: MarkerManager,
     private readonly navTarget: NavTarget, private readonly dynamicSystem: DynamicSystem,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialSystem: CelestialMotions,
     private readonly celestialMarkers: CelestialMarkers,
   ) {}
 
