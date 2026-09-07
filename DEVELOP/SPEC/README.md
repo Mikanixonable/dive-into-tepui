@@ -25,7 +25,7 @@
 | [FLIGHT.md](FLIGHT.md) | 自艦の艦システム(推進・姿勢・熱・電力・弾薬ベルト・部品) |
 | [COMBAT.md](COMBAT.md) | 射撃・被弾・敵・破片・戦闘エフェクト |
 | [ORBIT.md](ORBIT.md) | 軌道力学・摂動・大気・輻射圧・剛体接触 |
-| [CELESTIAL.md](CELESTIAL.md) | 天体・暦・座標系・天球表示 |
+| [CELESTIAL.md](CELESTIAL.md) | 天体・暦・形状と重力場・日照・座標系 |
 | [MAP.md](MAP.md) | マップビューの表示・選択・座標系 |
 | [PLAN.md](PLAN.md) | 軌道計画(マニューバノード)と未来予測表示 |
 | [MARKERS.md](MARKERS.md) | 画面に重ねる記号・ラベルと、混雑したときの捌き方 |
