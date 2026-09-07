@@ -17,7 +17,6 @@ import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
 import { pickNearest } from './pickable/object-pickable';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { FrameAnchorSource } from '../physics/frame';
-import { DisplayWindow, timeLabelSettingOf } from './display-window-manager';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
@@ -25,9 +24,8 @@ import { isOccluded } from '../physics/occlusion';
 import type { NavTarget } from './nav-target';
 
 // ターゲット位置に自機側を向けて置いた仮想標的面(的)を弾が通過した点のマーカー。
-// 最新の 1 点のみ表示する(複数出ると照準の目安として紛らわしいため)。
 const BOARD_MARK_LIFETIME = 5.0; // 表示時間 [s]
-const MAX_BOARD_MARKS = 1;
+const MAX_BOARD_MARKS = 1; // 同時に出す通過点の数。増やすと照準の目安として紛らわしい
 const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は記録しない)
 
 const MAP_AMMO_FADE_START = 5e7;
@@ -40,35 +38,32 @@ export type CombatTarget = Enemy | Player | Base;
 // マーカー上での対象の役割。ターゲットは色と字形が変わる。
 export type MarkerRole = 'none' | 'primary';
 
-// 自機からの距離が MAP_AMMO_FADE_END を超えるとマップ上で見えなくなる(近くの弾薬だけ拾えれば
-// よいため、遠方まで塗り続けない)。
+// マップ上の弾薬・燃料マーカーの不透明度。MAP_AMMO_FADE_START から薄れ、MAP_AMMO_FADE_END で消える。
 function ammoFadeOpacity(distance: number): number {
   return Math.max(0, Math.min(1, (MAP_AMMO_FADE_END - distance) / (MAP_AMMO_FADE_END - MAP_AMMO_FADE_START)));
 }
 
 export class Targeter {
-  // syncTargetMarkers が毎フレーム組み直す作業用配列。
+  // 毎フレーム組み直す作業用配列。
   private readonly aliveScratch: CombatTarget[] = [];
   private readonly markerItemScratch: GroupedMarkerItem[] = [];
 
-  // ターゲット標的面(自機の方を向いた仮想の的)の通過点(ターゲット相対オフセットで
-  // 保持し、的に貼り付いて見せる)。updateBoardMarks が寿命を持ち、syncBoardMarkers が描く。
-  boardMarks: { off: Vec3; age: number; }[] = [];
+  // 標的面(自機の方を向いた仮想の的)を弾が通過した点。的に貼り付いて見えるよう、
+  // ターゲット相対のオフセットで持つ。
+  private boardMarks: { off: Vec3; age: number; }[] = [];
 
   constructor(
     private readonly markerManager: MarkerManager,
     private readonly navTarget: NavTarget, private readonly entities: DynamicSystem,
   ) {}
 
-  // 現在の戦闘ターゲット。正本は NavTarget(航法ターゲットと状態を共有)が持ち、ここでは
-  // 生存中の敵・自艦・基地としてその場で解決するだけ。
+  // 航法ターゲットを生存中の敵・自艦・基地として解決したもの。戦闘対象になれない対象
+  // (天体・ラグランジュ点)や撃破済みなら null。
   get aliveTarget(): CombatTarget | null {
     return this.navTarget.resolveCombatTarget(this.entities);
   }
 
-  // Tキーで照準中心に最も近い敵をターゲットにする。オート選定は行わない — 右クリックでの
-  // 設定/解除はプロパティウィンドウの項目(target)から
-  // navTarget.toggleTarget を呼ぶ。
+  // Tキーで、照準中心にもっとも近い対象をターゲットにする。
   handleTargetSelectKey(input: Input, targets: CombatTarget[], project: ProjectFn): void {
     if (!input.takeKey(K.targetSelect)) return;
     this.navTarget.setCombatTarget(pickNearest(
@@ -76,22 +71,18 @@ export class Targeter {
       window.innerWidth * 0.5, window.innerHeight * 0.5, Infinity));
   }
 
-  // 戦闘ターゲットの赤道交点マーカーを求め直す。求め直されなかったフレームの交点は
-  // 同期側が自動的に隠す。
+  // 戦闘ターゲットの赤道交点を、この表示時刻で解き直す。全件を伏せた
+  // (DynamicSystem.clearEquatorNodes)後の update 位相で呼ぶ。
   updateEquatorNodes(
-    displayWindow: DisplayWindow, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
+    displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
   ): void {
-    const timeLabel = timeLabelSettingOf(displayWindow);
     this.aliveTarget?.ensureEquatorNodes(this.markerManager)
-      .updateOnEllipse(displayWindow.displayTime, celestialSystem, frameAnchors, timeLabel);
+      .updateOnEllipse(displayTime, celestialSystem, frameAnchors);
   }
 
-  // ターゲット位置に「自機の方を向いた的(標的面)」があると見なし、発射弾がその面を自機側から
-  // 通過した点をターゲット相対で記録する。既存の記録は経過時間を進め、寿命切れを捨てる。
+  // 発射弾が標的面を自機側から通過した点をターゲット相対で記録し、既存の記録の寿命を進める。
   updateBoardMarks(dt: number, player: Player | null, entities: DynamicSystem): void {
     const target = this.aliveTarget;
-    // 記録側と描画側で同じ aliveTarget を見る: target のままだと撃破後も死亡個体の
-    // 凍結位置を基準に ✦ を残し続けてしまう。
     if (!player || !target) {
       this.boardMarks.length = 0;
       return;
@@ -120,16 +111,14 @@ export class Targeter {
   }
 
   // ターゲットに紐づく表示物(的通過マーク・方位マーカー)をまとめて更新する。
-  // ターゲットの選定を持つのがここなので、その表示もここに閉じる。
   sync(player: Player | null, cameraSystem: CameraSystem): void {
     const project = cameraSystem.activeCameraProjection;
     this.syncBoardMarkers(project);
     this.syncTargetDirMarkers(player, cameraSystem.view === 'map', project);
   }
 
-  // 全戦闘対象のマーカー集合(ターゲットの役割を含む)と LEAD マーカーを同期する。
-  // 位置は機体メッシュと同じ stateAt — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
-  // 予測地平の先を指していて stateAt が答えられない対象と、可視性判定で選択不可の対象は出さない。
+  // 全戦闘対象のマーカー集合(ターゲットの役割を含む)と LEAD マーカーを同期する。位置は
+  // 機体メッシュと同じ stateAt — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
   syncTargetMarkers(
     player: Player | null, targets: readonly CombatTarget[], ammoPickups: readonly AmmoPickup[], fuelPickups: readonly RcsFuelPickup[],
     displayTime: number, simTime: number, cameraSystem: CameraSystem, visibilityPolicy: MapVisibilityPolicy | null,
@@ -149,8 +138,7 @@ export class Targeter {
       if (!ds) continue;
       const visibility = visibilityPolicy?.entity(tgt.mapKind, tgt === player);
       if (visibility && !visibility.pickable) continue;
-      // 戦闘ビューではカメラ直下の自機をマーカーで重ねて表示しない。マップビューでは
-      // 他の自機と同じ位置マーカーが必要なので、操作対象かつ戦闘ビューのときだけ除外する。
+      // 戦闘ビューのカメラ直下にいる操作艦は、マーカーを重ねると視界を潰す。
       if (!mapView && tgt === player) continue;
       const role: MarkerRole = tgt === this.aliveTarget ? 'primary' : 'none';
       const item = tgt instanceof Player
@@ -164,8 +152,8 @@ export class Targeter {
           : 1;
       this.pushMarkerItem(item, visibility, mapOpacity, mapOccluded);
     }
-    // 生死・距離にかかわらず全タンパク質敵を辿ってマーカーの表示/非表示を確定する
-    // (上のループは生存個体しか通らないため、撃破直後に部位マーカーが残るのを防ぐ)。
+    // 部位マーカーは死んだ個体まで辿って確定する。上のループは生存個体しか通らないので、
+    // ここで畳まないと撃破直後の部位マーカーが残る。
     for (const tgt of targets) {
       if (!(tgt instanceof ProteinEnemy)) continue;
       const ds = tgt.alive ? tgt.stateAt(displayTime) : null;
@@ -212,7 +200,7 @@ export class Targeter {
   }
 
   // タンパク質敵が自機から PROTEIN_SITE_MARKER_RANGE 以内にある間、通常の敵マーカーへ加えて
-  // 各機能部位の HP・名称マーカーを表示する。ロック中ターゲット情報とは独立して出す。
+  // 各機能部位の HP・名称マーカーを表示する。
   private syncProteinSiteMarkers(
     enemy: ProteinEnemy, displayPos: Vec3 | null, viewerPos: Vec3, mapView: boolean, project: ProjectFn, cameraPos: Vec3,
   ): void {
@@ -237,13 +225,13 @@ export class Targeter {
         this.markerManager.hide(key);
         continue;
       }
+      // 寿命の残りをそのまま濃さにする。
       const fade = 1 - m.age / BOARD_MARK_LIFETIME;
       this.markerManager.setPosition(key, 'mk-boardpass', '✦', add(target.state.r, m.off), project, '', 0.25 + 0.75 * fade);
     }
   }
 
-  // ターゲット/その反対方向を指す方向マーカー(戦闘ビューのみ)。自機の軌道基準方向マーカー
-  // (player-markers.ts)と同じ扱いで、自機位置を原点に置く。
+  // ターゲットとその反対方向を指す方向マーカーを、自機位置を原点に置く。マップビューでは伏せる。
   private syncTargetDirMarkers(player: Player | null, mapView: boolean, project: ProjectFn): void {
     const tgt = this.aliveTarget;
     if (mapView || !tgt || !player) {

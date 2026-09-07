@@ -1,9 +1,6 @@
-// THREE で曲線を折れ線で最適に近似して描く。
-//
-// setAnalyticCurve: 曲線の解析的な式を直接受け取り、曲線として描く。
-// setHermiteCurve: 節点列を受け取り、節点間を3次エルミートで埋めた滑らかな曲線として描く。
-//
-// 頂点を t のどこに何個置くかは、画面上のサジッタと折れ角を見て毎フレーム決め直す。
+// THREE で曲線を折れ線で近似して描く。閉じた式で書ける曲線は setAnalyticCurve、離散サンプル
+// としてしか手に入らない曲線は setHermiteCurve で渡す。頂点を t のどこに何個置くかは、
+// 画面上のサジッタと折れ角を見て毎フレーム決め直す。
 
 import * as THREE from 'three/webgpu';
 import { MaxHeap } from '../math/max-heap';
@@ -21,7 +18,7 @@ export type CurveColorSampler = (t: number, out: THREE.Color) => void;
 
 // 適応分割が目標にする、弦に対する曲線の膨らみ(サジッタ)の上限 [px]。1px を下回っていれば、
 // 隣り合う画素の間に収まる。
-export const MAX_SAGITTA_PX = 0.5;
+const MAX_SAGITTA_PX = 0.5;
 
 // 1辺あたりに許す折れ角の上限 [rad]。サジッタと並ぶもう一つの分割基準で、こちらは画面上の
 // 大きさに依らず効くため、遠ズームでの粗さを決める。
@@ -86,6 +83,7 @@ function buildHermiteCurve(knots: CurveKnots, maxCount: number): HermiteCurve {
     }
   }
 
+  // 節点区間の両端の位置と接線から、区間内を3次エルミートで埋める。
   const sample: CurveSampler = (t, out) => {
     // t を含む区間 [i, i+1] を二分探索で引く。両端の外は端の区間へ寄せる。
     let lo = 0, hi = count - 2;
@@ -108,20 +106,17 @@ function buildHermiteCurve(knots: CurveKnots, maxCount: number): HermiteCurve {
   return { sample, ts };
 }
 
-// 点 p から線分 ab への最短距離の2乗。
-function distanceSqPointToSegment(
+// 点 p を線分 ab へ射影した点(線分の外へ出るぶんは端点へ丸める)を out へ書く。
+function projectToSegment(
   px: number, py: number, pz: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number,
-): number {
+  out: THREE.Vector3,
+): THREE.Vector3 {
   const dx = bx - ax, dy = by - ay, dz = bz - az;
   const lenSq = dx * dx + dy * dy + dz * dz;
-  if (lenSq <= 0) {
-    const ex = px - ax, ey = py - ay, ez = pz - az;
-    return ex * ex + ey * ey + ez * ez;
-  }
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / lenSq));
-  const cx = ax + dx * t, cy = ay + dy * t, cz = az + dz * t;
-  const ex = px - cx, ey = py - cy, ez = pz - cz;
-  return ex * ex + ey * ey + ez * ez;
+  const t = lenSq > 0
+    ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / lenSq))
+    : 0;
+  return out.set(ax + dx * t, ay + dy * t, az + dz * t);
 }
 
 export class Curve {
@@ -142,7 +137,7 @@ export class Curve {
   private appliedStyle: LineStyle | null = null;
 
   // 適応分割で焼いた頂点(sample の座標系のまま)。GPU へ渡す positions(f32)は常にこの配列
-  // から pivot を差し引いて書くので、pivot 自体の精度を落とさないよう倍精度で持つ。
+  // から localCam を差し引いて書くので、差し引く前の精度を落とさないよう倍精度で持つ。
   private readonly bakedLocal: Float64Array;
   // 頂点ごとの色。位置と同じ生成順。
   private readonly bakedColor: Float32Array;
@@ -152,20 +147,21 @@ export class Curve {
   // 描画順はこれを辿って書くインデックスバッファが担う。
   private readonly nextVertex: Int32Array;
   private bakedCount = 0;
-  // 直近に渡された曲線。sampleAt が読む。
+  // 直近に渡された曲線。
   private sampler: CurveSampler | null = null;
   // 直近に setHermiteCurve が受け取った節点列と、そこから組んだ曲線。節点列が同じ間は
   // 組み直さない。
   private hermiteKnots: CurveKnots | null = null;
   private hermite: HermiteCurve | null = null;
 
-  // 頂点バッファ(f32)へ書く直前に bakedLocal の全頂点から差し引く基準点。sample の座標系の
-  // まま、カメラの現在位置に置く。f32 の量子化ノイズは基準点からの距離に比例するので、
-  // 基準点をカメラから離した距離が、そのまま画面上のずれとして出る。
-  private readonly pivot = new THREE.Vector3();
+  // sample の座標系で見たカメラ位置。頂点バッファ(f32)へ書く直前に bakedLocal の全頂点から
+  // これを差し引く — f32 の量子化ノイズは差し引いた点からの距離に比例するので、その点を
+  // カメラから離した距離が、そのまま画面上のずれとして出る。区間の逸脱を画面上の大きさへ
+  // 直す尺度も、同じこの点から測る。
+  private readonly localCam = new THREE.Vector3();
 
-  // setTransform が要求した sample→ワールドの変換。line.position/quaternion へはこれに pivot
-  // 分を補って書き込むので、sample の座標系を扱う計算はこちらを読む。
+  // setTransform が要求した sample→ワールドの変換。line.position/quaternion へはこれに
+  // localCam 分を補って書き込むので、sample の座標系を扱う計算はこちらを読む。
   private readonly reqPosition = new THREE.Vector3();
   private readonly reqQuaternion = new THREE.Quaternion();
 
@@ -174,9 +170,10 @@ export class Curve {
   private readonly scratchColor = new THREE.Color();
   private readonly scratchStyleColor = new THREE.Color();
   private readonly scratchWorld = new THREE.Vector3();
-  private readonly scratchLocalCam = new THREE.Vector3();
+  private readonly scratchFoot = new THREE.Vector3();
+  private readonly scratchNearest = new THREE.Vector3();
   private readonly scratchInvQuat = new THREE.Quaternion();
-  private readonly scratchPivotWorld = new THREE.Vector3();
+  private readonly scratchCamWorld = new THREE.Vector3();
 
   // 未分割の区間を逸脱の大きい順に取り出す待ち行列。区間はその左端の頂点番号で表し、
   // 右端は nextVertex から辿る。
@@ -237,24 +234,24 @@ export class Curve {
     this.appliedStyle = style;
   }
 
-  // sample の座標系の点における m/px。要求された変換でワールドへ写してから換算する — pivot は
-  // カメラの動きに追従するだけの GPU バッファ上の便宜なので、ここでは読まない。
+  // sample の座標系の点における m/px。要求された変換でワールドへ写してから換算する。
   private scaleAtLocal(cam: CameraScale, lx: number, ly: number, lz: number): number {
     this.scratchWorld.set(lx, ly, lz).applyQuaternion(this.reqQuaternion).add(this.reqPosition);
     return cam.at(this.scratchWorld.x, this.scratchWorld.y, this.scratchWorld.z);
   }
 
-  // カメラのワールド位置を sample の座標系へ戻す。
-  private localCameraPos(cam: CameraScale, out: THREE.Vector3): THREE.Vector3 {
+  // カメラのワールド位置を sample の座標系へ戻して localCam へ書く。
+  private updateLocalCam(cam: CameraScale): void {
     this.scratchInvQuat.copy(this.reqQuaternion).invert();
-    return out.copy(cam.position).sub(this.reqPosition).applyQuaternion(this.scratchInvQuat);
+    this.localCam.copy(cam.position).sub(this.reqPosition).applyQuaternion(this.scratchInvQuat);
   }
 
-  // 要求された変換と現在の pivot から、line の実際の position/quaternion を書き直す。
+  // 要求された変換に、頂点から差し引いた localCam を戻して、line の実際の
+  // position/quaternion を書き直す。
   private applyTransform(): void {
     this.line.quaternion.copy(this.reqQuaternion);
-    this.scratchPivotWorld.copy(this.pivot).applyQuaternion(this.reqQuaternion);
-    this.line.position.copy(this.reqPosition).add(this.scratchPivotWorld);
+    this.scratchCamWorld.copy(this.localCam).applyQuaternion(this.reqQuaternion);
+    this.line.position.copy(this.reqPosition).add(this.scratchCamWorld);
   }
 
   // 位置 t の頂点を積み、その番号を返す。連結リストへの接続は呼び出し側が行う。
@@ -292,9 +289,15 @@ export class Curve {
     sample((t0 + t1) / 2, this.scratchM);
     const mx = this.scratchM.x, my = this.scratchM.y, mz = this.scratchM.z;
 
-    const sagSq = distanceSqPointToSegment(mx, my, mz, x0, y0, z0, x1, y1, z1);
-    const mpp = this.scaleAtLocal(cam, mx, my, mz);
-    const sagittaPx = mpp > 0 ? Math.sqrt(sagSq) / mpp : 0;
+    const foot = projectToSegment(mx, my, mz, x0, y0, z0, x1, y1, z1, this.scratchFoot);
+    const sagitta = Math.hypot(mx - foot.x, my - foot.y, mz - foot.z);
+    // サジッタを画面上の大きさへ直す尺度は、弦のうちカメラに最も近い点で測る。1区間は軌道の
+    // 何分の一もの長さを持つので、中点で測ると、カメラの至近を通る弦のずれを何十倍も小さく
+    // 見積もって分割が止まり、線が対象から離れたまま残る。
+    const nearest = projectToSegment(
+      this.localCam.x, this.localCam.y, this.localCam.z, x0, y0, z0, x1, y1, z1, this.scratchNearest);
+    const mpp = this.scaleAtLocal(cam, nearest.x, nearest.y, nearest.z);
+    const sagittaPx = mpp > 0 ? sagitta / mpp : 0;
 
     const ax = mx - x0, ay = my - y0, az = mz - z0;
     const bx = x1 - mx, by = y1 - my, bz = z1 - mz;
@@ -309,6 +312,7 @@ export class Curve {
   // 初期頂点列から始めて、逸脱が最大の区間から順に二分していく。予算が尽きて打ち切っても残りの
   // 区間の逸脱は最後に分割した区間以下なので、劣化は曲線全体が一様に粗くなる方向へ向かう。
   private rebake(sample: CurveSampler, ts: ArrayLike<number>, cam: CameraScale, colorAt?: CurveColorSampler): void {
+    // 初期頂点を ts の位置に置き、隣どうしを連結リストで繋いで待ち行列へ積む。
     this.bakedCount = 0;
     this.pending.clear();
     const segmentCount = ts.length - 1;
@@ -320,6 +324,7 @@ export class Curve {
     }
     for (let i = 0; i < segmentCount; i++) this.pending.push(this.segmentError(i, sample, cam), i);
 
+    // 逸脱が目標を超える区間を、頂点予算が尽きるまで中点で二分し続ける。
     while (this.pending.topScore > 1 && this.bakedCount < this.maxVertices) {
       const left = this.pending.pop();
       const right = this.nextVertex[left]!;
@@ -363,28 +368,29 @@ export class Curve {
     else out.set(0, 0, 0);
   }
 
-  // 渡された曲線を焼き、GPU バッファへ反映する。頂点の配り方も pivot もカメラに依存するので、
-  // 呼ぶたびに焼き直す。
+  // 渡された曲線を焼き、GPU バッファへ反映する。頂点の配り方も差し引く基準点もカメラに
+  // 依存するので、呼ぶたびに焼き直す。
   private setCurve(
     sample: CurveSampler, ts: ArrayLike<number>, camera: THREE.Camera, colorAt?: CurveColorSampler,
   ): void {
     this.sampler = sample;
     const cam = new CameraScale(camera);
+    this.updateLocalCam(cam);
     this.rebake(sample, ts, cam, colorAt);
-    this.pivot.copy(this.localCameraPos(cam, this.scratchLocalCam));
     this.applyTransform();
     this.writePositions();
   }
 
-  // 焼いた頂点(pivot 差し引き後)と描画範囲を GPU へ反映する。
+  // 焼いた頂点(localCam 差し引き後)と描画範囲を GPU へ反映する。
   private writePositions(): void {
     const n = this.bakedCount;
-    const { x: px, y: py, z: pz } = this.pivot;
+    const { x: px, y: py, z: pz } = this.localCam;
     for (let i = 0; i < n; i++) {
       this.positions[i * 3] = this.bakedLocal[i * 3]! - px;
       this.positions[i * 3 + 1] = this.bakedLocal[i * 3 + 1]! - py;
       this.positions[i * 3 + 2] = this.bakedLocal[i * 3 + 2]! - pz;
     }
+    // 頂点を上げてから、線分の並びと描画範囲を書き直す。
     this.vertexCount = n;
     (this.geom.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     (this.geom.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
@@ -397,6 +403,7 @@ export class Curve {
   // 連結リストを辿って線分のインデックス対を書き、その本数を返す(破線なら始点からの累積距離も
   // 同じ走査で書く)。
   private writeSegments(): number {
+    // 頂点 0 は t=0 の初期頂点なので、連結リストの先頭でもある。
     let count = 0;
     let dist = 0;
     for (let v = 0; ;) {
@@ -458,6 +465,7 @@ export class Curve {
     this.appliedStyle = null;
   }
 
+  // 他の線と重なったときの前後を書き換える。
   setRenderOrder(renderOrder: number): void {
     this.line.renderOrder = renderOrder;
     this.appliedStyle = null;
@@ -500,6 +508,7 @@ export class Curve {
     this.line.visible = this.wantVisible && this.vertexCount >= 2;
   }
 
+  // ジオメトリとマテリアルを解放する。以後この曲線は描けない。
   dispose(): void {
     this.geom.dispose();
     this.mat.dispose();
