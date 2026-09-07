@@ -112,6 +112,8 @@ export class DynamicEntity {
   public readonly capKind: CapKind | null = null;
   // マップの表示トグルがこの個体を分類する種別。null = トグルを持たない(弾・薬莢・破片)。
   public readonly mapKind: DynamicEntityKind | null = null;
+  // CombatTarget を実装しているか。isCombatTarget() がこれを読む。
+  public readonly combatTarget: boolean = false;
   // Controllable を実装しているか。isControllable() がこれを読む。
   public readonly controllable: boolean = false;
   // ObjectPickable を実装しているか。isObjectPickable() がこれを読む。
