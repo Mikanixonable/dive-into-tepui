@@ -5,7 +5,7 @@ import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import { guideSecondary } from '../../physics/orbit-guide';
 import type { Vec3 } from '../../math/vec3';
 import type { DisplayWindow } from '../display-window-manager';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
 import type { VisibleGuideLine } from '../celestial/orbit-guide/orbit-guide-lines';
@@ -24,7 +24,7 @@ export class LinePickables {
   get pickables(): readonly LinePickable[] { return this.items; }
 
   constructor(
-    private readonly dynamicSystem: DynamicSystem,
+    private readonly roster: EntityRoster,
     private readonly celestialSystem: CelestialSystem,
   ) {}
 
@@ -45,7 +45,7 @@ export class LinePickables {
       this.items.push({ key: `orbit-body:${id}`, kind: 'orbit-body', method: 'analytic', ownerKeys: [id], points });
     }
 
-    for (const ship of this.dynamicSystem.all().filter(isCombatTarget)) {
+    for (const ship of this.roster.all().filter(isCombatTarget)) {
       this.addShipOrbit(ship, frame, displayTime, frameAnchors);
     }
 

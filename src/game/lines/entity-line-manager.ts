@@ -12,7 +12,7 @@ import { isPlayer } from '../player/player';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import { currentThemePalette } from '../../theme';
 import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { EntityRoster } from '../dynamic/entity-roster';
 import type { DisplayWindow } from '../display-window-manager';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import { orbitLineBasisOf, type OrbitReference } from '../orbit-reference';
@@ -60,7 +60,7 @@ function applyOrbitLine(
 }
 
 export class EntityLineManager {
-  constructor(private readonly dynamicSystem: DynamicSystem) {}
+  constructor(private readonly roster: EntityRoster) {}
 
   // 出す/消す/スタイルを決める。
   private applyLines(
@@ -106,7 +106,7 @@ export class EntityLineManager {
       else entity.hideActualLine();
     };
 
-    for (const ship of this.dynamicSystem.all().filter(isPlayer)) {
+    for (const ship of this.roster.all().filter(isPlayer)) {
       const isActive = ship === active;
       const visibility = visibilityPolicy?.entity('player', isActive);
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
@@ -116,7 +116,7 @@ export class EntityLineManager {
         { ellipse: playerOrbitStyleOf(isActive), predicted: playerPredictedStyleOf(isActive), actual: playerActualStyleOf(isActive) },
       );
     }
-    for (const enemy of this.dynamicSystem.all().filter(isEnemy)) {
+    for (const enemy of this.roster.all().filter(isEnemy)) {
       const visibility = visibilityPolicy?.entity('enemy');
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
       const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyLine, color: enemy.orbitLineColor };
@@ -125,7 +125,7 @@ export class EntityLineManager {
         sameTrajectoryStyle(enemyLineStyle),
       );
     }
-    for (const base of this.dynamicSystem.all().filter(isBase)) {
+    for (const base of this.roster.all().filter(isBase)) {
       const visibility = visibilityPolicy?.entity('base');
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
       applyEntityLines(
@@ -159,7 +159,7 @@ export class EntityLineManager {
 
   // 線を持ちうるエンティティ。
   private get lineOwners(): readonly (readonly DynamicEntity[])[] {
-    const entities = this.dynamicSystem.all();
+    const entities = this.roster.all();
     return [entities.filter(isPlayer), entities.filter(isEnemy), entities.filter(isBase)];
   }
 }
