@@ -20,7 +20,6 @@ import { isEnemy } from './dynamic/dynamic-entity/enemy';
 import { isBase } from './dynamic/dynamic-entity/base';
 import { isPlayer } from './player/player';
 import { EntityLineManager } from './lines/entity-line-manager';
-import { Simulator } from './dynamic/simulator';
 import { Predictor } from './dynamic/predictor';
 import { Input } from '../input/input';
 import { TouchControls } from './hud/touch-controls';
@@ -97,7 +96,6 @@ export class Game {
   // 物理に乗らない一過性の見た目。顔ぶれには載らないので DynamicSystem の外で持つ。
   private readonly flashEffects: FlashEffects;
   private readonly entityLines: EntityLineManager;
-  readonly simulator: Simulator;
   private readonly predictor: Predictor;
   private readonly nanWatchdog: NanWatchdog;
   private readonly viewBadge: ViewBadge;
@@ -229,7 +227,7 @@ export class Game {
     this.flashEffects = new FlashEffects(this._scene);
     this.dynamicSystem = new DynamicSystem(
       this._scene, this._hud, this._worldSfx, this.flashEffects, this.markerManager, celestialSystem,
-      initialSave);
+      sections, initialSave?.simTime ?? 0, initialSave);
     this.entityLines = new EntityLineManager(this.dynamicSystem);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, celestialSystem);
 
@@ -305,12 +303,11 @@ export class Game {
     };
     this._hud.vesselPanel.setInput(this.input);
 
-    this.simulator = new Simulator(this.dynamicSystem, celestialSystem, sections, initialSave?.simTime ?? 0);
     this.predictor = new Predictor(this.dynamicSystem, celestialSystem);
 
     this.activeStage = new stageClass(
       initialSave?.stage, this._hud, this._worldSfx, uiSfx, this._scene, this.dynamicSystem,
-      this.flashEffects, this.markerManager, celestialSystem, this.simulator, this.controlSelection,
+      this.flashEffects, this.markerManager, celestialSystem, this.controlSelection,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage の authoring/executesPlans を読むので、その直後に生成する。
@@ -359,9 +356,8 @@ export class Game {
 
   // 時間を止め、連続指令を畳む。
   pause(): void {
-    this.simulator.lastSimDt = 0;
     this._worldSfx.setThrust(false);
-    this.dynamicSystem.clearTransientCommands();
+    this.dynamicSystem.pause();
     this._isPaused = true;
   }
 
@@ -393,7 +389,7 @@ export class Game {
     this.markerManager.dispose();
   }
 
-  get simTime(): number { return this.simulator.simTime; }
+  get simTime(): number { return this.dynamicSystem.simTime; }
 
   // ------------------------------------------------------------ update
 
@@ -409,7 +405,7 @@ export class Game {
     // ここから先はポーズ中も決着後も通す。決着は積分を止めないので、飛ばすと描画原点になる
     // カメラ位置だけが絶対 ECI に取り残され、追従対象が軌道速度で流れて即フレームアウトする。
     const activeControllable = this.activeControllable;
-    const displayWindow = this.displayWindowManager.resolve(this.simulator.simTime, activeControllable);
+    const displayWindow = this.displayWindowManager.resolve(this.dynamicSystem.simTime, activeControllable);
     // 過去表示に要る履歴の長さを要求する。次の積分がサンプルを積むまでに立っていればよいので、
     // 窓が確定したこの場で渡す。
     this.dynamicSystem.requestHistoryDuration(displayWindow.pastDuration);
@@ -428,7 +424,7 @@ export class Game {
     // 消費も期限切れの張り直しも起きないので、予測は伸び切ったところで止まるだけで害はない。
     this.sections.enter(SECTION.predict);
     this.predictor.update(
-      this.simulator.simTime, this.simulator.lastSimDt, activeControllable, displayWindow.duration,
+      this.dynamicSystem.simTime, this.dynamicSystem.lastSimDt, activeControllable, displayWindow.duration,
       canDisplayFuture, this.planDisplay.growableArcs(),
     );
     this.sections.exit(SECTION.predict);
@@ -465,44 +461,40 @@ export class Game {
   private advanceSimulation(dt: number): void {
     // このフレームで使う倍率を最初に一度だけ確定する。燃料消費・操作ゲート・積分が
     // 自動ワープの段階変更を跨いで別の倍率を読むと、同じ区間を表さなくなる。
-    this.simSpeedManager.update(this.simulator.simTime);
+    this.simSpeedManager.update(this.dynamicSystem.simTime);
     const simDt = dt * this.simSpeedManager.simSpeed;
     const canShipAct = this.simSpeedManager.canShipAct;
     const canEngage = this.simSpeedManager.canEngage;
     const controlled = this.activeControllable;
-    this.nanWatchdog.checkControlled('frameStart', controlled, this.simulator.simTime, dt, this.simulator.lastSimDt);
+    this.nanWatchdog.checkControlled('frameStart', controlled, this.dynamicSystem.simTime, dt, this.dynamicSystem.lastSimDt);
     // 台本が世界を編集してから、その顔ぶれで1フレーム進める。湧いた個体もこのフレームの
     // 指令決定と積分に乗る。
     this.sections.enter(SECTION.stage);
-    this.activeStage.update(dt, this.simulator.simTime, this.simSpeedManager);
+    this.activeStage.update(dt, this.dynamicSystem.simTime, this.simSpeedManager);
     this.sections.exit(SECTION.stage);
-    this.nanWatchdog.checkControlled('activeStage.update', controlled, this.simulator.simTime, dt, this.simulator.lastSimDt);
+    this.nanWatchdog.checkControlled('activeStage.update', controlled, this.dynamicSystem.simTime, dt, this.dynamicSystem.lastSimDt);
 
     this.sections.enter(SECTION.command);
     this.dynamicSystem.update(
-      controlled, this.input, canShipAct, dt, simDt, this.simulator.simTime, this.activeStage);
+      controlled, this.input, canShipAct, dt, simDt, this.dynamicSystem.simTime, this.activeStage);
     this.nanWatchdog.checkControlled(
       'controllable.updateControls',
       controlled,
-      this.simulator.simTime,
+      this.dynamicSystem.simTime,
       dt,
-      this.simulator.lastSimDt,
+      this.dynamicSystem.lastSimDt,
     );
     this.sections.exit(SECTION.command);
 
-    this.sections.enter(SECTION.integrate);
-    this.simulator.advance(
-      dt, simDt, controlled, this.activeStage,
-      canEngage, this.nanWatchdog);
-    this.sections.exit(SECTION.integrate);
+    this.dynamicSystem.advance(dt, simDt, controlled, this.activeStage, canEngage, this.nanWatchdog);
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全エンティティを見る。
-    this.nanWatchdog.checkAll('simulator.advance', controlled, this.dynamicSystem, this.simulator.simTime, dt, simDt);
+    this.nanWatchdog.checkAll('simulator.advance', controlled, this.dynamicSystem, this.dynamicSystem.simTime, dt, simDt);
 
     this.targeter.updateBoardMarks(dt, controlled);
     this.controlSelection.reclaimDead();
 
     this.sections.enter(SECTION.effects);
-    this.flashEffects.update(dt, this.simulator.simTime);
+    this.flashEffects.update(dt, this.dynamicSystem.simTime);
     this.sections.exit(SECTION.effects);
 
   }
@@ -511,7 +503,7 @@ export class Game {
   // このフレームの値になるので、update の末尾に置く。ポーズ中と入力ゲート中はそのまま戻る。
   private handlePointerInput(): void {
     if (this._isPaused || this._hud.overlayManager.isInputGated()) return;
-    this.viewManager.activeView.handlePointer(this.simulator.simTime);
+    this.viewManager.activeView.handlePointer(this.dynamicSystem.simTime);
   }
 
   // --------------------------------------------------------------- input
@@ -534,7 +526,7 @@ export class Game {
     this.simSpeedManager.handleInput(this.input);
     this.viewManager.handleInput(this.input);
     // ビュー固有のキー(戦闘=計画破棄/自動ワープ、マップ=Δv 編集)は現在のビューが持つ。
-    this.viewManager.activeView.handleInput(this.input, dt, this.simulator.simTime);
+    this.viewManager.activeView.handleInput(this.input, dt, this.dynamicSystem.simTime);
   }
 
   // ------------------------------------------------------------------ sync
@@ -620,8 +612,7 @@ export class Game {
     return {
       ...this.dynamicSystem.perfCounts(),
       ...this.predictor.perfCounts(
-        this.simulator.simTime, this.displayWindowManager.current.duration, this.activeControllable),
-      ...this.simulator.perfCounts(),
+        this.dynamicSystem.simTime, this.displayWindowManager.current.duration, this.activeControllable),
       ...this.planDisplay.perfCounts(),
       ...this._celestialSystem.perfCounts(),
       ...this.viewManager.activeView.perfCounts(),

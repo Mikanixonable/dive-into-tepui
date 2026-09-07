@@ -15,7 +15,6 @@ import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { MarkerManager } from '../marker/marker-manager';
-import type { Simulator } from '../dynamic/simulator';
 import type { StageSaveData } from '../save/save-data';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
@@ -61,7 +60,6 @@ export type StageDeps = [
   fx: FlashEffects,
   markerManager: MarkerManager,
   celestialSystem: CelestialSystem,
-  simulator: Simulator,
   controlSelection: ControlSelection,
 ];
 
@@ -160,7 +158,6 @@ export abstract class Stage {
   protected readonly _dynamicSystem: DynamicSystem;
   protected readonly _markerManager: MarkerManager;
   protected readonly _celestialSystem: CelestialSystem;
-  protected readonly _simulator: Simulator;
   protected readonly _controlSelection: ControlSelection;
 
   private _phase: GamePhase;
@@ -185,7 +182,7 @@ export abstract class Stage {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, worldSfx, uiSfx, scene, dynamicSystem, fx, markerManager, celestialSystem, simulator, controlSelection] = deps;
+    const [hud, worldSfx, uiSfx, scene, dynamicSystem, fx, markerManager, celestialSystem, controlSelection] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
@@ -194,7 +191,6 @@ export abstract class Stage {
     this._dynamicSystem = dynamicSystem;
     this._markerManager = markerManager;
     this._celestialSystem = celestialSystem;
-    this._simulator = simulator;
     this._controlSelection = controlSelection;
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
     this._phase = saved?.phase ?? 'playing';

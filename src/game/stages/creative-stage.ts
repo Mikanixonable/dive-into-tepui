@@ -372,7 +372,7 @@ export class CreativeStage extends Stage {
     if (!(motion instanceof OrbitingMotion)) {
       throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} は公転していないのでラグランジュ点を持たない`);
     }
-    const t = this._simulator.simTime;
+    const t = this._dynamicSystem.simTime;
     const system = secondaryFrameOf(this._celestialSystem.celestialMotions, t, motion, t);
     if (system === null) {
       throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} の主天体が引けない`);
@@ -391,7 +391,7 @@ export class CreativeStage extends Stage {
   // フォームのサイズ/形の指定から軌道要素を組み、基準天体中心の状態を ECI へ直して返す。
   private buildElementsState(form: ElementsForm): KinematicState {
     const center = this.referenceCelestialBody(form);
-    const centerState = center.stateAt(this._simulator.simTime);
+    const centerState = center.stateAt(this._dynamicSystem.simTime);
     // サイズの指定方法ごとに長半径と離心率を出す。
     let a: number;
     let e: number;
@@ -410,11 +410,11 @@ export class CreativeStage extends Stage {
 
     // 基準天体中心の相対状態を組み、基準天体自身の位置・速度を足して ECI にする。
     const rel = stateFromOrbitalElements(
-      this._simulator.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG,
+      this._dynamicSystem.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG,
       form.nuDeg * DEG, center.def.mu,
     );
     return kinematicState<'eci'>(
-      this._simulator.simTime, add(centerState.r, rel.r), add(centerState.v, rel.v));
+      this._dynamicSystem.simTime, add(centerState.r, rel.r), add(centerState.v, rel.v));
   }
 
   // フォームの値が物理的に成立するか検証し、不正なら最初の問題を理由に例外を投げる。
