@@ -479,7 +479,7 @@ export class Game {
     this.sections.exit(SECTION.player);
 
     this.sections.enter(SECTION.stage);
-    this.activeStage.update(dt, this.dynamicSystem, this.simulator.simTime, this.simSpeedManager);
+    this.activeStage.update(dt, this.simulator.simTime, this.simSpeedManager);
     this.sections.exit(SECTION.stage);
     this.nanWatchdog.checkControlled('activeStage.update', controlled, this.simulator.simTime, dt, this.simulator.lastSimDt);
     this.sections.enter(SECTION.integrate);
