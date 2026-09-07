@@ -1,7 +1,7 @@
 import { CelestialEntity } from '../../celestial/celestial-entity/celestial-entity';
 import { LagrangePointMarker } from '../../marker/lagrange-point-marker';
 import type { CelestialClass } from '../../celestial/celestial-entity/celestial-entity-def';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import { len, sub } from '../../../math/vec3';
 import type { ListedObject } from '../../pickable/listed-object';
 import type { OrbitingObject } from '../../dynamic/dynamic-entity/orbiting-object';
@@ -79,7 +79,7 @@ export class PhysicalObjectListOrder {
   private readonly idsInSectionScratch = new Set<string>();
   private readonly clusterParentSeenScratch = new Set<string>();
 
-  public constructor(private readonly celestialSystem: CelestialSystem) {}
+  public constructor(private readonly celestialBodies: CelestialBodies) {}
 
   public get filteringActive(): boolean {
     return this.query !== '' || this.filter !== null;
@@ -141,15 +141,15 @@ export class PhysicalObjectListOrder {
     this.displayTime = displayTime;
     this.sortKeys.clear();
     const viewerState = viewer?.state ?? null;
-    const star = this.celestialSystem.star;
-    const starPos = star === null ? null : star.stateAt(displayTime).r;
+    const starId = this.celestialBodies.starId;
+    const starPos = starId === null ? null : this.celestialBodies.stateAt(starId, displayTime).r;
     for (const item of items) {
       const pos = item.posAt(displayTime);
       if (pos === null) continue;
       const distance = viewerState === null ? 0 : len(sub(pos, viewerState.r));
       // 所属系の判定は最強天体から親を辿るぶん高価なので、系そのものを表す天体では省く。
       const inFocusedSystem = item.listSection === 'body'
-        || this.celestialSystem.isPositionInFocusedSystem(focusId, pos, displayTime);
+        || this.celestialBodies.isPositionInFocusedSystem(focusId, pos, displayTime);
       this.sortKeys.set(item.id, {
         priority: item.listPriority(viewer),
         distance,
@@ -236,7 +236,7 @@ export class PhysicalObjectListOrder {
 
   // 検索語と照合する文字列。表示名と、対象が検索向けに出す補助表示を小文字で連ねる。
   private matchText(item: ListedObject): string {
-    const searchText = item.listSearchText(this.celestialSystem, this.viewer, this.displayTime);
+    const searchText = item.listSearchText(this.celestialBodies, this.viewer, this.displayTime);
     return `${item.name} ${searchText}`.toLocaleLowerCase();
   }
 

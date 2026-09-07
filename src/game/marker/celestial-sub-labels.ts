@@ -4,7 +4,7 @@
 import { len, sub, type Vec3 } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
-import type { CelestialSystem } from '../celestial/celestial-system';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ProjectFn } from '../../math/projection';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { GroupedMarkerItem, GroupedMarkers } from './grouped-markers';
@@ -49,7 +49,7 @@ export class CelestialSubLabels {
 
   constructor(
     private readonly markerManager: MarkerManager,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialBodies: CelestialBodies,
   ) {}
 
   // 隠れた項目を天体ラベルへ振り分け、集約先のラベルをサブ行付きへ描き直す。
@@ -57,7 +57,7 @@ export class CelestialSubLabels {
   sync(
     groupedMarkers: GroupedMarkers,
     labelStateOf: (id: string) => CelestialLabelState | null,
-    celestialBodies: readonly CelestialBody[],
+    attractors: readonly CelestialBody[],
     pivot: number,
     project: ProjectFn,
     cameraPos: Vec3,
@@ -68,7 +68,7 @@ export class CelestialSubLabels {
     // まず隠れた項目を集約先の天体ごとに束ねる。
     this.entriesByBody.clear();
     for (const item of hiddenItems) {
-      this.route(item, strongestAttractor(item.pos, celestialBodies, pivot).id, labelStateOf, cameraPos);
+      this.route(item, strongestAttractor(item.pos, attractors, pivot).id, labelStateOf, cameraPos);
     }
 
     // 束ねた先のラベルを、サブ行を足した表記で置き直す。
@@ -95,7 +95,7 @@ export class CelestialSubLabels {
     const centerLabel = labelStateOf(centerId);
     const centerShown = centerLabel !== null && centerLabel.shown;
     const distToCenter = centerLabel === null ? Infinity : len(sub(centerLabel.pos, cameraPos));
-    const primaryId = this.celestialSystem.entityOf(centerId).motion.primary?.id ?? null;
+    const primaryId = this.celestialBodies.motionOf(centerId).primary?.id ?? null;
     const primaryShown = primaryId !== null && (labelStateOf(primaryId)?.shown ?? false);
 
     // 遠い系ではプレフィックスを付けず主親天体へまとめ、近い系では直近の天体へ付ける。
@@ -106,7 +106,7 @@ export class CelestialSubLabels {
     }
     if (centerShown) this.append(centerId, '', item);
     else if (primaryShown && primaryId !== null) {
-      this.append(primaryId, `${this.celestialSystem.nameOf(centerId)}: `, item);
+      this.append(primaryId, `${this.celestialBodies.nameOf(centerId)}: `, item);
     }
   }
 

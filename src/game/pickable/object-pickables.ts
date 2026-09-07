@@ -3,7 +3,7 @@
 import { isObjectPickable, ObjectPickable } from './object-pickable';
 import { focusTargetId } from '../camera/focus-target';
 import { DynamicSystem } from '../dynamic/dynamic-system';
-import type { CelestialSystem } from '../celestial/celestial-system';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { NavTarget } from '../nav-target';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { CameraSystem } from '../camera/camera-system';
@@ -39,7 +39,7 @@ export class ObjectPickables {
   constructor(
     private readonly controlSelection: ControlSelection,
     private readonly dynamicSystem: DynamicSystem,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialBodies: CelestialBodies,
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,
     private readonly celestialMarkers: CelestialMarkers,
@@ -63,18 +63,18 @@ export class ObjectPickables {
     this._lastDisplayTime = displayTime;
     const focusId = focusTargetId(this.cameraSystem.mapCamera.focus);
     // 候補の位置は表示時刻のものなので、遮蔽・系の判定もその時刻の天体位置で行う。
-    const celestialBodies = this.celestialSystem.celestialMotions;
+    const occluders = this.celestialBodies.celestialMotions;
     const visibilityPolicy = new MapVisibilityPolicy(
-      this.celestialSystem,
+      this.celestialBodies,
       this.cameraSystem.mapDisplayToggles,
       focusId,
       this.nearbyTracker.membersAt(
-        this.celestialSystem, this.cameraSystem.activeCameraPos, displayTime),
+        this.celestialBodies, this.cameraSystem.activeCameraPos, displayTime),
     );
     this._visibilityPolicy = visibilityPolicy;
     this.celestialMarkers.update(displayTime, this.cameraSystem.mapDisplayToggles, visibilityPolicy);
     this.navTarget.update(
-      this.controlSelection.current, this.dynamicSystem, this.celestialSystem, displayWindow, this.frameAnchors);
+      this.controlSelection.current, this.dynamicSystem, this.celestialBodies, displayWindow, this.frameAnchors);
 
     const controlled = this.controlSelection.current;
     // 候補1件を、消滅・表示トグル・位置の有無・所属系・遮蔽の順に通してこのフレームの候補列へ積む。
@@ -85,9 +85,9 @@ export class ObjectPickables {
       const pos = item.posAt(displayTime);
       if (pos === null) return;
       if (item.onlyInFocusedSystem
-        && !this.celestialSystem.isPositionInFocusedSystem(focusId, pos, displayTime)) return;
+        && !this.celestialBodies.isPositionInFocusedSystem(focusId, pos, displayTime)) return;
       if (item.hiddenBehindBodies
-        && isOccluded(this.cameraSystem.activeCameraPos, pos, celestialBodies, displayTime)) return;
+        && isOccluded(this.cameraSystem.activeCameraPos, pos, occluders, displayTime)) return;
       this.candidateItems.push(item);
     };
 
