@@ -28,7 +28,6 @@ import type { CapKind, DynamicEntityKind } from './entity-kind';
 import type { InstancedPools } from '../instanced-pools';
 import { PredictedArc, trajectorySampleInterval } from '../predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from '../time-step';
-import type { FutureCelestialBodyProvider } from '../arc-celestial-bodies';
 import type { Stage } from '../../stages/stage';
 import type { Contact } from './contact';
 import { EntityIdAllocator } from './entity-id';
@@ -567,7 +566,7 @@ export class DynamicEntity {
   }
 
   // 未来の予測列を保持する弧を返す(無ければ現在状態を起点に作る)。予測しない種別は null。
-  ensurePredictedArc(sources: FutureCelestialBodyProvider): PredictedArc | null {
+  ensurePredictedArc(sources: readonly CelestialBody[]): PredictedArc | null {
     if (!this.predictsFuture) return null;
     this._predictedArc ??= new PredictedArc(
       this.actual.state, sources, this.radius, this.bcInv, this.srpCoeff, /* keplerTail */ true,

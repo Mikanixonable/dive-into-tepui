@@ -2,7 +2,7 @@
 // 交戦圏内数に応じた周期湧き(active_combat)の3フェーズを進めるフェーズ機械と、
 // ウェーブ1回分の隻数・編成・接近軌道の生成。
 import * as THREE from 'three/webgpu';
-import type { CelestialMotions } from '../../../physics/celestial-body';
+import type { CelestialBody } from '../../../physics/celestial-body';
 import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { ENGAGEMENT_RANGE } from '../../dynamic/engagement-zone';
 import { Player } from '../../player/player';
@@ -67,7 +67,7 @@ export class WaveAttack {
     private readonly worldSfx: WorldSfx,
     private readonly fx: FlashEffects,
     private readonly scene: THREE.Scene,
-    private readonly celestialBodies: CelestialMotions,
+    private readonly attractors: readonly CelestialBody[],
     saved?: WaveAttackSaveData,
   ) {
     this.waveState = saved?.waveState ?? 'waiting_for_ammo';
@@ -78,7 +78,7 @@ export class WaveAttack {
   // ウェーブ番号を進め、敵を生成して addEnemy 経由でエンティティ管理に登録する。
   public spawnWave(player: Player, addEnemy: (enemy: Enemy) => void, forcedPattern?: 'linear' | 'random'): void {
     const wave = ++this._waveCount;
-    const enemies = generateWave(player.state, wave, this.celestialBodies, this.worldSfx, this.fx, this.scene, forcedPattern);
+    const enemies = generateWave(player.state, wave, this.attractors, this.worldSfx, this.fx, this.scene, forcedPattern);
     for (const enemy of enemies) addEnemy(enemy);
   }
 
@@ -195,9 +195,9 @@ function makeFlybyVelocity(player: KinematicState, centerR: Vec3, wave: number):
 }
 
 // 近地点高度が REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN を下回らないよう Δv の大きさを二分探索で縮める。
-function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, celestialBodies: CelestialMotions): Vec3 {
+function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, attractors: readonly CelestialBody[]): Vec3 {
   const minPeAlt = REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN;
-  const center = strongestAttractor(centerR, celestialBodies.celestialMotions, t);
+  const center = strongestAttractor(centerR, attractors, t);
   // 与えた速度での近地点高度が最低ラインを満たすか判定する。
   const safe = (v: Vec3): boolean => {
     const el = orbitalElementsOf(kinematicState<'eci'>(t, centerR, v), center, t);
@@ -284,12 +284,12 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
 }
 
 // ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
-export function generateWave(player: KinematicState, waveNumber: number, celestialBodies: CelestialMotions, worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
+export function generateWave(player: KinematicState, waveNumber: number, attractors: readonly CelestialBody[], worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
   const calculatedCount = STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * STAGE00_WAVE_SHIPS_PER_WAVE);
   const shipCount = Math.min(calculatedCount, STAGE00_WAVE_MAX_SHIPS);
   const centerR = pickWaveCenter(player, waveNumber);
   const { approachDir, centerV: rawCenterV } = makeFlybyVelocity(player, centerR, waveNumber);
-  const centerV = limitFlybyDv(player.v, centerR, rawCenterV, player.t, celestialBodies);
+  const centerV = limitFlybyDv(player.v, centerR, rawCenterV, player.t, attractors);
   const subGroups = makeSubGroupHexes(pickWaveBaseHex());
   const typeIndex = Math.floor(Math.random() * 3);
   const pattern = forcedPattern || (Math.random() < 0.5 ? 'linear' : 'random');
