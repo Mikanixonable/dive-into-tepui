@@ -158,7 +158,7 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
     ];
   }
 
-  // menuItems が出した操作を実行する。削除は自分の alive を落とし、残りは commands を通す。
+  // 削除は自分の alive を落とす。
   public runMenu(
     act: MenuAction, _controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
   ): void {
