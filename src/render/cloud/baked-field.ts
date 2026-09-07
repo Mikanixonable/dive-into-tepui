@@ -44,6 +44,9 @@ export class BakedField {
     renderer.setRenderTarget(null);
   }
 
+  // 焼いた場のテクスチャ。RenderTarget の所有権はこのクラスに残す。
+  public get texture(): THREE.Texture { return this.target.textures[0]!; }
+
   // 単位方向 direction での値。使う成分は呼ぶ側が取る。
   public at(direction: Vec3Node): Vec4Node {
     return texture(this.target.textures[0]!, this.projection.uvAt(direction));

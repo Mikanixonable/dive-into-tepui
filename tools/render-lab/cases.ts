@@ -5,8 +5,10 @@ import * as THREE from 'three/webgpu';
 import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial-surface';
 import { CumulusShell } from '../../src/render/cumulus-shell';
+import { ClimateMap } from '../../src/render/cloud/climate-map';
+import { GeneratedCloudField } from '../../src/render/cloud/cloud-field';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
-import cloudFieldUrl from '../../src/assets/cloud-field.png';
+import climateTextureUrl from '../../src/assets/earth-climate.png';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
 import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-system/constants';
 import { EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE } from '../../src/game/celestial/solar-system/earth-system';
@@ -43,6 +45,7 @@ import type { RenderStyle } from '../../src/render/render-style';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { CelestialTexture } from '../../src/render/celestial-textures';
 import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';
+import type { WebGPURenderer } from 'three/webgpu';
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
 export const VIEW_WIDTH = 960;
@@ -113,6 +116,10 @@ export interface LabCase {
   readonly rings?: { readonly center: THREE.Vector3; readonly axis: THREE.Vector3; readonly bands: readonly RingBand[] };
   // 影パスへ渡す積雲の殻。
   readonly cumulus?: ShadowCumulus;
+  // 動的な雲場を表示時刻へ焼く。
+  readonly bakeClouds?: (renderer: WebGPURenderer, displayTime: number) => void;
+  // 動的な雲場を解放する。
+  readonly disposeClouds?: () => void;
   // 描画品質設定のうち、ケースの部品が読む項目を押し込む口。毎フレーム呼ばれるので、
   // 同値なら何もしないこと。
   readonly applyGraphics?: (graphics: GraphicsSettingsData) => void;
@@ -618,6 +625,8 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   readonly cumulus: ShadowCumulus;
   readonly shadowBody: ShadowBody;
   readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
+  readonly bakeClouds: (renderer: WebGPURenderer, displayTime: number) => void;
+  readonly disposeClouds: () => void;
 } {
   const group = new THREE.Group();
   group.position.copy(center);
@@ -625,7 +634,8 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   const axes = shapeAxes(R_EARTH_EQ, EARTH.shape);
   const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
-  const cumulus = new CumulusShell(cloudFieldUrl, R_EARTH_EQ);
+  const climate = ClimateMap.fromDeferredUrl(climateTextureUrl);
+  const cumulus = new CumulusShell(GeneratedCloudField.global(climate), R_EARTH_EQ);
   const surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
   surface.addTo(group);
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
@@ -663,12 +673,15 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
     // 絵の比較は最も細かい段で行う)。
     applyGraphics: (graphics) => {
       if (graphics.clouds) {
+        cumulus.setCloudsVisible(true);
         cumulus.setDetail(graphics.cumulusDetail);
         cumulus.syncLod(CLOSE_UP_DIAMETER_PX);
       } else {
-        cumulus.hide();
+        cumulus.setCloudsVisible(false);
       }
     },
+    bakeClouds: (renderer, displayTime) => cumulus.bake(renderer, displayTime),
+    disposeClouds: () => cumulus.dispose(),
   };
 }
 
@@ -701,6 +714,8 @@ function earth(style: RenderStyle): LabCase {
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
+    bakeClouds: earthSphere.bakeClouds,
+    disposeClouds: earthSphere.disposeClouds,
   };
 }
 
@@ -717,6 +732,8 @@ function earthOblique(style: RenderStyle): LabCase {
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
+    bakeClouds: earthSphere.bakeClouds,
+    disposeClouds: earthSphere.disposeClouds,
   };
 }
 
@@ -743,6 +760,8 @@ function earthPolar(style: RenderStyle): LabCase {
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
+    bakeClouds: earthSphere.bakeClouds,
+    disposeClouds: earthSphere.disposeClouds,
   };
 }
 
@@ -824,6 +843,8 @@ function earthMars(style: RenderStyle): LabCase {
       },
     ],
     applyGraphics: earthSphere.applyGraphics,
+    bakeClouds: earthSphere.bakeClouds,
+    disposeClouds: earthSphere.disposeClouds,
   };
 }
 
