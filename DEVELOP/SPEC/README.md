@@ -20,7 +20,8 @@
 | --- | --- |
 | [INVARIANTS.md](INVARIANTS.md) | 全分野に掛かる不変条件(連続性・決定性・表示と世界の分離) |
 | [GAME.md](GAME.md) | ステージ・勝敗・進行・時間加速・基地とドック・補給 |
-| [CONTROLS.md](CONTROLS.md) | キー割り当て・マウス・タッチ・視点操作 |
+| [CONTROLS.md](CONTROLS.md) | キー割り当て・マウス・タッチ・入力の優先順位 |
+| [CAMERA.md](CAMERA.md) | 視点(フォーカス・基準フレーム・ズーム・ガンサイトズーム) |
 | [FLIGHT.md](FLIGHT.md) | 自艦の艦システム(推進・姿勢・熱・電力・弾薬ベルト・部品) |
 | [COMBAT.md](COMBAT.md) | 射撃・被弾・敵・破片・戦闘エフェクト |
 | [ORBIT.md](ORBIT.md) | 軌道力学・摂動・大気・輻射圧・剛体接触 |
