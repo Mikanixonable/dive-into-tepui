@@ -91,8 +91,9 @@ export class LagrangePointMarker implements ObjectPickable {
   }
 
   // 自艦からの距離と種別。自艦がいない、あるいは位置が解けていないフレームは距離が落ちる。
-  public propertyRows(commands: ObjectCommands): readonly PropertyRow[] {
-    const viewer = commands.controlled;
+  public propertyRows(
+    _celestialSystem: CelestialSystem, viewer: Controllable | null,
+  ): readonly PropertyRow[] {
     const pos = this.posAt();
     const rows: PropertyRow[] = [];
     if (viewer && pos) {

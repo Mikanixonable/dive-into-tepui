@@ -304,9 +304,8 @@ export abstract class CelestialEntity implements ObjectPickable {
   // プロパティウィンドウに出す行。種別・μ・半径を主要行とし、公転していれば軌道要素を
   // 「軌道」グループの下に畳む。viewer が null なら距離の行は落ちる。
   public propertyRows(
-    commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number, displayTime: number,
+    _celestialSystem: CelestialSystem, viewer: Controllable | null, simTime: number, displayTime: number,
   ): readonly PropertyRow[] {
-    const viewer = commands.controlled;
     const motion = this.motion;
     const def = motion.def;
     const rows: PropertyRow[] = [];

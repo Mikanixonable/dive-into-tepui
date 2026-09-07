@@ -383,13 +383,12 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // プロパティウィンドウに出す行。所持金・自艦からの距離を主要行とし、操作対象かは
   // 詳細トグル、軌道要素は「軌道」グループの下に畳む。自艦がいなければ距離の行は落ちる。
   public propertyRows(
-    commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
+    celestialSystem: CelestialSystem, viewer: Controllable | null, simTime: number,
   ): readonly PropertyRow[] {
-    const viewer = commands.controlled;
     const rows: PropertyRow[] = [
       {
         key: 'operated', label: '操作対象か',
-        value: commands.controlled === this ? 'はい' : 'いいえ', collapsible: true,
+        value: viewer === this ? 'はい' : 'いいえ', collapsible: true,
       },
       { key: 'money', label: '所持金', value: `${this.baseState.money.toLocaleString()} Cr` },
     ];
