@@ -1,6 +1,7 @@
 // 実験10: 掃引接触判定(physics/sphere-contact)の解法別コスト。
 // 弦・二次・三次を、棄却経路(箱で落ちる相手)と求根経路(表面を跨ぐ相手)に分けて測る。
 // 配置は二体問題の RK4 から作り、実シミュレーション側の刻みガードは通さない。
+import { createRequire } from 'node:module';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { R_EARTH_EQ } from '../../src/game/celestial/solar-system/constants';
 import { add, v3 } from '../../src/math/vec3';
@@ -77,4 +78,5 @@ export function run(): void {
   console.log(`地球の衝突球 ${(R_EARTH_EQ / 1e3).toFixed(0)} km、周回半径 ${((R_EARTH_EQ + 413e3) / 1e3).toFixed(0)} km`);
 }
 
-if (require.main === module) run();
+// webpack 用に `require` がグローバル宣言されているので、node の require はここで作る。
+if (createRequire(__filename).main === module) run();
