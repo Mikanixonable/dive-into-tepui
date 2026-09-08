@@ -3,6 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { smoothstep, texture, vec2 } from 'three/tsl';
 import { R_EARTH } from '../../game/celestial/solar-system/constants';
+import { DeferredTexture } from '../deferred-texture';
 import { equirectUvFromDirection } from './field-projection';
 import { eastAt, northAt } from './sphere-frame';
 import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
@@ -22,6 +23,22 @@ export class ClimateMap {
   // url の PNG を読み終えてから器を返す。
   public static async load(url: string): Promise<ClimateMap> {
     const map = await new THREE.TextureLoader().loadAsync(url);
+    return new ClimateMap(ClimateMap.configure(map), null);
+  }
+
+  // URL を保持したまま、既存の遅延テクスチャ経路で後から画像を公開する器を返す。
+  public static fromDeferredUrl(url: string): ClimateMap {
+    const deferred = new DeferredTexture(url, THREE.NoColorSpace);
+    return new ClimateMap(ClimateMap.configure(deferred.texture), deferred);
+  }
+
+  private constructor(
+    private readonly map: THREE.Texture,
+    private readonly deferred: DeferredTexture | null,
+  ) {}
+
+  // 気候テクスチャを正距円筒の気候データとして読む設定を共通化する。
+  private static configure(map: THREE.Texture): THREE.Texture {
     map.wrapS = THREE.RepeatWrapping;
     map.wrapT = THREE.ClampToEdgeWrapping;
     map.flipY = false;
@@ -29,10 +46,11 @@ export class ClimateMap {
     map.minFilter = THREE.LinearFilter;
     map.magFilter = THREE.LinearFilter;
     map.colorSpace = THREE.NoColorSpace;
-    return new ClimateMap(map);
+    return map;
   }
 
-  private constructor(private readonly map: THREE.Texture) {}
+  // 遅延版だけ画像取得を開始する。ロード済み版では何もしない。
+  public request(): void { this.deferred?.request(); }
 
   // 平年の雲量 0..1。
   public meanCloudiness(direction: Vec3Node): FloatNode {
@@ -68,6 +86,7 @@ export class ClimateMap {
 
   // 保持しているテクスチャを解放する。
   public dispose(): void {
-    this.map.dispose();
+    if (this.deferred === null) this.map.dispose();
+    else this.deferred.dispose();
   }
 }

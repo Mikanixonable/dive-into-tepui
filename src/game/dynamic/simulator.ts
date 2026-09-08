@@ -228,7 +228,7 @@ export class Simulator {
     }
   }
 
-  // 負荷確認ウィンドウが読む、直近フレームの積分規模と接触候補の件数。
+  // デバッグ情報ウィンドウが読む、直近フレームの積分規模と接触候補の件数。
   perfCounts(): Pick<PerfCounts,
   'simSubsteps' | 'simIntegrated' | 'simFollowed' | 'gravitySources'
   | 'surfaceCandidates' | 'contactPairs' | 'contactParticipants'> {

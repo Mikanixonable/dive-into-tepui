@@ -114,7 +114,7 @@ export class PlanetSystem {
     return accel;
   }
 
-  // 負荷確認ウィンドウが読む、系が持つ時刻キャッシュのヒット/ミス累計。
+  // デバッグ情報ウィンドウが読む、系が持つ時刻キャッシュのヒット/ミス累計。
   get cacheStats(): TimeCacheStats {
     return addTimeCacheStats(this.starRelCache.stats, this.membersCache.stats);
   }
