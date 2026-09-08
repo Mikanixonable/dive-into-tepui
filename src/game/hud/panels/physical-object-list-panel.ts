@@ -1,19 +1,19 @@
 import { hudRail } from '../hud-root';
 import {
-  Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, SegmentedControl, type CollapseToggleLabels,
+  Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, type CollapseToggleLabels,
 } from '../../../hud/widgets';
-import { expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
 import { injectOnce } from '../../../hud/widgets/inject-style';
 import { loadPanelCollapsed, savePanelCollapsed, wirePanelCollapse } from '../panel-shell';
 import { MQ_COARSE } from '../../../hud/breakpoints';
+import { PhysicalObjectListHead } from './physical-object-list-head';
 import { PhysicalObjectListTree } from './physical-object-list-tree';
-import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
+import { PhysicalObjectListOrder } from './physical-object-list-order';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { DynamicEntityKind } from '../../dynamic/dynamic-entity/entity-kind';
 import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
 import type { RowNode } from './physical-object-list-tree';
-import type { PhysicalObjectListFilter, PhysicalObjectListSort, SectionOrder } from './physical-object-list-order';
+import type { PhysicalObjectListFilter, SectionOrder } from './physical-object-list-order';
 
 // 軌道物体一覧の区画。天体はクラスをまたいで1区画にまとめ、人工物は種別ごとに分ける。
 export type MapListSection = 'body' | DynamicEntityKind;
@@ -57,18 +57,10 @@ const COLLAPSE_LABELS: CollapseToggleLabels = {
 
 const STYLE = `
 #hud-physical-object-list { max-height: 544px; max-height: min(544px, 60dvh); display: flex; flex-direction: column; overflow: hidden; }
-/* 上半分(検索・フィルタ)は要素数ぶんの高さに縮め、下半分(項目一覧)が残りを占有する。互いに重ならないよう独立してスクロールさせる */
-#hud-physical-object-list .physical-object-list-head { flex: 0 0 auto; max-height: 50%; overflow-y: auto; overscroll-behavior: contain; }
 #hud-physical-object-list .physical-object-list-body { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; }
-#hud-physical-object-list .physical-object-list-search { padding: var(--space-1) var(--space-2); }
-#hud-physical-object-list .physical-object-list-search .w-input { width: 100%; }
-#hud-physical-object-list .physical-object-list-head .w-group { padding: var(--space-1) var(--space-2); }
-#hud-physical-object-list .physical-object-list-head .w-group-title { flex: 1 0 100%; }
-#hud-physical-object-list .physical-object-list-head .w-btn { font-size: var(--font-xxs); }
 #hud-physical-object-list .physical-object-list-collapse {
   margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
 }
-#hud-physical-object-list .physical-object-list-title { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 #hud-physical-object-list .physical-object-list-body.collapsed { display: none !important; }
 #hud-physical-object-list .physical-object-list-breadcrumb { padding: var(--space-1) var(--space-3); font-size: var(--font-xxs); color:var(--text-dim); border-bottom:1px solid var(--edge); }
 /* 全展開して数百行をスクロールしても今どの区画かを見失わないよう、見出しを内側スクロール
@@ -146,69 +138,21 @@ export class PhysicalObjectListPanel {
     this.panel.className = 'panel';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
 
-    const head = document.createElement('div');
-    head.className = 'physical-object-list-head';
-
-    const titleRow = document.createElement('div');
-    titleRow.className = 'physical-object-list-title';
-    const title = document.createElement('h3');
-    title.textContent = '軌道物体';
-    titleRow.appendChild(title);
-    head.appendChild(titleRow);
-    const searchWrap = document.createElement('div');
-    searchWrap.className = 'physical-object-list-search';
-    // 絞り込み入力は打鍵ごとに一覧を再描画する必要があり、確定でしか通知しない ValueInput の
-    // 契約に合わない唯一の例外(UI-DESIGN §3)。対話要素の共通の下地(ドラッグ伝播の抑止・
-    // タッチでのタップ領域確保)だけは他の部品と同じ形で踏襲する。
-    const search = document.createElement('input');
-    search.type = 'search';
-    search.className = 'w-input';
-    search.placeholder = '検索';
-    search.setAttribute('aria-label', '軌道物体を検索');
-    stopDragPropagation(search);
-    expandHitTarget(search);
-    search.addEventListener('keydown', (e) => {
-      // Input の window keydown 購読へ打鍵が漏れて機体操作と誤認されないよう止める。
-      e.stopPropagation();
-      if (e.key !== 'Escape') return;
-      // Escape は「破棄」ではなく「絞り込み解除」に読めるので、確定済みの値へ戻すのではなく
-      // 空にする(検索欄限定の挙動)。フォーカスは外さず、続けて打鍵できるようにする。
-      e.preventDefault();
-      search.value = '';
-      this.order.query = '';
-    });
-    search.addEventListener('input', () => { this.order.query = search.value.trim().toLocaleLowerCase(); });
-    searchWrap.appendChild(search);
-    head.appendChild(searchWrap);
-
-    const filterControl = new SegmentedControl<PhysicalObjectListFilter | null>('分類', FILTERS, (key) => {
-      this.order.filter = this.order.filter === key ? null : key;
-      filterControl.setSelected(this.order.filter);
-    });
-    filterControl.setSelected(this.order.filter);
-    head.appendChild(filterControl.element);
-
-    // 並び順はフィルタとは別行 — 絞り込みと並べ替えは独立な操作であることを見た目でも分ける。
-    const sortControl = new SegmentedControl<PhysicalObjectListSort>('並び順', SORTS, (key) => {
-      this.order.sort = key;
-      sortControl.setSelected(key);
-    });
-    sortControl.setSelected(this.order.sort);
-    head.appendChild(sortControl.element);
-    this.panel.appendChild(head);
+    const head = new PhysicalObjectListHead(this.order);
+    this.panel.appendChild(head.element);
     // 見出し以外をまとめて畳める区画にする — 一覧は常時表示で画面右を大きく占有するため。
     const body = document.createElement('div');
     body.className = 'physical-object-list-body';
     this.body = body;
     this.panel.appendChild(body);
     this.unsubscribeCollapsedView = wirePanelCollapse({
-      toggleRoot: titleRow,
+      toggleRoot: head.collapseToggleRoot,
       toggleId: 'hud-physical-object-list-toggle',
       toggleClassName: 'physical-object-list-collapse',
       target: body,
       labels: COLLAPSE_LABELS,
       storageId: 'hud-physical-object-list',
-      extraHitEls: [title],
+      extraHitEls: [head.collapseToggleLabel],
     });
     this.breadcrumb = document.createElement('div');
     this.breadcrumb.className = 'physical-object-list-breadcrumb';
