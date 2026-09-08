@@ -1,5 +1,5 @@
 // クリエイティブモード: 勝敗判定を発生させず、物体配置と軌道計画を自由に試すためのステージ。
-import { Stage, type ObjectAuthoring, type StageDeps, STORY_EPOCH } from './stage';
+import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { ManualSpawn } from '../creative/manual-spawn';
 import { ObjectPlacement, type PlacedObject } from '../creative/object-placement';
 import { StageControlsPanel, type EnemySpawnShape } from '../creative/stage-controls-panel';
@@ -14,6 +14,7 @@ import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
+import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
 
 export class CreativeStage extends Stage {
