@@ -16,6 +16,7 @@ import { SOLAR_CONSTANT } from '../../../physics/srp';
 import { ApsisTrack } from '../../../physics/trajectory-features';
 import { Vec3, len, scale, sub, v3 } from '../../../math/vec3';
 import { hitsSphere, type Ray } from '../../../math/ray';
+import type { ProjectFn } from '../../../math/projection';
 import type { SphereHit } from '../../../math/triangle-mesh';
 import { FloatingOrigin } from '../../camera/floating-origin';
 import { EllipseLine } from '../../lines/ellipse-line';
@@ -24,7 +25,6 @@ import { TrajectoryLine } from '../../lines/trajectory-line';
 import { LineStyle } from '../../../render/line-style';
 import { FrameAnchorSource, ReferenceFrame } from '../../../physics/frame';
 import type { CapKind, DynamicEntityKind } from './entity-kind';
-import type { InstancedPools } from '../instanced-pools';
 import { PredictedArc, trajectorySampleInterval } from '../predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from '../time-step';
 import type { Stage } from '../../stages/stage';
@@ -39,7 +39,7 @@ import { syncThermalState } from '../../../render/thermal-emissive';
 import { DISPLAY_DURATION_MAX } from '../../display-window-duration';
 import type { CameraSystem } from '../../camera/camera-system';
 import type { RenderStyle } from '../../../render/render-style';
-import type { GraphicsSettingsData } from '../../../render/graphics-settings';
+import type { EntityVisualSettings } from '../../../render/entity-visual-settings';
 import type { OrbitReference } from '../../orbit-reference';
 import { MARKER_VISIBILITY, type MapVisibility, type MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { Controllable } from './controllable';
@@ -614,31 +614,24 @@ export class DynamicEntity {
     return policy.entity(this.mapKind, self === viewer);
   }
 
-  // このフレームの表示物を同期する。この個体が持つ表示物(メッシュ・エフェクト・交点マーカー)は
-  // すべてこの1呼び出しの中で片付き、何をどう出すかは個体自身が答える。
+  // このフレームのメッシュとエフェクトを同期する。何をどう出すかは個体自身が答える。死んだ個体
+  // (所有者が回収するまで顔ぶれに残る自艦・基地)は同期を止める。
   public sync(
     fo: FloatingOrigin, displayTime: number, active: Controllable | null,
-    visibilityPolicy: MapVisibilityPolicy | null, pools: InstancedPools, cameraSystem: CameraSystem,
-    style: RenderStyle, graphics: GraphicsSettingsData, orbitRef: OrbitReference | undefined,
-    frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting,
+    visibilityPolicy: MapVisibilityPolicy | null, cameraSystem: CameraSystem,
+    style: RenderStyle, visual: EntityVisualSettings, orbitRef: OrbitReference | undefined,
   ): void {
-    // 死んだ個体(所有者が回収するまで顔ぶれに残る自艦・基地)は本体の同期を止める。交点マーカーは
-    // retire しただけでは画面から消えず、この sync が伏せるので、生死によらず通す。
-    if (this.alive) {
-      this.syncModel(
-        fo, displayTime, active, visibilityPolicy, pools, cameraSystem, style, graphics, orbitRef);
-    }
-    this.syncEquatorNodes(cameraSystem, frameAnchors, timeLabel);
+    if (!this.alive) return;
+    this.syncModel(
+      fo, displayTime, active, visibilityPolicy, cameraSystem, style, visual, orbitRef);
   }
 
-  // メッシュと、それに付随する表示物(プルーム・ベルト・マーカー)を displayTime の状態へ合わせ、
-  // プールで描く種別は同期し終えた変換をここで pools へ積む。付随表示を持つ種別はこれを
-  // 差し替え、**必ず placeModel を呼んでから**自分のぶんを載せる。
+  // メッシュと、それに付随する表示物(プルーム・ベルト・マーカー)を displayTime の状態へ合わせる。
+  // 付随表示を持つ種別はこれを差し替え、**必ず placeModel を呼んでから**自分のぶんを載せる。
   protected syncModel(
     fo: FloatingOrigin, displayTime: number, active: Controllable | null,
-    visibilityPolicy: MapVisibilityPolicy | null, _pools: InstancedPools,
-    _cameraSystem: CameraSystem, _style: RenderStyle, _graphics: GraphicsSettingsData,
-    _orbitRef: OrbitReference | undefined,
+    visibilityPolicy: MapVisibilityPolicy | null, _cameraSystem: CameraSystem, _style: RenderStyle,
+    _visual: EntityVisualSettings, _orbitRef: OrbitReference | undefined,
   ): void {
     this.placeModel(fo, displayTime, active, visibilityPolicy);
   }
@@ -746,16 +739,15 @@ export class DynamicEntity {
     (this.equatorNodes ??= new EquatorNodeMarkerPair(this, inputs.markers)).update(inputs);
   }
 
-  // このフレームに求まった赤道交点マーカーを置く。天体の裏に隠れた交点を伏せるのはマップビュー
-  // だけで、戦闘ビューでは地球の向こう側の交点も出す。投影関数は引くたびに作られるので、
-  // 交点を持つ個体でだけ引く。
-  private syncEquatorNodes(
-    cameraSystem: CameraSystem, frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting,
+  // このフレームに求まった赤道交点マーカーを画面へ置く。retire した交点を画面から消すのもここ
+  // なので、個体の生死によらずフレームに1度呼ぶ。occludeByBodies は天体の裏へ回った交点を
+  // 伏せるかどうか。
+  public syncEquatorNodes(
+    project: ProjectFn, cameraPos: Vec3, frameAnchors: FrameAnchorSource,
+    occludeByBodies: boolean, timeLabel: TimeLabelSetting,
   ): void {
-    if (this.equatorNodes === null) return;
-    this.equatorNodes.sync(
-      cameraSystem.activeCameraProjection, cameraSystem.activeCameraPos,
-      frameAnchors.bodies, frameAnchors.bodiesPivot, cameraSystem.view === 'map', timeLabel);
+    this.equatorNodes?.sync(
+      project, cameraPos, frameAnchors.bodies, frameAnchors.bodiesPivot, occludeByBodies, timeLabel);
   }
 
   // 右クリック対象として公開する赤道交点アイコン。

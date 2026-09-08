@@ -7,7 +7,6 @@ import {
   REENTRY_OUTER_BRIGHTNESS, REENTRY_OUTER_COLOR, REENTRY_OUTER_OFFSET, REENTRY_OUTER_SIZE_RATIO,
   REENTRY_SIZE_MIN, REENTRY_SIZE_SPAN,
 } from '../../render/vfx-style';
-import type { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
 
 const REENTRY_GLOW_MIN_Q = 200; // 燃焼エフェクトが出始める動圧 [Pa]
@@ -25,7 +24,9 @@ export class ReentryEffects {
 
   // 燃焼の表示を qdyn に応じた強度で速度方向前方に同期する。visible=false または
   // 強度 0 では隠す。
-  sync(fo: FloatingOrigin, r: Vec3, v: Vec3, qdyn: number, visible: boolean, camera: CameraSystem): void {
+  sync(
+    fo: FloatingOrigin, r: Vec3, v: Vec3, qdyn: number, visible: boolean, cameraQuat: THREE.Quaternion,
+  ): void {
     const t = (qdyn - REENTRY_GLOW_MIN_Q) / (REENTRY_GLOW_FULL_Q - REENTRY_GLOW_MIN_Q);
     const intensity = Math.max(0, Math.min(1, t));
     if (!visible || intensity <= 0) {
@@ -40,12 +41,11 @@ export class ReentryEffects {
       return;
     }
     const dir = norm(v);
-    const camQuat = camera.activeCamera.quaternion;
     const sc = REENTRY_SIZE_MIN + REENTRY_SIZE_SPAN * intensity;
     this.core.sync(fo.RtoThreeV3(addScaled(r, dir, REENTRY_CORE_OFFSET)),
-      sc * REENTRY_CORE_SIZE_RATIO, REENTRY_CORE_BRIGHTNESS * intensity, camQuat);
+      sc * REENTRY_CORE_SIZE_RATIO, REENTRY_CORE_BRIGHTNESS * intensity, cameraQuat);
     this.outer.sync(fo.RtoThreeV3(addScaled(r, dir, REENTRY_OUTER_OFFSET)),
-      sc * REENTRY_OUTER_SIZE_RATIO, REENTRY_OUTER_BRIGHTNESS * intensity, camQuat);
+      sc * REENTRY_OUTER_SIZE_RATIO, REENTRY_OUTER_BRIGHTNESS * intensity, cameraQuat);
   }
 
   dispose(scene: THREE.Scene): void {

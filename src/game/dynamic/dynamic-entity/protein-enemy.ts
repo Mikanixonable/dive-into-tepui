@@ -15,12 +15,11 @@ import {
   Enemy, ENEMY_SCALE, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore,
 } from './enemy';
 import { proteinAssetGate, type ProteinAssetId } from '../../protein/protein-asset-loader';
-import type { InstancedPools } from '../instanced-pools';
 import type { Controllable } from './controllable';
 import type { MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { CameraSystem } from '../../camera/camera-system';
 import type { RenderStyle } from '../../../render/render-style';
-import type { GraphicsSettingsData } from '../../../render/graphics-settings';
+import type { EntityVisualSettings } from '../../../render/entity-visual-settings';
 import type { SpawnGate } from '../entity-registry';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
@@ -169,8 +168,8 @@ export class ProteinEnemy extends Enemy {
   // 画質設定のタンパク質の揺らぎが切られていれば静止した構造で描く。
   protected override syncModel(
     fo: FloatingOrigin, displayTime: number, active: Controllable | null,
-    visibilityPolicy: MapVisibilityPolicy | null, _pools: InstancedPools,
-    cameraSystem: CameraSystem, _style: RenderStyle, graphics: GraphicsSettingsData,
+    visibilityPolicy: MapVisibilityPolicy | null, cameraSystem: CameraSystem, _style: RenderStyle,
+    visual: EntityVisualSettings,
   ): void {
     const displayed = this.placeModel(fo, displayTime, active, visibilityPolicy);
     if (displayed === null || !this.renderObject.visible) return;
@@ -179,7 +178,7 @@ export class ProteinEnemy extends Enemy {
       metersPerPixel(cameraSystem.activeViewpoint, displayed.r, window.innerHeight));
     // marker LOD(ゆらぎが見えない投影サイズ)まで落ちた敵は、ゆらぎの更新を止める。
     if (this.runtime.updateLod(projectedDiameterPx) !== 'marker') {
-      this.runtime.updateVisual(displayTime, graphics.proteinVibration);
+      this.runtime.updateVisual(displayTime, visual.proteinVibration);
     }
   }
 

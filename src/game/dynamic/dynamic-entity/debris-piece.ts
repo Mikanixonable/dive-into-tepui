@@ -20,10 +20,7 @@ import {
   buildBoosterExplosiveBoltMesh,
   buildBoosterInterstageCoverPanelMesh,
 } from '../../../render/booster';
-import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { InstancedPools } from '../instanced-pools';
-import type { Controllable } from './controllable';
-import type { MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { EntityRegistry } from '../entity-registry';
 import { DynamicEntity, SMALL_DEBRIS_BCINV, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS_BULK_DENSITY, SMALL_DEBRIS_SPECIFIC_HEAT, SMALL_DEBRIS_RADIATING_AREA_PER_MASS, SMALL_DEBRIS_MAX_TEMP } from './dynamic-entity';
 import { Player } from '../../player/player';
@@ -165,13 +162,8 @@ export class DebrisPiece extends DynamicEntity {
 
   get kind(): DebrisKind['kind'] { return this.debrisKind.kind; }
 
-  // 薬莢と破片(fragment)はプールで描くので、同期し終えた変換をそのまま積む。他の種別は
-  // 自前のメッシュで描かれる。
-  protected override syncModel(
-    fo: FloatingOrigin, displayTime: number, active: Controllable | null,
-    visibilityPolicy: MapVisibilityPolicy | null, pools: InstancedPools,
-  ): void {
-    this.placeModel(fo, displayTime, active, visibilityPolicy);
+  // プールで描く種別(薬莢・破片)の、同期し終えた変換をプールへ積む。
+  public pushToPools(pools: InstancedPools): void {
     if (this.kind === 'casing') pools.pushCasing(this.renderObject);
     else if (this.kind === 'fragment') {
       pools.pushDebrisFragment(this.fragmentVariant, this.renderObject, this.fragmentColor!);
@@ -215,6 +207,11 @@ export class DebrisPiece extends DynamicEntity {
     const expiresAt = this.expiresAt;
     if (expiresAt !== null && simTime >= expiresAt) this.alive = false;
   }
+}
+
+// この個体が破片か。顔ぶれから破片だけを絞るときに使う。
+export function isDebrisPiece(entity: DynamicEntity): entity is DebrisPiece {
+  return entity instanceof DebrisPiece;
 }
 
 // 撃破・破損で飛び散る破片を組み立てて返す(世界へ入れるのは呼び出し側)。t は発生時刻で、
