@@ -1,6 +1,6 @@
 // 折れ線グラフの描き手。渡された点列・軸・マークだけを canvas 2D へ描く汎用エンジンで、
 // 単位系や意味づけは軸構築側(orbit-chart-axes.ts)と呼び出し側が持つ。
-import { ACCENT, EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM, TEXT_MUTED } from '../../../theme';
+import { currentEdgeColor, currentThemePalette, FONT_FAMILY, FONT_XXS } from '../../../theme';
 import { injectOnce } from '../../../hud/inject-style';
 import {
   chartCanvasStyle, drawPointMarker, drawPolylineWithGaps, resizeCanvasBackingStore,
@@ -133,9 +133,9 @@ export class OrbitChart {
     const ctx = this.ctx;
     const plotBottom = plotTop + plotHeight;
     const plotRight = plotLeft + plotWidth;
-    ctx.strokeStyle = EDGE;
+    ctx.strokeStyle = currentEdgeColor();
     ctx.lineWidth = GRID_LINE_WIDTH;
-    ctx.fillStyle = TEXT_DIM;
+    ctx.fillStyle = currentThemePalette().muted;
 
     // x軸: 縦の目盛り線を下端のラベルとともに描く。
     ctx.textAlign = 'center';
@@ -163,7 +163,7 @@ export class OrbitChart {
   // プロット領域の外枠。
   private drawFrame(plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
     const ctx = this.ctx;
-    ctx.strokeStyle = EDGE;
+    ctx.strokeStyle = currentEdgeColor();
     ctx.lineWidth = AXIS_LINE_WIDTH;
     ctx.strokeRect(plotLeft, plotTop, plotWidth, plotHeight);
   }
@@ -171,7 +171,7 @@ export class OrbitChart {
   // x軸・y軸それぞれのキャプション文字列。
   private drawCaptions(spec: ChartSpec, plotLeft: number, plotRight: number, cssHeight: number): void {
     const ctx = this.ctx;
-    ctx.fillStyle = TEXT_MUTED;
+    ctx.fillStyle = currentThemePalette().body;
     ctx.textAlign = 'center';
     ctx.fillText(spec.x.caption, (plotLeft + plotRight) / 2, cssHeight - X_CAPTION_OFFSET / 2);
     ctx.textAlign = 'left';
@@ -181,7 +181,7 @@ export class OrbitChart {
   // プロット領域の中央に表示する案内文。
   private drawEmptyMessage(message: string, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
     const ctx = this.ctx;
-    ctx.fillStyle = TEXT_DIM;
+    ctx.fillStyle = currentThemePalette().muted;
     ctx.textAlign = 'center';
     ctx.fillText(message, plotLeft + plotWidth / 2, plotTop + plotHeight / 2);
   }
@@ -192,7 +192,7 @@ export class OrbitChart {
       x: scaleValue(point.x, spec.x.min, spec.x.max, plotLeft, plotWidth, false),
       y: scaleValue(point.y, spec.y.min, spec.y.max, plotTop, plotHeight, true),
     });
-    drawPolylineWithGaps(this.ctx, spec.points, toPx, ACCENT);
+    drawPolylineWithGaps(this.ctx, spec.points, toPx, currentThemePalette().accent);
   }
 
   // mark.style に応じた丸マークを1点描く。
