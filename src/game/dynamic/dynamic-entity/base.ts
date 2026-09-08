@@ -36,7 +36,6 @@ import type { CameraSystem } from '../../camera/camera-system';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { RenderStyle } from '../../../render/render-style';
 import type { MapVisibilityPolicy } from '../../map/visibility-policy';
-import type { InstancedPools } from '../instanced-pools';
 import { currentThemePalette } from '../../../theme';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
 import { MARKER_PRIORITY } from '../../marker/crowding';
@@ -237,7 +236,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     displayTime: number,
     active: Controllable | null,
     visibilityPolicy: MapVisibilityPolicy | null,
-    _pools: InstancedPools,
     camera: CameraSystem,
     style: RenderStyle,
   ): void {

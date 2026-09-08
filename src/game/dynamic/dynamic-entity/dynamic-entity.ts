@@ -25,7 +25,6 @@ import { TrajectoryLine } from '../../lines/trajectory-line';
 import { LineStyle } from '../../../render/line-style';
 import { FrameAnchorSource, ReferenceFrame } from '../../../physics/frame';
 import type { CapKind, DynamicEntityKind } from './entity-kind';
-import type { InstancedPools } from '../instanced-pools';
 import { PredictedArc, trajectorySampleInterval } from '../predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from '../time-step';
 import type { Stage } from '../../stages/stage';
@@ -619,20 +618,19 @@ export class DynamicEntity {
   // (所有者が回収するまで顔ぶれに残る自艦・基地)は同期を止める。
   public sync(
     fo: FloatingOrigin, displayTime: number, active: Controllable | null,
-    visibilityPolicy: MapVisibilityPolicy | null, pools: InstancedPools, cameraSystem: CameraSystem,
+    visibilityPolicy: MapVisibilityPolicy | null, cameraSystem: CameraSystem,
     style: RenderStyle, graphics: GraphicsSettingsData, orbitRef: OrbitReference | undefined,
   ): void {
     if (!this.alive) return;
     this.syncModel(
-      fo, displayTime, active, visibilityPolicy, pools, cameraSystem, style, graphics, orbitRef);
+      fo, displayTime, active, visibilityPolicy, cameraSystem, style, graphics, orbitRef);
   }
 
-  // メッシュと、それに付随する表示物(プルーム・ベルト・マーカー)を displayTime の状態へ合わせ、
-  // プールで描く種別は同期し終えた変換をここで pools へ積む。付随表示を持つ種別はこれを
-  // 差し替え、**必ず placeModel を呼んでから**自分のぶんを載せる。
+  // メッシュと、それに付随する表示物(プルーム・ベルト・マーカー)を displayTime の状態へ合わせる。
+  // 付随表示を持つ種別はこれを差し替え、**必ず placeModel を呼んでから**自分のぶんを載せる。
   protected syncModel(
     fo: FloatingOrigin, displayTime: number, active: Controllable | null,
-    visibilityPolicy: MapVisibilityPolicy | null, _pools: InstancedPools,
+    visibilityPolicy: MapVisibilityPolicy | null,
     _cameraSystem: CameraSystem, _style: RenderStyle, _graphics: GraphicsSettingsData,
     _orbitRef: OrbitReference | undefined,
   ): void {

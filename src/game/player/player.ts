@@ -26,7 +26,6 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
-import type { InstancedPools } from '../dynamic/instanced-pools';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { generateRandomName } from '../random-name';
 import type { Stage } from '../stages/stage';
@@ -553,7 +552,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     displayTime: number,
     active: Controllable | null,
     visibilityPolicy: MapVisibilityPolicy | null,
-    _pools: InstancedPools,
     camera: CameraSystem,
     style: RenderStyle,
     _graphics: GraphicsSettingsData,

@@ -15,7 +15,6 @@ import {
   Enemy, ENEMY_SCALE, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore,
 } from './enemy';
 import { proteinAssetGate, type ProteinAssetId } from '../../protein/protein-asset-loader';
-import type { InstancedPools } from '../instanced-pools';
 import type { Controllable } from './controllable';
 import type { MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { CameraSystem } from '../../camera/camera-system';
@@ -169,7 +168,7 @@ export class ProteinEnemy extends Enemy {
   // 画質設定のタンパク質の揺らぎが切られていれば静止した構造で描く。
   protected override syncModel(
     fo: FloatingOrigin, displayTime: number, active: Controllable | null,
-    visibilityPolicy: MapVisibilityPolicy | null, _pools: InstancedPools,
+    visibilityPolicy: MapVisibilityPolicy | null,
     cameraSystem: CameraSystem, _style: RenderStyle, graphics: GraphicsSettingsData,
   ): void {
     const displayed = this.placeModel(fo, displayTime, active, visibilityPolicy);
