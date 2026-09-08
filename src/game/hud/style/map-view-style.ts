@@ -392,9 +392,6 @@ export const MAP_VIEW_STYLE = `
   color: var(--text-dim);
   font-size: var(--font-xxs);
 }
-#hud-map-scale .map-scale-value { color: var(--text); }
-#hud-map-scale .map-scale-ruler::before { border-color: var(--text-dim); }
-#hud-map-scale .map-scale-tick { border-color: var(--text); }
 
 @media ${MQ_MEDIUM_DOWN} {
   #hud .hud-map-root.active #hud-physical-object-list,
