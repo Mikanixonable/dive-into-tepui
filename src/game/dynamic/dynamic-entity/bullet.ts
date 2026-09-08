@@ -5,7 +5,7 @@ import type { InstancedPools } from '../instanced-pools';
 import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { FloatingOrigin } from '../../camera/floating-origin';
-import type { Stage } from '../../stages/stage';
+import type { StageOutcome } from '../../stages/stage-outcome';
 import { Vec3, lenSq, sub } from '../../../math/vec3';
 import { buildBulletMesh, buildPlasmaMesh } from '../../../render/ships';
 import { orientProjectile } from '../../../render/projectile-orientation';
@@ -95,7 +95,7 @@ export class Bullet extends DynamicEntity {
     // 消滅条件は「自機から離れすぎた」が主で、寿命は保険。敵弾が自機の至近を通過した瞬間の
     // 判定もここで行う(substep ごとの位置だけを見る、意図的に雑な最接近判定)。
     public checkLoss(
-        _dt: number, simTime: number, _activeStage: Stage, _registry: EntityRegistry,
+        _dt: number, simTime: number, _activeStage: StageOutcome, _registry: EntityRegistry,
         viewerPos: Vec3, _atmosphereBodies: readonly CelestialBody[],
     ): void {
         if (!this.alive) return;
