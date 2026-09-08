@@ -28,7 +28,7 @@ import {
 import type { Quat } from '../../../math/quat';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { EnemyDeathCause, StageOutcome } from '../../stages/stage-outcome';
-import type { EnemySaveData } from '../../save/save-data';
+import { savedKinematicState, type EnemySaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
@@ -150,11 +150,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     const placed: EnemyPlacement = 'saved' in init
       ? {
         name: init.saved.name || '',
-        state: kinematicState<'eci'>(
-          init.simTime,
-          v3(init.saved.r.x, init.saved.r.y, init.saved.r.z),
-          v3(init.saved.v.x, init.saved.v.y, init.saved.v.z),
-        ),
+        state: savedKinematicState(init.saved, init.simTime),
         q: { ...init.saved.q },
         w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z),
         accent: init.saved.accent,

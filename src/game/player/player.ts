@@ -46,7 +46,7 @@ import { RadiatorSide, RadiatorSystem } from './radiator';
 import { PowerSystem } from './power';
 
 import { Plan, type PlanExecutionMode } from '../plan/plan';
-import type { PlayerSaveData, PlanSaveData } from '../save/save-data';
+import { savedAttitude, savedKinematicState, type PlayerSaveData, type PlanSaveData } from '../save/save-data';
 import { partFromSaveData, type AnyPart } from '../dynamic/dynamic-entity/parts';
 import { DIRECTION_GLYPH, ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import { shipMarkerSvg } from '../marker/marker-shapes';
@@ -153,11 +153,11 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   ) {
     const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
     const state = 'saved' in init
-      ? kinematicState<'eci'>(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z))
+      ? savedKinematicState(init.saved, init.simTime)
       : (init.state ?? Player.makeInitialState());
     const id = 'saved' in init ? init.saved.id : (init.id ?? name);
     const att: Attitude = 'saved' in init
-      ? { q: { ...init.saved.q }, w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z), inertia: Player.INERTIA }
+      ? savedAttitude(init.saved, Player.INERTIA)
       : Player.progradeAttitude(state);
 
     super(name, state, buildPlayerShip(), att, PLAYER_HULL_RADIUS, PLAYER_MAX_HP, _scene, id);

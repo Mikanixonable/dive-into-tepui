@@ -1,5 +1,4 @@
 import * as THREE from 'three/webgpu';
-import { kinematicState } from '../../../physics/kinematic-state';
 import { len, sub, v3, type Vec3 } from '../../../math/vec3';
 import { buildRcsFuelPickup } from '../../../render/ships';
 import { DynamicEntity, SMALL_DEBRIS_BCINV, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS_BULK_DENSITY, SMALL_DEBRIS_SPECIFIC_HEAT, SMALL_DEBRIS_RADIATING_AREA_PER_MASS, SMALL_DEBRIS_MAX_TEMP } from './dynamic-entity';
@@ -10,7 +9,7 @@ import { fmtDist } from '../../../hud/utils';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { Attitude } from '../../../physics/attitude';
 import type { KinematicState } from '../../../physics/kinematic-state';
-import type { RcsFuelPickupSaveData } from '../../save/save-data';
+import { savedAttitude, savedKinematicState, type RcsFuelPickupSaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
@@ -52,8 +51,8 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
   public constructor(init: RcsFuelPickupInit, scene: THREE.Scene) {
     const { state, att, id, name } = 'saved' in init
       ? {
-        state: kinematicState<'eci'>(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
-        att: { q: { ...init.saved.q }, w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z), inertia: v3(1, 1, 1) } as Attitude,
+        state: savedKinematicState(init.saved, init.simTime),
+        att: savedAttitude(init.saved, v3(1, 1, 1)),
         id: init.saved.id || undefined,
         name: init.saved.name || undefined,
       }
