@@ -144,7 +144,7 @@ async function main() {
   const sections = new FrameSections();
 
   const launcher = new Launcher(
-    shell, hud, gs, audioEngine, bgm, pauseMenu, settingsView, unlockManager, sections,
+    shell, { scene: gs, hud, sections }, audioEngine, bgm, pauseMenu, settingsView, unlockManager,
     slots, snapshotService, graphics,
   );
 
