@@ -15,9 +15,6 @@ import { DisplayWindowManager, timeLabelSettingOf } from './display-window-manag
 import { SimSpeedManager } from './dynamic/sim-speed-manager';
 import { DynamicSystem } from './dynamic/dynamic-system';
 import { FlashEffects } from './vfx/flash-effects';
-import { isEnemy } from './dynamic/dynamic-entity/enemy';
-import { isBase } from './dynamic/dynamic-entity/base';
-import { isPlayer } from './player/player';
 import { EntityLineManager } from './lines/entity-line-manager';
 import { Predictor } from './dynamic/predictor';
 import { Input } from '../input/input';
@@ -27,7 +24,6 @@ import { PauseMenu } from '../hud/windows/pause-menu';
 import { WorldSfx } from '../audio/sfx/world-sfx';
 import { UiSfx } from '../audio/sfx/ui-sfx';
 import type { AudioEngine } from '../audio/audio-engine';
-import { GameScene } from '../render/scene';
 import type { RenderPipeline } from '../render/pipeline/render-pipeline';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
@@ -37,14 +33,13 @@ import { CombatView } from './view/combat-view';
 import { MapView } from './view/map-view';
 import { NavTarget } from './nav-target';
 import { FrameAnchors } from './frame-anchors';
-import { autoOrbitReference, OrbitReferenceSelector } from './orbit-reference';
+import { OrbitReferenceSelector } from './orbit-reference';
 import { ObjectWindows } from './pickable/object-windows';
 import { Navball } from './navball/navball';
 import { GameSaveData, SAVE_VERSION } from './save/save-data';
 import { ephemerisContextFor } from '../physics/ephemeris/ephemeris-context';
-import type { RunSummary } from './run-summary';
-import { orbitInfo } from './orbit-info';
 import { LoadingProgress } from './loading-progress';
+import type { GameHost } from './game-host';
 import { createJulianDate, type TdbJulianDate } from '../physics/time';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { frameRoleOf } from '../physics/frame';
@@ -101,17 +96,16 @@ export class Game {
   // 星系を組んでから、このランを組み立てる。段の切れ目で描画を明け渡すので、
   // 組み立て中の Game は誰にも観測されないまま数フレームをまたぐ。
   static async create(
-    gs: GameScene,
+    host: GameHost,
     stageClass: StageClass,
-    hud: Hud,
     audioEngine: AudioEngine,
     pauseMenu: PauseMenu,
-    sections: FrameSections,
     initialSave: GameSaveData | undefined,
     startEpoch: TdbJulianDate | undefined,
     graphics: GraphicsSettingsData,
     progress: LoadingProgress,
   ): Promise<Game> {
+    const { scene: gs, hud } = host;
     await progress.enter('system');
     // このランの元期。スナップショットを読むならその元期をそのまま継ぐ — 保存されている simTime
     // はその元期からの経過秒なので、別の元期で組むと全天体がずれる。次に開始日時の指定、最後に
@@ -130,7 +124,7 @@ export class Game {
       gs.pipeline.planetLight, gs.pipeline.ambient, gs.pipeline.atmosphere,
     );
     await progress.enter('run');
-    const game = new Game(gs, stageClass, hud, audioEngine, pauseMenu, sections, celestialSystem, initialSave);
+    const game = new Game(host, stageClass, audioEngine, pauseMenu, celestialSystem, initialSave);
     // シェーダを組む前に、最初に描かれるフレームと同じ表示状態を時間の進まない1フレームで作る —
     // 天体表面の分割段のように update/sync が決めるまで現れない表示物が、事前コンパイルから漏れる。
     const style = hud.renderStyle.current;
@@ -167,52 +161,20 @@ export class Game {
     };
   }
 
-  // ランの外側が一覧へ描くための要約。自機が居ない周回でも値が欠けないよう、
-  // 軌道の項は星系の原点へ寄せる。
-  runSummary(): RunSummary {
-    // 操作対象が居る周回なら、軌道の項もそこから解く。
-    const controlled = this.activeControllable;
-    const celestial = this._celestialSystem;
-    const info = controlled === null ? null : orbitInfo(
-      controlled,
-      autoOrbitReference(controlled.state.r, celestial.celestialMotions, controlled.state.t),
-      controlled.state.t, (id: string) => celestial.nameOf(id),
-    );
-    const entities = this.dynamicSystem.all();
-    return {
-      simTime: this.simTime,
-      phase: this.activeStage.phase,
-      centerBodyId: info ? info.centerId : celestial.origin.id,
-      centerBodyName: info ? info.centerName : celestial.nameOf(celestial.origin.id),
-      altitude: info ? info.alt : 0,
-      speed: info ? info.spd : 0,
-      hpRatio: controlled !== null && controlled.hp !== null && controlled.maxHp !== null && controlled.maxHp > 0
-        ? Math.max(0, controlled.hp) / controlled.maxHp
-        : 0,
-      maxHp: controlled?.maxHp ?? 0,
-      magazines: controlled?.fire?.mags ?? 0,
-      money: entities.filter(isBase).reduce((sum, b) => sum + b.baseState.money, 0),
-      playerCount: entities.filter(isPlayer).length,
-      enemyAliveCount: entities.filter(isEnemy).filter((e) => e.alive).length,
-    };
-  }
-
   // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。星系は実体化済みで渡る。
   private constructor(
-    gs: GameScene,
+    host: GameHost,
     stageClass: StageClass,
-    hud: Hud,
     audioEngine: AudioEngine,
     pauseMenu: PauseMenu,
-    sections: FrameSections,
     celestialSystem: CelestialSystem,
     initialSave?: GameSaveData,
   ) {
-    this.sections = sections;
-    this._scene = gs.scene;
-    this.pipeline = gs.pipeline;
+    this.sections = host.sections;
+    this._scene = host.scene.scene;
+    this.pipeline = host.scene.pipeline;
     this._celestialSystem = celestialSystem;
-    this._hud = hud;
+    this._hud = host.hud;
     this._worldSfx = new WorldSfx(audioEngine);
     const uiSfx = new UiSfx(audioEngine);
     this.pauseMenu = pauseMenu;
@@ -222,7 +184,7 @@ export class Game {
     this.flashEffects = new FlashEffects(this._scene);
     this.dynamicSystem = new DynamicSystem(
       this._scene, this._hud, this._worldSfx, this.flashEffects, this.markerManager, celestialSystem,
-      sections, initialSave?.simTime ?? 0, initialSave);
+      this.sections, initialSave?.simTime ?? 0, initialSave);
     this.entityLines = new EntityLineManager(this.dynamicSystem);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, celestialSystem);
 
@@ -256,7 +218,7 @@ export class Game {
       this.displayWindowManager, this._hud.overlayManager, this.frameAnchors,
     );
     this.targeter = new Targeter(
-      this.markerManager, this.navTarget, this.dynamicSystem, celestialSystem.celestialMotions, this.celestialMarkers,
+      this.markerManager, this.navTarget, this.dynamicSystem, celestialSystem.celestialMotions,
     );
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this.navball.onOrbitGuideSettingsChange = (settings) => this._celestialSystem.setOrbitGuideSettings(settings);
@@ -278,7 +240,7 @@ export class Game {
     this.planDisplay = new PlanDisplay(
       this._scene, this.markerManager, celestialSystem, this.displayWindowManager, this.controlSelection,
     );
-    this.input = new Input(gs.renderer.domElement);
+    this.input = new Input(host.scene.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
     this.input.onPointerKindChange = (kind) => this.touchControls?.setPointerKind(kind);
     this.input.onLongPressFeedback = (point) => {
@@ -299,12 +261,12 @@ export class Game {
     this.objectWindows = new ObjectWindows(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
       this.cameraSystem, () => this.viewManager.activeView, this.pauseMenu,
-      this.controlSelection, this.frameControls, this.activeStage, this.targeter,
+      this.controlSelection, (target) => this.frameControls.setFocus(target), this.activeStage, this.targeter,
     );
 
     const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.objectWindows, this.dynamicSystem,
-      this.celestialMarkers, this.touchControls,
+      () => this.celestialMarkers.hideLabels(), this.touchControls,
       this.controlSelection, this.planDisplay.path, celestialSystem.celestialMotions,
       this.simSpeedManager, this._hud, uiSfx, this.markerManager,
     );
@@ -538,7 +500,8 @@ export class Game {
     // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraSystem.sync より後に通す。
     this.flashEffects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
 
-    this.targeter.sync(controlled, this.cameraSystem, displayTime, simTime, visibilityPolicy);
+    this.targeter.sync(
+      controlled, this.cameraSystem, displayTime, simTime, visibilityPolicy, this.celestialMarkers.activeLabels);
     this.navTarget.sync(
       this.cameraSystem, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, timeLabel);
 
