@@ -20,7 +20,7 @@ import type { UiSfx } from '../../audio/sfx/ui-sfx';
 
 import type { DisplayWindow } from '../display-window-manager';
 import type { FloatingOrigin } from '../camera/floating-origin';
-import type { ViewFrame } from './view';
+import type { ViewFrame } from './view-frame';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { PerfCounts } from '../perf-counts';
 
