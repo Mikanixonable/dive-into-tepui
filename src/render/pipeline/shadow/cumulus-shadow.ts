@@ -2,26 +2,27 @@
 // 消散の TSL グラフとして返す。影を落とす殻 1 体ぶんを毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, clamp, dot, exp, float, greaterThan, length, max, normalize, select, sqrt, uniform, vec4,
+  Fn, If, Loop, clamp, dot, exp, float, fract, greaterThan, int, length, max, normalize, select,
+  sqrt, texture, uniform, vec2, vec4,
 } from 'three/tsl';
-import { CloudFieldSampler, type CloudFieldLod, type GeneratedCloudField } from '../../cloud/cloud-field';
+import { sphereMeshUv } from '../../celestial-surface';
 import {
-  CLOUD_TOP_UNCERTAINTY, CUMULUS_GRAIN_SIZE, cloudTopOf, columnOpticalDepth, grainAmplitudeForWidth,
-  grainAt, opaqueFractionOf,
+  CLOUD_TOP_UNCERTAINTY, CUMULUS_GRAIN_SIZE, EMPTY_CLOUD_FIELD, cloudTopOf, columnOpticalDepth,
+  fieldLodForWidth, grainAmplitudeForWidth, grainAt, opaqueFractionOf,
 } from '../../cloud/cumulus-shape';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform, Vec4Node } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
 
 // 影を落とす積雲の殻 1 体ぶん。center は描画座標の天体中心、surfaceRadius は雲の高度の基準
 // 半径 [m]、axes は天体固定の半軸 [m]、topAltitude は殻の高さ [m]、bodyFromWorld は描画座標の
-// ベクトルを天体固定の向きへ回す行列、field は厚い雲・薄い雲・雲影が共有する雲場。
+// ベクトルを天体固定の向きへ回す行列、field は雲場(R = 被覆率、G = 雲頂高度 / topAltitude)。
 export interface ShadowCumulus {
   readonly center: THREE.Vector3;
   readonly surfaceRadius: number;
   readonly axes: THREE.Vector3;
   readonly topAltitude: number;
   readonly bodyFromWorld: THREE.Matrix4;
-  readonly field: GeneratedCloudField;
+  readonly field: THREE.Texture;
 }
 
 // 光路のタップ数。
@@ -41,7 +42,7 @@ export class CumulusShadow {
   private readonly bodyFromWorld: Mat4Uniform;
   private readonly active: FloatUniform;
   // 雲の場。set が value を差し替えると、sample() で枝分かれした先へも同じ写しが届く。
-  private readonly field = new CloudFieldSampler();
+  private readonly field = texture(EMPTY_CLOUD_FIELD);
 
   // 殻 1 体ぶんの uniform を確保する。殻の有無は active で切るので、グラフの形は変わらない。
   constructor(private readonly sunLight: SunLight) {
@@ -57,16 +58,13 @@ export class CumulusShadow {
   // このフレームに影を落とす殻。null なら雲の影は落ちない。
   set(cumulus: ShadowCumulus | null): void {
     this.active.value = cumulus === null ? 0 : 1;
-    if (cumulus === null) {
-      this.field.set(null);
-      return;
-    }
+    if (cumulus === null) return;
     this.center.value.copy(cumulus.center);
     this.surfaceRadius.value = cumulus.surfaceRadius;
     this.axes.value.copy(cumulus.axes);
     this.topAltitude.value = cumulus.topAltitude;
     this.bodyFromWorld.value.copy(cumulus.bodyFromWorld);
-    this.field.set(cumulus.field);
+    this.field.value = cumulus.field;
   }
 
   // このフレームに積雲の殻の影があるか。
@@ -144,21 +142,23 @@ export class CumulusShadow {
 
   // タップ 1 回が代表する実寸 sampleWidth [m] から場を引く mip 段。
   private fieldLod(sampleWidth: FloatNode) {
-    return this.field.lodForWidth(sampleWidth, this.surfaceRadius);
+    // 寸法を返すノードは型引数を持たないので、成分を取れる形へ直してから読む。
+    const fieldWidth = (this.field.size(int(0)) as THREE.Node<'uvec2'>).x;
+    return fieldLodForWidth(sampleWidth, this.surfaceRadius, float(fieldWidth));
   }
 
   // 殻の空間の単位方向 up における場を、mip 段を指定して引く。段を明示で渡すのは、光路のタップの
   // uv が画面の隣の画素と続いておらず、画面微分から選ばれる段が当てにならないため。uv は殻が読むのと
-  // 殻と同じ CloudFieldSampler へ天体固定方向を渡す — 別の投影や cap の重みで読むと、影が雲の
-  // シルエットから外れる。
-  private fieldAt(up: Vec3Node, lod: CloudFieldLod): Vec4Node {
-    return this.field.at(up, lod);
+  // 同じ球メッシュの uv(sphereMeshUv)で引く — 別の規則で読むと、影が雲のシルエットから外れる。
+  private fieldAt(up: Vec3Node, lod: FloatNode): Vec4Node {
+    const uv = sphereMeshUv(up);
+    return this.field.sample(vec2(fract(uv.x), uv.y)).level(lod);
   }
 
   // 光路のタップの高度に張る床 [m]。受け手が自分の柱の雲頂の高さにあるなら、その雲頂の高さ。
   // offset は天体中心から受け手へのベクトル(殻の空間)、bodyRadius は殻の空間の半径 1 が
   // 張る高度の目盛り [m]。
-  private receiverFloorAltitude(offset: Vec3Node, lod: CloudFieldLod, bodyRadius: FloatNode): FloatNode {
+  private receiverFloorAltitude(offset: Vec3Node, lod: FloatNode, bodyRadius: FloatNode): FloatNode {
     const radius = max(length(offset), 1e-6);
     const altitude = max(radius.sub(1), 0).mul(bodyRadius);
     const top = this.fieldAt(offset.div(radius), lod).g.mul(this.topAltitude);
