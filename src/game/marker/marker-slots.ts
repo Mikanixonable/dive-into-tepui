@@ -3,11 +3,12 @@
 import type { Projected, ProjectFn } from '../../math/projection';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
+import type { MarkerVisibility } from './marker-visibility';
 
 // 方向マーカーを投影する仮想距離 [m]。実在の位置ではなく方向のみを示す。
 export const MARKER_DIR_DIST = 5e4;
 
-export interface MarkerSlots {
+export interface MarkerSlots extends MarkerVisibility {
   // スクリーン座標のマーカー。visible=false で非表示。cls は見た目の分類、sym はグリフ。
   set(
     key: string, cls: string, sym: string, x: number, y: number, visible: boolean,
@@ -43,8 +44,6 @@ export interface MarkerSlots {
     label?: string, opacity?: number, color?: string,
   ): void;
 
-  // そのキーのマーカーを直前のフレームで画面へ出したか。遮蔽で薄れている途中も出していない扱い。
-  shows(key: string): boolean;
   // マーカーを隠す。要素は残るので、キーが有限で使い回す対象に使う。
   hide(key: string): void;
   // 天体遮蔽で見えなくなるマーカーを、いきなり消さずに透明化する。
