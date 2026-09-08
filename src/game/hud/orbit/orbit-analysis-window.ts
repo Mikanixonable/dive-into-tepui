@@ -4,7 +4,8 @@
 import { SyncThrottle } from '../sync-throttle';
 import { DraggableWindow } from '../../../hud/windows/draggable-window';
 import { MQ_COMPACT } from '../../../hud/breakpoints';
-import { TabBar, injectOnce } from '../../../hud/widgets';
+import { TabBar } from '../../../hud/widgets';
+import { injectOnce } from '../../../hud/inject-style';
 import { AltitudeTab } from './orbit-altitude-tab';
 import { ApproachTab } from './orbit-approach-tab';
 import { ProjectionTab } from './orbit-projection-tab';
