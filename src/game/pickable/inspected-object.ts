@@ -2,13 +2,21 @@
 // 固有の操作の実行、改名の受け口を答える。
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ControlSelection } from '../control-selection';
+import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { PlanEditor } from '../plan/plan-editor';
-import type { ObjectAuthoring } from '../stages/stage';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
+import type { KinematicState } from '../../physics/kinematic-state';
 import type { PickCandidate } from './pick-candidate';
+
+// 軌道上へオブジェクトを配置・複製する編集機能。これを持つステージだけがマップの
+// 「配置」「複製」項目を出す。focusId はマップの現在フォーカスで、基準天体の初期選択に使う。
+export interface ObjectAuthoring {
+  openObjectPlacer(focusId?: string): void;
+  openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void;
+}
 
 export interface InspectedObject extends PickCandidate {
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。先頭の header 項目は
