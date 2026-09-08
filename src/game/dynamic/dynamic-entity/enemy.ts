@@ -28,7 +28,7 @@ import {
 } from '../../../render/vfx-style';
 import type { Quat } from '../../../math/quat';
 import type { GroupedMarkerItem, MarkerRole } from '../../marker/grouped-markers';
-import type { EnemyDeathCause, Stage } from '../../stages/stage';
+import type { EnemyDeathCause, StageOutcome } from '../../stages/stage-outcome';
 import type { EnemySaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import type { MarkerSlots } from '../../marker/marker-slots';
@@ -274,7 +274,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 被弾によるダメージ・致死判定。
   private attackedByBullet(
-    bullet: Bullet, impactPoint: Vec3, simTime: number, activeStage: Stage, registry: EntityRegistry,
+    bullet: Bullet, impactPoint: Vec3, simTime: number, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     activeStage.scoreCounter.recordHit();
     this.applyBulletDamage(bullet.damage, impactPoint);
@@ -291,7 +291,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 他の実体との接触。ダメージはゲームバランスの量で、物理の質量からは導かない。
   public collideWithEntity(
-    other: DynamicEntity, contact: Contact, activeStage: Stage, registry: EntityRegistry,
+    other: DynamicEntity, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     if (!this.alive) return;
     const simTime = contact.selfState.t;
@@ -307,7 +307,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 天体の固体表面への接触。沈めば自然損耗(collision)として記録する。
   public collideWithCelestialBody(
-    _body: CelestialBody, contact: Contact, activeStage: Stage, registry: EntityRegistry,
+    _body: CelestialBody, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     if (!this.alive) return;
     this.damagedByContact(closingSpeed(contact), contact.selfState.t, 'collision', activeStage, registry);
@@ -315,7 +315,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 接触ダメージを当て、HP が残れば音とパフ、尽きたら cause の撃破として記録する。
   private damagedByContact(
-    damageSpeed: number, simTime: number, cause: EnemyDeathCause, activeStage: Stage,
+    damageSpeed: number, simTime: number, cause: EnemyDeathCause, activeStage: StageOutcome,
     registry: EntityRegistry,
   ): void {
     if (!this.applyImpactDamage(damageSpeed)) return;
@@ -331,14 +331,14 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   }
 
   // 交戦圏外への離脱によるデスポーン。
-  public despawn(simTime: number, activeStage: Stage): void {
+  public despawn(simTime: number, activeStage: StageOutcome): void {
     if (!this.alive) return;
     this.alive = false;
     activeStage.recordEnemyDeath(this, simTime, 'despawn');
   }
 
   // 大気での焼失による自然死。固体表面への接触は collideWithCelestialBody が扱う。
-  protected override burnUp(activeStage: Stage, registry: EntityRegistry): void {
+  protected override burnUp(activeStage: StageOutcome, registry: EntityRegistry): void {
     this.alive = false;
     this.destroyEffect(registry);
     activeStage.recordEnemyDeath(this, this.state.t, 'burnup');

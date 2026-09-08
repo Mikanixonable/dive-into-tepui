@@ -28,7 +28,7 @@ import type { RenderStyle } from '../../render/render-style';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import { generateRandomName } from '../random-name';
-import type { Stage } from '../stages/stage';
+import type { StageOutcome } from '../stages/stage-outcome';
 import { Throttle } from './throttle';
 import { FireControl, type AmmoLoad } from './fire-control';
 import { Belt } from './belt';
@@ -266,7 +266,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     dt: number,
     simDt: number,
     registry: EntityRegistry,
-    activeStage: Stage,
+    activeStage: StageOutcome,
     celestialBodies: CelestialBodies,
   ): void {
     this.hpRegen(dt);
@@ -373,7 +373,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 被弾によるダメージ・致死判定。side を指定するとその放熱板パーツへ、無指定なら
   // 無作為なパーツへダメージが入る。
   private attackedByBullet(
-    bullet: Bullet, impactPoint: Vec3, activeStage: Stage, registry: EntityRegistry,
+    bullet: Bullet, impactPoint: Vec3, activeStage: StageOutcome, registry: EntityRegistry,
     side: RadiatorSide | null = null,
   ): void {
     this.absorbHeat(BULLET_IMPACT_HEAT / PLAYER_MASS);
@@ -393,7 +393,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 弾は武装のダメージを、それ以外は接触の接近速度と相手の種別を根拠にする(ゲームバランスの量)。
   collideWithEntity(
-    other: DynamicEntity, contact: Contact, activeStage: Stage, registry: EntityRegistry,
+    other: DynamicEntity, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     if (!this.alive) return;
 
@@ -408,7 +408,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 天体の固体表面への接触。相手の種別による重みが無いので接近速度がそのまま根拠になる。
   collideWithCelestialBody(
-    _body: CelestialBody, contact: Contact, activeStage: Stage, registry: EntityRegistry,
+    _body: CelestialBody, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     if (!this.alive) return;
     this.damagedByContact(
@@ -417,7 +417,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 放熱板の接触代理(RadiatorFold)からの帰結。ダメージは side の放熱板パーツへ入る。
   collideAtRadiatorWithEntity(
-    side: RadiatorSide, other: DynamicEntity, contact: Contact, activeStage: Stage,
+    side: RadiatorSide, other: DynamicEntity, contact: Contact, activeStage: StageOutcome,
     registry: EntityRegistry,
   ): void {
     if (!this.alive) return;
@@ -434,7 +434,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 接触によるダメージ・致死判定。side を指定するとその放熱板パーツへ、無指定なら無作為な
   // パーツへダメージが入る。
   private damagedByContact(
-    damageSpeed: number, side: RadiatorSide | null, lossReason: string, activeStage: Stage,
+    damageSpeed: number, side: RadiatorSide | null, lossReason: string, activeStage: StageOutcome,
     registry: EntityRegistry,
   ): void {
     const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
@@ -470,7 +470,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 動圧が構造限界を超えたことによる喪失。
   checkLoss(
-    _dt: number, _simTime: number, activeStage: Stage, registry: EntityRegistry,
+    _dt: number, _simTime: number, activeStage: StageOutcome, registry: EntityRegistry,
     _viewerPos: Vec3, _atmosphereBodies: readonly CelestialBody[],
   ): void {
     if (!this.alive) return;
@@ -479,7 +479,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   // 外殻の温度が上限を超えたときの喪失。理由は、そこで空力加熱が効いていたかで分ける。
-  protected override burnUp(activeStage: Stage, registry: EntityRegistry): void {
+  protected override burnUp(activeStage: StageOutcome, registry: EntityRegistry): void {
     this.lose(
       this.aero.heatingAerodynamically
         ? '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した'
@@ -488,7 +488,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   // 喪失の共通処理。reason はステージの記録に残す喪失理由。
-  private lose(reason: string, activeStage: Stage, registry: EntityRegistry): void {
+  private lose(reason: string, activeStage: StageOutcome, registry: EntityRegistry): void {
     this.alive = false;
     this.destroyEffect(registry);
     activeStage.recordPlayerLost(reason);

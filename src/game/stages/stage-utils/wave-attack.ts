@@ -6,7 +6,7 @@ import type { CelestialBody } from '../../../physics/celestial-body';
 import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { ENGAGEMENT_RANGE } from '../../dynamic/engagement-zone';
 import { Player } from '../../player/player';
-import type { Stage } from '../stage';
+import type { StageOutcome } from '../stage-outcome';
 import type { Notifier } from '../../../hud/notifier';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../../vfx/flash-effects';
@@ -84,7 +84,7 @@ export class WaveAttack {
   // フェーズ機械を1フレーム分進める。
   public update(
     dt: number, player: Player, enemies: readonly Enemy[], simTime: number,
-    activeStage: Stage, addEnemy: (enemy: Enemy) => void,
+    activeStage: StageOutcome, addEnemy: (enemy: Enemy) => void,
   ): void {
     if (this.waveState === 'waiting_for_ammo') return this.updateWaitingForAmmoPhase(player);
     if (this.waveState === 'spawning_enemies') return this.updateSpawningEnemiesPhase(dt, player, addEnemy);
@@ -111,7 +111,7 @@ export class WaveAttack {
   // 交戦圏外の敵を消し、同時展開数の上限内でタイマーに従い次のウェーブを湧かせる。
   private updateActiveCombatPhase(
     dt: number, player: Player, enemies: readonly Enemy[], simTime: number,
-    activeStage: Stage, addEnemy: (enemy: Enemy) => void,
+    activeStage: StageOutcome, addEnemy: (enemy: Enemy) => void,
   ): void {
     despawnOutOfRangeEnemies(enemies, player, ENGAGEMENT_RANGE, simTime, activeStage);
     const activeGroups = countActiveWaveGroups(enemies);
@@ -134,7 +134,9 @@ export class WaveAttack {
 }
 
 // 自機から maxRange より離れた敵を交戦圏外として消す。
-function despawnOutOfRangeEnemies(enemies: readonly Enemy[], player: Player, maxRange: number, simTime: number, activeStage: Stage): void {
+function despawnOutOfRangeEnemies(
+  enemies: readonly Enemy[], player: Player, maxRange: number, simTime: number, activeStage: StageOutcome,
+): void {
   for (const enemy of enemies) {
     if (!enemy.alive) continue;
     if (len(sub(enemy.state.r, player.state.r)) <= maxRange) continue;
