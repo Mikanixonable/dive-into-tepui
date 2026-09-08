@@ -139,17 +139,16 @@ function rgba(hex: string, alpha: number): string {
 
 function themeCssVariables(palette: ThemePalette): Readonly<Record<string, string>> {
   return {
-    // Semantic key colors. The old --accent names below remain compatibility aliases.
+    // 主役色。
     '--color-primary': palette.accent,
     '--color-primary-hover': palette.accentNear,
-    '--color-primary-active': palette.accent,
     '--color-signal': palette.signal,
     '--color-primary-fill-weak': rgba(palette.accent, 0.08),
     '--color-primary-fill': rgba(palette.accent, 0.16),
     '--color-primary-fill-strong': rgba(palette.accent, 0.24),
     '--color-primary-edge-soft': rgba(palette.accent, 0.22),
     '--color-primary-edge': rgba(palette.accent, 0.4),
-    // Semantic state colors.
+    // 状態色。
     '--color-success': palette.success,
     '--color-success-fill': rgba(palette.success, 0.12),
     '--color-success-edge': rgba(palette.success, 0.42),
@@ -164,16 +163,11 @@ function themeCssVariables(palette: ThemePalette): Readonly<Record<string, strin
     '--color-info-edge': rgba(palette.info, 0.42),
     '--color-focus': palette.focus,
     '--color-focus-contrast': palette.focusContrast,
-    // Space labels sit on a rendered starfield, not on the UI theme surface.
+    // 宇宙空間のラベルは星空の上に載るので、配色によらない固定色を使う。
     '--space-label-background': '#0b0d11',
     '--space-label-text': '#f5f7ff',
     '--space-label-subtext': '#b8c1d1',
-    '--accent': palette.accent,
-    '--accent-soft': palette.accentNear,
-    '--accent-near': palette.accentNear,
-    '--accent-secondary': palette.signal,
     '--bg': palette.page,
-    '--page': palette.page,
     '--theme-tone': palette.tone,
     '--surface-0': palette.surface0,
     '--surface-1': palette.surface1,
@@ -190,14 +184,6 @@ function themeCssVariables(palette: ThemePalette): Readonly<Record<string, strin
     '--text-muted': palette.body,
     '--text-dim': palette.muted,
     '--text-faint': palette.faint,
-    '--title': palette.title,
-    '--body': palette.body,
-    '--muted': palette.muted,
-    '--accent-fill-weak': rgba(palette.accent, 0.08),
-    '--accent-fill': rgba(palette.accent, 0.16),
-    '--accent-fill-strong': rgba(palette.accent, 0.24),
-    '--accent-edge-soft': rgba(palette.accent, 0.22),
-    '--accent-edge': rgba(palette.accent, 0.4),
     '--fill-1': rgba(palette.title, 0.04),
     '--fill-2': rgba(palette.title, 0.09),
     '--fill-3': rgba(palette.title, 0.16),
@@ -209,8 +195,6 @@ function themeCssVariables(palette: ThemePalette): Readonly<Record<string, strin
 export const ACCENT = ACTIVE_THEME.accent;
 export const ACCENT_SOFT = ACTIVE_THEME.accentNear;
 export const SIGNAL = ACTIVE_THEME.signal;
-/** @deprecated Use SIGNAL. Kept for non-UI renderers during migration. */
-export const ACCENT_SECONDARY = SIGNAL;
 const SUCCESS = ACTIVE_THEME.success;
 const WARNING = ACTIVE_THEME.warning;
 const DANGER = ACTIVE_THEME.error;
@@ -232,9 +216,13 @@ const SURFACE = rgba(SURFACE_1, 0.64); // Quiet Glass
 export const SURFACE_OPAQUE = rgba(SURFACE_1, 0.96); // Solid に近い全画面表示用
 const GLASS_QUIET = rgba(SURFACE_1, 0.64);
 const GLASS_FOCUS = rgba(SURFACE_1, 0.76);
-export const EDGE = rgba(ACTIVE_THEME.title, 0.16);
+// 面と地の境目。選択中の配色の文字色から導く。
+export function currentEdgeColor(): string {
+  return rgba(currentThemePalette().title, 0.16);
+}
+export const EDGE = currentEdgeColor();
 
-export const TEXT_STRONG = ACTIVE_THEME.bright;
+const TEXT_STRONG = ACTIVE_THEME.bright;
 // UI用のわずかに紫がかった白。ゲーム世界のマーカー色とは独立したHUD基準色。
 export const TEXT = ACTIVE_THEME.title;
 export const TEXT_MUTED = ACTIVE_THEME.body;
@@ -252,7 +240,7 @@ const ACCENT_EDGE = rgba(ACCENT, 0.4); // ボタン・パネルの通常の縁
 const FILL_1 = rgba(TEXT, 0.04);
 const FILL_2 = rgba(TEXT, 0.09);
 const FILL_3 = rgba(TEXT, 0.16);
-export const FILL_4 = rgba(TEXT, 0.32);
+const FILL_4 = rgba(TEXT, 0.32);
 
 const SHADE_1 = 'rgba(0, 0, 0, 0.18)'; // 弱い落とし影
 const SCRIM = 'rgba(6, 7, 9, 0.82)'; // 全画面表示の背後を覆う膜
@@ -336,7 +324,6 @@ export const FONT_FAMILY =
 const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--color-primary': ACCENT,
   '--color-primary-hover': ACCENT_SOFT,
-  '--color-primary-active': ACCENT,
   '--color-signal': SIGNAL,
   '--color-primary-fill-weak': ACCENT_FILL_WEAK,
   '--color-primary-fill': ACCENT_FILL,
@@ -360,14 +347,9 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--space-label-background': '#0b0d11',
   '--space-label-text': '#f5f7ff',
   '--space-label-subtext': '#b8c1d1',
-  '--accent': ACCENT,
-  '--accent-soft': ACCENT_SOFT,
-  '--accent-near': ACCENT_SOFT,
-  '--accent-secondary': ACCENT_SECONDARY,
   '--danger': DANGER,
   '--danger-fill': DANGER_FILL,
   '--bg': BG,
-  '--page': BG,
   '--theme-tone': ACTIVE_THEME.tone,
   '--surface-0': SURFACE_0,
   '--surface-1': SURFACE_1,
@@ -384,14 +366,6 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--text-muted': TEXT_MUTED,
   '--text-dim': TEXT_DIM,
   '--text-faint': TEXT_FAINT,
-  '--title': TEXT,
-  '--body': TEXT_MUTED,
-  '--muted': TEXT_DIM,
-  '--accent-fill-weak': ACCENT_FILL_WEAK,
-  '--accent-fill': ACCENT_FILL,
-  '--accent-fill-strong': ACCENT_FILL_STRONG,
-  '--accent-edge-soft': ACCENT_EDGE_SOFT,
-  '--accent-edge': ACCENT_EDGE,
   '--fill-1': FILL_1,
   '--fill-2': FILL_2,
   '--fill-3': FILL_3,

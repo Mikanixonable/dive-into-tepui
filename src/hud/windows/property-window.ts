@@ -60,7 +60,7 @@ const STYLE = `
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1);
 }
 #hud .prop-window-related-item {
-  padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
+  padding: var(--space-4) var(--space-5); color: var(--text-muted); cursor: pointer;
   border: 0; border-radius: var(--radius-micro);
 }
 #hud .prop-window-related-item:hover, #hud .prop-window-related-item:active {
@@ -68,7 +68,7 @@ const STYLE = `
 }
 #hud .prop-window-related-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .prop-window-item {
-  padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
+  padding: var(--space-4) var(--space-5); color: var(--text-muted); cursor: pointer;
   border: 0; border-radius: var(--radius-micro);
 }
 #hud .prop-window-item:hover, #hud .prop-window-item:active {
