@@ -29,6 +29,7 @@ export class RossbyWave {
   // 位相角 [rad]。2π で畳んだ値だけを持つので、時間を大きく進めても精度が落ちない。
   private readonly phase: FloatUniform = uniform(0);
 
+  // 位相を初期時刻へそろえる。
   public constructor() {
     this.syncTime(0);
   }
@@ -69,6 +70,7 @@ export class RossbyWave {
   // 包絡の緯度微分 dE/dφ。smoothstep の微分も端で 0 になるため、風速に段差を作らない。
   private envelopeSlopeAt(latitude: FloatNode): FloatNode {
     const absolute = abs(latitude);
+    // 上昇区間と下降区間の傾きを別々に組む。
     const rising = smoothstep(ENVELOPE_RISE_START, ENVELOPE_RISE_END, absolute);
     const falling = smoothstep(ENVELOPE_FALL_START, ENVELOPE_FALL_END, absolute);
     const risingT = clamp(absolute.sub(ENVELOPE_RISE_START).div(ENVELOPE_RISE_END - ENVELOPE_RISE_START), 0, 1);
