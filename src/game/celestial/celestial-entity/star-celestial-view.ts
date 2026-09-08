@@ -1,68 +1,66 @@
 // 恒星の見た目: 実位置・実半径の自発光球体(遠くて球として描けないときは点像)と、
-// 模式図で代わりに出す輪郭円。色と放射強度は恒星ごとの値で、シーンを照らす光源の値でもある。
+// 模式図で代わりに出す輪郭円。
 import * as THREE from 'three/webgpu';
+import type { CelestialMotion } from '../../../physics/celestial-motion';
 import { createStarSphere, type StarSphere } from '../../../render/star-sphere';
 import { createOutlineCircle, OutlineCircle } from '../../../render/outline-circle';
-import { StarMotion } from '../../../physics/celestial-motion';
-import { CameraSystem } from '../../camera/camera-system';
-import { FloatingOrigin } from '../../camera/floating-origin';
-import { CelestialEntity } from './celestial-entity';
-import type { Albedo } from '../../../render/celestial-albedo';
+import type { CameraSystem } from '../../camera/camera-system';
+import type { FloatingOrigin } from '../../camera/floating-origin';
+import { apparentSizePx } from '../../../math/projection';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
 import type { RenderStyle } from '../../../render/render-style';
+import type { RingMaterials } from '../../../render/ring';
+import { CelestialView, type StellarLight, type StellarLightSource } from './celestial-view';
 
-export class StarEntity extends CelestialEntity {
-  private readonly star: StarSphere;
+export class StarCelestialView extends CelestialView {
+  private star: StarSphere | null = null;
   // 模式図で恒星の代わりに出す、実位置・実半径の輪郭円。球のシルエットなので毎フレーム
   // カメラへ正対させる。
   private readonly outline: OutlineCircle = createOutlineCircle();
-  // マップビューでの実球体半径 [m]。
-  private readonly radius: number;
 
-  // color は恒星面と恒星光の色、radiantIntensity は距離の二乗で割ると放射照度になる量。
-  constructor(
-    motion: StarMotion,
-    name: string,
-    readonly color: THREE.Color,
-    readonly radiantIntensity: number,
-    surfaceColor: string | number,
-  ) {
-    super(motion, name, 'star', null);
-    this.radius = motion.def.radius;
-    this.star = createStarSphere(surfaceColor, surfaceRadianceOf(radiantIntensity, this.radius));
-  }
+  // surfaceColor は恒星面の自発光色。
+  public constructor(
+    private readonly surfaceColor: string | number,
+    private readonly light: StellarLight,
+  ) { super(); }
 
-  // 自発光なので反射の測光を持たない。
-  get lightSourceAlbedo(): Albedo | null { return null; }
-
-  get surfaceTextureUrl(): string | null { return null; }
+  public override get stellarLight(): StellarLight { return this.light; }
 
   // 実球体・点像・輪郭円をシーンへ一度だけ登録する。
-  build(scene: THREE.Scene): void {
+  public build(
+    motion: CelestialMotion, scene: THREE.Scene, _ringMaterials: RingMaterials,
+  ): void {
+    this.star = createStarSphere(
+      this.surfaceColor,
+      surfaceRadianceOf(this.light.radiantIntensity, motion.def.radius),
+    );
     this.star.addTo(scene);
     scene.add(this.outline.line);
   }
 
   // 恒星の見た目と輪郭円をまとめて表示/非表示にする。
-  setVisible(visible: boolean): void {
-    this.star.setVisible(visible);
+  public setVisible(visible: boolean): void {
+    this.star?.setVisible(visible);
     this.outline.line.visible = visible;
   }
 
   // displayTime 時点の実位置へ恒星を置く。
-  sync(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, _star: StarEntity | null,
+  public sync(
+    motion: CelestialMotion, fo: FloatingOrigin, displayTime: number,
+    cameraSystem: CameraSystem, _star: StellarLightSource | null,
     graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
-    if (!this.star.visible && !this.outline.line.visible) return;
-    const pos = this.stateAt(displayTime).r;
+    const star = this.star;
+    if (star === null || (!star.visible && !this.outline.line.visible)) return;
+    const pos = motion.stateAt(displayTime).r;
     const p = fo.RtoThreeV3(pos);
+    const radius = motion.def.radius;
     if (style === 'schematic') {
-      this.star.hide();
+      star.hide();
       // 円は姿勢を持たないので、球のシルエットとして見せるには毎フレームカメラへ正対させる。
       this.outline.line.visible = true;
       this.outline.line.position.copy(p);
-      this.outline.line.scale.setScalar(this.radius);
+      this.outline.line.scale.setScalar(radius);
       this.outline.line.quaternion.copy(cameraSystem.activeCamera.quaternion);
       return;
     }
@@ -70,20 +68,20 @@ export class StarEntity extends CelestialEntity {
     // マップビューでは実球体だけを使う。**点像を置く星殻がカメラの近平面より手前にあるとは
     // 限らない** — 引いたマップビューでは近平面が星殻より遠く、置いても写らない。
     if (cameraSystem.view === 'map') {
-      this.star.syncSphere(p, this.radius);
+      star.syncSphere(p, radius);
       return;
     }
-    this.star.sync(
-      p, this.radius,
-      this.lodApparentDiameterPx(2 * this.radius, cameraSystem.activeCameraRadialScale(pos), graphics),
+    star.sync(
+      p, radius,
+      apparentSizePx(2 * radius, cameraSystem.activeCameraRadialScale(pos)) * graphics.lodBias,
       cameraSystem.activeCamera.quaternion,
     );
   }
 
   // 恒星の見た目と輪郭円を親から外し、解放する。
-  dispose(): void {
+  protected disposeContents(): void {
     this.outline.line.removeFromParent();
-    this.star.dispose();
+    this.star?.dispose();
     this.outline.dispose();
   }
 }
