@@ -635,11 +635,10 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
   const climate = ClimateMap.fromDeferredUrl(climateTextureUrl);
-  const cumulus = new CumulusShell(GeneratedCloudField.global(climate), R_EARTH_EQ);
+  const cumulus = new CumulusShell(GeneratedCloudField.global(climate));
   const surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
   surface.addTo(group);
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
-  cumulus.addTo(group);
   const bodyFromWorld = new THREE.Matrix4().makeRotationFromQuaternion(spin.clone().invert());
   const graticule = new BodyGraticule();
   graticule.addTo(group);
@@ -669,13 +668,10 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
     },
     // 天体自身が落とす影。地表・雲頂・低い高度の大気が直射を失う境界はこれが決める。
     shadowBody: { center, axes: new THREE.Vector3(axes.x, axes.y, axes.z), bodyFromWorld },
-    // 殻の分割段は寄り切った 1 段に固定(ケースのカメラ距離は観察のつまみで動くが、
-    // 絵の比較は最も細かい段で行う)。
     applyGraphics: (graphics) => {
       if (graphics.clouds) {
         cumulus.setCloudsVisible(true);
         cumulus.setDetail(graphics.cumulusDetail);
-        cumulus.syncLod(CLOSE_UP_DIAMETER_PX);
       } else {
         cumulus.setCloudsVisible(false);
       }
