@@ -15,11 +15,7 @@ import {
   type ValueField,
 } from './guide-value-field';
 import { buildKindDefs, defaultColorsFor, type CombinedKindDef, type KindDef } from './guide-kind-def';
-import {
-  buildCriticalInclinationRow, buildDawnDuskRow, buildSunSyncRow,
-  syncCriticalInclinationRow, syncDawnDuskRow, syncSunSyncRow,
-  type CriticalInclinationRow, type DawnDuskRow, type RepeatGroundTrackRow,
-} from './reference-orbit-rows';
+import { CriticalInclinationRow, DawnDuskRow, SunSyncRow } from './reference-orbit-rows';
 import {
   DEFAULT_ORBIT_GUIDE_SETTINGS,
   defaultCombinedKindSettings,
@@ -143,7 +139,7 @@ export class OrbitGuideTab {
     readonly direction: SegmentedControl<DirectionMarkerMode>;
     readonly animateSwitch: ToggleSwitch;
   };
-  private sunSyncRow!: RepeatGroundTrackRow;
+  private sunSyncRow!: SunSyncRow;
   private dawnDuskRow!: DawnDuskRow;
   private molniyaRow!: CriticalInclinationRow;
   private tundraRow!: CriticalInclinationRow;
@@ -182,12 +178,12 @@ export class OrbitGuideTab {
     });
     basicRow.appendChild(this.geostationaryButton.element);
     basicBody.appendChild(basicRow);
-    this.sunSyncRow = buildSunSyncRow(basicBody, () => this.commitSunSync({ on: !this.current.sunSync.on }), (patch) => this.commitSunSync(patch));
-    this.dawnDuskRow = buildDawnDuskRow(basicBody, () => this.commitDawnDusk({ on: !this.current.dawnDusk.on }), (patch) => this.commitDawnDusk(patch));
-    this.molniyaRow = buildCriticalInclinationRow(
+    this.sunSyncRow = new SunSyncRow(basicBody, () => this.commitSunSync({ on: !this.current.sunSync.on }), (patch) => this.commitSunSync(patch));
+    this.dawnDuskRow = new DawnDuskRow(basicBody, () => this.commitDawnDusk({ on: !this.current.dawnDusk.on }), (patch) => this.commitDawnDusk(patch));
+    this.molniyaRow = new CriticalInclinationRow(
       basicBody, 'モルニヤ軌道(Molniya)', () => this.commitMolniya({ on: !this.current.molniya.on }), (patch) => this.commitMolniya(patch),
     );
-    this.tundraRow = buildCriticalInclinationRow(
+    this.tundraRow = new CriticalInclinationRow(
       basicBody, 'ツンドラ軌道(Tundra)', () => this.commitTundra({ on: !this.current.tundra.on }), (patch) => this.commitTundra(patch),
     );
     groupTabBodies.set('basic', basicBody);
@@ -578,10 +574,10 @@ export class OrbitGuideTab {
     lr.animateSwitch.setOn(lissajous.animate);
 
     // 地球専用参照軌道4種(基本群)。
-    syncSunSyncRow(this.sunSyncRow, this.current.sunSync);
-    syncDawnDuskRow(this.dawnDuskRow, this.current.dawnDusk);
-    syncCriticalInclinationRow(this.molniyaRow, this.current.molniya);
-    syncCriticalInclinationRow(this.tundraRow, this.current.tundra);
+    this.sunSyncRow.sync(this.current.sunSync);
+    this.dawnDuskRow.sync(this.current.dawnDusk);
+    this.molniyaRow.sync(this.current.molniya);
+    this.tundraRow.sync(this.current.tundra);
   }
 
   // 正本からの鏡映し反映。

@@ -3,8 +3,8 @@
 import { ACCENT, EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM, TEXT_MUTED } from '../../../theme';
 import { injectOnce } from '../../../hud/inject-style';
 import {
-  CHART_LINE_WIDTH, CHART_MARK_RADIUS, CHART_MARK_RING_WIDTH, chartCanvasStyle,
-  drawPointMarker, drawPolylineWithGaps, resizeCanvasBackingStore, type BackingStoreState,
+  chartCanvasStyle, drawPointMarker, drawPolylineWithGaps, resizeCanvasBackingStore,
+  type BackingStoreState,
 } from './chart-canvas';
 
 export interface ChartPoint {
@@ -192,7 +192,7 @@ export class OrbitChart {
       x: scaleValue(point.x, spec.x.min, spec.x.max, plotLeft, plotWidth, false),
       y: scaleValue(point.y, spec.y.min, spec.y.max, plotTop, plotHeight, true),
     });
-    drawPolylineWithGaps(this.ctx, spec.points, toPx, ACCENT, CHART_LINE_WIDTH);
+    drawPolylineWithGaps(this.ctx, spec.points, toPx, ACCENT);
   }
 
   // mark.style に応じた丸マークを1点描く。
@@ -206,6 +206,6 @@ export class OrbitChart {
   ): void {
     const px = scaleValue(mark.point.x, spec.x.min, spec.x.max, plotLeft, plotWidth, false);
     const py = scaleValue(mark.point.y, spec.y.min, spec.y.max, plotTop, plotHeight, true);
-    drawPointMarker(this.ctx, px, py, mark.style === 'current', CHART_MARK_RADIUS, CHART_MARK_RING_WIDTH);
+    drawPointMarker(this.ctx, px, py, mark.style === 'current');
   }
 }
