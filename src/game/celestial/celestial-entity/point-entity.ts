@@ -1,15 +1,15 @@
 // 戦闘ビューで肉眼の「明るい星」程度にしか見えない惑星の見た目。見かけ直径が閾値未満なら実体を
 // 隠し、戦闘ビューでは星殻上の輝点スプライトへ切り替える。
 import * as THREE from 'three/webgpu';
-import { OrbitingMotion } from '../../../physics/celestial-motion';
+import type { OrbitingMotion } from '../../../physics/celestial-motion';
 import { shapeAxes } from '../../../physics/celestial-body-def';
-import { CameraSystem } from '../../camera/camera-system';
-import { FloatingOrigin } from '../../camera/floating-origin';
+import type { CameraSystem } from '../../camera/camera-system';
+import type { FloatingOrigin } from '../../camera/floating-origin';
 import { spinOrientation } from '../../../physics/body-orientation';
 import { lambertSphereIrradiance } from '../../../physics/lambert-sphere';
 import { STAR_SHELL_RADIUS } from '../../../render/stars';
 import { Billboard, POINT_IMAGE_ANGULAR_SIZE } from '../../../render/billboard';
-import { CelestialSurface } from '../../../render/celestial-surface';
+import type { CelestialSurface } from '../../../render/celestial-surface';
 import { BodyGraticule } from '../../../render/body-graticule';
 import { showsPhysicalSphere } from '../../../render/screen-lod';
 import { CelestialEntity } from './celestial-entity';
