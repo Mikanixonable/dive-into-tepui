@@ -118,11 +118,7 @@ export class Game {
       initialSave?.phaseOffsets ?? {}, earthSpinPhase0, epoch, (ratio) => progress.within(ratio),
     );
     await progress.enter('bodies');
-    celestialSystem.build(
-      gs.scene, gs.pipeline.sunLight, gs.pipeline.exposure,
-      gs.pipeline.bodyShadow, gs.pipeline.ringShadow, gs.pipeline.cumulusShadow,
-      gs.pipeline.planetLight, gs.pipeline.ambient, gs.pipeline.atmosphere,
-    );
+    celestialSystem.build(gs.scene, gs.pipeline);
     await progress.enter('run');
     const game = new Game(host, stageClass, audioEngine, pauseMenu, celestialSystem, initialSave);
     // シェーダを組む前に、最初に描かれるフレームと同じ表示状態を時間の進まない1フレームで作る —
