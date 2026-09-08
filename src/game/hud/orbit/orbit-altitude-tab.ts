@@ -6,10 +6,9 @@ import { altitudeSeries } from './orbit-analysis-data';
 import { ScaleField, buildTabControls, clampScaleKm, sampleCountFor } from './orbit-analysis-tab';
 import { OrbitChart } from './orbit-chart';
 import { distanceAxis, timeAxis } from './orbit-chart-axes';
-import type { Game } from '../../game';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
 import type { OrbitReference } from '../../orbit-reference';
-import type { AnalysisTab } from './orbit-analysis-tab';
+import type { AnalysisChartSource, AnalysisTab } from './orbit-analysis-tab';
 import type { ChartMark, ChartPoint } from './orbit-chart';
 
 const DEFAULT_SCALE_Y_KM = 1000;
@@ -58,9 +57,9 @@ export class AltitudeTab implements AnalysisTab {
   }
 
   // 現在時刻から横軸のスケールぶん先までの高度を引き、折れ線と現在位置の丸マークを描く。
-  public draw(game: Game, entity: DynamicEntity, reference: OrbitReference): void {
+  public draw(source: AnalysisChartSource, entity: DynamicEntity, reference: OrbitReference): void {
     const series = altitudeSeries(
-      entity, reference, game.celestialSystem, entity.state.t,
+      entity, reference, source.celestialSystem, entity.state.t,
       this.scaleXHours * SECONDS_PER_HOUR, sampleCountFor(this.chart.element),
     );
     if (series === null) {
