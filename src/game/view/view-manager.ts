@@ -6,7 +6,8 @@ import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { DisplayWindowManager } from '../display-window-manager';
 import type { ControlSelection } from '../control-selection';
 import { setPanelCollapsedView } from '../hud/panel-shell';
-import type { View, ViewFrame } from './view';
+import type { View } from './view';
+import type { ViewFrame } from './view-frame';
 
 export class ViewManager {
   private view: View;

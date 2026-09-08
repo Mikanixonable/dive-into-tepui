@@ -24,7 +24,7 @@ import type { DisplayWindow, DisplayWindowManager } from '../display-window-mana
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { FrameAnchors } from '../frame-anchors';
 import type { FloatingOrigin } from '../camera/floating-origin';
-import type { ViewFrame } from './view';
+import type { ViewFrame } from './view-frame';
 import type { PerfCounts } from '../perf-counts';
 
 export class MapView implements ViewFrame {

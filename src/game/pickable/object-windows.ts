@@ -23,7 +23,7 @@ import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import type { Targeter } from '../targeter';
 import { EmptySpacePickable } from './empty-space-pickable';
 import { orbitingAttractorOf } from '../../physics/attractor';
-import type { ViewFrame } from '../view/view';
+import type { ViewFrame } from '../view/view-frame';
 import { PartWindows } from './part-windows';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { InspectedObject } from './inspected-object';
