@@ -7,11 +7,11 @@ import type { WebGPURenderer } from 'three/webgpu';
 import {
   Discard, Fn, If, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
   max, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select, smoothstep,
-  sqrt, step, transformNormalToView, uniform, vec3, vec4,
+  sqrt, step, texture as textureNode, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
 import { BlueNoise } from './blue-noise';
-import { CloudFieldSampler, GeneratedCloudField } from './cloud/cloud-field';
-import { unitSphereGeometry } from './celestial-surface';
+import { GeneratedCloudField } from './cloud/cloud-field';
+import { sphereMeshUv, unitSphereGeometry } from './celestial-surface';
 import {
   CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE, cloudTopOf, grainAt, opaqueFractionOf,
 } from './cloud/cumulus-shape';
@@ -52,11 +52,9 @@ const SAMPLING_OF_DETAIL = {
 // ならないので、Nyquist の 2 画素へ落ちるまでに振幅を 0 へ渡す。
 const GRAIN_FADE_MIN_PIXELS = 2;
 const GRAIN_FADE_FULL_PIXELS = 4;
-const DEFAULT_CAMERA_DIRECTION = new THREE.Vector3(0, 0, 1);
 
 export class CumulusShell {
   private readonly cloudField: GeneratedCloudField;
-  private readonly fieldSampler = new CloudFieldSampler();
   // 標本の配り方と、その回数まで展開したマテリアル。
   private sampling: CumulusSampling = SAMPLING_OF_DETAIL[CUMULUS_DETAIL.standard];
   private material: THREE.Material;
@@ -79,7 +77,6 @@ export class CumulusShell {
   // 合わせたスケールを与えればよく、雲頂ぶんの膨らみはこの殻が持つ。
   public constructor(cloudField: GeneratedCloudField, bodyRadius: number) {
     this.cloudField = cloudField;
-    this.fieldSampler.set(cloudField);
     const shellScale = 1 + CLOUD_TOP_SPAN / bodyRadius;
     const grainFrequency = bodyRadius / CUMULUS_GRAIN_SIZE;
     this.groundRadius = uniform(1 / shellScale);
@@ -98,8 +95,8 @@ export class CumulusShell {
     this.meshes = meshes;
   }
 
-  // 雲の場。解放までこの殻が持つ。厚い雲・薄い雲・影へ同じ生成元を渡す。
-  public get field(): GeneratedCloudField { return this.cloudField; }
+  // 雲の場のテクスチャ。解放までこの殻が持つ。
+  public get field(): THREE.Texture { return this.cloudField.texture; }
 
   // 殻を描いている段があるか。
   public get visible(): boolean { return this.activeLevel !== null; }
@@ -151,9 +148,7 @@ export class CumulusShell {
 
   // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。刻みを持たない配り方では
   // 全段を隠す。
-  public syncLod(apparentDiameterPx: number, cameraDirection = DEFAULT_CAMERA_DIRECTION): void {
-    this.cloudField.syncLod(apparentDiameterPx, cameraDirection);
-    this.fieldSampler.set(this.cloudField);
+  public syncLod(apparentDiameterPx: number): void {
     const level = this.sampling.march === 0 ? null : sphereLodLevel(apparentDiameterPx);
     if (level === this.activeLevel) return;
     this.activeLevel = level;
@@ -288,7 +283,7 @@ export class CumulusShell {
 
   // 天体固定の単位方向における場の値。
   private fieldAt(direction: Vec3Node): Vec4Node {
-    return this.fieldSampler.at(direction);
+    return textureNode(this.cloudField.texture, sphereMeshUv(direction));
   }
 
   // 粒の振幅。**1 画素が張る角は画面上の変化率から引く** — 天体の見かけ直径から出すと、
