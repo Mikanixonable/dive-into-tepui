@@ -1,9 +1,8 @@
 // 軌道分析パネルがプロットする点列(高度タブ・接近タブ・投影タブ)を、既存の伝播・外挿の
 // 仕組みから導出する。距離は [m]、時間は [s]、角度は内部では [rad](公開する relIncDeg だけ [deg])。
 import { strongestAttractor } from '../../../physics/attractor';
-import { orbitalElementsOf } from '../../../physics/elements';
+import { orbitalElementsOf, semiMajorFromPeriod } from '../../../physics/elements';
 import type { OrbitalElements } from '../../../physics/elements';
-import { semiMajorFromPeriod } from '../../../physics/elements';
 import { latLonOf } from '../../../physics/body-orientation';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { Vec3, dot, len, sub } from '../../../math/vec3';
