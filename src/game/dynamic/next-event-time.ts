@@ -1,7 +1,7 @@
 // サブステップを区切るべき次の絶対時刻。ステージ側(マニューバの点火・燃焼終了)と個体側
 // (弾の寿命など)の締切のうち、最も早いものを答える。
 import type { EntityRoster } from './entity-roster';
-import type { Stage } from '../stages/stage';
+import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 
 export class NextEventTime {
   // 個体側の最小イベント時刻の控えと、それを求めたときの顔ぶれの世代。
@@ -11,7 +11,7 @@ export class NextEventTime {
 
   // simTime 以降で最も早い締切。無ければ null。ステージ側の時刻は艦の現在の Δv と加速度から
   // 毎回決まる生きた値なので、毎回引き直す。
-  at(simTime: number, activeStage: Stage, roster: EntityRoster): number | null {
+  at(simTime: number, activeStage: StageSimulationEvents, roster: EntityRoster): number | null {
     const stage = activeStage.nextSimulationEventTime(simTime);
     const entity = this.entityEventTime(simTime, roster);
     if (stage === null) return entity;
