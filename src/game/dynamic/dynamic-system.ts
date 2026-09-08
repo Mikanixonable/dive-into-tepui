@@ -306,10 +306,16 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting,
   ): void {
     this.instancedPools.beginFrame();
+    // 投影関数は引くたびに作られるので、顔ぶれを辿る前に1度だけ引く。
+    const project = cameraSystem.activeCameraProjection;
+    const cameraPos = cameraSystem.activeCameraPos;
+    // 天体の裏に隠れた交点を伏せるのはマップビューだけで、戦闘ビューでは地球の向こう側も出す。
+    const occludeByBodies = cameraSystem.view === 'map';
     for (const e of this.entities) {
       e.sync(
         fo, displayTime, active, visibilityPolicy, this.instancedPools, cameraSystem, style,
-        graphics, orbitRef, frameAnchors, timeLabel);
+        graphics, orbitRef);
+      e.syncEquatorNodes(project, cameraPos, frameAnchors, occludeByBodies, timeLabel);
     }
     this.instancedPools.endFrame();
   }
