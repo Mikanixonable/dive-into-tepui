@@ -11,12 +11,13 @@ import { Player } from './player/player';
 import { isCombatTarget, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import { Input } from '../input/input';
 import { CameraSystem } from './camera/camera-system';
-import type { GroupedMarkerItem, MarkerRole } from './marker/grouped-markers';
+import { withTargetRole, type GroupedMarkerItem } from './marker/grouped-markers';
 import type { ActiveCelestialLabel } from './marker/celestial-markers';
 import { MARKER_PRIORITY } from './marker/crowding';
 import type { MarkerManager } from './marker/marker-manager';
 import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
 import { pickNearest } from './pickable/object-pickable';
+import { fmtMarkerDist } from '../hud/utils';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
@@ -142,15 +143,16 @@ export class Targeter {
       if (visibility && !visibility.pickable) continue;
       // 戦闘ビューのカメラ直下にいる操作艦は、マーカーを重ねると視界を潰す。
       if (!mapView && tgt === viewer) continue;
-      const role: MarkerRole = tgt === this.aliveTarget ? 'primary' : 'none';
-      const item = tgt.markerItem(role, viewerPos, ds.r, ds.v, view, tgt === viewer);
+      const item = tgt.markerItem(viewerPos, ds.r, ds.v, view, tgt === viewer);
       const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, ds.r, this.celestialBodies, displayTime);
       const mapOpacity = mapOccluded
         ? 0
         : tgt instanceof Enemy && mapView
           ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, this.celestialBodies, displayTime))
           : 1;
-      this.pushMarkerItem(item, visibility, mapOpacity, mapOccluded);
+      this.pushMarkerItem(
+        tgt === this.aliveTarget ? withTargetRole(item) : item,
+        viewerPos, mapView, visibility, mapOpacity, mapOccluded);
     }
     // 部位マーカーは死んだ個体まで辿って確定する。上のループは生存個体しか通らないので、
     // ここで畳まないと撃破直後の部位マーカーが残る。
@@ -165,7 +167,7 @@ export class Targeter {
       if (visibility && !visibility.pickable) continue;
       const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, ammo.state.r, this.celestialBodies, displayTime);
       const mapOpacity = mapOccluded ? 0 : mapView ? ammoFadeOpacity(len(sub(ammo.state.r, viewerPos))) : 1;
-      this.pushMarkerItem(ammo.markerItem(viewerPos, view), visibility, mapOpacity, mapOccluded);
+      this.pushMarkerItem(ammo.markerItem(), viewerPos, mapView, visibility, mapOpacity, mapOccluded);
     }
     for (const fuel of fuelPickups) {
       if (!fuel.alive) continue;
@@ -173,7 +175,7 @@ export class Targeter {
       if (visibility && !visibility.pickable) continue;
       const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, fuel.state.r, this.celestialBodies, displayTime);
       const mapOpacity = mapOccluded ? 0 : mapView ? ammoFadeOpacity(len(sub(fuel.state.r, viewerPos))) : 1;
-      this.pushMarkerItem(fuel.markerItem(viewerPos, view), visibility, mapOpacity, mapOccluded);
+      this.pushMarkerItem(fuel.markerItem(), viewerPos, mapView, visibility, mapOpacity, mapOccluded);
     }
     this.markerManager.combatMarkers.sync(
       this.markerItemScratch, project, view, screenScale, mapView ? celestialLabels : [], this.celestialBodies,
@@ -185,18 +187,21 @@ export class Targeter {
     }
   }
 
-  // markerItemScratch へ、可視性設定(アイコン/名前の個別トグル)とマップ上のフェード/遮蔽を反映して積む。
+  // markerItemScratch へ、自機からの距離ラベル・可視性設定(アイコン/名前の個別トグル)・
+  // マップ上のフェード/遮蔽を反映して積む。マップビューでは距離ラベルを出さない。
   private pushMarkerItem(
-    item: GroupedMarkerItem, visibility: MapVisibility | undefined, opacity: number, occluded: boolean,
+    item: GroupedMarkerItem, viewerPos: Vec3, mapView: boolean,
+    visibility: MapVisibility | undefined, opacity: number, occluded: boolean,
   ): void {
+    const detail = mapView ? '' : fmtMarkerDist(len(sub(item.pos, viewerPos)));
     this.markerItemScratch.push(visibility ? {
       ...item,
       sym: visibility.icon ? item.sym : '',
       name: visibility.label ? item.name : '',
-      detail: visibility.label ? item.detail : '',
+      detail: visibility.label ? detail : '',
       opacity,
       occluded,
-    } : { ...item, opacity, occluded });
+    } : { ...item, detail, opacity, occluded });
   }
 
   // タンパク質敵が自機から PROTEIN_SITE_MARKER_RANGE 以内にある間、通常の敵マーカーへ加えて

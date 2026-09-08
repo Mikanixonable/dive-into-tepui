@@ -1,5 +1,4 @@
 import * as THREE from 'three/webgpu';
-import type { View } from '../../view/view';
 import { kinematicState } from '../../../physics/kinematic-state';
 import { len, sub, v3, type Vec3 } from '../../../math/vec3';
 import { buildAmmoPickup } from '../../../render/ships';
@@ -7,7 +6,7 @@ import { DynamicEntity, SMALL_DEBRIS_BCINV, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS
 import { EntityIdAllocator } from './entity-id';
 import type { DynamicEntityKind } from './entity-kind';
 import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../../marker/marker-identity';
-import { fmtDist, fmtMarkerDist } from '../../../hud/utils';
+import { fmtDist } from '../../../hud/utils';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { Attitude } from '../../../physics/attitude';
 import type { KinematicState } from '../../../physics/kinematic-state';
@@ -84,10 +83,8 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
   // 画面マーカーと被選択判定が同じ個体を指すためのキー。
   private get markerKey(): string { return `ammo-${this.id}`; }
 
-  // Targeter がクラスタ化・天体ラベル下サブ行の集合へ渡すためのマーカー情報。
-  // 弾薬はターゲット化されないので役割・優先度は常に固定値。
-  markerItem(viewerPos: Vec3, view: View): GroupedMarkerItem {
-    const dist = len(sub(this.state.r, viewerPos));
+  // 画面マーカーに出すこの弾薬の項目。ターゲットにならないので優先度は固定値。
+  markerItem(): GroupedMarkerItem {
     return {
       key: this.markerKey,
       kind: this.mapKind,
@@ -97,7 +94,6 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
       vel: this.state.v,
       priority: MARKER_PRIORITY.AMMO,
       name: this.name,
-      detail: view === 'map' ? '' : fmtMarkerDist(dist),
       bearingColor: 'var(--color-primary-hover)',
       bearingSym: DIRECTION_GLYPH.bearing,
       bearingClass: 'mk-ammo mk-bearing-triangle',
