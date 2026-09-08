@@ -6,7 +6,7 @@ import './hackgen-400.css';
 // 低軌道シューティング: エントリポイント。WebGPU シーン初期化・ステージ選択・
 // rAF ループ(Game.update → sync → render の駆動)を統括する。
 import { createGameScene, GameScene } from './render/scene';
-import { PerfMeter } from './launcher/perf-meter';
+import { DebugInfoWindow } from './launcher/debug-info-window';
 import { FrameSections } from './game/frame-sections';
 import { GraphicsSettings, type GraphicsSettingsData } from './render/graphics-settings';
 import { RenderStyleSetting } from './render/render-style';
@@ -41,7 +41,7 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
   launcher: Launcher, gs: GameScene, graphics: GraphicsSettings, renderStyle: RenderStyleSetting,
-  perf: PerfMeter, sections: FrameSections,
+  debugInfo: DebugInfoWindow, sections: FrameSections,
   autoSave: AutoSave,
   snapshotControls: SnapshotControls,
 ): void {
@@ -57,7 +57,7 @@ function startAnimationLoop(
       requestAnimationFrame(animate);
       return;
     }
-    const t0 = perf.on ? performance.now() : 0;
+    const t0 = debugInfo.on ? performance.now() : 0;
     try {
       sections.beginFrame();
       game.update(dt);
@@ -70,18 +70,18 @@ function startAnimationLoop(
         requestAnimationFrame(animate);
         return;
       }
-      perf.handleInput(game.input);
+      debugInfo.handleInput(game.input);
       autoSave.update(game);
-      const t1 = perf.on ? performance.now() : 0;
+      const t1 = debugInfo.on ? performance.now() : 0;
       game.sync(graphics.current, renderStyle.current);
-      const t2 = perf.on ? performance.now() : 0;
+      const t2 = debugInfo.on ? performance.now() : 0;
       game.render(renderStyle.current);
-      const t3 = perf.on ? performance.now() : 0;
+      const t3 = debugInfo.on ? performance.now() : 0;
       // 時刻印クエリを溜めないため、窓の開閉によらず毎フレーム解決させる。計測自身の費用が
       // render 区間へ混ざらないよう、区間の外で呼ぶ。
       gs.gpu.resolve();
-      if (perf.on) {
-        perf.record(game, t1 - t0, t2 - t1, t3 - t2, t3);
+      if (debugInfo.on) {
+        debugInfo.record(game, t1 - t0, t2 - t1, t3 - t2, t3);
       }
       completedFrames++;
       // 例外なく60フレーム完走したことを、外から読めるようにする印。
@@ -170,13 +170,13 @@ async function main() {
     saveBrowser.open();
   };
 
-  // pipeline は負荷確認ウィンドウのデバッグ表示の選択欄が書き込む先。
-  const perf = new PerfMeter(
+  // pipeline はデバッグ情報ウィンドウの描画タブが書き込む先。
+  const debugInfo = new DebugInfoWindow(
     shell.layers.window, gs.renderer, sections, gs.gpu, shell.overlayManager, gs.pipeline, renderStyle,
   );
-  pauseMenu.onOpenPerfWindow = () => {
+  pauseMenu.onOpenDebugInfoWindow = () => {
     pauseMenu.toggle(false);
-    perf.open();
+    debugInfo.open();
   };
 
   const snapshotControls = new SnapshotControls(hud, pauseMenu, saveBrowser, snapshotService);
@@ -185,7 +185,7 @@ async function main() {
   await launcher.start();
   settingsView.restorePersistedOpenState();
 
-  startAnimationLoop(launcher, gs, graphics, renderStyle, perf, sections, new AutoSave(snapshotService), snapshotControls);
+  startAnimationLoop(launcher, gs, graphics, renderStyle, debugInfo, sections, new AutoSave(snapshotService), snapshotControls);
 }
 
 main().catch((err) => {

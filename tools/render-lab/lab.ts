@@ -179,6 +179,7 @@ export class LabView implements GraphicsTarget {
     if (this.current !== null) {
       this.scene.remove(...this.current.objects);
       this.current.star?.dispose();
+      this.current.disposeClouds?.();
       disposeCaseObjects(this.current);
     }
     const built = CASES[name](this.style, this.ringMaterials);
@@ -323,6 +324,7 @@ export class LabView implements GraphicsTarget {
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
     this.pipeline.cumulusShadow.set(
       castsCumulusShadow(this.graphicsData) ? this.current.cumulus ?? null : null);
+    this.current.bakeClouds?.(this.renderer, 0);
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     // 雲を切る設定では、大気へ立てる殻もゲーム本体と同じように外す。
     this.pipeline.atmosphere.setDraws(atmosphereDraws(

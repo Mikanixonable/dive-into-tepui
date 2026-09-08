@@ -15,6 +15,7 @@ import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
 import { ConvectiveActivity } from './convective-activity';
 import { Cyclones } from './cyclones';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
+import { RossbyWave } from './rossby-wave';
 import { FRICTION_RATE, balancedWind, isobarAt, windStep } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { NoiseOctave } from './circulating-noise';
@@ -28,7 +29,8 @@ import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../t
 // 強弱(0 中心の高周波、x が粒・y が網目)、対流の活発度はその強弱がどれだけ強く現れるか 0..1、
 // 圧縮は気団の境目の押し縮まり(1 で何も起きていない)、帯は気団の折り目に立つ雲の帯の強さ 0..1
 // (温帯では前線、眼を持つ渦のまわりでは雨帯。1 で飽和)、暖気の流入は出身地からの緯度の差 [rad]
-// (負で寒気)、金床は平らな天蓋の濃さ 0..1、圏界面はその緯度の対流の天井 [m]。
+// (負で寒気)、金床は平らな天蓋の濃さ 0..1、平年の雲量と陸らしさは気候の分布 0..1、圏界面は
+// その緯度の対流の天井 [m]。
 export type WeatherSample = {
   readonly pressure: FloatNode;
   readonly surfaceWind: Vec2Node;
@@ -41,6 +43,8 @@ export type WeatherSample = {
   readonly band: FloatNode;
   readonly warmth: FloatNode;
   readonly anvil: FloatNode;
+  readonly meanCloudiness: FloatNode;
+  readonly landFraction: FloatNode;
   readonly tropopause: FloatNode;
 };
 
@@ -259,6 +263,7 @@ const MEAN_CLOUDINESS_WET = 0.85;
 export class WeatherModel {
   private readonly surfaceCirculation = new Circulation(SURFACE_BANDS);
   private readonly upperCirculation = new Circulation(UPPER_BANDS);
+  private readonly rossbyWave = new RossbyWave();
   private readonly cyclones = new Cyclones();
   // ノイズは焼く先の texel で標本化できない段を畳むので、写しの持ち方が決まってから組む。
   private readonly pressureNoise: CirculatingNoise;
@@ -315,6 +320,7 @@ export class WeatherModel {
   public syncTime(seconds: number): void {
     this.surfaceCirculation.syncTime(seconds);
     this.upperCirculation.syncTime(seconds);
+    this.rossbyWave.syncTime(seconds);
     this.cyclones.syncTime(seconds);
     const cycle = (seconds / ADVECTION_PERIOD) % 1;
     this.advectionCycle.value = cycle < 0 ? cycle + 1 : cycle;
@@ -340,7 +346,8 @@ export class WeatherModel {
     const upperWind: BalancedWind = {
       velocity: surfaceWind.velocity
         .add(east.mul(upperMean.x.mul(cos(latitude)).mul(BAND_RATE_TO_SPEED)))
-        .add(north.mul(upperMean.y.mul(BAND_RATE_TO_SPEED))),
+        .add(north.mul(upperMean.y.mul(BAND_RATE_TO_SPEED)))
+        .add(this.rossbyWave.windAt(direction)),
       turn: surfaceWind.turn,
     };
 
@@ -363,6 +370,7 @@ export class WeatherModel {
     // 歪まない。
     const advected = this.advected(direction, surfaceWind, upperWind, convectionWind);
     const meanCloudiness = this.climate.meanCloudiness(direction);
+    const landFraction = this.climate.landFraction(direction);
     const eye = this.cyclones.eyeAt(direction);
     const anvil = this.cyclones.anvilAt(direction);
     const deviation = advected.surfaceHumidity.sub(SURFACE_HUMIDITY_BASE);
@@ -390,6 +398,8 @@ export class WeatherModel {
       band,
       warmth,
       anvil,
+      meanCloudiness,
+      landFraction,
       tropopause: tropopauseAt(latitude),
     };
   }
