@@ -1,17 +1,15 @@
 import * as THREE from 'three/webgpu';
-import type { View } from '../../view/view';
-import { kinematicState } from '../../../physics/kinematic-state';
 import { len, sub, v3, type Vec3 } from '../../../math/vec3';
 import { buildRcsFuelPickup } from '../../../render/ships';
 import { DynamicEntity, SMALL_DEBRIS_BCINV, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS_BULK_DENSITY, SMALL_DEBRIS_SPECIFIC_HEAT, SMALL_DEBRIS_RADIATING_AREA_PER_MASS, SMALL_DEBRIS_MAX_TEMP } from './dynamic-entity';
 import { EntityIdAllocator } from './entity-id';
 import type { DynamicEntityKind } from './entity-kind';
 import { DIRECTION_GLYPH, ENTITY_GLYPH, COLOR_MARKER_FUEL } from '../../marker/marker-identity';
-import { fmtDist, fmtMarkerDist } from '../../../hud/utils';
+import { fmtDist } from '../../../hud/utils';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { Attitude } from '../../../physics/attitude';
 import type { KinematicState } from '../../../physics/kinematic-state';
-import type { RcsFuelPickupSaveData } from '../../save/save-data';
+import { savedAttitude, savedKinematicState, type RcsFuelPickupSaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
@@ -53,8 +51,8 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
   public constructor(init: RcsFuelPickupInit, scene: THREE.Scene) {
     const { state, att, id, name } = 'saved' in init
       ? {
-        state: kinematicState<'eci'>(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
-        att: { q: { ...init.saved.q }, w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z), inertia: v3(1, 1, 1) } as Attitude,
+        state: savedKinematicState(init.saved, init.simTime),
+        att: savedAttitude(init.saved, v3(1, 1, 1)),
         id: init.saved.id || undefined,
         name: init.saved.name || undefined,
       }
@@ -83,9 +81,8 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
   // 画面マーカーと被選択判定が同じ個体を指すためのキー。
   private get markerKey(): string { return `rcs-fuel-${this.id}`; }
 
-  // 燃料補給のマーカー表示項目。viewerPos は距離ラベルを測る基準点。
-  markerItem(viewerPos: Vec3, view: View): GroupedMarkerItem {
-    const dist = len(sub(this.state.r, viewerPos));
+  // 画面マーカーに出すこの燃料補給の項目。ターゲットにならないので優先度は固定値。
+  markerItem(): GroupedMarkerItem {
     return {
       key: this.markerKey,
       kind: this.mapKind,
@@ -95,7 +92,6 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
       vel: this.state.v,
       priority: MARKER_PRIORITY.AMMO,
       name: this.name,
-      detail: view === 'map' ? '' : fmtMarkerDist(dist),
       bearingColor: COLOR_MARKER_FUEL,
       bearingSym: DIRECTION_GLYPH.bearing,
       bearingClass: 'mk-fuel mk-bearing-triangle',

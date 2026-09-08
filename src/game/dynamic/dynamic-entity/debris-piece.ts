@@ -25,6 +25,10 @@ import type { EntityRegistry } from '../entity-registry';
 import { DynamicEntity, SMALL_DEBRIS_BCINV, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS_BULK_DENSITY, SMALL_DEBRIS_SPECIFIC_HEAT, SMALL_DEBRIS_RADIATING_AREA_PER_MASS, SMALL_DEBRIS_MAX_TEMP } from './dynamic-entity';
 import { Player } from '../../player/player';
 import { Bullet } from './bullet';
+import {
+  DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, ENEMY_DESTROY_FRAG_COLOR,
+  PLAYER_DESTROY_FRAG_COLOR, SHIP_DARK_HULL_COLOR,
+} from '../../../render/vfx-style';
 
 const BARREL_BULK_DENSITY = 7850; // [kg/m^3]
 
@@ -37,9 +41,6 @@ export const BARREL_RADIATING_AREA_PER_MASS = 0.047; // [m^2/kg]
 const BOOSTER_HARDWARE_LIFETIME = 2.4; // 段間カバー/爆砕ボルトの飛散表示時間 [s]
 
 const CASING_LIFETIME = 1800; // 薬莢寿命 [sim s]
-import {
-  SHIP_DARK_HULL_COLOR,
-} from '../../../render/vfx-style';
 
 // DebrisPiece の見た目・振る舞いの種別。
 export type DebrisKind =
@@ -242,4 +243,27 @@ export function buildDestroyFragments(
     pieces.push(new DebrisPiece(state, { kind: 'fragment', accent, size }, att, worldSfx, fx, undefined, scene));
   }
   return pieces;
+}
+
+// 自機の撃破で飛び散る破片。世界へ入れるのは呼び出し側。
+export function playerDestroyFragments(
+  state: KinematicState, worldSfx: WorldSfx, fx: FlashEffects, scene?: THREE.Scene,
+): DebrisPiece[] {
+  return buildDestroyFragments(
+    state.t, state.r, state.v, 11, PLAYER_DESTROY_FRAG_COLOR,
+    DESTROY_FRAG_SIZE_MIN / 3, DESTROY_FRAG_SIZE_MAX / 3, 20.0,
+    worldSfx, fx, scene,
+  );
+}
+
+// 敵機の撃破で飛び散る破片。機体メッシュのスケール meshScale へ見合った大きさにする。
+// 世界へ入れるのは呼び出し側。
+export function enemyDestroyFragments(
+  state: KinematicState, meshScale: number, worldSfx: WorldSfx, fx: FlashEffects, scene?: THREE.Scene,
+): DebrisPiece[] {
+  return buildDestroyFragments(
+    state.t, state.r, state.v, 11, ENEMY_DESTROY_FRAG_COLOR,
+    (DESTROY_FRAG_SIZE_MIN * meshScale) / 3, (DESTROY_FRAG_SIZE_MAX * meshScale) / 3, 20.0,
+    worldSfx, fx, scene,
+  );
 }

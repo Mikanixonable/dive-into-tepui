@@ -9,27 +9,20 @@ import { KinematicState, kinematicState } from '../../../physics/kinematic-state
 import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../../math/vec3';
 import { solveLeadTime } from '../../../physics/intercept';
 import type { FlashEffects } from '../../vfx/flash-effects';
-import { buildDestroyFragments } from './debris-piece';
+import { enemyDestroyFragments } from './debris-piece';
 import type { Player } from '../../player/player';
 import { Bullet } from './bullet';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { R_EARTH_EQ } from '../../celestial/solar-system/constants';
-import { fmtDist, fmtMarkerDist, fmtSpeed } from '../../../hud/utils';
+import { fmtDist, fmtSpeed } from '../../../hud/utils';
 import { relativeInfo } from '../../orbit-info';
 import { orbitRows } from '../../pickable/orbit-rows';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import { shipMarkerSvg } from '../../marker/marker-shapes';
-import { currentThemePalette } from '../../../theme';
-import {
-  DESTROY_FLASH1_DURATION, DESTROY_FLASH1_SIZE0, DESTROY_FLASH1_SIZE1,
-  DESTROY_FLASH2_DURATION, DESTROY_FLASH2_SIZE0, DESTROY_FLASH2_SIZE1,
-  DESTROY_FLASH_COLOR_1, DESTROY_FLASH_COLOR_2,
-  DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, ENEMY_DESTROY_FRAG_COLOR,
-} from '../../../render/vfx-style';
 import type { Quat } from '../../../math/quat';
-import type { GroupedMarkerItem, MarkerRole } from '../../marker/grouped-markers';
+import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { EnemyDeathCause, StageOutcome } from '../../stages/stage-outcome';
-import type { EnemySaveData } from '../../save/save-data';
+import { savedKinematicState, type EnemySaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
@@ -151,11 +144,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     const placed: EnemyPlacement = 'saved' in init
       ? {
         name: init.saved.name || '',
-        state: kinematicState<'eci'>(
-          init.simTime,
-          v3(init.saved.r.x, init.saved.r.y, init.saved.r.z),
-          v3(init.saved.v.x, init.saved.v.y, init.saved.v.z),
-        ),
+        state: savedKinematicState(init.saved, init.simTime),
         q: { ...init.saved.q },
         w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z),
         accent: init.saved.accent,
@@ -217,28 +206,23 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 敵のマーカー表示項目を組み立てる。pos/vel には機体メッシュと同じ表示時刻の状態
   // (stateAt 経由)を渡すこと。
-  public markerItem(
-    role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, _isActive: boolean,
-  ): GroupedMarkerItem {
-    // 距離は優先度(近いほど高)とラベル表示の両方に使う
+  public markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View): GroupedMarkerItem {
+    // 代表選出の優先度は、近い個体ほど高くする
     const dist = len(sub(pos, viewerPos));
-    // 代表選出の優先度: ターゲット > 距離が近い順 (天体 > 船・エンティティ)
-    const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.ENEMY - dist / 1e9;
     return {
       key: this.markerKey,
       kind: this.mapKind,
-      cls: role === 'primary' ? 'mk-enemy mk-target' : 'mk-enemy',
+      cls: 'mk-enemy',
       sym: view === 'map' ? this.headingHpMarkerSvg(true) : this.hpMarkerSvg(),
       pos,
       vel,
-      priority,
+      priority: MARKER_PRIORITY.ENEMY - dist / 1e9,
       name: this.name,
-      detail: view === 'map' ? '' : fmtMarkerDist(dist),
-      // 敵本体・距離ラベル・画面外方位マーカーは同じ色で統一する。ターゲット中は第二アクセントカラーで強調する。
-      bearingColor: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ENEMY,
+      // 敵本体・距離ラベル・画面外方位マーカーは同じ色で統一する。
+      bearingColor: COLOR_MARKER_ENEMY,
       bearingSym: ENTITY_GLYPH.enemyShip,
       bearingClass: 'mk-dir mk-bearing-triangle',
-      color: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ENEMY,
+      color: COLOR_MARKER_ENEMY,
       symMarkup: true,
     };
   }
@@ -257,19 +241,10 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   // 撃破時の爆発音・エフェクトを発生させる。
   private destroyEffect(registry: EntityRegistry): void {
     this._worldSfx.explosion();
-    // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
-    const { t, r, v } = this.state;
-    this._fx.spawnFlash(
-      this.state, DESTROY_FLASH1_SIZE0 * ENEMY_SCALE, DESTROY_FLASH1_SIZE1 * ENEMY_SCALE,
-      DESTROY_FLASH1_DURATION, DESTROY_FLASH_COLOR_1);
-    this._fx.spawnFlash(
-      this.state, DESTROY_FLASH2_SIZE0 * ENEMY_SCALE, DESTROY_FLASH2_SIZE1 * ENEMY_SCALE,
-      DESTROY_FLASH2_DURATION, DESTROY_FLASH_COLOR_2);
-    for (const piece of buildDestroyFragments(
-      t, r, v, 11, ENEMY_DESTROY_FRAG_COLOR,
-      (DESTROY_FRAG_SIZE_MIN * ENEMY_SCALE) / 3, (DESTROY_FRAG_SIZE_MAX * ENEMY_SCALE) / 3, 20.0,
-      this._worldSfx, this._fx, this.scene,
-    )) registry.add(piece);
+    this._fx.spawnEnemyDestroyFlash(this.state, ENEMY_SCALE);
+    for (const piece of enemyDestroyFragments(this.state, ENEMY_SCALE, this._worldSfx, this._fx, this.scene)) {
+      registry.add(piece);
+    }
   }
 
   // 被弾によるダメージ・致死判定。
