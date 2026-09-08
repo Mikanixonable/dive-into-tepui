@@ -21,8 +21,8 @@ import { celestialClassOfKind } from '../celestial/celestial-entity/celestial-en
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { CelestialSystem } from '../celestial/celestial-system';
 import type { TdbJulianDate } from '../../physics/time';
-import { SphereEntity } from '../celestial/celestial-entity/sphere-entity';
-import { StarEntity } from '../celestial/celestial-entity/star-entity';
+import { SphereCelestialView } from '../celestial/celestial-entity/sphere-celestial-view';
+import { StarCelestialView } from '../celestial/celestial-entity/star-celestial-view';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../render/pipeline/sun-light';
 import { MAG_ROUNDS } from '../player/ammo-spec';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -77,11 +77,16 @@ function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialBody[] {
 function fallbackEntity(motion: CelestialBody): CelestialEntity {
   // 色の手がかりを持たない架空の恒星なので、無彩色で目盛りの基準どおりの明るさにする。
   if (motion instanceof StarMotion) {
-    return new StarEntity(
-      motion, motion.id, new THREE.Color(1, 1, 1), REFERENCE_STAR_RADIANT_INTENSITY, 0xffffff);
+    return new CelestialEntity(
+      motion, motion.id, 'star', new StarCelestialView(0xffffff, {
+        color: new THREE.Color(0xffffff), radiantIntensity: REFERENCE_STAR_RADIANT_INTENSITY,
+      }),
+    );
   }
   if (!(motion instanceof OrbitingMotion)) throw new Error(`${motion.id} の運動が OrbitingMotion ではない`);
-  return new SphereEntity(motion, motion.id, celestialClassOfKind(motion.kind), CelestialSurface.solid(DEFAULT_ALBEDO));
+  return new CelestialEntity(
+    motion, motion.id, celestialClassOfKind(motion.kind), new SphereCelestialView(CelestialSurface.solid(DEFAULT_ALBEDO)),
+  );
 }
 
 export class StageDebugAltSystem extends Stage {

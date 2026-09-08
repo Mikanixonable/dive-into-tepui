@@ -16,7 +16,7 @@ import type { ProjectionSeriesSpec } from './orbit-projection-chart';
 
 // id の天体が持つ円筒図法テクスチャの URL。実写テクスチャが無い天体(単色球扱い)は null。
 function projectionTextureUrl(game: Game, id: string): string | null {
-  return game.celestialSystem.find(id)?.surfaceTextureUrl ?? null;
+  return game.celestialSystem.find(id)?.view.surfaceTextureUrl ?? null;
 }
 
 // 経緯度の点列を、投影チャートが描ける1系統の指定へ移す。

@@ -7,8 +7,8 @@ import { PhaseOffsets } from '../../../physics/celestial-body-def';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-light';
 import { CelestialSystem } from '../celestial-system';
 import { ephemerisSeconds, TdbJulianDate } from '../../../physics/time';
-import type { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { StarEntity } from '../celestial-entity/star-entity';
+import { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { StarCelestialView } from '../celestial-entity/star-celestial-view';
 import { PointFieldView } from '../point-field-view';
 import { generatePointField } from './point-field';
 import { DwarfPlanetId, DWARF_PLANET_NAMES, dwarfPlanets } from './dwarf-planets';
@@ -59,9 +59,12 @@ export function solarSystem(
   const simZeroEt = ephemerisSeconds(epoch);
   const sunMotion = new StarMotion(SUN);
   // 太陽の放射強度は描画の放射照度の目盛りの基準そのもの。
-  const sun = new StarEntity(
-    sunMotion, SOLAR_SYSTEM_BODY_NAMES.sun, SUN_LIGHT_COLOR,
-    REFERENCE_STAR_RADIANT_INTENSITY, SUN_SURFACE_COLOR);
+  const sun = new CelestialEntity(
+    sunMotion, SOLAR_SYSTEM_BODY_NAMES.sun, 'star',
+    new StarCelestialView(SUN_SURFACE_COLOR, {
+      color: SUN_LIGHT_COLOR, radiantIntensity: REFERENCE_STAR_RADIANT_INTENSITY,
+    }),
+  );
 
   // 全天体を系ごとの宣言順に並べたもの。重力源配列・天体一覧の順序はこれで決まる。
   const entities: readonly CelestialEntity[] = [

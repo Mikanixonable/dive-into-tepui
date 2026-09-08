@@ -28,7 +28,7 @@ import { sphereShadowBody, type ShadowBody } from '../../src/render/pipeline/sha
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cumulus-shadow';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
-import { RingView } from '../../src/game/celestial/celestial-entity/ring-view';
+import { RingView } from '../../src/render/ring-view';
 import { AU } from '../../src/physics/astronomical-unit';
 import { MARS, MARS_ATMOSPHERE_OPTICS, MARS_TEXTURE } from '../../src/game/celestial/solar-system/mars-system';
 import { SATURN, SATURN_TEXTURE } from '../../src/game/celestial/solar-system/saturn-system';

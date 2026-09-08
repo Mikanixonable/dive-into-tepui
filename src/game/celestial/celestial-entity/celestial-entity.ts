@@ -1,16 +1,6 @@
-// 天体1体。運動(CelestialMotion)と表示名・表示クラスを持ち、見た目(メッシュ・輝点スプライト・
-// 環など)をその運動へ同期する。位置・姿勢の正本は motion で、sync のたびにそこから引く。
-import * as THREE from 'three/webgpu';
-import { CelestialMotion } from '../../../physics/celestial-motion';
-import { CelestialBodyDef, shapeSpheroidRadii } from '../../../physics/celestial-body-def';
-import { apsisAltitudes, OrbitalElements, orbitalElementsOf } from '../../../physics/elements';
-import { KinematicState } from '../../../physics/kinematic-state';
-import { EllipseLine } from '../../lines/ellipse-line';
-import { LINE_RENDER_ORDER } from '../../../render/line-style';
-import { CameraSystem } from '../../camera/camera-system';
-import { FloatingOrigin } from '../../camera/floating-origin';
-import { apparentSizePx } from '../../../math/projection';
-import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../../../render/pipeline/sun-light';
+// 天体1体のゲーム上の識別情報と、物理・表示の所有者を結び付ける。
+import type { CelestialMotion } from '../../../physics/celestial-motion';
+import { apsisAltitudes, orbitalElementsOf } from '../../../physics/elements';
 import { len, sub } from '../../../math/vec3';
 import { bodyEntityGlyph } from '../../marker/marker-identity';
 import { MARKER_PRIORITY } from '../../marker/crowding';
@@ -19,17 +9,10 @@ import { fmtDist, fmtTime } from '../../../hud/utils';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../../hud/orbit/orbit-labels';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { hitsSphere, type Ray } from '../../../math/ray';
-import type { RingSystemDef } from '../../../physics/celestial-body-def';
 import type { MarkerSlots } from '../../marker/marker-slots';
-import type { AtmosphereCandidate, AtmosphereClouds, AtmosphereOptics } from '../../../render/atmosphere';
-import type { Albedo } from '../../../render/celestial-albedo';
 import type { CelestialClass } from './celestial-entity-def';
 import type { Vec3 } from '../../../math/vec3';
-import type { GraphicsSettingsData } from '../../../render/graphics-settings';
-import type { ShadowCumulus } from '../../../render/pipeline/shadow/cumulus-shadow';
-import type { RingMaterials } from '../../../render/ring';
-import type { RenderStyle } from '../../../render/render-style';
-import type { StarEntity } from './star-entity';
+import type { CelestialView } from './celestial-view';
 import type { CelestialSystem } from '../celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { MenuItem } from '../../hud/windows/context-menu';
@@ -37,20 +20,6 @@ import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import { BODY_PICKER_GENRES, type MapListSection, type ObjectPickerGenre } from '../../pickable/pickable-listing';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { OrbitingObject } from '../../dynamic/dynamic-entity/orbiting-object';
-
-// 公転天体の参照軌道線の色。同じ種別の天体はすべて同じ色で引く。
-const SATELLITE_REFERENCE_LINE_COLOR = 0xaab3c0;
-const PLANET_REFERENCE_LINE_COLOR = 0xffffff;
-
-// 惑星・衛星の参照軌道線のフェード距離 [m]。カメラから天体までの距離がこれ未満なら非表示、
-// FAR 以上なら完全表示、その間は距離に応じて線形にフェードインする。
-const PLANET_ORBIT_LINE_FADE_NEAR_DIST = 1e9; // 100万km
-const PLANET_ORBIT_LINE_FADE_FAR_DIST = 1e10; // 1000万km
-const SATELLITE_ORBIT_LINE_FADE_NEAR_DIST = 5e8; // 50万km
-const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9; // 100万km
-
-// 参照軌道線が完全表示のときの不透明度。
-const REFERENCE_LINE_OPACITY = 0.3;
 
 // 惑星 > 準惑星 > 衛星・小惑星・彗星。恒星は太陽系の基準点なので、惑星と同じ最上位に置く。
 const BODY_LABEL_PRIORITY: Readonly<Record<CelestialClass, number>> = {
@@ -61,165 +30,16 @@ const BODY_LABEL_PRIORITY: Readonly<Record<CelestialClass, number>> = {
   smallBody: MARKER_PRIORITY.SATELLITE_SMALL_BODY,
 };
 
-export abstract class CelestialEntity implements ObjectPickable {
-  // マップ専用の参照軌道線(衛星は親惑星中心、惑星は主星中心)。syncReferenceLine が立て、
-  // removeReferenceLine が畳む。
-  private referenceLineValue: EllipseLine | null = null;
+export class CelestialEntity implements ObjectPickable {
+  public readonly id: string;
 
-  // atmosphereOptics は大気の見えの光学パラメータ(大気を持たない・描かない天体では null)。
-  protected constructor(
+  public constructor(
     public readonly motion: CelestialMotion,
     public readonly name: string,
     public readonly bodyClass: CelestialClass,
-    public readonly atmosphereOptics: AtmosphereOptics | null,
-  ) {}
-
-  // pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと pivot 自身の
-  // 厳密な値。|t − pivot| は積分1歩の幅程度に収めること。
-  public stateAt(pivot: number, t: number = pivot): KinematicState {
-    return this.motion.stateAt(pivot, t);
-  }
-
-  // この天体を光源として扱うときの色つきアルベド(Rec.709 輝度 = ボンドアルベド)。
-  // 自発光の恒星と、測光を持たない表面では null。
-  public abstract get lightSourceAlbedo(): Albedo | null;
-
-  // 円筒図法の実写テクスチャの URL。単色球・恒星では null。
-  public abstract get surfaceTextureUrl(): string | null;
-
-  public get id(): string { return this.motion.id; }
-
-  public get def(): CelestialBodyDef { return this.motion.def; }
-
-  // 自分のメッシュ一式を組んでシーンへ登録する。ringMaterials は環の帯が使う共有マテリアル
-  // — 環を持たない天体でも、持ちうる形として受ける。
-  public abstract build(scene: THREE.Scene, ringMaterials: RingMaterials): void;
-  // build で登録した表示物一式を出す/消す。
-  public abstract setVisible(visible: boolean): void;
-  // star はこの星系の恒星。恒星を持たない星系では null。
-  public abstract sync(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, star: StarEntity | null,
-    graphics: GraphicsSettingsData, style: RenderStyle,
-  ): void;
-  // build(scene) で登録した自分のメッシュ一式をシーンから外し、GPU 資源を解放する。参照軌道線は
-  // removeReferenceLine が解放する。
-  public abstract dispose(): void;
-
-  // 公転天体の接触軌道要素(表示専用)。衛星は親惑星中心、惑星は主星中心 — 中心天体自身も
-  // ECI 上を動くので、固定 CelestialMotion ではなくその時刻の状態を毎回引いて組む。恒星は null。
-  public referenceElementsAt(t: number): OrbitalElements | null {
-    const centerMotion = this.motion.primary;
-    if (centerMotion === null) return null;
-    return orbitalElementsOf(this.stateAt(t), centerMotion, t);
-  }
-
-  // 参照軌道線。まだ立てていない・畳んだあとは null。
-  public get referenceLine(): EllipseLine | null { return this.referenceLineValue; }
-
-  // 参照軌道線を表示時刻の接触軌道要素と濃さへ同期する(実体が無ければ生成して scene へ登録)。
-  // cameraPos はフェードの濃さを測る基準(カメラの真の ECI 位置)。
-  public syncReferenceLine(
-    scene: THREE.Scene, simTime: number, fo: FloatingOrigin, camera: THREE.Camera, cameraPos: Vec3,
-  ): void {
-    const opacity = this.referenceLineOpacityFrom(cameraPos, simTime);
-    // 初回は実体を立てて scene へ置く。
-    if (this.referenceLineValue === null) {
-      const color = this.motion.kind === 'satellite' ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR;
-      this.referenceLineValue = new EllipseLine({ color, opacity, renderOrder: LINE_RENDER_ORDER.reference });
-      scene.add(this.referenceLineValue.line);
-    }
-    // 接触軌道要素を持たない天体では線を隠す。
-    const elements = this.referenceElementsAt(simTime);
-    if (elements === null) this.referenceLineValue.hide();
-    else this.referenceLineValue.sync(elements, fo, camera);
-    this.referenceLineValue.setOpacity(opacity);
-  }
-
-  // 参照軌道線を実体ごと解放する。非表示の間も頂点バッファを残さないため。
-  public removeReferenceLine(): void {
-    if (this.referenceLineValue === null) return;
-    this.referenceLineValue.line.removeFromParent();
-    this.referenceLineValue.dispose();
-    this.referenceLineValue = null;
-  }
-
-  // cameraPos から見た参照軌道線の不透明度。惑星と衛星でフェード距離が異なる。
-  private referenceLineOpacityFrom(cameraPos: Vec3, simTime: number): number {
-    const isSatellite = this.motion.kind === 'satellite';
-    const nearDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_NEAR_DIST : PLANET_ORBIT_LINE_FADE_NEAR_DIST;
-    const farDist = isSatellite ? SATELLITE_ORBIT_LINE_FADE_FAR_DIST : PLANET_ORBIT_LINE_FADE_FAR_DIST;
-    const dist = len(sub(this.stateAt(simTime).r, cameraPos));
-    const t = Math.min(1, Math.max(0, (dist - nearDist) / (farDist - nearDist)));
-    return t * REFERENCE_LINE_OPACITY;
-  }
-
-  // 環(環を持たない天体では null)。
-  public get rings(): RingSystemDef | null {
-    const def = this.def;
-    return 'rings' in def ? def.rings ?? null : null;
-  }
-
-  // 影パスへ渡す積雲の殻 1 体ぶん。殻を持たない天体では null。
-  public cumulusShadowAt(_fo: FloatingOrigin, _displayTime: number): ShadowCumulus | null {
-    return null;
-  }
-
-  // 大気の中へ散乱の殻として立てる雲。雲を持たない天体では null。
-  public atmosphereCloudsAt(_displayTime: number): AtmosphereClouds | null {
-    return null;
-  }
-
-  // 大気パスへ渡す1体ぶんの候補。大気を持たない・描かない天体では null。**尺度は直線距離で
-  // 引く** — 深度で引くと、視点の背後にある天体が目の前にあるのと同じ尺度になり、画面に
-  // 写っていないのに予算を総取りする。
-  public atmosphereCandidateAt(
-    fo: FloatingOrigin, displayTime: number, cameraPos: Vec3, radialScale: (center: Vec3) => number,
-    graphics: GraphicsSettingsData,
-  ): AtmosphereCandidate | null {
-    const optics = this.atmosphereOptics;
-    if (optics === null) return null;
-    const center = this.stateAt(displayTime).r;
-    const def = this.def;
-    const radii = shapeSpheroidRadii(def.radius, 'shape' in def ? def.shape : undefined);
-    // 潰す軸は表面メッシュの +Y が向く先。姿勢を持たない天体のメッシュは姿勢を立てないので、
-    // そこでは ECI の極軸がそのまま軸になる。
-    const axis = this.motion.orientationAt(displayTime)?.axis ?? null;
-    return {
-      body: {
-        center: fo.RtoThreeV3(center),
-        surfaceRadius: radii.equatorRadius,
-        polarAxis: axis === null
-          ? new THREE.Vector3(0, 1, 0)
-          : new THREE.Vector3(axis.x, axis.y, axis.z).normalize(),
-        polarRatio: radii.polarRadius / radii.equatorRadius,
-        optics,
-        clouds: graphics.clouds ? this.atmosphereCloudsAt(displayTime) : null,
-      },
-      distance: len(sub(cameraPos, center)),
-      metersPerPixel: radialScale(center),
-    };
-  }
-
-  // マップ専用の付随表示(静止軌道リングなど)のフック。既定では何も持たない。
-  public syncMapOverlay(
-    _fo: FloatingOrigin, _displayTime: number, _cameraSystem: CameraSystem,
-    _markerManager: MarkerSlots | null, _celestialBodies: readonly CelestialMotion[], _visible: boolean,
-  ): void {}
-
-  // pos が恒星から受けている放射照度(render/pipeline/sun-light.ts の単位)。恒星を持たない
-  // 星系では、恒星光を 1 天文単位の位置に置く約束に合わせて 1 天文単位ぶん。
-  protected sunIrradianceAt(star: StarEntity | null, pos: Vec3, displayTime: number): number {
-    if (star === null) return SUN_IRRADIANCE_1AU;
-    const d = len(sub(pos, star.stateAt(displayTime).r));
-    if (d <= 0) return SUN_IRRADIANCE_1AU;
-    return irradianceAtDistance(star.radiantIntensity, d);
-  }
-
-  // LOD 段の選択と球体表示の閾値判定が通る見かけ直径 [px]。詳細度の設定はここで掛かる。
-  protected lodApparentDiameterPx(
-    diameterMeters: number, metersPerPixel: number, graphics: GraphicsSettingsData,
-  ): number {
-    return apparentSizePx(diameterMeters, metersPerPixel) * graphics.lodBias;
+    public readonly view: CelestialView,
+  ) {
+    this.id = motion.id;
   }
 
   // 天体ラベルとしての振る舞い。
@@ -245,12 +65,12 @@ export abstract class CelestialEntity implements ObjectPickable {
 
   // 表示時刻の ECI 位置。
   public posAt(displayTime: number): Vec3 {
-    return this.stateAt(displayTime).r;
+    return this.motion.stateAt(displayTime).r;
   }
 
   // 天体の本体は表面半径の球。
   public hitBodyByRay(ray: Ray, pos: Vec3): boolean {
-    return hitsSphere(ray, pos, this.def.radius);
+    return hitsSphere(ray, pos, this.motion.def.radius);
   }
 
   // 分類・名前トグルによる可否。

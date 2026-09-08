@@ -1,11 +1,11 @@
 // RingSystemDefの物理データを、マップビューと戦闘ビューで共通のRingVisualへ同期する。
 // 環の姿勢は極軸だけで決まり、非軸対称アークは本体の自転位相には追従させない。
 import * as THREE from 'three/webgpu';
-import type { RenderStyle } from '../../../render/render-style';
-import { spinOrientation } from '../../../physics/body-orientation';
-import { RingBandDef, RingSystemDef } from '../../../physics/celestial-body-def';
-import { Vec3 } from '../../../math/vec3';
-import { createOutlineCircle, OutlineCircle } from '../../../render/outline-circle';
+import type { RenderStyle } from './render-style';
+import { spinOrientation } from '../physics/body-orientation';
+import { RingBandDef, RingSystemDef } from '../physics/celestial-body-def';
+import { Vec3 } from '../math/vec3';
+import { createOutlineCircle, OutlineCircle } from './outline-circle';
 import {
   RING_TILT,
   createAnnulusRing,
@@ -14,10 +14,10 @@ import {
   RingLineVisual,
   RingMaterials,
   RingVisual,
-} from '../../../render/ring';
-import { ringPixelCoverage } from '../../../render/screen-lod';
-import type { GraphicsSettingsData } from '../../../render/graphics-settings';
-import type { ScaleFn } from '../../../math/projection';
+} from './ring';
+import { ringPixelCoverage } from './screen-lod';
+import type { GraphicsSettingsData } from './graphics-settings';
+import type { ScaleFn } from '../math/projection';
 
 type CoverageBand = {
   readonly widthMeters: number;
