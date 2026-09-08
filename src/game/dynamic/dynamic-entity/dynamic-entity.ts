@@ -630,9 +630,8 @@ export class DynamicEntity {
   // 付随表示を持つ種別はこれを差し替え、**必ず placeModel を呼んでから**自分のぶんを載せる。
   protected syncModel(
     fo: FloatingOrigin, displayTime: number, active: Controllable | null,
-    visibilityPolicy: MapVisibilityPolicy | null,
-    _cameraSystem: CameraSystem, _style: RenderStyle, _visual: EntityVisualSettings,
-    _orbitRef: OrbitReference | undefined,
+    visibilityPolicy: MapVisibilityPolicy | null, _cameraSystem: CameraSystem, _style: RenderStyle,
+    _visual: EntityVisualSettings, _orbitRef: OrbitReference | undefined,
   ): void {
     this.placeModel(fo, displayTime, active, visibilityPolicy);
   }

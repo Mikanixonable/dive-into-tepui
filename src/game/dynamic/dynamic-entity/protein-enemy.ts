@@ -168,8 +168,8 @@ export class ProteinEnemy extends Enemy {
   // 画質設定のタンパク質の揺らぎが切られていれば静止した構造で描く。
   protected override syncModel(
     fo: FloatingOrigin, displayTime: number, active: Controllable | null,
-    visibilityPolicy: MapVisibilityPolicy | null,
-    cameraSystem: CameraSystem, _style: RenderStyle, visual: EntityVisualSettings,
+    visibilityPolicy: MapVisibilityPolicy | null, cameraSystem: CameraSystem, _style: RenderStyle,
+    visual: EntityVisualSettings,
   ): void {
     const displayed = this.placeModel(fo, displayTime, active, visibilityPolicy);
     if (displayed === null || !this.renderObject.visible) return;
