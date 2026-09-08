@@ -45,6 +45,11 @@ interface PrevInput {
   matched: boolean;
 }
 
+interface MatchTextCacheEntry {
+  readonly name: string;
+  readonly text: string;
+}
+
 // 一覧の1行が今フレームどこに並ぶかを決める値。候補そのものは ObjectPickable が持つ。
 interface ListSortKey {
   readonly priority: number;         // 小さいほど先に出る
@@ -71,6 +76,9 @@ export class PhysicalObjectListOrder {
   private readonly sortKeys = new Map<string, ListSortKey>();
   private viewer: Controllable | null = null;
   private displayTime = 0;
+  // 検索文字列は1回の同期中だけ再利用し、次の同期では viewer/displayTime と候補の id/name を
+  // 取り直す。
+  private readonly matchTextCache = new Map<string, MatchTextCacheEntry>();
   // rebuildOrder() は毎フレーム呼ばれうるが、これらは組み直し中だけ使う scratch であり、
   // 呼び出し元へ参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
   private readonly matchedScratch: ObjectPickable[] = [];
@@ -107,6 +115,7 @@ export class PhysicalObjectListOrder {
     items: readonly ObjectPickable[], parentOf: ReadonlyMap<string, string>,
     viewer: Controllable | null, displayTime: number, focusId: string | undefined,
   ): boolean {
+    this.matchTextCache.clear();
     this.rebuildSortKeys(items, viewer, displayTime, focusId);
     let changed = this.prevInputs.length !== items.length || this.prevSort !== this.sort || this.prevFilter !== this.filter;
     let i = 0;
@@ -236,8 +245,12 @@ export class PhysicalObjectListOrder {
 
   // 検索語と照合する文字列。表示名と、対象が検索向けに出す補助表示を小文字で連ねる。
   private matchText(item: ObjectPickable): string {
+    const cached = this.matchTextCache.get(item.id);
+    if (cached?.name === item.name) return cached.text;
     const searchText = item.listSearchText(this.celestialSystem, this.viewer, this.displayTime);
-    return `${item.name} ${searchText}`.toLocaleLowerCase();
+    const text = `${item.name} ${searchText}`.toLocaleLowerCase();
+    this.matchTextCache.set(item.id, { name: item.name, text });
+    return text;
   }
 
   // ids の末尾へ、まだ登場していない親を追記する — 親自身はフィルタを通っていなくても、
