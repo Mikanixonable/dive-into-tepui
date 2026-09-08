@@ -191,7 +191,7 @@ export function earthSystem(
   const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
   // 雲の場は殻が持ち、地表・影・大気の殻はその実体を借りて読む。
   const climate = ClimateMap.fromDeferredUrl(climateTextureUrl);
-  const cumulus = new CumulusShell(GeneratedCloudField.global(climate), R_EARTH_EQ);
+  const cumulus = new CumulusShell(GeneratedCloudField.global(climate));
   return {
     earth: new PointEntity(
       earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
