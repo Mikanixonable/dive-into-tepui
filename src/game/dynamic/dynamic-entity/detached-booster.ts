@@ -7,7 +7,6 @@ import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { CameraSystem } from '../../camera/camera-system';
 import type { Controllable } from './controllable';
 import type { MapVisibilityPolicy } from '../../map/visibility-policy';
-import type { InstancedPools } from '../instanced-pools';
 import type { DetachedBoosterSaveData } from '../../save/save-data';
 import {
   BoosterStack,
@@ -142,7 +141,7 @@ export class DetachedBooster extends DynamicEntity {
   // 状態でしか定義されていない。
   protected override syncModel(
     fo: FloatingOrigin, displayTime: number, active: Controllable | null,
-    visibilityPolicy: MapVisibilityPolicy | null, _pools: InstancedPools, camera: CameraSystem,
+    visibilityPolicy: MapVisibilityPolicy | null, camera: CameraSystem,
     style: RenderStyle,
   ): void {
     const displayState = this.placeModel(fo, displayTime, active, visibilityPolicy);
