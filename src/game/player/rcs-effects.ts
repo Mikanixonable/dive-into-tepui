@@ -8,7 +8,6 @@ import {
   RCS_PLUME_BRIGHTNESS, RCS_PLUME_COLOR, RCS_PLUME_OFFSET, RCS_PLUME_SIZE,
 } from '../../render/vfx-style';
 import { RCS_NOZZLES } from '../../render/rcs-nozzles';
-import type { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 
@@ -38,7 +37,8 @@ export class RcsEffects {
     torque: Vec3,
     att: Attitude,
     visible: boolean,
-    camera: CameraSystem,
+    cameraQuat: THREE.Quaternion,
+    zoomActive: boolean,
     audible: boolean,
     plumeScale = 1.0,
   ): void {
@@ -46,7 +46,7 @@ export class RcsEffects {
     const rotating = visible && lenSq(torque) > RCS_PUFF_TORQUE_EPS * RCS_PUFF_TORQUE_EPS;
     // 全艦のプルームは描画するが、共有音源を更新するのは操作対象だけ。
     if (audible) this._worldSfx.setRcs(rotating);
-    if (!rotating || camera.zoomActive) {
+    if (!rotating || zoomActive) {
       for (const { plume } of this.puffs) plume.hide();
       return;
     }
@@ -62,7 +62,7 @@ export class RcsEffects {
       const localPos = add(scale(puff.pos, plumeScale), scale(puff.exhaust, offsetDist));
       const pos = qRotate(att.q, localPos);
       puff.plume.sync(fo.RtoThreeV3(add(playerPos, pos)),
-        RCS_PLUME_SIZE * flick * plumeScale, RCS_PLUME_BRIGHTNESS * flick, camera.activeCamera.quaternion);
+        RCS_PLUME_SIZE * flick * plumeScale, RCS_PLUME_BRIGHTNESS * flick, cameraQuat);
     }
   }
 

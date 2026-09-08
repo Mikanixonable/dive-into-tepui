@@ -11,7 +11,6 @@ import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import { kinematicState } from '../../physics/kinematic-state';
 import { add, addScaled, scale, v3, Vec3 } from '../../math/vec3';
 import type { FloatingOrigin } from '../camera/floating-origin';
-import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
 import type { Notifier } from '../../hud/notifier';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
@@ -263,13 +262,13 @@ export class AttachedBoosters {
   // プルームは現在位置」に割れる。
   sync(
     fo: FloatingOrigin, effectPos: Vec3, displayTime: number,
-    visible: boolean, camera: CameraSystem, style: RenderStyle,
+    visible: boolean, cameraQuat: THREE.Quaternion, zoomActive: boolean, style: RenderStyle,
   ): void {
     const player = this.player;
     const activeIndex = this.stack.stages.length - 1;
     const atCurrentTime = Math.abs(displayTime - player.state.t) <= 1e-6;
-    if (activeIndex < 0 || this._thrust === null || !visible || !atCurrentTime || camera.zoomActive) {
-      this.plumes.sync([], camera.activeCamera.quaternion, style);
+    if (activeIndex < 0 || this._thrust === null || !visible || !atCurrentTime || zoomActive) {
+      this.plumes.sync([], cameraQuat, style);
       return;
     }
     const nozzleZ = MOUNT_Z
@@ -282,7 +281,7 @@ export class AttachedBoosters {
       direction: new THREE.Vector3(tail.x, tail.y, tail.z),
       intensity: Math.max(0.25, this.lastBurnRatio),
       visible: true,
-    }], camera.activeCamera.quaternion, style);
+    }], cameraQuat, style);
   }
 
   serialize(): BoosterStackData {
