@@ -4,7 +4,7 @@
 // どう導出するかは呼び出し側の責務。複数存続できる想定のため ContextMenu と異なり呼び出し
 // ごとに個別のインスタンスを持つ。#hud の子として window レイヤへ置くため、
 // `#hud, #hud *` の margin/padding リセットに勝てるよう全セレクタを `#hud` で始める。
-import { injectOnce } from '../widgets/inject-style';
+import { injectOnce } from '../inject-style';
 import type { OverlayManager } from '../overlay-manager';
 import { DraggableWindow } from './draggable-window';
 import { PropertyWindowRows } from './property-window-rows';
