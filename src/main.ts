@@ -12,7 +12,8 @@ import { GraphicsSettings, type GraphicsSettingsData } from './render/graphics-s
 import { RenderStyleSetting } from './render/render-style';
 import { Hud } from './game/hud/hud';
 import { HudShell } from './hud/hud-shell';
-import { PauseMenu, SettingsView } from './hud/windows';
+import { PauseMenu } from './hud/windows/pause-menu';
+import { SettingsView } from './hud/windows/settings-view';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
 import { Launcher } from './launcher/launcher';
