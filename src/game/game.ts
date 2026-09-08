@@ -15,9 +15,6 @@ import { DisplayWindowManager, timeLabelSettingOf } from './display-window-manag
 import { SimSpeedManager } from './dynamic/sim-speed-manager';
 import { DynamicSystem } from './dynamic/dynamic-system';
 import { FlashEffects } from './vfx/flash-effects';
-import { isEnemy } from './dynamic/dynamic-entity/enemy';
-import { isBase } from './dynamic/dynamic-entity/base';
-import { isPlayer } from './player/player';
 import { EntityLineManager } from './lines/entity-line-manager';
 import { Predictor } from './dynamic/predictor';
 import { Input } from '../input/input';
@@ -37,13 +34,11 @@ import { CombatView } from './view/combat-view';
 import { MapView } from './view/map-view';
 import { NavTarget } from './nav-target';
 import { FrameAnchors } from './frame-anchors';
-import { autoOrbitReference, OrbitReferenceSelector } from './orbit-reference';
+import { OrbitReferenceSelector } from './orbit-reference';
 import { ObjectWindows } from './pickable/object-windows';
 import { Navball } from './navball/navball';
 import { GameSaveData, SAVE_VERSION } from './save/save-data';
 import { ephemerisContextFor } from '../physics/ephemeris/ephemeris-context';
-import type { RunSummary } from './run-summary';
-import { orbitInfo } from './orbit-info';
 import { LoadingProgress } from './loading-progress';
 import { createJulianDate, type TdbJulianDate } from '../physics/time';
 import { KEY_MAPPING as K } from '../input/key-mapping';
@@ -164,36 +159,6 @@ export class Game {
       stage: this.activeStage.serialize(),
       camera: { view: this.viewManager.current, ...this.cameraSystem.serialize() },
       navTarget: this.navTarget.id !== null ? { id: this.navTarget.id, name: this.navTarget.name! } : null,
-    };
-  }
-
-  // ランの外側が一覧へ描くための要約。自機が居ない周回でも値が欠けないよう、
-  // 軌道の項は星系の原点へ寄せる。
-  runSummary(): RunSummary {
-    // 操作対象が居る周回なら、軌道の項もそこから解く。
-    const controlled = this.activeControllable;
-    const celestial = this._celestialSystem;
-    const info = controlled === null ? null : orbitInfo(
-      controlled,
-      autoOrbitReference(controlled.state.r, celestial.celestialMotions, controlled.state.t),
-      controlled.state.t, (id: string) => celestial.nameOf(id),
-    );
-    const entities = this.dynamicSystem.all();
-    return {
-      simTime: this.simTime,
-      phase: this.activeStage.phase,
-      centerBodyId: info ? info.centerId : celestial.origin.id,
-      centerBodyName: info ? info.centerName : celestial.nameOf(celestial.origin.id),
-      altitude: info ? info.alt : 0,
-      speed: info ? info.spd : 0,
-      hpRatio: controlled !== null && controlled.hp !== null && controlled.maxHp !== null && controlled.maxHp > 0
-        ? Math.max(0, controlled.hp) / controlled.maxHp
-        : 0,
-      maxHp: controlled?.maxHp ?? 0,
-      magazines: controlled?.fire?.mags ?? 0,
-      money: entities.filter(isBase).reduce((sum, b) => sum + b.baseState.money, 0),
-      playerCount: entities.filter(isPlayer).length,
-      enemyAliveCount: entities.filter(isEnemy).filter((e) => e.alive).length,
     };
   }
 
