@@ -39,7 +39,7 @@ export class PhysicalObjectListHead {
     const titleRow = document.createElement('div');
     titleRow.className = 'physical-object-list-title';
     const title = document.createElement('h3');
-    title.textContent = '軌道物体';
+    title.textContent = '軌道物体一覧';
     titleRow.appendChild(title);
     this.element.appendChild(titleRow);
     this.collapseToggleRoot = titleRow;
