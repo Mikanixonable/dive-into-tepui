@@ -2,8 +2,6 @@
 import * as THREE from 'three/webgpu';
 import { DynamicEntity } from './dynamic-entity';
 import type { InstancedPools } from '../instanced-pools';
-import type { Controllable } from './controllable';
-import type { MapVisibilityPolicy } from '../../map/visibility-policy';
 import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import { KinematicState } from '../../../physics/kinematic-state';
 import { FloatingOrigin } from '../../camera/floating-origin';
@@ -117,12 +115,8 @@ export class Bullet extends DynamicEntity {
         if (orientProjectile(tmpQuat, fo.VtoThreeV3(s.v))) this.renderObject.quaternion.copy(tmpQuat);
     }
 
-    // 同期し終えた変換は、そのまま弾種に対応するプールへ積む。
-    protected override syncModel(
-        fo: FloatingOrigin, displayTime: number, active: Controllable | null,
-        visibilityPolicy: MapVisibilityPolicy | null, pools: InstancedPools,
-    ): void {
-        this.placeModel(fo, displayTime, active, visibilityPolicy);
+    // 同期し終えた変換を、そのまま弾種に対応するプールへ積む。伏せられている弾は積まない。
+    public pushToPools(pools: InstancedPools): void {
         if (!this.renderObject.visible) return;
         if (this.type === 'plasma') {
             pools.pushPlasma(this.renderObject);

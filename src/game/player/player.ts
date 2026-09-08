@@ -26,8 +26,7 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
-import type { InstancedPools } from '../dynamic/instanced-pools';
-import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import { generateRandomName } from '../random-name';
 import type { Stage } from '../stages/stage';
 import { Throttle } from './throttle';
@@ -553,10 +552,9 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     displayTime: number,
     active: Controllable | null,
     visibilityPolicy: MapVisibilityPolicy | null,
-    _pools: InstancedPools,
     camera: CameraSystem,
     style: RenderStyle,
-    _graphics: GraphicsSettingsData,
+    _visual: EntityVisualSettings,
     orbitRef: OrbitReference | undefined,
   ): void {
     const displayState = this.placeModel(fo, displayTime, active, visibilityPolicy);
@@ -566,16 +564,21 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     // 出したままなので、機体だけを伏せるのはこれを控えた後。
     const effectState = displayState ?? this.state;
     const effectVisible = this.renderObject.visible;
-    if (isActive && camera.zoomActive) this.renderObject.visible = false;
+    const cameraQuat = camera.activeCamera.quaternion;
+    const zoomActive = camera.zoomActive;
+    if (isActive && zoomActive) this.renderObject.visible = false;
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
     const rcsThrust = len(this.throttle.thrustAccelVec) > 0 ? this.throttle.thrustAccelVec : null;
-    this.thrustEffects.sync(fo, effectState.r, rcsThrust, maxAccel, effectVisible, false, camera, style);
-    this.boosters.sync(fo, effectState.r, displayTime, effectVisible, camera, style);
+    this.thrustEffects.sync(
+      fo, effectState.r, rcsThrust, maxAccel, effectVisible, false, cameraQuat, zoomActive, style);
+    this.boosters.sync(fo, effectState.r, displayTime, effectVisible, cameraQuat, zoomActive, style);
     if (isActive) {
       this._worldSfx.setThrust(effectVisible && (rcsThrust !== null || this.boosters.thrust !== null));
     }
-    this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isActive);
-    this.reentryEffects.sync(fo, effectState.r, effectState.v, this.aero.qdyn, effectVisible, camera);
+    this.rcsEffects.sync(
+      fo, effectState.r, this.torque, this.att, effectVisible, cameraQuat, zoomActive, isActive);
+    this.reentryEffects.sync(
+      fo, effectState.r, effectState.v, this.aero.qdyn, effectVisible, cameraQuat);
     this.belt.sync(this.magsLeft);
     this.radiator.sync();
     this.power.sync();
