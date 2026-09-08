@@ -13,9 +13,9 @@ import { norm, sub, v3, Vec3 } from '../../math/vec3';
 import { EllipseLine } from '../lines/ellipse-line';
 import { CELESTIAL_SHELL_SCALE, createStars, Stars } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility, DEFAULT_GRID_VISIBILITY } from '../../render/celestial-grid';
-import { CameraSystem } from '../camera/camera-system';
+import type { CameraSystem } from '../camera/camera-system';
 import { focusTargetId } from '../camera/focus-target';
-import { FloatingOrigin } from '../camera/floating-origin';
+import type { FloatingOrigin } from '../camera/floating-origin';
 import { ScaleGridView } from './scale-grid-view';
 import {
   REFERENCE_STAR_RADIANT_INTENSITY, STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE,
@@ -33,7 +33,7 @@ import {
   castsCumulusShadow, selectRingShadow, selectShadowBodies, type RingShadowCandidate,
 } from '../../render/pipeline/shadow/shadow-select';
 import { atmosphereDraws } from '../../render/atmosphere';
-import { CelestialEntity } from './celestial-entity/celestial-entity';
+import type { CelestialEntity } from './celestial-entity/celestial-entity';
 import { StarEntity } from './celestial-entity/star-entity';
 import { OrbitGuideLines } from './orbit-guide/orbit-guide-lines';
 import { ZeroVelocityLines } from './orbit-guide/zero-velocity-lines';

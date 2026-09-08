@@ -1,13 +1,13 @@
 // 「テクスチャ球」で済む天体(月・木星など)の見た目を実 ECI 位置・実半径で描く。
 // 見かけ直径が閾値未満なら球自体を描かない。
 import * as THREE from 'three/webgpu';
-import { OrbitingMotion } from '../../../physics/celestial-motion';
+import type { OrbitingMotion } from '../../../physics/celestial-motion';
 import { shapeAxes } from '../../../physics/celestial-body-def';
-import { CameraSystem } from '../../camera/camera-system';
-import { FloatingOrigin } from '../../camera/floating-origin';
+import type { CameraSystem } from '../../camera/camera-system';
+import type { FloatingOrigin } from '../../camera/floating-origin';
 import { spinOrientation } from '../../../physics/body-orientation';
 import { showsPhysicalSphere } from '../../../render/screen-lod';
-import { CelestialSurface } from '../../../render/celestial-surface';
+import type { CelestialSurface } from '../../../render/celestial-surface';
 import { BodyGraticule } from '../../../render/body-graticule';
 import type { LineOverlay } from '../../../render/line-overlay';
 import { CelestialEntity } from './celestial-entity';
