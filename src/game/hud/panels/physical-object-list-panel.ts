@@ -372,7 +372,9 @@ export class PhysicalObjectListPanel {
       }
       this.rowTree.pruneRows(section.rows, seen);
     }
-    this.emptyState.classList.toggle('hidden', !(filteringActive && totalMatched === 0));
+    const emptyStateText = filteringActive ? '該当する物体がありません' : '表示できる物体がありません';
+    if (this.emptyState.textContent !== emptyStateText) this.emptyState.textContent = emptyStateText;
+    this.emptyState.classList.toggle('hidden', totalMatched !== 0);
 
     // 対象行の展開が全区画へ反映された後でないと、祖先が畳まれたままの位置へスクロール
     // してしまう。
