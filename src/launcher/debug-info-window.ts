@@ -54,6 +54,7 @@ interface PhaseStats {
   samples: number[];
 }
 
+// 計測区間の累計・最大値・標本を空の状態で作る。
 function newPhaseStats(): PhaseStats {
   return { sum: 0, max: 0, samples: [] };
 }
@@ -116,11 +117,12 @@ export class DebugInfoWindow {
   private readonly proteinMotion = new ProteinMotionMetricsRecorder();
 
   // 計測が走っているか。窓が開いている間だけ真になる。
-  get on(): boolean { return this.win !== null; }
+  public get on(): boolean { return this.win !== null; }
 
   // 描画タブのデバッグ表示は模式図スタイルでは選べない(DEVELOP/SPEC/RENDERING.md)ので、renderStyle の
   // 変化に合わせて選択欄の有効/無効を切り替える。?perf=1 が付いていれば起動直後から窓を開く。
-  constructor(
+  // 計測対象と表示先を受け取り、デバッグ表示の操作部品を組み立てる。
+  public constructor(
     private readonly root: HTMLElement,
     private readonly renderer: WebGPURenderer,
     private readonly sections: FrameSections,
@@ -129,6 +131,7 @@ export class DebugInfoWindow {
     private readonly debugTargetHost: DebugTargetHost,
     renderStyle: RenderStyleSetting,
   ) {
+    // 描画タブの選択欄とタブ切り替えを組む。
     injectOnce('debug-info-window', STYLE);
     this.renderTarget = new SegmentedControl('デバッグ表示', DEBUG_TARGETS, (id) => {
       this.debugTargetHost.debugTarget = id;
@@ -137,6 +140,7 @@ export class DebugInfoWindow {
     this.tabBar = new TabBar(DEBUG_INFO_TABS, (tab) => this.selectTab(tab));
     this.controls = document.createElement('div');
     this.controls.className = 'debug-info-controls';
+    // 窓へ載せる操作部品をまとめる。
     this.controls.appendChild(this.tabBar.element);
     this.controls.appendChild(this.renderTarget.element);
     renderStyle.subscribe((style) => this.renderTarget.setEnabled(style !== 'schematic'));
@@ -144,7 +148,7 @@ export class DebugInfoWindow {
   }
 
   // デバッグ情報ウィンドウを開く。既に開いていれば手前へ出すだけ。
-  open(): void {
+  public open(): void {
     if (this.win) {
       this.win.bringToFront();
       return;
@@ -180,7 +184,7 @@ export class DebugInfoWindow {
   }
 
   // 窓を閉じ、計測も止める。
-  close(): void {
+  public close(): void {
     this.win?.dispose();
     this.win = null;
     this.sections.enabled = false;
@@ -188,13 +192,13 @@ export class DebugInfoWindow {
   }
 
   // 開閉を反転する。
-  toggle(): void {
+  public toggle(): void {
     if (this.win) this.close();
     else this.open();
   }
 
   // [F3] を消費して開閉を反転する。
-  handleInput(input: Input): void {
+  public handleInput(input: Input): void {
     if (input.takeKey(K.toggleDebugInfoWindow)) this.toggle();
   }
 
@@ -208,7 +212,7 @@ export class DebugInfoWindow {
 
   // このフレームの update/sync/render 所要時間と、フレームごとに数え直される個数系の値を積算し、
   // 表示更新のタイミングなら flush する。counts は同じフレームで計測対象になっていた Game 自身が渡す。
-  record(counts: PerfCountSource, updateMs: number, syncMs: number, renderMs: number, now: number): void {
+  public record(counts: PerfCountSource, updateMs: number, syncMs: number, renderMs: number, now: number): void {
     this.addSample(this.updateStats, updateMs);
     this.addSample(this.syncStats, syncMs);
     this.addSample(this.renderStats, renderMs);
@@ -227,12 +231,14 @@ export class DebugInfoWindow {
     this.flush(c, now);
   }
 
+  // 1つの計測値を統計へ積算する。
   private addSample(stats: PhaseStats, value: number): void {
     stats.sum += value;
     stats.max = Math.max(stats.max, value);
     stats.samples.push(value);
   }
 
+  // 計測区間の累計・最大値・標本を初期化する。
   private resetStats(stats: PhaseStats): void {
     stats.sum = 0;
     stats.max = 0;
