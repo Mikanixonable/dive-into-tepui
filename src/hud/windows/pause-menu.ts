@@ -194,6 +194,7 @@ export class PauseMenu implements OverlayHandle {
       // ESCメニュー表示中も、背景のマップ切替とカメラ操作は受け付ける(gatesInput: false)。
       this.overlayManager.open('pause-menu', this, {
         kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: false,
+        dimsBackground: false,
         exclusiveGroup: 'system-modal',
       });
     } else {
