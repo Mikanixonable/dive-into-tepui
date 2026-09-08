@@ -15,7 +15,6 @@ import {
   type LabMeasurement, type LabViewAngles,
 } from './lab';
 import { AU } from '../../src/physics/astronomical-unit';
-import { CUMULUS_COVERAGE_KNOB } from '../../src/render/cloud/cumulus-shape';
 import { CLOUD_SHELL_KNOB, type CloudSpecies } from '../../src/render/pipeline/cloud-scattering';
 import { buildSlider } from '../lab-controls';
 import type { FloatUniform } from '../../src/render/tsl-types';
@@ -142,20 +141,9 @@ async function init(): Promise<void> {
   document.getElementById('ambient')!.appendChild(ambient.element);
   ambient.setSelected(view.ambientFraction);
 
-  // **仮設**: 積雲の被覆率が不透明な雲頂へ渡る境目と幅。被覆率が中央値±半幅に入る柱だけが
-  // 連続な中間値になり、雲頂の高さと境界へ効く。生成側の場へ差し替えたあとにもう一段の追い込みが
-  // 要るので、それまでは畳まない。
-  const coverage = CUMULUS_COVERAGE_KNOB;
-  const redraw = (knob: FloatUniform, value: number): void => { knob.value = value; view.render(); };
-  buildSlider('cumulus-coverage', '中央値', 0, 1, 0.001,
-    () => coverage.center.value.toFixed(3), (v) => redraw(coverage.center, v))(coverage.center.value);
-  buildSlider('cumulus-coverage', '中間調 半幅', 0.001, 0.5, 0.001,
-    () => `±${coverage.halfWidth.value.toFixed(3)}`,
-    (v) => redraw(coverage.halfWidth, v))(coverage.halfWidth.value);
-
-  // **仮設**: 半透明な殻の濃さ・立つ高さ・反射率。不透明な積雲との馴染みを目で追い込むための
-  // つまみで、追い込みを終えるまでは畳まない。
+  // **仮設**: 巻雲の濃さ・立つ高さ・反射率を追い込むためのつまみ。
   const kilometers = (value: number) => `${(value / 1000).toFixed(2)} km`;
+  const redraw = (knob: FloatUniform, value: number): void => { knob.value = value; view.render(); };
   // 種類 1 つぶんのつまみを row へ並べ、つまみの位置を殻の現在値へ合わせる。
   const buildShellSliders = (rowId: string, species: CloudSpecies): void => {
     const knob = CLOUD_SHELL_KNOB[species];
@@ -172,7 +160,6 @@ async function init(): Promise<void> {
     buildSlider(rowId, 'アルベド', 0, 1, 0.01,
       () => knob.albedo.value.toFixed(2), (v) => redraw(knob.albedo, v))(knob.albedo.value);
   };
-  buildShellSliders('cumulus-shell', 'cumulus');
   buildShellSliders('cirrus-shell', 'cirrus');
 
   cases.setSelected(CASE_NAMES[0]!);
