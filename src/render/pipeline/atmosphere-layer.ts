@@ -140,10 +140,12 @@ export class AtmosphereLayer {
 
   // 層 1 体ぶんの uniform を確保する。**steps の初期値は 1 以上でなければならない** — 積分の段の
   // 幅はサンプル数の逆数なので、層を1つも受けないまま事前コンパイルへ入ると 0 除算になる。
+  // 太陽光と他天体の影を共有し、大気と雲を同じ視線積分へ組み込む層を作る。
   public constructor(
     private readonly sunLight: SunLight,
     private readonly bodyShadow: BodyShadow,
   ) {
+    // 事前コンパイル時にも有効な初期値を持つ uniform をまとめて確保する。
     this.slot = {
       steps: uniform(1),
       center: uniform(new THREE.Vector3()),
@@ -192,14 +194,17 @@ export class AtmosphereLayer {
   //
   // **重い側はすべて分岐の中に置く。** 大気に掛からない視線は区間の判定だけで抜ける —
   // select で混ぜると、捨てるぶんまで毎画素走る。
+  // この天体の大気・巻雲・積雲が視線へ与える透過率と散乱を返す。
   public contribution(
     rayOrigin: Vec3Node, rayDir: Vec3Node, opaqueDist: FloatNode,
   ): LayerContribution {
+    // 天体の形状と不透明な下地から、実際に積分する区間を決める。
     const ray = this.sphereSpaceRay(rayOrigin, rayDir);
     const segment = this.raySegment(ray, opaqueDist);
     const transmittance = vec3(1, 1, 1).toVar();
     const inscatter = vec3(0, 0, 0).toVar();
     If(segment.hitsAtmosphere, () => {
+      // 雲の固定層は交点で、連続密度は視線の中点積分で評価する。
       const shells = this.cloudShells(ray, segment, rayOrigin, rayDir);
       const layer = this.integrated(ray, segment, rayOrigin, rayDir, shells);
       transmittance.assign(layer.transmittance);

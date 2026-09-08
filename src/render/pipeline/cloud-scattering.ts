@@ -13,7 +13,7 @@ import type { AtmosphereClouds } from '../atmosphere';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 
 // 大気の中へ固定層として立てるのは巻雲だけ。積雲は cloudDensityAt の体積積分で描く。
-export const CLOUD_SHELL_SPECIES = ['cirrus', 'cumulus'] as const;
+export const CLOUD_SHELL_SPECIES = ['cirrus'] as const;
 export type CloudSpecies = (typeof CLOUD_SHELL_SPECIES)[number];
 
 const MAX_SHELL_OPTICAL_DEPTH = 5;
@@ -34,13 +34,9 @@ export const CLOUD_SHELL_KNOB: Readonly<Record<CloudSpecies, CloudShellKnob>> = 
     cutoff: uniform(0), gain: uniform(1), albedo: uniform(1),
     bottomAltitude: uniform(15e3), topAltitude: uniform(16e3),
   },
-  // 旧 render-lab の入力を壊さないためだけの互換ノブ。積雲は固定殻として評価しない。
-  cumulus: {
-    cutoff: uniform(0.05), gain: uniform(1), albedo: uniform(1),
-    bottomAltitude: uniform(0), topAltitude: uniform(2e3),
-  },
 };
 
+// 固定シェルとして描く雲種の代表高度を返す。
 export function shellAltitudeOf(species: CloudSpecies): FloatNode {
   const knob = CLOUD_SHELL_KNOB[species];
   return knob.bottomAltitude.add(knob.topAltitude).mul(0.5);
@@ -57,11 +53,13 @@ export interface CloudMediumSample {
   readonly source: Vec3Node;
 }
 
+// 巻雲場の値を、固定層へ通す鉛直光学的厚みへ変換する。
 function opticalDepthOf(field: Vec4Node): FloatNode {
   const knob = CLOUD_SHELL_KNOB.cirrus;
   return min(max(field.b.sub(knob.cutoff), 0).mul(knob.gain), MAX_SHELL_OPTICAL_DEPTH);
 }
 
+// 雲の単散乱を太陽方向へ配る位相関数を返す。
 const cloudPhase = (cosTheta: FloatNode): FloatNode => {
   const g = float(CLOUD_ANISOTROPY);
   const squared = g.mul(g);
@@ -75,12 +73,9 @@ export class CloudScattering {
   private readonly active: FloatUniform;
   private readonly surfaceRadius: FloatUniform;
   private readonly volumeEnabled: FloatUniform;
-  private readonly shellEnabled: Readonly<Record<CloudSpecies, FloatUniform>> = {
-    cirrus: uniform(1),
-    // 積雲は固定殻として描かない。旧設定 API の型互換用に常時無効のスロットだけ残す。
-    cumulus: uniform(0),
-  };
+  private readonly shellEnabled: Readonly<Record<CloudSpecies, FloatUniform>> = { cirrus: uniform(1) };
 
+  // 雲場・姿勢・品質の uniform を確保する。
   public constructor() {
     this.bodyFromWorld = uniform(new THREE.Matrix4());
     this.active = uniform(0);
@@ -88,6 +83,7 @@ export class CloudScattering {
     this.volumeEnabled = uniform(1);
   }
 
+  // このフレームに解く雲場と天体半径を置き直す。null なら雲は寄与しない。
   public set(clouds: AtmosphereClouds | null, surfaceRadius: number): void {
     this.active.value = clouds === null ? 0 : 1;
     this.surfaceRadius.value = surfaceRadius;
@@ -96,29 +92,34 @@ export class CloudScattering {
     this.field.value = clouds.field;
   }
 
+  // 固定シェルの表示可否を置き直す。
   public setShellEnabled(species: CloudSpecies, enabled: boolean): void {
     this.shellEnabled[species].value = enabled ? 1 : 0;
   }
 
+  // 積雲ボリュームの表示可否を置き直す。
   public setVolumeEnabled(enabled: boolean): void {
     this.volumeEnabled.value = enabled ? 1 : 0;
   }
 
+  // 固定シェルがこのフレームに存在するか返す。
   public present(species: CloudSpecies): BoolNode {
     return this.active.mul(this.shellEnabled[species]).greaterThan(0);
   }
 
-  // 視線上の積雲密度。field と高度だけを読むため、視線積分と太陽光路積分から同じ評価を呼べる。
+  // 指定点の積雲密度と、太陽光を受けて視線へ散乱する単位消散源を返す。
   public mediumAt(
     offset: Vec3Node, altitude: FloatNode, rayDir: Vec3Node, sunDir: Vec3Node,
     sunDirInSphere: Vec3Node, sunRadiance: Vec3Node,
     viewTransmittance: FloatNode,
   ): CloudMediumSample {
+    // 雲が無い場所は消散を 0 にし、密度がある場所だけ共有評価を実行する。
     const density = float(0).toVar();
     IfActive(this.active.mul(this.volumeEnabled), () => {
       const field = this.fieldAt(normalize(offset));
       density.assign(cloudDensityAt(field, altitude));
     });
+    // その点へ届く太陽光と、手前の固定層の透過を散乱源へ掛ける。
     const sunTransmittance = this.sunTransmittanceAt(offset, sunDirInSphere);
     const source = sunRadiance
       .mul(sunTransmittance)
@@ -128,11 +129,11 @@ export class CloudScattering {
     return { extinction: vec3(density), source };
   }
 
-  // 交点から恒星まで同じ密度場をたどった透過率。固定半径の積雲シェル交差ではなく、各サンプルの
-  // 高度で cloudDensityAt を評価する。blue noise は使わず、光路の中点則を保つ。
+  // 指定点から太陽までの積雲密度を積分し、太陽光の透過率を返す。blue noise は使わず、中点則を保つ。
   private sunTransmittanceAt(
     offset: Vec3Node, sunDir: Vec3Node,
   ): FloatNode {
+    // 太陽光路が雲の外へ出るまでを固定回数の中点で積分する。
     const outerRadius = this.surfaceRadius.add(CLOUD_TOP_SPAN);
     const along = dot(offset, sunDir);
     const discriminant = outerRadius.mul(outerRadius).sub(dot(offset, offset)).add(along.mul(along));
@@ -149,11 +150,12 @@ export class CloudScattering {
     return exp(opticalDepth.negate());
   }
 
-  // 固定層の巻雲へ、交点1つぶんの透過率と放射輝度を返す。
+  // 固定シェルの交点1つぶんの透過率と放射輝度を返す。
   public scatteredAt(
     shellRadius: FloatNode, offset: Vec3Node, rayDir: Vec3Node,
     sunDir: Vec3Node, sunRadiance: Vec3Node,
   ): CloudShellSample {
+    // 巻雲は密度場ではなく、代表高度の薄い固定層として扱う。
     const knob = CLOUD_SHELL_KNOB.cirrus;
     const up = offset.div(shellRadius);
     const field = this.fieldAt(up);
@@ -168,6 +170,7 @@ export class CloudScattering {
     };
   }
 
+  // 天体固定の方向から雲場のテクセルを読む。
   private fieldAt(up: Vec3Node): Vec4Node {
     const uv = sphereMeshUv(this.bodyFromWorld.mul(vec4(up, 0)).xyz);
     return this.field.sample(vec2(fract(uv.x), uv.y)).level(float(0));
