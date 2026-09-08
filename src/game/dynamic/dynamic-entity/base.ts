@@ -5,7 +5,7 @@ import type { OrbitingObject } from './orbiting-object';
 import { DynamicEntity } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
 import { EntityIdAllocator } from './entity-id';
-import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
+import type { KinematicState } from '../../../physics/kinematic-state';
 import { Attitude } from '../../../physics/attitude';
 import { qInvert, qRotate } from '../../../math/quat';
 import { add, len, sub, v3, Vec3 } from '../../../math/vec3';
@@ -14,7 +14,7 @@ import { buildBaseModel } from '../../../render/base-station-model';
 import type { Notifier } from '../../../hud/notifier';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { MarkerSlots } from '../../marker/marker-slots';
-import type { BaseSaveData } from '../../save/save-data';
+import { savedAttitude, savedKinematicState, type BaseSaveData } from '../../save/save-data';
 import { Plan, type PlanExecutionMode } from '../../plan/plan';
 import { generateRandomName } from '../../random-name';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
@@ -149,18 +149,14 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   ) {
     const { state, name, att, id } = 'saved' in init
       ? {
-        state: kinematicState<'eci'>(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
+        state: savedKinematicState(init.saved, init.simTime),
         name: init.saved.name || '基地',
         att: undefined,
         id: init.saved.id,
       }
       : { state: init.state, name: init.name ?? generateRandomName('base'), att: init.att, id: init.id };
     const savedAtt: Attitude | undefined = 'saved' in init
-      ? {
-        q: { ...init.saved.q },
-        w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z),
-        inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z),
-      }
+      ? savedAttitude(init.saved, v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z))
       : undefined;
     super(state, buildBaseModel(), scene, savedAtt ?? att, idAllocator.next(id));
     // 姿勢に慣性モーメントを設定（既定の identityAttitude は inertia=(1,1,1) なので上書きが必要）
