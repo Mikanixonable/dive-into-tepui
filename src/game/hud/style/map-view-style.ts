@@ -176,9 +176,9 @@ export const MAP_VIEW_STYLE = `
 }
 #hud .hud-map-root.active #hud-physical-object-list .erow:hover { color: var(--title); background: var(--surface-2); }
 #hud .hud-map-root.active #hud-physical-object-list .erow:focus { background: var(--color-primary-fill-weak); }
-/* 基調スキンの .erow.tgt はこのセレクタより詳細度が低く、上の .erow が指定する色に負ける。
+/* 基調スキンの .erow.focus はこのセレクタより詳細度が低く、上の .erow が指定する色に負ける。
    フォーカス中の行を目立たせるため、マップ視点でも同じ詳細度で塗り直す。 */
-#hud .hud-map-root.active #hud-physical-object-list .erow.tgt {
+#hud .hud-map-root.active #hud-physical-object-list .erow.focus {
   color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 #hud .hud-map-root.active #hud-physical-object-list .erow:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
