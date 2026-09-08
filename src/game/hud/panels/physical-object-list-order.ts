@@ -244,7 +244,7 @@ export class PhysicalObjectListOrder {
     if (cached !== undefined) return cached;
     const searchText = item.listSearchText(this.celestialSystem, this.viewer, this.displayTime);
     const text = `${item.name} ${searchText}`.toLocaleLowerCase();
-    this.matchTextCache.set(item.id, { name: item.name, text });
+    this.matchTextCache.set(item.id, text);
     return text;
   }
 
