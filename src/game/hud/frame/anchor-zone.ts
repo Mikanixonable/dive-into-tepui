@@ -4,7 +4,7 @@
 import { FRAME_ROLES, frameRoleAnchorId } from '../../../physics/frame';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import { SegmentedControl } from '../../../hud/widgets';
-import { injectOnce } from '../../../hud/widgets/inject-style';
+import { injectOnce } from '../../../hud/inject-style';
 import { frameRoleName } from './frame-labels';
 import { LagrangePointMarker } from '../../marker/lagrange-point-marker';
 import { groupPickables } from '../object-groups';

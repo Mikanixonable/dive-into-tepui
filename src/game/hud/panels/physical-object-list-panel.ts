@@ -3,7 +3,7 @@ import {
   Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, SegmentedControl, type CollapseToggleLabels,
 } from '../../../hud/widgets';
 import { expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
-import { injectOnce } from '../../../hud/widgets/inject-style';
+import { injectOnce } from '../../../hud/inject-style';
 import { loadPanelCollapsed, savePanelCollapsed, wirePanelCollapse } from '../panel-shell';
 import { MQ_COARSE } from '../../../hud/breakpoints';
 import { PhysicalObjectListTree } from './physical-object-list-tree';

@@ -7,7 +7,7 @@ import { shortcutKeyLabel } from '../../../hud/windows/shortcut-hint';
 import { bringToFront } from '../../../hud/overlay-layer';
 import { onViewportChange } from '../../../hud/viewport';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
-import { injectOnce } from '../../../hud/widgets/inject-style';
+import { injectOnce } from '../../../hud/inject-style';
 
 const STYLE = `
 #hud .ctx-menu {
