@@ -1,4 +1,4 @@
-import { Game } from '../../game/game';
+import type { Game } from '../../game/game';
 import { SAVE_VERSION } from '../../game/save/save-data';
 import { runSummary, type RunSummary } from '../../game/run-summary';
 import { fmtDist, fmtTime } from '../../hud/utils';
