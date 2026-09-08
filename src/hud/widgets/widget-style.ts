@@ -19,7 +19,7 @@ export const WIDGET_STYLE = `
 .w-btn, .w-close {
   display: inline-block; padding: 7px var(--space-5); font: inherit; font-size: var(--font-s);
   line-height: 1.2; border: 1px solid transparent; border-radius: var(--radius-control);
-  background: var(--surface-2); color: var(--body);
+  background: var(--surface-2); color: var(--text-muted);
   transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
 .w-btn:hover, .w-close:hover { color: var(--color-primary-hover); background: var(--surface-3); }
@@ -57,7 +57,7 @@ export const WIDGET_STYLE = `
 }
 /* トラック幅に対する相対位置(右端から 2px 余白+ノブ幅ぶんを引く、左詰めの 2px と対称)。
    固定 px でなく % 基準にすることで、coarse で幅が広がっても右端に張り付いたままになる。 */
-.w-toggle-track.on .w-toggle-knob { left: calc(100% - 14px); background: var(--title); }
+.w-toggle-track.on .w-toggle-knob { left: calc(100% - 14px); background: var(--text); }
 
 /* w-close: ✕ の閉じるボタン。 */
 .w-close {

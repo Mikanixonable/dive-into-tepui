@@ -88,7 +88,7 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-predict h3,
 #hud .hud-map-root.active .hud-frame-controls h3,
 #hud .hud-map-root.active #hud-plan h3 {
-  color: var(--title);
+  color: var(--text);
   border: 0;
   padding-bottom: 0;
   margin-bottom: var(--space-3);
@@ -102,7 +102,7 @@ export const MAP_VIEW_STYLE = `
   border: 0;
   border-radius: var(--radius-control);
   background: var(--glass-quiet);
-  color: var(--muted);
+  color: var(--text-dim);
   backdrop-filter: blur(14px) saturate(82%);
   -webkit-backdrop-filter: blur(14px) saturate(82%);
 }
@@ -125,7 +125,7 @@ export const MAP_VIEW_STYLE = `
   border: 0;
   border-radius: var(--radius-control);
   background: var(--surface-2);
-  color: var(--title);
+  color: var(--text);
 }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-group {
   display: flex;
@@ -138,7 +138,7 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-group-title {
   flex: 1 0 100%;
   min-width: 0;
-  color: var(--muted);
+  color: var(--text-dim);
   letter-spacing: 0;
 }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-btn {
@@ -154,12 +154,12 @@ export const MAP_VIEW_STYLE = `
   border: 0;
   border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--surface-2) 68%, transparent);
-  color: var(--muted);
+  color: var(--text-dim);
 }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-section-header {
   border: 0;
   border-radius: var(--radius-control);
-  color: var(--body);
+  color: var(--text-muted);
   /* 見出しは内側スクロール領域の先頭に貼り付く(sticky、寸法は physical-object-list-panel.ts
      側)ため、スクロールで下を通り過ぎる行を隠せるようパネルと同じ地の不透明度を持たせる。 */
   background: var(--glass-quiet);
@@ -171,10 +171,10 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-physical-object-list .erow {
   min-height: var(--row-min-h-s);
   border-radius: var(--radius-control);
-  color: var(--muted);
+  color: var(--text-dim);
   transition: color var(--transition-fast), background var(--transition-fast);
 }
-#hud .hud-map-root.active #hud-physical-object-list .erow:hover { color: var(--title); background: var(--surface-2); }
+#hud .hud-map-root.active #hud-physical-object-list .erow:hover { color: var(--text); background: var(--surface-2); }
 /* 基調スキンの .erow.tgt はこのセレクタより詳細度が低く、上の .erow が指定する色に負ける。
    フォーカス中の行を目立たせるため、マップ視点でも同じ詳細度で塗り直す。 */
 #hud .hud-map-root.active #hud-physical-object-list .erow.tgt {
@@ -197,7 +197,7 @@ export const MAP_VIEW_STYLE = `
   width: 100%;
   height: 100%;
 }
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-detail { color: var(--muted); }
+#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-detail { color: var(--text-dim); }
 
 /* View: 種別、表示要素、天球を先に読ませ、選択色は小さな点灯へ絞る。 */
 #hud .hud-map-root.active #hud-view-options .view-options-section-heading {
@@ -213,7 +213,7 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-view-options .view-options-section-divider {
   margin: var(--space-3) 0 var(--space-1);
   padding-left: var(--space-5);
-  color: var(--muted);
+  color: var(--text-dim);
   font-size: var(--font-xxs);
   letter-spacing: 1px;
 }
@@ -225,7 +225,7 @@ export const MAP_VIEW_STYLE = `
   gap: var(--space-1);
 }
 #hud .hud-map-root.active #hud-view-options .view-options-column {
-  color: var(--muted);
+  color: var(--text-dim);
   font-size: var(--font-xxs);
   text-align: center;
   white-space: nowrap;
@@ -243,7 +243,7 @@ export const MAP_VIEW_STYLE = `
   border: 0;
   border-radius: var(--radius-control);
   padding-left: var(--space-5);
-  color: var(--body);
+  color: var(--text-muted);
   background: transparent;
   letter-spacing: 0;
 }
@@ -255,7 +255,7 @@ export const MAP_VIEW_STYLE = `
   width: 3px;
   height: 3px;
   border-radius: 50%;
-  background: var(--muted);
+  background: var(--text-dim);
   transform: translateY(-50%);
 }
 #hud .hud-map-root.active #hud-view-options .body-class-row .body-class-btns {
@@ -274,7 +274,7 @@ export const MAP_VIEW_STYLE = `
   border: 0;
   border-radius: var(--radius-control);
   padding: var(--space-2);
-  color: var(--muted);
+  color: var(--text-dim);
   background: transparent;
 }
 @media ${MQ_COARSE} {
@@ -284,11 +284,11 @@ export const MAP_VIEW_STYLE = `
 }
 #hud .hud-map-root.active #hud-view-options .body-class-row .w-btn:hover { color: var(--color-primary-hover); background: var(--surface-2); }
 #hud .hud-map-root.active #hud-view-options .body-class-row .body-class-icon-btn.on {
-  color: var(--title);
+  color: var(--text);
   background: var(--surface-2);
 }
 #hud .hud-map-root.active #hud-view-options .body-class-row .body-class-title.on {
-  color: var(--title);
+  color: var(--text);
   background: transparent;
 }
 #hud .hud-map-root.active #hud-view-options .body-class-row .body-class-title.on::before { background: var(--color-primary); }
@@ -317,19 +317,19 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button {
   display: flex; align-items: center; justify-content: flex-start; gap: var(--space-2);
   width: 100%; padding-right: var(--space-3);
-  background: var(--surface-2); color: var(--muted);
+  background: var(--surface-2); color: var(--text-dim);
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button .w-btn-icon {
-  flex: 0 0 auto; width: 1.1em; height: 1.1em; margin-right: 0; color: var(--muted);
+  flex: 0 0 auto; width: 1.1em; height: 1.1em; margin-right: 0; color: var(--text-dim);
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="orbit"] {
-  color: var(--title); background: color-mix(in srgb, var(--color-primary) 12%, var(--surface-2));
+  color: var(--text); background: color-mix(in srgb, var(--color-primary) 12%, var(--surface-2));
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="orbit"] .w-btn-icon {
   color: var(--color-primary);
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="label"] {
-  color: var(--title); background: var(--surface-2);
+  color: var(--text); background: var(--surface-2);
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="label"] .w-btn-icon {
   color: var(--color-primary-hover);
@@ -354,15 +354,15 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-predict .w-group-title,
 #hud .hud-map-root.active #hud-predict .w-toggle-title,
 #hud .hud-map-root.active #hud-predict .predict-absolute,
-#hud .hud-map-root.active #hud-predict .slider-ticks span { color: var(--muted); letter-spacing: 0; }
-#hud .hud-map-root.active #hud-predict .predict-elapsed { color: var(--title); }
+#hud .hud-map-root.active #hud-predict .slider-ticks span { color: var(--text-dim); letter-spacing: 0; }
+#hud .hud-map-root.active #hud-predict .predict-elapsed { color: var(--text); }
 #hud .hud-map-root.active #hud-predict .predict-elapsed:hover { color: var(--color-primary-hover); }
 
 /* Frame controls: ウィンドウ見出し > 操作 > 読み取り専用サマリーの順に弱くする。 */
 #hud .hud-map-root.active .hud-frame-controls .frame-summary {
   margin-top: var(--space-4);
   padding-top: var(--space-3);
-  color: var(--muted);
+  color: var(--text-dim);
   font-size: var(--font-xxs);
   line-height: 1.55;
 }
@@ -381,7 +381,7 @@ export const MAP_VIEW_STYLE = `
   border: 0;
   border-radius: var(--radius-control);
   background: var(--glass-quiet);
-  color: var(--muted);
+  color: var(--text-dim);
   box-shadow: 0 10px 24px var(--shade-1);
   backdrop-filter: blur(14px) saturate(82%);
   -webkit-backdrop-filter: blur(14px) saturate(82%);
@@ -389,12 +389,12 @@ export const MAP_VIEW_STYLE = `
 #hud-map-scale .map-scale-label {
   display: block;
   margin-bottom: var(--space-1);
-  color: var(--muted);
+  color: var(--text-dim);
   font-size: var(--font-xxs);
 }
-#hud-map-scale .map-scale-value { color: var(--title); }
-#hud-map-scale .map-scale-ruler::before { border-color: var(--muted); }
-#hud-map-scale .map-scale-tick { border-color: var(--title); }
+#hud-map-scale .map-scale-value { color: var(--text); }
+#hud-map-scale .map-scale-ruler::before { border-color: var(--text-dim); }
+#hud-map-scale .map-scale-tick { border-color: var(--text); }
 
 @media ${MQ_MEDIUM_DOWN} {
   #hud .hud-map-root.active #hud-physical-object-list,
