@@ -14,12 +14,11 @@ import type { Player } from '../../player/player';
 import { Bullet } from './bullet';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { R_EARTH_EQ } from '../../celestial/solar-system/constants';
-import { fmtDist, fmtMarkerDist, fmtSpeed } from '../../../hud/utils';
+import { fmtDist, fmtSpeed } from '../../../hud/utils';
 import { relativeInfo } from '../../orbit-info';
 import { orbitRows } from '../../pickable/orbit-rows';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import { shipMarkerSvg } from '../../marker/marker-shapes';
-import { currentThemePalette } from '../../../theme';
 import {
   DESTROY_FLASH1_DURATION, DESTROY_FLASH1_SIZE0, DESTROY_FLASH1_SIZE1,
   DESTROY_FLASH2_DURATION, DESTROY_FLASH2_SIZE0, DESTROY_FLASH2_SIZE1,
@@ -27,7 +26,7 @@ import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, ENEMY_DESTROY_FRAG_COLOR,
 } from '../../../render/vfx-style';
 import type { Quat } from '../../../math/quat';
-import type { GroupedMarkerItem, MarkerRole } from '../../marker/grouped-markers';
+import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { EnemyDeathCause, StageOutcome } from '../../stages/stage-outcome';
 import type { EnemySaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/crowding';
@@ -217,28 +216,23 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 敵のマーカー表示項目を組み立てる。pos/vel には機体メッシュと同じ表示時刻の状態
   // (stateAt 経由)を渡すこと。
-  public markerItem(
-    role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, _isActive: boolean,
-  ): GroupedMarkerItem {
-    // 距離は優先度(近いほど高)とラベル表示の両方に使う
+  public markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View): GroupedMarkerItem {
+    // 代表選出の優先度は、近い個体ほど高くする
     const dist = len(sub(pos, viewerPos));
-    // 代表選出の優先度: ターゲット > 距離が近い順 (天体 > 船・エンティティ)
-    const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.ENEMY - dist / 1e9;
     return {
       key: this.markerKey,
       kind: this.mapKind,
-      cls: role === 'primary' ? 'mk-enemy mk-target' : 'mk-enemy',
+      cls: 'mk-enemy',
       sym: view === 'map' ? this.headingHpMarkerSvg(true) : this.hpMarkerSvg(),
       pos,
       vel,
-      priority,
+      priority: MARKER_PRIORITY.ENEMY - dist / 1e9,
       name: this.name,
-      detail: view === 'map' ? '' : fmtMarkerDist(dist),
-      // 敵本体・距離ラベル・画面外方位マーカーは同じ色で統一する。ターゲット中は第二アクセントカラーで強調する。
-      bearingColor: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ENEMY,
+      // 敵本体・距離ラベル・画面外方位マーカーは同じ色で統一する。
+      bearingColor: COLOR_MARKER_ENEMY,
       bearingSym: ENTITY_GLYPH.enemyShip,
       bearingClass: 'mk-dir mk-bearing-triangle',
-      color: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ENEMY,
+      color: COLOR_MARKER_ENEMY,
       symMarkup: true,
     };
   }

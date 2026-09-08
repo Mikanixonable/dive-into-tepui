@@ -8,7 +8,7 @@ import { qFromBasis } from '../../math/quat';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
 import { Vec3, add, v3, len, sub } from '../../math/vec3';
-import { fmtMarkerDist, fmtDist, fmtEnergy } from '../../hud/utils';
+import { fmtDist, fmtEnergy } from '../../hud/utils';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import { Ship, SHIP_RADIATING_AREA_PER_MASS, PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
@@ -34,7 +34,6 @@ import { FireControl, type AmmoLoad } from './fire-control';
 import { Belt } from './belt';
 import { AeroLoad } from './aero-load';
 import { AltitudeAlarm } from './altitude-alarm';
-import { currentThemePalette } from '../../theme';
 import type { FlashEffects } from '../vfx/flash-effects';
 import { buildDestroyFragments } from '../dynamic/dynamic-entity/debris-piece';
 import { ThrustEffects } from './thrust-effects';
@@ -51,7 +50,7 @@ import type { PlayerSaveData, PlanSaveData } from '../save/save-data';
 import { partFromSaveData, type AnyPart } from '../dynamic/dynamic-entity/parts';
 import { DIRECTION_GLYPH, ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import { shipMarkerSvg } from '../marker/marker-shapes';
-import type { GroupedMarkerItem, MarkerRole } from '../marker/grouped-markers';
+import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import {
   DESTROY_FLASH1_DURATION, DESTROY_FLASH1_SIZE0, DESTROY_FLASH1_SIZE1,
   DESTROY_FLASH2_DURATION, DESTROY_FLASH2_SIZE0, DESTROY_FLASH2_SIZE1,
@@ -595,28 +594,24 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 画面マーカーと被選択判定が同じ艦を指すためのキー。
   private get markerKey(): string { return `player-${this.id}`; }
 
-  // 画面マーカー・一覧に出すこの艦の項目。role はターゲット強調の有無、isActive は
-  // マップ上で自艦と僚艦を塗り分けるための操作対象フラグ。
-  markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, isActive: boolean): GroupedMarkerItem {
+  // 画面マーカー・一覧に出すこの艦の項目。isActive はマップ上で自艦と僚艦を塗り分ける
+  // ための操作対象フラグ。
+  markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, isActive: boolean): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
-    const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.PLAYER;
-    const kindCls = isActive ? 'mk-self' : 'mk-ally';
-    const color = role === 'primary' ? currentThemePalette().signal : isActive ? 'var(--color-primary)' : COLOR_MARKER_ALLY;
     return {
       key: this.markerKey,
       kind: this.mapKind,
-      cls: role === 'primary' ? `${kindCls} mk-target` : kindCls,
+      cls: isActive ? 'mk-self' : 'mk-ally',
       sym: view === 'map' ? this.headingHpMarkerSvg() : this.hpMarkerSvg(),
       pos,
       vel,
-      priority,
+      priority: MARKER_PRIORITY.PLAYER,
       name: this.name,
-      detail: view === 'map' ? '' : fmtMarkerDist(dist),
-      bearingColor: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ALLY,
+      bearingColor: COLOR_MARKER_ALLY,
       bearingSym: DIRECTION_GLYPH.allyBearing,
       bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: dist <= ALLY_BEARING_MAX_DISTANCE,
-      color,
+      color: isActive ? 'var(--color-primary)' : COLOR_MARKER_ALLY,
       symMarkup: true,
     };
   }
