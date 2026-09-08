@@ -23,16 +23,17 @@ import type { ControlSelection } from '../control-selection';
 import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
 import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
-// 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。各ステージが
-// 自分の epoch としてこれを宣言する — ステージに別の日時を与えるのはその1行を変えるだけ。
-// **この定数を stage.ts の外から import しない**(元期は共有の定数ではなく、ステージの宣言)。
-export const STORY_EPOCH: TdbJulianDate =
-  calendarDateToJulianDate(parseCalendarDate('20115-05-14T06:00:00', 'TDB'));
 import { solarSystem } from '../celestial/solar-system/solar-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { PhaseOffsets } from '../../physics/celestial-body-def';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { EntityRegistry, SpawnGate } from '../dynamic/entity-registry';
+
+// 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。各ステージが
+// 自分の epoch としてこれを宣言する — ステージに別の日時を与えるのはその1行を変えるだけ。
+// **この定数を stage.ts の外から import しない**(元期は共有の定数ではなく、ステージの宣言)。
+export const STORY_EPOCH: TdbJulianDate =
+  calendarDateToJulianDate(parseCalendarDate('20115-05-14T06:00:00', 'TDB'));
 
 export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
 

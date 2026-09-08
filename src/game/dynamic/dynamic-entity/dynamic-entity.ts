@@ -2,11 +2,10 @@
 import { Q_IDENTITY } from '../../../math/quat';
 import * as THREE from 'three/webgpu';
 import { KinematicState } from '../../../physics/kinematic-state';
-import { OrbitalElements } from '../../../physics/elements';
+import { OrbitalElements, orbitalElementsOf } from '../../../physics/elements';
 import { Attitude, stepAttitude } from '../../../physics/attitude';
 import { DynamicTrajectory } from '../../../physics/dynamic-trajectory';
 import { localOrbitPeriod, strongestAttractor } from '../../../physics/attractor';
-import { orbitalElementsOf } from '../../../physics/elements';
 import { airflow } from '../../../physics/atmosphere';
 import {
   aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,

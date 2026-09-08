@@ -1,7 +1,7 @@
 // 天体系(天体ビュー・星・天球グリッド・参照軌道線・環境光)の構築と毎フレーム更新。
 import * as THREE from 'three/webgpu';
 import { CelestialMotion, OrbitingMotion, PlanetMotion } from '../../physics/celestial-motion';
-import { CelestialBodyDef, PhaseOffsets, shapeOf } from '../../physics/celestial-body-def';
+import { CelestialBodyDef, PhaseOffsets, shapeOf, shapeAxes, shapeInscribedRadius } from '../../physics/celestial-body-def';
 import { strongestAttractor } from '../../physics/attractor';
 import { EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
 import { EciTransform } from '../../physics/eci-transform';
@@ -28,7 +28,6 @@ import { MAX_SHADOW_BODIES, type BodyShadow, type ShadowBody } from '../../rende
 import type { RingShadow } from '../../render/pipeline/shadow/ring-shadow';
 import type { CumulusShadow } from '../../render/pipeline/shadow/cumulus-shadow';
 import { RingMaterials } from '../../render/ring';
-import { shapeAxes, shapeInscribedRadius } from '../../physics/celestial-body-def';
 import { writeBodyFromWorld } from './body-frame';
 import {
   castsCumulusShadow, selectRingShadow, selectShadowBodies, type RingShadowCandidate,

@@ -12,10 +12,9 @@ import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../../vfx/flash-effects';
 
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
-import { apsisAltitudes } from '../../../physics/elements';
+import { apsisAltitudes, orbitalElementsOf } from '../../../physics/elements';
 import { R_EARTH } from '../../celestial/solar-system/constants';
 import { strongestAttractor } from '../../../physics/attractor';
-import { orbitalElementsOf } from '../../../physics/elements';
 import { add, addScaled, len, norm, randPerp, randVec, scale, sub, Vec3 } from '../../../math/vec3';
 import { generateApproachingEnemy } from '../spawner/enemy-generator';
 
