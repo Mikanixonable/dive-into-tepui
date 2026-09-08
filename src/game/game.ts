@@ -53,6 +53,14 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { frameRoleOf } from '../physics/frame';
 import { ViewBadge } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
+import {
+  enemiesPanelViewOf,
+  mapScaleViewOf,
+  orbitPanelViewOf,
+  targetPanelDataOf,
+  topBarViewOf,
+  vesselPanelViewOf,
+} from './hud/panel-presenter';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -275,6 +283,16 @@ export class Game {
     this.controlSelection = new ControlSelection(
       initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._worldSfx, this._hud,
     );
+    this._hud.topBar.setCommands({
+      setSimulationSpeed: (speed) => this.simSpeedManager.setSpeed(speed),
+    });
+    this._hud.orbitPanel.setCommands({
+      setReferenceMode: (mode) => this.orbitReference.setMode(mode),
+    });
+    this._hud.vesselPanel.setCommands({
+      toggleSolar: (side) => this.activeControllable?.power?.toggle(side),
+      toggleRadiator: (side) => this.activeControllable?.radiator?.toggle(side),
+    });
     this._hud.burnManagementPanel.setHandlers({
       onAttach: () => { this.activeControllable?.boosters?.attach(); },
       onToggleIgnition: () => { this.activeControllable?.boosters?.toggleIgnition(); },
@@ -346,6 +364,10 @@ export class Game {
       this._hud.viewBadgeRow, this._hud.layers.notify, this.viewManager, this._hud.overlayManager,
       this._hud.renderStyle, this.dynamicSystem, celestialSystem,
     );
+    this._hud.setOrbitAnalysisAdapter({
+      updateReaders: (window) => window.update(this),
+      sync: (window) => window.sync(this),
+    });
 
     // 復元した focus を、軌道表示の基準系へも通しておく。
     this.frameControls.setFocus(this.cameraSystem.mapCamera.focus);
@@ -373,8 +395,12 @@ export class Game {
     // Hud はこのゲームより長生きするので、書き換えたクラスと差し込んだ参照を元へ戻す。
     this._hud.root.classList.remove('creative-mode');
     this._hud.vesselPanel.setInput(null);
+    this._hud.vesselPanel.setCommands({ toggleSolar: () => {}, toggleRadiator: () => {} });
+    this._hud.topBar.setCommands({ setSimulationSpeed: () => {} });
+    this._hud.orbitPanel.setCommands({ setReferenceMode: () => {} });
     this._hud.burnManagementPanel.setHandlers({});
     this._hud.burnManagementPanel.sync(null);
+    this._hud.setOrbitAnalysisAdapter(null);
     this._worldSfx.dispose();
     this.touchControls?.dispose();
     this.input.dispose();
@@ -418,7 +444,7 @@ export class Game {
     this.planDisplay.update(displayWindow, this.frameAnchors, view);
     this.sections.exit(SECTION.plan);
     // 予測の伸長対象は軌道分析ウィンドウが見ている個体を含むので、予測より先に確定させる。
-    this._hud.updateAnalysisReaders(this);
+    this._hud.updateAnalysisReaders();
     // ポーズ中・決着後も無条件に呼ぶ: simTime が止まっている間はサブステップも進まず、
     // 消費も期限切れの張り直しも起きないので、予測は伸び切ったところで止まるだけで害はない。
     this.sections.enter(SECTION.predict);
@@ -576,7 +602,16 @@ export class Game {
 
     this.activeStage.sync(fo, this.cameraSystem, displayTime, visibilityPolicy);
 
-    this._hud.syncPanels(this.viewManager.current, this);
+    this._hud.syncPanels(
+      this.viewManager.current,
+      topBarViewOf(this),
+      orbitPanelViewOf(this),
+      mapScaleViewOf(this),
+      vesselPanelViewOf(this),
+      targetPanelDataOf(this),
+      enemiesPanelViewOf(this),
+      this.activeControllable?.boosters?.managementViewModel() ?? null,
+    );
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions(this.viewManager.current);
