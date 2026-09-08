@@ -299,7 +299,7 @@ export class Game {
     this.objectWindows = new ObjectWindows(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
       this.cameraSystem, () => this.viewManager.activeView, this.pauseMenu,
-      this.controlSelection, this.frameControls, this.activeStage, this.targeter,
+      this.controlSelection, (target) => this.frameControls.setFocus(target), this.activeStage, this.targeter,
     );
 
     const combatView = new CombatView(
