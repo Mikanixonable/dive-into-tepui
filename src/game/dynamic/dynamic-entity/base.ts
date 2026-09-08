@@ -2,7 +2,6 @@
 import * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { OrbitingObject } from './orbiting-object';
-import type { View } from '../../view/view';
 import { DynamicEntity } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
 import { EntityIdAllocator } from './entity-id';
@@ -18,8 +17,8 @@ import type { MarkerSlots } from '../../marker/marker-slots';
 import type { BaseSaveData } from '../../save/save-data';
 import { Plan, type PlanExecutionMode } from '../../plan/plan';
 import { generateRandomName } from '../../random-name';
-import type { GroupedMarkerItem, MarkerRole } from '../../marker/grouped-markers';
-import { fmtDist, fmtMarkerDist } from '../../../hud/utils';
+import type { GroupedMarkerItem } from '../../marker/grouped-markers';
+import { fmtDist } from '../../../hud/utils';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
 import type { SphereHit } from '../../../math/triangle-mesh';
@@ -36,7 +35,6 @@ import type { CameraSystem } from '../../camera/camera-system';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { RenderStyle } from '../../../render/render-style';
 import type { MapVisibilityPolicy } from '../../map/visibility-policy';
-import { currentThemePalette } from '../../../theme';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
@@ -257,26 +255,23 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   private get markerKey(): string { return `base-${this.id}`; }
 
   // 基地のマーカー表示項目。pos/vel には構造メッシュと同じ表示時刻の状態を渡すこと。
-  markerItem(
-    role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, _isActive: boolean,
-  ): GroupedMarkerItem {
+  markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3): GroupedMarkerItem {
+    // 代表選出の優先度は、近い個体ほど高くする
     const dist = len(sub(pos, viewerPos));
-    const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.BASE - dist / 1e9;
     return {
       key: this.markerKey,
       kind: this.mapKind,
-      cls: role === 'primary' ? 'mk-base mk-target' : 'mk-base',
+      cls: 'mk-base',
       sym: baseMarkerSvg(),
       pos,
       vel,
-      priority,
+      priority: MARKER_PRIORITY.BASE - dist / 1e9,
       name: this.name,
-      detail: view === 'map' ? '' : fmtMarkerDist(dist),
-      bearingColor: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ALLY,
+      bearingColor: COLOR_MARKER_ALLY,
       bearingSym: ENTITY_GLYPH.base,
       bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: false,
-      color: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ALLY,
+      color: COLOR_MARKER_ALLY,
       symMarkup: true,
     };
   }
