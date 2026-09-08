@@ -141,8 +141,7 @@ export class DetachedBooster extends DynamicEntity {
   // 状態でしか定義されていない。
   protected override syncModel(
     fo: FloatingOrigin, displayTime: number, active: Controllable | null,
-    visibilityPolicy: MapVisibilityPolicy | null, camera: CameraSystem,
-    style: RenderStyle,
+    visibilityPolicy: MapVisibilityPolicy | null, camera: CameraSystem, style: RenderStyle,
   ): void {
     const displayState = this.placeModel(fo, displayTime, active, visibilityPolicy);
     const effectAtCurrentTime = Math.abs(displayTime - this.state.t) <= 1e-6;
