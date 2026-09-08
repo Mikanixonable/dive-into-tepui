@@ -11,7 +11,7 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { MQ_COMPACT, MQ_SHORT } from '../hud/breakpoints';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 import {
-  ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, ACTIVE_THEME, BG, SURFACE_0 as THEME_SURFACE_0,
+  ACCENT, ACCENT_SOFT, ACTIVE_THEME, BG, SIGNAL, SURFACE_0 as THEME_SURFACE_0,
   SURFACE_1, SURFACE_2, SURFACE_3, TEXT, TEXT_DIM, TEXT_MUTED, TEXT_FAINT, Z_STAGE_SELECT,
 } from '../theme';
 import { TITLE_SCENE_PATTERNS, createTitleScene, type TitleScene } from '../render/title-scene';
@@ -23,7 +23,7 @@ const BODY_INK = TEXT_MUTED;
 const MUTED_INK = TEXT_DIM;
 const FAINT_INK = TEXT_FAINT;
 const NEAR_ACCENT = ACCENT_SOFT;
-const SECONDARY_ACCENT = ACCENT_SECONDARY;
+const SECONDARY_ACCENT = SIGNAL;
 
 // V6 §3 の voice 別書体。Web font が使えない環境でも role ごとのフォールバックを保つ。
 const FONT_SANS = '"Arimo","Zen Kaku Gothic Antique","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif';
