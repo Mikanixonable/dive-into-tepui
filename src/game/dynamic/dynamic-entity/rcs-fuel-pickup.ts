@@ -13,12 +13,12 @@ import type { Attitude } from '../../../physics/attitude';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import type { RcsFuelPickupSaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/crowding';
-import type { MarkerSlots } from '../../marker/marker-slots';
+import type { MarkerVisibility } from '../../marker/marker-visibility';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { orbitRows } from '../../pickable/orbit-rows';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { ControlSelection } from '../../control-selection';
-import type { ObjectAuthoring } from '../../stages/stage';
+import type { ObjectAuthoring } from '../../pickable/inspected-object';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
@@ -119,7 +119,7 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
     return this.stateAt(displayTime)?.r ?? null;
   }
 
-  public shownOnMap(markers: MarkerSlots): boolean { return markers.shows(this.markerKey); }
+  public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(this.markerKey); }
 
   // 自艦からの距離と回収圏内かどうか。自艦がいなければ空。
   public listDetail(

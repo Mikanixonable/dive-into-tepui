@@ -19,7 +19,8 @@ import { InstancedPools } from './instanced-pools';
 import { Simulator } from './simulator';
 import { NanWatchdog } from './nan-watchdog';
 import { FrameSections, SECTION } from '../frame-sections';
-import type { Stage } from '../stages/stage';
+import type { StageOutcome } from '../stages/stage-outcome';
+import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 import type { Input } from '../../input/input';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CameraSystem } from '../camera/camera-system';
@@ -190,7 +191,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
 
   // 全エンティティの寿命判定と上限判定を行い、死亡したものを破棄・除去する。
   public cleanup(
-    dt: number, simTime: number, activeStage: Stage, viewerPos: Vec3,
+    dt: number, simTime: number, activeStage: StageOutcome, viewerPos: Vec3,
     atmosphereBodies: readonly CelestialBody[],
   ): void {
     this.processPendingSpawns();
@@ -241,7 +242,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 各段の境界で操作対象を検査する。どの境界で落ちたかが、汚染したのがどの段かを一意に決める。
   update(
     active: Controllable | null, input: Input, operable: boolean,
-    dt: number, simDt: number, canEngage: boolean, activeStage: Stage,
+    dt: number, simDt: number, canEngage: boolean, activeStage: StageOutcome & StageSimulationEvents,
   ): void {
     this.nanWatchdog.checkControlled('update(入口)', active, this.simTime, dt, this.lastSimDt);
     this.sections.enter(SECTION.command);
@@ -267,7 +268,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 「操作できないワープ倍率」は同じ状態なので、input を渡すかどうかで一つに束ねる。
   private updateControllables(
     active: Controllable | null, input: Input, operable: boolean,
-    dt: number, simDt: number, activeStage: Stage,
+    dt: number, simDt: number, activeStage: StageOutcome,
   ): void {
     for (const controllable of this.controllables) {
       if (!controllable.alive) continue;
