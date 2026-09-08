@@ -27,7 +27,7 @@ import { BASE_COLLISION_RADIUS, baseRaycast, baseSphereCollide } from './base-co
 import { Throttle } from '../../player/throttle';
 import type { Controllable } from './controllable';
 import type { EntityRegistry } from '../entity-registry';
-import type { Stage } from '../../stages/stage';
+import type { StageOutcome } from '../../stages/stage-outcome';
 import type { Input } from '../../../input/input';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { ThrustEffects } from '../../player/thrust-effects';
@@ -192,7 +192,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // 毎フレーム、全ての基地に対して1度だけ呼ぶ。input が null なら操作されない。
   updateControls(
     input: Input | null, dt: number, simDt: number,
-    _registry: EntityRegistry, _activeStage: Stage, _celestialBodies: CelestialBodies,
+    _registry: EntityRegistry, _activeStage: StageOutcome, _celestialBodies: CelestialBodies,
   ): void {
     if (input === null) {
       this.clearTransientCommands();

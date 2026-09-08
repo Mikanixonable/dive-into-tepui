@@ -17,7 +17,8 @@ import type { DynamicSystem } from './dynamic-system';
 import type { Controllable } from './dynamic-entity/controllable';
 import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { FrameCelestialBodies } from '../celestial/celestial-bodies';
-import type { Stage } from '../stages/stage';
+import type { StageOutcome } from '../stages/stage-outcome';
+import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 import { EntityContactPhysics } from './entity-contact-physics';
 import { engagementZones } from './engagement-zone';
 import { SurfaceContactPhysics } from './surface-contact-physics';
@@ -75,7 +76,7 @@ export class Simulator {
     dt: number,
     simDt: number,
     controlled: Controllable | null,
-    activeStage: Stage,
+    activeStage: StageOutcome & StageSimulationEvents,
     canEngage: boolean,
     nanWatchdog: NanWatchdog,
   ): void {
@@ -198,7 +199,7 @@ export class Simulator {
   // 先端時刻が dt/divisions の丸めぶん endTime から外れる。履歴を持たない種別(弾・薬莢)は
   // 先端1件しか残さないので、そのずれがそのまま「表示時刻の状態を答えられない」= 非表示に
   // なる。残りを引く形なら、近い2つの差は誤差なく求まるので必ず endTime へ着地する。
-  private substep(endTime: number, dt: number, activeStage: Stage): void {
+  private substep(endTime: number, dt: number, activeStage: StageOutcome): void {
     this.sharedIntervalScratch.length = 0;
     for (const e of this.dynamicSystem.all()) {
       if (!e.alive) continue;
