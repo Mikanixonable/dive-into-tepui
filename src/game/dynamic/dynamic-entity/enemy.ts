@@ -9,7 +9,7 @@ import { KinematicState, kinematicState } from '../../../physics/kinematic-state
 import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../../math/vec3';
 import { solveLeadTime } from '../../../physics/intercept';
 import type { FlashEffects } from '../../vfx/flash-effects';
-import { buildDestroyFragments } from './debris-piece';
+import { enemyDestroyFragments } from './debris-piece';
 import type { Player } from '../../player/player';
 import { Bullet } from './bullet';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
@@ -19,12 +19,6 @@ import { relativeInfo } from '../../orbit-info';
 import { orbitRows } from '../../pickable/orbit-rows';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import { shipMarkerSvg } from '../../marker/marker-shapes';
-import {
-  DESTROY_FLASH1_DURATION, DESTROY_FLASH1_SIZE0, DESTROY_FLASH1_SIZE1,
-  DESTROY_FLASH2_DURATION, DESTROY_FLASH2_SIZE0, DESTROY_FLASH2_SIZE1,
-  DESTROY_FLASH_COLOR_1, DESTROY_FLASH_COLOR_2,
-  DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, ENEMY_DESTROY_FRAG_COLOR,
-} from '../../../render/vfx-style';
 import type { Quat } from '../../../math/quat';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { EnemyDeathCause, StageOutcome } from '../../stages/stage-outcome';
@@ -247,19 +241,10 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   // 撃破時の爆発音・エフェクトを発生させる。
   private destroyEffect(registry: EntityRegistry): void {
     this._worldSfx.explosion();
-    // 敵機は自機の ENEMY_SCALE 倍サイズなので、撃破エフェクトも見合った大きさにする
-    const { t, r, v } = this.state;
-    this._fx.spawnFlash(
-      this.state, DESTROY_FLASH1_SIZE0 * ENEMY_SCALE, DESTROY_FLASH1_SIZE1 * ENEMY_SCALE,
-      DESTROY_FLASH1_DURATION, DESTROY_FLASH_COLOR_1);
-    this._fx.spawnFlash(
-      this.state, DESTROY_FLASH2_SIZE0 * ENEMY_SCALE, DESTROY_FLASH2_SIZE1 * ENEMY_SCALE,
-      DESTROY_FLASH2_DURATION, DESTROY_FLASH_COLOR_2);
-    for (const piece of buildDestroyFragments(
-      t, r, v, 11, ENEMY_DESTROY_FRAG_COLOR,
-      (DESTROY_FRAG_SIZE_MIN * ENEMY_SCALE) / 3, (DESTROY_FRAG_SIZE_MAX * ENEMY_SCALE) / 3, 20.0,
-      this._worldSfx, this._fx, this.scene,
-    )) registry.add(piece);
+    this._fx.spawnEnemyDestroyFlash(this.state, ENEMY_SCALE);
+    for (const piece of enemyDestroyFragments(this.state, ENEMY_SCALE, this._worldSfx, this._fx, this.scene)) {
+      registry.add(piece);
+    }
   }
 
   // 被弾によるダメージ・致死判定。
