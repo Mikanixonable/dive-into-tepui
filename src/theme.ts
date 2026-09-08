@@ -139,17 +139,16 @@ function rgba(hex: string, alpha: number): string {
 
 function themeCssVariables(palette: ThemePalette): Readonly<Record<string, string>> {
   return {
-    // Semantic key colors. The old --accent names below remain compatibility aliases.
+    // 主役色。
     '--color-primary': palette.accent,
     '--color-primary-hover': palette.accentNear,
-    '--color-primary-active': palette.accent,
     '--color-signal': palette.signal,
     '--color-primary-fill-weak': rgba(palette.accent, 0.08),
     '--color-primary-fill': rgba(palette.accent, 0.16),
     '--color-primary-fill-strong': rgba(palette.accent, 0.24),
     '--color-primary-edge-soft': rgba(palette.accent, 0.22),
     '--color-primary-edge': rgba(palette.accent, 0.4),
-    // Semantic state colors.
+    // 状態色。
     '--color-success': palette.success,
     '--color-success-fill': rgba(palette.success, 0.12),
     '--color-success-edge': rgba(palette.success, 0.42),
@@ -164,16 +163,11 @@ function themeCssVariables(palette: ThemePalette): Readonly<Record<string, strin
     '--color-info-edge': rgba(palette.info, 0.42),
     '--color-focus': palette.focus,
     '--color-focus-contrast': palette.focusContrast,
-    // Space labels sit on a rendered starfield, not on the UI theme surface.
+    // 宇宙空間のラベルは星空の上に載るので、配色によらない固定色を使う。
     '--space-label-background': '#0b0d11',
     '--space-label-text': '#f5f7ff',
     '--space-label-subtext': '#b8c1d1',
-    '--accent': palette.accent,
-    '--accent-soft': palette.accentNear,
-    '--accent-near': palette.accentNear,
-    '--accent-secondary': palette.signal,
     '--bg': palette.page,
-    '--page': palette.page,
     '--theme-tone': palette.tone,
     '--surface-0': palette.surface0,
     '--surface-1': palette.surface1,
@@ -190,14 +184,6 @@ function themeCssVariables(palette: ThemePalette): Readonly<Record<string, strin
     '--text-muted': palette.body,
     '--text-dim': palette.muted,
     '--text-faint': palette.faint,
-    '--title': palette.title,
-    '--body': palette.body,
-    '--muted': palette.muted,
-    '--accent-fill-weak': rgba(palette.accent, 0.08),
-    '--accent-fill': rgba(palette.accent, 0.16),
-    '--accent-fill-strong': rgba(palette.accent, 0.24),
-    '--accent-edge-soft': rgba(palette.accent, 0.22),
-    '--accent-edge': rgba(palette.accent, 0.4),
     '--fill-1': rgba(palette.title, 0.04),
     '--fill-2': rgba(palette.title, 0.09),
     '--fill-3': rgba(palette.title, 0.16),
@@ -209,8 +195,6 @@ function themeCssVariables(palette: ThemePalette): Readonly<Record<string, strin
 export const ACCENT = ACTIVE_THEME.accent;
 export const ACCENT_SOFT = ACTIVE_THEME.accentNear;
 export const SIGNAL = ACTIVE_THEME.signal;
-/** @deprecated Use SIGNAL. Kept for non-UI renderers during migration. */
-export const ACCENT_SECONDARY = SIGNAL;
 const SUCCESS = ACTIVE_THEME.success;
 const WARNING = ACTIVE_THEME.warning;
 const DANGER = ACTIVE_THEME.error;
@@ -336,7 +320,6 @@ export const FONT_FAMILY =
 const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--color-primary': ACCENT,
   '--color-primary-hover': ACCENT_SOFT,
-  '--color-primary-active': ACCENT,
   '--color-signal': SIGNAL,
   '--color-primary-fill-weak': ACCENT_FILL_WEAK,
   '--color-primary-fill': ACCENT_FILL,
@@ -360,14 +343,9 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--space-label-background': '#0b0d11',
   '--space-label-text': '#f5f7ff',
   '--space-label-subtext': '#b8c1d1',
-  '--accent': ACCENT,
-  '--accent-soft': ACCENT_SOFT,
-  '--accent-near': ACCENT_SOFT,
-  '--accent-secondary': ACCENT_SECONDARY,
   '--danger': DANGER,
   '--danger-fill': DANGER_FILL,
   '--bg': BG,
-  '--page': BG,
   '--theme-tone': ACTIVE_THEME.tone,
   '--surface-0': SURFACE_0,
   '--surface-1': SURFACE_1,
@@ -384,14 +362,6 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--text-muted': TEXT_MUTED,
   '--text-dim': TEXT_DIM,
   '--text-faint': TEXT_FAINT,
-  '--title': TEXT,
-  '--body': TEXT_MUTED,
-  '--muted': TEXT_DIM,
-  '--accent-fill-weak': ACCENT_FILL_WEAK,
-  '--accent-fill': ACCENT_FILL,
-  '--accent-fill-strong': ACCENT_FILL_STRONG,
-  '--accent-edge-soft': ACCENT_EDGE_SOFT,
-  '--accent-edge': ACCENT_EDGE,
   '--fill-1': FILL_1,
   '--fill-2': FILL_2,
   '--fill-3': FILL_3,

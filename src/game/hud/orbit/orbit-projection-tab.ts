@@ -3,7 +3,7 @@
 // このタブはスケール入力欄を持たない。
 import { strongestAttractor } from '../../../physics/attractor';
 import { PointerPanZoom } from '../../../hud/pointer-pan-zoom';
-import { ACCENT, ACCENT_SECONDARY } from '../../../theme';
+import { ACCENT, SIGNAL } from '../../../theme';
 import { projectionSeries, resolveTarget } from './orbit-analysis-data';
 import { buildTabControls, sampleCountFor } from './orbit-analysis-tab';
 import { OrbitProjectionChart } from './orbit-projection-chart';
@@ -90,7 +90,7 @@ export class ProjectionTab implements AnalysisTab {
       : null;
     const series: ProjectionSeriesSpec[] = [];
     if (ship) series.push(seriesSpecOf(ship, ACCENT, 'filled'));
-    if (targetTrack) series.push(seriesSpecOf(targetTrack, ACCENT_SECONDARY, 'ring'));
+    if (targetTrack) series.push(seriesSpecOf(targetTrack, SIGNAL, 'ring'));
 
     // テクスチャが読み込み済みならそれを背景に、まだなら読み込み中の案内文を出す。
     const image = this.loadedTextureImage(textureUrl);
