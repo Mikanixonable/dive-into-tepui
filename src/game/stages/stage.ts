@@ -17,8 +17,7 @@ import type { FloatingOrigin } from '../camera/floating-origin';
 import type { MarkerSlots } from '../marker/marker-slots';
 import type { StageSaveData } from '../save/save-data';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
-import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
-import type { KinematicState } from '../../physics/kinematic-state';
+import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { ControlSelection } from '../control-selection';
 import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
 import { profileAtOrNull } from '../../physics/ephemeris/profile';
@@ -86,13 +85,6 @@ export interface StageClass {
   readonly hiddenFromSelect: boolean;
   isUnlocked(clearCounts: ClearCounts): boolean;
   new (saved: StageSaveData | undefined, ...deps: StageDeps): Stage;
-}
-
-// 軌道上へオブジェクトを配置・複製する編集機能。これを持つステージだけがマップの
-// 「配置」「複製」項目を出す。focusId はマップの現在フォーカスで、基準天体の初期選択に使う。
-export interface ObjectAuthoring {
-  openObjectPlacer(focusId?: string): void;
-  openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void;
 }
 
 // ステージ ID → クリア回数。将来の拡張(周回数によるアンロック等)を見越して、

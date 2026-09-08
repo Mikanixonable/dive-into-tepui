@@ -68,7 +68,7 @@ import { orbitRows } from '../pickable/orbit-rows';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ControlSelection } from '../control-selection';
-import type { ObjectAuthoring } from '../stages/stage';
+import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { ObjectWindows } from '../pickable/object-windows';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
