@@ -7,9 +7,9 @@ import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
 import { GRAVITATIONAL_CONSTANT, MU_NEPTUNE } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
-import type { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { PointEntity } from '../celestial-entity/point-entity';
-import { SphereEntity } from '../celestial-entity/sphere-entity';
+import { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { PointCelestialView } from '../celestial-entity/point-celestial-view';
+import { SphereCelestialView } from '../celestial-entity/sphere-celestial-view';
 import { NEPTUNE_POLE } from './poles';
 import { NEPTUNE_RINGS } from './rings';
 import { equatorialSatelliteOrbit, jplSatelliteOrbit } from './satellite-orbit-builders';
@@ -72,22 +72,28 @@ export function neptuneSystem(
 ): Record<NeptuneSystemBodyId, CelestialEntity> {
   const neptune = planetSystem(planetDefForSimZero(NEPTUNE, phases, simZeroEt), sun);
   return {
-    neptune: new PointEntity(
+    neptune: new CelestialEntity(
       neptune.body, NEPTUNE_SYSTEM_NAMES.neptune, 'planet',
+      new PointCelestialView(
       // 平均輝度 0.1228(A_B は公表ボンド)
       CelestialSurface.textured({ url: neptuneTextureUrl, albedoScale: 2.3609, bondAlbedo: 0.29, averageHue: [0.3358, 0.9100, 3.8476] }),
+      ),
     ),
-    triton: new SphereEntity(
+    triton: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(TRITON, phases, simZeroEt), neptune),
       NEPTUNE_SYSTEM_NAMES.triton, 'satellite',
+      new SphereCelestialView(
       // A_B=0.43(幾何 0.76 x q=0.564)
       CelestialSurface.solid([0.4794, 0.4216, 0.3680]),
+      ),
     ),
-    nereid: new SphereEntity(
+    nereid: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(NEREID, phases, simZeroEt), neptune),
       NEPTUNE_SYSTEM_NAMES.nereid, 'satellite',
+      new SphereCelestialView(
       // A_B=0.071(幾何 0.155 x q=0.461)
       CelestialSurface.solid([0.0816, 0.0693, 0.0563]),
+      ),
     ),
   };
 }
