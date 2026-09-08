@@ -1,6 +1,6 @@
 // 投影タブの描き手。円筒図法テクスチャを背景に、経緯度グリッド・複数系統の軌跡・現在位置を
 // canvas 2D へ描く。表示範囲(中心経緯度・ズーム)を自分で持ち、pan/zoom/resetView で操作する。
-import { EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM } from '../../../theme';
+import { currentEdgeColor, currentThemePalette, FONT_FAMILY, FONT_XXS } from '../../../theme';
 import { injectOnce } from '../../../hud/inject-style';
 import {
   chartCanvasStyle, drawPointMarker, drawPolylineWithGaps, resizeCanvasBackingStore,
@@ -152,7 +152,7 @@ export class OrbitProjectionChart {
     ctx.clip();
     if (spec.textureImage) this.drawTexture(spec.textureImage, win, plotLeft, plotTop, plotWidth, plotHeight);
     else {
-      ctx.fillStyle = TEXT_DIM;
+      ctx.fillStyle = currentThemePalette().muted;
       ctx.textAlign = 'center';
       ctx.fillText(spec.emptyMessage ?? '', plotLeft + plotWidth / 2, plotTop + plotHeight / 2);
     }
@@ -162,7 +162,7 @@ export class OrbitProjectionChart {
 
     // グリッドのラベルと外枠はクリップの外(プロット領域の余白)に描く。
     this.drawGridLabels(win, plotLeft, plotTop, plotWidth, plotHeight);
-    ctx.strokeStyle = EDGE;
+    ctx.strokeStyle = currentEdgeColor();
     ctx.lineWidth = 1;
     ctx.strokeRect(plotLeft, plotTop, plotWidth, plotHeight);
   }
@@ -193,7 +193,7 @@ export class OrbitProjectionChart {
   // 表示範囲 win に入る経度・緯度 30 度おきの縦横グリッド線を描く。
   private drawGridLines(win: Window, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
     const ctx = this.ctx;
-    ctx.strokeStyle = EDGE;
+    ctx.strokeStyle = currentEdgeColor();
     ctx.lineWidth = 1;
     // 経度線(縦線)。
     for (let lon = -180; lon <= 180; lon += GRID_STEP_DEG) {
@@ -218,7 +218,7 @@ export class OrbitProjectionChart {
   // drawGridLines の各線に添える経度・緯度のラベル。
   private drawGridLabels(win: Window, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
     const ctx = this.ctx;
-    ctx.fillStyle = TEXT_DIM;
+    ctx.fillStyle = currentThemePalette().muted;
     // 経度ラベルはプロット下端に沿って並べる。
     ctx.textAlign = 'center';
     for (let lon = -180; lon <= 180; lon += GRID_STEP_DEG) {

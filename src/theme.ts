@@ -216,9 +216,13 @@ const SURFACE = rgba(SURFACE_1, 0.64); // Quiet Glass
 export const SURFACE_OPAQUE = rgba(SURFACE_1, 0.96); // Solid に近い全画面表示用
 const GLASS_QUIET = rgba(SURFACE_1, 0.64);
 const GLASS_FOCUS = rgba(SURFACE_1, 0.76);
-export const EDGE = rgba(ACTIVE_THEME.title, 0.16);
+// 面と地の境目。選択中の配色の文字色から導く。
+export function currentEdgeColor(): string {
+  return rgba(currentThemePalette().title, 0.16);
+}
+export const EDGE = currentEdgeColor();
 
-export const TEXT_STRONG = ACTIVE_THEME.bright;
+const TEXT_STRONG = ACTIVE_THEME.bright;
 // UI用のわずかに紫がかった白。ゲーム世界のマーカー色とは独立したHUD基準色。
 export const TEXT = ACTIVE_THEME.title;
 export const TEXT_MUTED = ACTIVE_THEME.body;
@@ -236,7 +240,7 @@ const ACCENT_EDGE = rgba(ACCENT, 0.4); // ボタン・パネルの通常の縁
 const FILL_1 = rgba(TEXT, 0.04);
 const FILL_2 = rgba(TEXT, 0.09);
 const FILL_3 = rgba(TEXT, 0.16);
-export const FILL_4 = rgba(TEXT, 0.32);
+const FILL_4 = rgba(TEXT, 0.32);
 
 const SHADE_1 = 'rgba(0, 0, 0, 0.18)'; // 弱い落とし影
 const SCRIM = 'rgba(6, 7, 9, 0.82)'; // 全画面表示の背後を覆う膜
