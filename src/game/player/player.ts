@@ -35,7 +35,7 @@ import { Belt } from './belt';
 import { AeroLoad } from './aero-load';
 import { AltitudeAlarm } from './altitude-alarm';
 import type { FlashEffects } from '../vfx/flash-effects';
-import { buildDestroyFragments } from '../dynamic/dynamic-entity/debris-piece';
+import { buildDestroyFragments, playerDestroyFragments } from '../dynamic/dynamic-entity/debris-piece';
 import { ThrustEffects } from './thrust-effects';
 import { RcsEffects } from './rcs-effects';
 import { ReentryEffects } from './reentry-effects';
@@ -51,12 +51,7 @@ import { partFromSaveData, type AnyPart } from '../dynamic/dynamic-entity/parts'
 import { DIRECTION_GLYPH, ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import { shipMarkerSvg } from '../marker/marker-shapes';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
-import {
-  DESTROY_FLASH1_DURATION, DESTROY_FLASH1_SIZE0, DESTROY_FLASH1_SIZE1,
-  DESTROY_FLASH2_DURATION, DESTROY_FLASH2_SIZE0, DESTROY_FLASH2_SIZE1,
-  DESTROY_FLASH_COLOR_1, DESTROY_FLASH_COLOR_2,
-  DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, PLAYER_DESTROY_FRAG_COLOR,
-} from '../../render/vfx-style';
+import { DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, PLAYER_DESTROY_FRAG_COLOR } from '../../render/vfx-style';
 import { AttachedBoosters } from './attached-boosters';
 import { MARKER_PRIORITY } from '../marker/crowding';
 import { strongestAttractor } from '../../physics/attractor';
@@ -507,13 +502,10 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 機体喪失時の爆発音・爆発エフェクトを発生させる。
   private destroyEffect(registry: EntityRegistry): void {
     this._worldSfx.explosion();
-    const { t, r, v } = this.state;
-    this._fx.spawnFlash(this.state, DESTROY_FLASH1_SIZE0, DESTROY_FLASH1_SIZE1, DESTROY_FLASH1_DURATION, DESTROY_FLASH_COLOR_1);
-    this._fx.spawnFlash(this.state, DESTROY_FLASH2_SIZE0, DESTROY_FLASH2_SIZE1, DESTROY_FLASH2_DURATION, DESTROY_FLASH_COLOR_2);
-    for (const piece of buildDestroyFragments(
-      t, r, v, 11, PLAYER_DESTROY_FRAG_COLOR, DESTROY_FRAG_SIZE_MIN / 3, DESTROY_FRAG_SIZE_MAX / 3, 20.0,
-      this._worldSfx, this._fx, this.scene,
-    )) registry.add(piece);
+    this._fx.spawnPlayerDestroyFlash(this.state);
+    for (const piece of playerDestroyFragments(this.state, this._worldSfx, this._fx, this.scene)) {
+      registry.add(piece);
+    }
   }
 
   // ラジエーターが全損した瞬間の破片エフェクトを、そのパネル先端付近から発生させる。
