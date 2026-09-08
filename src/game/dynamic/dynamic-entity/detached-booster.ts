@@ -1,13 +1,13 @@
 import * as THREE from 'three/webgpu';
 import { type Attitude } from '../../../physics/attitude';
 import { LOCAL_FORWARD, qRotate } from '../../../math/quat';
-import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
+import type { KinematicState } from '../../../physics/kinematic-state';
 import { add, scale, v3 } from '../../../math/vec3';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { CameraSystem } from '../../camera/camera-system';
 import type { Controllable } from './controllable';
 import type { MapVisibilityPolicy } from '../../map/visibility-policy';
-import type { DetachedBoosterSaveData } from '../../save/save-data';
+import { savedAttitude, savedKinematicState, type DetachedBoosterSaveData } from '../../save/save-data';
 import {
   BoosterStack,
   boosterAverageAcceleration,
@@ -62,20 +62,8 @@ export class DetachedBooster extends DynamicEntity {
   constructor(init: DetachedBoosterInit, scene: THREE.Scene) {
     const restored = 'saved' in init;
     const stage = restored ? { ...init.saved.stage, id: init.saved.id } : { ...init.stage };
-    const state = restored
-      ? kinematicState<'eci'>(
-        init.simTime,
-        v3(init.saved.r.x, init.saved.r.y, init.saved.r.z),
-        v3(init.saved.v.x, init.saved.v.y, init.saved.v.z),
-      )
-      : init.state;
-    const att: Attitude = restored
-      ? {
-        q: { ...init.saved.q },
-        w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z),
-        inertia: v3(1, 1, 0.4),
-      }
-      : init.att;
+    const state = restored ? savedKinematicState(init.saved, init.simTime) : init.state;
+    const att: Attitude = restored ? savedAttitude(init.saved, v3(1, 1, 0.4)) : init.att;
     // 接続部のカバーは分離時に爆砕ボルトで切り離されるため、独立した段には残さない。
     const model = buildBoosterStage({ interstageCover: false });
     const root = new THREE.Group();
