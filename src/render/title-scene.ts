@@ -3,7 +3,7 @@
 // 抽象化して多数配置する。ゲーム世界とは無関係な表示専用の場面なので physics/ も参照しない。
 // ゲーム世界とは無関係な表示専用の場面なので、physics/ も game/ も参照しない。
 import * as THREE from 'three/webgpu';
-import { ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, BG } from '../theme';
+import { ACCENT, ACCENT_SOFT, BG, SIGNAL } from '../theme';
 
 export const TITLE_SCENE_PATTERNS = ['mosaic', 'helix', 'orbital', 'lattice'] as const;
 type TitleScenePattern = typeof TITLE_SCENE_PATTERNS[number];
@@ -17,7 +17,7 @@ interface TitleSceneOptions {
 const BODY_COLORS = [0xf1edf0, 0xa8aec0, 0x48506a, 0xd6d6d0] as const;
 const ACCENT_COLOR = ACCENT;
 const NEAR_ACCENT_COLOR = ACCENT_SOFT;
-const SECONDARY_ACCENT_COLOR = ACCENT_SECONDARY;
+const SECONDARY_ACCENT_COLOR = SIGNAL;
 const BG_COLOR = Number.parseInt(BG.slice(1), 16);
 // V6 §5.2 に従い、有彩色の図案は少数へ絞り、残りを乳白・煙色・黒・暖灰色で構成する。
 const ACCENT_INDICES = new Set([6, 18]);
