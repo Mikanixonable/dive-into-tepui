@@ -7,7 +7,7 @@ import { Vec3 } from '../../../math/vec3';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import { FocusCamera } from '../../camera/focus-camera';
 import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-target';
-import type { DisplayWindowManager } from '../../display-window-manager';
+import type { DisplayFrameSelection } from '../../display-frame-selection';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { CameraFramePanel } from './camera-frame-panel';
 import { TrajectoryFramePanel } from './trajectory-frame-panel';
@@ -26,7 +26,7 @@ export class FrameControls {
     popupRoot: HTMLElement,
     private readonly celestialBodies: CelestialBodies,
     private readonly mapCamera: FocusCamera,
-    private readonly displayWindow: DisplayWindowManager,
+    private readonly displayWindow: DisplayFrameSelection,
     overlayManager: OverlayManager,
     private readonly frameAnchors: FrameAnchorSource,
   ) {
