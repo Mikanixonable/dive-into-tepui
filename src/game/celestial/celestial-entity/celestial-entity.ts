@@ -7,8 +7,8 @@ import { apsisAltitudes, OrbitalElements, orbitalElementsOf } from '../../../phy
 import { KinematicState } from '../../../physics/kinematic-state';
 import { EllipseLine } from '../../lines/ellipse-line';
 import { LINE_RENDER_ORDER } from '../../../render/line-style';
-import { CameraSystem } from '../../camera/camera-system';
-import { FloatingOrigin } from '../../camera/floating-origin';
+import type { CameraSystem } from '../../camera/camera-system';
+import type { FloatingOrigin } from '../../camera/floating-origin';
 import { apparentSizePx } from '../../../math/projection';
 import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../../../render/pipeline/sun-light';
 import { len, sub } from '../../../math/vec3';
