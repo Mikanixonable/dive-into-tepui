@@ -39,7 +39,7 @@ import { syncThermalState } from '../../../render/thermal-emissive';
 import { DISPLAY_DURATION_MAX } from '../../display-window-duration';
 import type { CameraSystem } from '../../camera/camera-system';
 import type { RenderStyle } from '../../../render/render-style';
-import type { GraphicsSettingsData } from '../../../render/graphics-settings';
+import type { EntityVisualSettings } from '../../../render/entity-visual-settings';
 import type { OrbitReference } from '../../orbit-reference';
 import { MARKER_VISIBILITY, type MapVisibility, type MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { Controllable } from './controllable';
@@ -619,11 +619,11 @@ export class DynamicEntity {
   public sync(
     fo: FloatingOrigin, displayTime: number, active: Controllable | null,
     visibilityPolicy: MapVisibilityPolicy | null, cameraSystem: CameraSystem,
-    style: RenderStyle, graphics: GraphicsSettingsData, orbitRef: OrbitReference | undefined,
+    style: RenderStyle, visual: EntityVisualSettings, orbitRef: OrbitReference | undefined,
   ): void {
     if (!this.alive) return;
     this.syncModel(
-      fo, displayTime, active, visibilityPolicy, cameraSystem, style, graphics, orbitRef);
+      fo, displayTime, active, visibilityPolicy, cameraSystem, style, visual, orbitRef);
   }
 
   // メッシュと、それに付随する表示物(プルーム・ベルト・マーカー)を displayTime の状態へ合わせる。
@@ -631,7 +631,7 @@ export class DynamicEntity {
   protected syncModel(
     fo: FloatingOrigin, displayTime: number, active: Controllable | null,
     visibilityPolicy: MapVisibilityPolicy | null,
-    _cameraSystem: CameraSystem, _style: RenderStyle, _graphics: GraphicsSettingsData,
+    _cameraSystem: CameraSystem, _style: RenderStyle, _visual: EntityVisualSettings,
     _orbitRef: OrbitReference | undefined,
   ): void {
     this.placeModel(fo, displayTime, active, visibilityPolicy);

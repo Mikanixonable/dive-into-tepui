@@ -26,7 +26,7 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
-import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import { generateRandomName } from '../random-name';
 import type { Stage } from '../stages/stage';
 import { Throttle } from './throttle';
@@ -554,7 +554,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     visibilityPolicy: MapVisibilityPolicy | null,
     camera: CameraSystem,
     style: RenderStyle,
-    _graphics: GraphicsSettingsData,
+    _visual: EntityVisualSettings,
     orbitRef: OrbitReference | undefined,
   ): void {
     const displayState = this.placeModel(fo, displayTime, active, visibilityPolicy);

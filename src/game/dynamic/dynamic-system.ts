@@ -23,7 +23,7 @@ import type { Stage } from '../stages/stage';
 import type { Input } from '../../input/input';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CameraSystem } from '../camera/camera-system';
-import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import type { RenderStyle } from '../../render/render-style';
 
 import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
@@ -304,7 +304,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   public sync(
     fo: FloatingOrigin, displayTime: number, active: Controllable | null,
     visibilityPolicy: MapVisibilityPolicy | null, cameraSystem: CameraSystem, style: RenderStyle,
-    graphics: GraphicsSettingsData, orbitRef: OrbitReference | undefined,
+    visual: EntityVisualSettings, orbitRef: OrbitReference | undefined,
     frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting,
   ): void {
     this.instancedPools.beginFrame();
@@ -314,7 +314,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     // 天体の裏に隠れた交点を伏せるのはマップビューだけで、戦闘ビューでは地球の向こう側も出す。
     const occludeByBodies = cameraSystem.view === 'map';
     for (const e of this.entities) {
-      e.sync(fo, displayTime, active, visibilityPolicy, cameraSystem, style, graphics, orbitRef);
+      e.sync(fo, displayTime, active, visibilityPolicy, cameraSystem, style, visual, orbitRef);
       e.syncEquatorNodes(project, cameraPos, frameAnchors, occludeByBodies, timeLabel);
       if (e.alive && (isBullet(e) || isDebrisPiece(e))) e.pushToPools(this.instancedPools);
     }
