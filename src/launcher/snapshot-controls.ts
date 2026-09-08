@@ -2,7 +2,7 @@ import { Game } from '../game/game';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { Notifier } from '../hud/notifier';
-import { PauseMenu } from '../hud/windows';
+import { PauseMenu } from '../hud/windows/pause-menu';
 import { SaveBrowser } from './save-browser/save-browser';
 import { SnapshotService } from './save/snapshot-service';
 

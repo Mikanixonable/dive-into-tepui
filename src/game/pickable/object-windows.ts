@@ -2,8 +2,10 @@
 // 最新化し、被選択物が組んだメニュー項目のうちいま選べるものを絞って、選ばれた操作を実行する。
 // どのクリックがどの対象に当たったかは、ビュー側が決めて open() へ渡す。
 import { Hud } from '../hud/hud';
-import { ContextMenu, MenuAction } from '../hud/windows';
-import { PropertyWindow, type PauseMenu } from '../../hud/windows';
+import { ContextMenu, type MenuItem } from '../hud/windows/context-menu';
+import type { MenuAction } from '../hud/windows/menu-actions';
+import { PropertyWindow } from '../../hud/windows/property-window';
+import type { PauseMenu } from '../../hud/windows/pause-menu';
 import type {
   PropertyWindowContent, PropertyWindowItem, PropertyWindowRelatedItem,
 } from '../../hud/windows/property-window-content';
@@ -25,7 +27,6 @@ import { EmptySpacePickable } from './empty-space-pickable';
 import { orbitingAttractorOf } from '../../physics/attractor';
 import type { ViewFrame } from '../view/view-frame';
 import { PartWindows } from './part-windows';
-import type { MenuItem } from '../hud/windows/context-menu';
 import type { InspectedObject } from './inspected-object';
 
 // 開いているプロパティウィンドウ本体と、その対象。対象は同じ同一性を保ち続けるので、
