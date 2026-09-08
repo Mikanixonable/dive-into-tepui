@@ -1,8 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { buildEnemyShip, buildStage0EnemyShip } from '../../../render/ships';
 import { v3, type Vec3 } from '../../../math/vec3';
-import { WorldSfx } from '../../../audio/sfx/world-sfx';
-import { FlashEffects } from '../../vfx/flash-effects';
+import type { WorldSfx } from '../../../audio/sfx/world-sfx';
+import type { FlashEffects } from '../../vfx/flash-effects';
 import {
   Enemy, ENEMY_SCALE, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore,
 } from './enemy';
