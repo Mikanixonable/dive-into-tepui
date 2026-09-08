@@ -14,7 +14,7 @@ import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity'
 import { aliveCombatTarget } from '../../dynamic/dynamic-entity/combat-target';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import type { ApproachTargetSource } from './orbit-analysis-data';
-import type { AnalysisTab } from './orbit-analysis-tab';
+import type { AnalysisChartSource, AnalysisTab } from './orbit-analysis-tab';
 
 const SYNC_INTERVAL_MS = 250;
 
@@ -126,8 +126,12 @@ export class OrbitAnalysisWindow {
       entity.state.r, game.celestialSystem.celestialMotions, game.navTarget,
       game.dynamicSystem, game.celestialSystem, entity.state.t,
     );
-    this.offerTabs(this.tabs.filter((tab) => tab.available(game, entity, reference, target)));
-    this.selected.draw(game, entity, reference, target);
+    const source: AnalysisChartSource = {
+      celestialSystem: game.celestialSystem,
+      windowDurationSec: game.displayWindowManager.current.duration,
+    };
+    this.offerTabs(this.tabs.filter((tab) => tab.available(source, entity, reference, target)));
+    this.selected.draw(source, entity, reference, target);
   }
 
   // 選べるタブだけをタブバーへ出し、選択中が選べなくなっていたら高度タブへ戻す。
