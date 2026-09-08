@@ -244,8 +244,13 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     const effectState = displayState ?? this.state;
     const effectVisible = this.renderObject.visible;
     const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
-    this.thrustEffects.sync(fo, effectState.r, this.thrust, maxAccel, effectVisible, isControlled, camera, style, 6.0);
-    this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isControlled, 6.0);
+    const cameraQuat = camera.activeCamera.quaternion;
+    const zoomActive = camera.zoomActive;
+    this.thrustEffects.sync(
+      fo, effectState.r, this.thrust, maxAccel, effectVisible, isControlled, cameraQuat, zoomActive,
+      style, 6.0);
+    this.rcsEffects.sync(
+      fo, effectState.r, this.torque, this.att, effectVisible, cameraQuat, zoomActive, isControlled, 6.0);
   }
 
   // 画面マーカーと被選択判定が同じ個体を指すためのキー。
