@@ -24,7 +24,6 @@ import { PauseMenu } from '../hud/windows/pause-menu';
 import { WorldSfx } from '../audio/sfx/world-sfx';
 import { UiSfx } from '../audio/sfx/ui-sfx';
 import type { AudioEngine } from '../audio/audio-engine';
-import { GameScene } from '../render/scene';
 import type { RenderPipeline } from '../render/pipeline/render-pipeline';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
@@ -40,6 +39,7 @@ import { Navball } from './navball/navball';
 import { GameSaveData, SAVE_VERSION } from './save/save-data';
 import { ephemerisContextFor } from '../physics/ephemeris/ephemeris-context';
 import { LoadingProgress } from './loading-progress';
+import type { GameHost } from './game-host';
 import { createJulianDate, type TdbJulianDate } from '../physics/time';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { frameRoleOf } from '../physics/frame';
@@ -96,17 +96,16 @@ export class Game {
   // 星系を組んでから、このランを組み立てる。段の切れ目で描画を明け渡すので、
   // 組み立て中の Game は誰にも観測されないまま数フレームをまたぐ。
   static async create(
-    gs: GameScene,
+    host: GameHost,
     stageClass: StageClass,
-    hud: Hud,
     audioEngine: AudioEngine,
     pauseMenu: PauseMenu,
-    sections: FrameSections,
     initialSave: GameSaveData | undefined,
     startEpoch: TdbJulianDate | undefined,
     graphics: GraphicsSettingsData,
     progress: LoadingProgress,
   ): Promise<Game> {
+    const { scene: gs, hud } = host;
     await progress.enter('system');
     // このランの元期。スナップショットを読むならその元期をそのまま継ぐ — 保存されている simTime
     // はその元期からの経過秒なので、別の元期で組むと全天体がずれる。次に開始日時の指定、最後に
@@ -125,7 +124,7 @@ export class Game {
       gs.pipeline.planetLight, gs.pipeline.ambient, gs.pipeline.atmosphere,
     );
     await progress.enter('run');
-    const game = new Game(gs, stageClass, hud, audioEngine, pauseMenu, sections, celestialSystem, initialSave);
+    const game = new Game(host, stageClass, audioEngine, pauseMenu, celestialSystem, initialSave);
     // シェーダを組む前に、最初に描かれるフレームと同じ表示状態を時間の進まない1フレームで作る —
     // 天体表面の分割段のように update/sync が決めるまで現れない表示物が、事前コンパイルから漏れる。
     const style = hud.renderStyle.current;
@@ -164,20 +163,18 @@ export class Game {
 
   // 各サブシステムを、互いの依存関係が満たせる順に生成して配線する。星系は実体化済みで渡る。
   private constructor(
-    gs: GameScene,
+    host: GameHost,
     stageClass: StageClass,
-    hud: Hud,
     audioEngine: AudioEngine,
     pauseMenu: PauseMenu,
-    sections: FrameSections,
     celestialSystem: CelestialSystem,
     initialSave?: GameSaveData,
   ) {
-    this.sections = sections;
-    this._scene = gs.scene;
-    this.pipeline = gs.pipeline;
+    this.sections = host.sections;
+    this._scene = host.scene.scene;
+    this.pipeline = host.scene.pipeline;
     this._celestialSystem = celestialSystem;
-    this._hud = hud;
+    this._hud = host.hud;
     this._worldSfx = new WorldSfx(audioEngine);
     const uiSfx = new UiSfx(audioEngine);
     this.pauseMenu = pauseMenu;
@@ -187,7 +184,7 @@ export class Game {
     this.flashEffects = new FlashEffects(this._scene);
     this.dynamicSystem = new DynamicSystem(
       this._scene, this._hud, this._worldSfx, this.flashEffects, this.markerManager, celestialSystem,
-      sections, initialSave?.simTime ?? 0, initialSave);
+      this.sections, initialSave?.simTime ?? 0, initialSave);
     this.entityLines = new EntityLineManager(this.dynamicSystem);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, celestialSystem);
 
@@ -243,7 +240,7 @@ export class Game {
     this.planDisplay = new PlanDisplay(
       this._scene, this.markerManager, celestialSystem, this.displayWindowManager, this.controlSelection,
     );
-    this.input = new Input(gs.renderer.domElement);
+    this.input = new Input(host.scene.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
     this.input.onPointerKindChange = (kind) => this.touchControls?.setPointerKind(kind);
     this.input.onLongPressFeedback = (point) => {
