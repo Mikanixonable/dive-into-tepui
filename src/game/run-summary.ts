@@ -39,8 +39,8 @@ export function runSummary(game: Game): RunSummary {
   return {
     simTime: game.simTime,
     phase: game.activeStage.phase,
-    centerBodyId: info ? info.centerId : celestial.origin.id,
-    centerBodyName: info ? info.centerName : celestial.nameOf(celestial.origin.id),
+    centerBodyId: info ? info.centerId : celestial.originId,
+    centerBodyName: info ? info.centerName : celestial.nameOf(celestial.originId),
     altitude: info ? info.alt : 0,
     speed: info ? info.spd : 0,
     hpRatio: controlled !== null && controlled.hp !== null && controlled.maxHp !== null && controlled.maxHp > 0
