@@ -11,6 +11,8 @@ import type { EntityRegistry, SpawnGate } from './entity-registry';
 import { ENTITY_CAP, type CapKind, type EntityCountKind } from './dynamic-entity/entity-kind';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
 import { isEnemy } from './dynamic-entity/enemy';
+import { isBullet } from './dynamic-entity/bullet';
+import { isDebrisPiece } from './dynamic-entity/debris-piece';
 import { isPlayer, Player } from '../player/player';
 import { restorationFor } from './dynamic-entity/entity-dictionary';
 import { InstancedPools } from './instanced-pools';
@@ -298,7 +300,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   }
 
   // このフレームの表示物を同期する。何をどう出すかは個体が答えるので、ここは顔ぶれを1度だけ
-  // 辿るだけ。プールへ積むのも個体自身なので、その前後をこの走査で挟む。
+  // 辿るだけ。積む変換を作るのは個体自身なので、プールの1フレームをこの走査で挟む。
   public sync(
     fo: FloatingOrigin, displayTime: number, active: Controllable | null,
     visibilityPolicy: MapVisibilityPolicy | null, cameraSystem: CameraSystem, style: RenderStyle,
@@ -312,10 +314,9 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     // 天体の裏に隠れた交点を伏せるのはマップビューだけで、戦闘ビューでは地球の向こう側も出す。
     const occludeByBodies = cameraSystem.view === 'map';
     for (const e of this.entities) {
-      e.sync(
-        fo, displayTime, active, visibilityPolicy, this.instancedPools, cameraSystem, style,
-        graphics, orbitRef);
+      e.sync(fo, displayTime, active, visibilityPolicy, cameraSystem, style, graphics, orbitRef);
       e.syncEquatorNodes(project, cameraPos, frameAnchors, occludeByBodies, timeLabel);
+      if (e.alive && (isBullet(e) || isDebrisPiece(e))) e.pushToPools(this.instancedPools);
     }
     this.instancedPools.endFrame();
   }
