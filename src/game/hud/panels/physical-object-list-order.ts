@@ -45,11 +45,6 @@ interface PrevInput {
   matched: boolean;
 }
 
-interface MatchTextCacheEntry {
-  readonly name: string;
-  readonly text: string;
-}
-
 // 一覧の1行が今フレームどこに並ぶかを決める値。候補そのものは ObjectPickable が持つ。
 interface ListSortKey {
   readonly priority: number;         // 小さいほど先に出る
@@ -78,7 +73,7 @@ export class PhysicalObjectListOrder {
   private displayTime = 0;
   // 検索文字列は1回の同期中だけ再利用し、次の同期では viewer/displayTime と候補の id/name を
   // 取り直す。
-  private readonly matchTextCache = new Map<string, MatchTextCacheEntry>();
+  private readonly matchTextCache = new Map<string, string>();
   // rebuildOrder() は毎フレーム呼ばれうるが、これらは組み直し中だけ使う scratch であり、
   // 呼び出し元へ参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
   private readonly matchedScratch: ObjectPickable[] = [];
@@ -246,7 +241,7 @@ export class PhysicalObjectListOrder {
   // 検索語と照合する文字列。表示名と、対象が検索向けに出す補助表示を小文字で連ねる。
   private matchText(item: ObjectPickable): string {
     const cached = this.matchTextCache.get(item.id);
-    if (cached?.name === item.name) return cached.text;
+    if (cached !== undefined) return cached;
     const searchText = item.listSearchText(this.celestialSystem, this.viewer, this.displayTime);
     const text = `${item.name} ${searchText}`.toLocaleLowerCase();
     this.matchTextCache.set(item.id, { name: item.name, text });
