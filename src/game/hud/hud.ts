@@ -12,15 +12,27 @@ import { TopBar } from './panels/top-bar';
 import { MapScaleBadge } from './panels/map-scale-badge';
 import { OrbitAnalysisWindow } from './orbit/orbit-analysis-window';
 import type { Input } from '../../input/input';
-import type { Game } from '../game';
 import type { OverlayLayers } from '../../hud/overlay-layer';
 import type { HudShell } from '../../hud/hud-shell';
 import { TEMP_WINDOW_GROUP, type OverlayManager } from '../../hud/overlay-manager';
 import type { HelpPanel } from './windows/help-panel';
+import type { BurnManagementViewModel } from './panels/burn-management-panel';
+import type { EnemiesPanelViewModel } from './panels/enemies-panel';
+import type { MapScaleViewModel } from './panels/map-scale-badge';
+import type { TargetPanelData } from './panels/target-panel';
+import type { TopBarViewModel } from './panels/top-bar';
+import type { VesselPanelViewModel } from './panels/vessel-panel';
+import type { OrbitPanelViewModel } from './orbit/orbit-panel';
 
 // 軌道分析ウィンドウを開く既定位置 [px]。
 const ANALYSIS_WINDOW_OPEN_X = 320;
 const ANALYSIS_WINDOW_OPEN_Y = 100;
+
+// OrbitAnalysisWindow の既存の Game 依存を、この HUD の外側で実装する境界。
+export interface OrbitAnalysisAdapter {
+  readonly updateReaders: (window: OrbitAnalysisWindow) => void;
+  readonly sync: (window: OrbitAnalysisWindow) => void;
+}
 
 export class Hud {
   public get root(): HTMLElement { return this.shell.root; }
@@ -39,6 +51,7 @@ export class Hud {
   public readonly enemiesPanel: EnemiesPanel;
   public readonly burnManagementPanel: BurnManagementPanel;
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
+  private orbitAnalysisAdapter: OrbitAnalysisAdapter | null = null;
   // 次の tick() で表示するトースト。
   private pendingToast: { readonly html: string; readonly durationMs: number } | null = null;
   // 表示中のトーストの期限 [ms, performance.now() 基準]。
@@ -84,26 +97,41 @@ export class Hud {
   }
 
   // 軌道分析ウィンドウが見ている個体を、このフレームの操作対象・ターゲットへ合わせる。
-  public updateAnalysisReaders(game: Game): void {
-    this.orbitAnalysisWindow?.update(game);
+  public setOrbitAnalysisAdapter(adapter: OrbitAnalysisAdapter | null): void {
+    this.orbitAnalysisAdapter = adapter;
+  }
+
+  public updateAnalysisReaders(): void {
+    const window = this.orbitAnalysisWindow;
+    if (window) this.orbitAnalysisAdapter?.updateReaders(window);
   }
 
   // view で表に出ている常設パネルと、控えられたトーストを game の現在状態へ合わせる。
-  public syncPanels(view: View, game: Game): void {
+  public syncPanels(
+    view: View,
+    topBar: TopBarViewModel,
+    orbit: OrbitPanelViewModel | null,
+    mapScale: MapScaleViewModel,
+    vessel: VesselPanelViewModel | null,
+    target: TargetPanelData | null,
+    enemies: EnemiesPanelViewModel,
+    burnManagement: BurnManagementViewModel | null,
+  ): void {
     const map = view === 'map';
     // 両ビュー共通のパネル。
-    this.burnManagementPanel.sync(game.activeControllable?.boosters?.managementViewModel() ?? null);
-    this.topBar.sync(game);
-    this.orbitPanel.sync(game);
+    this.burnManagementPanel.sync(burnManagement);
+    this.topBar.sync(topBar);
+    this.orbitPanel.sync(orbit);
     // ビュー固有のパネル。
     if (map) {
-      this.mapScaleBadge.sync(game);
+      this.mapScaleBadge.sync(mapScale);
     } else {
-      this.vesselPanel.sync(game);
-      this.targetPanel.sync(game);
-      this.enemiesPanel.sync(game);
+      this.vesselPanel.sync(vessel);
+      this.targetPanel.sync(target);
+      this.enemiesPanel.sync(enemies);
     }
-    this.orbitAnalysisWindow?.sync(game);
+    const window = this.orbitAnalysisWindow;
+    if (window) this.orbitAnalysisAdapter?.sync(window);
     this.tick();
   }
 
