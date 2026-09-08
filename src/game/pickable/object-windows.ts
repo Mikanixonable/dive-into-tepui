@@ -18,7 +18,7 @@ import { NavTarget } from '../nav-target';
 import { CameraSystem } from '../camera/camera-system';
 import type { PlanEditor } from '../plan/plan-editor';
 import type { ControlSelection } from '../control-selection';
-import type { ObjectAuthoring, Stage } from '../stages/stage';
+import type { Stage } from '../stages/stage';
 import { Player } from '../player/player';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import type { Targeter } from '../targeter';
@@ -26,7 +26,7 @@ import { EmptySpacePickable } from './empty-space-pickable';
 import { orbitingAttractorOf } from '../../physics/attractor';
 import type { ViewFrame } from '../view/view-frame';
 import { PartWindows } from './part-windows';
-import type { InspectedObject } from './inspected-object';
+import type { InspectedObject, ObjectAuthoring } from './inspected-object';
 
 // 開いているプロパティウィンドウ本体と、その対象。対象は同じ同一性を保ち続けるので、
 // 行・項目の再導出も消滅の判定もこの参照を経由する。
