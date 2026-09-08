@@ -6,7 +6,7 @@ import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import {
   Discard, Fn, If, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
-  max, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select, smoothstep,
+  max, mix, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select, smoothstep,
   sqrt, step, texture as textureNode, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
 import { BlueNoise } from './blue-noise';
@@ -34,13 +34,13 @@ export const CUMULUS_DETAIL = { off: 0, coarse: 1, standard: 2, fine: 3 } as con
 export type CumulusDetail = (typeof CUMULUS_DETAIL)[keyof typeof CUMULUS_DETAIL];
 
 // 雲頂を探す標本の配り方。march は殻の中を等間隔にたどる刻みの数(どの交点を見つけるかを決める)、
-// refine は雲頂をまたいだ区間を締める二分の回数(見つけた区間の中の精度を決める)。
+// refine は雲頂をまたいだ区間を締める回数(最初は clearance の線形補間、残りは二分で精度を決める)。
 type CumulusSampling = { readonly march: number; readonly refine: number };
 
-// 段ごとの標本の配り方。費用は march + refine 回の標本化。march 0 は殻を描かない。
-// **いちばん粗い段は march 1 本に留め、そのぶん二分を増やす** — 刻みが 2 本以上あると手前と奥で
-// 拾った雲頂が 2 枚の層として重なって読め、締める前の区間が殻の端から端まで広がるので、二分が
-// 他の段と同じ回数では雲頂が深さの段へ割れて縞に見える。
+// 段ごとの標本の配り方。費用は入口の1回 + march + refine 回の標本化。march 0 は殻を描かない。
+// **いちばん粗い段は march 1 本に留め、そのぶん refinement を増やす** — 刻みが 2 本以上あると手前と奥で
+// 拾った雲頂が 2 枚の層として重なって読める。線形補間で最初の交点を寄せてから締めるので、区間が
+// 殻の端から端まで広がる段でも、雲頂が深さの段へ割れて縞に見える量を抑えられる。
 const SAMPLING_OF_DETAIL = {
   [CUMULUS_DETAIL.off]: { march: 0, refine: 0 },
   [CUMULUS_DETAIL.coarse]: { march: 1, refine: 5 },
@@ -213,26 +213,52 @@ export class CumulusShell {
       const sampling = this.sampling;
       const stepLength = marchEnd.div(sampling.march);
 
-      // 雲頂より内側へ入った最初の刻みを、その手前の刻みと一緒に覚える。
+      // 雲頂より内側へ入った最初の刻みを、その手前の刻みと clearance と一緒に覚える。
       const hit = float(0).toVar();
       const above = float(0).toVar();
       const below = marchEnd.toVar();
+      const aboveClearance = float(1).toVar();
+      const belowClearance = float(0).toVar();
+      const previousDistance = float(0).toVar();
+      const previousClearance = this.clearanceAt(
+        entry, threshold, grainAmplitude,
+      ).toVar();
       for (let stepIndex = 1; stepIndex <= sampling.march; stepIndex++) {
         const distance = stepLength.mul(stepIndex);
-        const inside = this.clearanceAt(
-          entry.add(direction.mul(distance)), threshold, grainAmplitude).lessThan(0);
+        const clearance = this.clearanceAt(
+          entry.add(direction.mul(distance)), threshold, grainAmplitude,
+        ).toVar();
+        const inside = clearance.lessThan(0);
         If(inside.and(hit.lessThan(0.5)), () => {
           hit.assign(1);
+          above.assign(previousDistance);
           below.assign(distance);
+          aboveClearance.assign(previousClearance);
+          belowClearance.assign(clearance);
         });
-        If(hit.lessThan(0.5), () => { above.assign(distance); });
+        If(hit.lessThan(0.5), () => {
+          previousDistance.assign(distance);
+          previousClearance.assign(clearance);
+        });
       }
-      // 雲頂をまたいだ区間を二分して縁を締める。
+      // 最初は前後の clearance を線形補間し、残りは区間を二分して縁を締める。単純な中点だけで
+      // 交点を選ぶと、視線の区間数に応じた深度の段がそのまま雲頂の縞になる。
       for (let refineIndex = 0; refineIndex < sampling.refine; refineIndex++) {
-        const middle = above.add(below).mul(0.5);
-        const inside = this.clearanceAt(
-          entry.add(direction.mul(middle)), threshold, grainAmplitude).lessThan(0);
-        If(inside, () => { below.assign(middle); }).Else(() => { above.assign(middle); });
+        const denominator = max(aboveClearance.sub(belowClearance), 1e-6);
+        const linearWeight = aboveClearance.div(denominator).clamp(0, 1);
+        const middle = (refineIndex === 0)
+          ? mix(above, below, linearWeight)
+          : above.add(below).mul(0.5);
+        const clearance = this.clearanceAt(
+          entry.add(direction.mul(middle)), threshold, grainAmplitude,
+        ).toVar();
+        If(clearance.lessThan(0), () => {
+          below.assign(middle);
+          belowClearance.assign(clearance);
+        }).Else(() => {
+          above.assign(middle);
+          aboveClearance.assign(clearance);
+        });
       }
 
       const hitPoint = entry.add(direction.mul(below)).toVar();
