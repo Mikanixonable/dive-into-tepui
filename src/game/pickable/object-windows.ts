@@ -11,14 +11,13 @@ import type {
 } from '../../hud/windows/property-window-content';
 import { TEMP_WINDOW_GROUP } from '../../hud/overlay-manager';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
-import { focusTargetId } from '../camera/focus-target';
+import { focusTargetId, type FocusTarget } from '../camera/focus-target';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { NavTarget } from '../nav-target';
 import { CameraSystem } from '../camera/camera-system';
 import type { PlanEditor } from '../plan/plan-editor';
 import type { ControlSelection } from '../control-selection';
-import type { FrameControls } from '../hud/frame/frame-controls';
 import type { ObjectAuthoring, Stage } from '../stages/stage';
 import { Player } from '../player/player';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
@@ -63,7 +62,7 @@ export class ObjectWindows {
     private readonly activeView: () => ViewFrame,
     private readonly pauseMenu: PauseMenu,
     private readonly controlSelection: ControlSelection,
-    private readonly frameControls: FrameControls,
+    private readonly setFocus: (target: FocusTarget) => void,
     private readonly activeStage: Stage,
     private readonly targeter: Targeter,
   ) {
@@ -274,7 +273,7 @@ export class ObjectWindows {
       id: item.id,
       label,
       onFocus: () => {
-        this.frameControls.setFocus({ kind: 'object', id: item.id });
+        this.setFocus({ kind: 'object', id: item.id });
         this.hud.hint(`${label} にフォーカス`);
       },
       onContextMenu: (clientX, clientY) => {
@@ -293,7 +292,7 @@ export class ObjectWindows {
   // 戦闘はその場のカメラだけを動かす。
   private focus(id: string, name: string): void {
     if (this.cameraSystem.view === 'map') {
-      this.frameControls.setFocus({ kind: 'object', id });
+      this.setFocus({ kind: 'object', id });
     } else {
       this.cameraSystem.combatCamera.setFocusTarget({ kind: 'object', id });
     }
