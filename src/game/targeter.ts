@@ -12,7 +12,7 @@ import { isCombatTarget, type CombatTarget } from './dynamic/dynamic-entity/comb
 import { Input } from '../input/input';
 import { CameraSystem } from './camera/camera-system';
 import type { GroupedMarkerItem, MarkerRole } from './marker/grouped-markers';
-import type { CelestialMarkers } from './marker/celestial-markers';
+import type { ActiveCelestialLabel } from './marker/celestial-markers';
 import { MARKER_PRIORITY } from './marker/crowding';
 import type { MarkerManager } from './marker/marker-manager';
 import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
@@ -54,7 +54,6 @@ export class Targeter {
     private readonly markerManager: MarkerManager,
     private readonly navTarget: NavTarget, private readonly roster: EntityRoster,
     private readonly celestialBodies: readonly CelestialBody[],
-    private readonly celestialMarkers: CelestialMarkers,
   ) {}
 
   // 航法ターゲットを生存中の敵・自艦・基地として解決したもの。戦闘対象になれない対象
@@ -104,22 +103,23 @@ export class Targeter {
   }
 
   // ターゲットに紐づく表示物(的通過マーク・方位マーカー)と、全戦闘対象のマーカー集合を
-  // まとめて更新する。
+  // まとめて更新する。celestialLabels は今フレームに描かれた天体ラベルで、マップでの重なりを
+  // 避けるために読む。
   sync(
     viewer: OrbitingObject | null, cameraSystem: CameraSystem, displayTime: number, simTime: number,
-    visibilityPolicy: MapVisibilityPolicy | null,
+    visibilityPolicy: MapVisibilityPolicy | null, celestialLabels: readonly ActiveCelestialLabel[],
   ): void {
     const project = cameraSystem.activeCameraProjection;
     this.syncBoardMarkers(project);
     this.syncTargetDirMarkers(viewer, cameraSystem.view === 'map', project);
-    this.syncTargetMarkers(viewer, displayTime, simTime, cameraSystem, visibilityPolicy);
+    this.syncTargetMarkers(viewer, displayTime, simTime, cameraSystem, visibilityPolicy, celestialLabels);
   }
 
   // 全戦闘対象のマーカー集合(ターゲットの役割を含む)と LEAD マーカーを同期する。位置は
   // 機体メッシュと同じ stateAt — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
   private syncTargetMarkers(
     viewer: OrbitingObject | null, displayTime: number, simTime: number, cameraSystem: CameraSystem,
-    visibilityPolicy: MapVisibilityPolicy | null,
+    visibilityPolicy: MapVisibilityPolicy | null, celestialLabels: readonly ActiveCelestialLabel[],
   ): void {
     // マーカーは操作対象自身も他の船と同列に扱う。自分自身を候補から外すのは、ターゲット選定
     // (handleTargetSelectKey)の側だけ。
@@ -175,9 +175,8 @@ export class Targeter {
       const mapOpacity = mapOccluded ? 0 : mapView ? ammoFadeOpacity(len(sub(fuel.state.r, viewerPos))) : 1;
       this.pushMarkerItem(fuel.markerItem(viewerPos, view), visibility, mapOpacity, mapOccluded);
     }
-    const celestialLabels = mapView ? this.celestialMarkers.activeLabels : [];
     this.markerManager.combatMarkers.sync(
-      this.markerItemScratch, project, view, screenScale, celestialLabels, this.celestialBodies,
+      this.markerItemScratch, project, view, screenScale, mapView ? celestialLabels : [], this.celestialBodies,
       cameraSystem.activeCameraPos,
     );
     // 見越し点は弾速から解くので、砲を積んでいる艦を操作している間だけ出る。
