@@ -44,7 +44,7 @@ import { orbitRows } from '../../pickable/orbit-rows';
 
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { ControlSelection } from '../../control-selection';
-import type { ObjectAuthoring } from '../../stages/stage';
+import type { ObjectAuthoring } from '../../pickable/inspected-object';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
