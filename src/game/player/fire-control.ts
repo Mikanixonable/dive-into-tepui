@@ -18,7 +18,7 @@ import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import { MUZZLE_OFFSETS } from '../../render/ships';
 import { FlashEffects } from '../vfx/flash-effects';
-import type { Stage } from '../stages/stage';
+import type { StageOutcome } from '../stages/stage-outcome';
 import { Player } from './player';
 import type { FireSaveData } from '../save/save-data';
 import { HULL_EMISS, ENV_TEMP } from '../dynamic/dynamic-entity/dynamic-entity';
@@ -154,7 +154,7 @@ export class FireControl {
   updateFireState(
     dt: number,
     input: Input,
-    activeStage: Stage,
+    activeStage: StageOutcome,
     registry: EntityRegistry,
     celestialBodies: CelestialBodies,
   ): void {
@@ -198,7 +198,7 @@ export class FireControl {
 
   // クールダウン込みの発射サイクルを1回進める。スピンアップ中・クールダウン中は発射しない。
   private fireCycle(
-    activeStage: Stage,
+    activeStage: StageOutcome,
     registry: EntityRegistry,
     celestialBodies: CelestialBodies,
   ): void {
@@ -280,7 +280,7 @@ export class FireControl {
 
   // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、発射数を記録する。
   private fireGun(
-    activeStage: Stage,
+    activeStage: StageOutcome,
     registry: EntityRegistry,
     celestialBodies: CelestialBodies,
   ): void {

@@ -5,7 +5,7 @@ import type { CelestialBody } from '../../../physics/celestial-body';
 import { add, randVec, v3, Vec3 } from '../../../math/vec3';
 import { randomQuat } from '../../../math/quat';
 import { randSym } from '../../../math/random';
-import type { Stage } from '../../stages/stage';
+import type { StageOutcome } from '../../stages/stage-outcome';
 import type { Contact } from './contact';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../../vfx/flash-effects';
@@ -199,7 +199,7 @@ export class DebrisPiece extends DynamicEntity {
 
   // 再突入判定に加え、寿命を持つデブリは表示時間の超過でも消す。
   checkLoss(
-    dt: number, simTime: number, activeStage: Stage, registry: EntityRegistry,
+    dt: number, simTime: number, activeStage: StageOutcome, registry: EntityRegistry,
     viewerPos: Vec3, atmosphereBodies: readonly CelestialBody[],
   ): void {
     super.checkLoss(dt, simTime, activeStage, registry, viewerPos, atmosphereBodies);

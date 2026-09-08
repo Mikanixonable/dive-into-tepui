@@ -8,7 +8,7 @@ import type { RadiatorSystem } from '../../player/radiator';
 import type { AeroLoad } from '../../player/aero-load';
 import type { AltitudeAlarm } from '../../player/altitude-alarm';
 import type { Input } from '../../../input/input';
-import type { Stage } from '../../stages/stage';
+import type { StageOutcome } from '../../stages/stage-outcome';
 import type { EntityRegistry } from '../entity-registry';
 import type { CombatTarget } from './combat-target';
 import type { DynamicEntity } from './dynamic-entity';
@@ -42,7 +42,7 @@ export interface Controllable extends CombatTarget {
   // registry / activeStage / celestialBodies は射撃と補給の判定に使う。
   updateControls(
     input: Input | null, dt: number, simDt: number,
-    registry: EntityRegistry, activeStage: Stage, celestialBodies: CelestialBodies,
+    registry: EntityRegistry, activeStage: StageOutcome, celestialBodies: CelestialBodies,
   ): void;
 
   // 次のフレームへ持ち越してはならない連続指令(推力・トルク・射撃)を畳む。

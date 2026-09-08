@@ -9,7 +9,7 @@ import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { ProjectFn } from '../../math/projection';
 import type { ControlSelection } from '../control-selection';
-import type { ObjectAuthoring } from '../stages/stage';
+import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { PlanEditor } from '../plan/plan-editor';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
