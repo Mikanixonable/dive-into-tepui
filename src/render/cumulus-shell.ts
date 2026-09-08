@@ -10,7 +10,7 @@ import {
   sqrt, step, texture as textureNode, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
 import { BlueNoise } from './blue-noise';
-import { GeneratedCloudField } from './cloud/cloud-field';
+import { GeneratedCloudField } from './cloud/generated-cloud-field';
 import { sphereMeshUv, unitSphereGeometry } from './celestial-surface';
 import {
   CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE, cloudTopOf, grainAt, opaqueFractionOf,
@@ -76,6 +76,7 @@ export class CumulusShell {
   // cloudField は雲場、bodyRadius は殻を載せる天体の基準半径 [m]。親は半径 bodyRadius の球へ
   // 合わせたスケールを与えればよく、雲頂ぶんの膨らみはこの殻が持つ。
   public constructor(cloudField: GeneratedCloudField, bodyRadius: number) {
+    // 雲頂を含む殻の尺度と雲粒の周波数を組む。
     this.cloudField = cloudField;
     const shellScale = 1 + CLOUD_TOP_SPAN / bodyRadius;
     const grainFrequency = bodyRadius / CUMULUS_GRAIN_SIZE;
@@ -84,6 +85,7 @@ export class CumulusShell {
     this.gradientAngle = uniform(0.5 / grainFrequency);
     this.material = this.buildMaterial();
 
+    // 詳細度ごとのメッシュを同じ雲場へ束ねる。
     const meshes = new Map<SphereLodLevel, THREE.Mesh>();
     for (const level of SPHERE_LOD_LADDER) {
       const mesh = new THREE.Mesh(unitSphereGeometry(level), this.material);

@@ -19,7 +19,7 @@ import { Aurora, type AuroraOptics } from '../../../render/aurora';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import { CumulusShell } from '../../../render/cumulus-shell';
 import { ClimateMap } from '../../../render/cloud/climate-map';
-import { GeneratedCloudField } from '../../../render/cloud/cloud-field';
+import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
 import { EarthCoastline } from '../../../render/earth-coastline';
 import { MoonSurfaceMarkings } from '../../../render/moon-surface-markings';
 import { GeostationaryOverlay } from '../celestial-entity/geostationary-overlay';
