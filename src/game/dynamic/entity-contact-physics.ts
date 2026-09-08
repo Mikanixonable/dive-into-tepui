@@ -65,9 +65,9 @@ export class EntityContactPhysics {
   private readonly pairScratch: number[] = [];
   private readonly gridScratch = new HierarchicalSpatialGrid<number>(CONTACT_GRID_MIN_CELL_SIZE);
   private readonly candidateScratch: Candidate[] = [];
-  // 負荷確認ウィンドウが読む、列挙した延べ候補ペア数。フレーム頭で Simulator が 0 へ戻す。
+  // デバッグ情報ウィンドウが読む、列挙した延べ候補ペア数。フレーム頭で Simulator が 0 へ戻す。
   public candidatePairs = 0;
-  // 負荷確認ウィンドウが読む、交戦圏ごとの参加者数の延べ数。フレーム頭で Simulator が 0 へ戻す。
+  // デバッグ情報ウィンドウが読む、交戦圏ごとの参加者数の延べ数。フレーム頭で Simulator が 0 へ戻す。
   public participants = 0;
 
   // 交戦圏ごとに、その内側にいる参加者どうしの 1 substep ぶんの接触を解く。交戦圏どうしは

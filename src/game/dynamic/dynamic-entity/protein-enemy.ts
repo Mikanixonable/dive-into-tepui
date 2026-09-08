@@ -146,7 +146,7 @@ export class ProteinEnemy extends Enemy {
 
   public get hudSnapshot(): ProteinHudSnapshot { return this.runtime.hudSnapshot; }
 
-  // 負荷確認ウィンドウが読む、直近 sync() 時点のモーション計算量。
+  // デバッグ情報ウィンドウが読む、直近 sync() 時点のモーション計算量。
   public get motionMetrics(): { readonly cpuMs: number; readonly uploadBytes: number; readonly lod: ProteinMotionLod } {
     return { cpuMs: this.runtime.cpuMs, uploadBytes: this.runtime.uploadBytes, lod: this.runtime.lod };
   }
