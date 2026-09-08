@@ -2,11 +2,10 @@
 import * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { OrbitingObject } from './orbiting-object';
-import type { View } from '../../view/view';
 import { DynamicEntity } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
 import { EntityIdAllocator } from './entity-id';
-import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
+import type { KinematicState } from '../../../physics/kinematic-state';
 import { Attitude } from '../../../physics/attitude';
 import { qInvert, qRotate } from '../../../math/quat';
 import { add, len, sub, v3, Vec3 } from '../../../math/vec3';
@@ -15,11 +14,11 @@ import { buildBaseModel } from '../../../render/base-station-model';
 import type { Notifier } from '../../../hud/notifier';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { MarkerSlots } from '../../marker/marker-slots';
-import type { BaseSaveData } from '../../save/save-data';
+import { savedAttitude, savedKinematicState, type BaseSaveData } from '../../save/save-data';
 import { Plan, type PlanExecutionMode } from '../../plan/plan';
 import { generateRandomName } from '../../random-name';
-import type { GroupedMarkerItem, MarkerRole } from '../../marker/grouped-markers';
-import { fmtDist, fmtMarkerDist } from '../../../hud/utils';
+import type { GroupedMarkerItem } from '../../marker/grouped-markers';
+import { fmtDist } from '../../../hud/utils';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
 import type { SphereHit } from '../../../math/triangle-mesh';
@@ -36,7 +35,6 @@ import type { CameraSystem } from '../../camera/camera-system';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { RenderStyle } from '../../../render/render-style';
 import type { MapVisibilityPolicy } from '../../map/visibility-policy';
-import { currentThemePalette } from '../../../theme';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
@@ -151,18 +149,14 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   ) {
     const { state, name, att, id } = 'saved' in init
       ? {
-        state: kinematicState<'eci'>(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
+        state: savedKinematicState(init.saved, init.simTime),
         name: init.saved.name || '基地',
         att: undefined,
         id: init.saved.id,
       }
       : { state: init.state, name: init.name ?? generateRandomName('base'), att: init.att, id: init.id };
     const savedAtt: Attitude | undefined = 'saved' in init
-      ? {
-        q: { ...init.saved.q },
-        w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z),
-        inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z),
-      }
+      ? savedAttitude(init.saved, v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z))
       : undefined;
     super(state, buildBaseModel(), scene, savedAtt ?? att, idAllocator.next(id));
     // 姿勢に慣性モーメントを設定（既定の identityAttitude は inertia=(1,1,1) なので上書きが必要）
@@ -257,26 +251,23 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   private get markerKey(): string { return `base-${this.id}`; }
 
   // 基地のマーカー表示項目。pos/vel には構造メッシュと同じ表示時刻の状態を渡すこと。
-  markerItem(
-    role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, _isActive: boolean,
-  ): GroupedMarkerItem {
+  markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3): GroupedMarkerItem {
+    // 代表選出の優先度は、近い個体ほど高くする
     const dist = len(sub(pos, viewerPos));
-    const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.BASE - dist / 1e9;
     return {
       key: this.markerKey,
       kind: this.mapKind,
-      cls: role === 'primary' ? 'mk-base mk-target' : 'mk-base',
+      cls: 'mk-base',
       sym: baseMarkerSvg(),
       pos,
       vel,
-      priority,
+      priority: MARKER_PRIORITY.BASE - dist / 1e9,
       name: this.name,
-      detail: view === 'map' ? '' : fmtMarkerDist(dist),
-      bearingColor: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ALLY,
+      bearingColor: COLOR_MARKER_ALLY,
       bearingSym: ENTITY_GLYPH.base,
       bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: false,
-      color: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ALLY,
+      color: COLOR_MARKER_ALLY,
       symMarkup: true,
     };
   }

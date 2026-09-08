@@ -12,12 +12,10 @@ import type { ActiveCelestialLabel } from './celestial-markers';
 import type { MarkerManager } from './marker-manager';
 import { DIRECTION_GLYPH } from './marker-identity';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
-import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from './crowding';
+import { resolveCrowdingWinner, MARKER_PRIORITY, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from './crowding';
+import { currentThemePalette } from '../../theme';
 import type { ProjectFn, ScaleFn } from '../../math/projection';
 import type { CelestialBody } from '../../physics/celestial-body';
-
-// マーカー上での対象の役割。ターゲットは色と字形が変わる。
-export type MarkerRole = 'none' | 'primary';
 
 export interface GroupedMarkerItem {
   key: string; // 対象を一意に識別するマーカーキー
@@ -28,7 +26,7 @@ export interface GroupedMarkerItem {
   vel: Vec3; // ECI 速度。マップビューでの進行方向表示に使う
   priority: number; // 代表選出の優先度(大きいものが代表になる)
   name: string; // ラベルの主題。まとめられた代表には "xN" が付く
-  detail: string; // ラベル末尾の付随情報(距離など)
+  detail?: string; // ラベル末尾の付随情報(距離など)
   bearingColor: string; // 画面外方位マーカーの色
   bearingSym?: string; // 画面外方位マーカーの記号。省略時は通常の矢印
   bearingClass?: string; // 画面外方位マーカーの CSS クラス
@@ -37,6 +35,18 @@ export interface GroupedMarkerItem {
   symMarkup?: boolean;
   opacity?: number; // 画面内マーカーの不透明度。0 以下なら非表示
   occluded?: boolean; // 惑星遮蔽中は表示位置を維持したままフェードアウトする
+}
+
+// ターゲットに指定された対象のマーカーへ、代表選出の優先度と強調色を被せる。
+export function withTargetRole(item: GroupedMarkerItem): GroupedMarkerItem {
+  const signal = currentThemePalette().signal;
+  return {
+    ...item,
+    cls: `${item.cls} mk-target`,
+    priority: MARKER_PRIORITY.PRIMARY_TARGET,
+    color: signal,
+    bearingColor: signal,
+  };
 }
 
 // これより画面上で近い対象どうしは、1つの代表マーカーへまとめる [px]。
@@ -203,7 +213,7 @@ export class GroupedMarkers {
     if (count >= 3) {
       return `x${count}`;
     }
-    return item.detail === '' ? item.name : `${item.name}\n${item.detail}`;
+    return item.detail ? `${item.name}\n${item.detail}` : item.name;
   }
 
   // key は対象(敵)ごとに一意で増え続けるため hide ではなく remove で DOM ごと片付ける。
