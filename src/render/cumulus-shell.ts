@@ -3,13 +3,14 @@
 // 届いた視線は雲頂の高さ場まで下ろして交点を探し、そこの深度と法線を書く。場の texel より細かい
 // 粒は天体固定のノイズで足す。陰影・影・逆二乗の減衰はすべてパイプラインが与える。
 import * as THREE from 'three/webgpu';
+import type { WebGPURenderer } from 'three/webgpu';
 import {
   Discard, Fn, If, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
   max, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select, smoothstep,
   sqrt, step, texture as textureNode, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
 import { BlueNoise } from './blue-noise';
-import { DeferredTexture } from './deferred-texture';
+import { GeneratedCloudField } from './cloud/generated-cloud-field';
 import { sphereMeshUv, unitSphereGeometry } from './celestial-surface';
 import {
   CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE, cloudTopOf, grainAt, opaqueFractionOf,
@@ -53,7 +54,7 @@ const GRAIN_FADE_MIN_PIXELS = 2;
 const GRAIN_FADE_FULL_PIXELS = 4;
 
 export class CumulusShell {
-  private readonly fieldMap: DeferredTexture;
+  private readonly cloudField: GeneratedCloudField;
   // 標本の配り方と、その回数まで展開したマテリアル。
   private sampling: CumulusSampling = SAMPLING_OF_DETAIL[CUMULUS_DETAIL.standard];
   private material: THREE.Material;
@@ -68,13 +69,15 @@ export class CumulusShell {
   // 段ごとの球。表示側が親の位置・スケール・自転姿勢を毎フレーム与える。
   private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
   private activeLevel: SphereLodLevel | null = null;
+  private cloudVisible = false;
+  private cirrusVisible = true;
+  private translucentCumulusVisible = true;
 
-  // fieldUrl は雲の場、bodyRadius は殻を載せる天体の基準半径 [m]。親は半径 bodyRadius の球へ
+  // cloudField は雲場、bodyRadius は殻を載せる天体の基準半径 [m]。親は半径 bodyRadius の球へ
   // 合わせたスケールを与えればよく、雲頂ぶんの膨らみはこの殻が持つ。
-  public constructor(fieldUrl: string, bodyRadius: number) {
-    this.fieldMap = new DeferredTexture(fieldUrl, THREE.NoColorSpace);
-    // 正距円筒の経度は周期的なので、場は経度方向へ巻く。
-    this.fieldMap.texture.wrapS = THREE.RepeatWrapping;
+  public constructor(cloudField: GeneratedCloudField, bodyRadius: number) {
+    // 雲頂を含む殻の尺度と雲粒の周波数を組む。
+    this.cloudField = cloudField;
     const shellScale = 1 + CLOUD_TOP_SPAN / bodyRadius;
     const grainFrequency = bodyRadius / CUMULUS_GRAIN_SIZE;
     this.groundRadius = uniform(1 / shellScale);
@@ -82,6 +85,7 @@ export class CumulusShell {
     this.gradientAngle = uniform(0.5 / grainFrequency);
     this.material = this.buildMaterial();
 
+    // 詳細度ごとのメッシュを同じ雲場へ束ねる。
     const meshes = new Map<SphereLodLevel, THREE.Mesh>();
     for (const level of SPHERE_LOD_LADDER) {
       const mesh = new THREE.Mesh(unitSphereGeometry(level), this.material);
@@ -94,13 +98,22 @@ export class CumulusShell {
   }
 
   // 雲の場のテクスチャ。解放までこの殻が持つ。
-  public get field(): THREE.Texture { return this.fieldMap.texture; }
+  public get field(): THREE.Texture { return this.cloudField.texture; }
 
   // 殻を描いている段があるか。
   public get visible(): boolean { return this.activeLevel !== null; }
 
+  // 雲全体が表示対象か。積雲の詳細度とは独立に持つ。
+  public get cloudsVisible(): boolean { return this.cloudVisible; }
+
   // 殻の高度 [m]。場の雲頂高度 0..1 が張る高さでもある。
   public get topAltitude(): number { return CLOUD_TOP_SPAN; }
+
+  // 雲場を読む描画物があるフレームだけ、表示時刻の雲を焼く。
+  public bake(renderer: WebGPURenderer, displayTime: number): void {
+    if (!this.fieldContributes) return;
+    this.cloudField.bake(renderer, displayTime);
+  }
 
   // 全段のメッシュを parent の下へ置く。
   public addTo(parent: THREE.Object3D): void {
@@ -110,6 +123,18 @@ export class CumulusShell {
   // 積雲の精細さの段を置き直す。
   public setDetail(detail: CumulusDetail): void {
     this.setSampling(SAMPLING_OF_DETAIL[detail]);
+  }
+
+  // 雲全体の表示可否を置き直す。積雲の殻の有無は detail が決める。
+  public setCloudsVisible(visible: boolean): void {
+    this.cloudVisible = visible;
+    if (!visible) this.hide();
+  }
+
+  // 大気へ立てる雲の種類ごとの表示可否を置き直す。
+  public setAtmosphereCloudsVisible(cirrusVisible: boolean, translucentCumulusVisible: boolean): void {
+    this.cirrusVisible = cirrusVisible;
+    this.translucentCumulusVisible = translucentCumulusVisible;
   }
 
   // 標本の配り方を置き直す。**回数はレイマーチの展開としてグラフへ焼かれている**ので、
@@ -124,10 +149,8 @@ export class CumulusShell {
   }
 
   // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。刻みを持たない配り方では
-  // 全段を隠す。場の画像の取得もここで始める — この殻を持つ天体が球として描かれるまで
-  // 取りに行かないため(刻みを持たない配り方でも、地表へ焼き込む雲が同じ場を読む)。
+  // 全段を隠す。
   public syncLod(apparentDiameterPx: number): void {
-    this.fieldMap.request();
     const level = this.sampling.march === 0 ? null : sphereLodLevel(apparentDiameterPx);
     if (level === this.activeLevel) return;
     this.activeLevel = level;
@@ -140,11 +163,17 @@ export class CumulusShell {
     for (const mesh of this.meshes.values()) mesh.visible = false;
   }
 
+  // この殻の雲場を読む描画物があるか。
+  private get fieldContributes(): boolean {
+    return this.cloudVisible && (
+      this.visible || this.cirrusVisible || this.translucentCumulusVisible);
+  }
+
   // 全段のメッシュを親から外し、マテリアル・場・ディザのタイルを解放する。
   public dispose(): void {
     for (const mesh of this.meshes.values()) mesh.removeFromParent();
     this.material.dispose();
-    this.fieldMap.dispose();
+    this.cloudField.dispose();
     this.blueNoise.dispose();
   }
 
@@ -256,7 +285,7 @@ export class CumulusShell {
 
   // 天体固定の単位方向における場の値。
   private fieldAt(direction: Vec3Node): Vec4Node {
-    return textureNode(this.fieldMap.texture, sphereMeshUv(direction));
+    return textureNode(this.cloudField.texture, sphereMeshUv(direction));
   }
 
   // 粒の振幅。**1 画素が張る角は画面上の変化率から引く** — 天体の見かけ直径から出すと、

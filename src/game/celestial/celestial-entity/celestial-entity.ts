@@ -1,6 +1,7 @@
 // 天体1体。運動(CelestialMotion)と表示名・表示クラスを持ち、見た目(メッシュ・輝点スプライト・
 // 環など)をその運動へ同期する。位置・姿勢の正本は motion で、sync のたびにそこから引く。
 import * as THREE from 'three/webgpu';
+import type { WebGPURenderer } from 'three/webgpu';
 import { CelestialBodyDef, CelestialMotion } from '../../../physics/celestial-motion';
 import { shapeSpheroidRadii } from '../../../physics/celestial-body-def';
 import { apsisAltitudes, OrbitalElements, orbitalElementsOf } from '../../../physics/elements';
@@ -179,6 +180,9 @@ export abstract class CelestialEntity implements ObjectPickable {
   public atmosphereCloudsAt(_displayTime: number): AtmosphereClouds | null {
     return null;
   }
+
+  // この天体が持つ動的な雲場を表示時刻へ焼く。
+  public bakeClouds(_renderer: WebGPURenderer, _displayTime: number): void {}
 
   // 大気パスへ渡す1体ぶんの候補。大気を持たない・描かない天体では null。**尺度は直線距離で
   // 引く** — 深度で引くと、視点の背後にある天体が目の前にあるのと同じ尺度になり、画面に
