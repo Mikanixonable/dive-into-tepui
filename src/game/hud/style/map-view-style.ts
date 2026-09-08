@@ -175,6 +175,7 @@ export const MAP_VIEW_STYLE = `
   transition: color var(--transition-fast), background var(--transition-fast);
 }
 #hud .hud-map-root.active #hud-physical-object-list .erow:hover { color: var(--title); background: var(--surface-2); }
+#hud .hud-map-root.active #hud-physical-object-list .erow:focus { background: var(--color-primary-fill-weak); }
 /* 基調スキンの .erow.tgt はこのセレクタより詳細度が低く、上の .erow が指定する色に負ける。
    フォーカス中の行を目立たせるため、マップ視点でも同じ詳細度で塗り直す。 */
 #hud .hud-map-root.active #hud-physical-object-list .erow.tgt {
