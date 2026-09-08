@@ -11,9 +11,6 @@ import { MARKER_STYLE } from './style/marker-style';
 import { COMBAT_PANEL_ROWS_STYLE } from './style/combat-panel-rows-style';
 import { MAP_PANEL_STYLE } from './style/map-panel-style';
 import { STAGE_STATUS_STYLE } from './style/stage-status-style';
-import { PAUSE_MENU_STYLE } from '../../hud/style/pause-menu-style';
-import { HELP_PANEL_STYLE } from './style/help-panel-style';
-import { SETTINGS_VIEW_STYLE } from '../../hud/style/settings-view-style';
 import { COMBAT_VIEW_STYLE } from './style/combat-view-style';
 import { MAP_VIEW_STYLE } from './style/map-view-style';
 import { isCompactViewport } from '../../hud/breakpoints';
@@ -27,8 +24,7 @@ import type { CollapseToggleLabels } from '../../hud/widgets';
 // カスケードの後勝ちを利用する箇所（同一セレクタの再定義）は各ファイル内で完結させてある。
 const STYLE =
   LAYOUT_TOKENS_STYLE + SKELETON_STYLE + MARKER_STYLE
-  + COMBAT_PANEL_ROWS_STYLE + MAP_PANEL_STYLE + STAGE_STATUS_STYLE + PAUSE_MENU_STYLE
-  + HELP_PANEL_STYLE + SETTINGS_VIEW_STYLE
+  + COMBAT_PANEL_ROWS_STYLE + MAP_PANEL_STYLE + STAGE_STATUS_STYLE
   + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE;
 
 

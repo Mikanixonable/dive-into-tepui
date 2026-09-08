@@ -2,6 +2,8 @@
 // 検索・フィルタ・選択ハイライトの状態遷移と DOM 描画を担当する。
 import type { Input } from '../../../input/input';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
+import { injectOnce } from '../../../hud/inject-style';
+import { HELP_PANEL_STYLE } from '../style/help-panel-style';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
 import {
   ARROW_KEYS, AUXILIARY_KEYS, BEHAVIOR_LABELS, HELP_CATEGORIES, helpEntries, INPUT_LABELS, KEYBOARD_ROWS,
@@ -36,6 +38,7 @@ export class HelpPanel implements OverlayHandle {
   // 操作説明パネルの DOM 一式を組み立てて root へ追加し、クリック・検索入力の購読を開始する。
   // 開閉状態は閉じたまま(open を呼ぶまで非表示)で始まる。
   public constructor(root: HTMLElement, private readonly overlayManager: OverlayManager) {
+    injectOnce('help-panel', HELP_PANEL_STYLE);
     this.el = document.createElement('div');
     this.el.id = 'hud-help';
     this.el.className = 'panel';
