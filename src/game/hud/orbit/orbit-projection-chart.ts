@@ -3,8 +3,8 @@
 import { EDGE, FONT_FAMILY, FONT_XXS, TEXT_DIM } from '../../../theme';
 import { injectOnce } from '../../../hud/inject-style';
 import {
-  CHART_LINE_WIDTH, CHART_MARK_RADIUS, CHART_MARK_RING_WIDTH, chartCanvasStyle,
-  drawPointMarker, drawPolylineWithGaps, resizeCanvasBackingStore, type BackingStoreState,
+  chartCanvasStyle, drawPointMarker, drawPolylineWithGaps, resizeCanvasBackingStore,
+  type BackingStoreState,
 } from './chart-canvas';
 
 interface ProjectionPoint { readonly lonDeg: number; readonly latDeg: number }
@@ -241,9 +241,9 @@ export class OrbitProjectionChart {
   ): void {
     const toPx = (point: ProjectionPoint): { x: number; y: number } =>
       this.toPx(point.lonDeg, point.latDeg, win, plotLeft, plotTop, plotWidth, plotHeight);
-    drawPolylineWithGaps(this.ctx, series.points, toPx, series.color, CHART_LINE_WIDTH);
+    drawPolylineWithGaps(this.ctx, series.points, toPx, series.color);
 
     const { x, y } = toPx(series.current);
-    drawPointMarker(this.ctx, x, y, series.currentStyle === 'filled', CHART_MARK_RADIUS, CHART_MARK_RING_WIDTH);
+    drawPointMarker(this.ctx, x, y, series.currentStyle === 'filled');
   }
 }
