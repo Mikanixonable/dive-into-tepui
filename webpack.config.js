@@ -24,6 +24,12 @@ module.exports = {
         type: 'asset/resource',
       },
       {
+        // 配信 bundle のバイナリは圧縮済みの実体をそのまま URL 化する。
+        // .bin.gz を HTTP の Content-Encoding として扱う設定はここには置かない。
+        test: /\.bin(?:\.gz)?$/,
+        type: 'asset/resource',
+      },
+      {
         test: /\.cube$/,
         type: 'asset/source',
       },
@@ -75,6 +81,7 @@ module.exports = {
     }),
     new webpack.DefinePlugin({
       __APP_VERSION__: JSON.stringify(version),
+      __EARTH_SURFACE_BASE_URL__: JSON.stringify(process.env.EARTH_SURFACE_BASE_URL ?? ''),
     }),
   ],
   devServer: {
