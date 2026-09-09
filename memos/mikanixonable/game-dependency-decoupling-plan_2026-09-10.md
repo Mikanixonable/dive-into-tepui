@@ -101,6 +101,18 @@ HUDがcomposition rootの内部構造を読む境界をなくす。パネルは�
   対象切替、未来表示期間、軌道分析を閉じた後のreader解除を確認する。
 - `Game.update()`の分析reader更新が`Predictor.update()`より前、`Game.sync()`の分析表示が既存のHUD同期位置にあることをコードレビューで確認する。
 
+#### 実施結果（2026-09-10）
+
+- パネルPresenterを6つのfeature-specific sourceへ分割し、`Game`自身を渡さない配線へ変更した。
+- 軌道分析の入力境界（reader入力・同期入力・タブ入力）を追加し、`Hud`から`Game`の型参照と旧callback fallbackを除去した。
+- `activeControllable`はcomposition rootでgetterとして配線し、対象切替後も古い値を保持しないようにした。
+- `Game.update()`のreader更新位置、`Predictor.update()`との前後関係、`Game.sync()`内のHUD同期順序は変更していない。
+- 実装コミット: `0a41653e`（panel presenter）、`37804af5`（orbit boundary）、`dec37e30`（Game/Hud統合）。
+- `npm run typecheck`: 成功。
+- `npm run test:game`: 201/201 成功。
+- `git diff --check`: 成功。HUDからの`Game`直接参照、Presenterへ`this`を渡す呼び出し、旧orbit callbackは検索上0件。
+- `npm run smoke:browser`: pause menu shieldingの既存テスト状態（`shieldShown: false`）で停止した。変更対象にpause menuのコードはなく、変更前スナップショットでの同一確認は静的サーバー未起動で完遂できなかったため、UI smokeの完全な再確認は残課題とする。
+
 ### 手順2: 保存系の`Game`依存をデータ境界へ移す
 
 #### 目的
@@ -122,6 +134,19 @@ HUDがcomposition rootの内部構造を読む境界をなくす。パネルは�
 - `rg -n "capture\(.*Game|import \{ Game \}|import type \{ Game \}" src/launcher/save src/launcher/snapshot-controls.ts`で、永続化のAPIが`Game`全体を要求しない。
 - `npm run typecheck`、`npm run test:game`を通す。
 - 手動保存、自動保存、一覧表示、スナップショットロード、決着後の保存禁止を`npm run smoke:browser`で確認する。
+
+#### 実施結果（2026-09-10）
+
+- `SnapshotService.capture`は`Game`ではなく`RunSummary`と`GameSaveData`を受け取る境界へ変更した。
+- 自動保存・手動保存・セーブブラウザは、保存データ、ステージ状態、天体名解決、pause/resumeだけの契約を介して動作する。
+- `src/launcher/save/`、`snapshot-controls.ts`、`save-browser.ts`から`Game`の直接importを除去した。
+- 保存形式、メタデータの構築、ロード検証、60秒間隔、決着後禁止、保存操作の呼出順序は変更していない。
+- 実装コミット: `a4de2a7a`（保存境界）。
+- コードレビューで、`Launcher`がGameを生成・所有する責務と、保存データを取得する時点を確認した。
+- `npm run typecheck`: 成功。
+- `npm run test:game`: 201/201 成功。
+- `git diff --check`: 成功。保存系APIへの`Game`直接参照は検索上0件。
+- `npm run smoke:browser`: 保存操作の確認へ到達する前に、pause menu shieldingの`shieldShown: false`で停止した。手順1と同じ既存のUI smoke課題として、保存固有の完全な再確認は残課題とする。
 
 ### 手順3: フレーム内の責務をCoordinatorへ分ける
 
@@ -197,7 +222,7 @@ Coordinator分割後に見える機能単位の依存を、各機能のportへ�
 
 ## 進捗
 
-- [ ] 手順1: HUDの`Game`逆依存を解消
-- [ ] 手順2: 保存系のデータ境界化
+- [x] 手順1: HUDの`Game`逆依存を解消（実装・コードレビュー完了。UI smokeのみ既存失敗で未完遂）
+- [x] 手順2: 保存系のデータ境界化（実装・コードレビュー完了。UI smokeは既存失敗で未完遂）
 - [ ] 手順3: フレームCoordinator分割
 - [ ] 手順4: 機能ビュー依存の縮小

@@ -6,7 +6,8 @@ import { EquirectProjection } from './field-projection';
 import { WeatherModel } from './weather-model';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { FieldProjection } from './field-projection';
-import type { CloudFieldSampler } from './cloud-field-sampler';
+import type { CloudFieldSampler, CloudUvAt } from './cloud-field-sampler';
+import { monthlyClimateClockAt } from './monthly-climate-clock';
 
 // 全球の雲場の高さ [texel]。cloud-lab と同じ全球正距円筒の解像度を使う。
 const GLOBAL_FIELD_HEIGHT = 512;
@@ -18,16 +19,23 @@ export class GeneratedCloudField {
   private lastBakedDisplayTime: number | null = null;
   // 気候テクスチャの到着前に焼いた場を、画像公開後の同じ時刻へ持ち越さない。
   private lastBakedClimateGeneration: number | null = null;
+  private lastClimateMonth = -1;
+  private lastClimateBlend = Number.NaN;
 
   // 気候を全球正距円筒へ投影する。
-  public static global(climate: ClimateMapLike): GeneratedCloudField {
-    return new GeneratedCloudField(climate, new EquirectProjection(GLOBAL_FIELD_HEIGHT));
+  public static global(
+    climate: ClimateMapLike, uvAt?: CloudUvAt,
+    projection: FieldProjection = new EquirectProjection(GLOBAL_FIELD_HEIGHT),
+  ): GeneratedCloudField {
+    return new GeneratedCloudField(climate, projection, uvAt);
   }
 
   // climate と、その中間場・出力場が共有する投影法を受け取る。
-  public constructor(private readonly climate: ClimateMapLike, projection: FieldProjection) {
+  public constructor(
+    private readonly climate: ClimateMapLike, projection: FieldProjection, uvAt?: CloudUvAt,
+  ) {
     this.model = new WeatherModel(climate, projection);
-    this.field = new CloudField(this.model, projection);
+    this.field = new CloudField(this.model, projection, uvAt);
   }
 
   // 雲場のテクスチャ。出力場の所有権はこのクラスに残す。
@@ -55,8 +63,17 @@ export class GeneratedCloudField {
       throw new Error('The configured climate map does not support monthly input');
     }
     this.climate.setMonth(monthIndex, blend);
+    this.lastClimateMonth = monthIndex;
+    this.lastClimateBlend = blend;
     this.lastBakedDisplayTime = null;
     this.lastBakedClimateGeneration = null;
+  }
+
+  // 絶対UTC秒を月別気候のcurrent/next選択へ変換する。
+  public syncClimateTime(unixSeconds: number): void {
+    const clock = monthlyClimateClockAt(unixSeconds);
+    if (clock.monthIndex === this.lastClimateMonth && clock.blend === this.lastClimateBlend) return;
+    this.syncClimateMonth(clock.monthIndex, clock.blend);
   }
 
   // 保持している雲場を解放する。
