@@ -12,6 +12,9 @@ import { rayMarch, type MediumSample } from '../ray-march';
 import { BlueNoise } from '../blue-noise';
 import { airglowEmission } from '../airglow';
 import { AtmosphereCloudLayers } from './atmosphere-cloud-layers';
+import {
+  CIRRUS_TOP_ALTITUDE, CUMULUS_BASE_ALTITUDE,
+} from '../cloud/cloud-volume';
 import type { CloudLodMode } from '../cloud/cloud-field-sampler';
 import type { CloudSpecies } from './cloud-atmosphere-renderer';
 import type { AtmosphereBody } from '../atmosphere';
@@ -78,6 +81,16 @@ interface RaySegment {
   // 視線が大気に掛かるか。掛からない画素では素通しへ倒す。
   readonly hitsAtmosphere: BoolNode;
 }
+
+interface CloudSupportSegment {
+  readonly near: FloatNode;
+  readonly far: FloatNode;
+  readonly hits: BoolNode;
+}
+
+// 雲が有効な画素では、全大気サンプルのうち最低この割合を雲の支持高度へ置く。
+// 総サンプル数は増やさず、支持区間がこれより長い場合は実際の光路長比を優先する。
+const MIN_CLOUD_SUPPORT_SAMPLE_SHARE = 0.5;
 
 // 天体 1 体ぶんの、視線区間の透過率と内部散乱。
 export interface LayerContribution {
@@ -329,6 +342,37 @@ export class AtmosphereIntegrator {
       const farSide = peak.add(segment.far.sub(peak).mul(farEase));
       return select(lessThan(fraction, split), nearSide, farSide);
     };
+    const cloudSupport = this.cloudSupportSegment(ray, segment);
+    const adaptiveDistanceAt = (fraction: FloatNode): FloatNode => {
+      // hits=falseの枝もselectにより評価されるので、無効区間でも割合を有限・単調に保つ。
+      const supportLength = max(cloudSupport.far.sub(cloudSupport.near), 0);
+      const beforeLength = max(cloudSupport.near.sub(segment.near), 0);
+      const afterLength = max(segment.far.sub(cloudSupport.far), 0);
+      const totalLength = max(segment.far.sub(segment.near), 1);
+      // 支持区間へ最低50%を予約する。ただし支持区間そのものが視線の50%以上なら、
+      // その実長比を使い、残りの区間を過剰に細かくしない。
+      const supportShare = clamp(
+        supportLength.div(totalLength), MIN_CLOUD_SUPPORT_SAMPLE_SHARE, 1,
+      );
+      const outsideShare = float(1).sub(supportShare);
+      const outsideLength = beforeLength.add(afterLength);
+      const beforeShare = outsideShare.mul(beforeLength.div(max(outsideLength, 1e-6)));
+      const supportEndShare = beforeShare.add(supportShare);
+      const beforeDistance = segment.near.add(beforeLength.mul(
+        fraction.div(max(beforeShare, 1e-6)),
+      ));
+      const supportDistance = cloudSupport.near.add(supportLength.mul(
+        fraction.sub(beforeShare).div(max(supportShare, 1e-6)),
+      ));
+      const afterDistance = cloudSupport.far.add(afterLength.mul(
+        fraction.sub(supportEndShare).div(max(float(1).sub(supportEndShare), 1e-6)),
+      ));
+      const supported = select(
+        lessThan(fraction, beforeShare), beforeDistance,
+        select(lessThan(fraction, supportEndShare), supportDistance, afterDistance),
+      );
+      return select(cloudSupport.hits, supported, distanceAt(fraction));
+    };
     // Blue noiseは不連続な昼夜境界の帯を散らす用途に限る。連続雲が有効なときに同じ位相を
     // ずらすと、薄い密度profileの積分が画素ごとに欠け、雲の消失と点状ノイズになる。
     const jitter = select(
@@ -336,13 +380,42 @@ export class AtmosphereIntegrator {
       this.blueNoise.atScreenPixel(), float(0),
     );
     const march = rayMarch(
-      this.slot.steps, distanceAt,
+      this.slot.steps, adaptiveDistanceAt,
       (distance) => this.mediumAt(
         rayOrigin.add(rayDir.mul(distance)), rayDir, pixelAngle.mul(distance),
       ),
       jitter,
     );
     return { transmittance: march.transmittance, inscatter: march.radiance };
+  }
+
+  // 視線から最初に見える雲支持区間を返す。支持高度はCloudVolumeと同じ1–16 kmで、
+  // 地表へ向かう視線では外殻入口から内殻入口までになる。地表を外す掠線が内殻を
+  // 横切る場合も手前側だけを優先し、front-to-back合成で影響の大きい区間を確実に拾う。
+  private cloudSupportSegment(ray: SphereSpaceRay, segment: RaySegment): CloudSupportSegment {
+    const outer = this.crossingsOf(
+      ray, this.slot.surfaceRadius.add(CIRRUS_TOP_ALTITUDE),
+    );
+    const inner = this.crossingsOf(
+      ray, this.slot.surfaceRadius.add(CUMULUS_BASE_ALTITUDE),
+    );
+    const outerNear = clamp(outer.entry, segment.near, segment.far);
+    const entersInner = and(inner.crosses, greaterThan(inner.entry, outerNear));
+    const startsInsideInner = and(
+      inner.crosses,
+      and(lessThan(inner.entry, outerNear), greaterThan(inner.exit, outerNear)),
+    );
+    const near = select(startsInsideInner, max(inner.exit, outerNear), outerNear);
+    const outerFar = min(outer.exit, segment.far);
+    const far = select(entersInner, min(inner.entry, outerFar), outerFar);
+    return {
+      near,
+      far,
+      hits: and(
+        this.cloudLayers.hasVolume(),
+        and(outer.crosses, greaterThan(far, near)),
+      ),
+    };
   }
 
   // 視線上で、太陽がその天体の地平線へ沈む距離。**区間の外に落ちることも、区間を跨がない視線で
