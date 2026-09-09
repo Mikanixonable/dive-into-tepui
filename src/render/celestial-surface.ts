@@ -57,6 +57,28 @@ export interface CelestialSurfaceFrame {
   readonly style: RenderStyle;
 }
 
+const UNIT_SCALE = new THREE.Vector3(1, 1, 1);
+
+// 天体の位置・姿勢だけをbody-to-viewへ組み込む。表面の非一様スケールは法線変換を
+// 壊すため、axesとして別に渡す。
+export function createCelestialSurfaceFrame(
+  camera: THREE.Camera, position: THREE.Vector3, quaternion: THREE.Quaternion,
+  axes: THREE.Vector3, frame: number, timeMs: number, style: RenderStyle,
+): CelestialSurfaceFrame {
+  const bodyToWorld = new THREE.Matrix4().compose(position, quaternion, UNIT_SCALE);
+  return {
+    camera,
+    bodyToView: camera.matrixWorldInverse.clone().multiply(bodyToWorld),
+    axes: axes.clone(),
+    viewport: typeof window === 'undefined'
+      ? { width: 1, height: 1 }
+      : { width: window.innerWidth, height: window.innerHeight },
+    frame,
+    timeMs,
+    style,
+  };
+}
+
 export interface CelestialSurfaceLike {
   readonly photometry: SurfacePhotometry | null;
   readonly textureUrl: string | null;
