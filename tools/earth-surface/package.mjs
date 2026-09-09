@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 検査済みの地表マニフェスト・索引・実体を、一つの版付き配信先へ原子的に配備する。
+// 検査済みの地表マニフェスト・索引・実体を、stagingを経由して一つの版付き配信先へ配備する。
 import { copyFile, mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { inspectEarthSurfaceBundle, assetPath } from './contract.mjs';
