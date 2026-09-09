@@ -31,11 +31,7 @@ const ANALYSIS_WINDOW_OPEN_Y = 100;
 
 // 軌道分析ウィンドウへ専用の読み取り源を渡す配線契約。
 export type OrbitAnalysisAdapter =
-  | { readonly source: OrbitAnalysisSource }
-  | {
-      readonly updateReaders: (window: OrbitAnalysisWindow) => void;
-      readonly sync: (window: OrbitAnalysisWindow) => void;
-    };
+  { readonly source: OrbitAnalysisSource };
 
 export class Hud {
   public get root(): HTMLElement { return this.shell.root; }
@@ -108,8 +104,7 @@ export class Hud {
     const window = this.orbitAnalysisWindow;
     const adapter = this.orbitAnalysisAdapter;
     if (!window || !adapter) return;
-    if ('source' in adapter) window.update(adapter.source);
-    else adapter.updateReaders(window);
+    window.update(adapter.source);
   }
 
   // view で表に出ている常設パネルと、控えられたトーストを game の現在状態へ合わせる。
@@ -138,10 +133,7 @@ export class Hud {
     }
     const window = this.orbitAnalysisWindow;
     const adapter = this.orbitAnalysisAdapter;
-    if (window && adapter) {
-      if ('source' in adapter) window.sync(adapter.source);
-      else adapter.sync(window);
-    }
+    if (window && adapter) window.sync(adapter.source);
     this.tick();
   }
 
