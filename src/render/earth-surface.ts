@@ -21,6 +21,7 @@ export interface EarthSurfaceRequestLease {
 // 具象coordinatorはタイル要求とGPU寿命を持つため、EarthSurfaceはこの2操作だけを知る。
 export interface EarthSurfaceResidentCoordinatorLike {
   sync(input: EarthSurfaceResidentFrame): unknown;
+  reset?(): void;
   dispose(): void;
 }
 
@@ -29,7 +30,9 @@ export class EarthSurfaceContext {
   private readonly requests = new Set<AbortController>();
   private disposed = false;
 
-  public constructor(public readonly source: EarthSurfaceSource) {}
+  public constructor(private sourceValue: EarthSurfaceSource) {}
+
+  public get source(): EarthSurfaceSource { return this.sourceValue; }
 
   public get generation(): number { return this.nextGenerationValue; }
 
@@ -59,6 +62,13 @@ export class EarthSurfaceContext {
     for (const controller of this.requests) controller.abort();
     this.requests.clear();
     return this.nextGenerationValue;
+  }
+
+  // 配信版を切り替えると、旧版の要求と結果を同じ地表へ公開してはならない。
+  public replaceSource(source: EarthSurfaceSource): void {
+    if (this.disposed) throw new Error('Earth surface context is disposed');
+    this.invalidateRequests();
+    this.sourceValue = source;
   }
 
   public dispose(): void {
@@ -92,8 +102,9 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.fallback.syncFrame(frame);
     if (this.coordinator === null) return;
 
-    this.requestLeaseValue?.release();
-    const lease = this.context.requestLease();
+    const lease = this.requestLeaseValue?.signal.aborted
+      ? this.context.requestLease()
+      : this.requestLeaseValue ?? this.context.requestLease();
     this.requestLeaseValue = lease;
     if (!(frame.camera instanceof THREE.PerspectiveCamera)
       && !(frame.camera instanceof THREE.OrthographicCamera)) {
@@ -128,7 +139,17 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.requestLeaseValue?.release();
     this.requestLeaseValue = null;
     this.context.invalidateRequests();
+    this.coordinator?.reset?.();
     this.fallback.hide();
+  }
+
+  // 実行中の配信版を破棄し、新しい版をbaseから再開できる状態へ戻す。
+  public replaceSource(source: EarthSurfaceSource): void {
+    if (this.disposed) return;
+    this.requestLeaseValue?.release();
+    this.requestLeaseValue = null;
+    this.context.replaceSource(source);
+    this.coordinator?.reset?.();
   }
 
   public dispose(): void {
