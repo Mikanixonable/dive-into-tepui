@@ -48,3 +48,27 @@ BMNG/ETOPOは数十GB級、ERA5は取得条件に依存し、GSHHGはfixture JSO
 
 `300ff2e8` と `1fa593c9` でmanifest検査、全球キー列挙、staging writer、`--global`入口を追加した。
 入力が無い場合は明示的に停止する。実ソースのwindow renderer、実データhash、全43690タイル生成は未完了で、fixtureを本番生成の代わりにはしない。
+
+## 実データ事前検査（2026-09-10）
+
+`tools/earth-surface/preflight.py` を追加した。これは本文を取得せずHEADだけを送り、URLの応答、Content-Length、
+形式、依存コマンド、空き容量、全球出力の下限をJSONへ記録する。代表領域の検査結果は次のとおりだった。
+
+- BMNG A1: `200 image/tiff 314,235,313 bytes`
+- ETOPO ice-surface N90W180: `200 image/tiff 4,093,982 bytes`
+- ETOPO geoid N90W180: `200 image/tiff 12,312,902 bytes`
+- GSHHG 2.3.7: `200 application/zip 149,157,845 bytes`
+- ERA5: URL取得ではなく、1991–2020・全UTC時刻・指定変数を含むNetCDFの明示的なlocal exportが必要
+
+実行環境にはGDAL/osgeo、netCDF4、pyshp、Pillowがなく、`gdalinfo`/`ogrinfo`もない。空き容量は約4.85GiBだった。
+全43,690タイルのESTN payloadだけで、圧縮前かつbaseを含めて23,630,031,744 bytes（約22.0GiB）が必要になるため、
+入力・中間・JPEG・気候mapを含む本番生成はこの環境では開始しなかった。URL応答の確認以外に巨大ファイルの取得は行っていない。
+
+この状態はfixture成功へ読み替えず、実データゲートをblockedとする。依存を導入し、十分な専用容量を確保し、ERA5 local exportを
+配置した後、次を実行してから `earth-surface:bake --global` を再開する。
+
+```sh
+python3 tools/earth-surface/preflight.py --all --output .earth-surface/verification/preflight.json
+python3 tools/earth-surface/fetch-source.py --source ... --region ...
+python3 tools/earth-surface/bake.py --global
+```
