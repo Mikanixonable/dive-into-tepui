@@ -12,3 +12,7 @@ docs/
 __pycache__/
 .cloud-lab/
 assets-src/climate/
+.earth-surface/raw/
+.earth-surface/intermediate/
+.earth-surface/bundle/
+.earth-surface/distribution/
