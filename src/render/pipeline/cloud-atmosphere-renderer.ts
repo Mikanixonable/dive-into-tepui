@@ -1,11 +1,11 @@
 // 雲fieldを連続体積へ変換する大気側の窓口。CloudVolumeが返す密度を光学積分へ渡し、
 // ここは天体固定への変換と局所散乱の入力だけを所有する。cloudTopの交点は作らない。
 import * as THREE from 'three/webgpu';
-import { max, uniform, vec3, vec4 } from 'three/tsl';
+import { greaterThan, max, uniform, vec3, vec4 } from 'three/tsl';
 import { CloudFieldSampler, type CloudLodMode } from '../cloud/cloud-field-sampler';
 import { CloudVolume } from '../cloud/cloud-volume';
 import type { AtmosphereClouds } from '../atmosphere';
-import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
+import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
 
 export const CLOUD_VOLUME_ALBEDO = 0.8;
 
@@ -44,6 +44,12 @@ export class CloudAtmosphereRenderer {
 
   public setLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
     this.fieldSampler.setLodSampling(mode, fixedLevel);
+  }
+
+  // 連続雲が有効なrayでは、境界の取りこぼしを散らすためのblue noiseを使わない。密度を
+  // 中点積分する体積へ位相ジッタを掛けると、薄い柱が画素ごとに消えるためである。
+  public hasVolume(): BoolNode {
+    return greaterThan(this.active.mul(this.enabled.cirrus.add(this.enabled.cumulus)), 0);
   }
 
   // offsetとrayDirは大気積分器の真球空間、sunDirは点から恒星への真球空間方向、

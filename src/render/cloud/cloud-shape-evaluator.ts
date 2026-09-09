@@ -23,12 +23,18 @@ export class CloudShapeEvaluator {
   }
 
   // 粒を足してから coverage の連続帯へ通す。空の柱に粒だけで雲を生やさない共有規則である。
-  public opaqueFraction(coverage: FloatNode, grain: FloatNode): FloatNode {
+  // これは二値判定ではなく、体積の柱光学深度へ渡す連続的な被覆率である。
+  public continuousCoverage(coverage: FloatNode, grain: FloatNode): FloatNode {
     const band = CUMULUS_COVERAGE_KNOB.halfWidth.mul(2);
     const center = CUMULUS_COVERAGE_KNOB.center;
     const clampedBand = min(band, center.mul(2));
     const covered = coverage.add(grain.mul(GRAIN_COVERAGE_DEPTH));
     return clamp(covered.sub(center.sub(clampedBand.mul(0.5))).div(clampedBand), 0, 1);
+  }
+
+  // 旧表現との互換名。新しい体積経路ではcontinuousCoverageを使う。
+  public opaqueFraction(coverage: FloatNode, grain: FloatNode): FloatNode {
+    return this.continuousCoverage(coverage, grain);
   }
 
   public cloudTop(fieldTop: FloatNode, grain: FloatNode): FloatNode {
