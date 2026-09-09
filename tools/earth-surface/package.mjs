@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 // 地表の配信ディレクトリを検査し、datasetId付きの索引と帰属情報を生成する。
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 
-const HASH = /^[0-9a-f]{64}$/;
 const DATASET = /^[a-z0-9-]+$/;
 
 function assetPath(root, value) {
@@ -25,7 +24,7 @@ async function requiredAsset(root, value) {
   const path = assetPath(root, value);
   const info = await stat(path);
   if (!info.isFile() || info.size === 0) throw new Error(`asset is empty or not a file: ${value}`);
-  return { path: value, bytes: info.size, sha256: await sha256(path) };
+  return { path: value, absolutePath: path, bytes: info.size, sha256: await sha256(path) };
 }
 
 function readAttribution(value) {
@@ -52,13 +51,20 @@ export async function packageEarthSurface({ inputRoot, outputRoot, manifestName 
   const attribution = readAttribution(manifest.attribution);
   const output = resolve(outputRoot);
   await mkdir(output, { recursive: true });
+  // 索引だけでなく、検査済みの本文も同じ相対パスで配信ディレクトリへ写す。
+  // これを省くと生成した索引が存在しても静的サーバーから実体を返せない。
+  await Promise.all(assets.map(async (asset) => {
+    const destination = assetPath(output, asset.path);
+    await mkdir(dirname(destination), { recursive: true });
+    await copyFile(asset.absolutePath, destination);
+  }));
   const index = {
     schemaVersion: 1,
     datasetId: manifest.datasetId,
     baseColor: manifest.baseColor,
     baseTerrain: manifest.baseTerrain,
     climateMaps,
-    assets,
+    assets: assets.map(({ absolutePath, ...asset }) => asset),
   };
   await writeFile(join(output, 'earth-surface.json'), `${JSON.stringify(index, null, 2)}\n`);
   await writeFile(join(output, 'attribution.json'), `${JSON.stringify({ datasetId: manifest.datasetId, attribution }, null, 2)}\n`);
