@@ -16,6 +16,13 @@ export class EarthSurfaceDecodeError extends Error {
   }
 }
 
+export class EarthSurfaceHttpError extends EarthSurfaceDecodeError {
+  public constructor(public readonly status: number) {
+    super(`Earth surface HTTP ${status}`);
+    this.name = 'EarthSurfaceHttpError';
+  }
+}
+
 export interface EarthSurfaceTileRequest {
   readonly key: EarthTileKey;
   readonly colorUrl: string;
@@ -23,6 +30,9 @@ export interface EarthSurfaceTileRequest {
   readonly generation: number;
   readonly signal?: AbortSignal;
   readonly expectedTerrainSha256?: string;
+  readonly expectedColorSha256?: string;
+  readonly expectedColorBytes?: number;
+  readonly expectedTerrainEncodedBytes?: number;
   readonly maxColorBytes?: number;
   readonly maxTerrainBytes?: number;
   readonly fetchImpl?: typeof fetch;
@@ -49,7 +59,7 @@ function ensureNotAborted(signal?: AbortSignal): void {
 }
 
 async function readResponse(response: Response, limit: number, signal?: AbortSignal): Promise<Uint8Array> {
-  if (!response.ok) throw new EarthSurfaceDecodeError(`Earth surface HTTP ${response.status}`);
+  if (!response.ok) throw new EarthSurfaceHttpError(response.status);
   if (!Number.isSafeInteger(limit) || limit <= 0) throw new RangeError('Invalid Earth surface byte limit');
   ensureNotAborted(signal);
   const declared = response.headers.get('content-length');
@@ -90,6 +100,10 @@ async function sha256(bytes: Uint8Array): Promise<string> {
   // copyでSharedArrayBuffer由来の型差を避け、digestに渡す範囲を厳密にする。
   const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes.slice());
   return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, '0')).join('');
+}
+
+export async function earthSurfaceSha256(bytes: Uint8Array): Promise<string> {
+  return sha256(bytes);
 }
 
 function assertKey(key: EarthTileKey, z: number, x: number, y: number): void {
@@ -160,6 +174,17 @@ export async function decodeEarthSurfaceTile(request: EarthSurfaceTileRequest): 
   ]);
   const colorBytes = await readResponse(colorResponse, colorLimit, request.signal);
   const compressedTerrain = await readResponse(terrainResponse, terrainLimit, request.signal);
+  if (request.expectedColorBytes !== undefined && colorBytes.byteLength !== request.expectedColorBytes) {
+    throw new EarthSurfaceDecodeError('Earth surface color byte length mismatch');
+  }
+  if (request.expectedTerrainEncodedBytes !== undefined
+    && compressedTerrain.byteLength !== request.expectedTerrainEncodedBytes) {
+    throw new EarthSurfaceDecodeError('Earth surface terrain encoded byte length mismatch');
+  }
+  if (request.expectedColorSha256 !== undefined
+    && await sha256(colorBytes) !== request.expectedColorSha256) {
+    throw new EarthSurfaceDecodeError('Earth surface color hash mismatch');
+  }
   const terrainBytes = await inflateTerrain(compressedTerrain, terrainLimit, request.signal);
   const terrainHash = await sha256(terrainBytes);
   if (request.expectedTerrainSha256 !== undefined && terrainHash !== request.expectedTerrainSha256) {
