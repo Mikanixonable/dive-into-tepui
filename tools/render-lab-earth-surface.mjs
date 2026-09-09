@@ -168,13 +168,12 @@ async function tryCapture() {
     await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
     await waitFor(
       devTools,
-      "(document.getElementById('error')?.textContent || typeof window.renderLab === 'object')",
+      "(document.getElementById('error')?.textContent || typeof window.renderLab?.earthSurfaceCapture === 'function')",
       'the render lab to initialise',
     );
     const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
     const environment = await browserEnvironment(devTools);
     if (failure) return unavailableDocument(`render-lab initialisation failed: ${failure}`, environment);
-    if (environment.webgpu !== 'available') return unavailableDocument('WebGPU adapter is unavailable', environment);
 
     // Normal/depth/paging/fallback を同じ runtime から取り出す専用 API が必要である。
     // 既存の renderLab.shoot は別の5ケースの色PNGだけを返すため、そこから代用しない。
