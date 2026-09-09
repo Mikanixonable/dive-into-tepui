@@ -18,4 +18,12 @@ export function register(): void {
     assert.equal(transport.phaseAt(0.4, 1_000, 3600), transport.phaseAt(0.4, 1_000, 3600));
     assert.deepEqual(field.sample(0.4, 1_000), field.sample(0.4, 1_000));
   });
+
+  test('cloud pattern transport: m/s phase conversion scales with elapsed time', () => {
+    const transport = new CloudPatternTransport();
+    const oneDay = transport.angularPhase(10, 0, 0, 86400).east;
+    const twoDays = transport.angularPhase(10, 0, 0, 2 * 86400).east;
+    assert.ok(oneDay > 0);
+    assert.ok(Math.abs(twoDays - 2 * oneDay) < 1e-12);
+  });
 }
