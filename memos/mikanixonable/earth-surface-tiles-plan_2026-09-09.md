@@ -127,7 +127,7 @@ T0 基準記録
 | T6-1 | fixture Pages完了 | `49d840f2`、Pages layout pass、build pass | 実全世界bundleのPages公開は未完了 |
 | T4 | コード完了 | `e195d4df`, `ac919b93`, `ea6d47a3`, `22532275`、render 96/96、game 201/201 | 実ERA5 bundleと実ブラウザ/WebGPU撮影は未実施 |
 | T5 | コード完了 | `7f8614fc`, `e90aaeca`、render 100/100、game 201/201、capture contract pass | 実データ未投入のため15ケースのcolor/normal/depthはunavailable |
-| T7 | 未完了 | — | 全体レビュー後に記録する |
+| T7 | コードレビュー・記録完了 | `71677db3`、全体 826/826、build/verify-release pass、Pages fixture pass | 実データ生成・Pages本番公開ゲートは未達成のまま記録 |
 
 ## 7. 検証
 
