@@ -3,6 +3,8 @@
 
 export interface EarthSurfaceSource {
   readonly datasetId: string;
+  readonly sourceManifestSha256: string;
+  readonly climateEncoding: EarthSurfaceClimateEncoding;
   readonly baseUrl: string;
   readonly manifestUrl: string;
   readonly tileIndexUrl: string;
@@ -70,6 +72,8 @@ export function earthSurfaceSourceFromManifest(
   }
   return {
     datasetId: manifest.datasetId,
+    sourceManifestSha256: manifest.sourceManifestSha256,
+    climateEncoding: manifest.climateEncoding,
     baseUrl,
     manifestUrl,
     tileIndexUrl: relativeAsset(baseUrl, manifest.tileIndexUrl),
