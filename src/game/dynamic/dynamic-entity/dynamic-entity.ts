@@ -32,6 +32,8 @@ export class DynamicEntity {
   public readonly pickable: boolean = false;
   public readonly reclaimedByOwner: boolean = false;
   public readonly showsEquatorNodesAlways: boolean = false;
+  // マップで予測軌跡を表示するか。表示設定の正本は描画資源を持つ View の外へ置く。
+  public showTrajectoryLine = false;
 
   private nameValue: string;
 

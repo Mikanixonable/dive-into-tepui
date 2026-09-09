@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { orientProjectile } from '../../../render/projectile-orientation';
 import { buildBulletMesh, buildPlasmaMesh } from '../../../render/ships';
-import { DynamicView, type DynamicViewFrame } from '../dynamic-view';
+import { DynamicView, type DynamicViewFrame, type DynamicViewIdentity } from '../dynamic-view';
 import type { DynamicMotion } from '../dynamic-motion';
 
 // Bullet-only render state. Simulation code supplies the already-resolved display state.
@@ -15,6 +15,7 @@ export class BulletView extends DynamicView {
   }
 
   protected override syncModel(
+    _identity: DynamicViewIdentity,
     _motion: DynamicMotion, displayed: import('../../../physics/kinematic-state').KinematicState | null,
     context: DynamicViewFrame,
   ): void {

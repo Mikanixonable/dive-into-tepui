@@ -1,10 +1,11 @@
 import * as THREE from 'three/webgpu';
-import type { WorldSfx } from '../../audio/sfx/world-sfx';
-import { len, lenSq } from '../../math/vec3';
+import { len } from '../../math/vec3';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { buildPlayerShip } from '../../render/ships';
 import type { MarkerSlots } from '../marker/marker-slots';
-import { DynamicView, type DynamicViewFrame } from '../dynamic/dynamic-view';
+import {
+  DynamicView, type DynamicViewFrame, type DynamicViewIdentity,
+} from '../dynamic/dynamic-view';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import { AttachedBoostersView } from './attached-boosters-view';
 import { BOOSTER_MOUNT_Z } from '../../physics/booster-stage-shape';
@@ -13,18 +14,27 @@ import { BeltView } from './belt-view';
 import { PlayerMarkers } from './player-markers';
 import { PlayerMotion } from './player-motion';
 import { PowerView } from './power-view';
-import { RCS_PUFF_TORQUE_EPS, RcsEffects } from './rcs-effects';
+import { RcsEffects } from './rcs-effects';
 import { RadiatorView } from './radiator-view';
 import { ReentryEffects } from './reentry-effects';
 import { ThrustEffects } from './thrust-effects';
 
-export interface PlayerVisualSource {
+export interface PlayerVisualSource extends DynamicViewIdentity {
   readonly id: string;
   readonly roundsInMag: number;
   readonly magsLeft: number;
   readonly averageMuzzleVelocity: number;
   readonly totalThrust: number;
   readonly throttle: { readonly thrustAccelVec: import('../../math/vec3').Vec3 };
+}
+
+function isPlayerVisualSource(identity: DynamicViewIdentity): identity is PlayerVisualSource {
+  return identity.mapKind === 'player'
+    && 'roundsInMag' in identity
+    && 'magsLeft' in identity
+    && 'averageMuzzleVelocity' in identity
+    && 'totalThrust' in identity
+    && 'throttle' in identity;
 }
 
 // 自機の全モデル、エフェクト、可動部、戦闘マーカーを所有する。
@@ -40,9 +50,8 @@ export class PlayerView extends DynamicView {
 
   public constructor(
     scene: THREE.Scene,
-    private readonly source: PlayerVisualSource,
+    ownerId: string,
     markerSlots: MarkerSlots,
-    private readonly worldSfx: WorldSfx,
   ) {
     const model = buildPlayerShip();
     super(model, scene);
@@ -53,22 +62,26 @@ export class PlayerView extends DynamicView {
     this.radiator = new RadiatorView(model);
     this.power = new PowerView(model);
     this.boosters = new AttachedBoostersView(scene, model);
-    this.markers = new PlayerMarkers(markerSlots, source.id);
+    this.markers = new PlayerMarkers(markerSlots, ownerId);
   }
 
   protected override syncModel(
+    identity: DynamicViewIdentity,
     motion: DynamicMotion,
     displayed: KinematicState | null,
     context: DynamicViewFrame,
   ): void {
-    if (!(motion instanceof PlayerMotion)) throw new TypeError('PlayerView requires PlayerMotion');
-    const active = context.activeId === this.source.id;
+    if (!(motion instanceof PlayerMotion) || !isPlayerVisualSource(identity)) {
+      throw new TypeError('PlayerView requires Player and PlayerMotion');
+    }
+    const source = identity;
+    const active = context.activeId === source.id;
     const effectState = displayed ?? motion.state;
     const effectVisible = this.object.visible;
-    const rcsThrust = len(this.source.throttle.thrustAccelVec) > 0
-      ? this.source.throttle.thrustAccelVec
+    const rcsThrust = len(source.throttle.thrustAccelVec) > 0
+      ? source.throttle.thrustAccelVec
       : null;
-    const maximumAcceleration = motion.mass > 0 ? this.source.totalThrust / motion.mass : 0;
+    const maximumAcceleration = motion.mass > 0 ? source.totalThrust / motion.mass : 0;
 
     this.boosters.sync(
       context.floatingOrigin,
@@ -84,13 +97,6 @@ export class PlayerView extends DynamicView {
       context.style,
       BOOSTER_MOUNT_Z,
     );
-    if (active) {
-      this.worldSfx.setThrust(
-        effectVisible && (rcsThrust !== null || motion.attachedBoosters.thrust !== null),
-      );
-      this.worldSfx.setRcs(effectVisible
-        && lenSq(motion.torque) > RCS_PUFF_TORQUE_EPS * RCS_PUFF_TORQUE_EPS);
-    }
     this.thrustEffects.sync(
       context.floatingOrigin,
       effectState.r,
@@ -116,7 +122,7 @@ export class PlayerView extends DynamicView {
       effectVisible,
       context.cameraSystem,
     );
-    this.belt.sync(this.source.magsLeft, motion.belt.viewState);
+    this.belt.sync(source.magsLeft, motion.belt.viewState);
     this.radiator.sync(
       side => motion.radiator.wearOf(side),
       side => motion.radiator.viewTilt(side),
@@ -128,9 +134,9 @@ export class PlayerView extends DynamicView {
       context.cameraSystem.view,
       active,
       context.cameraSystem.activeCameraProjection,
-      this.source.roundsInMag,
-      this.source.magsLeft,
-      this.source.averageMuzzleVelocity,
+      source.roundsInMag,
+      source.magsLeft,
+      source.averageMuzzleVelocity,
       context.orbitReference,
     );
     if (active && context.cameraSystem.zoomActive) this.object.visible = false;

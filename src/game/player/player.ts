@@ -166,7 +166,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     super(
       name,
       state,
-      owner => new PlayerView(scene, owner as Player, markers, _worldSfx),
+      owner => new PlayerView(scene, owner.id, markers),
       att,
       PLAYER_HULL_RADIUS,
       PLAYER_MAX_HP,
@@ -199,7 +199,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
         ? saved.planExecution
         : (saved.followPlan ? 'instant' : 'off');
       this.fineAttitude = saved.fineAttitude ?? false;
-      this.view.showTrajectoryLine = saved.showTrajectoryLine ?? false;
+      this.showTrajectoryLine = saved.showTrajectoryLine ?? false;
       this.parts.splice(0, this.parts.length, ...saved.parts.map(partFromSaveData));
       this.refreshFromParts();
 
@@ -583,7 +583,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       parts: this.parts.map(p => ({ ...p })) as AnyPart[],
       planExecution: this.planExecution,
       fineAttitude: this.fineAttitude,
-      showTrajectoryLine: this.view.showTrajectoryLine,
+      showTrajectoryLine: this.showTrajectoryLine,
       plan: this.serializePlan(),
       boosters: this.motion.attachedBoosters.serialize(),
     };
@@ -651,7 +651,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
     // 操作対象の自艦は予測線・過去線に固定されるので、トグルは非操作艦にだけ出す。
     const trajectoryItem: readonly MenuItem<MenuAction>[] = isActive
-      ? [] : [MenuCommon.trajectoryLine(this.view.showTrajectoryLine)];
+      ? [] : [MenuCommon.trajectoryLine(this.showTrajectoryLine)];
 
     return [
       MenuCommon.target(navTargetId === this.id),
@@ -670,7 +670,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     act: MenuAction, controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
   ): void {
     if (act === 'toggleTrajectoryLine') {
-      this.view.showTrajectoryLine = !this.view.showTrajectoryLine;
+      this.showTrajectoryLine = !this.showTrajectoryLine;
     } else if (act === 'activate') {
       controlSelection.select(this);
     } else if (act === 'deactivate') {

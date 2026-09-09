@@ -3,7 +3,6 @@
 // ここは「いまフレームにどの線が表示されているか」を集めるだけ — マップ視点でなければ空になる。
 import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import { guideSecondary } from '../../physics/orbit-guide';
-import type { Vec3 } from '../../math/vec3';
 import type { DisplayWindow } from '../display-window-manager';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialSystem } from '../celestial/celestial-system';
@@ -11,7 +10,7 @@ import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
 import type { VisibleGuideLine } from '../celestial/orbit-guide/orbit-guide-lines';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { isCombatTarget } from '../dynamic/dynamic-entity/combat-target';
-import { LineCalcMethod, LinePickable } from './line-pickable';
+import { LinePickable } from './line-pickable';
 
 // 当たり判定用サンプル点数。描画の適応分割ほどの精度は要らず、画面上のピクセル半径内かの判定さえ
 // 通ればよいので、頂点予算より一段粗い固定値にする。
@@ -74,28 +73,13 @@ export class LinePickables {
     entity: DynamicEntity, frame: ReferenceFrame, displayTime: number, frameAnchors: FrameAnchorSource,
   ): void {
     if (!entity.motion.alive) return;
-    let method: LineCalcMethod;
-    let points: Vec3[];
-    if (entity.view.orbitLine !== null) {
-      method = 'analytic';
-      points = [...entity.view.orbitLine.line.samplePoints(ORBIT_PICK_SAMPLES)];
-    } else if (entity.view.predictedLine !== null || entity.view.actualLine !== null) {
-      method = 'predicted';
-      const frames = this.celestialSystem.frames;
-      points = [
-        ...(entity.view.actualLine?.samplePoints(
-          ORBIT_PICK_SAMPLES, frame, displayTime, frames, frameAnchors,
-        ) ?? []),
-        ...(entity.view.predictedLine?.samplePoints(
-          ORBIT_PICK_SAMPLES, frame, displayTime, frames, frameAnchors,
-        ) ?? []),
-      ];
-    } else {
-      return;
-    }
-    if (points.length < 2) return;
+    const sample = entity.view.lineSamples(
+      ORBIT_PICK_SAMPLES, frame, displayTime, this.celestialSystem, frameAnchors,
+    );
+    if (sample === null || sample.points.length < 2) return;
     this.items.push({
-      key: `orbit-ship:${entity.id}`, kind: 'orbit-ship', method, ownerKeys: [entity.id], points,
+      key: `orbit-ship:${entity.id}`, kind: 'orbit-ship', method: sample.method,
+      ownerKeys: [entity.id], points: sample.points,
     });
   }
 }

@@ -11,7 +11,7 @@ import {
 } from '../../../render/booster';
 import { SHIP_DARK_HULL_COLOR } from '../../../render/vfx-style';
 import type { DebrisKind } from './debris-kind';
-import { DynamicView, type DynamicViewFrame } from '../dynamic-view';
+import { DynamicView, type DynamicViewFrame, type DynamicViewIdentity } from '../dynamic-view';
 import type { DynamicMotion } from '../dynamic-motion';
 
 export class DebrisPieceView extends DynamicView {
@@ -32,6 +32,7 @@ export class DebrisPieceView extends DynamicView {
   }
 
   protected override syncModel(
+    _identity: DynamicViewIdentity,
     _motion: DynamicMotion, _displayed: import('../../../physics/kinematic-state').KinematicState | null,
     context: DynamicViewFrame,
   ): void {

@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { CelestialBody } from '../../physics/celestial-body';
+import type { Vec3 } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import { orbitalElementsOf } from '../../physics/elements';
 import { disposeOwnedRenderResources } from '../../render/dispose-owned-render-resources';
@@ -52,16 +53,27 @@ interface DynamicStateSource {
   stateAt(t: number, celestialBodies?: CelestialBodies): KinematicState | null;
 }
 
-type OrbitLine =
-  | { readonly kind: 'ellipse'; readonly line: EllipseLine; readonly center: CelestialBody | null }
-  | { readonly kind: 'relative'; readonly line: TargetRelativeLine; readonly target: DynamicStateSource };
+export interface DynamicLineDisplay {
+  readonly orbit:
+    | { readonly kind: 'ellipse'; readonly style: LineStyle; readonly center: CelestialBody | null }
+    | { readonly kind: 'relative'; readonly style: LineStyle; readonly target: DynamicStateSource }
+    | null;
+  readonly predicted: LineStyle | null;
+  readonly actual: LineStyle | null;
+}
 
-// 1体ぶんの表示ツリー、表示専用状態、オーバーレイと同期処理をすべて所有する。
+export interface DynamicLineSamples {
+  readonly method: 'analytic' | 'predicted';
+  readonly points: readonly Vec3[];
+}
+
+type OrbitLineResource =
+  | { readonly kind: 'ellipse'; readonly line: EllipseLine }
+  | { readonly kind: 'relative'; readonly line: TargetRelativeLine };
+
+// 1体ぶんの表示ツリー、オーバーレイ資源、再構築回避用キャッシュを所有する。
 export class DynamicView {
-  public showTrajectoryLine = false;
-  public orbitLineColor: string | number = 0xffffff;
-
-  private orbitLineValue: OrbitLine | null = null;
+  private orbitLineValue: OrbitLineResource | null = null;
   private predictedLineValue: TrajectoryLine | null = null;
   private actualLineValue: TrajectoryLine | null = null;
   private equatorNodes: EquatorNodeMarkerPair | null = null;
@@ -74,17 +86,23 @@ export class DynamicView {
     if (addToScene) this.scene?.add(this.object);
   }
 
-  public get orbitLine(): OrbitLine | null { return this.orbitLineValue; }
-  public get predictedLine(): TrajectoryLine | null { return this.predictedLineValue; }
-  public get actualLine(): TrajectoryLine | null { return this.actualLineValue; }
-
+  // 個体の表示入力を、モデルと所有する DOM マーカーへ同期する。
   public sync(identity: DynamicViewIdentity, motion: DynamicMotion, context: DynamicViewFrame): void {
     const visible = identity.mapKind === null || context.visibilityPolicy === null
       || context.visibilityPolicy.entity(identity.mapKind, identity.id === context.activeId).category;
     const displayed = motion.alive
       ? this.place(motion, context.displayTime, context.floatingOrigin, visible)
       : null;
-    this.syncModel(motion, displayed, context);
+    if (!motion.alive) this.object.visible = false;
+    this.syncModel(identity, motion, displayed, context);
+    this.equatorNodes?.sync(
+      context.cameraSystem.activeCameraProjection,
+      context.cameraSystem.activeCameraPos,
+      context.frameAnchors.bodies,
+      context.frameAnchors.bodiesPivot,
+      context.cameraSystem.mode === 'map',
+      context.timeLabel,
+    );
   }
 
   protected place(
@@ -102,47 +120,41 @@ export class DynamicView {
   }
 
   protected syncModel(
-    _motion: DynamicMotion, _displayed: KinematicState | null, _context: DynamicViewFrame,
+    _identity: DynamicViewIdentity, _motion: DynamicMotion,
+    _displayed: KinematicState | null, _context: DynamicViewFrame,
   ): void {
   }
 
-  public showEllipseLine(style: LineStyle, center: CelestialBody | null): void {
-    const kept = this.orbitLineValue?.kind === 'ellipse' ? this.orbitLineValue.line : null;
-    if (kept !== null) {
-      kept.setStyle(style);
-      this.orbitLineValue = { kind: 'ellipse', line: kept, center };
-      return;
-    }
-    this.hideOrbitLine();
-    const line = new EllipseLine(style);
-    this.scene?.add(line.line);
-    this.orbitLineValue = { kind: 'ellipse', line, center };
-  }
-
-  public showTargetRelativeLine(style: LineStyle, target: DynamicStateSource): void {
-    const kept = this.orbitLineValue?.kind === 'relative' ? this.orbitLineValue.line : null;
-    if (kept !== null) {
-      kept.setStyle(style);
-      this.orbitLineValue = { kind: 'relative', line: kept, target };
-      return;
-    }
-    this.hideOrbitLine();
-    const line = new TargetRelativeLine(style);
-    this.scene?.add(line.line);
-    this.orbitLineValue = { kind: 'relative', line, target };
-  }
-
-  public hideOrbitLine(): void {
+  private disposeOrbitLine(): void {
     if (this.orbitLineValue === null) return;
     this.scene?.remove(this.orbitLineValue.line.line);
     this.orbitLineValue.line.dispose();
     this.orbitLineValue = null;
   }
 
-  public syncOrbitLine(
+  private syncOrbitLine(
+    display: DynamicLineDisplay['orbit'],
     motion: DynamicMotion, displayTime: number, celestialBodies: CelestialBodies,
     floatingOrigin: FloatingOrigin, camera: THREE.Camera, anchors: FrameAnchorSource,
   ): void {
+    if (display === null) {
+      this.disposeOrbitLine();
+      return;
+    }
+    if (this.orbitLineValue?.kind !== display.kind) {
+      this.disposeOrbitLine();
+      if (display.kind === 'ellipse') {
+        const line = new EllipseLine(display.style);
+        this.scene?.add(line.line);
+        this.orbitLineValue = { kind: 'ellipse', line };
+      } else {
+        const line = new TargetRelativeLine(display.style);
+        this.scene?.add(line.line);
+        this.orbitLineValue = { kind: 'relative', line };
+      }
+    } else {
+      this.orbitLineValue.line.setStyle(display.style);
+    }
     const orbitLine = this.orbitLineValue;
     if (orbitLine === null) return;
     const state = motion.stateAt(displayTime, celestialBodies);
@@ -150,56 +162,46 @@ export class DynamicView {
       orbitLine.line.hide();
       return;
     }
-    if (orbitLine.kind === 'relative') {
-      const target = orbitLine.target.stateAt(displayTime, celestialBodies)?.r ?? orbitLine.target.state.r;
+    if (display.kind === 'relative' && orbitLine.kind === 'relative') {
+      const target = display.target.stateAt(displayTime, celestialBodies)?.r ?? display.target.state.r;
       orbitLine.line.sync(state.r, target, floatingOrigin, camera);
       return;
     }
-    const center = orbitLine.center ?? strongestAttractor(state.r, anchors.bodies, anchors.bodiesPivot);
+    if (display.kind !== 'ellipse' || orbitLine.kind !== 'ellipse') return;
+    const center = display.center ?? strongestAttractor(state.r, anchors.bodies, anchors.bodiesPivot);
     const elements = orbitalElementsOf(state, center, anchors.bodiesPivot);
     if (elements === null) orbitLine.line.hide();
     else orbitLine.line.sync(elements, floatingOrigin, camera);
   }
 
-  public showPredictedLine(motion: DynamicMotion, style: LineStyle): void {
-    motion.trajectoryReader = true;
-    if (this.predictedLineValue !== null) {
-      this.predictedLineValue.setStyle(style);
-      return;
+  private syncTrajectoryLine(
+    current: TrajectoryLine | null, style: LineStyle | null,
+  ): TrajectoryLine | null {
+    if (style === null) {
+      if (current !== null) {
+        this.scene?.remove(current.line);
+        current.dispose();
+      }
+      return null;
     }
-    this.predictedLineValue = new TrajectoryLine(style);
-    this.scene?.add(this.predictedLineValue.line);
-  }
-
-  public hidePredictedLine(motion: DynamicMotion): void {
-    motion.trajectoryReader = false;
-    if (this.predictedLineValue === null) return;
-    this.scene?.remove(this.predictedLineValue.line);
-    this.predictedLineValue.dispose();
-    this.predictedLineValue = null;
-  }
-
-  public showActualLine(style: LineStyle): void {
-    if (this.actualLineValue !== null) {
-      this.actualLineValue.setStyle(style);
-      return;
+    if (current !== null) {
+      current.setStyle(style);
+      return current;
     }
-    this.actualLineValue = new TrajectoryLine(style);
-    this.scene?.add(this.actualLineValue.line);
+    const line = new TrajectoryLine(style);
+    this.scene?.add(line.line);
+    return line;
   }
 
-  public hideActualLine(): void {
-    if (this.actualLineValue === null) return;
-    this.scene?.remove(this.actualLineValue.line);
-    this.actualLineValue.dispose();
-    this.actualLineValue = null;
-  }
-
-  public syncTrajectoryLines(
+  // このフレームに必要な3種の線を一括して描画資源へ同期する。
+  public syncLines(
+    display: DynamicLineDisplay,
     motion: DynamicMotion, frame: ReferenceFrame, simTime: number, displayTime: number,
     pastDuration: number, predictedTo: number | null, celestialBodies: CelestialBodies,
     floatingOrigin: FloatingOrigin, camera: THREE.Camera, anchors: FrameAnchorSource,
   ): void {
+    this.predictedLineValue = this.syncTrajectoryLine(this.predictedLineValue, display.predicted);
+    this.actualLineValue = this.syncTrajectoryLine(this.actualLineValue, display.actual);
     if (this.predictedLineValue !== null) {
       this.predictedLineValue.syncGeometry(
         motion.predicted, simTime, predictedTo, frame, celestialBodies, anchors);
@@ -212,8 +214,34 @@ export class DynamicView {
       this.actualLineValue.syncTransform(frame, displayTime, celestialBodies, floatingOrigin, anchors);
       this.actualLineValue.sync(camera);
     }
+    this.syncOrbitLine(
+      display.orbit, motion, displayTime, celestialBodies, floatingOrigin, camera, anchors,
+    );
   }
 
+  // 現在描画している線を、当たり判定用の ECI 点列として読み出す。
+  public lineSamples(
+    count: number, frame: ReferenceFrame, displayTime: number,
+    celestialBodies: CelestialBodies, anchors: FrameAnchorSource,
+  ): DynamicLineSamples | null {
+    if (this.orbitLineValue !== null) {
+      return { method: 'analytic', points: this.orbitLineValue.line.samplePoints(count) };
+    }
+    if (this.predictedLineValue === null && this.actualLineValue === null) return null;
+    return {
+      method: 'predicted',
+      points: [
+        ...(this.actualLineValue?.samplePoints(
+          count, frame, displayTime, celestialBodies.frames, anchors,
+        ) ?? []),
+        ...(this.predictedLineValue?.samplePoints(
+          count, frame, displayTime, celestialBodies.frames, anchors,
+        ) ?? []),
+      ],
+    };
+  }
+
+  // 赤道交点マーカーを、このフレームの個体状態と表示条件へ同期する。
   public updateEquatorNodes(
     identity: DynamicViewIdentity, motion: DynamicMotion, inputs: EquatorNodeInputs, controlled: boolean,
   ): void {
@@ -227,19 +255,21 @@ export class DynamicView {
       .update(motion, identity.name, inputs);
   }
 
+  // 現在表示可能な赤道交点を選択候補として返す。
   public equatorNodePickables(): readonly ObjectPickable[] {
     return this.equatorNodes?.pickables() ?? [];
   }
 
+  // この View が所有する THREE / DOM 資源を解放する。
   public dispose(): void {
     this.equatorNodes?.dispose();
-    this.hideOrbitLine();
+    this.disposeOrbitLine();
     if (this.predictedLineValue !== null) {
       this.scene?.remove(this.predictedLineValue.line);
       this.predictedLineValue.dispose();
       this.predictedLineValue = null;
     }
-    this.hideActualLine();
+    this.actualLineValue = this.syncTrajectoryLine(this.actualLineValue, null);
     this.scene?.remove(this.object);
     disposeOwnedRenderResources(this.object);
   }

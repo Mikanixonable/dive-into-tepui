@@ -115,6 +115,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 敵機は熱防御を持たないので、自機より低い温度で構造が保たなくなる。
   public readonly accent: string | number; // マーカー色・集団識別。全敵が保持する
+  public readonly orbitLineColor: string | number;
   public readonly waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
   public readonly formationId?: string;
   public readonly formationRole?: FormationRole;
@@ -186,7 +187,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     this._worldSfx = worldSfx;
     this._fx = fx;
     this.accent = placed.accent;
-    this.view.orbitLineColor = placed.orbitLineColor;
+    this.orbitLineColor = placed.orbitLineColor;
     this.waveId = placed.waveId;
     this.formationId = placed.formationId;
     this.formationRole = placed.formationRole;
@@ -194,7 +195,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
       this.burstLeft = init.saved.burstLeft;
       this.burstDelay = init.saved.burstDelay;
       this.motion.alive = init.saved.alive;
-      this.view.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;
+      this.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;
     }
   }
 
@@ -471,14 +472,14 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
       alive: this.motion.alive,
       health: this.hp,
       accent: this.accent,
-      orbitLineColor: this.view.orbitLineColor,
+      orbitLineColor: this.orbitLineColor,
       waveId: this.waveId,
       // 陣形所属は無所属の単体敵も多いため、値がある場合だけキーを持たせる。
       ...(this.formationId === undefined ? {} : { formationId: this.formationId }),
       ...(this.formationRole === undefined ? {} : { formationRole: this.formationRole }),
       burstLeft: this.burstLeft,
       burstDelay: this.burstDelay,
-      showTrajectoryLine: this.view.showTrajectoryLine,
+      showTrajectoryLine: this.showTrajectoryLine,
     };
   }
 
@@ -532,7 +533,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     return [
       MenuCommon.target(navTargetId === this.id),
       MenuCommon.focus(),
-      MenuCommon.trajectoryLine(this.view.showTrajectoryLine),
+      MenuCommon.trajectoryLine(this.showTrajectoryLine),
       MenuCommon.duplicate(),
       { label: '削除', act: 'delete' },
       MenuCommon.cancel(),
@@ -545,7 +546,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   ): void {
     if (act === 'delete') this.motion.alive = false;
     else if (act === 'toggleTrajectoryLine') {
-      this.view.showTrajectoryLine = !this.view.showTrajectoryLine;
+      this.showTrajectoryLine = !this.showTrajectoryLine;
     } else if (act === 'duplicate') {
       authoring?.openObjectPlacerForDuplicate(this.mapKind, this.motion.state);
     }
