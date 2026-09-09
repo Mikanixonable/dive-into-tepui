@@ -40,6 +40,7 @@ export interface EarthSurfaceTileDescriptor {
 export interface EarthSurfaceTileRequestSourceInit {
   readonly tileIndexUrl: string;
   readonly baseUrl?: string;
+  readonly expectedDatasetId?: string;
   readonly fetchImpl?: typeof fetch;
 }
 
@@ -48,7 +49,8 @@ function validSha256(value: string): boolean { return /^[0-9a-f]{64}$/.test(valu
 function file(value: unknown, name: string): EarthSurfaceTileFile {
   if (value === null || typeof value !== 'object') throw new EarthSurfaceRequestError(`${name} is not an object`);
   const candidate = value as Partial<EarthSurfaceTileFile>;
-  if (typeof candidate.url !== 'string' || candidate.url.length === 0 || candidate.url.includes('?')
+  if (typeof candidate.url !== 'string' || candidate.url.length === 0
+    || candidate.url.startsWith('http:') || candidate.url.startsWith('https:') || candidate.url.includes('?')
     || candidate.url.includes('#') || candidate.url.includes('\\') || candidate.url.startsWith('/')
     || candidate.url.split('/').some((part) => part === '.' || part === '..')) {
     throw new EarthSurfaceRequestError(`${name} has an invalid URL`);
@@ -65,12 +67,15 @@ function file(value: unknown, name: string): EarthSurfaceTileFile {
   return { url: candidate.url, sha256: candidate.sha256, encodedBytes, payloadBytes };
 }
 
-function normalizeIndex(value: unknown): EarthSurfaceTileIndexFile {
+function normalizeIndex(value: unknown, expectedDatasetId?: string): EarthSurfaceTileIndexFile {
   if (value === null || typeof value !== 'object') throw new EarthSurfaceRequestError('tile-index is not an object');
   const index = value as Partial<EarthSurfaceTileIndexFile>;
   if (index.schemaVersion !== 1 || typeof index.datasetId !== 'string' || !/^[a-z0-9-]+$/.test(index.datasetId)
     || !Array.isArray(index.entries) || index.entries.length === 0) {
     throw new EarthSurfaceRequestError('Invalid Earth surface tile-index');
+  }
+  if (expectedDatasetId !== undefined && index.datasetId !== expectedDatasetId) {
+    throw new EarthSurfaceRequestError('Earth surface tile-index datasetId mismatch');
   }
   const entries: EarthSurfaceTileIndexEntry[] = [];
   const ids = new Set<string>();
@@ -118,6 +123,7 @@ export class EarthSurfaceTileRequestSource {
   private readonly fetchImpl: typeof fetch;
   private readonly indexUrl: string | null;
   private readonly baseUrl: string;
+  private readonly expectedDatasetId: string | undefined;
   private readonly entries = new Map<string, EarthSurfaceTileDescriptor>();
   private loadPromise: Promise<void> | null = null;
   private loaded = false;
@@ -128,12 +134,14 @@ export class EarthSurfaceTileRequestSource {
       this.fetchImpl = fetch;
       this.indexUrl = null;
       this.baseUrl = baseUrl ?? '';
+      this.expectedDatasetId = undefined;
       this.install(index);
       this.loaded = true;
     } else {
       this.fetchImpl = indexOrInit.fetchImpl ?? fetch;
       this.indexUrl = indexOrInit.tileIndexUrl;
       this.baseUrl = indexOrInit.baseUrl ?? new URL('.', indexOrInit.tileIndexUrl).toString();
+      this.expectedDatasetId = indexOrInit.expectedDatasetId;
     }
   }
 
@@ -174,7 +182,7 @@ export class EarthSurfaceTileRequestSource {
     try { value = await response.json(); } catch (error) {
       throw new EarthSurfaceRequestError('Invalid Earth surface tile-index JSON', { cause: error });
     }
-    this.install(normalizeIndex(value));
+    this.install(normalizeIndex(value, this.expectedDatasetId));
     this.loaded = true;
   }
 
@@ -320,6 +328,8 @@ export class EarthSurfaceTileRequestQueue {
     if (existing !== undefined) {
       if (existing.generation === generation) return existing.promise;
       this.abort(id);
+      this.releaseWaiting(existing);
+      this.items.delete(id);
     }
     const descriptor = this.source.descriptorFor(key);
     if (descriptor === null) {
@@ -339,12 +349,7 @@ export class EarthSurfaceTileRequestQueue {
   public release(key: EarthTileKey, generation?: number): void {
     const item = this.items.get(earthTileId(key));
     if (item === undefined || (generation !== undefined && item.generation !== generation)) return;
-    if (item.waitingRelease !== null) {
-      item.waitingRelease();
-      item.waitingRelease = null;
-      this.counters.waitingReleased++;
-      this.emit({ type: 'release', resource: 'waiting', id: item.id, generation: item.generation });
-    }
+    this.releaseWaiting(item);
     if (item.done) this.items.delete(item.id);
   }
 
@@ -356,7 +361,10 @@ export class EarthSurfaceTileRequestQueue {
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    for (const item of this.items.values()) item.controller.abort();
+    for (const item of this.items.values()) {
+      item.controller.abort();
+      this.releaseWaiting(item);
+    }
     this.items.clear();
   }
 
@@ -390,7 +398,8 @@ export class EarthSurfaceTileRequestQueue {
           try {
             payload = await decodeEarthSurfaceTile({
               key: item.key, colorUrl: descriptor.colorUrl, terrainUrl: descriptor.terrainUrl,
-              generation: item.generation, signal: attemptController.signal, fetchImpl: this.limitedFetch,
+              generation: item.generation, signal: attemptController.signal,
+              fetchImpl: this.limitedFetch(item.generation),
               decodeImage: this.options.decodeImage, expectedColorSha256: descriptor.colorSha256,
               expectedTerrainSha256: descriptor.terrainSha256, expectedColorBytes: descriptor.colorEncodedBytes,
               expectedTerrainEncodedBytes: descriptor.terrainEncodedBytes,
@@ -429,21 +438,30 @@ export class EarthSurfaceTileRequestQueue {
     }
   }
 
-  private readonly limitedFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const id = String(input);
-    const generation = 0;
-    const permit = await this.http.acquire(init?.signal ?? undefined);
-    this.counters.httpReserved++;
-    this.emit({ type: 'reserve', resource: 'http', id, generation });
-    this.counters.httpStarted++;
-    this.emit({ type: 'start', resource: 'http', id, generation });
-    try { return await this.fetchImpl(input, init); }
-    finally {
-      this.counters.httpReleased++;
-      permit();
-      this.emit({ type: 'release', resource: 'http', id, generation });
-    }
-  };
+  private limitedFetch(generation: number): typeof fetch {
+    return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const id = String(input);
+      const permit = await this.http.acquire(init?.signal ?? undefined);
+      this.counters.httpReserved++;
+      this.emit({ type: 'reserve', resource: 'http', id, generation });
+      this.counters.httpStarted++;
+      this.emit({ type: 'start', resource: 'http', id, generation });
+      try { return await this.fetchImpl(input, init); }
+      finally {
+        this.counters.httpReleased++;
+        permit();
+        this.emit({ type: 'release', resource: 'http', id, generation });
+      }
+    };
+  }
+
+  private releaseWaiting(item: QueueItem): void {
+    if (item.waitingRelease === null) return;
+    item.waitingRelease();
+    item.waitingRelease = null;
+    this.counters.waitingReleased++;
+    this.emit({ type: 'release', resource: 'waiting', id: item.id, generation: item.generation });
+  }
 
   private *permanentFailuresEntries(): IterableIterator<[string, string]> {
     for (const [id, error] of this.permanentFailures) yield [id, reasonOf(error)];
