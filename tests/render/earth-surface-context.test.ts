@@ -21,6 +21,8 @@ export function register(): void {
   test('earth context: 地表と気候は同じdatasetIdのURL契約を共有する', () => {
     const value = source();
     assert.equal(value.climateMapUrls.length, 12);
+    assert.equal(value.sourceManifestSha256, '0'.repeat(64));
+    assert.deepEqual(value.climateEncoding.temperatureK, { min: 180, max: 330 });
     assert.ok(value.tileIndexUrl.endsWith('/tile-index.json'));
     assert.ok(value.baseColorUrl.endsWith('/earth.jpg'));
     assertEarthSurfaceDataset(value, 'earth-2026-09-09-a');
