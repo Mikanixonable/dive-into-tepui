@@ -3,10 +3,17 @@
 // OrbitalElements を返し、実際の天体位置への配置は呼び出し側(orbit-guide.ts)が行う。
 // 中心天体の重力・扁平・自転周期は呼び出し側から受け取る。
 import type { CelestialMotion } from './celestial-motion';
-import { orbitalElementsFromClassical, OrbitalElements, semiMajorFromPeriod } from './elements';
+import type { Degree2Gravity } from './celestial-body-def';
+import {
+  meanMotionFromSemiMajor, orbitalElementsFromClassical, type OrbitalElements,
+  semiMajorFromMeanMotion, semiMajorFromPeriod,
+} from './elements';
+import { SECONDS_PER_DAY } from './time';
+
+const TWO_PI = 2 * Math.PI;
 
 // 太陽に対する昇交点の歳差が一致すべき角速度の基準となる回帰年 [s]。
-const TROPICAL_YEAR_SEC = 365.2422 * 86400;
+const TROPICAL_YEAR_SEC = 365.2422 * SECONDS_PER_DAY;
 
 // 臨界傾斜角(近地点引数の長期摂動が止まる傾斜角、cos²i = 1/5) [deg]。モルニヤ・ツンドラ軌道が使う。
 const CRITICAL_INCLINATION_DEG = (Math.acos(1 / Math.sqrt(5)) * 180) / Math.PI;
@@ -15,21 +22,34 @@ const CRITICAL_INCLINATION_DEG = (Math.acos(1 / Math.sqrt(5)) * 180) / Math.PI;
 // 太陽と同じ角速度で歳差する円軌道の高度・傾斜角を解く。raanOffsetDeg は昇交点の初期位置
 // (太陽方向を基準にした角度)。両条件を同時に満たす実数の傾斜角が存在しなければ null。
 // 昇交点の歳差は扁平が生むので、2次重力場を持たない天体では解が存在しない。
-function sunSynchronousElements(
-  repeatDays: number, revsPerRepeat: number, raanOffsetDeg: number, planet: CelestialMotion, planetPivot: number,
-): OrbitalElements | null {
-  const degree2 = planet.degree2At(planetPivot);
+interface SunSynchronousShape {
+  readonly a: number;
+  readonly incDeg: number;
+}
+
+function sunSynchronousShape(
+  repeatDays: number, revsPerRepeat: number, mu: number, radius: number, degree2: Degree2Gravity | null,
+): SunSynchronousShape | null {
   if (degree2 === null) return null;
-  const n = (revsPerRepeat * 2 * Math.PI) / (repeatDays * 86400);
-  const a = Math.cbrt(planet.def.mu / (n * n));
-  if (a <= planet.def.radius) return null; // 解の高度が地表以下(中心天体に埋まる非物理的な解)。
-  const sunRate = (2 * Math.PI) / TROPICAL_YEAR_SEC;
+  const n = (revsPerRepeat * TWO_PI) / (repeatDays * SECONDS_PER_DAY);
+  const a = semiMajorFromMeanMotion(n, mu);
+  if (a <= radius) return null; // 解の高度が地表以下(中心天体に埋まる非物理的な解)。
+  const sunRate = TWO_PI / TROPICAL_YEAR_SEC;
   const precessionPerRad = -1.5 * n * degree2.j2 * (degree2.refRadius / a) ** 2;
   const cosInc = sunRate / precessionPerRad;
   if (!(cosInc >= -1 && cosInc <= 1)) return null;
   const incDeg = (Math.acos(cosInc) * 180) / Math.PI;
+  return { a, incDeg };
+}
+
+function sunSynchronousElements(
+  repeatDays: number, revsPerRepeat: number, raanOffsetDeg: number, planet: CelestialMotion, planetPivot: number,
+): OrbitalElements | null {
+  const shape = sunSynchronousShape(
+    repeatDays, revsPerRepeat, planet.def.mu, planet.def.radius, planet.degree2At(planetPivot));
+  if (shape === null) return null;
   return orbitalElementsFromClassical(
-    a, 0, incDeg, raanOffsetDeg, 0, planet, planet.stateAt(planetPivot));
+    shape.a, 0, shape.incDeg, raanOffsetDeg, 0, planet, planet.stateAt(planetPivot));
 }
 
 // sunSynchronousElements が null を返す2つの境界(cosInc=-1・a=天体半径)を、それぞれ平均運動 n
@@ -39,12 +59,12 @@ function sunSynchronousElements(
 export function sunSyncRevsPerDayRange(
   mu: number, equatorRadius: number, j2: number,
 ): { readonly min: number; readonly max: number } {
-  const sunRate = (2 * Math.PI) / TROPICAL_YEAR_SEC;
+  const sunRate = TWO_PI / TROPICAL_YEAR_SEC;
   // cosInc = -1(太陽同期条件の下限)。
   const nMin = ((sunRate * mu ** (2 / 3)) / (1.5 * j2 * equatorRadius ** 2)) ** (3 / 7);
   // a = equatorRadius(解の高度が地表に一致する上限)。
-  const nMax = Math.sqrt(mu / equatorRadius ** 3);
-  const revPerDay = (n: number) => (n * 86400) / (2 * Math.PI);
+  const nMax = meanMotionFromSemiMajor(equatorRadius, mu);
+  const revPerDay = (n: number) => (n * SECONDS_PER_DAY) / TWO_PI;
   return { min: revPerDay(nMin), max: revPerDay(nMax) };
 }
 
