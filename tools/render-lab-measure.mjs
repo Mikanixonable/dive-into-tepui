@@ -30,7 +30,7 @@ async function main() {
     const { devTools } = session;
     await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
     for (let i = 0; i < 600; i++) {
-      if (await devTools.evaluate('typeof window.renderLab === "object"')) break;
+      if (await devTools.evaluate('typeof window.renderLab?.measure === "function"')) break;
       await sleep(200);
     }
 
