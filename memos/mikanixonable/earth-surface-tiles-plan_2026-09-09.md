@@ -685,7 +685,7 @@ fetch/GPUで検査し、色だけ・地形だけが表示される状態を作�
 色変換の一時失敗をcoordinator側の永続失敗へ昇格しないよう修正した。renderテストは58/58まで通過している。
 実Three.jsの色変換、実GPUの配列層、Earth entity接続は段C・Dへ残す。
 
-### 実装段C: 地表マテリアルと実GPU接続
+### 実装段C: 地表マテリアルと実GPU接続（解析contract完了）
 
 **依存**: 段B。
 **変更**: `src/render/earth-surface-material.ts`（新規）、`src/render/earth-surface-gpu.ts`、
@@ -702,7 +702,14 @@ fetch/GPUで検査し、色だけ・地形だけが表示される状態を作�
 
 **達成条件**: ゼロ勾配、非一様半軸、自転0/90/180度、経度±180度、親子fade、sRGB混合、模式図fallbackを
 解析テストと実ブラウザ画像で確認する。色・法線・roughnessの公開フレームが一致し、既存の月・他天体の
-material挙動を変えない。
+ material挙動を変えない。
+
+**実装状況（2026-09-09）**: `fa1f04e1`で、実GPUへ依存しないmaterial解析contractを追加した。楕円体UV、
+ページ表の最近傍読取り、タイルgutter・経度wrap・極clamp、sRGBから線形への変換、親子fade、GSHHG被覆率からの
+水・陸・氷roughness、body法線のview変換、模式図の幾何法線fallbackをfixtureで固定した。`npm run typecheck`、
+`npm run test:render`（64/64）、`npm run earth-surface:test`、Pythonデータテスト（15件）を通過している。
+この段で実Three.jsの`DataArrayTexture`/TSL、実GPU配列層、ページ表の公開、mipmap無効化とbase固定fallbackは
+まだ接続していないため、段Cの受け入れは未完了とする。
 
 ### 実装段D: `CelestialSurface`とEarth entityの接続
 
