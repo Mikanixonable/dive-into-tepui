@@ -711,7 +711,7 @@ fetch/GPUで検査し、色だけ・地形だけが表示される状態を作�
 この段で実Three.jsの`DataArrayTexture`/TSL、実GPU配列層、ページ表の公開、mipmap無効化とbase固定fallbackは
 まだ接続していないため、段Cの受け入れは未完了とする。
 
-### 実装段D: `CelestialSurface`とEarth entityの接続
+### 実装段D: `CelestialSurface`とEarth entityの接続（共通contract完了）
 
 **依存**: 段Cのmaterial。fixture baseを使った接続を先に行い、実データは後から差し替える。
 **変更**: `src/render/earth-surface-context.ts`、`src/render/earth-surface.ts`、
@@ -730,6 +730,12 @@ fetch/GPUで検査し、色だけ・地形だけが表示される状態を作�
 
 **達成条件**: `npm run typecheck`、`npm run test:render`、`npm run test:game`。地球のdispose後に要求・GPU層・
 Contextが残らず、月・他天体・模式図・軌道分析が既存テストを維持する。
+
+**実装状況（2026-09-09）**: `12dd9529`で`CelestialSurfaceLike`と`CelestialSurfaceFrame`を抽出し、
+`PointEntity`/`SphereEntity`が具体クラスへ依存せず表面を注入できる契約を追加した。既存の静的surfaceを
+fixtureで検査し、`npm run typecheck`、`npm run test:render`（65/65）、`npm run test:game`（199/199）を
+通過している。EarthSurface本体、Earthへの注入、毎フレームの`syncFrame`呼出し、非表示・dispose時の
+要求/GPU/Context解放、webpackの公開URL検査は未実装であり、段Dの受け入れは未完了とする。
 
 ### 実装段E: 気候マップと雲・大気を共有入力へ切り替える
 
