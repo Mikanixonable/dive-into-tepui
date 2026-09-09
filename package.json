@@ -33,6 +33,8 @@
     "export-climate": "node tools/export-climate.mjs",
     "earth-surface:fetch": "python3 tools/earth-surface/fetch-source.py",
     "earth-surface:bake": "python3 tools/earth-surface/bake.py",
+    "earth-surface:package": "node tools/earth-surface/package.mjs",
+    "earth-surface:serve": "node tools/earth-surface/serve.mjs",
     "export-moon-features": "node tools/export-moon-features.mjs",
     "protein:author": "python3 tools/protein-builder/build-protein.py --require-blender",
     "protein:validate": "node tools/protein-builder/run-all.mjs validate && node tools/protein-builder/run-all.mjs validate-motion",
