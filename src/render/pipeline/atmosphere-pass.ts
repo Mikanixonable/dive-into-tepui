@@ -106,9 +106,9 @@ export class AtmospherePass {
     this.quad = new QuadMesh(this.material);
   }
 
-  // 種類ごとに、雲の殻を描くかを置き直す。
-  public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
-    this.layer.setCloudShellEnabled(species, enabled);
+  // 種類ごとに、連続雲体積を描くかを置き直す。
+  public setCloudSpeciesEnabled(species: CloudSpecies, enabled: boolean): void {
+    this.layer.setCloudSpeciesEnabled(species, enabled);
   }
 
   public setCloudBlueNoiseEnabled(enabled: boolean): void {

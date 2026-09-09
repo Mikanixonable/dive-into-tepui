@@ -38,7 +38,7 @@ export class CloudAtmosphereRenderer {
     this.fieldSampler.setTexture(clouds.field);
   }
 
-  public setShellEnabled(species: CloudSpecies, enabled: boolean): void {
+  public setSpeciesEnabled(species: CloudSpecies, enabled: boolean): void {
     this.enabled[species].value = enabled ? 1 : 0;
   }
 

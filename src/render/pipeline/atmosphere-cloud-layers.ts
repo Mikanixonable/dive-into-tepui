@@ -13,8 +13,8 @@ export class AtmosphereCloudLayers {
     this.clouds.set(clouds);
   }
 
-  public setShellEnabled(species: CloudSpecies, enabled: boolean): void {
-    this.clouds.setShellEnabled(species, enabled);
+  public setSpeciesEnabled(species: CloudSpecies, enabled: boolean): void {
+    this.clouds.setSpeciesEnabled(species, enabled);
   }
 
   public setLodSampling(mode: CloudLodMode, fixedLevel = 0): void {

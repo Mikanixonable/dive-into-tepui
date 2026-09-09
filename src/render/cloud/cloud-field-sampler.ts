@@ -65,7 +65,7 @@ export class CloudFieldSampler {
     return value;
   }
 
-  // 光路や殻の交点のように画面の隣接画素と連続しない標本の mip を共通選択する。
+  // 光路上の標本のように画面の隣接画素と連続しない標本の mip を共通選択する。
   public lodForWidth(width: FloatNode, radius: FloatNode): FloatNode {
     const texelWidth = this.fieldTexelWidth(radius);
     return min(max(log2(width.div(max(texelWidth, 1))), float(0)), this.maxMipLevel);

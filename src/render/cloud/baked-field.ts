@@ -14,6 +14,16 @@ export function maxMipLevelOf(width: number, height: number): number {
   return Math.floor(Math.log2(Math.max(1, width, height)));
 }
 
+// 自動生成を使わないテクスチャでは、手動で渡された mip の数だけを実在レベルとして返す。
+// mipmaps が空なら level 0 だけを読める。自動生成時はGPUが寸法に応じた全レベルを確保する。
+export function maxAvailableMipLevelOf(
+  width: number, height: number, generateMipmaps: boolean, mipmapCount: number,
+): number {
+  const dimensionMax = maxMipLevelOf(width, height);
+  if (generateMipmaps) return dimensionMax;
+  return Math.min(dimensionMax, Math.max(0, Math.floor(mipmapCount) - 1));
+}
+
 export class BakedField {
   private readonly target: THREE.RenderTarget;
   private readonly material: THREE.MeshBasicNodeMaterial;
