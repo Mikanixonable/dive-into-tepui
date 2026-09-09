@@ -128,7 +128,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   constructor(
     _notifier: Notifier,
     _worldSfx: WorldSfx,
-    private readonly scene: THREE.Scene,
+    scene: THREE.Scene,
     _fx: FlashEffects,
     markers: MarkerSlots,
     init: PlayerInit = {},
@@ -493,7 +493,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     this._fx.spawnFlash(this.motion.state, DESTROY_FLASH2_SIZE0, DESTROY_FLASH2_SIZE1, DESTROY_FLASH2_DURATION, DESTROY_FLASH_COLOR_2);
     for (const piece of buildDestroyFragments(
       t, r, v, 11, PLAYER_DESTROY_FRAG_COLOR, DESTROY_FRAG_SIZE_MIN / 3, DESTROY_FRAG_SIZE_MAX / 3, 20.0,
-      this._worldSfx, this._fx, this.scene,
+      this._worldSfx, this._fx,
     )) registry.add(piece);
   }
 
@@ -504,7 +504,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     for (const piece of buildDestroyFragments(
       this.motion.state.t, tipR, this.motion.state.v, 4, PLAYER_DESTROY_FRAG_COLOR,
       DESTROY_FRAG_SIZE_MIN, DESTROY_FRAG_SIZE_MAX, 8.0,
-      this._worldSfx, this._fx, this.scene,
+      this._worldSfx, this._fx,
     )) registry.add(piece);
   }
 
