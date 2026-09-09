@@ -1,8 +1,12 @@
 // GPU公開の原子性、層の使用権と遅着の世代境界を代替backendで検査する。
 import * as assert from 'node:assert/strict';
+import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import { EarthSurfaceGpuAdapter } from '../../src/render/earth-surface-gpu';
-import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, EARTH_TILE_EXTENT, earthTileKey } from '../../src/render/earth-surface-tiles';
+import { EarthSurfaceGpuThree, earthSurfaceGpuCapabilitiesOf } from '../../src/render/earth-surface-gpu-three';
+import {
+  EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, earthTileKey,
+} from '../../src/render/earth-surface-tiles';
 import type { EarthSurfaceGpuBackend, EarthSurfaceGpuCapabilities } from '../../src/render/earth-surface-gpu';
 
 const SUPPORTED: EarthSurfaceGpuCapabilities = {
@@ -63,6 +67,35 @@ function page(layer = 255): Uint8Array {
 
 // この層の回帰テストを登録する。
 export function register(): void {
+  test('earth GPU: Three実装は対応時だけ配列層を作り、層更新を実テクスチャへ反映する', async () => {
+    const backend = new EarthSurfaceGpuThree(SUPPORTED);
+    const textures = backend.textures;
+    assert.ok(textures !== null);
+    assert.equal(textures.color.image.depth, EARTH_TILE_LAYERS);
+    assert.equal(textures.color.colorSpace, THREE.SRGBColorSpace);
+    assert.equal(textures.color.minFilter, THREE.LinearFilter);
+    assert.equal(textures.terrain.type, THREE.HalfFloatType);
+    assert.equal(textures.pageTable.minFilter, THREE.NearestFilter);
+    await backend.writeColor(3, new Uint8Array(COMPONENTS).fill(7));
+    await backend.writeTerrain(3, new Uint16Array(COMPONENTS).fill(11));
+    assert.equal(textures.color.image.data![3 * COMPONENTS], 7);
+    assert.equal(textures.terrain.image.data![3 * COMPONENTS], 11);
+    const pages = new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(255);
+    backend.swapPageTable(pages);
+    assert.equal(textures.pageTable.image.data![0], 255);
+    backend.dispose();
+    assert.throws(() => backend.swapPageTable(pages), /disposed/);
+  });
+
+  test('earth GPU: Three実装はWebGPU機能不足時にbase-onlyへ固定する', () => {
+    const backend = new EarthSurfaceGpuThree({ ...SUPPORTED, texture2dArray: false });
+    assert.equal(backend.textures, null);
+    assert.throws(() => backend.writeColor(0, new Uint8Array(COMPONENTS)), /global base/);
+    assert.deepEqual(earthSurfaceGpuCapabilitiesOf({ isWebGPUBackend: false }), {
+      texture2dArray: false, maxTextureArrayLayers: 0, colorSrgbLinear: false, terrainFloat16Linear: false,
+    });
+  });
+
   test('earth GPU: 配列層や線形標本化が不足すればbaseへ固定する', () => {
     for (const capabilities of [
       { ...SUPPORTED, texture2dArray: false }, { ...SUPPORTED, maxTextureArrayLayers: 127 },
