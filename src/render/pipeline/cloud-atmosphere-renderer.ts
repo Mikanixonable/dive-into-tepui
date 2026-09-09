@@ -7,7 +7,7 @@
 // 大気と同じ 1 本の式が解く。
 import * as THREE from 'three/webgpu';
 import { abs, dot, exp, greaterThan, max, min, sqrt, uniform, vec4 } from 'three/tsl';
-import { CloudFieldSampler } from '../cloud/cloud-field-sampler';
+import { CloudFieldSampler, type CloudLodMode } from '../cloud/cloud-field-sampler';
 import { CloudShapeEvaluator } from '../cloud/cloud-shape-evaluator';
 import type { AtmosphereClouds } from '../atmosphere';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
@@ -115,6 +115,10 @@ export class CloudAtmosphereRenderer {
   // 種類ごとに、その殻を描くかを置き直す。
   public setShellEnabled(species: CloudSpecies, enabled: boolean): void {
     this.enabled[species].value = enabled ? 1 : 0;
+  }
+
+  public setLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
+    this.fieldSampler.setLodSampling(mode, fixedLevel);
   }
 
   // その種類の殻が立っているか。
