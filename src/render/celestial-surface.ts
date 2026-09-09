@@ -9,6 +9,7 @@ import { rec709Luminance, scaledToBondAlbedo, type Albedo } from './celestial-al
 import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
 import type { CelestialTexture } from './celestial-textures';
 import type { Vec2Node, Vec3Node } from './tsl-types';
+import type { RenderStyle } from './render-style';
 
 // 球の開始方位 [rad]。正距円筒図法のテクスチャは経度 0 を u=0.5 へ置くので、その経線が
 // モデルの本初子午線(+Z)へ来る向きから分割を始める。
@@ -40,10 +41,31 @@ export function unitSphereGeometry(level: SphereLodLevel): THREE.BufferGeometry 
 
 // 表面の測光値。bondAlbedo は輝点の明るさを引くスカラ、lightSourceAlbedo はこの天体を
 // 光源として扱うときの色つきアルベド(Rec.709 輝度がボンドアルベドに一致する線形 RGB)。
-type SurfacePhotometry = {
+export type SurfacePhotometry = {
   readonly bondAlbedo: number;
   readonly lightSourceAlbedo: Albedo;
 };
+
+// 天体の位置・姿勢・形状を確定した後に、表面固有の同期へ渡す値。
+export interface CelestialSurfaceFrame {
+  readonly camera: THREE.Camera;
+  readonly bodyToView: THREE.Matrix4;
+  readonly axes: THREE.Vector3;
+  readonly viewport: { readonly width: number; readonly height: number };
+  readonly frame: number;
+  readonly timeMs: number;
+  readonly style: RenderStyle;
+}
+
+export interface CelestialSurfaceLike {
+  readonly photometry: SurfacePhotometry | null;
+  readonly textureUrl: string | null;
+  addTo(parent: THREE.Object3D): void;
+  syncLod(apparentDiameterPx: number): void;
+  syncFrame(frame: CelestialSurfaceFrame): void;
+  hide(): void;
+  dispose(): void;
+}
 
 // 実写テクスチャの測光。倍率を掛ける前の平均色を、その天体のボンドアルベドへ合わせる。
 function photometryOf(texture: CelestialTexture): SurfacePhotometry {
@@ -53,7 +75,7 @@ function photometryOf(texture: CelestialTexture): SurfacePhotometry {
   };
 }
 
-export class CelestialSurface {
+export class CelestialSurface implements CelestialSurfaceLike {
   // 段ごとの半径 1 の球。表示側が親の位置・スケール・自転姿勢を毎フレーム与える。
   private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
   private activeLevel: SphereLodLevel | null = null;
@@ -122,6 +144,9 @@ export class CelestialSurface {
     this.activeLevel = level;
     for (const [meshLevel, mesh] of this.meshes) mesh.visible = meshLevel === level;
   }
+
+  // 地球固有の表面同期を差し込む共通境界。静的な球面では何もしない。
+  public syncFrame(_frame: CelestialSurfaceFrame): void {}
 
   // 全段のメッシュを隠す。次の syncLod で段を選び直す。
   public hide(): void {
