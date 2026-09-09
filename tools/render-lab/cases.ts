@@ -115,7 +115,7 @@ export interface LabCase {
   readonly shadowBodies?: readonly ShadowBody[];
   // 影パスへ渡す環。中心と法線軸は描画座標。
   readonly rings?: { readonly center: THREE.Vector3; readonly axis: THREE.Vector3; readonly bands: readonly RingBand[] };
-  // 影パスへ渡す積雲の殻。
+  // 影パスへ渡す積雲体積の記述。
   readonly cumulus?: ShadowCumulus;
   // 動的な雲場を表示時刻へ焼く。
   readonly bakeClouds?: (renderer: WebGPURenderer, displayTime: number) => void;
@@ -618,9 +618,9 @@ function marchSlab(): LabCase {
   return { objects: [plane], camera };
 }
 
-// 地球の球を、中心 center(描画座標)へ寄り切った分割段で組む。薄い雲を合成した地表と積雲の
-// 殻、模式図でだけ出る経緯度グリッド・海岸線を、ゲーム本体と同じ部品から組む。殻が落とす影と
-// 大気は別のパスへ渡すので、置いた球と一緒に返す。spin は天体固定の姿勢で、地表も殻も場も
+// 地球の球を、中心 center(描画座標)へ寄り切った分割段で組む。薄い雲を合成した地表と積雲体積、
+// 模式図でだけ出る経緯度グリッド・海岸線を、ゲーム本体と同じ部品から組む。体積が落とす影と
+// 大気は別のパスへ渡すので、置いた球と一緒に返す。spin は天体固定の姿勢で、地表も体積も場も
 // 大気の扁平も一緒に回る。
 function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Quaternion()): {
   readonly object: THREE.Object3D;
@@ -673,7 +673,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
     },
     // 天体自身が落とす影。地表・雲頂・低い高度の大気が直射を失う境界はこれが決める。
     shadowBody: { center, axes: new THREE.Vector3(axes.x, axes.y, axes.z), bodyFromWorld },
-    // 殻の分割段は寄り切った 1 段に固定(ケースのカメラ距離は観察のつまみで動くが、
+    // 積雲の分割段は寄り切った 1 段に固定(ケースのカメラ距離は観察のつまみで動くが、
     // 絵の比較は最も細かい段で行う)。
     applyGraphics: (graphics) => {
       if (graphics.clouds) {
