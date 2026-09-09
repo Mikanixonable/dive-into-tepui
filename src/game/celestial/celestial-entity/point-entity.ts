@@ -20,6 +20,7 @@ import { RingView } from './ring-view';
 import { DEFAULT_ALBEDO, rec709Luminance, type Albedo } from '../../../render/celestial-albedo';
 import { SUN_IRRADIANCE_1AU } from '../../../render/pipeline/sun-light';
 import { norm, sub, v3 } from '../../../math/vec3';
+import type { Quat } from '../../../math/quat';
 import type { CumulusShell } from '../../../render/cumulus-shell';
 import type { Aurora } from '../../../render/aurora';
 import type { CelestialClass } from './celestial-entity-def';
@@ -55,6 +56,8 @@ const AURORA_PHASE_RATE = 0.02;
 
 const tmpPos = new THREE.Vector3();
 const tmpToObserver = new THREE.Vector3();
+const tmpSunDirection = new THREE.Vector3();
+const tmpInverseOrientation = new THREE.Quaternion();
 
 export class PointEntity extends CelestialEntity {
   // 位置と自転姿勢だけを載せる入れ物。扁平のスケールは shapeGroup が持つ — オーロラは実寸 [m]
@@ -169,13 +172,13 @@ export class PointEntity extends CelestialEntity {
       graphics.clouds && graphics.cirrus,
       graphics.clouds && graphics.translucentCumulus,
     );
-    // 模式図の重ね書きとオーロラ。
-    this.graticule.setVisible(style === 'schematic');
-    this.surfaceMarkings?.setVisible(style === 'schematic');
-    this.syncAuroras(displayTime, graphics.aurora);
     // 位置・扁平・自転姿勢。
     const orientation = this.motion.orientationAt(displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
+    // 模式図の重ね書きとオーロラ。
+    this.graticule.setVisible(style === 'schematic');
+    this.surfaceMarkings?.setVisible(style === 'schematic');
+    this.syncAuroras(displayTime, graphics.aurora, pos, star, q);
     this.group.position.copy(fo.RtoThreeV3(pos));
     this.shapeGroup.scale.copy(this.axes);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
@@ -236,11 +239,29 @@ export class PointEntity extends CelestialEntity {
   }
 
   // オーロラの波打ち・明滅を表示時刻へ進める。
-  private syncAuroras(displayTime: number, visible: boolean): void {
+  private syncAuroras(
+    displayTime: number, visible: boolean, bodyPosition: Vec3, star: StarEntity | null,
+    orientation: Quat | null,
+  ): void {
     const phase = displayTime * AURORA_PHASE_RATE;
+    if (star === null) tmpSunDirection.set(1, 0, 0);
+    else {
+      const starPosition = star.stateAt(displayTime).r;
+      tmpSunDirection.set(
+        starPosition.x - bodyPosition.x,
+        starPosition.y - bodyPosition.y,
+        starPosition.z - bodyPosition.z,
+      ).normalize();
+    }
+    if (orientation !== null) {
+      tmpSunDirection.applyQuaternion(tmpInverseOrientation.set(
+        orientation.x, orientation.y, orientation.z, orientation.w,
+      ).invert());
+    }
+    const solarMeridian = Math.atan2(tmpSunDirection.z, tmpSunDirection.x);
     for (const aurora of this.auroras) {
       aurora.mesh.visible = visible;
-      if (visible) aurora.sync(phase);
+      if (visible) aurora.sync(phase, solarMeridian);
     }
   }
 

@@ -1,6 +1,9 @@
 // Shared physical wind representation. Speeds are m/s and vary continuously
 // with latitude and altitude; rendering transports may derive their own phase
 // from this field without becoming another physical wind source.
+import { abs, float, sign, smoothstep as nodeSmoothstep, vec2 } from 'three/tsl';
+import { R_EARTH } from '../../game/celestial/solar-system/constants';
+import type { FloatNode, Vec2Node } from '../tsl-types';
 export type WindVector = { readonly east: number; readonly north: number };
 
 export const SURFACE_HEIGHT = 1_000;
@@ -22,6 +25,25 @@ export class AtmosphericWindField {
       north: northSurface + layer * (-northSurface - hemisphere * 0.8),
     };
   }
+
+  // The same profile for TSL weather graphs. Keeping the CPU and shader entry
+  // points on one field prevents cloud, front, and air-mass callers from
+  // growing separate fixed wind tables.
+  public sampleNode(latitudeRad: FloatNode, heightM: number): Vec2Node {
+    const absolute = abs(latitudeRad);
+    const trade = nodeSmoothstep(float(0.18), float(0.32), absolute);
+    const westerly = nodeSmoothstep(float(0.28), float(0.55), absolute)
+      .mul(nodeSmoothstep(float(0.58), float(0.72), absolute).oneMinus());
+    const polar = nodeSmoothstep(float(0.62), float(1.25), absolute);
+    const layer = nodeSmoothstep(float(SURFACE_HEIGHT), float(UPPER_CLOUD_HEIGHT), float(heightM));
+    const hemisphere = sign(latitudeRad);
+    const eastSurface = trade.mul(-6).add(westerly.mul(7)).sub(polar.mul(6));
+    const northSurface = hemisphere.mul(trade.mul(-1.5).add(westerly.mul(1.5)).sub(polar));
+    return vec2(
+      eastSurface.add(layer.mul(polar.mul(12).add(westerly.mul(13)).sub(eastSurface))),
+      northSurface.add(layer.mul(northSurface.negate().sub(hemisphere.mul(0.8)))),
+    );
+  }
 }
 
 export class CloudPatternTransport {
@@ -32,22 +54,36 @@ export class CloudPatternTransport {
   public phaseAt(latitudeRad: number, heightM: number, seconds: number): number {
     const wind = this.field.sample(latitudeRad, heightM);
     const speed = Math.hypot(wind.east, wind.north);
-    return (seconds * speed) / 6_371_000;
+    return (seconds * speed) / R_EARTH;
   }
 
-  public angularPhase(degreesPerDay: number, seconds: number): number {
-    return (degreesPerDay * Math.PI / 180) * seconds / 86400;
+  // Convert physical components to the angular displacement used by the
+  // spherical noise coordinate. This is the only place where m/s becomes a
+  // visual phase; the wind field itself remains in physical units.
+  public angularPhase(eastMs: number, northMs: number, latitudeRad: number, seconds: number): {
+    readonly east: number;
+    readonly north: number;
+  } {
+    return {
+      east: (eastMs * seconds) / (R_EARTH * Math.max(0.25, Math.cos(latitudeRad))),
+      north: (northMs * seconds) / R_EARTH,
+    };
   }
 }
 
-export function angularBandsAt(heightM: number): readonly { readonly east: number; readonly north: number }[] {
+export function windBandsAt(heightM: number): readonly {
+  readonly latitudeRad: number;
+  readonly east: number;
+  readonly north: number;
+}[] {
   const field = new AtmosphericWindField();
   return BAND_LATITUDES.map((degrees) => {
     const latitude = degrees * Math.PI / 180;
     const wind = field.sample(latitude, heightM);
     return {
-      east: wind.east * 86400 / (6_371_000 * Math.max(0.25, Math.cos(latitude))) * 180 / Math.PI,
-      north: wind.north * 86400 / 6_371_000 * 180 / Math.PI,
+      latitudeRad: latitude,
+      east: wind.east,
+      north: wind.north,
     };
   });
 }
