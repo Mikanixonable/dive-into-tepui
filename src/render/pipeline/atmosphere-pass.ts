@@ -110,11 +110,6 @@ export class AtmospherePass {
     this.layer.setCloudShellEnabled(species, enabled);
   }
 
-  // 積雲はシェルではなく、AtmosphereLayer の連続密度積分で描く。
-  public setCloudVolumeEnabled(enabled: boolean): void {
-    this.layer.setCloudVolumeEnabled(enabled);
-  }
-
   // このフレームで大気を描く天体を、**視点に近い順**に、それぞれのサンプル点の数と一緒に渡す。
   // 合成の前後はこの並びで決まる。MAX_ATMOSPHERE_BODIES を超えた分は描かれない。
   public setDraws(draws: readonly AtmosphereDraw[]): void {
@@ -228,5 +223,6 @@ export class AtmospherePass {
     this.inspectTarget.dispose();
     this.sharedCopyMaterial.dispose();
     this.inspectCopyMaterial.dispose();
+    this.layer.dispose();
   }
 }

@@ -19,7 +19,7 @@ import { Aurora, type AuroraOptics } from '../../../render/aurora';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import { CumulusShell } from '../../../render/cumulus-shell';
 import { ClimateMap } from '../../../render/cloud/climate-map';
-import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
+import { GeneratedCloudField } from '../../../render/cloud/cloud-field';
 import { EarthCoastline } from '../../../render/earth-coastline';
 import { MoonSurfaceMarkings } from '../../../render/moon-surface-markings';
 import { GeostationaryOverlay } from '../celestial-entity/geostationary-overlay';
@@ -191,7 +191,7 @@ export function earthSystem(
   const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
   // 雲の場は殻が持ち、地表・影・大気の殻はその実体を借りて読む。
   const climate = ClimateMap.fromDeferredUrl(climateTextureUrl);
-  const cumulus = new CumulusShell(GeneratedCloudField.global(climate));
+  const cumulus = new CumulusShell(GeneratedCloudField.global(climate), R_EARTH_EQ);
   return {
     earth: new PointEntity(
       earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',

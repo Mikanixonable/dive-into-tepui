@@ -151,7 +151,7 @@ export function condense(weather: WeatherSample): CloudSample {
   const clear = excess.mul(excess).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
   const coverage = clear.oneMinus();
   // 小さな雲を高い柱にしないため、雲底からの高さだけを被覆率で縮める。被覆率 0 では雲底へ
-  // 落ちるが、共有密度評価の columnOpticalDepth が 0 になるため晴天に雲や影は現れない。
+  // 落ちるが、その柱は opaqueFractionOf の門を通らないので晴天に雲や影が現れることはない。
   const cloudTop = max(tower, anvil);
   const scaledCloudTop = max(cloudTop.sub(CLOUD_BASE_HEIGHT), 0).mul(coverage).add(CLOUD_BASE_HEIGHT);
   // 薄い雲: 靄の項と筋の項の和を、上限へ漸近させる。
