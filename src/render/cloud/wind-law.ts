@@ -35,6 +35,12 @@ export type BalancedWind = {
   readonly turn: FloatNode;
 };
 
+// Compose a local pressure anomaly with a global background flow while keeping
+// one turning diagnostic for the resulting parcel trajectory.
+export function composeWind(local: BalancedWind, background: Vec3Node): BalancedWind {
+  return { velocity: local.velocity.add(background), turn: local.turn };
+}
+
 // gradient は気圧の勾配 [hPa/rad] の接ベクトル、isobar は isobarAt() の向き、bend は等圧線に沿う
 // 向きの 2 階微分 [hPa/rad²](= |∇p| ÷ 等圧線の曲率半径。低気圧で正)、friction は摩擦の減衰率
 // [1/s]。摩擦を強く取るほど風は遅く、等圧線を深く横切る。maxCrossing は等圧線を横切る角の上限 [rad]
