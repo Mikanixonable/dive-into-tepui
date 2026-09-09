@@ -48,7 +48,25 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   // 遷移中に再入すると、組み立て中の Game が dispose されないまま取り残される。
   private transitioning = false;
 
-  get current(): Game | null { return this.game; }
+  get currentGame(): Game | null { return this.game; }
+
+  get current(): CurrentGameSource['current'] {
+    const game = this.game;
+    if (game === null) return null;
+    return {
+      stageId: game.activeStage.id,
+      get isPlaying(): boolean { return game.activeStage.isPlaying; },
+      nameOfBody: (id) => game.celestialSystem.nameOf(id),
+      snapshot: {
+        get isPaused(): boolean { return game.isPaused; },
+        get isPlaying(): boolean { return game.activeStage.isPlaying; },
+        runSummary: () => game.runSummary(),
+        serialize: () => game.serialize(),
+      },
+      pause: () => game.pause(),
+      resume: () => game.resume(),
+    };
+  }
 
   constructor(
     private readonly shell: HudShell,
