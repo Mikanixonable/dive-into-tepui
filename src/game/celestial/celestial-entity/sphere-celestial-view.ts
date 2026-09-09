@@ -59,18 +59,17 @@ export class SphereCelestialView extends CelestialView {
     }
   }
 
-  public setVisible(visible: boolean): void {
-    this.group.visible = visible;
-    this.ring?.setVisible(visible);
-  }
-
   // displayTime 時点の位置へ同期する。見かけ直径が閾値未満なら球自体(と環)を描かない。
   public sync(
     motion: CelestialMotion, fo: FloatingOrigin, displayTime: number,
     cameraSystem: CameraSystem, _star: StellarLightSource | null,
-    graphics: GraphicsSettingsData, style: RenderStyle,
+    graphics: GraphicsSettingsData, style: RenderStyle, visible: boolean,
   ): void {
-    if (!this.group.visible) return;
+    this.group.visible = visible;
+    if (!visible) {
+      this.ring?.setVisible(false);
+      return;
+    }
     const pos = motion.stateAt(displayTime).r;
     const apparentDiameterPx = apparentSizePx(
       2 * this.outerRadius, cameraSystem.activeCameraRadialScale(pos),
