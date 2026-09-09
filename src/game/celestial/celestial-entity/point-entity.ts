@@ -55,7 +55,6 @@ const AURORA_PHASE_RATE = 0.02;
 
 const tmpPos = new THREE.Vector3();
 const tmpToObserver = new THREE.Vector3();
-const tmpCameraDirection = new THREE.Vector3();
 
 export class PointEntity extends CelestialEntity {
   // 位置と自転姿勢だけを載せる入れ物。扁平のスケールは shapeGroup が持つ — オーロラは実寸 [m]
@@ -161,13 +160,7 @@ export class PointEntity extends CelestialEntity {
     if (graphics.clouds) {
       this.cumulus?.setCloudsVisible(true);
       this.cumulus?.setDetail(graphics.cumulusDetail);
-      const bodyFromWorld = writeBodyFromWorld(this.bodyFromWorld, this.motion, displayTime);
-      tmpCameraDirection.set(
-        cameraSystem.activeCameraPos.x - pos.x,
-        cameraSystem.activeCameraPos.y - pos.y,
-        cameraSystem.activeCameraPos.z - pos.z,
-      ).applyMatrix4(bodyFromWorld).normalize();
-      this.cumulus?.syncLod(apparentDiameterPx, tmpCameraDirection);
+      this.cumulus?.syncLod(apparentDiameterPx);
     } else {
       this.cumulus?.setCloudsVisible(false);
     }
