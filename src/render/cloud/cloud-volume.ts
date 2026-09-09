@@ -69,8 +69,11 @@ export class CloudVolume {
 
   private cumulusDensity(field: Vec4Node, altitude: FloatNode): FloatNode {
     const top = max(field.g.mul(CLOUD_TOP_SPAN), CUMULUS_BASE_ALTITUDE);
+    // field.rは生の気象被覆率であり、柱を不透明にするcoverageではない。既存の連続rampを
+    // 通してから柱tauへ変換することで、低い被覆率を二値化せず、通常値でも体積が積分可能になる。
+    const continuousCoverage = this.shape.continuousCoverage(field.r, float(0));
     return this.profiledColumnDensity(
-      this.shape.columnOpticalDepth(field.r), altitude,
+      this.shape.columnOpticalDepth(continuousCoverage), altitude,
       float(CUMULUS_BASE_ALTITUDE), top,
     );
   }
