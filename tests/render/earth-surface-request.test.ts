@@ -86,6 +86,8 @@ export function register(): void {
     assert.ok(maxHttp <= 6);
     assert.ok(maxDecode <= 2);
     assert.equal(queue.metrics.decodeStarted, 3);
+    assert.ok(queue.metrics.events.filter((event) => event.resource === 'http')
+      .every((event) => event.generation === 3));
     for (const key of keys) queue.release(key, 3);
     assert.equal(queue.metrics.waitingReleased, 3);
   });
@@ -125,6 +127,20 @@ export function register(): void {
     });
     await assert.rejects(invalidQueue.request(invalid, 1), /color hash mismatch/);
     assert.equal(invalidQueue.metrics.retries, 0);
+
+    const mismatchSource = new EarthSurfaceTileRequestSource({
+      tileIndexUrl: 'https://example.test/tile-index.json', expectedDatasetId: 'other',
+      fetchImpl: async () => new Response(JSON.stringify(indexFor([invalid]))),
+    });
+    await assert.rejects(mismatchSource.ready(), /datasetId mismatch/);
+    const validUrlIndex = indexFor([invalid]);
+    const invalidUrlIndex = {
+      ...validUrlIndex,
+      entries: validUrlIndex.entries.map((entry) => ({
+        ...entry, color: { ...entry.color, url: 'https://evil.test/tile.jpg' },
+      })),
+    };
+    assert.throws(() => new EarthSurfaceTileRequestSource(invalidUrlIndex), /invalid URL/);
   });
 
   test('earth requests: generationのabortとdisposeは待機中の本文を公開しない', async () => {
@@ -147,6 +163,7 @@ export function register(): void {
     await assert.rejects(promise, /aborted|disposed/i);
     assert.equal(aborted, true);
     assert.equal(queue.metrics.waitingReserved, 0);
+    assert.equal(queue.metrics.waitingReleased, 0);
     await assert.rejects(queue.request(key, 9), /disposed/i);
   });
 }
