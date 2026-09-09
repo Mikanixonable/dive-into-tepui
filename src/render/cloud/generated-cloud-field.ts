@@ -15,6 +15,8 @@ export class GeneratedCloudField {
   private readonly field: CloudField;
   // 最後に焼いた表示時刻。表示時刻が同じ間は生成済みの場を使う。
   private lastBakedDisplayTime: number | null = null;
+  // 気候テクスチャの到着前に焼いた場を、画像公開後の同じ時刻へ持ち越さない。
+  private lastBakedClimateGeneration: number | null = null;
 
   // 気候を全球正距円筒へ投影する。
   public static global(climate: ClimateMap): GeneratedCloudField {
@@ -32,12 +34,15 @@ export class GeneratedCloudField {
 
   // 表示時刻の雲場を、天気の中間場から順に焼く。
   public bake(renderer: WebGPURenderer, displayTime: number): void {
-    if (this.lastBakedDisplayTime === displayTime) return;
     this.climate.request();
+    const climateGeneration = this.climate.generation;
+    if (this.lastBakedDisplayTime === displayTime
+      && this.lastBakedClimateGeneration === climateGeneration) return;
     this.model.syncTime(displayTime);
     this.model.bake(renderer);
     this.field.render(renderer);
     this.lastBakedDisplayTime = displayTime;
+    this.lastBakedClimateGeneration = climateGeneration;
   }
 
   // 保持している雲場を解放する。
