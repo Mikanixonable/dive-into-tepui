@@ -6,6 +6,7 @@ import { PhaseOffsets, StarMotion } from '../../../physics/celestial-motion';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-light';
 import { CelestialSystem } from '../celestial-system';
 import { ephemerisSeconds, TdbJulianDate } from '../../../physics/time';
+import { epochUnixSeconds } from '../../../hud/utils';
 import type { CelestialEntity } from '../celestial-entity/celestial-entity';
 import { StarEntity } from '../celestial-entity/star-entity';
 import { PointFieldView } from '../point-field-view';
@@ -64,7 +65,9 @@ export function solarSystem(
 
   // 全天体を系ごとの宣言順に並べたもの。重力源配列・天体一覧の順序はこれで決まる。
   const entities: readonly CelestialEntity[] = [
-    ...Object.values(earthSystem(sunMotion, phases, simZeroEt, earthSpinPhase0)),
+    ...Object.values(earthSystem(
+      sunMotion, phases, simZeroEt, earthSpinPhase0, epochUnixSeconds(epoch),
+    )),
     ...Object.values(innerPlanets(sunMotion, phases, simZeroEt)),
     ...Object.values(marsSystem(sunMotion, phases, simZeroEt)),
     ...Object.values(jupiterSystem(sunMotion, phases, simZeroEt)),
