@@ -1,6 +1,6 @@
 // 気候から表示時刻の雲場を焼く所有者。気候・天気の中間場・出力場を同じ寿命で管理する。
 import * as THREE from 'three/webgpu';
-import { ClimateMap } from './climate-map';
+import type { ClimateMapLike } from './climate-map';
 import { CloudField } from './cloud-field';
 import { EquirectProjection } from './field-projection';
 import { WeatherModel } from './weather-model';
@@ -19,12 +19,12 @@ export class GeneratedCloudField {
   private lastBakedClimateGeneration: number | null = null;
 
   // 気候を全球正距円筒へ投影する。
-  public static global(climate: ClimateMap): GeneratedCloudField {
+  public static global(climate: ClimateMapLike): GeneratedCloudField {
     return new GeneratedCloudField(climate, new EquirectProjection(GLOBAL_FIELD_HEIGHT));
   }
 
   // climate と、その中間場・出力場が共有する投影法を受け取る。
-  public constructor(private readonly climate: ClimateMap, projection: FieldProjection) {
+  public constructor(private readonly climate: ClimateMapLike, projection: FieldProjection) {
     this.model = new WeatherModel(climate, projection);
     this.field = new CloudField(this.model, projection);
   }
@@ -43,6 +43,16 @@ export class GeneratedCloudField {
     this.field.render(renderer);
     this.lastBakedDisplayTime = displayTime;
     this.lastBakedClimateGeneration = climateGeneration;
+  }
+
+  // 月別気候を使う場合だけ呼び出し元が明示的に月を同期する。既存単月入力は変更しない。
+  public syncClimateMonth(monthIndex: number, blend: number): void {
+    if (!('setMonth' in this.climate) || typeof this.climate.setMonth !== 'function') {
+      throw new Error('The configured climate map does not support monthly input');
+    }
+    this.climate.setMonth(monthIndex, blend);
+    this.lastBakedDisplayTime = null;
+    this.lastBakedClimateGeneration = null;
   }
 
   // 保持している雲場を解放する。
