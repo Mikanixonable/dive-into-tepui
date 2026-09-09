@@ -34,6 +34,7 @@ import { ShadowMaps } from './shadow/shadow-maps';
 import { viewPositionAt } from './view-ray';
 import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
 import { FilmLut } from './film-lut';
+import { applyPurkinje } from './purkinje';
 import { compileInto, compileIntoOutput } from './compile-into';
 import { DeferredTexture } from '../deferred-texture';
 
@@ -172,7 +173,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     // 分岐させると、通常プレイの毎フレームで G バッファの全テクスチャを bind/sample することになる。
     this.compositeMaterials = {
       off: this.buildCompositeMaterial(
-        vec4(this.filmLut.apply(this.toneMapped(texture(this.target.texture, screenUV).rgb)), 1),
+        vec4(this.filmLut.apply(this.worldDisplayColor(texture(this.target.texture, screenUV).rgb)), 1),
       ),
       normal: this.buildCompositeMaterial(
         vec4(octDecodeNormal(texture(this.gbuffer.normalTexture, screenUV).rg).mul(0.5).add(0.5), 1),
@@ -211,7 +212,9 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     };
     this.lensCompositeMaterial = this.buildCompositeMaterial(
       vec4(
-        this.filmLut.apply(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb))),
+        this.filmLut.apply(this.worldDisplayColor(
+          this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb),
+        )),
         1,
       ),
     );
@@ -227,6 +230,12 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   // そのまま読み取れる。
   private toneMapped(color: Vec3Node): Vec3Node {
     return neutralToneMapping(color, this._exposure.factor) as Vec3Node;
+  }
+
+  // 通常の写実世界画像だけへ暗所の色感度を掛ける。デバッグ中間画像と模式図は、呼び出し側が
+  // toneMapped()を直接使うため補正を受けない。フィルムのルックはこの戻り値の後へ掛かる。
+  private worldDisplayColor(color: Vec3Node): Vec3Node {
+    return applyPurkinje(this.toneMapped(color));
   }
 
   // composite 用マテリアル。colorNode だけが表示ごとに異なる。深度は G バッファのものを描画先の
