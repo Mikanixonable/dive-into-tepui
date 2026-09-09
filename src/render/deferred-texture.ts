@@ -16,6 +16,7 @@ export class DeferredTexture {
   private queued = false;
   private disposed = false;
   private image: HTMLImageElement | null = null;
+  private publishedGeneration = 0;
 
   // colorSpace は届く画像の色空間。
   public constructor(private readonly url: string, colorSpace: string) {
@@ -23,6 +24,10 @@ export class DeferredTexture {
     this.texture.colorSpace = colorSpace;
     this.texture.anisotropy = ANISOTROPY;
   }
+
+  // GPUへ公開した画像の世代。画像の到着前と到着後を、表示時刻とは別の入力として扱う。
+  // 同じ時刻でも入力が変わった読み手は、自分のキャッシュを作り直せる。
+  public get generation(): number { return this.publishedGeneration; }
 
   // 画像の取得を始める。取得は非同期なので、届くまではテクスチャが空のまま読まれる。
   public request(): void {
@@ -72,6 +77,7 @@ export class DeferredTexture {
 
     this.texture.image = this.image;
     this.texture.needsUpdate = true;
+    this.publishedGeneration += 1;
     this.image = null;
     return true;
   }
