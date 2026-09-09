@@ -70,6 +70,7 @@ export class DynamicView {
   private predictedLineValue: TrajectoryLine | null = null;
   private actualLineValue: TrajectoryLine | null = null;
 
+  // object を表示ツリーの根として所有し、指定された場合だけ scene へ登録する。
   public constructor(
     public readonly object: THREE.Object3D,
     protected readonly scene?: THREE.Scene,
@@ -78,7 +79,7 @@ export class DynamicView {
     if (addToScene) this.scene?.add(this.object);
   }
 
-  // 個体の表示入力を、モデルと所有する DOM マーカーへ同期する。
+  // 個体の表示入力を、所有する THREE モデルへ同期する。
   public sync(identity: DynamicViewIdentity, motion: DynamicMotion, context: DynamicViewFrame): void {
     const visible = dynamicEntityVisible(identity, context);
     const displayed = motion.alive
@@ -88,6 +89,7 @@ export class DynamicView {
     this.syncModel(identity, motion, displayed, context);
   }
 
+  // 表示時刻の状態があれば、可視性・位置・姿勢・熱表現を THREE ルートへ適用する。
   protected place(
     motion: DynamicMotion, displayTime: number, floatingOrigin: FloatingOrigin, visible: boolean,
   ): KinematicState | null {
@@ -108,6 +110,7 @@ export class DynamicView {
   ): void {
   }
 
+  // 解析軌道用の THREE 資源だけを scene から外して破棄する。
   private disposeOrbitLine(): void {
     if (this.orbitLineValue === null) return;
     this.scene?.remove(this.orbitLineValue.line.line);
@@ -115,11 +118,13 @@ export class DynamicView {
     this.orbitLineValue = null;
   }
 
+  // 宣言された軌道表現の種類とスタイルへ資源を揃え、そのフレームの形状を反映する。
   private syncOrbitLine(
     display: DynamicLineDisplay['orbit'],
     motion: DynamicMotion, displayTime: number, celestialBodies: CelestialBodies,
     floatingOrigin: FloatingOrigin, camera: THREE.Camera, anchors: FrameAnchorSource,
   ): void {
+    // 表現種別が変わったときだけ資源を作り直し、同種ならスタイルだけを更新する。
     if (display === null) {
       this.disposeOrbitLine();
       return;
@@ -145,6 +150,7 @@ export class DynamicView {
       orbitLine.line.hide();
       return;
     }
+    // 相対線と解析楕円では形状の基準が異なるので、宣言の判別子で経路を分ける。
     if (display.kind === 'relative' && orbitLine.kind === 'relative') {
       const target = display.target.stateAt(displayTime, celestialBodies)?.r ?? display.target.state.r;
       orbitLine.line.sync(state.r, target, floatingOrigin, camera);
@@ -157,9 +163,11 @@ export class DynamicView {
     else orbitLine.line.sync(elements, floatingOrigin, camera);
   }
 
+  // null を非表示宣言として扱い、予測・過去軌跡の資源を必要なときだけ保持する。
   private syncTrajectoryLine(
     current: TrajectoryLine | null, style: LineStyle | null,
   ): TrajectoryLine | null {
+    // style の有無が資源の有無に対応し、既存資源は同種のまま再利用する。
     if (style === null) {
       if (current !== null) {
         this.scene?.remove(current.line);
@@ -183,6 +191,7 @@ export class DynamicView {
     pastDuration: number, predictedTo: number | null, celestialBodies: CelestialBodies,
     floatingOrigin: FloatingOrigin, camera: THREE.Camera, anchors: FrameAnchorSource,
   ): void {
+    // 先に宣言どおりの資源集合へ揃えてから、存在する線だけへ形状を焼く。
     this.predictedLineValue = this.syncTrajectoryLine(this.predictedLineValue, display.predicted);
     this.actualLineValue = this.syncTrajectoryLine(this.actualLineValue, display.actual);
     if (this.predictedLineValue !== null) {
@@ -191,6 +200,7 @@ export class DynamicView {
       this.predictedLineValue.syncTransform(frame, displayTime, celestialBodies, floatingOrigin, anchors);
       this.predictedLineValue.sync(camera);
     }
+    // 過去線は表示窓の過去側、予測線は現在から予測終端までを同じ参照系で同期する。
     if (this.actualLineValue !== null) {
       this.actualLineValue.syncGeometry(
         motion.actual, simTime - pastDuration, simTime, frame, celestialBodies, anchors);
@@ -207,6 +217,7 @@ export class DynamicView {
     count: number, frame: ReferenceFrame, displayTime: number,
     celestialBodies: CelestialBodies, anchors: FrameAnchorSource,
   ): DynamicLineSamples | null {
+    // 解析線を優先し、積分線だけのときは過去→未来の順に連結する。
     if (this.orbitLineValue !== null) {
       return { method: 'analytic', points: this.orbitLineValue.line.samplePoints(count) };
     }

@@ -322,6 +322,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     visibilityPolicy: MapVisibilityPolicy | null, cameraSystem: CameraSystem, style: RenderStyle,
     graphics: GraphicsSettingsData, orbitRef: OrbitReference | undefined,
   ): void {
+    // instance pool の受付期間で全 Entity を挟み、各 View へ同じフレーム入力を配る。
     this.instancedPools.beginFrame();
     for (const e of this.entities) {
       e.sync({
