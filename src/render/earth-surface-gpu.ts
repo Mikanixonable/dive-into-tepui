@@ -4,6 +4,14 @@ import {
   earthTileId, earthTileParent,
 } from './earth-surface-tiles';
 import type { EarthTileKey, EarthTileResident } from './earth-surface-tiles';
+import type { DataArrayTexture, DataTexture } from 'three/webgpu';
+
+// Three.js側の実テクスチャ。GPU固有の書込みはearth-surface-gpu-three.tsへ閉じ込める。
+export interface EarthSurfaceGpuTextures {
+  readonly color: DataArrayTexture;
+  readonly terrain: DataArrayTexture;
+  readonly pageTable: DataTexture;
+}
 
 export interface EarthSurfaceGpuCapabilities {
   readonly texture2dArray: boolean;
@@ -14,6 +22,7 @@ export interface EarthSurfaceGpuCapabilities {
 
 export interface EarthSurfaceGpuBackend {
   readonly capabilities: EarthSurfaceGpuCapabilities;
+  readonly textures?: EarthSurfaceGpuTextures | null;
   // 解決時点で、後続の描画が書込みを読む順序を保証する。
   writeColor(layer: number, pixels: Uint8Array): Promise<void>;
   writeTerrain(layer: number, pixels: Uint16Array): Promise<void>;
@@ -54,6 +63,9 @@ export class EarthSurfaceGpuAdapter {
   }
 
   public get mode(): 'tiles' | 'base' { return this.supported && !this.disposed ? 'tiles' : 'base'; }
+
+  // material側が実テクスチャを読むための接点。fake backendではnullになる。
+  public get textures(): EarthSurfaceGpuTextures | null { return this.backend.textures ?? null; }
 
   // 空いた層を予約する。予約の識別はreservation()から取得する。
   public reserveLayer(key: EarthTileKey, layer: number): void {
