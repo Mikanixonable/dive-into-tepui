@@ -6,13 +6,13 @@ import { injectOnce } from '../../../hud/widgets/inject-style';
 import { loadPanelCollapsed, savePanelCollapsed, wirePanelCollapse } from '../panel-shell';
 import { MQ_COARSE } from '../../../hud/breakpoints';
 import { PhysicalObjectListHead } from './physical-object-list-head';
-import { PhysicalObjectListTree } from './physical-object-list-tree';
+import { PhysicalObjectListRowTree } from './physical-object-list-row-tree';
 import { PhysicalObjectListOrder } from './physical-object-list-order';
 import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { DynamicEntityKind } from '../../dynamic/dynamic-entity/entity-kind';
 import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
-import type { RowNode } from './physical-object-list-tree';
+import type { RowNode } from './physical-object-list-row-tree';
 import type { PhysicalObjectListFilter, SectionOrder } from './physical-object-list-order';
 
 // 軌道物体一覧の区画。天体はクラスをまたいで1区画にまとめ、人工物は種別ごとに分ける。
@@ -74,7 +74,7 @@ const STYLE = `
 #hud-physical-object-list .physical-object-list-section-body { padding-left: var(--space-2); }
 #hud-physical-object-list .physical-object-list-section-body.collapsed { display: none !important; }
 #hud-physical-object-list .physical-object-list-section-body.hidden { display: none !important; }
-#hud-physical-object-list .physical-object-list-tree-controls { display: flex; gap: var(--space-2); padding: 0 var(--space-4) var(--space-1); }
+#hud-physical-object-list .physical-object-list-row-tree-controls { display: flex; gap: var(--space-2); padding: 0 var(--space-4) var(--space-1); }
 #hud-physical-object-list .erow { padding: var(--space-2) var(--space-2); color: var(--text-dim); cursor: pointer; display: flex; align-items: center; gap: var(--space-2); }
 #hud-physical-object-list .physical-object-list-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #hud-physical-object-list .physical-object-list-detail { margin-left: auto; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; }
@@ -106,7 +106,7 @@ export class PhysicalObjectListPanel {
   private readonly body: HTMLElement;
   private readonly sections = new Map<MapListSection, Section>();
   private readonly order: PhysicalObjectListOrder;
-  private readonly rowTree: PhysicalObjectListTree;
+  private readonly rowTree: PhysicalObjectListRowTree;
   private lastFocusId: string | undefined = undefined;
   // sync() は毎フレーム呼ばれるが、これらは同期中だけ使う scratch であり、呼び出し元へ
   // 参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
@@ -128,7 +128,7 @@ export class PhysicalObjectListPanel {
   public constructor(root: HTMLElement, celestialSystem: CelestialSystem) {
     injectOnce('physical-object-list-panel', STYLE);
     this.order = new PhysicalObjectListOrder(celestialSystem);
-    this.rowTree = new PhysicalObjectListTree(celestialSystem, this.order, this.itemsByIdScratch, {
+    this.rowTree = new PhysicalObjectListRowTree(celestialSystem, this.order, this.itemsByIdScratch, {
       onFocus: (id) => this.onFocus?.(id),
       onNavTarget: (id) => this.onNavTarget?.(id),
       onSelectRight: (id, clientX, clientY) => this.onSelectRight?.(id, clientX, clientY),
@@ -362,7 +362,7 @@ export class PhysicalObjectListPanel {
   // 天体区画の見出しに添える「全展開」「全折りたたむ」ボタンの組。
   private buildTreeControls(section: Section): HTMLElement {
     const controls = document.createElement('div');
-    controls.className = 'physical-object-list-tree-controls';
+    controls.className = 'physical-object-list-row-tree-controls';
     const expandAll = new Button('全展開', () => this.rowTree.setAllRowsExpanded(section.rows, true));
     const collapseAll = new Button('全折りたたむ', () => this.rowTree.setAllRowsExpanded(section.rows, false));
     controls.appendChild(expandAll.element);
