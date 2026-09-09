@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { vec4 } from 'three/tsl';
 import { BakedField } from './baked-field';
-import { CloudFieldSampler } from './cloud-field-sampler';
+import { CloudFieldSampler, type CloudUvAt } from './cloud-field-sampler';
 import { condense } from './condensation';
 import { CLOUD_TOP_SPAN } from './cumulus-shape';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -18,12 +18,12 @@ export class CloudField {
   private readonly sampler: CloudFieldSampler;
 
   // model がいま指している時刻の雲を、projection の持ち方で焼く写し。
-  public constructor(model: WeatherModel, projection: FieldProjection) {
+  public constructor(model: WeatherModel, projection: FieldProjection, uvAt?: CloudUvAt) {
     this.field = new BakedField('cloud', THREE.RGBAFormat, projection, 1, (direction) => {
       const cloud = condense(model.weatherAt(direction));
       return vec4(cloud.coverage, cloud.cloudTop.div(CLOUD_TOP_SPAN), cloud.translucent, 1);
     });
-    this.sampler = new CloudFieldSampler(this.field.texture);
+    this.sampler = new CloudFieldSampler(this.field.texture, uvAt ?? projection.uvAt);
   }
 
   // いまの時刻の雲を写しへ描く。at() で読む前に必ず一度呼ぶ。

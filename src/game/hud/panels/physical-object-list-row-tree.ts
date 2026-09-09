@@ -38,7 +38,7 @@ export interface RowNode {
 }
 
 // 軌道物体一覧の入れ子行ツリーを、既存 DOM を使い回しながら id 差分だけで同期・剪定する。
-export class PhysicalObjectListTree {
+export class PhysicalObjectListRowTree {
   public constructor(
     private readonly celestialSystem: CelestialSystem,
     private readonly order: PhysicalObjectListOrder,
