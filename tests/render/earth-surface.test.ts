@@ -20,6 +20,7 @@ const SOURCE = {
     cloudFraction: { min: 0, max: 1 },
     orthometricElevation: { min: -1000, max: 9000 },
     landFraction: { min: 0, max: 1 },
+    waterOrthometricElevationM: 0,
   },
   baseUrl: 'https://example.test/earth/',
   manifestUrl: 'https://example.test/earth/manifest.json',
