@@ -64,7 +64,6 @@ function pageLayers(table: Uint8Array): ReadonlySet<number> {
 export class EarthSurfaceResidentCoordinator {
   private readonly pending = new Map<string, PendingTile>();
   private readonly residents = new Map<string, ResidentTile>();
-  private readonly failed = new Set<string>();
   private readonly tasks = new Set<Promise<void>>();
   private activeGeneration = -1;
   private nextFrame = 0;
@@ -129,7 +128,7 @@ export class EarthSurfaceResidentCoordinator {
   private requestCandidates(input: EarthSurfaceResidentFrame): readonly EarthTileKey[] {
     const available = this.dependencies.tiles.requestCandidates(input.projection);
     const known = new Set<string>([
-      ...this.residents.keys(), ...this.pending.keys(), ...this.failed,
+      ...this.residents.keys(), ...this.pending.keys(),
     ]);
     this.evictForCandidates(available, known);
     const freeLayers = this.freeLayerCount();
@@ -180,7 +179,9 @@ export class EarthSurfaceResidentCoordinator {
         throw error;
       }
     }).catch((error: unknown) => {
-      if (!this.disposed && !isAbort(error)) this.failed.add(earthTileId(pending.key));
+      // Queueの版内失敗はqueue自身が保持する。GPU投入・色変換の失敗は一時的な
+      // backend状態でも起こり得るため、coordinator側で永続失敗へ昇格させない。
+      if (this.disposed || isAbort(error)) return;
     }).finally(() => {
       this.dependencies.queue.release(pending.key, pending.generation);
       if (this.pending.get(earthTileId(pending.key))?.promise === pending.promise) {
