@@ -5,7 +5,9 @@ import * as THREE from 'three/webgpu';
 import { float, fract, int, log2, max, texture, vec2 } from 'three/tsl';
 import { sphereMeshUv } from '../celestial-surface';
 import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
-import type { FloatNode, Vec3Node, Vec4Node } from '../tsl-types';
+import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
+
+export type CloudUvAt = (direction: Vec3Node) => Vec2Node;
 
 export class CloudFieldSampler {
   // EMPTY_CLOUD_FIELD は場を持たない renderer がグラフを組むための初期値であり、sampler は
@@ -15,7 +17,10 @@ export class CloudFieldSampler {
   // 場の幅は生成側の projection の変更を受けるため、テクスチャから読む共有ノードにする。
   private readonly fieldWidth = (this.field.size(int(0)) as THREE.Node<'uvec2'>).x;
 
-  public constructor(field?: THREE.Texture) {
+  public constructor(
+    field?: THREE.Texture,
+    private readonly uvAt: CloudUvAt = sphereMeshUv,
+  ) {
     if (field !== undefined) this.field.value = field;
   }
 
@@ -24,10 +29,10 @@ export class CloudFieldSampler {
   // 表現 renderer が現在の生成場へ同期する。sampler は texture の所有権を持たない。
   public setTexture(field: THREE.Texture): void { this.field.value = field; }
 
-  // 天体固定の単位方向を、雲場の球メッシュ UV へ変換して読む。経度の wrap を明示し、mip が
-  // 画面微分へ依存しない読み手では lod を指定する。
+  // 天体固定の単位方向を、生成側から注入された雲場 UV へ変換して読む。経度の wrap を明示し、
+  // mip が画面微分へ依存しない読み手では lod を指定する。
   public sample(direction: Vec3Node, lod?: FloatNode): Vec4Node {
-    const uv = sphereMeshUv(direction);
+    const uv = this.uvAt(direction);
     const sample = this.field.sample(vec2(fract(uv.x), uv.y));
     return lod === undefined ? sample : sample.level(lod);
   }
