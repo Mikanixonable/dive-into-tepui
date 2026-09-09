@@ -56,6 +56,7 @@ export class EarthSurfaceGpuAdapter {
   private lastFrame = -1;
   private disposed = false;
   private pendingUploads = 0;
+  private resetEpoch = 0;
 
   // backendが報告する必須機能が不足した場合は、生成時から全球ベースへ固定する。
   public constructor(private readonly backend: EarthSurfaceGpuBackend) {
@@ -86,6 +87,7 @@ export class EarthSurfaceGpuAdapter {
   ): Promise<void> {
     this.requireActive();
     const slot = this.requireReservation(reservation);
+    const uploadEpoch = this.resetEpoch;
     if (slot.state !== 'reserved') throw new Error('Earth layer is not writable');
     const componentCount = EARTH_TILE_EXTENT * EARTH_TILE_EXTENT * 4;
     if (color.length !== componentCount || terrain.length !== componentCount) throw new RangeError('Invalid Earth tile size');
@@ -97,7 +99,13 @@ export class EarthSurfaceGpuAdapter {
         Promise.resolve().then(() => this.backend.writeColor(reservation.layer, color)),
         Promise.resolve().then(() => this.backend.writeTerrain(reservation.layer, terrain)),
       ]);
-      if (this.disposed) return;
+      if (this.disposed || uploadEpoch !== this.resetEpoch
+        || this.slots.get(reservation.layer)?.reservation !== reservation) {
+        if (this.slots.get(reservation.layer)?.reservation === reservation) {
+          this.slots.delete(reservation.layer);
+        }
+        return;
+      }
       const failure = results.find((result) => result.status === 'rejected');
       if (failure?.status === 'rejected') throw failure.reason;
       slot.state = 'uploaded';
@@ -173,6 +181,25 @@ export class EarthSurfaceGpuAdapter {
     if (this.published.has(reservation.layer) || this.stagedLayers.has(reservation.layer)
       || slot.state === 'uploading') throw new Error('Earth layer is still in use');
     this.slots.delete(reservation.layer);
+  }
+
+  // 公開ページをbaseへ戻し、完了済みの詳細層を再利用可能にする。upload中の層だけは
+  // backendの書込み完了まで保持し、同じ層へ早すぎる再利用をしない。
+  public reset(): void {
+    if (this.disposed) return;
+    this.resetEpoch++;
+    this.staged = null;
+    this.stagedLayers.clear();
+    this.published.clear();
+    this.lastFrame = -1;
+    for (const [layer, slot] of this.slots) {
+      if (slot.state !== 'uploading') this.slots.delete(layer);
+    }
+    if (this.supported) {
+      this.backend.swapPageTable(
+        new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(EARTH_BASE_LAYER),
+      );
+    }
   }
 
   // 世代を無効にし、進行中のGPU書込みが完了した時点でbackendの資源を解放する。

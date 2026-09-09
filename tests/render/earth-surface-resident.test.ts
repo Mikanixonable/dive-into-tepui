@@ -163,7 +163,8 @@ export function register(): void {
     fixture.resident.dispose();
     resolve();
     await fixture.resident.settle();
-    assert.equal(fixture.backend.pages.length, 1);
+    assert.equal(fixture.backend.pages.length, 2);
+    assert.deepEqual(earthPageAt(fixture.backend.pages[1]!, 0.1, 0.1), [255, 255, 255, 255]);
     assert.equal(fixture.backend.disposed, true);
     assert.equal(fixture.gpu.uploadedTiles().length, 0);
   });

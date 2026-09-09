@@ -36,6 +36,7 @@ import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../pr
 import { FilmLut } from './film-lut';
 import { compileInto, compileIntoOutput } from './compile-into';
 import { DeferredTexture } from '../deferred-texture';
+import { setCelestialSurfaceViewport } from '../celestial-surface';
 
 export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly gbuffer: GBufferPass;
@@ -220,6 +221,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.schematicMaterial = this.buildCompositeMaterial(this.schematicComposite.colorNode);
 
     this.quad = new QuadMesh(this.compositeMaterials.off);
+    this.syncTargetSize();
   }
 
   // 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
@@ -284,6 +286,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private syncTargetSize(): THREE.Vector2 {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const { x: width, y: height } = this.drawingBufferSize;
+    setCelestialSurfaceViewport(width, height);
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
     if (this.displayTarget.width !== width || this.displayTarget.height !== height) {
       this.displayTarget.setSize(width, height);
