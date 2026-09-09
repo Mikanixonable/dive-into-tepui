@@ -13,6 +13,7 @@ import type { ProteinMotionAsset } from '../../src/game/protein/protein-schema';
 import { collisionDamageFraction } from '../../src/game/dynamic/dynamic-entity/contact-damage';
 import * as THREE from 'three/webgpu';
 import { ProteinRuntime } from '../../src/game/protein/protein-runtime';
+import { ProteinMotionController } from '../../src/game/protein/protein-motion-controller';
 import { PROTEIN_ASSET_IDS, proteinAssetFor } from '../../src/game/protein/protein-asset-loader';
 import { createProteinEnemyDefinition } from '../../src/game/protein/protein-enemy-registry';
 import { testProteinAssetBundleFor } from '../protein-test-assets';
@@ -359,7 +360,18 @@ export function register(): void {
     const baseRootQuaternion = root.quaternion.clone();
     const baseRootScale = root.scale.clone();
     const combat = new ProteinCombatState(asset);
-    const runtime = new ProteinRuntime(root, asset, motion, 'enemy-42');
+    const runtime = new ProteinRuntime(root, asset, motion);
+    const controller = new ProteinMotionController(motion, 'enemy-42');
+    const syncVisual = (): void => {
+      controller.update(12.5, 'near', combat.phase);
+      runtime.syncVisual({
+        active: true,
+        lod: 'near',
+        sampleTime: controller.sampleTime,
+        phase: combat.phase,
+        coefficients: controller.effectiveModeCoefficients,
+      });
+    };
     const active = asset.sites.find((entry) => entry.id === 'primary-active-site')!;
     const origin = v3(100, 200, 300);
     const activeWorld = runtime.siteWorldPositionById(
@@ -389,7 +401,7 @@ export function register(): void {
       y: active.position[1] * asset.coordinateScale,
       z: active.position[2] * asset.coordinateScale,
     });
-    runtime.updateVisual(12.5, combat.phase);
+    syncVisual();
     // 変形が生きていれば、サイトのアンカーは変形前の位置から動く。
     assert.notDeepEqual(runtime.siteWorldPositionById(active.id, origin, IDENTITY_ATTITUDE), activeWorld);
     assert.deepEqual(root.position, baseRootPosition);
@@ -405,7 +417,7 @@ export function register(): void {
     assert.ok(root.quaternion.equals(baseRootQuaternion));
     assert.deepEqual(root.scale, baseRootScale);
     runtime.rebuildVisuals();
-    runtime.updateVisual(12.5, combat.phase);
+    syncVisual();
     assert.notDeepEqual(runtime.siteWorldPositionById(active.id, origin, IDENTITY_ATTITUDE), activeWorld);
     assert.equal(root.rotation.z, rootRollBeforeRebuild);
     runtime.dispose();

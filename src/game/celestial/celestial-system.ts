@@ -455,9 +455,11 @@ export class CelestialSystem implements CelestialBodies {
       cameraSystem.activeCamera, cameraSystem.activeCameraPos);
     // 地球の静止軌道リングなど、天体固有のマップ付随表示。
     for (const body of this.entities) {
+      const categoryVisible = visibilityPolicy === null
+        || visibilityPolicy.body(body.id).category;
       body.view.syncMapOverlay(
         body.motion, floatingOrigin, displayTime, cameraSystem, markers, this.celestialMotions,
-        cameraSystem.view === 'map' && geostationaryOrbitVisible);
+        cameraSystem.view === 'map' && geostationaryOrbitVisible && categoryVisible);
     }
     this.orbitGuideLines.sync(style, displayTime, cameraSystem.view, floatingOrigin, cameraSystem.activeCamera);
     this.zeroVelocityLines.sync(displayTime, cameraSystem.view, floatingOrigin, cameraSystem.activeCamera);
