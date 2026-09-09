@@ -7,10 +7,10 @@
 // 大気と同じ 1 本の式が解く。
 import * as THREE from 'three/webgpu';
 import {
-  abs, dot, exp, greaterThan, max, min, sqrt, uniform, vec4,
+  abs, dot, exp, float, fract, greaterThan, int, max, min, sqrt, texture, uniform, vec2, vec4,
 } from 'three/tsl';
-import { CloudFieldSampler } from '../cloud/cloud-field';
-import { columnOpticalDepth } from '../cloud/cumulus-shape';
+import { sphereMeshUv } from '../celestial-surface';
+import { EMPTY_CLOUD_FIELD, columnOpticalDepth, fieldLodForWidth } from '../cloud/cumulus-shape';
 import type { AtmosphereClouds } from '../atmosphere';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 
@@ -71,7 +71,7 @@ export interface CloudShellSample {
 //
 // **不透明な積雲として立てたぶんを引かない。** 不透明な殻は G バッファへ深度を書くので、その
 // 手前で終わる視線では殻の交点が区間の外へ落ちて寄与が消える — 引き算は同じ遮蔽を二重に効かせ、
-// 塔の周りに殻の抜けを作る。むしろ塔の側に残るディザの濃淡差を、この殻が跨いで埋める。
+// 塔の周りに殻の抜けを作る。むしろ塔の側に残る被覆境界の濃淡差を、この殻が跨いで埋める。
 function fieldOpticalDepthOf(species: CloudSpecies, field: Vec4Node): FloatNode {
   switch (species) {
     case 'cirrus':
@@ -90,7 +90,7 @@ function opticalDepthOf(species: CloudSpecies, field: Vec4Node): FloatNode {
 
 export class CloudScattering {
   // 雲の場。set が value を差し替えると、枝分かれした先へも同じ写しが届く。
-  private readonly field = new CloudFieldSampler();
+  private readonly field = texture(EMPTY_CLOUD_FIELD);
   private readonly bodyFromWorld: Mat4Uniform;
   private readonly active: FloatUniform;
   // 種類ごとに、その殻を描くか。
@@ -108,12 +108,9 @@ export class CloudScattering {
   // いま解く雲。null なら殻は立たない。
   public set(clouds: AtmosphereClouds | null): void {
     this.active.value = clouds === null ? 0 : 1;
-    if (clouds === null) {
-      this.field.set(null);
-      return;
-    }
+    if (clouds === null) return;
     this.bodyFromWorld.value.copy(clouds.bodyFromWorld);
-    this.field.set(clouds.field);
+    this.field.value = clouds.field;
   }
 
   // 種類ごとに、その殻を描くかを置き直す。
@@ -155,13 +152,14 @@ export class CloudScattering {
     return this.active.mul(this.enabled[species]);
   }
 
-  // 天体を真球にした空間の単位方向 up における場。殻と同じ CloudFieldSampler へ天体固定方向を
-  // 渡すので、全球・局所のどちらを読むかと cap の縁の重みが一致する。**mip 段は明示で渡す** —
-  // 交点の uv は天体の縁と不透明面の際で画面の隣の画素と続かず、画面微分から選ばれる段が当てに
-  // ならない。
+  // 天体を真球にした空間の単位方向 up における場。uv は積雲の殻が読むのと同じ球メッシュの uv
+  // (sphereMeshUv)で引く。**mip 段は明示で渡す** — 交点の uv は天体の縁と不透明面の際で
+  // 画面の隣の画素と続かず、画面微分から選ばれる段が当てにならない。
   private fieldAt(up: Vec3Node, footprint: FloatNode, shellRadius: FloatNode): Vec4Node {
     // 寸法を返すノードは型引数を持たないので、成分を取れる形へ直してから読む。
-    const direction = this.bodyFromWorld.mul(vec4(up, 0)).xyz;
-    return this.field.at(direction, this.field.lodForWidth(footprint, shellRadius));
+    const fieldWidth = (this.field.size(int(0)) as THREE.Node<'uvec2'>).x;
+    const uv = sphereMeshUv(this.bodyFromWorld.mul(vec4(up, 0)).xyz);
+    return this.field.sample(vec2(fract(uv.x), uv.y))
+      .level(fieldLodForWidth(footprint, shellRadius, float(fieldWidth)));
   }
 }

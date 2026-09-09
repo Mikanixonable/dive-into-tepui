@@ -6,7 +6,7 @@ import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial-surface';
 import { CumulusShell } from '../../src/render/cumulus-shell';
 import { ClimateMap } from '../../src/render/cloud/climate-map';
-import { GeneratedCloudField } from '../../src/render/cloud/cloud-field';
+import { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
 import climateTextureUrl from '../../src/assets/earth-climate.png';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
