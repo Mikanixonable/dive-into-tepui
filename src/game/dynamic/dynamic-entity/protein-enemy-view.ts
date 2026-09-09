@@ -78,6 +78,7 @@ export class ProteinEnemyView extends DynamicView {
   }
 
   protected override syncModel(
+    _identity: import('../dynamic-view').DynamicViewIdentity,
     motion: DynamicMotion,
     displayed: KinematicState | null,
     context: DynamicViewFrame,

@@ -10,7 +10,6 @@ import { KinematicState, kinematicState } from '../../../physics/kinematic-state
 import { Attitude } from '../../../physics/attitude';
 import { len, sub, v3, Vec3 } from '../../../math/vec3';
 import type { Notifier } from '../../../hud/notifier';
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { MarkerSlots } from '../../marker/marker-slots';
 import type { BaseSaveData } from '../../save/save-data';
 import { Plan, type PlanExecutionMode } from '../../plan/plan';
@@ -103,7 +102,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     init: BaseInit,
     scene: THREE.Scene,
     notifier: Notifier,
-    worldSfx: WorldSfx,
     markers: MarkerSlots,
   ) {
     const { state, name, att, id } = 'saved' in init
@@ -129,7 +127,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     const fuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : undefined;
     super(
       state,
-      owner => new BaseView(scene, worldSfx, owner.id, markers),
+      owner => new BaseView(scene, owner.id, markers),
       attitude,
       idAllocator.next(id),
       () => new BaseMotion(state, attitude, fuel),
@@ -138,7 +136,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     this.throttle = new Throttle(notifier, 'saved' in init ? init.saved.throttle : undefined);
 
     if ('saved' in init) {
-      this.view.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;
+      this.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;
       this.baseState.money = init.saved.money;
     }
   }
@@ -226,7 +224,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       money: this.baseState.money,
       fuel: (this.motion as BaseMotion).fuel,
       throttle: this.throttle.serialize(),
-      showTrajectoryLine: this.view.showTrajectoryLine,
+      showTrajectoryLine: this.showTrajectoryLine,
     };
   }
 
@@ -278,7 +276,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       MenuCommon.target(navTargetId === this.id),
       controlItem,
       MenuCommon.focus(),
-      MenuCommon.trajectoryLine(this.view.showTrajectoryLine),
+      MenuCommon.trajectoryLine(this.showTrajectoryLine),
       MenuCommon.duplicate(),
       { label: '削除', act: 'delete' },
       MenuCommon.cancel(),
@@ -294,7 +292,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     } else if (act === 'deactivate') {
       controlSelection.release(this);
     } else if (act === 'toggleTrajectoryLine') {
-      this.view.showTrajectoryLine = !this.view.showTrajectoryLine;
+      this.showTrajectoryLine = !this.showTrajectoryLine;
     } else if (act === 'delete') {
       controlSelection.remove(this);
     } else if (act === 'duplicate') {
