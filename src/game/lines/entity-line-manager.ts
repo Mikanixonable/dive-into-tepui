@@ -43,6 +43,7 @@ function sameTrajectoryStyle(style: LineStyle): TrajectoryStyles {
   return { ellipse: style, predicted: style, actual: style };
 }
 
+// 軌道基準の種別を、View がそのまま同期できる宣言へ変換する。
 function orbitDisplay(
   entity: DynamicEntity, style: LineStyle | null, orbitRef: OrbitReference | undefined,
 ): DynamicLineDisplay['orbit'] {
@@ -123,10 +124,12 @@ export class EntityLineManager {
       opacity: 0.3,
       renderOrder: LINE_RENDER_ORDER.predicted,
     });
+    // 1個体の判定材料を、View へ渡す完全な線表示宣言へ変換する。
     const resolve = (
       entity: DynamicEntity, asTarget: LineStyle | null, lineVisible: boolean,
       trajectoryEligible: boolean, styles: TrajectoryStyles,
     ): void => {
+      // 生存・カテゴリ可視性・表示設定・ターゲット強調を、3本の宣言へ畳み込む。
       const available = entity.motion.alive && lineVisible;
       const showTrajectories = trajectoryEligible && available && asTarget === null;
       const ownEllipse = showTrajectories && view !== 'map';
@@ -141,6 +144,7 @@ export class EntityLineManager {
       });
     };
 
+    // 種別ごとの差は色と表示設定だけに留め、最終判断は同じ resolve を通す。
     for (const ship of this.roster.all().filter(isPlayer)) {
       const isActive = ship === active;
       const visibility = visibilityPolicy?.entity('player', isActive);

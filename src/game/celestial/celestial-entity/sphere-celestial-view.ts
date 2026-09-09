@@ -36,12 +36,14 @@ export class SphereCelestialView extends CelestialView {
 
   public get lightSourceAlbedo(): Albedo | null { return this.surface.photometry?.lightSourceAlbedo ?? null; }
   public get surfaceTextureUrl(): string | null { return this.surface.textureUrl; }
+  // 定義に環がある天体だけ、その固定定義を返す。
   public override rings(motion: CelestialMotion): RingSystemDef | null {
     return 'rings' in motion.def ? motion.def.rings ?? null : null;
   }
 
   // 表面メッシュと環をシーンへ一度だけ登録する。
   public build(motion: CelestialMotion, scene: THREE.Scene, ringMaterials: RingMaterials): void {
+    // 本体形状と環の外半径は定義だけで決まるため、構築時に焼いて同期時に再利用する。
     const def = motion.def;
     const axes = shapeAxes(def.radius, 'shape' in def ? def.shape : undefined);
     this.axes.set(axes.x, axes.y, axes.z);
@@ -49,6 +51,7 @@ export class SphereCelestialView extends CelestialView {
     this.outerRadius = rings === null
       ? def.radius
       : rings.bands.reduce((maxRadius, band) => Math.max(maxRadius, band.outerRadius), def.radius);
+    // 本体に追従する資源は group、独立姿勢を持つ環は scene へ登録する。
     this.surface.addTo(this.group);
     this.graticule.addTo(this.group);
     this.surfaceMarkings?.addTo(this.group);
@@ -65,6 +68,7 @@ export class SphereCelestialView extends CelestialView {
     cameraSystem: CameraSystem, _star: StellarLightSource | null,
     graphics: GraphicsSettingsData, style: RenderStyle, visible: boolean,
   ): void {
+    // category 非表示は本体と独立した環にも同時に反映する。
     this.group.visible = visible;
     if (!visible) {
       this.ring?.setVisible(false);
@@ -78,6 +82,7 @@ export class SphereCelestialView extends CelestialView {
       this.hidePhysical();
       return;
     }
+    // LOD・模式表示・姿勢を外部入力から更新し、最後に環へ同じ位置と見た目を渡す。
     this.surface.syncLod(apparentDiameterPx);
     this.graticule.setVisible(style === 'schematic');
     this.surfaceMarkings?.setVisible(style === 'schematic');

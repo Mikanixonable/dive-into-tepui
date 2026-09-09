@@ -56,6 +56,7 @@ export class MapView implements ViewFrame {
     uiSfx: UiSfx,
     navTarget: NavTarget,
   ) {
+    // 編集・物体候補・線候補を組み、最後に同じ候補群を読む入力処理へ渡す。
     this.planEditor = new PlanEditor(
       hud, uiSfx, simSpeedManager, celestialSystem, scene, controlSelection,
       displayWindowManager, frameControls, planDisplay.path,

@@ -634,7 +634,8 @@ Entity は1体ぶんの Motion と View を所有し、その組をゲーム上�
 ### `view`
 
 **`view` は、物体1体の 3D 表示資源を所有し、そのフレームに外から供給された表示状態を THREE / DOM
-へ同期する。** THREE の object・GPU 資源・LOD・プールと、再構築を避ける描画キャッシュを保持してよい。
+へ同期する。** THREE の object・GPU 資源・DOM マーカー要素・プールと、再構築・再転送を避ける
+描画キャッシュを保持してよい。
 ゲーム進行・物理状態・入力・AI・表示設定の正本を持たず、simulator・predictor・input・stage を import
 しない。
 

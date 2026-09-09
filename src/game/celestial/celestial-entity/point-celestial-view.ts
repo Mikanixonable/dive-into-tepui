@@ -48,6 +48,7 @@ const AURORA_PHASE_RATE = 0.02;
 const tmpPos = new THREE.Vector3();
 const tmpToObserver = new THREE.Vector3();
 
+// 点表現の外径計算に使う環定義を、環を持てる天体だけから取り出す。
 function ringsOf(motion: CelestialMotion): RingSystemDef | null {
   return 'rings' in motion.def ? motion.def.rings ?? null : null;
 }
@@ -175,6 +176,7 @@ export class PointCelestialView extends CelestialView {
   public cumulusShadowAt(
     motion: CelestialMotion, fo: FloatingOrigin, displayTime: number,
   ): ShadowCumulus | null {
+    // 本体または雲殻を描いていないフレームは、影の入力にも含めない。
     if (this.cumulus === null || !this.group.visible || !this.cumulus.visible) return null;
     writeBodyFromWorld(this.bodyFromWorld, motion, displayTime);
     return {
@@ -248,6 +250,7 @@ export class PointCelestialView extends CelestialView {
 
   // 表面・積雲の殻・環・オーロラ・輝点ビルボードを解放する。
   protected disposeContents(): void {
+    // group 配下と独立資源をそれぞれの所有 API で解放する。
     this.group.removeFromParent();
     this.surface.dispose();
     this.cumulus?.dispose();

@@ -61,12 +61,14 @@ export abstract class CelestialView {
     cameraPos: Vec3, radialScale: (center: Vec3) => number,
     graphics: GraphicsSettingsData,
   ): AtmosphereCandidate | null {
+    // 大気を持たない具象は候補を作らず、renderer 側へ空の殻を漏らさない。
     const optics = this.atmosphereOptics;
     if (optics === null) return null;
     const center = motion.stateAt(displayTime).r;
     const def = motion.def;
     const radii = shapeSpheroidRadii(def.radius, 'shape' in def ? def.shape : undefined);
     const axis = motion.orientationAt(displayTime)?.axis ?? null;
+    // 形状・雲・画面密度を同じ表示時刻とカメラ基準でまとめる。
     return {
       body: {
         center: floatingOrigin.RtoThreeV3(center),
@@ -102,6 +104,7 @@ export abstract class CelestialView {
     motion: CelestialMotion, scene: THREE.Scene, simTime: number, floatingOrigin: FloatingOrigin,
     camera: THREE.Camera, cameraPos: Vec3, visible: boolean,
   ): void {
+    // false は資源を残す非表示ではなく、参照線そのものが不要という宣言として扱う。
     if (!visible) {
       this.disposeReferenceLine();
       return;
@@ -115,6 +118,7 @@ export abstract class CelestialView {
       });
       scene.add(this.referenceLineValue.line);
     }
+    // 資源を揃えた後、表示時刻の接触要素と距離フェードを毎フレーム反映する。
     const centerMotion = motion.primary;
     const elements = centerMotion === null
       ? null : orbitalElementsOf(motion.stateAt(simTime), centerMotion, simTime);
@@ -128,6 +132,7 @@ export abstract class CelestialView {
     return this.referenceLineValue?.samplePoints(count) ?? [];
   }
 
+  // 参照軌道線の THREE 資源を、存在する場合だけ解放する。
   private disposeReferenceLine(): void {
     if (this.referenceLineValue === null) return;
     this.referenceLineValue.line.removeFromParent();
@@ -135,6 +140,7 @@ export abstract class CelestialView {
     this.referenceLineValue = null;
   }
 
+  // 参照線と具象 View の資源をまとめて破棄する。
   public dispose(): void {
     this.disposeReferenceLine();
     this.disposeContents();
@@ -142,6 +148,7 @@ export abstract class CelestialView {
 
   protected abstract disposeContents(): void;
 
+  // 天体種別ごとの距離帯を使い、参照線の不透明度を連続的に求める。
   private referenceLineOpacityFrom(motion: CelestialMotion, cameraPos: Vec3, simTime: number): number {
     const isSatellite = motion.kind === 'satellite';
     const nearDist = isSatellite

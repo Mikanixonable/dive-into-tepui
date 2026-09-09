@@ -140,6 +140,7 @@ export class ProteinEnemy extends Enemy {
   public get display(): ProteinDisplaySettings { return this.displaySettings; }
   public get motionLod(): ProteinMotionLod { return this.motionLodValue; }
   public get motionCpuMs(): number { return this.motionCpuMsValue; }
+  // View が読む変形入力を、この Entity が確定済みの値だけで宣言する。
   public get motionDisplay(): ProteinMotionDisplay {
     return {
       active: this.motionDisplayActive,
@@ -157,8 +158,9 @@ export class ProteinEnemy extends Enemy {
 
   public get hudSnapshot(): ProteinHudSnapshot { return this.combat.hudSnapshot(); }
 
-  // View へ渡す LOD を、外部のフレーム入力と前回値から確定してから描画同期へ進む。
+  // View へ渡す LOD とモード係数を、外部のフレーム入力から確定してから描画同期へ進む。
   public override sync(context: DynamicViewFrame): void {
+    // 本体と同じ可視条件で表示時刻の状態を引き、非表示フレームは変形計算を止める。
     const displayed = this.motion.alive && dynamicEntityVisible(this, context)
       ? this.motion.stateAt(context.displayTime)
       : null;
@@ -172,6 +174,7 @@ export class ProteinEnemy extends Enemy {
       this.motionLodValue = proteinMotionLodForProjectedSize(
         projectedDiameterPx, this.motionLodValue,
       );
+      // ヒステリシスと係数遷移の履歴は Entity 側で進め、View へは結果だけを渡す。
       if (this.motionLodValue !== 'marker') {
         const cpuStart = performance.now();
         this.motionController.update(

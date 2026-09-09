@@ -35,6 +35,7 @@ export class LinePickables {
   // このフレームに表示されている軌道線の候補列を組み直す。
   // displayWindow.frame/displayTime は船の予測線・過去線の座標系相対 → ECI 変換に使う。
   refresh(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource): void {
+    // 天体参照線・Entity 線・ガイド線の順で、各所有元が公開する点列だけを読む。
     this.items.length = 0;
     const { frame, displayTime } = displayWindow;
 
@@ -42,6 +43,7 @@ export class LinePickables {
       this.items.push({ key: `orbit-body:${id}`, kind: 'orbit-body', method: 'analytic', ownerKeys: [id], points });
     }
 
+    // EntityLineManager がこのフレームに同期した線だけがサンプルを返す。
     for (const ship of this.roster.all().filter(isCombatTarget)) {
       this.addShipOrbit(ship, frame, displayTime, frameAnchors);
     }

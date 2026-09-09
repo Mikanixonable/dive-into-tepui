@@ -69,10 +69,12 @@ export class GeostationaryOverlay {
     center: CelestialBody, pivot: number, fo: FloatingOrigin, cameraSystem: CameraSystem,
     markers: MarkerSlots, celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
+    // 幾何と距離フェードは可視性に関係なく同じフレーム値から求める。
     const centerPos = center.positionAt(pivot);
     const elements = this.elementsAround(center, pivot);
     const dist = len(sub(centerPos, cameraSystem.activeCameraPos));
     const fade = 1.0 - Math.min(1, Math.max(0, (dist - FADE_NEAR_DIST) / FADE_SPAN));
+    // リングとラベルへ同じ visible を渡し、片方だけが焼き付く経路を作らない。
     if (visible) {
       this.line.sync(elements, fo, cameraSystem.activeCamera);
       this.line.setOpacity(RING_OPACITY * fade);

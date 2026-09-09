@@ -40,6 +40,7 @@ export class EquatorNodeMarkerPair {
   private readonly ascending: EquatorNodeMarker;
   private readonly descending: EquatorNodeMarker;
 
+  // 所有個体に一意な昇交点・降交点マーカーを1つずつ作る。
   constructor(private readonly ownerId: string, private readonly markers: MarkerSlots) {
     this.ascending = new EquatorNodeMarker(ownerId, 'ascending');
     this.descending = new EquatorNodeMarker(ownerId, 'descending');

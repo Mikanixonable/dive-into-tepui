@@ -33,7 +33,7 @@ interface ProteinBondVisual {
   readonly toSiteId: string;
 }
 
-// タンパク質敵1体の構造ゆらぎ(ANM/OU)を反映する GPU 資源と計算キャッシュを保つ。
+// 外部で計算済みのタンパク質変形を反映する GPU 資源と、転送・アンカー計算キャッシュを保つ。
 export class ProteinRuntime {
   private readonly motion: ProteinMotionAsset;
   // 共有バッファのスロットが尽きていれば null。そのときは変形せず、静止した構造で描く。
@@ -52,12 +52,14 @@ export class ProteinRuntime {
   private lastCpuMs = 0;
   private lastUploadBytes = 0;
 
+  // root に binding と部位・結合線の表示資源を結び付ける。
   public constructor(
     root: THREE.Object3D,
     private readonly asset: ProteinAssetDefinition,
     motion: ProteinMotionAsset,
     motionBinding?: ProteinMotionBinding | null,
   ) {
+    // 固定定義の索引と、外部係数を適用する binding を同じ runtime に束ねる。
     this.root = root;
     this.motion = motion;
     for (const site of asset.sites) this.siteDefinitions.set(site.id, site);
@@ -75,7 +77,9 @@ export class ProteinRuntime {
   public get cpuMs(): number { return this.lastCpuMs; }
   public get uploadBytes(): number { return this.lastUploadBytes; }
 
+  // runtime が追加した THREE 子要素と、その参照キャッシュだけを空にする。
   public clearVisuals(): void {
+    // userData の印がある子だけを対象にし、定義側が作った本体形状は残す。
     for (const child of [...this.root.children]) {
       if (child.userData[RUNTIME_VISUAL] !== true) continue;
       child.traverse((nested) => {
@@ -90,12 +94,15 @@ export class ProteinRuntime {
       });
       this.root.remove(child);
     }
+    // THREE 資源と対応する索引を同時に空へ戻す。
     this.baseSitePositions.clear();
     this.siteResidueGroups.clear();
     this.bondVisuals.length = 0;
   }
 
+  // asset の部位・結合情報から、表示用 THREE 資源とアンカー索引を作り直す。
   public rebuildVisuals(): void {
+    // 再着色後にも呼べるよう、旧 runtime 資源を必ず除いてから作る。
     this.clearVisuals();
     const scale = this.asset.coordinateScale;
     for (let index = 0; index < this.asset.sites.length; index += 1) {
@@ -104,6 +111,7 @@ export class ProteinRuntime {
       this.baseSitePositions.set(site.id, new THREE.Vector3(x * scale, y * scale, z * scale));
       this.siteResidueGroups.set(site.id, proteinAnchorResidues(site, index, this.motion, this.motion.bindings.siteResidues));
     }
+    // 結合線は部位 id で保持し、sync 時に変形済みアンカーへ端点を更新する。
     for (const bond of this.asset.bonds) {
       const from = this.siteDefinitions.get(bond.from);
       const to = this.siteDefinitions.get(bond.to);
@@ -129,6 +137,7 @@ export class ProteinRuntime {
       this.lastUploadBytes = 0;
       return;
     }
+    // GPU 転送は完全な入力キーが変わったフレームだけ行う。
     const cpuStart = performance.now();
     if (this.uploadedLod !== display.lod || this.uploadedSampleTime !== display.sampleTime
       || this.uploadedPhase !== display.phase) {
@@ -141,6 +150,7 @@ export class ProteinRuntime {
     } else {
       this.lastUploadBytes = 0;
     }
+    // DOM 部位マーカーと結合線が GPU 変形と同じ位置を使えるよう、必要な残基だけ CPU 投影する。
     projectProteinResidues(
       this.motion, display.coefficients, this.trackedResidues, this.trackedResidueOffsets,
     );
@@ -162,11 +172,14 @@ export class ProteinRuntime {
       : display.phase === 'critical' ? 0.12 : 0.68;
   }
 
+  // 部位 id の変形済みアンカーを、指定されたワールド姿勢へ写す。
   public siteWorldPositionById(id: string, origin: Vec3, attitude: Quat): Vec3 {
     return this.siteWorldPosition(this.siteDefinitions.get(id) ?? null, origin, attitude);
   }
 
+  // 変形済みローカルアンカーを、外部から渡された個体姿勢でワールド座標へ写す。
   private siteWorldPosition(site: ProteinSiteDefinition | null, origin: Vec3, attitude: Quat): Vec3 {
+    // 部位が見つからない場合も共通変換へ null を渡し、origin 基準の安全な結果にする。
     return proteinSiteWorldPosition(
       site,
       site ? this.siteResidueGroups.get(site.id) ?? [] : [],
@@ -179,6 +192,7 @@ export class ProteinRuntime {
     );
   }
 
+  // runtime が所有する THREE/GPU 資源をすべて破棄する。
   public dispose(): void {
     this.clearVisuals();
     this.bondMaterial.dispose();

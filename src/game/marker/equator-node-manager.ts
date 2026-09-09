@@ -23,10 +23,12 @@ export class EquatorNodeManager {
     inputs: EquatorNodeInputs, controlled: Controllable | null,
     visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
+    // roster の現行 id を記録し、走査後に消滅した個体の DOM 資源を回収する。
     const retainedIds = new Set<string>();
     for (const entity of this.roster.all()) {
       retainedIds.add(entity.id);
       const current = this.pairs.get(entity.id);
+      // 表示理由を View に持たせず、ここで category と読者状態を一度だけ判定する。
       const categoryVisible = entity.mapKind === null || visibilityPolicy === null
         || visibilityPolicy.entity(entity.mapKind, entity === controlled).category;
       const visible = entity.motion.alive && categoryVisible
@@ -39,6 +41,7 @@ export class EquatorNodeManager {
       if (current === undefined) this.pairs.set(entity.id, pair);
       pair.update(entity.motion, entity.name, inputs);
     }
+    // 非表示個体は再利用のため残すが、roster から消えた個体は要素ごと破棄する。
     for (const [id, pair] of this.pairs) {
       if (retainedIds.has(id)) continue;
       pair.dispose();
