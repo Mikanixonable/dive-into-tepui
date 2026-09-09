@@ -25,11 +25,10 @@ export class PlayerMarkers {
     currentState: KinematicState, att: Attitude, view: View, isActive: boolean, project: ProjectFn,
     rounds = 0, beltLinks = 0, muzzleSpeed = 0, orbitRef?: OrbitReference,
   ): void {
-    if (view === 'map') {
-      if (isActive) for (const key of COMBAT_KEYS) this.markers.hide(`${key}-${this.id}`);
+    if (view === 'map' || !isActive) {
+      for (const key of COMBAT_KEYS) this.markers.hide(`${key}-${this.id}`);
       return;
     }
-    if (!isActive) return;
     this.syncOrbitAxes(currentState, project, orbitRef);
     this.syncBoresight(currentState, att, project, rounds, beltLinks, muzzleSpeed);
   }

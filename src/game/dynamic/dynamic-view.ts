@@ -12,14 +12,9 @@ import type { RenderStyle } from '../../render/render-style';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EllipseLine } from '../lines/ellipse-line';
 import { TargetRelativeLine } from '../lines/target-relative-line';
 import { TrajectoryLine } from '../lines/trajectory-line';
-import {
-  EquatorNodeMarkerPair, type EquatorNodeInputs,
-} from '../marker/equator-node-marker-pair';
-import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { OrbitReference } from '../orbit-reference';
 import type { DynamicEntityKind } from './dynamic-entity/entity-kind';
@@ -44,8 +39,6 @@ export interface DynamicViewFrame {
   readonly style: RenderStyle;
   readonly graphics: GraphicsSettingsData;
   readonly orbitReference: OrbitReference | undefined;
-  readonly frameAnchors: FrameAnchorSource;
-  readonly timeLabel: TimeLabelSetting;
 }
 
 interface DynamicStateSource {
@@ -76,7 +69,6 @@ export class DynamicView {
   private orbitLineValue: OrbitLineResource | null = null;
   private predictedLineValue: TrajectoryLine | null = null;
   private actualLineValue: TrajectoryLine | null = null;
-  private equatorNodes: EquatorNodeMarkerPair | null = null;
 
   public constructor(
     public readonly object: THREE.Object3D,
@@ -88,21 +80,12 @@ export class DynamicView {
 
   // 個体の表示入力を、モデルと所有する DOM マーカーへ同期する。
   public sync(identity: DynamicViewIdentity, motion: DynamicMotion, context: DynamicViewFrame): void {
-    const visible = identity.mapKind === null || context.visibilityPolicy === null
-      || context.visibilityPolicy.entity(identity.mapKind, identity.id === context.activeId).category;
+    const visible = dynamicEntityVisible(identity, context);
     const displayed = motion.alive
       ? this.place(motion, context.displayTime, context.floatingOrigin, visible)
       : null;
     if (!motion.alive) this.object.visible = false;
     this.syncModel(identity, motion, displayed, context);
-    this.equatorNodes?.sync(
-      context.cameraSystem.activeCameraProjection,
-      context.cameraSystem.activeCameraPos,
-      context.frameAnchors.bodies,
-      context.frameAnchors.bodiesPivot,
-      context.cameraSystem.mode === 'map',
-      context.timeLabel,
-    );
   }
 
   protected place(
@@ -241,28 +224,8 @@ export class DynamicView {
     };
   }
 
-  // 赤道交点マーカーを、このフレームの個体状態と表示条件へ同期する。
-  public updateEquatorNodes(
-    identity: DynamicViewIdentity, motion: DynamicMotion, inputs: EquatorNodeInputs, controlled: boolean,
-  ): void {
-    const visible = motion.alive
-      && (identity.showsEquatorNodesAlways || controlled || motion.navTargetReader);
-    if (!visible) {
-      this.equatorNodes?.retire();
-      return;
-    }
-    (this.equatorNodes ??= new EquatorNodeMarkerPair(identity.id, inputs.markers))
-      .update(motion, identity.name, inputs);
-  }
-
-  // 現在表示可能な赤道交点を選択候補として返す。
-  public equatorNodePickables(): readonly ObjectPickable[] {
-    return this.equatorNodes?.pickables() ?? [];
-  }
-
   // この View が所有する THREE / DOM 資源を解放する。
   public dispose(): void {
-    this.equatorNodes?.dispose();
     this.disposeOrbitLine();
     if (this.predictedLineValue !== null) {
       this.scene?.remove(this.predictedLineValue.line);
@@ -273,4 +236,12 @@ export class DynamicView {
     this.scene?.remove(this.object);
     disposeOwnedRenderResources(this.object);
   }
+}
+
+// Entity と View が同じ可視判定を使うための、1フレーム入力だけから決まる判定。
+export function dynamicEntityVisible(
+  identity: DynamicViewIdentity, context: DynamicViewFrame,
+): boolean {
+  return identity.mapKind === null || context.visibilityPolicy === null
+    || context.visibilityPolicy.entity(identity.mapKind, identity.id === context.activeId).category;
 }
