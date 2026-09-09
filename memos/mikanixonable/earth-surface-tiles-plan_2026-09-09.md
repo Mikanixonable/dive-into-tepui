@@ -1,8 +1,8 @@
 # 地球地表の標高陰影・地域タイル配信計画
 
-作成日: 2026-09-09。改訂日: 2026-09-09。計画の作成までを対象とし、実装は本計画の検査後に着手する。
-以下はこれから作るものと実装手順である。ファイル・行番号は今回のレビュー開始時の HEAD `e9addb88` を
-起点としており、着手時にコードから位置を引き直す。
+作成日: 2026-09-09。改訂日: 2026-09-09。手順1・1.5・2の初期実装を反映し、残りの実装と検証を対象とする。
+以下は実装済みの範囲、残作業、これから作るものと実装手順である。ファイル・行番号は計画検査時点の
+参照であり、着手時にコードから位置を引き直す。
 
 ## 目的
 
@@ -430,61 +430,43 @@ gitへ加えない。小さいベース資源、`earth-climate-01.png`～`earth-
 各手順は独立してcommitできる単位で終える。段の途中で公開版へ反映しない。
 検証結果や撮影画像は `.earth-surface/verification/` へ置き、人間の別のメモや既存の計測値を上書きしない。
 
-### 手順1. 地表の振舞いを仕様へ反映する
+### 実施済み: 手順1
 
-**目的**: 作る地表の振舞いを、コードより先に確定する。
+`DEVELOP/SPEC/RENDERING.md`へ地表色・標高由来の法線、詳細未取得時の全球フォールバック、地理位置の固定、
+LOD遷移の連続性、水域と陸・氷の陰影の違いを反映した。SPECへ実装識別子や容量制限は書き込んでいない。
+コミットは`92dcc8ac`である。統合後の`npm run typecheck`も通過した。
 
-| 変更が必要な箇所 | すること |
+### 手順1.5（残作業）: 座標・法線・GPU標本化の技術スパイク
+
+座標変換、楕円体法線、四分木の`errorPx`選択、地平線・2:1隣接、frontier、ページ表、親子fade、GPU層の
+予約・同時公開を実装した。対応するファイルは`src/render/earth-surface-coordinate.ts`、
+`src/render/earth-surface-tiles.ts`、`src/render/earth-surface-gpu.ts`と、3つの解析テストである。
+z=1以降のページ表セルが正しい粗いタイルを参照する回帰検査も含む。コミットは`ae362757`で、
+`npm run typecheck`と`npm run test:render`（43/43）を通過した。
+
+次の残作業を終えるまで手順1.5全体の達成とはしない。
+
+| 残作業 | 完了条件 |
 | --- | --- |
-| `DEVELOP/SPEC/RENDERING.md:286` | 本計画「目的」の文面を地球地表の要求へ反映し、重複・矛盾する地表の記述を整理する |
+| `tests/render/earth-surface-material.test.ts` | `normalNode`・GBuffer復号・模式図の幾何法線を実GPUまたは検証可能な代替で確認する |
+| `tools/render-lab/earth-surface-spike.ts`と個別の`package.json`入口 | 合成標識、親子fade、ガター、mipmap有無を画像で比較し、選択z・fallback・層数を保存する |
+| JPEGデコード、sRGB/線形、実`DataArrayTexture`、WebGPU機能検査 | EXIF/ICCなし入力と非対応機能の全球ベース固定を実ブラウザで検証する |
 
-**達成条件と検証**: `npm run typecheck`。SPECの変更差分だけを読み、タイル数・クラス名・
-キャッシュ容量など作り方が入っていないことを確認する。この時点で実行時の挙動は変えない。
+### 手順2（残作業）: 元データ取得と小領域の再現可能な加工環境
 
-### 手順1.5. 座標・法線・GPU標本化の技術スパイク
+ソース契約`assets-src/earth-surface/sources.json`、再開可能な検証付き取得器、fixtureを処理する
+`tools/earth-surface/bake.py`、依存一覧、生成物除外、`earth-surface:fetch`・`earth-surface:bake`の入口を追加した。
+ETOPO ice-surface/geoid、GSHHG、ERA5の版・変数・CRS・NoData・再格子化をmanifestへ固定し、GEBCOは除外した。
+形式検査、GSHHG被覆率、海底を除いた法線、sRGB面積平均、ERA5の1991–2020全時刻検査、ESTN Float16とgzipを
+fixtureで検証した。コミットは`65dbf4ff`（入口追加は`df2d52b7`）で、Pythonテスト15/15を通過した。
 
-**目的**: 大量のデータ生成とゲーム接続の前に、P0となる座標契約と法線空間を小さな解析データで固定する。
-この手順ではETOPO/GSHHGを地表と気候マップの共通入力にする採用を変更しない。GEBCOは入力に含めない。
-WebGPUの`normalNode`、非一様な
-楕円体スケール、`DataArrayTexture`の配列層、sRGB/線形変換を最小構成で検証し、後続手順の前提にする。
+実データはまだ取得していないため、次を残す。
 
-| 変更が必要な箇所 | すること |
+| 残作業 | 完了条件 |
 | --- | --- |
-| `src/render/earth-surface-coordinate.ts` (新規) | `earthSurfaceUv`、楕円体外向き法線、放射方向と地理UVの相互変換を一元化する。既存の球面UV関数はこの関数を複製しないラッパーとして扱う |
-| `src/render/earth-surface-tiles.ts` (新規) | 合成タイルでz=0からz=7の四分木選択、`errorPx`、地平線、2:1隣接、frontier、RGBA8ページ表、親子fadeを先に実装する。通信や実データはまだ接続しない |
-| `src/render/earth-surface-gpu.ts` (新規) | `EarthSurfaceGpuAdapter`として配列層の書込み、ページ表の公開、機能検査、非公開層のswapを抽象化する。Three.js/WebGPUの内部オブジェクトをLOD選択へ漏らさない |
-| `tests/render/earth-surface-coordinate.test.ts` (新規) | 赤道・北緯60°・北緯85°・経度±180°、非一様半軸、姿勢回転、UVの周期境界を解析値で検査する |
-| `tests/render/earth-surface-material.test.ts` (新規) | ゼロ勾配の楕円体法線を`normalNode`へ渡し、GBufferから復号したview法線が0.2°以内になることを検査する。模式図用の幾何法線選択も検査する |
-| `tests/render/earth-surface-gpu.test.ts` (新規) | 配列層数不足、RGBA16Fの線形標本化不可、層の公開前上書き、同一フレームswapをfake adapterで検査する |
-| `tools/render-lab/earth-surface-spike.ts` (新規) | 4色の経度緯度標識、解析平面勾配、親子タイル、青い陸地を含む小さな合成資源を作り、配列層・ページ表・親子fadeを線形標本化する。mipmap有無を比較する |
-| `package.json` | 上記の解析・描画スパイクを個別に実行する入口を追加する |
-
-**達成条件と検証**: `npm run typecheck`、`npm run test:render`。合成標識がベース・タイル・雲の
-同じ経度緯度に出ること、半軸を変えても地理位置が移動しないこと、自転角を変えても法線の光源関係が
-保たれることを確認する。`DataArrayTexture`の色配列はsRGB、法線配列は線形として親子を混ぜ、ガンマ差が
-出ないことを画像で確認する。画像デコードはEXIF/ICCなしJPEGを`colorSpaceConversion: 'none'`、
-`premultiplyAlpha: 'none'`で読み、ブラウザの非対応時は同じRGB結果を返す代替経路を確認する。mipmapを使う場合は
-層更新後の生成時間、2texelガター、斜視のちらつきを基底レベル経路と比較する。WebGPU機能検査に失敗した
-場合は全球ベースへ固定し、個別テクスチャのdraw call経路を追加しない。失敗した場合は手順2以降へ進めず、
-座標・法線・ページ表・標本化契約を修正する。
-
-### 手順2. 元データ取得と小領域の再現可能な加工環境を作る
-
-**目的**: 全量取得の前に、入力形式・データ条件・必要容量を小領域で確定させる。
-
-| 変更が必要な箇所 | すること |
-| --- | --- |
-| `assets-src/earth-surface/sources.json` (新規) | BMNG・ETOPO ice-surface・GSHHG・ERA5月平均のURL、datasetId、変数、期間、CRS、NoData、再格子化方法、帰属、入力ファイルのハッシュを固定し、GEBCOを入力に含めないことを明記する。既存MODIS雲量は比較検証用として別欄へ記録する |
-| `tools/earth-surface/fetch-source.py` (新規) | 再開可能な領域単位取得、形式・長さ・ハッシュ検査、失敗時の一時ファイル隔離を行う |
-| `tools/earth-surface/requirements.txt` (新規) | GDAL・NumPy・画像出力の依存を再現できる版で固定する |
-| `tools/earth-surface/bake.py` (新規) | 小領域で色・楕円体高・水域被覆・法線を生成する処理を置く |
-| `.gitignore` | raw・中間生成物・配信タイルを除外する |
-| `package.json` | `earth-surface:fetch` と `earth-surface:bake` の入口を追加する |
-
-**達成条件と検証**: `npm run typecheck`。まず北緯25～35°・東経80～90°の一部で加工し、
-元画像の色、ice-surface/geoidの単位、向き、マスクを照合する。source配布のHTML・壊れたGeoTIFFを
-拒否できることを確認する。海岸・極域を含む計16枚を試算用に生成し、容量・所要時間を実測する。
-全量取得は、次節の式へ実測値を代入して必要な空き領域を確認してから同じ手順で続行する。
+| BMNG・ETOPO・GSHHGの実ファイルとERA5の固定NetCDF exportを取得 | 入力ハッシュと取得記録を確定し、HTML・破損・CRS・寸法・NoData不一致を拒否する |
+| 北緯25～35°・東経80～90°、海岸・極域を含む計16領域を実加工 | 色、単位、向き、GSHHGマスク、法線、容量、所要時間を実測し、`.earth-surface/verification/`へ保存する |
+| 実入力からのJPEG・気候マップ・タイル生成 | 小領域の出力が手順3の全球生成へそのまま渡せることを確認する |
 
 ### 手順3. 全球ピラミッド・法線・ベース資源を生成する
 
@@ -728,7 +710,8 @@ LODのちらつき、非同期のまだらな公開、JPEG境界、氷分類の�
 
 ## 計画の検査後に着手する際の扱い
 
-手順1から順に進める。各段の検証は触った層へ対応させ、画像が変わる段は地表画像を残す。
+手順1・1.5・2の初期実装は完了済みのコミットと残作業を上記へ記録した。以降も各段の検証は触った層へ
+対応させ、画像が変わる段は地表画像を残す。
 実装後にSPECを開いて現状へ合わせる作業は行わず、この計画の達成目標と検証条件で実装を判定する。
 大きな変更の仕上げでは `/refactor` と必要なコメント点検を行う。
-この計画書を作成した時点では、SPEC・コード・アセットの更新、データの全量取得、公開を実施しない。
+実データの全量取得、実GPUでの表示検証、ゲームへの接続、公開は残作業を終えてから実施する。
