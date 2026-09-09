@@ -107,6 +107,7 @@ export interface CelestialSurfaceMaterialAttachment {
   readonly material: THREE.Material;
   readonly deferred: readonly DeferredTexture[];
   readonly textures?: readonly THREE.Texture[];
+  readonly onDispose?: () => void;
 }
 
 // 実写テクスチャの測光。倍率を掛ける前の平均色を、その天体のボンドアルベドへ合わせる。
@@ -121,6 +122,11 @@ export class CelestialSurface implements CelestialSurfaceLike {
   // 段ごとの半径 1 の球。表示側が親の位置・スケール・自転姿勢を毎フレーム与える。
   private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
   private activeLevel: SphereLodLevel | null = null;
+  private readonly fallbackMaterial: THREE.Material;
+  private readonly fallbackDeferred: readonly DeferredTexture[];
+  private readonly fallbackTextures: readonly THREE.Texture[];
+  private usingFallbackMaterial = true;
+  private materialOnDispose: (() => void) | undefined;
 
   // material と deferred のテクスチャは解放までこの表面が持つ。photometry / textureUrl は静的事実。
   private constructor(
@@ -130,6 +136,9 @@ export class CelestialSurface implements CelestialSurfaceLike {
     public readonly photometry: SurfacePhotometry | null,
     public readonly textureUrl: string | null,
   ) {
+    this.fallbackMaterial = material;
+    this.fallbackDeferred = deferred;
+    this.fallbackTextures = ownedTextures;
     const meshes = new Map<SphereLodLevel, THREE.Mesh>();
     // 段ごとにメッシュを持つ — WebGPU では mesh.geometry の差し替えが効かない。
     for (const level of SPHERE_LOD_LADDER) {
@@ -179,16 +188,36 @@ export class CelestialSurface implements CelestialSurfaceLike {
     for (const mesh of this.meshes.values()) parent.add(mesh);
   }
 
-  // EarthSurfaceの詳細材質を既存の球LOD群へ差し替える。LODメッシュの所有権はこの
-  // surfaceに残し、旧材質は直ちに解放する。追加のDeferredTextureはsurfaceの寿命へ束ねる。
+  // EarthSurfaceの詳細材質を既存の球LOD群へ差し替える。初期fallbackは再接続時に戻せるよう
+  // surfaceが保持し、以前の詳細材質とその資源は直ちに解放する。
   public replaceMaterial(attachment: CelestialSurfaceMaterialAttachment): void {
-    this.material.dispose();
-    for (const deferred of this.deferred) deferred.dispose();
-    for (const texture of this.ownedTextures) texture.dispose();
+    if (!this.usingFallbackMaterial) {
+      this.materialOnDispose?.();
+      this.material.dispose();
+      for (const deferred of this.deferred) deferred.dispose();
+      for (const texture of this.ownedTextures) texture.dispose();
+    }
     this.material = attachment.material;
     this.deferred = attachment.deferred;
     this.ownedTextures = attachment.textures ?? [];
+    this.materialOnDispose = attachment.onDispose;
+    this.usingFallbackMaterial = false;
     for (const mesh of this.meshes.values()) mesh.material = attachment.material;
+  }
+
+  // GPU材質を外したとき、破棄済みのGPUテクスチャを読む代わりに初期fallbackへ戻す。
+  public restoreFallbackMaterial(): void {
+    if (this.usingFallbackMaterial) return;
+    this.materialOnDispose?.();
+    this.material.dispose();
+    for (const deferred of this.deferred) deferred.dispose();
+    for (const texture of this.ownedTextures) texture.dispose();
+    this.material = this.fallbackMaterial;
+    this.deferred = this.fallbackDeferred;
+    this.ownedTextures = this.fallbackTextures;
+    this.materialOnDispose = undefined;
+    this.usingFallbackMaterial = true;
+    for (const mesh of this.meshes.values()) mesh.material = this.material;
   }
 
   // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。テクスチャ画像の取得も
@@ -214,8 +243,19 @@ export class CelestialSurface implements CelestialSurfaceLike {
   // マテリアル側から連鎖解放されないので個別に dispose する。
   public dispose(): void {
     for (const mesh of this.meshes.values()) mesh.removeFromParent();
+    this.materialOnDispose?.();
+    this.materialOnDispose = undefined;
+    if (this.usingFallbackMaterial) {
+      this.fallbackMaterial.dispose();
+      for (const deferred of this.fallbackDeferred) deferred.dispose();
+      for (const texture of this.fallbackTextures) texture.dispose();
+      return;
+    }
     this.material.dispose();
     for (const deferred of this.deferred) deferred.dispose();
     for (const texture of this.ownedTextures) texture.dispose();
+    this.fallbackMaterial.dispose();
+    for (const deferred of this.fallbackDeferred) deferred.dispose();
+    for (const texture of this.fallbackTextures) texture.dispose();
   }
 }
