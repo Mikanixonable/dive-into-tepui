@@ -12,7 +12,7 @@ import { rayMarch, type MediumSample } from '../ray-march';
 import { BlueNoise } from '../blue-noise';
 import { airglowEmission } from '../airglow';
 import {
-  AtmosphereCloudLayers, type CloudShellLayer, type AtmosphereCloudGeometry,
+  AtmosphereCloudLayers, type CloudShellEvent, type AtmosphereCloudGeometry,
 } from './atmosphere-cloud-layers';
 import type { CloudLodMode } from '../cloud/cloud-field-sampler';
 import { shellAltitudeOf, type CloudSpecies } from './cloud-atmosphere-renderer';
@@ -304,7 +304,7 @@ export class AtmosphereIntegrator {
   // — 高度は最接近点から距離の 2 乗でしか増えず、寄せて山から離れた側を粗くする害のほうが勝つ。
   private integrated(
     ray: SphereSpaceRay, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node,
-    shells: readonly CloudShellLayer[],
+    shells: readonly CloudShellEvent[],
   ): LayerContribution {
     // 奥端が地表や不透明面で切れている視線では、最も濃い点がその奥端に重なる — 打ち切りが
     // いちばん鋭いので、これを最優先の山に採る。切れていない視線でだけ日没境界を見て、それも
