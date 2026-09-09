@@ -50,6 +50,7 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { frameRoleOf } from '../physics/frame';
 import { ViewBadge } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
+import { syncControlledLoopSfx } from './controlled-loop-sfx';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -341,6 +342,7 @@ export class Game {
   // 時間を止め、連続指令を畳む。
   pause(): void {
     this._worldSfx.setThrust(false);
+    this._worldSfx.setRcs(false);
     this.dynamicSystem.pause();
     this._isPaused = true;
   }
@@ -439,6 +441,14 @@ export class Game {
     this.sections.enter(SECTION.pointer);
     this.handlePointerInput();
     this.sections.exit(SECTION.pointer);
+    // View の描画同期ではなく update フェーズで、次回予測の読者を確定する。
+    this.entityLines.updatePredictionReaders(
+      this.activeControllable,
+      this.targeter.aliveTarget,
+      this.modeManager.current,
+      displayWindow,
+      this.modeManager.activeMode.visibilityPolicy,
+    );
   }
 
   // ステージ → 指令決定 → 積分 → エフェクトの順に1フレーム進める
@@ -540,6 +550,7 @@ export class Game {
       fo, displayTime, controlled, visibilityPolicy, this.cameraSystem, style, graphics,
       orbitRef, this.frameAnchors, timeLabel,
     );
+    syncControlledLoopSfx(this._worldSfx, controlled, displayTime, visibilityPolicy);
     // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraSystem.sync より後に通す。
     this.flashEffects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
 

@@ -8,7 +8,7 @@ import {
   type BoosterStage as BoosterStageModel,
 } from '../../../render/booster';
 import { BOOSTER_STAGE_DIMENSIONS } from '../../../physics/booster-stage-shape';
-import { DynamicView, type DynamicViewFrame } from '../dynamic-view';
+import { DynamicView, type DynamicViewFrame, type DynamicViewIdentity } from '../dynamic-view';
 import type { DynamicMotion } from '../dynamic-motion';
 import { DetachedBoosterMotion } from './detached-booster-motion';
 
@@ -28,6 +28,7 @@ export class DetachedBoosterView extends DynamicView {
   }
 
   protected override syncModel(
+    _identity: DynamicViewIdentity,
     motion: DynamicMotion,
     displayed: KinematicState | null,
     context: DynamicViewFrame,
