@@ -29,6 +29,7 @@ export class RossbyWave {
   // 位相角 [rad]。2π で畳んだ値だけを持つので、時間を大きく進めても精度が落ちない。
   private readonly phase: FloatUniform = uniform(0);
 
+  // 位相を初期時刻へそろえる。
   public constructor() {
     this.syncTime(0);
   }
@@ -53,12 +54,6 @@ export class RossbyWave {
     return eastAt(direction).mul(eastWind).add(northAt(direction).mul(northWind));
   }
 
-  // 流線関数 ψ [m²/s]。風摂動の位相と包絡を確認する必要がある読み手向けに、波の本体を公開する。
-  public streamfunctionAt(direction: Vec3Node): FloatNode {
-    const latitude = latitudeOf(direction);
-    return float(STREAMFUNCTION_AMPLITUDE).mul(this.envelopeAt(latitude)).mul(sin(this.phaseAt(direction)));
-  }
-
   // 経度方向の位相。equirect の経度の継ぎ目は、周期関数へ入ることで連続につながる。
   private phaseAt(direction: Vec3Node): FloatNode {
     const longitude = equirectUvFromDirection(direction).x.sub(0.5).mul(2 * Math.PI);
@@ -75,6 +70,7 @@ export class RossbyWave {
   // 包絡の緯度微分 dE/dφ。smoothstep の微分も端で 0 になるため、風速に段差を作らない。
   private envelopeSlopeAt(latitude: FloatNode): FloatNode {
     const absolute = abs(latitude);
+    // 上昇区間と下降区間の傾きを別々に組む。
     const rising = smoothstep(ENVELOPE_RISE_START, ENVELOPE_RISE_END, absolute);
     const falling = smoothstep(ENVELOPE_FALL_START, ENVELOPE_FALL_END, absolute);
     const risingT = clamp(absolute.sub(ENVELOPE_RISE_START).div(ENVELOPE_RISE_END - ENVELOPE_RISE_START), 0, 1);
