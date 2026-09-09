@@ -129,7 +129,6 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   protected readonly _worldSfx: WorldSfx;
   protected readonly _fx: FlashEffects;
-  protected readonly _scene?: THREE.Scene;
 
   // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径)を受けて、
   // 敵に共通する識別・色・陣形所属を初期化する。復元時は保存済みの生死・バースト状態も戻す。
@@ -140,7 +139,6 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     radius: number,
     worldSfx: WorldSfx,
     fx: FlashEffects,
-    scene?: THREE.Scene,
     shape?: EnemyCollisionShape,
   ) {
     // 復元と新規配置を同じ形へ均してから基底へ渡す。
@@ -187,7 +185,6 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     );
     this._worldSfx = worldSfx;
     this._fx = fx;
-    this._scene = scene;
     this.accent = placed.accent;
     this.view.orbitLineColor = placed.orbitLineColor;
     this.waveId = placed.waveId;
@@ -286,7 +283,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     for (const piece of buildDestroyFragments(
       t, r, v, 11, ENEMY_DESTROY_FRAG_COLOR,
       (DESTROY_FRAG_SIZE_MIN * effectScale) / 3, (DESTROY_FRAG_SIZE_MAX * effectScale) / 3, 20.0,
-      this._worldSfx, this._fx, this._scene,
+      this._worldSfx, this._fx,
     )) registry.add(piece);
   }
 
@@ -453,7 +450,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
     const pb = new Bullet(
       kinematicState<'eci'>(simTime, r, bV), PLASMA_LIFETIME, 'enemy', 'plasma', this.plasmaDamage(),
-      this._worldSfx, this._scene,
+      this._worldSfx,
     );
     this.muzzleEffect(kinematicState<'eci'>(simTime, r, v));
 

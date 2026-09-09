@@ -1,4 +1,3 @@
-import type * as THREE from 'three/webgpu';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { DynamicEntity } from './dynamic-entity';
@@ -11,7 +10,7 @@ export class Bullet extends DynamicEntity {
 
   public constructor(
     state: KinematicState, lifetime: number, shooter: Shooter, type: BulletType, damage: number,
-    worldSfx: WorldSfx, _scene?: THREE.Scene,
+    worldSfx: WorldSfx,
   ) {
     super(
       state,

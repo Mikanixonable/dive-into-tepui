@@ -111,7 +111,7 @@ export class ProteinEnemy extends Enemy {
     // 新規生成のときだけ、タンパク質固有の名称を陣形役割・識別番号などの既存識別子の前へ冠する。
     super(
       'saved' in init ? init : { ...init, name: `${definition.asset.displayName} ${init.name}` },
-      proteinView, PROTEIN_INERTIA, collision.outerRadius, worldSfx, fx, scene, shape,
+      proteinView, PROTEIN_INERTIA, collision.outerRadius, worldSfx, fx, shape,
     );
     this.assetId = assetId;
     this.displaySettings = display;
