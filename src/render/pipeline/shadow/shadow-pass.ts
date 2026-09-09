@@ -14,7 +14,7 @@ import { viewPositionAt } from '../view-ray';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../../tsl-types';
 import type { BodyShadow } from './body-shadow';
 import type { RingShadow } from './ring-shadow';
-import type { CumulusShadow } from './cumulus-shadow';
+import type { CloudShadowRenderer } from './cloud-shadow-renderer';
 import type { MeshShadow } from './mesh-shadow';
 import { compileInto } from '../compile-into';
 
@@ -66,7 +66,7 @@ export class ShadowPass {
   constructor(
     private readonly renderer: WebGPURenderer,
     gbuffer: GBufferPass,
-    bodyShadow: BodyShadow, ringShadow: RingShadow, cumulusShadow: CumulusShadow, meshShadow: MeshShadow,
+    bodyShadow: BodyShadow, ringShadow: RingShadow, cumulusShadow: CloudShadowRenderer, meshShadow: MeshShadow,
     private readonly gpu: GpuTimings,
   ) {
     this.target = new THREE.RenderTarget(1, 1, {
