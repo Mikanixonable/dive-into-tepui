@@ -325,6 +325,15 @@ function coordinatorFor(
     gpu.dispose();
     return { coordinator: null, state: 'fallback', material: null };
   }
+  // 材質の構築に失敗した場合も、先に確保したqueue/GPUを孤児にしない。
+  let material: EarthSurfaceMaterialAttachment;
+  try {
+    material = detailedMaterialFor(bootstrap.source!, textures);
+  } catch (error) {
+    queue.dispose();
+    gpu.dispose();
+    throw error;
+  }
   return {
     coordinator: new EarthSurfaceResidentCoordinator({
       tiles: new EarthSurfaceTiles(),
@@ -333,7 +342,7 @@ function coordinatorFor(
       colorToRgba8: options.colorToRgba8 ?? defaultEarthSurfaceColorToRgba8,
     }),
     state: 'ready',
-    material: detailedMaterialFor(bootstrap.source!, textures),
+    material,
   };
 }
 
