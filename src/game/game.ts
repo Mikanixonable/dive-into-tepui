@@ -136,7 +136,7 @@ export class Game {
     // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
     const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
     const celestialSystem = await stageClass.createCelestialSystem(
-      initialSave?.phaseOffsets ?? {}, earthSpinPhase0, epoch, (ratio) => progress.within(ratio),
+      initialSave?.phaseOffsets ?? {}, earthSpinPhase0, epoch, (ratio) => progress.within(ratio), gs.renderer,
     );
     await progress.enter('bodies');
     celestialSystem.build(

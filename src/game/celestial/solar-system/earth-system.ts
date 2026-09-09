@@ -248,12 +248,16 @@ function coordinatorFor(
     || options.renderer === undefined || bootstrap.tileSource === null) {
     return { coordinator: null, state: bootstrap.state === 'error' ? 'error' : 'fallback' };
   }
+  // Game.createはrendererを先に初期化するが、テストや別の起動経路ではbackendがまだ
+  // 生成されていないことがある。その場合は例外で起動を壊さず、baseへ固定する。
+  const backend = options.renderer.backend as unknown as EarthSurfaceGpuThreeBackendLike | null | undefined;
+  if (backend === null || backend === undefined) return { coordinator: null, state: 'fallback' };
   const queue = new EarthSurfaceTileRequestQueue(bootstrap.tileSource, {
     fetchImpl: options.fetchImpl,
     decodeImage: options.decodeImage,
   });
   const gpu = new EarthSurfaceGpuAdapter(createEarthSurfaceGpuThree(
-    options.renderer.backend as unknown as EarthSurfaceGpuThreeBackendLike,
+    backend,
   ));
   if (gpu.mode === 'base') {
     queue.dispose();
@@ -333,7 +337,7 @@ function earthAuroras(): readonly Aurora[] {
 // earthSpinPhase0 は地球の自転初期位相 [rad]。
 export function earthSystem(
   sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
-  earthSpinPhase0 = 0, climateEpochUnixSec = 0,
+  earthSpinPhase0 = 0, climateEpochUnixSec = 0, renderer?: WebGPURenderer,
 ): Record<EarthSystemBodyId, CelestialEntity> {
   const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
   // 雲の場は殻が持ち、地表・影・大気の殻はその実体を借りて読む。
@@ -341,7 +345,7 @@ export function earthSystem(
     EARTH_SURFACE_FIXTURE_SOURCE.climateMapUrls,
     (direction) => earthSurfaceUvFromRadialNode(direction, EARTH_CLIMATE_AXES),
   );
-  const earthSurfaceRuntime = createEarthSurfaceRuntime();
+  const earthSurfaceRuntime = createEarthSurfaceRuntime({ renderer });
   void earthSurfaceRuntime.ready.then((result) => {
     const source = result.bootstrap.source;
     if (source !== null) climate.replaceUrls(source.climateMapUrls);
