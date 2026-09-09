@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { gzipSync } from 'node:zlib';
+import { deflateSync, gzipSync } from 'node:zlib';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -26,14 +26,56 @@ function terrainPayload({ z = 0, x = 0, y = 0 } = {}) {
   return payload;
 }
 
+function baseTerrainPayload() {
+  const body = Buffer.concat([terrainPayload({ x: 0 }), terrainPayload({ x: 1 })]);
+  const payload = Buffer.alloc(32 + body.length);
+  payload.write('ESTB', 0, 'ascii');
+  payload.writeUInt16LE(1, 4); payload.writeUInt16LE(32, 6);
+  payload.writeUInt16LE(260, 8); payload.writeUInt16LE(260, 10);
+  payload.writeUInt8(0, 12); payload.writeUInt8(0, 13);
+  payload.writeUInt32LE(2, 14); payload.writeUInt32LE(1, 18);
+  payload.writeUInt8(4, 22); payload.writeUInt8(1, 23);
+  payload.writeUInt32LE(body.length, 24); payload.writeUInt32LE(0, 28);
+  body.copy(payload, 32);
+  return payload;
+}
+
+function climatePng() {
+  const crc32 = (bytes) => {
+    let crc = 0xffffffff;
+    for (const byte of bytes) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type, data) => {
+    const name = Buffer.from(type, 'ascii');
+    const body = Buffer.concat([name, data]);
+    const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(body));
+    const length = Buffer.alloc(4); length.writeUInt32BE(data.length);
+    return Buffer.concat([length, body, crc]);
+  };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(1024, 0); ihdr.writeUInt32BE(512, 4);
+  ihdr.writeUInt8(8, 8); ihdr.writeUInt8(6, 9);
+  const rows = Buffer.alloc(512 * (1 + 1024 * 4));
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(rows, { level: 9 })), chunk('IEND', Buffer.alloc(0))]);
+}
+
 function manifest(sourceManifestSha256, datasetId = 'earth-fixture-a') {
   return {
     schemaVersion: 1, datasetId, sourceManifestSha256,
+    provenance: { generator: 'fixture/1' },
+    climateMap: { width: 1024, height: 512, channels: 4, scalar: 'UInt8' },
+    controlRegions: Array.from({ length: 16 }, (_, index) => ({ id: `region-${index}`, west: -180, south: -80, east: 180, north: 80 })),
+    coverage: { kind: 'sparse', maxZoom: 7 },
     baseColor: 'base/earth.jpg', baseTerrain: 'base/earth.bin.gz', tileIndexUrl: 'tile-index.json',
     climateMaps: Array.from({ length: 12 }, (_, index) => `climate/${String(index + 1).padStart(2, '0')}.png`),
     climateEncoding: {
       temperatureK: { min: 180, max: 330 }, cloudFraction: { min: 0, max: 1 },
       orthometricElevation: { min: -1000, max: 9000 }, landFraction: { min: 0, max: 1 },
+      waterOrthometricElevationM: 0,
     },
     attribution: ['deterministic Stage A fixture'],
   };
@@ -59,9 +101,9 @@ async function createBundle() {
   await writeFile(join(root, 'earth-surface.json'), `${JSON.stringify(manifestValue, null, 2)}\n`);
   await writeFile(join(root, 'tile-index.json'), `${JSON.stringify(tile, null, 2)}\n`);
   await mkdir(join(root, 'base'), { recursive: true });
-  await writeFile(join(root, 'base/earth.jpg'), color); await writeFile(join(root, 'base/earth.bin.gz'), gzipSync(Buffer.from('ESTBfixture'), { mtime: 0 }));
+  await writeFile(join(root, 'base/earth.jpg'), color); await writeFile(join(root, 'base/earth.bin.gz'), gzipSync(baseTerrainPayload(), { mtime: 0 }));
   await mkdir(join(root, 'climate'), { recursive: true });
-  for (const path of manifestValue.climateMaps) await writeFile(join(root, path), Buffer.from(path));
+  for (const path of manifestValue.climateMaps) await writeFile(join(root, path), climatePng());
   await mkdir(join(root, 'tiles/0/0'), { recursive: true });
   await writeFile(join(root, 'tiles/0/0/0.jpg'), color);
   await writeFile(join(root, 'tiles/0/0/0.bin.gz'), compressedTerrain);
