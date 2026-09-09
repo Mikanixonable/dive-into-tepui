@@ -2,8 +2,6 @@
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import earthTextureUrl from '../../../assets/earth.jpg';
-import climateTextureUrl from '../../../assets/earth-climate.png';
-import earthSmoothnessUrl from '../../../assets/earth-smoothness.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import { AtmosphereDef } from '../../../physics/atmosphere';
 import {
@@ -32,8 +30,9 @@ import {
   type EarthSurfaceBootstrapResult,
 } from './earth-surface-runtime';
 import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
-import { ClimateMap } from '../../../render/cloud/climate-map';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
+import { MonthlyClimateMap } from '../../../render/cloud/monthly-climate-map';
+import { earthSurfaceUvFromRadialNode } from '../../../render/earth-surface-coordinate';
 import { EarthCoastline } from '../../../render/earth-coastline';
 import { MoonSurfaceMarkings } from '../../../render/moon-surface-markings';
 import { GeostationaryOverlay } from '../celestial-entity/geostationary-overlay';
@@ -44,6 +43,7 @@ import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { CelestialTexture } from '../../../render/celestial-textures';
 import type { CelestialEntity } from '../celestial-entity/celestial-entity';
 import type { EarthSurfaceSource } from './earth-surface-source';
+import { vec3 } from 'three/tsl';
 
 // 地球系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type EarthSystemBodyId = 'earth' | 'moon';
@@ -211,6 +211,9 @@ export const EARTH_SURFACE_FIXTURE_SOURCE = {
   ),
 } satisfies EarthSurfaceSource;
 
+const EARTH_CLIMATE_AXES = vec3(EARTH_ATMOSPHERE.equatorRadius, EARTH_ATMOSPHERE.polarRadius,
+  EARTH_ATMOSPHERE.equatorRadius);
+
 export interface EarthSurfaceFactoryOptions extends EarthSurfaceBootstrapOptions {
   readonly renderer?: WebGPURenderer | null;
   readonly colorToRgba8?: EarthSurfaceColorToRgba8;
@@ -231,7 +234,7 @@ export interface EarthSurfaceRuntimeHandle {
 function fallbackSurface(status: EarthSurfaceStatus = 'loading'): EarthSurface {
   return new EarthSurface(
     new EarthSurfaceContext(EARTH_SURFACE_FIXTURE_SOURCE),
-    CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl),
+    CelestialSurface.textured(EARTH_TEXTURE),
     null,
     status,
   );
@@ -329,13 +332,23 @@ function earthAuroras(): readonly Aurora[] {
 // earthSpinPhase0 は地球の自転初期位相 [rad]。
 export function earthSystem(
   sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
-  earthSpinPhase0 = 0,
+  earthSpinPhase0 = 0, climateEpochUnixSec = 0,
 ): Record<EarthSystemBodyId, CelestialEntity> {
   const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
   // 雲の場は殻が持ち、地表・影・大気の殻はその実体を借りて読む。
-  const climate = ClimateMap.fromDeferredUrl(climateTextureUrl);
-  const cumulus = new CloudPresentation(GeneratedCloudField.global(climate), R_EARTH_EQ);
-  const earthSurface = createEarthSurfaceRuntime().surface;
+  const climate = MonthlyClimateMap.fromDeferredUrls(
+    EARTH_SURFACE_FIXTURE_SOURCE.climateMapUrls,
+    (direction) => earthSurfaceUvFromRadialNode(direction, EARTH_CLIMATE_AXES),
+  );
+  const earthSurfaceRuntime = createEarthSurfaceRuntime();
+  void earthSurfaceRuntime.ready.then((result) => {
+    const source = result.bootstrap.source;
+    if (source !== null) climate.replaceUrls(source.climateMapUrls);
+  });
+  const cumulus = new CloudPresentation(
+    GeneratedCloudField.global(climate), R_EARTH_EQ, climateEpochUnixSec,
+  );
+  const earthSurface = earthSurfaceRuntime.surface;
   return {
     earth: new PointEntity(
       earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',

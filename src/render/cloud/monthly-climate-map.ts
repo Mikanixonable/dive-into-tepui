@@ -1,7 +1,7 @@
 // 月別の気候入力を2枚だけ読み、同じ全球 UV のサンプルを月境界で補間する。
 // 画像は R=気温、G=雲量、B=ETOPO 正高、A=GSHHG 陸地被覆率を 0..1 で持つ。
 import * as THREE from 'three/webgpu';
-import { mix, texture, uniform, vec2 } from 'three/tsl';
+import { float, greaterThan, mix, select, texture, uniform, vec2 } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
 import { equirectUvFromDirection } from './field-projection';
 import { eastAt, northAt } from './sphere-frame';
@@ -97,6 +97,7 @@ export class MonthlyClimateMap implements ClimateMapLike {
   private observedNextGeneration = -1;
   private observedMonth = -1;
   private observedBlend = -1;
+  private disposed = false;
 
   public static fromDeferredUrls(urls: readonly string[], uvAt?: ClimateUvAt): MonthlyClimateMap {
     if (urls.length !== MONTHS_PER_YEAR) {
@@ -107,13 +108,26 @@ export class MonthlyClimateMap implements ClimateMapLike {
 
   // 実GPUを使わない解析テストや別の入力供給元は、DeferredTextureと同じ小さな境界を注入できる。
   public constructor(
-    private readonly maps: readonly MonthlyClimateTexture[],
+    private maps: readonly MonthlyClimateTexture[],
     private readonly uvAt: ClimateUvAt = equirectUvFromDirection,
   ) {
     if (maps.length !== MONTHS_PER_YEAR) {
       throw new Error(`Monthly climate requires ${MONTHS_PER_YEAR} textures`);
     }
     for (const map of maps) configureClimateTexture(map.texture);
+  }
+
+  // 配信版の12枚を差し替え、現在の月のcurrent/nextだけを要求する。
+  public replaceUrls(urls: readonly string[]): void {
+    if (this.disposed) return;
+    if (urls.length !== MONTHS_PER_YEAR) {
+      throw new Error(`Monthly climate requires ${MONTHS_PER_YEAR} URLs`);
+    }
+    const maps = urls.map(deferredTexture);
+    for (const map of this.maps) map.dispose();
+    this.maps = maps;
+    this.observedCurrentGeneration = -1;
+    this.observedNextGeneration = -1;
   }
 
   // 月は0始まり。12月の次は1月へ周回し、blendは0..1へ収める。
@@ -157,8 +171,9 @@ export class MonthlyClimateMap implements ClimateMapLike {
   }
 
   public elevation(direction: Vec3Node): FloatNode {
-    return this.sample(direction).b.mul(CLIMATE_ELEVATION_MAX_M - CLIMATE_ELEVATION_MIN_M)
+    const raw = this.sample(direction).b.mul(CLIMATE_ELEVATION_MAX_M - CLIMATE_ELEVATION_MIN_M)
       .add(CLIMATE_ELEVATION_MIN_M);
+    return select(greaterThan(this.landFraction(direction), 0), raw, float(0));
   }
 
   public landFraction(direction: Vec3Node): FloatNode {
@@ -177,6 +192,8 @@ export class MonthlyClimateMap implements ClimateMapLike {
   }
 
   public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     for (const map of this.maps) map.dispose();
   }
 
