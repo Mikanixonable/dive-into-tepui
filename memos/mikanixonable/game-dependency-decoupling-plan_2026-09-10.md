@@ -135,6 +135,19 @@ HUDがcomposition rootの内部構造を読む境界をなくす。パネルは�
 - `npm run typecheck`、`npm run test:game`を通す。
 - 手動保存、自動保存、一覧表示、スナップショットロード、決着後の保存禁止を`npm run smoke:browser`で確認する。
 
+#### 実施結果（2026-09-10）
+
+- `SnapshotService.capture`は`Game`ではなく`RunSummary`と`GameSaveData`を受け取る境界へ変更した。
+- 自動保存・手動保存・セーブブラウザは、保存データ、ステージ状態、天体名解決、pause/resumeだけの契約を介して動作する。
+- `src/launcher/save/`、`snapshot-controls.ts`、`save-browser.ts`から`Game`の直接importを除去した。
+- 保存形式、メタデータの構築、ロード検証、60秒間隔、決着後禁止、保存操作の呼出順序は変更していない。
+- 実装コミット: `a4de2a7a`（保存境界）。
+- コードレビューで、`Launcher`がGameを生成・所有する責務と、保存データを取得する時点を確認した。
+- `npm run typecheck`: 成功。
+- `npm run test:game`: 201/201 成功。
+- `git diff --check`: 成功。保存系APIへの`Game`直接参照は検索上0件。
+- `npm run smoke:browser`: 保存操作の確認へ到達する前に、pause menu shieldingの`shieldShown: false`で停止した。手順1と同じ既存のUI smoke課題として、保存固有の完全な再確認は残課題とする。
+
 ### 手順3: フレーム内の責務をCoordinatorへ分ける
 
 #### 目的
@@ -210,6 +223,6 @@ Coordinator分割後に見える機能単位の依存を、各機能のportへ�
 ## 進捗
 
 - [x] 手順1: HUDの`Game`逆依存を解消（実装・コードレビュー完了。UI smokeのみ既存失敗で未完遂）
-- [ ] 手順2: 保存系のデータ境界化
+- [x] 手順2: 保存系のデータ境界化（実装・コードレビュー完了。UI smokeは既存失敗で未完遂）
 - [ ] 手順3: フレームCoordinator分割
 - [ ] 手順4: 機能ビュー依存の縮小
