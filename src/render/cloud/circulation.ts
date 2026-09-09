@@ -13,6 +13,7 @@ import {
 } from 'three/tsl';
 import { latitudeOf } from './sphere-frame';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
+import { angularBandsAt, CloudPatternTransport, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT } from './atmospheric-wind';
 
 // 1 本の帯で模様が進む角速度 [°/日]。east が東向き(経度の進み)、north が北向き(緯度の進み)。
 // **速さ [m/s] ではなく角速度で持つ。** この流れは伸びではなく見えの動きを作るもので、移流が
@@ -26,26 +27,12 @@ const BAND_SPACING = THREE.MathUtils.degToRad(30);
 // 地表付近の帯。極偏東風・偏西風・貿易風が赤道を挟んで鏡像に並ぶ。**速さは、同じ場所で気圧から
 // 出る風より弱く取る。** 帯の風は経度に依らないので、これが勝つと空の模様は緯度で決まる縞へ
 // 揃い、渦と気団が作る構造がその下に埋もれる。
-export const SURFACE_BANDS: readonly CirculationBand[] = [
-  { east: -6, north: -1.0 }, // 極偏東風(北)
-  { east: 7, north: 1.5 }, // 偏西風(北)
-  { east: -3.6, north: -1.5 }, // 貿易風(北)
-  { east: -3.6, north: 1.5 }, // 貿易風(南)
-  { east: 7, north: -1.5 }, // 偏西風(南)
-  { east: -6, north: 1.0 }, // 極偏東風(南)
-];
+export const SURFACE_BANDS: readonly CirculationBand[] = angularBandsAt(SURFACE_HEIGHT);
 
 // 巻雲の高さ(≈200 hPa)の帯。南北はどの帯でも地表付近と逆向きで、東西は中緯度だけが同じ西風の
 // まま亜熱帯ジェットまで速くなり、熱帯と極では逆向きになる。**地表付近より速いが、3 日で 4 分の 1
 // 周を超えない速さに留める** — それより速いと、薄い雲が形を変えずに滑って流れるだけに見える。
-export const UPPER_BANDS: readonly CirculationBand[] = [
-  { east: 12, north: 1.0 }, // 極(北)
-  { east: 20, north: -1.5 }, // 亜熱帯ジェット(北)
-  { east: 1.6, north: 1.5 }, // 熱帯(北)
-  { east: 1.6, north: -1.5 }, // 熱帯(南)
-  { east: 20, north: 1.5 }, // 亜熱帯ジェット(南)
-  { east: 12, north: -1.0 }, // 極(南)
-];
+export const UPPER_BANDS: readonly CirculationBand[] = angularBandsAt(UPPER_CLOUD_HEIGHT);
 
 // 隣り合う帯を混ぜる幅(帯の間隔に対する比)。境目の 0°・±30°・±60° を中心に取る。狭いほど
 // 逆向きに流れる 2 枚が重なる範囲が狭まり、広いほど向きの変わり方が滑らかになる。**帯の全幅を
@@ -71,6 +58,7 @@ type WeightedBand = {
 };
 
 export class Circulation {
+  private readonly patternTransport = new CloudPatternTransport();
   // 帯ごとの (cos 自転角, sin 自転角, cos 公転位相, sin 公転位相)。書き換えるのはこちらで、
   // uniform 配列は描画のたびにここから詰め直される。
   private readonly flows: THREE.Vector4[];
@@ -92,9 +80,9 @@ export class Circulation {
   // 精度が落ちない。
   public syncTime(seconds: number): void {
     for (const [i, band] of this.bands.entries()) {
-      const spin = wrapAngle(perSecond(band.east) * seconds);
+      const spin = wrapAngle(this.patternTransport.angularPhase(band.east, seconds));
       // 公転の位相が増えると模様は南へ動くので、北向きの帯では符号を反転する。
-      const orbit = wrapAngle((-perSecond(band.north) * seconds) / ORBIT_RADIUS);
+      const orbit = wrapAngle(-this.patternTransport.angularPhase(band.north, seconds) / ORBIT_RADIUS);
       this.flows[i]!.set(Math.cos(spin), Math.sin(spin), Math.cos(orbit), Math.sin(orbit));
     }
     this.breath.value = BREATH_AMPLITUDE * Math.sin((2 * Math.PI * seconds) / BREATH_PERIOD);
@@ -161,11 +149,6 @@ export class Circulation {
       orbiting.z.mul(flow.z).sub(orbiting.y.mul(flow.w)),
     );
   }
-}
-
-// 表の角速度 [°/日] を [rad/s] へ。
-function perSecond(degreesPerDay: number): number {
-  return THREE.MathUtils.degToRad(degreesPerDay) / 86400;
 }
 
 // 角度 [rad] を 0..2π へ畳む。
