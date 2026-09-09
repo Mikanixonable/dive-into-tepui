@@ -3,6 +3,7 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { EarthSurfaceContext } from '../../src/render/earth-surface';
 import { assertEarthSurfaceDataset, earthSurfaceSourceFromManifest } from '../../src/game/celestial/solar-system/earth-surface-source';
+import { bootstrapEarthSurface, earthSurfaceManifestUrl } from '../../src/game/celestial/solar-system/earth-surface-runtime';
 
 function source() {
   return earthSurfaceSourceFromManifest('https://example.test/earth/', 'https://example.test/earth/earth-surface.json', {
@@ -12,6 +13,7 @@ function source() {
     climateEncoding: {
       temperatureK: { min: 180, max: 330 }, cloudFraction: { min: 0, max: 1 },
       orthometricElevation: { min: -1000, max: 9000 }, landFraction: { min: 0, max: 1 },
+      waterOrthometricElevationM: 0,
     },
     attribution: ['fixture'],
   });
@@ -38,5 +40,29 @@ export function register(): void {
     assert.equal(lease.signal.aborted, true);
     context.dispose();
     assert.throws(() => context.requestLease(), /disposed/);
+  });
+
+  test('earth runtime: Pages subpathをmanifestへ解決し、未設定時はfallback', async () => {
+    assert.equal(
+      earthSurfaceManifestUrl('', 'https://example.test/tepui/'),
+      'https://example.test/tepui/earth-surface/earth-surface.json',
+    );
+    const fallback = source();
+    const result = await bootstrapEarthSurface({ manifestUrl: null, fallback });
+    assert.equal(result.state, 'fallback');
+    assert.equal(result.source, fallback);
+    assert.equal(result.tileSource, null);
+  });
+
+  test('earth runtime: manifest取得・検証失敗はerrorとしてbaseを返す', async () => {
+    const fallback = source();
+    const result = await bootstrapEarthSurface({
+      manifestUrl: 'https://example.test/earth/earth-surface.json',
+      fallback,
+      fetchImpl: async () => new Response('missing', { status: 404 }),
+    });
+    assert.equal(result.state, 'error');
+    assert.equal(result.source, fallback);
+    assert.match(result.error?.message ?? '', /HTTP 404/);
   });
 }
