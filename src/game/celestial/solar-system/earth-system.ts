@@ -133,6 +133,8 @@ export const EARTH_ATMOSPHERE_OPTICS: AtmosphereOptics = {
   mie: 3.996e-6,
   mieScaleHeight: 1.2e3,
   mieAnisotropy: 0.8,
+  // 中間圏・熱圏の酸素発光をまとめた見えの層。オーロラとは異なり、全球の昼夜境界へ広がる。
+  airglow: { color: [0.12, 0.78, 0.36], strength: 1.2e-8, altitude: 95e3, scaleHeight: 8e3 },
 };
 
 // 地表・雲の殻を合わせたアルベドの測光。倍率は、雲(不透明な積雲の殻・巻雲の殻・積雲の中間調の
