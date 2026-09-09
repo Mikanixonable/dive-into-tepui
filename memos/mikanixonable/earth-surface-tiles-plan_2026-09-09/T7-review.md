@@ -21,3 +21,20 @@
 - 本番必須T0、T1、T2、T3、T4、T5、T6-1をすべて確認できる。
 - 外部静的配信は本番未実施として明示されている。
 - 未達成のゲートを完了扱いにしていない。
+
+## 実装状況（2026-09-10）
+
+コードレビューと記録は `71677db3` で完了した。EarthSurfaceのpersistent lease、非表示・dispose・
+世代切替、可視frontierのpin、drawing buffer伝搬、楕円体UV、UTC気候時計、GPU層解放、Pagesの
+subpath URL、datasetId整合、raw gzip契約を確認した。Earth実行経路にGEBCOや旧Earth気候画像の
+参照はなく、`tools/render-lab/cases.ts` の旧画像はlegacy fixtureとして残している。
+
+検証結果は typecheck、全体テスト826/826、build、verify-release、Earth契約、Python 20件、
+Pages fixture layout pass、capture contract passである。実captureはChrome/WebGPU/描画バッファまで
+到達し、実データ未投入を理由に15ケースをunavailableとして記録した。
+
+実データbundleが無いため `earth-surface:check` と `earth-surface:package` は
+`earth-surface.json`を読めず終了コード1となる。これは失敗を隠さずデータゲート未達成として残す。
+fixture Pagesだけは20ファイル・30909 bytesで検査済みである。T1の入力取得・全43690タイル生成と
+T6-1の実bundle公開が完了するまで、本番完了とは扱わない。Earth用のT3/T4/T5/T6-1/T6-2 worktreeは
+統合後に削除した。
