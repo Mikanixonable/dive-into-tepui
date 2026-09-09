@@ -357,7 +357,8 @@ export function register(): void {
     const baseRootPosition = root.position.clone();
     const baseRootQuaternion = root.quaternion.clone();
     const baseRootScale = root.scale.clone();
-    const runtime = new ProteinRuntime(root, asset, motion, undefined, 'enemy-42');
+    const combat = new ProteinCombatState(asset);
+    const runtime = new ProteinRuntime(root, combat, motion, 'enemy-42');
     const active = asset.sites.find((entry) => entry.id === 'primary-active-site')!;
     const origin = v3(100, 200, 300);
     const activeWorld = runtime.activeSiteWorldPosition(origin, { x: 0, y: 0, z: 0, w: 1 });
@@ -374,7 +375,7 @@ export function register(): void {
     const nextWorld = runtime.nextAttackSiteWorldPosition(origin, { x: 0, y: 0, z: 0, w: 1 });
     assert.deepEqual(firstAttackWorld, activeWorld);
     assert.notDeepEqual(nextWorld, activeWorld);
-    runtime.combat.applyDamage(active.maxHp, {
+    combat.applyDamage(active.maxHp, {
       x: active.position[0] * asset.coordinateScale,
       y: active.position[1] * asset.coordinateScale,
       z: active.position[2] * asset.coordinateScale,

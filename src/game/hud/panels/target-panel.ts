@@ -49,7 +49,9 @@ export class TargetPanel {
       this.syncTarget(null);
       return;
     }
-    const relative = relativeInfo(viewer, target, celestialBodies.celestialMotions, viewer.state.t);
+    const relative = relativeInfo(
+      viewer, target, celestialBodies.celestialMotions, viewer.motion.state.t,
+    );
     this.syncTarget({
       name: target.name,
       distanceM: relative.dist,

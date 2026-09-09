@@ -22,7 +22,6 @@ import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { ControlSelection } from '../control-selection';
 import type { PredictedArc } from '../dynamic/predicted-arc';
 import type { PerfCounts } from '../perf-counts';
@@ -110,8 +109,8 @@ export class PlanDisplay {
   }
 
   // owner の計画折れ線がこのフレームに出ていれば、その座標系とサンプル列。出ていなければ null。
-  displayedPathOf(owner: DynamicEntity): DisplayedPath | null {
-    if (this.displayedPlan === null || this.controlSelection.current !== owner) return null;
+  displayedPathOf(ownerId: string): DisplayedPath | null {
+    if (this.displayedPlan === null || this.controlSelection.current?.id !== ownerId) return null;
     const samples = this.path.displayedSamples();
     return samples.length === 0 ? null : { frame: this.path.displayFrame, samples };
   }
@@ -153,7 +152,7 @@ export class PlanDisplay {
   private planToDisplay(ship: Controllable | null, view: View): PlanData | null {
     if (ship === null) return null;
     if (view !== 'map' && ship.plan.nodes.length === 0) return null;
-    return ship.plan.displayData(ship.state);
+    return ship.plan.displayData(ship.motion.state);
   }
 
   // 折れ線を再積分し、近地点・遠地点アイコンを求め直す。ship はノードの無い区間を
