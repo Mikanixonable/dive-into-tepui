@@ -37,6 +37,7 @@
     "earth-surface:check": "node tools/earth-surface/check.mjs",
     "earth-surface:test": "node tools/earth-surface/test_contract.mjs",
     "earth-surface:release-check": "node tools/earth-surface/release-config.mjs",
+    "earth-surface:capture": "webpack --config webpack.render-lab.config.js --mode production && node tools/render-lab-earth-surface.mjs",
     "earth-surface:serve": "node tools/earth-surface/serve.mjs",
     "export-moon-features": "node tools/export-moon-features.mjs",
     "protein:author": "python3 tools/protein-builder/build-protein.py --require-blender",
