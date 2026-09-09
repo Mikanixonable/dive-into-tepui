@@ -1,9 +1,8 @@
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { Attitude } from '../../../physics/attitude';
 import type { KinematicState } from '../../../physics/kinematic-state';
-import type { FlashEffects } from '../../vfx/flash-effects';
 import {
   DynamicMotion,
+  type DynamicMotionBehavior,
   SMALL_DEBRIS_BCINV,
   SMALL_DEBRIS_BULK_DENSITY,
   SMALL_DEBRIS_MAX_TEMP,
@@ -11,20 +10,27 @@ import {
   SMALL_DEBRIS_SPECIFIC_HEAT,
   SMALL_DEBRIS_SRP_COEFF,
 } from '../dynamic-motion';
-import { DebrisReaction } from './debris-reaction';
 
 const BARREL_BULK_DENSITY = 7850;
 const BARREL_MAX_TEMP = 1700;
 export const BARREL_SPECIFIC_HEAT = 500;
 export const BARREL_RADIATING_AREA_PER_MASS = 0.047;
 
-export type DebrisKind =
-  | { kind: 'fragment'; accent: string | number; size: number; }
-  | { kind: 'barrel'; bornTemperature: number; bornThermalDeviation: number; }
-  | { kind: 'magazineFrame'; }
-  | { kind: 'casing'; bornSim: number; }
-  | { kind: 'boosterCover'; segment: number; bornSim: number; }
-  | { kind: 'boosterBolt'; segment: number; bornSim: number; };
+export type DebrisMotionKind =
+  | 'fragment'
+  | 'barrel'
+  | 'magazineFrame'
+  | 'casing'
+  | 'boosterCover'
+  | 'boosterBolt';
+
+export interface DebrisMotionOptions {
+  readonly kind: DebrisMotionKind;
+  readonly behavior: DynamicMotionBehavior;
+  readonly radius?: number;
+  readonly temperature?: number;
+  readonly thermalDeviation?: number;
+}
 
 interface DebrisThermal {
   readonly specificHeat: number;
@@ -47,7 +53,7 @@ const STEEL_BARREL: DebrisThermal = {
   maxTemperature: BARREL_MAX_TEMP,
 };
 
-function debrisThermal(kind: DebrisKind['kind']): DebrisThermal {
+function debrisThermal(kind: DebrisMotionKind): DebrisThermal {
   return kind === 'barrel' ? STEEL_BARREL : ALUMINIUM_DEBRIS;
 }
 
@@ -56,29 +62,26 @@ export class DebrisMotion extends DynamicMotion {
   public constructor(
     state: KinematicState,
     attitude: Attitude,
-    debrisKind: DebrisKind,
-    worldSfx: WorldSfx,
-    effects: FlashEffects,
-    radius = 0,
+    options: DebrisMotionOptions,
   ) {
-    const thermal = debrisThermal(debrisKind.kind);
+    const thermal = debrisThermal(options.kind);
     super(state, {
       attitude,
       mass: 0,
-      radius,
-      collides: debrisKind.kind !== 'fragment'
-        && debrisKind.kind !== 'boosterCover'
-        && debrisKind.kind !== 'boosterBolt',
+      radius: options.radius ?? 0,
+      collides: options.kind !== 'fragment'
+        && options.kind !== 'boosterCover'
+        && options.kind !== 'boosterBolt',
       contactDamageWeight: 0,
       bcInv: SMALL_DEBRIS_BCINV,
       srpCoeff: SMALL_DEBRIS_SRP_COEFF,
-      temperature: debrisKind.kind === 'barrel' ? debrisKind.bornTemperature : undefined,
-      thermalDeviation: debrisKind.kind === 'barrel' ? debrisKind.bornThermalDeviation : undefined,
+      temperature: options.temperature,
+      thermalDeviation: options.thermalDeviation,
       specificHeat: thermal.specificHeat,
       bulkDensity: thermal.bulkDensity,
       radiatingAreaPerMass: thermal.radiatingAreaPerMass,
       maxTemperature: thermal.maxTemperature,
-      behavior: new DebrisReaction(debrisKind, worldSfx, effects),
+      behavior: options.behavior,
     });
   }
 }

@@ -1,7 +1,5 @@
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { KinematicState } from '../../../physics/kinematic-state';
-import { DynamicMotion } from '../dynamic-motion';
-import { BulletReaction, type BulletType, type Shooter } from './bullet-reaction';
+import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic-motion';
 
 const BULLET_BCINV = 2e-4;
 const BULLET_MASS = 0.1;
@@ -11,11 +9,7 @@ const BULLET_RADIUS = 0.02;
 export class BulletMotion extends DynamicMotion {
   public constructor(
     state: KinematicState,
-    lifetime: number,
-    shooter: Shooter,
-    type: BulletType,
-    damage: number,
-    worldSfx: WorldSfx,
+    behavior: DynamicMotionBehavior,
   ) {
     super(state, {
       hasAttitude: false,
@@ -23,7 +17,7 @@ export class BulletMotion extends DynamicMotion {
       radius: BULLET_RADIUS,
       collides: true,
       bcInv: BULLET_BCINV,
-      behavior: new BulletReaction(state.t, lifetime, shooter, type, damage, worldSfx),
+      behavior,
     });
   }
 }
