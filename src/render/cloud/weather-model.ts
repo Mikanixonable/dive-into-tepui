@@ -337,7 +337,7 @@ export class WeatherModel {
 
     // 湿度と対流は、同じ物理的な背景風へ局所的な気圧風を重ねる。上層は同じ局所風に
     // 高度依存の偏西風を重ね、雲・気団・前線が別々の平均風を持たないようにする。
-    const rossby = this.rossbyWave.windAt(direction);
+    const rossby = this.rossbyWave.perturbationAt(direction);
     const surfaceMean = this.atmosphericWind.sampleNode(latitude, SURFACE_HEIGHT);
     const upperMean = this.atmosphericWind.sampleNode(latitude, UPPER_CLOUD_HEIGHT);
     const surfaceBackground = east.mul(surfaceMean.x).add(north.mul(surfaceMean.y)).add(rossby);
@@ -456,7 +456,7 @@ export class WeatherModel {
       velocity: wind.velocity
         .add(east.mul(this.meanWindAt(direction).x))
         .add(north.mul(this.meanWindAt(direction).y))
-        .add(this.rossbyWave.windAt(direction)),
+        .add(this.rossbyWave.perturbationAt(direction)),
       turn: wind.turn,
     };
   }
