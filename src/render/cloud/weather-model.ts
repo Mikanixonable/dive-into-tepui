@@ -19,7 +19,7 @@ import { RossbyWave } from './rossby-wave';
 import { FRICTION_RATE, balancedWind, isobarAt, windStep } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { NoiseOctave } from './circulating-noise';
-import type { ClimateMap } from './climate-map';
+import type { ClimateMapLike } from './climate-map';
 import type { FieldProjection } from './field-projection';
 import type { BalancedWind } from './wind-law';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
@@ -279,7 +279,7 @@ export class WeatherModel {
   private readonly advectionCycle: FloatUniform = uniform(0);
 
   // 時刻 0 の天気で始める。climate はこの天体の気候の事前分布、projection は写しの持ち方。
-  public constructor(private readonly climate: ClimateMap, projection: FieldProjection) {
+  public constructor(private readonly climate: ClimateMapLike, projection: FieldProjection) {
     const texel = projection.texelAngle;
     // 湿度は雲塊の配置しか持たないので投影より粗くて足りることがあり、同じ細かさを要る対流とは
     // 写しを分ける。
