@@ -7,16 +7,19 @@
 // 落とすものが無い源は描画命令ごと落とせる。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { Fn, If, float, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
+import { Fn, If, dot, float, length, max, normalize, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import { octDecodeNormal, type GBufferPass } from '../gbuffer';
 import { viewPositionAt } from '../view-ray';
-import type { BoolNode, FloatNode, Mat4Uniform, Vec3Node } from '../../tsl-types';
+import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../../tsl-types';
 import type { BodyShadow } from './body-shadow';
 import type { RingShadow } from './ring-shadow';
 import type { CumulusShadow } from './cumulus-shadow';
 import type { MeshShadow } from './mesh-shadow';
 import { compileInto } from '../compile-into';
+
+// 画素の覆う実寸を伸ばす入射角の余弦の下限。地平線では 0 へ落ちるので、伸びしろに天井を張る。
+const MIN_INCIDENCE_COSINE = 0.05;
 
 // 影の源 1 つぶんの、透過率のターゲットへ積む 1 枚。
 interface ShadowSource {
@@ -52,6 +55,9 @@ export class ShadowPass {
   // 毎フレーム自前で書き込む。
   private readonly projMatrixInverse: Mat4Uniform;
   private readonly viewToWorld: Mat4Uniform;
+  // 画面 1 px が 1 m 先で張る実寸 [m]。受け手までの視距離を掛けると、その画素が地表で覆う
+  // 実寸になる。
+  private readonly pixelAngle: FloatUniform;
   // クリア色の退避先。毎フレーム確保しないよう 1 つだけ持つ。
   private readonly savedClearColor = new THREE.Color();
 
@@ -69,12 +75,19 @@ export class ShadowPass {
 
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewToWorld = uniform(new THREE.Matrix4());
+    this.pixelAngle = uniform(0);
+
     const viewPos = viewPositionAt(gbuffer.depthTexture, this.projMatrixInverse);
     const worldPos: Vec3Node = this.viewToWorld.mul(vec4(viewPos, 1)).xyz;
     // メッシュの影のバイアスが受け手の法線を要る。G バッファの法線は view 空間なので、
     // 位置と同じ行列で描画座標へ回す。
     const viewNormal = octDecodeNormal(texture(gbuffer.normalTexture, screenUV).rg);
     const meshNormal: Vec3Node = this.viewToWorld.mul(vec4(viewNormal, 0)).xyz;
+    // 画素が受け手の面で覆う実寸。**面の傾きで伸びる** — 視線に対して寝ている面ほど 1 画素は
+    // 広い範囲を覆うので、掠める構図では正対したときの何倍にもなる。
+    const viewDistance = length(viewPos);
+    const incidence = max(dot(normalize(viewPos).negate(), viewNormal), MIN_INCIDENCE_COSINE);
+    const cumulusFootprint = this.pixelAngle.mul(viewDistance).div(incidence);
     const covered = gbuffer.covered();
     this.sources = [
       {
@@ -87,7 +100,7 @@ export class ShadowPass {
       },
       {
         casts: () => cumulusShadow.casts(),
-        material: multiplyingMaterial(covered, cumulusShadow.transmittance(worldPos)),
+        material: multiplyingMaterial(covered, cumulusShadow.transmittance(worldPos, cumulusFootprint)),
       },
       {
         casts: () => meshShadow.casts(),
@@ -136,10 +149,12 @@ export class ShadowPass {
   }
 
   // 書き込み先を画面へ合わせ、深度から位置を復元するための行列と画素の張る角を書き込む。
-  private writeCamera(camera: THREE.Camera, width: number, _height: number): void {
-    if (this.target.width !== width || this.target.height !== _height) this.target.setSize(width, _height);
+  private writeCamera(camera: THREE.Camera, width: number, height: number): void {
+    if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
     this.projMatrixInverse.value.copy(camera.projectionMatrixInverse);
     this.viewToWorld.value.copy(camera.matrixWorld);
+    // 射影行列の [1][1] は半画角の正接の逆数なので、画面の高さで割ると 1 画素の張る角になる。
+    this.pixelAngle.value = 2 / (camera.projectionMatrix.elements[5]! * height);
   }
 
   // 保持している GPU 資源を解放する。QuadMesh の geometry は three が全インスタンスで
