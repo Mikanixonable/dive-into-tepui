@@ -653,7 +653,7 @@ Pythonデータテストを実行する。
 `npm run typecheck`、`npm run test:render`（49/49）、`npm run earth-surface:test`、Pythonデータテスト
 （15件）を通過している。実データ全量のbundle検査は未実施であり、段B以降は未着手である。
 
-### 実装段B: タイル要求・常駐・GPU公開を接続
+### 実装段B: タイル要求・常駐・GPU公開を接続（要求・常駐fixture完了）
 
 **依存**: 段Aのtile-indexと既存の`earth-surface-tiles.ts`、`earth-surface-gpu.ts`、decode。
 **変更**: `src/render/earth-surface-request.ts`（新規）、`earth-surface-tiles.ts`、
@@ -678,6 +678,12 @@ fetch/GPUで検査し、色だけ・地形だけが表示される状態を作�
 追加した。要求キューのfixtureを含め`npm run test:render`（53/53）、`npm run typecheck`、
 `npm run earth-surface:test`、Pythonデータテスト（15件）を通過している。`EarthSurfaceTiles`とのfrontier
 接続、GPU層への同時upload、resident LRU、親fallbackの実運用接続は段Bの残作業である。
+
+**追加実装状況（2026-09-09）**: `0b3d4ee3`で`EarthSurfaceResidentCoordinator`、
+`requestCandidates()`、`pinnedLayers()`を追加し、要求キューから色RGBA8・地形Float16を同じGPU層へ投入してから
+ページ表を公開する経路、親fallback、世代/破棄境界、128層以下の退避をfixtureで接続した。レビューで、GPUや
+色変換の一時失敗をcoordinator側の永続失敗へ昇格しないよう修正した。renderテストは58/58まで通過している。
+実Three.jsの色変換、実GPUの配列層、Earth entity接続は段C・Dへ残す。
 
 ### 実装段C: 地表マテリアルと実GPU接続
 
