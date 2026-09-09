@@ -33,6 +33,7 @@ import type { ShadowCumulus } from '../../../render/pipeline/shadow/cloud-shadow
 import type { RenderStyle } from '../../../render/render-style';
 import type { AtmosphereClouds, AtmosphereOptics } from '../../../render/atmosphere';
 import type { Vec3 } from '../../../math/vec3';
+import type { GpuTimingSink } from '../../../render/gpu-timings';
 
 // 輝点スプライトの一辺 [m]。星殻上へ置くので、点像の角の広がりへ星殻半径を掛けたもの。
 const POINT_SPRITE_SIZE = POINT_IMAGE_ANGULAR_SIZE * STAR_SHELL_RADIUS;
@@ -229,9 +230,9 @@ export class PointEntity extends CelestialEntity {
   }
 
   // 物理球として厚い雲か薄い雲を描くフレームの場だけを、表示時刻へ焼く。
-  public override bakeClouds(renderer: WebGPURenderer, displayTime: number): void {
+  public override bakeClouds(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
     if (!this.group.visible || !this.cumulus?.cloudsVisible) return;
-    this.cumulus.bake(renderer, displayTime);
+    this.cumulus.bake(renderer, displayTime, gpu);
   }
 
   // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期する。

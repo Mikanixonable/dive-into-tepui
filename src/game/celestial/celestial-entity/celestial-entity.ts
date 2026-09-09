@@ -40,6 +40,7 @@ import type { MapListSection } from '../../hud/panels/physical-object-list-panel
 import type { ObjectPickerGenre } from '../../hud/object-groups';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
+import type { GpuTimingSink } from '../../../render/gpu-timings';
 
 // 公転天体の参照軌道線の色。同じ種別の天体はすべて同じ色で引く。
 const SATELLITE_REFERENCE_LINE_COLOR = 0xaab3c0;
@@ -182,7 +183,7 @@ export abstract class CelestialEntity implements ObjectPickable {
   }
 
   // この天体が持つ動的な雲場を表示時刻へ焼く。
-  public bakeClouds(_renderer: WebGPURenderer, _displayTime: number): void {}
+  public bakeClouds(_renderer: WebGPURenderer, _displayTime: number, _gpu?: GpuTimingSink): void {}
 
   // 大気パスへ渡す1体ぶんの候補。大気を持たない・描かない天体では null。**尺度は直線距離で
   // 引く** — 深度で引くと、視点の背後にある天体が目の前にあるのと同じ尺度になり、画面に

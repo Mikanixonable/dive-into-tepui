@@ -35,6 +35,7 @@ import type { RenderPipeline } from '../render/pipeline/render-pipeline';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
 import type { CelestialSystem } from './celestial/celestial-system';
+import type { GpuTimingSink } from '../render/gpu-timings';
 import { ViewManager } from './view/view-manager';
 import { CombatView } from './view/combat-view';
 import { MapView } from './view/map-view';
@@ -64,6 +65,7 @@ export class Game {
   private readonly _scene: THREE.Scene;
   private readonly renderer: THREE.WebGPURenderer;
   private readonly pipeline: RenderPipeline;
+  private readonly gpu: GpuTimingSink;
   readonly input: Input;
   private readonly touchControls: TouchControls | null;
   private readonly _hud: Hud;
@@ -225,6 +227,7 @@ export class Game {
     this._scene = gs.scene;
     this.renderer = gs.renderer;
     this.pipeline = gs.pipeline;
+    this.gpu = gs.gpu;
     this._celestialSystem = celestialSystem;
     this._hud = hud;
     this._worldSfx = new WorldSfx(audioEngine);
@@ -386,7 +389,7 @@ export class Game {
       this.controlSelection, this.flashEffects, this.input, this.sections,
     );
     this.presentationCoordinator = new PresentationCoordinator(
-      this.renderer, this._hud, this.viewBadge, this.displayWindowManager, this.frameAnchors,
+      this.renderer, this.gpu, this._hud, this.viewBadge, this.displayWindowManager, this.frameAnchors,
       this.planDisplay, this.predictor, this.cameraSystem, this.viewManager, this.input,
       this.dynamicSystem, this.simSpeedManager, this._celestialSystem, this.markerManager,
       this.targeter, this.navTarget,

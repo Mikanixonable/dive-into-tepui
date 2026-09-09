@@ -2,6 +2,7 @@
 // 不透明表面 renderer の寿命をここで管理するが、大気・影 renderer の GPU 資源は所有しない。
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
+import type { GpuTimingSink } from '../gpu-timings';
 import { GeneratedCloudField } from './generated-cloud-field';
 import {
   CUMULUS_DETAIL, OpaqueCloudSurfaceRenderer, type CumulusDetail,
@@ -45,12 +46,12 @@ export class CloudPresentation {
     else this.surface.hide();
   }
 
-  public bake(renderer: WebGPURenderer, displayTime: number): void {
+  public bake(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
     if (!this.fieldContributes) return;
     if (this.climateEpochUnixSec !== null) {
       this.cloudField.syncClimateTime(this.climateEpochUnixSec + displayTime);
     }
-    this.cloudField.bake(renderer, displayTime);
+    this.cloudField.bake(renderer, displayTime, gpu);
   }
 
   public dispose(): void {

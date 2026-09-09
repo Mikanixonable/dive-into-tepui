@@ -167,7 +167,10 @@ export class AtmospherePass {
       this.layer.write(body, steps, cutoffRadius);
       this.syncSize(this.backdropTarget);
       this.copyInto(this.backdropTarget, backdropSource);
-      this.drawLayer(destination);
+      // 雲を含む天体は、雲専用の計測行へ分ける。ただし積分器は大気散乱と雲散乱を同じ
+      // fullscreen materialで合成するため、ここでの時刻は「雲有効大気の合算」であり、
+      // 雲項だけをGPU上で分離した値ではない。
+      this.drawLayer(destination, body.clouds !== null);
     }
   }
 
@@ -178,12 +181,12 @@ export class AtmospherePass {
   }
 
   // いま書き込んである層 1 つを destination へ描く。
-  private drawLayer(destination: THREE.RenderTarget): void {
+  private drawLayer(destination: THREE.RenderTarget, includesClouds: boolean): void {
     // 色だけを上書きする — 共有ターゲットの深度はマテリアルパスが書いたものを後段も使う。
     this.renderer.setRenderTarget(destination);
     this.renderer.autoClear = false;
     // GPU 計測は、beginPass の直後の描画命令に付く。層ごとのぶんは計測側が足し合わせる。
-    this.gpu.beginPass(GPU_PASS.atmosphere);
+    this.gpu.beginPass(includesClouds ? GPU_PASS.cloudAtmosphere : GPU_PASS.atmosphere);
     this.quad.render(this.renderer);
     this.renderer.autoClear = true;
     this.renderer.setRenderTarget(null);
