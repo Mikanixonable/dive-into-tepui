@@ -51,6 +51,7 @@ import type { Exposure } from '../../render/pipeline/exposure';
 import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-light-source';
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
+import type { GpuTimingSink } from '../../render/gpu-timings';
 
 const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);
@@ -444,8 +445,8 @@ export class CelestialSystem implements CelestialMotions {
   }
 
   // このフレームに積雲殻を描く天体の雲場を焼く。
-  public bakeClouds(renderer: WebGPURenderer, displayTime: number): void {
-    for (const body of this.entities) body.bakeClouds(renderer, displayTime);
+  public bakeClouds(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
+    for (const body of this.entities) body.bakeClouds(renderer, displayTime, gpu);
   }
 
   // 天体照の光源の候補を組んで選定へ渡し、選ばれたものを描画座標へ移してライティング側の

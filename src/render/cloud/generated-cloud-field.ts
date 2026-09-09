@@ -5,6 +5,7 @@ import { CloudField } from './cloud-field';
 import { EquirectProjection } from './field-projection';
 import { WeatherModel } from './weather-model';
 import type { WebGPURenderer } from 'three/webgpu';
+import type { GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from './field-projection';
 import type { CloudFieldSampler, CloudUvAt } from './cloud-field-sampler';
 import { monthlyClimateClockAt } from './monthly-climate-clock';
@@ -45,14 +46,14 @@ export class GeneratedCloudField {
   public get sampler(): CloudFieldSampler { return this.field.fieldSampler; }
 
   // 表示時刻の雲場を、天気の中間場から順に焼く。
-  public bake(renderer: WebGPURenderer, displayTime: number): void {
+  public bake(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
     this.climate.request();
     const climateGeneration = this.climate.generation;
     if (this.lastBakedDisplayTime === displayTime
       && this.lastBakedClimateGeneration === climateGeneration) return;
     this.model.syncTime(displayTime);
-    this.model.bake(renderer);
-    this.field.render(renderer);
+    this.model.bake(renderer, gpu);
+    this.field.render(renderer, gpu);
     this.lastBakedDisplayTime = displayTime;
     this.lastBakedClimateGeneration = climateGeneration;
   }
