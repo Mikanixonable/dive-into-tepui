@@ -32,9 +32,20 @@ export function keplerPeriod(a: number, mu: number): number {
   return 2 * Math.PI * Math.sqrt((a * a * a) / mu);
 }
 
+// 長半径 a の楕円軌道の平均運動 [rad/s]。a は正の半長軸を渡す。
+// 双曲線の時間計算では、負の a を絶対値に直してからこの関数へ渡す。
+export function meanMotionFromSemiMajor(a: number, mu: number): number {
+  return Math.sqrt(mu / (a * a * a));
+}
+
+// 平均運動 n [rad/s] の楕円軌道の長半径 [m]。
+export function semiMajorFromMeanMotion(meanMotion: number, mu: number): number {
+  return Math.cbrt(mu / (meanMotion * meanMotion));
+}
+
 // keplerPeriod の逆関数: 公転周期 T から長半径を求める唯一の変換点。
 export function semiMajorFromPeriod(period: number, mu: number): number {
-  return Math.cbrt((mu * period * period) / (4 * Math.PI * Math.PI));
+  return semiMajorFromMeanMotion((2 * Math.PI) / period, mu);
 }
 
 // center 相対の状態から古典軌道要素を求める。半径・角運動量が縮退している場合は null。
@@ -134,7 +145,7 @@ export function timeSincePeriapsis(el: OrbitalElements, nu: number): number {
   if (el.e < 1) {
     const E = 2 * Math.atan2(Math.sqrt(1 - el.e) * Math.sin(nu / 2), Math.sqrt(1 + el.e) * Math.cos(nu / 2));
     const M = E - el.e * Math.sin(E);
-    return M / Math.sqrt(el.center.def.mu / (el.a * el.a * el.a));
+    return M / meanMotionFromSemiMajor(el.a, el.center.def.mu);
   }
 
   // 双曲線離心近点角 H = 2 * atanh( sqrt((e-1)/(e+1)) * tan(nu/2) )
@@ -142,7 +153,7 @@ export function timeSincePeriapsis(el: OrbitalElements, nu: number): number {
   if (Math.abs(x) >= 1) return NaN; // 漸近線を超えており、その nu には到達しない
   const H = 2 * Math.atanh(x);
   const M = el.e * Math.sinh(H) - H; // 双曲線ケプラー方程式
-  return M / Math.sqrt(el.center.def.mu / (-el.a * -el.a * -el.a)); // a < 0 なので -a > 0
+  return M / meanMotionFromSemiMajor(-el.a, el.center.def.mu); // a < 0 なので -a > 0
 }
 
 // 真近点角 nu0 → nu1 への飛行時間 [s]。

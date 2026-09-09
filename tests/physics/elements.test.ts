@@ -8,9 +8,11 @@ import {
   orbitalElementsFromClassical,
   eccentricAnomalyFromMean,
   keplerPeriod,
+  meanMotionFromSemiMajor,
   nodeAnomalies,
   positionOnOrbit,
   semiMajorFromPeriod,
+  semiMajorFromMeanMotion,
   stateOnOrbitAt,
   stateFromOrbitalElements,
   timeSincePeriapsis,
@@ -76,6 +78,13 @@ export function register(): void {
     const period = keplerPeriod(a, MU_MOON);
     const a2 = semiMajorFromPeriod(period, MU_MOON);
     assert.ok(Math.abs(a2 - a) / a < 1e-9, `a round trip: ${a2} vs ${a}`);
+  });
+
+  test('elements: meanMotionFromSemiMajor <-> semiMajorFromMeanMotion round trip', () => {
+    const a = R_EARTH + 800e3;
+    const meanMotion = meanMotionFromSemiMajor(a, MU_EARTH);
+    const a2 = semiMajorFromMeanMotion(meanMotion, MU_EARTH);
+    assert.ok(Math.abs(a2 - a) / a < 1e-12, `a round trip: ${a2} vs ${a}`);
   });
 
   test('elements: trueAnomalyAt / positionOnOrbit / velocityOnOrbit round trip', () => {
