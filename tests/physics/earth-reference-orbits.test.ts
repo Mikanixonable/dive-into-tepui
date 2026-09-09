@@ -72,21 +72,25 @@ export function register(): void {
     const lowerInside = lowerOutside + 1;
     const upperInside = Math.floor(range.max);
     const upperOutside = upperInside + 1;
-    assert.equal(sunSyncRepeatGroundTrackElements(1, lowerOutside, EARTH, 0), null, 'below the inclination boundary');
+    assert.equal(
+      sunSyncRepeatGroundTrackElements(1, lowerOutside, EARTH, 0), null, 'below the inclination boundary');
     assert.notEqual(sunSyncRepeatGroundTrackElements(1, lowerInside, EARTH, 0), null, 'inside the valid range');
     assert.notEqual(sunSyncRepeatGroundTrackElements(1, upperInside, EARTH, 0), null, 'below the surface boundary');
-    assert.equal(sunSyncRepeatGroundTrackElements(1, upperOutside, EARTH, 0), null, 'at or below the surface');
+    assert.equal(
+      sunSyncRepeatGroundTrackElements(1, upperOutside, EARTH, 0), null, 'at or below the surface');
     assert.ok(range.min > lowerOutside && range.min < lowerInside, 'minimum should lie between adjacent integer rates');
     assert.ok(range.max > upperInside && range.max < upperOutside, 'maximum should lie between adjacent integer rates');
   });
 
-  test('earth-reference-orbits: 太陽同期軌道は J2なし・地表以下・実数解なしで成立しない', () => {
+  test(
+    'earth-reference-orbits: 太陽同期軌道は J2なし・地表以下・実数解なしで成立しない', () => {
     const noJ2 = fixedMotion({
       id: 'earth-no-j2', mu: MU_EARTH, radius: R_EARTH_EQ, state: kinematicState<'eci'>(0, v3(), v3()),
       accel: v3(), degree2: null, atmosphere: null,
     });
     assert.equal(sunSyncRepeatGroundTrackElements(7, 98, noJ2, 0), null, 'J2 is required');
     assert.equal(sunSyncRepeatGroundTrackElements(1, 18, EARTH, 0), null, 'the orbit must clear the surface');
-    assert.equal(sunSyncRepeatGroundTrackElements(1, 6, EARTH, 0), null, 'the inclination equation must have a real solution');
+    assert.equal(
+      sunSyncRepeatGroundTrackElements(1, 6, EARTH, 0), null, 'the inclination equation must have a real solution');
   });
 }
