@@ -156,6 +156,8 @@ export const EARTH_TEXTURE: CelestialTexture = {
 const EARTH_AURORA_OPTICS: AuroraOptics = {
   bodyRadius: 6.371e6,
   ovalLatitudeDeg: 66,
+  magneticPoleLatitudeDeg: 80.65,
+  magneticPoleLongitudeDeg: -72.68,
   baseAltitude: 95e3,
   coreAltitude: 120e3,
   topAltitude: 480e3,
