@@ -4,7 +4,7 @@ import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { FlashEffects } from '../../vfx/flash-effects';
 import { Enemy, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore } from './enemy';
 import type { MetalEnemySaveData } from '../../save/save-data';
-import { MetalEnemyView } from './metal-enemy-view';
+import { MetalEnemyView, Stage0MetalEnemyView } from './metal-enemy-view';
 import { metalEnemyCollisionRadius } from './enemy-motion';
 
 // 機体テンプレートを持たない漂流機体は主慣性モーメントを非対称にして、ジャニベコフ効果
@@ -33,7 +33,9 @@ export class MetalEnemy extends Enemy {
   ) {
     const typeIndex = 'saved' in init ? (init.saved as MetalEnemySaveData).typeIndex : init.typeIndex;
     const accent = 'saved' in init ? init.saved.accent : init.accent;
-    const metalView = new MetalEnemyView(accent, typeIndex, scene);
+    const metalView = typeIndex === null
+      ? new MetalEnemyView(accent, scene)
+      : new Stage0MetalEnemyView(accent, typeIndex, scene);
     super(
       init, metalView, typeIndex === null ? DRIFTING_INERTIA : TYPED_INERTIA,
       metalEnemyCollisionRadius(typeIndex), worldSfx, fx,

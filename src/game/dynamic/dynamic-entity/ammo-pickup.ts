@@ -23,7 +23,7 @@ import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { OrbitingObject } from './orbiting-object';
-import { PickupView } from './pickup-view';
+import { AmmoPickupView } from './pickup-view';
 import { PickupMotion } from './pickup-motion';
 
 // 取り込み距離 [m]。ゲームプレイ上の吸収判定で、物理サイズではない。
@@ -53,7 +53,7 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
       : { state: init.state, att: init.att, id: init.id };
     super(
       state,
-      new PickupView('ammo', scene),
+      new AmmoPickupView(scene),
       att,
       idAllocator.next(id),
       () => new PickupMotion(state, att, 'ammo'),

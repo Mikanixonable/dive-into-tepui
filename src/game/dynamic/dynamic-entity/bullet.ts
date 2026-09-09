@@ -1,7 +1,7 @@
 import type { KinematicState } from '../../../physics/kinematic-state';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { DynamicEntity } from './dynamic-entity';
-import { BulletView } from './bullet-view';
+import { NormalBulletView, PlasmaBulletView } from './bullet-view';
 import { BulletReaction, type BulletType, type Shooter } from './bullet-reaction';
 import { BulletMotion } from './bullet-motion';
 
@@ -14,7 +14,7 @@ export class Bullet extends DynamicEntity {
   ) {
     super(
       state,
-      new BulletView(type === 'plasma'),
+      type === 'plasma' ? new PlasmaBulletView() : new NormalBulletView(),
       undefined,
       undefined,
       () => new BulletMotion(
