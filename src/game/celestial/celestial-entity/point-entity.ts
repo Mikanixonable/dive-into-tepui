@@ -21,7 +21,7 @@ import { DEFAULT_ALBEDO, rec709Luminance, type Albedo } from '../../../render/ce
 import { SUN_IRRADIANCE_1AU } from '../../../render/pipeline/sun-light';
 import { norm, sub, v3 } from '../../../math/vec3';
 import type { Quat } from '../../../math/quat';
-import type { CumulusShell } from '../../../render/cumulus-shell';
+import type { CloudPresentation } from '../../../render/cloud/cloud-presentation';
 import type { Aurora } from '../../../render/aurora';
 import type { CelestialClass } from './celestial-entity-def';
 import type { GeostationaryOverlay } from './geostationary-overlay';
@@ -29,7 +29,7 @@ import type { StarEntity } from './star-entity';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
 import type { LineOverlay } from '../../../render/line-overlay';
 import type { MarkerManager } from '../../marker/marker-manager';
-import type { ShadowCumulus } from '../../../render/pipeline/shadow/cumulus-shadow';
+import type { ShadowCumulus } from '../../../render/pipeline/shadow/cloud-shadow-renderer';
 import type { RenderStyle } from '../../../render/render-style';
 import type { AtmosphereClouds, AtmosphereOptics } from '../../../render/atmosphere';
 import type { Vec3 } from '../../../math/vec3';
@@ -93,7 +93,7 @@ export class PointEntity extends CelestialEntity {
     private readonly surfaceMarkings: LineOverlay | null = null,
     private readonly auroras: readonly Aurora[] = [],
     private readonly mapOverlay: GeostationaryOverlay | null = null,
-    private readonly cumulus: CumulusShell | null = null,
+    private readonly cumulus: CloudPresentation | null = null,
   ) {
     super(motion, name, bodyClass, atmosphereOptics);
     const def = motion.def;
@@ -202,14 +202,9 @@ export class PointEntity extends CelestialEntity {
   public override cumulusShadowAt(fo: FloatingOrigin, displayTime: number): ShadowCumulus | null {
     if (this.cumulus === null || !this.group.visible || !this.cumulus.visible) return null;
     writeBodyFromWorld(this.bodyFromWorld, this.motion, displayTime);
-    return {
-      center: fo.RtoThreeV3(this.stateAt(displayTime).r),
-      surfaceRadius: this.radius,
-      axes: this.axes,
-      topAltitude: this.cumulus.topAltitude,
-      bodyFromWorld: this.bodyFromWorld,
-      field: this.cumulus.field,
-    };
+    return this.cumulus.shadowAt(
+      fo.RtoThreeV3(this.stateAt(displayTime).r), this.radius, this.axes, this.bodyFromWorld,
+    );
   }
 
   // 大気の散乱へ立てる雲。**雲全体を描くときだけ立つ。** 姿勢は自転位相まで込みで組む —
@@ -217,10 +212,7 @@ export class PointEntity extends CelestialEntity {
   // 描画のときなので、影へ渡す使い回しの実体を渡すと、同期のあいだに書き換わる。
   public override atmosphereCloudsAt(displayTime: number): AtmosphereClouds | null {
     if (this.cumulus === null || !this.group.visible || !this.cumulus.cloudsVisible) return null;
-    return {
-      field: this.cumulus.field,
-      bodyFromWorld: writeBodyFromWorld(new THREE.Matrix4(), this.motion, displayTime),
-    };
+    return this.cumulus.atmosphereAt(writeBodyFromWorld(new THREE.Matrix4(), this.motion, displayTime));
   }
 
   // 物理球として厚い雲か薄い雲を描くフレームの場だけを、表示時刻へ焼く。
