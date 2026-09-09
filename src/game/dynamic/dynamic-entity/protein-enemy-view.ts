@@ -6,13 +6,24 @@ import { ProteinRuntime } from '../../protein/protein-runtime';
 import { createProteinMotionBinding } from '../../../render/protein-motion-material';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
-import type { ProteinCombatState } from '../../protein/protein-combat-state';
 import type { KinematicState } from '../../../physics/kinematic-state';
-import { DynamicView, type DynamicViewFrame } from '../dynamic-view';
+import {
+  DynamicView, type DynamicViewFrame, type DynamicViewIdentity,
+} from '../dynamic-view';
 import type { DynamicMotion } from '../dynamic-motion';
 import type { Quat } from '../../../math/quat';
 import type { Vec3 } from '../../../math/vec3';
 import type { ProteinMotionLod } from '../../protein/protein-motion-controller';
+import type { ProteinHudSnapshot } from '../../protein/protein-schema';
+
+interface ProteinVisualSource extends DynamicViewIdentity {
+  readonly display: ProteinDisplaySettings;
+  readonly hudSnapshot: ProteinHudSnapshot;
+}
+
+function isProteinVisualSource(identity: DynamicViewIdentity): identity is ProteinVisualSource {
+  return identity.mapKind === 'enemy' && 'display' in identity && 'hudSnapshot' in identity;
+}
 
 export interface ProteinSiteMarker {
   readonly id: string;
@@ -26,12 +37,12 @@ export interface ProteinSiteMarker {
 
 // タンパク質モデル、構造ゆらぎ、結合線を所有する。
 export class ProteinEnemyView extends DynamicView {
-  public readonly runtime: ProteinRuntime;
+  private readonly runtime: ProteinRuntime;
+  private renderedDisplay: ProteinDisplaySettings;
 
   public constructor(
     private readonly definition: ProteinEnemyDefinition,
     display: ProteinDisplaySettings,
-    private readonly combat: ProteinCombatState,
     id: string,
     scene?: THREE.Scene,
   ) {
@@ -43,13 +54,17 @@ export class ProteinEnemyView extends DynamicView {
     const root = definition.buildRenderObject(display, motionBinding ?? undefined);
     root.scale.setScalar(ENEMY_MODEL_SCALE);
     super(root, scene);
-    this.runtime = new ProteinRuntime(root, combat, definition.motion, id, motionBinding);
+    this.runtime = new ProteinRuntime(root, definition.asset, definition.motion, id, motionBinding);
+    this.renderedDisplay = { ...display };
   }
 
-  public setDisplay(display: ProteinDisplaySettings): void {
+  private syncDisplay(display: ProteinDisplaySettings): void {
+    if (display.representation === this.renderedDisplay.representation
+      && display.colorMode === this.renderedDisplay.colorMode) return;
     this.runtime.clearVisuals();
     this.definition.recolorRenderObject(this.object, display, this.runtime.motionBinding ?? undefined);
     this.runtime.rebuildVisuals();
+    this.renderedDisplay = { ...display };
   }
 
   public get motionMetrics(): {
@@ -65,8 +80,10 @@ export class ProteinEnemyView extends DynamicView {
   }
 
   // 部位マーカーは表示中のタンパク質変形と同じアンカー位置を使う。
-  public siteMarkers(displayPos: Vec3, attitude: Quat): readonly ProteinSiteMarker[] {
-    return this.combat.hudSnapshot().sites.map((site) => ({
+  public siteMarkers(
+    displayPos: Vec3, attitude: Quat, sites: ProteinHudSnapshot['sites'],
+  ): readonly ProteinSiteMarker[] {
+    return sites.map((site) => ({
       id: site.id,
       worldPos: this.runtime.siteWorldPositionById(site.id, displayPos, attitude),
       abbreviation: site.abbreviation,
@@ -78,18 +95,24 @@ export class ProteinEnemyView extends DynamicView {
   }
 
   protected override syncModel(
-    _identity: import('../dynamic-view').DynamicViewIdentity,
+    identity: DynamicViewIdentity,
     motion: DynamicMotion,
     displayed: KinematicState | null,
     context: DynamicViewFrame,
   ): void {
+    if (!isProteinVisualSource(identity)) {
+      throw new TypeError('ProteinEnemyView requires ProteinEnemy');
+    }
+    this.syncDisplay(identity.display);
     if (displayed === null || !this.object.visible) return;
     const projectedDiameterPx = apparentSizePx(
       motion.radius * 2,
       metersPerPixel(context.cameraSystem.activeViewpoint, displayed.r, window.innerHeight),
     );
     if (this.runtime.updateLod(projectedDiameterPx) !== 'marker') {
-      this.runtime.updateVisual(context.displayTime, context.graphics.proteinVibration);
+      this.runtime.updateVisual(
+        context.displayTime, identity.hudSnapshot.phase, context.graphics.proteinVibration,
+      );
     }
   }
 
