@@ -1,5 +1,4 @@
 import * as THREE from 'three/webgpu';
-import { apparentSizePx, metersPerPixel } from '../../../math/projection';
 import { ENEMY_MODEL_SCALE } from './enemy-motion';
 import { proteinMotionModeDisplacements } from '../../protein/protein-motion-modes';
 import { ProteinRuntime } from '../../protein/protein-runtime';
@@ -13,16 +12,16 @@ import {
 import type { DynamicMotion } from '../dynamic-motion';
 import type { Quat } from '../../../math/quat';
 import type { Vec3 } from '../../../math/vec3';
-import type { ProteinMotionLod } from '../../protein/protein-motion-controller';
+import type { ProteinMotionDisplay } from '../../protein/protein-motion-controller';
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
 
 interface ProteinVisualSource extends DynamicViewIdentity {
   readonly display: ProteinDisplaySettings;
-  readonly hudSnapshot: ProteinHudSnapshot;
+  readonly motionDisplay: ProteinMotionDisplay;
 }
 
 function isProteinVisualSource(identity: DynamicViewIdentity): identity is ProteinVisualSource {
-  return identity.mapKind === 'enemy' && 'display' in identity && 'hudSnapshot' in identity;
+  return identity.mapKind === 'enemy' && 'display' in identity && 'motionDisplay' in identity;
 }
 
 export interface ProteinSiteMarker {
@@ -43,7 +42,6 @@ export class ProteinEnemyView extends DynamicView {
   public constructor(
     private readonly definition: ProteinEnemyDefinition,
     display: ProteinDisplaySettings,
-    id: string,
     scene?: THREE.Scene,
   ) {
     const motionBinding = createProteinMotionBinding(
@@ -54,7 +52,7 @@ export class ProteinEnemyView extends DynamicView {
     const root = definition.buildRenderObject(display, motionBinding ?? undefined);
     root.scale.setScalar(ENEMY_MODEL_SCALE);
     super(root, scene);
-    this.runtime = new ProteinRuntime(root, definition.asset, definition.motion, id, motionBinding);
+    this.runtime = new ProteinRuntime(root, definition.asset, definition.motion, motionBinding);
     this.renderedDisplay = { ...display };
   }
 
@@ -70,12 +68,10 @@ export class ProteinEnemyView extends DynamicView {
   public get motionMetrics(): {
     readonly cpuMs: number;
     readonly uploadBytes: number;
-    readonly lod: ProteinMotionLod;
   } {
     return {
       cpuMs: this.runtime.cpuMs,
       uploadBytes: this.runtime.uploadBytes,
-      lod: this.runtime.lod,
     };
   }
 
@@ -96,24 +92,15 @@ export class ProteinEnemyView extends DynamicView {
 
   protected override syncModel(
     identity: DynamicViewIdentity,
-    motion: DynamicMotion,
-    displayed: KinematicState | null,
-    context: DynamicViewFrame,
+    _motion: DynamicMotion,
+    _displayed: KinematicState | null,
+    _context: DynamicViewFrame,
   ): void {
     if (!isProteinVisualSource(identity)) {
       throw new TypeError('ProteinEnemyView requires ProteinEnemy');
     }
     this.syncDisplay(identity.display);
-    if (displayed === null || !this.object.visible) return;
-    const projectedDiameterPx = apparentSizePx(
-      motion.radius * 2,
-      metersPerPixel(context.cameraSystem.activeViewpoint, displayed.r, window.innerHeight),
-    );
-    if (this.runtime.updateLod(projectedDiameterPx) !== 'marker') {
-      this.runtime.updateVisual(
-        context.displayTime, identity.hudSnapshot.phase, context.graphics.proteinVibration,
-      );
-    }
+    this.runtime.syncVisual(identity.motionDisplay);
   }
 
   public override dispose(): void {

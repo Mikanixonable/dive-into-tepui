@@ -136,7 +136,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     this.throttle = new Throttle(notifier, 'saved' in init ? init.saved.throttle : undefined);
 
     if ('saved' in init) {
-      this.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;
+      this.trajectoryLineVisible = init.saved.showTrajectoryLine ?? false;
       this.baseState.money = init.saved.money;
     }
   }
@@ -224,7 +224,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       money: this.baseState.money,
       fuel: (this.motion as BaseMotion).fuel,
       throttle: this.throttle.serialize(),
-      showTrajectoryLine: this.showTrajectoryLine,
+      showTrajectoryLine: this.trajectoryLineVisible,
     };
   }
 
@@ -276,7 +276,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       MenuCommon.target(navTargetId === this.id),
       controlItem,
       MenuCommon.focus(),
-      MenuCommon.trajectoryLine(this.showTrajectoryLine),
+      MenuCommon.trajectoryLine(this.trajectoryLineVisible),
       MenuCommon.duplicate(),
       { label: '削除', act: 'delete' },
       MenuCommon.cancel(),
@@ -292,7 +292,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     } else if (act === 'deactivate') {
       controlSelection.release(this);
     } else if (act === 'toggleTrajectoryLine') {
-      this.showTrajectoryLine = !this.showTrajectoryLine;
+      this.trajectoryLineVisible = !this.trajectoryLineVisible;
     } else if (act === 'delete') {
       controlSelection.remove(this);
     } else if (act === 'duplicate') {
