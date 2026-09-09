@@ -964,7 +964,8 @@ coordinatorへ渡し、次フレーム・hide・disposeでAbortする。`earth-s
 `tools/render-lab-earth-surface.mjs`と、`.render-lab/earth-surface-shots/metrics.json`へPNGのSHA-256・
 バイト長・viewport・ケース順を保存する入口を追加した。隣接8bit差分、RGBA有限値/範囲、metricsの正規化は
 `earth-surface-metrics.ts`と解析テストで固定する。実GPUタイルの到着待ち、GBuffer撮影、p95性能計測、
-実ブラウザでの撮影は未実施で、画像を自動合格にしない。
+実ブラウザでの撮影は未実施で、画像を自動合格にしない。`9f5f534e`でproduction render-lab buildと撮影を
+まとめる`npm run earth-surface:capture`を追加した。
 
 ### A6: 公開build・配信・clean checkout検査を行う
 
