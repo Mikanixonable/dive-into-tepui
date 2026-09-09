@@ -46,11 +46,14 @@ export function register(): void {
     assert.ok(Math.abs(tripleProduct) < 1e-12, `the three axes should be coplanar: triple product ${tripleProduct}`);
   });
 
-  test('body-orientation: orthogonalizedTo returns a unit vector perpendicular to the pole', () => {
+  test('body-orientation: orthogonalizedTo keeps the projected direction', () => {
     const pole = norm(v3(0.1, 0.9, -0.2));
-    const longAxis = orthogonalizedTo(pole, v3(1, 0.5, 0.3));
+    const reference = v3(1, 0.5, 0.3);
+    const projected = sub(reference, scale(pole, dot(reference, pole)));
+    const longAxis = orthogonalizedTo(pole, reference);
     assert.ok(Math.abs(len(longAxis) - 1) < 1e-12, 'the long axis should be a unit vector');
     assert.ok(Math.abs(dot(longAxis, pole)) < 1e-12, 'the long axis should be perpendicular to the pole');
+    assert.ok(dot(longAxis, projected) > 0, 'the long axis should keep the projected direction');
   });
 
   test('celestial-motion: the moon keeps a 1.543deg equatorial tilt to the ecliptic across a node period', () => {
