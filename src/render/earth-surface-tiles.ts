@@ -246,14 +246,19 @@ export class EarthSurfaceTiles {
       .map((candidate) => candidate.key);
   }
 
-  // 非表示へ移った葉やfade元も、後で視界へ戻ったときに層番号が無効にならないよう保持する。
+  // 非表示へ移った葉はpinせず、可視frontierとfade中の層だけを返す。
   public pinnedLayers(): readonly number[] {
-    const layers = new Set<number>();
-    for (const leaf of this.leaves) {
-      if (leaf.layer !== EARTH_BASE_LAYER) layers.add(leaf.layer);
-      if (leaf.parentLayer !== EARTH_BASE_LAYER) layers.add(leaf.parentLayer);
-    }
-    return [...layers];
+    return [...this.pinnedLeafLayers()];
+  }
+
+  // 非表示からの再表示や配信版切り替えは全球baseから再開する。
+  public reset(): void {
+    this.leaves = [
+      stableLeaf(earthTileKey(0, 0, 0), EARTH_BASE_LAYER),
+      stableLeaf(earthTileKey(0, 1, 0), EARTH_BASE_LAYER),
+    ];
+    this.visibleLeaves = [];
+    this.drawingTimeMs = 0;
   }
 
   // GPUへ公開済みの同版タイルを入力し、現在フレームの選択と親子遷移を確定する。
@@ -262,6 +267,16 @@ export class EarthSurfaceTiles {
     const available = new Map(residents.map((tile) => [earthTileId(tile.key), tile]));
     this.drawingTimeMs = timeMs;
     this.finishFades(timeMs);
+    const availableLayers = new Set(residents.map((tile) => tile.layer));
+    // coordinatorが画面外の層を再利用した場合、leafが持つ旧layerをそのまま
+    // ページ表へ出さない。次の分割はbaseから再取得する。
+    this.leaves = this.leaves.map((leaf) => {
+      const layerValid = leaf.layer === EARTH_BASE_LAYER || availableLayers.has(leaf.layer);
+      const parentValid = leaf.parentLayer === EARTH_BASE_LAYER || availableLayers.has(leaf.parentLayer);
+      if (!layerValid) return stableLeaf(leaf.key, EARTH_BASE_LAYER);
+      if (!parentValid) return { ...leaf, parentLayer: EARTH_BASE_LAYER, fadeStartMs: null, fadingOut: false };
+      return leaf;
+    });
     const metric = new Map<string, EarthTileMetric>();
     // 同一フレームの選択と再均衡では同じ投影値を使う。
     const evaluate = (key: EarthTileKey): EarthTileMetric => {
@@ -335,11 +350,7 @@ export class EarthSurfaceTiles {
       if (!canSplit(key) || !frontier.includes(key)) continue;
       const proposal = balanceEarthFrontier(frontier.filter((leaf) => leaf !== key).concat(earthTileChildren(key)), canSplit);
       // 遷移元も層を占有するため、葉数だけを数えると公開の途中で容量を超える。
-      const pinned = new Set<number>();
-      for (const leaf of this.leaves) {
-        if (leaf.layer !== EARTH_BASE_LAYER) pinned.add(leaf.layer);
-        if (leaf.parentLayer !== EARTH_BASE_LAYER) pinned.add(leaf.parentLayer);
-      }
+      const pinned = this.pinnedLeafLayers();
       for (const tile of proposal) {
         const resident = available.get(earthTileId(tile));
         if (resident !== undefined) pinned.add(resident.layer);
@@ -355,6 +366,17 @@ export class EarthSurfaceTiles {
       if (from === undefined || to === undefined) throw new Error('Earth split lost its resident parent');
       return { key, layer: to.layer, parentLayer: from.layer, fadeStartMs: timeMs, fadingOut: false };
     });
+  }
+
+  private pinnedLeafLayers(): Set<number> {
+    const visible = new Set(this.visibleLeaves.map((leaf) => earthTileId(leaf.key)));
+    const layers = new Set<number>();
+    for (const leaf of this.leaves) {
+      if (!visible.has(earthTileId(leaf.key)) && leaf.fadeStartMs === null) continue;
+      if (leaf.layer !== EARTH_BASE_LAYER) layers.add(leaf.layer);
+      if (leaf.parentLayer !== EARTH_BASE_LAYER) layers.add(leaf.parentLayer);
+    }
+    return layers;
   }
 
   // 現在の葉をz=7セルへ展開する。不可視セルは全球ベースを指す。
