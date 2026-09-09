@@ -3,7 +3,6 @@ import * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
-import type { FrameAnchorSource } from '../../physics/frame';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { DynamicMotion } from './dynamic-motion';
@@ -25,13 +24,11 @@ import type { CameraSystem } from '../camera/camera-system';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 
-import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import type { EntitySaveDataUnion, GameSaveData } from '../save/save-data';
 import type { Notifier } from '../../hud/notifier';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../vfx/flash-effects';
 import type { MarkerSlots } from '../marker/marker-slots';
-import type { EquatorNodeInputs } from '../marker/equator-node-marker-pair';
 import type { PerfCounts } from '../perf-counts';
 import type { OrbitReference } from '../orbit-reference';
 
@@ -324,7 +321,6 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     fo: FloatingOrigin, displayTime: number, active: Controllable | null,
     visibilityPolicy: MapVisibilityPolicy | null, cameraSystem: CameraSystem, style: RenderStyle,
     graphics: GraphicsSettingsData, orbitRef: OrbitReference | undefined,
-    frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting,
   ): void {
     this.instancedPools.beginFrame();
     for (const e of this.entities) {
@@ -338,19 +334,9 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
         style,
         graphics,
         orbitReference: orbitRef,
-        frameAnchors,
-        timeLabel,
       });
     }
     this.instancedPools.endFrame();
-  }
-
-  // 全個体の赤道交点マーカーを求め直す。出すかどうかも、どの線の上で解くかも個体が答えるので、
-  // 折れ線を組み終えた後・選択候補を組む前に1度だけ通す。
-  updateEquatorNodes(inputs: EquatorNodeInputs, controlled: Controllable | null): void {
-    for (const e of this.all()) {
-      e.view.updateEquatorNodes(e, e.motion, inputs, e === controlled);
-    }
   }
 
   // 保持する全エンティティと描画資源プールを、生死によらず破棄する。

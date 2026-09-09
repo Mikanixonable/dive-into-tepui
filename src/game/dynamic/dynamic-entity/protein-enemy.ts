@@ -19,6 +19,14 @@ import type { EnemySaveData, ProteinEnemySaveData } from '../../save/save-data';
 import type { FormationRole } from './entity-kind';
 import { ProteinEnemyView } from './protein-enemy-view';
 import { ENEMY_MODEL_SCALE, type EnemyCollisionShape } from './enemy-motion';
+import { apparentSizePx } from '../../../math/projection';
+import {
+  ProteinMotionController, proteinMotionLodForProjectedSize,
+  type ProteinMotionDisplay, type ProteinMotionLod,
+} from '../../protein/protein-motion-controller';
+import {
+  dynamicEntityVisible, type DynamicViewFrame,
+} from '../dynamic-view';
 
 // タンパク質の構造は揺らぐが、判定形状は常に静止した1つに固定するので、慣性も1つでよい。
 // 漂流機体と同じく非対称にして、ジャニベコフ効果(中間軸不安定性)で無秩序に回らせる。
@@ -73,6 +81,10 @@ export class ProteinEnemy extends Enemy {
   private readonly assetId: ProteinAssetId;
   private displaySettings: ProteinDisplaySettings;
   private readonly combat: ProteinCombatState;
+  private readonly motionController: ProteinMotionController;
+  private motionLodValue: ProteinMotionLod = 'near';
+  private motionDisplayActive = false;
+  private motionCpuMsValue = 0;
 
   // 表示メッシュを組み、アセットが持つ球列へ判定形状を当てる。アセットが未取得なら投げるので、
   // EnemyClass.spawnGate で準備完了を待ってから構築すること。
@@ -90,7 +102,7 @@ export class ProteinEnemy extends Enemy {
       definition.asset,
       'saved' in init ? (init.saved as ProteinEnemySaveData).protein : undefined,
     );
-    const proteinView = new ProteinEnemyView(definition, display, id, scene);
+    const proteinView = new ProteinEnemyView(definition, display, scene);
     // 表示が原子模型へ切り替わっても、判定形状は常に同じ球列に固定する。
     const collision = new ProteinSphereCollisionGeometry(
       definition.collisionSpheres, ENEMY_MODEL_SCALE,
@@ -114,6 +126,7 @@ export class ProteinEnemy extends Enemy {
     this.assetId = assetId;
     this.displaySettings = display;
     this.combat = combat;
+    this.motionController = new ProteinMotionController(definition.motion, id);
   }
 
   // HP の正本は combat 側なので、艦の既定パーツは積まない。
@@ -125,6 +138,17 @@ export class ProteinEnemy extends Enemy {
   public override set maxHp(_value: number) {}
 
   public get display(): ProteinDisplaySettings { return this.displaySettings; }
+  public get motionLod(): ProteinMotionLod { return this.motionLodValue; }
+  public get motionCpuMs(): number { return this.motionCpuMsValue; }
+  public get motionDisplay(): ProteinMotionDisplay {
+    return {
+      active: this.motionDisplayActive,
+      lod: this.motionLodValue,
+      sampleTime: this.motionController.sampleTime,
+      phase: this.combat.phase,
+      coefficients: this.motionController.effectiveModeCoefficients,
+    };
+  }
 
   // ステージ操作の表示形態・着色変更を反映する。
   public setDisplay(display: ProteinDisplaySettings): void {
@@ -132,6 +156,34 @@ export class ProteinEnemy extends Enemy {
   }
 
   public get hudSnapshot(): ProteinHudSnapshot { return this.combat.hudSnapshot(); }
+
+  // View へ渡す LOD を、外部のフレーム入力と前回値から確定してから描画同期へ進む。
+  public override sync(context: DynamicViewFrame): void {
+    const displayed = this.motion.alive && dynamicEntityVisible(this, context)
+      ? this.motion.stateAt(context.displayTime)
+      : null;
+    this.motionDisplayActive = displayed !== null;
+    this.motionCpuMsValue = 0;
+    if (displayed !== null) {
+      const projectedDiameterPx = apparentSizePx(
+        this.motion.radius * 2,
+        context.cameraSystem.activeCameraRadialScale(displayed.r),
+      );
+      this.motionLodValue = proteinMotionLodForProjectedSize(
+        projectedDiameterPx, this.motionLodValue,
+      );
+      if (this.motionLodValue !== 'marker') {
+        const cpuStart = performance.now();
+        this.motionController.update(
+          context.displayTime,
+          context.graphics.proteinVibration ? this.motionLodValue : 'marker',
+          this.combat.phase,
+        );
+        this.motionCpuMsValue = performance.now() - cpuStart;
+      }
+    }
+    super.sync(context);
+  }
 
   // 陣形内に生存中のエネルギー役がいる間だけ、攻撃行動が有効になる。
   protected override canFire(enemies: readonly Enemy[]): boolean {

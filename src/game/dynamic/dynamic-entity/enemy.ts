@@ -195,7 +195,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
       this.burstLeft = init.saved.burstLeft;
       this.burstDelay = init.saved.burstDelay;
       this.motion.alive = init.saved.alive;
-      this.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;
+      this.trajectoryLineVisible = init.saved.showTrajectoryLine ?? false;
     }
   }
 
@@ -479,7 +479,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
       ...(this.formationRole === undefined ? {} : { formationRole: this.formationRole }),
       burstLeft: this.burstLeft,
       burstDelay: this.burstDelay,
-      showTrajectoryLine: this.showTrajectoryLine,
+      showTrajectoryLine: this.trajectoryLineVisible,
     };
   }
 
@@ -533,7 +533,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     return [
       MenuCommon.target(navTargetId === this.id),
       MenuCommon.focus(),
-      MenuCommon.trajectoryLine(this.showTrajectoryLine),
+      MenuCommon.trajectoryLine(this.trajectoryLineVisible),
       MenuCommon.duplicate(),
       { label: '削除', act: 'delete' },
       MenuCommon.cancel(),
@@ -546,7 +546,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   ): void {
     if (act === 'delete') this.motion.alive = false;
     else if (act === 'toggleTrajectoryLine') {
-      this.showTrajectoryLine = !this.showTrajectoryLine;
+      this.trajectoryLineVisible = !this.trajectoryLineVisible;
     } else if (act === 'duplicate') {
       authoring?.openObjectPlacerForDuplicate(this.mapKind, this.motion.state);
     }
