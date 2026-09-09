@@ -33,7 +33,6 @@ export interface EquatorNodeInputs {
   readonly displayTime: number;
   readonly celestialBodies: CelestialBodies;
   readonly frameAnchors: FrameAnchorSource;
-  readonly markers: MarkerSlots;
   readonly paths: DisplayedPathSource;
 }
 

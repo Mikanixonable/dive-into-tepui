@@ -13,6 +13,7 @@ import type { ObjectWindows } from '../pickable/object-windows';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialMarkers } from '../marker/celestial-markers';
 import type { MarkerManager } from '../marker/marker-manager';
+import type { EquatorNodeManager } from '../marker/equator-node-manager';
 import type { NavTarget } from '../nav-target';
 import { PlanEditor } from '../plan/plan-editor';
 import type { PlanDisplay } from '../plan/plan-display';
@@ -40,6 +41,7 @@ export class MapView implements ViewFrame {
     private readonly cameraSystem: CameraSystem,
     private readonly objectWindows: ObjectWindows,
     dynamicSystem: EntityRoster,
+    equatorNodes: EquatorNodeManager,
     private readonly celestialSystem: CelestialSystem,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly markerManager: MarkerManager,
@@ -60,7 +62,7 @@ export class MapView implements ViewFrame {
     );
     this.objectPickables = new ObjectPickables(
       controlSelection, dynamicSystem, celestialSystem, navTarget, cameraSystem,
-      celestialMarkers, planDisplay, frameAnchors,
+      celestialMarkers, planDisplay, frameAnchors, equatorNodes,
     );
     this.linePickables = new LinePickables(dynamicSystem, celestialSystem);
     this.picking = new MapPicking(

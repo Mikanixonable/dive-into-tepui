@@ -147,7 +147,7 @@ export class EntityLineManager {
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
       resolve(
         ship, targetStyleOf(ship), lineVisible,
-        isActive || (view === 'map' && ship.view.showTrajectoryLine),
+        isActive || (view === 'map' && ship.trajectoryLineVisible),
         {
           ellipse: playerOrbitStyleOf(isActive),
           predicted: playerPredictedStyleOf(isActive),
@@ -161,7 +161,7 @@ export class EntityLineManager {
       const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyLine, color: enemy.view.orbitLineColor };
       resolve(
         enemy, targetStyleOf(enemy), lineVisible,
-        view === 'map' && enemy.view.showTrajectoryLine,
+        view === 'map' && enemy.trajectoryLineVisible,
         sameTrajectoryStyle(enemyLineStyle),
       );
     }
@@ -170,7 +170,7 @@ export class EntityLineManager {
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
       resolve(
         base, targetStyleOf(base), lineVisible,
-        view === 'map' && base.view.showTrajectoryLine,
+        view === 'map' && base.trajectoryLineVisible,
         sameTrajectoryStyle(LINE_STYLE.baseLine),
       );
     }

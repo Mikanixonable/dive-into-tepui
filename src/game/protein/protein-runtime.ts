@@ -13,8 +13,8 @@ import {
   proteinSiteWorldPosition,
 } from './protein-anchors';
 import {
-  ProteinMotionController,
-  proteinMotionLodForProjectedSize,
+  projectProteinResidues,
+  type ProteinMotionDisplay,
   type ProteinMotionLod,
 } from './protein-motion-controller';
 import { proteinMotionModeDisplacements } from './protein-motion-modes';
@@ -36,7 +36,6 @@ interface ProteinBondVisual {
 // タンパク質敵1体の構造ゆらぎ(ANM/OU)を反映する GPU 資源と計算キャッシュを保つ。
 export class ProteinRuntime {
   private readonly motion: ProteinMotionAsset;
-  private readonly controller: ProteinMotionController;
   // 共有バッファのスロットが尽きていれば null。そのときは変形せず、静止した構造で描く。
   public readonly motionBinding: ProteinMotionBinding | null;
   private readonly root: THREE.Object3D;
@@ -47,7 +46,6 @@ export class ProteinRuntime {
   private readonly trackedResidueOffsets: Float32Array;
   private readonly bondVisuals: ProteinBondVisual[] = [];
   private readonly bondMaterial: THREE.LineBasicMaterial;
-  private currentLod: ProteinMotionLod = 'near';
   private uploadedLod: ProteinMotionLod | null = null;
   private uploadedSampleTime = Number.NaN;
   private uploadedPhase: ProteinPhase | null = null;
@@ -58,13 +56,11 @@ export class ProteinRuntime {
     root: THREE.Object3D,
     private readonly asset: ProteinAssetDefinition,
     motion: ProteinMotionAsset,
-    seedKey = asset.id,
     motionBinding?: ProteinMotionBinding | null,
   ) {
     this.root = root;
     this.motion = motion;
     for (const site of asset.sites) this.siteDefinitions.set(site.id, site);
-    this.controller = new ProteinMotionController(motion, seedKey);
     this.motionBinding = motionBinding ?? createProteinMotionBinding(
       motion.residueCount, proteinMotionModeDisplacements(motion), motion.modes.length,
     );
@@ -76,7 +72,6 @@ export class ProteinRuntime {
     this.rebuildVisuals();
   }
 
-  public get lod(): ProteinMotionLod { return this.currentLod; }
   public get cpuMs(): number { return this.lastCpuMs; }
   public get uploadBytes(): number { return this.lastUploadBytes; }
 
@@ -127,37 +122,28 @@ export class ProteinRuntime {
     this.trackedResidues = [...new Set([...this.siteResidueGroups.values()].flat())];
   }
 
-  /** 投影サイズから LOD をヒステリシス付きで更新する。marker になったフレームは
-   * 重い更新をしないので、CPU/upload の計測も正直に 0 へ戻す。 */
-  public updateLod(projectedDiameterPx: number): ProteinMotionLod {
-    this.currentLod = proteinMotionLodForProjectedSize(projectedDiameterPx, this.currentLod);
-    if (this.currentLod === 'marker') {
+  // 外部で確定した LOD・係数を GPU とアンカー位置へ反映する。
+  public syncVisual(display: ProteinMotionDisplay): void {
+    if (!display.active || display.lod === 'marker') {
       this.lastCpuMs = 0;
       this.lastUploadBytes = 0;
+      return;
     }
-    return this.currentLod;
-  }
-
-  /** 外から渡された時刻・フェーズでモード係数を更新し、GPU とアンカー位置へ反映する。
-   * `vibrationEnabled` が false の間は marker LOD 相当のモード係数(全ゼロ)を使い、
-   * 静止した構造で表示する。 */
-  public updateVisual(
-    displayTime: number, phase: ProteinPhase, vibrationEnabled = true,
-  ): void {
     const cpuStart = performance.now();
-    this.controller.update(displayTime, vibrationEnabled ? this.currentLod : 'marker', phase);
-    if (this.uploadedLod !== this.currentLod || this.uploadedSampleTime !== this.controller.sampleTime
-      || this.uploadedPhase !== phase) {
-      const coefficients = this.controller.effectiveModeCoefficients;
+    if (this.uploadedLod !== display.lod || this.uploadedSampleTime !== display.sampleTime
+      || this.uploadedPhase !== display.phase) {
+      const coefficients = display.coefficients;
       if (this.motionBinding !== null) updateProteinMotionCoefficients(this.motionBinding, coefficients);
-      this.uploadedLod = this.currentLod;
-      this.uploadedSampleTime = this.controller.sampleTime;
-      this.uploadedPhase = phase;
+      this.uploadedLod = display.lod;
+      this.uploadedSampleTime = display.sampleTime;
+      this.uploadedPhase = display.phase;
       this.lastUploadBytes = coefficients.byteLength;
     } else {
       this.lastUploadBytes = 0;
     }
-    this.controller.projectResidues(this.trackedResidues, this.trackedResidueOffsets);
+    projectProteinResidues(
+      this.motion, display.coefficients, this.trackedResidues, this.trackedResidueOffsets,
+    );
     this.lastCpuMs = performance.now() - cpuStart;
     const scale = this.asset.coordinateScale;
     for (const bond of this.bondVisuals) {
@@ -171,7 +157,9 @@ export class ProteinRuntime {
       positions.setXYZ(1, toBase.x + toOffset[0] * scale, toBase.y + toOffset[1] * scale, toBase.z + toOffset[2] * scale);
       positions.needsUpdate = true;
     }
-    this.bondMaterial.opacity = phase === 'intact' ? 0.42 : phase === 'critical' ? 0.12 : 0.68;
+    this.bondMaterial.opacity = display.phase === 'intact'
+      ? 0.42
+      : display.phase === 'critical' ? 0.12 : 0.68;
   }
 
   public siteWorldPositionById(id: string, origin: Vec3, attitude: Quat): Vec3 {

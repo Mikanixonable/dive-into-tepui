@@ -8,6 +8,7 @@ import { CameraSystem } from './camera/camera-system';
 import { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
 import { CelestialMarkers } from './marker/celestial-markers';
+import { EquatorNodeManager } from './marker/equator-node-manager';
 import { ControlSelection } from './control-selection';
 import { Targeter } from './targeter';
 import { PlanDisplay } from './plan/plan-display';
@@ -51,6 +52,7 @@ import { frameRoleOf } from '../physics/frame';
 import { ViewBadge } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
 import { syncControlledLoopSfx } from './controlled-loop-sfx';
+import { MapVisibilityPolicy } from './map/visibility-policy';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -93,6 +95,7 @@ export class Game {
   // 閃光・ガスパフなど、寿命だけで消えていく一過性の見た目。
   private readonly flashEffects: FlashEffects;
   private readonly entityLines: EntityLineManager;
+  private readonly equatorNodes: EquatorNodeManager;
   private readonly predictor: Predictor;
   private readonly viewBadge: ViewBadge;
   private readonly frameControls: FrameControls;
@@ -227,6 +230,7 @@ export class Game {
       this._scene, this._hud, this._worldSfx, this.flashEffects, this.markerManager, celestialSystem,
       sections, initialSave?.simTime ?? 0, initialSave);
     this.entityLines = new EntityLineManager(this.dynamicSystem);
+    this.equatorNodes = new EquatorNodeManager(this.dynamicSystem, this.markerManager);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, celestialSystem);
 
     // ビューの正本(ViewManager)はカメラより後に組み上がるため、遅延評価で渡す。
@@ -315,7 +319,7 @@ export class Game {
     );
     const mapView = new MapView(
       this.input, this.cameraSystem, this.objectWindows,
-      this.dynamicSystem, celestialSystem,
+      this.dynamicSystem, this.equatorNodes, celestialSystem,
       this.celestialMarkers, this.markerManager, this.displayWindowManager, this.frameControls,
       this.frameAnchors, this.controlSelection, this.simSpeedManager, this.planDisplay,
       this._scene, this._hud, uiSfx, this.navTarget,
@@ -370,6 +374,7 @@ export class Game {
     this.frameControls.dispose();
     this.cameraSystem.dispose();
     this.displayWindowManager.dispose();
+    this.equatorNodes.dispose();
     this.dynamicSystem.dispose();
     this.flashEffects.dispose();
     this.markerManager.dispose();
@@ -418,13 +423,17 @@ export class Game {
     // 交点を置く先は計画折れ線か解析軌道楕円のどちらかなので、折れ線を組み終えた計画表示と、
     // 楕円が引く予測列を伸ばした後に通す。
     this.sections.enter(SECTION.plan);
-    this.dynamicSystem.updateEquatorNodes({
+    const equatorVisibility = this.cameraSystem.mode === 'map'
+      ? new MapVisibilityPolicy(
+        this._celestialSystem, this.cameraSystem.mapDisplayToggles,
+      )
+      : null;
+    this.equatorNodes.update({
       displayTime: displayWindow.displayTime,
       celestialBodies: this._celestialSystem,
       frameAnchors: this.frameAnchors,
-      markers: this.markerManager,
       paths: this.planDisplay,
-    }, activeControllable);
+    }, activeControllable, equatorVisibility);
     this.sections.exit(SECTION.plan);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
@@ -548,7 +557,15 @@ export class Game {
     const timeLabel = timeLabelSettingOf(displayWindow);
     this.dynamicSystem.sync(
       fo, displayTime, controlled, visibilityPolicy, this.cameraSystem, style, graphics,
-      orbitRef, this.frameAnchors, timeLabel,
+      orbitRef,
+    );
+    this.equatorNodes.sync(
+      this.cameraSystem.activeCameraProjection,
+      this.cameraSystem.activeCameraPos,
+      this.frameAnchors.bodies,
+      this.frameAnchors.bodiesPivot,
+      this.cameraSystem.mode === 'map',
+      timeLabel,
     );
     syncControlledLoopSfx(this._worldSfx, controlled, displayTime, visibilityPolicy);
     // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraSystem.sync より後に通す。
