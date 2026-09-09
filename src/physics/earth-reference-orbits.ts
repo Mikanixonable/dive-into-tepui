@@ -12,6 +12,16 @@ import { SECONDS_PER_DAY } from './time';
 
 const TWO_PI = 2 * Math.PI;
 
+// 指定時間内の周回数から平均運動 [rad/s] を求める。
+function meanMotionFromRevolutions(revolutions: number, durationSec: number): number {
+  return (revolutions * TWO_PI) / durationSec;
+}
+
+// 平均運動 [rad/s] から指定時間内の周回数を求める。
+function revolutionsPerDuration(meanMotion: number, durationSec: number): number {
+  return (meanMotion * durationSec) / TWO_PI;
+}
+
 // 太陽に対する昇交点の歳差が一致すべき角速度の基準となる回帰年 [s]。
 const TROPICAL_YEAR_SEC = 365.2422 * SECONDS_PER_DAY;
 
@@ -33,7 +43,7 @@ function sunSynchronousShape(
   degree2: Degree2Gravity | null,
 ): SunSynchronousShape | null {
   if (degree2 === null) return null;
-  const n = (revsPerRepeat * TWO_PI) / (repeatDays * SECONDS_PER_DAY);
+  const n = meanMotionFromRevolutions(revsPerRepeat, repeatDays * SECONDS_PER_DAY);
   const a = semiMajorFromMeanMotion(n, mu);
   if (a <= radius) return null; // 解の高度が地表以下(中心天体に埋まる非物理的な解)。
   const sunRate = TWO_PI / TROPICAL_YEAR_SEC;
@@ -74,7 +84,7 @@ export function sunSyncRevsPerDayRange(
   const nMin = ((sunRate * mu ** (2 / 3)) / (1.5 * j2 * equatorRadius ** 2)) ** (3 / 7);
   // a = equatorRadius(解の高度が地表に一致する上限)。
   const nMax = meanMotionFromSemiMajor(equatorRadius, mu);
-  const revPerDay = (n: number) => (n * SECONDS_PER_DAY) / TWO_PI;
+  const revPerDay = (n: number) => revolutionsPerDuration(n, SECONDS_PER_DAY);
   return { min: revPerDay(nMin), max: revPerDay(nMax) };
 }
 
