@@ -4,6 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { vec4 } from 'three/tsl';
 import { BakedField } from './baked-field';
+import { CloudFieldSampler } from './cloud-field-sampler';
 import { condense } from './condensation';
 import { CLOUD_TOP_SPAN } from './cumulus-shape';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -14,6 +15,7 @@ import type { Vec3Node } from '../tsl-types';
 
 export class CloudField {
   private readonly field: BakedField;
+  private readonly sampler: CloudFieldSampler;
 
   // model がいま指している時刻の雲を、projection の持ち方で焼く写し。
   public constructor(model: WeatherModel, projection: FieldProjection) {
@@ -21,6 +23,7 @@ export class CloudField {
       const cloud = condense(model.weatherAt(direction));
       return vec4(cloud.coverage, cloud.cloudTop.div(CLOUD_TOP_SPAN), cloud.translucent, 1);
     });
+    this.sampler = new CloudFieldSampler(this.field.texture);
   }
 
   // いまの時刻の雲を写しへ描く。at() で読む前に必ず一度呼ぶ。
@@ -30,6 +33,9 @@ export class CloudField {
 
   // 焼いた雲の場。テクスチャの所有権は BakedField に残す。
   public get texture(): THREE.Texture { return this.field.texture; }
+
+  // 表現 renderer が共有する読み取り規則。sampler は field の GPU 資源を所有しない。
+  public get fieldSampler(): CloudFieldSampler { return this.sampler; }
 
   // 単位方向 direction での雲。
   public at(direction: Vec3Node): CloudSample {

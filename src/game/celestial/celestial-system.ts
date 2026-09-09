@@ -29,7 +29,7 @@ import { selectPlanetLights } from '../../render/pipeline/lighting/planet-light-
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { MAX_SHADOW_BODIES, type BodyShadow, type ShadowBody } from '../../render/pipeline/shadow/body-shadow';
 import type { RingShadow } from '../../render/pipeline/shadow/ring-shadow';
-import type { CumulusShadow } from '../../render/pipeline/shadow/cumulus-shadow';
+import type { CloudShadowRenderer } from '../../render/pipeline/shadow/cloud-shadow-renderer';
 import { RingMaterials } from '../../render/ring';
 import { shapeAxes, shapeInscribedRadius } from '../../physics/celestial-body-def';
 import { writeBodyFromWorld } from './body-frame';
@@ -102,7 +102,7 @@ export class CelestialSystem implements CelestialMotions {
   private exposure!: Exposure;
   private bodyShadow!: BodyShadow;
   private ringShadow!: RingShadow;
-  private cumulusShadow!: CumulusShadow;
+  private cumulusShadow!: CloudShadowRenderer;
   // 全天体の環の帯が共有するマテリアル。
   private ringMaterials!: RingMaterials;
   // 影を落とす天体へ渡す形の置き場。スロット本数ぶんを毎フレーム書き換えて使い回す。
@@ -173,7 +173,7 @@ export class CelestialSystem implements CelestialMotions {
   // 呼べない。
   build(
     scene: THREE.Scene, sunLight: SunLight, exposure: Exposure,
-    bodyShadow: BodyShadow, ringShadow: RingShadow, cumulusShadow: CumulusShadow,
+    bodyShadow: BodyShadow, ringShadow: RingShadow, cumulusShadow: CloudShadowRenderer,
     planetLight: PlanetLightSource, ambient: AmbientSource, atmosphere: AtmospherePass,
   ): void {
     this.scene = scene;
