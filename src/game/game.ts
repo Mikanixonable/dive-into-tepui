@@ -56,6 +56,7 @@ import { MapVisibilityPolicy } from './map/visibility-policy';
 
 export class Game {
   private readonly _scene: THREE.Scene;
+  private readonly renderer: THREE.WebGPURenderer;
   private readonly pipeline: RenderPipeline;
   readonly input: Input;
   private readonly touchControls: TouchControls | null;
@@ -216,6 +217,7 @@ export class Game {
   ) {
     this.sections = sections;
     this._scene = gs.scene;
+    this.renderer = gs.renderer;
     this.pipeline = gs.pipeline;
     this._celestialSystem = celestialSystem;
     this._hud = hud;
@@ -552,6 +554,7 @@ export class Game {
       fo, displayTime,
       this.cameraSystem, graphics, style, visibilityPolicy, this.markerManager,
     );
+    this._celestialSystem.bakeClouds(this.renderer, displayTime);
 
     // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。
     const timeLabel = timeLabelSettingOf(displayWindow);

@@ -39,7 +39,7 @@ export class SurfaceContactPhysics {
   private readonly nearbyScratch: CelestialBody[] = [];
   // 天体の位置を厳密に引く時刻。beginSubstep が受け取り、そのサブステップの解決すべてで使う。
   private pivot = 0;
-  // 負荷確認ウィンドウが読む、絞り込みを通した延べ候補天体数。フレーム頭で Simulator が 0 へ戻す。
+  // デバッグ情報ウィンドウが読む、絞り込みを通した延べ候補天体数。フレーム頭で Simulator が 0 へ戻す。
   public candidateBodies = 0;
 
   // フレームの区間 [tStart, tEnd] で触れうる天体の下ごしらえ。判定できる天体を選び、各天体の
