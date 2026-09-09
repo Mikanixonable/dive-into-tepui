@@ -706,7 +706,7 @@ this.emptyState.classList.toggle('hidden', !(filteringActive && totalMatched ===
 **仕様判断が要る(先に `/modify-feature`)**
 
 9. **1.5**(`pickable` を一覧でも見るか)/ **1.6**(自艦の分岐を揃えるか)
-10. **4.3 / 4.4 / 4.5 / 4.8 / 4.9** と **5節** の全部。
+10. **4.3 / 4.5 / 4.8 / 4.9** と **5節** の全部。
 
 ## 9. まだ確認していないこと
 
