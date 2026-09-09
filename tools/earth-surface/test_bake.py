@@ -213,6 +213,35 @@ class BakeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             bake.encode_climate_rgba([280.] * count, [.5] * count, [-1001.] * count, [0.] * count)
 
+    # 全球入口は入力不足を生成途中ではなく事前に報告する。
+    def test_global_input_preflight(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(bake.GlobalInputError) as error:
+                bake.require_global_inputs(self.manifest, directory)
+            self.assertIn("全球bundleの入力が不足しています", str(error.exception))
+
+    # 小さいmax_zoomで、同じストリームwriterがmanifest/index/ESTBを書ける。
+    def test_global_writer_stream_fixture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            raw_root = Path(directory) / "raw"
+            for path in bake.global_input_paths(self.manifest, raw_root):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"fixture input")
+
+            def render(key):
+                return b"fixture-jpeg", bake.encode_terrain_tile([(0., 0., 1.)] * 67600, [.8] * 67600, *key)
+
+            output = Path(directory) / "bundle"
+            source_manifest_path = Path(directory) / "sources.json"
+            source_manifest_path.write_text(json.dumps(self.manifest))
+            result = bake.write_global_bundle(self.manifest, source_manifest_path, raw_root, output,
+                                              lambda key: (b"\xff\xd8fixture\xff\xd9", render(key)[1]),
+                                              [b"\x89PNG\r\n\x1a\nfixture"] * 12, max_zoom=0)
+            self.assertEqual(result["coverage"]["kind"], "sparse")
+            self.assertEqual(json.loads((output / "tile-index.json").read_text())["entries"].__len__(), 2)
+            self.assertTrue((output / "base/earth.bin.gz").is_file())
+            self.assertTrue((output / "earth-surface.json").is_file())
+
 
 class FetchTests(unittest.TestCase):
     # 最小GeoTIFFのソース契約を作る。
