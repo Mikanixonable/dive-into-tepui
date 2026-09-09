@@ -48,14 +48,14 @@ function applyOrbitLine(
   entity: DynamicEntity, style: LineStyle | null, orbitRef: OrbitReference | undefined,
 ): void {
   if (style === null) {
-    entity.hideOrbitLine();
+    entity.view.hideOrbitLine();
     return;
   }
   const basis = orbitLineBasisOf(orbitRef, entity);
   switch (basis.kind) {
-    case 'ellipse': entity.showEllipseLine(style, basis.center); break;
-    case 'relative': entity.showTargetRelativeLine(style, basis.target); break;
-    case 'none': entity.hideOrbitLine(); break;
+    case 'ellipse': entity.view.showEllipseLine(style, basis.center); break;
+    case 'relative': entity.view.showTargetRelativeLine(style, basis.target.motion); break;
+    case 'none': entity.view.hideOrbitLine(); break;
   }
 }
 
@@ -100,17 +100,17 @@ export class EntityLineManager {
         ? asTarget
         : (ownEllipse || fallbackEllipse ? styles.ellipse : null);
       applyOrbitLine(entity, orbitLineStyle, lineOrbitRef);
-      if (showLines && !ownEllipse) entity.showPredictedLine(styles.predicted);
-      else entity.hidePredictedLine();
-      if (showLines && pastDuration > 0) entity.showActualLine(styles.actual);
-      else entity.hideActualLine();
+      if (showLines && !ownEllipse) entity.view.showPredictedLine(entity.motion, styles.predicted);
+      else entity.view.hidePredictedLine(entity.motion);
+      if (showLines && pastDuration > 0) entity.view.showActualLine(styles.actual);
+      else entity.view.hideActualLine();
     };
 
     for (const ship of this.roster.all().filter(isPlayer)) {
       const isActive = ship === active;
       const visibility = visibilityPolicy?.entity('player', isActive);
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
-      const trajectoryEligible = isActive || (view === 'map' && ship.showTrajectoryLine);
+      const trajectoryEligible = isActive || (view === 'map' && ship.view.showTrajectoryLine);
       applyEntityLines(
         ship, targetStyleOf(ship), lineVisible, lineVisible, trajectoryEligible,
         { ellipse: playerOrbitStyleOf(isActive), predicted: playerPredictedStyleOf(isActive), actual: playerActualStyleOf(isActive) },
@@ -119,9 +119,10 @@ export class EntityLineManager {
     for (const enemy of this.roster.all().filter(isEnemy)) {
       const visibility = visibilityPolicy?.entity('enemy');
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
-      const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyLine, color: enemy.orbitLineColor };
+      const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyLine, color: enemy.view.orbitLineColor };
       applyEntityLines(
-        enemy, targetStyleOf(enemy), lineVisible, lineVisible && enemy.alive, view === 'map' && enemy.showTrajectoryLine,
+        enemy, targetStyleOf(enemy), lineVisible, lineVisible && enemy.motion.alive,
+        view === 'map' && enemy.view.showTrajectoryLine,
         sameTrajectoryStyle(enemyLineStyle),
       );
     }
@@ -129,7 +130,8 @@ export class EntityLineManager {
       const visibility = visibilityPolicy?.entity('base');
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
       applyEntityLines(
-        base, targetStyleOf(base), lineVisible, lineVisible, view === 'map' && base.showTrajectoryLine,
+        base, targetStyleOf(base), lineVisible, lineVisible,
+        view === 'map' && base.view.showTrajectoryLine,
         sameTrajectoryStyle(LINE_STYLE.baseLine),
       );
     }
@@ -149,10 +151,14 @@ export class EntityLineManager {
     for (const group of this.lineOwners) {
       for (const entity of group) {
         // 予測が伸びきっていないフレームでは終端時刻を渡さず、届いたところまでで描かせる。
-        const predictedTo = entity.predictionTruncated ? null : simTime + duration;
-        entity.syncTrajectoryLines(
-          frame, simTime, displayTime, pastDuration, predictedTo, celestialBodies, fo, camera, frameAnchors);
-        entity.syncOrbitLine(displayTime, celestialBodies, fo, camera, frameAnchors);
+        const predictedTo = entity.motion.predictionTruncated ? null : simTime + duration;
+        entity.view.syncTrajectoryLines(
+          entity.motion, frame, simTime, displayTime, pastDuration, predictedTo,
+          celestialBodies, fo, camera, frameAnchors,
+        );
+        entity.view.syncOrbitLine(
+          entity.motion, displayTime, celestialBodies, fo, camera, frameAnchors,
+        );
       }
     }
   }

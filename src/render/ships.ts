@@ -36,31 +36,6 @@ import debrisChunkData from '../assets/models/debrisChunk.json';
 import debrisPanelData from '../assets/models/debrisPanel.json';
 import debrisRodData from '../assets/models/debrisRod.json';
 
-// 機関砲の銃口位置(機体座標系、前面に縦に並んだ 2 つの大きな短い穴)。
-// 発砲・マズルフラッシュ・薬莢排出はこの 2 点から交互に行う。
-export const MUZZLE_OFFSETS: { x: number; y: number; z: number }[] = [
-  { x: 0, y: 0.55, z: 2.55 },
-  { x: 0, y: -0.55, z: 2.55 },
-];
-
-// 蛇腹1折りの一辺 [m]。tools/export-models.mjs と一致させる。
-export const RADIATOR_SEGMENT_LENGTH = (2.3 * 4) / 6;
-
-// 全開時、各折りが展開軸から残す傾き。0 だと折り目の判別が数値的に不安定になるため、
-// 蛇腹の折り畳みが解消された1枚の板とみなせるごく小さい値を残す。
-export const RADIATOR_DEPLOY_TILT = 15 * Math.PI / 180;
-
-export { RADIATOR_HINGE } from './radiator-hinge';
-
-// マガジン寸法(機体座標系)。
-const MAG_THICKNESS = 1.0;
-const MAG_WIDTH = MAG_THICKNESS * 4 * (2 / 3); // ベルト方向(X)
-export const MAG_BELT_PITCH = MAG_WIDTH + 0.18; // 連結間隔
-
-// ベルトが機体へ入っていく給弾口の位置(機体座標系 X)。ベルトの節点は継手(マガジンの端面)
-// を表すので、これは先頭マガジンの機体側の端面 ——「マガジンが機体に飲み込まれる点」—— にあたる。
-export const MAG_BELT_ANCHOR_X = -1.19;
-
 const loader = new THREE.ObjectLoader();
 
 // クローン時、THREE の Object3D.clone(true) は同じ parse から得た
@@ -186,6 +161,7 @@ export function buildMagazineFrame(): THREE.Group {
 // マガジンサブメッシュを buildMagazineMesh() 経由で再利用しながら都度組み立てる。
 let ammoPickupBeaconGeometry: THREE.OctahedronGeometry | null = null;
 let ammoPickupBeaconMaterial: THREE.MeshBasicMaterial | null = null;
+const MAG_THICKNESS = 1.0;
 
 // 軌道上補給物のメッシュを生成する。count はマガジン本数(既定 4 はテンプレートを再利用)。
 export function buildAmmoPickup(count = 4): THREE.Group {
