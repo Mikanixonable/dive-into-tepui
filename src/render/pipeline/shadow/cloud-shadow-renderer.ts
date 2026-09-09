@@ -2,14 +2,12 @@
 // 消散の TSL グラフとして返す。影を落とす殻 1 体ぶんを毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, clamp, dot, exp, float, fract, greaterThan, int, length, max, normalize, select,
-  sqrt, texture, uniform, vec2, vec4,
+  Fn, If, Loop, clamp, dot, exp, float, greaterThan, length, max, normalize, select,
+  sqrt, uniform, vec4,
 } from 'three/tsl';
-import { sphereMeshUv } from '../../celestial-surface';
-import {
-  CLOUD_TOP_UNCERTAINTY, CUMULUS_GRAIN_SIZE, EMPTY_CLOUD_FIELD, cloudTopOf, columnOpticalDepth,
-  fieldLodForWidth, grainAmplitudeForWidth, grainAt, opaqueFractionOf,
-} from '../../cloud/cumulus-shape';
+import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
+import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
+import { CUMULUS_GRAIN_SIZE } from '../../cloud/cumulus-shape';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform, Vec4Node } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
 
@@ -34,15 +32,16 @@ const MAX_LIGHT_PATH = 3e5;
 // 覆う範囲が接するだけなので、あいだに影の抜けた縞が残る。
 const STEP_BLUR = 2;
 
-export class CumulusShadow {
+export class CloudShadowRenderer {
   private readonly center: Vec3Uniform;
   private readonly surfaceRadius: FloatUniform;
   private readonly axes: Vec3Uniform;
   private readonly topAltitude: FloatUniform;
   private readonly bodyFromWorld: Mat4Uniform;
   private readonly active: FloatUniform;
-  // 雲の場。set が value を差し替えると、sample() で枝分かれした先へも同じ写しが届く。
-  private readonly field = texture(EMPTY_CLOUD_FIELD);
+  // 雲場の読み取りと形状式は共有入力層へ置く。ここは太陽光路の透過率だけを所有する。
+  private readonly fieldSampler = new CloudFieldSampler();
+  private readonly shape: CloudShapeEvaluator;
 
   // 殻 1 体ぶんの uniform を確保する。殻の有無は active で切るので、グラフの形は変わらない。
   constructor(private readonly sunLight: SunLight) {
@@ -53,6 +52,7 @@ export class CumulusShadow {
     this.topAltitude = uniform(0);
     this.bodyFromWorld = uniform(new THREE.Matrix4());
     this.active = uniform(0);
+    this.shape = new CloudShapeEvaluator(this.surfaceRadius.div(CUMULUS_GRAIN_SIZE));
   }
 
   // このフレームに影を落とす殻。null なら雲の影は落ちない。
@@ -64,7 +64,7 @@ export class CumulusShadow {
     this.axes.value.copy(cumulus.axes);
     this.topAltitude.value = cumulus.topAltitude;
     this.bodyFromWorld.value.copy(cumulus.bodyFromWorld);
-    this.field.value = cumulus.field;
+    this.fieldSampler.setTexture(cumulus.field);
   }
 
   // このフレームに積雲の殻の影があるか。
@@ -101,8 +101,7 @@ export class CumulusShadow {
         // 実寸と光路 1 歩の長さのうち粗いほうを取る。場の mip 段も粒の振幅もこの幅が決める。
         const sampleWidth = max(footprint, stepLength.mul(STEP_BLUR));
         const lod = this.fieldLod(sampleWidth);
-        const grainAmplitude = grainAmplitudeForWidth(sampleWidth).toVar();
-        const grainFrequency = bodyRadius.div(CUMULUS_GRAIN_SIZE);
+        const grainAmplitude = this.shape.grainAmplitudeForWidth(sampleWidth).toVar();
         const floorAltitude = this.receiverFloorAltitude(offset, lod, bodyRadius);
         const stepRadius = stepLength.div(bodyRadius);
         const opticalDepth = float(0).toVar();
@@ -116,11 +115,11 @@ export class CumulusShadow {
           // 飛ばして費用を戻す(select では両辺が評価されて飛ばない)。
           const grain = float(0).toVar();
           If(greaterThan(grainAmplitude, 0), () => {
-            grain.assign(grainAt(up, grainFrequency, grainAmplitude));
+            grain.assign(this.shape.grainAt(up, grainAmplitude));
           });
-          const cloudTop = cloudTopOf(cloud.g, grain).mul(this.topAltitude);
+          const cloudTop = this.shape.cloudTop(cloud.g, grain).mul(this.topAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);
-          const columnDepth = columnOpticalDepth(opaqueFractionOf(cloud.r, grain));
+          const columnDepth = this.shape.columnOpticalDepth(this.shape.opaqueFraction(cloud.r, grain));
           // **1 歩が雲頂をまたぐ割合で配る** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
           // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
           const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
@@ -142,17 +141,14 @@ export class CumulusShadow {
 
   // タップ 1 回が代表する実寸 sampleWidth [m] から場を引く mip 段。
   private fieldLod(sampleWidth: FloatNode) {
-    // 寸法を返すノードは型引数を持たないので、成分を取れる形へ直してから読む。
-    const fieldWidth = (this.field.size(int(0)) as THREE.Node<'uvec2'>).x;
-    return fieldLodForWidth(sampleWidth, this.surfaceRadius, float(fieldWidth));
+    return this.fieldSampler.lodForWidth(sampleWidth, this.surfaceRadius);
   }
 
   // 殻の空間の単位方向 up における場を、mip 段を指定して引く。段を明示で渡すのは、光路のタップの
   // uv が画面の隣の画素と続いておらず、画面微分から選ばれる段が当てにならないため。uv は殻が読むのと
-  // 同じ球メッシュの uv(sphereMeshUv)で引く — 別の規則で読むと、影が雲のシルエットから外れる。
+  // 共有samplerの球メッシュUVで引く — 別の規則で読むと、影が雲のシルエットから外れる。
   private fieldAt(up: Vec3Node, lod: FloatNode): Vec4Node {
-    const uv = sphereMeshUv(up);
-    return this.field.sample(vec2(fract(uv.x), uv.y)).level(lod);
+    return this.fieldSampler.sample(up, lod);
   }
 
   // 光路のタップの高度に張る床 [m]。受け手が自分の柱の雲頂の高さにあるなら、その雲頂の高さ。
@@ -162,7 +158,7 @@ export class CumulusShadow {
     const radius = max(length(offset), 1e-6);
     const altitude = max(radius.sub(1), 0).mul(bodyRadius);
     const top = this.fieldAt(offset.div(radius), lod).g.mul(this.topAltitude);
-    const uncertainty = this.topAltitude.mul(CLOUD_TOP_UNCERTAINTY);
+    const uncertainty = this.topAltitude.mul(CloudShapeEvaluator.cloudTopUncertainty);
     return select(greaterThan(altitude, top.sub(uncertainty)), top, float(0));
   }
 }
