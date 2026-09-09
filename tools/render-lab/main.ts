@@ -22,6 +22,7 @@ import type { FloatUniform } from '../../src/render/tsl-types';
 import { createEarthSurfaceCaptureApi } from './earth-surface-capture';
 import type { EarthSurfaceCaptureInput } from './earth-surface-capture';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
+import type { CloudLodMode } from '../../src/render/cloud/cloud-field-sampler';
 
 // 殻の高度のつまみが届く上限 [m]。対流圏界面(極 8 km、熱帯 18 km)の上まで取る。
 const MAX_SHELL_ALTITUDE = 20e3;
@@ -47,6 +48,7 @@ declare global {
       setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
+      setCloudSampling: (blueNoiseEnabled: boolean, lodMode: CloudLodMode) => void;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
     };
   }
@@ -199,6 +201,7 @@ async function init(): Promise<void> {
     setStyle: selectStyle,
     setTarget: (target) => { targets.setSelected(target); view.showDebugTarget(target); },
     setGraphicsOption: (key, value) => { graphics.setOption(key, value); },
+    setCloudSampling: (blueNoiseEnabled, lodMode) => view.setCloudSampling(blueNoiseEnabled, lodMode),
     measure: (name, angles) => view.measure(name, angles),
   };
 }

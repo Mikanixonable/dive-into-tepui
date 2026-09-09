@@ -14,6 +14,7 @@ import { airglowEmission } from '../airglow';
 import {
   AtmosphereCloudLayers, type CloudShellLayer, type AtmosphereCloudGeometry,
 } from './atmosphere-cloud-layers';
+import type { CloudLodMode } from '../cloud/cloud-field-sampler';
 import { shellAltitudeOf, type CloudSpecies } from './cloud-atmosphere-renderer';
 import type { AtmosphereBody } from '../atmosphere';
 import type { BoolNode, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
@@ -129,6 +130,7 @@ export class AtmosphereIntegrator {
   private readonly slot: BodySlot;
   // 積分の刻みを画素ごとにずらす種。
   private readonly blueNoise = new BlueNoise();
+  private readonly blueNoiseEnabled = uniform(1);
   // いま解く層の雲。
   private readonly cloudLayers: AtmosphereCloudLayers;
 
@@ -161,6 +163,14 @@ export class AtmosphereIntegrator {
   // 種類ごとに、雲の殻を描くかを置き直す。
   public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
     this.cloudLayers.setShellEnabled(species, enabled);
+  }
+
+  public setCloudBlueNoiseEnabled(enabled: boolean): void {
+    this.blueNoiseEnabled.value = enabled ? 1 : 0;
+  }
+
+  public setCloudLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
+    this.cloudLayers.setLodSampling(mode, fixedLevel);
   }
 
   // この層が解く天体 1 体ぶんの光学パラメータと雲を書き込む。cutoffRadius は大気の裾を
@@ -328,7 +338,11 @@ export class AtmosphereIntegrator {
       this.slot.steps, distanceAt,
       (distance) => this.mediumAt(
         rayOrigin.add(rayDir.mul(distance)), rayDir, this.cloudLayers.transmittanceAt(shells, distance)),
-      this.blueNoise.atScreenPixel(),
+      select(
+        greaterThan(this.blueNoiseEnabled, 0.5),
+        this.blueNoise.atScreenPixel(),
+        float(0),
+      ),
     );
     // 殻は区間を刻まず、雲層 renderer が合成した結果を大気積分へ適用する。
     return this.cloudLayers.compose(march.transmittance, march.radiance, shells);

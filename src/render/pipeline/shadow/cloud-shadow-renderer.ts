@@ -5,7 +5,7 @@ import {
   Fn, If, Loop, clamp, dot, exp, float, greaterThan, length, max, normalize, select,
   sqrt, uniform, vec4,
 } from 'three/tsl';
-import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
+import { CloudFieldSampler, type CloudLodMode } from '../../cloud/cloud-field-sampler';
 import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
 import { CUMULUS_GRAIN_SIZE } from '../../cloud/cumulus-shape';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform, Vec4Node } from '../../tsl-types';
@@ -69,6 +69,10 @@ export class CloudShadowRenderer {
 
   // このフレームに積雲の殻の影があるか。
   casts(): boolean { return this.active.value > 0; }
+
+  public setLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
+    this.fieldSampler.setLodSampling(mode, fixedLevel);
+  }
 
   // 受け手から恒星へ向かう光路を、雲の層(地表から殻の上端まで)を抜けるまで殻の空間
   // (toShellSpace)でたどり、柱の雲頂より下を通る割合ぶんの消散を積む。

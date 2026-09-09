@@ -4,6 +4,7 @@ import { If, and, float, greaterThan, lessThan, mix, normalize, step, vec3 } fro
 import {
   CloudAtmosphereRenderer, type CloudShellSample, type CloudSpecies,
 } from './cloud-atmosphere-renderer';
+import type { CloudLodMode } from '../cloud/cloud-field-sampler';
 import type { BoolNode, FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 
 export interface AtmosphereCloudRay {
@@ -53,6 +54,10 @@ export class AtmosphereCloudLayers {
 
   public setShellEnabled(species: CloudSpecies, enabled: boolean): void {
     this.clouds.setShellEnabled(species, enabled);
+  }
+
+  public setLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
+    this.clouds.setLodSampling(mode, fixedLevel);
   }
 
   public transmittanceAt(shells: readonly CloudShellLayer[], distance: FloatNode): FloatNode {

@@ -9,7 +9,7 @@ import {
   sqrt, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
 import { CloudShapeEvaluator } from './cloud/cloud-shape-evaluator';
-import type { CloudFieldSampler } from './cloud/cloud-field-sampler';
+import type { CloudFieldSampler, CloudLodMode } from './cloud/cloud-field-sampler';
 import { unitSphereGeometry } from './celestial-surface';
 import { CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from './cloud/cumulus-shape';
 import { eastAt, northAt } from './cloud/sphere-frame';
@@ -99,6 +99,10 @@ export class OpaqueCloudSurfaceRenderer {
   // 積雲の精細さの段を置き直す。
   public setDetail(detail: CumulusDetail): void {
     this.setSampling(SAMPLING_OF_DETAIL[detail]);
+  }
+
+  public setLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
+    this.fieldSampler.setLodSampling(mode, fixedLevel);
   }
 
   // 標本の配り方を置き直す。**回数はレイマーチの展開としてグラフへ焼かれている**ので、

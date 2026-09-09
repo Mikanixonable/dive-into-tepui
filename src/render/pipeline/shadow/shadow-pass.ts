@@ -15,6 +15,7 @@ import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '.
 import type { BodyShadow } from './body-shadow';
 import type { RingShadow } from './ring-shadow';
 import type { CloudShadowRenderer } from './cloud-shadow-renderer';
+import type { CloudLodMode } from '../../cloud/cloud-field-sampler';
 import type { MeshShadow } from './mesh-shadow';
 import { compileInto } from '../compile-into';
 
@@ -67,7 +68,8 @@ export class ShadowPass {
   constructor(
     private readonly renderer: WebGPURenderer,
     gbuffer: GBufferPass,
-    bodyShadow: BodyShadow, ringShadow: RingShadow, cumulusShadow: CloudShadowRenderer, meshShadow: MeshShadow,
+    bodyShadow: BodyShadow, ringShadow: RingShadow, private readonly cumulusShadow: CloudShadowRenderer,
+    meshShadow: MeshShadow,
     private readonly gpu: GpuTimings,
   ) {
     this.target = new THREE.RenderTarget(1, 1, {
@@ -116,6 +118,10 @@ export class ShadowPass {
   }
 
   get texture(): THREE.Texture { return this.target.texture; }
+
+  public setCloudLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
+    this.cumulusShadow.setLodSampling(mode, fixedLevel);
+  }
 
   // 影を落とすものがある源だけを、素通しの 1 へ順に掛け合わせる。camera は逆射影行列と
   // view→描画座標の行列を毎フレーム引き直すためだけに使う。

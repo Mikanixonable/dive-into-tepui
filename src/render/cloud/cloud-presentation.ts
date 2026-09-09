@@ -7,6 +7,7 @@ import { GeneratedCloudField } from './generated-cloud-field';
 import {
   CUMULUS_DETAIL, OpaqueCloudSurfaceRenderer, type CumulusDetail,
 } from '../opaque-cloud-surface-renderer';
+import type { CloudLodMode } from './cloud-field-sampler';
 
 export class CloudPresentation {
   private readonly surface: OpaqueCloudSurfaceRenderer;
@@ -30,6 +31,10 @@ export class CloudPresentation {
   public addTo(parent: THREE.Object3D): void { this.surface.addTo(parent); }
 
   public setDetail(detail: CumulusDetail): void { this.surface.setDetail(detail); }
+
+  public setLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
+    this.surface.setLodSampling(mode, fixedLevel);
+  }
 
   public setCloudsVisible(visible: boolean): void {
     this.cloudVisible = visible;

@@ -14,6 +14,7 @@ import { MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, cutoffAltitude } from '../a
 import { AtmosphereIntegrator } from './atmosphere-integrator';
 import { viewPositionAt, viewRayAt } from './view-ray';
 import type { CloudSpecies } from './cloud-atmosphere-renderer';
+import type { CloudLodMode } from '../cloud/cloud-field-sampler';
 import type { Mat4Uniform, Vec3Node } from '../tsl-types';
 import type { GBufferPass } from './gbuffer';
 import type { BodyShadow } from './shadow/body-shadow';
@@ -108,6 +109,14 @@ export class AtmospherePass {
   // 種類ごとに、雲の殻を描くかを置き直す。
   public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
     this.layer.setCloudShellEnabled(species, enabled);
+  }
+
+  public setCloudBlueNoiseEnabled(enabled: boolean): void {
+    this.layer.setCloudBlueNoiseEnabled(enabled);
+  }
+
+  public setCloudLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
+    this.layer.setCloudLodSampling(mode, fixedLevel);
   }
 
   // このフレームで大気を描く天体を、**視点に近い順**に、それぞれのサンプル点の数と一緒に渡す。
