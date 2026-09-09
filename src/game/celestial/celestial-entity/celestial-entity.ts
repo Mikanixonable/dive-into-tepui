@@ -27,7 +27,7 @@ import type { Albedo } from '../../../render/celestial-albedo';
 import type { CelestialClass } from './celestial-entity-def';
 import type { Vec3 } from '../../../math/vec3';
 import type { GraphicsSettingsData } from '../../../render/graphics-settings';
-import type { ShadowCumulus } from '../../../render/pipeline/shadow/cumulus-shadow';
+import type { ShadowCumulus } from '../../../render/pipeline/shadow/cloud-shadow-renderer';
 import type { RingMaterials } from '../../../render/ring';
 import type { RenderStyle } from '../../../render/render-style';
 import type { StarEntity } from './star-entity';

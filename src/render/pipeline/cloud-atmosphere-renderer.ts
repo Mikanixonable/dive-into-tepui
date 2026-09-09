@@ -6,11 +6,9 @@
 // 拡散反射する層」として振舞う。届く光は呼び出し側が渡すので、入射の減衰・影・地平線は
 // 大気と同じ 1 本の式が解く。
 import * as THREE from 'three/webgpu';
-import {
-  abs, dot, exp, float, fract, greaterThan, int, max, min, sqrt, texture, uniform, vec2, vec4,
-} from 'three/tsl';
-import { sphereMeshUv } from '../celestial-surface';
-import { EMPTY_CLOUD_FIELD, columnOpticalDepth, fieldLodForWidth } from '../cloud/cumulus-shape';
+import { abs, dot, exp, greaterThan, max, min, sqrt, uniform, vec4 } from 'three/tsl';
+import { CloudFieldSampler } from '../cloud/cloud-field-sampler';
+import { CloudShapeEvaluator } from '../cloud/cloud-shape-evaluator';
 import type { AtmosphereClouds } from '../atmosphere';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 
@@ -26,6 +24,7 @@ const MAX_SHELL_OPTICAL_DEPTH = 5;
 // 層の厚みへ張る下限 [m]。掠める視線の光路は厚みぶんの弦で頭打ちにするので、厚み 0 では
 // 地平線ぎわの視線が飽和する。
 const MIN_SHELL_THICKNESS = 1;
+const CLOUD_SHAPE_EVALUATOR = new CloudShapeEvaluator(0);
 
 // 殻 1 枚の見え方。鉛直の光学的厚みは、場から引いた厚みを cutoff で足切りし、gain を掛けたもの。
 // albedo は殻の拡散反射率、bottomAltitude と topAltitude はその殻が代表する層の高度 [m] で、
@@ -77,7 +76,7 @@ function fieldOpticalDepthOf(species: CloudSpecies, field: Vec4Node): FloatNode 
     case 'cirrus':
       return field.b;
     case 'cumulus':
-      return columnOpticalDepth(field.r);
+      return CLOUD_SHAPE_EVALUATOR.columnOpticalDepth(field.r);
   }
 }
 
@@ -88,9 +87,9 @@ function opticalDepthOf(species: CloudSpecies, field: Vec4Node): FloatNode {
   return min(raised, MAX_SHELL_OPTICAL_DEPTH);
 }
 
-export class CloudScattering {
-  // 雲の場。set が value を差し替えると、枝分かれした先へも同じ写しが届く。
-  private readonly field = texture(EMPTY_CLOUD_FIELD);
+export class CloudAtmosphereRenderer {
+  // 雲場の読み取りと形状の解釈は共有入力層へ置く。ここは殻の散乱だけを所有する。
+  private readonly fieldSampler = new CloudFieldSampler();
   private readonly bodyFromWorld: Mat4Uniform;
   private readonly active: FloatUniform;
   // 種類ごとに、その殻を描くか。
@@ -110,7 +109,7 @@ export class CloudScattering {
     this.active.value = clouds === null ? 0 : 1;
     if (clouds === null) return;
     this.bodyFromWorld.value.copy(clouds.bodyFromWorld);
-    this.field.value = clouds.field;
+    this.fieldSampler.setTexture(clouds.field);
   }
 
   // 種類ごとに、その殻を描くかを置き直す。
@@ -152,14 +151,14 @@ export class CloudScattering {
     return this.active.mul(this.enabled[species]);
   }
 
-  // 天体を真球にした空間の単位方向 up における場。uv は積雲の殻が読むのと同じ球メッシュの uv
-  // (sphereMeshUv)で引く。**mip 段は明示で渡す** — 交点の uv は天体の縁と不透明面の際で
+  // 天体を真球にした空間の単位方向 up における場。UVは共有samplerが積雲の殻と同じ規則で読む。
+  // **mip 段は明示で渡す** — 交点の uv は天体の縁と不透明面の際で
   // 画面の隣の画素と続かず、画面微分から選ばれる段が当てにならない。
   private fieldAt(up: Vec3Node, footprint: FloatNode, shellRadius: FloatNode): Vec4Node {
     // 寸法を返すノードは型引数を持たないので、成分を取れる形へ直してから読む。
-    const fieldWidth = (this.field.size(int(0)) as THREE.Node<'uvec2'>).x;
-    const uv = sphereMeshUv(this.bodyFromWorld.mul(vec4(up, 0)).xyz);
-    return this.field.sample(vec2(fract(uv.x), uv.y))
-      .level(fieldLodForWidth(footprint, shellRadius, float(fieldWidth)));
+    return this.fieldSampler.sample(
+      this.bodyFromWorld.mul(vec4(up, 0)).xyz,
+      this.fieldSampler.lodForWidth(footprint, shellRadius),
+    );
   }
 }
