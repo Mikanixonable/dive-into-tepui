@@ -1,11 +1,18 @@
 import { len, sub } from '../../math/vec3';
 import { mapScaleFor } from './map-scale';
-import { isEnemy, type Enemy } from '../dynamic/dynamic-entity/enemy';
-import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
+import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { ProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
 import { orbitInfo, relativeInfo } from '../orbit-info';
+import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialSystem } from '../celestial/celestial-system';
+import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { NavTarget } from '../nav-target';
+import type { OrbitReference, OrbitReferenceMode } from '../orbit-reference';
 import type { Vec3 } from '../../math/vec3';
-import type { Game } from '../game';
+import type { Enemy } from '../dynamic/dynamic-entity/enemy';
 import type { OrbitPanelViewModel } from './orbit/orbit-panel';
 import type { EnemyRow, EnemiesPanelViewModel } from './panels/enemies-panel';
 import type { MapScaleViewModel } from './panels/map-scale-badge';
@@ -13,37 +20,125 @@ import type { TargetPanelData } from './panels/target-panel';
 import type { TopBarViewModel } from './panels/top-bar';
 import type { VesselPanelViewModel } from './panels/vessel-panel';
 
-export function topBarViewOf(game: Game): TopBarViewModel {
-  const simTime = game.simTime;
-  return {
-    epochUnixSec: game.displayWindowManager.current.epochUnixSec,
-    simTime,
-    simSpeed: game.simSpeedManager.simSpeed,
-    autoWarpRealSecondsRemaining: game.simSpeedManager.estimatedRealSecondsToWarpEnd(simTime),
-    autoWarpSimulationSecondsRemaining: game.simSpeedManager.remainingSimulationSeconds(simTime),
-    isPaused: game.isPaused,
+interface TopBarSource {
+  readonly simTime: number;
+  readonly displayWindowManager: {
+    readonly current: {
+      readonly epochUnixSec: number;
+    };
+  };
+  readonly simSpeedManager: {
+    readonly simSpeed: number;
+    estimatedRealSecondsToWarpEnd(simTime: number): number | null;
+    remainingSimulationSeconds(simTime: number): number | null;
+  };
+  readonly isPaused: boolean;
+}
+
+interface MapScaleSource {
+  readonly viewManager: {
+    readonly isMapView: boolean;
+  };
+  readonly cameraSystem: {
+    readonly mapCamera: {
+      readonly resolvedFocus: Vec3;
+    };
+    readonly activeCameraScale: (worldPos: Vec3) => number;
   };
 }
 
-export function mapScaleViewOf(game: Game): MapScaleViewModel {
-  const visible = game.viewManager.isMapView;
+interface VesselPanelSource {
+  readonly activeControllable: Controllable | null;
+  readonly viewManager: {
+    readonly isMapView: boolean;
+  };
+  readonly activeStage: {
+    readonly id: string;
+  };
+  readonly cameraSystem: {
+    readonly combatCamera: {
+      readonly rotationFollow: {
+        readonly kind: string;
+      } | null;
+    };
+  };
+}
+
+interface OrbitPanelSource {
+  readonly activeControllable: Controllable | null;
+  readonly celestialSystem: CelestialSystem;
+  readonly orbitReference: {
+    readonly selectedMode: OrbitReferenceMode;
+    resolve(
+      r: Vec3,
+      celestialBodies: readonly CelestialMotion[],
+      navTarget: NavTarget,
+      dynamicSystem: DynamicSystem,
+      celestialSystem: CelestialSystem,
+      t: number,
+    ): OrbitReference;
+  };
+  readonly navTarget: NavTarget;
+  readonly dynamicSystem: DynamicSystem;
+}
+
+interface TargetPanelSource {
+  readonly activeControllable: Controllable | null;
+  readonly targeter: {
+    readonly aliveTarget: CombatTarget | null;
+  };
+  readonly celestialSystem: {
+    readonly celestialMotions: readonly CelestialMotion[];
+  };
+}
+
+interface EnemiesPanelSource {
+  readonly activeControllable: Controllable | null;
+  readonly activeStage: {
+    readonly scoreCounter: {
+      readonly kills: number;
+      readonly totalEnemiesSpawned: number;
+    };
+  };
+  readonly dynamicSystem: {
+    all(): readonly DynamicEntity[];
+  };
+  readonly targeter: {
+    readonly aliveTarget: CombatTarget | null;
+  };
+}
+
+export function topBarViewOf(source: TopBarSource): TopBarViewModel {
+  const simTime = source.simTime;
+  return {
+    epochUnixSec: source.displayWindowManager.current.epochUnixSec,
+    simTime,
+    simSpeed: source.simSpeedManager.simSpeed,
+    autoWarpRealSecondsRemaining: source.simSpeedManager.estimatedRealSecondsToWarpEnd(simTime),
+    autoWarpSimulationSecondsRemaining: source.simSpeedManager.remainingSimulationSeconds(simTime),
+    isPaused: source.isPaused,
+  };
+}
+
+export function mapScaleViewOf(source: MapScaleSource): MapScaleViewModel {
+  const visible = source.viewManager.isMapView;
   if (!visible) return { visible, scale: null };
-  const focus = game.cameraSystem.mapCamera.resolvedFocus;
-  const metersPerPixel = game.cameraSystem.activeCameraScale(focus);
+  const focus = source.cameraSystem.mapCamera.resolvedFocus;
+  const metersPerPixel = source.cameraSystem.activeCameraScale(focus);
   const scale = mapScaleFor(metersPerPixel);
   return { visible, scale };
 }
 
-export function vesselPanelViewOf(game: Game): VesselPanelViewModel | null {
-  const target = game.activeControllable;
+export function vesselPanelViewOf(source: VesselPanelSource): VesselPanelViewModel | null {
+  const target = source.activeControllable;
   if (!target) return null;
   return {
-    visible: !game.viewManager.isMapView || game.activeStage.id === 'creative',
+    visible: !source.viewManager.isMapView || source.activeStage.id === 'creative',
     rcsDamp: target.throttle.rcsDamp,
     throttleIdx: target.throttle.throttleIdx,
     aeroQdyn: target.aero?.qdyn ?? null,
     fineAttitude: target.fineAttitude,
-    cameraFollowsAttitude: game.cameraSystem.combatCamera.rotationFollow?.kind === 'attitude',
+    cameraFollowsAttitude: source.cameraSystem.combatCamera.rotationFollow?.kind === 'attitude',
     progradeHold: target.throttle.progradeHold,
     totalFuel: target.totalFuel,
     totalMaxFuel: target.totalMaxFuel,
@@ -62,18 +157,18 @@ export function vesselPanelViewOf(game: Game): VesselPanelViewModel | null {
   };
 }
 
-export function orbitPanelViewOf(game: Game): OrbitPanelViewModel | null {
-  const entity = game.activeControllable;
+export function orbitPanelViewOf(source: OrbitPanelSource): OrbitPanelViewModel | null {
+  const entity = source.activeControllable;
   if (!entity) return null;
-  const celestialBodies = game.celestialSystem.celestialMotions;
-  const reference = game.orbitReference.resolve(
-    entity.state.r, celestialBodies, game.navTarget, game.dynamicSystem, game.celestialSystem, entity.state.t,
+  const celestialBodies = source.celestialSystem.celestialMotions;
+  const reference = source.orbitReference.resolve(
+    entity.state.r, celestialBodies, source.navTarget, source.dynamicSystem, source.celestialSystem, entity.state.t,
   );
-  const info = orbitInfo(entity, reference, entity.state.t, (id) => game.celestialSystem.nameOf(id));
+  const info = orbitInfo(entity, reference, entity.state.t, (id) => source.celestialSystem.nameOf(id));
   return {
-    selectedMode: game.orbitReference.selectedMode,
+    selectedMode: source.orbitReference.selectedMode,
     centerId: info.centerId,
-    centerName: !reference.attractor && game.navTarget.name ? game.navTarget.name : info.centerName,
+    centerName: !reference.attractor && source.navTarget.name ? source.navTarget.name : info.centerName,
     altitudeM: info.alt,
     speedMps: info.spd,
     apAltitudeM: info.apAlt,
@@ -86,11 +181,11 @@ export function orbitPanelViewOf(game: Game): OrbitPanelViewModel | null {
   };
 }
 
-export function targetPanelDataOf(game: Game): TargetPanelData | null {
-  const viewer = game.activeControllable;
-  const target = viewer ? game.targeter.aliveTarget : null;
+export function targetPanelDataOf(source: TargetPanelSource): TargetPanelData | null {
+  const viewer = source.activeControllable;
+  const target = viewer ? source.targeter.aliveTarget : null;
   if (!viewer || !target) return null;
-  const relative = relativeInfo(viewer, target, game.celestialSystem.celestialMotions, viewer.state.t);
+  const relative = relativeInfo(viewer, target, source.celestialSystem.celestialMotions, viewer.state.t);
   return {
     name: target.name,
     distanceM: relative.dist,
@@ -102,16 +197,16 @@ export function targetPanelDataOf(game: Game): TargetPanelData | null {
   };
 }
 
-export function enemiesPanelViewOf(game: Game): EnemiesPanelViewModel {
-  const viewer = game.activeControllable;
+export function enemiesPanelViewOf(source: EnemiesPanelSource): EnemiesPanelViewModel {
+  const viewer = source.activeControllable;
   if (!viewer) return { visible: false, remainingCount: 0, totalCount: 0, rows: [] };
-  const { kills, totalEnemiesSpawned } = game.activeStage.scoreCounter;
-  const enemies = game.dynamicSystem.all().filter(isEnemy).filter((enemy) => enemy.alive);
+  const { kills, totalEnemiesSpawned } = source.activeStage.scoreCounter;
+  const enemies = source.dynamicSystem.all().filter(isEnemy).filter((enemy) => enemy.alive);
   return {
     visible: true,
     remainingCount: totalEnemiesSpawned - kills,
     totalCount: totalEnemiesSpawned,
-    rows: enemyRowsOf(enemies, viewer.state.r, game.targeter.aliveTarget),
+    rows: enemyRowsOf(enemies, viewer.state.r, source.targeter.aliveTarget),
   };
 }
 
