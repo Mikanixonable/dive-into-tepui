@@ -24,7 +24,7 @@
 
 ## 実装状況（2026-09-10）
 
-コードレビューと記録は `71677db3` で完了した。EarthSurfaceのpersistent lease、非表示・dispose・
+コードレビューと記録は `c1024c61` で完了した。EarthSurfaceのpersistent lease、非表示・dispose・
 世代切替、可視frontierのpin、drawing buffer伝搬、楕円体UV、UTC気候時計、GPU層解放、Pagesの
 subpath URL、datasetId整合、raw gzip契約を確認した。Earth実行経路にGEBCOや旧Earth気候画像の
 参照はなく、`tools/render-lab/cases.ts` の旧画像はlegacy fixtureとして残している。
