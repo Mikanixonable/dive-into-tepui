@@ -19,3 +19,8 @@
 
 - 認証情報が無いローカル環境でもpackageとlocal checkが再現できる。
 - 外部originへのuploadは本番ゲートに含めず、未実施またはreceiptを明記する。
+
+## 実装状況（2026-09-10）
+
+`32a789ab` で版付きlocal package、receipt、GET/HEAD/OPTIONS、CORS、cache、raw gzip、remote-checkを実装した。
+外部originへのuploadと実データbundleのremote-checkは未実施である。

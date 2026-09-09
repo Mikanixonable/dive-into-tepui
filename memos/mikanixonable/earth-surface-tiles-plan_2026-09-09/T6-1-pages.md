@@ -23,3 +23,8 @@ GitHub Pagesのdocsを本番配信元として、ゲーム本体と全世界z0�
 - production bundleの全世界z0〜z7がtile-indexと一致する。
 - release URLのsubpathからmanifest、base、代表tile、12 climate mapへ到達できる。
 - CORSを必要としない同一origin取得で動作する。
+
+## 実装状況（2026-09-10）
+
+`49d840f2` でfixtureまたは指定bundleのPages staging、receipt/hash、サイズ予算、subpath URL、layout検査、CI順序を実装した。
+fixture Pagesは検査済みだが、BMNG等から生成した全世界bundleのdocs公開は入力未提供のため未完了である。

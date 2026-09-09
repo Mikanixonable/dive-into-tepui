@@ -82,6 +82,11 @@ module.exports = {
     new webpack.DefinePlugin({
       __APP_VERSION__: JSON.stringify(version),
       __EARTH_SURFACE_BASE_URL__: JSON.stringify(process.env.EARTH_SURFACE_BASE_URL ?? ''),
+      // GitHub Pagesのrepository subpathから解決できる相対manifest URL。外部配信を使う場合は
+      // EARTH_SURFACE_MANIFEST_URLへ絶対URLを渡し、実行時のデータ版をアプリ版から分離する。
+      __EARTH_SURFACE_MANIFEST_URL__: JSON.stringify(
+        process.env.EARTH_SURFACE_MANIFEST_URL ?? 'earth-surface/earth-pages-fixture/earth-surface.json',
+      ),
     }),
   ],
   devServer: {
