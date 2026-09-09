@@ -16,3 +16,4 @@ assets-src/climate/
 .earth-surface/intermediate/
 .earth-surface/bundle/
 .earth-surface/distribution/
+.earth-surface/verification/capture/

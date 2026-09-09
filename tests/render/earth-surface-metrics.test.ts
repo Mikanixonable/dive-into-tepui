@@ -3,7 +3,11 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
   EARTH_SURFACE_ADJACENT_THRESHOLD,
+  EARTH_SURFACE_CAPTURE_CASES,
+  EARTH_SURFACE_CAPTURE_FRAMES,
+  EARTH_SURFACE_CAPTURE_VIEWPORT,
   checkRgbaRange,
+  createUnavailableEarthSurfaceCapture,
   measureAdjacent8BitDifference,
   normalizeEarthSurfaceMetrics,
 } from '../../src/render/earth-surface-metrics';
@@ -47,5 +51,32 @@ export function register(): void {
     });
     assert.deepEqual(metrics.cases.map((entry) => entry.caseName), ['earth', 'earth-terminator']);
     assert.equal(JSON.stringify(metrics), '{"schemaVersion":1,"viewport":{"width":960,"height":540},"cases":[{"caseName":"earth","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","byteLength":10},{"caseName":"earth-terminator","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","byteLength":20}]}');
+  });
+
+  test('earth surface capture: 固定ケースと実測条件を保つ', () => {
+    assert.deepEqual(EARTH_SURFACE_CAPTURE_VIEWPORT, { width: 1920, height: 1080 });
+    assert.equal(EARTH_SURFACE_CAPTURE_FRAMES, 300);
+    assert.ok(EARTH_SURFACE_CAPTURE_CASES.includes('himalaya-50km'));
+    assert.ok(EARTH_SURFACE_CAPTURE_CASES.includes('lod-fallback'));
+    assert.equal(new Set(EARTH_SURFACE_CAPTURE_CASES).size, EARTH_SURFACE_CAPTURE_CASES.length);
+  });
+
+  test('earth surface capture: ブラウザ未実施を画像成功として扱わない', () => {
+    const result = createUnavailableEarthSurfaceCapture({
+      capturedAt: '2026-09-10T00:00:00.000Z',
+      reason: 'WebGPU adapter is unavailable',
+    });
+    assert.equal(result.schemaVersion, 2);
+    assert.deepEqual(result.viewport, { width: 1920, height: 1080 });
+    assert.equal(result.framesPerCase, 300);
+    assert.deepEqual(result.replayScenarios.map((entry) => entry.id), [
+      'out-of-order-arrival', 'http-404', 'http-408-429-5xx', 'network-failure',
+      '128-layer-capacity', 'dispose-and-generation', 'mipmap-disabled',
+    ]);
+    assert.equal(result.cases.length, EARTH_SURFACE_CAPTURE_CASES.length);
+    assert.ok(result.cases.every((entry) => entry.status === 'unavailable'));
+    assert.ok(result.cases.every((entry) => entry.color.status === 'unavailable'));
+    assert.ok(result.cases.every((entry) => entry.normal.reason === 'WebGPU adapter is unavailable'));
+    assert.ok(result.cases.every((entry) => entry.depth.path === null));
   });
 }
