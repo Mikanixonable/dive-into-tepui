@@ -22,7 +22,7 @@ async function main() {
     // レンダラーの init() が終わるまで撮れない。ページが失敗を文字で出していたらそれを読む。
     await waitFor(
       devTools,
-      "(document.getElementById('error')?.textContent || typeof window.renderLab === 'object')",
+      "(document.getElementById('error')?.textContent || typeof window.renderLab?.shoot === 'function')",
       'the render lab to initialise',
     );
     const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
