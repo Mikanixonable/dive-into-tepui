@@ -686,7 +686,7 @@ fetch/GPUで検査し、色だけ・地形だけが表示される状態を作�
 色変換の一時失敗をcoordinator側の永続失敗へ昇格しないよう修正した。renderテストは58/58まで通過している。
 実Three.jsの色変換、実GPUの配列層、Earth entityへのcoordinator注入は段C・Dへ残す。
 
-### 実装段C: 地表マテリアルと実GPU接続（解析contract完了）
+### 実装段C: 地表マテリアルと実GPU接続（解析contract・texture設定contract完了）
 
 **依存**: 段B。
 **変更**: `src/render/earth-surface-material.ts`（新規）、`src/render/earth-surface-gpu.ts`、
@@ -711,6 +711,12 @@ fetch/GPUで検査し、色だけ・地形だけが表示される状態を作�
 `npm run test:render`（64/64）、`npm run earth-surface:test`、Pythonデータテスト（15件）を通過している。
 この段で実Three.jsの`DataArrayTexture`/TSL、実GPU配列層、ページ表の公開、mipmap無効化とbase固定fallbackは
 まだ接続していないため、段Cの受け入れは未完了とする。
+
+**追加実装状況（2026-09-09）**: `41859d98`で、Three.jsのテクスチャ設定だけを担当する
+`earth-surface-material-node.ts`を追加した。ページ表は最近傍、色はsRGB/線形filter、地形はNoColorSpace/線形filter、
+全てmipmap無効という初期値を一箇所へ固定し、非対応機能を全球baseへ戻す能力フラグをfixtureで検査する。
+これは実GPU配列層やTSLの標本化nodeを作る前の境界であり、`DataArrayTexture`、実GPU capability検査、
+ページ表swap、base画像への実material接続は未完了として残す。
 
 ### 実装段D: `CelestialSurface`とEarth entityの接続（共通contract完了）
 
@@ -846,6 +852,11 @@ ERA5 1991–2020月平均の2m気温・総雲量。
 
 ### A2: 実Three.js GPU material接続をfixtureで完成する
 
+**実装方針の更新（2026-09-09）**: Three.js WebGPUの内部的な配列層APIへ先に依存すると、対応機能の
+検査前にゲームへ漏れ、fallbackを壊す危険がある。このため第一段を公開APIだけのtexture設定・能力フラグ
+contractとして固定し、実`DataArrayTexture`/TSL nodeと公開swapは別commitへ分離する。後者を実ブラウザで
+検証できない場合は、設定contractを保持したまま全球base固定でA3へ進む。
+
 1. `src/render/earth-surface-gpu-three.ts`を追加し、`EarthSurfaceGpuBackend`へ`DataArrayTexture`の
    色層・地形層とページ表のswapを実装する。層の書込みは非公開層だけへ行い、既存fake backendの
    reservation検査を通す。
@@ -893,6 +904,12 @@ fixture baseへ戻したままにする。
 **停止条件**: Earth切替後に実データが無い環境で単色または欠損になる場合は、source注入を戻してfallbackを
 維持する。実データの品質判定はA5で行い、game testを画像品質の代替にしない。
 
+**追加実装状況（2026-09-09）**: `ba883db8`で、`EarthSurface`へ任意のresident coordinatorを注入できる
+境界を追加した。`syncFrame`は既存fallbackを同期した後、同じframeから`EarthSurfaceView`と世代付きleaseを
+coordinatorへ渡し、次フレーム・hide・disposeでAbortする。`earth-system.ts`の地球だけを開発用source付き
+`EarthSurface`へ包み、実テクスチャは従来のfallbackを使うため月・気候・雲は変更しない。coordinatorの実生成、
+実GPU公開、実manifest URLは未完了で、A6のproduction検査と合わせて後続実装する。
+
 ### A4: 月別気候入力を雲・大気・影へ接続する
 
 1. `ClimateMap`を単月のRGBA入力として整理し、`MonthlyClimateMap`が12 URLのうち当月・翌月だけを
@@ -915,6 +932,12 @@ fixture baseへ戻したままにする。
 **停止条件**: 12枚のうち1枚でもdatasetId・符号化範囲・向きが異なる場合は切替を中断し、旧ClimateMapへ
 戻す。A4は気候の見た目を改善する段であり、天気モデルの物理検証を代替しない。
 
+**追加実装状況（2026-09-09）**: `d472e694`で、`ClimateMapLike`を導入し、単月入力と月別入力が同じ
+雲生成境界を使えるようにした。`MonthlyClimateMap`は12枚を保持するが、要求するのは当月・翌月の2枚だけで、
+同一UVのRGBAを線形補間し、R/G/B/Aを気温・雲量・ETOPO正高・GSHHG陸地被覆率へ固定範囲で復号する。
+`GeneratedCloudField.syncClimateMonth`で月の選択を明示的に渡せる。`earth-system.ts`の実URL切替、ERA5生成、
+大気・影への実データ配線、旧気候画像の除去は未完了である。
+
 ### A5: render-labで画像とmetricsを固定する
 
 1. `tools/render-lab/earth-surface-cases.ts`へ、ヒマラヤ200kmを標準とする50km/2,000km、赤道、
@@ -936,6 +959,12 @@ fixture baseへ戻したままにする。
 **合格条件**: 欠損・未到着・永久失敗がmetricsへ明示され、画像だけで成功と誤認できない。標準ケースで
 親fallbackから詳細へ移る位置が固定され、LOD往復、色の段差、法線の反転、海岸の鏡面帯が発生しない。
 
+**追加実装状況（2026-09-09）**: `5d735ecb`で、既存render-labのEarth 5ケースを専用に撮影する
+`tools/render-lab-earth-surface.mjs`と、`.render-lab/earth-surface-shots/metrics.json`へPNGのSHA-256・
+バイト長・viewport・ケース順を保存する入口を追加した。隣接8bit差分、RGBA有限値/範囲、metricsの正規化は
+`earth-surface-metrics.ts`と解析テストで固定する。実GPUタイルの到着待ち、GBuffer撮影、p95性能計測、
+実ブラウザでの撮影は未実施で、画像を自動合格にしない。
+
 ### A6: 公開build・配信・clean checkout検査を行う
 
 1. `EARTH_SURFACE_BASE_URL`、datasetId、manifest hashをwebpackのDefinePluginへ渡し、開発用localhostと
@@ -951,6 +980,11 @@ fixture baseへ戻したままにする。
 
 **合格条件**: 異なるdatasetIdの資源混在、manifest改変、タイルhash不一致、公開URL未設定をすべて拒否し、
 同一版のbundleだけがローカル配信から読み込める。mainへ送る場合のみ全層テストと本番buildを追加する。
+
+**追加実装状況（2026-09-09）**: `51454406`で、webpackの`.bin`/`.bin.gz` asset処理、
+`EARTH_SURFACE_BASE_URL`のDefinePlugin境界、HTTPS/localhost/datasetIdを検査するrelease-checkを追加する。
+通常の開発buildは空URLを許容し、明示したrelease-checkだけが公開URLを必須にする。実データbundleの配置、
+CI secret/originの設定、ゲーム起動時のmanifest fetchは未完了である。
 
 ### 実装のコミット境界とレビュー順
 
