@@ -329,16 +329,18 @@ export class AtmosphereIntegrator {
       const farSide = peak.add(segment.far.sub(peak).mul(farEase));
       return select(lessThan(fraction, split), nearSide, farSide);
     };
+    // Blue noiseは不連続な昼夜境界の帯を散らす用途に限る。連続雲が有効なときに同じ位相を
+    // ずらすと、薄い密度profileの積分が画素ごとに欠け、雲の消失と点状ノイズになる。
+    const jitter = select(
+      and(greaterThan(this.blueNoiseEnabled, 0.5), not(this.cloudLayers.hasVolume())),
+      this.blueNoise.atScreenPixel(), float(0),
+    );
     const march = rayMarch(
       this.slot.steps, distanceAt,
       (distance) => this.mediumAt(
         rayOrigin.add(rayDir.mul(distance)), rayDir, pixelAngle.mul(distance),
       ),
-      select(
-        greaterThan(this.blueNoiseEnabled, 0.5),
-        this.blueNoise.atScreenPixel(),
-        float(0),
-      ),
+      jitter,
     );
     return { transmittance: march.transmittance, inscatter: march.radiance };
   }
