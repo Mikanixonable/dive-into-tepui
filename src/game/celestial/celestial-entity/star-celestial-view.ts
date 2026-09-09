@@ -38,20 +38,17 @@ export class StarCelestialView extends CelestialView {
     scene.add(this.outline.line);
   }
 
-  // 恒星の見た目と輪郭円をまとめて表示/非表示にする。
-  public setVisible(visible: boolean): void {
-    this.star?.setVisible(visible);
-    this.outline.line.visible = visible;
-  }
-
   // displayTime 時点の実位置へ恒星を置く。
   public sync(
     motion: CelestialMotion, fo: FloatingOrigin, displayTime: number,
     cameraSystem: CameraSystem, _star: StellarLightSource | null,
-    graphics: GraphicsSettingsData, style: RenderStyle,
+    graphics: GraphicsSettingsData, style: RenderStyle, visible: boolean,
   ): void {
     const star = this.star;
-    if (star === null || (!star.visible && !this.outline.line.visible)) return;
+    if (star === null) return;
+    star.setVisible(visible);
+    this.outline.line.visible = visible;
+    if (!visible) return;
     const pos = motion.stateAt(displayTime).r;
     const p = fo.RtoThreeV3(pos);
     const radius = motion.def.radius;

@@ -45,16 +45,14 @@ export abstract class CelestialView {
   public get lightSourceAlbedo(): Albedo | null { return null; }
   public get surfaceTextureUrl(): string | null { return null; }
   public rings(_motion: CelestialMotion): RingSystemDef | null { return null; }
-  public get referenceLine(): EllipseLine | null { return this.referenceLineValue; }
 
   public abstract build(
     motion: CelestialMotion, scene: THREE.Scene, ringMaterials: RingMaterials,
   ): void;
-  public abstract setVisible(visible: boolean): void;
   public abstract sync(
     motion: CelestialMotion, floatingOrigin: FloatingOrigin, displayTime: number,
     cameraSystem: CameraSystem, star: StellarLightSource | null,
-    graphics: GraphicsSettingsData, style: RenderStyle,
+    graphics: GraphicsSettingsData, style: RenderStyle, visible: boolean,
   ): void;
 
   // 大気の表示候補を、描画座標・画面密度・雲殻を含む renderer 入力へ変換する。
@@ -95,15 +93,19 @@ export abstract class CelestialView {
 
   public syncMapOverlay(
     _motion: CelestialMotion, _floatingOrigin: FloatingOrigin, _displayTime: number,
-    _cameraSystem: CameraSystem, _markers: MarkerSlots | null,
+    _cameraSystem: CameraSystem, _markers: MarkerSlots,
     _celestialBodies: readonly CelestialBody[], _visible: boolean,
   ): void {}
 
   // 表示時刻の接触軌道要素と、カメラからの距離で決まる濃さへ参照軌道線を同期する。
   public syncReferenceLine(
     motion: CelestialMotion, scene: THREE.Scene, simTime: number, floatingOrigin: FloatingOrigin,
-    camera: THREE.Camera, cameraPos: Vec3,
+    camera: THREE.Camera, cameraPos: Vec3, visible: boolean,
   ): void {
+    if (!visible) {
+      this.disposeReferenceLine();
+      return;
+    }
     const opacity = this.referenceLineOpacityFrom(motion, cameraPos, simTime);
     if (this.referenceLineValue === null) {
       const color = motion.kind === 'satellite'
@@ -121,7 +123,12 @@ export abstract class CelestialView {
     this.referenceLineValue.setOpacity(opacity);
   }
 
-  public removeReferenceLine(): void {
+  // 現在描画している参照軌道線を、当たり判定用の ECI 点列として読み出す。
+  public referenceLineSamples(count: number): readonly Vec3[] {
+    return this.referenceLineValue?.samplePoints(count) ?? [];
+  }
+
+  private disposeReferenceLine(): void {
     if (this.referenceLineValue === null) return;
     this.referenceLineValue.line.removeFromParent();
     this.referenceLineValue.dispose();
@@ -129,7 +136,7 @@ export abstract class CelestialView {
   }
 
   public dispose(): void {
-    this.removeReferenceLine();
+    this.disposeReferenceLine();
     this.disposeContents();
   }
 

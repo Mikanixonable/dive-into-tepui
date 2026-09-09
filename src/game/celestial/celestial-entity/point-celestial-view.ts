@@ -118,19 +118,18 @@ export class PointCelestialView extends CelestialView {
     this.mapOverlay?.build(scene);
   }
 
-  // 実体・輝点・環をまとめて出す/消す。
-  public setVisible(visible: boolean): void {
-    this.group.visible = visible;
-    this.billboard.mesh.visible = visible;
-    this.ring?.setVisible(visible);
-  }
-
   // displayTime 時点の位置へ実体メッシュか輝点ビルボードのどちらかを同期する(常に片方は隠す)。
   public sync(
     motion: CelestialMotion, fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
     star: StellarLightSource | null, graphics: GraphicsSettingsData, style: RenderStyle,
+    visible: boolean,
   ): void {
-    if (!this.group.visible && !this.billboard.mesh.visible) return;
+    this.group.visible = visible;
+    if (!visible) {
+      this.billboard.hide();
+      this.ring?.setVisible(false);
+      return;
+    }
     const pos = motion.stateAt(displayTime).r;
     const rings = this.rings(motion);
     const outerRadius = rings === null
@@ -200,7 +199,7 @@ export class PointCelestialView extends CelestialView {
   // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期する。
   public syncMapOverlay(
     motion: CelestialMotion, fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
-    markers: MarkerSlots | null, celestialBodies: readonly CelestialBody[], visible: boolean,
+    markers: MarkerSlots, celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
     this.mapOverlay?.sync(motion, displayTime, fo, cameraSystem, markers, celestialBodies, visible);
   }

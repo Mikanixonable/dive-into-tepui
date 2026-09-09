@@ -38,9 +38,7 @@ export class LinePickables {
     this.items.length = 0;
     const { frame, displayTime } = displayWindow;
 
-    for (const { id, line } of this.celestialSystem.referenceEllipseLines) {
-      const points = line.samplePoints(ORBIT_PICK_SAMPLES);
-      if (points.length < 2) continue;
+    for (const { id, points } of this.celestialSystem.referenceOrbitSamples(ORBIT_PICK_SAMPLES)) {
       this.items.push({ key: `orbit-body:${id}`, kind: 'orbit-body', method: 'analytic', ownerKeys: [id], points });
     }
 
