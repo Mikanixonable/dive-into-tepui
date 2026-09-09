@@ -82,4 +82,15 @@ export function register(): void {
     assert.ok(third > second);
     climate.dispose();
   });
+
+  test('monthly climate: source差し替えは旧12枚を解放する', () => {
+    const textures = maps();
+    const climate = new MonthlyClimateMap(textures);
+    climate.setMonth(11, 0.5);
+    const generation = climate.generation;
+    climate.replaceUrls(Array.from({ length: 12 }, (_, index) => `https://example.test/${index}.png`));
+    assert.ok(climate.generation >= generation);
+    assert.ok(textures.every((value) => value.disposeCount === 1));
+    climate.dispose();
+  });
 }
