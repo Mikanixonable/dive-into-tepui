@@ -4,7 +4,7 @@ import {
   CloudAtmosphereRenderer, type CloudSpecies, type CloudVolumeMedium,
 } from './cloud-atmosphere-renderer';
 import type { CloudLodMode } from '../cloud/cloud-field-sampler';
-import type { FloatNode, Vec3Node } from '../tsl-types';
+import type { BoolNode, FloatNode, Vec3Node } from '../tsl-types';
 
 export class AtmosphereCloudLayers {
   private readonly clouds = new CloudAtmosphereRenderer();
@@ -20,6 +20,8 @@ export class AtmosphereCloudLayers {
   public setLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
     this.clouds.setLodSampling(mode, fixedLevel);
   }
+
+  public hasVolume(): BoolNode { return this.clouds.hasVolume(); }
 
   public mediumAt(
     offset: Vec3Node, rayDir: Vec3Node, sunDir: Vec3Node, sunRadiance: Vec3Node,
