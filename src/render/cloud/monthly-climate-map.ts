@@ -19,6 +19,8 @@ import {
 import type { ClimateMapLike } from './climate-map';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 
+export type ClimateUvAt = (direction: Vec3Node) => Vec2Node;
+
 export const MONTHS_PER_YEAR = 12;
 const SLOPE_STEP = 0.02;
 const EARTH_RADIUS_METERS = 6_371_000;
@@ -96,15 +98,18 @@ export class MonthlyClimateMap implements ClimateMapLike {
   private observedMonth = -1;
   private observedBlend = -1;
 
-  public static fromDeferredUrls(urls: readonly string[]): MonthlyClimateMap {
+  public static fromDeferredUrls(urls: readonly string[], uvAt?: ClimateUvAt): MonthlyClimateMap {
     if (urls.length !== MONTHS_PER_YEAR) {
       throw new Error(`Monthly climate requires ${MONTHS_PER_YEAR} URLs`);
     }
-    return new MonthlyClimateMap(urls.map(deferredTexture));
+    return new MonthlyClimateMap(urls.map(deferredTexture), uvAt);
   }
 
   // 実GPUを使わない解析テストや別の入力供給元は、DeferredTextureと同じ小さな境界を注入できる。
-  public constructor(private readonly maps: readonly MonthlyClimateTexture[]) {
+  public constructor(
+    private readonly maps: readonly MonthlyClimateTexture[],
+    private readonly uvAt: ClimateUvAt = equirectUvFromDirection,
+  ) {
     if (maps.length !== MONTHS_PER_YEAR) {
       throw new Error(`Monthly climate requires ${MONTHS_PER_YEAR} textures`);
     }
@@ -176,7 +181,7 @@ export class MonthlyClimateMap implements ClimateMapLike {
   }
 
   private sample(direction: Vec3Node): Vec4Node {
-    const uv = equirectUvFromDirection(direction);
+    const uv = this.uvAt(direction);
     const current = texture(this.maps[this.monthIndex]!.texture, uv);
     const next = texture(this.maps[(this.monthIndex + 1) % MONTHS_PER_YEAR]!.texture, uv);
     return mix(current, next, this.blendNode) as Vec4Node;
