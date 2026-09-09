@@ -23,6 +23,7 @@ export interface EarthSurfaceClimateEncoding {
   readonly cloudFraction: EarthSurfaceClimateRange;
   readonly orthometricElevation: EarthSurfaceClimateRange;
   readonly landFraction: EarthSurfaceClimateRange;
+  readonly waterOrthometricElevationM: number;
 }
 
 export interface EarthSurfaceAssetManifest {
@@ -62,6 +63,9 @@ export function earthSurfaceSourceFromManifest(
     if (!Number.isFinite(range.min) || !Number.isFinite(range.max) || range.min >= range.max) {
       throw new Error('Invalid Earth surface climate encoding');
     }
+  }
+  if (manifest.climateEncoding.waterOrthometricElevationM !== 0) {
+    throw new Error('Earth surface water orthometric elevation must be 0');
   }
   if (manifest.climateEncoding.temperatureK.min !== 180 || manifest.climateEncoding.temperatureK.max !== 330
     || manifest.climateEncoding.cloudFraction.min !== 0 || manifest.climateEncoding.cloudFraction.max !== 1

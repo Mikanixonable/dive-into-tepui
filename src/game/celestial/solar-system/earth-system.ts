@@ -1,5 +1,6 @@
 // 地球系(地球・月)。静的事実・運動・見た目を1体につき1箇所で組む。
 import * as THREE from 'three/webgpu';
+import type { WebGPURenderer } from 'three/webgpu';
 import earthTextureUrl from '../../../assets/earth.jpg';
 import climateTextureUrl from '../../../assets/earth-climate.png';
 import earthSmoothnessUrl from '../../../assets/earth-smoothness.png';
@@ -18,6 +19,18 @@ import {
 import { Aurora, type AuroraOptics } from '../../../render/aurora';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import { EarthSurface, EarthSurfaceContext } from '../../../render/earth-surface';
+import type { EarthSurfaceStatus } from '../../../render/earth-surface';
+import { EarthSurfaceResidentCoordinator } from '../../../render/earth-surface-resident';
+import type { EarthSurfaceColorToRgba8 } from '../../../render/earth-surface-resident';
+import { EarthSurfaceTileRequestQueue } from '../../../render/earth-surface-request';
+import { EarthSurfaceTiles } from '../../../render/earth-surface-tiles';
+import { EarthSurfaceGpuAdapter } from '../../../render/earth-surface-gpu';
+import { createEarthSurfaceGpuThree, type EarthSurfaceGpuThreeBackendLike } from '../../../render/earth-surface-gpu-three';
+import {
+  bootstrapEarthSurface,
+  type EarthSurfaceBootstrapOptions,
+  type EarthSurfaceBootstrapResult,
+} from './earth-surface-runtime';
 import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
 import { ClimateMap } from '../../../render/cloud/climate-map';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
@@ -186,9 +199,10 @@ export const EARTH_SURFACE_FIXTURE_SOURCE = {
     cloudFraction: { min: 0, max: 1 },
     orthometricElevation: { min: -1000, max: 9000 },
     landFraction: { min: 0, max: 1 },
+    waterOrthometricElevationM: 0,
   },
   baseUrl: 'https://example.test/earth-surface/',
-  manifestUrl: 'https://example.test/earth-surface/manifest.json',
+  manifestUrl: 'https://example.test/earth-surface/earth-surface.json',
   tileIndexUrl: 'https://example.test/earth-surface/tile-index.json',
   baseColorUrl: 'https://example.test/earth-surface/base-color.jpg',
   baseTerrainUrl: 'https://example.test/earth-surface/base-terrain.bin.gz',
@@ -196,6 +210,108 @@ export const EARTH_SURFACE_FIXTURE_SOURCE = {
     { length: 12 }, (_, month) => `https://example.test/earth-surface/climate-${month + 1}.png`,
   ),
 } satisfies EarthSurfaceSource;
+
+export interface EarthSurfaceFactoryOptions extends EarthSurfaceBootstrapOptions {
+  readonly renderer?: WebGPURenderer | null;
+  readonly colorToRgba8?: EarthSurfaceColorToRgba8;
+  readonly decodeImage?: (bytes: Uint8Array, signal?: AbortSignal) => Promise<unknown>;
+}
+
+export interface EarthSurfaceFactoryResult {
+  readonly surface: EarthSurface;
+  readonly state: EarthSurfaceStatus;
+  readonly bootstrap: EarthSurfaceBootstrapResult;
+}
+
+export interface EarthSurfaceRuntimeHandle {
+  readonly surface: EarthSurface;
+  readonly ready: Promise<EarthSurfaceFactoryResult>;
+}
+
+function fallbackSurface(status: EarthSurfaceStatus = 'loading'): EarthSurface {
+  return new EarthSurface(
+    new EarthSurfaceContext(EARTH_SURFACE_FIXTURE_SOURCE),
+    CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl),
+    null,
+    status,
+  );
+}
+
+function coordinatorFor(
+  bootstrap: EarthSurfaceBootstrapResult, options: EarthSurfaceFactoryOptions,
+): { readonly coordinator: EarthSurfaceResidentCoordinator | null; readonly state: EarthSurfaceStatus } {
+  if (bootstrap.state !== 'ready' || options.renderer === null
+    || options.renderer === undefined || bootstrap.tileSource === null) {
+    return { coordinator: null, state: bootstrap.state === 'error' ? 'error' : 'fallback' };
+  }
+  const queue = new EarthSurfaceTileRequestQueue(bootstrap.tileSource, {
+    fetchImpl: options.fetchImpl,
+    decodeImage: options.decodeImage,
+  });
+  const gpu = new EarthSurfaceGpuAdapter(createEarthSurfaceGpuThree(
+    options.renderer.backend as unknown as EarthSurfaceGpuThreeBackendLike,
+  ));
+  if (gpu.mode === 'base') {
+    queue.dispose();
+    gpu.dispose();
+    return { coordinator: null, state: 'fallback' };
+  }
+  return {
+    coordinator: new EarthSurfaceResidentCoordinator({
+      tiles: new EarthSurfaceTiles(),
+      queue,
+      gpu,
+      colorToRgba8: options.colorToRgba8 ?? defaultEarthSurfaceColorToRgba8,
+    }),
+    state: 'ready',
+  };
+}
+
+// 地球systemは同期APIのまま、base fallbackを即時にシーンへ渡す。manifest/GPUが
+// 準備できたときだけ同じEarthSurfaceへcoordinatorとsourceをattachする。
+export function createEarthSurfaceRuntime(
+  options: EarthSurfaceFactoryOptions = {},
+): EarthSurfaceRuntimeHandle {
+  const surface = fallbackSurface();
+  const ready = bootstrapEarthSurface({
+    ...options,
+    fallback: options.fallback ?? EARTH_SURFACE_FIXTURE_SOURCE,
+  }).then((bootstrap) => {
+    const source = bootstrap.source ?? EARTH_SURFACE_FIXTURE_SOURCE;
+    const connection = coordinatorFor(bootstrap, options);
+    surface.attach(source, connection.coordinator, connection.state);
+    return { surface, state: connection.state, bootstrap };
+  }).catch((error: unknown) => {
+    const fallback = options.fallback ?? EARTH_SURFACE_FIXTURE_SOURCE;
+    surface.attach(fallback, null, 'error');
+    return {
+      surface, state: 'error' as const,
+      bootstrap: { state: 'error' as const, source: fallback, tileSource: null, error: error instanceof Error ? error : new Error(String(error)) },
+    };
+  });
+  return { surface, ready };
+}
+
+// WebGPU/manifestがそろった場合だけ要求coordinatorを組み、その他は既存の画像球を
+// そのまま返す。実配信物が無い開発環境でもゲームの構築を待たせない境界である。
+export async function createEarthSurface(
+  options: EarthSurfaceFactoryOptions = {},
+): Promise<EarthSurfaceFactoryResult> {
+  return createEarthSurfaceRuntime(options).ready;
+}
+
+async function defaultEarthSurfaceColorToRgba8(color: unknown): Promise<Uint8Array> {
+  if (color instanceof Uint8Array) return color;
+  if (typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') {
+    throw new Error('Earth surface color conversion is unavailable');
+  }
+  if (!(color instanceof ImageBitmap)) throw new Error('Earth surface color is not an ImageBitmap');
+  const canvas = new OffscreenCanvas(color.width, color.height);
+  const context = canvas.getContext('2d');
+  if (context === null) throw new Error('Earth surface 2D canvas is unavailable');
+  context.drawImage(color, 0, 0);
+  return new Uint8Array(context.getImageData(0, 0, color.width, color.height).data);
+}
 
 // 両極それぞれ2層のカーテン。同じ極の層は geomSeed を揃えて平行にし、半径・緯度・明滅を
 // ずらして厚みを出す。
@@ -219,10 +335,7 @@ export function earthSystem(
   // 雲の場は殻が持ち、地表・影・大気の殻はその実体を借りて読む。
   const climate = ClimateMap.fromDeferredUrl(climateTextureUrl);
   const cumulus = new CloudPresentation(GeneratedCloudField.global(climate), R_EARTH_EQ);
-  const earthSurface = new EarthSurface(
-    new EarthSurfaceContext(EARTH_SURFACE_FIXTURE_SOURCE),
-    CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl),
-  );
+  const earthSurface = createEarthSurfaceRuntime().surface;
   return {
     earth: new PointEntity(
       earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
