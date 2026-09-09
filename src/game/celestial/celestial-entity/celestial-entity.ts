@@ -115,7 +115,7 @@ export class CelestialEntity implements ObjectPickable {
     const def = motion.def;
     const rows: PropertyRow[] = [];
     if (viewer !== null) {
-      const dist = len(sub(this.posAt(displayTime), viewer.state.r));
+      const dist = len(sub(this.posAt(displayTime), viewer.motion.state.r));
       rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(dist) });
     }
     const kindLabel = motion.kind === 'star' ? '恒星' : motion.kind === 'planet' ? '惑星' : '衛星';

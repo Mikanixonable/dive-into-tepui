@@ -97,7 +97,7 @@ export class ObjectPickables {
     for (const node of this.navTarget.pickables()) append(node);
     for (const apsis of this.planDisplay.apsisMarkers) append(apsis);
     for (const e of this.roster.all()) {
-      for (const node of e.equatorNodePickables()) append(node);
+      for (const node of e.view.equatorNodePickables()) append(node);
     }
   }
 }

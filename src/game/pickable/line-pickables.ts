@@ -73,18 +73,22 @@ export class LinePickables {
   private addShipOrbit(
     entity: DynamicEntity, frame: ReferenceFrame, displayTime: number, frameAnchors: FrameAnchorSource,
   ): void {
-    if (!entity.alive) return;
+    if (!entity.motion.alive) return;
     let method: LineCalcMethod;
     let points: Vec3[];
-    if (entity.orbitLine !== null) {
+    if (entity.view.orbitLine !== null) {
       method = 'analytic';
-      points = [...entity.orbitLine.line.samplePoints(ORBIT_PICK_SAMPLES)];
-    } else if (entity.predictedLine !== null || entity.actualLine !== null) {
+      points = [...entity.view.orbitLine.line.samplePoints(ORBIT_PICK_SAMPLES)];
+    } else if (entity.view.predictedLine !== null || entity.view.actualLine !== null) {
       method = 'predicted';
       const frames = this.celestialSystem.frames;
       points = [
-        ...(entity.actualLine?.samplePoints(ORBIT_PICK_SAMPLES, frame, displayTime, frames, frameAnchors) ?? []),
-        ...(entity.predictedLine?.samplePoints(ORBIT_PICK_SAMPLES, frame, displayTime, frames, frameAnchors) ?? []),
+        ...(entity.view.actualLine?.samplePoints(
+          ORBIT_PICK_SAMPLES, frame, displayTime, frames, frameAnchors,
+        ) ?? []),
+        ...(entity.view.predictedLine?.samplePoints(
+          ORBIT_PICK_SAMPLES, frame, displayTime, frames, frameAnchors,
+        ) ?? []),
       ];
     } else {
       return;

@@ -37,7 +37,9 @@ export class LeadMarkers {
     const targets: CombatTarget[] = [];
     if (target && targetsArray.includes(target)) targets.push(target);
     for (const tgt of targets) {
-      const lead = leadPoint(tgt.state, player.state, player.averageMuzzleVelocity, LEAD_MAX_TIME);
+      const lead = leadPoint(
+        tgt.motion.state, player.motion.state, player.averageMuzzleVelocity, LEAD_MAX_TIME,
+      );
       if (lead === null) continue;
       // 主照準とは反対向き（逆三角形方向）の三尖星。線だけで描き、中央に
       // 小さな切り欠きを残すことで、敵マーカーや照準と識別しやすくする。

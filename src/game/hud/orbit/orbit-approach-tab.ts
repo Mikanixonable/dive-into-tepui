@@ -83,7 +83,7 @@ export class ApproachTab implements AnalysisTab {
     if (target === null) return false;
     const { celestialSystem } = game;
     return sharedAttractor(
-      entity, target, celestialSystem.celestialMotions, celestialSystem, entity.state.t,
+      entity, target, celestialSystem.celestialMotions, celestialSystem, entity.motion.state.t,
     ) !== null;
   }
 
@@ -106,7 +106,7 @@ export class ApproachTab implements AnalysisTab {
   ): void {
     const { celestialSystem } = game;
     const series = target === null ? null : approachSeries(
-      entity, target, celestialSystem.celestialMotions, celestialSystem, entity.state.t,
+      entity, target, celestialSystem.celestialMotions, celestialSystem, entity.motion.state.t,
       SAMPLE_SPAN_SEC, sampleCountFor(this.chart.element) * SAMPLE_MULTIPLIER,
     );
     // 同じ主天体を周回していても、相手の周期が求まらない(双曲線軌道)なら位相差は測れない。

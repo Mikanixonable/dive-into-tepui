@@ -132,7 +132,7 @@ export class CreativeStage extends Stage {
   // 操作艦の弾薬を満載にする。操作艦がいなければトーストで知らせる。
   private refillShipAmmo(): void {
     const player = this.ship;
-    if (player === null || !player.alive) {
+    if (player === null || !player.motion.alive) {
       this._hud.hint('操作艦がいないため弾薬を補充できません');
       return;
     }
@@ -142,7 +142,7 @@ export class CreativeStage extends Stage {
   // 操作艦の RCS 燃料を満タンにする。操作艦がいなければトーストで知らせる。
   private refillShipRcsFuel(): void {
     const player = this.ship;
-    if (player === null || !player.alive) {
+    if (player === null || !player.motion.alive) {
       this._hud.hint('操作艦がいないためRCS燃料を補充できません');
       return;
     }
@@ -152,15 +152,17 @@ export class CreativeStage extends Stage {
   // shape で選んだ形の敵を1体、自機の前方へ出す。操作艦がいなければトーストで知らせる。
   private spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void {
     const player = this.ship;
-    if (player === null || !player.alive) {
+    if (player === null || !player.motion.alive) {
       this._hud.hint('操作艦がいないため敵をスポーンできません');
       return;
     }
     // 自機の前方、同じ速度で置く。
     const color = Number(colorValue);
-    const forward = qRotate(player.att.q, LOCAL_FORWARD);
-    const position = addScaled(player.state.r, forward, this.manualEnemySpawnDistance);
-    const state = kinematicState<'eci'>(player.state.t, position, player.state.v);
+    const forward = qRotate(player.motion.att.q, LOCAL_FORWARD);
+    const position = addScaled(player.motion.state.r, forward, this.manualEnemySpawnDistance);
+    const state = kinematicState<'eci'>(
+      player.motion.state.t, position, player.motion.state.v,
+    );
     const name = `MANUAL-${++this.manualEnemyCount}`;
     // 形ごとに生成器が違い、タンパク質はアセットが揃うのを待ってから出す。
     const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
@@ -185,17 +187,22 @@ export class CreativeStage extends Stage {
   // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機前方に一括スポーンする。
   private spawnProteinFormation(): void {
     const player = this.ship;
-    if (player === null || !player.alive) {
+    if (player === null || !player.motion.alive) {
       this._hud.hint('操作艦がいないため敵をスポーンできません');
       return;
     }
     // 3役はいずれも自機の前方、同じ速度から始める。
-    const forward = qRotate(player.att.q, LOCAL_FORWARD);
-    const position = addScaled(player.state.r, forward, this.manualEnemySpawnDistance);
-    const state = kinematicState<'eci'>(player.state.t, position, player.state.v);
+    const forward = qRotate(player.motion.att.q, LOCAL_FORWARD);
+    const position = addScaled(player.motion.state.r, forward, this.manualEnemySpawnDistance);
+    const state = kinematicState<'eci'>(
+      player.motion.state.t, position, player.motion.state.v,
+    );
     const name = `FORMATION-${++this.manualFormationCount}`;
     const formationId = name;
-    for (const { assetId, build } of proteinFormationSpawns(name, state, player.state.r, this.proteinDisplay, formationId, this._worldSfx, this._fx, this._scene)) {
+    for (const { assetId, build } of proteinFormationSpawns(
+      name, state, player.motion.state.r, this.proteinDisplay, formationId,
+      this._worldSfx, this._fx, this._scene,
+    )) {
       this.spawnEnemyWhenReady(proteinAssetGate(assetId), build);
     }
   }
@@ -217,7 +224,7 @@ export class CreativeStage extends Stage {
   ): void {
     super.sync(fo, cameraSystem, displayTime, visibilityPolicy);
     const ship = this.ship;
-    this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.alive);
+    this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.motion.alive);
     this.mountStageControlsPanel(cameraSystem.view === 'map');
     const form = this.placerPanel.isOpen ? this.placerPanel.getForm() : null;
     this.syncPreview(form, fo, cameraSystem, displayTime);
@@ -469,7 +476,7 @@ export class CreativeStage extends Stage {
       }
       if (!reached) continue;
       ship.plan.consumeNodesUpTo(simTime, reached);
-      ship.state = reached;
+      ship.motion.state = reached;
     }
   }
 

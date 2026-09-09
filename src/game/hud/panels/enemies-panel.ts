@@ -61,8 +61,8 @@ export class EnemiesPanel {
       }
       const primaryTarget = targeter.aliveTarget;
       const rows = this.buildEnemyRows(
-        roster.all().filter(isEnemy).filter((enemy) => enemy.alive),
-        viewer.state.r,
+        roster.all().filter(isEnemy).filter((enemy) => enemy.motion.alive),
+        viewer.motion.state.r,
         primaryTarget,
       );
       this.hasContacts = rows.length > 0;
@@ -84,7 +84,7 @@ export class EnemiesPanel {
     const singles: EnemyRow[] = [];
     const waves = new Map<number, { count: number; nearestDistanceM: number; targeted: boolean }>();
     for (const enemy of enemies) {
-      const distanceM = len(sub(enemy.state.r, viewerPositionEci));
+      const distanceM = len(sub(enemy.motion.state.r, viewerPositionEci));
       const targeted = enemy === primaryTarget;
       if (enemy.waveId === undefined) {
         singles.push({ kind: 'single', id: enemy.id, name: enemy.name, distanceM, targeted });

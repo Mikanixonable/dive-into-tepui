@@ -53,7 +53,7 @@ export class Stage0 extends Stage {
     for (let i = 0; i < STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
       this.logistics.spawnForPlayer(player, STAGE0_LOGISTICS_MIN_DIST, STAGE0_LOGISTICS_MAX_DIST);
     }
-    const enemies = generateCluster(player.state, this._worldSfx, this._fx, this._scene);
+    const enemies = generateCluster(player.motion.state, this._worldSfx, this._fx, this._scene);
     for (const enemy of enemies) this.addEnemy(enemy);
   }
   // 補給と制限時間を1フレーム分進める。

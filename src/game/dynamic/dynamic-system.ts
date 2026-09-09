@@ -6,6 +6,7 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import type { DynamicMotion } from './dynamic-motion';
 import type { EntityRoster } from './entity-roster';
 import type { EntityRegistry, SpawnGate } from './entity-registry';
 import { ENTITY_CAP, type CapKind, type EntityCountKind } from './dynamic-entity/entity-kind';
@@ -64,7 +65,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     saved?: GameSaveData,
   ) {
     this.instancedPools = new InstancedPools(scene);
-    this.simulator = new Simulator(this, celestialBodies, sections, initialSimTime);
+    this.simulator = new Simulator(this, this, this, celestialBodies, sections, initialSimTime);
     this.nanWatchdog = new NanWatchdog(notifier);
     if (saved) this.restoreFromSave(saved, notifier, worldSfx, flash, scene, markers);
   }
@@ -169,10 +170,10 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     for (let i = entities.length - 1; i >= 0; i--) {
       const entity = entities[i]!;
       const cap = entity.capKind;
-      if (cap === null || !entity.alive) continue;
+      if (cap === null || !entity.motion.alive) continue;
       const rank = live[cap] + 1;
       live[cap] = rank;
-      if (rank > ENTITY_CAP[cap]) entity.alive = false;
+      if (rank > ENTITY_CAP[cap]) entity.motion.alive = false;
     }
   }
 
@@ -186,6 +187,10 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     return this.entities;
   }
 
+  public allMotions(): readonly DynamicMotion[] {
+    return this.entities.map(entity => entity.motion);
+  }
+
   // 全エンティティの寿命判定と上限判定を行い、死亡したものを破棄・除去する。
   public cleanup(
     dt: number, simTime: number, activeStage: Stage, viewerPos: Vec3,
@@ -195,7 +200,8 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     // 判定は開始時の顔ぶれに対して行う。死の演出が破片を足すので、生配列を反復すると
     // 生まれたばかりの個体まで同じパスで判定してしまい、生成が連鎖すれば終わらなくなる。
     for (let i = 0, n = this.entities.length; i < n; i++) {
-      this.entities[i]!.checkLoss(dt, simTime, activeStage, this, viewerPos, atmosphereBodies);
+      this.entities[i]!.motion.checkLoss(
+        dt, simTime, { activeStage, registry: this }, viewerPos, atmosphereBodies);
     }
     this.enforceCaps();
     this.prune();
@@ -207,11 +213,14 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     let changed = false;
     // 所有者が回収する種別は、死亡していても残す。
     for (const x of this.entities) {
-      if (!x.alive && !x.reclaimedByOwner) {
+      if (!x.motion.alive && !x.reclaimedByOwner) {
         x.dispose();
         changed = true;
       }
-      else this.entities[w++] = x;
+      else {
+        this.entities[w] = x;
+        w++;
+      }
     }
     this.entities.length = w;
     if (changed) this.bumpCollectionRevision();
@@ -219,7 +228,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
 
   // 過去表示に要る履歴の保持時間 [s] を全エンティティへ要求する。履歴を持たない種別は無視する。
   requestHistoryDuration(sec: number): void {
-    for (const e of this.all()) e.requestHistoryDuration(sec);
+    for (const entity of this.entities) entity.motion.requestHistoryDuration(sec);
   }
 
   // 顔ぶれをどこまで進めたか。積分の先端時刻と、直前のフレームで進めた長さ [sim s]。
@@ -241,24 +250,34 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     active: Controllable | null, input: Input, operable: boolean,
     dt: number, simDt: number, canEngage: boolean, activeStage: Stage,
   ): void {
-    this.nanWatchdog.checkControlled('update(入口)', active, this.simTime, dt, this.lastSimDt);
+    this.nanWatchdog.checkControlled(
+      'update(入口)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
+    );
     this.sections.enter(SECTION.command);
     this.updateThrusts(simDt);
     this.updateControllables(active, input, operable, dt, simDt, activeStage);
     this.behaveAll(active, operable);
     this.sections.exit(SECTION.command);
-    this.nanWatchdog.checkControlled('update(指令決定)', active, this.simTime, dt, this.lastSimDt);
+    this.nanWatchdog.checkControlled(
+      'update(指令決定)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
+    );
 
     this.sections.enter(SECTION.integrate);
-    this.simulator.advance(dt, simDt, active, activeStage, canEngage, this.nanWatchdog);
+    this.simulator.advance(
+      dt, simDt, active?.motion ?? null, activeStage, canEngage, this.nanWatchdog,
+    );
     this.sections.exit(SECTION.integrate);
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全個体を見る。
-    this.nanWatchdog.checkAll('update(積分)', active, this.entities, this.simTime, dt, simDt);
+    this.nanWatchdog.checkAll(
+      'update(積分)', active?.motion ?? null, this.allMotions(), this.simTime, dt, simDt,
+    );
   }
 
   // 自分で決まる推力を持つ個体を1フレーム進める。
   private updateThrusts(simDt: number): void {
-    for (const entity of this.entities) if (entity.alive) entity.updateThrust(simDt);
+    for (const entity of this.entities) {
+      if (entity.motion.alive) entity.motion.updateCommands(simDt);
+    }
   }
 
   // 操作されうる全個体へ updateControls を1度ずつ通す。「操作対象でない」と
@@ -268,7 +287,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     dt: number, simDt: number, activeStage: Stage,
   ): void {
     for (const controllable of this.controllables) {
-      if (!controllable.alive) continue;
+      if (!controllable.motion.alive) continue;
       controllable.updateControls(
         controllable === active && operable ? input : null,
         dt,
@@ -287,14 +306,16 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     if (player === null) return;
     const enemies = this.entities.filter(isEnemy);
     for (const e of enemies) {
-      if (e.alive) e.behave(this.simTime, player, this, enemies, operable, this.celestialBodies);
+      if (e.motion.alive) {
+        e.behave(this.simTime, player, this, enemies, operable, this.celestialBodies);
+      }
     }
   }
 
   // 敵が追う自艦。操作対象が基地でも敵は止まらないので、そのときは生存中の先頭の艦を使う。
   private trackedShip(active: Controllable | null): Player | null {
     if (active instanceof Player) return active;
-    return this.entities.filter(isPlayer).find((p) => p.alive) ?? null;
+    return this.entities.filter(isPlayer).find((p) => p.motion.alive) ?? null;
   }
 
   // このフレームの表示物を同期する。何をどう出すかは個体が答えるので、ここは顔ぶれを1度だけ
@@ -307,9 +328,19 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   ): void {
     this.instancedPools.beginFrame();
     for (const e of this.entities) {
-      e.sync(
-        fo, displayTime, active, visibilityPolicy, this.instancedPools, cameraSystem, style,
-        graphics, orbitRef, frameAnchors, timeLabel);
+      e.sync({
+        floatingOrigin: fo,
+        displayTime,
+        activeId: active?.id ?? null,
+        visibilityPolicy,
+        pools: this.instancedPools,
+        cameraSystem,
+        style,
+        graphics,
+        orbitReference: orbitRef,
+        frameAnchors,
+        timeLabel,
+      });
     }
     this.instancedPools.endFrame();
   }
@@ -317,7 +348,9 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 全個体の赤道交点マーカーを求め直す。出すかどうかも、どの線の上で解くかも個体が答えるので、
   // 折れ線を組み終えた後・選択候補を組む前に1度だけ通す。
   updateEquatorNodes(inputs: EquatorNodeInputs, controlled: Controllable | null): void {
-    for (const e of this.all()) e.updateEquatorNodes(inputs, e === controlled);
+    for (const e of this.all()) {
+      e.view.updateEquatorNodes(e, e.motion, inputs, e === controlled);
+    }
   }
 
   // 保持する全エンティティと描画資源プールを、生死によらず破棄する。

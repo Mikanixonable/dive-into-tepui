@@ -42,7 +42,7 @@ export class PlanGuide {
   update(controlled: Controllable | null, simTime: number, celestialBodies: readonly CelestialBody[]): void {
     if (!controlled) return;
     const plan = controlled.plan;
-    plan.consumeNodesUpTo(simTime - NODE_EXPIRE_GRACE, controlled.state);
+    plan.consumeNodesUpTo(simTime - NODE_EXPIRE_GRACE, controlled.motion.state);
 
     const node = plan.firstNode();
     // 実行の窓に入るまでは通知しない。窓の手前では操作対象はまだ噴射前の軌道にいるので、
@@ -73,12 +73,12 @@ export class PlanGuide {
     const more = queued > 1 ? ` (+${queued - 1})` : '';
 
     // BURN マーカー: 目標速度との差分ベクトルを噴射方向として表示する。
-    const dvRem = sub(node.v, controlled.state.v);
+    const dvRem = sub(node.v, controlled.motion.state.v);
     const mag = len(dvRem);
-    const nodeDist = len(sub(node.r, controlled.state.r));
+    const nodeDist = len(sub(node.r, controlled.motion.state.r));
     const maxAccel = THROTTLE_LEVELS[THROTTLE_LEVELS.length - 1] ?? 1;
     const burnTime = maxAccel > 0 ? mag / maxAccel : 0;
-    const shipPos = path.toDisplay(controlled.state.r, simTime);
+    const shipPos = path.toDisplay(controlled.motion.state.r, simTime);
     const burnDir = path.toDisplayDir(dvRem, simTime);
     this.markers.setPosition(
       'nd', 'mk-mnode', ORBIT_POINT_GLYPH.maneuverNode, path.toDisplay(node.r, node.t), project,
@@ -113,16 +113,18 @@ export class PlanGuide {
   ): void {
     if (this.achievedNotified === node) return;
     const plan = controlled.plan;
-    const controlledCenter = strongestAttractor(controlled.state.r, celestialBodies, pivot);
+    const controlledCenter = strongestAttractor(
+      controlled.motion.state.r, celestialBodies, pivot,
+    );
     const nodeCenter = strongestAttractor(node.r, celestialBodies, pivot);
     if (controlledCenter.id !== nodeCenter.id) return;
     const targetEl = orbitalElementsOf(node, nodeCenter, pivot);
-    const controlledEl = controlled.orbitalElementsAround(controlledCenter, pivot);
+    const controlledEl = controlled.motion.orbitalElementsAround(controlledCenter, pivot);
     if (!controlledEl || !targetEl || !orbitalElementsClose(controlledEl, targetEl)) return;
     this.achievedNotified = node;
     // 計画軌道へ到達したノードは、その場で実行済みとして削除する。同時刻のノードが複数あれば
     // まとめて落ちるので、残り件数は落とした後の実数を読む。
-    plan.consumeNodesUpTo(node.t, controlled.state);
+    plan.consumeNodesUpTo(node.t, controlled.motion.state);
     const remain = plan.nodes.length;
     if (remain === 0) {
       this._notifier.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);

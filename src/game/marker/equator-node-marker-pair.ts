@@ -9,7 +9,7 @@ import { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarker } from './equator-node-marker';
 import type { MarkerSlots } from './marker-slots';
 import { ObjectPickable } from '../pickable/object-pickable';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { ProjectFn } from '../../math/projection';
@@ -24,7 +24,7 @@ export interface DisplayedPath {
 // ある個体について、いま画面に折れ線が出ているかを答える口。null は折れ線が出ていない
 // ことを意味し、その個体には解析軌道楕円が出ている。
 export interface DisplayedPathSource {
-  displayedPathOf(owner: DynamicEntity): DisplayedPath | null;
+  displayedPathOf(ownerId: string): DisplayedPath | null;
 }
 
 // 赤道交点を解くのに要る、そのフレームの材料。個体によって変わらないものだけを持ち、
@@ -41,25 +41,24 @@ export class EquatorNodeMarkerPair {
   private readonly ascending: EquatorNodeMarker;
   private readonly descending: EquatorNodeMarker;
 
-  // owner は交点を求める対象の軌道の持ち主。
-  constructor(private readonly owner: DynamicEntity, private readonly markers: MarkerSlots) {
-    this.ascending = new EquatorNodeMarker(owner.id, 'ascending');
-    this.descending = new EquatorNodeMarker(owner.id, 'descending');
+  constructor(private readonly ownerId: string, private readonly markers: MarkerSlots) {
+    this.ascending = new EquatorNodeMarker(ownerId, 'ascending');
+    this.descending = new EquatorNodeMarker(ownerId, 'descending');
   }
 
   // 交点を、この個体について画面に出ている線の上で求め直す。折れ線が出ていれば表示中の
   // 全区間が対象で、出ていなければ解析軌道楕円 — 楕円は中心天体に固定して描かれるので、
   // 交点もその天体の慣性系で表示時刻へ写す。
-  update(inputs: EquatorNodeInputs): void {
-    const path = inputs.paths.displayedPathOf(this.owner);
-    if (path !== null) this.solve(inputs, path.frame, this.owner.state, path.samples);
-    else this.solve(inputs, null, this.owner.stateAt(inputs.displayTime, inputs.celestialBodies), []);
+  update(motion: DynamicMotion, ownerName: string, inputs: EquatorNodeInputs): void {
+    const path = inputs.paths.displayedPathOf(this.ownerId);
+    if (path !== null) this.solve(inputs, ownerName, path.frame, motion.state, path.samples);
+    else this.solve(inputs, ownerName, null, motion.stateAt(inputs.displayTime, inputs.celestialBodies), []);
   }
 
   // paths(区間ごとのサンプル列、時刻昇順)が空なら state の軌道要素から求める。frame は
   // 交点位置を表示時刻へ写す座標系で、null なら中心天体の慣性系。
   private solve(
-    inputs: EquatorNodeInputs, frame: ReferenceFrame | null,
+    inputs: EquatorNodeInputs, ownerName: string, frame: ReferenceFrame | null,
     state: KinematicState | null, paths: readonly (readonly KinematicState[])[],
   ): void {
     const { displayTime, celestialBodies, frameAnchors } = inputs;
@@ -84,9 +83,9 @@ export class EquatorNodeMarkerPair {
       unbakeToDisplayPoint(unbakeTf, celestialBodies.frames.transformAt(displayFrame, t, frameAnchors), r);
 
     this.ascending.place(
-      toDisplay(crossings.asc.r, crossings.asc.t), crossings.asc.t, this.owner.name, centerName);
+      toDisplay(crossings.asc.r, crossings.asc.t), crossings.asc.t, ownerName, centerName);
     this.descending.place(
-      toDisplay(crossings.desc.r, crossings.desc.t), crossings.desc.t, this.owner.name, centerName);
+      toDisplay(crossings.desc.r, crossings.desc.t), crossings.desc.t, ownerName, centerName);
   }
 
   // 交点を出す理由が無くなったことを記録する。

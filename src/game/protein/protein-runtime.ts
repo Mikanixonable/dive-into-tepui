@@ -6,10 +6,9 @@ import type {
   ProteinHudSnapshot,
   ProteinMotionAsset,
   ProteinPhase,
-  ProteinSaveData,
   ProteinSiteDefinition,
 } from './protein-schema';
-import { ProteinCombatState } from './protein-combat-state';
+import type { ProteinCombatState } from './protein-combat-state';
 import {
   proteinAnchorOffset,
   proteinAnchorResidues,
@@ -37,9 +36,8 @@ interface ProteinBondVisual {
   readonly toSiteId: string;
 }
 
-/** タンパク質敵1体の戦闘状態と、構造ゆらぎ(ANM/OU)による見た目の変形・結合線を保つ。 */
+// タンパク質敵1体の構造ゆらぎ(ANM/OU)による見た目の変形・結合線を保つ。
 export class ProteinRuntime {
-  public readonly combat: ProteinCombatState;
   private readonly motion: ProteinMotionAsset;
   private readonly controller: ProteinMotionController;
   // 共有バッファのスロットが尽きていれば null。そのときは変形せず、静止した構造で描く。
@@ -60,14 +58,12 @@ export class ProteinRuntime {
 
   public constructor(
     root: THREE.Object3D,
-    asset: ProteinAssetDefinition,
+    private readonly combat: ProteinCombatState,
     motion: ProteinMotionAsset,
-    saved?: ProteinSaveData,
-    seedKey = asset.id,
+    seedKey = combat.asset.id,
     motionBinding?: ProteinMotionBinding | null,
   ) {
     this.root = root;
-    this.combat = new ProteinCombatState(asset, saved);
     this.motion = motion;
     this.controller = new ProteinMotionController(motion, seedKey);
     this.motionBinding = motionBinding ?? createProteinMotionBinding(

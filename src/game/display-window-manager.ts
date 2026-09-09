@@ -250,13 +250,13 @@ export class DisplayWindowManager {
   // durationSec 側のフォールバックに委ねる。
   private currentOrbitPeriod(controlled: DynamicEntity | null, simTime: number): number {
     if (!controlled) return NaN;
-    const center = strongestAttractor(controlled.state.r, this.celestialBodies.celestialMotions, simTime);
-    return controlled.orbitalElementsAround(center, simTime)?.period ?? NaN;
+    const center = strongestAttractor(controlled.motion.state.r, this.celestialBodies.celestialMotions, simTime);
+    return controlled.motion.orbitalElementsAround(center, simTime)?.period ?? NaN;
   }
 
   // 操作対象の予測軌道が表示期間のどこまで届いているかの割合(0..1)。
   private predictionCoverageRatio(controlled: DynamicEntity | null): number {
-    const end = controlled?.predicted?.state.t;
+    const end = controlled?.motion.predicted?.state.t;
     if (end === undefined || this._current.duration <= 0) return 1;
     return Math.max(0, Math.min(1, (end - this._current.simTime) / this._current.duration));
   }

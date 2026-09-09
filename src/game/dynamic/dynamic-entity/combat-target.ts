@@ -39,5 +39,5 @@ export function aliveCombatTarget(
   entities: readonly DynamicEntity[], id: string,
 ): CombatTarget | null {
   const target = combatTargetById(entities, id);
-  return target?.alive ? target : null;
+  return target?.motion.alive ? target : null;
 }

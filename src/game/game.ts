@@ -175,8 +175,10 @@ export class Game {
     const celestial = this._celestialSystem;
     const info = controlled === null ? null : orbitInfo(
       controlled,
-      autoOrbitReference(controlled.state.r, celestial.celestialMotions, controlled.state.t),
-      controlled.state.t, (id: string) => celestial.nameOf(id),
+      autoOrbitReference(
+        controlled.motion.state.r, celestial.celestialMotions, controlled.motion.state.t,
+      ),
+      controlled.motion.state.t, (id: string) => celestial.nameOf(id),
     );
     const entities = this.dynamicSystem.all();
     return {
@@ -193,7 +195,7 @@ export class Game {
       magazines: controlled?.fire?.mags ?? 0,
       money: entities.filter(isBase).reduce((sum, b) => sum + b.baseState.money, 0),
       playerCount: entities.filter(isPlayer).length,
-      enemyAliveCount: entities.filter(isEnemy).filter((e) => e.alive).length,
+      enemyAliveCount: entities.filter(isEnemy).filter((e) => e.motion.alive).length,
     };
   }
 
@@ -236,7 +238,7 @@ export class Game {
           : role === 'navTarget'
             ? this.navTarget.resolveState(this.dynamicSystem, celestialSystem, celestialSystem.celestialMotions, t)?.entity ?? null
             : this.dynamicSystem.all().find((e) => e.id === id) ?? null;
-        return entity?.alive ? entity.att.q : null;
+        return entity?.motion.alive ? entity.motion.att.q : null;
       },
       initialSave?.camera,
     );
@@ -247,8 +249,10 @@ export class Game {
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。update()/sync() の
     // 先頭で毎フレーム表示時刻を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
     this.frameAnchors = new FrameAnchors(celestialSystem, {
-      entityState: (id, t) => this.dynamicSystem.all().find((e) => e.id === id && e.alive)?.stateAt(t, celestialSystem) ?? null,
-      controlledState: (t) => this.activeControllable?.stateAt(t, celestialSystem) ?? null,
+      entityState: (id, t) => this.dynamicSystem.all()
+        .find((e) => e.id === id && e.motion.alive)
+        ?.motion.stateAt(t, celestialSystem) ?? null,
+      controlledState: (t) => this.activeControllable?.motion.stateAt(t, celestialSystem) ?? null,
       navTargetState: (bodies, t) => this.navTarget.resolveState(this.dynamicSystem, celestialSystem, bodies, t)?.state ?? null,
     });
     this.frameControls = new FrameControls(
@@ -404,7 +408,8 @@ export class Game {
     // 消費も期限切れの張り直しも起きないので、予測は伸び切ったところで止まるだけで害はない。
     this.sections.enter(SECTION.predict);
     this.predictor.update(
-      this.dynamicSystem.simTime, this.dynamicSystem.lastSimDt, activeControllable, displayWindow.duration,
+      this.dynamicSystem.simTime, this.dynamicSystem.lastSimDt,
+      activeControllable?.motion ?? null, displayWindow.duration,
       canDisplayFuture, this.planDisplay.growableArcs(),
     );
     this.sections.exit(SECTION.predict);
@@ -519,8 +524,8 @@ export class Game {
     // 3D 軌道線を軌道パネルと同じ基準で解く。
     const orbitRef = controlled
       ? this.orbitReference.resolve(
-        controlled.state.r, celestialBodies, this.navTarget,
-        this.dynamicSystem, this._celestialSystem, controlled.state.t,
+        controlled.motion.state.r, celestialBodies, this.navTarget,
+        this.dynamicSystem, this._celestialSystem, controlled.motion.state.t,
       )
       : undefined;
 
@@ -575,7 +580,9 @@ export class Game {
     return {
       ...this.dynamicSystem.perfCounts(),
       ...this.predictor.perfCounts(
-        this.dynamicSystem.simTime, this.displayWindowManager.current.duration, this.activeControllable),
+        this.dynamicSystem.simTime, this.displayWindowManager.current.duration,
+        this.activeControllable?.motion ?? null,
+      ),
       ...this.planDisplay.perfCounts(),
       ...this._celestialSystem.perfCounts(),
       ...this.viewManager.activeView.perfCounts(),

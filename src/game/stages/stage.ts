@@ -234,7 +234,7 @@ export abstract class Stage {
   protected get ship(): Player | null {
     const controlled = this._controlSelection.current;
     if (controlled instanceof Player) return controlled;
-    return this._dynamicSystem.all().filter(isPlayer).find((p) => p.alive) ?? null;
+    return this._dynamicSystem.all().filter(isPlayer).find((p) => p.motion.alive) ?? null;
   }
 
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、

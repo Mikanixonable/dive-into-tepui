@@ -78,7 +78,10 @@ export class WaveAttack {
   // ウェーブ番号を進め、敵を生成して addEnemy 経由でエンティティ管理に登録する。
   public spawnWave(player: Player, addEnemy: (enemy: Enemy) => void, forcedPattern?: 'linear' | 'random'): void {
     const wave = ++this._waveCount;
-    const enemies = generateWave(player.state, wave, this.attractors, this.worldSfx, this.fx, this.scene, forcedPattern);
+    const enemies = generateWave(
+      player.motion.state, wave, this.attractors,
+      this.worldSfx, this.fx, this.scene, forcedPattern,
+    );
     for (const enemy of enemies) addEnemy(enemy);
   }
 
@@ -137,8 +140,8 @@ export class WaveAttack {
 // 自機から maxRange より離れた敵を交戦圏外として消す。
 function despawnOutOfRangeEnemies(enemies: readonly Enemy[], player: Player, maxRange: number, simTime: number, activeStage: Stage): void {
   for (const enemy of enemies) {
-    if (!enemy.alive) continue;
-    if (len(sub(enemy.state.r, player.state.r)) <= maxRange) continue;
+    if (!enemy.motion.alive) continue;
+    if (len(sub(enemy.motion.state.r, player.motion.state.r)) <= maxRange) continue;
     enemy.despawn(simTime, activeStage);
   }
 }
@@ -147,7 +150,7 @@ function despawnOutOfRangeEnemies(enemies: readonly Enemy[], player: Player, max
 function countActiveWaveGroups(enemies: readonly Enemy[]): number {
   const activeWaves = new Set<number>();
   for (const enemy of enemies) {
-    if (enemy.alive && enemy.waveId !== undefined) activeWaves.add(enemy.waveId);
+    if (enemy.motion.alive && enemy.waveId !== undefined) activeWaves.add(enemy.waveId);
   }
   return activeWaves.size;
 }
