@@ -1,7 +1,8 @@
 // 単位方向とテクスチャの uv の対応。雲の場を焼く側も読む側も、往復はこの契約だけを通る —
 // どの図法で持っているかを、写しの器も読み手も知らない。
 import * as THREE from 'three/webgpu';
-import { asin, atan, clamp, cos, dot, float, max, sin, sqrt, step, uniform, vec2, vec3 } from 'three/tsl';
+import { asin, atan, clamp, cos, dot, float, max, normalize, sin, sqrt, step, uniform, vec2, vec3 } from 'three/tsl';
+import { earthSurfaceUvFromRadialNode } from '../earth-surface-coordinate';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 
 export type FieldProjection = {
@@ -62,6 +63,39 @@ export class EquirectProjection implements FieldProjection {
   }
 
   // 全球を覆うので、どの uv も値を持つ。
+  public insideAt(): FloatNode {
+    return float(1);
+  }
+}
+
+// 正距円筒の地理UVを、指定した半軸の回転楕円体上の放射方向へ写す。地球の雲場は、
+// climate mapを読むUVと同じ楕円体の地理座標で焼いて読む。
+export class EllipsoidEquirectProjection implements FieldProjection {
+  public readonly width: number;
+  public readonly wrapS: THREE.Wrapping = THREE.RepeatWrapping;
+  public readonly wrapT: THREE.Wrapping = THREE.ClampToEdgeWrapping;
+  public readonly texelAngle: FloatNode;
+  public readonly texelAngleValue: number;
+
+  public constructor(public readonly height: number, private readonly axes: Vec3Node) {
+    this.width = height * 2;
+    this.texelAngleValue = Math.PI / height;
+    this.texelAngle = float(this.texelAngleValue);
+  }
+
+  public directionAt(uv: Vec2Node): Vec3Node {
+    const longitude = uv.x.sub(0.5).mul(2 * Math.PI);
+    const latitude = uv.y.sub(0.5).negate().mul(Math.PI);
+    const geographicNormal = vec3(
+      cos(latitude).mul(sin(longitude)), sin(latitude), cos(latitude).mul(cos(longitude)),
+    );
+    return normalize(geographicNormal.mul(this.axes).mul(this.axes));
+  }
+
+  public uvAt(direction: Vec3Node): Vec2Node {
+    return earthSurfaceUvFromRadialNode(direction, this.axes);
+  }
+
   public insideAt(): FloatNode {
     return float(1);
   }

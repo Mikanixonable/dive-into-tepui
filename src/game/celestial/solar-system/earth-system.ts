@@ -32,6 +32,7 @@ import {
 import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
 import { MonthlyClimateMap } from '../../../render/cloud/monthly-climate-map';
+import { EllipsoidEquirectProjection } from '../../../render/cloud/field-projection';
 import { earthSurfaceUvFromRadialNode } from '../../../render/earth-surface-coordinate';
 import { EarthCoastline } from '../../../render/earth-coastline';
 import { MoonSurfaceMarkings } from '../../../render/moon-surface-markings';
@@ -346,7 +347,10 @@ export function earthSystem(
     if (source !== null) climate.replaceUrls(source.climateMapUrls);
   });
   const cumulus = new CloudPresentation(
-    GeneratedCloudField.global(climate), R_EARTH_EQ, climateEpochUnixSec,
+    GeneratedCloudField.global(
+      climate, (direction) => earthSurfaceUvFromRadialNode(direction, EARTH_CLIMATE_AXES),
+      new EllipsoidEquirectProjection(512, EARTH_CLIMATE_AXES),
+    ), R_EARTH_EQ, climateEpochUnixSec,
   );
   const earthSurface = earthSurfaceRuntime.surface;
   return {
