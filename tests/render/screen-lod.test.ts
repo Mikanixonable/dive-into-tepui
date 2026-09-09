@@ -13,7 +13,7 @@ export function register(): void {
     assert.strictEqual(sphereLodLevel(-1), SPHERE_LOD_LADDER[0]);
     assert.strictEqual(sphereLodLevel(Number.NaN), SPHERE_LOD_LADDER[0]);
     assert.strictEqual(sphereLodLevel(Number.POSITIVE_INFINITY), SPHERE_LOD_LADDER.at(-1));
-    assert.strictEqual(sphereLodLevel(2_000), sphereLodLevel(2_000));
+    assert.strictEqual(sphereLodLevel(2_000), SPHERE_LOD_LADDER[1]);
   });
 
   test('screen lod: 近づくときはシルエット誤差の境界で細かくする', () => {
@@ -62,6 +62,30 @@ export function register(): void {
       SPHERE_LOD_LADDER[0],
     );
     assert.ok(second.exitDiameterPx < second.enterDiameterPx);
+    assert.strictEqual(
+      sphereLodLevelWithHysteresis(second.enterDiameterPx, SPHERE_LOD_LADDER[1]),
+      SPHERE_LOD_LADDER[1],
+    );
+    const secondFiner = sphereLodLevelWithHysteresis(
+      second.enterDiameterPx + 1, SPHERE_LOD_LADDER[1],
+    );
+    assert.strictEqual(secondFiner, SPHERE_LOD_LADDER[2]);
+    assert.strictEqual(
+      sphereLodLevelWithHysteresis(
+        (second.enterDiameterPx + second.exitDiameterPx) / 2, secondFiner,
+      ),
+      SPHERE_LOD_LADDER[2],
+    );
+    const secondCoarser = sphereLodLevelWithHysteresis(
+      second.exitDiameterPx, secondFiner,
+    );
+    assert.strictEqual(secondCoarser, SPHERE_LOD_LADDER[1]);
+    assert.strictEqual(
+      sphereLodLevelWithHysteresis(
+        (second.enterDiameterPx + second.exitDiameterPx) / 2, secondCoarser,
+      ),
+      SPHERE_LOD_LADDER[1],
+    );
   });
 
   test('screen lod: offは段を隠し再有効化時に初期選択へ戻る', () => {
