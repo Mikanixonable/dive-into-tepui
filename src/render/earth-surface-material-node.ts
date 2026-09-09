@@ -3,6 +3,7 @@ import {
   exp2, floor, greaterThanEqual, max, min, mix, normalize, select, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import type { BoolNode, FloatNode, Mat3Node, Vec2Node, Vec3Node, Vec4Node } from './tsl-types';
+import { earthSurfaceUvFromRadialNode } from './earth-surface-coordinate';
 import {
   EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER, EARTH_TILE_LAYERS, EARTH_TILE_TEXELS,
 } from './earth-surface-tiles';
@@ -78,15 +79,6 @@ export function configureEarthSurfaceTexture<T extends THREE.Texture>(
   return texture;
 }
 
-function earthUv(direction: Vec3Node, axes: Vec3Node): Vec2Node {
-  const normal = normalize(direction.div(axes.mul(axes)));
-  const longitude = normal.z.atan(normal.x.negate());
-  return vec2(
-    longitude.add(Math.PI / 2).div(2 * Math.PI).fract(),
-    normal.y.clamp(-1, 1).asin().div(Math.PI).add(0.5),
-  );
-}
-
 function tileUv(uv: Vec2Node, z: FloatNode): Vec2Node {
   const rows = exp2(z);
   const columns = rows.mul(2);
@@ -121,7 +113,7 @@ export function earthSurfaceMaterialNodes(
   configureEarthSurfaceTexture(textures.baseColor, 'color');
   configureEarthSurfaceTexture(textures.baseTerrain, 'terrain');
 
-  const uv = earthUv(inputs.bodyDirection, inputs.axes);
+  const uv = earthSurfaceUvFromRadialNode(inputs.bodyDirection, inputs.axes);
   const page = texture(textures.pageTable, uv);
   const layer = floor(page.r.mul(255).add(0.5));
   const parentLayer = floor(page.g.mul(255).add(0.5));
