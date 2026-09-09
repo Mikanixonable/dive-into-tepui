@@ -71,6 +71,11 @@ async function readResponse(response: Response, limit: number, signal?: AbortSig
       if (length > limit) throw new EarthSurfaceDecodeError('Earth surface response is too large');
       chunks.push(next.value);
     }
+  } catch (error) {
+    // 上限超過・AbortSignal・通信失敗で途中のHTTP bodyを放置すると、次のタイル要求と
+    // 帯域や接続を競合し続ける。cancel完了を待ってから元のエラーを返す。
+    await reader.cancel().catch(() => undefined);
+    throw error;
   } finally {
     reader.releaseLock();
   }
