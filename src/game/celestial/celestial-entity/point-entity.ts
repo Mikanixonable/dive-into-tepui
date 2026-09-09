@@ -55,6 +55,7 @@ const AURORA_PHASE_RATE = 0.02;
 
 const tmpPos = new THREE.Vector3();
 const tmpToObserver = new THREE.Vector3();
+const tmpCameraDirection = new THREE.Vector3();
 
 export class PointEntity extends CelestialEntity {
   // 位置と自転姿勢だけを載せる入れ物。扁平のスケールは shapeGroup が持つ — オーロラは実寸 [m]
@@ -78,7 +79,7 @@ export class PointEntity extends CelestialEntity {
   // surface はマップビューで見せる実体。実半径・歪みの形状・環は motion の定義から引き、
   // 環はマップビューでのみ描く(戦闘ビューの輝点に環はない)。surfaceMarkings は模式図で
   // だけ見せる天体固有の表面ライン、auroras は極を囲むカーテン(層ごとに1枚)、
-  // mapOverlay はマップ専用の同期軌道リング、cumulus は大気パスへ渡す積雲の密度場。
+  // mapOverlay はマップ専用の同期軌道リング、cumulus は地表の上に浮く不透明な積雲の殻。
   // 持たない天体では null / 空。
   public constructor(
     motion: OrbitingMotion,
@@ -111,6 +112,7 @@ export class PointEntity extends CelestialEntity {
     // 輝点は単色(SPEC/RENDERING.md「画面上の大きさに基づく詳細度」節)。
     this.billboard = new Billboard(0xffffff, -9);
     this.surface.addTo(this.shapeGroup);
+    this.cumulus?.addTo(this.shapeGroup);
     this.graticule.addTo(this.shapeGroup);
     this.surfaceMarkings?.addTo(this.shapeGroup);
     this.group.add(this.shapeGroup);
@@ -159,6 +161,13 @@ export class PointEntity extends CelestialEntity {
     if (graphics.clouds) {
       this.cumulus?.setCloudsVisible(true);
       this.cumulus?.setDetail(graphics.cumulusDetail);
+      const bodyFromWorld = writeBodyFromWorld(this.bodyFromWorld, this.motion, displayTime);
+      tmpCameraDirection.set(
+        cameraSystem.activeCameraPos.x - pos.x,
+        cameraSystem.activeCameraPos.y - pos.y,
+        cameraSystem.activeCameraPos.z - pos.z,
+      ).applyMatrix4(bodyFromWorld).normalize();
+      this.cumulus?.syncLod(apparentDiameterPx, tmpCameraDirection);
     } else {
       this.cumulus?.setCloudsVisible(false);
     }
@@ -187,7 +196,7 @@ export class PointEntity extends CelestialEntity {
     );
   }
 
-  // 影パスへ渡す積雲の密度場。**有効なボリュームだけが影を落とす。** 姿勢は自転位相まで込みで組む —
+  // 影パスへ渡す積雲の殻。**描いている殻だけが影を落とす。** 姿勢は自転位相まで込みで組む —
   // 軸だけでは場が地表と一緒に回らない。
   public override cumulusShadowAt(fo: FloatingOrigin, displayTime: number): ShadowCumulus | null {
     if (this.cumulus === null || !this.group.visible || !this.cumulus.visible) return null;
@@ -202,11 +211,11 @@ export class PointEntity extends CelestialEntity {
     };
   }
 
-  // 大気の散乱へ渡す雲場。**雲全体を描くときだけ立つ。** 姿勢は自転位相まで込みで組む —
+  // 大気の散乱へ立てる雲。**雲全体を描くときだけ立つ。** 姿勢は自転位相まで込みで組む —
   // 軸だけでは場が地表と一緒に回らない。**姿勢はこの1体ぶんの実体で返す** — 大気パスが読むのは
   // 描画のときなので、影へ渡す使い回しの実体を渡すと、同期のあいだに書き換わる。
   public override atmosphereCloudsAt(displayTime: number): AtmosphereClouds | null {
-    if (this.cumulus === null || !this.group.visible || !this.cumulus.atmosphereVisible) return null;
+    if (this.cumulus === null || !this.group.visible || !this.cumulus.cloudsVisible) return null;
     return {
       field: this.cumulus.field,
       bodyFromWorld: writeBodyFromWorld(new THREE.Matrix4(), this.motion, displayTime),
@@ -215,7 +224,7 @@ export class PointEntity extends CelestialEntity {
 
   // 物理球として厚い雲か薄い雲を描くフレームの場だけを、表示時刻へ焼く。
   public override bakeClouds(renderer: WebGPURenderer, displayTime: number): void {
-    if (!this.group.visible || !this.cumulus?.fieldContributes) return;
+    if (!this.group.visible || !this.cumulus?.cloudsVisible) return;
     this.cumulus.bake(renderer, displayTime);
   }
 
