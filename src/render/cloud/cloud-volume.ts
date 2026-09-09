@@ -7,6 +7,10 @@ import { CloudShapeEvaluator } from './cloud-shape-evaluator';
 import { CLOUD_TOP_SPAN } from './cumulus-shape';
 import type { FloatNode, Vec3Node, Vec4Node } from '../tsl-types';
 
+// 連続coverageを有限段の体積へ配るための校正。表面・大気・影で共有する
+// CloudShapeEvaluatorの柱光学深度そのものは変更せず、体積経路だけが参照する。
+const CUMULUS_VOLUME_OPTICAL_DEPTH_SCALE = 10;
+
 export type CloudVolumeSpecies = 'cumulus' | 'cirrus';
 
 export interface CloudDensitySample {
@@ -73,9 +77,13 @@ export class CloudVolume {
     // 通してから柱tauへ変換することで、低い被覆率を二値化せず、通常値でも体積が積分可能になる。
     const continuousCoverage = this.shape.continuousCoverage(field.r, float(0));
     return this.profiledColumnDensity(
-      this.shape.columnOpticalDepth(continuousCoverage), altitude,
+      this.volumeColumnOpticalDepth(continuousCoverage), altitude,
       float(CUMULUS_BASE_ALTITUDE), top,
     );
+  }
+
+  private volumeColumnOpticalDepth(coverage: FloatNode): FloatNode {
+    return this.shape.columnOpticalDepth(coverage).mul(CUMULUS_VOLUME_OPTICAL_DEPTH_SCALE);
   }
 
   private cirrusDensity(field: Vec4Node, radius: FloatNode): FloatNode {
