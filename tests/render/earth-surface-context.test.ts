@@ -6,8 +6,14 @@ import { assertEarthSurfaceDataset, earthSurfaceSourceFromManifest } from '../..
 
 function source() {
   return earthSurfaceSourceFromManifest('https://example.test/earth/', 'https://example.test/earth/earth-surface.json', {
-    datasetId: 'earth-2026-09-09-a', baseColor: 'earth.jpg', baseTerrain: 'base.bin.gz',
+    schemaVersion: 1, datasetId: 'earth-2026-09-09-a', sourceManifestSha256: '0'.repeat(64),
+    baseColor: 'earth.jpg', baseTerrain: 'base.bin.gz', tileIndexUrl: 'tile-index.json',
     climateMaps: Array.from({ length: 12 }, (_, index) => `climate-${String(index + 1).padStart(2, '0')}.png`),
+    climateEncoding: {
+      temperatureK: { min: 180, max: 330 }, cloudFraction: { min: 0, max: 1 },
+      orthometricElevation: { min: -1000, max: 9000 }, landFraction: { min: 0, max: 1 },
+    },
+    attribution: ['fixture'],
   });
 }
 
@@ -15,6 +21,7 @@ export function register(): void {
   test('earth context: 地表と気候は同じdatasetIdのURL契約を共有する', () => {
     const value = source();
     assert.equal(value.climateMapUrls.length, 12);
+    assert.ok(value.tileIndexUrl.endsWith('/tile-index.json'));
     assert.ok(value.baseColorUrl.endsWith('/earth.jpg'));
     assertEarthSurfaceDataset(value, 'earth-2026-09-09-a');
     assert.throws(() => assertEarthSurfaceDataset(value, 'other'), /mismatch/);
