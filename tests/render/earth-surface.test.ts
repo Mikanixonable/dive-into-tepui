@@ -20,6 +20,7 @@ const SOURCE = {
     cloudFraction: { min: 0, max: 1 },
     orthometricElevation: { min: -1000, max: 9000 },
     landFraction: { min: 0, max: 1 },
+    waterOrthometricElevationM: 0,
   },
   baseUrl: 'https://example.test/earth/',
   manifestUrl: 'https://example.test/earth/manifest.json',
@@ -102,7 +103,8 @@ export function register(): void {
 
     surface.syncFrame({ ...frame(camera), frame: 8 });
     assert.equal(coordinator.frames.length, 2);
-    assert.equal(firstSignal?.aborted, true);
+    assert.equal(firstSignal?.aborted, false);
+    assert.equal(coordinator.frames[1]?.signal, firstSignal);
     assert.equal(coordinator.frames[1]?.signal?.aborted, false);
 
     surface.hide();
