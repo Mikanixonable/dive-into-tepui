@@ -15,7 +15,7 @@ export function orbitRows(
 ): PropertyRow[] {
   const motions = celestialBodies.celestialMotions;
   const oi = orbitInfo(
-    entity, autoOrbitReference(entity.state.r, motions, simTime), simTime,
+    entity, autoOrbitReference(entity.motion.state.r, motions, simTime), simTime,
     (id: string) => celestialBodies.nameOf(id));
   const apSpec = getApsisLabelSpec('ap', oi.centerId);
   const peSpec = getApsisLabelSpec('pe', oi.centerId);

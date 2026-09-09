@@ -36,7 +36,7 @@ import { apparentSizePx, metersPerPixelAtDepth } from '../../src/math/projection
 import { v3 } from '../../src/math/vec3';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
 import { PROTEIN_CASES, type ProteinLabCaseMetadata } from './protein-cases';
-import { HULL_EMISS } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
+import { HULL_EMISS } from '../../src/game/dynamic/dynamic-motion';
 import type { FloatNode } from '../../src/render/tsl-types';
 import type { AtmosphereBody } from '../../src/render/atmosphere';
 import type { RenderStyle } from '../../src/render/render-style';

@@ -27,9 +27,12 @@ export function orbitInfo(
   entity: DynamicEntity, reference: OrbitReference, pivot: number, nameOf: (id: string) => string,
 ): OrbitInfo {
   // reference 系での相対位置・速度(高度・相対速度の元)。
-  const rel = kinematicState<'eci'>(entity.state.t, sub(entity.state.r, reference.state.r), sub(entity.state.v, reference.state.v));
+  const state = entity.motion.state;
+  const rel = kinematicState<'eci'>(
+    state.t, sub(state.r, reference.state.r), sub(state.v, reference.state.v),
+  );
   // reference が重力中心のときだけ軌道要素・遠地点/近地点が求まる。
-  const el = reference.attractor ? entity.orbitalElementsAround(reference.attractor, pivot) : null;
+  const el = reference.attractor ? entity.motion.orbitalElementsAround(reference.attractor, pivot) : null;
   const apsis = el ? apsisAltitudes(el) : null;
   return {
     centerId: reference.id,
@@ -61,12 +64,12 @@ export function relativeInfo(
   self: OrbitingObject, other: OrbitingObject,
   celestialBodies: readonly CelestialBody[], pivot: number,
 ): RelativeInfo {
-  const selfCenter = strongestAttractor(self.state.r, celestialBodies, pivot);
-  const otherCenter = strongestAttractor(other.state.r, celestialBodies, pivot);
-  const selfEl = self.orbitalElementsAround(selfCenter, pivot);
-  const otherEl = other.orbitalElementsAround(otherCenter, pivot);
-  const relP = sub(other.state.r, self.state.r);
-  const relV = sub(other.state.v, self.state.v);
+  const selfCenter = strongestAttractor(self.motion.state.r, celestialBodies, pivot);
+  const otherCenter = strongestAttractor(other.motion.state.r, celestialBodies, pivot);
+  const selfEl = self.motion.orbitalElementsAround(selfCenter, pivot);
+  const otherEl = other.motion.orbitalElementsAround(otherCenter, pivot);
+  const relP = sub(other.motion.state.r, self.motion.state.r);
+  const relV = sub(other.motion.state.v, self.motion.state.v);
   const dist = len(relP);
   // 基準天体が一致するときのみ hHat 同士を比較できる。
   const relIncDeg =

@@ -1,0 +1,31 @@
+import type * as THREE from 'three/webgpu';
+import type { RadiatorSide } from './radiator';
+
+export class RadiatorView {
+  private readonly folds: Record<RadiatorSide, THREE.Object3D[]>;
+
+  constructor(root: THREE.Object3D) {
+    const collect = (side: RadiatorSide): THREE.Object3D[] => {
+      const namePrefix = `radiator${side === 'up' ? 'Up' : 'Down'}Fold`;
+      const found = Array.from({ length: 6 }, (_, index) => root.getObjectByName(`${namePrefix}${index}`));
+      if (found.some((fold) => !fold)) throw new Error('radiator fold objects not found in ship model');
+      return found as THREE.Object3D[];
+    };
+    this.folds = { up: collect('up'), down: collect('down') };
+  }
+
+  sync(
+    wearOf: (side: RadiatorSide) => number,
+    tiltOf: (side: RadiatorSide) => { readonly even: number; readonly odd: number },
+  ): void {
+    for (const side of ['up', 'down'] as const) {
+      const { even, odd } = tiltOf(side);
+      const broken = wearOf(side) >= 1;
+      for (let index = 0; index < this.folds[side].length; index++) {
+        const fold = this.folds[side][index]!;
+        fold.rotation.y = index === 0 ? even : (index % 2 === 1 ? odd - even : even - odd);
+        fold.visible = !broken;
+      }
+    }
+  }
+}

@@ -60,16 +60,20 @@ export function altitudeSeries(
   const center = reference.attractor;
   if (center === null) return null;
   if (spanSec <= 0 || sampleCount <= 0 || !isFinite(spanSec) || !Number.isFinite(sampleCount)) {
-    return { samples: [], currentAlt: altitudeOf(entity.state, reference.state, center), truncated: true };
+    return {
+      samples: [],
+      currentAlt: altitudeOf(entity.motion.state, reference.state, center),
+      truncated: true,
+    };
   }
 
-  const currentAlt = altitudeOf(entity.state, reference.state, center);
+  const currentAlt = altitudeOf(entity.motion.state, reference.state, center);
   const samples: AltitudeSample[] = [];
   let truncated = false;
   for (let i = 0; i <= sampleCount; i++) {
     const t = now + (i * spanSec) / sampleCount;
     // 外挿できない時刻に達したら、そこで列を止める(0/NaN で埋めない)。
-    const state = entity.stateAt(t, celestialBodies);
+    const state = entity.motion.stateAt(t, celestialBodies);
     if (state === null) { truncated = true; break; }
     const centerState = celestialBodies.stateAt(center.id, t);
     samples.push({ t: t - now, alt: altitudeOf(state, centerState, center) });
@@ -95,8 +99,8 @@ export function resolveTarget(
   // 艦・基地は predicted(将来は外挿できないことがある)、天体は自身の運動(常に解析的に解ける)。
   if (target.kind === 'entity') {
     return {
-      stateAt: (t) => target.entity.stateAt(t, celestialBodies),
-      currentR: target.entity.state.r,
+      stateAt: (t) => target.entity.motion.stateAt(t, celestialBodies),
+      currentR: target.entity.motion.state.r,
     };
   }
   return {
@@ -115,7 +119,7 @@ export function sharedAttractor(
   now: number,
 ): CelestialBody | null {
   const targetR = resolveTarget(target, celestialBodies, now).currentR;
-  const shipCenter = strongestAttractor(ship.state.r, attractors, now);
+  const shipCenter = strongestAttractor(ship.motion.state.r, attractors, now);
   return shipCenter.id === strongestAttractor(targetR, attractors, now).id ? shipCenter : null;
 }
 
@@ -144,9 +148,9 @@ export function approachSeries(
   if (center === null) return null;
   const resolved = resolveTarget(target, celestialBodies, now);
 
-  const selfEl = ship.orbitalElementsAround(center, now);
+  const selfEl = ship.motion.orbitalElementsAround(center, now);
   const targetEl = target.kind === 'entity'
-    ? target.entity.orbitalElementsAround(center, now)
+    ? target.entity.motion.orbitalElementsAround(center, now)
     : orbitalElementsOf(target.body.stateAt(now), center, now);
   if (selfEl === null || targetEl === null || !isFinite(targetEl.period)) return null;
 
@@ -163,7 +167,7 @@ export function approachSeries(
   for (let i = 0; i <= sampleCount; i++) {
     const t = now + (i * spanSec) / sampleCount;
     // どちらかが外挿できなくなった時点で列を止める。
-    const shipState = ship.stateAt(t, celestialBodies);
+    const shipState = ship.motion.stateAt(t, celestialBodies);
     const targetState = resolved.stateAt(t);
     if (shipState === null || targetState === null) { truncated = true; break; }
     const centerState = celestialBodies.stateAt(center.id, t);

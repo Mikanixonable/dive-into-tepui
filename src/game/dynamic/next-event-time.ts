@@ -1,6 +1,6 @@
 // サブステップを区切るべき次の絶対時刻。ステージ側(マニューバの点火・燃焼終了)と個体側
 // (弾の寿命など)の締切のうち、最も早いものを答える。
-import type { EntityRoster } from './entity-roster';
+import type { DynamicSimulationRoster } from './dynamic-simulation-participant';
 import type { Stage } from '../stages/stage';
 
 export class NextEventTime {
@@ -11,7 +11,7 @@ export class NextEventTime {
 
   // simTime 以降で最も早い締切。無ければ null。ステージ側の時刻は艦の現在の Δv と加速度から
   // 毎回決まる生きた値なので、毎回引き直す。
-  at(simTime: number, activeStage: Stage, roster: EntityRoster): number | null {
+  at(simTime: number, activeStage: Stage, roster: DynamicSimulationRoster): number | null {
     const stage = activeStage.nextSimulationEventTime(simTime);
     const entity = this.entityEventTime(simTime, roster);
     if (stage === null) return entity;
@@ -21,7 +21,7 @@ export class NextEventTime {
 
   // 個体側の締切は固定の絶対時刻なので、控えた時刻を simTime が越えたときと、顔ぶれの世代が
   // 変わったときにだけ全走査で引き直す。
-  private entityEventTime(simTime: number, roster: EntityRoster): number | null {
+  private entityEventTime(simTime: number, roster: DynamicSimulationRoster): number | null {
     const revision = roster.collectionRevision;
     const stale = !this.valid
       || this.revision !== revision
@@ -29,7 +29,7 @@ export class NextEventTime {
     if (!stale) return this.cached;
 
     let next: number | null = null;
-    for (const e of roster.all()) {
+    for (const e of roster.allMotions()) {
       if (!e.alive) continue;
       const t = e.nextSimulationEventTime(simTime);
       if (t !== null && (next === null || t < next)) next = t;
