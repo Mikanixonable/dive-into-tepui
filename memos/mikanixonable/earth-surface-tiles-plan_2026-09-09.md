@@ -120,14 +120,14 @@ T0 基準記録
 | フェーズ | 状態 | commit / 証拠 | 未達・制約 |
 | --- | --- | --- | --- |
 | T0 | 完了 | `492fd9af`、`.earth-surface/verification/baseline.json` | WebGPU/drawing bufferはunavailable |
-| T1 | 生成入口完了 | `300ff2e8`, `1fa593c9`、20 Python tests | 実BMNG/ETOPO/GSHHG/ERA5 rendererと全43690実生成は未完了 |
+| T1 | 生成入口・実データ事前検査完了、全量生成blocked | `300ff2e8`, `1fa593c9`, `a5cacedb`, `.earth-surface/verification/preflight.json`、Python 24 tests | GDAL/osgeo・netCDF4・pyshp不足、空き容量4.84GiBに対し地形payload下限約22GiB、ERA5 local export未配置。実BMNG/ETOPO/GSHHG/ERA5 rendererと全43690実生成は未完了 |
 | T2 | コード完了 | `49e01186`、render 88/88 | 実ブラウザ/WebGPU撮影は未実施 |
-| T3 | コード完了 | `63babd80`, `667a31bb`、render 90/90、game 201/201 | 実manifest取得と実GPU attachは未実施 |
+| T3 | ゲーム経路・実Earthメッシュの詳細材質接続完了 | `ccc3683f`, `85b63f59`、render 113/113、game 205/205 | 実manifest取得・実データ通信・実WebGPU撮影は未実施。データが無いため実タイル表示は未確認 |
 | T6-2 | 契約完了 | `32a789ab`、remote contract pass | 外部origin公開は未実施 |
 | T6-1 | fixture Pages完了 | `49d840f2`、Pages layout pass、build pass | 実全世界bundleのPages公開は未完了 |
 | T4 | コード完了 | `e195d4df`, `ac919b93`, `ea6d47a3`, `22532275`、render 96/96、game 201/201 | 実ERA5 bundleと実ブラウザ/WebGPU撮影は未実施 |
 | T5 | コード完了 | `7f8614fc`, `e90aaeca`, `95e0152b`、render 100/100、game 201/201、capture contract pass | 実データ未投入のため15ケースのcolor/normal/depthはunavailable |
-| T7 | コードレビュー・記録完了 | `c1024c61`、全体 826/826、build/verify-release pass、Pages fixture pass | 実データ生成・Pages本番公開ゲートは未達成のまま記録 |
+| T7 | コードレビュー・記録更新完了 | `c1024c61`、追加 `a5cacedb`, `ccc3683f`, `85b63f59`, `ed53a902`、対象テスト pass | 実データ生成・Pages本番公開・実captureゲートは未達成。blocked理由をT1とpreflight JSONへ記録 |
 
 ## 7. 検証
 

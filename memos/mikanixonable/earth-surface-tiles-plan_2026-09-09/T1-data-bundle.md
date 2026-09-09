@@ -72,3 +72,7 @@ python3 tools/earth-surface/preflight.py --all --output .earth-surface/verificat
 python3 tools/earth-surface/fetch-source.py --source ... --region ...
 python3 tools/earth-surface/bake.py --global
 ```
+
+事前検査の実測JSONは [`../../.earth-surface/verification/preflight.json`](../../.earth-surface/verification/preflight.json)
+へ保存した（commit `ed53a902`）。この環境で取得したのはHEAD応答だけで、巨大な入力本文は取得していない。
+したがってこのコミットはデータ生成完了を意味せず、fixtureを本番bundleへ読み替えていない。
