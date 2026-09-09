@@ -10,7 +10,7 @@ import { spinOrientation } from '../../../physics/body-orientation';
 import { lambertSphereIrradiance } from '../../../physics/lambert-sphere';
 import { STAR_SHELL_RADIUS } from '../../../render/stars';
 import { Billboard, POINT_IMAGE_ANGULAR_SIZE } from '../../../render/billboard';
-import { CelestialSurface } from '../../../render/celestial-surface';
+import type { CelestialSurfaceLike } from '../../../render/celestial-surface';
 import { BodyGraticule } from '../../../render/body-graticule';
 import { showsPhysicalSphere } from '../../../render/screen-lod';
 import { CelestialEntity } from './celestial-entity';
@@ -84,7 +84,7 @@ export class PointEntity extends CelestialEntity {
     motion: OrbitingMotion,
     name: string,
     bodyClass: CelestialClass,
-    private readonly surface: CelestialSurface,
+    private readonly surface: CelestialSurfaceLike,
     atmosphereOptics: AtmosphereOptics | null = null,
     private readonly surfaceMarkings: LineOverlay | null = null,
     private readonly auroras: readonly Aurora[] = [],
