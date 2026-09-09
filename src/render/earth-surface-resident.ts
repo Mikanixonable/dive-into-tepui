@@ -5,7 +5,7 @@ import {
 } from './earth-surface-tiles';
 import type { EarthTileKey, EarthTileProjection, EarthTileResident } from './earth-surface-tiles';
 import { EarthSurfaceGpuAdapter } from './earth-surface-gpu';
-import type { EarthLayerReservation } from './earth-surface-gpu';
+import type { EarthLayerReservation, EarthSurfaceGpuTextures } from './earth-surface-gpu';
 import { EarthSurfaceTileRequestQueue } from './earth-surface-request';
 
 export type EarthSurfaceColorToRgba8 =
@@ -70,6 +70,9 @@ export class EarthSurfaceResidentCoordinator {
   private disposed = false;
 
   public constructor(private readonly dependencies: EarthSurfaceResidentCoordinatorDependencies) {}
+
+  // EarthSurfaceの材質が同じGPUテクスチャを読むための接点。選択・公開状態はcoordinatorが所有する。
+  public get textures(): EarthSurfaceGpuTextures | null { return this.dependencies.gpu.textures; }
 
   // 現在公開可能なページを先に交換し、その後に不要層を回収して要求を発行する。
   // したがって到着途中の色・地形は次フレームまでページ表へ現れない。
