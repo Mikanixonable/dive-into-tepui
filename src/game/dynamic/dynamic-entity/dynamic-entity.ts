@@ -14,6 +14,7 @@ import { DynamicView, type DynamicViewFrame } from '../dynamic-view';
 export type DynamicMotionFactory = (owner: DynamicEntity) => DynamicMotion;
 export type DynamicViewFactory = (owner: DynamicEntity) => DynamicView;
 
+// 姿勢を持たない生成元に与える、回転・角速度なしの既定姿勢。
 function identityAttitude(): Attitude {
   return { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
 }
@@ -37,6 +38,7 @@ export class DynamicEntity {
 
   private nameValue: string;
 
+  // 識別、Motion、View を1体の寿命へ束ねる。factory には生成済みの owner を渡す。
   public constructor(
     state: KinematicState,
     view: DynamicView | DynamicViewFactory,
@@ -52,26 +54,32 @@ export class DynamicEntity {
 
   public get name(): string { return this.nameValue; }
 
+  // 派生 Entity だけが表示名を確定できる。
   protected setName(name: string): void {
     this.nameValue = name;
   }
 
+  // 種別を持たない対象は共通マーカー規則、それ以外は同フレームの policy に従う。
   public mapVisibility(policy: MapVisibilityPolicy, viewer: OrbitingObject | null): MapVisibility {
     return this.mapKind === null ? MARKER_VISIBILITY : policy.entity(this.mapKind, this.id === viewer?.id);
   }
 
+  // View の形状ではなく Motion の判定形状へ ray を問い合わせる。
   public hitBodyByRay(ray: Ray, pos: Vec3): boolean {
     return this.motion.intersectsRay(ray, pos);
   }
 
+  // 永続化しない基底 Entity は null を返す。
   public serialize(): EntitySaveDataUnion | null {
     return null;
   }
 
+  // Entity 自身を表示入力として、同じフレームの Motion と context を View へ渡す。
   public sync(context: DynamicViewFrame): void {
     this.view.sync(this, this.motion, context);
   }
 
+  // この個体が所有する View 資源を解放する。
   public dispose(): void {
     this.view.dispose();
   }

@@ -97,6 +97,7 @@ export function projectProteinResidues(
   asset: ProteinMotionAsset, coefficients: Float32Array,
   residues: readonly number[], target: Float32Array,
 ): void {
+  // 対象残基ごとに、全モードの線形結合を同じ係数バッファから再現する。
   for (const residue of residues) {
     if (!Number.isInteger(residue) || residue < 0 || residue >= asset.residueCount) continue;
     const sourceOffset = residue * 3;
@@ -169,6 +170,7 @@ export class ProteinMotionController {
   private fading = false;
   private fadeStartTime = 0;
 
+  // asset の固定モードと個体固有 seed から、再利用する計算バッファを初期化する。
   public constructor(
     private readonly asset: ProteinMotionAsset,
     enemyId: string,
@@ -189,6 +191,7 @@ export class ProteinMotionController {
     this.updatePhase = proteinMotionUpdatePhaseFor(enemyId);
     this.collectiveGain = finiteNonNegative(options.collectiveGain, finiteNonNegative(asset.display.collectiveGain, 1));
     this.localGain = finiteNonNegative(options.localGain, finiteNonNegative(asset.display.localGain, 1));
+    // OU sampler と係数バッファは個体の寿命中再利用し、毎フレームの割り当てを避ける。
     this.sampler = new ProteinBrownianSampler(
       this.modes.map((mode) => ({
         relaxationRate: mode.displayRelaxationRate,
@@ -201,6 +204,7 @@ export class ProteinMotionController {
     this.effectiveCoefficientsBuffer = new Float32Array(this.modeCount);
     this.rawCoefficientsBuffer = new Float32Array(this.modeCount);
     this.fadeFromCoefficientsBuffer = new Float32Array(this.modeCount);
+    // band 別 gain は asset/options だけで決まるため、構築時に焼いておく。
     this.modeGains = new Float64Array(this.modeCount);
     for (let modeIndex = 0; modeIndex < this.modeCount; modeIndex += 1) {
       const mode = this.modes[modeIndex]!;
@@ -251,6 +255,7 @@ export class ProteinMotionController {
     lod: ProteinMotionLod = 'near',
     phase: ProteinPhase = this.currentPhase,
   ): Float32Array {
+    // LOD・量子化時刻・phase のいずれかが変わったときだけ、生の係数を求め直す。
     const output = this.effectiveCoefficientsBuffer;
     const nextModeCount = modeCountFor(lod, this.modeCount);
     const rawSampleTime = nextModeCount === 0 ? 0 : this.sampleTimeFor(time, lod);
@@ -273,6 +278,7 @@ export class ProteinMotionController {
       this.computeCoefficients(this.rawCoefficientsBuffer, rawSampleTime, nextModeCount, phase);
     }
 
+    // LOD 遷移中だけ旧係数からの補間を続け、完了後は生の係数をそのまま返す。
     if (!this.fading) {
       output.set(this.rawCoefficientsBuffer);
       this.lastSampleTime = rawSampleTime;
