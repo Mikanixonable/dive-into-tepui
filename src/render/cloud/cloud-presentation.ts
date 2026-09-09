@@ -16,6 +16,7 @@ export class CloudPresentation {
   public constructor(
     private readonly cloudField: GeneratedCloudField,
     bodyRadius: number,
+    private readonly climateEpochUnixSec: number | null = null,
   ) {
     this.surface = new OpaqueCloudSurfaceRenderer(cloudField.sampler, bodyRadius);
   }
@@ -46,6 +47,9 @@ export class CloudPresentation {
 
   public bake(renderer: WebGPURenderer, displayTime: number): void {
     if (!this.fieldContributes) return;
+    if (this.climateEpochUnixSec !== null) {
+      this.cloudField.syncClimateTime(this.climateEpochUnixSec + displayTime);
+    }
     this.cloudField.bake(renderer, displayTime);
   }
 

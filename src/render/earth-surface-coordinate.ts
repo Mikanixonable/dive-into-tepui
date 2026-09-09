@@ -1,5 +1,7 @@
 // 地球の地理UVと、天体固定の楕円体表面・放射方向・法線との変換を担う。
 import * as THREE from 'three/webgpu';
+import { normalize, vec2 } from 'three/tsl';
+import type { Vec2Node, Vec3Node } from './tsl-types';
 
 const FULL_TURN = 2 * Math.PI;
 
@@ -56,6 +58,16 @@ export function earthRadialAtUv(u: number, v: number, axes: THREE.Vector3): THRE
 // 天体固定の放射方向を地理UVへ写す。方向の長さは任意の正値。
 export function earthUvFromRadial(direction: THREE.Vector3, axes: THREE.Vector3): THREE.Vector2 {
   return earthSurfaceUv(direction, axes);
+}
+
+// 天体固定の放射方向を、楕円体の地理緯度・経度へGPU上で写す。axesは天体固定XYZの半軸 [m]。
+export function earthSurfaceUvFromRadialNode(direction: Vec3Node, axes: Vec3Node): Vec2Node {
+  const normal = normalize(direction.div(axes.mul(axes)));
+  const longitude = normal.z.atan(normal.x.negate());
+  return vec2(
+    longitude.add(Math.PI / 2).div(2 * Math.PI).fract(),
+    normal.y.clamp(-1, 1).asin().div(Math.PI).add(0.5),
+  );
 }
 
 // 天体固定の実法線をview空間へ回す。bodyToViewは姿勢とカメラ回転から作る正規直交行列。
