@@ -17,8 +17,8 @@ export function cassiniSpinAxis(eclipticPole: Vec3, orbitNormal: Vec3, obliquity
 
 // reference を pole に直交する成分だけ残して正規化した単位ベクトル(ECI)。
 export function orthogonalizedTo(pole: Vec3, reference: Vec3): Vec3 {
-  // pole は有限な単位ベクトルであり、reference の pole への射影を除いた成分が
-  // 退化しないことを呼び出し側が保証する。ここではその契約を検査せず正規化する。
+  // pole は有限な単位ベクトルで、射影後の成分は非零であることを
+  // 呼び出し側が保証する。
   return norm(projectOntoPlane(reference, pole));
 }
 

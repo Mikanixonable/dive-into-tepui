@@ -5,9 +5,9 @@
 import type { CelestialMotion } from './celestial-motion';
 import type { Degree2Gravity } from './celestial-body-def';
 import {
-  meanMotionFromSemiMajor, orbitalElementsFromClassical, type OrbitalElements,
-  semiMajorFromMeanMotion, semiMajorFromPeriod,
+  meanMotionFromSemiMajor, orbitalElementsFromClassical, semiMajorFromMeanMotion, semiMajorFromPeriod,
 } from './elements';
+import type { OrbitalElements } from './elements';
 import { SECONDS_PER_DAY } from './time';
 
 const TWO_PI = 2 * Math.PI;
@@ -18,17 +18,19 @@ const TROPICAL_YEAR_SEC = 365.2422 * SECONDS_PER_DAY;
 // 臨界傾斜角(近地点引数の長期摂動が止まる傾斜角、cos²i = 1/5) [deg]。モルニヤ・ツンドラ軌道が使う。
 const CRITICAL_INCLINATION_DEG = (Math.acos(1 / Math.sqrt(5)) * 180) / Math.PI;
 
-// 回帰日数 repeatDays の間に revsPerRepeat 回(いずれも正の整数)中心天体を周回し、かつ昇交点が
-// 太陽と同じ角速度で歳差する円軌道の高度・傾斜角を解く。raanOffsetDeg は昇交点の初期位置
-// (太陽方向を基準にした角度)。両条件を同時に満たす実数の傾斜角が存在しなければ null。
-// 昇交点の歳差は扁平が生むので、2次重力場を持たない天体では解が存在しない。
 interface SunSynchronousShape {
   readonly a: number;
   readonly incDeg: number;
 }
 
+// 回帰日数 repeatDays の間に revsPerRepeat 回中心天体を周回する太陽同期円軌道の形を解く。
+// 実数の傾斜角が存在しない、または高度が地表以下なら null を返す。
 function sunSynchronousShape(
-  repeatDays: number, revsPerRepeat: number, mu: number, radius: number, degree2: Degree2Gravity | null,
+  repeatDays: number,
+  revsPerRepeat: number,
+  mu: number,
+  radius: number,
+  degree2: Degree2Gravity | null,
 ): SunSynchronousShape | null {
   if (degree2 === null) return null;
   const n = (revsPerRepeat * TWO_PI) / (repeatDays * SECONDS_PER_DAY);
@@ -42,11 +44,19 @@ function sunSynchronousShape(
   return { a, incDeg };
 }
 
+// 回帰日数 repeatDays の間に revsPerRepeat 回中心天体を周回し、昇交点が太陽と
+// 同じ角速度で歳差する円軌道の要素を組む。raanOffsetDeg は昇交点の初期位置
+// (太陽方向を基準にした角度)。
 function sunSynchronousElements(
   repeatDays: number, revsPerRepeat: number, raanOffsetDeg: number, planet: CelestialMotion, planetPivot: number,
 ): OrbitalElements | null {
   const shape = sunSynchronousShape(
-    repeatDays, revsPerRepeat, planet.def.mu, planet.def.radius, planet.degree2At(planetPivot));
+    repeatDays,
+    revsPerRepeat,
+    planet.def.mu,
+    planet.def.radius,
+    planet.degree2At(planetPivot),
+  );
   if (shape === null) return null;
   return orbitalElementsFromClassical(
     shape.a, 0, shape.incDeg, raanOffsetDeg, 0, planet, planet.stateAt(planetPivot));
