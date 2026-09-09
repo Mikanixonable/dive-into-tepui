@@ -8,6 +8,7 @@ import type {
 import type {
   CelestialSurfaceFrame,
   CelestialSurfaceLike,
+  CelestialSurfaceMaterialAttachment,
   SurfacePhotometry,
 } from './celestial-surface';
 
@@ -25,6 +26,20 @@ export interface EarthSurfaceResidentCoordinatorLike {
   sync(input: EarthSurfaceResidentFrame): unknown;
   reset?(): void;
   dispose(): void;
+}
+
+export interface EarthSurfaceMaterialAttachment extends CelestialSurfaceMaterialAttachment {
+  readonly syncFrame: (frame: CelestialSurfaceFrame) => void;
+}
+
+interface CelestialSurfaceMaterialHost {
+  replaceMaterial(attachment: CelestialSurfaceMaterialAttachment): void;
+}
+
+function disposeMaterialAttachment(attachment: EarthSurfaceMaterialAttachment): void {
+  attachment.material.dispose();
+  for (const deferred of attachment.deferred) deferred.dispose();
+  for (const texture of attachment.textures ?? []) texture.dispose();
 }
 
 export class EarthSurfaceContext {
@@ -84,6 +99,8 @@ export class EarthSurfaceContext {
 export class EarthSurface implements CelestialSurfaceLike {
   private requestLeaseValue: EarthSurfaceRequestLease | null = null;
   private coordinatorValue: EarthSurfaceResidentCoordinatorLike | null;
+  private materialSyncValue: ((frame: CelestialSurfaceFrame) => void) | null = null;
+  private detailedMaterialValue = false;
   private statusValue: EarthSurfaceStatus;
   private disposed = false;
 
@@ -99,6 +116,8 @@ export class EarthSurface implements CelestialSurfaceLike {
 
   public get status(): EarthSurfaceStatus { return this.statusValue; }
 
+  public get usesDetailedMaterial(): boolean { return this.detailedMaterialValue; }
+
   public get photometry(): SurfacePhotometry | null { return this.fallback.photometry; }
 
   public get textureUrl(): string | null { return this.fallback.textureUrl; }
@@ -110,6 +129,7 @@ export class EarthSurface implements CelestialSurfaceLike {
   public syncFrame(frame: CelestialSurfaceFrame): void {
     if (this.disposed) return;
     this.fallback.syncFrame(frame);
+    this.materialSyncValue?.(frame);
     if (this.coordinatorValue === null) return;
 
     const lease = this.requestLeaseValue?.signal.aborted
@@ -167,9 +187,11 @@ export class EarthSurface implements CelestialSurfaceLike {
     source: EarthSurfaceSource,
     coordinator: EarthSurfaceResidentCoordinatorLike | null,
     status: EarthSurfaceStatus,
+    material: EarthSurfaceMaterialAttachment | null = null,
   ): void {
     if (this.disposed) {
       coordinator?.dispose();
+      if (material !== null) disposeMaterialAttachment(material);
       return;
     }
     this.requestLeaseValue?.release();
@@ -178,6 +200,21 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.context.replaceSource(source);
     this.coordinatorValue = coordinator;
     this.statusValue = status;
+    this.materialSyncValue = null;
+    this.detailedMaterialValue = false;
+    if (material !== null) {
+      const host = this.fallback as unknown as CelestialSurfaceMaterialHost;
+      if (typeof host.replaceMaterial !== 'function') {
+        disposeMaterialAttachment(material);
+        this.coordinatorValue?.dispose();
+        this.coordinatorValue = null;
+        this.statusValue = 'fallback';
+      } else {
+        host.replaceMaterial(material);
+        this.materialSyncValue = material.syncFrame;
+        this.detailedMaterialValue = true;
+      }
+    }
   }
 
   public dispose(): void {

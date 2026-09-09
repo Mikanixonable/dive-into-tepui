@@ -103,6 +103,12 @@ export interface CelestialSurfaceLike {
   dispose(): void;
 }
 
+export interface CelestialSurfaceMaterialAttachment {
+  readonly material: THREE.Material;
+  readonly deferred: readonly DeferredTexture[];
+  readonly textures?: readonly THREE.Texture[];
+}
+
 // 実写テクスチャの測光。倍率を掛ける前の平均色を、その天体のボンドアルベドへ合わせる。
 function photometryOf(texture: CelestialTexture): SurfacePhotometry {
   return {
@@ -118,8 +124,9 @@ export class CelestialSurface implements CelestialSurfaceLike {
 
   // material と deferred のテクスチャは解放までこの表面が持つ。photometry / textureUrl は静的事実。
   private constructor(
-    private readonly material: THREE.Material,
-    private readonly deferred: readonly DeferredTexture[],
+    private material: THREE.Material,
+    private deferred: readonly DeferredTexture[],
+    private ownedTextures: readonly THREE.Texture[],
     public readonly photometry: SurfacePhotometry | null,
     public readonly textureUrl: string | null,
   ) {
@@ -152,6 +159,7 @@ export class CelestialSurface implements CelestialSurfaceLike {
     }
     return new CelestialSurface(
       material, smoothnessMap === null ? [map] : [map, smoothnessMap],
+      [],
       photometryOf(texture), texture.url);
   }
 
@@ -163,12 +171,24 @@ export class CelestialSurface implements CelestialSurfaceLike {
       roughness: 1, metalness: 0,
     });
     return new CelestialSurface(
-      material, [], { bondAlbedo: rec709Luminance(albedo), lightSourceAlbedo: albedo }, null);
+      material, [], [], { bondAlbedo: rec709Luminance(albedo), lightSourceAlbedo: albedo }, null);
   }
 
   // 全段のメッシュを parent の下へ置く。
   public addTo(parent: THREE.Object3D): void {
     for (const mesh of this.meshes.values()) parent.add(mesh);
+  }
+
+  // EarthSurfaceの詳細材質を既存の球LOD群へ差し替える。LODメッシュの所有権はこの
+  // surfaceに残し、旧材質は直ちに解放する。追加のDeferredTextureはsurfaceの寿命へ束ねる。
+  public replaceMaterial(attachment: CelestialSurfaceMaterialAttachment): void {
+    this.material.dispose();
+    for (const deferred of this.deferred) deferred.dispose();
+    for (const texture of this.ownedTextures) texture.dispose();
+    this.material = attachment.material;
+    this.deferred = attachment.deferred;
+    this.ownedTextures = attachment.textures ?? [];
+    for (const mesh of this.meshes.values()) mesh.material = attachment.material;
   }
 
   // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。テクスチャ画像の取得も
@@ -196,5 +216,6 @@ export class CelestialSurface implements CelestialSurfaceLike {
     for (const mesh of this.meshes.values()) mesh.removeFromParent();
     this.material.dispose();
     for (const deferred of this.deferred) deferred.dispose();
+    for (const texture of this.ownedTextures) texture.dispose();
   }
 }
