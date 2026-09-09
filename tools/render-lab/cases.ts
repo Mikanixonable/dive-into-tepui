@@ -30,6 +30,7 @@ import { sphereShadowBody, type ShadowBody } from '../../src/render/pipeline/sha
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
+import type { CloudLodMode } from '../../src/render/cloud/cloud-field-sampler';
 import { RingView } from '../../src/game/celestial/celestial-entity/ring-view';
 import { AU } from '../../src/physics/astronomical-unit';
 import { MARS, MARS_ATMOSPHERE_OPTICS, MARS_TEXTURE } from '../../src/game/celestial/solar-system/mars-system';
@@ -118,6 +119,8 @@ export interface LabCase {
   readonly cumulus?: ShadowCumulus;
   // 動的な雲場を表示時刻へ焼く。
   readonly bakeClouds?: (renderer: WebGPURenderer, displayTime: number) => void;
+  // 雲場のLOD比較設定を表面へ渡す。大気・影はRenderPipelineが同じ設定を受ける。
+  readonly setCloudLodSampling?: (mode: CloudLodMode, fixedLevel?: number) => void;
   // 動的な雲場を解放する。
   readonly disposeClouds?: () => void;
   // 描画品質設定のうち、ケースの部品が読む項目を押し込む口。毎フレーム呼ばれるので、
@@ -626,6 +629,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   readonly shadowBody: ShadowBody;
   readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
   readonly bakeClouds: (renderer: WebGPURenderer, displayTime: number) => void;
+  readonly setCloudLodSampling: (mode: CloudLodMode, fixedLevel?: number) => void;
   readonly disposeClouds: () => void;
 } {
   const group = new THREE.Group();
@@ -681,6 +685,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
       }
     },
     bakeClouds: (renderer, displayTime) => cumulus.bake(renderer, displayTime),
+    setCloudLodSampling: (mode, fixedLevel) => cumulus.setLodSampling(mode, fixedLevel),
     disposeClouds: () => cumulus.dispose(),
   };
 }
@@ -715,6 +720,7 @@ function earth(style: RenderStyle): LabCase {
     cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
     bakeClouds: earthSphere.bakeClouds,
+    setCloudLodSampling: earthSphere.setCloudLodSampling,
     disposeClouds: earthSphere.disposeClouds,
   };
 }
@@ -733,6 +739,7 @@ function earthOblique(style: RenderStyle): LabCase {
     cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
     bakeClouds: earthSphere.bakeClouds,
+    setCloudLodSampling: earthSphere.setCloudLodSampling,
     disposeClouds: earthSphere.disposeClouds,
   };
 }
@@ -761,6 +768,7 @@ function earthPolar(style: RenderStyle): LabCase {
     cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
     bakeClouds: earthSphere.bakeClouds,
+    setCloudLodSampling: earthSphere.setCloudLodSampling,
     disposeClouds: earthSphere.disposeClouds,
   };
 }
@@ -844,6 +852,7 @@ function earthMars(style: RenderStyle): LabCase {
     ],
     applyGraphics: earthSphere.applyGraphics,
     bakeClouds: earthSphere.bakeClouds,
+    setCloudLodSampling: earthSphere.setCloudLodSampling,
     disposeClouds: earthSphere.disposeClouds,
   };
 }
