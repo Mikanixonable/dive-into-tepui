@@ -2,7 +2,7 @@
 // この型は読み取り用の TSL ノードと UV/mip の規則だけを持つ。表現 renderer は同じ sampler を参照し、
 // それぞれが sphereMeshUv や fieldLodForWidth を再実装しない。
 import * as THREE from 'three/webgpu';
-import { float, fract, greaterThan, If, int, log2, max, min, texture, uniform, vec2 } from 'three/tsl';
+import { float, fract, greaterThan, int, log2, max, min, select, texture, uniform, vec2 } from 'three/tsl';
 import { sphereMeshUv } from '../celestial-surface';
 import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
 import { maxAvailableMipLevelOf } from './baked-field';
@@ -58,11 +58,11 @@ export class CloudFieldSampler {
     const selected = lod === undefined
       ? sample
       : sample.level(min(max(lod, 0), this.maxMipLevel));
-    const value = selected.toVar();
-    If(greaterThan(this.fixedLodMode, 0.5), () => {
-      value.assign(sample.level(min(max(this.fixedLod, 0), this.maxMipLevel)));
-    });
-    return value;
+    return select(
+      greaterThan(this.fixedLodMode, 0.5),
+      sample.level(min(max(this.fixedLod, 0), this.maxMipLevel)),
+      selected,
+    );
   }
 
   // 光路上の標本のように画面の隣接画素と連続しない標本の mip を共通選択する。
