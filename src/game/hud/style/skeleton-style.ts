@@ -40,7 +40,7 @@ ${OVERLAY_LAYER_STYLE}
 #hud ::-webkit-scrollbar-thumb:hover { background: var(--color-primary-hover); }
 
 #hud-overlay-shield { display: none; position: absolute; inset: 0; pointer-events: none; background: var(--shade-1); }
-body.hud-overlay-modal-open #hud-overlay-shield { display: block; }
+body.hud-overlay-dim-background #hud-overlay-shield { display: block; }
 body.hud-overlay-modal-open #touch-ui { display: none; }
 
 /* 表示/非表示ユーティリティ */

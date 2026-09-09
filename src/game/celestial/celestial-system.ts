@@ -1,5 +1,6 @@
 // 天体系(天体ビュー・星・天球グリッド・参照軌道線・環境光)の構築と毎フレーム更新。
 import * as THREE from 'three/webgpu';
+import type { WebGPURenderer } from 'three/webgpu';
 import { CelestialMotion, OrbitingMotion, PlanetMotion } from '../../physics/celestial-motion';
 import { CelestialBodyDef, PhaseOffsets, shapeOf } from '../../physics/celestial-body-def';
 import { strongestAttractor } from '../../physics/attractor';
@@ -467,6 +468,11 @@ export class CelestialSystem implements CelestialBodies {
       style, this.gridVisibility, cameraSystem.activeCamera,
       CELESTIAL_SHELL_SCALE);
     this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this, this.gridVisibility);
+  }
+
+  // このフレームに積雲殻を描く天体の雲場を焼く。
+  public bakeClouds(renderer: WebGPURenderer, displayTime: number): void {
+    for (const body of this.entities) body.view.bakeClouds(renderer, displayTime);
   }
 
   // 天体照の光源の候補を組んで選定へ渡し、選ばれたものを描画座標へ移してライティング側の
