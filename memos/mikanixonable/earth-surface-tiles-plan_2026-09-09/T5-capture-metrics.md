@@ -27,7 +27,7 @@ Earthの色、法線、roughness、深度、LOD、通信、GPU常駐を再現可
 
 ## 実装状況（2026-09-10）
 
-コード実装は `7f8614fc`, `e90aaeca` で完了した。固定15ケース、1920×1080、300フレーム、
+コード実装は `7f8614fc`, `e90aaeca`, `95e0152b` で完了した。固定15ケース、1920×1080、300フレーム、
 color/normal/depthのschema v2、PNGのhash/サイズ記録、既存fake transport/GPUテストとの
 再生シナリオ対応、render-labの `earthSurfaceCapture` APIを追加した。
 実captureはChrome/WebGPU/drawing bufferまで到達したが、実データmanifestが未投入のため、
