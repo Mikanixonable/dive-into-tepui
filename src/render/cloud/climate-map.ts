@@ -52,6 +52,10 @@ export class ClimateMap {
   // 遅延版だけ画像取得を開始する。ロード済み版では何もしない。
   public request(): void { this.deferred?.request(); }
 
+  // 画像がGPUへ公開された回数。静的に読み込んだ地図ではtexture.versionを使う。
+  // 雲場のキャッシュは表示時刻だけでなくこの入力世代もキーへ含める。
+  public get generation(): number { return this.deferred?.generation ?? this.map.version; }
+
   // 平年の雲量 0..1。
   public meanCloudiness(direction: Vec3Node): FloatNode {
     return this.sample(direction).g;
