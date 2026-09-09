@@ -127,7 +127,7 @@ T0 基準記録
 | T6-1 | fixture Pages完了 | `49d840f2`、Pages layout pass、build pass | 実全世界bundleのPages公開は未完了 |
 | T4 | コード完了 | `e195d4df`, `ac919b93`, `ea6d47a3`, `22532275`、render 96/96、game 201/201 | 実ERA5 bundleと実ブラウザ/WebGPU撮影は未実施 |
 | T5 | コード完了 | `7f8614fc`, `e90aaeca`, `95e0152b`、render 100/100、game 201/201、capture contract pass | 実データ未投入のため15ケースのcolor/normal/depthはunavailable |
-| T7 | コードレビュー・記録更新完了 | `c1024c61`、追加 `a5cacedb`, `ccc3683f`, `85b63f59`, `ed53a902`、対象テスト pass | 実データ生成・Pages本番公開・実captureゲートは未達成。blocked理由をT1とpreflight JSONへ記録 |
+| T7 | コードレビュー・記録更新完了 | `c1024c61`, `dc2e0427`, `0ced354b`, `5302be8c`、追加 `a5cacedb`, `ccc3683f`, `85b63f59`, `b1f5e2e2`, `ed53a902`、対象テスト pass | 実データ生成・Pages本番公開・実captureゲートは未達成。blocked理由をT1とpreflight JSONへ記録 |
 
 ## 7. 検証
 
