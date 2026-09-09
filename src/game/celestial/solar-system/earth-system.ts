@@ -17,6 +17,7 @@ import {
 } from './constants';
 import { Aurora, type AuroraOptics } from '../../../render/aurora';
 import { CelestialSurface } from '../../../render/celestial-surface';
+import { EarthSurface, EarthSurfaceContext } from '../../../render/earth-surface';
 import { CumulusShell } from '../../../render/cumulus-shell';
 import { ClimateMap } from '../../../render/cloud/climate-map';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
@@ -29,6 +30,7 @@ import { MOON_DIST_TERMS, MOON_LAT_TERMS, MOON_LON_TERMS } from './moon-terms';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { CelestialTexture } from '../../../render/celestial-textures';
 import type { CelestialEntity } from '../celestial-entity/celestial-entity';
+import type { EarthSurfaceSource } from './earth-surface-source';
 
 // 地球系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type EarthSystemBodyId = 'earth' | 'moon';
@@ -172,6 +174,27 @@ export const EARTH_SYSTEM_NAMES: Record<EarthSystemBodyId, string> = {
   moon: '月',
 };
 
+// 実配信物を切り替える前の開発用入力。地表の寿命境界だけを先にゲームへ接続し、
+// 描画は既存テクスチャのfallbackへ委譲する。実URLとマニフェスト検証はA6で差し込む。
+export const EARTH_SURFACE_FIXTURE_SOURCE = {
+  datasetId: 'earth-development-fixture',
+  sourceManifestSha256: '0'.repeat(64),
+  climateEncoding: {
+    temperatureK: { min: 180, max: 330 },
+    cloudFraction: { min: 0, max: 1 },
+    orthometricElevation: { min: -1000, max: 9000 },
+    landFraction: { min: 0, max: 1 },
+  },
+  baseUrl: 'https://example.test/earth-surface/',
+  manifestUrl: 'https://example.test/earth-surface/manifest.json',
+  tileIndexUrl: 'https://example.test/earth-surface/tile-index.json',
+  baseColorUrl: 'https://example.test/earth-surface/base-color.jpg',
+  baseTerrainUrl: 'https://example.test/earth-surface/base-terrain.bin.gz',
+  climateMapUrls: Array.from(
+    { length: 12 }, (_, month) => `https://example.test/earth-surface/climate-${month + 1}.png`,
+  ),
+} satisfies EarthSurfaceSource;
+
 // 両極それぞれ2層のカーテン。同じ極の層は geomSeed を揃えて平行にし、半径・緯度・明滅を
 // ずらして厚みを出す。
 function earthAuroras(): readonly Aurora[] {
@@ -194,10 +217,14 @@ export function earthSystem(
   // 雲の場は殻が持ち、地表・影・大気の殻はその実体を借りて読む。
   const climate = ClimateMap.fromDeferredUrl(climateTextureUrl);
   const cumulus = new CumulusShell(GeneratedCloudField.global(climate), R_EARTH_EQ);
+  const earthSurface = new EarthSurface(
+    new EarthSurfaceContext(EARTH_SURFACE_FIXTURE_SOURCE),
+    CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl),
+  );
   return {
     earth: new PointEntity(
       earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
-      CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl),
+      earthSurface,
       EARTH_ATMOSPHERE_OPTICS, new EarthCoastline(), earthAuroras(),
       GeostationaryOverlay.of(earth.body), cumulus,
     ),

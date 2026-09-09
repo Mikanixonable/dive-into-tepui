@@ -3,6 +3,8 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import { EarthSurface, EarthSurfaceContext } from '../../src/render/earth-surface';
+import { EarthSurfaceView } from '../../src/render/earth-surface-tiles';
+import type { EarthSurfaceResidentFrame } from '../../src/render/earth-surface-resident';
 import type { EarthSurfaceSource } from '../../src/game/celestial/solar-system/earth-surface-source';
 import type {
   CelestialSurfaceFrame,
@@ -39,9 +41,9 @@ class FallbackSpy implements CelestialSurfaceLike {
   public dispose(): void { this.calls.push('dispose'); }
 }
 
-function frame(): CelestialSurfaceFrame {
+function frame(camera: THREE.Camera = new THREE.Camera()): CelestialSurfaceFrame {
   return {
-    camera: new THREE.PerspectiveCamera(),
+    camera,
     bodyToView: new THREE.Matrix4(),
     axes: new THREE.Vector3(1, 1, 1),
     viewport: { width: 320, height: 200 },
@@ -49,6 +51,14 @@ function frame(): CelestialSurfaceFrame {
     timeMs: 1200,
     style: 'realistic',
   };
+}
+
+class CoordinatorSpy {
+  public readonly frames: EarthSurfaceResidentFrame[] = [];
+  public disposed = false;
+
+  public sync(input: EarthSurfaceResidentFrame): void { this.frames.push(input); }
+  public dispose(): void { this.disposed = true; }
 }
 
 export function register(): void {
@@ -71,5 +81,35 @@ export function register(): void {
     assert.deepEqual(fallback.calls, ['addTo', 'syncLod', 'syncFrame', 'hide', 'dispose']);
     assert.equal(lease.signal.aborted, true);
     assert.throws(() => context.requestLease(), /disposed/);
+  });
+
+  test('earth surface: frameからprojectionを作りcoordinatorへ世代付きで渡す', () => {
+    const context = new EarthSurfaceContext(SOURCE);
+    const fallback = new FallbackSpy();
+    const coordinator = new CoordinatorSpy();
+    const surface = new EarthSurface(context, fallback, coordinator);
+    const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
+
+    surface.syncFrame(frame(camera));
+    assert.equal(coordinator.frames.length, 1);
+    assert.ok(coordinator.frames[0]?.projection instanceof EarthSurfaceView);
+    assert.equal(coordinator.frames[0]?.generation, 1);
+    assert.equal(coordinator.frames[0]?.frame, 7);
+    assert.equal(coordinator.frames[0]?.signal?.aborted, false);
+    const firstSignal = coordinator.frames[0]?.signal;
+
+    surface.syncFrame({ ...frame(camera), frame: 8 });
+    assert.equal(coordinator.frames.length, 2);
+    assert.equal(firstSignal?.aborted, true);
+    assert.equal(coordinator.frames[1]?.signal?.aborted, false);
+
+    surface.hide();
+    assert.equal(coordinator.frames[1]?.signal?.aborted, true);
+    assert.equal(context.generation, 2);
+    surface.dispose();
+    assert.equal(coordinator.disposed, true);
+    surface.dispose();
   });
 }
