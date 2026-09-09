@@ -1,6 +1,10 @@
 // 地球表面の寿命境界。実データの取得・GPU公開・気候入力が同じdatasetIdと世代を共有する。
 import * as THREE from 'three/webgpu';
 import type { EarthSurfaceSource } from '../game/celestial/solar-system/earth-surface-source';
+import { EarthSurfaceView } from './earth-surface-tiles';
+import type {
+  EarthSurfaceResidentFrame,
+} from './earth-surface-resident';
 import type {
   CelestialSurfaceFrame,
   CelestialSurfaceLike,
@@ -11,6 +15,13 @@ export interface EarthSurfaceRequestLease {
   readonly generation: number;
   readonly signal: AbortSignal;
   release(): void;
+}
+
+// 実GPU実装を直接所有せず、ゲーム側から差し込める地表常駐の最小境界。
+// 具象coordinatorはタイル要求とGPU寿命を持つため、EarthSurfaceはこの2操作だけを知る。
+export interface EarthSurfaceResidentCoordinatorLike {
+  sync(input: EarthSurfaceResidentFrame): unknown;
+  dispose(): void;
 }
 
 export class EarthSurfaceContext {
@@ -59,9 +70,13 @@ export class EarthSurfaceContext {
 
 // 地球固有の寿命境界を共有しながら、天体表面の描画契約は既存の球面へ委譲する。
 export class EarthSurface implements CelestialSurfaceLike {
+  private requestLeaseValue: EarthSurfaceRequestLease | null = null;
+  private disposed = false;
+
   public constructor(
     private readonly context: EarthSurfaceContext,
     private readonly fallback: CelestialSurfaceLike,
+    private readonly coordinator: EarthSurfaceResidentCoordinatorLike | null = null,
   ) {}
 
   public get photometry(): SurfacePhotometry | null { return this.fallback.photometry; }
@@ -72,11 +87,56 @@ export class EarthSurface implements CelestialSurfaceLike {
 
   public syncLod(apparentDiameterPx: number): void { this.fallback.syncLod(apparentDiameterPx); }
 
-  public syncFrame(frame: CelestialSurfaceFrame): void { this.fallback.syncFrame(frame); }
+  public syncFrame(frame: CelestialSurfaceFrame): void {
+    if (this.disposed) return;
+    this.fallback.syncFrame(frame);
+    if (this.coordinator === null) return;
 
-  public hide(): void { this.fallback.hide(); }
+    this.requestLeaseValue?.release();
+    const lease = this.context.requestLease();
+    this.requestLeaseValue = lease;
+    if (!(frame.camera instanceof THREE.PerspectiveCamera)
+      && !(frame.camera instanceof THREE.OrthographicCamera)) {
+      // EarthSurfaceViewは投影行列を持つ2種類のゲームカメラだけを受ける。
+      // 未知のカメラではfallbackを維持し、要求だけは直ちにキャンセルする。
+      lease.release();
+      this.requestLeaseValue = null;
+      return;
+    }
+    const bodyToWorld = frame.camera.matrixWorld.clone().multiply(frame.bodyToView);
+    const projection = new EarthSurfaceView(
+      frame.camera, bodyToWorld, frame.axes, frame.viewport.width, frame.viewport.height,
+    );
+    const residentFrame: EarthSurfaceResidentFrame = {
+      projection,
+      timeMs: frame.timeMs,
+      generation: lease.generation,
+      signal: lease.signal,
+      frame: frame.frame,
+    };
+    try {
+      this.coordinator.sync(residentFrame);
+    } catch (error) {
+      lease.release();
+      this.requestLeaseValue = null;
+      throw error;
+    }
+  }
+
+  public hide(): void {
+    if (this.disposed) return;
+    this.requestLeaseValue?.release();
+    this.requestLeaseValue = null;
+    this.context.invalidateRequests();
+    this.fallback.hide();
+  }
 
   public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.coordinator?.dispose();
+    this.requestLeaseValue?.release();
+    this.requestLeaseValue = null;
     this.context.dispose();
     this.fallback.dispose();
   }
