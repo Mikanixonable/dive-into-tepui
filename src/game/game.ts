@@ -423,7 +423,7 @@ export class Game {
     // 交点を置く先は計画折れ線か解析軌道楕円のどちらかなので、折れ線を組み終えた計画表示と、
     // 楕円が引く予測列を伸ばした後に通す。
     this.sections.enter(SECTION.plan);
-    const equatorVisibility = this.cameraSystem.mode === 'map'
+    const equatorVisibility = this.cameraSystem.view === 'map'
       ? new MapVisibilityPolicy(
         this._celestialSystem, this.cameraSystem.mapDisplayToggles,
       )
@@ -454,9 +454,9 @@ export class Game {
     this.entityLines.updatePredictionReaders(
       this.activeControllable,
       this.targeter.aliveTarget,
-      this.modeManager.current,
+      this.viewManager.current,
       displayWindow,
-      this.modeManager.activeMode.visibilityPolicy,
+      this.viewManager.activeView.visibilityPolicy,
     );
   }
 
@@ -564,7 +564,7 @@ export class Game {
       this.cameraSystem.activeCameraPos,
       this.frameAnchors.bodies,
       this.frameAnchors.bodiesPivot,
-      this.cameraSystem.mode === 'map',
+      this.cameraSystem.view === 'map',
       timeLabel,
     );
     syncControlledLoopSfx(this._worldSfx, controlled, displayTime, visibilityPolicy);
