@@ -1,6 +1,7 @@
 import type { Input } from '../input/input';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
+import type { GpuTimingSink } from '../render/gpu-timings';
 import type * as THREE from 'three/webgpu';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import type { Predictor } from './dynamic/predictor';
@@ -38,6 +39,7 @@ import type { ViewManager } from './view/view-manager';
 export class PresentationCoordinator {
   constructor(
     private readonly renderer: THREE.WebGPURenderer,
+    private readonly gpu: GpuTimingSink,
     private readonly hud: Hud,
     private readonly viewBadge: ViewBadge,
     private readonly displayWindowManager: DisplayWindowManager,
@@ -157,7 +159,7 @@ export class PresentationCoordinator {
       fo, displayTime,
       this.cameraSystem, graphics, style, visibilityPolicy, this.markerManager,
     );
-    this.celestialSystem.bakeClouds(this.renderer, displayTime);
+    this.celestialSystem.bakeClouds(this.renderer, displayTime, this.gpu);
 
     // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。
     const timeLabel = timeLabelSettingOf(displayWindow);

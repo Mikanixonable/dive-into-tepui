@@ -8,6 +8,7 @@ import { CloudFieldSampler, type CloudUvAt } from './cloud-field-sampler';
 import { condense } from './condensation';
 import { CLOUD_TOP_SPAN } from './cumulus-shape';
 import type { WebGPURenderer } from 'three/webgpu';
+import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudSample } from './condensation';
 import type { FieldProjection } from './field-projection';
 import type { WeatherModel } from './weather-model';
@@ -27,8 +28,8 @@ export class CloudField {
   }
 
   // いまの時刻の雲を写しへ描く。at() で読む前に必ず一度呼ぶ。
-  public render(renderer: WebGPURenderer): void {
-    this.field.render(renderer);
+  public render(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
+    this.field.render(renderer, gpu);
   }
 
   // 焼いた雲の場。テクスチャの所有権は BakedField に残す。
