@@ -80,6 +80,7 @@ export function register(): void {
     assert.equal(result.state, 'ready', result.bootstrap.error?.message ?? '');
     assert.equal(result.bootstrap.state, 'ready');
     assert.equal(result.bootstrap.source?.datasetId, READY_MANIFEST.datasetId);
+    assert.equal(result.surface.usesDetailedMaterial, true);
     runtime.surface.dispose();
   });
 
@@ -90,6 +91,7 @@ export function register(): void {
       renderer: fakeRenderer(false),
     }).ready;
     assert.equal(result.state, 'fallback');
+    assert.equal(result.surface.usesDetailedMaterial, false);
     assert.equal(result.surface.textureUrl, EARTH_TEXTURE.url);
     result.surface.dispose();
   });
@@ -101,6 +103,7 @@ export function register(): void {
       renderer: fakeRenderer(true),
     }).ready;
     assert.equal(result.state, 'error');
+    assert.equal(result.surface.usesDetailedMaterial, false);
     assert.equal(result.surface.textureUrl, EARTH_TEXTURE.url);
     result.surface.dispose();
   });
