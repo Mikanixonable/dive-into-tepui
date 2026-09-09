@@ -14,7 +14,9 @@ import { unitSphereGeometry } from './celestial-surface';
 import { CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from './cloud/cumulus-shape';
 import { eastAt, northAt } from './cloud/sphere-frame';
 import { markLitOpaque } from './pipeline/lit-layer';
-import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
+import {
+  sphereLodLevelWithHysteresis, SPHERE_LOD_LADDER, SphereLodLevel,
+} from './screen-lod';
 import type { FloatNode, FloatUniform, Vec3Node, Vec4Node } from './tsl-types';
 
 // 雲の粗さ。雲は拡散する面なので、粗さは最大になる。
@@ -99,6 +101,7 @@ export class OpaqueCloudSurfaceRenderer {
   // 積雲の精細さの段を置き直す。
   public setDetail(detail: CumulusDetail): void {
     this.setSampling(SAMPLING_OF_DETAIL[detail]);
+    if (detail === CUMULUS_DETAIL.off) this.hide();
   }
 
   public setLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
@@ -116,10 +119,12 @@ export class OpaqueCloudSurfaceRenderer {
     previous.dispose();
   }
 
-  // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。刻みを持たない配り方では
-  // 全段を隠す。
+  // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。前回段はこのrendererだけが
+  // 所有し、screen-lod.tsの純粋な選択関数へ渡す。刻みを持たない配り方では全段を隠す。
   public syncLod(apparentDiameterPx: number): void {
-    const level = this.sampling.march === 0 ? null : sphereLodLevel(apparentDiameterPx);
+    const level = sphereLodLevelWithHysteresis(
+      apparentDiameterPx, this.activeLevel, this.sampling.march !== 0,
+    );
     if (level === this.activeLevel) return;
     this.activeLevel = level;
     for (const [meshLevel, mesh] of this.meshes) mesh.visible = meshLevel === level;
@@ -133,6 +138,7 @@ export class OpaqueCloudSurfaceRenderer {
 
   // 全段のメッシュを親から外し、表面専用のマテリアルを解放する。雲場は CloudPresentation が解放する。
   public dispose(): void {
+    this.hide();
     for (const mesh of this.meshes.values()) mesh.removeFromParent();
     this.material.dispose();
   }
