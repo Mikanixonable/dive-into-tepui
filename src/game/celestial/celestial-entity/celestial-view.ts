@@ -1,5 +1,6 @@
 // 天体1体の3D表示資源を所有し、構築時に受け取った運動を描画座標へ同期する。
 import * as THREE from 'three/webgpu';
+import type { WebGPURenderer } from 'three/webgpu';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
 import { shapeSpheroidRadii, type RingSystemDef } from '../../../physics/celestial-body-def';
 import { orbitalElementsOf } from '../../../physics/elements';
@@ -88,6 +89,9 @@ export abstract class CelestialView {
   public atmosphereCloudsAt(
     _motion: CelestialMotion, _displayTime: number,
   ): AtmosphereClouds | null { return null; }
+
+  // この天体が持つ動的な雲場を表示時刻へ焼く。
+  public bakeClouds(_renderer: WebGPURenderer, _displayTime: number): void {}
 
   public cumulusShadowAt(
     _motion: CelestialMotion, _floatingOrigin: FloatingOrigin, _displayTime: number,

@@ -80,7 +80,7 @@ export const KEY_MAPPING = {
   help: { code: 'KeyH', label: 'H' },
   pauseMenu: { code: 'Escape', label: 'ESC' },
   restart: { code: 'KeyR', label: 'R' },
-  togglePerfWindow: { code: 'F3', label: 'F3' },
+  toggleDebugInfoWindow: { code: 'F3', label: 'F3' },
   clipSnapshot: { code: 'F5', label: 'F5' },
   openSnapshots: { code: 'F9', label: 'F9' },
 } as const satisfies Record<string, KeyBinding>;
@@ -94,7 +94,7 @@ export const SCROLL_GUARD_KEYS: readonly KeyBinding[] = [
   KEY_MAPPING.cameraYawRight,
   KEY_MAPPING.cameraPitchUp,
   KEY_MAPPING.cameraPitchDown,
-  KEY_MAPPING.togglePerfWindow,
+  KEY_MAPPING.toggleDebugInfoWindow,
   KEY_MAPPING.clipSnapshot,
   KEY_MAPPING.openSnapshots,
 ];

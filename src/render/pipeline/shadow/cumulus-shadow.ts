@@ -15,7 +15,7 @@ import type { SunLight } from '../sun-light';
 
 // 影を落とす積雲の殻 1 体ぶん。center は描画座標の天体中心、surfaceRadius は雲の高度の基準
 // 半径 [m]、axes は天体固定の半軸 [m]、topAltitude は殻の高さ [m]、bodyFromWorld は描画座標の
-// ベクトルを天体固定の向きへ回す行列、field は雲の場(R = 被覆率、G = 雲頂高度 / topAltitude)。
+// ベクトルを天体固定の向きへ回す行列、field は雲場(R = 被覆率、G = 雲頂高度 / topAltitude)。
 export interface ShadowCumulus {
   readonly center: THREE.Vector3;
   readonly surfaceRadius: number;
@@ -141,7 +141,7 @@ export class CumulusShadow {
   }
 
   // タップ 1 回が代表する実寸 sampleWidth [m] から場を引く mip 段。
-  private fieldLod(sampleWidth: FloatNode): FloatNode {
+  private fieldLod(sampleWidth: FloatNode) {
     // 寸法を返すノードは型引数を持たないので、成分を取れる形へ直してから読む。
     const fieldWidth = (this.field.size(int(0)) as THREE.Node<'uvec2'>).x;
     return fieldLodForWidth(sampleWidth, this.surfaceRadius, float(fieldWidth));

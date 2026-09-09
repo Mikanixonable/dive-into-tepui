@@ -1,8 +1,8 @@
-// 負荷確認ウィンドウ: フレーム時間の計測・集計と、その表示、そして描画パスの中間結果を映す
+// デバッグ情報ウィンドウ: フレーム時間の計測・集計と、その表示、そして描画パスの中間結果を映す
 // デバッグ表示の選択。窓が開いている間だけ計測が走る(`on` が計測の可否そのもの)。
 import type { WebGPURenderer } from 'three/webgpu';
 import { PropertyWindow } from '../hud/windows/property-window';
-import { SegmentedControl } from '../hud/widgets';
+import { injectOnce, SegmentedControl, TabBar } from '../hud/widgets';
 import { DEBUG_TARGETS, type DebugTargetHost, type DebugTargetId } from '../render/pipeline/debug-target';
 import type { RenderStyleSetting } from '../render/render-style';
 import { fmtDuration } from '../hud/utils';
@@ -55,6 +55,7 @@ interface PhaseStats {
   samples: number[];
 }
 
+// 計測区間の累計・最大値・標本を空の状態で作る。
 function newPhaseStats(): PhaseStats {
   return { sum: 0, max: 0, samples: [] };
 }
@@ -66,6 +67,16 @@ const BAR_CELLS = 8;
 // 窓を開く既定位置 [px]。マップビューの左ドック(left 12px + 幅 300px まで)の右隣。
 const DEFAULT_X = 324;
 const DEFAULT_Y = 12;
+
+type DebugInfoTab = 'metrics' | 'render';
+
+const DEBUG_INFO_TABS: readonly (readonly [DebugInfoTab, string])[] = [
+  ['metrics', '計測'], ['render', '描画'],
+];
+
+const STYLE = `
+#hud .debug-info-controls { display: flex; flex-direction: column; gap: var(--space-4); }
+`;
 
 // 所要時間を「████░░░░ 12.3ms」の形にする。
 function barText(ms: number): string {
@@ -79,7 +90,7 @@ function percentile(sorted: readonly number[], ratio: number): number {
   return sorted[i] ?? 0;
 }
 
-export class PerfMeter {
+export class DebugInfoWindow {
   private win: PropertyWindow | null = null;
   private readonly updateStats = newPhaseStats();
   private readonly syncStats = newPhaseStats();
@@ -99,16 +110,20 @@ export class PerfMeter {
   private lastTimeMisses = 0;
   // 直近フラッシュで組んだ行。窓を開き直したときに空の窓を出さないために持つ。
   private rows: readonly PropertyRow[] = [];
-  // デバッグ表示の選択欄。窓へ載せ替えるだけなので、開閉をまたいで同じものを使い回す。
-  private readonly debugTarget: SegmentedControl<DebugTargetId>;
+  // 描画タブの選択欄。窓へ載せ替えるだけなので、開閉をまたいで同じものを使い回す。
+  private readonly renderTarget: SegmentedControl<DebugTargetId>;
+  private readonly tabBar: TabBar<DebugInfoTab>;
+  private readonly controls: HTMLElement;
+  private activeTab: DebugInfoTab = 'metrics';
   private readonly proteinMotion = new ProteinMotionMetricsRecorder();
 
   // 計測が走っているか。窓が開いている間だけ真になる。
-  get on(): boolean { return this.win !== null; }
+  public get on(): boolean { return this.win !== null; }
 
-  // デバッグ表示は模式図スタイルでは選べない(DEVELOP/SPEC/RENDERING.md)ので、renderStyle の
+  // 描画タブのデバッグ表示は模式図スタイルでは選べない(DEVELOP/SPEC/RENDERING.md)ので、renderStyle の
   // 変化に合わせて選択欄の有効/無効を切り替える。?perf=1 が付いていれば起動直後から窓を開く。
-  constructor(
+  // 計測対象と表示先を受け取り、デバッグ表示の操作部品を組み立てる。
+  public constructor(
     private readonly root: HTMLElement,
     private readonly renderer: WebGPURenderer,
     private readonly sections: FrameSections,
@@ -117,16 +132,24 @@ export class PerfMeter {
     private readonly debugTargetHost: DebugTargetHost,
     renderStyle: RenderStyleSetting,
   ) {
-    this.debugTarget = new SegmentedControl('デバッグ表示', DEBUG_TARGETS, (id) => {
+    // 描画タブの選択欄とタブ切り替えを組む。
+    injectOnce('debug-info-window', STYLE);
+    this.renderTarget = new SegmentedControl('デバッグ表示', DEBUG_TARGETS, (id) => {
       this.debugTargetHost.debugTarget = id;
-      this.debugTarget.setSelected(id);
+      this.renderTarget.setSelected(id);
     });
-    renderStyle.subscribe((style) => this.debugTarget.setEnabled(style !== 'schematic'));
+    this.tabBar = new TabBar(DEBUG_INFO_TABS, (tab) => this.selectTab(tab));
+    this.controls = document.createElement('div');
+    this.controls.className = 'debug-info-controls';
+    // 窓へ載せる操作部品をまとめる。
+    this.controls.appendChild(this.tabBar.element);
+    this.controls.appendChild(this.renderTarget.element);
+    renderStyle.subscribe((style) => this.renderTarget.setEnabled(style !== 'schematic'));
     if (new URLSearchParams(location.search).get('perf') === '1') this.open();
   }
 
-  // 負荷確認ウィンドウを開く。既に開いていれば手前へ出すだけ。
-  open(): void {
+  // デバッグ情報ウィンドウを開く。既に開いていれば手前へ出すだけ。
+  public open(): void {
     if (this.win) {
       this.win.bringToFront();
       return;
@@ -146,7 +169,7 @@ export class PerfMeter {
     this.frames = 0;
     this.lastFlush = performance.now();
     this.win = new PropertyWindow(this.root, DEFAULT_X, DEFAULT_Y, {
-      title: '負荷',
+      title: 'デバッグ',
       rows: this.rows,
       items: [],
     }, this.overlayManager);
@@ -156,12 +179,13 @@ export class PerfMeter {
       this.gpu.enabled = false;
     };
     // 選択は窓を閉じている間も pipeline 側に残るので、開くたびにそちらから引き直す。
-    this.debugTarget.setSelected(this.debugTargetHost.debugTarget);
-    this.win.setControls(this.debugTarget.element);
+    this.renderTarget.setSelected(this.debugTargetHost.debugTarget);
+    this.win.setControls(this.controls);
+    this.selectTab('metrics');
   }
 
   // 窓を閉じ、計測も止める。
-  close(): void {
+  public close(): void {
     this.win?.dispose();
     this.win = null;
     this.sections.enabled = false;
@@ -169,19 +193,27 @@ export class PerfMeter {
   }
 
   // 開閉を反転する。
-  toggle(): void {
+  public toggle(): void {
     if (this.win) this.close();
     else this.open();
   }
 
   // [F3] を消費して開閉を反転する。
-  handleInput(input: Input): void {
-    if (input.takeKey(K.togglePerfWindow)) this.toggle();
+  public handleInput(input: Input): void {
+    if (input.takeKey(K.toggleDebugInfoWindow)) this.toggle();
+  }
+
+  // タブを切り替え、選んだ面だけを表示する。
+  private selectTab(tab: DebugInfoTab): void {
+    this.activeTab = tab;
+    this.tabBar.setSelected(tab);
+    this.renderTarget.element.classList.toggle('hidden', tab !== 'render');
+    this.win?.syncRows(tab === 'metrics' ? this.rows : []);
   }
 
   // このフレームの update/sync/render 所要時間と、フレームごとに数え直される個数系の値を積算し、
   // 表示更新のタイミングなら flush する。counts は同じフレームで計測対象になっていた Game 自身が渡す。
-  record(counts: PerfCountSource, updateMs: number, syncMs: number, renderMs: number, now: number): void {
+  public record(counts: PerfCountSource, updateMs: number, syncMs: number, renderMs: number, now: number): void {
     this.addSample(this.updateStats, updateMs);
     this.addSample(this.syncStats, syncMs);
     this.addSample(this.renderStats, renderMs);
@@ -200,12 +232,14 @@ export class PerfMeter {
     this.flush(c, now);
   }
 
+  // 1つの計測値を統計へ積算する。
   private addSample(stats: PhaseStats, value: number): void {
     stats.sum += value;
     stats.max = Math.max(stats.max, value);
     stats.samples.push(value);
   }
 
+  // 計測区間の累計・最大値・標本を初期化する。
   private resetStats(stats: PhaseStats): void {
     stats.sum = 0;
     stats.max = 0;
@@ -232,7 +266,7 @@ export class PerfMeter {
     if (!this.win || now - this.lastFlush < 500) return;
     const n = Math.max(1, this.frames);
     this.rows = this.buildRows(counts, n, now - this.lastFlush);
-    this.win.syncRows(this.rows);
+    if (this.activeTab === 'metrics') this.win.syncRows(this.rows);
     // 次の集計期間へ向けてリセットする
     this.resetStats(this.updateStats);
     this.resetStats(this.syncStats);

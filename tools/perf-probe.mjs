@@ -1,5 +1,5 @@
 // パフォーマンス再現計測プローブ。tools/chrome-session.mjs でヘッドレス Chrome を上げ、
-// 負荷確認ウィンドウ(PerfMeter, `.prop-window` タイトル「負荷」)の全行をワープ段数・
+// デバッグ情報ウィンドウ(DebugInfoWindow, `.prop-window` タイトル「デバッグ」)の計測タブ全行をワープ段数・
 // ビュー・計画ノード有無ごとに読み取って JSON で出す。ゲーム本体(src/)は一切変更しない。
 //
 // 使い方:
@@ -21,7 +21,7 @@
 //   timeseries モード: PERF_TS_STAGE(既定'1') PERF_TS_WARPS(既定'1,64,1024')
 //                      PERF_TS_INTERVAL_MS(既定300) PERF_TS_DURATIONS(既定 warp=1のみ60・他30秒)
 //
-// 既知の限界: PerfMeter が predictDiscarded 等のカウンタ系を積むのは毎フレームだが、DOM へ
+// 既知の限界: DebugInfoWindow が predictDiscarded 等のカウンタ系を積むのは毎フレームだが、DOM へ
 // 出るのは 500ms ごとの flush 期間の avg/max なので、本プローブがそれより速く読んでも同じ値を
 // 読み直すだけになりうる。時系列サンプリングは 500ms 周期のストロボ的な観測になる。
 import { writeFileSync } from 'node:fs';
@@ -99,11 +99,11 @@ async function bootAndWaitReady(devTools, timeoutMs = 60000) {
   throw new Error('Game did not report gameReady within timeout.');
 }
 
-// 負荷確認ウィンドウ(タイトル「負荷」)の全行を {key,label,value} で読む。無ければ null。
+// デバッグ情報ウィンドウ(タイトル「デバッグ」)の計測タブ全行を {key,label,value} で読む。無ければ null。
 async function readPerfRows(devTools) {
   return devTools.evaluate(`(() => {
     const wins = [...document.querySelectorAll('.prop-window')];
-    const win = wins.find((w) => w.querySelector('.prop-window-title-main')?.textContent === '負荷');
+    const win = wins.find((w) => w.querySelector('.prop-window-title-main')?.textContent === 'デバッグ');
     if (!win) return null;
     return [...win.querySelectorAll('.prop-window-row')].map((r) => ({
       key: r.dataset.key ?? '',
@@ -247,7 +247,7 @@ async function attemptPlaceNode(devTools) {
 }
 
 // ---- 行の値文字列 → 数値の抽出 -----------------------------------------------------------------
-// perf-meter.ts の書式(barText / countRow / warp / hit-miss / 素の数値)を素直にパースする。
+// debug-info-window.ts の書式(barText / countRow / warp / hit-miss / 素の数値)を素直にパースする。
 function parseRowValue(raw) {
   const bar = raw.match(/(-?\d+\.?\d*)ms(?:\s+p95\s+(-?\d+\.?\d*))?(?:\s+max\s+(-?\d+\.?\d*))?/);
   if (bar) {
@@ -553,7 +553,7 @@ async function runMatrix(devTools, baseUrl) {
 
 // ============================================================================================
 // 時系列モード: 予測破棄(predictDiscarded)の sawtooth 再現確認。
-// PerfMeter は毎フレーム積むが、DOM へ出るのは 500ms ごとの flush 期間の avg/max で、次の
+// DebugInfoWindow は毎フレーム積むが、DOM へ出るのは 500ms ごとの flush 期間の avg/max で、次の
 // flush までその値を保持するだけなので、それより速く読んでも「同じ値をもう一度読むだけ」に
 // なりうる。したがって本プローブの時系列も「破棄が起きた真の全イベント」を保証できるものでは
 // なく、500ms 周期のストロボ的な観測になる。この限界は正直に報告する。

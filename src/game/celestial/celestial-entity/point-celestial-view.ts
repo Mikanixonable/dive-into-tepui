@@ -1,6 +1,7 @@
 // 戦闘ビューで肉眼の「明るい星」程度にしか見えない惑星の見た目。見かけ直径が閾値未満なら実体を
 // 隠し、戦闘ビューでは星殻上の輝点スプライトへ切り替える。
 import * as THREE from 'three/webgpu';
+import type { WebGPURenderer } from 'three/webgpu';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
 import { shapeAxes, type RingSystemDef } from '../../../physics/celestial-body-def';
 import { CameraSystem } from '../../camera/camera-system';
@@ -149,11 +150,16 @@ export class PointCelestialView extends CelestialView {
     // 表面の分割段と雲。
     this.surface.syncLod(apparentDiameterPx);
     if (graphics.clouds) {
+      this.cumulus?.setCloudsVisible(true);
       this.cumulus?.setDetail(graphics.cumulusDetail);
       this.cumulus?.syncLod(apparentDiameterPx);
     } else {
-      this.cumulus?.hide();
+      this.cumulus?.setCloudsVisible(false);
     }
+    this.cumulus?.setAtmosphereCloudsVisible(
+      graphics.clouds && graphics.cirrus,
+      graphics.clouds && graphics.translucentCumulus,
+    );
     // 模式図の重ね書きとオーロラ。
     this.graticule.setVisible(style === 'schematic');
     this.surfaceMarkings?.setVisible(style === 'schematic');
@@ -189,13 +195,23 @@ export class PointCelestialView extends CelestialView {
     };
   }
 
-  // 大気の散乱へ立てる雲。影へ渡す実体とは分け、同期中に書き換わらない行列を返す。
-  public atmosphereCloudsAt(motion: CelestialMotion, displayTime: number): AtmosphereClouds | null {
-    if (this.cumulus === null || !this.group.visible || !this.cumulus.visible) return null;
+  // 大気の散乱へ立てる雲。**雲全体を描くときだけ立つ。** 姿勢は自転位相まで込みで組む —
+  // 軸だけでは場が地表と一緒に回らない。**姿勢はこの1体ぶんの実体で返す** — 大気パスが読むのは
+  // 描画のときなので、影へ渡す使い回しの実体を渡すと、同期のあいだに書き換わる。
+  public override atmosphereCloudsAt(
+    motion: CelestialMotion, displayTime: number,
+  ): AtmosphereClouds | null {
+    if (this.cumulus === null || !this.group.visible || !this.cumulus.cloudsVisible) return null;
     return {
       field: this.cumulus.field,
       bodyFromWorld: writeBodyFromWorld(new THREE.Matrix4(), motion, displayTime),
     };
+  }
+
+  // 物理球として厚い雲か薄い雲を描くフレームの場だけを、表示時刻へ焼く。
+  public override bakeClouds(renderer: WebGPURenderer, displayTime: number): void {
+    if (!this.group.visible || !this.cumulus?.cloudsVisible) return;
+    this.cumulus.bake(renderer, displayTime);
   }
 
   // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期する。
@@ -218,7 +234,7 @@ export class PointCelestialView extends CelestialView {
   // 見かけ直径が閾値未満のときの共通後始末: 実体メッシュと環を隠す。
   private hidePhysical(): void {
     this.surface.hide();
-    this.cumulus?.hide();
+    this.cumulus?.setCloudsVisible(false);
     this.graticule.setVisible(false);
     this.surfaceMarkings?.setVisible(false);
     for (const aurora of this.auroras) aurora.mesh.visible = false;
