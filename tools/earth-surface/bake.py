@@ -9,7 +9,9 @@ import importlib.util
 import io
 import json
 import math
+import os
 from pathlib import Path
+import shutil
 import struct
 import sys
 import zipfile
@@ -518,15 +520,185 @@ def encode_climate_rgba(temperature, cloud, elevation, land, width=1024, height=
     return output.getvalue()
 
 
+class GlobalInputError(RuntimeError):
+    """全球生成に必要な入力または実データrendererが不足している。"""
+
+
+def global_input_paths(manifest, raw_root):
+    """manifestから必要入力のパスだけを列挙する。入力内容はメモリへ展開しない。"""
+    root = Path(raw_root)
+    suffix = {"geotiff": ".tif", "zip": ".zip", "netcdf": ".nc"}
+    paths = []
+    for source in manifest["sources"]:
+        source_root = root / source["id"]
+        explicit = source.get("inputFiles")
+        if explicit:
+            paths.extend(source_root / item for item in explicit)
+        elif source.get("regions"):
+            paths.extend(source_root / f"{region}{suffix[source['format']]}" for region in source["regions"])
+        elif source.get("regionGridDegrees"):
+            for latitude in range(90, -90, -15):
+                north_south = f"N{latitude:02d}" if latitude >= 0 else f"S{-latitude:02d}"
+                for longitude in range(-180, 180, 15):
+                    east_west = f"E{longitude:03d}" if longitude >= 0 else f"W{-longitude:03d}"
+                    paths.append(source_root / f"{north_south}{east_west}{suffix[source['format']]}" )
+        else:
+            paths.append(source_root / f"global{suffix[source['format']]}" )
+    return paths
+
+
+def require_global_inputs(manifest, raw_root):
+    missing = [path for path in global_input_paths(manifest, raw_root) if not path.is_file()]
+    if missing:
+        preview = ", ".join(str(path) for path in missing[:8])
+        more = "" if len(missing) <= 8 else f" (+{len(missing) - 8}件)"
+        raise GlobalInputError(f"全球bundleの入力が不足しています: {preview}{more}")
+
+
+def global_manifest(manifest, source_manifest_path, source_manifest_hash, climate_paths, coverage_kind="complete", max_zoom=7):
+    """配信契約の正本を生成する。実体hashはtile writerが逐次追加する。"""
+    attribution = []
+    for source in manifest["sources"]:
+        attribution.extend(source["attribution"])
+    return {
+        "schemaVersion": 1,
+        "datasetId": manifest["datasetId"],
+        "sourceManifestSha256": source_manifest_hash,
+        "sourceManifest": source_manifest_path,
+        "provenance": {"generator": "earth-surface-bundle/1", "sourceManifestHash": source_manifest_hash},
+        "climateMap": manifest["climateMap"],
+        "controlRegions": manifest["controlRegions"],
+        "coverage": {"kind": coverage_kind, "maxZoom": max_zoom,
+                      "expectedTiles": global_tile_count(max_zoom) if coverage_kind == "complete" else None},
+        "baseColor": "base/earth.jpg",
+        "baseTerrain": "base/earth.bin.gz",
+        "tileIndexUrl": "tile-index.json",
+        "climateMaps": climate_paths,
+        "climateEncoding": {"temperatureK": {"min": 180, "max": 330}, "cloudFraction": {"min": 0, "max": 1},
+                             "orthometricElevation": {"min": -1000, "max": 9000}, "landFraction": {"min": 0, "max": 1},
+                             "waterOrthometricElevationM": 0},
+        "attribution": sorted(set(attribution)),
+    }
+
+
+def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, render_tile,
+                        climate_maps, base_color=None, max_zoom=7):
+    """各タイルを一枚ずつ生成し、stagingへ書き込む全球bundle writer。"""
+    require_global_inputs(manifest, raw_root)
+    if type(max_zoom) is not int or not 0 <= max_zoom <= 7:
+        raise ValueError("max_zoomは0..7の整数が必要です")
+    output = Path(output_root)
+    staging = output.with_name(f"{output.name}.staging-{os.getpid()}")
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
+    source_hash = _fetch.contract_hash(manifest)
+    climate_paths = [f"climate/{month:02d}.png" for month in range(1, 13)]
+    source_manifest_file = Path(source_manifest_path)
+    if not source_manifest_file.is_file():
+        raise GlobalInputError(f"source manifestがありません: {source_manifest_path}")
+    result_manifest = global_manifest(manifest, "sources.json", source_hash, climate_paths,
+                                      "complete" if max_zoom == 7 else "sparse", max_zoom)
+    try:
+        climate_values = list(climate_maps)
+        if (len(climate_values) != 12 or any(not isinstance(value, (bytes, bytearray)) or not value
+                                             or bytes(value[:8]) != b"\x89PNG\r\n\x1a\n" for value in climate_values)):
+            raise ValueError("気候mapは12個のPNG bytesが必要です")
+        for path, data in zip(climate_paths, climate_values):
+            destination = staging / path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(data)
+        (staging / "sources.json").write_bytes(source_manifest_file.read_bytes())
+
+        tile_index = staging / "tile-index.json"
+        tile_index.parent.mkdir(parents=True, exist_ok=True)
+        entries = tile_index.open("w", encoding="utf-8")
+        entries.write(json.dumps({"schemaVersion": 1, "datasetId": manifest["datasetId"]}, ensure_ascii=False)[:-1])
+        entries.write(', "entries": [')
+        first = True
+        root_tiles = []
+        for key in global_tile_keys(max_zoom):
+            color, terrain = render_tile(key)
+            if (not isinstance(color, (bytes, bytearray)) or len(color) < 4
+                    or bytes(color[:2]) != b"\xff\xd8" or bytes(color[-2:]) != b"\xff\xd9"):
+                raise ValueError(f"color rendererがJPEGを返しませんでした: {key}")
+            validate_terrain_tile(terrain, key, hashlib.sha256(terrain).hexdigest())
+            z, x, y = key
+            color_url = f"tiles/{z}/{x}/{y}.jpg"
+            terrain_url = f"tiles/{z}/{x}/{y}.bin.gz"
+            color_path = staging / color_url
+            terrain_path = staging / terrain_url
+            color_path.parent.mkdir(parents=True, exist_ok=True)
+            color_path.write_bytes(color)
+            encoded = gzip.compress(terrain, mtime=0)
+            terrain_path.write_bytes(encoded)
+            if z == 0:
+                root_tiles.append((bytes(color), terrain))
+            entry = {"key": f"{z}/{x}/{y}", "z": z, "x": x, "y": y,
+                     "color": {"url": color_url, "sha256": hashlib.sha256(color).hexdigest(),
+                               "encodedBytes": len(color), "payloadBytes": len(color)},
+                     "terrain": {"url": terrain_url, "sha256": hashlib.sha256(terrain).hexdigest(),
+                                 "encodedBytes": len(encoded), "payloadBytes": len(terrain)}}
+            if not first:
+                entries.write(",")
+            entries.write(json.dumps(entry, ensure_ascii=False, separators=(",", ":")))
+            first = False
+        entries.write("]}\n")
+        entries.close()
+        if len(root_tiles) != 2:
+            raise ValueError("ESTBにはz=0の2枚が必要です")
+        base = staging / "base"
+        base.mkdir(parents=True, exist_ok=True)
+        base_color_data = bytes(base_color) if base_color is not None else root_tiles[0][0]
+        (base / "earth.jpg").write_bytes(base_color_data)
+        base_payload = encode_base_terrain([root_tiles[0][1], root_tiles[1][1]])
+        (base / "earth.bin.gz").write_bytes(gzip.compress(base_payload, mtime=0))
+        (staging / "earth-surface.json").write_text(json.dumps(result_manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+        (staging / "attribution.json").write_text(json.dumps({"datasetId": manifest["datasetId"], "attribution": result_manifest["attribution"]}, ensure_ascii=False, indent=2) + "\n")
+        if output.exists():
+            shutil.rmtree(output)
+        staging.rename(output)
+    except Exception:
+        entries.close() if 'entries' in locals() and not entries.closed else None
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    return result_manifest
+
+
+def unavailable_global_renderer(_key):
+    """実ソースの座標変換を未接続のまま、fixtureを本番データとして出さない。"""
+    raise GlobalInputError("全球rendererは未接続です。ETOPO/BMNG/GSHHG/ERA5のwindow adapterを接続してから再実行してください")
+
+
 # fixtureを中間JSONとRGB8 PPMへ出力する。タイルキー指定時はESTN本文も検査して保存する。
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", required=True)
+    parser.add_argument("--input")
+    parser.add_argument("--global", action="store_true", dest="global_bundle",
+                        help="全43690タイルのbundle生成入口。入力不足は生成前に失敗する")
+    parser.add_argument("--raw-root", default=".earth-surface/raw")
+    parser.add_argument("--climate-dir", default=".earth-surface/climate")
     parser.add_argument("--manifest", default="assets-src/earth-surface/sources.json")
     parser.add_argument("--output", default=".earth-surface/intermediate/region")
     parser.add_argument("--tile", nargs=3, type=int, metavar=("Z", "X", "Y"))
     args = parser.parse_args()
     manifest = _fetch.load_manifest(args.manifest)
+    if args.global_bundle:
+        if args.input is not None or args.tile is not None:
+            parser.error("--globalは--input/--tileと併用できません")
+        climate_dir = Path(args.climate_dir)
+        climate_maps = []
+        for month in range(1, 13):
+            path = climate_dir / f"{month:02d}.png"
+            if not path.is_file():
+                raise GlobalInputError(f"気候mapが不足しています: {path}")
+            climate_maps.append(path.read_bytes())
+        write_global_bundle(manifest, args.manifest, args.raw_root, args.output,
+                            unavailable_global_renderer, climate_maps)
+        print(f"全球bundle生成完了: {args.output}")
+        return
+    if args.input is None:
+        parser.error("fixture生成では--input、全球生成では--globalが必要です")
     raw = Path(args.input).read_bytes()
     value = json.loads(raw)
     result = bake_region(value, manifest)
@@ -561,6 +733,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (ValueError, KeyError, OSError) as error:
+    except (GlobalInputError, ValueError, KeyError, OSError) as error:
         print(f"earth-surface:bake: {error}", file=sys.stderr)
         sys.exit(1)
