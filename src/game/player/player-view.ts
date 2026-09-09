@@ -28,6 +28,7 @@ export interface PlayerVisualSource extends DynamicViewIdentity {
   readonly throttle: { readonly thrustAccelVec: import('../../math/vec3').Vec3 };
 }
 
+// DynamicView の共通識別入力が Player 固有の表示値も備えることを確認する。
 function isPlayerVisualSource(identity: DynamicViewIdentity): identity is PlayerVisualSource {
   return identity.mapKind === 'player'
     && 'roundsInMag' in identity
@@ -48,11 +49,13 @@ export class PlayerView extends DynamicView {
   private readonly boosters: AttachedBoostersView;
   private readonly markers: PlayerMarkers;
 
+  // 自機モデルと、その子表示・噴射・DOM マーカー資源を組み立てる。
   public constructor(
     scene: THREE.Scene,
     ownerId: string,
     markerSlots: MarkerSlots,
   ) {
+    // 船体を根にして、形状に密着する子表示を同じツリーへ結び付ける。
     const model = buildPlayerShip();
     super(model, scene);
     this.thrustEffects = new ThrustEffects(scene);
@@ -61,10 +64,12 @@ export class PlayerView extends DynamicView {
     this.belt = new BeltView(model, BELT_MAX_VISIBLE);
     this.radiator = new RadiatorView(model);
     this.power = new PowerView(model);
+    // scene 直下へ出る噴射と DOM マーカーも、この View の寿命に揃える。
     this.boosters = new AttachedBoostersView(scene, model);
     this.markers = new PlayerMarkers(markerSlots, ownerId);
   }
 
+  // Player が毎フレーム供給する値を、船体の全表示資源へ一括して反映する。
   protected override syncModel(
     identity: DynamicViewIdentity,
     motion: DynamicMotion,
@@ -74,6 +79,7 @@ export class PlayerView extends DynamicView {
     if (!(motion instanceof PlayerMotion) || !isPlayerVisualSource(identity)) {
       throw new TypeError('PlayerView requires Player and PlayerMotion');
     }
+    // 表示時刻の状態を各エフェクトへ渡し、欠けた場合は現在状態で非表示処理を完遂する。
     const source = identity;
     const active = context.activeId === source.id;
     const effectState = displayed ?? motion.state;
@@ -83,6 +89,7 @@ export class PlayerView extends DynamicView {
       : null;
     const maximumAcceleration = motion.mass > 0 ? source.totalThrust / motion.mass : 0;
 
+    // 船外へ出るブースター・推力・RCS・再突入表現は同じ可視性に揃える。
     this.boosters.sync(
       context.floatingOrigin,
       effectState.r,
@@ -122,6 +129,7 @@ export class PlayerView extends DynamicView {
       effectVisible,
       context.cameraSystem,
     );
+    // 船体に属する可動部と、操作対象だけの DOM マーカーを外部状態へ合わせる。
     this.belt.sync(source.magsLeft, motion.belt.viewState);
     this.radiator.sync(
       side => motion.radiator.wearOf(side),
@@ -142,6 +150,7 @@ export class PlayerView extends DynamicView {
     if (active && context.cameraSystem.zoomActive) this.object.visible = false;
   }
 
+  // 自機固有の子表示を片付けてから、共通 View の THREE 資源を破棄する。
   public override dispose(): void {
     this.markers.dispose();
     this.boosters.dispose();

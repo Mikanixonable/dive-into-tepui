@@ -20,6 +20,7 @@ interface ProteinVisualSource extends DynamicViewIdentity {
   readonly motionDisplay: ProteinMotionDisplay;
 }
 
+// Protein 固有の表示設定と変形係数が揃った Entity だけを受け入れる。
 function isProteinVisualSource(identity: DynamicViewIdentity): identity is ProteinVisualSource {
   return identity.mapKind === 'enemy' && 'display' in identity && 'motionDisplay' in identity;
 }
@@ -39,16 +40,19 @@ export class ProteinEnemyView extends DynamicView {
   private readonly runtime: ProteinRuntime;
   private renderedDisplay: ProteinDisplaySettings;
 
+  // 初期表示設定で THREE ツリーと共有 GPU binding を組み立てる。
   public constructor(
     private readonly definition: ProteinEnemyDefinition,
     display: ProteinDisplaySettings,
     scene?: THREE.Scene,
   ) {
+    // モード変位は asset 単位のキャッシュを使い、個体ごとには係数スロットだけを確保する。
     const motionBinding = createProteinMotionBinding(
       definition.motion.residueCount,
       proteinMotionModeDisplacements(definition.motion),
       definition.motion.modes.length,
     );
+    // 表示ツリーと runtime は同じ root/binding を共有し、寿命も View に揃える。
     const root = definition.buildRenderObject(display, motionBinding ?? undefined);
     root.scale.setScalar(ENEMY_MODEL_SCALE);
     super(root, scene);
@@ -56,6 +60,7 @@ export class ProteinEnemyView extends DynamicView {
     this.renderedDisplay = { ...display };
   }
 
+  // 表現種別か着色が変わったときだけ THREE 子要素を再構築する。
   private syncDisplay(display: ProteinDisplaySettings): void {
     if (display.representation === this.renderedDisplay.representation
       && display.colorMode === this.renderedDisplay.colorMode) return;
@@ -65,6 +70,7 @@ export class ProteinEnemyView extends DynamicView {
     this.renderedDisplay = { ...display };
   }
 
+  // 直近の表示反映に要した CPU 時間と GPU 転送量を公開する。
   public get motionMetrics(): {
     readonly cpuMs: number;
     readonly uploadBytes: number;
@@ -90,6 +96,7 @@ export class ProteinEnemyView extends DynamicView {
     }));
   }
 
+  // 表示設定と外部で確定した変形係数を、タンパク質の THREE 資源へ反映する。
   protected override syncModel(
     identity: DynamicViewIdentity,
     _motion: DynamicMotion,
@@ -103,6 +110,7 @@ export class ProteinEnemyView extends DynamicView {
     this.runtime.syncVisual(identity.motionDisplay);
   }
 
+  // タンパク質固有の GPU・結合線資源を先に破棄する。
   public override dispose(): void {
     this.runtime.dispose();
     super.dispose();
