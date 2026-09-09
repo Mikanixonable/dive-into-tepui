@@ -1,9 +1,6 @@
 // 軌道分析パネルのタブが実装する共通形と、タブが組み立てる部品(スケール入力欄・リセット行)。
 import { Button, ValueInput, injectOnce } from '../../../hud/widgets';
-import type { Game } from '../../game';
-import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
-import type { OrbitReference } from '../../orbit-reference';
-import type { ApproachTargetSource } from './orbit-analysis-data';
+import type { OrbitAnalysisTabInput } from './orbit-analysis-source';
 
 export interface AnalysisTab {
   // タブバーに出す名前。
@@ -12,13 +9,9 @@ export interface AnalysisTab {
   readonly element: HTMLElement;
 
   // タブバーに出すか。false になったタブが選ばれていたら、選択は高度タブへ戻る。
-  available(
-    game: Game, entity: DynamicEntity, reference: OrbitReference, target: ApproachTargetSource | null,
-  ): boolean;
+  available(input: OrbitAnalysisTabInput): boolean;
   // 選ばれている間だけ呼ばれる。
-  draw(
-    game: Game, entity: DynamicEntity, reference: OrbitReference, target: ApproachTargetSource | null,
-  ): void;
+  draw(input: OrbitAnalysisTabInput): void;
   // 表示範囲を、開いた/このタブを選び直した時点へ戻す。
   resetView(): void;
   dispose(): void;
