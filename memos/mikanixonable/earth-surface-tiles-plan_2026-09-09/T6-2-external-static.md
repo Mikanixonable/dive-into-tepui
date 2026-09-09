@@ -1,16 +1,21 @@
-# T6-2: 外部静的モード
+# T6-2: 外部静的配信契約を保守する（本番任意）
 
 親計画: [earth-surface-tiles-plan_2026-09-09.md](../earth-surface-tiles-plan_2026-09-09.md)
 
-このファイルは、T6のうちこの配信境界だけを実装するときに読む作業単位である。
-共通の固定前提は親計画の§2、依存関係は§3を参照する。
+## 目的
 
+本番はGitHub Pagesとするが、将来の外部静的/CDNへ同じbundleを移せるよう、パッケージとHTTP契約を保守する。
 
-**変更対象**: `tools/earth-surface/publish-static.mjs`（新規）、`remote-check.mjs`（新規）、
-`earth-surface-source.ts`、CI設定。
+## 実装範囲
 
-1. fixture/全球bundleを`earth/<datasetId>/`へ版付き配置し、upload一覧、bytes、manifest hashのreceiptを出す。
-2. 巨大bundleの生成/uploadを通常のアプリbuildから分離する。公開前にlocal `earth-surface:check`を通す。
-3. 公開後にmanifest、datasetId、12枚、base、tile-index、代表tileの到達性をremote-checkする。
-4. 外部originはPages originへGET/HEAD/必要なOPTIONSをCORS許可する。raw gzip本文は`application/gzip`で返し、`Content-Encoding: gzip`を付けない。
-5. datasetId付きのタイルはimmutable cache、manifestは短いcacheまたはdatasetId変更で更新する。同じURLを上書きしない。
+1. fixture/全球bundleをearth/<datasetId>/へ版付き配置するlocal packageとreceiptを保守する。
+2. 巨大bundleを通常のアプリbuildから分離する。
+3. 公開後にmanifest、datasetId、12枚、base、tile-index、代表tileをremote-checkできるようにする。
+4. 外部originを使う場合だけPages originへのGET/HEAD/OPTIONSをCORS許可する。
+5. raw gzip本文はapplication/gzipで返し、Content-Encoding: gzipを付けない。
+6. datasetId付きtile/base/climateはimmutable cache、manifestは短いcacheとする。
+
+## 完了条件
+
+- 認証情報が無いローカル環境でもpackageとlocal checkが再現できる。
+- 外部originへのuploadは本番ゲートに含めず、未実施またはreceiptを明記する。
