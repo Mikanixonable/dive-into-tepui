@@ -43,7 +43,7 @@ export function integrateVerticalCloudProfile(sampleCount: number): number {
 }
 
 export class CloudVolume {
-  private readonly shape = new CloudShapeEvaluator(0);
+  private readonly shape = new CloudShapeEvaluator();
 
   public constructor(private readonly fieldSampler: CloudFieldSampler) {}
 
@@ -75,7 +75,7 @@ export class CloudVolume {
     const top = max(field.g.mul(CLOUD_TOP_SPAN), CUMULUS_BASE_ALTITUDE);
     // field.rは生の気象被覆率であり、柱を不透明にするcoverageではない。既存の連続rampを
     // 通してから柱tauへ変換することで、低い被覆率を二値化せず、通常値でも体積が積分可能になる。
-    const continuousCoverage = this.shape.continuousCoverage(field.r, float(0));
+    const continuousCoverage = this.shape.continuousCoverage(field.r);
     return this.profiledColumnDensity(
       this.volumeColumnOpticalDepth(continuousCoverage), altitude,
       float(CUMULUS_BASE_ALTITUDE), top,

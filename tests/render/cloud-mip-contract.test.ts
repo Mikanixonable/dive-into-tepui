@@ -1,7 +1,9 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { vec4 } from 'three/tsl';
-import { BakedField, maxMipLevelOf } from '../../src/render/cloud/baked-field';
+import {
+  BakedField, maxAvailableMipLevelOf, maxMipLevelOf,
+} from '../../src/render/cloud/baked-field';
 import { EquirectProjection } from '../../src/render/cloud/field-projection';
 import { CLOUD_GPU_MEASUREMENTS, GPU_PASS_LABELS } from '../../src/render/gpu-timings';
 import { test } from '../harness';
@@ -19,6 +21,13 @@ export function register(): void {
     assert.equal(field.texture.minFilter, THREE.LinearMipmapLinearFilter);
     assert.equal(field.texture.magFilter, THREE.LinearFilter);
     field.dispose();
+  });
+
+  test('cloud mip: 手動mipは実在するレベルだけへクランプする', () => {
+    assert.equal(maxAvailableMipLevelOf(1024, 512, true, 0), 10);
+    assert.equal(maxAvailableMipLevelOf(1024, 512, false, 0), 0);
+    assert.equal(maxAvailableMipLevelOf(1024, 512, false, 2), 1);
+    assert.equal(maxAvailableMipLevelOf(1024, 512, false, 99), 10);
   });
 
   test('cloud gpu timing: 雲の計測範囲と既存パスへのフォールバックが固定される', () => {

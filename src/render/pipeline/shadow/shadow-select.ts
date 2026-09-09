@@ -1,4 +1,4 @@
-// 影パスがこの1フレームに扱う天体・環・積雲の殻を選ぶ。絵に出ない影を落とす閾値も、環を
+// 影パスがこの1フレームに扱う天体・環・積雲体積を選ぶ。絵に出ない影を落とす閾値も、環を
 // 1体に絞る判断も、積雲の影を出す設定の読み方も、影パスのグラフの形が決めるものなのでここが持つ。
 import { maxShadowedFraction } from '../../../physics/shadow';
 import { len, sub } from '../../../math/vec3';
@@ -62,7 +62,7 @@ export function selectShadowBodies(
     .map(({ celestialBody }) => celestialBody);
 }
 
-// 積雲の殻を影の源として数える設定か。積雲を描かない設定(雲オフ・積雲の段オフ)では影も消える。
+// 積雲体積を影の源として数える設定か。積雲を描かない設定(雲オフ・積雲の段オフ)では影も消える。
 export function castsCumulusShadow(graphics: GraphicsSettingsData): boolean {
   return graphics.clouds && graphics.cumulusShadow
     && graphics.cumulusDetail !== CUMULUS_DETAIL.off;
