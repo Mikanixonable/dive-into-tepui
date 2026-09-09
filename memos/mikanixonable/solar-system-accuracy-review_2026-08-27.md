@@ -196,9 +196,9 @@ annulus→lineへの切替を目視確認済み。
 ## 3. 修正候補・リファクタリング候補
 
 - **`src/physics/earth-reference-orbits.ts:69`**: `criticalInclinationElements`が
-  `elements.ts`の`semiMajorFromPeriod`と同一のケプラー第3法則の式を再実装している。二重実装の解消を推奨。
+  `elements.ts`の`semiMajorFromPeriod`と同一のケプラー第3法則の式を再実装している。**完了** — 軌道要素側の共通変換へ統一済み。
 - **`src/physics/body-orientation.ts:19-21`**: `orthogonalizedTo`が`pole`の単位ベクトル性を
-  暗黙に前提しており、コメントに明記がない。
+  暗黙に前提しており、コメントに明記がない。**完了** — 入力契約をコメントと回帰テストへ反映済み。
 
 ## 4. 確認事項(意図的な簡略化の可能性・ユーザー判断が必要)
 
