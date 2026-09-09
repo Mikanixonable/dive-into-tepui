@@ -2,20 +2,26 @@
 
 親計画: [earth-surface-tiles-plan_2026-09-09.md](../earth-surface-tiles-plan_2026-09-09.md)
 
-このファイルは、このタスクを実装するときに読む作業単位である。共通の固定前提は親計画の§2、
-依存関係は§3を参照する。実装済みの契約は`done/`ではなくコードを原本とする。
+## 目的
 
+Three.js/WebGPUのDataArrayTextureとTSL materialをEarthSurfaceへ接続し、非対応環境では全球baseへ固定する。
 
-**変更対象**: `src/render/earth-surface-gpu-three.ts`（新規）、`src/render/earth-surface-gpu.ts`、
-`src/render/earth-surface-material-node.ts`、`src/render/earth-surface-material.ts`、render tests。
+## 実装範囲
 
-1. 色`DataArrayTexture`、地形`DataArrayTexture`、RGBA8ページ表を作るadapterを追加する。Three内部APIが必要ならこのadapter内だけへ隔離する。
-2. TSLを、楕円体法線→共通地理UV→ページ表Nearest→現在/親層→sRGB線形化→色/法線/roughness混合→`normalNode`の順で実装する。
-   R=255は全球baseを読む。模式図は地形層を読まず幾何法線を使う。
-3. 2D array、128層、RGBA8 sRGB線形化、Float16地形線形標本化を起動時に検査する。不成立時はbase-onlyとする。
-4. fake backendで、色・地形・ページ表の同一frame公開、非公開層だけの書込み、dispose後の遅着拒否を固定する。
-5. 実ブラウザではz=0/1、親子fade、極、±180度、非一様半軸、自転0/90/180度を撮影する。
+1. 色DataArrayTexture、地形DataArrayTexture、RGBA8ページ表を作るadapterを追加する。
+   Three.jsの内部APIを使う場合はadapter内だけへ隔離し、他のrender/game層へ漏らさない。
+2. 起動時に2D array、最低128層、色のsRGB処理、Float16地形のlinear処理を検査する。
+3. TSLは楕円体法線、共通地理UV、ページ表Nearest、現在/親層、
+   sRGB線形化、色・法線・roughness混合、normalNodeの順で接続する。
+4. R=255または未取得は全球baseへ戻す。模式図スタイルでは地形層を読まず幾何法線を使う。
+5. 色と地形の両方が揃ったGPU層だけをフレーム境界で公開する。
+6. fake backendで同一frame公開、非公開層だけの書込み、dispose後の遅着拒否を固定する。
+7. mipmapを必須にしない。タイルLODと親子fadeでちらつき・境界を確認する。
+8. GPU追加メモリと隣接差はmetricsへ記録する。128MiB超過や2/255超過だけでコードゲートを落とさない。
 
-**検証**: `npm run typecheck`、`npm run test:render`、fake backendテスト。実WebGPUを起動できない場合はbase-onlyを合格とし、実GPU成功とは記録しない。
+## 完了条件
 
-**困難点**: Three.js公開APIだけでは配列層の非同期更新が足りない可能性がある。内部APIを使う場合はThree.js版とブラウザ版をbaselineへ記録する。
+- fake backendの全テストが通る。
+- WebGPU非対応・能力不足時にDataArrayTextureを作らず、全球baseへ固定する。
+- 実ブラウザで起動できる場合、z0/z1、親子fade、極、日付変更線、非一様半軸、自転0/90/180度を撮影する。
+- 実ブラウザを起動できない場合は、base-onlyと実GPU未実施を分けて記録する。
