@@ -30,10 +30,11 @@ EarthSurfaceのpersistent lease、非表示・dispose・
 subpath URL、datasetId整合、raw gzip契約を確認した。Earth実行経路にGEBCOや旧Earth気候画像の
 参照はなく、`tools/render-lab/cases.ts` の旧画像はlegacy fixtureとして残している。
 
-追加実装後の検証結果は typecheck、render 113/113、game 205/205、Python 24件、
-Earth契約、Pages fixture layout pass、capture contract passである。既存の全体テスト826/826、build、verify-releaseも
+追加実装後の検証結果は typecheck、全体テスト847/847、render 113/113、game 205/205、Python 24件、
+Earth契約、Pages fixture layout pass、capture contract pass、build、verify-release passである。既存の
 直前のコード状態でpassしている。実captureはChrome/WebGPU/描画バッファまで
-到達し、実データ未投入を理由に15ケースをunavailableとして記録した。
+到達し、実データ未投入を理由に15ケースをunavailableとして記録した（metricsの環境情報はChrome 152 / Apple Metal-3 /
+WebGPU available / drawing buffer available）。
 
 実データbundleが無いため `earth-surface:check` と `earth-surface:package` は
 `earth-surface.json`を読めず終了コード1となる。これは失敗を隠さずデータゲート未達成として残す。
