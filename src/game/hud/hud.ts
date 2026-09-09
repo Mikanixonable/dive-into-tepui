@@ -23,16 +23,19 @@ import type { TargetPanelData } from './panels/target-panel';
 import type { TopBarViewModel } from './panels/top-bar';
 import type { VesselPanelViewModel } from './panels/vessel-panel';
 import type { OrbitPanelViewModel } from './orbit/orbit-panel';
+import type { OrbitAnalysisSource } from './orbit/orbit-analysis-source';
 
 // 軌道分析ウィンドウを開く既定位置 [px]。
 const ANALYSIS_WINDOW_OPEN_X = 320;
 const ANALYSIS_WINDOW_OPEN_Y = 100;
 
-// OrbitAnalysisWindow の既存の Game 依存を、この HUD の外側で実装する境界。
-export interface OrbitAnalysisAdapter {
-  readonly updateReaders: (window: OrbitAnalysisWindow) => void;
-  readonly sync: (window: OrbitAnalysisWindow) => void;
-}
+// 軌道分析ウィンドウへ専用の読み取り源を渡す配線契約。
+export type OrbitAnalysisAdapter =
+  | { readonly source: OrbitAnalysisSource }
+  | {
+      readonly updateReaders: (window: OrbitAnalysisWindow) => void;
+      readonly sync: (window: OrbitAnalysisWindow) => void;
+    };
 
 export class Hud {
   public get root(): HTMLElement { return this.shell.root; }
@@ -103,7 +106,10 @@ export class Hud {
 
   public updateAnalysisReaders(): void {
     const window = this.orbitAnalysisWindow;
-    if (window) this.orbitAnalysisAdapter?.updateReaders(window);
+    const adapter = this.orbitAnalysisAdapter;
+    if (!window || !adapter) return;
+    if ('source' in adapter) window.update(adapter.source);
+    else adapter.updateReaders(window);
   }
 
   // view で表に出ている常設パネルと、控えられたトーストを game の現在状態へ合わせる。
@@ -131,7 +137,11 @@ export class Hud {
       this.enemiesPanel.sync(enemies);
     }
     const window = this.orbitAnalysisWindow;
-    if (window) this.orbitAnalysisAdapter?.sync(window);
+    const adapter = this.orbitAnalysisAdapter;
+    if (window && adapter) {
+      if ('source' in adapter) window.sync(adapter.source);
+      else adapter.sync(window);
+    }
     this.tick();
   }
 
