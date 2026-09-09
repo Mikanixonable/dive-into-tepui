@@ -23,7 +23,7 @@ import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { OrbitingObject } from './orbiting-object';
-import { PickupView } from './pickup-view';
+import { RcsFuelPickupView } from './pickup-view';
 import { PickupMotion } from './pickup-motion';
 
 export const RCS_FUEL_PICKUP_RADIUS = 100; // 取り込み距離 [m]
@@ -51,7 +51,7 @@ export class RcsFuelPickup extends DynamicEntity implements ObjectPickable {
       : { state: init.state, att: init.att, id: init.id, name: init.name };
     super(
       state,
-      new PickupView('rcs-fuel', scene),
+      new RcsFuelPickupView(scene),
       att,
       idAllocator.next(id),
       () => new PickupMotion(state, att, 'rcs-fuel'),
