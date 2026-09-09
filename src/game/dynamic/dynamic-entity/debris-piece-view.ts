@@ -10,7 +10,7 @@ import {
   buildBoosterInterstageCoverPanelMesh,
 } from '../../../render/booster';
 import { SHIP_DARK_HULL_COLOR } from '../../../render/vfx-style';
-import type { DebrisKind } from './debris-motion';
+import type { DebrisKind } from './debris-kind';
 import { DynamicView, type DynamicViewFrame } from '../dynamic-view';
 import type { DynamicMotion } from '../dynamic-motion';
 
