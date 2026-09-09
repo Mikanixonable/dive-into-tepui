@@ -25,8 +25,7 @@ import { EarthSurfaceTiles } from '../../../render/earth-surface-tiles';
 import { EarthSurfaceGpuAdapter } from '../../../render/earth-surface-gpu';
 import type { EarthSurfaceGpuTextures } from '../../../render/earth-surface-gpu';
 import { createEarthSurfaceGpuThree, type EarthSurfaceGpuThreeBackendLike } from '../../../render/earth-surface-gpu-three';
-import { createEarthSurfaceNodeMaterial } from '../../../render/earth-surface-material-node';
-import { DeferredTexture } from '../../../render/deferred-texture';
+import { createEarthSurfaceMaterialBinding } from '../../../render/earth-surface-material-binding';
 import {
   bootstrapEarthSurface,
   type EarthSurfaceBootstrapOptions,
@@ -47,7 +46,7 @@ import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { CelestialTexture } from '../../../render/celestial-textures';
 import type { CelestialEntity } from '../celestial-entity/celestial-entity';
 import type { EarthSurfaceSource } from './earth-surface-source';
-import { normalize, normalView, positionLocal, uniform, vec3 } from 'three/tsl';
+import { vec3 } from 'three/tsl';
 
 // 地球系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type EarthSystemBodyId = 'earth' | 'moon';
@@ -193,8 +192,8 @@ export const EARTH_SYSTEM_NAMES: Record<EarthSystemBodyId, string> = {
   moon: '月',
 };
 
-// 実配信物を切り替える前の開発用入力。地表の寿命境界だけを先にゲームへ接続し、
-// 描画は既存テクスチャのfallbackへ委譲する。実URLとマニフェスト検証はA6で差し込む。
+// 実配信物が未設定の開発環境で使う入力。manifestとGPUがそろわない場合はこのsourceを
+// fallbackへ使い、そろった場合だけmanifestのbase/tile材質へ切り替える。
 export const EARTH_SURFACE_FIXTURE_SOURCE = {
   datasetId: 'earth-development-fixture',
   sourceManifestSha256: '0'.repeat(64),
@@ -217,9 +216,6 @@ export const EARTH_SURFACE_FIXTURE_SOURCE = {
 
 const EARTH_CLIMATE_AXES = vec3(EARTH_ATMOSPHERE.equatorRadius, EARTH_ATMOSPHERE.polarRadius,
   EARTH_ATMOSPHERE.equatorRadius);
-const EARTH_CLIMATE_AXES_VALUE = new THREE.Vector3(
-  EARTH_ATMOSPHERE.equatorRadius, EARTH_ATMOSPHERE.polarRadius, EARTH_ATMOSPHERE.equatorRadius,
-);
 
 export interface EarthSurfaceFactoryOptions extends EarthSurfaceBootstrapOptions {
   readonly renderer?: WebGPURenderer | null;
@@ -254,45 +250,19 @@ interface EarthSurfaceConnection {
 }
 
 function detailedMaterialFor(
-  source: EarthSurfaceSource, textures: EarthSurfaceGpuTextures,
+  source: EarthSurfaceSource, textures: EarthSurfaceGpuTextures, fetchImpl?: typeof fetch,
 ): EarthSurfaceMaterialAttachment {
-  const baseColor = new DeferredTexture(source.baseColorUrl, THREE.SRGBColorSpace);
-  // base terrain is a valid 1x1 terrain texture until the first detailed tile arrives. Its
-  // normal is the unit +Z body normal and its roughness is the land fallback value. ESTN stores
-  // the normal as a signed binary16 vector, so +Z is [0, 0, 1], not an 8bit normal-map value.
-  const baseTerrain = new THREE.DataTexture(
-    new Uint16Array([0x0000, 0x0000, 0x3c00, 0x3a66]), 1, 1,
-    THREE.RGBAFormat, THREE.HalfFloatType,
-  );
-  baseTerrain.colorSpace = THREE.NoColorSpace;
-  baseTerrain.needsUpdate = true;
-  const bodyToView = uniform(new THREE.Matrix3());
-  const axes = uniform(EARTH_CLIMATE_AXES_VALUE.clone());
-  const schematic = uniform(false);
-  const material = createEarthSurfaceNodeMaterial(
-    {
-      pageTable: textures.pageTable,
-      color: textures.color,
-      terrain: textures.terrain,
-      baseColor: baseColor.texture,
-      baseTerrain,
-    },
-    {
-      bodyDirection: normalize(positionLocal),
-      axes,
-      geometricNormalView: normalView,
-      bodyToView,
-      schematic,
-    },
-  );
+  const binding = createEarthSurfaceMaterialBinding(textures, {
+    baseColorUrl: source.baseColorUrl,
+    baseTerrainUrl: source.baseTerrainUrl,
+    fetchImpl,
+  });
   return {
-    material,
-    deferred: [baseColor],
-    textures: [baseTerrain],
-    syncFrame: (frame) => {
-      bodyToView.value.setFromMatrix4(frame.bodyToView);
-      schematic.value = frame.style === 'schematic';
-    },
+    material: binding.material,
+    deferred: binding.deferredTextures,
+    textures: binding.textures,
+    onDispose: binding.dispose,
+    syncFrame: binding.syncFrame,
   };
 }
 
@@ -328,7 +298,7 @@ function coordinatorFor(
   // 材質の構築に失敗した場合も、先に確保したqueue/GPUを孤児にしない。
   let material: EarthSurfaceMaterialAttachment;
   try {
-    material = detailedMaterialFor(bootstrap.source!, textures);
+    material = detailedMaterialFor(bootstrap.source!, textures, options.fetchImpl);
   } catch (error) {
     queue.dispose();
     gpu.dispose();
@@ -371,7 +341,7 @@ export function createEarthSurfaceRuntime(
   return { surface, ready };
 }
 
-// WebGPU/manifestがそろった場合だけ要求coordinatorを組み、その他は既存の画像球を
+// WebGPU/manifestがそろった場合だけ要求coordinatorとタイル材質を組み、その他は既存の画像球を
 // そのまま返す。実配信物が無い開発環境でもゲームの構築を待たせない境界である。
 export async function createEarthSurface(
   options: EarthSurfaceFactoryOptions = {},

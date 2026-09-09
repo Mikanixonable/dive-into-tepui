@@ -7,6 +7,9 @@ import {
   EARTH_TERRAIN_HEADER_BYTES,
   EARTH_TERRAIN_HEIGHT,
   EARTH_TERRAIN_WIDTH,
+  EARTH_BASE_TERRAIN_HEIGHT,
+  EARTH_BASE_TERRAIN_WIDTH,
+  decodeEarthBaseTerrainPayload,
   decodeEarthSurfaceTile,
   decodeEarthTerrainPayload,
   EarthSurfaceDecodeError,
@@ -27,6 +30,35 @@ function terrainPayload(): Uint8Array {
   return payload;
 }
 
+function rootTerrainPayload(x: number): Uint8Array {
+  const key = earthTileKey(0, x, 0);
+  const payload = new Uint8Array(EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES);
+  payload.set(new TextEncoder().encode('ESTN'), 0);
+  const view = new DataView(payload.buffer);
+  view.setUint16(4, 1, true); view.setUint16(6, 32, true);
+  view.setUint16(8, EARTH_TERRAIN_WIDTH, true); view.setUint16(10, EARTH_TERRAIN_HEIGHT, true);
+  view.setUint8(12, key.z); view.setUint8(13, 0);
+  view.setUint32(14, key.x, true); view.setUint32(18, key.y, true);
+  view.setUint8(22, 4); view.setUint8(23, 1); view.setUint32(24, EARTH_TERRAIN_BYTES, true); view.setUint32(28, 0, true);
+  new Uint16Array(payload.buffer, EARTH_TERRAIN_HEADER_BYTES).fill(x === 0 ? 0x1111 : 0x2222);
+  return payload;
+}
+
+function baseTerrainPayload(): Uint8Array {
+  const first = rootTerrainPayload(0);
+  const second = rootTerrainPayload(1);
+  const payload = new Uint8Array(32 + first.length + second.length);
+  payload.set(new TextEncoder().encode('ESTB'), 0);
+  const view = new DataView(payload.buffer);
+  view.setUint16(4, 1, true); view.setUint16(6, 32, true);
+  view.setUint16(8, EARTH_TERRAIN_WIDTH, true); view.setUint16(10, EARTH_TERRAIN_HEIGHT, true);
+  view.setUint8(12, 0); view.setUint8(13, 0);
+  view.setUint32(14, 2, true); view.setUint32(18, 1, true);
+  view.setUint8(22, 4); view.setUint8(23, 1); view.setUint32(24, first.length + second.length, true); view.setUint32(28, 0, true);
+  payload.set(first, 32); payload.set(second, 32 + first.length);
+  return payload;
+}
+
 function response(bytes: Uint8Array, contentType = 'application/octet-stream'): Response {
   const body = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(body).set(bytes);
@@ -40,6 +72,13 @@ export function register(): void {
     assert.throws(() => decodeEarthTerrainPayload(payload, earthTileKey(1, 0, 0)), EarthSurfaceDecodeError);
     payload[0] = 0;
     assert.throws(() => decodeEarthTerrainPayload(payload, KEY), /magic/);
+  });
+
+  test('earth decode: ESTBの2枚のroot地形をbase用の経緯度画像へ連結する', () => {
+    const result = decodeEarthBaseTerrainPayload(baseTerrainPayload());
+    assert.equal(result.length, EARTH_BASE_TERRAIN_WIDTH * EARTH_BASE_TERRAIN_HEIGHT * 4);
+    assert.equal(result[0], 0x1111);
+    assert.equal(result[(EARTH_BASE_TERRAIN_WIDTH - 1) * 4], 0x2222);
   });
 
   test('earth decode: 色とgzip地形を同じ世代でatomically decodeする', async () => {

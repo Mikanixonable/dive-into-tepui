@@ -3,6 +3,10 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import { EarthSurface, EarthSurfaceContext } from '../../src/render/earth-surface';
+import { CelestialSurface } from '../../src/render/celestial-surface';
+import { EarthSurfaceGpuThree } from '../../src/render/earth-surface-gpu-three';
+import { createEarthSurfaceMaterialBinding } from '../../src/render/earth-surface-material-binding';
+import type { EarthSurfaceGpuTextures } from '../../src/render/earth-surface-gpu';
 import { EarthSurfaceView } from '../../src/render/earth-surface-tiles';
 import type { EarthSurfaceResidentFrame } from '../../src/render/earth-surface-resident';
 import type { EarthSurfaceSource } from '../../src/game/celestial/solar-system/earth-surface-source';
@@ -57,6 +61,8 @@ function frame(camera: THREE.Camera = new THREE.Camera()): CelestialSurfaceFrame
 class CoordinatorSpy {
   public readonly frames: EarthSurfaceResidentFrame[] = [];
   public disposed = false;
+
+  public constructor(public readonly textures?: EarthSurfaceGpuTextures | null) {}
 
   public sync(input: EarthSurfaceResidentFrame): void { this.frames.push(input); }
   public dispose(): void { this.disposed = true; }
@@ -113,5 +119,61 @@ export function register(): void {
     surface.dispose();
     assert.equal(coordinator.disposed, true);
     surface.dispose();
+  });
+
+  test('earth surface: 対応GPUのcoordinatorをattachすると既存LODメッシュへ材質を接続する', () => {
+    const gpu = new EarthSurfaceGpuThree({
+      texture2dArray: true, maxTextureArrayLayers: 128,
+      colorSrgbLinear: true, terrainFloat16Linear: true,
+    });
+    const coordinator = new CoordinatorSpy(gpu.textures);
+    const fallback = CelestialSurface.solid([0.1, 0.1, 0.1]);
+    const surface = new EarthSurface(new EarthSurfaceContext(SOURCE), fallback);
+    const parent = new THREE.Group();
+    surface.addTo(parent);
+    const previousMaterial = (parent.children[0] as THREE.Mesh).material;
+
+    const binding = createEarthSurfaceMaterialBinding(gpu.textures!, {
+      baseColorUrl: SOURCE.baseColorUrl, baseTerrainUrl: SOURCE.baseTerrainUrl,
+      fetchImpl: async () => { throw new Error('base terrain fixture is intentionally unavailable'); },
+    });
+    surface.attach(SOURCE, coordinator, 'ready', {
+      material: binding.material, deferred: binding.deferredTextures, textures: binding.textures,
+      onDispose: binding.dispose, syncFrame: binding.syncFrame,
+    });
+    const material = (parent.children[0] as THREE.Mesh).material;
+    assert.notEqual(material, previousMaterial);
+    assert.ok(material instanceof THREE.MeshStandardNodeMaterial);
+    assert.equal(surface.status, 'ready');
+
+    surface.dispose();
+    gpu.dispose();
+  });
+
+  test('earth surface: GPU接続を外すと初期fallback材質へ戻る', () => {
+    const gpu = new EarthSurfaceGpuThree({
+      texture2dArray: true, maxTextureArrayLayers: 128,
+      colorSrgbLinear: true, terrainFloat16Linear: true,
+    });
+    const coordinator = new CoordinatorSpy(gpu.textures);
+    const fallback = CelestialSurface.solid([0.1, 0.1, 0.1]);
+    const surface = new EarthSurface(new EarthSurfaceContext(SOURCE), fallback);
+    const parent = new THREE.Group();
+    surface.addTo(parent);
+    const fallbackMaterial = (parent.children[0] as THREE.Mesh).material;
+
+    const binding = createEarthSurfaceMaterialBinding(gpu.textures!, {
+      baseColorUrl: SOURCE.baseColorUrl, baseTerrainUrl: SOURCE.baseTerrainUrl,
+      fetchImpl: async () => { throw new Error('base terrain fixture is intentionally unavailable'); },
+    });
+    surface.attach(SOURCE, coordinator, 'ready', {
+      material: binding.material, deferred: binding.deferredTextures, textures: binding.textures,
+      onDispose: binding.dispose, syncFrame: binding.syncFrame,
+    });
+    surface.attach(SOURCE, null, 'fallback');
+    assert.equal((parent.children[0] as THREE.Mesh).material, fallbackMaterial);
+
+    surface.dispose();
+    gpu.dispose();
   });
 }

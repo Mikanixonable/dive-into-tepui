@@ -34,9 +34,11 @@ export interface EarthSurfaceMaterialAttachment extends CelestialSurfaceMaterial
 
 interface CelestialSurfaceMaterialHost {
   replaceMaterial(attachment: CelestialSurfaceMaterialAttachment): void;
+  restoreFallbackMaterial?(): void;
 }
 
 function disposeMaterialAttachment(attachment: EarthSurfaceMaterialAttachment): void {
+  attachment.onDispose?.();
   attachment.material.dispose();
   for (const deferred of attachment.deferred) deferred.dispose();
   for (const texture of attachment.textures ?? []) texture.dispose();
@@ -214,6 +216,9 @@ export class EarthSurface implements CelestialSurfaceLike {
         this.materialSyncValue = material.syncFrame;
         this.detailedMaterialValue = true;
       }
+    } else {
+      const host = this.fallback as unknown as CelestialSurfaceMaterialHost;
+      host.restoreFallbackMaterial?.();
     }
   }
 
