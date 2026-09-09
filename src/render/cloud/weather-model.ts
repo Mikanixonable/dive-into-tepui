@@ -9,6 +9,7 @@ import {
 import * as THREE from 'three/webgpu';
 import { R_EARTH } from '../../game/celestial/solar-system/constants';
 import { AirMass } from './air-mass';
+import { AtmosphericWindField, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT } from './atmospheric-wind';
 import { BakedField } from './baked-field';
 import { CirculatingNoise, coarsenessFor } from './circulating-noise';
 import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
@@ -194,9 +195,6 @@ const TROPOPAUSE_STEP_END = THREE.MathUtils.degToRad(60);
 // ついての微分は sin(6 φ) × 6 × 振幅 [hPa/rad]。
 const PRESSURE_BAND_AMPLITUDE = 8;
 
-// 大循環の帯の角速度 [°/日] を、この天体の表面での速さ [m/s] へ直す係数。
-const BAND_RATE_TO_SPEED = (THREE.MathUtils.degToRad(1) / 86400) * R_EARTH;
-
 // 気圧の勾配を取る中心差分の刻み [rad]。台風の芯の広がり(250 km ≈ 0.039 rad)より細かく、
 // 気圧の写しの texel(全球で 6.1e-3 rad)より粗い。
 const GRADIENT_STEP = 0.01;
@@ -261,6 +259,9 @@ const MEAN_CLOUDINESS_DRY = 0.10;
 const MEAN_CLOUDINESS_WET = 0.85;
 
 export class WeatherModel {
+  // One physical background profile is shared by the local pressure solver,
+  // upper-air transport, and the pattern circulations below.
+  private readonly atmosphericWind = new AtmosphericWindField();
   private readonly surfaceCirculation = new Circulation(SURFACE_BANDS);
   private readonly upperCirculation = new Circulation(UPPER_BANDS);
   private readonly rossbyWave = new RossbyWave();
@@ -334,21 +335,22 @@ export class WeatherModel {
 
     const { pressure, gradient, isobar, bend } = this.pressureFieldAt(direction, east, north);
 
-    // 湿度と対流は、摩擦の違う 2 本の風で流す。上層の湿度はそこへ上層の帯の平均風を足した風で流す
-    // — 巻雲の繊維はジェットに沿って伸びるので、地表付近の風で流すと向きが揃わない。
+    // 湿度と対流は、同じ物理的な背景風へ局所的な気圧風を重ねる。上層は同じ局所風に
+    // 高度依存の偏西風を重ね、雲・気団・前線が別々の平均風を持たないようにする。
+    const rossby = this.rossbyWave.windAt(direction);
+    const surfaceMean = this.atmosphericWind.sampleNode(latitude, SURFACE_HEIGHT);
+    const upperMean = this.atmosphericWind.sampleNode(latitude, UPPER_CLOUD_HEIGHT);
+    const surfaceBackground = east.mul(surfaceMean.x).add(north.mul(surfaceMean.y)).add(rossby);
+    const upperBackground = east.mul(upperMean.x).add(north.mul(upperMean.y)).add(rossby);
     const surfaceWind = composeWind(balancedWind(
       gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
-    ), this.rossbyWave.windAt(direction));
+    ), surfaceBackground);
     const convectionWind = composeWind(balancedWind(
       gradient, isobar, bend, latitude, CONVECTION_FRICTION, CONVECTION_WIND_CROSSING_LIMIT,
-    ), this.rossbyWave.windAt(direction));
-    const upperMean = this.upperCirculation.meanWindAt(direction);
-    const upperWind = composeWind({
-      velocity: surfaceWind.velocity
-        .add(east.mul(upperMean.x.mul(cos(latitude)).mul(BAND_RATE_TO_SPEED)))
-        .add(north.mul(upperMean.y.mul(BAND_RATE_TO_SPEED))),
-      turn: surfaceWind.turn,
-    }, this.rossbyWave.windAt(direction));
+    ), surfaceBackground);
+    const upperWind = composeWind(balancedWind(
+      gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
+    ), upperBackground);
 
     // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分と、気団の境目が押し上げる分。
     const windComponents = eastNorthComponents(surfaceWind.velocity, east, north);
@@ -451,7 +453,10 @@ export class WeatherModel {
       eddy, isobarAt(direction, eddy), bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
     );
     return {
-      velocity: wind.velocity.add(east.mul(this.meanWindAt(direction).x)),
+      velocity: wind.velocity
+        .add(east.mul(this.meanWindAt(direction).x))
+        .add(north.mul(this.meanWindAt(direction).y))
+        .add(this.rossbyWave.windAt(direction)),
       turn: wind.turn,
     };
   }
@@ -475,11 +480,9 @@ export class WeatherModel {
     );
   }
 
-  // 単位方向 direction における大循環の平均風(東向き・北向きの成分 [m/s])。
+  // 単位方向 direction における高度1 kmの大循環の平均風(東向き・北向きの成分 [m/s])。
   public meanWindAt(direction: Vec3Node): Vec2Node {
-    // 東西は緯線に沿って進むので、同じ角速度でも高緯度ほど遅い。
-    const mean = this.surfaceCirculation.meanWindAt(direction);
-    return vec2(mean.x.mul(cos(latitudeOf(direction))), mean.y).mul(BAND_RATE_TO_SPEED);
+    return this.atmosphericWind.sampleNode(latitudeOf(direction), SURFACE_HEIGHT);
   }
 
   // 移流前の対流の強弱(0 中心の高周波)。x が粒(細胞の芯)、y が網目(細胞の壁)で、**同じ

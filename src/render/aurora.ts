@@ -13,6 +13,8 @@ const INTENSITY_SCALE = 0.15; // 発光全体の強さ倍率
 export type AuroraOptics = {
   readonly bodyRadius: number; // カーテンの基準になる天体半径 [m]
   readonly ovalLatitudeDeg: number; // オーロラオーバルの中心緯度 [deg]
+  readonly magneticPoleLatitudeDeg?: number; // 簡易双極子の磁極緯度 [deg]
+  readonly magneticPoleLongitudeDeg?: number; // 北磁極の経度 [deg]
   // 鉛直4頂点の高度 [m]。上端2つはカーテンの伸び topAltitude に対する比で与える。
   readonly baseAltitude: number;
   readonly coreAltitude: number;
@@ -42,7 +44,15 @@ export class Aurora {
     private readonly latOffsetDeg: number,
     phaseOffset: number,
   ) {
-    this.field = new AuroraField({ ovalLatitudeDeg: optics.ovalLatitudeDeg, geomSeed, colorSeed, phaseOffset, sign });
+    this.field = new AuroraField({
+      ovalLatitudeDeg: optics.ovalLatitudeDeg,
+      magneticPoleLatitudeDeg: optics.magneticPoleLatitudeDeg,
+      magneticPoleLongitudeDeg: optics.magneticPoleLongitudeDeg,
+      geomSeed,
+      colorSeed,
+      phaseOffset,
+      sign,
+    });
     this.writeVertices(0);
 
     // 周方向 SEG × 鉛直 V_SEG の格子を四角形ごとに2枚の三角形へ割る。
@@ -72,8 +82,8 @@ export class Aurora {
   }
 
   // 波打ちと明滅を phase の時点へ合わせる。
-  sync(phase: number): void {
-    this.writeVertices(phase);
+  sync(phase: number, solarMeridianRad = 0): void {
+    this.writeVertices(phase, solarMeridianRad);
     this.geo.attributes.position!.needsUpdate = true;
     this.geo.attributes.color!.needsUpdate = true;
   }
@@ -86,17 +96,18 @@ export class Aurora {
   }
 
   // phase 時点のカーテン形状を positions/colors へ書き込む(GPU への反映は呼び出し側)。
-  private writeVertices(phase: number): void {
+  private writeVertices(phase: number, solarMeridianRad = 0): void {
     const o = this.optics;
     for (let i = 0; i <= SEG; i++) {
       const th = (i / SEG) * Math.PI * 2;
 
-      const frame = this.field.frameAt(th, phase);
-      const lat = ((frame.latitudeDeg + this.latOffsetDeg) * Math.PI) / 180;
+      const frame = this.field.frameAt(th, phase, solarMeridianRad, this.latOffsetDeg);
+      const lat = (frame.latitudeDeg * Math.PI) / 180;
+      const lon = (frame.longitudeDeg * Math.PI) / 180;
       const cl = Math.cos(lat);
-      const dirX = cl * Math.cos(th);
+      const dirX = cl * Math.cos(lon);
       const dirY = Math.sin(lat);
-      const dirZ = cl * Math.sin(th);
+      const dirZ = cl * Math.sin(lon);
 
       const hTop = o.topAltitude + o.topAltitudeVariation * frame.altitudeScale;
       const alts = [o.baseAltitude, o.coreAltitude, o.coreAltitude + hTop * 0.4, o.baseAltitude + hTop];
