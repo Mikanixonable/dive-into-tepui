@@ -7,7 +7,7 @@ import { CameraSystem } from '../../camera/camera-system';
 import { FloatingOrigin } from '../../camera/floating-origin';
 import { spinOrientation } from '../../../physics/body-orientation';
 import { showsPhysicalSphere } from '../../../render/screen-lod';
-import { CelestialSurface } from '../../../render/celestial-surface';
+import type { CelestialSurfaceLike } from '../../../render/celestial-surface';
 import { BodyGraticule } from '../../../render/body-graticule';
 import type { LineOverlay } from '../../../render/line-overlay';
 import { CelestialEntity } from './celestial-entity';
@@ -38,7 +38,7 @@ export class SphereEntity extends CelestialEntity {
     motion: OrbitingMotion,
     name: string,
     bodyClass: CelestialClass,
-    private readonly surface: CelestialSurface,
+    private readonly surface: CelestialSurfaceLike,
     atmosphereOptics: AtmosphereOptics | null = null,
     private readonly surfaceMarkings: LineOverlay | null = null,
   ) {
