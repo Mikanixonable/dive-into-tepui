@@ -216,6 +216,46 @@ export class EarthSurfaceTiles {
 
   public get frontier(): readonly EarthTileResident[] { return this.visibleLeaves; }
 
+  // 次の分割で必要になる層を返す。frontierの選択は変えず、要求側が親を表示したまま
+  // 子を先行取得できるように候補だけを計算する。
+  public requestCandidates(projection: EarthTileProjection): readonly EarthTileKey[] {
+    const candidates = new Map<string, { readonly key: EarthTileKey; readonly priority: number }>();
+    const add = (key: EarthTileKey, priority: number): void => {
+      const id = earthTileId(key);
+      const existing = candidates.get(id);
+      if (existing === undefined || priority > existing.priority) candidates.set(id, { key, priority });
+    };
+    for (const leaf of this.leaves) {
+      if (leaf.fadeStartMs !== null) continue;
+      const metric = projection.evaluate(leaf.key);
+      if (!metric.visible) continue;
+      // 全球baseにはまだ詳細層がないため、まずその地域の根を要求する。
+      if (leaf.layer === EARTH_BASE_LAYER) {
+        add(leaf.key, metric.priority);
+        continue;
+      }
+      if (leaf.key.z >= EARTH_TILE_MAX_Z || metric.errorPx <= SPLIT_ERROR_PX) continue;
+      // 2:1制約と親子fadeを同時に満たすには、分割する親の4子が必要になる。
+      for (const child of earthTileChildren(leaf.key)) {
+        const childMetric = projection.evaluate(child);
+        add(child, Math.max(metric.priority, childMetric.priority));
+      }
+    }
+    return [...candidates.values()]
+      .sort((a, b) => b.priority - a.priority || earthTileId(a.key).localeCompare(earthTileId(b.key)))
+      .map((candidate) => candidate.key);
+  }
+
+  // 非表示へ移った葉やfade元も、後で視界へ戻ったときに層番号が無効にならないよう保持する。
+  public pinnedLayers(): readonly number[] {
+    const layers = new Set<number>();
+    for (const leaf of this.leaves) {
+      if (leaf.layer !== EARTH_BASE_LAYER) layers.add(leaf.layer);
+      if (leaf.parentLayer !== EARTH_BASE_LAYER) layers.add(leaf.parentLayer);
+    }
+    return [...layers];
+  }
+
   // GPUへ公開済みの同版タイルを入力し、現在フレームの選択と親子遷移を確定する。
   public sync(projection: EarthTileProjection, residents: readonly EarthTileResident[], timeMs: number): void {
     if (!Number.isFinite(timeMs)) throw new RangeError('Invalid Earth drawing time');
