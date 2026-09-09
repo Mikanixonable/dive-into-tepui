@@ -29,9 +29,12 @@ type CumulusSampling = { readonly march: number };
 // 固定段数は表面雲のGPU費用上限でもある。段を増やす場合はこの表とGPU計測を同時に更新する。
 const SAMPLING_OF_DETAIL = {
   [CUMULUS_DETAIL.off]: { march: 0 },
-  [CUMULUS_DETAIL.coarse]: { march: 4 },
-  [CUMULUS_DETAIL.standard]: { march: 8 },
-  [CUMULUS_DETAIL.fine]: { march: 12 },
+  // field.g はcoverageに応じて雲底近くまで縮むため、殻全体を粗く割るとprofileを
+  // 一度も評価しない。段数は高度方向の最小の薄い雲を拾う固定上限で、光学式やhit
+  // 判定を二値化する代わりに、すべての段を同じCloudVolumeへ渡す。
+  [CUMULUS_DETAIL.coarse]: { march: 16 },
+  [CUMULUS_DETAIL.standard]: { march: 32 },
+  [CUMULUS_DETAIL.fine]: { march: 48 },
 } as const satisfies Readonly<Record<CumulusDetail, CumulusSampling>>;
 
 export class OpaqueCloudSurfaceRenderer {
