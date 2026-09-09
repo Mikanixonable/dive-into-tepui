@@ -106,14 +106,24 @@ export class EarthSurfaceResidentCoordinator {
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.reset();
+    this.dependencies.queue.dispose();
+    this.dependencies.gpu.dispose();
+  }
+
+  // 非表示または配信版切り替え時に、要求・公開ページ・常駐層をbaseへ戻す。
+  // queueとGPU backend自体は再表示で再利用するため、disposeとは分ける。
+  public reset(): void {
     for (const pending of this.pending.values()) {
       this.dependencies.queue.abort(pending.key);
       this.dependencies.queue.release(pending.key, pending.generation);
     }
     this.pending.clear();
-    this.dependencies.queue.dispose();
-    this.dependencies.gpu.dispose();
     this.residents.clear();
+    this.dependencies.tiles.reset();
+    this.dependencies.gpu.reset();
+    this.activeGeneration = -1;
+    this.nextFrame = 0;
   }
 
   private cancelOldRequests(generation: number): void {
@@ -167,6 +177,10 @@ export class EarthSurfaceResidentCoordinator {
           if (!this.disposed && this.dependencies.gpu.reservation(layer) === reservation) {
             this.dependencies.gpu.releaseLayer(reservation);
           }
+          this.residents.delete(earthTileId(pending.key));
+          return;
+        }
+        if (this.dependencies.gpu.reservation(layer) !== reservation) {
           this.residents.delete(earthTileId(pending.key));
           return;
         }
