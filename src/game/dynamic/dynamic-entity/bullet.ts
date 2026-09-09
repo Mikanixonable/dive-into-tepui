@@ -2,7 +2,7 @@ import type { KinematicState } from '../../../physics/kinematic-state';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { DynamicEntity } from './dynamic-entity';
 import { BulletView } from './bullet-view';
-import type { BulletType, Shooter } from './bullet-reaction';
+import { BulletReaction, type BulletType, type Shooter } from './bullet-reaction';
 import { BulletMotion } from './bullet-motion';
 
 export class Bullet extends DynamicEntity {
@@ -17,7 +17,10 @@ export class Bullet extends DynamicEntity {
       new BulletView(type === 'plasma'),
       undefined,
       undefined,
-      () => new BulletMotion(state, lifetime, shooter, type, damage, worldSfx),
+      () => new BulletMotion(
+        state,
+        new BulletReaction(state.t, lifetime, shooter, type, damage, worldSfx),
+      ),
     );
   }
 }
