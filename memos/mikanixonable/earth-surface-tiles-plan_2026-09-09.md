@@ -629,7 +629,7 @@ fixtureだけで通す段と実データで通す段を分け、fixtureの成功
 | 画像検証の保存形式と合格条件が曖昧 | `.earth-surface/verification/{case}/`に`color.png`、`normal.png`、`depth.png`、`metrics.json`を保存し、metricsにはdatasetId、視点、投影、選択z、frontier数、fallback率、要求数、層数、失敗理由を必須化する |
 | 公開URLと開発URLの切り替え方法がない | `EARTH_SURFACE_BASE_URL`をwebpackのDefinePluginから渡す。未設定時は開発時だけlocalhost:8084を許し、公開用`verify-release`ではlocalhost・空文字・datasetId不一致を拒否する |
 
-### 実装段A: 配信契約と生成物の固定
+### 実装段A: 配信契約と生成物の固定（完了）
 
 **依存**: 手順3のfixture出力。実データ全量は不要。
 **変更**: `tools/earth-surface/package.mjs`、`tools/earth-surface/check.mjs`、
@@ -646,6 +646,12 @@ fixtureだけで通す段と実データで通す段を分け、fixtureの成功
 **達成条件**: fixtureでpackage後の全ファイルが配信先に存在し、checkが正常版を通し、1ファイルの変更・
 別datasetId・タイルキー違いを検出する。`npm run typecheck`、`npm run earth-surface:check`、
 Pythonデータテストを実行する。
+
+**実装状況（2026-09-09）**: `58fb009d`でmanifest・tile-index・ESTN/gzip/hash・datasetId・URLの検証、
+`earth-surface:check`、staging経由のpackage、決定的fixtureを実装した。レビューで、後続の気候復号へ
+つなぐ`sourceManifestSha256`と`climateEncoding`を`EarthSurfaceSource`へ公開する修正も加えた。
+`npm run typecheck`、`npm run test:render`（49/49）、`npm run earth-surface:test`、Pythonデータテスト
+（15件）を通過している。実データ全量のbundle検査は未実施であり、段B以降は未着手である。
 
 ### 実装段B: タイル要求・常駐・GPU公開を接続
 
