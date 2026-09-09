@@ -6,12 +6,11 @@ import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import {
   Discard, Fn, If, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
-  max, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select, smoothstep,
-  sqrt, step, transformNormalToView, uniform, vec3, vec4,
+  max, mix, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select, smoothstep,
+  sqrt, texture as textureNode, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
-import { BlueNoise } from './blue-noise';
-import { CloudFieldSampler, GeneratedCloudField } from './cloud/cloud-field';
-import { unitSphereGeometry } from './celestial-surface';
+import { GeneratedCloudField } from './cloud/generated-cloud-field';
+import { sphereMeshUv, unitSphereGeometry } from './celestial-surface';
 import {
   CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE, cloudTopOf, grainAt, opaqueFractionOf,
 } from './cloud/cumulus-shape';
@@ -23,24 +22,19 @@ import type { FloatNode, FloatUniform, Vec3Node, Vec4Node } from './tsl-types';
 // 雲の粗さ。雲は拡散する面なので、粗さは最大になる。
 const CUMULUS_ROUGHNESS = 1;
 
-// ディザの閾値の段数。blue noise は 0..1 の両端を含むので、閾値は半段ぶん内側へ寄せて使う
-// — 寄せないと、覆いの無い空へ閾値 0 の画素だけが雲として残り、覆い尽くされた面から閾値 1 の
-// 画素が抜ける。
-const DITHER_LEVELS = 256;
-
 // 積雲の精細さの段。オフは殻を描かない段。**値は保存された設定を読む鍵なので、段を足すときも
 // 既存の値を動かさない** — 番号を詰め直すと、保存済みの設定が黙って別の段を指す。
 export const CUMULUS_DETAIL = { off: 0, coarse: 1, standard: 2, fine: 3 } as const;
 export type CumulusDetail = (typeof CUMULUS_DETAIL)[keyof typeof CUMULUS_DETAIL];
 
 // 雲頂を探す標本の配り方。march は殻の中を等間隔にたどる刻みの数(どの交点を見つけるかを決める)、
-// refine は雲頂をまたいだ区間を締める二分の回数(見つけた区間の中の精度を決める)。
+// refine は雲頂をまたいだ区間を締める回数(最初は clearance の線形補間、残りは二分で精度を決める)。
 type CumulusSampling = { readonly march: number; readonly refine: number };
 
-// 段ごとの標本の配り方。費用は march + refine 回の標本化。march 0 は殻を描かない。
-// **いちばん粗い段は march 1 本に留め、そのぶん二分を増やす** — 刻みが 2 本以上あると手前と奥で
-// 拾った雲頂が 2 枚の層として重なって読め、締める前の区間が殻の端から端まで広がるので、二分が
-// 他の段と同じ回数では雲頂が深さの段へ割れて縞に見える。
+// 段ごとの標本の配り方。費用は入口の1回 + march + refine 回の標本化。march 0 は殻を描かない。
+// **いちばん粗い段は march 1 本に留め、そのぶん refinement を増やす** — 刻みが 2 本以上あると手前と奥で
+// 拾った雲頂が 2 枚の層として重なって読める。線形補間で最初の交点を寄せてから締めるので、区間が
+// 殻の端から端まで広がる段でも、雲頂が深さの段へ割れて縞に見える量を抑えられる。
 const SAMPLING_OF_DETAIL = {
   [CUMULUS_DETAIL.off]: { march: 0, refine: 0 },
   [CUMULUS_DETAIL.coarse]: { march: 1, refine: 5 },
@@ -52,15 +46,12 @@ const SAMPLING_OF_DETAIL = {
 // ならないので、Nyquist の 2 画素へ落ちるまでに振幅を 0 へ渡す。
 const GRAIN_FADE_MIN_PIXELS = 2;
 const GRAIN_FADE_FULL_PIXELS = 4;
-const DEFAULT_CAMERA_DIRECTION = new THREE.Vector3(0, 0, 1);
 
 export class CumulusShell {
   private readonly cloudField: GeneratedCloudField;
-  private readonly fieldSampler = new CloudFieldSampler();
   // 標本の配り方と、その回数まで展開したマテリアル。
   private sampling: CumulusSampling = SAMPLING_OF_DETAIL[CUMULUS_DETAIL.standard];
   private material: THREE.Material;
-  private readonly blueNoise = new BlueNoise();
   // 殻を半径 1 とする物体空間での地表の半径。レイマーチの下端になる。**天体ごとに違う値は
   // uniform で渡す** — グラフへ焼くと、殻を持つ天体の数だけシェーダが増える。
   private readonly groundRadius: FloatUniform;
@@ -78,8 +69,8 @@ export class CumulusShell {
   // cloudField は雲場、bodyRadius は殻を載せる天体の基準半径 [m]。親は半径 bodyRadius の球へ
   // 合わせたスケールを与えればよく、雲頂ぶんの膨らみはこの殻が持つ。
   public constructor(cloudField: GeneratedCloudField, bodyRadius: number) {
+    // 雲頂を含む殻の尺度と雲粒の周波数を組む。
     this.cloudField = cloudField;
-    this.fieldSampler.set(cloudField);
     const shellScale = 1 + CLOUD_TOP_SPAN / bodyRadius;
     const grainFrequency = bodyRadius / CUMULUS_GRAIN_SIZE;
     this.groundRadius = uniform(1 / shellScale);
@@ -87,6 +78,7 @@ export class CumulusShell {
     this.gradientAngle = uniform(0.5 / grainFrequency);
     this.material = this.buildMaterial();
 
+    // 詳細度ごとのメッシュを同じ雲場へ束ねる。
     const meshes = new Map<SphereLodLevel, THREE.Mesh>();
     for (const level of SPHERE_LOD_LADDER) {
       const mesh = new THREE.Mesh(unitSphereGeometry(level), this.material);
@@ -98,8 +90,8 @@ export class CumulusShell {
     this.meshes = meshes;
   }
 
-  // 雲の場。解放までこの殻が持つ。厚い雲・薄い雲・影へ同じ生成元を渡す。
-  public get field(): GeneratedCloudField { return this.cloudField; }
+  // 雲の場のテクスチャ。解放までこの殻が持つ。
+  public get field(): THREE.Texture { return this.cloudField.texture; }
 
   // 殻を描いている段があるか。
   public get visible(): boolean { return this.activeLevel !== null; }
@@ -151,9 +143,7 @@ export class CumulusShell {
 
   // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。刻みを持たない配り方では
   // 全段を隠す。
-  public syncLod(apparentDiameterPx: number, cameraDirection = DEFAULT_CAMERA_DIRECTION): void {
-    this.cloudField.syncLod(apparentDiameterPx, cameraDirection);
-    this.fieldSampler.set(this.cloudField);
+  public syncLod(apparentDiameterPx: number): void {
     const level = this.sampling.march === 0 ? null : sphereLodLevel(apparentDiameterPx);
     if (level === this.activeLevel) return;
     this.activeLevel = level;
@@ -172,12 +162,11 @@ export class CumulusShell {
       this.visible || this.cirrusVisible || this.translucentCumulusVisible);
   }
 
-  // 全段のメッシュを親から外し、マテリアル・場・ディザのタイルを解放する。
+  // 全段のメッシュを親から外し、マテリアルと場を解放する。
   public dispose(): void {
     for (const mesh of this.meshes.values()) mesh.removeFromParent();
     this.material.dispose();
     this.cloudField.dispose();
-    this.blueNoise.dispose();
   }
 
   // 雲頂の交点を書く不透明な白の標準マテリアル。深度と法線は 1 本のレイマーチを共有する。
@@ -201,7 +190,6 @@ export class CumulusShell {
       const entry = positionLocal.toVar();
       const origin = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1)).xyz;
       const direction = normalize(entry.sub(origin)).toVar();
-      const threshold = this.ditherThreshold().toVar();
       const grainAmplitude = this.grainAmplitudeAt(normalize(entry)).toVar();
 
       // 殻に入ってから地表の球へ達するまで(掠めるなら殻を出るまで)を等分してたどる。
@@ -216,59 +204,86 @@ export class CumulusShell {
       const sampling = this.sampling;
       const stepLength = marchEnd.div(sampling.march);
 
-      // 雲頂より内側へ入った最初の刻みを、その手前の刻みと一緒に覚える。
+      // 雲頂より内側へ入った最初の刻みを、その手前の刻みと clearance と一緒に覚える。
       const hit = float(0).toVar();
       const above = float(0).toVar();
       const below = marchEnd.toVar();
+      const aboveClearance = float(1).toVar();
+      const belowClearance = float(0).toVar();
+      const previousDistance = float(0).toVar();
+      const previousClearance = this.clearanceAt(entry, grainAmplitude).toVar();
       for (let stepIndex = 1; stepIndex <= sampling.march; stepIndex++) {
         const distance = stepLength.mul(stepIndex);
-        const inside = this.clearanceAt(
-          entry.add(direction.mul(distance)), threshold, grainAmplitude).lessThan(0);
+        const clearance = this.clearanceAt(entry.add(direction.mul(distance)), grainAmplitude).toVar();
+        const inside = clearance.lessThan(0);
         If(inside.and(hit.lessThan(0.5)), () => {
           hit.assign(1);
+          above.assign(previousDistance);
           below.assign(distance);
+          aboveClearance.assign(previousClearance);
+          belowClearance.assign(clearance);
         });
-        If(hit.lessThan(0.5), () => { above.assign(distance); });
+        If(hit.lessThan(0.5), () => {
+          previousDistance.assign(distance);
+          previousClearance.assign(clearance);
+        });
       }
-      // 雲頂をまたいだ区間を二分して縁を締める。
+      // 最初は前後の clearance を線形補間し、残りは区間を二分して縁を締める。単純な中点だけで
+      // 交点を選ぶと、視線の区間数に応じた深度の段がそのまま雲頂の縞になる。
       for (let refineIndex = 0; refineIndex < sampling.refine; refineIndex++) {
-        const middle = above.add(below).mul(0.5);
-        const inside = this.clearanceAt(
-          entry.add(direction.mul(middle)), threshold, grainAmplitude).lessThan(0);
-        If(inside, () => { below.assign(middle); }).Else(() => { above.assign(middle); });
+        const denominator = max(aboveClearance.sub(belowClearance), 1e-6);
+        const linearWeight = aboveClearance.div(denominator).clamp(0, 1);
+        const middle = (refineIndex === 0)
+          ? mix(above, below, linearWeight)
+          : above.add(below).mul(0.5);
+        const clearance = this.clearanceAt(entry.add(direction.mul(middle)), grainAmplitude).toVar();
+        If(clearance.lessThan(0), () => {
+          below.assign(middle);
+          belowClearance.assign(clearance);
+        }).Else(() => {
+          above.assign(middle);
+          aboveClearance.assign(clearance);
+        });
       }
 
       const hitPoint = entry.add(direction.mul(below)).toVar();
       const clip = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(hitPoint, 1)));
       const viewNormal = normalize(transformNormalToView(this.cloudTopNormalAt(hitPoint, grainAmplitude)));
-      Discard(hit.lessThan(0.5));
+      const cloud = this.fieldAt(normalize(hitPoint)).toVar();
+      const grain = grainAt(normalize(hitPoint), this.grainFrequency, grainAmplitude);
+      const opaqueFraction = opaqueFractionOf(cloud.r, grain);
+      // 交差探索は連続な雲頂で済ませ、最後の表示判定だけを被覆率の中心で切る。画素ごとの
+      // blue noise をここへ入れると、探索の符号が視線上で飛び、深度の等高線になる。
+      Discard(hit.lessThan(0.5).or(opaqueFraction.lessThan(0.5)));
       return vec4(viewNormal, clip.z.div(clip.w));
     })();
   }
 
   // 物体空間の点が、その柱の雲頂からどれだけ外に居るか。負なら雲の中。
-  private clearanceAt(point: Vec3Node, threshold: FloatNode, grainAmplitude: FloatNode): FloatNode {
+  private clearanceAt(point: Vec3Node, grainAmplitude: FloatNode): FloatNode {
     const radius = max(length(point), 1e-6);
     const direction = point.div(radius);
     const cloud = this.fieldAt(direction);
     const grain = grainAt(direction, this.grainFrequency, grainAmplitude);
-    // 粒は覆いの縁を texel より細かく千切る。
-    const present = step(threshold, opaqueFractionOf(cloud.r, grain));
-    // **覆いの無い柱は雲頂を地表へ落とさず、視線を素通しにする** — 落とすと、地表へ達した
-    // 刻みが丸めの符号次第で雲頂の内側と判定され、地表いちめんに粒が湧く。
-    const clearance = radius.sub(this.cloudTopRadiusOf(cloudTopOf(cloud.g, grain)));
-    return select(present.greaterThan(0.5), clearance, float(1));
+    // 被覆率 0 では雲頂を地表へ戻し、被覆率 1 では本来の雲頂へ戻す。探索中に柱を二値化
+    // しないので、雲の縁でも clearance が連続し、線形補間と二分探索の前提を保てる。
+    const opaqueFraction = opaqueFractionOf(cloud.r, grain);
+    const cloudTop = cloudTopOf(cloud.g, grain).mul(opaqueFraction);
+    return radius.sub(this.cloudTopRadiusOf(cloudTop));
   }
 
-  // 交点における雲頂面の法線(物体空間)。**覆いの有無は勾配へ入れない** — 柱ごとに断ち切られた
-  // 崖ではなく、雲頂そのものの起伏を法線に出す。
+  // 交点における雲頂面の法線(物体空間)。**被覆率は連続な雲頂へ含める** — 柱ごとに二値で断ち切った
+  // 崖ではなく、被覆の境界から本来の雲頂へ渡る起伏を法線に出す。
   private cloudTopNormalAt(hitPoint: Vec3Node, grainAmplitude: FloatNode): Vec3Node {
     const up = hitPoint.div(max(length(hitPoint), 1e-6));
     const east = eastAt(up);
     const north = northAt(up);
     // その向きの雲頂(物体空間の半径)。
-    const topAt = (direction: Vec3Node): FloatNode => this.cloudTopRadiusOf(
-      cloudTopOf(this.fieldAt(direction).g, grainAt(direction, this.grainFrequency, grainAmplitude)));
+    const topAt = (direction: Vec3Node): FloatNode => {
+      const cloud = this.fieldAt(direction);
+      const grain = grainAt(direction, this.grainFrequency, grainAmplitude);
+      return this.cloudTopRadiusOf(cloudTopOf(cloud.g, grain).mul(opaqueFractionOf(cloud.r, grain)));
+    };
     // **中心の高さは交点の中心距離ではなく雲頂を引き直して測る** — 締めた交点は雲頂より内側へ
     // 食い込んでいて、中心距離を高さに使うと食い込みが両方向の傾きへ同じ下駄として乗る。掠める
     // 視線ほど刻みが長く食い込みも深いので、リム際で法線が倒れて夜側の雲が光る。
@@ -288,7 +303,7 @@ export class CumulusShell {
 
   // 天体固定の単位方向における場の値。
   private fieldAt(direction: Vec3Node): Vec4Node {
-    return this.fieldSampler.at(direction);
+    return textureNode(this.cloudField.texture, sphereMeshUv(direction));
   }
 
   // 粒の振幅。**1 画素が張る角は画面上の変化率から引く** — 天体の見かけ直径から出すと、
@@ -300,9 +315,4 @@ export class CumulusShell {
     return smoothstep(GRAIN_FADE_MIN_PIXELS, GRAIN_FADE_FULL_PIXELS, wavelengthPixels);
   }
 
-  // 画素ごとに固定の、覆い尽くされている割合と比べるディザの閾値。
-  private ditherThreshold(): FloatNode {
-    return this.blueNoise.atScreenPixel()
-      .mul((DITHER_LEVELS - 1) / DITHER_LEVELS).add(0.5 / DITHER_LEVELS);
-  }
 }

@@ -26,13 +26,13 @@ const MAX_COLUMN_COVERAGE = 0.99;
 // 場の G(雲頂高度)を実寸へ戻す上限 [m]。場の G 自体は 0..1 で持つ。
 export const CLOUD_TOP_SPAN = 15000;
 
-// 被覆率を二値化する境目(center)と、その前後でディザへ渡す半幅(halfWidth)。被覆率が
-// center±halfWidth に入る柱だけがディザに掛かり、外は 0 か 1 へ飽和する。どちらも目で追い込んだ
-// 値で、場を差し替えたら追い込み直す。
+// 被覆率を不透明な雲頂へ渡す境目(center)と、その前後で連続に渡す半幅(halfWidth)。被覆率が
+// center±halfWidth に入る柱だけが 0..1 の中間値になり、外は 0 か 1 へ飽和する。どちらも目で
+// 追い込んだ値で、場を差し替えたら追い込み直す。
 //
 // **仮設**: render-lab のつまみ(tools/render-lab/main.ts)から動かせるよう uniform にしてある。
 // 生成側の場へ差し替えたあとにもう一段の追い込みが要るので、それまでは畳まない。
-export const CUMULUS_DITHER_KNOB: {
+export const CUMULUS_COVERAGE_KNOB: {
   readonly center: FloatUniform;
   readonly halfWidth: FloatUniform;
 } = { center: uniform(0.34), halfWidth: uniform(0.12) };
@@ -83,7 +83,7 @@ export function grainAmplitudeForWidth(width: FloatNode): FloatNode {
 // 雲を生やす。粒を引けない読み手は grain 0 で場の被覆率をそのまま通してよい — 粒は釣鐘型に散る
 // ので、粒で千切った雲を均した平均はこの斜面で近似できる。
 export function opaqueFractionOf(coverage: FloatNode, grain: FloatNode): FloatNode {
-  const band = CUMULUS_DITHER_KNOB.halfWidth.mul(2);
+  const band = CUMULUS_COVERAGE_KNOB.halfWidth.mul(2);
   return saturatedBand(coverage.add(grain.mul(GRAIN_COVERAGE_DEPTH)), band);
 }
 
@@ -102,7 +102,7 @@ export function columnOpticalDepth(coverage: FloatNode): FloatNode {
 // **幅は境目の 2 倍で止める** — 斜面の下端が負へ伸びると、覆いの無い柱(被覆率 0)まで正の割合を
 // 返す。2 倍なら下端がちょうど 0 で止まり、境目の位置は動かない。
 function saturatedBand(coverage: FloatNode, band: FloatNode): FloatNode {
-  const center = CUMULUS_DITHER_KNOB.center;
+  const center = CUMULUS_COVERAGE_KNOB.center;
   const clampedBand = min(band, center.mul(2));
   return clamp(coverage.sub(center.sub(clampedBand.mul(0.5))).div(clampedBand), 0, 1);
 }
