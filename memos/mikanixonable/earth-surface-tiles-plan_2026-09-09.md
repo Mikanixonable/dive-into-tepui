@@ -125,7 +125,8 @@ T0 基準記録
 | T3 | コード完了 | `63babd80`, `667a31bb`、render 90/90、game 201/201 | 実manifest取得と実GPU attachは未実施 |
 | T6-2 | 契約完了 | `32a789ab`、remote contract pass | 外部origin公開は未実施 |
 | T6-1 | fixture Pages完了 | `49d840f2`、Pages layout pass、build pass | 実全世界bundleのPages公開は未完了 |
-| T4/T5/T7 | 未完了 | — | 後続フェーズで実装・レビューする |
+| T4 | コード完了 | `e195d4df`, `ac919b93`, `ea6d47a3`, `22532275`、render 96/96、game 201/201 | 実ERA5 bundleと実ブラウザ/WebGPU撮影は未実施 |
+| T5/T7 | 未完了 | — | 後続フェーズで実装・レビューする |
 
 ## 7. 検証
 
