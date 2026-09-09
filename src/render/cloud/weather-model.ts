@@ -138,6 +138,10 @@ const LIFT_LIMIT = 0.06;
 // 広がった分だけ半端な強さの裾が痩せるので、同じ量が細い筋から幅のある面へ移るだけになる。
 const FRONT_ONSET = 1.45;
 const FRONT_WIDTH = 0.35;
+// 湿度の水平勾配 [1/rad]。気団の温度差だけでなく、湿った空気と乾いた空気の境界でも前線の
+// 雲帯が強まるようにする。湿度写しの量子化より十分広い幅で渡し、線状の格子を作らない。
+const MOISTURE_GRADIENT_ONSET = 0.12;
+const MOISTURE_GRADIENT_WIDTH = 0.28;
 // 雨帯。眼を持つ渦が周りの気団を巻き込んで折り畳んだ筋で、圧縮は前線の帯より桁が大きい(台風の芯から
 // ±1180 km では 45% が 2 を超え、腕の稜線は 5〜9)。効き始めは稜線の下端に置き、幅は稜線の中でいちばん
 // 押し縮まった区間だけが帯として飽和して、腕の先へ向けて連続に薄れる長さに取る — 芯のまわりのシアの丘
@@ -352,6 +356,10 @@ export class WeatherModel {
       gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
     ), upperBackground);
 
+    // 湿度場も同じ風で移流したあと、温度代理(気団圧縮)と湿度勾配を前線へ渡す。
+    const advected = this.advected(direction, surfaceWind, upperWind, convectionWind);
+    const moistureGradient = this.moistureGradientAt(direction, east, north);
+
     // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分と、気団の境目が押し上げる分。
     const windComponents = eastNorthComponents(surfaceWind.velocity, east, north);
     const airMass = this.airMass.at(direction, latitude);
@@ -362,8 +370,13 @@ export class WeatherModel {
     // Fronts follow the air-mass temperature gradient, with a small continuous
     // enhancement where pressure-driven ascent supplies convergence/updraft.
     const updraft = smoothstep(0.01, 0.04, max(liftFromPressure(pressure), 0));
-    const front = smoothstep(FRONT_ONSET, FRONT_ONSET + FRONT_WIDTH, airMass.compression)
-      .add(updraft.mul(0.15)).min(1).mul(extratropical);
+    const temperatureFront = smoothstep(FRONT_ONSET, FRONT_ONSET + FRONT_WIDTH, airMass.compression);
+    const moistureFront = smoothstep(
+      MOISTURE_GRADIENT_ONSET,
+      MOISTURE_GRADIENT_ONSET + MOISTURE_GRADIENT_WIDTH,
+      moistureGradient,
+    );
+    const front = temperatureFront.add(moistureFront.mul(0.2)).add(updraft.mul(0.15)).min(1).mul(extratropical);
     const rainband = smoothstep(RAINBAND_ONSET, RAINBAND_ONSET + RAINBAND_WIDTH, airMass.compression)
       .mul(extratropical.oneMinus());
     const band = min(front.add(rainband), 1);
@@ -373,7 +386,6 @@ export class WeatherModel {
     // 湿度は、風で流した写しへ、その場の平年の雲量と上昇流と金床を足し、渦の目のぶんを引いたもの。
     // 写しの偏差は上昇流が増幅する。写し以外は移流を通らないので、気候と地形と渦に貼り付いたまま
     // 歪まない。
-    const advected = this.advected(direction, surfaceWind, upperWind, convectionWind);
     const meanCloudiness = this.climate.meanCloudiness(direction);
     const landFraction = this.climate.landFraction(direction);
     const eye = this.cyclones.eyeAt(direction);
@@ -428,6 +440,18 @@ export class WeatherModel {
     const pressureBehind = this.pressure.at(normalize(direction.sub(isobarStep))).r;
     const bend = pressureAhead.add(pressureBehind).sub(pressure.mul(2)).div(BEND_STEP ** 2);
     return { pressure, gradient, isobar, bend };
+  }
+
+  // 湿度写しの地表成分の水平勾配 [1/rad]。気団の温度代理とは別の境界を前線強度へ渡す。
+  private moistureGradientAt(direction: Vec3Node, east: Vec3Node, north: Vec3Node): FloatNode {
+    const eastStep = east.mul(GRADIENT_STEP);
+    const northStep = north.mul(GRADIENT_STEP);
+    const moistureAt = (offset: Vec3Node): FloatNode => this.humiditySource.at(normalize(offset)).r;
+    const eastGradient = moistureAt(direction.add(eastStep)).sub(moistureAt(direction.sub(eastStep)))
+      .div(2 * GRADIENT_STEP);
+    const northGradient = moistureAt(direction.add(northStep)).sub(moistureAt(direction.sub(northStep)))
+      .div(2 * GRADIENT_STEP);
+    return eastGradient.mul(eastGradient).add(northGradient.mul(northGradient)).sqrt();
   }
 
   // 単位方向 direction における気団を遡らせる風(東向き・北向きの成分 [m/s])。
