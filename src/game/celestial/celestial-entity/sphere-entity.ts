@@ -7,7 +7,7 @@ import { CameraSystem } from '../../camera/camera-system';
 import { FloatingOrigin } from '../../camera/floating-origin';
 import { spinOrientation } from '../../../physics/body-orientation';
 import { showsPhysicalSphere } from '../../../render/screen-lod';
-import type { CelestialSurfaceLike } from '../../../render/celestial-surface';
+import { createCelestialSurfaceFrame, type CelestialSurfaceLike } from '../../../render/celestial-surface';
 import { BodyGraticule } from '../../../render/body-graticule';
 import type { LineOverlay } from '../../../render/line-overlay';
 import { CelestialEntity } from './celestial-entity';
@@ -32,6 +32,7 @@ export class SphereEntity extends CelestialEntity {
   private ring?: RingView;
   // 模式図スタイルでだけ見せる経緯度グリッド。姿勢は group の子として自然に追従する。
   private readonly graticule = new BodyGraticule();
+  private surfaceFrame = 0;
   // 実半径・歪みの形状・環は motion の定義から引く。surfaceMarkings は模式図スタイルでだけ
   // 見せる天体固有の表面ライン(月の海・クレーターなど)で、持たない天体では null。
   constructor(
@@ -99,6 +100,10 @@ export class SphereEntity extends CelestialEntity {
     const orientation = this.motion.orientationAt(displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
+    this.surface.syncFrame(createCelestialSurfaceFrame(
+      cameraSystem.activeCamera, this.group.position, this.group.quaternion, this.axes,
+      ++this.surfaceFrame, displayTime, style,
+    ));
     this.ring?.sync(
       this.group.position,
       orientation === null ? null : orientation.axis,
