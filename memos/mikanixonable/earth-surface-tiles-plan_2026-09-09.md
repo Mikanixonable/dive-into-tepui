@@ -653,7 +653,7 @@ Pythonデータテストを実行する。
 `npm run typecheck`、`npm run test:render`（49/49）、`npm run earth-surface:test`、Pythonデータテスト
 （15件）を通過している。実データ全量のbundle検査は未実施であり、段B以降は未着手である。
 
-### 実装段B: タイル要求・常駐・GPU公開を接続
+### 実装段B: タイル要求・常駐・GPU公開を接続（要求・常駐fixture完了）
 
 **依存**: 段Aのtile-indexと既存の`earth-surface-tiles.ts`、`earth-surface-gpu.ts`、decode。
 **変更**: `src/render/earth-surface-request.ts`（新規）、`earth-surface-tiles.ts`、
@@ -679,7 +679,13 @@ fetch/GPUで検査し、色だけ・地形だけが表示される状態を作�
 `npm run earth-surface:test`、Pythonデータテスト（15件）を通過している。`EarthSurfaceTiles`とのfrontier
 接続、GPU層への同時upload、resident LRU、親fallbackの実運用接続は段Bの残作業である。
 
-### 実装段C: 地表マテリアルと実GPU接続
+**追加実装状況（2026-09-09）**: `0b3d4ee3`で`EarthSurfaceResidentCoordinator`、
+`requestCandidates()`、`pinnedLayers()`を追加し、要求キューから色RGBA8・地形Float16を同じGPU層へ投入してから
+ページ表を公開する経路、親fallback、世代/破棄境界、128層以下の退避をfixtureで接続した。レビューで、GPUや
+色変換の一時失敗をcoordinator側の永続失敗へ昇格しないよう修正した。renderテストは58/58まで通過している。
+実Three.jsの色変換、実GPUの配列層、Earth entity接続は段C・Dへ残す。
+
+### 実装段C: 地表マテリアルと実GPU接続（解析contract完了）
 
 **依存**: 段B。
 **変更**: `src/render/earth-surface-material.ts`（新規）、`src/render/earth-surface-gpu.ts`、
@@ -696,9 +702,16 @@ fetch/GPUで検査し、色だけ・地形だけが表示される状態を作�
 
 **達成条件**: ゼロ勾配、非一様半軸、自転0/90/180度、経度±180度、親子fade、sRGB混合、模式図fallbackを
 解析テストと実ブラウザ画像で確認する。色・法線・roughnessの公開フレームが一致し、既存の月・他天体の
-material挙動を変えない。
+ material挙動を変えない。
 
-### 実装段D: `CelestialSurface`とEarth entityの接続
+**実装状況（2026-09-09）**: `fa1f04e1`で、実GPUへ依存しないmaterial解析contractを追加した。楕円体UV、
+ページ表の最近傍読取り、タイルgutter・経度wrap・極clamp、sRGBから線形への変換、親子fade、GSHHG被覆率からの
+水・陸・氷roughness、body法線のview変換、模式図の幾何法線fallbackをfixtureで固定した。`npm run typecheck`、
+`npm run test:render`（64/64）、`npm run earth-surface:test`、Pythonデータテスト（15件）を通過している。
+この段で実Three.jsの`DataArrayTexture`/TSL、実GPU配列層、ページ表の公開、mipmap無効化とbase固定fallbackは
+まだ接続していないため、段Cの受け入れは未完了とする。
+
+### 実装段D: `CelestialSurface`とEarth entityの接続（共通contract完了）
 
 **依存**: 段Cのmaterial。fixture baseを使った接続を先に行い、実データは後から差し替える。
 **変更**: `src/render/earth-surface-context.ts`、`src/render/earth-surface.ts`、
@@ -717,6 +730,12 @@ material挙動を変えない。
 
 **達成条件**: `npm run typecheck`、`npm run test:render`、`npm run test:game`。地球のdispose後に要求・GPU層・
 Contextが残らず、月・他天体・模式図・軌道分析が既存テストを維持する。
+
+**実装状況（2026-09-09）**: `12dd9529`で`CelestialSurfaceLike`と`CelestialSurfaceFrame`を抽出し、
+`PointEntity`/`SphereEntity`が具体クラスへ依存せず表面を注入できる契約を追加した。既存の静的surfaceを
+fixtureで検査し、`npm run typecheck`、`npm run test:render`（65/65）、`npm run test:game`（199/199）を
+通過している。EarthSurface本体、Earthへの注入、毎フレームの`syncFrame`呼出し、非表示・dispose時の
+要求/GPU/Context解放、webpackの公開URL検査は未実装であり、段Dの受け入れは未完了とする。
 
 ### 実装段E: 気候マップと雲・大気を共有入力へ切り替える
 

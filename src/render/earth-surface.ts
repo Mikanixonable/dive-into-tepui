@@ -1,5 +1,11 @@
 // 地球表面の寿命境界。実データの取得・GPU公開・気候入力が同じdatasetIdと世代を共有する。
+import * as THREE from 'three/webgpu';
 import type { EarthSurfaceSource } from '../game/celestial/solar-system/earth-surface-source';
+import type {
+  CelestialSurfaceFrame,
+  CelestialSurfaceLike,
+  SurfacePhotometry,
+} from './celestial-surface';
 
 export interface EarthSurfaceRequestLease {
   readonly generation: number;
@@ -48,5 +54,30 @@ export class EarthSurfaceContext {
     if (this.disposed) return;
     this.invalidateRequests();
     this.disposed = true;
+  }
+}
+
+// 地球固有の寿命境界を共有しながら、天体表面の描画契約は既存の球面へ委譲する。
+export class EarthSurface implements CelestialSurfaceLike {
+  public constructor(
+    private readonly context: EarthSurfaceContext,
+    private readonly fallback: CelestialSurfaceLike,
+  ) {}
+
+  public get photometry(): SurfacePhotometry | null { return this.fallback.photometry; }
+
+  public get textureUrl(): string | null { return this.fallback.textureUrl; }
+
+  public addTo(parent: THREE.Object3D): void { this.fallback.addTo(parent); }
+
+  public syncLod(apparentDiameterPx: number): void { this.fallback.syncLod(apparentDiameterPx); }
+
+  public syncFrame(frame: CelestialSurfaceFrame): void { this.fallback.syncFrame(frame); }
+
+  public hide(): void { this.fallback.hide(); }
+
+  public dispose(): void {
+    this.context.dispose();
+    this.fallback.dispose();
   }
 }
