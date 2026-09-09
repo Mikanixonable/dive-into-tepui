@@ -15,10 +15,9 @@ export class InputCoordinator {
     private readonly viewManager: ViewManager,
   ) {}
 
-  // dtRaw をゲーム内の上限へ収め、次のシミュレーション・表示更新へ返す。
-  update(dtRaw: number, simTime: number): number {
+  // 正規化済みのフレーム時間で、入力をゲーム画面内の入力先へ配る。
+  update(dt: number, simTime: number): void {
     this.input.update();
-    const dt = Math.min(dtRaw, 0.1);
 
     // ポーズ中も Esc・ヘルプなどは効かせるので、入力配分はポーズ判定より前に置く。
     // ESC: 開いているオーバーレイがあれば最前面を閉じ、何も無ければ一時停止メニューを開く。
@@ -31,11 +30,10 @@ export class InputCoordinator {
     this.hud.handleInput(this.input);
     // ヘルプや設定など、背景入力をゲートするモーダルが開いた後は、同じフレームの
     // ワープ/ビュー切り替え/計画編集へキーを漏らさない。
-    if (this.hud.overlayManager.isInputGated()) return dt;
+    if (this.hud.overlayManager.isInputGated()) return;
     this.simSpeedManager.handleInput(this.input);
     this.viewManager.handleInput(this.input);
     // ビュー固有のキー(戦闘=計画破棄/自動ワープ、マップ=Δv 編集)は現在のビューが持つ。
     this.viewManager.activeView.handleInput(this.input, dt, simTime);
-    return dt;
   }
 }
