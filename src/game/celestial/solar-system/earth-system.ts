@@ -1,7 +1,7 @@
 // 地球系(地球・月)。静的事実・運動・見た目を1体につき1箇所で組む。
 import * as THREE from 'three/webgpu';
 import earthTextureUrl from '../../../assets/earth.jpg';
-import cloudFieldUrl from '../../../assets/cloud-field.png';
+import climateTextureUrl from '../../../assets/earth-climate.png';
 import earthSmoothnessUrl from '../../../assets/earth-smoothness.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import { AtmosphereDef } from '../../../physics/atmosphere';
@@ -17,6 +17,8 @@ import {
 import { Aurora, type AuroraOptics } from '../../../render/aurora';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import { CumulusShell } from '../../../render/cumulus-shell';
+import { ClimateMap } from '../../../render/cloud/climate-map';
+import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
 import { EarthCoastline } from '../../../render/earth-coastline';
 import { MoonSurfaceMarkings } from '../../../render/moon-surface-markings';
 import { GeostationaryOverlay } from '../celestial-entity/geostationary-overlay';
@@ -187,7 +189,8 @@ export function earthSystem(
 ): Record<EarthSystemBodyId, CelestialEntity> {
   const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
   // 雲の場は殻が持ち、地表・影・大気の殻はその実体を借りて読む。
-  const cumulus = new CumulusShell(cloudFieldUrl, R_EARTH_EQ);
+  const climate = ClimateMap.fromDeferredUrl(climateTextureUrl);
+  const cumulus = new CumulusShell(GeneratedCloudField.global(climate), R_EARTH_EQ);
   return {
     earth: new CelestialEntity(
       earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
