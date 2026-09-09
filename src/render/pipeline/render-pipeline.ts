@@ -36,7 +36,6 @@ import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../pr
 import { FilmLut } from './film-lut';
 import { compileInto, compileIntoOutput } from './compile-into';
 import { DeferredTexture } from '../deferred-texture';
-import { CUMULUS_DETAIL } from '../cumulus-shell';
 
 export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly gbuffer: GBufferPass;
@@ -314,8 +313,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this._planetLight.setCount(graphics.planetLightCount);
     this.antialiasPass.setMethod(graphics.antialias);
     this.atmospherePass.setCloudShellEnabled('cirrus', graphics.cirrus);
-    this.atmospherePass.setCloudVolumeEnabled(
-      graphics.translucentCumulus && graphics.cumulusDetail !== CUMULUS_DETAIL.off);
+    this.atmospherePass.setCloudShellEnabled('cumulus', graphics.translucentCumulus);
     this.filmLut.select(graphics.filmLut);
   }
 

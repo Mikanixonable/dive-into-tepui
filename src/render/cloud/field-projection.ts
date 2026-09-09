@@ -1,8 +1,12 @@
 // 単位方向とテクスチャの uv の対応。雲の場を焼く側も読む側も、往復はこの契約だけを通る —
 // どの図法で持っているかを、写しの器も読み手も知らない。
 import * as THREE from 'three/webgpu';
-import { asin, atan, clamp, cos, dot, float, max, sin, sqrt, step, uniform, vec2, vec3 } from 'three/tsl';
+import {
+  asin, atan, clamp, cos, dot, float, max, select, sin, smoothstep, sqrt, step, uniform, vec2, vec3,
+} from 'three/tsl';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
+
+const nextAimCenter = new THREE.Vector3();
 
 export type FieldProjection = {
   // 写しの大きさ [texel]。図法が持つ縦横比はここに出る。
@@ -20,6 +24,8 @@ export type FieldProjection = {
   uvAt(direction: Vec3Node): Vec2Node;
   // その uv に値を持つなら 1、持たないなら 0。正方形の写しへ円板を入れる図法では四隅が 0 になる。
   insideAt(uv: Vec2Node): FloatNode;
+  // 有効域の縁で値を混ぜる割合。全球では常に 1、円板では縁へ向かって 0 へ下がる。
+  fadeAt(uv: Vec2Node): FloatNode;
 };
 
 // 正距円筒図法の uv から単位方向へ。u は経度(0.5 が本初子午線 +Z、東が +X)、v は緯度
@@ -65,6 +71,10 @@ export class EquirectProjection implements FieldProjection {
   public insideAt(): FloatNode {
     return float(1);
   }
+
+  public fadeAt(): FloatNode {
+    return float(1);
+  }
 }
 
 // 中心のまわりの円板だけを正方形の写しで持つ正射影 — 中心からの球面上距離 θ を、投影面上の
@@ -105,6 +115,30 @@ export class OrthographicCap implements FieldProjection {
     this.sinRadius.value = Math.sin(radius);
   }
 
+  // 単位方向を cap の中心へ置く。戻り値は中心が変わったかで、同じ表示時刻の同じ局所場を
+  // カメラが静止して読むフレームでは再焼成しない。
+  public aimAt(direction: THREE.Vector3, radius: number): boolean {
+    const normalized = nextAimCenter.copy(direction);
+    if (normalized.lengthSq() <= 1e-20) return false;
+    normalized.normalize();
+    const changed = this.center.value.distanceToSquared(normalized) > 1e-10
+      || Math.abs(this.sinRadius.value - Math.sin(radius)) > 1e-10;
+    if (!changed) return false;
+    this.aim(
+      Math.asin(THREE.MathUtils.clamp(normalized.y, -1, 1)),
+      Math.atan2(normalized.x, normalized.z), radius,
+    );
+    return true;
+  }
+
+  // 同じ局所場を別の読み手の投影へ結ぶ。
+  public copyAimFrom(source: OrthographicCap): void {
+    this.center.value.copy(source.center.value);
+    this.east.value.copy(source.east.value);
+    this.north.value.copy(source.north.value);
+    this.sinRadius.value = source.sinRadius.value;
+  }
+
   public get texelAngleValue(): number {
     return (this.sinRadius.value * 2) / this.width;
   }
@@ -118,11 +152,20 @@ export class OrthographicCap implements FieldProjection {
 
   public uvAt(direction: Vec3Node): Vec2Node {
     const plane = vec2(dot(direction, this.east), dot(direction, this.north)).div(this.sinRadius);
-    return vec2(plane.x, plane.y.negate()).mul(0.5).add(0.5);
+    const projected = vec2(plane.x, plane.y.negate()).mul(0.5).add(0.5);
+    // 正射影は cap の表側だけを持つ。裏側は同じ投影面へ折り返されるため、そのまま読むと
+    // 反対側の雲まで局所場で上書きする。正方形の外へ出して fadeAt を 0 にする。
+    return select(dot(direction, this.center).greaterThan(0), projected, vec2(2, 2));
   }
 
   public insideAt(uv: Vec2Node): FloatNode {
     const offset = uv.mul(2).sub(1);
     return step(dot(offset, offset), 1);
+  }
+
+  // cap の外周は、局所場と全球場を切り替えるための重なりとして使う。insideAt の段差を
+  // そのまま重みにすると、cap の正方形の縁が見えるので、外周の 15% ぶんを滑らかに落とす。
+  public fadeAt(uv: Vec2Node): FloatNode {
+    return smoothstep(0.72, 1, dot(uv.mul(2).sub(1), uv.mul(2).sub(1))).oneMinus();
   }
 }
