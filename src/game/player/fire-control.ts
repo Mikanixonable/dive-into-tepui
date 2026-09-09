@@ -333,7 +333,6 @@ export class FireControl {
       'normal',
       ship.weaponDamage,
       this._worldSfx,
-      this._scene,
     );
     registry.add(bullet);
   }
