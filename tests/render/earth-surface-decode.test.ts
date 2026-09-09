@@ -70,4 +70,20 @@ export function register(): void {
       decodeImage: async () => null, maxTerrainBytes: 1,
     }), /too large/);
   });
+
+  test('earth decode: 上限超過で途中のresponse bodyをcancelする', async () => {
+    let canceled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new Uint8Array([1, 2])); },
+      cancel() { canceled = true; },
+    });
+    const fetchImpl = async (input: URL | RequestInfo) => String(input).endsWith('.jpg')
+      ? response(new Uint8Array([1]), 'image/jpeg')
+      : new Response(body, { status: 200 });
+    await assert.rejects(decodeEarthSurfaceTile({
+      key: KEY, colorUrl: 'color.jpg', terrainUrl: 'terrain.bin.gz', generation: 0, fetchImpl,
+      decodeImage: async () => null, maxTerrainBytes: 1,
+    }), /too large/);
+    assert.equal(canceled, true);
+  });
 }
