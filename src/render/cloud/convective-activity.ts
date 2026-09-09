@@ -7,6 +7,7 @@ import { clamp, vec4 } from 'three/tsl';
 import { BakedField } from './baked-field';
 import { CirculatingNoise, coarsenessFor } from './circulating-noise';
 import type { WebGPURenderer } from 'three/webgpu';
+import type { GpuTimingSink } from '../gpu-timings';
 import type { NoiseOctave } from './circulating-noise';
 import type { Circulation } from './circulation';
 import type { FieldProjection } from './field-projection';
@@ -52,8 +53,8 @@ export class ConvectiveActivity {
   }
 
   // いまの時刻の気団を写しへ焼く。at() のグラフを描く前に呼ぶ。
-  public bake(renderer: WebGPURenderer): void {
-    this.instability.render(renderer);
+  public bake(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
+    this.instability.render(renderer, gpu);
   }
 
   // 単位方向 direction、上昇流 lift [m/s]、暖気の流入 warmth [rad](負で寒気)、陸らしさ land

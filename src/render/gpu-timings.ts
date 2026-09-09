@@ -18,14 +18,35 @@ export const GPU_PASS = {
   composite: 8,
   overlay: 9,
   antialias: 10,
+  cloudBake: 11,
+  cloudAtmosphere: 12,
+  cloudShadow: 13,
 } as const;
 
 export type GpuPassId = (typeof GPU_PASS)[keyof typeof GPU_PASS];
 
+export interface GpuTimingSink {
+  beginPass(id: GpuPassId): void;
+}
+
 // 表示名。並びは GPU_PASS の値の順。
-export const GPU_PASS_LABELS: readonly string[] = ['影マップ', 'Gバッファ', '影', 'ライティング', 'マテリアル', '大気', 'ワールド', 'レンズ', '合成', '3D UI', 'アンチエイリアス'];
+export const GPU_PASS_LABELS: readonly string[] = [
+  '影マップ', 'Gバッファ', '影', 'ライティング', 'マテリアル', '大気', 'ワールド', 'レンズ', '合成',
+  '3D UI', 'アンチエイリアス', '雲ベイク', '雲大気', '雲影',
+];
 
 export const GPU_PASS_COUNT = GPU_PASS_LABELS.length;
+
+// 雲の計測対象と、単独のGPU時刻として読める範囲。表面雲は通常の不透明物と同じGバッファ
+// render() 呼び出しへ含まれるため、個別の時刻印へ分離しない。デバッグ表示ではGバッファの値を
+// 表面雲を含む合算値として読む。WebGPUのtimestamp-queryが無い場合は、既存のGpuTimingsが
+// すべて「未対応」へフォールバックする。
+export const CLOUD_GPU_MEASUREMENTS = {
+  bake: { pass: GPU_PASS.cloudBake, scope: 'exact' },
+  atmosphere: { pass: GPU_PASS.cloudAtmosphere, scope: 'cloud-enabled composite' },
+  shadow: { pass: GPU_PASS.cloudShadow, scope: 'exact' },
+  surface: { pass: GPU_PASS.gbuffer, scope: 'gbuffer aggregate' },
+} as const;
 
 interface GpuTimingSnapshot {
   readonly supported: boolean;
