@@ -216,7 +216,9 @@ export class Targeter {
     enemy: ProteinEnemy, displayPos: Vec3 | null, viewerPos: Vec3, mapView: boolean, project: ProjectFn, cameraPos: Vec3,
   ): void {
     const inRange = !mapView && displayPos !== null && len(sub(displayPos, viewerPos)) <= PROTEIN_SITE_MARKER_RANGE;
-    const sites = enemy.view.siteMarkers(displayPos ?? enemy.motion.state.r, enemy.motion.att.q);
+    const sites = enemy.view.siteMarkers(
+      displayPos ?? enemy.motion.state.r, enemy.motion.att.q, enemy.hudSnapshot.sites,
+    );
     for (const site of sites) {
       const key = `psite-${enemy.id}-${site.id}`;
       if (!inRange) { this.markerManager.hide(key); continue; }
