@@ -1,15 +1,25 @@
-# T6-1: Pages同居モード
+# T6-1: GitHub Pages本番配信
 
 親計画: [earth-surface-tiles-plan_2026-09-09.md](../earth-surface-tiles-plan_2026-09-09.md)
 
-このファイルは、T6のうちこの配信境界だけを実装するときに読む作業単位である。
-共通の固定前提は親計画の§2、依存関係は§3を参照する。
+## 目的
 
+GitHub Pagesのdocsを本番配信元として、ゲーム本体と全世界z0〜z7地表bundleを同一originから遅延取得する。
 
-**変更対象**: `.github/workflows/build.yml`、`webpack.config.js`、`tools/earth-surface/stage-pages.mjs`（新規）、
-`test-pages-layout.mjs`（新規）、`tools/verify-release.mjs`、`package.json`。
+## 実装範囲
 
-1. `docs/`のファイル数・合計サイズ・最大ファイルサイズ・release push時間をbaselineへ保存する。
-2. fixture bundleを`docs/earth-surface/<datasetId>/`へコピーし、manifest、tile-index、JPEG、raw gzip、12枚の気候mapを検査する。
-3. Pages URLが`https://owner.github.io/repository/`のようなサブパスでも、base URLから相対asset URLを作る。URLをハードコードしない。
-4. `EARTH_SURFACE_PAGES_MAX_BYTES`を設け、サイズ予算を超えたbundleはrelease前に失敗させる。
+1. fixtureでmanifest、tile-index、JPEG、raw gzip、12枚の1024×512気候mapを検査する。
+2. 本番生成物ではdocs/earth-surface/<datasetId>/へ全世界z0〜z7とbaseを配置する。
+3. Pages URLがrepository subpathでも、manifest URLから相対asset URLを作る。
+4. manifestは短いcache、datasetId付きtile/base/climateはimmutable cacheとする。
+5. EARTH_SURFACE_PAGES_MAX_BYTESを設ける。これはfixtureと本番bundleの検査に使うが、
+   全世界生成をこの予算に合わせて縮小してはならない。超過時は公開を止め、実測値と判断を記録する。
+6. docsのentry script、release URL、manifest到達性、datasetId整合、代表tile GETを検査する。
+7. Pages workflowはアプリbuildとbundle stagingの順序を固定し、生成物のhashをreceiptへ記録する。
+
+## 完了条件
+
+- fixture Pages bundleをローカルHTTPで取得できる。
+- production bundleの全世界z0〜z7がtile-indexと一致する。
+- release URLのsubpathからmanifest、base、代表tile、12 climate mapへ到達できる。
+- CORSを必要としない同一origin取得で動作する。
