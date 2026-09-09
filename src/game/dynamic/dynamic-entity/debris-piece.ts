@@ -9,9 +9,11 @@ import type { FlashEffects } from '../../vfx/flash-effects';
 import type { CapKind } from './entity-kind';
 import { DebrisPieceView } from './debris-piece-view';
 import { DynamicEntity } from './dynamic-entity';
-import { DebrisMotion, type DebrisKind } from './debris-motion';
+import type { DebrisKind } from './debris-kind';
+import { DebrisMotion } from './debris-motion';
+import { DebrisReaction } from './debris-reaction';
 
-export type { DebrisKind } from './debris-motion';
+export type { DebrisKind } from './debris-kind';
 
 export class DebrisPiece extends DynamicEntity {
   public override readonly capKind: CapKind;
@@ -30,7 +32,20 @@ export class DebrisPiece extends DynamicEntity {
       new DebrisPieceView(debrisKind, scene),
       attitude,
       undefined,
-      () => new DebrisMotion(state, attitude, debrisKind, worldSfx, effects, radius),
+      () => new DebrisMotion(state, attitude, {
+        kind: debrisKind.kind,
+        behavior: new DebrisReaction(
+          debrisKind.kind,
+          'bornSim' in debrisKind ? debrisKind.bornSim : null,
+          worldSfx,
+          effects,
+        ),
+        radius,
+        temperature: debrisKind.kind === 'barrel' ? debrisKind.bornTemperature : undefined,
+        thermalDeviation: debrisKind.kind === 'barrel'
+          ? debrisKind.bornThermalDeviation
+          : undefined,
+      }),
     );
     this.capKind = debrisKind.kind === 'casing' ? 'casing' : 'debris';
   }
