@@ -25,3 +25,8 @@ Three.js/WebGPUのDataArrayTextureとTSL materialをEarthSurfaceへ接続し、�
 - WebGPU非対応・能力不足時にDataArrayTextureを作らず、全球baseへ固定する。
 - 実ブラウザで起動できる場合、z0/z1、親子fade、極、日付変更線、非一様半軸、自転0/90/180度を撮影する。
 - 実ブラウザを起動できない場合は、base-onlyと実GPU未実施を分けて記録する。
+
+## 実装状況（2026-09-10）
+
+`49e01186` でThree.jsのDataArrayTexture adapter、ページ表、TSL material、base-only判定を実装した。fake/render testsは88/88。
+実ブラウザ/WebGPUでの層更新と視覚ケース撮影は未実施である。

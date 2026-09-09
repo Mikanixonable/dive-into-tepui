@@ -113,6 +113,20 @@ T0 基準記録
 | T6-3 | [T6-3-runtime.md](earth-surface-tiles-plan_2026-09-09/T6-3-runtime.md) | 旧runtime記述をT3へ統合して廃止 | T3へ統合 | いいえ |
 | T7 | [T7-review.md](earth-surface-tiles-plan_2026-09-09/T7-review.md) | 全体レビュー、整理、記録 | T0〜T6-1 | はい |
 
+## 6.1 実装状況（2026-09-10）
+
+コードとして完了したフェーズは次のとおり。実データの取得・全量生成・実WebGPU表示は別ゲートであり、コード完了だけでは達成扱いにしない。
+
+| フェーズ | 状態 | commit / 証拠 | 未達・制約 |
+| --- | --- | --- | --- |
+| T0 | 完了 | `492fd9af`、`.earth-surface/verification/baseline.json` | WebGPU/drawing bufferはunavailable |
+| T1 | 生成入口完了 | `300ff2e8`, `1fa593c9`、20 Python tests | 実BMNG/ETOPO/GSHHG/ERA5 rendererと全43690実生成は未完了 |
+| T2 | コード完了 | `49e01186`、render 88/88 | 実ブラウザ/WebGPU撮影は未実施 |
+| T3 | コード完了 | `63babd80`, `667a31bb`、render 90/90、game 201/201 | 実manifest取得と実GPU attachは未実施 |
+| T6-2 | 契約完了 | `32a789ab`、remote contract pass | 外部origin公開は未実施 |
+| T6-1 | fixture Pages完了 | `49d840f2`、Pages layout pass、build pass | 実全世界bundleのPages公開は未完了 |
+| T4/T5/T7 | 未完了 | — | 後続フェーズで実装・レビューする |
+
 ## 7. 検証
 
 変更後は、各タスクに書かれた検証を実行する。全体完了時は次を実行する。
