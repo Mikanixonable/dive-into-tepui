@@ -1,7 +1,6 @@
-// 大気の大循環。単位方向を、そこに効く緯度帯の流れに乗せた「ノイズ空間の位置」へ写すのと、
-// そこに効く平均風を返すのを担う。帯は赤道を挟んで鏡像に並ぶ 6 本で、境目では隣り合う 2 本が
-// 重なる。角速度の表は層ごとに違うので持ち込みで受け取り、帯の中心緯度と混ぜ幅だけを層のあいだで
-// 共有する。
+// 大気の物理風を CloudPatternTransport でノイズ空間へ写す。帯は赤道を挟んで鏡像に並ぶ 6 本で、
+// 境目では隣り合う 2 本が重なる。帯へ渡す値は atmospheric-wind の m/s で、ここは描画用の位相と
+// ノイズの評価だけを担う。
 //
 // 東西の流れは自転軸まわりの回転、南北の流れは公転で作る。公転は、球を公転の中心から離してから
 // 回すので、球の極は常に進行方向を向き、模様の湧き出し口は北極に、吸い込み口は南極に固定される
@@ -13,11 +12,10 @@ import {
 } from 'three/tsl';
 import { latitudeOf } from './sphere-frame';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
+import { CloudPatternTransport, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT, windBandsAt } from './atmospheric-wind';
 
-// 1 本の帯で模様が進む角速度 [°/日]。east が東向き(経度の進み)、north が北向き(緯度の進み)。
-// **速さ [m/s] ではなく角速度で持つ。** この流れは伸びではなく見えの動きを作るもので、移流が
-// 使う風とは別の系統にある(突き合わせない)。角速度なら、帯が何日で 1 周するかを直接決められる。
-type CirculationBand = { readonly east: number; readonly north: number };
+// 1 本の帯へ読み込む物理風 [m/s]。CloudPatternTransport がこれをノイズ空間の角位相へ変換する。
+type CirculationBand = { readonly latitudeRad: number; readonly east: number; readonly north: number };
 
 // 帯の表は北から南へ並び、中心緯度は FIRST_LATITUDE から BAND_SPACING 刻みで番号から出る。
 const FIRST_LATITUDE = THREE.MathUtils.degToRad(75);
@@ -26,26 +24,12 @@ const BAND_SPACING = THREE.MathUtils.degToRad(30);
 // 地表付近の帯。極偏東風・偏西風・貿易風が赤道を挟んで鏡像に並ぶ。**速さは、同じ場所で気圧から
 // 出る風より弱く取る。** 帯の風は経度に依らないので、これが勝つと空の模様は緯度で決まる縞へ
 // 揃い、渦と気団が作る構造がその下に埋もれる。
-export const SURFACE_BANDS: readonly CirculationBand[] = [
-  { east: -6, north: -1.0 }, // 極偏東風(北)
-  { east: 7, north: 1.5 }, // 偏西風(北)
-  { east: -3.6, north: -1.5 }, // 貿易風(北)
-  { east: -3.6, north: 1.5 }, // 貿易風(南)
-  { east: 7, north: -1.5 }, // 偏西風(南)
-  { east: -6, north: 1.0 }, // 極偏東風(南)
-];
+export const SURFACE_BANDS: readonly CirculationBand[] = windBandsAt(SURFACE_HEIGHT);
 
 // 巻雲の高さ(≈200 hPa)の帯。南北はどの帯でも地表付近と逆向きで、東西は中緯度だけが同じ西風の
 // まま亜熱帯ジェットまで速くなり、熱帯と極では逆向きになる。**地表付近より速いが、3 日で 4 分の 1
 // 周を超えない速さに留める** — それより速いと、薄い雲が形を変えずに滑って流れるだけに見える。
-export const UPPER_BANDS: readonly CirculationBand[] = [
-  { east: 12, north: 1.0 }, // 極(北)
-  { east: 20, north: -1.5 }, // 亜熱帯ジェット(北)
-  { east: 1.6, north: 1.5 }, // 熱帯(北)
-  { east: 1.6, north: -1.5 }, // 熱帯(南)
-  { east: 20, north: 1.5 }, // 亜熱帯ジェット(南)
-  { east: 12, north: -1.0 }, // 極(南)
-];
+export const UPPER_BANDS: readonly CirculationBand[] = windBandsAt(UPPER_CLOUD_HEIGHT);
 
 // 隣り合う帯を混ぜる幅(帯の間隔に対する比)。境目の 0°・±30°・±60° を中心に取る。狭いほど
 // 逆向きに流れる 2 枚が重なる範囲が狭まり、広いほど向きの変わり方が滑らかになる。**帯の全幅を
@@ -71,20 +55,18 @@ type WeightedBand = {
 };
 
 export class Circulation {
+  private readonly patternTransport = new CloudPatternTransport();
   // 帯ごとの (cos 自転角, sin 自転角, cos 公転位相, sin 公転位相)。書き換えるのはこちらで、
   // uniform 配列は描画のたびにここから詰め直される。
   private readonly flows: THREE.Vector4[];
   private readonly flowArray: THREE.UniformArrayNode<'vec4'>;
-  // 帯ごとの角速度 [°/日](x が東向き、y が北向き)。
-  private readonly windArray: THREE.UniformArrayNode<'vec2'>;
   // 呼吸の位相(赤道での半径の伸び)。
   private readonly breath: FloatUniform = uniform(0);
 
-  // bands はこの層の帯の角速度。
+  // bands はこの層の物理風。
   public constructor(private readonly bands: readonly CirculationBand[]) {
     this.flows = bands.map(() => new THREE.Vector4(1, 0, 1, 0));
     this.flowArray = uniformArray(this.flows, 'vec4');
-    this.windArray = uniformArray(bands.map((band) => new THREE.Vector2(band.east, band.north)), 'vec2');
     this.syncTime(0);
   }
 
@@ -92,9 +74,10 @@ export class Circulation {
   // 精度が落ちない。
   public syncTime(seconds: number): void {
     for (const [i, band] of this.bands.entries()) {
-      const spin = wrapAngle(perSecond(band.east) * seconds);
+      const phase = this.patternTransport.angularPhase(band.east, band.north, band.latitudeRad, seconds);
+      const spin = wrapAngle(phase.east);
       // 公転の位相が増えると模様は南へ動くので、北向きの帯では符号を反転する。
-      const orbit = wrapAngle((-perSecond(band.north) * seconds) / ORBIT_RADIUS);
+      const orbit = wrapAngle(-phase.north / ORBIT_RADIUS);
       this.flows[i]!.set(Math.cos(spin), Math.sin(spin), Math.cos(orbit), Math.sin(orbit));
     }
     this.breath.value = BREATH_AMPLITUDE * Math.sin((2 * Math.PI * seconds) / BREATH_PERIOD);
@@ -120,13 +103,6 @@ export class Circulation {
       });
       return carried;
     })();
-  }
-
-  // 単位方向 direction における平均風 [°/日](x が東向き、y が北向き)。重なる帯は足し合わさる。
-  public meanWindAt(direction: Vec3Node): Vec2Node {
-    const [near, far] = this.bandsAt(direction);
-    return this.windArray.element(int(near.index)).mul(near.weight)
-      .add(this.windArray.element(int(far.index)).mul(far.weight));
   }
 
   // 単位方向 direction に効く帯 2 本。[0] がいちばん近い帯、[1] がその隣で、[1] の重みは混ざる
@@ -161,11 +137,6 @@ export class Circulation {
       orbiting.z.mul(flow.z).sub(orbiting.y.mul(flow.w)),
     );
   }
-}
-
-// 表の角速度 [°/日] を [rad/s] へ。
-function perSecond(degreesPerDay: number): number {
-  return THREE.MathUtils.degToRad(degreesPerDay) / 86400;
 }
 
 // 角度 [rad] を 0..2π へ畳む。
