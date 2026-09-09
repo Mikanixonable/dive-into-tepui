@@ -16,7 +16,7 @@ import { ConvectiveActivity } from './convective-activity';
 import { Cyclones } from './cyclones';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { RossbyWave } from './rossby-wave';
-import { FRICTION_RATE, balancedWind, isobarAt, windStep } from './wind-law';
+import { composeWind, FRICTION_RATE, balancedWind, isobarAt, windStep } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { NoiseOctave } from './circulating-noise';
 import type { ClimateMapLike } from './climate-map';
@@ -336,20 +336,19 @@ export class WeatherModel {
 
     // 湿度と対流は、摩擦の違う 2 本の風で流す。上層の湿度はそこへ上層の帯の平均風を足した風で流す
     // — 巻雲の繊維はジェットに沿って伸びるので、地表付近の風で流すと向きが揃わない。
-    const surfaceWind = balancedWind(
+    const surfaceWind = composeWind(balancedWind(
       gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
-    );
-    const convectionWind = balancedWind(
+    ), this.rossbyWave.windAt(direction));
+    const convectionWind = composeWind(balancedWind(
       gradient, isobar, bend, latitude, CONVECTION_FRICTION, CONVECTION_WIND_CROSSING_LIMIT,
-    );
+    ), this.rossbyWave.windAt(direction));
     const upperMean = this.upperCirculation.meanWindAt(direction);
-    const upperWind: BalancedWind = {
+    const upperWind = composeWind({
       velocity: surfaceWind.velocity
         .add(east.mul(upperMean.x.mul(cos(latitude)).mul(BAND_RATE_TO_SPEED)))
-        .add(north.mul(upperMean.y.mul(BAND_RATE_TO_SPEED)))
-        .add(this.rossbyWave.windAt(direction)),
+        .add(north.mul(upperMean.y.mul(BAND_RATE_TO_SPEED))),
       turn: surfaceWind.turn,
-    };
+    }, this.rossbyWave.windAt(direction));
 
     // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分と、気団の境目が押し上げる分。
     const windComponents = eastNorthComponents(surfaceWind.velocity, east, north);
@@ -358,7 +357,11 @@ export class WeatherModel {
     const warmth = airMass.warmth.mul(extratropical);
     const terrainLift = dot(windComponents, this.climate.slope(direction, LAND_HEIGHT_BIAS)).mul(TERRAIN_LIFT_GAIN);
     // 折り目の帯: 温帯では前線の伝達関数が、熱帯では雨帯の伝達関数が、圧縮の稜線を帯の強さへ写す。
-    const front = smoothstep(FRONT_ONSET, FRONT_ONSET + FRONT_WIDTH, airMass.compression).mul(extratropical);
+    // Fronts follow the air-mass temperature gradient, with a small continuous
+    // enhancement where pressure-driven ascent supplies convergence/updraft.
+    const updraft = smoothstep(0.01, 0.04, max(liftFromPressure(pressure), 0));
+    const front = smoothstep(FRONT_ONSET, FRONT_ONSET + FRONT_WIDTH, airMass.compression)
+      .add(updraft.mul(0.15)).min(1).mul(extratropical);
     const rainband = smoothstep(RAINBAND_ONSET, RAINBAND_ONSET + RAINBAND_WIDTH, airMass.compression)
       .mul(extratropical.oneMinus());
     const band = min(front.add(rainband), 1);
