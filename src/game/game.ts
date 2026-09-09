@@ -61,6 +61,7 @@ import {
   topBarViewOf,
   vesselPanelViewOf,
 } from './hud/panel-presenter';
+import type { OrbitAnalysisSource } from './hud/orbit/orbit-analysis-source';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -364,9 +365,17 @@ export class Game {
       this._hud.viewBadgeRow, this._hud.layers.notify, this.viewManager, this._hud.overlayManager,
       this._hud.renderStyle, this.dynamicSystem, celestialSystem,
     );
+    const controlSelection = this.controlSelection;
+    const orbitAnalysisSource: OrbitAnalysisSource = {
+      get activeControllable(): Controllable | null { return controlSelection.current; },
+      navTarget: this.navTarget,
+      dynamicSystem: this.dynamicSystem,
+      celestialSystem: this._celestialSystem,
+      orbitReference: this.orbitReference,
+      displayWindowManager: this.displayWindowManager,
+    };
     this._hud.setOrbitAnalysisAdapter({
-      updateReaders: (window) => window.update(this),
-      sync: (window) => window.sync(this),
+      source: orbitAnalysisSource,
     });
 
     // 復元した focus を、軌道表示の基準系へも通しておく。
@@ -604,12 +613,40 @@ export class Game {
 
     this._hud.syncPanels(
       this.viewManager.current,
-      topBarViewOf(this),
-      orbitPanelViewOf(this),
-      mapScaleViewOf(this),
-      vesselPanelViewOf(this),
-      targetPanelDataOf(this),
-      enemiesPanelViewOf(this),
+      topBarViewOf({
+        simTime: this.simTime,
+        displayWindowManager: this.displayWindowManager,
+        simSpeedManager: this.simSpeedManager,
+        isPaused: this.isPaused,
+      }),
+      orbitPanelViewOf({
+        activeControllable: this.activeControllable,
+        celestialSystem: this._celestialSystem,
+        orbitReference: this.orbitReference,
+        navTarget: this.navTarget,
+        dynamicSystem: this.dynamicSystem,
+      }),
+      mapScaleViewOf({
+        viewManager: this.viewManager,
+        cameraSystem: this.cameraSystem,
+      }),
+      vesselPanelViewOf({
+        activeControllable: this.activeControllable,
+        viewManager: this.viewManager,
+        activeStage: this.activeStage,
+        cameraSystem: this.cameraSystem,
+      }),
+      targetPanelDataOf({
+        activeControllable: this.activeControllable,
+        targeter: this.targeter,
+        celestialSystem: this._celestialSystem,
+      }),
+      enemiesPanelViewOf({
+        activeControllable: this.activeControllable,
+        activeStage: this.activeStage,
+        dynamicSystem: this.dynamicSystem,
+        targeter: this.targeter,
+      }),
       this.activeControllable?.boosters?.managementViewModel() ?? null,
     );
 
