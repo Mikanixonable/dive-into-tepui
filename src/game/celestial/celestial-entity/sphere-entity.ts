@@ -74,6 +74,7 @@ export class SphereEntity extends CelestialEntity {
   setVisible(visible: boolean): void {
     this.group.visible = visible;
     this.ring?.setVisible(visible);
+    if (!visible) this.surface.hide();
   }
 
   // displayTime 時点の位置へ同期する。見かけ直径が閾値未満なら球自体(と環)を描かない。
