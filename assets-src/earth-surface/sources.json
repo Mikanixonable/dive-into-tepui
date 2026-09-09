@@ -3,6 +3,12 @@
   "datasetId": "earth-2026-09-09-a",
   "hashAlgorithm": "sha256",
   "hashState": "awaiting_source_acquisition",
+  "provenance": {
+    "generator": "earth-surface-bundle/1",
+    "sourceManifestRole": "immutable-input-contract",
+    "completeGlobalBundle": false,
+    "note": "入力ファイルを取得してsha256を記録するまで、全球bundle生成済みとは扱わない"
+  },
   "excludedProducts": ["GEBCO", "ETOPO bed_elev"],
   "sources": [
     {
@@ -12,6 +18,7 @@
       "period": {"start": "2004-07", "end": "2004-07"},
       "crs": "EPSG:4326",
       "noData": null,
+      "units": "sRGB encoded RGB8",
       "regrid": "spherical_cell_area_weighted_mean",
       "inputSha256": [],
       "format": "geotiff",
@@ -30,6 +37,7 @@
       "period": null,
       "crs": "EPSG:4326",
       "noData": -99999,
+      "units": "m",
       "regrid": "spherical_cell_area_weighted_mean",
       "inputSha256": [],
       "format": "geotiff",
@@ -48,6 +56,7 @@
       "period": null,
       "crs": "EPSG:4326",
       "noData": -99999,
+      "units": "m",
       "regrid": "spherical_cell_area_weighted_mean",
       "inputSha256": [],
       "format": "geotiff",
@@ -66,6 +75,7 @@
       "period": null,
       "crs": "EPSG:4326",
       "noData": null,
+      "units": "fraction",
       "regrid": "spherical_polygon_cell_intersection",
       "inputSha256": [],
       "format": "zip",
@@ -89,6 +99,7 @@
       "gridDegrees": 0.25,
       "crs": "EPSG:4326",
       "noData": null,
+      "units": "K and fraction",
       "regrid": "spherical_cell_area_weighted_mean",
       "inputSha256": [],
       "format": "netcdf",
@@ -99,7 +110,26 @@
     }
   ],
   "comparisonSources": [{"id": "modis-cloud-fraction", "path": "assets-src/climate/cloud-fraction/", "role": "comparison_only"}],
-  "outputGrid": {"rootColumns": 2, "rootRows": 1, "maxZoom": 7, "tileInterior": 256, "gutter": 2, "origin": [-180, 90], "sampleLocation": "cell_center"},
+  "controlRegions": [
+    {"id": "himalaya", "west": 70, "south": 25, "east": 100, "north": 38},
+    {"id": "pacific", "west": 140, "south": -20, "east": 180, "north": 20},
+    {"id": "caspian", "west": 45, "south": 35, "east": 55, "north": 48},
+    {"id": "dead-sea", "west": 34, "south": 29, "east": 36, "north": 33},
+    {"id": "antarctica", "west": -180, "south": -90, "east": 180, "north": -60},
+    {"id": "greenland", "west": -75, "south": 58, "east": -10, "north": 84},
+    {"id": "coast-california", "west": -130, "south": 30, "east": -115, "north": 45},
+    {"id": "antimeridian", "west": 179, "south": -10, "east": 181, "north": 10},
+    {"id": "amazon", "west": -75, "south": -20, "east": -45, "north": 10},
+    {"id": "sahara", "west": -15, "south": 15, "east": 35, "north": 35},
+    {"id": "alps", "west": 5, "south": 44, "east": 17, "north": 48},
+    {"id": "great-lakes", "west": -95, "south": 40, "east": -75, "north": 50},
+    {"id": "indonesia", "west": 95, "south": -12, "east": 145, "north": 8},
+    {"id": "new-zealand", "west": 165, "south": -48, "east": 180, "north": -33},
+    {"id": "arctic", "west": -180, "south": 75, "east": 180, "north": 90},
+    {"id": "south-america-east", "west": -60, "south": -55, "east": -35, "north": -10}
+  ],
+  "outputGrid": {"rootColumns": 2, "rootRows": 1, "maxZoom": 7, "tileInterior": 256, "gutter": 2, "origin": [-180, 90], "sampleLocation": "cell_center", "coverage": "complete-global"},
+  "climateMap": {"width": 1024, "height": 512, "channels": 4, "scalar": "UInt8", "encoding": "R=temperatureK,G=cloudFraction,B=orthometricElevationM,A=landFraction", "waterOrthometricElevationM": 0},
   "normalMaterial": {"formatVersion": 1, "headerBytes": 32, "channels": 4, "scalar": "Float16", "byteOrder": "little", "normalFrame": "body_fixed", "heightExaggeration": 1},
   "roughness": {"water": 0.05, "land": 0.8, "ice": 0.35}
 }

@@ -5,6 +5,7 @@ import argparse
 import datetime
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -40,13 +41,44 @@ def load_manifest(path):
     value = json.loads(Path(path).read_text())
     if value.get("schemaVersion") != 1 or not re.fullmatch(r"[a-z0-9-]+", value.get("datasetId", "")):
         raise InvalidSource("schemaVersion/datasetIdが不正です")
-    required = {"id", "product", "variables", "period", "crs", "noData", "regrid", "inputSha256", "attribution"}
+    if value.get("hashAlgorithm") != "sha256" or value.get("hashState") not in ("awaiting_source_acquisition", "verified"):
+        raise InvalidSource("hashAlgorithm/hashStateが不正です")
+    if not isinstance(value.get("provenance"), dict) or not value["provenance"].get("generator"):
+        raise InvalidSource("provenance.generatorが必要です")
+    grid = value.get("outputGrid", {})
+    if (grid.get("rootColumns"), grid.get("rootRows"), grid.get("maxZoom"),
+            grid.get("tileInterior"), grid.get("gutter")) != (2, 1, 7, 256, 2):
+        raise InvalidSource("全球タイル出力格子が不正です")
+    climate = value.get("climateMap", {})
+    if (climate.get("width"), climate.get("height"), climate.get("channels")) != (1024, 512, 4):
+        raise InvalidSource("気候mapは1024x512 RGBA8が必要です")
+    regions = value.get("controlRegions", [])
+    if len(regions) != 16 or len({region.get("id") for region in regions}) != 16:
+        raise InvalidSource("制御領域は重複しない16領域が必要です")
+    for region in regions:
+        if (not isinstance(region.get("id"), str) or
+                not all(isinstance(region.get(key), (int, float)) and math.isfinite(region[key])
+                        for key in ("west", "south", "east", "north")) or
+                not (-180 <= region["west"] < region["east"] <= 180 and
+                     -90 <= region["south"] < region["north"] <= 90)):
+            # 181度まで許すアンチメリディアン制御領域は、経度だけ正規化して受け入れる。
+            if not (region.get("id") == "antimeridian" and region.get("west") == 179
+                    and region.get("east") == 181 and -90 <= region.get("south", 0) < region.get("north", 0) <= 90):
+                raise InvalidSource("制御領域の経緯度が不正です")
+    required = {"id", "product", "variables", "period", "crs", "noData", "regrid", "inputSha256", "attribution", "units"}
     sources = value.get("sources", [])
     if not sources or len({source["id"] for source in sources}) != len(sources):
         raise InvalidSource("sourcesは重複のない一覧が必要です")
     for source in sources:
-        if not required.issubset(source) or source["crs"] != "EPSG:4326":
+        if not required.issubset(source) or source["crs"] != "EPSG:4326" or not source["variables"]:
             raise InvalidSource("ソースの必須属性またはCRSが不正です")
+        if not isinstance(source["inputSha256"], list):
+            raise InvalidSource("inputSha256は領域ごとの一覧が必要です")
+        for pinned in source["inputSha256"]:
+            if (not isinstance(pinned, dict) or not re.fullmatch(r"[A-Za-z0-9_-]+", pinned.get("region", ""))
+                    or not re.fullmatch(r"[0-9a-f]{64}", pinned.get("sha256", ""))
+                    or not isinstance(pinned.get("bytes"), int) or pinned["bytes"] <= 0):
+                raise InvalidSource("inputSha256の領域・hash・bytesが不正です")
     return value
 
 
@@ -150,10 +182,52 @@ def validate_gshhg(path, source):
 
 # NetCDF実体の変数名をGDALで検査する。依存不足は取得物の破損と区別する。
 def validate_netcdf(path, source):
+    # netCDF4があれば、変数の単位・次元・期間まで検査する。
+    try:
+        import netCDF4
+    except ImportError:
+        netCDF4 = None
+    if netCDF4 is not None:
+        dataset = None
+        try:
+            dataset = netCDF4.Dataset(path, "r")
+            aliases = {"2m_temperature": "t2m", "total_cloud_cover": "tcc"}
+            variables = dataset.variables
+            for variable in source["variables"]:
+                name = variable["id"] if variable["id"] in variables else aliases.get(variable["id"])
+                if name is None or name not in variables:
+                    raise InvalidSource(f"NetCDFのERA5変数が欠落しています: {variable['id']}")
+                item = variables[name]
+                if len(item.dimensions) < 2 or item.ndim < 2:
+                    raise InvalidSource(f"NetCDF変数の格子次元が不足しています: {name}")
+                unit = getattr(item, "units", None)
+                if variable["id"] == "2m_temperature" and unit not in ("K", "kelvin"):
+                    raise InvalidSource("ERA5気温の単位はKである必要があります")
+                if variable["id"] == "total_cloud_cover" and unit not in (None, "1", "fraction"):
+                    raise InvalidSource("ERA5雲量の単位はfractionである必要があります")
+            if "time" in variables:
+                time = variables["time"]
+                if not hasattr(time, "units"):
+                    raise InvalidSource("ERA5 timeのunitsがありません")
+                dates = netCDF4.num2date(time[:], time.units, getattr(time, "calendar", "standard"))
+                if not dates or min(item.year for item in dates) > 1991 or max(item.year for item in dates) < 2020:
+                    raise InvalidSource("ERA5の時間軸が1991-2020を含みません")
+            dataset.close()
+            return
+        except InvalidSource:
+            if dataset is not None:
+                dataset.close()
+            raise
+        except Exception as error:
+            try:
+                dataset.close()
+            except Exception:
+                pass
+            raise InvalidSource(f"NetCDFの検査に失敗しました: {error}") from error
     try:
         from osgeo import gdal
     except ImportError as error:
-        raise RuntimeError("NetCDF検査にはrequirements.txtと同版のGDALが必要です") from error
+        raise RuntimeError("NetCDF検査にはnetCDF4またはrequirements.txtと同版のGDALが必要です") from error
     gdal.UseExceptions()
     dataset = gdal.OpenEx(str(path), gdal.OF_RASTER)
     if dataset is None:
