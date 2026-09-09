@@ -17,13 +17,16 @@ import {
 import { Aurora, type AuroraOptics } from '../../../render/aurora';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import { EarthSurface, EarthSurfaceContext } from '../../../render/earth-surface';
-import type { EarthSurfaceStatus } from '../../../render/earth-surface';
+import type { EarthSurfaceMaterialAttachment, EarthSurfaceStatus } from '../../../render/earth-surface';
 import { EarthSurfaceResidentCoordinator } from '../../../render/earth-surface-resident';
 import type { EarthSurfaceColorToRgba8 } from '../../../render/earth-surface-resident';
 import { EarthSurfaceTileRequestQueue } from '../../../render/earth-surface-request';
 import { EarthSurfaceTiles } from '../../../render/earth-surface-tiles';
 import { EarthSurfaceGpuAdapter } from '../../../render/earth-surface-gpu';
+import type { EarthSurfaceGpuTextures } from '../../../render/earth-surface-gpu';
 import { createEarthSurfaceGpuThree, type EarthSurfaceGpuThreeBackendLike } from '../../../render/earth-surface-gpu-three';
+import { createEarthSurfaceNodeMaterial } from '../../../render/earth-surface-material-node';
+import { DeferredTexture } from '../../../render/deferred-texture';
 import {
   bootstrapEarthSurface,
   type EarthSurfaceBootstrapOptions,
@@ -44,7 +47,7 @@ import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { CelestialTexture } from '../../../render/celestial-textures';
 import type { CelestialEntity } from '../celestial-entity/celestial-entity';
 import type { EarthSurfaceSource } from './earth-surface-source';
-import { vec3 } from 'three/tsl';
+import { normalize, normalView, positionLocal, uniform, vec3 } from 'three/tsl';
 
 // 地球系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type EarthSystemBodyId = 'earth' | 'moon';
@@ -214,6 +217,9 @@ export const EARTH_SURFACE_FIXTURE_SOURCE = {
 
 const EARTH_CLIMATE_AXES = vec3(EARTH_ATMOSPHERE.equatorRadius, EARTH_ATMOSPHERE.polarRadius,
   EARTH_ATMOSPHERE.equatorRadius);
+const EARTH_CLIMATE_AXES_VALUE = new THREE.Vector3(
+  EARTH_ATMOSPHERE.equatorRadius, EARTH_ATMOSPHERE.polarRadius, EARTH_ATMOSPHERE.equatorRadius,
+);
 
 export interface EarthSurfaceFactoryOptions extends EarthSurfaceBootstrapOptions {
   readonly renderer?: WebGPURenderer | null;
@@ -241,17 +247,66 @@ function fallbackSurface(status: EarthSurfaceStatus = 'loading'): EarthSurface {
   );
 }
 
+interface EarthSurfaceConnection {
+  readonly coordinator: EarthSurfaceResidentCoordinator | null;
+  readonly state: EarthSurfaceStatus;
+  readonly material: EarthSurfaceMaterialAttachment | null;
+}
+
+function detailedMaterialFor(
+  source: EarthSurfaceSource, textures: EarthSurfaceGpuTextures,
+): EarthSurfaceMaterialAttachment {
+  const baseColor = new DeferredTexture(source.baseColorUrl, THREE.SRGBColorSpace);
+  // base terrain is a valid 1x1 terrain texture until the first detailed tile arrives. Its
+  // normal is the unit +Z body normal and its roughness is the land fallback value. ESTN stores
+  // the normal as a signed binary16 vector, so +Z is [0, 0, 1], not an 8bit normal-map value.
+  const baseTerrain = new THREE.DataTexture(
+    new Uint16Array([0x0000, 0x0000, 0x3c00, 0x3a66]), 1, 1,
+    THREE.RGBAFormat, THREE.HalfFloatType,
+  );
+  baseTerrain.colorSpace = THREE.NoColorSpace;
+  baseTerrain.needsUpdate = true;
+  const bodyToView = uniform(new THREE.Matrix3());
+  const axes = uniform(EARTH_CLIMATE_AXES_VALUE.clone());
+  const schematic = uniform(false);
+  const material = createEarthSurfaceNodeMaterial(
+    {
+      pageTable: textures.pageTable,
+      color: textures.color,
+      terrain: textures.terrain,
+      baseColor: baseColor.texture,
+      baseTerrain,
+    },
+    {
+      bodyDirection: normalize(positionLocal),
+      axes,
+      geometricNormalView: normalView,
+      bodyToView,
+      schematic,
+    },
+  );
+  return {
+    material,
+    deferred: [baseColor],
+    textures: [baseTerrain],
+    syncFrame: (frame) => {
+      bodyToView.value.setFromMatrix4(frame.bodyToView);
+      schematic.value = frame.style === 'schematic';
+    },
+  };
+}
+
 function coordinatorFor(
   bootstrap: EarthSurfaceBootstrapResult, options: EarthSurfaceFactoryOptions,
-): { readonly coordinator: EarthSurfaceResidentCoordinator | null; readonly state: EarthSurfaceStatus } {
+): EarthSurfaceConnection {
   if (bootstrap.state !== 'ready' || options.renderer === null
     || options.renderer === undefined || bootstrap.tileSource === null) {
-    return { coordinator: null, state: bootstrap.state === 'error' ? 'error' : 'fallback' };
+    return { coordinator: null, state: bootstrap.state === 'error' ? 'error' : 'fallback', material: null };
   }
   // Game.createはrendererを先に初期化するが、テストや別の起動経路ではbackendがまだ
   // 生成されていないことがある。その場合は例外で起動を壊さず、baseへ固定する。
   const backend = options.renderer.backend as unknown as EarthSurfaceGpuThreeBackendLike | null | undefined;
-  if (backend === null || backend === undefined) return { coordinator: null, state: 'fallback' };
+  if (backend === null || backend === undefined) return { coordinator: null, state: 'fallback', material: null };
   const queue = new EarthSurfaceTileRequestQueue(bootstrap.tileSource, {
     fetchImpl: options.fetchImpl,
     decodeImage: options.decodeImage,
@@ -262,7 +317,13 @@ function coordinatorFor(
   if (gpu.mode === 'base') {
     queue.dispose();
     gpu.dispose();
-    return { coordinator: null, state: 'fallback' };
+    return { coordinator: null, state: 'fallback', material: null };
+  }
+  const textures = gpu.textures;
+  if (textures === null) {
+    queue.dispose();
+    gpu.dispose();
+    return { coordinator: null, state: 'fallback', material: null };
   }
   return {
     coordinator: new EarthSurfaceResidentCoordinator({
@@ -272,6 +333,7 @@ function coordinatorFor(
       colorToRgba8: options.colorToRgba8 ?? defaultEarthSurfaceColorToRgba8,
     }),
     state: 'ready',
+    material: detailedMaterialFor(bootstrap.source!, textures),
   };
 }
 
@@ -287,7 +349,7 @@ export function createEarthSurfaceRuntime(
   }).then((bootstrap) => {
     const source = bootstrap.source ?? EARTH_SURFACE_FIXTURE_SOURCE;
     const connection = coordinatorFor(bootstrap, options);
-    surface.attach(source, connection.coordinator, connection.state);
+    surface.attach(source, connection.coordinator, connection.state, connection.material);
     return { surface, state: connection.state, bootstrap };
   }).catch((error: unknown) => {
     const fallback = options.fallback ?? EARTH_SURFACE_FIXTURE_SOURCE;
