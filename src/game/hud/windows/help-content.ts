@@ -269,14 +269,14 @@ export function helpEntries(): readonly HelpEntry[] {
     },
     {
       id: 'pause', category: 'ui', label: '一時停止メニュー',
-      description: '設定、セーブ、負荷表示、タイトルへ戻る操作を開く。',
+      description: '設定、セーブ、デバッグ表示、タイトルへ戻る操作を開く。',
       keys: [K.pauseMenu], inputs: ['keyboard'], scope: 'both', behavior: 'press',
     },
     {
       id: 'debug-tools', category: 'ui', label: 'デバッグ・スナップショット',
-      description: '負荷表示、スナップショット取得、スナップショット一覧を開く。',
-      keys: [K.togglePerfWindow, K.clipSnapshot, K.openSnapshots], inputs: ['keyboard'], scope: 'both', behavior: 'press',
-      example: 'F3 = 負荷、F5 = 取得、F9 = 一覧',
+      description: 'デバッグ表示、スナップショット取得、スナップショット一覧を開く。',
+      keys: [K.toggleDebugInfoWindow, K.clipSnapshot, K.openSnapshots], inputs: ['keyboard'], scope: 'both', behavior: 'press',
+      example: 'F3 = デバッグ、F5 = 取得、F9 = 一覧',
     },
     {
       id: 'restart', category: 'ui', label: '決着後の再出撃',
