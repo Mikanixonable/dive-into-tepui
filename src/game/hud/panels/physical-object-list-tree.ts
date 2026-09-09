@@ -97,7 +97,7 @@ export class PhysicalObjectListTree {
     const detailText = item.listDetail(this.celestialSystem, this.viewer, this.displayTime);
     if (node.detail.textContent !== detailText) node.detail.textContent = detailText;
     node.detail.classList.toggle('hidden', detailText === '');
-    node.row.classList.toggle('tgt', item.id === focusId);
+    node.row.classList.toggle('focus', item.id === focusId);
     // 衛星フィルタで添えたクラスタ見出し(親惑星自身はフィルタを通っていない)を淡色化する。
     node.row.classList.toggle('cluster', !this.order.matches(item));
     node.row.setAttribute('aria-label', [item.name, detailText].filter(Boolean).join('、'));
