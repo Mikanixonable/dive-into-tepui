@@ -17,4 +17,23 @@ export function register(): void {
     const field = new AuroraField({ ovalLatitudeDeg: 66, geomSeed: 0, colorSeed: 0, phaseOffset: 0, sign: 1 });
     assert.ok(field.frameAt(0, 3).intensity > field.frameAt(Math.PI, 3).intensity);
   });
+
+  test('aurora field: geomagnetic pole and magnetic local time affect the frame', () => {
+    const field = new AuroraField({
+      ovalLatitudeDeg: 66,
+      magneticPoleLatitudeDeg: 80.65,
+      magneticPoleLongitudeDeg: -72.68,
+      geomSeed: 0,
+      colorSeed: 0,
+      phaseOffset: 0,
+      sign: 1,
+    });
+    const noon = field.frameAt(0, 3, 0);
+    const midnight = field.frameAt(0, 3, Math.PI);
+    assert.equal(noon.magneticPoleLatitudeDeg, 80.65);
+    assert.equal(noon.magneticLocalTime, 0);
+    assert.equal(midnight.magneticLocalTime, 12);
+    assert.ok(Number.isFinite(noon.longitudeDeg));
+    assert.ok(noon.intensity > midnight.intensity);
+  });
 }
