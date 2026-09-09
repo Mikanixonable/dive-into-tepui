@@ -17,10 +17,13 @@ export interface EarthSurfaceRequestLease {
   release(): void;
 }
 
+export type EarthSurfaceStatus = 'loading' | 'ready' | 'error' | 'fallback';
+
 // 実GPU実装を直接所有せず、ゲーム側から差し込める地表常駐の最小境界。
 // 具象coordinatorはタイル要求とGPU寿命を持つため、EarthSurfaceはこの2操作だけを知る。
 export interface EarthSurfaceResidentCoordinatorLike {
   sync(input: EarthSurfaceResidentFrame): unknown;
+  reset?(): void;
   dispose(): void;
 }
 
@@ -29,7 +32,9 @@ export class EarthSurfaceContext {
   private readonly requests = new Set<AbortController>();
   private disposed = false;
 
-  public constructor(public readonly source: EarthSurfaceSource) {}
+  public constructor(private sourceValue: EarthSurfaceSource) {}
+
+  public get source(): EarthSurfaceSource { return this.sourceValue; }
 
   public get generation(): number { return this.nextGenerationValue; }
 
@@ -61,6 +66,13 @@ export class EarthSurfaceContext {
     return this.nextGenerationValue;
   }
 
+  // 配信版を切り替えると、旧版の要求と結果を同じ地表へ公開してはならない。
+  public replaceSource(source: EarthSurfaceSource): void {
+    if (this.disposed) throw new Error('Earth surface context is disposed');
+    this.invalidateRequests();
+    this.sourceValue = source;
+  }
+
   public dispose(): void {
     if (this.disposed) return;
     this.invalidateRequests();
@@ -71,13 +83,21 @@ export class EarthSurfaceContext {
 // 地球固有の寿命境界を共有しながら、天体表面の描画契約は既存の球面へ委譲する。
 export class EarthSurface implements CelestialSurfaceLike {
   private requestLeaseValue: EarthSurfaceRequestLease | null = null;
+  private coordinatorValue: EarthSurfaceResidentCoordinatorLike | null;
+  private statusValue: EarthSurfaceStatus;
   private disposed = false;
 
   public constructor(
     private readonly context: EarthSurfaceContext,
     private readonly fallback: CelestialSurfaceLike,
-    private readonly coordinator: EarthSurfaceResidentCoordinatorLike | null = null,
-  ) {}
+    coordinator: EarthSurfaceResidentCoordinatorLike | null = null,
+    status: EarthSurfaceStatus = coordinator === null ? 'fallback' : 'ready',
+  ) {
+    this.coordinatorValue = coordinator;
+    this.statusValue = status;
+  }
+
+  public get status(): EarthSurfaceStatus { return this.statusValue; }
 
   public get photometry(): SurfacePhotometry | null { return this.fallback.photometry; }
 
@@ -90,10 +110,11 @@ export class EarthSurface implements CelestialSurfaceLike {
   public syncFrame(frame: CelestialSurfaceFrame): void {
     if (this.disposed) return;
     this.fallback.syncFrame(frame);
-    if (this.coordinator === null) return;
+    if (this.coordinatorValue === null) return;
 
-    this.requestLeaseValue?.release();
-    const lease = this.context.requestLease();
+    const lease = this.requestLeaseValue?.signal.aborted
+      ? this.context.requestLease()
+      : this.requestLeaseValue ?? this.context.requestLease();
     this.requestLeaseValue = lease;
     if (!(frame.camera instanceof THREE.PerspectiveCamera)
       && !(frame.camera instanceof THREE.OrthographicCamera)) {
@@ -115,7 +136,7 @@ export class EarthSurface implements CelestialSurfaceLike {
       frame: frame.frame,
     };
     try {
-      this.coordinator.sync(residentFrame);
+      this.coordinatorValue.sync(residentFrame);
     } catch (error) {
       lease.release();
       this.requestLeaseValue = null;
@@ -128,7 +149,35 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.requestLeaseValue?.release();
     this.requestLeaseValue = null;
     this.context.invalidateRequests();
+    this.coordinatorValue?.reset?.();
     this.fallback.hide();
+  }
+
+  // 実行中の配信版を破棄し、新しい版をbaseから再開できる状態へ戻す。
+  public replaceSource(source: EarthSurfaceSource): void {
+    if (this.disposed) return;
+    this.requestLeaseValue?.release();
+    this.requestLeaseValue = null;
+    this.context.replaceSource(source);
+    this.coordinatorValue?.reset?.();
+  }
+
+  // 非同期bootstrap完了後に新しいsource/coordinatorを同じEarthへ接続する。
+  public attach(
+    source: EarthSurfaceSource,
+    coordinator: EarthSurfaceResidentCoordinatorLike | null,
+    status: EarthSurfaceStatus,
+  ): void {
+    if (this.disposed) {
+      coordinator?.dispose();
+      return;
+    }
+    this.requestLeaseValue?.release();
+    this.requestLeaseValue = null;
+    this.coordinatorValue?.dispose();
+    this.context.replaceSource(source);
+    this.coordinatorValue = coordinator;
+    this.statusValue = status;
   }
 
   public dispose(): void {
@@ -136,7 +185,7 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.disposed = true;
     this.requestLeaseValue?.release();
     this.requestLeaseValue = null;
-    this.coordinator?.dispose();
+    this.coordinatorValue?.dispose();
     this.context.dispose();
     this.fallback.dispose();
   }
