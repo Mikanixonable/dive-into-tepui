@@ -200,19 +200,31 @@ export class PointEntity extends CelestialEntity {
   // 影パスへ渡す積雲の殻。**描いている殻だけが影を落とす。** 姿勢は自転位相まで込みで組む —
   // 軸だけでは場が地表と一緒に回らない。
   public override cumulusShadowAt(fo: FloatingOrigin, displayTime: number): ShadowCumulus | null {
-    if (this.cumulus === null || !this.group.visible || !this.cumulus.visible) return null;
+    const cumulus = this.cumulus;
+    if (
+      cumulus === null || !this.group.visible || !cumulus.cloudsVisible || !cumulus.visible
+    ) return null;
     writeBodyFromWorld(this.bodyFromWorld, this.motion, displayTime);
-    return this.cumulus.shadowAt(
-      fo.RtoThreeV3(this.stateAt(displayTime).r), this.radius, this.axes, this.bodyFromWorld,
-    );
+    return {
+      center: fo.RtoThreeV3(this.stateAt(displayTime).r),
+      surfaceRadius: this.radius,
+      axes: this.axes.clone(),
+      topAltitude: cumulus.topAltitude,
+      bodyFromWorld: this.bodyFromWorld.clone(),
+      field: cumulus.field,
+    };
   }
 
   // 大気の散乱へ立てる雲。**雲全体を描くときだけ立つ。** 姿勢は自転位相まで込みで組む —
   // 軸だけでは場が地表と一緒に回らない。**姿勢はこの1体ぶんの実体で返す** — 大気パスが読むのは
   // 描画のときなので、影へ渡す使い回しの実体を渡すと、同期のあいだに書き換わる。
   public override atmosphereCloudsAt(displayTime: number): AtmosphereClouds | null {
-    if (this.cumulus === null || !this.group.visible || !this.cumulus.cloudsVisible) return null;
-    return this.cumulus.atmosphereAt(writeBodyFromWorld(new THREE.Matrix4(), this.motion, displayTime));
+    const cumulus = this.cumulus;
+    if (cumulus === null || !this.group.visible || !cumulus.cloudsVisible) return null;
+    return {
+      field: cumulus.field,
+      bodyFromWorld: writeBodyFromWorld(new THREE.Matrix4(), this.motion, displayTime),
+    };
   }
 
   // 物理球として厚い雲か薄い雲を描くフレームの場だけを、表示時刻へ焼く。

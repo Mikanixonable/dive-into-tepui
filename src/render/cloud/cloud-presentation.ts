@@ -6,17 +6,6 @@ import { GeneratedCloudField } from './generated-cloud-field';
 import {
   CUMULUS_DETAIL, OpaqueCloudSurfaceRenderer, type CumulusDetail,
 } from '../opaque-cloud-surface-renderer';
-import type { AtmosphereClouds } from '../atmosphere';
-import type { ShadowCumulus } from '../pipeline/shadow/cloud-shadow-renderer';
-
-export interface CloudPresentationSnapshot {
-  readonly field: THREE.Texture;
-  readonly topAltitude: number;
-  readonly cloudsVisible: boolean;
-  readonly surfaceVisible: boolean;
-  readonly cirrusVisible: boolean;
-  readonly translucentCumulusVisible: boolean;
-}
 
 export class CloudPresentation {
   private readonly surface: OpaqueCloudSurfaceRenderer;
@@ -35,36 +24,6 @@ export class CloudPresentation {
   public get visible(): boolean { return this.surface.visible; }
   public get cloudsVisible(): boolean { return this.cloudVisible; }
   public get topAltitude(): number { return this.surface.topAltitude; }
-
-  // 1 フレームの三つの表現が同じ場と表示条件を見るための読み取り専用スナップショット。field は
-  // texture の参照だけで、GPU 資源の所有権は GeneratedCloudField に残る。
-  public snapshot(): CloudPresentationSnapshot {
-    return {
-      field: this.cloudField.texture,
-      topAltitude: this.surface.topAltitude,
-      cloudsVisible: this.cloudVisible,
-      surfaceVisible: this.surface.visible,
-      cirrusVisible: this.cirrusVisible,
-      translucentCumulusVisible: this.translucentCumulusVisible,
-    };
-  }
-
-  public atmosphereAt(bodyFromWorld: THREE.Matrix4): AtmosphereClouds | null {
-    const snapshot = this.snapshot();
-    if (!snapshot.cloudsVisible) return null;
-    return { field: snapshot.field, bodyFromWorld: bodyFromWorld.clone() };
-  }
-
-  public shadowAt(
-    center: THREE.Vector3, surfaceRadius: number, axes: THREE.Vector3, bodyFromWorld: THREE.Matrix4,
-  ): ShadowCumulus | null {
-    const snapshot = this.snapshot();
-    if (!snapshot.cloudsVisible || !snapshot.surfaceVisible) return null;
-    return {
-      center: center.clone(), surfaceRadius, axes: axes.clone(), topAltitude: snapshot.topAltitude,
-      bodyFromWorld: bodyFromWorld.clone(), field: snapshot.field,
-    };
-  }
 
   public addTo(parent: THREE.Object3D): void { this.surface.addTo(parent); }
 
