@@ -10,6 +10,7 @@ import {
 } from 'three/tsl';
 import { rayMarch, type MediumSample } from '../ray-march';
 import { BlueNoise } from '../blue-noise';
+import { airglowEmission } from '../airglow';
 import {
   CLOUD_SHELL_SPECIES, CloudScattering, shellAltitudeOf, type CloudSpecies,
 } from './cloud-scattering';
@@ -23,6 +24,8 @@ const MIN_EXTINCTION = 1e-30;
 
 // 極半径/赤道半径の下限。潰し量はこの逆数なので、0 を塞ぐ。太陽系で最も扁平な土星でも 0.90。
 const MIN_POLAR_RATIO = 1e-3;
+
+const NO_AIRGLOW_COLOR = new THREE.Vector3();
 
 // 天体 1 体ぶんの uniform。surfaceRadius は赤道半径、cutoffRadius は大気の裾を打ち切る半径
 // (赤道半径 + 打ち切り高度)、steps はこの層を解くサンプル点の数。polarAxis は扁平を潰す軸の
@@ -39,6 +42,10 @@ interface BodySlot {
   readonly mie: FloatUniform;
   readonly mieScaleHeight: FloatUniform;
   readonly mieAnisotropy: FloatUniform;
+  readonly airglowColor: Vec3Uniform;
+  readonly airglowStrength: FloatUniform;
+  readonly airglowAltitude: FloatUniform;
+  readonly airglowScaleHeight: FloatUniform;
 }
 
 // 視線を、天体を自転軸方向へ引き伸ばして真球にした空間で見た形。**この空間の長さは描画座標の
@@ -159,6 +166,10 @@ export class AtmosphereLayer {
       mie: uniform(0),
       mieScaleHeight: uniform(1),
       mieAnisotropy: uniform(0),
+      airglowColor: uniform(new THREE.Vector3()),
+      airglowStrength: uniform(0),
+      airglowAltitude: uniform(0),
+      airglowScaleHeight: uniform(1),
     };
   }
 
@@ -183,6 +194,18 @@ export class AtmosphereLayer {
     this.slot.mie.value = body.optics.mie;
     this.slot.mieScaleHeight.value = body.optics.mieScaleHeight;
     this.slot.mieAnisotropy.value = body.optics.mieAnisotropy;
+    const airglow = body.optics.airglow;
+    if (airglow === undefined) {
+      this.slot.airglowColor.value.copy(NO_AIRGLOW_COLOR);
+      this.slot.airglowStrength.value = 0;
+      this.slot.airglowAltitude.value = 0;
+      this.slot.airglowScaleHeight.value = 1;
+    } else {
+      this.slot.airglowColor.value.set(airglow.color[0]!, airglow.color[1]!, airglow.color[2]!);
+      this.slot.airglowStrength.value = airglow.strength;
+      this.slot.airglowAltitude.value = airglow.altitude;
+      this.slot.airglowScaleHeight.value = airglow.scaleHeight;
+    }
   }
 
   // 視線 1 本がこの層を通って受ける透過率と、この層が視線へ足す内部散乱。opaqueDist は視線が
@@ -434,14 +457,22 @@ export class AtmosphereLayer {
     const extinction: Vec3Node = rayleigh.add(vec3(mie));
 
     // 視線へ向かう散乱は、成分ごとの散乱係数に位相関数を掛けて重みを付けた和。
-    const sunDir = normalize(sub(this.sunLight.position, point));
+    const sunVector = sub(this.sunLight.position, point);
+    const sunDir = normalize(sunVector);
     const cosTheta = dot(rayDir, sunDir);
     const scattered: Vec3Node = rayleigh.mul(rayleighPhase(cosTheta))
       .add(vec3(mie.mul(miePhase(cosTheta, this.slot.mieAnisotropy))));
+    const sunMu = dot(offset.div(radius), normalize(this.toSphereSpace(sunVector)));
+    const airglow = airglowEmission(
+      altitude, sunMu, this.slot.airglowColor, this.slot.airglowStrength,
+      this.slot.airglowAltitude, this.slot.airglowScaleHeight,
+    );
     return {
       extinction,
       source: scattered.div(max(extinction, vec3(MIN_EXTINCTION, MIN_EXTINCTION, MIN_EXTINCTION)))
-        .mul(this.sunRadianceAt(point)).mul(shellTransmittance),
+        .mul(this.sunRadianceAt(point))
+        .add(airglow.div(max(extinction, vec3(MIN_EXTINCTION, MIN_EXTINCTION, MIN_EXTINCTION))))
+        .mul(shellTransmittance),
     };
   }
 
