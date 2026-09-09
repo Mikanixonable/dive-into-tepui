@@ -1,13 +1,13 @@
 # 地球大気・発光現象の不足分 — 優先順位と3つの実装計画
 
 作成日: 2026-09-09。調査対象: `workspace3` の **`95f9cfc1`**。
-状態: 案Bの一部（C2・E3）を先行実装済み。残りは未着手。
+状態: 案BのE2・C9・C10を実装済み。C2・E3も先行実装済み。C1・C3〜C8・C11〜C13・E5・E7は未着手。
 
 ## 目的
 
 この計画は、地球の雲・気象・発光現象・時間変化する海の表現を実装するためのものとする。E2・C9・C10は地表タイル計画と並行して着手でき、C3・C5・E5・E7の共有地表入力が必要な部分は地表タイル計画の完了後に接続する。
 地表の静的な材質、標高、法線、水域・氷の分類、タイル配信、LODは
-[earth-surface-tiles-plan_2026-09-09.md](earth-surface-tiles-plan_2026-09-09.md)の責任範囲であり、この計画では再実装しない。
+[earth-surface-tiles-plan_2026-09-09/](earth-surface-tiles-plan_2026-09-09/)の責任範囲であり、この計画では再実装しない。
 
 推奨する要件解釈は **気象学と実装の均衡案**、実装方式は **案B: 生成場と描画を段階的に拡張** とする。
 案Aは変更量を抑える場合、案Cは雲を近距離から見る品質まで追う場合の保留案である。
@@ -347,12 +347,12 @@ E2は磁気圏の実測を再現する機能ではなく、表示時刻から再
 
 - **`AuroraField`（新規）**: 磁極、簡易磁気座標、MLT、オーバル境界、活動度代理値、局所発光強度を決める。Three.jsのメッシュを所有しない。
 - **`Aurora`**: `AuroraField`のフレーム値を受け取り、カーテンの頂点・色・GPU更新とdisposeだけを担当する。星や地表タイルを参照しない。
-- **`WindField`（新規）**: 高度層の平均風、ロスビー波、低気圧の気圧偏差から、単位方向・高度・表示時刻における水平風と診断量を返す。単位はm/sで統一する。
-- **`CloudPatternTransport`（新規）**: `WindField`のm/sを、ノイズ場の有限な位相移流と時間積分へ変換する。大気の風そのものや低気圧の発生条件を持たない。
+- **`AtmosphericWindField`（`src/render/cloud/atmospheric-wind.ts`）**: 高度層の平均風をCPU/TSLの両方で返す。単位はm/sで統一し、ロスビー波や局所低気圧を所有しない。
+- **`CloudPatternTransport`（同ファイル）**: `AtmosphericWindField`のm/sを、ノイズ場の有限な位相移流へ変換する。大気の風そのものや低気圧の発生条件を持たない。
 - **`CycloneTracks`**: 低気圧の発生・寿命・中心経路を決定論的に返す。風の計算や雲の色を持たない。
 - **`RossbyWave`**: ロスビー波の位相・流線関数を返す。局所低気圧を生成せず、`WindField`が勾配から風へ変換する。
 - **`AirMass`**: 気団の温度・湿度差と圧縮を追跡する。`WindField`の風を入力にし、雲の描画やオーロラを知らない。
-- **`WeatherModel`**: `ClimateMapLike`、`WindField`、`AirMass`、`CloudPatternTransport`の組み立てと`WeatherSample`の公開だけを担当する。雲頂・影・オーロラのメッシュを持たない。
+- **`WeatherModel`**: `ClimateMapLike`、`AtmosphericWindField`、気圧・RossbyWave・Cyclones、`AirMass`の組み立てと`WeatherSample`の公開を担当する。局所気圧風と背景風をここで合成するが、雲頂・影・オーロラのメッシュを持たない。
 - **`Condensation` / `CloudField`**: `WeatherSample`を雲量・雲頂・薄い雲へ変換する。風場の式を複製しない。
 
 `EarthSurfaceContext`はこの3項目の必須入力にしない。勾配・地形性上昇流・気候画像を読む既存の`ClimateMapLike`境界は残し、地表タイル計画のA4で共有データへ切り替えられるようにする。
@@ -368,7 +368,7 @@ E2は磁気圏の実測を再現する機能ではなく、表示時刻から再
 | ファイル | 行うこと |
 | --- | --- |
 | `DEVELOP/SPEC/RENDERING.md` | E2を磁気座標・MLT・活動度代理値へ改訂し、C9を高度依存の共通風場、C10をロスビー波・局所低気圧・前線生成の分離として書き換える |
-| `memos/mikanixonable/earth-graphics-implementation-plans_2026-09-09.md` | この案Bを採用案として残し、案A/Cの適用条件と未実装境界を記録する |
+| `memos/mikanixonable/earth-surface-tiles-plan_2026-09-09/earth-graphics-implementation-plans_2026-09-09.md` | この案Bを採用案として残し、案A/Cの適用条件と未実装境界を記録する |
 
 **達成条件と検証**: SPEC内に「磁極」「磁気地方時」「活動度代理値」「m/s」「ロスビー波」「気圧勾配」「前線の温度・湿度勾配」「低気圧はロスビー波を生成しない」がそれぞれ1回以上現れ、`E5`・`E7`の地表依存要件へ変更を加えない。`git diff --check`を通す。
 
@@ -381,11 +381,11 @@ E2は磁気圏の実測を再現する機能ではなく、表示時刻から再
 | ファイル | 行うこと |
 | --- | --- |
 | `src/render/aurora-field.ts`（新規） | 地理方向と固定磁極から近似磁気緯度・MLTを求め、オーバルの中心・幅・活動度・昼夜係数を返す純粋な計算を置く |
-| `src/render/cloud/wind-field.ts`（新規） | 風の高度層、ロスビー波の流線関数勾配、低気圧の局所気圧勾配から、数値サンプル可能な風量を定義する |
-| `src/render/cloud/rossby-wave.ts` | 直接`windAt`を返す責務から、位相と流線関数を返す責務へ整理する。勾配から風を作る処理は`WindField`へ移す |
-| `tests/render/aurora.test.ts`（新規） | 磁極中心、MLTの昼夜、活動度0/1、同時刻再現性、南北対称性の検査を追加する |
-| `tests/render/wind-field.test.ts`（新規） | 0/30/45/60/75度、南北半球、経度境界、地表/上層、時間ジャンプの風向・連続性・速度範囲を検査する |
-| `tests/render/rossby-wave.test.ts`（新規または`wind-field.test.ts`へ統合） | 波の位相速度が平均風より遅いこと、波だけで局所低気圧を生成しないことを検査する |
+| `src/render/cloud/atmospheric-wind.ts`（新規） | 風の高度層をCPU/TSLで数値サンプル可能にし、m/sの入力契約を定義する |
+| `src/render/cloud/rossby-wave.ts` | `streamfunctionAt`と`perturbationAt`を公開し、波の位相・流線関数とそこからの風摂動を低気圧から分離する |
+| `tests/render/aurora-field.test.ts` | 磁極中心、MLTの昼夜、同時刻再現性、発光強度の境界を検査する |
+| `tests/render/atmospheric-wind.test.ts` | 高度シア、m/sから位相への時間スケール、決定論性を検査する |
+| `tests/render/cyclone-tracks.test.ts`、`tests/render/cyclones.test.ts` | 低気圧の寿命・半球ごとの構造を既存テストで検査する |
 
 **達成条件と検証**: 同じ入力から同じ値が返り、経度±180度で不連続がなく、北半球・南半球の低気圧の接線方向が逆になる。`npm run typecheck`、`npm run test:render`。
 
@@ -413,10 +413,9 @@ E2は磁気圏の実測を再現する機能ではなく、表示時刻から再
 
 | ファイル | 行うこと |
 | --- | --- |
-| `src/render/cloud/wind-field.ts` | 地表・対流圏上部・巻雲高度の風プロファイル、緯度補間、半球対称、速度上限、時間同期を実装する |
-| `src/render/cloud/circulation.ts` | 物理風のm/sを返す責務を取り除き、ノイズ場を動かす座標変換へ縮小する。共有プロファイルの定数を重複保持しない |
-| `src/render/cloud/cloud-pattern-transport.ts`（新規） | `WindField`の風速を有限の位相移流へ変換し、時刻ジャンプでも同じ場を再現する |
-| `src/render/cloud/circulating-noise.ts` | `Circulation`直接依存を`CloudPatternTransport`へ差し替える |
+| `src/render/cloud/atmospheric-wind.ts` | 地表・対流圏上部・巻雲高度の風プロファイル、緯度補間、半球対称、m/sから位相への変換を実装する |
+| `src/render/cloud/circulation.ts` | m/sの帯を受け取り、`CloudPatternTransport`でノイズ場の座標だけを動かす。物理風の表を重複保持しない |
+| `src/render/cloud/circulating-noise.ts`、`src/render/cloud/convective-activity.ts` | `Circulation`経由の同じパターン移流を使い、読み手ごとの固定風を持たない |
 | `src/render/cloud/convective-activity.ts` | 活発度の移流に同じtransportを使い、雲量と対流で風向を複製しない |
 | `src/render/cloud/weather-model.ts` | `surfaceCirculation.meanWindAt`や層固有の直接加算を`WindField`の高度サンプルへ置き換える |
 
@@ -430,12 +429,11 @@ E2は磁気圏の実測を再現する機能ではなく、表示時刻から再
 
 | ファイル | 行うこと |
 | --- | --- |
-| `src/render/cloud/wind-field.ts` | 背景帯風へロスビー波の流線関数勾配と低気圧の局所偏差を加え、気圧勾配・コリオリ・摩擦の連続式から風を求める。赤道の特異点を避ける遷移を持つ |
-| `src/render/cloud/rossby-wave.ts` | `windAt`の直接呼び出しを廃止し、波のスカラー場・位相速度だけを公開する |
+| `src/render/cloud/rossby-wave.ts` | `streamfunctionAt`と`perturbationAt`を公開し、全球波の蛇行を局所低気圧の気圧場から分離する |
 | `src/render/cloud/cyclone-tracks.ts` | 決定論的な発生・寿命・移動を保持し、風や雲の見た目を持たない |
 | `src/render/cloud/cyclones.ts` | 低気圧の気圧偏差・眼・金床の診断を整理し、背景風を直接書き換えない |
 | `src/render/cloud/air-mass.ts` | 合成風を使った気団の追跡と温度・湿度コントラストを行い、前線強度を返す |
-| `src/render/cloud/weather-model.ts` | `WindField`と`AirMass`を組み立て、front/lift/warmthを`WeatherSample`へ渡す。ロスビー波や低気圧の式をここへ残さない |
+| `src/render/cloud/weather-model.ts` | 高度依存背景風、ロスビー波の摂動、気圧勾配風を合成し、`AirMass`からfront/lift/warmthを`WeatherSample`へ渡す |
 | `src/render/cloud/condensation.ts` | 前線・雨帯・低気圧の入力を別のスカラー要因として受け、風向から雲形を直接作る分岐を持たない |
 | `tests/render/wind-field.test.ts`、`tests/render/cyclone-tracks.test.ts`、`tests/render/cyclones.test.ts` | 低気圧の回転方向、波の南北振幅、前線の勾配、時間ジャンプ、低気圧が無い場合の背景風を検査する |
 
@@ -449,7 +447,7 @@ E2は磁気圏の実測を再現する機能ではなく、表示時刻から再
 
 | ファイル | 行うこと |
 | --- | --- |
-| `src/render/cloud/circulation.ts`、`src/render/cloud/circulating-noise.ts`、`src/render/cloud/weather-model.ts` | 旧`meanWindAt`、旧`RossbyWave.windAt`、層ごとの個別風加算、不要な直接依存を削除する |
+| `src/render/cloud/circulation.ts`、`src/render/cloud/weather-model.ts`、`src/render/cloud/rossby-wave.ts` | 旧`meanWindAt`と`RossbyWave.windAt`、旧角速度風表を削除し、意図した`Circulation`（ノイズ移流）だけを残す |
 | `src/render/aurora.ts`、`src/render/aurora-field.ts` | オーロラ場とメッシュの責務が混ざっていないことを確認する |
 | `src/game/celestial/solar-system/earth-system.ts`、`src/game/celestial/celestial-entity/point-entity.ts` | 地球固有の初期値と同期だけを持たせ、気象式を置かない |
 | `tests/render/` | 旧API・旧ファイル名・直接参照が残っていないことを検索する |
@@ -495,7 +493,19 @@ E2は磁気圏の実測を再現する機能ではなく、表示時刻から再
 
 1. E2・C9・C10の要件が`DEVELOP/SPEC/RENDERING.md`へ反映され、磁気座標・高度依存風・ロスビー波・局所低気圧・前線の責務が読める。
 2. オーロラは磁極・MLT・決定論的活動度代理値から同時刻に再現され、`Aurora`メッシュが気象・地表タイル・StarEntityを直接参照しない。
-3. C9の雲移流・気団追跡・前線・低気圧が、同じm/s単位の`WindField`を読む。ノイズ位相への変換は`CloudPatternTransport`だけが行う。
+3. C9の雲移流・気団追跡・前線・低気圧が、同じm/s単位の`AtmosphericWindField`を読む。ノイズ位相への変換は`CloudPatternTransport`だけが行う。
 4. C10のロスビー波を無効にしても局所低気圧が、局所低気圧を無効にしても偏西風の蛇行が残る。前線は温度・湿度勾配と上昇流に対応する。
 5. 地表タイル計画の`EarthSurfaceContext`を使わずにE2・C9・C10のfixtureと描画ケースが動く。
 6. `npm run typecheck`、`npm run test:render`、対象のrender-lab/cloud-lab撮影、`git diff --check`が通り、旧風経路・二重計算・旧単位の参照が残らない。
+
+### 実装結果（2026-09-10）
+
+案BのE2・C9・C10を workspace3 へ統合した。実装の責務は計画時の仮名から次の実ファイルへ確定した。
+
+- E2: `AuroraField`が簡易双極子の磁極、MLT、活動度代理値、太陽方向による昼側減衰、酸素の緑・赤発光を計算し、`Aurora`は頂点・色バッファとGPU資源だけを管理する。`PointEntity`は表示時刻の太陽方向を地球固定座標へ変換して渡す。
+- C9: `AtmosphericWindField`が緯度・高度からm/sの背景風を返す。`CloudPatternTransport`がそのm/sをノイズ位相へ変換し、`Circulation`は物理風を再実装しない。WeatherModel・AirMass・前線・上層雲は同じ背景風を読む。
+- C10: `RossbyWave`は流線関数とそこからの風摂動を公開し、局所低気圧は既存の気圧場・コリオリ・摩擦の経路で別に合成する。前線は気団圧縮に気圧由来の上昇流を加えたスカラーとして凝結へ渡す。
+
+コミットは`1c88550b`（初回実装）、`f2e80204`（コードレビューによる磁気座標・共通m/s風場の修正）、`bea13471`（ロスビー波の流線関数境界）である。`npm run typecheck`、`npm run test:render`（85件）、`npm run test:game`（200件）、`git diff --check`を通過した。`npm run cloud-lab:shot`は0 h/25 hの46画像を生成した。`npm run render-lab:shot`は地球を含む対象ケースを生成したあと、既存の未登録タンパク質ケース`pdb-5i4r`で停止したため、その失敗はE2の実装失敗とは分けて記録する。
+
+地表タイルへの接続、C1・C3〜C8・C11〜C13、E5、E7、E2の専用render-labケース追加はこの実装の範囲外であり、残作業として扱う。
