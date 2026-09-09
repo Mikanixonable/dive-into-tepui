@@ -24,13 +24,15 @@
 
 ## 実装状況（2026-09-10）
 
-コードレビューと記録は `c1024c61` で完了した。EarthSurfaceのpersistent lease、非表示・dispose・
+コードレビューと記録は `c1024c61` を基礎に、`a5cacedb`, `ccc3683f`, `85b63f59`, `ed53a902` を追加確認した。
+EarthSurfaceのpersistent lease、非表示・dispose・
 世代切替、可視frontierのpin、drawing buffer伝搬、楕円体UV、UTC気候時計、GPU層解放、Pagesの
 subpath URL、datasetId整合、raw gzip契約を確認した。Earth実行経路にGEBCOや旧Earth気候画像の
 参照はなく、`tools/render-lab/cases.ts` の旧画像はlegacy fixtureとして残している。
 
-検証結果は typecheck、全体テスト826/826、build、verify-release、Earth契約、Python 20件、
-Pages fixture layout pass、capture contract passである。実captureはChrome/WebGPU/描画バッファまで
+追加実装後の検証結果は typecheck、render 113/113、game 205/205、Python 24件、
+Earth契約、Pages fixture layout pass、capture contract passである。既存の全体テスト826/826、build、verify-releaseも
+直前のコード状態でpassしている。実captureはChrome/WebGPU/描画バッファまで
 到達し、実データ未投入を理由に15ケースをunavailableとして記録した。
 
 実データbundleが無いため `earth-surface:check` と `earth-surface:package` は
