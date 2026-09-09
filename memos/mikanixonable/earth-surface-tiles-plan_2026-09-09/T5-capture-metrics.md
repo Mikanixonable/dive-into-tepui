@@ -24,3 +24,12 @@ Earthの色、法線、roughness、深度、LOD、通信、GPU常駐を再現可
 - 親子fade中に色・法線・roughnessが分離しない。
 - LOD閾値付近で選択が往復しない。
 - WebGPUやブラウザを使えない環境では未実施理由がmetricsに残る。
+
+## 実装状況（2026-09-10）
+
+コード実装は `7f8614fc`, `e90aaeca` で完了した。固定15ケース、1920×1080、300フレーム、
+color/normal/depthのschema v2、PNGのhash/サイズ記録、既存fake transport/GPUテストとの
+再生シナリオ対応、render-labの `earthSurfaceCapture` APIを追加した。
+実captureはChrome/WebGPU/drawing bufferまで到達したが、実データmanifestが未投入のため、
+全ケースを `status: unavailable`、理由 `earth surface dataset is not available` として保存した。
+単色の代替画像は生成していない。実データがPagesへ配置された後、同じAPIで画像とmetricsを取得する。
