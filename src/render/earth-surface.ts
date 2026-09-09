@@ -134,9 +134,9 @@ export class EarthSurface implements CelestialSurfaceLike {
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.coordinator?.dispose();
     this.requestLeaseValue?.release();
     this.requestLeaseValue = null;
+    this.coordinator?.dispose();
     this.context.dispose();
     this.fallback.dispose();
   }
