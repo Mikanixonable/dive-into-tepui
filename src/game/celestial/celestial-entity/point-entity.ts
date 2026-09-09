@@ -10,7 +10,7 @@ import { spinOrientation } from '../../../physics/body-orientation';
 import { lambertSphereIrradiance } from '../../../physics/lambert-sphere';
 import { STAR_SHELL_RADIUS } from '../../../render/stars';
 import { Billboard, POINT_IMAGE_ANGULAR_SIZE } from '../../../render/billboard';
-import type { CelestialSurfaceLike } from '../../../render/celestial-surface';
+import { createCelestialSurfaceFrame, type CelestialSurfaceLike } from '../../../render/celestial-surface';
 import { BodyGraticule } from '../../../render/body-graticule';
 import { showsPhysicalSphere } from '../../../render/screen-lod';
 import { CelestialEntity } from './celestial-entity';
@@ -74,6 +74,7 @@ export class PointEntity extends CelestialEntity {
   private readonly graticule = new BodyGraticule();
   // 描画座標のベクトルを天体固定の向きへ戻す回転。影パスへ渡すあいだだけ生きていればよい。
   private readonly bodyFromWorld = new THREE.Matrix4();
+  private surfaceFrame = 0;
 
   // surface はマップビューで見せる実体。実半径・歪みの形状・環は motion の定義から引き、
   // 環はマップビューでのみ描く(戦闘ビューの輝点に環はない)。surfaceMarkings は模式図で
@@ -178,6 +179,10 @@ export class PointEntity extends CelestialEntity {
     this.group.position.copy(fo.RtoThreeV3(pos));
     this.shapeGroup.scale.copy(this.axes);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
+    this.surface.syncFrame(createCelestialSurfaceFrame(
+      cameraSystem.activeCamera, this.group.position, this.group.quaternion, this.axes,
+      ++this.surfaceFrame, displayTime, style,
+    ));
     this.billboard.hide();
     this.ring?.sync(
       this.group.position,
