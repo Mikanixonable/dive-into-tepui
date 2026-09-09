@@ -171,9 +171,9 @@ export class AtmosphereIntegrator {
     this.cloudLayers = new AtmosphereCloudLayers();
   }
 
-  // 種類ごとに、雲の殻を描くかを置き直す。
-  public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
-    this.cloudLayers.setShellEnabled(species, enabled);
+  // 種類ごとに、連続雲体積を描くかを置き直す。
+  public setCloudSpeciesEnabled(species: CloudSpecies, enabled: boolean): void {
+    this.cloudLayers.setSpeciesEnabled(species, enabled);
   }
 
   public setCloudBlueNoiseEnabled(enabled: boolean): void {
@@ -251,7 +251,7 @@ export class AtmosphereIntegrator {
     return vector.add(this.slot.polarAxis.mul(dot(vector, this.slot.polarAxis).mul(this.slot.polarStretch)));
   }
 
-  // 視線を真球にした空間へ写した形。この空間では地表も裾も等密度面も殻も中心を共有する
+  // 視線を真球にした空間へ写した形。この空間では地表も裾も等密度面も中心を共有する
   // 球面になるので、交点も高度も光路もここで解ける。
   private sphereSpaceRay(rayOrigin: Vec3Node, rayDir: Vec3Node): SphereSpaceRay {
     const toOrigin = this.toSphereSpace(sub(rayOrigin, this.slot.center)).toVar();
@@ -390,8 +390,8 @@ export class AtmosphereIntegrator {
   }
 
   // 視線から最初に見える雲支持区間を返す。支持高度はCloudVolumeと同じ1–16 kmで、
-  // 地表へ向かう視線では外殻入口から内殻入口までになる。地表を外す掠線が内殻を
-  // 横切る場合も手前側だけを優先し、front-to-back合成で影響の大きい区間を確実に拾う。
+  // 地表へ向かう視線では上端入口から積雲下端の入口までになる。地表を外す掠線が内側を
+  // 横切る場合も手前側だけを優先し、front-to-back積分で影響の大きい区間を確実に拾う。
   private cloudSupportSegment(ray: SphereSpaceRay, segment: RaySegment): CloudSupportSegment {
     const outer = this.crossingsOf(
       ray, this.slot.surfaceRadius.add(CIRRUS_TOP_ALTITUDE),
@@ -401,11 +401,10 @@ export class AtmosphereIntegrator {
     );
     const outerNear = clamp(outer.entry, segment.near, segment.far);
     const entersInner = and(inner.crosses, greaterThan(inner.entry, outerNear));
-    const startsInsideInner = and(
-      inner.crosses,
-      and(lessThan(inner.entry, outerNear), greaterThan(inner.exit, outerNear)),
-    );
-    const near = select(startsInsideInner, max(inner.exit, outerNear), outerNear);
+    // 起点がすでに積雲帯の内側にある場合、視線の支持区間は現在位置から始まる。
+    // inner.exit から始めると、雲の中から天体側へ向く視線で積雲区間を丸ごと捨て、
+    // 外側の巻雲だけを積分することになる。起点が外側なら inner.entry が積雲の出口になる。
+    const near = outerNear;
     const outerFar = min(outer.exit, segment.far);
     const far = select(entersInner, min(inner.entry, outerFar), outerFar);
     return {
