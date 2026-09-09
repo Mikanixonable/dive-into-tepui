@@ -136,6 +136,7 @@ export class PointEntity extends CelestialEntity {
     this.group.visible = visible;
     this.billboard.mesh.visible = visible;
     this.ring?.setVisible(visible);
+    if (!visible) this.surface.hide();
   }
 
   // displayTime 時点の位置へ実体メッシュか輝点ビルボードのどちらかを同期する(常に片方は
