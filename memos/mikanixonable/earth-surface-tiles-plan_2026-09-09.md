@@ -672,6 +672,13 @@ Pythonデータテストを実行する。
 **達成条件**: 逆順到着、同時失敗、404、タイムアウト、abort、dispose、全層使用中、親fallbackをfake
 fetch/GPUで検査し、色だけ・地形だけが表示される状態を作れない。`npm run typecheck`と`npm run test:render`を通す。
 
+**実装状況（2026-09-09）**: `adc0920e`でtile-indexの一度だけの解決、HTTP 6・decode 2・待機展開8の
+要求キュー、再試行・永久失敗・generation・AbortSignal・metrics、色hash・地形hash・本文長の検証を実装した。
+レビューでdatasetId/相対URLの境界、HTTPイベントのgeneration、世代交代・dispose時のresident待機permit解放を
+追加した。要求キューのfixtureを含め`npm run test:render`（53/53）、`npm run typecheck`、
+`npm run earth-surface:test`、Pythonデータテスト（15件）を通過している。`EarthSurfaceTiles`とのfrontier
+接続、GPU層への同時upload、resident LRU、親fallbackの実運用接続は段Bの残作業である。
+
 ### 実装段C: 地表マテリアルと実GPU接続
 
 **依存**: 段B。
