@@ -20,8 +20,8 @@ export function pickCombatEntityAtPoint(
   let minDepth = Infinity;
 
   for (const entity of roster.all()) {
-    if (!isCombatTarget(entity) || !entity.alive) continue;
-    const pos = entity.state.r;
+    if (!isCombatTarget(entity) || !entity.motion.alive) continue;
+    const pos = entity.motion.state.r;
     const proj = project(pos);
     if (!proj.front) continue;
 

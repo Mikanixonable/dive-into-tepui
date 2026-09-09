@@ -40,8 +40,8 @@ function findClosestApproach(
 ): { readonly pos: Vec3; readonly t: number } | null {
   // 時刻 t の相対距離。どちらかの予測が t まで届いていなければ null。
   const distAt = (t: number): number | null => {
-    const p = controlled.stateAt(t, celestialBodies);
-    const q = target.stateAt(t, celestialBodies);
+    const p = controlled.motion.stateAt(t, celestialBodies);
+    const q = target.motion.stateAt(t, celestialBodies);
     return p && q ? len(sub(p.r, q.r)) : null;
   };
   const step = CLOSEST_APPROACH_SPAN_SEC / CLOSEST_APPROACH_SAMPLES;
@@ -57,7 +57,7 @@ function findClosestApproach(
     const lo = simTime + (i - 1) * step;
     const hi = simTime + (i + 1) * step;
     const tMin = goldenSectionMin(lo, hi, (t) => distAt(t) ?? Infinity, CLOSEST_APPROACH_REFINE_ITERATIONS);
-    const p = controlled.stateAt(tMin, celestialBodies);
+    const p = controlled.motion.stateAt(tMin, celestialBodies);
     return p ? { pos: p.r, t: tMin } : null;
   }
   return null;
@@ -100,8 +100,8 @@ export class NavTarget {
   // 未来予測を依頼する個体を entity 一つに絞る。
   private setReaderEntity(entity: DynamicEntity | null): void {
     if (entity === this.readerEntity) return;
-    if (this.readerEntity) this.readerEntity.navTargetReader = false;
-    if (entity) entity.navTargetReader = true;
+    if (this.readerEntity) this.readerEntity.motion.navTargetReader = false;
+    if (entity) entity.motion.navTargetReader = true;
     this.readerEntity = entity;
   }
 
@@ -133,7 +133,7 @@ export class NavTarget {
   restore(data: { id: string; name: string } | null | undefined, roster: EntityRoster): void {
     if (!data) return;
     const wasTarget = combatTargetById(roster.all(), data.id);
-    if (wasTarget !== null && !wasTarget.alive) return;
+    if (wasTarget !== null && !wasTarget.motion.alive) return;
     this.setInternal(data.id, data.name);
   }
 
@@ -171,7 +171,9 @@ export class NavTarget {
     this.setReaderEntity(target);
     if (!controlled) { this.retireNodeMarkers(); return; }
     const stateCelestialBodies = celestialBodies.celestialMotions;
-    const controlledCenter = strongestAttractor(controlled.state.r, stateCelestialBodies, simTime);
+    const controlledCenter = strongestAttractor(
+      controlled.motion.state.r, stateCelestialBodies, simTime,
+    );
     const unbakeTf = celestialBodies.frames.transformAt(frame, displayTime, frameAnchors);
     // 通過時刻で焼いた点を、表示時刻の座標系へ un-bake する。
     const toDisplay = (r: Vec3, t: number): Vec3 =>
@@ -179,12 +181,14 @@ export class NavTarget {
 
     // 再接近点は AN/DN(軌道面が定まる必要がある)とは独立した条件 — 同じ中心天体さえ
     // 周回していれば、円軌道や軌道面がほぼ一致する場合でも求まる。
-    if (target && strongestAttractor(target.state.r, stateCelestialBodies, simTime).id === controlledCenter.id) {
+    if (target && strongestAttractor(
+      target.motion.state.r, stateCelestialBodies, simTime,
+    ).id === controlledCenter.id) {
       const found = findClosestApproach(controlled, target, celestialBodies, simTime);
       if (found) this.closestApproach.place(toDisplay(found.pos, found.t), found.t, ownerName, this.name);
     }
 
-    const controlledEl = controlled.orbitalElementsAround(controlledCenter, simTime);
+    const controlledEl = controlled.motion.orbitalElementsAround(controlledCenter, simTime);
     if (!controlledEl) return;
 
     const targetHat = this.resolvePlaneNormal(this.targetId, roster, celestialBodies, simTime);
@@ -194,7 +198,7 @@ export class NavTarget {
     if (!nodes) return;
 
     const tf = frameOfCelestialBody(controlledCenter, simTime);
-    const nu0 = trueAnomalyAt(controlledEl, toFrameState(tf, controlled.state).r);
+    const nu0 = trueAnomalyAt(controlledEl, toFrameState(tf, controlled.motion.state).r);
     const anT = simTime + tofBetween(controlledEl, nu0, nodes.asc);
     const dnT = simTime + tofBetween(controlledEl, nu0, nodes.desc);
     // 交点は中心天体基準なので、通過時刻における中心天体の精密な ECI 位置へ足す — 概算の弾道
@@ -242,7 +246,7 @@ export class NavTarget {
     const entity = aliveCombatTarget(roster.all(), id);
     if (!entity) return null;
     return {
-      id, state: entity.stateAt(t, celestialBodies) ?? entity.state, hasMass: false,
+      id, state: entity.motion.stateAt(t, celestialBodies) ?? entity.motion.state, hasMass: false,
       attractor: null, entity, fixed: true,
     };
   }
@@ -269,8 +273,8 @@ export class NavTarget {
     }
     const entity = aliveCombatTarget(roster.all(), id);
     if (!entity) return null;
-    const center = strongestAttractor(entity.state.r, celestialBodies.celestialMotions, t);
-    return entity.orbitalElementsAround(center, t)?.hHat ?? null;
+    const center = strongestAttractor(entity.motion.state.r, celestialBodies.celestialMotions, t);
+    return entity.motion.orbitalElementsAround(center, t)?.hHat ?? null;
   }
 
   // 右クリック対象として公開する AN/DN・再接近点アイコン。出す理由が残っているぶんを返す。

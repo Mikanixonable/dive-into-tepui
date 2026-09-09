@@ -33,8 +33,8 @@ function deploymentItems(part: Part): PropertyWindowItem<MenuAction>[] {
 function setDeployment(ship: Player, part: Part, deployed: boolean): void {
   const sameType = ship.parts.filter((candidate) => candidate.type === part.type);
   const side = sameType.indexOf(part) === 0 ? 'up' : 'down';
-  if (part.type === 'radiator') ship.radiator.setDeployed(side, deployed);
-  if (part.type === 'solar_panel') ship.power.setDeployed(side, deployed);
+  if (part.type === 'radiator') ship.motion.radiator.setDeployed(side, deployed);
+  if (part.type === 'solar_panel') ship.motion.power.setDeployed(side, deployed);
 }
 
 export class PartWindows {
@@ -75,7 +75,9 @@ export class PartWindows {
   sync(): void {
     for (const entry of [...this.windows.values()]) {
       const { ship, part } = entry;
-      if (!ship.alive || ship !== this.controlSelection.current || !ship.parts.includes(part)) {
+      if (!ship.motion.alive
+        || ship !== this.controlSelection.current
+        || !ship.parts.includes(part)) {
         entry.win.close();
         continue;
       }
