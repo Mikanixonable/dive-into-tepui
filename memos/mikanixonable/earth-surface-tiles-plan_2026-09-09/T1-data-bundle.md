@@ -43,3 +43,8 @@ NoData数、有限値、制御点解析画像、生成容量、生成時間を�
 
 BMNG/ETOPOは数十GB級、ERA5は取得条件に依存し、GSHHGはfixture JSONより複雑である。
 生成用の入力・中間・出力容量を先に確保する。
+
+## 実装状況（2026-09-10）
+
+`300ff2e8` と `1fa593c9` でmanifest検査、全球キー列挙、staging writer、`--global`入口を追加した。
+入力が無い場合は明示的に停止する。実ソースのwindow renderer、実データhash、全43690タイル生成は未完了で、fixtureを本番生成の代わりにはしない。
