@@ -519,11 +519,11 @@ render-labのLODメトリクスである。現在はデコード結果を受け�
 | 変更が必要な箇所 | すること |
 | --- | --- |
 | `src/render/celestial-surface.ts:79`・`:118`・`:134` | 天体共通のベースURL・測光・ライフサイクル契約を保つ。地球固有の処理はここへ分岐を足さず、`EarthSurface`ラッパーから接続する |
-| `src/render/earth-surface.ts` (新規) | `CelestialSurface`の共通契約へ地球の楕円体メッシュ、`earth-surface-tiles`、`EarthSurfaceMaterial`、`EarthSurfaceContext`を束ねる。tiles・material・Contextの所有者とdispose順をここへ固定する |
+| `src/render/earth-surface-context.ts` (新規)・`src/render/earth-surface.ts` | 現在`earth-surface.ts`にある要求世代・AbortController管理をContextへ分離し、`EarthSurface`は地球の楕円体メッシュ、`earth-surface-tiles`、`EarthSurfaceMaterial`、Contextを束ねる表面実装にする |
 | `src/assets/earth.jpg` | 手順3の生成物を測光値の変更と同じcommitで取り込む。地球のroughnessは単独画像へ分けない |
 | `src/assets/earth-climate-01.png`～`earth-climate-12.png` (新規・更新) | 手順3でETOPO/GSHHGとERA5月平均から生成したRGBA気候マップを取り込む。GEBCO由来の既存画像とMODIS雲量は実行時資源にしない |
 | `src/assets/earth-surface-base.bin.gz`・`src/assets/earth-surface.json` (新規) | 手順3のベース地形資源と小さいマニフェストを取り込む |
-| `src/game/celestial/solar-system/earth-surface-source.ts` (新規) | 配信URL、固定マニフェスト、ベース資源、12枚の`earth-climate-MM.png` URLを地球の生成設定へ結び付け、並行計画の共有Contextへ同じdatasetIdを渡す |
+| `src/game/celestial/solar-system/earth-surface-source.ts` | 既存のdatasetId・URL契約を、manifest hash・tile index URL・気候チャンネル符号化まで検査できる契約へ拡張する |
 | `src/types/earth-surface-shims.d.ts` (新規) | `*.bin.gz` のURL import型とビルド時に渡す配信URLの型を宣言する |
 | `webpack.config.js`・`webpack.render-lab.config.js` | ベースバイナリのasset/resource対応を追加し、開発用配信URLを両環境へ同じ方法で渡す |
 | `tools/export-earth-smoothness.mjs`・`tools/export-climate.mjs`・`package.json` | 旧青色比推定とGEBCO標高を読む独立生成を地表加工へ統合し、ERA5の月平均を12枚へ出す。既存MODIS雲量は比較検証用としてだけ保持する |
@@ -609,6 +609,165 @@ serveは8084番ポートでMIME、CORS、immutable cacheを設定し、パス脱
 地表タイルが同じdatasetId・入力ハッシュを持つことを検査する。
 実際の公開オリジンが用意されるまでは公開しない。mainへ送る作業を行う場合に限り、
 `/send-pr` に従って全層テストと本番ビルドを含む検証を行う。
+
+## 残作業の詳細実装計画（レビュー後改訂）
+
+残作業は、データ契約、タイル供給、マテリアル、地球エンティティ、気候・雲、検証、配信の順に
+進める。各段は独立したcommitにし、前段の達成条件を満たさないまま後段の実写判定へ進まない。
+fixtureだけで通す段と実データで通す段を分け、fixtureの成功を実データの品質保証とはみなさない。
+
+### レビューで確定した修正方針
+
+| 見つかった曖昧さ・不整合 | 修正後の方針 |
+| --- | --- |
+| `src/render/earth-surface.ts`は現在Contextだけを持つが、手順5では同名を表面所有者としていた | `EarthSurfaceContext`を`earth-surface-context.ts`へ分離し、`earth-surface.ts`はメッシュ・material・tiles・Contextの所有者にする。移行中は旧exportを再exportして差分を小さくする |
+| `CelestialSurface`は具体クラスでconstructorもprivateなため、地球だけを差し替える境界がない | `CelestialSurfaceLike`（photometry、textureUrl、addTo、syncLod、syncFrame、hide、dispose）を抽出し、`CelestialSurface`と`EarthSurface`を`PointEntity`/`SphereEntity`へ渡せるようにする。既存天体へEarth分岐を追加しない |
+| タイルのURL・hash・本文長をどこから得るか決まっていない | `earth-surface.json`は共通版・符号化・`tileIndexUrl`を持ち、`tile-index.json`は`z/x/y`ごとの色本文hash、ESTN本文hash、本文長、URLを持つ。デコーダーは色と地形の両方を検証する |
+| 気候RGBAのR/Bが物理値へどう戻るか決まっていない | manifestに固定範囲を置く。Rは`temperatureK: 180..330`、Gは雲量`0..1`、Bは陸上正高`-1000..9000 m`、AはGSHHG陸地被覆率`0..1`とする。水域のBは0 mとしてもA=0を優先し、範囲外は生成時にエラーにする |
+| `ClimateMap`が標高から陸らしさを再推定している | Aをそのまま陸地被覆率として読み、標高から`landFraction`を作らない。雲の陸海条件はGSHHG由来Aだけで決める |
+| `earth-surface:check`が達成条件にあるが入口と検査内容がない | `tools/earth-surface/check.mjs`を追加し、manifest schema、datasetId、入力hash、12枚、tile-index、全本文hash、URL安全性、gzip/ESTN整合性を検査する。`package`は配信用コピー、`check`は検査だけに分ける |
+| 画像検証の保存形式と合格条件が曖昧 | `.earth-surface/verification/{case}/`に`color.png`、`normal.png`、`depth.png`、`metrics.json`を保存し、metricsにはdatasetId、視点、投影、選択z、frontier数、fallback率、要求数、層数、失敗理由を必須化する |
+| 公開URLと開発URLの切り替え方法がない | `EARTH_SURFACE_BASE_URL`をwebpackのDefinePluginから渡す。未設定時は開発時だけlocalhost:8084を許し、公開用`verify-release`ではlocalhost・空文字・datasetId不一致を拒否する |
+
+### 実装段A: 配信契約と生成物の固定
+
+**依存**: 手順3のfixture出力。実データ全量は不要。
+**変更**: `tools/earth-surface/package.mjs`、`tools/earth-surface/check.mjs`、
+`src/game/celestial/solar-system/earth-surface-source.ts`、manifest型、package script。
+
+1. `earth-surface.json`の必須項目を`schemaVersion`、`datasetId`、`sourceManifestSha256`、
+   `baseColor`、`baseTerrain`、`tileIndexUrl`、`climateMaps[12]`、`climateEncoding`、
+   `attribution`へ固定する。
+2. タイルURLは`tiles/{z}/{x}/{y}.jpg`と`tiles/{z}/{x}/{y}.bin.gz`、z=0..7、x周期、y範囲を固定する。
+3. `tile-index.json`の各エントリに、キー、色hash、ESTN本文hash、圧縮本文長、展開本文長を置く。
+4. packageはmanifest・tile-index・全ファイルを一時出力へ検査済み順にコピーし、同一datasetId以外を混在させない。
+5. checkは実体を変更せず、欠落、重複キー、範囲外キー、hash不一致、gzip後のESTN不一致を失敗させる。
+
+**達成条件**: fixtureでpackage後の全ファイルが配信先に存在し、checkが正常版を通し、1ファイルの変更・
+別datasetId・タイルキー違いを検出する。`npm run typecheck`、`npm run earth-surface:check`、
+Pythonデータテストを実行する。
+
+### 実装段B: タイル要求・常駐・GPU公開を接続
+
+**依存**: 段Aのtile-indexと既存の`earth-surface-tiles.ts`、`earth-surface-gpu.ts`、decode。
+**変更**: `src/render/earth-surface-request.ts`（新規）、`earth-surface-tiles.ts`、
+`earth-surface-gpu.ts`、`earth-surface-decode.ts`、関連renderテスト。
+
+1. `EarthSurfaceTileRequestSource`を作り、`urlFor(key)`とhash取得をtile-indexから一度だけ行う。
+2. 同時実行数をHTTP 6、画像/地形decode 2、待機展開8組に分離する。予約・開始・解放をmetricsへ出す。
+3. 408/429/5xx/ネットワーク切断だけ最大2回再試行し、404、形式不一致、hash不一致は版内永久失敗にする。
+4. `EarthSurfaceTiles.sync()`が作ったfrontierを要求集合へ変換し、未取得子は親を表示したままにする。
+   色と地形の両方がdecode済みで、GPUの同じ非公開層へ書き終わるまでresidentにしない。
+5. `publishFrame(frame)`の前にページ表をstageし、成功したフレームだけfrontierとlayerの使用権を入れ替える。
+   世代が古い結果、dispose後の結果、途中失敗した層は公開も再利用もしない。
+6. LRUは表示葉、fade中の親、次フレームの祖先を固定し、空きがなければ中心から遠い葉を親へ戻す。
+   128層を超えた要求を増やし続けない。
+
+**達成条件**: 逆順到着、同時失敗、404、タイムアウト、abort、dispose、全層使用中、親fallbackをfake
+fetch/GPUで検査し、色だけ・地形だけが表示される状態を作れない。`npm run typecheck`と`npm run test:render`を通す。
+
+### 実装段C: 地表マテリアルと実GPU接続
+
+**依存**: 段B。
+**変更**: `src/render/earth-surface-material.ts`（新規）、`src/render/earth-surface-gpu.ts`、
+`src/render/deferred-texture.ts`、`src/render/pipeline/render-pipeline.ts`、materialテスト。
+
+1. 球メッシュのモデル方向を楕円体法線へ変換する。`n=normalize(direction / axes^2)`を用い、
+   経度・緯度UVはこの`n`から求める。球面方向をそのまま地理UVへ使わない。
+2. ページ表は最近傍、色はsRGB入力を線形化して線形filter、法線とroughnessはNoColorSpace・線形filterに固定する。
+   roughnessは水0.05、陸0.80、氷0.35をESTNのalphaから読み、色の青さを参照しない。
+3. R=255のbase fallback、親子fade、経度周期、極のclamp、未取得子の祖先保持をmaterial側で実装する。
+4. 写実ではbody固定法線を`bodyToView`で一度だけviewへ変換し、模式図では幾何楕円体法線を選ぶ。
+5. 実GPUで配列層・ページ表を作れない場合は、機能検査時点から全球baseへ固定し、個別draw call経路を追加しない。
+   mipmapは`generateMipmaps=false`の親fallbackを合格させた後に別計測する。
+
+**達成条件**: ゼロ勾配、非一様半軸、自転0/90/180度、経度±180度、親子fade、sRGB混合、模式図fallbackを
+解析テストと実ブラウザ画像で確認する。色・法線・roughnessの公開フレームが一致し、既存の月・他天体の
+material挙動を変えない。
+
+### 実装段D: `CelestialSurface`とEarth entityの接続
+
+**依存**: 段Cのmaterial。fixture baseを使った接続を先に行い、実データは後から差し替える。
+**変更**: `src/render/earth-surface-context.ts`、`src/render/earth-surface.ts`、
+`src/render/celestial-surface.ts`、`src/game/celestial/celestial-entity/point-entity.ts`、
+`src/game/celestial/celestial-entity/sphere-entity.ts`、`earth-system.ts`、型shim、webpack。
+
+1. `CelestialSurfaceLike`を抽出し、既存の静的surfaceは従来挙動のままにする。地球だけ`EarthSurface`を注入する。
+2. `EarthSurface.syncFrame({camera, bodyToView, axes, viewport, frame, timeMs, style})`を境界にし、
+   `PointEntity.sync()`は位置・姿勢・scaleを確定してから呼ぶ。非表示・小さすぎる場合は要求を停止し、
+   再表示時に世代を更新する。
+3. `EarthSurface`は`addTo`、`syncLod`、`syncFrame`、`hide`、`dispose`を実装し、disposeを
+   `cancel requests → invalidate generation → hide page table → release GPU layers → dispose context`の順にする。
+4. `earth-system.ts`の地球だけを新sourceへ切り替え、月は旧`CelestialSurface`のままにする。地球の
+   `surfaceTextureUrl`は全球base画像URLを返し、軌道分析の背景を壊さない。
+5. webpackへ`.bin.gz`と公開URLの型・asset/resource処理を追加し、公開URL未設定時はproduction buildを失敗させる。
+
+**達成条件**: `npm run typecheck`、`npm run test:render`、`npm run test:game`。地球のdispose後に要求・GPU層・
+Contextが残らず、月・他天体・模式図・軌道分析が既存テストを維持する。
+
+### 実装段E: 気候マップと雲・大気を共有入力へ切り替える
+
+**依存**: 段A、段D。
+**変更**: `src/render/cloud/climate-map.ts`、`generated-cloud-field.ts`、`weather-model.ts`、
+`field-projection.ts`、`cumulus-shell.ts`、`cloud-scattering.ts`、`cumulus-shadow.ts`、`atmosphere.ts`、
+`earth-system.ts`、気候テスト。
+
+1. 単月の`ClimateMap`と12枚を管理する`MonthlyClimateMap`を分け、常駐は当月・翌月の2枚に限定する。
+   月境界は線形補間し、年末は12月から1月へ周期的につなぐ。
+2. R/Bはmanifestのmin/maxで復号し、Aを`landFraction`としてそのまま使う。標高閾値で陸海を再計算しない。
+   水域のB=0と海抜0m未満の陸地を、Aの違いで判別できるテストを置く。
+3. 雲場、積雲殻、雲散乱、雲影、大気の4経路へ同じ`earthSurfaceUv`・楕円体半軸・body姿勢を渡す。
+   雲影と地表が同じ経度緯度へ重なることを、赤道・高緯度・経度境界で確認する。
+4. 旧`earth-climate.png`、旧MODIS実行時入力、旧`earth-smoothness.png`、GEBCO参照が地球経路に残っていないことを検索する。
+
+**達成条件**: 気候画像のR/G/B/Aを解析値で復号し、海底・湖底が気温・雲・地形性上昇流へ入らず、
+海抜0m未満の陸地が陸条件を保つ。`npm run test:render`、`npm run test:game`を通す。
+
+### 実装段F: render-labと実行時検証
+
+**依存**: 段D・E。実データbundleと8084配信を使用する。
+**変更**: `tools/render-lab/cases.ts`、`earth-surface-cases.ts`、`lab.ts`、`main.ts`、
+`tools/earth-surface/capture.mjs`、`serve.mjs`、package script。
+
+1. ケース名・視点・太陽方位・投影・styleを固定し、1ケース1ディレクトリへ画像3枚とmetrics JSONを保存する。
+2. 撮影前に対象tileのGPU公開完了または明示的fallback/永久失敗を待つ。未到着の単色地球を合格にしない。
+3. ヒマラヤ200kmを標準、50km/2,000km、赤道・北緯60度・両極・経度±180度、海岸・青い陸地・氷・
+   海抜0m未満の陸・海底除外を固定ケースにする。到着順、通信断、404、128層超過、mipmap有無も含める。
+4. 1920×1080と内蔵解像度で300フレームを測り、CPU p95、GPU p95、HTTP/デコード待機数、GPU層数、
+   fallback率、ページ表更新数、encoded/payloadメモリを保存する。128MiBは品質を落とす絶対上限にしない。
+
+**達成条件**: 画像・metricsがケース間で再現でき、LOD閾値付近で往復せず、親子fade中に色・法線・roughnessが
+分離しない。`npm run test:render`、`npm run test:game`、capture fixtureを通す。
+
+### 実装段G: 公開buildと配信の最終接続
+
+**依存**: 段A〜F、実データhash固定。
+**変更**: `webpack.config.js`、`webpack.render-lab.config.js`、`tools/verify-release.mjs`、
+`.github/workflows/build.yml`、`package.json`、package/check/serve。
+
+1. `EARTH_SURFACE_BASE_URL`とdatasetIdをbuildへ渡し、公開buildではHTTPSまたは承認済みoriginだけを許可する。
+2. `earth-surface:check`をCI前の検査入口にし、12枚気候マップ、base、tile-index、全タイルhash、manifest hashを検査する。
+3. static serverのmanifestは短いcache、画像・地形本文はdatasetId付きimmutable cacheに分け、CORSとgzip本文を確認する。
+4. buildはデータ全量を取得・生成せず、生成済みbundleのdatasetId・hashだけを検査する。公開origin未設定なら公開を失敗させる。
+
+**達成条件**: clean checkoutで`npm run typecheck`、`npm run earth-surface:check`、package、必要なrender/gameテスト、
+公開URL検査を通し、異なるdatasetIdの資源が混在した配信ディレクトリを拒否する。mainへ送る場合だけ全層テスト・
+本番buildを行う。
+
+### 実装順とcommit境界
+
+| 順 | commitの責務 | 主な検証 |
+| --- | --- | --- |
+| A | manifest/tile-index/check/packageの契約 | fixture package/check、Pythonテスト、typecheck |
+| B | request queue、decode、resident、GPU公開 | renderテスト、fake fetch/GPU |
+| C | materialと実GPU adapter | renderテスト、render-lab最小画像 |
+| D | SurfaceLike抽出、EarthSurface、PointEntity、earth-system | render/gameテスト、fixture描画 |
+| E | 月別ClimateMap、雲・大気・影の共有投影 | render/gameテスト、気候解析テスト |
+| F | render-labケース、capture、性能metrics | capture fixture、実行時画像 |
+| G | webpack、release検査、CI・配信 | clean checkout、package/check、必要時build |
+
+A〜Cはゲームの地球表示を切り替える前に完了させる。Dでfixture baseを使ったゲーム接続を行い、
+Eで実気候資源へ切り替える。Fの画像判定を通過するまでGの公開URLを有効化しない。
 
 ## すぐに取り組める小タスク
 
