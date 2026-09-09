@@ -41,6 +41,7 @@
     "earth-surface:pages-stage": "node tools/earth-surface/stage-pages.mjs",
     "earth-surface:pages-check": "node tools/earth-surface/stage-pages.mjs --check",
     "earth-surface:pages-test": "node tools/earth-surface/test_pages_layout.mjs",
+    "earth-surface:capture-test": "node tools/earth-surface/test_capture.mjs",
     "earth-surface:capture": "webpack --config webpack.render-lab.config.js --mode production && node tools/render-lab-earth-surface.mjs",
     "earth-surface:serve": "node tools/earth-surface/serve.mjs",
     "export-moon-features": "node tools/export-moon-features.mjs",
