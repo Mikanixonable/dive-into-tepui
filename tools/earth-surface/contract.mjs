@@ -13,6 +13,10 @@ export const EARTH_TERRAIN_CHANNELS = 4;
 export const EARTH_TERRAIN_SCALAR_FLOAT16 = 1;
 export const EARTH_TERRAIN_BYTES = EARTH_TERRAIN_WIDTH * EARTH_TERRAIN_HEIGHT * EARTH_TERRAIN_CHANNELS * 2;
 export const EARTH_TERRAIN_PAYLOAD_BYTES = EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES;
+export const EARTH_BASE_MAGIC = 'ESTB';
+export const EARTH_BASE_ROOT_COLUMNS = 2;
+export const EARTH_BASE_ROOT_ROWS = 1;
+export const EARTH_GLOBAL_TILE_COUNT = 43690;
 
 const DATASET = /^[a-z0-9-]+$/;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -81,6 +85,7 @@ function expectClimateEncoding(value) {
   expectRange(encoding.cloudFraction, 'climateEncoding.cloudFraction', 0, 1);
   expectRange(encoding.orthometricElevation, 'climateEncoding.orthometricElevation', -1000, 9000);
   expectRange(encoding.landFraction, 'climateEncoding.landFraction', 0, 1);
+  if (encoding.waterOrthometricElevationM !== 0) fail('climateEncoding.waterOrthometricElevationM must be 0');
   return encoding;
 }
 
@@ -89,6 +94,21 @@ export function validateManifest(value) {
   if (manifest.schemaVersion !== 1) fail('unsupported earth surface manifest schema');
   if (typeof manifest.datasetId !== 'string' || !DATASET.test(manifest.datasetId)) fail('invalid earth surface datasetId');
   expectSha256(manifest.sourceManifestSha256, 'sourceManifestSha256');
+  const provenance = expectObject(manifest.provenance, 'provenance');
+  expectString(provenance.generator, 'provenance.generator');
+  const climateMap = expectObject(manifest.climateMap, 'climateMap');
+  if (climateMap.width !== 1024 || climateMap.height !== 512 || climateMap.channels !== 4
+    || climateMap.scalar !== 'UInt8') fail('climateMap must be 1024x512 RGBA8');
+  const coverage = expectObject(manifest.coverage, 'coverage');
+  if (!['complete', 'sparse'].includes(coverage.kind) || coverage.maxZoom !== EARTH_TILE_MAX_Z) {
+    fail('coverage must declare complete or sparse z0..z7 coverage');
+  }
+  if (coverage.kind === 'complete' && coverage.expectedTiles !== EARTH_GLOBAL_TILE_COUNT) {
+    fail('complete coverage must declare 43690 tiles');
+  }
+  if (!Array.isArray(manifest.controlRegions) || manifest.controlRegions.length !== 16) {
+    fail('exactly 16 controlRegions are required');
+  }
   for (const name of ['baseColor', 'baseTerrain', 'tileIndexUrl']) {
     expectString(manifest[name], name);
     if (manifest[name].startsWith('http:') || manifest[name].startsWith('https:')) fail(`${name} must be a relative URL`);
@@ -232,11 +252,48 @@ async function verifyTerrain(root, asset, key) {
   return payload;
 }
 
+async function verifyClimateMap(root, path, index) {
+  const actual = await requiredFile(root, path, `climateMaps[${index}]`);
+  const bytes = await readFile(actual.absolutePath);
+  if (bytes.length < 33 || !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+    fail(`climateMaps[${index}] is not a PNG`);
+  }
+  if (bytes.toString('ascii', 12, 16) !== 'IHDR' || bytes.readUInt32BE(16) !== 1024
+    || bytes.readUInt32BE(20) !== 512 || bytes[24] !== 8 || bytes[25] !== 6) {
+    fail(`climateMaps[${index}] must be 1024x512 RGBA8`);
+  }
+  return actual;
+}
+
 async function verifySourceManifest(root, sourceManifestPath, expectedHash) {
   if (sourceManifestPath === undefined) return;
   const sourcePath = assetPath(root, sourceManifestPath);
   const source = JSON.parse(await readFile(sourcePath, 'utf8'));
   if (canonicalSha256(source) !== expectedHash) fail('sourceManifestSha256 mismatch');
+}
+
+function readEstbHeader(payload) {
+  if (payload.byteLength < EARTH_TERRAIN_HEADER_BYTES) fail('ESTB header is truncated');
+  if (payload.toString('ascii', 0, 4) !== EARTH_BASE_MAGIC) fail('ESTB magic mismatch');
+  const version = payload.readUInt16LE(4);
+  const headerBytes = payload.readUInt16LE(6);
+  const width = payload.readUInt16LE(8);
+  const height = payload.readUInt16LE(10);
+  const z = payload.readUInt8(12);
+  const reserved = payload.readUInt8(13);
+  const columns = payload.readUInt32LE(14);
+  const rows = payload.readUInt32LE(18);
+  const channels = payload.readUInt8(22);
+  const scalar = payload.readUInt8(23);
+  const dataBytes = payload.readUInt32LE(24);
+  const reserved2 = payload.readUInt32LE(28);
+  const expectedDataBytes = EARTH_BASE_ROOT_COLUMNS * EARTH_BASE_ROOT_ROWS * EARTH_TERRAIN_PAYLOAD_BYTES;
+  if (version !== 1 || headerBytes !== EARTH_TERRAIN_HEADER_BYTES || width !== EARTH_TERRAIN_WIDTH
+    || height !== EARTH_TERRAIN_HEIGHT || z !== 0 || reserved !== 0 || columns !== EARTH_BASE_ROOT_COLUMNS
+    || rows !== EARTH_BASE_ROOT_ROWS || channels !== EARTH_TERRAIN_CHANNELS || scalar !== EARTH_TERRAIN_SCALAR_FLOAT16
+    || dataBytes !== expectedDataBytes || reserved2 !== 0 || payload.byteLength !== headerBytes + dataBytes) {
+    fail('ESTB header or payload mismatch');
+  }
 }
 
 async function defaultSourceManifestPath(root, manifest, sourceManifestPath) {
@@ -257,12 +314,15 @@ export async function inspectEarthSurfaceBundle({ inputRoot, manifestName = 'ear
   const baseTerrain = await requiredFile(root, manifest.baseTerrain, 'baseTerrain');
   let baseTerrainPayload;
   try { baseTerrainPayload = gunzipSync(await readFile(baseTerrain.absolutePath)); } catch (error) { throw new EarthSurfaceContractError('baseTerrain gzip is invalid', { cause: error }); }
-  if (baseTerrainPayload.byteLength === 0) fail('baseTerrain payload is empty');
-  const climateMaps = await Promise.all(manifest.climateMaps.map((path, index) => requiredFile(root, path, `climateMaps[${index}]`)));
+  readEstbHeader(baseTerrainPayload);
+  const climateMaps = await Promise.all(manifest.climateMaps.map((path, index) => verifyClimateMap(root, path, index)));
   const tileIndexPath = assetPath(root, manifest.tileIndexUrl);
   let tileIndex;
   try { tileIndex = JSON.parse(await readFile(tileIndexPath, 'utf8')); } catch (error) { throw new EarthSurfaceContractError(`cannot read tile-index: ${manifest.tileIndexUrl}`, { cause: error }); }
   const normalizedIndex = validateTileIndex(tileIndex, manifest);
+  if (manifest.coverage.kind === 'complete' && normalizedIndex.entries.length !== EARTH_GLOBAL_TILE_COUNT) {
+    fail(`complete tile-index must contain ${EARTH_GLOBAL_TILE_COUNT} entries`);
+  }
   const tiles = [];
   for (const entry of normalizedIndex.entries) {
     const key = { id: entry.key, z: entry.z, x: entry.x, y: entry.y };

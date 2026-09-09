@@ -6,6 +6,7 @@ import { EquirectProjection } from './field-projection';
 import { WeatherModel } from './weather-model';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { FieldProjection } from './field-projection';
+import type { CloudFieldSampler } from './cloud-field-sampler';
 
 // 全球の雲場の高さ [texel]。cloud-lab と同じ全球正距円筒の解像度を使う。
 const GLOBAL_FIELD_HEIGHT = 512;
@@ -31,6 +32,9 @@ export class GeneratedCloudField {
 
   // 雲場のテクスチャ。出力場の所有権はこのクラスに残す。
   public get texture(): THREE.Texture { return this.field.texture; }
+
+  // 雲場の所有者が公開する共有読み取り契約。sampler の破棄は不要で、texture の寿命はこのクラスが持つ。
+  public get sampler(): CloudFieldSampler { return this.field.fieldSampler; }
 
   // 表示時刻の雲場を、天気の中間場から順に焼く。
   public bake(renderer: WebGPURenderer, displayTime: number): void {
