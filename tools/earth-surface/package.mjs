@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // 検査済みの地表マニフェスト・索引・実体を、stagingを経由して一つの版付き配信先へ配備する。
-import { copyFile, mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, rename, rm, writeFile, readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { inspectEarthSurfaceBundle, assetPath } from './contract.mjs';
 
@@ -20,7 +21,8 @@ export async function packageEarthSurface({
 } = {}) {
   const checked = await inspectEarthSurfaceBundle({ inputRoot, manifestName, sourceManifestPath });
   const output = resolve(outputRoot);
-  const staging = `${output}.staging-${process.pid}-${Date.now()}`;
+  const packageRoot = resolve(output, 'earth', checked.manifest.datasetId);
+  const staging = `${packageRoot}.staging-${process.pid}-${Date.now()}`;
   await rm(staging, { recursive: true, force: true });
   await mkdir(staging, { recursive: true });
   try {
@@ -38,14 +40,24 @@ export async function packageEarthSurface({
       await copyTile(checked.root, staging, entry.color);
       await copyTile(checked.root, staging, entry.terrain);
     }
-    await rm(output, { recursive: true, force: true });
-    await mkdir(dirname(output), { recursive: true });
-    await rename(staging, output);
+    const manifestBytes = await readFile(assetPath(staging, manifestName));
+    const receipt = {
+      schemaVersion: 1,
+      datasetId: checked.manifest.datasetId,
+      manifest: manifestName,
+      manifestSha256: createHash('sha256').update(manifestBytes).digest('hex'),
+      sourceManifestSha256: checked.manifest.sourceManifestSha256,
+      packagePath: `earth/${checked.manifest.datasetId}`,
+    };
+    await writeFile(assetPath(staging, 'receipt.json'), `${JSON.stringify(receipt, null, 2)}\n`);
+    await rm(packageRoot, { recursive: true, force: true });
+    await mkdir(dirname(packageRoot), { recursive: true });
+    await rename(staging, packageRoot);
   } catch (error) {
     await rm(staging, { recursive: true, force: true });
     throw error;
   }
-  return checked.manifest;
+  return { ...checked.manifest, packagePath: `earth/${checked.manifest.datasetId}` };
 }
 
 async function main() {
