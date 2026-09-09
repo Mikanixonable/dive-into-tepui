@@ -1,6 +1,6 @@
 // 地表タイルの通信本文を検証し、色と地形を別々にデコードする。
 // ここでは取得順を表示順とみなさず、呼び出し側が世代番号を確認できる結果を返す。
-import type { EarthTileKey } from './earth-surface-tiles';
+import { earthTileKey, EARTH_TILE_GUTTER, type EarthTileKey } from './earth-surface-tiles';
 
 export const EARTH_TERRAIN_HEADER_BYTES = 32;
 export const EARTH_TERRAIN_WIDTH = 260;
@@ -8,6 +8,14 @@ export const EARTH_TERRAIN_HEIGHT = 260;
 export const EARTH_TERRAIN_CHANNELS = 4;
 const FLOAT16_SCALAR = 1;
 export const EARTH_TERRAIN_BYTES = EARTH_TERRAIN_WIDTH * EARTH_TERRAIN_HEIGHT * EARTH_TERRAIN_CHANNELS * 2;
+export const EARTH_BASE_TERRAIN_WIDTH = EARTH_TERRAIN_WIDTH * 2 - 4 * EARTH_TILE_GUTTER;
+export const EARTH_BASE_TERRAIN_HEIGHT = EARTH_TERRAIN_HEIGHT - 2 * EARTH_TILE_GUTTER;
+
+const EARTH_BASE_TERRAIN_HEADER_BYTES = 32;
+const EARTH_BASE_TERRAIN_TILE_COUNT = 2;
+const EARTH_BASE_TERRAIN_DATA_BYTES = EARTH_BASE_TERRAIN_TILE_COUNT
+  * (EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES);
+const EARTH_BASE_TERRAIN_PAYLOAD_BYTES = EARTH_BASE_TERRAIN_HEADER_BYTES + EARTH_BASE_TERRAIN_DATA_BYTES;
 
 export class EarthSurfaceDecodeError extends Error {
   public constructor(message: string) {
@@ -143,6 +151,55 @@ export function decodeEarthTerrainPayload(payload: Uint8Array, key: EarthTileKey
     payload.byteOffset + payload.byteLength));
 }
 
+// 2枚のz=0 ESTNをまとめたESTBを、経度方向へ連結したbase用RGBA16Fへ展開する。
+// ガターはタイル境界を越えて補間するときだけ必要なので、base画像では除外する。
+export function decodeEarthBaseTerrainPayload(payload: Uint8Array): Uint16Array {
+  if (payload.byteLength !== EARTH_BASE_TERRAIN_PAYLOAD_BYTES) {
+    throw new EarthSurfaceDecodeError('Invalid ESTB payload length');
+  }
+  if (readAscii(payload, 0, 4) !== 'ESTB') throw new EarthSurfaceDecodeError('Invalid ESTB magic');
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  const version = view.getUint16(4, true);
+  const headerBytes = view.getUint16(6, true);
+  const width = view.getUint16(8, true);
+  const height = view.getUint16(10, true);
+  const z = view.getUint8(12);
+  const reserved = view.getUint8(13);
+  const columns = view.getUint32(14, true);
+  const rows = view.getUint32(18, true);
+  const channels = view.getUint8(22);
+  const scalar = view.getUint8(23);
+  const dataBytes = view.getUint32(24, true);
+  const reserved2 = view.getUint32(28, true);
+  if (version !== 1 || headerBytes !== EARTH_BASE_TERRAIN_HEADER_BYTES
+    || width !== EARTH_TERRAIN_WIDTH || height !== EARTH_TERRAIN_HEIGHT || z !== 0 || reserved !== 0
+    || columns !== EARTH_BASE_TERRAIN_TILE_COUNT || rows !== 1 || channels !== EARTH_TERRAIN_CHANNELS
+    || scalar !== FLOAT16_SCALAR || dataBytes !== EARTH_BASE_TERRAIN_DATA_BYTES || reserved2 !== 0) {
+    throw new EarthSurfaceDecodeError('Invalid ESTB header');
+  }
+
+  const output = new Uint16Array(
+    EARTH_BASE_TERRAIN_WIDTH * EARTH_BASE_TERRAIN_HEIGHT * EARTH_TERRAIN_CHANNELS,
+  );
+  const tilePayloadBytes = EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES;
+  const tileWidth = EARTH_TERRAIN_WIDTH - 2 * EARTH_TILE_GUTTER;
+  const tileHeight = EARTH_TERRAIN_HEIGHT - 2 * EARTH_TILE_GUTTER;
+  for (let tileX = 0; tileX < EARTH_BASE_TERRAIN_TILE_COUNT; tileX++) {
+    const tile = decodeEarthTerrainPayload(
+      payload.subarray(EARTH_BASE_TERRAIN_HEADER_BYTES + tileX * tilePayloadBytes, tilePayloadBytes
+        + EARTH_BASE_TERRAIN_HEADER_BYTES + tileX * tilePayloadBytes),
+      earthTileKey(0, tileX, 0),
+    );
+    for (let y = 0; y < tileHeight; y++) {
+      const sourceStart = ((y + EARTH_TILE_GUTTER) * EARTH_TERRAIN_WIDTH + EARTH_TILE_GUTTER)
+        * EARTH_TERRAIN_CHANNELS;
+      const targetStart = (y * EARTH_BASE_TERRAIN_WIDTH + tileX * tileWidth) * EARTH_TERRAIN_CHANNELS;
+      output.set(tile.subarray(sourceStart, sourceStart + tileWidth * EARTH_TERRAIN_CHANNELS), targetStart);
+    }
+  }
+  return output;
+}
+
 async function defaultDecodeImage(bytes: Uint8Array, signal?: AbortSignal): Promise<unknown> {
   ensureNotAborted(signal);
   if (typeof createImageBitmap !== 'function') throw new EarthSurfaceDecodeError('ImageBitmap decoding is unavailable');
@@ -159,6 +216,16 @@ async function inflateTerrain(bytes: Uint8Array, limit: number, signal?: AbortSi
   new Uint8Array(compressed).set(bytes);
   const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'));
   return readResponse(new Response(stream), limit, signal);
+}
+
+// base地形のgzip本文をESTBからDataTexture用のRGBA16Fへ変換する。画像球はこの処理を待たずに表示し続ける。
+export async function loadEarthBaseTerrain(
+  url: string, fetchImpl: typeof fetch = fetch, signal?: AbortSignal,
+): Promise<Uint16Array> {
+  const response = await fetchImpl(url, { signal });
+  const compressed = await readResponse(response, EARTH_BASE_TERRAIN_PAYLOAD_BYTES, signal);
+  const payload = await inflateTerrain(compressed, EARTH_BASE_TERRAIN_PAYLOAD_BYTES, signal);
+  return decodeEarthBaseTerrainPayload(payload);
 }
 
 // 色JPEGとgzip地形を同じ世代・AbortSignalで取得する。片方だけの成功は結果へ公開しない。
