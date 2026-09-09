@@ -13,6 +13,7 @@ export class BaseView extends DynamicView {
   private readonly thrustEffects: ThrustEffects;
   private readonly rcsEffects: RcsEffects;
 
+  // 基地モデルと噴射用 THREE 資源だけを組み立てる。
   public constructor(
     scene: THREE.Scene,
     private readonly ownerId: string,
@@ -23,6 +24,7 @@ export class BaseView extends DynamicView {
     this.rcsEffects = new RcsEffects(scene);
   }
 
+  // 外部の Motion とフレーム入力から、基地の噴射表現を同期する。
   protected override syncModel(
     _identity: DynamicViewIdentity,
     motion: DynamicMotion,
@@ -30,6 +32,7 @@ export class BaseView extends DynamicView {
     context: DynamicViewFrame,
   ): void {
     if (!(motion instanceof BaseMotion)) throw new TypeError('BaseView requires BaseMotion');
+    // 表示時刻を引けない場合も、現在状態を使って既存エフェクトを確実に畳む。
     const effectState = displayed ?? motion.state;
     const visible = this.object.visible;
     this.thrustEffects.sync(
@@ -42,6 +45,7 @@ export class BaseView extends DynamicView {
       context.style,
       6,
     );
+    // 並進噴射と姿勢制御噴射は別資源なので、それぞれ同じ可視判定を渡す。
     this.rcsEffects.sync(
       context.floatingOrigin,
       effectState.r,
@@ -53,6 +57,7 @@ export class BaseView extends DynamicView {
     );
   }
 
+  // 基地固有の DOM・噴射資源を片付けてから共通 View 資源を破棄する。
   public override dispose(): void {
     this.markers.remove(`base-${this.ownerId}`);
     this.markers.remove(`base-${this.ownerId}-bearing`);
