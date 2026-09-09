@@ -7,7 +7,7 @@ import type { Attitude } from '../../../physics/attitude';
 import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import type { CapKind } from './entity-kind';
-import { DebrisPieceView } from './debris-piece-view';
+import { buildDebrisPieceView } from './debris-piece-view';
 import { DynamicEntity } from './dynamic-entity';
 import type { DebrisKind } from './debris-kind';
 import { DebrisMotion } from './debris-motion';
@@ -29,7 +29,7 @@ export class DebrisPiece extends DynamicEntity {
   ) {
     super(
       state,
-      new DebrisPieceView(debrisKind, scene),
+      buildDebrisPieceView(debrisKind, scene),
       attitude,
       undefined,
       () => new DebrisMotion(state, attitude, {
