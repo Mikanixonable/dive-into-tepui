@@ -11,9 +11,9 @@ import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { Fn, length, screenUV, sub, texture, uniform, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, cutoffAltitude } from '../atmosphere';
-import { AtmosphereLayer } from './atmosphere-layer';
+import { AtmosphereIntegrator } from './atmosphere-integrator';
 import { viewPositionAt, viewRayAt } from './view-ray';
-import type { CloudSpecies } from './cloud-scattering';
+import type { CloudSpecies } from './cloud-atmosphere-renderer';
 import type { Mat4Uniform, Vec3Node } from '../tsl-types';
 import type { GBufferPass } from './gbuffer';
 import type { BodyShadow } from './shadow/body-shadow';
@@ -33,7 +33,7 @@ export class AtmospherePass {
   private readonly quad: QuadMesh;
   private readonly material: THREE.MeshBasicNodeMaterial;
   // 板が解く層。描く直前に、その天体の光学パラメータを書き込む。
-  private readonly layer: AtmosphereLayer;
+  private readonly layer: AtmosphereIntegrator;
   // 板が読む下地。層ごとに、その層より奥まで重ね終えた絵をここへ写す。
   private readonly backdropTarget: THREE.RenderTarget;
   private readonly sharedCopyMaterial: THREE.MeshBasicNodeMaterial;
@@ -66,7 +66,7 @@ export class AtmospherePass {
     bodyShadow: BodyShadow,
     private readonly gpu: GpuTimings,
   ) {
-    this.layer = new AtmosphereLayer(sunLight, bodyShadow);
+    this.layer = new AtmosphereIntegrator(sunLight, bodyShadow);
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewToWorld = uniform(new THREE.Matrix4());
 

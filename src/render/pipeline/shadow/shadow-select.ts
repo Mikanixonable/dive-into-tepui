@@ -3,7 +3,7 @@
 import { maxShadowedFraction } from '../../../physics/shadow';
 import { len, sub } from '../../../math/vec3';
 import { MAX_SHADOW_BODIES } from './body-shadow';
-import { CUMULUS_DETAIL } from '../../cumulus-shell';
+import { CUMULUS_DETAIL } from '../../cloud/cloud-presentation';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
 import type { Vec3 } from '../../../math/vec3';
 import type { RingBand } from './ring-shadow';

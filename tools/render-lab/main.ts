@@ -16,7 +16,7 @@ import {
 } from './lab';
 import { AU } from '../../src/physics/astronomical-unit';
 import { CUMULUS_COVERAGE_KNOB } from '../../src/render/cloud/cumulus-shape';
-import { CLOUD_SHELL_KNOB, type CloudSpecies } from '../../src/render/pipeline/cloud-scattering';
+import { CLOUD_SHELL_KNOB, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
 import type { FloatUniform } from '../../src/render/tsl-types';
 
