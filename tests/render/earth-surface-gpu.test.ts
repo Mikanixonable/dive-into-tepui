@@ -1,0 +1,174 @@
+// GPU公開の原子性、層の使用権と遅着の世代境界を代替backendで検査する。
+import * as assert from 'node:assert/strict';
+import { test } from '../harness';
+import { EarthSurfaceGpuAdapter } from '../../src/render/earth-surface-gpu';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, EARTH_TILE_EXTENT, earthTileKey } from '../../src/render/earth-surface-tiles';
+import type { EarthSurfaceGpuBackend, EarthSurfaceGpuCapabilities } from '../../src/render/earth-surface-gpu';
+
+const SUPPORTED: EarthSurfaceGpuCapabilities = {
+  texture2dArray: true, maxTextureArrayLayers: 128, colorSrgbLinear: true, terrainFloat16Linear: true,
+};
+const COMPONENTS = EARTH_TILE_EXTENT * EARTH_TILE_EXTENT * 4;
+
+class PendingWrite {
+  private complete: (() => void) | null = null;
+  private fail: ((reason: Error) => void) | null = null;
+  public readonly promise = new Promise<void>((resolve, reject) => { this.complete = resolve; this.fail = reject; });
+
+  // この書込みの完了を通知する。
+  public resolve(): void { this.complete?.(); }
+
+  // この書込みの失敗を通知する。
+  public reject(): void { this.fail?.(new Error('Synthetic upload failure')); }
+}
+
+class FakeBackend implements EarthSurfaceGpuBackend {
+  public readonly color = new PendingWrite();
+  public readonly terrain = new PendingWrite();
+  public readonly pages: Uint8Array[] = [];
+  public readonly writes: string[] = [];
+  public disposals = 0;
+
+  // 機能の欠けたbackendも同じ操作境界で表す。
+  public constructor(public readonly capabilities = SUPPORTED) {}
+
+  // 色だけの完了順を制御する。
+  public writeColor(layer: number, _pixels: Uint8Array): Promise<void> {
+    this.writes.push(`color:${layer}`);
+    return this.color.promise;
+  }
+
+  // 地形だけの完了順を制御する。
+  public writeTerrain(layer: number, _pixels: Uint16Array): Promise<void> {
+    this.writes.push(`terrain:${layer}`);
+    return this.terrain.promise;
+  }
+
+  // 公開したフレームの内容を検査用に保持する。
+  public swapPageTable(pixels: Uint8Array): void { this.pages.push(pixels.slice()); }
+
+  // 資源解放回数を記録する。
+  public dispose(): void { this.disposals++; }
+}
+
+// 西半球の根を1層へ写すページ表。引数省略時は全球ベース。
+function page(layer = 255): Uint8Array {
+  const table = new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(255);
+  if (layer === 255) return table;
+  for (let y = 0; y < EARTH_PAGE_HEIGHT; y++) {
+    for (let x = 0; x < EARTH_PAGE_WIDTH / 2; x++) table.set([layer, 255, 0, 255], (y * EARTH_PAGE_WIDTH + x) * 4);
+  }
+  return table;
+}
+
+// この層の回帰テストを登録する。
+export function register(): void {
+  test('earth GPU: 配列層や線形標本化が不足すればbaseへ固定する', () => {
+    for (const capabilities of [
+      { ...SUPPORTED, texture2dArray: false }, { ...SUPPORTED, maxTextureArrayLayers: 127 },
+      { ...SUPPORTED, colorSrgbLinear: false }, { ...SUPPORTED, terrainFloat16Linear: false },
+    ]) {
+      const backend = new FakeBackend(capabilities);
+      const adapter = new EarthSurfaceGpuAdapter(backend);
+      assert.equal(adapter.mode, 'base');
+      assert.throws(() => adapter.reserveLayer(earthTileKey(0, 0, 0), 0));
+      assert.equal(adapter.publishFrame(0), false);
+      assert.equal(backend.writes.length, 0);
+    }
+  });
+
+  test('earth GPU: 色と地形がそろった層をフレーム境界で同時に公開する', async () => {
+    const backend = new FakeBackend();
+    const adapter = new EarthSurfaceGpuAdapter(backend);
+    adapter.reserveLayer(earthTileKey(0, 0, 0), 0);
+    const reservation = adapter.reservation(0)!;
+    const upload = adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint16Array(COMPONENTS), reservation);
+    backend.color.resolve();
+    await Promise.resolve();
+    assert.equal(adapter.uploadedTiles().length, 0);
+    assert.throws(() => adapter.stagePageTable(page(0)), /incomplete/);
+    assert.throws(() => adapter.releaseLayer(reservation), /in use/);
+    backend.terrain.resolve();
+    await upload;
+    assert.equal(adapter.uploadedTiles().length, 1);
+
+    // 公開予約後の入力配列の変更は、次のフレームへ混入しない。
+    const table = page(0);
+    adapter.stagePageTable(table);
+    table.fill(255);
+    assert.equal(backend.pages.length, 0);
+    assert.equal(adapter.publishFrame(10), true);
+    assert.equal(backend.pages[0]![0], 0);
+    assert.throws(() => adapter.releaseLayer(reservation), /in use/);
+    await assert.rejects(adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint16Array(COMPONENTS), reservation), /writable/);
+    adapter.stagePageTable(page());
+    assert.equal(adapter.publishFrame(10), false);
+    assert.equal(adapter.publishFrame(11), true);
+    adapter.releaseLayer(reservation);
+
+    // 同じ層番号を予約し直しても、前の世代が書き込む権利は復活しない。
+    adapter.reserveLayer(earthTileKey(0, 1, 0), 0);
+    assert.ok(adapter.reservation(0)!.generation > reservation.generation);
+    await assert.rejects(adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint16Array(COMPONENTS), reservation), /Stale/);
+  });
+
+  test('earth GPU: z1以降のページセルも対応するタイル層へ限定する', async () => {
+    const backend = new FakeBackend();
+    const adapter = new EarthSurfaceGpuAdapter(backend);
+    const parent = earthTileKey(0, 1, 0);
+    const child = earthTileKey(1, 2, 1);
+    adapter.reserveLayer(parent, 0);
+    adapter.reserveLayer(child, 1);
+    const parentReservation = adapter.reservation(0)!;
+    const childReservation = adapter.reservation(1)!;
+    const bytes = new Uint8Array(COMPONENTS);
+    const terrain = new Uint16Array(COMPONENTS);
+    const parentUpload = adapter.uploadLayer(bytes, terrain, parentReservation);
+    const childUpload = adapter.uploadLayer(bytes, terrain, childReservation);
+    backend.color.resolve();
+    backend.terrain.resolve();
+    await Promise.all([parentUpload, childUpload]);
+    const table = page();
+    const size = EARTH_PAGE_WIDTH / 4;
+    for (let y = EARTH_PAGE_HEIGHT / 2; y < EARTH_PAGE_HEIGHT; y++) {
+      for (let x = size * 2; x < size * 3; x++) {
+        table.set([1, 0, 1, 255], (y * EARTH_PAGE_WIDTH + x) * 4);
+      }
+    }
+    adapter.stagePageTable(table);
+    assert.equal(adapter.publishFrame(1), true);
+  });
+
+  test('earth GPU: 一方が失敗しても残る書込みが終わるまで再利用できない', async () => {
+    const backend = new FakeBackend();
+    const adapter = new EarthSurfaceGpuAdapter(backend);
+    adapter.reserveLayer(earthTileKey(0, 0, 0), 0);
+    const reservation = adapter.reservation(0)!;
+    const upload = adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint16Array(COMPONENTS), reservation);
+    const rejected = assert.rejects(upload, /Synthetic/);
+    backend.color.reject();
+    await Promise.resolve();
+    assert.throws(() => adapter.releaseLayer(reservation), /in use/);
+    backend.terrain.resolve();
+    await rejected;
+    assert.throws(() => adapter.stagePageTable(page(0)), /incomplete/);
+    adapter.releaseLayer(reservation);
+  });
+
+  test('earth GPU: dispose後に完了しても層やページ表を公開しない', async () => {
+    const backend = new FakeBackend();
+    const adapter = new EarthSurfaceGpuAdapter(backend);
+    adapter.reserveLayer(earthTileKey(0, 0, 0), 0);
+    const upload = adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint16Array(COMPONENTS), adapter.reservation(0)!);
+    adapter.dispose();
+    backend.terrain.resolve();
+    backend.color.resolve();
+    await upload;
+    assert.deepEqual(adapter.uploadedTiles(), []);
+    assert.equal(adapter.publishFrame(1), false);
+    assert.equal(backend.pages.length, 0);
+    assert.equal(backend.disposals, 1);
+    adapter.dispose();
+    assert.equal(backend.disposals, 1);
+  });
+}
