@@ -120,20 +120,22 @@ async function run() {
   const before = await readFile(join(fixture.root, 'earth-surface.json'));
   try {
     await packageEarthSurface({ inputRoot: fixture.root, outputRoot: output, sourceManifestPath: 'sources.json' });
-    const result = await checkEarthSurface({ inputRoot: output });
+    const packaged = join(output, 'earth', fixture.manifest.datasetId);
+    const result = await checkEarthSurface({ inputRoot: packaged });
     assert.deepEqual(result, { datasetId: fixture.manifest.datasetId, tiles: 1, climateMaps: 12 });
-    const cli = await execFileAsync('npm', ['run', 'earth-surface:check', '--', '--input', output], { cwd: process.cwd() });
+    const cli = await execFileAsync('npm', ['run', 'earth-surface:check', '--', '--input', packaged], { cwd: process.cwd() });
     assert.match(cli.stdout, /earth-surface:check: earth-fixture-a/);
     for (const path of [
       'earth-surface.json', 'tile-index.json', 'attribution.json', fixture.manifest.baseColor, fixture.manifest.baseTerrain,
       ...fixture.manifest.climateMaps, 'tiles/0/0/0.jpg', 'tiles/0/0/0.bin.gz',
-    ]) await readFile(join(output, path));
+      'receipt.json',
+    ]) await readFile(join(packaged, path));
     assert.deepEqual(await readFile(join(fixture.root, 'earth-surface.json')), before);
 
-    const changedColor = await readFile(join(output, 'tiles/0/0/0.jpg'));
-    changedColor[0] ^= 1; await writeFile(join(output, 'tiles/0/0/0.jpg'), changedColor);
-    await expectFailure(() => checkEarthSurface({ inputRoot: output }), /color .*hash mismatch/);
-    await writeFile(join(output, 'tiles/0/0/0.jpg'), fixture.color);
+    const changedColor = await readFile(join(packaged, 'tiles/0/0/0.jpg'));
+    changedColor[0] ^= 1; await writeFile(join(packaged, 'tiles/0/0/0.jpg'), changedColor);
+    await expectFailure(() => checkEarthSurface({ inputRoot: packaged }), /color .*hash mismatch/);
+    await writeFile(join(packaged, 'tiles/0/0/0.jpg'), fixture.color);
 
     const sourcePath = join(fixture.root, 'sources.json');
     const sourceChanged = { ...fixture.source, datasetId: 'earth-other' };
@@ -173,4 +175,8 @@ async function run() {
   }
 }
 
-run().catch((error) => { console.error(error); process.exitCode = 1; });
+export { createBundle };
+
+if (process.argv[1] && new URL(`file://${process.argv[1]}`).href === import.meta.url) {
+  run().catch((error) => { console.error(error); process.exitCode = 1; });
+}
