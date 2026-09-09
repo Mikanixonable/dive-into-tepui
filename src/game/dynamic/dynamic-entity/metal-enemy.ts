@@ -13,19 +13,18 @@ import { metalEnemyCollisionRadius } from './enemy-motion';
 const DRIFTING_INERTIA = v3(1, 1.1, 1.05);
 const TYPED_INERTIA = v3(1, 1, 1);
 
-// 実スケール適用後のメッシュを包む球の半径。
 // 新規配置。typeIndex が null なら型番を持たない漂流機体、数値なら stage00 ウェーブ敵の
 // 機体テンプレート番号。
 type MetalEnemyPlacement = EnemyPlacement & { readonly typeIndex: number | null };
 
-// 金属機体の敵。艦と同じパーツ式の被弾モデルを持ち、判定形状は機体メッシュのバウンディング球。
+// 金属機体の敵。艦と同じパーツ式の被弾モデルを持つ。
 export class MetalEnemy extends Enemy {
   public static readonly kind = 'metal-enemy';
   public static spawnGate(): null { return null; }
 
   private readonly typeIndex: number | null;
 
-  // 機体テンプレートを選んでメッシュを組み、そのバウンディング球を接触半径にする。
+  // View の機体テンプレートと、それに対応する Motion の接触半径を同じ typeIndex で選ぶ。
   public constructor(
     init: MetalEnemyPlacement | EnemyRestore,
     worldSfx: WorldSfx,
@@ -37,7 +36,7 @@ export class MetalEnemy extends Enemy {
     const metalView = new MetalEnemyView(accent, typeIndex, scene);
     super(
       init, metalView, typeIndex === null ? DRIFTING_INERTIA : TYPED_INERTIA,
-      metalEnemyCollisionRadius(typeIndex), worldSfx, fx, scene,
+      metalEnemyCollisionRadius(typeIndex), worldSfx, fx,
     );
     this.typeIndex = typeIndex;
     // 部品単位の HP までは保存していないので、既定パーツ構成のまま総 HP を按分して戻す。

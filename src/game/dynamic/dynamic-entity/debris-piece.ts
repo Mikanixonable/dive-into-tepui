@@ -49,7 +49,6 @@ export function buildDestroyFragments(
   spread: number,
   worldSfx: WorldSfx,
   effects: FlashEffects,
-  scene?: THREE.Scene,
 ): DebrisPiece[] {
   const pieces: DebrisPiece[] = [];
   for (let i = 0; i < count; i++) {
@@ -65,7 +64,7 @@ export function buildDestroyFragments(
       inertia: v3(1, 2.05, 3.0),
     };
     pieces.push(new DebrisPiece(
-      state, { kind: 'fragment', accent, size }, attitude, worldSfx, effects, undefined, scene));
+      state, { kind: 'fragment', accent, size }, attitude, worldSfx, effects));
   }
   return pieces;
 }
