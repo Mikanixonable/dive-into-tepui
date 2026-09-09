@@ -21,6 +21,7 @@ import { SaturnSystemBodyId, SATURN_SYSTEM_NAMES, saturnSystem } from './saturn-
 import { SmallBodyId, SMALL_BODY_NAMES, smallBodies } from './small-bodies';
 import { SUN, SUN_LIGHT_COLOR, SUN_SURFACE_COLOR } from './sun';
 import { UranusSystemBodyId, URANUS_SYSTEM_NAMES, uranusSystem } from './uranus-system';
+import type { WebGPURenderer } from 'three/webgpu';
 
 // 太陽系に登録された天体の id。各系の id 集合を合わせたもの。
 type SolarSystemId =
@@ -53,6 +54,7 @@ export function solarSystemBodyName(id: string): string {
 export function solarSystem(
   originId: SolarSystemId, phases: PhaseOffsets, earthSpinPhase0: number,
   ephemerisPoints: EphemerisPoints | null, epoch: TdbJulianDate,
+  renderer?: WebGPURenderer,
 ): CelestialSystem {
   // 要素・極モデルの元期(J2000)から simTime=0 へ畳むための秒数。元期の唯一の表現である
   // epoch からその場で導く — 別の値として持ち回ると、片方だけが古くなる。
@@ -66,7 +68,7 @@ export function solarSystem(
   // 全天体を系ごとの宣言順に並べたもの。重力源配列・天体一覧の順序はこれで決まる。
   const entities: readonly CelestialEntity[] = [
     ...Object.values(earthSystem(
-      sunMotion, phases, simZeroEt, earthSpinPhase0, epochUnixSeconds(epoch),
+      sunMotion, phases, simZeroEt, earthSpinPhase0, epochUnixSeconds(epoch), renderer,
     )),
     ...Object.values(innerPlanets(sunMotion, phases, simZeroEt)),
     ...Object.values(marsSystem(sunMotion, phases, simZeroEt)),

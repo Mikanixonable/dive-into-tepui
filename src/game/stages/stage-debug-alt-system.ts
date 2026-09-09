@@ -90,6 +90,7 @@ export class StageDebugAltSystem extends Stage {
   static readonly epoch = STORY_EPOCH;
   static async createCelestialSystem(
     phaseOffsets: PhaseOffsets, _earthSpinPhase0: number, epoch: TdbJulianDate,
+    _onProgress?: (ratio: number) => void, _renderer?: THREE.WebGPURenderer,
   ): Promise<CelestialSystem> {
     const bodies = zephyrusSystemMotions(phaseOffsets).map(fallbackEntity);
     const origin = bodies.find((b) => b.id === PRIMARY_ID)!;
