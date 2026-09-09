@@ -10,7 +10,6 @@ import { isLagrangeId, lagrangeParentId } from './lagrange-id';
 import { addTimeCacheStats } from '../../physics/time-ring';
 import { KinematicState } from '../../physics/kinematic-state';
 import { norm, sub, v3, Vec3 } from '../../math/vec3';
-import { EllipseLine } from '../lines/ellipse-line';
 import { CELESTIAL_SHELL_SCALE, createStars, Stars } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility, DEFAULT_GRID_VISIBILITY } from '../../render/celestial-grid';
 import { CameraSystem } from '../camera/camera-system';
@@ -376,11 +375,15 @@ export class CelestialSystem implements CelestialBodies {
     this.gridVisibility = visibility;
   }
 
-  // 公転天体1体につき1本の参照軌道線。線を持つ個体を列挙する。
-  get referenceEllipseLines(): readonly { readonly id: string; readonly line: EllipseLine }[] {
-    return this.entities.flatMap(({ id, view }) => (
-      view.referenceLine === null ? [] : [{ id, line: view.referenceLine }]
-    ));
+  // 表示中の参照軌道線を、当たり判定用の ECI 点列として列挙する。
+  referenceOrbitSamples(count: number): readonly {
+    readonly id: string;
+    readonly points: readonly Vec3[];
+  }[] {
+    return this.entities.flatMap(({ id, view }) => {
+      const points = view.referenceLineSamples(count);
+      return points.length < 2 ? [] : [{ id, points }];
+    });
   }
 
   // ラグランジュ点まわりの軌道ガイド線。
@@ -405,12 +408,14 @@ export class CelestialSystem implements CelestialBodies {
     graphics: GraphicsSettingsData,
     style: RenderStyle,
     visibilityPolicy: MapVisibilityPolicy | null,
-    markers: MarkerSlots | null,
+    markers: MarkerSlots,
   ): void {
     const star = this.stellarLightSource;
     for (const body of this.entities) {
-      body.view.setVisible(visibilityPolicy === null || visibilityPolicy.body(body.id).category);
-      body.view.sync(body.motion, floatingOrigin, displayTime, cameraSystem, star, graphics, style);
+      const visible = visibilityPolicy === null || visibilityPolicy.body(body.id).category;
+      body.view.sync(
+        body.motion, floatingOrigin, displayTime, cameraSystem, star, graphics, style, visible,
+      );
     }
     // 主星が無いレジストリでは、描画原点から見た恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
     // (基準強度どおりの放射照度が届き、影パスは誰も遮らないと答える)。
@@ -431,7 +436,7 @@ export class CelestialSystem implements CelestialBodies {
     this.ambient.setFraction(ambientFraction(cameraSystem.view === 'map', graphics));
     this.syncPlanetLights(floatingOrigin, displayTime, cameraSystem);
     this.syncShadowSources(floatingOrigin, displayTime, cameraSystem, graphics);
-    this.syncAtmosphere(floatingOrigin, displayTime, cameraSystem, graphics);
+    this.syncAtmosphere(floatingOrigin, displayTime, cameraSystem, graphics, visibilityPolicy);
 
     const fixedBrightnessScale = this.exposure.fixedBrightnessScale;
     const pointField = this.pointFieldView;
@@ -549,10 +554,12 @@ export class CelestialSystem implements CelestialBodies {
 
   // 大気パスへ、このフレームに大気を描く天体とそのサンプル点の数を渡す。
   private syncAtmosphere(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, graphics: GraphicsSettingsData,
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
+    graphics: GraphicsSettingsData, visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const scale = cameraSystem.activeCameraRadialScale;
     const candidates = this.entities.flatMap((body) => {
+      if (visibilityPolicy !== null && !visibilityPolicy.body(body.id).category) return [];
       const candidate = body.view.atmosphereCandidateAt(
         body.motion, fo, displayTime, cameraSystem.activeCameraPos, scale, graphics);
       return candidate === null ? [] : [candidate];
@@ -573,23 +580,19 @@ export class CelestialSystem implements CelestialBodies {
     return new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
   }
 
-  // 参照軌道線を出すかを表示ポリシーから決めて個体へ指示する。マップビュー以外では実体ごと
-  // 解放させる。cameraPos は個体がフェードを測る基準(カメラの真の ECI 位置)。
+  // 参照軌道線を出すかを表示ポリシーから決め、毎フレームの enabled 値として個体へ渡す。
+  // cameraPos は個体がフェードを測る基準(カメラの真の ECI 位置)。
   private syncReferenceLines(
     simTime: number, fo: FloatingOrigin, visibilityPolicy: MapVisibilityPolicy | null,
     camera: THREE.Camera, cameraPos: Vec3,
   ): void {
-    if (visibilityPolicy === null) {
-      for (const body of this.entities) body.view.removeReferenceLine();
-      return;
-    }
     for (const body of this.entities) {
-      // 恒星は公転しないので線を持たない。非表示の間は実体ごと解放し、頂点バッファを残さない。
-      if (body.motion.kind === 'star' || !visibilityPolicy.body(body.id).orbit) {
-        body.view.removeReferenceLine();
-        continue;
-      }
-      body.view.syncReferenceLine(body.motion, this.scene, simTime, fo, camera, cameraPos);
+      const visible = visibilityPolicy !== null
+        && body.motion.kind !== 'star'
+        && visibilityPolicy.body(body.id).orbit;
+      body.view.syncReferenceLine(
+        body.motion, this.scene, simTime, fo, camera, cameraPos, visible,
+      );
     }
   }
 
