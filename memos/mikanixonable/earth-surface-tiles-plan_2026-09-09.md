@@ -909,6 +909,7 @@ fixture baseへ戻したままにする。
 coordinatorへ渡し、次フレーム・hide・disposeでAbortする。`earth-system.ts`の地球だけを開発用source付き
 `EarthSurface`へ包み、実テクスチャは従来のfallbackを使うため月・気候・雲は変更しない。coordinatorの実生成、
 実GPU公開、実manifest URLは未完了で、A6のproduction検査と合わせて後続実装する。
+`f5de43dd`ではdispose時にcoordinator破棄より先に要求leaseをabortする順序へ修正した。
 
 ### A4: 月別気候入力を雲・大気・影へ接続する
 
