@@ -162,7 +162,7 @@ export class EntityLineManager {
     for (const enemy of this.roster.all().filter(isEnemy)) {
       const visibility = visibilityPolicy?.entity('enemy');
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
-      const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyLine, color: enemy.view.orbitLineColor };
+      const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyLine, color: enemy.orbitLineColor };
       resolve(
         enemy, targetStyleOf(enemy), lineVisible,
         view === 'map' && enemy.trajectoryLineVisible,
