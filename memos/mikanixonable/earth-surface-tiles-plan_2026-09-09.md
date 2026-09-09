@@ -1,6 +1,6 @@
 # 地球地表の標高陰影・地域タイル配信計画
 
-作成日: 2026-09-09。改訂日: 2026-09-09。手順1・1.5・2の初期実装を反映し、残りの実装と検証を対象とする。
+作成日: 2026-09-09。改訂日: 2026-09-09。手順1・1.5・2および4〜7の初期実装を反映し、残りの実装と検証を対象とする。
 以下は実装済みの範囲、残作業、これから作るものと実装手順である。ファイル・行番号は計画検査時点の
 参照であり、着手時にコードから位置を引き直す。
 
@@ -492,39 +492,29 @@ fixtureで検証した。コミットは`65dbf4ff`（入口追加は`df2d52b7`�
 `iceUnknown`セルの一覧も記録する。
 この時点では生成資源を新しいゲーム描画へ接続しない。
 
-### 手順4. タイル要求・常駐管理・GPU公開を作る
+### 手順4（初期実装済み・残作業）: タイル要求・常駐管理・GPU公開
 
-**目的**: 遅延・失敗・視点変更があっても、予算内で必要な地域を供給する。
+ESTNの32bytesヘッダー、タイルキー、Float16本文、gzip、SHA-256、取得上限、AbortSignal、generationを検証する
+`src/render/earth-surface-decode.ts`を追加した。`EarthSurfaceContext`が要求の世代とAbortControllerを管理し、
+配信URL・地形・12か月気候マップの契約を共有できる。既存の`earth-surface-tiles.ts`と`earth-surface-gpu.ts`の
+解析スパイクと合わせ、renderテストは初期実装時48/48、レビュー修正後49/49で通過した。実装コミットは`f7274288`である。
+レビューで配信本文のコピー漏れと、デコード失敗時にHTTP bodyを解放しない問題を修正し、
+`246eca7b`と`12255012`へ分けて記録した。
 
-| 変更が必要な箇所 | すること |
-| --- | --- |
-| `src/render/earth-surface-tiles.ts` (新規) | 1枚の楕円体メッシュに対する投影・カリング・`errorPx`詳細度選択、状態を保持したCPU四分木の分割/統合、2:1隣接、frontier、要求、再試行、キャンセル、RGBA8ページ表、常駐層、遷移・破棄を実装する。地域パッチのmesh/draw callは増やさない |
-| `src/render/earth-surface-gpu.ts` (新規) | 固定128層の色/地形配列、RGBA8ページ表、非公開層への部分書込み、フレーム境界のswap、機能不足時のベース固定を実装する。公開済み層へ書き込むAPIを持たせない |
-| `src/render/earth-surface-decode.ts` (新規) | マニフェスト・32bytesヘッダー・payload hashを検証し、JPEGとgzip地形を別々にデコードする。HTTP/デコード/展開の上限、AbortSignal、世代番号をここで受ける |
-| `src/render/earth-surface-material.ts` (新規) | 固定シェーダ、`earthSurfaceUv`による全球ベース/ページ表/タイル標本化、sRGB/線形の扱い、親子fade、bodyToView法線、模式図用の幾何法線選択を実装する。ページ表は最近傍、色と法線は線形とする |
-| `src/render/deferred-texture.ts:66` | 通常画像の遅延公開とタイル公開を同じ優先度付きアップロードキューへ統合し、1フレームの投入予算を競合させない。別の地理専用キューは作らない |
-| `src/render/pipeline/render-pipeline.ts:362`・`:375` | 初期compileと通常描画から共通のGPU公開入口を使う |
-| `tests/render/earth-surface-tiles.test.ts` (新規) | fake fetchとGPU公開境界の代替を使い、`errorPx`、地平線、2:1隣接、遅着、上限、祖先保持、状態を保持したLOD、ページ表、境界、投影方式を検査する |
-| `tests/render/earth-surface-material.test.ts` | `DataArrayTexture`の色空間・フィルタ・ページ表の層選択・親子混合・view法線を検査する。mipmap経路は別ケースとして比較する |
-| `tools/render-lab/earth-surface-overlay.ts` (新規) | 選択z、frontier数、`errorPx`最大値、fallback率、要求数、GPU層使用数、遷移中ノードを画面とJSONへ出す |
+残作業は、デコード結果を四分木・常駐層・GPU公開へ接続する要求キュー、再試行・404・タイムアウト・LRU、
+実`DataArrayTexture`と`EarthSurfaceMaterial`、`DeferredTexture`との投入予算統合、実GPU機能検査、
+render-labのLODメトリクスである。現在はデコード結果を受け取っても地球へ表示する呼び出し元を持たない。
 
-**達成条件と検証**: `npm run typecheck`、`npm run test:render`。
-HTTP結果が逆順、破棄後に成功、404、タイムアウト、待機満杯、全常駐層が使用中でも不変条件を守る。
-固定された正常値の一覧を写すテストではなく、全球被覆・上限・破棄・連続性を検査する。
-取得完了だけで表示可能にせず、色と法線の両方がGPUへ公開された時点でページ表を更新する。
-隣接タイルをデコードした後の共通境界を比較し、解析入力では色の線形差2/255以下を目安、法線角度差0.2°以下を
-初期目標として記録する。JPEGの独立圧縮で色差が目安を越えても、表示品質を画像で確認して採否を決める。
-`DataArrayTexture.magFilter`/`minFilter`/`colorSpace`/`generateMipmaps`が明示され、未設定の既定値へ依存しないことを確認する。
-マニフェストのpayload hashを通った色・地形だけが同じ層へ入り、非公開層の書込み完了とページ表の公開が
-同じフレーム境界で行われること、GPU機能不足時にベースへ戻ることをテストする。
-ページ表、GPU層、タイル状態はフレーム境界で一括公開され、同じタイルの色・法線・roughnessが別フレームに
-またがって表示されないことを確認する。frontierが128層を越えた場合に中心優先で親へ戻ることも検査する。
-新規モジュールが500行を超える場合は責務を診断し、形式デコード等の独立した処理を分離する。
-この時点では通常の地球へ接続せず、次の手順で描画を切り替える。
+**残作業の達成条件**: 色と地形が同じ層へ公開されるまでページ表を変更しないこと、遅着・破棄・容量超過を
+再現テストできること、実ブラウザでsRGB/線形・フィルタ・親子fade・ベースフォールバックを確認すること。
 
-### 手順5. 地球へ接続し、座標・測光・寿命を揃える
+### 手順5（初期契約のみ実装・残作業）: 地球へ接続し、座標・測光・寿命を揃える
 
 **目的**: すべての地球の写実表示と気候入力で、同じ地理資源・版・投影を使う。
+
+`src/game/celestial/solar-system/earth-surface-source.ts`へ、datasetId、ベースURL、ベース資源、12か月気候
+マップURLを共有する契約と不一致検査だけを追加した。`CelestialSurface`、Earth entity、雲場、実GPUへはまだ
+接続していない。以下の表はその残作業である。
 
 | 変更が必要な箇所 | すること |
 | --- | --- |
@@ -562,7 +552,7 @@ HTTP結果が逆順、破棄後に成功、404、タイムアウト、待機満�
 陸として雲の環境条件へ渡ることを確認する。GEBCOを読む経路が残っていないことを検査する。
 模式図へ切り替えた画像では地形の細部が輪郭線を増やしていないことを確認する。詳細な比較は次の手順で行う。
 
-### 手順6. 地表専用の描画ケースと検証を完成させる
+### 手順6（未着手）: 地表専用の描画ケースと検証を完成させる
 
 **目的**: 実際に見える位置・陰影・切り替えと、通信・処理時間の影響を確認する。
 
@@ -594,18 +584,24 @@ HTTP結果が逆順、破棄後に成功、404、タイムアウト、待機満�
 画像だけでなく「なぜそのLODになったか」を再現できるようにする。
 ゲーム全体の `smoke:browser` / `/verify` は別途実行時確認を求められたときだけ行う。
 
-### 手順7. 配信用成果物と公開ビルドの接続を整える
+### 手順7（初期実装済み・残作業）: 配信用成果物と公開ビルドの接続を整える
 
 **目的**: 詳細データをアプリの巨大な同梱資源にせず、再現可能に配信へ載せられる状態にする。
 
+`tools/earth-surface/package.mjs`と`serve.mjs`、`earth-surface:package`・`earth-surface:serve`を追加した。
+packageはdatasetId・12枚の気候マップ・帰属・全ファイルのサイズ/SHA-256を検査し、検査済み本文を配信先へコピーする。
+serveは8084番ポートでMIME、CORS、immutable cacheを設定し、パス脱出を拒否する。実データbundleはまだない。
+`earth-surface:check`、webpack公開URL、release検査、CI連携、実bundleの版混在検査は未実装である。
+
+
 | 変更が必要な箇所 | すること |
 | --- | --- |
-| `tools/earth-surface/package.mjs` (新規) | datasetId付き配信ディレクトリ、気候マップを含む索引、帰属、HTTPヘッダー設定例を出力し、全ファイルを検査する |
+| `tools/earth-surface/package.mjs` | 実bundleのdatasetId・入力ハッシュ・タイル索引を検査し、異なる版の混在を拒否する |
 | `webpack.config.js`・`webpack.render-lab.config.js` | 開発用URLと公開用URLをビルド用途に従って解決する。公開ビルドと検証用ビルドを区別して設定を検査する |
-| `src/game/celestial/solar-system/earth-surface-source.ts` | ビルドから渡す公開URLとdatasetIdの対応を検査できるようにする |
+| `src/game/celestial/solar-system/earth-surface-source.ts` | ビルドから渡す公開URL、manifestのhash、datasetIdの対応を検査できるようにする |
 | `tools/verify-release.mjs` | 公開用URLの未設定・ローカルURL・datasetId不整合を検出する |
 | `.github/workflows/build.yml` | 公開用配信URLをリポジトリ変数からビルドへ渡し、データ全量の取得・生成を毎回のCIへ入れない |
-| `package.json` | `earth-surface:package` を追加する |
+| `package.json` | `earth-surface:check` と、必要なら公開bundleの検査入口を追加する |
 
 **達成条件と検証**: `npm run typecheck`、`npm run earth-surface:check`、
 `npm run earth-surface:package`。ローカルの別ポート配信でCORS・MIME・gzip展開・版付きURL・
@@ -710,7 +706,7 @@ LODのちらつき、非同期のまだらな公開、JPEG境界、氷分類の�
 
 ## 計画の検査後に着手する際の扱い
 
-手順1・1.5・2の初期実装は完了済みのコミットと残作業を上記へ記録した。以降も各段の検証は触った層へ
+手順1・1.5・2および4〜7の初期実装は完了済みのコミットと残作業を上記へ記録した。以降も各段の検証は触った層へ
 対応させ、画像が変わる段は地表画像を残す。
 実装後にSPECを開いて現状へ合わせる作業は行わず、この計画の達成目標と検証条件で実装を判定する。
 大きな変更の仕上げでは `/refactor` と必要なコメント点検を行う。
