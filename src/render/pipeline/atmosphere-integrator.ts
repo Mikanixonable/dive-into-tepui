@@ -5,15 +5,16 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, If, PI, abs, and, clamp, dFdx, dFdy, dot, exp, float, greaterThan, greaterThanEqual, length,
-  lessThan, max, min, mix, normalize, not, or, select, smoothstep, sqrt, step, sub, uniform, vec2,
+  lessThan, max, min, mix, normalize, not, or, select, smoothstep, sqrt, sub, uniform, vec2,
   vec3,
 } from 'three/tsl';
 import { rayMarch, type MediumSample } from '../ray-march';
 import { BlueNoise } from '../blue-noise';
 import { airglowEmission } from '../airglow';
 import {
-  CLOUD_SHELL_SPECIES, CloudScattering, shellAltitudeOf, type CloudSpecies,
-} from './cloud-scattering';
+  AtmosphereCloudLayers, type CloudShellLayer, type AtmosphereCloudGeometry,
+} from './atmosphere-cloud-layers';
+import { shellAltitudeOf, type CloudSpecies } from './cloud-atmosphere-renderer';
 import type { AtmosphereBody } from '../atmosphere';
 import type { BoolNode, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { BodyShadow } from './shadow/body-shadow';
@@ -67,14 +68,6 @@ interface SphereCrossings {
   readonly entry: FloatNode;
   readonly exit: FloatNode;
   readonly crosses: BoolNode;
-}
-
-// 視線が雲の殻と交わる 1 点。distance は視線の起点から測った実寸 [m]、transmittance はその点で
-// 視線が受ける減衰、radiance はその点が視線へ足す放射輝度(手前の大気と殻の減衰を含む)。
-interface CloudShellLayer {
-  readonly distance: FloatNode;
-  readonly transmittance: FloatNode;
-  readonly radiance: Vec3Node;
 }
 
 // 視線が 1 つの天体の大気を通る区間。距離はすべて視線の起点から測った [m]。
@@ -131,22 +124,13 @@ const miePhase = Fn(([cosTheta, anisotropy]: readonly [FloatNode, FloatNode]) =>
   return float(1).sub(squared).div(denominator.mul(sqrt(denominator)));
 });
 
-// 視線上の距離 distance の点から手前にある殻を通り抜ける透過率。
-function shellTransmittanceAt(shells: readonly CloudShellLayer[], distance: FloatNode): FloatNode {
-  const product = float(1).toVar();
-  for (const shell of shells) {
-    product.mulAssign(mix(float(1), shell.transmittance, step(shell.distance, distance)));
-  }
-  return product;
-}
-
-export class AtmosphereLayer {
+export class AtmosphereIntegrator {
   // いま解く層 1 体ぶんの光学パラメータ。層ごとに描く直前へ書き込む。
   private readonly slot: BodySlot;
   // 積分の刻みを画素ごとにずらす種。
   private readonly blueNoise = new BlueNoise();
   // いま解く層の雲。
-  private readonly clouds = new CloudScattering();
+  private readonly cloudLayers: AtmosphereCloudLayers;
 
   // 層 1 体ぶんの uniform を確保する。**steps の初期値は 1 以上でなければならない** — 積分の段の
   // 幅はサンプル数の逆数なので、層を1つも受けないまま事前コンパイルへ入ると 0 除算になる。
@@ -171,17 +155,18 @@ export class AtmosphereLayer {
       airglowAltitude: uniform(0),
       airglowScaleHeight: uniform(1),
     };
+    this.cloudLayers = new AtmosphereCloudLayers();
   }
 
   // 種類ごとに、雲の殻を描くかを置き直す。
   public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
-    this.clouds.setShellEnabled(species, enabled);
+    this.cloudLayers.setShellEnabled(species, enabled);
   }
 
   // この層が解く天体 1 体ぶんの光学パラメータと雲を書き込む。cutoffRadius は大気の裾を
   // 打ち切る半径 [m]。
   public write(body: AtmosphereBody, steps: number, cutoffRadius: number): void {
-    this.clouds.set(body.clouds);
+    this.cloudLayers.setClouds(body.clouds);
     this.slot.steps.value = steps;
     this.slot.center.value.copy(body.center);
     this.slot.surfaceRadius.value = body.surfaceRadius;
@@ -224,7 +209,9 @@ export class AtmosphereLayer {
     const transmittance = vec3(1, 1, 1).toVar();
     const inscatter = vec3(0, 0, 0).toVar();
     If(segment.hitsAtmosphere, () => {
-      const shells = this.cloudShells(ray, segment, rayOrigin, rayDir, pixelAngle);
+      const shells = this.cloudLayers.build(
+        ray, segment, rayOrigin, rayDir, pixelAngle, this.cloudGeometry(),
+      );
       const layer = this.integrated(ray, segment, rayOrigin, rayDir, shells);
       transmittance.assign(layer.transmittance);
       inscatter.assign(layer.inscatter);
@@ -340,63 +327,26 @@ export class AtmosphereLayer {
     const march = rayMarch(
       this.slot.steps, distanceAt,
       (distance) => this.mediumAt(
-        rayOrigin.add(rayDir.mul(distance)), rayDir, shellTransmittanceAt(shells, distance)),
+        rayOrigin.add(rayDir.mul(distance)), rayDir, this.cloudLayers.transmittanceAt(shells, distance)),
       this.blueNoise.atScreenPixel(),
     );
-    // 殻は区間を刻まずに挟むので、下地には殻ぜんぶの透過率が、内部散乱には殻の放射輝度が
-    // それぞれ最後にまとめて掛かる・足される。
-    const shellTransmittance = float(1).toVar();
-    const shellRadiance = vec3(0, 0, 0).toVar();
-    for (const shell of shells) {
-      shellTransmittance.mulAssign(shell.transmittance);
-      shellRadiance.addAssign(shell.radiance);
-    }
-    return {
-      transmittance: march.transmittance.mul(shellTransmittance),
-      inscatter: march.radiance.add(shellRadiance),
-    };
+    // 殻は区間を刻まず、雲層 renderer が合成した結果を大気積分へ適用する。
+    return this.cloudLayers.compose(march.transmittance, march.radiance, shells);
   }
 
-  // 視線が雲の殻と交わる点。手前から順に並べ、手前の殻の透過率を奥の殻の放射輝度へ掛けながら
-  // 組む。**順序は幾何が決める** — 殻はどれも天体と同心なので、視線は外側の殻から順に入り、
-  // 内側の殻から順に出る。
-  //
-  // 交点が区間の外(大気の裾より手前、あるいは地表・不透明面より奥)へ落ちた画素では殻を捨てる
-  // — 不透明な積雲の塔が写る画素で、その奥の殻が透けて出るのを防ぐ。
-  private cloudShells(
-    ray: SphereSpaceRay, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node,
-    pixelAngle: FloatNode,
-  ): readonly CloudShellLayer[] {
-    const shells = CLOUD_SHELL_SPECIES.map((species) => {
-      const radius = this.slot.surfaceRadius.add(shellAltitudeOf(species));
-      return { species, radius, crossings: this.crossingsOf(ray, radius) };
-    });
-    const entries = shells.map((shell) => [shell, shell.crossings.entry] as const);
-    const exits = shells.map((shell) => [shell, shell.crossings.exit] as const).reverse();
-
-    const originDepth = this.outwardDepthAt(ray, float(0)).toVar();
-    const front = float(1).toVar();
-    const layers: CloudShellLayer[] = [];
-    for (const [shell, crossing] of [...entries, ...exits]) {
-      const distance = crossing.toVar();
-      const transmittance = float(1).toVar();
-      const radiance = vec3(0, 0, 0).toVar();
-      const inSegment = and(greaterThan(distance, segment.near), lessThan(distance, segment.far));
-      // **重い側は分岐の中に置く** — 雲に掛からない視線は交点の判定だけで抜ける。
-      If(and(and(shell.crossings.crosses, inSegment), this.clouds.present(shell.species)), () => {
-        const point = rayOrigin.add(rayDir.mul(distance));
-        const offset = ray.toOrigin.add(ray.unitDir.mul(ray.unitsPerMeter.mul(distance)));
-        const sunDir = normalize(this.toSphereSpace(sub(this.sunLight.position, point)));
-        const sample = this.clouds.scatteredAt(
-          shell.species, shell.radius, offset, ray.unitDir, sunDir,
-          this.sunRadianceAt(point), pixelAngle.mul(distance));
-        transmittance.assign(sample.transmittance);
-        radiance.assign(sample.radiance.mul(front).mul(this.transmittanceTo(originDepth, ray, distance)));
-      });
-      front.mulAssign(transmittance);
-      layers.push({ distance, transmittance, radiance });
-    }
-    return layers;
+  // 雲 renderer へ渡す天体空間の契約。殻の交差順序と場の解釈は AtmosphereCloudLayers が持ち、
+  // 大気側は自分の球空間・太陽輝度・大気透過率だけを提供する。
+  private cloudGeometry(): AtmosphereCloudGeometry {
+    return {
+      shellRadiusOf: (species) => this.slot.surfaceRadius.add(shellAltitudeOf(species)),
+      crossingsOf: (ray, radius) => this.crossingsOf(ray, radius),
+      outwardDepthAt: (ray, distance) => this.outwardDepthAt(ray, distance),
+      transmittanceTo: (originDepth, ray, distance) => this.transmittanceTo(originDepth, ray, distance),
+      pointAt: (origin, direction, distance) => origin.add(direction.mul(distance)),
+      offsetAt: (ray, distance) => ray.toOrigin.add(ray.unitDir.mul(ray.unitsPerMeter.mul(distance))),
+      sunDirectionAt: (point) => this.toSphereSpace(sub(this.sunLight.position, point)),
+      sunRadianceAt: (point) => this.sunRadianceAt(point),
+    };
   }
 
   // 視線上の点から大気の外へ抜けるまでの、散乱係数 1 あたりの光学的厚み。x はレイリー、

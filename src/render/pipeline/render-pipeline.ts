@@ -22,7 +22,7 @@ import { MaterialPass } from './material-pass';
 import { ShadowPass } from './shadow/shadow-pass';
 import { BodyShadow } from './shadow/body-shadow';
 import { RingShadow } from './shadow/ring-shadow';
-import { CumulusShadow } from './shadow/cumulus-shadow';
+import { CloudShadowRenderer } from './shadow/cloud-shadow-renderer';
 import { MeshShadow } from './shadow/mesh-shadow';
 import { OverlayPass } from './overlay-pass';
 import { AntialiasPass } from './antialias-pass';
@@ -42,7 +42,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly shadowPass: ShadowPass;
   private readonly _bodyShadow: BodyShadow;
   private readonly _ringShadow: RingShadow;
-  private readonly _cumulusShadow: CumulusShadow;
+  private readonly _cumulusShadow: CloudShadowRenderer;
   private readonly meshShadow: MeshShadow;
   private readonly shadowMaps: ShadowMaps;
   private readonly lightPrepass: LightPrepass;
@@ -96,7 +96,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   public get exposure(): Exposure { return this._exposure; }
   public get bodyShadow(): BodyShadow { return this._bodyShadow; }
   public get ringShadow(): RingShadow { return this._ringShadow; }
-  public get cumulusShadow(): CumulusShadow { return this._cumulusShadow; }
+  public get cumulusShadow(): CloudShadowRenderer { return this._cumulusShadow; }
   public get planetLight(): PlanetLightSource { return this._planetLight; }
   public get ambient(): AmbientSource { return this._ambient; }
   public get atmosphere(): AtmospherePass { return this.atmospherePass; }
@@ -115,7 +115,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     );
     this._bodyShadow = new BodyShadow(this._sunLight);
     this._ringShadow = new RingShadow(this._sunLight);
-    this._cumulusShadow = new CumulusShadow(this._sunLight);
+    this._cumulusShadow = new CloudShadowRenderer(this._sunLight);
     this.meshShadow = new MeshShadow(this._sunLight, this.shadowMaps);
     this.shadowPass = new ShadowPass(
       renderer, this.gbuffer,
