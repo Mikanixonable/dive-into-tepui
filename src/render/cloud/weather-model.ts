@@ -19,6 +19,7 @@ import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { RossbyWave } from './rossby-wave';
 import { composeWind, FRICTION_RATE, balancedWind, isobarAt, windStep } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
+import type { GpuTimingSink } from '../gpu-timings';
 import type { NoiseOctave } from './circulating-noise';
 import type { ClimateMapLike } from './climate-map';
 import type { FieldProjection } from './field-projection';
@@ -312,13 +313,13 @@ export class WeatherModel {
   }
 
   // いまの時刻の気圧と、移流前の場を写しへ焼く。syncTime のあと、weatherAt のグラフを描く前に呼ぶ。
-  public bake(renderer: WebGPURenderer): void {
-    this.pressure.render(renderer);
+  public bake(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
+    this.pressure.render(renderer, gpu);
     // 気団は気圧の写しを読んで遡るので、気圧の後に焼く。
-    this.airMass.bake(renderer);
-    this.humiditySource.render(renderer);
-    this.convectionSource.render(renderer);
-    this.convectiveActivity.bake(renderer);
+    this.airMass.bake(renderer, gpu);
+    this.humiditySource.render(renderer, gpu);
+    this.convectionSource.render(renderer, gpu);
+    this.convectiveActivity.bake(renderer, gpu);
   }
 
   // 時刻 [s] を uniform へ写す。

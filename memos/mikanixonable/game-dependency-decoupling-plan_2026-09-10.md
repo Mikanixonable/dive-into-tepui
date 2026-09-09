@@ -172,6 +172,20 @@ HUDがcomposition rootの内部構造を読む境界をなくす。パネルは�
 - `npm run typecheck`、`npm run test:game`、`npm run test:render`を通す。
 - `npm run smoke:browser`でpause中・決着後の表示更新、warp、map/combat切替、pointer操作を確認する。
 
+#### 実施結果（2026-09-10）
+
+- `InputCoordinator`、`SimulationCoordinator`、`PresentationCoordinator`を追加し、入力、シミュレーション前進、表示更新の具体処理を各Coordinatorへ移した。
+- `Game`はCoordinatorの生成・所有・破棄と、`update → sync → render`の大順序を保持する構成に整理した。
+- Coordinatorの依存はそれぞれの責務に必要な具象システムを明示的に受け取り、汎用contextや依存バッグは導入していない。
+- 入力優先順、シミュレーションの停止判定、表示更新と同期の順序は実装差分をレビューし、従来の順序を維持していることを確認した。
+- `InputCoordinator.update()`は入力副作用だけを行い、フレーム時間の正規化は`Game.update()`に残した。
+- 実装コミット: `e8fad089`（Coordinator分割）、`f85db023`（入力Coordinatorの責務修正）。workspace3統合コミットは`6960660b`、`c76b748b`。
+- `npm run typecheck`: 成功。
+- `npm run test:game`: 201/201 成功。
+- `npm run test:render`: 100/100 成功。
+- `git diff --check`: 成功。保存系からの`Game`直接import、旧Game内フェーズ関数、旧Presenter呼び出しは検索上残っていない。
+- `npm run smoke:browser`: pause menu shieldingの`shieldShown: false`で停止する既存UI smoke課題があるため、pause中・決着後・warp・view切替・pointer操作の完全な再確認は残課題とする。
+
 ### 手順4: 機能ビューの依存を狭める
 
 #### 目的
@@ -224,5 +238,5 @@ Coordinator分割後に見える機能単位の依存を、各機能のportへ�
 
 - [x] 手順1: HUDの`Game`逆依存を解消（実装・コードレビュー完了。UI smokeのみ既存失敗で未完遂）
 - [x] 手順2: 保存系のデータ境界化（実装・コードレビュー完了。UI smokeは既存失敗で未完遂）
-- [ ] 手順3: フレームCoordinator分割
+- [x] 手順3: フレームCoordinator分割（実装・コードレビュー・typecheck/game/render回帰完了。UI smokeは既存失敗で未完遂）
 - [ ] 手順4: 機能ビュー依存の縮小

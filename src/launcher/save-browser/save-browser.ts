@@ -1,10 +1,9 @@
 // セーブデータブラウザ: 複数のセーブデータ(スロット)とそのスナップショット履歴を
 // 一覧・切替・クリップ・書き出し/取り込みするフルスクリーン UI。
 // 一発モーダルで、操作のたびに DOM を組み直す(毎フレーム sync は無い)。
-import type { Game } from '../../game/game';
 import { solarSystemBodyName } from '../../game/celestial/solar-system/solar-system';
 import { SaveSlots } from '../save/save-slots';
-import { SnapshotService } from '../save/snapshot-service';
+import { SnapshotService, type SnapshotCaptureSource } from '../save/snapshot-service';
 import { exportSlotToFile, pickAndImportSlot } from '../save/save-transfer';
 import type { SaveSlotMeta } from '../save/slot-data';
 import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
@@ -51,9 +50,15 @@ const STYLE = `
 }
 `;
 
-// 今どの周回の Game が動いているか。Game より長生きする側(Launcher)が満たす。
 export interface CurrentGameSource {
-  readonly current: Game | null;
+  readonly current: {
+    readonly stageId: string;
+    readonly isPlaying: boolean;
+    readonly nameOfBody: (id: string) => string;
+    readonly snapshot: SnapshotCaptureSource;
+    pause(): void;
+    resume(): void;
+  } | null;
 }
 
 export class SaveBrowser implements OverlayHandle {
@@ -94,7 +99,7 @@ export class SaveBrowser implements OverlayHandle {
   public open(): void {
     // 表示対象を既定値(アクティブスロット・現在のステージ)へ戻す。
     this.viewedSlotId = this.slots.activeSlotId;
-    this.viewedStageId = this.gameSource.current?.activeStage.id ?? null;
+    this.viewedStageId = this.gameSource.current?.stageId ?? null;
     this.statusLine = '';
     this.statusIsError = false;
     this.rebuild();
@@ -126,10 +131,10 @@ export class SaveBrowser implements OverlayHandle {
   }
 
   // 決着後(won/lost/timeup)の状態は復元しても操作不能なので撮らせない([F5] と同条件)。
-  // 動いている Game が無い(周回の切り替え中)ときも撮れない。
+  // 動いている周回が無い(周回の切り替え中)ときも撮れない。
   private canCaptureNow(): boolean {
     const game = this.gameSource.current;
-    return game !== null && this.viewedSlotId === this.slots.activeSlotId && game.activeStage.isPlaying;
+    return game !== null && this.viewedSlotId === this.slots.activeSlotId && game.isPlaying;
   }
 
   private viewedSlot(): SaveSlotMeta | null {
@@ -181,7 +186,7 @@ export class SaveBrowser implements OverlayHandle {
     snapPane.classList.toggle('sb-pane-mobile-active', this.mobilePane === 'snapshots');
     const game = this.gameSource.current;
     snapPane.appendChild(buildSnapshotPane(
-      this.viewedSlot(), this.viewedStageId, this.slots.activeSlotId, game?.activeStage.id ?? null, this.canCaptureNow(), {
+      this.viewedSlot(), this.viewedStageId, this.slots.activeSlotId, game?.stageId ?? null, this.canCaptureNow(), {
         onCaptureNow: () => this.handleCaptureNow(),
         onSelectStage: (id) => { this.viewedStageId = id; this.rebuild(); },
         onLoadSnapshot: (id, loadable) => this.handleLoadSnapshot(id, loadable),
@@ -190,7 +195,7 @@ export class SaveBrowser implements OverlayHandle {
         onDeleteSnapshot: (id) => this.handleDeleteSnapshot(id),
         onBranch: (slotId, snapId) => this.handleBranch(slotId, snapId),
         // 周回が1つも動いていない状態でも一覧の中心天体名を出せるよう、静的な表へ落とす。
-        nameOf: (id) => game?.celestialSystem.nameOf(id) ?? solarSystemBodyName(id),
+        nameOf: (id) => game?.nameOfBody(id) ?? solarSystemBodyName(id),
       },
     ));
     body.appendChild(snapPane);
@@ -280,7 +285,9 @@ export class SaveBrowser implements OverlayHandle {
     const game = this.gameSource.current;
     if (game === null || !this.canCaptureNow()) return;
     const name = prompt('スナップショットの名前', '');
-    const snap = this.service.capture(game, 'manual', name || null, true);
+    const snap = this.service.capture(
+      game.snapshot.runSummary(), game.snapshot.serialize(), 'manual', name || null, true,
+    );
     this.setStatus(snap ? 'クリップしました。' : 'クリップに失敗しました。', !snap);
     this.rebuild();
   }

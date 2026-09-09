@@ -8,7 +8,7 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { Fn, If, dot, float, length, max, normalize, screenUV, texture, uniform, vec3, vec4 } from 'three/tsl';
-import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
+import { GPU_PASS, type GpuPassId, type GpuTimings } from '../../gpu-timings';
 import { octDecodeNormal, type GBufferPass } from '../gbuffer';
 import { viewPositionAt } from '../view-ray';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../../tsl-types';
@@ -26,6 +26,7 @@ interface ShadowSource {
   // このフレームに影を落とすものがあるか。偽なら描画命令は発行されない。
   casts(): boolean;
   readonly material: THREE.MeshBasicNodeMaterial;
+  readonly gpuPass: GpuPassId;
 }
 
 // 透過率のノードを、ターゲットにいま入っている値へ掛け合わせるマテリアルに包む。面が写って
@@ -93,18 +94,22 @@ export class ShadowPass {
       {
         casts: () => bodyShadow.casts(),
         material: multiplyingMaterial(covered, bodyShadow.transmittance(worldPos)),
+        gpuPass: GPU_PASS.shadow,
       },
       {
         casts: () => ringShadow.casts(),
         material: multiplyingMaterial(covered, ringShadow.transmittance(worldPos)),
+        gpuPass: GPU_PASS.shadow,
       },
       {
         casts: () => cumulusShadow.casts(),
         material: multiplyingMaterial(covered, cumulusShadow.transmittance(worldPos, cumulusFootprint)),
+        gpuPass: GPU_PASS.cloudShadow,
       },
       {
         casts: () => meshShadow.casts(),
         material: multiplyingMaterial(covered, meshShadow.transmittance(worldPos, meshNormal)),
+        gpuPass: GPU_PASS.shadow,
       },
     ];
     this.quad = new QuadMesh();
@@ -129,7 +134,7 @@ export class ShadowPass {
       this.renderer.autoClear = !cleared;
       cleared = true;
       // beginPass は render() 呼び出しごとに申告する。同じパスの複数回ぶんは計測側が足し合わせる。
-      this.gpu.beginPass(GPU_PASS.shadow);
+      this.gpu.beginPass(source.gpuPass);
       this.quad.render(this.renderer);
     }
     // 影を落とす源が 1 つも無いフレームでも、前のフレームの透過率を残さない。
