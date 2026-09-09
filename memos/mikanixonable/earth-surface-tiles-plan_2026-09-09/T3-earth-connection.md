@@ -33,5 +33,9 @@ Earthだけを新しいmanifest、request queue、resident coordinator、GPU mat
 ## 実装状況（2026-09-10）
 
 `63babd80` と `667a31bb` でpersistent lease、visibility/reset、visible frontier pin、drawing-buffer viewport、Pages manifest bootstrap、
-同期base表示からの非同期attach、GPU非対応base fallbackを実装した。render 90/90、game 201/201。
-実manifestの取得、実WebGPU attach、実通信は未実施である。
+同期base表示からの非同期attach、GPU非対応base fallbackを実装した。続く `ccc3683f` で
+`Game.create → StageClass → solarSystem → earthSystem` へ初期化済みrendererを渡し、Earthだけがruntimeへ接続する経路を作った。
+`85b63f59` では、GPUのpage table・色配列・地形配列を読むTSL node materialを既存EarthのLODメッシュへ非同期で差し替え、
+bodyToViewと模式図フラグを毎フレーム更新するようにした。旧fallback材質とテクスチャは差し替え時に解放し、
+manifest/GPU未準備時は従来のbase fallbackを維持する。render 113/113、game 205/205、typecheck pass。
+実manifestの取得、実データ通信、実WebGPU画面の見た目確認は、T1のデータゲートがblockedのため未実施である。
