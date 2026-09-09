@@ -29,3 +29,9 @@ Earthだけを新しいmanifest、request queue、resident coordinator、GPU mat
 - 複数syncFrameで進行中requestが毎フレームabortされない。
 - カメラ移動で128層を使い切らず、画面外tileが再利用できる。
 - manifest欠損、hash不一致、異なるdatasetId、GPU能力不足がゲームを停止させずbaseへ戻る。
+
+## 実装状況（2026-09-10）
+
+`63babd80` と `667a31bb` でpersistent lease、visibility/reset、visible frontier pin、drawing-buffer viewport、Pages manifest bootstrap、
+同期base表示からの非同期attach、GPU非対応base fallbackを実装した。render 90/90、game 201/201。
+実manifestの取得、実WebGPU attach、実通信は未実施である。
