@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "createdAtUtc": "2026-09-09T21:59:59.227795+00:00",
+  "manifest": "assets-src/earth-surface/sources.json",
+  "probeMode": "sample",
+  "dependencies": {
+    "pythonModules": {
+      "osgeo": false,
+      "netCDF4": false,
+      "shapefile": false,
+      "PIL": true
+    },
+    "commands": {
+      "gdalinfo": null,
+      "ogrinfo": null,
+      "ncdump": "/opt/homebrew/bin/ncdump"
+    }
+  },
+  "sources": [
+    {
+      "sourceId": "bmng-july-2004",
+      "regionsRequested": 1,
+      "regionsAvailableInContract": 8,
+      "probes": [
+        {
+          "region": "A1",
+          "status": 200,
+          "contentLength": 314235313,
+          "contentType": "image/tiff",
+          "contentEncoding": "identity",
+          "etag": "\"12bad9b1-64611bc6e5680\"",
+          "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-base/july/world.200407.3x21600x21600.A1_geo.tif"
+        }
+      ],
+      "contentLengthBytes": 314235313,
+      "failed": 0
+    },
+    {
+      "sourceId": "etopo-2022-v1-ice-surface",
+      "regionsRequested": 1,
+      "regionsAvailableInContract": 288,
+      "probes": [
+        {
+          "region": "N90W180",
+          "status": 200,
+          "contentLength": 4093982,
+          "contentType": "image/tiff",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/15s/15s_surface_elev_gtif/ETOPO_2022_v1_15s_N90W180_surface.tif"
+        }
+      ],
+      "contentLengthBytes": 4093982,
+      "failed": 0
+    },
+    {
+      "sourceId": "etopo-2022-v1-geoid",
+      "regionsRequested": 1,
+      "regionsAvailableInContract": 288,
+      "probes": [
+        {
+          "region": "N90W180",
+          "status": 200,
+          "contentLength": 12312902,
+          "contentType": "image/tiff",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/15s/15s_geoid_gtif/ETOPO_2022_v1_15s_N90W180_geoid.tif"
+        }
+      ],
+      "contentLengthBytes": 12312902,
+      "failed": 0
+    },
+    {
+      "sourceId": "gshhg-2.3.7",
+      "regionsRequested": 1,
+      "regionsAvailableInContract": 1,
+      "probes": [
+        {
+          "region": "global",
+          "status": 200,
+          "contentLength": 149157845,
+          "contentType": "application/zip",
+          "contentEncoding": "identity",
+          "etag": "\"8e3f7d5-55205ac34aa40\"",
+          "url": "https://www.soest.hawaii.edu/pwessel/gshhg/gshhg-shp-2.3.7.zip"
+        }
+      ],
+      "contentLengthBytes": 149157845,
+      "failed": 0
+    },
+    {
+      "sourceId": "era5-monthly-1991-2020",
+      "regions": [],
+      "localExportRequired": true
+    }
+  ],
+  "estimate": {
+    "tileCount": 43690,
+    "terrainPayloadBytesPerTile": 540832,
+    "terrainPayloadBytesIncludingBase": 23630031744,
+    "inputBytesFromHEAD": 479800042,
+    "outputLowerBoundBytes": 23630031744,
+    "availableDiskBytes": 4835897344,
+    "rawRoot": ".earth-surface/raw",
+    "diskInsufficientForTerrainLowerBound": true
+  },
+  "status": "blocked",
+  "blockers": [
+    "Python依存が不足しています: osgeo, netCDF4, shapefile",
+    "GDAL CLI (gdalinfo/ogrinfo) がありません",
+    "空き容量が地形payloadの圧縮前下限を下回っています",
+    "ERA5はCDSから固定期間・変数のローカルNetCDF exportが必要です"
+  ]
+}
