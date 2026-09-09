@@ -19,6 +19,9 @@ import { CUMULUS_COVERAGE_KNOB } from '../../src/render/cloud/cumulus-shape';
 import { CLOUD_SHELL_KNOB, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
 import type { FloatUniform } from '../../src/render/tsl-types';
+import { createEarthSurfaceCaptureApi } from './earth-surface-capture';
+import type { EarthSurfaceCaptureInput } from './earth-surface-capture';
+import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
 
 // 殻の高度のつまみが届く上限 [m]。対流圏界面(極 8 km、熱帯 18 km)の上まで取る。
 const MAX_SHELL_ALTITUDE = 20e3;
@@ -36,6 +39,7 @@ declare global {
   interface Window {
     // CDP から撮影と計測を駆動するための入口。
     renderLab?: {
+      earthSurfaceCapture: (input: EarthSurfaceCaptureInput) => EarthSurfaceCaptureDocument;
       cases: readonly CaseName[];
       shoot: (name: CaseName) => Promise<string>;
       capture: () => Promise<string>;
@@ -50,6 +54,11 @@ declare global {
 
 // 画面を組み、最初のケースを描き、CDP の入口を window へ生やす。
 async function init(): Promise<void> {
+  // Earth surface の計測はproteinアセットに依存しない。先にAPIだけを公開することで、
+  // render-labの別ケースが404でも「データ未投入」を正しく返せる。
+  const earthSurfaceCapture = createEarthSurfaceCaptureApi();
+  window.renderLab = { earthSurfaceCapture } as Window['renderLab'];
+
   // ゲーム本体のウィジェットを組む前に、その CSS が読むトークンと規則を入れる。
   injectThemeVariables();
   injectOnce('widget-style', WIDGET_STYLE);
@@ -182,6 +191,7 @@ async function init(): Promise<void> {
   syncAngles();
 
   window.renderLab = {
+    earthSurfaceCapture,
     cases: CASE_NAMES,
     shoot: async (name) => { const png = await view.shoot(name); syncAngles(); return png; },
     capture: () => view.capture(),
