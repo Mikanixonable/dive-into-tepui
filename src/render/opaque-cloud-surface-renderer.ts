@@ -182,8 +182,8 @@ export class OpaqueCloudSurfaceRenderer {
       this.fieldSampler.fieldTexelWidth(this.bodyRadius).mul(2),
     );
     // fieldの明示LODが画面footprintへ合わせて粗くなるとき、固定1 kmの差分では同じ
-    // 補間セル内かセル境界だけを拾って法線が帯になる。2 px相当まで広げ、表示解像度に
-    // 追従する平滑な体積境界の勾配を取る。
+    // 補間セル内かセル境界だけを拾って法線が帯になる。画面footprintとfield 2 texelsの
+    // 大きい方を法線用footprintにし、表示解像度に追従する平滑な体積境界の勾配を取る。
     const epsilon = max(float(NORMAL_SAMPLE_DISTANCE), normalFootprint.mul(2))
       .div(max(this.bodyRadius.mul(this.shellScale), 1));
     const sample = (offset: Vec3Node): FloatNode => this.volume.densityAt(
