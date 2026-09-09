@@ -24,7 +24,7 @@ import { ENEMY_MODEL_SCALE, type EnemyCollisionShape } from './enemy-motion';
 // 漂流機体と同じく非対称にして、ジャニベコフ効果(中間軸不安定性)で無秩序に回らせる。
 const PROTEIN_INERTIA = v3(1, 1.1, 1.05);
 
-// 新規配置。表示形態と着色は生成時に決め、以後は setDisplay で切り替える。
+// 新規配置。表示形態と着色は生成時に決め、以後は Entity の設定として切り替える。
 type ProteinEnemyPlacement = EnemyPlacement & {
   readonly assetId: ProteinAssetId;
   readonly display: ProteinDisplaySettings;
@@ -90,9 +90,7 @@ export class ProteinEnemy extends Enemy {
       definition.asset,
       'saved' in init ? (init.saved as ProteinEnemySaveData).protein : undefined,
     );
-    const proteinView = new ProteinEnemyView(
-      definition, display, combat, id, scene,
-    );
+    const proteinView = new ProteinEnemyView(definition, display, id, scene);
     // 表示が原子模型へ切り替わっても、判定形状は常に同じ球列に固定する。
     const collision = new ProteinSphereCollisionGeometry(
       definition.collisionSpheres, ENEMY_MODEL_SCALE,
@@ -131,7 +129,6 @@ export class ProteinEnemy extends Enemy {
   // ステージ操作の表示形態・着色変更を反映する。
   public setDisplay(display: ProteinDisplaySettings): void {
     this.displaySettings = display;
-    this.view.setDisplay(display);
   }
 
   public get hudSnapshot(): ProteinHudSnapshot { return this.combat.hudSnapshot(); }
