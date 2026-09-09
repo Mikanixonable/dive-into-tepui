@@ -52,8 +52,9 @@ function startAnimationLoop(
   function animate(now: number) {
     const dt = (now - lastTime) / 1000;
     lastTime = now;
-    const game = launcher.current;
-    if (game === null) {
+    const game = launcher.currentGame;
+    const current = launcher.current;
+    if (game === null || current === null) {
       requestAnimationFrame(animate);
       return;
     }
@@ -63,15 +64,15 @@ function startAnimationLoop(
       game.update(dt);
       sections.endFrame();
       // Game が消費した入力エッジは、この時点で取り除かれている。
-      snapshotControls.handleInput(game.input, game);
+      snapshotControls.handleInput(game.input, current.snapshot);
       launcher.handleInput(game.input);
       // 入力の処理中に周回が畳まれたら(再出撃キーなど)、捨てた Game には触らずこのフレームを終える。
-      if (launcher.current !== game) {
+      if (launcher.currentGame !== game) {
         requestAnimationFrame(animate);
         return;
       }
       debugInfo.handleInput(game.input);
-      autoSave.update(game);
+      autoSave.update(current.snapshot);
       const t1 = debugInfo.on ? performance.now() : 0;
       game.sync(graphics.current, renderStyle.current);
       const t2 = debugInfo.on ? performance.now() : 0;
@@ -180,7 +181,7 @@ async function main() {
   };
 
   const snapshotControls = new SnapshotControls(hud, pauseMenu, saveBrowser, snapshotService);
-  pauseMenu.onSave = () => snapshotControls.captureManual(launcher.current);
+  pauseMenu.onSave = () => snapshotControls.captureManual(launcher.current?.snapshot ?? null);
 
   await launcher.start();
   settingsView.restorePersistedOpenState();
