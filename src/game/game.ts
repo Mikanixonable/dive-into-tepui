@@ -444,8 +444,10 @@ export class Game {
   // ------------------------------------------------------------ update
 
   update(dtRaw: number): void {
+    const dt = Math.min(dtRaw, 0.1);
+    const simTime = this.dynamicSystem.simTime;
     this.sections.enter(SECTION.input);
-    const dt = this.inputCoordinator.update(dtRaw, this.dynamicSystem.simTime);
+    this.inputCoordinator.update(dt, simTime);
     this.sections.exit(SECTION.input);
 
     this.simulationCoordinator.update(dt, this._isPaused);
