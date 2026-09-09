@@ -732,10 +732,11 @@ fetch/GPUで検査し、色だけ・地形だけが表示される状態を作�
 Contextが残らず、月・他天体・模式図・軌道分析が既存テストを維持する。
 
 **実装状況（2026-09-09）**: `12dd9529`で`CelestialSurfaceLike`と`CelestialSurfaceFrame`を抽出し、
-`PointEntity`/`SphereEntity`が具体クラスへ依存せず表面を注入できる契約を追加した。既存の静的surfaceを
-fixtureで検査し、`npm run typecheck`、`npm run test:render`（65/65）、`npm run test:game`（199/199）を
-通過している。EarthSurface本体、Earthへの注入、毎フレームの`syncFrame`呼出し、非表示・dispose時の
-要求/GPU/Context解放、webpackの公開URL検査は未実装であり、段Dの受け入れは未完了とする。
+`PointEntity`/`SphereEntity`が具体クラスへ依存せず表面を注入できる契約を追加した。続く`7dec9df9`で、
+`EarthSurfaceContext`と既存の全球base球を束ねる`EarthSurface` fallback facadeを追加し、破棄順序をfixtureで
+固定した。既存の静的surfaceを含め、`npm run typecheck`、`npm run test:render`（66/66）、
+`npm run test:game`（199/199）を通過している。Earthへの注入、毎フレームの`syncFrame`呼出し、タイル常駐
+coordinatorとの接続、非表示時の世代更新、webpackの公開URL検査は未実装であり、段Dの受け入れは未完了とする。
 
 ### 実装段E: 気候マップと雲・大気を共有入力へ切り替える
 
