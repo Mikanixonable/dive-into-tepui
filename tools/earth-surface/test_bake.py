@@ -4,6 +4,7 @@ import copy
 import gzip
 import hashlib
 import io
+import importlib.util
 import json
 import math
 from pathlib import Path
@@ -183,6 +184,63 @@ class BakeTests(unittest.TestCase):
                 bake.validate_terrain_tile(broken, (7, 3, 4), hashlib.sha256(broken).hexdigest())
         with self.assertRaises(ValueError):
             bake.validate_terrain_tile(payload[:-1], (7, 3, 4), digest)
+
+    # 全球z0..z7のキー数と経度連続性を固定する。
+    def test_global_tile_coverage(self):
+        keys = bake.global_tile_keys()
+        self.assertEqual(len(keys), 43690)
+        self.assertEqual(keys[0], (0, 0, 0))
+        self.assertEqual(keys[-1], (7, 255, 127))
+        self.assertEqual(len(set(keys)), len(keys))
+        self.assertEqual(bake.tile_grid(7, 0, 0).width, 260)
+        self.assertAlmostEqual(bake.tile_grid(7, 0, 0).west, -180 - 2 * (180 / 128 / 256))
+
+    # z=0の2枚をESTBへまとめ、壊れたpayloadを拒否する。
+    def test_base_estb(self):
+        payloads = [bake.encode_terrain_tile([(0., 0., 1.)] * 67600, [.8] * 67600, 0, x, 0) for x in (0, 1)]
+        base = bake.encode_base_terrain(payloads)
+        self.assertEqual(bake.validate_base_terrain(base)["payloadBytes"], len(base) - 32)
+        with self.assertRaises(ValueError):
+            bake.validate_base_terrain(base[:-1])
+
+    # 気候mapは固定レンジをRGBA8へ写像し、水域の標高0mを明示的に受け入れる。
+    @unittest.skipUnless(importlib.util.find_spec("PIL") is not None, "Pillow unavailable")
+    def test_climate_png(self):
+        count = 1024 * 512
+        png = bake.encode_climate_rgba([280.] * count, [.5] * count, [0.] * count, [0.] * count)
+        self.assertTrue(png.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertEqual(png, bake.encode_climate_rgba([280.] * count, [.5] * count, [0.] * count, [0.] * count))
+        with self.assertRaises(ValueError):
+            bake.encode_climate_rgba([280.] * count, [.5] * count, [-1001.] * count, [0.] * count)
+
+    # 全球入口は入力不足を生成途中ではなく事前に報告する。
+    def test_global_input_preflight(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(bake.GlobalInputError) as error:
+                bake.require_global_inputs(self.manifest, directory)
+            self.assertIn("全球bundleの入力が不足しています", str(error.exception))
+
+    # 小さいmax_zoomで、同じストリームwriterがmanifest/index/ESTBを書ける。
+    def test_global_writer_stream_fixture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            raw_root = Path(directory) / "raw"
+            for path in bake.global_input_paths(self.manifest, raw_root):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"fixture input")
+
+            def render(key):
+                return b"fixture-jpeg", bake.encode_terrain_tile([(0., 0., 1.)] * 67600, [.8] * 67600, *key)
+
+            output = Path(directory) / "bundle"
+            source_manifest_path = Path(directory) / "sources.json"
+            source_manifest_path.write_text(json.dumps(self.manifest))
+            result = bake.write_global_bundle(self.manifest, source_manifest_path, raw_root, output,
+                                              lambda key: (b"\xff\xd8fixture\xff\xd9", render(key)[1]),
+                                              [b"\x89PNG\r\n\x1a\nfixture"] * 12, max_zoom=0)
+            self.assertEqual(result["coverage"]["kind"], "sparse")
+            self.assertEqual(json.loads((output / "tile-index.json").read_text())["entries"].__len__(), 2)
+            self.assertTrue((output / "base/earth.bin.gz").is_file())
+            self.assertTrue((output / "earth-surface.json").is_file())
 
 
 class FetchTests(unittest.TestCase):

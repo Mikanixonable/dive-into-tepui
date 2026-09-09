@@ -6,11 +6,15 @@ from dataclasses import dataclass
 import gzip
 import hashlib
 import importlib.util
+import io
 import json
 import math
+import os
 from pathlib import Path
+import shutil
 import struct
 import sys
+import zipfile
 
 _spec = importlib.util.spec_from_file_location("earth_surface_fetch", Path(__file__).with_name("fetch-source.py"))
 _fetch = importlib.util.module_from_spec(_spec)
@@ -19,6 +23,114 @@ _spec.loader.exec_module(_fetch)
 # Float16のwire識別子。本文はIEEE 754 binary16、little-endian。
 FLOAT16_SCALAR = 1
 TERRAIN_HEADER = struct.Struct("<4sHHHHBBIIBBII")
+BASE_HEADER = struct.Struct("<4sHHHHBBIIBBII")
+
+
+# 全球の正規化されたWeb Mercatorではなく、計画書の経緯度四分木キーを列挙する。
+def global_tile_keys(max_zoom=7):
+    if type(max_zoom) is not int or not 0 <= max_zoom <= 7:
+        raise ValueError("max_zoomは0..7の整数が必要です")
+    return [(z, x, y) for z in range(max_zoom + 1)
+            for y in range(2 ** z) for x in range(2 ** (z + 1))]
+
+
+def global_tile_count(max_zoom=7):
+    return len(global_tile_keys(max_zoom))
+
+
+def tile_grid(z, x, y, gutter=2):
+    """タイル内側256セルとgutterを含むセル中心格子を返す。"""
+    if (type(z) is not int or type(x) is not int or type(y) is not int
+            or not (0 <= z <= 7 and 0 <= x < 2 ** (z + 1) and 0 <= y < 2 ** z)):
+        raise ValueError("タイル座標が不正です")
+    width = 180 / 2 ** z
+    height = 180 / 2 ** z
+    step = width / 256
+    return Grid(-180 + x * width - gutter * step, 90 - (y + 1) * height - gutter * step,
+                -180 + (x + 1) * width + gutter * step, 90 - y * height + gutter * step,
+                256 + 2 * gutter, 256 + 2 * gutter, True)
+
+
+def read_geotiff_window(path, window=None):
+    """GDALがある環境だけで、全画像を配列化せず指定窓を読む。"""
+    try:
+        from osgeo import gdal
+    except ImportError as error:
+        raise RuntimeError("GeoTIFFの実データ生成にはGDALが必要です") from error
+    gdal.UseExceptions()
+    dataset = gdal.Open(str(path), gdal.GA_ReadOnly)
+    if dataset is None or dataset.RasterCount == 0:
+        raise ValueError("GeoTIFFを開けません")
+    projection = dataset.GetProjectionRef()
+    if "4326" not in projection and "WGS 84" not in projection:
+        raise ValueError("GeoTIFFのCRSはEPSG:4326が必要です")
+    if window is None:
+        raise ValueError("GeoTIFFは全体配列化せずwindowを指定してください")
+    x, y, width, height = window
+    if not (0 <= x < dataset.RasterXSize and 0 <= y < dataset.RasterYSize
+            and 0 < width <= dataset.RasterXSize - x and 0 < height <= dataset.RasterYSize - y):
+        raise ValueError("GeoTIFFの読み取り窓が範囲外です")
+    bands = [dataset.GetRasterBand(index).ReadAsArray(x, y, width, height) for index in range(1, dataset.RasterCount + 1)]
+    return {"width": width, "height": height, "bands": bands,
+            "noData": [dataset.GetRasterBand(index).GetNoDataValue() for index in range(1, dataset.RasterCount + 1)],
+            "geoTransform": dataset.GetGeoTransform(), "projection": projection}
+
+
+def read_gshhg_polygons(path, levels=(1, 2, 3, 4, 5)):
+    """GSHHG full-resolution Shapefileをring単位で読む。大域配列は作らない。"""
+    try:
+        import shapefile
+    except ImportError as error:
+        raise RuntimeError("GSHHGの実データ生成にはpyshpが必要です") from error
+    archive = zipfile.ZipFile(path) if str(path).lower().endswith(".zip") else None
+    polygons = []
+    try:
+        for level in levels:
+            prefix = f"GSHHS_f_L{level}"
+            if archive is None:
+                reader = shapefile.Reader(f"{path}/{prefix}")
+            else:
+                names = {name.rsplit("/", 1)[-1]: name for name in archive.namelist()}
+                needed = [names.get(f"{prefix}.{extension}") for extension in ("shp", "shx", "dbf")]
+                if any(item is None for item in needed):
+                    raise ValueError(f"GSHHGの{prefix}が欠落しています")
+                reader = shapefile.Reader(shp=io.BytesIO(archive.read(needed[0])),
+                                          shx=io.BytesIO(archive.read(needed[1])),
+                                          dbf=io.BytesIO(archive.read(needed[2])))
+            for shape in reader.shapes():
+                starts = list(shape.parts) + [len(shape.points)]
+                for start, end in zip(starts, starts[1:]):
+                    ring = shape.points[start:end]
+                    if len(ring) >= 4 and ring[0] != ring[-1]:
+                        ring.append(ring[0])
+                    polygons.append({"level": level, "coordinates": ring})
+    finally:
+        if archive is not None:
+            archive.close()
+    return polygons
+
+
+def read_era5_month(path, month, window=None):
+    """ERA5の指定月を読み、UTC時刻ごとの窓を返す。全世界を一度に展開しない。"""
+    try:
+        import netCDF4
+    except ImportError as error:
+        raise RuntimeError("ERA5の実データ生成にはnetCDF4が必要です") from error
+    if not 1 <= month <= 12:
+        raise ValueError("monthは1..12が必要です")
+    if window is None:
+        raise ValueError("ERA5は全体配列化せず緯度経度windowを指定してください")
+    with netCDF4.Dataset(path, "r") as dataset:
+        names = {"2m_temperature": "t2m", "total_cloud_cover": "tcc"}
+        result = {}
+        for logical, preferred in names.items():
+            name = preferred if preferred in dataset.variables else logical
+            if name not in dataset.variables:
+                raise ValueError(f"ERA5変数が欠落しています: {logical}")
+            variable = dataset.variables[name]
+            slices = (slice(None), *window)
+            result[logical] = variable[slices]
+        return result
 
 
 @dataclass(frozen=True)
@@ -31,12 +143,16 @@ class Grid:
     north: float
     width: int
     height: int
+    allow_gutter: bool = False
 
     # 小領域の有効範囲と正の格子寸法を検査する。
     def __post_init__(self):
         if not all(math.isfinite(value) for value in (self.west, self.south, self.east, self.north)):
             raise ValueError("格子座標は有限値が必要です")
-        if not (0 < self.east - self.west <= 360 and -90 <= self.south < self.north <= 90):
+        longitude_limit = 362 if self.allow_gutter else 360
+        latitude_valid = (-91 <= self.south < self.north <= 91 if self.allow_gutter
+                          else -90 <= self.south < self.north <= 90)
+        if not (0 < self.east - self.west <= longitude_limit and latitude_valid):
             raise ValueError("格子の経緯度範囲が不正です")
         if any(type(value) is not int or not 1 <= value <= 260 for value in (self.width, self.height)):
             raise ValueError("小領域格子は各辺1..260セルが必要です")
@@ -353,15 +469,236 @@ def validate_terrain_tile(payload, key, expected_sha):
             raise ValueError("地形本文に無効な法線またはroughnessがあります")
 
 
+def encode_base_terrain(terrain_payloads, root_columns=2, root_rows=1):
+    """z=0の2枚のESTN本文をまとめたESTB。header後はESTN payloadを順番に格納する。"""
+    if (root_columns, root_rows) != (2, 1) or len(terrain_payloads) != 2:
+        raise ValueError("base ESTBはz=0の2枚のroot payloadが必要です")
+    for x, payload in enumerate(terrain_payloads):
+        validate_terrain_tile(payload, (0, x, 0), hashlib.sha256(payload).hexdigest())
+    body = b"".join(terrain_payloads)
+    header = BASE_HEADER.pack(b"ESTB", 1, 32, 260, 260, 0, 0, root_columns, root_rows,
+                              TERRAIN_HEADER.unpack_from(terrain_payloads[0])[9],
+                              FLOAT16_SCALAR, len(body), 0)
+    return header + body
+
+
+def validate_base_terrain(payload, expected_root_count=2):
+    if len(payload) < BASE_HEADER.size:
+        raise ValueError("ESTB headerが短すぎます")
+    magic, version, header_bytes, width, height, z, reserved, columns, rows, channels, scalar, data_bytes, reserved2 = BASE_HEADER.unpack_from(payload)
+    if (magic, version, header_bytes, width, height, z, reserved, columns, rows, channels, scalar, reserved2) != (
+            b"ESTB", 1, 32, 260, 260, 0, 0, 2, 1, 4, FLOAT16_SCALAR, 0):
+        raise ValueError("ESTB headerが不正です")
+    expected = expected_root_count * TERRAIN_HEADER.size + expected_root_count * (260 * 260 * 8)
+    if data_bytes != expected or len(payload) != BASE_HEADER.size + expected:
+        raise ValueError("ESTB payload長が不正です")
+    return {"rootColumns": columns, "rootRows": rows, "payloadBytes": data_bytes}
+
+
+def climate_channel(value, minimum, maximum):
+    if not math.isfinite(value) or not minimum <= value <= maximum:
+        raise ValueError("気候値が契約範囲外です")
+    return round(255 * (value - minimum) / (maximum - minimum))
+
+
+def encode_climate_rgba(temperature, cloud, elevation, land, width=1024, height=512):
+    """気候4チャンネルを決定的なRGBA8 PNGの画素列へ変換する。"""
+    count = width * height
+    if any(len(channel) != count for channel in (temperature, cloud, elevation, land)):
+        raise ValueError("気候mapの配列寸法が不一致です")
+    pixels = bytearray()
+    for values in zip(temperature, cloud, elevation, land):
+        pixels.extend((climate_channel(values[0], 180, 330), climate_channel(values[1], 0, 1),
+                       climate_channel(values[2], -1000, 9000), climate_channel(values[3], 0, 1)))
+    try:
+        from PIL import Image
+    except ImportError as error:
+        raise RuntimeError("気候mapのPNG出力にはPillowが必要です") from error
+    image = Image.frombytes("RGBA", (width, height), bytes(pixels))
+    output = io.BytesIO()
+    image.save(output, format="PNG", optimize=False, compress_level=9)
+    return output.getvalue()
+
+
+class GlobalInputError(RuntimeError):
+    """全球生成に必要な入力または実データrendererが不足している。"""
+
+
+def global_input_paths(manifest, raw_root):
+    """manifestから必要入力のパスだけを列挙する。入力内容はメモリへ展開しない。"""
+    root = Path(raw_root)
+    suffix = {"geotiff": ".tif", "zip": ".zip", "netcdf": ".nc"}
+    paths = []
+    for source in manifest["sources"]:
+        source_root = root / source["id"]
+        explicit = source.get("inputFiles")
+        if explicit:
+            paths.extend(source_root / item for item in explicit)
+        elif source.get("regions"):
+            paths.extend(source_root / f"{region}{suffix[source['format']]}" for region in source["regions"])
+        elif source.get("regionGridDegrees"):
+            for latitude in range(90, -90, -15):
+                north_south = f"N{latitude:02d}" if latitude >= 0 else f"S{-latitude:02d}"
+                for longitude in range(-180, 180, 15):
+                    east_west = f"E{longitude:03d}" if longitude >= 0 else f"W{-longitude:03d}"
+                    paths.append(source_root / f"{north_south}{east_west}{suffix[source['format']]}" )
+        else:
+            paths.append(source_root / f"global{suffix[source['format']]}" )
+    return paths
+
+
+def require_global_inputs(manifest, raw_root):
+    missing = [path for path in global_input_paths(manifest, raw_root) if not path.is_file()]
+    if missing:
+        preview = ", ".join(str(path) for path in missing[:8])
+        more = "" if len(missing) <= 8 else f" (+{len(missing) - 8}件)"
+        raise GlobalInputError(f"全球bundleの入力が不足しています: {preview}{more}")
+
+
+def global_manifest(manifest, source_manifest_path, source_manifest_hash, climate_paths, coverage_kind="complete", max_zoom=7):
+    """配信契約の正本を生成する。実体hashはtile writerが逐次追加する。"""
+    attribution = []
+    for source in manifest["sources"]:
+        attribution.extend(source["attribution"])
+    return {
+        "schemaVersion": 1,
+        "datasetId": manifest["datasetId"],
+        "sourceManifestSha256": source_manifest_hash,
+        "sourceManifest": source_manifest_path,
+        "provenance": {"generator": "earth-surface-bundle/1", "sourceManifestHash": source_manifest_hash},
+        "climateMap": manifest["climateMap"],
+        "controlRegions": manifest["controlRegions"],
+        "coverage": {"kind": coverage_kind, "maxZoom": max_zoom,
+                      "expectedTiles": global_tile_count(max_zoom) if coverage_kind == "complete" else None},
+        "baseColor": "base/earth.jpg",
+        "baseTerrain": "base/earth.bin.gz",
+        "tileIndexUrl": "tile-index.json",
+        "climateMaps": climate_paths,
+        "climateEncoding": {"temperatureK": {"min": 180, "max": 330}, "cloudFraction": {"min": 0, "max": 1},
+                             "orthometricElevation": {"min": -1000, "max": 9000}, "landFraction": {"min": 0, "max": 1},
+                             "waterOrthometricElevationM": 0},
+        "attribution": sorted(set(attribution)),
+    }
+
+
+def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, render_tile,
+                        climate_maps, base_color=None, max_zoom=7):
+    """各タイルを一枚ずつ生成し、stagingへ書き込む全球bundle writer。"""
+    require_global_inputs(manifest, raw_root)
+    if type(max_zoom) is not int or not 0 <= max_zoom <= 7:
+        raise ValueError("max_zoomは0..7の整数が必要です")
+    output = Path(output_root)
+    staging = output.with_name(f"{output.name}.staging-{os.getpid()}")
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
+    source_hash = _fetch.contract_hash(manifest)
+    climate_paths = [f"climate/{month:02d}.png" for month in range(1, 13)]
+    source_manifest_file = Path(source_manifest_path)
+    if not source_manifest_file.is_file():
+        raise GlobalInputError(f"source manifestがありません: {source_manifest_path}")
+    result_manifest = global_manifest(manifest, "sources.json", source_hash, climate_paths,
+                                      "complete" if max_zoom == 7 else "sparse", max_zoom)
+    try:
+        climate_values = list(climate_maps)
+        if (len(climate_values) != 12 or any(not isinstance(value, (bytes, bytearray)) or not value
+                                             or bytes(value[:8]) != b"\x89PNG\r\n\x1a\n" for value in climate_values)):
+            raise ValueError("気候mapは12個のPNG bytesが必要です")
+        for path, data in zip(climate_paths, climate_values):
+            destination = staging / path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(data)
+        (staging / "sources.json").write_bytes(source_manifest_file.read_bytes())
+
+        tile_index = staging / "tile-index.json"
+        tile_index.parent.mkdir(parents=True, exist_ok=True)
+        entries = tile_index.open("w", encoding="utf-8")
+        entries.write(json.dumps({"schemaVersion": 1, "datasetId": manifest["datasetId"]}, ensure_ascii=False)[:-1])
+        entries.write(', "entries": [')
+        first = True
+        root_tiles = []
+        for key in global_tile_keys(max_zoom):
+            color, terrain = render_tile(key)
+            if (not isinstance(color, (bytes, bytearray)) or len(color) < 4
+                    or bytes(color[:2]) != b"\xff\xd8" or bytes(color[-2:]) != b"\xff\xd9"):
+                raise ValueError(f"color rendererがJPEGを返しませんでした: {key}")
+            validate_terrain_tile(terrain, key, hashlib.sha256(terrain).hexdigest())
+            z, x, y = key
+            color_url = f"tiles/{z}/{x}/{y}.jpg"
+            terrain_url = f"tiles/{z}/{x}/{y}.bin.gz"
+            color_path = staging / color_url
+            terrain_path = staging / terrain_url
+            color_path.parent.mkdir(parents=True, exist_ok=True)
+            color_path.write_bytes(color)
+            encoded = gzip.compress(terrain, mtime=0)
+            terrain_path.write_bytes(encoded)
+            if z == 0:
+                root_tiles.append((bytes(color), terrain))
+            entry = {"key": f"{z}/{x}/{y}", "z": z, "x": x, "y": y,
+                     "color": {"url": color_url, "sha256": hashlib.sha256(color).hexdigest(),
+                               "encodedBytes": len(color), "payloadBytes": len(color)},
+                     "terrain": {"url": terrain_url, "sha256": hashlib.sha256(terrain).hexdigest(),
+                                 "encodedBytes": len(encoded), "payloadBytes": len(terrain)}}
+            if not first:
+                entries.write(",")
+            entries.write(json.dumps(entry, ensure_ascii=False, separators=(",", ":")))
+            first = False
+        entries.write("]}\n")
+        entries.close()
+        if len(root_tiles) != 2:
+            raise ValueError("ESTBにはz=0の2枚が必要です")
+        base = staging / "base"
+        base.mkdir(parents=True, exist_ok=True)
+        base_color_data = bytes(base_color) if base_color is not None else root_tiles[0][0]
+        (base / "earth.jpg").write_bytes(base_color_data)
+        base_payload = encode_base_terrain([root_tiles[0][1], root_tiles[1][1]])
+        (base / "earth.bin.gz").write_bytes(gzip.compress(base_payload, mtime=0))
+        (staging / "earth-surface.json").write_text(json.dumps(result_manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+        (staging / "attribution.json").write_text(json.dumps({"datasetId": manifest["datasetId"], "attribution": result_manifest["attribution"]}, ensure_ascii=False, indent=2) + "\n")
+        if output.exists():
+            shutil.rmtree(output)
+        staging.rename(output)
+    except Exception:
+        entries.close() if 'entries' in locals() and not entries.closed else None
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    return result_manifest
+
+
+def unavailable_global_renderer(_key):
+    """実ソースの座標変換を未接続のまま、fixtureを本番データとして出さない。"""
+    raise GlobalInputError("全球rendererは未接続です。ETOPO/BMNG/GSHHG/ERA5のwindow adapterを接続してから再実行してください")
+
+
 # fixtureを中間JSONとRGB8 PPMへ出力する。タイルキー指定時はESTN本文も検査して保存する。
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", required=True)
+    parser.add_argument("--input")
+    parser.add_argument("--global", action="store_true", dest="global_bundle",
+                        help="全43690タイルのbundle生成入口。入力不足は生成前に失敗する")
+    parser.add_argument("--raw-root", default=".earth-surface/raw")
+    parser.add_argument("--climate-dir", default=".earth-surface/climate")
     parser.add_argument("--manifest", default="assets-src/earth-surface/sources.json")
     parser.add_argument("--output", default=".earth-surface/intermediate/region")
     parser.add_argument("--tile", nargs=3, type=int, metavar=("Z", "X", "Y"))
     args = parser.parse_args()
     manifest = _fetch.load_manifest(args.manifest)
+    if args.global_bundle:
+        if args.input is not None or args.tile is not None:
+            parser.error("--globalは--input/--tileと併用できません")
+        climate_dir = Path(args.climate_dir)
+        climate_maps = []
+        for month in range(1, 13):
+            path = climate_dir / f"{month:02d}.png"
+            if not path.is_file():
+                raise GlobalInputError(f"気候mapが不足しています: {path}")
+            climate_maps.append(path.read_bytes())
+        write_global_bundle(manifest, args.manifest, args.raw_root, args.output,
+                            unavailable_global_renderer, climate_maps)
+        print(f"全球bundle生成完了: {args.output}")
+        return
+    if args.input is None:
+        parser.error("fixture生成では--input、全球生成では--globalが必要です")
     raw = Path(args.input).read_bytes()
     value = json.loads(raw)
     result = bake_region(value, manifest)
@@ -396,6 +733,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (ValueError, KeyError, OSError) as error:
+    except (GlobalInputError, ValueError, KeyError, OSError) as error:
         print(f"earth-surface:bake: {error}", file=sys.stderr)
         sys.exit(1)
