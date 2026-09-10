@@ -75,7 +75,7 @@ export function configureEarthSurfaceTexture<T extends THREE.Texture>(
   texture.magFilter = settings.magFilter;
   texture.colorSpace = settings.colorSpace;
   texture.generateMipmaps = settings.generateMipmaps;
-  texture.needsUpdate = true;
+  if (texture.image !== null && texture.image !== undefined) texture.needsUpdate = true;
   return texture;
 }
 
