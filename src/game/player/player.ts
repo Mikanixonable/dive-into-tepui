@@ -8,7 +8,7 @@ import { qFromBasis } from '../../math/quat';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
 import { Vec3, add, v3, len, sub } from '../../math/vec3';
-import { fmtMarkerDist } from '../../hud/utils';
+import { fmtDist, fmtEnergy } from '../../hud/utils';
 import { Ship, PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from '../dynamic/dynamic-entity/ship';
 import { bulletReactionOf, type BulletType, type Shooter } from '../dynamic/dynamic-entity/bullet-reaction';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
@@ -19,43 +19,37 @@ import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { Notifier } from '../../hud/notifier';
-import { WorldSfx } from '../../audio/sfx/world-sfx';
+import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import { generateRandomName } from '../random-name';
-import type { Stage } from '../stages/stage';
+import type { StageOutcome } from '../stages/stage-outcome';
 import { Throttle } from './throttle';
 import { FireControl, type AmmoLoad } from './fire-control';
 import { AltitudeAlarm } from './altitude-alarm';
-import { currentThemePalette } from '../../theme';
-import { FlashEffects } from '../vfx/flash-effects';
-import { buildDestroyFragments } from '../dynamic/dynamic-entity/debris-piece';
+import type { FlashEffects } from '../vfx/flash-effects';
+import { buildDestroyFragments, playerDestroyFragments } from '../dynamic/dynamic-entity/debris-piece';
 import { PlayerView } from './player-view';
 import type { MarkerSlots } from '../marker/marker-slots';
+import type { MarkerVisibility } from '../marker/marker-visibility';
 import type { RadiatorSide } from './radiator';
 
 import { Plan, type PlanExecutionMode } from '../plan/plan';
-import type { PlayerSaveData, PlanSaveData } from '../save/save-data';
+import { savedAttitude, savedKinematicState, type PlayerSaveData, type PlanSaveData } from '../save/save-data';
 import { partFromSaveData, type AnyPart } from '../dynamic/dynamic-entity/parts';
 import { DIRECTION_GLYPH, ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import { shipMarkerSvg } from '../marker/marker-shapes';
-import type { GroupedMarkerItem, MarkerRole } from '../marker/grouped-markers';
-import {
-  DESTROY_FLASH1_DURATION, DESTROY_FLASH1_SIZE0, DESTROY_FLASH1_SIZE1,
-  DESTROY_FLASH2_DURATION, DESTROY_FLASH2_SIZE0, DESTROY_FLASH2_SIZE1,
-  DESTROY_FLASH_COLOR_1, DESTROY_FLASH_COLOR_2,
-  DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, PLAYER_DESTROY_FRAG_COLOR,
-} from '../../render/vfx-style';
+import type { GroupedMarkerItem } from '../marker/grouped-markers';
+import { DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, PLAYER_DESTROY_FRAG_COLOR } from '../../render/vfx-style';
 import { AttachedBoosters } from './attached-boosters';
 import { MARKER_PRIORITY } from '../marker/crowding';
 import { strongestAttractor } from '../../physics/attractor';
 import { apsisAltitudes } from '../../physics/elements';
 import { fmtAmmoStatus } from '../hud/ammo-status';
-import { fmtDist, fmtEnergy } from '../../hud/utils';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { orbitRows } from '../pickable/orbit-rows';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ControlSelection } from '../control-selection';
-import type { ObjectAuthoring } from '../stages/stage';
+import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { PropertyWindowOpener } from '../pickable/property-window-opener';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
@@ -136,11 +130,11 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     const saved = 'saved' in init ? init.saved : undefined;
     const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
     const state = 'saved' in init
-      ? kinematicState<'eci'>(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z))
+      ? savedKinematicState(init.saved, init.simTime)
       : (init.state ?? Player.makeInitialState());
     const id = 'saved' in init ? init.saved.id : (init.id ?? name);
     const att: Attitude = 'saved' in init
-      ? { q: { ...init.saved.q }, w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z), inertia: Player.INERTIA }
+      ? savedAttitude(init.saved, Player.INERTIA)
       : Player.progradeAttitude(state);
 
     const reactions = (owner: Player): PlayerMotionReactions => ({
@@ -269,7 +263,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     dt: number,
     simDt: number,
     registry: EntityRegistry,
-    activeStage: Stage,
+    activeStage: StageOutcome,
     celestialBodies: CelestialBodies,
   ): void {
     this.hpRegen(dt);
@@ -351,7 +345,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 無作為なパーツへダメージが入る。
   private attackedByBullet(
     bulletType: BulletType, shooter: Shooter, damage: number, impactPoint: Vec3,
-    activeStage: Stage, registry: EntityRegistry,
+    activeStage: StageOutcome, registry: EntityRegistry,
     side: RadiatorSide | null = null,
   ): void {
     this.motion.absorbHeat(BULLET_IMPACT_HEAT / PLAYER_MASS);
@@ -423,7 +417,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 接触によるダメージ・致死判定。side を指定するとその放熱板パーツへ、無指定なら無作為な
   // パーツへダメージが入る。
   private damagedByContact(
-    damageSpeed: number, side: RadiatorSide | null, lossReason: string, activeStage: Stage,
+    damageSpeed: number, side: RadiatorSide | null, lossReason: string, activeStage: StageOutcome,
     registry: EntityRegistry,
   ): void {
     const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
@@ -460,7 +454,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   // 喪失の共通処理。reason はステージの記録に残す喪失理由。
-  private lose(reason: string, activeStage: Stage, registry: EntityRegistry): void {
+  private lose(reason: string, activeStage: StageOutcome, registry: EntityRegistry): void {
     this.motion.alive = false;
     this.destroyEffect(registry);
     activeStage.recordPlayerLost(reason);
@@ -486,13 +480,10 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 機体喪失時の爆発音・爆発エフェクトを発生させる。
   private destroyEffect(registry: EntityRegistry): void {
     this._worldSfx.explosion();
-    const { t, r, v } = this.motion.state;
-    this._fx.spawnFlash(this.motion.state, DESTROY_FLASH1_SIZE0, DESTROY_FLASH1_SIZE1, DESTROY_FLASH1_DURATION, DESTROY_FLASH_COLOR_1);
-    this._fx.spawnFlash(this.motion.state, DESTROY_FLASH2_SIZE0, DESTROY_FLASH2_SIZE1, DESTROY_FLASH2_DURATION, DESTROY_FLASH_COLOR_2);
-    for (const piece of buildDestroyFragments(
-      t, r, v, 11, PLAYER_DESTROY_FRAG_COLOR, DESTROY_FRAG_SIZE_MIN / 3, DESTROY_FRAG_SIZE_MAX / 3, 20.0,
-      this._worldSfx, this._fx,
-    )) registry.add(piece);
+    this._fx.spawnPlayerDestroyFlash(this.motion.state);
+    for (const piece of playerDestroyFragments(this.motion.state, this._worldSfx, this._fx)) {
+      registry.add(piece);
+    }
   }
 
   // ラジエーターが全損した瞬間の破片エフェクトを、そのパネル先端付近から発生させる。
@@ -529,28 +520,24 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 画面マーカーと被選択判定が同じ艦を指すためのキー。
   private get markerKey(): string { return `player-${this.id}`; }
 
-  // 画面マーカー・一覧に出すこの艦の項目。role はターゲット強調の有無、isActive は
-  // マップ上で自艦と僚艦を塗り分けるための操作対象フラグ。
-  markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, isActive: boolean): GroupedMarkerItem {
+  // 画面マーカー・一覧に出すこの艦の項目。isActive はマップ上で自艦と僚艦を塗り分ける
+  // ための操作対象フラグ。
+  markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, isActive: boolean): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
-    const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.PLAYER;
-    const kindCls = isActive ? 'mk-self' : 'mk-ally';
-    const color = role === 'primary' ? currentThemePalette().signal : isActive ? 'var(--color-primary)' : COLOR_MARKER_ALLY;
     return {
       key: this.markerKey,
       kind: this.mapKind,
-      cls: role === 'primary' ? `${kindCls} mk-target` : kindCls,
+      cls: isActive ? 'mk-self' : 'mk-ally',
       sym: view === 'map' ? this.headingHpMarkerSvg() : this.hpMarkerSvg(),
       pos,
       vel,
-      priority,
+      priority: MARKER_PRIORITY.PLAYER,
       name: this.name,
-      detail: view === 'map' ? '' : fmtMarkerDist(dist),
-      bearingColor: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ALLY,
+      bearingColor: COLOR_MARKER_ALLY,
       bearingSym: DIRECTION_GLYPH.allyBearing,
       bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: dist <= ALLY_BEARING_MAX_DISTANCE,
-      color,
+      color: isActive ? 'var(--color-primary)' : COLOR_MARKER_ALLY,
       symMarkup: true,
     };
   }
@@ -614,7 +601,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     return this.motion.stateAt(displayTime)?.r ?? null;
   }
 
-  public shownOnMap(markers: MarkerSlots): boolean { return markers.shows(this.markerKey); }
+  public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(this.markerKey); }
 
   // 残 HP と、いま最も強く引かれている天体を中心とした近地点高度。
   public listDetail(celestialBodies: CelestialBodies): string {

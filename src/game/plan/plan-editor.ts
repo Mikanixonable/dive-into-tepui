@@ -11,7 +11,8 @@ import { Vec3, add, dot, len, sub, v3 } from '../../math/vec3';
 import { pickNearest } from '../pickable/object-pickable';
 import type { HudLayers } from '../hud/hud-layers';
 import type { Notifier } from '../../hud/notifier';
-import { ContextMenu, MenuAction, MenuCommon } from '../hud/windows';
+import { ContextMenu } from '../hud/windows/context-menu';
+import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
@@ -25,9 +26,9 @@ import { DisplayDurationSource, Plan } from './plan';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ControlSelection } from '../control-selection';
-import type { FrameControls } from '../hud/frame/frame-controls';
 import type { PlanPath } from './plan-path';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { FocusSink } from '../camera/focus-target';
 
 const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
 
@@ -87,7 +88,7 @@ export class PlanEditor {
     scene: THREE.Scene,
     private readonly controlSelection: ControlSelection,
     private readonly displayDuration: DisplayDurationSource,
-    private readonly frameControls: FrameControls,
+    private readonly focusSink: FocusSink,
     private readonly path: PlanPath,
   ) {
     // マップ上の操作物(ノードギズモ・軌道メニュー・3D 矢印・Δv アーム)
@@ -148,7 +149,7 @@ export class PlanEditor {
       const n = this.plan?.nodes[idx];
       if (!n) return;
       const frames = this.celestialBodies.frames;
-      this.frameControls.setFocus(focusPoint(frames, frames.inertialFrame, n.r, n.t, bodyAnchorSource([], n.t)));
+      this.focusSink.setFocus(focusPoint(frames, frames.inertialFrame, n.r, n.t, bodyAnchorSource([], n.t)));
     };
   }
 

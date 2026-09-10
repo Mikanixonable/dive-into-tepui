@@ -17,7 +17,7 @@ import {
 import { orbitalElementsOf } from '../../physics/elements';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { DISPLAY_DURATION_MAX } from '../display-window-duration';
-import type { Stage } from '../stages/stage';
+import type { StageOutcome } from '../stages/stage-outcome';
 import type { Contact } from './dynamic-entity/contact';
 import type { EntityRegistry } from './entity-registry';
 import { PredictedArc, trajectorySampleInterval } from './predicted-arc';
@@ -37,7 +37,7 @@ export const SMALL_DEBRIS_RADIATING_AREA_PER_MASS = 0.01455;
 export const SMALL_DEBRIS_MAX_TEMP = 933;
 
 export interface DynamicReactionServices {
-  readonly activeStage: Stage;
+  readonly activeStage: StageOutcome;
   readonly registry: EntityRegistry;
 }
 

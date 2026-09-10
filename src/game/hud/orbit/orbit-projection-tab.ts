@@ -2,21 +2,21 @@
 // ターゲットの経緯度の軌跡を重ねる。表示範囲(中心経緯度・ズーム)はチャート自身が持つので、
 // このタブはスケール入力欄を持たない。
 import { strongestAttractor } from '../../../physics/attractor';
-import { PointerPanZoom } from '../../../hud/widgets/pointer-pan-zoom';
-import { ACCENT, ACCENT_SECONDARY } from '../../../theme';
+import { PointerPanZoom } from '../../../hud/pointer-pan-zoom';
+import { currentThemePalette } from '../../../theme';
 import { projectionSeries, resolveTarget } from './orbit-analysis-data';
 import { buildTabControls, sampleCountFor } from './orbit-analysis-tab';
 import { OrbitProjectionChart } from './orbit-projection-chart';
-import type { Game } from '../../game';
+import type { CelestialSystem } from '../../celestial/celestial-system';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
 import type { OrbitReference } from '../../orbit-reference';
 import type { ApproachTargetSource } from './orbit-analysis-data';
-import type { AnalysisTab } from './orbit-analysis-tab';
+import type { AnalysisChartSource, AnalysisTab } from './orbit-analysis-tab';
 import type { ProjectionSeriesSpec } from './orbit-projection-chart';
 
 // id の天体が持つ円筒図法テクスチャの URL。実写テクスチャが無い天体(単色球扱い)は null。
-function projectionTextureUrl(game: Game, id: string): string | null {
-  return game.celestialSystem.find(id)?.view.surfaceTextureUrl ?? null;
+function projectionTextureUrl(celestialSystem: CelestialSystem, id: string): string | null {
+  return celestialSystem.find(id)?.view.surfaceTextureUrl ?? null;
 }
 
 // 経緯度の点列を、投影チャートが描ける1系統の指定へ移す。
@@ -52,9 +52,9 @@ export class ProjectionTab implements AnalysisTab {
   }
 
   // 基準天体が円筒図法テクスチャを持つときだけ選べる(単色球の天体では地図を敷けない)。
-  public available(game: Game, _entity: DynamicEntity, reference: OrbitReference): boolean {
+  public available(source: AnalysisChartSource, _entity: DynamicEntity, reference: OrbitReference): boolean {
     const center = reference.attractor;
-    return center !== null && projectionTextureUrl(game, center.id) !== null;
+    return center !== null && projectionTextureUrl(source.celestialSystem, center.id) !== null;
   }
 
   public dispose(): void {
@@ -68,14 +68,14 @@ export class ProjectionTab implements AnalysisTab {
   // 中心天体の反対側(遠地点付近)を通る軌道でも見失わないよう高度タブと同じサンプル数を使い、
   // 描く未来の期間はマップの未来表示(軌道予測パネル)が指す期間をそのまま使う。
   public draw(
-    game: Game, entity: DynamicEntity, reference: OrbitReference, target: ApproachTargetSource | null,
+    source: AnalysisChartSource, entity: DynamicEntity, reference: OrbitReference, target: ApproachTargetSource | null,
   ): void {
+    const { celestialSystem } = source;
     const center = reference.attractor;
-    const textureUrl = center === null ? null : projectionTextureUrl(game, center.id);
+    const textureUrl = center === null ? null : projectionTextureUrl(celestialSystem, center.id);
     if (center === null || textureUrl === null) return;
-    const { celestialSystem } = game;
     const now = entity.motion.state.t;
-    const spanSec = game.displayWindowManager.current.duration;
+    const spanSec = source.windowDurationSec;
     const sampleCount = sampleCountFor(this.chart.element);
     const centerEntity = celestialSystem.entityOf(center.id);
 
@@ -89,8 +89,9 @@ export class ProjectionTab implements AnalysisTab {
       ? projectionSeries((t) => resolvedTarget.stateAt(t), centerEntity, now, spanSec, sampleCount)
       : null;
     const series: ProjectionSeriesSpec[] = [];
-    if (ship) series.push(seriesSpecOf(ship, ACCENT, 'filled'));
-    if (targetTrack) series.push(seriesSpecOf(targetTrack, ACCENT_SECONDARY, 'ring'));
+    const palette = currentThemePalette();
+    if (ship) series.push(seriesSpecOf(ship, palette.accent, 'filled'));
+    if (targetTrack) series.push(seriesSpecOf(targetTrack, palette.signal, 'ring'));
 
     // テクスチャが読み込み済みならそれを背景に、まだなら読み込み中の案内文を出す。
     const image = this.loadedTextureImage(textureUrl);

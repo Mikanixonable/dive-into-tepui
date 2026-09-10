@@ -4,10 +4,8 @@
 // 既存関数(strongestAttractor/elementsAround/trueAnomalyAt/apsisAltitudes)をそのまま使う。
 import { KinematicState } from '../../physics/kinematic-state';
 import { strongestAttractor } from '../../physics/attractor';
-import { orbitalElementsOf } from '../../physics/elements';
-import { frameOfCelestialBody } from '../../physics/frame';
-import { OrbitalElements, apsisAltitudes, trueAnomalyAt } from '../../physics/elements';
-import { toFrameState } from '../../physics/frame';
+import { frameOfCelestialBody, toFrameState } from '../../physics/frame';
+import { OrbitalElements, apsisAltitudes, trueAnomalyAt, orbitalElementsOf } from '../../physics/elements';
 import { Vec3, cross, dot, len, norm, v3 } from '../../math/vec3';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ElementsForm } from './object-placer-panel';

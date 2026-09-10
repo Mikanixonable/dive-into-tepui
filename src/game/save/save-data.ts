@@ -1,4 +1,8 @@
+// セーブの外部形式と、そこから運動状態・姿勢を戻すデコーダ。
 import { AnyPart } from '../dynamic/dynamic-entity/parts';
+import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
+import { v3, type Vec3 } from '../../math/vec3';
+import type { Attitude } from '../../physics/attitude';
 import type { EphemerisContext } from '../../physics/ephemeris/ephemeris-context';
 import type { FormationRole } from '../dynamic/dynamic-entity/entity-kind';
 import type { ProteinAssetId } from '../protein/protein-asset-loader';
@@ -30,6 +34,16 @@ interface EntitySaveData {
   v: Vec3SaveData;
   q: QuatSaveData;
   w: Vec3SaveData;
+}
+
+// 保存された位置・速度を、復元時刻の ECI 運動状態へ戻す。
+export function savedKinematicState(saved: EntitySaveData, simTime: number): KinematicState<'eci'> {
+  return kinematicState<'eci'>(simTime, v3(saved.r.x, saved.r.y, saved.r.z), v3(saved.v.x, saved.v.y, saved.v.z));
+}
+
+// 保存された姿勢・角速度へ、復元する個体の主慣性モーメントを添えて姿勢へ戻す。
+export function savedAttitude(saved: EntitySaveData, inertia: Vec3): Attitude {
+  return { q: { ...saved.q }, w: v3(saved.w.x, saved.w.y, saved.w.z), inertia };
 }
 
 interface KinematicStateSaveData {

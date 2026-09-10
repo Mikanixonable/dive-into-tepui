@@ -3,7 +3,6 @@ import type { Attitude } from '../../physics/attitude';
 import { qRotate } from '../../math/quat';
 import { add, v3, type Vec3 } from '../../math/vec3';
 import type { FloatingOrigin } from '../camera/floating-origin';
-import type { CameraSystem } from '../camera/camera-system';
 import type { RenderStyle } from '../../render/render-style';
 import {
   BoosterPlumeSet,
@@ -48,7 +47,8 @@ export class AttachedBoostersView {
     thrust: Vec3 | null,
     burnRatio: number,
     visible: boolean,
-    camera: CameraSystem,
+    cameraQuat: THREE.Quaternion,
+    zoomActive: boolean,
     style: RenderStyle,
   ): void {
     if (stages.length !== this.stageIds.length
@@ -57,8 +57,8 @@ export class AttachedBoostersView {
     }
     const activeIndex = stages.length - 1;
     const atCurrentTime = Math.abs(displayTime - actualTime) <= 1e-6;
-    if (activeIndex < 0 || thrust === null || !visible || !atCurrentTime || camera.zoomActive) {
-      this.plumes.sync([], camera.activeCamera.quaternion, style);
+    if (activeIndex < 0 || thrust === null || !visible || !atCurrentTime || zoomActive) {
+      this.plumes.sync([], cameraQuat, style);
       return;
     }
     const nozzleZ = BOOSTER_MOUNT_Z
@@ -71,7 +71,7 @@ export class AttachedBoostersView {
       direction: new THREE.Vector3(tail.x, tail.y, tail.z),
       intensity: Math.max(0.25, burnRatio),
       visible: true,
-    }], camera.activeCamera.quaternion, style);
+    }], cameraQuat, style);
   }
 
   public dispose(): void {

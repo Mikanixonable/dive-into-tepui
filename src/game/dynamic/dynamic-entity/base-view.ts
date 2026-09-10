@@ -35,13 +35,16 @@ export class BaseView extends DynamicView {
     // 表示時刻を引けない場合も、現在状態を使って既存エフェクトを確実に畳む。
     const effectState = displayed ?? motion.state;
     const visible = this.object.visible;
+    const cameraQuat = context.cameraSystem.activeCamera.quaternion;
+    const zoomActive = context.cameraSystem.zoomActive;
     this.thrustEffects.sync(
       context.floatingOrigin,
       effectState.r,
       motion.thrust,
       motion.maximumAcceleration,
       visible,
-      context.cameraSystem,
+      cameraQuat,
+      zoomActive,
       context.style,
       6,
     );
@@ -52,7 +55,8 @@ export class BaseView extends DynamicView {
       motion.torque,
       motion.att,
       visible,
-      context.cameraSystem,
+      cameraQuat,
+      zoomActive,
       6,
     );
   }
