@@ -2,7 +2,7 @@
 // で定義されているので、太陽の放射強度はその基準値(REFERENCE_STAR_RADIANT_INTENSITY)そのもの
 // になる。
 import * as THREE from 'three/webgpu';
-import { StarDef } from '../../../physics/celestial-motion';
+import { StarDef } from '../../../physics/celestial-body-def';
 import { MU_SUN, R_SUN } from './constants';
 
 export const SUN: StarDef = { id: 'sun', mu: MU_SUN, radius: R_SUN };

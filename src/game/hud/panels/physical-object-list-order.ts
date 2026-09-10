@@ -1,14 +1,14 @@
 import { CelestialEntity } from '../../celestial/celestial-entity/celestial-entity';
 import { LagrangePointMarker } from '../../marker/lagrange-point-marker';
 import type { CelestialClass } from '../../celestial/celestial-entity/celestial-entity-def';
-import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { MapListSection } from './physical-object-list-panel';
-import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import { len, sub } from '../../../math/vec3';
+import type { ListedObject } from '../../pickable/listed-object';
+import type { OrbitingObject } from '../../dynamic/dynamic-entity/orbiting-object';
+import type { MapListSection } from '../../pickable/pickable-listing';
 
 // 1区画ぶんの表示順と親子構造を id で持つ。表示値(距離・詳細)は毎フレーム
-// 引き渡される ObjectPickable から読み直すため、ここには id しか置かない。
+// 引き渡される ListedObject から読み直すため、ここには id しか置かない。
 export interface SectionOrder {
   readonly ids: string[];
   readonly rootIds: string[];
@@ -45,7 +45,7 @@ interface PrevInput {
   matched: boolean;
 }
 
-// 一覧の1行が今フレームどこに並ぶかを決める値。候補そのものは ObjectPickable が持つ。
+// 一覧の1行が今フレームどこに並ぶかを決める値。候補そのものは ListedObject が持つ。
 interface ListSortKey {
   readonly priority: number;         // 小さいほど先に出る
   readonly distance: number;         // 操作対象から [m]。操作対象がいなければ 0
@@ -69,24 +69,24 @@ export class PhysicalObjectListOrder {
   private prevFilter: PhysicalObjectListFilter | null | undefined = undefined;
   // 今フレームの並べ替え・絞り込みの基準。refreshInputs が候補列から導き直す。
   private readonly sortKeys = new Map<string, ListSortKey>();
-  private viewer: Controllable | null = null;
+  private viewer: OrbitingObject | null = null;
   private displayTime = 0;
   // rebuildOrder() は毎フレーム呼ばれうるが、これらは組み直し中だけ使う scratch であり、
   // 呼び出し元へ参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
-  private readonly matchedScratch: ObjectPickable[] = [];
+  private readonly matchedScratch: ListedObject[] = [];
   private readonly displayIdsScratch: string[] = [];
   private readonly newClusterParentsScratch: string[] = [];
   private readonly idsInSectionScratch = new Set<string>();
   private readonly clusterParentSeenScratch = new Set<string>();
 
-  public constructor(private readonly celestialSystem: CelestialSystem) {}
+  public constructor(private readonly celestialBodies: CelestialBodies) {}
 
   public get filteringActive(): boolean {
     return this.query !== '' || this.filter !== null;
   }
 
   // item が現在の検索語・フィルタの両方を通過するか。
-  public matches(item: ObjectPickable): boolean {
+  public matches(item: ListedObject): boolean {
     if (this.query && !this.matchText(item).includes(this.query)) return false;
     if (this.filter === null) return true;
     const inFocusedSystem = this.sortKeyOf(item).inFocusedSystem;
@@ -104,8 +104,8 @@ export class PhysicalObjectListOrder {
   // 絞り込み/並び順の選択)を前フレームと突き合わせ、変化していれば真を返して記録を更新する。
   // 距離・所属系・優先度も候補列から導き直すので、他のメソッドより先に呼ぶこと。
   public refreshInputs(
-    items: readonly ObjectPickable[], parentOf: ReadonlyMap<string, string>,
-    viewer: Controllable | null, displayTime: number, focusId: string | undefined,
+    items: readonly ListedObject[], parentOf: ReadonlyMap<string, string>,
+    viewer: OrbitingObject | null, displayTime: number, focusId: string | undefined,
   ): boolean {
     this.rebuildSortKeys(items, viewer, displayTime, focusId);
     let changed = this.prevInputs.length !== items.length || this.prevSort !== this.sort || this.prevFilter !== this.filter;
@@ -134,22 +134,22 @@ export class PhysicalObjectListOrder {
   // 今フレームの操作対象・表示時刻から、候補ごとの並べ替え基準を導き直す。恒星からの距離は
   // 太陽系順、操作対象からの距離は近さ順、所属系は人工物と敵の絞り込みが読む。
   private rebuildSortKeys(
-    items: readonly ObjectPickable[], viewer: Controllable | null, displayTime: number,
+    items: readonly ListedObject[], viewer: OrbitingObject | null, displayTime: number,
     focusId: string | undefined,
   ): void {
     this.viewer = viewer;
     this.displayTime = displayTime;
     this.sortKeys.clear();
-    const viewerState = viewer?.state ?? null;
-    const star = this.celestialSystem.star;
-    const starPos = star === null ? null : star.stateAt(displayTime).r;
+    const viewerState = viewer?.motion.state ?? null;
+    const starId = this.celestialBodies.starId;
+    const starPos = starId === null ? null : this.celestialBodies.stateAt(starId, displayTime).r;
     for (const item of items) {
       const pos = item.posAt(displayTime);
       if (pos === null) continue;
       const distance = viewerState === null ? 0 : len(sub(pos, viewerState.r));
       // 所属系の判定は最強天体から親を辿るぶん高価なので、系そのものを表す天体では省く。
       const inFocusedSystem = item.listSection === 'body'
-        || this.celestialSystem.isPositionInFocusedSystem(focusId, pos, displayTime);
+        || this.celestialBodies.isPositionInFocusedSystem(focusId, pos, displayTime);
       this.sortKeys.set(item.id, {
         priority: item.listPriority(viewer),
         distance,
@@ -159,13 +159,13 @@ export class PhysicalObjectListOrder {
     }
   }
 
-  private sortKeyOf(item: ObjectPickable): ListSortKey {
+  private sortKeyOf(item: ListedObject): ListSortKey {
     return this.sortKeys.get(item.id) ?? ABSENT_SORT_KEY;
   }
 
   // 保持している並び ids が、今フレームの値でも比較関数の順序を満たしているか。
-  public orderStillSorted(ids: readonly string[], itemsById: ReadonlyMap<string, ObjectPickable>): boolean {
-    let prev: ObjectPickable | null = null;
+  public orderStillSorted(ids: readonly string[], itemsById: ReadonlyMap<string, ListedObject>): boolean {
+    let prev: ListedObject | null = null;
     for (const id of ids) {
       const item = itemsById.get(id);
       if (!item) return false;
@@ -177,8 +177,8 @@ export class PhysicalObjectListOrder {
 
   // その区画に出す行を選び直し、表示順・根・親ごとの子を order へ書き直す。
   public rebuildOrder(
-    section: MapListSection, order: SectionOrder, items: readonly ObjectPickable[],
-    parentOf: ReadonlyMap<string, string>, itemsById: ReadonlyMap<string, ObjectPickable>,
+    section: MapListSection, order: SectionOrder, items: readonly ListedObject[],
+    parentOf: ReadonlyMap<string, string>, itemsById: ReadonlyMap<string, ListedObject>,
   ): void {
     const matched = this.matchedScratch;
     matched.length = 0;
@@ -210,7 +210,7 @@ export class PhysicalObjectListOrder {
   }
 
   // 現在の並び順での a と b の前後関係。負なら a が先。
-  private compare(a: ObjectPickable, b: ObjectPickable): number {
+  private compare(a: ListedObject, b: ListedObject): number {
     if (this.sort === 'name') return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
     const aKey = this.sortKeyOf(a);
     const bKey = this.sortKeyOf(b);
@@ -235,8 +235,8 @@ export class PhysicalObjectListOrder {
   }
 
   // 検索語と照合する文字列。表示名と、対象が検索向けに出す補助表示を小文字で連ねる。
-  private matchText(item: ObjectPickable): string {
-    const searchText = item.listSearchText(this.celestialSystem, this.viewer, this.displayTime);
+  private matchText(item: ListedObject): string {
+    const searchText = item.listSearchText(this.celestialBodies, this.viewer, this.displayTime);
     return `${item.name} ${searchText}`.toLocaleLowerCase();
   }
 
@@ -245,7 +245,7 @@ export class PhysicalObjectListOrder {
   // 返り値の所有者が条件によって変わる(scratch のことも呼び出し元の配列のこともある)のを避ける。
   // 追加分は選んだ並び順で意味を持つ見出しなので、ids への push 順ではなく compare() で整列する。
   private appendClusterParents(
-    ids: string[], parentOf: ReadonlyMap<string, string>, itemsById: ReadonlyMap<string, ObjectPickable>,
+    ids: string[], parentOf: ReadonlyMap<string, string>, itemsById: ReadonlyMap<string, ListedObject>,
   ): void {
     const seenIds = this.clusterParentSeenScratch;
     seenIds.clear();

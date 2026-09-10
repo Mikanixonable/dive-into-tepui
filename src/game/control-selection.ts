@@ -5,7 +5,7 @@ import type { DynamicSystem } from './dynamic/dynamic-system';
 import type { CameraSystem } from './camera/camera-system';
 import type { NavTarget } from './nav-target';
 import type { WorldSfx } from '../audio/sfx/world-sfx';
-import type { Hud } from './hud/hud';
+import type { Notifier } from '../hud/notifier';
 
 export class ControlSelection {
   private _current: Controllable | null;
@@ -18,10 +18,12 @@ export class ControlSelection {
     private readonly cameraSystem: CameraSystem,
     private readonly navTarget: NavTarget,
     private readonly worldSfx: WorldSfx,
-    private readonly hud?: Hud,
+    private readonly notifier?: Notifier,
   ) {
     const candidates = dynamicSystem.controllables;
-    this._current = candidates.find((c) => c.id === savedId) ?? candidates.find((c) => c.alive) ?? null;
+    this._current = candidates.find((c) => c.id === savedId)
+      ?? candidates.find((c) => c.motion.alive)
+      ?? null;
   }
 
   get current(): Controllable | null { return this._current; }
@@ -32,7 +34,7 @@ export class ControlSelection {
     this._current?.clearTransientCommands();
     this._current = target;
     this.navTarget.clear();
-    if (target.controlHint !== null) this.hud?.hint(target.controlHint);
+    if (target.controlHint !== null) this.notifier?.hint(target.controlHint);
   }
 
   // 未操作状態(全滅、または操作対象の手動解除)へ戻す。
@@ -41,6 +43,13 @@ export class ControlSelection {
     this._current.clearTransientCommands();
     this._current = null;
     this.worldSfx.setRcs(false);
+  }
+
+  // 操作対象を手で外す。外れたときだけ案内を出す(全滅による喪失とは別の経路)。
+  release(target: Controllable): void {
+    if (this._current !== target) return;
+    this.clear();
+    if (target.releaseHint !== null) this.notifier?.hint(target.releaseHint);
   }
 
   // 操作対象が居ない間に増えたものを、そのまま操作対象にする。既に居れば何もしない。
@@ -66,7 +75,7 @@ export class ControlSelection {
     let lostActive = false;
     // remove() が顔ぶれを触るので、走査は開始時の並びの写しに対して行う。
     for (const lost of [...this.dynamicSystem.controllables]) {
-      if (lost.alive) continue;
+      if (lost.motion.alive) continue;
       if (this._current === lost) {
         this._current = null;
         lostActive = true;
@@ -78,7 +87,7 @@ export class ControlSelection {
 
   // 操作対象を失った直後に呼ぶ。他に生存しているものがあれば引き継ぎ、無ければ未操作へ戻す。
   private reclaimAfterLoss(): void {
-    const next = this.dynamicSystem.controllables.find((c) => c.alive) ?? null;
+    const next = this.dynamicSystem.controllables.find((c) => c.motion.alive) ?? null;
     if (next) this.select(next);
     else this.clear();
   }

@@ -16,7 +16,7 @@ import type { ProjectionSeriesSpec } from './orbit-projection-chart';
 
 // id の天体が持つ円筒図法テクスチャの URL。実写テクスチャが無い天体(単色球扱い)は null。
 function projectionTextureUrl(game: Game, id: string): string | null {
-  return game.celestialSystem.find(id)?.surfaceTextureUrl ?? null;
+  return game.celestialSystem.find(id)?.view.surfaceTextureUrl ?? null;
 }
 
 // 経緯度の点列を、投影チャートが描ける1系統の指定へ移す。
@@ -74,14 +74,14 @@ export class ProjectionTab implements AnalysisTab {
     const textureUrl = center === null ? null : projectionTextureUrl(game, center.id);
     if (center === null || textureUrl === null) return;
     const { celestialSystem } = game;
-    const now = entity.state.t;
+    const now = entity.motion.state.t;
     const spanSec = game.displayWindowManager.current.duration;
     const sampleCount = sampleCountFor(this.chart.element);
     const centerEntity = celestialSystem.entityOf(center.id);
 
     // 操作対象自身の軌跡(塗り丸)と、同じ中心天体を周回しているターゲットの軌跡(縁だけの丸)。
     const ship = projectionSeries(
-      (t) => entity.stateAt(t, celestialSystem), centerEntity, now, spanSec, sampleCount,
+      (t) => entity.motion.stateAt(t, celestialSystem), centerEntity, now, spanSec, sampleCount,
     );
     const resolvedTarget = target === null ? null : resolveTarget(target, celestialSystem, now);
     const targetTrack = resolvedTarget !== null

@@ -1,10 +1,13 @@
 // エンティティの保持・追加・上限管理・寿命回収と、1フレームぶんの前進(指令決定と積分)・描画同期。
 import * as THREE from 'three/webgpu';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { Vec3 } from '../../math/vec3';
-import { CelestialMotion } from '../../physics/celestial-motion';
-import type { FrameAnchorSource } from '../../physics/frame';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { FloatingOrigin } from '../camera/floating-origin';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import type { DynamicMotion } from './dynamic-motion';
+import type { EntityRoster } from './entity-roster';
+import type { EntityRegistry, SpawnGate } from './entity-registry';
 import { ENTITY_CAP, type CapKind, type EntityCountKind } from './dynamic-entity/entity-kind';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
 import { isEnemy } from './dynamic-entity/enemy';
@@ -20,27 +23,16 @@ import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CameraSystem } from '../camera/camera-system';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
-import type { CelestialSystem } from '../celestial/celestial-system';
-import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
+
 import type { EntitySaveDataUnion, GameSaveData } from '../save/save-data';
-import type { Hud } from '../hud/hud';
+import type { Notifier } from '../../hud/notifier';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../vfx/flash-effects';
-import type { MarkerManager } from '../marker/marker-manager';
-import type { EquatorNodeInputs } from '../marker/equator-node-marker-pair';
+import type { MarkerSlots } from '../marker/marker-slots';
 import type { PerfCounts } from '../perf-counts';
 import type { OrbitReference } from '../orbit-reference';
 
-// 個体を実体化してよいかを答える述語。何を待つかは、待つと決めた側だけが知っていればよい。
-export type SpawnGate = () => boolean;
-
-// 生んだ個体を顔ぶれへ入れる口。
-export interface EntityRegistry {
-  add(entity: DynamicEntity): void;
-  spawnWhenReady(gate: SpawnGate | null, build: () => DynamicEntity, onSpawned?: () => void): void;
-}
-
-export class DynamicSystem implements EntityRegistry {
+export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 保持する全エンティティを追加順に並べた、顔ぶれの正本。枠ごとの上限はこの並びから導く。
   private readonly entities: DynamicEntity[] = [];
 
@@ -60,30 +52,30 @@ export class DynamicSystem implements EntityRegistry {
   // 描画資源のプールと前進の機構を組んでから、saved があればその顔ぶれを復元する。
   constructor(
     scene: THREE.Scene,
-    hud: Hud,
+    notifier: Notifier,
     worldSfx: WorldSfx,
     flash: FlashEffects,
-    markerManager: MarkerManager,
-    private readonly celestialSystem: CelestialSystem,
+    markers: MarkerSlots,
+    private readonly celestialBodies: CelestialBodies,
     private readonly sections: FrameSections,
     initialSimTime: number,
     saved?: GameSaveData,
   ) {
     this.instancedPools = new InstancedPools(scene);
-    this.simulator = new Simulator(this, celestialSystem, sections, initialSimTime);
-    this.nanWatchdog = new NanWatchdog(hud);
-    if (saved) this.restoreFromSave(saved, hud, worldSfx, flash, scene, markerManager);
+    this.simulator = new Simulator(this, this, this, celestialBodies, sections, initialSimTime);
+    this.nanWatchdog = new NanWatchdog(notifier);
+    if (saved) this.restoreFromSave(saved, notifier, worldSfx, flash, scene, markers);
   }
 
   // スナップショットの顔ぶれを復元する。組み立て方は種別ごとの辞書が答え、知らない種別は
   // 読み飛ばす。
   private restoreFromSave(
-    save: GameSaveData, hud: Hud, worldSfx: WorldSfx, flash: FlashEffects, scene: THREE.Scene,
-    markerManager: MarkerManager,
+    save: GameSaveData, notifier: Notifier, worldSfx: WorldSfx, flash: FlashEffects, scene: THREE.Scene,
+    markers: MarkerSlots,
   ): void {
     for (const data of save.entities) {
       const restoration = restorationFor(
-        data, save.simTime, scene, hud, worldSfx, markerManager, flash);
+        data, save.simTime, scene, notifier, worldSfx, markers, flash);
       if (restoration === null) continue;
       this.spawnWhenReady(restoration.gate, () => restoration.build());
     }
@@ -175,10 +167,10 @@ export class DynamicSystem implements EntityRegistry {
     for (let i = entities.length - 1; i >= 0; i--) {
       const entity = entities[i]!;
       const cap = entity.capKind;
-      if (cap === null || !entity.alive) continue;
+      if (cap === null || !entity.motion.alive) continue;
       const rank = live[cap] + 1;
       live[cap] = rank;
-      if (rank > ENTITY_CAP[cap]) entity.alive = false;
+      if (rank > ENTITY_CAP[cap]) entity.motion.alive = false;
     }
   }
 
@@ -192,16 +184,21 @@ export class DynamicSystem implements EntityRegistry {
     return this.entities;
   }
 
+  public allMotions(): readonly DynamicMotion[] {
+    return this.entities.map(entity => entity.motion);
+  }
+
   // 全エンティティの寿命判定と上限判定を行い、死亡したものを破棄・除去する。
   public cleanup(
     dt: number, simTime: number, activeStage: Stage, viewerPos: Vec3,
-    atmosphereBodies: readonly CelestialMotion[],
+    atmosphereBodies: readonly CelestialBody[],
   ): void {
     this.processPendingSpawns();
     // 判定は開始時の顔ぶれに対して行う。死の演出が破片を足すので、生配列を反復すると
     // 生まれたばかりの個体まで同じパスで判定してしまい、生成が連鎖すれば終わらなくなる。
     for (let i = 0, n = this.entities.length; i < n; i++) {
-      this.entities[i]!.checkLoss(dt, simTime, activeStage, this, viewerPos, atmosphereBodies);
+      this.entities[i]!.motion.checkLoss(
+        dt, simTime, { activeStage, registry: this }, viewerPos, atmosphereBodies);
     }
     this.enforceCaps();
     this.prune();
@@ -213,11 +210,14 @@ export class DynamicSystem implements EntityRegistry {
     let changed = false;
     // 所有者が回収する種別は、死亡していても残す。
     for (const x of this.entities) {
-      if (!x.alive && !x.reclaimedByOwner) {
+      if (!x.motion.alive && !x.reclaimedByOwner) {
         x.dispose();
         changed = true;
       }
-      else this.entities[w++] = x;
+      else {
+        this.entities[w] = x;
+        w++;
+      }
     }
     this.entities.length = w;
     if (changed) this.bumpCollectionRevision();
@@ -225,7 +225,7 @@ export class DynamicSystem implements EntityRegistry {
 
   // 過去表示に要る履歴の保持時間 [s] を全エンティティへ要求する。履歴を持たない種別は無視する。
   requestHistoryDuration(sec: number): void {
-    for (const e of this.all()) e.requestHistoryDuration(sec);
+    for (const entity of this.entities) entity.motion.requestHistoryDuration(sec);
   }
 
   // 顔ぶれをどこまで進めたか。積分の先端時刻と、直前のフレームで進めた長さ [sim s]。
@@ -247,24 +247,34 @@ export class DynamicSystem implements EntityRegistry {
     active: Controllable | null, input: Input, operable: boolean,
     dt: number, simDt: number, canEngage: boolean, activeStage: Stage,
   ): void {
-    this.nanWatchdog.checkControlled('update(入口)', active, this.simTime, dt, this.lastSimDt);
+    this.nanWatchdog.checkControlled(
+      'update(入口)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
+    );
     this.sections.enter(SECTION.command);
     this.updateThrusts(simDt);
     this.updateControllables(active, input, operable, dt, simDt, activeStage);
     this.behaveAll(active, operable);
     this.sections.exit(SECTION.command);
-    this.nanWatchdog.checkControlled('update(指令決定)', active, this.simTime, dt, this.lastSimDt);
+    this.nanWatchdog.checkControlled(
+      'update(指令決定)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
+    );
 
     this.sections.enter(SECTION.integrate);
-    this.simulator.advance(dt, simDt, active, activeStage, canEngage, this.nanWatchdog);
+    this.simulator.advance(
+      dt, simDt, active?.motion ?? null, activeStage, canEngage, this.nanWatchdog,
+    );
     this.sections.exit(SECTION.integrate);
     // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全個体を見る。
-    this.nanWatchdog.checkAll('update(積分)', active, this.entities, this.simTime, dt, simDt);
+    this.nanWatchdog.checkAll(
+      'update(積分)', active?.motion ?? null, this.allMotions(), this.simTime, dt, simDt,
+    );
   }
 
   // 自分で決まる推力を持つ個体を1フレーム進める。
   private updateThrusts(simDt: number): void {
-    for (const entity of this.entities) if (entity.alive) entity.updateThrust(simDt);
+    for (const entity of this.entities) {
+      if (entity.motion.alive) entity.motion.updateCommands(simDt);
+    }
   }
 
   // 操作されうる全個体へ updateControls を1度ずつ通す。「操作対象でない」と
@@ -274,14 +284,14 @@ export class DynamicSystem implements EntityRegistry {
     dt: number, simDt: number, activeStage: Stage,
   ): void {
     for (const controllable of this.controllables) {
-      if (!controllable.alive) continue;
+      if (!controllable.motion.alive) continue;
       controllable.updateControls(
         controllable === active && operable ? input : null,
         dt,
         simDt,
         this,
         activeStage,
-        this.celestialSystem,
+        this.celestialBodies,
       );
     }
   }
@@ -293,14 +303,16 @@ export class DynamicSystem implements EntityRegistry {
     if (player === null) return;
     const enemies = this.entities.filter(isEnemy);
     for (const e of enemies) {
-      if (e.alive) e.behave(this.simTime, player, this, enemies, operable, this.celestialSystem);
+      if (e.motion.alive) {
+        e.behave(this.simTime, player, this, enemies, operable, this.celestialBodies);
+      }
     }
   }
 
   // 敵が追う自艦。操作対象が基地でも敵は止まらないので、そのときは生存中の先頭の艦を使う。
   private trackedShip(active: Controllable | null): Player | null {
     if (active instanceof Player) return active;
-    return this.entities.filter(isPlayer).find((p) => p.alive) ?? null;
+    return this.entities.filter(isPlayer).find((p) => p.motion.alive) ?? null;
   }
 
   // このフレームの表示物を同期する。何をどう出すかは個体が答えるので、ここは顔ぶれを1度だけ
@@ -309,21 +321,23 @@ export class DynamicSystem implements EntityRegistry {
     fo: FloatingOrigin, displayTime: number, active: Controllable | null,
     visibilityPolicy: MapVisibilityPolicy | null, cameraSystem: CameraSystem, style: RenderStyle,
     graphics: GraphicsSettingsData, orbitRef: OrbitReference | undefined,
-    frameAnchors: FrameAnchorSource, timeLabel: TimeLabelSetting,
   ): void {
+    // instance pool の受付期間で全 Entity を挟み、各 View へ同じフレーム入力を配る。
     this.instancedPools.beginFrame();
     for (const e of this.entities) {
-      e.sync(
-        fo, displayTime, active, visibilityPolicy, this.instancedPools, cameraSystem, style,
-        graphics, orbitRef, frameAnchors, timeLabel);
+      e.sync({
+        floatingOrigin: fo,
+        displayTime,
+        activeId: active?.id ?? null,
+        visibilityPolicy,
+        pools: this.instancedPools,
+        cameraSystem,
+        style,
+        graphics,
+        orbitReference: orbitRef,
+      });
     }
     this.instancedPools.endFrame();
-  }
-
-  // 全個体の赤道交点マーカーを求め直す。出すかどうかも、どの線の上で解くかも個体が答えるので、
-  // 折れ線を組み終えた後・選択候補を組む前に1度だけ通す。
-  updateEquatorNodes(inputs: EquatorNodeInputs, controlled: Controllable | null): void {
-    for (const e of this.all()) e.updateEquatorNodes(inputs, e === controlled);
   }
 
   // 保持する全エンティティと描画資源プールを、生死によらず破棄する。

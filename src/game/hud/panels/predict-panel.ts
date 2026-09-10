@@ -4,10 +4,12 @@ import {
 } from '../../../hud/widgets';
 import { wirePanelCollapse } from '../panel-shell';
 import { fmtDateTime, fmtDuration } from '../../../hud/utils';
-import type { DisplayDurationKey, DisplayPastDurationKey } from '../../display-window-manager';
 import type { TickLabelMode } from '../orbit/calendar-ticks';
 import type { DisplayTick } from '../orbit/tick-scale';
-import { DISPLAY_DURATION_MAX, APERIODIC_ARC_DURATION } from '../../display-window-manager';
+import {
+  APERIODIC_ARC_DURATION, DISPLAY_DURATION_MAX,
+  type DisplayDurationKey, type DisplayPastDurationKey,
+} from '../../display-window-duration';
 
 // 手動レンジで指定できる表示期間の下限 [s]。表示期間は予測列の保持窓でもあり、0 では
 // サンプルが1件も残らず、どの時刻も引けない列になる。

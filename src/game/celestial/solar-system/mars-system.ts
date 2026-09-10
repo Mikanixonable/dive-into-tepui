@@ -2,9 +2,8 @@
 import * as THREE from 'three/webgpu';
 import marsTextureUrl from '../../../assets/2k_mars.jpg';
 import phobosTextureUrl from '../../../assets/2k_phobos.jpg';
-import {
-  PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero, SatelliteMotion, StarMotion,
-} from '../../../physics/celestial-motion';
+import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
+import { PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
@@ -12,9 +11,9 @@ import { MU_MARS } from './constants';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { CelestialTexture } from '../../../render/celestial-textures';
 import { CelestialSurface } from '../../../render/celestial-surface';
-import type { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { PointEntity } from '../celestial-entity/point-entity';
-import { SphereEntity } from '../celestial-entity/sphere-entity';
+import { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { PointCelestialView } from '../celestial-entity/point-celestial-view';
+import { SphereCelestialView } from '../celestial-entity/sphere-celestial-view';
 import { MARS_POLE } from './poles';
 import { equatorialSatelliteOrbit } from './satellite-orbit-builders';
 
@@ -90,20 +89,25 @@ export function marsSystem(
 ): Record<MarsSystemBodyId, CelestialEntity> {
   const mars = planetSystem(planetDefForSimZero(MARS, phases, simZeroEt), sun);
   return {
-    mars: new PointEntity(
-      mars.body, MARS_SYSTEM_NAMES.mars, 'planet', CelestialSurface.textured(MARS_TEXTURE), MARS_ATMOSPHERE_OPTICS,
+    mars: new CelestialEntity(
+      mars.body, MARS_SYSTEM_NAMES.mars, 'planet',
+      new PointCelestialView(CelestialSurface.textured(MARS_TEXTURE), MARS_ATMOSPHERE_OPTICS),
     ),
-    phobos: new SphereEntity(
+    phobos: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(PHOBOS, phases, simZeroEt), mars),
       MARS_SYSTEM_NAMES.phobos, 'satellite',
-      // 平均輝度 0.2774(A_B は幾何 0.071 x q=0.393)
-      CelestialSurface.textured({ url: phobosTextureUrl, albedoScale: 0.1009, bondAlbedo: 0.028, averageHue: [1, 1, 1] }),
+      new SphereCelestialView(
+        // 平均輝度 0.2774(A_B は幾何 0.071 x q=0.393)
+        CelestialSurface.textured({ url: phobosTextureUrl, albedoScale: 0.1009, bondAlbedo: 0.028, averageHue: [1, 1, 1] }),
+      ),
     ),
-    deimos: new SphereEntity(
+    deimos: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(DEIMOS, phases, simZeroEt), mars),
       MARS_SYSTEM_NAMES.deimos, 'satellite',
-      // A_B=0.027(幾何 0.068 x q=0.393)
-      CelestialSurface.solid([0.0330, 0.0259, 0.0199]),
+      new SphereCelestialView(
+        // A_B=0.027(幾何 0.068 x q=0.393)
+        CelestialSurface.solid([0.0330, 0.0259, 0.0199]),
+      ),
     ),
   };
 }

@@ -4,9 +4,9 @@ import {
   Atmosphere, airspeed, atmosphericDensity, atmosphericScaleHeight, ellipsoidAltitude,
 } from '../../physics/atmosphere';
 import { nearestAtmosphereBody } from '../../physics/attractor';
-import { CelestialMotion } from '../../physics/celestial-motion';
 import { KinematicState } from '../../physics/kinematic-state';
 import { Vec3, dot, len, sub } from '../../math/vec3';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 // 1サブステップの最大秒数 [s]。
 export const SUBSTEP_MAX_DT = 20;
@@ -92,7 +92,7 @@ function dragMaxStep(rRel: Vec3, vRel: Vec3, bcInv: number, mu: number, atm: Atm
 // 同じく Infinity。時間送りやイベント由来の上限との合成は呼び出し側が行う。
 export function atmosphericMaxStep(
   state: KinematicState, bcInv: number,
-  atmosphereBodies: readonly CelestialMotion[], pivot: number,
+  atmosphereBodies: readonly CelestialBody[], pivot: number,
 ): number {
   if (bcInv <= 0) return Infinity;
   const body = nearestAtmosphereBody(state.r, atmosphereBodies, pivot);
@@ -111,7 +111,7 @@ export function atmosphericMaxStep(
 // すると、大気に触れていない物体まで巻き込んでしまう。
 export function dragTakesFullAirspeed(
   state: KinematicState, bcInv: number,
-  atmosphereBodies: readonly CelestialMotion[], pivot: number, dt: number,
+  atmosphereBodies: readonly CelestialBody[], pivot: number, dt: number,
 ): boolean {
   if (bcInv <= 0 || dt <= 0) return false;
   const body = nearestAtmosphereBody(state.r, atmosphereBodies, pivot);

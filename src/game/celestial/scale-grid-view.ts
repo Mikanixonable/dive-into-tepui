@@ -5,7 +5,7 @@ import { ScaleGrid } from '../../render/scale-grid';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
-import type { CelestialSystem } from './celestial-system';
+import type { CelestialBodies } from './celestial-bodies';
 import type { Vec3 } from '../../math/vec3';
 import type { ScaleGridVisibility } from '../../render/scale-grid';
 import type { CelestialGridVisibility } from '../../render/celestial-grid';
@@ -27,7 +27,7 @@ export class ScaleGridView {
   // だけ表示するので、戦闘ビューではトグルに関わらず4面とも隠す。月が星系に無いか自転軸が
   // 得られないなら、その面の向きは決められないので null を渡す。
   sync(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, celestialSystem: CelestialSystem,
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, celestialBodies: CelestialBodies,
     gridVisibility: CelestialGridVisibility,
   ): void {
     const mapView = cameraSystem.view === 'map';
@@ -37,7 +37,7 @@ export class ScaleGridView {
       moonOrbit: mapView && gridVisibility.moonOrbitScaleGrid,
       moonEquator: mapView && gridVisibility.moonEquatorScaleGrid,
     };
-    const moon = celestialSystem.find('moon')?.motion ?? null;
+    const moon = celestialBodies.findMotion('moon');
     const moonPole = moon === null ? null : moon.orientationAt(displayTime);
     this.grid.sync(
       visibility,

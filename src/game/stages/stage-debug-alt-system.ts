@@ -4,10 +4,8 @@
 import * as THREE from 'three/webgpu';
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import {
-  CelestialMotion, OrbitingMotion, PhaseOffsets, PlanetDef, SatelliteDef, StarDef,
-  planetDefForSimZero, satelliteDefForSimZero, SatelliteMotion, StarMotion,
-} from '../../physics/celestial-motion';
+import { OrbitingMotion, SatelliteMotion, StarMotion } from '../../physics/celestial-motion';
+import { PhaseOffsets, PlanetDef, SatelliteDef, StarDef, planetDefForSimZero, satelliteDefForSimZero } from '../../physics/celestial-body-def';
 import { planetSystem } from '../../physics/planet-system';
 import { planetOrbit } from '../../physics/kepler-orbit';
 import { AU } from '../../physics/astronomical-unit';
@@ -23,10 +21,11 @@ import { celestialClassOfKind } from '../celestial/celestial-entity/celestial-en
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { CelestialSystem } from '../celestial/celestial-system';
 import type { TdbJulianDate } from '../../physics/time';
-import { SphereEntity } from '../celestial/celestial-entity/sphere-entity';
-import { StarEntity } from '../celestial/celestial-entity/star-entity';
+import { SphereCelestialView } from '../celestial/celestial-entity/sphere-celestial-view';
+import { StarCelestialView } from '../celestial/celestial-entity/star-celestial-view';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../render/pipeline/sun-light';
-import { MAG_ROUNDS } from '../player/fire-control';
+import { MAG_ROUNDS } from '../player/ammo-spec';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 const STAR_ID = 'aeolus';
 const PRIMARY_ID = 'zephyrus';
@@ -67,7 +66,7 @@ const ZEPHYRUS_I: SatelliteDef = {
 };
 
 // 架空星系の運動を組む。
-function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialMotion[] {
+function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialBody[] {
   const aeolus = new StarMotion(AEOLUS);
   const zephyrus = planetSystem(planetDefForSimZero(ZEPHYRUS, phases, 0), aeolus);
   const zephyrusI = new SatelliteMotion(satelliteDefForSimZero(ZEPHYRUS_I, phases, 0), zephyrus);
@@ -75,14 +74,19 @@ function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialMotion[]
 }
 
 // 架空天体の見た目: 恒星なら太陽の見た目、それ以外は単色球。表示名は id をそのまま使う。
-function fallbackEntity(motion: CelestialMotion): CelestialEntity {
+function fallbackEntity(motion: CelestialBody): CelestialEntity {
   // 色の手がかりを持たない架空の恒星なので、無彩色で目盛りの基準どおりの明るさにする。
   if (motion instanceof StarMotion) {
-    return new StarEntity(
-      motion, motion.id, new THREE.Color(1, 1, 1), REFERENCE_STAR_RADIANT_INTENSITY, 0xffffff);
+    return new CelestialEntity(
+      motion, motion.id, 'star', new StarCelestialView(0xffffff, {
+        color: new THREE.Color(0xffffff), radiantIntensity: REFERENCE_STAR_RADIANT_INTENSITY,
+      }),
+    );
   }
   if (!(motion instanceof OrbitingMotion)) throw new Error(`${motion.id} の運動が OrbitingMotion ではない`);
-  return new SphereEntity(motion, motion.id, celestialClassOfKind(motion.kind), CelestialSurface.solid(DEFAULT_ALBEDO));
+  return new CelestialEntity(
+    motion, motion.id, celestialClassOfKind(motion.kind), new SphereCelestialView(CelestialSurface.solid(DEFAULT_ALBEDO)),
+  );
 }
 
 export class StageDebugAltSystem extends Stage {

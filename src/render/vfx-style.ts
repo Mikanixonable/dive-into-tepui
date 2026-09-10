@@ -28,7 +28,7 @@ export const GAS_PUFF2_SIZE0 = 0.5;
 export const GAS_PUFF2_SIZE1 = 6.0;
 export const GAS_PUFF2_DURATION = 0.35;
 export const GAS_PUFF2_BRIGHTNESS = 0.4;
-// 撃破フラッシュ。芯(1)と外殻(2)の2枚。サイズは敵機の ENEMY_SCALE 倍される。
+// 撃破フラッシュ。芯(1)と外殻(2)の2枚。敵機では機体サイズに合わせて呼び出し側が拡大する。
 export const DESTROY_FLASH_COLOR_1 = '#ffb36b';
 export const DESTROY_FLASH1_SIZE0 = 10;
 export const DESTROY_FLASH1_SIZE1 = 110;
@@ -39,7 +39,7 @@ export const DESTROY_FLASH2_SIZE1 = 40;
 export const DESTROY_FLASH2_DURATION = 0.5;
 
 // --- 破片 ---
-export const DESTROY_FRAG_SIZE_MIN = 1.5; // 撃破デブリの破片サイズ下限。ENEMY_SCALE 倍される
+export const DESTROY_FRAG_SIZE_MIN = 1.5; // 撃破デブリの破片サイズ下限。敵機では機体サイズに合わせて拡大する
 export const DESTROY_FRAG_SIZE_MAX = 6.0;
 export const PLAYER_DESTROY_FRAG_COLOR = '#9fd8e8';
 export const ENEMY_DESTROY_FRAG_COLOR = '#ff6a4a';

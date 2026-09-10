@@ -4,6 +4,7 @@ import type { FloatingOrigin } from '../camera/floating-origin';
 import type { Input } from '../../input/input';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
+import type { PlanEditor } from '../plan/plan-editor';
 import type { PerfCounts } from '../perf-counts';
 
 export type View = 'combat' | 'map';
@@ -13,6 +14,8 @@ export interface ViewFrame {
   readonly pickables: readonly ObjectPickable[];
   // 同じ回の表示・選択可否。表示トグルを持たないビューは null。
   readonly visibilityPolicy: MapVisibilityPolicy | null;
+  // 軌道計画を編集できるビューだけが持つ編集口。持たないビューは null。
+  readonly planEditor: PlanEditor | null;
   // このビューの候補列/ラベル数。
   perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'>;
 

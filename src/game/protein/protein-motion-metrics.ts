@@ -1,6 +1,5 @@
-// Protein motion の性能計測を、実装本体から切り離すための小さな収集器。
-//
-// Render Lab と runtime が同じ形式で controller CPU 時間・upload bytes・LOD 体数を記録する。
+// タンパク質の motion 更新の性能計測。1フレームぶんの CPU 時間・GPU 転送量・LOD ごとの体数を
+// 拾い、計測窓ぶんの分布へまとめる。
 
 import { LODS_FINE_TO_COARSE, type ProteinMotionLod } from './protein-motion-controller';
 import { ProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
@@ -27,16 +26,12 @@ export function proteinMotionFrameSample(
   // CPU 時間と転送量は総和、体数は LOD ごとに数える。
   for (const entity of entities) {
     if (!(entity instanceof ProteinEnemy)) continue;
-    const metrics = entity.motionMetrics;
-    cpuMs += metrics.cpuMs;
+    const metrics = entity.view.motionMetrics;
+    cpuMs += entity.motionCpuMs + metrics.cpuMs;
     uploadBytes += metrics.uploadBytes;
-    lodCounts[metrics.lod] = (lodCounts[metrics.lod] ?? 0) + 1;
+    lodCounts[entity.motionLod] = (lodCounts[entity.motionLod] ?? 0) + 1;
   }
   return { cpuMs, uploadBytes, lodCounts };
-}
-
-interface ProteinMotionMetricsSink {
-  record(sample: ProteinMotionFrameSample): void;
 }
 
 export interface ProteinMotionMetricSummary {
@@ -79,15 +74,9 @@ function emptyLodCounts(): Record<ProteinMotionLod, number> {
   return { near: 0, medium: 0, far: 0, marker: 0 };
 }
 
-/**
- * One measurement window for one protein scene.
- *
- * The recorder intentionally accepts partial LOD counts so callers can provide only the LODs they
- * update. Missing fields are zero; negative and non-finite values are ignored. This keeps the
- * instrumentation safe to call from a hot update path without making telemetry part of simulation
- * state.
- */
-export class ProteinMotionMetricsRecorder implements ProteinMotionMetricsSink {
+// 1つの計測窓ぶんの CPU 時間・転送量・LOD 体数を積み、分布として答える。欠けた LOD は 0 と
+// 見なし、負値と非有限値は捨てる。
+export class ProteinMotionMetricsRecorder {
   private readonly cpuSamples: number[] = [];
   private readonly uploadSamples: number[] = [];
   private readonly lodTotals = emptyLodCounts();

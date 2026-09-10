@@ -7,23 +7,21 @@ import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
 import { FlashEffects } from '../vfx/flash-effects';
-import { Hud } from '../hud/hud';
+import type { HudLayers } from '../hud/hud-layers';
+import type { Notifier } from '../../hud/notifier';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
-import type { DynamicSystem, SpawnGate } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
-import type { MarkerManager } from '../marker/marker-manager';
+import type { MarkerSlots } from '../marker/marker-slots';
 import type { StageSaveData } from '../save/save-data';
-import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ControlSelection } from '../control-selection';
 import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
 import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
-
 // 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。各ステージが
 // 自分の epoch としてこれを宣言する — ステージに別の日時を与えるのはその1行を変えるだけ。
 // **この定数を stage.ts の外から import しない**(元期は共有の定数ではなく、ステージの宣言)。
@@ -31,7 +29,9 @@ export const STORY_EPOCH: TdbJulianDate =
   calendarDateToJulianDate(parseCalendarDate('20115-05-14T06:00:00', 'TDB'));
 import { solarSystem } from '../celestial/solar-system/solar-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { PhaseOffsets } from '../../physics/celestial-motion';
+import type { PhaseOffsets } from '../../physics/celestial-body-def';
+import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRegistry, SpawnGate } from '../dynamic/entity-registry';
 
 export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
 
@@ -52,13 +52,13 @@ const BRIEFING_TOAST_MS = 12000;
 // 全ステージ共通の生成引数(セーブデータを除く)。具象ステージは自分のコンストラクタで
 // これをそのまま基底へ渡す。
 export type StageDeps = [
-  hud: Hud,
+  hud: HudLayers & Notifier,
   worldSfx: WorldSfx,
   uiSfx: UiSfx,
   scene: THREE.Scene,
-  dynamicSystem: DynamicSystem,
+  dynamicSystem: EntityRegistry & EntityRoster,
   fx: FlashEffects,
-  markerManager: MarkerManager,
+  markers: MarkerSlots,
   celestialSystem: CelestialSystem,
   controlSelection: ControlSelection,
 ];
@@ -150,13 +150,13 @@ export abstract class Stage {
   protected readonly logistics: Logistics;
   private readonly statusPanel: StatusPanel;
 
-  protected readonly _hud: Hud;
+  protected readonly _hud: HudLayers & Notifier;
   protected readonly _worldSfx: WorldSfx;
   protected readonly _uiSfx: UiSfx;
   protected readonly _scene: THREE.Scene;
   protected readonly _fx: FlashEffects;
-  protected readonly _dynamicSystem: DynamicSystem;
-  protected readonly _markerManager: MarkerManager;
+  protected readonly _dynamicSystem: EntityRegistry & EntityRoster;
+  protected readonly _markers: MarkerSlots;
   protected readonly _celestialSystem: CelestialSystem;
   protected readonly _controlSelection: ControlSelection;
 
@@ -182,14 +182,14 @@ export abstract class Stage {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, worldSfx, uiSfx, scene, dynamicSystem, fx, markerManager, celestialSystem, controlSelection] = deps;
+    const [hud, worldSfx, uiSfx, scene, dynamicSystem, fx, markers, celestialSystem, controlSelection] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
     this._scene = scene;
     this._fx = fx;
     this._dynamicSystem = dynamicSystem;
-    this._markerManager = markerManager;
+    this._markers = markers;
     this._celestialSystem = celestialSystem;
     this._controlSelection = controlSelection;
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
@@ -212,11 +212,10 @@ export abstract class Stage {
     this.statusPanel.appendLeftWidget(el);
   }
 
-  // ステータスパネルを同期する。fo・displayTime・visibilityPolicy は配置プレビューなど
-  // ステージ固有の描画物を持つサブクラスが使う。
+  // ステータスパネルを同期する。fo・displayTime は配置プレビューなどステージ固有の描画物を
+  // 持つサブクラスが使う。
   public sync(
     _fo: FloatingOrigin, cameraSystem: CameraSystem, _displayTime: number,
-    _visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     this.syncStatusPanel(cameraSystem.view === 'map');
   }
@@ -233,13 +232,13 @@ export abstract class Stage {
   protected get ship(): Player | null {
     const controlled = this._controlSelection.current;
     if (controlled instanceof Player) return controlled;
-    return this._dynamicSystem.all().filter(isPlayer).find((p) => p.alive) ?? null;
+    return this._dynamicSystem.all().filter(isPlayer).find((p) => p.motion.alive) ?? null;
   }
 
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、
   // 何隻をどこへ置くかはステージ自身の宣言。
   protected addPlayer(init?: PlayerInit): Player {
-    const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, this._markerManager, init);
+    const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, this._markers, init);
     this._dynamicSystem.add(ship);
     this._controlSelection.claimIfNone(ship);
     return ship;

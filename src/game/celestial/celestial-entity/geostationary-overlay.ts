@@ -1,7 +1,6 @@
 // 同期軌道(自転と同じ周期で公転する赤道円軌道)の高度を示す、マップ専用のリングとラベル。
 // 実在の衛星や特定経度ではなく、高度の目盛りとして引く1本。
 import * as THREE from 'three/webgpu';
-import { CelestialMotion } from '../../../physics/celestial-motion';
 import { OrbitalElements, orbitalElementsFromClassical } from '../../../physics/elements';
 import { isOccluded } from '../../../physics/occlusion';
 import { add, len, scale, sub, type Vec3 } from '../../../math/vec3';
@@ -9,8 +8,9 @@ import { LINE_RENDER_ORDER } from '../../../render/line-style';
 import { CameraSystem } from '../../camera/camera-system';
 import { FloatingOrigin } from '../../camera/floating-origin';
 import { EllipseLine } from '../../lines/ellipse-line';
-import type { MarkerManager } from '../../marker/marker-manager';
+import type { MarkerSlots } from '../../marker/marker-slots';
 import { MARKER_PRIORITY } from '../../marker/crowding';
+import type { CelestialBody } from '../../../physics/celestial-body';
 
 // リングとラベルは中心天体から 240,000km で薄れ始め 720,000km で消える。
 const FADE_NEAR_DIST = 2.4e8;
@@ -42,14 +42,14 @@ export class GeostationaryOverlay {
   private readonly label: string;
 
   // semiMajorAxis [m] は of() が表面より外にあることを確かめた同期軌道の長半径。
-  private constructor(motion: CelestialMotion, semiMajorAxis: number) {
+  private constructor(motion: CelestialBody, semiMajorAxis: number) {
     this.semiMajorAxis = semiMajorAxis;
     this.label = altitudeLabel(semiMajorAxis - motion.def.radius);
   }
 
   // 天体の重力定数と自転周期から同期軌道を解く。自転モデルを持たない天体、あるいは解が
   // 表面より内側になる天体では同期軌道が引けないので null。
-  static of(motion: CelestialMotion): GeostationaryOverlay | null {
+  static of(motion: CelestialBody): GeostationaryOverlay | null {
     const spinRate = motion.spinRate;
     if (spinRate === null || spinRate === 0) return null;
     const period = Math.abs((2 * Math.PI) / spinRate);
@@ -58,7 +58,7 @@ export class GeostationaryOverlay {
     return new GeostationaryOverlay(motion, a);
   }
 
-  // リングをシーンへ一度だけ登録する。ラベルは MarkerManager が持つので登録は要らない。
+  // リングをシーンへ一度だけ登録する。ラベルは MarkerSlots が持つので登録は要らない。
   build(scene: THREE.Scene): void {
     scene.add(this.line.line);
   }
@@ -66,13 +66,15 @@ export class GeostationaryOverlay {
   // リングとラベルをこのフレームの表示状態へ同期する。visible は所有者の判断
   // (マップ視点 かつ 同期軌道トグル ON)。
   sync(
-    center: CelestialMotion, pivot: number, fo: FloatingOrigin, cameraSystem: CameraSystem,
-    markerManager: MarkerManager | null, celestialBodies: readonly CelestialMotion[], visible: boolean,
+    center: CelestialBody, pivot: number, fo: FloatingOrigin, cameraSystem: CameraSystem,
+    markers: MarkerSlots, celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
+    // 幾何と距離フェードは可視性に関係なく同じフレーム値から求める。
     const centerPos = center.positionAt(pivot);
     const elements = this.elementsAround(center, pivot);
     const dist = len(sub(centerPos, cameraSystem.activeCameraPos));
     const fade = 1.0 - Math.min(1, Math.max(0, (dist - FADE_NEAR_DIST) / FADE_SPAN));
+    // リングとラベルへ同じ visible を渡し、片方だけが焼き付く経路を作らない。
     if (visible) {
       this.line.sync(elements, fo, cameraSystem.activeCamera);
       this.line.setOpacity(RING_OPACITY * fade);
@@ -80,7 +82,7 @@ export class GeostationaryOverlay {
       this.line.hide();
     }
     this.syncLabel(
-      elements, centerPos, pivot, fade, cameraSystem, markerManager, celestialBodies, visible);
+      elements, centerPos, pivot, fade, cameraSystem, markers, celestialBodies, visible);
   }
 
   // リングを親から外して解放する。
@@ -90,7 +92,7 @@ export class GeostationaryOverlay {
   }
 
   // 時刻 pivot の中心天体位置に置いた赤道面上の円軌道。
-  private elementsAround(center: CelestialMotion, pivot: number): OrbitalElements {
+  private elementsAround(center: CelestialBody, pivot: number): OrbitalElements {
     return orbitalElementsFromClassical(
       this.semiMajorAxis, NEAR_CIRCULAR_E, 0, 0, 0, center, center.stateAt(pivot));
   }
@@ -98,14 +100,13 @@ export class GeostationaryOverlay {
   // 軌道上の1点へ、高度を書いた半透明の小さな文字ラベルを置く。
   private syncLabel(
     elements: OrbitalElements, centerPos: Vec3, pivot: number, fade: number,
-    cameraSystem: CameraSystem, markerManager: MarkerManager | null,
-    celestialBodies: readonly CelestialMotion[], visible: boolean,
+    cameraSystem: CameraSystem, markers: MarkerSlots,
+    celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
-    if (markerManager === null) return;
     // 消えるほど薄いラベルは、射影も遮蔽判定もせずに畳む。
     const opacity = LABEL_OPACITY * fade;
     if (!visible || opacity <= 0.02) {
-      markerManager.hide(MARKER_KEY);
+      markers.hide(MARKER_KEY);
       return;
     }
     const r = this.semiMajorAxis;
@@ -114,10 +115,10 @@ export class GeostationaryOverlay {
     const cameraPos = cameraSystem.activeCameraPos;
     const p = cameraSystem.activeCameraProjection(pos);
     if (!p.front || isOccluded(cameraPos, pos, celestialBodies, pivot)) {
-      markerManager.hide(MARKER_KEY);
+      markers.hide(MARKER_KEY);
       return;
     }
-    markerManager.set(
+    markers.set(
       MARKER_KEY, 'mk-geolabel', this.label, p.x, p.y, p.front, '', opacity,
       undefined, undefined, false, true, MARKER_PRIORITY.ORBITAL_NODE, len(sub(pos, cameraPos)));
   }

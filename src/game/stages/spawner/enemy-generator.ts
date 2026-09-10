@@ -18,7 +18,7 @@ import type { FlashEffects } from '../../vfx/flash-effects';
 import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { MetalEnemy } from '../../dynamic/dynamic-entity/metal-enemy';
 import { ProteinEnemy } from '../../dynamic/dynamic-entity/protein-enemy';
-import type { FormationRole } from '../../dynamic/dynamic-entity/enemy';
+import type { FormationRole } from '../../dynamic/dynamic-entity/entity-kind';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
 
