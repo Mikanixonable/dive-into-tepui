@@ -128,7 +128,7 @@ T0 基準記録
 | フェーズ | 状態 | commit / 証拠 | 未達・制約 |
 | --- | --- | --- | --- |
 | T0 | 完了 | `492fd9af`、`.earth-surface/verification/baseline.json` | WebGPU/drawing bufferはunavailable |
-| T1 | 生成入口・実データ検証・ERA5公開ミラー取得・GeoTIFF/GSHHG/ERA5合成・共通encoderを実装。z0実タイルとz0 pilot生成を完了 | `fetch-era5-gdex.py`、`real_source.py`、`real_renderer.py`、`bake.py`、raw-v3受領証585件 + ERA5統合receipt、Python 46 tests、z0 bundle contract/package/dev-stage pass | 全z0〜z7生成とPages配置は未完了。低LODのGDAL平均はsRGB空間の近似、高LODは球面面積・線形RGB経路。全量生成の時間/容量を実測してから公開可否を判断する |
+| T1 | 生成入口・実データ検証・ERA5公開ミラー取得・GeoTIFF/GSHHG/ERA5合成・共通encoderを実装。z0〜z1実タイルpilot生成を完了 | `fetch-era5-gdex.py`、`real_source.py`、`real_renderer.py`、`bake.py`、raw-v3受領証585件 + ERA5統合receipt、Python 46 tests、10タイルcontract/package/dev-stage pass | 全z0〜z7生成とPages配置は未完了。低LODのGDAL平均はsRGB空間の近似、高LODは球面面積・線形RGB経路。全量生成の時間/容量を実測してから公開可否を判断する |
 | T2 | コード完了 | `49e01186`、render 88/88 | 実ブラウザ/WebGPU撮影は未実施 |
 | T3 | ゲーム経路・実Earthメッシュの詳細材質接続完了 | `ccc3683f`, `85b63f59`, `b1f5e2e2`、render 113/113、game 205/205 | 実manifest取得・実データ通信・実WebGPU撮影は未実施。データが無いため実タイル表示は未確認 |
 | T6-2 | 廃止 | 2026-09-10に外部静的配信要件を廃止 | 既存のremote-check実装を削除し、Pages同一origin検査へ集約 |
