@@ -20,7 +20,7 @@ worktree は `/Users/pandeaconica/lab/dive-into-tepui-earth-bundle`、branch は
 
 HEAD で確認できた入力の合計は 12,657,367,741 bytes である。z0–z7 の 43,690 タイルについて、ESTN
 terrain payload だけの圧縮前下限は 23,630,031,744 bytes（base を含む）。検査時の空き容量は
-323,875,684,352 bytes で、この下限だけで容量不足にはならない。
+319,941,214,208 bytes で、この下限だけで容量不足にはならない。
 
 検査結果の完全なJSONは [preflight-latest.json](preflight-latest.json) に保存した。
 
@@ -28,9 +28,9 @@ terrain payload だけの圧縮前下限は 23,630,031,744 bytes（base を含�
 
 1. ERA5 の `1991-01`〜`2020-12`、全UTC24時刻、`t2m` と `tcc` を含む NetCDF local export が workspace および `/Users/pandeaconica` 配下に存在しない。manifest は ERA5 をURL取得ではなく `explicit_local_export` として要求しているため、入力がない状態では `fetch-source.py` を実行できない。
 2. `bake.py` の `--global` 入口は `RealDataRenderer` を使うが、入力が揃っても BMNG/ETOPO/GSHHG/ERA5 の window 合成が未接続のため `RendererUnavailable` で停止する。`--fixture-global` は決定性と契約を検査するためだけにあり、`dataKind: synthetic_fixture` を付けて本番データと分離する。したがって、現在のコードでは全世界 bundle を生成できない。
-3. 事前検査時のPythonには `osgeo`、`netCDF4`、`pyshp` (`shapefile`)、`Pillow` がなく、`gdalinfo`/`ogrinfo`/`gdal-config` もなかった。現在は Pillowだけが利用可能だが、生成用のGDAL、netCDF4、pyshpはまだ不足している。再現可能な依存定義は `tools/earth-surface/environment.yml` に置き、Homebrewの導入を前提にしない。
+3. 2026-09-10の再検査では `Pillow` だけが利用可能で、生成用の `osgeo`、`netCDF4`、`pyshp` (`shapefile`)、`gdalinfo`、`ogrinfo` はまだ不足している。再現可能な依存定義は `tools/earth-surface/environment.yml` に置き、Homebrewの導入を前提にしない。
 
-以上により、実データ fetch、staging、全タイル bake、package、Pages staging は実行していない。fixtureは36件のPython契約テストとPages fixture検査に使ったが、本番bundleとして扱っていない。Pages側にも1 GiBの容量とz0〜z7全43690タイルのcoverage gateを追加し、超過や部分bundleを公開しない。
+以上により、実データ fetch、staging、全タイル bake、package、Pages staging は実行していない。fixtureは39件のPython契約テストとPages fixture検査に使ったが、本番bundleとして扱っていない。Pages側にも1 GiBの容量とz0〜z7全43690タイルのcoverage gateを追加し、超過や部分bundleを公開しない。
 
 ## 再開条件
 
