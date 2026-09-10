@@ -16,6 +16,9 @@ export const EARTH_TERRAIN_PAYLOAD_BYTES = EARTH_TERRAIN_HEADER_BYTES + EARTH_TE
 export const EARTH_BASE_MAGIC = 'ESTB';
 export const EARTH_BASE_ROOT_COLUMNS = 2;
 export const EARTH_BASE_ROOT_ROWS = 1;
+export const EARTH_BASE_COLOR_WIDTH = 512;
+export const EARTH_BASE_COLOR_HEIGHT = 256;
+export const EARTH_BASE_COLOR_COMPONENTS = 3;
 export const EARTH_GLOBAL_TILE_COUNT = 43690;
 
 const DATASET = /^[a-z0-9-]+$/;
@@ -265,6 +268,103 @@ async function verifyClimateMap(root, path, index) {
   return actual;
 }
 
+const JPEG_SOF_MARKERS = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7,
+  0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+
+function readJpegMarker(bytes, offset) {
+  if (offset >= bytes.length || bytes[offset] !== 0xff) fail('baseColor JPEG marker prefix is missing');
+  offset += 1;
+  while (offset < bytes.length && bytes[offset] === 0xff) offset += 1;
+  if (offset >= bytes.length) fail('baseColor JPEG marker is truncated');
+  const marker = bytes[offset];
+  if (marker === 0x00) fail('baseColor JPEG has an escaped marker outside scan data');
+  return { marker, offset: offset + 1 };
+}
+
+function readJpegSegment(bytes, offset) {
+  if (offset + 2 > bytes.length) fail('baseColor JPEG marker length is truncated');
+  const length = bytes.readUInt16BE(offset);
+  if (length < 2) fail('baseColor JPEG marker length is invalid');
+  const end = offset + length;
+  if (end > bytes.length) fail('baseColor JPEG marker segment is truncated');
+  return { length, payload: offset + 2, end };
+}
+
+function readJpegScanMarker(bytes, offset) {
+  while (offset < bytes.length) {
+    const value = bytes[offset];
+    offset += 1;
+    if (value !== 0xff) continue;
+    if (offset >= bytes.length) fail('baseColor JPEG scan is truncated');
+    let marker = bytes[offset];
+    offset += 1;
+    while (marker === 0xff) {
+      if (offset >= bytes.length) fail('baseColor JPEG scan marker is truncated');
+      marker = bytes[offset];
+      offset += 1;
+    }
+    if (marker === 0x00) continue;
+    if (marker >= 0xd0 && marker <= 0xd7) continue;
+    return { marker, offset };
+  }
+  fail('baseColor JPEG scan is truncated');
+}
+
+export function readBaseColorJpeg(bytes) {
+  if (!Buffer.isBuffer(bytes) || bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+    fail('baseColor JPEG must start with SOI');
+  }
+  let offset = 2;
+  let frame = null;
+  let sawScan = false;
+  let inScan = false;
+  while (offset < bytes.length) {
+    const next = inScan ? readJpegScanMarker(bytes, offset) : readJpegMarker(bytes, offset);
+    const marker = next.marker;
+    offset = next.offset;
+    inScan = false;
+    if (marker === 0xd9) {
+      if (frame === null || !sawScan) fail('baseColor JPEG is missing SOF or SOS');
+      if (offset !== bytes.length) fail('baseColor JPEG has trailing data after EOI');
+      return frame;
+    }
+    if (marker === 0xda) {
+      if (frame === null) fail('baseColor JPEG has SOS before SOF');
+      const segment = readJpegSegment(bytes, offset);
+      const scanComponents = bytes[segment.payload];
+      if (scanComponents === 0 || segment.length !== 6 + scanComponents * 2) fail('baseColor JPEG SOS is invalid');
+      offset = segment.end;
+      sawScan = true;
+      inScan = true;
+      continue;
+    }
+    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+      fail('baseColor JPEG has an unexpected standalone marker');
+    }
+    const segment = readJpegSegment(bytes, offset);
+    offset = segment.end;
+    if (!JPEG_SOF_MARKERS.has(marker)) continue;
+    if (frame !== null || segment.length < 8) fail('baseColor JPEG SOF is invalid');
+    const precision = bytes[segment.payload];
+    const height = bytes.readUInt16BE(segment.payload + 1);
+    const width = bytes.readUInt16BE(segment.payload + 3);
+    const components = bytes[segment.payload + 5];
+    if (segment.length !== 8 + components * 3 || precision !== 8) fail('baseColor JPEG SOF is invalid');
+    if (width !== EARTH_BASE_COLOR_WIDTH || height !== EARTH_BASE_COLOR_HEIGHT
+      || components !== EARTH_BASE_COLOR_COMPONENTS) {
+      fail(`baseColor JPEG must be ${EARTH_BASE_COLOR_WIDTH}x${EARTH_BASE_COLOR_HEIGHT} with ${EARTH_BASE_COLOR_COMPONENTS} components`);
+    }
+    frame = { width, height, components };
+  }
+  fail('baseColor JPEG is missing EOI');
+}
+
+async function verifyBaseColor(root, asset) {
+  const actual = await requiredFile(root, asset.url, 'baseColor');
+  readBaseColorJpeg(await readFile(actual.absolutePath));
+  return actual;
+}
+
 async function verifySourceManifest(root, sourceManifestPath, expectedHash) {
   if (sourceManifestPath === undefined) return;
   const sourcePath = assetPath(root, sourceManifestPath);
@@ -310,7 +410,7 @@ export async function inspectEarthSurfaceBundle({ inputRoot, manifestName = 'ear
   try { manifest = JSON.parse(await readFile(manifestPath, 'utf8')); } catch (error) { throw new EarthSurfaceContractError(`cannot read manifest: ${manifestName}`, { cause: error }); }
   validateManifest(manifest);
   await verifySourceManifest(root, await defaultSourceManifestPath(root, manifest, sourceManifestPath), manifest.sourceManifestSha256);
-  const baseColor = await requiredFile(root, manifest.baseColor, 'baseColor');
+  const baseColor = await verifyBaseColor(root, { url: manifest.baseColor });
   const baseTerrain = await requiredFile(root, manifest.baseTerrain, 'baseTerrain');
   let baseTerrainPayload;
   try { baseTerrainPayload = gunzipSync(await readFile(baseTerrain.absolutePath)); } catch (error) { throw new EarthSurfaceContractError('baseTerrain gzip is invalid', { cause: error }); }
