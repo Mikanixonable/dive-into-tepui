@@ -31,12 +31,12 @@ export class Hud implements HudLayers, Notifier {
   public readonly combatRoot: HTMLElement;
   public readonly mapRoot: HTMLElement;
   public readonly svgOverlay: SVGSVGElement;
-  public readonly helpPanel: HelpPanel;
-  public readonly topBar: TopBar;
+  private readonly helpPanel: HelpPanel;
+  private readonly topBar: TopBar;
   public readonly viewBadgeRow: HTMLElement;
-  public readonly mapScaleBadge: MapScaleBadge;
+  private readonly mapScaleBadge: MapScaleBadge;
   public readonly vesselPanel: VesselPanel;
-  public readonly orbitPanel: OrbitPanel;
+  private readonly orbitPanel: OrbitPanel;
   public readonly targetPanel: TargetPanel;
   public readonly enemiesPanel: EnemiesPanel;
   public readonly burnManagementPanel: BurnManagementPanel;

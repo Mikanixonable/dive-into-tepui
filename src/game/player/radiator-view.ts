@@ -4,7 +4,7 @@ import type { RadiatorSide } from './radiator';
 export class RadiatorView {
   private readonly folds: Record<RadiatorSide, THREE.Object3D[]>;
 
-  constructor(root: THREE.Object3D) {
+  public constructor(root: THREE.Object3D) {
     const collect = (side: RadiatorSide): THREE.Object3D[] => {
       const namePrefix = `radiator${side === 'up' ? 'Up' : 'Down'}Fold`;
       const found = Array.from({ length: 6 }, (_, index) => root.getObjectByName(`${namePrefix}${index}`));
@@ -14,7 +14,7 @@ export class RadiatorView {
     this.folds = { up: collect('up'), down: collect('down') };
   }
 
-  sync(
+  public sync(
     wearOf: (side: RadiatorSide) => number,
     tiltOf: (side: RadiatorSide) => { readonly even: number; readonly odd: number },
   ): void {
