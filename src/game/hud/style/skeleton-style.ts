@@ -106,16 +106,16 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud .hud-rail-right { right: 12px; width: var(--rail-w-right); }
 #hud .hud-map-root.active .hud-rail { pointer-events: auto; touch-action: pan-y; }
 #hud .rail-toggle {
-  width: 30px; height: 30px; border: 0; border-radius: var(--radius-control);
+  width: var(--hud-rail-toggle-size); height: var(--hud-rail-toggle-size); border: 0; border-radius: var(--radius-control);
   background: var(--glass-control); color: var(--color-primary); cursor: pointer; pointer-events: auto;
   transition: color var(--transition-fast), background var(--transition-fast);
 }
 #hud .rail-toggle:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
 #hud .rail-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
-#hud .rail-toggle { display: none; position: absolute; top: 8px; z-index: var(--z-hud-rail-toggle); }
+#hud .rail-toggle { display: none; position: absolute; top: var(--space-4); z-index: var(--z-hud-rail-toggle); }
 #hud:not(.base-mode) .rail-toggle { display: block; }
-#hud .hud-view-root .rail-toggle-left { left: 8px; }
-#hud .hud-view-root .rail-toggle-right { right: 8px; }
+#hud .hud-view-root .rail-toggle-left { left: var(--space-4); }
+#hud .hud-view-root .rail-toggle-right { right: var(--space-4); }
 #hud:not(.base-mode) .hud-rail.collapsed { width: 0; }
 #hud:not(.base-mode) .hud-rail.collapsed > .panel { display: none !important; }
 #hud.base-mode .rail-toggle { display: none; }
@@ -199,7 +199,8 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 }
 
 #hud-help-badge {
-  position: absolute; top: var(--space-5); right: var(--space-5);
+  position: absolute; top: var(--space-5);
+  right: calc(var(--space-4) + var(--hud-rail-toggle-size) + var(--space-3));
   pointer-events: auto; cursor: pointer;
   width: 32px; height: 32px; border-radius: 50%;
   display: flex; justify-content: center; align-items: center;
