@@ -20,8 +20,8 @@ export type NeptuneSystemBodyId = 'neptune' | 'triton' | 'nereid';
 const NEPTUNE: PlanetDef = {
   id: 'neptune',
   mu: MU_NEPTUNE,
-  radius: 2.47606e7, // 赤道半径(外接球)。出典: pck00011.tpc BODY_RADII
-  shape: { kind: 'spheroid', equatorRadius: 2.47606e7, polarRadius: 2.42853e7 },
+  radius: 2.4764e7, // 赤道半径(外接球)。出典: JPL Planetary Physical Parameters
+  shape: { kind: 'spheroid', equatorRadius: 2.4764e7, polarRadius: 2.4341e7 },
   orbit: planetOrbit({
     a: 30.06992276 * AU,
     e: 0.00859048,
