@@ -1,5 +1,5 @@
 // assets-src/coastline/ne_110m_coastline.geojson(fetch-coastline-source.mjs が取り込む)を、
-// src/render/celestial/earth-coastline.ts が読む折れ線の配列(緯度・経度 [deg] のペア列)へ落とす。
+// 折れ線の配列(緯度・経度 [deg] のペア列)へ落とす。
 // GeoJSON の座標は [経度, 緯度] だが、出力は [緯度, 経度] へ入れ替える
 // (body-graticule.ts の latLonPoint(latDeg, lonDeg, ...) の引数順に合わせるため)。
 //
