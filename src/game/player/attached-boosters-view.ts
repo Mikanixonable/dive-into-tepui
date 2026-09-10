@@ -10,7 +10,7 @@ import {
   buildBoosterStage,
   type BoosterStage as BoosterStageModel,
 } from '../../render/booster';
-import { BOOSTER_STAGE_DIMENSIONS } from '../../physics/booster-stage-shape';
+import { BOOSTER_MOUNT_Z, BOOSTER_STAGE_DIMENSIONS } from '../../physics/booster-stage-shape';
 import type { BoosterStage } from './booster-stack';
 
 // 接続中ブースターのモデルと噴射炎を所有し、運動状態へ同期する。
@@ -23,18 +23,21 @@ export class AttachedBoostersView {
     this.plumes = new BoosterPlumeSet(scene);
   }
 
-  private setStages(stages: readonly BoosterStage[], mountZ: number): void {
+  // 段の顔ぶれが変わったときだけ、機体へ並べ直す。
+  private setStages(stages: readonly BoosterStage[]): void {
     for (const model of this.models) model.dispose();
     this.models.length = 0;
     for (let i = 0; i < stages.length; i++) {
       const model = buildBoosterStage({ interstageCover: i < stages.length - 1 });
-      model.position.z = mountZ - i * BOOSTER_STAGE_DIMENSIONS.length;
+      model.position.z = BOOSTER_MOUNT_Z - i * BOOSTER_STAGE_DIMENSIONS.length;
       this.root.add(model);
       this.models.push(model);
     }
     this.stageIds = stages.map(stage => stage.id);
   }
 
+  // 段の並びを機体へ同期し、最下段のノズルへ噴射炎を置く。噴射炎が出るのは、推力があって
+  // 表示時刻が実時刻に一致しているときだけ(予測位置のゴーストからは吹かせない)。
   public sync(
     floatingOrigin: FloatingOrigin,
     effectPosition: Vec3,
@@ -47,11 +50,10 @@ export class AttachedBoostersView {
     visible: boolean,
     camera: CameraSystem,
     style: RenderStyle,
-    mountZ: number,
   ): void {
     if (stages.length !== this.stageIds.length
       || stages.some((stage, index) => stage.id !== this.stageIds[index])) {
-      this.setStages(stages, mountZ);
+      this.setStages(stages);
     }
     const activeIndex = stages.length - 1;
     const atCurrentTime = Math.abs(displayTime - actualTime) <= 1e-6;
@@ -59,7 +61,7 @@ export class AttachedBoostersView {
       this.plumes.sync([], camera.activeCamera.quaternion, style);
       return;
     }
-    const nozzleZ = mountZ
+    const nozzleZ = BOOSTER_MOUNT_Z
       - activeIndex * BOOSTER_STAGE_DIMENSIONS.length
       + BOOSTER_STAGE_DIMENSIONS.nozzleExitZ;
     const nozzleWorld = add(effectPosition, qRotate(attitude.q, v3(0, 0, nozzleZ)));
