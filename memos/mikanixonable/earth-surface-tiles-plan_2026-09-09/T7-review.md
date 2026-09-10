@@ -19,25 +19,25 @@
 ## 完了条件
 
 - 本番必須T0、T1、T2、T3、T4、T5、T6-1をすべて確認できる。
-- 外部静的配信は本番未実施として明示されている。
+- 外部静的配信は要件から廃止し、本番経路と検査から除去した。Pagesの同一originだけを使う。
 - 未達成のゲートを完了扱いにしていない。
 
 ## 実装状況（2026-09-10）
 
-コードレビューと記録は `c1024c61` を基礎に、`a5cacedb`, `ccc3683f`, `85b63f59`, `b1f5e2e2`, `ed53a902` を追加確認した。
+コードレビューと記録は `c1024c61` を基礎に、`3d1f43bf`, `7b88aad7`, `87b6c8b5`, `9545bcdb`,
+`c32f5f86`, `aa9cb8f2` を追加確認した。
 EarthSurfaceのpersistent lease、非表示・dispose・
 世代切替、可視frontierのpin、drawing buffer伝搬、楕円体UV、UTC気候時計、GPU層解放、Pagesの
 subpath URL、datasetId整合、raw gzip契約を確認した。Earth実行経路にGEBCOや旧Earth気候画像の
 参照はなく、`tools/render-lab/cases.ts` の旧画像はlegacy fixtureとして残している。
 
-追加実装後の検証結果は typecheck、全体テスト847/847、render 113/113、game 205/205、Python 24件、
-Earth契約、Pages fixture layout pass、capture contract pass、build、verify-release passである。既存の
-直前のコード状態でpassしている。実captureはChrome/WebGPU/描画バッファまで
-到達し、実データ未投入を理由に15ケースをunavailableとして記録した（metricsの環境情報はChrome 152 / Apple Metal-3 /
-WebGPU available / drawing buffer available）。
+追加実装後の検証結果は Earth契約、Pages fixture layout、Python 36件、source/ERA5 validator、
+fixture rendererの決定性検査でpassしている。TypeScriptのtypecheckは雲復元エージェントの作業途中に
+`maxAvailableMipLevelOf` exportが不足したため、当該差分が完了するまで再実行待ちである。実captureは
+実データ未投入を理由に15ケースをunavailableとして記録した。
 
 実データbundleが無いため `earth-surface:check` と `earth-surface:package` は
 `earth-surface.json`を読めず終了コード1となる。これは失敗を隠さずデータゲート未達成として残す。
 fixture Pagesだけは20ファイル・30909 bytesで検査済みである。T1の入力取得・全43690タイル生成と
-T6-1の実bundle公開が完了するまで、本番完了とは扱わない。Earth用のT3/T4/T5/T6-1/T6-2 worktreeは
+T6-1の実bundle公開が完了するまで、本番完了とは扱わない。Earth用のT3/T4/T5/T6-1 worktreeは
 統合後に削除した。
