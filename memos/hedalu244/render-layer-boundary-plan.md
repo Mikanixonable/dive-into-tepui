@@ -25,6 +25,11 @@
 15. `GameHost` が `mapDisplay` / `grid` / `orbitGuide` の `RunSetting` を運ぶ。ラン跨ぎの持ち物という `GameHost` の既存の意味に載るので、`Launcher` の引数は増えない。
 16. 表示パネル(`ViewOptionsPanel`)の所有と、その操作を設定・描画側へ結ぶ責務は `src/game/hud/panels/view-options-control.ts` の `ViewOptionsControl` が持つ。`CameraSystem` はパネルも天体分類トグルも持たない。`Navball` は削除済み。
 17. `CelestialSystem.sync` と `ObjectPickables.refresh` は `MapDisplayToggles` をそのフレームの引数で受け、`MapView` は `RunSetting<MapDisplayToggles>` を構築時に受ける。カメラ経由で読まない。
+18. ビュー種別の語彙は `src/render/view-mode.ts` の `ViewMode`(`'combat' | 'map'`)。`CameraFrame` がこれを運ぶため render 側が持つ。`RenderStyle` と同じく、語彙は render、選ぶのは game/hud。
+19. そのフレームのカメラは `src/render/camera/camera-frame.ts` の `CameraFrame`(`camera` / `position` / `viewpoint` / `viewport` / `mode` / `zoomed` / `floatingOrigin` / `project` / `scale` / `radialScale`)。`CameraView.sync(viewpoint, clipFovDeg, clipDistance, viewport, mode, zoomed, focusVelocity)` が1回で確定する。`FloatingOrigin` は `src/render/camera/floating-origin.ts`。
+20. ビューポートは `src/render/viewport.ts` の `Viewport`。`browserViewport()` を**フレームの先頭で1度だけ**読み、同じ値を renderer・`Game.update`・`Game.sync` へ配る。`window` の寸法を読むのはこの1モジュールだけ。
+21. 視点とビューポートを束縛した投影は `math/projection.ts` の `screenProjection(view, width, height)`。game の picking と render の `CameraFrame` が同じ純関数を使う。
+22. 近遠クリップ面は照準ズーム中も軌道視点の画角と注視距離が決める(現行挙動の保存)。`camera-view.ts` に TODO として残してある。
 
 ## 達成目標
 
@@ -40,65 +45,6 @@
 - 全手順で `npm run typecheck` が通り、最終的に `npm run test:physics`、`npm run test:game`、`npm run test:render`、`npm run test:settings` が通る。
 
 ## 手順
-
-### 手順 3. camera controller と render camera view を分離する
-
-#### 目的
-
-mutable な入力操作・注視対象と、THREE camera・viewport・floating origin を別 owner にする。render の各 view は `CameraSystem` ではなく、同一 sync で確定した `CameraFrame` だけを読む。この時点で投影結果、near/far、zoom 挙動は変えない。
-
-#### 変更が必要な箇所
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/render/camera/camera-frame.ts`（新規） | active THREE camera、camera position/quaternion、view kind、zoom、projection/scale、viewport を持つ readonly frame contract を定義する。 |
-| `src/render/camera/camera-view.ts`（新規） | perspective/orthographic/gunsight camera を所有し、論理 `Viewpoint` と viewport から 1 回の sync で `CameraFrame` を確定・破棄する。 |
-| `src/render/camera/floating-origin.ts`（`src/game/camera/floating-origin.ts` から移動） | render 技術としての原点・速度と THREE 変換を所有する。 |
-| `src/game/camera/camera-system.ts:148-175,245-259,308-374` | THREE camera、render sync、floating origin 生成、ViewOptionsPanel を除き、操作 state と `Viewpoint`/view kind/zoom の論理出力だけにする。 |
-| `src/game/camera/focus-camera.ts:198-202,300-312,382-443` | THREE camera と viewport global を除く。Earth/Moon を使う reference-plane 判断、focus、回転 follow、通知は game controller に残す。 |
-| `src/game/camera/gunsight-camera.ts:1-55` | THREE camera と window 依存を除き、gunsight `Viewpoint` の計算だけにする。 |
-| `src/render/scene.ts:37-61` | window resize listener と resolution closure を除き、明示 viewport/graphics value で renderer を同期する。 |
-| `src/render/camera-scale.ts:20-24` | `window.innerHeight` をやめ、frame の viewport height を使う。 |
-| `src/main.ts:43-80` | 各 frame の `{width,height,pixelRatio}` を取得し、update/sync の明示入力へする。 |
-| `src/game/game.ts:137,196-207,317-334,397-405,479-561` | CameraView を生成・所有・破棄し、CameraSystem の論理出力を sync して、以後の sync/render に同じ CameraFrame/FloatingOrigin を渡す。 |
-| `src/game/view/map-view.ts:136-155` | game の pointer/pick 計算には `Viewpoint`/`ProjectFn`/camera position の細い値を使う。 |
-| `src/game/view/combat-view.ts:91-123` | 同上。 |
-| `src/game/pickable/map-picking.ts:81-114,180` | viewport を明示入力にし、window と concrete camera system の投影依存を除く。 |
-| `src/game/pickable/object-pickables.ts:66-92` | camera position、projection、設定値を個別入力にする。 |
-| `src/game/pickable/object-windows.ts:138-191,230-298` | view/focus controller の最小 command/query に依存する。 |
-| `src/game/targeter.ts:115-192` | frame の projection/scale/position と game の view kind を明示して受ける。 |
-| `src/game/nav-target.ts:293-294` | projection/position を個別入力にする。 |
-| `src/game/control-selection.ts:64` | map focus の細い `FocusSink`/clear command へ依存する。 |
-| `src/game/hud/frame/frame-controls.ts:27-71` | render camera ではなく logical FocusCamera controller を操作する。 |
-| `src/game/hud/frame/camera-frame-panel.ts:40-146` | 同上。 |
-| `src/game/hud/panels/map-scale-badge.ts:27-28` | `ScaleFn` と focus position を受ける。 |
-| `src/game/hud/panels/vessel-panel.ts:235` | combat camera の logical follow state だけを受ける。 |
-| `src/game/celestial/scale-grid-view.ts:20-48` | 対象外機能の判断は変えず、camera frame/floating-origin の新しい型へ機械的に接続する。 |
-| `src/render/celestial/celestial-grid.ts:275-321` | window dimensions を frame viewport へ置き換える。 |
-| `src/render/celestial/scale-grid.ts:131-170` | 同上。天体名に関する既存判断は変更しない。 |
-| `src/render/dynamic/dynamic-view.ts:12-13,32-42,83-100` | `CameraSystem` を `CameraFrame` に置換し、寄せ集めの `DynamicViewFrame` から camera を分離する。 |
-| `src/render/dynamic/player/attached-boosters-view.ts:5,40-74` | render 側 FloatingOrigin/CameraFrame を使う。 |
-| `src/render/dynamic/player/thrust-effects.ts:12,30-65` | 同上。 |
-| `src/render/dynamic/player/rcs-effects.ts:11,32-60` | 同上。 |
-| `src/render/celestial/celestial-entity/celestial-view.ts:8-10,53-109` | `CameraFrame` と render 側 FloatingOrigin を受ける。 |
-| `src/render/celestial/celestial-entity/star-celestial-view.ts:7-8,42-75` | 同上。 |
-| `src/render/celestial/celestial-entity/sphere-celestial-view.ts:6-7,66-101` | 同上。 |
-| `src/render/celestial/celestial-entity/point-celestial-view.ts:7-8,124-223` | 同上。 |
-| `src/render/celestial/celestial-entity/geostationary-overlay.ts:8-9,68-124` | 同上。 |
-| `src/render/celestial/point-field-view.ts:7,51-100` | 同上。 |
-| `tests/render/camera-view.test.ts`（新規） | perspective/orthographic/gunsight の frame、viewport 変更、floating-origin 変換を固定入力で検証する。 |
-| `tests/game/camera-orientation.test.ts` | controller 分離後も logical orientation を検証する。 |
-| `tests/game/focus-target.test.ts` | focus 解決を維持する。 |
-
-#### 達成条件と検証
-
-- `rg -n 'three/webgpu|window\.(innerWidth|innerHeight)' src/game/camera` が 0 件。
-- `rg -n 'CameraSystem|game/camera/floating-origin' src/render` が 0 件。
-- `CameraView.sync` 1 回で得た frame が camera、projection、scale、floating origin の同一時点を表し、同じ入力を再 sync した結果が一致する。
-- `npm run typecheck`
-- `npm run test:math`
-- `npm run test:game`
-- `npm run test:render`
 
 ### 手順 4. 天体表示の基礎値を細い境界へ移す
 
