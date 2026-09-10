@@ -92,16 +92,16 @@ export function innerPlanets(
       planetSystem(planetDefForSimZero(MERCURY, phases, simZeroEt), sun).body,
       INNER_PLANET_NAMES.mercury, 'planet',
       new PointCelestialView(
-      // 平均輝度 0.2306(A_B は公表ボンド)
-      CelestialSurface.textured({ url: mercuryTextureUrl, albedoScale: 0.3815, bondAlbedo: 0.088, averageHue: [1.0088, 0.9974, 0.9997] }),
+        // 平均輝度 0.2306(A_B は公表ボンド)
+        CelestialSurface.textured({ url: mercuryTextureUrl, albedoScale: 0.3815, bondAlbedo: 0.088, averageHue: [1.0088, 0.9974, 0.9997] }),
       ),
     ),
     venus: new CelestialEntity(
       planetSystem(planetDefForSimZero(VENUS, phases, simZeroEt), sun).body,
       INNER_PLANET_NAMES.venus, 'planet',
       new PointCelestialView(
-      // 平均輝度 0.5561(A_B は公表ボンド)
-      CelestialSurface.textured({ url: venusTextureUrl, albedoScale: 1.3666, bondAlbedo: 0.76, averageHue: [1.4227, 0.9352, 0.3977] }),
+        // 平均輝度 0.5561(A_B は公表ボンド)
+        CelestialSurface.textured({ url: venusTextureUrl, albedoScale: 1.3666, bondAlbedo: 0.76, averageHue: [1.4227, 0.9352, 0.3977] }),
       ),
     ),
   };

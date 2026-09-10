@@ -8,7 +8,7 @@ import { BeltPhysics } from './belt-physics';
 export class BeltView {
   private readonly links: THREE.Group[] = [];
 
-  constructor(root: THREE.Object3D, linkCount: number) {
+  public constructor(root: THREE.Object3D, linkCount: number) {
     const group = new THREE.Group();
     for (let i = 0; i < linkCount; i++) {
       const link = buildMagazineMesh();
@@ -19,7 +19,7 @@ export class BeltView {
     root.add(group);
   }
 
-  sync(magsLeft: number, physics: BeltPhysics): void {
+  public sync(magsLeft: number, physics: BeltPhysics): void {
     const { beltPos, beltTwist, anchor } = physics;
     let prevPoint = anchor;
     let prevQ: Quat = Q_IDENTITY;

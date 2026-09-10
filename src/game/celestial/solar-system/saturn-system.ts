@@ -259,8 +259,8 @@ export function saturnSystem(
       new SatelliteMotion(satelliteDefForSimZero(TITAN, phases, simZeroEt), saturn),
       SATURN_SYSTEM_NAMES.titan, 'satellite',
       new SphereCelestialView(
-      // 平均輝度 0.2425(A_B は幾何 0.22 x q=0.564)
-      CelestialSurface.textured({ url: titanTextureUrl, albedoScale: 0.5113, bondAlbedo: 0.124, averageHue: [1, 1, 1] }),
+        // 平均輝度 0.2425(A_B は幾何 0.22 x q=0.564)
+        CelestialSurface.textured({ url: titanTextureUrl, albedoScale: 0.5113, bondAlbedo: 0.124, averageHue: [1, 1, 1] }),
       ),
     ),
     // ヒペリオン A_B=0.14(幾何 0.30 x q=0.461)
