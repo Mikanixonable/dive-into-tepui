@@ -104,11 +104,11 @@ export class VesselPanel {
     const container = this.els.get('status-actions');
     if (!container) return;
     const addAction = (label: string, title: string, key: KeyBinding, isPrimary = false): Button => {
-      const button = new Button(label, () => this.input?.tapKey(key));
+      const variants = isPrimary ? (['dense', 'primary'] as const) : (['dense', 'secondary'] as const);
+      const button = new Button(label, () => this.input?.tapKey(key), undefined, variants);
       button.element.title = title;
       button.element.setAttribute('aria-label', `${label}、キー ${key.label}`);
       button.element.setAttribute('aria-keyshortcuts', key.label);
-      button.element.classList.toggle('status-action-primary', isPrimary);
       container.appendChild(button.element);
       return button;
     };
