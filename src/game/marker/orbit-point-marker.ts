@@ -6,14 +6,18 @@ import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { orbitPointLabel, type TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { fmtTime } from '../../hud/utils';
 import type { Vec3 } from '../../math/vec3';
-import type { CelestialMotion } from '../../physics/celestial-motion';
-import type { CelestialSystem } from '../celestial/celestial-system';
-import type { ProjectFn } from '../camera/camera-system';
-import type { ObjectCommands } from '../pickable/object-commands';
+import type { CelestialBody } from '../../physics/celestial-body';
+import type { ProjectFn } from '../../math/projection';
+import type { ControlSelection } from '../control-selection';
+import type { ObjectAuthoring } from '../pickable/inspected-object';
+import type { PlanEditor } from '../plan/plan-editor';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
-import type { PropertyRow } from '../../hud/windows/property-window';
-import type { MarkerManager } from './marker-manager';
+import type { PropertyRow } from '../../hud/windows/property-window-content';
+import type { MarkerSlots } from './marker-slots';
+import type { MarkerVisibility } from './marker-visibility';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 
 export abstract class OrbitPointMarker implements ObjectPickable {
   public readonly orbitState = null;
@@ -71,12 +75,12 @@ export abstract class OrbitPointMarker implements ObjectPickable {
   public hitBodyByRay(): boolean { return false; }
 
   public mapVisibility(): MapVisibility { return MARKER_VISIBILITY; }
-  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.id); }
+  public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(this.id); }
 
   // マーカーを解いた位置へ置く。解けていないフレームと、天体に遮られたフレームは隠す。
   public sync(
-    markers: MarkerManager, project: ProjectFn, cameraPos: Vec3,
-    celestialBodies: readonly CelestialMotion[], pivot: number, occludeByBodies: boolean,
+    markers: MarkerSlots, project: ProjectFn, cameraPos: Vec3,
+    celestialBodies: readonly CelestialBody[], pivot: number, occludeByBodies: boolean,
     timeLabel: TimeLabelSetting,
   ): void {
     if (this.pos === null) { markers.hide(this.id); return; }
@@ -97,23 +101,20 @@ export abstract class OrbitPointMarker implements ObjectPickable {
     ];
   }
 
-  // 選ばれた操作を実行する。加速とノード追加は、通過時刻が求まっているフレームで効く。
-  public runMenu(act: MenuAction, commands: ObjectCommands): void {
+  // 加速とノード追加は、通過時刻が求まっていて、計画を編集できるビューにいるフレームで効く。
+  public runMenu(
+    act: MenuAction, _controlSelection: ControlSelection, _authoring: ObjectAuthoring | null,
+    planEditor: PlanEditor | null,
+  ): void {
     const t = this.time;
-    if (act === 'warp') {
-      if (t !== null) commands.warpTo(t);
-    } else if (act === 'addNode') {
-      if (t !== null) commands.addNodeAt(t);
-    } else if (act === 'focus') {
-      commands.focus(this.id, this.name);
-    } else if (act === 'target') {
-      commands.toggleNavTarget(this.id, this.name);
-    }
+    if (t === null || planEditor === null) return;
+    if (act === 'warp') planEditor.warpTo(t);
+    else if (act === 'addNode') planEditor.addNodeAt(t);
   }
 
   // プロパティウィンドウに出す行。示す値は具象が決める。
   public abstract propertyRows(
-    commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
+    celestialBodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[];
 
   // 所属軌道の行。持ち主が分からないフレームは行を作らない。

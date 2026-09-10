@@ -1,11 +1,9 @@
 // 円制限三体問題のラグランジュ点。共線点 γ の求解と、回転系での5点の無次元座標、および
 // 5点それぞれが力学的に意味を持つかの判定。
 import { qRotate } from '../math/quat';
-import type { CelestialMotion } from './celestial-motion';
-import type { OrbitingMotion } from './celestial-motion';
-import type { FrameRotation } from './kepler-orbit';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, add, cross, len, sub, v3 } from '../math/vec3';
+import type { CelestialBody, FrameRotation, OrbitingCelestialBody } from './celestial-body';
 
 // L4/L5 が線形安定でいられる質量比 mu = m2/(m1+m2) の上限(Routh/Gascheau の基準)。
 // 27mu(1−mu) < 1 の解で、同値な表現は m1/m2 > (25+3√69)/2 ≈ 24.96。
@@ -86,9 +84,9 @@ function lagrangePoints(mu: number, place: (x: number, y: number) => Vec3): Lagr
 // ある時刻の副天体系。**位置はすべて ECI で、原点の解決は済んでいる** — この型を受け取る側は
 // 天体暦にも ECI 原点にも触らない。
 export type SecondaryFrame = {
-  readonly secondary: CelestialMotion;
+  readonly secondary: CelestialBody;
   readonly secondaryState: KinematicState; // 副天体の ECI 瞬間値(t が解決した時刻)
-  readonly primary: CelestialMotion;
+  readonly primary: CelestialBody;
   readonly primaryState: KinematicState; // 主天体の ECI 瞬間値(同じ時刻)
   readonly rotation: FrameRotation; // 副天体の公転回転基準系(x̂ = 主天体→副天体)
   readonly normal: Vec3; // 公転面法線(単位ベクトル、ECI)
@@ -97,7 +95,7 @@ export type SecondaryFrame = {
 // 同時刻の ECI 天体配列と副天体の運動から SecondaryFrame を組む。副天体に主天体が無い、
 // または配列にどちらかが載っていなければ null。
 export function secondaryFrameOf(
-  bodies: readonly CelestialMotion[], pivot: number, motion: OrbitingMotion, t: number,
+  bodies: readonly CelestialBody[], pivot: number, motion: OrbitingCelestialBody, t: number,
 ): SecondaryFrame | null {
   const primaryId = motion.primary?.id;
   if (primaryId === undefined) return null;

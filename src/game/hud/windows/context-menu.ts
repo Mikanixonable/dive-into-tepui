@@ -7,7 +7,7 @@ import { shortcutKeyLabel } from '../../../hud/windows/shortcut-hint';
 import { bringToFront } from '../../../hud/overlay-layer';
 import { onViewportChange } from '../../../hud/viewport';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
-import { injectOnce } from '../../../hud/widgets/inject-style';
+import { injectOnce } from '../../../hud/inject-style';
 
 const STYLE = `
 #hud .ctx-menu {
@@ -19,7 +19,7 @@ const STYLE = `
   -webkit-user-select: none;
 }
 #hud .ctx-menu-item {
-  padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
+  padding: var(--space-4) var(--space-5); color: var(--text-muted); cursor: pointer;
   border: 0; border-radius: var(--radius-micro);
 }
 #hud .ctx-menu-item:hover, #hud .ctx-menu-item:active {
@@ -28,7 +28,7 @@ const STYLE = `
 #hud .ctx-menu-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .ctx-menu-header {
   padding: var(--space-4) var(--space-5);
-  border: 0; background: transparent; color: var(--title); font-weight: 600;
+  border: 0; background: transparent; color: var(--text); font-weight: 600;
 }
 #hud .ctx-menu-header-sub {
   font-size: var(--font-s);

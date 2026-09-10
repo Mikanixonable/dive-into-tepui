@@ -1,27 +1,28 @@
 // 戦闘ビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。呼ぶ位置と順序は
 // Game / ViewManager が持つ。
 import { KEY_MAPPING as K } from '../../input/key-mapping';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { pickCombatEntityAtPoint } from '../pickable/combat-pick';
 import { PlanGuide } from '../plan/plan-guide';
 import type { Input } from '../../input/input';
-import type { Hud } from '../hud/hud';
+import type { Notifier } from '../../hud/notifier';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { TouchControls } from '../hud/touch-controls';
 import type { CameraSystem } from '../camera/camera-system';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { EntityRoster } from '../dynamic/entity-roster';
 import type { ObjectWindows } from '../pickable/object-windows';
-import type { CelestialMarkers } from '../marker/celestial-markers';
-import type { MarkerManager } from '../marker/marker-manager';
+import type { MarkerSlots } from '../marker/marker-slots';
 import type { Targeter } from '../targeter';
 import type { ControlSelection } from '../control-selection';
 import type { PlanPath } from '../plan/plan-path';
 import type { UiSfx } from '../../audio/sfx/ui-sfx';
-import type { CelestialSystem } from '../celestial/celestial-system';
+
 import type { DisplayWindow } from '../display-window-manager';
 import type { FloatingOrigin } from '../camera/floating-origin';
-import type { ViewFrame } from './view';
+import type { ViewFrame } from './view-frame';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { PerfCounts } from '../perf-counts';
+import type { CelestialLabelHiding } from '../marker/celestial-label-hiding';
 
 export class CombatView implements ViewFrame {
   private readonly planGuide: PlanGuide;
@@ -33,22 +34,23 @@ export class CombatView implements ViewFrame {
     private readonly cameraSystem: CameraSystem,
     private readonly targeter: Targeter,
     private readonly objectWindows: ObjectWindows,
-    private readonly dynamicSystem: DynamicSystem,
-    private readonly celestialMarkers: CelestialMarkers,
+    private readonly roster: EntityRoster,
+    private readonly celestialLabels: CelestialLabelHiding,
     private readonly touchControls: TouchControls | null,
     private readonly controlSelection: ControlSelection,
     private readonly planPath: PlanPath,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialBodies: readonly CelestialBody[],
     private readonly simSpeedManager: SimSpeedManager,
-    private readonly hud: Hud,
+    private readonly notifier: Notifier,
     uiSfx: UiSfx,
-    markerManager: MarkerManager,
+    markers: MarkerSlots,
   ) {
-    this.planGuide = new PlanGuide(hud, uiSfx, markerManager);
+    this.planGuide = new PlanGuide(notifier, uiSfx, markers);
   }
 
   public readonly pickables: readonly ObjectPickable[] = [];
   public readonly visibilityPolicy = null;
+  public readonly planEditor = null;
 
   public perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'> {
     return { mapMode: false, mapItems: 0, mapLabels: 0 };
@@ -78,7 +80,7 @@ export class CombatView implements ViewFrame {
     if (!plan || plan.nodes.length <= 0) return;
     plan.clear();
     this.simSpeedManager.cancelAutoWarp();
-    this.hud.hint('マニューバ計画を破棄');
+    this.notifier.hint('マニューバ計画を破棄');
   }
 
   // 照準キーと右クリックの配分。操作対象がいなければ照準先が無いので配らない。
@@ -90,7 +92,7 @@ export class CombatView implements ViewFrame {
     this.targeter.handleTargetSelectKey(this.input, controlled, project);
     this.input.takeRightClicks((p) => {
       const hit = pickCombatEntityAtPoint(
-        this.dynamicSystem, this.cameraSystem.activeViewpoint, project, p.x, p.y);
+        this.roster, this.cameraSystem.activeViewpoint, project, p.x, p.y);
       if (hit) this.objectWindows.open(p.x, p.y, hit, simTime);
       else this.objectWindows.openEmptySpaceMenu(p.x, p.y, simTime);
       return true;
@@ -100,13 +102,13 @@ export class CombatView implements ViewFrame {
   // 直近ノードの消化・接近通知を進める。
   public update(displayWindow: DisplayWindow): void {
     this.planGuide.update(
-      this.controlSelection.current, displayWindow.simTime, this.celestialSystem.celestialMotions,
+      this.controlSelection.current, displayWindow.simTime, this.celestialBodies,
     );
   }
 
   // 天体ラベルはマップ専用の表示なので、戦闘ビューの間は畳んでおく。
   public syncLabels(): void {
-    this.celestialMarkers.hideLabels();
+    this.celestialLabels.hideLabels();
   }
 
   // 戦闘ビュー専用の常設表示(タッチのモードボタン・ノード実行ガイド)。

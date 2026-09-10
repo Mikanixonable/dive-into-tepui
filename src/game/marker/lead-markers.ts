@@ -2,11 +2,11 @@
 // 状態に依存するため、Enemy にも Targeter にも属さない独立責務として切り出してある。
 import { leadPoint } from '../../physics/intercept';
 import type { View } from '../view/view';
-import type { ProjectFn } from '../camera/camera-system';
-import type { MarkerManager } from './marker-manager';
+import type { MarkerSlots } from './marker-slots';
 import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import { Player } from '../player/player';
 import { COLOR_MARKER_ALLY } from './marker-identity';
+import type { ProjectFn } from '../../math/projection';
 
 const LEAD_MAX_TIME = 25; // これより先にしか当たらない見越し解は表示しない [s]
 
@@ -15,7 +15,7 @@ const markerKey = (target: CombatTarget): string => `lead-${target.id}`;
 export class LeadMarkers {
   private shownKeys: readonly string[] = [];
 
-  constructor(private readonly markerManager: MarkerManager) { }
+  constructor(private readonly markers: MarkerSlots) { }
 
   // 射撃できない状況(マップビュー・自機喪失)では表示せず、保持していたロック履歴も捨てる。
   sync(
@@ -37,13 +37,15 @@ export class LeadMarkers {
     const targets: CombatTarget[] = [];
     if (target && targetsArray.includes(target)) targets.push(target);
     for (const tgt of targets) {
-      const lead = leadPoint(tgt.state, player.state, player.averageMuzzleVelocity, LEAD_MAX_TIME);
+      const lead = leadPoint(
+        tgt.motion.state, player.motion.state, player.averageMuzzleVelocity, LEAD_MAX_TIME,
+      );
       if (lead === null) continue;
       // 主照準とは反対向き（逆三角形方向）の三尖星。線だけで描き、中央に
       // 小さな切り欠きを残すことで、敵マーカーや照準と識別しやすくする。
       const star = '<svg viewBox="0 0 24 24" width="24" height="24" aria-label="LEAD"><g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="butt"><path d="M12 14.3V22"/><path d="M12 14.3V22" transform="rotate(120 12 12)"/><path d="M12 14.3V22" transform="rotate(240 12 12)"/></g></svg>';
       const color = 'accentColor' in tgt ? (tgt as { accentColor: string }).accentColor : COLOR_MARKER_ALLY;
-      this.markerManager.setPosition(markerKey(tgt), 'mk-lead', star, lead, project, '', 1, color, undefined, true);
+      this.markers.setPosition(markerKey(tgt), 'mk-lead', star, lead, project, '', 1, color, undefined, true);
       shownKeys.push(markerKey(tgt));
     }
     this.retire(shownKeys);
@@ -56,7 +58,7 @@ export class LeadMarkers {
   private retire(keys: readonly string[]): void {
     const kept = new Set(keys);
     for (const key of this.shownKeys) {
-      if (!kept.has(key)) this.markerManager.remove(key);
+      if (!kept.has(key)) this.markers.remove(key);
     }
     this.shownKeys = keys;
   }

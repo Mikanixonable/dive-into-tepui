@@ -1,7 +1,7 @@
 // 重力源一覧を、位置に依らず常に加算する天体と、到達量の内側で加算する天体へ分類し、ある位置へ
 // 効きうる天体を取り出す。分類1回を多数の問い合わせ位置で使い回すことが成立条件。
-import { CelestialMotion } from '../../physics/celestial-motion';
 import { Vec3, distSq, len, lenSq, sub } from '../../math/vec3';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 // 一覧から落とす天体1体の寄与の上限 [m/s^2]。
 export const GRAVITY_NEGLIGIBLE_ACCEL = 1e-8;
@@ -16,7 +16,7 @@ export function gravityReachOf(mu: number): number {
 // 到達量の内側で加算する天体。r は分類した時刻の ECI 位置 [m]、limitSq は到達量に区間の
 // 移動ぶんを足した判定距離の2乗 [m²]。
 type RangedAttractor = {
-  readonly motion: CelestialMotion;
+  readonly motion: CelestialBody;
   readonly r: Vec3;
   readonly limitSq: number;
 };
@@ -26,7 +26,7 @@ type RangedAttractor = {
 // なので、半幅を h として |Δ(+h)| + |Δ(−h)| ≥ max(2|v|h, |a|h²) ≥ |v|h + ½|a|h² ≥ max|Δ| が
 // 成り立ち、両端の変位の和がそのまま上界になる(加速度を外へ出さずに済む)。
 function intervalDrift(
-  motion: CelestialMotion, pivot: number, tStart: number, tEnd: number,
+  motion: CelestialBody, pivot: number, tStart: number, tEnd: number,
 ): number {
   const r = motion.positionAt(pivot);
   return len(sub(motion.positionAt(pivot, tStart), r)) + len(sub(motion.positionAt(pivot, tEnd), r));
@@ -34,7 +34,7 @@ function intervalDrift(
 
 // 重力源一覧を、常に含める天体(always)と到達量の内側で含める天体(ranged)へ分けたもの。
 export type ClassifiedAttractors = {
-  readonly always: readonly CelestialMotion[];
+  readonly always: readonly CelestialBody[];
   readonly ranged: readonly RangedAttractor[];
 };
 
@@ -49,9 +49,9 @@ export type ClassifiedAttractors = {
 // 払い、以降の問い合わせは解決済みの位置との距離比較で済む。1点ごとに分類し直すと、その1点の
 // ために全天体を解決し直すので、一覧をそのまま走査する費用に分類の費用が上乗せになる。
 export function classifyAttractors(
-  attractors: readonly CelestialMotion[], pivot: number, tStart: number, tEnd: number,
+  attractors: readonly CelestialBody[], pivot: number, tStart: number, tEnd: number,
 ): ClassifiedAttractors {
-  const always: CelestialMotion[] = [];
+  const always: CelestialBody[] = [];
   const ranged: RangedAttractor[] = [];
   for (const motion of attractors) {
     const r = motion.positionAt(pivot);
@@ -67,8 +67,8 @@ export function classifyAttractors(
 // 位置 pos から見た重力源一覧 = 常に含める天体 + pos を到達量の内側に置く天体を、out へ
 // 書き込む。out は呼び出し側が所有する作業領域で、空にしてから書き込む。
 export function attractorsNearInto(
-  pos: Vec3, classified: ClassifiedAttractors, out: CelestialMotion[],
-): CelestialMotion[] {
+  pos: Vec3, classified: ClassifiedAttractors, out: CelestialBody[],
+): CelestialBody[] {
   out.length = 0;
   for (const a of classified.always) out.push(a);
   for (const a of classified.ranged) {

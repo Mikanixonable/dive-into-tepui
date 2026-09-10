@@ -9,8 +9,10 @@ import { frameOfCelestialBody, toFrameState } from '../../physics/frame';
 import { Projected } from '../../math/projection';
 import { Vec3, add, dot, len, sub, v3 } from '../../math/vec3';
 import { pickNearest } from '../pickable/object-pickable';
-import { Hud } from '../hud/hud';
-import { ContextMenu, MenuAction, MenuCommon } from '../hud/windows';
+import type { HudLayers } from '../hud/hud-layers';
+import type { Notifier } from '../../hud/notifier';
+import { ContextMenu } from '../hud/windows/context-menu';
+import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
@@ -21,12 +23,12 @@ import { AxisDragGizmo } from './plan-axis-drag';
 import { PlanGizmo3D } from './plan-gizmo-3d';
 import { PlanPanel } from './plan-panel';
 import { DisplayDurationSource, Plan } from './plan';
-import type { CelestialSystem } from '../celestial/celestial-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ControlSelection } from '../control-selection';
-import type { FrameControls } from '../hud/frame/frame-controls';
 import type { PlanPath } from './plan-path';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { FocusSink } from '../camera/focus-target';
 
 const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
 
@@ -79,14 +81,14 @@ export class PlanEditor {
   // ノードギズモと計画パネルの DOM を組み立て、両者のコールバックを配線する。
   // path は描かれている計画折れ線 — ノードの配置・移動・画面座標はそのサンプル列から解く。
   public constructor(
-    private readonly hud: Hud,
+    private readonly hud: HudLayers & Notifier,
     private readonly uiSfx: UiSfx,
     private readonly simSpeedManager: SimSpeedManager,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialBodies: CelestialBodies,
     scene: THREE.Scene,
     private readonly controlSelection: ControlSelection,
     private readonly displayDuration: DisplayDurationSource,
-    private readonly frameControls: FrameControls,
+    private readonly focusSink: FocusSink,
     private readonly path: PlanPath,
   ) {
     // マップ上の操作物(ノードギズモ・軌道メニュー・3D 矢印・Δv アーム)
@@ -107,14 +109,14 @@ export class PlanEditor {
 
     // メニューとギズモのコールバック
     this.orbitMenu.onSelect = (act, state) => {
-      if (act === 'warp') this.warpTo(state.t, '指定位置まで自動ワープ開始');
+      if (act === 'warp') this.warpTo(state.t);
     };
     this.wireNodeGizmo();
   }
 
-  // 時刻 t まで自動ワープを始め、始まれば startedHint を出す。既に通過した時刻ならその旨を出す。
-  private warpTo(t: number, startedHint: string): void {
-    if (this.simSpeedManager.startAutoWarpTo(t, this.simTime)) this.hud.hint(startedHint);
+  // 時刻 t まで自動ワープを始める。既に通過した時刻ならその旨を出すだけで何もしない。
+  public warpTo(t: number): void {
+    if (this.simSpeedManager.startAutoWarpTo(t, this.simTime)) this.hud.hint('指定時刻まで自動ワープ開始');
     else this.hud.hint('この時刻は既に通過しています');
   }
 
@@ -138,7 +140,7 @@ export class PlanEditor {
     // ノードのコンテキストメニューの項目
     g.onMenuWarpTo = (idx) => {
       const n = this.plan?.nodes[idx];
-      if (n) this.warpTo(n.t, '指定時刻まで自動ワープ開始');
+      if (n) this.warpTo(n.t);
     };
     g.onMenuDelete = (idx) => {
       this.deleteNode(idx);
@@ -146,8 +148,8 @@ export class PlanEditor {
     g.onMenuFocus = (idx) => {
       const n = this.plan?.nodes[idx];
       if (!n) return;
-      const frames = this.celestialSystem.frames;
-      this.frameControls.setFocus(focusPoint(frames, frames.inertialFrame, n.r, n.t, bodyAnchorSource([], n.t)));
+      const frames = this.celestialBodies.frames;
+      this.focusSink.setFocus(focusPoint(frames, frames.inertialFrame, n.r, n.t, bodyAnchorSource([], n.t)));
     };
   }
 
@@ -224,7 +226,7 @@ export class PlanEditor {
     // その位置に最初に到達する時刻(= referenceT を -Infinity にして最早時刻)を選ぶ。
     const picked = this.path.nearestSample(mx, my, NODE_PICK_PX, -Infinity);
     if (picked) {
-      this.selectNewNode(ship.plan.addNode(picked.state, ship.state));
+      this.selectNewNode(ship.plan.addNode(picked.state, ship.motion.state));
       return;
     }
 
@@ -258,7 +260,7 @@ export class PlanEditor {
       this.hud.hint('この時刻の計画軌道が求まりません');
       return;
     }
-    this.selectNewNode(ship.plan.addNode(sample, ship.state));
+    this.selectNewNode(ship.plan.addNode(sample, ship.motion.state));
   }
 
   // addNode の結果を選択する。計画の起点より前は置けないので、その場合は理由を伝える。
@@ -304,7 +306,9 @@ export class PlanEditor {
     const arriving = this.path.arrivalStates();
     const picked = this.path.nearestSample(
       clientX, clientY, Infinity, node.t,
-      ship.plan.nodeTimeRange(idx, ship.state, this.celestialSystem, this.displayDuration),
+      ship.plan.nodeTimeRange(
+        idx, ship.motion.state, this.celestialBodies.celestialMotions, this.displayDuration,
+      ),
     );
     // Δv を保ったまま移動先へ置き換える
     if (picked) {
@@ -328,7 +332,9 @@ export class PlanEditor {
     if (!node) return;
     const hasDownstreamNodes = idx < plan.nodes.length - 1;
     const targetT = this.simTime + secondsFromNow;
-    const range = plan.nodeTimeRange(idx, ship.state, this.celestialSystem, this.displayDuration);
+    const range = plan.nodeTimeRange(
+      idx, ship.motion.state, this.celestialBodies.celestialMotions, this.displayDuration,
+    );
     const epsilon = 1e-6;
     if (targetT < range.min - epsilon || targetT > range.max + epsilon) {
       this.hud.hint('ノード位置は許可された軌道区間内で指定してください');
@@ -440,7 +446,7 @@ export class PlanEditor {
 
   // 軌道要素と Δv 方向を解釈するための中心天体相対状態。中心はその位置で最も強く引く天体。
   private bodyState(state: KinematicState): KinematicState {
-    const center = strongestAttractor(state.r, this.celestialSystem.celestialMotions, state.t);
+    const center = strongestAttractor(state.r, this.celestialBodies.celestialMotions, state.t);
     const rel = toFrameState(frameOfCelestialBody(center, state.t), state);
     return kinematicState<'eci'>(state.t, rel.r, rel.v);
   }
@@ -528,7 +534,7 @@ export class PlanEditor {
     let selEl: OrbitalElements | null = null;
     let peInAtmosphere = false;
     if (node && localDv) {
-      const center = strongestAttractor(node.r, this.celestialSystem.celestialMotions, node.t);
+      const center = strongestAttractor(node.r, this.celestialBodies.celestialMotions, node.t);
       selEl = orbitalElementsOf(node, center, node.t);
       peInAtmosphere = selEl !== null && this.peInAtmosphere(selEl, node.t);
     }

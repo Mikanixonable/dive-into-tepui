@@ -4,7 +4,7 @@
 // 複数列のグリッドへ並べる(百件規模を縦一列に積むと画面高をはみ出すため)。
 import { clampOverlayPosition } from '../../../hud/layout';
 import { Button, buildLabeledRow } from '../../../hud/widgets';
-import { injectOnce } from '../../../hud/widgets/inject-style';
+import { injectOnce } from '../../../hud/inject-style';
 import { bringToFront } from '../../../hud/overlay-layer';
 import { isCompactViewport, MQ_COMPACT } from '../../../hud/breakpoints';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';

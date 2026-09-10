@@ -9,18 +9,13 @@ import { Billboard } from './billboard';
 import { markLitOpaque, markShadowCaster } from './pipeline/lit-layer';
 import { SchematicThrustCone } from './schematic-thrust-cone';
 import type { RenderStyle } from './render-style';
-
-/** 一段の外形寸法。すべて描画単位(ゲーム内の m)で、前端から船尾へは負 Z。 */
-export const BOOSTER_STAGE_DIMENSIONS = Object.freeze({
-  frontZ: 0.08,
-  aftZ: -7.92,
-  length: 8.0,
-  tankLength: 5.38,
-  tankRadius: 1.26,
-  frontCouplerZ: 0,
-  aftDecouplerZ: -5.86,
-  nozzleExitZ: -7.78,
-});
+import {
+  BOOSTER_INTERSTAGE_BOLT_Z,
+  BOOSTER_INTERSTAGE_COVER_RADIUS,
+  BOOSTER_INTERSTAGE_COVER_SEGMENTS,
+  BOOSTER_INTERSTAGE_COVER_Z,
+  BOOSTER_STAGE_DIMENSIONS,
+} from '../physics/booster-stage-shape';
 
 const BOOSTER_PLUME_CORE_COLOR = 0xaee6ff;
 const BOOSTER_PLUME_OUTER_COLOR = 0x4f9fff;
@@ -31,13 +26,9 @@ const BOOSTER_PLUME_OUTER_SIZE = 2.2;
 
 // 段間接続部。カバーはノズルの外周を6枚のパネルで囲み、次段の前端を
 // 段間の隙間から見せずに一続きのブースターとして読めるようにする。
-export const BOOSTER_INTERSTAGE_COVER_SEGMENTS = 6;
-export const BOOSTER_INTERSTAGE_COVER_Z = -7.02;
 const BOOSTER_INTERSTAGE_COVER_LENGTH = 1.66;
-export const BOOSTER_INTERSTAGE_COVER_RADIUS = 1.43;
 const BOOSTER_INTERSTAGE_COVER_PANEL_RADIAL = 0.18;
 const BOOSTER_INTERSTAGE_COVER_PANEL_TANGENTIAL = 0.72;
-export const BOOSTER_INTERSTAGE_BOLT_Z = -7.78;
 
 interface BoosterStageOptions {
   /** タンク外皮の色。 */

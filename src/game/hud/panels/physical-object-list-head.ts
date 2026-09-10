@@ -2,7 +2,7 @@
 // 検索条件と並び順は PhysicalObjectListOrder へ反映し、一覧本体とは独立して操作できる。
 import { SegmentedControl } from '../../../hud/widgets';
 import { expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
-import { injectOnce } from '../../../hud/widgets/inject-style';
+import { injectOnce } from '../../../hud/inject-style';
 import { FILTERS, SORTS } from './physical-object-list-order';
 import type {
   PhysicalObjectListFilter,

@@ -2,20 +2,18 @@
 // 自転姿勢・2次重力場・大気・公転回転基準系を時刻から答える。答えるのは自分1体ぶんの値。
 // 数値暦が惑星系の重心しか収録していない系では、惑星本体と衛星はそこから重心オフセットを介して
 // 組む。恒星/惑星/衛星の違いはクラスで表し、衛星・惑星と系の重心の関係は PlanetSystem が持つ。
-import { Atmosphere, AtmosphereDef } from './atmosphere';
+import { Atmosphere } from './atmosphere';
 import { qFromForwardUp } from '../math/quat';
 import { PointEphemeris, boundBaryStateAt } from './ephemeris/point';
 import { cassiniSpinAxis, meridianBasisToEci, meridianDirection, orthogonalizedTo, spinPhaseOf } from './body-orientation';
 import { ECI_POLE, ECL_POLE_ECI, raDecToEci } from './ecliptic';
-import {
-  FrameRotation, JULIAN_CENTURY, KeplerOrbit, keplerOrbitAccel, keplerOrbitMeanDirection,
-  keplerOrbitNormal, keplerOrbitForSimZero, keplerOrbitRotation, keplerOrbitState,
-} from './kepler-orbit';
+import { JULIAN_CENTURY, KeplerOrbit, keplerOrbitAccel, keplerOrbitMeanDirection, keplerOrbitNormal, keplerOrbitRotation, keplerOrbitState } from './kepler-orbit';
 import { collinearClearanceRatio, hasStableTriangularPoints } from './lagrange';
-import { SatelliteOrbit, satelliteOrbitForSimZero } from './satellite-orbit';
+import { CelestialBodyDef, PlanetDef, SatelliteDef, StarDef, spinRateOf } from './celestial-body-def';
 import {
-  Degree2Gravity, Degree2GravityDef, PoleModel, RingSystemDef, ShapeDef, poleModelForSimZero,
-} from './celestial-body-def';
+  CelestialKind, Degree2Gravity, FrameRotation, type BodyOrientation, type CelestialBody,
+  type EphemerisBody, type OrbitingCelestialBody,
+} from './celestial-body';
 import {
   KinematicState, addPrimaryRelative, fromStarRelative, kinematicState, toPrimaryRelative,
 } from './kinematic-state';
@@ -24,12 +22,6 @@ import { TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
 import { Vec3, add, addScaled, cross, len, lenSq, norm, scale, v3 } from '../math/vec3';
 import type { EciTransform } from './eci-transform';
 import type { PlanetSystem } from './planet-system';
-
-// 天体の自転軸(単位ベクトル、ECI)と、その軸まわりの自転位相 [rad]。
-export interface BodyOrientation {
-  readonly axis: Vec3;
-  readonly spinAngle: number;
-}
 
 // 天体1体の、ある時刻での ECI の値ひとそろい。位置・速度とその2階微分が近傍時刻への外挿を
 // 支え、向きの量は姿勢を解決済みの形で持つ。
@@ -60,87 +52,7 @@ function extrapolatedState(eci: EciValues, t: number): KinematicState {
   return kinematicState<'eci'>(t, extrapolatedPosition(eci, t), addScaled(eci.state.v, eci.accel, s));
 }
 
-// 天体ごとの平均黄経の初期位相 [rad]。未指定の天体は 0 として扱う。
-export type PhaseOffsets = Partial<Record<string, number>>;
-
-export interface StarDef {
-  readonly id: string;
-  readonly mu: number;
-  readonly radius: number;
-}
-export interface PlanetDef {
-  readonly id: string;
-  readonly mu: number;
-  readonly radius: number;
-  readonly orbit: KeplerOrbit; // 中心は必ず恒星で、乗っているのは惑星本体ではなく惑星-衛星系の重心
-  readonly pole?: PoleModel; // 省略時は自転軸を持たない
-  readonly degree2?: Degree2GravityDef; // 省略時は質点として扱う
-  readonly shape?: ShapeDef; // 省略時は radius による真球
-  readonly atmosphere?: AtmosphereDef; // 省略時は大気を持たない(抗力・焼失ともに起きない)
-  readonly rings?: RingSystemDef; // 省略時は環を持たない
-  // ラグランジュ点をフォーカス対象のラベルとして出すかどうか(省略時 = 出さない)。全公転天体で
-  // 出すと 5 点 × 天体数のラベルが画面を埋めるので、実際に軌道設計の目標になる系だけを立てる。
-  readonly lagrangeLabels?: boolean;
-}
-// 中心は必ず惑星で、その関係は SatelliteMotion が持つ参照が表す。
-export type SatelliteDef = Omit<PlanetDef, 'orbit'> & { readonly orbit: SatelliteOrbit };
-export type CelestialBodyDef = StarDef | PlanetDef | SatelliteDef;
-
-// 星系の天体を役割ごとの一覧として答える窓。積分・接触判定・抗力は個体ではなくこの一覧に
-// 対して回る。並びは天体の宣言順で、時刻ごとの解決は天体1体が畳む。
-export interface CelestialMotions {
-  // 全登録天体。中心天体は原点に静止。
-  readonly celestialMotions: readonly CelestialMotion[];
-  // mu が 0 でない天体。
-  readonly gravityMotions: readonly CelestialMotion[];
-  // 大気を持つ天体。
-  readonly atmosphereMotions: readonly CelestialMotion[];
-}
-
-// 天体の分類。網羅的な分岐を書きたい呼び出し側のための札で、運動の合成そのものはクラスが担う。
-export type CelestialKind = 'star' | 'planet' | 'satellite';
-
-// 天体の形(歪み)。恒星は形を持たず、`radius` による真球として扱う。
-export function shapeOf(def: CelestialBodyDef): ShapeDef | undefined {
-  return 'shape' in def ? def.shape : undefined;
-}
-
-// pole 定義から自転角速度 [rad/s] を取り出す。自転モデルを持たない天体は null。符号は自転の
-// 向きを表し、逆行自転する天体では負になる。同期回転の衛星は本初子午線が公転の平均黄経を追うので、
-// 自転角速度は公転の平均運動と一致する。歳差は自転の 10⁻⁷ 倍未満なので織り込まない。
-export function spinRateOf(def: CelestialBodyDef): number | null {
-  if (!('pole' in def)) return null;
-  const pole = def.pole;
-  if (pole === undefined) return null;
-  if (pole.kind === 'eciPole') return pole.spinRate;
-  if (pole.kind === 'iau') return (pole.wRateDegPerDay * Math.PI) / 180 / 86400;
-  // カッシーニ状態の同期回転は衛星だけが持つ。
-  return 'kepler' in def.orbit ? def.orbit.kepler.lRate : null;
-}
-
-// 天体の宣言を、平均黄経の初期位相と元期オフセットを畳み込んだ宣言へ写す。これを通した宣言
-// だけが CelestialMotion へ渡ってよい — 軌道も自転モデルも simTime そのものを引数に取る形に
-// なり、評価のたびに巨大な定数を足し直さずに済む。
-export function planetDefForSimZero(def: PlanetDef, phases: PhaseOffsets, simZeroEt: number): PlanetDef {
-  return {
-    ...def,
-    orbit: keplerOrbitForSimZero(def.orbit, phases[def.id] ?? 0, simZeroEt),
-    pole: poleModelForSimZero(def.pole, simZeroEt),
-  };
-}
-
-// 衛星の宣言を、同じ規約で simTime 基準の宣言へ写す。
-export function satelliteDefForSimZero(
-  def: SatelliteDef, phases: PhaseOffsets, simZeroEt: number,
-): SatelliteDef {
-  return {
-    ...def,
-    orbit: satelliteOrbitForSimZero(def.orbit, phases[def.id] ?? 0, simZeroEt),
-    pole: poleModelForSimZero(def.pole, simZeroEt),
-  };
-}
-
-export abstract class CelestialMotion {
+export abstract class CelestialMotion implements CelestialBody, EphemerisBody {
   abstract readonly def: CelestialBodyDef;
   abstract readonly kind: CelestialKind;
 
@@ -355,7 +267,7 @@ export class StarMotion extends CelestialMotion {
   }
 }
 
-export abstract class OrbitingMotion extends CelestialMotion {
+export abstract class OrbitingMotion extends CelestialMotion implements OrbitingCelestialBody {
   abstract readonly def: PlanetDef | SatelliteDef;
 
   // 主天体。惑星なら恒星、衛星ならその惑星。公転している以上、必ず持つ。

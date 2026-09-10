@@ -4,10 +4,10 @@
 // 片方を数値・片方を解析で引くと、その差がそのまま相対位置の誤りになる。原点が数値暦で
 // 引ける時刻だけ両者を数値暦で引き、それ以外は両者を解析へ揃える。
 // THREE/DOM 非依存。
-import type { CelestialMotion } from './celestial-motion';
 import { KinematicState, toEci } from './kinematic-state';
 import { TimeCacheStats, TimeRing } from './time-ring';
 import { Vec3, sub } from '../math/vec3';
+import type { EphemerisBody } from './celestial-body';
 
 // ECI 原点天体が時刻 t に答える、原点を引くための一式。**供給源が違えば同じ天体に別の位置を
 // 答える**ので、ECI 化は必ず同じ経路どうしで差を取る。解析経路は主星相対で持つ
@@ -23,18 +23,18 @@ export class EciTransform {
   private readonly originCache = new TimeRing<OriginState>();
 
   // origin は ECI 原点に置く天体。原点天体自身も同じ計算を2回引くので、位置は厳密に 0 になる。
-  constructor(private readonly origin: CelestialMotion) {}
+  constructor(private readonly origin: EphemerisBody) {}
 
   // ECI 原点に置いている天体の id。
   get originId(): string { return this.origin.id; }
 
   // 時刻 t の ECI 位置・速度。
-  stateAt(t: number, motion: CelestialMotion): KinematicState {
+  stateAt(t: number, motion: EphemerisBody): KinematicState {
     return this.translate(t, motion, this.originStateAt(t));
   }
 
   // 時刻 t の ECI 加速度。供給源が分かれない(数値暦は位置係数しか持たない)ので常に解析。
-  accelAt(t: number, motion: CelestialMotion): Vec3 {
+  accelAt(t: number, motion: EphemerisBody): Vec3 {
     return sub(motion.analyticAccelAt(t), this.originStateAt(t).accel);
   }
 
@@ -43,7 +43,7 @@ export class EciTransform {
 
   // 引いた原点一式のもとで平行移動する。原点が数値暦で引けない時刻では、この天体も
   // 引かずに解析経路へ揃える。
-  private translate(t: number, motion: CelestialMotion, origin: OriginState): KinematicState {
+  private translate(t: number, motion: EphemerisBody, origin: OriginState): KinematicState {
     const originNumeric = origin.numeric;
     const numeric = originNumeric === null ? null : motion.numericStateAt(t);
     return numeric === null || originNumeric === null

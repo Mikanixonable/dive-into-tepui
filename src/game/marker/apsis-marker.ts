@@ -5,9 +5,9 @@ import { fmtDist } from '../../hud/utils';
 import { len, sub, type Vec3 } from '../../math/vec3';
 import { ORBIT_POINT_GLYPH } from './marker-identity';
 import { OrbitPointMarker } from './orbit-point-marker';
-import type { CelestialSystem } from '../celestial/celestial-system';
-import type { ObjectCommands } from '../pickable/object-commands';
-import type { PropertyRow } from '../../hud/windows/property-window';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { PropertyRow } from '../../hud/windows/property-window-content';
+import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 
 export class ApsisMarker extends OrbitPointMarker {
   public readonly glyph = ORBIT_POINT_GLYPH.apsis;
@@ -37,12 +37,12 @@ export class ApsisMarker extends OrbitPointMarker {
   // 所属軌道・中心天体の表面からの高度・通過までの残り時間。位置が解けていなければ行は無く、
   // 中心天体が引けないフレームは高度が落ちる。
   public propertyRows(
-    _commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
+    celestialBodies: CelestialBodies, _viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
     const pos = this.pos;
     if (pos === null) return [];
     // 高度の基準は、place で受け取った中心天体の表面。
-    const center = this.centerId === null ? null : (celestialSystem.find(this.centerId)?.motion ?? null);
+    const center = this.centerId === null ? null : (celestialBodies.findMotion(this.centerId) ?? null);
     const altRows: PropertyRow[] = center === null ? [] : [{
       key: 'alt',
       label: '高度',

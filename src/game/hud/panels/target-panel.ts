@@ -2,16 +2,22 @@
 // 接近速度・相対速度を、ターゲットが固定されている間だけ表示する。
 import { fmtDist, fmtSpeed, setElementText } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
+import { relativeInfo } from '../../orbit-info';
+import { ProteinEnemy } from '../../dynamic/dynamic-entity/protein-enemy';
 import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
+import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
+import type { Targeter } from '../../targeter';
 
 const SYNC_INTERVAL_MS = 100;
 
-export interface TargetPanelData {
+interface TargetPanelData {
   readonly name: string;
   readonly distanceM: number;
-  readonly closingMps: number;
+  readonly closingMps: number; // 正 = 近づいている。
   readonly relativeSpeedMps: number;
+  // 装甲を持たない対象(基地)では null。
   readonly hp: number | null;
   readonly maxHp: number | null;
   readonly protein: ProteinHudSnapshot | null;
@@ -32,12 +38,29 @@ export class TargetPanel {
   }
 
   // 固定対象の有無を毎フレーム反映し、値の更新は間引く。
-  public sync(target: TargetPanelData | null): void {
+  public sync(viewer: Controllable | null, celestialBodies: CelestialBodies, targeter: Targeter): void {
+    const target = viewer ? targeter.aliveTarget : null;
     // 表示/非表示はターゲット固定の有無に直結するので、更新間隔とは別に毎フレーム反映する。
     this.els.get('hud-target')?.classList.toggle('hidden', target === null);
 
     if (!this.throttle.due()) return;
-    this.syncTarget(target);
+
+    if (!viewer || !target) {
+      this.syncTarget(null);
+      return;
+    }
+    const relative = relativeInfo(
+      viewer, target, celestialBodies.celestialMotions, viewer.motion.state.t,
+    );
+    this.syncTarget({
+      name: target.name,
+      distanceM: relative.dist,
+      closingMps: relative.closing,
+      relativeSpeedMps: relative.relSpeed,
+      hp: target.hp,
+      maxHp: target.maxHp,
+      protein: target instanceof ProteinEnemy ? target.hudSnapshot : null,
+    });
   }
 
   // 安定した DOM へ値だけを同期し、高速更新でも読み上げ対象の要素を作り直さない。

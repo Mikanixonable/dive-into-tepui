@@ -5,6 +5,9 @@ import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { SPACE_2, SPACE_4 } from '../../theme';
 import { clampOverlayPosition, Point2 } from '../layout';
 import { onViewportChange } from '../viewport';
+import { injectOnce } from '../inject-style';
+import { PAUSE_MENU_STYLE } from '../style/pause-menu-style';
+import { SETTINGS_VIEW_STYLE } from '../style/settings-view-style';
 import type { OverlayHandle, OverlayManager, OverlaySpec } from '../overlay-manager';
 import {
   Button, CloseButton, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, Slider, TabBar,
@@ -53,6 +56,8 @@ export class PauseMenu implements OverlayHandle {
   public constructor(
     root: HTMLElement, overlayManager: OverlayManager, bgm: Bgm, graphics: GraphicsSettings,
   ) {
+    injectOnce('pause-menu', PAUSE_MENU_STYLE);
+    injectOnce('settings-view', SETTINGS_VIEW_STYLE);
     this.overlayManager = overlayManager;
     this.bgm = bgm;
     this.settingsView = new SettingsView(bgm, graphics);

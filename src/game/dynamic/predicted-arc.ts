@@ -9,13 +9,13 @@
 import { KinematicState, hermiteInterpolate } from '../../physics/kinematic-state';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { nearestAtmosphereBody, strongestAttractor } from '../../physics/attractor';
-import { CelestialMotion } from '../../physics/celestial-motion';
 import { firstSurfaceContact } from '../../physics/surface-contact';
 import { keplerPeriod } from '../../physics/elements';
 import { ApsisTrack } from '../../physics/trajectory-features';
 import { dot, len, sub } from '../../math/vec3';
-import { ArcCelestialBodies, type ArcCelestialBodyWindow, type FutureCelestialBodyProvider } from './arc-celestial-bodies';
+import { ArcCelestialBodies, type ArcCelestialBodyWindow } from './arc-celestial-bodies';
 import { atmosphericMaxStep, SUBSTEP_MAX_DT, ARC_MIN_STEP_DT } from './time-step';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 // 積分済みのサンプル列が、要求区間の求める間引き間隔に対して何倍まで粗くてよいか
 // (PredictedArc.represents 用)。表示期間を短くしたときは積分結果を捨てず答える範囲だけを
@@ -63,7 +63,7 @@ export function trajectorySampleInterval(period: number, keepDuration: number): 
 
 // 弧が打ち切られた、天体表面への到達。到達した瞬間の状態は経路を補間して求める。
 export interface BodyImpact {
-  readonly body: CelestialMotion;
+  readonly body: CelestialBody;
   readonly state: KinematicState;
 }
 
@@ -96,7 +96,7 @@ export class PredictedArc {
   // 合わせ、表示期間由来の項を使わない。
   constructor(
     readonly state0: KinematicState,
-    sources: FutureCelestialBodyProvider,
+    sources: readonly CelestialBody[],
     private readonly radius: number,
     private readonly bcInv: number,
     private readonly srpCoeff: number,
@@ -194,7 +194,7 @@ export class PredictedArc {
   // 掃引判定が交差点を補間で求められる。
   private stepDt(
     tip: KinematicState, span: number, period: number,
-    collisionBodies: readonly CelestialMotion[], pivot: number,
+    collisionBodies: readonly CelestialBody[], pivot: number,
   ): number {
     let approachDt = Infinity;
     // 動径接近率が正(接近中)の天体だけを対象に、表面までの残距離ぶんの猶予を見る。
@@ -224,7 +224,7 @@ export class PredictedArc {
   // 固体表面への到達の判定。触れた天体があれば、その接触時刻へ経路を補間した状態を到達点
   // として記録し、打ち切る。
   private checkSurfaceReach(
-    prev: KinematicState, collision: readonly CelestialMotion[], pivot: number,
+    prev: KinematicState, collision: readonly CelestialBody[], pivot: number,
   ): void {
     const next = this._trajectory.state;
     const hit = firstSurfaceContact(prev, next, this.radius, collision, pivot);

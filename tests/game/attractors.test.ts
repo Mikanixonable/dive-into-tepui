@@ -10,7 +10,7 @@ import { add, addScaled, len, sub, v3 } from '../../src/math/vec3';
 import {
   attractorsNearInto, classifyAttractors, GRAVITY_NEGLIGIBLE_ACCEL,
 } from '../../src/game/dynamic/attractors';
-import type { CelestialMotion } from '../../src/physics/celestial-motion';
+import type { CelestialBody } from '../../src/physics/celestial-body';
 import type { Vec3 } from '../../src/math/vec3';
 
 // 現実の太陽系・地球原点の既定の登録天体。
@@ -44,12 +44,12 @@ const SITES: readonly Site[] = [
 ];
 
 // 天体一式が位置 r へ及ぼす ECI 加速度の和。
-function gravitySum(bodies: readonly CelestialMotion[], r: Vec3, t: number): Vec3 {
+function gravitySum(bodies: readonly CelestialBody[], r: Vec3, t: number): Vec3 {
   return bodies.reduce((sum, body) => add(sum, attractorAccel(r, body, t)), v3());
 }
 
 // 時刻 t に位置 pos へ効くと絞り込まれた重力源。
-function attractorsNear(pos: Vec3, t: number): readonly CelestialMotion[] {
+function attractorsNear(pos: Vec3, t: number): readonly CelestialBody[] {
   return attractorsNearInto(pos, classifyAttractors(SYSTEM.gravityMotions, t, t, t), []);
 }
 

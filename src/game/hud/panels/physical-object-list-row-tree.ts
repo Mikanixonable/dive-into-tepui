@@ -1,9 +1,9 @@
 // 軌道物体一覧パネルの行ツリー: 種別ごとの一覧行を、既存 DOM を使い回しながら id 差分だけで
 // 同期・剪定する。見出し・検索欄・フィルタ UI の組み立てはパネル本体が持つ。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../../../hud/widgets';
-import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
+import type { ListedObject } from '../../pickable/listed-object';
+import type { OrbitingObject } from '../../dynamic/dynamic-entity/orbiting-object';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { PhysicalObjectListOrder } from './physical-object-list-order';
 
 const EMPTY_IDS: readonly string[] = [];
@@ -40,17 +40,17 @@ export interface RowNode {
 // 軌道物体一覧の入れ子行ツリーを、既存 DOM を使い回しながら id 差分だけで同期・剪定する。
 export class PhysicalObjectListRowTree {
   public constructor(
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialBodies: CelestialBodies,
     private readonly order: PhysicalObjectListOrder,
-    private readonly itemsById: ReadonlyMap<string, ObjectPickable>,
+    private readonly itemsById: ReadonlyMap<string, ListedObject>,
     private readonly actions: RowTreeActions,
   ) {}
 
   // 補助表示の導出に要る今フレームの操作対象と表示時刻。syncRow より先に渡すこと。
-  private viewer: Controllable | null = null;
+  private viewer: OrbitingObject | null = null;
   private displayTime = 0;
 
-  public setFrame(viewer: Controllable | null, displayTime: number): void {
+  public setFrame(viewer: OrbitingObject | null, displayTime: number): void {
     this.viewer = viewer;
     this.displayTime = displayTime;
   }
@@ -94,7 +94,7 @@ export class PhysicalObjectListRowTree {
       }
     }
     if (node.label.textContent !== item.name) node.label.textContent = item.name;
-    const detailText = item.listDetail(this.celestialSystem, this.viewer, this.displayTime);
+    const detailText = item.listDetail(this.celestialBodies, this.viewer, this.displayTime);
     if (node.detail.textContent !== detailText) node.detail.textContent = detailText;
     node.detail.classList.toggle('hidden', detailText === '');
     node.row.classList.toggle('focus', item.id === focusId);

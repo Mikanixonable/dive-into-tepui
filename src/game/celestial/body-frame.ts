@@ -2,7 +2,7 @@
 // 持つので、その形を使う描画にはこの向きが要る。
 import * as THREE from 'three/webgpu';
 import { spinOrientation } from '../../physics/body-orientation';
-import type { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 const tmpSpin = new THREE.Quaternion();
 
@@ -10,7 +10,7 @@ const tmpSpin = new THREE.Quaternion();
 // **自転姿勢を持たない天体では単位行列を書く** — 向きの定まらない形は真球としてしか意味を
 // 持たないので、どう回しても同じ答えになる。
 export function writeBodyFromWorld(
-  target: THREE.Matrix4, motion: CelestialMotion, t: number,
+  target: THREE.Matrix4, motion: CelestialBody, t: number,
 ): THREE.Matrix4 {
   const orientation = motion.orientationAt(t);
   const spin = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);

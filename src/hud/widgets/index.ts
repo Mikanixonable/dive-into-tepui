@@ -19,4 +19,3 @@ export {
   PREDICT_TOGGLE_LABELS,
 } from './collapse-toggle';
 export { WIDGET_STYLE } from './widget-style';
-export { injectOnce } from './inject-style';

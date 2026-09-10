@@ -10,10 +10,10 @@
 //
 // シミュレーション全体は地球中心の慣性系(ECI)で回っている。座標系はあくまで「軌道線など
 // 個々の描画物」の表示用で、シーン全体を差し替えるものではない。
-import type { CelestialMotion } from './celestial-motion';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { add, cross, sub, v3, Vec3 } from '../math/vec3';
 import { Q_IDENTITY, Quat, qInvert, qRotate } from '../math/quat';
+import type { CelestialBody } from './celestial-body';
 
 // 座標系 = 「どの天体を原点に置くか」×「何の回転(公転か自転)に合わせて回すか
 // (null = 回さない)」。値は必ず ReferenceFrames の frames/frameFor/frameOf の要素を参照する —
@@ -52,7 +52,7 @@ export function frameRoleOf(id: string): FrameRole | null {
 // これ越しにしか未登録の基準へ触れない。
 export interface FrameAnchorSource {
   // このフレームの重力天体一覧。
-  readonly bodies: readonly CelestialMotion[];
+  readonly bodies: readonly CelestialBody[];
   // bodies の位置を厳密に引く時刻。
   readonly bodiesPivot: number;
   // 登録天体でない基準(生存中の重力天体・機体・役割トークン)の ECI 状態。解決できなければ null。
@@ -154,7 +154,7 @@ export function unbakeToDisplayPoint(
 
 // center を原点とする ECI 恒等姿勢の座標系変換。ReferenceFrame
 // ({center: center.id, rotatingWith: null}) と等価な変換を、天体1体から直に組む。
-export function frameOfCelestialBody(center: CelestialMotion, pivot: number): FrameTransform {
+export function frameOfCelestialBody(center: CelestialBody, pivot: number): FrameTransform {
   const state = center.stateAt(pivot);
   return { origin: state.r, originVel: state.v, q: Q_IDENTITY, omega: v3() };
 }

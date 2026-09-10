@@ -4,7 +4,7 @@ import { FONT_L, SPACE_6 } from '../theme';
 import type { HudShell } from '../hud/hud-shell';
 import { createHudElement } from '../hud/hud-element';
 import type { OverlayHandle } from '../hud/overlay-manager';
-import { injectOnce } from '../hud/widgets/inject-style';
+import { injectOnce } from '../hud/inject-style';
 import { RESULT_SCREEN_STYLE } from './result-screen-style';
 
 // 決着した周回の次(再出撃かタイトルへ戻るか)を決める契約。

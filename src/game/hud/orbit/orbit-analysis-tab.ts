@@ -1,6 +1,17 @@
 // 軌道分析パネルのタブが実装する共通形と、タブが組み立てる部品(スケール入力欄・リセット行)。
-import { Button, ValueInput, injectOnce } from '../../../hud/widgets';
-import type { OrbitAnalysisTabInput } from './orbit-analysis-source';
+import { Button, ValueInput } from '../../../hud/widgets';
+import { injectOnce } from '../../../hud/inject-style';
+import type { CelestialSystem } from '../../celestial/celestial-system';
+import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
+import type { OrbitReference } from '../../orbit-reference';
+import type { ApproachTargetSource } from './orbit-analysis-data';
+
+// 軌道分析のタブが読む盤面 —— 天体がいつどこにあるかと、未来をどこまで描くか。
+export interface AnalysisChartSource {
+  readonly celestialSystem: CelestialSystem;
+  // 未来を描く期間 [s]。マップの未来表示が指す期間と揃える。
+  readonly windowDurationSec: number;
+}
 
 export interface AnalysisTab {
   // タブバーに出す名前。
@@ -9,9 +20,13 @@ export interface AnalysisTab {
   readonly element: HTMLElement;
 
   // タブバーに出すか。false になったタブが選ばれていたら、選択は高度タブへ戻る。
-  available(input: OrbitAnalysisTabInput): boolean;
+  available(
+    source: AnalysisChartSource, entity: DynamicEntity, reference: OrbitReference, target: ApproachTargetSource | null,
+  ): boolean;
   // 選ばれている間だけ呼ばれる。
-  draw(input: OrbitAnalysisTabInput): void;
+  draw(
+    source: AnalysisChartSource, entity: DynamicEntity, reference: OrbitReference, target: ApproachTargetSource | null,
+  ): void;
   // 表示範囲を、開いた/このタブを選び直した時点へ戻す。
   resetView(): void;
   dispose(): void;

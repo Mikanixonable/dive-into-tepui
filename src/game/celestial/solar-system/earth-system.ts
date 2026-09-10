@@ -4,9 +4,8 @@ import type { WebGPURenderer } from 'three/webgpu';
 import earthTextureUrl from '../../../assets/earth.jpg';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import { AtmosphereDef } from '../../../physics/atmosphere';
-import {
-  PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero, SatelliteMotion, StarMotion,
-} from '../../../physics/celestial-motion';
+import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
+import { PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { satelliteOrbit } from '../../../physics/satellite-orbit';
@@ -39,12 +38,12 @@ import { earthSurfaceUvFromRadialNode } from '../../../render/earth-surface-coor
 import { EarthCoastline } from '../../../render/earth-coastline';
 import { MoonSurfaceMarkings } from '../../../render/moon-surface-markings';
 import { GeostationaryOverlay } from '../celestial-entity/geostationary-overlay';
-import { PointEntity } from '../celestial-entity/point-entity';
-import { SphereEntity } from '../celestial-entity/sphere-entity';
+import { PointCelestialView } from '../celestial-entity/point-celestial-view';
+import { SphereCelestialView } from '../celestial-entity/sphere-celestial-view';
 import { MOON_DIST_TERMS, MOON_LAT_TERMS, MOON_LON_TERMS } from './moon-terms';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { CelestialTexture } from '../../../render/celestial-textures';
-import type { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { CelestialEntity } from '../celestial-entity/celestial-entity';
 import type { EarthSurfaceSource } from './earth-surface-source';
 import { vec3 } from 'three/tsl';
 
@@ -399,20 +398,24 @@ export function earthSystem(
   );
   const earthSurface = earthSurfaceRuntime.surface;
   return {
-    earth: new PointEntity(
-      earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
-      earthSurface,
-      EARTH_ATMOSPHERE_OPTICS, new EarthCoastline(), earthAuroras(),
-      GeostationaryOverlay.of(earth.body), cumulus,
+    earth: new CelestialEntity(
+    earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
+      new PointCelestialView(
+        earthSurface,
+        EARTH_ATMOSPHERE_OPTICS, new EarthCoastline(), earthAuroras(),
+        GeostationaryOverlay.of(earth.body), cumulus,
+      ),
     ),
-    moon: new SphereEntity(
+    moon: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(MOON, phases, simZeroEt), earth),
       EARTH_SYSTEM_NAMES.moon, 'satellite',
-      // 倍率はテクスチャの平均輝度 0.3180 を公表のボンドアルベドへ合わせる値。
-      CelestialSurface.textured({
-        url: moonTextureUrl, albedoScale: 0.3459, bondAlbedo: 0.11, averageHue: [1.0458, 0.9880, 0.9844],
-      }),
-      null, new MoonSurfaceMarkings(),
+      new SphereCelestialView(
+        // 倍率はテクスチャの平均輝度 0.3180 を公表のボンドアルベドへ合わせる値。
+        CelestialSurface.textured({
+          url: moonTextureUrl, albedoScale: 0.3459, bondAlbedo: 0.11, averageHue: [1.0458, 0.9880, 0.9844],
+        }),
+        null, new MoonSurfaceMarkings(),
+      ),
     ),
   };
 }

@@ -1,5 +1,5 @@
 // ステージ解放の判定と、クリア回数の永続化を一元管理する。
-import { Hud } from '../game/hud/hud';
+import type { Notifier } from '../hud/notifier';
 import type { ClearCounts, StageId } from '../game/stages/stage';
 import { findStageClass, STAGE_CLASSES } from '../game/stages/stage-dictionary';
 
@@ -39,7 +39,7 @@ export class UnlockManager {
   }
 
   // ステージクリアを記録し、それによって新たに解放条件を満たしたステージがあれば toast で知らせる。
-  reportClear(stage: StageId, hud: Hud): void {
+  reportClear(stage: StageId, notifier: Notifier): void {
     const newlyUnlocked = STAGE_CLASSES.filter((s) => !isStageUnlocked(s.id, this.clearCounts));
 
     this.clearCounts = { ...this.clearCounts, [stage]: (this.clearCounts[stage] ?? 0) + 1 };
@@ -47,7 +47,7 @@ export class UnlockManager {
 
     for (const s of newlyUnlocked) {
       if (isStageUnlocked(s.id, this.clearCounts)) {
-        hud.toast(`<span style="color:var(--color-primary)">${s.selectLabel} が解放された</span>`);
+        notifier.toast(`<span style="color:var(--color-primary)">${s.selectLabel} が解放された</span>`);
       }
     }
   }

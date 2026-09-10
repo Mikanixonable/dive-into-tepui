@@ -12,7 +12,7 @@ import { GraphicsSettings, type GraphicsSettingsData } from './render/graphics-s
 import { RenderStyleSetting } from './render/render-style';
 import { Hud } from './game/hud/hud';
 import { HudShell } from './hud/hud-shell';
-import { PauseMenu } from './hud/windows';
+import { PauseMenu } from './hud/windows/pause-menu';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
 import { Launcher } from './launcher/launcher';
@@ -26,6 +26,7 @@ import { AutoSave } from './launcher/save/autosave';
 import { migrateLegacySave } from './launcher/save/legacy-save';
 import { showLoading, hideLoading } from './launcher/loading-overlay';
 import { showFatalError } from './launcher/fatal-error';
+import type { GameHost } from './game/game-host';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
 async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
@@ -141,9 +142,10 @@ async function main() {
   graphics.bind(gs);
   const { shell, hud, audioEngine, bgm, pauseMenu } = initHud(graphics, renderStyle);
   const sections = new FrameSections();
+  const host: GameHost = { scene: gs, hud, sections };
 
   const launcher = new Launcher(
-    shell, hud, gs, audioEngine, bgm, pauseMenu, unlockManager, sections,
+    shell, host, audioEngine, bgm, pauseMenu, unlockManager,
     slots, snapshotService, graphics,
   );
 
@@ -156,7 +158,7 @@ async function main() {
   const saveBrowser = new SaveBrowser(shell.layers.system, slots, snapshotService, launcher, shell.overlayManager);
   saveBrowser.onSlotSwitched = () => launcher.switchSlot();
   saveBrowser.onLoadSnapshot = (id) => launcher.loadSnapshot(id);
-  // ESCメニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
+  // 設定メニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
   pauseMenu.onOpenSaveBrowser = () => {
     pauseMenu.toggle(false);
     saveBrowser.open();
@@ -175,7 +177,6 @@ async function main() {
   pauseMenu.onSave = () => snapshotControls.captureManual(launcher.current?.snapshot ?? null);
 
   await launcher.start();
-
   startAnimationLoop(launcher, gs, graphics, renderStyle, debugInfo, sections, new AutoSave(snapshotService), snapshotControls);
 }
 

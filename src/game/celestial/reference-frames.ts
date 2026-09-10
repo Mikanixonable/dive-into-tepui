@@ -9,7 +9,7 @@ import { EciTransform } from '../../physics/eci-transform';
 import {
   FrameAnchorSource, FrameRotationSource, FrameTransform, ReferenceFrame, rotationSourceKey,
 } from '../../physics/frame';
-import { FrameRotation } from '../../physics/kepler-orbit';
+import { FrameRotation } from '../../physics/celestial-body';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { cross, len, lenSq, norm, scale, sub, v3 } from '../../math/vec3';
 

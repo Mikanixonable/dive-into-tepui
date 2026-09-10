@@ -10,22 +10,18 @@ import { epochUnixSeconds } from '../hud/utils';
 import type { TickLabelMode, TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import { strongestAttractor } from '../physics/attractor';
 import { ReferenceFrame } from '../physics/frame';
-import type { CelestialSystem } from './celestial/celestial-system';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
+import type { CelestialBodies } from './celestial/celestial-bodies';
+import {
+  APERIODIC_ARC_DURATION,
+  type DisplayDurationKey, type DisplayPastDurationKey,
+} from './display-window-duration';
 
-export const DISPLAY_DURATION_MAX = 365 * 86400; // 手動レンジで指定できる表示期間の上限 [s](1年)
-// 周期を持たない軌道(双曲線・放物線)で、1周期の代わりに区間の長さとして使う値 [s]。
-export const APERIODIC_ARC_DURATION = 86400;
 
 const DISPLAY_DUR_DAY = 86400; // 1日
 const DISPLAY_DUR_TEN_DAY = 10 * 86400; // 10日
 const DISPLAY_DUR_MONTH = 30 * 86400; // 1ヶ月
 const DISPLAY_DUR_THREE_MONTH = 90 * 86400; // 3ヶ月
-
-export type DisplayDurationKey = 'orbit' | 'day' | 'tenDay' | 'month' | 'threeMonth' | 'custom';
-
-// 過去方向の表示期間の選択。'none'(既定)は過去を描かない。
-export type DisplayPastDurationKey = 'none' | DisplayDurationKey;
 
 // 1フレーム分の「どこを・いつを表示しているか」。simTime/referencePeriod から派生する
 // duration/displayTime を呼び出し側ごとに計算し直させないための束。
@@ -94,10 +90,10 @@ export class DisplayWindowManager {
   // 操作パネルを構築し、期間選択・スライダー・任意期間入力・T+ジャンプ入力の反映先を自身にする。
   constructor(
     hudRoot: HTMLElement,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialBodies: CelestialBodies,
   ) {
-    this._frame = celestialSystem.frames.inertialFrame;
-    this.epochUnixSec = epochUnixSeconds(celestialSystem.epoch);
+    this._frame = celestialBodies.frames.inertialFrame;
+    this.epochUnixSec = epochUnixSeconds(celestialBodies.epoch);
     this._current = {
       frame: this._frame, simTime: 0, referencePeriod: NaN,
       duration: APERIODIC_ARC_DURATION, pastDuration: 0, displayTime: 0,
@@ -200,7 +196,7 @@ export class DisplayWindowManager {
   }
 
   // 過去方向に遡って描く期間の秒数。durationSec と同じ参照周期の解釈を使い、'none' は 0。
-  pastDurationSec(referencePeriod: number): number {
+  private pastDurationSec(referencePeriod: number): number {
     if (this.pastDurationKey === 'none') return 0;
     if (this.pastDurationKey === 'orbit') {
       return isFinite(referencePeriod) && referencePeriod > 0 ? referencePeriod : APERIODIC_ARC_DURATION;
@@ -254,13 +250,13 @@ export class DisplayWindowManager {
   // durationSec 側のフォールバックに委ねる。
   private currentOrbitPeriod(controlled: DynamicEntity | null, simTime: number): number {
     if (!controlled) return NaN;
-    const center = strongestAttractor(controlled.state.r, this.celestialSystem.celestialMotions, simTime);
-    return controlled.orbitalElementsAround(center, simTime)?.period ?? NaN;
+    const center = strongestAttractor(controlled.motion.state.r, this.celestialBodies.celestialMotions, simTime);
+    return controlled.motion.orbitalElementsAround(center, simTime)?.period ?? NaN;
   }
 
   // 操作対象の予測軌道が表示期間のどこまで届いているかの割合(0..1)。
   private predictionCoverageRatio(controlled: DynamicEntity | null): number {
-    const end = controlled?.predicted?.state.t;
+    const end = controlled?.motion.predicted?.state.t;
     if (end === undefined || this._current.duration <= 0) return 1;
     return Math.max(0, Math.min(1, (end - this._current.simTime) / this._current.duration));
   }

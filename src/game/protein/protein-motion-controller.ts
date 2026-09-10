@@ -10,6 +10,14 @@ type ProteinMotionBand = ProteinMotionAsset['modes'][number]['band'];
 
 export type ProteinMotionLod = 'near' | 'medium' | 'far' | 'marker';
 
+export interface ProteinMotionDisplay {
+  readonly active: boolean;
+  readonly lod: ProteinMotionLod;
+  readonly sampleTime: number;
+  readonly phase: ProteinPhase;
+  readonly coefficients: Float32Array;
+}
+
 export const PROTEIN_MOTION_LOD_MODE_COUNTS: Readonly<Record<ProteinMotionLod, number>> = {
   near: 24,
   medium: 12,
@@ -84,6 +92,31 @@ export function proteinMotionUpdatePhaseFor(enemyId: string): number {
   return mix32(seed ^ 0xa511e9b3) / UINT32_SCALE;
 }
 
+// 外部で確定済みのモード係数を、指定された残基の変位へ投影する。
+export function projectProteinResidues(
+  asset: ProteinMotionAsset, coefficients: Float32Array,
+  residues: readonly number[], target: Float32Array,
+): void {
+  // 対象残基ごとに、全モードの線形結合を同じ係数バッファから再現する。
+  for (const residue of residues) {
+    if (!Number.isInteger(residue) || residue < 0 || residue >= asset.residueCount) continue;
+    const sourceOffset = residue * 3;
+    const outputOffset = residue * 4;
+    let x = 0; let y = 0; let z = 0;
+    for (let modeIndex = 0; modeIndex < asset.modes.length; modeIndex += 1) {
+      const coefficient = coefficients[modeIndex] ?? 0;
+      if (coefficient === 0) continue;
+      const displacements = asset.modes[modeIndex]!.displacements;
+      x += coefficient * (displacements[sourceOffset] ?? 0);
+      y += coefficient * (displacements[sourceOffset + 1] ?? 0);
+      z += coefficient * (displacements[sourceOffset + 2] ?? 0);
+    }
+    target[outputOffset] = x;
+    target[outputOffset + 1] = y;
+    target[outputOffset + 2] = z;
+  }
+}
+
 function safeDisplayTime(time: number): number {
   if (!Number.isFinite(time) || time <= 0) return 0;
   return Math.min(time, Number.MAX_SAFE_INTEGER / 1_000_000);
@@ -137,8 +170,9 @@ export class ProteinMotionController {
   private fading = false;
   private fadeStartTime = 0;
 
+  // asset の固定モードと個体固有 seed から、再利用する計算バッファを初期化する。
   public constructor(
-    asset: ProteinMotionAsset,
+    private readonly asset: ProteinMotionAsset,
     enemyId: string,
     options: ProteinMotionControllerOptions = {},
   ) {
@@ -157,6 +191,7 @@ export class ProteinMotionController {
     this.updatePhase = proteinMotionUpdatePhaseFor(enemyId);
     this.collectiveGain = finiteNonNegative(options.collectiveGain, finiteNonNegative(asset.display.collectiveGain, 1));
     this.localGain = finiteNonNegative(options.localGain, finiteNonNegative(asset.display.localGain, 1));
+    // OU sampler と係数バッファは個体の寿命中再利用し、毎フレームの割り当てを避ける。
     this.sampler = new ProteinBrownianSampler(
       this.modes.map((mode) => ({
         relaxationRate: mode.displayRelaxationRate,
@@ -169,6 +204,7 @@ export class ProteinMotionController {
     this.effectiveCoefficientsBuffer = new Float32Array(this.modeCount);
     this.rawCoefficientsBuffer = new Float32Array(this.modeCount);
     this.fadeFromCoefficientsBuffer = new Float32Array(this.modeCount);
+    // band 別 gain は asset/options だけで決まるため、構築時に焼いておく。
     this.modeGains = new Float64Array(this.modeCount);
     for (let modeIndex = 0; modeIndex < this.modeCount; modeIndex += 1) {
       const mode = this.modes[modeIndex]!;
@@ -195,23 +231,7 @@ export class ProteinMotionController {
    * 列挙されなかった残基の要素は書き換えない。範囲外・非整数の残基インデックスは無視する。
    */
   public projectResidues(residues: readonly number[], target: Float32Array): void {
-    for (const residue of residues) {
-      if (!Number.isInteger(residue) || residue < 0 || residue >= this.residueCount) continue;
-      const sourceOffset = residue * 3;
-      const outputOffset = residue * 4;
-      let x = 0; let y = 0; let z = 0;
-      for (let modeIndex = 0; modeIndex < this.modeCount; modeIndex += 1) {
-        const coefficient = this.effectiveCoefficientsBuffer[modeIndex]!;
-        if (coefficient === 0) continue;
-        const displacements = this.modes[modeIndex]!.displacements;
-        x += coefficient * (displacements[sourceOffset] ?? 0);
-        y += coefficient * (displacements[sourceOffset + 1] ?? 0);
-        z += coefficient * (displacements[sourceOffset + 2] ?? 0);
-      }
-      target[outputOffset] = x;
-      target[outputOffset + 1] = y;
-      target[outputOffset + 2] = z;
-    }
+    projectProteinResidues(this.asset, this.effectiveCoefficientsBuffer, residues, target);
   }
 
   public get activeModeCount(): number {
@@ -235,6 +255,7 @@ export class ProteinMotionController {
     lod: ProteinMotionLod = 'near',
     phase: ProteinPhase = this.currentPhase,
   ): Float32Array {
+    // LOD・量子化時刻・phase のいずれかが変わったときだけ、生の係数を求め直す。
     const output = this.effectiveCoefficientsBuffer;
     const nextModeCount = modeCountFor(lod, this.modeCount);
     const rawSampleTime = nextModeCount === 0 ? 0 : this.sampleTimeFor(time, lod);
@@ -257,6 +278,7 @@ export class ProteinMotionController {
       this.computeCoefficients(this.rawCoefficientsBuffer, rawSampleTime, nextModeCount, phase);
     }
 
+    // LOD 遷移中だけ旧係数からの補間を続け、完了後は生の係数をそのまま返す。
     if (!this.fading) {
       output.set(this.rawCoefficientsBuffer);
       this.lastSampleTime = rawSampleTime;

@@ -20,6 +20,11 @@ export interface Viewpoint {
   orthographicHalfHeight?: number;
 }
 
+// 視点を束縛した投影。worldPos を画面ピクセルへ写す。
+export type ProjectFn = (worldPos: Vec3) => Projected;
+// 視点を束縛した尺度。worldPos の位置で画面1ピクセルに相当する実距離 [m] を答える。
+export type ScaleFn = (worldPos: Vec3) => number;
+
 // worldPos を NDC([-1,1] 、+Y が上)へ投影する。front = カメラの前方(near/far 非依存)。
 export function projectToNdc(view: Viewpoint, worldPos: Vec3): Projected {
   // up を再直交化してカメラ基底(forward/right/camUp)を組む

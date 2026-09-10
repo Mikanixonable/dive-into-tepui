@@ -11,7 +11,7 @@ import type { StageSaveData } from '../save/save-data';
 import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN,
 } from '../../render/vfx-style';
-import { MAG_ROUNDS } from '../player/fire-control';
+import { MAG_ROUNDS } from '../player/ammo-spec';
 
 // 破片は衛星の破壊直後の雲を想定し、自機の周囲に留める。
 const DEBRIS_COUNT = 500;
@@ -42,7 +42,9 @@ export class StageDebugLoad extends Stage {
     const rand = mulberry32(RNG_SEED);
     for (let i = 0; i < DEBRIS_COUNT; i++) {
       const offset = randomOffset(rand, DEBRIS_MAX_DIST);
-      const state = kinematicState<'eci'>(player.state.t, add(player.state.r, offset), player.state.v);
+      const state = kinematicState<'eci'>(
+        player.motion.state.t, add(player.motion.state.r, offset), player.motion.state.v,
+      );
       const size = DESTROY_FRAG_SIZE_MIN + rand() * (DESTROY_FRAG_SIZE_MAX - DESTROY_FRAG_SIZE_MIN);
       const att = { q: randomQuat(rand), w: v3(0, 0, 0), inertia: v3(1, 1, 1) };
       this._dynamicSystem.add(new DebrisPiece(state, { kind: 'fragment', accent: 0x888888, size }, att, this._worldSfx, this._fx, undefined, this._scene));
