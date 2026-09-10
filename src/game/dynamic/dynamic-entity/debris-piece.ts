@@ -13,14 +13,12 @@ import type { DebrisKind } from './debris-kind';
 import { DebrisMotion } from './debris-motion';
 import { DebrisReaction } from './debris-reaction';
 
-export type { DebrisKind } from './debris-kind';
-
 export class DebrisPiece extends DynamicEntity {
   public override readonly capKind: CapKind;
 
   public constructor(
     state: KinematicState,
-    public readonly debrisKind: DebrisKind,
+    debrisKind: DebrisKind,
     attitude: Attitude,
     worldSfx: WorldSfx,
     effects: FlashEffects,
@@ -49,8 +47,6 @@ export class DebrisPiece extends DynamicEntity {
     );
     this.capKind = debrisKind.kind === 'casing' ? 'casing' : 'debris';
   }
-
-  public get kind(): DebrisKind['kind'] { return this.debrisKind.kind; }
 }
 
 export function buildDestroyFragments(

@@ -14,7 +14,6 @@ import {
   aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,
   stepThermalDeviation,
 } from '../../physics/thermal';
-import { ApsisTrack } from '../../physics/trajectory-features';
 import { orbitalElementsOf } from '../../physics/elements';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { DISPLAY_DURATION_MAX } from '../display-window-duration';
@@ -170,7 +169,6 @@ export class DynamicMotion {
   public get prevState(): KinematicState { return this.actual.prevState; }
   public get predicted(): DynamicTrajectory | null { return this.predictedArc?.trajectory ?? null; }
   public get arc(): PredictedArc | null { return this.predictedArc; }
-  public get predictedApsides(): ApsisTrack | null { return this.predictedArc?.apsides ?? null; }
   public get predictionTruncated(): boolean { return this.predictedArc?.truncated ?? false; }
   public get contactKind(): string { return this.behavior.contactKind ?? 'generic'; }
   public get contactMass(): number { return this.behavior.contactMass?.(this) ?? this.mass; }

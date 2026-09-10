@@ -29,7 +29,7 @@ export function metalEnemyCollisionRadius(typeIndex: number | null): number {
   return TYPED_COLLISION_RADII[typeIndex] ?? TYPED_COLLISION_RADII[0];
 }
 
-export interface EnemyMotionReactions {
+interface EnemyMotionReactions {
   receiveEntityContact(
     other: DynamicMotion, contact: Contact, context: DynamicReactionServices,
   ): void;
