@@ -72,10 +72,10 @@ fixtureのmanifestは `dataKind: synthetic_fixture` と明示され、本番デ�
 netCDF4、pyshp、`gdalinfo`/`ogrinfo`も利用可能になった。空き容量は約320GBで、
 地形payloadの下限だけなら保存できる。
 全43,690タイルのESTN payloadだけで、圧縮前かつbaseを含めて23,630,031,744 bytes（約22.0GiB）が必要になるため、
-入力・中間・JPEG・気候mapを含む本番生成はこの環境では開始しなかった。URL応答の確認以外に巨大ファイルの取得は行っていない。
+入力・中間・JPEG・気候mapを含む本番生成はこの環境では開始しなかった。これはpreflight時点の記録であり、その後の実データ取得結果は下記のとおりである。
 
 ETOPO geoid実ファイルにはNoDataタグが無かったため、source manifestのgeoid契約を`noData: null`へ修正した。代表のBMNG、
-ETOPO ice-surface/geoid、GSHHGの取得器実行は成功したが、入力全量とERA5 local exportは未完了である。
+ETOPO ice-surface/geoid、GSHHGの取得器実行は成功した。続いてraw-v3へBMNG 8枚、ETOPO ice-surface 288枚、ETOPO geoid 288枚、GSHHG 1件を取得し、585件のreceiptと約12GiBの入力本文を得た。ERA5 local exportは未完了である。
 ERA5取得用の`tools/earth-surface/request-era5.py`はCDS APIの認証済み環境で実行する。
 
 micromambaでの環境再現は次のコマンドで行う。
@@ -91,9 +91,12 @@ MAMBA_ROOT_PREFIX=.earth-surface/mamba micromamba create -f tools/earth-surface/
 ```sh
 python3 tools/earth-surface/preflight.py --all --output .earth-surface/verification/preflight.json
 python3 tools/earth-surface/fetch-source.py --source ... --region ...
-python3 tools/earth-surface/bake.py --global
+python3 tools/earth-surface/bake.py --global --raw-root .earth-surface/raw-v3 --output /tmp/earth-real-bundle
 ```
 
 事前検査の実測JSONは [`../../.earth-surface/verification/preflight.json`](../../.earth-surface/verification/preflight.json)
 へ保存した（commit `ed53a902`）。この環境で取得したのはHEAD応答だけで、巨大な入力本文は取得していない。
 したがってこのコミットはデータ生成完了を意味せず、fixtureを本番bundleへ読み替えていない。
+
+全入力取得後に実行した`bake.py --global`は、最初に
+`.earth-surface/raw-v3/era5-monthly-1991-2020/global.nc`が無いため終了した。ERA5を配置しても、現在の`RealDataRenderer`はGeoTIFFの窓境界と共通encoderまでで止まり、球面積再格子化、線形RGB合成、GSHHG被覆、ERA5気候map合成が未接続である。このため次の対策は、まずCDS認証済み環境でERA5をexport・検証し、その後にストリーミング可能なsource pyramidまたは同等の再格子化器を実装してから、z0〜z2の実データpilot、全z0〜z7生成の順で再開することである。

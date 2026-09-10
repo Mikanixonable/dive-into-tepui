@@ -30,4 +30,4 @@ GitHub Pagesのdocsへプレビュー用bundleを配置し、ゲーム本体と�
 ## 実装状況（2026-09-10）
 
 fixtureまたは指定bundleのPages staging、receipt/hash、サイズ予算、subpath URL、layout検査、CI順序を実装する。
-fixture Pagesは検査対象だが、BMNG等から生成した全世界bundleのpreview公開は入力未提供とサイズ上限のため未完了である。
+fixture Pagesは検査対象である。BMNG、ETOPO、GSHHGの取得は完了したが、ERA5 local exportと実データrendererの数値合成が未完了のため、全世界bundleのpreview公開は未完了である。
