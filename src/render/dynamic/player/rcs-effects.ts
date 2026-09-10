@@ -1,14 +1,14 @@
 // RCS パフ(姿勢制御スラスタの噴射煙)。指令トルクに寄与するノズルを選び、その先へ噴射煙を置く。
 import * as THREE from 'three/webgpu';
-import { Attitude } from '../../physics/attitude';
-import { qRotate } from '../../math/quat';
-import { Vec3, add, cross, dot, lenSq, scale, v3 } from '../../math/vec3';
-import { Billboard } from '../../render/billboard';
+import { Attitude } from '../../../physics/attitude';
+import { qRotate } from '../../../math/quat';
+import { Vec3, add, cross, dot, lenSq, scale, v3 } from '../../../math/vec3';
+import { Billboard } from '../../billboard';
 import {
   RCS_PLUME_BRIGHTNESS, RCS_PLUME_COLOR, RCS_PLUME_OFFSET, RCS_PLUME_SIZE,
-} from '../../render/vfx-style';
-import { RCS_NOZZLES } from '../../render/rcs-nozzles';
-import { FloatingOrigin } from '../camera/floating-origin';
+} from '../../vfx-style';
+import { RCS_NOZZLES } from '../../rcs-nozzles';
+import { FloatingOrigin } from '../../../game/camera/floating-origin';
 
 export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルクしきい値 [rad/s^2](inertia=1前提)
 
