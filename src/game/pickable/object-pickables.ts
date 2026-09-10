@@ -12,6 +12,7 @@ import { PlanDisplay } from '../plan/plan-display';
 import type { ControlSelection } from '../control-selection';
 import { isOccluded } from '../../physics/occlusion';
 import { NearbySystemTracker } from '../celestial/nearby-system-tracker';
+import type { MapDisplayToggles } from '../map/display-toggles';
 import { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { DisplayWindow } from '../display-window-manager';
 import type { EquatorNodeManager } from '../marker/equator-node-manager';
@@ -59,7 +60,7 @@ export class ObjectPickables {
   // + AN/DN アイコン + 近地点・遠地点アイコン)。天体側も表示と同じ MapVisibilityPolicy を
   // 通し、非表示にした対象を選べない状態にする。物理積分の後に呼ぶ: 積分前に組むと、同フレームで
   // sync されるメッシュと座標が1ステップずれる。
-  refresh(displayWindow: DisplayWindow): void {
+  refresh(displayWindow: DisplayWindow, mapDisplay: MapDisplayToggles): void {
     const { simTime, displayTime } = displayWindow;
     this._lastSimTime = simTime;
     this._lastDisplayTime = displayTime;
@@ -68,13 +69,13 @@ export class ObjectPickables {
     const occluders = this.celestialBodies.celestialMotions;
     const visibilityPolicy = new MapVisibilityPolicy(
       this.celestialBodies,
-      this.cameraSystem.mapDisplayToggles,
+      mapDisplay,
       focusId,
       this.nearbyTracker.membersAt(
         this.celestialBodies, this.cameraSystem.activeCameraPos, displayTime),
     );
     this._visibilityPolicy = visibilityPolicy;
-    this.celestialMarkers.update(displayTime, this.cameraSystem.mapDisplayToggles, visibilityPolicy);
+    this.celestialMarkers.update(displayTime, mapDisplay, visibilityPolicy);
     this.navTarget.update(
       this.controlSelection.current, this.roster, this.celestialBodies, displayWindow, this.frameAnchors);
 
