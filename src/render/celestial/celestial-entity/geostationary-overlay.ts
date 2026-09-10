@@ -4,9 +4,9 @@ import * as THREE from 'three/webgpu';
 import { OrbitalElements, orbitalElementsFromClassical } from '../../../physics/elements';
 import { isOccluded } from '../../../physics/occlusion';
 import { add, len, scale, sub, type Vec3 } from '../../../math/vec3';
-import { LINE_RENDER_ORDER } from '../../line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../line-style';
 import type { CameraFrame } from '../../camera/camera-frame';
-import { EllipseLine } from '../../../game/lines/ellipse-line';
+import { EllipseLine } from '../../lines/ellipse-line';
 import type { MarkerSlots } from '../../../game/marker/marker-slots';
 import { MARKER_PRIORITY } from '../../../game/marker/crowding';
 import type { CelestialBody } from '../../../physics/celestial-body';
@@ -18,6 +18,12 @@ const FADE_SPAN = 4.8e8;
 // ラベルはリングよりやや濃く残して視認性を保つ。
 const LABEL_OPACITY = 0.90;
 const RING_OPACITY = 0.55;
+const RING_COLOR = 0x8b93a0;
+
+// リングの見た目。fade は中心天体からの距離による減衰 [0,1]。
+function ringStyle(fade: number): LineStyle {
+  return { color: RING_COLOR, opacity: RING_OPACITY * fade, renderOrder: LINE_RENDER_ORDER.reference };
+}
 
 // ラベルを置く軌道上の位相。
 const LABEL_ANOMALY = Math.PI / 4;
@@ -34,8 +40,7 @@ function altitudeLabel(altitude: number): string {
 }
 
 export class GeostationaryOverlay {
-  private readonly line = new EllipseLine(
-    { color: 0x8b93a0, opacity: 0.2, renderOrder: LINE_RENDER_ORDER.reference });
+  private readonly line = new EllipseLine(ringStyle(0));
   // 同期軌道の長半径 [m] と、その高度を書いたラベル。
   private readonly semiMajorAxis: number;
   private readonly label: string;
@@ -74,12 +79,7 @@ export class GeostationaryOverlay {
     const dist = len(sub(centerPos, camera.position));
     const fade = 1.0 - Math.min(1, Math.max(0, (dist - FADE_NEAR_DIST) / FADE_SPAN));
     // リングとラベルへ同じ visible を渡し、片方だけが焼き付く経路を作らない。
-    if (visible) {
-      this.line.sync(elements, camera);
-      this.line.setOpacity(RING_OPACITY * fade);
-    } else {
-      this.line.hide();
-    }
+    this.line.sync(visible ? elements : null, ringStyle(fade), camera);
     this.syncLabel(
       elements, centerPos, pivot, fade, camera, markers, celestialBodies, visible);
   }
