@@ -35,11 +35,18 @@ def download(output):
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         raise RuntimeError(f"ERA5出力が既に存在します: {destination} (削除せず別名を指定してください)")
+    try:
+        client = cdsapi.Client()
+    except Exception as error:
+        raise RuntimeError("CDS APIの認証設定がありません。~/.cdsapircを作成して利用規約へ同意してください") from error
     with tempfile.NamedTemporaryFile(prefix=f"{destination.name}.", suffix=".part",
                                      dir=destination.parent, delete=False) as temporary:
         temporary_path = Path(temporary.name)
     try:
-        cdsapi.Client().retrieve(DATASET, request_definition(), str(temporary_path))
+        try:
+            client.retrieve(DATASET, request_definition(), str(temporary_path))
+        except Exception as error:
+            raise RuntimeError(f"CDSからERA5を取得できません: {error}") from error
         if temporary_path.stat().st_size <= 0:
             raise RuntimeError("CDSが空のERA5ファイルを返しました")
         os.replace(temporary_path, destination)
