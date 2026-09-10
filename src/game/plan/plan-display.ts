@@ -1,6 +1,6 @@
 // 操作対象の軌道計画の姿の表示(両ビュー常駐)。どの計画をいつ描くかを決め、計画折れ線
 // (PlanPath)を駆動して、表示時刻の計画上の自機位置ゴースト(⬢ plannedPlayer マーカー)を置く。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import type { ViewMode } from '../../render/view-mode';
 import { Vec3, len, sub } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
@@ -17,6 +17,7 @@ import type { CameraFrame } from '../../render/camera/camera-frame';
 import { ObjectPickable } from '../pickable/object-pickable';
 import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
+import { PlanPathView } from '../../render/plan/plan-path-view';
 import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
@@ -80,6 +81,7 @@ function screenDistSq(a: Projected, b: Projected): number {
 
 export class PlanDisplay {
   readonly path: PlanPath;
+  private readonly pathView: PlanPathView;
 
   private readonly apsisPe = new ApsisMarker('pe');
   private readonly apsisAp = new ApsisMarker('ap');
@@ -87,7 +89,7 @@ export class PlanDisplay {
   // このフレームに描く計画の材料。描く計画が無ければ null。
   private displayedPlan: PlanData | null = null;
 
-  // 計画折れ線(PlanPath)を構築する。
+  // 計画折れ線と、それを描く view を構築する。
   constructor(
     scene: THREE.Scene,
     private readonly markers: MarkerSlots,
@@ -95,7 +97,8 @@ export class PlanDisplay {
     displayDuration: DisplayDurationSource,
     private readonly controlSelection: ControlSelection,
   ) {
-    this.path = new PlanPath(scene, displayDuration);
+    this.pathView = new PlanPathView(scene);
+    this.path = new PlanPath(this.pathView, displayDuration);
   }
 
   // 計画折れ線を再積分し、アプシスアイコンを求め直す。
@@ -116,13 +119,14 @@ export class PlanDisplay {
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコン・目盛を、焼かれた折れ線から組んで置く。
   sync(camera: CameraFrame, displayWindow: DisplayWindow): void {
+    // 描く弧が無いフレームも折れ線の同期は通す — 止めると、消えたはずの線がそのまま残る。
+    this.path.sync(camera);
     if (this.displayedPlan === null) { this.hide(); return; }
     const project = camera.project;
     const view = camera.mode;
     const cameraPos = camera.position;
     const { simTime, displayTime } = displayWindow;
     const timeLabel = timeLabelSettingOf(displayWindow);
-    this.path.sync(camera);
     this.syncGhost(project, view, cameraPos, displayTime, simTime);
     this.syncApsisMarkers(project, view, cameraPos, displayTime, timeLabel);
     this.syncImpactMarkers(project, view, cameraPos, displayTime);
@@ -139,9 +143,9 @@ export class PlanDisplay {
     return { planArcs: this.path.lastRebuiltArcs };
   }
 
-  // 計画折れ線を片付ける。
+  // 計画折れ線の描画資源を片付ける。
   dispose(): void {
-    this.path.dispose();
+    this.pathView.dispose();
   }
 
   // このフレームに出す折れ線の材料。出す価値のある折れ線が無ければ null — ノードの無い計画は
@@ -173,9 +177,8 @@ export class PlanDisplay {
     this.apsisAp.retire();
   }
 
-  // 計画に属する表示物をすべて畳む。
+  // 計画に属するマーカーをすべて畳む。
   private hide(): void {
-    this.path.setVisible(false);
     this.markers.hide('plannedPlayer');
     this.markers.hide(this.apsisPe.id);
     this.markers.hide(this.apsisAp.id);

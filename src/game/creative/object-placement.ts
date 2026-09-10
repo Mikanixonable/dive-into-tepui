@@ -1,5 +1,5 @@
 // クリエイティブモードの物体配置。配置パネルを持ち、フォームの値を検証して初期状態を組み、
-// 置くと決まった物体を onPlace へ渡す。配置プレビューの軌道線と ▷ マーカーもここが同期する。
+// 置くと決まった物体を onPlace へ渡す。配置プレビューをどの値で出すかもここが決める。
 import { add } from '../../math/vec3';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { orbitalElementsOf, semiMajorFromPeriod, stateFromOrbitalElements, type OrbitalElements } from '../../physics/elements';
@@ -7,13 +7,12 @@ import { haloState, lissajousState } from '../../physics/halo';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { secondaryFrameOf } from '../../physics/lagrange';
 import { isOccluded } from '../../physics/occlusion';
+import { ObjectPlacementPreviewView } from '../../render/creative/object-placement-preview-view';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import { AmmoPickup, isAmmoPickup } from '../dynamic/dynamic-entity/ammo-pickup';
 import { Base } from '../dynamic/dynamic-entity/base';
 import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
 import { isRcsFuelPickup, RcsFuelPickup } from '../dynamic/dynamic-entity/rcs-fuel-pickup';
-import { EllipseLine } from '../../render/lines/ellipse-line';
-import { COLOR_MARKER_ALLY, ENTITY_GLYPH } from '../marker/marker-identity';
 import { isPlayer, type PlayerInit } from '../player/player';
 import { generateRandomName } from '../random-name';
 import { generateDriftingEnemy } from '../stages/spawner/enemy-generator';
@@ -31,6 +30,7 @@ import type { Notifier } from '../../hud/notifier';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { CameraFrame } from '../../render/camera/camera-frame';
+import type { ObjectPlacementPreviewMarker } from '../../render/creative/object-placement-preview-view';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
@@ -57,7 +57,7 @@ export type PlacedObject =
 
 export class ObjectPlacement {
   private readonly panel: ObjectPlacerPanel;
-  private readonly previewEllipseLine: EllipseLine;
+  private readonly previewView: ObjectPlacementPreviewView;
   private readonly playerIdAllocator = new EntityIdAllocator('creative-player-');
   private readonly ammoPickupIdAllocator = new EntityIdAllocator('creative-ammo-');
   private readonly rcsFuelPickupIdAllocator = new EntityIdAllocator('creative-rcs-fuel-');
@@ -65,7 +65,7 @@ export class ObjectPlacement {
   // 検証を通った物体の渡し先。
   public onPlace: ((placed: PlacedObject) => void) | null = null;
 
-  // 配置パネルとプレビューの軌道線を組む。
+  // 配置パネルとプレビューの表示資源を組む。
   public constructor(
     private readonly hud: HudLayers & Notifier,
     private readonly scene: THREE.Scene,
@@ -81,8 +81,7 @@ export class ObjectPlacement {
     for (const ammoPickup of entities.filter(isAmmoPickup)) this.ammoPickupIdAllocator.next(ammoPickup.id);
     for (const pickup of entities.filter(isRcsFuelPickup)) this.rcsFuelPickupIdAllocator.next(pickup.id);
 
-    this.previewEllipseLine = new EllipseLine(PREVIEW_LINE_STYLE);
-    scene.add(this.previewEllipseLine.line);
+    this.previewView = new ObjectPlacementPreviewView(scene, markers, PREVIEW_LINE_STYLE);
 
     this.panel = new ObjectPlacerPanel(hud.mapRoot, hud.layers.popup, celestialSystem, hud.overlayManager);
     this.panel.onConfirm = (name, form) => this.place(name, form);
@@ -111,14 +110,17 @@ export class ObjectPlacement {
   // 開いているフォームの現在値から、配置プレビューと入力欄の検証表示を更新する。
   public sync(camera: CameraFrame, displayTime: number): void {
     const form = this.panel.isOpen ? this.panel.getForm() : null;
-    this.syncPreview(form, camera, displayTime);
+    const preview = form ? this.computePreview(form) : null;
+    this.previewView.sync(
+      preview?.elements ?? null, this.previewMarker(preview?.pos ?? null, camera, displayTime),
+      PREVIEW_LINE_STYLE, camera,
+    );
     this.panel.setIssues(form ? this.computeFieldIssues(form) : []);
   }
 
   // このモジュールが持つ表示物とパネルを片付ける。
   public dispose(): void {
-    this.previewEllipseLine.line.removeFromParent();
-    this.previewEllipseLine.dispose();
+    this.previewView.dispose();
     this.panel.dispose();
   }
 
@@ -136,28 +138,17 @@ export class ObjectPlacement {
     }
   }
 
-  // フォーム値から求めた配置プレビューの軌道線と ▷ マーカーを同期する。
-  // form が null か、プレビューを出せない値のときは、軌道線とマーカーを消す。
-  private syncPreview(
-    form: ObjectPlacerForm | null, camera: CameraFrame, displayTime: number,
-  ): void {
-    const preview = form ? this.computePreview(form) : null;
-    // 軌道線は常に出し、▷ マーカーは天体に隠れていないときだけ出す。
-    this.previewEllipseLine.sync(preview?.elements ?? null, PREVIEW_LINE_STYLE, camera);
-    if (!preview) {
-      this.markers.fadeOut('creative-preview');
-      return;
-    }
-    const cameraPos = camera.position;
+  // プレビューの ▷ マーカーをどう出すかを決める。pos はプレビューの ECI 位置で、プレビューを
+  // 出せないフレームでは null。マップ視点で天体に遮られているあいだは位置を示さない。
+  private previewMarker(
+    pos: Vec3 | null, camera: CameraFrame, displayTime: number,
+  ): ObjectPlacementPreviewMarker {
+    if (pos === null) return { kind: 'fadedOut' };
     if (camera.mode === 'map'
-      && isOccluded(cameraPos, preview.pos, this.celestialSystem.celestialMotions, displayTime)) {
-      this.markers.hide('creative-preview');
-      return;
+      && isOccluded(camera.position, pos, this.celestialSystem.celestialMotions, displayTime)) {
+      return { kind: 'hidden' };
     }
-    this.markers.setPosition(
-      'creative-preview', 'mk-self', ENTITY_GLYPH.preview, preview.pos, camera.project,
-      'PREVIEW', 1, COLOR_MARKER_ALLY, 0, false, false, undefined, cameraPos,
-    );
+    return { kind: 'shown', pos };
   }
 
   // フォームの値を検証して初期状態を組み、置く物体を onPlace へ渡す。

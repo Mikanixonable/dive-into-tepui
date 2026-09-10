@@ -1,5 +1,5 @@
 // 右クリックの当たり判定にかける線の候補集合を1フレーム分組み立てる。サンプル点列そのものは
-// 各描画クラス(EllipseLine/TrajectoryLine/TargetRelativeLine/OrbitGuideLines)が持つので、
+// 各描画クラス(EllipseLine/TrajectoryLine/TargetRelativeLine/OrbitGuideView)が持つので、
 // ここは「いまフレームにどの線が表示されているか」を集めるだけ — マップ視点でなければ空になる。
 import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import { guideSecondary } from '../../physics/orbit-guide';
@@ -7,7 +7,7 @@ import type { DisplayWindow } from '../display-window-manager';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
-import type { VisibleGuideLine } from '../celestial/orbit-guide/orbit-guide-lines';
+import type { VisibleGuideLine } from '../../render/celestial/orbit-guide/orbit-guide-view';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { isCombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import { LinePickable } from './line-pickable';
@@ -48,7 +48,7 @@ export class LinePickables {
       this.addShipOrbit(ship, frame, displayTime, frameAnchors);
     }
 
-    for (const guide of this.celestialSystem.orbitGuide.visibleLines(ORBIT_PICK_SAMPLES)) {
+    for (const guide of this.celestialSystem.orbitGuideSamples(ORBIT_PICK_SAMPLES)) {
       this.items.push({
         key: `orbit-guide:${guide.key}`, kind: 'orbit-guide', method: 'guide',
         ownerKeys: this.guideOwnerKeys(guide), points: guide.points,

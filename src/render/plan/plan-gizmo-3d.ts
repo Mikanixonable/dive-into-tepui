@@ -1,11 +1,10 @@
-// 選択中ノードの Δv アーム6本(PRO/RET・NRM/ANM・OUT/IN)を表す 3D 矢印ギズモ。ノード位置へ
-// 置いて軌道基準枠へ向け、ドラッグ中の1本を伸ばして見せる。
+// 選択中ノードの Δv アーム6本(PRO/RET・NRM/ANM・OUT/IN)を表す 3D 矢印ギズモ。宣言された
+// ノード位置へ置いて軌道基準枠へ向け、伸ばすと宣言された1本を伸ばして見せる。
 import * as THREE from 'three/webgpu';
 import { qFromBasis } from '../../math/quat';
-import { Vec3 } from '../../math/vec3';
 import { AXIS_PROGRADE, AXIS_NORMAL, AXIS_RADIAL } from '../../theme';
-import { markOverlay } from '../../render/pipeline/lit-layer';
-import type { AxisHandleDrag } from './node-gizmo';
+import { markOverlay } from '../pipeline/lit-layer';
+import type { Vec3 } from '../../math/vec3';
 
 const APPARENT_SIZE_PER_MAP_DIST = 0.002; // マップカメラ距離 1 あたりのスケール(見かけの大きさを一定に保つ)
 
@@ -20,6 +19,24 @@ const DRAG_STRETCH = 0.2; // ラッチ前のドラッグ中に矢印を伸ばす
 const LATCH_STRETCH_PER_PX = 0.01; // ラッチ超過 1px あたりの伸び
 const LATCH_STRETCH_MAX = 0.5; // ラッチで伸ばす割合の上限
 
+// 伸ばして見せる Δv アーム1本。axis は 0=PRO/RET, 1=NRM/ANM, 2=OUT/IN、sign はその正負側。
+// excessPx はラッチ閾値の超過量 [px] で、ラッチ前は null。
+export interface StretchedArm {
+  readonly axis: 0 | 1 | 2;
+  readonly sign: 1 | -1;
+  readonly excessPx: number | null;
+}
+
+// そのフレームのギズモの表示値。
+export interface PlanGizmoDisplay {
+  readonly position: THREE.Vector3; // 描画フレームでのノード位置
+  readonly prograde: Vec3; // 表示座標での進行方向
+  readonly normal: Vec3; // 表示座標での軌道面法線
+  readonly mapDist: number; // マップカメラの距離。見かけの大きさをこれで一定に保つ
+  // 伸ばして見せるアーム。1本も伸ばさないなら null。
+  readonly stretchedArm: StretchedArm | null;
+}
+
 // 矢印1本ぶんのメッシュ。dir は group のローカル座標での向き(単位ベクトル)。
 interface ArrowPart {
   readonly stem: THREE.Mesh;
@@ -28,12 +45,12 @@ interface ArrowPart {
 }
 
 export class PlanGizmo3D {
-  public readonly group = new THREE.Group();
+  private readonly group = new THREE.Group();
   // 6本の矢印。index は axis*2 + (sign<0 ? 1 : 0)。
   private readonly parts: ArrowPart[] = [];
 
-  // 6本の矢印を組み、非表示で始める。ローカル軸は X=RAD, Y=PRO, Z=NRM。
-  public constructor() {
+  // 6本の矢印を組んでシーンへ登録し、非表示で始める。ローカル軸は X=RAD, Y=PRO, Z=NRM。
+  public constructor(scene: THREE.Scene) {
     this.createAxis(new THREE.Vector3(0, 1, 0), AXIS_PROGRADE); // PRO
     this.createAxis(new THREE.Vector3(0, -1, 0), AXIS_PROGRADE); // RET
     this.createAxis(new THREE.Vector3(0, 0, 1), AXIS_NORMAL); // NRM
@@ -42,6 +59,7 @@ export class PlanGizmo3D {
     this.createAxis(new THREE.Vector3(-1, 0, 0), AXIS_RADIAL); // IN
 
     this.group.visible = false;
+    scene.add(this.group);
   }
 
   // ローカル方向 dir(単位ベクトル)を向く矢印(軸+頭)を1本作り、group へ加える。
@@ -70,9 +88,12 @@ export class PlanGizmo3D {
     this.parts.push({ stem, head, dir });
   }
 
-  // ギズモ全体の表示/非表示。
-  public setVisible(visible: boolean): void {
-    this.group.visible = visible;
+  // このフレームの表示値をギズモへ反映する。display が null ならギズモ全体を隠す。
+  public sync(display: PlanGizmoDisplay | null): void {
+    this.group.visible = display !== null;
+    if (display === null) return;
+    this.place(display.position, display.prograde, display.normal, display.mapDist);
+    this.stretchArms(display.stretchedArm);
   }
 
   // group をシーンから外し、6本の矢印のジオメトリ・マテリアルを解放する。
@@ -86,8 +107,7 @@ export class PlanGizmo3D {
   }
 
   // ギズモをノード位置へ置き、ローカル軸(X=RAD, Y=PRO, Z=NRM)を軌道基準系 pro/nrm/rad に揃える。
-  // mapDist はマップカメラの距離で、見かけの大きさが距離によらず一定になるようスケールを決める。
-  public setPositionAndRotation(pos: THREE.Vector3, pro: Vec3, nrm: Vec3, mapDist: number): void {
+  private place(pos: THREE.Vector3, pro: Vec3, nrm: Vec3, mapDist: number): void {
     this.group.position.copy(pos);
 
     // qFromBasis(nrm, pro) の列は (pro×nrm, pro, nrm) = (RAD, PRO, NRM)。
@@ -96,13 +116,13 @@ export class PlanGizmo3D {
     this.group.scale.setScalar(mapDist * APPARENT_SIZE_PER_MAP_DIST);
   }
 
-  // ドラッグ中の Δv アームに当たる矢印を伸ばし、残りは素の長さへ戻す。drag が null なら全本を戻す。
-  public setActiveDrag(drag: AxisHandleDrag | null): void {
+  // 宣言された1本を伸ばし、残りは素の長さへ戻す。arm が null なら全本を戻す。
+  private stretchArms(arm: StretchedArm | null): void {
     // ラッチ前は固定の割合、ラッチ後は超過量に比例させて上限で止める
-    const stretch = drag === null ? 0
-      : drag.excessPx === null ? DRAG_STRETCH
-      : Math.min(drag.excessPx * LATCH_STRETCH_PER_PX, LATCH_STRETCH_MAX);
-    const activeIdx = drag === null ? null : drag.axis * 2 + (drag.sign < 0 ? 1 : 0);
+    const stretch = arm === null ? 0
+      : arm.excessPx === null ? DRAG_STRETCH
+      : Math.min(arm.excessPx * LATCH_STRETCH_PER_PX, LATCH_STRETCH_MAX);
+    const activeIdx = arm === null ? null : arm.axis * 2 + (arm.sign < 0 ? 1 : 0);
     this.parts.forEach((part, idx) => {
       const length = ARROW_LENGTH * (idx === activeIdx ? 1 + stretch : 1);
       const stemLength = length - ARROW_HEAD_LENGTH;

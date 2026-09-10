@@ -1,12 +1,9 @@
-// マップビューのガイドとして描く、CR3BP のゼロ速度曲線(表示パネルのガイドタブ5.3節)。
-// 断面(系×面)ごと・ヤコビ定数ごと・連結成分ごとに1本の折れ線を描く。
+// マップビューのガイドとして描く、CR3BP のゼロ速度曲線の宣言を組む(表示パネルのガイドタブ
+// 5.3節)。断面(系×面)ごと・ヤコビ定数ごと・連結成分ごとに1本の曲線を組む。
 //
 // 2D の等高線抽出(zeroVelocityCurves、O(resolution²))と、それを ECI へ埋め込む変換
 // (rotatingFrame、O(1))とで重さが大きく違うので、設定が変わったときだけ前者をやり直し、
-// 回転基底が進んだときは後者だけをやり直す(orbit-guide-lines.ts の RECOMPUTE_INTERVAL と
-// 同じ考え方)。
-import * as THREE from 'three/webgpu';
-import { CurveKnots } from '../../../render/curve';
+// 回転基底が進んだときは後者だけをやり直す。
 import { OrbitingMotion } from '../../../physics/celestial-motion';
 import { secondaryFrameOf } from '../../../physics/lagrange';
 import type { CelestialBodies } from '../celestial-bodies';
@@ -14,9 +11,9 @@ import { Vec3 } from '../../../math/vec3';
 import { guideSecondary, rotatingFrame } from '../../../physics/orbit-guide';
 import { zeroVelocityCurveSet, SectionPlane } from '../../../physics/zero-velocity';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import type { CameraFrame } from '../../../render/camera/camera-frame';
-import { GuideCurve } from './guide-curve';
-import { LINE_RENDER_ORDER } from '../../../render/line-style';
+import { LINE_RENDER_ORDER, LineStyle } from '../../../render/line-style';
+import type { ViewMode } from '../../../render/view-mode';
+import type { ZeroVelocityDisplay } from '../../../render/celestial/orbit-guide/zero-velocity-view';
 import { ZeroVelocitySettings } from './orbit-guide-settings';
 import { catalogSystemScale } from './orbit-guide-catalog';
 
@@ -30,16 +27,19 @@ const COLOR_ZERO_VELOCITY_LINE = 0xd97a94;
 const HALF = 1.6;
 // 片側の格子分割数。臨界ヤコビ定数付近でネックが偽って閉じない(=解像度不足で連結成分の
 // 判定を誤る)のを避けるため、負荷との兼ね合いでやや高めの300を採る。曲線の滑らかさは
-// 節点間のエルミート補間と Curve の適応分割が決めるので、この値には依らない。
+// 節点間のエルミート補間と描画側の適応分割が決めるので、この値には依らない。
 const RESOLUTION = 300;
-// 点列を引き直す表示時刻の間隔 [s]。orbit-guide-lines.ts と同じ値・同じ理由
-// (回転系は静止しているので、時刻の効果は基底の回転だけに現れる)。
+// 曲線を ECI へ埋め込み直す表示時刻の間隔 [s]。回転系では曲線が静止しているので、時刻の効果は
+// 基底の回転だけに現れる。最も速い地球-月系(周期 27.3 日)でもこの間に 0.05° しか回らない。
 const RECOMPUTE_INTERVAL = 300;
 // 始点・終点をこれ未満の距離(無次元単位)で「同じ点」とみなし、閉じた輪として描く。
 // zeroVelocityCurves が実際に一周した成分は始点と終点が完全に一致する(浮動小数の丸め
 // ぶんだけ僅かに異なりうる)ので、格子の1辺よりずっと小さい値で十分。
 const CLOSE_EPSILON = 1e-9;
 type Point2 = readonly [number, number];
+
+// マップビュー以外のフレームで返す空の列。
+const NO_LINES: readonly ZeroVelocityDisplay[] = [];
 
 // 断面の定義。系と面の組は4つで固定。
 interface Section {
@@ -64,15 +64,24 @@ interface ShapeEntry {
   readonly closed: boolean;
 }
 
-interface LineEntry {
-  readonly shape: ShapeEntry;
-  readonly curve: GuideCurve;
+// 断面の形を表示時刻の回転基底へ埋め込んだ曲線1本。形が変わらない限り同じオブジェクトを
+// 保つ — 描画側はこの同一性で点列の引き直しを省く。
+interface EmbeddedContour {
+  readonly origin: ZeroVelocityDisplay['origin'];
+  readonly shape: ZeroVelocityDisplay['shape'];
 }
 
-// 等高線の点列を、origin からの相対位置を持つ節点列に組む。等高線は滑らかな関数 2Ω の等位
-// 集合なので、隣接点の中心差分を接線にすれば節点の間をエルミートで埋められる。closed なら
+// ゼロ速度曲線の見た目。線ごとに変わるのは不透明度だけ。
+function lineStyle(opacity: number): LineStyle {
+  return { color: COLOR_ZERO_VELOCITY_LINE, opacity, renderOrder: LINE_RENDER_ORDER.reference };
+}
+
+// 等高線の点列を、origin からの相対位置を持つ節点列の曲線に組む。等高線は滑らかな関数 2Ω の
+// 等位集合なので、隣接点の中心差分を接線にすれば節点の間をエルミートで埋められる。closed なら
 // 末尾に始点を足して輪を閉じ、端の接線も輪を跨いで取る。
-function contourKnots(points: readonly Vec3[], closed: boolean, origin: Vec3): CurveKnots {
+function contourShape(
+  points: readonly Vec3[], closed: boolean, origin: Vec3,
+): ZeroVelocityDisplay['shape'] {
   const ring = closed ? [...points, points[0]!] : points;
   const last = ring.length - 1;
   const ts: number[] = [];
@@ -90,7 +99,7 @@ function contourKnots(points: readonly Vec3[], closed: boolean, origin: Vec3): C
     const b = ring[next]!;
     tangents.push((b.x - a.x) / width, (b.y - a.y) / width, (b.z - a.z) / width);
   }
-  return { ts, positions, tangents };
+  return { kind: 'hermite', knots: { ts, positions, tangents } };
 }
 
 // multiple の設定からヤコビ定数の列を組む。1本なら jacobi 単体、多数なら
@@ -110,29 +119,28 @@ function structuralKey(settings: ZeroVelocitySettings): string {
   return `${on}|${jacobi}`;
 }
 
-export class ZeroVelocityLines {
+export class ZeroVelocityModel {
   private shapes: readonly ShapeEntry[] = [];
-  private lines: LineEntry[] = [];
-  private settings: ZeroVelocitySettings | null = null;
+  // shapes と同じ並びで、埋め込めた断面だけを持つ曲線。
+  private contours: readonly EmbeddedContour[] = [];
   private structureKey = '';
   private lastComputedTime: number | null = null;
 
-  public constructor(private readonly scene: THREE.Scene, private readonly celestialBodies: CelestialBodies) {}
+  // 直近に組んだ宣言の列と、それを組んだ設定。
+  private displays: readonly ZeroVelocityDisplay[] = NO_LINES;
+  private displayedSettings: ZeroVelocitySettings | null = null;
 
-  // ゲーム側配線用の setter。sync はここで受けた最新値を読む。
-  public setSettings(settings: ZeroVelocitySettings): void {
-    this.settings = settings;
-  }
+  public constructor(private readonly celestialBodies: CelestialBodies) {}
 
-  // マップビューのときだけ曲線を同期する。等高線の抽出(格子走査)は断面やヤコビ定数が
-  // 変わったときだけ、ECI への埋め込みは回転基底が目に見えて回ったときだけ走る。
-  public sync(displayTime: number, camera: CameraFrame): void {
-    if (camera.mode !== 'map' || !this.settings) {
-      for (const entry of this.lines) entry.curve.hide();
-      return;
-    }
-    const settings = this.settings;
+  // このフレームに描くゼロ速度曲線の宣言を返す(マップビュー以外では空)。等高線の抽出
+  // (格子走査)は断面やヤコビ定数が変わったときだけ、ECI への埋め込みは回転基底が目に見えて
+  // 回ったときだけ走る。
+  public sync(
+    settings: ZeroVelocitySettings, displayTime: number, viewMode: ViewMode,
+  ): readonly ZeroVelocityDisplay[] {
+    if (viewMode !== 'map') return NO_LINES;
 
+    // 断面・ヤコビ定数が変わったときだけ等高線を抽出し直す。
     const structureKey = structuralKey(settings);
     if (structureKey !== this.structureKey) {
       this.rebuildShapes(settings);
@@ -140,17 +148,20 @@ export class ZeroVelocityLines {
       this.lastComputedTime = null; // 形が変わったので埋め込みも必ずやり直す
     }
 
+    // 回転基底が目に見えて回ったときだけ ECI へ埋め込み直す。
     const timeMoved = this.lastComputedTime === null
       || Math.abs(displayTime - this.lastComputedTime) >= RECOMPUTE_INTERVAL;
     if (timeMoved) {
-      this.reembed(displayTime);
+      this.contours = this.embed(displayTime);
       this.lastComputedTime = displayTime;
     }
 
-    for (const entry of this.lines) {
-      entry.curve.sync(camera);
-      entry.curve.setOpacity(settings.opacity);
+    if (timeMoved || settings !== this.displayedSettings) {
+      const style = lineStyle(settings.opacity);
+      this.displays = this.contours.map(({ origin, shape }) => ({ origin, shape, style }));
+      this.displayedSettings = settings;
     }
+    return this.displays;
   }
 
   // 系ごとの μ。索引から引くので、族の点列の読み込みを待たない。
@@ -183,29 +194,15 @@ export class ZeroVelocityLines {
       }
     }
     this.shapes = shapes;
-
-    // 曲線オブジェクトの本数を形の本数に合わせ直す(orbit-guide-lines.ts の rebuildLines
-    // と同じく、本数が変わるとき=マーチングスクエアをやり直したときだけ作り直す)。
-    for (const entry of this.lines) {
-      entry.curve.line.removeFromParent();
-      entry.curve.dispose();
-    }
-    this.lines = this.shapes.map((shape) => {
-      const curve = new GuideCurve(
-        { color: COLOR_ZERO_VELOCITY_LINE, opacity: settings.opacity, renderOrder: LINE_RENDER_ORDER.reference },
-      );
-      this.scene.add(curve.line);
-      return { shape, curve };
-    });
   }
 
-  // 回転基底(rotatingFrame)が変わった分だけを、キャッシュ済みの2次元形状へ適用し直す
-  // (軽い処理、表示時刻が動くたびに呼んでよい)。
-  private reembed(displayTime: number): void {
+  // キャッシュ済みの2次元形状を、その時刻の回転基底(rotatingFrame)で ECI へ埋め込み直す
+  // (軽い処理、表示時刻が動くたびに呼んでよい)。基底を組めない系の断面は落とす。
+  private embed(displayTime: number): readonly EmbeddedContour[] {
     // 系ごとに rotatingFrame を1回だけ求めて使い回す。
     const frames = new Map<CatalogSystemId, ReturnType<typeof rotatingFrame>>();
-    for (const entry of this.lines) {
-      const { system, plane, points2d } = entry.shape;
+    const contours: EmbeddedContour[] = [];
+    for (const { system, plane, points2d, closed } of this.shapes) {
       let frame = frames.get(system);
       if (frame === undefined) {
         const mu = this.muFor(system);
@@ -215,10 +212,7 @@ export class ZeroVelocityLines {
         frame = secondary === null || mu === null ? null : rotatingFrame(secondary, mu);
         frames.set(system, frame);
       }
-      if (!frame) {
-        entry.curve.clear();
-        continue;
-      }
+      if (!frame) continue;
       const { origin, xHat, yHat, zHat, unit } = frame;
       const points3d = points2d.map(([u, v]): Vec3 => {
         const second = plane === 'xy' ? yHat : zHat;
@@ -230,17 +224,8 @@ export class ZeroVelocityLines {
       });
       // 頂点を相対化する基準点は曲線上の1点でよいので、成分の先頭を採る。
       const base = points3d[0]!;
-      entry.curve.setHermite(base, contourKnots(points3d, entry.shape.closed, base));
+      contours.push({ origin: base, shape: contourShape(points3d, closed, base) });
     }
-  }
-
-  // 全ての折れ線をシーンから外して破棄する。
-  public dispose(): void {
-    for (const entry of this.lines) {
-      entry.curve.line.removeFromParent();
-      entry.curve.dispose();
-    }
-    this.lines = [];
-    this.shapes = [];
+    return contours;
   }
 }
