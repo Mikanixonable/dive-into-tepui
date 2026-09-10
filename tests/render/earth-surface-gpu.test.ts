@@ -10,7 +10,7 @@ import {
 import type { EarthSurfaceGpuBackend, EarthSurfaceGpuCapabilities } from '../../src/render/earth-surface-gpu';
 
 const SUPPORTED: EarthSurfaceGpuCapabilities = {
-  texture2dArray: true, maxTextureArrayLayers: 128, colorSrgbLinear: true, terrainFloat16Linear: true,
+  texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS, colorSrgbLinear: true, terrainFloat16Linear: true,
 };
 const COMPONENTS = EARTH_TILE_EXTENT * EARTH_TILE_EXTENT * 4;
 
@@ -68,6 +68,7 @@ function page(layer = 255): Uint8Array {
 // この層の回帰テストを登録する。
 export function register(): void {
   test('earth GPU: Three実装は対応時だけ配列層を作り、層更新を実テクスチャへ反映する', async () => {
+    assert.equal(SUPPORTED.maxTextureArrayLayers, 144);
     const backend = new EarthSurfaceGpuThree(SUPPORTED);
     const textures = backend.textures;
     assert.ok(textures !== null);
@@ -98,7 +99,7 @@ export function register(): void {
 
   test('earth GPU: 配列層や線形標本化が不足すればbaseへ固定する', () => {
     for (const capabilities of [
-      { ...SUPPORTED, texture2dArray: false }, { ...SUPPORTED, maxTextureArrayLayers: 127 },
+      { ...SUPPORTED, texture2dArray: false }, { ...SUPPORTED, maxTextureArrayLayers: EARTH_TILE_LAYERS - 1 },
       { ...SUPPORTED, colorSrgbLinear: false }, { ...SUPPORTED, terrainFloat16Linear: false },
     ]) {
       const backend = new FakeBackend(capabilities);

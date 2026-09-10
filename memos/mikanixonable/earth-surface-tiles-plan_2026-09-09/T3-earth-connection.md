@@ -20,23 +20,21 @@ Earthだけを新しいmanifest、request queue、resident coordinator、GPU mat
 9. 非表示時は要求キャンセル、generation無効化、base公開、page table reset、不要GPU層解放、Context解放を行う。
 10. setVisible(false)からsurface.hideまでの経路を接続し、再表示時に古い結果を公開しない。
 11. 旧smoothness画像はmanifestが無い開発環境だけfallbackとして残し、実manifest経路ではroughnessを併用しない。
-12. 旧T6-3のbuild/runtime接続もこのタスクで扱う。Pages subpathから相対manifest URLを構成し、URLをハードコードしない。
+12. 旧T6-3のbuild/runtime接続もこのタスクで扱う。共有datasetIdからmanifest URLとdev配信URLを構成し、URLを重複定義しない。
 
 ## 完了条件
 
 - Earthだけが新経路を使い、月・他天体は回帰しない。
 - 表示→非表示→再表示→disposeでHTTP、decode、resident、GPU層、page table、AbortControllerが解放される。
 - 複数syncFrameで進行中requestが毎フレームabortされない。
-- カメラ移動で128層を使い切らず、画面外tileが再利用できる。
+- カメラ移動で物理144層を使い切らず、画面外tileが再利用できる。
 - manifest欠損、hash不一致、異なるdatasetId、GPU能力不足がゲームを停止させずbaseへ戻る。
 
-## 実装状況（2026-09-10）
+## 実装状況（2026-09-11）
 
-`63babd80` と `667a31bb` でpersistent lease、visibility/reset、visible frontier pin、drawing-buffer viewport、Pages manifest bootstrap、
-同期base表示からの非同期attach、GPU非対応base fallbackを実装した。続く `ccc3683f` で
-`Game.create → StageClass → solarSystem → earthSystem` へ初期化済みrendererを渡し、Earthだけがruntimeへ接続する経路を作った。
-`85b63f59` では、GPUのpage table・色配列・地形配列を読むTSL node materialを既存EarthのLODメッシュへ非同期で差し替え、
-bodyToViewと模式図フラグを毎フレーム更新するようにした。旧fallback材質とテクスチャは差し替え時に解放し、
-manifest/GPU未準備時は従来のbase fallbackを維持する。`b1f5e2e2` では材質構築失敗時のqueue/GPU解放を追加した。
-render 113/113、game 205/205、typecheck pass。
-実manifestの取得、実データ通信、実WebGPU画面の見た目確認は、T1のデータゲートがblockedのため未実施である。
+Earthだけをmanifest、request queue、resident coordinator、GPU materialへ接続し、月・他天体のfallbackを維持した。
+`npm run dev`は`.earth-surface/bundle`を直接配信し、manifest URLと配信datasetIdを共有して`/earth/<datasetId>/`へ到達させる。
+開発時に5.5 GiBのbundleをdocsへコピーしない。
+
+実bundleを使ったstage00 smokeでは、5.812秒でcolor/terrain各z7 20件がHTTP 200となり、F3再読みでready/detailed・最高LOD z7、fatal/errorなしを確認した。
+15固定ケースの完全な視覚計測はT5に残っているため、全体完了とは扱わない。

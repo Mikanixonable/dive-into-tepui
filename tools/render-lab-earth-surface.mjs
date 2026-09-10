@@ -29,7 +29,7 @@ const REPLAY_SCENARIOS = [
   ['http-404', 'tests/render/earth-surface-request.test.ts'],
   ['http-408-429-5xx', 'tests/render/earth-surface-request.test.ts'],
   ['network-failure', 'tests/render/earth-surface-request.test.ts'],
-  ['128-layer-capacity', 'tests/render/earth-surface-resident.test.ts'],
+  ['layer-capacity', 'tests/render/earth-surface-resident.test.ts'],
   ['dispose-and-generation', 'tests/render/earth-surface-request.test.ts'],
   ['mipmap-disabled', 'tests/render/earth-surface-gpu.test.ts'],
 ].map(([id, test]) => ({ id, status: 'covered-by-tests', test }));

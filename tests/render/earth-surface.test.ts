@@ -7,7 +7,7 @@ import { CelestialSurface } from '../../src/render/celestial-surface';
 import { EarthSurfaceGpuThree } from '../../src/render/earth-surface-gpu-three';
 import { createEarthSurfaceMaterialBinding } from '../../src/render/earth-surface-material-binding';
 import type { EarthSurfaceGpuTextures } from '../../src/render/earth-surface-gpu';
-import { EarthSurfaceView } from '../../src/render/earth-surface-tiles';
+import { EARTH_TILE_LAYERS, EarthSurfaceView } from '../../src/render/earth-surface-tiles';
 import type { EarthSurfaceResidentFrame } from '../../src/render/earth-surface-resident';
 import type { EarthSurfaceSource } from '../../src/game/celestial/solar-system/earth-surface-source';
 import type {
@@ -154,7 +154,7 @@ export function register(): void {
 
   test('earth surface: 対応GPUのcoordinatorをattachすると既存LODメッシュへ材質を接続する', () => {
     const gpu = new EarthSurfaceGpuThree({
-      texture2dArray: true, maxTextureArrayLayers: 128,
+      texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS,
       colorSrgbLinear: true, terrainFloat16Linear: true,
     });
     const coordinator = new CoordinatorSpy(gpu.textures);
@@ -168,6 +168,8 @@ export function register(): void {
       baseColorUrl: SOURCE.baseColorUrl, baseTerrainUrl: SOURCE.baseTerrainUrl,
       fetchImpl: async () => { throw new Error('base terrain fixture is intentionally unavailable'); },
     });
+    assert.equal(binding.deferredTextures[0]?.texture.image, null);
+    assert.equal(binding.deferredTextures[0]?.texture.version, 0);
     surface.attach(SOURCE, coordinator, 'ready', {
       material: binding.material, deferred: binding.deferredTextures, textures: binding.textures,
       onDispose: binding.dispose, syncFrame: binding.syncFrame,
@@ -183,7 +185,7 @@ export function register(): void {
 
   test('earth surface: GPU接続を外すと初期fallback材質へ戻る', () => {
     const gpu = new EarthSurfaceGpuThree({
-      texture2dArray: true, maxTextureArrayLayers: 128,
+      texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS,
       colorSrgbLinear: true, terrainFloat16Linear: true,
     });
     const coordinator = new CoordinatorSpy(gpu.textures);

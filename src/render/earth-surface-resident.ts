@@ -46,6 +46,8 @@ interface ResidentTile {
   lastUsedFrame: number;
 }
 
+const MAX_PENDING_TILES = 8;
+
 function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
@@ -166,10 +168,10 @@ export class EarthSurfaceResidentCoordinator {
     ]);
     this.evictForCandidates(available, known);
     const freeLayers = this.freeLayerCount();
-    const admitted = this.pending.size;
+    const maxNewRequests = Math.min(freeLayers, Math.max(0, MAX_PENDING_TILES - this.pending.size));
     const requested: EarthTileKey[] = [];
     for (const key of available) {
-      if (known.has(earthTileId(key)) || requested.length >= freeLayers - admitted) continue;
+      if (known.has(earthTileId(key)) || requested.length >= maxNewRequests) continue;
       const id = earthTileId(key);
       requested.push(key);
       known.add(id);
@@ -257,13 +259,17 @@ export class EarthSurfaceResidentCoordinator {
 
   private evictForCandidates(candidates: readonly EarthTileKey[], known: ReadonlySet<string>): void {
     const unknown = candidates.filter((key) => !known.has(earthTileId(key))).length;
-    const available = Math.max(0, this.freeLayerCount() - this.pending.size);
-    const needed = Math.max(0, unknown - available);
+    const candidateIds = new Set(candidates.map((key) => earthTileId(key)));
+    const pendingCapacity = Math.max(0, MAX_PENDING_TILES - this.pending.size);
+    const available = this.freeLayerCount();
+    const admitted = Math.min(unknown, pendingCapacity);
+    const needed = Math.max(0, admitted - available);
     if (needed === 0) return;
     const pinned = new Set(this.dependencies.tiles.pinnedLayers());
     for (const layer of pageLayers(this.dependencies.tiles.pageTable())) pinned.add(layer);
     const evictable = [...this.residents.entries()]
-      .filter(([, resident]) => resident.state === 'uploaded' && !pinned.has(resident.reservation.layer))
+      .filter(([id, resident]) => resident.state === 'uploaded' && !candidateIds.has(id)
+        && !pinned.has(resident.reservation.layer))
       .sort((a, b) => a[1].lastUsedFrame - b[1].lastUsedFrame);
     for (const [id, resident] of evictable.slice(0, needed)) {
       this.dependencies.gpu.releaseLayer(resident.reservation);
