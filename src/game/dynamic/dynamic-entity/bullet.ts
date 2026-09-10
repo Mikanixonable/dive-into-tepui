@@ -1,7 +1,7 @@
 import type { KinematicState } from '../../../physics/kinematic-state';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { DynamicEntity } from './dynamic-entity';
-import { NormalBulletView, PlasmaBulletView } from './bullet-view';
+import { NormalBulletView, PlasmaBulletView } from '../../../render/dynamic/dynamic-entity/bullet-view';
 import { BulletReaction, type BulletType, type Shooter } from './bullet-reaction';
 import { BulletMotion } from './bullet-motion';
 

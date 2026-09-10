@@ -5,7 +5,7 @@ import type { KinematicState } from '../../../physics/kinematic-state';
 import { savedAttitude, savedKinematicState, type DetachedBoosterSaveData } from '../../save/save-data';
 import { nextBoosterId, type BoosterStage } from '../../player/booster-stack';
 import { DetachedBoosterMotion } from './detached-booster-motion';
-import { DetachedBoosterView } from './detached-booster-view';
+import { DetachedBoosterView } from '../../../render/dynamic/dynamic-entity/detached-booster-view';
 import { DynamicEntity } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
 
