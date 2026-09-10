@@ -259,6 +259,7 @@ export class EarthSurfaceResidentCoordinator {
 
   private evictForCandidates(candidates: readonly EarthTileKey[], known: ReadonlySet<string>): void {
     const unknown = candidates.filter((key) => !known.has(earthTileId(key))).length;
+    const candidateIds = new Set(candidates.map((key) => earthTileId(key)));
     const pendingCapacity = Math.max(0, MAX_PENDING_TILES - this.pending.size);
     const available = this.freeLayerCount();
     const admitted = Math.min(unknown, pendingCapacity);
@@ -267,7 +268,8 @@ export class EarthSurfaceResidentCoordinator {
     const pinned = new Set(this.dependencies.tiles.pinnedLayers());
     for (const layer of pageLayers(this.dependencies.tiles.pageTable())) pinned.add(layer);
     const evictable = [...this.residents.entries()]
-      .filter(([, resident]) => resident.state === 'uploaded' && !pinned.has(resident.reservation.layer))
+      .filter(([id, resident]) => resident.state === 'uploaded' && !candidateIds.has(id)
+        && !pinned.has(resident.reservation.layer))
       .sort((a, b) => a[1].lastUsedFrame - b[1].lastUsedFrame);
     for (const [id, resident] of evictable.slice(0, needed)) {
       this.dependencies.gpu.releaseLayer(resident.reservation);

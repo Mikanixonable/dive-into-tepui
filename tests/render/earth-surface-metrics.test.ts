@@ -71,8 +71,9 @@ export function register(): void {
     assert.equal(result.framesPerCase, 300);
     assert.deepEqual(result.replayScenarios.map((entry) => entry.id), [
       'out-of-order-arrival', 'http-404', 'http-408-429-5xx', 'network-failure',
-      '128-layer-capacity', 'dispose-and-generation', 'mipmap-disabled',
+      'layer-capacity', 'dispose-and-generation', 'mipmap-disabled',
     ]);
+    assert.equal(result.replayScenarios.some((entry) => entry.id.startsWith('128-')), false);
     assert.equal(result.cases.length, EARTH_SURFACE_CAPTURE_CASES.length);
     assert.ok(result.cases.every((entry) => entry.status === 'unavailable'));
     assert.ok(result.cases.every((entry) => entry.color.status === 'unavailable'));
