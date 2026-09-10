@@ -6,6 +6,7 @@ import { SPACE_2, SPACE_4 } from '../../theme';
 import { clampOverlayPosition, Point2 } from '../layout';
 import { onViewportChange } from '../viewport';
 import { injectOnce } from '../inject-style';
+import { injectCommonUiStyle } from '../style/common-ui-style';
 import { PAUSE_MENU_STYLE } from '../style/pause-menu-style';
 import { SETTINGS_VIEW_STYLE } from '../style/settings-view-style';
 import type { OverlayHandle, OverlayManager, OverlaySpec } from '../overlay-manager';
@@ -56,6 +57,7 @@ export class PauseMenu implements OverlayHandle {
   public constructor(
     root: HTMLElement, overlayManager: OverlayManager, bgm: Bgm, graphics: GraphicsSettings,
   ) {
+    injectCommonUiStyle();
     injectOnce('pause-menu', PAUSE_MENU_STYLE);
     injectOnce('settings-view', SETTINGS_VIEW_STYLE);
     this.overlayManager = overlayManager;
@@ -63,7 +65,7 @@ export class PauseMenu implements OverlayHandle {
     this.settingsView = new SettingsView(bgm, graphics);
     this.panel = document.createElement('div');
     this.panel.id = 'hud-pause-menu';
-    this.panel.className = 'panel';
+    this.panel.className = 'panel ui-surface-focus';
 
     this.panel.appendChild(this.buildBrand());
 
@@ -97,7 +99,7 @@ export class PauseMenu implements OverlayHandle {
     this.tabBar = new TabBar<PauseMenuTab>(
       [['pause', '一時停止'], ['settings', '設定']], (tab) => this.setActiveTab(tab),
     );
-    this.tabBar.element.classList.add('pm-tabs');
+    this.tabBar.element.classList.add('pm-tabs', 'ui-surface-inset');
     this.body.appendChild(this.tabBar.element);
 
     this.tabContent = document.createElement('div');

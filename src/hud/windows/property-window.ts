@@ -17,7 +17,7 @@ import type {
 
 const STYLE = `
 #hud .prop-window-title-input {
-  width: 100%; background: var(--glass-control); border: 1px solid var(--glass-edge); border-radius: var(--radius-control);
+  width: 100%; background: var(--glass-control); border: 0; border-radius: var(--radius-control);
   color: var(--text); font: inherit; font-weight: bold; padding: var(--space-1) var(--space-2); box-sizing: border-box;
 }
 #hud .dg-window.property-window { width: 560px; max-width: 560px; }
@@ -61,7 +61,7 @@ const STYLE = `
 }
 #hud .prop-window-related-item {
   padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
-  border: 1px solid transparent; border-radius: var(--radius-control);
+  border: 0; border-radius: var(--radius-control);
 }
 #hud .prop-window-related-item:hover, #hud .prop-window-related-item:active {
   background: var(--glass-control-hover); color: var(--color-primary-hover);
@@ -69,13 +69,13 @@ const STYLE = `
 #hud .prop-window-related-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .prop-window-item {
   padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
-  border: 1px solid transparent; border-radius: var(--radius-control);
+  border: 0; border-radius: var(--radius-control);
 }
 #hud .prop-window-item:hover, #hud .prop-window-item:active {
   background: var(--glass-control-hover); color: var(--color-primary-hover);
 }
 #hud .prop-window-item.on {
-  border-color: var(--color-primary-edge-soft); color: var(--color-primary); background: var(--color-primary-fill);
+  color: var(--color-primary); background: var(--color-primary-fill);
 }
 #hud .prop-window-item.on::before { content: '▪ '; }
 #hud .prop-window-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }

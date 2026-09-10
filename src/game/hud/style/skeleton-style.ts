@@ -65,12 +65,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 /* Panel 外枠 */
 #hud .panel {
   position: absolute;
-  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-quiet);
-  border: 1px solid var(--glass-edge); border-radius: var(--radius-panel);
   padding: var(--space-5); line-height: 1.5;
-  box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
 }
 #hud .panel h3 {
   font-size: var(--font-s); letter-spacing: 0.06em; color: var(--text);
@@ -78,7 +73,6 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   font-weight: 600; text-transform: none;
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  #hud .panel,
   #hud-topbar,
   #hud-map-scale,
   #hud-chase-reset,
@@ -112,7 +106,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud .hud-rail-right { right: 12px; width: var(--rail-w-right); }
 #hud .hud-map-root.active .hud-rail { pointer-events: auto; touch-action: pan-y; }
 #hud .rail-toggle {
-  width: 30px; height: 30px; border: 1px solid var(--glass-edge); border-radius: var(--radius-control);
+  width: 30px; height: 30px; border: 0; border-radius: var(--radius-control);
   background: var(--glass-control); color: var(--color-primary); cursor: pointer; pointer-events: auto;
   transition: color var(--transition-fast), background var(--transition-fast);
 }
@@ -130,11 +124,8 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud-topbar {
   position: absolute; top: 0; left: 50%; transform: translateX(-50%);
   pointer-events: auto;
-  padding: var(--space-3) var(--space-5); border-radius: 0 0 var(--radius-panel) var(--radius-panel);
-  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-quiet);
-  border: 1px solid var(--glass-edge); border-top: 0;
-  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  border-radius: 0 0 var(--radius-panel) var(--radius-panel);
+  padding: var(--space-3) var(--space-5);
   font-size: var(--font-s); letter-spacing: 1px; font-variant-numeric: tabular-nums;
   color: var(--text-dim);
   display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
@@ -147,12 +138,12 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud-topbar .v { color: var(--text); }
 #hud-topbar .gs-speed-select {
   min-width: 76px; padding: var(--space-1) var(--space-5) var(--space-1) var(--space-2);
-  border: 1px solid var(--glass-edge); border-radius: var(--radius-micro);
+  border: 0; border-radius: var(--radius-micro);
   background: var(--glass-control); color: var(--text); font: inherit; font-size: var(--font-s);
   font-variant-numeric: tabular-nums; cursor: pointer;
 }
 #hud-topbar .gs-speed-select:hover,
-#hud-topbar .gs-speed-select:focus { border-color: var(--color-primary); background: var(--glass-control-hover); }
+#hud-topbar .gs-speed-select:focus { background: var(--glass-control-hover); }
 #hud-topbar .gs-speed-select.sim-speed-hot { color: var(--color-primary); }
 #hud-topbar .gs-sep { color: var(--edge); }
 
@@ -171,13 +162,11 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   border-radius: var(--radius-micro); padding: var(--space-1) var(--space-3);
   color: var(--text-dim); font: inherit; letter-spacing: inherit;
 }
-#hud-viewbadge span.vb-view-btn:hover { color: var(--text); border-color: var(--color-primary-hover); }
+#hud-viewbadge span.vb-view-btn:hover { color: var(--text); }
 
 #hud-map-scale {
   position: absolute; right: 12px; bottom: 12px; display: none; pointer-events: none;
-  padding: var(--space-2) var(--space-4) var(--space-3); border: 1px solid var(--glass-edge); border-radius: var(--radius-control);
-  background: var(--glass-quiet); backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  padding: var(--space-2) var(--space-4) var(--space-3); border-radius: var(--radius-control);
   color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.1;
   font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap;
 }
@@ -201,9 +190,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   width: 32px; height: 32px; border-radius: 50%;
   display: flex; justify-content: center; align-items: center;
   padding: 0;
-  border: 1px solid var(--glass-edge); background: var(--glass-quiet); color: var(--text-dim);
-  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  color: var(--text-dim);
 }
 #hud-chase-reset:hover { background: var(--surface-2); color: var(--color-primary-hover); }
 #hud-chase-reset:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
@@ -217,10 +204,8 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   width: 32px; height: 32px; border-radius: 50%;
   display: flex; justify-content: center; align-items: center;
   padding: 0;
-  border: 1px solid var(--glass-edge); background: var(--glass-quiet); color: var(--text-dim);
+  color: var(--text-dim);
   font: inherit; font-size: var(--font-l); font-weight: 700;
-  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
 }
 #hud-help-badge:hover { background: var(--surface-2); color: var(--color-primary-hover); }
 #hud-help-badge:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
@@ -230,12 +215,8 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 
 #hud-toast {
   position: absolute; top: calc(64px + var(--space-5) + 32px + var(--space-1)); left: 50%; transform: translateX(-50%);
-  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-focus);
-  border: 1px solid var(--glass-edge); border-radius: var(--radius-panel); padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-panel); padding: var(--space-5) var(--space-6);
   color: var(--text); font-size: var(--font-xl); text-align: center;
-  box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
   transition: opacity var(--transition-slow); opacity: 0; line-height: 1.8;
 }
 

@@ -15,7 +15,7 @@ const STYLE = `
 }
 .gp-group, #hud .gp-group {
   display: flex; flex-direction: column; gap: var(--space-4);
-  padding-top: var(--space-4); border-top: 1px solid var(--edge);
+  padding-top: var(--space-4);
 }
 .gp-group-title {
   margin: 0; color: var(--color-primary); font-size: var(--font-xxs); letter-spacing: 0.12em;

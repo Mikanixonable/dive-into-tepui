@@ -146,8 +146,6 @@ function themeCssVariables(palette: ThemePalette): Readonly<Record<string, strin
     '--color-primary-fill-weak': rgba(palette.accent, 0.08),
     '--color-primary-fill': rgba(palette.accent, 0.16),
     '--color-primary-fill-strong': rgba(palette.accent, 0.24),
-    '--color-primary-edge-soft': rgba(palette.accent, 0.22),
-    '--color-primary-edge': rgba(palette.accent, 0.4),
     // 状態色。
     '--color-success': palette.success,
     '--color-success-fill': rgba(palette.success, 0.12),
@@ -181,7 +179,6 @@ function themeCssVariables(palette: ThemePalette): Readonly<Record<string, strin
     '--glass-inset': rgba(palette.surface0, 0.28),
     '--glass-control': rgba(palette.surface2, 0.68),
     '--glass-control-hover': rgba(palette.surface3, 0.72),
-    '--glass-edge': rgba(palette.title, 0.18),
     '--glass-highlight': rgba(palette.bright, 0.1),
     '--glass-shadow': GLASS_SHADOW,
     '--glass-blur-quiet': GLASS_BLUR_QUIET,
@@ -247,9 +244,6 @@ export const TEXT_FAINT = ACTIVE_THEME.faint;
 const ACCENT_FILL_WEAK = rgba(ACCENT, 0.08); // 選択されていない行の背景など、ごく控えめな地色
 const ACCENT_FILL = rgba(ACCENT, 0.16); // 選択中・ホバー中の地色
 const ACCENT_FILL_STRONG = rgba(ACCENT, 0.24); // 押下中・強調表示の地色
-const ACCENT_EDGE_SOFT = rgba(ACCENT, 0.22); // 見出し下線などの控えめな縁
-const ACCENT_EDGE = rgba(ACCENT, 0.4); // ボタン・パネルの通常の縁
-
 // 中立の薄膜。値が大きいほど強く主張する。EDGE と同じオフホワイトを基調とする。
 const FILL_1 = rgba(TEXT, 0.04);
 const FILL_2 = rgba(TEXT, 0.09);
@@ -346,8 +340,6 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--color-primary-fill-weak': ACCENT_FILL_WEAK,
   '--color-primary-fill': ACCENT_FILL,
   '--color-primary-fill-strong': ACCENT_FILL_STRONG,
-  '--color-primary-edge-soft': ACCENT_EDGE_SOFT,
-  '--color-primary-edge': ACCENT_EDGE,
   '--color-success': SUCCESS,
   '--color-success-fill': SUCCESS_FILL,
   '--color-success-edge': rgba(SUCCESS, 0.42),
@@ -379,7 +371,6 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--glass-inset': rgba(SURFACE_0, 0.28),
   '--glass-control': rgba(SURFACE_2, 0.68),
   '--glass-control-hover': rgba(SURFACE_3, 0.72),
-  '--glass-edge': rgba(TEXT, 0.18),
   '--glass-highlight': rgba(TEXT_STRONG, 0.1),
   '--glass-shadow': GLASS_SHADOW,
   '--glass-blur-quiet': GLASS_BLUR_QUIET,

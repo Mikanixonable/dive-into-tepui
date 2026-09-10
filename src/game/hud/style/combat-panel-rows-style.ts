@@ -1,6 +1,6 @@
 // タンパク質対象詳細、SHIP STATUS/ORBIT/TARGET/CONTACTS の計器行、燃焼管理パネルの CSS。
 export const COMBAT_PANEL_ROWS_STYLE = `
-  .protein-target-details { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line-subtle); }
+  .protein-target-details { margin-top: var(--space-3); padding-top: var(--space-3); }
   .protein-target-heading { display: flex; justify-content: space-between; color: var(--text-muted); font-size: var(--font-xxs); letter-spacing: .08em; }
   .protein-site-row { display: grid; grid-template-columns: 1rem 5.2rem minmax(3rem, 1fr) auto; gap: var(--space-2); align-items: center; margin-top: var(--space-2); font-size: var(--font-xxs); }
   .protein-site-glyph { color: var(--color-signal); font-size: var(--font-xs); line-height: 1; opacity: calc(.25 + var(--protein-site-hp) * .75); }
@@ -59,7 +59,7 @@ export const COMBAT_PANEL_ROWS_STYLE = `
   position: relative; z-index: 1; color: var(--text); font-size: var(--font-xxs); line-height: 1.5;
   text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg); transition: color var(--transition-fast);
 }
-#hud-vessel-status .vessel-deploy-btn.on { border-color: var(--color-primary); }
+#hud-vessel-status .vessel-deploy-btn.on { color: var(--color-primary); }
 #hud-vessel-status .vessel-deploy-btn.on .label { color: var(--color-primary); }
 /* 常設パネルの操作ボタン列(艦ステータスの R/F/G/T 代替、軌道情報の分析パネル起動、
    いずれもタッチ・マウスどちらでも常設)。 */

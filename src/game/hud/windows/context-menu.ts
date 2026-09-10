@@ -8,23 +8,19 @@ import { bringToFront } from '../../../hud/overlay-layer';
 import { onViewportChange } from '../../../hud/viewport';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
 import { injectOnce } from '../../../hud/inject-style';
+import { injectCommonUiStyle } from '../../../hud/style/common-ui-style';
 
 const STYLE = `
 #hud .ctx-menu {
   position: fixed; display: none; min-width: 168px;
   pointer-events: auto; padding: var(--space-2);
-  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-focus);
-  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-panel); overflow: hidden; font-size: var(--font-m);
   font-family: var(--font-family); user-select: none;
-  box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
   -webkit-user-select: none;
 }
 #hud .ctx-menu-item {
   padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
-  border: 1px solid transparent; border-radius: var(--radius-control);
+  border: 0; border-radius: var(--radius-control);
 }
 #hud .ctx-menu-item:hover, #hud .ctx-menu-item:active {
   background: var(--glass-control-hover); color: var(--color-primary-hover);
@@ -39,9 +35,6 @@ const STYLE = `
   opacity: 0.7;
   margin-top: var(--space-1);
   font-weight: normal;
-}
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  #hud .ctx-menu { background: var(--surface-opaque); }
 }
 `;
 
@@ -75,10 +68,11 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
   // メニュー要素を popupLayer(#hud の popup レイヤ)へ追加し、overlayManager へ登録する。
   public constructor(popupLayer: HTMLElement, private readonly overlayManager: OverlayManager) {
     this.overlayId = `ctx-menu-${ContextMenu.nextId++}`;
+    injectCommonUiStyle();
     injectOnce('ctx-menu', STYLE);
     // メニュー要素を組み立てて popupLayer へ追加する。
     this.el = document.createElement('div');
-    this.el.className = 'ctx-menu';
+    this.el.className = 'ctx-menu ui-surface-focus';
     this.el.setAttribute('role', 'menu');
     popupLayer.appendChild(this.el);
     this.el.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -140,7 +134,7 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
         continue;
       }
       const item = document.createElement('div');
-      item.className = 'ctx-menu-item';
+      item.className = 'ctx-menu-item ui-selectable';
       item.setAttribute('role', 'menuitem');
       item.tabIndex = -1;
       item.dataset['act'] = it.act || '';
