@@ -20,8 +20,10 @@ import { CelestialIllumination, type IlluminationTargets } from './celestial-ill
 import { RingMaterials } from '../../render/celestial/ring';
 import { CelestialEntity } from './celestial-entity/celestial-entity';
 import type { StellarLightSource } from '../../render/celestial/celestial-entity/celestial-view';
-import { OrbitGuideLines } from './orbit-guide/orbit-guide-lines';
-import { ZeroVelocityLines } from './orbit-guide/zero-velocity-lines';
+import { OrbitGuideModel } from './orbit-guide/orbit-guide-model';
+import { ZeroVelocityModel } from './orbit-guide/zero-velocity-model';
+import { OrbitGuideView, type VisibleGuideLine } from '../../render/celestial/orbit-guide/orbit-guide-view';
+import { ZeroVelocityView } from '../../render/celestial/orbit-guide/zero-velocity-view';
 import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide/orbit-guide-settings';
 import type { TdbJulianDate } from '../../physics/time';
 import type { MarkerSlots } from '../marker/marker-slots';
@@ -99,9 +101,11 @@ export class CelestialSystem implements CelestialBodies {
   private readonly atmosphereMotionList: readonly CelestialMotion[];
 
   // ラグランジュ点まわりの周期・準周期軌道のガイド線(表示パネルの軌道ガイドタブ、静止軌道を除く)。
-  private orbitGuideLines!: OrbitGuideLines;
+  private orbitGuideModel!: OrbitGuideModel;
+  private orbitGuideView!: OrbitGuideView;
   // ゼロ速度曲線(ガイドタブ5.3節)。
-  private zeroVelocityLines!: ZeroVelocityLines;
+  private zeroVelocityModel!: ZeroVelocityModel;
+  private zeroVelocityView!: ZeroVelocityView;
   // 軌道ガイドタブの設定の写し。静止軌道リング・ラベルの表示可否を持つ。
   private orbitGuideSettings: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
   // 表示パネルの天球グリッド設定の写し。星・面・極・目安グリッドの表示可否を持つ。
@@ -145,8 +149,10 @@ export class CelestialSystem implements CelestialBodies {
     this.illumination = new CelestialIllumination(
       this, this.entities, this.stellarLightSource, illuminationTargets);
     // 天体に付随する線・星野・グリッド。
-    this.orbitGuideLines = new OrbitGuideLines(scene, this);
-    this.zeroVelocityLines = new ZeroVelocityLines(scene, this);
+    this.orbitGuideModel = new OrbitGuideModel(this);
+    this.orbitGuideView = new OrbitGuideView(scene);
+    this.zeroVelocityModel = new ZeroVelocityModel(this);
+    this.zeroVelocityView = new ZeroVelocityView(scene);
     this.stars = createStars();
     scene.add(this.stars.mesh);
     this.celestialGrid = new CelestialGrid(scene);
@@ -319,8 +325,6 @@ export class CelestialSystem implements CelestialBodies {
   // 軌道ガイドタブ(表示パネル5.2節)の設定。変更のたびに渡す。
   setOrbitGuideSettings(settings: OrbitGuideSettings): void {
     this.orbitGuideSettings = settings;
-    this.orbitGuideLines.setSettings(settings);
-    this.zeroVelocityLines.setSettings(settings.zeroVelocity);
   }
 
   // 天球グリッド(表示パネル5.1節)の設定。変更のたびに渡す。
@@ -340,7 +344,12 @@ export class CelestialSystem implements CelestialBodies {
   }
 
   // ラグランジュ点まわりの軌道ガイド線。
-  get orbitGuide(): OrbitGuideLines { return this.orbitGuideLines; }
+  get orbitGuide(): OrbitGuideModel { return this.orbitGuideModel; }
+
+  // 表示中の軌道ガイド線を、当たり判定用の識別情報付き ECI 点列として列挙する。
+  orbitGuideSamples(count: number): readonly VisibleGuideLine[] {
+    return this.orbitGuideView.visibleLines(count);
+  }
 
   // ECI の極軸を自転軸とする天体(この座標系を定義している天体)の自転初期位相(セーブ用)。
   // その天体が星系に無ければ undefined。
@@ -392,8 +401,10 @@ export class CelestialSystem implements CelestialBodies {
         body.motion, displayTime, camera, markers, this.celestialMotions,
         camera.mode === 'map' && geostationaryOrbitVisible && categoryVisible);
     }
-    this.orbitGuideLines.sync(style, displayTime, camera);
-    this.zeroVelocityLines.sync(displayTime, camera);
+    this.orbitGuideView.sync(
+      this.orbitGuideModel.sync(this.orbitGuideSettings, displayTime, style, camera.mode), camera);
+    this.zeroVelocityView.sync(
+      this.zeroVelocityModel.sync(this.orbitGuideSettings.zeroVelocity, displayTime, camera.mode), camera);
     this.celestialGrid.sync(style, this.gridVisibility, camera.camera, CELESTIAL_SHELL_SCALE, camera.viewport);
     this.scaleGrid.sync(displayTime, camera, cameraSystem, this, this.gridVisibility);
   }
@@ -426,8 +437,8 @@ export class CelestialSystem implements CelestialBodies {
 
   // 天体ビュー・星殻・グリッド・点群・参照線を残さず解放する。
   dispose(): void {
-    this.orbitGuideLines.dispose();
-    this.zeroVelocityLines.dispose();
+    this.orbitGuideView.dispose();
+    this.zeroVelocityView.dispose();
     // 星殻・天球グリッド・縮尺グリッド。
     this.stars.mesh.removeFromParent();
     this.stars.dispose();

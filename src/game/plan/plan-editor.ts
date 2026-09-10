@@ -20,7 +20,7 @@ import { focusPoint } from '../camera/focus-target';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
 import { AxisDragGizmo } from './plan-axis-drag';
-import { PlanGizmo3D } from './plan-gizmo-3d';
+import { PlanGizmo3D } from '../../render/plan/plan-gizmo-3d';
 import { PlanPanel } from './plan-panel';
 import { DisplayDurationSource, Plan } from './plan';
 import type { FloatingOrigin } from '../../render/camera/floating-origin';
@@ -94,8 +94,7 @@ export class PlanEditor {
     // マップ上の操作物(ノードギズモ・軌道メニュー・3D 矢印・Δv アーム)
     this.nodeGizmo = new NodeGizmo(this.hud.layers.marker, this.hud.layers.popup, this.hud.overlayManager);
     this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this.hud.layers.popup, this.hud.overlayManager);
-    this.gizmo3d = new PlanGizmo3D();
-    scene.add(this.gizmo3d.group);
+    this.gizmo3d = new PlanGizmo3D(scene);
     this.axisDrag = new AxisDragGizmo(
       (state) => this.bodyState(state),
       (r, t) => this.path.projectPoint(r, t),
@@ -488,17 +487,18 @@ export class PlanEditor {
     }
     this.nodeGizmo.sync(nodeSpecs, axisSpecs);
 
+    // 3D 矢印は、選択中ノードとその到着状態が揃っているフレームだけ出す
     if (nodeFor3D && arrFor3D) {
-      this.gizmo3d.setVisible(true);
-      const r = this.path.toDisplay(nodeFor3D.r, nodeFor3D.t);
-      const scenePos = fo.RtoThreeV3(r);
       const axes = orbitAxes(this.bodyState(arrFor3D));
-      const pro = this.path.toDisplayDir(axes.pro, nodeFor3D.t);
-      const nrm = this.path.toDisplayDir(axes.nrm, nodeFor3D.t);
-      this.gizmo3d.setPositionAndRotation(scenePos, pro, nrm, mapDist);
-      this.gizmo3d.setActiveDrag(this.nodeGizmo.axisHandleDrag);
+      this.gizmo3d.sync({
+        position: fo.RtoThreeV3(this.path.toDisplay(nodeFor3D.r, nodeFor3D.t)),
+        prograde: this.path.toDisplayDir(axes.pro, nodeFor3D.t),
+        normal: this.path.toDisplayDir(axes.nrm, nodeFor3D.t),
+        mapDist,
+        stretchedArm: this.nodeGizmo.axisHandleDrag,
+      });
     } else {
-      this.gizmo3d.setVisible(false);
+      this.gizmo3d.sync(null);
     }
   }
 
@@ -573,7 +573,7 @@ export class PlanEditor {
   public onMapClosed(): void {
     this.panel.hide();
     this.nodeGizmo.sync([], null);
-    this.gizmo3d.setVisible(false);
+    this.gizmo3d.sync(null);
     const plan = this.plan;
     if (plan) {
       const arriving = this.path.arrivalStates();

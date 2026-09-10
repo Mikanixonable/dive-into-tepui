@@ -1,10 +1,8 @@
-// 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、区間ごとに区間ソース
-// (SegmentSource: 統一 PredictedArc への参照と、そこから読む [from, to])と TrajectoryLine(折れ線)を
-// index で対応付けて持つ。ノードを1つも持たない唯一の区間は操作対象自身の予測弧を借用し(owned=false)、
-// それ以外は起点・重力源が既存の弧と変われば作り直し、終端だけが動いた区間は requiredEnd の
-// 書き換えだけで済ませる — どちらの場合も折れ線はその区間の TrajectoryLine プールを使い回す。
-// 画面判定も同じ表示変換を通すため描画とずれない。
-import * as THREE from 'three/webgpu';
+// 多ノードの計画軌道を arc 単位で解く。Plan の corners を区間へ分解し、区間ごとに区間ソース
+// (SegmentSource: 統一 PredictedArc への参照と、そこから読む [from, to])を持つ。ノードを1つも
+// 持たない唯一の区間は操作対象自身の予測弧を借用し(owned=false)、それ以外は起点・重力源が既存の
+// 弧と変われば作り直し、終端だけが動いた区間は requiredEnd の書き換えだけで済ませる。
+// そのフレームに描く弧は宣言として PlanPathView へ渡し、画面判定も同じ表示変換を通す。
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { KinematicState } from '../../physics/kinematic-state';
 import { bodyAnchorSource } from '../../physics/attractor';
@@ -15,9 +13,9 @@ import { FrameAnchorSource, FrameTransform, ReferenceFrame, toFrameDir, toFrameP
 import { Projected } from '../../math/projection';
 import { isOccluded } from '../../physics/occlusion';
 import type { CameraFrame } from '../../render/camera/camera-frame';
-import { TrajectoryLine } from '../../render/lines/trajectory-line';
+import type { PlanArcLine, PlanPathView } from '../../render/plan/plan-path-view';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
-import type { ProjectFn } from '../../math/projection';
+import type { ProjectFn, ScaleFn } from '../../math/projection';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
 import { BodyImpact, PredictedArc } from '../dynamic/predicted-arc';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
@@ -82,12 +80,8 @@ interface PlanPathSample {
 }
 
 export class PlanPath {
-  readonly group = new THREE.Group();
   // 先頭 activeCount 本がこのフレームの区間に対応する(区間が減れば末尾を捨てる)。
   private sources: SegmentSource[] = [];
-  // 折れ線は index ごとのプールとして持ち、区間数が減っても捨てない(色は index で決まるので
-  // 使い回す)。
-  private lines: TrajectoryLine[] = [];
   private activeCount = 0;
   // 先頭 _nodeCount 本がノードで終わる区間(= 各ノードの到達状態を持つ)。
   private _nodeCount = 0;
@@ -114,17 +108,16 @@ export class PlanPath {
   private displayFrom = 0;
   private displayTo = 0;
   // clipSamplesTo が実際に切り詰めた(= 新規配列を作った)結果を区間の index ごとに
-  // (元配列, to) でメモ化する。TrajectoryLine.sync の再 bake 抑制やクリック候補の
-  // 走査が同一フレーム内で何度も同じ配列参照を要求するため。
+  // (元配列, to) でメモ化したもの。
   private readonly samplesCache: ({ source: readonly KinematicState[]; to: number; result: readonly KinematicState[] } | null)[] = [];
   // 直近の update() で作り直した区間の本数。
   lastRebuiltArcs = 0;
 
-  // group をシーンへ登録する(初期状態は非表示)。
-  constructor(scene: THREE.Scene, private readonly displayDuration: DisplayDurationSource) {
-    this.group.visible = false;
-    scene.add(this.group);
-  }
+  // 折れ線を描く view と、末尾区間の長さを決める表示期間を受け取る。
+  constructor(
+    private readonly view: PlanPathView,
+    private readonly displayDuration: DisplayDurationSource,
+  ) {}
 
   // 起点とノード列から区間列を組み直す。ノードを1つも持たない唯一の区間は ship 自身の予測弧を
   // 借用し、それ以外の区間は起点・重力源が既存の弧と一致すれば requiredEnd/retainFrom の
@@ -222,47 +215,41 @@ export class PlanPath {
     return this.final;
   }
 
-  // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の線を空にする。ノードを
-  // 1つも持たない区間(借用のみ)は操作対象自身の predictedLine が描くので、ここでは折れ線を
-  // 空にするだけにする。画面判定が使う視点もここで受け取り、毎フレーム上書きする。
+  // このフレームに描く弧を view へ宣言する。画面判定が使う視点もここで受け取り、毎フレーム
+  // 上書きする — 止めると、クリック当たり判定が古い視点のまま残る。
   sync(camera: CameraFrame): void {
-    const scale = camera.scale;
     this.project = camera.project;
     this.cameraPos = camera.position;
-    // ノードの無い計画は操作対象の現在軌道そのものなので、折れ線は出さない。それでも
-    // project の更新までは通す — 止めると、クリック当たり判定が古い視点のまま残る。
-    this.setVisible(this._nodeCount > 0);
     const celestialBodies = this.celestialBodies;
     if (celestialBodies === null) return;
+    this.view.sync(
+      this.arcLines(camera.scale), this.unbakeTime, celestialBodies, this.frameAnchors, camera,
+    );
+  }
+
+  // このフレームに描く弧の宣言。ノードの無い計画は操作対象の現在軌道そのもの、借用中の区間は
+  // 操作対象自身の予測線が描くものなので、どちらも1本も宣言しない。
+  private arcLines(scale: ScaleFn): readonly PlanArcLine[] {
+    if (this._nodeCount === 0) return [];
+    const lines: PlanArcLine[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       const source = this.sources[i]!;
-      if (!source.owned || !source.arc) {
-        this.clearLine(i, celestialBodies, camera);
-        continue;
-      }
+      if (!source.owned || !source.arc) continue;
       // 破線の尺度は区間のサンプル列中央の代表点で引く。代表点が無ければ画面ピクセル指定を
       // そのまま実距離として渡す。
       const samples = this.samplesOf(i, source);
       const mid = samples.length > 0 ? samples[Math.floor(samples.length / 2)]! : null;
       const mpp = mid === null ? 1 : scale(this.toDisplay(mid.r, mid.t));
       // 計画全体が表示期間より長くても、折れ線は表示窓内だけを描く。
-      this.lineAt(i).sync(
-        source.arc.trajectory,
-        Math.max(this.displayFrom, source.from),
-        Math.min(this.displayTo, source.to),
-        this.frame, this.unbakeTime, celestialBodies, this.frameAnchors, lineStyle(i, mpp), camera,
-      );
+      lines.push({
+        trajectory: source.arc.trajectory,
+        from: Math.max(this.displayFrom, source.from),
+        to: Math.min(this.displayTo, source.to),
+        frame: this.frame,
+        style: lineStyle(i, mpp),
+      });
     }
-    // 線プールは区間数が減っても捨てずに残すので、空にする範囲は sources でなく lines の本数まで見る。
-    for (let i = this.activeCount; i < this.lines.length; i++) this.clearLine(i, celestialBodies, camera);
-  }
-
-  // i 番目の折れ線を、頂点を持たない状態へ戻す。
-  private clearLine(i: number, celestialBodies: CelestialBodies, camera: CameraFrame): void {
-    this.lineAt(i).sync(
-      null, null, null,
-      this.frame, this.unbakeTime, celestialBodies, this.frameAnchors, lineStyle(i, 1), camera,
-    );
+    return lines;
   }
 
   // 天体衝突が検出された地点と、その相手の天体(区間ごとに高々1つ)。今フレーム表示中の
@@ -436,10 +423,8 @@ export class PlanPath {
     return this.unbakeTransform;
   }
 
-  // source を to でクリップしたサンプル列。source.arc が無ければ空配列。end で実際に切り詰めが
-  // 要ったとき(source.arc.trajectory 自身は end を越えて伸び続ける)だけ index ごとに
-  // (元配列, to) でメモ化する — 同じフレーム内の複数の読者(sync/timeRange/nearestSample)へ
-  // 同じ配列参照を返し続けないと、TrajectoryLine の再 bake 抑制が毎回働かなくなる。
+  // source を to でクリップしたサンプル列。source.arc が無ければ空配列。切り詰めが要ったときは
+  // index ごとに (元配列, to) でメモ化するので、同じ組である限り常に同じ配列参照が返る。
   private samplesOf(i: number, source: SegmentSource): readonly KinematicState[] {
     if (!source.arc) return NO_SAMPLES;
     const raw = source.arc.trajectory.samplesOldestFirst();
@@ -472,27 +457,6 @@ export class PlanPath {
   private apoapsisOf(source: SegmentSource): KinematicState | null {
     const first = source.arc?.apsides?.apoapsis ?? null;
     return first && withinEnd(first.t, source.to) ? first : null;
-  }
-
-  // group 全体の表示/非表示を切り替える。
-  setVisible(v: boolean): void {
-    this.group.visible = v;
-  }
-
-  // group をシーンから外し、プールした折れ線を解放する。
-  dispose(): void {
-    this.group.removeFromParent();
-    for (const line of this.lines) line.dispose();
-  }
-
-  // i 番目の折れ線を返す(なければ生成して group へ追加する)。区間の色は index で決まる。
-  private lineAt(i: number): TrajectoryLine {
-    while (this.lines.length <= i) {
-      const line = new TrajectoryLine(lineStyle(this.lines.length, 1));
-      this.lines.push(line);
-      this.group.add(line.line);
-    }
-    return this.lines[i]!;
   }
 }
 
