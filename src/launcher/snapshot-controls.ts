@@ -1,7 +1,7 @@
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import { Hud } from '../game/hud/hud';
-import { PauseMenu } from '../hud/windows';
+import type { Notifier } from '../hud/notifier';
+import { PauseMenu } from '../hud/windows/pause-menu';
 import { SaveBrowser } from './save-browser/save-browser';
 import { SnapshotService, type SnapshotCaptureSource } from './save/snapshot-service';
 
@@ -9,7 +9,7 @@ import { SnapshotService, type SnapshotCaptureSource } from './save/snapshot-ser
 // その回で Game が消費しなかった入力エッジだけを見る。
 export class SnapshotControls {
   constructor(
-    private readonly hud: Hud,
+    private readonly notifier: Notifier,
     private readonly pauseMenu: PauseMenu,
     private readonly browser: SaveBrowser,
     private readonly service: SnapshotService,
@@ -37,10 +37,10 @@ export class SnapshotControls {
     // そのまま代入するだけで結果画面を出し直さないので、ロードすると結果画面の無いまま
     // 決着済みのステージが続くことになる。
     if (!source.isPlaying) {
-      this.hud.hint('決着後はスナップショットを残せません');
+      this.notifier.hint('決着後はスナップショットを残せません');
       return;
     }
     const snap = this.service.capture(source.runSummary(), source.serialize(), 'manual', null, true);
-    this.hud.hint(snap ? `クリップしました: ${snap.name}` : 'クリップに失敗しました');
+    this.notifier.hint(snap ? `クリップしました: ${snap.name}` : 'クリップに失敗しました');
   }
 }

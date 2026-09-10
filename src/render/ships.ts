@@ -6,6 +6,7 @@ import * as THREE from 'three/webgpu';
 import { ENEMY_PLASMA_COLOR } from './vfx-style';
 import { F0_BURNT_STEEL, F0_STEEL } from './metal-f0';
 import { mulberry32 } from '../math/random';
+import { MAG_THICKNESS } from '../physics/player-shape';
 import { markLitOpaque, markShadowCaster } from './pipeline/lit-layer';
 import { attachThermalEmissive, makeThermallyEmissive, THERMAL_SHAPE_ATTRIBUTE } from './thermal-emissive';
 
@@ -35,31 +36,6 @@ import casingData from '../assets/models/casing.json';
 import debrisChunkData from '../assets/models/debrisChunk.json';
 import debrisPanelData from '../assets/models/debrisPanel.json';
 import debrisRodData from '../assets/models/debrisRod.json';
-
-// 機関砲の銃口位置(機体座標系、前面に縦に並んだ 2 つの大きな短い穴)。
-// 発砲・マズルフラッシュ・薬莢排出はこの 2 点から交互に行う。
-export const MUZZLE_OFFSETS: { x: number; y: number; z: number }[] = [
-  { x: 0, y: 0.55, z: 2.55 },
-  { x: 0, y: -0.55, z: 2.55 },
-];
-
-// 蛇腹1折りの一辺 [m]。tools/export-models.mjs と一致させる。
-export const RADIATOR_SEGMENT_LENGTH = (2.3 * 4) / 6;
-
-// 全開時、各折りが展開軸から残す傾き。0 だと折り目の判別が数値的に不安定になるため、
-// 蛇腹の折り畳みが解消された1枚の板とみなせるごく小さい値を残す。
-export const RADIATOR_DEPLOY_TILT = 15 * Math.PI / 180;
-
-export { RADIATOR_HINGE } from './radiator-hinge';
-
-// マガジン寸法(機体座標系)。
-const MAG_THICKNESS = 1.0;
-const MAG_WIDTH = MAG_THICKNESS * 4 * (2 / 3); // ベルト方向(X)
-export const MAG_BELT_PITCH = MAG_WIDTH + 0.18; // 連結間隔
-
-// ベルトが機体へ入っていく給弾口の位置(機体座標系 X)。ベルトの節点は継手(マガジンの端面)
-// を表すので、これは先頭マガジンの機体側の端面 ——「マガジンが機体に飲み込まれる点」—— にあたる。
-export const MAG_BELT_ANCHOR_X = -1.19;
 
 const loader = new THREE.ObjectLoader();
 

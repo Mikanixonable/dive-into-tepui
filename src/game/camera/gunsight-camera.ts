@@ -18,9 +18,9 @@ export class GunsightCamera {
 
   // 機体姿勢のみから視点を求め、viewpoint へ書き戻す。
   update(controlled: Controllable): void {
-    const boreFwd = qRotate(controlled.att.q, LOCAL_FORWARD);
-    const boreUp = qRotate(controlled.att.q, LOCAL_UP);
-    const center = controlled.state.r;
+    const boreFwd = qRotate(controlled.motion.att.q, LOCAL_FORWARD);
+    const boreUp = qRotate(controlled.motion.att.q, LOCAL_UP);
+    const center = controlled.motion.state.r;
     this.viewpoint = {
       position: center,
       up: norm(boreUp),
@@ -30,5 +30,4 @@ export class GunsightCamera {
     };
   }
 }
-
 

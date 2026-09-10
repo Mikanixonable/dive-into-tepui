@@ -1,7 +1,7 @@
 // 天体定義の自転モデルの回帰テスト。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { spinRateOf } from '../../src/physics/celestial-motion';
+import { spinRateOf } from '../../src/physics/celestial-body-def';
 import { CERES } from '../../src/game/celestial/solar-system/dwarf-planets';
 import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { VENUS } from '../../src/game/celestial/solar-system/inner-planets';

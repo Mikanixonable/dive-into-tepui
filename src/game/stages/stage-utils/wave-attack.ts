@@ -2,19 +2,19 @@
 // 交戦圏内数に応じた周期湧き(active_combat)の3フェーズを進めるフェーズ機械と、
 // ウェーブ1回分の隻数・編成・接近軌道の生成。
 import * as THREE from 'three/webgpu';
+import type { CelestialBody } from '../../../physics/celestial-body';
 import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { ENGAGEMENT_RANGE } from '../../dynamic/engagement-zone';
 import { Player } from '../../player/player';
-import type { Stage } from '../stage';
-import type { Hud } from '../../hud/hud';
+import type { StageOutcome } from '../stage-outcome';
+import type { Notifier } from '../../../hud/notifier';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../../vfx/flash-effects';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
-import { apsisAltitudes } from '../../../physics/elements';
+import { apsisAltitudes, orbitalElementsOf } from '../../../physics/elements';
 import { R_EARTH } from '../../celestial/solar-system/constants';
 import { strongestAttractor } from '../../../physics/attractor';
-import { orbitalElementsOf } from '../../../physics/elements';
 import { add, addScaled, len, norm, randPerp, randVec, scale, sub, Vec3 } from '../../../math/vec3';
 import { generateApproachingEnemy } from '../spawner/enemy-generator';
 
@@ -62,11 +62,11 @@ export class WaveAttack {
 
   // saved があればその状態(フェーズ・タイマー・ウェーブ数)から始める。
   public constructor(
-    private readonly hud: Hud,
+    private readonly notifier: Notifier,
     private readonly worldSfx: WorldSfx,
     private readonly fx: FlashEffects,
     private readonly scene: THREE.Scene,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly attractors: readonly CelestialBody[],
     saved?: WaveAttackSaveData,
   ) {
     this.waveState = saved?.waveState ?? 'waiting_for_ammo';
@@ -77,14 +77,17 @@ export class WaveAttack {
   // ウェーブ番号を進め、敵を生成して addEnemy 経由でエンティティ管理に登録する。
   public spawnWave(player: Player, addEnemy: (enemy: Enemy) => void, forcedPattern?: 'linear' | 'random'): void {
     const wave = ++this._waveCount;
-    const enemies = generateWave(player.state, wave, this.celestialSystem, this.worldSfx, this.fx, this.scene, forcedPattern);
+    const enemies = generateWave(
+      player.motion.state, wave, this.attractors,
+      this.worldSfx, this.fx, this.scene, forcedPattern,
+    );
     for (const enemy of enemies) addEnemy(enemy);
   }
 
   // フェーズ機械を1フレーム分進める。
   public update(
     dt: number, player: Player, enemies: readonly Enemy[], simTime: number,
-    activeStage: Stage, addEnemy: (enemy: Enemy) => void,
+    activeStage: StageOutcome, addEnemy: (enemy: Enemy) => void,
   ): void {
     if (this.waveState === 'waiting_for_ammo') return this.updateWaitingForAmmoPhase(player);
     if (this.waveState === 'spawning_enemies') return this.updateSpawningEnemiesPhase(dt, player, addEnemy);
@@ -96,7 +99,7 @@ export class WaveAttack {
     if (player.magsLeft <= 0 && player.roundsInMag <= 0) return;
     this.waveState = 'spawning_enemies';
     this.spawnTimer = STAGE00_SPAWN_DELAY;
-    this.hud.toast('弾薬を確保した。敵部隊が接近中...', 3000);
+    this.notifier.toast('弾薬を確保した。敵部隊が接近中...', 3000);
   }
 
   // 遅延タイマーが尽きたら最初のウェーブを湧かせ、active_combat フェーズへ進める。
@@ -111,7 +114,7 @@ export class WaveAttack {
   // 交戦圏外の敵を消し、同時展開数の上限内でタイマーに従い次のウェーブを湧かせる。
   private updateActiveCombatPhase(
     dt: number, player: Player, enemies: readonly Enemy[], simTime: number,
-    activeStage: Stage, addEnemy: (enemy: Enemy) => void,
+    activeStage: StageOutcome, addEnemy: (enemy: Enemy) => void,
   ): void {
     despawnOutOfRangeEnemies(enemies, player, ENGAGEMENT_RANGE, simTime, activeStage);
     const activeGroups = countActiveWaveGroups(enemies);
@@ -125,7 +128,7 @@ export class WaveAttack {
     if (this.spawnTimer > 0) return;
     this.spawnWave(player, addEnemy);
     this.spawnTimer = STAGE00_SPAWN_INTERVAL;
-    this.hud.toast(`波状攻撃 第${this._waveCount}波 接近中！`, 3000);
+    this.notifier.toast(`波状攻撃 第${this._waveCount}波 接近中！`, 3000);
   }
 
   public serialize(): WaveAttackSaveData {
@@ -134,10 +137,12 @@ export class WaveAttack {
 }
 
 // 自機から maxRange より離れた敵を交戦圏外として消す。
-function despawnOutOfRangeEnemies(enemies: readonly Enemy[], player: Player, maxRange: number, simTime: number, activeStage: Stage): void {
+function despawnOutOfRangeEnemies(
+  enemies: readonly Enemy[], player: Player, maxRange: number, simTime: number, activeStage: StageOutcome,
+): void {
   for (const enemy of enemies) {
-    if (!enemy.alive) continue;
-    if (len(sub(enemy.state.r, player.state.r)) <= maxRange) continue;
+    if (!enemy.motion.alive) continue;
+    if (len(sub(enemy.motion.state.r, player.motion.state.r)) <= maxRange) continue;
     enemy.despawn(simTime, activeStage);
   }
 }
@@ -146,7 +151,7 @@ function despawnOutOfRangeEnemies(enemies: readonly Enemy[], player: Player, max
 function countActiveWaveGroups(enemies: readonly Enemy[]): number {
   const activeWaves = new Set<number>();
   for (const enemy of enemies) {
-    if (enemy.alive && enemy.waveId !== undefined) activeWaves.add(enemy.waveId);
+    if (enemy.motion.alive && enemy.waveId !== undefined) activeWaves.add(enemy.waveId);
   }
   return activeWaves.size;
 }
@@ -194,9 +199,9 @@ function makeFlybyVelocity(player: KinematicState, centerR: Vec3, wave: number):
 }
 
 // 近地点高度が REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN を下回らないよう Δv の大きさを二分探索で縮める。
-function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, celestialSystem: CelestialSystem): Vec3 {
+function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, attractors: readonly CelestialBody[]): Vec3 {
   const minPeAlt = REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN;
-  const center = strongestAttractor(centerR, celestialSystem.celestialMotions, t);
+  const center = strongestAttractor(centerR, attractors, t);
   // 与えた速度での近地点高度が最低ラインを満たすか判定する。
   const safe = (v: Vec3): boolean => {
     const el = orbitalElementsOf(kinematicState<'eci'>(t, centerR, v), center, t);
@@ -283,12 +288,12 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
 }
 
 // ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
-export function generateWave(player: KinematicState, waveNumber: number, celestialSystem: CelestialSystem, worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
+export function generateWave(player: KinematicState, waveNumber: number, attractors: readonly CelestialBody[], worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
   const calculatedCount = STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * STAGE00_WAVE_SHIPS_PER_WAVE);
   const shipCount = Math.min(calculatedCount, STAGE00_WAVE_MAX_SHIPS);
   const centerR = pickWaveCenter(player, waveNumber);
   const { approachDir, centerV: rawCenterV } = makeFlybyVelocity(player, centerR, waveNumber);
-  const centerV = limitFlybyDv(player.v, centerR, rawCenterV, player.t, celestialSystem);
+  const centerV = limitFlybyDv(player.v, centerR, rawCenterV, player.t, attractors);
   const subGroups = makeSubGroupHexes(pickWaveBaseHex());
   const typeIndex = Math.floor(Math.random() * 3);
   const pattern = forcedPattern || (Math.random() < 0.5 ? 'linear' : 'random');

@@ -3,14 +3,18 @@
 import { kinematicState, KinematicState } from '../../physics/kinematic-state';
 import { Vec3, add } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
-import { CelestialMotion, CelestialMotions } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { orbitalElementsOf } from '../../physics/elements';
 
-// segmentDurationFrom が要求する表示窓の部分だけを切り出した形。
+// 計画をどう実行するか。'off': ノードを消化しない。
+// 'instant': ノード時刻ちょうどで絶対状態へ乗り移る(自動実行)。
+export type PlanExecutionMode = 'off' | 'instant';
+
 // ノード実行時刻の何秒前から「実行の窓」とみなすか [s]。噴射準備の通知・達成判定の開始・
 // 自動ワープの解除がこの1点を共有する。
 export const NODE_APPROACH_LEAD = 10;
 
+// segmentDurationFrom が要求する表示窓の部分だけを切り出した形。
 export interface DisplayDurationSource {
   durationSec(referencePeriod: number): number;
 }
@@ -18,7 +22,7 @@ export interface DisplayDurationSource {
 // 起点状態を最も強く引く天体まわりの解析軌道の公転周期。
 // 有限な周期が求まらなければ(双曲線軌道など)NaN。
 export function orbitPeriodOf(
-  state: KinematicState, celestialBodies: readonly CelestialMotion[], pivot: number,
+  state: KinematicState, celestialBodies: readonly CelestialBody[], pivot: number,
 ): number {
   const center = strongestAttractor(state.r, celestialBodies, pivot);
   return orbitalElementsOf(state, center, pivot)?.period ?? NaN;
@@ -30,7 +34,7 @@ export function orbitPeriodOf(
 // 別々に定義すると描画範囲とノード配置可能範囲がずれる。
 export function segmentDurationFrom(
   state0: KinematicState,
-  celestialBodies: readonly CelestialMotion[],
+  celestialBodies: readonly CelestialBody[],
   displayDuration: DisplayDurationSource,
 ): number {
   return displayDuration.durationSec(orbitPeriodOf(state0, celestialBodies, state0.t));
@@ -154,10 +158,10 @@ export class Plan {
   // idx 番目のノードを置ける実行時刻の範囲。直前の状態(前のノード、無ければ起点)の時刻から、
   // その状態を起点に描かれている末尾区間の折れ線が尽きるところまで。起点の借り方は anchorOr と同じ。
   nodeTimeRange(
-    idx: number, from: KinematicState, windows: CelestialMotions, displayDuration: DisplayDurationSource,
+    idx: number, from: KinematicState, celestialBodies: readonly CelestialBody[], displayDuration: DisplayDurationSource,
   ): TimeRange {
     const prev = this.data?.nodes[idx - 1] ?? this.anchorOr(from);
-    const celestialBodies = windows.celestialMotions;
+
     return { min: prev.t, max: prev.t + segmentDurationFrom(prev, celestialBodies, displayDuration) };
   }
 

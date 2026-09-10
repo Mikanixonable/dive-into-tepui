@@ -4,9 +4,9 @@ import { ORBIT_ELEMENT_LABELS, type OrbitLabelSpec } from '../hud/orbit/orbit-la
 import { ORBIT_POINT_GLYPH } from './marker-identity';
 import { OrbitPointMarker } from './orbit-point-marker';
 import type { Vec3 } from '../../math/vec3';
-import type { CelestialSystem } from '../celestial/celestial-system';
-import type { ObjectCommands } from '../pickable/object-commands';
-import type { PropertyRow } from '../../hud/windows/property-window';
+import type { PropertyRow } from '../../hud/windows/property-window-content';
+import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 
 // 交点種別ごとの、一覧やマーカーで名乗る呼称と、軌道要素としてのラベル。
 const RELATIVE_NODE_LABELS = {
@@ -45,7 +45,7 @@ export class RelativeNodeMarker extends OrbitPointMarker {
 
   // 所属軌道・交点を定める相手の名前・通過までの残り時間。
   public propertyRows(
-    _commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number,
+    _celestialBodies: CelestialBodies, _viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
     return [
       ...this.ownerRows(),

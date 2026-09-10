@@ -4,10 +4,9 @@
 import { FrameRole, FrameRotationSource, rotationSourceKey } from '../../../physics/frame';
 import { SegmentedControl } from '../../../hud/widgets';
 import { frameRoleName } from './frame-labels';
-import type { CelestialMotion } from '../../../physics/celestial-motion';
-import type { CelestialEntity } from '../../celestial/celestial-entity/celestial-entity';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import { rotationFollowKey, type CameraRotationFollow } from '../../camera/focus-camera';
+import type { CelestialBody } from '../../../physics/celestial-body';
 
 export class RotationZone {
   public readonly element: HTMLElement;
@@ -20,7 +19,7 @@ export class RotationZone {
   private readonly control: SegmentedControl<string>;
 
   // title は選択肢見出し。
-  public constructor(title: string, private readonly celestialSystem: CelestialSystem) {
+  public constructor(title: string, private readonly celestialBodies: CelestialBodies) {
     this.control = new SegmentedControl<string>(
       title, [['', '解除']], (key) => this.onSelect?.(this.sources.get(key) ?? null),
     );
@@ -37,25 +36,26 @@ export class RotationZone {
     const items: (readonly [string, string])[] = [['', '解除']];
 
     // 主天体を持つ天体だけが公転回転系を持つ(恒星と、恒星の無い星系の惑星はここで外れる)。
-    const revolvable: (readonly [CelestialEntity, CelestialMotion])[] = [];
+    const revolvable: (readonly [string, CelestialBody, CelestialBody])[] = [];
     for (const id of members) {
-      const entity = this.celestialSystem.find(id);
-      const primary = entity?.motion.primary ?? null;
-      if (entity === null || primary === null) continue;
-      revolvable.push([entity, primary]);
+      const motion = this.celestialBodies.findMotion(id);
+      const primary = motion?.primary ?? null;
+      if (motion === null || primary === null) continue;
+      revolvable.push([id, motion, primary]);
     }
-    for (const [entity, primary] of revolvable) {
-      const source: FrameRotationSource = { kind: 'revolution', id: entity.id };
+    for (const [id, , primary] of revolvable) {
+      const source: FrameRotationSource = { kind: 'revolution', id };
       const key = rotationSourceKey(source);
       this.sources.set(key, source);
-      items.push([key, `${this.celestialSystem.nameOf(primary.id)}-${entity.name}回転座標系`]);
+      items.push([key,
+        `${this.celestialBodies.nameOf(primary.id)}-${this.celestialBodies.nameOf(id)}回転座標系`]);
     }
-    for (const [entity] of revolvable) {
-      if (entity.motion.spinRotationAt(displayTime) === null) continue;
-      const source: FrameRotationSource = { kind: 'spin', id: entity.id };
+    for (const [id, motion] of revolvable) {
+      if (motion.spinRotationAt(displayTime) === null) continue;
+      const source: FrameRotationSource = { kind: 'spin', id };
       const key = rotationSourceKey(source);
       this.sources.set(key, source);
-      items.push([key, `${entity.name}自転座標系`]);
+      items.push([key, `${this.celestialBodies.nameOf(id)}自転座標系`]);
     }
     for (const role of validRoles) {
       const source: FrameRotationSource = { kind: 'revolution', id: `@${role}` };
@@ -86,7 +86,7 @@ export class CameraRotationZone {
   private readonly control: SegmentedControl<string>;
 
   // title は選択肢見出し。
-  public constructor(title: string, private readonly celestialSystem: CelestialSystem) {
+  public constructor(title: string, private readonly celestialBodies: CelestialBodies) {
     this.control = new SegmentedControl<string>(
       title, [['', '解除']], (key) => this.onSelect?.(this.follows.get(key) ?? null),
     );
@@ -109,13 +109,14 @@ export class CameraRotationZone {
   // 天体は座標系の名前で、機体(天体レジストリに無い id)は種別の名前で書く。
   private followLabel(follow: CameraRotationFollow): string {
     if (follow.kind === 'attitude') return '姿勢追従';
-    const entity = this.celestialSystem.find(follow.id);
-    if (entity === null) return follow.kind === 'revolution' ? '公転' : '自転';
-    if (follow.kind === 'spin') return `${entity.name}自転座標系`;
-    const primary = entity.motion.primary;
+    const motion = this.celestialBodies.findMotion(follow.id);
+    if (motion === null) return follow.kind === 'revolution' ? '公転' : '自転';
+    const name = this.celestialBodies.nameOf(follow.id);
+    if (follow.kind === 'spin') return `${name}自転座標系`;
+    const primary = motion.primary;
     return primary !== null
-      ? `${this.celestialSystem.nameOf(primary.id)}-${entity.name}回転座標系`
-      : `${entity.name}回転座標系`;
+      ? `${this.celestialBodies.nameOf(primary.id)}-${name}回転座標系`
+      : `${name}回転座標系`;
   }
 
   // 選択中の表示を合わせる。
