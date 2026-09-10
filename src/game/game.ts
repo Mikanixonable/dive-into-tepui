@@ -108,9 +108,10 @@ export class Game {
     initialSave: GameSaveData | undefined,
     startEpoch: TdbJulianDate | undefined,
     graphics: GraphicsSettingsData,
+    renderStyle: RenderStyle,
     progress: LoadingProgress,
   ): Promise<Game> {
-    const { scene: gs, hud } = host;
+    const { scene: gs } = host;
     await progress.enter('system');
     // このランの元期。スナップショットを読むならその元期をそのまま継ぐ — 保存されている simTime
     // はその元期からの経過秒なので、別の元期で組むと全天体がずれる。次に開始日時の指定、最後に
@@ -125,21 +126,20 @@ export class Game {
     await progress.enter('bodies');
     celestialSystem.build(gs.scene, gs.pipeline);
     await progress.enter('run');
-    const game = new Game(host, stageClass, audioEngine, pauseMenu, celestialSystem, initialSave);
+    const game = new Game(host, stageClass, audioEngine, pauseMenu, celestialSystem, renderStyle, initialSave);
     // シェーダを組む前に、最初に描かれるフレームと同じ表示状態を時間の進まない1フレームで作る —
     // 天体表面の分割段のように update/sync が決めるまで現れない表示物が、事前コンパイルから漏れる。
-    const style = hud.renderStyle.current;
     game.update(0);
-    game.sync(graphics, style);
+    game.sync(graphics, renderStyle);
     await progress.enter('shaders');
     await gs.pipeline.compile(
       gs.scene,
       game.cameraSystem.activeCamera,
-      style,
+      renderStyle,
       (name, done, total) => progress.within(done / total, `シェーダを準備中: ${name}`),
     );
     // 出力段の階調変換は three が実際に描いたときにしか組まないので、捨てる 1 フレームで組ませる。
-    game.render(style);
+    game.render(renderStyle);
     return game;
   }
 
@@ -169,6 +169,7 @@ export class Game {
     audioEngine: AudioEngine,
     pauseMenu: PauseMenu,
     celestialSystem: CelestialSystem,
+    renderStyle: RenderStyle,
     initialSave?: GameSaveData,
   ) {
     this.sections = host.sections;
@@ -292,8 +293,9 @@ export class Game {
 
     this.viewBadge = new ViewBadge(
       this._hud.viewBadgeRow, this._hud.layers.notify, this.viewManager, this._hud.overlayManager,
-      this._hud.renderStyle, this.dynamicSystem, celestialSystem,
+      renderStyle, this.dynamicSystem, celestialSystem,
     );
+    this.viewBadge.onRenderStyleChange = (style) => this._hud.setRenderStyle(style);
 
     // 復元した focus を、軌道表示の基準系へも通しておく。
     this.frameControls.setFocus(this.cameraSystem.mapCamera.focus);

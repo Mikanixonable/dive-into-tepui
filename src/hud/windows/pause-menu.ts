@@ -39,9 +39,9 @@ export class PauseMenu implements OverlayHandle {
   private dragStartClient: Point2 | null = null;
   private dragStartWindowPos: Point2 = { x: 0, y: 0 };
 
-  // パネル DOM を組み立てて root へ追加する。各操作のコールバックは onXxx フィールドへ
-  // 後から代入する。
-  public constructor(root: HTMLElement, overlayManager: OverlayManager) {
+  // パネル DOM を組み立てて root へ追加する。bgmVolume は組み立て時のユーザー音量。
+  // 各操作のコールバックは onXxx フィールドへ後から代入する。
+  public constructor(root: HTMLElement, overlayManager: OverlayManager, bgmVolume: number) {
     injectOnce('pause-menu', PAUSE_MENU_STYLE);
     this.overlayManager = overlayManager;
     this.panel = document.createElement('div');
@@ -87,7 +87,6 @@ export class PauseMenu implements OverlayHandle {
       this.updateMuteState(vol);
       this.onBgmVolumeChange?.(vol);
     });
-    this.bgmSlider.setValue(1);
     this.bgmSlider.element.style.flex = '1';
     this.bgmSlider.element.style.marginLeft = SPACE_4;
     bgmRow.appendChild(this.bgmSlider.element);
@@ -95,6 +94,7 @@ export class PauseMenu implements OverlayHandle {
     this.bgmMute.element.style.marginLeft = SPACE_4;
     bgmRow.appendChild(this.bgmMute.element);
     this.body.appendChild(bgmRow);
+    this.syncBgmVolume(bgmVolume);
 
     // 以降の各行はセーブ・セーブデータ管理・デバッグ表示・設定ビューへの導線となる単一ボタン。
     const saveRow = document.createElement('div');
@@ -257,8 +257,8 @@ export class PauseMenu implements OverlayHandle {
     this.dragStartClient = null;
   };
 
-  // BGM スライダーの表示を更新する。
-  public setBgmVolume(vol: number): void {
+  // 外から音量が変わったときに、スライダーと消音ボタンの点灯を引き直す。
+  public syncBgmVolume(vol: number): void {
     this.bgmSlider.setValue(vol);
     this.updateMuteState(vol);
   }

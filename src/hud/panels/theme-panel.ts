@@ -1,10 +1,13 @@
-import { applyThemePalette, currentThemePalette, THEME_PRESETS } from '../../theme';
+import { currentThemePalette, THEME_PRESETS } from '../../theme';
 import { Button } from '../widgets';
 
-// 設定ビューの「配色」タブ。テーマプリセットをボタン一覧で並べ、押したテーマを即座に適用する。
-// 選択状態はボタン自身の点灯だけで持ち、専用のフィールドは持たない。
+// 設定ビューの「配色」タブ。テーマプリセットをボタン一覧で並べ、選ばれた配色の id を
+// onSelect で外へ返す。選択状態はボタン自身の点灯で持つ。
 export class ThemePanel {
   public readonly element: HTMLElement;
+
+  // 配色が選ばれたときに呼ばれる。
+  public onSelect: ((id: string) => void) | null = null;
 
   // 現在適用中のテーマを検出し、プリセットの一覧をボタン化して並べる。
   public constructor() {
@@ -12,8 +15,11 @@ export class ThemePanel {
     this.element.className = 'sv-theme-options';
 
     const themeButtons = new Map<string, Button>();
-    let activeThemeId = currentThemePalette().id;
-    // プリセットごとにボタンを1つ作る。押すと配色を切り替え、選択中のボタンだけを点灯させる。
+    // 点灯を id の指すボタン1つへ寄せる。
+    const lightOnly = (activeId: string): void => {
+      for (const [id, button] of themeButtons) button.setOn(id === activeId);
+    };
+    // プリセットごとにボタンを1つ作る。押すと点灯を移し、選ばれた id を外へ返す。
     for (const palette of THEME_PRESETS) {
       const previewColors = [palette.page, palette.surface1, palette.title, palette.accent, palette.signal];
       const preview = `<span class="sv-theme-preview">${previewColors
@@ -22,9 +28,8 @@ export class ThemePanel {
       const themeButton = new Button(
         palette.name,
         () => {
-          if (!applyThemePalette(palette.id)) return;
-          activeThemeId = palette.id;
-          for (const [id, button] of themeButtons) button.setOn(id === activeThemeId);
+          lightOnly(palette.id);
+          this.onSelect?.(palette.id);
         },
         `<span class="sv-theme-icon">${preview}</span>`,
       );
@@ -37,6 +42,6 @@ export class ThemePanel {
       this.element.appendChild(themeButton.element);
     }
     // 起動時点で適用されているテーマのボタンを点灯させておく。
-    for (const [id, button] of themeButtons) button.setOn(id === activeThemeId);
+    lightOnly(currentThemePalette().id);
   }
 }

@@ -1,6 +1,6 @@
 // ゲーム画面の HUD のシェル。常設パネル群と描画先(root / svgOverlay)を持ち、
 // 毎フレーム game の状態へ同期して、トースト・ヘルプを出す。
-import type { RenderStyleSetting } from '../../render/render-style';
+import type { RenderStyle } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
 import type { HudLayers } from './hud-layers';
 import type { View } from '../view/view';
@@ -46,9 +46,9 @@ export class Hud implements HudLayers, Notifier {
   // 表示中のトーストの期限 [ms, performance.now() 基準]。
   private toastUntil: number | null = null;
 
-  // 画面の器の上に、ゲームの HUD の DOM を組む。
+  // 画面の器の上に、ゲームの HUD の DOM を組む。renderStyle は組み立て時の見せ方。
   public constructor(
-    private readonly shell: HudShell, public readonly renderStyle: RenderStyleSetting,
+    private readonly shell: HudShell, renderStyle: RenderStyle,
   ) {
     const { combatRoot, mapRoot, svgOverlay, helpPanel, els } = buildHudDom(shell, renderStyle);
     this.combatRoot = combatRoot.element;
@@ -132,6 +132,15 @@ export class Hud implements HudLayers, Notifier {
     this.combatRoot.classList.toggle('active', !map);
     this.mapRoot.classList.toggle('active', map);
     this.root.classList.toggle('map-ui-active', map);
+  }
+
+  // 見せ方の切り替えが要求されたときに呼ばれる。
+  public onRenderStyleChange: ((style: RenderStyle) => void) | null = null;
+
+  // 見せ方を切り替える。HUD の DOM へ反映し、切り替え要求を外へ返す。
+  public setRenderStyle(style: RenderStyle): void {
+    this.root.dataset['renderStyle'] = style;
+    this.onRenderStyleChange?.(style);
   }
 
   // 本文だけのトーストを durationMs 表示する。

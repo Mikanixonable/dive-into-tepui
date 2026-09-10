@@ -11,42 +11,35 @@ import { Conductor } from './conductor';
 import { AudioEngine } from '../audio-engine';
 import { trackCycleDurationSec } from './track-cycle';
 
-const BGM_VOL_KEY = 'tepui.settings.bgm_vol'; // localStorage キー
 const PUMP_INTERVAL_MS = 120; // スケジューラを回す間隔
 const LOOKAHEAD_SEC = 0.6; // この先ぶんまでまとめてスケジュールし、タイマー精度に依存しないようにする
 const AUDITION_FADE_SEC = 0.15; // 試聴を切り替える・止めるときのフェード
+
+// 保存が無いときのユーザー音量。
+export const DEFAULT_BGM_VOLUME = 1;
+
+// 保存された文字列をユーザー音量へ読み直す。数として読めない値は既定へ落とし、読めた値は 0〜1 へ収める。
+export function parseBgmVolume(text: string | null): number {
+  if (text === null) return DEFAULT_BGM_VOLUME;
+  const vol = Number.parseFloat(text);
+  if (Number.isNaN(vol)) return DEFAULT_BGM_VOLUME;
+  return Math.min(1, Math.max(0, vol));
+}
 
 export class Bgm {
   private masterGain: GainNode | null = null;
   private ambient: Conductor | null = null;
   private audition: Conductor | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
-  private volume = 1;
 
-  // 保存済みの音量設定を読み込む。
-  constructor(private readonly engine: AudioEngine) {
-    try {
-      const saved = localStorage.getItem(BGM_VOL_KEY);
-      if (saved !== null) this.volume = parseFloat(saved);
-    } catch {
-      /* localStorage 不可の環境では既定値(ON)のまま */
-    }
-  }
+  // volume は鳴らし始めるときのユーザー音量 [0〜1]。
+  public constructor(private readonly engine: AudioEngine, private volume: number) {}
 
   // === 共通 (conductor によらない操作) ===
 
-  getVolume(): number {
-    return this.volume;
-  }
-
-  // 設定パネルからの音量変更。再生中なら即反映し、停止中に正の音量へ上げたら再生を始める。
-  setVolume(vol: number): void {
+  // ユーザー音量を差し替える。再生中なら即反映し、停止中に正の音量へ上げたら再生を始める。
+  public setVolume(vol: number): void {
     this.volume = vol;
-    try {
-      localStorage.setItem(BGM_VOL_KEY, vol.toString());
-    } catch {
-      /* 保存できなくても再生自体は反映する */
-    }
     const ctx = this.engine.ctx;
     if (!ctx) return;
     if (this.masterGain) {

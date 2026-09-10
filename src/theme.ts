@@ -2,6 +2,8 @@
 // Primitive (色相・明度の値) と Semantic (UI上の意味) を同じパレットで公開する。
 // ゲーム世界(マーカー・演出・船体など)の Material 色は const.ts が持ち、ここには含まない。
 
+import { themeIdSetting } from './settings/theme-setting';
+
 interface ThemePalette {
   readonly id: string;
   readonly name: string;
@@ -100,23 +102,14 @@ export const THEME_PRESETS: readonly ThemePalette[] = [
 // 模式図での固定色上書きに使う、選択中の配色によらない light パレット。
 export const LIGHT_PALETTE: ThemePalette = THEME_PRESETS.find((palette) => palette.tone === 'light') ?? THEME_PRESETS[0]!;
 
-const THEME_STORAGE_KEY = 'tepui.theme-palette';
 const DEFAULT_THEME_ID = 'fluorescent-red-blue';
 
-function findThemePalette(id: string | null): ThemePalette {
+// id が指すパレット。プリセットに無い id は既定の配色へ落ちる。
+function findThemePalette(id: string): ThemePalette {
   return THEME_PRESETS.find((palette) => palette.id === id) ?? THEME_PRESETS.find((palette) => palette.id === DEFAULT_THEME_ID)!;
 }
 
-function readStoredThemeId(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return window.localStorage.getItem(THEME_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export const ACTIVE_THEME = findThemePalette(readStoredThemeId());
+export const ACTIVE_THEME = findThemePalette(themeIdSetting.current);
 
 let activePalette: ThemePalette = ACTIVE_THEME;
 
@@ -477,19 +470,13 @@ export function injectThemeVariables(): void {
   }
 }
 
-// ESCメニューからの変更を、再起動せずに現在のDOMへ反映する。DOM/CSSのカスタムプロパティを
-// 一括で差し替え、currentThemePalette が返す現在のパレットも更新する。
+// id が指す配色を、再起動せずに現在のDOMへ反映する。CSSのカスタムプロパティを一括で差し替え、
+// currentThemePalette が返す現在のパレットも更新する。プリセットに無い id では false を返す。
 export function applyThemePalette(id: string): boolean {
   const palette = getThemePalette(id);
   if (!palette) return false;
   activePalette = palette;
-  if (typeof window !== 'undefined') {
-    try {
-      window.localStorage.setItem(THEME_STORAGE_KEY, id);
-    } catch {
-      // private browsing等で保存できなくても、現在の画面への適用は続ける。
-    }
-  }
+  // DOM のある環境では、注入済みのカスタムプロパティを新しいパレットの値で上書きする。
   if (typeof document !== 'undefined') {
     const root = document.documentElement;
     for (const [name, value] of Object.entries(themeCssVariables(palette))) {

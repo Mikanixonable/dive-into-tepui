@@ -1,6 +1,6 @@
 import faviconUrl from '../../../public/favicon.svg';
 import type { Bgm } from '../../audio/bgm/bgm';
-import type { GraphicsSettings } from '../../render/graphics-settings';
+import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { BgmSettingsPanel } from '../panels/bgm-settings-panel';
 import { GraphicsPanel } from '../panels/graphics-panel';
 import { ThemePanel } from '../panels/theme-panel';
@@ -41,9 +41,18 @@ export class SettingsView implements OverlayHandle {
 
   public onOpenChange: ((open: boolean) => void) | null = null;
 
+  // 配色が選ばれたときに呼ばれる。
+  public onThemeIdChange: ((id: string) => void) | null = null;
+  // 描画品質の設定値一式が変わったときに呼ばれる。
+  public onGraphicsChange: ((graphics: GraphicsSettingsData) => void) | null = null;
+  // BGM の音量が変わったときに呼ばれる。
+  public onBgmVolumeChange: ((volume: number) => void) | null = null;
+
   // ブランド表示・ヘッダ・タブバーと、配色/描画/BGMの3面を組み立てて root へ差し込む。
+  // graphics と bgmVolume は組み立て時の設定値。
   public constructor(
-    root: HTMLElement, overlayManager: OverlayManager, bgm: Bgm, graphics: GraphicsSettings,
+    root: HTMLElement, overlayManager: OverlayManager, bgm: Bgm,
+    graphics: GraphicsSettingsData, bgmVolume: number,
   ) {
     injectOnce('settings-view', SETTINGS_VIEW_STYLE);
     this.overlayManager = overlayManager;
@@ -90,18 +99,22 @@ export class SettingsView implements OverlayHandle {
       return section;
     };
 
+    // 3面それぞれの操作を、対応する自分の口へ繋ぎ替える。
     const themeSection = addTabPanel('theme', '配色');
     const themePanel = new ThemePanel();
+    themePanel.onSelect = (id) => this.onThemeIdChange?.(id);
     themeSection.appendChild(themePanel.element);
     this.panel.appendChild(themeSection);
 
     const graphicsSection = addTabPanel('graphics', '描画');
     const graphicsPanel = new GraphicsPanel(graphics);
+    graphicsPanel.onChange = (changed) => this.onGraphicsChange?.(changed);
     graphicsSection.appendChild(graphicsPanel.element);
     this.panel.appendChild(graphicsSection);
 
     const bgmSection = addTabPanel('bgm', 'BGM');
-    this.bgmPanel = new BgmSettingsPanel(bgm);
+    this.bgmPanel = new BgmSettingsPanel(bgm, bgmVolume);
+    this.bgmPanel.onVolumeChange = (volume) => this.onBgmVolumeChange?.(volume);
     bgmSection.appendChild(this.bgmPanel.element);
     this.panel.appendChild(bgmSection);
 
@@ -155,6 +168,11 @@ export class SettingsView implements OverlayHandle {
     const closeButton = new CloseButton(() => this.toggle(false));
     header.appendChild(closeButton.element);
     return header;
+  }
+
+  // 外から音量が変わったときに、BGM タブの表示を引き直す。
+  public syncBgmVolume(volume: number): void {
+    this.bgmPanel.syncVolume(volume);
   }
 
   public contains(target: Node): boolean {

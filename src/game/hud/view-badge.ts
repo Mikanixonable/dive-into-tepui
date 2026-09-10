@@ -3,7 +3,7 @@ import type { View } from '../view/view';
 import { ContextMenu, MenuItem } from './windows/context-menu';
 import type { OverlayManager } from '../../hud/overlay-manager';
 import { Button, ToggleSwitch } from '../../hud/widgets';
-import type { RenderStyleSetting } from '../../render/render-style';
+import type { RenderStyle } from '../../render/render-style';
 import { frameRoleOf } from '../../physics/frame';
 import { frameRoleName } from './frame/frame-labels';
 import { focusTargetId, type FocusTarget } from '../camera/focus-target';
@@ -60,13 +60,14 @@ export class ViewBadge {
   // ビュー遷移メニューは特定の対象を持たないので、target には固定で true を使う。
   private readonly menu: ContextMenu<true, View>;
   private readonly stopPointerDown = (e: Event): void => e.stopPropagation();
-  private readonly unsubscribeRenderStyle: () => void;
+  // 模式図トグルが操作されたときに、選ばれた見せ方で呼ばれる。
+  public onRenderStyleChange: ((style: RenderStyle) => void) | null = null;
 
   // container(トップバー1行目の行)へバッジの中身を、遷移メニューを popupLayer へ組み立てて配線する。
   // entities と celestialBodies は注視対象の表示名を引くために持つ。
   public constructor(
     container: HTMLElement, popupLayer: HTMLElement, private readonly viewManager: ViewManager,
-    overlayManager: OverlayManager, renderStyle: RenderStyleSetting,
+    overlayManager: OverlayManager, renderStyle: RenderStyle,
     private readonly roster: EntityRoster, private readonly celestialBodies: CelestialBodies,
   ) {
     this.menu = new ContextMenu<true, View>(popupLayer, overlayManager);
@@ -87,8 +88,9 @@ export class ViewBadge {
     this.viewButton.element.setAttribute('aria-expanded', 'false');
 
     this.styleToggle = new ToggleSwitch(
-      '模式図', (on) => renderStyle.set(on ? 'schematic' : 'realistic'),
+      '模式図', (on) => this.onRenderStyleChange?.(on ? 'schematic' : 'realistic'),
     );
+    this.styleToggle.setOn(renderStyle === 'schematic');
     this.styleToggle.element.classList.add('vb-style-toggle');
 
     container.append(title, this.modeEl, this.viewButton.element, this.styleToggle.element);
@@ -99,13 +101,11 @@ export class ViewBadge {
 
     this.menu.onSelect = (act) => { this.viewManager.setView(act); };
     this.menu.onClose = () => this.viewButton.element.setAttribute('aria-expanded', 'false');
-    this.unsubscribeRenderStyle = renderStyle.subscribe((style) => this.styleToggle.setOn(style === 'schematic'));
   }
 
   // 遷移メニューを片付け、container へ足した中身を取り除く。
   public dispose(): void {
     this.menu.dispose();
-    this.unsubscribeRenderStyle();
     this.el.removeEventListener('pointerdown', this.stopPointerDown);
     this.el.replaceChildren();
   }

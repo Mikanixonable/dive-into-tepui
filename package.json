@@ -20,6 +20,7 @@
     "test:math": "npm run test:build && node tests/dist/tests/run.js math",
     "test:game": "npm run test:build && node tests/dist/tests/run.js game",
     "test:render": "npm run test:build && node tests/dist/tests/run.js render",
+    "test:settings": "npm run test:build && node tests/dist/tests/run.js settings",
     "export-assets": "node tools/export-models.mjs",
     "base-collision": "node tools/export-base-collision.mjs",
     "base-collision:check": "node tools/export-base-collision.mjs --check",

@@ -8,8 +8,10 @@ import './hackgen-400.css';
 import { createGameScene, GameScene } from './render/scene';
 import { DebugInfoWindow } from './launcher/debug-info-window';
 import { FrameSections } from './game/frame-sections';
-import { GraphicsSettings, type GraphicsSettingsData } from './render/graphics-settings';
-import { RenderStyleSetting } from './render/render-style';
+import { UserSettings } from './settings/user-settings';
+import { browserSettingStorage } from './settings/stored-setting';
+import { themeIdSetting } from './settings/theme-setting';
+import { applyThemePalette } from './theme';
 import { Hud } from './game/hud/hud';
 import { HudShell } from './hud/hud-shell';
 import { PauseMenu } from './hud/windows/pause-menu';
@@ -28,6 +30,9 @@ import { migrateLegacySave } from './launcher/save/legacy-save';
 import { showLoading, hideLoading } from './launcher/loading-overlay';
 import { showFatalError } from './launcher/fatal-error';
 import type { GameHost } from './game/game-host';
+import type { GraphicsSettingsData } from './render/graphics-settings';
+import type { RenderStyle } from './render/render-style';
+import type { SettingValue } from './settings/stored-setting';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
 async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
@@ -42,7 +47,8 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
 
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
-  launcher: Launcher, gs: GameScene, graphics: GraphicsSettings, renderStyle: RenderStyleSetting,
+  launcher: Launcher, gs: GameScene,
+  graphics: SettingValue<GraphicsSettingsData>, renderStyle: SettingValue<RenderStyle>,
   debugInfo: DebugInfoWindow, sections: FrameSections,
   autoSave: AutoSave,
   snapshotControls: SnapshotControls,
@@ -105,19 +111,46 @@ function startAnimationLoop(
 }
 
 // タイトル(ステージ選択)画面の時点から使えるべき画面と音声を、Game より先に組む。
-function initHud(graphics: GraphicsSettings, renderStyle: RenderStyleSetting): {
+// 各部品は設定の現在値を構築時に受け取り、以後の変更は main が配線する。
+function initHud(settings: UserSettings): {
   shell: HudShell; hud: Hud; audioEngine: AudioEngine; bgm: Bgm;
   pauseMenu: PauseMenu; settingsView: SettingsView;
 } {
   const shell = new HudShell();
-  const hud = new Hud(shell, renderStyle);
+  const hud = new Hud(shell, settings.renderStyle.current);
   const audioEngine = new AudioEngine();
-  const bgm = new Bgm(audioEngine);
-  const pauseMenu = new PauseMenu(shell.layers.system, shell.overlayManager);
-  const settingsView = new SettingsView(shell.layers.system, shell.overlayManager, bgm, graphics);
-  pauseMenu.setBgmVolume(bgm.getVolume());
-  pauseMenu.onBgmVolumeChange = (vol) => bgm.setVolume(vol);
+  const bgm = new Bgm(audioEngine, settings.bgmVolume.current);
+  const pauseMenu = new PauseMenu(shell.layers.system, shell.overlayManager, settings.bgmVolume.current);
+  const settingsView = new SettingsView(
+    shell.layers.system, shell.overlayManager, bgm, settings.graphics.current, settings.bgmVolume.current,
+  );
   return { shell, hud, audioEngine, bgm, pauseMenu, settingsView };
+}
+
+// 設定の変更を、その値を使う側へ配る。書き換えの入口はどれも設定へ戻し、表示はその通知から引き直す。
+function bindSettings(
+  settings: UserSettings, gs: GameScene, hud: Hud, bgm: Bgm,
+  pauseMenu: PauseMenu, settingsView: SettingsView, debugInfo: DebugInfoWindow,
+): void {
+  settings.graphics.subscribe((graphics) => gs.applyGraphics(graphics));
+  settingsView.onGraphicsChange = (graphics) => settings.graphics.set(graphics);
+
+  settings.renderStyle.subscribe((style) => debugInfo.syncRenderStyle(style));
+  hud.onRenderStyleChange = (style) => settings.renderStyle.set(style);
+
+  // 音量は一時停止メニューと設定ビューの両方が書き換えるので、通知を受けた側で両方を引き直す。
+  settings.bgmVolume.subscribe((volume) => {
+    bgm.setVolume(volume);
+    pauseMenu.syncBgmVolume(volume);
+    settingsView.syncBgmVolume(volume);
+  });
+  pauseMenu.onBgmVolumeChange = (volume) => settings.bgmVolume.set(volume);
+  settingsView.onBgmVolumeChange = (volume) => settings.bgmVolume.set(volume);
+
+  // 配色は DOM へ適用できたものだけを選択として残す。
+  settingsView.onThemeIdChange = (id) => {
+    if (applyThemePalette(id)) themeIdSetting.set(id);
+  };
 }
 
 // 索引を読み、旧セーブを取り込み、遊ぶ先のスロットが必ず1つある状態にする。
@@ -137,17 +170,15 @@ async function main() {
   const saveStore = new LocalStorageSaveStore();
   const slots = initSaveSlots(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
-  const graphics = new GraphicsSettings();
-  const renderStyle = new RenderStyleSetting();
-  const gs = await initScene(graphics.current);
-  graphics.bind(gs);
-  const { shell, hud, audioEngine, bgm, pauseMenu, settingsView } = initHud(graphics, renderStyle);
+  const settings = new UserSettings(browserSettingStorage);
+  const gs = await initScene(settings.graphics.current);
+  const { shell, hud, audioEngine, bgm, pauseMenu, settingsView } = initHud(settings);
   const sections = new FrameSections();
   const host: GameHost = { scene: gs, hud, sections };
 
   const launcher = new Launcher(
     shell, host, audioEngine, bgm, pauseMenu, settingsView, unlockManager,
-    slots, snapshotService, graphics,
+    slots, snapshotService, settings.graphics, settings.renderStyle,
   );
 
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
@@ -175,8 +206,10 @@ async function main() {
 
   // pipeline はデバッグ情報ウィンドウの描画タブが書き込む先。
   const debugInfo = new DebugInfoWindow(
-    shell.layers.window, gs.renderer, sections, gs.gpu, shell.overlayManager, gs.pipeline, renderStyle,
+    shell.layers.window, gs.renderer, sections, gs.gpu, shell.overlayManager, gs.pipeline,
+    settings.renderStyle.current,
   );
+  bindSettings(settings, gs, hud, bgm, pauseMenu, settingsView, debugInfo);
   pauseMenu.onOpenDebugInfoWindow = () => {
     pauseMenu.toggle(false);
     debugInfo.open();
@@ -188,7 +221,10 @@ async function main() {
   await launcher.start();
   settingsView.restorePersistedOpenState();
 
-  startAnimationLoop(launcher, gs, graphics, renderStyle, debugInfo, sections, new AutoSave(snapshotService), snapshotControls);
+  startAnimationLoop(
+    launcher, gs, settings.graphics, settings.renderStyle, debugInfo, sections,
+    new AutoSave(snapshotService), snapshotControls,
+  );
 }
 
 main().catch((err) => {

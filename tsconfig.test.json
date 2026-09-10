@@ -32,10 +32,12 @@
     "src/game/celestial/solar-system/point-field.ts",
     "src/game/camera/focus-target.ts",
     "src/physics/ephemeris/ephemeris-context.ts",
+    "src/settings",
     "tests/*.ts",
     "tests/physics/**/*.ts",
     "tests/math/**/*.ts",
     "tests/game/**/*.ts",
-    "tests/render/**/*.ts"
+    "tests/render/**/*.ts",
+    "tests/settings/**/*.ts"
   ]
 }
