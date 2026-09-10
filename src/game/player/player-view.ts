@@ -8,7 +8,6 @@ import {
 } from '../dynamic/dynamic-view';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import { AttachedBoostersView } from './attached-boosters-view';
-import { BOOSTER_MOUNT_Z } from '../../physics/booster-stage-shape';
 import { BELT_MAX_VISIBLE } from './belt';
 import { BeltView } from './belt-view';
 import { PlayerMarkers } from './player-markers';
@@ -102,7 +101,6 @@ export class PlayerView extends DynamicView {
       effectVisible,
       context.cameraSystem,
       context.style,
-      BOOSTER_MOUNT_Z,
     );
     this.thrustEffects.sync(
       context.floatingOrigin,
