@@ -603,9 +603,11 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
     source_manifest_file = Path(source_manifest_path)
     if not source_manifest_file.is_file():
         raise GlobalInputError(f"source manifestがありません: {source_manifest_path}")
+    coverage_kind = "complete" if max_zoom == 7 else "sparse"
+    # sparse fixture output may contain only a low-LOD prefix, but the runtime
+    # contract always describes the z0..z7 address space it can index.
     result_manifest = global_manifest(manifest, "sources.json", source_hash, climate_paths,
-                                      "complete" if max_zoom == 7 else "sparse", max_zoom,
-                                      data_provenance)
+                                      coverage_kind, 7, data_provenance)
     try:
         climate_values = list(climate_maps)
         if (len(climate_values) != 12 or any(not isinstance(value, (bytes, bytearray)) or not value
