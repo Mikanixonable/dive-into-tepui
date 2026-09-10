@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "createdAtUtc": "2026-09-10T01:25:23.736179+00:00",
+  "createdAtUtc": "2026-09-10T01:54:16.423290+00:00",
   "manifest": "assets-src/earth-surface/sources.json",
   "probeMode": "all",
   "dependencies": {
@@ -11,9 +11,9 @@
       "PIL": true
     },
     "commands": {
-      "gdalinfo": "/Users/pandeaconica/Library/Caches/dive-into-tepui-earth-env/bin/gdalinfo",
-      "ogrinfo": "/Users/pandeaconica/Library/Caches/dive-into-tepui-earth-env/bin/ogrinfo",
-      "ncdump": "/Users/pandeaconica/Library/Caches/dive-into-tepui-earth-env/bin/ncdump"
+      "gdalinfo": "/Users/pandeaconica/lab/dive-into-tepui/.earth-surface/mamba/envs/dive-into-tepui-earth-surface/bin/gdalinfo",
+      "ogrinfo": "/Users/pandeaconica/lab/dive-into-tepui/.earth-surface/mamba/envs/dive-into-tepui-earth-surface/bin/ogrinfo",
+      "ncdump": "/Users/pandeaconica/lab/dive-into-tepui/.earth-surface/mamba/envs/dive-into-tepui-earth-surface/bin/ncdump"
     }
   },
   "sources": [
@@ -5330,8 +5330,8 @@
     "terrainPayloadBytesIncludingBase": 23630031744,
     "inputBytesFromHEAD": 12657367741,
     "outputLowerBoundBytes": 23630031744,
-    "availableDiskBytes": 321871314944,
-    "rawRoot": ".earth-surface/raw",
+    "availableDiskBytes": 305096392704,
+    "rawRoot": ".earth-surface/raw-v3",
     "diskInsufficientForTerrainLowerBound": false
   },
   "status": "blocked",
