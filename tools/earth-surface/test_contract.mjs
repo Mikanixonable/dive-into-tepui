@@ -10,7 +10,14 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { packageEarthSurface } from './package.mjs';
 import { checkEarthSurface } from './check.mjs';
-import { canonicalSha256, EARTH_TERRAIN_BYTES, EARTH_TERRAIN_PAYLOAD_BYTES } from './contract.mjs';
+import {
+  canonicalSha256,
+  EARTH_BASE_COLOR_COMPONENTS,
+  EARTH_BASE_COLOR_HEIGHT,
+  EARTH_BASE_COLOR_WIDTH,
+  EARTH_TERRAIN_BYTES,
+  EARTH_TERRAIN_PAYLOAD_BYTES,
+} from './contract.mjs';
 import { fixtureClimatePng } from './fixture-climate.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -41,6 +48,33 @@ function baseTerrainPayload() {
   return payload;
 }
 
+function jpegFixture({ width = EARTH_BASE_COLOR_WIDTH, height = EARTH_BASE_COLOR_HEIGHT,
+  components = EARTH_BASE_COLOR_COMPONENTS } = {}) {
+  const segment = (marker, payload) => Buffer.concat([
+    Buffer.from([0xff, marker, (payload.length + 2) >> 8, (payload.length + 2) & 0xff]), payload,
+  ]);
+  const sof = Buffer.alloc(6 + components * 3);
+  sof[0] = 8; sof.writeUInt16BE(height, 1); sof.writeUInt16BE(width, 3); sof[5] = components;
+  for (let index = 0; index < components; index += 1) {
+    const offset = 6 + index * 3;
+    sof[offset] = index + 1; sof[offset + 1] = 0x11; sof[offset + 2] = 0;
+  }
+  const sos = Buffer.alloc(4 + components * 2);
+  sos[0] = components;
+  for (let index = 0; index < components; index += 1) {
+    const offset = 1 + index * 2;
+    sos[offset] = index + 1; sos[offset + 1] = 0;
+  }
+  sos[1 + components * 2] = 0; sos[2 + components * 2] = 63; sos[3 + components * 2] = 0;
+  return Buffer.concat([
+    Buffer.from([0xff, 0xd8]),
+    segment(0xe0, Buffer.alloc(14)),
+    segment(0xc0, sof),
+    segment(0xda, sos),
+    Buffer.from([0x00, 0xff, 0xd9]),
+  ]);
+}
+
 function manifest(sourceManifestSha256, datasetId = 'earth-fixture-a') {
   return {
     schemaVersion: 1, datasetId, sourceManifestSha256,
@@ -63,7 +97,7 @@ async function createBundle() {
   const root = await mkdtemp(join(tmpdir(), 'earth-surface-contract-'));
   const source = { schemaVersion: 1, datasetId: 'earth-fixture-a', sources: [{ id: 'fixture', inputSha256: [] }] };
   const sourceHash = canonicalSha256(source);
-  const color = Buffer.from('fixture-color-jpeg-bytes');
+  const color = jpegFixture();
   const terrain = terrainPayload();
   const compressedTerrain = gzipSync(terrain, { mtime: 0 });
   const manifestValue = manifest(sourceHash);
@@ -111,6 +145,19 @@ async function run() {
       'receipt.json',
     ]) await readFile(join(packaged, path));
     assert.deepEqual(await readFile(join(fixture.root, 'earth-surface.json')), before);
+
+    const baseColorPath = join(packaged, fixture.manifest.baseColor);
+    for (const [replacement, pattern] of [
+      [jpegFixture({ width: 260, height: 260 }), /baseColor JPEG must be 512x256 with 3 components/],
+      [jpegFixture({ components: 1 }), /baseColor JPEG must be 512x256 with 3 components/],
+      [Buffer.from('not-a-jpeg'), /baseColor JPEG must start with SOI/],
+      [jpegFixture().subarray(0, -2), /baseColor JPEG scan is truncated/],
+      [(() => { const malformed = jpegFixture(); malformed[4] = 0; malformed[5] = 1; return malformed; })(), /baseColor JPEG marker length is invalid/],
+    ]) {
+      await writeFile(baseColorPath, replacement);
+      await expectFailure(() => checkEarthSurface({ inputRoot: packaged }), pattern);
+    }
+    await writeFile(baseColorPath, fixture.color);
 
     const changedColor = await readFile(join(packaged, 'tiles/0/0/0.jpg'));
     changedColor[0] ^= 1; await writeFile(join(packaged, 'tiles/0/0/0.jpg'), changedColor);
