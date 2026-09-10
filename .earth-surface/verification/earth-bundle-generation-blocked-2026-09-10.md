@@ -43,6 +43,8 @@ MAMBA_ROOT_PREFIX=.earth-surface/mamba \
 earth-surface:bake: 実データrendererの入力が不足しています: .earth-surface/raw-v3/era5-monthly-1991-2020/global.nc
 ```
 
+同じ入力でz0〜z2だけを対象にするpilotも`--max-zoom 2`で試行したが、同じ入力検査で終了した。したがってpilotのtileを一枚も生成していない。
+
 ## 停止理由
 
 1. ERA5 の `1991-01`〜`2020-12`、全UTC24時刻、`t2m` と `tcc` を含む NetCDF local export が workspace および `/Users/pandeaconica` 配下に存在しない。manifest は ERA5 をURL取得ではなく `explicit_local_export` として要求しているため、入力がない状態では `fetch-source.py` を実行できない。
