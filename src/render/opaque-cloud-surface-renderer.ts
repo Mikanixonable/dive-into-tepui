@@ -165,7 +165,9 @@ export class OpaqueCloudSurfaceRenderer {
       const entry = positionLocal.toVar();
       const origin = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1)).xyz;
       const direction = normalize(entry.sub(origin)).toVar();
-      const grainAmplitude = this.grainAmplitudeAt(normalize(entry)).toVar();
+      const entryDirection = normalize(entry);
+      const entryCloud = this.fieldAt(entryDirection);
+      const grainAmplitude = this.grainAmplitudeAt(entryDirection, entryCloud.cellSizeVariation).toVar();
 
       // 殻に入ってから地表の球へ達するまで(掠めるなら殻を出るまで)を等分してたどる。
       const along = dot(entry, direction);
@@ -225,7 +227,7 @@ export class OpaqueCloudSurfaceRenderer {
       const clip = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(hitPoint, 1)));
       const viewNormal = normalize(transformNormalToView(this.cloudTopNormalAt(hitPoint, grainAmplitude)));
       const cloud = this.fieldAt(normalize(hitPoint));
-      const grain = this.shape.grainAt(normalize(hitPoint), grainAmplitude);
+      const grain = this.shape.grainAt(normalize(hitPoint), grainAmplitude, cloud.cellSizeVariation);
       const opaqueFraction = this.shape.opaqueFraction(cloud.coverage, grain);
       // 交差探索は連続な雲頂で済ませ、最後の表示判定だけを被覆率の中心で切る。画素ごとの
       // blue noise をここへ入れると、探索の符号が視線上で飛び、深度の等高線になる。
@@ -239,7 +241,7 @@ export class OpaqueCloudSurfaceRenderer {
     const radius = max(length(point), 1e-6);
     const direction = point.div(radius);
     const cloud = this.fieldAt(direction);
-    const grain = this.shape.grainAt(direction, grainAmplitude);
+    const grain = this.shape.grainAt(direction, grainAmplitude, cloud.cellSizeVariation);
     // 被覆率 0 では雲頂を地表へ戻し、被覆率 1 では本来の雲頂へ戻す。探索中に柱を二値化
     // しないので、雲の縁でも clearance が連続し、線形補間と二分探索の前提を保てる。
     const opaqueFraction = this.shape.opaqueFraction(cloud.coverage, grain);
@@ -256,7 +258,7 @@ export class OpaqueCloudSurfaceRenderer {
     // その向きの雲頂(物体空間の半径)。
     const topAt = (direction: Vec3Node): FloatNode => {
       const cloud = this.fieldAt(direction);
-      const grain = this.shape.grainAt(direction, grainAmplitude);
+      const grain = this.shape.grainAt(direction, grainAmplitude, cloud.cellSizeVariation);
       return this.shape.cloudTopRadius(
         this.shape.cloudTop(cloud.cloudTop.div(CLOUD_TOP_SPAN), grain)
           .mul(this.shape.opaqueFraction(cloud.coverage, grain)),
@@ -283,9 +285,10 @@ export class OpaqueCloudSurfaceRenderer {
   // 粒の振幅。**1 画素が張る角は画面上の変化率から引く** — 天体の見かけ直径から出すと、
   // 大気圏のすぐ上から見下ろす構図で 1 桁ずれる。解像できない細かさになったら 0 へ落ちるので、
   // 引きの構図では場の分布だけが残る。
-  private grainAmplitudeAt(entryDirection: Vec3Node): FloatNode {
+  private grainAmplitudeAt(entryDirection: Vec3Node, cellSizeVariation: FloatNode): FloatNode {
     const pixelAngle = max(length(dFdx(entryDirection)), length(dFdy(entryDirection)));
-    const wavelengthPixels = max(pixelAngle.mul(this.grainFrequency), 1e-9).reciprocal();
+    const scale = this.shape.cellSizeScaleAt(entryDirection, cellSizeVariation);
+    const wavelengthPixels = max(pixelAngle.mul(this.grainFrequency).div(scale), 1e-9).reciprocal();
     return smoothstep(GRAIN_FADE_MIN_PIXELS, GRAIN_FADE_FULL_PIXELS, wavelengthPixels);
   }
 
