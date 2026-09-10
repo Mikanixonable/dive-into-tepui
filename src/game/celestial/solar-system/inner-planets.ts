@@ -1,13 +1,14 @@
 // 内惑星(水星・金星)。静的事実・運動・見た目を1体につき1箇所で組む。
 import mercuryTextureUrl from '../../../assets/2k_mercury.jpg';
 import venusTextureUrl from '../../../assets/2k_venus_atmosphere.jpg';
-import { PhaseOffsets, PlanetDef, planetDefForSimZero, StarMotion } from '../../../physics/celestial-motion';
+import { StarMotion } from '../../../physics/celestial-motion';
+import { PhaseOffsets, PlanetDef, planetDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
 import { CelestialSurface } from '../../../render/celestial-surface';
-import type { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { PointEntity } from '../celestial-entity/point-entity';
+import { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { PointCelestialView } from '../celestial-entity/point-celestial-view';
 
 // 内惑星に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type InnerPlanetId = 'mercury' | 'venus';
@@ -87,17 +88,21 @@ export function innerPlanets(
   sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
 ): Record<InnerPlanetId, CelestialEntity> {
   return {
-    mercury: new PointEntity(
+    mercury: new CelestialEntity(
       planetSystem(planetDefForSimZero(MERCURY, phases, simZeroEt), sun).body,
       INNER_PLANET_NAMES.mercury, 'planet',
-      // 平均輝度 0.2306(A_B は公表ボンド)
-      CelestialSurface.textured({ url: mercuryTextureUrl, albedoScale: 0.3815, bondAlbedo: 0.088, averageHue: [1.0088, 0.9974, 0.9997] }),
+      new PointCelestialView(
+        // 平均輝度 0.2306(A_B は公表ボンド)
+        CelestialSurface.textured({ url: mercuryTextureUrl, albedoScale: 0.3815, bondAlbedo: 0.088, averageHue: [1.0088, 0.9974, 0.9997] }),
+      ),
     ),
-    venus: new PointEntity(
+    venus: new CelestialEntity(
       planetSystem(planetDefForSimZero(VENUS, phases, simZeroEt), sun).body,
       INNER_PLANET_NAMES.venus, 'planet',
-      // 平均輝度 0.5561(A_B は公表ボンド)
-      CelestialSurface.textured({ url: venusTextureUrl, albedoScale: 1.3666, bondAlbedo: 0.76, averageHue: [1.4227, 0.9352, 0.3977] }),
+      new PointCelestialView(
+        // 平均輝度 0.5561(A_B は公表ボンド)
+        CelestialSurface.textured({ url: venusTextureUrl, albedoScale: 1.3666, bondAlbedo: 0.76, averageHue: [1.4227, 0.9352, 0.3977] }),
+      ),
     ),
   };
 }

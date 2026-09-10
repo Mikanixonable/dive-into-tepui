@@ -1,11 +1,6 @@
 // マップビューの縮尺バー(#hud-map-scale)の要素へ、計算済みの縮尺値を書き込む。
-import { formatMapScaleDistance } from '../map-scale';
-import type { MapScaleData } from '../map-scale';
-
-export interface MapScaleViewModel {
-  readonly visible: boolean;
-  readonly scale: MapScaleData | null;
-}
+import { formatMapScaleDistance, mapScaleFor } from '../map-scale';
+import type { CameraSystem } from '../../camera/camera-system';
 
 export class MapScaleBadge {
   // 縮尺パネルへラベル要素(「縮尺」)を1度だけ差し込む。
@@ -21,15 +16,17 @@ export class MapScaleBadge {
   // マップビューの縮尺は、カメラから画面中心までではなく、現在フォーカスしている対象の
   // 深度における meters-per-pixel から求める。パンしてもフォーカス対象を基準にするため、
   // 同じ天体を見続ける限り、表示値はスクロールズームだけに対応して変化する。
-  public sync(view: MapScaleViewModel): void {
+  public sync(isMapView: boolean, cameraSystem: CameraSystem): void {
     const panel = this.els.get('map-scale');
     if (!panel) return;
     // 基底の CSS 規則(#hud-map-scale)は display:none で固定されているため、'' へ戻すだけでは
     // 表示に復帰しない。表示側は常に明示の display 値を書く。
-    panel.style.display = view.visible ? 'block' : 'none';
-    if (!view.visible) return;
+    panel.style.display = isMapView ? 'block' : 'none';
+    if (!isMapView) return;
 
-    const scale = view.scale;
+    const focus = cameraSystem.mapCamera.resolvedFocus;
+    const metersPerPixel = cameraSystem.activeCameraScale(focus);
+    const scale = mapScaleFor(metersPerPixel);
     const ruler = this.els.get('map-scale-ruler');
     if (!scale || !ruler) {
       panel.style.display = 'none';

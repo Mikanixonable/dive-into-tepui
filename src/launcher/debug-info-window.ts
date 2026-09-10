@@ -1,8 +1,9 @@
 // デバッグ情報ウィンドウ: フレーム時間の計測・集計と、その表示、そして描画パスの中間結果を映す
 // デバッグ表示の選択。窓が開いている間だけ計測が走る(`on` が計測の可否そのもの)。
 import type { WebGPURenderer } from 'three/webgpu';
-import { PropertyWindow, type PropertyRow } from '../hud/windows/property-window';
-import { injectOnce, SegmentedControl, TabBar } from '../hud/widgets';
+import { PropertyWindow } from '../hud/windows/property-window';
+import { SegmentedControl, TabBar } from '../hud/widgets';
+import { injectOnce } from '../hud/inject-style';
 import { DEBUG_TARGETS, type DebugTargetHost, type DebugTargetId } from '../render/pipeline/debug-target';
 import type { RenderStyleSetting } from '../render/render-style';
 import { fmtDuration } from '../hud/utils';
@@ -15,6 +16,7 @@ import { ProteinMotionMetricsRecorder } from '../game/protein/protein-motion-met
 import { LODS_FINE_TO_COARSE } from '../game/protein/protein-motion-controller';
 import type { PerfCounts, PerfCountSource } from '../game/perf-counts';
 import type { EntityCountKind } from '../game/dynamic/dynamic-entity/entity-kind';
+import type { PropertyRow } from '../hud/windows/property-window-content';
 
 // エンティティ数の行。並び順と表示名はここで決める。
 const ENTITY_COUNT_ROWS: readonly { key: EntityCountKind; label: string }[] = [

@@ -3,10 +3,10 @@
 // 役割トークンは毎フレームその時点の対象へ解決されるので、操作対象の乗り換えやターゲットの
 // 付け替えをまたいでも同じ基準を指し続ける(DEVELOP/SPEC/CELESTIAL.md 8節)。
 import { orbitingAttractorOf } from '../physics/attractor';
-import { CelestialMotion } from '../physics/celestial-motion';
 import { FrameAnchorSource, FrameRole, frameRoleOf } from '../physics/frame';
 import { KinematicState } from '../physics/kinematic-state';
-import type { CelestialSystem } from './celestial/celestial-system';
+import type { CelestialBodies } from './celestial/celestial-bodies';
+import type { CelestialBody } from '../physics/celestial-body';
 
 // 解決に要る問い合わせをまとめた受け口。いずれも ECI 状態を答える。
 interface AnchorTargets {
@@ -15,7 +15,7 @@ interface AnchorTargets {
   // 操作対象の時刻 t における状態。乗り換え中などで定まらなければ null。
   controlledState(t: number): KinematicState | null;
   // 航法ターゲットの時刻 t における状態。設定されていない・消滅していれば null。
-  navTargetState(bodies: readonly CelestialMotion[], t: number): KinematicState | null;
+  navTargetState(bodies: readonly CelestialBody[], t: number): KinematicState | null;
 }
 
 // 役割トークンが一時的に解決できないあいだ直前の状態を保つ枠。連続ミスはフレームで数える —
@@ -33,11 +33,11 @@ export class FrameAnchors implements FrameAnchorSource {
   private attractorCacheValue: string | null = null;
 
   constructor(
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialBodies: CelestialBodies,
     private readonly targets: AnchorTargets,
   ) {}
 
-  get bodies(): readonly CelestialMotion[] { return this.celestialSystem.celestialMotions; }
+  get bodies(): readonly CelestialBody[] { return this.celestialBodies.celestialMotions; }
 
   // このフレームが天体の位置を厳密に引く表示時刻を差し込む。フレームの先頭で1度だけ呼ぶ —
   // 役割トークンの猶予とキャッシュの区切りがこの呼び出し回数で決まる。
@@ -51,7 +51,7 @@ export class FrameAnchors implements FrameAnchorSource {
     const role = frameRoleOf(id);
     if (role !== null) return this.heldRoleState(role, this.resolveRoleState(role, t));
     return this.targets.entityState(id, t)
-      ?? this.celestialSystem.find(id)?.motion.stateAt(this.bodiesPivot) ?? null;
+      ?? this.celestialBodies.findMotion(id)?.stateAt(this.bodiesPivot) ?? null;
   }
 
   // 基準 id が公転している主天体。離心率1未満の周回軌道にないなら null。
