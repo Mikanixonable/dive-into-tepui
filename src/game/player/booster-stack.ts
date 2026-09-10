@@ -154,6 +154,11 @@ export class BoosterStack {
     return this._stages.map((stage) => ({ ...stage }));
   }
 
+  /** 船体側から最後尾順の段の識別子。 */
+  get stageIds(): readonly string[] {
+    return this._stages.map((stage) => stage.id);
+  }
+
   /** 全段の乾燥質量と残燃料を足した、船体に加わる質量 [kg]。 */
   get totalMass(): number {
     return this._stages.reduce((sum, stage) => sum + stage.dryMass + stage.fuel, 0);

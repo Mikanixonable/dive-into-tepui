@@ -9,7 +9,7 @@ import { ProteinCombatState } from '../../protein/protein-combat-state';
 import { ProteinSphereCollisionGeometry } from '../../protein/protein-sphere-collision';
 import { proteinLocalImpactPoint, proteinSiteWorldPosition } from '../../protein/protein-anchors';
 import { DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings } from '../../protein/protein-display';
-import { Enemy, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore } from './enemy';
+import { ENEMY_MODEL_SCALE, Enemy, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore } from './enemy';
 import { proteinAssetGate, type ProteinAssetId } from '../../protein/protein-asset-loader';
 import type { SpawnGate } from '../entity-registry';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
@@ -18,15 +18,15 @@ import type { ProteinHudSnapshot } from '../../protein/protein-schema';
 import type { EnemySaveData, ProteinEnemySaveData } from '../../save/save-data';
 import type { FormationRole } from './entity-kind';
 import { ProteinEnemyView } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
-import { ENEMY_MODEL_SCALE, type EnemyCollisionShape } from './enemy-motion';
+import type { EnemyCollisionShape } from './enemy-motion';
 import { apparentSizePx } from '../../../math/projection';
 import {
   ProteinMotionController, proteinMotionLodForProjectedSize,
   type ProteinMotionDisplay, type ProteinMotionLod,
 } from '../../protein/protein-motion-controller';
-import {
-  dynamicEntityVisible, type DynamicViewFrame,
-} from '../../../render/dynamic/dynamic-view';
+import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
+import type { ProteinVisualSource } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
+import type { OrbitReference } from '../../orbit-reference';
 
 // タンパク質の構造は揺らぐが、判定形状は常に静止した1つに固定するので、慣性も1つでよい。
 // 漂流機体と同じく非対称にして、ジャニベコフ効果(中間軸不安定性)で無秩序に回らせる。
@@ -102,7 +102,7 @@ export class ProteinEnemy extends Enemy {
       definition.asset,
       'saved' in init ? (init.saved as ProteinEnemySaveData).protein : undefined,
     );
-    const proteinView = new ProteinEnemyView(definition, display, scene);
+    const proteinView = new ProteinEnemyView(definition, display, ENEMY_MODEL_SCALE, scene);
     // 表示が原子模型へ切り替わっても、判定形状は常に同じ球列に固定する。
     const collision = new ProteinSphereCollisionGeometry(
       definition.collisionSpheres, ENEMY_MODEL_SCALE,
@@ -159,9 +159,12 @@ export class ProteinEnemy extends Enemy {
   public get hudSnapshot(): ProteinHudSnapshot { return this.combat.hudSnapshot(); }
 
   // View へ渡す LOD とモード係数を、外部のフレーム入力から確定してから描画同期へ進む。
-  public override sync(context: DynamicViewFrame): void {
+  public override sync(
+    context: DynamicViewFrame, visible: boolean, active: boolean,
+    orbitReference: OrbitReference | undefined,
+  ): void {
     // 本体と同じ可視条件で表示時刻の状態を引き、非表示フレームは変形計算を止める。
-    const displayed = this.motion.alive && dynamicEntityVisible(this, context)
+    const displayed = this.motion.alive && visible
       ? this.motion.stateAt(context.displayTime)
       : null;
     this.motionDisplayActive = displayed !== null;
@@ -185,7 +188,19 @@ export class ProteinEnemy extends Enemy {
         this.motionCpuMsValue = performance.now() - cpuStart;
       }
     }
-    super.sync(context);
+    super.sync(context, visible, active, orbitReference);
+  }
+
+  // 表示設定と、このフレームに確定した変形係数を共通の表示入力へ足す。
+  protected override renderSource(
+    context: DynamicViewFrame, visible: boolean, active: boolean,
+    orbitReference: OrbitReference | undefined,
+  ): ProteinVisualSource {
+    return {
+      ...super.renderSource(context, visible, active, orbitReference),
+      display: this.displaySettings,
+      motionDisplay: this.motionDisplay,
+    };
   }
 
   // 陣形内に生存中のエネルギー役がいる間だけ、攻撃行動が有効になる。
