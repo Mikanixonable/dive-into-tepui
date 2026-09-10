@@ -12,7 +12,7 @@ GitHub Pagesのdocsを本番配信元として、ゲーム本体と全世界z0�
 2. 本番生成物ではdocs/earth-surface/<datasetId>/へ全世界z0〜z7とbaseを配置する。
 3. Pages URLがrepository subpathでも、manifest URLから相対asset URLを作る。
 4. manifestは短いcache、datasetId付きtile/base/climateはimmutable cacheとする。
-5. EARTH_SURFACE_PAGES_MAX_BYTESを設ける。既定値はGitHub Pagesの公開上限1 GiB
+5. EARTH_SURFACE_PAGES_MAX_BYTESを設ける。既定値はGitHub Pagesの公開上限1 GB
    ([GitHub Pages limits](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits))とし、
    fixtureではテスト用の小さい値を明示して使う。全世界生成をこの予算に合わせて縮小してはならない。
    超過時は公開を止め、実測値・LOD・タイル数・不足入力を記録する。
