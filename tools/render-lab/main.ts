@@ -5,7 +5,9 @@ import { PROTEIN_ASSET_IDS, requestProteinAsset } from '../../src/game/protein/p
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
 import { AMBIENT_STRONG, AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
-import { GraphicsSettings, type ChoiceValue, type GraphicsOptionKey } from '../../src/render/graphics-settings';
+import { withGraphicsOption, type ChoiceValue, type GraphicsOptionKey } from '../../src/render/graphics-settings';
+import { MemorySettingStorage } from '../../src/settings/stored-setting';
+import { UserSettings } from '../../src/settings/user-settings';
 import { GraphicsPanel } from '../../src/hud/panels/graphics-panel';
 import { SegmentedControl, WIDGET_STYLE } from '../../src/hud/widgets';
 import { injectOnce } from '../../src/hud/inject-style';
@@ -57,9 +59,11 @@ async function init(): Promise<void> {
 
   // タンパク質のケースは fetch で来る構造・motion を同期的に読むので、器を組む前に待つ。
   await Promise.all(PROTEIN_ASSET_IDS.map((id) => requestProteinAsset(id)));
-  // **保存先を持たない設定**。残すと、撮影が「人間が最後に押した状態」に依存して黙って変わる。
-  const graphics = new GraphicsSettings(null);
-  const view = await LabView.create(document.getElementById('view') as HTMLCanvasElement, graphics);
+  // **この実行の中だけで生きる設定**。残すと、撮影が「人間が最後に押した状態」に依存して黙って変わる。
+  const settings = new UserSettings(new MemorySettingStorage());
+  const view = await LabView.create(
+    document.getElementById('view') as HTMLCanvasElement, settings.graphics.current,
+  );
 
   // つまみの位置は表示だけを担い、値の正本は LabView が持つ。**つまみの刻みへ丸めた値を
   // 書き戻さない** — ケース既定の向きが刻みに乗っていないので、丸めると絵が変わる。
@@ -128,10 +132,14 @@ async function init(): Promise<void> {
   const styles = new SegmentedControl<RenderStyle>('スタイル', RENDER_STYLES, selectStyle);
   document.getElementById('modes')!.append(styles.element, targets.element);
 
-  // 描画品質設定のパネル(押し出し先への登録はパネル自身が行う)。
-  const panel = new GraphicsPanel(graphics, HIDDEN_GRAPHICS_KEYS);
+  // 描画品質設定のパネル。パネルの操作を設定へ流し、設定の現在値を絵とパネルの両方へ配る。
+  const panel = new GraphicsPanel(settings.graphics.current, HIDDEN_GRAPHICS_KEYS);
   document.getElementById('graphics')!.appendChild(panel.element);
-  graphics.bind(view);
+  panel.onChange = (graphics) => settings.graphics.set(graphics);
+  settings.graphics.subscribe((graphics) => {
+    view.applyGraphics(graphics);
+    panel.sync(graphics);
+  });
 
   // 一様な環境光。ゲーム本体はビューの種別から強弱を決めるが、ここには種別が無いので直に選ぶ。
   const ambient = new SegmentedControl<number>('強さ', [
@@ -189,7 +197,9 @@ async function init(): Promise<void> {
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     setStyle: selectStyle,
     setTarget: (target) => { targets.setSelected(target); view.showDebugTarget(target); },
-    setGraphicsOption: (key, value) => { graphics.setOption(key, value); },
+    setGraphicsOption: (key, value) => {
+      settings.graphics.set(withGraphicsOption(settings.graphics.current, key, value));
+    },
     measure: (name, angles) => view.measure(name, angles),
   };
 }
