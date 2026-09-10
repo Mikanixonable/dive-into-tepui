@@ -37,13 +37,13 @@ export class SettingsView {
         for (const [tab, panel] of tabPanels) panel.hidden = tab !== selectedTab;
       },
     );
-    tabs.element.classList.add('sv-tabs');
+    tabs.element.classList.add('sv-tabs', 'ui-surface-inset');
     this.element.appendChild(tabs.element);
 
     // 見出し付きの節を1つ作る。タブ切り替え時に対応する節だけを取り出せるよう登録しておく。
     const addTabPanel = (tab: SettingsTab, title: string): HTMLElement => {
       const section = document.createElement('section');
-      section.className = 'sv-section sv-tab-panel';
+      section.className = 'sv-section sv-tab-panel ui-surface-inset';
       section.setAttribute('role', 'tabpanel');
       section.setAttribute('aria-label', title);
       section.hidden = true;

@@ -9,6 +9,7 @@ import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from '../../hud/breakpoints';
 import {
   FONT_FAMILY, FONT_XXS, FONT_XL, SPACE_1, TRANSITION_SLOW, Z_TOUCH_UI,
 } from '../../theme';
+import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
 
 const STYLE = `
 /* システムウィンドウ(ESC メニュー・終了画面・ヘルプ)より下に置く。
@@ -25,18 +26,15 @@ const STYLE = `
 #touch-ui .tbtn {
   pointer-events: none; touch-action: none;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: var(--glass-quiet); border: 1px solid var(--glass-edge); border-radius: var(--radius-panel);
-  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
   color: var(--text-muted); line-height: 1.1;
 }
 #touch-ui.shown .tbtn { pointer-events: auto; }
 #touch-ui .tbtn .g { font-size: ${FONT_XL}; }
 #touch-ui .tbtn .l { font-size: ${FONT_XXS}; color: var(--text-dim); margin-top: ${SPACE_1}; }
-#touch-ui .tbtn.pressed { background: var(--color-primary-fill-strong); border-color: var(--color-primary); color: var(--text-strong); }
+#touch-ui .tbtn.pressed { background: var(--color-primary-fill-strong); color: var(--text-strong); }
 /* .on: 押下中かどうかに関わらず、モードが実際に ON の間ずっと点灯させる
    (制動・微動・ホールド・推力ラッチなどの向け。.pressed と見た目は同じでよい) */
-#touch-ui .tbtn.on { background: var(--color-primary-fill-strong); border-color: var(--color-primary); color: var(--text-strong); }
+#touch-ui .tbtn.on { background: var(--color-primary-fill-strong); color: var(--text-strong); }
 #touch-ui .mini-col {
   position: absolute; display: grid; gap: 6px; grid-template-rows: repeat(2, 52px);
 }
@@ -51,7 +49,7 @@ const STYLE = `
 #touch-fire {
   position: absolute; right: calc(22px + var(--safe-r)); bottom: calc(138px + var(--safe-b));
   width: 74px; height: 74px; border-radius: 50% !important;
-  border-color: var(--color-primary-edge) !important; color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
 }
 #touch-zoom {
   position: absolute; right: calc(112px + var(--safe-r)); bottom: calc(148px + var(--safe-b));
@@ -110,9 +108,6 @@ const STYLE = `
   }
   #touch-mode-col .tbtn { width: 38px !important; }
   #hud-chase-reset { left: calc(50% + 20px) !important; }
-}
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  #touch-ui .tbtn { background: var(--surface); }
 }
 `;
 
@@ -175,6 +170,7 @@ export class TouchControls {
 
   // 仮想パッド一式の DOM を組み立てる。
   constructor(private readonly input: Input) {
+    injectCommonUiStyle();
     const built = this.buildRoot();
     this.root = built.root;
     this.styleEl = built.style;
@@ -217,7 +213,7 @@ export class TouchControls {
   // そこへ b.key で登録し、syncModeButtons が点灯対象として読む(トグル・推力ラッチ共通)。
   private makeButton(parent: HTMLElement, b: Btn, id = '', registry?: Map<KeyBinding, HTMLElement>): HTMLElement {
     const e = document.createElement('div');
-    e.className = 'tbtn';
+    e.className = 'tbtn ui-surface-quiet';
     if (id) e.id = id;
     e.innerHTML = `<span class="g">${b.glyph}</span>${b.label ? `<span class="l">${b.label}</span>` : ''}`;
     // 押下中は仮想キーを ON にし続ける
@@ -289,7 +285,7 @@ export class TouchControls {
   private buildZoomToggle(root: HTMLElement): void {
     const zoomBtn = document.createElement('div');
     zoomBtn.id = 'touch-zoom';
-    zoomBtn.className = 'tbtn';
+    zoomBtn.className = 'tbtn ui-surface-quiet';
     zoomBtn.innerHTML = `<span class="g">ZOOM</span>`;
     let zoomOn = false;
     // タップのたびに ON/OFF を反転させる

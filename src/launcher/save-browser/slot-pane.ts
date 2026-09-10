@@ -15,17 +15,17 @@ const STYLE = `
    「見ている」行は背景をわずかに明るくするだけで区別する。 */
 #save-browser .sb-slot-row {
   display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4) var(--space-3) var(--space-3);
-  border: 1px solid var(--edge); border-left: 2px solid transparent; border-radius: var(--radius-m); cursor: pointer;
+  border: 0; border-radius: var(--radius-m); cursor: pointer;
 }
 #save-browser .sb-slot-row.viewed { background: var(--fill-1); }
-#save-browser .sb-slot-row.on { border-left-color: var(--color-primary); }
+#save-browser .sb-slot-row.on { background: var(--color-primary-fill-weak); color: var(--color-primary); }
 #save-browser .sb-slot-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 #save-browser .sb-slot-name { font-size: var(--font-s); }
 #save-browser .sb-slot-meta { font-size: var(--font-xxs); color: var(--text-dim); }
 #save-browser .sb-slot-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
 /* 左ペインは幅が狭いので、フッターのボタンは横並びにせず縦積みにして折り返しを防ぐ。 */
 #save-browser .sb-slot-footer { display: flex; flex-direction: column; gap: var(--space-3); margin-top: auto; padding-top: var(--space-3); }
-#save-browser span.sb-btn.sb-btn-play { color: var(--text); border-color: var(--text-dim); }
+#save-browser span.sb-btn.sb-btn-play { color: var(--text); }
 @media ${MQ_COMPACT} {
   #save-browser .sb-pane-slots { flex: 1 1 0; }
 }
@@ -88,7 +88,7 @@ function buildSlotRow(
   const viewed = s.id === viewedSlotId;
 
   const row = document.createElement('div');
-  row.className = 'sb-slot-row';
+  row.className = 'sb-slot-row ui-selectable';
   row.classList.toggle('viewed', viewed);
   row.classList.toggle('on', active);
   row.addEventListener('click', () => callbacks.onSelectSlot(s.id));

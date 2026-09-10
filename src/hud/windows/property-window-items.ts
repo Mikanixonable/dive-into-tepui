@@ -27,7 +27,7 @@ export class PropertyWindowItems<A extends string = string> {
     this.element.innerHTML = '';
     for (const it of items) {
       const row = document.createElement('div');
-      row.className = 'prop-window-item';
+      row.className = 'prop-window-item ui-selectable';
       row.setAttribute('role', 'button');
       row.tabIndex = 0;
       row.classList.toggle('on', it.selected === true);
