@@ -1,4 +1,4 @@
-// 雲場と積雲表現が共有する定数・空field契約。coverageと光学的厚みのGPU式は
+// 雲場と積雲表現が共有する定数・空field契約。coverage、雲頂、粒、光学的厚みのGPU式は
 // CloudShapeEvaluatorへ、UVとLODを含むテクスチャ読みはCloudFieldSamplerへ置く。
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
@@ -30,3 +30,8 @@ export const CUMULUS_COVERAGE_KNOB: {
   readonly center: FloatUniform;
   readonly halfWidth: FloatUniform;
 } = { center: uniform(0.34), halfWidth: uniform(0.12) };
+
+// 積雲の粒の一辺 [m]。場の texel(赤道 9.8 km)より細かく、かつ低軌道から見下ろして解像できる
+// 大きさ(高度 900km 以下で全振幅)に取る。これより細かくすると、実際の積雲の塊には近づく代わりに
+// 軌道上のどの構図でも 1 画素を切って消える。
+export const CUMULUS_GRAIN_SIZE = 6000;
