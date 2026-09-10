@@ -139,6 +139,23 @@ export function normalizeMapDisplayToggles(toggles: MapDisplayToggles): MapDispl
   return next;
 }
 
+// 保存された文字列をトグルの組へ読み直す。読めなければ既定値に戻る。
+export function parseMapDisplayToggles(text: string | null): MapDisplayToggles {
+  try {
+    if (!text) return DEFAULT_MAP_DISPLAY_TOGGLES;
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed !== 'object' || parsed === null) return DEFAULT_MAP_DISPLAY_TOGGLES;
+    return normalizeMapDisplayToggles({ ...DEFAULT_MAP_DISPLAY_TOGGLES, ...parsed });
+  } catch {
+    return DEFAULT_MAP_DISPLAY_TOGGLES;
+  }
+}
+
+// トグルの組を保存へ載せる文字列にする。
+export function formatMapDisplayToggles(toggles: MapDisplayToggles): string {
+  return JSON.stringify(toggles);
+}
+
 // カテゴリー名のトグル。恒星は表示の基準点なのでカテゴリー操作の対象外。
 export function celestialClassVisible(cls: CelestialClass, toggles: MapDisplayToggles): boolean {
   switch (cls) {
