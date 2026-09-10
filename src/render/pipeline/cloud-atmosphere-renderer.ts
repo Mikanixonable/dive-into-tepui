@@ -1,36 +1,117 @@
-// 雲fieldを連続体積へ変換する大気側の窓口。CloudVolumeが返す密度を光学積分へ渡し、
-// ここは天体固定への変換と局所散乱の入力だけを所有する。cloudTopの交点は作らない。
+// 雲を、大気の視線積分へ挟む厚み 0 の球殻として解く。どの種類の雲がどの高さに立つか、場のどの
+// 成分から鉛直柱光学深さを引くか、掠める視線の光路をどこで頭打ちにするかを持ち、殻と交わる
+// 1つの入口/出口イベントが、雲自身の透過率と局所放射輝度を返す。
+//
+// **輝度は多重散乱の極限で解く。** 場の階調は覆われている割合なので、殻は「その割合ぶんが
+// 拡散反射する層」として振舞う。届く光は呼び出し側が渡すので、入射の減衰・影・地平線は
+// 大気と同じ1本の式が解く。イベント位置までの背景大気透過と、イベント間の雲透過の合成は
+// AtmosphereCloudLayersが所有し、ここでは二重に適用しない。
 import * as THREE from 'three/webgpu';
-import { greaterThan, max, uniform, vec3, vec4 } from 'three/tsl';
+import { abs, dot, exp, greaterThan, max, min, sqrt, uniform, vec4 } from 'three/tsl';
 import { CloudFieldSampler, type CloudLodMode } from '../cloud/cloud-field-sampler';
-import { CloudVolume } from '../cloud/cloud-volume';
+import { CloudShapeEvaluator } from '../cloud/cloud-shape-evaluator';
 import type { AtmosphereClouds } from '../atmosphere';
-import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
+import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 
-export const CLOUD_VOLUME_ALBEDO = 0.8;
+// 大気の中へ殻として立てる雲の種類。**外側の殻から順に並べる** — 同心なので、視線が交わる
+// 順序は外へ入り、内へ入り、内から出て、外から出る、に決まる。
+export const CLOUD_SHELL_SPECIES = ['cirrus', 'cumulus'] as const;
+export type CloudSpecies = (typeof CLOUD_SHELL_SPECIES)[number];
 
-export const CLOUD_VOLUME_SPECIES = ['cirrus', 'cumulus'] as const;
-export type CloudSpecies = (typeof CLOUD_VOLUME_SPECIES)[number];
+// 鉛直の光学的厚みへ張る上限。ゲインを上げた柱はここで飽和する。積雲の柱が取りうる厚みの上限
+// (被覆率 0.99 で ≈4.6)の上に置き、ゲイン 1 では効かない。
+const MAX_SHELL_OPTICAL_DEPTH = 5;
 
-export interface CloudVolumeMedium {
-  readonly extinction: Vec3Node;
-  readonly source: Vec3Node;
+// 層の厚みへ張る下限 [m]。掠める視線の光路は厚みぶんの弦で頭打ちにするので、厚み 0 では
+// 地平線ぎわの視線が飽和する。
+const MIN_SHELL_THICKNESS = 1;
+const CLOUD_SHAPE_EVALUATOR = new CloudShapeEvaluator(0);
+
+// 殻 1 枚の見え方。鉛直の光学的厚みは、場から引いた厚みを cutoff で足切りし、gain を掛けたもの。
+// albedo は殻の拡散反射率、bottomAltitude と topAltitude はその殻が代表する層の高度 [m] で、
+// 殻は層の中央に立ち、層の厚みが掠める視線の光路を決める。
+export interface CloudShellKnob {
+  readonly cutoff: FloatUniform;
+  readonly gain: FloatUniform;
+  readonly albedo: FloatUniform;
+  readonly bottomAltitude: FloatUniform;
+  readonly topAltitude: FloatUniform;
+}
+
+// 種類ごとの殻。**どれも不透明な積雲との馴染みを目で追い込んだ値で、場を差し替えたら追い込み
+// 直す。** 巻雲は熱帯の圏界面付近(実際の巻雲は極域 3〜8 km、温帯 5〜13 km、熱帯 6〜18 km に
+// 張る)の 1 枚、積雲は雲底から中間調が多い覆いの縁までを 1 枚で代表する。
+//
+// **仮設**: render-lab のつまみ(tools/render-lab/main.ts)から動かせるよう uniform にしてある。
+// 生成側の場へ差し替えたあとにもう一段の追い込みが要るので、それまでは畳まない。
+export const CLOUD_SHELL_KNOB: Readonly<Record<CloudSpecies, CloudShellKnob>> = {
+  cirrus: {
+    cutoff: uniform(0), gain: uniform(1), albedo: uniform(1),
+    bottomAltitude: uniform(15e3), topAltitude: uniform(16e3),
+  },
+  cumulus: {
+    cutoff: uniform(0.05), gain: uniform(1), albedo: uniform(1),
+    bottomAltitude: uniform(0), topAltitude: uniform(2e3),
+  },
+};
+
+// 殻を立てる高度 [m]。
+export function shellAltitudeOf(species: CloudSpecies): FloatNode {
+  const knob = CLOUD_SHELL_KNOB[species];
+  return knob.bottomAltitude.add(knob.topAltitude).mul(0.5);
+}
+
+// 殻と交わる 1 点ぶんの、視線が受ける減衰と、その点が視線へ足す放射輝度。
+export interface CloudShellSample {
+  // 場から得た鉛直柱光学深さ。cirrusはBを直接、cumulusはRから変換する。
+  readonly columnOpticalDepth: FloatNode;
+  // 鉛直柱を視線へ写す倍率。球殻の厚みで接線側の発散を有限化する。
+  readonly airmass: FloatNode;
+  readonly transmittance: FloatNode;
+  // イベント局所の放射輝度。背景大気透過と手前イベント透過はここでは掛けない。
+  readonly radiance: Vec3Node;
+}
+
+// 場のチャネル契約: Rは積雲の被覆率、Gは雲頂高度(この殻の光学深さへ混ぜない)、Bは巻雲の
+// 鉛直柱光学深さ、Aはこの殻の光学モデルでは使わない。巻雲はBをそのまま、積雲はRを柱の厚みへ直す。
+//
+// **不透明な積雲として立てたぶんを引かない。** 不透明な殻は G バッファへ深度を書くので、その
+// 手前で終わる視線では殻の交点が区間の外へ落ちて寄与が消える — 引き算は同じ遮蔽を二重に効かせ、
+// 塔の周りに殻の抜けを作る。むしろ塔の側に残る被覆境界の濃淡差を、この殻が跨いで埋める。
+function columnOpticalDepthOf(species: CloudSpecies, field: Vec4Node): FloatNode {
+  switch (species) {
+    case 'cirrus':
+      return field.b;
+    case 'cumulus':
+      return CLOUD_SHAPE_EVALUATOR.columnOpticalDepth(field.r);
+  }
+}
+
+// つまみを通した殻の鉛直の光学的厚み。足切りを引いた残りへゲインを掛け、上限で頭打ちにする。
+function opticalDepthOf(species: CloudSpecies, field: Vec4Node): FloatNode {
+  const knob = CLOUD_SHELL_KNOB[species];
+  const raised = max(columnOpticalDepthOf(species, field).sub(knob.cutoff), 0).mul(knob.gain);
+  return min(raised, MAX_SHELL_OPTICAL_DEPTH);
 }
 
 export class CloudAtmosphereRenderer {
+  // 雲場の読み取りと形状の解釈は共有入力層へ置く。ここは殻の散乱だけを所有する。
   private readonly fieldSampler = new CloudFieldSampler();
-  private readonly volume = new CloudVolume(this.fieldSampler);
   private readonly bodyFromWorld: Mat4Uniform;
   private readonly active: FloatUniform;
+  // 種類ごとに、その殻を描くか。
   private readonly enabled: Readonly<Record<CloudSpecies, FloatUniform>> = {
     cirrus: uniform(1), cumulus: uniform(1),
   };
 
+  // 天体 1 体ぶんの雲の uniform を確保する。雲の有無も殻の取捨も uniform で切るので、グラフの
+  // 形は変わらない。
   public constructor() {
     this.bodyFromWorld = uniform(new THREE.Matrix4());
     this.active = uniform(0);
   }
 
+  // いま解く雲。null なら殻は立たない。
   public set(clouds: AtmosphereClouds | null): void {
     this.active.value = clouds === null ? 0 : 1;
     if (clouds === null) return;
@@ -38,7 +119,8 @@ export class CloudAtmosphereRenderer {
     this.fieldSampler.setTexture(clouds.field);
   }
 
-  public setSpeciesEnabled(species: CloudSpecies, enabled: boolean): void {
+  // 種類ごとに、その殻を描くかを置き直す。
+  public setShellEnabled(species: CloudSpecies, enabled: boolean): void {
     this.enabled[species].value = enabled ? 1 : 0;
   }
 
@@ -46,35 +128,50 @@ export class CloudAtmosphereRenderer {
     this.fieldSampler.setLodSampling(mode, fixedLevel);
   }
 
-  // 連続雲が有効なrayでは、境界の取りこぼしを散らすためのblue noiseを使わない。密度を
-  // 中点積分する体積へ位相ジッタを掛けると、薄い柱が画素ごとに消えるためである。
-  public hasVolume(): BoolNode {
-    return greaterThan(this.active.mul(this.enabled.cirrus.add(this.enabled.cumulus)), 0);
+  // その種類の殻が立っているか。
+  public present(species: CloudSpecies): BoolNode {
+    return greaterThan(this.shellPresence(species), 0);
   }
 
-  // offsetとrayDirは大気積分器の真球空間、sunDirは点から恒星への真球空間方向、
-  // groundRadiusとfootprintは[m]。密度はCloudVolumeから一度だけ取得し、複数speciesを
-  // 密度加重した局所sourceへまとめる。
-  public mediumAt(
-    offset: Vec3Node, rayDir: Vec3Node, sunDir: Vec3Node, sunRadiance: Vec3Node,
-    groundRadius: FloatNode, footprint: FloatNode,
-  ): CloudVolumeMedium {
-    const bodyOffset = this.bodyFromWorld.mul(vec4(offset, 0)).xyz;
-    const bodyRay = this.bodyFromWorld.mul(vec4(rayDir, 0)).xyz;
-    const bodySun = this.bodyFromWorld.mul(vec4(sunDir, 0)).xyz;
-    const density = this.volume.densityAt(bodyOffset, groundRadius, footprint);
-    const cirrus = density.cirrus.mul(this.active).mul(this.enabled.cirrus);
-    const cumulus = density.cumulus.mul(this.active).mul(this.enabled.cumulus);
-    const extinctionScalar = cirrus.add(cumulus);
-    // 雲粒の散乱は局所の恒星輝度を直接sourceへ置く。rayMarch側が区間透過を一度だけ
-    // 掛けるため、ここではcloud自身の透過率を再適用しない。
-    const phase = max(bodyRay.dot(bodySun), 0).mul(0.75).add(0.25);
-    const source = sunRadiance.mul(
-      cirrus.add(cumulus).mul(CLOUD_VOLUME_ALBEDO).mul(phase),
-    ).div(max(extinctionScalar, 1e-30));
+  // 殻と交わる 1 点が視線へ与える減衰と放射輝度。offset は天体中心から交点へのベクトル、
+  // rayDir は視線の向き、sunDir は交点から恒星への向き(いずれも天体を真球にした空間で、
+  // 向きは単位長)。sunRadiance はその交点へ届く恒星の輝度、footprint はその交点で画面 1 px
+  // が張る実寸 [m]。
+  public scatteredAt(
+    species: CloudSpecies, shellRadius: FloatNode, offset: Vec3Node, rayDir: Vec3Node,
+    sunDir: Vec3Node, sunRadiance: Vec3Node, footprint: FloatNode,
+  ): CloudShellSample {
+    const knob = CLOUD_SHELL_KNOB[species];
+    const up = offset.div(shellRadius);
+    const field = this.fieldAt(up, footprint, shellRadius);
+    const columnOpticalDepth = opticalDepthOf(species, field).mul(this.shellPresence(species));
+    // 視線が層を斜めに抜けるぶんの倍率。**水平では発散する**ので、層の厚みぶんの弦 √(2RΔh) を
+    // 通る視線を上限に取る(地球の 1 km 厚なら光路 226 km、天頂の 113 倍)。
+    const thickness = max(knob.topAltitude.sub(knob.bottomAltitude), MIN_SHELL_THICKNESS);
+    const grazingCosine = sqrt(thickness.mul(0.5).div(shellRadius));
+    const airmass = max(abs(dot(up, rayDir)), grazingCosine).reciprocal();
+    const covered = exp(columnOpticalDepth.mul(airmass).negate()).oneMinus();
     return {
-      extinction: vec3(extinctionScalar),
-      source,
+      columnOpticalDepth,
+      airmass,
+      transmittance: covered.oneMinus(),
+      radiance: sunRadiance.mul(covered.mul(max(dot(up, sunDir), 0)).mul(knob.albedo)),
     };
+  }
+
+  // その種類の殻が立っているなら 1、立っていないなら 0。
+  private shellPresence(species: CloudSpecies): FloatNode {
+    return this.active.mul(this.enabled[species]);
+  }
+
+  // 天体を真球にした空間の単位方向 up における場。UVは共有samplerが積雲の殻と同じ規則で読む。
+  // **mip 段は明示で渡す** — 交点の uv は天体の縁と不透明面の際で
+  // 画面の隣の画素と続かず、画面微分から選ばれる段が当てにならない。
+  private fieldAt(up: Vec3Node, footprint: FloatNode, shellRadius: FloatNode): Vec4Node {
+    // 寸法を返すノードは型引数を持たないので、成分を取れる形へ直してから読む。
+    return this.fieldSampler.sample(
+      this.bodyFromWorld.mul(vec4(up, 0)).xyz,
+      this.fieldSampler.lodForWidth(footprint, shellRadius),
+    );
   }
 }
