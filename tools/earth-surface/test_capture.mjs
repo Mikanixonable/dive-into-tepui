@@ -16,7 +16,7 @@ assert.deepEqual(document.viewport, { width: 1920, height: 1080 });
 assert.equal(document.framesPerCase, 300);
 assert.deepEqual(document.replayScenarios.map((entry) => entry.id), [
   'out-of-order-arrival', 'http-404', 'http-408-429-5xx', 'network-failure',
-  '128-layer-capacity', 'dispose-and-generation', 'mipmap-disabled',
+  'layer-capacity', 'dispose-and-generation', 'mipmap-disabled',
 ]);
 assert.ok(document.replayScenarios.every((entry) => entry.status === 'covered-by-tests'));
 assert.equal(document.cases.length, 15);

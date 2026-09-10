@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import {
-  EARTH_BASE_LAYER, EARTH_TILE_LAYERS, EarthSurfaceTiles, EarthSurfaceView, earthPageAt,
+  EARTH_BASE_LAYER, EARTH_TILE_FRONTIER_LAYERS, EarthSurfaceTiles, EarthSurfaceView, earthPageAt,
   earthTileChildren, earthTileId, earthTileKey, earthTileNeighbors, earthTileParent,
   earthTilesAdjacent, earthTileSampleUv,
 } from '../../src/render/earth-surface-tiles';
@@ -25,6 +25,18 @@ class SyntheticProjection implements EarthTileProjection {
 class DeepProjection implements EarthTileProjection {
   public evaluate(key: EarthTileKey): EarthTileMetric {
     return { visible: true, errorPx: 3, priority: 1 / (1 + key.z) };
+  }
+}
+
+// 子ごとのpriorityが交錯しても、親単位の最大値でgroupを選ばせる投影。
+class InterleavedGroupProjection implements EarthTileProjection {
+  public evaluate(key: EarthTileKey): EarthTileMetric {
+    if (key.z === 0) return { visible: true, errorPx: 3, priority: 0 };
+    if (key.z !== 1) return { visible: true, errorPx: 1.5, priority: 0 };
+    const priority = key.x < 2
+      ? (key.x === 0 && key.y === 0 ? 90 : 1)
+      : 100 - key.x * 10 - key.y * 10;
+    return { visible: true, errorPx: 1.5, priority };
   }
 }
 
@@ -82,7 +94,7 @@ function admitResidentGroup(
   resident: Map<string, EarthTileResident>, nextLayer: number,
 ): number {
   const pinned = new Set(tiles.pinnedLayers());
-  while (resident.size + candidates.length > EARTH_TILE_LAYERS) {
+  while (resident.size + candidates.length > EARTH_TILE_FRONTIER_LAYERS) {
     const victim = [...resident.values()].find((tile) => !pinned.has(tile.layer));
     assert.ok(victim !== undefined, 'resident admission has no evictable layer');
     resident.delete(earthTileId(victim.key));
@@ -91,10 +103,10 @@ function admitResidentGroup(
   let layer = nextLayer;
   for (const key of candidates) {
     if (resident.has(earthTileId(key))) continue;
-    while (used.has(layer)) layer = (layer + 1) % EARTH_TILE_LAYERS;
+    while (used.has(layer)) layer = (layer + 1) % EARTH_TILE_FRONTIER_LAYERS;
     resident.set(earthTileId(key), { key, layer });
     used.add(layer);
-    layer = (layer + 1) % EARTH_TILE_LAYERS;
+    layer = (layer + 1) % EARTH_TILE_FRONTIER_LAYERS;
   }
   return layer;
 }
@@ -160,7 +172,7 @@ export function register(): void {
       const group = [...groups.values()].find((keys) => keys.length === 4) ?? candidates;
       if (group.length === 0) continue;
       nextLayer = admitResidentGroup(group, tiles, resident, nextLayer);
-      assert.ok(resident.size <= EARTH_TILE_LAYERS);
+      assert.ok(resident.size <= EARTH_TILE_FRONTIER_LAYERS);
     }
     assert.ok(candidateStages.has(6));
     assert.ok(candidateStages.has(7));
@@ -179,6 +191,26 @@ export function register(): void {
     assert.equal(frontier.filter((key) => key.z === 1).length, 4);
     assert.equal(frontier.filter((key) => key.z === 2).length, 16);
     assertBalanced(frontier);
+  });
+
+  test('earth tiles: 交錯するpriorityでも候補は親group単位で連続する', () => {
+    const tiles = new EarthSurfaceTiles();
+    const projection = new InterleavedGroupProjection();
+    const roots = residents(ROOTS);
+    tiles.sync(projection, roots, 0);
+    tiles.sync(projection, roots, 250);
+
+    const candidates = tiles.requestCandidates(projection);
+    assert.equal(candidates.length, 8);
+    for (let offset = 0; offset < candidates.length; offset += 4) {
+      const parents = new Set(candidates.slice(offset, offset + 4)
+        .map((key) => earthTileId(earthTileParent(key)!)));
+      assert.equal(parents.size, 1);
+    }
+    assert.deepEqual(candidates.map((key) => earthTileId(key)), [
+      ...earthTileChildren(ROOTS[0]!).map(earthTileId).sort(),
+      ...earthTileChildren(ROOTS[1]!).map(earthTileId).sort(),
+    ]);
   });
 
   test('earth tiles: 2:1に必要な隣接子がなければ親を維持する', () => {

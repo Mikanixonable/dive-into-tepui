@@ -130,7 +130,7 @@ export function createUnavailableEarthSurfaceCapture(input: {
       { id: 'http-404', status: 'covered-by-tests', test: 'tests/render/earth-surface-request.test.ts' },
       { id: 'http-408-429-5xx', status: 'covered-by-tests', test: 'tests/render/earth-surface-request.test.ts' },
       { id: 'network-failure', status: 'covered-by-tests', test: 'tests/render/earth-surface-request.test.ts' },
-      { id: '128-layer-capacity', status: 'covered-by-tests', test: 'tests/render/earth-surface-resident.test.ts' },
+      { id: 'layer-capacity', status: 'covered-by-tests', test: 'tests/render/earth-surface-resident.test.ts' },
       { id: 'dispose-and-generation', status: 'covered-by-tests', test: 'tests/render/earth-surface-request.test.ts' },
       { id: 'mipmap-disabled', status: 'covered-by-tests', test: 'tests/render/earth-surface-gpu.test.ts' },
     ],
