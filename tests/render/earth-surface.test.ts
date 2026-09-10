@@ -152,7 +152,7 @@ export function register(): void {
     surface.dispose();
   });
 
-  test('earth surface: 対応GPUのcoordinatorをattachすると既存LODメッシュへ材質を接続する', () => {
+  test('earth surface: 対応GPUのcoordinatorをattachすると既存LODメッシュへ材質を接続する', async () => {
     const gpu = new EarthSurfaceGpuThree({
       texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS,
       colorSrgbLinear: true, terrainFloat16Linear: true,
@@ -172,12 +172,14 @@ export function register(): void {
     assert.equal(binding.deferredTextures[0]?.texture.version, 0);
     surface.attach(SOURCE, coordinator, 'ready', {
       material: binding.material, deferred: binding.deferredTextures, textures: binding.textures,
-      onDispose: binding.dispose, syncFrame: binding.syncFrame,
+      onDispose: binding.dispose, failureReason: binding.failureReason, syncFrame: binding.syncFrame,
     });
     const material = (parent.children[0] as THREE.Mesh).material;
     assert.notEqual(material, previousMaterial);
     assert.ok(material instanceof THREE.MeshStandardNodeMaterial);
     assert.equal(surface.status, 'ready');
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    assert.match(surface.diagnostics.reason ?? '', /Earth base terrain unavailable/);
 
     surface.dispose();
     gpu.dispose();
@@ -201,7 +203,7 @@ export function register(): void {
     });
     surface.attach(SOURCE, coordinator, 'ready', {
       material: binding.material, deferred: binding.deferredTextures, textures: binding.textures,
-      onDispose: binding.dispose, syncFrame: binding.syncFrame,
+      onDispose: binding.dispose, failureReason: binding.failureReason, syncFrame: binding.syncFrame,
     });
     surface.attach(SOURCE, null, 'fallback');
     assert.equal((parent.children[0] as THREE.Mesh).material, fallbackMaterial);

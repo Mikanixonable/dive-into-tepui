@@ -22,6 +22,7 @@ export interface EarthSurfaceMaterialBinding {
   readonly material: THREE.MeshStandardNodeMaterial;
   readonly deferredTextures: readonly DeferredTexture[];
   readonly textures: readonly THREE.Texture[];
+  readonly failureReason: () => string | null;
   syncFrame(frame: CelestialSurfaceFrame): void;
   // material/texturesはCelestialSurfaceが所有するため、ここでは非同期処理だけを止める。
   dispose(): void;
@@ -59,7 +60,17 @@ function createBaseTerrainTexture(): { readonly texture: THREE.DataTexture; read
 export function createEarthSurfaceMaterialBinding(
   textures: EarthSurfaceGpuTextures, options: EarthSurfaceMaterialBindingOptions,
 ): EarthSurfaceMaterialBinding {
-  const baseColor = new DeferredTexture(options.baseColorUrl, THREE.SRGBColorSpace);
+  let disposed = false;
+  let baseFailureReason: string | null = null;
+  const recordBaseFailure = (label: string, error: unknown): void => {
+    if (disposed || baseFailureReason !== null) return;
+    const detail = error instanceof Error ? error.message : String(error);
+    baseFailureReason = `${label}: ${detail}`;
+  };
+  const baseColor = new DeferredTexture(
+    options.baseColorUrl, THREE.SRGBColorSpace,
+    (error) => recordBaseFailure('Earth base color unavailable', error),
+  );
   const baseTerrain = createBaseTerrainTexture();
   const abortController = new AbortController();
   const axes: Vec3Uniform = uniform(new THREE.Vector3(1, 1, 1));
@@ -84,19 +95,19 @@ export function createEarthSurfaceMaterialBinding(
     baseTerrain.texture.dispose();
     throw error;
   }
-  let disposed = false;
   void loadEarthBaseTerrain(options.baseTerrainUrl, options.fetchImpl ?? fetch, abortController.signal)
     .then((data) => {
       if (disposed) return;
       baseTerrain.data.set(data);
       baseTerrain.texture.needsUpdate = true;
     })
-    .catch(() => undefined);
+    .catch((error: unknown) => recordBaseFailure('Earth base terrain unavailable', error));
 
   return {
     material,
     deferredTextures: [baseColor],
     textures: [baseTerrain.texture],
+    failureReason: () => baseFailureReason,
     syncFrame: (frame) => {
       if (disposed) return;
       axes.value.copy(frame.axes);

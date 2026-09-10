@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import {
   configureEarthSurfaceTexture,
+  earthSurfaceDetailLodNode,
   earthSurfaceTileUvNode,
   earthSurfaceMaterialNodes,
   earthSurfaceMaterialCapabilities,
@@ -68,6 +69,8 @@ export function register(): void {
       near(tileUvValue(-0.1, 0.37, z)[0]!, toTextureUv(((-0.1 * rows * 2) % 1 + 1) % 1));
       near(tileUvValue(1.1, 0.37, z)[0]!, toTextureUv(((1.1 * rows * 2) % 1 + 1) % 1));
     }
+    assert.ok(containsShaderNode(earthSurfaceDetailLodNode(float(255)),
+      (node) => node.type === 'MathNode' && node.method === 'min'));
   });
 
   test('earth surface material: array/page table nodeはbase層とbody固定法線を持つ', () => {

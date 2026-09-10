@@ -206,8 +206,20 @@ async function defaultDecodeImage(bytes: Uint8Array, signal?: AbortSignal): Prom
   const imageBytes = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(imageBytes).set(bytes);
   const image = await createImageBitmap(new Blob([imageBytes], { type: 'image/jpeg' }));
-  ensureNotAborted(signal);
-  return image;
+  try {
+    ensureNotAborted(signal);
+    return image;
+  } catch (error) {
+    image.close();
+    throw error;
+  }
+}
+
+// RGBA変換を終えたデコード画像を解放する。Uint8Arrayなどのテスト入力はそのまま返す。
+export function closeEarthSurfaceImage(image: unknown): void {
+  if (image === null || typeof image !== 'object') return;
+  const candidate = image as { close?: unknown };
+  if (typeof candidate.close === 'function') candidate.close();
 }
 
 async function inflateTerrain(bytes: Uint8Array, limit: number, signal?: AbortSignal): Promise<Uint8Array> {
@@ -259,6 +271,11 @@ export async function decodeEarthSurfaceTile(request: EarthSurfaceTileRequest): 
   }
   const terrain = decodeEarthTerrainPayload(terrainBytes, request.key);
   const color = await (request.decodeImage ?? defaultDecodeImage)(colorBytes, request.signal);
-  ensureNotAborted(request.signal);
-  return { key: request.key, generation: request.generation, color, terrain };
+  try {
+    ensureNotAborted(request.signal);
+    return { key: request.key, generation: request.generation, color, terrain };
+  } catch (error) {
+    closeEarthSurfaceImage(color);
+    throw error;
+  }
 }

@@ -264,6 +264,7 @@ function detailedMaterialFor(
     deferred: binding.deferredTextures,
     textures: binding.textures,
     onDispose: binding.dispose,
+    failureReason: binding.failureReason,
     syncFrame: binding.syncFrame,
   };
 }

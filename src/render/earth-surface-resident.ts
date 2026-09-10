@@ -4,6 +4,7 @@ import {
   EarthSurfaceTiles, earthTileId,
 } from './earth-surface-tiles';
 import type { EarthTileKey, EarthTileProjection, EarthTileResident } from './earth-surface-tiles';
+import { closeEarthSurfaceImage } from './earth-surface-decode';
 import { EarthSurfaceGpuAdapter } from './earth-surface-gpu';
 import type { EarthLayerReservation, EarthSurfaceGpuTextures } from './earth-surface-gpu';
 import { EarthSurfaceTileRequestQueue } from './earth-surface-request';
@@ -186,37 +187,42 @@ export class EarthSurfaceResidentCoordinator {
 
   private startRequest(pending: PendingTile, signal?: AbortSignal): Promise<void> {
     return this.dependencies.queue.request(pending.key, pending.generation, signal).then(async (payload) => {
-      if (this.disposed || pending.generation !== this.activeGeneration || payload.generation !== pending.generation
-        || signal?.aborted) return;
-      const color = await this.dependencies.colorToRgba8(payload.color, pending.key);
-      if (this.disposed || pending.generation !== this.activeGeneration || signal?.aborted) return;
-      const layer = this.findFreeLayer();
-      if (layer === null) return;
-      this.dependencies.gpu.reserveLayer(pending.key, layer);
-      const reservation = this.dependencies.gpu.reservation(layer);
-      if (reservation === null) throw new Error('Earth layer reservation disappeared');
-      const resident: ResidentTile = { key: pending.key, reservation, state: 'uploading', lastUsedFrame: this.nextFrame };
-      this.residents.set(earthTileId(pending.key), resident);
       try {
-        await this.dependencies.gpu.uploadLayer(color, payload.terrain, reservation);
-        if (this.disposed || pending.generation !== this.activeGeneration || signal?.aborted) {
+        if (this.disposed || pending.generation !== this.activeGeneration || payload.generation !== pending.generation
+          || signal?.aborted) return;
+        const color = await this.dependencies.colorToRgba8(payload.color, pending.key);
+        if (this.disposed || pending.generation !== this.activeGeneration || signal?.aborted) return;
+        const layer = this.findFreeLayer();
+        if (layer === null) return;
+        this.dependencies.gpu.reserveLayer(pending.key, layer);
+        const reservation = this.dependencies.gpu.reservation(layer);
+        if (reservation === null) throw new Error('Earth layer reservation disappeared');
+        const resident: ResidentTile = { key: pending.key, reservation, state: 'uploading', lastUsedFrame: this.nextFrame };
+        const id = earthTileId(pending.key);
+        this.residents.set(id, resident);
+        try {
+          await this.dependencies.gpu.uploadLayer(color, payload.terrain, reservation);
+          if (this.disposed || pending.generation !== this.activeGeneration || signal?.aborted) {
+            if (!this.disposed && this.dependencies.gpu.reservation(layer) === reservation) {
+              this.dependencies.gpu.releaseLayer(reservation);
+            }
+            if (this.residents.get(id) === resident) this.residents.delete(id);
+            return;
+          }
+          if (this.dependencies.gpu.reservation(layer) !== reservation) {
+            if (this.residents.get(id) === resident) this.residents.delete(id);
+            return;
+          }
+          resident.state = 'uploaded';
+        } catch (error) {
+          if (this.residents.get(id) === resident) this.residents.delete(id);
           if (!this.disposed && this.dependencies.gpu.reservation(layer) === reservation) {
             this.dependencies.gpu.releaseLayer(reservation);
           }
-          this.residents.delete(earthTileId(pending.key));
-          return;
+          throw error;
         }
-        if (this.dependencies.gpu.reservation(layer) !== reservation) {
-          this.residents.delete(earthTileId(pending.key));
-          return;
-        }
-        resident.state = 'uploaded';
-      } catch (error) {
-        this.residents.delete(earthTileId(pending.key));
-        if (!this.disposed && this.dependencies.gpu.reservation(layer) === reservation) {
-          this.dependencies.gpu.releaseLayer(reservation);
-        }
-        throw error;
+      } finally {
+        closeEarthSurfaceImage(payload.color);
       }
     }).catch((error: unknown) => {
       // Queueの版内失敗はqueue自身が保持する。GPU投入・色変換の失敗は一時的な
