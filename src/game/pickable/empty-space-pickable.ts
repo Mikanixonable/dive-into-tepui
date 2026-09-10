@@ -2,11 +2,10 @@
 import { v3, type Vec3 } from '../../math/vec3';
 import { MARKER_VISIBILITY, type MapVisibility } from '../map/visibility-policy';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
-import type { ObjectCommands } from './object-commands';
 import type { ObjectPickable } from './object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
-import type { PropertyRow } from '../../hud/windows/property-window';
-import type { MarkerManager } from '../marker/marker-manager';
+import type { PropertyRow } from '../../hud/windows/property-window-content';
+import type { MarkerSlots } from '../marker/marker-slots';
 
 const ORIGIN = v3(0, 0, 0); // ECI [m]
 
@@ -28,28 +27,18 @@ export class EmptySpacePickable implements ObjectPickable {
   public hitBodyByRay(): boolean { return false; }
 
   public mapVisibility(): MapVisibility { return MARKER_VISIBILITY; }
-  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.id); }
+  public shownOnMap(markers: MarkerSlots): boolean { return markers.shows(this.id); }
 
-  // メニューに出す操作項目。物体を置けるステージのマップ視点では、配置の項目が加わる。
-  public menuItems(commands: ObjectCommands): readonly MenuItem<MenuAction>[] {
-    const placeItem: readonly MenuItem<MenuAction>[] = commands.canAuthor && commands.view === 'map'
-      ? [{ label: 'オブジェクトを配置する', act: 'openObjectPlacer', shortcut: 'Enter' }]
-      : [];
+  // メニューに出す操作項目。配置の項目を出せるかは窓側が決める。
+  public menuItems(): readonly MenuItem<MenuAction>[] {
     return [
-      ...placeItem,
+      { label: 'オブジェクトを配置する', act: 'openObjectPlacer', shortcut: 'Enter' },
       { label: '設定メニューを開く', act: 'openSettings' },
       MenuCommon.cancel(),
     ];
   }
 
-  // 選ばれた操作を実行する。物体配置パネルと設定メニューを開く操作を持つ。
-  public runMenu(act: MenuAction, commands: ObjectCommands): void {
-    if (act === 'openObjectPlacer') {
-      commands.openObjectPlacer();
-    } else if (act === 'openSettings') {
-      commands.openSettings();
-    }
-  }
+  public readonly runMenu = null;
 
   // 宇宙空間そのものを指すので、示せる値は空になる。
   public propertyRows(): readonly PropertyRow[] { return []; }

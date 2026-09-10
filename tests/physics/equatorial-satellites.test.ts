@@ -4,9 +4,8 @@
 // 持つこと。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import {
-  PlanetDef, planetDefForSimZero, satelliteDefForSimZero, PlanetMotion, SatelliteDef, SatelliteMotion, StarMotion,
-} from '../../src/physics/celestial-motion';
+import { PlanetMotion, SatelliteMotion, StarMotion } from '../../src/physics/celestial-motion';
+import { PlanetDef, planetDefForSimZero, satelliteDefForSimZero, SatelliteDef } from '../../src/physics/celestial-body-def';
 import { EciTransform } from '../../src/physics/eci-transform';
 import { planetSystem } from '../../src/physics/planet-system';
 import { ECL_POLE_ECI } from '../../src/physics/ecliptic';

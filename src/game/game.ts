@@ -8,9 +8,9 @@ import { CameraSystem } from './camera/camera-system';
 import { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
 import { CelestialMarkers } from './marker/celestial-markers';
+import { EquatorNodeManager } from './marker/equator-node-manager';
 import { ControlSelection } from './control-selection';
 import { Targeter } from './targeter';
-import { PlanEditor } from './plan/plan-editor';
 import { PlanDisplay } from './plan/plan-display';
 import { DisplayWindowManager, timeLabelSettingOf } from './display-window-manager';
 import { SimSpeedManager } from './dynamic/sim-speed-manager';
@@ -39,8 +39,6 @@ import { MapView } from './view/map-view';
 import { NavTarget } from './nav-target';
 import { FrameAnchors } from './frame-anchors';
 import { autoOrbitReference, OrbitReferenceSelector } from './orbit-reference';
-import { ObjectPickables } from './pickable/object-pickables';
-import { LinePickables } from './pickable/line-pickables';
 import { ObjectWindows } from './pickable/object-windows';
 import { Navball } from './navball/navball';
 import { GameSaveData, SAVE_VERSION } from './save/save-data';
@@ -53,6 +51,8 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { frameRoleOf } from '../physics/frame';
 import { ViewBadge } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
+import { syncControlledLoopSfx } from './controlled-loop-sfx';
+import { MapVisibilityPolicy } from './map/visibility-policy';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -96,6 +96,7 @@ export class Game {
   // 閃光・ガスパフなど、寿命だけで消えていく一過性の見た目。
   private readonly flashEffects: FlashEffects;
   private readonly entityLines: EntityLineManager;
+  private readonly equatorNodes: EquatorNodeManager;
   private readonly predictor: Predictor;
   private readonly viewBadge: ViewBadge;
   private readonly frameControls: FrameControls;
@@ -179,8 +180,10 @@ export class Game {
     const celestial = this._celestialSystem;
     const info = controlled === null ? null : orbitInfo(
       controlled,
-      autoOrbitReference(controlled.state.r, celestial.celestialMotions, controlled.state.t),
-      controlled.state.t, (id: string) => celestial.nameOf(id),
+      autoOrbitReference(
+        controlled.motion.state.r, celestial.celestialMotions, controlled.motion.state.t,
+      ),
+      controlled.motion.state.t, (id: string) => celestial.nameOf(id),
     );
     const entities = this.dynamicSystem.all();
     return {
@@ -197,7 +200,7 @@ export class Game {
       magazines: controlled?.fire?.mags ?? 0,
       money: entities.filter(isBase).reduce((sum, b) => sum + b.baseState.money, 0),
       playerCount: entities.filter(isPlayer).length,
-      enemyAliveCount: entities.filter(isEnemy).filter((e) => e.alive).length,
+      enemyAliveCount: entities.filter(isEnemy).filter((e) => e.motion.alive).length,
     };
   }
 
@@ -229,6 +232,7 @@ export class Game {
       this._scene, this._hud, this._worldSfx, this.flashEffects, this.markerManager, celestialSystem,
       sections, initialSave?.simTime ?? 0, initialSave);
     this.entityLines = new EntityLineManager(this.dynamicSystem);
+    this.equatorNodes = new EquatorNodeManager(this.dynamicSystem, this.markerManager);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, celestialSystem);
 
     // ビューの正本(ViewManager)はカメラより後に組み上がるため、遅延評価で渡す。
@@ -241,7 +245,7 @@ export class Game {
           : role === 'navTarget'
             ? this.navTarget.resolveState(this.dynamicSystem, celestialSystem, celestialSystem.celestialMotions, t)?.entity ?? null
             : this.dynamicSystem.all().find((e) => e.id === id) ?? null;
-        return entity?.alive ? entity.att.q : null;
+        return entity?.motion.alive ? entity.motion.att.q : null;
       },
       initialSave?.camera,
     );
@@ -252,8 +256,10 @@ export class Game {
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。update()/sync() の
     // 先頭で毎フレーム表示時刻を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
     this.frameAnchors = new FrameAnchors(celestialSystem, {
-      entityState: (id, t) => this.dynamicSystem.all().find((e) => e.id === id && e.alive)?.stateAt(t, celestialSystem) ?? null,
-      controlledState: (t) => this.activeControllable?.stateAt(t, celestialSystem) ?? null,
+      entityState: (id, t) => this.dynamicSystem.all()
+        .find((e) => e.id === id && e.motion.alive)
+        ?.motion.stateAt(t, celestialSystem) ?? null,
+      controlledState: (t) => this.activeControllable?.motion.stateAt(t, celestialSystem) ?? null,
       navTargetState: (bodies, t) => this.navTarget.resolveState(this.dynamicSystem, celestialSystem, bodies, t)?.state ?? null,
     });
     this.frameControls = new FrameControls(
@@ -261,7 +267,7 @@ export class Game {
       this.displayWindowManager, this._hud.overlayManager, this.frameAnchors,
     );
     this.targeter = new Targeter(
-      this.markerManager, this.navTarget, this.dynamicSystem, celestialSystem, this.celestialMarkers,
+      this.markerManager, this.navTarget, this.dynamicSystem, celestialSystem.celestialMotions, this.celestialMarkers,
     );
     this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
     this.navball.onOrbitGuideSettingsChange = (settings) => this._celestialSystem.setOrbitGuideSettings(settings);
@@ -283,17 +289,6 @@ export class Game {
     this.planDisplay = new PlanDisplay(
       this._scene, this.markerManager, celestialSystem, this.displayWindowManager, this.controlSelection,
     );
-    const editor = new PlanEditor(
-      this._hud,
-      uiSfx,
-      this.simSpeedManager,
-      celestialSystem,
-      this._scene,
-      this.controlSelection,
-      this.displayWindowManager,
-      this.frameControls,
-      this.planDisplay.path,
-    );
     this.input = new Input(gs.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
     this.input.onPointerKindChange = (kind) => this.touchControls?.setPointerKind(kind);
@@ -310,29 +305,26 @@ export class Game {
       this.flashEffects, this.markerManager, celestialSystem, this.controlSelection,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
-    // activeStage の authoring/executesPlans を読むので、その直後に生成する。
-    const objectPickables = new ObjectPickables(
-      this.controlSelection, this.dynamicSystem, celestialSystem, this.navTarget, this.cameraSystem,
-      this.celestialMarkers, this.planDisplay, this.frameAnchors,
-    );
-    const linePickables = new LinePickables(this.dynamicSystem, this._celestialSystem);
+    // activeStage の authoring/executesPlans を読むので、その直後に生成する。候補列と計画の
+    // 編集口はマップビューが持つので、ビューより先に組み上がるここへは遅延評価で渡す。
     this.objectWindows = new ObjectWindows(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
-      this.cameraSystem, editor, this.simSpeedManager, this.pauseMenu, objectPickables, linePickables,
+      this.cameraSystem, () => this.viewManager.activeView, this.pauseMenu,
       this.controlSelection, this.frameControls, this.activeStage, this.targeter,
     );
 
     const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.objectWindows, this.dynamicSystem,
       this.celestialMarkers, this.touchControls,
-      this.controlSelection, this.planDisplay.path, celestialSystem,
+      this.controlSelection, this.planDisplay.path, celestialSystem.celestialMotions,
       this.simSpeedManager, this._hud, uiSfx, this.markerManager,
     );
     const mapView = new MapView(
-      this.input, this.cameraSystem, editor, this.objectWindows,
-      this.dynamicSystem, celestialSystem, objectPickables, linePickables,
+      this.input, this.cameraSystem, this.objectWindows,
+      this.dynamicSystem, this.equatorNodes, celestialSystem,
       this.celestialMarkers, this.markerManager, this.displayWindowManager, this.frameControls,
-      this.frameAnchors, this.controlSelection, this._hud, this.navTarget,
+      this.frameAnchors, this.controlSelection, this.simSpeedManager, this.planDisplay,
+      this._scene, this._hud, uiSfx, this.navTarget,
     );
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
     // 置かれるので、戦闘ビューへ入れるかどうかはその後でなければ判定できない。
@@ -356,6 +348,7 @@ export class Game {
   // 時間を止め、連続指令を畳む。
   pause(): void {
     this._worldSfx.setThrust(false);
+    this._worldSfx.setRcs(false);
     this.dynamicSystem.pause();
     this._isPaused = true;
   }
@@ -383,6 +376,7 @@ export class Game {
     this.frameControls.dispose();
     this.cameraSystem.dispose();
     this.displayWindowManager.dispose();
+    this.equatorNodes.dispose();
     this.dynamicSystem.dispose();
     this.flashEffects.dispose();
     this.markerManager.dispose();
@@ -423,20 +417,25 @@ export class Game {
     // 消費も期限切れの張り直しも起きないので、予測は伸び切ったところで止まるだけで害はない。
     this.sections.enter(SECTION.predict);
     this.predictor.update(
-      this.dynamicSystem.simTime, this.dynamicSystem.lastSimDt, activeControllable, displayWindow.duration,
+      this.dynamicSystem.simTime, this.dynamicSystem.lastSimDt,
+      activeControllable?.motion ?? null, displayWindow.duration,
       canDisplayFuture, this.planDisplay.growableArcs(),
     );
     this.sections.exit(SECTION.predict);
     // 交点を置く先は計画折れ線か解析軌道楕円のどちらかなので、折れ線を組み終えた計画表示と、
     // 楕円が引く予測列を伸ばした後に通す。
     this.sections.enter(SECTION.plan);
-    this.dynamicSystem.updateEquatorNodes({
+    const equatorVisibility = this.cameraSystem.view === 'map'
+      ? new MapVisibilityPolicy(
+        this._celestialSystem, this.cameraSystem.mapDisplayToggles,
+      )
+      : null;
+    this.equatorNodes.update({
       displayTime: displayWindow.displayTime,
-      celestialSystem: this._celestialSystem,
+      celestialBodies: this._celestialSystem,
       frameAnchors: this.frameAnchors,
-      markerManager: this.markerManager,
       paths: this.planDisplay,
-    }, activeControllable);
+    }, activeControllable, equatorVisibility);
     this.sections.exit(SECTION.plan);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
@@ -453,6 +452,14 @@ export class Game {
     this.sections.enter(SECTION.pointer);
     this.handlePointerInput();
     this.sections.exit(SECTION.pointer);
+    // View の描画同期ではなく update フェーズで、次回予測の読者を確定する。
+    this.entityLines.updatePredictionReaders(
+      this.activeControllable,
+      this.targeter.aliveTarget,
+      this.viewManager.current,
+      displayWindow,
+      this.viewManager.activeView.visibilityPolicy,
+    );
   }
 
   // ステージ → 指令決定 → 積分 → エフェクトの順に1フレーム進める
@@ -538,8 +545,8 @@ export class Game {
     // 3D 軌道線を軌道パネルと同じ基準で解く。
     const orbitRef = controlled
       ? this.orbitReference.resolve(
-        controlled.state.r, celestialBodies, this.navTarget,
-        this.dynamicSystem, this._celestialSystem, controlled.state.t,
+        controlled.motion.state.r, celestialBodies, this.navTarget,
+        this.dynamicSystem, this._celestialSystem, controlled.motion.state.t,
       )
       : undefined;
 
@@ -553,8 +560,17 @@ export class Game {
     const timeLabel = timeLabelSettingOf(displayWindow);
     this.dynamicSystem.sync(
       fo, displayTime, controlled, visibilityPolicy, this.cameraSystem, style, graphics,
-      orbitRef, this.frameAnchors, timeLabel,
+      orbitRef,
     );
+    this.equatorNodes.sync(
+      this.cameraSystem.activeCameraProjection,
+      this.cameraSystem.activeCameraPos,
+      this.frameAnchors.bodies,
+      this.frameAnchors.bodiesPivot,
+      this.cameraSystem.view === 'map',
+      timeLabel,
+    );
+    syncControlledLoopSfx(this._worldSfx, controlled, displayTime, visibilityPolicy);
     // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraSystem.sync より後に通す。
     this.flashEffects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
 
@@ -574,7 +590,7 @@ export class Game {
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
     this.viewManager.activeView.syncPanels(displayWindow, fo);
 
-    this.activeStage.sync(fo, this.cameraSystem, displayTime, visibilityPolicy);
+    this.activeStage.sync(fo, this.cameraSystem, displayTime);
 
     this._hud.syncPanels(this.viewManager.current, this);
 
@@ -595,7 +611,9 @@ export class Game {
     return {
       ...this.dynamicSystem.perfCounts(),
       ...this.predictor.perfCounts(
-        this.dynamicSystem.simTime, this.displayWindowManager.current.duration, this.activeControllable),
+        this.dynamicSystem.simTime, this.displayWindowManager.current.duration,
+        this.activeControllable?.motion ?? null,
+      ),
       ...this.planDisplay.perfCounts(),
       ...this._celestialSystem.perfCounts(),
       ...this.viewManager.activeView.perfCounts(),

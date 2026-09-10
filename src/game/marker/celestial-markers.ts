@@ -9,14 +9,14 @@ import { LAGRANGE_MIN_CLEARANCE_RATIO } from '../celestial/lagrange-id';
 import { LagrangePointMarker } from './lagrange-point-marker';
 import { CelestialSubLabels, type CelestialLabelState } from './celestial-sub-labels';
 import { CrowdingGrid, DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, type ProjectedLabel } from './crowding';
-import type { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapDisplayToggles } from '../map/display-toggles';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
-import type { ProjectFn } from '../camera/camera-system';
+import type { ProjectFn } from '../../math/projection';
 import type { GroupedMarkers } from './grouped-markers';
-import type { MarkerManager } from './marker-manager';
+import type { MarkerSlots } from './marker-slots';
 
 // 名前の混雑判定の半径 [px]。これより近い名前どうしは、優先度の低いほうを隠す。
 const LABEL_CROWDING_PX = 40;
@@ -106,8 +106,8 @@ export class CelestialMarkers {
 
   // 星系の全天体とラグランジュ点からラベルの全集合を組む。ラグランジュ点は、共線点・三角点
   // それぞれの成立条件を満たす点だけを持つ。
-  constructor(private readonly markerManager: MarkerManager, private readonly celestialSystem: CelestialSystem) {
-    this.subLabels = new CelestialSubLabels(markerManager, celestialSystem);
+  constructor(private readonly markers: MarkerSlots, private readonly celestialSystem: CelestialSystem) {
+    this.subLabels = new CelestialSubLabels(markers, celestialSystem);
     this.lagrangeSources = celestialSystem.entities.flatMap((body) => {
       const motion = body.motion;
       // 全公転天体で出すと点の数が天体数の数倍になり、ラベルが画面を埋める。
@@ -238,8 +238,8 @@ export class CelestialMarkers {
     const projected = this.frameScratch.get(id);
     if (projected === undefined || projected.occluded) {
       label.pickable = false;
-      if (projected?.occluded) this.markerManager.fadeOut(id);
-      else this.markerManager.hide(id);
+      if (projected?.occluded) this.markers.fadeOut(id);
+      else this.markers.hide(id);
       return;
     }
     // 名前とアイコンのどちらも残らなければ、マーカーごと畳む。
@@ -247,7 +247,7 @@ export class CelestialMarkers {
     const iconVisible = label.showIcon && !hiddenIcons.has(id);
     if (!labelVisible && !iconVisible) {
       label.pickable = false;
-      this.markerManager.hide(id);
+      this.markers.hide(id);
       return;
     }
     label.pickable = true;
@@ -257,7 +257,7 @@ export class CelestialMarkers {
         dist: this.distScratch.get(id)!, iconVisible, labelVisible,
       });
     }
-    this.markerManager.setPosition(
+    this.markers.setPosition(
       id, label.item.markerClass, iconVisible ? label.item.glyph : '', label.pos, project,
       labelVisible ? label.item.markerLabel : '',
       projected.opacity, undefined, undefined, false, false, label.item.labelPriority, cameraPos,
@@ -269,7 +269,7 @@ export class CelestialMarkers {
     const nowShown = this.nowShownScratch;
     nowShown.clear();
     for (const id of shownIds) nowShown.add(id);
-    for (const id of this.prevShownIds) if (!nowShown.has(id)) this.markerManager.hide(id);
+    for (const id of this.prevShownIds) if (!nowShown.has(id)) this.markers.hide(id);
     const previous = this.prevShownIds as string[];
     this.prevShownIds = shownIds;
     this.shownIdsScratch = previous;
@@ -278,7 +278,7 @@ export class CelestialMarkers {
 
   // 混雑で画面から消えた船・敵機・基地を、天体ラベルの下のサブ行として描き足す。
   syncSubLabels(
-    groupedMarkers: GroupedMarkers, celestialBodies: readonly CelestialMotion[], pivot: number,
+    groupedMarkers: GroupedMarkers, celestialBodies: readonly CelestialBody[], pivot: number,
     project: ProjectFn, cameraPos: Vec3,
   ): void {
     this.subLabels.sync(
@@ -306,6 +306,6 @@ export class CelestialMarkers {
   // 出している天体ラベルをすべて畳む。
   hideLabels(): void {
     this.activeCelestialLabels.length = 0;
-    for (const label of this.labels) this.markerManager.hide(label.item.id);
+    for (const label of this.labels) this.markers.hide(label.item.id);
   }
 }

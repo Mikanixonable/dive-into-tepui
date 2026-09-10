@@ -4,7 +4,7 @@ import { maxShadowedFraction } from '../../../physics/shadow';
 import { len, sub } from '../../../math/vec3';
 import { MAX_SHADOW_BODIES } from './body-shadow';
 import { CUMULUS_DETAIL } from '../../cumulus-shell';
-import type { CelestialMotion } from '../../../physics/celestial-motion';
+import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Vec3 } from '../../../math/vec3';
 import type { RingBand } from './ring-shadow';
 import type { GraphicsSettingsData } from '../../graphics-settings';
@@ -24,7 +24,7 @@ function apparentRadius(radius: number, center: Vec3, cameraPos: Vec3): number {
 // **カメラ位置だけで測ってはいけない** — 土星から引いたマップビューでは土星自身が閾値を
 // 切り、環の影が本体から消える。
 function castsVisibleShadow(
-  star: CelestialMotion, celestialBody: CelestialMotion, pivot: number,
+  star: CelestialBody, celestialBody: CelestialBody, pivot: number,
   cameraPos: Vec3, focusPos: Vec3 | null,
 ): boolean {
   if (maxShadowedFraction(cameraPos, star, celestialBody, pivot) >= MIN_SHADOWED_FRACTION) return true;
@@ -44,9 +44,9 @@ export interface RingShadowCandidate {
 // このフレームに影を落とす天体として扱うものを、視半径の大きい順に MAX_SHADOW_BODIES 体まで返す。
 // **星系の全天体を渡すこと** — 恒星と半径 0 の天体はここで落とす。focusPos はマップの
 // 注視点(天体でない対象を注視しているなら null)。
-export function selectShadowBodies(
-  celestialBodies: readonly CelestialMotion[], pivot: number, cameraPos: Vec3, focusPos: Vec3 | null,
-): readonly CelestialMotion[] {
+export function selectShadowBodies<T extends CelestialBody>(
+  celestialBodies: readonly T[], pivot: number, cameraPos: Vec3, focusPos: Vec3 | null,
+): readonly T[] {
   const star = celestialBodies.find((celestialBody) => celestialBody.kind === 'star') ?? null;
   // 恒星・半径 0 の天体・絵に出る影を落とせない天体を落とし、視半径の大きい順に切る。
   return celestialBodies

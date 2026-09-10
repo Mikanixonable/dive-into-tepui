@@ -11,7 +11,6 @@ import {
 import { SchematicThrustCone } from '../../render/schematic-thrust-cone';
 import type { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
-import { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { RenderStyle } from '../../render/render-style';
 
 export class ThrustEffects {
@@ -22,21 +21,18 @@ export class ThrustEffects {
   // core/outer ビルボードと模式図用コーンを scene に登録する。
   constructor(
     scene: THREE.Scene,
-    private readonly _worldSfx: WorldSfx,
   ) {
     scene.add(this.core.mesh, this.outer.mesh, this.schematicCone.mesh);
   }
 
-  // 噴射プルーム・エンジン音を thrust(今フレームの推力ベクトル、非噴射時は null)に合わせて
-  // 同期する。maxAccel は出力比(プルームの大きさ)を求めるための全開加速度。style が模式図
-  // なら、ビルボードの代わりに輪郭抽出へ拾われるコーンを出す。visible=false のときは
-  // どちらも隠し、audible=false のときは共有のエンジン音へ触れない。
+  // 噴射プルームを thrust(今フレームの推力ベクトル、非噴射時は null)へ同期する。maxAccel は
+  // 出力比(プルームの大きさ)を求めるための全開加速度。style が模式図なら、ビルボードの
+  // 代わりに輪郭抽出へ拾われるコーンを出す。
   sync(
     fo: FloatingOrigin, playerPos: Vec3, thrust: Vec3 | null, maxAccel: number,
-    visible: boolean, audible: boolean, camera: CameraSystem, style: RenderStyle, plumeScale = 1.0,
+    visible: boolean, camera: CameraSystem, style: RenderStyle, plumeScale = 1.0,
   ): void {
     const firing = thrust !== null && visible;
-    if (audible) this._worldSfx.setThrust(firing);
 
     if (!firing || camera.zoomActive) {
       this.core.hide();

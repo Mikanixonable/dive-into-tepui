@@ -2,7 +2,7 @@
 // 表す 'point' の判別共用体を持ち、毎フレームそれを ECI の位置と速度へ解決する。
 import { FrameAnchorSource, FramePoint, ReferenceFrame, toFramePoint, toInertialPoint } from '../../physics/frame';
 import { add, cross, sub, Vec3, v3 } from '../../math/vec3';
-import type { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ReferenceFrames } from '../celestial/reference-frames';
 
@@ -24,7 +24,7 @@ export function focusPoint(
 }
 
 // 注視点の候補。ObjectPickable はこの形を構造的に満たすので、呼び出し側はそのまま渡せる。
-// **ObjectPickable 型そのものを受け取ってはいけない** — object-pickable.ts は camera-system.ts を
+// **ObjectPickable 型そのものを受け取ってはいけない** — 窓の面が plan-editor と stage を
 // 型 import しており、それが three/webgpu を引き込む。tsconfig.test.json の include へ
 // object-pickable.ts が入ると型検査が DOM 定義を要求して壊れる。
 export interface FocusCandidate {
@@ -59,7 +59,7 @@ export function resolveFocusTarget(
   displayTime: number,
   frameAnchors: FrameAnchorSource,
   frames: ReferenceFrames,
-  celestialMotionOf: (id: string) => CelestialMotion | null,
+  celestialMotionOf: (id: string) => CelestialBody | null,
   celestialStateOf: (id: string, t: number) => KinematicState,
   state: FocusResolveState,
 ): FocusResolveResult {
