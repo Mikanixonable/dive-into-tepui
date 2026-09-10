@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  exp2, floor, greaterThanEqual, max, min, mix, normalize, select, texture, vec2, vec3, vec4,
+  exp2, floor, greaterThanEqual, int, max, min, mix, normalize, select, texture, vec2, vec4,
 } from 'three/tsl';
 import type { BoolNode, FloatNode, Mat3Node, Vec2Node, Vec3Node, Vec4Node } from './tsl-types';
 import { earthSurfaceUvFromRadialNode } from './earth-surface-coordinate';
@@ -91,10 +91,10 @@ function tileUv(uv: Vec2Node, z: FloatNode): Vec2Node {
 }
 
 function sampleArray(textureValue: THREE.Texture, uv: Vec2Node, z: FloatNode, layer: FloatNode): Vec4Node {
-  // DataArrayTextureはvec3(UV, layer)を受ける。base層(255)は後段でbase画像へ切り替えるため、
+  // DataArrayTextureの層はdepthへ渡す。base層(255)は後段でbase画像へ切り替えるため、
   // 配列の範囲内へクランプした値だけを実際のサンプラへ渡す。
   const safeLayer = min(layer, EARTH_TILE_LAYERS - 1);
-  return texture(textureValue, vec3(tileUv(uv, z), safeLayer));
+  return texture(textureValue, tileUv(uv, z)).depth(int(safeLayer));
 }
 
 function sampleBase(textureValue: THREE.Texture, uv: Vec2Node): Vec4Node {
