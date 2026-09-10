@@ -20,3 +20,4 @@ assets-src/climate/
 .earth-surface/mamba/
 .earth-surface/verification/capture/
 .earth-surface/verification/fetch-tasks.txt
+.earth-surface/verification/preflight-micromamba.json
