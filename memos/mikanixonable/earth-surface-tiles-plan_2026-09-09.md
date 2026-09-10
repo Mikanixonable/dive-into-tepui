@@ -128,11 +128,11 @@ T0 基準記録
 | フェーズ | 状態 | commit / 証拠 | 未達・制約 |
 | --- | --- | --- | --- |
 | T0 | 完了 | `492fd9af`、`.earth-surface/verification/baseline.json` | WebGPU/drawing bufferはunavailable |
-| T1 | 生成入口・実データ事前検査・fixture境界・入力検証を実装、実データ全量はblocked | `7b88aad7`, `87b6c8b5`, `d91ab5d3`, `cb3161f5`, `6b707e54`, `80ff1b5c`, `.earth-surface/verification/earth-bundle-generation-blocked-2026-09-10.md`、Python 39 tests | ERA5 local export未配置。GDAL/osgeo・netCDF4・pyshpは本環境に未導入。実BMNG/ETOPO/GSHHG/ERA5 window合成と全43690実生成は未完了。fixtureはsynthetic provenanceで本番と分離 |
+| T1 | 生成入口・実データ事前検査・fixture境界・入力検証・micromamba環境・入力窓境界を実装、実データ全量はblocked | `7b88aad7`, `87b6c8b5`, `d91ab5d3`, `f3c076fc`, `5e679dd0`, `8d4f492c`, `.earth-surface/verification/earth-bundle-generation-blocked-2026-09-10.md`、Python 43 tests | ERA5 local export未配置。複数GeoTIFFの球面積再格子化、BMNG線形RGB、GSHHG空間被覆、ERA5月平均合成と全43690実生成は未完了。fixtureはsynthetic provenanceで本番と分離 |
 | T2 | コード完了 | `49e01186`、render 88/88 | 実ブラウザ/WebGPU撮影は未実施 |
 | T3 | ゲーム経路・実Earthメッシュの詳細材質接続完了 | `ccc3683f`, `85b63f59`, `b1f5e2e2`、render 113/113、game 205/205 | 実manifest取得・実データ通信・実WebGPU撮影は未実施。データが無いため実タイル表示は未確認 |
 | T6-2 | 廃止 | 2026-09-10に外部静的配信要件を廃止 | 既存のremote-check実装を削除し、Pages同一origin検査へ集約 |
-| T6-1 | fixture Pages・容量/coverageゲート完了 | `9545bcdb`、Pages layout/contract pass | 実全世界bundleは入力未提供・Pages上限超過見込みのため未公開 |
+| T6-1 | fixture Pages・容量/coverageゲート完了。Pagesはpreview用途 | `9545bcdb`, `8d4f492c`、Pages layout/contract pass | 実全世界bundleはERA5と合成未完了のため未公開。ローカルはbundle生成後`npm run dev`で確認する |
 | T4 | コード完了 | `e195d4df`, `ac919b93`, `ea6d47a3`, `22532275`、render 96/96、game 201/201 | 実ERA5 bundleと実ブラウザ/WebGPU撮影は未実施 |
 | T5 | コード完了 | `7f8614fc`, `e90aaeca`, `95e0152b`、render 100/100、game 201/201、capture contract pass | 実データ未投入のため15ケースのcolor/normal/depthはunavailable |
 | T7 | コードレビュー・記録更新完了 | `c1024c61`, `dc2e0427`, `0ced354b`, `5302be8c`、追加 `a5cacedb`, `ccc3683f`, `85b63f59`, `b1f5e2e2`, `ed53a902`、対象テスト pass | 実データ生成・Pages本番公開・実captureゲートは未達成。blocked理由をT1とpreflight JSONへ記録 |
