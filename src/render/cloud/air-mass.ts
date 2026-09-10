@@ -5,7 +5,6 @@
 // 畳み込まれるので、そこの押し縮まりは溶かして 1 へ戻す。
 import * as THREE from 'three/webgpu';
 import { abs, float, length, normalize, smoothstep, vec2, vec4 } from 'three/tsl';
-import { R_EARTH } from '../../game/celestial/solar-system/constants';
 import { BakedField } from './baked-field';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { windStep } from './wind-law';
@@ -44,8 +43,12 @@ export class AirMass {
   // 追跡の写し。R が出身の緯度のいまの緯度からの隔たり [rad]、G が追跡の風の速さ [m/s]。
   private readonly trace: BakedField;
 
-  // projection は写しの持ち方、windAt は単位方向における追跡の風。
-  public constructor(projection: FieldProjection, windAt: (direction: Vec3Node) => BalancedWind) {
+  // projection は写しの持ち方、windAt は単位方向における追跡の風、surfaceRadius は気団が流れる
+  // 天体の半径 [m]。
+  public constructor(
+    projection: FieldProjection, windAt: (direction: Vec3Node) => BalancedWind,
+    private readonly surfaceRadius: number,
+  ) {
     this.trace = new BakedField(
       'airMassTrace', THREE.RGFormat, projection, 1,
       (direction) => {
@@ -89,7 +92,8 @@ export class AirMass {
 
   // 単位方向 direction から風 wind で TRACE_SECONDS だけ風上へ遡った先の緯度と、いまの緯度の差 [rad]。
   private driftAt(direction: Vec3Node, wind: BalancedWind): FloatNode {
-    const origin = normalize(direction.add(windStep(wind, direction, float(-TRACE_SECONDS)).div(R_EARTH)));
+    const origin = normalize(
+      direction.add(windStep(wind, direction, float(-TRACE_SECONDS)).div(this.surfaceRadius)));
     return latitudeOf(origin).sub(latitudeOf(direction));
   }
 }

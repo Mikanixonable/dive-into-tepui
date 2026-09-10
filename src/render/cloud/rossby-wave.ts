@@ -3,7 +3,6 @@
 import {
   abs, clamp, cos, float, max, sign, sin, smoothstep, uniform,
 } from 'three/tsl';
-import { R_EARTH } from '../../game/celestial/solar-system/constants';
 import { equirectUvFromDirection } from './field-projection';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import type { FloatNode, FloatUniform, Vec3Node } from '../tsl-types';
@@ -15,7 +14,11 @@ const WAVE_PHASE_SPEED = (3 * Math.PI / 180) / 86400;
 const WAVE_PHASE_RATE = WAVE_NUMBER * WAVE_PHASE_SPEED;
 // 流線関数から出る南北風の代表速度 [m/s]。中緯度の上層平均風より小さく、蛇行を読める振幅にする。
 const MERIDIONAL_SPEED = 8;
-const STREAMFUNCTION_AMPLITUDE = (MERIDIONAL_SPEED * R_EARTH * Math.cos(Math.PI / 4)) / WAVE_NUMBER;
+
+// 半径 surfaceRadius [m] の天体で、代表速度を与える流線関数の振幅 [m²/s]。
+function streamfunctionAmplitude(surfaceRadius: number): number {
+  return (MERIDIONAL_SPEED * surfaceRadius * Math.cos(Math.PI / 4)) / WAVE_NUMBER;
+}
 
 // 赤道・極へ急に切り替わらず、既存の中緯度上層帯(およそ±45°)を包む緯度範囲 [rad]。
 const ENVELOPE_RISE_START = 10 * Math.PI / 180;
@@ -42,12 +45,13 @@ export class RossbyWave {
 
   // 単位方向 direction におけるロスビー波の風摂動 [m/s]。東西成分と南北成分は、球面流線関数
   // ψ = A·E(φ)·sin(kλ − kct) から求める。E とその緯度微分は同じ smoothstep 包絡から出す。
-  public windAt(direction: Vec3Node): Vec3Node {
+  // surfaceRadius は波が走る天体の半径 [m]。
+  public windAt(direction: Vec3Node, surfaceRadius: number): Vec3Node {
     const latitude = latitudeOf(direction);
     const phase = this.phaseAt(direction);
     const envelope = this.envelopeAt(latitude);
     const envelopeSlope = this.envelopeSlopeAt(latitude);
-    const amplitudeOverRadius = STREAMFUNCTION_AMPLITUDE / R_EARTH;
+    const amplitudeOverRadius = streamfunctionAmplitude(surfaceRadius) / surfaceRadius;
     const eastWind = sin(phase).mul(envelopeSlope).mul(-amplitudeOverRadius);
     const northWind = cos(phase).mul(envelope).mul(amplitudeOverRadius * WAVE_NUMBER)
       .div(max(cos(latitude), MIN_LONGITUDE_RADIUS));

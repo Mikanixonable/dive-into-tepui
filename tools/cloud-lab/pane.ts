@@ -14,11 +14,12 @@ export class CloudLabPane {
   private readonly cloud: CloudField;
 
   // projection はこの面の持ち方。climate と photo は面どうしで共有してよい(読むだけのテクスチャ)。
+  // surfaceRadius は雲を載せる天体の半径 [m]、rotationPeriod はその自転周期 [s]。
   public constructor(
     private readonly projection: FieldProjection, private readonly climate: ClimateMap,
-    private readonly photo: THREE.Texture,
+    private readonly photo: THREE.Texture, surfaceRadius: number, rotationPeriod: number,
   ) {
-    this.model = new WeatherModel(climate, projection);
+    this.model = new WeatherModel(climate, projection, surfaceRadius, rotationPeriod);
     this.cloud = new CloudField(this.model, projection);
   }
 

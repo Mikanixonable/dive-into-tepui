@@ -1,11 +1,20 @@
-// 小惑星帯・トロヤ群・ヒルダ群・カイパーベルト・散乱円盤の点群のマップビュー表示。位置は
-// point-field.ts の軌道要素から引き、群ごとに1つの InstancedMesh へ書き込む。描画半径と色は
-// 群ごとに持つ — 内側(メインベルト 2.5 AU)と外側(カイパーベルト 40 AU)とで見合う見た目が
-// 大きく異なる。
+// 小惑星帯・トロヤ群・ヒルダ群・カイパーベルト・散乱円盤の点群のマップビュー表示。群ごとの
+// 表示契約(描画半径・色)を定め、軌道要素から引いた位置を群ごとに1つの InstancedMesh へ置く。
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../math/vec3';
+import { PointElements, pointPositionAt } from '../../physics/point-orbit';
 import { FloatingOrigin } from '../camera/floating-origin';
-import { PointElements, PointField, PointFieldGroup, pointPositionAt } from '../../game/celestial/point-field';
+
+// 表示する点群1群。drawRadius と color は群ごとの見た目で、内側の群と外側の群とでは
+// 見合う大きさ・色が一桁変わるため群ごとに持つ。
+export interface PointFieldGroup {
+  readonly id: string;
+  readonly points: readonly PointElements[];
+  readonly drawRadius: number; // [m]
+  readonly color: number;
+}
+
+export type PointField = readonly PointFieldGroup[];
 
 // 1フレームで位置を引き直す点の割合の逆数。外側の群ほど公転が遅いので、マップのズーム域では
 // 数フレーム遅れた位置と現在位置は1画素も違わない。
@@ -25,8 +34,8 @@ class PointFieldGroupView {
   // 未評価の点(零ベクトル)が太陽位置に固まって描かれる。
   private primed = false;
 
-  // 群1つぶんの InstancedMesh を、その群の描画半径・色で組む。
-  constructor(group: PointFieldGroup) {
+  // 群1つぶんの InstancedMesh を、その群の描画半径・色で組んでシーンへ登録する。
+  public constructor(group: PointFieldGroup, scene: THREE.Scene) {
     this.points = group.points;
     // 正四面体を使うのは、全インスタンスが同じ姿勢で並ぶため — 平板だと視線方向によっては
     // 群全体が同時に消える。
@@ -39,17 +48,17 @@ class PointFieldGroupView {
     // 原点周りの外接球によるフラスタムカリングは意味を持たない。
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
-  }
-
-  // メッシュをシーンへ登録する。
-  build(scene: THREE.Scene): void {
     scene.add(this.mesh);
   }
 
-  // 表示時刻 t の点の位置を、ラウンドロビンで一部ずつ引き直して置く。starPos はこの星系の恒星の
-  // ECI 位置。点は恒星中心のローカル座標に置き、浮動原点との差は mesh の位置が吸う。
-  sync(fo: FloatingOrigin, t: number, starPos: Vec3, fixedBrightnessScale: number): void {
-    this.mesh.visible = true;
+  // 表示時刻 t の点の位置を、ラウンドロビンで一部ずつ引き直して置く。starPos は点を置く恒星の
+  // ECI 位置で、置かないフレームでは null。点は恒星中心のローカル座標に置き、浮動原点との差は
+  // mesh の位置が吸う。
+  public sync(
+    fo: FloatingOrigin, t: number, starPos: Vec3 | null, fixedBrightnessScale: number,
+  ): void {
+    this.mesh.visible = starPos !== null;
+    if (starPos === null) return;
     this.material.color.copy(this.baseColor).multiplyScalar(fixedBrightnessScale);
     this.mesh.position.copy(fo.RtoThreeV3(starPos));
     // このフレームの持ち分を引き直す。
@@ -66,13 +75,8 @@ class PointFieldGroupView {
     this.mesh.instanceMatrix.needsUpdate = true;
   }
 
-  // メッシュを描画対象から外す。
-  hide(): void {
-    this.mesh.visible = false;
-  }
-
   // メッシュを親から外し、インスタンスバッファと自前の geometry/material を解放する。
-  dispose(): void {
+  public dispose(): void {
     this.mesh.removeFromParent();
     this.mesh.dispose();
     this.mesh.geometry.dispose();
@@ -81,31 +85,41 @@ class PointFieldGroupView {
 }
 
 export class PointFieldView {
-  // 群ごとの描画。軌道要素と instance buffer は build で確保する。
-  private groups: readonly PointFieldGroupView[] = [];
+  // 点群を置くシーン。build を受けるまでは持たない。
+  private scene: THREE.Scene | null = null;
+  // 群ごとの描画。最初に点を見せるフレームまでは null。
+  private groups: readonly PointFieldGroupView[] | null = null;
 
   // field はこの星系に付随する生成済みの点群。
-  constructor(private readonly field: PointField) {}
+  public constructor(private readonly field: PointField) {}
 
-  // 群ごとに描画用の InstancedMesh を組んでシーンへ登録する。
-  build(scene: THREE.Scene): void {
-    this.groups = this.field.map((group) => new PointFieldGroupView(group));
-    for (const group of this.groups) group.build(scene);
+  // 点群を置くシーンを受け取る。実際の資源は、最初に点を見せるフレームまで確保しない。
+  public build(scene: THREE.Scene): void {
+    this.scene = scene;
   }
 
-  // 表示時刻 t の点の位置を引き直して各インスタンスを置く。starPos はこの星系の恒星の ECI 位置。
-  // fixedBrightnessScale は露出の順応を打ち消す倍率で、点の明るさをどこから見ても同じに保つ。
-  sync(fo: FloatingOrigin, t: number, starPos: Vec3, fixedBrightnessScale: number): void {
-    for (const group of this.groups) group.sync(fo, t, starPos, fixedBrightnessScale);
+  // 表示可否と、そのフレームの値を反映する。starPos はこの星系の恒星の ECI 位置で、引けない
+  // フレームは点を置けない。fixedBrightnessScale は露出の順応を打ち消す倍率で、点の明るさを
+  // どこから見ても同じに保つ。
+  public sync(
+    visible: boolean, fo: FloatingOrigin, t: number, starPos: Vec3 | null,
+    fixedBrightnessScale: number,
+  ): void {
+    // このフレームに点を置く恒星の位置。置かないフレームは null。
+    const placeAt = visible ? starPos : null;
+    // InstancedMesh の確保は、点を最初に見せるフレームまで遅らせる — 点群を切った設定や
+    // マップを開かないランで、起動時に確保の負荷を負うのを避けるため。
+    if (this.groups === null) {
+      const scene = this.scene;
+      if (placeAt === null || scene === null) return;
+      this.groups = this.field.map((group) => new PointFieldGroupView(group, scene));
+    }
+    for (const group of this.groups) group.sync(fo, t, placeAt, fixedBrightnessScale);
   }
 
-  // 全群の InstancedMesh を描画対象から外す。
-  hide(): void {
-    for (const group of this.groups) group.hide();
-  }
-
-  // 全群の InstancedMesh を解放する。
-  dispose(): void {
+  // 確保済みの InstancedMesh を解放する。
+  public dispose(): void {
+    if (this.groups === null) return;
     for (const group of this.groups) group.dispose();
   }
 }
