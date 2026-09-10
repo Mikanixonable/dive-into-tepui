@@ -14,6 +14,8 @@ try {
   const staged = await stagePages({ outputRoot: root, maxBytes: 4 * 1024 * 1024 });
   const checked = await checkPagesLayout(root, staged.datasetId);
   assert.equal(checked.bytes, staged.totalBytes);
+  assert.ok(checked.capacity.measuredBytes > checked.bytes);
+  assert.equal(checked.capacity.measuredBytes, staged.capacity.measuredBytes);
   assert.equal(staged.maxLod, 0);
   assert.equal(staged.declaredMaxLod, 7);
   assert.equal(staged.tileCount, 1);
