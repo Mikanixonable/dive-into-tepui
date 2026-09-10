@@ -12,6 +12,7 @@ import type { GraphicsSettingsData } from '../../../render/graphics-settings';
 import type { RenderStyle } from '../../../render/render-style';
 import type { RingMaterials } from '../../../render/ring';
 import type { Albedo } from '../../../render/celestial-albedo';
+import type { CelestialSurfaceDiagnostics } from '../../../render/celestial-surface';
 import type { AtmosphereClouds, AtmosphereOptics, AtmosphereCandidate } from '../../../render/atmosphere';
 import type { ShadowCumulus } from '../../../render/pipeline/shadow/cloud-shadow-renderer';
 import type { MarkerSlots } from '../../marker/marker-slots';
@@ -46,6 +47,7 @@ export abstract class CelestialView {
   public get atmosphereOptics(): AtmosphereOptics | null { return null; }
   public get lightSourceAlbedo(): Albedo | null { return null; }
   public get surfaceTextureUrl(): string | null { return null; }
+  public get surfaceDiagnostics(): CelestialSurfaceDiagnostics | null { return null; }
   public rings(_motion: CelestialMotion): RingSystemDef | null { return null; }
 
   public abstract build(
