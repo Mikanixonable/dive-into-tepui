@@ -15,6 +15,7 @@ import {
   SURFACE_2, TEXT, TEXT_DIM, TEXT_MUTED, TEXT_FAINT, Z_STAGE_SELECT,
 } from '../theme';
 import { TITLE_SCENE_PATTERNS, createTitleScene, type TitleScene } from '../render/title-scene';
+import { injectCommonUiStyle } from '../hud/style/common-ui-style';
 
 const PAGE = BG;
 const SURFACE_0 = THEME_SURFACE_0;
@@ -104,7 +105,7 @@ const STYLE = `
 }
 #stage-select .ss-3d-window {
   position: relative; width: 100%; height: 100%; min-height: 0;
-  overflow: hidden; isolation: isolate; border: 1px solid var(--glass-edge);
+  overflow: hidden; isolation: isolate; border: 0;
   border-radius: ${RADIUS_WINDOW}; background: ${SURFACE_0};
   box-shadow: var(--glass-shadow);
 }
@@ -170,9 +171,7 @@ const STYLE = `
 }
 #stage-select .ss-status {
   min-width: 190px; padding: 11px 13px; border-radius: ${RADIUS_PANEL};
-  color: ${BODY_INK}; background: var(--glass-quiet); border: 1px solid var(--glass-edge);
-  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  color: ${BODY_INK};
   font: 10px/1.55 ${FONT_MONO};
 }
 #stage-select .ss-status b { color: ${SECONDARY_ACCENT}; font-weight: 500; }
@@ -181,11 +180,7 @@ const STYLE = `
   min-height: 0; height: 100%; box-sizing: border-box;
   display: flex; flex-direction: column; gap: 14px;
   padding: 18px;
-  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-focus);
-  border: 1px solid var(--glass-edge); border-radius: ${RADIUS_WINDOW};
-  box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
+  border-radius: ${RADIUS_WINDOW};
   overflow: hidden;
 }
 #stage-select .ss-stage-qr {
@@ -202,13 +197,13 @@ const STYLE = `
   font-size: 15px; font-weight: 600; letter-spacing: 0.04em;
 }
 #stage-select .w-tabs {
-  gap: var(--space-1); padding: var(--space-1); border: 1px solid var(--glass-edge);
-  border-radius: var(--radius-panel); background: var(--glass-inset);
+  gap: var(--space-1); padding: var(--space-1); border: 0;
+  border-radius: var(--radius-panel);
 }
 #stage-select .w-tabs .w-btn {
   position: relative; flex: 1; min-height: 44px; padding: var(--space-3) var(--space-4);
   display: inline-flex; align-items: center; justify-content: center; text-align: center;
-  border: 1px solid transparent; border-radius: var(--radius-control);
+  border: 0; border-radius: var(--radius-control);
   background: transparent; color: ${MUTED_INK};
   font-family: ${FONT_SANS}; font-size: 13px; font-weight: 600; letter-spacing: 0.04em;
 }
@@ -217,7 +212,7 @@ const STYLE = `
 }
 #stage-select .w-tabs .w-btn:hover { background: var(--glass-control-hover); color: ${TITLE_INK}; }
 #stage-select .w-tabs .w-btn.on {
-  border-color: var(--color-primary-edge-soft); background: var(--color-primary-fill); color: ${ACCENT};
+  background: var(--color-primary-fill); color: ${ACCENT};
 }
 #stage-select .ss-list {
   min-height: 0; flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 10px;
@@ -226,8 +221,8 @@ const STYLE = `
 #stage-select .ss-stage {
   box-sizing: border-box; min-height: 44px; padding: 14px 20px;
   border-radius: ${RADIUS_CONTROL};
-  background: var(--glass-control); border: 1px solid var(--glass-edge); cursor: pointer; text-align: left;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+  background: var(--glass-control); border: 0; cursor: pointer; text-align: left;
+  transition: background var(--transition-fast);
 }
 #stage-select .ss-stage:hover { background: var(--glass-control-hover); }
 #stage-select .ss-stage.locked { opacity: 0.45; cursor: default; }
@@ -246,11 +241,11 @@ const STYLE = `
 }
 #stage-select .ss-settings {
   align-self: flex-end; flex: 0 0 auto; margin-top: 2px;
-  padding: var(--space-3) var(--space-4); border: 1px solid var(--glass-edge);
+  padding: var(--space-3) var(--space-4); border: 0;
   border-radius: ${RADIUS_CONTROL}; color: ${MUTED_INK}; background: var(--glass-control);
   font: 12px ${FONT_SANS}; cursor: pointer;
 }
-#stage-select .ss-settings:hover { color: ${TITLE_INK}; border-color: ${ACCENT}; background: var(--glass-control-hover); }
+#stage-select .ss-settings:hover { color: ${TITLE_INK}; background: var(--glass-control-hover); }
 #stage-select .hidden { display: none !important; }
 #stage-select .ss-datetime { display: flex; flex-direction: column; gap: 14px; }
 #stage-select .ss-datetime-fields { display: flex; flex-wrap: wrap; gap: 12px; }
@@ -285,6 +280,7 @@ const STYLE = `
 // 画面固有の CSS を一度だけ注入する。
 function ensureStyle(): void {
   if (document.getElementById('stage-select-style')) return;
+  injectCommonUiStyle();
   const style = document.createElement('style');
   style.id = 'stage-select-style';
   style.textContent = STYLE;
@@ -334,10 +330,10 @@ export function selectStage(
       '<p class="ss-script" data-flavor-script></p>' +
       '<p class="ss-flavor-note" data-flavor-note></p>' +
       '</div>' +
-      '</div><div class="ss-status"><b>∗ Link stable</b><br>h = 420.2 km · i = 51.6°<br>Epoch 06:14:28.03</div></div>' +
+      '</div><div class="ss-status ui-surface-quiet"><b>∗ Link stable</b><br>h = 420.2 km · i = 51.6°<br>Epoch 06:14:28.03</div></div>' +
       '</div>' +
       '</section>' +
-      '<section class="ss-window" aria-label="Stage and creative modes"></section>' +
+      '<section class="ss-window ui-surface-focus" aria-label="Stage and creative modes"></section>' +
       '</div></div>';
 
     const flavor = pickRandom(TITLE_FLAVORS);
@@ -372,6 +368,7 @@ export function selectStage(
 
     // タブ切替: 選んだタブに応じて下のリスト表示を入れ替える。
     const tabBar = new TabBar<string>(groups.map((g) => [g, g] as const), (group) => setActiveTab(group));
+    tabBar.element.classList.add('ui-surface-inset');
     windowDiv.appendChild(tabBar.element);
     windowDiv.appendChild(listDiv);
 
@@ -386,7 +383,7 @@ export function selectStage(
         const sub = enabled ? stageClass.selectSub : stageClass.selectLockedSub ?? stageClass.selectSub;
         const key = stageClass.selectKeys[0] ? `[${stageClass.selectKeys[0].replace('Digit', '').replace('Key', '')}]` : '';
         const row = document.createElement('div');
-        row.className = `ss-stage${enabled ? '' : ' locked'}`;
+        row.className = `ss-stage ui-selectable${enabled ? '' : ' locked'}`;
         row.innerHTML =
           `<div class="ss-stage-label"><span>${stageClass.selectLabel}</span><span class="ss-stage-key">${key}</span></div>` +
           `<div class="ss-stage-sub">${sub}</div>`;

@@ -17,19 +17,6 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active .mk-poi:not(.mk-lagrange) .lbl .lbl-main { color: var(--space-label-text); }
 #hud .hud-map-root.active .mk-poi:not(.mk-lagrange) .lbl .lbl-sub { color: var(--space-label-subtext); }
 
-/* Quiet Glass: 視野を隠さない常設情報。 */
-#hud .hud-map-root.active #hud-physical-object-list,
-#hud .hud-map-root.active #hud-view-options,
-#hud .hud-map-root.active #hud-orbit,
-#hud .hud-map-root.active #burn-management-panel {
-  border: 1px solid var(--glass-edge);
-  border-radius: var(--radius-panel);
-  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-quiet);
-  box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
-}
-
 /* Orbit は表示設定の上に置く。初期状態は PanelShell のビュー別既定値で収納される。 */
 #hud .hud-map-root.active .hud-rail-left > #hud-orbit {
   width: 100%;
@@ -69,18 +56,6 @@ export const MAP_VIEW_STYLE = `
   }
 }
 
-/* Focus Glass: 時間スクラブと座標系編集は、意思決定中だけ一段密度を上げる。 */
-#hud .hud-map-root.active #hud-predict,
-#hud .hud-map-root.active .hud-frame-controls,
-#hud .hud-map-root.active #hud-plan {
-  border: 1px solid var(--glass-edge);
-  border-radius: var(--radius-panel);
-  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-focus);
-  box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
-}
-
 #hud .hud-map-root.active #hud-physical-object-list h3,
 #hud .hud-map-root.active #hud-view-options h3,
 #hud .hud-map-root.active #hud-orbit h3,
@@ -99,12 +74,10 @@ export const MAP_VIEW_STYLE = `
 
 #hud .hud-map-root.active .rail-toggle,
 #hud .hud-map-root.active #hud-predict-toggle {
-  border: 1px solid var(--glass-edge);
+  border: 0;
   border-radius: var(--radius-control);
   background: var(--glass-control);
   color: var(--muted);
-  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
 }
 #hud .hud-map-root.active .rail-toggle:hover,
 #hud .hud-map-root.active #hud-predict-toggle:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
@@ -116,14 +89,11 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head {
   background: var(--glass-inset);
   border-radius: var(--radius-panel) var(--radius-panel) 0 0;
-  border-bottom: 1px solid var(--glass-edge);
-  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
 }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-search { padding: 0 0 var(--space-2); }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-search .w-input {
   min-height: 30px;
-  border: 1px solid var(--glass-edge);
+  border: 0;
   border-radius: var(--radius-control);
   background: var(--glass-control);
   color: var(--title);
@@ -143,24 +113,24 @@ export const MAP_VIEW_STYLE = `
   letter-spacing: 0;
 }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-btn {
-  border: 1px solid var(--glass-edge);
+  border: 0;
   border-radius: var(--radius-control);
   background: var(--glass-control);
 }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-btn:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-btn.on {
-  border-color: var(--color-primary-edge-soft); color: var(--color-primary); background: var(--color-primary-fill);
+  color: var(--color-primary); background: var(--color-primary-fill);
 }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-breadcrumb {
   margin: var(--space-2) 0 var(--space-3);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--glass-edge);
+  border: 0;
   border-radius: var(--radius-control);
   background: var(--glass-inset);
   color: var(--muted);
 }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-section-header {
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--radius-control);
   color: var(--text-muted);
   /* 見出しは内側スクロール領域の先頭に貼り付く(sticky、寸法は physical-object-list-panel.ts
@@ -275,7 +245,7 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-view-options span.body-class-icon-btn {
   position: relative;
   min-width: 0;
-  border: 1px solid var(--glass-edge);
+  border: 0;
   border-radius: var(--radius-control);
   padding: var(--space-2);
   color: var(--muted);
@@ -289,7 +259,6 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-view-options .body-class-row .w-btn:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
 #hud .hud-map-root.active #hud-view-options .body-class-row .body-class-icon-btn.on {
   color: var(--title);
-  border-color: var(--color-primary-edge-soft);
   background: var(--color-primary-fill);
 }
 #hud .hud-map-root.active #hud-view-options .body-class-row .body-class-title.on {
@@ -346,16 +315,15 @@ export const MAP_VIEW_STYLE = `
 /* Predict: 未来は Accent、隣接する過去範囲は Near accent。Secondary は同期状態用に残す。 */
 #hud .hud-map-root.active #hud-predict .w-btn,
 #hud .hud-map-root.active #hud-predict .w-input {
-  border: 1px solid var(--glass-edge);
+  border: 0;
   border-radius: var(--radius-control);
   background: var(--glass-control);
 }
 #hud .hud-map-root.active #hud-predict .w-btn:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
 #hud .hud-map-root.active #hud-predict .w-btn.on {
-  border-color: var(--color-primary-edge-soft); color: var(--color-primary); background: var(--color-primary-fill);
+  color: var(--color-primary); background: var(--color-primary-fill);
 }
 #hud .hud-map-root.active #hud-predict .predict-past .w-btn.on {
-  border-color: var(--color-primary-edge-soft);
   color: var(--color-primary-hover);
   background: var(--color-primary-fill-weak);
 }
@@ -376,7 +344,7 @@ export const MAP_VIEW_STYLE = `
 }
 #hud .hud-map-root.active .hud-frame-controls .w-btn,
 #hud .hud-map-root.active .hud-frame-controls .w-toggle-track {
-  border: 1px solid var(--glass-edge);
+  border: 0;
   border-radius: var(--radius-control);
   background: var(--glass-control);
 }
@@ -386,13 +354,8 @@ export const MAP_VIEW_STYLE = `
 
 /* Map scale は視野端の小さな Quiet Glass に留める。 */
 #hud-map-scale {
-  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-control);
-  background: var(--glass-quiet);
   color: var(--muted);
-  box-shadow: var(--glass-shadow);
-  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
-  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
 }
 #hud-map-scale .map-scale-label {
   display: block;
@@ -402,13 +365,6 @@ export const MAP_VIEW_STYLE = `
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  #hud .hud-map-root.active #hud-physical-object-list,
-  #hud .hud-map-root.active #hud-view-options,
-  #hud .hud-map-root.active #hud-orbit,
-  #hud .hud-map-root.active #burn-management-panel,
-  #hud .hud-map-root.active #hud-predict,
-  #hud .hud-map-root.active .hud-frame-controls,
-  #hud .hud-map-root.active #hud-plan,
   #hud-map-scale { background: var(--surface-opaque); }
 }
 
