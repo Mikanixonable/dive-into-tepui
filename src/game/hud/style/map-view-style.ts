@@ -72,10 +72,15 @@ export const MAP_VIEW_STYLE = `
   letter-spacing: 0;
 }
 
-#hud .hud-map-root.active .rail-toggle,
+#hud .hud-map-root.active .rail-toggle {
+  border: 0;
+  border-radius: 50%;
+  background: var(--glass-control);
+  color: var(--muted);
+}
 #hud .hud-map-root.active #hud-predict-toggle {
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: 50%;
   background: var(--glass-control);
   color: var(--muted);
 }
@@ -245,8 +250,9 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-view-options span.body-class-icon-btn {
   position: relative;
   min-width: 0;
+  aspect-ratio: 1;
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: 50%;
   padding: var(--space-2);
   color: var(--muted);
   background: var(--glass-inset);
@@ -319,6 +325,7 @@ export const MAP_VIEW_STYLE = `
   border-radius: var(--radius-control);
   background: var(--glass-control);
 }
+#hud .hud-map-root.active #hud-predict span.predict-reset { border-radius: 50%; }
 #hud .hud-map-root.active #hud-predict .w-btn:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
 #hud .hud-map-root.active #hud-predict .w-btn.on {
   color: var(--color-primary); background: var(--color-primary-fill);

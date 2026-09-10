@@ -84,7 +84,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud .panel-shell-head h3 { flex: 1 1 auto; min-width: 0; cursor: pointer; }
 #hud .panel-shell-collapse {
   flex: 0 0 auto; width: 24px; height: 24px; background: transparent; border: 0;
-  border-radius: var(--radius-micro); color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
+  border-radius: 50%; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
 }
 #hud .panel-shell-collapse:hover { color: var(--color-primary-hover); background: var(--surface-2); }
 #hud .panel-shell-collapse:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
@@ -106,7 +106,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud .hud-rail-right { right: 12px; width: var(--rail-w-right); }
 #hud .hud-map-root.active .hud-rail { pointer-events: auto; touch-action: pan-y; }
 #hud .rail-toggle {
-  width: var(--hud-rail-toggle-size); height: var(--hud-rail-toggle-size); border: 0; border-radius: var(--radius-control);
+  width: var(--hud-rail-toggle-size); height: var(--hud-rail-toggle-size); border: 0; border-radius: 50%;
   background: var(--glass-control); color: var(--color-primary); cursor: pointer; pointer-events: auto;
   transition: color var(--transition-fast), background var(--transition-fast);
 }
