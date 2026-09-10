@@ -1,11 +1,11 @@
 import { Game } from '../game/game';
+import type { GameHost } from '../game/game-host';
 import { LoadingProgress } from '../game/loading-progress';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import type { PauseMenu } from '../hud/windows';
+import type { PauseMenu } from '../hud/windows/pause-menu';
 import { ResultScreen, type RunTransitions } from './result-screen';
 import type { CurrentGameSource } from './save-browser/save-browser';
-import type { Hud } from '../game/hud/hud';
 import type { HudShell } from '../hud/hud-shell';
 import type { GamePhase, Stage, StageClass, StageResult } from '../game/stages/stage';
 import { findStageClass } from '../game/stages/stage-dictionary';
@@ -14,11 +14,10 @@ import type { UnlockManager } from './unlock-manager';
 import type { SaveSlots } from './save/save-slots';
 import type { SnapshotService } from './save/snapshot-service';
 import type { GameSaveData } from '../game/save/save-data';
+import { runSummary } from '../game/run-summary';
 import type { AudioEngine } from '../audio/audio-engine';
 import type { Bgm } from '../audio/bgm/bgm';
-import type { GameScene } from '../render/scene';
 import type { GraphicsSettings } from '../render/graphics-settings';
-import type { FrameSections } from '../game/frame-sections';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
 import type { TdbJulianDate } from '../physics/time';
@@ -60,7 +59,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       snapshot: {
         get isPaused(): boolean { return game.isPaused; },
         get isPlaying(): boolean { return game.activeStage.isPlaying; },
-        runSummary: () => game.runSummary(),
+        runSummary: () => runSummary(game),
         serialize: () => game.serialize(),
       },
       pause: () => game.pause(),
@@ -70,13 +69,11 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   constructor(
     private readonly shell: HudShell,
-    private readonly hud: Hud,
-    private readonly gs: GameScene,
+    private readonly host: GameHost,
     private readonly audioEngine: AudioEngine,
     private readonly bgm: Bgm,
     private readonly pauseMenu: PauseMenu,
     private readonly unlockManager: UnlockManager,
-    private readonly sections: FrameSections,
     private readonly slots: SaveSlots,
     private readonly snapshotService: SnapshotService,
     private readonly graphics: GraphicsSettings,
@@ -135,8 +132,8 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     showLoading();
     try {
       this.game = await Game.create(
-        this.gs, stageClass, this.hud, this.audioEngine, this.pauseMenu,
-        this.sections, initialSave, startEpoch, this.graphics.current,
+        this.host, stageClass, this.audioEngine, this.pauseMenu,
+        initialSave, startEpoch, this.graphics.current,
         new LoadingProgress(setLoadingProgress),
       );
     } finally {
@@ -152,7 +149,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     stage.onDecided = () => {
       // クリア回数はラン跨ぎの記録なので、決着した瞬間にランの外側が書く。決着済みのセーブを
       // 読んだときはここを通らない — 読むたびに回数が増えないようにするため、これでよい。
-      if (stage.phase === 'won') this.unlockManager.reportClear(stage.id, this.hud);
+      if (stage.phase === 'won') this.unlockManager.reportClear(stage.id, this.host.hud);
       this.showResult(stage);
     };
     this.noteLaunched(stageClass);

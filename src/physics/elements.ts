@@ -1,10 +1,10 @@
 // 古典軌道要素(OrbitalElements)の定義と、状態ベクトル⇄要素の変換・要素上のケプラー幾何。
 // 軌道要素は「どの天体を中心に取ったか」まで含めて初めて意味が定まるため、OrbitalElements 自身が
 // 中心天体とその瞬間の状態を保持する。THREE/DOM 非依存の純粋関数群。
-import type { CelestialMotion } from './celestial-motion';
 import { frameOfCelestialBody, toFrameState } from './frame';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, addScaled, cross, dot, len, norm, rotateAxis, scale, sub, v3 } from '../math/vec3';
+import type { CelestialBody } from './celestial-body';
 
 // 軌道上の位相の基準 — simTime が t のときのこの軌道上の真近点角が nu。**元期ではない**
 // (軌道要素そのものの元期は simTime=0)。形だけを指定した参照軌道は位相を持たないので、
@@ -21,7 +21,7 @@ export interface OrbitalElements {
   qHat: Vec3; // pHat と直交する軌道面内方向
   hHat: Vec3; // 軌道面法線
   phaseRef: OrbitPhaseRef | null; // 位相の基準。形だけを指定した参照軌道では null
-  center: CelestialMotion; // 中心天体。mu と表面半径をここから読む。
+  center: CelestialBody; // 中心天体。mu と表面半径をここから読む。
   centerState: KinematicState; // 中心天体の、要素を組んだ瞬間の ECI 状態。楕円を描く位置もこれで決まる。
 }
 
@@ -50,7 +50,7 @@ export function semiMajorFromPeriod(period: number, mu: number): number {
 
 // center 相対の状態から古典軌道要素を求める。半径・角運動量が縮退している場合は null。
 export function orbitalElementsFromState(
-  rel: KinematicState<'primaryRel'>, center: CelestialMotion, centerState: KinematicState,
+  rel: KinematicState<'primaryRel'>, center: CelestialBody, centerState: KinematicState,
 ): OrbitalElements | null {
   const r = rel.r;
   const v = rel.v;
@@ -204,7 +204,7 @@ function orbitPlaneBasis(inc: number, raan: number, argp: number): { pHat: Vec3;
 // 直接指定したいとき(地球専用の参照軌道など)に使う。
 export function orbitalElementsFromClassical(
   a: number, e: number, incDeg: number, raanDeg: number, argpDeg: number,
-  center: CelestialMotion, centerState: KinematicState,
+  center: CelestialBody, centerState: KinematicState,
 ): OrbitalElements {
   const deg = Math.PI / 180;
   const { pHat, qHat, hHat } = orbitPlaneBasis(incDeg * deg, raanDeg * deg, argpDeg * deg);
@@ -251,7 +251,7 @@ export function stateFromOrbitalElements(
 // 天体 center を中心とする接触軌道要素。中心の選び方には関与しない — 呼び出し側が
 // strongestAttractor などで選んだ center をそのまま渡す。
 export function orbitalElementsOf(
-  s: KinematicState, center: CelestialMotion, pivot: number,
+  s: KinematicState, center: CelestialBody, pivot: number,
 ): OrbitalElements | null {
   const centerState = center.stateAt(pivot);
   const rel = toFrameState(frameOfCelestialBody(center, pivot), s);

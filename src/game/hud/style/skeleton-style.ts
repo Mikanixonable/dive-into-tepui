@@ -68,7 +68,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   backdrop-filter: blur(14px) saturate(82%);
 }
 #hud .panel h3 {
-  font-size: var(--font-s); letter-spacing: 0.06em; color: var(--title);
+  font-size: var(--font-s); letter-spacing: 0.06em; color: var(--text);
   border: 0; margin-bottom: var(--space-4); padding: 0;
   font-weight: 600; text-transform: none;
 }
@@ -77,7 +77,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud .panel-shell-head h3 { flex: 1 1 auto; min-width: 0; cursor: pointer; }
 #hud .panel-shell-collapse {
   flex: 0 0 auto; width: 24px; height: 24px; background: transparent; border: 0;
-  border-radius: var(--radius-micro); color: var(--muted); font: inherit; cursor: pointer; pointer-events: auto;
+  border-radius: var(--radius-micro); color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
 }
 #hud .panel-shell-collapse:hover { color: var(--color-primary-hover); background: var(--surface-2); }
 #hud .panel-shell-collapse:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }

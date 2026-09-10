@@ -5,6 +5,7 @@ import * as THREE from 'three/webgpu';
 import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial-surface';
 import { CloudPresentation } from '../../src/render/cloud/cloud-presentation';
+import type { CloudLodMode } from '../../src/render/cloud/cloud-field-sampler';
 import { ClimateMap } from '../../src/render/cloud/climate-map';
 import { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
@@ -30,8 +31,7 @@ import { sphereShadowBody, type ShadowBody } from '../../src/render/pipeline/sha
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
-import type { CloudLodMode } from '../../src/render/cloud/cloud-field-sampler';
-import { RingView } from '../../src/game/celestial/celestial-entity/ring-view';
+import { RingView } from '../../src/render/ring-view';
 import { AU } from '../../src/physics/astronomical-unit';
 import { MARS, MARS_ATMOSPHERE_OPTICS, MARS_TEXTURE } from '../../src/game/celestial/solar-system/mars-system';
 import { SATURN, SATURN_TEXTURE } from '../../src/game/celestial/solar-system/saturn-system';
@@ -39,7 +39,7 @@ import { apparentSizePx, metersPerPixelAtDepth } from '../../src/math/projection
 import { v3 } from '../../src/math/vec3';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
 import { PROTEIN_CASES, type ProteinLabCaseMetadata } from './protein-cases';
-import { HULL_EMISS } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
+import { HULL_EMISS } from '../../src/game/dynamic/dynamic-motion';
 import type { FloatNode } from '../../src/render/tsl-types';
 import type { AtmosphereBody } from '../../src/render/atmosphere';
 import type { RenderStyle } from '../../src/render/render-style';

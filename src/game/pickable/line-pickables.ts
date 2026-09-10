@@ -3,15 +3,14 @@
 // ここは「いまフレームにどの線が表示されているか」を集めるだけ — マップ視点でなければ空になる。
 import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import { guideSecondary } from '../../physics/orbit-guide';
-import type { Vec3 } from '../../math/vec3';
 import type { DisplayWindow } from '../display-window-manager';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
+import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
 import type { VisibleGuideLine } from '../celestial/orbit-guide/orbit-guide-lines';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { isCombatTarget } from '../dynamic/dynamic-entity/combat-target';
-import { LineCalcMethod, LinePickable } from './line-pickable';
+import { LinePickable } from './line-pickable';
 
 // 当たり判定用サンプル点数。描画の適応分割ほどの精度は要らず、画面上のピクセル半径内かの判定さえ
 // 通ればよいので、頂点予算より一段粗い固定値にする。
@@ -24,7 +23,7 @@ export class LinePickables {
   get pickables(): readonly LinePickable[] { return this.items; }
 
   constructor(
-    private readonly dynamicSystem: DynamicSystem,
+    private readonly roster: EntityRoster,
     private readonly celestialSystem: CelestialSystem,
   ) {}
 
@@ -36,16 +35,16 @@ export class LinePickables {
   // このフレームに表示されている軌道線の候補列を組み直す。
   // displayWindow.frame/displayTime は船の予測線・過去線の座標系相対 → ECI 変換に使う。
   refresh(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource): void {
+    // 天体参照線・Entity 線・ガイド線の順で、各所有元が公開する点列だけを読む。
     this.items.length = 0;
     const { frame, displayTime } = displayWindow;
 
-    for (const { id, line } of this.celestialSystem.referenceEllipseLines) {
-      const points = line.samplePoints(ORBIT_PICK_SAMPLES);
-      if (points.length < 2) continue;
+    for (const { id, points } of this.celestialSystem.referenceOrbitSamples(ORBIT_PICK_SAMPLES)) {
       this.items.push({ key: `orbit-body:${id}`, kind: 'orbit-body', method: 'analytic', ownerKeys: [id], points });
     }
 
-    for (const ship of this.dynamicSystem.all().filter(isCombatTarget)) {
+    // EntityLineManager がこのフレームに同期した線だけがサンプルを返す。
+    for (const ship of this.roster.all().filter(isCombatTarget)) {
       this.addShipOrbit(ship, frame, displayTime, frameAnchors);
     }
 
@@ -73,25 +72,14 @@ export class LinePickables {
   private addShipOrbit(
     entity: DynamicEntity, frame: ReferenceFrame, displayTime: number, frameAnchors: FrameAnchorSource,
   ): void {
-    if (!entity.alive) return;
-    let method: LineCalcMethod;
-    let points: Vec3[];
-    if (entity.orbitLine !== null) {
-      method = 'analytic';
-      points = [...entity.orbitLine.line.samplePoints(ORBIT_PICK_SAMPLES)];
-    } else if (entity.predictedLine !== null || entity.actualLine !== null) {
-      method = 'predicted';
-      const frames = this.celestialSystem.frames;
-      points = [
-        ...(entity.actualLine?.samplePoints(ORBIT_PICK_SAMPLES, frame, displayTime, frames, frameAnchors) ?? []),
-        ...(entity.predictedLine?.samplePoints(ORBIT_PICK_SAMPLES, frame, displayTime, frames, frameAnchors) ?? []),
-      ];
-    } else {
-      return;
-    }
-    if (points.length < 2) return;
+    if (!entity.motion.alive) return;
+    const sample = entity.view.lineSamples(
+      ORBIT_PICK_SAMPLES, frame, displayTime, this.celestialSystem, frameAnchors,
+    );
+    if (sample === null || sample.points.length < 2) return;
     this.items.push({
-      key: `orbit-ship:${entity.id}`, kind: 'orbit-ship', method, ownerKeys: [entity.id], points,
+      key: `orbit-ship:${entity.id}`, kind: 'orbit-ship', method: sample.method,
+      ownerKeys: [entity.id], points: sample.points,
     });
   }
 }

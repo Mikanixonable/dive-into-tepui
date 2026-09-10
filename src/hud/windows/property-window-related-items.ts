@@ -3,7 +3,7 @@
 // 空のときは自分自身を DOM から外し、非空になれば内容を組み立て直す。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../widgets';
 import type { DraggableWindow } from './draggable-window';
-import type { PropertyWindowRelatedItem } from './property-window';
+import type { PropertyWindowRelatedItem } from './property-window-content';
 
 export class PropertyWindowRelatedItems {
   public readonly element: HTMLDivElement;

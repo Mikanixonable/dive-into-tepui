@@ -1,18 +1,18 @@
-// 物体どうしの剛体接触の列挙・解決。交戦圏ごとに、その内側で collides を立てた DynamicEntity
+// 物体どうしの剛体接触の列挙・解決。交戦圏ごとに、その内側で collides を立てた Motion
 // どうしを参加者とし、反発が起きた当事者へ collideWithEntity を呼ぶ。ダメージ・音・エフェクトは
-// それぞれの DynamicEntity 自身の責務。1 substep 内の接触は TOI(接触時刻)昇順で解決する —
+// Motion へ注入された反応が引き受ける。1 substep 内の接触は TOI(接触時刻)昇順で解決する —
 // 参加者は互いの状態を書き換えるので、天体との接触(surface-contact-physics.ts)と違って作業列と
 // 解決回数の上限が要る。
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, scale, sameVec } from '../../math/vec3';
 import { HierarchicalSpatialGrid } from '../../math/hierarchical-spatial-grid';
-import { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import type { EntityRegistry } from './dynamic-system';
+import type { EntityContactParticipant } from './dynamic-simulation-participant';
 import type { EngagementZone } from './engagement-zone';
 import type { CollisionResponse } from '../../physics/collision-response';
 import { contactTime, isFiniteParticipant } from './contact-participant';
 import { entityContactResponse } from './entity-contact-response';
-import type { Stage } from '../stages/stage';
+import type { StageOutcome } from '../stages/stage-outcome';
+import type { EntityRegistry } from './entity-registry';
 
 // 1 substep のあいだに1つの交戦圏で解決する接触の上限。TOI(接触時刻)昇順で解決し、これを
 // 超えた分は次の substep でグリッドから列挙し直されて改めて候補になる。
@@ -50,7 +50,7 @@ function replaceIfMoved(
 // 参加者 1 体の到達量 [m]。半径に、区間 prevState→working の変位から基準変位 reference を引いた
 // 大きさを足したもの。ペア (a,b) が区間内で接触するなら、区間終端の中心距離は両者の到達量の和
 // 以下になる。
-function contactReach(entity: DynamicEntity, working: KinematicState, reference: Vec3): number {
+function contactReach(entity: EntityContactParticipant, working: KinematicState, reference: Vec3): number {
   const w = working.r, p = entity.prevState.r;
   const dx = w.x - p.x - reference.x, dy = w.y - p.y - reference.y, dz = w.z - p.z - reference.z;
   return entity.radius + Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -59,7 +59,7 @@ function contactReach(entity: DynamicEntity, working: KinematicState, reference:
 export class EntityContactPhysics {
   // 接触解決は Simulator の substep ごとに同期的に完了するため、入力の抽出・作業集合を
   // インスタンス単位で再利用できる。配列の詰め直しは元の配列走査順をそのまま保つ。
-  private readonly participantScratch: DynamicEntity[] = [];
+  private readonly participantScratch: EntityContactParticipant[] = [];
   private readonly workingScratch: KinematicState[] = [];
   private readonly changedScratch: number[] = [];
   private readonly pairScratch: number[] = [];
@@ -73,8 +73,9 @@ export class EntityContactPhysics {
   // 交戦圏ごとに、その内側にいる参加者どうしの 1 substep ぶんの接触を解く。交戦圏どうしは
   // 独立した系なので、解決回数の上限も交戦圏ごとに掛かる。
   public resolveEntityContacts(
-    simTime: number, entities: readonly DynamicEntity[],
-    zones: readonly EngagementZone<DynamicEntity>[], activeStage: Stage, registry: EntityRegistry,
+    simTime: number, entities: readonly EntityContactParticipant[],
+    zones: readonly EngagementZone<EntityContactParticipant>[], activeStage: StageOutcome,
+    registry: EntityRegistry,
   ): void {
     for (const zone of zones) {
       this.collectParticipants(entities, zone, this.participantScratch);
@@ -86,7 +87,8 @@ export class EntityContactPhysics {
 
   // 交戦圏の内側にいて接触を解ける個体だけを out へ詰め直す。out の元の中身は捨てる。
   private collectParticipants(
-    source: readonly DynamicEntity[], zone: EngagementZone<DynamicEntity>, out: DynamicEntity[],
+    source: readonly EntityContactParticipant[], zone: EngagementZone<EntityContactParticipant>,
+    out: EntityContactParticipant[],
   ): void {
     out.length = 0;
     for (const entity of source) {
@@ -97,13 +99,13 @@ export class EntityContactPhysics {
 
   // 参加者どうしの接触候補を1回だけ列挙し、TOI が最小のものから1件ずつ解決する。上限回数を
   // 超えた分は次の substep へ持ち越す。
-  // DynamicEntity.state への書き戻しは全解決が終わってから一括で行う — ループの途中で書き戻すと
+  // Motion.state への書き戻しは全解決が終わってから一括で行う — ループの途中で書き戻すと
   // state セッタ自身が prevState を書き換えてしまい、以降の反復が区間の始点を失う。
   private resolveInOrder(
-    all: readonly DynamicEntity[],
+    all: readonly EntityContactParticipant[],
     simTime: number,
     reference: Vec3,
-    activeStage: Stage,
+    activeStage: StageOutcome,
     registry: EntityRegistry,
   ): void {
     if (all.length === 0) return;
@@ -137,7 +139,7 @@ export class EntityContactPhysics {
   // 参加者を到達量つきでグリッドへ登録し直す。接触の成否を決めるのは参加者どうしの相対変位なので、
   // 到達量は交戦圏の基準変位 reference を差し引いた量で測る。
   private insertParticipants(
-    all: readonly DynamicEntity[], working: readonly KinematicState[], reference: Vec3,
+    all: readonly EntityContactParticipant[], working: readonly KinematicState[], reference: Vec3,
   ): void {
     this.gridScratch.reset();
     for (let i = 0; i < all.length; i++) {
@@ -149,7 +151,7 @@ export class EntityContactPhysics {
   // 返す。接触しない組み合わせも response=null の候補として残す — 当事者の状態が変われば
   // 接触しうるため。
   private collectCandidates(
-    all: readonly DynamicEntity[],
+    all: readonly EntityContactParticipant[],
     simTime: number,
     working: readonly KinematicState[],
   ): number {
@@ -186,7 +188,7 @@ export class EntityContactPhysics {
     count: number,
     dirtyA: number,
     dirtyB: number,
-    all: readonly DynamicEntity[],
+    all: readonly EntityContactParticipant[],
     working: readonly KinematicState[],
   ): Candidate | null {
     let best: Candidate | null = null;
@@ -208,10 +210,10 @@ export class EntityContactPhysics {
   // あるので、呼び出し順に結果は依存しない)。
   private applyCandidate(
     candidate: Candidate,
-    all: readonly DynamicEntity[],
+    all: readonly EntityContactParticipant[],
     working: KinematicState[],
     changed: number[],
-    activeStage: Stage,
+    activeStage: StageOutcome,
     registry: EntityRegistry,
   ): void {
     const { ai, bi } = candidate;
@@ -232,9 +234,9 @@ export class EntityContactPhysics {
     const t = contactTime(a, response.toi);
     a.collideWithEntity(b, {
       t, point, normal: response.normal, selfState: aBefore, otherState: bBefore,
-    }, activeStage, registry);
+    }, { activeStage, registry });
     b.collideWithEntity(a, {
       t, point, normal: scale(response.normal, -1), selfState: bBefore, otherState: aBefore,
-    }, activeStage, registry);
+    }, { activeStage, registry });
   }
 }

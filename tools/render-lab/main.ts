@@ -7,7 +7,8 @@ import { AMBIENT_STRONG, AMBIENT_WEAK } from '../../src/render/pipeline/lighting
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
 import { GraphicsSettings, type ChoiceValue, type GraphicsOptionKey } from '../../src/render/graphics-settings';
 import { GraphicsPanel } from '../../src/hud/panels/graphics-panel';
-import { SegmentedControl, WIDGET_STYLE, injectOnce } from '../../src/hud/widgets';
+import { SegmentedControl, WIDGET_STYLE } from '../../src/hud/widgets';
+import { injectOnce } from '../../src/hud/inject-style';
 import { injectThemeVariables } from '../../src/theme';
 import { CASE_NAMES, MAX_CAMERA_DISTANCE_LOG, sunDiameterPx, type CaseName } from './cases';
 import {
