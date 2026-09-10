@@ -1,13 +1,12 @@
 // 小惑星帯・木星トロヤ群・ヒルダ群・カイパーベルト・散乱円盤の点群を、軌道要素の統計分布として
-// 生成し位置を評価する。表示専用なので天体 id で引く経路(重力源・ピック対象・フォーカス対象)には
-// 載せない。THREE 非依存に保ってあり、生成の決定性と分布は tests/physics で検査する。
-// 各群は PointFieldDef 1つのデータで駆動する — 群を増やすには POINT_FIELD_DEFS に要素を足すだけ
-// でよく、生成コード自体に群固有の分岐を増やさない。
+// 生成する。天体名・分布・描画半径・色はここが決める。各群は PointFieldDef 1つのデータで
+// 駆動し、群を増やすには POINT_FIELD_DEFS に要素を足す。
 import { AU } from '../../../physics/astronomical-unit';
 import { MU_SUN } from './constants';
 import { JUPITER } from './jupiter-system';
 import { mulberry32 } from '../../../math/random';
-import type { PointElements, PointField } from '../point-field';
+import type { PointElements } from '../../../physics/point-orbit';
+import type { PointField } from '../../../render/celestial/point-field-view';
 
 // 軌道長半径の引き方。散乱円盤だけは近日点距離 q = a(1-e) に集中する分布なので、
 // a ではなく q から引いて a = q/(1-e) を逆算する。

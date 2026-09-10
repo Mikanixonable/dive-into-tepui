@@ -16,14 +16,21 @@ export class GeneratedCloudField {
   // 最後に焼いた表示時刻。表示時刻が同じ間は生成済みの場を使う。
   private lastBakedDisplayTime: number | null = null;
 
-  // 気候を全球正距円筒へ投影する。
-  public static global(climate: ClimateMap): GeneratedCloudField {
-    return new GeneratedCloudField(climate, new EquirectProjection(GLOBAL_FIELD_HEIGHT));
+  // 気候を全球正距円筒へ投影する。surfaceRadius は天体の半径 [m]、rotationPeriod は自転周期 [s]。
+  public static global(
+    climate: ClimateMap, surfaceRadius: number, rotationPeriod: number,
+  ): GeneratedCloudField {
+    return new GeneratedCloudField(
+      climate, new EquirectProjection(GLOBAL_FIELD_HEIGHT), surfaceRadius, rotationPeriod);
   }
 
-  // climate と、その中間場・出力場が共有する投影法を受け取る。
-  public constructor(private readonly climate: ClimateMap, projection: FieldProjection) {
-    this.model = new WeatherModel(climate, projection);
+  // climate と、その中間場・出力場が共有する投影法を受け取る。surfaceRadius は雲を載せる天体の
+  // 半径 [m]、rotationPeriod はその自転周期 [s]。
+  public constructor(
+    private readonly climate: ClimateMap, projection: FieldProjection,
+    surfaceRadius: number, rotationPeriod: number,
+  ) {
+    this.model = new WeatherModel(climate, projection, surfaceRadius, rotationPeriod);
     this.field = new CloudField(this.model, projection);
   }
 

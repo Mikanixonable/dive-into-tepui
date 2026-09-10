@@ -30,6 +30,8 @@
     "src/physics/sphere-contact.ts",
     "src/game/creative/placement-validation.ts",
     "src/game/celestial/solar-system/point-field.ts",
+    "src/physics/point-orbit.ts",
+    "src/render/celestial/point-field-view.ts",
     "src/game/camera/focus-target.ts",
     "src/physics/ephemeris/ephemeris-context.ts",
     "src/settings",

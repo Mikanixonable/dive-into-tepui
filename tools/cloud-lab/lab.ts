@@ -7,6 +7,8 @@ import { Fn, If, screenUV, vec2, vec3 } from 'three/tsl';
 import climateTextureUrl from '../../src/assets/earth-climate.png';
 // 実写の雲(ゲーム本体が地表へ貼っているもの)。「実写」ビューが比較のためだけに読む。
 import cloudsPhotoUrl from '../../src/assets/8k_clouds.jpg';
+// 実験環境が回す天体の目盛り。地球の気候と実写を読むので、天気も地球の半径と自転で解く。
+import { R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/constants';
 import { ClimateMap } from '../../src/render/cloud/climate-map';
 import { EquirectProjection, OrthographicCap } from '../../src/render/cloud/field-projection';
 import { pixelsToPngDataUrl } from '../lab-png';
@@ -77,8 +79,8 @@ export class CloudLabCanvas {
       CAP_SIZE, THREE.MathUtils.degToRad(this.capLatitude), THREE.MathUtils.degToRad(this.capLongitude),
       THREE.MathUtils.degToRad(this.capRadius));
     this.panes = [
-      new CloudLabPane(new EquirectProjection(VIEW_HEIGHT), climate, photo),
-      new CloudLabPane(this.capProjection, climate, photo),
+      new CloudLabPane(new EquirectProjection(VIEW_HEIGHT), climate, photo, R_EARTH, SIDEREAL_DAY),
+      new CloudLabPane(this.capProjection, climate, photo, R_EARTH, SIDEREAL_DAY),
     ];
     this.quad = new QuadMesh(this.materialFor(this.view));
   }

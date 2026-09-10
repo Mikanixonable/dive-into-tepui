@@ -98,9 +98,6 @@ export class CelestialSystem implements CelestialBodies {
   private readonly gravityMotionList: readonly CelestialMotion[];
   private readonly atmosphereMotionList: readonly CelestialMotion[];
 
-  // 点群をシーンへ登録済みか。登録は最初にマップを描くとき。
-  private pointFieldBuilt = false;
-
   // ラグランジュ点まわりの周期・準周期軌道のガイド線(表示パネルの軌道ガイドタブ、静止軌道を除く)。
   private orbitGuideLines!: OrbitGuideLines;
   // ゼロ速度曲線(ガイドタブ5.3節)。
@@ -157,6 +154,7 @@ export class CelestialSystem implements CelestialBodies {
     this.ringMaterials = new RingMaterials(
       illuminationTargets.bodyShadow, illuminationTargets.sunLight);
     for (const body of this.entities) body.view.build(body.motion, scene, this.ringMaterials);
+    this.pointFieldView?.build(scene);
   }
 
   // ---------------------------------------------------------------- 天体の口
@@ -379,15 +377,10 @@ export class CelestialSystem implements CelestialBodies {
     // 露出に順応しない星殻と点群は、露出の基準が確定した後の係数を受け取る。
     const fixedBrightnessScale = this.illumination.fixedBrightnessScale;
     const starPos = star === null ? null : star.motion.stateAt(displayTime).r;
-    const pointField = this.pointFieldView;
     const pointFieldVisible = camera.mode === 'map' && graphics.pointField
       && mapDisplay.smallBodyVisible;
-    if (pointField !== null && pointFieldVisible && starPos !== null) {
-      this.buildPointField(pointField);
-      pointField.sync(floatingOrigin, displayTime, starPos, fixedBrightnessScale);
-    } else if (this.pointFieldBuilt) {
-      pointField?.hide();
-    }
+    this.pointFieldView?.sync(
+      pointFieldVisible, floatingOrigin, displayTime, starPos, fixedBrightnessScale);
     this.syncStars(fixedBrightnessScale, this.gridVisibility.stars);
     const geostationaryOrbitVisible = this.orbitGuideSettings.geostationary;
     this.syncReferenceLines(displayTime, camera, visibilityPolicy);
@@ -431,13 +424,6 @@ export class CelestialSystem implements CelestialBodies {
     }
   }
 
-  // 最初にマップへ描くときにシーンへ登録する。
-  private buildPointField(pointField: PointFieldView): void {
-    if (this.pointFieldBuilt) return;
-    this.pointFieldBuilt = true;
-    pointField.build(this.scene);
-  }
-
   // 天体ビュー・星殻・グリッド・点群・参照線を残さず解放する。
   dispose(): void {
     this.orbitGuideLines.dispose();
@@ -447,9 +433,9 @@ export class CelestialSystem implements CelestialBodies {
     this.stars.dispose();
     this.celestialGrid.dispose();
     this.scaleGrid.dispose();
-    // 各天体ビュー(参照軌道線を含む)と、マップを一度でも開いていれば生成済みの小天体点群。
+    // 各天体ビュー(参照軌道線を含む)と、小天体の点群。
     for (const body of this.entities) body.view.dispose();
-    if (this.pointFieldBuilt) this.pointFieldView?.dispose();
+    this.pointFieldView?.dispose();
     this.ringMaterials.dispose();
   }
 }

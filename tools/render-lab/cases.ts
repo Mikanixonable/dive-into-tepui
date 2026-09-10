@@ -10,7 +10,7 @@ import { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-fiel
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
 import climateTextureUrl from '../../src/assets/earth-climate.png';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
-import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-system/constants';
+import { R_EARTH, R_EARTH_EQ, R_SUN, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/constants';
 import { EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE } from '../../src/game/celestial/solar-system/earth-system';
 import { shapeAxes, shapeSpheroidRadii, type RingBandDef } from '../../src/physics/celestial-body-def';
 import { BodyGraticule } from '../../src/render/celestial/body-graticule';
@@ -635,7 +635,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
   const climate = ClimateMap.fromDeferredUrl(climateTextureUrl);
-  const cumulus = new CumulusShell(GeneratedCloudField.global(climate), R_EARTH_EQ);
+  const cumulus = new CumulusShell(GeneratedCloudField.global(climate, R_EARTH, SIDEREAL_DAY), R_EARTH_EQ);
   const surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
   surface.addTo(group);
   surface.syncLod(CLOSE_UP_DIAMETER_PX);

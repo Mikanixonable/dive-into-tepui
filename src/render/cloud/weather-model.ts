@@ -7,7 +7,6 @@ import {
   vec2, vec4,
 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
-import { R_EARTH } from '../../game/celestial/solar-system/constants';
 import { AirMass } from './air-mass';
 import { BakedField } from './baked-field';
 import { CirculatingNoise, coarsenessFor } from './circulating-noise';
@@ -194,8 +193,10 @@ const TROPOPAUSE_STEP_END = THREE.MathUtils.degToRad(60);
 // ついての微分は sin(6 φ) × 6 × 振幅 [hPa/rad]。
 const PRESSURE_BAND_AMPLITUDE = 8;
 
-// 大循環の帯の角速度 [°/日] を、この天体の表面での速さ [m/s] へ直す係数。
-const BAND_RATE_TO_SPEED = (THREE.MathUtils.degToRad(1) / 86400) * R_EARTH;
+// 大循環の帯の角速度 [°/日] を、半径 surfaceRadius [m] の天体の表面での速さ [m/s] へ直す係数。
+function bandRateToSpeed(surfaceRadius: number): number {
+  return (THREE.MathUtils.degToRad(1) / 86400) * surfaceRadius;
+}
 
 // 気圧の勾配を取る中心差分の刻み [rad]。台風の芯の広がり(250 km ≈ 0.039 rad)より細かく、
 // 気圧の写しの texel(全球で 6.1e-3 rad)より粗い。
@@ -264,7 +265,7 @@ export class WeatherModel {
   private readonly surfaceCirculation = new Circulation(SURFACE_BANDS);
   private readonly upperCirculation = new Circulation(UPPER_BANDS);
   private readonly rossbyWave = new RossbyWave();
-  private readonly cyclones = new Cyclones();
+  private readonly cyclones: Cyclones;
   // ノイズは焼く先の texel で標本化できない段を畳むので、写しの持ち方が決まってから組む。
   private readonly pressureNoise: CirculatingNoise;
   private readonly surfaceHumidityNoise: CirculatingNoise;
@@ -278,8 +279,12 @@ export class WeatherModel {
   // 2 位相移流の周期の中の位置 0..1。
   private readonly advectionCycle: FloatUniform = uniform(0);
 
-  // 時刻 0 の天気で始める。climate はこの天体の気候の事前分布、projection は写しの持ち方。
-  public constructor(private readonly climate: ClimateMap, projection: FieldProjection) {
+  // 時刻 0 の天気で始める。climate はこの天体の気候の事前分布、projection は写しの持ち方、
+  // surfaceRadius は天体の半径 [m]、rotationPeriod は自転周期 [s]。
+  public constructor(
+    private readonly climate: ClimateMap, projection: FieldProjection,
+    private readonly surfaceRadius: number, private readonly rotationPeriod: number,
+  ) {
     const texel = projection.texelAngle;
     // 湿度は雲塊の配置しか持たないので投影より粗くて足りることがあり、同じ細かさを要る対流とは
     // 写しを分ける。
@@ -287,6 +292,7 @@ export class WeatherModel {
     const convectionCoarseness = coarsenessFor(projection, CONVECTION_NOISE);
     const humidityTexel = texel.mul(humidityCoarseness);
     const convectionTexel = texel.mul(convectionCoarseness);
+    this.cyclones = new Cyclones(surfaceRadius, rotationPeriod);
     this.pressureNoise = new CirculatingNoise(this.surfaceCirculation, PRESSURE_NOISE, texel);
     this.surfaceHumidityNoise = new CirculatingNoise(this.surfaceCirculation, SURFACE_HUMIDITY_NOISE, humidityTexel);
     this.convectionNoise = new CirculatingNoise(this.surfaceCirculation, CONVECTION_NOISE, convectionTexel);
@@ -302,7 +308,7 @@ export class WeatherModel {
       'convectionSource', THREE.RGFormat, projection, convectionCoarseness,
       (direction) => vec4(this.convectionSourceAt(direction), 0, 1));
     this.convectiveActivity = new ConvectiveActivity(this.surfaceCirculation, projection);
-    this.airMass = new AirMass(projection, (direction) => this.traceFlowAt(direction));
+    this.airMass = new AirMass(projection, (direction) => this.traceFlowAt(direction), surfaceRadius);
     this.syncTime(0);
   }
 
@@ -338,16 +344,19 @@ export class WeatherModel {
     // — 巻雲の繊維はジェットに沿って伸びるので、地表付近の風で流すと向きが揃わない。
     const surfaceWind = balancedWind(
       gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
+      this.surfaceRadius, this.rotationPeriod,
     );
     const convectionWind = balancedWind(
       gradient, isobar, bend, latitude, CONVECTION_FRICTION, CONVECTION_WIND_CROSSING_LIMIT,
+      this.surfaceRadius, this.rotationPeriod,
     );
     const upperMean = this.upperCirculation.meanWindAt(direction);
+    const bandSpeed = bandRateToSpeed(this.surfaceRadius);
     const upperWind: BalancedWind = {
       velocity: surfaceWind.velocity
-        .add(east.mul(upperMean.x.mul(cos(latitude)).mul(BAND_RATE_TO_SPEED)))
-        .add(north.mul(upperMean.y.mul(BAND_RATE_TO_SPEED)))
-        .add(this.rossbyWave.windAt(direction)),
+        .add(east.mul(upperMean.x.mul(cos(latitude)).mul(bandSpeed)))
+        .add(north.mul(upperMean.y.mul(bandSpeed)))
+        .add(this.rossbyWave.windAt(direction, this.surfaceRadius)),
       turn: surfaceWind.turn,
     };
 
@@ -356,7 +365,8 @@ export class WeatherModel {
     const airMass = this.airMass.at(direction, latitude);
     const extratropical = smoothstep(FRONT_LATITUDE_START, FRONT_LATITUDE_FULL, abs(latitude));
     const warmth = airMass.warmth.mul(extratropical);
-    const terrainLift = dot(windComponents, this.climate.slope(direction, LAND_HEIGHT_BIAS)).mul(TERRAIN_LIFT_GAIN);
+    const terrainLift = dot(windComponents, this.climate.slope(direction, LAND_HEIGHT_BIAS, this.surfaceRadius))
+      .mul(TERRAIN_LIFT_GAIN);
     // 折り目の帯: 温帯では前線の伝達関数が、熱帯では雨帯の伝達関数が、圧縮の稜線を帯の強さへ写す。
     const front = smoothstep(FRONT_ONSET, FRONT_ONSET + FRONT_WIDTH, airMass.compression).mul(extratropical);
     const rainband = smoothstep(RAINBAND_ONSET, RAINBAND_ONSET + RAINBAND_WIDTH, airMass.compression)
@@ -446,6 +456,7 @@ export class WeatherModel {
     const eddy = gradient.sub(north.mul(sin(latitude.mul(6)).mul(6 * PRESSURE_BAND_AMPLITUDE)));
     const wind = balancedWind(
       eddy, isobarAt(direction, eddy), bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
+      this.surfaceRadius, this.rotationPeriod,
     );
     return {
       velocity: wind.velocity.add(east.mul(this.meanWindAt(direction).x)),
@@ -476,7 +487,7 @@ export class WeatherModel {
   public meanWindAt(direction: Vec3Node): Vec2Node {
     // 東西は緯線に沿って進むので、同じ角速度でも高緯度ほど遅い。
     const mean = this.surfaceCirculation.meanWindAt(direction);
-    return vec2(mean.x.mul(cos(latitudeOf(direction))), mean.y).mul(BAND_RATE_TO_SPEED);
+    return vec2(mean.x.mul(cos(latitudeOf(direction))), mean.y).mul(bandRateToSpeed(this.surfaceRadius));
   }
 
   // 移流前の対流の強弱(0 中心の高周波)。x が粒(細胞の芯)、y が網目(細胞の壁)で、**同じ
@@ -496,7 +507,7 @@ export class WeatherModel {
     const weightA = float(1).sub(abs(phaseA.mul(2).sub(1)));
     // seconds 秒だけ flow に流された点の source。負に取れば風上へ遡る。
     const sourceAt = (source: BakedField, flow: BalancedWind, seconds: FloatNode): Vec4Node =>
-      source.at(normalize(direction.add(windStep(flow, direction, seconds).div(R_EARTH))));
+      source.at(normalize(direction.add(windStep(flow, direction, seconds).div(this.surfaceRadius))));
     // 遡る秒数 [s](負)。位相が周期の終わりへ近づくほど遠くまで遡る。
     const stepA = phaseA.mul(-ADVECTION_PERIOD);
     const stepB = phaseB.mul(-ADVECTION_PERIOD);

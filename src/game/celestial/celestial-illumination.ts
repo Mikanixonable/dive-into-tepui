@@ -15,7 +15,7 @@ import {
   castsCumulusShadow, selectRingShadow, selectShadowBodies, type RingShadowCandidate,
 } from '../../render/pipeline/shadow/shadow-select';
 import { focusTargetId } from '../camera/focus-target';
-import { writeBodyFromWorld } from './body-frame';
+import { writeBodyFromWorld } from '../../render/celestial/body-frame';
 import type { Vec3 } from '../../math/vec3';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { Exposure } from '../../render/pipeline/exposure';
