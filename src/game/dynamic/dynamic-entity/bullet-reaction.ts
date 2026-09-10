@@ -1,5 +1,5 @@
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
-import { lenSq, sub } from '../../../math/vec3';
+import { lenSq, sub, type Vec3 } from '../../../math/vec3';
 import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import type {
   DynamicMotion,
@@ -30,8 +30,7 @@ export class BulletReaction implements DynamicMotionBehavior {
     if (other.contactKind === 'bullet') return false;
     const ship = other.attachedTo ?? other;
     if (this.shooter === 'enemy' && ship.contactKind === 'enemy') return false;
-    const ownShip = (this.shooter === 'player' && ship.contactKind === 'player')
-      || (this.shooter === 'enemy' && ship.contactKind === 'enemy');
+    const ownShip = this.shooter === 'player' && ship.contactKind === 'player';
     return !ownShip || simTime - this.bornSim > SELF_CONTACT_GRACE;
   }
 
@@ -48,7 +47,7 @@ export class BulletReaction implements DynamicMotionBehavior {
     _dt: number,
     simTime: number,
     _services: DynamicReactionServices,
-    viewerPos: import('../../../math/vec3').Vec3,
+    viewerPos: Vec3,
   ): void {
     if (!self.alive) return;
     if (this.shooter === 'enemy' && !this.passedClose
