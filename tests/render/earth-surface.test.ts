@@ -168,6 +168,8 @@ export function register(): void {
       baseColorUrl: SOURCE.baseColorUrl, baseTerrainUrl: SOURCE.baseTerrainUrl,
       fetchImpl: async () => { throw new Error('base terrain fixture is intentionally unavailable'); },
     });
+    assert.equal(binding.deferredTextures[0]?.texture.image, null);
+    assert.equal(binding.deferredTextures[0]?.texture.version, 0);
     surface.attach(SOURCE, coordinator, 'ready', {
       material: binding.material, deferred: binding.deferredTextures, textures: binding.textures,
       onDispose: binding.dispose, syncFrame: binding.syncFrame,

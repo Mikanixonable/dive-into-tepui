@@ -40,6 +40,12 @@ export function register(): void {
     assert.equal(terrain.magFilter, THREE.LinearFilter);
     assert.equal(terrain.colorSpace, THREE.NoColorSpace);
     assert.equal(terrain.generateMipmaps, false);
+    assert.equal(pageTable.image, null);
+    assert.equal(pageTable.version, 0);
+    const data = new THREE.DataTexture(new Uint8Array(4), 1, 1);
+    assert.equal(data.version, 0);
+    configureEarthSurfaceTexture(data, 'color');
+    assert.equal(data.version, 1);
   });
 
   test('earth surface material: unsupported capability selects base fallback', () => {
