@@ -16,6 +16,8 @@ import struct
 import sys
 import zipfile
 
+from real_renderer import RendererUnavailable
+
 _spec = importlib.util.spec_from_file_location("earth_surface_fetch", Path(__file__).with_name("fetch-source.py"))
 _fetch = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_fetch)
@@ -149,8 +151,8 @@ class Grid:
     def __post_init__(self):
         if not all(math.isfinite(value) for value in (self.west, self.south, self.east, self.north)):
             raise ValueError("格子座標は有限値が必要です")
-        longitude_limit = 362 if self.allow_gutter else 360
-        latitude_valid = (-91 <= self.south < self.north <= 91 if self.allow_gutter
+        longitude_limit = 364 if self.allow_gutter else 360
+        latitude_valid = (-92 <= self.south < self.north <= 92 if self.allow_gutter
                           else -90 <= self.south < self.north <= 90)
         if not (0 < self.east - self.west <= longitude_limit and latitude_valid):
             raise ValueError("格子の経緯度範囲が不正です")
@@ -555,7 +557,8 @@ def require_global_inputs(manifest, raw_root):
         raise GlobalInputError(f"全球bundleの入力が不足しています: {preview}{more}")
 
 
-def global_manifest(manifest, source_manifest_path, source_manifest_hash, climate_paths, coverage_kind="complete", max_zoom=7):
+def global_manifest(manifest, source_manifest_path, source_manifest_hash, climate_paths, coverage_kind="complete", max_zoom=7,
+                    data_provenance="source"):
     """配信契約の正本を生成する。実体hashはtile writerが逐次追加する。"""
     attribution = []
     for source in manifest["sources"]:
@@ -565,7 +568,8 @@ def global_manifest(manifest, source_manifest_path, source_manifest_hash, climat
         "datasetId": manifest["datasetId"],
         "sourceManifestSha256": source_manifest_hash,
         "sourceManifest": source_manifest_path,
-        "provenance": {"generator": "earth-surface-bundle/1", "sourceManifestHash": source_manifest_hash},
+        "provenance": {"generator": "earth-surface-bundle/1", "sourceManifestHash": source_manifest_hash,
+                        "dataKind": data_provenance},
         "climateMap": manifest["climateMap"],
         "controlRegions": manifest["controlRegions"],
         "coverage": {"kind": coverage_kind, "maxZoom": max_zoom,
@@ -582,9 +586,11 @@ def global_manifest(manifest, source_manifest_path, source_manifest_hash, climat
 
 
 def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, render_tile,
-                        climate_maps, base_color=None, max_zoom=7):
+                        climate_maps, base_color=None, max_zoom=7, validate_inputs=True,
+                        data_provenance="source"):
     """各タイルを一枚ずつ生成し、stagingへ書き込む全球bundle writer。"""
-    require_global_inputs(manifest, raw_root)
+    if validate_inputs:
+        require_global_inputs(manifest, raw_root)
     if type(max_zoom) is not int or not 0 <= max_zoom <= 7:
         raise ValueError("max_zoomは0..7の整数が必要です")
     output = Path(output_root)
@@ -598,7 +604,8 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
     if not source_manifest_file.is_file():
         raise GlobalInputError(f"source manifestがありません: {source_manifest_path}")
     result_manifest = global_manifest(manifest, "sources.json", source_hash, climate_paths,
-                                      "complete" if max_zoom == 7 else "sparse", max_zoom)
+                                      "complete" if max_zoom == 7 else "sparse", max_zoom,
+                                      data_provenance)
     try:
         climate_values = list(climate_maps)
         if (len(climate_values) != 12 or any(not isinstance(value, (bytes, bytearray)) or not value
@@ -665,36 +672,42 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
     return result_manifest
 
 
-def unavailable_global_renderer(_key):
-    """実ソースの座標変換を未接続のまま、fixtureを本番データとして出さない。"""
-    raise GlobalInputError("全球rendererは未接続です。ETOPO/BMNG/GSHHG/ERA5のwindow adapterを接続してから再実行してください")
-
-
 # fixtureを中間JSONとRGB8 PPMへ出力する。タイルキー指定時はESTN本文も検査して保存する。
 def main():
+    from real_renderer import create_fixture_renderer, create_real_renderer
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input")
     parser.add_argument("--global", action="store_true", dest="global_bundle",
                         help="全43690タイルのbundle生成入口。入力不足は生成前に失敗する")
+    parser.add_argument("--fixture-global", metavar="PATH",
+                        help="明示したsynthetic fixtureから小さなbundleを生成するテスト入口")
     parser.add_argument("--raw-root", default=".earth-surface/raw")
     parser.add_argument("--climate-dir", default=".earth-surface/climate")
     parser.add_argument("--manifest", default="assets-src/earth-surface/sources.json")
     parser.add_argument("--output", default=".earth-surface/intermediate/region")
+    parser.add_argument("--max-zoom", type=int, default=7)
     parser.add_argument("--tile", nargs=3, type=int, metavar=("Z", "X", "Y"))
     args = parser.parse_args()
     manifest = _fetch.load_manifest(args.manifest)
+    if args.global_bundle and args.fixture_global:
+        parser.error("--globalと--fixture-globalは併用できません")
+    if args.fixture_global:
+        if args.input is not None or args.tile is not None:
+            parser.error("--fixture-globalは--input/--tileと併用できません")
+        renderer = create_fixture_renderer(manifest, args.fixture_global)
+        climate_maps = renderer.climate_maps()
+        write_global_bundle(manifest, args.manifest, args.raw_root, args.output,
+                            renderer.render_tile, climate_maps, max_zoom=args.max_zoom,
+                            validate_inputs=False, data_provenance="synthetic_fixture")
+        print(f"fixture全球bundle生成完了: {args.output}")
+        return
     if args.global_bundle:
         if args.input is not None or args.tile is not None:
             parser.error("--globalは--input/--tileと併用できません")
-        climate_dir = Path(args.climate_dir)
-        climate_maps = []
-        for month in range(1, 13):
-            path = climate_dir / f"{month:02d}.png"
-            if not path.is_file():
-                raise GlobalInputError(f"気候mapが不足しています: {path}")
-            climate_maps.append(path.read_bytes())
+        renderer = create_real_renderer(manifest, args.raw_root)
         write_global_bundle(manifest, args.manifest, args.raw_root, args.output,
-                            unavailable_global_renderer, climate_maps)
+                            renderer.render_tile, renderer.climate_maps(), max_zoom=args.max_zoom)
         print(f"全球bundle生成完了: {args.output}")
         return
     if args.input is None:
@@ -733,6 +746,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (GlobalInputError, ValueError, KeyError, OSError) as error:
+    except (GlobalInputError, RendererUnavailable, ValueError, KeyError, OSError) as error:
         print(f"earth-surface:bake: {error}", file=sys.stderr)
         sys.exit(1)

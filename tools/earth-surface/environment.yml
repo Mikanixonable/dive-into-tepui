@@ -1,0 +1,10 @@
+name: dive-into-tepui-earth-surface
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - gdal=3.10.3
+  - netcdf4=1.7.2
+  - numpy=2.2.6
+  - pillow=11.2.1
+  - pyshp=2.3.1
