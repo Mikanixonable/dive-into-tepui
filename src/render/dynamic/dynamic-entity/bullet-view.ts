@@ -2,8 +2,7 @@ import * as THREE from 'three/webgpu';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import { orientProjectile } from '../../projectile-orientation';
 import { buildBulletMesh, buildPlasmaMesh } from '../ships';
-import { DynamicView, type DynamicViewFrame, type DynamicViewIdentity } from '../dynamic-view';
-import type { DynamicMotion } from '../../../game/dynamic/dynamic-motion';
+import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
 
 abstract class ProjectileView extends DynamicView {
   private readonly orientation = new THREE.Quaternion();
@@ -12,14 +11,14 @@ abstract class ProjectileView extends DynamicView {
     super(object, undefined, false);
   }
 
+  // 表示時刻の速度へ機首を向け、画面に出るフレームだけプールへ積む。
   protected override syncModel(
-    _identity: DynamicViewIdentity,
-    _motion: DynamicMotion,
+    _source: DynamicRenderSource,
     displayed: KinematicState | null,
     context: DynamicViewFrame,
   ): void {
     if (displayed !== null
-      && orientProjectile(this.orientation, context.floatingOrigin.VtoThreeV3(displayed.v))) {
+      && orientProjectile(this.orientation, context.camera.floatingOrigin.VtoThreeV3(displayed.v))) {
       this.object.quaternion.copy(this.orientation);
     }
     if (!this.object.visible) return;

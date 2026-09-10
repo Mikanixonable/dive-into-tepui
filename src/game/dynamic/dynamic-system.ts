@@ -13,7 +13,7 @@ import { isControllable, type Controllable } from './dynamic-entity/controllable
 import { isEnemy } from './dynamic-entity/enemy';
 import { isPlayer, Player } from '../player/player';
 import { restorationFor } from './dynamic-entity/entity-dictionary';
-import { InstancedPools } from './instanced-pools';
+import { InstancedPools } from '../../render/dynamic/instanced-pools';
 import { Simulator } from './simulator';
 import { NanWatchdog } from './nan-watchdog';
 import { FrameSections, SECTION } from '../frame-sections';
@@ -61,7 +61,8 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     initialSimTime: number,
     saved?: GameSaveData,
   ) {
-    this.instancedPools = new InstancedPools(scene);
+    this.instancedPools = new InstancedPools(
+      scene, ENTITY_CAP.bullet, ENTITY_CAP.casing, ENTITY_CAP.debris);
     this.simulator = new Simulator(this, this, this, celestialBodies, sections, initialSimTime);
     this.nanWatchdog = new NanWatchdog(notifier);
     if (saved) this.restoreFromSave(saved, notifier, worldSfx, flash, scene, markers);
@@ -322,20 +323,14 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     visibilityPolicy: MapVisibilityPolicy | null, camera: CameraFrame, style: RenderStyle,
     visual: EntityVisualSettings, orbitRef: OrbitReference | undefined,
   ): void {
-    // instance pool の受付期間で全 Entity を挟み、各 View へ同じフレーム入力を配る。
+    // 全個体が同じ1つのフレーム入力を読むよう、走査の前に組んでおく。
+    const context = { displayTime, camera, style, visual, pools: this.instancedPools };
+    // instance pool の受付期間で全 Entity を挟む。
     this.instancedPools.beginFrame();
     for (const e of this.entities) {
-      e.sync({
-        floatingOrigin: camera.floatingOrigin,
-        displayTime,
-        activeId: active?.id ?? null,
-        visibilityPolicy,
-        pools: this.instancedPools,
-        camera,
-        style,
-        visual,
-        orbitReference: orbitRef,
-      });
+      // 種別ごとの表示可否はここで解決し、View へは結果だけを渡す。
+      const visible = visibilityPolicy === null || e.mapVisibility(visibilityPolicy, active).category;
+      e.sync(context, visible, e === active, orbitRef);
     }
     this.instancedPools.endFrame();
   }

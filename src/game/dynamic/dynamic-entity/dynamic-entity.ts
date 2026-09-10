@@ -9,7 +9,10 @@ import type { OrbitingObject } from './orbiting-object';
 import type { CapKind, DynamicEntityKind } from './entity-kind';
 import { EntityIdAllocator } from './entity-id';
 import { DynamicMotion } from '../dynamic-motion';
-import { DynamicView, type DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
+import type { OrbitReference } from '../../orbit-reference';
+import {
+  DynamicView, type DynamicRenderSource, type DynamicViewFrame,
+} from '../../../render/dynamic/dynamic-view';
 
 export type DynamicMotionFactory = (owner: DynamicEntity) => DynamicMotion;
 export type DynamicViewFactory = (owner: DynamicEntity) => DynamicView;
@@ -74,9 +77,38 @@ export class DynamicEntity {
     return null;
   }
 
-  // Entity 自身を表示入力として、同じフレームの Motion と context を View へ渡す。
-  public sync(context: DynamicViewFrame): void {
-    this.view.sync(this, this.motion, context);
+  // このフレームの表示入力。派生 Entity は自分の View が読む値を足したものを返す。
+  // visible はこのフレームに本体を出すか、active はこの個体が操作対象か、
+  // orbitReference は軌道の基準として選ばれている天体。
+  protected renderSource(
+    _context: DynamicViewFrame, visible: boolean, _active: boolean,
+    _orbitReference: OrbitReference | undefined,
+  ): DynamicRenderSource {
+    const motion = this.motion;
+    return {
+      id: this.id,
+      name: this.name,
+      visible,
+      alive: motion.alive,
+      stateAt: (t) => motion.stateAt(t),
+      attitude: motion.att.q,
+      // 比熱を持たない個体は熱を溜めないので、発光の表示入力そのものを持たせない。
+      thermal: motion.specificHeat > 0
+        ? {
+          temperature: motion.temperature,
+          deviation: motion.thermalDeviation,
+          emissivity: motion.emissivity,
+        }
+        : null,
+    };
+  }
+
+  // このフレームの表示入力を組み立てて View へ渡す。
+  public sync(
+    context: DynamicViewFrame, visible: boolean, active: boolean,
+    orbitReference: OrbitReference | undefined,
+  ): void {
+    this.view.sync(this.renderSource(context, visible, active, orbitReference), context);
   }
 
   // この個体が所有する View 資源を解放する。

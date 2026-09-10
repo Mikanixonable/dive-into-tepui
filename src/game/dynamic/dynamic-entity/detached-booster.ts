@@ -5,9 +5,16 @@ import type { KinematicState } from '../../../physics/kinematic-state';
 import { savedAttitude, savedKinematicState, type DetachedBoosterSaveData } from '../../save/save-data';
 import { nextBoosterId, type BoosterStage } from '../../player/booster-stack';
 import { DetachedBoosterMotion } from './detached-booster-motion';
-import { DetachedBoosterView } from '../../../render/dynamic/dynamic-entity/detached-booster-view';
+import {
+  DetachedBoosterView, type DetachedBoosterRenderSource,
+} from '../../../render/dynamic/dynamic-entity/detached-booster-view';
+import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
 import { DynamicEntity } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
+import type { OrbitReference } from '../../orbit-reference';
+
+// 表示時刻を「現在」とみなす許容差 [sim s]。過去・未来を映しているフレームでは燃焼を描かない。
+const BURN_DISPLAY_EPS = 1e-6;
 
 type DetachedBoosterInit =
   | {
@@ -39,6 +46,21 @@ export class DetachedBooster extends DynamicEntity {
       () => new DetachedBoosterMotion(state, attitude, stage, collisionEnableAt),
     );
     this.setName('分離ブースター');
+  }
+
+  // 噴射炎を描くフレームだけ、その燃焼比を表示入力へ足す。
+  protected override renderSource(
+    context: DynamicViewFrame, visible: boolean, active: boolean,
+    orbitReference: OrbitReference | undefined,
+  ): DetachedBoosterRenderSource {
+    const motion = this.motion as DetachedBoosterMotion;
+    // 燃焼は積分の先端でしか決まっていないので、その時刻を映しているフレームだけ噴かせる。
+    const burning = motion.thrust !== null
+      && Math.abs(context.displayTime - motion.state.t) <= BURN_DISPLAY_EPS;
+    return {
+      ...super.renderSource(context, visible, active, orbitReference),
+      burnRatio: burning ? motion.burnRatio : null,
+    };
   }
 
   // 運動状態と残存段をセーブ用データへ変換する。

@@ -35,10 +35,10 @@ export class BeltSection extends DynamicMotion {
 
 export class BeltPhysics {
   // 機体座標系の節点位置。
-  readonly beltPos: Vec3[] = [];
-  private readonly beltPrevPos: Vec3[] = [];
+  readonly positions: Vec3[] = [];
+  private readonly prevPositions: Vec3[] = [];
   // 各リンクのチェーン軸まわりのねじれ角 [rad]。常に ±MAG_CHAIN_MAX_ROLL_DEG に収まる。
-  readonly beltTwist: number[] = [];
+  readonly twists: number[] = [];
 
   private prevShipW = v3(); // 前フレームの機体角速度(ベルト物理の角加速度推定用)
   private angularAccel = v3();
@@ -50,9 +50,9 @@ export class BeltPhysics {
   constructor(private readonly linkCount: number, private readonly owner: DynamicMotion) {
     for (let i = 0; i < linkCount; i++) {
       const p = v3(MAG_BELT_ANCHOR_X + (i + 1) * MAG_BELT_PITCH, 0, 0);
-      this.beltPos.push(p);
-      this.beltPrevPos.push(p);
-      this.beltTwist.push(0);
+      this.positions.push(p);
+      this.prevPositions.push(p);
+      this.twists.push(0);
     }
   }
 
@@ -63,19 +63,19 @@ export class BeltPhysics {
 
     // ノードを 1 つ前詰め (i=0 は消費済みマガジン、破棄)
     for (let i = 0; i < n - 1; i++) {
-      this.beltPos[i] = this.beltPos[i + 1]!;
-      this.beltPrevPos[i] = this.beltPrevPos[i + 1]!;
-      this.beltTwist[i] = this.beltTwist[i + 1]!;
+      this.positions[i] = this.positions[i + 1]!;
+      this.prevPositions[i] = this.prevPositions[i + 1]!;
+      this.twists[i] = this.twists[i + 1]!;
     }
 
     // 末尾へ新ノードを追加。直後に非表示になるので位置精度は問わない(次フレームで収束する)。
-    const last = this.beltPos[n - 2]!;
-    const lastPrev = this.beltPrevPos[n - 2]!;
+    const last = this.positions[n - 2]!;
+    const lastPrev = this.prevPositions[n - 2]!;
     const vel = sub(last, lastPrev); // 前のノードの速度ベクトルを引き継いで自然に延長
     const newLast = v3(last.x + vel.x + MAG_BELT_PITCH, last.y + vel.y, last.z + vel.z);
-    this.beltPos[n - 1] = newLast;
-    this.beltPrevPos[n - 1] = (newLast); // 新末尾は追加直後は速度ゼロ
-    this.beltTwist[n - 1] = this.beltTwist[n - 2]!;
+    this.positions[n - 1] = newLast;
+    this.prevPositions[n - 1] = (newLast); // 新末尾は追加直後は速度ゼロ
+    this.twists[n - 1] = this.twists[n - 2]!;
   }
 
   // ベルトのたわみを解く。軌道上は自由落下なので重力ではたわまず、機体自身の推力加速度と
@@ -110,8 +110,8 @@ export class BeltPhysics {
     const inv2Dt = invDt * 2;
 
     for (let i = 0; i < this.linkCount; i++) {
-      const pos = this.beltPos[i]!;
-      const vel = sub(pos, this.beltPrevPos[i]!); // 前フレームの変位(Verlet の速度相当)
+      const pos = this.positions[i]!;
+      const vel = sub(pos, this.prevPositions[i]!); // 前フレームの変位(Verlet の速度相当)
 
       // 擬似力による加速度: -a_thrust - α×r - ω×(ω×r) - 2ω×v
       const euler = cross(this.angularAccel, pos);
@@ -123,8 +123,8 @@ export class BeltPhysics {
         -aThrustShip.z - euler.z - centrifugal.z - coriolis.z,
       );
 
-      this.beltPrevPos[i] = pos;
-      this.beltPos[i] = addScaled(addScaled(pos, vel, damping), accel, h * h);
+      this.prevPositions[i] = pos;
+      this.positions[i] = addScaled(addScaled(pos, vel, damping), accel, h * h);
     }
   }
 
@@ -133,8 +133,8 @@ export class BeltPhysics {
     this.anchor = v3(MAG_BELT_ANCHOR_X - beltFeed * MAG_BELT_PITCH, 0, 0);
 
     const root = v3(this.anchor.x + MAG_BELT_PITCH, this.anchor.y, this.anchor.z);
-    this.beltPos[0] = root;
-    this.beltPrevPos[0] = (root);
+    this.positions[0] = root;
+    this.prevPositions[0] = (root);
   }
 
   // 数回反復して各リンク間隔を MAG_BELT_PITCH に収束させる
@@ -142,25 +142,25 @@ export class BeltPhysics {
     const n = this.linkCount;
     for (let iter = 0; iter < 6; iter++) {
       for (let i = 0; i < n; i++) {
-        const a = i === 0 ? this.anchor : this.beltPos[i - 1]!;
-        const b = this.beltPos[i]!;
+        const a = i === 0 ? this.anchor : this.positions[i - 1]!;
+        const b = this.positions[i]!;
         const delta = sub(b, a);
         const dist = len(delta);
         if (dist < 1e-6) continue;
         const corr = scale(delta, (dist - MAG_BELT_PITCH) / dist);
         if (i <= 1) {
           // 参照点(アンカーまたは根本)は固定なので b 側だけ補正する。
-          this.beltPos[i] = sub(b, corr);
+          this.positions[i] = sub(b, corr);
         } else {
-          this.beltPos[i] = addScaled(b, corr, -0.5);
-          this.beltPos[i - 1] = addScaled(a, corr, 0.5);
+          this.positions[i] = addScaled(b, corr, -0.5);
+          this.positions[i - 1] = addScaled(a, corr, 0.5);
         }
       }
     }
   }
 
   // つなぎ目ごとに許容するピッチ/ヨーの角度上限を tan クランプで適用し、クランプ後の方向を
-  // beltPos/beltPrevPos へ書き戻す。併せてねじれ角(beltTwist)を積分する。根本から2番目の
+  // 節点位置へ書き戻す。併せてねじれ角を積分する。根本から2番目の
   // つなぎ目だけは、次にリンク0へ昇格する前に直立させるため feed に応じて上限を0へ絞る。
   private advanceOrientationConstraints(dt: number, att: Attitude, feed: number): void {
     const maxRoll = (MAG_CHAIN_MAX_ROLL_DEG * Math.PI) / 180;
@@ -173,7 +173,7 @@ export class BeltPhysics {
     let prevTwist = att.w.z * MAG_CHAIN_ROLL_GAIN; // ねじれの発生源: 機体のロール角速度
 
     for (let i = 0; i < this.linkCount; i++) {
-      const rawDir = sub(this.beltPos[i]!, prevPoint);
+      const rawDir = sub(this.positions[i]!, prevPoint);
       const segLen = len(rawDir); // 方向を取り出すためだけの実長
       let bendQ = prevQ;
       if (segLen > 1e-6) {
@@ -185,9 +185,9 @@ export class BeltPhysics {
 
         // 実長ではなく目標長 MAG_BELT_PITCH を使う: 実長は補正済み prevPoint からの誤差を増幅して NaN へ発散する。
         const newPos = addScaled(prevPoint, clampedDir, MAG_BELT_PITCH);
-        const oldPos = this.beltPos[i]!;
-        this.beltPrevPos[i] = add(this.beltPrevPos[i]!, sub(newPos, oldPos));
-        this.beltPos[i] = newPos;
+        const oldPos = this.positions[i]!;
+        this.prevPositions[i] = add(this.prevPositions[i]!, sub(newPos, oldPos));
+        this.positions[i] = newPos;
 
         const localX = qRotate(prevQ, LOCAL_RIGHT); // 前リンクの進行方向(ワールド)
         bendQ = qMul(qFromUnitVectors(localX, clampedDir), prevQ); // 曲げぶんの最小回転を合成
@@ -195,7 +195,7 @@ export class BeltPhysics {
 
       prevTwist = this.advanceTwist(i, prevTwist, maxRoll, rollLerp);
       prevQ = bendQ;
-      prevPoint = this.beltPos[i]!;
+      prevPoint = this.positions[i]!;
     }
   }
 
@@ -209,17 +209,17 @@ export class BeltPhysics {
     return qRotate(prevQ, clampedLocal);
   }
 
-  // beltTwist[i] を更新し、次リンクへ位相遅れつつ伝播させるシード値を返す
+  // i 番のねじれ角を更新し、次リンクへ位相遅れつつ伝播させるシード値を返す
   private advanceTwist(i: number, prevTwist: number, maxRoll: number, rollLerp: number): number {
     if (i === 0) {
       // 根本はねじれ 0 に固定し、伝播用シードはそのまま次リンクへ渡す。
-      this.beltTwist[0] = 0;
+      this.twists[0] = 0;
       return prevTwist;
     }
     const target = clamp(prevTwist, -maxRoll, maxRoll);
-    const twist = this.beltTwist[i]! + (target - this.beltTwist[i]!) * rollLerp;
-    this.beltTwist[i] = clamp(twist, -maxRoll, maxRoll);
-    return this.beltTwist[i]!;
+    const twist = this.twists[i]! + (target - this.twists[i]!) * rollLerp;
+    this.twists[i] = clamp(twist, -maxRoll, maxRoll);
+    return this.twists[i]!;
   }
 
   private readonly sections: BeltSection[] = [];
@@ -228,8 +228,8 @@ export class BeltPhysics {
   // プロキシ配列を返す。t は接触代理の KinematicState.t に使う現在時刻(掃引判定の区間を成す)。
   contactSections(t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
     const invDt = 1 / dt;
-    for (const [i, bp] of this.beltPos.entries()) {
-      const bpPrev = this.beltPrevPos[i]!;
+    for (const [i, bp] of this.positions.entries()) {
+      const bpPrev = this.prevPositions[i]!;
       // 節点は機体座標系の中で Verlet 変位ぶん動き、機体そのものの回転で接線方向にも動く。
       const verletVel = v3((bp.x - bpPrev.x) * invDt, (bp.y - bpPrev.y) * invDt, (bp.z - bpPrev.z) * invDt);
       const bodyVel = add(verletVel, cross(att.w, bp));
@@ -255,8 +255,8 @@ export class BeltPhysics {
       const verletVel = sub(bodyVel, cross(att.w, bpLocal));
 
       // Verlet は前後2つの位置で速度を表すので、速度は前フレーム位置へ畳んで返す。
-      this.beltPos[i] = bpLocal;
-      this.beltPrevPos[i] = v3(
+      this.positions[i] = bpLocal;
+      this.prevPositions[i] = v3(
         bpLocal.x - verletVel.x * dt,
         bpLocal.y - verletVel.y * dt,
         bpLocal.z - verletVel.z * dt,

@@ -3,6 +3,7 @@ import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { DynamicTrajectory } from '../../physics/dynamic-trajectory';
+import type { Quat } from '../../math/quat';
 import type { Vec3 } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import { orbitalElementsOf } from '../../physics/elements';
@@ -11,40 +12,54 @@ import type { EntityVisualSettings } from '../entity-visual-settings';
 import type { LineStyle } from '../line-style';
 import type { RenderStyle } from '../render-style';
 import type { CameraFrame } from '../camera/camera-frame';
-import type { FloatingOrigin } from '../camera/floating-origin';
-import type { CelestialBodies } from '../../game/celestial/celestial-bodies';
 import { EllipseLine } from '../lines/ellipse-line';
 import { TargetRelativeLine } from '../lines/target-relative-line';
 import { TrajectoryLine } from '../lines/trajectory-line';
-import type { MapVisibilityPolicy } from '../../game/map/visibility-policy';
-import type { OrbitReference } from '../../game/orbit-reference';
-import type { DynamicEntityKind } from '../../game/dynamic/dynamic-entity/entity-kind';
-import type { InstancedPools } from '../../game/dynamic/instanced-pools';
-import type { DynamicMotion } from '../../game/dynamic/dynamic-motion';
+import type { CelestialBodies } from '../../game/celestial/celestial-bodies';
+import type { InstancedPools } from './instanced-pools';
 import { syncThermalState } from '../thermal-emissive';
 
-export interface DynamicViewIdentity {
-  readonly id: string;
-  readonly name: string;
-  readonly mapKind: DynamicEntityKind | null;
-  readonly showsEquatorNodesAlways: boolean;
+// 熱による発光の表示入力。
+export interface DynamicThermalSource {
+  readonly temperature: number;
+  readonly deviation: number;
+  readonly emissivity: number;
 }
 
+// 1体ぶんの、そのフレームの表示入力。種別ごとの View は、これへ自分が読む値を足した面で受ける。
+export interface DynamicRenderSource {
+  readonly id: string;
+  readonly name: string;
+  // このフレームに本体を出すか。
+  readonly visible: boolean;
+  readonly alive: boolean;
+  // 表示時刻の運動状態。引けないフレームは null。
+  stateAt(t: number): KinematicState | null;
+  // 現在の姿勢。
+  readonly attitude: Quat;
+  // 熱の表現。比熱を持つ個体だけが値を持ち、それ以外は null。
+  readonly thermal: DynamicThermalSource | null;
+}
+
+// そのフレームの、全個体で共有する表示入力。
 export interface DynamicViewFrame {
-  readonly floatingOrigin: FloatingOrigin;
   readonly displayTime: number;
-  readonly activeId: string | null;
-  readonly visibilityPolicy: MapVisibilityPolicy | null;
-  readonly pools: InstancedPools;
   readonly camera: CameraFrame;
   readonly style: RenderStyle;
   readonly visual: EntityVisualSettings;
-  readonly orbitReference: OrbitReference | undefined;
+  readonly pools: InstancedPools;
 }
 
+// 線の形状の基準になる、1体ぶんの時刻問い合わせ。
 interface DynamicStateSource {
   readonly state: KinematicState;
   stateAt(t: number, celestialBodies?: CelestialBodies): KinematicState | null;
+}
+
+// 線として焼く軌跡と、その時刻問い合わせ。
+interface DynamicLineSource extends DynamicStateSource {
+  readonly predicted: DynamicTrajectory | null;
+  readonly actual: DynamicTrajectory;
 }
 
 export interface DynamicLineDisplay {
@@ -65,8 +80,9 @@ type OrbitLineResource =
   | { readonly kind: 'ellipse'; readonly line: EllipseLine }
   | { readonly kind: 'relative'; readonly line: TargetRelativeLine };
 
-// 1体ぶんの表示ツリー、オーバーレイ資源、再構築回避用キャッシュを所有する。
-export class DynamicView {
+// 1体ぶんの表示ツリー、オーバーレイ資源、再構築回避用キャッシュを所有する。S は種別ごとの
+// 表示入力で、既定は全個体に共通する面。
+export class DynamicView<S extends DynamicRenderSource = DynamicRenderSource> {
   private orbitLineValue: OrbitLineResource | null = null;
   private predictedLineValue: TrajectoryLine | null = null;
   private actualLineValue: TrajectoryLine | null = null;
@@ -81,33 +97,29 @@ export class DynamicView {
   }
 
   // 個体の表示入力を、所有する THREE モデルへ同期する。
-  public sync(identity: DynamicViewIdentity, motion: DynamicMotion, context: DynamicViewFrame): void {
-    const visible = dynamicEntityVisible(identity, context);
-    const displayed = motion.alive
-      ? this.place(motion, context.displayTime, context.floatingOrigin, visible)
-      : null;
-    if (!motion.alive) this.object.visible = false;
-    this.syncModel(identity, motion, displayed, context);
+  public sync(source: S, context: DynamicViewFrame): void {
+    const displayed = source.alive ? this.place(source, context) : null;
+    if (!source.alive) this.object.visible = false;
+    this.syncModel(source, displayed, context);
   }
 
   // 表示時刻の状態があれば、可視性・位置・姿勢・熱表現を THREE ルートへ適用する。
-  protected place(
-    motion: DynamicMotion, displayTime: number, floatingOrigin: FloatingOrigin, visible: boolean,
-  ): KinematicState | null {
-    const state = motion.stateAt(displayTime);
-    this.object.visible = state !== null && visible;
+  protected place(source: DynamicRenderSource, context: DynamicViewFrame): KinematicState | null {
+    const state = source.stateAt(context.displayTime);
+    this.object.visible = state !== null && source.visible;
     if (state === null) return null;
-    this.object.position.copy(floatingOrigin.RtoThreeV3(state.r));
-    this.object.quaternion.set(motion.att.q.x, motion.att.q.y, motion.att.q.z, motion.att.q.w);
-    if (motion.specificHeat > 0) {
-      syncThermalState(this.object, motion.temperature, motion.thermalDeviation, motion.emissivity);
+    this.object.position.copy(context.camera.floatingOrigin.RtoThreeV3(state.r));
+    const q = source.attitude;
+    this.object.quaternion.set(q.x, q.y, q.z, q.w);
+    const thermal = source.thermal;
+    if (thermal !== null) {
+      syncThermalState(this.object, thermal.temperature, thermal.deviation, thermal.emissivity);
     }
     return state;
   }
 
   protected syncModel(
-    _identity: DynamicViewIdentity, _motion: DynamicMotion,
-    _displayed: KinematicState | null, _context: DynamicViewFrame,
+    _source: S, _displayed: KinematicState | null, _context: DynamicViewFrame,
   ): void {
   }
 
@@ -130,7 +142,7 @@ export class DynamicView {
   // 宣言された軌道表現の種類へ資源を揃え、そのフレームの形状と見た目を反映する。
   private syncOrbitLine(
     display: DynamicLineDisplay['orbit'],
-    motion: DynamicMotion, displayTime: number, celestialBodies: CelestialBodies,
+    motion: DynamicLineSource, displayTime: number, celestialBodies: CelestialBodies,
     camera: CameraFrame, anchors: FrameAnchorSource,
   ): void {
     if (display === null) {
@@ -190,7 +202,7 @@ export class DynamicView {
   // このフレームに必要な3種の線を一括して描画資源へ同期する。
   public syncLines(
     display: DynamicLineDisplay,
-    motion: DynamicMotion, frame: ReferenceFrame, simTime: number, displayTime: number,
+    motion: DynamicLineSource, frame: ReferenceFrame, simTime: number, displayTime: number,
     pastDuration: number, predictedTo: number | null, celestialBodies: CelestialBodies,
     camera: CameraFrame, anchors: FrameAnchorSource,
   ): void {
@@ -241,12 +253,4 @@ export class DynamicView {
     this.scene?.remove(this.object);
     disposeOwnedRenderResources(this.object);
   }
-}
-
-// Entity と View が同じ可視判定を使うための、1フレーム入力だけから決まる判定。
-export function dynamicEntityVisible(
-  identity: DynamicViewIdentity, context: DynamicViewFrame,
-): boolean {
-  return identity.mapKind === null || context.visibilityPolicy === null
-    || context.visibilityPolicy.entity(identity.mapKind, identity.id === context.activeId).category;
 }

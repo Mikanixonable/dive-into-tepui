@@ -40,7 +40,11 @@ import type { DynamicEntityKind, FormationRole } from './entity-kind';
 import type { EntityRegistry, SpawnGate } from '../entity-registry';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotion } from '../dynamic-motion';
-import { ENEMY_MODEL_SCALE, EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
+import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
+
+// 敵機アセットの座標を物理寸法へ直す倍率。機体モデル・撃破時の破片・爆発の大きさは、
+// 全ての敵がこの1つの倍率を共有する。
+export const ENEMY_MODEL_SCALE = 20;
 
 const ENEMY_MAX_HP = 6; // 敵機の総 HP
 

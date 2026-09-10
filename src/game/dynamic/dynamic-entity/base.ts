@@ -24,7 +24,9 @@ import type { EntityRegistry } from '../entity-registry';
 import type { StageOutcome } from '../../stages/stage-outcome';
 import type { Input } from '../../../input/input';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
-import { BaseView } from '../../../render/dynamic/dynamic-entity/base-view';
+import { BaseView, type BaseRenderSource } from '../../../render/dynamic/dynamic-entity/base-view';
+import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
+import type { OrbitReference } from '../../orbit-reference';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { orbitRows } from '../../pickable/orbit-rows';
@@ -133,6 +135,20 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       this.trajectoryLineVisible = init.saved.showTrajectoryLine ?? false;
       this.baseState.money = init.saved.money;
     }
+  }
+
+  // 噴射表現に要る推力・トルクを、共通の表示入力へ足す。
+  protected override renderSource(
+    context: DynamicViewFrame, visible: boolean, active: boolean,
+    orbitReference: OrbitReference | undefined,
+  ): BaseRenderSource {
+    const motion = this.motion as BaseMotion;
+    return {
+      ...super.renderSource(context, visible, active, orbitReference),
+      thrust: motion.thrust,
+      maximumAcceleration: motion.maximumAcceleration,
+      torque: motion.torque,
+    };
   }
 
   // --- 操作制御 ---

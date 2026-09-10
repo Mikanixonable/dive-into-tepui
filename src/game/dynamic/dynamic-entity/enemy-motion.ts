@@ -12,23 +12,6 @@ import { shipMotionOptions } from './ship';
 const ENEMY_MAX_TEMP = 500; // [K]
 const ENEMY_MASS = 10000; // [kg]
 
-// アセット座標を物理寸法へ直す倍率。描画も同じ値を読むが、物理形状の正本はこのモジュールに置く。
-export const ENEMY_MODEL_SCALE = 20;
-
-// 各金属機体モデルを ENEMY_MODEL_SCALE 倍したときの外接球半径 [m]。描画テストでアセットの
-// bounds と一致することを固定し、実行時の物理構築が THREE のモデル生成へ依存しないようにする。
-const DRIFTING_COLLISION_RADIUS = 67.1935257886386;
-const TYPED_COLLISION_RADII = [
-  93.8906797184146,
-  91.58602476518524,
-  86.22292463258124,
-] as const;
-
-export function metalEnemyCollisionRadius(typeIndex: number | null): number {
-  if (typeIndex === null) return DRIFTING_COLLISION_RADIUS;
-  return TYPED_COLLISION_RADII[typeIndex] ?? TYPED_COLLISION_RADII[0];
-}
-
 interface EnemyMotionReactions {
   receiveEntityContact(
     other: DynamicMotion, contact: Contact, context: DynamicReactionServices,

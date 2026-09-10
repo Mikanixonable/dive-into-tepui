@@ -27,7 +27,9 @@ import { FireControl, type AmmoLoad } from './fire-control';
 import { AltitudeAlarm } from './altitude-alarm';
 import type { FlashEffects } from '../vfx/flash-effects';
 import { buildDestroyFragments, playerDestroyFragments } from '../dynamic/dynamic-entity/debris-piece';
-import { PlayerView } from '../../render/dynamic/player/player-view';
+import { PlayerView, type PlayerRenderSource } from '../../render/dynamic/player/player-view';
+import type { DynamicViewFrame } from '../../render/dynamic/dynamic-view';
+import type { OrbitReference } from '../orbit-reference';
 import type { MarkerSlots } from '../marker/marker-slots';
 import type { MarkerVisibility } from '../marker/marker-visibility';
 import type { RadiatorSide } from './radiator';
@@ -73,6 +75,9 @@ const ALLY_BEARING_MAX_DISTANCE = 20e3; // 味方機の画面外方位マーカ�
 const PLAYER_MAX_HP = 1000;
 const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 
+// 給弾ベルトの節点数。たわみ物理の鎖の長さと、表示するリンクメッシュの本数を揃える。
+const BELT_MAX_VISIBLE = 18;
+
 // 軌道計画の実行モードの巡回順。ボタン1つで次のモードへ進める。
 const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['off', 'instant'];
 
@@ -113,6 +118,9 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   private readonly _fx: FlashEffects;
 
   fineAttitude = false;
+  // このフレームの操作対象か。方向マーカーを出すか、照準ズーム中に自機を隠すかがこれで決まる。
+  // 表示可否と同じく、操作対象を選ぶ側が sync の入力として毎フレーム書く。
+  active = false;
   // 自機の操作方法は HUD とヘルプが常設で示しているので、選び直しても案内は出さない。
   readonly controlHint = null;
   readonly releaseHint = null;
@@ -160,7 +168,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     super(
       name,
       state,
-      owner => new PlayerView(scene, owner.id, markers),
+      owner => new PlayerView(scene, owner.id, markers, BELT_MAX_VISIBLE),
       att,
       PLAYER_HULL_RADIUS,
       PLAYER_MAX_HP,
@@ -170,6 +178,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
         att,
         PLAYER_HULL_RADIUS,
         saved?.thermal.hullTemp ?? HULL_START_TEMP,
+        BELT_MAX_VISIBLE,
         reactions(owner as Player),
         saved?.radiator,
         saved?.power,
@@ -539,6 +548,35 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       bearingVisible: dist <= ALLY_BEARING_MAX_DISTANCE,
       color: isActive ? 'var(--color-primary)' : COLOR_MARKER_ALLY,
       symMarkup: true,
+    };
+  }
+
+  // 自機の View が読む値を、共通の表示入力へ足す。可動部と噴射は Motion の現在値、
+  // マーカーの弾数と初速は装備の現在値から、このフレームぶんだけを組む。
+  protected override renderSource(
+    context: DynamicViewFrame, visible: boolean, active: boolean,
+    orbitReference: OrbitReference | undefined,
+  ): PlayerRenderSource {
+    const motion = this.motion;
+    const boosters = motion.attachedBoosters;
+    // 指令の有無は加速度の大きさで決まるので、噴射していないフレームは null として渡す。
+    const thrustAcceleration = this.throttle.thrustAccelVec;
+    return {
+      ...super.renderSource(context, visible, active, orbitReference),
+      state: motion.state,
+      active,
+      thrustAcceleration: len(thrustAcceleration) > 0 ? thrustAcceleration : null,
+      maximumAcceleration: motion.mass > 0 ? this.totalThrust / motion.mass : 0,
+      torque: motion.torque,
+      dynamicPressure: motion.aero.qdyn,
+      boosters: boosters.display,
+      belt: motion.belt.nodes,
+      magsLeft: this.magsLeft,
+      roundsInMag: this.roundsInMag,
+      averageMuzzleVelocity: this.averageMuzzleVelocity,
+      solar: motion.power.panelDeploy,
+      radiator: motion.radiator.panelDisplay,
+      orbitAxesReference: orbitReference?.state ?? null,
     };
   }
 

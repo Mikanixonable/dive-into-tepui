@@ -1,7 +1,7 @@
 // RCS パフ(姿勢制御スラスタの噴射煙)。指令トルクに寄与するノズルを選び、その先へ噴射煙を置く。
 import * as THREE from 'three/webgpu';
-import { Attitude } from '../../../physics/attitude';
-import { qRotate } from '../../../math/quat';
+import { qRotate, type Quat } from '../../../math/quat';
+import { mulberry32 } from '../../../math/random';
 import { Vec3, add, cross, dot, lenSq, scale, v3 } from '../../../math/vec3';
 import { Billboard } from '../../billboard';
 import {
@@ -9,6 +9,7 @@ import {
 } from '../../vfx-style';
 import { RCS_NOZZLES } from '../../rcs-nozzles';
 import { FloatingOrigin } from '../../camera/floating-origin';
+import { plumeNoiseSeed } from './plume-noise';
 
 export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルクしきい値 [rad/s^2](inertia=1前提)
 
@@ -21,42 +22,47 @@ export class RcsEffects {
     return { pos, exhaust, torque: cross(pos, scale(exhaust, -1)), plume: new Billboard(RCS_PLUME_COLOR) };
   });
 
-  // 全ノズルのプルームのビルボードを生成し scene へ追加する。
+  // 全ノズルのプルームのビルボードを生成し scene へ追加する。ownerId は明滅の種に混ぜる
+  // 個体の識別。
   constructor(
     scene: THREE.Scene,
+    private readonly ownerId: string,
   ) {
     for (const { plume } of this.puffs) scene.add(plume.mesh);
   }
 
   // 機体座標の指令 torque に寄与するノズルだけプルームを出し、位置・大きさを同期する。
+  // position は機体を置く ECI 位置で、表示時刻の状態を引けないフレームは null。displayTime は
+  // 明滅の位相を決める表示時刻で、同じ時刻に何度呼んでも同じ絵になる。
   sync(
     fo: FloatingOrigin,
-    playerPos: Vec3,
+    position: Vec3 | null,
     torque: Vec3,
-    att: Attitude,
+    attitude: Quat,
     visible: boolean,
     cameraQuat: THREE.Quaternion,
     zoomActive: boolean,
+    displayTime: number,
     plumeScale = 1.0,
   ): void {
     // 回転していない、またはズーム視点なら全パフを隠して終える
-    const rotating = visible && lenSq(torque) > RCS_PUFF_TORQUE_EPS * RCS_PUFF_TORQUE_EPS;
-    if (!rotating || zoomActive) {
+    if (position === null || !visible || zoomActive
+      || lenSq(torque) <= RCS_PUFF_TORQUE_EPS * RCS_PUFF_TORQUE_EPS) {
       for (const { plume } of this.puffs) plume.hide();
       return;
     }
-    for (const puff of this.puffs) {
+    for (const [index, puff] of this.puffs.entries()) {
       // 噴くと指令トルクから遠ざかるノズルは点火しない
       if (dot(puff.torque, torque) <= 0.2) {
         puff.plume.hide();
         continue;
       }
       // ノズルの先へプルームを置き、明滅させる
-      const flick = 0.6 + Math.random() * 0.4;
+      const flick = 0.6 + mulberry32(plumeNoiseSeed(this.ownerId, displayTime, index))() * 0.4;
       const offsetDist = RCS_PLUME_OFFSET * plumeScale;
       const localPos = add(scale(puff.pos, plumeScale), scale(puff.exhaust, offsetDist));
-      const pos = qRotate(att.q, localPos);
-      puff.plume.sync(fo.RtoThreeV3(add(playerPos, pos)),
+      const pos = qRotate(attitude, localPos);
+      puff.plume.sync(fo.RtoThreeV3(add(position, pos)),
         RCS_PLUME_SIZE * flick * plumeScale, RCS_PLUME_BRIGHTNESS * flick, cameraQuat);
     }
   }

@@ -7,7 +7,9 @@ import type { Attitude } from '../../../physics/attitude';
 import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import type { CapKind } from './entity-kind';
-import { buildDebrisPieceView } from '../../../render/dynamic/dynamic-entity/debris-piece-view';
+import {
+  buildDebrisPieceView, type DebrisPieceVariant,
+} from '../../../render/dynamic/dynamic-entity/debris-piece-view';
 import { DynamicEntity } from './dynamic-entity';
 import type { DebrisKind } from './debris-kind';
 import { DebrisMotion } from './debris-motion';
@@ -16,6 +18,21 @@ import {
   DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, ENEMY_DESTROY_FRAG_COLOR,
   PLAYER_DESTROY_FRAG_COLOR,
 } from '../../../render/vfx-style';
+
+// 論理種別を、その破片をどう描くかの宣言へ移す。
+function debrisPieceVariant(debrisKind: DebrisKind): DebrisPieceVariant {
+  switch (debrisKind.kind) {
+    case 'fragment':
+      return { kind: 'fragment', accent: debrisKind.accent, size: debrisKind.size };
+    case 'barrel': return { kind: 'barrel' };
+    case 'magazineFrame': return { kind: 'magazineFrame' };
+    case 'casing': return { kind: 'casing' };
+    case 'boosterCover':
+      return { kind: 'boosterCover', segment: debrisKind.segment };
+    case 'boosterBolt':
+      return { kind: 'boosterBolt', segment: debrisKind.segment };
+  }
+}
 
 export class DebrisPiece extends DynamicEntity {
   public override readonly capKind: CapKind;
@@ -31,7 +48,7 @@ export class DebrisPiece extends DynamicEntity {
   ) {
     super(
       state,
-      buildDebrisPieceView(debrisKind, scene),
+      buildDebrisPieceView(debrisPieceVariant(debrisKind), scene),
       attitude,
       undefined,
       () => new DebrisMotion(state, attitude, {

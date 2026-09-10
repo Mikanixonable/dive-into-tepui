@@ -8,15 +8,22 @@ import {
   type BoosterStage as BoosterStageModel,
 } from '../booster';
 import { BOOSTER_STAGE_DIMENSIONS } from '../../../physics/booster-stage-shape';
-import { DynamicView, type DynamicViewFrame, type DynamicViewIdentity } from '../dynamic-view';
-import type { DynamicMotion } from '../../../game/dynamic/dynamic-motion';
-import { DetachedBoosterMotion } from '../../../game/dynamic/dynamic-entity/detached-booster-motion';
+import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
 
 // 段の前端と後端の中点。剛体の原点はここに置く。
 const STAGE_CENTER_Z = (BOOSTER_STAGE_DIMENSIONS.frontZ + BOOSTER_STAGE_DIMENSIONS.aftZ) / 2;
 
+// 噴射炎の最小の太さ。燃焼比がこれを下回っても、炎そのものは見える大きさで残す。
+const MIN_PLUME_INTENSITY = 0.25;
+
+// 分離段の表示入力。
+export interface DetachedBoosterRenderSource extends DynamicRenderSource {
+  // このフレームに噴いている割合(0..1)。燃焼を描かないフレームは null。
+  readonly burnRatio: number | null;
+}
+
 // 分離ブースターの機体モデルと噴射炎を所有し、運動状態へ同期する。
-export class DetachedBoosterView extends DynamicView {
+export class DetachedBoosterView extends DynamicView<DetachedBoosterRenderSource> {
   private readonly model: BoosterStageModel;
   private readonly plume: BoosterPlume;
 
@@ -30,31 +37,25 @@ export class DetachedBoosterView extends DynamicView {
     this.plume = new BoosterPlume(scene);
   }
 
-  // 外部 Motion が示す燃焼状態を、分離段の噴射炎へ同期する。
+  // 分離段が示す燃焼状態を、噴射炎へ同期する。
   protected override syncModel(
-    _identity: DynamicViewIdentity,
-    motion: DynamicMotion,
+    source: DetachedBoosterRenderSource,
     displayed: KinematicState | null,
     context: DynamicViewFrame,
   ): void {
-    // 現在時刻の燃焼だけを描き、過去・未来表示や照準ズームでは必ず隠す。
-    if (!(motion instanceof DetachedBoosterMotion)) {
-      throw new TypeError('DetachedBoosterView requires DetachedBoosterMotion');
-    }
-    if (displayed === null || motion.thrust === null
-      || Math.abs(context.displayTime - motion.state.t) > 1e-6
-      || context.camera.zoomed) {
+    // 照準ズーム中は機体そのものを覗き込むので、炎で視界を潰さない。
+    if (displayed === null || source.burnRatio === null || context.camera.zoomed) {
       this.plume.hide();
       return;
     }
     // ノズル位置と後方軸を表示時刻の姿勢でワールドへ写す。
     const nozzleFromCenter = BOOSTER_STAGE_DIMENSIONS.nozzleExitZ - STAGE_CENTER_Z;
-    const nozzleWorld = add(displayed.r, qRotate(motion.att.q, v3(0, 0, nozzleFromCenter)));
-    const tailDirection = qRotate(motion.att.q, v3(0, 0, -1));
+    const nozzleWorld = add(displayed.r, qRotate(source.attitude, v3(0, 0, nozzleFromCenter)));
+    const tailDirection = qRotate(source.attitude, v3(0, 0, -1));
     this.plume.sync({
-      position: context.floatingOrigin.RtoThreeV3(nozzleWorld),
+      position: context.camera.floatingOrigin.RtoThreeV3(nozzleWorld),
       direction: new THREE.Vector3(tailDirection.x, tailDirection.y, tailDirection.z),
-      intensity: Math.max(0.25, motion.burnRatio),
+      intensity: Math.max(MIN_PLUME_INTENSITY, source.burnRatio),
       visible: true,
     }, context.camera.camera.quaternion, context.style);
   }
