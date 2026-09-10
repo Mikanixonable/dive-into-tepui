@@ -58,7 +58,7 @@ export class PropertyWindowRelatedItems {
     list.className = 'prop-window-related-list';
     for (const it of items) {
       const row = document.createElement('div');
-      row.className = 'prop-window-related-item';
+      row.className = 'prop-window-related-item ui-selectable';
       row.setAttribute('role', 'button');
       row.tabIndex = 0;
       row.textContent = it.label;
