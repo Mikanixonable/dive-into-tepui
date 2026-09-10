@@ -1,7 +1,7 @@
 // 戦闘ビューの「カメラ」パネル。戦闘中に必要な回転モード切替だけを表示する。
 import type { FocusCamera } from '../../camera/focus-camera';
 import { CameraRotationModeControl } from './camera-rotation-mode-control';
-import { buildPanel } from './frame-controls';
+import { buildPanel } from './frame-panel';
 
 export class CombatCameraPanel {
   private readonly panel: HTMLElement;

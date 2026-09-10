@@ -1,59 +1,37 @@
-// カメラと軌道フレームのパネルを所有し、カメラの視点と未来表示の描画基準を選ばせる。
-// カメラのフォーカス変更への軌道フレームの追随など、パネル間の連動もここが持つ。
+// マップビューの「カメラ」「軌道フレーム」2パネルを所有し、カメラの視点と未来表示の描画基準を
+// 選ばせる。カメラのフォーカス変更への軌道フレームの追随など、2パネル間の連動もここが持つ。
 import { bodyAnchorSource } from '../../../physics/attractor';
 import { FRAME_ROLES, FrameRole, FrameRotationSource, frameRoleOf } from '../../../physics/frame';
 import type { FrameAnchorSource } from '../../../physics/frame';
 import { Vec3 } from '../../../math/vec3';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import { FocusCamera } from '../../camera/focus-camera';
 import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-target';
-import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { DisplayWindowManager } from '../../display-window-manager';
+import type { DisplayFrameSelection } from '../../display-frame-selection';
 import type { OverlayManager } from '../../../hud/overlay-manager';
-import { hudRail } from '../hud-root';
 import { CameraFramePanel } from './camera-frame-panel';
-import { CombatCameraPanel } from './combat-camera-panel';
 import { TrajectoryFramePanel } from './trajectory-frame-panel';
-
-// 見出しだけを持つ空のパネルを左レールへ足して返す。中身は返り値へ足す。
-export function buildPanel(root: HTMLElement, id: string, titleText: string): HTMLElement {
-  const panel = document.createElement('div');
-  panel.id = id;
-  panel.className = 'panel hud-frame-controls';
-  panel.addEventListener('pointerdown', (e) => e.stopPropagation());
-  const title = document.createElement('h3');
-  title.textContent = titleText;
-  panel.appendChild(title);
-  hudRail(root, 'left').appendChild(panel);
-  return panel;
-}
+import type { ListedObject } from '../../pickable/listed-object';
 
 export class FrameControls {
   private readonly cameraPanel: CameraFramePanel;
-  private readonly combatCameraPanel: CombatCameraPanel;
   private readonly trajectoryPanel: TrajectoryFramePanel;
   // 固定解除は DOM イベント(フレームの外)から起きるので、直近の sync が見た時刻を控える。
   private lastTime = 0;
 
-  // マップと戦闘のカメラパネル、マップの軌道フレームパネルを組む。ポップアップは
-  // popupRoot へ出る。
+  // 2パネルを panelRoot へ組む。各パネルのポップアップは popupRoot へ出る。
   public constructor(
-    mapPanelRoot: HTMLElement,
-    combatPanelRoot: HTMLElement,
+    panelRoot: HTMLElement,
     popupRoot: HTMLElement,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialBodies: CelestialBodies,
     private readonly mapCamera: FocusCamera,
-    combatCamera: FocusCamera,
-    private readonly displayWindow: DisplayWindowManager,
+    private readonly displayFrame: DisplayFrameSelection,
     overlayManager: OverlayManager,
     private readonly frameAnchors: FrameAnchorSource,
   ) {
-    this.cameraPanel = new CameraFramePanel(
-      mapPanelRoot, popupRoot, celestialSystem, mapCamera, overlayManager,
-    );
-    this.combatCameraPanel = new CombatCameraPanel(combatPanelRoot, combatCamera);
+    this.cameraPanel = new CameraFramePanel(panelRoot, popupRoot, celestialBodies, mapCamera, overlayManager);
     this.trajectoryPanel = new TrajectoryFramePanel(
-      mapPanelRoot, popupRoot, celestialSystem, displayWindow, overlayManager,
+      panelRoot, popupRoot, celestialBodies, displayFrame, overlayManager,
     );
 
     this.cameraPanel.onSelectCenter = (id) => this.selectCameraCenter(id);
@@ -78,12 +56,12 @@ export class FrameControls {
       this.setFocus({ kind: 'object', id });
       return;
     }
-    const frames = this.celestialSystem.frames;
-    const star = this.celestialSystem.star;
-    const frame = star !== null ? frames.frameOf(star.id, null) : frames.inertialFrame;
+    const frames = this.celestialBodies.frames;
+    const starId = this.celestialBodies.starId;
+    const frame = starId !== null ? frames.frameOf(starId, null) : frames.inertialFrame;
     // 回さないので基準は必ず登録天体で、機体・役割トークンを解く材料が要らない。
     this.setFocus(focusPoint(
-      this.celestialSystem.frames, frame, this.mapCamera.resolvedFocus, this.lastTime, bodyAnchorSource([], this.lastTime),
+      this.celestialBodies.frames, frame, this.mapCamera.resolvedFocus, this.lastTime, bodyAnchorSource([], this.lastTime),
     ));
   }
 
@@ -93,34 +71,32 @@ export class FrameControls {
     this.mapCamera.setFocusTarget(target);
     if (!this.trajectoryPanel.followCamera) return;
     const id = focusTargetId(target);
-    if (id !== undefined && this.celestialSystem.has(id)) {
-      this.displayWindow.frame = this.celestialSystem.frames.frameOf(id, this.displayWindow.frame.rotatingWith);
+    if (id !== undefined && this.celestialBodies.has(id)) {
+      this.displayFrame.frame = this.celestialBodies.frames.frameOf(id, this.displayFrame.frame.rotatingWith);
     }
   }
 
   // 軌道フレームが選んでいる役割の公転が成立しなくなったら、慣性系へ落とす。
   public update(displayTime: number): void {
-    if (this.isStaleRole(this.displayWindow.frame.rotatingWith, this.validRevolutionRoles(displayTime))) {
-      this.displayWindow.frame = this.celestialSystem.frames.frameOf(this.displayWindow.frame.center, null);
+    if (this.isStaleRole(this.displayFrame.frame.rotatingWith, this.validRevolutionRoles(displayTime))) {
+      this.displayFrame.frame = this.celestialBodies.frames.frameOf(this.displayFrame.frame.center, null);
     }
   }
 
   // 両パネルの選択肢と選択表示を、いまの天体系とカメラ位置へ合わせる。
   public sync(
-    pickables: readonly ObjectPickable[], cameraPos: Vec3,
+    pickables: readonly ListedObject[], cameraPos: Vec3,
     simTime: number, displayTime: number,
   ): void {
     this.lastTime = simTime;
-    const members = this.celestialSystem.systemMembersAt(cameraPos, displayTime);
+    const members = this.celestialBodies.systemMembersAt(cameraPos, displayTime);
     this.cameraPanel.sync(pickables, members, displayTime);
-    this.combatCameraPanel.sync();
     this.trajectoryPanel.sync(pickables, members, displayTime, this.validRevolutionRoles(displayTime));
   }
 
   // 両パネルを片付ける。
   public dispose(): void {
     this.cameraPanel.dispose();
-    this.combatCameraPanel.dispose();
     this.trajectoryPanel.dispose();
   }
 }

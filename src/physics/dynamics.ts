@@ -1,14 +1,13 @@
 // 与えられた加速度による RK4 積分の器(ケプラーの二体問題の解析式込み)、天体の2次重力場に
 // よる摂動、および一質点にかかる全加速度(重力 + 2次重力場 + 大気抵抗 + 推力)の合成の
 // 唯一の定義箇所。THREE/DOM 非依存の純関数。
-import type { CelestialMotion } from './celestial-motion';
-import type { Degree2Gravity } from './celestial-body-def';
 import { attractorAccel } from './attractor';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { dragAccel } from './atmosphere';
 import { sunlitFactor } from './shadow';
 import { srpAccel } from './srp';
 import { Vec3, add, cross, dot, sub, v3 } from '../math/vec3';
+import type { CelestialBody, Degree2Gravity } from './celestial-body';
 
 // 状態(位置・速度)から加速度を返すコールバック。RK4 の各中間段(k1〜k4)ごとに、その段が
 // 実際に評価されるべき絶対時刻 t とともに呼ばれる。RK4 が4次精度を持つのは非自励系
@@ -112,9 +111,9 @@ function totalAccel(
   t: number,
   r: Vec3,
   v: Vec3,
-  attractors: readonly CelestialMotion[],
-  occluders: readonly CelestialMotion[],
-  atmosphereBody: CelestialMotion | null,
+  attractors: readonly CelestialBody[],
+  occluders: readonly CelestialBody[],
+  atmosphereBody: CelestialBody | null,
   pivot: number,
   bcInv: number,
   srpCoeff: number,
@@ -156,9 +155,9 @@ function totalAccel(
 export function stepDynamics(
   state: KinematicState,
   dt: number,
-  attractors: readonly CelestialMotion[],
-  occluders: readonly CelestialMotion[],
-  atmosphereBody: CelestialMotion | null,
+  attractors: readonly CelestialBody[],
+  occluders: readonly CelestialBody[],
+  atmosphereBody: CelestialBody | null,
   pivot: number,
   bcInv: number,
   srpCoeff: number,
