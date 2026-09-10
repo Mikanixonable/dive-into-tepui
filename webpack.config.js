@@ -85,7 +85,7 @@ module.exports = {
       // GitHub Pagesのrepository subpathとnpm run devのdocs配下から解決できる相対manifest URL。
       // 生成済みの実データ版を既定にし、未配置時は実行時fallbackへ戻す。
       __EARTH_SURFACE_MANIFEST_URL__: JSON.stringify(
-        process.env.EARTH_SURFACE_MANIFEST_URL ?? 'earth-surface/earth-2026-09-09-a/earth-surface.json',
+        process.env.EARTH_SURFACE_MANIFEST_URL ?? 'earth/earth-2026-09-09-a/earth-surface.json',
       ),
     }),
   ],
