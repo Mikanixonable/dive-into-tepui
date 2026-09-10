@@ -12,10 +12,13 @@ import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager
 const STYLE = `
 #hud .object-picker-pop {
   position: fixed; display: none; pointer-events: auto;
-  background: var(--glass-focus); border: 0; border-radius: var(--radius-window);
+  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-focus);
+  border: 1px solid var(--glass-edge); border-radius: var(--radius-window);
   font-family: var(--font-family); font-size: var(--font-m); color: var(--text);
   width: min(520px, calc(100vw - 24px)); max-height: 60vh; max-height: 60dvh; overflow-y: auto; user-select: none;
-  box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
   -webkit-user-select: none;
 }
 /* compact: トリガー直下ではなく画面下端のシートとして開く(left/top は付けない —
@@ -28,7 +31,7 @@ const STYLE = `
 }
 #hud .object-picker-pop .op-filter {
   width: 100%; box-sizing: border-box; padding: var(--space-3) var(--space-5); margin: 0;
-  background: var(--surface-2); border: none;
+  background: var(--glass-inset); border: 0; border-bottom: 1px solid var(--glass-edge);
   color: var(--text); font-family: var(--font-family); font-size: var(--font-m); outline: none;
 }
 #hud .object-picker-pop .op-grid {
@@ -39,12 +42,17 @@ const STYLE = `
 }
 #hud .object-picker-pop .op-row {
   margin: var(--space-1); padding: var(--space-3) var(--space-5); cursor: pointer;
-  border: 0; border-radius: var(--radius-micro);
+  border: 1px solid transparent; border-radius: var(--radius-control);
 }
-#hud .object-picker-pop .op-row:hover { background: var(--surface-2); color: var(--color-primary-hover); }
-#hud .object-picker-pop .op-row.on { color: var(--color-primary); background: var(--color-primary-fill); }
+#hud .object-picker-pop .op-row:hover { background: var(--glass-control-hover); color: var(--color-primary-hover); }
+#hud .object-picker-pop .op-row.on {
+  border-color: var(--color-primary-edge-soft); color: var(--color-primary); background: var(--color-primary-fill);
+}
 #hud .object-picker-pop .op-row:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .object-picker-pop .op-empty { grid-column: 1 / -1; padding: var(--space-4) var(--space-5); opacity: 0.5; }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #hud .object-picker-pop { background: var(--surface-opaque); }
+}
 `;
 
 // 見出しつきの候補のまとまり。label が空の group は見出しを出さない。
