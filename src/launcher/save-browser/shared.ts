@@ -5,13 +5,12 @@ import { injectOnce } from '../../hud/inject-style';
 import { findStageClass } from '../../game/stages/stage-dictionary';
 
 const STYLE = `
-/* span. まで指定して .w-btn 側の見た目より確実に勝たせる
-   (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
-#save-browser span.sb-btn {
-  padding: var(--space-2) var(--space-4); background: var(--fill-1); color: var(--text-dim); font-size: var(--font-xs);
+/* sb-btn はセーブブラウザ内の配置・密度フック。面と状態は w-btn の variant に委ねる。 */
+#save-browser span.sb-btn:not(.w-btn--dense) {
+  padding: var(--space-2) var(--space-4); font-size: var(--font-xs);
   white-space: nowrap;
 }
-#save-browser span.sb-btn:hover { background: var(--fill-2); color: var(--text); }
+#save-browser span.sb-btn { white-space: nowrap; }
 #save-browser span.sb-btn.sb-btn-sm { padding: var(--space-2) var(--space-3); }
 `;
 
@@ -23,16 +22,16 @@ export function stageLabel(stageId: string): string {
 // .sb-btn の主要ボタン(横幅いっぱい・文言そのまま)を組む。
 export function mainBtn(label: string, onClick: () => void): HTMLElement {
   injectOnce('save-browser-shared', STYLE);
-  const btn = new Button(label, onClick);
+  const btn = new Button(label, onClick, undefined, 'secondary');
   btn.element.classList.add('sb-btn');
   return btn.element;
 }
 
-// .sb-btn.sb-btn-sm の小型アイコンボタンを組む。title はホバー説明とタッチ向け aria-label の両方に使う。
+// .w-btn--dense/.w-btn--icon の小型アイコンボタンを組む。title はホバー説明とタッチ向け aria-label の両方に使う。
 export function smallBtn(glyph: string, title: string, onClick: () => void): HTMLElement {
   injectOnce('save-browser-shared', STYLE);
-  const btn = new Button(glyph, onClick);
-  btn.element.classList.add('sb-btn', 'sb-btn-sm');
+  const btn = new Button(glyph, onClick, undefined, ['secondary', 'dense', 'icon']);
+  btn.element.classList.add('sb-btn');
   btn.element.title = title;
   btn.element.setAttribute('aria-label', title);
   return btn.element;
