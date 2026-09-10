@@ -27,6 +27,7 @@ import { orbitingAttractorOf } from '../../physics/attractor';
 import type { ViewFrame } from '../view/view-frame';
 import { PartWindows } from './part-windows';
 import type { InspectedObject, ObjectAuthoring } from './inspected-object';
+import type { PropertyWindowOpener } from './property-window-opener';
 
 // 開いているプロパティウィンドウ本体と、その対象。対象は同じ同一性を保ち続けるので、
 // 行・項目の再導出も消滅の判定もこの参照を経由する。
@@ -35,7 +36,7 @@ interface WindowEntry {
   readonly target: InspectedObject;
 }
 
-export class ObjectWindows {
+export class ObjectWindows implements PropertyWindowOpener {
   // 宇宙空間そのものはプロパティを持たないので、右クリックの落ち先には ContextMenu を使う。
   private readonly menu: ContextMenu<InspectedObject, MenuAction>;
   // 開いているプロパティウィンドウ。対象の id でオブジェクト1つにつき高々1枚に保つ

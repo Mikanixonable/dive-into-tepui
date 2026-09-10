@@ -1,176 +1,59 @@
 import * as THREE from 'three/webgpu';
-import { type Attitude } from '../../../physics/attitude';
-import { LOCAL_FORWARD, qRotate } from '../../../math/quat';
+import { v3 } from '../../../math/vec3';
+import type { Attitude } from '../../../physics/attitude';
 import type { KinematicState } from '../../../physics/kinematic-state';
-import { add, scale, v3 } from '../../../math/vec3';
-import type { FloatingOrigin } from '../../camera/floating-origin';
-import type { CameraSystem } from '../../camera/camera-system';
-import type { Controllable } from './controllable';
-import type { MapVisibilityPolicy } from '../../map/visibility-policy';
 import { savedAttitude, savedKinematicState, type DetachedBoosterSaveData } from '../../save/save-data';
-import {
-  BoosterStack,
-  boosterAverageAcceleration,
-  nextBoosterId,
-  type BoosterStage as BoosterStageState,
-} from '../../player/booster-stack';
-import {
-  BOOSTER_STAGE_DIMENSIONS,
-  BoosterPlume,
-  buildBoosterStage,
-  type BoosterStage as BoosterStageModel,
-} from '../../../render/booster';
+import { nextBoosterId, type BoosterStage } from '../../player/booster-stack';
+import { DetachedBoosterMotion } from './detached-booster-motion';
+import { DetachedBoosterView } from './detached-booster-view';
+import { DynamicEntity } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
-import { DynamicEntity, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS_BULK_DENSITY, SMALL_DEBRIS_SPECIFIC_HEAT, SMALL_DEBRIS_RADIATING_AREA_PER_MASS, SMALL_DEBRIS_MAX_TEMP } from './dynamic-entity';
-import type { RenderStyle } from '../../../render/render-style';
-import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
-
-const BOOSTER_COLLISION_RADIUS = 4.2; // 長さ8mの段を包む接触球 [m]
 
 type DetachedBoosterInit =
   | {
-    readonly stage: BoosterStageState;
+    readonly stage: BoosterStage;
     readonly state: KinematicState;
     readonly att: Attitude;
     readonly collisionEnableAt: number;
   }
   | { readonly saved: DetachedBoosterSaveData; readonly simTime: number };
 
-// 分離後の一段。接続時の燃料・点火状態を引き継ぎ、燃料切れまで自律的に燃焼する。
+// 分離ブースターの識別情報、運動、表示を一体として所有する。
 export class DetachedBooster extends DynamicEntity {
-  // 自機から切り離されたものなので、表示は自機の種別トグルに従う。
   public override readonly mapKind: DynamicEntityKind = 'player';
-  override readonly bcInv = 0.006;
-  override readonly capKind = 'booster';
-  protected readonly srpCoeff = SMALL_DEBRIS_SRP_COEFF;
-  protected readonly specificHeat = SMALL_DEBRIS_SPECIFIC_HEAT;
-  protected readonly bulkDensity = SMALL_DEBRIS_BULK_DENSITY;
-  protected override get radiatingAreaPerMass(): number {
-    return SMALL_DEBRIS_RADIATING_AREA_PER_MASS;
-  }
-  protected readonly maxTemperature = SMALL_DEBRIS_MAX_TEMP;
-  protected readonly baseHistoryDuration = DEFAULT_HISTORY_DURATION;
+  public override readonly capKind = 'booster';
 
-  private readonly stack: BoosterStack;
-  private readonly model: BoosterStageModel;
-  private readonly plume: BoosterPlume;
-  private readonly boosterScene: THREE.Scene;
-  private readonly collisionEnableAt: number;
-  private lastBurnRatio = 0;
-  private disposed = false;
-
-  constructor(init: DetachedBoosterInit, scene: THREE.Scene) {
+  public constructor(init: DetachedBoosterInit, scene: THREE.Scene) {
     const restored = 'saved' in init;
     const stage = restored ? { ...init.saved.stage, id: init.saved.id } : { ...init.stage };
     const state = restored ? savedKinematicState(init.saved, init.simTime) : init.state;
-    const att: Attitude = restored ? savedAttitude(init.saved, v3(1, 1, 0.4)) : init.att;
-    // 接続部のカバーは分離時に爆砕ボルトで切り離されるため、独立した段には残さない。
-    const model = buildBoosterStage({ interstageCover: false });
-    const root = new THREE.Group();
-    // DynamicEntity.state は段の重心。描画モデルは前端原点なので、その中点をrootへ合わせる。
-    const centerZ = (BOOSTER_STAGE_DIMENSIONS.frontZ + BOOSTER_STAGE_DIMENSIONS.aftZ) / 2;
-    model.position.z = -centerZ;
-    root.add(model);
-    super(state, root, scene, att, nextBoosterId(stage.id));
-
-    this.stack = new BoosterStack([stage]);
-    this.model = model;
-    this.plume = new BoosterPlume(scene);
-    this.boosterScene = scene;
-    this.collisionEnableAt = restored
+    const attitude: Attitude = restored ? savedAttitude(init.saved, v3(1, 1, 0.4)) : init.att;
+    const collisionEnableAt = restored
       ? (init.saved.collisionEnableAt ?? init.simTime)
       : init.collisionEnableAt;
+    super(
+      state,
+      new DetachedBoosterView(scene),
+      attitude,
+      nextBoosterId(stage.id),
+      () => new DetachedBoosterMotion(state, attitude, stage, collisionEnableAt),
+    );
     this.setName('分離ブースター');
-    this.radius = BOOSTER_COLLISION_RADIUS;
-    this.contactDamageWeight = 0.35;
-    this.doPreciseReentry = true;
-    this.refreshMass();
-    this.collides = true;
   }
 
-  get stage(): BoosterStageState {
-    return this.stack.stages[0]!;
-  }
-
-  get burning(): boolean {
-    return this.thrust !== null;
-  }
-
-  // 積分の前に呼ぶ。点火状態は操作対象でなくても進み続ける。
-  override updateThrust(simDt: number): void {
-    const massBefore = this.stack.totalMass;
-    const result = this.stack.step(simDt);
-    this.refreshMass();
-    this.lastBurnRatio = result.burnRatio;
-    const averageAcceleration = boosterAverageAcceleration(result, massBefore, this.mass);
-    if (averageAcceleration <= 0) {
-      this.thrust = null;
-      return;
-    }
-    const forward = qRotate(this.att.q, LOCAL_FORWARD);
-    this.thrust = scale(forward, averageAcceleration);
-  }
-
-  private refreshMass(): void {
-    this.mass = this.stack.totalMass;
-  }
-
-  // 猶予の終端でサブステップを区切る。終端ちょうどの区間までは接触させず、次区間から
-  // 掃引することで、猶予中の接触を後から拾うことも期限後を1フレーム遅らせることもない。
-  override nextSimulationEventTime(simTime: number): number | null {
-    return this.collisionEnableAt > simTime ? this.collisionEnableAt : null;
-  }
-
-  override contactsWith(_other: DynamicEntity, simTime: number): boolean {
-    return simTime > this.collisionEnableAt;
-  }
-
-  // ノズル位置のプルーム。未来位置を描いているフレームでは炎を出さない — 燃焼は現在時刻の
-  // 状態でしか定義されていない。
-  protected override syncModel(
-    fo: FloatingOrigin, displayTime: number, active: Controllable | null,
-    visibilityPolicy: MapVisibilityPolicy | null, camera: CameraSystem, style: RenderStyle,
-  ): void {
-    const displayState = this.placeModel(fo, displayTime, active, visibilityPolicy);
-    const effectAtCurrentTime = Math.abs(displayTime - this.state.t) <= 1e-6;
-    if (displayState === null || !this.renderObject.visible || this.thrust === null
-      || !effectAtCurrentTime || camera.zoomActive) {
-      this.plume.hide();
-      return;
-    }
-    // ノズル位置と噴射の向きは、機体中心を原点とする寸法から現在の姿勢で世界へ起こす。
-    const centerZ = (BOOSTER_STAGE_DIMENSIONS.frontZ + BOOSTER_STAGE_DIMENSIONS.aftZ) / 2;
-    const nozzleFromCenter = BOOSTER_STAGE_DIMENSIONS.nozzleExitZ - centerZ;
-    const nozzleWorld = add(displayState.r, qRotate(this.att.q, v3(0, 0, nozzleFromCenter)));
-    const tailDirection = qRotate(this.att.q, v3(0, 0, -1));
-    this.plume.sync({
-      position: fo.RtoThreeV3(nozzleWorld),
-      direction: new THREE.Vector3(tailDirection.x, tailDirection.y, tailDirection.z),
-      intensity: Math.max(0.25, this.lastBurnRatio),
-      visible: true,
-    }, camera.activeCamera.quaternion, style);
-  }
-
-  // セーブデータへ変換する。
+  // 運動状態と残存段をセーブ用データへ変換する。
   public override serialize(): DetachedBoosterSaveData {
+    const motion = this.motion as DetachedBoosterMotion;
     return {
       id: this.id,
       name: this.name,
       kind: 'booster',
-      r: { ...this.state.r },
-      v: { ...this.state.v },
-      q: { ...this.att.q },
-      w: { ...this.att.w },
-      stage: { ...this.stage, id: this.id },
-      collisionEnableAt: this.collisionEnableAt,
+      r: { ...motion.state.r },
+      v: { ...motion.state.v },
+      q: { ...motion.att.q },
+      w: { ...motion.att.w },
+      stage: { ...motion.stage, id: this.id },
+      collisionEnableAt: motion.collisionEnableAt,
     };
-  }
-
-  override dispose(): void {
-    if (this.disposed) return;
-    this.disposed = true;
-    this.plume.dispose(this.boosterScene);
-    this.model.dispose();
-    super.dispose();
   }
 }

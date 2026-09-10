@@ -140,7 +140,7 @@ export class PhysicalObjectListOrder {
     this.viewer = viewer;
     this.displayTime = displayTime;
     this.sortKeys.clear();
-    const viewerState = viewer?.state ?? null;
+    const viewerState = viewer?.motion.state ?? null;
     const starId = this.celestialBodies.starId;
     const starPos = starId === null ? null : this.celestialBodies.stateAt(starId, displayTime).r;
     for (const item of items) {
