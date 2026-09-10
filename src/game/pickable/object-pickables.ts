@@ -14,6 +14,7 @@ import { isOccluded } from '../../physics/occlusion';
 import { NearbySystemTracker } from '../celestial/nearby-system-tracker';
 import { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { DisplayWindow } from '../display-window-manager';
+import type { EquatorNodeManager } from '../marker/equator-node-manager';
 
 export class ObjectPickables {
   private readonly candidateItems: ObjectPickable[] = [];
@@ -45,6 +46,7 @@ export class ObjectPickables {
     private readonly celestialMarkers: CelestialMarkers,
     private readonly planDisplay: PlanDisplay,
     private readonly frameAnchors: FrameAnchorSource,
+    private readonly equatorNodes: EquatorNodeManager,
   ) {}
 
   // 候補列と可視性ポリシーを空へ戻す。マップを離れるときに呼ぶ。
@@ -96,8 +98,6 @@ export class ObjectPickables {
     for (const pickable of this.roster.all().filter(isObjectPickable)) append(pickable);
     for (const node of this.navTarget.pickables()) append(node);
     for (const apsis of this.planDisplay.apsisMarkers) append(apsis);
-    for (const e of this.roster.all()) {
-      for (const node of e.equatorNodePickables()) append(node);
-    }
+    for (const node of this.equatorNodes.pickables) append(node);
   }
 }

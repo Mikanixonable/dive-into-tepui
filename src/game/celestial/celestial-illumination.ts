@@ -28,7 +28,8 @@ import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { CelestialBodies } from './celestial-bodies';
 import type { CelestialEntity } from './celestial-entity/celestial-entity';
-import type { StarEntity } from './celestial-entity/star-entity';
+import type { StellarLightSource } from './celestial-entity/celestial-view';
+import type { MapVisibilityPolicy } from '../map/visibility-policy';
 
 const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);
@@ -51,11 +52,11 @@ export class CelestialIllumination {
     axes: new THREE.Vector3(), bodyFromWorld: new THREE.Matrix4(),
   }));
 
-  // entities はこの星系の全天体(宣言順)、star はその主星で、恒星を持たない星系では null。
+  // entities はこの星系の全天体(宣言順)、star はその主星の恒星光で、恒星を持たない星系では null。
   public constructor(
     private readonly celestialBodies: CelestialBodies,
     private readonly entities: readonly CelestialEntity[],
-    private readonly star: StarEntity | null,
+    private readonly star: StellarLightSource | null,
     private readonly targets: IlluminationTargets,
   ) {}
 
@@ -66,12 +67,13 @@ export class CelestialIllumination {
   // 恒星・露出・環境光・天体照・影・大気を、この1フレームの表示状態に同期する。
   // **全天体の sync より後に呼ぶこと** — 積雲と大気の候補は個体の表示状態から決まる。
   public sync(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, graphics: GraphicsSettingsData,
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
+    graphics: GraphicsSettingsData, visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const star = this.star;
     // 主星が無いレジストリでは、描画原点から見た恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
     // (基準強度どおりの放射照度が届き、影パスは誰も遮らないと答える)。
-    const starPos = star === null ? null : star.stateAt(displayTime).r;
+    const starPos = star === null ? null : star.motion.stateAt(displayTime).r;
     const sunPos = starPos === null
       ? this.toThreeNormal(this.celestialBodies.sunDirFrom(fo.r, displayTime))
         .multiplyScalar(STARLESS_SUN_DISTANCE)
@@ -80,15 +82,15 @@ export class CelestialIllumination {
     // マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
     const reference = fo.RtoThreeV3(cameraSystem.activeViewpoint.lookTarget);
     // 恒星を持たない星系では、1 天文単位の位置に置いた基準の恒星ぶんの光が届くものとして扱う。
-    const starIntensity = star?.radiantIntensity ?? REFERENCE_STAR_RADIANT_INTENSITY;
+    const starIntensity = star?.stellarLight.radiantIntensity ?? REFERENCE_STAR_RADIANT_INTENSITY;
     this.targets.exposure.setReference(reference, sunPos, starIntensity);
     this.targets.sunLight.set(
-      sunPos, star?.def.radius ?? STARLESS_SUN_RADIUS,
-      star?.color ?? STARLESS_SUN_COLOR, starIntensity);
+      sunPos, star?.motion.def.radius ?? STARLESS_SUN_RADIUS,
+      star?.stellarLight.color ?? STARLESS_SUN_COLOR, starIntensity);
     this.targets.ambient.setFraction(ambientFraction(cameraSystem.view === 'map', graphics));
     this.syncPlanetLights(fo, displayTime, cameraSystem);
     this.syncShadowSources(fo, displayTime, cameraSystem, graphics);
-    this.syncAtmosphere(fo, displayTime, cameraSystem, graphics);
+    this.syncAtmosphere(fo, displayTime, cameraSystem, graphics, visibilityPolicy);
   }
 
   // 天体照の光源の候補を組んで選定へ渡し、選ばれたものを描画座標へ移してライティング側の
@@ -97,10 +99,10 @@ export class CelestialIllumination {
     // 全天体を候補にし、注視点から見た明るさで選ぶ。
     const candidates = this.entities.map((entity) => ({
       celestialBody: entity.motion,
-      albedo: entity.lightSourceAlbedo ?? DEFAULT_ALBEDO,
+      albedo: entity.view.lightSourceAlbedo ?? DEFAULT_ALBEDO,
     }));
     const lights = selectPlanetLights(
-      candidates, displayTime, this.star?.radiantIntensity ?? null,
+      candidates, displayTime, this.star?.stellarLight.radiantIntensity ?? null,
       cameraSystem.activeViewpoint.lookTarget);
     // 選ばれた天体を描画座標へ移し、内接球の半径で渡す。
     this.targets.planetLight.set(lights.map((light) => ({
@@ -140,7 +142,7 @@ export class CelestialIllumination {
     fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData,
   ): void {
     const casters = castsCumulusShadow(graphics)
-      ? this.entities.flatMap((body) => body.cumulusShadowAt(fo, displayTime) ?? [])
+      ? this.entities.flatMap((body) => body.view.cumulusShadowAt(body.motion, fo, displayTime) ?? [])
       : [];
     this.targets.cumulusShadow.set(casters[0] ?? null);
   }
@@ -150,12 +152,12 @@ export class CelestialIllumination {
   private syncRingShadow(fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData): void {
     // 環を持つ天体を候補に組む(ECI)。
     const candidates = this.entities.flatMap((body): RingShadowCandidate[] => {
-      const rings = body.rings;
+      const rings = body.view.rings(body.motion);
       if (rings === null) return [];
       return [{
-        center: body.stateAt(displayTime).r,
+        center: body.motion.stateAt(displayTime).r,
         axis: body.motion.orientationAt(displayTime)?.axis ?? null,
-        radius: body.def.radius,
+        radius: body.motion.def.radius,
         bands: rings.bands.map((band) => ({
           innerRadius: band.innerRadius,
           outerRadius: band.outerRadius,
@@ -178,12 +180,14 @@ export class CelestialIllumination {
 
   // 大気パスへ、このフレームに大気を描く天体とそのサンプル点の数を渡す。
   private syncAtmosphere(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, graphics: GraphicsSettingsData,
+    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
+    graphics: GraphicsSettingsData, visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const scale = cameraSystem.activeCameraRadialScale;
     const candidates = this.entities.flatMap((body) => {
-      const candidate = body.atmosphereCandidateAt(
-        fo, displayTime, cameraSystem.activeCameraPos, scale, graphics);
+      if (visibilityPolicy !== null && !visibilityPolicy.body(body.id).category) return [];
+      const candidate = body.view.atmosphereCandidateAt(
+        body.motion, fo, displayTime, cameraSystem.activeCameraPos, scale, graphics);
       return candidate === null ? [] : [candidate];
     });
     this.targets.atmosphere.setDraws(atmosphereDraws(candidates, graphics.atmosphere));

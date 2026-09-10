@@ -17,8 +17,7 @@
 //
 // 一度検出したら以後は何もしない(ログの洪水と、汚染後の無意味な検査を避ける)。
 import type { Notifier } from '../../hud/notifier';
-import type { Controllable } from './dynamic-entity/controllable';
-import { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import type { SimulationControlled, SimulationState } from './dynamic-simulation-participant';
 import { Vec3 } from '../../math/vec3';
 
 // 全成分が有限値かどうかを返す。
@@ -27,7 +26,7 @@ function finiteVec(v: Vec3): boolean {
 }
 
 // エンティティの位置・速度を報告文言用の文字列にする。
-function describe(entity: DynamicEntity): string {
+function describe(entity: SimulationState): string {
   const { r, v } = entity.state;
   return `r=(${r.x},${r.y},${r.z}) v=(${v.x},${v.y},${v.z})`;
 }
@@ -39,7 +38,9 @@ export class NanWatchdog {
 
   // 操作対象と simTime だけを見る軽い検査。update の各フェーズ境界で呼ぶ。
   // phase には「直前に何が走ったか」を渡す(そこが発生源だと分かる)。操作対象がいなければ何もしない。
-  checkControlled(phase: string, controlled: Controllable | null, simTime: number, dt: number, simDt: number): void {
+  checkControlled(
+    phase: string, controlled: SimulationControlled | null, simTime: number, dt: number, simDt: number,
+  ): void {
     if (this.tripped || !controlled) return;
     const { q, w } = controlled.att;
     const ok = finiteVec(controlled.state.r) && finiteVec(controlled.state.v)
@@ -55,7 +56,7 @@ export class NanWatchdog {
   // (薬莢・破片・弾)であることが多く、それが接触を通じて操作対象へ伝播する。
   // フレームにつき一度だけ呼ぶこと。
   checkAll(
-    phase: string, controlled: Controllable | null, entities: readonly DynamicEntity[],
+    phase: string, controlled: SimulationControlled | null, entities: readonly SimulationState[],
     simTime: number, dt: number, simDt: number,
   ): void {
     if (this.tripped) return;

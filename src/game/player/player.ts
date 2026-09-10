@@ -1,4 +1,4 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
@@ -9,11 +9,10 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
 import { Vec3, add, v3, len, sub } from '../../math/vec3';
 import { fmtDist, fmtEnergy } from '../../hud/utils';
-import type { FloatingOrigin } from '../camera/floating-origin';
-import { Ship, SHIP_RADIATING_AREA_PER_MASS, PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from '../dynamic/dynamic-entity/ship';
-import { Bullet } from '../dynamic/dynamic-entity/bullet';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import { Ship, PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from '../dynamic/dynamic-entity/ship';
+import { bulletReactionOf, type BulletType, type Shooter } from '../dynamic/dynamic-entity/bullet-reaction';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
 import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
@@ -21,29 +20,16 @@ import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { Notifier } from '../../hud/notifier';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
-import { buildPlayerShip } from '../../render/ships';
-import type { CelestialBody } from '../../physics/celestial-body';
-import type { CameraSystem } from '../camera/camera-system';
-import type { RenderStyle } from '../../render/render-style';
-import type { MapVisibilityPolicy } from '../map/visibility-policy';
-import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import { generateRandomName } from '../random-name';
 import type { StageOutcome } from '../stages/stage-outcome';
 import { Throttle } from './throttle';
 import { FireControl, type AmmoLoad } from './fire-control';
-import { Belt } from './belt';
-import { AeroLoad } from './aero-load';
 import { AltitudeAlarm } from './altitude-alarm';
 import type { FlashEffects } from '../vfx/flash-effects';
 import { buildDestroyFragments, playerDestroyFragments } from '../dynamic/dynamic-entity/debris-piece';
-import { ThrustEffects } from './thrust-effects';
-import { RcsEffects } from './rcs-effects';
-import { ReentryEffects } from './reentry-effects';
-import { PlayerMarkers } from './player-markers';
-import type { OrbitReference } from '../orbit-reference';
+import { PlayerView } from './player-view';
 import type { MarkerSlots } from '../marker/marker-slots';
-import { RadiatorSide, RadiatorSystem } from './radiator';
-import { PowerSystem } from './power';
+import type { RadiatorSide } from './radiator';
 
 import { Plan, type PlanExecutionMode } from '../plan/plan';
 import { savedAttitude, savedKinematicState, type PlayerSaveData, type PlanSaveData } from '../save/save-data';
@@ -63,10 +49,12 @@ import type { ObjectPickable } from '../pickable/object-pickable';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ControlSelection } from '../control-selection';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
-import type { ObjectWindows } from '../pickable/object-windows';
+import type { PropertyWindowOpener } from '../pickable/property-window-opener';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { MapListSection, ObjectPickerGenre } from '../pickable/pickable-listing';
+import { PlayerMotion, type PlayerMotionReactions } from './player-motion';
+import type { DynamicMotion, DynamicReactionServices } from '../dynamic/dynamic-motion';
 
 export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]
 const HULL_START_TEMP = 273; // 初期機体温度 [K]
@@ -110,22 +98,11 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 除去の前に注視・操作対象の参照を次の艦へ引き継ぐ必要があるので、所有者側に回収させる。
   public override readonly reclaimedByOwner = true;
 
+  public declare readonly motion: PlayerMotion;
   readonly throttle: Throttle;
   readonly fire: FireControl;
-  readonly belt: Belt;
-  readonly aero: AeroLoad;
   readonly altitudeAlarm: AltitudeAlarm;
-  readonly radiator: RadiatorSystem;
-  readonly power: PowerSystem;
   readonly boosters: AttachedBoosters;
-
-  // contactProxies が返す一覧。区間ごとに置き直すので使い回す。
-  private readonly contactProxyScratch: DynamicEntity[] = [];
-
-  private readonly thrustEffects: ThrustEffects;
-  private readonly rcsEffects: RcsEffects;
-  private readonly reentryEffects: ReentryEffects;
-  private readonly markers: PlayerMarkers;
   // この艦自身のマニューバ計画。
   readonly plan = new Plan();
   planExecution: PlanExecutionMode = 'instant';
@@ -133,7 +110,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   private readonly _notifier: Notifier;
   private readonly _worldSfx: WorldSfx;
   private readonly _fx: FlashEffects;
-  private readonly playerScene: THREE.Scene;
 
   fineAttitude = false;
   // 自機の操作方法は HUD とヘルプが常設で示しているので、選び直しても案内は出さない。
@@ -143,9 +119,14 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // init 省略時は無作為な名前と既定軌道の新規艦になる。id を省いたときは name がそのまま
   // 艦の識別子になるので、複数隻を並べるなら name も分ける。
   constructor(
-    _notifier: Notifier, _worldSfx: WorldSfx, _scene: THREE.Scene, _fx: FlashEffects, markers: MarkerSlots,
+    _notifier: Notifier,
+    _worldSfx: WorldSfx,
+    scene: THREE.Scene,
+    _fx: FlashEffects,
+    markers: MarkerSlots,
     init: PlayerInit = {},
   ) {
+    const saved = 'saved' in init ? init.saved : undefined;
     const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
     const state = 'saved' in init
       ? savedKinematicState(init.saved, init.simTime)
@@ -155,31 +136,54 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       ? savedAttitude(init.saved, Player.INERTIA)
       : Player.progradeAttitude(state);
 
-    super(name, state, buildPlayerShip(), att, PLAYER_HULL_RADIUS, PLAYER_MAX_HP, _scene, id);
+    const reactions = (owner: Player): PlayerMotionReactions => ({
+      roundsInMagazine: () => owner.fire.rounds,
+      thrustAcceleration: () => owner.throttle.thrustAccelVec,
+      radiatorWear: () => owner.radiatorWear(),
+      totalCoolingRate: () => owner.totalCoolingRate,
+      totalPowerGeneration: () => owner.totalPowerGeneration,
+      stepBarrelThermal: dt => owner.fire.stepBarrelThermal(dt),
+      updateAltitudeAlarm: (dt, position, body, pivot) => (
+        owner.altitudeAlarm.update(dt, position, body, pivot)
+      ),
+      receiveEntityContact: (other, contact, context) => (
+        owner.receiveEntityContact(other, contact, context)
+      ),
+      receiveRadiatorContact: (side, other, contact, context) => (
+        owner.receiveRadiatorContact(side, other, contact, context)
+      ),
+      receiveSurfaceContact: (contact, context) => owner.receiveSurfaceContact(contact, context),
+      receiveStructuralLoss: context => owner.receiveStructuralLoss(context),
+      receiveBurnUp: context => owner.receiveBurnUp(context),
+    });
+    super(
+      name,
+      state,
+      owner => new PlayerView(scene, owner.id, markers),
+      att,
+      PLAYER_HULL_RADIUS,
+      PLAYER_MAX_HP,
+      id,
+      owner => new PlayerMotion(
+        state,
+        att,
+        PLAYER_HULL_RADIUS,
+        saved?.thermal.hullTemp ?? HULL_START_TEMP,
+        reactions(owner as Player),
+        saved?.radiator,
+        saved?.power,
+        saved?.boosters,
+      ),
+    );
     this._notifier = _notifier;
     this._worldSfx = _worldSfx;
     this._fx = _fx;
-    this.playerScene = _scene;
-    this.mass = PLAYER_MASS;
-    this.collides = true;
-    this.engagementAnchor = true;
-    this.doPreciseReentry = true;
-
-    const saved = 'saved' in init ? init.saved : undefined;
     this.throttle = new Throttle(_notifier, saved?.throttle);
-    this.fire = new FireControl(this, _notifier, _worldSfx, _scene, _fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
-    this.belt = new Belt(this.renderObject, this);
-    this.aero = new AeroLoad();
+    this.fire = new FireControl(this, _notifier, _worldSfx, scene, _fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
     this.altitudeAlarm = new AltitudeAlarm(_notifier, _worldSfx);
-    this.temperature = saved?.thermal.hullTemp ?? HULL_START_TEMP;
-    this.radiator = new RadiatorSystem(this.renderObject, this, saved?.radiator);
-    this.power = new PowerSystem(this.renderObject, saved?.power);
-    this.thrustEffects = new ThrustEffects(_scene, _worldSfx);
-    this.rcsEffects = new RcsEffects(_scene, _worldSfx);
-    this.reentryEffects = new ReentryEffects(_scene);
-    this.markers = new PlayerMarkers(markers, this.id);
-    // 段の模型を船体へ足し、段のぶんの質量と慣性を載せるので、船体側の部品より後に組む。
-    this.boosters = new AttachedBoosters(this, _notifier, _worldSfx, _scene, _fx, saved?.boosters);
+    this.boosters = new AttachedBoosters(
+      this.motion, this.motion.attachedBoosters, _notifier, _worldSfx, scene, _fx,
+    );
 
     if (saved) {
       // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。'powered' だった
@@ -188,7 +192,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
         ? saved.planExecution
         : (saved.followPlan ? 'instant' : 'off');
       this.fineAttitude = saved.fineAttitude ?? false;
-      this.showTrajectoryLine = saved.showTrajectoryLine ?? false;
+      this.trajectoryLineVisible = saved.showTrajectoryLine ?? false;
       this.parts.splice(0, this.parts.length, ...saved.parts.map(partFromSaveData));
       this.refreshFromParts();
 
@@ -239,9 +243,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // -------------------------------------------------------- 移動/射撃 状態
   get roundsInMag(): number { return this.fire.rounds; }
   get magsLeft(): number { return this.fire.mags; }
-  get magsLeftInBarrel(): number { return this.fire.barrel; }
   get reloadTimer(): number { return this.fire.cooldown; }
-  get isFiring(): boolean { return this.fire.isFiring; }
 
   // 弾薬ピックアップで得たマグ数を加算する。
   onPickup(mags: number): void {
@@ -268,57 +270,31 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     // ブースターの燃焼は操作の可否によらず進むので、指令を畳んだあとに進める。
     if (input === null) {
       this.clearTransientCommands();
-      this.boosters.step(simDt);
-      this.thrust = this.boosters.thrust;
+      this.motion.attachedBoosters.step(simDt);
+      this.motion.thrust = this.motion.attachedBoosters.thrust;
       return;
     }
-    this.boosters.step(simDt);
+    this.motion.attachedBoosters.step(simDt);
     this.updateTorque(input, dt, simDt);
 
     this.fire.updateFireState(dt, input, activeStage, registry, celestialBodies);
 
     this.throttle.updateThrustLatches(input);
-    const rcsThrust = this.throttle.updateThrustState(input, this.att, simDt, this);
-    const boosterThrust = this.boosters.thrust;
-    this.thrust = rcsThrust && boosterThrust
+    const rcsThrust = this.throttle.updateThrustState(input, this.motion.att, simDt, this);
+    const boosterThrust = this.motion.attachedBoosters.thrust;
+    this.motion.thrust = rcsThrust && boosterThrust
       ? add(rcsThrust, boosterThrust)
       : rcsThrust ?? boosterThrust;
     // 噴射中は予測が毎フレーム陳腐化するので破棄する。
-    if (this.thrust !== null) this.invalidatePrediction();
-  }
-
-  // 艦の各下位系を1フレーム分進める。喪失した艦では何も進めない。
-  protected override stepEnvironment(
-    dt: number, atmosphereBody: CelestialBody | null, atmospherePivot: number,
-    sunlit: number, sunDir: Vec3,
-  ): void {
-    if (!this.alive) return;
-    this.belt.update(dt, this.fire.rounds, this.att, this.throttle.thrustAccelVec);
-    this.radiator.update(dt, this.radiatorWear());
-    this.fire.stepBarrelThermal(dt);
-    this.aero.update(this.state.r, this.state.v, atmosphereBody, atmospherePivot);
-    this.altitudeAlarm.update(dt, this.state.r, atmosphereBody, atmospherePivot);
-    this.power.update(dt, sunlit, sunDir, this.att, this);
-  }
-
-  // 艦体自体の放熱面積に、展開した放熱板のぶんを上乗せする。
-  protected override get radiatingAreaPerMass(): number {
-    return SHIP_RADIATING_AREA_PER_MASS
-      + this.radiator.radiatingArea(this.totalCoolingRate) / PLAYER_MASS;
-  }
-
-  // 艦体の断面積に、展開した放熱板の日照面を上乗せする。
-  protected override solarAbsorbAreaPerMass(sunDir: Vec3): number {
-    return super.solarAbsorbAreaPerMass(sunDir)
-      + this.radiator.solarAbsorbArea(sunDir, this.att, this.totalCoolingRate) / PLAYER_MASS;
+    if (this.motion.thrust !== null) this.motion.invalidatePrediction();
   }
 
   // 次のフレームへ持ち越してはならない連続指令(推力・トルク・射撃)を畳む。角速度による
   // coast はそのまま続く。
   clearTransientCommands(): void {
-    this.thrust = null;
-    this.boosters.clearThrust();
-    this.torque = v3();
+    this.motion.thrust = null;
+    this.motion.attachedBoosters.clearThrust();
+    this.motion.torque = v3();
     this.throttle.clearTransientState();
     this.fire.stopFiring();
   }
@@ -347,10 +323,10 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       case K.throttleMax.code: this.throttle.setThrottlePreset(3); return true;
       case K.boosterDecouple.code: this.boosters.decouple(registry); return true;
       case K.boosterIgnitionToggle.code: this.boosters.toggleIgnition(); return true;
-      case K.radiatorDeployLeft.code: this.radiator.toggle('up'); return true;
-      case K.radiatorDeployRight.code: this.radiator.toggle('down'); return true;
-      case K.solarDeployLeft.code: this.power.toggle('up'); return true;
-      case K.solarDeployRight.code: this.power.toggle('down'); return true;
+      case K.radiatorDeployLeft.code: this.motion.radiator.toggle('up'); return true;
+      case K.radiatorDeployRight.code: this.motion.radiator.toggle('down'); return true;
+      case K.solarDeployLeft.code: this.motion.power.toggle('up'); return true;
+      case K.solarDeployRight.code: this.motion.power.toggle('down'); return true;
       case K.reload.code: return this.fire.manualReload(registry);
       default: return false;
     }
@@ -367,62 +343,74 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 被弾によるダメージ・致死判定。side を指定するとその放熱板パーツへ、無指定なら
   // 無作為なパーツへダメージが入る。
   private attackedByBullet(
-    bullet: Bullet, impactPoint: Vec3, activeStage: StageOutcome, registry: EntityRegistry,
+    bulletType: BulletType, shooter: Shooter, damage: number, impactPoint: Vec3,
+    activeStage: StageOutcome, registry: EntityRegistry,
     side: RadiatorSide | null = null,
   ): void {
-    this.absorbHeat(BULLET_IMPACT_HEAT / PLAYER_MASS);
+    this.motion.absorbHeat(BULLET_IMPACT_HEAT / PLAYER_MASS);
     const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
-    this.applyDamageToParts(side === null ? bullet.damage : RADIATOR_BULLET_DAMAGE, damagedPart);
+    this.applyDamageToParts(side === null ? damage : RADIATOR_BULLET_DAMAGE, damagedPart);
     if (side !== null && damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side, registry);
     if (this.hp > 0) {
-      this.impactEffect(bullet, impactPoint);
+      this.impactEffect(bulletType, impactPoint);
       return;
     }
 
-    this.alive = false;
-    const reason = bullet.shooter === 'player' ? '自弾の被弾により機体を喪失した' : '敵のエネルギー弾により機体を喪失した';
+    this.motion.alive = false;
+    const reason = shooter === 'player' ? '自弾の被弾により機体を喪失した' : '敵のエネルギー弾により機体を喪失した';
     activeStage.recordPlayerLost(reason);
     this.destroyEffect(registry);
   }
 
   // 弾は武装のダメージを、それ以外は接触の接近速度と相手の種別を根拠にする(ゲームバランスの量)。
-  collideWithEntity(
-    other: DynamicEntity, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
+  private receiveEntityContact(
+    other: DynamicMotion, contact: Contact, context: DynamicReactionServices,
   ): void {
-    if (!this.alive) return;
+    if (!this.motion.alive) return;
 
-    if (other instanceof Bullet) {
-      this.attackedByBullet(other, contact.point, activeStage, registry);
+    const bullet = bulletReactionOf(other);
+    if (bullet !== null) {
+      this.attackedByBullet(
+        bullet.type, bullet.shooter, bullet.damage, contact.point,
+        context.activeStage, context.registry,
+      );
       return;
     }
 
     this.damagedByContact(
-      contactDamageSpeed(other, contact), null, '高速接触により機体を喪失した', activeStage, registry);
+      contactDamageSpeed(other, contact), null, '高速接触により機体を喪失した',
+      context.activeStage, context.registry,
+    );
   }
 
   // 天体の固体表面への接触。相手の種別による重みが無いので接近速度がそのまま根拠になる。
-  collideWithCelestialBody(
-    _body: CelestialBody, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
-  ): void {
-    if (!this.alive) return;
+  private receiveSurfaceContact(contact: Contact, context: DynamicReactionServices): void {
+    if (!this.motion.alive) return;
     this.damagedByContact(
-      closingSpeed(contact), null, '天体の地表へ到達し機体は失われた', activeStage, registry);
+      closingSpeed(contact), null, '天体の地表へ到達し機体は失われた',
+      context.activeStage, context.registry,
+    );
   }
 
   // 放熱板の接触代理(RadiatorFold)からの帰結。ダメージは side の放熱板パーツへ入る。
-  collideAtRadiatorWithEntity(
-    side: RadiatorSide, other: DynamicEntity, contact: Contact, activeStage: StageOutcome,
-    registry: EntityRegistry,
+  private receiveRadiatorContact(
+    side: RadiatorSide, other: DynamicMotion, contact: Contact, context: DynamicReactionServices,
   ): void {
-    if (!this.alive) return;
+    if (!this.motion.alive) return;
 
-    if (other instanceof Bullet) {
-      this.attackedByBullet(other, contact.point, activeStage, registry, side);
+    const bullet = bulletReactionOf(other);
+    if (bullet !== null) {
+      this.attackedByBullet(
+        bullet.type, bullet.shooter, bullet.damage, contact.point,
+        context.activeStage, context.registry, side,
+      );
       return;
     }
 
     this.damagedByContact(
-      contactDamageSpeed(other, contact), side, '高速接触により機体を喪失した', activeStage, registry);
+      contactDamageSpeed(other, contact), side, '高速接触により機体を喪失した',
+      context.activeStage, context.registry,
+    );
   }
 
   // 接触によるダメージ・致死判定。side を指定するとその放熱板パーツへ、無指定なら無作為な
@@ -436,97 +424,86 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     if (side !== null && damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side, registry);
     if (this.hp > 0) {
       this._worldSfx.clank();
-      this._fx.spawnGasPuff(this.state);
+      this._fx.spawnGasPuff(this.motion.state);
       return;
     }
 
-    this.alive = false;
+    this.motion.alive = false;
     activeStage.recordPlayerLost(lossReason);
     this.destroyEffect(registry);
   }
 
-  // この艦の接触代理一覧 — 放熱板の折り(展開中かつ健在なものだけ)と、ベルトの節点。
-  override contactProxies(simTime: number, dt: number): readonly DynamicEntity[] {
-    this.contactProxyScratch.length = 0;
-    for (const fold of this.radiator.contactFolds(this.state.r, this.state.v, this.att, simTime)) {
-      this.contactProxyScratch.push(fold);
-    }
-    for (const section of this.belt.contactSections(simTime, dt, this.state.r, this.state.v, this.att)) {
-      this.contactProxyScratch.push(section);
-    }
-    return this.contactProxyScratch;
-  }
-
-  // ベルトは反発を節点の側で受け止めるので、解決後の状態を機体座標系の鎖へ書き戻す。
-  override applyContactProxies(dt: number): void {
-    this.belt.applyContactSections(dt, this.state.r, this.state.v, this.att);
-  }
-
   // 動圧が構造限界を超えたことによる喪失。
-  checkLoss(
-    _dt: number, _simTime: number, activeStage: StageOutcome, registry: EntityRegistry,
-    _viewerPos: Vec3, _atmosphereBodies: readonly CelestialBody[],
-  ): void {
-    if (!this.alive) return;
-    if (!this.aero.overStructuralLimit) return;
-    this.lose('動圧が構造限界を超え、機体は空力的に分解した', activeStage, registry);
+  private receiveStructuralLoss(context: DynamicReactionServices): void {
+    if (!this.motion.alive) return;
+    this.lose(
+      '動圧が構造限界を超え、機体は空力的に分解した',
+      context.activeStage, context.registry,
+    );
   }
 
   // 外殻の温度が上限を超えたときの喪失。理由は、そこで空力加熱が効いていたかで分ける。
-  protected override burnUp(activeStage: StageOutcome, registry: EntityRegistry): void {
+  private receiveBurnUp(context: DynamicReactionServices): void {
     this.lose(
-      this.aero.heatingAerodynamically
+      this.motion.aero.heatingAerodynamically
         ? '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した'
         : '排熱が追いつかず、機体は熱で機能不全に陥った',
-      activeStage, registry);
+      context.activeStage, context.registry,
+    );
   }
 
   // 喪失の共通処理。reason はステージの記録に残す喪失理由。
   private lose(reason: string, activeStage: StageOutcome, registry: EntityRegistry): void {
-    this.alive = false;
+    this.motion.alive = false;
     this.destroyEffect(registry);
     activeStage.recordPlayerLost(reason);
   }
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
-  private impactEffect(bullet: Bullet, impactPoint: Vec3): void {
-    this._worldSfx.hit(len(sub(impactPoint, this.state.r)));
-    if (bullet.type === 'plasma') {
-      this._fx.spawnPlasmaFlash(kinematicState<'eci'>(this.state.t, impactPoint, this.state.v));
+  private impactEffect(bulletType: BulletType, impactPoint: Vec3): void {
+    this._worldSfx.hit(len(sub(impactPoint, this.motion.state.r)));
+    if (bulletType === 'plasma') {
+      this._fx.spawnPlasmaFlash(kinematicState<'eci'>(
+        this.motion.state.t, impactPoint, this.motion.state.v,
+      ));
     } else {
-      this._fx.spawnBulletFlash(kinematicState<'eci'>(this.state.t, impactPoint, this.state.v));
+      this._fx.spawnBulletFlash(kinematicState<'eci'>(
+        this.motion.state.t, impactPoint, this.motion.state.v,
+      ));
     }
-    this._fx.spawnGasPuff(kinematicState<'eci'>(this.state.t, impactPoint, this.state.v));
+    this._fx.spawnGasPuff(kinematicState<'eci'>(
+      this.motion.state.t, impactPoint, this.motion.state.v,
+    ));
   }
 
   // 機体喪失時の爆発音・爆発エフェクトを発生させる。
   private destroyEffect(registry: EntityRegistry): void {
     this._worldSfx.explosion();
-    this._fx.spawnPlayerDestroyFlash(this.state);
-    for (const piece of playerDestroyFragments(this.state, this._worldSfx, this._fx, this.scene)) {
+    this._fx.spawnPlayerDestroyFlash(this.motion.state);
+    for (const piece of playerDestroyFragments(this.motion.state, this._worldSfx, this._fx)) {
       registry.add(piece);
     }
   }
 
   // ラジエーターが全損した瞬間の破片エフェクトを、そのパネル先端付近から発生させる。
   private radiatorBreakEffect(side: RadiatorSide, registry: EntityRegistry): void {
-    const tipR = this.radiator.tipWorldPosition(side, this.state.r, this.att);
-    this._worldSfx.hit(len(sub(tipR, this.state.r)));
+    const tipR = this.motion.radiator.tipWorldPosition(side, this.motion.state.r, this.motion.att);
+    this._worldSfx.hit(len(sub(tipR, this.motion.state.r)));
     for (const piece of buildDestroyFragments(
-      this.state.t, tipR, this.state.v, 4, PLAYER_DESTROY_FRAG_COLOR,
+      this.motion.state.t, tipR, this.motion.state.v, 4, PLAYER_DESTROY_FRAG_COLOR,
       DESTROY_FRAG_SIZE_MIN, DESTROY_FRAG_SIZE_MAX, 8.0,
-      this._worldSfx, this._fx, this.scene,
+      this._worldSfx, this._fx,
     )) registry.add(piece);
   }
 
-  // 入力から機体座標系トルクを求めて this.torque へ反映し、角速度をクランプする。
+  // 入力から機体座標系トルクを求めて Motion へ反映し、角速度をクランプする。
   private updateTorque(input: Input, dt: number, simDt: number): void {
     // 発砲中は姿勢微調整と同じ操作精度になる
     const fine = this.fineAttitude || this.fire.isFiring;
-    this.torque = this.throttle.updateTorque(
-      this.att,
-      this.state.r,
-      this.state.v,
+    this.motion.torque = this.throttle.updateTorque(
+      this.motion.att,
+      this.motion.state.r,
+      this.motion.state.v,
       input,
       fine,
       dt,
@@ -536,51 +513,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     );
   }
 
-  // 自機のメッシュ・エフェクト・ベルト・マーカーを displayTime の状態へ同期する。ガンサイト時の
-  // 非表示・方位マーカー・RCS 音は操作対象かどうかで変わるので、それを active から引く。
-  protected override syncModel(
-    fo: FloatingOrigin,
-    displayTime: number,
-    active: Controllable | null,
-    visibilityPolicy: MapVisibilityPolicy | null,
-    camera: CameraSystem,
-    style: RenderStyle,
-    _visual: EntityVisualSettings,
-    orbitRef: OrbitReference | undefined,
-  ): void {
-    const displayState = this.placeModel(fo, displayTime, active, visibilityPolicy);
-    const isActive = this === active;
-    // 推力/RCS エフェクトとベルト。機体メッシュと同じ displayState に載せる —
-    // 揃えないと「機体は未来位置、プルームは現在位置」に割れる。エフェクトはガンサイト中も
-    // 出したままなので、機体だけを伏せるのはこれを控えた後。
-    const effectState = displayState ?? this.state;
-    const effectVisible = this.renderObject.visible;
-    const cameraQuat = camera.activeCamera.quaternion;
-    const zoomActive = camera.zoomActive;
-    if (isActive && zoomActive) this.renderObject.visible = false;
-    const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
-    const rcsThrust = len(this.throttle.thrustAccelVec) > 0 ? this.throttle.thrustAccelVec : null;
-    this.thrustEffects.sync(
-      fo, effectState.r, rcsThrust, maxAccel, effectVisible, false, cameraQuat, zoomActive, style);
-    this.boosters.sync(fo, effectState.r, displayTime, effectVisible, cameraQuat, zoomActive, style);
-    if (isActive) {
-      this._worldSfx.setThrust(effectVisible && (rcsThrust !== null || this.boosters.thrust !== null));
-    }
-    this.rcsEffects.sync(
-      fo, effectState.r, this.torque, this.att, effectVisible, cameraQuat, zoomActive, isActive);
-    this.reentryEffects.sync(
-      fo, effectState.r, effectState.v, this.aero.qdyn, effectVisible, cameraQuat);
-    this.belt.sync(this.magsLeft);
-    this.radiator.sync();
-    this.power.sync();
-    // マーカー。方位マーカーは操作対象の軌道座標系を指す。
-    this.markers.sync(
-      this.state, this.att, camera.view, isActive, camera.activeCameraProjection,
-      this.roundsInMag, this.magsLeft, this.averageMuzzleVelocity, orbitRef,
-    );
-  }
-
-  // 艦は任意のタイミングで削除されうるので、Player が所有する線・ビルボード・HUD も一度だけ解放する。
+  // 艦は任意のタイミングで削除されうるので、一度だけ連続指令と View を解放する。
   private disposed: boolean = false;
 
   // 画面マーカーと被選択判定が同じ艦を指すためのキー。
@@ -613,11 +546,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     if (this.disposed) return;
     this.disposed = true;
     this.clearTransientCommands();
-    this.markers.dispose();
-    this.thrustEffects.dispose(this.playerScene);
-    this.boosters.dispose();
-    this.rcsEffects.dispose(this.playerScene);
-    this.reentryEffects.dispose(this.playerScene);
     super.dispose();
   }
 
@@ -627,21 +555,21 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       id: this.id,
       name: this.name,
       kind: 'player',
-      r: { ...this.state.r },
-      v: { ...this.state.v },
-      q: { ...this.att.q },
-      w: { ...this.att.w },
+      r: { ...this.motion.state.r },
+      v: { ...this.motion.state.v },
+      q: { ...this.motion.att.q },
+      w: { ...this.motion.att.w },
       fire: this.fire.serialize(),
-      thermal: { hullTemp: this.temperature },
-      radiator: this.radiator.serialize(),
-      power: this.power.serialize(),
+      thermal: { hullTemp: this.motion.temperature },
+      radiator: this.motion.radiator.serialize(),
+      power: this.motion.power.serialize(),
       throttle: this.throttle.serialize(),
       parts: this.parts.map(p => ({ ...p })) as AnyPart[],
       planExecution: this.planExecution,
       fineAttitude: this.fineAttitude,
-      showTrajectoryLine: this.showTrajectoryLine,
+      showTrajectoryLine: this.trajectoryLineVisible,
       plan: this.serializePlan(),
-      boosters: this.boosters.serialize(),
+      boosters: this.motion.attachedBoosters.serialize(),
     };
   }
 
@@ -657,8 +585,8 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   // 被選択物(ObjectPickable)としての振る舞い。
-  public get gone(): boolean { return !this.alive; }
-  public get orbitState(): KinematicState { return this.state; }
+  public get gone(): boolean { return !this.motion.alive; }
+  public get orbitState(): KinematicState { return this.motion.state; }
   public readonly glyph = ENTITY_GLYPH.ship;
   public get glyphSvg(): string { return shipMarkerSvg(true); }
   public readonly listSection: MapListSection = 'player';
@@ -669,15 +597,17 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 表示時刻の ECI 位置。予測が届かない時刻では null。
   public posAt(displayTime: number): Vec3 | null {
-    return this.stateAt(displayTime)?.r ?? null;
+    return this.motion.stateAt(displayTime)?.r ?? null;
   }
 
   public shownOnMap(markers: MarkerSlots): boolean { return markers.shows(this.markerKey); }
 
   // 残 HP と、いま最も強く引かれている天体を中心とした近地点高度。
   public listDetail(celestialBodies: CelestialBodies): string {
-    const center = strongestAttractor(this.state.r, celestialBodies.celestialMotions, this.state.t);
-    const el = this.orbitalElementsAround(center, this.state.t);
+    const center = strongestAttractor(
+      this.motion.state.r, celestialBodies.celestialMotions, this.motion.state.t,
+    );
+    const el = this.motion.orbitalElementsAround(center, this.motion.state.t);
     const pe = el ? fmtDist(apsisAltitudes(el).pe) : '—';
     return `HP ${Math.round(this.hp)}/${Math.round(this.maxHp)} · PE ${pe}`;
   }
@@ -705,7 +635,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
     // 操作対象の自艦は予測線・過去線に固定されるので、トグルは非操作艦にだけ出す。
     const trajectoryItem: readonly MenuItem<MenuAction>[] = isActive
-      ? [] : [MenuCommon.trajectoryLine(this.showTrajectoryLine)];
+      ? [] : [MenuCommon.trajectoryLine(this.trajectoryLineVisible)];
 
     return [
       MenuCommon.target(navTargetId === this.id),
@@ -724,7 +654,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     act: MenuAction, controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
   ): void {
     if (act === 'toggleTrajectoryLine') {
-      this.showTrajectoryLine = !this.showTrajectoryLine;
+      this.trajectoryLineVisible = !this.trajectoryLineVisible;
     } else if (act === 'activate') {
       controlSelection.select(this);
     } else if (act === 'deactivate') {
@@ -733,7 +663,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       const i = PLAN_EXECUTION_MODES.indexOf(this.planExecution);
       this.planExecution = PLAN_EXECUTION_MODES[(i + 1) % PLAN_EXECUTION_MODES.length]!;
     } else if (act === 'duplicate') {
-      authoring?.openObjectPlacerForDuplicate(this.mapKind, this.state);
+      authoring?.openObjectPlacerForDuplicate(this.mapKind, this.motion.state);
     } else if (act === 'delete') {
       controlSelection.remove(this);
     }
@@ -751,8 +681,8 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       },
       { key: 'follow', label: '計画実行', value: planExecutionLabel(this.planExecution), collapsible: true },
       { key: 'hp', label: '装甲', value: `${Math.floor(this.hp)} / ${this.maxHp}` },
-      { key: 'temp', label: '温度', value: `${this.temperature.toFixed(0)} K` },
-      { key: 'power', label: '電力', value: fmtEnergy(this.power.chargeJ) },
+      { key: 'temp', label: '温度', value: `${this.motion.temperature.toFixed(0)} K` },
+      { key: 'power', label: '電力', value: fmtEnergy(this.motion.power.chargeJ) },
       { key: 'ammo', label: '弾薬', value: fmtAmmoStatus(this.roundsInMag, this.magsLeft, this.reloadTimer) },
       ...orbitRows(this, celestialBodies, simTime),
     ];
@@ -761,7 +691,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   public readonly rename = (name: string): void => { this.setName(name); };
 
   // 単クリックはプロパティウィンドウを開くだけに留め、操作対象は変えない。
-  public readonly onMapSelect = (windows: ObjectWindows, clientX: number, clientY: number): void => {
+  public readonly onMapSelect = (windows: PropertyWindowOpener, clientX: number, clientY: number): void => {
     windows.openProperties(this, clientX, clientY);
   };
 

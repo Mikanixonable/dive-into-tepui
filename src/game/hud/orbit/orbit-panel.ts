@@ -10,6 +10,7 @@ import { Button, SegmentedControl } from '../../../hud/widgets';
 import { getApsisLabelSpec } from './orbit-labels';
 import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/ship';
 import { MAX_DYN_PRESSURE } from '../../player/aero-load';
+import { isPlayerMotion } from '../../player/player-motion';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -67,10 +68,11 @@ export class OrbitPanel {
 
     this.referenceControl.setSelected(game.orbitReference.selectedMode);
     const reference = game.orbitReference.resolve(
-      entity.state.r, celestialBodies, game.navTarget, game.dynamicSystem, game.celestialSystem, entity.state.t,
+      entity.motion.state.r, celestialBodies, game.navTarget,
+      game.dynamicSystem, game.celestialSystem, entity.motion.state.t,
     );
     const oi = orbitInfo(
-      entity, reference, entity.state.t, (id: string) => game.celestialSystem.nameOf(id));
+      entity, reference, entity.motion.state.t, (id: string) => game.celestialSystem.nameOf(id));
     const apSpec = getApsisLabelSpec('ap', oi.centerId);
     const peSpec = getApsisLabelSpec('pe', oi.centerId);
     // 航法ターゲット基準で対象が重力天体でない(艦・基地・ラグランジュ点)場合は、
@@ -88,7 +90,7 @@ export class OrbitPanel {
     setElementText(this.els, 'prd', fmtTime(oi.period));
     // 動圧・機体温度は閾値超過で警告表示にする。動圧は大気を受ける操作対象だけが持つ。
     const qEl = this.els.get('qdyn');
-    const aero = entity.aero;
+    const aero = isPlayerMotion(entity.motion) ? entity.motion.aero : null;
     if (qEl) {
       if (aero) {
         qEl.textContent = aero.qdyn >= 10 ? `${(aero.qdyn / 1000).toFixed(2)} kPa` : '0.00 kPa';
@@ -100,8 +102,8 @@ export class OrbitPanel {
     }
     const tEl = this.els.get('temp');
     if (tEl) {
-      tEl.textContent = `${entity.temperature.toFixed(0)} K`;
-      tEl.classList.toggle('warn-hot', entity.temperature > 0.7 * MAX_HULL_TEMP);
+      tEl.textContent = `${entity.motion.temperature.toFixed(0)} K`;
+      tEl.classList.toggle('warn-hot', entity.motion.temperature > 0.7 * MAX_HULL_TEMP);
     }
   }
 }

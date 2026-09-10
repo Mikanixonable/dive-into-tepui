@@ -74,15 +74,15 @@ export class ManualSpawn {
     const state = this.frontOf(player);
     const name = `FORMATION-${++this.formationCount}`;
     const spawns = proteinFormationSpawns(
-      name, state, player.state.r, this.display, name, this.worldSfx, this.fx, this.scene,
+      name, state, player.motion.state.r, this.display, name, this.worldSfx, this.fx, this.scene,
     );
     return spawns.map(({ assetId, build }) => ({ gate: proteinAssetGate(assetId), build }));
   }
 
   // 自機の前方 spawnDistance [m]、自機と同じ速度の状態。
   private frontOf(player: Player): KinematicState {
-    const forward = qRotate(player.att.q, LOCAL_FORWARD);
-    const position = addScaled(player.state.r, forward, this.spawnDistance);
-    return kinematicState<'eci'>(player.state.t, position, player.state.v);
+    const forward = qRotate(player.motion.att.q, LOCAL_FORWARD);
+    const position = addScaled(player.motion.state.r, forward, this.spawnDistance);
+    return kinematicState<'eci'>(player.motion.state.t, position, player.motion.state.v);
   }
 }

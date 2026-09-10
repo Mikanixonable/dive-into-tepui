@@ -40,7 +40,7 @@ export class Stage2 extends Stage {
   // 自機を置き、通常軌道の敵とモルニヤ級軌道の敵を混成配置する。
   protected init(): void {
     const player = this.addPlayer();
-    const base = player.state;
+    const base = player.motion.state;
     const worldSfx = this._worldSfx;
     const fx = this._fx;
     const scene = this._scene;

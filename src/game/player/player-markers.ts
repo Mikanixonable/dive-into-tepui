@@ -25,11 +25,10 @@ export class PlayerMarkers {
     currentState: KinematicState, att: Attitude, view: View, isActive: boolean, project: ProjectFn,
     rounds = 0, beltLinks = 0, muzzleSpeed = 0, orbitRef?: OrbitReference,
   ): void {
-    if (view === 'map') {
-      if (isActive) for (const key of COMBAT_KEYS) this.markers.hide(`${key}-${this.id}`);
+    if (view === 'map' || !isActive) {
+      for (const key of COMBAT_KEYS) this.markers.hide(`${key}-${this.id}`);
       return;
     }
-    if (!isActive) return;
     this.syncOrbitAxes(currentState, project, orbitRef);
     this.syncBoresight(currentState, att, project, rounds, beltLinks, muzzleSpeed);
   }
@@ -43,6 +42,7 @@ export class PlayerMarkers {
   // 方向は orbitRef が指す基準(未指定なら ECI = 地球基準)に対する相対 r/v から求める——
   // マーカーの設置位置(pr)は常に艦の絶対位置のまま変わらない。
   private syncOrbitAxes(state: KinematicState, project: ProjectFn, orbitRef?: OrbitReference): void {
+    // 参照対象があれば相対状態へ移し、マーカーを置く原点だけは自機の絶対位置に保つ。
     const pr = state.r;
     const relState = orbitRef
       ? kinematicState<'eci'>(state.t, sub(state.r, orbitRef.state.r), sub(state.v, orbitRef.state.v))

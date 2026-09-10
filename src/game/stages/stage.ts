@@ -16,7 +16,6 @@ import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { MarkerSlots } from '../marker/marker-slots';
 import type { StageSaveData } from '../save/save-data';
-import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
 import type { StageSimulationEvents } from './stage-simulation-events';
@@ -204,11 +203,10 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.statusPanel.appendLeftWidget(el);
   }
 
-  // ステータスパネルを同期する。fo・displayTime・visibilityPolicy は配置プレビューなど
-  // ステージ固有の描画物を持つサブクラスが使う。
+  // ステータスパネルを同期する。fo・displayTime は配置プレビューなどステージ固有の描画物を
+  // 持つサブクラスが使う。
   public sync(
     _fo: FloatingOrigin, cameraSystem: CameraSystem, _displayTime: number,
-    _visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     this.syncStatusPanel(cameraSystem.view === 'map');
   }
@@ -225,7 +223,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   protected get ship(): Player | null {
     const controlled = this._controlSelection.current;
     if (controlled instanceof Player) return controlled;
-    return this._dynamicSystem.all().filter(isPlayer).find((p) => p.alive) ?? null;
+    return this._dynamicSystem.all().filter(isPlayer).find((p) => p.motion.alive) ?? null;
   }
 
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、

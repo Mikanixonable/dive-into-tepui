@@ -178,7 +178,7 @@ export class Throttle {
 
     // 全開加速度は推力/質量で決まる。スロットル段は THROTTLE_LEVELS の最大値に対する
     // 比としてそこへ掛けるので、既定パーツの艦では表示値(THROTTLE_LEVELS)と実加速度が一致する。
-    const maxAccel = ship.mass > 0 ? ship.totalThrust / ship.mass : 0;
+    const maxAccel = ship.motion.mass > 0 ? ship.totalThrust / ship.motion.mass : 0;
     const presetScale = THROTTLE_LEVELS[this.throttleIdx]! / THROTTLE_LEVELS[THROTTLE_LEVELS.length - 1]!;
     let thrustAccel = maxAccel * presetScale;
 

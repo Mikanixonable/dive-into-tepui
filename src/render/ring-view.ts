@@ -1,11 +1,11 @@
 // RingSystemDefの物理データを、マップビューと戦闘ビューで共通のRingVisualへ同期する。
 // 環の姿勢は極軸だけで決まり、非軸対称アークは本体の自転位相には追従させない。
 import * as THREE from 'three/webgpu';
-import type { RenderStyle } from '../../../render/render-style';
-import { spinOrientation } from '../../../physics/body-orientation';
-import { RingBandDef, RingSystemDef } from '../../../physics/celestial-body-def';
-import { Vec3 } from '../../../math/vec3';
-import { createOutlineCircle, OutlineCircle } from '../../../render/outline-circle';
+import type { RenderStyle } from './render-style';
+import { spinOrientation } from '../physics/body-orientation';
+import { RingBandDef, RingSystemDef } from '../physics/celestial-body-def';
+import { Vec3 } from '../math/vec3';
+import { createOutlineCircle, OutlineCircle } from './outline-circle';
 import {
   RING_TILT,
   createAnnulusRing,
@@ -14,10 +14,10 @@ import {
   RingLineVisual,
   RingMaterials,
   RingVisual,
-} from '../../../render/ring';
-import { ringPixelCoverage } from '../../../render/screen-lod';
-import type { GraphicsSettingsData } from '../../../render/graphics-settings';
-import type { ScaleFn } from '../../../math/projection';
+} from './ring';
+import { ringPixelCoverage } from './screen-lod';
+import type { GraphicsSettingsData } from './graphics-settings';
+import type { ScaleFn } from '../math/projection';
 
 type CoverageBand = {
   readonly widthMeters: number;
@@ -36,7 +36,7 @@ export class RingView {
   // rings は物理データ(半径は [m])、bodyRadius は本体メッシュと同じ「半径 1」単位への換算元、
   // renderOrder は半透明の環を本体より後に描くための値。THREE の描画順は Object3D ごとに独立
   // していて親から子へ伝播しないので、グループではなく帯のメッシュ1つ1つへ書く。
-  constructor(
+  public constructor(
     rings: RingSystemDef,
     private readonly bodyRadius: number,
     renderOrder: number,
@@ -84,14 +84,14 @@ export class RingView {
     this.visuals.push(visual);
   }
 
-  // 環全体の表示・非表示を切り替える。
-  setVisible(visible: boolean): void {
-    this.group.visible = visible;
+  // 環全体を隠す。見せ直すのは sync が受け取る表示設定の役目。
+  public hide(): void {
+    this.group.visible = false;
   }
 
   // pos/axis は本体メッシュと揃える。bodyPos/metersPerPixelAt は帯の被覆率減光に使う。
   // graphics の設定に従って環の表示を切り替え、見せるときは姿勢と見かけ幅も合わせる。
-  sync(
+  public sync(
     pos: THREE.Vector3,
     axis: Vec3 | null,
     bodyPos: Vec3,
@@ -125,7 +125,7 @@ export class RingView {
   }
 
   // 全帯の RingVisual と輪郭円を解放し、group を親から外す。
-  dispose(): void {
+  public dispose(): void {
     this.group.removeFromParent();
     for (const visual of this.visuals) visual.dispose();
     this.outlineInner.dispose();

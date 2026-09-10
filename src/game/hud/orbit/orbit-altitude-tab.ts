@@ -59,7 +59,7 @@ export class AltitudeTab implements AnalysisTab {
   // 現在時刻から横軸のスケールぶん先までの高度を引き、折れ線と現在位置の丸マークを描く。
   public draw(source: AnalysisChartSource, entity: DynamicEntity, reference: OrbitReference): void {
     const series = altitudeSeries(
-      entity, reference, source.celestialSystem, entity.state.t,
+      entity, reference, source.celestialSystem, entity.motion.state.t,
       this.scaleXHours * SECONDS_PER_HOUR, sampleCountFor(this.chart.element),
     );
     if (series === null) {

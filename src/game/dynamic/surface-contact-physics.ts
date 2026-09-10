@@ -6,9 +6,9 @@ import { distributeFixedContact } from '../../physics/collision-response';
 import { firstSurfaceContact } from '../../physics/surface-contact';
 import { kinematicState } from '../../physics/kinematic-state';
 import { add, sameVec, scale } from '../../math/vec3';
-import { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import type { SurfaceContactParticipant } from './dynamic-simulation-participant';
 import type { StageOutcome } from '../stages/stage-outcome';
-import { contactTime, isFiniteParticipant } from './contact-participant';
+import { contactTime, isFiniteSurfaceParticipant } from './contact-participant';
 import { SurfaceCandidates } from './surface-candidates';
 import { CONTACT_RESTITUTION } from './entity-contact-response';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -19,8 +19,8 @@ const SPAN_REACH_MARGIN = 2;
 
 // 天体との接触に参加するのは、独立した実体すべて。艦に取り付いた接触代理(ベルトの節点・
 // 放熱板の折り)は艦本体が代表するので参加しない。
-function isParticipant(e: DynamicEntity): boolean {
-  return e.alive && e.attachedTo === null && isFiniteParticipant(e);
+function isParticipant(e: SurfaceContactParticipant): boolean {
+  return e.alive && e.attachedTo === null && isFiniteSurfaceParticipant(e);
 }
 
 // 位置・速度・半径が有限か。
@@ -33,13 +33,13 @@ function isFiniteCelestialBody(a: CelestialBody, pivot: number): boolean {
 
 export class SurfaceContactPhysics {
   // 解決は区間ごとに同期的に完了するので、作業配列を使い回せる。
-  private readonly participantScratch: DynamicEntity[] = [];
+  private readonly participantScratch: SurfaceContactParticipant[] = [];
   private readonly bodyScratch: CelestialBody[] = [];
   private readonly candidates = new SurfaceCandidates();
   private readonly nearbyScratch: CelestialBody[] = [];
   // 天体の位置を厳密に引く時刻。beginSubstep が受け取り、そのサブステップの解決すべてで使う。
   private pivot = 0;
-  // 負荷確認ウィンドウが読む、絞り込みを通した延べ候補天体数。フレーム頭で Simulator が 0 へ戻す。
+  // デバッグ情報ウィンドウが読む、絞り込みを通した延べ候補天体数。フレーム頭で Simulator が 0 へ戻す。
   public candidateBodies = 0;
 
   // フレームの区間 [tStart, tEnd] で触れうる天体の下ごしらえ。判定できる天体を選び、各天体の
@@ -64,7 +64,7 @@ export class SurfaceContactPhysics {
   }
 
   // 個体1つの天体との接触。区間は beginSubstep へ渡した区間の内側であればよい。
-  resolveOne(e: DynamicEntity, activeStage: StageOutcome, registry: EntityRegistry): void {
+  resolveOne(e: SurfaceContactParticipant, activeStage: StageOutcome, registry: EntityRegistry): void {
     if (!isParticipant(e)) return;
     this.resolveAgainstCandidates(e, activeStage, registry);
   }
@@ -72,7 +72,7 @@ export class SurfaceContactPhysics {
   // 区間を共有する個体をまとめて解く。顔ぶれで先に絞り込むぶん1体あたりが安くなるので、
   // **同じ区間を1歩で渡った個体をここへまとめる。** 絞り込みは次の beginSubstep まで残る。
   resolveShared(
-    entities: readonly DynamicEntity[], activeStage: StageOutcome, registry: EntityRegistry,
+    entities: readonly SurfaceContactParticipant[], activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     this.collectParticipants(entities, this.participantScratch);
     if (this.participantScratch.length === 0) return;
@@ -83,7 +83,7 @@ export class SurfaceContactPhysics {
   // 個体1つが区間内で最も早く触れる天体を1体だけ解き、反発を当ててから
   // collideWithCelestialBody を呼ぶ。
   private resolveAgainstCandidates(
-    e: DynamicEntity, activeStage: StageOutcome, registry: EntityRegistry,
+    e: SurfaceContactParticipant, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     const candidates = this.candidates.into(e, this.nearbyScratch);
     this.candidateBodies += candidates.length;
@@ -112,11 +112,13 @@ export class SurfaceContactPhysics {
       normal: response.normal,
       selfState: before,
       otherState: hit.body.stateAt(this.pivot),
-    }, activeStage, registry);
+    }, { activeStage, registry });
   }
 
   // 参加者だけを out へ写す。out は呼び出し側が所有する。
-  private collectParticipants(source: readonly DynamicEntity[], out: DynamicEntity[]): void {
+  private collectParticipants(
+    source: readonly SurfaceContactParticipant[], out: SurfaceContactParticipant[],
+  ): void {
     out.length = 0;
     for (const entity of source) if (isParticipant(entity)) out.push(entity);
   }

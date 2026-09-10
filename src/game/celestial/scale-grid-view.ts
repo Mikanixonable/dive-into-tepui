@@ -37,7 +37,7 @@ export class ScaleGridView {
       moonOrbit: mapView && gridVisibility.moonOrbitScaleGrid,
       moonEquator: mapView && gridVisibility.moonEquatorScaleGrid,
     };
-    const moon = celestialBodies.findMotion('moon') ?? null;
+    const moon = celestialBodies.findMotion('moon');
     const moonPole = moon === null ? null : moon.orientationAt(displayTime);
     this.grid.sync(
       visibility,

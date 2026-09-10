@@ -88,7 +88,10 @@ export class LagrangePointMarker implements ObjectPickable {
     const pos = this.posAt();
     const rows: PropertyRow[] = [];
     if (viewer && pos) {
-      rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(len(sub(pos, viewer.state.r))) });
+      rows.push({
+        key: 'dist', label: '自艦からの距離',
+        value: fmtDist(len(sub(pos, viewer.motion.state.r))),
+      });
     }
     rows.push({ key: 'kind', label: '種別', value: 'ラグランジュ点' });
     return rows;

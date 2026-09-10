@@ -1,32 +1,19 @@
-// マガジンベルトの表示メッシュを管理する。物理演算結果から各リンクの位置・向きを導出してメッシュへ反映する。
-import * as THREE from 'three/webgpu';
+// マガジンベルトの給弾状態とたわみ物理を管理する。表示メッシュは BeltView が所有する。
 import { Attitude } from '../../physics/attitude';
-import { LOCAL_RIGHT, Q_IDENTITY, qFromAxisAngle, qFromUnitVectors, qMul, qRotate, Quat } from '../../math/quat';
-import { Vec3, len, scale, sub } from '../../math/vec3';
-import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH, buildMagazineMesh } from '../../render/ships';
+import { Vec3 } from '../../math/vec3';
 import { BeltPhysics, BeltSection } from './belt-physics';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import { MAG_ROUNDS } from './ammo-spec';
 
-const BELT_MAX_VISIBLE = 18; // ベルト描画の最大リンク数
+export const BELT_MAX_VISIBLE = 18; // ベルト描画の最大リンク数
 
 export class Belt {
-  private readonly links: THREE.Group[] = [];
   private readonly physics: BeltPhysics;
   private feed = 0;
 
-  // リンクメッシュを renderObject の子として並べ、たわみ物理を初期化する。owner は接触判定で
-  // 自身の節点との接触を除外するために使う吊り元の艦。
-  public constructor(renderObject: THREE.Object3D, owner: DynamicEntity) {
-    const group = new THREE.Group();
-    for (let i = 0; i < BELT_MAX_VISIBLE; i++) {
-      const link = buildMagazineMesh();
-      link.position.x = MAG_BELT_ANCHOR_X + (i + 0.5) * MAG_BELT_PITCH;
-      group.add(link);
-      this.links.push(link);
-    }
-    renderObject.add(group);
-    this.physics = new BeltPhysics(this.links.length, owner);
+  // たわみ物理を初期化する。owner は接触判定で自身の節点との接触を除外する吊り元の艦。
+  public constructor(owner: DynamicMotion) {
+    this.physics = new BeltPhysics(BELT_MAX_VISIBLE, owner);
   }
 
   // 給弾進み(beltFeed)を弾薬状態から導出し、たわみ物理を進める。
@@ -46,39 +33,8 @@ export class Belt {
     this.physics.update(dt, att, thrustAccelVec, this.feed);
   }
 
-  // 物理演算で求めた各リンクの位置・向きをメッシュへ反映する。残弾のあるぶんだけ見せる。
-  sync(magsLeft: number): void {
-    const visibleCount = Math.min(magsLeft, BELT_MAX_VISIBLE);
-    const { beltPos, beltTwist, anchor } = this.physics;
-    let prevPoint = anchor;
-    let prevQ: Quat = Q_IDENTITY;
-    for (let i = 0; i < this.links.length; i++) {
-      const link = this.links[i]!;
-      link.visible = i < visibleCount;
-
-      // 表示位置は前後端の中点
-      const pos = beltPos[i]!;
-      link.position.set((prevPoint.x + pos.x) / 2, (prevPoint.y + pos.y) / 2, (prevPoint.z + pos.z) / 2);
-
-      // 前リンクの+Xから接線方向への回転で曲げ姿勢を求める
-      const dir = sub(pos, prevPoint);
-      const segLen = len(dir);
-      let bendQ = prevQ;
-      if (segLen > 1e-6) {
-        const dirUnit = scale(dir, 1 / segLen);
-        const localX = qRotate(prevQ, LOCAL_RIGHT);
-        bendQ = qMul(qFromUnitVectors(localX, dirUnit), prevQ);
-      }
-
-      // ロールを掛け合わせて最終姿勢にする
-      const twistQ = qFromAxisAngle(LOCAL_RIGHT, beltTwist[i]!);
-      const q = qMul(bendQ, twistQ);
-      link.quaternion.set(q.x, q.y, q.z, q.w);
-
-      prevQ = bendQ;
-      prevPoint = pos;
-    }
-  }
+  // View が各リンクの位置・向きを同期するために、物理状態を読み取り専用で公開する。
+  get viewState(): BeltPhysics { return this.physics; }
 
   // 各リンクの体軸座標を ECI 絶対状態に変換し、衝突判定用の BeltSection として返す。
   contactSections(t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {

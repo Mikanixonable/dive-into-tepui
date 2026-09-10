@@ -13,7 +13,6 @@ import { CameraFramePanel } from './camera-frame-panel';
 import { TrajectoryFramePanel } from './trajectory-frame-panel';
 import type { ListedObject } from '../../pickable/listed-object';
 
-// 見出しだけを持つ空のパネルを左レールへ足して返す。中身は返り値へ足す。
 export class FrameControls {
   private readonly cameraPanel: CameraFramePanel;
   private readonly trajectoryPanel: TrajectoryFramePanel;

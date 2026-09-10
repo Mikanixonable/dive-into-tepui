@@ -32,8 +32,10 @@ export function runSummary(game: Game): RunSummary {
   const celestial = game.celestialSystem;
   const info = controlled === null ? null : orbitInfo(
     controlled,
-    autoOrbitReference(controlled.state.r, celestial.celestialMotions, controlled.state.t),
-    controlled.state.t, (id: string) => celestial.nameOf(id),
+    autoOrbitReference(
+      controlled.motion.state.r, celestial.celestialMotions, controlled.motion.state.t,
+    ),
+    controlled.motion.state.t, (id: string) => celestial.nameOf(id),
   );
   const entities = game.dynamicSystem.all();
   return {
@@ -50,6 +52,6 @@ export function runSummary(game: Game): RunSummary {
     magazines: controlled?.fire?.mags ?? 0,
     money: entities.filter(isBase).reduce((sum, b) => sum + b.baseState.money, 0),
     playerCount: entities.filter(isPlayer).length,
-    enemyAliveCount: entities.filter(isEnemy).filter((e) => e.alive).length,
+    enemyAliveCount: entities.filter(isEnemy).filter((e) => e.motion.alive).length,
   };
 }

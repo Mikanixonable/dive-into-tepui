@@ -1,6 +1,5 @@
 // 自機の展開式ラジエーター: 上下2枚それぞれの展開度・損耗度を持ち、
 // 今フレームの放熱面積と太陽入射を答える。
-import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
 import { LOCAL_FORWARD, LOCAL_UP, qFromAxisAngle, qRotate } from '../../math/quat';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
@@ -9,13 +8,14 @@ import {
   RADIATOR_DEPLOY_TILT,
   RADIATOR_HINGE,
   RADIATOR_SEGMENT_LENGTH,
-} from '../../render/ships';
-import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+} from '../../physics/player-shape';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
-import type { StageOutcome } from '../stages/stage-outcome';
-import type { EntityRegistry } from '../dynamic/entity-registry';
-import type { Player } from './player';
 import type { RadiatorSaveData } from '../save/save-data';
+import {
+  DynamicMotion,
+  type DynamicMotionBehavior,
+  type DynamicReactionServices,
+} from '../dynamic/dynamic-motion';
 
 const RADIATOR_FOLD_COUNT = 6; // 蛇腹の折り数(1枚あたり)
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
@@ -51,29 +51,32 @@ function foldLocalPosition(side: RadiatorSide, fold: number, even: number, odd: 
 }
 
 // 蛇腹1折りぶんの接触代理。艦の姿勢と展開度から一意に決まる剛体の取り付け。
-class RadiatorFold extends DynamicEntity {
+class RadiatorFold extends DynamicMotion {
   // state は生成時点の実際の world 状態 — 仮の状態で始めると、最初に置き直した substep の
   // prevState がその仮位置になり、そこからの偽の区間を掃引してしまう。
-  constructor(readonly side: RadiatorSide, private readonly owner: Player, state: KinematicState) {
-    super(state, new THREE.Object3D());
-    this.mass = 5;
-    this.radius = RADIATOR_SEGMENT_LENGTH / 2;
-    this.collides = true;
+  public constructor(
+    side: RadiatorSide,
+    owner: DynamicMotion,
+    state: KinematicState,
+    onContact: RadiatorContactReaction,
+  ) {
+    const behavior: DynamicMotionBehavior = {
+      contactKind: 'radiator-fold',
+      contactsWith: (_self, other) => other !== owner && other.attachedTo !== owner,
+      onEntityContact: (_self, other, contact, context) => onContact(side, other, contact, context),
+    };
+    super(state, { mass: 5, radius: RADIATOR_SEGMENT_LENGTH / 2, collides: true, behavior });
     this.attachedTo = owner;
   }
+}
 
-  // 吊り元の艦、およびそれに取り付いた他の実体(放熱板の他の折り・ベルトの節点)とは接触しない。
-  contactsWith(other: DynamicEntity): boolean {
-    if (other === this.owner) return false;
-    return other.attachedTo !== this.owner;
-  }
-
-  // 折りへの接触は、その side の放熱板が受けた接触として艦へ返す。
-  collideWithEntity(
-    other: DynamicEntity, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
-  ): void {
-    this.owner.collideAtRadiatorWithEntity(this.side, other, contact, activeStage, registry);
-  }
+interface RadiatorContactReaction {
+  (
+    side: RadiatorSide,
+    other: DynamicMotion,
+    contact: Contact,
+    context: DynamicReactionServices,
+  ): void;
 }
 
 class Panel {
@@ -85,21 +88,15 @@ export class RadiatorSystem {
   private readonly panels: Record<RadiatorSide, Panel> = { up: new Panel(), down: new Panel() };
   // side ごとの損耗率(0=無傷, 1=全損)。
   private wear: Record<RadiatorSide, number> = { up: 0, down: 0 };
-  private readonly folds: Record<RadiatorSide, THREE.Object3D[]>;
   // side ごとの接触代理。折り数まで遅延生成し、以後は使い回す。
   private readonly foldProxies: Record<RadiatorSide, RadiatorFold[]> = { up: [], down: [] };
 
-  // renderObject から上下の折り目 Group を引き当てて保持し、saved があれば展開状態を復元する。
-  public constructor(renderObject: THREE.Object3D, private readonly owner: Player, saved?: RadiatorSaveData) {
-    // side の折り目 Group を fold 番号順に返す。1つでも欠けていればモデル不整合として throw。
-    const collect = (side: RadiatorSide, baseName: string): THREE.Object3D[] => {
-      const namePrefix = baseName + (side === 'up' ? 'Up' : 'Down');
-      const found = Array.from({ length: RADIATOR_FOLD_COUNT }, (_, i) =>
-        renderObject.getObjectByName(`${namePrefix}Fold${i}`));
-      if (found.some((f) => !f)) throw new Error(`${baseName} fold objects not found in ship model`);
-      return found as THREE.Object3D[];
-    };
-    this.folds = { up: collect('up', 'radiator'), down: collect('down', 'radiator') };
+  // 艦本体へ接触代理を結び、接触後のゲーム上の反応を受け取る。saved があれば展開状態を復元する。
+  public constructor(
+    private readonly owner: DynamicMotion,
+    private readonly onContact: RadiatorContactReaction,
+    saved?: RadiatorSaveData,
+  ) {
     if (saved) {
       for (const side of ['up', 'down'] as const) {
         this.panels[side].deployTarget = saved[side].deployTarget;
@@ -147,24 +144,9 @@ export class RadiatorSystem {
     return { even: sign * psi, odd: -sign * psi };
   }
 
-  // 各折り目 Group の rotation.y(親からの相対回転)を展開角へ同期し、全損したパネルの
-  // 蛇腹を非表示にする。
-  sync(): void {
-    for (const side of ['up', 'down'] as const) {
-      const { even, odd } = this.foldThetas(side);
-      const folds = this.folds[side];
-      const broken = this.wear[side] >= 1;
-      // 親の Group が既に手前の折りぶん回っているので、書き込むのは隣り合う折りの差だけ。
-      for (let i = 0; i < folds.length; i++) {
-        const fold = folds[i];
-        const rotY = i === 0 ? even : (i % 2 === 1 ? odd - even : even - odd);
-
-        if (fold) {
-          fold.rotation.y = rotY;
-          fold.visible = !broken;
-        }
-      }
-    }
+  // 蛇腹の折り目に与える展開角。even は偶数番、odd は奇数番の折り目のもの [rad]。
+  viewTilt(side: RadiatorSide): { readonly even: number; readonly odd: number } {
+    return this.foldThetas(side);
   }
 
   // side の有効な放熱面積 [m^2]。totalCoolingRate は放熱板部品の面積の総和で、展開度と
@@ -213,7 +195,7 @@ export class RadiatorSystem {
         const worldVel = add(shipV, qRotate(att.q, cross(att.w, bodyOffset)));
         const world = kinematicState<'eci'>(t, worldPos, worldVel);
         const known = proxies[i];
-        const fold = known ?? new RadiatorFold(side, this.owner, world);
+        const fold = known ?? new RadiatorFold(side, this.owner, world, this.onContact);
         if (known === undefined) proxies.push(fold);
         else fold.state = world;
         result.push(fold);

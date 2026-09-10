@@ -1,13 +1,11 @@
-// DynamicEntity.predicted と、計画軌道の各区間の弧を、共有のフレーム予算内で伸ばす。1歩ぶんの
+// DynamicMotion.predicted と、計画軌道の各区間の弧を、共有のフレーム予算内で伸ばす。1歩ぶんの
 // 積分(刻み幅・窓解決・到達判定)は PredictedArc が持ち、ここは予算の配分を持つ。伸長対象は
-// 「その個体の未来を読む消費者がいるか」(DynamicEntity.hasFutureReader)で決まる。
+// 「その個体の未来を読む消費者がいるか」(DynamicMotion.hasFutureReader)で決まる。
 // 弧は1本ずつ別の先端時刻で伸び、1フレームの歩数は予算で切られる — 追い越された弧は読まれなく
 // なり、その個体は実シミュレーションの積分へ落ちる。弧どうしの剛体接触と刻みの決まり方を除けば、
 // 個体1つと解析天体の関係(引く天体・表面到達・大気での焼失・刻みの上限)は実シミュレーション
 // と同じ答えでなければならない。
-import type { EntityRoster } from './entity-roster';
-import { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import type { Controllable } from './dynamic-entity/controllable';
+import type { PredictableMotion, PredictableMotionRoster } from './dynamic-simulation-participant';
 import { simulationMaxStep, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT } from './time-step';
 import { PredictedArc } from './predicted-arc';
 import type { PerfCounts } from '../perf-counts';
@@ -39,7 +37,7 @@ export class Predictor {
   private lastRevisits = 0; // そのうち期限到来で訪問したものの数
 
   constructor(
-    private readonly roster: EntityRoster,
+    private readonly roster: PredictableMotionRoster,
     private readonly celestialBodies: CelestialBodies,
   ) {}
 
@@ -48,7 +46,7 @@ export class Predictor {
   // ションと揃えるのに使う。horizon は simTime から先へ予測する長さ [s]、canDisplayFuture は
   // 表示時刻が現在より先へ動けるか。planArcs は時刻順に並べた計画の弧。
   update(
-    simTime: number, simDt: number, controlled: Controllable | null, horizon: number, canDisplayFuture: boolean,
+    simTime: number, simDt: number, controlled: PredictableMotion | null, horizon: number, canDisplayFuture: boolean,
     planArcs: readonly PredictedArc[],
   ): void {
     this.lastSteps = 0;
@@ -58,7 +56,7 @@ export class Predictor {
     const maxStep = simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT);
     // 伸ばすのは未来を読む消費者がいる個体だけ。線の有無は前フレームの状態を読むことになるが、
     // 弧は何フレームもかけて伸びるので、伸ばし始めが1フレーム遅れても描かれる線は変わらない。
-    const targets = this.roster.all().filter((e) => e.hasFutureReader(canDisplayFuture));
+    const targets = this.roster.allMotions().filter((e) => e.hasFutureReader(canDisplayFuture));
     const interactive = controlled !== null && controlled.hasFutureReader(canDisplayFuture) ? controlled : null;
 
     // interactive 枠: 操作対象の弧 → 計画の弧(時刻順)。他に伸ばす対象がいなければ全額を渡す。
@@ -97,7 +95,7 @@ export class Predictor {
   // budgetSteps を上限に予測列を1歩ずつ伸ばし、消費した歩数を実体側の集計へ積んで返す。
   // 要求終端・保持窓の左端・実シミュレーションの刻み上限は、伸ばす前に弧へ書き込む。
   private advanceBudget(
-    e: DynamicEntity, budgetSteps: number, simTime: number, horizon: number, maxStep: number,
+    e: PredictableMotion, budgetSteps: number, simTime: number, horizon: number, maxStep: number,
   ): number {
     const arc = e.ensurePredictedArc(this.celestialBodies.celestialMotions);
     if (arc === null) return 0;
@@ -123,13 +121,13 @@ export class Predictor {
 
   // 直近フレームの予測伸長の集計値。planSteps は計画の弧ぶんの積分step数。horizon は予測の
   // 要求終端までの長さで、先端が届いた個体を数えるのに使う。
-  perfCounts(simTime: number, horizon: number, controlled: Controllable | null): Pick<PerfCounts,
+  perfCounts(simTime: number, horizon: number, controlled: PredictableMotion | null): Pick<PerfCounts,
   'predicted' | 'predictComplete' | 'predictorSteps' | 'planSteps'
   | 'arcCelestialBodies' | 'arcRevisits' | 'arcLead'> {
     // 先端が要求終端へ届いた個体と、打ち切られた個体を「完了」と数える。
     let tracked = 0;
     let finished = 0;
-    for (const e of this.roster.all()) {
+    for (const e of this.roster.allMotions()) {
       if (!e.predictsFuture) continue;
       tracked++;
       const reachedHorizon = e.predicted !== null && e.predicted.state.t >= simTime + horizon;

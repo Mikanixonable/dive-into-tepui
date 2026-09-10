@@ -1,7 +1,7 @@
 // 地球系(地球・月)。静的事実・運動・見た目を1体につき1箇所で組む。
 import * as THREE from 'three/webgpu';
 import earthTextureUrl from '../../../assets/earth.jpg';
-import cloudFieldUrl from '../../../assets/cloud-field.png';
+import climateTextureUrl from '../../../assets/earth-climate.png';
 import earthSmoothnessUrl from '../../../assets/earth-smoothness.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import { AtmosphereDef } from '../../../physics/atmosphere';
@@ -17,15 +17,17 @@ import {
 import { Aurora, type AuroraOptics } from '../../../render/aurora';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import { CumulusShell } from '../../../render/cumulus-shell';
+import { ClimateMap } from '../../../render/cloud/climate-map';
+import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
 import { EarthCoastline } from '../../../render/earth-coastline';
 import { MoonSurfaceMarkings } from '../../../render/moon-surface-markings';
 import { GeostationaryOverlay } from '../celestial-entity/geostationary-overlay';
-import { PointEntity } from '../celestial-entity/point-entity';
-import { SphereEntity } from '../celestial-entity/sphere-entity';
+import { PointCelestialView } from '../celestial-entity/point-celestial-view';
+import { SphereCelestialView } from '../celestial-entity/sphere-celestial-view';
 import { MOON_DIST_TERMS, MOON_LAT_TERMS, MOON_LON_TERMS } from './moon-terms';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { CelestialTexture } from '../../../render/celestial-textures';
-import type { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { CelestialEntity } from '../celestial-entity/celestial-entity';
 
 // 地球系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type EarthSystemBodyId = 'earth' | 'moon';
@@ -187,22 +189,27 @@ export function earthSystem(
 ): Record<EarthSystemBodyId, CelestialEntity> {
   const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
   // 雲の場は殻が持ち、地表・影・大気の殻はその実体を借りて読む。
-  const cumulus = new CumulusShell(cloudFieldUrl, R_EARTH_EQ);
+  const climate = ClimateMap.fromDeferredUrl(climateTextureUrl);
+  const cumulus = new CumulusShell(GeneratedCloudField.global(climate), R_EARTH_EQ);
   return {
-    earth: new PointEntity(
+    earth: new CelestialEntity(
       earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
-      CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl),
-      EARTH_ATMOSPHERE_OPTICS, new EarthCoastline(), earthAuroras(),
-      GeostationaryOverlay.of(earth.body), cumulus,
+      new PointCelestialView(
+        CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl),
+        EARTH_ATMOSPHERE_OPTICS, new EarthCoastline(), earthAuroras(),
+        GeostationaryOverlay.of(earth.body), cumulus,
+      ),
     ),
-    moon: new SphereEntity(
+    moon: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(MOON, phases, simZeroEt), earth),
       EARTH_SYSTEM_NAMES.moon, 'satellite',
-      // 倍率はテクスチャの平均輝度 0.3180 を公表のボンドアルベドへ合わせる値。
-      CelestialSurface.textured({
-        url: moonTextureUrl, albedoScale: 0.3459, bondAlbedo: 0.11, averageHue: [1.0458, 0.9880, 0.9844],
-      }),
-      null, new MoonSurfaceMarkings(),
+      new SphereCelestialView(
+        // 倍率はテクスチャの平均輝度 0.3180 を公表のボンドアルベドへ合わせる値。
+        CelestialSurface.textured({
+          url: moonTextureUrl, albedoScale: 0.3459, bondAlbedo: 0.11, averageHue: [1.0458, 0.9880, 0.9844],
+        }),
+        null, new MoonSurfaceMarkings(),
+      ),
     ),
   };
 }

@@ -64,7 +64,7 @@ export class OrbitReferenceSelector {
   // r 位置のエンティティに対する現在の基準を解決する。地球・月が登録に無い、または航法
   // ターゲットが未設定・解決不能なときは自動選択(strongestAttractor)へフォールバックする。
   resolve(
-    r: Vec3, attractors: readonly CelestialBody[], navTarget: NavTarget, dynamicSystem: EntityRoster,
+    r: Vec3, attractors: readonly CelestialBody[], navTarget: NavTarget, roster: EntityRoster,
     celestialBodies: CelestialBodies, t: number,
   ): OrbitReference {
     if (this.mode === 'earth' || this.mode === 'moon') {
@@ -76,7 +76,7 @@ export class OrbitReferenceSelector {
         };
       }
     } else if (this.mode === 'target') {
-      const resolved = navTarget.resolveState(dynamicSystem, celestialBodies, attractors, t);
+      const resolved = navTarget.resolveState(roster, celestialBodies, attractors, t);
       if (resolved) return resolved;
     }
     return autoOrbitReference(r, attractors, t);

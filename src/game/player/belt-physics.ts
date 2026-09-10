@@ -1,11 +1,10 @@
 // マガジンベルトの物理演算(Verlet 積分 + 距離拘束によるチェーンのたわみ・ねじれ)。
-import * as THREE from 'three/webgpu';
 import { Attitude } from '../../physics/attitude';
 import { LOCAL_RIGHT, Q_IDENTITY, qFromUnitVectors, qInvert, qMul, qRotate, Quat } from '../../math/quat';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, addScaled, cross, len, norm, scale, sub, v3 } from '../../math/vec3';
-import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../render/ships';
-import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../physics/player-shape';
+import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic/dynamic-motion';
 
 const MAG_CHAIN_MAX_ROLL_DEG = 15;  // ロール上限
 const MAG_CHAIN_MAX_PITCH_DEG = 45; // ピッチ上限(上下方向の折れ)
@@ -20,22 +19,17 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 
 // ベルトのリンク節点を剛体接触に参加させるためのプロキシ。
-export class BeltSection extends DynamicEntity {
+export class BeltSection extends DynamicMotion {
   // 吊り元の艦 owner にぶら下がる節点のプロキシを生成する。
   // state は生成時点の実際の world 状態 — 仮の状態で始めると、最初に置き直した substep の
   // prevState がその仮位置になり、そこからの偽の区間を掃引してしまう。
-  constructor(private readonly owner: DynamicEntity, state: KinematicState) {
-    super(state, new THREE.Object3D());
-    this.mass = 5;
-    this.radius = 0.8;
-    this.collides = true;
+  public constructor(owner: DynamicMotion, state: KinematicState) {
+    const behavior: DynamicMotionBehavior = {
+      contactKind: 'belt-section',
+      contactsWith: (_self, other) => other !== owner && other.attachedTo !== owner,
+    };
+    super(state, { mass: 5, radius: 0.8, collides: true, behavior });
     this.attachedTo = owner;
-  }
-
-  // 吊り元の艦、およびそれに取り付いた他の実体(ベルトの他節点・放熱板の折り)とは接触しない。
-  contactsWith(other: DynamicEntity): boolean {
-    if (other === this.owner) return false;
-    return other.attachedTo !== this.owner;
   }
 }
 
@@ -53,7 +47,7 @@ export class BeltPhysics {
 
   // 節点はアンカーから等間隔に伸ばした形で始める。表示も接触も update より先に問われうるので、
   // 「まだ並べていない」状態を持たせない。
-  constructor(private readonly linkCount: number, private readonly owner: DynamicEntity) {
+  constructor(private readonly linkCount: number, private readonly owner: DynamicMotion) {
     for (let i = 0; i < linkCount; i++) {
       const p = v3(MAG_BELT_ANCHOR_X + (i + 1) * MAG_BELT_PITCH, 0, 0);
       this.beltPos.push(p);

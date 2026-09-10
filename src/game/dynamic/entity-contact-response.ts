@@ -1,10 +1,8 @@
-// 接触ペア1組の反発の計算。当事者2体の現在状態から、押し戻し後の位置・速度と接触の幾何を
-// 出す。球でない当たり形状(基地)の吸収もここが引き受けるので、解決器の側は種別を見ない。
+// 接触ペア1組の反発の計算。当事者2体の現在状態から、押し戻し後の位置・速度と接触の幾何を出す。
 import { KinematicState } from '../../physics/kinematic-state';
 import { sub, scale, len, type Vec3 } from '../../math/vec3';
 import type { SphereHit } from '../../math/triangle-mesh';
-import { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import { Base } from './dynamic-entity/base';
+import type { EntityContactParticipant } from './dynamic-simulation-participant';
 import {
   CollisionResponse, ContactGeometry,
   distributeSphereContact, resolveSphereCollision,
@@ -13,27 +11,11 @@ import {
 // 剛体接触の反発係数。天体の表面でも物体どうしでも同じ値を使う。
 export const CONTACT_RESTITUTION = 0.4;
 
-// 基地の当たり形状は球ではないので、幾何だけを基地自身へ問い、受け持ちの分配は球どうしと
-// 共有する。触れていなければ null。
-function baseContactGeometry(
-  base: Base, other: DynamicEntity, baseWork: KinematicState, otherWork: KinematicState, baseIsA: boolean,
-): ContactGeometry | null {
-  if (len(sub(otherWork.r, baseWork.r)) > base.radius + other.radius) return null;
-  const hit = base.testSphereCollision(otherWork.r, other.radius);
-  if (!hit) return null;
-  // hit.normal は基地から相手へ向くので、a → b の向きへ揃える。
-  return {
-    normal: baseIsA ? hit.normal : scale(hit.normal, -1),
-    toi: 1,
-    pushOut: hit.depth,
-    contactPoint: hit.point,
-  };
-}
-
 // タンパク質の球列など、球の外接半径ではなく種別固有の当たり形状を持つ側の狭域判定。
 // 接触解決器へ渡す法線は常に a → b に揃える。
 function customContactGeometry(
-  a: DynamicEntity, aWork: KinematicState, b: DynamicEntity, bWork: KinematicState,
+  a: EntityContactParticipant, aWork: KinematicState,
+  b: EntityContactParticipant, bWork: KinematicState,
   sweptValid: boolean,
 ): ContactGeometry | null {
   if (!sweptValid && len(sub(bWork.r, aWork.r)) > a.radius + b.radius) return null;
@@ -74,20 +56,12 @@ function customContactGeometry(
 
 // aWork/bWork は解決の途中経過を含む「いまの状態」で、a.state とは限らない。
 export function entityContactResponse(
-  a: DynamicEntity, aWork: KinematicState, b: DynamicEntity, bWork: KinematicState,
+  a: EntityContactParticipant, aWork: KinematicState,
+  b: EntityContactParticipant, bWork: KinematicState,
 ): CollisionResponse | null {
   const bodyA = { state: aWork, radius: a.radius, invMass: 1 / a.contactMass };
   const bodyB = { state: bWork, radius: b.radius, invMass: 1 / b.contactMass };
   if (!(bodyA.invMass + bodyB.invMass > 0)) return null;
-
-  const base = a instanceof Base ? a : (b instanceof Base ? b : null);
-  if (base) {
-    const baseIsA = base === a;
-    const geometry = baseContactGeometry(
-      base, baseIsA ? b : a, baseIsA ? aWork : bWork, baseIsA ? bWork : aWork, baseIsA);
-    return geometry === null
-      ? null : distributeSphereContact(bodyA, bodyB, CONTACT_RESTITUTION, geometry);
-  }
 
   const sweptValid = a.prevState.t < a.state.t && b.prevState.t < b.state.t
     // 同一サブステップの個体は同じ endTime へビット一致で着地するので、この 1e-6 は
