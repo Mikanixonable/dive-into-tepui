@@ -38,7 +38,7 @@ class FakeVariable:
 class FakeDataset:
     def __init__(self, variables):
         self.variables = variables
-        self.dimensions = {"time": range(8640), "latitude": range(721), "longitude": range(1440)}
+        self.dimensions = {"time": range(360), "latitude": range(721), "longitude": range(1440)}
 
     def close(self):
         pass
@@ -46,15 +46,15 @@ class FakeDataset:
 
 def fake_netcdf(variable_changes=None):
     changes = variable_changes or {}
-    times = list(range(8640))
+    times = list(range(360))
     latitude = [90 - index * 0.25 for index in range(721)]
     longitude = [index * 0.25 for index in range(1440)]
     variables = {
         "time": FakeVariable(("time",), times, "hours since 1991-01-01 00:00:00"),
         "latitude": FakeVariable(("latitude",), latitude, "degrees_north"),
         "longitude": FakeVariable(("longitude",), longitude, "degrees_east"),
-        "t2m": FakeVariable(("time", "latitude", "longitude"), [], "K", (8640, 721, 1440)),
-        "tcc": FakeVariable(("time", "latitude", "longitude"), [], "1", (8640, 721, 1440)),
+        "t2m": FakeVariable(("time", "latitude", "longitude"), [], "K", (360, 721, 1440)),
+        "tcc": FakeVariable(("time", "latitude", "longitude"), [], "1", (360, 721, 1440)),
     }
     variables.update(changes)
 
@@ -66,9 +66,8 @@ def fake_netcdf(variable_changes=None):
             del calendar
             result = []
             for index in values:
-                month_index, hour = divmod(index, 24)
-                year, month_index = divmod(month_index, 12)
-                result.append(types.SimpleNamespace(year=1991 + year, month=month_index + 1, hour=hour))
+                year, month = divmod(index, 12)
+                result.append(types.SimpleNamespace(year=1991 + year, month=month + 1, hour=0))
             return result
 
     return Module()
@@ -83,8 +82,8 @@ class ValidateSourceTests(unittest.TestCase):
             path = Path(directory) / "era5.nc"
             path.write_bytes(b"deterministic fixture")
             result = validate.validate_era5_export(path, self.manifest, fake_netcdf())
-        self.assertEqual(result["dimensions"], {"time": 8640, "latitude": 721, "longitude": 1440})
-        self.assertEqual(result["time"]["hoursUtc"], list(range(24)))
+        self.assertEqual(result["dimensions"], {"time": 360, "latitude": 721, "longitude": 1440})
+        self.assertNotIn("hoursUtc", result["time"])
         self.assertEqual(result["variables"]["2m_temperature"]["name"], "t2m")
         self.assertEqual(len(result["sha256"]), 64)
 
@@ -102,7 +101,7 @@ class ValidateSourceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "era5.nc"
             path.write_bytes(b"fixture")
-            wrong = FakeVariable(("time", "latitude", "longitude"), [], "C", (8640, 721, 1440))
+            wrong = FakeVariable(("time", "latitude", "longitude"), [], "C", (360, 721, 1440))
             with self.assertRaisesRegex(validate.ValidationError, "単位"):
                 validate.validate_era5_export(path, self.manifest, fake_netcdf({"t2m": wrong}))
 
@@ -112,7 +111,7 @@ class ValidateSourceTests(unittest.TestCase):
             path.write_bytes(b"fixture")
             for unit in ("(0 - 1)", "(0-1)", "0-1", "fraction", " 1 "):
                 cloud = FakeVariable(("time", "latitude", "longitude"), [], unit,
-                                     (8640, 721, 1440))
+                                     (360, 721, 1440))
                 result = validate.validate_era5_export(path, self.manifest,
                                                        fake_netcdf({"tcc": cloud}))
                 self.assertEqual(result["variables"]["total_cloud_cover"]["units"], unit)
