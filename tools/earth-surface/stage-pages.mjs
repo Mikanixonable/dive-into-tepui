@@ -1,41 +1,16 @@
 #!/usr/bin/env node
 // GitHub Pages同居用のfixture/生成済みbundleをdocsへ版付きで配置する。
 import { createHash } from 'node:crypto';
-import { deflateSync, gzipSync } from 'node:zlib';
+import { gzipSync } from 'node:zlib';
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile, rename } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { canonicalSha256, inspectEarthSurfaceBundle } from './contract.mjs';
+import { fixtureClimatePng } from './fixture-climate.mjs';
 import { packageEarthSurface } from './package.mjs';
 
 const DEFAULT_DATASET = 'earth-pages-fixture';
 const DEFAULT_MAX_BYTES = 128 * 1024 * 1024;
-const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-
-function crc32(bytes) {
-  let crc = 0xffffffff;
-  for (const byte of bytes) {
-    crc ^= byte;
-    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
-  }
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-function pngChunk(type, data) {
-  const name = Buffer.from(type, 'ascii');
-  const body = Buffer.concat([name, data]);
-  const length = Buffer.alloc(4); length.writeUInt32BE(data.length);
-  const checksum = Buffer.alloc(4); checksum.writeUInt32BE(crc32(body));
-  return Buffer.concat([length, body, checksum]);
-}
-
-function fixturePng() {
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(1024, 0); header.writeUInt32BE(512, 4);
-  header.writeUInt8(8, 8); header.writeUInt8(6, 9);
-  const rows = Buffer.alloc(512 * (1 + 1024 * 4));
-  return Buffer.concat([PNG_SIGNATURE, pngChunk('IHDR', header), pngChunk('IDAT', deflateSync(rows)), pngChunk('IEND', Buffer.alloc(0))]);
-}
 
 function terrainPayload(z, x, y) {
   const bytes = 260 * 260 * 4 * 2;
@@ -98,7 +73,9 @@ async function createFixtureBundle(root) {
   await writeFile(join(root, 'base/earth.bin.gz'), gzipSync(baseTerrain(), { mtime: 0 }));
   await writeFile(join(root, 'tiles/0/0/0.jpg'), color);
   await writeFile(join(root, 'tiles/0/0/0.bin.gz'), gzipSync(terrain, { mtime: 0 }));
-  for (const path of manifest.climateMaps) await writeFile(join(root, path), fixturePng());
+  for (const [index, path] of manifest.climateMaps.entries()) {
+    await writeFile(join(root, path), fixtureClimatePng(index));
+  }
   return manifest;
 }
 

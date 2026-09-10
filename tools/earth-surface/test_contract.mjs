@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { deflateSync, gzipSync } from 'node:zlib';
+import { gzipSync } from 'node:zlib';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +11,7 @@ import { promisify } from 'node:util';
 import { packageEarthSurface } from './package.mjs';
 import { checkEarthSurface } from './check.mjs';
 import { canonicalSha256, EARTH_TERRAIN_BYTES, EARTH_TERRAIN_PAYLOAD_BYTES } from './contract.mjs';
+import { fixtureClimatePng } from './fixture-climate.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -38,29 +39,6 @@ function baseTerrainPayload() {
   payload.writeUInt32LE(body.length, 24); payload.writeUInt32LE(0, 28);
   body.copy(payload, 32);
   return payload;
-}
-
-function climatePng() {
-  const crc32 = (bytes) => {
-    let crc = 0xffffffff;
-    for (const byte of bytes) {
-      crc ^= byte;
-      for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
-    }
-    return (crc ^ 0xffffffff) >>> 0;
-  };
-  const chunk = (type, data) => {
-    const name = Buffer.from(type, 'ascii');
-    const body = Buffer.concat([name, data]);
-    const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(body));
-    const length = Buffer.alloc(4); length.writeUInt32BE(data.length);
-    return Buffer.concat([length, body, crc]);
-  };
-  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(1024, 0); ihdr.writeUInt32BE(512, 4);
-  ihdr.writeUInt8(8, 8); ihdr.writeUInt8(6, 9);
-  const rows = Buffer.alloc(512 * (1 + 1024 * 4));
-  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr),
-    chunk('IDAT', deflateSync(rows, { level: 9 })), chunk('IEND', Buffer.alloc(0))]);
 }
 
 function manifest(sourceManifestSha256, datasetId = 'earth-fixture-a') {
@@ -103,7 +81,9 @@ async function createBundle() {
   await mkdir(join(root, 'base'), { recursive: true });
   await writeFile(join(root, 'base/earth.jpg'), color); await writeFile(join(root, 'base/earth.bin.gz'), gzipSync(baseTerrainPayload(), { mtime: 0 }));
   await mkdir(join(root, 'climate'), { recursive: true });
-  for (const path of manifestValue.climateMaps) await writeFile(join(root, path), climatePng());
+  for (const [index, path] of manifestValue.climateMaps.entries()) {
+    await writeFile(join(root, path), fixtureClimatePng(index));
+  }
   await mkdir(join(root, 'tiles/0/0'), { recursive: true });
   await writeFile(join(root, 'tiles/0/0/0.jpg'), color);
   await writeFile(join(root, 'tiles/0/0/0.bin.gz'), compressedTerrain);
