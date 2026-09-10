@@ -4,8 +4,10 @@ import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import {
   earthNormalAtUv, earthNormalToView, earthPositionAtUv, earthRadialAtUv,
-  earthSurfaceNormal, earthSurfaceUv, earthUvFromRadial,
+  earthSurfaceNormal, earthSurfaceUv, earthSurfaceUvFromRadialNode, earthUvFromRadial,
 } from '../../src/render/earth-surface-coordinate';
+import { vec3 } from 'three/tsl';
+import { evaluateShaderNode } from './tsl-node-evaluator';
 
 // 値の一致を、単位ベクトルとUVの倍精度丸め誤差の範囲で検査する。
 function near(actual: number, expected: number): void {
@@ -43,6 +45,20 @@ export function register(): void {
       .sub(earthPositionAtUv(0.63 - epsilon, 0.2, axes)).normalize();
     assert.ok(Math.abs(normal.dot(east)) < 1e-9);
     assert.ok(normal.angleTo(point.clone().normalize()) > 0.1);
+  });
+
+  test('earth coordinates: GPU地理UV nodeはCPU契約の南北を使う', () => {
+    const axes = new THREE.Vector3(9, 3, 6);
+    for (const latitude of [90, 45, 0, -45, -90]) {
+      for (const longitude of [-180, -30, 0, 120, 180]) {
+        const expected = earthSurfaceUv(earthPositionAtUv(longitude / 360 + 0.5, 0.5 - latitude / 180, axes), axes);
+        const direction = earthRadialAtUv(expected.x, expected.y, axes);
+        const actual = evaluateShaderNode(earthSurfaceUvFromRadialNode(
+          vec3(direction.x, direction.y, direction.z), vec3(axes.x, axes.y, axes.z),
+        )) as number[];
+        near(actual[1]!, expected.y);
+      }
+    }
   });
 
   test('earth coordinates: 経度境界と両極は同じ地理位置へ連続する', () => {
