@@ -23,22 +23,26 @@ const STYLE = `
 #save-browser .sb-panel {
   width: min(1100px, 94vw); height: min(760px, 88vh); height: min(760px, 88dvh);
   display: flex; flex-direction: column; overflow: hidden;
-  background: var(--bg); border: 1px solid var(--edge); border-radius: var(--radius-l);
+  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-focus);
+  border: 1px solid var(--glass-edge); border-radius: var(--radius-window);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
 }
 #save-browser .sb-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: var(--space-5) var(--space-6); border-bottom: 1px solid var(--edge); flex: 0 0 auto;
+  padding: var(--space-5) var(--space-6); border-bottom: 1px solid var(--glass-edge); flex: 0 0 auto;
 }
 #save-browser .sb-title { font-size: var(--font-l); font-weight: 700; letter-spacing: 0.12em; color: var(--text); }
-#save-browser .sb-body { flex: 1 1 0; min-height: 0; display: flex; gap: 1px; background: var(--edge); }
+#save-browser .sb-body { flex: 1 1 0; min-height: 0; display: flex; gap: 1px; background: var(--glass-edge); }
 #save-browser .sb-pane {
   flex: 1 1 0; min-width: 0; overflow-y: auto; padding: var(--space-5) var(--space-5);
-  display: flex; flex-direction: column; gap: var(--space-3); background: var(--bg);
+  display: flex; flex-direction: column; gap: var(--space-3); background: var(--glass-inset);
   scrollbar-width: thin;
 }
 #save-browser .sb-pane-title { font-size: var(--font-xs); letter-spacing: 1.5px; color: var(--text-dim); }
 #save-browser .sb-empty { color: var(--text-dim); padding: var(--space-5); text-align: center; line-height: 1.7; font-size: var(--font-s); }
-#save-browser .sb-status { min-height: 20px; padding: var(--space-2) var(--space-5); font-size: var(--font-xs); color: var(--text-dim); border-top: 1px solid var(--edge); }
+#save-browser .sb-status { min-height: 20px; padding: var(--space-2) var(--space-5); font-size: var(--font-xs); color: var(--text-dim); border-top: 1px solid var(--glass-edge); }
 #save-browser .sb-status.error { color: var(--color-error); }
 /* compact: 左右ペインを並べず、sb-mobile-tabs で切り替えた片方だけを表示する。 */
 #save-browser .sb-mobile-tabs { display: none; padding: var(--space-3) var(--space-5) 0; }
@@ -47,6 +51,9 @@ const STYLE = `
   #save-browser .sb-mobile-tabs { display: flex; }
   #save-browser .sb-body { flex-direction: column; }
   #save-browser .sb-pane:not(.sb-pane-mobile-active) { display: none; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #save-browser .sb-panel { background: var(--surface-opaque); }
 }
 `;
 

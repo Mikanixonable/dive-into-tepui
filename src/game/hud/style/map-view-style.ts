@@ -22,12 +22,12 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-view-options,
 #hud .hud-map-root.active #hud-orbit,
 #hud .hud-map-root.active #burn-management-panel {
-  border: 0;
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-panel);
-  background: var(--glass-quiet);
-  box-shadow: 0 12px 30px var(--shade-1);
-  backdrop-filter: blur(14px) saturate(82%);
-  -webkit-backdrop-filter: blur(14px) saturate(82%);
+  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-quiet);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
 }
 
 /* Orbit は表示設定の上に置く。初期状態は PanelShell のビュー別既定値で収納される。 */
@@ -73,12 +73,12 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-predict,
 #hud .hud-map-root.active .hud-frame-controls,
 #hud .hud-map-root.active #hud-plan {
-  border: 0;
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-panel);
-  background: var(--glass-focus);
-  box-shadow: 0 16px 38px var(--shade-1);
-  backdrop-filter: blur(22px) saturate(82%);
-  -webkit-backdrop-filter: blur(22px) saturate(82%);
+  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-focus);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
 }
 
 #hud .hud-map-root.active #hud-physical-object-list h3,
@@ -99,33 +99,34 @@ export const MAP_VIEW_STYLE = `
 
 #hud .hud-map-root.active .rail-toggle,
 #hud .hud-map-root.active #hud-predict-toggle {
-  border: 0;
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-control);
-  background: var(--glass-quiet);
-  color: var(--text-dim);
-  backdrop-filter: blur(14px) saturate(82%);
-  -webkit-backdrop-filter: blur(14px) saturate(82%);
+  background: var(--glass-control);
+  color: var(--muted);
+  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
 }
 #hud .hud-map-root.active .rail-toggle:hover,
-#hud .hud-map-root.active #hud-predict-toggle:hover { color: var(--color-primary-hover); background: var(--surface-2); }
+#hud .hud-map-root.active #hud-predict-toggle:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
 #hud .hud-map-root.active .rail-toggle:focus-visible,
 #hud .hud-map-root.active #hud-predict-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
 /* Object list: 現在の選択だけを Accent、カメラの関連軌道を Near accent で分ける。 */
 #hud .hud-map-root.active #hud-physical-object-list { max-height: min(576px, 64dvh); }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head {
-  background: color-mix(in srgb, var(--surface-1) 86%, transparent);
+  background: var(--glass-inset);
   border-radius: var(--radius-panel) var(--radius-panel) 0 0;
-  backdrop-filter: blur(18px) saturate(82%);
-  -webkit-backdrop-filter: blur(18px) saturate(82%);
+  border-bottom: 1px solid var(--glass-edge);
+  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
 }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-search { padding: 0 0 var(--space-2); }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-search .w-input {
   min-height: 30px;
-  border: 0;
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-control);
-  background: var(--surface-2);
-  color: var(--text);
+  background: var(--glass-control);
+  color: var(--title);
 }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-group {
   display: flex;
@@ -142,22 +143,24 @@ export const MAP_VIEW_STYLE = `
   letter-spacing: 0;
 }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-btn {
-  border: 0;
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-control);
-  background: transparent;
+  background: var(--glass-control);
 }
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-btn:hover { color: var(--color-primary-hover); background: var(--surface-2); }
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-btn.on { color: var(--color-primary); background: var(--surface-2); }
+#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-btn:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
+#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-btn.on {
+  border-color: var(--color-primary-edge-soft); color: var(--color-primary); background: var(--color-primary-fill);
+}
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-breadcrumb {
   margin: var(--space-2) 0 var(--space-3);
   padding: var(--space-2) var(--space-3);
-  border: 0;
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--surface-2) 68%, transparent);
-  color: var(--text-dim);
+  background: var(--glass-inset);
+  color: var(--muted);
 }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-section-header {
-  border: 0;
+  border: 1px solid transparent;
   border-radius: var(--radius-control);
   color: var(--text-muted);
   /* 見出しは内側スクロール領域の先頭に貼り付く(sticky、寸法は physical-object-list-panel.ts
@@ -166,7 +169,7 @@ export const MAP_VIEW_STYLE = `
   letter-spacing: 0;
   cursor: pointer;
 }
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-section-header:hover { color: var(--color-primary-hover); background: var(--surface-2); }
+#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-section-header:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-section-header:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .hud-map-root.active #hud-physical-object-list .erow {
   min-height: var(--row-min-h-s);
@@ -174,7 +177,7 @@ export const MAP_VIEW_STYLE = `
   color: var(--text-dim);
   transition: color var(--transition-fast), background var(--transition-fast);
 }
-#hud .hud-map-root.active #hud-physical-object-list .erow:hover { color: var(--title); background: var(--surface-2); }
+#hud .hud-map-root.active #hud-physical-object-list .erow:hover { color: var(--title); background: var(--glass-control-hover); }
 #hud .hud-map-root.active #hud-physical-object-list .erow:focus { background: var(--color-primary-fill-weak); }
 /* 基調スキンの .erow.focus はこのセレクタより詳細度が低く、上の .erow が指定する色に負ける。
    フォーカス中の行を目立たせるため、マップ視点でも同じ詳細度で塗り直す。 */
@@ -272,21 +275,22 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-view-options span.body-class-icon-btn {
   position: relative;
   min-width: 0;
-  border: 0;
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-control);
   padding: var(--space-2);
-  color: var(--text-dim);
-  background: transparent;
+  color: var(--muted);
+  background: var(--glass-inset);
 }
 @media ${MQ_COARSE} {
   #hud .hud-map-root.active #hud-view-options span.body-class-icon-btn {
     min-width: var(--hit-target-min); min-height: var(--hit-target-min);
   }
 }
-#hud .hud-map-root.active #hud-view-options .body-class-row .w-btn:hover { color: var(--color-primary-hover); background: var(--surface-2); }
+#hud .hud-map-root.active #hud-view-options .body-class-row .w-btn:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
 #hud .hud-map-root.active #hud-view-options .body-class-row .body-class-icon-btn.on {
-  color: var(--text);
-  background: var(--surface-2);
+  color: var(--title);
+  border-color: var(--color-primary-edge-soft);
+  background: var(--color-primary-fill);
 }
 #hud .hud-map-root.active #hud-view-options .body-class-row .body-class-title.on {
   color: var(--text);
@@ -318,19 +322,19 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button {
   display: flex; align-items: center; justify-content: flex-start; gap: var(--space-2);
   width: 100%; padding-right: var(--space-3);
-  background: var(--surface-2); color: var(--text-dim);
+  background: var(--glass-control); color: var(--muted);
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button .w-btn-icon {
   flex: 0 0 auto; width: 1.1em; height: 1.1em; margin-right: 0; color: var(--text-dim);
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="orbit"] {
-  color: var(--text); background: color-mix(in srgb, var(--color-primary) 12%, var(--surface-2));
+  color: var(--title); background: var(--color-primary-fill-weak);
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="orbit"] .w-btn-icon {
   color: var(--color-primary);
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="label"] {
-  color: var(--text); background: var(--surface-2);
+  color: var(--title); background: var(--glass-control);
 }
 #hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="label"] .w-btn-icon {
   color: var(--color-primary-hover);
@@ -342,15 +346,18 @@ export const MAP_VIEW_STYLE = `
 /* Predict: 未来は Accent、隣接する過去範囲は Near accent。Secondary は同期状態用に残す。 */
 #hud .hud-map-root.active #hud-predict .w-btn,
 #hud .hud-map-root.active #hud-predict .w-input {
-  border: 0;
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-control);
-  background: var(--surface-2);
+  background: var(--glass-control);
 }
-#hud .hud-map-root.active #hud-predict .w-btn:hover { color: var(--color-primary-hover); background: var(--surface-3); }
-#hud .hud-map-root.active #hud-predict .w-btn.on { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, var(--surface-2)); }
+#hud .hud-map-root.active #hud-predict .w-btn:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
+#hud .hud-map-root.active #hud-predict .w-btn.on {
+  border-color: var(--color-primary-edge-soft); color: var(--color-primary); background: var(--color-primary-fill);
+}
 #hud .hud-map-root.active #hud-predict .predict-past .w-btn.on {
+  border-color: var(--color-primary-edge-soft);
   color: var(--color-primary-hover);
-  background: color-mix(in srgb, var(--color-primary-hover) 10%, var(--surface-2));
+  background: var(--color-primary-fill-weak);
 }
 #hud .hud-map-root.active #hud-predict .w-group-title,
 #hud .hud-map-root.active #hud-predict .w-toggle-title,
@@ -369,29 +376,40 @@ export const MAP_VIEW_STYLE = `
 }
 #hud .hud-map-root.active .hud-frame-controls .w-btn,
 #hud .hud-map-root.active .hud-frame-controls .w-toggle-track {
-  border: 0;
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-control);
-  background: var(--surface-2);
+  background: var(--glass-control);
 }
-#hud .hud-map-root.active .hud-frame-controls .w-btn:hover { color: var(--color-primary-hover); background: var(--surface-3); }
+#hud .hud-map-root.active .hud-frame-controls .w-btn:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
 #hud .hud-map-root.active .hud-frame-controls .w-btn.on { color: var(--color-primary); }
 #hud .hud-map-root.active .hud-frame-controls .w-toggle-track.on { background: var(--color-signal); }
 
 /* Map scale は視野端の小さな Quiet Glass に留める。 */
 #hud-map-scale {
-  border: 0;
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-control);
   background: var(--glass-quiet);
-  color: var(--text-dim);
-  box-shadow: 0 10px 24px var(--shade-1);
-  backdrop-filter: blur(14px) saturate(82%);
-  -webkit-backdrop-filter: blur(14px) saturate(82%);
+  color: var(--muted);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
 }
 #hud-map-scale .map-scale-label {
   display: block;
   margin-bottom: var(--space-1);
   color: var(--text-dim);
   font-size: var(--font-xxs);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #hud .hud-map-root.active #hud-physical-object-list,
+  #hud .hud-map-root.active #hud-view-options,
+  #hud .hud-map-root.active #hud-orbit,
+  #hud .hud-map-root.active #burn-management-panel,
+  #hud .hud-map-root.active #hud-predict,
+  #hud .hud-map-root.active .hud-frame-controls,
+  #hud .hud-map-root.active #hud-plan,
+  #hud-map-scale { background: var(--surface-opaque); }
 }
 
 @media ${MQ_MEDIUM_DOWN} {

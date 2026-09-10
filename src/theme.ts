@@ -178,12 +178,24 @@ function themeCssVariables(palette: ThemePalette): Readonly<Record<string, strin
     '--surface-opaque': rgba(palette.surface1, 0.96),
     '--glass-quiet': rgba(palette.surface1, 0.64),
     '--glass-focus': rgba(palette.surface1, 0.76),
+    '--glass-inset': rgba(palette.surface0, 0.28),
+    '--glass-control': rgba(palette.surface2, 0.68),
+    '--glass-control-hover': rgba(palette.surface3, 0.72),
+    '--glass-edge': rgba(palette.title, 0.18),
+    '--glass-highlight': rgba(palette.bright, 0.1),
+    '--glass-shadow': GLASS_SHADOW,
+    '--glass-blur-quiet': GLASS_BLUR_QUIET,
+    '--glass-blur-focus': GLASS_BLUR_FOCUS,
+    '--glass-saturation': GLASS_SATURATION,
     '--edge': rgba(palette.title, 0.16),
     '--text-strong': palette.bright,
     '--text': palette.title,
     '--text-muted': palette.body,
     '--text-dim': palette.muted,
     '--text-faint': palette.faint,
+    '--title': palette.title,
+    '--body': palette.body,
+    '--muted': palette.muted,
     '--fill-1': rgba(palette.title, 0.04),
     '--fill-2': rgba(palette.title, 0.09),
     '--fill-3': rgba(palette.title, 0.16),
@@ -195,6 +207,8 @@ function themeCssVariables(palette: ThemePalette): Readonly<Record<string, strin
 export const ACCENT = ACTIVE_THEME.accent;
 export const ACCENT_SOFT = ACTIVE_THEME.accentNear;
 export const SIGNAL = ACTIVE_THEME.signal;
+/** @deprecated Use SIGNAL. Kept as a compatibility alias for existing UI code. */
+export const ACCENT_SECONDARY = SIGNAL;
 const SUCCESS = ACTIVE_THEME.success;
 const WARNING = ACTIVE_THEME.warning;
 const DANGER = ACTIVE_THEME.error;
@@ -216,6 +230,7 @@ const SURFACE = rgba(SURFACE_1, 0.64); // Quiet Glass
 export const SURFACE_OPAQUE = rgba(SURFACE_1, 0.96); // Solid に近い全画面表示用
 const GLASS_QUIET = rgba(SURFACE_1, 0.64);
 const GLASS_FOCUS = rgba(SURFACE_1, 0.76);
+export const EDGE = rgba(ACTIVE_THEME.title, 0.16);
 // 面と地の境目。選択中の配色の文字色から導く。
 export function currentEdgeColor(): string {
   return rgba(currentThemePalette().title, 0.16);
@@ -242,6 +257,10 @@ const FILL_3 = rgba(TEXT, 0.16);
 const FILL_4 = rgba(TEXT, 0.32);
 
 const SHADE_1 = 'rgba(0, 0, 0, 0.18)'; // 弱い落とし影
+const GLASS_SHADOW = '0 16px 48px rgba(0, 0, 0, 0.24)';
+const GLASS_BLUR_QUIET = '16px';
+const GLASS_BLUR_FOCUS = '24px';
+const GLASS_SATURATION = '110%';
 const SCRIM = 'rgba(6, 7, 9, 0.82)'; // 全画面表示の背後を覆う膜
 const BAR_BG = ACTIVE_THEME.surface3; // ゲージ類の不透明な地(背後を透かさない)
 
@@ -357,7 +376,19 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--surface-opaque': SURFACE_OPAQUE,
   '--glass-quiet': GLASS_QUIET,
   '--glass-focus': GLASS_FOCUS,
+  '--glass-inset': rgba(SURFACE_0, 0.28),
+  '--glass-control': rgba(SURFACE_2, 0.68),
+  '--glass-control-hover': rgba(SURFACE_3, 0.72),
+  '--glass-edge': rgba(TEXT, 0.18),
+  '--glass-highlight': rgba(TEXT_STRONG, 0.1),
+  '--glass-shadow': GLASS_SHADOW,
+  '--glass-blur-quiet': GLASS_BLUR_QUIET,
+  '--glass-blur-focus': GLASS_BLUR_FOCUS,
+  '--glass-saturation': GLASS_SATURATION,
   '--edge': currentEdgeColor(),
+  '--title': TEXT,
+  '--body': TEXT_MUTED,
+  '--muted': TEXT_DIM,
   '--text-strong': TEXT_STRONG,
   '--text': TEXT,
   '--text-muted': TEXT_MUTED,

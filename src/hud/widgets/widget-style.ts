@@ -18,13 +18,13 @@ export const WIDGET_STYLE = `
 
 .w-btn, .w-close {
   display: inline-block; padding: 7px var(--space-5); font: inherit; font-size: var(--font-s);
-  line-height: 1.2; border: 1px solid transparent; border-radius: var(--radius-control);
-  background: var(--surface-2); color: var(--text-muted);
+  line-height: 1.2; border: 1px solid var(--glass-edge); border-radius: var(--radius-control);
+  background: var(--glass-control); color: var(--body);
   transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
-.w-btn:hover, .w-close:hover { color: var(--color-primary-hover); background: var(--surface-3); }
+.w-btn:hover, .w-close:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
 .w-btn.pressed { background: var(--fill-3); transform: translateY(1px); }
-.w-btn.on { background: var(--color-primary-fill); border-color: transparent; color: var(--color-primary); }
+.w-btn.on { background: var(--color-primary-fill); border-color: var(--color-primary-edge-soft); color: var(--color-primary); }
 .w-btn.disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
 .w-btn:focus-visible, .w-close:focus-visible, .w-toggle-track:focus-visible, .w-input:focus-visible {
   outline: 2px solid var(--color-focus); outline-offset: 2px;
@@ -46,11 +46,11 @@ export const WIDGET_STYLE = `
 .w-toggle-title { font-size: var(--font-xs); letter-spacing: 1px; color: var(--text-dim); }
 .w-toggle-track {
   position: relative; display: inline-block; width: 34px; height: 18px;
-  border-radius: var(--radius-pill); border: 1px solid transparent; background: var(--surface-3);
+  border-radius: var(--radius-pill); border: 1px solid var(--glass-edge); background: var(--glass-control);
   transition: border-color var(--transition-fast), background var(--transition-fast);
 }
-.w-toggle-track:hover { background: color-mix(in srgb, var(--color-primary-hover) 18%, var(--surface-3)); }
-.w-toggle-track.on { border-color: transparent; background: var(--color-primary); }
+.w-toggle-track:hover { background: var(--glass-control-hover); }
+.w-toggle-track.on { border-color: var(--color-primary-edge); background: var(--color-primary); }
 .w-toggle-knob {
   position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
   background: var(--text-dim); transition: left var(--transition-fast), background var(--transition-fast);
@@ -69,11 +69,11 @@ export const WIDGET_STYLE = `
    (見出し・反映ボタンは .w-group/.w-btn 側)。見た目は共通。 */
 .w-input, .w-select {
   box-sizing: border-box; padding: var(--space-2) var(--space-3); font: inherit; font-size: var(--font-s);
-  color: var(--text); background: var(--surface-2); border: 1px solid transparent; border-radius: var(--radius-control);
+  color: var(--text); background: var(--glass-control); border: 1px solid var(--glass-edge); border-radius: var(--radius-control);
   transition: border-color var(--transition-fast), background var(--transition-fast);
 }
-.w-input:hover, .w-select:hover { background: var(--surface-3); }
-.w-input:focus, .w-select:focus { background: var(--surface-3); border-color: var(--color-primary); }
+.w-input:hover, .w-select:hover { background: var(--glass-control-hover); }
+.w-input:focus, .w-select:focus { background: var(--glass-control-hover); border-color: var(--color-primary); }
 
 /* w-slider: つまみ型の連続値スライダー。トラックの寸法はパネル側の CSS が決める。 */
 .w-slider { pointer-events: auto; accent-color: var(--color-primary); }

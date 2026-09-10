@@ -7,7 +7,7 @@ import type { View } from '../view/view';
 import { KEY_MAPPING as K, KeyBinding } from '../../input/key-mapping';
 import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from '../../hud/breakpoints';
 import {
-  FONT_FAMILY, FONT_XXS, FONT_XL, RADIUS_L, SPACE_1, TRANSITION_SLOW, Z_TOUCH_UI,
+  FONT_FAMILY, FONT_XXS, FONT_XL, SPACE_1, TRANSITION_SLOW, Z_TOUCH_UI,
 } from '../../theme';
 
 const STYLE = `
@@ -25,7 +25,9 @@ const STYLE = `
 #touch-ui .tbtn {
   pointer-events: none; touch-action: none;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: var(--surface); border: 1px solid var(--edge); border-radius: ${RADIUS_L};
+  background: var(--glass-quiet); border: 1px solid var(--glass-edge); border-radius: var(--radius-panel);
+  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
   color: var(--text-muted); line-height: 1.1;
 }
 #touch-ui.shown .tbtn { pointer-events: auto; }
@@ -108,6 +110,9 @@ const STYLE = `
   }
   #touch-mode-col .tbtn { width: 38px !important; }
   #hud-chase-reset { left: calc(50% + 20px) !important; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #touch-ui .tbtn { background: var(--surface); }
 }
 `;
 

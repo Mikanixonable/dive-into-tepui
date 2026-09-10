@@ -54,6 +54,9 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud[data-render-style="schematic"] {
   --glass-quiet: color-mix(in srgb, var(--surface-1) 94%, transparent);
   --glass-focus: color-mix(in srgb, var(--surface-1) 97%, transparent);
+  --glass-inset: color-mix(in srgb, var(--surface-0) 94%, transparent);
+  --glass-control: color-mix(in srgb, var(--surface-2) 94%, transparent);
+  --glass-control-hover: color-mix(in srgb, var(--surface-3) 94%, transparent);
   --space-label-background: transparent;
   --space-label-text: ${LIGHT_PALETTE.title};
   --space-label-subtext: ${LIGHT_PALETTE.muted};
@@ -61,16 +64,26 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 
 /* Panel 外枠 */
 #hud .panel {
-  position: absolute; background: var(--glass-quiet);
-  border: 0; border-radius: var(--radius-panel);
+  position: absolute;
+  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-quiet);
+  border: 1px solid var(--glass-edge); border-radius: var(--radius-panel);
   padding: var(--space-5); line-height: 1.5;
-  box-shadow: 0 12px 32px var(--shade-1);
-  backdrop-filter: blur(14px) saturate(82%);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
 }
 #hud .panel h3 {
   font-size: var(--font-s); letter-spacing: 0.06em; color: var(--text);
   border: 0; margin-bottom: var(--space-4); padding: 0;
   font-weight: 600; text-transform: none;
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #hud .panel,
+  #hud-topbar,
+  #hud-map-scale,
+  #hud-chase-reset,
+  #hud-help-badge,
+  #hud-toast { background: var(--surface-opaque); }
 }
 /* PanelShell 共通ヘッド */
 #hud .panel-shell-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
@@ -99,11 +112,11 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud .hud-rail-right { right: 12px; width: var(--rail-w-right); }
 #hud .hud-map-root.active .hud-rail { pointer-events: auto; touch-action: pan-y; }
 #hud .rail-toggle {
-  width: 30px; height: 30px; border: 0; border-radius: var(--radius-control);
-  background: var(--surface-2); color: var(--color-primary); cursor: pointer; pointer-events: auto;
+  width: 30px; height: 30px; border: 1px solid var(--glass-edge); border-radius: var(--radius-control);
+  background: var(--glass-control); color: var(--color-primary); cursor: pointer; pointer-events: auto;
   transition: color var(--transition-fast), background var(--transition-fast);
 }
-#hud .rail-toggle:hover { color: var(--color-primary-hover); background: var(--surface-3); }
+#hud .rail-toggle:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
 #hud .rail-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 #hud .rail-toggle { display: none; position: absolute; top: 8px; z-index: var(--z-hud-rail-toggle); }
 #hud:not(.base-mode) .rail-toggle { display: block; }
@@ -118,7 +131,10 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   position: absolute; top: 0; left: 50%; transform: translateX(-50%);
   pointer-events: auto;
   padding: var(--space-3) var(--space-5); border-radius: 0 0 var(--radius-panel) var(--radius-panel);
-  background: var(--glass-quiet); border: 0; backdrop-filter: blur(14px) saturate(82%);
+  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-quiet);
+  border: 1px solid var(--glass-edge); border-top: 0;
+  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
   font-size: var(--font-s); letter-spacing: 1px; font-variant-numeric: tabular-nums;
   color: var(--text-dim);
   display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
@@ -131,12 +147,12 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud-topbar .v { color: var(--text); }
 #hud-topbar .gs-speed-select {
   min-width: 76px; padding: var(--space-1) var(--space-5) var(--space-1) var(--space-2);
-  border: 1px solid var(--edge); border-radius: var(--radius-micro);
-  background: var(--surface-2); color: var(--text); font: inherit; font-size: var(--font-s);
+  border: 1px solid var(--glass-edge); border-radius: var(--radius-micro);
+  background: var(--glass-control); color: var(--text); font: inherit; font-size: var(--font-s);
   font-variant-numeric: tabular-nums; cursor: pointer;
 }
 #hud-topbar .gs-speed-select:hover,
-#hud-topbar .gs-speed-select:focus { border-color: var(--color-primary); background: var(--surface-3); }
+#hud-topbar .gs-speed-select:focus { border-color: var(--color-primary); background: var(--glass-control-hover); }
 #hud-topbar .gs-speed-select.sim-speed-hot { color: var(--color-primary); }
 #hud-topbar .gs-sep { color: var(--edge); }
 
@@ -151,7 +167,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud-viewbadge .vb-field > span:last-child { color: var(--text); max-width: 18em; overflow: hidden; text-overflow: ellipsis; }
 #hud-viewbadge .vb-sep { color: var(--edge); }
 #hud-viewbadge span.vb-view-btn {
-  background: var(--surface-2);
+  background: var(--glass-control);
   border-radius: var(--radius-micro); padding: var(--space-1) var(--space-3);
   color: var(--text-dim); font: inherit; letter-spacing: inherit;
 }
@@ -159,8 +175,9 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 
 #hud-map-scale {
   position: absolute; right: 12px; bottom: 12px; display: none; pointer-events: none;
-  padding: var(--space-2) var(--space-4) var(--space-3); border: 0; border-radius: var(--radius-control);
-  background: var(--glass-quiet); backdrop-filter: blur(14px) saturate(82%);
+  padding: var(--space-2) var(--space-4) var(--space-3); border: 1px solid var(--glass-edge); border-radius: var(--radius-control);
+  background: var(--glass-quiet); backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
   color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.1;
   font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap;
 }
@@ -184,8 +201,9 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   width: 32px; height: 32px; border-radius: 50%;
   display: flex; justify-content: center; align-items: center;
   padding: 0;
-  border: 0; background: var(--glass-quiet); color: var(--text-dim);
-  backdrop-filter: blur(14px) saturate(82%);
+  border: 1px solid var(--glass-edge); background: var(--glass-quiet); color: var(--text-dim);
+  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
 }
 #hud-chase-reset:hover { background: var(--surface-2); color: var(--color-primary-hover); }
 #hud-chase-reset:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
@@ -199,9 +217,10 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   width: 32px; height: 32px; border-radius: 50%;
   display: flex; justify-content: center; align-items: center;
   padding: 0;
-  border: 0; background: var(--glass-quiet); color: var(--text-dim);
+  border: 1px solid var(--glass-edge); background: var(--glass-quiet); color: var(--text-dim);
   font: inherit; font-size: var(--font-l); font-weight: 700;
-  backdrop-filter: blur(14px) saturate(82%);
+  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
 }
 #hud-help-badge:hover { background: var(--surface-2); color: var(--color-primary-hover); }
 #hud-help-badge:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
@@ -211,9 +230,12 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 
 #hud-toast {
   position: absolute; top: calc(64px + var(--space-5) + 32px + var(--space-1)); left: 50%; transform: translateX(-50%);
-  background: var(--glass-focus); border: 0; border-radius: var(--radius-panel); padding: var(--space-5) var(--space-6);
+  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-focus);
+  border: 1px solid var(--glass-edge); border-radius: var(--radius-panel); padding: var(--space-5) var(--space-6);
   color: var(--text); font-size: var(--font-xl); text-align: center;
-  box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
   transition: opacity var(--transition-slow); opacity: 0; line-height: 1.8;
 }
 

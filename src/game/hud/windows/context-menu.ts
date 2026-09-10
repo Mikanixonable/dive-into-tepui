@@ -12,18 +12,22 @@ import { injectOnce } from '../../../hud/inject-style';
 const STYLE = `
 #hud .ctx-menu {
   position: fixed; display: none; min-width: 168px;
-  pointer-events: auto; padding: var(--space-2); background: var(--glass-focus); border: 0;
+  pointer-events: auto; padding: var(--space-2);
+  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-focus);
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-panel); overflow: hidden; font-size: var(--font-m);
   font-family: var(--font-family); user-select: none;
-  box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
   -webkit-user-select: none;
 }
 #hud .ctx-menu-item {
-  padding: var(--space-4) var(--space-5); color: var(--text-muted); cursor: pointer;
-  border: 0; border-radius: var(--radius-micro);
+  padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
+  border: 1px solid transparent; border-radius: var(--radius-control);
 }
 #hud .ctx-menu-item:hover, #hud .ctx-menu-item:active {
-  background: var(--surface-2); color: var(--color-primary-hover);
+  background: var(--glass-control-hover); color: var(--color-primary-hover);
 }
 #hud .ctx-menu-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .ctx-menu-header {
@@ -35,6 +39,9 @@ const STYLE = `
   opacity: 0.7;
   margin-top: var(--space-1);
   font-weight: normal;
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #hud .ctx-menu { background: var(--surface-opaque); }
 }
 `;
 

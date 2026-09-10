@@ -16,10 +16,14 @@ import { CLICK_MOVE_THRESHOLD } from '../../input/input';
 const STYLE = `
 #hud .dg-window {
   position: fixed; display: block; min-width: 200px; max-width: 280px;
-  pointer-events: auto; background: var(--glass-focus); border: 0;
+  pointer-events: auto;
+  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-focus);
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-window); overflow: hidden; font-size: var(--font-m);
   font-family: var(--font-family); user-select: none;
-  box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
   -webkit-user-select: none;
 }
 /* compact: ドラッグで動かす小窓ではなく、画面下 40% のボトムシートとして開く
@@ -54,12 +58,19 @@ const STYLE = `
 #hud .dg-window-header-extras { display: contents; }
 #hud .dg-window-btn {
   flex: none; width: 18px; height: 18px; line-height: 18px; text-align: center;
-  border: 0; border-radius: var(--radius-micro); background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--glass-edge); border-radius: var(--radius-micro);
+  background: var(--glass-control); color: var(--text);
   cursor: pointer; font-size: var(--font-s); padding: 0;
 }
-#hud .dg-window-btn:hover { background: var(--surface-3); color: var(--color-primary-hover); }
+#hud .dg-window-btn:hover { background: var(--glass-control-hover); color: var(--color-primary-hover); }
 #hud .dg-window-btn.clipped { background: var(--color-primary-fill); color: var(--color-primary); }
-#hud .dg-window.tgt { background: color-mix(in srgb, var(--color-primary) 16%, var(--glass-focus)); }
+#hud .dg-window.tgt {
+  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%),
+    color-mix(in srgb, var(--color-primary) 16%, var(--glass-focus));
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #hud .dg-window { background: var(--surface-opaque); }
+}
 `;
 
 export interface DraggableWindowOptions {
