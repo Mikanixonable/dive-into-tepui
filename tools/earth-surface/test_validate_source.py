@@ -106,6 +106,17 @@ class ValidateSourceTests(unittest.TestCase):
             with self.assertRaisesRegex(validate.ValidationError, "単位"):
                 validate.validate_era5_export(path, self.manifest, fake_netcdf({"t2m": wrong}))
 
+    def test_era5_export_accepts_copernicus_cloud_fraction_units(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "era5.nc"
+            path.write_bytes(b"fixture")
+            for unit in ("(0 - 1)", "(0-1)", "0-1", "fraction", " 1 "):
+                cloud = FakeVariable(("time", "latitude", "longitude"), [], unit,
+                                     (8640, 721, 1440))
+                result = validate.validate_era5_export(path, self.manifest,
+                                                       fake_netcdf({"tcc": cloud}))
+                self.assertEqual(result["variables"]["total_cloud_cover"]["units"], unit)
+
     def test_download_receipt_and_hash_are_checked_without_network(self):
         manifest = copy.deepcopy(self.manifest)
         manifest["sources"] = [{

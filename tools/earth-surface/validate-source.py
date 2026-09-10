@@ -185,6 +185,11 @@ def _check_axis(values, expected, name, tolerance=1e-8):
         raise ValidationError(f"ERA5 {name}の値または座標順序が契約と不一致です")
 
 
+def _normalized_unit(value):
+    """Normalize whitespace and case in NetCDF unit metadata."""
+    return re.sub(r"\s+", "", value.strip().lower()) if isinstance(value, str) else value
+
+
 def validate_era5_export(path, manifest, netcdf_module=None):
     """Validate one explicit ERA5 NetCDF export and return its reproducible identity."""
     path = Path(path)
@@ -236,8 +241,10 @@ def validate_era5_export(path, manifest, netcdf_module=None):
             if tuple(variable.shape) != expected_shape:
                 raise ValidationError(f"ERA5変数{name}の格子寸法が不一致です: {tuple(variable.shape)} != {expected_shape}")
             unit = getattr(variable, "units", None)
-            allowed = ("K", "kelvin") if logical == "2m_temperature" else ("1", "fraction")
-            if unit not in allowed:
+            normalized_unit = _normalized_unit(unit)
+            allowed = ("k", "kelvin") if logical == "2m_temperature" else (
+                "1", "fraction", "0-1", "(0-1)")
+            if normalized_unit not in allowed:
                 raise ValidationError(f"ERA5変数{logical}の単位が不一致です: {unit!r}")
             variables[logical] = {"name": name, "units": unit, "shape": list(variable.shape)}
 
