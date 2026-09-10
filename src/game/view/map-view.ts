@@ -40,7 +40,7 @@ export class MapView implements ViewFrame {
     private readonly input: Input,
     private readonly cameraSystem: CameraSystem,
     private readonly objectWindows: ObjectWindows,
-    dynamicSystem: EntityRoster,
+    roster: EntityRoster,
     equatorNodes: EquatorNodeManager,
     private readonly celestialSystem: CelestialSystem,
     private readonly celestialMarkers: CelestialMarkers,
@@ -62,12 +62,12 @@ export class MapView implements ViewFrame {
       displayWindowManager, frameControls, planDisplay.path,
     );
     this.objectPickables = new ObjectPickables(
-      controlSelection, dynamicSystem, celestialSystem, navTarget, cameraSystem,
+      controlSelection, roster, celestialSystem, navTarget, cameraSystem,
       celestialMarkers, planDisplay, frameAnchors, equatorNodes,
     );
-    this.linePickables = new LinePickables(dynamicSystem, celestialSystem);
+    this.linePickables = new LinePickables(roster, celestialSystem);
     this.picking = new MapPicking(
-      hud, cameraSystem, dynamicSystem, celestialSystem, celestialMarkers, markerManager,
+      hud, cameraSystem, roster, celestialSystem, celestialMarkers, markerManager,
       navTarget, frameControls, this.objectPickables, this.linePickables, objectWindows,
       controlSelection,
     );
