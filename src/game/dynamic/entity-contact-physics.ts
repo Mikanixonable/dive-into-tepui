@@ -11,7 +11,7 @@ import type { EngagementZone } from './engagement-zone';
 import type { CollisionResponse } from '../../physics/collision-response';
 import { contactTime, isFiniteParticipant } from './contact-participant';
 import { entityContactResponse } from './entity-contact-response';
-import type { Stage } from '../stages/stage';
+import type { StageOutcome } from '../stages/stage-outcome';
 import type { EntityRegistry } from './entity-registry';
 
 // 1 substep のあいだに1つの交戦圏で解決する接触の上限。TOI(接触時刻)昇順で解決し、これを
@@ -74,7 +74,8 @@ export class EntityContactPhysics {
   // 独立した系なので、解決回数の上限も交戦圏ごとに掛かる。
   public resolveEntityContacts(
     simTime: number, entities: readonly EntityContactParticipant[],
-    zones: readonly EngagementZone<EntityContactParticipant>[], activeStage: Stage, registry: EntityRegistry,
+    zones: readonly EngagementZone<EntityContactParticipant>[], activeStage: StageOutcome,
+    registry: EntityRegistry,
   ): void {
     for (const zone of zones) {
       this.collectParticipants(entities, zone, this.participantScratch);
@@ -104,7 +105,7 @@ export class EntityContactPhysics {
     all: readonly EntityContactParticipant[],
     simTime: number,
     reference: Vec3,
-    activeStage: Stage,
+    activeStage: StageOutcome,
     registry: EntityRegistry,
   ): void {
     if (all.length === 0) return;
@@ -212,7 +213,7 @@ export class EntityContactPhysics {
     all: readonly EntityContactParticipant[],
     working: KinematicState[],
     changed: number[],
-    activeStage: Stage,
+    activeStage: StageOutcome,
     registry: EntityRegistry,
   ): void {
     const { ai, bi } = candidate;

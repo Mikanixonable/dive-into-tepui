@@ -12,7 +12,8 @@ import { GraphicsSettings, type GraphicsSettingsData } from './render/graphics-s
 import { RenderStyleSetting } from './render/render-style';
 import { Hud } from './game/hud/hud';
 import { HudShell } from './hud/hud-shell';
-import { PauseMenu, SettingsView } from './hud/windows';
+import { PauseMenu } from './hud/windows/pause-menu';
+import { SettingsView } from './hud/windows/settings-view';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
 import { Launcher } from './launcher/launcher';
@@ -26,6 +27,7 @@ import { AutoSave } from './launcher/save/autosave';
 import { migrateLegacySave } from './launcher/save/legacy-save';
 import { showLoading, hideLoading } from './launcher/loading-overlay';
 import { showFatalError } from './launcher/fatal-error';
+import type { GameHost } from './game/game-host';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
 async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
@@ -141,9 +143,10 @@ async function main() {
   graphics.bind(gs);
   const { shell, hud, audioEngine, bgm, pauseMenu, settingsView } = initHud(graphics, renderStyle);
   const sections = new FrameSections();
+  const host: GameHost = { scene: gs, hud, sections };
 
   const launcher = new Launcher(
-    shell, hud, gs, audioEngine, bgm, pauseMenu, settingsView, unlockManager, sections,
+    shell, host, audioEngine, bgm, pauseMenu, settingsView, unlockManager,
     slots, snapshotService, graphics,
   );
 

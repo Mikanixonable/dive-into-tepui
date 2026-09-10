@@ -12,6 +12,10 @@ import { DynamicEntity } from './dynamic-entity';
 import type { DebrisKind } from './debris-kind';
 import { DebrisMotion } from './debris-motion';
 import { DebrisReaction } from './debris-reaction';
+import {
+  DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, ENEMY_DESTROY_FRAG_COLOR,
+  PLAYER_DESTROY_FRAG_COLOR,
+} from '../../../render/vfx-style';
 
 export class DebrisPiece extends DynamicEntity {
   public override readonly capKind: CapKind;
@@ -78,4 +82,25 @@ export function buildDestroyFragments(
       state, { kind: 'fragment', accent, size }, attitude, worldSfx, effects));
   }
   return pieces;
+}
+
+// 自機の撃破で飛び散る破片。
+export function playerDestroyFragments(
+  state: KinematicState, worldSfx: WorldSfx, effects: FlashEffects,
+): DebrisPiece[] {
+  return buildDestroyFragments(
+    state.t, state.r, state.v, 11, PLAYER_DESTROY_FRAG_COLOR,
+    DESTROY_FRAG_SIZE_MIN / 3, DESTROY_FRAG_SIZE_MAX / 3, 20.0, worldSfx, effects,
+  );
+}
+
+// 敵機の撃破で飛び散る破片。機体メッシュのスケール meshScale へ見合った大きさにする。
+export function enemyDestroyFragments(
+  state: KinematicState, meshScale: number, worldSfx: WorldSfx, effects: FlashEffects,
+): DebrisPiece[] {
+  return buildDestroyFragments(
+    state.t, state.r, state.v, 11, ENEMY_DESTROY_FRAG_COLOR,
+    (DESTROY_FRAG_SIZE_MIN * meshScale) / 3, (DESTROY_FRAG_SIZE_MAX * meshScale) / 3, 20.0,
+    worldSfx, effects,
+  );
 }

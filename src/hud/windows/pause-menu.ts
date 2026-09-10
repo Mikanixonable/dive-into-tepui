@@ -2,6 +2,8 @@ import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { SPACE_2, SPACE_4 } from '../../theme';
 import { clampOverlayPosition, Point2 } from '../layout';
 import { onViewportChange } from '../viewport';
+import { injectOnce } from '../inject-style';
+import { PAUSE_MENU_STYLE } from '../style/pause-menu-style';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
 import {
   Button, CloseButton, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, Slider,
@@ -40,6 +42,7 @@ export class PauseMenu implements OverlayHandle {
   // パネル DOM を組み立てて root へ追加する。各操作のコールバックは onXxx フィールドへ
   // 後から代入する。
   public constructor(root: HTMLElement, overlayManager: OverlayManager) {
+    injectOnce('pause-menu', PAUSE_MENU_STYLE);
     this.overlayManager = overlayManager;
     this.panel = document.createElement('div');
     this.panel.id = 'hud-pause-menu';

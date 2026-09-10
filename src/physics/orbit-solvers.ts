@@ -1,8 +1,6 @@
 // 軌道上の特徴点(赤道交点 EqAN/EqDN、相対交点 AN/DN など)の計算を行う純粋物理計算層。
-import { frameOfCelestialBody } from './frame';
-import { orbitalElementsOf } from './elements';
-import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from './elements';
-import { toFrameState } from './frame';
+import { frameOfCelestialBody, toFrameState } from './frame';
+import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt, orbitalElementsOf } from './elements';
 import { KinematicState } from './kinematic-state';
 import { findEquatorCrossings } from './trajectory-features';
 import { Vec3, add } from '../math/vec3';

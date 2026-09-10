@@ -1,9 +1,8 @@
 // 直近ノードの実行ガイド: 実行時刻を過ぎたノードの消化、接近・達成の通知、NODE/BURN マーカー。
 import { KinematicState } from '../../physics/kinematic-state';
-import { OrbitalElements } from '../../physics/elements';
+import { OrbitalElements, orbitalElementsOf } from '../../physics/elements';
 import { strongestAttractor } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
-import { orbitalElementsOf } from '../../physics/elements';
 import { addScaled, dot, len, norm, sub } from '../../math/vec3';
 import type { Notifier } from '../../hud/notifier';
 import { fmtDist, fmtSpeed, fmtTime } from '../../hud/utils';

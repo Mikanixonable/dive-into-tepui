@@ -4,7 +4,7 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { SphereHit } from '../../math/triangle-mesh';
-import type { Stage } from '../stages/stage';
+import type { StageOutcome } from '../stages/stage-outcome';
 import type { Contact } from './dynamic-entity/contact';
 import type { EntityRegistry } from './entity-registry';
 import type { PredictedArc } from './predicted-arc';
@@ -43,7 +43,7 @@ export interface EntityContactParticipant extends KinematicParticipant {
   absorbHeat(specificJoules: number): void;
   collideWithEntity(
     other: EntityContactParticipant, contact: Contact,
-    context: { readonly activeStage: Stage; readonly registry: EntityRegistry },
+    context: { readonly activeStage: StageOutcome; readonly registry: EntityRegistry },
   ): void;
 }
 
@@ -53,7 +53,7 @@ export interface SurfaceContactParticipant extends KinematicParticipant {
   absorbHeat(specificJoules: number): void;
   collideWithCelestialBody(
     body: CelestialBody, contact: Contact,
-    context: { readonly activeStage: Stage; readonly registry: EntityRegistry },
+    context: { readonly activeStage: StageOutcome; readonly registry: EntityRegistry },
   ): void;
 }
 
@@ -66,7 +66,7 @@ export interface DynamicSimulationParticipant extends EntityContactParticipant, 
   stepSimulation(
     dt: number, celestialBodies: readonly CelestialBody[], occluders: readonly CelestialBody[],
     atmosphereBody: CelestialBody | null, star: CelestialBody | null, pivot: number,
-    context: { readonly activeStage: Stage; readonly registry: EntityRegistry },
+    context: { readonly activeStage: StageOutcome; readonly registry: EntityRegistry },
   ): boolean;
   nextSimulationEventTime(simTime: number): number | null;
 }
@@ -86,7 +86,7 @@ export interface DynamicSimulationRoster {
 
 export interface SimulationLifecycle extends DynamicSimulationRoster {
   cleanup(
-    dt: number, simTime: number, activeStage: Stage,
+    dt: number, simTime: number, activeStage: StageOutcome,
     viewerPos: Vec3, atmosphereBodies: readonly CelestialBody[],
   ): void;
 }

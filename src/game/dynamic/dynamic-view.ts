@@ -6,7 +6,7 @@ import type { Vec3 } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import { orbitalElementsOf } from '../../physics/elements';
 import { disposeOwnedRenderResources } from '../../render/dispose-owned-render-resources';
-import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import type { LineStyle } from '../../render/line-style';
 import type { RenderStyle } from '../../render/render-style';
 import type { CameraSystem } from '../camera/camera-system';
@@ -37,7 +37,7 @@ export interface DynamicViewFrame {
   readonly pools: InstancedPools;
   readonly cameraSystem: CameraSystem;
   readonly style: RenderStyle;
-  readonly graphics: GraphicsSettingsData;
+  readonly visual: EntityVisualSettings;
   readonly orbitReference: OrbitReference | undefined;
 }
 

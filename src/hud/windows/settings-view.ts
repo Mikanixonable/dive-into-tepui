@@ -6,6 +6,8 @@ import { GraphicsPanel } from '../panels/graphics-panel';
 import { ThemePanel } from '../panels/theme-panel';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
 import { CloseButton, TabBar } from '../widgets';
+import { injectOnce } from '../inject-style';
+import { SETTINGS_VIEW_STYLE } from '../style/settings-view-style';
 
 type SettingsTab = 'theme' | 'graphics' | 'bgm';
 
@@ -43,6 +45,7 @@ export class SettingsView implements OverlayHandle {
   public constructor(
     root: HTMLElement, overlayManager: OverlayManager, bgm: Bgm, graphics: GraphicsSettings,
   ) {
+    injectOnce('settings-view', SETTINGS_VIEW_STYLE);
     this.overlayManager = overlayManager;
     this.bgm = bgm;
 

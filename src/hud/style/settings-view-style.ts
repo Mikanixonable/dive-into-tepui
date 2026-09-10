@@ -17,14 +17,14 @@ export const SETTINGS_VIEW_STYLE = `
 }
 #hud-settings-view .sv-brand-logo { width: 2.5rem; height: 2.5rem; border-radius: var(--radius-control); }
 #hud-settings-view .sv-brand-text { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
-#hud-settings-view .sv-brand-title { color: var(--title); font-size: var(--font-m); letter-spacing: 0.08em; }
+#hud-settings-view .sv-brand-title { color: var(--text); font-size: var(--font-m); letter-spacing: 0.08em; }
 #hud-settings-view .sv-brand-version { color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: 0.06em; }
 #hud-settings-view .sv-header {
   display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4);
   border-bottom: 1px solid var(--edge); padding-bottom: var(--space-5);
 }
 #hud-settings-view .sv-heading-group { display: flex; flex-direction: column; gap: var(--space-2); }
-#hud-settings-view .sv-header h2 { color: var(--title); font-size: var(--font-2xl); letter-spacing: 0.1em; }
+#hud-settings-view .sv-header h2 { color: var(--text); font-size: var(--font-2xl); letter-spacing: 0.1em; }
 #hud-settings-view .sv-header .w-close {
   flex: 0 0 auto; width: var(--hit-target-min); height: var(--hit-target-min); border-radius: var(--radius-control);
   border-color: var(--edge); background: var(--surface-1);
@@ -69,7 +69,7 @@ export const SETTINGS_VIEW_STYLE = `
 #hud-settings-view .sv-tab-panel[hidden] { display: none; }
 #hud-settings-view .sv-section h3 {
   display: flex; align-items: center; gap: var(--space-3); margin: 0;
-  color: var(--title); font-size: var(--font-m); letter-spacing: 0.08em;
+  color: var(--text); font-size: var(--font-m); letter-spacing: 0.08em;
 }
 #hud-settings-view .sv-section h3::before {
   width: var(--space-2); height: var(--font-m); border-radius: var(--radius-micro); background: var(--color-primary); content: '';

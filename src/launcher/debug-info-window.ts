@@ -2,7 +2,8 @@
 // デバッグ表示の選択。窓が開いている間だけ計測が走る(`on` が計測の可否そのもの)。
 import type { WebGPURenderer } from 'three/webgpu';
 import { PropertyWindow } from '../hud/windows/property-window';
-import { injectOnce, SegmentedControl, TabBar } from '../hud/widgets';
+import { SegmentedControl, TabBar } from '../hud/widgets';
+import { injectOnce } from '../hud/inject-style';
 import { DEBUG_TARGETS, type DebugTargetHost, type DebugTargetId } from '../render/pipeline/debug-target';
 import type { RenderStyleSetting } from '../render/render-style';
 import { fmtDuration } from '../hud/utils';

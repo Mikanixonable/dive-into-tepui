@@ -9,7 +9,7 @@ import { bringToFront as bringOverlayToFront } from '../overlay-layer';
 import { onViewportChange } from '../viewport';
 import { isCompactViewport, MQ_COMPACT } from '../breakpoints';
 import { Button, CloseButton } from '../widgets';
-import { injectOnce } from '../widgets/inject-style';
+import { injectOnce } from '../inject-style';
 import type { OverlayHandle, OverlayManager, OverlaySpec } from '../overlay-manager';
 import { CLICK_MOVE_THRESHOLD } from '../../input/input';
 

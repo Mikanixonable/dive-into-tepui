@@ -6,7 +6,7 @@ import type { Vec3 } from '../../../math/vec3';
 import { isEnemy, type Enemy } from '../../dynamic/dynamic-entity/enemy';
 import type { CombatTarget } from '../../dynamic/dynamic-entity/combat-target';
 import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
-import type { Stage } from '../../stages/stage';
+import type { StageOutcome } from '../../stages/stage-outcome';
 import type { EntityRoster } from '../../dynamic/entity-roster';
 import type { Targeter } from '../../targeter';
 
@@ -39,7 +39,7 @@ export class EnemiesPanel {
 
   // 残存数の見出しと、距離順の敵一覧を同期する。操作対象が無ければパネルごと隠す。
   public sync(
-    viewer: Controllable | null, activeStage: Stage, roster: EntityRoster,
+    viewer: Controllable | null, activeStage: StageOutcome, roster: EntityRoster,
     targeter: Targeter, isMapView: boolean,
   ): void {
     const panel = this.els.get('hud-enemies');

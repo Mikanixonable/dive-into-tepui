@@ -12,12 +12,13 @@ import { Player } from './player/player';
 import { isCombatTarget, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import { Input } from '../input/input';
 import { CameraSystem } from './camera/camera-system';
-import type { GroupedMarkerItem, MarkerRole } from './marker/grouped-markers';
-import type { CelestialMarkers } from './marker/celestial-markers';
+import { withTargetRole, type GroupedMarkerItem } from './marker/grouped-markers';
+import type { ActiveCelestialLabel } from './marker/celestial-markers';
 import { MARKER_PRIORITY } from './marker/crowding';
 import type { MarkerManager } from './marker/marker-manager';
 import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
 import { pickNearest } from './pickable/object-pickable';
+import { fmtMarkerDist } from '../hud/utils';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
@@ -55,7 +56,6 @@ export class Targeter {
     private readonly markerManager: MarkerManager,
     private readonly navTarget: NavTarget, private readonly roster: EntityRoster,
     private readonly celestialBodies: readonly CelestialBody[],
-    private readonly celestialMarkers: CelestialMarkers,
   ) {}
 
   // 航法ターゲットを生存中の敵・自艦・基地として解決したもの。戦闘対象になれない対象
@@ -106,22 +106,23 @@ export class Targeter {
   }
 
   // ターゲットに紐づく表示物(的通過マーク・方位マーカー)と、全戦闘対象のマーカー集合を
-  // まとめて更新する。
+  // まとめて更新する。celestialLabels は今フレームに描かれた天体ラベルで、マップでの重なりを
+  // 避けるために読む。
   sync(
     viewer: OrbitingObject | null, cameraSystem: CameraSystem, displayTime: number, simTime: number,
-    visibilityPolicy: MapVisibilityPolicy | null,
+    visibilityPolicy: MapVisibilityPolicy | null, celestialLabels: readonly ActiveCelestialLabel[],
   ): void {
     const project = cameraSystem.activeCameraProjection;
     this.syncBoardMarkers(project);
     this.syncTargetDirMarkers(viewer, cameraSystem.view === 'map', project);
-    this.syncTargetMarkers(viewer, displayTime, simTime, cameraSystem, visibilityPolicy);
+    this.syncTargetMarkers(viewer, displayTime, simTime, cameraSystem, visibilityPolicy, celestialLabels);
   }
 
   // 全戦闘対象のマーカー集合(ターゲットの役割を含む)と LEAD マーカーを同期する。位置は
   // 機体メッシュと同じ stateAt — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
   private syncTargetMarkers(
     viewer: OrbitingObject | null, displayTime: number, simTime: number, cameraSystem: CameraSystem,
-    visibilityPolicy: MapVisibilityPolicy | null,
+    visibilityPolicy: MapVisibilityPolicy | null, celestialLabels: readonly ActiveCelestialLabel[],
   ): void {
     // マーカーは操作対象自身も他の船と同列に扱う。自分自身を候補から外すのは、ターゲット選定
     // (handleTargetSelectKey)の側だけ。
@@ -144,15 +145,16 @@ export class Targeter {
       if (visibility && !visibility.pickable) continue;
       // 戦闘ビューのカメラ直下にいる操作艦は、マーカーを重ねると視界を潰す。
       if (!mapView && tgt === viewer) continue;
-      const role: MarkerRole = tgt === this.aliveTarget ? 'primary' : 'none';
-      const item = tgt.markerItem(role, viewerPos, ds.r, ds.v, view, tgt === viewer);
+      const item = tgt.markerItem(viewerPos, ds.r, ds.v, view, tgt === viewer);
       const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, ds.r, this.celestialBodies, displayTime);
       const mapOpacity = mapOccluded
         ? 0
         : tgt instanceof Enemy && mapView
           ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, this.celestialBodies, displayTime))
           : 1;
-      this.pushMarkerItem(item, visibility, mapOpacity, mapOccluded);
+      this.pushMarkerItem(
+        tgt === this.aliveTarget ? withTargetRole(item) : item,
+        viewerPos, mapView, visibility, mapOpacity, mapOccluded);
     }
     // 部位マーカーは死んだ個体まで辿って確定する。上のループは生存個体しか通らないので、
     // ここで畳まないと撃破直後の部位マーカーが残る。
@@ -171,7 +173,7 @@ export class Targeter {
       const mapOpacity = mapOccluded
         ? 0
         : mapView ? ammoFadeOpacity(len(sub(ammo.motion.state.r, viewerPos))) : 1;
-      this.pushMarkerItem(ammo.markerItem(viewerPos, view), visibility, mapOpacity, mapOccluded);
+      this.pushMarkerItem(ammo.markerItem(), viewerPos, mapView, visibility, mapOpacity, mapOccluded);
     }
     for (const fuel of fuelPickups) {
       if (!fuel.motion.alive) continue;
@@ -183,9 +185,8 @@ export class Targeter {
       const mapOpacity = mapOccluded
         ? 0
         : mapView ? ammoFadeOpacity(len(sub(fuel.motion.state.r, viewerPos))) : 1;
-      this.pushMarkerItem(fuel.markerItem(viewerPos, view), visibility, mapOpacity, mapOccluded);
+      this.pushMarkerItem(fuel.markerItem(), viewerPos, mapView, visibility, mapOpacity, mapOccluded);
     }
-    const celestialLabels = mapView ? this.celestialMarkers.activeLabels : [];
     this.markerManager.combatMarkers.sync(
       this.markerItemScratch, project, view, screenScale, celestialLabels, this.celestialBodies,
       cameraSystem.activeCameraPos,
@@ -196,18 +197,21 @@ export class Targeter {
     }
   }
 
-  // markerItemScratch へ、可視性設定(アイコン/名前の個別トグル)とマップ上のフェード/遮蔽を反映して積む。
+  // markerItemScratch へ、自機からの距離ラベル・可視性設定(アイコン/名前の個別トグル)・
+  // マップ上のフェード/遮蔽を反映して積む。マップビューでは距離ラベルを出さない。
   private pushMarkerItem(
-    item: GroupedMarkerItem, visibility: MapVisibility | undefined, opacity: number, occluded: boolean,
+    item: GroupedMarkerItem, viewerPos: Vec3, mapView: boolean,
+    visibility: MapVisibility | undefined, opacity: number, occluded: boolean,
   ): void {
+    const detail = mapView ? '' : fmtMarkerDist(len(sub(item.pos, viewerPos)));
     this.markerItemScratch.push(visibility ? {
       ...item,
       sym: visibility.icon ? item.sym : '',
       name: visibility.label ? item.name : '',
-      detail: visibility.label ? item.detail : '',
+      detail: visibility.label ? detail : '',
       opacity,
       occluded,
-    } : { ...item, opacity, occluded });
+    } : { ...item, detail, opacity, occluded });
   }
 
   // タンパク質敵が自機から PROTEIN_SITE_MARKER_RANGE 以内にある間、通常の敵マーカーへ加えて

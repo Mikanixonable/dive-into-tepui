@@ -1,7 +1,7 @@
 // 予測列の先端を中心天体まわりの二体ケプラー軌道とみなして外挿する純関数群。THREE/DOM 非依存。
-import { orbitalElementsOf } from './elements';
 import {
   OrbitalElements,
+  orbitalElementsOf,
   eccentricAnomalyFromMean,
   positionOnOrbit,
   stateOnOrbitAt,

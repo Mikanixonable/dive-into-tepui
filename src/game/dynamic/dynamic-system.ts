@@ -17,11 +17,12 @@ import { InstancedPools } from './instanced-pools';
 import { Simulator } from './simulator';
 import { NanWatchdog } from './nan-watchdog';
 import { FrameSections, SECTION } from '../frame-sections';
-import type { Stage } from '../stages/stage';
+import type { StageOutcome } from '../stages/stage-outcome';
+import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 import type { Input } from '../../input/input';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CameraSystem } from '../camera/camera-system';
-import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import type { RenderStyle } from '../../render/render-style';
 
 import type { EntitySaveDataUnion, GameSaveData } from '../save/save-data';
@@ -190,7 +191,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
 
   // 全エンティティの寿命判定と上限判定を行い、死亡したものを破棄・除去する。
   public cleanup(
-    dt: number, simTime: number, activeStage: Stage, viewerPos: Vec3,
+    dt: number, simTime: number, activeStage: StageOutcome, viewerPos: Vec3,
     atmosphereBodies: readonly CelestialBody[],
   ): void {
     this.processPendingSpawns();
@@ -245,7 +246,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 各段の境界で操作対象を検査する。どの境界で落ちたかが、汚染したのがどの段かを一意に決める。
   update(
     active: Controllable | null, input: Input, operable: boolean,
-    dt: number, simDt: number, canEngage: boolean, activeStage: Stage,
+    dt: number, simDt: number, canEngage: boolean, activeStage: StageOutcome & StageSimulationEvents,
   ): void {
     this.nanWatchdog.checkControlled(
       'update(入口)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
@@ -281,7 +282,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 「操作できないワープ倍率」は同じ状態なので、input を渡すかどうかで一つに束ねる。
   private updateControllables(
     active: Controllable | null, input: Input, operable: boolean,
-    dt: number, simDt: number, activeStage: Stage,
+    dt: number, simDt: number, activeStage: StageOutcome,
   ): void {
     for (const controllable of this.controllables) {
       if (!controllable.motion.alive) continue;
@@ -316,11 +317,11 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   }
 
   // このフレームの表示物を同期する。何をどう出すかは個体が答えるので、ここは顔ぶれを1度だけ
-  // 辿るだけ。プールへ積むのも個体自身なので、その前後をこの走査で挟む。
+  // 辿るだけ。積む変換を作るのは個体自身なので、プールの1フレームをこの走査で挟む。
   public sync(
     fo: FloatingOrigin, displayTime: number, active: Controllable | null,
     visibilityPolicy: MapVisibilityPolicy | null, cameraSystem: CameraSystem, style: RenderStyle,
-    graphics: GraphicsSettingsData, orbitRef: OrbitReference | undefined,
+    visual: EntityVisualSettings, orbitRef: OrbitReference | undefined,
   ): void {
     // instance pool の受付期間で全 Entity を挟み、各 View へ同じフレーム入力を配る。
     this.instancedPools.beginFrame();
@@ -333,7 +334,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
         pools: this.instancedPools,
         cameraSystem,
         style,
-        graphics,
+        visual,
         orbitReference: orbitRef,
       });
     }
