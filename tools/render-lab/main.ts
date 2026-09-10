@@ -16,12 +16,16 @@ import {
 } from './lab';
 import { AU } from '../../src/physics/astronomical-unit';
 import { CUMULUS_COVERAGE_KNOB } from '../../src/render/cloud/cumulus-shape';
+import { CLOUD_SHELL_KNOB, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
 import type { FloatUniform } from '../../src/render/tsl-types';
 import { createEarthSurfaceCaptureApi } from './earth-surface-capture';
 import type { EarthSurfaceCaptureInput } from './earth-surface-capture';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
 import type { CloudLodMode } from '../../src/render/cloud/cloud-field-sampler';
+
+// 殻の高度のつまみが届く上限 [m]。対流圏界面(極 8 km、熱帯 18 km)の上まで取る。
+const MAX_SHELL_ALTITUDE = 20e3;
 
 // 設定パネルに出さない項目。この環境が原理的に効かせられないものだけを入れる — 並べて何も
 // 起きないと、絵の違いの出どころを読み違える。
@@ -159,6 +163,28 @@ async function init(): Promise<void> {
   buildSlider('cumulus-coverage', '中間調 半幅', 0.001, 0.5, 0.001,
     () => `±${coverage.halfWidth.value.toFixed(3)}`,
     (v) => redraw(coverage.halfWidth, v))(coverage.halfWidth.value);
+
+  // **仮設**: 半透明な殻の濃さ・立つ高さ・反射率。不透明な積雲との馴染みを目で追い込むための
+  // つまみで、追い込みを終えるまでは畳まない。
+  const kilometers = (value: number) => `${(value / 1000).toFixed(2)} km`;
+  // 種類 1 つぶんのつまみを row へ並べ、つまみの位置を殻の現在値へ合わせる。
+  const buildShellSliders = (rowId: string, species: CloudSpecies): void => {
+    const knob = CLOUD_SHELL_KNOB[species];
+    // 濃さの2本は鉛直の光学的厚みの目盛りで、足切り・ゲインの順に掛かる。
+    buildSlider(rowId, '足切り', 0, 1, 0.005,
+      () => knob.cutoff.value.toFixed(3), (v) => redraw(knob.cutoff, v))(knob.cutoff.value);
+    buildSlider(rowId, 'ゲイン', 0, 4, 0.01,
+      () => `×${knob.gain.value.toFixed(2)}`, (v) => redraw(knob.gain, v))(knob.gain.value);
+    // 殻は上下の中央に立ち、上下の差が掠める視線の光路を決める。
+    buildSlider(rowId, '下端高度', 0, MAX_SHELL_ALTITUDE, 100, () => kilometers(knob.bottomAltitude.value),
+      (v) => redraw(knob.bottomAltitude, v))(knob.bottomAltitude.value);
+    buildSlider(rowId, '上端高度', 0, MAX_SHELL_ALTITUDE, 100, () => kilometers(knob.topAltitude.value),
+      (v) => redraw(knob.topAltitude, v))(knob.topAltitude.value);
+    buildSlider(rowId, 'アルベド', 0, 1, 0.01,
+      () => knob.albedo.value.toFixed(2), (v) => redraw(knob.albedo, v))(knob.albedo.value);
+  };
+  buildShellSliders('cumulus-shell', 'cumulus');
+  buildShellSliders('cirrus-shell', 'cirrus');
 
   cases.setSelected(CASE_NAMES[0]!);
   targets.setSelected('off');
