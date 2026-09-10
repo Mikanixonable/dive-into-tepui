@@ -47,8 +47,9 @@ BMNG/ETOPOは数十GB級、ERA5は取得条件に依存し、GSHHGはfixture JSO
 ## 実装状況（2026-09-10）
 
 `7b88aad7` で、入力manifestの版を検査するfixture source adapter、決定的な色・地形・気候エンコーダ、
-`--fixture-global`の小規模生成入口を追加した。`87b6c8b5` ではERA5 local exportのNetCDF軸・単位・期間・変数、
+`--fixture-global`の小規模生成入口を追加した。`87b6c8b5` と `d91ab5d3` ではERA5 local exportのNetCDF軸・単位・期間・変数、
 取得済み入力のreceiptとSHA-256を検査するvalidatorと再現可能なenvironment.ymlを追加した。
+`cb3161f5` ではCopernicusの `(0 - 1)` cloud fraction単位表記を取得時検査でも受け入れるようにした。
 fixtureのmanifestは `dataKind: synthetic_fixture` と明示され、本番データへ読み替えられない。
 
 `--global` はERA5、GDAL、netCDF4、pyshp、Pillowが揃っても、BMNG/ETOPO/GSHHG/ERA5のwindow合成が接続されるまで
