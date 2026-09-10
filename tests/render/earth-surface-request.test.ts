@@ -52,6 +52,33 @@ function deferred(): { readonly promise: Promise<void>; readonly resolve: () => 
 }
 
 export function register(): void {
+  test('earth requests: fetchImplをreceiverなしでindexと色・地形へ使う', async () => {
+    const key = earthTileKey(1, 0, 0);
+    const index = indexFor([key]);
+    const calls: string[] = [];
+    const fetchImpl: typeof fetch = async function (this: unknown, input, _init) {
+      if (this !== undefined) throw new Error('fetch receiver must be undefined');
+      const url = String(input);
+      calls.push(url);
+      if (url.endsWith('tile-index.json')) return new Response(JSON.stringify(index));
+      return url.endsWith('.jpg') ? response(COLOR) : response(gzipSync(terrain(key)));
+    };
+    const source = new EarthSurfaceTileRequestSource({
+      tileIndexUrl: 'https://example.test/earth/tile-index.json',
+      baseUrl: 'https://example.test/earth/', fetchImpl,
+    });
+    const queue = new EarthSurfaceTileRequestQueue(source, { fetchImpl, decodeImage: async (bytes) => bytes });
+
+    await source.ready();
+    const payload = await queue.request(key, 4);
+    assert.equal(payload.key.z, key.z);
+    assert.equal(calls[0], 'https://example.test/earth/tile-index.json');
+    assert.equal(calls.length, 3);
+    assert.ok(calls.some((url) => url.endsWith('.jpg')));
+    assert.ok(calls.some((url) => url.endsWith('.bin.gz')));
+    queue.release(key, 4);
+  });
+
   test('earth requests: tile-indexを一度だけ解決し、HTTP6とdecode2を別に数える', async () => {
     const keys = [earthTileKey(1, 0, 0), earthTileKey(1, 1, 0), earthTileKey(1, 2, 0)];
     const index = indexFor(keys);
