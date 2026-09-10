@@ -1,6 +1,6 @@
 // 天気が凝結する雲を焼いた写し。焼くときと読むときの成分の割り当てを一手に持ち、
-// 出入りをどちらも CloudSample で受け渡す。テクスチャの G は雲頂高度を CLOUD_TOP_SPAN で
-// 正規化した値、CloudSample の cloudTop はメートルである。
+// 出入りをどちらも CloudSample で受け渡す。テクスチャの G は雲頂高度を CLOUD_TOP_SPAN で、A は
+// 雲セル幅プロファイルをそれぞれ0..1へ正規化した値である。
 import * as THREE from 'three/webgpu';
 import { BakedField } from './baked-field';
 import { CloudFieldSampler, type CloudUvAt } from './cloud-field-sampler';
@@ -19,7 +19,7 @@ export class CloudField {
   // model がいま指している時刻の雲を、projection の持ち方で焼く写し。
   public constructor(model: WeatherModel, projection: FieldProjection, uvAt?: CloudUvAt) {
     this.field = new BakedField('cloud', THREE.RGBAFormat, projection, 1, (direction) => {
-      const cloud = condense(model.weatherAt(direction));
+      const cloud = condense(model.weatherAt(direction), direction);
       return cloudFieldTexelFromSample(cloud);
     });
     this.sampler = new CloudFieldSampler(this.field.texture, uvAt ?? projection.uvAt);

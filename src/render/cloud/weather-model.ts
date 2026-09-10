@@ -30,6 +30,7 @@ import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 // (負で寒気)、金床は平らな天蓋の濃さ 0..1、平年の雲量と陸らしさは気候の分布 0..1、圏界面は
 // その緯度の対流の天井 [m]。
 export type WeatherSample = {
+  readonly latitude: FloatNode;
   readonly pressure: FloatNode;
   readonly surfaceWind: Vec2Node;
   readonly lift: FloatNode;
@@ -310,6 +311,7 @@ export class WeatherModel {
         .sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
 
     return {
+      latitude,
       pressure,
       surfaceWind: windComponents,
       lift,
