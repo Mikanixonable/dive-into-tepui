@@ -83,7 +83,6 @@ export class PlayerView extends DynamicView {
     const active = context.activeId === source.id;
     const effectState = displayed ?? motion.state;
     const effectVisible = this.object.visible;
-    // ビルボードの正対とズーム時の伏せに要るのは、カメラのこの2値だけ。
     const cameraQuat = context.cameraSystem.activeCamera.quaternion;
     const zoomActive = context.cameraSystem.zoomActive;
     const rcsThrust = len(source.throttle.thrustAccelVec) > 0

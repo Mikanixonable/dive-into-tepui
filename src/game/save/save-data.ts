@@ -1,3 +1,4 @@
+// セーブの外部形式と、そこから運動状態・姿勢を戻すデコーダ。
 import { AnyPart } from '../dynamic/dynamic-entity/parts';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { v3, type Vec3 } from '../../math/vec3';

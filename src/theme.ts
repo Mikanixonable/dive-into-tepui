@@ -220,7 +220,6 @@ const GLASS_FOCUS = rgba(SURFACE_1, 0.76);
 export function currentEdgeColor(): string {
   return rgba(currentThemePalette().title, 0.16);
 }
-export const EDGE = currentEdgeColor();
 
 const TEXT_STRONG = ACTIVE_THEME.bright;
 // UI用のわずかに紫がかった白。ゲーム世界のマーカー色とは独立したHUD基準色。
@@ -347,8 +346,6 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--space-label-background': '#0b0d11',
   '--space-label-text': '#f5f7ff',
   '--space-label-subtext': '#b8c1d1',
-  '--danger': DANGER,
-  '--danger-fill': DANGER_FILL,
   '--bg': BG,
   '--theme-tone': ACTIVE_THEME.tone,
   '--surface-0': SURFACE_0,
@@ -360,7 +357,7 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--surface-opaque': SURFACE_OPAQUE,
   '--glass-quiet': GLASS_QUIET,
   '--glass-focus': GLASS_FOCUS,
-  '--edge': EDGE,
+  '--edge': currentEdgeColor(),
   '--text-strong': TEXT_STRONG,
   '--text': TEXT,
   '--text-muted': TEXT_MUTED,

@@ -1,7 +1,7 @@
 // 初期化中・実行中を問わず、継続不能な例外は画面内で明示する。
 // 壊れた Game/renderer を同一ページ内で再利用せず、復旧はページ全体の再読込だけにする。
 import {
-  ACCENT, SURFACE_OPAQUE, EDGE, BG, TEXT, TEXT_DIM, FONT_FAMILY, FONT_M, FONT_XL, RADIUS_S, RADIUS_M,
+  ACCENT, SURFACE_OPAQUE, currentEdgeColor, BG, TEXT, TEXT_DIM, FONT_FAMILY, FONT_M, FONT_XL, RADIUS_S, RADIUS_M,
   Z_FATAL_ERROR,
 } from '../theme';
 import { hideLoading } from './loading-overlay';
@@ -22,7 +22,7 @@ export function showFatalError(title: string, message: string, error: unknown): 
 
   const panel = document.createElement('div');
   panel.style.cssText =
-    `max-width:680px;background:${SURFACE_OPAQUE};border:1px solid ${EDGE};border-radius:${RADIUS_M};padding:22px 32px`;
+    `max-width:680px;background:${SURFACE_OPAQUE};border:1px solid ${currentEdgeColor()};border-radius:${RADIUS_M};padding:22px 32px`;
 
   // 見出し・本文メッセージ・例外の詳細を上から順に積む。
   const heading = document.createElement('div');
