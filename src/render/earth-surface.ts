@@ -34,6 +34,7 @@ export interface EarthSurfaceResidentCoordinatorLike {
 
 export interface EarthSurfaceMaterialAttachment extends CelestialSurfaceMaterialAttachment {
   readonly syncFrame: (frame: CelestialSurfaceFrame) => void;
+  readonly failureReason?: () => string | null;
 }
 
 interface CelestialSurfaceMaterialHost {
@@ -107,6 +108,7 @@ export class EarthSurface implements CelestialSurfaceLike {
   private coordinatorValue: EarthSurfaceResidentCoordinatorLike | null;
   private materialSyncValue: ((frame: CelestialSurfaceFrame) => void) | null = null;
   private detailedMaterialValue = false;
+  private materialFailureReasonValue: (() => string | null) | null = null;
   private statusValue: EarthSurfaceStatus;
   private reasonValue: string | null;
   private disposed = false;
@@ -130,7 +132,8 @@ export class EarthSurface implements CelestialSurfaceLike {
   public get diagnostics(): CelestialSurfaceDiagnostics {
     return {
       status: this.statusValue,
-      reason: this.reasonValue ?? this.coordinatorValue?.failureReason ?? null,
+      reason: this.reasonValue ?? this.coordinatorValue?.failureReason
+        ?? this.materialFailureReasonValue?.() ?? null,
       usesDetailedMaterial: this.detailedMaterialValue,
       residentMaxZ: this.coordinatorValue?.residentMaxZ ?? null,
     };
@@ -221,6 +224,7 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.statusValue = status;
     this.reasonValue = reason;
     this.materialSyncValue = null;
+    this.materialFailureReasonValue = null;
     this.detailedMaterialValue = false;
     if (material !== null) {
       const host = this.fallback as unknown as CelestialSurfaceMaterialHost;
@@ -233,6 +237,7 @@ export class EarthSurface implements CelestialSurfaceLike {
       } else {
         host.replaceMaterial(material);
         this.materialSyncValue = material.syncFrame;
+        this.materialFailureReasonValue = material.failureReason ?? null;
         this.detailedMaterialValue = true;
       }
     } else {
