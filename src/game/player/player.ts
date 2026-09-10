@@ -251,11 +251,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     this.fire.onPickup(mags);
   }
 
-  // 弾薬を初期積載の状態まで満タンにする。
-  refillAmmo(): void {
-    this.fire.refillFull();
-  }
-
   // 毎フレーム、全ての自機に対して1度だけ呼ぶ。input が null の艦は、このフレーム操作されない
   // 艦として畳む。
   public updateControls(
