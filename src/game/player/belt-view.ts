@@ -5,9 +5,11 @@ import { buildMagazineMesh } from '../../render/ships';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../physics/player-shape';
 import { BeltPhysics } from './belt-physics';
 
+// 給弾ベルトのリンク列を組み、物理側が解いた各節の位置とねじれへ同期する。
 export class BeltView {
   private readonly links: THREE.Group[] = [];
 
+  // root は自機の表示ツリーの根。linkCount ぶんのリンクを給弾口から並べて作る。
   public constructor(root: THREE.Object3D, linkCount: number) {
     const group = new THREE.Group();
     for (let i = 0; i < linkCount; i++) {
@@ -19,6 +21,8 @@ export class BeltView {
     root.add(group);
   }
 
+  // magsLeft は残弾数(その本数までのリンクだけを見せる)。各リンクは前の節との中点へ置き、
+  // 節の向きへ倒したうえでベルトのねじれを重ねる。
   public sync(magsLeft: number, physics: BeltPhysics): void {
     const { beltPos, beltTwist, anchor } = physics;
     let prevPoint = anchor;
