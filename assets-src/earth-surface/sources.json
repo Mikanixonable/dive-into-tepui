@@ -52,10 +52,10 @@
     {
       "id": "etopo-2022-v1-geoid",
       "product": "ETOPO 2022 v1 15s EGM2008 geoid height",
-      "variables": [{"id": "geoid_height", "unit": "m", "aggregation": "area_mean", "verticalDatum": "WGS84 ellipsoid"}],
+      "variables": [{"id": "geoid_height", "unit": "m", "aggregation": "area_mean", "verticalDatum": "WGS84 ellipsoid to EGM2008 vertical offset"}],
       "period": null,
       "crs": "EPSG:4326",
-      "noData": -99999,
+      "noData": null,
       "units": "m",
       "regrid": "spherical_cell_area_weighted_mean",
       "inputSha256": [],
