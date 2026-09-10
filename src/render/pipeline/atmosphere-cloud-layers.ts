@@ -2,7 +2,7 @@
 // AtmosphereIntegrator(旧 AtmosphereLayer)から天体空間の幾何と太陽輝度だけを契約として受け取る。
 import { If, and, float, greaterThan, lessThan, mix, normalize, step, vec3 } from 'three/tsl';
 import {
-  CloudAtmosphereRenderer, type CloudShellSample, type CloudSpecies,
+  CLOUD_SHELL_SPECIES, CloudAtmosphereRenderer, type CloudShellSample, type CloudSpecies,
 } from './cloud-atmosphere-renderer';
 import type { CloudLodMode } from '../cloud/cloud-field-sampler';
 import type { BoolNode, FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
@@ -96,7 +96,7 @@ export class AtmosphereCloudLayers {
     rayOrigin: Vec3Node, rayDir: Vec3Node, pixelAngle: FloatNode,
     geometry: AtmosphereCloudGeometry,
   ): readonly CloudShellEvent[] {
-    const shells = (['cirrus', 'cumulus'] as const).map((species) => {
+    const shells = CLOUD_SHELL_SPECIES.map((species) => {
       const radius = geometry.shellRadiusOf(species);
       return { species, radius, crossings: geometry.crossingsOf(ray, radius) };
     });

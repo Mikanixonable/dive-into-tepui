@@ -15,10 +15,13 @@ export interface CloudOpticalComposite {
   readonly radiance: number;
 }
 
+// CPUの基準式とGPUのTSL式が共有する入力の上限。被覆率1は無限大のtauになるので、有限の雲を保つ。
+export const MAX_COLUMN_COVERAGE = 0.99;
+
 // 積雲のR(coverage)を鉛直柱光学深さへ変換する。Rは無次元の被覆率、戻り値は無次元のtau。
 // 巻雲のBはすでに鉛直柱光学深さなので、この変換を通さず値を使う。
 export function columnOpticalDepthFromCoverage(coverage: number): number {
-  const bounded = Math.min(Math.max(coverage, 0), 0.99);
+  const bounded = Math.min(Math.max(coverage, 0), MAX_COLUMN_COVERAGE);
   return -Math.log1p(-bounded);
 }
 
