@@ -30,6 +30,9 @@
 20. ビューポートは `src/render/viewport.ts` の `Viewport`。`browserViewport()` を**フレームの先頭で1度だけ**読み、同じ値を renderer・`Game.update`・`Game.sync` へ配る。`window` の寸法を読むのはこの1モジュールだけ。
 21. 視点とビューポートを束縛した投影は `math/projection.ts` の `screenProjection(view, width, height)`。game の picking と render の `CameraFrame` が同じ純関数を使う。
 22. 近遠クリップ面は照準ズーム中も軌道視点の画角と注視距離が決める(現行挙動の保存)。`camera-view.ts` に TODO として残してある。
+23. 点1つぶんの軌道要素と位置評価は `src/physics/point-orbit.ts`(`PointElements` / `pointPositionAt`)。群ごとの描画半径・色という表示契約は `src/render/celestial/point-field-view.ts`(`PointFieldGroup` / `PointField`)。生成は `game/celestial/solar-system/point-field.ts` に残る。
+24. 天体固定系を THREE 行列へ写す `writeBodyFromWorld` は `src/render/celestial/body-frame.ts`。
+25. `render/cloud/` は天体の半径と自転周期を、`GeneratedCloudField` / `WeatherModel` / `AirMassField` は構築時、それ以外は呼び出し時の引数として受ける。まとめ型は作らない。注入元は `earth-system.ts`(`R_EARTH` と `SIDEREAL_DAY`。`EARTH.radius` は赤道半径なので雲には使わない)。
 
 ## 達成目標
 
@@ -45,49 +48,6 @@
 - 全手順で `npm run typecheck` が通り、最終的に `npm run test:physics`、`npm run test:game`、`npm run test:render`、`npm run test:settings` が通る。
 
 ## 手順
-
-### 手順 4. 天体表示の基礎値を細い境界へ移す
-
-#### 目的
-
-body-frame、point field、Earth cloud の表示計算を game の具象 module から切り離す。天体固有の生成・選択は game に残し、render は汎用の軌道要素または構築時に注入された world scale だけを読む。この時点で点群分布と雲の調整値は変えない。
-
-#### 変更が必要な箇所
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/render/celestial/body-frame.ts`（`src/game/celestial/body-frame.ts` から移動） | THREE matrix への body orientation 反映を render 所有にする。 |
-| `src/render/celestial/celestial-entity/point-celestial-view.ts:16,187,207` | 移動後の body-frame を使う。 |
-| `src/game/celestial/celestial-illumination.ts:17,125` | 手順 10 までの暫定 call site を移動後 path へ更新する。 |
-| `src/physics/point-orbit.ts`（新規） | `PointElements` と `pointPositionAt` の THREE 非依存な軌道評価を置く。 |
-| `src/game/celestial/point-field.ts:8-36` | 削除し、物理要素は physics、表示 group 型は render へ分ける。 |
-| `src/render/celestial/point-field-view.ts:8,15-110` | `PointField`/group の readonly 表示契約を定義し、位置評価だけ physics から読む。`sync({visible,...})` 1 本へする。 |
-| `src/game/celestial/solar-system/point-field.ts:10,28-52,187-220` | 天体名・分布・色・draw radius の決定を残し、render の表示契約を組み立てる。 |
-| `src/game/celestial/solar-system/solar-system.ts:12-13,87` | 生成結果を PointFieldView へ注入する。 |
-| `src/game/celestial/celestial-system.ts:121,384-440` | point field の visible を declarative sync に含める。 |
-| `src/render/cloud/generated-cloud-field.ts:20-26` | radius/rotation period を持つ Earth-cloud world input を構築時に受け、WeatherModel へ渡す。 |
-| `src/render/cloud/weather-model.ts:10,263-305,499` | game constants import を除き、world input を使う。 |
-| `src/render/cloud/air-mass.ts:8,43-92` | radius を constructor から使う。 |
-| `src/render/cloud/climate-map.ts:5,20` | radius を引数で使う。 |
-| `src/render/cloud/cyclone-tracks.ts:6,180` | radius を引数で使う。 |
-| `src/render/cloud/cyclones.ts:7,41-104` | radius を引数で使う。 |
-| `src/render/cloud/rossby-wave.ts:6,18-50` | radius を引数で使う。 |
-| `src/render/cloud/wind-law.ts:6,17-20` | radius と rotation period を引数で受ける pure function にする。 |
-| `src/game/celestial/solar-system/earth-system.ts:192-193` | Earth の半径・自転周期を GeneratedCloudField の構築時に注入する。 |
-| `tools/cloud-lab/pane.ts:21` | lab case の world scale を明示する。 |
-| `tests/game/point-field.test.ts:6-25,120-130` | import を physics/render の新 owner へ更新し、分布と位置の既存期待値を維持する。 |
-| `tests/render/cyclone-tracks.test.ts:7-10` | radius を fixture から与える。 |
-| `tsconfig.test.json:19-39` | 新しい point-orbit と render point-field contract を test build に含める。 |
-
-#### 達成条件と検証
-
-- `rg -n 'game/celestial/(body-frame|point-field)|game/celestial/solar-system/constants' src/render` が 0 件。
-- `rg -n 'class PointFieldView' src/render/celestial/point-field-view.ts` の public 表示 command が `sync` と readonly query/dispose だけになる。
-- seed と sim-zero が同じときの点群分布、および既存 cloud sampling test の数値が変わらない。
-- `npm run typecheck`
-- `npm run test:physics`
-- `npm run test:game`
-- `npm run test:render`
 
 ### 手順 5. 天体固有 overlay の選択を game へ戻す
 
