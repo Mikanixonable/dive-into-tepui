@@ -2,7 +2,7 @@
 
 検査時点: 2026-09-10 (JST)
 
-最新の検査対象は`workspace3`である。大容量入力は`.earth-surface/raw-v3/`へ取得中で、ERA5は未取得である。
+最新の検査対象は`workspace3`である。BMNG、ETOPO、GSHHGの大容量入力は`.earth-surface/raw-v3/`へ取得済みで、ERA5は未取得である。
 
 ## 実施した事前検査
 
@@ -22,6 +22,26 @@ terrain payload だけの圧縮前下限は 23,630,031,744 bytes（base を含�
 319,941,214,208 bytes で、この下限だけで容量不足にはならない。
 
 検査結果の完全なJSONは [preflight-latest.json](preflight-latest.json) に保存した。
+
+## 実データ取得の結果
+
+`raw-v3`にはBMNG 8枚、ETOPO ice-surface 288枚、ETOPO geoid 288枚、GSHHG 1件の合計585件を取得した。本文とreceiptの使用量は約12GiBで、各receiptのsource manifest hashは現行manifestと一致する。GSHHGの取得結果は149,157,845 bytes、SHA-256は`8dbbe7e071e77e9e75f2d639239099ebca8d5c16d6a07df8169729d49f15cf41`である。
+
+全世界生成を次のコマンドで試行した。
+
+```sh
+MAMBA_ROOT_PREFIX=.earth-surface/mamba \
+  /opt/homebrew/opt/micromamba/bin/micromamba run \
+  -n dive-into-tepui-earth-surface \
+  python tools/earth-surface/bake.py --global \
+  --raw-root .earth-surface/raw-v3 --output /tmp/earth-real-bundle
+```
+
+結果は、ERA5のローカルNetCDFが無いため、次のエラーで終了した。
+
+```text
+earth-surface:bake: 実データrendererの入力が不足しています: .earth-surface/raw-v3/era5-monthly-1991-2020/global.nc
+```
 
 ## 停止理由
 
