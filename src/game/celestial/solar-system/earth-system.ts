@@ -14,16 +14,16 @@ import {
   C22_MOON, J2_EARTH, J2_MOON, MOON_OBLIQUITY, MU_EARTH, MU_MOON, R_EARTH_EQ, R_MOON, R_MOON_GRAVITY,
   SIDEREAL_DAY,
 } from './constants';
-import { Aurora, type AuroraOptics } from '../../../render/aurora';
-import { CelestialSurface } from '../../../render/celestial-surface';
-import { CumulusShell } from '../../../render/cumulus-shell';
+import { Aurora, type AuroraOptics } from '../../../render/celestial/aurora';
+import { CelestialSurface } from '../../../render/celestial/celestial-surface';
+import { CumulusShell } from '../../../render/celestial/cumulus-shell';
 import { ClimateMap } from '../../../render/cloud/climate-map';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
-import { EarthCoastline } from '../../../render/earth-coastline';
-import { MoonSurfaceMarkings } from '../../../render/moon-surface-markings';
-import { GeostationaryOverlay } from '../celestial-entity/geostationary-overlay';
-import { PointCelestialView } from '../celestial-entity/point-celestial-view';
-import { SphereCelestialView } from '../celestial-entity/sphere-celestial-view';
+import { EarthCoastline } from '../../../render/celestial/earth-coastline';
+import { MoonSurfaceMarkings } from '../../../render/celestial/moon-surface-markings';
+import { GeostationaryOverlay } from '../../../render/celestial/celestial-entity/geostationary-overlay';
+import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
+import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
 import { MOON_DIST_TERMS, MOON_LAT_TERMS, MOON_LON_TERMS } from './moon-terms';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { CelestialTexture } from '../../../render/celestial-textures';

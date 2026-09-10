@@ -1,4 +1,4 @@
-// src/render/base-station-model.ts の造形から、基地の判定形状(ローポリメッシュ)を焼き出す。
+// src/render/dynamic/base-station-model.ts の造形から、基地の判定形状(ローポリメッシュ)を焼き出す。
 // 部位ごとにメッシュを AABB の接触で連結成分へ分け、成分ごとの凸包を取る。凸包はその成分の
 // 全頂点を必ず内側へ含むので、見えている構造を弾がすり抜けることも、見えている面へ自機が
 // めり込むことも起きない。細かい部材の足切りはしない — 落とすと判定形状の外へはみ出す。
@@ -97,7 +97,7 @@ function vertexIndex(out, point) {
   return index;
 }
 
-const { baseStationModel, dispose } = loadSourceModules(['render/base-station-model']);
+const { baseStationModel, dispose } = loadSourceModules(['render/dynamic/base-station-model']);
 const root = baseStationModel.buildBaseModel();
 root.updateMatrixWorld(true);
 

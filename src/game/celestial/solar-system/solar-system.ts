@@ -8,8 +8,8 @@ import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-l
 import { CelestialSystem } from '../celestial-system';
 import { ephemerisSeconds, TdbJulianDate } from '../../../physics/time';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { StarCelestialView } from '../celestial-entity/star-celestial-view';
-import { PointFieldView } from '../point-field-view';
+import { StarCelestialView } from '../../../render/celestial/celestial-entity/star-celestial-view';
+import { PointFieldView } from '../../../render/celestial/point-field-view';
 import { generatePointField } from './point-field';
 import { DwarfPlanetId, DWARF_PLANET_NAMES, dwarfPlanets } from './dwarf-planets';
 import { EarthSystemBodyId, EARTH_SYSTEM_NAMES, earthSystem } from './earth-system';

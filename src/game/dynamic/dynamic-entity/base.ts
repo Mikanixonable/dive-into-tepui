@@ -24,7 +24,7 @@ import type { EntityRegistry } from '../entity-registry';
 import type { StageOutcome } from '../../stages/stage-outcome';
 import type { Input } from '../../../input/input';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
-import { BaseView } from './base-view';
+import { BaseView } from '../../../render/dynamic/dynamic-entity/base-view';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { orbitRows } from '../../pickable/orbit-rows';

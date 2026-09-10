@@ -5,7 +5,7 @@ import { InstancedPool } from '../../render/instanced-pool';
 import {
   bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources,
   debrisFragmentResources,
-} from '../../render/ships';
+} from '../../render/dynamic/ships';
 import { ENTITY_CAP } from './dynamic-entity/entity-kind';
 
 export class InstancedPools {

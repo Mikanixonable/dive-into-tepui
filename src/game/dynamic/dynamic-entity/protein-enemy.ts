@@ -17,7 +17,7 @@ import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registr
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
 import type { EnemySaveData, ProteinEnemySaveData } from '../../save/save-data';
 import type { FormationRole } from './entity-kind';
-import { ProteinEnemyView } from './protein-enemy-view';
+import { ProteinEnemyView } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
 import { ENEMY_MODEL_SCALE, type EnemyCollisionShape } from './enemy-motion';
 import { apparentSizePx } from '../../../math/projection';
 import {
@@ -26,7 +26,7 @@ import {
 } from '../../protein/protein-motion-controller';
 import {
   dynamicEntityVisible, type DynamicViewFrame,
-} from '../dynamic-view';
+} from '../../../render/dynamic/dynamic-view';
 
 // タンパク質の構造は揺らぐが、判定形状は常に静止した1つに固定するので、慣性も1つでよい。
 // 漂流機体と同じく非対称にして、ジャニベコフ効果(中間軸不安定性)で無秩序に回らせる。
