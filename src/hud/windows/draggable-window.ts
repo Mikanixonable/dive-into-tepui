@@ -54,7 +54,7 @@ const STYLE = `
 #hud .dg-window-header-extras { display: contents; }
 #hud .dg-window-btn {
   flex: none; width: 18px; height: 18px; line-height: 18px; text-align: center;
-  border: 0; border-radius: var(--radius-micro);
+  border: 0; border-radius: 50%;
   background: var(--glass-control); color: var(--text);
   cursor: pointer; font-size: var(--font-s); padding: 0;
 }
