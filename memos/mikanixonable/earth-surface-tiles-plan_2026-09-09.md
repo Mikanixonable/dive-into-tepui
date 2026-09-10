@@ -32,7 +32,7 @@
 - BMNG July 2004 Base Mapを地表色の基準にする。
 - ETOPO 2022 v1のice-surface elevationとgeoidを使う。bed elevationとGEBCOは使わない。
 - GSHHG full resolutionで海・湖・陸の被覆率を作る。海抜の正負から水域を推定しない。
-- ERA5 1991–2020月平均の2m気温と総雲量を12か月のRGBA気候mapへ焼く。
+- ERA5 1991–2020月平均（daily means）の2m気温と総雲量を12か月のRGBA気候mapへ焼く。日内変化はこのmapの要件ではないため、hour-of-day軸を保持しない。
 - 気候mapは1024×512とする。R=気温、G=雲量、B=水域を除いたETOPO正高、A=GSHHG陸地被覆率。
 - 水域はAで判定し、実行時には水域の標高を0mとして扱う。海抜0m未満の陸地は負値を保つ。
 - 入力データの版、SHA-256、単位、CRS、鉛直基準、NoData、再格子化、帰属をsource manifestへ記録する。
@@ -128,7 +128,7 @@ T0 基準記録
 | フェーズ | 状態 | commit / 証拠 | 未達・制約 |
 | --- | --- | --- | --- |
 | T0 | 完了 | `492fd9af`、`.earth-surface/verification/baseline.json` | WebGPU/drawing bufferはunavailable |
-| T1 | 生成入口・実データ事前検査・fixture境界・入力検証・micromamba環境・入力窓境界を実装、全量入力の取得まで完了、実データ全量生成はblocked | `7b88aad7`, `87b6c8b5`, `d91ab5d3`, `f3c076fc`, `5e679dd0`, `8d4f492c`, `.earth-surface/verification/earth-bundle-generation-blocked-2026-09-10.md`、raw-v3受領証585件、Python 44 tests | ERA5 local export未配置。複数GeoTIFFの球面積再格子化、BMNG線形RGB、GSHHG空間被覆、ERA5月平均合成と全43690実生成は未完了。fixtureはsynthetic provenanceで本番と分離 |
+| T1 | 生成入口・実データ検証・ERA5公開ミラー取得・GeoTIFF/GSHHG/ERA5合成・共通encoderを実装。z0実タイルとz0 pilot生成を完了 | `fetch-era5-gdex.py`、`real_source.py`、`real_renderer.py`、`bake.py`、raw-v3受領証585件 + ERA5統合receipt、Python 46 tests、z0 bundle contract/package/dev-stage pass | 全z0〜z7生成とPages配置は未完了。低LODのGDAL平均はsRGB空間の近似、高LODは球面面積・線形RGB経路。全量生成の時間/容量を実測してから公開可否を判断する |
 | T2 | コード完了 | `49e01186`、render 88/88 | 実ブラウザ/WebGPU撮影は未実施 |
 | T3 | ゲーム経路・実Earthメッシュの詳細材質接続完了 | `ccc3683f`, `85b63f59`, `b1f5e2e2`、render 113/113、game 205/205 | 実manifest取得・実データ通信・実WebGPU撮影は未実施。データが無いため実タイル表示は未確認 |
 | T6-2 | 廃止 | 2026-09-10に外部静的配信要件を廃止 | 既存のremote-check実装を削除し、Pages同一origin検査へ集約 |
