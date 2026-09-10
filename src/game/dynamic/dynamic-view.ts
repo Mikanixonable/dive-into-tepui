@@ -37,7 +37,7 @@ export interface DynamicViewFrame {
   readonly pools: InstancedPools;
   readonly cameraSystem: CameraSystem;
   readonly style: RenderStyle;
-  readonly graphics: EntityVisualSettings;
+  readonly visual: EntityVisualSettings;
   readonly orbitReference: OrbitReference | undefined;
 }
 
