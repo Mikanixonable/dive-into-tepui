@@ -17,6 +17,10 @@
 7. 地球の雲モデルだけは天体固有表示として render 内の Earth 固有近似を許す。ただし `game/celestial/solar-system/constants` は import せず、半径と自転周期を構築時の細い入力として受ける。雲以外の海岸線・月面模様は汎用 overlay と天体別 asset 選択へ分ける。
 8. `game/celestial/scale-grid-view` と `game/marker/` の責務再設計は対象外とする。camera/floating-origin の型変更を通すための機械的な引数更新は行うが、scale-grid の天体名判断や marker の所有・API は変更しない。
 9. render 内部だけで閉じる helper の `show` / `hide` / `set` 一括改名は対象外とする。今回是正するのは層を越えて公開される command API と、所有層の誤りである。
+10. `settings/` の primitive は `src/settings/stored-setting.ts` が持つ。`SettingStorage`(`read` / `write`、失敗はここで吸収)、`browserSettingStorage`、`MemorySettingStorage`、`SettingValue<T>`(`readonly current: T` だけの面)、`StoredSetting<T>`(`constructor(storage, key, parse, format)` / `current` / `set` / `subscribe`。`subscribe` は登録時に現在値で1度呼ぶ)。設定を書き換えない consumer には `SettingValue` を渡す。
+11. 配色 id だけは `src/settings/theme-setting.ts` が module 直下の単一 instance として持つ。`theme.ts` が module 評価時の `ACTIVE_THEME` から全色トークン定数を導いており、初期値を注入する余地がないため。`UserSettings` は `theme.ts` を import しない(循環になる)。
+12. テストの層は `settings`(`tests/settings/`、`npm run test:settings`)。層名は `tests/run.ts` の規約どおり `src/` のフォルダ名に揃える。
+13. node のテストから `src/render/` を評価できるよう、`tests/repo-assets.ts` が webpack の `require.context` と `.cube` の代役を持つ。差し込みは `"use strict";` の直後で、改行を足さない。
 
 ## 達成目標
 
@@ -29,56 +33,9 @@
 - `EarthCoastline` と `MoonSurfaceMarkings` という天体固有 class、および対応 asset import が `src/render/` から 0 件になる。汎用 line overlay は render に残る。
 - orbit/reference/trajectory line の `samplePoints` / `lineSamples` query が、表示済み revision と同じ点列を返すテストを持ち、`game/pickable/line-pickables.ts` はその query を使い続ける。
 - 同じ入力で `thrust-effects` / `rcs-effects` を同一 display time に複数回 sync しても乱数結果が変わらない。
-- 全手順で `npm run typecheck` が通り、最終的に `npm run test:physics`、`npm run test:game`、`npm run test:render`、`npm run test:launcher` が通る。
+- 全手順で `npm run typecheck` が通り、最終的に `npm run test:physics`、`npm run test:game`、`npm run test:render`、`npm run test:settings` が通る。
 
 ## 手順
-
-### 手順 1. ラン跨ぎ設定の所有者を作り、graphics・style・BGM・theme を移す
-
-#### 目的
-
-ラン外の user preference と localStorage を `src/settings/` に集約する。render/audio/theme には値の意味と適用処理だけを残す。この時点で保存 key と既定値を維持し、ユーザーから見える挙動は変えない。
-
-#### 変更が必要な箇所
-
-| ファイル | 変更 |
-| --- | --- |
-| `DEVELOP/CODING-RULE.md:91-116` | `settings/` をラン跨ぎ user preference の mutable 正本を持つ独立層として追加し、`launcher/` を起動判断・セーブ・解放記録に限定する。consumer へ store 全体を渡さない規則も追加する。 |
-| `src/settings/stored-setting.ts`（新規） | Storage adapter、破損値 fallback、購読解除を持つ generic な永続設定 primitive を作る。 |
-| `src/settings/user-settings.ts`（新規） | graphics、render style、BGM volume、theme id の各 setting を所有する。既存 storage key を維持する。 |
-| `src/render/graphics-settings.ts:14-15,250-319` | storage、mutable data、targets、bind/apply を除き、`GraphicsSettingsData`、選択肢、preset、normalize、immutable update のみ残す。 |
-| `src/render/render-style.ts:12-51` | `RenderStyleSetting` と storage を除き、値型、候補表、`RenderStyleGate` を残す。 |
-| `src/render/pipeline/render-pipeline.ts:40,104-106,305` | `GraphicsTarget` 実装をやめ、明示的な graphics value を sync/apply する口だけ残す。 |
-| `src/render/scene.ts:15-23,55` | mutable setting の bind 先をやめ、composition root から graphics value を受ける。 |
-| `src/audio/bgm/bgm.ts:14,19-64` | volume の storage と preference 正本を除き、渡された音量を playback gain へ適用する。 |
-| `src/theme.ts:103-125,482-500` | palette 定義と DOM 適用、現在適用済み palette の派生 cache を残し、selected id の保存を除く。 |
-| `src/main.ts:11-19,33-45,78-80,108-145` | `UserSettings` を生成し、scene/pipeline、BGM、theme、HUD へ初期値と変更通知を配線する。 |
-| `src/launcher/launcher.ts:19-20,56-62,117-120` | 次の run を作るときは mutable graphics class でなく current value を受ける。 |
-| `src/launcher/debug-info-window.ts:8,134-148` | `RenderStyleSetting` への依存を値または細い購読口へ置き換える。 |
-| `src/hud/windows/settings-view.ts:2-4,38-46,98-104` | Bgm/GraphicsSettings の具象 owner を受けず、各 panel の value/change callback を受ける。 |
-| `src/hud/panels/graphics-panel.ts:4,43-119` | render の mutable class を操作せず、readonly value の sync と option change callback を公開する。 |
-| `src/hud/panels/bgm-settings-panel.ts:1,15-51` | Bgm を正本にせず、pause menu と同じ volume value を sync する。 |
-| `src/hud/panels/theme-panel.ts:1,14-40` | theme を直接保存せず、selected id の change callback を composition root へ返す。 |
-| `src/hud/windows/pause-menu.ts:25,86-90,147-162,261-262` | volume value を外から同期し、変更 callback だけを発火する。 |
-| `src/game/hud/hud.ts:3,51` | `RenderStyleSetting` の保持をやめ、render style value の同期口にする。 |
-| `src/game/hud/hud-root.ts:19,385-392` | DOM 構築時に mutable setting を要求せず、style value を反映する。 |
-| `src/game/hud/view-badge.ts:6,69-102` | style の具象 setting 購読をやめる。 |
-| `tools/render-lab/main.ts:8,61` | lab 用の in-memory graphics value owner を composition root に置く。 |
-| `tools/render-lab/lab.ts:13,96,128-143,196` | `GraphicsTarget`/`GraphicsSettings` 依存を value 適用へ変える。 |
-| `tests/launcher/user-settings.test.ts`（新規） | 既存 key の読込、破損値 fallback、更新通知、複数 UI の同値同期を in-memory Storage で検証する。 |
-| `tests/run.ts:4-22` | `launcher` test layer を登録する。 |
-| `tsconfig.test.json:19-39` | settings と launcher tests を test build に含める。 |
-| `package.json:14-23` | `test:launcher` script を追加する。 |
-
-#### 達成条件と検証
-
-- `rg -n 'localStorage|sessionStorage' src/render src/audio/bgm src/theme.ts` が 0 件。
-- `rg -n 'class GraphicsSettings|class RenderStyleSetting|GraphicsTarget' src/render` が 0 件。
-- settings view と pause menu が同じ volume setting の通知を受け、片方の変更後にもう片方へ同値を sync することを test で確認する。
-- `npm run typecheck`
-- `npm run test:launcher`
-- `npm run test:render`
-- `npm run test:game`
 
 ### 手順 2. game 内の永続表示設定を同じ owner へ移す
 
