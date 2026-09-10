@@ -9,7 +9,6 @@ import {
   THRUST_PLUME_SIZE_SPAN,
 } from '../../render/vfx-style';
 import { SchematicThrustCone } from '../../render/schematic-thrust-cone';
-import type { CameraSystem } from '../camera/camera-system';
 import { FloatingOrigin } from '../camera/floating-origin';
 import type { RenderStyle } from '../../render/render-style';
 
@@ -30,11 +29,12 @@ export class ThrustEffects {
   // 代わりに輪郭抽出へ拾われるコーンを出す。
   sync(
     fo: FloatingOrigin, playerPos: Vec3, thrust: Vec3 | null, maxAccel: number,
-    visible: boolean, camera: CameraSystem, style: RenderStyle, plumeScale = 1.0,
+    visible: boolean, cameraQuat: THREE.Quaternion, zoomActive: boolean,
+    style: RenderStyle, plumeScale = 1.0,
   ): void {
     const firing = thrust !== null && visible;
 
-    if (!firing || camera.zoomActive) {
+    if (!firing || zoomActive) {
       this.core.hide();
       this.outer.hide();
       this.schematicCone.hide();
@@ -56,14 +56,13 @@ export class ThrustEffects {
 
     const flick = 0.8 + 0.2 * Math.random();
     const sc = (THRUST_PLUME_SIZE_MIN + THRUST_PLUME_SIZE_SPAN * ratio) * flick * plumeScale;
-    const camQuat = camera.activeCamera.quaternion;
     // 推力方向の逆側にコア・アウターを置く
     const offsetCore = THRUST_PLUME_CORE_OFFSET * plumeScale;
     const offsetOuter = THRUST_PLUME_OUTER_OFFSET * plumeScale;
     this.core.sync(fo.RtoThreeV3(addScaled(playerPos, d, offsetCore)),
-      sc * THRUST_PLUME_CORE_SIZE_RATIO, THRUST_PLUME_CORE_BRIGHTNESS * flick, camQuat);
+      sc * THRUST_PLUME_CORE_SIZE_RATIO, THRUST_PLUME_CORE_BRIGHTNESS * flick, cameraQuat);
     this.outer.sync(fo.RtoThreeV3(addScaled(playerPos, d, offsetOuter)),
-      sc * THRUST_PLUME_OUTER_SIZE_RATIO, THRUST_PLUME_OUTER_BRIGHTNESS * flick, camQuat);
+      sc * THRUST_PLUME_OUTER_SIZE_RATIO, THRUST_PLUME_OUTER_BRIGHTNESS * flick, cameraQuat);
   }
 
   // core/outer ビルボードと模式図用コーンを scene から取り除き解放する。

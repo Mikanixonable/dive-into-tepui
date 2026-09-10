@@ -7,7 +7,7 @@ import { Vec3 } from '../../../math/vec3';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import { FocusCamera } from '../../camera/focus-camera';
 import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-target';
-import type { DisplayWindowManager } from '../../display-window-manager';
+import type { DisplayFrameSelection } from '../../display-frame-selection';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { CameraFramePanel } from './camera-frame-panel';
 import { TrajectoryFramePanel } from './trajectory-frame-panel';
@@ -25,13 +25,13 @@ export class FrameControls {
     popupRoot: HTMLElement,
     private readonly celestialBodies: CelestialBodies,
     private readonly mapCamera: FocusCamera,
-    private readonly displayWindow: DisplayWindowManager,
+    private readonly displayFrame: DisplayFrameSelection,
     overlayManager: OverlayManager,
     private readonly frameAnchors: FrameAnchorSource,
   ) {
     this.cameraPanel = new CameraFramePanel(panelRoot, popupRoot, celestialBodies, mapCamera, overlayManager);
     this.trajectoryPanel = new TrajectoryFramePanel(
-      panelRoot, popupRoot, celestialBodies, displayWindow, overlayManager,
+      panelRoot, popupRoot, celestialBodies, displayFrame, overlayManager,
     );
 
     this.cameraPanel.onSelectCenter = (id) => this.selectCameraCenter(id);
@@ -72,14 +72,14 @@ export class FrameControls {
     if (!this.trajectoryPanel.followCamera) return;
     const id = focusTargetId(target);
     if (id !== undefined && this.celestialBodies.has(id)) {
-      this.displayWindow.frame = this.celestialBodies.frames.frameOf(id, this.displayWindow.frame.rotatingWith);
+      this.displayFrame.frame = this.celestialBodies.frames.frameOf(id, this.displayFrame.frame.rotatingWith);
     }
   }
 
   // 軌道フレームが選んでいる役割の公転が成立しなくなったら、慣性系へ落とす。
   public update(displayTime: number): void {
-    if (this.isStaleRole(this.displayWindow.frame.rotatingWith, this.validRevolutionRoles(displayTime))) {
-      this.displayWindow.frame = this.celestialBodies.frames.frameOf(this.displayWindow.frame.center, null);
+    if (this.isStaleRole(this.displayFrame.frame.rotatingWith, this.validRevolutionRoles(displayTime))) {
+      this.displayFrame.frame = this.celestialBodies.frames.frameOf(this.displayFrame.frame.center, null);
     }
   }
 

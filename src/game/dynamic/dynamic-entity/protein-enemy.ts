@@ -1,8 +1,8 @@
 import type * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { v3, type Vec3 } from '../../../math/vec3';
-import { WorldSfx } from '../../../audio/sfx/world-sfx';
-import { FlashEffects } from '../../vfx/flash-effects';
+import type { WorldSfx } from '../../../audio/sfx/world-sfx';
+import type { FlashEffects } from '../../vfx/flash-effects';
 import { collisionDamageFraction } from './contact-damage';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
 import { ProteinCombatState } from '../../protein/protein-combat-state';
@@ -179,7 +179,7 @@ export class ProteinEnemy extends Enemy {
         const cpuStart = performance.now();
         this.motionController.update(
           context.displayTime,
-          context.graphics.proteinVibration ? this.motionLodValue : 'marker',
+          context.visual.proteinVibration ? this.motionLodValue : 'marker',
           this.combat.phase,
         );
         this.motionCpuMsValue = performance.now() - cpuStart;

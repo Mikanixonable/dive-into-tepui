@@ -83,6 +83,8 @@ export class PlayerView extends DynamicView {
     const active = context.activeId === source.id;
     const effectState = displayed ?? motion.state;
     const effectVisible = this.object.visible;
+    const cameraQuat = context.cameraSystem.activeCamera.quaternion;
+    const zoomActive = context.cameraSystem.zoomActive;
     const rcsThrust = len(source.throttle.thrustAccelVec) > 0
       ? source.throttle.thrustAccelVec
       : null;
@@ -99,7 +101,8 @@ export class PlayerView extends DynamicView {
       motion.attachedBoosters.thrust,
       motion.attachedBoosters.burnRatio,
       effectVisible,
-      context.cameraSystem,
+      cameraQuat,
+      zoomActive,
       context.style,
     );
     this.thrustEffects.sync(
@@ -108,7 +111,8 @@ export class PlayerView extends DynamicView {
       rcsThrust,
       maximumAcceleration,
       effectVisible,
-      context.cameraSystem,
+      cameraQuat,
+      zoomActive,
       context.style,
     );
     this.rcsEffects.sync(
@@ -117,7 +121,8 @@ export class PlayerView extends DynamicView {
       motion.torque,
       motion.att,
       effectVisible,
-      context.cameraSystem,
+      cameraQuat,
+      zoomActive,
     );
     this.reentryEffects.sync(
       context.floatingOrigin,
@@ -125,7 +130,7 @@ export class PlayerView extends DynamicView {
       effectState.v,
       motion.aero.qdyn,
       effectVisible,
-      context.cameraSystem,
+      cameraQuat,
     );
     // 船体に属する可動部と、操作対象だけの DOM マーカーを外部状態へ合わせる。
     this.belt.sync(source.magsLeft, motion.belt.viewState);
@@ -145,7 +150,7 @@ export class PlayerView extends DynamicView {
       source.averageMuzzleVelocity,
       context.orbitReference,
     );
-    if (active && context.cameraSystem.zoomActive) this.object.visible = false;
+    if (active && zoomActive) this.object.visible = false;
   }
 
   // 自機固有の子表示を片付けてから、共通 View の THREE 資源を破棄する。

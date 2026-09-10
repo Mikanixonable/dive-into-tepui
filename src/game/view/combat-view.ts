@@ -11,7 +11,6 @@ import type { TouchControls } from '../hud/touch-controls';
 import type { CameraSystem } from '../camera/camera-system';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { ObjectWindows } from '../pickable/object-windows';
-import type { CelestialMarkers } from '../marker/celestial-markers';
 import type { MarkerSlots } from '../marker/marker-slots';
 import type { Targeter } from '../targeter';
 import type { ControlSelection } from '../control-selection';
@@ -20,9 +19,10 @@ import type { UiSfx } from '../../audio/sfx/ui-sfx';
 
 import type { DisplayWindow } from '../display-window-manager';
 import type { FloatingOrigin } from '../camera/floating-origin';
-import type { ViewFrame } from './view';
+import type { ViewFrame } from './view-frame';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { PerfCounts } from '../perf-counts';
+import type { CelestialLabelHiding } from '../marker/celestial-label-hiding';
 
 export class CombatView implements ViewFrame {
   private readonly planGuide: PlanGuide;
@@ -35,7 +35,7 @@ export class CombatView implements ViewFrame {
     private readonly targeter: Targeter,
     private readonly objectWindows: ObjectWindows,
     private readonly roster: EntityRoster,
-    private readonly celestialMarkers: CelestialMarkers,
+    private readonly celestialLabels: CelestialLabelHiding,
     private readonly touchControls: TouchControls | null,
     private readonly controlSelection: ControlSelection,
     private readonly planPath: PlanPath,
@@ -108,7 +108,7 @@ export class CombatView implements ViewFrame {
 
   // 天体ラベルはマップ専用の表示なので、戦闘ビューの間は畳んでおく。
   public syncLabels(): void {
-    this.celestialMarkers.hideLabels();
+    this.celestialLabels.hideLabels();
   }
 
   // 戦闘ビュー専用の常設表示(タッチのモードボタン・ノード実行ガイド)。
