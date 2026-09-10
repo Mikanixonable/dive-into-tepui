@@ -1,53 +1,41 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { v3, type Vec3 } from '../../../math/vec3';
-import { apparentSizePx, metersPerPixel } from '../../../math/projection';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import { collisionDamageFraction } from './contact-damage';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
-import { proteinMotionModeDisplacements } from '../../protein/protein-motion-modes';
-import { ProteinRuntime } from '../../protein/protein-runtime';
+import { ProteinCombatState } from '../../protein/protein-combat-state';
 import { ProteinSphereCollisionGeometry } from '../../protein/protein-sphere-collision';
-import { createProteinMotionBinding } from '../../../render/protein-motion-material';
+import { proteinLocalImpactPoint, proteinSiteWorldPosition } from '../../protein/protein-anchors';
 import { DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings } from '../../protein/protein-display';
-import {
-  Enemy, ENEMY_SCALE, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore,
-} from './enemy';
+import { Enemy, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore } from './enemy';
 import { proteinAssetGate, type ProteinAssetId } from '../../protein/protein-asset-loader';
-import type { Controllable } from './controllable';
-import type { MapVisibilityPolicy } from '../../map/visibility-policy';
-import type { CameraSystem } from '../../camera/camera-system';
-import type { RenderStyle } from '../../../render/render-style';
-import type { EntityVisualSettings } from '../../../render/entity-visual-settings';
 import type { SpawnGate } from '../entity-registry';
 import type { ProteinDisplaySettings } from '../../protein/protein-display';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
-import type { ProteinMotionLod } from '../../protein/protein-motion-controller';
-import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { EnemySaveData, ProteinEnemySaveData } from '../../save/save-data';
 import type { FormationRole } from './entity-kind';
+import { ProteinEnemyView } from './protein-enemy-view';
+import { ENEMY_MODEL_SCALE, type EnemyCollisionShape } from './enemy-motion';
+import { apparentSizePx } from '../../../math/projection';
+import {
+  ProteinMotionController, proteinMotionLodForProjectedSize,
+  type ProteinMotionDisplay, type ProteinMotionLod,
+} from '../../protein/protein-motion-controller';
+import {
+  dynamicEntityVisible, type DynamicViewFrame,
+} from '../dynamic-view';
 
 // タンパク質の構造は揺らぐが、判定形状は常に静止した1つに固定するので、慣性も1つでよい。
 // 漂流機体と同じく非対称にして、ジャニベコフ効果(中間軸不安定性)で無秩序に回らせる。
 const PROTEIN_INERTIA = v3(1, 1.1, 1.05);
 
-// 新規配置。表示形態と着色は生成時に決め、以後は setDisplay で切り替える。
+// 新規配置。表示形態と着色は生成時に決め、以後は Entity の設定として切り替える。
 type ProteinEnemyPlacement = EnemyPlacement & {
   readonly assetId: ProteinAssetId;
   readonly display: ProteinDisplaySettings;
-};
-
-// HUD の部位マーカーが必要とする、1つの機能部位の投影元位置と表示情報。
-type ProteinSiteMarker = {
-  readonly id: string;
-  readonly worldPos: Vec3;
-  readonly abbreviation: string;
-  readonly hp: number;
-  readonly maxHp: number;
-  readonly disabled: boolean;
-  readonly attackable: boolean;
 };
 
 // 同じ陣形に生存中のエネルギー役がいるかを答える。攻撃担当以外と、陣形に属さない敵
@@ -55,11 +43,15 @@ type ProteinSiteMarker = {
 export function isFormationEnergyAvailable(
   formationRole: FormationRole | undefined,
   formationId: string | undefined,
-  enemies: readonly { readonly alive: boolean; readonly formationId?: string; readonly formationRole?: FormationRole }[],
+  enemies: readonly {
+    readonly motion: { readonly alive: boolean };
+    readonly formationId?: string;
+    readonly formationRole?: FormationRole;
+  }[],
 ): boolean {
   if (formationRole !== 'attacker' || formationId === undefined) return true;
   return enemies.some((enemy) => (
-    enemy.alive && enemy.formationId === formationId && enemy.formationRole === 'energy'
+    enemy.motion.alive && enemy.formationId === formationId && enemy.formationRole === 'energy'
   ));
 }
 
@@ -80,15 +72,19 @@ function displayOf(init: ProteinEnemyPlacement | EnemyRestore): ProteinDisplaySe
 // 判定形状は表示形態によらず、アセットが持つ球列に固定する。
 export class ProteinEnemy extends Enemy {
   public static readonly kind = 'protein-enemy';
+  public declare readonly view: ProteinEnemyView;
   // その体のアセットの取得を起こし、実体化してよいかを答える関門を返す。
   public static spawnGate(saved: EnemySaveData): SpawnGate {
     return proteinAssetGate((saved as ProteinEnemySaveData).assetId);
   }
 
   private readonly assetId: ProteinAssetId;
-  private readonly runtime: ProteinRuntime;
-  private readonly collision: ProteinSphereCollisionGeometry;
   private displaySettings: ProteinDisplaySettings;
+  private readonly combat: ProteinCombatState;
+  private readonly motionController: ProteinMotionController;
+  private motionLodValue: ProteinMotionLod = 'near';
+  private motionDisplayActive = false;
+  private motionCpuMsValue = 0;
 
   // 表示メッシュを組み、アセットが持つ球列へ判定形状を当てる。アセットが未取得なら投げるので、
   // EnemyClass.spawnGate で準備完了を待ってから構築すること。
@@ -101,118 +97,115 @@ export class ProteinEnemy extends Enemy {
     const assetId = 'saved' in init ? (init.saved as ProteinEnemySaveData).assetId : init.assetId;
     const definition = definitionFor(assetId);
     const display = displayOf(init);
-    const motionBinding = createProteinMotionBinding(
-      definition.motion.residueCount,
-      proteinMotionModeDisplacements(definition.motion),
-      definition.motion.modes.length,
+    const id = ('saved' in init ? init.saved.id || init.saved.name : init.id ?? init.name) || assetId;
+    const combat = new ProteinCombatState(
+      definition.asset,
+      'saved' in init ? (init.saved as ProteinEnemySaveData).protein : undefined,
     );
-    const renderObject = definition.buildRenderObject(display, motionBinding ?? undefined);
-    renderObject.scale.setScalar(ENEMY_SCALE);
+    const proteinView = new ProteinEnemyView(definition, display, scene);
     // 表示が原子模型へ切り替わっても、判定形状は常に同じ球列に固定する。
-    const collision = new ProteinSphereCollisionGeometry(definition.collisionSpheres, ENEMY_SCALE);
+    const collision = new ProteinSphereCollisionGeometry(
+      definition.collisionSpheres, ENEMY_MODEL_SCALE,
+    );
+    const shape: EnemyCollisionShape = {
+      testSphereCollision: (self, sphereCenter, sphereRadius, selfState) => (
+        collision.testSphereCollision(sphereCenter, sphereRadius, selfState.r, self.att.q)
+      ),
+      testSweptSphereCollision: (
+        self, previousSphereCenter, sphereCenter, sphereRadius, previousSelfState, selfState,
+      ) => collision.testSweptSphereCollision(
+        previousSphereCenter, sphereCenter, sphereRadius,
+        previousSelfState, selfState, self.att.q,
+      ),
+    };
     // 新規生成のときだけ、タンパク質固有の名称を陣形役割・識別番号などの既存識別子の前へ冠する。
     super(
       'saved' in init ? init : { ...init, name: `${definition.asset.displayName} ${init.name}` },
-      renderObject, PROTEIN_INERTIA, collision.outerRadius, worldSfx, fx, scene,
+      proteinView, PROTEIN_INERTIA, collision.outerRadius, worldSfx, fx, shape,
     );
     this.assetId = assetId;
     this.displaySettings = display;
-    this.collision = collision;
-    this.runtime = new ProteinRuntime(
-      this.renderObject, definition.asset, definition.motion,
-      'saved' in init ? (init.saved as ProteinEnemySaveData).protein : undefined,
-      this.id, motionBinding,
-    );
+    this.combat = combat;
+    this.motionController = new ProteinMotionController(definition.motion, id);
   }
 
   // HP の正本は combat 側なので、艦の既定パーツは積まない。
   protected override initDefaultParts(): void {}
 
-  public override get hp(): number { return this.runtime.combat.integrityHp; }
+  public override get hp(): number { return this.combat.integrityHp; }
   public override set hp(_value: number) {}
-  public override get maxHp(): number { return this.runtime.combat.integrityMaxHp; }
+  public override get maxHp(): number { return this.combat.integrityMaxHp; }
   public override set maxHp(_value: number) {}
 
   public get display(): ProteinDisplaySettings { return this.displaySettings; }
+  public get motionLod(): ProteinMotionLod { return this.motionLodValue; }
+  public get motionCpuMs(): number { return this.motionCpuMsValue; }
+  // View が読む変形入力を、この Entity が確定済みの値だけで宣言する。
+  public get motionDisplay(): ProteinMotionDisplay {
+    return {
+      active: this.motionDisplayActive,
+      lod: this.motionLodValue,
+      sampleTime: this.motionController.sampleTime,
+      phase: this.combat.phase,
+      coefficients: this.motionController.effectiveModeCoefficients,
+    };
+  }
 
   // ステージ操作の表示形態・着色変更を反映する。
   public setDisplay(display: ProteinDisplaySettings): void {
     this.displaySettings = display;
-    this.runtime.clearVisuals();
-    definitionFor(this.assetId).recolorRenderObject(this.renderObject, display, this.runtime.motionBinding ?? undefined);
-    this.runtime.rebuildVisuals();
   }
 
-  public get hudSnapshot(): ProteinHudSnapshot { return this.runtime.hudSnapshot; }
+  public get hudSnapshot(): ProteinHudSnapshot { return this.combat.hudSnapshot(); }
 
-  // 負荷確認ウィンドウが読む、直近 sync() 時点のモーション計算量。
-  public get motionMetrics(): { readonly cpuMs: number; readonly uploadBytes: number; readonly lod: ProteinMotionLod } {
-    return { cpuMs: this.runtime.cpuMs, uploadBytes: this.runtime.uploadBytes, lod: this.runtime.lod };
-  }
-
-  // 各機能部位の投影元位置と HUD 表示情報を並べる。displayPos には markerItem と同じ
-  // 表示時刻の位置(stateAt 経由)を渡すこと。
-  public siteMarkers(displayPos: Vec3): readonly ProteinSiteMarker[] {
-    return this.runtime.hudSnapshot.sites.map((site) => ({
-      id: site.id,
-      worldPos: this.runtime.siteWorldPositionById(site.id, displayPos, this.att.q),
-      abbreviation: site.abbreviation,
-      hp: site.hp,
-      maxHp: site.maxHp,
-      disabled: site.disabled,
-      attackable: site.attackable,
-    }));
-  }
-
-  // 表示物を displayTime の状態へ合わせる。ゆらぎの LOD は画面上の投影サイズで決め、
-  // 画質設定のタンパク質の揺らぎが切られていれば静止した構造で描く。
-  protected override syncModel(
-    fo: FloatingOrigin, displayTime: number, active: Controllable | null,
-    visibilityPolicy: MapVisibilityPolicy | null, cameraSystem: CameraSystem, _style: RenderStyle,
-    visual: EntityVisualSettings,
-  ): void {
-    const displayed = this.placeModel(fo, displayTime, active, visibilityPolicy);
-    if (displayed === null || !this.renderObject.visible) return;
-    const projectedDiameterPx = apparentSizePx(
-      this.radius * 2,
-      metersPerPixel(cameraSystem.activeViewpoint, displayed.r, window.innerHeight));
-    // marker LOD(ゆらぎが見えない投影サイズ)まで落ちた敵は、ゆらぎの更新を止める。
-    if (this.runtime.updateLod(projectedDiameterPx) !== 'marker') {
-      this.runtime.updateVisual(displayTime, visual.proteinVibration);
+  // View へ渡す LOD とモード係数を、外部のフレーム入力から確定してから描画同期へ進む。
+  public override sync(context: DynamicViewFrame): void {
+    // 本体と同じ可視条件で表示時刻の状態を引き、非表示フレームは変形計算を止める。
+    const displayed = this.motion.alive && dynamicEntityVisible(this, context)
+      ? this.motion.stateAt(context.displayTime)
+      : null;
+    this.motionDisplayActive = displayed !== null;
+    this.motionCpuMsValue = 0;
+    if (displayed !== null) {
+      const projectedDiameterPx = apparentSizePx(
+        this.motion.radius * 2,
+        context.cameraSystem.activeCameraRadialScale(displayed.r),
+      );
+      this.motionLodValue = proteinMotionLodForProjectedSize(
+        projectedDiameterPx, this.motionLodValue,
+      );
+      // ヒステリシスと係数遷移の履歴は Entity 側で進め、View へは結果だけを渡す。
+      if (this.motionLodValue !== 'marker') {
+        const cpuStart = performance.now();
+        this.motionController.update(
+          context.displayTime,
+          context.graphics.proteinVibration ? this.motionLodValue : 'marker',
+          this.combat.phase,
+        );
+        this.motionCpuMsValue = performance.now() - cpuStart;
+      }
     }
-  }
-
-  public override testCustomSphereCollision(sphereCenter: Vec3, sphereRadius: number, selfState: KinematicState) {
-    return this.collision.testSphereCollision(sphereCenter, sphereRadius, selfState.r, this.att.q);
-  }
-
-  public override testCustomSweptSphereCollision(
-    previousSphereCenter: Vec3, sphereCenter: Vec3, sphereRadius: number,
-    previousSelfState: KinematicState, selfState: KinematicState,
-  ) {
-    return this.collision.testSweptSphereCollision(
-      previousSphereCenter, sphereCenter, sphereRadius, previousSelfState, selfState, this.att.q,
-    );
-  }
-
-  public override usesCustomSphereCollision(): boolean {
-    return true;
+    super.sync(context);
   }
 
   // 陣形内に生存中のエネルギー役がいる間だけ、攻撃行動が有効になる。
   protected override canFire(enemies: readonly Enemy[]): boolean {
-    const attackAction = this.runtime.combat.attackAction;
+    const attackAction = this.combat.attackAction;
     if (attackAction === null) return false;
     const energyAvailable = isFormationEnergyAvailable(this.formationRole, this.formationId, enemies);
-    return this.runtime.combat.isActionEnabled(attackAction.id, energyAvailable);
+    return this.combat.isActionEnabled(attackAction.id, energyAvailable);
   }
 
   protected override muzzlePosition(): Vec3 {
-    return this.runtime.nextAttackSiteWorldPosition(this.state.r, this.att.q);
+    return proteinSiteWorldPosition(
+      this.combat.nextAttackSite(), [], [], 0,
+      this.combat.asset.coordinateScale, ENEMY_MODEL_SCALE,
+      this.motion.state.r, this.motion.att.q,
+    );
   }
 
   protected override plasmaDamage(): number {
-    return this.runtime.combat.projectileDamage(PLASMA_BULLET_DAMAGE);
+    return this.combat.projectileDamage(PLASMA_BULLET_DAMAGE);
   }
 
   protected override muzzleEffect(muzzleState: KinematicState): void {
@@ -221,11 +214,13 @@ export class ProteinEnemy extends Enemy {
 
   // 被弾位置に最も近い機能部位へダメージを割り振る。部位の機能停止・フェーズ遷移は閃光で示す。
   protected override applyBulletDamage(damage: number, impactPoint: Vec3): void {
-    const localPoint = this.runtime.localImpactPoint(impactPoint, this.state.r, this.att.q);
-    const result = this.runtime.combat.applyDamage(damage, localPoint);
+    const localPoint = proteinLocalImpactPoint(
+      impactPoint, this.motion.state.r, this.motion.att.q, ENEMY_MODEL_SCALE,
+    );
+    const result = this.combat.applyDamage(damage, localPoint);
     if (result.siteDisabled || result.phaseChanged) {
       this._fx.spawnProteinStateFlash(
-        kinematicState<'eci'>(this.state.t, impactPoint, this.state.v),
+        kinematicState<'eci'>(this.motion.state.t, impactPoint, this.motion.state.v),
         result.phaseChanged ? result.phase : 'site-disabled',
       );
     }
@@ -235,7 +230,7 @@ export class ProteinEnemy extends Enemy {
   protected override applyImpactDamage(damageSpeed: number): boolean {
     const damageFraction = collisionDamageFraction(damageSpeed);
     if (damageFraction <= 0) return false;
-    this.runtime.combat.applyContactDamage(this.maxHp * damageFraction);
+    this.combat.applyContactDamage(this.maxHp * damageFraction);
     return true;
   }
 
@@ -245,12 +240,7 @@ export class ProteinEnemy extends Enemy {
       kind: ProteinEnemy.kind,
       assetId: this.assetId,
       display: this.displaySettings,
-      protein: this.runtime.combat.serialize(),
+      protein: this.combat.serialize(),
     };
-  }
-
-  public override dispose(): void {
-    this.runtime.dispose();
-    super.dispose();
   }
 }

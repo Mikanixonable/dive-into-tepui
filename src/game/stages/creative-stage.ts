@@ -13,7 +13,6 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
 
@@ -93,7 +92,7 @@ export class CreativeStage extends Stage {
   // 操作艦の弾薬を満載にする。操作艦がいなければトーストで知らせる。
   private refillShipAmmo(): void {
     const player = this.ship;
-    if (player === null || !player.alive) {
+    if (player === null || !player.motion.alive) {
       this._hud.hint('操作艦がいないため弾薬を補充できません');
       return;
     }
@@ -103,7 +102,7 @@ export class CreativeStage extends Stage {
   // 操作艦の RCS 燃料を満タンにする。操作艦がいなければトーストで知らせる。
   private refillShipRcsFuel(): void {
     const player = this.ship;
-    if (player === null || !player.alive) {
+    if (player === null || !player.motion.alive) {
       this._hud.hint('操作艦がいないためRCS燃料を補充できません');
       return;
     }
@@ -113,7 +112,7 @@ export class CreativeStage extends Stage {
   // shape で選んだ形の敵を1体、自機の前方へ出す。操作艦がいなければトーストで知らせる。
   private spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void {
     const player = this.ship;
-    if (player === null || !player.alive) {
+    if (player === null || !player.motion.alive) {
       this._hud.hint('操作艦がいないため敵をスポーンできません');
       return;
     }
@@ -124,7 +123,7 @@ export class CreativeStage extends Stage {
   // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機前方に一括スポーンする。
   private spawnProteinFormation(): void {
     const player = this.ship;
-    if (player === null || !player.alive) {
+    if (player === null || !player.motion.alive) {
       this._hud.hint('操作艦がいないため敵をスポーンできません');
       return;
     }
@@ -155,11 +154,10 @@ export class CreativeStage extends Stage {
   // 共通のステータス表示に加えて、ステージ操作パネルと配置プレビューを同期する。
   sync(
     fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
-    visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    super.sync(fo, cameraSystem, displayTime, visibilityPolicy);
+    super.sync(fo, cameraSystem, displayTime);
     const ship = this.ship;
-    this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.alive);
+    this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.motion.alive);
     this.mountStageControlsPanel(cameraSystem.view === 'map');
     this.objectPlacement.sync(fo, cameraSystem, displayTime);
     this.stageControlsPanel.element.classList.remove('hidden');
@@ -205,7 +203,7 @@ export class CreativeStage extends Stage {
       }
       if (!reached) continue;
       ship.plan.consumeNodesUpTo(simTime, reached);
-      ship.state = reached;
+      ship.motion.state = reached;
     }
   }
 

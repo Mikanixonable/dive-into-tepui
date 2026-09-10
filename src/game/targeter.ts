@@ -3,6 +3,7 @@
 import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../math/vec3';
 import { Enemy } from './dynamic/dynamic-entity/enemy';
 import { isBullet } from './dynamic/dynamic-entity/bullet';
+import { bulletReactionOf } from './dynamic/dynamic-entity/bullet-reaction';
 import { isAmmoPickup } from './dynamic/dynamic-entity/ammo-pickup';
 import { isRcsFuelPickup } from './dynamic/dynamic-entity/rcs-fuel-pickup';
 import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
@@ -67,9 +68,9 @@ export class Targeter {
   handleTargetSelectKey(input: Input, viewer: OrbitingObject, project: ProjectFn): void {
     if (!input.takeKey(K.targetSelect)) return;
     const targets = this.roster.all()
-      .filter(isCombatTarget).filter((e) => e.alive && e !== viewer);
+      .filter(isCombatTarget).filter((e) => e.motion.alive && e !== viewer);
     this.navTarget.setCombatTarget(pickNearest(
-      targets, (target) => project(target.state.r),
+      targets, (target) => project(target.motion.state.r),
       window.innerWidth * 0.5, window.innerHeight * 0.5, Infinity));
   }
 
@@ -84,19 +85,20 @@ export class Targeter {
       m.age += dt;
       return m.age < BOARD_MARK_LIFETIME;
     });
-    const n = norm(sub(target.state.r, viewer.state.r)); // 的の法線 = 視線方向
+    const n = norm(sub(target.motion.state.r, viewer.motion.state.r)); // 的の法線 = 視線方向
     if (lenSq(n) < 0.5) return;
 
     // 各弾について、前フレームと今フレームの位置が的面をどちら向きに跨いだかを見る。
     for (const b of this.roster.all().filter(isBullet)) {
-      if (b.type !== 'normal' || !b.alive) continue; // 的通過マーカーは通常弾のみ対象
-      const prevR = b.prevState.r;
-      const d0 = dot(sub(prevR, target.state.r), n);
-      const d1 = dot(sub(b.state.r, target.state.r), n);
+      const bullet = bulletReactionOf(b.motion);
+      if (bullet?.type !== 'normal' || !b.motion.alive) continue; // 的通過マーカーは通常弾のみ対象
+      const prevR = b.motion.prevState.r;
+      const d0 = dot(sub(prevR, target.motion.state.r), n);
+      const d1 = dot(sub(b.motion.state.r, target.motion.state.r), n);
       if (!(d0 < 0 && d1 >= 0)) continue; // 自機側 → 向こう側への通過のみ
       const t = d0 / (d0 - d1);
-      const pos = addScaled(prevR, sub(b.state.r, prevR), t);
-      const off = sub(pos, target.state.r);
+      const pos = addScaled(prevR, sub(b.motion.state.r, prevR), t);
+      const off = sub(pos, target.motion.state.r);
       if (lenSq(off) > BOARD_RADIUS * BOARD_RADIUS) continue; // 的から外れすぎ
       this.boardMarks.push({ off, age: 0 });
       if (this.boardMarks.length > MAX_BOARD_MARKS) this.boardMarks.shift();
@@ -131,13 +133,13 @@ export class Targeter {
     const mapView = view === 'map';
     const project = cameraSystem.activeCameraProjection;
     const screenScale = cameraSystem.activeCameraScale;
-    const viewerPos = viewer?.state.r ?? v3();
+    const viewerPos = viewer?.motion.state.r ?? v3();
     this.aliveScratch.length = 0;
     this.markerItemScratch.length = 0;
     for (const tgt of targets) {
-      if (!tgt.alive) continue;
+      if (!tgt.motion.alive) continue;
       this.aliveScratch.push(tgt);
-      const ds = tgt.stateAt(displayTime);
+      const ds = tgt.motion.stateAt(displayTime);
       if (!ds) continue;
       const visibility = visibilityPolicy?.entity(tgt.mapKind, tgt === viewer);
       if (visibility && !visibility.pickable) continue;
@@ -158,23 +160,31 @@ export class Targeter {
     // ここで畳まないと撃破直後の部位マーカーが残る。
     for (const tgt of targets) {
       if (!(tgt instanceof ProteinEnemy)) continue;
-      const ds = tgt.alive ? tgt.stateAt(displayTime) : null;
+      const ds = tgt.motion.alive ? tgt.motion.stateAt(displayTime) : null;
       this.syncProteinSiteMarkers(tgt, ds?.r ?? null, viewerPos, mapView, project, cameraSystem.activeCameraPos);
     }
     for (const ammo of ammoPickups) {
-      if (!ammo.alive) continue;
+      if (!ammo.motion.alive) continue;
       const visibility = visibilityPolicy?.entity('ammo');
       if (visibility && !visibility.pickable) continue;
-      const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, ammo.state.r, this.celestialBodies, displayTime);
-      const mapOpacity = mapOccluded ? 0 : mapView ? ammoFadeOpacity(len(sub(ammo.state.r, viewerPos))) : 1;
+      const mapOccluded = mapView && isOccluded(
+        cameraSystem.activeCameraPos, ammo.motion.state.r, this.celestialBodies, displayTime,
+      );
+      const mapOpacity = mapOccluded
+        ? 0
+        : mapView ? ammoFadeOpacity(len(sub(ammo.motion.state.r, viewerPos))) : 1;
       this.pushMarkerItem(ammo.markerItem(), viewerPos, mapView, visibility, mapOpacity, mapOccluded);
     }
     for (const fuel of fuelPickups) {
-      if (!fuel.alive) continue;
+      if (!fuel.motion.alive) continue;
       const visibility = visibilityPolicy?.entity('fuel');
       if (visibility && !visibility.pickable) continue;
-      const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, fuel.state.r, this.celestialBodies, displayTime);
-      const mapOpacity = mapOccluded ? 0 : mapView ? ammoFadeOpacity(len(sub(fuel.state.r, viewerPos))) : 1;
+      const mapOccluded = mapView && isOccluded(
+        cameraSystem.activeCameraPos, fuel.motion.state.r, this.celestialBodies, displayTime,
+      );
+      const mapOpacity = mapOccluded
+        ? 0
+        : mapView ? ammoFadeOpacity(len(sub(fuel.motion.state.r, viewerPos))) : 1;
       this.pushMarkerItem(fuel.markerItem(), viewerPos, mapView, visibility, mapOpacity, mapOccluded);
     }
     this.markerManager.combatMarkers.sync(
@@ -209,8 +219,12 @@ export class Targeter {
   private syncProteinSiteMarkers(
     enemy: ProteinEnemy, displayPos: Vec3 | null, viewerPos: Vec3, mapView: boolean, project: ProjectFn, cameraPos: Vec3,
   ): void {
+    // HP snapshot は Entity、変形済みアンカーは View から同じ呼び出しで合成する。
     const inRange = !mapView && displayPos !== null && len(sub(displayPos, viewerPos)) <= PROTEIN_SITE_MARKER_RANGE;
-    const sites = enemy.siteMarkers(displayPos ?? enemy.state.r);
+    const sites = enemy.view.siteMarkers(
+      displayPos ?? enemy.motion.state.r, enemy.motion.att.q, enemy.hudSnapshot.sites,
+    );
+    // 範囲外でも全既存キーを通り、前フレームの DOM マーカーを確実に隠す。
     for (const site of sites) {
       const key = `psite-${enemy.id}-${site.id}`;
       if (!inRange) { this.markerManager.hide(key); continue; }
@@ -232,7 +246,10 @@ export class Targeter {
       }
       // 寿命の残りをそのまま濃さにする。
       const fade = 1 - m.age / BOARD_MARK_LIFETIME;
-      this.markerManager.setPosition(key, 'mk-boardpass', '✦', add(target.state.r, m.off), project, '', 0.25 + 0.75 * fade);
+      this.markerManager.setPosition(
+        key, 'mk-boardpass', '✦', add(target.motion.state.r, m.off),
+        project, '', 0.25 + 0.75 * fade,
+      );
     }
   }
 
@@ -244,8 +261,13 @@ export class Targeter {
       this.markerManager.hide('atgdir');
       return;
     }
-    const tgtDir = norm(sub(tgt.state.r, viewer.state.r));
-    this.markerManager.setDirection('tgtdir', 'mk-tgtdir', DIRECTION_GLYPH.target, viewer.state.r, tgtDir, project);
-    this.markerManager.setDirection('atgdir', 'mk-tgtdir', DIRECTION_GLYPH.antiTarget, viewer.state.r, scale(tgtDir, -1), project);
+    const tgtDir = norm(sub(tgt.motion.state.r, viewer.motion.state.r));
+    this.markerManager.setDirection(
+      'tgtdir', 'mk-tgtdir', DIRECTION_GLYPH.target, viewer.motion.state.r, tgtDir, project,
+    );
+    this.markerManager.setDirection(
+      'atgdir', 'mk-tgtdir', DIRECTION_GLYPH.antiTarget,
+      viewer.motion.state.r, scale(tgtDir, -1), project,
+    );
   }
 }

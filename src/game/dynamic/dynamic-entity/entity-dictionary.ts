@@ -57,7 +57,7 @@ export function restorationFor(
     case 'base':
       return {
         gate: null,
-        build: () => new Base({ saved: data, simTime }, scene, notifier, worldSfx, markers),
+        build: () => new Base({ saved: data, simTime }, scene, notifier, markers),
       };
     default:
       return skipUnknownKind(data);

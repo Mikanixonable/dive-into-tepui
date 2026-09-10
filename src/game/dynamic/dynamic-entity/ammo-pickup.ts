@@ -1,7 +1,6 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { len, sub, v3, type Vec3 } from '../../../math/vec3';
-import { buildAmmoPickup } from '../../../render/ships';
-import { DynamicEntity, SMALL_DEBRIS_BCINV, SMALL_DEBRIS_SRP_COEFF, SMALL_DEBRIS_BULK_DENSITY, SMALL_DEBRIS_SPECIFIC_HEAT, SMALL_DEBRIS_RADIATING_AREA_PER_MASS, SMALL_DEBRIS_MAX_TEMP } from './dynamic-entity';
+import { DynamicEntity } from './dynamic-entity';
 import { EntityIdAllocator } from './entity-id';
 import type { DynamicEntityKind } from './entity-kind';
 import { DIRECTION_GLYPH, ENTITY_GLYPH } from '../../marker/marker-identity';
@@ -22,8 +21,9 @@ import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { OrbitingObject } from './orbiting-object';
+import { AmmoPickupView } from './pickup-view';
+import { PickupMotion } from './pickup-motion';
 
-const AMMO_PHYS_RADIUS = 1.3; // 物理接触用の半径 [m](見た目に近い実寸)
 // 取り込み距離 [m]。ゲームプレイ上の吸収判定で、物理サイズではない。
 export const AMMO_PICKUP_RADIUS = 100;
 
@@ -40,16 +40,6 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
   public override readonly mapKind: DynamicEntityKind = 'ammo';
   public override readonly pickable = true;
 
-  override readonly bcInv = SMALL_DEBRIS_BCINV;
-  protected readonly srpCoeff = SMALL_DEBRIS_SRP_COEFF;
-  protected readonly specificHeat = SMALL_DEBRIS_SPECIFIC_HEAT;
-  protected readonly bulkDensity = SMALL_DEBRIS_BULK_DENSITY;
-  protected override get radiatingAreaPerMass(): number {
-    return SMALL_DEBRIS_RADIATING_AREA_PER_MASS;
-  }
-  protected readonly maxTemperature = SMALL_DEBRIS_MAX_TEMP;
-  protected readonly predictedForGhost = true;
-
   // 補給メッシュを組み立て、質量と衝突半径を設定する。id 省略時はここで一意に発番する。
   public constructor(init: AmmoPickupInit, scene: THREE.Scene) {
     const { state, att, id } = 'saved' in init
@@ -59,12 +49,14 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
         id: init.saved.id || undefined,
       }
       : { state: init.state, att: init.att, id: init.id };
-    super(state, buildAmmoPickup(), scene, att, idAllocator.next(id));
+    super(
+      state,
+      new AmmoPickupView(scene),
+      att,
+      idAllocator.next(id),
+      () => new PickupMotion(state, att, 'ammo'),
+    );
     this.setName('弾薬');
-    this.mass = 0; // 試験粒子。回収しに近づいた艦を押さない
-    this.radius = AMMO_PHYS_RADIUS;
-    this.collides = true;
-    this.contactDamageWeight = 0;
   }
 
   // セーブデータへ変換する。
@@ -72,10 +64,10 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
     return {
       id: this.id,
       kind: 'ammo',
-      r: { ...this.state.r },
-      v: { ...this.state.v },
-      q: { ...this.att.q },
-      w: { ...this.att.w },
+      r: { ...this.motion.state.r },
+      v: { ...this.motion.state.v },
+      q: { ...this.motion.att.q },
+      w: { ...this.motion.att.w },
     };
   }
 
@@ -89,8 +81,8 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
       kind: this.mapKind,
       cls: 'mk-ammo',
       sym: ENTITY_GLYPH.ammo,
-      pos: this.state.r,
-      vel: this.state.v,
+      pos: this.motion.state.r,
+      vel: this.motion.state.v,
       priority: MARKER_PRIORITY.AMMO,
       name: this.name,
       bearingColor: 'var(--color-primary-hover)',
@@ -101,8 +93,8 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
   }
 
   // 被選択物(ObjectPickable)としての振る舞い。
-  public get gone(): boolean { return !this.alive; }
-  public get orbitState(): KinematicState { return this.state; }
+  public get gone(): boolean { return !this.motion.alive; }
+  public get orbitState(): KinematicState { return this.motion.state; }
   public readonly glyph = ENTITY_GLYPH.ammo;
   public readonly glyphSvg = null;
   public readonly listSection: MapListSection = 'ammo';
@@ -113,7 +105,7 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
 
   // 表示時刻の ECI 位置。予測が届かない時刻では null。
   public posAt(displayTime: number): Vec3 | null {
-    return this.stateAt(displayTime)?.r ?? null;
+    return this.motion.stateAt(displayTime)?.r ?? null;
   }
 
   public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(this.markerKey); }
@@ -123,7 +115,7 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
     _celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number,
   ): string {
     if (viewer === null) return '';
-    const d = len(sub(this.posAt(displayTime) ?? this.state.r, viewer.state.r));
+    const d = len(sub(this.posAt(displayTime) ?? this.motion.state.r, viewer.motion.state.r));
     return `${fmtDist(d)}${this.listCounted(viewer, displayTime) ? ' · 回収可能' : ''}`;
   }
 
@@ -137,7 +129,7 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
   // 自艦が回収圏内に入っているか。
   public listCounted(viewer: OrbitingObject | null, displayTime: number): boolean {
     if (viewer === null) return false;
-    const d = len(sub(this.posAt(displayTime) ?? this.state.r, viewer.state.r));
+    const d = len(sub(this.posAt(displayTime) ?? this.motion.state.r, viewer.motion.state.r));
     return d <= AMMO_PICKUP_RADIUS;
   }
 
@@ -158,8 +150,8 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
   public runMenu(
     act: MenuAction, _controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
   ): void {
-    if (act === 'delete') this.alive = false;
-    else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.mapKind, this.state);
+    if (act === 'delete') this.motion.alive = false;
+    else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.mapKind, this.motion.state);
   }
 
   // プロパティウィンドウに出す行。自艦からの距離を主要行とし、軌道要素は「軌道」グループの
@@ -168,7 +160,9 @@ export class AmmoPickup extends DynamicEntity implements ObjectPickable {
     celestialBodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
     const rows: PropertyRow[] = [];
-    if (viewer) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(this.state.r, viewer.state.r))) });
+    if (viewer) rows.push({
+      key: 'dist', label: '距離', value: fmtDist(len(sub(this.motion.state.r, viewer.motion.state.r))),
+    });
     rows.push(...orbitRows(this, celestialBodies, simTime));
     return rows;
   }

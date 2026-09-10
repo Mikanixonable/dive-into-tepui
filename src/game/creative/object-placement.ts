@@ -203,7 +203,7 @@ export class ObjectPlacement {
       }
       case 'base': {
         const finalName = name.trim() || generateRandomName('base');
-        const base = new Base({ state, name: finalName }, this.scene, this.hud, this.worldSfx, this.markers);
+        const base = new Base({ state, name: finalName }, this.scene, this.hud, this.markers);
         return { kind: 'entity', entity: base, name: base.name };
       }
     }
