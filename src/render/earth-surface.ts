@@ -7,8 +7,10 @@ import type {
 } from './earth-surface-resident';
 import type {
   CelestialSurfaceFrame,
+  CelestialSurfaceDiagnostics,
   CelestialSurfaceLike,
   CelestialSurfaceMaterialAttachment,
+  CelestialSurfaceStatus,
   SurfacePhotometry,
 } from './celestial-surface';
 
@@ -18,12 +20,14 @@ export interface EarthSurfaceRequestLease {
   release(): void;
 }
 
-export type EarthSurfaceStatus = 'loading' | 'ready' | 'error' | 'fallback';
+export type EarthSurfaceStatus = CelestialSurfaceStatus;
 
 // 実GPU実装を直接所有せず、ゲーム側から差し込める地表常駐の最小境界。
 // 具象coordinatorはタイル要求とGPU寿命を持つため、EarthSurfaceはこの2操作だけを知る。
 export interface EarthSurfaceResidentCoordinatorLike {
   sync(input: EarthSurfaceResidentFrame): unknown;
+  readonly residentMaxZ?: number | null;
+  readonly failureReason?: string | null;
   reset?(): void;
   dispose(): void;
 }
@@ -104,6 +108,7 @@ export class EarthSurface implements CelestialSurfaceLike {
   private materialSyncValue: ((frame: CelestialSurfaceFrame) => void) | null = null;
   private detailedMaterialValue = false;
   private statusValue: EarthSurfaceStatus;
+  private reasonValue: string | null;
   private disposed = false;
 
   public constructor(
@@ -111,14 +116,25 @@ export class EarthSurface implements CelestialSurfaceLike {
     private readonly fallback: CelestialSurfaceLike,
     coordinator: EarthSurfaceResidentCoordinatorLike | null = null,
     status: EarthSurfaceStatus = coordinator === null ? 'fallback' : 'ready',
+    reason: string | null = null,
   ) {
     this.coordinatorValue = coordinator;
     this.statusValue = status;
+    this.reasonValue = reason;
   }
 
   public get status(): EarthSurfaceStatus { return this.statusValue; }
 
   public get usesDetailedMaterial(): boolean { return this.detailedMaterialValue; }
+
+  public get diagnostics(): CelestialSurfaceDiagnostics {
+    return {
+      status: this.statusValue,
+      reason: this.reasonValue ?? this.coordinatorValue?.failureReason ?? null,
+      usesDetailedMaterial: this.detailedMaterialValue,
+      residentMaxZ: this.coordinatorValue?.residentMaxZ ?? null,
+    };
+  }
 
   public get photometry(): SurfacePhotometry | null { return this.fallback.photometry; }
 
@@ -190,6 +206,7 @@ export class EarthSurface implements CelestialSurfaceLike {
     coordinator: EarthSurfaceResidentCoordinatorLike | null,
     status: EarthSurfaceStatus,
     material: EarthSurfaceMaterialAttachment | null = null,
+    reason: string | null = null,
   ): void {
     if (this.disposed) {
       coordinator?.dispose();
@@ -202,6 +219,7 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.context.replaceSource(source);
     this.coordinatorValue = coordinator;
     this.statusValue = status;
+    this.reasonValue = reason;
     this.materialSyncValue = null;
     this.detailedMaterialValue = false;
     if (material !== null) {
@@ -211,6 +229,7 @@ export class EarthSurface implements CelestialSurfaceLike {
         this.coordinatorValue?.dispose();
         this.coordinatorValue = null;
         this.statusValue = 'fallback';
+        this.reasonValue = 'detailed material connection unavailable';
       } else {
         host.replaceMaterial(material);
         this.materialSyncValue = material.syncFrame;
