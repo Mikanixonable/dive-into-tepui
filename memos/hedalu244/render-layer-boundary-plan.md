@@ -33,6 +33,7 @@
 23. 点1つぶんの軌道要素と位置評価は `src/physics/point-orbit.ts`(`PointElements` / `pointPositionAt`)。群ごとの描画半径・色という表示契約は `src/render/celestial/point-field-view.ts`(`PointFieldGroup` / `PointField`)。生成は `game/celestial/solar-system/point-field.ts` に残る。
 24. 天体固定系を THREE 行列へ写す `writeBodyFromWorld` は `src/render/celestial/body-frame.ts`。
 25. `render/cloud/` は天体の半径と自転周期を、`GeneratedCloudField` / `WeatherModel` / `AirMassField` は構築時、それ以外は呼び出し時の引数として受ける。まとめ型は作らない。注入元は `earth-system.ts`(`R_EARTH` と `SIDEREAL_DAY`。`EARTH.radius` は赤道半径なので雲には使わない)。
+26. 地表へ貼る線は `src/render/celestial/line-overlay.ts` の `LineOverlay.of(lines)`。`lines` は「緯度経度の折れ線」か「単位球面上の閉ループ」の union で、geometry の共有キャッシュは頂点データの配列と kind の組を鍵にする。どのアセットをどの天体へ割り当てるかは `earth-system.ts` が決める。
 
 ## 達成目標
 
@@ -48,31 +49,6 @@
 - 全手順で `npm run typecheck` が通り、最終的に `npm run test:physics`、`npm run test:game`、`npm run test:render`、`npm run test:settings` が通る。
 
 ## 手順
-
-### 手順 5. 天体固有 overlay の選択を game へ戻す
-
-#### 目的
-
-render に残る Earth coastline と Moon surface markings の名指しを除く。render は asset data から line overlay を作る汎用 factory と共有 cache だけを持ち、どの天体にどの data を割り当てるかは solar-system assembly が決める。この時点で線の形、色、半径 offset は変えない。
-
-#### 変更が必要な箇所
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/render/celestial/line-overlay.ts:1-27` | 緯度経度 loop / surface marking data を受ける generic factory と cache lifecycle を追加する。 |
-| `src/render/celestial/earth-coastline.ts:1-50` | 天体固有 class と asset import を削除する。 |
-| `src/render/celestial/moon-surface-markings.ts:1-51` | 天体固有 class と asset import を削除する。 |
-| `src/game/celestial/solar-system/earth-system.ts:22-23,199,211` | Earth/Moon asset を選び、generic overlay factory へ data と style を渡す。 |
-| `tools/render-lab/cases.ts:17,647` | Earth 固有 case は tool 側で asset を選んで generic factory へ渡す。 |
-| `tests/render/line-overlay.test.ts`（新規） | 両 data shape から同じ閉曲線・半径 offset が作られることを検証する。 |
-
-#### 達成条件と検証
-
-- `rg -n 'EarthCoastline|MoonSurfaceMarkings|assets/earth-coastline|assets/moon' src/render` が 0 件。
-- generic overlay module に `'earth'` / `'moon'` の id 分岐がない。
-- `npm run typecheck`
-- `npm run test:game`
-- `npm run test:render`
 
 ### 手順 6. 基本の軌道線資源を render へ移し、declarative sync にする
 
