@@ -3,7 +3,7 @@ import { kinematicState } from '../../../physics/kinematic-state';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import type { DynamicMotion, DynamicMotionBehavior } from '../dynamic-motion';
 import type { Contact } from './contact';
-import type { DebrisMotionKind } from './debris-motion';
+import type { DebrisKind } from './debris-kind';
 import { bulletReactionOf } from './bullet-reaction';
 
 const BOOSTER_HARDWARE_LIFETIME = 2.4;
@@ -13,7 +13,7 @@ export class DebrisReaction implements DynamicMotionBehavior {
   public readonly contactKind = 'debris';
 
   public constructor(
-    private readonly kind: DebrisMotionKind,
+    private readonly kind: DebrisKind['kind'],
     private readonly bornSim: number | null,
     private readonly worldSfx: WorldSfx,
     private readonly effects: FlashEffects,

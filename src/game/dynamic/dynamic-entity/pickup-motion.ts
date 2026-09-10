@@ -10,7 +10,7 @@ import {
   SMALL_DEBRIS_SRP_COEFF,
 } from '../dynamic-motion';
 
-export type PickupKind = 'ammo' | 'rcs-fuel';
+type PickupKind = 'ammo' | 'rcs-fuel';
 
 const PICKUP_PHYSICAL_RADIUS = 1.3; // [m]
 
