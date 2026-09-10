@@ -97,6 +97,22 @@ export function register(): void {
     assert.equal(result.terrain.length, EARTH_TERRAIN_WIDTH * EARTH_TERRAIN_HEIGHT * 4);
   });
 
+  test('earth decode: 色デコード後のabortでImageBitmapを閉じる', async () => {
+    const terrain = terrainPayload();
+    const compressed = gzipSync(terrain);
+    const controller = new AbortController();
+    let closed = 0;
+    const image = { close: () => { closed += 1; } };
+    await assert.rejects(decodeEarthSurfaceTile({
+      key: KEY, colorUrl: '/color.jpg', terrainUrl: '/terrain.bin.gz', generation: 7,
+      signal: controller.signal,
+      fetchImpl: async (input) => String(input).endsWith('.jpg')
+        ? response(new Uint8Array([0xff, 0xd8]), 'image/jpeg') : response(compressed),
+      decodeImage: async () => { controller.abort(); return image; },
+    }), /aborted/);
+    assert.equal(closed, 1);
+  });
+
   test('earth decode: hash不一致と上限超過を公開前に拒否する', async () => {
     const terrain = gzipSync(terrainPayload());
     const fetchImpl = async (input: URL | RequestInfo) => response(String(input).endsWith('.jpg') ? new Uint8Array([1]) : terrain);
