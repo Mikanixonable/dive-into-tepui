@@ -6,9 +6,9 @@ import { PhaseOffsets, PlanetDef, planetDefForSimZero } from '../../../physics/c
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
-import { CelestialSurface } from '../../../render/celestial-surface';
+import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { PointCelestialView } from '../celestial-entity/point-celestial-view';
+import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
 
 // 内惑星に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type InnerPlanetId = 'mercury' | 'venus';

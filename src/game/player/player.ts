@@ -27,7 +27,7 @@ import { FireControl, type AmmoLoad } from './fire-control';
 import { AltitudeAlarm } from './altitude-alarm';
 import type { FlashEffects } from '../vfx/flash-effects';
 import { buildDestroyFragments, playerDestroyFragments } from '../dynamic/dynamic-entity/debris-piece';
-import { PlayerView } from './player-view';
+import { PlayerView } from '../../render/dynamic/player/player-view';
 import type { MarkerSlots } from '../marker/marker-slots';
 import type { MarkerVisibility } from '../marker/marker-visibility';
 import type { RadiatorSide } from './radiator';

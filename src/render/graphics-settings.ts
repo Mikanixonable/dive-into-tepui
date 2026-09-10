@@ -8,7 +8,7 @@
 // 選択肢で持つものは、品質と負荷を刻んで釣り合わせる値か、絵の見え方を選ばせる値。
 
 import { ATMOSPHERE_QUALITY } from './atmosphere';
-import { CUMULUS_DETAIL } from './cumulus-shell';
+import { CUMULUS_DETAIL } from './celestial/cumulus-shell';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 
 // ゲーム本体の設定の保存先(localStorage の鍵)。

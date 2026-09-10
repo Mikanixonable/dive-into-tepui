@@ -27,7 +27,7 @@ import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { CelestialBodies } from './celestial-bodies';
 import type { CelestialEntity } from './celestial-entity/celestial-entity';
-import type { StellarLightSource } from './celestial-entity/celestial-view';
+import type { StellarLightSource } from '../../render/celestial/celestial-entity/celestial-view';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 
 const ZERO_VECTOR = new THREE.Vector3();

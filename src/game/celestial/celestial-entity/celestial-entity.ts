@@ -12,7 +12,7 @@ import { hitsSphere, type Ray } from '../../../math/ray';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { CelestialClass } from './celestial-entity-def';
 import type { Vec3 } from '../../../math/vec3';
-import type { CelestialView } from './celestial-view';
+import type { CelestialView } from '../../../render/celestial/celestial-entity/celestial-view';
 import type { CelestialBodies } from '../celestial-bodies';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { MenuItem } from '../../hud/windows/context-menu';

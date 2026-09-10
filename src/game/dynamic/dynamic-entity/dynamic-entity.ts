@@ -9,7 +9,7 @@ import type { OrbitingObject } from './orbiting-object';
 import type { CapKind, DynamicEntityKind } from './entity-kind';
 import { EntityIdAllocator } from './entity-id';
 import { DynamicMotion } from '../dynamic-motion';
-import { DynamicView, type DynamicViewFrame } from '../dynamic-view';
+import { DynamicView, type DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
 
 export type DynamicMotionFactory = (owner: DynamicEntity) => DynamicMotion;
 export type DynamicViewFactory = (owner: DynamicEntity) => DynamicView;

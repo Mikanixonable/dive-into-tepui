@@ -9,10 +9,10 @@ import { PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDe
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { GRAVITATIONAL_CONSTANT, MU_JUPITER } from './constants';
-import { CelestialSurface } from '../../../render/celestial-surface';
+import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { PointCelestialView } from '../celestial-entity/point-celestial-view';
-import { SphereCelestialView } from '../celestial-entity/sphere-celestial-view';
+import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
+import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
 import { JUPITER_LAPLACE_BASIS, JUPITER_POLE } from './poles';
 import { JUPITER_RINGS } from './rings';
 import { jplSatelliteOrbit } from './satellite-orbit-builders';

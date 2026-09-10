@@ -4,7 +4,7 @@ import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import { Enemy, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore } from './enemy';
 import type { MetalEnemySaveData } from '../../save/save-data';
-import { MetalEnemyView, Stage0MetalEnemyView } from './metal-enemy-view';
+import { MetalEnemyView, Stage0MetalEnemyView } from '../../../render/dynamic/dynamic-entity/metal-enemy-view';
 import { metalEnemyCollisionRadius } from './enemy-motion';
 
 // 機体テンプレートを持たない漂流機体は主慣性モーメントを非対称にして、ジャニベコフ効果

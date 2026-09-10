@@ -13,7 +13,7 @@ import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pi
 import { GraphicsSettings, type GraphicsSettingsData, type GraphicsTarget } from '../../src/render/graphics-settings';
 import { castsCumulusShadow } from '../../src/render/pipeline/shadow/shadow-select';
 import { atmosphereDraws } from '../../src/render/atmosphere';
-import { RingMaterials } from '../../src/render/ring';
+import { RingMaterials } from '../../src/render/celestial/ring';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { AU } from '../../src/physics/astronomical-unit';
 import { R_SUN } from '../../src/game/celestial/solar-system/constants';

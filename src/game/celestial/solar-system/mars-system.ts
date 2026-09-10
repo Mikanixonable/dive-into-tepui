@@ -10,10 +10,10 @@ import { AU } from '../../../physics/astronomical-unit';
 import { MU_MARS } from './constants';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { CelestialTexture } from '../../../render/celestial-textures';
-import { CelestialSurface } from '../../../render/celestial-surface';
+import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { PointCelestialView } from '../celestial-entity/point-celestial-view';
-import { SphereCelestialView } from '../celestial-entity/sphere-celestial-view';
+import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
+import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
 import { MARS_POLE } from './poles';
 import { equatorialSatelliteOrbit } from './satellite-orbit-builders';
 

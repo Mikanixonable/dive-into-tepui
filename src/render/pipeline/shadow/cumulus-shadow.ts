@@ -5,7 +5,7 @@ import {
   Fn, If, Loop, clamp, dot, exp, float, fract, greaterThan, int, length, max, normalize, select,
   sqrt, texture, uniform, vec2, vec4,
 } from 'three/tsl';
-import { sphereMeshUv } from '../../celestial-surface';
+import { sphereMeshUv } from '../../celestial/celestial-surface';
 import {
   CLOUD_TOP_UNCERTAINTY, CUMULUS_GRAIN_SIZE, EMPTY_CLOUD_FIELD, cloudTopOf, columnOpticalDepth,
   fieldLodForWidth, grainAmplitudeForWidth, grainAt, opaqueFractionOf,

@@ -21,7 +21,7 @@ import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { OrbitingObject } from './orbiting-object';
-import { RcsFuelPickupView } from './pickup-view';
+import { RcsFuelPickupView } from '../../../render/dynamic/dynamic-entity/pickup-view';
 import { PickupMotion } from './pickup-motion';
 
 export const RCS_FUEL_PICKUP_RADIUS = 100; // 取り込み距離 [m]

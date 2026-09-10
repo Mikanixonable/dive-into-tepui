@@ -5,7 +5,7 @@ import {
   type DynamicMotionFactory,
   type DynamicViewFactory,
 } from './dynamic-entity';
-import type { DynamicView } from '../dynamic-view';
+import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import { DynamicMotion, type DynamicMotionProperties } from '../dynamic-motion';
 import { Part, PartType, createPart } from './parts';
 import { collisionDamageFraction } from './contact-damage';

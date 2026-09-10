@@ -7,7 +7,7 @@ import type { Attitude } from '../../../physics/attitude';
 import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import type { CapKind } from './entity-kind';
-import { buildDebrisPieceView } from './debris-piece-view';
+import { buildDebrisPieceView } from '../../../render/dynamic/dynamic-entity/debris-piece-view';
 import { DynamicEntity } from './dynamic-entity';
 import type { DebrisKind } from './debris-kind';
 import { DebrisMotion } from './debris-motion';
