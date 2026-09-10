@@ -1,8 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { v3 } from '../../../math/vec3';
 import type { Attitude } from '../../../physics/attitude';
-import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
-import type { DetachedBoosterSaveData } from '../../save/save-data';
+import type { KinematicState } from '../../../physics/kinematic-state';
+import { savedAttitude, savedKinematicState, type DetachedBoosterSaveData } from '../../save/save-data';
 import { nextBoosterId, type BoosterStage } from '../../player/booster-stack';
 import { DetachedBoosterMotion } from './detached-booster-motion';
 import { DetachedBoosterView } from './detached-booster-view';
@@ -26,20 +26,8 @@ export class DetachedBooster extends DynamicEntity {
   public constructor(init: DetachedBoosterInit, scene: THREE.Scene) {
     const restored = 'saved' in init;
     const stage = restored ? { ...init.saved.stage, id: init.saved.id } : { ...init.stage };
-    const state = restored
-      ? kinematicState<'eci'>(
-        init.simTime,
-        v3(init.saved.r.x, init.saved.r.y, init.saved.r.z),
-        v3(init.saved.v.x, init.saved.v.y, init.saved.v.z),
-      )
-      : init.state;
-    const attitude: Attitude = restored
-      ? {
-        q: { ...init.saved.q },
-        w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z),
-        inertia: v3(1, 1, 0.4),
-      }
-      : init.att;
+    const state = restored ? savedKinematicState(init.saved, init.simTime) : init.state;
+    const attitude: Attitude = restored ? savedAttitude(init.saved, v3(1, 1, 0.4)) : init.att;
     const collisionEnableAt = restored
       ? (init.saved.collisionEnableAt ?? init.simTime)
       : init.collisionEnableAt;

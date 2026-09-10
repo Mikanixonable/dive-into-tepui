@@ -16,28 +16,26 @@ import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { MarkerSlots } from '../marker/marker-slots';
 import type { StageSaveData } from '../save/save-data';
-import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
-import type { KinematicState } from '../../physics/kinematic-state';
+import type { ObjectAuthoring } from '../pickable/inspected-object';
+import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
+import type { StageSimulationEvents } from './stage-simulation-events';
 import type { ControlSelection } from '../control-selection';
 import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
 import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
-// 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。各ステージが
-// 自分の epoch としてこれを宣言する — ステージに別の日時を与えるのはその1行を変えるだけ。
-// **この定数を stage.ts の外から import しない**(元期は共有の定数ではなく、ステージの宣言)。
-export const STORY_EPOCH: TdbJulianDate =
-  calendarDateToJulianDate(parseCalendarDate('20115-05-14T06:00:00', 'TDB'));
 import { solarSystem } from '../celestial/solar-system/solar-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { PhaseOffsets } from '../../physics/celestial-body-def';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { EntityRegistry, SpawnGate } from '../dynamic/entity-registry';
 
-export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
+// 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。各ステージが
+// 自分の epoch としてこれを宣言する — ステージに別の日時を与えるのはその1行を変えるだけ。
+// **この定数を stage.ts の外から import しない**(元期は共有の定数ではなく、ステージの宣言)。
+export const STORY_EPOCH: TdbJulianDate =
+  calendarDateToJulianDate(parseCalendarDate('20115-05-14T06:00:00', 'TDB'));
 
-// 敵が失われた理由。'killed' 以外は自然損耗で、撃破数ではなく喪失数へ数える。
-// 焼失(大気)と衝突(固体表面)は別の現象なので分けて持つ。
-export type EnemyDeathCause = 'killed' | 'burnup' | 'collision' | 'despawn';
+export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
 
 // 自然損耗の理由ごとのヒント文。Record にすることで、cause を足したときに文言の
 // 追加漏れが型検査で落ちる(三項演算子では黙って既定の文言に落ちていた)。
@@ -86,13 +84,6 @@ export interface StageClass {
   new (saved: StageSaveData | undefined, ...deps: StageDeps): Stage;
 }
 
-// 軌道上へオブジェクトを配置・複製する編集機能。これを持つステージだけがマップの
-// 「配置」「複製」項目を出す。focusId はマップの現在フォーカスで、基準天体の初期選択に使う。
-export interface ObjectAuthoring {
-  openObjectPlacer(focusId?: string): void;
-  openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void;
-}
-
 // ステージ ID → クリア回数。将来の拡張(周回数によるアンロック等)を見越して、
 // 「クリアしたか否か」ではなく回数を記録する。
 export type ClearCounts = Readonly<Record<string, number>>;
@@ -107,7 +98,7 @@ export type StageResult = {
   readonly detailHtml: string;
 };
 
-export abstract class Stage {
+export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 起動時に1度だけ組む星系。既定は現実の太陽系で、元期(simTime=0 が指す絶対時刻)が
   // 近未来/遠未来いずれかの数値暦の期間に入っていれば暦パックを読み込み、どちらにも
   // 入らなければ CELESTIAL.md 2.2 のとおり解析暦だけで組む。
@@ -262,7 +253,7 @@ export abstract class Stage {
   // 毎フレーム呼ぶ。台本が相手にする自艦は this.ship から引く。
   public abstract update(dt: number, simTime: number, simSpeed: SimSpeedManager): void;
 
-  // Simulator がsubstepをイベント直前で切るためのhook。通常ステージには時刻固定イベントがない。
+  // 時刻固定イベントを持つステージだけが override する。
   public nextSimulationEventTime(_simTime: number): number | null { return null; }
   public applySimulationEvents(_simTime: number): void { }
 

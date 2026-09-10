@@ -4,7 +4,7 @@
 import type { SaveSlotMeta } from '../save/slot-data';
 import { fmtDateTime } from '../../hud/utils';
 import { Button } from '../../hud/widgets';
-import { injectOnce } from '../../hud/widgets/inject-style';
+import { injectOnce } from '../../hud/inject-style';
 import { MQ_COMPACT } from '../../hud/breakpoints';
 import { mainBtn, smallBtn, stageLabel } from './shared';
 
