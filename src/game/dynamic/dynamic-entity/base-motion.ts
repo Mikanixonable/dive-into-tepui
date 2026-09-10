@@ -8,7 +8,7 @@ import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
 import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic-motion';
 import { BASE_COLLISION_RADIUS, baseRaycast, baseSphereCollide } from './base-collision';
 
-const BASE_THRUST = 4e8; // 総推力 [N]
+export const BASE_THRUST = 4e8; // 総推力 [N]
 const BASE_MAX_FUEL = 50000; // 最大燃料 [kg]
 
 class BaseCollisionBehavior implements DynamicMotionBehavior {

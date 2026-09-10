@@ -17,13 +17,7 @@ import {
 import type { DynamicMotion } from '../dynamic-motion';
 import type { DebrisKind } from './debris-kind';
 
-abstract class DebrisPieceView extends DynamicView {
-  protected constructor(object: THREE.Object3D, scene?: THREE.Scene, addToScene = true) {
-    super(object, scene, addToScene);
-  }
-}
-
-export class DebrisFragmentView extends DebrisPieceView {
+class DebrisFragmentView extends DynamicView {
   private readonly fragmentVariant: number;
   private readonly fragmentColor: THREE.Color;
 
@@ -46,19 +40,7 @@ export class DebrisFragmentView extends DebrisPieceView {
   }
 }
 
-export class BarrelDebrisView extends DebrisPieceView {
-  public constructor(scene?: THREE.Scene) {
-    super(buildBarrelMesh(), scene);
-  }
-}
-
-export class MagazineFrameDebrisView extends DebrisPieceView {
-  public constructor(scene?: THREE.Scene) {
-    super(buildMagazineFrame(), scene);
-  }
-}
-
-export class CasingDebrisView extends DebrisPieceView {
+class CasingDebrisView extends DynamicView {
   public constructor(scene?: THREE.Scene) {
     super(buildCasingMesh(), scene, false);
   }
@@ -73,26 +55,17 @@ export class CasingDebrisView extends DebrisPieceView {
   }
 }
 
-export class BoosterCoverDebrisView extends DebrisPieceView {
-  public constructor(segment: number, scene?: THREE.Scene) {
-    super(buildBoosterInterstageCoverPanelMesh(segment), scene);
-  }
-}
-
-export class BoosterBoltDebrisView extends DebrisPieceView {
-  public constructor(segment: number, scene?: THREE.Scene) {
-    super(buildBoosterExplosiveBoltMesh(segment), scene);
-  }
-}
-
+// 種別ごとの表示。差が生成するメッシュだけのものは DynamicView をそのまま使う。
 export function buildDebrisPieceView(debrisKind: DebrisKind, scene?: THREE.Scene): DynamicView {
   switch (debrisKind.kind) {
     case 'fragment': return new DebrisFragmentView(debrisKind.accent, debrisKind.size, scene);
-    case 'barrel': return new BarrelDebrisView(scene);
-    case 'magazineFrame': return new MagazineFrameDebrisView(scene);
+    case 'barrel': return new DynamicView(buildBarrelMesh(), scene);
+    case 'magazineFrame': return new DynamicView(buildMagazineFrame(), scene);
     case 'casing': return new CasingDebrisView(scene);
-    case 'boosterCover': return new BoosterCoverDebrisView(debrisKind.segment, scene);
-    case 'boosterBolt': return new BoosterBoltDebrisView(debrisKind.segment, scene);
+    case 'boosterCover':
+      return new DynamicView(buildBoosterInterstageCoverPanelMesh(debrisKind.segment), scene);
+    case 'boosterBolt':
+      return new DynamicView(buildBoosterExplosiveBoltMesh(debrisKind.segment), scene);
   }
   throw new TypeError('Unknown debris kind');
 }

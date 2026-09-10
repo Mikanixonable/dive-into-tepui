@@ -12,6 +12,9 @@ import { DynamicView, type DynamicViewFrame, type DynamicViewIdentity } from '..
 import type { DynamicMotion } from '../dynamic-motion';
 import { DetachedBoosterMotion } from './detached-booster-motion';
 
+// 段の前端と後端の中点。剛体の原点はここに置く。
+const STAGE_CENTER_Z = (BOOSTER_STAGE_DIMENSIONS.frontZ + BOOSTER_STAGE_DIMENSIONS.aftZ) / 2;
+
 // 分離ブースターの機体モデルと噴射炎を所有し、運動状態へ同期する。
 export class DetachedBoosterView extends DynamicView {
   private readonly model: BoosterStageModel;
@@ -22,8 +25,7 @@ export class DetachedBoosterView extends DynamicView {
     const root = new THREE.Group();
     super(root, scene);
     this.model = buildBoosterStage({ interstageCover: false });
-    const centerZ = (BOOSTER_STAGE_DIMENSIONS.frontZ + BOOSTER_STAGE_DIMENSIONS.aftZ) / 2;
-    this.model.position.z = -centerZ;
+    this.model.position.z = -STAGE_CENTER_Z;
     root.add(this.model);
     this.plume = new BoosterPlume(scene);
   }
@@ -46,8 +48,7 @@ export class DetachedBoosterView extends DynamicView {
       return;
     }
     // ノズル位置と後方軸を表示時刻の姿勢でワールドへ写す。
-    const centerZ = (BOOSTER_STAGE_DIMENSIONS.frontZ + BOOSTER_STAGE_DIMENSIONS.aftZ) / 2;
-    const nozzleFromCenter = BOOSTER_STAGE_DIMENSIONS.nozzleExitZ - centerZ;
+    const nozzleFromCenter = BOOSTER_STAGE_DIMENSIONS.nozzleExitZ - STAGE_CENTER_Z;
     const nozzleWorld = add(displayed.r, qRotate(motion.att.q, v3(0, 0, nozzleFromCenter)));
     const tailDirection = qRotate(motion.att.q, v3(0, 0, -1));
     this.plume.sync({

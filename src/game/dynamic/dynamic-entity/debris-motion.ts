@@ -1,5 +1,6 @@
 import type { Attitude } from '../../../physics/attitude';
 import type { KinematicState } from '../../../physics/kinematic-state';
+import type { DebrisKind } from './debris-kind';
 import {
   DynamicMotion,
   type DynamicMotionBehavior,
@@ -16,16 +17,8 @@ const BARREL_MAX_TEMP = 1700;
 export const BARREL_SPECIFIC_HEAT = 500;
 export const BARREL_RADIATING_AREA_PER_MASS = 0.047;
 
-export type DebrisMotionKind =
-  | 'fragment'
-  | 'barrel'
-  | 'magazineFrame'
-  | 'casing'
-  | 'boosterCover'
-  | 'boosterBolt';
-
-export interface DebrisMotionOptions {
-  readonly kind: DebrisMotionKind;
+interface DebrisMotionProperties {
+  readonly kind: DebrisKind['kind'];
   readonly behavior: DynamicMotionBehavior;
   readonly radius?: number;
   readonly temperature?: number;
@@ -53,7 +46,7 @@ const STEEL_BARREL: DebrisThermal = {
   maxTemperature: BARREL_MAX_TEMP,
 };
 
-function debrisThermal(kind: DebrisMotionKind): DebrisThermal {
+function debrisThermal(kind: DebrisKind['kind']): DebrisThermal {
   return kind === 'barrel' ? STEEL_BARREL : ALUMINIUM_DEBRIS;
 }
 
@@ -62,7 +55,7 @@ export class DebrisMotion extends DynamicMotion {
   public constructor(
     state: KinematicState,
     attitude: Attitude,
-    options: DebrisMotionOptions,
+    options: DebrisMotionProperties,
   ) {
     const thermal = debrisThermal(options.kind);
     super(state, {
