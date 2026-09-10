@@ -5,7 +5,7 @@ import type { FrameAnchorSource } from '../../physics/frame';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import { FloatingOrigin } from '../camera/floating-origin';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
-import type { DynamicLineDisplay } from '../dynamic/dynamic-view';
+import type { DynamicLineDisplay } from '../../render/dynamic/dynamic-view';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { isBase } from '../dynamic/dynamic-entity/base';
 import { isPlayer } from '../player/player';

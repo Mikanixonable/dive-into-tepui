@@ -3,8 +3,8 @@
 // スタイルで組んだ姿を返す。
 import * as THREE from 'three/webgpu';
 import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
-import { CelestialSurface } from '../../src/render/celestial-surface';
-import { CumulusShell } from '../../src/render/cumulus-shell';
+import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
+import { CumulusShell } from '../../src/render/celestial/cumulus-shell';
 import { ClimateMap } from '../../src/render/cloud/climate-map';
 import { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
@@ -13,12 +13,12 @@ import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
 import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-system/constants';
 import { EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE } from '../../src/game/celestial/solar-system/earth-system';
 import { shapeAxes, shapeSpheroidRadii, type RingBandDef } from '../../src/physics/celestial-body-def';
-import { BodyGraticule } from '../../src/render/body-graticule';
-import { EarthCoastline } from '../../src/render/earth-coastline';
+import { BodyGraticule } from '../../src/render/celestial/body-graticule';
+import { EarthCoastline } from '../../src/render/celestial/earth-coastline';
 import { Curve } from '../../src/render/curve';
-import { createAnnulusRing, RingMaterials } from '../../src/render/ring';
-import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
-import { createStarSphere, type StarSphere } from '../../src/render/star-sphere';
+import { createAnnulusRing, RingMaterials } from '../../src/render/celestial/ring';
+import { buildBarrelMesh, buildPlayerShip } from '../../src/render/dynamic/ships';
+import { createStarSphere, type StarSphere } from '../../src/render/celestial/star-sphere';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../src/render/pipeline/sun-light';
 import { SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { InstancedPool } from '../../src/render/instanced-pool';
@@ -30,7 +30,7 @@ import { sphereShadowBody, type ShadowBody } from '../../src/render/pipeline/sha
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cumulus-shadow';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
-import { RingView } from '../../src/render/ring-view';
+import { RingView } from '../../src/render/celestial/ring-view';
 import { AU } from '../../src/physics/astronomical-unit';
 import { MARS, MARS_ATMOSPHERE_OPTICS, MARS_TEXTURE } from '../../src/game/celestial/solar-system/mars-system';
 import { SATURN, SATURN_TEXTURE } from '../../src/game/celestial/solar-system/saturn-system';

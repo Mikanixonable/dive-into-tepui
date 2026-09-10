@@ -9,7 +9,7 @@ import * as THREE from 'three/webgpu';
 import {
   abs, dot, exp, float, fract, greaterThan, int, max, min, sqrt, texture, uniform, vec2, vec4,
 } from 'three/tsl';
-import { sphereMeshUv } from '../celestial-surface';
+import { sphereMeshUv } from '../celestial/celestial-surface';
 import { EMPTY_CLOUD_FIELD, columnOpticalDepth, fieldLodForWidth } from '../cloud/cumulus-shape';
 import type { AtmosphereClouds } from '../atmosphere';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
