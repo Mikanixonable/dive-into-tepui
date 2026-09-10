@@ -1,22 +1,34 @@
+import faviconUrl from '../../../public/favicon.svg';
+import type { Bgm } from '../../audio/bgm/bgm';
+import type { GraphicsSettings } from '../../render/graphics-settings';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { SPACE_2, SPACE_4 } from '../../theme';
 import { clampOverlayPosition, Point2 } from '../layout';
 import { onViewportChange } from '../viewport';
-import type { OverlayHandle, OverlayManager } from '../overlay-manager';
+import type { OverlayHandle, OverlayManager, OverlaySpec } from '../overlay-manager';
 import {
-  Button, CloseButton, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, Slider,
+  Button, CloseButton, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, Slider, TabBar,
 } from '../widgets';
 import { CLICK_MOVE_THRESHOLD } from '../../input/input';
+import { SettingsView } from './settings-view';
 
-// 一時停止 / 設定パネル(#hud-pause-menu)。BGM 音量調整、セーブ、セーブデータ管理、デバッグ表示、
-// 設定ビューの呼び出し、タイトルへの復帰を提供し、ヘッダーのドラッグ移動と最小化を持つ。
+type PauseMenuTab = 'pause' | 'settings';
+
+// ESCメニュー(#hud-pause-menu)。一時停止操作と詳細設定を外側タブで切り替え、ヘッダーのドラッグ移動と
+// 最小化を持つ。
 export class PauseMenu implements OverlayHandle {
   private readonly panel: HTMLElement;
   private readonly body: HTMLElement;
+  private readonly tabContent: HTMLElement;
+  private readonly pauseTabPanel: HTMLElement;
+  private readonly tabBar: TabBar<PauseMenuTab>;
+  private readonly settingsView: SettingsView;
+  private readonly bgm: Bgm;
   private readonly minimizeToggle: HTMLButtonElement;
   private _isOpen = false;
   private minimized = false;
   private hasCustomPosition = false;
+  private activeTab: PauseMenuTab = 'pause';
 
   public onPauseMenuOpenChange: ((open: boolean) => void) | null = null;
   public onQuitToTitle: (() => void) | null = null;
@@ -24,7 +36,6 @@ export class PauseMenu implements OverlayHandle {
   public onSave: (() => void) | null = null;
   public onOpenSaveBrowser: (() => void) | null = null;
   public onOpenDebugInfoWindow: (() => void) | null = null;
-  public onOpenSettings: (() => void) | null = null;
 
   private readonly overlayManager: OverlayManager;
   private readonly bgmSlider: Slider;
@@ -39,11 +50,17 @@ export class PauseMenu implements OverlayHandle {
 
   // パネル DOM を組み立てて root へ追加する。各操作のコールバックは onXxx フィールドへ
   // 後から代入する。
-  public constructor(root: HTMLElement, overlayManager: OverlayManager) {
+  public constructor(
+    root: HTMLElement, overlayManager: OverlayManager, bgm: Bgm, graphics: GraphicsSettings,
+  ) {
     this.overlayManager = overlayManager;
+    this.bgm = bgm;
+    this.settingsView = new SettingsView(bgm, graphics);
     this.panel = document.createElement('div');
     this.panel.id = 'hud-pause-menu';
     this.panel.className = 'panel';
+
+    this.panel.appendChild(this.buildBrand());
 
     // ヘッダー: 見出し・最小化トグル・✕ ボタンと、ドラッグ移動の配線。
     const header = document.createElement('div');
@@ -71,6 +88,26 @@ export class PauseMenu implements OverlayHandle {
     this.body = document.createElement('div');
     this.body.className = 'pm-body';
     this.panel.appendChild(this.body);
+
+    this.tabBar = new TabBar<PauseMenuTab>(
+      [['pause', '一時停止'], ['settings', '設定']], (tab) => this.setActiveTab(tab),
+    );
+    this.tabBar.element.classList.add('pm-tabs');
+    this.body.appendChild(this.tabBar.element);
+
+    this.tabContent = document.createElement('div');
+    this.tabContent.className = 'pm-tab-content';
+    this.body.appendChild(this.tabContent);
+
+    this.pauseTabPanel = document.createElement('section');
+    this.pauseTabPanel.className = 'pm-tab-panel';
+    this.pauseTabPanel.setAttribute('role', 'tabpanel');
+    this.pauseTabPanel.setAttribute('aria-label', '一時停止');
+    this.tabContent.appendChild(this.pauseTabPanel);
+
+    this.settingsView.element.setAttribute('role', 'tabpanel');
+    this.settingsView.element.setAttribute('aria-label', '設定');
+    this.tabContent.appendChild(this.settingsView.element);
     this.syncMinimizeToggle();
 
     // BGM 音量行: スライダーと消音ボタン。
@@ -91,9 +128,9 @@ export class PauseMenu implements OverlayHandle {
     this.bgmMute = new Button('消音', () => this.toggleMute());
     this.bgmMute.element.style.marginLeft = SPACE_4;
     bgmRow.appendChild(this.bgmMute.element);
-    this.body.appendChild(bgmRow);
+    this.pauseTabPanel.appendChild(bgmRow);
 
-    // 以降の各行はセーブ・セーブデータ管理・デバッグ表示・設定ビューへの導線となる単一ボタン。
+    // 以降の各行はセーブ・セーブデータ管理・デバッグ表示の導線となる単一ボタン。
     const saveRow = document.createElement('div');
     saveRow.className = 'pm-row';
     saveRow.style.marginTop = SPACE_4;
@@ -101,7 +138,7 @@ export class PauseMenu implements OverlayHandle {
     saveBtn.element.classList.add('pm-menu-btn');
     saveBtn.element.style.flex = '1';
     saveRow.appendChild(saveBtn.element);
-    this.body.appendChild(saveRow);
+    this.pauseTabPanel.appendChild(saveRow);
 
     const saveBrowserRow = document.createElement('div');
     saveBrowserRow.className = 'pm-row';
@@ -110,7 +147,7 @@ export class PauseMenu implements OverlayHandle {
     saveBrowserBtn.element.classList.add('pm-menu-btn');
     saveBrowserBtn.element.style.flex = '1';
     saveBrowserRow.appendChild(saveBrowserBtn.element);
-    this.body.appendChild(saveBrowserRow);
+    this.pauseTabPanel.appendChild(saveBrowserRow);
 
     const perfRow = document.createElement('div');
     perfRow.className = 'pm-row';
@@ -121,24 +158,39 @@ export class PauseMenu implements OverlayHandle {
     debugInfoBtn.element.classList.add('pm-menu-btn');
     debugInfoBtn.element.style.flex = '1';
     perfRow.appendChild(debugInfoBtn.element);
-    this.body.appendChild(perfRow);
-
-    const settingsRow = document.createElement('div');
-    settingsRow.className = 'pm-row';
-    settingsRow.style.marginTop = SPACE_2;
-    const settingsBtn = new Button('設定ビューを開く', () => this.onOpenSettings?.());
-    settingsBtn.element.classList.add('pm-menu-btn');
-    settingsBtn.element.style.flex = '1';
-    settingsRow.appendChild(settingsBtn.element);
-    this.body.appendChild(settingsRow);
+    this.pauseTabPanel.appendChild(perfRow);
 
     const quitBtn = new Button('ゲームを中断してタイトル画面に戻る', () => this.onQuitToTitle?.());
     quitBtn.element.classList.add('pm-menu-btn', 'pm-quit');
-    this.body.appendChild(quitBtn.element);
+    this.pauseTabPanel.appendChild(quitBtn.element);
 
     root.appendChild(this.panel);
+    this.setActiveTab('pause');
     // ビューポート変化のたびに現在位置を収め直す。
     onViewportChange(() => this.reclamp());
+  }
+
+  // ロゴ・タイトル・バージョンを ESC メニュー上部へ積む。
+  private buildBrand(): HTMLElement {
+    const brand = document.createElement('div');
+    brand.className = 'pm-brand';
+    const brandLogo = document.createElement('img');
+    brandLogo.className = 'pm-brand-logo';
+    brandLogo.src = faviconUrl;
+    brandLogo.alt = '';
+    brand.appendChild(brandLogo);
+    const brandText = document.createElement('div');
+    brandText.className = 'pm-brand-text';
+    const brandTitle = document.createElement('span');
+    brandTitle.className = 'pm-brand-title';
+    brandTitle.textContent = 'Dive into Tepui';
+    brandText.appendChild(brandTitle);
+    const brandVersion = document.createElement('span');
+    brandVersion.className = 'pm-brand-version';
+    brandVersion.textContent = `v${__APP_VERSION__}`;
+    brandText.appendChild(brandVersion);
+    brand.appendChild(brandText);
+    return brand;
   }
 
   // ミュート/復帰を切り替える。復帰は直前の音量へ戻す。
@@ -166,6 +218,28 @@ export class PauseMenu implements OverlayHandle {
     this.reclamp();
   }
 
+  // 外側タブを切り替え、設定面の試聴と入力ゲートも同じ状態へ合わせる。
+  private setActiveTab(tab: PauseMenuTab): void {
+    this.activeTab = tab;
+    this.tabBar.setSelected(tab);
+    this.pauseTabPanel.hidden = tab !== 'pause';
+    this.settingsView.element.hidden = tab !== 'settings';
+    this.settingsView.setActive(tab === 'settings');
+    this.bgmSlider.setValue(this.bgm.getVolume());
+    this.updateMuteState(this.bgmSlider.getValue());
+    if (this._isOpen) this.overlayManager.reconfigure('pause-menu', this.overlaySpec());
+    this.reclamp();
+  }
+
+  // タブに応じた ESC メニューの入力遮断設定を返す。
+  private overlaySpec(): OverlaySpec {
+    return {
+      kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false,
+      gatesInput: this.activeTab === 'settings', dimsBackground: false,
+      exclusiveGroup: 'system-modal',
+    };
+  }
+
   // 最小化トグルボタンの絵文字・aria-expanded・title を現在の折りたたみ状態に合わせる。
   private syncMinimizeToggle(): void {
     this.minimizeToggle.textContent = this.minimized ? COLLAPSE_COLLAPSED_GLYPH : COLLAPSE_EXPANDED_GLYPH;
@@ -183,20 +257,25 @@ export class PauseMenu implements OverlayHandle {
     this.toggle(false);
   }
 
+  // タイトル画面などの設定導線から、ESC メニューの設定タブを開く。
+  public openSettings(): void {
+    this.toggle(true);
+    this.setMinimized(false);
+    this.setActiveTab('settings');
+  }
+
   // パネルの開閉を切り替える。force を渡すと開閉状態を明示的に指定する。
   public toggle(force?: boolean): void {
     const show = force !== undefined ? force : !this._isOpen;
     if (show === this._isOpen) return;
+    if (!show) this.setActiveTab('pause');
     this._isOpen = show;
-    this.panel.style.display = show ? 'block' : 'none';
+    this.panel.style.display = show ? 'flex' : 'none';
     if (show) {
+      this.setActiveTab('pause');
+      this.setMinimized(false);
       if (!this.hasCustomPosition) this.centerPanel();
-      // ESCメニュー表示中も、背景のマップ切替とカメラ操作は受け付ける(gatesInput: false)。
-      this.overlayManager.open('pause-menu', this, {
-        kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: false,
-        dimsBackground: false,
-        exclusiveGroup: 'system-modal',
-      });
+      this.overlayManager.open('pause-menu', this, this.overlaySpec());
     } else {
       this.overlayManager.close('pause-menu');
     }
