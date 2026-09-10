@@ -2,7 +2,7 @@
 // CelestialSystem を返す。ECI の中心(originId)は呼び出し側の選択で、同じ太陽系を別の原点で
 // 組める。数値暦を渡すと、収録された天体はその有効期間で数値暦経路を通る。
 import { EphemerisPoints } from '../../../physics/ephemeris/point';
-import { StarMotion } from '../../../physics/celestial-motion';
+import { OrbitingMotion, StarMotion } from '../../../physics/celestial-motion';
 import { PhaseOffsets } from '../../../physics/celestial-body-def';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-light';
 import { CelestialSystem } from '../celestial-system';
@@ -69,14 +69,19 @@ export function solarSystem(
     }),
   );
 
+  const earthEntities = earthSystem(
+    sunMotion, phases, simZeroEt, earthSpinPhase0, epochUnixSeconds(epoch), renderer,
+  );
+  const jupiterEntities = jupiterSystem(sunMotion, phases, simZeroEt);
+  const jupiterMotion = jupiterEntities.jupiter.motion;
+  if (!(jupiterMotion instanceof OrbitingMotion)) throw new Error('solarSystem: 木星の運動が公転運動ではない');
+
   // 全天体を系ごとの宣言順に並べたもの。重力源配列・天体一覧の順序はこれで決まる。
   const entities: readonly CelestialEntity[] = [
-    ...Object.values(earthSystem(
-      sunMotion, phases, simZeroEt, earthSpinPhase0, epochUnixSeconds(epoch), renderer,
-    )),
+    ...Object.values(earthEntities),
     ...Object.values(innerPlanets(sunMotion, phases, simZeroEt)),
     ...Object.values(marsSystem(sunMotion, phases, simZeroEt)),
-    ...Object.values(jupiterSystem(sunMotion, phases, simZeroEt)),
+    ...Object.values(jupiterEntities),
     ...Object.values(saturnSystem(sunMotion, phases, simZeroEt)),
     ...Object.values(uranusSystem(sunMotion, phases, simZeroEt)),
     ...Object.values(neptuneSystem(sunMotion, phases, simZeroEt)),
@@ -89,6 +94,7 @@ export function solarSystem(
   if (originEntity === undefined) throw new Error(`solarSystem: 太陽系に無い原点 id: ${originId}`);
 
   return new CelestialSystem(
-    entities, originEntity, phases, epoch, new PointFieldView(generatePointField(simZeroEt)),
+    entities, originEntity, phases, epoch,
+    new PointFieldView(generatePointField(0, undefined, jupiterMotion.keplerOrbit)),
     ephemerisPoints);
 }
