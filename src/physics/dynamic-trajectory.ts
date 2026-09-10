@@ -24,7 +24,7 @@ export class DynamicTrajectory {
   // (sampleInterval)で管理し、両者は種別ごとに step の呼び出し元が渡す。最新要素が
   // 先端(state)そのもの。空になることはない。
   private readonly _samples = new StateQueue();
-  // samplesOldestFirst() の結果のメモ。step/reset で無効化する — TrajectoryLine.syncGeometry の
+  // samplesOldestFirst() の結果のメモ。step/reset で無効化する — TrajectoryLine.sync の
   // 早期 return は samples の参照同一性で判定するため、内容が変わっていない間は同じ配列参照を
   // 返し続けないと、呼び出し側が同一内容を渡しても毎フレーム焼き直しになってしまう。
   private _samplesCache: readonly KinematicState[] | null = null;
@@ -104,7 +104,7 @@ export class DynamicTrajectory {
   }
 
   // 保持区間全体を古い順に並べた1本の列。先端が動かない限り同じ配列参照を返す
-  // (TrajectoryLine.syncGeometry の再 bake 抑制が参照同一性で判定するため)。
+  // (TrajectoryLine.sync の再 bake 抑制が参照同一性で判定するため)。
   samplesOldestFirst(): readonly KinematicState[] {
     if (this._samplesCache === null) this._samplesCache = this._samples.toArrayOldestFirst();
     return this._samplesCache;

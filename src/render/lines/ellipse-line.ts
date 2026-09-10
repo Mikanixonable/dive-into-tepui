@@ -3,9 +3,9 @@
 import * as THREE from 'three/webgpu';
 import { OrbitalElements } from '../../physics/elements';
 import { add, v3, Vec3 } from '../../math/vec3';
-import type { CameraFrame } from '../../render/camera/camera-frame';
-import { Curve, CurveSampler } from '../../render/curve';
-import { LineStyle } from '../../render/line-style';
+import type { CameraFrame } from '../camera/camera-frame';
+import { Curve, CurveSampler } from '../curve';
+import { LineStyle } from '../line-style';
 
 // 離心近点角 E=t·2π を、中心天体相対の ECI オフセットへ写す閉曲線サンプラ。
 function ellipseSampler(el: OrbitalElements): CurveSampler {
@@ -24,51 +24,37 @@ function ellipseSampler(el: OrbitalElements): CurveSampler {
 
 export class EllipseLine {
   private readonly curve: Curve;
-  readonly line: THREE.Object3D;
-  // いま描いている楕円の軌道要素。非表示のあいだは null。
+  public readonly line: THREE.Object3D;
+  // いま描いている楕円の軌道要素。線が消えているあいだは null。
   private elements: OrbitalElements | null = null;
 
-  // 線を1本組む。最初の sync まで頂点を持たないので、その間は隠れたままになる。
-  constructor(style: LineStyle) {
+  // 線を1本組む。style は最初のフレームの見た目で、以後は sync が渡す値で上書きされる。
+  public constructor(style: LineStyle) {
     this.curve = new Curve(style);
     this.line = this.curve.object;
   }
 
-  // 線の色・不透明度・描画順を差し替える。
-  setStyle(style: LineStyle): void {
+  // このフレームに描く楕円と見た目を反映する。elements が null か、楕円として描けない要素
+  // (離心率が 1 に近い、a が非有限か非正)のときは線が消え、samplePoints も空になる。
+  public sync(elements: OrbitalElements | null, style: LineStyle, camera: CameraFrame): void {
     this.curve.setStyle(style);
-  }
-
-  // 不透明度 [0,1] を書き換える。
-  setOpacity(opacity: number): void {
-    this.curve.setOpacity(opacity);
-  }
-
-  // 曲線を消し、当たり判定向けのサンプル点も空にする(次回 sync までは何も返さない)。
-  hide(): void {
-    this.elements = null;
-    this.curve.setVisible(false);
-  }
-
-  // 毎フレーム呼ぶ。楕円として描けない要素(離心率が 1 に近い、a が非有限か非正)を渡すと
-  // hide() と同じ状態になる。
-  sync(el: OrbitalElements, camera: CameraFrame): void {
-    if (el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
-      this.hide();
+    if (elements === null || elements.e >= 0.98 || !isFinite(elements.a) || elements.a <= 0) {
+      this.elements = null;
+      this.curve.setVisible(false);
       return;
     }
 
     // 頂点もシーンも ECI 基準なので回転は掛けない。ここへフレーム回転を掛けると、焼いた
     // 軌道形状だけが回り続けて船の現在位置から外れていく。
-    this.curve.setTransform(camera.floatingOrigin.RtoThreeV3(el.centerState.r));
-    this.elements = el;
-    this.curve.setAnalyticCurve(ellipseSampler(el), camera.camera, camera.viewport.height);
+    this.curve.setTransform(camera.floatingOrigin.RtoThreeV3(elements.centerState.r));
+    this.elements = elements;
+    this.curve.setAnalyticCurve(ellipseSampler(elements), camera.camera, camera.viewport.height);
     this.curve.setVisible(true);
   }
 
   // 現在描いている楕円上のサンプル点列を ECI 絶対座標で返す(右クリックの当たり判定向け)。
-  // 要素を持たない(非表示)間は空配列。
-  samplePoints(count: number): readonly Vec3[] {
+  // 要素を持たない間は空配列。
+  public samplePoints(count: number): readonly Vec3[] {
     const el = this.elements;
     if (!el) return [];
     const sampler = ellipseSampler(el);
@@ -82,7 +68,7 @@ export class EllipseLine {
   }
 
   // 描画資源を解放する。以後この線は描けない。
-  dispose(): void {
+  public dispose(): void {
     this.curve.dispose();
   }
 }

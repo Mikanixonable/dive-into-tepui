@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { CelestialBody } from '../../physics/celestial-body';
+import type { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import type { Vec3 } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import { orbitalElementsOf } from '../../physics/elements';
@@ -12,9 +13,9 @@ import type { RenderStyle } from '../render-style';
 import type { CameraFrame } from '../camera/camera-frame';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { CelestialBodies } from '../../game/celestial/celestial-bodies';
-import { EllipseLine } from '../../game/lines/ellipse-line';
-import { TargetRelativeLine } from '../../game/lines/target-relative-line';
-import { TrajectoryLine } from '../../game/lines/trajectory-line';
+import { EllipseLine } from '../lines/ellipse-line';
+import { TargetRelativeLine } from '../lines/target-relative-line';
+import { TrajectoryLine } from '../lines/trajectory-line';
 import type { MapVisibilityPolicy } from '../../game/map/visibility-policy';
 import type { OrbitReference } from '../../game/orbit-reference';
 import type { DynamicEntityKind } from '../../game/dynamic/dynamic-entity/entity-kind';
@@ -118,69 +119,71 @@ export class DynamicView {
     this.orbitLineValue = null;
   }
 
-  // 宣言された軌道表現の種類とスタイルへ資源を揃え、そのフレームの形状を反映する。
+  // 宣言された種類の軌道線資源へ差し替え、新しい資源を返す。
+  private swapOrbitLine<T extends OrbitLineResource>(resource: T): T {
+    this.disposeOrbitLine();
+    this.scene?.add(resource.line.line);
+    this.orbitLineValue = resource;
+    return resource;
+  }
+
+  // 宣言された軌道表現の種類へ資源を揃え、そのフレームの形状と見た目を反映する。
   private syncOrbitLine(
     display: DynamicLineDisplay['orbit'],
     motion: DynamicMotion, displayTime: number, celestialBodies: CelestialBodies,
     camera: CameraFrame, anchors: FrameAnchorSource,
   ): void {
-    // 表現種別が変わったときだけ資源を作り直し、同種ならスタイルだけを更新する。
     if (display === null) {
       this.disposeOrbitLine();
       return;
     }
-    if (this.orbitLineValue?.kind !== display.kind) {
-      this.disposeOrbitLine();
-      if (display.kind === 'ellipse') {
-        const line = new EllipseLine(display.style);
-        this.scene?.add(line.line);
-        this.orbitLineValue = { kind: 'ellipse', line };
-      } else {
-        const line = new TargetRelativeLine(display.style);
-        this.scene?.add(line.line);
-        this.orbitLineValue = { kind: 'relative', line };
-      }
-    } else {
-      this.orbitLineValue.line.setStyle(display.style);
-    }
-    const orbitLine = this.orbitLineValue;
-    if (orbitLine === null) return;
     const state = motion.stateAt(displayTime, celestialBodies);
-    if (state === null) {
-      orbitLine.line.hide();
-      return;
-    }
     // 相対線と解析楕円では形状の基準が異なるので、宣言の判別子で経路を分ける。
-    if (display.kind === 'relative' && orbitLine.kind === 'relative') {
+    if (display.kind === 'relative') {
+      // 相対線は線だけを消せないので、表示時刻の状態を引けないフレームは資源ごと畳む。
+      if (state === null) {
+        this.disposeOrbitLine();
+        return;
+      }
+      const orbitLine = this.orbitLineValue?.kind === 'relative'
+        ? this.orbitLineValue
+        : this.swapOrbitLine({ kind: 'relative', line: new TargetRelativeLine(display.style) });
       const target = display.target.stateAt(displayTime, celestialBodies)?.r ?? display.target.state.r;
-      orbitLine.line.sync(state.r, target, camera);
+      orbitLine.line.sync(state.r, target, display.style, camera);
       return;
     }
-    if (display.kind !== 'ellipse' || orbitLine.kind !== 'ellipse') return;
-    const center = display.center ?? strongestAttractor(state.r, anchors.bodies, anchors.bodiesPivot);
-    const elements = orbitalElementsOf(state, center, anchors.bodiesPivot);
-    if (elements === null) orbitLine.line.hide();
-    else orbitLine.line.sync(elements, camera);
+    const orbitLine = this.orbitLineValue?.kind === 'ellipse'
+      ? this.orbitLineValue
+      : this.swapOrbitLine({ kind: 'ellipse', line: new EllipseLine(display.style) });
+    const elements = state === null ? null : orbitalElementsOf(
+      state,
+      display.center ?? strongestAttractor(state.r, anchors.bodies, anchors.bodiesPivot),
+      anchors.bodiesPivot,
+    );
+    orbitLine.line.sync(elements, display.style, camera);
   }
 
-  // null を非表示宣言として扱い、予測・過去軌跡の資源を必要なときだけ保持する。
+  // 予測・過去軌跡の資源を、存在する場合だけ scene から外して破棄する。
+  private disposeTrajectoryLine(line: TrajectoryLine | null): void {
+    if (line === null) return;
+    this.scene?.remove(line.line);
+    line.dispose();
+  }
+
+  // style を非表示宣言(null)込みの資源の有無として扱い、線があればそのフレームの軌跡を焼く。
   private syncTrajectoryLine(
     current: TrajectoryLine | null, style: LineStyle | null,
+    trajectory: DynamicTrajectory | null, from: number, to: number | null,
+    frame: ReferenceFrame, displayTime: number, celestialBodies: CelestialBodies,
+    camera: CameraFrame, anchors: FrameAnchorSource,
   ): TrajectoryLine | null {
-    // style の有無が資源の有無に対応し、既存資源は同種のまま再利用する。
     if (style === null) {
-      if (current !== null) {
-        this.scene?.remove(current.line);
-        current.dispose();
-      }
+      this.disposeTrajectoryLine(current);
       return null;
     }
-    if (current !== null) {
-      current.setStyle(style);
-      return current;
-    }
-    const line = new TrajectoryLine(style);
-    this.scene?.add(line.line);
+    const line = current ?? new TrajectoryLine(style);
+    if (current === null) this.scene?.add(line.line);
+    line.sync(trajectory, from, to, frame, displayTime, celestialBodies, anchors, style, camera);
     return line;
   }
 
@@ -191,22 +194,15 @@ export class DynamicView {
     pastDuration: number, predictedTo: number | null, celestialBodies: CelestialBodies,
     camera: CameraFrame, anchors: FrameAnchorSource,
   ): void {
-    // 先に宣言どおりの資源集合へ揃えてから、存在する線だけへ形状を焼く。
-    this.predictedLineValue = this.syncTrajectoryLine(this.predictedLineValue, display.predicted);
-    this.actualLineValue = this.syncTrajectoryLine(this.actualLineValue, display.actual);
-    if (this.predictedLineValue !== null) {
-      this.predictedLineValue.syncGeometry(
-        motion.predicted, simTime, predictedTo, frame, celestialBodies, anchors);
-      this.predictedLineValue.syncTransform(frame, displayTime, celestialBodies, camera.floatingOrigin, anchors);
-      this.predictedLineValue.sync(camera);
-    }
     // 過去線は表示窓の過去側、予測線は現在から予測終端までを同じ参照系で同期する。
-    if (this.actualLineValue !== null) {
-      this.actualLineValue.syncGeometry(
-        motion.actual, simTime - pastDuration, simTime, frame, celestialBodies, anchors);
-      this.actualLineValue.syncTransform(frame, displayTime, celestialBodies, camera.floatingOrigin, anchors);
-      this.actualLineValue.sync(camera);
-    }
+    this.predictedLineValue = this.syncTrajectoryLine(
+      this.predictedLineValue, display.predicted, motion.predicted, simTime, predictedTo,
+      frame, displayTime, celestialBodies, camera, anchors,
+    );
+    this.actualLineValue = this.syncTrajectoryLine(
+      this.actualLineValue, display.actual, motion.actual, simTime - pastDuration, simTime,
+      frame, displayTime, celestialBodies, camera, anchors,
+    );
     this.syncOrbitLine(
       display.orbit, motion, displayTime, celestialBodies, camera, anchors,
     );
@@ -238,12 +234,10 @@ export class DynamicView {
   // この View が所有する THREE / DOM 資源を解放する。
   public dispose(): void {
     this.disposeOrbitLine();
-    if (this.predictedLineValue !== null) {
-      this.scene?.remove(this.predictedLineValue.line);
-      this.predictedLineValue.dispose();
-      this.predictedLineValue = null;
-    }
-    this.actualLineValue = this.syncTrajectoryLine(this.actualLineValue, null);
+    this.disposeTrajectoryLine(this.predictedLineValue);
+    this.predictedLineValue = null;
+    this.disposeTrajectoryLine(this.actualLineValue);
+    this.actualLineValue = null;
     this.scene?.remove(this.object);
     disposeOwnedRenderResources(this.object);
   }

@@ -1,19 +1,15 @@
-// 時刻付き点列(KinematicState)を1本の単色折れ線として描く汎用描画基盤。EllipseLine(解析的な楕円)の
-// 兄弟で、こちらは計画軌道・予測軌道・履歴軌道など「DynamicTrajectory が保持する任意の点列」を
-// 折れ線化する共通土台になる。保持区間が描画上限(to)に届かないときは、先端を中心天体まわりの
-// 二体軌道とみなしたケプラー外挿(kepler-extrapolation.ts)で to まで継ぎ足す — 中心天体を
-// 持たない列(計画軌道の各区間など)ではこの継ぎ足しは起きない。
-// 頂点の解像度そのものの決定(画面上のサジッタに応じた適応分割)は render/curve.ts の Curve に
-// 委ねる。このモジュールの責務は、DynamicTrajectory の保持区間(+ 外挿ぶん)から描画対象の
+// 時刻付き点列(KinematicState)を1本の単色折れ線として描く。保持区間が描画上限(to)に届かない
+// ときは、先端を中心天体まわりの二体軌道とみなしたケプラー外挿(kepler-extrapolation.ts)で to
+// まで継ぎ足す。このモジュールの責務は、DynamicTrajectory の保持区間(+ 外挿ぶん)から描画対象の
 // 時刻範囲を切り出し、位置と接線を持つ節点列として Curve へ渡すことと、その曲線が描かれる
-// 座標系の管理。節点の間をどう埋めるかは Curve が持つ。
+// 座標系の管理。節点の間をどう埋めるか(画面上のサジッタに応じた適応分割)は Curve が持つ。
 //
 // 座標変換は physics/frame.ts / game/celestial/reference-frames.ts へ委譲する二段構え:
-//  - bake(点列・frame が変わったときだけ, syncGeometry): 各サンプルの KinematicState を
-//    その時刻の座標系相対へ変換する(frameTransformAt→toFrameState)。点ごとに座標系の姿勢・
-//    原点が違う非剛体変形なので、時刻ごとに変換し直す(慣性系なら無変換)。
-//  - un-bake(毎フレーム, syncTransform): 現在時刻 T の座標系の剛体運動(frameTransformAt)を
-//    Curve の transform として与え、座標系相対頂点を慣性系へ戻す。全頂点一律なので O(1)。
+//  - bake(点列・frame が変わったときだけ): 各サンプルの KinematicState をその時刻の座標系相対へ
+//    変換する(frameTransformAt→toFrameState)。点ごとに座標系の姿勢・原点が違う非剛体変形なので、
+//    時刻ごとに変換し直す(慣性系なら無変換)。
+//  - un-bake(毎フレーム): 表示時刻の座標系の剛体運動(frameTransformAt)を Curve の transform と
+//    して与え、座標系相対頂点を慣性系へ戻す。全頂点一律なので O(1)。
 //  - フローティングオリジン補正(毎フレーム): transform の位置 = 座標系原点の描画フレーム位置
 //    (原点が動く座標系でもここだけ直せば済むよう、頂点は書き換えない)。
 // THREE の合成は world = position + quaternion·vertex なので、原点まわりの un-bake 回転 →
@@ -21,16 +17,15 @@
 import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { FrameAnchorSource, framePoint, ReferenceFrame, toFrameState, toInertialPoint } from '../../physics/frame';
-import type { ReferenceFrames } from '../celestial/reference-frames';
+import type { ReferenceFrames } from '../../game/celestial/reference-frames';
 import { DynamicTrajectory, ExtrapolationCenter } from '../../physics/dynamic-trajectory';
 import { extrapolatedRelativeStates } from '../../physics/kepler-extrapolation';
 import { StateQueue } from '../../physics/state-queue';
 import { add, Vec3 } from '../../math/vec3';
-import type { CameraFrame } from '../../render/camera/camera-frame';
-import { FloatingOrigin } from '../../render/camera/floating-origin';
-import { Curve, CurveKnots } from '../../render/curve';
-import { LineStyle } from '../../render/line-style';
-import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { CameraFrame } from '../camera/camera-frame';
+import { Curve, CurveKnots } from '../curve';
+import { LineStyle } from '../line-style';
+import type { CelestialBodies } from '../../game/celestial/celestial-bodies';
 
 // 頂点数の打ち切り。数周ぶんの軌跡なら数百頂点で収束するが、28日表示のように数百周が
 // 重なる区間は何頂点あっても収束しないので、どこで頭打ちにするかをここで決める。
@@ -71,7 +66,7 @@ function extrapolatedTailStates(
 
 export class TrajectoryLine {
   private readonly curve: Curve;
-  readonly line: THREE.Object3D;
+  public readonly line: THREE.Object3D;
   private lastSamples: readonly KinematicState[] | null = null;
   private lastFrame: ReferenceFrame | null = null;
   private lastFrom: number | null = null;
@@ -92,21 +87,46 @@ export class TrajectoryLine {
   // 描画区間の上限(bake 済み区間の末尾へクランプ済み)。null は上限なし。
   private endTime: number | null = null;
 
-  // 単色の折れ線を構築する。style.dash があれば破線になる。
-  constructor(style: LineStyle) {
+  // 単色の折れ線を構築する。style は最初のフレームの見た目で、以後は sync が渡す値で
+  // 上書きされる(破線になるかどうかだけは、ここで渡した style の dash が決める)。
+  public constructor(style: LineStyle) {
     this.curve = new Curve(style, MAX_VERTICES);
     this.line = this.curve.object;
   }
 
-  // trajectory の保持区間のうち [from, to] を描く対象にする。trajectory が null なら曲線を
-  // 持たない状態にする。from/to はそれぞれ描画の下限/上限時刻で、null ならその側は無制限。
-  // 区間の外は補間できないので、それぞれ先頭/末尾へクランプする。保持区間の末尾が to に届かず、
-  // かつ先端が中心天体を持つ場合は、二体ケプラー軌道とみなして to まで外挿し継ぎ足す。
+  // このフレームに描く軌跡・区間・座標系・見た目を反映する。from/to はそれぞれ描画の下限/上限
+  // 時刻で、null ならその側は無制限。displayTime は un-bake に使う表示時刻(通常 simTime)。
+  // trajectory が null か、描ける区間が潰れているときは線が消え、samplePoints も空になる。
+  public sync(
+    trajectory: DynamicTrajectory | null, from: number | null, to: number | null,
+    frame: ReferenceFrame, displayTime: number, celestialBodies: CelestialBodies,
+    frameAnchors: FrameAnchorSource, style: LineStyle, camera: CameraFrame,
+  ): void {
+    this.curve.setStyle(style);
+    this.bakeKnots(trajectory, from, to, frame, celestialBodies, frameAnchors);
+    const start = this.startTime;
+    const end = this.endTime;
+    const knots = this.knots;
+    if (this.baked.size < 2 || start === null || end === null || start >= end || knots === null) {
+      this.curve.clear();
+      return;
+    }
+    // 剛体 un-bake(回転)とフローティングオリジン補正(平行移動 = 座標系原点)は、頂点を焼く
+    // 前に渡す — 適応分割はこの変換を通した画面上の大きさで区間の粗さを測る。
+    const tf = celestialBodies.frames.transformAt(frame, displayTime, frameAnchors);
+    this.unbakeQuat.set(tf.q.x, tf.q.y, tf.q.z, tf.q.w);
+    this.curve.setTransform(camera.floatingOrigin.RtoThreeV3(tf.origin), this.unbakeQuat);
+    this.curve.setHermiteCurve(knots, camera.camera, camera.viewport.height);
+  }
+
+  // trajectory の保持区間のうち [from, to] を、座標系相対の節点列へ焼く。区間の外は補間できない
+  // ので、from/to はそれぞれ先頭/末尾へクランプする。保持区間の末尾が to に届かず、かつ先端が
+  // 中心天体を持つ場合は、二体ケプラー軌道とみなして to まで外挿し継ぎ足す。
   // 座標系相対への焼き直し(frameTransformAt を伴う高コストな処理)は、保持列の参照または
   // frame が変わったときだけ行う。外挿区間を持つ間はそれに加え、to が外挿1サンプルぶんの間隔
   // 以上動いたときにも焼き直す — 動いた分がその間隔未満なら、描画末尾が最大1間隔ぶん遅れる
   // だけで見た目には出ない。
-  syncGeometry(
+  private bakeKnots(
     trajectory: DynamicTrajectory | null, from: number | null, to: number | null, frame: ReferenceFrame,
     celestialBodies: CelestialBodies, frameAnchors: FrameAnchorSource,
   ): void {
@@ -170,58 +190,9 @@ export class TrajectoryLine {
     return { ts, positions, tangents };
   }
 
-  // 適応分割を実行し GPU バッファへ反映する。camera = 画面上のサジッタを実距離へ換算するための
-  // 描画カメラ。描く区間が潰れている(bake 済み点列が2点未満、または有効な開始時刻が終了時刻
-  // 以上)なら曲線を持たない状態へ戻す。
-  sync(camera: CameraFrame): void {
-    const start = this.startTime;
-    const end = this.endTime;
-    if (this.baked.size < 2 || start === null || end === null || start >= end || !this.knots) {
-      this.curve.clear();
-      return;
-    }
-    this.curve.setHermiteCurve(this.knots, camera.camera, camera.viewport.height);
-  }
-
-  // 毎フレーム: 剛体 un-bake(回転) + フローティングオリジン補正(平行移動 = 座標系原点)。
-  // currentTime = 描画時刻(通常 simTime)。
-  syncTransform(
-    frame: ReferenceFrame, currentTime: number, celestialBodies: CelestialBodies, fo: FloatingOrigin,
-    frameAnchors: FrameAnchorSource,
-  ): void {
-    const tf = celestialBodies.frames.transformAt(frame, currentTime, frameAnchors);
-    this.unbakeQuat.set(tf.q.x, tf.q.y, tf.q.z, tf.q.w);
-    this.curve.setTransform(fo.RtoThreeV3(tf.origin), this.unbakeQuat);
-  }
-
-  // 表示を要求する。頂点数が2未満の間は実際には隠れたままになる。
-  setVisible(v: boolean): void {
-    this.curve.setVisible(v);
-  }
-
-  setDash(dashSize: number, gapSize: number): void {
-    this.curve.setDash(dashSize, gapSize);
-  }
-
-  setStyle(style: LineStyle): void {
-    this.curve.setStyle(style);
-  }
-
-  setColor(color: string | number): void {
-    this.curve.setColor(color);
-  }
-
-  setOpacity(opacity: number): void {
-    this.curve.setOpacity(opacity);
-  }
-
-  setRenderOrder(renderOrder: number): void {
-    this.curve.setRenderOrder(renderOrder);
-  }
-
   // 直近に bake した描画区間から、当たり判定向けの ECI 絶対座標のサンプル点列を返す。
-  // 座標系相対 → 慣性系の変換は表示時刻の剛体運動(syncTransform の un-bake と同じ変換)で行う。
-  samplePoints(
+  // 座標系相対 → 慣性系の変換は表示時刻の剛体運動(sync の un-bake と同じ変換)で行う。
+  public samplePoints(
     count: number, frame: ReferenceFrame, displayTime: number, frames: ReferenceFrames,
     frameAnchors: FrameAnchorSource,
   ): readonly Vec3[] {
@@ -238,7 +209,8 @@ export class TrajectoryLine {
     return points;
   }
 
-  dispose(): void {
+  // 描画資源を解放する。以後この線は描けない。
+  public dispose(): void {
     this.curve.dispose();
   }
 }
