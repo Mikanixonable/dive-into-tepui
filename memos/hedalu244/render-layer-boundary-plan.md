@@ -39,6 +39,9 @@
 29. orbit guide は `OrbitGuideModel`(`game/celestial/orbit-guide/orbit-guide-model.ts`)と `OrbitGuideView`(`render/celestial/orbit-guide/orbit-guide-view.ts`)。ゼロ速度曲線も同じ形。model の宣言は形が変わるまで同じオブジェクト参照を返し、`GuideCurve.samplePoints` は `(shape, origin, count)` を鍵にする。表示済みの点列は `CelestialSystem.orbitGuideSamples(count)` から引く。
 30. plan は `PlanPathView` / `PlanGizmo3D`(`render/plan/`)。`PlanPath` は弧の計算と、そのフレームに描く弧の宣言(`PlanArcLine`)だけを持つ。配置プレビューは `ObjectPlacementPreviewView`(`render/creative/`)。
 31. `game/plan/` と `game/creative/` に残る `three/webgpu` は `THREE.Scene` の型 import だけ。`scene` を渡すだけの引数で、消すには `game.ts` の scene 配布の規約を変える必要がある。
+32. 1体ぶんの表示入力は `src/render/dynamic/dynamic-view.ts` の `DynamicRenderSource`(`id` / `name` / `visible` / `alive` / `stateAt(t)` / `attitude` / `thermal`)。種別ごとの面はこれを extends し、`DynamicView<S>` が受ける。組み立ては `DynamicEntity.renderSource(context, visible, active, orbitReference)` の1箇所。
+33. **線の宣言は `DynamicRenderSource` に載せない。** 線の見た目は `targeter.aliveTarget` が決まったあとでないと確定せず、それは `dynamicSystem.sync` より後の位相にある。`EntityLineManager` が `view.syncLines(...)` を別の pass で渡す現行の形を維持する。
+34. 噴射・RCS の揺らぎの種は `src/render/dynamic/player/plume-noise.ts` の `plumeNoiseSeed(id, displayTime, nozzleIndex)`。フレーム番号や sync の回数は種に入れない。
 
 ## 達成目標
 
@@ -54,58 +57,6 @@
 - 全手順で `npm run typecheck` が通り、最終的に `npm run test:physics`、`npm run test:game`、`npm run test:render`、`npm run test:settings` が通る。
 
 ## 手順
-
-### 手順 8. dynamic view を具象 Motion/System から切り離す
-
-#### 目的
-
-dynamic view が mutable な `DynamicMotion`、game の可視性 policy、entity kind、player subsystem を直接読む構造をやめる。各 entity が Motion→View の結節点で狭い readonly source と visible/line declaration を渡し、render は必要な時刻の状態だけを問い合わせて表示計算する。巨大な事前計算点列は渡さない。
-
-#### 変更が必要な箇所
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/render/dynamic/dynamic-view.ts:12-46,82-109,188-258` | `DynamicRenderSource` と共通 frame の最小面を定義する。`DynamicMotion`、CelestialBodies、MapVisibilityPolicy、OrbitReference、DynamicEntityKind を除き、state query・attitude・thermal・line source・resolved visible を受ける。 |
-| `src/game/dynamic/dynamic-entity/dynamic-entity.ts:12,78` | entity が motion を render source へ構造的に射影して view.sync を呼ぶ唯一の結節点になる。 |
-| `src/game/dynamic/dynamic-system.ts:16,45-74` | render pool の lifecycle を render owner として生成・frame sync・破棄する。 |
-| `src/render/dynamic/instanced-pools.ts`（`src/game/dynamic/instanced-pools.ts` から移動） | pool と GPU/THREE 資源を所有する。capacity は構築時の表示値として受ける。 |
-| `src/render/dynamic/dynamic-entity/base-view.ts:7-9,28-61` | `instanceof BaseMotion` を除き、base 固有 readonly source を受ける。marker は対象外のため既存接続を維持する。 |
-| `src/render/dynamic/dynamic-entity/detached-booster-view.ts:12-13,34-59` | `instanceof DetachedBoosterMotion` を除き、stage appearance と zoom/display state を受ける。 |
-| `src/render/dynamic/dynamic-entity/bullet-view.ts:5-49` | DynamicMotion を除き、position/appearance/pool source を受ける。 |
-| `src/render/dynamic/dynamic-entity/debris-piece-view.ts:15-69` | DynamicMotion/DebrisKind を除き、game が選んだ render variant を受ける。 |
-| `src/render/dynamic/dynamic-entity/metal-enemy-view.ts:4-7` | game 定数を import せず、entity assembly から model scale を受ける。 |
-| `src/render/dynamic/player/player-view.ts:9-18,44-153` | `instanceof PlayerMotion` と player subsystem import を除き、player 固有 source を受ける。 |
-| `src/render/dynamic/player/attached-boosters-view.ts:13,25-57` | `BoosterStage` 全体でなく id/appearance の最小列を受ける。 |
-| `src/render/dynamic/player/belt-view.ts:6,24-43` | BeltPhysics 全体でなく anchor/positions/twists の readonly 面を受ける。 |
-| `src/render/dynamic/player/power-view.ts:2-29` | SolarSide と closure を除き、up/down deploy value を受ける。 |
-| `src/render/dynamic/player/radiator-view.ts:2-35` | RadiatorSide と closure を除き、up/down の wear/tilt value を受ける。 |
-| `src/render/dynamic/player/reentry-effects.ts`（`src/game/player/reentry-effects.ts` から移動） | Billboard 資源と動圧からの表示計算を render 所有にする。 |
-| `src/render/dynamic/player/thrust-effects.ts:30-65` | `Math.random()` を displayTime/entity/nozzle seed からの deterministic visual noise に置換する。 |
-| `src/render/dynamic/player/rcs-effects.ts:32-60` | 同上。 |
-| `src/game/dynamic/dynamic-entity/base.ts:124` | base view source を組み立てる。 |
-| `src/game/dynamic/dynamic-entity/detached-booster.ts:36` | booster view source/appearance を組み立てる。 |
-| `src/game/dynamic/dynamic-entity/debris-piece.ts:28-99` | debris logical kind を render variant に変換する。 |
-| `src/game/dynamic/dynamic-entity/metal-enemy.ts:31-37` | model scale/collision definition を motion と view の両方へ構築時に渡す。 |
-| `src/game/dynamic/dynamic-entity/enemy-motion.ts:15-29` | render が読む exported model scale を除き、物理 collision 値は constructor/definition から受ける。 |
-| `src/game/dynamic/dynamic-entity/enemy.ts:43,259-261` | shared enemy definition の scale を effect/debris/view へ明示する。 |
-| `src/game/player/player.ts:163,337-398` | player view source、belt/solar/radiator の値を Motion→View sync で組む。 |
-| `src/game/player/player-motion.ts:23-39` | render 用具象型の露出をやめる。 |
-| `src/game/player/belt.ts:8-37` | `BELT_MAX_VISIBLE` を physics/view 共通の構築値として Player assembly から渡し、render import 用 export を除く。 |
-| `src/game/player/belt-physics.ts:36-214` | readonly view source を満たす値だけを getter で公開する。 |
-| `src/game/player/attached-booster-motion.ts:30-49` | view へ stage appearance の最小面を提供する。 |
-| `src/game/player/power.ts:12-77` | game の mutable deploy state は残し、sync 時に value record を作る。 |
-| `src/game/player/radiator.ts:26-214` | game の update/wear state は残し、sync 時に value record を作る。 |
-| `tests/render/enemy-model-bounds.test.ts:4-11` | assembly から渡す model scale と collision bounds の一致を検証する。 |
-| `tests/render/dynamic-view-source.test.ts`（新規） | narrow source の時刻 query、resolved visibility、同一時刻の deterministic effect sync を検証する。 |
-
-#### 達成条件と検証
-
-- `rg -n 'DynamicMotion|CelestialBodies|MapVisibilityPolicy|OrbitReference|DynamicEntityKind|BeltPhysics|BoosterStage|RadiatorSide|SolarSide|ENEMY_MODEL_SCALE|BELT_MAX_VISIBLE' src/render/dynamic` が 0 件。
-- `rg -n 'instanceof (BaseMotion|DetachedBoosterMotion|PlayerMotion)' src/render` が 0 件。
-- view へ渡す trajectory/orbit source は時刻 query を持ち、game 側で表示点列を事前構築していない。
-- `npm run typecheck`
-- `npm run test:game`
-- `npm run test:render`
 
 ### 手順 9. protein の論理定義と表示 runtime を分離する
 
