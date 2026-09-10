@@ -36,7 +36,6 @@ import { NavTarget } from './nav-target';
 import { FrameAnchors } from './frame-anchors';
 import { OrbitReferenceSelector } from './orbit-reference';
 import { ObjectWindows } from './pickable/object-windows';
-import { Navball } from './navball/navball';
 import { SAVE_VERSION, type GameSaveData } from './save/save-data';
 import { ephemerisContextFor } from '../physics/ephemeris/ephemeris-context';
 import type { LoadingProgress } from './loading-progress';
@@ -47,7 +46,10 @@ import { frameRoleOf } from '../physics/frame';
 import { ViewBadge } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
 import { syncControlledLoopSfx } from './controlled-loop-sfx';
+import { ViewOptionsControl } from './hud/panels/view-options-control';
+import type { MapDisplayToggles } from './map/display-toggles';
 import { MapVisibilityPolicy } from './map/visibility-policy';
+import type { RunSetting } from './run-setting';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -81,7 +83,10 @@ export class Game {
 
   private readonly _celestialSystem: CelestialSystem;
   get celestialSystem(): CelestialSystem { return this._celestialSystem; }
-  private readonly navball: Navball;
+  // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。
+  private readonly viewOptions: ViewOptionsControl;
+  // マップの表示トグル。可視性ポリシーと点群の可視判定が、このフレームの値を読む。
+  private readonly mapDisplay: RunSetting<MapDisplayToggles>;
 
   readonly targeter: Targeter;
   readonly navTarget: NavTarget;
@@ -178,6 +183,7 @@ export class Game {
     this.pipeline = host.scene.pipeline;
     this._celestialSystem = celestialSystem;
     this._hud = host.hud;
+    this.mapDisplay = host.mapDisplay;
     this._worldSfx = new WorldSfx(audioEngine);
     const uiSfx = new UiSfx(audioEngine);
     this.pauseMenu = pauseMenu;
@@ -191,6 +197,10 @@ export class Game {
     this.entityLines = new EntityLineManager(this.dynamicSystem);
     this.equatorNodes = new EquatorNodeManager(this.dynamicSystem, this.markerManager);
     this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, celestialSystem);
+
+    // 表示パネル。左レールの並びはパネルを足した順で決まるので、同じレールへ足す座標系パネル
+    // (FrameControls)より先に組む。
+    this.viewOptions = new ViewOptionsControl(this._hud.mapRoot, host.mapDisplay, host.grid, host.orbitGuide);
 
     // ビューの正本(ViewManager)はカメラより後に組み上がるため、遅延評価で渡す。
     // 姿勢は現在値しか持たないため、解決はフォーカス id → 生存エンティティの現在姿勢。
@@ -226,14 +236,13 @@ export class Game {
     this.targeter = new Targeter(
       this.markerManager, this.navTarget, this.dynamicSystem, celestialSystem.celestialMotions,
     );
-    this.navball = new Navball(this.cameraSystem.viewOptionsPanel);
-    this.navball.onOrbitGuideSettingsChange = (settings) => this._celestialSystem.setOrbitGuideSettings(settings);
-    this._celestialSystem.setOrbitGuideSettings(this.navball.orbitGuideSettings);
-    this.navball.onGridVisibilityChange = (visibility) => this._celestialSystem.setGridVisibility(visibility);
-    this._celestialSystem.setGridVisibility(this.navball.gridVisibility);
+    this.viewOptions.onOrbitGuideSettingsChange = (settings) => this._celestialSystem.setOrbitGuideSettings(settings);
+    this._celestialSystem.setOrbitGuideSettings(host.orbitGuide.current);
+    this.viewOptions.onGridVisibilityChange = (visibility) => this._celestialSystem.setGridVisibility(visibility);
+    this._celestialSystem.setGridVisibility(host.grid.current);
     // 線が増えすぎたときの警告を UI へ戻す。
     this._celestialSystem.orbitGuide.setOnLineCountChange(
-      (count) => this.cameraSystem.viewOptionsPanel.setOrbitGuideLineCount(count),
+      (count) => this.viewOptions.setOrbitGuideLineCount(count),
     );
     this.controlSelection = new ControlSelection(
       initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._worldSfx, this._hud,
@@ -281,7 +290,7 @@ export class Game {
       this.dynamicSystem, this.equatorNodes, celestialSystem,
       this.celestialMarkers, this.markerManager, this.displayWindowManager, this.frameControls,
       this.frameAnchors, this.controlSelection, this.simSpeedManager, this.planDisplay,
-      this._scene, this._hud, uiSfx, this.navTarget,
+      this._scene, this._hud, uiSfx, this.navTarget, this.mapDisplay,
     );
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
     // 置かれるので、戦闘ビューへ入れるかどうかはその後でなければ判定できない。
@@ -333,6 +342,7 @@ export class Game {
     this._celestialSystem.dispose();
     this.frameControls.dispose();
     this.cameraSystem.dispose();
+    this.viewOptions.dispose();
     this.displayWindowManager.dispose();
     this.equatorNodes.dispose();
     this.dynamicSystem.dispose();
@@ -385,7 +395,7 @@ export class Game {
     this.sections.enter(SECTION.plan);
     const equatorVisibility = this.cameraSystem.view === 'map'
       ? new MapVisibilityPolicy(
-        this._celestialSystem, this.cameraSystem.mapDisplayToggles,
+        this._celestialSystem, this.mapDisplay.current,
       )
       : null;
     this.equatorNodes.update({
@@ -493,6 +503,8 @@ export class Game {
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
     this.cameraSystem.sync();
+    // マップビューのときだけ表示設定パネルを出す。
+    this.viewOptions.setVisible(this.viewManager.current === 'map');
     const fo = this.cameraSystem.getFloatingOrigin();
     // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
     this.viewManager.activeView.syncLabels(displayWindow);
@@ -510,7 +522,7 @@ export class Game {
 
     this._celestialSystem.sync(
       fo, displayTime,
-      this.cameraSystem, graphics, style, visibilityPolicy, this.markerManager,
+      this.cameraSystem, graphics, style, this.mapDisplay.current, visibilityPolicy, this.markerManager,
     );
     this._celestialSystem.bakeClouds(this.renderer, displayTime);
 
