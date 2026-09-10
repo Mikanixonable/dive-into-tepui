@@ -72,7 +72,12 @@ export const MAP_VIEW_STYLE = `
   letter-spacing: 0;
 }
 
-#hud .hud-map-root.active .rail-toggle,
+#hud .hud-map-root.active .rail-toggle {
+  border: 0;
+  border-radius: 50%;
+  background: var(--glass-control);
+  color: var(--muted);
+}
 #hud .hud-map-root.active #hud-predict-toggle {
   border: 0;
   border-radius: var(--radius-control);
