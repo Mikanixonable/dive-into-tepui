@@ -68,7 +68,7 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.onToggleResupply = (on) => { this.logistics.resupplyEnabled = on; };
     this.stageControlsPanel.onToggleFuelResupply = (on) => { this.logistics.rcsFuelResupplyEnabled = on; };
     this.stageControlsPanel.onToggleWaveAttack = (on) => { this.waveAttackEnabled = on; };
-    this.stageControlsPanel.onRefillAmmo = () => this.refillShipAmmo();
+    this.stageControlsPanel.onAddMagazine = () => this.addMagazineToShip();
     this.stageControlsPanel.onRefillFuel = () => this.refillShipRcsFuel();
     this.stageControlsPanel.onSpawnDistanceChange = (distance) => { this.manualSpawn.spawnDistance = distance; };
     this.stageControlsPanel.onSpawnEnemy = (shape, colorValue) => this.spawnManualEnemy(shape, colorValue);
@@ -89,14 +89,14 @@ export class CreativeStage extends Stage {
     }
   }
 
-  // 操作艦の弾薬を満載にする。操作艦がいなければトーストで知らせる。
-  private refillShipAmmo(): void {
+  // 操作艦の弾薬チェーンへマガジンを1つ追加する。操作艦がいなければトーストで知らせる。
+  private addMagazineToShip(): void {
     const player = this.ship;
     if (player === null || !player.motion.alive) {
-      this._hud.hint('操作艦がいないため弾薬を補充できません');
+      this._hud.hint('操作艦がいないためマガジンを追加できません');
       return;
     }
-    player.refillAmmo();
+    player.onPickup(1);
   }
 
   // 操作艦の RCS 燃料を満タンにする。操作艦がいなければトーストで知らせる。
