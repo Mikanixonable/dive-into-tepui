@@ -2,7 +2,7 @@ import { hudRail } from '../hud-root';
 import {
   Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, SegmentedControl, type CollapseToggleLabels,
 } from '../../../hud/widgets';
-import { expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
+import { bindActivation, expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
 import { injectOnce } from '../../../hud/inject-style';
 import { loadPanelCollapsed, savePanelCollapsed, wirePanelCollapse } from '../panel-shell';
 import { MQ_COARSE } from '../../../hud/breakpoints';
@@ -214,10 +214,12 @@ export class PhysicalObjectListPanel {
     for (const { section: sectionKey } of SECTIONS) {
       const sectionId = `hud-physical-object-list-section-${sectionKey}`;
       const header = document.createElement('div');
-      header.className = 'physical-object-list-section-header';
+      header.className = 'physical-object-list-section-header ui-selectable';
       header.tabIndex = 0;
       header.setAttribute('role', 'button');
       header.setAttribute('aria-controls', sectionId);
+      stopDragPropagation(header);
+      expandHitTarget(header);
       const labelEl = document.createElement('span');
       labelEl.className = 'physical-object-list-section-header-label';
       const glyphEl = document.createElement('span');
@@ -242,12 +244,7 @@ export class PhysicalObjectListPanel {
         this.applyExpanded(section);
         savePanelCollapsed(sectionId, !section.expanded);
       };
-      header.addEventListener('click', toggleSection);
-      header.addEventListener('keydown', (event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        event.preventDefault();
-        toggleSection();
-      });
+      bindActivation(header, toggleSection);
       this.sections.set(sectionKey, section);
       body.appendChild(header);
       // 入れ子を持つのは天体区画だけなので、一括開閉ボタンもここにだけ添える。区画本体の中

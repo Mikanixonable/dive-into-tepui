@@ -2,6 +2,7 @@
 // DOM を組み直し、選択されたら onSelect へ通知する。項目ショートカット文字列とキー入力の一致
 // 判定(dispatchShortcut)も併せて持つ。
 import { shortcutKeyLabel } from './shortcut-hint';
+import { bindActivation, expandHitTarget, stopDragPropagation } from '../widgets/widget-base';
 import type { PropertyWindowItem } from './property-window-content';
 
 export class PropertyWindowItems<A extends string = string> {
@@ -31,19 +32,17 @@ export class PropertyWindowItems<A extends string = string> {
       row.setAttribute('role', 'button');
       row.tabIndex = 0;
       row.classList.toggle('on', it.selected === true);
-      row.textContent = it.label + (it.shortcut ? ` [${shortcutKeyLabel(it.shortcut)}]` : '');
+      const label = document.createElement('span');
+      label.className = 'w-hit';
+      label.textContent = it.label + (it.shortcut ? ` [${shortcutKeyLabel(it.shortcut)}]` : '');
+      expandHitTarget(label);
+      row.appendChild(label);
       row.dataset['act'] = it.act;
       row.dataset['shortcut'] = it.shortcut ?? '';
       row.dataset['keepOpen'] = it.keepOpen === true ? '1' : '';
-      row.addEventListener('click', (e) => {
-        // 外側 pointerdown 検出のキャプチャリスナへ伝播しないようにする。
-        e.stopPropagation();
+      stopDragPropagation(row);
+      bindActivation(row, () => {
         this.onSelect?.(it.act, it.keepOpen === true);
-      });
-      row.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter' && e.key !== ' ') return;
-        e.preventDefault();
-        row.click();
       });
       this.element.appendChild(row);
     }

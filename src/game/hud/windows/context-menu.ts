@@ -9,6 +9,7 @@ import { onViewportChange } from '../../../hud/viewport';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
 import { injectOnce } from '../../../hud/inject-style';
 import { injectCommonUiStyle } from '../../../hud/style/common-ui-style';
+import { bindActivation, expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
 
 const STYLE = `
 #hud .ctx-menu {
@@ -22,6 +23,7 @@ const STYLE = `
   padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
   border: 0; border-radius: var(--radius-control);
 }
+#hud .ctx-menu-item.w-hit { display: block; }
 #hud .ctx-menu-item:hover, #hud .ctx-menu-item:active {
   background: var(--glass-control-hover); color: var(--color-primary-hover);
 }
@@ -134,24 +136,21 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
         continue;
       }
       const item = document.createElement('div');
-      item.className = 'ctx-menu-item ui-selectable';
+      item.className = 'ctx-menu-item ui-selectable w-hit';
       item.setAttribute('role', 'menuitem');
       item.tabIndex = -1;
+      item.classList.toggle('on', it.selected === true);
       item.dataset['act'] = it.act || '';
       item.dataset['shortcut'] = it.shortcut || '';
       item.textContent = it.label + (it.shortcut ? ` [${shortcutKeyLabel(it.shortcut)}]` : '');
+      stopDragPropagation(item);
+      expandHitTarget(item);
       // クリックされた項目の act を、開いた時点の対象とともに通知して閉じる
-      item.addEventListener('click', (e) => {
-        e.stopPropagation();
+      bindActivation(item, () => {
         const act = item.dataset['act'] as A;
         const t = this.target;
         this.close();
         if (t !== null) this.onSelect?.(act, t);
-      });
-      item.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter' && e.key !== ' ') return;
-        e.preventDefault();
-        item.click();
       });
       item.addEventListener('focus', () => this.setRovingItem(item));
       this.el.appendChild(item);
