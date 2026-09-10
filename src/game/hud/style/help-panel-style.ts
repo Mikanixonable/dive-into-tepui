@@ -15,7 +15,7 @@ export const HELP_PANEL_STYLE = `
 #hud-help .help-close-hint { color: var(--text-dim); font-size: var(--font-xxs); font-weight: 400; letter-spacing: 0; }
 #hud-help .help-close-button {
   flex: 0 0 auto; width: 28px; height: 28px; padding: 0; border: 0;
-  border-radius: var(--radius-control); background: var(--glass-control); color: var(--body);
+  border-radius: 50%; background: var(--glass-control); color: var(--body);
   font: inherit; font-size: var(--font-l); line-height: 1; cursor: pointer;
 }
 #hud-help .help-close-button:hover { background: var(--glass-control-hover); color: var(--color-primary-hover); }
