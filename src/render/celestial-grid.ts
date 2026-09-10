@@ -75,6 +75,23 @@ export function normalizeGridVisibility(visibility: CelestialGridVisibility): Ce
   return next;
 }
 
+// 保存された文字列を可視状態へ読み直す。読めなければ既定値に戻る。
+export function parseGridVisibility(text: string | null): CelestialGridVisibility {
+  try {
+    if (!text) return DEFAULT_GRID_VISIBILITY;
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed !== 'object' || parsed === null) return DEFAULT_GRID_VISIBILITY;
+    return normalizeGridVisibility({ ...DEFAULT_GRID_VISIBILITY, ...parsed });
+  } catch {
+    return DEFAULT_GRID_VISIBILITY;
+  }
+}
+
+// 可視状態を保存へ載せる文字列にする。
+export function formatGridVisibility(visibility: CelestialGridVisibility): string {
+  return JSON.stringify(visibility);
+}
+
 const GRID_LAT_STEP_DEG = 15; // 交点の緯度間隔
 const GRID_LON_STEP_DEG = 15; // 交点の経度間隔
 const GRID_LABEL_STEP_DEG = 30; // 座標ラベルは間隔を空けて表示

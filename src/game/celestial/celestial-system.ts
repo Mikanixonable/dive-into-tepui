@@ -28,6 +28,7 @@ import type { MarkerSlots } from '../marker/marker-slots';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { PointFieldView } from '../../render/celestial/point-field-view';
+import type { MapDisplayToggles } from '../map/display-toggles';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialBodies } from './celestial-bodies';
 import type { CelestialClass } from './celestial-entity/celestial-entity-def';
@@ -361,6 +362,7 @@ export class CelestialSystem implements CelestialBodies {
     cameraSystem: CameraSystem,
     graphics: GraphicsSettingsData,
     style: RenderStyle,
+    mapDisplay: MapDisplayToggles,
     visibilityPolicy: MapVisibilityPolicy | null,
     markers: MarkerSlots,
   ): void {
@@ -379,7 +381,7 @@ export class CelestialSystem implements CelestialBodies {
     const starPos = star === null ? null : star.motion.stateAt(displayTime).r;
     const pointField = this.pointFieldView;
     const pointFieldVisible = cameraSystem.view === 'map' && graphics.pointField
-      && cameraSystem.mapDisplayToggles.smallBodyVisible;
+      && mapDisplay.smallBodyVisible;
     if (pointField !== null && pointFieldVisible && starPos !== null) {
       this.buildPointField(pointField);
       pointField.sync(floatingOrigin, displayTime, starPos, fixedBrightnessScale);

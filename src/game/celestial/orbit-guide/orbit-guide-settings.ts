@@ -1,5 +1,5 @@
 // 軌道ガイド(表示パネルの軌道ガイドタブ)の設定値。参照として描く軌道の種類ごとに、表示の
-// 可否・本数・族の範囲・色・進行方向マーカー・安定度の見せ方を持ち、localStorage へ永続化する。
+// 可否・本数・族の範囲・色・進行方向マーカー・安定度の見せ方と、保存文字列との変換を持つ。
 // どの系にどの種類があるかは焼き込みカタログが持ち、ここは選択だけを持つ。
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 
@@ -239,8 +239,6 @@ export const DEFAULT_ORBIT_GUIDE_SETTINGS: OrbitGuideSettings = {
   },
 };
 
-const STORAGE_KEY = 'tepui.orbitGuide';
-
 function clamp(value: number, lo: number, hi: number): number {
   return Number.isFinite(value) ? Math.min(hi, Math.max(lo, value)) : lo;
 }
@@ -303,12 +301,11 @@ export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): Orbit
   };
 }
 
-// localStorage から設定を読み込む。壊れていれば既定値に戻る。
-export function loadOrbitGuideSettings(): OrbitGuideSettings {
+// 保存された文字列を設定へ読み直す。壊れていれば既定値に戻る。
+export function parseOrbitGuideSettings(text: string | null): OrbitGuideSettings {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw === null) return DEFAULT_ORBIT_GUIDE_SETTINGS;
-    const parsed: unknown = JSON.parse(raw);
+    if (text === null) return DEFAULT_ORBIT_GUIDE_SETTINGS;
+    const parsed: unknown = JSON.parse(text);
     if (typeof parsed !== 'object' || parsed === null) return DEFAULT_ORBIT_GUIDE_SETTINGS;
     const stored = parsed as Partial<OrbitGuideSettings>;
     return normalizeOrbitGuideSettings({
@@ -329,11 +326,7 @@ export function loadOrbitGuideSettings(): OrbitGuideSettings {
   }
 }
 
-// 設定を localStorage へ保存する。保存できない環境では黙って諦める(次回は既定値)。
-export function saveOrbitGuideSettings(settings: OrbitGuideSettings): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  } catch {
-    /* localStorage 不可なら保存しない */
-  }
+// 設定を保存へ載せる文字列にする。
+export function formatOrbitGuideSettings(settings: OrbitGuideSettings): string {
+  return JSON.stringify(settings);
 }

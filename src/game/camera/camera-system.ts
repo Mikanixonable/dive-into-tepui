@@ -5,9 +5,6 @@ import { GunsightCamera } from './gunsight-camera';
 import { defaultMapViewInitial, FocusCamera, FOCUS_CAMERA_MIN_DIST } from './focus-camera';
 import type { FocusTarget } from './focus-target';
 import { frameRoleAnchorId } from '../../physics/frame';
-import { ViewOptionsPanel } from '../hud/panels/view-options-panel';
-import { catalogFamilyIndex } from '../celestial/orbit-guide/orbit-guide-catalog';
-import { applyMapDisplayMode, MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES, normalizeMapDisplayToggles } from '../map/display-toggles';
 import type { FocusCandidate } from './focus-target';
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
@@ -22,30 +19,6 @@ import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { View } from '../view/view';
 import { CameraSaveData } from '../save/save-data';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-
-const BODY_CLASS_TOGGLES_STORAGE_KEY = 'tepui.mapDisplayToggles';
-
-// localStorage から天体クラス別トグルを読み込む。取得できなければ既定値を返す。
-function loadBodyClassToggles(): MapDisplayToggles {
-  try {
-    const raw = localStorage.getItem(BODY_CLASS_TOGGLES_STORAGE_KEY);
-    if (!raw) return DEFAULT_MAP_DISPLAY_TOGGLES;
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null) return DEFAULT_MAP_DISPLAY_TOGGLES;
-    return normalizeMapDisplayToggles({ ...DEFAULT_MAP_DISPLAY_TOGGLES, ...parsed });
-  } catch {
-    return DEFAULT_MAP_DISPLAY_TOGGLES;
-  }
-}
-
-// 天体クラス別トグルを localStorage へ保存する。
-function saveBodyClassToggles(v: MapDisplayToggles): void {
-  try {
-    localStorage.setItem(BODY_CLASS_TOGGLES_STORAGE_KEY, JSON.stringify(v));
-  } catch {
-    /* localStorage 不可なら保存しない(次回リロード時は既定値に戻る) */
-  }
-}
 
 // 戦闘ビューの初期視点: 操作対象の後方やや上から見下ろす(役割フォーカス+姿勢追従)。
 const COMBAT_CAMERA_FOV = 55; // 通常時の垂直画角 [deg]
@@ -158,19 +131,10 @@ export class CameraSystem {
     fovDeg: COMBAT_CAMERA_FOV,
     aspect: window.innerWidth / window.innerHeight,
   };
-  // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。天球グリッド・
-  // 軌道ガイド側の配線は Navball が行う。
-  readonly viewOptionsPanel: ViewOptionsPanel;
   // 現在のビュー。ビューの正本(ViewManager)から毎回読む。
   get view(): View { return this.currentView(); }
   // マップビューのインスタンスがアクティブか。
   private get mapActive(): boolean { return this.currentView() === 'map'; }
-
-  // クラスごとの天体表示トグル。マップのラベル・軌道物体一覧・配置UIの基準天体が
-  // この1つの状態を共有する(map/visibility-policy.ts へ渡す)。フォーカスと
-  // 太陽系パネルを既に所有しているこのクラスが、同じ場所で持つ。
-  private _bodyClassToggles: MapDisplayToggles = loadBodyClassToggles();
-  get mapDisplayToggles(): MapDisplayToggles { return this._bodyClassToggles; }
 
   private readonly viewResetBtn: HTMLElement | null;
 
@@ -191,7 +155,7 @@ export class CameraSystem {
     this.hud.hint('視点をリセット');
   }
 
-  // 両カメラを構築し、常用ショートリストパネルの選択操作を配線する。
+  // 両カメラを構築し、視点リセットボタンを配線する。
   // saved があれば両カメラをその視点から組む。currentView はビューの正本を引く関数 —
   // ViewManager より先に生成されるため、参照でなく遅延評価で受ける。
   // attitudeOf はフォーカス機体の姿勢追従に使う解決関数(FocusCameraConfig 参照)。
@@ -221,23 +185,13 @@ export class CameraSystem {
       { focusLossPolicy: 'fallToOrigin', initial: defaultMapViewInitial(celestialBodies), attitudeOf },
       saved?.overview,
     );
-    // 表示パネルと天体クラス側操作のコールバック
-    this.viewOptionsPanel = new ViewOptionsPanel(hud.mapRoot, catalogFamilyIndex());
-    this.viewOptionsPanel.onBodyClassModeChange = (key, mode) => {
-      this._bodyClassToggles = applyMapDisplayMode(this._bodyClassToggles, key, mode);
-      saveBodyClassToggles(this._bodyClassToggles);
-      this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
-    };
-    this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
-
     this.viewResetBtn = hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
     this.viewResetBtn?.addEventListener('pointerdown', this.handleViewReset);
   }
 
-  // 表示パネルを取り除き、視点リセットボタンへの配線を解く。
+  // 視点リセットボタンへの配線を解く。
   dispose(): void {
     this.viewResetBtn?.removeEventListener('pointerdown', this.handleViewReset);
-    this.viewOptionsPanel.dispose();
   }
 
   // 駆動・描画に使うカメラ実体。ビューの切替で、どちらの実体を通すかだけが変わる。
@@ -340,8 +294,6 @@ export class CameraSystem {
   sync(): void {
     const active = this.activeFocusCamera;
     syncCameraToViewpoint(active.camera, this.activeViewpoint, active.near, active.far, this.activeCameraPos);
-    // マップビューのときだけ表示設定パネルを出す。
-    this.viewOptionsPanel.setVisible(this.mapActive);
   }
 
   // このフレームの描画原点を組み立てて返す。原点(位置)はアクティブカメラの ECI 位置 —

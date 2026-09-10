@@ -174,7 +174,12 @@ async function main() {
   const gs = await initScene(settings.graphics.current);
   const { shell, hud, audioEngine, bgm, pauseMenu, settingsView } = initHud(settings);
   const sections = new FrameSections();
-  const host: GameHost = { scene: gs, hud, sections };
+  const host: GameHost = {
+    scene: gs, hud, sections,
+    mapDisplay: settings.mapDisplayToggles,
+    grid: settings.gridVisibility,
+    orbitGuide: settings.orbitGuide,
+  };
 
   const launcher = new Launcher(
     shell, host, audioEngine, bgm, pauseMenu, settingsView, unlockManager,
