@@ -2,18 +2,19 @@
 // 導かれる回転追従(慣性系・公転・自転・姿勢)を持つ。
 //
 // **chase は「動く実体を追っている視点」を指す語。** 天体や空間上の固定点ではなく機体
-// (艦・敵・基地・弾薬)をフォーカスしている状態のことで、DOM id(#hud-chase-reset)・
+// (艦・敵・基地・弾薬)をフォーカスしている状態のことで、DOM id(#notifier-chase-reset)・
 // セーブキー(camera.chase)はこの意味で使う。カメラの実装が2つあった頃の名残ではない。
 import * as THREE from 'three/webgpu';
 import { Vec3, add, addScaled, cross, len, lenSq, norm, projectOntoPlane, scale, sub, v3 } from '../../math/vec3';
 import { CELESTIAL_SHELL_RADIUS } from '../../render/stars';
-import { Hud } from '../hud/hud';
+import type { Notifier } from '../../hud/notifier';
 import { MouseDelta } from '../../input/input';
 import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../math/projection';
 import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, rotationSourceKey, toFrameDir, toInertialDir } from '../../physics/frame';
 import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';
-import { CelestialMotion, OrbitingMotion } from '../../physics/celestial-motion';
-import type { CelestialSystem } from '../celestial/celestial-system';
+import { OrbitingMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, Quat, qFromBasis, qRotate } from '../../math/quat';
 import { PolarEuler, sphericalOffset } from '../../math/polar-euler';
 import { CameraOrientation, type CameraRotationMode } from './camera-orientation';
@@ -79,7 +80,7 @@ export function rotationFollowKey(follow: CameraRotationFollow | null): string {
 // 保存が無いときの初期状態。angles/dist が注視点まわりの初期視点で、上方向はワールド上に
 // 取るので angles.roll は 0 でよい。follow は選択肢の検査を通さず適用される — 対象が
 // 未解決でも選択は保持され、成立可否は update の猶予検査に委ねられる。
-export interface FocusCameraInitial {
+interface FocusCameraInitial {
   readonly angles: PolarEuler;
   readonly dist: number;
   readonly fovDeg: number;
@@ -88,7 +89,7 @@ export interface FocusCameraInitial {
 }
 
 // カメラのビュー差(フォーカス喪失時の振る舞い・初期状態)と、姿勢の解決の差し込み口。
-export interface FocusCameraConfig {
+interface FocusCameraConfig {
   // 'hold' は解決失敗が続いても最後に解決できた位置に留まる(戦闘ビュー)。
   // 'fallToOrigin' は2フレーム連続で失敗したら原点天体へフォーカスを戻す(マップビュー)。
   readonly focusLossPolicy: 'hold' | 'fallToOrigin';
@@ -100,10 +101,10 @@ export interface FocusCameraConfig {
 }
 
 // マップビュー用の初期状態(地球を見下ろす従来の既定)。
-export function defaultMapViewInitial(celestialSystem: CelestialSystem): FocusCameraInitial {
+export function defaultMapViewInitial(celestialBodies: CelestialBodies): FocusCameraInitial {
   return {
     angles: { yaw: 0.7, pitch: 0.45, roll: 0 }, dist: 4.5e7, fovDeg: FOCUS_CAMERA_FOV,
-    focus: { kind: 'object', id: celestialSystem.origin.id },
+    focus: { kind: 'object', id: celestialBodies.originId },
     follow: null,
   };
 }
@@ -180,7 +181,7 @@ export class FocusCamera {
 
   clearFocusIf(id: string): void {
     if (this._focus.kind === 'object' && this._focus.id === id) {
-      this.setFocusTarget({ kind: 'object', id: this.celestialSystem.origin.id });
+      this.setFocusTarget({ kind: 'object', id: this.celestialBodies.originId });
     }
   }
 
@@ -197,8 +198,8 @@ export class FocusCamera {
   // あればその値から、無ければ既定の見下ろし視点から組む。座標系は必ず frames.frameOf 経由で
   // 解決する — ReferenceFrame をリテラルで組むと参照同一性が崩れる(frame.ts 参照)。
   constructor(
-    private readonly _hud: Hud,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly _notifier: Notifier,
+    private readonly celestialBodies: CelestialBodies,
     private readonly config: FocusCameraConfig,
     saved?: FocusCameraSaveData,
   ) {
@@ -206,7 +207,7 @@ export class FocusCamera {
     this._referencePlane = saved?.referencePlane === 'ecliptic' || saved?.referencePlane === 'moonOrbit'
       ? saved.referencePlane : 'equator';
     this.fovDeg = this.clampFov(saved?.fovDeg ?? config.initial.fovDeg);
-    const frames = celestialSystem.frames;
+    const frames = celestialBodies.frames;
     // 追従の有無は向きの読み方(絶対値か、対象姿勢からの相対値か)を決めるので、
     // CameraOrientation を組むより先に確定させる。
     let followAttitude = false;
@@ -216,7 +217,7 @@ export class FocusCamera {
         this._cameraFrame = frames.inertialFrame;
         followAttitude = true;
       } else {
-        this._cameraFrame = frames.frameOf(celestialSystem.origin.id, savedFollow ?? null);
+        this._cameraFrame = frames.frameOf(celestialBodies.originId, savedFollow ?? null);
       }
       this.offset_r = frameDir(saved.offset.x, saved.offset.y, saved.offset.z);
       this.pan_r = frameDir(saved.pan.x, saved.pan.y, saved.pan.z);
@@ -276,9 +277,9 @@ export class FocusCamera {
       const distToBody = len(sub(cameraPos, nearest.positionAt(pivot)));
       const PLANETARY_SCALE_THRESHOLD = 1e9; // 1,000,000 km in meters
 
-      const nearestBody = this.celestialSystem.find(nearest.id);
+      const nearestBody = this.celestialBodies.findMotion(nearest.id);
       if (distToBody <= PLANETARY_SCALE_THRESHOLD && nearestBody !== null) {
-        return nearestBody.motion.orientationAt(this.displayTime)?.axis ?? ECI_POLE;
+        return nearestBody.orientationAt(this.displayTime)?.axis ?? ECI_POLE;
       }
     }
     return ECL_POLE_ECI;
@@ -295,7 +296,7 @@ export class FocusCamera {
   private eulerPolarAxis(followingAttitude = this.orientation?.followingAttitude ?? false): Vec3 {
     const attitude = this.focusAttitude();
     if (followingAttitude && attitude !== null) return LOCAL_UP;
-    const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
+    const tf = this.celestialBodies.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     const polarEci = this.config.eulerPole === 'attitude' && attitude !== null
       ? qRotate(attitude, LOCAL_UP) : this.referenceUpAxisEci();
     return norm(frameDirVector(toFrameDir(tf, polarEci)));
@@ -312,12 +313,13 @@ export class FocusCamera {
   private framePlaneNormal(plane: CameraReferencePlane): Vec3 {
     if (plane === 'ecliptic') return ECL_POLE_ECI;
     if (plane === 'moonOrbit') {
-      const moon = this.celestialSystem.find('moon')?.motion;
+      const moon = this.celestialBodies.findMotion('moon');
       if (moon instanceof OrbitingMotion) return moon.orbitNormalAt(this.displayTime);
     }
     if (plane === 'equator') {
-      const earth = this.celestialSystem.find('earth') ?? this.celestialSystem.origin;
-      return earth.motion.orientationAt(this.displayTime)?.axis ?? ECI_POLE;
+      const earth = this.celestialBodies.findMotion('earth')
+        ?? this.celestialBodies.motionOf(this.celestialBodies.originId);
+      return earth.orientationAt(this.displayTime)?.axis ?? ECI_POLE;
     }
     return ECL_POLE_ECI;
   }
@@ -391,7 +393,7 @@ export class FocusCamera {
   }
 
   public setReferenceView(view: CameraReferenceView): void {
-    const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
+    const tf = this.celestialBodies.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     const normal = norm(frameDirVector(toFrameDir(tf, this.framePlaneNormal(this._referencePlane))));
     const currentOffset = qRotate(this.orientation.effective(), LOCAL_FORWARD);
     let offset: Vec3;
@@ -410,7 +412,7 @@ export class FocusCamera {
     up = norm(up);
     this.setRotationBasis(offset, up);
     this.resetPan();
-    this._hud.hint(view === 'above' ? '基準面の真上を表示' : '基準面の真横を表示');
+    this._notifier.hint(view === 'above' ? '基準面の真上を表示' : '基準面の真横を表示');
   }
 
   // CameraSystem.sync が読む近クリップ距離。dist に比例させることで、どのズーム段でも
@@ -435,7 +437,7 @@ export class FocusCamera {
   // 現在のフォーカス対象がクランプ後も表面下にめり込まない最小注視距離。
   // 天体は半径まで、機体・固定点は艦を間近に見る距離まで寄れる。
   private get minDist(): number {
-    const body = this._focus.kind === 'object' ? this.celestialSystem.find(this._focus.id) : null;
+    const body = this._focus.kind === 'object' ? this.celestialBodies.findMotion(this._focus.id) : null;
     if (body === null) return ENTITY_MIN_DIST;
     return Math.max(FOCUS_CAMERA_MIN_DIST, body.def.radius);
   }
@@ -443,25 +445,25 @@ export class FocusCamera {
   // ロールを初期状態(天体近傍: 自転軸、広域: 黄道面法線)に戻し、パンでフォーカスから
   // ずれていた注視点もフォーカス位置へ戻す。
   reset(): void {
-    const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
+    const tf = this.celestialBodies.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     const offset = qRotate(this.orientation.effective(), LOCAL_FORWARD);
     const upAxisEci = this.referenceUpAxisEci();
     const up = norm(frameDirVector(toFrameDir(tf, upAxisEci)));
     const projectedUp = norm(projectOntoPlane(up, offset));
     this.setRotationBasis(offset, projectedUp);
     this.resetPan();
-    this._hud.hint('マップビューの視点をリセット');
+    this._notifier.hint('マップビューの視点をリセット');
   }
 
   // パン変位をゼロに戻す。
-  resetPan(): void {
-    const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
+  private resetPan(): void {
+    const tf = this.celestialBodies.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     this.pan_r = toFrameDir(tf, v3());
   }
 
   // 天体 id の運動。登録されていない id(機体・役割トークン・ラグランジュ点)には null。
-  private readonly celestialMotionOf = (id: string): CelestialMotion | null => (
-    this.celestialSystem.find(id)?.motion ?? null
+  private readonly celestialMotionOf = (id: string): CelestialBody | null => (
+    this.celestialBodies.findMotion(id) ?? null
   );
 
   // 注視点の位置を返し、速度は focusVelocity へ残す。候補が一時的に欠けたフレームでは直前の
@@ -470,8 +472,8 @@ export class FocusCamera {
   private resolveFocus(candidates: readonly FocusCandidate[], displayTime: number, frameAnchors: FrameAnchorSource): Vec3 {
     const result = resolveFocusTarget(
       this._focus, candidates, displayTime, frameAnchors,
-      this.celestialSystem.frames, this.celestialMotionOf,
-      (id, t) => this.celestialSystem.stateAt(id, t),
+      this.celestialBodies.frames, this.celestialMotionOf,
+      (id, t) => this.celestialBodies.stateAt(id, t),
       { missingFocusFrames: this.missingFocusFrames, lastResolvedFocus: this.lastResolvedFocus },
     );
     this.missingFocusFrames = result.missingFocusFrames;
@@ -480,7 +482,7 @@ export class FocusCamera {
     if (result.fallToOrigin) {
       // 'hold' は注視点を最後に解決できた位置に留める。対象が再び解決できれば追従が戻る。
       if (this.config.focusLossPolicy === 'hold') return this.lastResolvedFocus;
-      this.setFocusTarget({ kind: 'object', id: this.celestialSystem.origin.id });
+      this.setFocusTarget({ kind: 'object', id: this.celestialBodies.originId });
       return v3();
     }
     return result.pos;
@@ -507,13 +509,13 @@ export class FocusCamera {
     if (this._focus.kind === 'point') return [];
     const id = this._focus.id;
     const out: CameraRotationFollow[] = [];
-    const body = this.celestialSystem.find(id);
+    const body = this.celestialBodies.findMotion(id);
     if (body !== null) {
-      if (body.motion.primary !== null) out.push({ kind: 'revolution', id });
-      for (const motion of this.celestialSystem.celestialMotions) {
+      if (body.primary !== null) out.push({ kind: 'revolution', id });
+      for (const motion of this.celestialBodies.celestialMotions) {
         if (motion.primary?.id === id) out.push({ kind: 'revolution', id: motion.id });
       }
-      if (body.motion.spinRotationAt(displayTime) !== null) out.push({ kind: 'spin', id });
+      if (body.spinRotationAt(displayTime) !== null) out.push({ kind: 'spin', id });
     } else {
       if (this.frameAnchors.attractorOf(id, displayTime) !== null) out.push({ kind: 'revolution', id });
       if (this.config.attitudeOf(id, displayTime) !== null) out.push({ kind: 'attitude' });
@@ -573,10 +575,10 @@ export class FocusCamera {
   private applyInitialFrame(follow: CameraRotationFollow | null): boolean {
     this.staleFollowFrames = 0;
     if (follow?.kind === 'attitude') {
-      this._cameraFrame = this.celestialSystem.frames.inertialFrame;
+      this._cameraFrame = this.celestialBodies.frames.inertialFrame;
       return true;
     }
-    this._cameraFrame = this.celestialSystem.frames.frameOf(this.celestialSystem.origin.id, follow ?? null);
+    this._cameraFrame = this.celestialBodies.frames.frameOf(this.celestialBodies.originId, follow ?? null);
     return false;
   }
 
@@ -606,8 +608,8 @@ export class FocusCamera {
   // 方向(FrameDir)しか持たず原点移動の影響を受けないので、中心をどれにしても視点は変わらない。
   // 切替の瞬間にカメラ視点(ECI)を跳ばせないよう、現在の座標系から新しい座標系へ変換し直す。
   private setCameraRotation(rotatingWith: FrameRotationSource | null): void {
-    const frames = this.celestialSystem.frames;
-    const frame = frames.frameOf(this.celestialSystem.origin.id, rotatingWith);
+    const frames = this.celestialBodies.frames;
+    const frame = frames.frameOf(this.celestialBodies.originId, rotatingWith);
     const from = this._cameraFrame;
     if (frame === from) return;
     const tfFrom = frames.transformAt(from, this.displayTime, this.frameAnchors);
@@ -639,7 +641,8 @@ export class FocusCamera {
     this.dropStaleRotationFollow();
     this.refreshAttitude();
     const focus = this.resolveFocus(candidates, displayTime, frameAnchors);
-    const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, displayTime, frameAnchors);
+    const tf = this.celestialBodies.frames.transformAt(this._cameraFrame, displayTime, frameAnchors);
+    // オイラー操作の極軸は座標系の幾何で定義されるので、姿勢追従中はクォータニオン経路で回す。
     const eulerActive = this.orientation.usesEuler;
     if (eulerActive) this.orientation.restoreFromEuler(this.eulerPolarAxis());
     let panEci = toInertialDir(tf, this.pan_r);

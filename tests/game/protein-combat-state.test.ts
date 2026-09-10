@@ -13,6 +13,7 @@ import type { ProteinMotionAsset } from '../../src/game/protein/protein-schema';
 import { collisionDamageFraction } from '../../src/game/dynamic/dynamic-entity/contact-damage';
 import * as THREE from 'three/webgpu';
 import { ProteinRuntime } from '../../src/game/protein/protein-runtime';
+import { ProteinMotionController } from '../../src/game/protein/protein-motion-controller';
 import { PROTEIN_ASSET_IDS, proteinAssetFor } from '../../src/game/protein/protein-asset-loader';
 import { createProteinEnemyDefinition } from '../../src/game/protein/protein-enemy-registry';
 import { testProteinAssetBundleFor } from '../protein-test-assets';
@@ -23,6 +24,7 @@ import {
 import { proteinSecondaryKind } from '../../src/render/protein-ribbon-color';
 import { LIT_OPAQUE_LAYER, SHADOW_CASTER_LAYER } from '../../src/render/pipeline/lit-layer';
 import { v3 } from '../../src/math/vec3';
+import { proteinLocalImpactPoint } from '../../src/game/protein/protein-anchors';
 import {
   DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, isProteinDisplaySettings, PROTEIN_COLOR_LABELS,
   proteinColorModesFor,
@@ -340,7 +342,7 @@ export function register(): void {
 
   const IDENTITY_ATTITUDE = { x: 0, y: 0, z: 0, w: 1 };
 
-  test('protein runtime: visual motion preserves the physics root pose and cycles attack origins', () => {
+  test('protein runtime: visual motion preserves the root pose and maps externally selected sites', () => {
     const root = new THREE.Group();
     root.position.set(11, -7, 3);
     const rootRollBeforeRebuild = 0.47;
@@ -357,29 +359,49 @@ export function register(): void {
     const baseRootPosition = root.position.clone();
     const baseRootQuaternion = root.quaternion.clone();
     const baseRootScale = root.scale.clone();
-    const runtime = new ProteinRuntime(root, asset, motion, undefined, 'enemy-42');
+    const combat = new ProteinCombatState(asset);
+    const runtime = new ProteinRuntime(root, asset, motion);
+    const controller = new ProteinMotionController(motion, 'enemy-42');
+    const syncVisual = (): void => {
+      controller.update(12.5, 'near', combat.phase);
+      runtime.syncVisual({
+        active: true,
+        lod: 'near',
+        sampleTime: controller.sampleTime,
+        phase: combat.phase,
+        coefficients: controller.effectiveModeCoefficients,
+      });
+    };
     const active = asset.sites.find((entry) => entry.id === 'primary-active-site')!;
     const origin = v3(100, 200, 300);
-    const activeWorld = runtime.activeSiteWorldPosition(origin, { x: 0, y: 0, z: 0, w: 1 });
+    const activeWorld = runtime.siteWorldPositionById(
+      active.id, origin, { x: 0, y: 0, z: 0, w: 1 },
+    );
     assert.deepEqual(activeWorld, v3(
       origin.x + active.position[0] * asset.coordinateScale * root.scale.x,
       origin.y + active.position[1] * asset.coordinateScale * root.scale.x,
       origin.z + active.position[2] * asset.coordinateScale * root.scale.x,
     ));
-    const localImpact = runtime.localImpactPoint(activeWorld, origin, { x: 0, y: 0, z: 0, w: 1 });
+    const localImpact = proteinLocalImpactPoint(
+      activeWorld, origin, { x: 0, y: 0, z: 0, w: 1 }, root.scale.x,
+    );
     assert.ok(Math.abs(localImpact.x - active.position[0] * asset.coordinateScale) < 1e-12);
     assert.ok(Math.abs(localImpact.y - active.position[1] * asset.coordinateScale) < 1e-12);
     assert.ok(Math.abs(localImpact.z - active.position[2] * asset.coordinateScale) < 1e-12);
-    const firstAttackWorld = runtime.nextAttackSiteWorldPosition(origin, { x: 0, y: 0, z: 0, w: 1 });
-    const nextWorld = runtime.nextAttackSiteWorldPosition(origin, { x: 0, y: 0, z: 0, w: 1 });
+    const firstAttackWorld = runtime.siteWorldPositionById(
+      combat.nextAttackSite()!.id, origin, IDENTITY_ATTITUDE,
+    );
+    const nextWorld = runtime.siteWorldPositionById(
+      combat.nextAttackSite()!.id, origin, IDENTITY_ATTITUDE,
+    );
     assert.deepEqual(firstAttackWorld, activeWorld);
     assert.notDeepEqual(nextWorld, activeWorld);
-    runtime.combat.applyDamage(active.maxHp, {
+    combat.applyDamage(active.maxHp, {
       x: active.position[0] * asset.coordinateScale,
       y: active.position[1] * asset.coordinateScale,
       z: active.position[2] * asset.coordinateScale,
     });
-    runtime.updateVisual(12.5);
+    syncVisual();
     // 変形が生きていれば、サイトのアンカーは変形前の位置から動く。
     assert.notDeepEqual(runtime.siteWorldPositionById(active.id, origin, IDENTITY_ATTITUDE), activeWorld);
     assert.deepEqual(root.position, baseRootPosition);
@@ -395,7 +417,7 @@ export function register(): void {
     assert.ok(root.quaternion.equals(baseRootQuaternion));
     assert.deepEqual(root.scale, baseRootScale);
     runtime.rebuildVisuals();
-    runtime.updateVisual(12.5);
+    syncVisual();
     assert.notDeepEqual(runtime.siteWorldPositionById(active.id, origin, IDENTITY_ATTITUDE), activeWorld);
     assert.equal(root.rotation.z, rootRollBeforeRebuild);
     runtime.dispose();

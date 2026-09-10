@@ -1,27 +1,31 @@
 // プレイヤーの射撃・弾薬(マガジン/リロード)状態。発砲・排莢・バレル交換の演出もここで組み立てる。
 import * as THREE from 'three/webgpu';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, qRotate, randomQuat } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
 import { R_EARTH_EQ } from '../celestial/solar-system/constants';
 import { randSym } from '../../math/random';
 import { radiativeCooling, stepTemperature, stepThermalDeviation } from '../../physics/thermal';
 import { add, addScaled, dot, lenSq, norm, randPerp, randVec, scale, v3, Vec3 } from '../../math/vec3';
-import type { CelestialSystem } from '../celestial/celestial-system';
+
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import { Hud } from '../hud/hud';
+import type { Notifier } from '../../hud/notifier';
+import { MAG_ROUNDS } from './ammo-spec';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { Ship, PLAYER_MASS } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
-import type { EntityRegistry } from '../dynamic/dynamic-system';
-import { MUZZLE_OFFSETS } from '../../render/ships';
+import type { EntityRegistry } from '../dynamic/entity-registry';
+import { PLAYER_MUZZLE_OFFSETS } from '../../physics/player-shape';
 import { FlashEffects } from '../vfx/flash-effects';
-import type { Stage } from '../stages/stage';
+import type { StageOutcome } from '../stages/stage-outcome';
 import { Player } from './player';
 import type { FireSaveData } from '../save/save-data';
-import { HULL_EMISS, ENV_TEMP } from '../dynamic/dynamic-entity/dynamic-entity';
-import { BARREL_SPECIFIC_HEAT, BARREL_RADIATING_AREA_PER_MASS, DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
-
+import { HULL_EMISS, ENV_TEMP } from '../dynamic/dynamic-motion';
+import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
+import {
+  BARREL_RADIATING_AREA_PER_MASS, BARREL_SPECIFIC_HEAT,
+} from '../dynamic/dynamic-entity/debris-motion';
 
 // 排出物の剛体接触半径 [m]。薬莢は実物同様に軽く小さい。
 const CASING_PHYS_RADIUS = 0.2;
@@ -35,8 +39,7 @@ const GUN_BARREL_HEAT_PER_ROUND = 1.0e6;
 
 const BARREL_MASS = 300; // [kg]
 
-export const MAG_ROUNDS = 32; // 1 マガジンの装弾数
-export const INITIAL_MAGS = 3; // ゲーム開始時に連結されているマガジン数
+const INITIAL_MAGS = 3; // ゲーム開始時に連結されているマガジン数
 const SPINUP_TIME = 0.15; // 発射開始から実際に撃ち始めるまでの起動遅延 [s]
 const BULLET_SPREAD = 0.002; // 散布界 [rad]
 
@@ -92,7 +95,7 @@ export class FireControl {
   // 復元するスナップショットか、新規配置の初期積載を受け取る。どちらも省略すれば既定積載。
   constructor(
     private readonly player: Player,
-    private readonly _hud: Hud,
+    private readonly _notifier: Notifier,
     private readonly _worldSfx: WorldSfx,
     private readonly _scene: THREE.Scene,
     private readonly _fx: FlashEffects,
@@ -154,9 +157,9 @@ export class FireControl {
   updateFireState(
     dt: number,
     input: Input,
-    activeStage: Stage,
+    activeStage: StageOutcome,
     registry: EntityRegistry,
-    celestialSystem: CelestialSystem,
+    celestialBodies: CelestialBodies,
   ): void {
     this.tickReloadTimer(dt);
 
@@ -172,7 +175,7 @@ export class FireControl {
     if (this.player.totalFireRate <= 0) {
       if (!this.wasEmptyClick) {
         this._worldSfx.emptyClick();
-        this._hud.hint('武装が損傷しており発射できない', 3000);
+        this._notifier.hint('武装が損傷しており発射できない', 3000);
         this.wasEmptyClick = true;
       }
       return;
@@ -181,13 +184,13 @@ export class FireControl {
     if (!this.left) {
       if (!this.wasEmptyClick) {
         this._worldSfx.emptyClick();
-        this._hud.hint('弾薬切れ — 軌道上の補給 ▣ を回収せよ', 3000);
+        this._notifier.hint('弾薬切れ — 軌道上の補給 ▣ を回収せよ', 3000);
         this.wasEmptyClick = true;
       }
       return;
     }
 
-    this.fireCycle(activeStage, registry, celestialSystem);
+    this.fireCycle(activeStage, registry, celestialBodies);
   }
 
   // クールダウンタイマーを dt だけ減らす。
@@ -198,9 +201,9 @@ export class FireControl {
 
   // クールダウン込みの発射サイクルを1回進める。スピンアップ中・クールダウン中は発射しない。
   private fireCycle(
-    activeStage: Stage,
+    activeStage: StageOutcome,
     registry: EntityRegistry,
-    celestialSystem: CelestialSystem,
+    celestialBodies: CelestialBodies,
   ): void {
     const justStartedFiring = !this.wasFiring;
     this.wasFiring = true;
@@ -220,7 +223,7 @@ export class FireControl {
 
     const result = this.consume();
 
-    this.fireGun(activeStage, registry, celestialSystem);
+    this.fireGun(activeStage, registry, celestialBodies);
     switch (result) {
       case 'empty':
       case 'normal':
@@ -280,54 +283,56 @@ export class FireControl {
 
   // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、発射数を記録する。
   private fireGun(
-    activeStage: Stage,
+    activeStage: StageOutcome,
     registry: EntityRegistry,
-    celestialSystem: CelestialSystem,
+    celestialBodies: CelestialBodies,
   ): void {
-    const fwd = qRotate(this.player.att.q, LOCAL_FORWARD);
+    const fwd = qRotate(this.player.motion.att.q, LOCAL_FORWARD);
 
     // 縦二連の砲口から交互に発射する
-    const mo = MUZZLE_OFFSETS[this.muzzleIdx]!;
-    this.muzzleIdx = (this.muzzleIdx + 1) % MUZZLE_OFFSETS.length;
-    const muzzle = add(this.player.state.r, qRotate(this.player.att.q, v3(mo.x, mo.y, mo.z)));
+    const mo = PLAYER_MUZZLE_OFFSETS[this.muzzleIdx]!;
+    this.muzzleIdx = (this.muzzleIdx + 1) % PLAYER_MUZZLE_OFFSETS.length;
+    const muzzle = add(
+      this.player.motion.state.r,
+      qRotate(this.player.motion.att.q, v3(mo.x, mo.y, mo.z)),
+    );
 
-    this.spawnBullet(this.player, muzzle, fwd, registry, celestialSystem);
+    this.spawnBullet(this.player, muzzle, fwd, registry, celestialBodies);
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv(瞬間的な速度変更なので時刻は据え置き)
-    this.player.state = kinematicState<'eci'>(
-      this.player.state.t,
-      this.player.state.r,
-      addScaled(this.player.state.v, fwd, -RECOIL_DV),
+    this.player.motion.state = kinematicState<'eci'>(
+      this.player.motion.state.t,
+      this.player.motion.state.r,
+      addScaled(this.player.motion.state.v, fwd, -RECOIL_DV),
     );
     this.dropCasing(this.player, muzzle, registry);
     this.spawnMuzzleFlash(this.player, muzzle, fwd);
 
     activeStage.scoreCounter.recordShot();
-    this.player.absorbHeat(GUN_HEAT_PER_ROUND / PLAYER_MASS);
+    this.player.motion.absorbHeat(GUN_HEAT_PER_ROUND / PLAYER_MASS);
     this.pendingBarrelJoules += GUN_BARREL_HEAT_PER_ROUND;
     this._worldSfx.fire();
   }
 
   // 弾丸: 機首方向 + 散布界
   private spawnBullet(
-    ship: Ship, muzzle: Vec3, fwd: Vec3, registry: EntityRegistry, celestialSystem: CelestialSystem,
+    ship: Ship, muzzle: Vec3, fwd: Vec3, registry: EntityRegistry, celestialBodies: CelestialBodies,
   ): void {
-    const sunDir = celestialSystem.sunDirFrom(ship.state.r, ship.state.t);
+    const sunDir = celestialBodies.sunDirFrom(ship.motion.state.r, ship.motion.state.t);
     const spreadScale = sunGlareSpreadScale(muzzle, fwd, sunDir);
     // 機首方向に散布角を加えた発射方向
     const spread = Math.abs(randSym(BULLET_SPREAD)) * spreadScale;
     const dir = norm(addScaled(fwd, randPerp(fwd), spread));
     const bullet = new Bullet(
       kinematicState<'eci'>(
-        ship.state.t,
+        ship.motion.state.t,
         addScaled(muzzle, fwd, 1.5),
-        addScaled(ship.state.v, dir, ship.averageMuzzleVelocity),
+        addScaled(ship.motion.state.v, dir, ship.averageMuzzleVelocity),
       ),
       BULLET_LIFETIME,
       'player',
       'normal',
       ship.weaponDamage,
       this._worldSfx,
-      this._scene,
     );
     registry.add(bullet);
   }
@@ -336,18 +341,18 @@ export class FireControl {
   // 初速は抑えてゆっくり漂わせる一方、回転速度は個体ごとに大きくばらつかせる。
   private dropCasing(ship: Ship, muzzle: Vec3, registry: EntityRegistry): void {
     // 機体姿勢基準の左右・上方向
-    const right = qRotate(ship.att.q, LOCAL_RIGHT);
-    const up = qRotate(ship.att.q, LOCAL_UP);
+    const right = qRotate(ship.motion.att.q, LOCAL_RIGHT);
+    const up = qRotate(ship.motion.att.q, LOCAL_UP);
     registry.add(new DebrisPiece(
       kinematicState<'eci'>(
-        ship.state.t,
+        ship.motion.state.t,
         add(muzzle, scale(right, -1.4)),
         add(
-          ship.state.v,
+          ship.motion.state.v,
           add(scale(right, -(0.5 + Math.random() * 0.3)), add(scale(up, randSym(0.2)), randVec(0.1))),
         ),
       ),
-      { kind: 'casing', bornSim: ship.state.t },
+      { kind: 'casing', bornSim: ship.motion.state.t },
       {
         q: randomQuat(),
         w: v3(randSym(6.0), randSym(6.0), randSym(6.0)),
@@ -359,7 +364,9 @@ export class FireControl {
 
   // マズルフラッシュ: 発射した側の砲口の少し先に出す。
   private spawnMuzzleFlash(ship: Ship, muzzle: Vec3, fwd: Vec3): void {
-    this._fx.spawnMuzzleFlash(kinematicState<'eci'>(ship.state.t, addScaled(muzzle, fwd, 1.2), ship.state.v));
+    this._fx.spawnMuzzleFlash(kinematicState<'eci'>(
+      ship.motion.state.t, addScaled(muzzle, fwd, 1.2), ship.motion.state.v,
+    ));
   }
 
   // 装着している砲身の温度を dt だけ進める。発砲で入った熱は刻みの分け方に依らず一度だけ
@@ -386,12 +393,12 @@ export class FireControl {
   // 排出されたデブリへ移る。
   dropBarrel(ship: Ship, registry: EntityRegistry): void {
     // 下方に少し勢いをつけて放出
-    const down = qRotate(ship.att.q, v3(0, -1, 0));
+    const down = qRotate(ship.motion.att.q, v3(0, -1, 0));
     registry.add(new DebrisPiece(
       kinematicState<'eci'>(
-        ship.state.t,
-        add(ship.state.r, qRotate(ship.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
-        add(ship.state.v, add(scale(down, 3.0), randVec(0.5))),
+        ship.motion.state.t,
+        add(ship.motion.state.r, qRotate(ship.motion.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
+        add(ship.motion.state.v, add(scale(down, 3.0), randVec(0.5))),
       ),
       {
         kind: 'barrel',
@@ -399,7 +406,7 @@ export class FireControl {
         bornThermalDeviation: this.barrelDeviation,
       },
       {
-        q: ship.att.q,
+        q: ship.motion.att.q,
         w: v3(randSym(2), randSym(2), randSym(2)),
         inertia: v3(1, 0.2, 1), // 円柱
       },
@@ -414,17 +421,22 @@ export class FireControl {
   // 空になったマガジンの外枠(弾なし)をデブリとして放出する。
   private spawnEjectedMagazineFrame(ship: Ship, registry: EntityRegistry): void {
     // 排出ポートの位置と初速
-    const right = qRotate(ship.att.q, LOCAL_RIGHT);
-    const portWorld = add(ship.state.r, qRotate(ship.att.q, v3(-0.9, 0, 0)));
+    const right = qRotate(ship.motion.att.q, LOCAL_RIGHT);
+    const portWorld = add(
+      ship.motion.state.r, qRotate(ship.motion.att.q, v3(-0.9, 0, 0)),
+    );
     registry.add(new DebrisPiece(
       kinematicState<'eci'>(
-        ship.state.t,
+        ship.motion.state.t,
         portWorld,
-        add(ship.state.v, add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15))),
+        add(
+          ship.motion.state.v,
+          add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15)),
+        ),
       ),
       { kind: 'magazineFrame' },
       {
-        q: ship.att.q,
+        q: ship.motion.att.q,
         w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
         inertia: v3(1, 1.2, 1.4),
       },

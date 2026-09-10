@@ -6,7 +6,7 @@ import { Button, ToggleSwitch } from '../../hud/widgets';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { StageSaveData } from '../save/save-data';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
-import { MAG_ROUNDS } from '../player/fire-control';
+import { MAG_ROUNDS } from '../player/ammo-spec';
 import { STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST } from './stage-utils/logistics';
 
 export class StageDebug extends Stage {
@@ -34,7 +34,10 @@ export class StageDebug extends Stage {
   // 自機を置き、敵集団を1つだけ生成し、射撃切替トグルをステータスウィンドウ左部へ追加する。
   protected init(): void {
     const player = this.addPlayer({ ammo: { mags: 20, rounds: MAG_ROUNDS } });
-    const enemies = generateWave(player.state, this.waveCount++, this._celestialSystem, this._worldSfx, this._fx, this._scene, 'random');
+    const enemies = generateWave(
+      player.motion.state, this.waveCount++, this._celestialSystem.celestialMotions,
+      this._worldSfx, this._fx, this._scene, 'random',
+    );
     for (const enemy of enemies) this.addEnemy(enemy);
 
     // 切替は enemyFireEnabled へ入るだけで、敵への反映は update が毎フレーム行う
@@ -44,7 +47,10 @@ export class StageDebug extends Stage {
 
     // 敵集団をスポーンするボタン
     const spawnEnemyBtn = new Button('敵集団をスポーン', () => {
-      const newEnemies = generateWave(player.state, this.waveCount++, this._celestialSystem, this._worldSfx, this._fx, this._scene, 'random');
+      const newEnemies = generateWave(
+        player.motion.state, this.waveCount++, this._celestialSystem.celestialMotions,
+        this._worldSfx, this._fx, this._scene, 'random',
+      );
       for (const enemy of newEnemies) this.addEnemy(enemy);
     });
     this.addStatusPanelWidget(spawnEnemyBtn.element);
