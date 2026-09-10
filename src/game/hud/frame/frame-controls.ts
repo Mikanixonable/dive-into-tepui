@@ -43,6 +43,7 @@ export class FrameControls {
     popupRoot: HTMLElement,
     private readonly celestialSystem: CelestialSystem,
     private readonly mapCamera: FocusCamera,
+    combatCamera: FocusCamera,
     private readonly displayWindow: DisplayWindowManager,
     overlayManager: OverlayManager,
     private readonly frameAnchors: FrameAnchorSource,
@@ -50,7 +51,7 @@ export class FrameControls {
     this.cameraPanel = new CameraFramePanel(
       mapPanelRoot, popupRoot, celestialSystem, mapCamera, overlayManager,
     );
-    this.combatCameraPanel = new CombatCameraPanel(combatPanelRoot, mapCamera);
+    this.combatCameraPanel = new CombatCameraPanel(combatPanelRoot, combatCamera);
     this.trajectoryPanel = new TrajectoryFramePanel(
       mapPanelRoot, popupRoot, celestialSystem, displayWindow, overlayManager,
     );
