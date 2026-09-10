@@ -5,7 +5,7 @@ import {
 import type { BoolNode, FloatNode, Mat3Node, Vec2Node, Vec3Node, Vec4Node } from './tsl-types';
 import { earthSurfaceUvFromRadialNode } from './earth-surface-coordinate';
 import {
-  EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER, EARTH_TILE_LAYERS, EARTH_TILE_TEXELS,
+  EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER, EARTH_TILE_LAYERS, EARTH_TILE_MAX_Z, EARTH_TILE_TEXELS,
 } from './earth-surface-tiles';
 
 export type EarthSurfaceMaterialTextureKind = 'pageTable' | 'color' | 'terrain';
@@ -91,11 +91,18 @@ export function earthSurfaceTileUvNode(uv: Vec2Node, z: FloatNode): Vec2Node {
   );
 }
 
+// ページ表のbase sentinelを詳細配列の有効LODへ戻す。base分岐でも詳細標本ノードは
+// グラフへ含まれるため、sentinelをそのままexp2へ渡さない。
+export function earthSurfaceDetailLodNode(z: FloatNode): FloatNode {
+  return min(z, EARTH_TILE_MAX_Z);
+}
+
 function sampleArray(textureValue: THREE.Texture, uv: Vec2Node, z: FloatNode, layer: FloatNode): Vec4Node {
   // DataArrayTextureの層はdepthへ渡す。base層(255)は後段でbase画像へ切り替えるため、
   // 配列の範囲内へクランプした値だけを実際のサンプラへ渡す。
   const safeLayer = min(layer, EARTH_TILE_LAYERS - 1);
-  return texture(textureValue, earthSurfaceTileUvNode(uv, z)).depth(int(safeLayer));
+  const safeZ = earthSurfaceDetailLodNode(z);
+  return texture(textureValue, earthSurfaceTileUvNode(uv, safeZ)).depth(int(safeLayer));
 }
 
 function sampleBase(textureValue: THREE.Texture, uv: Vec2Node): Vec4Node {

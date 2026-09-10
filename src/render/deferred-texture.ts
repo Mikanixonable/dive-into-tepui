@@ -19,7 +19,10 @@ export class DeferredTexture {
   private publishedGeneration = 0;
 
   // colorSpace は届く画像の色空間。
-  public constructor(private readonly url: string, colorSpace: string) {
+  public constructor(
+    private readonly url: string, colorSpace: string,
+    private readonly onError?: (error: unknown) => void,
+  ) {
     this.texture = new THREE.Texture();
     this.texture.colorSpace = colorSpace;
     this.texture.anisotropy = ANISOTROPY;
@@ -39,6 +42,8 @@ export class DeferredTexture {
       this.image = image;
       this.queued = true;
       DeferredTexture.ready.push(this);
+    }, undefined, (error) => {
+      if (!this.disposed) this.onError?.(error);
     });
   }
 
