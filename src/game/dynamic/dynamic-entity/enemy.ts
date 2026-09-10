@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import type { View } from '../../view/view';
+import type { ViewMode } from '../../../render/view-mode';
 import { Ship, MUZZLE_SPEED } from './ship';
 import { DynamicEntity } from './dynamic-entity';
 import { bulletReactionOf, type BulletType } from './bullet-reaction';
@@ -215,7 +215,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 敵のマーカー表示項目を組み立てる。pos/vel には機体メッシュと同じ表示時刻の状態
   // (stateAt 経由)を渡すこと。
-  public markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View): GroupedMarkerItem {
+  public markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode): GroupedMarkerItem {
     // 代表選出の優先度は、近い個体ほど高くする
     const dist = len(sub(pos, viewerPos));
     return {

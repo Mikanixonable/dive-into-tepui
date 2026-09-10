@@ -63,6 +63,12 @@ export function ndcToScreen(ndc: Projected, width: number, height: number, offse
   };
 }
 
+// 視点と描画先の寸法を束縛した投影。同じ視点で多数の点を写す呼び出し側は、これを1つ作って
+// 使い回す。
+export function screenProjection(view: Viewpoint, width: number, height: number): ProjectFn {
+  return (worldPos) => ndcToScreen(projectToNdc(view, worldPos), width, height);
+}
+
 // depth の下限。視点上・視点の背後の点で 0 や負の尺度を返さないための床。
 export const MIN_DEPTH = 1e-6;
 

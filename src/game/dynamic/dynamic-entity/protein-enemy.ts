@@ -169,7 +169,7 @@ export class ProteinEnemy extends Enemy {
     if (displayed !== null) {
       const projectedDiameterPx = apparentSizePx(
         this.motion.radius * 2,
-        context.cameraSystem.activeCameraRadialScale(displayed.r),
+        context.camera.radialScale(displayed.r),
       );
       this.motionLodValue = proteinMotionLodForProjectedSize(
         projectedDiameterPx, this.motionLodValue,

@@ -3,8 +3,7 @@
 import * as THREE from 'three/webgpu';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
 import { shapeAxes, type RingSystemDef } from '../../../physics/celestial-body-def';
-import type { CameraSystem } from '../../../game/camera/camera-system';
-import type { FloatingOrigin } from '../../../game/camera/floating-origin';
+import type { CameraFrame } from '../../camera/camera-frame';
 import { spinOrientation } from '../../../physics/body-orientation';
 import { apparentSizePx } from '../../../math/projection';
 import { showsPhysicalSphere } from '../screen-lod';
@@ -64,8 +63,8 @@ export class SphereCelestialView extends CelestialView {
 
   // displayTime 時点の位置へ同期する。見かけ直径が閾値未満なら球自体(と環)を描かない。
   public sync(
-    motion: CelestialMotion, fo: FloatingOrigin, displayTime: number,
-    cameraSystem: CameraSystem, _star: StellarLightSource | null,
+    motion: CelestialMotion, displayTime: number, camera: CameraFrame,
+    _star: StellarLightSource | null,
     graphics: GraphicsSettingsData, style: RenderStyle, visible: boolean,
   ): void {
     // category 非表示は本体と独立した環にも同時に反映する。
@@ -76,7 +75,7 @@ export class SphereCelestialView extends CelestialView {
     }
     const pos = motion.stateAt(displayTime).r;
     const apparentDiameterPx = apparentSizePx(
-      2 * this.outerRadius, cameraSystem.activeCameraRadialScale(pos),
+      2 * this.outerRadius, camera.radialScale(pos),
     ) * graphics.lodBias;
     if (!showsPhysicalSphere(apparentDiameterPx)) {
       this.hidePhysical();
@@ -86,7 +85,7 @@ export class SphereCelestialView extends CelestialView {
     this.surface.syncLod(apparentDiameterPx);
     this.graticule.setVisible(style === 'schematic');
     this.surfaceMarkings?.setVisible(style === 'schematic');
-    this.group.position.copy(fo.RtoThreeV3(pos));
+    this.group.position.copy(camera.floatingOrigin.RtoThreeV3(pos));
     this.group.scale.copy(this.axes);
     const orientation = motion.orientationAt(displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
@@ -95,7 +94,7 @@ export class SphereCelestialView extends CelestialView {
       this.group.position,
       orientation === null ? null : orientation.axis,
       pos,
-      cameraSystem.activeCameraScale,
+      camera.scale,
       graphics,
       style,
     );

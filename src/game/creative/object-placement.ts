@@ -30,8 +30,7 @@ import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { Notifier } from '../../hud/notifier';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
-import type { CameraSystem } from '../camera/camera-system';
-import type { FloatingOrigin } from '../camera/floating-origin';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
@@ -105,9 +104,9 @@ export class ObjectPlacement {
   }
 
   // 開いているフォームの現在値から、配置プレビューと入力欄の検証表示を更新する。
-  public sync(fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number): void {
+  public sync(camera: CameraFrame, displayTime: number): void {
     const form = this.panel.isOpen ? this.panel.getForm() : null;
-    this.syncPreview(form, fo, cameraSystem, displayTime);
+    this.syncPreview(form, camera, displayTime);
     this.panel.setIssues(form ? this.computeFieldIssues(form) : []);
   }
 
@@ -135,7 +134,7 @@ export class ObjectPlacement {
   // フォーム値から求めた配置プレビューの軌道線と ▷ マーカーを同期する。
   // form が null か、プレビューを出せない値のときは、軌道線とマーカーを消す。
   private syncPreview(
-    form: ObjectPlacerForm | null, fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
+    form: ObjectPlacerForm | null, camera: CameraFrame, displayTime: number,
   ): void {
     const preview = form ? this.computePreview(form) : null;
     if (!preview) {
@@ -144,15 +143,15 @@ export class ObjectPlacement {
       return;
     }
     // 軌道線は常に出し、▷ マーカーは天体に隠れていないときだけ出す。
-    const cameraPos = cameraSystem.activeCameraPos;
-    this.previewEllipseLine.sync(preview.elements, fo, cameraSystem.activeCamera);
-    if (cameraSystem.view === 'map'
+    const cameraPos = camera.position;
+    this.previewEllipseLine.sync(preview.elements, camera);
+    if (camera.mode === 'map'
       && isOccluded(cameraPos, preview.pos, this.celestialSystem.celestialMotions, displayTime)) {
       this.markers.hide('creative-preview');
       return;
     }
     this.markers.setPosition(
-      'creative-preview', 'mk-self', ENTITY_GLYPH.preview, preview.pos, cameraSystem.activeCameraProjection,
+      'creative-preview', 'mk-self', ENTITY_GLYPH.preview, preview.pos, camera.project,
       'PREVIEW', 1, COLOR_MARKER_ALLY, 0, false, false, undefined, cameraPos,
     );
   }

@@ -2,7 +2,7 @@
 // マップから選べ(ObjectPickable)、マップの表示トグルを持つ種別に属し、自分の画面マーカーを
 // 組めるものだけが実装できる。
 import type { Vec3 } from '../../../math/vec3';
-import type { View } from '../../view/view';
+import type { ViewMode } from '../../../render/view-mode';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { DynamicEntityKind } from './entity-kind';
@@ -17,7 +17,7 @@ export interface CombatTarget extends DynamicEntity, ObjectPickable {
 
   // 画面マーカー・一覧に出す項目。pos/vel にはメッシュと同じ表示時刻の状態を渡すこと。
   // isActive はこの個体が操作対象かどうか(マップ上の塗り分けに使う)。
-  markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, isActive: boolean): GroupedMarkerItem;
+  markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode, isActive: boolean): GroupedMarkerItem;
 }
 
 // この個体が戦闘対象になりうるか。顔ぶれから戦闘対象だけを絞るときに使う。

@@ -7,7 +7,7 @@ import {
   REENTRY_OUTER_BRIGHTNESS, REENTRY_OUTER_COLOR, REENTRY_OUTER_OFFSET, REENTRY_OUTER_SIZE_RATIO,
   REENTRY_SIZE_MIN, REENTRY_SIZE_SPAN,
 } from '../../render/vfx-style';
-import { FloatingOrigin } from '../camera/floating-origin';
+import { FloatingOrigin } from '../../render/camera/floating-origin';
 
 const REENTRY_GLOW_MIN_Q = 200; // 燃焼エフェクトが出始める動圧 [Pa]
 const REENTRY_GLOW_FULL_Q = 2e4; // 燃焼エフェクトが最大強度になる動圧 [Pa]

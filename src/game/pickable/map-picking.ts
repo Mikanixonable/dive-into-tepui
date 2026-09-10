@@ -19,8 +19,9 @@ import type { CelestialMarkers } from '../marker/celestial-markers';
 import type { MarkerSlots } from '../marker/marker-slots';
 import type { NavTarget } from '../nav-target';
 import type { CameraSystem } from '../camera/camera-system';
+import type { Viewport } from '../../render/viewport';
 import type { ControlSelection } from '../control-selection';
-import { rayThroughScreen } from '../../math/projection';
+import { rayThroughScreen, screenProjection } from '../../math/projection';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { FocusSink } from '../camera/focus-target';
 
@@ -77,8 +78,10 @@ export class MapPicking {
   // 画面上の (x, y) に当たった被選択物。マーカーへ一定のピクセル半径で当て、外れたら
   // 描かれている本体へ視線を通す(SPEC/MAP.md §11)。マーカー段はラベル衝突で非表示に
   // なった対象を外すが、本体段は外さない — 円盤が見えているのに掴めないのは嘘になる。
-  private pickAt<T extends MapPickable>(candidates: readonly T[], x: number, y: number): T | null {
-    const project = this.cameraSystem.activeCameraProjection;
+  private pickAt<T extends MapPickable>(
+    candidates: readonly T[], x: number, y: number, viewport: Viewport,
+  ): T | null {
+    const project = screenProjection(this.cameraSystem.activeViewpoint, viewport.width, viewport.height);
     const displayTime = this.pickables.lastDisplayTime;
     const marker = pickNearest(
       candidates.filter((item) => item.shownOnMap(this.markers)),
@@ -87,15 +90,15 @@ export class MapPicking {
     );
     if (marker !== null) return marker;
     const ray = rayThroughScreen(
-      this.cameraSystem.activeViewpoint, x, y, window.innerWidth, window.innerHeight);
+      this.cameraSystem.activeViewpoint, x, y, viewport.width, viewport.height);
     return pickFrontmostBody(candidates, ray, displayTime);
   }
 
   // 右クリック位置の被選択物(天体・自艦・他艦・ノード等)のプロパティウィンドウを開く。
   // 当たらなければ消費せず、handleEmptySpaceRightClick へ読み進める。
-  handleRightClick(input: Input, simTime: number): void {
+  handleRightClick(input: Input, simTime: number, viewport: Viewport): void {
     input.takeRightClicks((p) => {
-      const target = this.pickAt(this.pickables.pickables, p.x, p.y);
+      const target = this.pickAt(this.pickables.pickables, p.x, p.y, viewport);
       if (!target) return false;
       this.objectWindows.open(p.x, p.y, target, simTime);
       return true;
@@ -106,10 +109,11 @@ export class MapPicking {
   // (公転軌道・船の軌道・軌道ガイド)への当たり判定を試みる。当たれば軌道のプロパティ
   // ウィンドウを開いて消費する。handleEmptySpaceRightClick より前、editor.handleMapPointer
   // より後に呼ぶ(11節の判定順序)。
-  handleLineRightClick(input: Input): void {
+  handleLineRightClick(input: Input, viewport: Viewport): void {
     input.takeRightClicks((p) => {
       const orbit = pickNearestLine(
-        this.linePickables.pickables, p.x, p.y, this.cameraSystem.activeCameraProjection,
+        this.linePickables.pickables, p.x, p.y,
+        screenProjection(this.cameraSystem.activeViewpoint, viewport.width, viewport.height),
         pickRadiusSq(ORBIT_LINE_PICK_PX_SQ, ORBIT_LINE_PICK_PX_SQ_COARSE),
         this.cameraSystem.activeCameraPos, this.celestialBodies.celestialMotions,
         this.pickables.lastDisplayTime,
@@ -123,10 +127,10 @@ export class MapPicking {
   // 左クリック位置の、選択に応じる被選択物を選ぶ。当たらなければ消費せず、PlanEditor の
   // ノード配置/選択解除に読み進める(呼び出し側が editor.handleMapPointer より先に呼ぶことで、
   // マーカーへの命中をノード配置より優先する)。
-  handleLeftClick(input: Input): void {
+  handleLeftClick(input: Input, viewport: Viewport): void {
     input.takeClicks((p) => {
       const target = this.pickAt(
-        this.pickables.pickables.filter((i) => i.onMapSelect !== null), p.x, p.y);
+        this.pickables.pickables.filter((i) => i.onMapSelect !== null), p.x, p.y, viewport);
       if (!target) return false;
       target.onMapSelect?.(this.objectWindows, p.x, p.y);
       return true;
@@ -135,9 +139,9 @@ export class MapPicking {
 
   // ダブルクリック位置の被選択物へフォーカスを移し、自艦であれば操作対象にも切り替える。
   // 種別を問わず候補列全体から探す。
-  handleDoubleClick(input: Input): void {
+  handleDoubleClick(input: Input, viewport: Viewport): void {
     input.takeDoubleClicks((p) => {
-      const target = this.pickAt(this.pickables.pickables, p.x, p.y);
+      const target = this.pickAt(this.pickables.pickables, p.x, p.y, viewport);
       if (!target) return false;
       this.focusTarget(target.id, target);
       return true;

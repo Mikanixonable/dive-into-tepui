@@ -8,7 +8,7 @@ import {
   RCS_PLUME_BRIGHTNESS, RCS_PLUME_COLOR, RCS_PLUME_OFFSET, RCS_PLUME_SIZE,
 } from '../../vfx-style';
 import { RCS_NOZZLES } from '../../rcs-nozzles';
-import { FloatingOrigin } from '../../../game/camera/floating-origin';
+import { FloatingOrigin } from '../../camera/floating-origin';
 
 export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルクしきい値 [rad/s^2](inertia=1前提)
 

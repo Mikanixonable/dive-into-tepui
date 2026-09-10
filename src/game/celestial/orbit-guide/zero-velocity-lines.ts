@@ -10,12 +10,11 @@ import { CurveKnots } from '../../../render/curve';
 import { OrbitingMotion } from '../../../physics/celestial-motion';
 import { secondaryFrameOf } from '../../../physics/lagrange';
 import type { CelestialBodies } from '../celestial-bodies';
-import type { View } from '../../view/view';
 import { Vec3 } from '../../../math/vec3';
 import { guideSecondary, rotatingFrame } from '../../../physics/orbit-guide';
 import { zeroVelocityCurveSet, SectionPlane } from '../../../physics/zero-velocity';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import { FloatingOrigin } from '../../camera/floating-origin';
+import type { CameraFrame } from '../../../render/camera/camera-frame';
 import { GuideCurve } from './guide-curve';
 import { LINE_RENDER_ORDER } from '../../../render/line-style';
 import { ZeroVelocitySettings } from './orbit-guide-settings';
@@ -127,8 +126,8 @@ export class ZeroVelocityLines {
 
   // マップビューのときだけ曲線を同期する。等高線の抽出(格子走査)は断面やヤコビ定数が
   // 変わったときだけ、ECI への埋め込みは回転基底が目に見えて回ったときだけ走る。
-  public sync(displayTime: number, view: View, fo: FloatingOrigin, camera: THREE.Camera): void {
-    if (view !== 'map' || !this.settings) {
+  public sync(displayTime: number, camera: CameraFrame): void {
+    if (camera.mode !== 'map' || !this.settings) {
       for (const entry of this.lines) entry.curve.hide();
       return;
     }
@@ -149,7 +148,7 @@ export class ZeroVelocityLines {
     }
 
     for (const entry of this.lines) {
-      entry.curve.sync(fo, camera);
+      entry.curve.sync(camera);
       entry.curve.setOpacity(settings.opacity);
     }
   }
