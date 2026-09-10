@@ -93,6 +93,8 @@ export interface FocusCameraConfig {
   // 'fallToOrigin' は2フレーム連続で失敗したら原点天体へフォーカスを戻す(マップビュー)。
   readonly focusLossPolicy: 'hold' | 'fallToOrigin';
   readonly initial: FocusCameraInitial;
+  // オイラー極をカメラ位置由来の基準軸にするか、フォーカス機体の上方向にするか。
+  readonly eulerPole: 'reference' | 'attitude';
   // フォーカス id(機体・役割トークン)の時刻 t における姿勢。天体・解決不能は null。
   readonly attitudeOf: (id: string, t: number) => Quat | null;
 }
@@ -236,9 +238,10 @@ export class FocusCamera {
       this.pan_r = frameDir(0, 0, 0);
       this.up_r = frameDir(WORLD_UP.x, WORLD_UP.y, WORLD_UP.z);
     }
+    const initialEulerPolarAxis = followAttitude ? LOCAL_UP : this.eulerPolarAxis();
     this.orientation = new CameraOrientation(
       qFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r)),
-      this.eulerPolarAxis(), saved?.rotationMode ?? 'euler', followAttitude, null,
+      initialEulerPolarAxis, saved?.rotationMode ?? 'euler', followAttitude, null,
     );
     const defaultHalfHeight = this.dist * Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5));
     const savedHalfHeight = saved?.orthographicHalfHeight;
@@ -281,11 +284,21 @@ export class FocusCamera {
     return ECL_POLE_ECI;
   }
 
-  // Euler 操作の極はカメラ座標系の +Y ではなく、カメラ位置に応じた自転軸または黄道面法線にする。
-  // 座標系が慣性系以外でも、基準軸を同じ座標系へ変換してから使う。
-  private eulerPolarAxis(): Vec3 {
+  // フォーカス機体の姿勢を返す。解決できない間は null のままにする。
+  private focusAttitude(): Quat | null {
+    const id = focusTargetId(this._focus);
+    return id !== undefined ? this.config.attitudeOf(id, this.displayTime) : null;
+  }
+
+  // Euler 操作の極を、設定された基準へ揃えてカメラ座標系へ変換する。姿勢追従中の生の回転は
+  // 機体座標系にあるので、そのときだけ機体上方向のローカル軸を使う。
+  private eulerPolarAxis(followingAttitude = this.orientation?.followingAttitude ?? false): Vec3 {
+    const attitude = this.focusAttitude();
+    if (followingAttitude && attitude !== null) return LOCAL_UP;
     const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
-    return norm(frameDirVector(toFrameDir(tf, this.referenceUpAxisEci())));
+    const polarEci = this.config.eulerPole === 'attitude' && attitude !== null
+      ? qRotate(attitude, LOCAL_UP) : this.referenceUpAxisEci();
+    return norm(frameDirVector(toFrameDir(tf, polarEci)));
   }
 
   // 実効回転(姿勢追従を掛けた後の向き)を offset/up の基底で置き直す。
@@ -523,7 +536,7 @@ export class FocusCamera {
       const att = id !== undefined ? this.config.attitudeOf(id, this.displayTime) : null;
       if (att === null) return;
       this.setCameraRotation(null);
-      this.orientation.beginAttitudeFollow(att, this.eulerPolarAxis());
+      this.orientation.beginAttitudeFollow(att, LOCAL_UP);
       return;
     }
     this.setCameraRotation(valid);
@@ -585,7 +598,8 @@ export class FocusCamera {
   private refreshAttitude(): void {
     if (!this.orientation.followingAttitude) return;
     const id = focusTargetId(this._focus);
-    this.orientation.refreshAttitude(id !== undefined ? this.config.attitudeOf(id, this.displayTime) : null);
+    const attitude = id !== undefined ? this.config.attitudeOf(id, this.displayTime) : null;
+    this.orientation.refreshAttitude(attitude, this.eulerPolarAxis());
   }
 
   // カメラ視点の回転対象を切り替える。中心は常に ECI 中心天体 — offset_r/pan_r/up_r は
@@ -626,7 +640,6 @@ export class FocusCamera {
     this.refreshAttitude();
     const focus = this.resolveFocus(candidates, displayTime, frameAnchors);
     const tf = this.celestialSystem.frames.transformAt(this._cameraFrame, displayTime, frameAnchors);
-    // オイラー操作の極軸は座標系の幾何で定義されるので、姿勢追従中はクォータニオン経路で回す。
     const eulerActive = this.orientation.usesEuler;
     if (eulerActive) this.orientation.restoreFromEuler(this.eulerPolarAxis());
     let panEci = toInertialDir(tf, this.pan_r);
@@ -642,12 +655,13 @@ export class FocusCamera {
     }
     const yaw = mouse.dx * DRAG_RAD_PER_PX - keyYawRad;
     const pitch = mouse.dy * DRAG_RAD_PER_PX + keyPitchRad;
-    // 回した後の実効回転。どちらの経路も向きへ書き戻したうえでこれを返す。
-    const q = eulerActive
+    // 回した後の回転。オイラー経路は相対回転を返すため、姿勢追従を合成して実効回転にする。
+    const rotation = eulerActive
       ? this.orientation.turn(yaw, pitch, mouse.roll, this.eulerPolarAxis())
       : this.orientation.turnByDrag(
         mouse.dx * DRAG_RAD_PER_PX, -mouse.dy * DRAG_RAD_PER_PX, mouse.roll, keyYawRad, keyPitchRad,
       );
+    const q = eulerActive ? this.orientation.effective() : rotation;
     const offFrame = qRotate(q, LOCAL_FORWARD);
     const upFrame = qRotate(q, LOCAL_UP);
     const offEci = scale(toInertialDir(tf, frameDir(offFrame.x, offFrame.y, offFrame.z)), dist);
