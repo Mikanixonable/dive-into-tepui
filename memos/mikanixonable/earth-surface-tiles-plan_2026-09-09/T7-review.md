@@ -31,7 +31,7 @@ EarthSurfaceのpersistent lease、非表示・dispose・
 subpath URL、datasetId整合、raw gzip契約を確認した。Earth実行経路にGEBCOや旧Earth気候画像の
 参照はなく、`tools/render-lab/cases.ts` の旧画像はlegacy fixtureとして残している。
 
-追加実装後の検証結果は Earth契約、Pages fixture layout、Python 36件、source/ERA5 validator、
+追加実装後の検証結果は Earth契約、Pages fixture layout、Python 39件、source/ERA5 validator、
 fixture rendererの決定性検査でpassしている。TypeScriptのtypecheckは雲復元エージェントの作業途中に
 `maxAvailableMipLevelOf` exportが不足したため、当該差分が完了するまで再実行待ちである。実captureは
 実データ未投入を理由に15ケースをunavailableとして記録した。
