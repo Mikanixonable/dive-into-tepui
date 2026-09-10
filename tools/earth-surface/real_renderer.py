@@ -82,6 +82,8 @@ class FixtureSourceAdapter(SourceAdapter):
     """Validated, compact JSON adapter for a synthetic small bundle."""
 
     def __init__(self, manifest, fixture):
+        if not isinstance(fixture, dict):
+            raise ValueError("全球fixtureはJSONオブジェクトが必要です")
         if fixture.get("schemaVersion") != 1 or fixture.get("kind") != "earth-surface-global-fixture":
             raise ValueError("全球fixture形式が必要です")
         if fixture.get("provenance") != "synthetic_fixture":
@@ -98,6 +100,8 @@ class FixtureSourceAdapter(SourceAdapter):
             raise ValueError("全球fixtureのGSHHGポリゴンが不正です")
         self._tiles = {}
         for tile in fixture.get("tiles", []):
+            if not isinstance(tile, dict):
+                raise ValueError("fixtureタイルはJSONオブジェクトが必要です")
             key = tuple(tile.get("key", ()))
             if len(key) != 3 or any(type(value) is not int for value in key):
                 raise ValueError("fixtureタイルのkeyが不正です")
