@@ -1,6 +1,6 @@
 import { AnyPart } from '../dynamic/dynamic-entity/parts';
 import type { EphemerisContext } from '../../physics/ephemeris/ephemeris-context';
-import type { FormationRole } from '../dynamic/dynamic-entity/enemy';
+import type { FormationRole } from '../dynamic/dynamic-entity/entity-kind';
 import type { ProteinAssetId } from '../protein/protein-asset-loader';
 import type { ProteinDisplaySettings } from '../protein/protein-display';
 import type { GamePhase } from '../stages/stage';

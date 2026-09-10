@@ -13,6 +13,7 @@ import { Q_ECL_TO_ECI } from './ecliptic';
 import { eccentricAnomalyFromMean, positionFromOrbitalElements } from './elements';
 import { KinematicState, kinematicState } from './kinematic-state';
 import { Vec3, addScaled, cross, lenSq, norm, scale, v3 } from '../math/vec3';
+import type { FrameRotation } from './celestial-body';
 
 export const JULIAN_CENTURY = 100 * 365.25 * 86400; // [s]
 
@@ -42,10 +43,6 @@ export type KeplerOrbit = {
   readonly l0: number; // t=0 の平均黄経 L [rad]
   readonly lRate: number; // 平均黄経の変化率 [rad/s](= 2π/公転周期)
 };
-
-// 天体に固定した回転基準系の、ECI に対する姿勢 q と角速度 omega [rad/s](ECI 成分)。
-// 回転軸が一定とは限らないので、軸と回転角の対ではなくこの対で扱う。
-export type FrameRotation = { readonly q: Quat; readonly omega: Vec3 };
 
 type OrbitAngles = {
   readonly a: number;

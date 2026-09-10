@@ -1,5 +1,4 @@
 // 予測列の先端を中心天体まわりの二体ケプラー軌道とみなして外挿する純関数群。THREE/DOM 非依存。
-import type { CelestialMotion } from './celestial-motion';
 import { orbitalElementsOf } from './elements';
 import {
   OrbitalElements,
@@ -9,6 +8,7 @@ import {
   velocityOnOrbit,
 } from './elements';
 import { KinematicState, kinematicState } from './kinematic-state';
+import type { CelestialBody } from './celestial-body';
 
 // この外挿が前提とする離心率の上限。eccentricAnomalyFromMean のニュートン法が収束するとみなす
 // 範囲(既存の楕円ケプラーソルバの前提)。
@@ -18,7 +18,7 @@ const MAX_ECCENTRICITY = 0.98;
 // 外挿できない場合(軌道要素が求まらない、離心率が MAX_ECCENTRICITY 以上、長半径が非有限・
 // 非正、center に質量が無い)は null。
 function findExtrapolationOrbit(
-  tip: KinematicState, center: CelestialMotion, centerPivot: number,
+  tip: KinematicState, center: CelestialBody, centerPivot: number,
 ): OrbitalElements | null {
   if (center.def.mu <= 0) return null;
   const el = orbitalElementsOf(tip, center, centerPivot);
@@ -30,7 +30,7 @@ function findExtrapolationOrbit(
 // (位置・速度は ECI 方向のまま原点だけ center に取った相対値。絶対 ECI 化は center の
 // 位置・速度を足して行う)。外挿できない軌道では null。
 export function extrapolatedRelativeState(
-  tip: KinematicState, center: CelestialMotion, centerPivot: number, t: number,
+  tip: KinematicState, center: CelestialBody, centerPivot: number, t: number,
 ): KinematicState<'primaryRel'> | null {
   const el = findExtrapolationOrbit(tip, center, centerPivot);
   return el === null ? null : stateOnOrbitAt(el, t);
@@ -45,7 +45,7 @@ function trueAnomalyFromEccentric(E: number, e: number): number {
 // tip 自身は含まない、最後の要素の時刻はちょうど untilT)。等時間刻みだと近点付近で弧長が
 // 粗くなるため E で等分する。外挿できない場合、count <= 0、untilT <= tip.t のいずれでも空配列。
 export function extrapolatedRelativeStates(
-  tip: KinematicState, center: CelestialMotion, centerPivot: number, untilT: number, count: number,
+  tip: KinematicState, center: CelestialBody, centerPivot: number, untilT: number, count: number,
 ): KinematicState<'primaryRel'>[] {
   if (count <= 0 || untilT <= tip.t) return [];
   const el = findExtrapolationOrbit(tip, center, centerPivot);

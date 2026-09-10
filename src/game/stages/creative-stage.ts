@@ -5,7 +5,6 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, semiMajorFromPeriod, stateFromOrbitalElements } from '../../physics/elements';
-import { CelestialMotion } from '../../physics/celestial-motion';
 import { orbitalElementsOf } from '../../physics/elements';
 import { haloState, lissajousState } from '../../physics/halo';
 import { secondaryFrameOf } from '../../physics/lagrange';
@@ -34,8 +33,8 @@ import { elementsFormFromState } from '../creative/duplicate-form';
 import { STAGE_CONTROL_ENEMY_SHAPES, StageControlsPanel, type EnemySpawnShape } from '../creative/stage-controls-panel';
 import { EllipseLine } from '../lines/ellipse-line';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
-import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 // 軌道上へ配置できる自機の上限隻数。
 const MAX_PLACED_SHIPS = 50;
@@ -99,7 +98,7 @@ export class CreativeStage extends Stage {
       this._hud.mapRoot, this._hud.layers.popup, this._celestialSystem, this._hud.overlayManager,
     );
     this.placerPanel.onConfirm = (name, form) => this.placeObject(name, form);
-    this.waveAttack = new WaveAttack(this._hud, this._worldSfx, this._fx, this._scene, this._celestialSystem, savedCreative?.waveAttack);
+    this.waveAttack = new WaveAttack(this._hud, this._worldSfx, this._fx, this._scene, this._celestialSystem.celestialMotions, savedCreative?.waveAttack);
     this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
     this.stageControlsPanel = new StageControlsPanel(
       this.logistics.resupplyEnabled, this.logistics.rcsFuelResupplyEnabled, this.waveAttackEnabled,
@@ -132,7 +131,7 @@ export class CreativeStage extends Stage {
   // 操作艦の弾薬を満載にする。操作艦がいなければトーストで知らせる。
   private refillShipAmmo(): void {
     const player = this.ship;
-    if (player === null || !player.alive) {
+    if (player === null || !player.motion.alive) {
       this._hud.hint('操作艦がいないため弾薬を補充できません');
       return;
     }
@@ -142,7 +141,7 @@ export class CreativeStage extends Stage {
   // 操作艦の RCS 燃料を満タンにする。操作艦がいなければトーストで知らせる。
   private refillShipRcsFuel(): void {
     const player = this.ship;
-    if (player === null || !player.alive) {
+    if (player === null || !player.motion.alive) {
       this._hud.hint('操作艦がいないためRCS燃料を補充できません');
       return;
     }
@@ -152,15 +151,17 @@ export class CreativeStage extends Stage {
   // shape で選んだ形の敵を1体、自機の前方へ出す。操作艦がいなければトーストで知らせる。
   private spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void {
     const player = this.ship;
-    if (player === null || !player.alive) {
+    if (player === null || !player.motion.alive) {
       this._hud.hint('操作艦がいないため敵をスポーンできません');
       return;
     }
     // 自機の前方、同じ速度で置く。
     const color = Number(colorValue);
-    const forward = qRotate(player.att.q, LOCAL_FORWARD);
-    const position = addScaled(player.state.r, forward, this.manualEnemySpawnDistance);
-    const state = kinematicState<'eci'>(player.state.t, position, player.state.v);
+    const forward = qRotate(player.motion.att.q, LOCAL_FORWARD);
+    const position = addScaled(player.motion.state.r, forward, this.manualEnemySpawnDistance);
+    const state = kinematicState<'eci'>(
+      player.motion.state.t, position, player.motion.state.v,
+    );
     const name = `MANUAL-${++this.manualEnemyCount}`;
     // 形ごとに生成器が違い、タンパク質はアセットが揃うのを待ってから出す。
     const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
@@ -185,17 +186,22 @@ export class CreativeStage extends Stage {
   // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機前方に一括スポーンする。
   private spawnProteinFormation(): void {
     const player = this.ship;
-    if (player === null || !player.alive) {
+    if (player === null || !player.motion.alive) {
       this._hud.hint('操作艦がいないため敵をスポーンできません');
       return;
     }
     // 3役はいずれも自機の前方、同じ速度から始める。
-    const forward = qRotate(player.att.q, LOCAL_FORWARD);
-    const position = addScaled(player.state.r, forward, this.manualEnemySpawnDistance);
-    const state = kinematicState<'eci'>(player.state.t, position, player.state.v);
+    const forward = qRotate(player.motion.att.q, LOCAL_FORWARD);
+    const position = addScaled(player.motion.state.r, forward, this.manualEnemySpawnDistance);
+    const state = kinematicState<'eci'>(
+      player.motion.state.t, position, player.motion.state.v,
+    );
     const name = `FORMATION-${++this.manualFormationCount}`;
     const formationId = name;
-    for (const { assetId, build } of proteinFormationSpawns(name, state, player.state.r, this.proteinDisplay, formationId, this._worldSfx, this._fx, this._scene)) {
+    for (const { assetId, build } of proteinFormationSpawns(
+      name, state, player.motion.state.r, this.proteinDisplay, formationId,
+      this._worldSfx, this._fx, this._scene,
+    )) {
       this.spawnEnemyWhenReady(proteinAssetGate(assetId), build);
     }
   }
@@ -213,11 +219,10 @@ export class CreativeStage extends Stage {
   // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカーを同期する。
   sync(
     fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
-    visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    super.sync(fo, cameraSystem, displayTime, visibilityPolicy);
+    super.sync(fo, cameraSystem, displayTime);
     const ship = this.ship;
-    this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.alive);
+    this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.motion.alive);
     this.mountStageControlsPanel(cameraSystem.view === 'map');
     const form = this.placerPanel.isOpen ? this.placerPanel.getForm() : null;
     this.syncPreview(form, fo, cameraSystem, displayTime);
@@ -297,7 +302,7 @@ export class CreativeStage extends Stage {
     const preview = form ? this.computePreview(form) : null;
     if (!preview) {
       this.previewEllipseLine.hide();
-      this._markerManager.fadeOut('creative-preview');
+      this._markers.fadeOut('creative-preview');
       return;
     }
     // 軌道線は常に出し、▷ マーカーは天体に隠れていないときだけ出す。
@@ -305,10 +310,10 @@ export class CreativeStage extends Stage {
     this.previewEllipseLine.sync(preview.elements, fo, cameraSystem.activeCamera);
     if (cameraSystem.view === 'map'
       && isOccluded(cameraPos, preview.pos, this._celestialSystem.celestialMotions, displayTime)) {
-      this._markerManager.hide('creative-preview');
+      this._markers.hide('creative-preview');
       return;
     }
-    this._markerManager.setPosition(
+    this._markers.setPosition(
       'creative-preview', 'mk-self', ENTITY_GLYPH.preview, preview.pos, cameraSystem.activeCameraProjection,
       'PREVIEW', 1, COLOR_MARKER_ALLY, 0, false, false, undefined, cameraPos,
     );
@@ -349,7 +354,7 @@ export class CreativeStage extends Stage {
         this._hud.hint(`${finalName} を配置`);
       } else if (form.entityKind === 'base') {
         const finalName = name.trim() || generateRandomName('base');
-        const base = new Base({ state, name: finalName }, this._scene, this._hud, this._worldSfx, this._markerManager);
+        const base = new Base({ state, name: finalName }, this._scene, this._hud, this._markers);
         this._dynamicSystem.add(base);
         this._hud.hint(`${base.name} を配置`);
       }
@@ -384,7 +389,7 @@ export class CreativeStage extends Stage {
   }
 
   // フォームが選んだ基準天体の運動を引く。
-  private referenceCelestialBody(form: ElementsForm): CelestialMotion {
+  private referenceCelestialBody(form: ElementsForm): CelestialBody {
     return this._celestialSystem.motionOf(form.celestialBody);
   }
 
@@ -469,7 +474,7 @@ export class CreativeStage extends Stage {
       }
       if (!reached) continue;
       ship.plan.consumeNodesUpTo(simTime, reached);
-      ship.state = reached;
+      ship.motion.state = reached;
     }
   }
 
