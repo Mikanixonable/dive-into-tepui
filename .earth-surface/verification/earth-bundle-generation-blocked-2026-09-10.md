@@ -27,11 +27,11 @@ terrain payload だけの圧縮前下限は 23,630,031,744 bytes（base を含�
 ## 停止理由
 
 1. ERA5 の `1991-01`〜`2020-12`、全UTC24時刻、`t2m` と `tcc` を含む NetCDF local export が workspace および `/Users/pandeaconica` 配下に存在しない。manifest は ERA5 をURL取得ではなく `explicit_local_export` として要求しているため、入力がない状態では `fetch-source.py` を実行できない。
-2. `bake.py` の `--global` 入口は `unavailable_global_renderer` を渡しており、入力が揃っても BMNG/ETOPO/GSHHG/ERA5 の window adapter が未接続のため `GlobalInputError` で停止する。したがって、現在のコードでは全世界 bundle を生成できない。
-3. システム Python には `osgeo`、`netCDF4`、`pyshp` (`shapefile`)、`Pillow` がなく、`gdalinfo`/`ogrinfo`/`gdal-config` もない。requirements の GDAL 3.10.3 は native GDAL がないため一時 venv の dry-run 段階で停止した。Homebrew の GDAL 導入は依存取得中に中断し、リポジトリ内への導入は行っていない。
+2. `bake.py` の `--global` 入口は `RealDataRenderer` を使うが、入力が揃っても BMNG/ETOPO/GSHHG/ERA5 の window 合成が未接続のため `RendererUnavailable` で停止する。`--fixture-global` は決定性と契約を検査するためだけにあり、`dataKind: synthetic_fixture` を付けて本番データと分離する。したがって、現在のコードでは全世界 bundle を生成できない。
+3. 事前検査時のPythonには `osgeo`、`netCDF4`、`pyshp` (`shapefile`)、`Pillow` がなく、`gdalinfo`/`ogrinfo`/`gdal-config` もなかった。現在は Pillowだけが利用可能だが、生成用のGDAL、netCDF4、pyshpはまだ不足している。再現可能な依存定義は `tools/earth-surface/environment.yml` に置き、Homebrewの導入を前提にしない。
 
-以上により、実データ fetch、staging、全タイル bake、package、Pages staging は実行していない。fixture や偽データは本番 bundle として扱っていない。
+以上により、実データ fetch、staging、全タイル bake、package、Pages staging は実行していない。fixtureは36件のPython契約テストとPages fixture検査に使ったが、本番bundleとして扱っていない。Pages側にも1 GiBの容量とz0〜z7全43690タイルのcoverage gateを追加し、超過や部分bundleを公開しない。
 
 ## 再開条件
 
-ERA5 の契約を満たす NetCDF export を `.earth-surface/raw/era5-monthly-1991-2020/global.nc`（または manifest の `inputFiles` に明示した場所）へ配置し、入力ファイルの SHA-256 とサイズを `sources.json` に固定する必要がある。加えて、GDAL/osgeo、netCDF4、pyshp、Pillow を同一の再現可能な環境へ導入し、`bake.py` の実ソース window renderer と気候map生成を接続する必要がある。その後にだけ `fetch-source.py`、`bake.py --global`、manifest/tile-index/hash 検証、package、Pages staging を再開する。
+ERA5 の契約を満たす NetCDF export を `.earth-surface/raw/era5-monthly-1991-2020/global.nc`（または manifest の `inputFiles` に明示した場所）へ配置し、`tools/earth-surface/validate-source.py` で時間軸・変数・単位・座標順を検査してから、入力ファイルの SHA-256 とサイズを `sources.json` に固定する必要がある。加えて、`conda env create -f tools/earth-surface/environment.yml` などでGDAL/osgeo、netCDF4、pyshp、Pillowを同一環境へ導入し、`RealDataRenderer`の実ソースwindow合成と気候map生成を接続する必要がある。その後にだけ `fetch-source.py`、`bake.py --global`、manifest/tile-index/hash 検証、package、Pages staging を再開する。
