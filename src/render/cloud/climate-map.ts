@@ -2,7 +2,6 @@
 // 標本化する。雲より桁で低周波な、その天体固有の分布だけを持つ。
 import * as THREE from 'three/webgpu';
 import { smoothstep, texture, vec2 } from 'three/tsl';
-import { R_EARTH } from '../../game/celestial/solar-system/constants';
 import { DeferredTexture } from '../deferred-texture';
 import { equirectUvFromDirection } from './field-projection';
 import { eastAt, northAt } from './sphere-frame';
@@ -16,8 +15,6 @@ const ELEVATION_SPAN = 8000;
 const LAND_ELEVATION = 100;
 // 標高の勾配を取る中心差分の刻み [rad]。テクスチャの texel(2π/512)より大きく、山脈の幅より小さい。
 const SLOPE_STEP = 0.02;
-// その刻みが地表で張る長さ [m]。勾配を角あたりから長さあたりへ直すのに要る。
-const SLOPE_STEP_METERS = SLOPE_STEP * 2 * R_EARTH;
 
 export class ClimateMap {
   // url の PNG を読み終えてから器を返す。
@@ -68,14 +65,17 @@ export class ClimateMap {
   }
 
   // 斜面の勾配(東向き・北向き成分)[m/m]。landHeight [m] は陸へ上乗せする高さで、海と陸の
-  // 比熱の差で海岸へ吹き込む風が持ち上げられる分を、人工の斜面として代用する。
-  public slope(direction: Vec3Node, landHeight: number): Vec2Node {
+  // 比熱の差で海岸へ吹き込む風が持ち上げられる分を、人工の斜面として代用する。surfaceRadius [m] は
+  // この天体の半径で、勾配を角あたりから長さあたりへ直すのに要る。
+  public slope(direction: Vec3Node, landHeight: number, surfaceRadius: number): Vec2Node {
     const east = eastAt(direction).mul(SLOPE_STEP);
     const north = northAt(direction).mul(SLOPE_STEP);
+    // 中心差分の刻みが地表で張る長さ [m]。
+    const stepMeters = SLOPE_STEP * 2 * surfaceRadius;
     const height = (d: Vec3Node): FloatNode => this.elevation(d).add(this.landFraction(d).mul(landHeight));
     return vec2(
-      height(direction.add(east)).sub(height(direction.sub(east))).div(SLOPE_STEP_METERS),
-      height(direction.add(north)).sub(height(direction.sub(north))).div(SLOPE_STEP_METERS),
+      height(direction.add(east)).sub(height(direction.sub(east))).div(stepMeters),
+      height(direction.add(north)).sub(height(direction.sub(north))).div(stepMeters),
     );
   }
 
