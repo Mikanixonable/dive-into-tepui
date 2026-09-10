@@ -10,11 +10,11 @@ _SPEC.loader.exec_module(request)
 class RequestEra5Tests(unittest.TestCase):
     def test_request_matches_source_contract(self):
         value = request.request_definition()
-        self.assertEqual(value["product_type"], "monthly_averaged_reanalysis_by_hour_of_day")
+        self.assertEqual(value["product_type"], "monthly_averaged_reanalysis")
         self.assertEqual(value["variable"], ["2m_temperature", "total_cloud_cover"])
         self.assertEqual(value["year"], [str(year) for year in range(1991, 2021)])
         self.assertEqual(value["month"], [f"{month:02d}" for month in range(1, 13)])
-        self.assertEqual(value["time"], [f"{hour:02d}:00" for hour in range(24)])
+        self.assertNotIn("time", value)
         self.assertEqual(value["data_format"], "netcdf")
 
 

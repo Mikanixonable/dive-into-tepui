@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "createdAtUtc": "2026-09-10T01:54:16.423290+00:00",
+  "createdAtUtc": "2026-09-10T03:31:55.970324+00:00",
   "manifest": "assets-src/earth-surface/sources.json",
   "probeMode": "all",
   "dependencies": {
@@ -11,9 +11,9 @@
       "PIL": true
     },
     "commands": {
-      "gdalinfo": "/Users/pandeaconica/lab/dive-into-tepui/.earth-surface/mamba/envs/dive-into-tepui-earth-surface/bin/gdalinfo",
-      "ogrinfo": "/Users/pandeaconica/lab/dive-into-tepui/.earth-surface/mamba/envs/dive-into-tepui-earth-surface/bin/ogrinfo",
-      "ncdump": "/Users/pandeaconica/lab/dive-into-tepui/.earth-surface/mamba/envs/dive-into-tepui-earth-surface/bin/ncdump"
+      "gdalinfo": ".earth-surface/mamba/envs/dive-into-tepui-earth-surface/bin/gdalinfo",
+      "ogrinfo": ".earth-surface/mamba/envs/dive-into-tepui-earth-surface/bin/ogrinfo",
+      "ncdump": ".earth-surface/mamba/envs/dive-into-tepui-earth-surface/bin/ncdump"
     }
   },
   "sources": [
@@ -5320,22 +5320,564 @@
     },
     {
       "sourceId": "era5-monthly-1991-2020",
-      "regions": [],
-      "localExportRequired": true
+      "regionsRequested": 60,
+      "regionsAvailableInContract": 60,
+      "probes": [
+        {
+          "region": "1991:0",
+          "status": 200,
+          "contentLength": 20766321,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1991/e5.moda.an.sfc.128_164_tcc.ll025sc.1991010100_1991120100.nc"
+        },
+        {
+          "region": "1991:1",
+          "status": 200,
+          "contentLength": 16448394,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1991/e5.moda.an.sfc.128_167_2t.ll025sc.1991010100_1991120100.nc"
+        },
+        {
+          "region": "1992:0",
+          "status": 200,
+          "contentLength": 20757203,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1992/e5.moda.an.sfc.128_164_tcc.ll025sc.1992010100_1992120100.nc"
+        },
+        {
+          "region": "1992:1",
+          "status": 200,
+          "contentLength": 16460897,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1992/e5.moda.an.sfc.128_167_2t.ll025sc.1992010100_1992120100.nc"
+        },
+        {
+          "region": "1993:0",
+          "status": 200,
+          "contentLength": 20677383,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1993/e5.moda.an.sfc.128_164_tcc.ll025sc.1993010100_1993120100.nc"
+        },
+        {
+          "region": "1993:1",
+          "status": 200,
+          "contentLength": 16422081,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1993/e5.moda.an.sfc.128_167_2t.ll025sc.1993010100_1993120100.nc"
+        },
+        {
+          "region": "1994:0",
+          "status": 200,
+          "contentLength": 20677613,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1994/e5.moda.an.sfc.128_164_tcc.ll025sc.1994010100_1994120100.nc"
+        },
+        {
+          "region": "1994:1",
+          "status": 200,
+          "contentLength": 16448071,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1994/e5.moda.an.sfc.128_167_2t.ll025sc.1994010100_1994120100.nc"
+        },
+        {
+          "region": "1995:0",
+          "status": 200,
+          "contentLength": 20754620,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1995/e5.moda.an.sfc.128_164_tcc.ll025sc.1995010100_1995120100.nc"
+        },
+        {
+          "region": "1995:1",
+          "status": 200,
+          "contentLength": 16434784,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1995/e5.moda.an.sfc.128_167_2t.ll025sc.1995010100_1995120100.nc"
+        },
+        {
+          "region": "1996:0",
+          "status": 200,
+          "contentLength": 20696743,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1996/e5.moda.an.sfc.128_164_tcc.ll025sc.1996010100_1996120100.nc"
+        },
+        {
+          "region": "1996:1",
+          "status": 200,
+          "contentLength": 16420074,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1996/e5.moda.an.sfc.128_167_2t.ll025sc.1996010100_1996120100.nc"
+        },
+        {
+          "region": "1997:0",
+          "status": 200,
+          "contentLength": 20695917,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1997/e5.moda.an.sfc.128_164_tcc.ll025sc.1997010100_1997120100.nc"
+        },
+        {
+          "region": "1997:1",
+          "status": 200,
+          "contentLength": 16504685,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1997/e5.moda.an.sfc.128_167_2t.ll025sc.1997010100_1997120100.nc"
+        },
+        {
+          "region": "1998:0",
+          "status": 200,
+          "contentLength": 20649149,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1998/e5.moda.an.sfc.128_164_tcc.ll025sc.1998010100_1998120100.nc"
+        },
+        {
+          "region": "1998:1",
+          "status": 200,
+          "contentLength": 16518616,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1998/e5.moda.an.sfc.128_167_2t.ll025sc.1998010100_1998120100.nc"
+        },
+        {
+          "region": "1999:0",
+          "status": 200,
+          "contentLength": 20769772,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1999/e5.moda.an.sfc.128_164_tcc.ll025sc.1999010100_1999120100.nc"
+        },
+        {
+          "region": "1999:1",
+          "status": 200,
+          "contentLength": 16499134,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/1999/e5.moda.an.sfc.128_167_2t.ll025sc.1999010100_1999120100.nc"
+        },
+        {
+          "region": "2000:0",
+          "status": 200,
+          "contentLength": 20685423,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2000/e5.moda.an.sfc.128_164_tcc.ll025sc.2000010100_2000120100.nc"
+        },
+        {
+          "region": "2000:1",
+          "status": 200,
+          "contentLength": 16486759,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2000/e5.moda.an.sfc.128_167_2t.ll025sc.2000010100_2000120100.nc"
+        },
+        {
+          "region": "2001:0",
+          "status": 200,
+          "contentLength": 20622397,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2001/e5.moda.an.sfc.128_164_tcc.ll025sc.2001010100_2001120100.nc"
+        },
+        {
+          "region": "2001:1",
+          "status": 200,
+          "contentLength": 16487031,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2001/e5.moda.an.sfc.128_167_2t.ll025sc.2001010100_2001120100.nc"
+        },
+        {
+          "region": "2002:0",
+          "status": 200,
+          "contentLength": 20710013,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2002/e5.moda.an.sfc.128_164_tcc.ll025sc.2002010100_2002120100.nc"
+        },
+        {
+          "region": "2002:1",
+          "status": 200,
+          "contentLength": 16484277,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2002/e5.moda.an.sfc.128_167_2t.ll025sc.2002010100_2002120100.nc"
+        },
+        {
+          "region": "2003:0",
+          "status": 200,
+          "contentLength": 20707440,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2003/e5.moda.an.sfc.128_164_tcc.ll025sc.2003010100_2003120100.nc"
+        },
+        {
+          "region": "2003:1",
+          "status": 200,
+          "contentLength": 16480921,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2003/e5.moda.an.sfc.128_167_2t.ll025sc.2003010100_2003120100.nc"
+        },
+        {
+          "region": "2004:0",
+          "status": 200,
+          "contentLength": 20674613,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2004/e5.moda.an.sfc.128_164_tcc.ll025sc.2004010100_2004120100.nc"
+        },
+        {
+          "region": "2004:1",
+          "status": 200,
+          "contentLength": 16486372,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2004/e5.moda.an.sfc.128_167_2t.ll025sc.2004010100_2004120100.nc"
+        },
+        {
+          "region": "2005:0",
+          "status": 200,
+          "contentLength": 20686024,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2005/e5.moda.an.sfc.128_164_tcc.ll025sc.2005010100_2005120100.nc"
+        },
+        {
+          "region": "2005:1",
+          "status": 200,
+          "contentLength": 16461066,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2005/e5.moda.an.sfc.128_167_2t.ll025sc.2005010100_2005120100.nc"
+        },
+        {
+          "region": "2006:0",
+          "status": 200,
+          "contentLength": 20697633,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2006/e5.moda.an.sfc.128_164_tcc.ll025sc.2006010100_2006120100.nc"
+        },
+        {
+          "region": "2006:1",
+          "status": 200,
+          "contentLength": 16440035,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2006/e5.moda.an.sfc.128_167_2t.ll025sc.2006010100_2006120100.nc"
+        },
+        {
+          "region": "2007:0",
+          "status": 200,
+          "contentLength": 20710617,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2007/e5.moda.an.sfc.128_164_tcc.ll025sc.2007010100_2007120100.nc"
+        },
+        {
+          "region": "2007:1",
+          "status": 200,
+          "contentLength": 16479725,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2007/e5.moda.an.sfc.128_167_2t.ll025sc.2007010100_2007120100.nc"
+        },
+        {
+          "region": "2008:0",
+          "status": 200,
+          "contentLength": 20757057,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2008/e5.moda.an.sfc.128_164_tcc.ll025sc.2008010100_2008120100.nc"
+        },
+        {
+          "region": "2008:1",
+          "status": 200,
+          "contentLength": 16475549,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2008/e5.moda.an.sfc.128_167_2t.ll025sc.2008010100_2008120100.nc"
+        },
+        {
+          "region": "2009:0",
+          "status": 200,
+          "contentLength": 20688428,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2009/e5.moda.an.sfc.128_164_tcc.ll025sc.2009010100_2009120100.nc"
+        },
+        {
+          "region": "2009:1",
+          "status": 200,
+          "contentLength": 16494658,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2009/e5.moda.an.sfc.128_167_2t.ll025sc.2009010100_2009120100.nc"
+        },
+        {
+          "region": "2010:0",
+          "status": 200,
+          "contentLength": 20738556,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2010/e5.moda.an.sfc.128_164_tcc.ll025sc.2010010100_2010120100.nc"
+        },
+        {
+          "region": "2010:1",
+          "status": 200,
+          "contentLength": 16443839,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2010/e5.moda.an.sfc.128_167_2t.ll025sc.2010010100_2010120100.nc"
+        },
+        {
+          "region": "2011:0",
+          "status": 200,
+          "contentLength": 20679885,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2011/e5.moda.an.sfc.128_164_tcc.ll025sc.2011010100_2011120100.nc"
+        },
+        {
+          "region": "2011:1",
+          "status": 200,
+          "contentLength": 16464816,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2011/e5.moda.an.sfc.128_167_2t.ll025sc.2011010100_2011120100.nc"
+        },
+        {
+          "region": "2012:0",
+          "status": 200,
+          "contentLength": 20686800,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2012/e5.moda.an.sfc.128_164_tcc.ll025sc.2012010100_2012120100.nc"
+        },
+        {
+          "region": "2012:1",
+          "status": 200,
+          "contentLength": 16460993,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2012/e5.moda.an.sfc.128_167_2t.ll025sc.2012010100_2012120100.nc"
+        },
+        {
+          "region": "2013:0",
+          "status": 200,
+          "contentLength": 20727648,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2013/e5.moda.an.sfc.128_164_tcc.ll025sc.2013010100_2013120100.nc"
+        },
+        {
+          "region": "2013:1",
+          "status": 200,
+          "contentLength": 16489285,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2013/e5.moda.an.sfc.128_167_2t.ll025sc.2013010100_2013120100.nc"
+        },
+        {
+          "region": "2014:0",
+          "status": 200,
+          "contentLength": 20735861,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2014/e5.moda.an.sfc.128_164_tcc.ll025sc.2014010100_2014120100.nc"
+        },
+        {
+          "region": "2014:1",
+          "status": 200,
+          "contentLength": 16482385,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2014/e5.moda.an.sfc.128_167_2t.ll025sc.2014010100_2014120100.nc"
+        },
+        {
+          "region": "2015:0",
+          "status": 200,
+          "contentLength": 20763411,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2015/e5.moda.an.sfc.128_164_tcc.ll025sc.2015010100_2015120100.nc"
+        },
+        {
+          "region": "2015:1",
+          "status": 200,
+          "contentLength": 16444217,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2015/e5.moda.an.sfc.128_167_2t.ll025sc.2015010100_2015120100.nc"
+        },
+        {
+          "region": "2016:0",
+          "status": 200,
+          "contentLength": 20698181,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2016/e5.moda.an.sfc.128_164_tcc.ll025sc.2016010100_2016120100.nc"
+        },
+        {
+          "region": "2016:1",
+          "status": 200,
+          "contentLength": 16529506,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2016/e5.moda.an.sfc.128_167_2t.ll025sc.2016010100_2016120100.nc"
+        },
+        {
+          "region": "2017:0",
+          "status": 200,
+          "contentLength": 20681869,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2017/e5.moda.an.sfc.128_164_tcc.ll025sc.2017010100_2017120100.nc"
+        },
+        {
+          "region": "2017:1",
+          "status": 200,
+          "contentLength": 16496346,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2017/e5.moda.an.sfc.128_167_2t.ll025sc.2017010100_2017120100.nc"
+        },
+        {
+          "region": "2018:0",
+          "status": 200,
+          "contentLength": 20738932,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2018/e5.moda.an.sfc.128_164_tcc.ll025sc.2018010100_2018120100.nc"
+        },
+        {
+          "region": "2018:1",
+          "status": 200,
+          "contentLength": 16584021,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2018/e5.moda.an.sfc.128_167_2t.ll025sc.2018010100_2018120100.nc"
+        },
+        {
+          "region": "2019:0",
+          "status": 200,
+          "contentLength": 20735718,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2019/e5.moda.an.sfc.128_164_tcc.ll025sc.2019010100_2019120100.nc"
+        },
+        {
+          "region": "2019:1",
+          "status": 200,
+          "contentLength": 16601201,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2019/e5.moda.an.sfc.128_167_2t.ll025sc.2019010100_2019120100.nc"
+        },
+        {
+          "region": "2020:0",
+          "status": 200,
+          "contentLength": 20760806,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2020/e5.moda.an.sfc.128_164_tcc.ll025sc.2020010100_2020120100.nc"
+        },
+        {
+          "region": "2020:1",
+          "status": 200,
+          "contentLength": 16568443,
+          "contentType": "application/x-netcdf",
+          "contentEncoding": "identity",
+          "etag": null,
+          "url": "https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d633001_nc/e5.moda.an.sfc/2020/e5.moda.an.sfc.128_167_2t.ll025sc.2020010100_2020120100.nc"
+        }
+      ],
+      "contentLengthBytes": 1115830214,
+      "failed": 0
     }
   ],
   "estimate": {
     "tileCount": 43690,
     "terrainPayloadBytesPerTile": 540832,
     "terrainPayloadBytesIncludingBase": 23630031744,
-    "inputBytesFromHEAD": 12657367741,
+    "inputBytesFromHEAD": 13773197955,
     "outputLowerBoundBytes": 23630031744,
-    "availableDiskBytes": 305096392704,
+    "availableDiskBytes": 276125216768,
     "rawRoot": ".earth-surface/raw-v3",
     "diskInsufficientForTerrainLowerBound": false
   },
-  "status": "blocked",
-  "blockers": [
-    "ERA5はCDSから固定期間・変数のローカルNetCDF exportが必要です"
-  ]
+  "status": "ready_for_acquisition",
+  "blockers": []
 }

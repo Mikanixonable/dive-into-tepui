@@ -41,25 +41,47 @@ def probe(url, timeout):
         "Accept-Encoding": "identity",
         "User-Agent": "dive-into-tepui/earth-surface-preflight",
     })
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return {
-                "status": getattr(response, "status", None),
-                "contentLength": int(response.headers["Content-Length"])
-                if response.headers.get("Content-Length", "").isdigit() else None,
-                "contentType": response.headers.get("Content-Type", ""),
-                "contentEncoding": response.headers.get("Content-Encoding", "identity"),
-                "etag": response.headers.get("ETag"),
-                "url": response.geturl(),
-            }
-    except (urllib.error.URLError, TimeoutError, OSError) as error:
-        return {"error": f"{type(error).__name__}: {error}", "url": url}
+    last_error = None
+    for _ in range(3):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return {
+                    "status": getattr(response, "status", None),
+                    "contentLength": int(response.headers["Content-Length"])
+                    if response.headers.get("Content-Length", "").isdigit() else None,
+                    "contentType": response.headers.get("Content-Type", ""),
+                    "contentEncoding": response.headers.get("Content-Encoding", "identity"),
+                    "etag": response.headers.get("ETag"),
+                    "url": response.geturl(),
+                }
+        except (urllib.error.URLError, TimeoutError, OSError) as error:
+            last_error = error
+    return {"error": f"{type(last_error).__name__}: {last_error}", "url": url}
 
 
 def source_probe(source, sample_per_source, timeout, workers):
     """各ソースを代表領域だけ、または全領域HEAD検査する。"""
+    if source.get("acquisition") == "public_mirror":
+        years = range(int(source["period"]["start"][:4]), int(source["period"]["end"][:4]) + 1)
+        templates = source.get("mirrorUrlTemplates", [])
+        requests = [(f"{year}:{index}", template.format(year=year))
+                    for year in years for index, template in enumerate(templates)]
+        if sample_per_source is not None:
+            limit = len(templates) if sample_per_source == 0 else max(1, sample_per_source * len(templates))
+            requests = requests[:limit]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            results = pool.map(lambda item: (item[0], probe(item[1], timeout)), requests)
+            probes = [{"region": region, **result} for region, result in results]
+        return {
+            "sourceId": source["id"],
+            "regionsRequested": len(requests),
+            "regionsAvailableInContract": len(years) * len(templates),
+            "probes": probes,
+            "contentLengthBytes": sum(item.get("contentLength") or 0 for item in probes),
+            "failed": sum("error" in item for item in probes),
+        }
     regions = regions_for(source)
-    if sample_per_source is not None:
+    if sample_per_source:
         regions = regions[:sample_per_source]
     if source.get("acquisition") == "explicit_local_export":
         return {"sourceId": source["id"], "regions": [], "localExportRequired": True}

@@ -50,15 +50,22 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(result["etag"], '"a"')
         self.assertEqual(open_url.call_args.args[0].method, "HEAD")
 
-    def test_report_marks_local_era5_as_blocked(self):
+    def test_report_probes_public_era5_mirror(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "report.json"
-            report = preflight.run(
-                Path(__file__).parents[2] / "assets-src/earth-surface/sources.json",
-                0, 1, 1, directory,
-            )
-            self.assertEqual(report["status"], "blocked")
-            self.assertTrue(any("ERA5" in blocker for blocker in report["blockers"]))
+            with patch.object(preflight, "probe", return_value={
+                    "status": 200, "contentLength": 1, "contentType": "application/x-netcdf",
+                    "contentEncoding": "identity", "etag": None, "url": "https://example.test"}), \
+                    patch.object(preflight, "dependency_report", return_value={
+                        "pythonModules": {name: True for name in preflight.MODULES},
+                        "commands": {name: "/usr/bin/" + name for name in preflight.COMMANDS}}):
+                report = preflight.run(
+                    Path(__file__).parents[2] / "assets-src/earth-surface/sources.json",
+                    0, 1, 1, directory,
+                )
+            self.assertEqual(report["status"], "ready_for_acquisition")
+            era5 = next(item for item in report["sources"] if item["sourceId"] == "era5-monthly-1991-2020")
+            self.assertEqual(era5["regionsRequested"], 2)
             output.write_text(json.dumps(report))
 
 

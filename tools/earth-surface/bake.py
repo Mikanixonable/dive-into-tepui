@@ -410,8 +410,15 @@ def bake_region(value, manifest):
     if any(len(pixel) != 3 or any(type(channel) is not int or not 0 <= channel <= 255 for channel in pixel) for pixel in colors):
         raise ValueError("colorSrgbはRGB8が必要です")
 
-    # 水域の値はDEMの符号によらず地理マスクから決める。
-    land, ice = coverage(grid, value["gshhgPolygons"])
+    # 水域の値はDEMの符号によらず地理マスクから決める。実データrendererは
+    # GSHHGを空間索引で積分済みなので、同じセルで二重計算しない。
+    if "landFraction" in value and "iceFraction" in value:
+        land, ice = value["landFraction"], value["iceFraction"]
+        if (len(land) != count or len(ice) != count
+                or any(not math.isfinite(item) or not 0 <= item <= 1 for item in land + ice)):
+            raise ValueError("事前計算されたGSHHG被覆率が不正です")
+    else:
+        land, ice = coverage(grid, value["gshhgPolygons"])
     nodata = {source["id"]: source["noData"] for source in manifest["sources"]}
     heights, orthometric = [], []
     for index, (height, geoid_height) in enumerate(zip(surface, geoid)):

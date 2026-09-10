@@ -75,6 +75,8 @@ def load_manifest(path):
     if not sources or len({source["id"] for source in sources}) != len(sources):
         raise InvalidSource("sourcesは重複のない一覧が必要です")
     for source in sources:
+        if not re.fullmatch(r"[a-z0-9.-]+", source.get("id", "")):
+            raise InvalidSource("source idが不正です")
         if not required.issubset(source) or source["crs"] != "EPSG:4326" or not source["variables"]:
             raise InvalidSource("ソースの必須属性またはCRSが不正です")
         if not isinstance(source["inputSha256"], list):
