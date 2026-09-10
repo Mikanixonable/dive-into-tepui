@@ -1,19 +1,19 @@
 {
   "schemaVersion": 1,
-  "createdAtUtc": "2026-09-10T01:03:19.874047+00:00",
+  "createdAtUtc": "2026-09-10T01:25:23.736179+00:00",
   "manifest": "assets-src/earth-surface/sources.json",
   "probeMode": "all",
   "dependencies": {
     "pythonModules": {
-      "osgeo": false,
-      "netCDF4": false,
-      "shapefile": false,
+      "osgeo": true,
+      "netCDF4": true,
+      "shapefile": true,
       "PIL": true
     },
     "commands": {
-      "gdalinfo": null,
-      "ogrinfo": null,
-      "ncdump": "/opt/homebrew/bin/ncdump"
+      "gdalinfo": "/Users/pandeaconica/Library/Caches/dive-into-tepui-earth-env/bin/gdalinfo",
+      "ogrinfo": "/Users/pandeaconica/Library/Caches/dive-into-tepui-earth-env/bin/ogrinfo",
+      "ncdump": "/Users/pandeaconica/Library/Caches/dive-into-tepui-earth-env/bin/ncdump"
     }
   },
   "sources": [
@@ -5330,14 +5330,12 @@
     "terrainPayloadBytesIncludingBase": 23630031744,
     "inputBytesFromHEAD": 12657367741,
     "outputLowerBoundBytes": 23630031744,
-    "availableDiskBytes": 319941214208,
+    "availableDiskBytes": 321871314944,
     "rawRoot": ".earth-surface/raw",
     "diskInsufficientForTerrainLowerBound": false
   },
   "status": "blocked",
   "blockers": [
-    "Python依存が不足しています: osgeo, netCDF4, shapefile",
-    "GDAL CLI (gdalinfo/ogrinfo) がありません",
     "ERA5はCDSから固定期間・変数のローカルNetCDF exportが必要です"
   ]
 }

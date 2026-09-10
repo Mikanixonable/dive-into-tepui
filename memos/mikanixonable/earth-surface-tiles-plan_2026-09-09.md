@@ -15,7 +15,8 @@
 今回、次を確定した。
 
 - 初回の実データ生成対象は全世界、z=0〜7とする。
-- 本番配信先はGitHub Pagesとする。Pagesのサブパス配信を前提にする。
+- Pagesは本リリース前のプレビュー配信先とする。実装の受け入れ条件はローカルの`npm run dev`で
+  実データbundleを同一originから読み込めることであり、本リリースの配信先はこの計画の範囲外とする。
 - 外部静的配信は要件から廃止する。本番の地表データはゲーム本体と同じGitHub Pagesのoriginだけから配る。
 - manifest URLをデータセットの正本とする。環境変数でdatasetIdやbase URLを重複定義しない。
 - 気候mapは1024×512、12か月のRGBAとする。
@@ -52,14 +53,20 @@
 
 ### 配信
 
-ゲーム本体と本番の地表データはGitHub Pagesの同じサイトから配る。
+開発中のゲーム本体と地表データは、`npm run dev`が配る同一originから読み込む。GitHub Pagesは同じ
+bundleを確認するためのプレビューとして扱い、本リリースの配信経路には含めない。
 
 - docs/earth-surface/<datasetId>/へmanifest、tile-index、base、全世界z0〜z7、12枚の気候mapを配置する。
 - Pagesのrepository subpathを考慮し、asset URLをハードコードしない。
 - manifestは短いcache、datasetId付きtile/base/climateはimmutable cacheとする。
 - 同じdatasetIdのURLを上書きしない。更新時は新しいdatasetIdを使う。
-- GitHub Pagesの公開上限を超えるbundleは公開しない。全世界z0〜z7を縮小して上限へ合わせることも行わず、超過時は実測値付きでblockedとする。
+- GitHub Pagesの公開上限を超えるbundleはプレビューへ配置しない。全世界z0〜z7を縮小して上限へ
+  合わせることは行わず、超過時は実測値付きでプレビューだけをblockedとする。ローカルbundleの
+  生成・検査・実行は継続できる。
 - 動的サーバーは作らない。必要になった場合もクライアント契約はmanifest、tile-index、tile GETを維持する。
+
+ローカルでの確認は、アプリを`npm run build`でdocsへ生成した後、bundleを
+`npm run earth-surface:dev-stage`でdocs/earth/<datasetId>/へ配置し、`npm run dev`から行う。
 
 ## 3. 依存関係とフェーズ
 
@@ -82,7 +89,8 @@ T0 基準記録
 
 - コードゲート: 型検査、対象層の回帰テスト、レビュー、不要APIと旧参照の点検。
 - データゲート: 入力hash、生成manifest、tile-index、バイナリ検査、制御点画像、再現可能な生成ログ。
-- 公開ゲート: Pagesへ配置したbundleのlayout、URL、cache、CORS不要の同一origin取得、代表tileのGET。
+- 公開ゲート: Pagesプレビューへ配置する場合だけbundleのlayout、URL、cache、CORS不要の同一origin取得、
+  代表tileのGETを検査する。ローカル受け入れは`npm run dev`からのmanifest・代表tile取得で判定する。
 - WebGPU、実ブラウザp95、外部認証など実行環境に依存するものは、未実施を明記し、コード完了と分ける。
 - 全世界bundleの生成・公開ができない場合、生成器の完了を全世界公開完了へ読み替えない。
 
