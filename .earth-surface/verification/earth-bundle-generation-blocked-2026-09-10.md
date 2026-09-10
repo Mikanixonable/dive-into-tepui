@@ -30,7 +30,7 @@ terrain payload だけの圧縮前下限は 23,630,031,744 bytes（base を含�
 2. `bake.py` の `--global` 入口は `RealDataRenderer` を使うが、入力が揃っても BMNG/ETOPO/GSHHG/ERA5 の window 合成が未接続のため `RendererUnavailable` で停止する。`--fixture-global` は決定性と契約を検査するためだけにあり、`dataKind: synthetic_fixture` を付けて本番データと分離する。したがって、現在のコードでは全世界 bundle を生成できない。
 3. 2026-09-10の再検査では `Pillow` だけが利用可能で、生成用の `osgeo`、`netCDF4`、`pyshp` (`shapefile`)、`gdalinfo`、`ogrinfo` はまだ不足している。再現可能な依存定義は `tools/earth-surface/environment.yml` に置き、Homebrewの導入を前提にしない。
 
-以上により、実データ fetch、staging、全タイル bake、package、Pages staging は実行していない。fixtureは39件のPython契約テストとPages fixture検査に使ったが、本番bundleとして扱っていない。Pages側にも1 GiBの容量とz0〜z7全43690タイルのcoverage gateを追加し、超過や部分bundleを公開しない。
+以上により、実データ fetch、staging、全タイル bake、package、Pages staging は実行していない。fixtureは39件のPython契約テストとPages fixture検査に使ったが、本番bundleとして扱っていない。Pages側にも1 GB（1,000,000,000 bytes）の容量とz0〜z7全43690タイルのcoverage gateを追加し、超過や部分bundleを公開しない。
 
 ## 再開条件
 
