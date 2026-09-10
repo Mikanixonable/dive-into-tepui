@@ -50,6 +50,7 @@ BMNG/ETOPOは数十GB級、ERA5は取得条件に依存し、GSHHGはfixture JSO
 `--fixture-global`の小規模生成入口を追加した。`87b6c8b5` と `d91ab5d3` ではERA5 local exportのNetCDF軸・単位・期間・変数、
 取得済み入力のreceiptとSHA-256を検査するvalidatorと再現可能なenvironment.ymlを追加した。
 `cb3161f5` ではCopernicusの `(0 - 1)` cloud fraction単位表記を取得時検査でも受け入れるようにした。
+`6b707e54` では `tools/earth-surface/fixture-global.json` と `--fixture-global` の実行例を固定した。
 fixtureのmanifestは `dataKind: synthetic_fixture` と明示され、本番データへ読み替えられない。
 
 `--global` はERA5、GDAL、netCDF4、pyshp、Pillowが揃っても、BMNG/ETOPO/GSHHG/ERA5のwindow合成が接続されるまで
@@ -67,7 +68,8 @@ fixtureを本番生成の代わりにはしない。
 - GSHHG 2.3.7: `200 application/zip 149,157,845 bytes`
 - ERA5: URL取得ではなく、1991–2020・全UTC時刻・指定変数を含むNetCDFの明示的なlocal exportが必要
 
-実行環境にはGDAL/osgeo、netCDF4、pyshp、Pillowがなく、`gdalinfo`/`ogrinfo`もない。空き容量は約4.85GiBだった。
+再検査時点ではPillowだけが利用可能で、GDAL/osgeo、netCDF4、pyshp、`gdalinfo`/`ogrinfo`はない。空き容量は約320GBで、
+地形payloadの下限だけなら保存できる。
 全43,690タイルのESTN payloadだけで、圧縮前かつbaseを含めて23,630,031,744 bytes（約22.0GiB）が必要になるため、
 入力・中間・JPEG・気候mapを含む本番生成はこの環境では開始しなかった。URL応答の確認以外に巨大ファイルの取得は行っていない。
 
