@@ -37,6 +37,7 @@ const SOURCE = {
 class FallbackSpy implements CelestialSurfaceLike {
   public readonly photometry: SurfacePhotometry | null = null;
   public readonly textureUrl = 'fallback.jpg';
+  public readonly diagnostics = null;
   public readonly calls: string[] = [];
 
   public addTo(_parent: THREE.Object3D): void { this.calls.push('addTo'); }
@@ -61,6 +62,8 @@ function frame(camera: THREE.Camera = new THREE.Camera()): CelestialSurfaceFrame
 class CoordinatorSpy {
   public readonly frames: EarthSurfaceResidentFrame[] = [];
   public disposed = false;
+  public residentMaxZ: number | null = null;
+  public failureReason: string | null = null;
 
   public constructor(public readonly textures?: EarthSurfaceGpuTextures | null) {}
 
@@ -88,6 +91,34 @@ export function register(): void {
     assert.deepEqual(fallback.calls, ['addTo', 'syncLod', 'syncFrame', 'hide', 'dispose']);
     assert.equal(lease.signal.aborted, true);
     assert.throws(() => context.requestLease(), /disposed/);
+  });
+
+  test('earth surface: diagnosticsは状態・理由・詳細材質・常駐LODを返す', () => {
+    const context = new EarthSurfaceContext(SOURCE);
+    const fallback = new FallbackSpy();
+    const coordinator = new CoordinatorSpy();
+    const surface = new EarthSurface(context, fallback, coordinator, 'loading', 'manifest pending');
+
+    assert.deepEqual(surface.diagnostics, {
+      status: 'loading', reason: 'manifest pending', usesDetailedMaterial: false, residentMaxZ: null,
+    });
+    coordinator.residentMaxZ = 3;
+    surface.attach(SOURCE, coordinator, 'ready');
+    assert.deepEqual(surface.diagnostics, {
+      status: 'ready', reason: null, usesDetailedMaterial: false, residentMaxZ: 3,
+    });
+    coordinator.failureReason = 'tile 0/0/0: color conversion failed';
+    assert.deepEqual(surface.diagnostics, {
+      status: 'ready', reason: 'tile 0/0/0: color conversion failed',
+      usesDetailedMaterial: false, residentMaxZ: 3,
+    });
+
+    surface.attach(SOURCE, null, 'fallback', null, 'WebGPU detail features unavailable');
+    assert.deepEqual(surface.diagnostics, {
+      status: 'fallback', reason: 'WebGPU detail features unavailable',
+      usesDetailedMaterial: false, residentMaxZ: null,
+    });
+    surface.dispose();
   });
 
   test('earth surface: frameからprojectionを作りcoordinatorへ世代付きで渡す', () => {

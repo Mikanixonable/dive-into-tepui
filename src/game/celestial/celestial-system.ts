@@ -32,6 +32,7 @@ import type { GpuTimingSink } from '../../render/gpu-timings';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialBodies } from './celestial-bodies';
 import type { CelestialClass } from './celestial-entity/celestial-entity-def';
+import type { PerfCounts } from '../perf-counts';
 import { STICKY_MARGIN_SQ } from './nearby-system-tracker';
 
 // 数値暦が収録している点を、結び先のノードへ配る。暦は id ごとに天体本体を収録している場合と
@@ -323,11 +324,15 @@ export class CelestialSystem implements CelestialBodies {
     return { phaseOffsets: { ...this.phaseOffsets }, earthSpinPhase0: this.earthSpinPhase0() };
   }
 
-  // 天体窓の時刻キャッシュのヒット/ミス累計。
-  perfCounts(): { timeCacheHits: number; timeCacheMisses: number } {
+  // 天体と地表が答える、デバッグ表示用の狭い計測値をまとめる。
+  perfCounts(): Pick<PerfCounts, 'surfaces'> & { timeCacheHits: number; timeCacheMisses: number } {
     let time = this.eciTransform.cacheStats;
     for (const motion of this.celestialMotions) time = addTimeCacheStats(time, motion.cacheStats);
-    return { timeCacheHits: time.hits, timeCacheMisses: time.misses };
+    const surfaces = this.entities.flatMap((entity) => {
+      const diagnostics = entity.surfaceDiagnostics;
+      return diagnostics === null ? [] : [{ id: entity.id, name: entity.name, diagnostics }];
+    });
+    return { timeCacheHits: time.hits, timeCacheMisses: time.misses, surfaces };
   }
 
   // 軌道ガイドタブ(表示パネル5.2節)の設定。変更のたびに渡す。

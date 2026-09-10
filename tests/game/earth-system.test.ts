@@ -3,6 +3,8 @@ import * as assert from 'node:assert/strict';
 import type { WebGPURenderer } from 'three/webgpu';
 import { test } from '../harness';
 import { StarMotion } from '../../src/physics/celestial-motion';
+import { TEST_EPOCH } from '../physics/test-helpers';
+import { CelestialSystem } from '../../src/game/celestial/celestial-system';
 import {
   createEarthSurfaceRuntime, EARTH_SURFACE_FIXTURE_SOURCE, EARTH_TEXTURE, earthSystem,
 } from '../../src/game/celestial/solar-system/earth-system';
@@ -65,6 +67,7 @@ export function register(): void {
     assert.equal(result.state, 'fallback');
     assert.equal(result.bootstrap.state, 'fallback');
     assert.equal(runtime.surface.status, 'fallback');
+    assert.equal(runtime.surface.diagnostics.reason, 'earth surface manifest unavailable');
     assert.equal(result.surface.textureUrl, EARTH_TEXTURE.url);
     result.surface.dispose();
   });
@@ -81,7 +84,22 @@ export function register(): void {
     assert.equal(result.bootstrap.state, 'ready');
     assert.equal(result.bootstrap.source?.datasetId, READY_MANIFEST.datasetId);
     assert.equal(result.surface.usesDetailedMaterial, true);
+    assert.equal(result.surface.diagnostics.status, 'ready');
+    assert.equal(result.surface.diagnostics.reason, null);
+    assert.equal(result.surface.diagnostics.residentMaxZ, null);
     runtime.surface.dispose();
+  });
+
+  test('earth runtime: manifestが利用できてもrendererなしなら理由付きbaseへ留まる', async () => {
+    const result = await createEarthSurfaceRuntime({
+      manifestUrl: 'https://example.test/earth/earth-surface.json',
+      fetchImpl: readyFetch(),
+    }).ready;
+    assert.equal(result.state, 'fallback');
+    assert.equal(result.surface.diagnostics.status, 'fallback');
+    assert.equal(result.surface.diagnostics.reason, 'renderer unavailable');
+    assert.equal(result.surface.usesDetailedMaterial, false);
+    result.surface.dispose();
   });
 
   test('earth runtime: WebGPU非対応rendererは即時fallbackを維持する', async () => {
@@ -92,6 +110,7 @@ export function register(): void {
     }).ready;
     assert.equal(result.state, 'fallback');
     assert.equal(result.surface.usesDetailedMaterial, false);
+    assert.equal(result.surface.diagnostics.reason, 'WebGPU detail features unavailable');
     assert.equal(result.surface.textureUrl, EARTH_TEXTURE.url);
     result.surface.dispose();
   });
@@ -104,6 +123,7 @@ export function register(): void {
     }).ready;
     assert.equal(result.state, 'error');
     assert.equal(result.surface.usesDetailedMaterial, false);
+    assert.equal(result.surface.diagnostics.reason, 'Earth surface manifest HTTP 503');
     assert.equal(result.surface.textureUrl, EARTH_TEXTURE.url);
     result.surface.dispose();
   });
@@ -125,5 +145,15 @@ export function register(): void {
     const result = await runtime.ready;
     assert.equal(result.state, 'ready', result.bootstrap.error?.message ?? '');
     assert.equal(result.surface.status, 'loading');
+  });
+
+  test('earth system: PerfCountsは詳細地表を持つ天体だけ列挙する', () => {
+    const bodies = earthSystem(new StarMotion(SUN), {}, 0);
+    const system = new CelestialSystem([bodies.earth, bodies.moon], bodies.earth, {}, TEST_EPOCH);
+    const surfaces = system.perfCounts().surfaces;
+    assert.equal(surfaces.length, 1);
+    assert.equal(surfaces[0]?.id, 'earth');
+    assert.equal(surfaces[0]?.name, '地球');
+    assert.equal(surfaces[0]?.diagnostics.status, 'loading');
   });
 }

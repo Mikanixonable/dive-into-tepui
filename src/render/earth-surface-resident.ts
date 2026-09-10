@@ -67,12 +67,32 @@ export class EarthSurfaceResidentCoordinator {
   private readonly tasks = new Set<Promise<void>>();
   private activeGeneration = -1;
   private nextFrame = 0;
+  private recentFailureReason: string | null = null;
   private disposed = false;
 
   public constructor(private readonly dependencies: EarthSurfaceResidentCoordinatorDependencies) {}
 
   // EarthSurfaceの材質が同じGPUテクスチャを読むための接点。選択・公開状態はcoordinatorが所有する。
   public get textures(): EarthSurfaceGpuTextures | null { return this.dependencies.gpu.textures; }
+
+  // 描画に利用可能なアップロード済みresidentの最高z。
+  public get residentMaxZ(): number | null {
+    let maxZ: number | null = null;
+    for (const resident of this.residents.values()) {
+      if (resident.state !== 'uploaded') continue;
+      maxZ = maxZ === null ? resident.key.z : Math.max(maxZ, resident.key.z);
+    }
+    return maxZ;
+  }
+
+  // 恒久queue失敗を優先し、なければcoordinatorが捕捉した直近タイル失敗を返す。
+  public get failureReason(): string | null {
+    const permanentFailures = this.dependencies.queue.metrics.failures;
+    const latestPermanent = [...permanentFailures].at(-1);
+    return latestPermanent === undefined
+      ? this.recentFailureReason
+      : `tile ${latestPermanent[0]}: ${latestPermanent[1]}`;
+  }
 
   // 現在公開可能なページを先に交換し、その後に不要層を回収して要求を発行する。
   // したがって到着途中の色・地形は次フレームまでページ表へ現れない。
@@ -127,6 +147,7 @@ export class EarthSurfaceResidentCoordinator {
     this.dependencies.gpu.reset();
     this.activeGeneration = -1;
     this.nextFrame = 0;
+    this.recentFailureReason = null;
   }
 
   private cancelOldRequests(generation: number): void {
@@ -197,8 +218,12 @@ export class EarthSurfaceResidentCoordinator {
       }
     }).catch((error: unknown) => {
       // Queueの版内失敗はqueue自身が保持する。GPU投入・色変換の失敗は一時的な
-      // backend状態でも起こり得るため、coordinator側で永続失敗へ昇格させない。
-      if (this.disposed || isAbort(error)) return;
+      // backend状態でも起こり得るため、coordinator側では直近の診断だけへ記録する。
+      if (this.disposed || isAbort(error) || signal?.aborted || pending.generation !== this.activeGeneration) return;
+      if (!this.dependencies.queue.metrics.failures.has(earthTileId(pending.key))) {
+        const reason = error instanceof Error ? error.message : String(error);
+        this.recentFailureReason = `tile ${earthTileId(pending.key)}: ${reason}`;
+      }
     }).finally(() => {
       this.dependencies.queue.release(pending.key, pending.generation);
       if (this.pending.get(earthTileId(pending.key))?.promise === pending.promise) {
