@@ -208,7 +208,7 @@ export async function checkPagesLayout(root, datasetId, options = {}) {
     entries: checked.tileIndex.entries,
     maxLod: checked.tileIndex.entries.length === 0 ? null : Math.max(...checked.tileIndex.entries.map((entry) => entry.z)),
     missingManifest: [],
-  }, receipt.totalBytes, maxBytes);
+  }, receipt.totalBytes + (await readFile(join(bundle, 'receipt.json'))).byteLength, maxBytes);
   if (!report.capacity.withinBudget) {
     throw new Error(`Pages bundle exceeds byte budget: ${report.capacity.measuredBytes} > ${report.capacity.maxBytes} (max LOD ${report.maxLod ?? 'none'}, ${report.tileCount} tiles)`);
   }
@@ -233,13 +233,14 @@ export async function stagePages({ inputRoot, outputRoot = 'docs', maxBytes = DE
     await copyFile(resolve(input, sourceManifest), join(source, 'sources.json'));
     const target = resolve(outputRoot, 'earth-surface', manifest.datasetId);
     const receipt = await receiptFor(source, manifest);
-    const report = pagesReport(shape, receipt.totalBytes, maxBytes);
+    const receiptText = `${JSON.stringify(receipt, null, 2)}\n`;
+    const report = pagesReport(shape, receipt.totalBytes + Buffer.byteLength(receiptText), maxBytes);
     if (!report.capacity.withinBudget) {
       throw new Error(`Pages bundle exceeds byte budget: ${report.capacity.measuredBytes} > ${report.capacity.maxBytes} (max LOD ${report.maxLod ?? 'none'}, ${report.tileCount} tiles)`);
     }
     await mkdir(dirname(target), { recursive: true });
     await rm(target, { recursive: true, force: true });
-    await writeFile(join(source, 'receipt.json'), `${JSON.stringify(receipt, null, 2)}\n`);
+    await writeFile(join(source, 'receipt.json'), receiptText);
     await rename(source, target);
     return { ...receipt, target, ...report };
   } finally {
