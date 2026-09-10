@@ -129,7 +129,7 @@ export class PointCelestialView extends CelestialView {
     this.group.visible = visible;
     if (!visible) {
       this.billboard.hide();
-      this.ring?.setVisible(false);
+      this.ring?.hide();
       return;
     }
     const pos = motion.stateAt(displayTime).r;
@@ -238,7 +238,7 @@ export class PointCelestialView extends CelestialView {
     this.graticule.setVisible(false);
     this.surfaceMarkings?.setVisible(false);
     for (const aurora of this.auroras) aurora.mesh.visible = false;
-    this.ring?.setVisible(false);
+    this.ring?.hide();
   }
 
   // 星殻上に、描画座標 p の方向だけを反映した輝点を置く。明るさは「いま観測者へ届く光の量」

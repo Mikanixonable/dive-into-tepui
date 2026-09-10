@@ -33,7 +33,6 @@ import { elementsFormFromState } from '../creative/duplicate-form';
 import { STAGE_CONTROL_ENEMY_SHAPES, StageControlsPanel, type EnemySpawnShape } from '../creative/stage-controls-panel';
 import { EllipseLine } from '../lines/ellipse-line';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
-import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
 import type { CelestialBody } from '../../physics/celestial-body';
 
@@ -220,9 +219,8 @@ export class CreativeStage extends Stage {
   // 共通のステータス表示に加えて、配置プレビューの軌道線とマーカーを同期する。
   sync(
     fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
-    visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    super.sync(fo, cameraSystem, displayTime, visibilityPolicy);
+    super.sync(fo, cameraSystem, displayTime);
     const ship = this.ship;
     this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.motion.alive);
     this.mountStageControlsPanel(cameraSystem.view === 'map');
