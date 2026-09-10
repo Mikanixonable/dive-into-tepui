@@ -56,6 +56,30 @@ class RendererTests(unittest.TestCase):
             renderer.render_tile((1, 0, 0))
         self.assertIn("fixtureにタイルがありません", str(error.exception))
 
+    def test_real_source_adapter_resolves_products_without_opening_files(self):
+        adapter = real_renderer.RealSourceAdapter(self.manifest, "/tmp/earth-surface-raw")
+        tile = adapter.tile_input((7, 3, 4))
+        self.assertEqual(tile.key, (7, 3, 4))
+        self.assertEqual(tile.color_paths[0].name, "A1.tif")
+        self.assertEqual(tile.surface_paths[0].name, "N90W180.tif")
+        self.assertEqual(tile.surface_paths[-1].name, "S75E165.tif")
+        self.assertEqual(tile.gshhg_path.name, "global.zip")
+        self.assertEqual(tile.era5_path.name, "global.nc")
+        with self.assertRaises(real_renderer.RendererUnavailable) as error:
+            adapter.climate_input(1, 2, 2)
+        self.assertIn("ERA5", str(error.exception))
+
+    def test_geotiff_window_maps_target_bounds_to_bounded_pixels(self):
+        grid = bake.Grid(10, 40, 11, 41, 4, 4)
+        window = real_renderer.geotiff_window_for_grid(
+            grid, (0, .25, 0, 90, 0, -.25), 1440, 720)
+        self.assertEqual(window, (40, 196, 4, 4))
+        with self.assertRaises(ValueError):
+            real_renderer.geotiff_window_for_grid(grid, (0, .25, 1, 90, 0, -.25), 1440, 720)
+        with self.assertRaises(ValueError):
+            real_renderer.geotiff_window_for_grid(
+                bake.Grid(-20, 40, -19, 41, 4, 4), (0, .25, 0, 90, 0, -.25), 1440, 720)
+
     @unittest.skipUnless(importlib.util.find_spec("PIL") is not None, "Pillow unavailable")
     def test_tile_coordinates_and_window_contract(self):
         self.assertEqual(bake.tile_grid(0, 0, 0).width, 260)
