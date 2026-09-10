@@ -106,7 +106,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud .hud-rail-right { right: 12px; width: var(--rail-w-right); }
 #hud .hud-map-root.active .hud-rail { pointer-events: auto; touch-action: pan-y; }
 #hud .rail-toggle {
-  width: var(--hud-rail-toggle-size); height: var(--hud-rail-toggle-size); border: 0; border-radius: var(--radius-control);
+  width: var(--hud-rail-toggle-size); height: var(--hud-rail-toggle-size); border: 0; border-radius: 50%;
   background: var(--glass-control); color: var(--color-primary); cursor: pointer; pointer-events: auto;
   transition: color var(--transition-fast), background var(--transition-fast);
 }
