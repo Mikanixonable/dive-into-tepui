@@ -41,6 +41,8 @@ const SYSTEM_BODIES: Readonly<Record<CatalogSystemId, readonly [string, string]>
   'earth-moon': ['earth', 'moon'],
   'sun-earth': ['sun', 'earth'],
   'sun-mars': ['sun', 'mars'],
+  'sun-jupiter': ['sun', 'jupiter'],
+  'sun-saturn': ['sun', 'saturn'],
   'jupiter-europa': ['jupiter', 'europa'],
   'saturn-titan': ['saturn', 'titan'],
   'saturn-enceladus': ['saturn', 'enceladus'],

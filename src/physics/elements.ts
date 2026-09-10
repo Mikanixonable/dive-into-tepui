@@ -101,10 +101,15 @@ export function apsisAltitudes(el: OrbitalElements): { pe: number; ap: number } 
   };
 }
 
+// 高離心率では M≈0 付近で E=M の初期値が遠回りになるため、±π の初期値へ切り替える境界。
+// この値は e=0.8 を境に初期値の収束経路を変えるだけで、解の精度の境界ではない。e=0.98 までの
+// 周回全域を回帰テストで覆う。
+const HIGH_ECCENTRICITY_THRESHOLD = 0.8;
+
 // 平均近点角 M → 離心近点角 E(ケプラー方程式 M = E − e sin E をニュートン法で解く。楕円のみ)。
 export function eccentricAnomalyFromMean(m: number, e: number): number {
   const M = Math.atan2(Math.sin(m), Math.cos(m)); // [-π, π] へ畳んで初期値 E=M の収束を安定させる
-  let E = e > 0.8 ? Math.PI * Math.sign(M || 1) : M; // 高離心率では M≈0 付近で E=M 初期値だと Newton 法が収束しない/振動するため、M と同じ側の ±π から始める
+  let E = e > HIGH_ECCENTRICITY_THRESHOLD ? Math.PI * Math.sign(M || 1) : M;
 
   for (let i = 0; i < 50; i++) {
     const dE = (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));

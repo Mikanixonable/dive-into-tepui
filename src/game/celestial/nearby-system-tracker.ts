@@ -8,7 +8,7 @@ import { Vec3, lenSq } from '../../math/vec3';
 import type { CelestialBodies } from './celestial-bodies';
 
 // 直前フレームの勝者を優遇する倍率(加速度の二乗で比べるので二乗値で持つ)。
-const STICKY_MARGIN_SQ = 1.2 * 1.2;
+export const STICKY_MARGIN_SQ = 1.2 * 1.2;
 
 export class NearbySystemTracker {
   private previousId: string | null = null;

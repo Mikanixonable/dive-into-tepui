@@ -6,6 +6,10 @@
 (workspace3から分岐)で修正し、各項目に対応状況を追記した。監査の結果、1.4は誤検知と判明し
 修正対象から外し、1.5はSPECを実装に合わせて更新する方針とした(いずれも根拠は各項目に記載)。
 
+**追記(2026-09-11)**: 実装スナップショットは `60ed125e`(branch: codex/solar-system-accuracy-all-fixes)。
+残っていた2節・4節の項目をすべて対応し、型検査と物理・ゲーム層の回帰テストを通過させた。文書の完了版は
+`memos/mikanixonable/done/` へ移動する。
+
 Sonnetサブエージェント9体に `src/physics/` の軌道力学・天体暦関連ファイルと `src/game/celestial/`
 全体を分担させ、`DEVELOP/SPEC/ORBIT.md`・`DEVELOP/SPEC/CELESTIAL.md` と突き合わせてレビューした。
 高確信度の指摘のうち主要なものは、担当エージェントとは独立に自分でも代数的検証・数値計算・
@@ -100,7 +104,7 @@ CELESTIAL.md 4.1節は「ハウメア・フォボス・ダイモス・ベスタ�
 可能性が高い。「共通化するかどうかは今後も使う可能性で決める」の判断と同様、これは
 **SPECを直すか実装を直すかの二択をユーザーに委ねるべき論点**。
 
-**対応済み**(commit未定、CELESTIAL.md更新): `git log`で調査したところ、コミット`0d5d3906`
+**対応済み**(commit `b9b88299`、CELESTIAL.md更新): `git log`で調査したところ、コミット`0d5d3906`
 (EP2)で「6体」がSPECへ明記され、その後コミット`7129d3a9`(EP6、同日)で32小天体を追加した際に
 13体へ三軸データが追加されたが、このコミットはCELESTIAL.mdを一切変更していない(他の簡略化
 (質量測定天体5体・セドナの推定半径・キロンの環見送り)は丁寧に記録している一方、三軸shapeには
@@ -168,64 +172,54 @@ annulus→lineへの切替を目視確認済み。
 
 ## 2. 中確信度の指摘
 
-- **`src/game/celestial/orbit-guide/orbit-guide-lines.ts:31-33`**: `RECOMPUTE_INTERVAL=300秒`の正当化コメントが
+- **対応済み**(commit `60ed125e`) — **`src/game/celestial/orbit-guide/orbit-guide-lines.ts:31-33`**: `RECOMPUTE_INTERVAL=300秒`のコメントから
   「地球-月系が最速なので0.05°しか回らない」としているが、同じ`ALL_SYSTEMS`には火星-フォボス
-  (周期7.66時間)が含まれ、300秒で約3.92°回転する。コメントの前提が誤り。
-- **`src/game/celestial/orbit-guide/orbit-guide-settings.ts:219-227`**: ツンドラ軌道の既定近地点高度がモルニヤの
-  値(600km)をそのまま流用しており、ツンドラの周期(1恒星日)に当てはめると離心率0.835・
-  遠地点高度約70,972kmという、現実のツンドラ軌道(近地点高度数万km・e≈0.27前後)とは
-  かけ離れた極端な楕円になる。意図的な値か確認を要する。
-- **`src/game/celestial/point-field.ts:163-182`**: ヒルダ群(3:2共鳴)のケプラー平均運動が木星の
-  実測平均運動レートと厳密には一致せず(比が理想値1.5から約0.1%ずれる)、dσ/dt≈0.091°/年の
-  残留ドリフトが生じる。コメントは「dσ/dt=0になる」と断言しているが、木星の実測要素(JPL永年項)
-  との厳密な整合はない。
-- **`src/game/celestial/point-field.ts:73-74`**: カークウッド空隙のラベル対応で「7:3」と「5:2」が
-  入れ替わっている(天文学的に正しい順は 4:1→2.06AU, 3:1→2.50AU, 5:2→2.82AU, 7:3→2.958AU,
-  2:1→3.28AU)。数値自体はそのまま使われるため機能上のバグではないが、**DEVELOP/SPEC/CELESTIAL.md
-  10節の表も同じ順序で誤っている**可能性が高い。
-- **`src/game/celestial/point-field.ts`**: カイパーベルトcold/hotの傾斜角分布が両方とも単純な
-  一様分布で、hot群自体にピークがないため、合成しても「1山+平坦な裾」に近く、
-  CELESTIAL.mdが要求する「二山」の見た目の再現度は低い。
-- **`src/physics/solar-system.ts:1051`**: 海王星の極半径(24,285.3km)が広く引用される値
-  (約24,341km)と1割程度大きい扁平率を示す。天王星側は正しく再現できているため、海王星側だけ
-  転記の誤りがある可能性。
-- **`src/game/celestial/system-membership.ts`**: `isPositionInFocusedSystem`(艦などの
-  マップ表示判定)にカメラ用のヒステリシス(1.44倍のSTICKY_MARGIN)が掛かっておらず、勢力圏境界
-  付近を飛ぶ艦の表示がフレームごとに切り替わりうる。
+  (周期7.66時間)が含まれるため、系を特定せず表示負荷と更新頻度のバランスを説明するコメントへ直した。
+- **対応済み**(commit `60ed125e`) — **`src/game/celestial/orbit-guide/orbit-guide-settings.ts:219-227`**: ツンドラ軌道の既定近地点高度を
+  24,000kmへ変更した。周期1恒星日・臨界傾斜角の既定軌道が現実的な高楕円軌道になる。
+- **対応済み**(commit `60ed125e`) — **`src/game/celestial/solar-system/point-field.ts:163-182`**: ヒルダ群の平均運動を木星の
+  2/3へ固定し、共鳴角のドリフトを除去した。3つの位相枝を明示的に混ぜ、三角形状も回帰テストで固定した。
+- **対応済み**(commit `60ed125e`) — **`src/game/celestial/solar-system/point-field.ts:73-74`**: カークウッド空隙のラベル対応を
+  正しい順へ揃え、`DEVELOP/SPEC/CELESTIAL.md`も同じ順へ更新した。
+- **対応済み**(commit `60ed125e`) — **`src/game/celestial/solar-system/point-field.ts`**: カイパーベルトhot群を低傾斜・高傾斜の
+  2モードから生成し、cold群と合わせた二峰性を回帰テストで固定した。
+- **対応済み**(commit `60ed125e`) — **`src/game/celestial/solar-system/neptune-system.ts`**: 海王星の赤道半径を24,764km、
+  極半径を24,341kmへ更新した。
+- **対応済み**(commit `60ed125e`) — **`src/game/celestial/celestial-system.ts`**: `isPositionInFocusedSystem`も
+  `NearbySystemTracker`と同じ1.2倍の加速度マージンを使い、勢力圏境界での明滅を抑える判定へ揃えた。
 
 ## 3. 修正候補・リファクタリング候補
 
 - **`src/physics/earth-reference-orbits.ts:69`**: `criticalInclinationElements`が
-  `elements.ts`の`semiMajorFromPeriod`と同一のケプラー第3法則の式を再実装している。**完了** — 軌道要素側の共通変換へ統一済み。
+  `elements.ts`の`semiMajorFromPeriod`と同一のケプラー第3法則の式を再実装している。**完了**(commit `e32d123d`) — 軌道要素側の共通変換へ統一済み。
 - **`src/physics/body-orientation.ts:19-21`**: `orthogonalizedTo`が`pole`の単位ベクトル性を
-  暗黙に前提しており、コメントに明記がない。**完了** — 入力契約をコメントと回帰テストへ反映済み。
+  暗黙に前提しており、コメントに明記がない。**完了**(commit `ce1d85ff`) — 入力契約をコメントと回帰テストへ反映済み。
 
 ## 4. 確認事項(意図的な簡略化の可能性・ユーザー判断が必要)
 
-- `src/physics/body-orientation.ts:68-76` の経度正方向が「自転が進む向き」基準で、IAU公式の
-  惑星地理経度規約(逆行天体では自転と逆向きが正)と天体によっては食い違いうる。ゲーム内部表示の
-  自己無矛盾性は保たれているため実害は小さい可能性。
-- `src/physics/ephemeris.ts` の地球の自転位相評価だけが他の7惑星と異なる時刻基準(`t` vs `te`)を
-  使っている。地球の初期位相はランダムなので実害は薄いと見られるが、使い分けの理由が明記されていない。
-- 木星型惑星の高精度暦(DE440/441)が指すのは「惑星本体」ではなく「系重心(バリセンタ)」であり、
-  ガリレオ衛星等の質量分布により本体中心から最大数百km程度周期的にずれる。CELESTIAL.md
-  2.2節の「高精度な惑星本体の位置」という記述の厳密な意味を確認したい。
-- `src/physics/dynamics.ts` で大気抵抗の相対速度計算時、天体位置は評価時刻へ外挿するが天体速度は
-  外挿しない(非対称)。また日照率の評価がSRPはRK4段ごと、熱収支はステップ1回のみで、高時間加速時に
-  両者が異なる日照/被食状態を参照しうる。影響は小さいと見積もられる。
-- `src/physics/elements.ts` のケプラー方程式ソルバ(ニュートン法)の高離心率(e→0.98)での
-  収束を実測検証していない。閾値`e>0.8`の根拠も定量的でない。
-- `src/physics/earth-reference-orbits.ts` の太陽同期条件がJ2による平均運動の補正なしの2体近似。
-  HUDガイド線用途なので実害は小さいと見られる。
-- `src/game/celestial/orbit-guide/zero-velocity-lines.ts` のゼロ速度曲線が地球-月系・太陽-地球系の2系統のみで、
-  CELESTIAL.md 6節がHUD対象として挙げる太陽-木星系・太陽-土星系が含まれない(UI仕様側の意図的な
-  範囲限定の可能性)。
-- `src/game/map/visibility-policy.ts:123-129` の「月だけ常時表示」の判定が `def.planet==='earth'`
-  でハードコードされている。カスタムレジストリで地球に複数衛星を登録した場合、月以外も対象になる。
-- `src/physics/solar-system.ts:518` の地球(EM Bary)の軌道長半径が、他の要素はJPL Standish表の値を
-  精密転記している中で `a` だけ「ちょうど1AU」の定義値に置き換わっている(実用上の差は約2.6ppm)。
-- `src/game/celestial/point-field.ts` の小天体点群生成が常に実太陽系(`SOLAR_SYSTEM`)の木星要素を
-  参照しており、恒星ありの架空レジストリが将来追加された場合に誤動作しうる(現状は無害)。
+- **対応済み**(commit `60ed125e`) — `src/physics/body-orientation.ts:68-76` の経度正方向をIAU北極の右手系
+  (`cross(axis, meridian)`)としてコメントと回帰テストへ明記した。逆行天体でも物理的な自転方向とは独立した
+  惑星地理経度規約になる。
+- **対応済み**(commits `665f4e9b`, `0292d077`) — `src/physics/celestial-body-def.ts` と
+  `src/physics/celestial-motion.ts` の位相評価は、構築時にIAU元期オフセットをシミュレーション時刻0へ
+  折り込み、評価時は`simTime`に統一した。旧記述の`t` vs `te`の使い分けは解消済み。
+- **対応済み**(commit `4aa935c3`) — 高精度暦の点が惑星本体か系重心かを
+  `src/physics/ephemeris/point.ts` で明示し、系重心を惑星本体として誤結合しないようにした。
+  `CelestialMotion`の最終位置は衛星質量による本体オフセットも扱うため、旧記述の確認事項は解消済み。
+- **対応済み**(commit `60ed125e`) — `src/physics/dynamics.ts` のRK4各段で日照率・太陽方向・大気状態を同じ評価時刻から
+  取得する環境サンプルを導入した。大気天体の位置と速度、SRP、熱収支が段時刻で整合する。
+- **対応済み**(commit `60ed125e`) — `src/physics/elements.ts` の高離心率初期値の閾値`e>0.8`を定数化し、
+  e=0.79/0.80/0.81/0.90/0.98と平均近点角の全域を回帰テストで覆った。
+- **対応済み**(commit `60ed125e`) — `src/physics/earth-reference-orbits.ts` の太陽同期条件へJ2一次の平均運動補正を追加し、
+  補正後の平均運動が要求回帰日数と一致することをテストした。
+- **対応済み**(commit `60ed125e`) — `src/game/celestial/orbit-guide/zero-velocity-lines.ts` に太陽-木星・太陽-土星のXY/XZを追加し、
+  4系8断面を、実際の登録天体から導く質量比・距離・半径のスケールで描けるようにした。
+- **対応済み**(commit `60ed125e`) — `src/game/map/visibility-policy.ts:180-182` の常時表示例外を地球の主天体判定から
+  `id === 'moon'`へ絞り、カスタムレジストリの他衛星を巻き込まないようにした。
+- **対応済み**(commit `60ed125e`) — `src/game/celestial/solar-system/earth-system.ts` の地球(EM Bary)軌道長半径を
+  JPL Standish表の`1.00000261 AU`へ更新し、ECI回帰基準も更新した。
+- **対応済み**(commit `60ed125e`) — `src/game/celestial/solar-system/point-field.ts` の点群生成へ木星の`a/l0/lRate`を
+  参照として渡せる経路を追加し、実際に構築した木星の軌道を使って生成するようにした。
 
 ---
 
@@ -233,31 +227,29 @@ annulus→lineへの切替を目視確認済み。
 
 - **軌道要素・ケプラー軌道**(elements/kepler-orbit/kepler-extrapolation/orbit-solvers/planet-orbit/
   satellite-orbit/earth-reference-orbits/orbit-catalog/celestial-body): 永年変化・周期摂動の解析的
-  微分は丁寧に導かれ破綻なし。dawn/dusk符号(1.6)が主な指摘。
+  微分は丁寧に導かれ破綻なし。dawn/dusk符号(1.6)は対応済み。
 - **天体暦**(ephemeris/absolute-ephemeris/packed-absolute-ephemeris/ephemeris-catalog/
-  ephemeris-profile/ephemeris-pack/*): チェビシェフ補間・時刻系・座標変換は正しいが、
-  有効期間の実行時チェック欠如(1.2)が最大の懸念。
+  ephemeris-profile/ephemeris-pack/*): チェビシェフ補間・時刻系・座標変換は正しく、
+  有効期間の実行時チェック欠如(1.2)も対応済み。
 - **座標系・時刻・姿勢**(ecliptic/frame/time/attitude/body-orientation/vec3): 数式を手計算で
-  追跡した範囲で仕様と矛盾する誤りなし。指摘はいずれも低確信度の確認事項。
+  追跡した範囲で仕様と矛盾する誤りなし。IAU経度規約はコメントとテストで明文化した。
 - **制限三体問題・ラグランジュ点**(cr3bp/halo/lagrange/zero-velocity/intercept/zero-velocity-lines):
   ラグランジュ点・ヤコビ定数・CR3BP無次元化は数値検証で正しいが、halo.tsのkappa符号(1.1)が
   重大な例外。
 - **軌道伝播・摂動力**(dynamics/dynamic-trajectory/kinematic-state/trajectory-features/
-  state-queue/srp/shadow/thermal/atmosphere): 多体重力補正・J2/C22・SRP・食・大気・熱収支いずれも
-  ORBIT.mdの要求と数式レベルで一致、実質的なバグなし。
+  state-queue/srp/shadow/thermal/atmosphere): 多体重力補正・J2/C22・SRP・食・大気・熱収支をRK4段時刻で
+  整合させ、太陽同期平均運動と高離心率ソルバの回帰も追加した。
 - **太陽系本体**(solar-system/orbit-guide): 98体の内訳・軌道要素・J2/C22・環データは大部分JPL/IAU
-  公表値と高精度に一致する丁寧な実装だが、彗星核GM値(1.3)・重力源体数(1.4)・三軸楕円体対象(1.5)の
-  3つの具体的な不一致が見つかった。
+  公表値と高精度に一致する丁寧な実装。彗星核GM値(1.3)、三軸楕円体対象のSPEC更新(1.5)、海王星半径、
+  EM Bary軌道長半径は対応済み、重力源体数(1.4)は誤検知として却下済み。
 - **celestial表示系**(body-class/body-visibility/celestial-registry/planet-distance/earth-view/
-  scale-grid-view/celestial-view/map-visibility/environment-scene/sun-view/ring-view): 可視性・
-  参照フレーム・恒星光源の規則はSPEC通りだが、地球の扁平表示欠落(1.8)・環の面線切替(1.9)という
-  2つの描画側の実装漏れが見つかった。
+  scale-grid-view/celestial-view/map-visibility/environment-scene/sun-view/ring-view): 可視性・参照フレーム・恒星光源の
+  規則はSPEC通りで、地球の扁平表示欠落(1.8)・環の面線切替(1.9)も対応済み。
 - **軌道ガイド表示系**(orbit-guide-catalog/orbit-guide-kind-ids/orbit-guide-settings/
-  orbit-guide-lines/guide-curve/direction-markers): CR3BP周期軌道カタログの分類・方向マーカーは
-  妥当。地球専用参照軌道の既定値(1.7)に具体的な数値の誤りが見つかった。
-- **小天体点群**(point-field/point-field-view): 点数・軌道要素範囲はSPEC表と完全一致。
-  ヒルダ群のσドリフト・カークウッド空隙のラベル対応・カイパーベルト分布の単純化など、
-  「動作はするが厳密な力学的整合性に小さな綻びがある」種類の指摘が中心。
+  orbit-guide-lines/guide-curve/direction-markers): CR3BP周期軌道カタログの分類・方向マーカーを保ちつつ、地球専用参照軌道の
+  既定値(1.7)とゼロ速度曲線の4系8断面を仕様へ揃えた。
+- **小天体点群**(point-field/point-field-view): 点数・軌道要素範囲を保ち、ヒルダ群の共鳴ドリフトを除去、
+  カークウッド空隙のラベルを修正、カイパーベルトhot群を二峰性へ更新し、木星参照を注入可能にした。
 
 ## 6. プロセス上の注記
 

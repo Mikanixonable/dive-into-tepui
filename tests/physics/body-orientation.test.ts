@@ -3,11 +3,11 @@
 import { motionOf, orbitingMotionOf, positionOf, solarSystemParts } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { cassiniSpinAxis, meridianDirection, orthogonalizedTo } from '../../src/physics/body-orientation';
+import { cassiniSpinAxis, latLonOf, meridianDirection, orthogonalizedTo } from '../../src/physics/body-orientation';
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
 import { keplerOrbitNormal } from '../../src/physics/kepler-orbit';
 import { MOON_OBLIQUITY } from '../../src/game/celestial/solar-system/constants';
-import { Vec3, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
+import { Vec3, add, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 
 const MOON_ORBIT_INC = (5.145 * Math.PI) / 180;
 const R2D = 180 / Math.PI;
@@ -54,6 +54,18 @@ export function register(): void {
     assert.ok(Math.abs(len(longAxis) - 1) < 1e-12, 'the long axis should be a unit vector');
     assert.ok(Math.abs(dot(longAxis, pole)) < 1e-12, 'the long axis should be perpendicular to the pole');
     assert.ok(dot(longAxis, projected) > 0, 'the long axis should keep the projected direction');
+  });
+
+  test('body-orientation: latitude/longitude uses the IAU north-pole direction', () => {
+    const axis = v3(0, 1, 0);
+    const east = v3(0, 0, -1); // cross(axis, meridianDirection(axis, 0))
+    const northEast = latLonOf(norm(add(east, axis)), axis, 0);
+    assert.ok(Math.abs(northEast.latRad - Math.PI / 4) < 1e-12);
+    assert.ok(Math.abs(northEast.lonRad - Math.PI / 2) < 1e-12);
+
+    // IAUの北極を基準にするため、逆行自転の物理的な回転方向には依存しない。
+    const west = latLonOf(v3(0, 0, 1), axis, 0);
+    assert.ok(Math.abs(west.lonRad + Math.PI / 2) < 1e-12);
   });
 
   test('celestial-motion: the moon keeps a 1.543deg equatorial tilt to the ecliptic across a node period', () => {
