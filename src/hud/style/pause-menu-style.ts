@@ -12,7 +12,7 @@ export const PAUSE_MENU_STYLE = `
 }
 #hud-pause-menu .pm-brand {
   display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
-  padding-bottom: var(--space-4); border-bottom: 1px solid var(--edge);
+  padding-bottom: var(--space-4);
 }
 #hud-pause-menu .pm-brand-logo {
   width: 2.5rem; height: 2.5rem; border-radius: var(--radius-control);
@@ -38,7 +38,7 @@ export const PAUSE_MENU_STYLE = `
 }
 #hud-pause-menu .pm-minimize {
   display: inline-flex; align-items: center; justify-content: center;
-  padding: 0; font: inherit; font-size: var(--font-m); border: 1px solid var(--glass-edge);
+  padding: 0; font: inherit; font-size: var(--font-m); border: 0;
   background: var(--glass-control); color: var(--body); cursor: pointer;
 }
 #hud-pause-menu .pm-minimize:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
@@ -46,13 +46,12 @@ export const PAUSE_MENU_STYLE = `
 #hud-pause-menu .pm-body { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
 #hud-pause-menu .pm-tabs {
   display: flex; flex: 0 0 auto; gap: var(--space-1); margin-top: var(--space-4);
-  padding: var(--space-1); border: 1px solid var(--glass-edge); border-radius: var(--radius-panel);
-  background: var(--glass-inset);
+  padding: var(--space-1); border: 0; border-radius: var(--radius-panel);
 }
 #hud-pause-menu .pm-tabs .w-btn {
   display: flex; flex: 1 1 0; min-width: 0; min-height: 50px;
   align-items: center; justify-content: center; padding: var(--space-3);
-  border: 1px solid transparent; border-radius: var(--radius-control); text-align: center;
+  border: 0; border-radius: var(--radius-control); text-align: center;
   font-size: var(--font-s); font-weight: 600; letter-spacing: 0.06em;
   background: transparent; color: var(--text-dim); box-shadow: none;
 }
@@ -60,7 +59,7 @@ export const PAUSE_MENU_STYLE = `
   background: var(--glass-control); color: var(--color-primary-hover); transform: none;
 }
 #hud-pause-menu .pm-tabs .w-btn.on {
-  border-color: var(--color-primary-edge-soft); background: var(--color-primary-fill); color: var(--color-primary);
+  background: var(--color-primary-fill); color: var(--color-primary);
 }
 #hud-pause-menu .pm-tab-content {
   flex: 1 1 auto; min-height: 0; margin-top: var(--space-4); overflow-y: auto; overscroll-behavior: contain;

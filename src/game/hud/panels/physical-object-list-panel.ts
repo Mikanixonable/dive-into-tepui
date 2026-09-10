@@ -67,7 +67,7 @@ const STYLE = `
 }
 #hud-physical-object-list .physical-object-list-title { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 #hud-physical-object-list .physical-object-list-body.collapsed { display: none !important; }
-#hud-physical-object-list .physical-object-list-breadcrumb { padding: var(--space-1) var(--space-3); font-size: var(--font-xxs); color:var(--text-dim); border-bottom:1px solid var(--edge); }
+#hud-physical-object-list .physical-object-list-breadcrumb { padding: var(--space-1) var(--space-3); font-size: var(--font-xxs); color:var(--text-dim); }
 /* 全展開して数百行をスクロールしても今どの区画かを見失わないよう、見出しを内側スクロール
    領域の先頭へ貼り付ける。背景の不透明化は map-view-style.ts 側(見た目のトークン)が持つ。 */
 #hud-physical-object-list .physical-object-list-section-header {
