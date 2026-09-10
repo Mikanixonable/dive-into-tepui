@@ -5,4 +5,3 @@ export {
   PropertyWindow, type PropertyRow, type PropertyWindowItem, type PropertyWindowRelatedItem,
   type PropertyWindowContent,
 } from './property-window';
-export { SettingsView } from './settings-view';
