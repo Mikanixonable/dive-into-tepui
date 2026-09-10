@@ -12,8 +12,7 @@ import type { Notifier } from '../../hud/notifier';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import type { CameraSystem } from '../camera/camera-system';
-import type { FloatingOrigin } from '../camera/floating-origin';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { MarkerSlots } from '../marker/marker-slots';
 import type { StageSaveData } from '../save/save-data';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
@@ -203,12 +202,12 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.statusPanel.appendLeftWidget(el);
   }
 
-  // ステータスパネルを同期する。fo・displayTime は配置プレビューなどステージ固有の描画物を
-  // 持つサブクラスが使う。
+  // ステータスパネルを同期する。camera・displayTime は配置プレビューなどステージ固有の
+  // 描画物を持つサブクラスが使う。
   public sync(
-    _fo: FloatingOrigin, cameraSystem: CameraSystem, _displayTime: number,
+    camera: CameraFrame, _displayTime: number,
   ): void {
-    this.syncStatusPanel(cameraSystem.view === 'map');
+    this.syncStatusPanel(camera.mode === 'map');
   }
 
   // hudSubStatus() が null のとき、またはマップビューのときはパネルを畳む。

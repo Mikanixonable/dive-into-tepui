@@ -2,7 +2,7 @@ import type * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
-import type { View } from '../view/view';
+import type { ViewMode } from '../../render/view-mode';
 import { Attitude } from '../../physics/attitude';
 import { qFromBasis } from '../../math/quat';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
@@ -522,7 +522,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 画面マーカー・一覧に出すこの艦の項目。isActive はマップ上で自艦と僚艦を塗り分ける
   // ための操作対象フラグ。
-  markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View, isActive: boolean): GroupedMarkerItem {
+  markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode, isActive: boolean): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
     return {
       key: this.markerKey,

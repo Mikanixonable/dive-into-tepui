@@ -18,10 +18,11 @@ export class CameraScale {
   private readonly viewportHeight: number;
 
   // カメラの姿勢と画角換算値をこの時点の値で読み取る。以降 camera は参照しない。
-  constructor(camera: THREE.Camera) {
+  // viewportHeight は描画先の高さ [CSS px]。
+  constructor(camera: THREE.Camera, viewportHeight: number) {
     camera.getWorldDirection(this.forward);
     this.position.setFromMatrixPosition(camera.matrixWorld);
-    this.viewportHeight = Math.max(1, window.innerHeight);
+    this.viewportHeight = Math.max(1, viewportHeight);
     if (camera instanceof THREE.OrthographicCamera) {
       this.tanHalfFov = 0;
       this.orthoHalfHeight = (camera.top - camera.bottom) * 0.5;

@@ -23,7 +23,7 @@ import { AxisDragGizmo } from './plan-axis-drag';
 import { PlanGizmo3D } from './plan-gizmo-3d';
 import { PlanPanel } from './plan-panel';
 import { DisplayDurationSource, Plan } from './plan';
-import type { FloatingOrigin } from '../camera/floating-origin';
+import type { FloatingOrigin } from '../../render/camera/floating-origin';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ControlSelection } from '../control-selection';
 import type { PlanPath } from './plan-path';

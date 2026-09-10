@@ -4,8 +4,7 @@ import * as THREE from 'three/webgpu';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
 import { createStarSphere, type StarSphere } from '../star-sphere';
 import { createOutlineCircle, OutlineCircle } from '../outline-circle';
-import type { CameraSystem } from '../../../game/camera/camera-system';
-import type { FloatingOrigin } from '../../../game/camera/floating-origin';
+import type { CameraFrame } from '../../camera/camera-frame';
 import { apparentSizePx } from '../../../math/projection';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 import type { RenderStyle } from '../../render-style';
@@ -40,8 +39,8 @@ export class StarCelestialView extends CelestialView {
 
   // displayTime 時点の実位置へ恒星を置く。
   public sync(
-    motion: CelestialMotion, fo: FloatingOrigin, displayTime: number,
-    cameraSystem: CameraSystem, _star: StellarLightSource | null,
+    motion: CelestialMotion, displayTime: number, camera: CameraFrame,
+    _star: StellarLightSource | null,
     graphics: GraphicsSettingsData, style: RenderStyle, visible: boolean,
   ): void {
     const star = this.star;
@@ -50,7 +49,7 @@ export class StarCelestialView extends CelestialView {
     this.outline.line.visible = visible;
     if (!visible) return;
     const pos = motion.stateAt(displayTime).r;
-    const p = fo.RtoThreeV3(pos);
+    const p = camera.floatingOrigin.RtoThreeV3(pos);
     const radius = motion.def.radius;
     if (style === 'schematic') {
       star.hide();
@@ -58,20 +57,20 @@ export class StarCelestialView extends CelestialView {
       this.outline.line.visible = true;
       this.outline.line.position.copy(p);
       this.outline.line.scale.setScalar(radius);
-      this.outline.line.quaternion.copy(cameraSystem.activeCamera.quaternion);
+      this.outline.line.quaternion.copy(camera.camera.quaternion);
       return;
     }
     this.outline.line.visible = false;
     // マップビューでは実球体だけを使う。**点像を置く星殻がカメラの近平面より手前にあるとは
     // 限らない** — 引いたマップビューでは近平面が星殻より遠く、置いても写らない。
-    if (cameraSystem.view === 'map') {
+    if (camera.mode === 'map') {
       star.syncSphere(p, radius);
       return;
     }
     star.sync(
       p, radius,
-      apparentSizePx(2 * radius, cameraSystem.activeCameraRadialScale(pos)) * graphics.lodBias,
-      cameraSystem.activeCamera.quaternion,
+      apparentSizePx(2 * radius, camera.radialScale(pos)) * graphics.lodBias,
+      camera.camera.quaternion,
     );
   }
 

@@ -10,8 +10,7 @@ import { isPlayer } from '../player/player';
 import { DEFAULT_PROTEIN_DISPLAY, type ProteinDisplaySettings } from '../protein/protein-display';
 import { WaveAttack } from './stage-utils/wave-attack';
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { CameraSystem } from '../camera/camera-system';
-import type { FloatingOrigin } from '../camera/floating-origin';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
@@ -153,13 +152,13 @@ export class CreativeStage extends Stage {
 
   // 共通のステータス表示に加えて、ステージ操作パネルと配置プレビューを同期する。
   sync(
-    fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
+    camera: CameraFrame, displayTime: number,
   ): void {
-    super.sync(fo, cameraSystem, displayTime);
+    super.sync(camera, displayTime);
     const ship = this.ship;
     this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.motion.alive);
-    this.mountStageControlsPanel(cameraSystem.view === 'map');
-    this.objectPlacement.sync(fo, cameraSystem, displayTime);
+    this.mountStageControlsPanel(camera.mode === 'map');
+    this.objectPlacement.sync(camera, displayTime);
     this.stageControlsPanel.element.classList.remove('hidden');
   }
 

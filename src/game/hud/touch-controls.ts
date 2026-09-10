@@ -3,7 +3,7 @@
 // 押しっぱなし系(並進・回転・射撃・ズーム)とエッジトリガ系(トグル類)を同じ仕組みで扱える。
 // 常設で構築し、表示そのものは setPointerKind が渡す直近の入力種別に従う。
 import { Input, PointerKind } from '../../input/input';
-import type { View } from '../view/view';
+import type { ViewMode } from '../../render/view-mode';
 import { KEY_MAPPING as K, KeyBinding } from '../../input/key-mapping';
 import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from '../../hud/breakpoints';
 import {
@@ -159,7 +159,7 @@ export class TouchControls {
   }
 
   // マップビュー中は並進・回転・射撃・ズーム・制動/微動のパッドを隠す。
-  setView(view: View): void {
+  setView(view: ViewMode): void {
     const active = view === 'map';
     this.root.classList.toggle('map-mode', active);
     for (const id of ['touch-pad-rot', 'touch-pad-move', 'touch-fire', 'touch-zoom', 'touch-mode-col']) {

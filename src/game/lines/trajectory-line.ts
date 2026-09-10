@@ -26,7 +26,8 @@ import { DynamicTrajectory, ExtrapolationCenter } from '../../physics/dynamic-tr
 import { extrapolatedRelativeStates } from '../../physics/kepler-extrapolation';
 import { StateQueue } from '../../physics/state-queue';
 import { add, Vec3 } from '../../math/vec3';
-import { FloatingOrigin } from '../camera/floating-origin';
+import type { CameraFrame } from '../../render/camera/camera-frame';
+import { FloatingOrigin } from '../../render/camera/floating-origin';
 import { Curve, CurveKnots } from '../../render/curve';
 import { LineStyle } from '../../render/line-style';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
@@ -172,14 +173,14 @@ export class TrajectoryLine {
   // 適応分割を実行し GPU バッファへ反映する。camera = 画面上のサジッタを実距離へ換算するための
   // 描画カメラ。描く区間が潰れている(bake 済み点列が2点未満、または有効な開始時刻が終了時刻
   // 以上)なら曲線を持たない状態へ戻す。
-  sync(camera: THREE.Camera): void {
+  sync(camera: CameraFrame): void {
     const start = this.startTime;
     const end = this.endTime;
     if (this.baked.size < 2 || start === null || end === null || start >= end || !this.knots) {
       this.curve.clear();
       return;
     }
-    this.curve.setHermiteCurve(this.knots, camera);
+    this.curve.setHermiteCurve(this.knots, camera.camera, camera.viewport.height);
   }
 
   // 毎フレーム: 剛体 un-bake(回転) + フローティングオリジン補正(平行移動 = 座標系原点)。

@@ -3,7 +3,8 @@
 import type { RenderStyle } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
 import type { HudLayers } from './hud-layers';
-import type { View } from '../view/view';
+import type { ViewMode } from '../../render/view-mode';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import { VesselPanel } from './panels/vessel-panel';
 import { OrbitPanel } from './orbit/orbit-panel';
 import { TargetPanel } from './panels/target-panel';
@@ -91,7 +92,8 @@ export class Hud implements HudLayers, Notifier {
   }
 
   // view で表に出ている常設パネルと、控えられたトーストを game の現在状態へ合わせる。
-  public syncPanels(view: View, game: Game): void {
+  // camera はこのフレームの表示カメラで、縮尺表示が読む。
+  public syncPanels(view: ViewMode, game: Game, camera: CameraFrame): void {
     const map = view === 'map';
     // 両ビュー共通のパネル。
     this.burnManagementPanel.sync(game.activeControllable?.boosters?.managementViewModel() ?? null);
@@ -99,7 +101,7 @@ export class Hud implements HudLayers, Notifier {
     this.orbitPanel.sync(game);
     // ビュー固有のパネル。
     if (map) {
-      this.mapScaleBadge.sync(map, game.cameraSystem);
+      this.mapScaleBadge.sync(map, camera.scale, game.cameraSystem.mapCamera.resolvedFocus);
     } else {
       this.vesselPanel.sync(game.activeControllable, game.activeStage, game.cameraSystem, map);
       this.targetPanel.sync(game.activeControllable, game.celestialSystem, game.targeter);
@@ -111,7 +113,7 @@ export class Hud implements HudLayers, Notifier {
   }
 
   // 表に出す HUD ルートを戦闘/マップで切り替える。
-  public setView(view: View): void {
+  public setView(view: ViewMode): void {
     const map = view === 'map';
     this.helpPanel.setView(view);
     const orbit = this.root.querySelector<HTMLElement>('#hud-orbit');

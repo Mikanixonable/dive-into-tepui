@@ -1,5 +1,5 @@
 import type { ViewManager } from '../view/view-manager';
-import type { View } from '../view/view';
+import type { ViewMode } from '../../render/view-mode';
 import { ContextMenu, MenuItem } from './windows/context-menu';
 import type { OverlayManager } from '../../hud/overlay-manager';
 import { Button, ToggleSwitch } from '../../hud/widgets';
@@ -14,7 +14,7 @@ import type { CelestialBodies } from '../celestial/celestial-bodies';
 const GAME_TITLE = 'Dive into Tepui';
 const GAME_VERSION = `v${__APP_VERSION__}`;
 
-const VIEW_LABELS: Record<View, string> = { combat: 'Combat', map: 'Map' };
+const VIEW_LABELS: Record<ViewMode, string> = { combat: 'Combat', map: 'Map' };
 
 // 対象が定まっていない欄の表示。
 const NO_VALUE = '—';
@@ -58,7 +58,7 @@ export class ViewBadge {
   private readonly controlEl: HTMLElement;
   private readonly targetEl: HTMLElement;
   // ビュー遷移メニューは特定の対象を持たないので、target には固定で true を使う。
-  private readonly menu: ContextMenu<true, View>;
+  private readonly menu: ContextMenu<true, ViewMode>;
   private readonly stopPointerDown = (e: Event): void => e.stopPropagation();
   // 模式図トグルが操作されたときに、選ばれた見せ方で呼ばれる。
   public onRenderStyleChange: ((style: RenderStyle) => void) | null = null;
@@ -70,7 +70,7 @@ export class ViewBadge {
     overlayManager: OverlayManager, renderStyle: RenderStyle,
     private readonly roster: EntityRoster, private readonly celestialBodies: CelestialBodies,
   ) {
-    this.menu = new ContextMenu<true, View>(popupLayer, overlayManager);
+    this.menu = new ContextMenu<true, ViewMode>(popupLayer, overlayManager);
     // タイトル・モード名・ビュー切替ボタンと、現在の対象の欄を横に並べる。
     container.setAttribute('role', 'navigation');
     container.setAttribute('aria-label', 'ビュー切り替え');
@@ -138,7 +138,7 @@ export class ViewBadge {
 
   // 遷移できるビューが1つも無ければメニュー自体を開かない。
   private openMenu(): void {
-    const items: MenuItem<View>[] = this.viewManager.selectableViews()
+    const items: MenuItem<ViewMode>[] = this.viewManager.selectableViews()
       .map((v) => ({ label: VIEW_LABELS[v], act: v }));
     if (items.length === 0) return;
     const rect = this.viewButton.element.getBoundingClientRect();
