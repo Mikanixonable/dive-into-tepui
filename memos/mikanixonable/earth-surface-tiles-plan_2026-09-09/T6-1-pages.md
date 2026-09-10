@@ -15,7 +15,7 @@ GitHub Pagesのdocsを本番配信元として、ゲーム本体と全世界z0�
 5. EARTH_SURFACE_PAGES_MAX_BYTESを設ける。既定値はGitHub Pagesの公開上限1 GB
    ([GitHub Pages limits](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits))とし、
    fixtureではテスト用の小さい値を明示して使う。全世界生成をこの予算に合わせて縮小してはならない。
-   超過時は公開を止め、実測値・LOD・タイル数・不足入力を記録する。
+   receipt.json自身を含む実測値が超過した場合は公開を止め、実測値・LOD・タイル数・不足入力を記録する。
 6. docsのentry script、release URL、manifest到達性、datasetId整合、代表tile GETを検査する。
 7. Pages workflowはアプリbuildとbundle stagingの順序を固定し、生成物のhashをreceiptへ記録する。
 
