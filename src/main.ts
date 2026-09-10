@@ -12,7 +12,7 @@ import { GraphicsSettings, type GraphicsSettingsData } from './render/graphics-s
 import { RenderStyleSetting } from './render/render-style';
 import { Hud } from './game/hud/hud';
 import { HudShell } from './hud/hud-shell';
-import { PauseMenu, SettingsView } from './hud/windows';
+import { PauseMenu } from './hud/windows';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
 import { Launcher } from './launcher/launcher';
@@ -106,17 +106,16 @@ function startAnimationLoop(
 // タイトル(ステージ選択)画面の時点から使えるべき画面と音声を、Game より先に組む。
 function initHud(graphics: GraphicsSettings, renderStyle: RenderStyleSetting): {
   shell: HudShell; hud: Hud; audioEngine: AudioEngine; bgm: Bgm;
-  pauseMenu: PauseMenu; settingsView: SettingsView;
+  pauseMenu: PauseMenu;
 } {
   const shell = new HudShell();
   const hud = new Hud(shell, renderStyle);
   const audioEngine = new AudioEngine();
   const bgm = new Bgm(audioEngine);
-  const pauseMenu = new PauseMenu(shell.layers.system, shell.overlayManager);
-  const settingsView = new SettingsView(shell.layers.system, shell.overlayManager, bgm, graphics);
+  const pauseMenu = new PauseMenu(shell.layers.system, shell.overlayManager, bgm, graphics);
   pauseMenu.setBgmVolume(bgm.getVolume());
   pauseMenu.onBgmVolumeChange = (vol) => bgm.setVolume(vol);
-  return { shell, hud, audioEngine, bgm, pauseMenu, settingsView };
+  return { shell, hud, audioEngine, bgm, pauseMenu };
 }
 
 // 索引を読み、旧セーブを取り込み、遊ぶ先のスロットが必ず1つある状態にする。
@@ -140,24 +139,16 @@ async function main() {
   const renderStyle = new RenderStyleSetting();
   const gs = await initScene(graphics.current);
   graphics.bind(gs);
-  const { shell, hud, audioEngine, bgm, pauseMenu, settingsView } = initHud(graphics, renderStyle);
+  const { shell, hud, audioEngine, bgm, pauseMenu } = initHud(graphics, renderStyle);
   const sections = new FrameSections();
 
   const launcher = new Launcher(
-    shell, hud, gs, audioEngine, bgm, pauseMenu, settingsView, unlockManager, sections,
+    shell, hud, gs, audioEngine, bgm, pauseMenu, unlockManager, sections,
     slots, snapshotService, graphics,
   );
 
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
-  pauseMenu.onOpenSettings = () => {
-    pauseMenu.toggle(false);
-    settingsView.toggle(true);
-  };
   pauseMenu.onPauseMenuOpenChange = (open) => {
-    if (open) launcher.current?.pause();
-    else launcher.current?.resume();
-  };
-  settingsView.onOpenChange = (open) => {
     if (open) launcher.current?.pause();
     else launcher.current?.resume();
   };
@@ -165,7 +156,7 @@ async function main() {
   const saveBrowser = new SaveBrowser(shell.layers.system, slots, snapshotService, launcher, shell.overlayManager);
   saveBrowser.onSlotSwitched = () => launcher.switchSlot();
   saveBrowser.onLoadSnapshot = (id) => launcher.loadSnapshot(id);
-  // 設定メニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
+  // ESCメニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
   pauseMenu.onOpenSaveBrowser = () => {
     pauseMenu.toggle(false);
     saveBrowser.open();
@@ -184,7 +175,6 @@ async function main() {
   pauseMenu.onSave = () => snapshotControls.captureManual(launcher.current?.snapshot ?? null);
 
   await launcher.start();
-  settingsView.restorePersistedOpenState();
 
   startAnimationLoop(launcher, gs, graphics, renderStyle, debugInfo, sections, new AutoSave(snapshotService), snapshotControls);
 }
