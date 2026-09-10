@@ -10,7 +10,9 @@ import { fixtureClimatePng } from './fixture-climate.mjs';
 import { packageEarthSurface } from './package.mjs';
 
 const DEFAULT_DATASET = 'earth-pages-fixture';
-export const DEFAULT_MAX_BYTES = 1024 * 1024 * 1024;
+// GitHub documents the published-site limit as 1 GB; use decimal bytes so the
+// release gate never publishes a bundle above the stated limit.
+export const DEFAULT_MAX_BYTES = 1_000_000_000;
 
 function terrainPayload(z, x, y) {
   const bytes = 260 * 260 * 4 * 2;
