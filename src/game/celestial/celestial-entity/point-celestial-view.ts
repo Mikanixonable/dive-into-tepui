@@ -10,7 +10,10 @@ import { spinOrientation } from '../../../physics/body-orientation';
 import { lambertSphereIrradiance } from '../../../physics/lambert-sphere';
 import { STAR_SHELL_RADIUS } from '../../../render/stars';
 import { Billboard, POINT_IMAGE_ANGULAR_SIZE } from '../../../render/billboard';
-import type { CelestialSurfaceLike } from '../../../render/celestial-surface';
+import {
+  createCelestialSurfaceFrame,
+  type CelestialSurfaceLike,
+} from '../../../render/celestial-surface';
 import { BodyGraticule } from '../../../render/body-graticule';
 import { showsPhysicalSphere } from '../../../render/screen-lod';
 import { writeBodyFromWorld } from '../body-frame';
@@ -75,6 +78,7 @@ export class PointCelestialView extends CelestialView {
   private readonly graticule = new BodyGraticule();
   // 描画座標のベクトルを天体固定の向きへ戻す回転。影パスへ渡すあいだだけ生きていればよい。
   private readonly bodyFromWorld = new THREE.Matrix4();
+  private surfaceFrame = 0;
   // 自転姿勢が乗る前のローカル半軸 [m]。物理定義から build 時に作る描画用キャッシュ。
   private readonly axes = new THREE.Vector3();
 
@@ -171,6 +175,15 @@ export class PointCelestialView extends CelestialView {
     this.group.position.copy(fo.RtoThreeV3(pos));
     this.shapeGroup.scale.copy(this.axes);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
+    this.surface.syncFrame(createCelestialSurfaceFrame(
+      cameraSystem.activeCamera,
+      this.group.position,
+      this.group.quaternion,
+      this.axes,
+      this.surfaceFrame++,
+      performance.now(),
+      style,
+    ));
     this.billboard.hide();
     this.ring?.sync(
       this.group.position, orientation === null ? null : orientation.axis, pos,
