@@ -5,6 +5,7 @@ import { test } from '../harness';
 import { StarMotion } from '../../src/physics/celestial-motion';
 import { TEST_EPOCH } from '../physics/test-helpers';
 import { CelestialSystem } from '../../src/game/celestial/celestial-system';
+import { EARTH_TILE_LAYERS } from '../../src/render/earth-surface-tiles';
 import {
   createEarthSurfaceRuntime, EARTH_SURFACE_FIXTURE_SOURCE, EARTH_TEXTURE, earthSystem,
 } from '../../src/game/celestial/solar-system/earth-system';
@@ -38,7 +39,7 @@ const READY_INDEX = {
 
 function fakeRenderer(isWebGPUBackend: boolean): WebGPURenderer {
   return {
-    backend: { isWebGPUBackend, device: { limits: { maxTextureArrayLayers: 128 } } },
+    backend: { isWebGPUBackend, device: { limits: { maxTextureArrayLayers: EARTH_TILE_LAYERS } } },
   } as unknown as WebGPURenderer;
 }
 
