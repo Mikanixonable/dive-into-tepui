@@ -1,15 +1,27 @@
 import * as THREE from 'three/webgpu';
 import type { KinematicState } from '../../../physics/kinematic-state';
+import type { Vec3 } from '../../../math/vec3';
 import { buildBaseModel } from '../base-station-model';
 import { RcsEffects } from '../player/rcs-effects';
 import { ThrustEffects } from '../player/thrust-effects';
-import { DynamicView, type DynamicViewFrame, type DynamicViewIdentity } from '../dynamic-view';
-import type { DynamicMotion } from '../../../game/dynamic/dynamic-motion';
-import { BaseMotion } from '../../../game/dynamic/dynamic-entity/base-motion';
+import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
 import type { MarkerSlots } from '../../../game/marker/marker-slots';
 
+// 基地のプルームは自艦より大きく描く倍率。
+const BASE_PLUME_SCALE = 6;
+
+// 基地の表示入力。
+export interface BaseRenderSource extends DynamicRenderSource {
+  // 今フレームの並進推力。噴いていなければ null。
+  readonly thrust: Vec3 | null;
+  // 全開時の加速度 [m/s^2]。プルームの大きさを出力比で決めるのに使う。
+  readonly maximumAcceleration: number;
+  // 今フレームの指令トルク(機体座標)。
+  readonly torque: Vec3;
+}
+
 // 基地モデルと噴射エフェクトを所有する。
-export class BaseView extends DynamicView {
+export class BaseView extends DynamicView<BaseRenderSource> {
   private readonly thrustEffects: ThrustEffects;
   private readonly rcsEffects: RcsEffects;
 
@@ -20,44 +32,43 @@ export class BaseView extends DynamicView {
     private readonly markers: MarkerSlots,
   ) {
     super(buildBaseModel(), scene);
-    this.thrustEffects = new ThrustEffects(scene);
-    this.rcsEffects = new RcsEffects(scene);
+    this.thrustEffects = new ThrustEffects(scene, ownerId);
+    this.rcsEffects = new RcsEffects(scene, ownerId);
   }
 
-  // 外部の Motion とフレーム入力から、基地の噴射表現を同期する。
+  // そのフレームの推力・トルクから、基地の噴射表現を同期する。
   protected override syncModel(
-    _identity: DynamicViewIdentity,
-    motion: DynamicMotion,
+    source: BaseRenderSource,
     displayed: KinematicState | null,
     context: DynamicViewFrame,
   ): void {
-    if (!(motion instanceof BaseMotion)) throw new TypeError('BaseView requires BaseMotion');
-    // 表示時刻を引けない場合も、現在状態を使って既存エフェクトを確実に畳む。
-    const effectState = displayed ?? motion.state;
+    const position = displayed?.r ?? null;
     const visible = this.object.visible;
     const cameraQuat = context.camera.camera.quaternion;
     const zoomActive = context.camera.zoomed;
     this.thrustEffects.sync(
-      context.floatingOrigin,
-      effectState.r,
-      motion.thrust,
-      motion.maximumAcceleration,
+      context.camera.floatingOrigin,
+      position,
+      source.thrust,
+      source.maximumAcceleration,
       visible,
       cameraQuat,
       zoomActive,
       context.style,
-      6,
+      context.displayTime,
+      BASE_PLUME_SCALE,
     );
     // 並進噴射と姿勢制御噴射は別資源なので、それぞれ同じ可視判定を渡す。
     this.rcsEffects.sync(
-      context.floatingOrigin,
-      effectState.r,
-      motion.torque,
-      motion.att,
+      context.camera.floatingOrigin,
+      position,
+      source.torque,
+      source.attitude,
       visible,
       cameraQuat,
       zoomActive,
-      6,
+      context.displayTime,
+      BASE_PLUME_SCALE,
     );
   }
 

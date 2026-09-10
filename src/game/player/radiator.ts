@@ -10,6 +10,7 @@ import {
   RADIATOR_SEGMENT_LENGTH,
 } from '../../physics/player-shape';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
+import type { RadiatorDisplay } from '../../render/dynamic/player/radiator-view';
 import type { RadiatorSaveData } from '../save/save-data';
 import {
   DynamicMotion,
@@ -144,9 +145,12 @@ export class RadiatorSystem {
     return { even: sign * psi, odd: -sign * psi };
   }
 
-  // 蛇腹の折り目に与える展開角。even は偶数番、odd は奇数番の折り目のもの [rad]。
-  viewTilt(side: RadiatorSide): { readonly even: number; readonly odd: number } {
-    return this.foldThetas(side);
+  // 蛇腹を倒すための、上下2枚ぶんの損耗と折り角。
+  get panelDisplay(): RadiatorDisplay {
+    return {
+      up: { wear: this.wear.up, ...this.foldThetas('up') },
+      down: { wear: this.wear.down, ...this.foldThetas('down') },
+    };
   }
 
   // side の有効な放熱面積 [m^2]。totalCoolingRate は放熱板部品の面積の総和で、展開度と

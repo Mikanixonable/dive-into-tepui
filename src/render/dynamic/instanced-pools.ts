@@ -1,12 +1,11 @@
 // 弾本体・弾ハロー・プラズマ弾・薬莢・破片のように geometry/material を全個体で共有する種別を、
 // 種別ごとに InstancedMesh 1本へまとめて描くためのプール一式。
 import * as THREE from 'three/webgpu';
-import { InstancedPool } from '../../render/instanced-pool';
+import { InstancedPool } from '../instanced-pool';
 import {
   bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources,
   debrisFragmentResources,
-} from '../../render/dynamic/ships';
-import { ENTITY_CAP } from './dynamic-entity/entity-kind';
+} from './ships';
 
 export class InstancedPools {
   private readonly bulletBody: InstancedPool;
@@ -16,22 +15,26 @@ export class InstancedPools {
   // 破片(fragment)はバリアントごとに geometry が異なるため、バリアント数だけプールを持つ。
   private readonly debrisFragments: readonly InstancedPool[];
 
-  // 枠ごとの上限をそのままプールの容量にする。上限を超えた個体は顔ぶれから落ちるので、
-  // 同時に積まれうる数はその枠を超えない。
-  public constructor(scene: THREE.Scene) {
+  // 種別ごとに、1フレームで積める上限の数だけインスタンスを確保する。
+  public constructor(
+    scene: THREE.Scene,
+    bulletCapacity: number,
+    casingCapacity: number,
+    debrisCapacity: number,
+  ) {
     // 弾・薬莢・破片が共有する描画資源。
     const bulletBody = bulletBodyResources();
     const bulletHalo = bulletHaloResources();
     const plasmaBody = plasmaBodyResources();
     const casingBody = casingBodyResources();
     const debrisFragment = debrisFragmentResources();
-    this.bulletBody = new InstancedPool(scene, bulletBody.geometry, bulletBody.material, ENTITY_CAP.bullet);
-    this.bulletHalo = new InstancedPool(scene, bulletHalo.geometry, bulletHalo.material, ENTITY_CAP.bullet);
-    this.plasma = new InstancedPool(scene, plasmaBody.geometry, plasmaBody.material, ENTITY_CAP.bullet);
+    this.bulletBody = new InstancedPool(scene, bulletBody.geometry, bulletBody.material, bulletCapacity);
+    this.bulletHalo = new InstancedPool(scene, bulletHalo.geometry, bulletHalo.material, bulletCapacity);
+    this.plasma = new InstancedPool(scene, plasmaBody.geometry, plasmaBody.material, bulletCapacity);
     this.casing = new InstancedPool(
-      scene, casingBody.geometry, casingBody.material, ENTITY_CAP.casing, false, 0, true);
+      scene, casingBody.geometry, casingBody.material, casingCapacity, false, 0, true);
     this.debrisFragments = debrisFragment.geometries.map(
-      (geo) => new InstancedPool(scene, geo, debrisFragment.material, ENTITY_CAP.debris, true, 0, true));
+      (geo) => new InstancedPool(scene, geo, debrisFragment.material, debrisCapacity, true, 0, true));
   }
 
   // このフレームぶんを積み始める。積む前に1度だけ呼ぶ。

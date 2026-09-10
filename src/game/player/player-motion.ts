@@ -144,11 +144,13 @@ export class PlayerMotion extends DynamicMotion {
   public readonly attachedBoosters: AttachedBoosterMotion;
   public readonly contactProxyScratch: DynamicMotion[] = [];
 
+  // beltLinkCount は給弾ベルトの節点数で、表示するリンクメッシュの数と揃える。
   public constructor(
     state: KinematicState,
     attitude: Attitude,
     radius: number,
     temperature: number,
+    beltLinkCount: number,
     reactions: PlayerMotionReactions,
     radiatorSave?: RadiatorSaveData,
     powerSave?: PowerSaveData,
@@ -163,7 +165,7 @@ export class PlayerMotion extends DynamicMotion {
       maxTemperature: MAX_HULL_TEMP,
       behavior: new PlayerBehavior(reactions),
     }));
-    this.belt = new Belt(this);
+    this.belt = new Belt(this, beltLinkCount);
     this.radiator = new RadiatorSystem(
       this,
       (side, other, contact, context) => (

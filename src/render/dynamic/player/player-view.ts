@@ -1,44 +1,44 @@
 import * as THREE from 'three/webgpu';
-import { len } from '../../../math/vec3';
+import type { Vec3 } from '../../../math/vec3';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import { buildPlayerShip } from '../ships';
 import type { MarkerSlots } from '../../../game/marker/marker-slots';
 import {
-  DynamicView, type DynamicViewFrame, type DynamicViewIdentity,
+  DynamicView, type DynamicRenderSource, type DynamicViewFrame,
 } from '../dynamic-view';
-import type { DynamicMotion } from '../../../game/dynamic/dynamic-motion';
-import { AttachedBoostersView } from './attached-boosters-view';
-import { BELT_MAX_VISIBLE } from '../../../game/player/belt';
-import { BeltView } from './belt-view';
+import { AttachedBoostersView, type AttachedBoostersDisplay } from './attached-boosters-view';
+import { BeltView, type BeltNodes } from './belt-view';
 import { PlayerMarkers } from '../../../game/player/player-markers';
-import { PlayerMotion } from '../../../game/player/player-motion';
-import { PowerView } from './power-view';
+import { PowerView, type SolarDeploy } from './power-view';
 import { RcsEffects } from './rcs-effects';
-import { RadiatorView } from './radiator-view';
-import { ReentryEffects } from '../../../game/player/reentry-effects';
+import { RadiatorView, type RadiatorDisplay } from './radiator-view';
+import { ReentryEffects } from './reentry-effects';
 import { ThrustEffects } from './thrust-effects';
 
-interface PlayerVisualSource extends DynamicViewIdentity {
-  readonly id: string;
-  readonly roundsInMag: number;
-  readonly magsLeft: number;
-  readonly averageMuzzleVelocity: number;
-  readonly totalThrust: number;
-  readonly throttle: { readonly thrustAccelVec: import('../../../math/vec3').Vec3 };
-}
-
-// DynamicView の共通識別入力が Player 固有の表示値も備えることを確認する。
-function isPlayerVisualSource(identity: DynamicViewIdentity): identity is PlayerVisualSource {
-  return identity.mapKind === 'player'
-    && 'roundsInMag' in identity
-    && 'magsLeft' in identity
-    && 'averageMuzzleVelocity' in identity
-    && 'totalThrust' in identity
-    && 'throttle' in identity;
+// 自機1体ぶんの、そのフレームの表示入力。
+export interface PlayerRenderSource extends DynamicRenderSource {
+  // 現在時刻の実状態。マーカーの設置位置と、表示時刻がゴーストかどうかの判定に使う。
+  readonly state: KinematicState;
+  // 操作対象か。方向マーカーを出すか、照準ズーム中に自機を隠すかがこれで決まる。
+  readonly active: boolean;
+  // マニューバ噴射の加速度 [m/s^2](ECI)。噴射していなければ null。
+  readonly thrustAcceleration: Vec3 | null;
+  readonly maximumAcceleration: number; // 全開時の加速度 [m/s^2]
+  readonly torque: Vec3; // 機体座標系の指令角加速度 [rad/s^2]
+  readonly dynamicPressure: number; // 動圧 [Pa]
+  readonly boosters: AttachedBoostersDisplay;
+  readonly belt: BeltNodes;
+  readonly magsLeft: number; // 残マガジン数
+  readonly roundsInMag: number; // 装填中マガジンの残弾数
+  readonly averageMuzzleVelocity: number; // 全砲の砲口初速の平均 [m/s]
+  readonly solar: SolarDeploy;
+  readonly radiator: RadiatorDisplay;
+  // 方向マーカーを測る基準の運動状態。null なら ECI(地球基準)。
+  readonly orbitAxesReference: KinematicState | null;
 }
 
 // 自機の全モデル、エフェクト、可動部、戦闘マーカーを所有する。
-export class PlayerView extends DynamicView {
+export class PlayerView extends DynamicView<PlayerRenderSource> {
   private readonly thrustEffects: ThrustEffects;
   private readonly rcsEffects: RcsEffects;
   private readonly reentryEffects: ReentryEffects;
@@ -48,19 +48,21 @@ export class PlayerView extends DynamicView {
   private readonly boosters: AttachedBoostersView;
   private readonly markers: PlayerMarkers;
 
-  // 自機モデルと、その子表示・噴射・DOM マーカー資源を組み立てる。
+  // 自機モデルと、その子表示・噴射・DOM マーカー資源を組み立てる。beltLinkCount は
+  // ベルトのリンクメッシュ数で、供給される節点の本数と揃える。
   public constructor(
     scene: THREE.Scene,
     ownerId: string,
     markerSlots: MarkerSlots,
+    beltLinkCount: number,
   ) {
     // 船体を根にして、形状に密着する子表示を同じツリーへ結び付ける。
     const model = buildPlayerShip();
     super(model, scene);
-    this.thrustEffects = new ThrustEffects(scene);
-    this.rcsEffects = new RcsEffects(scene);
+    this.thrustEffects = new ThrustEffects(scene, ownerId);
+    this.rcsEffects = new RcsEffects(scene, ownerId);
     this.reentryEffects = new ReentryEffects(scene);
-    this.belt = new BeltView(model, BELT_MAX_VISIBLE);
+    this.belt = new BeltView(model, beltLinkCount);
     this.radiator = new RadiatorView(model);
     this.power = new PowerView(model);
     // scene 直下へ出る噴射と DOM マーカーも、この View の寿命に揃える。
@@ -68,89 +70,76 @@ export class PlayerView extends DynamicView {
     this.markers = new PlayerMarkers(markerSlots, ownerId);
   }
 
-  // Player が毎フレーム供給する値を、船体の全表示資源へ一括して反映する。
+  // 供給された表示入力を、船体の全表示資源へ一括して反映する。
   protected override syncModel(
-    identity: DynamicViewIdentity,
-    motion: DynamicMotion,
+    source: PlayerRenderSource,
     displayed: KinematicState | null,
     context: DynamicViewFrame,
   ): void {
-    if (!(motion instanceof PlayerMotion) || !isPlayerVisualSource(identity)) {
-      throw new TypeError('PlayerView requires Player and PlayerMotion');
-    }
-    // 表示時刻の状態を各エフェクトへ渡し、欠けた場合は現在状態で非表示処理を完遂する。
-    const source = identity;
-    const active = context.activeId === source.id;
-    const effectState = displayed ?? motion.state;
+    // 表示時刻の状態を各エフェクトへ渡し、引けなかったフレームは null で畳ませる。
+    const origin = context.camera.floatingOrigin;
+    const effectPosition = displayed?.r ?? null;
     const effectVisible = this.object.visible;
     const cameraQuat = context.camera.camera.quaternion;
     const zoomActive = context.camera.zoomed;
-    const rcsThrust = len(source.throttle.thrustAccelVec) > 0
-      ? source.throttle.thrustAccelVec
-      : null;
-    const maximumAcceleration = motion.mass > 0 ? source.totalThrust / motion.mass : 0;
 
     // 船外へ出るブースター・推力・RCS・再突入表現は同じ可視性に揃える。
     this.boosters.sync(
-      context.floatingOrigin,
-      effectState.r,
+      origin,
+      effectPosition,
       context.displayTime,
-      motion.state.t,
-      motion.att,
-      motion.attachedBoosters.stages,
-      motion.attachedBoosters.thrust,
-      motion.attachedBoosters.burnRatio,
+      source.state.t,
+      source.attitude,
+      source.boosters,
       effectVisible,
       cameraQuat,
       zoomActive,
       context.style,
     );
     this.thrustEffects.sync(
-      context.floatingOrigin,
-      effectState.r,
-      rcsThrust,
-      maximumAcceleration,
+      origin,
+      effectPosition,
+      source.thrustAcceleration,
+      source.maximumAcceleration,
       effectVisible,
       cameraQuat,
       zoomActive,
       context.style,
+      context.displayTime,
     );
     this.rcsEffects.sync(
-      context.floatingOrigin,
-      effectState.r,
-      motion.torque,
-      motion.att,
+      origin,
+      effectPosition,
+      source.torque,
+      source.attitude,
       effectVisible,
       cameraQuat,
       zoomActive,
+      context.displayTime,
     );
     this.reentryEffects.sync(
-      context.floatingOrigin,
-      effectState.r,
-      effectState.v,
-      motion.aero.qdyn,
+      origin,
+      displayed,
+      source.dynamicPressure,
       effectVisible,
       cameraQuat,
     );
-    // 船体に属する可動部と、操作対象だけの DOM マーカーを外部状態へ合わせる。
-    this.belt.sync(source.magsLeft, motion.belt.viewState);
-    this.radiator.sync(
-      side => motion.radiator.wearOf(side),
-      side => motion.radiator.viewTilt(side),
-    );
-    this.power.sync(side => motion.power.deployOf(side));
+    // 船体に属する可動部と、操作対象だけの DOM マーカーを供給された値へ合わせる。
+    this.belt.sync(source.magsLeft, source.belt);
+    this.radiator.sync(source.radiator);
+    this.power.sync(source.solar);
     this.markers.sync(
-      motion.state,
-      motion.att,
+      source.state,
+      source.attitude,
       context.camera.mode,
-      active,
+      source.active,
       context.camera.project,
       source.roundsInMag,
       source.magsLeft,
       source.averageMuzzleVelocity,
-      context.orbitReference,
+      source.orbitAxesReference,
     );
-    if (active && zoomActive) this.object.visible = false;
+    if (source.active && zoomActive) this.object.visible = false;
   }
 
   // 自機固有の子表示を片付けてから、共通 View の THREE 資源を破棄する。
