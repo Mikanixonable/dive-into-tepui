@@ -5,20 +5,29 @@ import {
   type ChoiceValue, type GraphicsOptionKey, type GraphicsTarget, type QualityPreset,
 } from '../../render/graphics-settings';
 import { Pulldown, SegmentedControl, ToggleSwitch, type PulldownColumn } from '../widgets';
+import { MQ_COMPACT } from '../breakpoints';
 import { injectOnce } from '../inject-style';
 
 // このパネル自身の CSS。余白を持つ規則は `#hud` を冠した枝を併記する — HUD は `#hud, #hud *` で
 // margin/padding を 0 へ落としており、素のクラス 1 つでは詳細度で負けて群の間隔が潰れる。
 const STYLE = `
 .gp-body, #hud .gp-body {
-  display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-4);
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4) var(--space-5); margin-top: var(--space-4); min-width: 0;
 }
+.gp-body > .w-group { grid-column: 1 / -1; min-width: 0; }
 .gp-group, #hud .gp-group {
-  display: flex; flex-direction: column; gap: var(--space-4);
-  padding-top: var(--space-4);
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-3); row-gap: var(--space-3);
+  align-items: start; min-width: 0; padding-top: var(--space-4);
 }
-.gp-group-title {
+.gp-group-title { grid-column: 1 / -1;
   margin: 0; color: var(--color-primary); font-size: var(--font-xxs); letter-spacing: 0.12em;
+}
+.gp-group > .w-group, .gp-group > .w-toggle { min-width: 0; }
+@media ${MQ_COMPACT} {
+  .gp-body, #hud .gp-body { grid-template-columns: 1fr; }
+  .gp-group, #hud .gp-group { grid-template-columns: 1fr; }
 }
 `;
 
