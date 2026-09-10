@@ -12,5 +12,5 @@ export function bodySearchText(
 ): string {
   if (viewer === null) return '';
   const center = strongestAttractor(pos, celestialBodies.celestialMotions, displayTime);
-  return `${fmtDist(len(sub(pos, viewer.state.r)))} · ${celestialBodies.nameOf(center.id)}`;
+  return `${fmtDist(len(sub(pos, viewer.motion.state.r)))} · ${celestialBodies.nameOf(center.id)}`;
 }

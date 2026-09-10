@@ -13,6 +13,7 @@ import type { ObjectWindows } from '../pickable/object-windows';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialMarkers } from '../marker/celestial-markers';
 import type { MarkerManager } from '../marker/marker-manager';
+import type { EquatorNodeManager } from '../marker/equator-node-manager';
 import type { NavTarget } from '../nav-target';
 import { PlanEditor } from '../plan/plan-editor';
 import type { PlanDisplay } from '../plan/plan-display';
@@ -39,7 +40,8 @@ export class MapView implements ViewFrame {
     private readonly input: Input,
     private readonly cameraSystem: CameraSystem,
     private readonly objectWindows: ObjectWindows,
-    dynamicSystem: EntityRoster,
+    roster: EntityRoster,
+    equatorNodes: EquatorNodeManager,
     private readonly celestialSystem: CelestialSystem,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly markerManager: MarkerManager,
@@ -54,17 +56,18 @@ export class MapView implements ViewFrame {
     uiSfx: UiSfx,
     navTarget: NavTarget,
   ) {
+    // 編集・物体候補・線候補を組み、最後に同じ候補群を読む入力処理へ渡す。
     this.planEditor = new PlanEditor(
       hud, uiSfx, simSpeedManager, celestialSystem, scene, controlSelection,
       displayWindowManager, frameControls, planDisplay.path,
     );
     this.objectPickables = new ObjectPickables(
-      controlSelection, dynamicSystem, celestialSystem, navTarget, cameraSystem,
-      celestialMarkers, planDisplay, frameAnchors,
+      controlSelection, roster, celestialSystem, navTarget, cameraSystem,
+      celestialMarkers, planDisplay, frameAnchors, equatorNodes,
     );
-    this.linePickables = new LinePickables(dynamicSystem, celestialSystem);
+    this.linePickables = new LinePickables(roster, celestialSystem);
     this.picking = new MapPicking(
-      hud, cameraSystem, dynamicSystem, celestialSystem, celestialMarkers, markerManager,
+      hud, cameraSystem, roster, celestialSystem, celestialMarkers, markerManager,
       navTarget, frameControls, this.objectPickables, this.linePickables, objectWindows,
       controlSelection,
     );

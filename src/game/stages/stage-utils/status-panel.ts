@@ -60,9 +60,9 @@ export class StatusPanel {
 
     const { hp, maxHp } = player;
     const low = hp <= maxHp * LOW_HP_RATIO;
-    const temp = Math.round(player.temperature);
+    const temp = Math.round(player.motion.temperature);
     const tempHigh = temp > 0.7 * MAX_HULL_TEMP;
-    const chargeJ = player.power.chargeJ;
+    const chargeJ = player.motion.power.chargeJ;
 
     this.hpMeter.setRatio(hp / maxHp);
     this.hpMeter.setDanger(low);
@@ -72,7 +72,7 @@ export class StatusPanel {
     this.tempMeter.setDanger(tempHigh);
     this.tempMeter.setLabel(`${temp} / ${MAX_HULL_TEMP} K`);
 
-    this.powerMeter.setRatio(player.power.chargeRatio);
+    this.powerMeter.setRatio(player.motion.power.chargeRatio);
     this.powerMeter.setLabel(`${fmtEnergy(chargeJ)} / ${fmtEnergy(POWER_CAPACITY)}`);
 
     this.centerCol.classList.toggle('warn', low);

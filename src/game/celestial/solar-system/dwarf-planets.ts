@@ -6,8 +6,8 @@ import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
 import { GRAVITATIONAL_CONSTANT } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
-import type { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { SphereEntity } from '../celestial-entity/sphere-entity';
+import { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { SphereCelestialView } from '../celestial-entity/sphere-celestial-view';
 import { PLUTO_POLE, equatorBasis } from './poles';
 import { jplSatelliteOrbit } from './satellite-orbit-builders';
 
@@ -284,92 +284,92 @@ export function dwarfPlanets(
   const haumea = planetSystem(planetDefForSimZero(HAUMEA, phases, simZeroEt), sun);
   const eris = planetSystem(planetDefForSimZero(ERIS, phases, simZeroEt), sun);
   return {
-    ceres: new SphereEntity(
+    ceres: new CelestialEntity(
       planetSystem(planetDefForSimZero(CERES, phases, simZeroEt), sun).body,
       DWARF_PLANET_NAMES.ceres, 'dwarf',
       // A_B=0.035(幾何 0.090 x q=0.393)
-      CelestialSurface.solid([0.0382, 0.0345, 0.0310]),
+      new SphereCelestialView(CelestialSurface.solid([0.0382, 0.0345, 0.0310])),
     ),
-    vesta: new SphereEntity(
+    vesta: new CelestialEntity(
       planetSystem(planetDefForSimZero(VESTA, phases, simZeroEt), sun).body,
       DWARF_PLANET_NAMES.vesta, 'smallBody',
       // A_B=0.195(幾何 0.423 x q=0.461)
-      CelestialSurface.solid([0.2156, 0.1925, 0.1593]),
+      new SphereCelestialView(CelestialSurface.solid([0.2156, 0.1925, 0.1593])),
     ),
-    pallas: new SphereEntity(
+    pallas: new CelestialEntity(
       planetSystem(planetDefForSimZero(PALLAS, phases, simZeroEt), sun).body,
       DWARF_PLANET_NAMES.pallas, 'smallBody',
       // A_B=0.061(幾何 0.155 x q=0.393)
-      CelestialSurface.solid([0.0616, 0.0616, 0.0533]),
+      new SphereCelestialView(CelestialSurface.solid([0.0616, 0.0616, 0.0533])),
     ),
-    pluto: new SphereEntity(
+    pluto: new CelestialEntity(
       pluto.body, DWARF_PLANET_NAMES.pluto, 'dwarf',
       // A_B=0.72(公表ボンド 0.72(NASA Pluto Fact Sheet。幾何は 0.52))
-      CelestialSurface.solid([0.9026, 0.6880, 0.4994]),
+      new SphereCelestialView(CelestialSurface.solid([0.9026, 0.6880, 0.4994])),
     ),
-    charon: new SphereEntity(
+    charon: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(CHARON, phases, simZeroEt), pluto),
       DWARF_PLANET_NAMES.charon, 'satellite',
       // A_B=0.21(幾何 0.38 x q=0.564)
-      CelestialSurface.solid([0.2182, 0.2090, 0.1957]),
+      new SphereCelestialView(CelestialSurface.solid([0.2182, 0.2090, 0.1957])),
     ),
-    styx: new SphereEntity(
+    styx: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(STYX, phases, simZeroEt), pluto),
       DWARF_PLANET_NAMES.styx, 'satellite',
       // A_B=0.37(幾何 0.65 x q=0.564)
-      CelestialSurface.solid([0.4236, 0.3598, 0.3131]),
+      new SphereCelestialView(CelestialSurface.solid([0.4236, 0.3598, 0.3131])),
     ),
-    nix: new SphereEntity(
+    nix: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(NIX, phases, simZeroEt), pluto),
       DWARF_PLANET_NAMES.nix, 'satellite',
       // A_B=0.32(幾何 0.56 x q=0.564)
-      CelestialSurface.solid([0.3664, 0.3112, 0.2708]),
+      new SphereCelestialView(CelestialSurface.solid([0.3664, 0.3112, 0.2708])),
     ),
-    kerberos: new SphereEntity(
+    kerberos: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(KERBEROS, phases, simZeroEt), pluto),
       DWARF_PLANET_NAMES.kerberos, 'satellite',
       // A_B=0.32(幾何 0.56 x q=0.564)
-      CelestialSurface.solid([0.3664, 0.3112, 0.2708]),
+      new SphereCelestialView(CelestialSurface.solid([0.3664, 0.3112, 0.2708])),
     ),
-    hydra: new SphereEntity(
+    hydra: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(HYDRA, phases, simZeroEt), pluto),
       DWARF_PLANET_NAMES.hydra, 'satellite',
       // A_B=0.47(幾何 0.83 x q=0.564)
-      CelestialSurface.solid([0.5381, 0.4570, 0.3977]),
+      new SphereCelestialView(CelestialSurface.solid([0.5381, 0.4570, 0.3977])),
     ),
-    haumea: new SphereEntity(
+    haumea: new CelestialEntity(
       haumea.body, DWARF_PLANET_NAMES.haumea, 'dwarf',
       // A_B=0.29(幾何 0.51 x q=0.564)
-      CelestialSurface.solid([0.2900, 0.2900, 0.2900]),
+      new SphereCelestialView(CelestialSurface.solid([0.2900, 0.2900, 0.2900])),
     ),
-    hiiaka: new SphereEntity(
+    hiiaka: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(HIIAKA, phases, simZeroEt), haumea),
       DWARF_PLANET_NAMES.hiiaka, 'satellite',
       // A_B=0.28(分類既定 幾何 0.5 x q=0.564(母天体ハウメアと同じ氷質を仮定))
-      CelestialSurface.solid([0.3206, 0.2723, 0.2369]),
+      new SphereCelestialView(CelestialSurface.solid([0.3206, 0.2723, 0.2369])),
     ),
-    namaka: new SphereEntity(
+    namaka: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(NAMAKA, phases, simZeroEt), haumea),
       DWARF_PLANET_NAMES.namaka, 'satellite',
       // A_B=0.28(分類既定 幾何 0.5 x q=0.564(母天体ハウメアと同じ氷質を仮定))
-      CelestialSurface.solid([0.3206, 0.2723, 0.2369]),
+      new SphereCelestialView(CelestialSurface.solid([0.3206, 0.2723, 0.2369])),
     ),
-    makemake: new SphereEntity(
+    makemake: new CelestialEntity(
       planetSystem(planetDefForSimZero(MAKEMAKE, phases, simZeroEt), sun).body,
       DWARF_PLANET_NAMES.makemake, 'dwarf',
       // A_B=0.46(幾何 0.81 x q=0.564)
-      CelestialSurface.solid([0.7020, 0.4110, 0.2331]),
+      new SphereCelestialView(CelestialSurface.solid([0.7020, 0.4110, 0.2331])),
     ),
-    eris: new SphereEntity(
+    eris: new CelestialEntity(
       eris.body, DWARF_PLANET_NAMES.eris, 'dwarf',
       // A_B=0.54(幾何 0.96 x q=0.564)
-      CelestialSurface.solid([0.5400, 0.5400, 0.5400]),
+      new SphereCelestialView(CelestialSurface.solid([0.5400, 0.5400, 0.5400])),
     ),
-    dysnomia: new SphereEntity(
+    dysnomia: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(DYSNOMIA, phases, simZeroEt), eris),
       DWARF_PLANET_NAMES.dysnomia, 'satellite',
       // A_B=0.016(幾何 0.04 x q=0.393)
-      CelestialSurface.solid([0.0183, 0.0156, 0.0135]),
+      new SphereCelestialView(CelestialSurface.solid([0.0183, 0.0156, 0.0135])),
     ),
   };
 }
