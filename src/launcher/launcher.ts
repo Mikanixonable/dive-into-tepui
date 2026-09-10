@@ -17,7 +17,9 @@ import type { SnapshotService } from './save/snapshot-service';
 import type { GameSaveData } from '../game/save/save-data';
 import type { AudioEngine } from '../audio/audio-engine';
 import type { Bgm } from '../audio/bgm/bgm';
-import type { GraphicsSettings } from '../render/graphics-settings';
+import type { GraphicsSettingsData } from '../render/graphics-settings';
+import type { RenderStyle } from '../render/render-style';
+import type { SettingValue } from '../settings/stored-setting';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
 import type { TdbJulianDate } from '../physics/time';
@@ -49,6 +51,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   get current(): Game | null { return this.game; }
 
+  // ラン跨ぎの持ち物と、ランを起こすときに読む設定の現在値を受け取り、結果画面を組む。
   constructor(
     private readonly shell: HudShell,
     private readonly host: GameHost,
@@ -59,7 +62,8 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     private readonly unlockManager: UnlockManager,
     private readonly slots: SaveSlots,
     private readonly snapshotService: SnapshotService,
-    private readonly graphics: GraphicsSettings,
+    private readonly graphics: SettingValue<GraphicsSettingsData>,
+    private readonly renderStyle: SettingValue<RenderStyle>,
   ) {
     this.resultScreen = new ResultScreen(shell, this);
   }
@@ -116,7 +120,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     try {
       this.game = await Game.create(
         this.host, stageClass, this.audioEngine, this.pauseMenu,
-        initialSave, startEpoch, this.graphics.current,
+        initialSave, startEpoch, this.graphics.current, this.renderStyle.current,
         new LoadingProgress(setLoadingProgress),
       );
     } finally {

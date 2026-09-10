@@ -10,7 +10,6 @@ import { SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
 import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
-import { GraphicsSettings, type GraphicsSettingsData, type GraphicsTarget } from '../../src/render/graphics-settings';
 import { castsCumulusShadow } from '../../src/render/pipeline/shadow/shadow-select';
 import { atmosphereDraws } from '../../src/render/atmosphere';
 import { RingMaterials } from '../../src/render/celestial/ring';
@@ -19,6 +18,7 @@ import { AU } from '../../src/physics/astronomical-unit';
 import { R_SUN } from '../../src/game/celestial/solar-system/constants';
 import { CASES, sunDiameterPx, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
 import { pixelsToPngDataUrl } from '../lab-png';
+import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { RenderStyle } from '../../src/render/render-style';
 
@@ -93,7 +93,7 @@ function anglesFromDirection(v: THREE.Vector3): { azimuthDeg: number; elevationD
   };
 }
 
-export class LabView implements GraphicsTarget {
+export class LabView {
   private readonly scene = new THREE.Scene();
   // 撮影先。合成パスは sRGB へ変換済みの値を書くので素の RGBA8 で受ける(-srgb にすると二重変換で
   // 白っぽくなる)。深度は 3D UI パスの線が深度テストに使うので持たせる(無いと線が不透明物を貫通する)。
@@ -125,8 +125,7 @@ export class LabView implements GraphicsTarget {
   // 全ケースの環の帯が共有するマテリアル。ゲーム本体の CelestialSystem と同じく 1 つだけ持つ。
   private readonly ringMaterials: RingMaterials;
 
-  // graphicsData はこのフレームを描くのに使う描画品質設定。正本は呼び出し側の GraphicsSettings で、
-  // 押し出しを受けてここへ写す。
+  // graphicsData はこのフレームを描くのに使う描画品質設定。applyGraphics で差し替わる。
   private constructor(
     private readonly renderer: WebGPURenderer,
     private readonly pipeline: RenderPipeline,
@@ -139,8 +138,8 @@ export class LabView implements GraphicsTarget {
     this.ringMaterials = new RingMaterials(pipeline.bodyShadow, pipeline.sunLight);
   }
 
-  // graphics は描画品質設定の正本。押し出し先としての bind は呼び出し側が行う。
-  public static async create(canvas: HTMLCanvasElement, graphics: GraphicsSettings): Promise<LabView> {
+  // graphics は最初のフレームを描く描画品質設定。
+  public static async create(canvas: HTMLCanvasElement, graphics: GraphicsSettingsData): Promise<LabView> {
     // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、測りたい深度の
     // 分解能そのものが本番と別物になる。
     const renderer = new WebGPURenderer({
@@ -152,9 +151,9 @@ export class LabView implements GraphicsTarget {
     await renderer.init();
     const gpu = new GpuTimings(renderer);
     gpu.enabled = true;
-    const pipeline = new RenderPipeline(renderer, graphics.current, gpu);
+    const pipeline = new RenderPipeline(renderer, graphics, gpu);
     pipeline.ambient.setFraction(AMBIENT_WEAK);
-    return new LabView(renderer, pipeline, gpu, graphics.current);
+    return new LabView(renderer, pipeline, gpu, graphics);
   }
 
   // ケースを差し替え、観察の向きをそのケースの既定へ戻して描く。
@@ -192,7 +191,7 @@ export class LabView implements GraphicsTarget {
     built.applyGraphics?.(this.graphicsData);
   }
 
-  // 描画品質設定の押し出し先。受け取った値をパイプラインへ配り、その場で描き直す。
+  // 描画品質設定を差し替える。受け取った値をパイプラインへ配り、その場で描き直す。
   public applyGraphics(graphics: GraphicsSettingsData): void {
     this.graphicsData = graphics;
     this.pipeline.applyGraphics(graphics);

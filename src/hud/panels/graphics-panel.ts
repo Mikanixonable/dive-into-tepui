@@ -1,8 +1,9 @@
 // 設定メニューの「描画」面。品質プリセットと、描画品質設定の全項目を群ごとに並べる。
 // 並びも見出しも GRAPHICS_GROUPS・GRAPHICS_OPTIONS の表からそのまま組む。
+// 表示中の設定値一式を持ち、操作のたびに新しい一式を組み立てて onChange で外へ返す。
 import {
-  GRAPHICS_GROUPS, GRAPHICS_OPTIONS, GraphicsSettings, graphicsOptionKeys,
-  type ChoiceValue, type GraphicsOptionKey, type GraphicsTarget, type QualityPreset,
+  GRAPHICS_GROUPS, GRAPHICS_OPTIONS, QUALITY_PRESETS, graphicsOptionKeys, matchingGraphicsPreset, withGraphicsOption,
+  type ChoiceValue, type GraphicsOptionKey, type GraphicsSettingsData, type QualityPreset,
 } from '../../render/graphics-settings';
 import { Pulldown, SegmentedControl, ToggleSwitch, type PulldownColumn } from '../widgets';
 import { injectOnce } from '../inject-style';
@@ -38,18 +39,19 @@ interface OptionControl {
   readonly show: (value: boolean | ChoiceValue) => void;
 }
 
-// 点灯は GraphicsTarget として引き直す — 設定は UI の外からも書き換わるので、自分の操作だけを
-// 起点にすると表示がずれる。
-export class GraphicsPanel implements GraphicsTarget {
+export class GraphicsPanel {
   public readonly element: HTMLElement;
+
+  // 操作で新しい設定値一式ができたときに呼ばれる。
+  public onChange: ((graphics: GraphicsSettingsData) => void) | null = null;
 
   private readonly preset: SegmentedControl<QualityPreset>;
   private readonly controls: readonly OptionControl[];
 
-  // hidden は伏せる項目(この置き場では切り替えても効かないもの)。項目の無くなった群は見出しごと
-  // 消える。点灯の正本は graphics 側にあり、書いた値は押し出しで戻ってきて表示へ反映される。
+  // graphics は組み立て時に点灯させる設定値。hidden は伏せる項目(この置き場では切り替えても
+  // 効かないもの)で、項目の無くなった群は見出しごと消える。
   public constructor(
-    private readonly graphics: GraphicsSettings,
+    private graphics: GraphicsSettingsData,
     hidden: ReadonlySet<GraphicsOptionKey> = NO_HIDDEN_KEYS,
   ) {
     injectOnce('graphics-panel', STYLE);
@@ -57,7 +59,7 @@ export class GraphicsPanel implements GraphicsTarget {
     this.element.className = 'gp-body';
 
     this.preset = new SegmentedControl('品質プリセット', PRESET_ITEMS, (preset) => {
-      this.graphics.applyPreset(preset);
+      this.select(QUALITY_PRESETS[preset]);
     });
     this.element.appendChild(this.preset.element);
 
@@ -77,13 +79,16 @@ export class GraphicsPanel implements GraphicsTarget {
     }
     this.controls = controls;
 
-    // bind は現在値を即座に押し出すので、引き直す先が揃ってから登録する。
-    graphics.bind(this);
+    // 引き直す先が揃ってから点灯させる。
+    this.sync(graphics);
   }
 
-  // 設定が変わるたびに全コントロールの点灯を引き直す。
-  public applyGraphics(): void {
-    this.sync();
+  // 外から設定値が変わったときに、全コントロールの点灯を引き直す。プリセットはどれとも
+  // 一致しなければ全消灯。
+  public sync(graphics: GraphicsSettingsData): void {
+    this.graphics = graphics;
+    this.preset.setSelected(matchingGraphicsPreset(graphics));
+    for (const control of this.controls) control.show(graphics[control.key]);
   }
 
   // 項目1つぶんのコントロールを組んで節へ並べる。真偽はトグルスイッチ — 2値の ON/OFF に
@@ -107,15 +112,14 @@ export class GraphicsPanel implements GraphicsTarget {
     return { key, show: (value) => widget.setSelected(typeof value === 'boolean' ? null : value) };
   }
 
-  // 項目1つを書き換える。点灯は押し出しが戻ってきたときに引き直る。
+  // 項目1つを差し替えた設定値一式へ移る。
   private write(key: GraphicsOptionKey, value: boolean | ChoiceValue): void {
-    this.graphics.setOption(key, value);
+    this.select(withGraphicsOption(this.graphics, key, value));
   }
 
-  // 各コントロールの点灯を現在の設定値へ合わせる。プリセットはどれとも一致しなければ全消灯。
-  private sync(): void {
-    const data = this.graphics.current;
-    this.preset.setSelected(this.graphics.matchingPreset());
-    for (const control of this.controls) control.show(data[control.key]);
+  // 選ばれた設定値一式へ移る。自分の点灯を引き直してから外へ返す。
+  private select(graphics: GraphicsSettingsData): void {
+    this.sync(graphics);
+    this.onChange?.(graphics);
   }
 }
