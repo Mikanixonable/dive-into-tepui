@@ -9,11 +9,6 @@ import { injectOnce } from '../../hud/inject-style';
 import { smallBtn, stageLabel } from './shared';
 
 const STYLE = `
-/* このパネルで唯一の「押すと今の状態が増える」操作 — 注目させるためオレンジを残す。 */
-#save-browser span#sb-capture-now {
-  background: var(--color-primary-fill-weak); color: var(--color-primary);
-}
-#save-browser span#sb-capture-now:hover { background: var(--color-primary-fill); }
 #save-browser .sb-stage-tabs { display: flex; gap: var(--space-2); }
 #save-browser .sb-snapshot-groups { display: flex; flex-direction: column; gap: var(--space-2); }
 #save-browser .sb-snapshot-group-title { font-size: var(--font-xs); color: var(--text-dim); margin-top: var(--space-2); }
@@ -37,10 +32,6 @@ const STYLE = `
 #save-browser .sb-snap-hp-meter .w-meter-track { height: 3px; border-radius: var(--radius-s); }
 #save-browser .sb-snap-hp-meter .w-meter-fill { background: var(--text-dim); }
 #save-browser .sb-snap-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-/* クリップ済み(pin)状態だけは注目対象として残す — この行の意味は「消えずに残る」なので. */
-#save-browser span.sb-btn-pin.on {
-  background: var(--color-primary-fill-weak); color: var(--color-primary);
-}
 `;
 
 // 数値であるはずのメタ項目。取り込んだファイルでは欠けていることがあり、そのまま
@@ -89,7 +80,7 @@ export function buildSnapshotPane(
   title.textContent = 'スナップショット';
   wrap.appendChild(title);
 
-  const captureBtn = new Button('今の状態をクリップして残す', callbacks.onCaptureNow);
+  const captureBtn = new Button('今の状態をクリップして残す', callbacks.onCaptureNow, undefined, 'primary');
   captureBtn.element.id = 'sb-capture-now';
   captureBtn.element.classList.add('sb-btn');
   captureBtn.setEnabled(canCaptureNow);
@@ -204,8 +195,11 @@ function buildSnapshotCard(
 
   const actions = document.createElement('div');
   actions.className = 'sb-snap-actions';
-  const pinBtn = new Button(s.pinned ? '📌 解除' : '📌 クリップ', () => callbacks.onTogglePin(s.id, s.pinned));
-  pinBtn.element.classList.add('sb-btn', 'sb-btn-sm', 'sb-btn-pin');
+  const pinBtn = new Button(
+    s.pinned ? '📌 解除' : '📌 クリップ', () => callbacks.onTogglePin(s.id, s.pinned), undefined,
+    ['secondary', 'dense'],
+  );
+  pinBtn.element.classList.add('sb-btn', 'sb-btn-pin');
   pinBtn.setOn(s.pinned);
   actions.appendChild(pinBtn.element);
   actions.appendChild(smallBtn('✎', '名前変更', () => callbacks.onRenameSnapshot(s.id)));
