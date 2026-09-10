@@ -2,10 +2,10 @@
 import * as THREE from 'three/webgpu';
 import type { PerfCounts } from './perf-counts';
 import { proteinMotionFrameSample, type ProteinMotionFrameSample } from './protein/protein-motion-metrics';
-import { FrameSections, SECTION } from './frame-sections';
+import { SECTION, type FrameSections } from './frame-sections';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import { CameraSystem } from './camera/camera-system';
-import { Stage, StageClass } from './stages/stage';
+import type { Stage, StageClass } from './stages/stage';
 import { MarkerManager } from './marker/marker-manager';
 import { CelestialMarkers } from './marker/celestial-markers';
 import { EquatorNodeManager } from './marker/equator-node-manager';
@@ -20,15 +20,15 @@ import { EntityLineManager } from './lines/entity-line-manager';
 import { Predictor } from './dynamic/predictor';
 import { Input } from '../input/input';
 import { TouchControls } from './hud/touch-controls';
-import { Hud } from './hud/hud';
-import { PauseMenu } from '../hud/windows/pause-menu';
+import type { Hud } from './hud/hud';
+import type { PauseMenu } from '../hud/windows/pause-menu';
 import { WorldSfx } from '../audio/sfx/world-sfx';
 import { UiSfx } from '../audio/sfx/ui-sfx';
 import type { AudioEngine } from '../audio/audio-engine';
 import type { RenderPipeline } from '../render/pipeline/render-pipeline';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
-import { CelestialSystem } from './celestial/celestial-system';
+import type { CelestialSystem } from './celestial/celestial-system';
 import { ViewManager } from './view/view-manager';
 import { CombatView } from './view/combat-view';
 import { MapView } from './view/map-view';
@@ -37,9 +37,9 @@ import { FrameAnchors } from './frame-anchors';
 import { OrbitReferenceSelector } from './orbit-reference';
 import { ObjectWindows } from './pickable/object-windows';
 import { Navball } from './navball/navball';
-import { GameSaveData, SAVE_VERSION } from './save/save-data';
+import { SAVE_VERSION, type GameSaveData } from './save/save-data';
 import { ephemerisContextFor } from '../physics/ephemeris/ephemeris-context';
-import { LoadingProgress } from './loading-progress';
+import type { LoadingProgress } from './loading-progress';
 import type { GameHost } from './game-host';
 import { createJulianDate, type TdbJulianDate } from '../physics/time';
 import { KEY_MAPPING as K } from '../input/key-mapping';
@@ -266,12 +266,12 @@ export class Game {
     this.objectWindows = new ObjectWindows(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
       this.cameraSystem, () => this.viewManager.activeView, this.pauseMenu,
-      this.controlSelection, (target) => this.frameControls.setFocus(target), this.activeStage, this.targeter,
+      this.controlSelection, this.frameControls, this.activeStage, this.targeter,
     );
 
     const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.objectWindows, this.dynamicSystem,
-      () => this.celestialMarkers.hideLabels(), this.touchControls,
+      this.celestialMarkers, this.touchControls,
       this.controlSelection, this.planDisplay.path, celestialSystem.celestialMotions,
       this.simSpeedManager, this._hud, uiSfx, this.markerManager,
     );

@@ -334,7 +334,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
         pools: this.instancedPools,
         cameraSystem,
         style,
-        graphics: visual,
+        visual,
         orbitReference: orbitRef,
       });
     }

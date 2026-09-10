@@ -19,10 +19,10 @@ import type { CelestialMarkers } from '../marker/celestial-markers';
 import type { MarkerSlots } from '../marker/marker-slots';
 import type { NavTarget } from '../nav-target';
 import type { CameraSystem } from '../camera/camera-system';
-import type { FrameControls } from '../hud/frame/frame-controls';
 import type { ControlSelection } from '../control-selection';
 import { rayThroughScreen } from '../../math/projection';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
+import type { FocusSink } from '../camera/focus-target';
 
 const OBJECT_PICK_PX_SQ = 600; // 被選択物(ObjectPickable)の右クリック判定半径の2乗 [px^2]
 const ORBIT_LINE_PICK_PX_SQ = 600; // 軌道線(公転軌道・船の軌道・軌道ガイド)の右クリック判定半径の2乗 [px^2]
@@ -45,7 +45,7 @@ export class MapPicking {
     private readonly celestialMarkers: CelestialMarkers,
     private readonly markers: MarkerSlots,
     private readonly navTarget: NavTarget,
-    private readonly frameControls: FrameControls,
+    private readonly focusSink: FocusSink,
     private readonly pickables: ObjectPickables,
     private readonly linePickables: LinePickables,
     private readonly objectWindows: ObjectWindows,
@@ -154,7 +154,7 @@ export class MapPicking {
 
   // 軌道線ウィンドウの「所属」欄から、その持ち主へ注視を移す。
   private focusOwner(id: string, name: string): void {
-    this.frameControls.setFocus({ kind: 'object', id });
+    this.focusSink.setFocus({ kind: 'object', id });
     this.hud.hint(`${name} にフォーカス`);
   }
 
@@ -162,7 +162,7 @@ export class MapPicking {
   // ダブルクリックと一覧パネルのフォーカス行はどちらもここを通す。id は一覧側が候補列に
   // 頼らず持っている値、target は見つかっていれば名前・種別の解決に使う。
   private focusTarget(id: string, target: MapPickable | undefined): void {
-    this.frameControls.setFocus({ kind: 'object', id });
+    this.focusSink.setFocus({ kind: 'object', id });
     this.hud.hint(`${target?.name ?? id} にフォーカス`);
     target?.onMapFocus?.(this.controlSelection);
   }

@@ -227,7 +227,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
       vel,
       priority: MARKER_PRIORITY.ENEMY - dist / 1e9,
       name: this.name,
-      // 敵本体・距離ラベル・画面外方位マーカーは同じ色で統一する。
+      // 敵本体と画面外方位マーカーは同じ色で統一する。
       bearingColor: COLOR_MARKER_ENEMY,
       bearingSym: ENTITY_GLYPH.enemyShip,
       bearingClass: 'mk-dir mk-bearing-triangle',

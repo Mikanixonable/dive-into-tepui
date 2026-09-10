@@ -371,7 +371,6 @@ export class CelestialSystem implements CelestialBodies {
         body.motion, floatingOrigin, displayTime, cameraSystem, star, graphics, style, visible,
       );
     }
-    // 光源・影・大気の選定は、全個体の表示状態が確定した後でなければ正しくない。
     this.illumination.sync(
       floatingOrigin, displayTime, cameraSystem, graphics, visibilityPolicy);
 

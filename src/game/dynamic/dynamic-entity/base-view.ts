@@ -35,7 +35,6 @@ export class BaseView extends DynamicView {
     // 表示時刻を引けない場合も、現在状態を使って既存エフェクトを確実に畳む。
     const effectState = displayed ?? motion.state;
     const visible = this.object.visible;
-    // ビルボードの正対とズーム時の伏せに要るのは、カメラのこの2値だけ。
     const cameraQuat = context.cameraSystem.activeCamera.quaternion;
     const zoomActive = context.cameraSystem.zoomActive;
     this.thrustEffects.sync(
