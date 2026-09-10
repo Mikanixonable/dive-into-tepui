@@ -14,6 +14,10 @@ import json
 import math
 from pathlib import Path
 
+import numpy as np
+
+from real_source import OutputGrid, RasterCatalog, RasterCoverage, regrid_era5
+
 
 class RendererUnavailable(RuntimeError):
     """A renderer cannot honestly produce a requested bundle."""
@@ -67,6 +71,8 @@ class TileArrays:
     ice_surface_m: list
     geoid_m: list
     gshhg_polygons: list
+    land_fraction: list | None = None
+    ice_fraction: list | None = None
 
 
 def geotiff_window_for_grid(grid, geo_transform, raster_width, raster_height):
@@ -123,9 +129,8 @@ def _source_paths(manifest, raw_root, source):
 class RealSourceAdapter(SourceAdapter):
     """Local source boundary for production inputs.
 
-    This adapter resolves and validates the file/window boundary.  Numerical
-    composition remains in the renderer so BMNG linear-RGB, ETOPO vertical
-    datums, GSHHG coverage, and ERA5 time aggregation cannot be mixed here.
+    This adapter resolves the source boundary and applies each product's
+    numerical rule before the shared material and encoder path.
     """
 
     def __init__(self, manifest, raw_root):
@@ -140,6 +145,16 @@ class RealSourceAdapter(SourceAdapter):
         self.paths = {source_id: _source_paths(manifest, raw_root, source)
                       for source_id, source in sources.items()}
         self._bake = bake
+        self._color = self._surface = self._geoid = self._polygons = None
+        self._climate_static = None
+
+    def _ensure_catalogs(self):
+        if self._color is not None:
+            return
+        self._color = RasterCatalog(self.paths["bmng-july-2004"], color=True)
+        self._surface = RasterCatalog(self.paths["etopo-2022-v1-ice-surface"])
+        self._geoid = RasterCatalog(self.paths["etopo-2022-v1-geoid"])
+        self._polygons = RasterCoverage(self.paths["gshhg-2.3.7"][0])
 
     def tile_input(self, key):
         grid = self._bake.tile_grid(*key)
@@ -151,13 +166,42 @@ class RealSourceAdapter(SourceAdapter):
             self.paths["gshhg-2.3.7"][0],
             self.paths["era5-monthly-1991-2020"][0])
 
-    def tile_arrays(self, _key):
-        raise RendererUnavailable(
-            "実データのGeoTIFF/GSHHG window読取と再格子化はRealSourceAdapterの次段で実装が必要です")
+    def tile_arrays(self, key):
+        self._ensure_catalogs()
+        tile = self.tile_input(key)
+        fast = key[0] <= 1
+        color = self._color.aggregate(tile.grid, linear=True, fast=fast)
+        surface = self._surface.aggregate(tile.grid, fast=fast)
+        geoid = self._geoid.aggregate(tile.grid, fast=fast)
+        land, ice = self._polygons.coverage(tile.grid)
+        return TileArrays(tuple(key), tile.grid, color, surface, geoid, [], land, ice)
 
     def climate_input(self, month, width, height):
-        raise RendererUnavailable(
-            "ERA5の月別window再格子化はRealSourceAdapterの次段で実装が必要です")
+        if not self.paths["era5-monthly-1991-2020"][0].is_file():
+            raise RendererUnavailable("ERA5の実データがありません: "
+                                      f"{self.paths['era5-monthly-1991-2020'][0]}")
+        self._ensure_catalogs()
+        if not 1 <= month <= 12:
+            raise ValueError("monthは1..12が必要です")
+        if self._climate_static is None:
+            climate_grid = OutputGrid(-180, -90, 180, 90, width, height)
+            surface = self._surface.aggregate(climate_grid)
+            land, _ = self._polygons.coverage(climate_grid)
+            surface = [0.0 if dry <= 0 else min(9000.0, max(-1000.0, value))
+                       for value, dry in zip(surface, land)]
+            self._climate_static = (surface, land, climate_grid)
+        surface, land, climate_grid = self._climate_static
+        try:
+            import netCDF4
+        except ImportError as error:
+            raise RendererUnavailable("ERA5のNetCDF読取にはnetCDF4が必要です") from error
+        with netCDF4.Dataset(str(self.paths["era5-monthly-1991-2020"][0]), "r") as dataset:
+            latitudes = np.asarray(dataset.variables["latitude"][:], dtype=float)
+            longitudes = np.asarray(dataset.variables["longitude"][:], dtype=float)
+            temperature = regrid_era5(dataset.variables["t2m"][month - 1], latitudes, longitudes, climate_grid)
+            cloud = regrid_era5(dataset.variables["tcc"][month - 1], latitudes, longitudes, climate_grid)
+        cloud = [[min(1.0, max(0.0, value)) for value in row] for row in cloud]
+        return (sum(temperature, []), sum(cloud, []), surface, land)
 
 
 def _finite(value, label):
@@ -339,6 +383,9 @@ class ArrayRenderer:
             "geoidM": tile.geoid_m,
             "gshhgPolygons": tile.gshhg_polygons,
         }
+        if tile.land_fraction is not None and tile.ice_fraction is not None:
+            region["landFraction"] = tile.land_fraction
+            region["iceFraction"] = tile.ice_fraction
         result = bake.bake_region(region, self.manifest)
         color = _encode_jpeg(tile.color_srgb, grid.width, grid.height)
         terrain = bake.encode_terrain_tile(result["normals"], result["roughness"], *key)
