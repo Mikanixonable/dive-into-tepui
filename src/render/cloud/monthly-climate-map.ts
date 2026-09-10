@@ -90,6 +90,8 @@ function deferredTexture(url: string): MonthlyClimateTexture {
 
 export class MonthlyClimateMap implements ClimateMapLike {
   private readonly blendNode: FloatUniform = uniform(0);
+  private readonly currentTextureNode: ReturnType<typeof texture>;
+  private readonly nextTextureNode: ReturnType<typeof texture>;
   private monthIndex = 0;
   private blendValue = 0;
   private generationValue = 0;
@@ -98,6 +100,7 @@ export class MonthlyClimateMap implements ClimateMapLike {
   private observedMonth = -1;
   private observedBlend = -1;
   private disposed = false;
+  private pendingMaps: readonly MonthlyClimateTexture[] | null = null;
 
   public static fromDeferredUrls(urls: readonly string[], uvAt?: ClimateUvAt): MonthlyClimateMap {
     if (urls.length !== MONTHS_PER_YEAR) {
@@ -108,26 +111,29 @@ export class MonthlyClimateMap implements ClimateMapLike {
 
   // 実GPUを使わない解析テストや別の入力供給元は、DeferredTextureと同じ小さな境界を注入できる。
   public constructor(
-    private maps: readonly MonthlyClimateTexture[],
+    maps: readonly MonthlyClimateTexture[],
     private readonly uvAt: ClimateUvAt = equirectUvFromDirection,
   ) {
     if (maps.length !== MONTHS_PER_YEAR) {
       throw new Error(`Monthly climate requires ${MONTHS_PER_YEAR} textures`);
     }
+    this.maps = maps;
     for (const map of maps) configureClimateTexture(map.texture);
+    this.currentTextureNode = texture(maps[0]!.texture);
+    this.nextTextureNode = texture(maps[1]!.texture);
   }
 
-  // 配信版の12枚を差し替え、現在の月のcurrent/nextだけを要求する。
+  private maps: readonly MonthlyClimateTexture[];
+
+  // 配信版の12枚を準備し、現在の入力を保ったままcurrent/nextだけを要求する。
   public replaceUrls(urls: readonly string[]): void {
     if (this.disposed) return;
     if (urls.length !== MONTHS_PER_YEAR) {
       throw new Error(`Monthly climate requires ${MONTHS_PER_YEAR} URLs`);
     }
     const maps = urls.map(deferredTexture);
-    for (const map of this.maps) map.dispose();
-    this.maps = maps;
-    this.observedCurrentGeneration = -1;
-    this.observedNextGeneration = -1;
+    for (const map of this.pendingMaps ?? []) map.dispose();
+    this.pendingMaps = maps;
   }
 
   // 月は0始まり。12月の次は1月へ周回し、blendは0..1へ収める。
@@ -135,17 +141,20 @@ export class MonthlyClimateMap implements ClimateMapLike {
     this.monthIndex = normalizeClimateMonth(monthIndex);
     this.blendValue = clampBlend(blend);
     this.blendNode.value = this.blendValue;
+    this.syncTextureNodes();
     this.request();
   }
 
   // 選択中の月と、その次の月だけを取得する。
   public request(): void {
-    this.maps[this.monthIndex]?.request();
-    this.maps[(this.monthIndex + 1) % MONTHS_PER_YEAR]?.request();
+    const maps = this.pendingMaps ?? this.maps;
+    maps[this.monthIndex]?.request();
+    maps[(this.monthIndex + 1) % MONTHS_PER_YEAR]?.request();
   }
 
   // 選択と current/next の公開世代を1つの単調な世代へまとめ、雲場キャッシュを無効化する。
   public get generation(): number {
+    this.promotePendingMaps();
     const currentGeneration = this.maps[this.monthIndex]?.generation ?? 0;
     const nextGeneration = this.maps[(this.monthIndex + 1) % MONTHS_PER_YEAR]?.generation ?? 0;
     if (currentGeneration !== this.observedCurrentGeneration
@@ -195,12 +204,34 @@ export class MonthlyClimateMap implements ClimateMapLike {
     if (this.disposed) return;
     this.disposed = true;
     for (const map of this.maps) map.dispose();
+    for (const map of this.pendingMaps ?? []) map.dispose();
+    this.pendingMaps = null;
   }
 
   private sample(direction: Vec3Node): Vec4Node {
     const uv = this.uvAt(direction);
-    const current = texture(this.maps[this.monthIndex]!.texture, uv);
-    const next = texture(this.maps[(this.monthIndex + 1) % MONTHS_PER_YEAR]!.texture, uv);
+    const current = this.currentTextureNode.sample(uv);
+    const next = this.nextTextureNode.sample(uv);
     return mix(current, next, this.blendNode) as Vec4Node;
+  }
+
+  private syncTextureNodes(): void {
+    this.currentTextureNode.value = this.maps[this.monthIndex]!.texture;
+    this.nextTextureNode.value = this.maps[(this.monthIndex + 1) % MONTHS_PER_YEAR]!.texture;
+  }
+
+  private promotePendingMaps(): void {
+    const pending = this.pendingMaps;
+    if (pending === null) return;
+    const current = pending[this.monthIndex];
+    const next = pending[(this.monthIndex + 1) % MONTHS_PER_YEAR];
+    if ((current?.generation ?? 0) === 0 || (next?.generation ?? 0) === 0) return;
+    const previous = this.maps;
+    this.maps = pending;
+    this.pendingMaps = null;
+    this.syncTextureNodes();
+    for (const map of previous) map.dispose();
+    this.observedCurrentGeneration = -1;
+    this.observedNextGeneration = -1;
   }
 }
