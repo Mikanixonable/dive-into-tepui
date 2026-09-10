@@ -34,6 +34,8 @@
 24. 天体固定系を THREE 行列へ写す `writeBodyFromWorld` は `src/render/celestial/body-frame.ts`。
 25. `render/cloud/` は天体の半径と自転周期を、`GeneratedCloudField` / `WeatherModel` / `AirMassField` は構築時、それ以外は呼び出し時の引数として受ける。まとめ型は作らない。注入元は `earth-system.ts`(`R_EARTH` と `SIDEREAL_DAY`。`EARTH.radius` は赤道半径なので雲には使わない)。
 26. 地表へ貼る線は `src/render/celestial/line-overlay.ts` の `LineOverlay.of(lines)`。`lines` は「緯度経度の折れ線」か「単位球面上の閉ループ」の union で、geometry の共有キャッシュは頂点データの配列と kind の組を鍵にする。どのアセットをどの天体へ割り当てるかは `earth-system.ts` が決める。
+27. 軌道線の描画資源は `src/render/lines/{ellipse-line,target-relative-line,trajectory-line}.ts`。公開面は `line` / `sync` / `samplePoints` / `dispose` だけ。
+28. **`LineStyle` の組み立てと配色の解決は `game/` に残す。** CODING-RULE 2.2 が「軌道線・軌跡線を含む表示状態は View の外に正本を置き、毎フレーム `sync` の入力として渡す」と定めており、敵ごとの軌道線色は game 側の識別色であるため。当初の達成条件「`LineStyle` を `src/game/lines` から 0 件にする」はこの規約と衝突するので採らない。以降の手順でも同じ扱いにする(orbit guide の `styleFor` も game に残す)。
 
 ## 達成目標
 
@@ -49,41 +51,6 @@
 - 全手順で `npm run typecheck` が通り、最終的に `npm run test:physics`、`npm run test:game`、`npm run test:render`、`npm run test:settings` が通る。
 
 ## 手順
-
-### 手順 6. 基本の軌道線資源を render へ移し、declarative sync にする
-
-#### 目的
-
-THREE/Curve を所有する 3 種の軌道線を render へ移す。game は「どの基準で、どの役割の線を表示するか」を決め、render は style、sampling、geometry、cache を決める。表示済み点列の readback は維持する。
-
-#### 変更が必要な箇所
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/render/lines/ellipse-line.ts`（`src/game/lines/ellipse-line.ts` から移動） | resource owner を移し、geometry/style/visible を 1 回の sync 入力へまとめる。 |
-| `src/render/lines/target-relative-line.ts`（`src/game/lines/target-relative-line.ts` から移動） | 同上。 |
-| `src/render/lines/trajectory-line.ts`（`src/game/lines/trajectory-line.ts` から移動） | 同上。 |
-| `src/render/lines/line-display.ts`（新規） | self/enemy/ally/reference/preview 等の semantic role と source query を持つ readonly 表示宣言を定義する。 |
-| `src/render/dynamic/dynamic-view.ts:15-17,63-65,122-236` | render 所有線を使い、宣言を 1 回で同期する。`lineSamples` は表示済み revision を読む query として残す。 |
-| `src/render/celestial/celestial-entity/celestial-view.ts:18,42,107-145` | reference ellipse を render 所有にし、`referenceLineSamples` を維持する。 |
-| `src/render/celestial/celestial-entity/geostationary-overlay.ts:10,38,68-92` | 同上。 |
-| `src/game/lines/entity-line-manager.ts:2-22,59-181` | THREE、theme color、LineStyle を除き、entity 種別・可視性・orbit basis から semantic line declaration を作る。 |
-| `src/game/orbit-reference.ts:19-53` | `DynamicEntity` を含む basis を render へ渡さず、manager 内で readonly line source へ解決する。 |
-| `src/game/dynamic/dynamic-entity/dynamic-entity.ts:78` | Motion→View の唯一の結節点から line declaration を view へ渡す。 |
-| `src/game/celestial/celestial-system.ts:338` | reference line sample query の import/path を更新する。 |
-| `src/game/pickable/line-pickables.ts:51-76` | 実際に sync 済みの render line query を読み続ける。 |
-| `src/physics/state-queue.ts:83` | 移動後の責務を指すコメント path を更新する。 |
-| `tests/render/line-samples.test.ts`（新規） | ellipse/trajectory/relative line の表示 revision、非表示時、sample count cache を検証する。 |
-| `tests/game/line-pickables.test.ts`（新規） | pickable が render から受けた点列を変換・再生成せず使うことを検証する。 |
-
-#### 達成条件と検証
-
-- `src/game/lines/` には game の表示判断だけが残り、`rg -n 'three/webgpu|Curve|LineStyle|currentThemePalette' src/game/lines` が 0 件。
-- 3 line class の公開変更 API は declarative `sync`、readonly sample query、`dispose` だけになる。
-- line sample test で、同じ synced revision と count には同一内容が返り、非表示宣言後は空になる。
-- `npm run typecheck`
-- `npm run test:game`
-- `npm run test:render`
 
 ### 手順 7. orbit guide・plan・creative preview の game state と view を分ける
 
