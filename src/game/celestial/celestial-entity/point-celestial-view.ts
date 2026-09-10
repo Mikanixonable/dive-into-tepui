@@ -12,6 +12,7 @@ import { STAR_SHELL_RADIUS } from '../../../render/stars';
 import { Billboard, POINT_IMAGE_ANGULAR_SIZE } from '../../../render/billboard';
 import {
   createCelestialSurfaceFrame,
+  type CelestialSurfaceDiagnostics,
   type CelestialSurfaceLike,
 } from '../../../render/celestial-surface';
 import { BodyGraticule } from '../../../render/body-graticule';
@@ -99,6 +100,10 @@ export class PointCelestialView extends CelestialView {
   public get lightSourceAlbedo(): Albedo | null { return this.surface.photometry?.lightSourceAlbedo ?? null; }
 
   public get surfaceTextureUrl(): string | null { return this.surface.textureUrl; }
+
+  public override get surfaceDiagnostics(): CelestialSurfaceDiagnostics | null {
+    return this.surface.diagnostics;
+  }
 
   public override rings(motion: CelestialMotion): RingSystemDef | null { return ringsOf(motion); }
 

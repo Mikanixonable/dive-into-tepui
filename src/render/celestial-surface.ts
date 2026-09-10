@@ -46,6 +46,15 @@ export type SurfacePhotometry = {
   readonly lightSourceAlbedo: Albedo;
 };
 
+export type CelestialSurfaceStatus = 'loading' | 'ready' | 'error' | 'fallback';
+
+export interface CelestialSurfaceDiagnostics {
+  readonly status: CelestialSurfaceStatus;
+  readonly reason: string | null;
+  readonly usesDetailedMaterial: boolean;
+  readonly residentMaxZ: number | null;
+}
+
 // 天体の位置・姿勢・形状を確定した後に、表面固有の同期へ渡す値。
 export interface CelestialSurfaceFrame {
   readonly camera: THREE.Camera;
@@ -96,6 +105,7 @@ export function createCelestialSurfaceFrame(
 export interface CelestialSurfaceLike {
   readonly photometry: SurfacePhotometry | null;
   readonly textureUrl: string | null;
+  readonly diagnostics: CelestialSurfaceDiagnostics | null;
   addTo(parent: THREE.Object3D): void;
   syncLod(apparentDiameterPx: number): void;
   syncFrame(frame: CelestialSurfaceFrame): void;
@@ -182,6 +192,8 @@ export class CelestialSurface implements CelestialSurfaceLike {
     return new CelestialSurface(
       material, [], [], { bondAlbedo: rec709Luminance(albedo), lightSourceAlbedo: albedo }, null);
   }
+
+  public get diagnostics(): CelestialSurfaceDiagnostics | null { return null; }
 
   // 全段のメッシュを parent の下へ置く。
   public addTo(parent: THREE.Object3D): void {
