@@ -24,6 +24,7 @@ export interface RunSummary {
   readonly enemyAliveCount: number;
 }
 
+// いまの状態から1周回ぶんの要約を組む。自機が居ない周回では、軌道の項を星系の原点で埋める。
 export function runSummary(game: Game): RunSummary {
   // 操作対象が居る周回なら、軌道の項もそこから解く。
   const controlled = game.activeControllable;
