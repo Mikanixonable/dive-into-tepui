@@ -11,8 +11,8 @@ import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { satelliteOrbit } from '../../../physics/satellite-orbit';
 import {
-  C22_MOON, J2_EARTH, J2_MOON, MOON_OBLIQUITY, MU_EARTH, MU_MOON, R_EARTH_EQ, R_MOON, R_MOON_GRAVITY,
-  SIDEREAL_DAY,
+  C22_MOON, J2_EARTH, J2_MOON, MOON_OBLIQUITY, MU_EARTH, MU_MOON, R_EARTH, R_EARTH_EQ, R_MOON,
+  R_MOON_GRAVITY, SIDEREAL_DAY,
 } from './constants';
 import { Aurora, type AuroraOptics } from '../../../render/celestial/aurora';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
@@ -188,9 +188,11 @@ export function earthSystem(
   earthSpinPhase0 = 0,
 ): Record<EarthSystemBodyId, CelestialEntity> {
   const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
-  // 雲の場は殻が持ち、地表・影・大気の殻はその実体を借りて読む。
+  // 雲の場は殻が持ち、地表・影・大気の殻はその実体を借りて読む。天気を解く半径は全球を一様な球と
+  // みなす平均半径で、殻を載せる球の半径は本体メッシュと同じ赤道半径。
   const climate = ClimateMap.fromDeferredUrl(climateTextureUrl);
-  const cumulus = new CumulusShell(GeneratedCloudField.global(climate), R_EARTH_EQ);
+  const cumulus = new CumulusShell(
+    GeneratedCloudField.global(climate, R_EARTH, SIDEREAL_DAY), R_EARTH_EQ);
   return {
     earth: new CelestialEntity(
       earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
