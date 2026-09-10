@@ -6,9 +6,10 @@
 import * as THREE from 'three/webgpu';
 import { GuideCurve } from './guide-curve';
 import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../../../math/projection';
-import { InstancedPool } from '../../../render/instanced-pool';
-import { FloatingOrigin } from '../../../render/camera/floating-origin';
-import type { DirectionMarkerMode } from './orbit-guide-settings';
+import { InstancedPool } from '../../instanced-pool';
+import { FloatingOrigin } from '../../camera/floating-origin';
+import type { CameraFrame } from '../../camera/camera-frame';
+import type { DirectionMarkerMode } from '../../../game/celestial/orbit-guide/orbit-guide-settings';
 
 // 画面上のマーカーの高さ [px](頂点から底辺まで)。
 const MARKER_HEIGHT_PX = 10;
@@ -65,7 +66,9 @@ export class DirectionMarkers {
   private tanHalfFov = 0;
   private orthoHalfHeight = 0;
   private camNear = 0;
+  private viewportHeight = 1;
 
+  // capacity 個までのマーカーを1本のプールで描く。renderOrder は添える線と同じ値を渡す。
   public constructor(scene: THREE.Scene, capacity: number, renderOrder: number) {
     this.pool = new InstancedPool(scene, this.geometry, this.material, capacity, true, renderOrder);
     // マーカーは軌道ガイド線に添えるものなので、線と同じオーバーレイ層に載せる
@@ -76,8 +79,10 @@ export class DirectionMarkers {
   public beginFrame(): void { this.pool.beginFrame(); }
   public endFrame(): void { this.pool.endFrame(); }
 
-  // カメラの画角・位置をこのフレーム用に読み直す。addLoop の前に1回呼べば足りる。
-  public cacheCamera(camera: THREE.Camera): void {
+  // カメラの画角・位置・描画先の高さをこのフレーム用に読み直す。addLoop の前に1回呼べば足りる。
+  public cacheCamera(frame: CameraFrame): void {
+    const camera = frame.camera;
+    this.viewportHeight = frame.viewport.height;
     this.camPos.setFromMatrixPosition(camera.matrixWorld);
     if (camera instanceof THREE.PerspectiveCamera) {
       this.tanHalfFov = Math.tan((camera.fov * Math.PI) / 360);
@@ -157,11 +162,12 @@ export class DirectionMarkers {
   private screenConstantScale(): number {
     const depth = Math.max(this.camNear, this.pos.distanceTo(this.camPos));
     const mpp = this.orthoHalfHeight > 0
-      ? (2 * this.orthoHalfHeight) / window.innerHeight
-      : metersPerPixelFromTanHalfFov(this.tanHalfFov, depth, window.innerHeight);
+      ? (2 * this.orthoHalfHeight) / this.viewportHeight
+      : metersPerPixelFromTanHalfFov(this.tanHalfFov, depth, this.viewportHeight);
     return MARKER_HEIGHT_PX * mpp;
   }
 
+  // プールとジオメトリ・マテリアルを解放する。
   public dispose(): void {
     this.pool.dispose();
     this.geometry.dispose();
