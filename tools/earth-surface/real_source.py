@@ -315,10 +315,17 @@ class RasterCoverage:
         signs = {1: 1, 2: -1, 3: 1, 4: -1, 5: 1}
         for shift in (-360.0, 0.0, 360.0):
             for level, _, layer in self.layers:
+                # GSHHGのfeature全体を毎タイルrasterizeすると、z7で同じ
+                # 全球ポリゴンを数万回走査することになる。経度wrapに使う
+                # shift後のtarget範囲で空間フィルタを先に掛け、タイルと
+                # 交差するfeatureだけをGDALへ渡す。
+                layer.SetSpatialFilterRect(grid.west + shift, grid.south,
+                                           grid.east + shift, grid.north)
                 raster = gdal.GetDriverByName("MEM").Create("", width, height, 1, gdal.GDT_Byte)
                 raster.SetGeoTransform((grid.west + shift, pixel_x, 0, grid.north, 0, -pixel_y))
                 raster.GetRasterBand(1).Fill(0)
                 error = gdal.RasterizeLayer(raster, [1], layer, burn_values=[1])
+                layer.SetSpatialFilter(None)
                 if error:
                     raise ValueError(f"GSHHG level {level}のrasterizeに失敗しました")
                 values = raster.GetRasterBand(1).ReadAsArray().astype(np.float64)
