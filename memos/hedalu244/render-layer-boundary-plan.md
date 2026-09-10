@@ -36,6 +36,9 @@
 26. 地表へ貼る線は `src/render/celestial/line-overlay.ts` の `LineOverlay.of(lines)`。`lines` は「緯度経度の折れ線」か「単位球面上の閉ループ」の union で、geometry の共有キャッシュは頂点データの配列と kind の組を鍵にする。どのアセットをどの天体へ割り当てるかは `earth-system.ts` が決める。
 27. 軌道線の描画資源は `src/render/lines/{ellipse-line,target-relative-line,trajectory-line}.ts`。公開面は `line` / `sync` / `samplePoints` / `dispose` だけ。
 28. **`LineStyle` の組み立てと配色の解決は `game/` に残す。** CODING-RULE 2.2 が「軌道線・軌跡線を含む表示状態は View の外に正本を置き、毎フレーム `sync` の入力として渡す」と定めており、敵ごとの軌道線色は game 側の識別色であるため。当初の達成条件「`LineStyle` を `src/game/lines` から 0 件にする」はこの規約と衝突するので採らない。以降の手順でも同じ扱いにする(orbit guide の `styleFor` も game に残す)。
+29. orbit guide は `OrbitGuideModel`(`game/celestial/orbit-guide/orbit-guide-model.ts`)と `OrbitGuideView`(`render/celestial/orbit-guide/orbit-guide-view.ts`)。ゼロ速度曲線も同じ形。model の宣言は形が変わるまで同じオブジェクト参照を返し、`GuideCurve.samplePoints` は `(shape, origin, count)` を鍵にする。表示済みの点列は `CelestialSystem.orbitGuideSamples(count)` から引く。
+30. plan は `PlanPathView` / `PlanGizmo3D`(`render/plan/`)。`PlanPath` は弧の計算と、そのフレームに描く弧の宣言(`PlanArcLine`)だけを持つ。配置プレビューは `ObjectPlacementPreviewView`(`render/creative/`)。
+31. `game/plan/` と `game/creative/` に残る `three/webgpu` は `THREE.Scene` の型 import だけ。`scene` を渡すだけの引数で、消すには `game.ts` の scene 配布の規約を変える必要がある。
 
 ## 達成目標
 
@@ -51,46 +54,6 @@
 - 全手順で `npm run typecheck` が通り、最終的に `npm run test:physics`、`npm run test:game`、`npm run test:render`、`npm run test:settings` が通る。
 
 ## 手順
-
-### 手順 7. orbit guide・plan・creative preview の game state と view を分ける
-
-#### 目的
-
-`game/` に残る純表示資源を render へ移す。orbit catalog/zero-velocity の選択・天体名判断、plan の編集・軌道区間計算、creative placement の入力は game に残し、Curve/THREE/marker triangle/gizmo/preview line は render が所有する。この時点で計算する軌道、選択対象、表示 style は変えない。
-
-#### 変更が必要な箇所
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/render/celestial/orbit-guide/guide-curve.ts`（`src/game/celestial/orbit-guide/guide-curve.ts` から移動） | Curve resource と表示済み sample revision を所有し、declarative sync にする。 |
-| `src/render/celestial/orbit-guide/direction-markers.ts`（`src/game/celestial/orbit-guide/direction-markers.ts` から移動） | instanced triangle、camera scale、配置を render 所有にする。これは `game/marker/` の対象外 marker system には統合しない。 |
-| `src/game/celestial/orbit-guide/orbit-guide-model.ts`（新規） | catalog、Earth 固有基準、loop 再計算、semantic style role、visible guide metadata を `orbit-guide-lines.ts` から分離する。 |
-| `src/render/celestial/orbit-guide/orbit-guide-view.ts`（新規） | `GuideCurve` 群と direction markers を所有し、model declaration と CameraFrame から sync する。表示済み線 query を公開する。 |
-| `src/game/celestial/orbit-guide/orbit-guide-lines.ts:198-486` | model/view へ分割後に削除する。 |
-| `src/game/celestial/orbit-guide/zero-velocity-model.ts`（新規） | rotating frame と zero-velocity curve set の再計算を分離する。 |
-| `src/render/celestial/orbit-guide/zero-velocity-view.ts`（新規） | GuideCurve 資源と sync を所有する。 |
-| `src/game/celestial/orbit-guide/zero-velocity-lines.ts:114-239` | model/view へ分割後に削除する。 |
-| `src/game/celestial/celestial-system.ts:104-106,147-151,344,402-403` | model と view の生成・sync・sample query の結節点にする。 |
-| `src/game/pickable/line-pickables.ts:51` | CelestialSystem の表示済み orbit-guide query を使う。 |
-| `src/render/plan/plan-path-view.ts`（新規） | TrajectoryLine 群、visible/style、表示済み sample cache を所有する。 |
-| `src/game/plan/plan-path.ts:7,17-20,75-110,482` | trajectory/impact/apsis の計算と cache を残し、THREE/line resource を PlanPathView へ出す。 |
-| `src/render/plan/plan-gizmo-3d.ts`（`src/game/plan/plan-gizmo-3d.ts` から移動） | THREE gizmo resource を render 所有にし、位置・軸・active drag を 1 回の sync で受ける。 |
-| `src/game/plan/plan-editor.ts:21-29,70,463-573` | edit state と pointer 操作を残し、gizmo view へ readonly 表示値を渡す。 |
-| `src/game/plan/plan-display.ts:3,16-20,82-180` | plan/marker の game 判断を残し、PlanPathView と CameraFrame を同期する。 |
-| `src/render/creative/object-placement-preview-view.ts`（新規） | preview ellipse と marker 投影の表示資源を所有する。 |
-| `src/game/creative/object-placement.ts:10,15,28,54-57,108-155` | form/placement/occlusion 判断を残し、preview の readonly source/visible を view へ渡す。 |
-| `tests/render/orbit-guide-view.test.ts`（新規） | model declaration の再構築、camera sync、表示済み sample query を検証する。 |
-| `tests/render/plan-path-view.test.ts`（新規） | active line count と非表示時の resource sync を検証する。 |
-
-#### 達成条件と検証
-
-- `rg -n 'three/webgpu|render/curve|render/line-style' src/game/celestial/orbit-guide src/game/plan/plan-path.ts src/game/plan/plan-gizmo-3d.ts src/game/creative/object-placement.ts` が 0 件。
-- orbit guide の Earth 固有判断は game model にだけあり、render view に `'earth'` / `'moon'` 分岐がない。
-- orbit guide と plan path の click query は render view が同期済みの点列を返す。
-- `npm run typecheck`
-- `npm run test:physics`
-- `npm run test:game`
-- `npm run test:render`
 
 ### 手順 8. dynamic view を具象 Motion/System から切り離す
 
