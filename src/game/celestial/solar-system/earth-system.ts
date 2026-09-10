@@ -248,6 +248,7 @@ interface EarthSurfaceConnection {
   readonly coordinator: EarthSurfaceResidentCoordinator | null;
   readonly state: EarthSurfaceStatus;
   readonly material: EarthSurfaceMaterialAttachment | null;
+  readonly reason: string | null;
 }
 
 function detailedMaterialFor(
@@ -270,14 +271,28 @@ function detailedMaterialFor(
 function coordinatorFor(
   bootstrap: EarthSurfaceBootstrapResult, options: EarthSurfaceFactoryOptions,
 ): EarthSurfaceConnection {
-  if (bootstrap.state !== 'ready' || options.renderer === null
-    || options.renderer === undefined || bootstrap.tileSource === null) {
-    return { coordinator: null, state: bootstrap.state === 'error' ? 'error' : 'fallback', material: null };
+  if (bootstrap.state !== 'ready') {
+    return {
+      coordinator: null,
+      state: bootstrap.state,
+      material: null,
+      reason: bootstrap.state === 'error'
+        ? bootstrap.error?.message ?? 'earth surface bootstrap failed'
+        : 'earth surface manifest unavailable',
+    };
+  }
+  if (options.renderer === null || options.renderer === undefined) {
+    return { coordinator: null, state: 'fallback', material: null, reason: 'renderer unavailable' };
+  }
+  if (bootstrap.tileSource === null) {
+    return { coordinator: null, state: 'fallback', material: null, reason: 'tile source unavailable' };
   }
   // Game.createはrendererを先に初期化するが、テストや別の起動経路ではbackendがまだ
   // 生成されていないことがある。その場合は例外で起動を壊さず、baseへ固定する。
   const backend = options.renderer.backend as unknown as EarthSurfaceGpuThreeBackendLike | null | undefined;
-  if (backend === null || backend === undefined) return { coordinator: null, state: 'fallback', material: null };
+  if (backend === null || backend === undefined) {
+    return { coordinator: null, state: 'fallback', material: null, reason: 'WebGPU backend unavailable' };
+  }
   const queue = new EarthSurfaceTileRequestQueue(bootstrap.tileSource, {
     fetchImpl: options.fetchImpl,
     decodeImage: options.decodeImage,
@@ -288,22 +303,26 @@ function coordinatorFor(
   if (gpu.mode === 'base') {
     queue.dispose();
     gpu.dispose();
-    return { coordinator: null, state: 'fallback', material: null };
+    return { coordinator: null, state: 'fallback', material: null, reason: 'WebGPU detail features unavailable' };
   }
   const textures = gpu.textures;
   if (textures === null) {
     queue.dispose();
     gpu.dispose();
-    return { coordinator: null, state: 'fallback', material: null };
+    return { coordinator: null, state: 'fallback', material: null, reason: 'detail textures unavailable' };
   }
   // 材質の構築に失敗した場合も、先に確保したqueue/GPUを孤児にしない。
   let material: EarthSurfaceMaterialAttachment;
   try {
     material = detailedMaterialFor(bootstrap.source!, textures, options.fetchImpl);
-  } catch (error) {
+  } catch (error: unknown) {
     queue.dispose();
     gpu.dispose();
-    throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      coordinator: null, state: 'fallback', material: null,
+      reason: `detail material unavailable: ${message}`,
+    };
   }
   return {
     coordinator: new EarthSurfaceResidentCoordinator({
@@ -314,6 +333,7 @@ function coordinatorFor(
     }),
     state: 'ready',
     material,
+    reason: null,
   };
 }
 
@@ -329,14 +349,15 @@ export function createEarthSurfaceRuntime(
   }).then((bootstrap) => {
     const source = bootstrap.source ?? EARTH_SURFACE_FIXTURE_SOURCE;
     const connection = coordinatorFor(bootstrap, options);
-    surface.attach(source, connection.coordinator, connection.state, connection.material);
+    surface.attach(source, connection.coordinator, connection.state, connection.material, connection.reason);
     return { surface, state: connection.state, bootstrap };
   }).catch((error: unknown) => {
     const fallback = options.fallback ?? EARTH_SURFACE_FIXTURE_SOURCE;
-    surface.attach(fallback, null, 'error');
+    const reason = error instanceof Error ? error.message : String(error);
+    surface.attach(fallback, null, 'error', null, reason);
     return {
       surface, state: 'error' as const,
-      bootstrap: { state: 'error' as const, source: fallback, tileSource: null, error: error instanceof Error ? error : new Error(String(error)) },
+      bootstrap: { state: 'error' as const, source: fallback, tileSource: null, error: error instanceof Error ? error : new Error(reason) },
     };
   });
   return { surface, ready };
