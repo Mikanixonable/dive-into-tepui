@@ -14,7 +14,8 @@ import { R_EARTH, R_EARTH_EQ, R_SUN, SIDEREAL_DAY } from '../../src/game/celesti
 import { EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE } from '../../src/game/celestial/solar-system/earth-system';
 import { shapeAxes, shapeSpheroidRadii, type RingBandDef } from '../../src/physics/celestial-body-def';
 import { BodyGraticule } from '../../src/render/celestial/body-graticule';
-import { EarthCoastline } from '../../src/render/celestial/earth-coastline';
+import { LineOverlay, type LatLonPolyline } from '../../src/render/celestial/line-overlay';
+import coastlineData from '../../src/assets/earth-coastline.json';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing, RingMaterials } from '../../src/render/celestial/ring';
 import { buildBarrelMesh, buildPlayerShip } from '../../src/render/dynamic/ships';
@@ -55,6 +56,10 @@ const FOV_DEG = 50;
 // カメラの距離を、ケース既定の距離の何桁ぶんまで伸縮できるか(倍率の常用対数の絶対値の上限)。
 // **寄り切った先へ物体を置くケースは、この値から距離を逆算する。**
 export const MAX_CAMERA_DISTANCE_LOG = 2;
+
+// 地球ケースが貼る海岸線。tools/export-coastline.mjs が Natural Earth 110m coastline から
+// 焼き込んだ、緯度・経度 [deg] のペアを1本の折れ線として並べた配列の配列。
+const EARTH_COASTLINE = coastlineData as readonly LatLonPolyline[];
 
 // 土星ケースが使う実データの環。
 const SATURN_RINGS = (() => {
@@ -644,7 +649,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   const graticule = new BodyGraticule();
   graticule.addTo(group);
   graticule.setVisible(style === 'schematic');
-  const coastline = new EarthCoastline();
+  const coastline = LineOverlay.of({ kind: 'latLonPolylines', polylines: EARTH_COASTLINE });
   coastline.addTo(group);
   coastline.setVisible(style === 'schematic');
   return {
