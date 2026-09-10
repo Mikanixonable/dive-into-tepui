@@ -392,8 +392,9 @@ def terrain_normals(grid, heights, land, axes):
 
 # fixtureの同一格子入力を検査して、独立して再検査できる中間結果を返す。
 def bake_region(value, manifest):
-    if value.get("schemaVersion") != 1 or value.get("kind") != "earth-surface-region-fixture":
-        raise ValueError("小領域fixture形式が必要です")
+    if value.get("schemaVersion") != 1 or value.get("kind") not in (
+            "earth-surface-region-fixture", "earth-surface-region-window"):
+        raise ValueError("小領域fixtureまたはwindow形式が必要です")
     if value.get("datasetId") != manifest["datasetId"] or value.get("sourceManifestSha256") != _fetch.contract_hash(manifest):
         raise ValueError("fixtureとソースマニフェストの版が不一致です")
     if value.get("surfaceSourceId") != "etopo-2022-v1-ice-surface" or value.get("geoidSourceId") != "etopo-2022-v1-geoid":
@@ -424,7 +425,8 @@ def bake_region(value, manifest):
     roughness = [classes["water"] * (1 - dry) + classes["land"] * (dry - frozen) + classes["ice"] * frozen
                  for dry, frozen in zip(land, ice)]
     result = {"schemaVersion": 1, "datasetId": manifest["datasetId"], "kind": "earth-surface-region-intermediate",
-              "provenance": "synthetic_fixture", "sourceManifestSha256": value["sourceManifestSha256"],
+              "provenance": "synthetic_fixture" if value["kind"] == "earth-surface-region-fixture" else "source_window",
+              "sourceManifestSha256": value["sourceManifestSha256"],
               "grid": value["grid"], "axesM": axes, "colorSrgb": colors, "ellipsoidHeightM": heights,
               "orthometricHeightM": orthometric, "landFraction": land, "iceFraction": ice,
               "iceUnknownFraction": [max(0.0, dry - frozen) for dry, frozen in zip(land, ice)],

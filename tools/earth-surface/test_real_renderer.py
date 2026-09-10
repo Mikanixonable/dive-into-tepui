@@ -80,6 +80,33 @@ class RendererTests(unittest.TestCase):
             real_renderer.geotiff_window_for_grid(
                 bake.Grid(-20, 40, -19, 41, 4, 4), (0, .25, 0, 90, 0, -.25), 1440, 720)
 
+    def test_array_adapter_is_small_reader_boundary(self):
+        grid = bake.tile_grid(7, 3, 4)
+        count = grid.width * grid.height
+        tile = real_renderer.TileArrays(
+            (7, 3, 4), grid, [[20, 40, 80]] * count, [100.] * count,
+            [20.] * count, [])
+        climates = {month: ([280.], [.5], [0.], [1.]) for month in range(1, 13)}
+        adapter = real_renderer.ArraySourceAdapter([tile], climates)
+        self.assertIs(adapter.tile_arrays((7, 3, 4)), tile)
+        self.assertEqual(adapter.climate_input(1, 1, 1), ([280.], [.5], [0.], [1.]))
+        with self.assertRaises(real_renderer.RendererUnavailable):
+            adapter.tile_arrays((7, 4, 4))
+
+    @unittest.skipUnless(importlib.util.find_spec("PIL") is not None, "Pillow unavailable")
+    def test_array_renderer_connects_window_to_bake_and_encoders(self):
+        grid = bake.tile_grid(7, 3, 4)
+        count = grid.width * grid.height
+        tile = real_renderer.TileArrays(
+            (7, 3, 4), grid, [[20, 40, 80]] * count, [100.] * count,
+            [20.] * count, [])
+        climates = {month: ([280.], [.5], [0.], [1.]) for month in range(1, 13)}
+        renderer = real_renderer.ArrayRenderer(
+            self.manifest, real_renderer.ArraySourceAdapter([tile], climates))
+        color, terrain = renderer.render_tile((7, 3, 4))
+        self.assertTrue(color.startswith(b"\xff\xd8") and color.endswith(b"\xff\xd9"))
+        bake.validate_terrain_tile(terrain, (7, 3, 4), hashlib.sha256(terrain).hexdigest())
+
     @unittest.skipUnless(importlib.util.find_spec("PIL") is not None, "Pillow unavailable")
     def test_tile_coordinates_and_window_contract(self):
         self.assertEqual(bake.tile_grid(0, 0, 0).width, 260)
