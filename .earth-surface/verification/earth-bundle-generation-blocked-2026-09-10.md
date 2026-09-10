@@ -2,8 +2,7 @@
 
 検査時点: 2026-09-10 (JST)
 
-worktree は `/Users/pandeaconica/lab/dive-into-tepui-earth-bundle`、branch は
-`codex/earth-bundle-generation`、開始点は `workspace3` の `d2abc1e6` である。
+最新の検査対象は`workspace3`である。大容量入力は`.earth-surface/raw-v3/`へ取得中で、ERA5は未取得である。
 
 ## 実施した事前検査
 
@@ -27,11 +26,13 @@ terrain payload だけの圧縮前下限は 23,630,031,744 bytes（base を含�
 ## 停止理由
 
 1. ERA5 の `1991-01`〜`2020-12`、全UTC24時刻、`t2m` と `tcc` を含む NetCDF local export が workspace および `/Users/pandeaconica` 配下に存在しない。manifest は ERA5 をURL取得ではなく `explicit_local_export` として要求しているため、入力がない状態では `fetch-source.py` を実行できない。
-2. `bake.py` の `--global` 入口は `RealDataRenderer` を使うが、入力が揃っても BMNG/ETOPO/GSHHG/ERA5 の window 合成が未接続のため `RendererUnavailable` で停止する。`--fixture-global` は決定性と契約を検査するためだけにあり、`dataKind: synthetic_fixture` を付けて本番データと分離する。したがって、現在のコードでは全世界 bundle を生成できない。
-3. 2026-09-10の再検査では `Pillow` だけが利用可能で、生成用の `osgeo`、`netCDF4`、`pyshp` (`shapefile`)、`gdalinfo`、`ogrinfo` はまだ不足している。再現可能な依存定義は `tools/earth-surface/environment.yml` に置き、Homebrewの導入を前提にしない。
+2. `bake.py` の `--global` 入口は `RealDataRenderer` を使う。入力窓境界と共通encoder接続は実装したが、複数GeoTIFFの球面積再格子化、BMNGの線形RGB合成、GSHHG空間被覆、ERA5月平均再格子化は未接続のため `RendererUnavailable` で停止する。`--fixture-global` は決定性と契約を検査するためだけにあり、`dataKind: synthetic_fixture` を付けて本番データと分離する。したがって、現在のコードでは全世界 bundle を生成できない。
+3. micromambaで `tools/earth-surface/environment.yml` を構築し、`osgeo`、`netCDF4`、`pyshp` (`shapefile`)、`gdalinfo`、`ogrinfo`は利用可能になった。ERA5取得用`cdsapi`も環境へ追加したが、CDSの認証情報と利用規約同意が無いためlocal exportはまだ生成できない。
 
-以上により、実データ fetch、staging、全タイル bake、package、Pages staging は実行していない。fixtureは39件のPython契約テストとPages fixture検査に使ったが、本番bundleとして扱っていない。Pages側にも1 GB（1,000,000,000 bytes）の容量とz0〜z7全43690タイルのcoverage gateを追加し、超過や部分bundleを公開しない。
+ETOPO geoidの実GeoTIFFにはNoDataタグが無かったため、`sources.json`のgeoid契約を`noData: null`へ修正した。surface elevation側の`-99999`契約は維持している。
+
+以上により、代表ソースのfetchとfixture bakeは実行したが、ERA5不在と合成未接続のため全タイル bake、package、Pages preview stagingは実行していない。fixtureはPython契約テストとPages fixture検査に使ったが、本番bundleとして扱っていない。Pages側にも1 GB（1,000,000,000 bytes）の容量とz0〜z7全43690タイルのcoverage gateを追加し、超過や部分bundleをプレビュー公開しない。
 
 ## 再開条件
 
-ERA5 の契約を満たす NetCDF export を `.earth-surface/raw/era5-monthly-1991-2020/global.nc`（または manifest の `inputFiles` に明示した場所）へ配置し、`tools/earth-surface/validate-source.py` で時間軸・変数・単位・座標順を検査してから、入力ファイルの SHA-256 とサイズを `sources.json` に固定する必要がある。加えて、`conda env create -f tools/earth-surface/environment.yml` などでGDAL/osgeo、netCDF4、pyshp、Pillowを同一環境へ導入し、`RealDataRenderer`の実ソースwindow合成と気候map生成を接続する必要がある。その後にだけ `fetch-source.py`、`bake.py --global`、manifest/tile-index/hash 検証、package、Pages staging を再開する。
+ERA5 の契約を満たす NetCDF export を `.earth-surface/raw-v3/era5-monthly-1991-2020/global.nc`（または manifest の `inputFiles` に明示した場所）へ配置し、`tools/earth-surface/validate-source.py` で時間軸・変数・単位・座標順を検査してから、入力ファイルの SHA-256 とサイズを `sources.json` に固定する必要がある。`tools/earth-surface/request-era5.py`はCDS API認証後の取得に使える。加えて、source pyramidまたは同等のストリーミング再格子化、GSHHG空間インデックス、BMNG線形RGB合成を実装し、`RealDataRenderer`の実ソースwindow合成と気候map生成を接続する必要がある。その後にだけ `bake.py --global`、manifest/tile-index/hash検証、ローカルpackage、`npm run build && npm run earth-surface:dev-stage && npm run dev`を再開する。

@@ -390,16 +390,13 @@ class RealDataRenderer:
             more = "" if len(missing_paths) <= 8 else f" (+{len(missing_paths) - 8}件)"
             raise RendererUnavailable(f"実データrendererの入力が不足しています: {preview}{more}")
         self.adapter = RealSourceAdapter(manifest, raw_root)
+        self.renderer = ArrayRenderer(manifest, self.adapter)
 
-    def render_tile(self, _key):
-        raise RendererUnavailable(
-            "実データrendererのBMNG/ETOPO/GSHHG window合成は未接続です。"
-            "fixtureを実データとして扱わず、線形RGB・標高datum・面積被覆の合成を実装してください")
+    def render_tile(self, key):
+        return self.renderer.render_tile(key)
 
     def climate_maps(self):
-        raise RendererUnavailable(
-            "実データrendererのERA5月別window再格子化は未接続です。"
-            "fixtureを実データとして扱わず、1991-2020全UTC時刻の平均を実装してください")
+        return self.renderer.climate_maps()
 
 
 def create_fixture_renderer(manifest, fixture_path):
