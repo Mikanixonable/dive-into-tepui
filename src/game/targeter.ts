@@ -11,7 +11,8 @@ import type { EntityRoster } from './dynamic/entity-roster';
 import { Player } from './player/player';
 import { isCombatTarget, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import { Input } from '../input/input';
-import { CameraSystem } from './camera/camera-system';
+import type { CameraFrame } from '../render/camera/camera-frame';
+import type { Viewport } from '../render/viewport';
 import { withTargetRole, type GroupedMarkerItem } from './marker/grouped-markers';
 import type { ActiveCelestialLabel } from './marker/celestial-markers';
 import { MARKER_PRIORITY } from './marker/crowding';
@@ -65,13 +66,13 @@ export class Targeter {
   }
 
   // Tキーで、照準中心にもっとも近い対象をターゲットにする。操作中の艦自身は候補から外す。
-  handleTargetSelectKey(input: Input, viewer: OrbitingObject, project: ProjectFn): void {
+  handleTargetSelectKey(input: Input, viewer: OrbitingObject, project: ProjectFn, viewport: Viewport): void {
     if (!input.takeKey(K.targetSelect)) return;
     const targets = this.roster.all()
       .filter(isCombatTarget).filter((e) => e.motion.alive && e !== viewer);
     this.navTarget.setCombatTarget(pickNearest(
       targets, (target) => project(target.motion.state.r),
-      window.innerWidth * 0.5, window.innerHeight * 0.5, Infinity));
+      viewport.width * 0.5, viewport.height * 0.5, Infinity));
   }
 
   // 発射弾が標的面を自機側から通過した点をターゲット相対で記録し、既存の記録の寿命を進める。
@@ -109,19 +110,19 @@ export class Targeter {
   // まとめて更新する。celestialLabels は今フレームに描かれた天体ラベルで、マップでの重なりを
   // 避けるために読む。
   sync(
-    viewer: OrbitingObject | null, cameraSystem: CameraSystem, displayTime: number, simTime: number,
+    viewer: OrbitingObject | null, camera: CameraFrame, displayTime: number, simTime: number,
     visibilityPolicy: MapVisibilityPolicy | null, celestialLabels: readonly ActiveCelestialLabel[],
   ): void {
-    const project = cameraSystem.activeCameraProjection;
+    const project = camera.project;
     this.syncBoardMarkers(project);
-    this.syncTargetDirMarkers(viewer, cameraSystem.view === 'map', project);
-    this.syncTargetMarkers(viewer, displayTime, simTime, cameraSystem, visibilityPolicy, celestialLabels);
+    this.syncTargetDirMarkers(viewer, camera.mode === 'map', project);
+    this.syncTargetMarkers(viewer, displayTime, simTime, camera, visibilityPolicy, celestialLabels);
   }
 
   // 全戦闘対象のマーカー集合(ターゲットの役割を含む)と LEAD マーカーを同期する。位置は
   // 機体メッシュと同じ stateAt — 揃えないと「機体は未来位置、マーカーは現在位置」に割れる。
   private syncTargetMarkers(
-    viewer: OrbitingObject | null, displayTime: number, simTime: number, cameraSystem: CameraSystem,
+    viewer: OrbitingObject | null, displayTime: number, simTime: number, camera: CameraFrame,
     visibilityPolicy: MapVisibilityPolicy | null, celestialLabels: readonly ActiveCelestialLabel[],
   ): void {
     // マーカーは操作対象自身も他の船と同列に扱う。自分自身を候補から外すのは、ターゲット選定
@@ -129,10 +130,10 @@ export class Targeter {
     const targets = this.roster.all().filter(isCombatTarget);
     const ammoPickups = this.roster.all().filter(isAmmoPickup);
     const fuelPickups = this.roster.all().filter(isRcsFuelPickup);
-    const view = cameraSystem.view;
+    const view = camera.mode;
     const mapView = view === 'map';
-    const project = cameraSystem.activeCameraProjection;
-    const screenScale = cameraSystem.activeCameraScale;
+    const project = camera.project;
+    const screenScale = camera.scale;
     const viewerPos = viewer?.motion.state.r ?? v3();
     this.aliveScratch.length = 0;
     this.markerItemScratch.length = 0;
@@ -146,7 +147,7 @@ export class Targeter {
       // 戦闘ビューのカメラ直下にいる操作艦は、マーカーを重ねると視界を潰す。
       if (!mapView && tgt === viewer) continue;
       const item = tgt.markerItem(viewerPos, ds.r, ds.v, view, tgt === viewer);
-      const mapOccluded = mapView && isOccluded(cameraSystem.activeCameraPos, ds.r, this.celestialBodies, displayTime);
+      const mapOccluded = mapView && isOccluded(camera.position, ds.r, this.celestialBodies, displayTime);
       const mapOpacity = mapOccluded
         ? 0
         : tgt instanceof Enemy && mapView
@@ -161,14 +162,14 @@ export class Targeter {
     for (const tgt of targets) {
       if (!(tgt instanceof ProteinEnemy)) continue;
       const ds = tgt.motion.alive ? tgt.motion.stateAt(displayTime) : null;
-      this.syncProteinSiteMarkers(tgt, ds?.r ?? null, viewerPos, mapView, project, cameraSystem.activeCameraPos);
+      this.syncProteinSiteMarkers(tgt, ds?.r ?? null, viewerPos, mapView, project, camera.position);
     }
     for (const ammo of ammoPickups) {
       if (!ammo.motion.alive) continue;
       const visibility = visibilityPolicy?.entity('ammo');
       if (visibility && !visibility.pickable) continue;
       const mapOccluded = mapView && isOccluded(
-        cameraSystem.activeCameraPos, ammo.motion.state.r, this.celestialBodies, displayTime,
+        camera.position, ammo.motion.state.r, this.celestialBodies, displayTime,
       );
       const mapOpacity = mapOccluded
         ? 0
@@ -180,7 +181,7 @@ export class Targeter {
       const visibility = visibilityPolicy?.entity('fuel');
       if (visibility && !visibility.pickable) continue;
       const mapOccluded = mapView && isOccluded(
-        cameraSystem.activeCameraPos, fuel.motion.state.r, this.celestialBodies, displayTime,
+        camera.position, fuel.motion.state.r, this.celestialBodies, displayTime,
       );
       const mapOpacity = mapOccluded
         ? 0
@@ -189,7 +190,7 @@ export class Targeter {
     }
     this.markerManager.combatMarkers.sync(
       this.markerItemScratch, project, view, screenScale, celestialLabels, this.celestialBodies,
-      cameraSystem.activeCameraPos,
+      camera.position,
     );
     // 見越し点は弾速から解くので、砲を積んでいる艦を操作している間だけ出る。
     if (viewer instanceof Player) {

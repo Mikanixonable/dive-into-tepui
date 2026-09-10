@@ -7,7 +7,7 @@
 // 投影手順(project → set)を一元化したもの。headingRotationDeg は進行方向(ECI 速度)を
 // 向くグリフの回転角を求める。
 import { Vec3, addScaled, len, norm, sub } from '../../math/vec3';
-import type { View } from '../view/view';
+import type { ViewMode } from '../../render/view-mode';
 import { Projected, type ProjectFn, type ScaleFn } from '../../math/projection';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
@@ -343,7 +343,7 @@ export class MarkerManager implements MarkerSlots {
 
   // 全マーカーの優先度に基づくアイコン/ラベル間引きと、残ったラベルどうしの衝突緩和。
   // マップビューでのみ優先度間引きを行う。戦闘ビューでは照準や敵アイコン等を隠さない。
-  resolveCollisions(view: View): void {
+  resolveCollisions(view: ViewMode): void {
     const activeRecords = this.collectActiveMarkerRecords();
     const hidden = this.declutter.compute(activeRecords, view === 'map');
     // 間引きの結果を CSS へ渡し、次フレームのヒステリシスが読む直前の状態として書き戻す。

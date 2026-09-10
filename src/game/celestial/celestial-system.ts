@@ -14,7 +14,7 @@ import { norm, sub, v3, Vec3 } from '../../math/vec3';
 import { CELESTIAL_SHELL_SCALE, createStars, Stars } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility, DEFAULT_GRID_VISIBILITY } from '../../render/celestial-grid';
 import type { CameraSystem } from '../camera/camera-system';
-import type { FloatingOrigin } from '../camera/floating-origin';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import { ScaleGridView } from './scale-grid-view';
 import { CelestialIllumination, type IlluminationTargets } from './celestial-illumination';
 import { RingMaterials } from '../../render/celestial/ring';
@@ -357,8 +357,8 @@ export class CelestialSystem implements CelestialBodies {
   // visibilityPolicy はマップビューでは非 null、戦闘ビューでは null。描かれる対象と選べる対象が
   // 同じ判定から出るよう、同じフレームの update 位相で確定させたものを渡す。
   sync(
-    floatingOrigin: FloatingOrigin,
     displayTime: number,
+    camera: CameraFrame,
     cameraSystem: CameraSystem,
     graphics: GraphicsSettingsData,
     style: RenderStyle,
@@ -366,21 +366,21 @@ export class CelestialSystem implements CelestialBodies {
     visibilityPolicy: MapVisibilityPolicy | null,
     markers: MarkerSlots,
   ): void {
+    const floatingOrigin = camera.floatingOrigin;
     const star = this.stellarLightSource;
     for (const body of this.entities) {
       const visible = visibilityPolicy === null || visibilityPolicy.body(body.id).category;
       body.view.sync(
-        body.motion, floatingOrigin, displayTime, cameraSystem, star, graphics, style, visible,
+        body.motion, displayTime, camera, star, graphics, style, visible,
       );
     }
-    this.illumination.sync(
-      floatingOrigin, displayTime, cameraSystem, graphics, visibilityPolicy);
+    this.illumination.sync(displayTime, camera, cameraSystem, graphics, visibilityPolicy);
 
     // 露出に順応しない星殻と点群は、露出の基準が確定した後の係数を受け取る。
     const fixedBrightnessScale = this.illumination.fixedBrightnessScale;
     const starPos = star === null ? null : star.motion.stateAt(displayTime).r;
     const pointField = this.pointFieldView;
-    const pointFieldVisible = cameraSystem.view === 'map' && graphics.pointField
+    const pointFieldVisible = camera.mode === 'map' && graphics.pointField
       && mapDisplay.smallBodyVisible;
     if (pointField !== null && pointFieldVisible && starPos !== null) {
       this.buildPointField(pointField);
@@ -390,23 +390,19 @@ export class CelestialSystem implements CelestialBodies {
     }
     this.syncStars(fixedBrightnessScale, this.gridVisibility.stars);
     const geostationaryOrbitVisible = this.orbitGuideSettings.geostationary;
-    this.syncReferenceLines(
-      displayTime, floatingOrigin, visibilityPolicy,
-      cameraSystem.activeCamera, cameraSystem.activeCameraPos);
+    this.syncReferenceLines(displayTime, camera, visibilityPolicy);
     // 地球の静止軌道リングなど、天体固有のマップ付随表示。
     for (const body of this.entities) {
       const categoryVisible = visibilityPolicy === null
         || visibilityPolicy.body(body.id).category;
       body.view.syncMapOverlay(
-        body.motion, floatingOrigin, displayTime, cameraSystem, markers, this.celestialMotions,
-        cameraSystem.view === 'map' && geostationaryOrbitVisible && categoryVisible);
+        body.motion, displayTime, camera, markers, this.celestialMotions,
+        camera.mode === 'map' && geostationaryOrbitVisible && categoryVisible);
     }
-    this.orbitGuideLines.sync(style, displayTime, cameraSystem.view, floatingOrigin, cameraSystem.activeCamera);
-    this.zeroVelocityLines.sync(displayTime, cameraSystem.view, floatingOrigin, cameraSystem.activeCamera);
-    this.celestialGrid.sync(
-      style, this.gridVisibility, cameraSystem.activeCamera,
-      CELESTIAL_SHELL_SCALE);
-    this.scaleGrid.sync(floatingOrigin, displayTime, cameraSystem, this, this.gridVisibility);
+    this.orbitGuideLines.sync(style, displayTime, camera);
+    this.zeroVelocityLines.sync(displayTime, camera);
+    this.celestialGrid.sync(style, this.gridVisibility, camera.camera, CELESTIAL_SHELL_SCALE, camera.viewport);
+    this.scaleGrid.sync(displayTime, camera, cameraSystem, this, this.gridVisibility);
   }
 
   // このフレームに積雲殻を描く天体の雲場を焼く。
@@ -425,16 +421,13 @@ export class CelestialSystem implements CelestialBodies {
   // 参照軌道線を出すかを表示ポリシーから決め、毎フレームの enabled 値として個体へ渡す。
   // cameraPos は個体がフェードを測る基準(カメラの真の ECI 位置)。
   private syncReferenceLines(
-    simTime: number, fo: FloatingOrigin, visibilityPolicy: MapVisibilityPolicy | null,
-    camera: THREE.Camera, cameraPos: Vec3,
+    simTime: number, camera: CameraFrame, visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     for (const body of this.entities) {
       const visible = visibilityPolicy !== null
         && body.motion.kind !== 'star'
         && visibilityPolicy.body(body.id).orbit;
-      body.view.syncReferenceLine(
-        body.motion, this.scene, simTime, fo, camera, cameraPos, visible,
-      );
+      body.view.syncReferenceLine(body.motion, this.scene, simTime, camera, visible);
     }
   }
 

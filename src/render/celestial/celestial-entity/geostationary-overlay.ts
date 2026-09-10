@@ -5,8 +5,7 @@ import { OrbitalElements, orbitalElementsFromClassical } from '../../../physics/
 import { isOccluded } from '../../../physics/occlusion';
 import { add, len, scale, sub, type Vec3 } from '../../../math/vec3';
 import { LINE_RENDER_ORDER } from '../../line-style';
-import { CameraSystem } from '../../../game/camera/camera-system';
-import { FloatingOrigin } from '../../../game/camera/floating-origin';
+import type { CameraFrame } from '../../camera/camera-frame';
 import { EllipseLine } from '../../../game/lines/ellipse-line';
 import type { MarkerSlots } from '../../../game/marker/marker-slots';
 import { MARKER_PRIORITY } from '../../../game/marker/crowding';
@@ -66,23 +65,23 @@ export class GeostationaryOverlay {
   // リングとラベルをこのフレームの表示状態へ同期する。visible は所有者の判断
   // (マップ視点 かつ 同期軌道トグル ON)。
   sync(
-    center: CelestialBody, pivot: number, fo: FloatingOrigin, cameraSystem: CameraSystem,
+    center: CelestialBody, pivot: number, camera: CameraFrame,
     markers: MarkerSlots, celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
     // 幾何と距離フェードは可視性に関係なく同じフレーム値から求める。
     const centerPos = center.positionAt(pivot);
     const elements = this.elementsAround(center, pivot);
-    const dist = len(sub(centerPos, cameraSystem.activeCameraPos));
+    const dist = len(sub(centerPos, camera.position));
     const fade = 1.0 - Math.min(1, Math.max(0, (dist - FADE_NEAR_DIST) / FADE_SPAN));
     // リングとラベルへ同じ visible を渡し、片方だけが焼き付く経路を作らない。
     if (visible) {
-      this.line.sync(elements, fo, cameraSystem.activeCamera);
+      this.line.sync(elements, camera);
       this.line.setOpacity(RING_OPACITY * fade);
     } else {
       this.line.hide();
     }
     this.syncLabel(
-      elements, centerPos, pivot, fade, cameraSystem, markers, celestialBodies, visible);
+      elements, centerPos, pivot, fade, camera, markers, celestialBodies, visible);
   }
 
   // リングを親から外して解放する。
@@ -100,7 +99,7 @@ export class GeostationaryOverlay {
   // 軌道上の1点へ、高度を書いた半透明の小さな文字ラベルを置く。
   private syncLabel(
     elements: OrbitalElements, centerPos: Vec3, pivot: number, fade: number,
-    cameraSystem: CameraSystem, markers: MarkerSlots,
+    camera: CameraFrame, markers: MarkerSlots,
     celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
     // 消えるほど薄いラベルは、射影も遮蔽判定もせずに畳む。
@@ -112,8 +111,8 @@ export class GeostationaryOverlay {
     const r = this.semiMajorAxis;
     const pos = add(centerPos, add(
       scale(elements.pHat, r * Math.cos(LABEL_ANOMALY)), scale(elements.qHat, r * Math.sin(LABEL_ANOMALY))));
-    const cameraPos = cameraSystem.activeCameraPos;
-    const p = cameraSystem.activeCameraProjection(pos);
+    const cameraPos = camera.position;
+    const p = camera.project(pos);
     if (!p.front || isOccluded(cameraPos, pos, celestialBodies, pivot)) {
       markers.hide(MARKER_KEY);
       return;

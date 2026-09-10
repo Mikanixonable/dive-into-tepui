@@ -6,6 +6,7 @@ import './hackgen-400.css';
 // 低軌道シューティング: エントリポイント。WebGPU シーン初期化・ステージ選択・
 // rAF ループ(Game.update → sync → render の駆動)を統括する。
 import { createGameScene, GameScene } from './render/scene';
+import { browserViewport } from './render/viewport';
 import { DebugInfoWindow } from './launcher/debug-info-window';
 import { FrameSections } from './game/frame-sections';
 import { UserSettings } from './settings/user-settings';
@@ -40,7 +41,7 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
   const canvas = document.createElement('canvas');
   document.body.appendChild(canvas);
 
-  const gs = await createGameScene(canvas, graphics);
+  const gs = await createGameScene(canvas, graphics, browserViewport());
   hideLoading();
   return gs;
 }
@@ -60,6 +61,10 @@ function startAnimationLoop(
   function animate(now: number) {
     const dt = (now - lastTime) / 1000;
     lastTime = now;
+    // 描画先の寸法はフレームの先頭で1度だけ読む。投影・尺度・ポインタ座標が同じ矩形を見ないと、
+    // リサイズしたフレームで画面上の当たり判定がずれる。
+    const viewport = browserViewport();
+    gs.syncViewport(viewport);
     const game = launcher.current;
     if (game === null) {
       requestAnimationFrame(animate);
@@ -68,7 +73,7 @@ function startAnimationLoop(
     const t0 = debugInfo.on ? performance.now() : 0;
     try {
       sections.beginFrame();
-      game.update(dt);
+      game.update(dt, viewport);
       sections.endFrame();
       // Game が消費した入力エッジは、この時点で取り除かれている。
       snapshotControls.handleInput(game.input, game);
@@ -81,7 +86,7 @@ function startAnimationLoop(
       debugInfo.handleInput(game.input);
       autoSave.update(game);
       const t1 = debugInfo.on ? performance.now() : 0;
-      game.sync(graphics.current, renderStyle.current);
+      game.sync(graphics.current, renderStyle.current, viewport);
       const t2 = debugInfo.on ? performance.now() : 0;
       game.render(renderStyle.current);
       const t3 = debugInfo.on ? performance.now() : 0;

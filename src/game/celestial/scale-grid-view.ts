@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { ScaleGrid } from '../../render/scale-grid';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { CameraSystem } from '../camera/camera-system';
-import { FloatingOrigin } from '../camera/floating-origin';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { CelestialBodies } from './celestial-bodies';
 import type { Vec3 } from '../../math/vec3';
 import type { ScaleGridVisibility } from '../../render/scale-grid';
@@ -27,10 +27,10 @@ export class ScaleGridView {
   // だけ表示するので、戦闘ビューではトグルに関わらず4面とも隠す。月が星系に無いか自転軸が
   // 得られないなら、その面の向きは決められないので null を渡す。
   sync(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, celestialBodies: CelestialBodies,
+    displayTime: number, camera: CameraFrame, cameraSystem: CameraSystem, celestialBodies: CelestialBodies,
     gridVisibility: CelestialGridVisibility,
   ): void {
-    const mapView = cameraSystem.view === 'map';
+    const mapView = camera.mode === 'map';
     const visibility: ScaleGridVisibility = {
       ecliptic: mapView && gridVisibility.eclipticScaleGrid,
       equator: mapView && gridVisibility.equatorScaleGrid,
@@ -43,9 +43,10 @@ export class ScaleGridView {
       visibility,
       moon instanceof OrbitingMotion ? toThreeDirection(moon.orbitNormalAt(displayTime)) : null,
       moonPole === null ? null : toThreeDirection(moonPole.axis),
-      fo.RtoThreeV3(cameraSystem.mapCamera.resolvedFocus),
-      cameraSystem.activeCamera,
+      camera.floatingOrigin.RtoThreeV3(cameraSystem.mapCamera.resolvedFocus),
+      camera.camera,
       cameraSystem.mapCamera.dist,
+      camera.viewport,
     );
   }
 

@@ -9,8 +9,8 @@ import { disposeOwnedRenderResources } from '../dispose-owned-render-resources';
 import type { EntityVisualSettings } from '../entity-visual-settings';
 import type { LineStyle } from '../line-style';
 import type { RenderStyle } from '../render-style';
-import type { CameraSystem } from '../../game/camera/camera-system';
-import type { FloatingOrigin } from '../../game/camera/floating-origin';
+import type { CameraFrame } from '../camera/camera-frame';
+import type { FloatingOrigin } from '../camera/floating-origin';
 import type { CelestialBodies } from '../../game/celestial/celestial-bodies';
 import { EllipseLine } from '../../game/lines/ellipse-line';
 import { TargetRelativeLine } from '../../game/lines/target-relative-line';
@@ -35,7 +35,7 @@ export interface DynamicViewFrame {
   readonly activeId: string | null;
   readonly visibilityPolicy: MapVisibilityPolicy | null;
   readonly pools: InstancedPools;
-  readonly cameraSystem: CameraSystem;
+  readonly camera: CameraFrame;
   readonly style: RenderStyle;
   readonly visual: EntityVisualSettings;
   readonly orbitReference: OrbitReference | undefined;
@@ -122,7 +122,7 @@ export class DynamicView {
   private syncOrbitLine(
     display: DynamicLineDisplay['orbit'],
     motion: DynamicMotion, displayTime: number, celestialBodies: CelestialBodies,
-    floatingOrigin: FloatingOrigin, camera: THREE.Camera, anchors: FrameAnchorSource,
+    camera: CameraFrame, anchors: FrameAnchorSource,
   ): void {
     // 表現種別が変わったときだけ資源を作り直し、同種ならスタイルだけを更新する。
     if (display === null) {
@@ -153,14 +153,14 @@ export class DynamicView {
     // 相対線と解析楕円では形状の基準が異なるので、宣言の判別子で経路を分ける。
     if (display.kind === 'relative' && orbitLine.kind === 'relative') {
       const target = display.target.stateAt(displayTime, celestialBodies)?.r ?? display.target.state.r;
-      orbitLine.line.sync(state.r, target, floatingOrigin, camera);
+      orbitLine.line.sync(state.r, target, camera);
       return;
     }
     if (display.kind !== 'ellipse' || orbitLine.kind !== 'ellipse') return;
     const center = display.center ?? strongestAttractor(state.r, anchors.bodies, anchors.bodiesPivot);
     const elements = orbitalElementsOf(state, center, anchors.bodiesPivot);
     if (elements === null) orbitLine.line.hide();
-    else orbitLine.line.sync(elements, floatingOrigin, camera);
+    else orbitLine.line.sync(elements, camera);
   }
 
   // null を非表示宣言として扱い、予測・過去軌跡の資源を必要なときだけ保持する。
@@ -189,7 +189,7 @@ export class DynamicView {
     display: DynamicLineDisplay,
     motion: DynamicMotion, frame: ReferenceFrame, simTime: number, displayTime: number,
     pastDuration: number, predictedTo: number | null, celestialBodies: CelestialBodies,
-    floatingOrigin: FloatingOrigin, camera: THREE.Camera, anchors: FrameAnchorSource,
+    camera: CameraFrame, anchors: FrameAnchorSource,
   ): void {
     // 先に宣言どおりの資源集合へ揃えてから、存在する線だけへ形状を焼く。
     this.predictedLineValue = this.syncTrajectoryLine(this.predictedLineValue, display.predicted);
@@ -197,18 +197,18 @@ export class DynamicView {
     if (this.predictedLineValue !== null) {
       this.predictedLineValue.syncGeometry(
         motion.predicted, simTime, predictedTo, frame, celestialBodies, anchors);
-      this.predictedLineValue.syncTransform(frame, displayTime, celestialBodies, floatingOrigin, anchors);
+      this.predictedLineValue.syncTransform(frame, displayTime, celestialBodies, camera.floatingOrigin, anchors);
       this.predictedLineValue.sync(camera);
     }
     // 過去線は表示窓の過去側、予測線は現在から予測終端までを同じ参照系で同期する。
     if (this.actualLineValue !== null) {
       this.actualLineValue.syncGeometry(
         motion.actual, simTime - pastDuration, simTime, frame, celestialBodies, anchors);
-      this.actualLineValue.syncTransform(frame, displayTime, celestialBodies, floatingOrigin, anchors);
+      this.actualLineValue.syncTransform(frame, displayTime, celestialBodies, camera.floatingOrigin, anchors);
       this.actualLineValue.sync(camera);
     }
     this.syncOrbitLine(
-      display.orbit, motion, displayTime, celestialBodies, floatingOrigin, camera, anchors,
+      display.orbit, motion, displayTime, celestialBodies, camera, anchors,
     );
   }
 
