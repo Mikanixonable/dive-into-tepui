@@ -77,7 +77,7 @@ export const MAP_PANEL_STYLE = `
 #hud-predict.collapsed { display: none !important; }
 #hud-predict-toggle {
   display: none; order: 1; align-self: center; pointer-events: auto; cursor: pointer;
-  width: 26px; height: 26px; border: 0; border-radius: var(--radius-m);
+  width: 26px; height: 26px; border: 0; border-radius: 50%;
   background: var(--surface); color: var(--color-primary);
 }
 #hud .hud-map-root.active #hud-predict-toggle { display: block; }
@@ -88,7 +88,7 @@ export const MAP_PANEL_STYLE = `
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-predict span.predict-reset {
   flex: 0 0 auto; padding: 0;
-  width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 50%;
   font-size: var(--font-m);
 }
 #hud-predict span.predict-reset:hover { color: var(--color-primary); }

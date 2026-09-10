@@ -84,7 +84,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud .panel-shell-head h3 { flex: 1 1 auto; min-width: 0; cursor: pointer; }
 #hud .panel-shell-collapse {
   flex: 0 0 auto; width: 24px; height: 24px; background: transparent; border: 0;
-  border-radius: var(--radius-micro); color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
+  border-radius: 50%; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
 }
 #hud .panel-shell-collapse:hover { color: var(--color-primary-hover); background: var(--surface-2); }
 #hud .panel-shell-collapse:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }

@@ -47,7 +47,7 @@ export const COMBAT_VIEW_STYLE = `
   width: 26px;
   height: 26px;
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: 50%;
   background: transparent;
   color: var(--text-dim);
   line-height: 1;
