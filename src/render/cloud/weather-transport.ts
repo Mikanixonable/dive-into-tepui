@@ -15,8 +15,9 @@ import type { BalancedWind } from './wind-law';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 
 // 地表付近は湿度と対流の2枚で周波数を分担する。湿度の基準の段(800 km)が雲塊の配置を、
-// 中間の段(400〜100 km)が雲塊を100〜300 kmの塊へ割る境目を、対流(48 kmと24 km)が雲群の
-// 活動と列の包絡を決める。積雲セルの4〜12 km級のサイズ分散は雲場の表面形状側で加える。
+// 中間の段(400〜100 km)が雲塊を100〜300 kmの塊へ割る境目を、対流(48 kmと24 km)が積雲の
+// 粒の細かさを決める。薄い雲は地表付近の雲塊と同じ規模まで濃淡を下ろし、細かい段は雲塊を
+// 割る厚い雲へ譲る。
 const SURFACE_HUMIDITY_NOISE: readonly NoiseOctave[] = [
   { frequency: 2, amplitude: 0.4 }, // 3200 km
   { frequency: 8, amplitude: 0.8 }, // 800 km
