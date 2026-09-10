@@ -1,4 +1,4 @@
-// 描画の品質設定。値の正本と localStorage への永続を持つ。
+// 描画の品質設定。切り替えられる項目の表と、その値の扱い(型・品質プリセット・保存文字列との変換)。
 //
 // **項目を1つ足すときに書き足すのは GRAPHICS_OPTIONS の記述1つだけ。** 設定値の型・品質プリセット
 // 3面・保存値の検証・設定パネルの並びは、すべてこの表から導く。
@@ -10,9 +10,6 @@
 import { ATMOSPHERE_QUALITY } from './atmosphere';
 import { CUMULUS_DETAIL } from './celestial/cumulus-shell';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
-
-// ゲーム本体の設定の保存先(localStorage の鍵)。
-export const GRAPHICS_STORAGE_KEY = 'tepui.settings.graphics';
 
 export type QualityPreset = 'low' | 'medium' | 'high';
 
@@ -235,7 +232,8 @@ export const QUALITY_PRESETS: Readonly<Record<QualityPreset, GraphicsSettingsDat
   high: presetData('high'),
 };
 
-const DEFAULTS: GraphicsSettingsData = QUALITY_PRESETS.high;
+// 保存が無いときの設定値一式。
+export const DEFAULT_GRAPHICS: GraphicsSettingsData = QUALITY_PRESETS.high;
 
 // 表の外から来た値を受け入れるか決める。真偽の項目は型だけ、選択肢の項目は現在の候補に
 // 含まれるかまで見て、外れていれば fallback を返す。
@@ -246,76 +244,34 @@ function acceptValue(
   return option.items.some(([candidate]) => candidate === value) ? value as ChoiceValue : fallback;
 }
 
-// 保存値は利用者がいつ書いたか分からないので、既知の項目だけを既定の上へ重ねる。
-function loadStored(storageKey: string): GraphicsSettingsData {
+// 保存された文字列を設定値一式へ読み直す。保存値は利用者がいつ書いたか分からないので、
+// 既知の項目だけを既定の上へ重ねる。
+export function parseGraphics(text: string | null): GraphicsSettingsData {
   try {
-    const raw = localStorage.getItem(storageKey);
-    if (raw === null) return DEFAULTS;
-    const saved = JSON.parse(raw) as Record<string, unknown>;
+    if (text === null) return DEFAULT_GRAPHICS;
+    const saved = JSON.parse(text) as Record<string, unknown>;
     // 表に無いキーは読まず、表にあって保存に無いキーは既定で埋まる。
     const entries = optionKeys().map(
-      (key) => [key, acceptValue(GRAPHICS_OPTIONS[key], saved[key], DEFAULTS[key])] as const,
+      (key) => [key, acceptValue(GRAPHICS_OPTIONS[key], saved[key], DEFAULT_GRAPHICS[key])] as const,
     );
     return Object.fromEntries(entries) as GraphicsSettingsData;
   } catch {
-    return DEFAULTS;
+    return DEFAULT_GRAPHICS;
   }
 }
 
-// 設定値の押し出し先。**値が変わった瞬間に何かを作り直す必要がある項目**(描画解像度、GPU
-// 資源の確保を伴う項目)はここで受け取る。毎フレームの分岐で足りる項目は current を読む。
-export interface GraphicsTarget {
-  applyGraphics(graphics: GraphicsSettingsData): void;
+// 設定値一式を保存へ載せる文字列にする。
+export function formatGraphics(data: GraphicsSettingsData): string {
+  return JSON.stringify(data);
 }
 
-export class GraphicsSettings {
-  private data: GraphicsSettingsData;
-  private readonly targets: GraphicsTarget[] = [];
-
-  // storageKey は設定を残すブラウザ側の鍵。null を渡すと読みも書きもせず、毎回既定から始まって
-  // このセッションの中だけで生きる。
-  public constructor(private readonly storageKey: string | null = GRAPHICS_STORAGE_KEY) {
-    this.data = storageKey === null ? DEFAULTS : loadStored(storageKey);
+// 与えた値一式と全項目が一致するプリセット。どれとも一致しなければ null。
+export function matchingGraphicsPreset(data: GraphicsSettingsData): QualityPreset | null {
+  const keys = optionKeys();
+  for (const [name, preset] of Object.entries(QUALITY_PRESETS)) {
+    if (keys.every((key) => preset[key] === data[key])) return name as QualityPreset;
   }
-
-  public get current(): GraphicsSettingsData { return this.data; }
-
-  // 押し出し先を登録し、現在値を一度反映する。
-  public bind(target: GraphicsTarget): void {
-    this.targets.push(target);
-    target.applyGraphics(this.data);
-  }
-
-  // 項目1つを差し替える。
-  public setOption(key: GraphicsOptionKey, value: boolean | ChoiceValue): void {
-    this.apply(withGraphicsOption(this.data, key, value));
-  }
-
-  // プリセットの各項目へ丸ごと揃える。
-  public applyPreset(preset: QualityPreset): void {
-    this.apply(QUALITY_PRESETS[preset]);
-  }
-
-  // 新しい値一式を正本にし、押し出しと保存まで行う。
-  private apply(data: GraphicsSettingsData): void {
-    this.data = data;
-    for (const target of this.targets) target.applyGraphics(data);
-    if (this.storageKey === null) return;
-    try {
-      localStorage.setItem(this.storageKey, JSON.stringify(this.data));
-    } catch {
-      // 保存できなくてもこのセッションの設定は生きている。
-    }
-  }
-
-  // 現在値と全項目が一致するプリセット。どれとも一致しなければ null。
-  public matchingPreset(): QualityPreset | null {
-    const keys = optionKeys();
-    for (const [name, preset] of Object.entries(QUALITY_PRESETS)) {
-      if (keys.every((key) => preset[key] === this.data[key])) return name as QualityPreset;
-    }
-    return null;
-  }
+  return null;
 }
 
 // 項目1つを差し替えた値一式を返す。**操作する UI は項目名を実行時に持つ**ので、キーと値の

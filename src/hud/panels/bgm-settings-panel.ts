@@ -12,22 +12,26 @@ function formatSeekTime(sec: number): string {
 }
 
 // 設定ビューの「BGM」タブ。ゲーム中BGMの音量調整と、曲の試聴(選曲・再生位置のシーク・停止)を
-// 扱う。試聴の音声経路そのものは Bgm が持ち、このパネルはボタン・スライダーの表示状態だけを持つ。
+// 扱う。音量はスライダーの操作を onVolumeChange で外へ返し、試聴の音声経路は Bgm が持つ。
 export class BgmSettingsPanel {
   public readonly element: HTMLElement;
 
-  private readonly bgm: Bgm;
+  // 音量スライダーが動いたときに呼ばれる。
+  public onVolumeChange: ((volume: number) => void) | null = null;
+
   private activeTrack: number | null = null;
   private readonly stopButton: Button;
   private readonly trackButtons: Button[] = [];
+  private readonly volumeSlider: Slider;
+  private readonly volumeValue: HTMLSpanElement;
   private readonly seekSlider: Slider;
   private readonly seekTimeLabel: HTMLSpanElement;
   private seeking = false;
   private seekRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
-  // 音量・再生位置・曲一覧・停止ボタンの4ブロックを縦に並べる。
-  public constructor(bgm: Bgm) {
-    this.bgm = bgm;
+  // 音量・再生位置・曲一覧・停止ボタンの4ブロックを縦に並べる。bgm は試聴の音声経路、
+  // volume は組み立て時のユーザー音量。
+  public constructor(private readonly bgm: Bgm, volume: number) {
     this.element = document.createElement('div');
 
     // 音量: ゲーム中BGMそのものの音量。試聴の音量もこれに従う。
@@ -37,20 +41,15 @@ export class BgmSettingsPanel {
     volumeLabel.className = 'sv-label';
     volumeLabel.textContent = '音量';
     volumeRow.appendChild(volumeLabel);
-    const volumeValue = document.createElement('span');
-    volumeValue.className = 'sv-volume-value';
-    // 音量表示を百分率にする。
-    const updateVolumeValue = (value: number): void => {
-      volumeValue.textContent = `${Math.round(value * 100)}%`;
-    };
-    const volumeSlider = new Slider({ min: 0, max: 1, step: 0.05 }, (value) => {
-      updateVolumeValue(value);
-      this.bgm.setVolume(value);
+    this.volumeValue = document.createElement('span');
+    this.volumeValue.className = 'sv-volume-value';
+    this.volumeSlider = new Slider({ min: 0, max: 1, step: 0.05 }, (value) => {
+      this.showVolume(value);
+      this.onVolumeChange?.(value);
     });
-    volumeSlider.setValue(this.bgm.getVolume());
-    updateVolumeValue(volumeSlider.getValue());
-    volumeRow.appendChild(volumeSlider.element);
-    volumeRow.appendChild(volumeValue);
+    this.syncVolume(volume);
+    volumeRow.appendChild(this.volumeSlider.element);
+    volumeRow.appendChild(this.volumeValue);
     this.element.appendChild(volumeRow);
 
     // 再生位置: 試聴中の曲だけ操作できる。ドラッグ中は自動追従(refreshSeekPosition)で値を
@@ -121,6 +120,18 @@ export class BgmSettingsPanel {
     this.element.appendChild(trackActions);
 
     this.stopButton.setEnabled(false);
+  }
+
+  // 外から音量が変わったときに、スライダーと百分率表示を引き直す。
+  public syncVolume(volume: number): void {
+    this.volumeSlider.setValue(volume);
+    // つまみの位置と百分率を揃えるため、刻みへ丸めた後の値を出す。
+    this.showVolume(this.volumeSlider.getValue());
+  }
+
+  // 音量の百分率表示を書き換える。
+  private showVolume(volume: number): void {
+    this.volumeValue.textContent = `${Math.round(volume * 100)}%`;
   }
 
   // 設定ビューが閉じるときに呼ぶ。試聴の音声経路を畳んでゲーム中BGMへ戻し、選曲・シークの

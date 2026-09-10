@@ -7,7 +7,7 @@ import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { float, int, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
-import type { GraphicsSettingsData, GraphicsTarget } from '../graphics-settings';
+import type { GraphicsSettingsData } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 import type { DebugTargetHost, DebugTargetId } from './debug-target';
@@ -37,7 +37,7 @@ import { FilmLut } from './film-lut';
 import { compileInto, compileIntoOutput } from './compile-into';
 import { DeferredTexture } from '../deferred-texture';
 
-export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
+export class RenderPipeline implements DebugTargetHost {
   private readonly gbuffer: GBufferPass;
   private readonly shadowPass: ShadowPass;
   private readonly _bodyShadow: BodyShadow;

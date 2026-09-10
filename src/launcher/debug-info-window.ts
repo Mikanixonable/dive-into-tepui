@@ -5,7 +5,7 @@ import { PropertyWindow } from '../hud/windows/property-window';
 import { SegmentedControl, TabBar } from '../hud/widgets';
 import { injectOnce } from '../hud/inject-style';
 import { DEBUG_TARGETS, type DebugTargetHost, type DebugTargetId } from '../render/pipeline/debug-target';
-import type { RenderStyleSetting } from '../render/render-style';
+import type { RenderStyle } from '../render/render-style';
 import { fmtDuration } from '../hud/utils';
 import { FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from '../game/frame-sections';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings, type GpuPassId } from '../render/gpu-timings';
@@ -121,9 +121,8 @@ export class DebugInfoWindow {
   // 計測が走っているか。窓が開いている間だけ真になる。
   public get on(): boolean { return this.win !== null; }
 
-  // 描画タブのデバッグ表示は模式図スタイルでは選べない(DEVELOP/SPEC/RENDERING.md)ので、renderStyle の
-  // 変化に合わせて選択欄の有効/無効を切り替える。?perf=1 が付いていれば起動直後から窓を開く。
-  // 計測対象と表示先を受け取り、デバッグ表示の操作部品を組み立てる。
+  // 計測対象と表示先を受け取り、デバッグ表示の操作部品を組み立てる。renderStyle は組み立て時の
+  // 見せ方。?perf=1 が付いていれば起動直後から窓を開く。
   public constructor(
     private readonly root: HTMLElement,
     private readonly renderer: WebGPURenderer,
@@ -131,7 +130,7 @@ export class DebugInfoWindow {
     private readonly gpu: GpuTimings,
     private readonly overlayManager: OverlayManager,
     private readonly debugTargetHost: DebugTargetHost,
-    renderStyle: RenderStyleSetting,
+    renderStyle: RenderStyle,
   ) {
     // 描画タブの選択欄とタブ切り替えを組む。
     injectOnce('debug-info-window', STYLE);
@@ -145,8 +144,14 @@ export class DebugInfoWindow {
     // 窓へ載せる操作部品をまとめる。
     this.controls.appendChild(this.tabBar.element);
     this.controls.appendChild(this.renderTarget.element);
-    renderStyle.subscribe((style) => this.renderTarget.setEnabled(style !== 'schematic'));
+    this.syncRenderStyle(renderStyle);
     if (new URLSearchParams(location.search).get('perf') === '1') this.open();
+  }
+
+  // 描画パスの中間結果を選べるのは写実の見せ方のときだけ(DEVELOP/SPEC/RENDERING.md)なので、
+  // 渡された見せ方で選択欄の有効/無効を引き直す。
+  public syncRenderStyle(style: RenderStyle): void {
+    this.renderTarget.setEnabled(style !== 'schematic');
   }
 
   // デバッグ情報ウィンドウを開く。既に開いていれば手前へ出すだけ。

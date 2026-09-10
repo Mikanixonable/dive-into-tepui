@@ -16,7 +16,7 @@ import { MAP_VIEW_STYLE } from './style/map-view-style';
 import { isCompactViewport } from '../../hud/breakpoints';
 import { startViewportTracking } from '../../hud/viewport';
 import { WIDGET_STYLE } from '../../hud/widgets';
-import type { RenderStyleSetting } from '../../render/render-style';
+import type { RenderStyle } from '../../render/render-style';
 import type { View } from '../view/view';
 import type { CollapseToggleLabels } from '../../hud/widgets';
 
@@ -382,14 +382,14 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
 }
 
 // HUD のスタイル・レイヤ・各パネル・SVG オーバーレイを構築し、DOM 参照をまとめて返す。
-export function buildHudDom(shell: HudShell, renderStyle: RenderStyleSetting): HudDomRefs {
+export function buildHudDom(shell: HudShell, renderStyle: RenderStyle): HudDomRefs {
   injectThemeVariables();
   injectStyle();
   startViewportTracking();
   const { root, layers } = shell;
   // 模式図では白背景になるため、マーカー配色をそれに合わせて切り替える手掛かりとして
   // 現在のスタイルをルート要素の属性で公開する。
-  renderStyle.subscribe((style) => { root.dataset['renderStyle'] = style; });
+  root.dataset['renderStyle'] = renderStyle;
   const svgOverlay = buildSvgOverlay(layers.marker);
   const combatRoot = buildViewRoot(layers.panel, 'hud-combat-root', 'combat');
   const mapRoot = buildViewRoot(layers.panel, 'hud-map-root', 'map');
