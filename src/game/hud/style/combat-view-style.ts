@@ -96,26 +96,6 @@ export const COMBAT_VIEW_STYLE = `
   gap: 5px;
   margin-top: 7px;
 }
-#hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-actions .w-btn {
-  padding: var(--space-3) var(--space-4);
-  border: 0;
-  border-radius: var(--radius-control);
-  background: var(--fill-1);
-  color: var(--text-dim);
-  font-size: var(--font-xxs);
-}
-#hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-actions .w-btn.on {
-  background: var(--color-primary-fill);
-  color: var(--color-primary);
-}
-#hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-actions .w-btn:hover {
-  background: var(--fill-2);
-  color: var(--color-primary-hover);
-}
-#hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-actions .status-action-primary {
-  background: var(--color-primary-fill-weak);
-  color: var(--color-primary);
-}
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .status-throttle-touch {
   margin-top: 7px;
 }
