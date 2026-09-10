@@ -26,10 +26,10 @@ function shadowedFraction(
   r: Vec3,
   sunDirX: number, sunDirY: number, sunDirZ: number,
   sunDist: number, sinSunAng: number, sunAngRadius: number,
-  body: CelestialBody, pivot: number,
+  body: CelestialBody, pivot: number, t: number = pivot,
 ): number {
   if (body.kind === 'star' || body.def.radius <= 0) return 1; // 恒星自身・半径0の天体は影を落とさない
-  const b = body.positionAt(pivot);
+  const b = body.positionAt(pivot, t);
   const dx = b.x - r.x, dy = b.y - r.y, dz = b.z - r.z;
   const along = dx * sunDirX + dy * sunDirY + dz * sunDirZ;
   if (along <= 0 || along >= sunDist) return 1; // 艦より太陽から遠い側/背後にある天体は影を落とさない
@@ -78,8 +78,9 @@ export function maxShadowedFraction(
 // 掩蔽し合う状況は現実的に起きないため、重なり領域を厳密に扱うより素直な近似とした。
 export function sunlitFactor(
   r: Vec3, star: CelestialBody, celestialBodies: readonly CelestialBody[], pivot: number,
+  t: number = pivot,
 ): number {
-  const s = star.positionAt(pivot);
+  const s = star.positionAt(pivot, t);
   const tx = s.x - r.x, ty = s.y - r.y, tz = s.z - r.z;
   const sunDist = Math.sqrt(tx * tx + ty * ty + tz * tz);
   if (sunDist < 1) return 1; // 位置が恒星に一致(退化)
@@ -90,7 +91,7 @@ export function sunlitFactor(
   let lit = 1;
   for (const body of celestialBodies) {
     lit *= shadowedFraction(
-      r, tx * inv, ty * inv, tz * inv, sunDist, sinSunAng, sunAngRadius, body, pivot);
+      r, tx * inv, ty * inv, tz * inv, sunDist, sinSunAng, sunAngRadius, body, pivot, t);
     if (lit === 0) return 0; // 本影に入った時点で、以降の天体を見ても答えは変わらない
   }
   return Math.min(1, Math.max(0, lit));
