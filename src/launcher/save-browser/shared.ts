@@ -11,7 +11,6 @@ const STYLE = `
   white-space: nowrap;
 }
 #save-browser span.sb-btn { white-space: nowrap; }
-#save-browser span.sb-btn.sb-btn-sm { padding: var(--space-2) var(--space-3); }
 `;
 
 // ステージ id を選択画面と同じ表示名にする。登録の無い id はそのまま出す。
@@ -27,7 +26,8 @@ export function mainBtn(label: string, onClick: () => void): HTMLElement {
   return btn.element;
 }
 
-// .w-btn--dense/.w-btn--icon の小型アイコンボタンを組む。title はホバー説明とタッチ向け aria-label の両方に使う。
+// .w-btn--dense/.w-btn--icon の小型アイコンボタンを組む。title はホバー説明とタッチ向け
+// aria-label の両方に使う。
 export function smallBtn(glyph: string, title: string, onClick: () => void): HTMLElement {
   injectOnce('save-browser-shared', STYLE);
   const btn = new Button(glyph, onClick, undefined, ['secondary', 'dense', 'icon']);

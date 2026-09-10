@@ -113,8 +113,10 @@ function buildSlotRow(
   actions.appendChild(smallBtn('⇩', '書き出し', () => callbacks.onExportSlot(s.id)));
   actions.appendChild(smallBtn('🗑', '削除', () => callbacks.onDeleteSlot(s.id)));
   if (!active) {
-    const playBtn = new Button('このデータで遊ぶ', () => callbacks.onPlaySlot(s.id));
-    playBtn.element.classList.add('sb-btn', 'sb-btn-sm', 'sb-btn-play');
+    const playBtn = new Button(
+      'このデータで遊ぶ', () => callbacks.onPlaySlot(s.id), undefined, ['secondary', 'dense'],
+    );
+    playBtn.element.classList.add('sb-btn', 'sb-btn-play');
     actions.appendChild(playBtn.element);
   }
   row.appendChild(actions);
