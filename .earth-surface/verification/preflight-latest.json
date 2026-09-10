@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "createdAtUtc": "2026-09-09T23:55:48.951786+00:00",
+  "createdAtUtc": "2026-09-10T01:03:19.874047+00:00",
   "manifest": "assets-src/earth-surface/sources.json",
   "probeMode": "all",
   "dependencies": {
@@ -8,7 +8,7 @@
       "osgeo": false,
       "netCDF4": false,
       "shapefile": false,
-      "PIL": false
+      "PIL": true
     },
     "commands": {
       "gdalinfo": null,
@@ -5330,13 +5330,13 @@
     "terrainPayloadBytesIncludingBase": 23630031744,
     "inputBytesFromHEAD": 12657367741,
     "outputLowerBoundBytes": 23630031744,
-    "availableDiskBytes": 323875684352,
+    "availableDiskBytes": 319941214208,
     "rawRoot": ".earth-surface/raw",
     "diskInsufficientForTerrainLowerBound": false
   },
   "status": "blocked",
   "blockers": [
-    "Python依存が不足しています: osgeo, netCDF4, shapefile, PIL",
+    "Python依存が不足しています: osgeo, netCDF4, shapefile",
     "GDAL CLI (gdalinfo/ogrinfo) がありません",
     "ERA5はCDSから固定期間・変数のローカルNetCDF exportが必要です"
   ]
