@@ -78,6 +78,13 @@ ETOPO geoid実ファイルにはNoDataタグが無かったため、source manif
 ETOPO ice-surface/geoid、GSHHGの取得器実行は成功したが、入力全量とERA5 local exportは未完了である。
 ERA5取得用の`tools/earth-surface/request-era5.py`はCDS APIの認証済み環境で実行する。
 
+micromambaでの環境再現は次のコマンドで行う。
+
+```sh
+brew install micromamba
+MAMBA_ROOT_PREFIX=.earth-surface/mamba micromamba create -f tools/earth-surface/environment.yml
+```
+
 この状態はfixture成功へ読み替えず、実データゲートをblockedとする。ERA5 local exportを配置し、複数ソースの窓合成を接続した後、次を実行してから
 `earth-surface:bake --global` を再開する。
 
