@@ -10,6 +10,8 @@ export const LAYOUT_TOKENS_STYLE = `
   --rail-w-right: min(300px, 33vw);
   --combat-panel-max-h: none;
   --rail-panel-max-h: none;
+  /* 画面右上の収納トグルと固定バッジを隣接させるための配置寸法。 */
+  --hud-rail-toggle-size: 30px;
   /* 常設パネル1行の最小高さ(タブ・行系の見出しに共通)。 */
   --row-min-h-s: 28px;
   /* 表示トグルが OFF の行・区画を淡色化するときの不透明度。 */
