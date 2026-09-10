@@ -5,7 +5,7 @@ import { AUTO_SNAPSHOT_LIMIT, PINNED_SNAPSHOT_LIMIT } from '../save/save-slots';
 import type { SaveSlotMeta, SnapshotMeta } from '../save/slot-data';
 import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud/utils';
 import { Button, Meter, TabBar } from '../../hud/widgets';
-import { injectOnce } from '../../hud/widgets/inject-style';
+import { injectOnce } from '../../hud/inject-style';
 import { smallBtn, stageLabel } from './shared';
 
 const STYLE = `

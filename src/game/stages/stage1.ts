@@ -35,7 +35,7 @@ export class Stage1 extends Stage {
   // 自機と5機の敵を初期配置する。
   protected init(): void {
     const player = this.addPlayer();
-    const base = player.state;
+    const base = player.motion.state;
     const worldSfx = this._worldSfx;
     const fx = this._fx;
     const scene = this._scene;

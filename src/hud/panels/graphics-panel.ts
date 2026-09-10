@@ -4,7 +4,8 @@ import {
   GRAPHICS_GROUPS, GRAPHICS_OPTIONS, GraphicsSettings, graphicsOptionKeys,
   type ChoiceValue, type GraphicsOptionKey, type GraphicsTarget, type QualityPreset,
 } from '../../render/graphics-settings';
-import { Pulldown, SegmentedControl, ToggleSwitch, injectOnce, type PulldownColumn } from '../widgets';
+import { Pulldown, SegmentedControl, ToggleSwitch, type PulldownColumn } from '../widgets';
+import { injectOnce } from '../inject-style';
 
 // このパネル自身の CSS。余白を持つ規則は `#hud` を冠した枝を併記する — HUD は `#hud, #hud *` で
 // margin/padding を 0 へ落としており、素のクラス 1 つでは詳細度で負けて群の間隔が潰れる。

@@ -6,11 +6,12 @@ import { add, len, lenSq, randVec, rotateAxis, sub, v3 } from '../../../math/vec
 import { AmmoPickup, AMMO_PICKUP_RADIUS, isAmmoPickup } from '../../dynamic/dynamic-entity/ammo-pickup';
 import { isRcsFuelPickup, RcsFuelPickup, RCS_FUEL_PICKUP_RADIUS, RCS_FUEL_PICKUP_AMOUNT } from '../../dynamic/dynamic-entity/rcs-fuel-pickup';
 import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';
-import { Hud } from '../../hud/hud';
+import type { Notifier } from '../../../hud/notifier';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { UiSfx } from '../../../audio/sfx/ui-sfx';
 import { Player } from '../../player/player';
-import type { DynamicSystem } from '../../dynamic/dynamic-system';
+import type { EntityRoster } from '../../dynamic/entity-roster';
+import type { EntityRegistry } from '../../dynamic/entity-registry';
 import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
 import type { LogisticsSaveData } from '../../save/save-data';
 
@@ -37,11 +38,11 @@ export class Logistics {
 
   // saved があればその状態(次回投入判定時刻・自動投入の有効/無効)から始める。
   constructor(
-    private readonly _hud: Hud,
+    private readonly _notifier: Notifier,
     private readonly _worldSfx: WorldSfx,
     private readonly _uiSfx: UiSfx,
     private readonly _scene: THREE.Scene,
-    private readonly dynamicSystem: DynamicSystem,
+    private readonly dynamicSystem: EntityRegistry & EntityRoster,
     saved?: LogisticsSaveData,
   ) {
     this.resupplyCheckAt = saved?.resupplyCheckAt ?? 0;
@@ -56,15 +57,15 @@ export class Logistics {
     maxDist = LOGISTICS_MAX_DIST,
   ): void {
     // 自機の軌道面内で minDist〜maxDist 先に相当する角度だけ位相をずらす
-    const r = player.state.r;
-    const v = player.state.v;
-    const hHat = orbitAxes(player.state).nrm;
+    const r = player.motion.state.r;
+    const v = player.motion.state.v;
+    const hHat = orbitAxes(player.motion.state).nrm;
     const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
     // ずらした位置・速度と、ランダムな姿勢で補給エンティティを作る
     const ammoPickup = new AmmoPickup(
       {
         state: kinematicState<'eci'>(
-          player.state.t,
+          player.motion.state.t,
           rotateAxis(r, hHat, ang),
           add(rotateAxis(v, hHat, ang), randVec(1.5)),
         ),
@@ -79,7 +80,7 @@ export class Logistics {
     // 投入して演出とヒントを出す
     this.dynamicSystem.add(ammoPickup);
     this._uiSfx.warp();
-    this._hud.hint('付近の軌道に補給が投入された — ▣ 弾薬マーカーへ接近して回収', 5000);
+    this._notifier.hint('付近の軌道に補給が投入された — ▣ 弾薬マーカーへ接近して回収', 5000);
   }
 
   // 自機の軌道上、minDist〜maxDist 先の位相に RCS 燃料補給を1個投入する。
@@ -88,14 +89,14 @@ export class Logistics {
     minDist = LOGISTICS_MIN_DIST,
     maxDist = LOGISTICS_MAX_DIST,
   ): void {
-    const r = player.state.r;
-    const v = player.state.v;
-    const hHat = orbitAxes(player.state).nrm;
+    const r = player.motion.state.r;
+    const v = player.motion.state.v;
+    const hHat = orbitAxes(player.motion.state).nrm;
     const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
     const fuelPickup = new RcsFuelPickup(
       {
         state: kinematicState<'eci'>(
-          player.state.t,
+          player.motion.state.t,
           rotateAxis(r, hHat, ang),
           add(rotateAxis(v, hHat, ang), randVec(1.5)),
         ),
@@ -109,7 +110,7 @@ export class Logistics {
     );
     this.dynamicSystem.add(fuelPickup);
     this._uiSfx.warp();
-    this._hud.hint('付近の軌道に RCS 燃料補給が投入された — ◈ 燃料マーカーへ接近して回収', 5000);
+    this._notifier.hint('付近の軌道に RCS 燃料補給が投入された — ◈ 燃料マーカーへ接近して回収', 5000);
   }
 
   // 近傍の補給を回収し、遠方のものをデスポーンし、残弾が少なければ定期的に新規投入する。
@@ -148,14 +149,18 @@ export class Logistics {
   // 生存中の補給の数を返す。
   private liveAmmoPickupCount(): number {
     let count = 0;
-    for (const ammoPickup of this.dynamicSystem.all().filter(isAmmoPickup)) if (ammoPickup.alive) count++;
+    for (const ammoPickup of this.dynamicSystem.all().filter(isAmmoPickup)) {
+      if (ammoPickup.motion.alive) count++;
+    }
     return count;
   }
 
   // 生存中の RCS 燃料補給の数を返す。
   private liveRcsFuelPickupCount(): number {
     let count = 0;
-    for (const pickup of this.dynamicSystem.all().filter(isRcsFuelPickup)) if (pickup.alive) count++;
+    for (const pickup of this.dynamicSystem.all().filter(isRcsFuelPickup)) {
+      if (pickup.motion.alive) count++;
+    }
     return count;
   }
 
@@ -167,30 +172,30 @@ export class Logistics {
   // 回収半径内の生存中補給を吸収し、ベルトへ弾を追加する。
   private absorbNearbyAmmoPickups(player: Player): void {
     for (const ammoPickup of this.dynamicSystem.all().filter(isAmmoPickup)) {
-      if (!ammoPickup.alive) continue;
+      if (!ammoPickup.motion.alive) continue;
       if (
-        lenSq(sub(ammoPickup.state.r, player.state.r))
+        lenSq(sub(ammoPickup.motion.state.r, player.motion.state.r))
         >= AMMO_PICKUP_RADIUS * AMMO_PICKUP_RADIUS
       ) continue;
-      ammoPickup.alive = false;
+      ammoPickup.motion.alive = false;
       player.onPickup(AMMO_PICKUP_MAGS);
       this._worldSfx.pickup();
-      this._hud.hint(`補給取り込み — ベルト +${AMMO_PICKUP_MAGS} 連`, 3000);
+      this._notifier.hint(`補給取り込み — ベルト +${AMMO_PICKUP_MAGS} 連`, 3000);
     }
   }
 
   // 回収半径内の生存中 RCS 燃料補給を吸収し、タンクへ燃料を追加する。
   private absorbNearbyRcsFuelPickups(player: Player): void {
     for (const pickup of this.dynamicSystem.all().filter(isRcsFuelPickup)) {
-      if (!pickup.alive) continue;
+      if (!pickup.motion.alive) continue;
       if (
-        lenSq(sub(pickup.state.r, player.state.r))
+        lenSq(sub(pickup.motion.state.r, player.motion.state.r))
         >= RCS_FUEL_PICKUP_RADIUS * RCS_FUEL_PICKUP_RADIUS
       ) continue;
-      pickup.alive = false;
+      pickup.motion.alive = false;
       const added = player.refuelFuel(RCS_FUEL_PICKUP_AMOUNT);
       this._worldSfx.pickup();
-      this._hud.hint(`補給取り込み — RCS燃料 +${Math.round(added)} kg`, 3000);
+      this._notifier.hint(`補給取り込み — RCS燃料 +${Math.round(added)} kg`, 3000);
     }
   }
 
@@ -199,9 +204,11 @@ export class Logistics {
     let respawn = 0;
     // デスポーン距離を超えた分を消し、再投入すべき数を数える
     for (const ammoPickup of this.dynamicSystem.all().filter(isAmmoPickup)) {
-      if (!ammoPickup.alive) continue;
-      if (len(sub(ammoPickup.state.r, player.state.r)) <= LOGISTICS_DESPAWN_DIST) continue;
-      ammoPickup.alive = false;
+      if (!ammoPickup.motion.alive) continue;
+      if (len(sub(
+        ammoPickup.motion.state.r, player.motion.state.r,
+      )) <= LOGISTICS_DESPAWN_DIST) continue;
+      ammoPickup.motion.alive = false;
       if (respawnOnDespawn) respawn++;
     }
     if (!respawnOnDespawn) return;
@@ -217,9 +224,11 @@ export class Logistics {
   private despawnFarRcsFuelPickups(player: Player, respawnOnDespawn: boolean): void {
     let respawn = 0;
     for (const pickup of this.dynamicSystem.all().filter(isRcsFuelPickup)) {
-      if (!pickup.alive) continue;
-      if (len(sub(pickup.state.r, player.state.r)) <= LOGISTICS_DESPAWN_DIST) continue;
-      pickup.alive = false;
+      if (!pickup.motion.alive) continue;
+      if (len(sub(
+        pickup.motion.state.r, player.motion.state.r,
+      )) <= LOGISTICS_DESPAWN_DIST) continue;
+      pickup.motion.alive = false;
       if (respawnOnDespawn) respawn++;
     }
     if (!respawnOnDespawn) return;

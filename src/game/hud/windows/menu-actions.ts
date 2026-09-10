@@ -1,5 +1,4 @@
 import { MenuItem } from './context-menu';
-import type { ObjectCommands } from '../../pickable/object-commands';
 
 // 右クリックメニューの操作を表す act 識別子(MenuAction)と、頻出する項目を組み立てる
 // 共通ファクトリ(MenuCommon)を提供する。
@@ -36,13 +35,4 @@ export const MenuCommon = {
   trajectoryLine: (on: boolean): MenuItem<MenuAction> => ({
     label: '予測線・過去線で表示', act: 'toggleTrajectoryLine', selected: on, keepOpen: true,
   }),
-  // ターゲットに設定/解除する項目。軌道面が定まらない対象では項目自体を出さない。
-  targetItems: (commands: ObjectCommands, id: string, simTime: number): readonly MenuItem<MenuAction>[] => {
-    if (commands.isNavTarget(id)) return [MenuCommon.target(true)];
-    return commands.canNavTarget(id, simTime) ? [MenuCommon.target(false)] : [];
-  },
-  // 複製の項目。複製先が物体配置パネルなので、それを持つステージだけに出す。
-  duplicateItems: (commands: ObjectCommands): readonly MenuItem<MenuAction>[] => (
-    commands.canAuthor ? [MenuCommon.duplicate()] : []
-  ),
 };

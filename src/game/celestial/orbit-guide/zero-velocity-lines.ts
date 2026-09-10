@@ -9,7 +9,7 @@ import * as THREE from 'three/webgpu';
 import { CurveKnots } from '../../../render/curve';
 import { OrbitingMotion } from '../../../physics/celestial-motion';
 import { secondaryFrameOf } from '../../../physics/lagrange';
-import type { CelestialSystem } from '../celestial-system';
+import type { CelestialBodies } from '../celestial-bodies';
 import type { View } from '../../view/view';
 import { Vec3 } from '../../../math/vec3';
 import { guideSecondary, rotatingFrame } from '../../../physics/orbit-guide';
@@ -118,7 +118,7 @@ export class ZeroVelocityLines {
   private structureKey = '';
   private lastComputedTime: number | null = null;
 
-  public constructor(private readonly scene: THREE.Scene, private readonly celestialSystem: CelestialSystem) {}
+  public constructor(private readonly scene: THREE.Scene, private readonly celestialBodies: CelestialBodies) {}
 
   // ゲーム側配線用の setter。sync はここで受けた最新値を読む。
   public setSettings(settings: ZeroVelocitySettings): void {
@@ -210,9 +210,9 @@ export class ZeroVelocityLines {
       let frame = frames.get(system);
       if (frame === undefined) {
         const mu = this.muFor(system);
-        const motion = this.celestialSystem.find(guideSecondary(system))?.motion;
+        const motion = this.celestialBodies.findMotion(guideSecondary(system));
         const secondary = mu === null || !(motion instanceof OrbitingMotion) ? null
-          : secondaryFrameOf(this.celestialSystem.celestialMotions, displayTime, motion, displayTime);
+          : secondaryFrameOf(this.celestialBodies.celestialMotions, displayTime, motion, displayTime);
         frame = secondary === null || mu === null ? null : rotatingFrame(secondary, mu);
         frames.set(system, frame);
       }
