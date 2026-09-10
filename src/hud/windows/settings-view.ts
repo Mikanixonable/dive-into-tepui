@@ -39,7 +39,7 @@ export class SettingsView implements OverlayHandle {
 
   public onOpenChange: ((open: boolean) => void) | null = null;
 
-  // ブランド表示・ヘッダ・タブバーと、配色/描画/BGMの3面を組み立てて root へ差し込む。
+  // ブランド表示・ヘッダ・タブバーと、描画/BGM/配色の3面を組み立てて root へ差し込む。
   public constructor(
     root: HTMLElement, overlayManager: OverlayManager, bgm: Bgm, graphics: GraphicsSettings,
   ) {
@@ -57,13 +57,13 @@ export class SettingsView implements OverlayHandle {
 
     const description = document.createElement('p');
     description.className = 'sv-description';
-    description.textContent = '配色・描画・BGMの設定を切り替えられます。';
+    description.textContent = '描画・BGM・配色の設定を切り替えられます。';
     this.panel.appendChild(description);
 
-    // タブバー: 配色・描画・BGMの3面を切り替える。
+    // タブバー: 描画・BGM・配色の3面を切り替える。
     const tabPanels = new Map<SettingsTab, HTMLElement>();
     const tabs = new TabBar<SettingsTab>(
-      [['theme', '配色'], ['graphics', '描画'], ['bgm', 'BGM']],
+      [['graphics', '描画'], ['bgm', 'BGM'], ['theme', '配色']],
       (selectedTab) => {
         tabs.setSelected(selectedTab);
         for (const [tab, panel] of tabPanels) panel.hidden = tab !== selectedTab;
@@ -87,11 +87,6 @@ export class SettingsView implements OverlayHandle {
       return section;
     };
 
-    const themeSection = addTabPanel('theme', '配色');
-    const themePanel = new ThemePanel();
-    themeSection.appendChild(themePanel.element);
-    this.panel.appendChild(themeSection);
-
     const graphicsSection = addTabPanel('graphics', '描画');
     const graphicsPanel = new GraphicsPanel(graphics);
     graphicsSection.appendChild(graphicsPanel.element);
@@ -102,8 +97,13 @@ export class SettingsView implements OverlayHandle {
     bgmSection.appendChild(this.bgmPanel.element);
     this.panel.appendChild(bgmSection);
 
-    tabs.setSelected('theme');
-    const initialPanel = tabPanels.get('theme');
+    const themeSection = addTabPanel('theme', '配色');
+    const themePanel = new ThemePanel();
+    themeSection.appendChild(themePanel.element);
+    this.panel.appendChild(themeSection);
+
+    tabs.setSelected('graphics');
+    const initialPanel = tabPanels.get('graphics');
     if (initialPanel !== undefined) initialPanel.hidden = false;
 
     root.appendChild(this.panel);
