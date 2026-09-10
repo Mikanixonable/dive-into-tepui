@@ -39,7 +39,7 @@ export const PAUSE_MENU_STYLE = `
 #hud-pause-menu .pm-minimize {
   display: inline-flex; align-items: center; justify-content: center;
   padding: 0; font: inherit; font-size: var(--font-m); border: 1px solid transparent;
-  background: var(--surface-2); color: var(--body); cursor: pointer;
+  background: var(--surface-2); color: var(--text-muted); cursor: pointer;
 }
 #hud-pause-menu .pm-minimize:hover { color: var(--color-primary-hover); background: var(--surface-3); }
 #hud-pause-menu .pm-body.hidden { display: none; }
