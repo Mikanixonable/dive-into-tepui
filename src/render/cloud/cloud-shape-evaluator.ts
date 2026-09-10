@@ -1,14 +1,14 @@
 // 雲場の読み値を各表現の形状・光学量へ変換する共有評価器。coverage、雲頂、粒、光学的厚みの式を
 // ここへ集約し、不透明表面・大気・雲影が別々の閾値や補間を持たないようにする。GPU ノードを
 // 受け取り、各 renderer のシェーダグラフへ展開するが、GPU 資源の所有は行わない。
-import { clamp, log, min, smoothstep } from 'three/tsl';
+import { clamp, min, smoothstep } from 'three/tsl';
 import { gradientNoise } from './gradient-noise';
+import { columnOpticalDepthFromCoverageNode } from './cloud-optics-node';
 import {
   CUMULUS_COVERAGE_KNOB, CUMULUS_GRAIN_SIZE, CLOUD_TOP_SPAN,
 } from './cumulus-shape';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
-const MAX_COLUMN_COVERAGE = 0.99;
 const GRAIN_COVERAGE_DEPTH = 0.25;
 const GRAIN_TOP_RELIEF = 0.15;
 const FIELD_TOP_STEP = 1 / 256;
@@ -40,7 +40,7 @@ export class CloudShapeEvaluator {
   }
 
   public columnOpticalDepth(coverage: FloatNode): FloatNode {
-    return log(min(coverage, MAX_COLUMN_COVERAGE).oneMinus()).negate();
+    return columnOpticalDepthFromCoverageNode(coverage);
   }
 
   public grainAmplitudeForWidth(width: FloatNode): FloatNode {

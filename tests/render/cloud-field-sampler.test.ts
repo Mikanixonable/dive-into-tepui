@@ -13,7 +13,7 @@ export function register(): void {
       return vec2(0.25, 0.75);
     });
 
-    sampler.sample(vec3(0, 1, 0));
+    sampler.sampleCloud(vec3(0, 1, 0));
     assert.equal(calls, 1);
   });
 

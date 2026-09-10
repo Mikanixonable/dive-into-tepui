@@ -9,6 +9,7 @@ import {
   sqrt, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
 import { CloudShapeEvaluator } from './cloud/cloud-shape-evaluator';
+import type { CloudSample } from './cloud/cloud-field-sample';
 import type { CloudFieldSampler, CloudLodMode } from './cloud/cloud-field-sampler';
 import { unitSphereGeometry } from './celestial-surface';
 import { CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from './cloud/cumulus-shape';
@@ -223,9 +224,9 @@ export class OpaqueCloudSurfaceRenderer {
       const hitPoint = entry.add(direction.mul(below)).toVar();
       const clip = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(hitPoint, 1)));
       const viewNormal = normalize(transformNormalToView(this.cloudTopNormalAt(hitPoint, grainAmplitude)));
-      const cloud = this.fieldAt(normalize(hitPoint)).toVar();
+      const cloud = this.fieldAt(normalize(hitPoint));
       const grain = this.shape.grainAt(normalize(hitPoint), grainAmplitude);
-      const opaqueFraction = this.shape.opaqueFraction(cloud.r, grain);
+      const opaqueFraction = this.shape.opaqueFraction(cloud.coverage, grain);
       // 交差探索は連続な雲頂で済ませ、最後の表示判定だけを被覆率の中心で切る。画素ごとの
       // blue noise をここへ入れると、探索の符号が視線上で飛び、深度の等高線になる。
       Discard(hit.lessThan(0.5).or(opaqueFraction.lessThan(0.5)));
@@ -241,8 +242,8 @@ export class OpaqueCloudSurfaceRenderer {
     const grain = this.shape.grainAt(direction, grainAmplitude);
     // 被覆率 0 では雲頂を地表へ戻し、被覆率 1 では本来の雲頂へ戻す。探索中に柱を二値化
     // しないので、雲の縁でも clearance が連続し、線形補間と二分探索の前提を保てる。
-    const opaqueFraction = this.shape.opaqueFraction(cloud.r, grain);
-    const cloudTop = this.shape.cloudTop(cloud.g, grain).mul(opaqueFraction);
+    const opaqueFraction = this.shape.opaqueFraction(cloud.coverage, grain);
+    const cloudTop = this.shape.cloudTop(cloud.cloudTop.div(CLOUD_TOP_SPAN), grain).mul(opaqueFraction);
     return radius.sub(this.shape.cloudTopRadius(cloudTop, this.groundRadius));
   }
 
@@ -257,7 +258,8 @@ export class OpaqueCloudSurfaceRenderer {
       const cloud = this.fieldAt(direction);
       const grain = this.shape.grainAt(direction, grainAmplitude);
       return this.shape.cloudTopRadius(
-        this.shape.cloudTop(cloud.g, grain).mul(this.shape.opaqueFraction(cloud.r, grain)),
+        this.shape.cloudTop(cloud.cloudTop.div(CLOUD_TOP_SPAN), grain)
+          .mul(this.shape.opaqueFraction(cloud.coverage, grain)),
         this.groundRadius,
       );
     };
@@ -274,8 +276,8 @@ export class OpaqueCloudSurfaceRenderer {
   }
 
   // 天体固定の単位方向における場の値。
-  private fieldAt(direction: Vec3Node): Vec4Node {
-    return this.fieldSampler.sample(direction);
+  private fieldAt(direction: Vec3Node): CloudSample {
+    return this.fieldSampler.sampleCloud(direction);
   }
 
   // 粒の振幅。**1 画素が張る角は画面上の変化率から引く** — 天体の見かけ直径から出すと、

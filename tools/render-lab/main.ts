@@ -17,7 +17,7 @@ import {
 } from './lab';
 import { AU } from '../../src/physics/astronomical-unit';
 import { CUMULUS_COVERAGE_KNOB } from '../../src/render/cloud/cumulus-shape';
-import { CLOUD_SHELL_KNOB, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
+import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
 import type { FloatUniform } from '../../src/render/tsl-types';
 import { createEarthSurfaceCaptureApi } from './earth-surface-capture';
@@ -170,7 +170,7 @@ async function init(): Promise<void> {
   const kilometers = (value: number) => `${(value / 1000).toFixed(2)} km`;
   // 種類 1 つぶんのつまみを row へ並べ、つまみの位置を殻の現在値へ合わせる。
   const buildShellSliders = (rowId: string, species: CloudSpecies): void => {
-    const knob = CLOUD_SHELL_KNOB[species];
+    const knob = cloudShellKnobOf(species);
     // 濃さの2本は鉛直の光学的厚みの目盛りで、足切り・ゲインの順に掛かる。
     buildSlider(rowId, '足切り', 0, 1, 0.005,
       () => knob.cutoff.value.toFixed(3), (v) => redraw(knob.cutoff, v))(knob.cutoff.value);
