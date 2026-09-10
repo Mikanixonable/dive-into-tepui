@@ -23,6 +23,20 @@ export const WIDGET_STYLE = `
   transition: color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
 .w-btn:hover, .w-close:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
+
+/* w-btn の役割と密度。状態(on/pressed/disabled)は下の共通状態規則で一括して上書きする。 */
+.w-btn--primary, .w-btn.status-action-primary {
+  background: var(--color-primary-fill-weak); color: var(--color-primary);
+}
+.w-btn--primary:hover, .w-btn.status-action-primary:hover {
+  background: var(--color-primary-fill); color: var(--color-primary-hover);
+}
+.w-btn--secondary { background: var(--fill-1); color: var(--text-dim); }
+.w-btn--secondary:hover { background: var(--fill-2); color: var(--text); }
+.w-btn--dense { padding: var(--space-2) var(--space-3); font-size: var(--font-xxs); }
+.w-btn--icon {
+  min-width: var(--font-xl); padding-inline: var(--space-2); text-align: center;
+}
 .w-btn.pressed { background: var(--fill-3); transform: translateY(1px); }
 .w-btn.on { background: var(--color-primary-fill); color: var(--color-primary); }
 .w-btn.disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
