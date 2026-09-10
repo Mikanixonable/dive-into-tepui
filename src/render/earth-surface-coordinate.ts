@@ -66,7 +66,7 @@ export function earthSurfaceUvFromRadialNode(direction: Vec3Node, axes: Vec3Node
   const longitude = normal.z.atan(normal.x.negate());
   return vec2(
     longitude.add(Math.PI / 2).div(2 * Math.PI).fract(),
-    normal.y.clamp(-1, 1).asin().div(Math.PI).add(0.5),
+    normal.y.clamp(-1, 1).asin().div(Math.PI).negate().add(0.5),
   );
 }
 
