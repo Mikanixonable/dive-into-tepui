@@ -17,7 +17,7 @@ let sharedGeometry: THREE.BufferGeometry | null = null;
 let sharedMaterial: THREE.LineBasicMaterial | null = null;
 
 // 緯度・経度から、半径 radiusRatio の球面上の点(モデル座標)を返す。他の天体表面ライン
-// (earth-coastline.ts の海岸線など)も、経度 0 を +Z へ置くこの規約(celestial-surface.ts と
+// (line-overlay.ts の海岸線など)も、経度 0 を +Z へ置くこの規約(celestial-surface.ts と
 // 同じ)に合わせるためここから import して使う。
 export function latLonPoint(latDeg: number, lonDeg: number, radiusRatio: number): THREE.Vector3 {
   const latRad = (latDeg * Math.PI) / 180;
