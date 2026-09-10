@@ -176,7 +176,8 @@ export class EarthSurfaceTileRequestSource {
 
   private async loadIndex(): Promise<void> {
     if (this.indexUrl === null) return;
-    const response = await this.fetchImpl(this.indexUrl);
+    const fetchImpl = this.fetchImpl;
+    const response = await fetchImpl(this.indexUrl);
     if (!response.ok) throw new EarthSurfaceHttpError(response.status);
     let value: unknown;
     try { value = await response.json(); } catch (error) {
@@ -446,7 +447,8 @@ export class EarthSurfaceTileRequestQueue {
       this.emit({ type: 'reserve', resource: 'http', id, generation });
       this.counters.httpStarted++;
       this.emit({ type: 'start', resource: 'http', id, generation });
-      try { return await this.fetchImpl(input, init); }
+      const fetchImpl = this.fetchImpl;
+      try { return await fetchImpl(input, init); }
       finally {
         this.counters.httpReleased++;
         permit();
