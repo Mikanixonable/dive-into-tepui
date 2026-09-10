@@ -100,11 +100,11 @@ function coordinator(keys: readonly EarthTileKey[], fetchImpl: typeof fetch = as
 }, backend = new ImmediateBackend(), colorToRgba8: EarthSurfaceColorToRgba8 = (color) => {
   if (!(color instanceof Uint8Array)) throw new Error('fixture color is not RGBA8');
   return color;
-}, tiles = new EarthSurfaceTiles()) {
+}, tiles = new EarthSurfaceTiles(), decodeImage: (bytes: Uint8Array, signal?: AbortSignal) => Promise<unknown> = async () => COLOR.slice()) {
   const source = new EarthSurfaceTileRequestSource(indexFor(keys));
   const queue = new EarthSurfaceTileRequestQueue(source, {
     fetchImpl,
-    decodeImage: async () => COLOR.slice(),
+    decodeImage,
   });
   const gpu = new EarthSurfaceGpuAdapter(backend);
   const resident = new EarthSurfaceResidentCoordinator({
@@ -147,6 +147,45 @@ class GatedBackend extends ImmediateBackend {
   }
 }
 
+class GenerationRaceBackend extends ImmediateBackend {
+  private readonly firstGate: Promise<void>;
+  private releaseFirstGate!: () => void;
+  public readonly firstStarted: Promise<void>;
+  private resolveFirstStarted!: () => void;
+  private secondWrites = 0;
+  public readonly secondFinished: Promise<void>;
+  private resolveSecondFinished!: () => void;
+
+  public constructor() {
+    super();
+    this.firstGate = new Promise<void>((resolve) => { this.releaseFirstGate = resolve; });
+    this.firstStarted = new Promise<void>((resolve) => { this.resolveFirstStarted = resolve; });
+    this.secondFinished = new Promise<void>((resolve) => { this.resolveSecondFinished = resolve; });
+  }
+
+  public releaseFirst(): void { this.releaseFirstGate(); }
+
+  private markSecondWrite(): void {
+    this.secondWrites++;
+    if (this.secondWrites === 2) this.resolveSecondFinished();
+  }
+
+  public async writeColor(layer: number, pixels: Uint8Array): Promise<void> {
+    if (layer === 0) {
+      this.resolveFirstStarted();
+      await this.firstGate;
+    }
+    await super.writeColor(layer, pixels);
+    if (layer === 1) this.markSecondWrite();
+  }
+
+  public async writeTerrain(layer: number, pixels: Uint16Array): Promise<void> {
+    if (layer === 0) await this.firstGate;
+    await super.writeTerrain(layer, pixels);
+    if (layer === 1) this.markSecondWrite();
+  }
+}
+
 function sync(resident: EarthSurfaceResidentCoordinator, projection: EarthTileProjection, timeMs: number, generation = 1): void {
   resident.sync({ projection, timeMs, generation });
 }
@@ -173,6 +212,32 @@ export function register(): void {
     assert.equal(second.requested.length, 8);
     assert.notEqual(earthTileId(first.requested[0]!), earthTileId(second.requested[0]!));
     await fixture.resident.settle();
+    fixture.resident.dispose();
+  });
+
+  test('earth resident: reset後の同ID新residentを旧世代uploadが削除しない', async () => {
+    const key = earthTileKey(7, 0, 0);
+    const backend = new GenerationRaceBackend();
+    const fixture = coordinator([key], undefined, backend, undefined, new CandidateTiles([key]));
+    sync(fixture.resident, new Projection(), 0, 1);
+    await backend.firstStarted;
+
+    fixture.resident.reset();
+    const next = fixture.resident.sync({ projection: new Projection(), timeMs: 1, generation: 2 });
+    assert.deepEqual(next.requested.map(earthTileId), [earthTileId(key)]);
+    let retained = false;
+    try {
+      await backend.secondFinished;
+      for (let turn = 0; turn < 4 && fixture.resident.residentMaxZ === null; turn++) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+      assert.equal(fixture.resident.residentMaxZ, 7);
+    } finally {
+      backend.releaseFirst();
+      await fixture.resident.settle();
+      retained = fixture.resident.residentMaxZ === 7;
+    }
+    assert.equal(retained, true);
     fixture.resident.dispose();
   });
 
@@ -280,6 +345,52 @@ export function register(): void {
     await fixture.resident.settle();
     fixture.resident.reset();
     assert.equal(fixture.resident.failureReason, null);
+    fixture.resident.dispose();
+  });
+
+  test('earth resident: RGBA変換成功後にデコード画像を閉じる', async () => {
+    const key = earthTileKey(0, 0, 0);
+    let closed = 0;
+    const image = { close: () => { closed += 1; } };
+    let converted: unknown;
+    const fixture = coordinator([key], undefined, new ImmediateBackend(), (color) => {
+      converted = color;
+      return COLOR;
+    }, new CandidateTiles([key]), async () => image);
+    sync(fixture.resident, new Projection(), 0);
+    await fixture.resident.settle();
+    assert.equal(converted, image);
+    assert.equal(closed, 1);
+    fixture.resident.dispose();
+  });
+
+  test('earth resident: RGBA変換後のabortでもデコード画像を閉じる', async () => {
+    const key = earthTileKey(0, 0, 0);
+    const controller = new AbortController();
+    let closed = 0;
+    const image = { close: () => { closed += 1; } };
+    const fixture = coordinator([key], undefined, new ImmediateBackend(), () => {
+      controller.abort();
+      return COLOR;
+    }, new CandidateTiles([key]), async () => image);
+    fixture.resident.sync({ projection: new Projection(), timeMs: 0, generation: 1, signal: controller.signal });
+    await fixture.resident.settle();
+    assert.equal(closed, 1);
+    assert.equal(fixture.resident.residentMaxZ, null);
+    fixture.resident.dispose();
+  });
+
+  test('earth resident: RGBA変換失敗でもデコード画像を閉じる', async () => {
+    const key = earthTileKey(0, 0, 0);
+    let closed = 0;
+    const image = { close: () => { closed += 1; } };
+    const fixture = coordinator([key], undefined, new ImmediateBackend(), () => {
+      throw new Error('color conversion failed');
+    }, new CandidateTiles([key]), async () => image);
+    sync(fixture.resident, new Projection(), 0);
+    await fixture.resident.settle();
+    assert.equal(closed, 1);
+    assert.match(fixture.resident.failureReason ?? '', /color conversion failed/);
     fixture.resident.dispose();
   });
 
