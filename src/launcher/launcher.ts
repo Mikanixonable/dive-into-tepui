@@ -2,7 +2,7 @@ import { Game } from '../game/game';
 import { LoadingProgress } from '../game/loading-progress';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import type { PauseMenu, SettingsView } from '../hud/windows';
+import type { PauseMenu } from '../hud/windows';
 import { ResultScreen, type RunTransitions } from './result-screen';
 import type { CurrentGameSource } from './save-browser/save-browser';
 import type { Hud } from '../game/hud/hud';
@@ -75,7 +75,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     private readonly audioEngine: AudioEngine,
     private readonly bgm: Bgm,
     private readonly pauseMenu: PauseMenu,
-    private readonly settingsView: SettingsView,
     private readonly unlockManager: UnlockManager,
     private readonly sections: FrameSections,
     private readonly slots: SaveSlots,
@@ -116,7 +115,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       this.unlockManager,
       () => { if (!this.shell.overlayManager.closeTopmostOnEscape()) this.pauseMenu.toggle(); },
       () => this.pauseMenu.toggle(false),
-      () => this.settingsView.toggle(true),
+      () => this.pauseMenu.openSettings(),
     );
   }
 
