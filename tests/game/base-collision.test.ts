@@ -4,7 +4,7 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { BASE_COLLISION_RADIUS, baseRaycast } from '../../src/game/dynamic/dynamic-entity/base-collision';
-import { buildBaseModel } from '../../src/render/base-station-model';
+import { buildBaseModel } from '../../src/render/dynamic/base-station-model';
 import { Triangle, buildBVH, raycastTriangles } from '../../src/math/triangle-mesh';
 import { mulberry32 } from '../../src/math/random';
 import { Vec3, v3, add, cross, dot, lenSq, norm, scale, sub } from '../../src/math/vec3';

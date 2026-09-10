@@ -1,8 +1,8 @@
 // authoring source for asset JSON; see tools/export-models.mjs
-// src/render/ships.ts のプリミティブ組み合わせメッシュ生成ロジックを
+// src/render/dynamic/ships.ts のプリミティブ組み合わせメッシュ生成ロジックを
 // (buildFlashMesh を除いて)そのまま複製し、各メッシュを THREE.Object3D.toJSON()
 // でシリアライズして src/assets/models/*.json に書き出すツール。
-// 実行時 (src/render/ships.ts) はこの JSON を THREE.ObjectLoader でパースし、
+// 実行時 (src/render/dynamic/ships.ts) はこの JSON を THREE.ObjectLoader でパースし、
 // clone(true) して使う — 起動時にジオメトリを組み立て直さない。
 //
 // 実行: node tools/export-models.mjs
@@ -42,7 +42,7 @@ async function importTsDataModule(relSrcPath) {
 
 const { RCS_NOZZLES } = await importTsDataModule('src/render/rcs-nozzles.ts');
 const { RADIATOR_HINGE } = await importTsDataModule('src/physics/player-shape.ts');
-const { F0_ALUMINIUM, F0_BRASS, F0_BURNT_STEEL, F0_STEEL } = await importTsDataModule('src/render/metal-f0.ts');
+const { F0_ALUMINIUM, F0_BRASS, F0_BURNT_STEEL, F0_STEEL } = await importTsDataModule('src/render/dynamic/metal-f0.ts');
 
 // 標準マテリアルの既定。**金属度は「その面が金属かどうか」の 0 か 1 しか取らない** —
 // 塗装・セラミック・断熱材・ガラスは 0、剥き出しの金属は 1。既定は塗装面。
@@ -245,7 +245,7 @@ function buildPlayerShip() {
   // 1折りはハル幅と揃えた 2.3×2.3 の正方形。折り目 Group を入れ子にし、
   // 各折り目の rotation.y だけで蛇腹全体の伸縮を表現できるようにする
   // (src/game/player/radiator.ts の sync が毎フレーム書き込む)。
-  // 折り目名 `${radiatorUp/Down}Fold${i}` は src/render/ships.ts の radiatorFoldName と一致させる。
+  // 折り目名 `${radiatorUp/Down}Fold${i}` は src/render/dynamic/ships.ts の radiatorFoldName と一致させる。
   // ヒンジは太陽電池パネル(x=±2.62, y=0.52, z=-2.20)の直下・機体側面に取り付ける
   // (up が +X 側、down が -X 側。名称は上下のまま維持)。y=0.30 はパネル下端(y≈0.4925)や
   // パネル接続ストラット/ブラケット(y≈0.47〜0.57)と、蛇腹の骨格張り出し(±0.12)を含めても

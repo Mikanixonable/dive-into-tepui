@@ -38,7 +38,7 @@ import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { OrbitingObject } from './orbiting-object';
 import type { DynamicEntityKind, FormationRole } from './entity-kind';
 import type { EntityRegistry, SpawnGate } from '../entity-registry';
-import type { DynamicView } from '../dynamic-view';
+import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotion } from '../dynamic-motion';
 import { ENEMY_MODEL_SCALE, EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
 

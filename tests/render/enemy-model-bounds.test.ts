@@ -4,7 +4,7 @@ import { test } from '../harness';
 import {
   ENEMY_MODEL_SCALE, metalEnemyCollisionRadius,
 } from '../../src/game/dynamic/dynamic-entity/enemy-motion';
-import { buildEnemyShip, buildStage0EnemyShip } from '../../src/render/ships';
+import { buildEnemyShip, buildStage0EnemyShip } from '../../src/render/dynamic/ships';
 
 function renderedRadius(typeIndex: number | null): number {
   const model = typeIndex === null ? buildEnemyShip() : buildStage0EnemyShip(0xffffff, typeIndex);

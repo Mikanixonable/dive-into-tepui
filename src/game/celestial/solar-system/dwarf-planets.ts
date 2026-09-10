@@ -5,9 +5,9 @@ import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
 import { GRAVITATIONAL_CONSTANT } from './constants';
-import { CelestialSurface } from '../../../render/celestial-surface';
+import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { SphereCelestialView } from '../celestial-entity/sphere-celestial-view';
+import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
 import { PLUTO_POLE, equatorBasis } from './poles';
 import { jplSatelliteOrbit } from './satellite-orbit-builders';
 

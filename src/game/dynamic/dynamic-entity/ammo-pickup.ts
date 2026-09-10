@@ -21,7 +21,7 @@ import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { OrbitingObject } from './orbiting-object';
-import { AmmoPickupView } from './pickup-view';
+import { AmmoPickupView } from '../../../render/dynamic/dynamic-entity/pickup-view';
 import { PickupMotion } from './pickup-motion';
 
 // 取り込み距離 [m]。ゲームプレイ上の吸収判定で、物理サイズではない。
