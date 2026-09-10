@@ -6,7 +6,7 @@ import type { ControlSelection } from '../control-selection';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import type { MarkerSlots } from '../marker/marker-slots';
-import type { ObjectWindows } from './object-windows';
+import type { PropertyWindowOpener } from './property-window-opener';
 import type { PickCandidate } from './pick-candidate';
 
 export interface MapPickable extends PickCandidate {
@@ -22,7 +22,7 @@ export interface MapPickable extends PickCandidate {
   shownOnMap(markers: MarkerSlots): boolean;
 
   // マップの左クリックで選ばれたときの振る舞い。左クリックで掴めない対象は null。
-  readonly onMapSelect: ((windows: ObjectWindows, clientX: number, clientY: number) => void) | null;
+  readonly onMapSelect: ((windows: PropertyWindowOpener, clientX: number, clientY: number) => void) | null;
   // マップの注視点が自分へ移ったときに、注視の移動に加えて起きること。何も起きない対象は null。
   readonly onMapFocus: ((controlSelection: ControlSelection) => void) | null;
 

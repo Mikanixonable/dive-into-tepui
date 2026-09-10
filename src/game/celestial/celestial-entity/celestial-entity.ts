@@ -13,7 +13,7 @@ import type { MarkerSlots } from '../../marker/marker-slots';
 import type { CelestialClass } from './celestial-entity-def';
 import type { Vec3 } from '../../../math/vec3';
 import type { CelestialView } from './celestial-view';
-import type { CelestialSystem } from '../celestial-system';
+import type { CelestialBodies } from '../celestial-bodies';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
@@ -82,19 +82,19 @@ export class CelestialEntity implements ObjectPickable {
 
   // 一覧の検索が照合する、自艦からの距離と中心天体の名前。
   public listSearchText(
-    celestialSystem: CelestialSystem, viewer: OrbitingObject | null, displayTime: number,
+    celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number,
   ): string {
-    return bodySearchText(celestialSystem, this.posAt(displayTime), viewer, displayTime);
+    return bodySearchText(celestialBodies, this.posAt(displayTime), viewer, displayTime);
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
-    celestialSystem: CelestialSystem, _viewer: OrbitingObject | null, navTargetId: string | null,
+    celestialBodies: CelestialBodies, _viewer: OrbitingObject | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
     // 副題は星系の中での役どころ。
-    const subLabel = this.id === celestialSystem.origin.id ? '母星 (中心天体)'
+    const subLabel = this.id === celestialBodies.originId ? '母星 (中心天体)'
       : this.id === 'moon' ? '衛星 (月)'
-        : this.id === celestialSystem.star?.id ? `恒星 (${this.name})`
+        : this.id === celestialBodies.starId ? `恒星 (${this.name})`
           : '天体・ラグランジュ点';
     return [
       { type: 'header', label: this.name, subLabel },
@@ -109,7 +109,7 @@ export class CelestialEntity implements ObjectPickable {
   // プロパティウィンドウに出す行。種別・μ・半径を主要行とし、公転していれば軌道要素を
   // 「軌道」グループの下に畳む。viewer が null なら距離の行は落ちる。
   public propertyRows(
-    _celestialSystem: CelestialSystem, viewer: OrbitingObject | null, simTime: number, displayTime: number,
+    _celestialBodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number, displayTime: number,
   ): readonly PropertyRow[] {
     const motion = this.motion;
     const def = motion.def;
