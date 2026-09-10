@@ -40,6 +40,9 @@ class SourceAdapter:
     def climate_input(self, month, width, height):
         raise NotImplementedError
 
+    def tile_arrays(self, key):
+        raise NotImplementedError
+
 
 @dataclass(frozen=True)
 class RealTileSources:
@@ -52,6 +55,18 @@ class RealTileSources:
     geoid_paths: tuple
     gshhg_path: Path
     era5_path: Path
+
+
+@dataclass(frozen=True)
+class TileArrays:
+    """A fully windowed tile ready for the shared bake/encoding path."""
+
+    key: tuple
+    grid: object
+    color_srgb: list
+    ice_surface_m: list
+    geoid_m: list
+    gshhg_polygons: list
 
 
 def geotiff_window_for_grid(grid, geo_transform, raster_width, raster_height):
@@ -135,6 +150,10 @@ class RealSourceAdapter(SourceAdapter):
             self.paths["etopo-2022-v1-geoid"],
             self.paths["gshhg-2.3.7"][0],
             self.paths["era5-monthly-1991-2020"][0])
+
+    def tile_arrays(self, _key):
+        raise RendererUnavailable(
+            "実データのGeoTIFF/GSHHG window読取と再格子化はRealSourceAdapterの次段で実装が必要です")
 
     def climate_input(self, month, width, height):
         raise RendererUnavailable(
@@ -237,6 +256,12 @@ class FixtureSourceAdapter(SourceAdapter):
         except KeyError as error:
             raise RendererUnavailable(f"fixtureにタイルがありません: {tuple(key)}") from error
 
+    def tile_arrays(self, key):
+        bake = _bake()
+        tile = self.tile_input(key)
+        return TileArrays(tuple(key), bake.tile_grid(*key), tile.color_srgb,
+                          tile.ice_surface_m, tile.geoid_m, self.polygons)
+
     def climate_input(self, month, width, height):
         if not 1 <= month <= 12:
             raise ValueError("monthは1..12が必要です")
@@ -259,20 +284,50 @@ def _climate_field(entry, name, count):
     return [_finite(item, name) for item in value]
 
 
-class FixtureRenderer:
-    """Render validated fixture cells through bake.py's production encoders."""
+class ArraySourceAdapter(SourceAdapter):
+    """Small in-memory source adapter used by source-reader tests."""
 
-    def __init__(self, manifest, adapter):
+    def __init__(self, tiles, climates):
+        self._tiles = {tuple(tile.key): tile for tile in tiles}
+        self._climates = dict(climates)
+        if not self._tiles:
+            raise ValueError("配列source adapterにタイルがありません")
+
+    def tile_input(self, key):
+        try:
+            return self._tiles[tuple(key)]
+        except KeyError as error:
+            raise RendererUnavailable(f"配列source adapterにタイルがありません: {tuple(key)}") from error
+
+    def tile_arrays(self, key):
+        return self.tile_input(key)
+
+    def climate_input(self, month, width, height):
+        try:
+            values = self._climates[month]
+        except KeyError as error:
+            raise RendererUnavailable(f"配列source adapterに気候月がありません: {month}") from error
+        count = width * height
+        if len(values) != 4 or any(len(channel) != count for channel in values):
+            raise ValueError("配列source adapterの気候map寸法が不一致です")
+        return values
+
+
+class ArrayRenderer:
+    """Render windowed arrays through bake.py's production encoders."""
+
+    def __init__(self, manifest, adapter, region_kind="earth-surface-region-window"):
         self.manifest = manifest
         self.adapter = adapter
+        self.region_kind = region_kind
 
     def render_tile(self, key):
         bake = _bake()
-        tile = self.adapter.tile_input(key)
-        grid = bake.tile_grid(*key)
+        tile = self.adapter.tile_arrays(key)
+        grid = tile.grid
         region = {
             "schemaVersion": 1,
-            "kind": "earth-surface-region-fixture",
+            "kind": self.region_kind,
             "datasetId": self.manifest["datasetId"],
             "sourceManifestSha256": _contract_hash(self.manifest),
             "surfaceSourceId": "etopo-2022-v1-ice-surface",
@@ -282,7 +337,7 @@ class FixtureRenderer:
             "colorSrgb": tile.color_srgb,
             "iceSurfaceM": tile.ice_surface_m,
             "geoidM": tile.geoid_m,
-            "gshhgPolygons": self.adapter.polygons,
+            "gshhgPolygons": tile.gshhg_polygons,
         }
         result = bake.bake_region(region, self.manifest)
         color = _encode_jpeg(tile.color_srgb, grid.width, grid.height)
@@ -295,6 +350,13 @@ class FixtureRenderer:
         width, height = climate["width"], climate["height"]
         return [bake.encode_climate_rgba(*self.adapter.climate_input(month, width, height), width, height)
                 for month in range(1, 13)]
+
+
+class FixtureRenderer(ArrayRenderer):
+    """Render validated fixture cells through the shared source path."""
+
+    def __init__(self, manifest, adapter):
+        super().__init__(manifest, adapter, "earth-surface-region-fixture")
 
 
 def _encode_jpeg(pixels, width, height):
