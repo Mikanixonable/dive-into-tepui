@@ -1,5 +1,5 @@
 // 縦方向の開閉トグル。target の表示/非表示を collapsed クラスで切り替えるボタンを組み立てる。
-import { stopDragPropagation } from './widget-base';
+import { expandHitTarget, stopDragPropagation } from './widget-base';
 
 // マップのマーカーとは字形の族を分け、開いている状態と閉じている状態でどちらを向くかを
 // 画面内で一貫させる。
@@ -27,6 +27,8 @@ export function syncCollapseToggle(button: HTMLElement, target: HTMLElement, lab
   button.textContent = collapsed ? labels.collapsedGlyph : labels.expandedGlyph;
   button.setAttribute('aria-expanded', String(!collapsed));
   button.title = collapsed ? labels.collapsedTitle : labels.expandedTitle;
+  button.setAttribute('aria-label', button.title);
+  if (target.id) button.setAttribute('aria-controls', target.id);
 }
 
 // target の表示/非表示を collapsed クラスで切り替えるボタンを1つ組み、root へ追加して返す。
@@ -38,8 +40,10 @@ export function buildCollapseToggle(
   extraHitEls: readonly HTMLElement[] = [],
 ): HTMLElement {
   const button = document.createElement('button');
+  button.type = 'button';
   button.id = id;
-  if (className) button.className = className;
+  button.className = [className, 'ui-selectable'].filter(Boolean).join(' ');
+  expandHitTarget(button);
   root.appendChild(button);
   // クリックのたびに collapsed を反転し、その結果へ見た目を合わせ直す。
   const toggle = (): void => {
