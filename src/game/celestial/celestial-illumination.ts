@@ -81,7 +81,6 @@ export class CelestialIllumination {
     // 露出の順応と天体照の選定の基準点。カメラ位置ではなく注視点から取る —
     // マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
     const reference = fo.RtoThreeV3(cameraSystem.activeViewpoint.lookTarget);
-    // 恒星を持たない星系では、1 天文単位の位置に置いた基準の恒星ぶんの光が届くものとして扱う。
     const starIntensity = star?.stellarLight.radiantIntensity ?? REFERENCE_STAR_RADIANT_INTENSITY;
     this.targets.exposure.setReference(reference, sunPos, starIntensity);
     this.targets.sunLight.set(

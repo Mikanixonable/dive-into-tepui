@@ -179,7 +179,7 @@ export class ProteinEnemy extends Enemy {
         const cpuStart = performance.now();
         this.motionController.update(
           context.displayTime,
-          context.graphics.proteinVibration ? this.motionLodValue : 'marker',
+          context.visual.proteinVibration ? this.motionLodValue : 'marker',
           this.combat.phase,
         );
         this.motionCpuMsValue = performance.now() - cpuStart;

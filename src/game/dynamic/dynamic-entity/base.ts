@@ -10,6 +10,7 @@ import { Attitude } from '../../../physics/attitude';
 import { len, sub, v3, Vec3 } from '../../../math/vec3';
 import type { Notifier } from '../../../hud/notifier';
 import type { MarkerSlots } from '../../marker/marker-slots';
+import type { MarkerVisibility } from '../../marker/marker-visibility';
 import { savedAttitude, savedKinematicState, type BaseSaveData } from '../../save/save-data';
 import { Plan, type PlanExecutionMode } from '../../plan/plan';
 import { generateRandomName } from '../../random-name';
@@ -235,7 +236,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     return this.motion.stateAt(displayTime)?.r ?? null;
   }
 
-  public shownOnMap(markers: MarkerSlots): boolean { return markers.shows(this.markerKey); }
+  public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(this.markerKey); }
 
   // 自艦がいれば自艦からの距離。いなければ出さない。
   public listDetail(

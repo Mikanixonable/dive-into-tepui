@@ -84,7 +84,7 @@ export function buildDestroyFragments(
   return pieces;
 }
 
-// 自機の撃破で飛び散る破片。世界へ入れるのは呼び出し側。
+// 自機の撃破で飛び散る破片。
 export function playerDestroyFragments(
   state: KinematicState, worldSfx: WorldSfx, effects: FlashEffects,
 ): DebrisPiece[] {
@@ -95,7 +95,6 @@ export function playerDestroyFragments(
 }
 
 // 敵機の撃破で飛び散る破片。機体メッシュのスケール meshScale へ見合った大きさにする。
-// 世界へ入れるのは呼び出し側。
 export function enemyDestroyFragments(
   state: KinematicState, meshScale: number, worldSfx: WorldSfx, effects: FlashEffects,
 ): DebrisPiece[] {
