@@ -20,7 +20,7 @@ const STYLE = `
   width: 100%; background: var(--glass-control); border: 0; border-radius: var(--radius-control);
   color: var(--text); font: inherit; font-weight: bold; padding: var(--space-1) var(--space-2); box-sizing: border-box;
 }
-#hud .dg-window.property-window { width: 560px; max-width: 560px; }
+#hud .property-window { width: 560px; max-width: 560px; }
 #hud .prop-window-rows { padding: var(--space-2) 0; }
 #hud .prop-window-row {
   display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) var(--space-5); color: var(--text);

@@ -4,7 +4,7 @@
 import { OVERLAY_LAYER_STYLE } from '../../../hud/overlay-layer';
 import { LIGHT_PALETTE } from '../../../theme';
 import {
-  MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT,
+  MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN,
 } from '../../../hud/breakpoints';
 
 export const SKELETON_STYLE = `
@@ -96,7 +96,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 
 /* 左右レール */
 #hud .hud-rail {
-  position: absolute; top: 78px; bottom: 12px;
+  position: absolute; top: var(--hud-rail-top); bottom: var(--hud-rail-bottom);
   display: flex; flex-direction: column; align-items: stretch; gap: 7px;
   pointer-events: none; min-height: 0; overflow-x: hidden; overflow-y: auto;
   scrollbar-width: thin; overscroll-behavior: contain;
@@ -165,7 +165,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
 #hud-viewbadge span.vb-view-btn:hover { color: var(--text); }
 
 #hud-map-scale {
-  position: absolute; right: 12px; bottom: 12px; display: none; pointer-events: none;
+  position: absolute; right: 12px; bottom: var(--hud-map-scale-bottom); display: none; pointer-events: none;
   padding: var(--space-2) var(--space-4) var(--space-3); border-radius: var(--radius-control);
   color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.1;
   font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap;
@@ -235,28 +235,19 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   #hud .row .v { min-width: 64px; }
   #hud:not(.map-ui-active) #hud-viewbadge { display: none; }
   #hud-toast { max-width: 92vw; padding: var(--space-5) var(--space-5); font-size: var(--font-l); }
-  #hud .hud-rail { top: 8px; bottom: 8px; gap: var(--space-3); }
+  #hud .hud-rail { gap: var(--space-3); }
   #hud .hud-rail-left { left: 8px; }
   #hud .hud-rail-right { right: 8px; }
   #hud-chase-reset { top: calc(60px + var(--space-5)); width: 28px; height: 28px; }
   #hud-chase-reset svg { width: 14px; height: 14px; }
-  #hud-map-scale { right: 8px; bottom: 8px; font-size: var(--font-xxs); }
-  #hud .hud-rail { top: 40px; }
+  #hud-map-scale { right: 8px; font-size: var(--font-xxs); }
 }
 @media ${MQ_COMPACT} {
   #hud .hud-rail { font-size: var(--font-xxs); }
-  #hud .hud-map-root.active .hud-rail { bottom: calc(28vh + 16px); bottom: calc(28dvh + 16px); }
-}
-@media ${MQ_COARSE} {
-  #hud .hud-rail { bottom: 62px; }
-  #hud-map-scale { bottom: 62px; }
+  #hud .hud-map-root.active .hud-rail { bottom: var(--hud-map-rail-bottom); }
 }
 @media ${MQ_COARSE_SHORT} {
-  #hud .hud-rail { bottom: 52px; }
   #hud-chase-reset { top: calc(40px + var(--space-4)); }
-}
-@media ${MQ_SHORT} {
-  #hud-map-scale { bottom: 52px; }
 }
 @media (prefers-reduced-motion: reduce) {
   #hud *, #hud *::before, #hud *::after {
