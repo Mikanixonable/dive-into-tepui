@@ -227,6 +227,7 @@ export class ObjectPlacement {
     if (system === null) {
       throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} の主天体が引けない`);
     }
+    // 面外振幅 az は両方の軌道種が使い、面内振幅 ax はリサジューだけが持つ。
     if (form.lagrangeOrbitKind === 'halo') {
       return haloState(system, { point: form.lagrangePoint, az: form.azKm * 1e3 });
     }

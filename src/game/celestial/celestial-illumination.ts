@@ -1,6 +1,5 @@
-// 星系の天体を、この1フレームの照らす源・遮る源・霞ませる源として選び、描画パスへ渡す。
-// 恒星と露出の基準・環境光・天体照・天体と環と積雲の影・大気の描画対象を、ECI で組んだ候補から
-// 選び、描画座標へ移したうえで書き込む。
+// 星系の天体を、この1フレームの照らす源・遮る源・霞ませる源として選ぶ。候補は ECI で組み、
+// 描画座標へ移してから、恒星光・露出・環境光・天体照・影・大気の各パスへ書き込む。
 import * as THREE from 'three/webgpu';
 import { shapeAxes, shapeInscribedRadius, shapeOf } from '../../physics/celestial-body-def';
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
