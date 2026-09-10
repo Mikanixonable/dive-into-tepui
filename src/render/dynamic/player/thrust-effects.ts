@@ -1,16 +1,16 @@
 // マヌーバ噴射プルーム: 推力方向の逆側に置く発光ビルボード 2 枚(コア+アウター)+ エンジン音。
 import * as THREE from 'three/webgpu';
-import { Vec3, addScaled, len, scale } from '../../math/vec3';
-import { Billboard } from '../../render/billboard';
+import { Vec3, addScaled, len, scale } from '../../../math/vec3';
+import { Billboard } from '../../billboard';
 import {
   THRUST_PLUME_CORE_BRIGHTNESS, THRUST_PLUME_CORE_COLOR, THRUST_PLUME_CORE_OFFSET,
   THRUST_PLUME_CORE_SIZE_RATIO, THRUST_PLUME_OUTER_BRIGHTNESS, THRUST_PLUME_OUTER_COLOR,
   THRUST_PLUME_OUTER_OFFSET, THRUST_PLUME_OUTER_SIZE_RATIO, THRUST_PLUME_SIZE_MIN,
   THRUST_PLUME_SIZE_SPAN,
-} from '../../render/vfx-style';
-import { SchematicThrustCone } from '../../render/schematic-thrust-cone';
-import { FloatingOrigin } from '../camera/floating-origin';
-import type { RenderStyle } from '../../render/render-style';
+} from '../../vfx-style';
+import { SchematicThrustCone } from '../../schematic-thrust-cone';
+import { FloatingOrigin } from '../../../game/camera/floating-origin';
+import type { RenderStyle } from '../../render-style';
 
 export class ThrustEffects {
   private readonly core = new Billboard(THRUST_PLUME_CORE_COLOR);

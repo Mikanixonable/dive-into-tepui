@@ -13,10 +13,10 @@ import { BeltView } from './belt-view';
 import { PlayerMarkers } from '../../../game/player/player-markers';
 import { PlayerMotion } from '../../../game/player/player-motion';
 import { PowerView } from './power-view';
-import { RcsEffects } from '../../../game/player/rcs-effects';
+import { RcsEffects } from './rcs-effects';
 import { RadiatorView } from './radiator-view';
 import { ReentryEffects } from '../../../game/player/reentry-effects';
-import { ThrustEffects } from '../../../game/player/thrust-effects';
+import { ThrustEffects } from './thrust-effects';
 
 interface PlayerVisualSource extends DynamicViewIdentity {
   readonly id: string;
