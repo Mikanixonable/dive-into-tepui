@@ -4,6 +4,8 @@ import earthTextureUrl from '../../../assets/earth.jpg';
 import climateTextureUrl from '../../../assets/earth-climate.png';
 import earthSmoothnessUrl from '../../../assets/earth-smoothness.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
+import coastlineData from '../../../assets/earth-coastline.json';
+import moonFeaturesData from '../../../assets/moon-features.json';
 import { AtmosphereDef } from '../../../physics/atmosphere';
 import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
 import { PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
@@ -19,8 +21,7 @@ import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { CumulusShell } from '../../../render/celestial/cumulus-shell';
 import { ClimateMap } from '../../../render/cloud/climate-map';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
-import { EarthCoastline } from '../../../render/celestial/earth-coastline';
-import { MoonSurfaceMarkings } from '../../../render/celestial/moon-surface-markings';
+import { LineOverlay, type LatLonPolyline, type UnitSphereLoop } from '../../../render/celestial/line-overlay';
 import { GeostationaryOverlay } from '../../../render/celestial/celestial-entity/geostationary-overlay';
 import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
 import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
@@ -146,6 +147,15 @@ export const EARTH_TEXTURE: CelestialTexture = {
   averageHue: [0.9703, 0.9940, 1.1471],
 };
 
+// 地球へ貼る海岸線。tools/export-coastline.mjs が Natural Earth 110m coastline から焼き込んだ、
+// 緯度・経度 [deg] のペアを1本の折れ線として並べた配列の配列。形は焼き込み側が保証するので、
+// 型を持たない JSON にここで形を与える。
+const EARTH_COASTLINE = coastlineData as readonly LatLonPolyline[];
+
+// 月へ貼る主要な海・クレーターの輪郭。tools/export-moon-features.mjs が assets-src/moon-features.json
+// の中心緯度経度・直径から円として焼き込んだ、単位球面上の xyz を1ループとして並べた配列の配列。
+const MOON_SURFACE_MARKINGS = moonFeaturesData as readonly UnitSphereLoop[];
+
 // 地球のオーロラ。オーバル緯度は磁極の配置、発光高度は降り込む粒子が大気を励起する層、
 // 色は酸素の緑(557.7nm)と赤(630nm)の輝線による。
 const EARTH_AURORA_OPTICS: AuroraOptics = {
@@ -198,7 +208,9 @@ export function earthSystem(
       earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
       new PointCelestialView(
         CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl),
-        EARTH_ATMOSPHERE_OPTICS, new EarthCoastline(), earthAuroras(),
+        EARTH_ATMOSPHERE_OPTICS,
+        LineOverlay.of({ kind: 'latLonPolylines', polylines: EARTH_COASTLINE }),
+        earthAuroras(),
         GeostationaryOverlay.of(earth.body), cumulus,
       ),
     ),
@@ -210,7 +222,7 @@ export function earthSystem(
         CelestialSurface.textured({
           url: moonTextureUrl, albedoScale: 0.3459, bondAlbedo: 0.11, averageHue: [1.0458, 0.9880, 0.9844],
         }),
-        null, new MoonSurfaceMarkings(),
+        null, LineOverlay.of({ kind: 'unitSphereLoops', loops: MOON_SURFACE_MARKINGS }),
       ),
     ),
   };
