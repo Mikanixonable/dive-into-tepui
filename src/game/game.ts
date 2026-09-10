@@ -270,7 +270,7 @@ export class Game {
     });
     this.frameControls = new FrameControls(
       this._hud.mapRoot, this._hud.combatRoot, this._hud.layers.popup,
-      celestialSystem, this.cameraSystem.mapCamera,
+      celestialSystem, this.cameraSystem.mapCamera, this.cameraSystem.combatCamera,
       this.displayWindowManager, this._hud.overlayManager, this.frameAnchors,
     );
     this.targeter = new Targeter(
