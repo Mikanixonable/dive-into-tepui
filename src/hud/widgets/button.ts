@@ -2,6 +2,10 @@
 // setOn/setEnabled で与える。点灯型トグルは setOn を外から呼ぶ形でこのボタンに表現させる。
 import { bindActivation, expandHitTarget, stopDragPropagation } from './widget-base';
 
+// ボタンの意味(Primary/Secondary)と密度・形状(Dense/Icon)を、画面側の個別 CSS ではなく
+// 共通スタイルへ渡すための見た目バリアント。状態(on/pressed/disabled)とは別軸で持つ。
+export type ButtonVariant = 'primary' | 'secondary' | 'dense' | 'icon';
+
 export class Button {
   public readonly element: HTMLElement;
   private enabled = true;
@@ -9,9 +13,13 @@ export class Button {
 
   // label はボタンの表示文字列。onClick はクリック(またはキーボード操作)のたびに呼ばれる。
   // icon を渡すと、その SVG/文字マークアップをラベルの前に添える。
-  public constructor(label: string, onClick: () => void, icon?: string) {
+  public constructor(
+    label: string, onClick: () => void, icon?: string,
+    variant?: ButtonVariant | readonly ButtonVariant[],
+  ) {
     this.element = document.createElement('span');
-    this.element.className = 'w-btn';
+    const variants = variant === undefined ? [] : typeof variant === 'string' ? [variant] : variant;
+    this.element.className = ['w-btn', ...variants.map((name) => `w-btn--${name}`)].join(' ');
     if (icon !== undefined) {
       const iconEl = document.createElement('span');
       iconEl.className = 'w-btn-icon';
