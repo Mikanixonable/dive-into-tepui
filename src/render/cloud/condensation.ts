@@ -1,19 +1,8 @@
 // 天気から凝結する雲。地表付近の湿度と対流が不透明な雲に、上層の湿度が薄く透ける雲になる。
 // 2つは別の湿度の場から出るので、独立に分布する。値はすべて見えのための調整値。
-import {
-  abs, clamp, exp, float, inverseSqrt, length, max, mix, smoothstep, tanh,
-} from 'three/tsl';
-import { R_EARTH } from '../../game/celestial/solar-system/constants';
-import {
-  CLOUD_CELL_MEAN_SCALE_MAX,
-  CLOUD_CELL_MEAN_SCALE_MIN,
-  CLOUD_CELL_VARIANCE_PROFILES,
-} from './cloud-cell-variance';
-import { gradientNoise } from './gradient-noise';
-import { eastAt, northAt } from './sphere-frame';
+import { exp, float, inverseSqrt, max, mix, smoothstep, tanh } from 'three/tsl';
 import type { CloudSample } from './cloud-field-sample';
 import type { WeatherSample } from './weather-model';
-import type { FloatNode, Vec3Node } from '../tsl-types';
 export type { CloudSample } from './cloud-field-sample';
 
 // 被覆率が効き始める湿度と、そこから先の 1 単位ぶんの幅(被覆率が 0 から 0.56 へ上がる湿度の
@@ -34,25 +23,6 @@ const COVERAGE_WIDTH = 0.22;
 const COVERAGE_DISPERSION = 2;
 // 湿度へ足す対流の重み。伝達関数の幅に対してどれだけ深く千切るかを決める。
 const CONVECTION_GAIN = 1.2;
-// 雲セルのサイズ分散を選ぶ緯度の遷移。熱帯海洋ASTERの分布を低緯度側の基準にし、雲街が
-// 現れる中緯度以北へ向かうほど大きなセルを許す。境界は数値ポリシーと同じく連続に渡す。
-const CELL_VARIANCE_LATITUDE_START = 15 * Math.PI / 180;
-const CELL_VARIANCE_LATITUDE_END = 60 * Math.PI / 180;
-// 雲街の大きな包絡。全球雲場の赤道付近の約39 km texelでも alias しないよう128 km級の列を作り、
-// 粒そのものの4〜12 km級のサイズは CloudShapeEvaluator へ委ねる。境界層高度の数倍という観測を
-// 全球の低解像度場へ写すためのゲーム用の包絡値である。
-const CLOUD_ROW_WAVELENGTH = 128_000;
-// Melfi & Palm (2012) と Weckwerth et al. (1997) の雲街の伸長・波長比を踏まえ、中央の4を採用した
-// 実装推定値。低解像度全球場へ焼くため、観測事例の境界層高度比をそのまま固定波長にはしない。
-const CLOUD_ROW_ASPECT_RATIO = 4;
-const CLOUD_ROW_LATITUDE_START = 30 * Math.PI / 180;
-const CLOUD_ROW_LATITUDE_END = 60 * Math.PI / 180;
-// 列を陸域へどれだけ持ち込むか、湿度へどれだけ足すか、風を列として認識し始める速さは、観測傾向を
-// ゲームの被覆率へ写す実装推定値であり、雲街の普遍的な閾値ではない。
-const CLOUD_ROW_LAND_GAIN = 0.75;
-const CLOUD_ROW_HUMIDITY_GAIN = 0.12;
-const CLOUD_ROW_WIND_START = 2;
-const CLOUD_ROW_WIND_FULL = 8;
 // 気団の折り目の帯(前線・雨帯)の中で、その重みを弱める割合(1 で帯の芯の粒が消える)。**帯は
 // 隙間なく連なる面で、対流はそこでは穴ではなく雲頂の起伏と塔として出る**(`DEVELOP/SPEC/
 // RENDERING.md`「帯に沿って幅数百キロの雲が隙間なく連なり…粒立った塔が列をなす」)。帯の中は
@@ -122,7 +92,7 @@ const TRANSLUCENT_LIMIT = 0.63;
 // 天蓋は渦の芯が決める。**雲底からの高さは被覆率が低いほど縮み、広く覆う雲ほど元の高さを保つ**。
 // **対流の活発度は被覆率と塔へ効き、沈降する海洋性層積雲では層状の起伏も低くなる** — 一面に
 // 覆われた空も一様な白い面にはならない(`DEVELOP/SPEC/RENDERING.md`「雲の描画」)。
-export function condense(weather: WeatherSample, direction: Vec3Node): CloudSample {
+export function condense(weather: WeatherSample): CloudSample {
   // 網目と粒を湿度で混ぜる。混ぜると振れ幅が落ちるので、二乗和の平方根で戻す — 戻さないと
   // 渡りの中間(半々)に、粒の消えた平坦な帯ができる。
   const shape = smoothstep(SHAPE_NETWORK_HUMIDITY, SHAPE_GRAIN_HUMIDITY, weather.surfaceHumidity);
@@ -131,7 +101,6 @@ export function condense(weather: WeatherSample, direction: Vec3Node): CloudSamp
     .mul(inverseSqrt(network.mul(network).add(shape.mul(shape))));
   const peak = convection.mul(weather.convectiveActivity);
   const granularity = peak.mul(CONVECTION_GAIN).mul(weather.band.mul(BAND_GRAIN_FADE).oneMinus());
-  const rowBias = cloudRowBias(weather, direction);
   // 沈降する湿った海洋の低活発度の空では海洋性層積雲へ連続的に移り、前線帯ではその性質を薄める。
   const subsidence = max(weather.lift.negate(), 0);
   const stratocumulus = smoothstep(
@@ -170,8 +139,7 @@ export function condense(weather: WeatherSample, direction: Vec3Node): CloudSamp
   const anvil = weather.anvil.mul(weather.tropopause);
   // 被覆率は、湿度が効き始めを超えた分を幅で割った t が張る、晴れている割合の補。下端は傾き 0 で
   // 0 から離れ、上端は 1 へ代数の裾で漸近する — 覆われた空にも湿度の差が階調として残る。
-  const moistened = weather.surfaceHumidity.add(granularity).add(rowBias)
-    .add(stratocumulus.mul(COVERAGE_WIDTH));
+  const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(COVERAGE_WIDTH));
   const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
   const clear = excess.mul(excess).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
   const coverage = clear.oneMinus();
@@ -188,56 +156,5 @@ export function condense(weather: WeatherSample, direction: Vec3Node): CloudSamp
     coverage,
     cloudTop: scaledCloudTop,
     translucent: tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT),
-    cellSizeVariation: cellSizeVariationAt(weather),
   };
-}
-
-// 低層風に沿った雲列の包絡を作る。局所接平面の風向に直交する座標だけを約4倍伸ばしてノイズへ渡す
-// ので、東西・南北だけでなく斜めの風にも列が追従する。陸域・中高緯度ほど効きを強め、経度の継ぎ目を
-// またいでも方向ベクトルから直接評価するため列が切れない。128 kmは全球場での列の包絡で、セル自体の
-// サイズ分散とは別の尺度である。
-function cloudRowBias(weather: WeatherSample, direction: Vec3Node): FloatNode {
-  const latitudeWeight = smoothstep(
-    CLOUD_ROW_LATITUDE_START,
-    CLOUD_ROW_LATITUDE_END,
-    abs(weather.latitude),
-  );
-  const landWeight = clamp(weather.landFraction, 0, 1).mul(CLOUD_ROW_LAND_GAIN);
-  // 緯度と陸域のどちらか一方だけでも列を許すが、両方の境界でmaxの折れ目を作らない。風が弱い所では
-  // isotropicな雲場へ戻し、無風なのに風向きだけで列が立つことを防ぐ。
-  const regionWeight = latitudeWeight.add(landWeight).sub(latitudeWeight.mul(landWeight));
-  const eastWind = weather.surfaceWind.x;
-  const northWind = weather.surfaceWind.y;
-  const windSpeed = length(weather.surfaceWind);
-  const rowWeight = regionWeight.mul(smoothstep(CLOUD_ROW_WIND_START, CLOUD_ROW_WIND_FULL, windSpeed));
-  const windLength = max(windSpeed, 1e-3);
-  const acrossWind = eastAt(direction).mul(northWind.negate().div(windLength))
-    .add(northAt(direction).mul(eastWind.div(windLength)));
-  const frequency = R_EARTH / CLOUD_ROW_WAVELENGTH;
-  const aligned = gradientNoise(
-    direction.mul(frequency).add(acrossWind.mul(frequency * (CLOUD_ROW_ASPECT_RATIO - 1))),
-  );
-  const envelope = smoothstep(-0.15, 0.35, aligned).sub(0.5);
-  return envelope.mul(rowWeight).mul(CLOUD_ROW_HUMIDITY_GAIN);
-}
-
-// 地域ごとのセル幅プロファイルをGPU上で連続に評価する。代表幅は雲場へ保存し、分布のノイズは表面・
-// 影が同じ対数正規幅から再現するため、4〜12 kmの揺らぎをミップで失わず海岸・緯度境界にも継ぎ目を作らない。
-function cellSizeVariationAt(weather: WeatherSample): FloatNode {
-  const latitudeWeight = smoothstep(
-    CELL_VARIANCE_LATITUDE_START,
-    CELL_VARIANCE_LATITUDE_END,
-    abs(weather.latitude),
-  );
-  const lowOcean = CLOUD_CELL_VARIANCE_PROFILES.lowLatitudeOcean;
-  const lowLand = CLOUD_CELL_VARIANCE_PROFILES.lowLatitudeLand;
-  const highOcean = CLOUD_CELL_VARIANCE_PROFILES.highLatitudeOcean;
-  const highLand = CLOUD_CELL_VARIANCE_PROFILES.highLatitudeLand;
-  const oceanMeanScale = mix(lowOcean.meanScale, highOcean.meanScale, latitudeWeight);
-  const landMeanScale = mix(lowLand.meanScale, highLand.meanScale, latitudeWeight);
-  // サイズの空間ノイズは表面・影が読む場所で評価する。全球の低解像度雲場へ焼いてしまうと4〜12 km
-  // の揺らぎがミップで消えるため、ここでは地域の代表サイズを0..1へ保存する。
-  const meanScale = mix(oceanMeanScale, landMeanScale, clamp(weather.landFraction, 0, 1));
-  return meanScale.sub(CLOUD_CELL_MEAN_SCALE_MIN)
-    .div(CLOUD_CELL_MEAN_SCALE_MAX - CLOUD_CELL_MEAN_SCALE_MIN);
 }

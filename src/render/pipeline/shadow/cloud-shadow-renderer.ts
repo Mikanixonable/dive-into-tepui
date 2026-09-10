@@ -106,6 +106,7 @@ export class CloudShadowRenderer {
         // 実寸と光路 1 歩の長さのうち粗いほうを取る。場の mip 段も粒の振幅もこの幅が決める。
         const sampleWidth = max(footprint, stepLength.mul(STEP_BLUR));
         const lod = this.fieldLod(sampleWidth);
+        const grainAmplitude = this.shape.grainAmplitudeForWidth(sampleWidth).toVar();
         const floorAltitude = this.receiverFloorAltitude(offset, lod, bodyRadius);
         const stepRadius = stepLength.div(bodyRadius);
         const opticalDepth = float(0).toVar();
@@ -115,14 +116,11 @@ export class CloudShadowRenderer {
           const up = sampleOffset.div(sampleRadius);
           const altitude = max(sampleRadius.sub(1).mul(bodyRadius), floorAltitude);
           const cloud = this.fieldAt(up, lod);
-          const grainAmplitude = this.shape.grainAmplitudeForWidth(
-            sampleWidth, up, cloud.cellSizeVariation,
-          ).toVar();
           // 粒は引けるときだけ引く。タップの数だけノイズを引くので、振幅が 0 になる遠さでは分岐ごと
           // 飛ばして費用を戻す(select では両辺が評価されて飛ばない)。
           const grain = float(0).toVar();
           If(greaterThan(grainAmplitude, 0), () => {
-            grain.assign(this.shape.grainAt(up, grainAmplitude, cloud.cellSizeVariation));
+            grain.assign(this.shape.grainAt(up, grainAmplitude));
           });
           const cloudTop = this.shape.cloudTop(cloud.cloudTop.div(CLOUD_TOP_SPAN), grain).mul(this.topAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);
