@@ -10,17 +10,15 @@ import tempfile
 DATASET = "reanalysis-era5-single-levels-monthly-means"
 YEARS = [f"{year:04d}" for year in range(1991, 2021)]
 MONTHS = [f"{month:02d}" for month in range(1, 13)]
-HOURS = [f"{hour:02d}:00" for hour in range(24)]
 
 
 def request_definition():
     """Return the immutable CDS selection required by the source manifest."""
     return {
-        "product_type": "monthly_averaged_reanalysis_by_hour_of_day",
+        "product_type": "monthly_averaged_reanalysis",
         "variable": ["2m_temperature", "total_cloud_cover"],
         "year": YEARS.copy(),
         "month": MONTHS.copy(),
-        "time": HOURS.copy(),
         "data_format": "netcdf",
     }
 

@@ -51,7 +51,8 @@ def load_manifest(path):
     if any(not isinstance(source, dict) for source in sources):
         raise ValidationError("source manifestのsources要素がobjectではありません")
     ids = [source.get("id") for source in sources]
-    if any(not re.fullmatch(r"[a-z0-9-]+", source.get("id", "")) for source in sources) \
+    # GSHHGの配布版など、固定されたデータセットIDには版番号のドットを含められる。
+    if any(not re.fullmatch(r"[a-z0-9.-]+", source.get("id", "")) for source in sources) \
             or len(set(ids)) != len(ids):
         raise ValidationError("source manifestのsource idが不正または重複しています")
     for source in sources:
@@ -129,6 +130,9 @@ def validate_source_files(manifest, raw_root, require_pinned=False):
             if source.get("acquisition") == "explicit_local_export":
                 if not isinstance(receipt.get("url"), str) or not receipt["url"].startswith("file:"):
                     raise ValidationError(f"{source['id']}/{region}: local exportのreceipt URLがfile URIではありません")
+            elif source.get("acquisition") == "public_mirror":
+                if not isinstance(receipt.get("url"), str) or not receipt["url"].startswith("mirror:"):
+                    raise ValidationError(f"{source['id']}/{region}: public mirrorのreceipt URLがmirror URIではありません")
             else:
                 expected_url = source["urlTemplate"].format(region=region)
                 if receipt.get("url") != expected_url:
@@ -159,8 +163,8 @@ def _era5_source(manifest):
         source = next(source for source in manifest["sources"] if source["id"] == "era5-monthly-1991-2020")
     except StopIteration as error:
         raise ValidationError("ERA5 source (era5-monthly-1991-2020) がsource manifestにありません") from error
-    if source.get("acquisition") != "explicit_local_export":
-        raise ValidationError("ERA5 sourceはexplicit_local_exportである必要があります")
+    if source.get("acquisition") not in ("explicit_local_export", "public_mirror"):
+        raise ValidationError("ERA5 sourceのacquisitionが不正です")
     return source
 
 
@@ -171,7 +175,9 @@ def _coordinate_variable(dataset, names, role):
     raise ValidationError(f"ERA5の{role}座標変数がありません ({', '.join(names)})")
 
 
-def _expected_times():
+def _expected_times(product):
+    if product == "monthly_averaged_reanalysis":
+        return [(year, month) for year in range(1991, 2021) for month in range(1, 13)]
     return [(year, month, hour) for year in range(1991, 2021)
             for month in range(1, 13) for hour in range(24)]
 
@@ -215,7 +221,8 @@ def validate_era5_export(path, manifest, netcdf_module=None):
         time_name = "time"
         latitude_name, latitude = _coordinate_variable(dataset, ("latitude", "lat"), "緯度")
         longitude_name, longitude = _coordinate_variable(dataset, ("longitude", "lon"), "経度")
-        expected_shape = (8640, 721, 1440)
+        monthly_means = source.get("product") == "monthly_averaged_reanalysis"
+        expected_shape = (360 if monthly_means else 8640, 721, 1440)
         actual_shape = (len(dimensions[time_name]), len(dimensions[latitude_name]), len(dimensions[longitude_name]))
         if actual_shape != expected_shape:
             raise ValidationError(f"ERA5のtime/緯度/経度格子が不一致です: {actual_shape} != {expected_shape}")
@@ -255,15 +262,20 @@ def validate_era5_export(path, manifest, netcdf_module=None):
         if calendar not in ("standard", "gregorian", "proleptic_gregorian"):
             raise ValidationError(f"ERA5のcalendarが不正です: {calendar}")
         dates = netcdf_module.num2date(time[:], time.units, calendar=calendar)
-        observed = [(item.year, item.month, item.hour) for item in dates]
-        if observed != _expected_times():
-            raise ValidationError("ERA5の時間軸は1991-01から2020-12まで各月24時刻を昇順で含む必要があります")
+        observed = ([(item.year, item.month) for item in dates] if monthly_means
+                    else [(item.year, item.month, item.hour) for item in dates])
+        if observed != _expected_times(source.get("product")):
+            expected_description = "各月1レコード" if monthly_means else "各月24時刻"
+            raise ValidationError(f"ERA5の時間軸は1991-01から2020-12まで{expected_description}を昇順で含む必要があります")
+        time_result = {"start": "1991-01", "end": "2020-12", "records": expected_shape[0],
+                       "calendar": calendar, "units": time.units}
+        if not monthly_means:
+            time_result["hoursUtc"] = list(range(24))
         return {
             "path": str(path), "bytes": path.stat().st_size, "sha256": file_hash(path),
-            "variables": variables, "dimensions": {"time": 8640, "latitude": 721, "longitude": 1440},
+            "variables": variables, "dimensions": {"time": expected_shape[0], "latitude": 721, "longitude": 1440},
             "coordinateOrder": {"latitude": "90..-90 by -0.25", "longitude": "0..359.75 by +0.25"},
-            "time": {"start": "1991-01", "end": "2020-12", "records": 8640,
-                     "hoursUtc": list(range(24)), "calendar": calendar, "units": time.units},
+            "time": time_result,
         }
     except ValidationError:
         raise
