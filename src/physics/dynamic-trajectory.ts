@@ -7,7 +7,7 @@ import { KinematicState, kinematicState } from './kinematic-state';
 import { StateQueue } from './state-queue';
 import { extrapolatedRelativeState } from './kepler-extrapolation';
 import { Vec3, add } from '../math/vec3';
-import { stepDynamics } from './dynamics';
+import { stepDynamicsWithSamples, type DynamicsEnvironmentSample } from './dynamics';
 import type { CelestialBody } from './celestial-body';
 
 // 先端を二体ケプラー軌道とみなすときの中心天体と、それを厳密に引いた時刻。
@@ -64,12 +64,13 @@ export class DynamicTrajectory {
     sampleInterval: number,
     keepDuration: number,
     extrapolationCenter: CelestialBody | null = null,
-  ): void {
-    const next = stepDynamics(
+  ): readonly DynamicsEnvironmentSample[] {
+    const result = stepDynamicsWithSamples(
       this.state, dt, attractors, occluders, atmosphereBody, pivot, bcInv, srpCoeff, thrust);
-    this.advanceTip(next, sampleInterval, keepDuration);
+    this.advanceTip(result.state, sampleInterval, keepDuration);
     this._extrapolationCenter = extrapolationCenter === null
       ? null : { celestialBody: extrapolationCenter, pivot };
+    return result.samples;
   }
 
   // 積分せず、外から与えられた状態を先端にする。保持方針・prevState の更新は step と同じ。
