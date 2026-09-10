@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Pages同居bundleの配置、receipt、subpath URL、サイズ予算を検査する。
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { decodePng } from '../png.mjs';
@@ -14,6 +14,11 @@ try {
   const staged = await stagePages({ outputRoot: root, maxBytes: 4 * 1024 * 1024 });
   const checked = await checkPagesLayout(root, staged.datasetId);
   assert.equal(checked.bytes, staged.totalBytes);
+  assert.equal(staged.maxLod, 0);
+  assert.equal(staged.declaredMaxLod, 7);
+  assert.equal(staged.tileCount, 1);
+  assert.deepEqual(staged.missingManifest, []);
+  assert.equal(staged.capacity.withinBudget, true);
   const climate = decodePng(await readFile(join(staged.target, 'climate/01.png')));
   assert.deepEqual({ width: climate.width, height: climate.height, channels: climate.channels },
     { width: 1024, height: 512, channels: 4 });
@@ -36,6 +41,24 @@ try {
   assert.equal(cacheControlForPages('earth-surface.json'), 'public, max-age=60, must-revalidate');
   assert.equal(cacheControlForPages('tiles/0/0/0.bin.gz'), 'public, max-age=31536000, immutable');
   await assert.rejects(() => stagePages({ outputRoot: root, maxBytes: 1 }), /byte budget/);
+  await assert.rejects(() => checkPagesLayout(root, staged.datasetId, { maxBytes: 1 }), /byte budget/);
+
+  const partialInput = join(root, 'partial-input');
+  await cp(staged.target, partialInput, { recursive: true });
+  const partialManifestPath = join(partialInput, 'earth-surface.json');
+  const partialManifest = JSON.parse(await readFile(partialManifestPath, 'utf8'));
+  partialManifest.coverage = { kind: 'complete', maxZoom: 7, expectedTiles: 43690 };
+  await writeFile(partialManifestPath, `${JSON.stringify(partialManifest)}\n`);
+  await assert.rejects(
+    () => stagePages({ inputRoot: partialInput, outputRoot: join(root, 'partial-output'), maxBytes: 4 * 1024 * 1024 }),
+    /partial production coverage.*1 tiles.*43690/,
+  );
+
+  const missingInput = join(root, 'missing-input');
+  await assert.rejects(
+    () => stagePages({ inputRoot: missingInput, outputRoot: join(root, 'missing-output'), maxBytes: 4 * 1024 * 1024 }),
+    /missing manifest.*earth-surface\.json/,
+  );
   console.log('earth-surface Pages layout fixtures: ok');
 } finally {
   await rm(root, { recursive: true, force: true });
