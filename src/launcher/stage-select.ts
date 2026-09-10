@@ -14,7 +14,7 @@ import {
   ACCENT, ACCENT_SOFT, ACTIVE_THEME, BG, SIGNAL, SURFACE_0 as THEME_SURFACE_0,
   SURFACE_1, SURFACE_2, SURFACE_3, TEXT, TEXT_DIM, TEXT_MUTED, TEXT_FAINT, Z_STAGE_SELECT,
 } from '../theme';
-import { TITLE_SCENE_PATTERNS, createTitleScene, type TitleScene } from '../render/title-scene';
+import { TITLE_SCENE_PATTERNS, createTitleScene, type TitleScene } from './title-scene';
 
 const PAGE = BG;
 const SURFACE_0 = THEME_SURFACE_0;

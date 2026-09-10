@@ -1,8 +1,8 @@
 import * as THREE from 'three/webgpu';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import { buildBaseModel } from '../base-station-model';
-import { RcsEffects } from '../../../game/player/rcs-effects';
-import { ThrustEffects } from '../../../game/player/thrust-effects';
+import { RcsEffects } from '../player/rcs-effects';
+import { ThrustEffects } from '../player/thrust-effects';
 import { DynamicView, type DynamicViewFrame, type DynamicViewIdentity } from '../dynamic-view';
 import type { DynamicMotion } from '../../../game/dynamic/dynamic-motion';
 import { BaseMotion } from '../../../game/dynamic/dynamic-entity/base-motion';
