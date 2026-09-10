@@ -6,6 +6,7 @@ import { float, fract, greaterThan, int, log2, max, min, select, texture, unifor
 import { sphereMeshUv } from '../celestial-surface';
 import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
 import { maxAvailableMipLevelOf } from './baked-field';
+import { cloudSampleFromTexel, type CloudSample } from './cloud-field-sample';
 import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 
 export type CloudUvAt = (direction: Vec3Node) => Vec2Node;
@@ -52,7 +53,7 @@ export class CloudFieldSampler {
 
   // 天体固定の単位方向を、生成側から注入された雲場 UV へ変換して読む。経度の wrap を明示し、
   // mip が画面微分へ依存しない読み手では lod を指定する。
-  public sample(direction: Vec3Node, lod?: FloatNode): Vec4Node {
+  private sample(direction: Vec3Node, lod?: FloatNode): Vec4Node {
     const uv = this.uvAt(direction);
     const sample = this.field.sample(vec2(fract(uv.x), uv.y));
     const selected = lod === undefined
@@ -63,6 +64,11 @@ export class CloudFieldSampler {
       sample.level(min(max(this.fixedLod, 0), this.maxMipLevel)),
       selected,
     );
+  }
+
+  // 生のRGBAではなく、生成時と同じ単位の雲標本として読む。LODを指定する読み手もこの変換を共有する。
+  public sampleCloud(direction: Vec3Node, lod?: FloatNode): CloudSample {
+    return cloudSampleFromTexel(this.sample(direction, lod));
   }
 
   // 光路上の標本のように画面の隣接画素と連続しない標本の mip を共通選択する。

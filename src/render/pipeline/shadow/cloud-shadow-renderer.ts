@@ -6,9 +6,10 @@ import {
   sqrt, uniform, vec4,
 } from 'three/tsl';
 import { CloudFieldSampler, type CloudLodMode } from '../../cloud/cloud-field-sampler';
+import type { CloudSample } from '../../cloud/cloud-field-sample';
 import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
-import { CUMULUS_GRAIN_SIZE } from '../../cloud/cumulus-shape';
-import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform, Vec4Node } from '../../tsl-types';
+import { CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from '../../cloud/cumulus-shape';
+import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
 
 // 影を落とす積雲の殻 1 体ぶん。center は描画座標の天体中心、surfaceRadius は雲の高度の基準
@@ -121,9 +122,9 @@ export class CloudShadowRenderer {
           If(greaterThan(grainAmplitude, 0), () => {
             grain.assign(this.shape.grainAt(up, grainAmplitude));
           });
-          const cloudTop = this.shape.cloudTop(cloud.g, grain).mul(this.topAltitude);
+          const cloudTop = this.shape.cloudTop(cloud.cloudTop.div(CLOUD_TOP_SPAN), grain).mul(this.topAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);
-          const columnDepth = this.shape.columnOpticalDepth(this.shape.opaqueFraction(cloud.r, grain));
+          const columnDepth = this.shape.columnOpticalDepth(this.shape.opaqueFraction(cloud.coverage, grain));
           // **1 歩が雲頂をまたぐ割合で配る** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
           // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
           const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
@@ -151,8 +152,8 @@ export class CloudShadowRenderer {
   // 殻の空間の単位方向 up における場を、mip 段を指定して引く。段を明示で渡すのは、光路のタップの
   // uv が画面の隣の画素と続いておらず、画面微分から選ばれる段が当てにならないため。uv は殻が読むのと
   // 共有samplerの球メッシュUVで引く — 別の規則で読むと、影が雲のシルエットから外れる。
-  private fieldAt(up: Vec3Node, lod: FloatNode): Vec4Node {
-    return this.fieldSampler.sample(up, lod);
+  private fieldAt(up: Vec3Node, lod: FloatNode): CloudSample {
+    return this.fieldSampler.sampleCloud(up, lod);
   }
 
   // 光路のタップの高度に張る床 [m]。受け手が自分の柱の雲頂の高さにあるなら、その雲頂の高さ。
@@ -161,7 +162,7 @@ export class CloudShadowRenderer {
   private receiverFloorAltitude(offset: Vec3Node, lod: FloatNode, bodyRadius: FloatNode): FloatNode {
     const radius = max(length(offset), 1e-6);
     const altitude = max(radius.sub(1), 0).mul(bodyRadius);
-    const top = this.fieldAt(offset.div(radius), lod).g.mul(this.topAltitude);
+    const top = this.fieldAt(offset.div(radius), lod).cloudTop.div(CLOUD_TOP_SPAN).mul(this.topAltitude);
     const uncertainty = this.topAltitude.mul(CloudShapeEvaluator.cloudTopUncertainty);
     return select(greaterThan(altitude, top.sub(uncertainty)), top, float(0));
   }
