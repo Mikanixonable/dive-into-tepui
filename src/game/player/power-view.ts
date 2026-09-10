@@ -4,7 +4,7 @@ import type { SolarSide } from './power';
 export class PowerView {
   private readonly folds: Record<SolarSide, THREE.Object3D[]>;
 
-  constructor(root: THREE.Object3D) {
+  public constructor(root: THREE.Object3D) {
     const collect = (side: SolarSide): THREE.Object3D[] => {
       const namePrefix = `solar${side === 'up' ? 'Up' : 'Down'}Fold`;
       const found = Array.from({ length: 6 }, (_, index) => root.getObjectByName(`${namePrefix}${index}`));
@@ -14,7 +14,7 @@ export class PowerView {
     this.folds = { up: collect('up'), down: collect('down') };
   }
 
-  sync(deployOf: (side: SolarSide) => number): void {
+  public sync(deployOf: (side: SolarSide) => number): void {
     for (const side of ['up', 'down'] as const) {
       const psi = Math.PI / 2 * (1 - deployOf(side));
       const even = (side === 'up' ? 1 : -1) * psi;

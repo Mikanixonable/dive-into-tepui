@@ -97,16 +97,16 @@ export function marsSystem(
       new SatelliteMotion(satelliteDefForSimZero(PHOBOS, phases, simZeroEt), mars),
       MARS_SYSTEM_NAMES.phobos, 'satellite',
       new SphereCelestialView(
-      // 平均輝度 0.2774(A_B は幾何 0.071 x q=0.393)
-      CelestialSurface.textured({ url: phobosTextureUrl, albedoScale: 0.1009, bondAlbedo: 0.028, averageHue: [1, 1, 1] }),
+        // 平均輝度 0.2774(A_B は幾何 0.071 x q=0.393)
+        CelestialSurface.textured({ url: phobosTextureUrl, albedoScale: 0.1009, bondAlbedo: 0.028, averageHue: [1, 1, 1] }),
       ),
     ),
     deimos: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(DEIMOS, phases, simZeroEt), mars),
       MARS_SYSTEM_NAMES.deimos, 'satellite',
       new SphereCelestialView(
-      // A_B=0.027(幾何 0.068 x q=0.393)
-      CelestialSurface.solid([0.0330, 0.0259, 0.0199]),
+        // A_B=0.027(幾何 0.068 x q=0.393)
+        CelestialSurface.solid([0.0330, 0.0259, 0.0199]),
       ),
     ),
   };

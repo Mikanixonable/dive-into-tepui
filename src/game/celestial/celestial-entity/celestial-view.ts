@@ -1,4 +1,4 @@
-// 天体1体の3D表示資源を所有し、構築時に受け取った運動を描画座標へ同期する。
+// 天体1体の3D表示資源を所有し、毎フレーム渡される運動と表示設定を描画座標へ同期する。
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { CelestialMotion } from '../../../physics/celestial-motion';

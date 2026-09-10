@@ -185,8 +185,8 @@ export function jupiterSystem(
     jupiter: new CelestialEntity(
       jupiter.body, JUPITER_SYSTEM_NAMES.jupiter, 'planet',
       new PointCelestialView(
-      // 平均輝度 0.4116(A_B は公表ボンド)
-      CelestialSurface.textured({ url: jupiterTextureUrl, albedoScale: 1.2222, bondAlbedo: 0.503, averageHue: [1.0987, 0.9845, 0.8629] }),
+        // 平均輝度 0.4116(A_B は公表ボンド)
+        CelestialSurface.textured({ url: jupiterTextureUrl, albedoScale: 1.2222, bondAlbedo: 0.503, averageHue: [1.0987, 0.9845, 0.8629] }),
       ),
     ),
     // メティス A_B=0.024(幾何 0.061 x q=0.393)
@@ -213,32 +213,32 @@ export function jupiterSystem(
       new SatelliteMotion(satelliteDefForSimZero(IO, phases, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.io, 'satellite',
       new SphereCelestialView(
-      // 平均輝度 0.2621(A_B は幾何 0.63 x q=0.564)
-      CelestialSurface.textured({ url: ioTextureUrl, albedoScale: 1.3543, bondAlbedo: 0.355, averageHue: [1.3697, 0.9471, 0.4357] }),
+        // 平均輝度 0.2621(A_B は幾何 0.63 x q=0.564)
+        CelestialSurface.textured({ url: ioTextureUrl, albedoScale: 1.3543, bondAlbedo: 0.355, averageHue: [1.3697, 0.9471, 0.4357] }),
       ),
     ),
     europa: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(EUROPA, phases, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.europa, 'satellite',
       new SphereCelestialView(
-      // 平均輝度 0.3127(A_B は幾何 0.67 x q=0.564)
-      CelestialSurface.textured({ url: europaTextureUrl, albedoScale: 1.2089, bondAlbedo: 0.378, averageHue: [1, 1, 1] }),
+        // 平均輝度 0.3127(A_B は幾何 0.67 x q=0.564)
+        CelestialSurface.textured({ url: europaTextureUrl, albedoScale: 1.2089, bondAlbedo: 0.378, averageHue: [1, 1, 1] }),
       ),
     ),
     ganymede: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(GANYMEDE, phases, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.ganymede, 'satellite',
       new SphereCelestialView(
-      // 平均輝度 0.1777(A_B は幾何 0.43 x q=0.564)
-      CelestialSurface.textured({ url: ganymedeTextureUrl, albedoScale: 1.3675, bondAlbedo: 0.243, averageHue: [1.0763, 0.9959, 0.8162] }),
+        // 平均輝度 0.1777(A_B は幾何 0.43 x q=0.564)
+        CelestialSurface.textured({ url: ganymedeTextureUrl, albedoScale: 1.3675, bondAlbedo: 0.243, averageHue: [1.0763, 0.9959, 0.8162] }),
       ),
     ),
     callisto: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(CALLISTO, phases, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.callisto, 'satellite',
       new SphereCelestialView(
-      // 平均輝度 0.0491(A_B は公表ボンド)
-      CelestialSurface.textured({ url: callistoTextureUrl, albedoScale: 2.2403, bondAlbedo: 0.11, averageHue: [1, 1, 1] }),
+        // 平均輝度 0.0491(A_B は公表ボンド)
+        CelestialSurface.textured({ url: callistoTextureUrl, albedoScale: 2.2403, bondAlbedo: 0.11, averageHue: [1, 1, 1] }),
       ),
     ),
     // ヒマリア A_B=0.016(幾何 0.04 x q=0.393)

@@ -6,6 +6,7 @@ import * as THREE from 'three/webgpu';
 import { ENEMY_PLASMA_COLOR } from './vfx-style';
 import { F0_BURNT_STEEL, F0_STEEL } from './metal-f0';
 import { mulberry32 } from '../math/random';
+import { MAG_THICKNESS } from '../physics/player-shape';
 import { markLitOpaque, markShadowCaster } from './pipeline/lit-layer';
 import { attachThermalEmissive, makeThermallyEmissive, THERMAL_SHAPE_ATTRIBUTE } from './thermal-emissive';
 
@@ -161,7 +162,6 @@ export function buildMagazineFrame(): THREE.Group {
 // マガジンサブメッシュを buildMagazineMesh() 経由で再利用しながら都度組み立てる。
 let ammoPickupBeaconGeometry: THREE.OctahedronGeometry | null = null;
 let ammoPickupBeaconMaterial: THREE.MeshBasicMaterial | null = null;
-const MAG_THICKNESS = 1.0;
 
 // 軌道上補給物のメッシュを生成する。count はマガジン本数(既定 4 はテンプレートを再利用)。
 export function buildAmmoPickup(count = 4): THREE.Group {

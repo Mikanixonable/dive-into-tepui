@@ -144,8 +144,7 @@ export class RadiatorSystem {
     return { even: sign * psi, odd: -sign * psi };
   }
 
-  // 各折り目 Group の rotation.y(親からの相対回転)を展開角へ同期し、全損したパネルの
-  // 蛇腹を非表示にする。
+  // 蛇腹の折り目に与える展開角。even は偶数番、odd は奇数番の折り目のもの [rad]。
   viewTilt(side: RadiatorSide): { readonly even: number; readonly odd: number } {
     return this.foldThetas(side);
   }

@@ -195,20 +195,20 @@ export function earthSystem(
     earth: new CelestialEntity(
       earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
       new PointCelestialView(
-      CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl),
-      EARTH_ATMOSPHERE_OPTICS, new EarthCoastline(), earthAuroras(),
-      GeostationaryOverlay.of(earth.body), cumulus,
+        CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl),
+        EARTH_ATMOSPHERE_OPTICS, new EarthCoastline(), earthAuroras(),
+        GeostationaryOverlay.of(earth.body), cumulus,
       ),
     ),
     moon: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(MOON, phases, simZeroEt), earth),
       EARTH_SYSTEM_NAMES.moon, 'satellite',
       new SphereCelestialView(
-      // 倍率はテクスチャの平均輝度 0.3180 を公表のボンドアルベドへ合わせる値。
-      CelestialSurface.textured({
-        url: moonTextureUrl, albedoScale: 0.3459, bondAlbedo: 0.11, averageHue: [1.0458, 0.9880, 0.9844],
-      }),
-      null, new MoonSurfaceMarkings(),
+        // 倍率はテクスチャの平均輝度 0.3180 を公表のボンドアルベドへ合わせる値。
+        CelestialSurface.textured({
+          url: moonTextureUrl, albedoScale: 0.3459, bondAlbedo: 0.11, averageHue: [1.0458, 0.9880, 0.9844],
+        }),
+        null, new MoonSurfaceMarkings(),
       ),
     ),
   };

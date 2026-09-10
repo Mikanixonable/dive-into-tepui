@@ -107,56 +107,56 @@ export function uranusSystem(
     uranus: new CelestialEntity(
       uranus.body, URANUS_SYSTEM_NAMES.uranus, 'planet',
       new PointCelestialView(
-      // 平均輝度 0.5640(A_B は公表ボンド)
-      CelestialSurface.textured({ url: uranusTextureUrl, albedoScale: 0.5320, bondAlbedo: 0.3, averageHue: [0.6079, 1.0981, 1.1831] }),
+        // 平均輝度 0.5640(A_B は公表ボンド)
+        CelestialSurface.textured({ url: uranusTextureUrl, albedoScale: 0.5320, bondAlbedo: 0.3, averageHue: [0.6079, 1.0981, 1.1831] }),
       ),
     ),
     puck: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(PUCK, phases, simZeroEt), uranus),
       URANUS_SYSTEM_NAMES.puck, 'satellite',
       new SphereCelestialView(
-      // A_B=0.051(幾何 0.11 x q=0.461)
-      CelestialSurface.solid([0.0536, 0.0508, 0.0455]),
+        // A_B=0.051(幾何 0.11 x q=0.461)
+        CelestialSurface.solid([0.0536, 0.0508, 0.0455]),
       ),
     ),
     miranda: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(MIRANDA, phases, simZeroEt), uranus),
       URANUS_SYSTEM_NAMES.miranda, 'satellite',
       new SphereCelestialView(
-      // A_B=0.18(幾何 0.32 x q=0.564)
-      CelestialSurface.solid([0.1875, 0.1791, 0.1668]),
+        // A_B=0.18(幾何 0.32 x q=0.564)
+        CelestialSurface.solid([0.1875, 0.1791, 0.1668]),
       ),
     ),
     ariel: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(ARIEL, phases, simZeroEt), uranus),
       URANUS_SYSTEM_NAMES.ariel, 'satellite',
       new SphereCelestialView(
-      // A_B=0.3(幾何 0.53 x q=0.564)
-      CelestialSurface.solid([0.3059, 0.2996, 0.2871]),
+        // A_B=0.3(幾何 0.53 x q=0.564)
+        CelestialSurface.solid([0.3059, 0.2996, 0.2871]),
       ),
     ),
     umbriel: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(UMBRIEL, phases, simZeroEt), uranus),
       URANUS_SYSTEM_NAMES.umbriel, 'satellite',
       new SphereCelestialView(
-      // A_B=0.15(幾何 0.26 x q=0.564)
-      CelestialSurface.solid([0.1562, 0.1490, 0.1420]),
+        // A_B=0.15(幾何 0.26 x q=0.564)
+        CelestialSurface.solid([0.1562, 0.1490, 0.1420]),
       ),
     ),
     titania: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(TITANIA, phases, simZeroEt), uranus),
       URANUS_SYSTEM_NAMES.titania, 'satellite',
       new SphereCelestialView(
-      // A_B=0.2(幾何 0.35 x q=0.564)
-      CelestialSurface.solid([0.2044, 0.2000, 0.1872]),
+        // A_B=0.2(幾何 0.35 x q=0.564)
+        CelestialSurface.solid([0.2044, 0.2000, 0.1872]),
       ),
     ),
     oberon: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(OBERON, phases, simZeroEt), uranus),
       URANUS_SYSTEM_NAMES.oberon, 'satellite',
       new SphereCelestialView(
-      // A_B=0.17(幾何 0.31 x q=0.564)
-      CelestialSurface.solid([0.1773, 0.1694, 0.1543]),
+        // A_B=0.17(幾何 0.31 x q=0.564)
+        CelestialSurface.solid([0.1773, 0.1694, 0.1543]),
       ),
     ),
   };
