@@ -9,6 +9,8 @@ import type { Notifier } from '../../hud/notifier';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { TouchControls } from '../hud/touch-controls';
 import type { CameraSystem } from '../camera/camera-system';
+import { screenProjection } from '../../math/projection';
+import type { Viewport } from '../../render/viewport';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { ObjectWindows } from '../pickable/object-windows';
 import type { MarkerSlots } from '../marker/marker-slots';
@@ -18,7 +20,7 @@ import type { PlanPath } from '../plan/plan-path';
 import type { UiSfx } from '../../audio/sfx/ui-sfx';
 
 import type { DisplayWindow } from '../display-window-manager';
-import type { FloatingOrigin } from '../camera/floating-origin';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ViewFrame } from './view-frame';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { PerfCounts } from '../perf-counts';
@@ -85,14 +87,14 @@ export class CombatView implements ViewFrame {
 
   // 照準キーと右クリックの配分。操作対象がいなければ照準先が無いので配らない。
   // 右クリックは実体に当たればそのプロパティウィンドウを、外れれば空域メニューを開く。
-  public handlePointer(simTime: number): void {
+  public handlePointer(simTime: number, viewport: Viewport): void {
     const controlled = this.controlSelection.current;
     if (!controlled) return;
-    const project = this.cameraSystem.activeCameraProjection;
-    this.targeter.handleTargetSelectKey(this.input, controlled, project);
+    const project = screenProjection(this.cameraSystem.activeViewpoint, viewport.width, viewport.height);
+    this.targeter.handleTargetSelectKey(this.input, controlled, project, viewport);
     this.input.takeRightClicks((p) => {
       const hit = pickCombatEntityAtPoint(
-        this.roster, this.cameraSystem.activeViewpoint, project, p.x, p.y);
+        this.roster, this.cameraSystem.activeViewpoint, project, p.x, p.y, viewport);
       if (hit) this.objectWindows.open(p.x, p.y, hit, simTime);
       else this.objectWindows.openEmptySpaceMenu(p.x, p.y, simTime);
       return true;
@@ -112,7 +114,7 @@ export class CombatView implements ViewFrame {
   }
 
   // 戦闘ビュー専用の常設表示(タッチのモードボタン・ノード実行ガイド)。
-  public syncPanels(displayWindow: DisplayWindow, _fo: FloatingOrigin): void {
+  public syncPanels(displayWindow: DisplayWindow, camera: CameraFrame): void {
     const controlled = this.controlSelection.current;
     if (controlled) {
       this.touchControls?.syncModeButtons(
@@ -120,8 +122,7 @@ export class CombatView implements ViewFrame {
         (key) => controlled.throttle.isThrustLatched(key),
       );
     }
-    const project = this.cameraSystem.activeCameraProjection;
-    this.planGuide.sync(controlled, displayWindow.simTime, project, this.planPath);
+    this.planGuide.sync(controlled, displayWindow.simTime, camera.project, this.planPath);
   }
 
   public dispose(): void {}

@@ -338,28 +338,32 @@ export class Curve {
     }
   }
 
-  // 閉じた式で書ける曲線を描く。sample は t∈[0,1] で曲線上の点を返す滑らかな関数、camera は
-  // 画面上の目標を実距離へ換算するための現在の描画カメラ。initialSegments は適応分割を始める
-  // 区間数 — 適応分割は弦の中点しか見ないので、1区間に何周ぶんも入る曲線では中点がたまたま
-  // 曲線上に乗り、区間まるごとが直線に化ける。「1区間が曲線の半周を超えない」下限を渡して
-  // それを防ぐ。colorAt は線の中で色が変わるときだけ渡す。
+  // 閉じた式で書ける曲線を描く。sample は t∈[0,1] で曲線上の点を返す滑らかな関数、camera と
+  // viewportHeight [CSS px] は画面上の目標を実距離へ換算するための現在の描画カメラと描画先の
+  // 高さ。initialSegments は適応分割を始める区間数 — 適応分割は弦の中点しか見ないので、1区間に
+  // 何周ぶんも入る曲線では中点がたまたま曲線上に乗り、区間まるごとが直線に化ける。「1区間が
+  // 曲線の半周を超えない」下限を渡してそれを防ぐ。colorAt は線の中で色が変わるときだけ渡す。
   setAnalyticCurve(
-    sample: CurveSampler, camera: THREE.Camera, initialSegments?: number, colorAt?: CurveColorSampler,
+    sample: CurveSampler, camera: THREE.Camera, viewportHeight: number,
+    initialSegments?: number, colorAt?: CurveColorSampler,
   ): void {
     const requested = Math.max(INITIAL_SEGMENTS, initialSegments ?? 0);
-    this.setCurve(sample, uniformTs(Math.min(requested, this.maxInitialVertices - 1)), camera, colorAt);
+    this.setCurve(
+      sample, uniformTs(Math.min(requested, this.maxInitialVertices - 1)), camera, viewportHeight, colorAt);
   }
 
   // 離散サンプルとしてしか手に入らない曲線を、節点間を3次エルミートで埋めて描く。節点は
-  // そのまま初期頂点になる。camera と colorAt の意味は setAnalyticCurve と同じ。
-  setHermiteCurve(knots: CurveKnots, camera: THREE.Camera, colorAt?: CurveColorSampler): void {
+  // そのまま初期頂点になる。camera・viewportHeight・colorAt の意味は setAnalyticCurve と同じ。
+  setHermiteCurve(
+    knots: CurveKnots, camera: THREE.Camera, viewportHeight: number, colorAt?: CurveColorSampler,
+  ): void {
     let hermite = this.hermite;
     if (hermite === null || knots !== this.hermiteKnots) {
       hermite = buildHermiteCurve(knots, this.maxInitialVertices);
       this.hermite = hermite;
       this.hermiteKnots = knots;
     }
-    this.setCurve(hermite.sample, hermite.ts, camera, colorAt);
+    this.setCurve(hermite.sample, hermite.ts, camera, viewportHeight, colorAt);
   }
 
   // いま描いている曲線を t∈[0,1] で評価する。曲線をまだ渡されていなければ原点を返す。
@@ -371,10 +375,11 @@ export class Curve {
   // 渡された曲線を焼き、GPU バッファへ反映する。頂点の配り方も差し引く基準点もカメラに
   // 依存するので、呼ぶたびに焼き直す。
   private setCurve(
-    sample: CurveSampler, ts: ArrayLike<number>, camera: THREE.Camera, colorAt?: CurveColorSampler,
+    sample: CurveSampler, ts: ArrayLike<number>, camera: THREE.Camera, viewportHeight: number,
+    colorAt?: CurveColorSampler,
   ): void {
     this.sampler = sample;
-    const cam = new CameraScale(camera);
+    const cam = new CameraScale(camera, viewportHeight);
     this.updateLocalCam(cam);
     this.rebake(sample, ts, cam, colorAt);
     this.applyTransform();

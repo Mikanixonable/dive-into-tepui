@@ -28,6 +28,9 @@ import type { AudioEngine } from '../audio/audio-engine';
 import type { RenderPipeline } from '../render/pipeline/render-pipeline';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
+import type { Viewport } from '../render/viewport';
+import { CameraView } from '../render/camera/camera-view';
+import type { CameraFrame } from '../render/camera/camera-frame';
 import type { CelestialSystem } from './celestial/celestial-system';
 import { ViewManager } from './view/view-manager';
 import { CombatView } from './view/combat-view';
@@ -63,6 +66,9 @@ export class Game {
   private readonly markerManager: MarkerManager;
   private readonly celestialMarkers: CelestialMarkers;
   readonly cameraSystem: CameraSystem;
+  // 論理視点を表示値へ写す側。sync が確定させた1フレームぶんの値を cameraFrame が持つ。
+  private readonly cameraView = new CameraView();
+  private cameraFrame: CameraFrame | null = null;
   // 操作対象(艦 0..n 隻と基地のうちどれを操作するか)の切替を持つ。
   private readonly controlSelection: ControlSelection;
   // いま操作している対象。操作しているものが無ければ null。
@@ -134,12 +140,13 @@ export class Game {
     const game = new Game(host, stageClass, audioEngine, pauseMenu, celestialSystem, renderStyle, initialSave);
     // シェーダを組む前に、最初に描かれるフレームと同じ表示状態を時間の進まない1フレームで作る —
     // 天体表面の分割段のように update/sync が決めるまで現れない表示物が、事前コンパイルから漏れる。
-    game.update(0);
-    game.sync(graphics, renderStyle);
+    game.update(0, gs.viewport);
+    game.sync(graphics, renderStyle, gs.viewport);
     await progress.enter('shaders');
+    // カメラは直前の sync が確定させたものを使う — 捨てる1フレームと同じ行列で組ませる。
     await gs.pipeline.compile(
       gs.scene,
-      game.cameraSystem.activeCamera,
+      game.cameraFrame!.camera,
       renderStyle,
       (name, done, total) => progress.within(done / total, `シェーダを準備中: ${name}`),
     );
@@ -214,7 +221,7 @@ export class Game {
             : this.dynamicSystem.all().find((e) => e.id === id) ?? null;
         return entity?.motion.alive ? entity.motion.att.q : null;
       },
-      initialSave?.camera,
+      initialSave?.camera, host.scene.viewport,
     );
     this.celestialMarkers = new CelestialMarkers(this.markerManager, celestialSystem);
     this.simSpeedManager = new SimSpeedManager(this._hud, uiSfx);
@@ -354,7 +361,7 @@ export class Game {
 
   // ------------------------------------------------------------ update
 
-  update(dtRaw: number): void {
+  update(dtRaw: number, viewport: Viewport): void {
     this.sections.enter(SECTION.input);
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
@@ -408,7 +415,7 @@ export class Game {
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
       displayWindow.displayTime, this.input, dt, this.viewManager.activeView.pickables,
-      this.frameAnchors, activeControllable,
+      this.frameAnchors, activeControllable, viewport,
     );
     this.sections.exit(SECTION.camera);
     // カメラ更新の後に置く: 候補列の組み直しが読む近傍系抽出・遮蔽判定・可視マーカー更新は
@@ -418,7 +425,7 @@ export class Game {
     this.viewManager.activeView.update(displayWindow);
     this.sections.exit(SECTION.mapPick);
     this.sections.enter(SECTION.pointer);
-    this.handlePointerInput();
+    this.handlePointerInput(viewport);
     this.sections.exit(SECTION.pointer);
     // View の描画同期ではなく update フェーズで、次回予測の読者を確定する。
     this.entityLines.updatePredictionReaders(
@@ -458,9 +465,9 @@ export class Game {
 
   // ポインタ入力を現在のビューへ配る。このフレームの cameraSystem.update が終わって初めて投影が
   // このフレームの値になるので、update の末尾に置く。ポーズ中と入力ゲート中はそのまま戻る。
-  private handlePointerInput(): void {
+  private handlePointerInput(viewport: Viewport): void {
     if (this._isPaused || this._hud.overlayManager.isInputGated()) return;
-    this.viewManager.activeView.handlePointer(this.dynamicSystem.simTime);
+    this.viewManager.activeView.handlePointer(this.dynamicSystem.simTime, viewport);
   }
 
   // --------------------------------------------------------------- input
@@ -488,7 +495,7 @@ export class Game {
 
   // ------------------------------------------------------------------ sync
 
-  sync(graphics: GraphicsSettingsData, style: RenderStyle): void {
+  sync(graphics: GraphicsSettingsData, style: RenderStyle, viewport: Viewport): void {
     const controlled = this.activeControllable;
     // update() が確定させた、このフレームの表示窓。
     const displayWindow = this.displayWindowManager.current;
@@ -502,12 +509,16 @@ export class Game {
     const celestialBodies = this._celestialSystem.celestialMotions;
 
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
-    this.cameraSystem.sync();
+    const cs = this.cameraSystem;
+    const camera = this.cameraView.sync(
+      cs.activeViewpoint, cs.clipFovDeg, cs.clipDistance, viewport, cs.view, cs.zoomActive, cs.focusVelocity,
+    );
+    this.cameraFrame = camera;
     // マップビューのときだけ表示設定パネルを出す。
     this.viewOptions.setVisible(this.viewManager.current === 'map');
-    const fo = this.cameraSystem.getFloatingOrigin();
+    const fo = camera.floatingOrigin;
     // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
-    this.viewManager.activeView.syncLabels(displayWindow);
+    this.viewManager.activeView.syncLabels(displayWindow, camera);
 
     // 表示・選択可否はこのフレームの update フェーズで現在のビューが確定させたものを読む
     // (選べる対象と描かれる対象が同じ判定から出るようにする)。
@@ -521,49 +532,49 @@ export class Game {
       : undefined;
 
     this._celestialSystem.sync(
-      fo, displayTime,
-      this.cameraSystem, graphics, style, this.mapDisplay.current, visibilityPolicy, this.markerManager,
+      displayTime, camera, this.cameraSystem,
+      graphics, style, this.mapDisplay.current, visibilityPolicy, this.markerManager,
     );
     this._celestialSystem.bakeClouds(this.renderer, displayTime);
 
     // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。
     const timeLabel = timeLabelSettingOf(displayWindow);
     this.dynamicSystem.sync(
-      fo, displayTime, controlled, visibilityPolicy, this.cameraSystem, style, graphics,
+      displayTime, controlled, visibilityPolicy, camera, style, graphics,
       orbitRef,
     );
     this.equatorNodes.sync(
-      this.cameraSystem.activeCameraProjection,
-      this.cameraSystem.activeCameraPos,
+      camera.project,
+      camera.position,
       this.frameAnchors.bodies,
       this.frameAnchors.bodiesPivot,
-      this.cameraSystem.view === 'map',
+      camera.mode === 'map',
       timeLabel,
     );
     syncControlledLoopSfx(this._worldSfx, controlled, displayTime, visibilityPolicy);
-    // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraSystem.sync より後に通す。
-    this.flashEffects.sync(fo, this.cameraSystem.activeCamera, this.cameraSystem.zoomActive);
+    // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraView.sync より後に通す。
+    this.flashEffects.sync(fo, camera.camera, camera.zoomed);
 
     this.targeter.sync(
-      controlled, this.cameraSystem, displayTime, simTime, visibilityPolicy, this.celestialMarkers.activeLabels);
+      controlled, camera, displayTime, simTime, visibilityPolicy, this.celestialMarkers.activeLabels);
     this.navTarget.sync(
-      this.cameraSystem, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, timeLabel);
+      camera, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, timeLabel);
 
     // 戦闘中に開いたプロパティウィンドウも最新値を表示し続ける必要があるので、ビューに依らず呼ぶ。
     this.objectWindows.sync(simTime, displayTime);
-    this.planDisplay.sync(this.cameraSystem, fo, displayWindow);
+    this.planDisplay.sync(camera, displayWindow);
 
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     this.entityLines.sync(
       controlled, this.targeter.aliveTarget, this.viewManager.current, displayWindow, visibilityPolicy, orbitRef,
-      fo, this.cameraSystem.activeCamera, this.frameAnchors, this._celestialSystem);
+      camera, this.frameAnchors, this._celestialSystem);
     // ビュー専用のパネル・表示物と軌道線の右クリック候補。軌道線が今フレーム焼いたサンプルを
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
-    this.viewManager.activeView.syncPanels(displayWindow, fo);
+    this.viewManager.activeView.syncPanels(displayWindow, camera);
 
-    this.activeStage.sync(fo, this.cameraSystem, displayTime);
+    this.activeStage.sync(camera, displayTime);
 
-    this._hud.syncPanels(this.viewManager.current, this);
+    this._hud.syncPanels(this.viewManager.current, this, camera);
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions(this.viewManager.current);
@@ -571,8 +582,10 @@ export class Game {
 
   // ------------------------------------------------------------------ render
 
+  // このフレームの sync が確定させたカメラで描く。まだ1度も sync していなければ何も描かない。
   render(style: RenderStyle): void {
-    this.pipeline.render(this._scene, this.cameraSystem.activeCamera, style);
+    if (this.cameraFrame === null) return;
+    this.pipeline.render(this._scene, this.cameraFrame.camera, style);
   }
 
   // ------------------------------------------------------------------ debug

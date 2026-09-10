@@ -9,7 +9,7 @@ import {
   THRUST_PLUME_SIZE_SPAN,
 } from '../../vfx-style';
 import { SchematicThrustCone } from '../../schematic-thrust-cone';
-import { FloatingOrigin } from '../../../game/camera/floating-origin';
+import { FloatingOrigin } from '../../camera/floating-origin';
 import type { RenderStyle } from '../../render-style';
 
 export class ThrustEffects {

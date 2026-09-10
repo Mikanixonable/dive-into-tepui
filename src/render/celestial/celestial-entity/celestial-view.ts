@@ -5,8 +5,8 @@ import type { CelestialMotion } from '../../../physics/celestial-motion';
 import { shapeSpheroidRadii, type RingSystemDef } from '../../../physics/celestial-body-def';
 import { orbitalElementsOf } from '../../../physics/elements';
 import { len, sub, type Vec3 } from '../../../math/vec3';
-import type { FloatingOrigin } from '../../../game/camera/floating-origin';
-import type { CameraSystem } from '../../../game/camera/camera-system';
+import type { FloatingOrigin } from '../../camera/floating-origin';
+import type { CameraFrame } from '../../camera/camera-frame';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 import type { RenderStyle } from '../../render-style';
 import type { RingMaterials } from '../ring';
@@ -51,8 +51,8 @@ export abstract class CelestialView {
     motion: CelestialMotion, scene: THREE.Scene, ringMaterials: RingMaterials,
   ): void;
   public abstract sync(
-    motion: CelestialMotion, floatingOrigin: FloatingOrigin, displayTime: number,
-    cameraSystem: CameraSystem, star: StellarLightSource | null,
+    motion: CelestialMotion, displayTime: number, camera: CameraFrame,
+    star: StellarLightSource | null,
     graphics: GraphicsSettingsData, style: RenderStyle, visible: boolean,
   ): void;
 
@@ -98,22 +98,21 @@ export abstract class CelestialView {
   ): ShadowCumulus | null { return null; }
 
   public syncMapOverlay(
-    _motion: CelestialMotion, _floatingOrigin: FloatingOrigin, _displayTime: number,
-    _cameraSystem: CameraSystem, _markers: MarkerSlots,
+    _motion: CelestialMotion, _displayTime: number, _camera: CameraFrame,
+    _markers: MarkerSlots,
     _celestialBodies: readonly CelestialBody[], _visible: boolean,
   ): void {}
 
   // 表示時刻の接触軌道要素と、カメラからの距離で決まる濃さへ参照軌道線を同期する。
   public syncReferenceLine(
-    motion: CelestialMotion, scene: THREE.Scene, simTime: number, floatingOrigin: FloatingOrigin,
-    camera: THREE.Camera, cameraPos: Vec3, visible: boolean,
+    motion: CelestialMotion, scene: THREE.Scene, simTime: number, camera: CameraFrame, visible: boolean,
   ): void {
     // false は資源を残す非表示ではなく、参照線そのものが不要という宣言として扱う。
     if (!visible) {
       this.disposeReferenceLine();
       return;
     }
-    const opacity = this.referenceLineOpacityFrom(motion, cameraPos, simTime);
+    const opacity = this.referenceLineOpacityFrom(motion, camera.position, simTime);
     if (this.referenceLineValue === null) {
       const color = motion.kind === 'satellite'
         ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR;
@@ -127,7 +126,7 @@ export abstract class CelestialView {
     const elements = centerMotion === null
       ? null : orbitalElementsOf(motion.stateAt(simTime), centerMotion, simTime);
     if (elements === null) this.referenceLineValue.hide();
-    else this.referenceLineValue.sync(elements, floatingOrigin, camera);
+    else this.referenceLineValue.sync(elements, camera);
     this.referenceLineValue.setOpacity(opacity);
   }
 

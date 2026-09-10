@@ -5,7 +5,7 @@ import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../../math/vec3';
 import { Curve, CurveColorSampler, CurveKnots, CurveSampler } from '../../../render/curve';
 import { LineStyle } from '../../../render/line-style';
-import { FloatingOrigin } from '../../camera/floating-origin';
+import type { CameraFrame } from '../../../render/camera/camera-frame';
 
 export class GuideCurve {
   private readonly curve: Curve;
@@ -86,16 +86,20 @@ export class GuideCurve {
   }
 
   // 描画原点の移動へ追随させ、colorAt が指定されていれば頂点カラーで焼く。
-  public sync(fo: FloatingOrigin, camera: THREE.Camera, colorAt?: CurveColorSampler): void {
+  public sync(camera: CameraFrame, colorAt?: CurveColorSampler): void {
     const origin = this.origin;
     if (!origin) {
       this.syncedRevision = null;
       this.curve.setVisible(false);
       return;
     }
-    this.curve.setTransform(fo.RtoThreeV3(origin));
-    if (this.analytic) this.curve.setAnalyticCurve(this.analytic, camera, this.initialSegments, colorAt);
-    else if (this.knots) this.curve.setHermiteCurve(this.knots, camera, colorAt);
+    this.curve.setTransform(camera.floatingOrigin.RtoThreeV3(origin));
+    const viewportHeight = camera.viewport.height;
+    if (this.analytic) {
+      this.curve.setAnalyticCurve(this.analytic, camera.camera, viewportHeight, this.initialSegments, colorAt);
+    } else if (this.knots) {
+      this.curve.setHermiteCurve(this.knots, camera.camera, viewportHeight, colorAt);
+    }
     this.syncedRevision = this.revision;
     this.curve.setVisible(true);
   }

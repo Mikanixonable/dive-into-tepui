@@ -1,7 +1,7 @@
 // 操作対象の軌道計画の姿の表示(両ビュー常駐)。どの計画をいつ描くかを決め、計画折れ線
 // (PlanPath)を駆動して、表示時刻の計画上の自機位置ゴースト(⬢ plannedPlayer マーカー)を置く。
 import * as THREE from 'three/webgpu';
-import type { View } from '../view/view';
+import type { ViewMode } from '../../render/view-mode';
 import { Vec3, len, sub } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import type { FrameAnchorSource } from '../../physics/frame';
@@ -13,8 +13,7 @@ import { ApsisMarker } from '../marker/apsis-marker';
 import type { DisplayedPath } from '../marker/equator-node-marker-pair';
 import { MarkerSlots } from '../marker/marker-slots';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-identity';
-import { CameraSystem } from '../camera/camera-system';
-import { FloatingOrigin } from '../camera/floating-origin';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import { ObjectPickable } from '../pickable/object-pickable';
 import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
@@ -101,7 +100,7 @@ export class PlanDisplay {
 
   // 計画折れ線を再積分し、アプシスアイコンを求め直す。
   // 折れ線は戦闘ビューでも描く — 計画どおりに機体を動かすのは戦闘ビューだから。
-  update(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource, view: View): void {
+  update(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource, view: ViewMode): void {
     const ship = this.controlSelection.current;
     this.displayedPlan = this.planToDisplay(ship, view);
     if (this.displayedPlan === null) this.clearDisplay();
@@ -116,16 +115,14 @@ export class PlanDisplay {
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコン・目盛を、焼かれた折れ線から組んで置く。
-  sync(cameraSystem: CameraSystem, fo: FloatingOrigin, displayWindow: DisplayWindow): void {
+  sync(camera: CameraFrame, displayWindow: DisplayWindow): void {
     if (this.displayedPlan === null) { this.hide(); return; }
-    const project = cameraSystem.activeCameraProjection;
-    const view = cameraSystem.view;
-    const cameraPos = cameraSystem.activeCameraPos;
+    const project = camera.project;
+    const view = camera.mode;
+    const cameraPos = camera.position;
     const { simTime, displayTime } = displayWindow;
     const timeLabel = timeLabelSettingOf(displayWindow);
-    this.path.sync(
-      fo, project, cameraSystem.activeCameraScale, cameraPos, cameraSystem.activeCamera,
-    );
+    this.path.sync(camera);
     this.syncGhost(project, view, cameraPos, displayTime, simTime);
     this.syncApsisMarkers(project, view, cameraPos, displayTime, timeLabel);
     this.syncImpactMarkers(project, view, cameraPos, displayTime);
@@ -149,7 +146,7 @@ export class PlanDisplay {
 
   // このフレームに出す折れ線の材料。出す価値のある折れ線が無ければ null — ノードの無い計画は
   // 操作対象の現在軌道そのものなので、ノードを置ける編集中(マップビュー)だけ出す。
-  private planToDisplay(ship: Controllable | null, view: View): PlanData | null {
+  private planToDisplay(ship: Controllable | null, view: ViewMode): PlanData | null {
     if (ship === null) return null;
     if (view !== 'map' && ship.plan.nodes.length === 0) return null;
     return ship.plan.displayData(ship.motion.state);
@@ -207,7 +204,7 @@ export class PlanDisplay {
 
   // ⬢ ゴーストマーカーを計画位置に置く。計画がそこまで届いていなければ隠す。
   private syncGhost(
-    project: ProjectFn, view: View, cameraPos: Vec3, displayTime: number, simTime: number,
+    project: ProjectFn, view: ViewMode, cameraPos: Vec3, displayTime: number, simTime: number,
   ): void {
     const ghost = this.ghostAt(displayTime, simTime);
     if (!ghost) {
@@ -327,7 +324,7 @@ export class PlanDisplay {
 
   // 近地点・遠地点のマーカーを、それぞれが解いた位置へ置く。
   private syncApsisMarkers(
-    project: ProjectFn, view: View, cameraPos: Vec3, displayTime: number, timeLabel: TimeLabelSetting,
+    project: ProjectFn, view: ViewMode, cameraPos: Vec3, displayTime: number, timeLabel: TimeLabelSetting,
   ): void {
     const celestialBodies = this.celestialBodies.celestialMotions;
     for (const marker of [this.apsisPe, this.apsisAp]) {
@@ -339,7 +336,7 @@ export class PlanDisplay {
 
   // ✕ 衝突マーカーを、折れ線が返した衝突地点に置き、出ていないものを隠す。
   private syncImpactMarkers(
-    project: ProjectFn, view: View, cameraPos: Vec3, displayTime: number,
+    project: ProjectFn, view: ViewMode, cameraPos: Vec3, displayTime: number,
   ): void {
     const impactIcons = this.impactIconsOf();
     for (const key of IMPACT_MARKER_KEYS) {
@@ -361,7 +358,7 @@ export class PlanDisplay {
   // 採用済みの目盛から PLAN_TICK_MIN_PX 未満しか離れない候補は捨てる — 離心軌道では候補の
   // 画面間隔が場所で桁違いになるので、区間全体で単位を揃えずこの局所判定に任せる。
   private syncTickMarkers(
-    project: ProjectFn, view: View, cameraPos: Vec3, displayTime: number, timeLabel: TimeLabelSetting,
+    project: ProjectFn, view: ViewMode, cameraPos: Vec3, displayTime: number, timeLabel: TimeLabelSetting,
   ): void {
     const icons = this.tickIconsOf(timeLabel);
     const n = icons.length;

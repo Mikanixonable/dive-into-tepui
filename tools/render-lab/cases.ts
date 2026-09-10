@@ -181,7 +181,7 @@ function circle(
     out.copy(center)
       .addScaledVector(u, radius * Math.cos(theta))
       .addScaledVector(v, radius * Math.sin(theta));
-  }, camera);
+  }, camera, VIEW_HEIGHT);
   return curve.object;
 }
 

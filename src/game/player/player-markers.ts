@@ -2,7 +2,7 @@
 // マップ上の自機位置マーカーは他の船と同じく Targeter → GroupedMarkers が描く。
 import { Attitude } from '../../physics/attitude';
 import { LOCAL_FORWARD, qRotate } from '../../math/quat';
-import type { View } from '../view/view';
+import type { ViewMode } from '../../render/view-mode';
 import { KinematicState, kinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { scale, sub } from '../../math/vec3';
 import type { OrbitReference } from '../orbit-reference';
@@ -22,7 +22,7 @@ export class PlayerMarkers {
   // 戦闘ビューかつ操作対象のときだけ軌道軸・ボアサイトを出す。マップビューでは既存の
   // 戦闘ビュー用マーカーを片付けるだけで、自機位置マーカー自体は描かない。
   sync(
-    currentState: KinematicState, att: Attitude, view: View, isActive: boolean, project: ProjectFn,
+    currentState: KinematicState, att: Attitude, view: ViewMode, isActive: boolean, project: ProjectFn,
     rounds = 0, beltLinks = 0, muzzleSpeed = 0, orbitRef?: OrbitReference,
   ): void {
     if (view === 'map' || !isActive) {

@@ -24,7 +24,8 @@ import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import type { RingShadow } from '../../render/pipeline/shadow/ring-shadow';
 import type { CumulusShadow } from '../../render/pipeline/shadow/cumulus-shadow';
 import type { CameraSystem } from '../camera/camera-system';
-import type { FloatingOrigin } from '../camera/floating-origin';
+import type { CameraFrame } from '../../render/camera/camera-frame';
+import type { FloatingOrigin } from '../../render/camera/floating-origin';
 import type { CelestialBodies } from './celestial-bodies';
 import type { CelestialEntity } from './celestial-entity/celestial-entity';
 import type { StellarLightSource } from '../../render/celestial/celestial-entity/celestial-view';
@@ -66,9 +67,10 @@ export class CelestialIllumination {
   // 恒星・露出・環境光・天体照・影・大気を、この1フレームの表示状態に同期する。
   // **全天体の sync より後に呼ぶこと** — 積雲と大気の候補は個体の表示状態から決まる。
   public sync(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
+    displayTime: number, camera: CameraFrame, cameraSystem: CameraSystem,
     graphics: GraphicsSettingsData, visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
+    const fo = camera.floatingOrigin;
     const star = this.star;
     // 主星が無いレジストリでは、描画原点から見た恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
     // (基準強度どおりの放射照度が届き、影パスは誰も遮らないと答える)。
@@ -79,21 +81,21 @@ export class CelestialIllumination {
       : fo.RtoThreeV3(starPos);
     // 露出の順応と天体照の選定の基準点。カメラ位置ではなく注視点から取る —
     // マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
-    const reference = fo.RtoThreeV3(cameraSystem.activeViewpoint.lookTarget);
+    const reference = fo.RtoThreeV3(camera.viewpoint.lookTarget);
     const starIntensity = star?.stellarLight.radiantIntensity ?? REFERENCE_STAR_RADIANT_INTENSITY;
     this.targets.exposure.setReference(reference, sunPos, starIntensity);
     this.targets.sunLight.set(
       sunPos, star?.motion.def.radius ?? STARLESS_SUN_RADIUS,
       star?.stellarLight.color ?? STARLESS_SUN_COLOR, starIntensity);
-    this.targets.ambient.setFraction(ambientFraction(cameraSystem.view === 'map', graphics));
-    this.syncPlanetLights(fo, displayTime, cameraSystem);
+    this.targets.ambient.setFraction(ambientFraction(camera.mode === 'map', graphics));
+    this.syncPlanetLights(displayTime, camera);
     this.syncShadowSources(fo, displayTime, cameraSystem, graphics);
-    this.syncAtmosphere(fo, displayTime, cameraSystem, graphics, visibilityPolicy);
+    this.syncAtmosphere(displayTime, camera, graphics, visibilityPolicy);
   }
 
   // 天体照の光源の候補を組んで選定へ渡し、選ばれたものを描画座標へ移してライティング側の
   // スロットへ入れる。基準点は露出と同じ注視点。
-  private syncPlanetLights(fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem): void {
+  private syncPlanetLights(displayTime: number, camera: CameraFrame): void {
     // 全天体を候補にし、注視点から見た明るさで選ぶ。
     const candidates = this.entities.map((entity) => ({
       celestialBody: entity.motion,
@@ -101,10 +103,10 @@ export class CelestialIllumination {
     }));
     const lights = selectPlanetLights(
       candidates, displayTime, this.star?.stellarLight.radiantIntensity ?? null,
-      cameraSystem.activeViewpoint.lookTarget);
+      camera.viewpoint.lookTarget);
     // 選ばれた天体を描画座標へ移し、内接球の半径で渡す。
     this.targets.planetLight.set(lights.map((light) => ({
-      center: fo.RtoThreeV3(light.celestialBody.positionAt(displayTime)),
+      center: camera.floatingOrigin.RtoThreeV3(light.celestialBody.positionAt(displayTime)),
       radius: shapeInscribedRadius(light.celestialBody.def.radius, shapeOf(light.celestialBody.def)),
       radiance: light.radiance,
     })));
@@ -178,14 +180,14 @@ export class CelestialIllumination {
 
   // 大気パスへ、このフレームに大気を描く天体とそのサンプル点の数を渡す。
   private syncAtmosphere(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
+    displayTime: number, camera: CameraFrame,
     graphics: GraphicsSettingsData, visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
-    const scale = cameraSystem.activeCameraRadialScale;
+    const scale = camera.radialScale;
     const candidates = this.entities.flatMap((body) => {
       if (visibilityPolicy !== null && !visibilityPolicy.body(body.id).category) return [];
       const candidate = body.view.atmosphereCandidateAt(
-        body.motion, fo, displayTime, cameraSystem.activeCameraPos, scale, graphics);
+        body.motion, camera.floatingOrigin, displayTime, camera.position, scale, graphics);
       return candidate === null ? [] : [candidate];
     });
     this.targets.atmosphere.setDraws(atmosphereDraws(candidates, graphics.atmosphere));

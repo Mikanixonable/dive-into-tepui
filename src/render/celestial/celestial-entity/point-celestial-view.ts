@@ -4,8 +4,7 @@ import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
 import { shapeAxes, type RingSystemDef } from '../../../physics/celestial-body-def';
-import { CameraSystem } from '../../../game/camera/camera-system';
-import { FloatingOrigin } from '../../../game/camera/floating-origin';
+import { FloatingOrigin } from '../../camera/floating-origin';
 import { spinOrientation } from '../../../physics/body-orientation';
 import { lambertSphereIrradiance } from '../../../physics/lambert-sphere';
 import { STAR_SHELL_RADIUS } from '../../stars';
@@ -19,6 +18,7 @@ import { RingView } from '../ring-view';
 import { DEFAULT_ALBEDO, rec709Luminance, type Albedo } from '../../celestial-albedo';
 import { irradianceAtDistance, SUN_IRRADIANCE_1AU } from '../../pipeline/sun-light';
 import { norm, sub, v3, type Vec3 } from '../../../math/vec3';
+import type { CameraFrame } from '../../camera/camera-frame';
 import type { CumulusShell } from '../cumulus-shell';
 import type { Aurora } from '../aurora';
 import type { GeostationaryOverlay } from './geostationary-overlay';
@@ -122,7 +122,7 @@ export class PointCelestialView extends CelestialView {
 
   // displayTime 時点の位置へ実体メッシュか輝点ビルボードのどちらかを同期する(常に片方は隠す)。
   public sync(
-    motion: CelestialMotion, fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
+    motion: CelestialMotion, displayTime: number, camera: CameraFrame,
     star: StellarLightSource | null, graphics: GraphicsSettingsData, style: RenderStyle,
     visible: boolean,
   ): void {
@@ -137,14 +137,14 @@ export class PointCelestialView extends CelestialView {
     const outerRadius = rings === null
       ? motion.def.radius
       : Math.max(motion.def.radius, ...rings.bands.map((band) => band.outerRadius));
-    const apparentDiameterPx = (2 * outerRadius / cameraSystem.activeCameraRadialScale(pos)) * graphics.lodBias;
+    const apparentDiameterPx = (2 * outerRadius / camera.radialScale(pos)) * graphics.lodBias;
     // 閾値未満は実体を畳み、戦闘ビューなら輝点だけを置く。
     if (!showsPhysicalSphere(apparentDiameterPx)) {
       this.hidePhysical();
-      if (cameraSystem.view === 'map') this.billboard.hide();
+      if (camera.mode === 'map') this.billboard.hide();
       else this.syncBillboard(
-        fo.RtoThreeV3(pos), pos, motion.def.radius, displayTime, star,
-        cameraSystem.activeCamera.quaternion);
+        camera.floatingOrigin.RtoThreeV3(pos), pos, motion.def.radius, displayTime, star,
+        camera.camera.quaternion);
       return;
     }
     // 表面の分割段と雲。
@@ -167,13 +167,13 @@ export class PointCelestialView extends CelestialView {
     // 位置・扁平・自転姿勢。
     const orientation = motion.orientationAt(displayTime);
     const q = orientation === null ? null : spinOrientation(orientation.axis, orientation.spinAngle);
-    this.group.position.copy(fo.RtoThreeV3(pos));
+    this.group.position.copy(camera.floatingOrigin.RtoThreeV3(pos));
     this.shapeGroup.scale.copy(this.axes);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
     this.billboard.hide();
     this.ring?.sync(
       this.group.position, orientation === null ? null : orientation.axis, pos,
-      cameraSystem.activeCameraScale, graphics, style,
+      camera.scale, graphics, style,
     );
   }
 
@@ -216,10 +216,10 @@ export class PointCelestialView extends CelestialView {
 
   // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期する。
   public syncMapOverlay(
-    motion: CelestialMotion, fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem,
+    motion: CelestialMotion, displayTime: number, camera: CameraFrame,
     markers: MarkerSlots, celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
-    this.mapOverlay?.sync(motion, displayTime, fo, cameraSystem, markers, celestialBodies, visible);
+    this.mapOverlay?.sync(motion, displayTime, camera, markers, celestialBodies, visible);
   }
 
   // オーロラの波打ち・明滅を表示時刻へ進める。

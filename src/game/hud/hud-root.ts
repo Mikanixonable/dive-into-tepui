@@ -17,7 +17,7 @@ import { isCompactViewport } from '../../hud/breakpoints';
 import { startViewportTracking } from '../../hud/viewport';
 import { WIDGET_STYLE } from '../../hud/widgets';
 import type { RenderStyle } from '../../render/render-style';
-import type { View } from '../view/view';
+import type { ViewMode } from '../../render/view-mode';
 import type { CollapseToggleLabels } from '../../hud/widgets';
 
 // トークン→骨格→マーカー→パネル群→ビュー→ウィジェット共通の順に結合する。
@@ -62,7 +62,7 @@ function railToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
 // レールの折りたたみ状態は PanelShell と同じビュー別 localStorage を共有する。一度も操作
 // されていなければ、初回表示の既定として compact 幅でだけ畳んでおく。
 function buildRailToggle(
-  root: HTMLElement, rail: HTMLElement, side: 'left' | 'right', view: View,
+  root: HTMLElement, rail: HTMLElement, side: 'left' | 'right', view: ViewMode,
 ): void {
   wirePanelCollapse({
     toggleRoot: root,
@@ -76,7 +76,7 @@ function buildRailToggle(
 }
 
 // 戦闘/マップ一方ぶんの HUD ルートと、その左右レール・収納トグルを組む。
-function buildViewRoot(parent: HTMLElement, id: string, view: View): HudViewRoot {
+function buildViewRoot(parent: HTMLElement, id: string, view: ViewMode): HudViewRoot {
   // ビューのルート要素を作る。
   const element = createHudElement('div', id, parent, `hud-view-root hud-${view}-root`);
   // 左右のレールを子として組む。

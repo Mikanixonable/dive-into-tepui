@@ -5,7 +5,7 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { addScaled } from '../../math/vec3';
 import { flashResources } from '../../render/billboard';
 import { InstancedPool } from '../../render/instanced-pool';
-import { FloatingOrigin } from '../camera/floating-origin';
+import { FloatingOrigin } from '../../render/camera/floating-origin';
 import {
   BULLET_IMPACT_FLASH_COLOR, BULLET_IMPACT_FLASH_DURATION, BULLET_IMPACT_FLASH_SIZE0,
   BULLET_IMPACT_FLASH_SIZE1, DESTROY_FLASH1_DURATION, DESTROY_FLASH1_SIZE0, DESTROY_FLASH1_SIZE1,

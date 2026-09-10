@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import type { Attitude } from '../../../physics/attitude';
 import { qRotate } from '../../../math/quat';
 import { add, v3, type Vec3 } from '../../../math/vec3';
-import type { FloatingOrigin } from '../../../game/camera/floating-origin';
+import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { RenderStyle } from '../../render-style';
 import {
   BoosterPlumeSet,

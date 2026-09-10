@@ -6,7 +6,7 @@
 // 位置を基準にするのと同じ考え方。
 import * as THREE from 'three/webgpu';
 import { add, sub, v3, Vec3 } from '../../math/vec3';
-import { FloatingOrigin } from '../camera/floating-origin';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import { Curve, CurveKnots } from '../../render/curve';
 import { LineStyle } from '../../render/line-style';
 
@@ -32,7 +32,7 @@ export class TargetRelativeLine {
   }
 
   // selfPos と targetPos を結ぶ直線を組む。
-  sync(selfPos: Vec3, targetPos: Vec3, fo: FloatingOrigin, camera: THREE.Camera): void {
+  sync(selfPos: Vec3, targetPos: Vec3, camera: CameraFrame): void {
     const rel = sub(selfPos, targetPos);
     const knots: CurveKnots = {
       ts: [0, 1],
@@ -41,8 +41,8 @@ export class TargetRelativeLine {
       tangents: [rel.x, rel.y, rel.z, rel.x, rel.y, rel.z],
     };
     this.origin = targetPos;
-    this.curve.setTransform(fo.RtoThreeV3(targetPos));
-    this.curve.setHermiteCurve(knots, camera);
+    this.curve.setTransform(camera.floatingOrigin.RtoThreeV3(targetPos));
+    this.curve.setHermiteCurve(knots, camera.camera, camera.viewport.height);
     this.curve.setVisible(true);
   }
 

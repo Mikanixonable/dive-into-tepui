@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { OrbitalElements } from '../../physics/elements';
 import { add, v3, Vec3 } from '../../math/vec3';
-import { FloatingOrigin } from '../camera/floating-origin';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import { Curve, CurveSampler } from '../../render/curve';
 import { LineStyle } from '../../render/line-style';
 
@@ -52,7 +52,7 @@ export class EllipseLine {
 
   // 毎フレーム呼ぶ。楕円として描けない要素(離心率が 1 に近い、a が非有限か非正)を渡すと
   // hide() と同じ状態になる。
-  sync(el: OrbitalElements, fo: FloatingOrigin, camera: THREE.Camera): void {
+  sync(el: OrbitalElements, camera: CameraFrame): void {
     if (el.e >= 0.98 || !isFinite(el.a) || el.a <= 0) {
       this.hide();
       return;
@@ -60,9 +60,9 @@ export class EllipseLine {
 
     // 頂点もシーンも ECI 基準なので回転は掛けない。ここへフレーム回転を掛けると、焼いた
     // 軌道形状だけが回り続けて船の現在位置から外れていく。
-    this.curve.setTransform(fo.RtoThreeV3(el.centerState.r));
+    this.curve.setTransform(camera.floatingOrigin.RtoThreeV3(el.centerState.r));
     this.elements = el;
-    this.curve.setAnalyticCurve(ellipseSampler(el), camera);
+    this.curve.setAnalyticCurve(ellipseSampler(el), camera.camera, camera.viewport.height);
     this.curve.setVisible(true);
   }
 

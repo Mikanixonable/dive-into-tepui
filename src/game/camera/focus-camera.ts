@@ -4,10 +4,9 @@
 // **chase は「動く実体を追っている視点」を指す語。** 天体や空間上の固定点ではなく機体
 // (艦・敵・基地・弾薬)をフォーカスしている状態のことで、DOM id(#notifier-chase-reset)・
 // セーブキー(camera.chase)はこの意味で使う。カメラの実装が2つあった頃の名残ではない。
-import * as THREE from 'three/webgpu';
 import { Vec3, add, addScaled, cross, len, lenSq, norm, projectOntoPlane, scale, sub, v3 } from '../../math/vec3';
-import { CELESTIAL_SHELL_RADIUS } from '../../render/stars';
 import type { Notifier } from '../../hud/notifier';
+import type { Viewport } from '../../render/viewport';
 import { MouseDelta } from '../../input/input';
 import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../math/projection';
 import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, rotationSourceKey, toFrameDir, toInertialDir } from '../../physics/frame';
@@ -28,36 +27,6 @@ export const FOCUS_CAMERA_MIN_DIST = 1e3; // 天体フォーカス時の注視�
 export const FOCUS_CAMERA_FOV_MIN = 15; // 最小垂直画角 [deg]
 export const FOCUS_CAMERA_FOV_MAX = 120; // 最大垂直画角 [deg]
 const FOCUS_CAMERA_MAX_DIST = 1e14;
-
-// near は固定値ではなく、注視点までの距離をこの比で割った値を毎フレーム使う
-// (near = dist / FOCUS_CAMERA_NEAR_RATIO)。比を大きくすると near が注視点に近づいて
-// 手前がクリップされにくくなる。反転 32bit 深度では分解能が near に依らないので、
-// この比が深度精度と取引になることはない。
-const FOCUS_CAMERA_NEAR_RATIO = 1000;
-
-// near = dist / FOCUS_CAMERA_NEAR_RATIO の比例則は dist の上限では星球シェル・
-// 天球グリッド(CELESTIAL_SHELL_RADIUS)より大きくなる(dist=1e14 で near=1e11)。
-// near クリップは光軸からの角度 θ に対して球殻上の点を R·cosθ まで切り詰めるので、
-// R そのものでなく画面対角の半視野角 θ_diag での R·cosθ_diag を上限に取らないと、
-// 画面中心だけ残して周辺・四隅の星が消える(FocusCamera.near 参照)。
-// 1 未満のこの係数はその余弦にさらに掛ける安全マージン。
-const FOCUS_CAMERA_NEAR_SHELL_MARGIN = 0.9;
-
-// far も near と同様に固定値ではなく dist に連動させる
-// (far = clamp(dist × FOCUS_CAMERA_FAR_RATIO, FOCUS_CAMERA_FAR_MIN, FOCUS_CAMERA_FAR_MAX))。
-// far を dist に比例させないと、太陽・木星のような遠方天体は引いたカメラでは
-// far 平面の外に出て消える。逆に近距離域で far を大きく取ることの費用は、反転 32bit 深度では
-// 事実上ゼロ。
-const FOCUS_CAMERA_FAR_RATIO = 100;
-
-// 艦至近(dist = ENTITY_MIN_DIST)まで寄っても、見かけ直径が残る最遠の天体
-// (直径 1.4e9 m の恒星を LOD 上限で見た 1.4e12 m)が far の外に出ないための下限。
-const FOCUS_CAMERA_FAR_MIN = 2e12;
-
-// FOCUS_CAMERA_MAX_DIST × FOCUS_CAMERA_FAR_RATIO と等しい値。これより小さいと
-// 最大ズームアウト付近で far = dist × FAR_RATIO の比例則がこの上限に張り付いてしまい、
-// 注視点より奥にある軌道線・天体が far 平面でクリップされる。
-const FOCUS_CAMERA_FAR_MAX = 1e16;
 
 // ホイール1目盛りのズーム率。exp(wheel × この値) を注視距離に掛ける(両ビュー共通)。
 const WHEEL_ZOOM_RATE = 0.0015;
@@ -131,9 +100,6 @@ function frameDirVector(value: FrameDir): Vec3 {
 }
 
 export class FocusCamera {
-  // 透視/平行の THREE カメラ実体。どちらを描画に使うかは projectionMode で決まる。
-  private readonly perspectiveCamera: THREE.PerspectiveCamera;
-  private readonly orthographicCamera: THREE.OrthographicCamera;
   private fovDeg = FOCUS_CAMERA_FOV;
   private projectionMode: ProjectionMode;
   private orthographicHalfHeight = 1;
@@ -183,24 +149,27 @@ export class FocusCamera {
     }
   }
 
-  viewpoint: Viewpoint = {
-    position: v3(),
-    lookTarget: v3(),
-    up: WORLD_UP,
-    fovDeg: FOCUS_CAMERA_FOV,
-    aspect: window.innerWidth / window.innerHeight,
-    projection: 'perspective',
-  };
+  viewpoint: Viewpoint;
 
-  // THREE.PerspectiveCamera と初期視点(offset_r/pan_r/up_r/座標系/フォーカス)を組む。saved が
-  // あればその値から、無ければ既定の見下ろし視点から組む。座標系は必ず frames.frameOf 経由で
-  // 解決する — ReferenceFrame をリテラルで組むと参照同一性が崩れる(frame.ts 参照)。
+  // 初期視点(offset_r/pan_r/up_r/座標系/フォーカス)を組む。saved があればその値から、
+  // 無ければ既定の見下ろし視点から組む。座標系は必ず frames.frameOf 経由で解決する —
+  // ReferenceFrame をリテラルで組むと参照同一性が崩れる(frame.ts 参照)。
   constructor(
     private readonly _notifier: Notifier,
     private readonly celestialBodies: CelestialBodies,
     private readonly config: FocusCameraConfig,
-    saved?: FocusCameraSaveData,
+    saved: FocusCameraSaveData | undefined,
+    viewport: Viewport,
   ) {
+    // 向きの解決(eulerPolarAxis)がカメラ位置を読むので、視点は他の初期化より先に置く。
+    this.viewpoint = {
+      position: v3(),
+      lookTarget: v3(),
+      up: WORLD_UP,
+      fovDeg: FOCUS_CAMERA_FOV,
+      aspect: viewport.width / viewport.height,
+      projection: 'perspective',
+    };
     this.projectionMode = saved?.projectionMode === 'orthographic' ? 'orthographic' : 'perspective';
     this._referencePlane = saved?.referencePlane === 'ecliptic' || saved?.referencePlane === 'moonOrbit'
       ? saved.referencePlane : 'equator';
@@ -241,22 +210,11 @@ export class FocusCamera {
       qFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r)),
       this.eulerPolarAxis(), saved?.rotationMode ?? 'euler', followAttitude, null,
     );
-    const defaultHalfHeight = this.dist * Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5));
+    const defaultHalfHeight = this.dist * Math.tan((this.fovDeg * 0.5 * Math.PI) / 180);
     const savedHalfHeight = saved?.orthographicHalfHeight;
     const halfHeight = savedHalfHeight !== undefined && Number.isFinite(savedHalfHeight) ? savedHalfHeight : defaultHalfHeight;
     this.orthographicHalfHeight = Math.max(FOCUS_CAMERA_MIN_DIST * 1e-6,
       Math.min(FOCUS_CAMERA_MAX_DIST, halfHeight));
-    this.perspectiveCamera = new THREE.PerspectiveCamera(
-      this.fovDeg,
-      window.innerWidth / window.innerHeight,
-      this.near,
-      this.far,
-    );
-    this.orthographicCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, this.near, this.far);
-  }
-
-  public get camera(): THREE.Camera {
-    return this.projectionMode === 'orthographic' ? this.orthographicCamera : this.perspectiveCamera;
   }
 
   private clampFov(fovDeg: number): number {
@@ -336,8 +294,8 @@ export class FocusCamera {
     const nextFov = this.clampFov(fovDeg);
     if (nextFov === this.fovDeg) return;
     if (this.projectionMode === 'perspective') {
-      const oldScale = Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5));
-      const newScale = Math.tan(THREE.MathUtils.degToRad(nextFov * 0.5));
+      const oldScale = Math.tan((this.fovDeg * 0.5 * Math.PI) / 180);
+      const newScale = Math.tan((nextFov * 0.5 * Math.PI) / 180);
       this.setDistance(this.dist * newScale / oldScale);
     }
     this.fovDeg = nextFov;
@@ -350,9 +308,9 @@ export class FocusCamera {
   public setProjectionMode(mode: ProjectionMode): void {
     if (mode === this.projectionMode) return;
     if (mode === 'orthographic') {
-      this.orthographicHalfHeight = this.dist * Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5));
+      this.orthographicHalfHeight = this.dist * Math.tan((this.fovDeg * 0.5 * Math.PI) / 180);
     } else {
-      this.setDistance(this.orthographicHalfHeight / Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5)));
+      this.setDistance(this.orthographicHalfHeight / Math.tan((this.fovDeg * 0.5 * Math.PI) / 180));
     }
     this.projectionMode = mode;
   }
@@ -400,25 +358,6 @@ export class FocusCamera {
     this.setRotationBasis(offset, up);
     this.resetPan();
     this._notifier.hint(view === 'above' ? '基準面の真上を表示' : '基準面の真横を表示');
-  }
-
-  // CameraSystem.sync が読む近クリップ距離。dist に比例させることで、どのズーム段でも
-  // 注視点を切り落とさない(FOCUS_CAMERA_NEAR_RATIO 参照)。
-  // near クリップは光軸からの角度 θ の点を R·cosθ で切り詰める平面なので、画面対角の
-  // 半視野角(fov・aspect から求まる)での R·cosθ_diag を超えないようクランプし、
-  // 星球シェル・天球グリッドの周辺・四隅がクリップされないようにする。
-  get near(): number {
-    const halfV = THREE.MathUtils.degToRad(this.fov * 0.5);
-    const halfH = Math.atan(Math.tan(halfV) * window.innerWidth / window.innerHeight);
-    const halfDiag = Math.atan(Math.hypot(Math.tan(halfV), Math.tan(halfH)));
-    const nearMax = CELESTIAL_SHELL_RADIUS * Math.cos(halfDiag) * FOCUS_CAMERA_NEAR_SHELL_MARGIN;
-    return Math.min(nearMax, this.dist / FOCUS_CAMERA_NEAR_RATIO);
-  }
-
-  // CameraSystem.sync が読む遠クリップ距離。dist に比例させることで、引いたカメラでも
-  // 太陽・木星のような遠方天体が far の外に出て消えない(FOCUS_CAMERA_FAR_RATIO 参照)。
-  get far(): number {
-    return Math.min(FOCUS_CAMERA_FAR_MAX, Math.max(FOCUS_CAMERA_FAR_MIN, this.dist * FOCUS_CAMERA_FAR_RATIO));
   }
 
   // 現在のフォーカス対象がクランプ後も表面下にめり込まない最小注視距離。
@@ -621,6 +560,7 @@ export class FocusCamera {
     displayTime: number,
     candidates: readonly FocusCandidate[],
     frameAnchors: FrameAnchorSource,
+    viewport: Viewport,
   ): void {
     this.displayTime = displayTime;
     this.frameAnchors = frameAnchors;
@@ -662,8 +602,8 @@ export class FocusCamera {
       const right = norm(cross(viewDir, upEci));
       const camUp = norm(cross(right, viewDir));
       const metersPerPixel = this.projectionMode === 'orthographic'
-        ? (2 * this.orthographicHalfHeight) / Math.max(1, window.innerHeight)
-        : metersPerPixelAtDepth(this.fovDeg, dist, Math.max(1, window.innerHeight));
+        ? (2 * this.orthographicHalfHeight) / Math.max(1, viewport.height)
+        : metersPerPixelAtDepth(this.fovDeg, dist, Math.max(1, viewport.height));
       panEci = addScaled(panEci, right, -mouse.panDx * metersPerPixel);
       panEci = addScaled(panEci, camUp, mouse.panDy * metersPerPixel);
     }
@@ -675,7 +615,7 @@ export class FocusCamera {
       lookTarget,
       up: upEci,
       fovDeg: this.fovDeg,
-      aspect: window.innerWidth / window.innerHeight,
+      aspect: viewport.width / viewport.height,
       projection: this.projectionMode,
       orthographicHalfHeight: this.orthographicHalfHeight,
     };

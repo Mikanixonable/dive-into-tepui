@@ -14,10 +14,10 @@ import { FrameAnchorSource, FrameTransform, ReferenceFrame, toFrameDir, toFrameP
 
 import { Projected } from '../../math/projection';
 import { isOccluded } from '../../physics/occlusion';
-import { FloatingOrigin } from '../camera/floating-origin';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import { TrajectoryLine } from '../lines/trajectory-line';
 import { LINE_RENDER_ORDER } from '../../render/line-style';
-import type { ProjectFn, ScaleFn } from '../../math/projection';
+import type { ProjectFn } from '../../math/projection';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
 import { BodyImpact, PredictedArc } from '../dynamic/predicted-arc';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
@@ -215,13 +215,13 @@ export class PlanPath {
 
   // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の線を隠す。ノードを
   // 1つも持たない区間(借用のみ)は操作対象自身の predictedLine が描くので、ここでは折れ線を
-  // 隠すだけにする。画面判定が使う視点(project)もここで受け取り、毎フレーム上書きする。
-  // 破線のドット/隙間は各区間のサンプル列中央の代表点で scale(m/px)を引き、ピクセル指定を
-  // 実距離に直してから渡す — ズームによらず画面上の間隔を一定に保つため。camera は各区間の
-  // 折れ線の解像度を決める画面上のサジッタを実距離へ換算するための描画カメラ。
-  sync(fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, cameraPos: Vec3, camera: THREE.Camera): void {
-    this.project = project;
-    this.cameraPos = cameraPos;
+  // 隠すだけにする。画面判定が使う視点もここで受け取り、毎フレーム上書きする。
+  // 破線のドット/隙間は各区間のサンプル列中央の代表点で尺度(m/px)を引き、ピクセル指定を
+  // 実距離に直してから渡す — ズームによらず画面上の間隔を一定に保つため。
+  sync(camera: CameraFrame): void {
+    const scale = camera.scale;
+    this.project = camera.project;
+    this.cameraPos = camera.position;
     // ノードの無い計画は操作対象の現在軌道そのものなので、折れ線は出さない。それでも
     // project の更新までは通す — 止めると、クリック当たり判定が古い視点のまま残る。
     this.setVisible(this._nodeCount > 0);
@@ -251,7 +251,7 @@ export class PlanPath {
         Math.min(this.displayTo, source.to),
         this.frame, this.celestialBodies, this.frameAnchors,
       );
-      line.syncTransform(this.frame, this.unbakeTime, this.celestialBodies, fo, this.frameAnchors);
+      line.syncTransform(this.frame, this.unbakeTime, this.celestialBodies, camera.floatingOrigin, this.frameAnchors);
       line.sync(camera);
     }
     // 線プールは区間数が減っても捨てずに残すので、隠す範囲は sources でなく lines の本数まで見る。

@@ -3,7 +3,7 @@ import * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
-import { FloatingOrigin } from '../camera/floating-origin';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { DynamicMotion } from './dynamic-motion';
 import type { EntityRoster } from './entity-roster';
@@ -21,7 +21,6 @@ import type { StageOutcome } from '../stages/stage-outcome';
 import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 import type { Input } from '../../input/input';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
-import type { CameraSystem } from '../camera/camera-system';
 import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import type { RenderStyle } from '../../render/render-style';
 
@@ -319,20 +318,20 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // このフレームの表示物を同期する。何をどう出すかは個体が答えるので、ここは顔ぶれを1度だけ
   // 辿るだけ。積む変換を作るのは個体自身なので、プールの1フレームをこの走査で挟む。
   public sync(
-    fo: FloatingOrigin, displayTime: number, active: Controllable | null,
-    visibilityPolicy: MapVisibilityPolicy | null, cameraSystem: CameraSystem, style: RenderStyle,
+    displayTime: number, active: Controllable | null,
+    visibilityPolicy: MapVisibilityPolicy | null, camera: CameraFrame, style: RenderStyle,
     visual: EntityVisualSettings, orbitRef: OrbitReference | undefined,
   ): void {
     // instance pool の受付期間で全 Entity を挟み、各 View へ同じフレーム入力を配る。
     this.instancedPools.beginFrame();
     for (const e of this.entities) {
       e.sync({
-        floatingOrigin: fo,
+        floatingOrigin: camera.floatingOrigin,
         displayTime,
         activeId: active?.id ?? null,
         visibilityPolicy,
         pools: this.instancedPools,
-        cameraSystem,
+        camera,
         style,
         visual,
         orbitReference: orbitRef,

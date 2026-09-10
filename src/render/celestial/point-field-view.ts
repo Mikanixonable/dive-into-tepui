@@ -4,7 +4,7 @@
 // 大きく異なる。
 import * as THREE from 'three/webgpu';
 import { Vec3 } from '../../math/vec3';
-import { FloatingOrigin } from '../../game/camera/floating-origin';
+import { FloatingOrigin } from '../camera/floating-origin';
 import { PointElements, PointField, PointFieldGroup, pointPositionAt } from '../../game/celestial/point-field';
 
 // 1フレームで位置を引き直す点の割合の逆数。外側の群ほど公転が遅いので、マップのズーム域では
