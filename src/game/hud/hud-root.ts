@@ -308,7 +308,7 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
 // マップビューの縮尺バー。MapScaleBadge.sync がカメラの注視点基準で更新する。
 function buildMapScale(root: HTMLElement): void {
   // 縮尺表示の要素を作る。
-  const mapScale = createHudElement('div', 'hud-map-scale ui-surface-quiet', root);
+  const mapScale = createHudElement('div', 'hud-map-scale', root, 'ui-surface-quiet');
   mapScale.dataset.id = 'map-scale';
   mapScale.setAttribute('aria-label', 'マップ縮尺');
   // 数値表示と目盛りルーラーを組む。
@@ -325,7 +325,7 @@ function buildMapScale(root: HTMLElement): void {
 // 2行目は MET・時間加速・NODE WARP。
 function buildTopBar(root: HTMLElement): void {
   // トップバー本体の section 要素を作る。
-  const bar = createHudElement('section', 'hud-topbar ui-surface-quiet', root);
+  const bar = createHudElement('section', 'hud-topbar', root, 'ui-surface-quiet');
   bar.setAttribute('aria-label', 'Mission status');
   // ビュー切替行と、MET・時間加速・NODE WARP の行を組み立てる。
   bar.innerHTML = `
@@ -343,7 +343,7 @@ function buildTopBar(root: HTMLElement): void {
 // (camera/focus-camera.ts) — 押したときにどちらのビューのカメラを戻すかは CameraSystem が決める。
 function buildChaseReset(root: HTMLElement): void {
   // リセットボタン本体を作る。
-  const chaseReset = createHudElement('button', 'hud-chase-reset ui-surface-quiet', root);
+  const chaseReset = createHudElement('button', 'hud-chase-reset', root, 'ui-surface-quiet');
   chaseReset.setAttribute('type', 'button');
   chaseReset.setAttribute('aria-label', '視点をリセット');
   chaseReset.setAttribute('title', '視点をリセット');
@@ -365,7 +365,7 @@ function buildChaseReset(root: HTMLElement): void {
 
 // H キーを知らないマウス/タッチ操作者向けの、ヘルプパネルを開く常設バッジ。
 function buildHelpBadge(root: HTMLElement, helpPanel: HelpPanel): void {
-  const badge = createHudElement('button', 'hud-help-badge ui-surface-quiet', root);
+  const badge = createHudElement('button', 'hud-help-badge', root, 'ui-surface-quiet');
   badge.setAttribute('type', 'button');
   badge.setAttribute('aria-label', '操作ガイドを開く');
   badge.setAttribute('title', '操作ガイドを開く');
@@ -400,7 +400,7 @@ export function buildHudDom(shell: HudShell, renderStyle: RenderStyleSetting): H
   buildTopBar(layers.panel);
   buildChaseReset(layers.panel);
   buildMapScale(mapRoot.element);
-  createHudElement('div', 'hud-toast ui-surface-focus', layers.notify);
+  createHudElement('div', 'hud-toast', layers.notify, 'ui-surface-focus');
 
   const helpPanel = new HelpPanel(layers.system, shell.overlayManager);
   buildHelpBadge(layers.panel, helpPanel);
