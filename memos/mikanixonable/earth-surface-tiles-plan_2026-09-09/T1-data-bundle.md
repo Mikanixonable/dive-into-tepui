@@ -68,7 +68,8 @@ fixtureを本番生成の代わりにはしない。
 - GSHHG 2.3.7: `200 application/zip 149,157,845 bytes`
 - ERA5: URL取得ではなく、1991–2020・全UTC時刻・指定変数を含むNetCDFの明示的なlocal exportが必要
 
-実行環境にはGDAL/osgeo、netCDF4、pyshp、Pillowがなく、`gdalinfo`/`ogrinfo`もない。空き容量は約4.85GiBだった。
+再検査時点ではPillowだけが利用可能で、GDAL/osgeo、netCDF4、pyshp、`gdalinfo`/`ogrinfo`はない。空き容量は約320GBで、
+地形payloadの下限だけなら保存できる。
 全43,690タイルのESTN payloadだけで、圧縮前かつbaseを含めて23,630,031,744 bytes（約22.0GiB）が必要になるため、
 入力・中間・JPEG・気候mapを含む本番生成はこの環境では開始しなかった。URL応答の確認以外に巨大ファイルの取得は行っていない。
 
