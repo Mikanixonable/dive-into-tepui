@@ -28,8 +28,8 @@ const STYLE = `
 // analysisPanelReader を prev から降ろして next へ立て、いま立てている側(next)を返す。
 function applyReader(prev: DynamicEntity | null, next: DynamicEntity | null): DynamicEntity | null {
   if (prev === next) return prev;
-  if (prev) prev.analysisPanelReader = false;
-  if (next) next.analysisPanelReader = true;
+  if (prev) prev.motion.analysisPanelReader = false;
+  if (next) next.motion.analysisPanelReader = true;
   return next;
 }
 
@@ -123,8 +123,8 @@ export class OrbitAnalysisWindow {
 
     const target = resolveApproachTarget(game);
     const reference = game.orbitReference.resolve(
-      entity.state.r, game.celestialSystem.celestialMotions, game.navTarget,
-      game.dynamicSystem, game.celestialSystem, entity.state.t,
+      entity.motion.state.r, game.celestialSystem.celestialMotions, game.navTarget,
+      game.dynamicSystem, game.celestialSystem, entity.motion.state.t,
     );
     const source: AnalysisChartSource = {
       celestialSystem: game.celestialSystem,

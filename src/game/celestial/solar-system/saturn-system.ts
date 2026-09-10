@@ -9,9 +9,9 @@ import { AU } from '../../../physics/astronomical-unit';
 import { GRAVITATIONAL_CONSTANT, MU_SATURN } from './constants';
 import { CelestialSurface } from '../../../render/celestial-surface';
 import type { CelestialTexture } from '../../../render/celestial-textures';
-import type { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { PointEntity } from '../celestial-entity/point-entity';
-import { SphereEntity } from '../celestial-entity/sphere-entity';
+import { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { PointCelestialView } from '../celestial-entity/point-celestial-view';
+import { SphereCelestialView } from '../celestial-entity/sphere-celestial-view';
 import { SATURN_LAPLACE_BASIS, SATURN_POLE } from './poles';
 import { SATURN_RINGS } from './rings';
 import { jplSatelliteOrbit } from './satellite-orbit-builders';
@@ -196,83 +196,87 @@ export function saturnSystem(
 ): Record<SaturnSystemBodyId, CelestialEntity> {
   const saturn = planetSystem(planetDefForSimZero(SATURN, phases, simZeroEt), sun);
   return {
-    // 惑星は戦闘ビューでは輝点スプライトとして描くので PointEntity。
-    saturn: new PointEntity(saturn.body, SATURN_SYSTEM_NAMES.saturn, 'planet', CelestialSurface.textured(SATURN_TEXTURE)),
+    // 惑星は戦闘ビューでは輝点スプライトとして描く。
+    saturn: new CelestialEntity(
+      saturn.body, SATURN_SYSTEM_NAMES.saturn, 'planet', new PointCelestialView(CelestialSurface.textured(SATURN_TEXTURE)),
+    ),
     // パン A_B=0.28(幾何 0.5 x q=0.564)
-    pan: new SphereEntity(
+    pan: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(PAN, phases, simZeroEt), saturn),
-      SATURN_SYSTEM_NAMES.pan, 'satellite', CelestialSurface.solid([0.3326, 0.2699, 0.2252]),
+      SATURN_SYSTEM_NAMES.pan, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.3326, 0.2699, 0.2252])),
     ),
     // ダフニス A_B=0.28(分類既定 幾何 0.5 x q=0.564)
-    daphnis: new SphereEntity(
+    daphnis: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(DAPHNIS, phases, simZeroEt), saturn),
-      SATURN_SYSTEM_NAMES.daphnis, 'satellite', CelestialSurface.solid([0.3326, 0.2699, 0.2252]),
+      SATURN_SYSTEM_NAMES.daphnis, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.3326, 0.2699, 0.2252])),
     ),
     // プロメテウス A_B=0.34(幾何 0.6 x q=0.564)
-    prometheus: new SphereEntity(
+    prometheus: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(PROMETHEUS, phases, simZeroEt), saturn),
-      SATURN_SYSTEM_NAMES.prometheus, 'satellite', CelestialSurface.solid([0.3956, 0.3294, 0.2814]),
+      SATURN_SYSTEM_NAMES.prometheus, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.3956, 0.3294, 0.2814])),
     ),
     // パンドラ A_B=0.34(幾何 0.6 x q=0.564)
-    pandora: new SphereEntity(
+    pandora: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(PANDORA, phases, simZeroEt), saturn),
-      SATURN_SYSTEM_NAMES.pandora, 'satellite', CelestialSurface.solid([0.3956, 0.3294, 0.2814]),
+      SATURN_SYSTEM_NAMES.pandora, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.3956, 0.3294, 0.2814])),
     ),
     // エピメテウス A_B=0.41(幾何 0.73 x q=0.564)
-    epimetheus: new SphereEntity(
+    epimetheus: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(EPIMETHEUS, phases, simZeroEt), saturn),
-      SATURN_SYSTEM_NAMES.epimetheus, 'satellite', CelestialSurface.solid([0.4694, 0.3987, 0.3469]),
+      SATURN_SYSTEM_NAMES.epimetheus, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.4694, 0.3987, 0.3469])),
     ),
     // ヤヌス A_B=0.4(幾何 0.71 x q=0.564)
-    janus: new SphereEntity(
+    janus: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(JANUS, phases, simZeroEt), saturn),
-      SATURN_SYSTEM_NAMES.janus, 'satellite', CelestialSurface.solid([0.4580, 0.3890, 0.3385]),
+      SATURN_SYSTEM_NAMES.janus, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.4580, 0.3890, 0.3385])),
     ),
     // ミマス A_B=0.54(幾何 0.962 x q=0.564)
-    mimas: new SphereEntity(
+    mimas: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(MIMAS, phases, simZeroEt), saturn),
-      SATURN_SYSTEM_NAMES.mimas, 'satellite', CelestialSurface.solid([0.5631, 0.5382, 0.4903]),
+      SATURN_SYSTEM_NAMES.mimas, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.5631, 0.5382, 0.4903])),
     ),
     // エンケラドゥス A_B=0.81(公表ボンド 0.81(幾何は 1.375))
-    enceladus: new SphereEntity(
+    enceladus: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(ENCELADUS, phases, simZeroEt), saturn),
-      SATURN_SYSTEM_NAMES.enceladus, 'satellite', CelestialSurface.solid([0.8249, 0.8089, 0.7774]),
+      SATURN_SYSTEM_NAMES.enceladus, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.8249, 0.8089, 0.7774])),
     ),
     // テティス A_B=0.69(幾何 1.229 x q=0.564)
-    tethys: new SphereEntity(
+    tethys: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(TETHYS, phases, simZeroEt), saturn),
-      SATURN_SYSTEM_NAMES.tethys, 'satellite', CelestialSurface.solid([0.7185, 0.6877, 0.6284]),
+      SATURN_SYSTEM_NAMES.tethys, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.7185, 0.6877, 0.6284])),
     ),
     // ディオネ A_B=0.56(幾何 0.998 x q=0.564)
-    dione: new SphereEntity(
+    dione: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(DIONE, phases, simZeroEt), saturn),
-      SATURN_SYSTEM_NAMES.dione, 'satellite', CelestialSurface.solid([0.5844, 0.5580, 0.5074]),
+      SATURN_SYSTEM_NAMES.dione, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.5844, 0.5580, 0.5074])),
     ),
     // レア A_B=0.54(幾何 0.949 x q=0.564)
-    rhea: new SphereEntity(
+    rhea: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(RHEA, phases, simZeroEt), saturn),
-      SATURN_SYSTEM_NAMES.rhea, 'satellite', CelestialSurface.solid([0.5622, 0.5382, 0.4920]),
+      SATURN_SYSTEM_NAMES.rhea, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.5622, 0.5382, 0.4920])),
     ),
-    titan: new SphereEntity(
+    titan: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(TITAN, phases, simZeroEt), saturn),
       SATURN_SYSTEM_NAMES.titan, 'satellite',
-      // 平均輝度 0.2425(A_B は幾何 0.22 x q=0.564)
-      CelestialSurface.textured({ url: titanTextureUrl, albedoScale: 0.5113, bondAlbedo: 0.124, averageHue: [1, 1, 1] }),
+      new SphereCelestialView(
+        // 平均輝度 0.2425(A_B は幾何 0.22 x q=0.564)
+        CelestialSurface.textured({ url: titanTextureUrl, albedoScale: 0.5113, bondAlbedo: 0.124, averageHue: [1, 1, 1] }),
+      ),
     ),
     // ヒペリオン A_B=0.14(幾何 0.30 x q=0.461)
-    hyperion: new SphereEntity(
+    hyperion: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(HYPERION, phases, simZeroEt), saturn),
-      SATURN_SYSTEM_NAMES.hyperion, 'satellite', CelestialSurface.solid([0.1617, 0.1375, 0.1009]),
+      SATURN_SYSTEM_NAMES.hyperion, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.1617, 0.1375, 0.1009])),
     ),
     // イアペトゥス A_B=0.12(幾何は明暗半球で 0.05-0.5。全球平均 0.27 x q=0.461)
-    iapetus: new SphereEntity(
+    iapetus: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(IAPETUS, phases, simZeroEt), saturn),
-      SATURN_SYSTEM_NAMES.iapetus, 'satellite', CelestialSurface.solid([0.1296, 0.1189, 0.1023]),
+      SATURN_SYSTEM_NAMES.iapetus, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.1296, 0.1189, 0.1023])),
     ),
     // フェーベ A_B=0.024(幾何 0.06 x q=0.393)
-    phoebe: new SphereEntity(
+    phoebe: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(PHOEBE, phases, simZeroEt), saturn),
-      SATURN_SYSTEM_NAMES.phoebe, 'satellite', CelestialSurface.solid([0.0276, 0.0234, 0.0196]),
+      SATURN_SYSTEM_NAMES.phoebe, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.0276, 0.0234, 0.0196])),
     ),
   };
 }

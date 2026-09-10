@@ -142,7 +142,7 @@ export class PlanPath {
       // ノードが1つも無い間の唯一の区間は操作対象の予測弧そのものを借りる。その予測がまだ
       // 生えていないフレームは何も答えず、次のフレームで生え直す。
       if (planData.nodes.length === 0 && isFinal && ship !== null) {
-        const arc = ship.predictedArc;
+        const arc = ship.motion.arc;
         arc?.apsides?.dropBefore(seg.state0.t);
         this.sources[i] = { arc, from: seg.state0.t, to: seg.end, owned: false };
         continue;

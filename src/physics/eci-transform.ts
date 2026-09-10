@@ -38,7 +38,7 @@ export class EciTransform {
     return sub(motion.analyticAccelAt(t), this.originStateAt(t).accel);
   }
 
-  // 負荷確認ウィンドウが読む、原点一式の時刻キャッシュのヒット/ミス累計。
+  // デバッグ情報ウィンドウが読む、原点一式の時刻キャッシュのヒット/ミス累計。
   get cacheStats(): TimeCacheStats { return this.originCache.stats; }
 
   // 引いた原点一式のもとで平行移動する。原点が数値暦で引けない時刻では、この天体も

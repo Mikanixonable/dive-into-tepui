@@ -61,6 +61,15 @@ const TOWER_ONSET = 0.015;
 const TOWER_WIDTH = 0.09;
 // 塔を閉じる沈降の門 [m/s]。高気圧の吹きおろす所では、粒の峰が立っても深い対流にはならない。
 const TOWER_LIFT_GATE = 0.005;
+// 海洋性層積雲へ移る気候の門。平年の雲量が高い海で、沈降と低い対流が重なるほど閉じた細胞の
+// 板へ寄せる。海岸と気候の境界は climate map の補間と smoothstep で連続に渡る。
+const STRATOCUMULUS_SUBSIDENCE_SCALE = 50;
+const STRATOCUMULUS_HUMIDITY_ONSET = 0.42;
+const STRATOCUMULUS_HUMIDITY_WIDTH = 0.20;
+const STRATOCUMULUS_CLOUDINESS_ONSET = 0.48;
+const STRATOCUMULUS_CLOUDINESS_WIDTH = 0.24;
+const STRATOCUMULUS_ACTIVITY_ONSET = 0.35;
+const STRATOCUMULUS_ACTIVITY_WIDTH = 0.45;
 // 対流の形が網目から粒へ渡る湿度。雲の少ない所では細胞の壁(網目)、多い所では細胞の芯(粒)が
 // 見える。**形を決める量は粒より低周波でなければならない** — 粒ごとに形が変わると並びが読めない
 // ので、粒を足す前の湿度で決める。渡り始めは覆いの効き始めの少し下、渡り終わりはその 1 単位ぶん上。
@@ -85,10 +94,11 @@ const TRANSLUCENT_KNEE = 0.25;
 const TRANSLUCENT_LIMIT = 0.63;
 
 // weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した伝達関数から、
-// 雲頂高度は 層状の雲から立つ塔と、渦の芯が敷く金床の高いほうから出る — 覆う広さは湿度が、
-// 層の高さは上昇流と暖気の流入と気団の折り目の帯が、塔は粒の峰が、平らな天蓋は渦の芯が決める。
-// **対流の活発度が効くのは被覆率と塔で、層状の雲頂は活発度に依らず対流をそのまま受ける** —
-// 一面に覆われた空も一様な白い面にはならない(`DEVELOP/SPEC/RENDERING.md`「雲の描画」)。
+// 雲頂高度は層状の雲から立つ塔と、渦の芯が敷く金床の高いほうを雲底からの高さへ写して出す —
+// 覆う広さは湿度が、層の高さは上昇流と暖気の流入と気団の折り目の帯が、塔は粒の峰が、平らな
+// 天蓋は渦の芯が決める。**雲底からの高さは被覆率が低いほど縮み、広く覆う雲ほど元の高さを保つ**。
+// **対流の活発度は被覆率と塔へ効き、沈降する海洋性層積雲では層状の起伏も低くなる** — 一面に
+// 覆われた空も一様な白い面にはならない(`DEVELOP/SPEC/RENDERING.md`「雲の描画」)。
 export function condense(weather: WeatherSample): CloudSample {
   // 網目と粒を湿度で混ぜる。混ぜると振れ幅が落ちるので、二乗和の平方根で戻す — 戻さないと
   // 渡りの中間(半々)に、粒の消えた平坦な帯ができる。
@@ -98,9 +108,31 @@ export function condense(weather: WeatherSample): CloudSample {
     .mul(inverseSqrt(network.mul(network).add(shape.mul(shape))));
   const peak = convection.mul(weather.convectiveActivity);
   const granularity = peak.mul(CONVECTION_GAIN).mul(weather.band.mul(BAND_GRAIN_FADE).oneMinus());
+  // 沈降する湿った海洋の低活発度の空では海洋性層積雲へ連続的に移り、前線帯ではその性質を薄める。
+  const subsidence = max(weather.lift.negate(), 0);
+  const stratocumulus = smoothstep(
+    STRATOCUMULUS_HUMIDITY_ONSET,
+    STRATOCUMULUS_HUMIDITY_ONSET + STRATOCUMULUS_HUMIDITY_WIDTH,
+    weather.surfaceHumidity,
+  )
+    .mul(tanh(subsidence.mul(STRATOCUMULUS_SUBSIDENCE_SCALE)))
+    .mul(smoothstep(
+      STRATOCUMULUS_CLOUDINESS_ONSET,
+      STRATOCUMULUS_CLOUDINESS_ONSET + STRATOCUMULUS_CLOUDINESS_WIDTH,
+      weather.meanCloudiness,
+    ))
+    .mul(float(1).sub(weather.landFraction))
+    .mul(smoothstep(
+      STRATOCUMULUS_ACTIVITY_ONSET,
+      STRATOCUMULUS_ACTIVITY_ONSET + STRATOCUMULUS_ACTIVITY_WIDTH,
+      weather.convectiveActivity,
+    ).oneMinus())
+    .mul(weather.band.oneMinus());
   // 層状の雲: 上昇流と暖気の流入と折り目の帯が持ち上げる高さに、対流の起伏が乗る。
+  const convectionRelief = mix(float(1), weather.convectiveActivity, stratocumulus);
   const depth = max(weather.lift, 0).mul(CLOUD_TOP_LIFT).add(weather.warmth.mul(WARM_TOP))
-    .add(weather.band.mul(BAND_TOP)).add(convection.mul(CLOUD_TOP_RELIEF)).sub(CLOUD_TOP_BIAS);
+    .add(weather.band.mul(BAND_TOP)).add(convection.mul(CLOUD_TOP_RELIEF).mul(convectionRelief))
+    .sub(CLOUD_TOP_BIAS);
   const layered = float(1).add(exp(depth.negate())).reciprocal().mul(LAYER_TOP_SPAN).add(CLOUD_BASE_HEIGHT);
   // 塔: 粒の正の側(細胞の芯)が柱として立ち、いちばん高いものが圏界面へ届く。高さは層状の雲から
   // 圏界面までを二乗で渡すので、低い塔が多く高い塔は少ない。**塔は、その場が覆われるほど湿っていて、
@@ -114,16 +146,21 @@ export function condense(weather: WeatherSample): CloudSample {
   const anvil = weather.anvil.mul(weather.tropopause);
   // 被覆率は、湿度が効き始めを超えた分を幅で割った t が張る、晴れている割合の補。下端は傾き 0 で
   // 0 から離れ、上端は 1 へ代数の裾で漸近する — 覆われた空にも湿度の差が階調として残る。
-  const moistened = weather.surfaceHumidity.add(granularity);
+  const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(COVERAGE_WIDTH));
   const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
   const clear = excess.mul(excess).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
+  const coverage = clear.oneMinus();
+  // 小さな雲を高い柱にしないため、雲底からの高さだけを被覆率で縮める。被覆率 0 では雲底へ
+  // 落ちるが、その柱は opaqueFractionOf の門を通らないので晴天に雲や影が現れることはない。
+  const cloudTop = max(tower, anvil);
+  const scaledCloudTop = max(cloudTop.sub(CLOUD_BASE_HEIGHT), 0).mul(coverage).add(CLOUD_BASE_HEIGHT);
   // 薄い雲: 靄の項と筋の項の和を、上限へ漸近させる。
   const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN);
   const streakExcess = max(weather.upperHumidity.sub(TRANSLUCENT_STREAK_ONSET), 0);
   const streak = streakExcess.mul(streakExcess).mul(TRANSLUCENT_STREAK_GAIN).div(TRANSLUCENT_KNEE);
   return {
-    coverage: clear.oneMinus(),
-    cloudTop: max(tower, anvil),
+    coverage,
+    cloudTop: scaledCloudTop,
     translucent: tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT),
   };
 }

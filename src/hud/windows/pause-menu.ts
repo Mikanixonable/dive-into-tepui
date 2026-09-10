@@ -10,7 +10,7 @@ import {
 } from '../widgets';
 import { CLICK_MOVE_THRESHOLD } from '../../input/input';
 
-// 一時停止 / 設定パネル(#hud-pause-menu)。BGM 音量調整、セーブ、セーブデータ管理、負荷表示、
+// 一時停止 / 設定パネル(#hud-pause-menu)。BGM 音量調整、セーブ、セーブデータ管理、デバッグ表示、
 // 設定ビューの呼び出し、タイトルへの復帰を提供し、ヘッダーのドラッグ移動と最小化を持つ。
 export class PauseMenu implements OverlayHandle {
   private readonly panel: HTMLElement;
@@ -25,7 +25,7 @@ export class PauseMenu implements OverlayHandle {
   public onBgmVolumeChange: ((vol: number) => void) | null = null;
   public onSave: (() => void) | null = null;
   public onOpenSaveBrowser: (() => void) | null = null;
-  public onOpenPerfWindow: (() => void) | null = null;
+  public onOpenDebugInfoWindow: (() => void) | null = null;
   public onOpenSettings: (() => void) | null = null;
 
   private readonly overlayManager: OverlayManager;
@@ -96,7 +96,7 @@ export class PauseMenu implements OverlayHandle {
     bgmRow.appendChild(this.bgmMute.element);
     this.body.appendChild(bgmRow);
 
-    // 以降の各行はセーブ・セーブデータ管理・負荷表示・設定ビューへの導線となる単一ボタン。
+    // 以降の各行はセーブ・セーブデータ管理・デバッグ表示・設定ビューへの導線となる単一ボタン。
     const saveRow = document.createElement('div');
     saveRow.className = 'pm-row';
     saveRow.style.marginTop = SPACE_4;
@@ -118,10 +118,12 @@ export class PauseMenu implements OverlayHandle {
     const perfRow = document.createElement('div');
     perfRow.className = 'pm-row';
     perfRow.style.marginTop = SPACE_2;
-    const perfBtn = new Button(`負荷を表示 [${K.togglePerfWindow.label}]`, () => this.onOpenPerfWindow?.());
-    perfBtn.element.classList.add('pm-menu-btn');
-    perfBtn.element.style.flex = '1';
-    perfRow.appendChild(perfBtn.element);
+    const debugInfoBtn = new Button(
+      `デバッグを表示 [${K.toggleDebugInfoWindow.label}]`, () => this.onOpenDebugInfoWindow?.(),
+    );
+    debugInfoBtn.element.classList.add('pm-menu-btn');
+    debugInfoBtn.element.style.flex = '1';
+    perfRow.appendChild(debugInfoBtn.element);
     this.body.appendChild(perfRow);
 
     const settingsRow = document.createElement('div');
@@ -195,6 +197,7 @@ export class PauseMenu implements OverlayHandle {
       // ESCメニュー表示中も、背景のマップ切替とカメラ操作は受け付ける(gatesInput: false)。
       this.overlayManager.open('pause-menu', this, {
         kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: false,
+        dimsBackground: false,
         exclusiveGroup: 'system-modal',
       });
     } else {

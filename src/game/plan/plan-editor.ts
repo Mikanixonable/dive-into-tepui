@@ -226,7 +226,7 @@ export class PlanEditor {
     // その位置に最初に到達する時刻(= referenceT を -Infinity にして最早時刻)を選ぶ。
     const picked = this.path.nearestSample(mx, my, NODE_PICK_PX, -Infinity);
     if (picked) {
-      this.selectNewNode(ship.plan.addNode(picked.state, ship.state));
+      this.selectNewNode(ship.plan.addNode(picked.state, ship.motion.state));
       return;
     }
 
@@ -260,7 +260,7 @@ export class PlanEditor {
       this.hud.hint('この時刻の計画軌道が求まりません');
       return;
     }
-    this.selectNewNode(ship.plan.addNode(sample, ship.state));
+    this.selectNewNode(ship.plan.addNode(sample, ship.motion.state));
   }
 
   // addNode の結果を選択する。計画の起点より前は置けないので、その場合は理由を伝える。
@@ -306,7 +306,9 @@ export class PlanEditor {
     const arriving = this.path.arrivalStates();
     const picked = this.path.nearestSample(
       clientX, clientY, Infinity, node.t,
-      ship.plan.nodeTimeRange(idx, ship.state, this.celestialBodies.celestialMotions, this.displayDuration),
+      ship.plan.nodeTimeRange(
+        idx, ship.motion.state, this.celestialBodies.celestialMotions, this.displayDuration,
+      ),
     );
     // Δv を保ったまま移動先へ置き換える
     if (picked) {
@@ -330,7 +332,9 @@ export class PlanEditor {
     if (!node) return;
     const hasDownstreamNodes = idx < plan.nodes.length - 1;
     const targetT = this.simTime + secondsFromNow;
-    const range = plan.nodeTimeRange(idx, ship.state, this.celestialBodies.celestialMotions, this.displayDuration);
+    const range = plan.nodeTimeRange(
+      idx, ship.motion.state, this.celestialBodies.celestialMotions, this.displayDuration,
+    );
     const epsilon = 1e-6;
     if (targetT < range.min - epsilon || targetT > range.max + epsilon) {
       this.hud.hint('ノード位置は許可された軌道区間内で指定してください');

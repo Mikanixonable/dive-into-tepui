@@ -17,6 +17,7 @@ import { MAX_DYN_PRESSURE } from '../../player/aero-load';
 import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
 import type { Stage } from '../../stages/stage';
 import type { CameraSystem } from '../../camera/camera-system';
+import { isPlayerMotion } from '../../player/player-motion';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -182,8 +183,10 @@ export class VesselPanel {
   public sync(
     target: Controllable | null, activeStage: Stage, cameraSystem: CameraSystem, isMapView: boolean,
   ): void {
-    this.power = target?.power ?? null;
-    this.radiator = target?.radiator ?? null;
+    this.power = target !== null && isPlayerMotion(target.motion) ? target.motion.power : null;
+    this.radiator = target !== null && isPlayerMotion(target.motion)
+      ? target.motion.radiator
+      : null;
     if (!target) {
       this.els.get('hud-vessel-status')?.classList.add('hidden');
       return;
@@ -212,7 +215,7 @@ export class VesselPanel {
     this.throttleControl?.setSelected(throttleIdx);
 
     // 動圧の行は、大気を受ける操作対象のときだけ出す。
-    const aero = target.aero;
+    const aero = isPlayerMotion(target.motion) ? target.motion.aero : null;
     this.els.get('qdyn-row')?.classList.toggle('hidden', aero === null);
     if (aero) {
       const qdyn = aero.qdyn;
