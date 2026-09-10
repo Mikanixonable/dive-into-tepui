@@ -3,30 +3,30 @@ import { MQ_MEDIUM_DOWN } from '../breakpoints';
 
 export const SETTINGS_VIEW_STYLE = `
 #hud-pause-menu .pm-settings-view {
-  display: block; pointer-events: auto; padding: var(--space-2) 0 var(--space-4);
+  display: block; pointer-events: auto; padding: var(--space-1) 0 var(--space-2);
 }
 #hud-pause-menu .pm-settings-view .sv-header,
 #hud-pause-menu .pm-settings-view .sv-description,
 #hud-pause-menu .pm-settings-view .sv-section { width: 100%; margin-inline: auto; }
 #hud-pause-menu .pm-settings-view .sv-header {
   display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4);
-  padding-bottom: var(--space-5);
+  padding-bottom: var(--space-2);
 }
 #hud-pause-menu .pm-settings-view .sv-heading-group { display: flex; flex-direction: column; gap: var(--space-2); }
 #hud-pause-menu .pm-settings-view .sv-header h2 { color: var(--title); font-size: var(--font-2xl); letter-spacing: 0.1em; }
 #hud-pause-menu .pm-settings-view .sv-eyebrow { color: var(--color-primary); font-size: var(--font-xxs); letter-spacing: 0.12em; }
 #hud-pause-menu .pm-settings-view .sv-description {
-  margin-top: var(--space-5); padding-left: var(--space-4);
+  margin-top: var(--space-3); padding-left: var(--space-4);
   color: var(--text-dim); font-size: var(--font-s); line-height: 1.6;
 }
 #hud-pause-menu .pm-settings-view .sv-tabs {
-  width: min(100%, 760px); margin: var(--space-6) auto 0;
+  width: min(100%, 760px); margin: var(--space-4) auto 0;
   gap: var(--space-1); padding: var(--space-1); border: 0;
   border-radius: var(--radius-panel);
 }
 #hud-pause-menu .pm-settings-view .sv-tabs .w-btn {
-  display: flex; flex: 1 1 0; min-width: 0; min-height: 62px;
-  align-items: center; justify-content: center; padding: var(--space-4) var(--space-3) var(--space-3);
+  display: flex; flex: 1 1 0; min-width: 0; min-height: var(--hit-target-min);
+  align-items: center; justify-content: center; padding: var(--space-2) var(--space-3);
   border: 0; border-radius: var(--radius-control); text-align: center;
   font-size: var(--font-m); font-weight: 600; letter-spacing: 0.06em;
   background: transparent; color: var(--text-dim); box-shadow: none;
@@ -38,7 +38,7 @@ export const SETTINGS_VIEW_STYLE = `
   background: var(--color-primary-fill); color: var(--color-primary);
 }
 #hud-pause-menu .pm-settings-view .sv-section {
-  position: relative; margin-top: var(--space-7); padding: var(--space-6);
+  position: relative; margin-top: var(--space-4); padding: var(--space-4);
   border: 0; border-radius: var(--radius-panel);
 }
 #hud-pause-menu .pm-settings-view .sv-tab-panel[hidden] { display: none; }
@@ -95,13 +95,13 @@ export const SETTINGS_VIEW_STYLE = `
   background: var(--glass-control-hover); color: var(--color-primary-hover);
 }
 #hud-pause-menu .pm-settings-view .sv-volume-row {
-  display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-4);
-  padding: var(--space-4); background: var(--glass-inset); border: 0; border-radius: var(--radius-control);
+  display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-2);
+  padding: var(--space-2); background: var(--glass-inset); border: 0; border-radius: var(--radius-control);
 }
 #hud-pause-menu .pm-settings-view .sv-label { width: 4em; color: var(--text-dim); }
 #hud-pause-menu .pm-settings-view .sv-volume-row .w-slider { flex: 1; }
 #hud-pause-menu .pm-settings-view .sv-volume-value { width: 4em; color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
-#hud-pause-menu .pm-settings-view .sv-track-list { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-4); }
+#hud-pause-menu .pm-settings-view .sv-track-list { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-2); }
 #hud-pause-menu .pm-settings-view .sv-track-row {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
   min-height: var(--hit-target-min); padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
@@ -113,7 +113,7 @@ export const SETTINGS_VIEW_STYLE = `
 #hud-pause-menu .pm-settings-view .sv-track-label { display: flex; align-items: baseline; gap: var(--space-4); color: var(--text); }
 #hud-pause-menu .pm-settings-view .sv-track-number { color: var(--text-dim); font-size: var(--font-xxs); font-variant-numeric: tabular-nums; }
 #hud-pause-menu .pm-settings-view .sv-preview-button { min-width: 76px; text-align: center; }
-#hud-pause-menu .pm-settings-view .sv-track-actions { margin-top: var(--space-4); text-align: right; }
+#hud-pause-menu .pm-settings-view .sv-track-actions { margin-top: var(--space-2); text-align: right; }
 @media ${MQ_MEDIUM_DOWN} {
   #hud-pause-menu .pm-settings-view { padding-inline: 0; }
 }

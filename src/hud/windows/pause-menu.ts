@@ -2,7 +2,7 @@ import faviconUrl from '../../../public/favicon.svg';
 import type { Bgm } from '../../audio/bgm/bgm';
 import type { GraphicsSettings } from '../../render/graphics-settings';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import { SPACE_2, SPACE_4 } from '../../theme';
+import { SPACE_4 } from '../../theme';
 import { clampOverlayPosition, Point2 } from '../layout';
 import { onViewportChange } from '../viewport';
 import { injectOnce } from '../inject-style';
@@ -137,39 +137,41 @@ export class PauseMenu implements OverlayHandle {
     bgmRow.appendChild(this.bgmMute.element);
     this.pauseTabPanel.appendChild(bgmRow);
 
-    // 以降の各行はセーブ・セーブデータ管理・デバッグ表示の導線となる単一ボタン。
+    // 以降の各行はセーブ・セーブデータ管理・デバッグ表示の導線となる単一ボタン。幅を使って
+    // 2列に詰められるよう、操作行だけを専用のグリッドへまとめる。
+    const actionGrid = document.createElement('div');
+    actionGrid.className = 'pm-actions';
+    this.pauseTabPanel.appendChild(actionGrid);
+
     const saveRow = document.createElement('div');
     saveRow.className = 'pm-row';
-    saveRow.style.marginTop = SPACE_4;
     const saveBtn = new Button('セーブ', () => this.onSave?.());
     saveBtn.element.classList.add('pm-menu-btn');
     saveBtn.element.style.flex = '1';
     saveRow.appendChild(saveBtn.element);
-    this.pauseTabPanel.appendChild(saveRow);
+    actionGrid.appendChild(saveRow);
 
     const saveBrowserRow = document.createElement('div');
     saveBrowserRow.className = 'pm-row';
-    saveBrowserRow.style.marginTop = SPACE_2;
     const saveBrowserBtn = new Button('セーブデータの管理', () => this.onOpenSaveBrowser?.());
     saveBrowserBtn.element.classList.add('pm-menu-btn');
     saveBrowserBtn.element.style.flex = '1';
     saveBrowserRow.appendChild(saveBrowserBtn.element);
-    this.pauseTabPanel.appendChild(saveBrowserRow);
+    actionGrid.appendChild(saveBrowserRow);
 
     const perfRow = document.createElement('div');
     perfRow.className = 'pm-row';
-    perfRow.style.marginTop = SPACE_2;
     const debugInfoBtn = new Button(
       `デバッグを表示 [${K.toggleDebugInfoWindow.label}]`, () => this.onOpenDebugInfoWindow?.(),
     );
     debugInfoBtn.element.classList.add('pm-menu-btn');
     debugInfoBtn.element.style.flex = '1';
     perfRow.appendChild(debugInfoBtn.element);
-    this.pauseTabPanel.appendChild(perfRow);
+    actionGrid.appendChild(perfRow);
 
     const quitBtn = new Button('ゲームを中断してタイトル画面に戻る', () => this.onQuitToTitle?.());
     quitBtn.element.classList.add('pm-menu-btn', 'pm-quit');
-    this.pauseTabPanel.appendChild(quitBtn.element);
+    actionGrid.appendChild(quitBtn.element);
 
     root.appendChild(this.panel);
     this.setActiveTab('pause');
