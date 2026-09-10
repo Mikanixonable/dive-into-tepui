@@ -11,7 +11,7 @@ export const CLOUD_ALBEDO = 0.8;
 // 場を持たない天体のスロットへ結ぶ、被覆率 0 の写し。**読み方の契約は本物の場と揃える** —
 // シェーダグラフはここに結んだテクスチャのフィルタと巻きから組まれるので、既定の Nearest の
 // ままだと補間の無い texel フェッチが焼き込まれ、あとで本物へ差し替えても格子が出たままになる。
-export const EMPTY_CLOUD_FIELD = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1);
+export const EMPTY_CLOUD_FIELD = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
 EMPTY_CLOUD_FIELD.minFilter = THREE.LinearMipmapLinearFilter;
 EMPTY_CLOUD_FIELD.magFilter = THREE.LinearFilter;
 EMPTY_CLOUD_FIELD.wrapS = THREE.RepeatWrapping;
@@ -31,7 +31,7 @@ export const CUMULUS_COVERAGE_KNOB: {
   readonly halfWidth: FloatUniform;
 } = { center: uniform(0.34), halfWidth: uniform(0.12) };
 
-// 積雲の粒の基準となるセル幅 [m]。低緯度海域でおよそ 4 km の見えを作るゲーム上の基準で、地域別の
-// 分散と地域別の代表幅は cloud-cell-variance.ts で加える。実際の浅い積雲の個体径は数百 m から km 級
-// まで広がるため、この値は観測された個体径そのものではなく、低軌道から見えるセルの尺度である。
-export const CUMULUS_GRAIN_SIZE = 4000;
+// 積雲の粒の一辺 [m]。場の texel(赤道 9.8 km)より細かく、かつ低軌道から見下ろして解像できる
+// 大きさ(高度 900km 以下で全振幅)に取る。これより細かくすると、実際の積雲の塊には近づく代わりに
+// 軌道上のどの構図でも 1 画素を切って消える。
+export const CUMULUS_GRAIN_SIZE = 6000;
