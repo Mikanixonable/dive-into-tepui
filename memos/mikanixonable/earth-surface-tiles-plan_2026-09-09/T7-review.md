@@ -11,33 +11,25 @@
 3. 不要な公開API、旧Earth runtime参照、削除済みT4パス、重複したruntime設定を全文検索する。
 4. /refactorの観点で重複境界、コメント、例外経路、fake/real backendの責務を整理する。
 5. typecheck、render/game/data/releaseの変更に対応するテストを実行する。renderとgameは並列実行しない。
-6. Pages fixtureと本番bundleのlayout、manifest、tile-index、代表tile、12 climate mapを検査する。
+6. Pages fixtureとローカルdev配信のlayout、manifest、tile-index、代表tile、12 climate mapを検査する。
 7. コードゲート、データゲート、Pages公開ゲートを一つずつ確認する。
 8. 実ブラウザ、WebGPU、GPU p95が未実施なら、その理由と残る受け入れ作業を記録する。
 9. 各フェーズのcommit、検証コマンド、fixture完了、全世界生成、Pages公開の状態を親計画へ追記する。
 
 ## 完了条件
 
-- 本番必須T0、T1、T2、T3、T4、T5、T6-1をすべて確認できる。
-- 外部静的配信は要件から廃止し、本番経路と検査から除去した。Pagesの同一originだけを使う。
-- 未達成のゲートを完了扱いにしていない。
+- T0、T1、T2、T3、T4、T6-1のコード・データ契約を確認できる。
+- T5の15固定ケースを確認するまで全体完了にしない。
+- 外部静的配信要件は廃止し、ローカルdevは同一originの直接bundle配信を使う。
 
-## 実装状況（2026-09-10）
+## 実装状況（2026-09-11）
 
-コードレビューと記録は `c1024c61` を基礎に、`3d1f43bf`, `7b88aad7`, `87b6c8b5`, `9545bcdb`,
-`c32f5f86`, `aa9cb8f2` を追加確認した。
-EarthSurfaceのpersistent lease、非表示・dispose・
-世代切替、可視frontierのpin、drawing buffer伝搬、楕円体UV、UTC気候時計、GPU層解放、Pagesの
-subpath URL、datasetId整合、raw gzip契約を確認した。Earth実行経路にGEBCOや旧Earth気候画像の
-参照はなく、`tools/render-lab/cases.ts` の旧画像はlegacy fixtureとして残している。
+実bundleは約5.5 GiB、43,690タイル、z0〜z7、12枚の気候mapで生成済みである。global baseはz0東西2枚から
+512×256へ生成する。物理GPU配列は144層、論理frontierは128層、フェード予備は16層である。
 
-追加実装後の検証結果は Earth契約、Pages fixture layout、Python 39件、source/ERA5 validator、
-fixture rendererの決定性検査でpassしている。TypeScriptのtypecheckは雲復元エージェントの作業途中に
-`maxAvailableMipLevelOf` exportが不足したため、当該差分が完了するまで再実行待ちである。実captureは
-実データ未投入を理由に15ケースをunavailableとして記録した。
+`npm run dev`は`.earth-surface/bundle`を`/earth/<datasetId>/`へ直接配信し、manifest URLと配信datasetIdを共有する。
+`docs/earth/<datasetId>/`が正しいPages layoutであり、5.5 GiB実bundleのPages配備は範囲外である。
 
-実データbundleが無いため `earth-surface:check` と `earth-surface:package` は
-`earth-surface.json`を読めず終了コード1となる。これは失敗を隠さずデータゲート未達成として残す。
-fixture Pagesだけは20ファイル・30909 bytesで検査済みである。T1の入力取得・全43690タイル生成と
-T6-1の実bundle公開が完了するまで、本番完了とは扱わない。Earth用のT3/T4/T5/T6-1 worktreeは
-統合後に削除した。
+今回の実ブラウザstage00レビューでは5.812秒でcolor/terrain各z7 20件がHTTP 200となり、F3再読みで「地球 ready/detailed」
+「地球 最高LOD z7」、fatal/errorなしを同一runで確認した。ただし15固定ケースの完全な視覚計測は未実施であり、
+T7はその検証が終わるまで未完了とする。

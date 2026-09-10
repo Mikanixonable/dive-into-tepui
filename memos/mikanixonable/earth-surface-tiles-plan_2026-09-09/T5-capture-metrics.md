@@ -14,7 +14,7 @@ Earthの色、法線、roughness、深度、LOD、通信、GPU常駐を再現可
 3. metricsにはdatasetId、browser/backend、viewport、projection、sun方位、selectedZ、errorPx、
    frontier、fallback率、HTTP/decode待機、GPU層、page table更新、encoded/payload bytes、失敗理由を含める。
 4. 撮影前にtile公開または明示的fallback/永久失敗を待つ。未到着の単色画像を成功扱いにしない。
-5. 到着順、404、通信断、128層超過、mipmap有無をfake serverで再生する。
+5. 到着順、404、通信断、物理GPU144層超過、mipmap有無をfake serverで再生する。
 6. 実ブラウザが使える場合は1920×1080と内蔵解像度で300フレームを測る。
    timestamp queryが無い場合のGPU p95はunavailableと記録する。
 
@@ -25,11 +25,10 @@ Earthの色、法線、roughness、深度、LOD、通信、GPU常駐を再現可
 - LOD閾値付近で選択が往復しない。
 - WebGPUやブラウザを使えない環境では未実施理由がmetricsに残る。
 
-## 実装状況（2026-09-10）
+## 実装状況（2026-09-11）
 
-コード実装は `7f8614fc`, `e90aaeca`, `95e0152b` で完了した。固定15ケース、1920×1080、300フレーム、
-color/normal/depthのschema v2、PNGのhash/サイズ記録、既存fake transport/GPUテストとの
-再生シナリオ対応、render-labの `earthSurfaceCapture` APIを追加した。
-実captureはChrome/WebGPU/drawing bufferまで到達したが、実データmanifestが未投入のため、
-全ケースを `status: unavailable`、理由 `earth surface dataset is not available` として保存した。
-単色の代替画像は生成していない。実データがPagesへ配置された後、同じAPIで画像とmetricsを取得する。
+capture APIとmetrics schema、fake transport/GPU再生を実装済み。実bundleを使ったstage00 smokeでは5.812秒で
+color/terrain各z7 20件がHTTP 200となり、F3再読みでready/detailed・最高LOD z7、fatal/errorなしを確認した。
+
+15固定ケースの完全なcolor/normal/depth/metrics取得は未実施である。したがってT5は未完了であり、stage00 smokeの成功を
+15ケースの完了へ読み替えない。

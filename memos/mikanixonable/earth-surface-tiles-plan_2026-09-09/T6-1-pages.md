@@ -4,13 +4,12 @@
 
 ## 目的
 
-GitHub Pagesのdocsへプレビュー用bundleを配置し、ゲーム本体と全世界z0〜z7地表bundleを同一originから
-遅延取得できることを確認する。本リリースの配信先はこのタスクの責務に含めない。
+GitHub Pages向けfixtureのlayoutとURL契約を検査する。本リリースの配信先はこのタスクの責務に含めず、5.5 GiBの実bundle配備も範囲外とする。
 
 ## 実装範囲
 
 1. fixtureでmanifest、tile-index、JPEG、raw gzip、12枚の1024×512気候mapを検査する。
-2. 本番生成物ではdocs/earth-surface/<datasetId>/へ全世界z0〜z7とbaseを配置する。
+2. preview fixtureの配置先はdocs/earth/<datasetId>/とする。
 3. Pages URLがrepository subpathでも、manifest URLから相対asset URLを作る。
 4. manifestは短いcache、datasetId付きtile/base/climateはimmutable cacheとする。
 5. EARTH_SURFACE_PAGES_MAX_BYTESを設ける。既定値はGitHub Pagesの公開上限1 GB
@@ -23,11 +22,12 @@ GitHub Pagesのdocsへプレビュー用bundleを配置し、ゲーム本体と�
 ## 完了条件
 
 - fixture Pages bundleをローカルHTTPで取得できる。
-- preview bundleの全世界z0〜z7がtile-indexと一致する。
-- Pages preview URLのsubpathからmanifest、base、代表tile、12 climate mapへ到達できる。
+- docs/earth/<datasetId>/のlayoutがmanifest、base、代表tile、12 climate mapへ到達できる。
 - CORSを必要としない同一origin取得で動作する。
+- 5.5 GiBの実bundleをPagesへ配備しない判断を容量範囲として記録する。
 
-## 実装状況（2026-09-10）
+## 実装状況（2026-09-11）
 
-fixtureまたは指定bundleのPages staging、receipt/hash、サイズ予算、subpath URL、layout検査、CI順序を実装する。
-fixture Pagesは検査対象である。BMNG、ETOPO、GSHHGの取得は完了したが、ERA5 local exportと実データrendererの数値合成が未完了のため、全世界bundleのpreview公開は未完了である。
+fixture Pagesのreceipt/hash、サイズ予算、subpath URL、layout検査、CI順序を完了した。実bundleは約5.5 GiBのため、
+Pages previewへの配備を受け入れ条件に含めない。ローカルの実bundle確認は`.earth-surface/bundle`を`npm run dev`で
+直接配信し、`/earth/<datasetId>/`から行う。外部静的配信要件は廃止済みである。

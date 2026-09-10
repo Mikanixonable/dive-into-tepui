@@ -26,7 +26,10 @@ Three.js/WebGPUのDataArrayTextureとTSL materialをEarthSurfaceへ接続し、�
 - 実ブラウザで起動できる場合、z0/z1、親子fade、極、日付変更線、非一様半軸、自転0/90/180度を撮影する。
 - 実ブラウザを起動できない場合は、base-onlyと実GPU未実施を分けて記録する。
 
-## 実装状況（2026-09-10）
+## 実装状況（2026-09-11）
 
-`49e01186` でThree.jsのDataArrayTexture adapter、ページ表、TSL material、base-only判定を実装した。fake/render testsは88/88。
-実ブラウザ/WebGPUでの層更新と視覚ケース撮影は未実施である。
+コードとGPU配列契約を完了した。論理frontierは128層、物理GPU配列は144層で、親子fade用に16層を確保する。
+color RGBA8とterrain RGBA16FのCPU backingは約111.4 MiBである。fake backendを含むtypecheck・render/game回帰を通過し、
+base fallback、非対応GPU、到着途中の非公開、dispose後の遅着を検査している。
+
+実ブラウザstage00の実bundle smokeではready/detailedまで到達した。15固定ケースの完全な視覚計測はT5の未完了条件として残る。
