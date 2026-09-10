@@ -115,6 +115,7 @@ class RendererTests(unittest.TestCase):
                 renderer.render_tile, renderer.climate_maps(), max_zoom=0,
                 validate_inputs=False, data_provenance="synthetic_fixture")
             self.assertEqual(result["provenance"]["dataKind"], "synthetic_fixture")
+            self.assertEqual(result["coverage"], {"kind": "sparse", "maxZoom": 7, "expectedTiles": None})
             self.assertEqual(json.loads((output / "tile-index.json").read_text())["entries"].__len__(), 2)
 
     def test_fixture_rejects_wrong_provenance_and_missing_path(self):
