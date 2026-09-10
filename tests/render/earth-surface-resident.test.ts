@@ -11,10 +11,10 @@ import { EarthSurfaceTileRequestQueue, EarthSurfaceTileRequestSource } from '../
 import type { EarthSurfaceTileIndexFile } from '../../src/render/earth-surface-request';
 import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from '../../src/render/earth-surface-decode';
 import {
-  EARTH_TILE_EXTENT, EarthSurfaceTiles, earthPageAt,
+  EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, EARTH_TILE_EXTENT, EarthSurfaceTiles, earthPageAt,
   earthTileChildren, earthTileId, earthTileKey,
 } from '../../src/render/earth-surface-tiles';
-import type { EarthTileKey, EarthTileProjection } from '../../src/render/earth-surface-tiles';
+import type { EarthTileKey, EarthTileProjection, EarthTileResident } from '../../src/render/earth-surface-tiles';
 
 const CAPABILITIES: EarthSurfaceGpuCapabilities = {
   texture2dArray: true, maxTextureArrayLayers: 128, colorSrgbLinear: true, terrainFloat16Linear: true,
@@ -66,6 +66,24 @@ class Projection implements EarthTileProjection {
   }
 }
 
+class CandidateTiles extends EarthSurfaceTiles {
+  public constructor(private readonly candidates: readonly EarthTileKey[]) { super(); }
+
+  // admissionだけを検査するテスト用に、投影やfrontierとは独立した候補列を返す。
+  public override requestCandidates(_projection: EarthTileProjection): readonly EarthTileKey[] {
+    return this.candidates;
+  }
+
+  // 候補列の検査では親子遷移を発生させず、ページ表は全球baseのままにする。
+  public override sync(_projection: EarthTileProjection, _residents: readonly EarthTileResident[], _timeMs: number): void {}
+
+  public override pinnedLayers(): readonly number[] { return []; }
+
+  public override pageTable(): Uint8Array {
+    return new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(255);
+  }
+}
+
 function response(bytes: Uint8Array, status = 200): Response {
   return new Response(bytes.slice(), { status, headers: { 'content-length': String(bytes.length) } });
 }
@@ -80,18 +98,21 @@ function coordinator(keys: readonly EarthTileKey[], fetchImpl: typeof fetch = as
 }, backend = new ImmediateBackend(), colorToRgba8: EarthSurfaceColorToRgba8 = (color) => {
   if (!(color instanceof Uint8Array)) throw new Error('fixture color is not RGBA8');
   return color;
-}) {
+}, tiles = new EarthSurfaceTiles()) {
   const source = new EarthSurfaceTileRequestSource(indexFor(keys));
   const queue = new EarthSurfaceTileRequestQueue(source, {
     fetchImpl,
     decodeImage: async () => COLOR.slice(),
   });
   const gpu = new EarthSurfaceGpuAdapter(backend);
-  const tiles = new EarthSurfaceTiles();
   const resident = new EarthSurfaceResidentCoordinator({
     tiles, queue, gpu, colorToRgba8,
   });
   return { backend, gpu, queue, resident, tiles };
+}
+
+function candidateKeys(count: number): readonly EarthTileKey[] {
+  return Array.from({ length: count }, (_, index) => earthTileKey(7, index, 0));
 }
 
 class GatedBackend extends ImmediateBackend {
@@ -121,6 +142,46 @@ function sync(resident: EarthSurfaceResidentCoordinator, projection: EarthTilePr
 }
 
 export function register(): void {
+  test('earth resident: 候補が多くても同時pendingは8層以下に制限する', async () => {
+    const keys = candidateKeys(16);
+    const fixture = coordinator(keys, undefined, new ImmediateBackend(), undefined, new CandidateTiles(keys));
+    const first = fixture.resident.sync({ projection: new Projection(), timeMs: 0, generation: 1 });
+    assert.equal(first.requested.length, 8);
+    const whilePending = fixture.resident.sync({ projection: new Projection(), timeMs: 1, generation: 1 });
+    assert.equal(whilePending.requested.length, 0);
+    await fixture.resident.settle();
+    fixture.resident.dispose();
+  });
+
+  test('earth resident: pending完了後の次syncで候補の次群を要求する', async () => {
+    const keys = candidateKeys(16);
+    const fixture = coordinator(keys, undefined, new ImmediateBackend(), undefined, new CandidateTiles(keys));
+    const first = fixture.resident.sync({ projection: new Projection(), timeMs: 0, generation: 1 });
+    await fixture.resident.settle();
+    const second = fixture.resident.sync({ projection: new Projection(), timeMs: 1, generation: 1 });
+    assert.equal(first.requested.length, 8);
+    assert.equal(second.requested.length, 8);
+    assert.notEqual(earthTileId(first.requested[0]!), earthTileId(second.requested[0]!));
+    await fixture.resident.settle();
+    fixture.resident.dispose();
+  });
+
+  test('earth resident: admission上限外の候補のためにresidentを先行退避しない', async () => {
+    const keys = candidateKeys(144);
+    const fixture = coordinator(keys, undefined, new ImmediateBackend(), undefined, new CandidateTiles(keys));
+    for (let group = 0; group < 16; group++) {
+      const result = fixture.resident.sync({ projection: new Projection(), timeMs: group, generation: 1 });
+      assert.equal(result.requested.length, 8);
+      await fixture.resident.settle();
+    }
+    assert.equal(fixture.gpu.uploadedTiles().length, 128);
+    const result = fixture.resident.sync({ projection: new Projection(), timeMs: 16, generation: 1 });
+    assert.equal(result.requested.length, 8);
+    assert.equal(fixture.gpu.uploadedTiles().length, 120);
+    await fixture.resident.settle();
+    fixture.resident.dispose();
+  });
+
   test('earth resident: uploading中の層は最高zへ含めない', async () => {
     const key = earthTileKey(0, 0, 0);
     const backend = new GatedBackend();
@@ -189,6 +250,9 @@ export function register(): void {
     sync(fixture.resident, new Projection(), 0);
     await fixture.resident.settle();
     assert.match(fixture.resident.failureReason ?? '', /0\/[01]\/0.*color conversion failed/);
+    const retry = fixture.resident.sync({ projection: new Projection(), timeMs: 1, generation: 1 });
+    assert.equal(retry.requested.length, 2);
+    await fixture.resident.settle();
     fixture.resident.reset();
     assert.equal(fixture.resident.failureReason, null);
     fixture.resident.dispose();

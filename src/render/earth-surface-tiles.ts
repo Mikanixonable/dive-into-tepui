@@ -13,6 +13,7 @@ export const EARTH_PAGE_HEIGHT = 2 ** EARTH_TILE_MAX_Z;
 const FADE_MS = 250; // 壁時計の描画時間 [ms]。
 const SPLIT_ERROR_PX = 2;
 const MERGE_ERROR_PX = 1;
+const SPLIT_GROUPS_PER_SYNC = 4; // 1回のsyncで開始するsplit group数。
 
 export interface EarthTileKey {
   readonly z: number;
@@ -71,29 +72,6 @@ export function earthTilesAdjacent(a: EarthTileKey, b: EarthTileKey): boolean {
   const fine = a.z >= b.z ? a : b;
   const coarse = a.z >= b.z ? b : a;
   return earthTileNeighbors(fine).some((neighbor) => contains(coarse, neighbor));
-}
-
-// 2:1制約を満たす葉へ整える。分割可能な粗い側を細分化し、それが不可なら細かい側を戻す。
-export function balanceEarthFrontier(
-  frontier: readonly EarthTileKey[], canSplit: (key: EarthTileKey) => boolean,
-): readonly EarthTileKey[] {
-  let leaves = [...frontier];
-  for (;;) {
-    // 隣接する段差を1辺ずつ解消すると、新しく生まれた辺も同じ判定を通る。
-    const pair = leaves.flatMap((a, index) => leaves.slice(index + 1)
-      .filter((b) => Math.abs(a.z - b.z) > 1 && earthTilesAdjacent(a, b)).map((b) => [a, b] as const))[0];
-    if (pair === undefined) return leaves;
-    const [a, b] = pair;
-    const coarse = a.z < b.z ? a : b;
-    const fine = a.z < b.z ? b : a;
-    if (coarse.z < EARTH_TILE_MAX_Z && canSplit(coarse)) {
-      leaves = leaves.filter((key) => key !== coarse).concat(earthTileChildren(coarse));
-    } else {
-      const parent = earthTileParent(fine);
-      if (parent === null) throw new Error('Unbalanced Earth root');
-      leaves = leaves.filter((key) => !contains(parent, key)).concat(parent);
-    }
-  }
 }
 
 export interface EarthTileMetric {
@@ -344,18 +322,24 @@ export class EarthSurfaceTiles {
         && key.z < EARTH_TILE_MAX_Z && earthTileChildren(key).every((child) => available.has(earthTileId(child)));
     };
     let frontier = this.leaves.map((leaf) => leaf.key);
+    let splitGroups = 0;
+    let pinned = this.pinnedLeafLayers();
     const candidates = frontier.filter((key) => evaluate(key).visible && evaluate(key).errorPx > SPLIT_ERROR_PX)
       .sort((a, b) => evaluate(b).priority - evaluate(a).priority);
     for (const key of candidates) {
-      if (!canSplit(key) || !frontier.includes(key)) continue;
-      const proposal = balanceEarthFrontier(frontier.filter((leaf) => leaf !== key).concat(earthTileChildren(key)), canSplit);
-      // 遷移元も層を占有するため、葉数だけを数えると公開の途中で容量を超える。
-      const pinned = this.pinnedLeafLayers();
+      if (splitGroups >= SPLIT_GROUPS_PER_SYNC) break;
+      if (!canSplit(key) || !frontier.some((leaf) => earthTileId(leaf) === earthTileId(key))) continue;
+      const proposal = this.splitFrontier(frontier, key);
+      if (proposal === null) continue;
+      const proposalPinned = new Set(pinned);
       for (const tile of proposal) {
         const resident = available.get(earthTileId(tile));
-        if (resident !== undefined) pinned.add(resident.layer);
+        if (resident !== undefined) proposalPinned.add(resident.layer);
       }
-      if (pinned.size <= EARTH_TILE_LAYERS) frontier = [...proposal];
+      if (proposalPinned.size > EARTH_TILE_LAYERS) continue;
+      frontier = [...proposal];
+      pinned = proposalPinned;
+      splitGroups++;
     }
     this.leaves = frontier.map((key) => {
       const existing = current.get(earthTileId(key));
@@ -366,6 +350,18 @@ export class EarthSurfaceTiles {
       if (from === undefined || to === undefined) throw new Error('Earth split lost its resident parent');
       return { key, layer: to.layer, parentLayer: from.layer, fadeStartMs: timeMs, fadingOut: false };
     });
+  }
+
+  // 2:1制約を壊す分割を延期し、現在のfrontierを有効な葉のまま保つ。
+  private splitFrontier(frontier: readonly EarthTileKey[], parent: EarthTileKey): readonly EarthTileKey[] | null {
+    const remaining = frontier.filter((key) => earthTileId(key) !== earthTileId(parent));
+    const children = earthTileChildren(parent);
+    for (const child of children) {
+      for (const leaf of remaining) {
+        if (leaf.z < parent.z && earthTilesAdjacent(child, leaf)) return null;
+      }
+    }
+    return remaining.concat(children);
   }
 
   private pinnedLeafLayers(): Set<number> {

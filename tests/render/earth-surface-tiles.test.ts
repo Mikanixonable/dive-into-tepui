@@ -3,8 +3,9 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import {
-  EARTH_BASE_LAYER, EarthSurfaceTiles, EarthSurfaceView, balanceEarthFrontier, earthPageAt,
-  earthTileChildren, earthTileId, earthTileKey, earthTileNeighbors, earthTilesAdjacent, earthTileSampleUv,
+  EARTH_BASE_LAYER, EARTH_TILE_LAYERS, EarthSurfaceTiles, EarthSurfaceView, earthPageAt,
+  earthTileChildren, earthTileId, earthTileKey, earthTileNeighbors, earthTileParent,
+  earthTilesAdjacent, earthTileSampleUv,
 } from '../../src/render/earth-surface-tiles';
 import type { EarthTileKey, EarthTileMetric, EarthTileProjection, EarthTileResident } from '../../src/render/earth-surface-tiles';
 
@@ -20,9 +21,92 @@ class SyntheticProjection implements EarthTileProjection {
   }
 }
 
+// 取得済み子を常にそろえ、分割候補を深く作る投影。
+class DeepProjection implements EarthTileProjection {
+  public evaluate(key: EarthTileKey): EarthTileMetric {
+    return { visible: true, errorPx: 3, priority: 1 / (1 + key.z) };
+  }
+}
+
+// 指定した葉だけを分割候補にする投影。
+class SelectiveProjection implements EarthTileProjection {
+  public constructor(private active: readonly EarthTileKey[]) {}
+
+  public setActive(keys: readonly EarthTileKey[]): void {
+    this.active = keys;
+  }
+
+  public evaluate(key: EarthTileKey): EarthTileMetric {
+    return {
+      visible: true,
+      errorPx: this.active.some((activeKey) => earthTileId(activeKey) === earthTileId(key)) ? 3 : 1.5,
+      priority: 1,
+    };
+  }
+}
+
+// 指定した葉をGPU常駐済みfixtureへ変換する。
+function residents(keys: readonly EarthTileKey[], firstLayer = 0): EarthTileResident[] {
+  return keys.map((key, index) => ({ key, layer: firstLayer + index }));
+}
+
+// stage00初期高度・combat視点から実画素の地表投影を作る。
+function stage00EarthProjection(): EarthSurfaceView {
+  const earthRadius = 6_378_137;
+  const polarRadius = 6_356_751.9;
+  const altitude = 420_000;
+  const distance = earthRadius + altitude;
+  const inclination = THREE.MathUtils.degToRad(97);
+  const radial = new THREE.Vector3(1, 0, 0);
+  const prograde = new THREE.Vector3(0, Math.sin(inclination), -Math.cos(inclination));
+  const z = prograde.clone().normalize();
+  const x = radial.clone().cross(z).normalize();
+  const y = z.clone().cross(x);
+  const attitude = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+  const pitch = THREE.MathUtils.degToRad(0.3) - THREE.MathUtils.degToRad(10);
+  const cameraOffset = new THREE.Vector3(0, Math.sin(pitch), -Math.cos(pitch))
+    .applyQuaternion(attitude).multiplyScalar(38);
+  const camera = new THREE.PerspectiveCamera(55, 1920 / 1080, 1, 1e9);
+  camera.position.set(distance + cameraOffset.x, cameraOffset.y, cameraOffset.z);
+  camera.lookAt(distance, 0, 0);
+  camera.updateProjectionMatrix();
+  camera.updateMatrixWorld(true);
+  return new EarthSurfaceView(
+    camera, new THREE.Matrix4(), new THREE.Vector3(earthRadius, polarRadius, earthRadius), 1920, 1080,
+  );
+}
+
+// 取得候補を1groupずつ常駐させ、層の上限内で使われていない層を再利用する。
+function admitResidentGroup(
+  candidates: readonly EarthTileKey[], tiles: EarthSurfaceTiles,
+  resident: Map<string, EarthTileResident>, nextLayer: number,
+): number {
+  const pinned = new Set(tiles.pinnedLayers());
+  while (resident.size + candidates.length > EARTH_TILE_LAYERS) {
+    const victim = [...resident.values()].find((tile) => !pinned.has(tile.layer));
+    assert.ok(victim !== undefined, 'resident admission has no evictable layer');
+    resident.delete(earthTileId(victim.key));
+  }
+  const used = new Set([...resident.values()].map((tile) => tile.layer));
+  let layer = nextLayer;
+  for (const key of candidates) {
+    if (resident.has(earthTileId(key))) continue;
+    while (used.has(layer)) layer = (layer + 1) % EARTH_TILE_LAYERS;
+    resident.set(earthTileId(key), { key, layer });
+    used.add(layer);
+    layer = (layer + 1) % EARTH_TILE_LAYERS;
+  }
+  return layer;
+}
+
 // 葉の被覆面積と全隣接辺の2:1制約を検査する。
 function assertBalanced(frontier: readonly EarthTileKey[]): void {
   assert.equal(frontier.reduce((area, key) => area + 1 / 4 ** key.z, 0), 2);
+  assertAdjacentBalanced(frontier);
+}
+
+// 可視葉だけを受け取り、隣接する葉の段差を検査する。
+function assertAdjacentBalanced(frontier: readonly EarthTileKey[]): void {
   for (const a of frontier) {
     for (const b of frontier) {
       if (earthTilesAdjacent(a, b)) assert.ok(Math.abs(a.z - b.z) <= 1, `${earthTileId(a)} / ${earthTileId(b)}`);
@@ -53,21 +137,66 @@ export function register(): void {
     assert.equal(earthTileChildren(earthTileKey(7, 0, 0)).length, 0);
   });
 
-  test('earth tiles: 日付変更線と極で粗い側を分割し、不可なら細かい側を戻す', () => {
-    let frontier = [...ROOTS];
-    let refine = ROOTS[0]!;
-    for (let z = 0; z < 4; z++) {
-      const children = earthTileChildren(refine);
-      frontier = frontier.filter((key) => earthTileId(key) !== earthTileId(refine)).concat(children);
-      refine = children[0]!;
+  test('earth tiles: stage00投影でz6/z7候補まで有限回に進みfrontierを保つ', () => {
+    const tiles = new EarthSurfaceTiles();
+    const projection = stage00EarthProjection();
+    const resident = new Map<string, EarthTileResident>();
+    const candidateStages = new Set<number>();
+    let nextLayer = 0;
+    for (let frame = 0; frame < 96 && !candidateStages.has(7); frame++) {
+      tiles.sync(projection, [...resident.values()], frame * 250);
+      const frontier = tiles.frontier.map((tile) => tile.key);
+      assertAdjacentBalanced(frontier);
+      const candidates = tiles.requestCandidates(projection).filter((key) => !resident.has(earthTileId(key)));
+      for (const key of candidates) candidateStages.add(key.z);
+      const groups = new Map<string, EarthTileKey[]>();
+      for (const key of candidates) {
+        const parent = earthTileParent(key);
+        const groupId = parent === null ? earthTileId(key) : earthTileId(parent);
+        const group = groups.get(groupId) ?? [];
+        group.push(key);
+        groups.set(groupId, group);
+      }
+      const group = [...groups.values()].find((keys) => keys.length === 4) ?? candidates;
+      if (group.length === 0) continue;
+      nextLayer = admitResidentGroup(group, tiles, resident, nextLayer);
+      assert.ok(resident.size <= EARTH_TILE_LAYERS);
     }
-    assert.ok(earthTilesAdjacent(refine, ROOTS[1]!));
-    const refined = balanceEarthFrontier(frontier, () => true);
-    const coarsened = balanceEarthFrontier(frontier, () => false);
-    assertBalanced(refined);
-    assertBalanced(coarsened);
-    assert.ok(refined.some((key) => key.z === 4));
-    assert.ok(coarsened.every((key) => key.z <= 1));
+    assert.ok(candidateStages.has(6));
+    assert.ok(candidateStages.has(7));
+  });
+
+  test('earth tiles: 1回のsyncで開始するsplit groupを4つに制限する', () => {
+    const tiles = new EarthSurfaceTiles();
+    const projection = new DeepProjection();
+    const roots = residents(ROOTS);
+    tiles.sync(projection, roots, 0);
+    const z1 = ROOTS.flatMap(earthTileChildren);
+    tiles.sync(projection, roots.concat(residents(z1, 2)), 250);
+    const z2 = z1.flatMap(earthTileChildren);
+    tiles.sync(projection, roots.concat(residents(z1, 2), residents(z2, 10)), 500);
+    const frontier = tiles.frontier.map((tile) => tile.key);
+    assert.equal(frontier.filter((key) => key.z === 1).length, 4);
+    assert.equal(frontier.filter((key) => key.z === 2).length, 16);
+    assertBalanced(frontier);
+  });
+
+  test('earth tiles: 2:1に必要な隣接子がなければ親を維持する', () => {
+    const tiles = new EarthSurfaceTiles();
+    const projection = new SelectiveProjection([ROOTS[0]!]);
+    const roots = residents(ROOTS);
+    tiles.sync(projection, roots, 0);
+    const firstChildren = earthTileChildren(ROOTS[0]!);
+    tiles.sync(projection, roots.concat(residents(firstChildren, 2)), 250);
+
+    const target = firstChildren[0]!;
+    projection.setActive([target]);
+    const targetChildren = earthTileChildren(target);
+    tiles.sync(projection, roots.concat(residents(firstChildren, 2), residents(targetChildren, 10)), 500);
+    const frontier = tiles.frontier.map((tile) => tile.key);
+    assert.ok(frontier.some((key) => earthTileId(key) === earthTileId(target)));
+    assert.ok(frontier.every((key) => key.z <= 1));
+    assertBalanced(frontier);
   });
 
   test('earth tiles: errorPxは実画素数に比例し直交投影では距離に依存しない', () => {
