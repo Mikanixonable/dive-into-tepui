@@ -45,6 +45,8 @@ earth-surface:bake: 実データrendererの入力が不足しています: .eart
 
 同じ入力でz0〜z2だけを対象にするpilotも`--max-zoom 2`で試行したが、同じ入力検査で終了した。したがってpilotのtileを一枚も生成していない。
 
+bundleが生成されていないため、`npm run earth-surface:dev-stage`も`earth-surface.json`を読めず終了した。一方、`npm run build`と`npm run dev`の起動自体は成功し、dev serverのルートHTMLはHTTP 200を返した。実データmanifestのGETはbundle未配置のためHTTP 404であり、実データを表示するローカル受け入れにはまだ到達していない。
+
 ## 停止理由
 
 1. ERA5 の `1991-01`〜`2020-12`、全UTC24時刻、`t2m` と `tcc` を含む NetCDF local export が workspace および `/Users/pandeaconica` 配下に存在しない。manifest は ERA5 をURL取得ではなく `explicit_local_export` として要求しているため、入力がない状態では `fetch-source.py` を実行できない。
