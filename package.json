@@ -35,7 +35,6 @@
     "earth-surface:bake": "python3 tools/earth-surface/bake.py",
     "earth-surface:package": "node tools/earth-surface/package.mjs",
     "earth-surface:check": "node tools/earth-surface/check.mjs",
-    "earth-surface:remote-check": "node tools/earth-surface/remote-check.mjs",
     "earth-surface:test": "node tools/earth-surface/test_contract.mjs",
     "earth-surface:release-check": "node tools/earth-surface/release-config.mjs",
     "earth-surface:pages-stage": "node tools/earth-surface/stage-pages.mjs",
