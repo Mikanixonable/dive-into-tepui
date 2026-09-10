@@ -8,6 +8,10 @@ import {
   normalizeClimateMonth,
 } from '../../src/render/cloud/monthly-climate-map';
 import type { MonthlyClimateTexture } from '../../src/render/cloud/monthly-climate-map';
+import {
+  createDevelopmentClimateMap,
+  developmentClimateRgba,
+} from '../../src/render/cloud/monthly-climate-fixture';
 
 class TextureSpy implements MonthlyClimateTexture {
   public readonly texture = new THREE.Texture();
@@ -83,14 +87,36 @@ export function register(): void {
     climate.dispose();
   });
 
-  test('monthly climate: source差し替えは旧12枚を解放する', () => {
+  test('monthly climate: source差し替え中は現在の12枚をfallbackとして保持する', () => {
     const textures = maps();
     const climate = new MonthlyClimateMap(textures);
     climate.setMonth(11, 0.5);
     const generation = climate.generation;
     climate.replaceUrls(Array.from({ length: 12 }, (_, index) => `https://example.test/${index}.png`));
     assert.ok(climate.generation >= generation);
+    assert.ok(textures.every((value) => value.disposeCount === 0));
+    climate.dispose();
     assert.ok(textures.every((value) => value.disposeCount === 1));
+  });
+
+  test('monthly climate: 開発用fallbackは雲量と陸地被覆率に変化を持つ', () => {
+    const pixels = developmentClimateRgba(0);
+    let cloudMin = 255;
+    let cloudMax = 0;
+    let landMin = 255;
+    let landMax = 0;
+    for (let index = 0; index < pixels.length; index += 4) {
+      cloudMin = Math.min(cloudMin, pixels[index + 1]!);
+      cloudMax = Math.max(cloudMax, pixels[index + 1]!);
+      landMin = Math.min(landMin, pixels[index + 3]!);
+      landMax = Math.max(landMax, pixels[index + 3]!);
+    }
+    assert.ok(cloudMin < cloudMax);
+    assert.ok(cloudMax > 0);
+    assert.ok(landMin < landMax);
+
+    const climate = createDevelopmentClimateMap();
+    assert.ok(climate.generation > 0);
     climate.dispose();
   });
 }

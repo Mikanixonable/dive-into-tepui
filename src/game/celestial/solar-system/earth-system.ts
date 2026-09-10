@@ -33,7 +33,7 @@ import {
 } from './earth-surface-runtime';
 import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
-import { MonthlyClimateMap } from '../../../render/cloud/monthly-climate-map';
+import { createDevelopmentClimateMap } from '../../../render/cloud/monthly-climate-fixture';
 import { EllipsoidEquirectProjection } from '../../../render/cloud/field-projection';
 import { earthSurfaceUvFromRadialNode } from '../../../render/earth-surface-coordinate';
 import { EarthCoastline } from '../../../render/earth-coastline';
@@ -382,18 +382,18 @@ export function earthSystem(
 ): Record<EarthSystemBodyId, CelestialEntity> {
   const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
   // 雲の場は殻が持ち、地表・影・大気の殻はその実体を借りて読む。
-  const climate = MonthlyClimateMap.fromDeferredUrls(
-    EARTH_SURFACE_FIXTURE_SOURCE.climateMapUrls,
-    (direction) => earthSurfaceUvFromRadialNode(direction, EARTH_CLIMATE_AXES),
+  const climateUvAt = (direction: Parameters<typeof earthSurfaceUvFromRadialNode>[0]) => (
+    earthSurfaceUvFromRadialNode(direction, EARTH_CLIMATE_AXES)
   );
+  const climate = createDevelopmentClimateMap(climateUvAt);
   const earthSurfaceRuntime = createEarthSurfaceRuntime({ renderer });
   void earthSurfaceRuntime.ready.then((result) => {
     const source = result.bootstrap.source;
-    if (source !== null) climate.replaceUrls(source.climateMapUrls);
+    if (result.bootstrap.state === 'ready' && source !== null) climate.replaceUrls(source.climateMapUrls);
   });
   const cumulus = new CloudPresentation(
     GeneratedCloudField.global(
-      climate, (direction) => earthSurfaceUvFromRadialNode(direction, EARTH_CLIMATE_AXES),
+      climate, climateUvAt,
       new EllipsoidEquirectProjection(512, EARTH_CLIMATE_AXES),
     ), R_EARTH_EQ, climateEpochUnixSec,
   );
