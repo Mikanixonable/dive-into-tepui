@@ -222,7 +222,8 @@ export class Game {
       navTargetState: (bodies, t) => this.navTarget.resolveState(this.dynamicSystem, celestialSystem, bodies, t)?.state ?? null,
     });
     this.frameControls = new FrameControls(
-      this._hud.mapRoot, this._hud.layers.popup, celestialSystem, this.cameraSystem.mapCamera,
+      this._hud.mapRoot, this._hud.combatRoot, this._hud.layers.popup,
+      celestialSystem, this.cameraSystem.mapCamera, this.cameraSystem.combatCamera,
       this.displayWindowManager, this._hud.overlayManager, this.frameAnchors,
     );
     this.targeter = new Targeter(
