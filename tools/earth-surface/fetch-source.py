@@ -36,6 +36,11 @@ def file_hash(path):
     return digest.hexdigest()
 
 
+# NetCDFの単位表記は変換器によって空白や大文字小文字が変わるため正規化する。
+def normalized_unit(value):
+    return re.sub(r"\s+", "", value.strip().lower()) if isinstance(value, str) else value
+
+
 # 固定版・座標・変数を持つソースマニフェストを読み込む。
 def load_manifest(path):
     value = json.loads(Path(path).read_text())
@@ -203,7 +208,8 @@ def validate_netcdf(path, source):
                 unit = getattr(item, "units", None)
                 if variable["id"] == "2m_temperature" and unit not in ("K", "kelvin"):
                     raise InvalidSource("ERA5気温の単位はKである必要があります")
-                if variable["id"] == "total_cloud_cover" and unit not in (None, "1", "fraction"):
+                if variable["id"] == "total_cloud_cover" and unit is not None and normalized_unit(unit) not in (
+                        "1", "fraction", "0-1", "(0-1)"):
                     raise InvalidSource("ERA5雲量の単位はfractionである必要があります")
             if "time" in variables:
                 time = variables["time"]

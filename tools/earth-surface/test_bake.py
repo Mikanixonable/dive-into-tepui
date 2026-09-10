@@ -162,6 +162,11 @@ class BakeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             bake.era5_month_mean(records, 7)
 
+    # CopernicusのNetCDFにある「(0 - 1)」表記をfractionへ正規化する。
+    def test_era5_cloud_unit_normalization(self):
+        self.assertEqual(FETCH.normalized_unit("(0 - 1)"), "(0-1)")
+        self.assertEqual(FETCH.normalized_unit(" Fraction "), "fraction")
+
     # 別版・bed product・別ソース契約のfixtureを拒否する。
     def test_input_identity(self):
         for key, invalid in (("datasetId", "other"), ("surfaceSourceId", "bed_elev"), ("sourceManifestSha256", "0" * 64)):
