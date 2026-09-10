@@ -1,14 +1,14 @@
 import { Q_IDENTITY } from '../../math/quat';
 import { hitsSphere, type Ray } from '../../math/ray';
 import type { SphereHit } from '../../math/triangle-mesh';
-import { len, scale, sub, type Vec3, v3 } from '../../math/vec3';
+import { sub, type Vec3, v3 } from '../../math/vec3';
 import { type Attitude, stepAttitude } from '../../physics/attitude';
 import { airflow } from '../../physics/atmosphere';
 import { localOrbitPeriod } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { type KinematicState } from '../../physics/kinematic-state';
-import { sunlitFactor } from '../../physics/shadow';
+import { environmentSampleAt, type DynamicsEnvironmentSample } from '../../physics/dynamics';
 import { SOLAR_CONSTANT } from '../../physics/srp';
 import {
   aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,
@@ -26,6 +26,7 @@ import { atmosphericMaxStep, dragTakesFullAirspeed } from './time-step';
 const DRAG_COEFFICIENT = 2.2;
 const STAGNATION_AREA_FRACTION = 0.6;
 const SG_CONST = 1.7415e-4;
+const RK4_WEIGHTS: readonly number[] = [1, 2, 2, 1];
 
 export const HULL_EMISS = 0.85;
 export const ENV_TEMP = 255;
@@ -100,6 +101,29 @@ export interface DynamicMotionProperties {
 }
 
 const PASSIVE_BEHAVIOR: DynamicMotionBehavior = Object.freeze({ contactKind: 'generic' });
+
+function weightedEnvironment(samples: readonly DynamicsEnvironmentSample[]): {
+  readonly sunlit: number;
+  readonly sunDir: Vec3;
+} {
+  let weightTotal = 0;
+  let sunlit = 0;
+  let x = 0, y = 0, z = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const weight = samples.length === 4 ? RK4_WEIGHTS[i]! : 1;
+    const sample = samples[i]!;
+    weightTotal += weight;
+    sunlit += weight * sample.sunlit;
+    x += weight * sample.sunDir.x;
+    y += weight * sample.sunDir.y;
+    z += weight * sample.sunDir.z;
+  }
+  const directionLength = Math.hypot(x, y, z);
+  return {
+    sunlit: weightTotal > 0 ? sunlit / weightTotal : 0,
+    sunDir: directionLength > 0 ? v3(x / directionLength, y / directionLength, z / directionLength) : v3(),
+  };
+}
 
 function identityAttitude(): Attitude {
   return { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
@@ -249,22 +273,22 @@ export class DynamicMotion {
   ): boolean {
     const interval = this.historySampleInterval(celestialBodies, pivot);
     const integrated = !this.followPredicted(this.state.t + dt, interval);
+    let environmentSamples: readonly DynamicsEnvironmentSample[];
     if (integrated) {
-      this.actual.step(
+      environmentSamples = this.actual.step(
         dt, celestialBodies, occluders, atmosphereBody, pivot, this.bcInv, this.srpCoeff,
         this.thrust, interval, this.historyDuration,
       );
       this.invalidatePrediction();
+    } else {
+      environmentSamples = [environmentSampleAt(
+        this.state.t, this.state.r, this.state.v, star, occluders, atmosphereBody, pivot)];
     }
     if (this.hasAttitude) this.att = stepAttitude(this.att, this.torque, dt);
 
-    const sun = this.specificHeat > 0 ? star : null;
-    const toSun = sun === null ? v3() : sub(sun.positionAt(pivot), this.state.r);
-    const sunDist = len(toSun);
-    const sunDir = sunDist > 0 ? scale(toSun, 1 / sunDist) : v3();
-    const sunlit = sun === null ? 0 : sunlitFactor(this.state.r, sun, occluders, pivot);
-    this.behavior.stepEnvironment?.(this, dt, atmosphereBody, pivot, sunlit, sunDir);
-    this.stepThermal(dt, atmosphereBody, pivot, sunDist, sunlit, sunDir, context);
+    const environment = weightedEnvironment(environmentSamples);
+    this.behavior.stepEnvironment?.(this, dt, atmosphereBody, this.state.t, environment.sunlit, environment.sunDir);
+    this.stepThermal(dt, environmentSamples, context);
     return integrated;
   }
 
@@ -362,22 +386,27 @@ export class DynamicMotion {
   }
 
   private stepThermal(
-    dt: number, atmosphereBody: CelestialBody | null, atmospherePivot: number,
-    sunDist: number, sunlit: number, sunDir: Vec3, context: DynamicReactionServices,
+    dt: number, samples: readonly DynamicsEnvironmentSample[], context: DynamicReactionServices,
   ): void {
     if (this.specificHeat <= 0) return;
-    const atm = atmosphereBody?.atmosphereAt(atmospherePivot) ?? null;
-    let heating = solarHeating(
-      SOLAR_CONSTANT, sunDist, sunlit, this.solarAbsorbAreaPerMass(sunDir));
-    if (atm !== null && this.bcInv > 0) {
-      const atmosphereState = atmosphereBody!.stateAt(atmospherePivot);
-      const { density, speed } = airflow(
-        sub(this.state.r, atmosphereState.r), sub(this.state.v, atmosphereState.v), atm);
-      heating += aeroHeating(
-        density, speed, this.bcInv, SG_CONST,
-        sphereNoseRadius(this.bcInv, DRAG_COEFFICIENT, this.bulkDensity),
-        (STAGNATION_AREA_FRACTION * this.bcInv) / DRAG_COEFFICIENT);
+    let heating = 0;
+    let weightTotal = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const weight = samples.length === 4 ? RK4_WEIGHTS[i]! : 1;
+      const sample = samples[i]!;
+      heating += weight * solarHeating(
+        SOLAR_CONSTANT, sample.sunDist, sample.sunlit, this.solarAbsorbAreaPerMass(sample.sunDir));
+      if (sample.atmosphere !== null && sample.atmosphereState !== null && this.bcInv > 0) {
+        const { density, speed } = airflow(
+          sub(sample.r, sample.atmosphereState.r), sub(sample.v, sample.atmosphereState.v), sample.atmosphere);
+        heating += weight * aeroHeating(
+          density, speed, this.bcInv, SG_CONST,
+          sphereNoseRadius(this.bcInv, DRAG_COEFFICIENT, this.bulkDensity),
+          (STAGNATION_AREA_FRACTION * this.bcInv) / DRAG_COEFFICIENT);
+      }
+      weightTotal += weight;
     }
+    if (weightTotal > 0) heating /= weightTotal;
     const area = this.radiatingAreaPerMass();
     const cooling = radiativeCooling(
       this.temperature, ENV_TEMP, this.emissivity, area, this.specificHeat, dt);
