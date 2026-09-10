@@ -7,12 +7,12 @@ import { haloState, lissajousState } from '../../physics/halo';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { secondaryFrameOf } from '../../physics/lagrange';
 import { isOccluded } from '../../physics/occlusion';
-import { LINE_RENDER_ORDER } from '../../render/line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import { AmmoPickup, isAmmoPickup } from '../dynamic/dynamic-entity/ammo-pickup';
 import { Base } from '../dynamic/dynamic-entity/base';
 import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
 import { isRcsFuelPickup, RcsFuelPickup } from '../dynamic/dynamic-entity/rcs-fuel-pickup';
-import { EllipseLine } from '../lines/ellipse-line';
+import { EllipseLine } from '../../render/lines/ellipse-line';
 import { COLOR_MARKER_ALLY, ENTITY_GLYPH } from '../marker/marker-identity';
 import { isPlayer, type PlayerInit } from '../player/player';
 import { generateRandomName } from '../random-name';
@@ -41,6 +41,11 @@ import type { FlashEffects } from '../vfx/flash-effects';
 
 // 軌道上へ配置できる自機の上限隻数。
 const MAX_PLACED_SHIPS = 50;
+
+// 配置プレビューの軌道線の見た目。
+const PREVIEW_LINE_STYLE: LineStyle = {
+  color: 0xffffff, opacity: 0.6, renderOrder: LINE_RENDER_ORDER.plan,
+};
 
 const DEG = Math.PI / 180;
 
@@ -76,7 +81,7 @@ export class ObjectPlacement {
     for (const ammoPickup of entities.filter(isAmmoPickup)) this.ammoPickupIdAllocator.next(ammoPickup.id);
     for (const pickup of entities.filter(isRcsFuelPickup)) this.rcsFuelPickupIdAllocator.next(pickup.id);
 
-    this.previewEllipseLine = new EllipseLine({ color: 0xffffff, opacity: 0.6, renderOrder: LINE_RENDER_ORDER.plan });
+    this.previewEllipseLine = new EllipseLine(PREVIEW_LINE_STYLE);
     scene.add(this.previewEllipseLine.line);
 
     this.panel = new ObjectPlacerPanel(hud.mapRoot, hud.layers.popup, celestialSystem, hud.overlayManager);
@@ -137,14 +142,13 @@ export class ObjectPlacement {
     form: ObjectPlacerForm | null, camera: CameraFrame, displayTime: number,
   ): void {
     const preview = form ? this.computePreview(form) : null;
+    // 軌道線は常に出し、▷ マーカーは天体に隠れていないときだけ出す。
+    this.previewEllipseLine.sync(preview?.elements ?? null, PREVIEW_LINE_STYLE, camera);
     if (!preview) {
-      this.previewEllipseLine.hide();
       this.markers.fadeOut('creative-preview');
       return;
     }
-    // 軌道線は常に出し、▷ マーカーは天体に隠れていないときだけ出す。
     const cameraPos = camera.position;
-    this.previewEllipseLine.sync(preview.elements, camera);
     if (camera.mode === 'map'
       && isOccluded(cameraPos, preview.pos, this.celestialSystem.celestialMotions, displayTime)) {
       this.markers.hide('creative-preview');
