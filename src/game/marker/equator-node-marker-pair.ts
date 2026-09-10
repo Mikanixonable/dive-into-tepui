@@ -23,7 +23,7 @@ export interface DisplayedPath {
 
 // ある個体について、いま画面に折れ線が出ているかを答える口。null は折れ線が出ていない
 // ことを意味し、その個体には解析軌道楕円が出ている。
-export interface DisplayedPathSource {
+interface DisplayedPathSource {
   displayedPathOf(ownerId: string): DisplayedPath | null;
 }
 

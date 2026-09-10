@@ -14,7 +14,7 @@ export class NearbySystemTracker {
   private previousId: string | null = null;
 
   // 直前フレームの勝者を優遇したうえでの CelestialBodies.systemChainAt。
-  chainAt(celestialBodies: CelestialBodies, cameraPos: Vec3, pivot: number): readonly string[] {
+  private chainAt(celestialBodies: CelestialBodies, cameraPos: Vec3, pivot: number): readonly string[] {
     if (celestialBodies.celestialMotions.length === 0) return [];
     const nearest = this.pickNearest(celestialBodies, cameraPos, pivot);
     this.previousId = nearest;

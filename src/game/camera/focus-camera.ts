@@ -80,7 +80,7 @@ export function rotationFollowKey(follow: CameraRotationFollow | null): string {
 // 保存が無いときの初期状態。angles/dist が注視点まわりの初期視点で、上方向はワールド上に
 // 取るので angles.roll は 0 でよい。follow は選択肢の検査を通さず適用される — 対象が
 // 未解決でも選択は保持され、成立可否は update の猶予検査に委ねられる。
-export interface FocusCameraInitial {
+interface FocusCameraInitial {
   readonly angles: PolarEuler;
   readonly dist: number;
   readonly fovDeg: number;
@@ -89,7 +89,7 @@ export interface FocusCameraInitial {
 }
 
 // カメラのビュー差(フォーカス喪失時の振る舞い・初期状態)と、姿勢の解決の差し込み口。
-export interface FocusCameraConfig {
+interface FocusCameraConfig {
   // 'hold' は解決失敗が続いても最後に解決できた位置に留まる(戦闘ビュー)。
   // 'fallToOrigin' は2フレーム連続で失敗したら原点天体へフォーカスを戻す(マップビュー)。
   readonly focusLossPolicy: 'hold' | 'fallToOrigin';
@@ -443,7 +443,7 @@ export class FocusCamera {
   }
 
   // パン変位をゼロに戻す。
-  resetPan(): void {
+  private resetPan(): void {
     const tf = this.celestialBodies.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     this.pan_r = toFrameDir(tf, v3());
   }

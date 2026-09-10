@@ -196,7 +196,7 @@ export class DisplayWindowManager {
   }
 
   // 過去方向に遡って描く期間の秒数。durationSec と同じ参照周期の解釈を使い、'none' は 0。
-  pastDurationSec(referencePeriod: number): number {
+  private pastDurationSec(referencePeriod: number): number {
     if (this.pastDurationKey === 'none') return 0;
     if (this.pastDurationKey === 'orbit') {
       return isFinite(referencePeriod) && referencePeriod > 0 ? referencePeriod : APERIODIC_ARC_DURATION;

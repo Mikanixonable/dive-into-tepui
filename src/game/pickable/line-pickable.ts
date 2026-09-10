@@ -8,7 +8,7 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { ProjectFn } from '../../math/projection';
 
 type LinePickKind = 'orbit-body' | 'orbit-ship' | 'orbit-guide';
-export type LineCalcMethod = 'analytic' | 'predicted' | 'guide';
+type LineCalcMethod = 'analytic' | 'predicted' | 'guide';
 
 export interface LinePickable {
   // lineWindows のキー。対象1つにつき高々1枚のウィンドウを保つのに使う。

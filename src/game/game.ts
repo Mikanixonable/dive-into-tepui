@@ -590,7 +590,7 @@ export class Game {
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
     this.viewManager.activeView.syncPanels(displayWindow, fo);
 
-    this.activeStage.sync(fo, this.cameraSystem, displayTime, visibilityPolicy);
+    this.activeStage.sync(fo, this.cameraSystem, displayTime);
 
     this._hud.syncPanels(this.viewManager.current, this);
 

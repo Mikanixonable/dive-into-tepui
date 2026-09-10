@@ -19,7 +19,7 @@ import { RadiatorView } from './radiator-view';
 import { ReentryEffects } from './reentry-effects';
 import { ThrustEffects } from './thrust-effects';
 
-export interface PlayerVisualSource extends DynamicViewIdentity {
+interface PlayerVisualSource extends DynamicViewIdentity {
   readonly id: string;
   readonly roundsInMag: number;
   readonly magsLeft: number;

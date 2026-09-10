@@ -8,7 +8,7 @@ import type { OrbitReference } from './orbit-reference';
 import type { OrbitingObject } from './dynamic/dynamic-entity/orbiting-object';
 import type { CelestialBody } from '../physics/celestial-body';
 
-export interface OrbitInfo {
+interface OrbitInfo {
   centerId: string;
   centerName: string;
   alt: number;

@@ -56,7 +56,7 @@ import type { ObjectPickable } from '../pickable/object-pickable';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ControlSelection } from '../control-selection';
 import type { ObjectAuthoring } from '../stages/stage';
-import type { ObjectWindows } from '../pickable/object-windows';
+import type { PropertyWindowOpener } from '../pickable/property-window-opener';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { MapListSection, ObjectPickerGenre } from '../pickable/pickable-listing';
@@ -250,9 +250,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // -------------------------------------------------------- 移動/射撃 状態
   get roundsInMag(): number { return this.fire.rounds; }
   get magsLeft(): number { return this.fire.mags; }
-  get magsLeftInBarrel(): number { return this.fire.barrel; }
   get reloadTimer(): number { return this.fire.cooldown; }
-  get isFiring(): boolean { return this.fire.isFiring; }
 
   // 弾薬ピックアップで得たマグ数を加算する。
   onPickup(mags: number): void {
@@ -707,7 +705,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   public readonly rename = (name: string): void => { this.setName(name); };
 
   // 単クリックはプロパティウィンドウを開くだけに留め、操作対象は変えない。
-  public readonly onMapSelect = (windows: ObjectWindows, clientX: number, clientY: number): void => {
+  public readonly onMapSelect = (windows: PropertyWindowOpener, clientX: number, clientY: number): void => {
     windows.openProperties(this, clientX, clientY);
   };
 

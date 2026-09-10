@@ -28,7 +28,7 @@ export type PoleModel =
 // IAU モデルの元期を simZeroEt ぶん進めた自転モデル。基準方向・本初子午線の位相はどちらも
 // 時刻の一次式なので係数へ畳める。極方向を持たないモデル(cassini/eciPole)は時刻の原点を
 // 持たないのでそのまま。
-export function poleModelForSimZero(pole: PoleModel | undefined, simZeroEt: number): PoleModel | undefined {
+function poleModelForSimZero(pole: PoleModel | undefined, simZeroEt: number): PoleModel | undefined {
   if (pole === undefined || pole.kind !== 'iau') return pole;
   const centuries = simZeroEt / JULIAN_CENTURY;
   const days = simZeroEt / SECONDS_PER_DAY;
