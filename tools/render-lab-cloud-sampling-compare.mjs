@@ -71,7 +71,7 @@ async function main() {
     await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
     await waitFor(
       devTools,
-      "(document.getElementById('error')?.textContent || typeof window.renderLab?.setCloudSampling === 'function')",
+      "(document.getElementById('error')?.textContent || typeof window.renderLab === 'object')",
       'the render lab to initialise',
     );
     const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
