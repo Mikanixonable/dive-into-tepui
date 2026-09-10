@@ -40,6 +40,9 @@ def load_manifest(path):
         raise ValidationError(f"source manifestを読めません: {path}: {error}") from error
     if manifest.get("schemaVersion") != 1:
         raise ValidationError("source manifestのschemaVersionは1である必要があります")
+    if manifest.get("hashAlgorithm") != "sha256" or manifest.get("hashState") not in (
+            "awaiting_source_acquisition", "verified"):
+        raise ValidationError("source manifestのhashAlgorithm/hashStateが不正です")
     if not re.fullmatch(r"[a-z0-9-]+", manifest.get("datasetId", "")):
         raise ValidationError("source manifestのdatasetIdが不正です")
     sources = manifest.get("sources")
@@ -59,6 +62,8 @@ def load_manifest(path):
                     or not re.fullmatch(r"[0-9a-f]{64}", pin.get("sha256", ""))
                     or type(pin.get("bytes")) is not int or pin["bytes"] <= 0):
                 raise ValidationError(f"{source['id']}: inputSha256の領域・hash・bytesが不正です")
+        if len({pin["region"] for pin in source["inputSha256"]}) != len(source["inputSha256"]):
+            raise ValidationError(f"{source['id']}: inputSha256のregionが重複しています")
     return manifest
 
 
