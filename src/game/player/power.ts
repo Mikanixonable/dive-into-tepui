@@ -2,6 +2,7 @@ import { Attitude } from '../../physics/attitude';
 import { LOCAL_UP, qRotate } from '../../math/quat';
 import { Vec3, dot } from '../../math/vec3';
 import { SOLAR_CONSTANT } from '../../physics/srp';
+import type { SolarDeploy } from '../../render/dynamic/player/power-view';
 import type { PowerSaveData } from '../save/save-data';
 import { RADIATOR_DEPLOY_TIME } from './radiator';
 
@@ -75,6 +76,11 @@ export class PowerSystem {
   }
 
   deployOf(side: SolarSide): number { return this.panels[side].deploy; }
+
+  // 蛇腹を倒すための、上下2枚ぶんの展開量。
+  get panelDeploy(): SolarDeploy {
+    return { up: this.panels.up.deploy, down: this.panels.down.deploy };
+  }
 
   serialize(): PowerSaveData {
     return { charge: this.charge };
