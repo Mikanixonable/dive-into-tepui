@@ -34,7 +34,7 @@ export class CombatView implements ViewFrame {
     private readonly cameraSystem: CameraSystem,
     private readonly targeter: Targeter,
     private readonly objectWindows: ObjectWindows,
-    private readonly dynamicSystem: EntityRoster,
+    private readonly roster: EntityRoster,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly touchControls: TouchControls | null,
     private readonly controlSelection: ControlSelection,
@@ -92,7 +92,7 @@ export class CombatView implements ViewFrame {
     this.targeter.handleTargetSelectKey(this.input, controlled, project);
     this.input.takeRightClicks((p) => {
       const hit = pickCombatEntityAtPoint(
-        this.dynamicSystem, this.cameraSystem.activeViewpoint, project, p.x, p.y);
+        this.roster, this.cameraSystem.activeViewpoint, project, p.x, p.y);
       if (hit) this.objectWindows.open(p.x, p.y, hit, simTime);
       else this.objectWindows.openEmptySpaceMenu(p.x, p.y, simTime);
       return true;

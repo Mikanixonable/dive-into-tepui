@@ -19,7 +19,7 @@ export class AttachedBoostersView {
   private readonly models: BoosterStageModel[] = [];
   private stageIds: readonly string[] = [];
 
-  constructor(scene: THREE.Scene, private readonly root: THREE.Object3D) {
+  public constructor(scene: THREE.Scene, private readonly root: THREE.Object3D) {
     this.plumes = new BoosterPlumeSet(scene);
   }
 
@@ -35,7 +35,7 @@ export class AttachedBoostersView {
     this.stageIds = stages.map(stage => stage.id);
   }
 
-  sync(
+  public sync(
     floatingOrigin: FloatingOrigin,
     effectPosition: Vec3,
     displayTime: number,
@@ -72,7 +72,7 @@ export class AttachedBoostersView {
     }], camera.activeCamera.quaternion, style);
   }
 
-  dispose(): void {
+  public dispose(): void {
     this.plumes.dispose();
     for (const model of this.models) model.dispose();
     this.models.length = 0;

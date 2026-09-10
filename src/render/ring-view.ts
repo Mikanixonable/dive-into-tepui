@@ -36,7 +36,7 @@ export class RingView {
   // rings は物理データ(半径は [m])、bodyRadius は本体メッシュと同じ「半径 1」単位への換算元、
   // renderOrder は半透明の環を本体より後に描くための値。THREE の描画順は Object3D ごとに独立
   // していて親から子へ伝播しないので、グループではなく帯のメッシュ1つ1つへ書く。
-  constructor(
+  public constructor(
     rings: RingSystemDef,
     private readonly bodyRadius: number,
     renderOrder: number,
@@ -85,13 +85,13 @@ export class RingView {
   }
 
   // 環全体を隠す。見せ直すのは sync が受け取る表示設定の役目。
-  hide(): void {
+  public hide(): void {
     this.group.visible = false;
   }
 
   // pos/axis は本体メッシュと揃える。bodyPos/metersPerPixelAt は帯の被覆率減光に使う。
   // graphics の設定に従って環の表示を切り替え、見せるときは姿勢と見かけ幅も合わせる。
-  sync(
+  public sync(
     pos: THREE.Vector3,
     axis: Vec3 | null,
     bodyPos: Vec3,
@@ -125,7 +125,7 @@ export class RingView {
   }
 
   // 全帯の RingVisual と輪郭円を解放し、group を親から外す。
-  dispose(): void {
+  public dispose(): void {
     this.group.removeFromParent();
     for (const visual of this.visuals) visual.dispose();
     this.outlineInner.dispose();

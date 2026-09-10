@@ -40,7 +40,7 @@ export class MapPicking {
   constructor(
     private readonly hud: HudLayers & Notifier,
     private readonly cameraSystem: CameraSystem,
-    private readonly dynamicSystem: EntityRoster,
+    private readonly roster: EntityRoster,
     private readonly celestialBodies: CelestialBodies,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly markers: MarkerSlots,
@@ -64,7 +64,7 @@ export class MapPicking {
     };
     this.listPanel.onNavTarget = (id) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
-      if (target && this.navTarget.canTarget(id, this.dynamicSystem, this.celestialBodies, this.pickables.lastSimTime)) {
+      if (target && this.navTarget.canTarget(id, this.roster, this.celestialBodies, this.pickables.lastSimTime)) {
         this.navTarget.toggleTarget(id, target.name);
       }
     };
