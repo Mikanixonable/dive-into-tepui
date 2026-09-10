@@ -26,6 +26,12 @@ _spec.loader.exec_module(_fetch)
 FLOAT16_SCALAR = 1
 TERRAIN_HEADER = struct.Struct("<4sHHHHBBIIBBII")
 BASE_HEADER = struct.Struct("<4sHHHHBBIIBBII")
+BASE_COLOR_ROOT_COUNT = 2
+BASE_COLOR_TILE_TEXELS = 256
+BASE_COLOR_GUTTER_TEXELS = 2
+BASE_COLOR_TILE_SIZE = BASE_COLOR_TILE_TEXELS + 2 * BASE_COLOR_GUTTER_TEXELS
+BASE_COLOR_WIDTH = BASE_COLOR_ROOT_COUNT * BASE_COLOR_TILE_TEXELS
+BASE_COLOR_HEIGHT = BASE_COLOR_TILE_TEXELS
 
 
 # 全球の正規化されたWeb Mercatorではなく、計画書の経緯度四分木キーを列挙する。
@@ -506,6 +512,62 @@ def validate_base_terrain(payload, expected_root_count=2):
     return {"rootColumns": columns, "rootRows": rows, "payloadBytes": data_bytes}
 
 
+def _decode_jpeg(data, size, label):
+    """指定寸法・RGBモードのJPEGを検証して、閉じた画像を返す。"""
+    if not isinstance(data, (bytes, bytearray)):
+        raise ValueError(f"{label}はJPEG bytesが必要です")
+    try:
+        from PIL import Image
+    except ImportError as error:
+        raise RuntimeError("地表base colorのJPEG処理にはPillowが必要です") from error
+    try:
+        image = Image.open(io.BytesIO(bytes(data)))
+    except (OSError, ValueError) as error:
+        raise ValueError(f"{label}をJPEGとして読み込めません") from error
+    with image:
+        if image.format != "JPEG":
+            raise ValueError(f"{label}はJPEGが必要です")
+        if image.size != size:
+            raise ValueError(f"{label}は{size[0]}x{size[1]}が必要です")
+        if image.mode != "RGB":
+            raise ValueError(f"{label}はRGBモードが必要です")
+        try:
+            image.load()
+        except (OSError, ValueError) as error:
+            raise ValueError(f"{label}をJPEGとしてデコードできません") from error
+        return image.copy()
+
+
+def encode_base_color(root_colors, base_color=None):
+    """z=0の2枚からgutterを除いた512x256の全球RGB JPEGを作る。"""
+    if base_color is not None:
+        try:
+            data = bytes(base_color)
+        except (TypeError, ValueError) as error:
+            raise ValueError("base_colorはJPEG bytesが必要です") from error
+        _decode_jpeg(data, (BASE_COLOR_WIDTH, BASE_COLOR_HEIGHT), "base_color").close()
+        return data
+    if len(root_colors) != BASE_COLOR_ROOT_COUNT:
+        raise ValueError("base colorにはz=0の2枚のroot JPEGが必要です")
+    tiles = [_decode_jpeg(color, (BASE_COLOR_TILE_SIZE, BASE_COLOR_TILE_SIZE), f"z=0/{x}/0 color")
+             for x, color in enumerate(root_colors)]
+    try:
+        from PIL import Image
+        image = Image.new("RGB", (BASE_COLOR_WIDTH, BASE_COLOR_HEIGHT))
+        interior = (BASE_COLOR_GUTTER_TEXELS, BASE_COLOR_GUTTER_TEXELS,
+                    BASE_COLOR_GUTTER_TEXELS + BASE_COLOR_TILE_TEXELS,
+                    BASE_COLOR_GUTTER_TEXELS + BASE_COLOR_TILE_TEXELS)
+        for x, tile in enumerate(tiles):
+            image.paste(tile.crop(interior), (x * BASE_COLOR_TILE_TEXELS, 0))
+        output = io.BytesIO()
+        image.save(output, format="JPEG", quality=90, optimize=False,
+                   progressive=False, subsampling=0)
+        return output.getvalue()
+    finally:
+        for tile in tiles:
+            tile.close()
+
+
 def climate_channel(value, minimum, maximum):
     if not math.isfinite(value) or not minimum <= value <= maximum:
         raise ValueError("気候値が契約範囲外です")
@@ -667,7 +729,7 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
             raise ValueError("ESTBにはz=0の2枚が必要です")
         base = staging / "base"
         base.mkdir(parents=True, exist_ok=True)
-        base_color_data = bytes(base_color) if base_color is not None else root_tiles[0][0]
+        base_color_data = encode_base_color([root_tiles[0][0], root_tiles[1][0]], base_color)
         (base / "earth.jpg").write_bytes(base_color_data)
         base_payload = encode_base_terrain([root_tiles[0][1], root_tiles[1][1]])
         (base / "earth.bin.gz").write_bytes(gzip.compress(base_payload, mtime=0))
