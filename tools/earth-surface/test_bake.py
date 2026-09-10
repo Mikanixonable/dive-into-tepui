@@ -218,6 +218,62 @@ class BakeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             bake.encode_climate_rgba([280.] * count, [.5] * count, [-1001.] * count, [0.] * count)
 
+    @unittest.skipUnless(importlib.util.find_spec("PIL") is not None, "Pillow unavailable")
+    def test_base_color_joins_root_interiors(self):
+        from PIL import Image
+
+        def jpeg(gutter, interior):
+            image = Image.new("RGB", (260, 260), gutter)
+            image.paste(Image.new("RGB", (256, 256), interior), (2, 2))
+            output = io.BytesIO()
+            image.save(output, format="JPEG", quality=90, optimize=False,
+                       progressive=False, subsampling=0)
+            return output.getvalue()
+
+        west = jpeg((3, 4, 5), (210, 30, 40))
+        east = jpeg((6, 7, 8), (40, 170, 80))
+        base = bake.encode_base_color([west, east])
+        with Image.open(io.BytesIO(base)) as image:
+            self.assertEqual((image.size, image.mode, image.format), ((512, 256), "RGB", "JPEG"))
+            pixels = image.load()
+            def distance(actual, expected):
+                return sum(abs(channel - target) for channel, target in zip(actual, expected))
+
+            west_interior, east_interior = (210, 30, 40), (40, 170, 80)
+            west_gutter, east_gutter = (3, 4, 5), (6, 7, 8)
+            for point, expected, gutter in (((0, 0), west_interior, west_gutter),
+                                            ((255, 0), west_interior, west_gutter),
+                                            ((0, 255), west_interior, west_gutter),
+                                            ((255, 255), west_interior, west_gutter),
+                                            ((256, 0), east_interior, east_gutter),
+                                            ((511, 255), east_interior, east_gutter)):
+                self.assertLess(distance(pixels[point], expected), distance(pixels[point], gutter))
+            self.assertLess(distance(pixels[255, 0], west_interior),
+                            distance(pixels[255, 0], east_interior))
+            self.assertLess(distance(pixels[256, 0], east_interior),
+                            distance(pixels[256, 0], west_interior))
+
+    @unittest.skipUnless(importlib.util.find_spec("PIL") is not None, "Pillow unavailable")
+    def test_base_color_input_contract(self):
+        from PIL import Image
+
+        output = io.BytesIO()
+        Image.new("RGB", (512, 256), (12, 34, 56)).save(output, format="JPEG")
+        base = output.getvalue()
+        self.assertEqual(bake.encode_base_color([], base), base)
+        with self.assertRaises(ValueError):
+            bake.encode_base_color([], b"not a jpeg")
+        with self.assertRaises(ValueError):
+            bake.encode_base_color([], bake.encode_base_color([base, base]))
+        wrong_size = io.BytesIO()
+        Image.new("RGB", (260, 260), (12, 34, 56)).save(wrong_size, format="JPEG")
+        with self.assertRaises(ValueError):
+            bake.encode_base_color([], wrong_size.getvalue())
+        grayscale = io.BytesIO()
+        Image.new("L", (512, 256), 12).save(grayscale, format="JPEG")
+        with self.assertRaises(ValueError):
+            bake.encode_base_color([], grayscale.getvalue())
+
     # 全球入口は入力不足を生成途中ではなく事前に報告する。
     def test_global_input_preflight(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -226,7 +282,10 @@ class BakeTests(unittest.TestCase):
             self.assertIn("全球bundleの入力が不足しています", str(error.exception))
 
     # 小さいmax_zoomで、同じストリームwriterがmanifest/index/ESTBを書ける。
+    @unittest.skipUnless(importlib.util.find_spec("PIL") is not None, "Pillow unavailable")
     def test_global_writer_stream_fixture(self):
+        from PIL import Image
+
         with tempfile.TemporaryDirectory() as directory:
             raw_root = Path(directory) / "raw"
             for path in bake.global_input_paths(self.manifest, raw_root):
@@ -236,11 +295,15 @@ class BakeTests(unittest.TestCase):
             def render(key):
                 return b"fixture-jpeg", bake.encode_terrain_tile([(0., 0., 1.)] * 67600, [.8] * 67600, *key)
 
+            color_output = io.BytesIO()
+            Image.new("RGB", (260, 260), (1, 2, 3)).save(color_output, format="JPEG")
+            color = color_output.getvalue()
+
             output = Path(directory) / "bundle"
             source_manifest_path = Path(directory) / "sources.json"
             source_manifest_path.write_text(json.dumps(self.manifest))
             result = bake.write_global_bundle(self.manifest, source_manifest_path, raw_root, output,
-                                              lambda key: (b"\xff\xd8fixture\xff\xd9", render(key)[1]),
+                                              lambda key: (color, render(key)[1]),
                                               [b"\x89PNG\r\n\x1a\nfixture"] * 12, max_zoom=0)
             self.assertEqual(result["coverage"]["kind"], "sparse")
             self.assertEqual(json.loads((output / "tile-index.json").read_text())["entries"].__len__(), 2)

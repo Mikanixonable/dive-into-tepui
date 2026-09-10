@@ -108,7 +108,7 @@ def _write_parallel(manifest, manifest_path, raw_root, output_root, workers, max
             raise ValueError("ESTBにはz=0の2枚が必要です")
         base = staging / "base"
         base.mkdir(parents=True, exist_ok=True)
-        (base / "earth.jpg").write_bytes(root_tiles[0][0])
+        (base / "earth.jpg").write_bytes(bake.encode_base_color([root_tiles[0][0], root_tiles[1][0]]))
         base_payload = bake.encode_base_terrain([root_tiles[0][1], root_tiles[1][1]])
         (base / "earth.bin.gz").write_bytes(gzip.compress(base_payload, mtime=0))
         (staging / "earth-surface.json").write_text(
