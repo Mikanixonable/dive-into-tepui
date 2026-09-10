@@ -12,7 +12,7 @@ import { Billboard, POINT_IMAGE_ANGULAR_SIZE } from '../../billboard';
 import { CelestialSurface } from '../celestial-surface';
 import { BodyGraticule } from '../body-graticule';
 import { showsPhysicalSphere } from '../screen-lod';
-import { writeBodyFromWorld } from '../../../game/celestial/body-frame';
+import { writeBodyFromWorld } from '../body-frame';
 import type { RingMaterials } from '../ring';
 import { RingView } from '../ring-view';
 import { DEFAULT_ALBEDO, rec709Luminance, type Albedo } from '../../celestial-albedo';
