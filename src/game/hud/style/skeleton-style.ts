@@ -189,7 +189,7 @@ body.hud-overlay-modal-open #touch-ui { display: none; }
   pointer-events: auto; cursor: pointer;
   width: 32px; height: 32px; border-radius: 50%;
   display: flex; justify-content: center; align-items: center;
-  padding: 0;
+  padding: 0; border: 0;
   color: var(--text-dim);
 }
 #hud-chase-reset:hover { background: var(--surface-2); color: var(--color-primary-hover); }
