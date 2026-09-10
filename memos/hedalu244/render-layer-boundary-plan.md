@@ -21,6 +21,10 @@
 11. 配色 id だけは `src/settings/theme-setting.ts` が module 直下の単一 instance として持つ。`theme.ts` が module 評価時の `ACTIVE_THEME` から全色トークン定数を導いており、初期値を注入する余地がないため。`UserSettings` は `theme.ts` を import しない(循環になる)。
 12. テストの層は `settings`(`tests/settings/`、`npm run test:settings`)。層名は `tests/run.ts` の規約どおり `src/` のフォルダ名に揃える。
 13. node のテストから `src/render/` を評価できるよう、`tests/repo-assets.ts` が webpack の `require.context` と `.cube` の代役を持つ。差し込みは `"use strict";` の直後で、改行を足さない。
+14. ランが読むラン跨ぎ設定は、`game/` が自分で宣言した `RunSetting<T>`(`src/game/run-setting.ts`。`readonly current` と `set`)で受ける。`settings/` の `StoredSetting` がこの面を構造的に満たすので、`main.ts` が変換なしで渡す。**`game/` から `settings/` を import しない。**
+15. `GameHost` が `mapDisplay` / `grid` / `orbitGuide` の `RunSetting` を運ぶ。ラン跨ぎの持ち物という `GameHost` の既存の意味に載るので、`Launcher` の引数は増えない。
+16. 表示パネル(`ViewOptionsPanel`)の所有と、その操作を設定・描画側へ結ぶ責務は `src/game/hud/panels/view-options-control.ts` の `ViewOptionsControl` が持つ。`CameraSystem` はパネルも天体分類トグルも持たない。`Navball` は削除済み。
+17. `CelestialSystem.sync` と `ObjectPickables.refresh` は `MapDisplayToggles` をそのフレームの引数で受け、`MapView` は `RunSetting<MapDisplayToggles>` を構築時に受ける。カメラ経由で読まない。
 
 ## 達成目標
 
@@ -36,36 +40,6 @@
 - 全手順で `npm run typecheck` が通り、最終的に `npm run test:physics`、`npm run test:game`、`npm run test:render`、`npm run test:settings` が通る。
 
 ## 手順
-
-### 手順 2. game 内の永続表示設定を同じ owner へ移す
-
-#### 目的
-
-map の天体分類表示、天球 grid、orbit guide のラン跨ぎ正本を game から除く。game にはその run で使う readonly value と UI event の発火だけを残す。この時点で設定内容と storage key は変えない。
-
-#### 変更が必要な箇所
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/settings/user-settings.ts` | body class toggles、grid visibility、orbit guide settings を追加する。 |
-| `src/main.ts:43-80,140-145` | launcher setting と run 内の Game/HUD を値・callback で接続する。 |
-| `src/launcher/launcher.ts:56-62` | run の構築時に設定 snapshot と変更 callback を渡す。 |
-| `src/game/camera/camera-system.ts:26-48,161-173,224-231` | body class toggle の load/save と owner を除き、外から与えた値を利用する。ViewOptionsPanel の所有は Game 側へ戻す。 |
-| `src/game/navball/navball.ts:1-73` | grid/orbit guide の load/save を除き、UI event と現在 run の反映だけにする。 |
-| `src/game/celestial/orbit-guide/orbit-guide-settings.ts:242-337` | setting 型、default、pure normalize を残し、storage key と load/save を除く。 |
-| `src/game/game.ts:84,110,196-236,384-386` | 初期値を camera/navball/celestial system へ渡し、変更を composition root callback へ返す。 |
-| `src/game/hud/panels/view-options-panel.ts:170-173,421-462` | mutable owner を持たず、同期値と変更 event を扱う。 |
-| `src/game/hud/panels/orbit-guide-tab.ts:117-126,584-590` | normalize 済み value を表示し、編集結果だけを通知する。 |
-| `src/game/celestial/celestial-system.ts:108,322,390` | run 中の orbit guide value を readonly 入力として扱う。 |
-| `tests/launcher/user-settings.test.ts` | 3 設定の round-trip、破損値 fallback、既存 key 互換を追加する。 |
-
-#### 達成条件と検証
-
-- `rg -n 'localStorage|sessionStorage' src/game/camera src/game/navball src/game/celestial/orbit-guide` が 0 件。
-- `CameraSystem` と `Navball` の constructor から storage 読込が消え、同じ run の途中で渡された設定値がそのフレームから反映される。
-- `npm run typecheck`
-- `npm run test:launcher`
-- `npm run test:game`
 
 ### 手順 3. camera controller と render camera view を分離する
 
