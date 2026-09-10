@@ -46,6 +46,7 @@ import type { CelestialTexture } from '../../../render/celestial-textures';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
 import type { EarthSurfaceSource } from './earth-surface-source';
 import { vec3 } from 'three/tsl';
+import { AU } from '../../../physics/astronomical-unit';
 
 // 地球系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type EarthSystemBodyId = 'earth' | 'moon';
@@ -100,7 +101,8 @@ export const EARTH: PlanetDef = {
   shape: { kind: 'spheroid', equatorRadius: R_EARTH_EQ, polarRadius: 6.3567519e6 },
   // JPL 低精度惑星暦の "EM Bary"(地球-月重心)行、黄道基準・J2000 相当。
   orbit: planetOrbit({
-    a: 1.495978707e11,
+    // JPL 低精度惑星暦 Standish 表の EM Bary: 1.00000261 AU。
+    a: 1.00000261 * AU,
     e: 0.01671123,
     incDeg: 0,
     raanDeg: 0,
