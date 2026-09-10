@@ -41,7 +41,7 @@ async function importTsDataModule(relSrcPath) {
 }
 
 const { RCS_NOZZLES } = await importTsDataModule('src/render/rcs-nozzles.ts');
-const { RADIATOR_HINGE } = await importTsDataModule('src/render/radiator-hinge.ts');
+const { RADIATOR_HINGE } = await importTsDataModule('src/physics/player-shape.ts');
 const { F0_ALUMINIUM, F0_BRASS, F0_BURNT_STEEL, F0_STEEL } = await importTsDataModule('src/render/metal-f0.ts');
 
 // 標準マテリアルの既定。**金属度は「その面が金属かどうか」の 0 か 1 しか取らない** —

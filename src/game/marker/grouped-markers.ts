@@ -8,13 +8,13 @@
 import { Vec3, len, sub } from '../../math/vec3';
 import type { View } from '../view/view';
 import { Projected } from '../../math/projection';
-import type { ProjectFn, ScaleFn } from '../camera/camera-system';
 import type { ActiveCelestialLabel } from './celestial-markers';
 import type { MarkerManager } from './marker-manager';
 import { DIRECTION_GLYPH } from './marker-identity';
-import { CelestialMotion } from '../../physics/celestial-motion';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from './crowding';
+import type { ProjectFn, ScaleFn } from '../../math/projection';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 // マーカー上での対象の役割。ターゲットは色と字形が変わる。
 export type MarkerRole = 'none' | 'primary';
@@ -79,7 +79,7 @@ export class GroupedMarkers {
     view: View,
     scale: ScaleFn,
     celestialLabels: readonly ActiveCelestialLabel[] = [],
-    celestialBodies: readonly CelestialMotion[] = [],
+    celestialBodies: readonly CelestialBody[] = [],
     cameraPos?: Vec3,
   ): void {
     const placed: PlacedItem[] = items.map(

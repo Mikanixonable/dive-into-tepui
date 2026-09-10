@@ -1,7 +1,12 @@
-import * as THREE from 'three/webgpu';
 import { Attitude } from '../../../physics/attitude';
 import { KinematicState } from '../../../physics/kinematic-state';
-import { DynamicEntity } from './dynamic-entity';
+import {
+  DynamicEntity,
+  type DynamicMotionFactory,
+  type DynamicViewFactory,
+} from './dynamic-entity';
+import type { DynamicView } from '../dynamic-view';
+import { DynamicMotion, type DynamicMotionProperties } from '../dynamic-motion';
 import { Part, PartType, createPart } from './parts';
 import { collisionDamageFraction } from './contact-damage';
 import { SHIP_ARROWHEAD_POINTS, triangleHpMarkerSvg } from '../../marker/marker-shapes';
@@ -38,19 +43,29 @@ export const PLAYER_INERTIA_PITCH = 1.0; // ピッチ軸(X)。3軸中の中間�
 export const PLAYER_INERTIA_YAW = 1.6; // ヨー軸(Y)
 export const PLAYER_INERTIA_ROLL = 0.5; // ロール軸(Z、機体前後)。細長い形状に見合って最小
 
+export function shipMotionOptions(
+  attitude: Attitude, radius: number, overrides: DynamicMotionProperties = {},
+): DynamicMotionProperties {
+  return {
+    attitude,
+    radius,
+    bcInv: SHIP_BCINV,
+    srpCoeff: SHIP_SRP_COEFF,
+    historyDuration: DEFAULT_HISTORY_DURATION,
+    predictedForGhost: true,
+    specificHeat: SHIP_SPECIFIC_HEAT,
+    bulkDensity: SHIP_BULK_DENSITY,
+    radiatingAreaPerMass: SHIP_RADIATING_AREA_PER_MASS,
+    ...overrides,
+  };
+}
+
 export const MUZZLE_SPEED = 1000; // 機関砲初速 [m/s]
 const FIRE_INTERVAL = 0.06; // 発射間隔 [s]
 const ENEMY_BULLET_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメージ [HP]。武器部品の damage の初期値
 
 export abstract class Ship extends DynamicEntity {
   public override readonly combatTarget = true;
-  public override readonly bcInv = SHIP_BCINV;
-  protected readonly srpCoeff = SHIP_SRP_COEFF;
-  protected readonly baseHistoryDuration = DEFAULT_HISTORY_DURATION;
-  protected readonly predictedForGhost = true;
-  protected readonly specificHeat = SHIP_SPECIFIC_HEAT;
-  protected readonly bulkDensity = SHIP_BULK_DENSITY;
-  protected override get radiatingAreaPerMass(): number { return SHIP_RADIATING_AREA_PER_MASS; }
 
   private _hp!: number;
   private _maxHp!: number;
@@ -76,16 +91,21 @@ export abstract class Ship extends DynamicEntity {
   public constructor(
     name: string,
     state: KinematicState,
-    renderObject: THREE.Object3D,
+    view: DynamicView | DynamicViewFactory,
     att: Attitude,
     radius: number,
     hp: number,
-    scene?: THREE.Scene,
     id?: string,
+    motionFactory?: DynamicMotionFactory,
   ) {
-    super(state, renderObject, scene, att, id);
+    super(
+      state,
+      view,
+      att,
+      id,
+      motionFactory ?? (() => new DynamicMotion(state, shipMotionOptions(att, radius))),
+    );
     this.setName(name);
-    this.radius = radius;
     this.hp = hp;
     this.maxHp = hp;
     this.initDefaultParts();

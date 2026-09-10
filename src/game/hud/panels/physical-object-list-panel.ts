@@ -8,15 +8,12 @@ import { loadPanelCollapsed, savePanelCollapsed, wirePanelCollapse } from '../pa
 import { MQ_COARSE } from '../../../hud/breakpoints';
 import { PhysicalObjectListTree } from './physical-object-list-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
-import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { DynamicEntityKind } from '../../dynamic/dynamic-entity/entity-kind';
-import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { RowNode } from './physical-object-list-tree';
 import type { PhysicalObjectListFilter, PhysicalObjectListSort, SectionOrder } from './physical-object-list-order';
-
-// 軌道物体一覧の区画。天体はクラスをまたいで1区画にまとめ、人工物は種別ごとに分ける。
-export type MapListSection = 'body' | DynamicEntityKind;
+import type { MapListSection } from '../../pickable/pickable-listing';
+import type { ListedObject } from '../../pickable/listed-object';
+import type { OrbitingObject } from '../../dynamic/dynamic-entity/orbiting-object';
 
 const SECTIONS: readonly { section: MapListSection; label: string }[] = [
   { section: 'body', label: '天体' },
@@ -119,7 +116,7 @@ export class PhysicalObjectListPanel {
   // sync() は毎フレーム呼ばれるが、これらは同期中だけ使う scratch であり、呼び出し元へ
   // 参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
   private readonly namesScratch = new Map<string, string>();
-  private readonly itemsByIdScratch = new Map<string, ObjectPickable>();
+  private readonly itemsByIdScratch = new Map<string, ListedObject>();
   private readonly crumbsScratch: string[] = [];
   private readonly focusAncestorsScratch = new Set<string>();
   private readonly matchAncestorsScratch = new Set<string>();
@@ -133,10 +130,10 @@ export class PhysicalObjectListPanel {
   private readonly emptyState: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
 
-  public constructor(root: HTMLElement, celestialSystem: CelestialSystem) {
+  public constructor(root: HTMLElement, celestialBodies: CelestialBodies) {
     injectOnce('physical-object-list-panel', STYLE);
-    this.order = new PhysicalObjectListOrder(celestialSystem);
-    this.rowTree = new PhysicalObjectListTree(celestialSystem, this.order, this.itemsByIdScratch, {
+    this.order = new PhysicalObjectListOrder(celestialBodies);
+    this.rowTree = new PhysicalObjectListTree(celestialBodies, this.order, this.itemsByIdScratch, {
       onFocus: (id) => this.onFocus?.(id),
       onNavTarget: (id) => this.onNavTarget?.(id),
       onSelectRight: (id, clientX, clientY) => this.onSelectRight?.(id, clientX, clientY),
@@ -286,10 +283,10 @@ export class PhysicalObjectListPanel {
   // parentOf は id → 親 id(天体の親子関係のみ、他種別は載らない)。focusId が undefined
   // (フォーカス中の天体が無い)なら、どの行も強調しない。
   public sync(
-    items: readonly ObjectPickable[],
+    items: readonly ListedObject[],
     focusId: string | undefined,
     parentOf: ReadonlyMap<string, string>,
-    viewer: Controllable | null,
+    viewer: OrbitingObject | null,
     displayTime: number,
   ): void {
     // 本体が畳まれている間は完全に不可視(CSS が display:none)なので、行ツリーの差分同期を
@@ -392,7 +389,7 @@ export class PhysicalObjectListPanel {
   // (区画本体もあわせて隠す — 天体区画の一括開閉ボタンなど、見出し以外の常設要素が
   // 見出しだけ消えた場所に浮いて残らないようにする)。
   private syncHeader(
-    section: Section, sectionKey: MapListSection, label: string, viewer: Controllable | null,
+    section: Section, sectionKey: MapListSection, label: string, viewer: OrbitingObject | null,
     displayTime: number,
   ): void {
     const ids = section.order.ids;

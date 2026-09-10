@@ -11,7 +11,8 @@
 // THREE/DOM 非依存。
 import { Vec3, addScaled, v3 } from '../math/vec3';
 import { PointEphemeris, boundBaryStateAt } from './ephemeris/point';
-import { PlanetDef, PlanetMotion, SatelliteMotion, StarMotion } from './celestial-motion';
+import { PlanetMotion, SatelliteMotion, StarMotion } from './celestial-motion';
+import { PlanetDef } from './celestial-body-def';
 import {
   KeplerOrbit, PlanetAngles, keplerOrbitAccel, keplerOrbitState, planetAngles,
 } from './kepler-orbit';
