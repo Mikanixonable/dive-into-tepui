@@ -6,7 +6,10 @@ export const EARTH_TILE_MAX_Z = 7;
 export const EARTH_TILE_TEXELS = 256;
 export const EARTH_TILE_GUTTER = 2;
 export const EARTH_TILE_EXTENT = EARTH_TILE_TEXELS + 2 * EARTH_TILE_GUTTER;
-export const EARTH_TILE_LAYERS = 128;
+// 安定frontierとLOD選択が参照するresident層の上限。
+export const EARTH_TILE_FRONTIER_LAYERS = 128;
+// 親子fadeを含むGPU配列の物理層数。WebGPUの最低保証256層内に収める。
+export const EARTH_TILE_LAYERS = 144;
 export const EARTH_BASE_LAYER = 255;
 export const EARTH_PAGE_WIDTH = 2 ** (EARTH_TILE_MAX_Z + 1);
 export const EARTH_PAGE_HEIGHT = 2 ** EARTH_TILE_MAX_Z;
@@ -197,31 +200,35 @@ export class EarthSurfaceTiles {
   // 次の分割で必要になる層を返す。frontierの選択は変えず、要求側が親を表示したまま
   // 子を先行取得できるように候補だけを計算する。
   public requestCandidates(projection: EarthTileProjection): readonly EarthTileKey[] {
-    const candidates = new Map<string, { readonly key: EarthTileKey; readonly priority: number }>();
-    const add = (key: EarthTileKey, priority: number): void => {
-      const id = earthTileId(key);
-      const existing = candidates.get(id);
-      if (existing === undefined || priority > existing.priority) candidates.set(id, { key, priority });
-    };
+    const groups = new Map<string, {
+      readonly parentId: string;
+      readonly priority: number;
+      readonly keys: readonly EarthTileKey[];
+    }>();
     for (const leaf of this.leaves) {
       if (leaf.fadeStartMs !== null) continue;
       const metric = projection.evaluate(leaf.key);
       if (!metric.visible) continue;
       // 全球baseにはまだ詳細層がないため、まずその地域の根を要求する。
       if (leaf.layer === EARTH_BASE_LAYER) {
-        add(leaf.key, metric.priority);
+        const parentId = earthTileId(leaf.key);
+        groups.set(parentId, { parentId, priority: metric.priority, keys: [leaf.key] });
         continue;
       }
       if (leaf.key.z >= EARTH_TILE_MAX_Z || metric.errorPx <= SPLIT_ERROR_PX) continue;
       // 2:1制約と親子fadeを同時に満たすには、分割する親の4子が必要になる。
-      for (const child of earthTileChildren(leaf.key)) {
-        const childMetric = projection.evaluate(child);
-        add(child, Math.max(metric.priority, childMetric.priority));
-      }
+      const children = earthTileChildren(leaf.key);
+      const childMetrics = children.map((child) => projection.evaluate(child));
+      const priority = Math.max(metric.priority, ...childMetrics.map((child) => child.priority));
+      const parentId = earthTileId(leaf.key);
+      groups.set(parentId, {
+        parentId, priority,
+        keys: children.slice().sort((a, b) => earthTileId(a).localeCompare(earthTileId(b))),
+      });
     }
-    return [...candidates.values()]
-      .sort((a, b) => b.priority - a.priority || earthTileId(a.key).localeCompare(earthTileId(b.key)))
-      .map((candidate) => candidate.key);
+    return [...groups.values()]
+      .sort((a, b) => b.priority - a.priority || a.parentId.localeCompare(b.parentId))
+      .flatMap((group) => group.keys);
   }
 
   // 非表示へ移った葉はpinせず、可視frontierとfade中の層だけを返す。
@@ -331,12 +338,16 @@ export class EarthSurfaceTiles {
       if (!canSplit(key) || !frontier.some((leaf) => earthTileId(leaf) === earthTileId(key))) continue;
       const proposal = this.splitFrontier(frontier, key);
       if (proposal === null) continue;
+      const proposalFrontierLayers = new Set<number>();
       const proposalPinned = new Set(pinned);
       for (const tile of proposal) {
         const resident = available.get(earthTileId(tile));
-        if (resident !== undefined) proposalPinned.add(resident.layer);
+        if (resident === undefined) continue;
+        proposalFrontierLayers.add(resident.layer);
+        proposalPinned.add(resident.layer);
       }
-      if (proposalPinned.size > EARTH_TILE_LAYERS) continue;
+      if (proposalFrontierLayers.size > EARTH_TILE_FRONTIER_LAYERS
+        || proposalPinned.size > EARTH_TILE_LAYERS) continue;
       frontier = [...proposal];
       pinned = proposalPinned;
       splitGroups++;
