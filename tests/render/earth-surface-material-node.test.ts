@@ -3,10 +3,20 @@ import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import {
   configureEarthSurfaceTexture,
+  earthSurfaceTileUvNode,
   earthSurfaceMaterialNodes,
   earthSurfaceMaterialCapabilities,
 } from '../../src/render/earth-surface-material-node';
-import { uniform, vec3 } from 'three/tsl';
+import { float, uniform, vec2, vec3 } from 'three/tsl';
+import { containsShaderNode, evaluateShaderNode } from './tsl-node-evaluator';
+
+function tileUvValue(u: number, v: number, z: number): number[] {
+  return evaluateShaderNode(earthSurfaceTileUvNode(vec2(u, v), float(z))) as number[];
+}
+
+function near(actual: number, expected: number): void {
+  assert.ok(Math.abs(actual - expected) < 1e-12, `${actual} != ${expected}`);
+}
 
 export function register(): void {
   test('earth surface material: texture settings are fixed by kind', () => {
@@ -37,6 +47,23 @@ export function register(): void {
     assert.deepEqual(earthSurfaceMaterialCapabilities(false), { useBaseFallback: false });
   });
 
+  test('earth surface material: tile Vは各LOD行を走査し、全球南端を最終画素へ置く', () => {
+    for (const z of [1, 2, 7]) {
+      const rows = 2 ** z;
+      const toTextureUv = (local: number): number => (2 + 0.5 + 256 * local) / 260;
+      const expected = (v: number): number => toTextureUv(v === 1 ? 1 : v * rows - Math.floor(v * rows));
+      for (const row of [1, Math.floor(rows / 2), rows - 1]) {
+        for (const side of [-1, 1]) {
+          const v = (row + side * 0.125) / rows;
+          near(tileUvValue(0.37, v, z)[1]!, expected(v));
+        }
+      }
+      near(tileUvValue(0.37, 1, z)[1]!, toTextureUv(1));
+      near(tileUvValue(-0.1, 0.37, z)[0]!, toTextureUv(((-0.1 * rows * 2) % 1 + 1) % 1));
+      near(tileUvValue(1.1, 0.37, z)[0]!, toTextureUv(((1.1 * rows * 2) % 1 + 1) % 1));
+    }
+  });
+
   test('earth surface material: array/page table nodeはbase層とbody固定法線を持つ', () => {
     const color = new THREE.DataArrayTexture(new Uint8Array(4), 1, 1, 1);
     const terrain = new THREE.DataArrayTexture(new Uint16Array(4), 1, 1, 1);
@@ -56,5 +83,9 @@ export function register(): void {
     assert.equal(nodes.colorNode.isNode, true);
     assert.equal(nodes.roughnessNode.isNode, true);
     assert.equal(nodes.normalNode.isNode, true);
+    assert.ok(containsShaderNode(nodes.colorNode, (node) => node.type === 'TextureNode'));
+    assert.ok(containsShaderNode(nodes.colorNode, (node) => node.type === 'MathNode' && node.method === 'exp2'));
+    assert.ok(containsShaderNode(nodes.colorNode, (node) => node.type === 'MathNode' && node.method === 'fract'));
+    assert.ok(containsShaderNode(nodes.colorNode, (node) => node.type === 'OperatorNode' && node.op === '=='));
   });
 }
