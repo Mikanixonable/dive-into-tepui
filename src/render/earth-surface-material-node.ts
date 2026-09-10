@@ -79,11 +79,12 @@ export function configureEarthSurfaceTexture<T extends THREE.Texture>(
   return texture;
 }
 
-function tileUv(uv: Vec2Node, z: FloatNode): Vec2Node {
+// 全球地理UVを、指定LODのタイル内UVへ写す。v=1は南端の最終画素側へ残す。
+export function earthSurfaceTileUvNode(uv: Vec2Node, z: FloatNode): Vec2Node {
   const rows = exp2(z);
   const columns = rows.mul(2);
   const localU = uv.x.mul(columns).fract();
-  const localV = uv.y.mul(rows).clamp(0, 1).fract();
+  const localV = select(uv.y.equal(1), 1, uv.y.mul(rows).fract());
   return vec2(
     localU.mul(EARTH_TILE_TEXELS).add(EARTH_TILE_GUTTER + 0.5).div(EARTH_TILE_EXTENT),
     localV.mul(EARTH_TILE_TEXELS).add(EARTH_TILE_GUTTER + 0.5).div(EARTH_TILE_EXTENT),
@@ -94,7 +95,7 @@ function sampleArray(textureValue: THREE.Texture, uv: Vec2Node, z: FloatNode, la
   // DataArrayTextureの層はdepthへ渡す。base層(255)は後段でbase画像へ切り替えるため、
   // 配列の範囲内へクランプした値だけを実際のサンプラへ渡す。
   const safeLayer = min(layer, EARTH_TILE_LAYERS - 1);
-  return texture(textureValue, tileUv(uv, z)).depth(int(safeLayer));
+  return texture(textureValue, earthSurfaceTileUvNode(uv, z)).depth(int(safeLayer));
 }
 
 function sampleBase(textureValue: THREE.Texture, uv: Vec2Node): Vec4Node {
