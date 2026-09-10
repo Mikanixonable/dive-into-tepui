@@ -41,6 +41,106 @@ class SourceAdapter:
         raise NotImplementedError
 
 
+@dataclass(frozen=True)
+class RealTileSources:
+    """Files and target window selected for one production tile."""
+
+    key: tuple
+    grid: object
+    color_paths: tuple
+    surface_paths: tuple
+    geoid_paths: tuple
+    gshhg_path: Path
+    era5_path: Path
+
+
+def geotiff_window_for_grid(grid, geo_transform, raster_width, raster_height):
+    """Return the bounded pixel window intersecting a WGS84 target grid.
+
+    GeoTIFF inputs in the source contract are north-up.  The returned window
+    is conservative at both edges so a later area regrid never reads outside
+    the file.  Longitude wrapping is handled by selecting the source file;
+    this function only maps one unwrapped source interval.
+    """
+    if len(geo_transform) < 6 or geo_transform[2] != 0 or geo_transform[4] != 0:
+        raise ValueError("GeoTIFFは回転のないnorth-up geotransformが必要です")
+    origin_x, pixel_x, _, origin_y, _, pixel_y = geo_transform[:6]
+    if not (math.isfinite(origin_x) and math.isfinite(origin_y)
+            and math.isfinite(pixel_x) and math.isfinite(pixel_y)
+            and pixel_x > 0 and pixel_y < 0
+            and type(raster_width) is int and type(raster_height) is int
+            and raster_width > 0 and raster_height > 0):
+        raise ValueError("GeoTIFFのgeotransformまたは寸法が不正です")
+    source_west, source_east = origin_x, origin_x + pixel_x * raster_width
+    source_north, source_south = origin_y, origin_y + pixel_y * raster_height
+    west = max(grid.west, source_west)
+    east = min(grid.east, source_east)
+    south = max(grid.south, source_south)
+    north = min(grid.north, source_north)
+    if not west < east or not south < north:
+        raise ValueError("GeoTIFFと要求窓が交差していません")
+    left = max(0, math.floor((west - origin_x) / pixel_x))
+    right = min(raster_width, math.ceil((east - origin_x) / pixel_x))
+    top = max(0, math.floor((origin_y - north) / -pixel_y))
+    bottom = min(raster_height, math.ceil((origin_y - south) / -pixel_y))
+    if not (left < right and top < bottom):
+        raise ValueError("GeoTIFFの要求窓が空です")
+    return left, top, right - left, bottom - top
+
+
+def _source_paths(manifest, raw_root, source):
+    """Resolve a source's declared local files without opening them."""
+    root = Path(raw_root) / source["id"]
+    suffix = {"geotiff": ".tif", "zip": ".zip", "netcdf": ".nc"}
+    explicit = source.get("inputFiles")
+    if explicit:
+        return tuple(root / item for item in explicit)
+    if source.get("regions"):
+        return tuple(root / f"{region}{suffix[source['format']]}" for region in source["regions"])
+    if source.get("regionGridDegrees"):
+        return tuple(root / f"{'N' if latitude >= 0 else 'S'}{abs(latitude):02d}"
+                     f"{'E' if longitude >= 0 else 'W'}{abs(longitude):03d}{suffix[source['format']]}"
+                     for latitude in range(90, -90, -15)
+                     for longitude in range(-180, 180, 15))
+    return (root / f"global{suffix[source['format']]}",)
+
+
+class RealSourceAdapter(SourceAdapter):
+    """Local source boundary for production inputs.
+
+    This adapter resolves and validates the file/window boundary.  Numerical
+    composition remains in the renderer so BMNG linear-RGB, ETOPO vertical
+    datums, GSHHG coverage, and ERA5 time aggregation cannot be mixed here.
+    """
+
+    def __init__(self, manifest, raw_root):
+        bake = _bake()
+        sources = {source["id"]: source for source in manifest["sources"]}
+        required = {"bmng-july-2004", "etopo-2022-v1-ice-surface",
+                    "etopo-2022-v1-geoid", "gshhg-2.3.7", "era5-monthly-1991-2020"}
+        if set(sources) != required:
+            raise RendererUnavailable("実データrendererのsource manifestが必要製品と一致しません")
+        self.manifest = manifest
+        self.raw_root = Path(raw_root)
+        self.paths = {source_id: _source_paths(manifest, raw_root, source)
+                      for source_id, source in sources.items()}
+        self._bake = bake
+
+    def tile_input(self, key):
+        grid = self._bake.tile_grid(*key)
+        return RealTileSources(
+            tuple(key), grid,
+            self.paths["bmng-july-2004"],
+            self.paths["etopo-2022-v1-ice-surface"],
+            self.paths["etopo-2022-v1-geoid"],
+            self.paths["gshhg-2.3.7"][0],
+            self.paths["era5-monthly-1991-2020"][0])
+
+    def climate_input(self, month, width, height):
+        raise RendererUnavailable(
+            "ERA5の月別window再格子化はRealSourceAdapterの次段で実装が必要です")
+
+
 def _finite(value, label):
     if not isinstance(value, (int, float)) or not math.isfinite(value):
         raise ValueError(f"fixtureの{label}は有限数が必要です")
@@ -227,15 +327,17 @@ class RealDataRenderer:
             preview = ", ".join(str(path) for path in missing_paths[:8])
             more = "" if len(missing_paths) <= 8 else f" (+{len(missing_paths) - 8}件)"
             raise RendererUnavailable(f"実データrendererの入力が不足しています: {preview}{more}")
-        raise RendererUnavailable(
-            "実データrendererのBMNG/ETOPO/GSHHG/ERA5 window合成は未接続です。"
-            "fixtureを実データとして扱わず、入力取得後にwindow adapterを実装してください")
+        self.adapter = RealSourceAdapter(manifest, raw_root)
 
     def render_tile(self, _key):
-        raise RendererUnavailable("実データrendererは利用できません")
+        raise RendererUnavailable(
+            "実データrendererのBMNG/ETOPO/GSHHG window合成は未接続です。"
+            "fixtureを実データとして扱わず、線形RGB・標高datum・面積被覆の合成を実装してください")
 
     def climate_maps(self):
-        raise RendererUnavailable("実データrendererは利用できません")
+        raise RendererUnavailable(
+            "実データrendererのERA5月別window再格子化は未接続です。"
+            "fixtureを実データとして扱わず、1991-2020全UTC時刻の平均を実装してください")
 
 
 def create_fixture_renderer(manifest, fixture_path):
