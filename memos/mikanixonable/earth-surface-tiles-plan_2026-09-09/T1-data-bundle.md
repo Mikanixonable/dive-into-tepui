@@ -115,7 +115,7 @@ preflightを3回のHEAD再試行付きへ変更した後、全URL検査は`ready
 ERA5単体は [`../../.earth-surface/verification/era5-validation.json`](../../.earth-surface/verification/era5-validation.json)、
 全入力は [`../../.earth-surface/verification/source-validation-latest.json`](../../.earth-surface/verification/source-validation-latest.json) に保存した。
 
-`--max-zoom 0`の実bundleは`.earth-surface/bundle`へ生成し、`earth-surface:check`（2タイル、12気候map）、
-`earth-surface:package`、`earth-surface:dev-stage`を通過した。`npm run dev`（http://127.0.0.1:8082）から
-manifest、tile-index、`tiles/0/0/0.jpg`、`climate/01.png`をHTTP 200で取得した。これはz0 pilotの完了であり、
-全z0〜z7の生成・Pagesプレビュー・実WebGPU画面の完了ではない。
+`--max-zoom 1`の実bundleは`.earth-surface/bundle`へ生成し、`earth-surface:check`（z0 2枚、z1 8枚、計10タイル、
+12気候map）、`earth-surface:package`、`earth-surface:dev-stage`を通過した。生成時間は約7分34秒だった。
+`npm run dev`（http://127.0.0.1:8082）からmanifest、tile-index、z1 JPEG、ESTN gzip、`climate/01.png`をHTTP 200で取得した。
+これはz0〜z1 pilotの完了であり、全z0〜z7の生成・Pagesプレビュー・実WebGPU画面の完了ではない。
