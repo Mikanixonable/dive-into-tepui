@@ -13,7 +13,10 @@ __pycache__/
 .cloud-lab/
 assets-src/climate/
 .earth-surface/raw/
+.earth-surface/raw-*/
 .earth-surface/intermediate/
 .earth-surface/bundle/
 .earth-surface/distribution/
+.earth-surface/mamba/
 .earth-surface/verification/capture/
+.earth-surface/verification/fetch-tasks.txt

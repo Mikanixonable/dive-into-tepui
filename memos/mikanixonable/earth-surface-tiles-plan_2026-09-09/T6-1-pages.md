@@ -1,10 +1,11 @@
-# T6-1: GitHub Pages本番配信
+# T6-1: GitHub Pagesプレビュー配信
 
 親計画: [earth-surface-tiles-plan_2026-09-09.md](../earth-surface-tiles-plan_2026-09-09.md)
 
 ## 目的
 
-GitHub Pagesのdocsを本番配信元として、ゲーム本体と全世界z0〜z7地表bundleを同一originから遅延取得する。
+GitHub Pagesのdocsへプレビュー用bundleを配置し、ゲーム本体と全世界z0〜z7地表bundleを同一originから
+遅延取得できることを確認する。本リリースの配信先はこのタスクの責務に含めない。
 
 ## 実装範囲
 
@@ -22,11 +23,11 @@ GitHub Pagesのdocsを本番配信元として、ゲーム本体と全世界z0�
 ## 完了条件
 
 - fixture Pages bundleをローカルHTTPで取得できる。
-- production bundleの全世界z0〜z7がtile-indexと一致する。
-- release URLのsubpathからmanifest、base、代表tile、12 climate mapへ到達できる。
+- preview bundleの全世界z0〜z7がtile-indexと一致する。
+- Pages preview URLのsubpathからmanifest、base、代表tile、12 climate mapへ到達できる。
 - CORSを必要としない同一origin取得で動作する。
 
 ## 実装状況（2026-09-10）
 
 fixtureまたは指定bundleのPages staging、receipt/hash、サイズ予算、subpath URL、layout検査、CI順序を実装する。
-fixture Pagesは検査対象だが、BMNG等から生成した全世界bundleのdocs公開は入力未提供とサイズ上限のため未完了である。
+fixture Pagesは検査対象だが、BMNG等から生成した全世界bundleのpreview公開は入力未提供とサイズ上限のため未完了である。
