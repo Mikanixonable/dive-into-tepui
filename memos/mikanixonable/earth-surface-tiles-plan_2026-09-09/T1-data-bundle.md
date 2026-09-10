@@ -54,8 +54,8 @@ BMNG/ETOPOは数十GB級、ERA5は取得条件に依存し、GSHHGはfixture JSO
 fixtureのmanifestは `dataKind: synthetic_fixture` と明示され、本番データへ読み替えられない。
 
 `--global` はERA5、GDAL、netCDF4、pyshp、Pillowが揃っても、BMNG/ETOPO/GSHHG/ERA5のwindow合成が接続されるまで
-`RendererUnavailable`で停止する。実データrenderer、入力hashの固定、全43690タイル生成は未完了であり、入力が無い環境で
-fixtureを本番生成の代わりにはしない。
+`RendererUnavailable`で停止する。実データの入力窓境界と共通encoder接続は実装したが、複数GeoTIFFの球面積再格子化、
+線形RGB合成、GSHHGの空間被覆、ERA5の月平均再格子化は未完了であり、入力が無い環境でfixtureを本番生成の代わりにはしない。
 
 ## 実データ事前検査（2026-09-10）
 
@@ -68,13 +68,18 @@ fixtureを本番生成の代わりにはしない。
 - GSHHG 2.3.7: `200 application/zip 149,157,845 bytes`
 - ERA5: URL取得ではなく、1991–2020・全UTC時刻・指定変数を含むNetCDFの明示的なlocal exportが必要
 
-再検査時点ではPillowだけが利用可能で、GDAL/osgeo、netCDF4、pyshp、`gdalinfo`/`ogrinfo`はない。空き容量は約320GBで、
+再検査時点ではPillowだけが利用可能だったが、micromambaで`tools/earth-surface/environment.yml`を作成した後はGDAL/osgeo、
+netCDF4、pyshp、`gdalinfo`/`ogrinfo`も利用可能になった。空き容量は約320GBで、
 地形payloadの下限だけなら保存できる。
 全43,690タイルのESTN payloadだけで、圧縮前かつbaseを含めて23,630,031,744 bytes（約22.0GiB）が必要になるため、
 入力・中間・JPEG・気候mapを含む本番生成はこの環境では開始しなかった。URL応答の確認以外に巨大ファイルの取得は行っていない。
 
-この状態はfixture成功へ読み替えず、実データゲートをblockedとする。依存を導入し、十分な専用容量を確保し、ERA5 local exportを
-配置した後、次を実行してから `earth-surface:bake --global` を再開する。
+ETOPO geoid実ファイルにはNoDataタグが無かったため、source manifestのgeoid契約を`noData: null`へ修正した。代表のBMNG、
+ETOPO ice-surface/geoid、GSHHGの取得器実行は成功したが、入力全量とERA5 local exportは未完了である。
+ERA5取得用の`tools/earth-surface/request-era5.py`はCDS APIの認証済み環境で実行する。
+
+この状態はfixture成功へ読み替えず、実データゲートをblockedとする。ERA5 local exportを配置し、複数ソースの窓合成を接続した後、次を実行してから
+`earth-surface:bake --global` を再開する。
 
 ```sh
 python3 tools/earth-surface/preflight.py --all --output .earth-surface/verification/preflight.json
