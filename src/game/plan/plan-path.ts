@@ -15,8 +15,8 @@ import { FrameAnchorSource, FrameTransform, ReferenceFrame, toFrameDir, toFrameP
 import { Projected } from '../../math/projection';
 import { isOccluded } from '../../physics/occlusion';
 import type { CameraFrame } from '../../render/camera/camera-frame';
-import { TrajectoryLine } from '../lines/trajectory-line';
-import { LINE_RENDER_ORDER } from '../../render/line-style';
+import { TrajectoryLine } from '../../render/lines/trajectory-line';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import type { ProjectFn } from '../../math/projection';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
 import { BodyImpact, PredictedArc } from '../dynamic/predicted-arc';
@@ -39,6 +39,15 @@ const PLAN_ARC_OPACITY = 0.85;
 
 const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
 const arcColor = (i: number): number => SEGMENT_COLORS[Math.min(i, SEGMENT_COLORS.length - 1)]!;
+
+// i 番目の区間の折れ線の見た目。mpp [m/px] は破線の画面ピクセル指定を実距離へ直す尺度で、
+// ズームによらず画面上の間隔を一定に保つ。
+function lineStyle(i: number, mpp: number): LineStyle {
+  return {
+    color: arcColor(i), opacity: PLAN_ARC_OPACITY, renderOrder: LINE_RENDER_ORDER.plan,
+    dash: { dashSize: PLAN_ARC_DASH_PX * mpp, gapSize: PLAN_ARC_GAP_PX * mpp },
+  };
+}
 
 const OFFSCREEN: Projected = { x: 0, y: 0, front: false };
 const NO_SAMPLES: readonly KinematicState[] = [];
@@ -105,7 +114,7 @@ export class PlanPath {
   private displayFrom = 0;
   private displayTo = 0;
   // clipSamplesTo が実際に切り詰めた(= 新規配列を作った)結果を区間の index ごとに
-  // (元配列, to) でメモ化する。TrajectoryLine.syncGeometry の再 bake 抑制やクリック候補の
+  // (元配列, to) でメモ化する。TrajectoryLine.sync の再 bake 抑制やクリック候補の
   // 走査が同一フレーム内で何度も同じ配列参照を要求するため。
   private readonly samplesCache: ({ source: readonly KinematicState[]; to: number; result: readonly KinematicState[] } | null)[] = [];
   // 直近の update() で作り直した区間の本数。
@@ -213,11 +222,9 @@ export class PlanPath {
     return this.final;
   }
 
-  // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の線を隠す。ノードを
+  // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の線を空にする。ノードを
   // 1つも持たない区間(借用のみ)は操作対象自身の predictedLine が描くので、ここでは折れ線を
-  // 隠すだけにする。画面判定が使う視点もここで受け取り、毎フレーム上書きする。
-  // 破線のドット/隙間は各区間のサンプル列中央の代表点で尺度(m/px)を引き、ピクセル指定を
-  // 実距離に直してから渡す — ズームによらず画面上の間隔を一定に保つため。
+  // 空にするだけにする。画面判定が使う視点もここで受け取り、毎フレーム上書きする。
   sync(camera: CameraFrame): void {
     const scale = camera.scale;
     this.project = camera.project;
@@ -225,37 +232,37 @@ export class PlanPath {
     // ノードの無い計画は操作対象の現在軌道そのものなので、折れ線は出さない。それでも
     // project の更新までは通す — 止めると、クリック当たり判定が古い視点のまま残る。
     this.setVisible(this._nodeCount > 0);
-    if (this.celestialBodies === null) return;
+    const celestialBodies = this.celestialBodies;
+    if (celestialBodies === null) return;
     for (let i = 0; i < this.activeCount; i++) {
       const source = this.sources[i]!;
-      const line = this.lineAt(i);
       if (!source.owned || !source.arc) {
-        line.setVisible(false);
+        this.clearLine(i, celestialBodies, camera);
         continue;
       }
-      line.setVisible(true);
+      // 破線の尺度は区間のサンプル列中央の代表点で引く。代表点が無ければ画面ピクセル指定を
+      // そのまま実距離として渡す。
       const samples = this.samplesOf(i, source);
-      let dashSize = PLAN_ARC_DASH_PX;
-      let gapSize = PLAN_ARC_GAP_PX;
-      if (samples.length > 0) {
-        const mid = samples[Math.floor(samples.length / 2)]!;
-        const mpp = scale(this.toDisplay(mid.r, mid.t));
-        dashSize = PLAN_ARC_DASH_PX * mpp;
-        gapSize = PLAN_ARC_GAP_PX * mpp;
-      }
-      line.setDash(dashSize, gapSize);
+      const mid = samples.length > 0 ? samples[Math.floor(samples.length / 2)]! : null;
+      const mpp = mid === null ? 1 : scale(this.toDisplay(mid.r, mid.t));
       // 計画全体が表示期間より長くても、折れ線は表示窓内だけを描く。
-      line.syncGeometry(
+      this.lineAt(i).sync(
         source.arc.trajectory,
         Math.max(this.displayFrom, source.from),
         Math.min(this.displayTo, source.to),
-        this.frame, this.celestialBodies, this.frameAnchors,
+        this.frame, this.unbakeTime, celestialBodies, this.frameAnchors, lineStyle(i, mpp), camera,
       );
-      line.syncTransform(this.frame, this.unbakeTime, this.celestialBodies, camera.floatingOrigin, this.frameAnchors);
-      line.sync(camera);
     }
-    // 線プールは区間数が減っても捨てずに残すので、隠す範囲は sources でなく lines の本数まで見る。
-    for (let i = this.activeCount; i < this.lines.length; i++) this.lines[i]!.setVisible(false);
+    // 線プールは区間数が減っても捨てずに残すので、空にする範囲は sources でなく lines の本数まで見る。
+    for (let i = this.activeCount; i < this.lines.length; i++) this.clearLine(i, celestialBodies, camera);
+  }
+
+  // i 番目の折れ線を、頂点を持たない状態へ戻す。
+  private clearLine(i: number, celestialBodies: CelestialBodies, camera: CameraFrame): void {
+    this.lineAt(i).sync(
+      null, null, null,
+      this.frame, this.unbakeTime, celestialBodies, this.frameAnchors, lineStyle(i, 1), camera,
+    );
   }
 
   // 天体衝突が検出された地点と、その相手の天体(区間ごとに高々1つ)。今フレーム表示中の
@@ -481,11 +488,7 @@ export class PlanPath {
   // i 番目の折れ線を返す(なければ生成して group へ追加する)。区間の色は index で決まる。
   private lineAt(i: number): TrajectoryLine {
     while (this.lines.length <= i) {
-      const idx = this.lines.length;
-      const line = new TrajectoryLine({
-        color: arcColor(idx), opacity: PLAN_ARC_OPACITY, renderOrder: LINE_RENDER_ORDER.plan,
-        dash: { dashSize: PLAN_ARC_DASH_PX, gapSize: PLAN_ARC_GAP_PX },
-      });
+      const line = new TrajectoryLine(lineStyle(this.lines.length, 1));
       this.lines.push(line);
       this.group.add(line.line);
     }

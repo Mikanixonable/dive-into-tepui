@@ -15,8 +15,8 @@ import type { AtmosphereClouds, AtmosphereOptics, AtmosphereCandidate } from '..
 import type { ShadowCumulus } from '../../pipeline/shadow/cumulus-shadow';
 import type { MarkerSlots } from '../../../game/marker/marker-slots';
 import type { CelestialBody } from '../../../physics/celestial-body';
-import { EllipseLine } from '../../../game/lines/ellipse-line';
-import { LINE_RENDER_ORDER } from '../../line-style';
+import { EllipseLine } from '../../lines/ellipse-line';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../line-style';
 
 const SATELLITE_REFERENCE_LINE_COLOR = 0xaab3c0;
 const PLANET_REFERENCE_LINE_COLOR = 0xffffff;
@@ -112,22 +112,26 @@ export abstract class CelestialView {
       this.disposeReferenceLine();
       return;
     }
-    const opacity = this.referenceLineOpacityFrom(motion, camera.position, simTime);
+    const style = this.referenceLineStyle(motion, camera.position, simTime);
     if (this.referenceLineValue === null) {
-      const color = motion.kind === 'satellite'
-        ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR;
-      this.referenceLineValue = new EllipseLine({
-        color, opacity, renderOrder: LINE_RENDER_ORDER.reference,
-      });
+      this.referenceLineValue = new EllipseLine(style);
       scene.add(this.referenceLineValue.line);
     }
     // 資源を揃えた後、表示時刻の接触要素と距離フェードを毎フレーム反映する。
     const centerMotion = motion.primary;
     const elements = centerMotion === null
       ? null : orbitalElementsOf(motion.stateAt(simTime), centerMotion, simTime);
-    if (elements === null) this.referenceLineValue.hide();
-    else this.referenceLineValue.sync(elements, camera);
-    this.referenceLineValue.setOpacity(opacity);
+    this.referenceLineValue.sync(elements, style, camera);
+  }
+
+  // 参照線の見た目。色は天体の種別、不透明度はカメラからの距離フェードが決める。
+  private referenceLineStyle(motion: CelestialMotion, cameraPos: Vec3, simTime: number): LineStyle {
+    return {
+      color: motion.kind === 'satellite'
+        ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR,
+      opacity: this.referenceLineOpacityFrom(motion, cameraPos, simTime),
+      renderOrder: LINE_RENDER_ORDER.reference,
+    };
   }
 
   // 現在描画している参照軌道線を、当たり判定用の ECI 点列として読み出す。
