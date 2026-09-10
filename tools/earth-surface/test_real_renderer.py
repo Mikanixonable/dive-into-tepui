@@ -128,6 +128,11 @@ class RendererTests(unittest.TestCase):
             real_renderer.create_fixture_renderer(self.manifest, "/does/not/exist/fixture.json")
         self.assertIn("全球fixtureがありません", str(error.exception))
 
+    def test_committed_fixture_matches_source_manifest(self):
+        path = ROOT / "tools/earth-surface/fixture-global.json"
+        renderer = real_renderer.create_fixture_renderer(self.manifest, path)
+        self.assertEqual(renderer.adapter.tile_input((0, 0, 0)).color_srgb[0], [42, 92, 156])
+
     def test_real_renderer_reports_exact_unavailable_boundary(self):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(real_renderer.RendererUnavailable) as error:
