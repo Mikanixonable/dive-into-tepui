@@ -51,6 +51,19 @@ export function register(): void {
     assert.ok(Math.abs(wrapDeg(raanDegOf(base))) < 1e-6 || Math.abs(wrapDeg(raanDegOf(base)) - 360) < 1e-6);
   });
 
+  test('earth-reference-orbits: 太陽同期の回帰運動へ J2 の平均運動補正を含める', () => {
+    const elements = sunSyncRepeatGroundTrackElements(repeatDays, revsPerRepeat, EARTH, 0)!;
+    assert.ok(elements !== null);
+    const requestedN = (revsPerRepeat * 2 * Math.PI) / (repeatDays * 86400);
+    const keplerA = Math.cbrt(MU_EARTH / (requestedN * requestedN));
+    assert.ok(elements.a < keplerA, `J2 correction should adjust a: ${elements.a} vs ${keplerA}`);
+
+    const nKepler = Math.sqrt(MU_EARTH / elements.a ** 3);
+    const cosInc = Math.cos((elements.incDeg * Math.PI) / 180);
+    const correctedN = nKepler * (1 + 0.75 * J2_EARTH * (R_EARTH_EQ / elements.a) ** 2 * (3 * cosInc ** 2 - 1));
+    assert.ok(Math.abs(correctedN - requestedN) / requestedN < 1e-12, 'the corrected mean motion should match the requested repeat rate');
+  });
+
   test('earth-reference-orbits: molniya と tundra は周期・臨界傾斜角・近地点高度を保つ', () => {
     const perigeeAltitude = 600e3;
     const expectedIncDeg = (Math.acos(1 / Math.sqrt(5)) * 180) / Math.PI;
