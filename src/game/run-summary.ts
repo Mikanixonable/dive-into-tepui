@@ -24,8 +24,6 @@ export interface RunSummary {
   readonly enemyAliveCount: number;
 }
 
-// ランの外側が一覧へ描くための要約。自機が居ない周回でも値が欠けないよう、
-// 軌道の項は星系の原点へ寄せる。
 export function runSummary(game: Game): RunSummary {
   // 操作対象が居る周回なら、軌道の項もそこから解く。
   const controlled = game.activeControllable;

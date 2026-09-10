@@ -6,6 +6,11 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ReferenceFrames } from '../celestial/reference-frames';
 
+// 注視対象を差し替える口。対象を選ぶ側は、座標系パネルの残りを知らずに済む。
+export interface FocusSink {
+  setFocus(target: FocusTarget): void;
+}
+
 export type FocusTarget =
   | { readonly kind: 'object'; readonly id: string }
   | { readonly kind: 'point'; readonly frame: ReferenceFrame; readonly point: FramePoint };

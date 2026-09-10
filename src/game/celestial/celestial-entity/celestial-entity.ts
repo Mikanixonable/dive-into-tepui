@@ -9,7 +9,7 @@ import { fmtDist, fmtTime } from '../../../hud/utils';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../../hud/orbit/orbit-labels';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { hitsSphere, type Ray } from '../../../math/ray';
-import type { MarkerSlots } from '../../marker/marker-slots';
+import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { CelestialClass } from './celestial-entity-def';
 import type { Vec3 } from '../../../math/vec3';
 import type { CelestialView } from './celestial-view';
@@ -78,7 +78,7 @@ export class CelestialEntity implements ObjectPickable {
     return policy.body(this.id);
   }
 
-  public shownOnMap(markers: MarkerSlots): boolean { return markers.shows(this.id); }
+  public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(this.id); }
 
   // 一覧の検索が照合する、自艦からの距離と中心天体の名前。
   public listSearchText(

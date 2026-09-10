@@ -29,6 +29,7 @@ import type { FlashEffects } from '../vfx/flash-effects';
 import { buildDestroyFragments, playerDestroyFragments } from '../dynamic/dynamic-entity/debris-piece';
 import { PlayerView } from './player-view';
 import type { MarkerSlots } from '../marker/marker-slots';
+import type { MarkerVisibility } from '../marker/marker-visibility';
 import type { RadiatorSide } from './radiator';
 
 import { Plan, type PlanExecutionMode } from '../plan/plan';
@@ -600,7 +601,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     return this.motion.stateAt(displayTime)?.r ?? null;
   }
 
-  public shownOnMap(markers: MarkerSlots): boolean { return markers.shows(this.markerKey); }
+  public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(this.markerKey); }
 
   // 残 HP と、いま最も強く引かれている天体を中心とした近地点高度。
   public listDetail(celestialBodies: CelestialBodies): string {

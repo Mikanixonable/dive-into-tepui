@@ -27,6 +27,7 @@ import { AutoSave } from './launcher/save/autosave';
 import { migrateLegacySave } from './launcher/save/legacy-save';
 import { showLoading, hideLoading } from './launcher/loading-overlay';
 import { showFatalError } from './launcher/fatal-error';
+import type { GameHost } from './game/game-host';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
 async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
@@ -142,9 +143,10 @@ async function main() {
   graphics.bind(gs);
   const { shell, hud, audioEngine, bgm, pauseMenu, settingsView } = initHud(graphics, renderStyle);
   const sections = new FrameSections();
+  const host: GameHost = { scene: gs, hud, sections };
 
   const launcher = new Launcher(
-    shell, { scene: gs, hud, sections }, audioEngine, bgm, pauseMenu, settingsView, unlockManager,
+    shell, host, audioEngine, bgm, pauseMenu, settingsView, unlockManager,
     slots, snapshotService, graphics,
   );
 

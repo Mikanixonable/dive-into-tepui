@@ -22,6 +22,7 @@ import type { FloatingOrigin } from '../camera/floating-origin';
 import type { ViewFrame } from './view-frame';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { PerfCounts } from '../perf-counts';
+import type { CelestialLabelHiding } from '../marker/celestial-label-hiding';
 
 export class CombatView implements ViewFrame {
   private readonly planGuide: PlanGuide;
@@ -34,7 +35,7 @@ export class CombatView implements ViewFrame {
     private readonly targeter: Targeter,
     private readonly objectWindows: ObjectWindows,
     private readonly roster: EntityRoster,
-    private readonly hideCelestialLabels: () => void,
+    private readonly celestialLabels: CelestialLabelHiding,
     private readonly touchControls: TouchControls | null,
     private readonly controlSelection: ControlSelection,
     private readonly planPath: PlanPath,
@@ -107,7 +108,7 @@ export class CombatView implements ViewFrame {
 
   // 天体ラベルはマップ専用の表示なので、戦闘ビューの間は畳んでおく。
   public syncLabels(): void {
-    this.hideCelestialLabels();
+    this.celestialLabels.hideLabels();
   }
 
   // 戦闘ビュー専用の常設表示(タッチのモードボタン・ノード実行ガイド)。

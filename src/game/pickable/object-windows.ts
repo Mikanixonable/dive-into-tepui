@@ -11,7 +11,7 @@ import type {
 } from '../../hud/windows/property-window-content';
 import { TEMP_WINDOW_GROUP } from '../../hud/overlay-manager';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
-import { focusTargetId, type FocusTarget } from '../camera/focus-target';
+import { focusTargetId, type FocusSink } from '../camera/focus-target';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { NavTarget } from '../nav-target';
@@ -63,7 +63,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     private readonly activeView: () => ViewFrame,
     private readonly pauseMenu: PauseMenu,
     private readonly controlSelection: ControlSelection,
-    private readonly setFocus: (target: FocusTarget) => void,
+    private readonly focusSink: FocusSink,
     private readonly activeStage: Stage,
     private readonly targeter: Targeter,
   ) {
@@ -274,7 +274,7 @@ export class ObjectWindows implements PropertyWindowOpener {
       id: item.id,
       label,
       onFocus: () => {
-        this.setFocus({ kind: 'object', id: item.id });
+        this.focusSink.setFocus({ kind: 'object', id: item.id });
         this.hud.hint(`${label} にフォーカス`);
       },
       onContextMenu: (clientX, clientY) => {
@@ -293,7 +293,7 @@ export class ObjectWindows implements PropertyWindowOpener {
   // 戦闘はその場のカメラだけを動かす。
   private focus(id: string, name: string): void {
     if (this.cameraSystem.view === 'map') {
-      this.setFocus({ kind: 'object', id });
+      this.focusSink.setFocus({ kind: 'object', id });
     } else {
       this.cameraSystem.combatCamera.setFocusTarget({ kind: 'object', id });
     }

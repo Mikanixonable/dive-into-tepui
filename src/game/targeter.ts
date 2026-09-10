@@ -188,7 +188,7 @@ export class Targeter {
       this.pushMarkerItem(fuel.markerItem(), viewerPos, mapView, visibility, mapOpacity, mapOccluded);
     }
     this.markerManager.combatMarkers.sync(
-      this.markerItemScratch, project, view, screenScale, mapView ? celestialLabels : [], this.celestialBodies,
+      this.markerItemScratch, project, view, screenScale, celestialLabels, this.celestialBodies,
       cameraSystem.activeCameraPos,
     );
     // 見越し点は弾速から解くので、砲を積んでいる艦を操作している間だけ出る。
