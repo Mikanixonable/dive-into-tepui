@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import { CelestialMotion, OrbitingMotion, PlanetMotion } from '../../physics/celestial-motion';
-import { CelestialBodyDef, PhaseOffsets, shapeOf } from '../../physics/celestial-body-def';
+import { PhaseOffsets, shapeOf } from '../../physics/celestial-body-def';
 import { strongestAttractor } from '../../physics/attractor';
 import { EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
 import { EciTransform } from '../../physics/eci-transform';
@@ -95,7 +95,7 @@ function orderedEntitiesOf(
 export class CelestialSystem implements CelestialBodies {
   private scene!: THREE.Scene;
   private stars!: Stars;
-  celestialGrid!: CelestialGrid;
+  private celestialGrid!: CelestialGrid;
   private scaleGrid!: ScaleGridView;
   private sunLight!: SunLight;
   private exposure!: Exposure;
@@ -215,17 +215,11 @@ export class CelestialSystem implements CelestialBodies {
   // 天体 id の表示名。未登録の id はそのまま返す(架空天体のラベルを例外で止めない)。
   nameOf(id: string): string { return this.entitiesById.get(id)?.name ?? id; }
 
-  // 主星の個体。恒星を持たない星系では null。
-  get star(): CelestialEntity | null { return this.starEntity; }
-
   // 主星の天体 id。恒星を持たない星系では null。
   get starId(): string | null { return this.starEntity?.id ?? null; }
 
   // ECI の原点に静止している天体の id。
   get originId(): string { return this.origin.id; }
-
-  // 全登録天体の定義(宣言順)。
-  get defs(): readonly CelestialBodyDef[] { return this.celestialMotions.map((motion) => motion.def); }
 
   // ---------------------------------------------------------------- 系の所属
 
@@ -392,7 +386,7 @@ export class CelestialSystem implements CelestialBodies {
 
   // ECI の極軸を自転軸とする天体(この座標系を定義している天体)の自転初期位相(セーブ用)。
   // その天体が星系に無ければ undefined。
-  earthSpinPhase0(): number | undefined {
+  private earthSpinPhase0(): number | undefined {
     const pole = this.entities.find(({ motion }) => (
       'pole' in motion.def && motion.def.pole?.kind === 'eciPole'
     ));

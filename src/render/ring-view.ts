@@ -84,9 +84,9 @@ export class RingView {
     this.visuals.push(visual);
   }
 
-  // 環全体の表示・非表示を切り替える。
-  setVisible(visible: boolean): void {
-    this.group.visible = visible;
+  // 環全体を隠す。見せ直すのは sync が受け取る表示設定の役目。
+  hide(): void {
+    this.group.visible = false;
   }
 
   // pos/axis は本体メッシュと揃える。bodyPos/metersPerPixelAt は帯の被覆率減光に使う。

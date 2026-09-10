@@ -16,7 +16,6 @@ import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { MarkerSlots } from '../marker/marker-slots';
 import type { StageSaveData } from '../save/save-data';
-import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ControlSelection } from '../control-selection';
@@ -213,11 +212,10 @@ export abstract class Stage {
     this.statusPanel.appendLeftWidget(el);
   }
 
-  // ステータスパネルを同期する。fo・displayTime・visibilityPolicy は配置プレビューなど
-  // ステージ固有の描画物を持つサブクラスが使う。
+  // ステータスパネルを同期する。fo・displayTime は配置プレビューなどステージ固有の描画物を
+  // 持つサブクラスが使う。
   public sync(
     _fo: FloatingOrigin, cameraSystem: CameraSystem, _displayTime: number,
-    _visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     this.syncStatusPanel(cameraSystem.view === 'map');
   }

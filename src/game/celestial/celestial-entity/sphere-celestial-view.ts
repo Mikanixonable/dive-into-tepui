@@ -71,7 +71,7 @@ export class SphereCelestialView extends CelestialView {
     // category 非表示は本体と独立した環にも同時に反映する。
     this.group.visible = visible;
     if (!visible) {
-      this.ring?.setVisible(false);
+      this.ring?.hide();
       return;
     }
     const pos = motion.stateAt(displayTime).r;
@@ -106,7 +106,7 @@ export class SphereCelestialView extends CelestialView {
     this.surface.hide();
     this.graticule.setVisible(false);
     this.surfaceMarkings?.setVisible(false);
-    this.ring?.setVisible(false);
+    this.ring?.hide();
   }
 
   // 表面とグリッドと表面ラインと環を解放し、group を親から外す。

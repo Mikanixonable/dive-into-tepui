@@ -39,7 +39,7 @@ const GUN_BARREL_HEAT_PER_ROUND = 1.0e6;
 
 const BARREL_MASS = 300; // [kg]
 
-export const INITIAL_MAGS = 3; // ゲーム開始時に連結されているマガジン数
+const INITIAL_MAGS = 3; // ゲーム開始時に連結されているマガジン数
 const SPINUP_TIME = 0.15; // 発射開始から実際に撃ち始めるまでの起動遅延 [s]
 const BULLET_SPREAD = 0.002; // 散布界 [rad]
 

@@ -74,16 +74,6 @@ export class PowerSystem {
     return this.charge;
   }
 
-  setChargeJ(val: number): void {
-    this.charge = Math.max(0, Math.min(POWER_CAPACITY, val));
-  }
-
-  addChargeJ(delta: number): number {
-    const prev = this.charge;
-    this.setChargeJ(this.charge + delta);
-    return this.charge - prev;
-  }
-  
   deployOf(side: SolarSide): number { return this.panels[side].deploy; }
 
   serialize(): PowerSaveData {
