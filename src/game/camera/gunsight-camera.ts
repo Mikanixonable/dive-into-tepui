@@ -4,20 +4,26 @@ import { addScaled, norm, v3 } from '../../math/vec3';
 import { LOCAL_FORWARD, LOCAL_UP, qRotate } from '../../math/quat';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import { Viewpoint } from '../../math/projection';
+import type { Viewport } from '../../render/viewport';
 
 const ZOOM_FOV = 6; // [Z]キー長押し時の照準ズーム画角 [deg]
 
 export class GunsightCamera {
-  viewpoint: Viewpoint = {
-    position: v3(),
-    up: v3(0, 1, 0),
-    lookTarget: v3(),
-    fovDeg: ZOOM_FOV,
-    aspect: window.innerWidth / window.innerHeight,
-  };
+  public viewpoint: Viewpoint;
+
+  // 機体を狙う前の視点を、原点を向いた形で組む。アスペクト比だけが viewport から決まる。
+  public constructor(viewport: Viewport) {
+    this.viewpoint = {
+      position: v3(),
+      up: v3(0, 1, 0),
+      lookTarget: v3(),
+      fovDeg: ZOOM_FOV,
+      aspect: viewport.width / viewport.height,
+    };
+  }
 
   // 機体姿勢のみから視点を求め、viewpoint へ書き戻す。
-  update(controlled: Controllable): void {
+  public update(controlled: Controllable, viewport: Viewport): void {
     const boreFwd = qRotate(controlled.motion.att.q, LOCAL_FORWARD);
     const boreUp = qRotate(controlled.motion.att.q, LOCAL_UP);
     const center = controlled.motion.state.r;
@@ -26,8 +32,7 @@ export class GunsightCamera {
       up: norm(boreUp),
       lookTarget: addScaled(center, norm(boreFwd), 1000),
       fovDeg: ZOOM_FOV,
-      aspect: window.innerWidth / window.innerHeight,
+      aspect: viewport.width / viewport.height,
     };
   }
 }
-

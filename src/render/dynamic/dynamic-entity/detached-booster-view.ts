@@ -43,7 +43,7 @@ export class DetachedBoosterView extends DynamicView {
     }
     if (displayed === null || motion.thrust === null
       || Math.abs(context.displayTime - motion.state.t) > 1e-6
-      || context.cameraSystem.zoomActive) {
+      || context.camera.zoomed) {
       this.plume.hide();
       return;
     }
@@ -56,7 +56,7 @@ export class DetachedBoosterView extends DynamicView {
       direction: new THREE.Vector3(tailDirection.x, tailDirection.y, tailDirection.z),
       intensity: Math.max(0.25, motion.burnRatio),
       visible: true,
-    }, context.cameraSystem.activeCamera.quaternion, context.style);
+    }, context.camera.camera.quaternion, context.style);
   }
 
   // 噴射炎と段モデルを破棄してから、共通 View 資源を片付ける。

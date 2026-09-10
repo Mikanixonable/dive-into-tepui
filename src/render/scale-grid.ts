@@ -4,6 +4,7 @@ import * as THREE from 'three/webgpu';
 import { ECLIPTIC_BASIS, EQUATOR_BASIS, planeBasisFromPole, type PlaneBasis } from './plane-basis';
 import { CameraScale } from './camera-scale';
 import { markOverlay } from './pipeline/lit-layer';
+import type { Viewport } from './viewport';
 
 // 4面ぶんの表示可否。
 export interface ScaleGridVisibility {
@@ -130,11 +131,11 @@ class ScaleGridPlane {
   // 見やすい段ほど濃くする。ラベルは最も濃い段の縮尺だけを出す。
   public sync(
     visible: boolean, basis: PlaneBasis, origin: THREE.Vector3,
-    camera: THREE.Camera, cameraDistance: number,
+    camera: THREE.Camera, cameraDistance: number, viewport: Viewport,
   ): void {
     this.setBasis(basis);
     // 各段の濃さを画面上の目盛り間隔から決め、いちばん濃い段を覚えておく。
-    const metersPerPixel = new CameraScale(camera).atDepth(cameraDistance);
+    const metersPerPixel = new CameraScale(camera, viewport.height).atDepth(cameraDistance);
     let bestLevel: GridLevel | null = null;
     let bestOpacity = 0;
     for (const level of this.levels) {
@@ -162,8 +163,8 @@ class ScaleGridPlane {
     ).project(camera);
     if (projected.z < -1 || projected.z > 1) return;
     const margin = 12;
-    const x = Math.max(margin, Math.min(window.innerWidth - margin, (projected.x * 0.5 + 0.5) * window.innerWidth));
-    const y = Math.max(margin, Math.min(window.innerHeight - margin, (-projected.y * 0.5 + 0.5) * window.innerHeight));
+    const x = Math.max(margin, Math.min(viewport.width - margin, (projected.x * 0.5 + 0.5) * viewport.width));
+    const y = Math.max(margin, Math.min(viewport.height - margin, (-projected.y * 0.5 + 0.5) * viewport.height));
     this.label.style.left = `${x}px`;
     this.label.style.top = `${y}px`;
     this.label.textContent = `${bestLevel.spacing >= REFERENCE_SPACING ? '⊞' : '＋'} ${spacingLabel(bestLevel.spacing)}`;
@@ -200,14 +201,14 @@ export class ScaleGrid {
   public sync(
     visibility: ScaleGridVisibility,
     moonOrbitNormal: THREE.Vector3 | null, moonSpinAxis: THREE.Vector3 | null,
-    origin: THREE.Vector3, camera: THREE.Camera, cameraDistance: number,
+    origin: THREE.Vector3, camera: THREE.Camera, cameraDistance: number, viewport: Viewport,
   ): void {
     const moonOrbitBasis = moonOrbitNormal === null ? ECLIPTIC_BASIS : planeBasisFromPole(moonOrbitNormal);
     const moonEquatorBasis = moonSpinAxis === null ? ECLIPTIC_BASIS : planeBasisFromPole(moonSpinAxis);
-    this.ecliptic.sync(visibility.ecliptic, ECLIPTIC_BASIS, origin, camera, cameraDistance);
-    this.equator.sync(visibility.equator, EQUATOR_BASIS, origin, camera, cameraDistance);
-    this.moonOrbit.sync(visibility.moonOrbit, moonOrbitBasis, origin, camera, cameraDistance);
-    this.moonEquator.sync(visibility.moonEquator, moonEquatorBasis, origin, camera, cameraDistance);
+    this.ecliptic.sync(visibility.ecliptic, ECLIPTIC_BASIS, origin, camera, cameraDistance, viewport);
+    this.equator.sync(visibility.equator, EQUATOR_BASIS, origin, camera, cameraDistance, viewport);
+    this.moonOrbit.sync(visibility.moonOrbit, moonOrbitBasis, origin, camera, cameraDistance, viewport);
+    this.moonEquator.sync(visibility.moonEquator, moonEquatorBasis, origin, camera, cameraDistance, viewport);
   }
 
   // 4面ぶんの ScaleGridPlane を解放する。

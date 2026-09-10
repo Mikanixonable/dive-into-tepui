@@ -11,11 +11,10 @@ import {
   molniyaGuideLoop, sunSyncRepeatGroundTrackLoop, tundraGuideLoop,
 } from '../../../physics/orbit-guide';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import { FloatingOrigin } from '../../camera/floating-origin';
+import type { CameraFrame } from '../../../render/camera/camera-frame';
 import { CurveColorSampler } from '../../../render/curve';
 import { LINE_RENDER_ORDER } from '../../../render/line-style';
 import type { RenderStyle } from '../../../render/render-style';
-import type { View } from '../../view/view';
 import { SCHEMATIC_LINE } from '../../../render/schematic-style';
 import { GuideCurve } from './guide-curve';
 import {
@@ -221,10 +220,12 @@ export class OrbitGuideLines {
     this.onLineCountChange = cb;
   }
 
+  // マップビューのときだけ、設定に合うガイド線と進行方向マーカーをこの1フレームの表示状態へ
+  // 同期する。曲線の組み直しは、設定・カタログ・表示時刻のいずれかが動いたときに走る。
   public sync(
-    style: RenderStyle, displayTime: number, view: View, fo: FloatingOrigin, camera: THREE.Camera,
+    style: RenderStyle, displayTime: number, camera: CameraFrame,
   ): void {
-    if (view !== 'map' || !this.settings) {
+    if (camera.mode !== 'map' || !this.settings) {
       for (const entry of this.lines) entry.curve.hide();
       // マーカーは InstancedPool が前のフレームの行列を保つので、空のフレームを1つ流して消す。
       this.markers.beginFrame();
@@ -257,7 +258,7 @@ export class OrbitGuideLines {
     }
 
     this.markers.beginFrame();
-    this.markers.cacheCamera(camera);
+    this.markers.cacheCamera(camera.camera);
     for (const entry of this.lines) {
       const visual = this.styleFor(entry, settings, style);
       if (!visual) {
@@ -265,10 +266,11 @@ export class OrbitGuideLines {
         continue;
       }
       entry.curve.setStyle(visual.color, visual.opacity);
-      entry.curve.sync(fo, camera, visual.colorAt);
+      entry.curve.sync(camera, visual.colorAt);
       if (entry.lastLoop) {
         this.markers.addLoop(
-          entry.curve, entry.lastLoop.revolutions, visual.direction, visual.animate, visual.markerColor, fo,
+          entry.curve, entry.lastLoop.revolutions, visual.direction, visual.animate, visual.markerColor,
+          camera.floatingOrigin,
         );
       }
     }

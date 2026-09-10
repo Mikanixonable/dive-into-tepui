@@ -83,8 +83,8 @@ export class PlayerView extends DynamicView {
     const active = context.activeId === source.id;
     const effectState = displayed ?? motion.state;
     const effectVisible = this.object.visible;
-    const cameraQuat = context.cameraSystem.activeCamera.quaternion;
-    const zoomActive = context.cameraSystem.zoomActive;
+    const cameraQuat = context.camera.camera.quaternion;
+    const zoomActive = context.camera.zoomed;
     const rcsThrust = len(source.throttle.thrustAccelVec) > 0
       ? source.throttle.thrustAccelVec
       : null;
@@ -142,9 +142,9 @@ export class PlayerView extends DynamicView {
     this.markers.sync(
       motion.state,
       motion.att,
-      context.cameraSystem.view,
+      context.camera.mode,
       active,
-      context.cameraSystem.activeCameraProjection,
+      context.camera.project,
       source.roundsInMag,
       source.magsLeft,
       source.averageMuzzleVelocity,

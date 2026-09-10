@@ -6,6 +6,7 @@ import { STAR_SHELL_RADIUS } from './stars';
 import { markOverlay } from './pipeline/lit-layer';
 import { SCHEMATIC_LINE } from './schematic-style';
 import { RenderStyleGate, type RenderStyle } from './render-style';
+import type { Viewport } from './viewport';
 
 export interface CelestialGridVisibility {
   readonly stars: boolean;
@@ -291,7 +292,7 @@ class GridPlane {
   // 3 種の線とラベルを、この面の可視トグルとカメラへ合わせる。scale は星殻半径への倍率。
   sync(
     style: RenderStyle, planeVisible: boolean, poleVisible: boolean, gridVisible: boolean,
-    scale: number, camera: THREE.Camera,
+    scale: number, camera: THREE.Camera, viewport: Viewport,
   ): void {
     this.applyStyle(style);
     this.planeLine.visible = planeVisible;
@@ -304,7 +305,7 @@ class GridPlane {
     this.labels.forEach((el) => { el.style.display = 'none'; });
     // 殻座標の点 p へラベルを置く。視錐台の外なら出さない。
     const show = (el: HTMLDivElement, p: THREE.Vector3, below = false) => {
-      const w = window.innerWidth, h = window.innerHeight;
+      const w = viewport.width, h = viewport.height;
       const v = new THREE.Vector3(p.x * scale, p.y * scale, p.z * scale).project(camera);
       if (v.z < -1 || v.z > 1) return;
       const margin = 18;
@@ -319,7 +320,7 @@ class GridPlane {
       show(ps!, new THREE.Vector3(-this.basis.pole.x * STAR_SHELL_RADIUS, -this.basis.pole.y * STAR_SHELL_RADIUS, -this.basis.pole.z * STAR_SHELL_RADIUS));
     }
     if (gridVisible) {
-      const w = window.innerWidth, h = window.innerHeight;
+      const w = viewport.width, h = viewport.height;
       const project = (p: THREE.Vector3) => new THREE.Vector3(p.x * scale, p.y * scale, p.z * scale).project(camera);
       for (const item of this.gridLabels) {
         const latRad = item.lat * Math.PI / 180;
@@ -367,13 +368,16 @@ export class CelestialGrid {
 
   // 星殻と同じく描画原点(= カメラ)に固定した半径殻として、2 面ぶんの可視状態を反映する。
   // scale は星殻半径 STAR_SHELL_RADIUS に対する拡大率(stars.ts の CELESTIAL_SHELL_SCALE)。
-  sync(style: RenderStyle, visibility: CelestialGridVisibility, cam: THREE.Camera, scale: number): void {
+  sync(
+    style: RenderStyle, visibility: CelestialGridVisibility, cam: THREE.Camera, scale: number,
+    viewport: Viewport,
+  ): void {
     this.equator.sync(
       style, visibility.equator && visibility.equatorPlane, visibility.equator && visibility.equatorPole,
-      visibility.equator && visibility.equatorGrid, scale, cam);
+      visibility.equator && visibility.equatorGrid, scale, cam, viewport);
     this.ecliptic.sync(
       style, visibility.ecliptic && visibility.eclipticPlane, visibility.ecliptic && visibility.eclipticPole,
-      visibility.ecliptic && visibility.eclipticGrid, scale, cam);
+      visibility.ecliptic && visibility.eclipticGrid, scale, cam, viewport);
   }
 
   // 2面ぶんの GridPlane を解放する。

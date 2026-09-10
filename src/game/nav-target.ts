@@ -17,7 +17,7 @@ import type { Notifier } from '../hud/notifier';
 import { TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import { MarkerSlots } from './marker/marker-slots';
 import { RelativeNodeMarker } from './marker/relative-node-marker';
-import { CameraSystem } from './camera/camera-system';
+import type { CameraFrame } from '../render/camera/camera-frame';
 import { ObjectPickable } from './pickable/object-pickable';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { CelestialBodies } from './celestial/celestial-bodies';
@@ -285,13 +285,13 @@ export class NavTarget {
   // AN/DN・再接近点のマーカーを置く。マップビューでは天体に遮蔽された点を隠す。
   // occluders は遮蔽判定に使う天体で、occludersPivot はその位置を引く時刻。
   sync(
-    cameraSystem: CameraSystem, occluders: readonly CelestialBody[],
+    camera: CameraFrame, occluders: readonly CelestialBody[],
     occludersPivot: number, timeLabel: TimeLabelSetting,
   ): void {
     for (const marker of this.nodeMarkers) {
       marker.sync(
-        this.markers, cameraSystem.activeCameraProjection, cameraSystem.activeCameraPos,
-        occluders, occludersPivot, cameraSystem.view === 'map', timeLabel,
+        this.markers, camera.project, camera.position,
+        occluders, occludersPivot, camera.mode === 'map', timeLabel,
       );
     }
   }

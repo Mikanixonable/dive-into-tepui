@@ -6,13 +6,13 @@ import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { DisplayWindowManager } from '../display-window-manager';
 import type { ControlSelection } from '../control-selection';
 import { setPanelCollapsedView } from '../hud/panel-shell';
-import type { View } from './view';
+import type { ViewMode } from '../../render/view-mode';
 import type { ViewFrame } from './view-frame';
 
 export class ViewManager {
-  private view: View;
+  private view: ViewMode;
 
-  public get current(): View { return this.view; }
+  public get current(): ViewMode { return this.view; }
 
   public get isMapView(): boolean { return this.view === 'map'; }
 
@@ -24,12 +24,12 @@ export class ViewManager {
     private readonly touchControls: TouchControls | null,
     private readonly displayWindow: DisplayWindowManager,
     private readonly controlSelection: ControlSelection,
-    private readonly views: Record<View, ViewFrame>,
-    requestedView?: View,
+    private readonly views: Record<ViewMode, ViewFrame>,
+    requestedView?: ViewMode,
   ) {
     // セーブ由来の値は検証されていないため、ビュー id として読めるものだけを受ける。
     // 入れないビューが要求されたら、遷移と同じ規則でマップへ落とす。
-    const requested: View = requestedView === 'map' ? 'map' : 'combat';
+    const requested: ViewMode = requestedView === 'map' ? 'map' : 'combat';
     this.view = this.views[requested].canEnter() ? requested : 'map';
     this.views[this.view].onEnter();
     this.applyChrome();
@@ -38,7 +38,7 @@ export class ViewManager {
   // ビュー遷移の唯一の入口。next にいる状態で終われたかを返し、入れないビューなら何もしない。
   // 既に next にいる場合でも applyChrome() は必ず走らせ、「この呼び出しの後、HUD・タッチ・
   // 未来表示の各フラグは現在のビューに揃っている」という保証を遷移の有無に依らず成り立たせる。
-  public setView(next: View): boolean {
+  public setView(next: ViewMode): boolean {
     if (next === this.current) { this.applyChrome(); return true; }
     if (!this.views[next].canEnter()) return false;
 
@@ -56,8 +56,8 @@ export class ViewManager {
   }
 
   // ビュー選択 UI に並べる遷移先。現在のビュー自身と、いま入れないビューは含まない。
-  public selectableViews(): readonly View[] {
-    return (Object.keys(this.views) as View[])
+  public selectableViews(): readonly ViewMode[] {
+    return (Object.keys(this.views) as ViewMode[])
       .filter((v) => v !== this.view && this.views[v].canEnter());
   }
 
