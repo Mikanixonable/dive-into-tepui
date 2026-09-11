@@ -38,10 +38,12 @@ export const browserSettingStorage: SettingStorage = {
 export class MemorySettingStorage implements SettingStorage {
   private readonly entries = new Map<string, string>();
 
+  // 仕込まれていない鍵は未保存として答える。
   public read(key: string): string | null {
     return this.entries.get(key) ?? null;
   }
 
+  // この実行のあいだだけ覚える。
   public write(key: string, text: string): void {
     this.entries.set(key, text);
   }
