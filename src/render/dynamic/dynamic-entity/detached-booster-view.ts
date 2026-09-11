@@ -3,7 +3,7 @@ import { qRotate } from '../../../math/quat';
 import { add, v3 } from '../../../math/vec3';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import { BoosterPlume } from '../booster-plume';
-import { buildBoosterStage } from '../ships';
+import { buildBoosterStage } from '../booster-model';
 import { BOOSTER_STAGE_DIMENSIONS } from '../../../physics/booster-stage-shape';
 import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
 
