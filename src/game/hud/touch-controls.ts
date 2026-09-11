@@ -125,12 +125,11 @@ export class TouchControls {
   // 並進6方向ボタン: ラッチ中かどうかを syncModeButtons が .on で反映する。
   private readonly thrustButtons = new Map<KeyBinding, HTMLElement>();
   private readonly releaseCallbacks: (() => void)[] = [];
-  // 一度でも .shown になったら真のまま保つ — 以後のマウス操作は .faded で半透明化するだけで、
-  // 再び隠しはしない(触ったことがある端末である事実は変わらないため)。
+  // 一度タッチされたら真のまま保つ。以後のマウス操作では半透明にする。
   private shown = false;
 
   // 直近の入力種別に応じて表示を切り替える。タッチなら表示して起こし、マウス/キーボードなら
-  // (既に表示済みであれば)半透明化する。Input.onPointerKindChange から呼ばれる想定。
+  // (既に表示済みであれば)半透明化する。
   public setPointerKind(kind: PointerKind): void {
     if (kind === 'touch') {
       this.shown = true;
@@ -186,6 +185,7 @@ export class TouchControls {
 
   private readonly handleReleaseTouchInputs = (): void => this.releaseAllInputs();
 
+  // 押下中の仮想キーをすべて離す。
   private releaseAllInputs(): void {
     for (const release of this.releaseCallbacks) release();
   }
@@ -281,7 +281,7 @@ export class TouchControls {
     this.makeButton(modeCol, { key: K.fineAttitudeToggle, glyph: K.fineAttitudeToggle.label, label: '微動' }, '', this.toggleButtons);
   }
 
-  // ズームは長押しでなく ON/OFF トグル(タップのたびに切り替え、指を離しても保持)
+  // ズームの ON/OFF トグルを組む。タップのたびに切り替わり、指を離しても保持する。
   private buildZoomToggle(root: HTMLElement): void {
     const zoomBtn = document.createElement('div');
     zoomBtn.id = 'touch-zoom';
@@ -295,6 +295,7 @@ export class TouchControls {
       zoomBtn.classList.toggle('pressed', zoomOn);
       this.input.setVirtualKey(K.gunsightZoom, zoomOn);
     });
+    // ズームを OFF へ戻す。
     const releaseZoom = (): void => {
       zoomOn = false;
       zoomBtn.classList.remove('pressed');

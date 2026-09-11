@@ -106,14 +106,11 @@ const CALLISTO: SatelliteDef = {
   orbit: jplSatelliteOrbit({ a: 1.8827e9, e: 0.0048, incDeg: 0.19, periodDays: 16.690440, nodePeriodYears: 577.264, apsisPeriodYears: 277.921, basisToEci: JUPITER_LAPLACE_BASIS }),
 };
 
-// 木星の不規則衛星(ヒマリア群・アナンケ群・カルメ群・パシファエ群)。ガリレオ衛星と違い
-// 太陽摂動が支配的な遠方軌道なので、ラプラス面ではなく黄道基準の平均要素を使う(JPL
-// Solar System Dynamics はこの6衛星をこの基準で公開している)。歳差周期は未測定のため
-// 0(歳差なし)。GM・平均半径は Planetary Satellite Physical Parameters が一次だが、
-// エララ・アナンケ・カルメ・パシファエ・シノーペの半径はその表に無いため、Wikipedia
-// "List of natural satellites"(一次は Sheppard の測光サイズ推定)の値を使う。
-// この5体は GM も未測定なので、同じ捕獲小天体でただ一つ GM を持つヒマリアと半径から
-// 求めた密度 883 kg/m^3 を、それぞれの半径に掛けて質量を見積もる。
+// 木星の不規則衛星(ヒマリア群・アナンケ群・カルメ群・パシファエ群)。太陽摂動が支配的な遠方軌道
+// なので、JPL Solar System Dynamics が公開する黄道基準の平均要素を使う。歳差周期は未測定で 0。
+// GM・平均半径は Planetary Satellite Physical Parameters。表に無いエララ〜シノーペ5体の半径は
+// Wikipedia "List of natural satellites"(一次は Sheppard の測光サイズ推定)で、GM も未測定なので
+// ヒマリアの GM と半径から求めた密度 883 kg/m^3 を各半径の球の体積に掛けて質量を見積もる。
 const HIMALIA: SatelliteDef = {
   id: 'himalia',
   mu: 0.15155e9,

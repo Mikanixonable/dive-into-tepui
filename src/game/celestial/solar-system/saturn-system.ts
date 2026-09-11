@@ -59,7 +59,7 @@ const PAN: SatelliteDef = {
 const DAPHNIS: SatelliteDef = {
   id: 'daphnis',
   // GM は未測定。同じ環に埋もれた羊飼い衛星で GM を持つパンと半径から求めた密度
-  // 365 kg/m^3 を半径に掛けた(環の擾乱から推定される 7.7e13 kg とも整合する)。
+  // 365 kg/m^3 を半径の球の体積に掛けた(環の擾乱から推定される 7.7e13 kg とも整合する)。
   mu: GRAVITATIONAL_CONSTANT * 9.07e13,
   radius: 3.9e3,
   orbit: jplSatelliteOrbit({ a: 1.365e8, e: 0.000, incDeg: 0.0, periodDays: 0.594080, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
@@ -93,7 +93,7 @@ const JANUS: SatelliteDef = {
   orbit: jplSatelliteOrbit({ a: 1.515e8, e: 0.007, incDeg: 0.2, periodDays: 0.697353, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
 };
 
-// 土星の主要な氷衛星6個(ミマス〜レア)。基準面・出典はここまでの土星衛星と同じ。
+// 土星の主要衛星6個(ミマス〜タイタン)。GM・平均半径は JPL Planetary Satellite Physical Parameters。
 const MIMAS: SatelliteDef = {
   id: 'mimas',
   mu: 2.50349e9,
@@ -136,8 +136,8 @@ const TITAN: SatelliteDef = {
   orbit: jplSatelliteOrbit({ a: 1.22187e9, e: 0.0288, incDeg: 0.35, periodDays: 15.945448, nodePeriodYears: 687.370, apsisPeriodYears: 346.680, basisToEci: SATURN_LAPLACE_BASIS }),
 };
 
-// タイタンより遠い土星の不規則衛星寄りの3個。イアペトゥスは軌道傾斜が大きく(基準面から
-// 7.6°)、フェーベは傾斜角 90° 超で逆行。出典・歳差周期の扱いはここまでの土星衛星と同じ。
+// タイタンより遠い3個(ヒペリオン・イアペトゥス・フェーベ)。GM・平均半径は JPL Planetary
+// Satellite Physical Parameters。
 const HYPERION: SatelliteDef = {
   id: 'hyperion',
   mu: 0.37049e9,
@@ -145,15 +145,14 @@ const HYPERION: SatelliteDef = {
   orbit: jplSatelliteOrbit({ a: 1.4815e9, e: 0.105, incDeg: 0.6, periodDays: 21.276658, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: SATURN_LAPLACE_BASIS }),
 };
 
-// イアペトゥス・フェーベは土星から遠く、局所ラプラス面が内側衛星の面から大きく外れる
-// (ラプラス面は内側では親の扁平が、外側では太陽潮汐が支配する)。JPL が公開する
-// 傾斜角はそれぞれの局所ラプラス面基準で、その面の極は転記できていないため、黄道面基準の
-// 傾斜角(イアペトゥス 17.28°: Wikipedia の軌道要素表)で登録する。
+// イアペトゥス・フェーベは土星から遠く、太陽潮汐が支配する局所ラプラス面が内側衛星の面から
+// 大きく外れる。JPL の傾斜角はその局所ラプラス面基準で、面の極は転記できていないため、黄道面
+// 基準の傾斜角(イアペトゥス 17.28°: Wikipedia の軌道要素表)で登録する。
 const IAPETUS: SatelliteDef = {
   id: 'iapetus',
   mu: 120.51511e9,
   radius: 7.343e5,
-  // 歳差周期は局所ラプラス面まわりの実測値で、黄道極まわりに適用すると別の運動になるため置かない。
+  // 歳差周期は局所ラプラス面まわりの実測値なので、黄道極まわりへ適用すると別の運動になる。
   orbit: jplSatelliteOrbit({ a: 3.5617e9, e: 0.028, incDeg: 17.28, periodDays: 79.331002, nodePeriodYears: 0, apsisPeriodYears: 0 }),
 };
 
@@ -165,7 +164,7 @@ const PHOEBE: SatelliteDef = {
   orbit: jplSatelliteOrbit({ a: 1.29294e10, e: 0.164, incDeg: 175.2, periodDays: 550.303910, nodePeriodYears: 0, apsisPeriodYears: 0 }),
 };
 
-// 平均輝度 0.6160(A_B は公表ボンド)。render-lab の土星ケースも同じ測光を読む。
+// 平均輝度 0.6160(A_B は公表ボンド)。
 export const SATURN_TEXTURE: CelestialTexture = {
   url: saturnTextureUrl, albedoScale: 0.5552, bondAlbedo: 0.342, averageHue: [1.2028, 0.9763, 0.6378],
 };
@@ -196,7 +195,6 @@ export function saturnSystem(
 ): Record<SaturnSystemBodyId, CelestialEntity> {
   const saturn = planetSystem(planetDefForSimZero(SATURN, phases, simZeroEt), sun);
   return {
-    // 惑星は戦闘ビューでは輝点スプライトとして描く。
     saturn: new CelestialEntity(
       saturn.body, SATURN_SYSTEM_NAMES.saturn, 'planet', new PointCelestialView(CelestialSurface.textured(SATURN_TEXTURE)),
     ),
