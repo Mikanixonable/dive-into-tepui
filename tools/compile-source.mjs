@@ -1,10 +1,12 @@
 // src/ の TypeScript を一時ディレクトリへ CommonJS として起こし、Node から require できる
 // ようにする。焼き込みスクリプトが実行時と同じ実装・同じレジストリを使うためのもので、
-// 生成物は呼び出し側が dispose() で消す。
-import { mkdtempSync, rmSync } from 'node:fs';
+// 生成物は呼び出し側が dispose() で消す。import を持たない定数表は importTsDataModule で
+// 1ファイルだけ起こして読める。
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import Module, { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import ts from 'typescript';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -72,4 +74,20 @@ export function loadSourceModules(names) {
     modules[key] = require(join(outDir, 'src', `${name}.js`));
   }
   return { ...modules, dispose: () => rmSync(outDir, { recursive: true, force: true }) };
+}
+
+// import を持たない src/ の TypeScript モジュール(relSrcPath はリポジトリからの相対パス)を
+// JS へ起こして動的 import し、その名前空間を返す。
+export async function importTsDataModule(relSrcPath) {
+  const fileName = relSrcPath.split('/').pop();
+  const { outputText } = ts.transpileModule(readFileSync(join(repoRoot, relSrcPath), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+    fileName,
+  });
+  const tmpDir = mkdtempSync(join(tmpdir(), 'tepui-ts-data-'));
+  const tmpPath = join(tmpDir, fileName.replace(/\.ts$/, '.mjs'));
+  writeFileSync(tmpPath, outputText, 'utf8');
+  const mod = await import(pathToFileURL(tmpPath).href);
+  rmSync(tmpDir, { recursive: true, force: true });
+  return mod;
 }

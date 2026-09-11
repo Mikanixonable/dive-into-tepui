@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import type { Vec3 } from '../../../math/vec3';
-import { buildBaseModel } from '../base-station-model';
+import { buildBaseModel } from '../ships';
 import { RcsEffects } from '../player/rcs-effects';
 import { ThrustEffects } from '../player/thrust-effects';
 import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';

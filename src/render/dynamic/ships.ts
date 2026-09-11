@@ -1,7 +1,6 @@
-// プリミティブ組み合わせによるローポリ機体・弾・薬莢・デブリのメッシュ生成。
-// 機体の機首は +Z 方向。
-// ジオメトリ/マテリアルの構築自体は tools/export-models.mjs に移し、
-// src/assets/models/*.json として事前に焼き出したものを ObjectLoader で読み込む。
+// ローポリ機体・基地・弾・薬莢・デブリのメッシュ。機体の機首は +Z 方向。
+// tools/export-models.mjs が src/assets/models/*.json へ焼いたものを ObjectLoader で読み込んで
+// 複製する。プリミティブ数個で済む単純な形状と、焼いた形を変形した破片はここで組み立てる。
 import * as THREE from 'three/webgpu';
 import { ENEMY_PLASMA_COLOR } from '../vfx-style';
 import { mulberry32 } from '../../math/random';
@@ -32,6 +31,7 @@ import ammoPickupData from '../../assets/models/ammo.json';
 import bulletData from '../../assets/models/bullet.json';
 import plasmaData from '../../assets/models/plasma.json';
 import barrelData from '../../assets/models/barrel.json';
+import baseData from '../../assets/models/base.json';
 import casingData from '../../assets/models/casing.json';
 import debrisChunkData from '../../assets/models/debrisChunk.json';
 import debrisPanelData from '../../assets/models/debrisPanel.json';
@@ -101,6 +101,7 @@ const parseCasing = memoParse<THREE.Mesh>(casingData);
 const parseDebrisChunk = memoParse<THREE.Mesh>(debrisChunkData);
 const parseDebrisPanel = memoParse<THREE.Mesh>(debrisPanelData);
 const parseDebrisRod = memoParse<THREE.Mesh>(debrisRodData);
+const parseBase = memoParseShared<THREE.Group>(baseData);
 
 // 薬莢は大量に生成されるため、排莢個体ごとの geometry/material は作らない。
 // geometry はテンプレートを一度だけ deep clone して全長補正を焼き込み、material は
@@ -243,6 +244,14 @@ export function buildStage0EnemyShip(accent: string | number = 0x3dc6ff, typeInd
   else g = parseStage0EnemyA();
 
   tintAccentMaterials(g, accent);
+  return g;
+}
+
+// 基地のメッシュを生成する。+Z が居住区側。geometry/material は全個体の共有物。
+export function buildBaseModel(): THREE.Group {
+  const g = parseBase();
+  markLitOpaque(g);
+  markShadowCaster(g);
   return g;
 }
 

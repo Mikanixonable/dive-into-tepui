@@ -1,9 +1,6 @@
-// authoring source for asset JSON; see tools/export-models.mjs
-// src/render/dynamic/ships.ts のプリミティブ組み合わせメッシュ生成ロジックを
-// (buildFlashMesh を除いて)そのまま複製し、各メッシュを THREE.Object3D.toJSON()
-// でシリアライズして src/assets/models/*.json に書き出すツール。
-// 実行時 (src/render/dynamic/ships.ts) はこの JSON を THREE.ObjectLoader でパースし、
-// clone(true) して使う — 起動時にジオメトリを組み立て直さない。
+// 機体・弾・薬莢・破片・基地のメッシュをプリミティブの組み合わせで組み立て、
+// THREE.Object3D.toJSON() でシリアライズして src/assets/models/*.json に書き出すツール。
+// 実行時はこの JSON を THREE.ObjectLoader でパースして使う。
 //
 // 実行: node tools/export-models.mjs
 //
@@ -12,34 +9,15 @@
 // (クラスの重複を避けるため)。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import ts from 'typescript';
-import { loadSourceModules } from './compile-source.mjs';
+import { fileURLToPath } from 'node:url';
+import { buildBaseModel } from './base-station-model.mjs';
+import { importTsDataModule, loadSourceModules } from './compile-source.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outDir = join(__dirname, '..', 'src', 'assets', 'models');
 mkdirSync(outDir, { recursive: true });
-
-// --- 依存のない TypeScript データモジュールを JS にトランスパイルして動的 import ---
-// Node 単体で .ts を import できないため、devDependency の TypeScript コンパイラで
-// その場に変換する。
-async function importTsDataModule(relSrcPath) {
-  const srcPath = join(__dirname, '..', relSrcPath);
-  const fileName = relSrcPath.split('/').pop();
-  const { outputText } = ts.transpileModule(readFileSync(srcPath, 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
-    fileName,
-  });
-  const tmpDir = mkdtempSync(join(tmpdir(), 'tepui-ts-data-'));
-  const tmpPath = join(tmpDir, fileName.replace(/\.ts$/, '.mjs'));
-  writeFileSync(tmpPath, outputText, 'utf8');
-  const mod = await import(pathToFileURL(tmpPath).href);
-  rmSync(tmpDir, { recursive: true, force: true });
-  return mod;
-}
 
 const { RCS_NOZZLES } = await importTsDataModule('src/render/rcs-nozzles.ts');
 const { RADIATOR_HINGE } = await importTsDataModule('src/physics/player-shape.ts');
@@ -902,6 +880,7 @@ const models = {
   debrisChunk:  buildDebrisChunk(),
   debrisPanel:  buildDebrisPanel(),
   debrisRod:    buildDebrisRod(),
+  base:         buildBaseModel(),
 };
 
 // player・magazine(ammo が内包する分も含む)は draw call 数の大半を占めるため、

@@ -1,8 +1,12 @@
-import * as THREE from 'three/webgpu';
-import { markLitOpaque, markShadowCaster } from '../pipeline/lit-layer';
-import { F0_STEEL } from './metal-f0';
-
 // 基地の造形。主トラスを挟んで、居住区(+Z)とカウンターウェイトの貨物区(-Z)が向かい合う。
+// tools/export-models.mjs が src/assets/models/base.json へ書き出す。
+//
+// 注意: これは 'three' (プレーン NPM パッケージ) を使うツール専用スクリプト。
+// src/ 配下では 'three/webgpu' 以外から THREE をインポートしてはならない。
+import * as THREE from 'three';
+import { importTsDataModule } from './compile-source.mjs';
+
+const { F0_STEEL } = await importTsDataModule('src/render/dynamic/metal-f0.ts');
 
 // 基地ローカル座標での各部の位置 [m]。モデル全体は最後に 3 倍へ拡大される。
 const TRUSS_Z_MIN = -101; // 貨物部トップ境界
@@ -59,8 +63,8 @@ const CARGO_MODULE_WIDTH = 4.5;
 const CARGO_MODULE_HEIGHT = 4.5;
 const CARGO_MODULE_DEPTH = 9.0;
 
-/** 基地のモデルを組み立てる。+Z が居住区側。 */
-export function buildBaseModel(): THREE.Group {
+/** 基地のモデルを組み立てる。+Z が居住区側。root 直下の子が1つずつの部位になる。 */
+export function buildBaseModel() {
   const g = new THREE.Group();
 
   // 中央 — 両端を繋ぐ主トラスと、その中腹のドッキング部
@@ -84,14 +88,11 @@ export function buildBaseModel(): THREE.Group {
   g.add(buildCargoMatrix());
 
   g.scale.setScalar(3.0);
-
-  markLitOpaque(g);
-  markShadowCaster(g);
   return g;
 }
 
 /** 主トラスの縦通材 — 主コードビーム・内側ストリンガー・沿って走る流体配管。 */
-function buildTrussBeams(): THREE.Group {
+function buildTrussBeams() {
   const group = new THREE.Group();
   const length = TRUSS_Z_MAX - TRUSS_Z_MIN;
   const centerZ = (TRUSS_Z_MIN + TRUSS_Z_MAX) / 2;
@@ -128,7 +129,7 @@ function buildTrussBeams(): THREE.Group {
 }
 
 /** 主トラスの斜材 — 段ごとの横リブ・立体Xブレース・内部Kブレースと節点ハブ。 */
-function buildTrussLattice(): THREE.Group {
+function buildTrussLattice() {
   const group = new THREE.Group();
   const stepZ = 10;
 
@@ -187,7 +188,7 @@ function buildTrussLattice(): THREE.Group {
 }
 
 /** Z = 0m の中腹ドッキング部 — メインハッチと、格子状に並ぶ4基のベイスロット。 */
-function buildDockingBay(): THREE.Group {
+function buildDockingBay() {
   const group = new THREE.Group();
 
   const hatchDoor = new THREE.Mesh(new THREE.CylinderGeometry(5.2, 5.2, 1.4, 16), WHITE_FRAME_MAT);
@@ -198,7 +199,7 @@ function buildDockingBay(): THREE.Group {
   hatchRing.position.set(0, 7.7, 0);
   group.add(hatchRing);
 
-  const slotPositions: readonly [number, number][] = [
+  const slotPositions = [
     [-5.5, -5.5],
     [5.5, -5.5],
     [-5.5, 5.5],
@@ -233,7 +234,7 @@ function buildDockingBay(): THREE.Group {
 }
 
 /** 居住区の外骨格と、クライスラービル風アールデコ装飾。 */
-function buildHabitatShell(): THREE.Group {
+function buildHabitatShell() {
   const group = new THREE.Group();
 
   const exoskeleton = new THREE.Mesh(new THREE.BoxGeometry(15.4, 15.4, 52), WHITE_FRAME_MAT);
@@ -312,7 +313,7 @@ function buildHabitatShell(): THREE.Group {
 }
 
 /** 居住区の4隅に付く計測機器ポッドと、その先端のセンサーレンズ。 */
-function buildHabitatSensorPods(): THREE.Group {
+function buildHabitatSensorPods() {
   const group = new THREE.Group();
 
   // 外骨格の角に沿って、居住区の全長にわたる細長いポッドを立てる。
@@ -331,9 +332,9 @@ function buildHabitatSensorPods(): THREE.Group {
 }
 
 /** 居住区の十字配置モジュール(発光窓付き)と、その交差溝チャネル。 */
-function buildHabitatCrossModules(): THREE.Group {
+function buildHabitatCrossModules() {
   const group = new THREE.Group();
-  const crossPositions: readonly [number, number][] = [
+  const crossPositions = [
     [0, 0],
     [4.2, 0],
     [-4.2, 0],
@@ -375,7 +376,7 @@ function buildHabitatCrossModules(): THREE.Group {
 }
 
 /** 居住区下部の太陽電池パドル一対 — 可動ブームと、六角セルのハニカム集積体。 */
-function buildSolarPaddles(): THREE.Group {
+function buildSolarPaddles() {
   const group = new THREE.Group();
 
   for (const sideX of [-1, 1]) {
@@ -417,7 +418,7 @@ function buildSolarPaddles(): THREE.Group {
 }
 
 /** 居住区先端の立方八面体レドームと、その土台のマウントアダプターカラー。 */
-function buildRadome(): THREE.Group {
+function buildRadome() {
   const group = new THREE.Group();
   const radomeRadius = 5.1;
 
@@ -447,9 +448,10 @@ function buildRadome(): THREE.Group {
   const geo = new THREE.PolyhedronGeometry(vertices, indices, radomeRadius, 0);
   radomeGroup.add(new THREE.Mesh(geo, WHITE_MODULE_MAT));
 
-  // 頂点・稜線の継手フレーム
+  // 頂点・稜線の継手フレーム。WireframeGeometry は ObjectLoader が読み戻せないので、頂点を持つ
+  // 素の BufferGeometry へ写して書き出す。
   const wireLines = new THREE.LineSegments(
-    new THREE.WireframeGeometry(geo),
+    new THREE.BufferGeometry().copy(new THREE.WireframeGeometry(geo)),
     new THREE.LineBasicMaterial({ color: 0x475569 }),
   );
   radomeGroup.add(wireLines);
@@ -464,7 +466,7 @@ function buildRadome(): THREE.Group {
 }
 
 /** 居住区先端から伸びる磁気センサーブームと、その先端の3軸センサー。 */
-function buildMagnetometerBoom(): THREE.Group {
+function buildMagnetometerBoom() {
   const group = new THREE.Group();
   const tipZ = HABITAT_CENTER_Z + 70.5;
 
@@ -491,7 +493,7 @@ function buildMagnetometerBoom(): THREE.Group {
 }
 
 /** カウンターウェイト部の貨物区躯体と、その表面の配線・計測デバイス箱・パネル溝。 */
-function buildCargoHull(): THREE.Group {
+function buildCargoHull() {
   const group = new THREE.Group();
 
   const core = new THREE.Mesh(new THREE.BoxGeometry(14, 14, 136), WHITE_FRAME_MAT);
@@ -540,7 +542,7 @@ function buildCargoHull(): THREE.Group {
 }
 
 /** 貨物部上部から放射状に伸びる4枚の蛇腹状放熱板と、逆位相の暗色骨格。 */
-function buildRadiators(): THREE.Group {
+function buildRadiators() {
   const group = new THREE.Group();
 
   for (let radIdx = 0; radIdx < 4; radIdx++) {
@@ -587,10 +589,10 @@ function buildRadiators(): THREE.Group {
 }
 
 /** カウンターウェイト部の化学プラント — 段付き蒸留塔2基と、高圧多面体ガスタンク3基。 */
-function buildDistillationPlant(): THREE.Group {
+function buildDistillationPlant() {
   const group = new THREE.Group();
 
-  const tower1 = new THREE.Mesh(new THREE.CylinderGeometry(5.5, 5.5, 100, 16), TANK_MATS[0]!);
+  const tower1 = new THREE.Mesh(new THREE.CylinderGeometry(5.5, 5.5, 100, 16), TANK_MATS[0]);
   tower1.position.set(13, 13, COUNTERWEIGHT_CENTER_Z - 5);
   tower1.rotation.x = Math.PI / 2;
   group.add(tower1);
@@ -610,7 +612,7 @@ function buildDistillationPlant(): THREE.Group {
     }
   }
 
-  const tower2 = new THREE.Mesh(new THREE.CylinderGeometry(4.8, 4.8, 84, 14), TANK_MATS[1]!);
+  const tower2 = new THREE.Mesh(new THREE.CylinderGeometry(4.8, 4.8, 84, 14), TANK_MATS[1]);
   tower2.position.set(-13, -13, COUNTERWEIGHT_CENTER_Z + 2);
   tower2.rotation.x = Math.PI / 2;
   group.add(tower2);
@@ -623,9 +625,9 @@ function buildDistillationPlant(): THREE.Group {
   }
 
   const gasTankGeo = new THREE.IcosahedronGeometry(6.0, 0);
-  const gasTankPositions: readonly [number, number, number][] = [[-13, 13, -35], [13, -13, 20], [0, 15, -45]];
+  const gasTankPositions = [[-13, 13, -35], [13, -13, 20], [0, 15, -45]];
   for (const [sX, sY, sZ] of gasTankPositions) {
-    const sphereTank = new THREE.Mesh(gasTankGeo, TANK_MATS[2]!);
+    const sphereTank = new THREE.Mesh(gasTankGeo, TANK_MATS[2]);
     sphereTank.position.set(sX, sY, COUNTERWEIGHT_CENTER_Z + sZ);
     group.add(sphereTank);
 
@@ -637,7 +639,7 @@ function buildDistillationPlant(): THREE.Group {
 }
 
 /** ISO 規格風の宇宙貨物コンテナ1個。tagMat を渡すと扉に識別タグが付く。 */
-function buildContainer(w: number, h: number, d: number, mat: THREE.Material, tagMat?: THREE.Material): THREE.Group {
+function buildContainer(w, h, d, mat, tagMat) {
   const container = new THREE.Group();
   container.add(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat));
 
@@ -692,7 +694,7 @@ function buildContainer(w: number, h: number, d: number, mat: THREE.Material, ta
 }
 
 /** 規格化貨物モジュール1個。typeIdx が8種類の造形を選ぶ。 */
-function buildCargoModule(typeIdx: number, mat: THREE.Material, tagMat?: THREE.Material): THREE.Group {
+function buildCargoModule(typeIdx, mat, tagMat) {
   switch (typeIdx % 8) {
     case 0: return buildContainer(CARGO_MODULE_WIDTH, CARGO_MODULE_HEIGHT, CARGO_MODULE_DEPTH, mat, tagMat);
     case 1: return buildReeferCargo(tagMat);
@@ -706,14 +708,14 @@ function buildCargoModule(typeIdx: number, mat: THREE.Material, tagMat?: THREE.M
 }
 
 /** 規格寸法の外枠ボックス。中身をこの中へ納める造形が共有する。 */
-function buildCargoFrame(mat: THREE.Material): THREE.Mesh {
+function buildCargoFrame(mat) {
   const geo = new THREE.BoxGeometry(CARGO_MODULE_WIDTH, CARGO_MODULE_HEIGHT, CARGO_MODULE_DEPTH);
   return new THREE.Mesh(geo, mat);
 }
 
 /** 冷凍コンテナ — 背面に冷却ユニットと稼働 LED を負う。 */
-function buildReeferCargo(tagMat?: THREE.Material): THREE.Group {
-  const reefer = buildContainer(CARGO_MODULE_WIDTH, 4.8, CARGO_MODULE_DEPTH, CONTAINER_MATS[0]!, tagMat);
+function buildReeferCargo(tagMat) {
+  const reefer = buildContainer(CARGO_MODULE_WIDTH, 4.8, CARGO_MODULE_DEPTH, CONTAINER_MATS[0], tagMat);
 
   const cooler = new THREE.Mesh(new THREE.BoxGeometry(4.0, 4.0, 0.4), SENSOR_POD_MAT);
   cooler.position.set(0, 0, -4.5);
@@ -727,7 +729,7 @@ function buildReeferCargo(tagMat?: THREE.Material): THREE.Group {
 }
 
 /** 横置きの円筒タンクを外枠へ納めた貨物。鏡板は両端の半球で塞ぐ。 */
-function buildTankCargo(mat: THREE.Material): THREE.Group {
+function buildTankCargo(mat) {
   const cargo = new THREE.Group();
 
   const tank = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.0, 8.4, 12), mat);
@@ -745,10 +747,10 @@ function buildTankCargo(mat: THREE.Material): THREE.Group {
 }
 
 /** フラットベッド — 薄い台板に載せた機械を、固縛帯で3本留めにする。 */
-function buildFlatbedCargo(): THREE.Group {
+function buildFlatbedCargo() {
   const cargo = new THREE.Group();
   const bedGeo = new THREE.BoxGeometry(CARGO_MODULE_WIDTH, 1.0, CARGO_MODULE_DEPTH);
-  cargo.add(new THREE.Mesh(bedGeo, CONTAINER_MATS[1]!));
+  cargo.add(new THREE.Mesh(bedGeo, CONTAINER_MATS[1]));
 
   const machine = new THREE.Mesh(new THREE.BoxGeometry(3.6, 3.2, 7.0), SENSOR_POD_MAT);
   machine.position.set(0, 2.1, 0);
@@ -763,13 +765,13 @@ function buildFlatbedCargo(): THREE.Group {
 }
 
 /** ボトルラック — 外枠に長尺ガスボンベを4本立てる。 */
-function buildBottleRackCargo(): THREE.Group {
+function buildBottleRackCargo() {
   const cargo = new THREE.Group();
-  cargo.add(buildCargoFrame(CONTAINER_MATS[3]!));
+  cargo.add(buildCargoFrame(CONTAINER_MATS[3]));
 
   for (const bx of [-1.2, 1.2]) {
     for (const by of [-1.2, 1.2]) {
-      const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 8.0, 10), TANK_MATS[1]!);
+      const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 8.0, 10), TANK_MATS[1]);
       bottle.position.set(bx, by, 0);
       bottle.rotation.x = Math.PI / 2;
       cargo.add(bottle);
@@ -779,12 +781,12 @@ function buildBottleRackCargo(): THREE.Group {
 }
 
 /** 球形タンク2基を外枠へ縦列に納めた貨物。 */
-function buildSphereTankCargo(): THREE.Group {
+function buildSphereTankCargo() {
   const cargo = new THREE.Group();
-  cargo.add(buildCargoFrame(CONTAINER_MATS[3]!));
+  cargo.add(buildCargoFrame(CONTAINER_MATS[3]));
 
   for (const zSph of [-2.2, 2.2]) {
-    const sphereTank = new THREE.Mesh(new THREE.SphereGeometry(1.9, 12, 10), TANK_MATS[0]!);
+    const sphereTank = new THREE.Mesh(new THREE.SphereGeometry(1.9, 12, 10), TANK_MATS[0]);
     sphereTank.position.set(0, 0, zSph);
     cargo.add(sphereTank);
   }
@@ -792,10 +794,10 @@ function buildSphereTankCargo(): THREE.Group {
 }
 
 /** 六角断面のバルクカプセル。補強リングを3枚巻く。 */
-function buildHexCapsuleCargo(): THREE.Group {
+function buildHexCapsuleCargo() {
   const cargo = new THREE.Group();
 
-  const hexBody = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 8.8, 6), CONTAINER_MATS[2]!);
+  const hexBody = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 8.8, 6), CONTAINER_MATS[2]);
   hexBody.rotation.x = Math.PI / 2;
   cargo.add(hexBody);
 
@@ -809,7 +811,7 @@ function buildHexCapsuleCargo(): THREE.Group {
 }
 
 /** アビオニクスラック — 外枠に機器キューブを2基収める。 */
-function buildAvionicsRackCargo(): THREE.Group {
+function buildAvionicsRackCargo() {
   const cargo = new THREE.Group();
   cargo.add(buildCargoFrame(CARGO_TRUSS_FRAME_MAT));
 
@@ -822,7 +824,7 @@ function buildAvionicsRackCargo(): THREE.Group {
 }
 
 /** 居住区の四隅へ抱かせる小型貨物ポッド群。 */
-function buildHabitatCargoPods(): THREE.Group {
+function buildHabitatCargoPods() {
   const group = new THREE.Group();
   let idx = 0;
 
@@ -830,7 +832,7 @@ function buildHabitatCargoPods(): THREE.Group {
   for (const quadX of [-1, 1]) {
     for (const quadY of [-1, 1]) {
       for (let zH = HABITAT_CENTER_Z - 14; zH <= HABITAT_CENTER_Z + 10; zH += 12) {
-        const pod = buildCargoModule(idx, CONTAINER_MATS[idx % CONTAINER_MATS.length]!);
+        const pod = buildCargoModule(idx, CONTAINER_MATS[idx % CONTAINER_MATS.length]);
         pod.position.set(quadX * 9.2, quadY * 9.2, zH);
         pod.scale.setScalar(0.65);
         group.add(pod);
@@ -842,7 +844,7 @@ function buildHabitatCargoPods(): THREE.Group {
 }
 
 /** 貨物区の4壁面へ不規則にへばりつく貨物モジュール群。姿勢は揃える。 */
-function buildCargoMatrix(): THREE.Group {
+function buildCargoMatrix() {
   const group = new THREE.Group();
   const moduleLimit = 100;
   let idx = 0;
@@ -866,7 +868,7 @@ function buildCargoMatrix(): THREE.Group {
         const outward = face === 0 || face === 2 ? surfDist : -surfDist;
 
         const tagMat = idx % 4 === 0 ? (idx % 8 === 0 ? NEON_ACCENT_MAT : HAZARD_ORANGE_MAT) : undefined;
-        const cargo = buildCargoModule(idx, CONTAINER_MATS[idx % CONTAINER_MATS.length]!, tagMat);
+        const cargo = buildCargoModule(idx, CONTAINER_MATS[idx % CONTAINER_MATS.length], tagMat);
         cargo.position.set(alongX ? outward : latOffset, alongX ? latOffset : outward, zBase + zOffset);
         group.add(cargo);
 
@@ -878,7 +880,7 @@ function buildCargoMatrix(): THREE.Group {
 }
 
 /** 再現性のある不規則配置のための決定論的疑似乱数。 */
-function pseudoHash(n: number): number {
+function pseudoHash(n) {
   const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453;
   return x - Math.floor(x);
 }
