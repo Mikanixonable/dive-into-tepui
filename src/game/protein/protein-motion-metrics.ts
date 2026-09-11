@@ -27,9 +27,9 @@ export function proteinMotionFrameSample(
   for (const entity of entities) {
     if (!(entity instanceof ProteinEnemy)) continue;
     const metrics = entity.view.motionMetrics;
-    cpuMs += entity.motionCpuMs + metrics.cpuMs;
+    cpuMs += metrics.cpuMs;
     uploadBytes += metrics.uploadBytes;
-    lodCounts[entity.motionLod] = (lodCounts[entity.motionLod] ?? 0) + 1;
+    lodCounts[metrics.lod] = (lodCounts[metrics.lod] ?? 0) + 1;
   }
   return { cpuMs, uploadBytes, lodCounts };
 }
