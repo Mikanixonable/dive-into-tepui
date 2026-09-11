@@ -1,3 +1,4 @@
+// 自機の太陽電池パネル上下2枚の展開と、その発電による蓄電量を扱う。
 import { Attitude } from '../../physics/attitude';
 import { LOCAL_UP, qRotate } from '../../math/quat';
 import { Vec3, dot } from '../../math/vec3';
@@ -12,8 +13,8 @@ const SOLAR_PANEL_EFFICIENCY = 0.25; // 太陽光→電力の変換効率
 export type SolarSide = 'up' | 'down';
 
 class Panel {
-  deployTarget: 0 | 1 = 1; // 展開状態で開始
-  deploy = 1;
+  public deployTarget: 0 | 1 = 1; // 展開状態で開始
+  public deploy = 1;
 }
 
 export class PowerSystem {
@@ -21,30 +22,31 @@ export class PowerSystem {
 
   private readonly panels: Record<SolarSide, Panel> = { up: new Panel(), down: new Panel() };
 
-  // saved があれば蓄電量を復元する。パネルの表示物は PowerView が所有する。
+  // saved があれば蓄電量を復元する。
   public constructor(saved?: PowerSaveData) {
     if (saved) this.charge = saved.charge;
   }
 
   // side のパネルの展開/収納目標を反転する。
-  toggle(side: SolarSide): void {
+  public toggle(side: SolarSide): void {
     const p = this.panels[side];
     p.deployTarget = p.deployTarget === 0 ? 1 : 0;
   }
 
-  // side の展開目標を明示的に設定する。HUD の「展開」「収納」ボタンから使う。
-  setDeployed(side: SolarSide, deployed: boolean): void {
+  // side の展開目標を明示的に設定する。
+  public setDeployed(side: SolarSide, deployed: boolean): void {
     const p = this.panels[side];
     const target: 0 | 1 = deployed ? 1 : 0;
     if (p.deployTarget !== target) p.deployTarget = target;
   }
 
   // 毎フレーム呼ぶ。sunlit は sunlitFactor(0..1)、sunDir は太陽方向の単位ベクトル(world)。
-  update(
+  // installedGeneration は装備の発電量 [W] で、0 以下なら既定のパネル性能で発電する。
+  public update(
     dt: number, sunlit: number, sunDir: Vec3, att: Attitude, installedGeneration: number,
   ): void {
     // 展開度の更新
-    const step = dt / RADIATOR_DEPLOY_TIME; // 同じ速度を使用
+    const step = dt / RADIATOR_DEPLOY_TIME; // 放熱板と同じ展開速度
     for (const side of ['up', 'down'] as const) {
       const p = this.panels[side];
       if (p.deploy < p.deployTarget) p.deploy = Math.min(p.deployTarget, p.deploy + step);
@@ -64,19 +66,20 @@ export class PowerSystem {
     this.charge = Math.min(POWER_CAPACITY, this.charge + power * dt);
   }
 
-  // HUD 表示用。0..1。
-  get chargeRatio(): number {
+  // 蓄電率 0..1。
+  public get chargeRatio(): number {
     return this.charge / POWER_CAPACITY;
   }
 
-  // HUD 表示用。蓄電量そのもの [J]。
-  get chargeJ(): number {
+  // 蓄電量 [J]。
+  public get chargeJ(): number {
     return this.charge;
   }
 
-  deployOf(side: SolarSide): number { return this.panels[side].deploy; }
+  public deployOf(side: SolarSide): number { return this.panels[side].deploy; }
 
-  serialize(): PowerSaveData {
+  // 蓄電量の保存形。
+  public serialize(): PowerSaveData {
     return { charge: this.charge };
   }
 }
