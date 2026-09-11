@@ -18,7 +18,7 @@ import {
 } from '../../map/display-toggles';
 import type { CelestialGridVisibility } from '../../../render/celestial-grid';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import type { OrbitGuideSettings, ZeroVelocitySettings } from '../../celestial/orbit-guide/orbit-guide-settings';
+import type { OrbitGuideSettings } from '../../celestial/orbit-guide/orbit-guide-settings';
 import { DEFAULT_ORBIT_GUIDE_SETTINGS } from '../../celestial/orbit-guide/orbit-guide-settings';
 import { OrbitGuideTab } from './orbit-guide-tab';
 import { ZeroVelocitySection } from './zero-velocity-section';
@@ -169,12 +169,15 @@ function appendColumnLegend(parent: HTMLElement, columns: readonly ViewOptionCol
 export class ViewOptionsPanel {
   public onBodyClassModeChange: ((key: keyof MapDisplayToggles, mode: MapDisplayMode) => void) | null = null;
   public onGridToggle: ((key: keyof CelestialGridVisibility, on: boolean) => void) | null = null;
+  // 軌道ガイドタブかゼロ速度曲線節を編集するたびに、編集後の軌道ガイド設定全体で呼ばれる。
   public onOrbitGuideChange: ((settings: OrbitGuideSettings) => void) | null = null;
-  public onZeroVelocityChange: ((settings: ZeroVelocitySettings) => void) | null = null;
 
   private readonly tabBar: TabBar<ViewOptionsTab>;
   private readonly tabBodies: ReadonlyMap<ViewOptionsTab, HTMLElement>;
   private selectedTab: ViewOptionsTab;
+  // 軌道ガイド設定の鏡映し。軌道ガイドタブとゼロ速度曲線節はどちらも setOrbitGuideSettings で
+  // これと揃え、ゼロ速度曲線節の編集はこれへ重ねて設定全体に組み戻す。
+  private orbitGuideSettings: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
   private readonly orbitGuideTab: OrbitGuideTab;
   private readonly zeroVelocitySection: ZeroVelocitySection;
 
@@ -347,7 +350,7 @@ export class ViewOptionsPanel {
     guideBody.appendChild(starsRow);
 
     const zeroVelocitySection = new ZeroVelocitySection(DEFAULT_ORBIT_GUIDE_SETTINGS.zeroVelocity);
-    zeroVelocitySection.onChange = (settings) => this.onZeroVelocityChange?.(settings);
+    zeroVelocitySection.onChange = (zeroVelocity) => this.commitOrbitGuide({ ...this.orbitGuideSettings, zeroVelocity });
     guideBody.appendChild(zeroVelocitySection.element);
 
     return { element: guideBody, gridButtons, gridCategoryButtons: gridCategories, starsButton, zeroVelocitySection };
@@ -360,9 +363,15 @@ export class ViewOptionsPanel {
     const orbitBody = buildTabBody('orbit');
     body.appendChild(orbitBody);
     const orbitGuideTab = new OrbitGuideTab(availableFamilies);
-    orbitGuideTab.onSettingsChange = (settings) => this.onOrbitGuideChange?.(settings);
+    orbitGuideTab.onSettingsChange = (settings) => this.commitOrbitGuide(settings);
     orbitBody.appendChild(orbitGuideTab.element);
     return { element: orbitBody, tab: orbitGuideTab };
+  }
+
+  // 編集後の軌道ガイド設定を、軌道ガイドタブとゼロ速度曲線節の両方へ揃えてから通知する。
+  private commitOrbitGuide(next: OrbitGuideSettings): void {
+    this.setOrbitGuideSettings(next);
+    this.onOrbitGuideChange?.(next);
   }
 
   // タブボタン押下で選択タブを切り替え、保存する。
@@ -454,18 +463,15 @@ export class ViewOptionsPanel {
     }
   }
 
-  // 軌道ガイドタブの表示状態を現在値へ合わせる。
+  // 軌道ガイドタブとゼロ速度曲線節(ガイドタブ)の表示状態を、軌道ガイド設定の現在値へ合わせる。
   public setOrbitGuideSettings(settings: OrbitGuideSettings): void {
+    this.orbitGuideSettings = settings;
     this.orbitGuideTab.setSettings(settings);
+    this.zeroVelocitySection.setSettings(settings.zeroVelocity);
   }
 
   // 描いている軌道ガイド線の総数を軌道ガイドタブへ中継する(300本目安の警告に使う)。
   public setOrbitGuideLineCount(total: number): void {
     this.orbitGuideTab.setLineCount(total);
-  }
-
-  // ゼロ速度曲線(ガイドタブ)の表示状態を現在値へ合わせる。
-  public setZeroVelocitySettings(settings: ZeroVelocitySettings): void {
-    this.zeroVelocitySection.setSettings(settings);
   }
 }

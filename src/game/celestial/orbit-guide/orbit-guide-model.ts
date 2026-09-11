@@ -62,19 +62,38 @@ interface GuideLineGeometry {
   readonly shape: GuideLineDisplay['shape'];
 }
 
+// 線1本がどの曲線から引かれるか。焼き込みカタログの族は系と族の点(点を持たない族は null)、
+// リサジュー軌道は系と共線点を持ち、地球専用の参照軌道はどちらも持たない。
+type GuideLineFamily =
+  | {
+    readonly source: 'catalog';
+    readonly familyId: string;
+    readonly system: CatalogSystemId;
+    readonly point: string | null;
+  }
+  | {
+    readonly source: 'lissajous';
+    readonly familyId: 'lissajous';
+    readonly system: CatalogSystemId;
+    readonly point: CollinearPoint;
+  }
+  | {
+    readonly source: 'reference';
+    readonly familyId: ReferenceOrbitKind;
+    readonly system: null;
+    readonly point: null;
+  };
+
 // 表示中の1本ぶん。family の位置(index/count)は色のグラデーションと族範囲の内分に使う。
-interface GuideLineEntry {
+type GuideLineEntry = GuideLineFamily & {
   readonly key: string;
-  readonly familyId: string;
-  readonly system: CatalogSystemId | null;
-  readonly point: string | null;
   readonly index: number;
   readonly count: number;
   // 適応分割の頂点予算。既定でよい線は undefined。
   readonly maxVertices: number | undefined;
   // 表示時刻から引き直すまで、また引けなかった時刻では null(その線は描かれない)。
   geometry: GuideLineGeometry | null;
-}
+};
 
 // 本数・族範囲・両端の色・進行方向・安定度の見せ方など、1本の折れ線をいまどう描くべきかを
 // まとめた値。styleFor が現在の設定から組む(重い計算は含まない)。
@@ -94,12 +113,12 @@ function lineStyle(color: number, opacity: number): LineStyle {
 
 // 線1本ぶんの、表示時刻に依らない識別情報。
 function lineEntry(
-  familyId: string, system: CatalogSystemId | null, point: string | null,
-  index: number, count: number, maxVertices: number | undefined,
+  family: GuideLineFamily, index: number, count: number, maxVertices: number | undefined,
 ): GuideLineEntry {
   return {
-    key: `${familyId}:${system}:${point ?? '-'}:${index}`,
-    familyId, system, point, index, count, maxVertices, geometry: null,
+    ...family,
+    key: `${family.familyId}:${family.system}:${family.point ?? '-'}:${index}`,
+    index, count, maxVertices, geometry: null,
   };
 }
 
@@ -221,7 +240,6 @@ export class OrbitGuideModel {
   private geometryKey = '';
   private lastComputedTime: number | null = null;
   private lastCatalogGeneration = -1;
-  private onLineCountChange: ((count: number) => void) | null = null;
 
   // 直近に組んだ宣言の列と、それを組んだ設定・見せ方。
   private displays: readonly GuideLineDisplay[] = NO_LINES;
@@ -230,16 +248,13 @@ export class OrbitGuideModel {
 
   public constructor(private readonly celestialBodies: CelestialBodies) {}
 
-  // 総線数が変わるたび(線の顔ぶれを組み直すたび)に呼ばれる。UI が MAX_LINES_PER_KIND 超過の
-  // 警告を出すためのフック。
-  public setOnLineCountChange(cb: ((count: number) => void) | null): void {
-    this.onLineCountChange = cb;
-  }
+  // 直近にマップビューで組んだ線の本数。曲線を引けなかった線も数える。
+  public get lineCount(): number { return this.lines.length; }
 
-  // このフレームに描くガイド線の宣言を返す(マップビュー以外では空)。曲線の組み直しは、
-  // 設定・カタログ・表示時刻のいずれかが動いたときに走る。形も設定も動いていないフレームは
-  // 前フレームと同じ宣言をそのまま返す。
-  public sync(
+  // 設定と表示時刻から、描くガイド線の宣言を返す(マップビュー以外では空)。曲線の組み直しは、
+  // 設定・カタログ・表示時刻のいずれかが動いたときに走る。形も設定も動いていなければ
+  // 前回と同じ宣言をそのまま返す。
+  public displaysAt(
     settings: OrbitGuideSettings, displayTime: number, style: RenderStyle, viewMode: ViewMode,
   ): readonly GuideLineDisplay[] {
     if (viewMode !== 'map') return NO_LINES;
@@ -277,45 +292,23 @@ export class OrbitGuideModel {
     return this.displays;
   }
 
-  // 族の位置設定(0〜1)は、焼き込み側で幾何的に等間隔へ間引いてあるため、そのまま
-  // catalogLoop が使うメンバー添字基準の s として渡せる。
+  // 線1本の、時刻 t の曲線。基準の天体が星系に居ない・カタログが読み込み前なら null。
   private computeLoop(entry: GuideLineEntry, t: number, settings: OrbitGuideSettings): GuideLoop | null {
-    if (entry.familyId === 'lissajous') {
+    // リサジュー軌道は、系の共線点まわりに振幅・位相・周回数から組む。
+    if (entry.source === 'lissajous') {
       const l = settings.lissajous;
-      const system = this.guideFrameOf(entry.system as CatalogSystemId, t);
+      const system = this.guideFrameOf(entry.system, t);
       if (system === null) return null;
       return lissajousLoop(
-        system, entry.point as CollinearPoint,
+        system, entry.point,
         l.inPlane, l.outOfPlane, l.inPlanePhase, l.outOfPlanePhase, l.cycles,
       );
     }
-    if (entry.familyId === 'sunSync') {
-      const s = settings.sunSync;
-      const earth = this.earthBodyAt(t);
-      return earth === null ? null
-        : sunSyncRepeatGroundTrackLoop(earth, t, s.repeatDays, s.revsPerRepeat);
-    }
-    if (entry.familyId === 'dawnDusk') {
-      const d = settings.dawnDusk;
-      const earth = this.earthBodyAt(t);
-      return earth === null ? null : dawnDuskGuideLoop(
-        earth, t, (r: Vec3, tt: number) => this.celestialBodies.sunDirFrom(r, tt),
-        d.repeatDays, d.revsPerRepeat, d.localTime);
-    }
-    if (entry.familyId === 'molniya') {
-      const m = settings.molniya;
-      const earth = this.earthBodyAt(t);
-      return earth === null ? null
-        : molniyaGuideLoop(earth, t, this.earthSpinRate(), m.perigeeAltitude, m.raan);
-    }
-    if (entry.familyId === 'tundra') {
-      const u = settings.tundra;
-      const earth = this.earthBodyAt(t);
-      return earth === null ? null
-        : tundraGuideLoop(earth, t, this.earthSpinRate(), u.perigeeAltitude, u.raan);
-    }
+    if (entry.source === 'reference') return this.referenceLoop(entry.familyId, t, settings);
+    // 焼き込みカタログの族。族の位置設定(0〜1)は焼き込み側で幾何的に等間隔へ間引いてあるため、
+    // そのまま catalogLoop が使うメンバー添字基準の s として渡せる。
     const kind = effectiveKind(settings, entry.familyId);
-    if (!kind || entry.system === null) return null;
+    if (!kind) return null;
     const system = this.catalog.systemFor(entry.system);
     if (!system) return null;
     const s = sValueFor(kind, entry.index, entry.count);
@@ -338,9 +331,27 @@ export class OrbitGuideModel {
     return motion instanceof OrbitingMotion ? motion : null;
   }
 
-  // 地球の運動。地球を持たない星系では null(地球専用の参照軌道は描かない)。
-  private earthBodyAt(_t: number): CelestialBody | null {
-    return this.celestialBodies.has('earth') ? this.celestialBodies.motionOf('earth') : null;
+  // 地球専用参照軌道1本の、時刻 t の曲線。地球を持たない星系では null(描かない)。
+  private referenceLoop(kind: ReferenceOrbitKind, t: number, settings: OrbitGuideSettings): GuideLoop | null {
+    const earth = this.earthMotion();
+    if (earth === null) return null;
+    // 種類ごとに、その種類の設定欄から地球まわりの曲線を組む。
+    if (kind === 'sunSync') {
+      const s = settings.sunSync;
+      return sunSyncRepeatGroundTrackLoop(earth, t, s.repeatDays, s.revsPerRepeat);
+    }
+    if (kind === 'dawnDusk') {
+      const d = settings.dawnDusk;
+      return dawnDuskGuideLoop(
+        earth, t, (r: Vec3, tt: number) => this.celestialBodies.sunDirFrom(r, tt),
+        d.repeatDays, d.revsPerRepeat, d.localTime);
+    }
+    if (kind === 'molniya') {
+      const m = settings.molniya;
+      return molniyaGuideLoop(earth, t, this.earthSpinRate(), m.perigeeAltitude, m.raan);
+    }
+    const u = settings.tundra;
+    return tundraGuideLoop(earth, t, this.earthSpinRate(), u.perigeeAltitude, u.raan);
   }
 
   // 地球の自転角速度 [rad/s]。自転モデルを持たない・地球が居ないなら null。
@@ -378,29 +389,26 @@ export class OrbitGuideModel {
   private styleFor(
     entry: GuideLineEntry, settings: OrbitGuideSettings, style: RenderStyle,
   ): LineVisual | null {
-    const referenceKind = REFERENCE_ORBIT_KINDS.find((k) => k === entry.familyId);
     if (style === 'schematic') {
       // 模式図では色分けに意味を持たせない。表示の有無だけは通常どおり設定に従う。
-      const on = entry.familyId === 'lissajous' ? settings.lissajous.on
-        : referenceKind ? settings[referenceKind].on : effectiveKind(settings, entry.familyId)?.on;
-      if (!on) return null;
-      const kindDirection = entry.familyId === 'lissajous' ? settings.lissajous
-        : referenceKind ? settings[referenceKind] : effectiveKind(settings, entry.familyId)!;
+      const kindSettings = entry.source === 'lissajous' ? settings.lissajous
+        : entry.source === 'reference' ? settings[entry.familyId] : effectiveKind(settings, entry.familyId);
+      if (!kindSettings?.on) return null;
       return {
         style: lineStyle(SCHEMATIC_LINE, 1),
-        direction: kindDirection.direction, animate: kindDirection.animate,
+        direction: kindSettings.direction, animate: kindSettings.animate,
         markerColor: SCHEMATIC_LINE,
       };
     }
-    if (entry.familyId === 'lissajous') {
+    if (entry.source === 'lissajous') {
       const l = settings.lissajous;
       return {
         style: lineStyle(l.colorStart, l.opacity),
         direction: l.direction, animate: l.animate, markerColor: l.colorStart,
       };
     }
-    if (referenceKind) {
-      const r = settings[referenceKind];
+    if (entry.source === 'reference') {
+      const r = settings[entry.familyId];
       return {
         style: lineStyle(r.colorStart, r.opacity),
         direction: r.direction, animate: r.animate, markerColor: r.colorStart,
@@ -443,7 +451,7 @@ export class OrbitGuideModel {
         // 膨らんでしまう(どの系にどの族があるかは焼き込みの索引が持つ)。
         if (!this.catalog.hasFamily(system, familyId)) continue;
         for (let i = 0; i < kind.count; i++) {
-          this.lines.push(lineEntry(familyId, system, point, i, kind.count, undefined));
+          this.lines.push(lineEntry({ source: 'catalog', familyId, system, point }, i, kind.count, undefined));
         }
       }
     }
@@ -454,16 +462,17 @@ export class OrbitGuideModel {
       for (const system of activeSystems(settings)) {
         for (const [flag, point] of points) {
           if (!settings.lissajous[flag]) continue;
-          this.lines.push(lineEntry('lissajous', system, point, 0, 1, LISSAJOUS_VERTEX_BUDGET));
+          this.lines.push(lineEntry(
+            { source: 'lissajous', familyId: 'lissajous', system, point }, 0, 1, LISSAJOUS_VERTEX_BUDGET,
+          ));
         }
       }
     }
 
     // 地球専用参照軌道は系トグルの対象外なので system は null。
     for (const kind of REFERENCE_ORBIT_KINDS) {
-      if (settings[kind].on) this.lines.push(lineEntry(kind, null, null, 0, 1, undefined));
+      if (!settings[kind].on) continue;
+      this.lines.push(lineEntry({ source: 'reference', familyId: kind, system: null, point: null }, 0, 1, undefined));
     }
-
-    this.onLineCountChange?.(this.lines.length);
   }
 }

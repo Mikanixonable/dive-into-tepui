@@ -1,6 +1,5 @@
-// 表示パネルを持ち、その操作をラン跨ぎ設定の正本へ書き戻して、同じ値をパネルの表示状態と
-// 描画側へ配る。天体分類・天球グリッド・軌道ガイドは別々の設定だが、ゼロ速度曲線だけは
-// 軌道ガイド設定の一部なので、畳んだ結果を軌道ガイドタブとゼロ速度セクションの両方へ戻す。
+// 表示パネルを持ち、その操作をラン跨ぎ設定の正本へ書き戻して、同じ値をパネルの表示状態へ
+// 戻す。天体分類・天球グリッド・軌道ガイドはそれぞれ別の設定として読み書きする。
 import { catalogFamilyIndex } from '../../celestial/orbit-guide/orbit-guide-catalog';
 import { normalizeOrbitGuideSettings } from '../../celestial/orbit-guide/orbit-guide-settings';
 import { applyMapDisplayMode } from '../../map/display-toggles';
@@ -12,11 +11,6 @@ import type { RunSetting } from '../../run-setting';
 import type { CelestialGridVisibility } from '../../../render/celestial-grid';
 
 export class ViewOptionsControl {
-  // 天球グリッドの表示が変わるたびに呼ばれる。
-  public onGridVisibilityChange: ((visibility: CelestialGridVisibility) => void) | null = null;
-  // 軌道ガイドの設定が変わるたびに呼ばれる。
-  public onOrbitGuideSettingsChange: ((settings: OrbitGuideSettings) => void) | null = null;
-
   private readonly panel: ViewOptionsPanel;
 
   // root はパネルを差し込む先。3つの設定を正本として読み書きし、現在値をパネルへ反映する。
@@ -41,30 +35,16 @@ export class ViewOptionsControl {
       const next = applyGridToggle(grid.current, key, on);
       grid.set(next);
       this.panel.setGridVisibility(next);
-      this.onGridVisibilityChange?.(next);
     };
     this.panel.setGridVisibility(grid.current);
 
-    // 軌道ガイドタブ。編集結果は範囲・本数を丸めてから正本にする。
+    // 軌道ガイド(ゼロ速度曲線を含む)。編集結果は範囲・本数を丸めてから正本にする。
     this.panel.onOrbitGuideChange = (settings) => {
       const next = normalizeOrbitGuideSettings(settings);
       orbitGuide.set(next);
       this.panel.setOrbitGuideSettings(next);
-      this.onOrbitGuideSettingsChange?.(next);
     };
     this.panel.setOrbitGuideSettings(orbitGuide.current);
-
-    // ゼロ速度曲線はガイドタブに置くが、値は軌道ガイド設定の一部として同じ正本が持つ。
-    this.panel.onZeroVelocityChange = (zeroVelocity) => {
-      const next = normalizeOrbitGuideSettings({ ...orbitGuide.current, zeroVelocity });
-      orbitGuide.set(next);
-      // 軌道ガイドタブも同じ設定の鏡映しを持つので、そちらへも戻す。戻さないと、次に軌道ガイド側を
-      // 触ったときに古い zeroVelocity で上書きされる。
-      this.panel.setOrbitGuideSettings(next);
-      this.panel.setZeroVelocitySettings(next.zeroVelocity);
-      this.onOrbitGuideSettingsChange?.(next);
-    };
-    this.panel.setZeroVelocitySettings(orbitGuide.current.zeroVelocity);
   }
 
   // パネルを出すかどうかを切り替える。
