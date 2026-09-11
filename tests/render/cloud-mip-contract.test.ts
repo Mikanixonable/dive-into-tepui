@@ -22,7 +22,7 @@ export function register(): void {
   });
 
   test('cloud gpu timing: 雲の計測範囲と既存パスへのフォールバックが固定される', () => {
-    assert.equal(GPU_PASS_LABELS[CLOUD_GPU_MEASUREMENTS.bake.pass], '雲ベイク');
+    assert.equal(GPU_PASS_LABELS[CLOUD_GPU_MEASUREMENTS.bake.pass], '雲の生成');
     assert.equal(GPU_PASS_LABELS[CLOUD_GPU_MEASUREMENTS.atmosphere.pass], '雲大気');
     assert.equal(GPU_PASS_LABELS[CLOUD_GPU_MEASUREMENTS.shadow.pass], '雲影');
     assert.equal(CLOUD_GPU_MEASUREMENTS.surface.scope, 'gbuffer aggregate');

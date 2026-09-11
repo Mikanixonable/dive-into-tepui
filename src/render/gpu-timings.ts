@@ -32,7 +32,7 @@ export interface GpuTimingSink {
 // 表示名。並びは GPU_PASS の値の順。
 export const GPU_PASS_LABELS: readonly string[] = [
   '影マップ', 'Gバッファ', '影', 'ライティング', 'マテリアル', '大気', 'ワールド', 'レンズ', '合成',
-  '3D UI', 'アンチエイリアス', '雲ベイク', '雲大気', '雲影',
+  '3D UI', 'アンチエイリアス', '雲の生成', '雲大気', '雲影',
 ];
 
 export const GPU_PASS_COUNT = GPU_PASS_LABELS.length;
