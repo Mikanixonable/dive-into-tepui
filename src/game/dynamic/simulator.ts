@@ -14,7 +14,8 @@
 // 関係(どの天体が引くか・表面へ到達したか・大気で焼失したか・刻みをどこまで広げてよいか)。
 // 探し方が違うのは同時性から来る正当な差だが、答えが違ってよい理由はない。
 import type {
-  DynamicSimulationParticipant, DynamicSimulationRoster, SimulationControlled, SimulationLifecycle,
+  DynamicReactionServices, DynamicSimulationParticipant, DynamicSimulationRoster, SimulationControlled,
+  SimulationLifecycle,
 } from './dynamic-simulation-participant';
 import type { EntityRegistry } from './entity-registry';
 import type { FrameCelestialBodies } from '../celestial/celestial-bodies';
@@ -90,6 +91,7 @@ export class Simulator {
     this.surfaceContactPhysics.candidateBodies = 0;
     this.entityContactPhysics.candidatePairs = 0;
     this.entityContactPhysics.participants = 0;
+    const services: DynamicReactionServices = { activeStage, registry: this.registry };
     const targetTime = this.simTime + simDt;
     // 天体の顔ぶれと表面候補の絞り込みはこのフレームで1組だけ組んで全サブステップで使い回す。
     if (this.simTime < targetTime) {
@@ -138,7 +140,7 @@ export class Simulator {
       // simTime から外れ、履歴を持たない種別(弾・薬莢)が表示時刻と一致しなくなる。
       const endTime = this.simTime + subDt;
       this.surfaceContactPhysics.beginSubstep(this.bodies.pivot);
-      this.substep(endTime, subDt, activeStage);
+      this.substep(endTime, subDt, services);
       this.simTime = endTime;
       this.sections.exit(SECTION.orbit);
       this.lastSubsteps++;
@@ -147,7 +149,7 @@ export class Simulator {
       // 内側の刻みで解き終えているので、ここで解くのは1歩で渡った側だけ — 二重に解くと反発が
       // 二度当たる。
       this.sections.enter(SECTION.celestialContact);
-      this.surfaceContactPhysics.resolveShared(this.sharedIntervalScratch, activeStage, this.registry);
+      this.surfaceContactPhysics.resolveShared(this.sharedIntervalScratch, services);
       this.sections.exit(SECTION.celestialContact);
       nanWatchdog.checkControlled('simulator.advance(天体接触)', controlled, this.simTime, dt, subDt);
       // 接触代理を組むのも交戦圏があるときだけ。交戦圏の組まれない倍率で組むと、代理が
@@ -166,7 +168,7 @@ export class Simulator {
           }
         }
         this.entityContactPhysics.resolveEntityContacts(
-          this.simTime, this.contactEntitiesScratch, zones, activeStage, this.registry);
+          this.simTime, this.contactEntitiesScratch, zones, services);
         for (const entity of this.roster.allMotions()) {
           if (entity.alive) entity.applyContactProxies(subDt);
         }
@@ -202,7 +204,7 @@ export class Simulator {
   // 先端時刻が dt/divisions の丸めぶん endTime から外れる。履歴を持たない種別(弾・薬莢)は
   // 先端1件しか残さないので、そのずれがそのまま「表示時刻の状態を答えられない」= 非表示に
   // なる。残りを引く形なら、近い2つの差は誤差なく求まるので必ず endTime へ着地する。
-  private substep(endTime: number, dt: number, activeStage: StageOutcome): void {
+  private substep(endTime: number, dt: number, services: DynamicReactionServices): void {
     this.sharedIntervalScratch.length = 0;
     for (const e of this.roster.allMotions()) {
       if (!e.alive) continue;
@@ -219,13 +221,13 @@ export class Simulator {
         const integrated = e.stepSimulation(
           i === divisions - 1 ? endTime - e.state.t : step,
           near, this.bodies.surface, atmosphereBody, this.bodies.star,
-          this.bodies.pivot, { activeStage, registry: this.registry });
+          this.bodies.pivot, services);
         if (integrated) this.lastIntegratedSteps++;
         else this.lastFollowedSteps++;
         if (divisions > 1) {
           // 細分の各歩で解く天体接触も天体接触の値段なので、軌道積分を出てから計る。
           this.sections.switchTo(SECTION.orbit, SECTION.celestialContact);
-          this.surfaceContactPhysics.resolveOne(e, activeStage, this.registry);
+          this.surfaceContactPhysics.resolveOne(e, services);
           this.sections.switchTo(SECTION.celestialContact, SECTION.orbit);
         }
       }
