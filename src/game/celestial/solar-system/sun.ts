@@ -7,8 +7,8 @@ import { MU_SUN, R_SUN } from './constants';
 
 export const SUN: StarDef = { id: 'sun', mu: MU_SUN, radius: R_SUN };
 
-// 太陽光の色。5772 K(太陽の実効温度)の黒体を sRGB へ写した色にほぼ一致する。
-export const SUN_LIGHT_COLOR = new THREE.Color(0xfff4e0);
+// 大気外で昼光へホワイトバランスされた太陽色。円盤と照明はこの1値から導く。
+const SUN_COLOR = 0xffffff;
 
-// 太陽面の色。実球体と点像が同じ色を名乗る — 表示が切り替わったところで色みが変わらない。
-export const SUN_SURFACE_COLOR = 0xfff3d0;
+export const SUN_LIGHT_COLOR = new THREE.Color(SUN_COLOR);
+export const SUN_SURFACE_COLOR = SUN_COLOR;
