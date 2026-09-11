@@ -7,7 +7,7 @@ import './hackgen-400.css';
 // rAF ループ(Game.update → sync → render の駆動)を統括する。
 import { createGameScene, GameScene } from './render/scene';
 import { browserViewport } from './render/viewport';
-import { DebugInfoWindow } from './launcher/debug-info-window';
+import { DebugInfoWindow } from './game/hud/windows/debug-info-window';
 import { FrameSections } from './game/frame-sections';
 import { UserSettings } from './settings/user-settings';
 import { browserSettingStorage } from './settings/stored-setting';
@@ -18,7 +18,7 @@ import { HudShell } from './hud/hud-shell';
 import { PauseMenu } from './hud/windows/pause-menu';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
-import { Launcher } from './launcher/launcher';
+import { debugInfoOpenAtStart, Launcher } from './launcher/launcher';
 import { UnlockManager } from './launcher/unlock-manager';
 import { SnapshotControls } from './launcher/snapshot-controls';
 import { SaveBrowser } from './launcher/save-browser/save-browser';
@@ -197,7 +197,7 @@ async function main() {
   // pipeline はデバッグ情報ウィンドウの描画タブが書き込む先。
   const debugInfo = new DebugInfoWindow(
     shell.layers.window, gs.renderer, sections, gs.gpu, shell.overlayManager, gs.pipeline,
-    settings.renderStyle.current,
+    settings.renderStyle.current, debugInfoOpenAtStart(),
   );
   bindSettings(settings, gs, hud, bgm, pauseMenu, debugInfo);
   pauseMenu.onOpenDebugInfoWindow = () => {

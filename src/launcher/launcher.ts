@@ -24,6 +24,11 @@ import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay'
 import { showFatalError } from './fatal-error';
 import type { TdbJulianDate } from '../physics/time';
 
+// URL に ?perf=1 が付いているか。付いていればデバッグ情報ウィンドウを起動直後から開く。
+export function debugInfoOpenAtStart(): boolean {
+  return new URLSearchParams(location.search).get('perf') === '1';
+}
+
 // アクティブスロットの直近起動が今も選択可能(ロック解除済み・選択画面から隠されていない)なら、
 // そのステージクラスを返す。再開できる情報が無ければ null。
 function resumableStageClass(unlockManager: UnlockManager, slots: SaveSlots): StageClass | null {

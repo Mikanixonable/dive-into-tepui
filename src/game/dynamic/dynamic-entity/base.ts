@@ -44,10 +44,7 @@ const BASE_FUEL_RATE = 0.5;     // 基地の燃料消費レート
 const BASE_INERTIA_X = 1e8;     // 基地の慣性モーメント（ほぼ対称の大質量構造物）
 const BASE_INERTIA_Y = 1e8;
 const BASE_INERTIA_Z = 1.2e8;   // 長軸方向はやや大きい
-
-interface BaseState {
-  money: number;
-}
+const BASE_INITIAL_MONEY = 100000; // 新規配置の基地の所持金 [Cr]
 
 const idAllocator = new EntityIdAllocator('base-');
 
@@ -75,7 +72,9 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   }
   // 基地は常設の軌道構造物なので、選択の有無に関わらず赤道交点マーカーを出す。
   public override readonly showsEquatorNodesAlways = true;
-  public baseState: BaseState = { money: 100000 };
+  // 所持金 [Cr]。
+  private readonly _money: number;
+  public get money(): number { return this._money; }
 
   public declare readonly motion: BaseMotion;
 
@@ -133,10 +132,10 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     );
     this.setName(name);
     this.throttle = new Throttle(notifier, 'saved' in init ? init.saved.throttle : undefined);
+    this._money = 'saved' in init ? init.saved.money : BASE_INITIAL_MONEY;
 
     if ('saved' in init) {
       this.trajectoryLineVisible = init.saved.showTrajectoryLine ?? false;
-      this.baseState.money = init.saved.money;
     }
   }
 
@@ -231,7 +230,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       v: { ...this.motion.state.v },
       q: { ...this.motion.att.q },
       w: { ...this.motion.att.w },
-      money: this.baseState.money,
+      money: this._money,
       fuel: this.motion.fuel,
       throttle: this.throttle.serialize(),
       showTrajectoryLine: this.trajectoryLineVisible,
@@ -276,7 +275,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public menuItems(
     _celestialBodies: CelestialBodies, viewer: OrbitingObject | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
-    const subLabel = `基地 / 所持金: ${this.baseState.money.toLocaleString()} Cr`;
+    const subLabel = `基地 / 所持金: ${this._money.toLocaleString()} Cr`;
     const controlItem: MenuItem<MenuAction> = viewer === this
       ? { label: '操作対象を解除', act: 'deactivate' }
       : { label: '操作対象にする', act: 'activate' };
@@ -320,7 +319,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
         key: 'operated', label: '操作対象か',
         value: viewer === this ? 'はい' : 'いいえ', collapsible: true,
       },
-      { key: 'money', label: '所持金', value: `${this.baseState.money.toLocaleString()} Cr` },
+      { key: 'money', label: '所持金', value: `${this._money.toLocaleString()} Cr` },
     ];
     if (viewer) rows.push({
       key: 'dist', label: '距離',
