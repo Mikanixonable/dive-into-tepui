@@ -8,7 +8,7 @@ import type { FocusCandidate } from './focus-target';
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { Vec3, v3 } from '../../math/vec3';
-import { Viewpoint } from '../../math/projection';
+import { screenProjection, Viewpoint, type ProjectFn } from '../../math/projection';
 import type { FrameAnchorSource } from '../../physics/frame';
 import type { Quat } from '../../math/quat';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
@@ -137,6 +137,11 @@ export class CameraSystem {
   // アクティブカメラの位置(描画原点になる値)を返す。
   get activeCameraPos(): Vec3 {
     return this.activeViewpoint.position;
+  }
+
+  // アクティブカメラの視点から viewport の画面座標への射影を返す。
+  public activeProjection(viewport: Viewport): ProjectFn {
+    return screenProjection(this.activeViewpoint, viewport.width, viewport.height);
   }
 
   // 現在のビューのカメラが注視しているフォーカス対象。
