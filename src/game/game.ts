@@ -55,6 +55,8 @@ import { ViewOptionsControl } from './hud/panels/view-options-control';
 import type { MapDisplayToggles } from './map/display-toggles';
 import { MapVisibilityPolicy } from './map/visibility-policy';
 import type { RunSetting } from './run-setting';
+import type { OrbitGuideSettings } from './celestial/orbit-guide/orbit-guide-settings';
+import type { CelestialGridVisibility } from '../render/celestial-grid';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -96,6 +98,10 @@ export class Game {
   private readonly viewOptions: ViewOptionsControl;
   // マップの表示トグル。可視性ポリシーと点群の可視判定が、このフレームの値を読む。
   private readonly mapDisplay: RunSetting<MapDisplayToggles>;
+  // 天球グリッドの表示。
+  private readonly grid: RunSetting<CelestialGridVisibility>;
+  // 軌道ガイドの設定。
+  private readonly orbitGuide: RunSetting<OrbitGuideSettings>;
 
   readonly targeter: Targeter;
   readonly navTarget: NavTarget;
@@ -196,6 +202,8 @@ export class Game {
     this._celestialSystem = celestialSystem;
     this._hud = host.hud;
     this.mapDisplay = host.mapDisplay;
+    this.grid = host.grid;
+    this.orbitGuide = host.orbitGuide;
     this._worldSfx = new WorldSfx(audioEngine);
     const uiSfx = new UiSfx(audioEngine);
     this.pauseMenu = pauseMenu;
@@ -249,14 +257,6 @@ export class Game {
     );
     this.targeter = new Targeter(
       this.markerManager, this.navTarget, this.dynamicSystem, celestialSystem.celestialMotions,
-    );
-    this.viewOptions.onOrbitGuideSettingsChange = (settings) => this._celestialSystem.setOrbitGuideSettings(settings);
-    this._celestialSystem.setOrbitGuideSettings(host.orbitGuide.current);
-    this.viewOptions.onGridVisibilityChange = (visibility) => this._celestialSystem.setGridVisibility(visibility);
-    this._celestialSystem.setGridVisibility(host.grid.current);
-    // 線が増えすぎたときの警告を UI へ戻す。
-    this._celestialSystem.orbitGuide.setOnLineCountChange(
-      (count) => this.viewOptions.setOrbitGuideLineCount(count),
     );
     this.controlSelection = new ControlSelection(
       initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._worldSfx, this._hud,
@@ -538,9 +538,11 @@ export class Game {
       : undefined;
 
     this._celestialSystem.sync(
-      displayTime, camera, this.cameraSystem,
-      graphics, style, this.mapDisplay.current, visibilityPolicy, this.markerManager,
+      displayTime, camera, this.cameraSystem, graphics, style,
+      this.mapDisplay.current, this.grid.current, this.orbitGuide.current, visibilityPolicy, this.markerManager,
     );
+    // 本数の警告は、天体系がこのフレームに組んだ軌道ガイド線から出す。
+    this.viewOptions.setOrbitGuideLineCount(this._celestialSystem.orbitGuide.lineCount);
     this._celestialSystem.bakeClouds(this.renderer, displayTime, this.gpu);
 
     // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。

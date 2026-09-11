@@ -139,10 +139,10 @@ export class OrbitGuideTab {
     readonly direction: SegmentedControl<DirectionMarkerMode>;
     readonly animateSwitch: ToggleSwitch;
   };
-  private sunSyncRow!: SunSyncRow;
-  private dawnDuskRow!: DawnDuskRow;
-  private molniyaRow!: CriticalInclinationRow;
-  private tundraRow!: CriticalInclinationRow;
+  private readonly sunSyncRow: SunSyncRow;
+  private readonly dawnDuskRow: DawnDuskRow;
+  private readonly molniyaRow: CriticalInclinationRow;
+  private readonly tundraRow: CriticalInclinationRow;
   private readonly groupTabBar: TabBar<GroupTab>;
   private readonly groupTabBodies: ReadonlyMap<GroupTab, HTMLElement>;
   private selectedGroupTab: GroupTab;
@@ -586,11 +586,13 @@ export class OrbitGuideTab {
     this.syncAll();
   }
 
-  // 描いている線の総数。閾値を超えたら控えめな警告を出す(指定は曲げない)。
+  // 描いている線の総数。毎フレーム渡してよい。閾値を超えたら控えめな警告を出す(指定は曲げない)。
   public setLineCount(total: number): void {
     const over = total > LINE_COUNT_WARNING_THRESHOLD;
     this.lineCountEl.classList.toggle('hidden', !over);
-    if (over) this.lineCountEl.textContent = `線の本数が多くなっています(${total}本)。描画が重くなる場合があります。`;
+    if (!over) return;
+    const text = `線の本数が多くなっています(${total}本)。描画が重くなる場合があります。`;
+    if (this.lineCountEl.textContent !== text) this.lineCountEl.textContent = text;
   }
 }
 

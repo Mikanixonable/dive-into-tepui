@@ -12,7 +12,7 @@ import { addTimeCacheStats } from '../../physics/time-ring';
 import { KinematicState } from '../../physics/kinematic-state';
 import { lenSq, norm, sub, v3, Vec3 } from '../../math/vec3';
 import { CELESTIAL_SHELL_SCALE, createStars, Stars } from '../../render/stars';
-import { CelestialGrid, CelestialGridVisibility, DEFAULT_GRID_VISIBILITY } from '../../render/celestial-grid';
+import { CelestialGrid, type CelestialGridVisibility } from '../../render/celestial-grid';
 import type { CameraSystem } from '../camera/camera-system';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { ScaleGridView } from './scale-grid-view';
@@ -25,7 +25,7 @@ import { OrbitGuideModel } from './orbit-guide/orbit-guide-model';
 import { ZeroVelocityModel } from './orbit-guide/zero-velocity-model';
 import { OrbitGuideView, type VisibleGuideLine } from '../../render/celestial/orbit-guide/orbit-guide-view';
 import { ZeroVelocityView } from '../../render/celestial/orbit-guide/zero-velocity-view';
-import { DEFAULT_ORBIT_GUIDE_SETTINGS, OrbitGuideSettings } from './orbit-guide/orbit-guide-settings';
+import type { OrbitGuideSettings } from './orbit-guide/orbit-guide-settings';
 import type { TdbJulianDate } from '../../physics/time';
 import type { MarkerSlots } from '../marker/marker-slots';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
@@ -110,15 +110,11 @@ export class CelestialSystem implements CelestialBodies {
   private readonly atmosphereMotionList: readonly CelestialMotion[];
 
   // ラグランジュ点まわりの周期・準周期軌道のガイド線(表示パネルの軌道ガイドタブ、静止軌道を除く)。
-  private orbitGuideModel!: OrbitGuideModel;
+  private readonly orbitGuideModel: OrbitGuideModel;
   private orbitGuideView!: OrbitGuideView;
   // ゼロ速度曲線(ガイドタブ5.3節)。
-  private zeroVelocityModel!: ZeroVelocityModel;
+  private readonly zeroVelocityModel: ZeroVelocityModel;
   private zeroVelocityView!: ZeroVelocityView;
-  // 軌道ガイドタブの設定の写し。静止軌道リング・ラベルの表示可否を持つ。
-  private orbitGuideSettings: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
-  // 表示パネルの天球グリッド設定の写し。星・面・極・目安グリッドの表示可否を持つ。
-  private gridVisibility: CelestialGridVisibility = DEFAULT_GRID_VISIBILITY;
 
   // entities はこの星系の全天体(宣言順)、origin はその中の ECI 中心天体。phaseOffsets は motion を
   // 組むのに使った初期位相で、セーブでそのまま返すために保持する。epoch は simTime=0 が指す絶対時刻。
@@ -148,6 +144,8 @@ export class CelestialSystem implements CelestialBodies {
     const stellarLight = this.starEntity?.view.stellarLight ?? null;
     this.stellarLightSource = this.starEntity === null || stellarLight === null
       ? null : { motion: this.starEntity.motion, stellarLight };
+    this.orbitGuideModel = new OrbitGuideModel(this);
+    this.zeroVelocityModel = new ZeroVelocityModel(this);
   }
 
   // シーンと、光源・影・大気の書き込み先(RenderPipeline が所有)を受け取り、全天体の
@@ -157,9 +155,7 @@ export class CelestialSystem implements CelestialBodies {
     this.scene = scene;
     this.illumination = new CelestialIllumination(this.stellarLightSource, illuminationTargets);
     // 天体に付随する線・星野・グリッド。
-    this.orbitGuideModel = new OrbitGuideModel(this);
     this.orbitGuideView = new OrbitGuideView(scene);
-    this.zeroVelocityModel = new ZeroVelocityModel(this);
     this.zeroVelocityView = new ZeroVelocityView(scene);
     this.stars = createStars();
     scene.add(this.stars.mesh);
@@ -339,20 +335,10 @@ export class CelestialSystem implements CelestialBodies {
     let time = this.eciTransform.cacheStats;
     for (const motion of this.celestialMotions) time = addTimeCacheStats(time, motion.cacheStats);
     const surfaces = this.entities.flatMap((entity) => {
-      const diagnostics = entity.surfaceDiagnostics;
+      const diagnostics = entity.view.surfaceDiagnostics;
       return diagnostics === null ? [] : [{ id: entity.id, name: entity.name, diagnostics }];
     });
     return { timeCacheHits: time.hits, timeCacheMisses: time.misses, surfaces };
-  }
-
-  // 軌道ガイドタブ(表示パネル5.2節)の設定。変更のたびに渡す。
-  setOrbitGuideSettings(settings: OrbitGuideSettings): void {
-    this.orbitGuideSettings = settings;
-  }
-
-  // 天球グリッド(表示パネル5.1節)の設定。変更のたびに渡す。
-  setGridVisibility(visibility: CelestialGridVisibility): void {
-    this.gridVisibility = visibility;
   }
 
   // 表示中の参照軌道線を、当たり判定用の ECI 点列として列挙する。
@@ -384,8 +370,9 @@ export class CelestialSystem implements CelestialBodies {
   }
 
   // 天体ビュー・星・照明・影・参照線・天球グリッドを、この1フレームの表示状態に同期する。
-  // visibilityPolicy はマップビューでは非 null、戦闘ビューでは null。描かれる対象と選べる対象が
-  // 同じ判定から出るよう、同じフレームの update 位相で確定させたものを渡す。
+  // mapDisplay・grid・orbitGuide はこのフレームの表示パネルの設定。visibilityPolicy はマップ
+  // ビューでは非 null、戦闘ビューでは null。描かれる対象と選べる対象が同じ判定から出るよう、
+  // 同じフレームの update 位相で確定させたものを渡す。
   sync(
     displayTime: number,
     camera: CameraFrame,
@@ -393,6 +380,8 @@ export class CelestialSystem implements CelestialBodies {
     graphics: GraphicsSettingsData,
     style: RenderStyle,
     mapDisplay: MapDisplayToggles,
+    grid: CelestialGridVisibility,
+    orbitGuide: OrbitGuideSettings,
     visibilityPolicy: MapVisibilityPolicy | null,
     markers: MarkerSlots,
   ): void {
@@ -421,22 +410,21 @@ export class CelestialSystem implements CelestialBodies {
       && mapDisplay.smallBodyVisible;
     this.pointFieldView?.sync(
       pointFieldVisible, floatingOrigin, displayTime, starPos, fixedBrightnessScale);
-    this.syncStars(fixedBrightnessScale, this.gridVisibility.stars);
-    const geostationaryOrbitVisible = this.orbitGuideSettings.geostationary;
+    this.syncStars(fixedBrightnessScale, grid.stars);
     this.syncReferenceLines(displayTime, camera, visibilityPolicy);
     // 地球の静止軌道リングなど、天体固有のマップ付随表示。
     for (const body of this.entities) {
       body.view.syncMapOverlay(
         body.motion, displayTime, camera, markers, this.celestialMotions,
-        camera.mode === 'map' && geostationaryOrbitVisible
+        camera.mode === 'map' && orbitGuide.geostationary
           && categoryVisible(visibilityPolicy, body.id));
     }
     this.orbitGuideView.sync(
-      this.orbitGuideModel.sync(this.orbitGuideSettings, displayTime, style, camera.mode), camera);
+      this.orbitGuideModel.displaysAt(orbitGuide, displayTime, style, camera.mode), camera);
     this.zeroVelocityView.sync(
-      this.zeroVelocityModel.sync(this.orbitGuideSettings.zeroVelocity, displayTime, camera.mode), camera);
-    this.celestialGrid.sync(style, this.gridVisibility, camera.camera, CELESTIAL_SHELL_SCALE, camera.viewport);
-    this.scaleGrid.sync(displayTime, camera, cameraSystem, this, this.gridVisibility);
+      this.zeroVelocityModel.displaysAt(orbitGuide.zeroVelocity, displayTime, camera.mode), camera);
+    this.celestialGrid.sync(style, grid, camera.camera, CELESTIAL_SHELL_SCALE, camera.viewport);
+    this.scaleGrid.sync(displayTime, camera, cameraSystem, this, grid);
   }
 
   // このフレームに積雲殻を描く天体の雲場を焼く。
@@ -455,13 +443,13 @@ export class CelestialSystem implements CelestialBodies {
   // 参照軌道線を出すかを表示ポリシーから決め、毎フレームの enabled 値として個体へ渡す。
   // cameraPos は個体がフェードを測る基準(カメラの真の ECI 位置)。
   private syncReferenceLines(
-    simTime: number, camera: CameraFrame, visibilityPolicy: MapVisibilityPolicy | null,
+    displayTime: number, camera: CameraFrame, visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     for (const body of this.entities) {
       const visible = visibilityPolicy !== null
         && body.motion.kind !== 'star'
         && visibilityPolicy.body(body.id).orbit;
-      body.view.syncReferenceLine(body.motion, this.scene, simTime, camera, visible);
+      body.view.syncReferenceLine(body.motion, this.scene, displayTime, camera, visible);
     }
   }
 
