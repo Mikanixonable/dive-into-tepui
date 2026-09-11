@@ -1,5 +1,4 @@
 // ラン跨ぎのユーザー設定の正本。設定ごとの現在値を1つずつ起こし、保存先のどの鍵へ載せるかを決める。
-// 値の型・選択肢・保存文字列との変換は、それぞれの設定を所有するモジュールが持つ。
 
 import { formatBgmVolume, parseBgmVolume } from '../audio/bgm/bgm';
 import { formatOrbitGuideSettings, parseOrbitGuideSettings } from '../game/celestial/orbit-guide/orbit-guide-settings';
@@ -29,14 +28,14 @@ export class UserSettings {
   // 軌道ガイドの設定。
   public readonly orbitGuide: StoredSetting<OrbitGuideSettings>;
 
-  // storage は設定一式を残す先。鍵は**既存ユーザーの保存に残っている文字列**なので、
-  // 生成の並びと一緒にここへ直に書く。
+  // storage は設定一式を残す先。鍵は既存ユーザーの保存に残っている文字列なので、変えると
+  // 保存済みの設定が読めなくなる。
   public constructor(storage: SettingStorage) {
-    // 画面全体に効く設定。設定ビューと一時停止メニューが書き換える。
+    // 画面全体に効く設定。
     this.graphics = new StoredSetting(storage, 'tepui.settings.graphics', parseGraphics, formatGraphics);
     this.renderStyle = new StoredSetting(storage, 'tepui.settings.renderStyle', parseRenderStyle, formatRenderStyle);
     this.bgmVolume = new StoredSetting(storage, 'tepui.settings.bgm_vol', parseBgmVolume, formatBgmVolume);
-    // マップの表示パネルが書き換える設定。ランの中から編集され、ランを跨いで残る。
+    // マップ・天球の表示に効く設定。
     this.mapDisplayToggles = new StoredSetting(
       storage, 'tepui.mapDisplayToggles', parseMapDisplayToggles, formatMapDisplayToggles,
     );
