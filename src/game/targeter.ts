@@ -219,10 +219,10 @@ export class Targeter {
   private syncProteinSiteMarkers(
     enemy: ProteinEnemy, displayPos: Vec3 | null, viewerPos: Vec3, mapView: boolean, project: ProjectFn, cameraPos: Vec3,
   ): void {
-    // HP snapshot は Entity、変形済みアンカーは View から同じ呼び出しで合成する。
+    // 部位の HP は Entity の読み取り値、変形済みアンカーは View から同じ呼び出しで合成する。
     const inRange = !mapView && displayPos !== null && len(sub(displayPos, viewerPos)) <= PROTEIN_SITE_MARKER_RANGE;
     const sites = enemy.view.siteMarkers(
-      displayPos ?? enemy.motion.state.r, enemy.motion.att.q, enemy.hudSnapshot.sites,
+      displayPos ?? enemy.motion.state.r, enemy.motion.att.q, enemy.combatReadout.sites,
     );
     // 範囲外でも全既存キーを通り、前フレームの DOM マーカーを確実に隠す。
     for (const site of sites) {
