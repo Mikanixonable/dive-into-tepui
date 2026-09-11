@@ -1,3 +1,4 @@
+const fs = require('fs');
 const path = require('path');
 const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
@@ -6,7 +7,19 @@ const { version } = require('./package.json');
 
 const DEFAULT_EARTH_SURFACE_DATASET_ID = 'earth-2026-09-09-a';
 const EARTH_SURFACE_DEV_PUBLIC_PATH = `/earth/${DEFAULT_EARTH_SURFACE_DATASET_ID}/`;
-const DEFAULT_EARTH_SURFACE_MANIFEST_URL = `${EARTH_SURFACE_DEV_PUBLIC_PATH.slice(1)}earth-surface.json`;
+const EARTH_SURFACE_BUNDLE_ROOT = path.resolve(__dirname, '.earth-surface/bundle');
+const EARTH_SURFACE_LOCAL_MANIFEST_PATH = path.join(EARTH_SURFACE_BUNDLE_ROOT, 'earth-surface.json');
+const DEFAULT_EARTH_SURFACE_R2_BASE_URL = 'https://assets.mikanixonable.net/earth/earth-2026-09-09-a/';
+const DEFAULT_EARTH_SURFACE_R2_MANIFEST_URL = `${DEFAULT_EARTH_SURFACE_R2_BASE_URL}earth-surface.json`;
+const configuredEarthSurfaceBaseUrl = process.env.EARTH_SURFACE_BASE_URL?.trim() ?? '';
+const configuredEarthSurfaceManifestUrl = process.env.EARTH_SURFACE_MANIFEST_URL?.trim() ?? '';
+const localEarthSurfaceManifestUrl = `${EARTH_SURFACE_DEV_PUBLIC_PATH.slice(1)}earth-surface.json`;
+const earthSurfaceManifestUrl = configuredEarthSurfaceManifestUrl
+  || (configuredEarthSurfaceBaseUrl.length > 0
+    ? `${configuredEarthSurfaceBaseUrl.replace(/\/+$/, '')}/earth-surface.json`
+    : fs.existsSync(EARTH_SURFACE_LOCAL_MANIFEST_PATH)
+      ? localEarthSurfaceManifestUrl
+      : DEFAULT_EARTH_SURFACE_R2_MANIFEST_URL);
 
 module.exports = {
   entry: {
@@ -90,12 +103,10 @@ module.exports = {
     }),
     new webpack.DefinePlugin({
       __APP_VERSION__: JSON.stringify(version),
-      __EARTH_SURFACE_BASE_URL__: JSON.stringify(process.env.EARTH_SURFACE_BASE_URL ?? ''),
-      // GitHub Pagesのrepository subpathとnpm run devのdocs配下から解決できる相対manifest URL。
-      // 生成済みの実データ版を既定にし、未配置時は実行時fallbackへ戻す。
-      __EARTH_SURFACE_MANIFEST_URL__: JSON.stringify(
-        process.env.EARTH_SURFACE_MANIFEST_URL ?? DEFAULT_EARTH_SURFACE_MANIFEST_URL,
-      ),
+      __EARTH_SURFACE_BASE_URL__: JSON.stringify(configuredEarthSurfaceBaseUrl),
+      // ローカルbundleがあればそれを使い、無ければ公開済みR2のmanifestへ切り替える。
+      // 明示した環境変数は、ローカルbundleの有無より優先する。
+      __EARTH_SURFACE_MANIFEST_URL__: JSON.stringify(earthSurfaceManifestUrl),
     }),
   ],
   devServer: {
@@ -105,7 +116,7 @@ module.exports = {
         publicPath: '/',
       },
       {
-        directory: path.resolve(__dirname, '.earth-surface/bundle'),
+        directory: EARTH_SURFACE_BUNDLE_ROOT,
         publicPath: EARTH_SURFACE_DEV_PUBLIC_PATH,
         watch: false,
       },
