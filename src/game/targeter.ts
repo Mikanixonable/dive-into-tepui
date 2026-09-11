@@ -4,8 +4,7 @@ import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../
 import { Enemy } from './dynamic/dynamic-entity/enemy';
 import { isBullet } from './dynamic/dynamic-entity/bullet';
 import { bulletReactionOf } from './dynamic/dynamic-entity/bullet-reaction';
-import { isAmmoPickup } from './dynamic/dynamic-entity/ammo-pickup';
-import { isRcsFuelPickup } from './dynamic/dynamic-entity/rcs-fuel-pickup';
+import { isAmmoPickup, isRcsFuelPickup } from './dynamic/dynamic-entity/pickup';
 import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
 import type { EntityRoster } from './dynamic/entity-roster';
 import { Player } from './player/player';
