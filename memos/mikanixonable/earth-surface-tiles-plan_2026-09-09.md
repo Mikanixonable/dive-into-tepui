@@ -1,0 +1,155 @@
+# 地球地表タイル計画 — 全世界版
+
+作成日: 2026-09-09。未完了タスク用に再編: 2026-09-10。実装・実データ検証反映: 2026-09-11。
+
+この文書は未達成の受け入れ条件と、その検証証拠を持つ。コードの現在状態はコードを原本とする。
+
+## 1. 目的と今回の決定
+
+地球へ近づいたとき、見ている地域だけが段階的に細かくなり、標高から作った斜面の明暗が太陽の向きに応じて変わる地表を作る。
+遠距離では全球のbaseを表示し、近距離では必要な地域の色・法線・roughnessタイルを遅延取得する。通信失敗、GPU非対応、
+非表示、disposeが起きても、地球やゲーム進行を止めない。
+
+今回、次を確定した。
+
+- 初回の実データ生成対象は全世界、z=0〜7とする。
+- Pagesは本リリース前のプレビュー配信先とする。5.5 GiBの実bundleをPagesへ配備することはこの計画の範囲外とする。
+- 外部静的配信要件は廃止する。ローカルの受け入れ条件は`npm run dev`から同一originの実データbundleを読むことである。
+- manifest URLをデータセットの正本とする。環境変数でdatasetIdやbase URLを重複定義しない。
+- 気候mapは1024×512、12か月のRGBAとする。
+- 実bundleはz0〜z7、43,690タイル、12枚の気候map、約5.5 GiBで生成する。global baseはz0東西2枚から512×256へ生成する。
+- Three.jsの内部APIはGPU adapter内に隔離する。
+- v1ではmipmapを必須にしない。LOD、親子fade、フォールバックを受け入れ条件にする。
+- GPU追加メモリ、隣接タイル差、GPU p95は診断値とし、対応環境や実測値が得られないことだけでコード完了を失敗にしない。
+- 旧smoothness画像は、新しいmanifest経路が成立するまでEarth実行時の開発フォールバックとして残す。月・他天体・cloud-labの旧fixtureを一括削除しない。
+
+## 2. 固定前提
+
+### データ
+
+- BMNG July 2004 Base Mapを地表色の基準にする。
+- ETOPO 2022 v1のice-surface elevationとgeoidを使う。bed elevationとGEBCOは使わない。
+- GSHHG full resolutionで海・湖・陸の被覆率を作る。海抜の正負から水域を推定しない。
+- ERA5 1991–2020月平均（daily means）の2m気温と総雲量を12か月のRGBA気候mapへ焼く。日内変化はこのmapの要件ではないため、hour-of-day軸を保持しない。
+- 気候mapは1024×512とする。R=気温、G=雲量、B=水域を除いたETOPO正高、A=GSHHG陸地被覆率。
+- 水域はAで判定し、実行時には水域の標高を0mとして扱う。海抜0m未満の陸地は負値を保つ。
+- 入力データの版、SHA-256、単位、CRS、鉛直基準、NoData、再格子化、帰属をsource manifestへ記録する。
+
+### 描画とLOD
+
+- 基準楕円体のメッシュを使い、標高は法線と陰影だけへ反映する。地形で輪郭・遮蔽・衝突を変えない。
+- 形状LODとテクスチャLODを分ける。地域patch meshや追加draw callは作らない。
+- テクスチャ四分木はz=0〜7、タイル内側256×256、2texel gutter、最高段の赤道間隔は約611mとする。論理frontierは128層、物理GPU配列は144層（フェード予備16層）を確保する。
+- errorPx、視錐台/地平線、2:1隣接制約、ページ表、親子fadeをCPUで管理する。
+- 色はsRGB、地形/法線はNoColorSpace。ページ表はNearest、色と地形の必須標本化はLinear、mipmapは必須にしない。
+- 水roughness=0.05、陸=0.80、明示できる氷=0.35。色の青さや標高閾値からroughness/氷を推定しない。
+- 色と地形を同じGPU層へ書き込み、両方が揃ってからフレーム境界でページ表を公開する。
+- WebGPU機能が足りない場合はDataArrayTextureを作らず、全球baseへ固定する。
+- 地形バイナリはraw gzip本文の.bin.gzとして配り、クライアントのDecompressionStreamで一度だけ展開する。HTTPのContent-Encoding: gzipは併用しない。
+- タイル要求、resident cache、ページ表は非表示・dispose・データセット変更で世代を無効化し、遅着データを公開しない。
+- EarthSurfaceは地球のメッシュ、material、base fallback、タイル管理、GPU adapterを所有する。一般天体のCelestialSurfaceとはメッシュ生成の共通部分だけを共有する。
+
+### 配信
+
+開発中のゲーム本体と地表データは、`npm run dev`が配る同一originから読み込む。GitHub Pagesは同じ
+bundleを確認するためのプレビューとして扱い、本リリースの配信経路には含めない。
+
+- docs/earth/<datasetId>/へmanifest、tile-index、base、全世界z0〜z7、12枚の気候mapを配置する。
+- Pagesのrepository subpathを考慮し、asset URLをハードコードしない。
+- manifestは短いcache、datasetId付きtile/base/climateはimmutable cacheとする。
+- 同じdatasetIdのURLを上書きしない。更新時は新しいdatasetIdを使う。
+- GitHub Pagesの公開上限を超えるbundleはプレビューへ配置しない。全世界z0〜z7を縮小して上限へ
+  合わせることは行わず、超過時は実測値付きでプレビューだけをblockedとする。ローカルbundleの
+  生成・検査・実行は継続できる。
+- `npm run dev`はdocsと`.earth-surface/bundle`を直接配信し、共有datasetIdを使う`/earth/<datasetId>/`へmanifestとbundleを公開する。開発時に5.5 GiBをdocsへコピーしない。
+
+ローカル確認は`.earth-surface/bundle`を生成した状態で`npm run dev`から行う。docsへのbundle stagingは受け入れ条件に含めない。
+
+## 3. 依存関係とフェーズ
+
+T0完了後、T1とT2はfixture契約の範囲で並行する。T3はT1とT2、T4はT1とT3、T5はT3とT4、
+T6-1はT1とT5、T7は全フェーズに依存する。T6-3のruntime bootstrapはT3へ統合する。
+
+```text
+T0 基準記録
+├─ T1 実データ入力・全球bundle生成 ─┐
+└─ T2 実GPU material / base fallback ─┴─ T3 Earth entity本接続 + runtime bootstrap
+            └─ T4 月別気候を雲・雲影・大気へ接続
+                  └─ T5 実行時画像・metrics
+                        └─ T6-1 Pagesプレビュー・CI
+                              └─ T7 全体レビューと文書記録
+```
+
+## 4. 完了ゲート
+
+各フェーズでは、コード、データ、公開を混同せず次の証拠を残す。
+
+- コードゲート: 型検査、対象層の回帰テスト、レビュー、不要APIと旧参照の点検。
+- データゲート: 入力hash、生成manifest、tile-index、バイナリ検査、制御点画像、再現可能な生成ログ。
+- 公開ゲート: Pagesプレビューへ配置する場合だけbundleのlayout、URL、cache、CORS不要の同一origin取得、
+  代表tileのGETを検査する。ローカル受け入れは`npm run dev`からのmanifest・代表tile取得で判定する。
+- WebGPU、実ブラウザp95、外部認証など実行環境に依存するものは、未実施を明記し、コード完了と分ける。
+- 全世界bundleの生成・公開ができない場合、生成器の完了を全世界公開完了へ読み替えない。
+
+## 5. 実装前のP0準備
+
+1. 現在の作業ツリーをクリーンなコミットへ固定し、雲システムなど無関係な差分をEarth作業へ混ぜない。
+2. T0でHEAD、作業ツリー、Node/npm、OS、ブラウザ、WebGPU、drawing buffer、検証コマンドと終了コードを記録する。
+   WebGPUやdrawing bufferを起動できない場合はunavailableと記録する。
+3. GDAL、NetCDF、GSHHG geometry依存と生成用ディスク容量を確認する。
+4. 全世界z0〜z7のタイル数、入力・中間・出力容量、生成時間を実測する。巨大な全球配列を一度にメモリへ展開しない。
+5. 16制御地域と制御点を定義する。全球生成の受け入れには、赤道、60度、両極、日付変更線、海岸、
+   青い陸、氷、負標高陸、海底、ヒマラヤ、グリーンランド、南極、カスピ海、死海を含める。
+6. ESTB/ESTN、manifest、tile-index、気候RGBAのversion、寸法、channel、endianness、NoData、hash範囲を固定する。
+7. 気候、地表、雲、大気、雲影で共通の楕円体地理UVとUTC月時計を使う契約を固定する。
+
+## 6. タスク一覧
+
+| ID | 作業ファイル | 目的 | 依存 | 本番必須 |
+| --- | --- | --- | --- | --- |
+| T0 | [T0-baseline.md](earth-surface-tiles-plan_2026-09-09/T0-baseline.md) | 基準状態と検証結果を保存 | なし | はい |
+| T1 | [T1-data-bundle.md](earth-surface-tiles-plan_2026-09-09/T1-data-bundle.md) | 実データから全球bundleを生成 | T0 | はい |
+| T2 | [T2-gpu-material.md](earth-surface-tiles-plan_2026-09-09/T2-gpu-material.md) | 実GPU配列層とTSL materialを完成 | T0 | はい |
+| T3 | [T3-earth-connection.md](earth-surface-tiles-plan_2026-09-09/T3-earth-connection.md) | Earth entityとruntime bootstrapを接続 | T1,T2 | はい |
+| T4 | [T4-climate-connection.md](earth-surface-tiles-plan_2026-09-09/T4-climate-connection.md) | 月別気候を雲・雲影・大気へ接続 | T1,T3 | はい |
+| T5 | [T5-capture-metrics.md](earth-surface-tiles-plan_2026-09-09/T5-capture-metrics.md) | 実行時画像とmetricsを完成 | T3,T4 | はい |
+| T6-1 | [T6-1-pages.md](earth-surface-tiles-plan_2026-09-09/T6-1-pages.md) | Pagesプレビューを接続 | T1,T5 | いいえ |
+| T6-2 | — | 外部静的配信要件を廃止（実装・公開経路から除去） | — | いいえ |
+| T6-3 | [T6-3-runtime.md](earth-surface-tiles-plan_2026-09-09/T6-3-runtime.md) | 旧runtime記述をT3へ統合して廃止 | T3へ統合 | いいえ |
+| T7 | [T7-review.md](earth-surface-tiles-plan_2026-09-09/T7-review.md) | 全体レビュー、整理、記録 | T0〜T6-1 | はい |
+
+## 6.1 実装状況（2026-09-10）
+
+コードとして完了したフェーズは次のとおり。実データの取得・全量生成・実WebGPU表示は別ゲートであり、コード完了だけでは達成扱いにしない。
+
+| フェーズ | 状態 | commit / 証拠 | 未達・制約 |
+| --- | --- | --- | --- |
+| T0 | 完了 | `492fd9af`、`.earth-surface/verification/baseline.json` | WebGPU/drawing bufferはunavailable |
+| T1 | 実データbundle生成完了 | 約5.5 GiB、43,690タイル、z0〜z7、12枚の気候map、z0東西から生成した512×256 global baseを確認 | Pagesへの5.5 GiB配備は範囲外。15固定ケースの視覚計測はT5の未完了条件 |
+| T2 | コード・GPU配列契約完了 | 物理GPU144層、フェード予備16層、CPU backing約111.4 MiB。render/typecheckを通過 | 15固定ケースの完全な実ブラウザ視覚計測はT5で判定 |
+| T3 | ゲーム経路・runtime配信・実Earthメッシュの詳細材質接続完了 | `npm run dev`で`.earth-surface/bundle`を`/earth/<datasetId>/`へ直接配信し、manifest URLと配信datasetIdを共有する契約を検査 | 15固定ケースの完全な視覚計測はT5で未完了 |
+| T6-2 | 廃止 | 2026-09-10に外部静的配信要件を廃止 | 既存のremote-check実装を削除し、Pages同一origin検査へ集約 |
+| T6-1 | fixture Pages・layout/contractゲート完了。Pagesはpreview用途 | `docs/earth/<datasetId>/`を正しいlayoutとし、ローカルは`.earth-surface/bundle`の直接配信で検査 | 5.5 GiB実bundleのPages配備は範囲外 |
+| T4 | コード・実データmap生成完了 | UTC月時計、共有楕円体UV、雲・雲影・大気への同一投影、ERA5を焼いた12枚のmapを確認 | 実ブラウザで気候map適用後の標識一致を未検証 |
+| T5 | コード・実bundle stage00 smoke完了。15固定ケースは未完了 | 実ブラウザstage00を3回連続検証し5.083〜5.339秒で最高LOD z7へ到達。color/terrain各24・36・32件がHTTP 200、ready/detailed、fatal/errorなし | 15固定ケースの完全な視覚計測が未実施のため完了扱いにしない |
+| T7 | レビュー記録を更新中 | dev配信、datasetId整合、global base、物理144層、stage00 smokeの証拠を反映 | 15固定ケースの完全な視覚計測が終わるまで全体完了にしない |
+
+## 7. 検証
+
+変更後は、各タスクに書かれた検証を実行する。全体完了時は次を実行する。
+
+npm run typecheck
+npm run test:render
+npm run test:game
+npm run earth-surface:test
+python3 -m unittest discover -s tools/earth-surface -p 'test_*.py'
+npm run build
+npm run verify:release
+npm run earth-surface:check
+npm run earth-surface:package
+npm run earth-surface:capture
+git diff --check
+
+test:renderとtest:gameは同じtests/distを作り直すため並列実行しない。実ブラウザやWebGPUが無い場合は
+対応するcapture/metricsへ未実施理由を記録する。全体完了時は、コードゲート、データゲート、Pages公開ゲートを
+一つずつ確認し、未達成の項目を完了扱いにしない。

@@ -5,6 +5,7 @@
 // 抗力を解く大気モデル(physics/atmosphere.ts)とは別の分布で、こちらは見えだけを決める。
 import * as THREE from 'three/webgpu';
 import { apparentSizePx } from '../math/projection';
+import { airglowCutoffAltitude, type AirglowOptics } from './airglow';
 
 // 大気の描き方の段。上げるほど、大気ぜんぶへ配れる精細さの合計が増える。
 export const ATMOSPHERE_QUALITY = { off: 0, low: 1, medium: 2, high: 3 } as const;
@@ -20,6 +21,8 @@ export interface AtmosphereOptics {
   readonly mieScaleHeight: number; // [m]
   // ミー散乱の非対称因子 0..1。大きいほど前方へ強く散り、太陽のまわりのグローが締まる。
   readonly mieAnisotropy: number;
+  // 大気自身の発光層。未指定なら大気は反射・散乱だけを持つ。
+  readonly airglow?: AirglowOptics;
 }
 
 // 同時に大気を描ける天体の数。1 体につき描画が 1 回増えるので、ここは絵の負荷の上限を決める。
@@ -62,6 +65,7 @@ export function cutoffAltitude(optics: AtmosphereOptics, surfaceRadius: number):
   return Math.max(
     speciesCutoff(rayleigh, optics.rayleighScaleHeight, surfaceRadius),
     speciesCutoff(optics.mie, optics.mieScaleHeight, surfaceRadius),
+    optics.airglow === undefined ? 0 : airglowCutoffAltitude(optics.airglow),
   );
 }
 

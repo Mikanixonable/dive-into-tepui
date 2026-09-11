@@ -4,7 +4,8 @@
 import * as THREE from 'three/webgpu';
 import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
-import { CumulusShell } from '../../src/render/celestial/cumulus-shell';
+import { CloudPresentation } from '../../src/render/cloud/cloud-presentation';
+import type { CloudLodMode } from '../../src/render/cloud/cloud-field-sampler';
 import { ClimateMap } from '../../src/render/cloud/climate-map';
 import { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
@@ -30,7 +31,7 @@ import {
 } from '../../src/render/thermal-emissive';
 import { sphereShadowBody, type ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
-import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cumulus-shadow';
+import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
 import { RingView } from '../../src/render/celestial/ring-view';
 import { AU } from '../../src/physics/astronomical-unit';
@@ -124,6 +125,8 @@ export interface LabCase {
   readonly cumulus?: ShadowCumulus;
   // 動的な雲場を表示時刻へ焼く。
   readonly bakeClouds?: (renderer: WebGPURenderer, displayTime: number) => void;
+  // 雲場のLOD比較設定を表面へ渡す。大気・影はRenderPipelineが同じ設定を受ける。
+  readonly setCloudLodSampling?: (mode: CloudLodMode, fixedLevel?: number) => void;
   // 動的な雲場を解放する。
   readonly disposeClouds?: () => void;
   // 描画品質設定のうち、ケースの部品が読む項目を押し込む口。毎フレーム呼ばれるので、
@@ -632,6 +635,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   readonly shadowBody: ShadowBody;
   readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
   readonly bakeClouds: (renderer: WebGPURenderer, displayTime: number) => void;
+  readonly setCloudLodSampling: (mode: CloudLodMode, fixedLevel?: number) => void;
   readonly disposeClouds: () => void;
 } {
   const group = new THREE.Group();
@@ -641,7 +645,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
   const climate = ClimateMap.fromDeferredUrl(climateTextureUrl);
-  const cumulus = new CumulusShell(GeneratedCloudField.global(climate, R_EARTH, SIDEREAL_DAY), R_EARTH_EQ);
+  const cumulus = new CloudPresentation(GeneratedCloudField.global(climate, R_EARTH, SIDEREAL_DAY), R_EARTH_EQ);
   const surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
   surface.addTo(group);
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
@@ -687,6 +691,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
       }
     },
     bakeClouds: (renderer, displayTime) => cumulus.bake(renderer, displayTime),
+    setCloudLodSampling: (mode, fixedLevel) => cumulus.setLodSampling(mode, fixedLevel),
     disposeClouds: () => cumulus.dispose(),
   };
 }
@@ -721,6 +726,7 @@ function earth(style: RenderStyle): LabCase {
     cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
     bakeClouds: earthSphere.bakeClouds,
+    setCloudLodSampling: earthSphere.setCloudLodSampling,
     disposeClouds: earthSphere.disposeClouds,
   };
 }
@@ -739,6 +745,7 @@ function earthOblique(style: RenderStyle): LabCase {
     cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
     bakeClouds: earthSphere.bakeClouds,
+    setCloudLodSampling: earthSphere.setCloudLodSampling,
     disposeClouds: earthSphere.disposeClouds,
   };
 }
@@ -767,6 +774,7 @@ function earthPolar(style: RenderStyle): LabCase {
     cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
     bakeClouds: earthSphere.bakeClouds,
+    setCloudLodSampling: earthSphere.setCloudLodSampling,
     disposeClouds: earthSphere.disposeClouds,
   };
 }
@@ -850,6 +858,7 @@ function earthMars(style: RenderStyle): LabCase {
     ],
     applyGraphics: earthSphere.applyGraphics,
     bakeClouds: earthSphere.bakeClouds,
+    setCloudLodSampling: earthSphere.setCloudLodSampling,
     disposeClouds: earthSphere.disposeClouds,
   };
 }
