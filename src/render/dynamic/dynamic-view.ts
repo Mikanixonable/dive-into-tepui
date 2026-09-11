@@ -97,18 +97,18 @@ export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderS
   }
 
   // 個体の表示入力を、所有する THREE モデルへ同期する。
-  public sync(source: S, context: DynamicViewFrame): void {
-    const displayed = source.alive ? this.place(source, context) : null;
+  public sync(source: S, viewFrame: DynamicViewFrame): void {
+    const displayed = source.alive ? this.place(source, viewFrame) : null;
     if (!source.alive) this.object.visible = false;
-    this.syncModel(source, displayed, context);
+    this.syncModel(source, displayed, viewFrame);
   }
 
   // 表示時刻の状態があれば、可視性・位置・姿勢・熱表現を THREE ルートへ適用する。
-  protected place(source: DynamicRenderSource, context: DynamicViewFrame): KinematicState | null {
-    const state = source.stateAt(context.displayTime);
+  protected place(source: DynamicRenderSource, viewFrame: DynamicViewFrame): KinematicState | null {
+    const state = source.stateAt(viewFrame.displayTime);
     this.object.visible = state !== null && source.visible;
     if (state === null) return null;
-    this.object.position.copy(context.camera.floatingOrigin.RtoThreeV3(state.r));
+    this.object.position.copy(viewFrame.camera.floatingOrigin.RtoThreeV3(state.r));
     const q = source.attitude;
     this.object.quaternion.set(q.x, q.y, q.z, q.w);
     const thermal = source.thermal;
@@ -119,7 +119,7 @@ export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderS
   }
 
   protected syncModel(
-    _source: S, _displayed: KinematicState | null, _context: DynamicViewFrame,
+    _source: S, _displayed: KinematicState | null, _viewFrame: DynamicViewFrame,
   ): void {
   }
 

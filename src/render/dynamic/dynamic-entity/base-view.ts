@@ -52,34 +52,34 @@ export class BaseView extends DynamicView<BaseRenderSource> {
   protected override syncModel(
     source: BaseRenderSource,
     displayed: KinematicState | null,
-    context: DynamicViewFrame,
+    viewFrame: DynamicViewFrame,
   ): void {
     const position = displayed?.r ?? null;
     const visible = this.object.visible;
-    const cameraQuat = context.camera.camera.quaternion;
-    const zoomActive = context.camera.zoomed;
+    const cameraQuat = viewFrame.camera.camera.quaternion;
+    const zoomActive = viewFrame.camera.zoomed;
     this.thrustEffects.sync(
-      context.camera.floatingOrigin,
+      viewFrame.camera.floatingOrigin,
       position,
       source.thrust,
       source.maximumAcceleration,
       visible,
       cameraQuat,
       zoomActive,
-      context.style,
-      context.displayTime,
+      viewFrame.style,
+      viewFrame.displayTime,
       BASE_PLUME_SCALE,
     );
     // 並進噴射と姿勢制御噴射は別資源なので、それぞれ同じ可視判定を渡す。
     this.rcsEffects.sync(
-      context.camera.floatingOrigin,
+      viewFrame.camera.floatingOrigin,
       position,
       source.torque,
       source.attitude,
       visible,
       cameraQuat,
       zoomActive,
-      context.displayTime,
+      viewFrame.displayTime,
       BASE_PLUME_SCALE,
     );
   }
