@@ -15,12 +15,17 @@ import {
   EARTH_BASE_COLOR_COMPONENTS,
   EARTH_BASE_COLOR_HEIGHT,
   EARTH_BASE_COLOR_WIDTH,
+  EARTH_LEGACY_BASE_COLOR_HEIGHT,
+  EARTH_LEGACY_BASE_COLOR_WIDTH,
   EARTH_TERRAIN_BYTES,
   EARTH_TERRAIN_CHANNELS,
   EARTH_TERRAIN_FORMAT_VERSION,
   EARTH_TERRAIN_LAYOUT,
   EARTH_TERRAIN_PAYLOAD_BYTES,
   EARTH_TERRAIN_SCALAR_UINT8,
+  readBaseColorJpeg,
+  validateManifest,
+  validateTileIndex,
 } from './contract.mjs';
 import { fixtureClimatePng } from './fixture-climate.mjs';
 
@@ -140,6 +145,26 @@ async function run() {
   const output = await mkdtemp(join(tmpdir(), 'earth-surface-distribution-'));
   const before = await readFile(join(fixture.root, 'earth-surface.json'));
   try {
+    const legacyManifest = {
+      ...fixture.manifest,
+      schemaVersion: 1,
+      coverage: { kind: 'sparse', maxZoom: 7, expectedTiles: null },
+    };
+    assert.doesNotThrow(() => validateManifest(legacyManifest));
+    assert.doesNotThrow(() => readBaseColorJpeg(jpegFixture({
+      width: EARTH_LEGACY_BASE_COLOR_WIDTH, height: EARTH_LEGACY_BASE_COLOR_HEIGHT,
+    }), {
+      width: EARTH_LEGACY_BASE_COLOR_WIDTH, height: EARTH_LEGACY_BASE_COLOR_HEIGHT,
+      components: EARTH_BASE_COLOR_COMPONENTS,
+    }));
+    const legacyLowEntry = {
+      ...fixture.tile.entries[0], key: '0/0/0', z: 0, x: 0, y: 0,
+      color: { ...fixture.tile.entries[0].color, url: 'tiles/0/0/0.jpg' },
+      terrain: { ...fixture.tile.entries[0].terrain, url: 'tiles/0/0/0.bin.gz' },
+    };
+    assert.equal(validateTileIndex({ ...fixture.tile, entries: [legacyLowEntry, fixture.tile.entries[0]] }, legacyManifest).entries.length, 2);
+    assert.throws(() => validateTileIndex({ ...fixture.tile, entries: [legacyLowEntry, fixture.tile.entries[0]] }, fixture.manifest), /invalid z/);
+
     await packageEarthSurface({ inputRoot: fixture.root, outputRoot: output, sourceManifestPath: 'sources.json' });
     const packaged = join(output, 'earth', fixture.manifest.datasetId);
     const result = await checkEarthSurface({ inputRoot: packaged });

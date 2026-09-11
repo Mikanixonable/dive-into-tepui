@@ -94,6 +94,7 @@ export async function bootstrapEarthSurface(
       baseUrl: source.baseUrl,
       expectedDatasetId: source.datasetId,
       fetchImpl,
+      allowLegacyLowZoom: source.legacyBundle === true,
     });
     return { state: 'ready', source, tileSource, error: null };
   } catch (error) {
