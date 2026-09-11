@@ -550,7 +550,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 自機の View が読む値を、共通の表示入力へ足す。可動部と噴射は Motion の現在値、
   // マーカーの弾数と初速は装備の現在値から、このフレームぶんだけを組む。
   protected override renderSource(
-    context: DynamicViewFrame, visible: boolean, active: boolean,
+    viewFrame: DynamicViewFrame, visible: boolean, active: boolean,
     orbitReference: OrbitReference | undefined,
   ): PlayerRenderSource {
     const motion = this.motion;
@@ -558,7 +558,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     // 指令の有無は加速度の大きさで決まるので、噴射していないフレームは null として渡す。
     const thrustAcceleration = this.throttle.thrustAccelVec;
     return {
-      ...super.renderSource(context, visible, active, orbitReference),
+      ...super.renderSource(viewFrame, visible, active, orbitReference),
       state: motion.state,
       active,
       thrustAcceleration: len(thrustAcceleration) > 0 ? thrustAcceleration : null,
