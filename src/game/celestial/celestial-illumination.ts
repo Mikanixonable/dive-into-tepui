@@ -22,7 +22,7 @@ import type { Exposure } from '../../render/pipeline/exposure';
 import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-light-source';
 import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
 import type { RingShadow } from '../../render/pipeline/shadow/ring-shadow';
-import type { CumulusShadow } from '../../render/pipeline/shadow/cumulus-shadow';
+import { CloudShadowRenderer } from '../../render/pipeline/shadow/cloud-shadow-renderer';
 import type { CameraSystem } from '../camera/camera-system';
 import type { FloatingOrigin } from '../camera/floating-origin';
 import type { CelestialBodies } from './celestial-bodies';
@@ -39,7 +39,7 @@ export interface IlluminationTargets {
   readonly exposure: Exposure;
   readonly bodyShadow: BodyShadow;
   readonly ringShadow: RingShadow;
-  readonly cumulusShadow: CumulusShadow;
+  readonly cumulusShadow: CloudShadowRenderer;
   readonly planetLight: PlanetLightSource;
   readonly ambient: AmbientSource;
   readonly atmosphere: AtmospherePass;

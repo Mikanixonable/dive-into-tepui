@@ -13,6 +13,7 @@ import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { CelestialClass } from './celestial-entity-def';
 import type { Vec3 } from '../../../math/vec3';
 import type { CelestialView } from './celestial-view';
+import type { CelestialSurfaceDiagnostics } from '../../../render/celestial-surface';
 import type { CelestialBodies } from '../celestial-bodies';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { MenuItem } from '../../hud/windows/context-menu';
@@ -45,6 +46,10 @@ export class CelestialEntity implements ObjectPickable {
   // 天体ラベルとしての振る舞い。
   // マップのマーカーへ描く表記。
   public get markerLabel(): string { return this.name; }
+  // 表面テクスチャの公開窓口。描画資源は view が所有するが、天体の既存利用側からは
+  // 天体の表示属性として読めるようにする。
+  public get surfaceTextureUrl(): string | null { return this.view.surfaceTextureUrl; }
+  public get surfaceDiagnostics(): CelestialSurfaceDiagnostics | null { return this.view.surfaceDiagnostics; }
   // マーカーの CSS クラス。
   public readonly markerClass = 'mk-poi';
   // ラベルが混雑したときに優先して残す度合い。大きいほど残る。

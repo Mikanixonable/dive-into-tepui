@@ -141,13 +141,6 @@ export class FireControl {
     }
   }
 
-  // 装填中の残弾・予備マガジン・バレル寿命を初期積載の状態まで満タンにする。
-  refillFull(): void {
-    this.rounds = MAG_ROUNDS;
-    this.mags = INITIAL_MAGS - 1;
-    this.barrel = MAGS_PER_BARREL;
-  }
-
   // 発射状態を強制的に解除する。
   stopFiring(): void {
     this.wasFiring = false;
