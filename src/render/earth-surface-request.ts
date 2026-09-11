@@ -43,6 +43,8 @@ export interface EarthSurfaceTileRequestSourceInit {
   readonly baseUrl?: string;
   readonly expectedDatasetId?: string;
   readonly fetchImpl?: typeof fetch;
+  /** 旧配信物に含まれるz0..z3を読み飛ばす。現行形式では無効のままにする。 */
+  readonly allowLegacyLowZoom?: boolean;
 }
 
 function validSha256(value: string): boolean { return /^[0-9a-f]{64}$/.test(value); }
@@ -68,7 +70,9 @@ function file(value: unknown, name: string): EarthSurfaceTileFile {
   return { url: candidate.url, sha256: candidate.sha256, encodedBytes, payloadBytes };
 }
 
-function normalizeIndex(value: unknown, expectedDatasetId?: string): EarthSurfaceTileIndexFile {
+function normalizeIndex(
+  value: unknown, expectedDatasetId?: string, allowLegacyLowZoom = false,
+): EarthSurfaceTileIndexFile {
   if (value === null || typeof value !== 'object') throw new EarthSurfaceRequestError('tile-index is not an object');
   const index = value as Partial<EarthSurfaceTileIndexFile>;
   if (index.schemaVersion !== 2 || typeof index.datasetId !== 'string' || !/^[a-z0-9-]+$/.test(index.datasetId)
@@ -88,7 +92,10 @@ function normalizeIndex(value: unknown, expectedDatasetId?: string): EarthSurfac
       throw new EarthSurfaceRequestError('Invalid tile-index key');
     }
     const key = earthTileKey(entry.z!, entry.x!, entry.y!);
-    if (key.z < EARTH_TILE_MIN_Z) throw new EarthSurfaceRequestError('Invalid tile-index key level');
+    if (key.z < EARTH_TILE_MIN_Z) {
+      if (allowLegacyLowZoom) continue;
+      throw new EarthSurfaceRequestError('Invalid tile-index key level');
+    }
     if (earthTileId(key) !== entry.key || ids.has(entry.key)) throw new EarthSurfaceRequestError('Duplicate tile-index key');
     const raw = entry as unknown as Record<string, unknown>;
     const color = file(entry.color ?? {
@@ -105,6 +112,7 @@ function normalizeIndex(value: unknown, expectedDatasetId?: string): EarthSurfac
     ids.add(entry.key);
     entries.push({ key: entry.key, z: key.z, x: key.x, y: key.y, color, terrain });
   }
+  if (entries.length === 0) throw new EarthSurfaceRequestError('Earth surface tile-index has no z4+ entries');
   return { schemaVersion: 2, datasetId: index.datasetId, entries };
 }
 
@@ -126,6 +134,7 @@ export class EarthSurfaceTileRequestSource {
   private readonly indexUrl: string | null;
   private readonly baseUrl: string;
   private readonly expectedDatasetId: string | undefined;
+  private readonly allowLegacyLowZoom: boolean;
   private readonly entries = new Map<string, EarthSurfaceTileDescriptor>();
   private loadPromise: Promise<void> | null = null;
   private loaded = false;
@@ -137,6 +146,7 @@ export class EarthSurfaceTileRequestSource {
       this.indexUrl = null;
       this.baseUrl = baseUrl ?? '';
       this.expectedDatasetId = undefined;
+      this.allowLegacyLowZoom = false;
       this.install(index);
       this.loaded = true;
     } else {
@@ -144,6 +154,7 @@ export class EarthSurfaceTileRequestSource {
       this.indexUrl = indexOrInit.tileIndexUrl;
       this.baseUrl = indexOrInit.baseUrl ?? new URL('.', indexOrInit.tileIndexUrl).toString();
       this.expectedDatasetId = indexOrInit.expectedDatasetId;
+      this.allowLegacyLowZoom = indexOrInit.allowLegacyLowZoom ?? false;
     }
   }
 
@@ -185,7 +196,7 @@ export class EarthSurfaceTileRequestSource {
     try { value = await response.json(); } catch (error) {
       throw new EarthSurfaceRequestError('Invalid Earth surface tile-index JSON', { cause: error });
     }
-    this.install(normalizeIndex(value, this.expectedDatasetId));
+    this.install(normalizeIndex(value, this.expectedDatasetId, this.allowLegacyLowZoom));
     this.loaded = true;
   }
 
