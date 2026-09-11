@@ -1,11 +1,12 @@
-// リロードで機体から外れる砲身と、空になって排出されたマガジンの外枠のモデル。geometry/material は
+// リロードで機体から外れる砲身と、空になって排出されたマガジンの外枠の表示。geometry/material は
 // 全個体の共有物で、個体の片付けは表示ツリーから外すだけでよい。
 import * as THREE from 'three/webgpu';
-import { markLitOpaque, markShadowCaster } from '../pipeline/lit-layer';
-import { makeThermallyEmissive } from '../thermal-emissive';
-import { memoParseIndependent, memoTemplate } from './baked-model';
-import barrelData from '../../assets/models/barrel.json';
-import magazineData from '../../assets/models/magazine.json';
+import { markLitOpaque, markShadowCaster } from '../../pipeline/lit-layer';
+import { makeThermallyEmissive } from '../../thermal-emissive';
+import { memoParseIndependent, memoTemplate } from '../baked-model';
+import { DynamicView } from '../dynamic-view';
+import barrelData from '../../../assets/models/barrel.json';
+import magazineData from '../../../assets/models/magazine.json';
 
 // root 配下のメッシュが握る geometry/material を、全個体の共有物として印す。
 function markSharedResources(root: THREE.Object3D): void {
@@ -39,7 +40,7 @@ const parseMagazine = memoParseIndependent<THREE.Group>(magazineData);
 let magazineFrameTemplate: THREE.Group | null = null;
 
 // マガジンの外枠をテンプレートから複製して返す。
-export function buildMagazineFrameMesh(): THREE.Group {
+function buildMagazineFrameMesh(): THREE.Group {
   if (magazineFrameTemplate === null) {
     const g = parseMagazine();
     for (const child of [...g.children]) {
@@ -49,4 +50,20 @@ export function buildMagazineFrameMesh(): THREE.Group {
     magazineFrameTemplate = g;
   }
   return magazineFrameTemplate.clone(true) as THREE.Group;
+}
+
+// リロードで外れた砲身1本。
+export class BarrelView extends DynamicView {
+  // テンプレートを複製して scene へ登録する。
+  public constructor(scene?: THREE.Scene) {
+    super(buildBarrelMesh(), scene);
+  }
+}
+
+// 排出されたマガジンの外枠1個。
+export class MagazineFrameView extends DynamicView {
+  // テンプレートを複製して scene へ登録する。
+  public constructor(scene?: THREE.Scene) {
+    super(buildMagazineFrameMesh(), scene);
+  }
 }

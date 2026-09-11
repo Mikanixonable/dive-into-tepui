@@ -19,6 +19,9 @@ import type { Viewport } from '../../src/render/viewport';
 
 const VIEWPORT: Viewport = { width: 1600, height: 900, pixelRatio: 1 };
 
+// 種別ごとの見た目を足さず、全個体に共通する同期だけを行う View。
+class BareView extends DynamicView {}
+
 // 表示時刻。噴射の揺らぎはこの値だけで決まるので、複数回の同期で同じ値を使う。
 const DISPLAY_TIME = 1234.5;
 // 揺らぎが表示時刻で動くことを見るための、互いに異なる表示時刻。
@@ -118,7 +121,7 @@ export function register(): void {
   test('dynamic view source: 本体は表示入力の時刻 query が返した状態へ置かれる', () => {
     const camera = cameraFrame();
     const pools = new InstancedPools([]);
-    const view = new DynamicView(new THREE.Object3D());
+    const view = new BareView(new THREE.Object3D());
     const asked: number[] = [];
     const position = v3(7.0e6, 1.0e6, -2.0e6);
 
@@ -135,7 +138,7 @@ export function register(): void {
   test('dynamic view source: alive が false のフレームは本体を出さない', () => {
     const camera = cameraFrame();
     const pools = new InstancedPools([]);
-    const view = new DynamicView(new THREE.Object3D());
+    const view = new BareView(new THREE.Object3D());
     const asked: number[] = [];
     const source = renderSource(false, true, stateSource(v3(7.0e6, 0, 0), asked));
 
@@ -148,7 +151,7 @@ export function register(): void {
   test('dynamic view source: visible が false のフレームは本体を出さない', () => {
     const camera = cameraFrame();
     const pools = new InstancedPools([]);
-    const view = new DynamicView(new THREE.Object3D());
+    const view = new BareView(new THREE.Object3D());
     const source = renderSource(true, false, stateSource(v3(7.0e6, 0, 0), []));
 
     view.sync(source, viewFrame(camera, pools));
@@ -159,7 +162,7 @@ export function register(): void {
   test('dynamic view source: 状態を引けないフレームは本体を出さない', () => {
     const camera = cameraFrame();
     const pools = new InstancedPools([]);
-    const view = new DynamicView(new THREE.Object3D());
+    const view = new BareView(new THREE.Object3D());
 
     view.sync(renderSource(true, true, () => null), viewFrame(camera, pools));
 

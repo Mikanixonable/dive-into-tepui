@@ -18,7 +18,7 @@ import { LineOverlay, type LatLonPolyline } from '../../src/render/celestial/lin
 import coastlineData from '../../src/assets/earth-coastline.json';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing, RingMaterials } from '../../src/render/celestial/ring';
-import { buildBarrelMesh } from '../../src/render/dynamic/ejected-gun-part-model';
+import { buildBarrelMesh } from '../../src/render/dynamic/dynamic-entity/ejected-gun-part-view';
 import { buildPlayerShip } from '../../src/render/dynamic/player/player-view';
 import { createStarSphere, type StarSphere } from '../../src/render/celestial/star-sphere';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../src/render/pipeline/sun-light';

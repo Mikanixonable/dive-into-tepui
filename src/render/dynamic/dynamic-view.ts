@@ -80,9 +80,9 @@ type OrbitLineResource =
   | { readonly kind: 'ellipse'; readonly line: EllipseLine }
   | { readonly kind: 'relative'; readonly line: TargetRelativeLine };
 
-// 1体ぶんの表示ツリー、オーバーレイ資源、再構築回避用キャッシュを所有する。S は種別ごとの
-// 表示入力で、既定は全個体に共通する面。
-export class DynamicView<S extends DynamicRenderSource = DynamicRenderSource> {
+// 種別ごとの View の基底。1体ぶんの表示ツリー、オーバーレイ資源、再構築回避用キャッシュを所有する。
+// S は種別ごとの表示入力で、既定は全個体に共通する面。
+export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderSource> {
   private orbitLineValue: OrbitLineResource | null = null;
   private predictedLineValue: TrajectoryLine | null = null;
   private actualLineValue: TrajectoryLine | null = null;
