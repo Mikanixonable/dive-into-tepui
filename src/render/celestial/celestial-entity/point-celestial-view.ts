@@ -143,6 +143,7 @@ export class PointCelestialView extends SphereCelestialView {
     motion: DefinedCelestialBody, fo: FloatingOrigin, displayTime: number,
   ): ShadowCumulus | null {
     if (this.cumulus === null || !this.group.visible || !this.cumulus.visible) return null;
+    // 表示時刻の、描画座標から天体固定の向きへの回転。
     writeBodyFromWorld(this.bodyFromWorld, motion, displayTime);
     return {
       center: fo.RtoThreeV3(motion.stateAt(displayTime).r),
