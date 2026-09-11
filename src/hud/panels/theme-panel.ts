@@ -1,8 +1,8 @@
 import { currentThemePalette, THEME_PRESETS } from '../../theme';
 import { Button } from '../widgets';
 
-// 設定ビューの「配色」タブ。テーマプリセットをボタン一覧で並べ、選ばれた配色の id を
-// onSelect で外へ返す。選択状態はボタン自身の点灯で持つ。
+// 配色の設定面。テーマプリセットをボタン一覧で並べ、選ばれた配色の id を onSelect で外へ返す。
+// 選択状態はボタン自身の点灯で持つ。
 export class ThemePanel {
   public readonly element: HTMLElement;
 

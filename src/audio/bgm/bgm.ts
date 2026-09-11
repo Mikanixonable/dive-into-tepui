@@ -1,18 +1,13 @@
-// BGM の公開窓口。ユーザー音量をマスターゲインとして持ち、音楽の線(Conductor)を束ねて、
-// 唯一の先読みタイマーでそれらを進める。どの曲をいつ鳴らすかは線それぞれの責務。
-// 線は2本ある: ゲーム中の BGM と、設定パネルでの試聴。互いのノード鎖は独立していて、
-// 試聴はゲーム側の状態に触れない — 設定パネルを開いている間ゲーム側は伏せておき、
-// 閉じたら試聴の線を畳んでゲーム側を戻す。
-// ゲインは3層: マスター(ユーザー音量)、線ごと(その線を伏せる)、曲ごと(その曲のフェード)。
-// 1つのノードに兼ねさせると、書き手の違う操作が同じ AudioParam を奪い合い、後の呼び出しが
-// 前の形を打ち消すので、層を分けて持つ。
+// BGM の公開窓口。ユーザー音量をマスターゲインとして持ち、音楽の線(Conductor)を束ねて
+// 1つの先読みタイマーで進める。線はゲーム中の BGM と試聴の2本で、互いのノード鎖は独立している。
+// 試聴の期間(beginAudition〜endAudition)はゲーム中の BGM を伏せる。
 import { BGM_TRACKS } from './tracks/tracks';
 import { Conductor } from './conductor';
 import { AudioEngine } from '../audio-engine';
 import { trackCycleDurationSec } from './track-cycle';
 
 const PUMP_INTERVAL_MS = 120; // スケジューラを回す間隔
-const LOOKAHEAD_SEC = 0.6; // この先ぶんまでまとめてスケジュールし、タイマー精度に依存しないようにする
+const LOOKAHEAD_SEC = 0.6; // まとめてスケジュールする先読みの幅。タイマーの揺れをこの幅で吸収する
 const AUDITION_FADE_SEC = 0.15; // 試聴を切り替える・止めるときのフェード
 
 // 保存が無いときのユーザー音量。
@@ -53,7 +48,8 @@ export class Bgm {
     if (vol > 0) this.start();
   }
 
-  // ユーザー音量を表すマスターゲイン。線を跨いで生き続ける唯一のノード。
+  // ユーザー音量を表すマスターゲイン。線を跨いで生き続ける。線を伏せるゲイン・曲のフェードとは
+  // 別のノードに持つ — 1つに兼ねると、書き手の違う操作が同じ AudioParam の形を打ち消し合う。
   private ensureMasterGain(ctx: AudioContext): GainNode {
     if (this.masterGain) return this.masterGain;
     const g = ctx.createGain();
@@ -63,7 +59,7 @@ export class Bgm {
     return g;
   }
 
-  // どれかの線が鳴っている間だけ刻みを回す。
+  // どれかの線が鳴っていれば刻みを回し、どれも鳴っていなければ止める。
   private syncPump(): void {
     const sounding = (this.ambient?.isSounding ?? false) || (this.audition?.isSounding ?? false);
     if (sounding && !this.timer) {
@@ -101,9 +97,8 @@ export class Bgm {
     this.syncPump();
   }
 
-  // 最初のユーザー操作から呼ばれ、ゲーム内 BGM を一度だけ始める。この操作はキー入力・
-  // ポインタ入力のたびに飛ぶので、二度目以降は何もしない — 決着で止めた BGM が、次の
-  // キー入力で蘇らないため。
+  // ゲーム内 BGM を、このインスタンスで一度だけ始める。二度目以降の呼び出しは何もしないので
+  // 入力のたびに呼んでよく、決着で止めた BGM もこれでは蘇らない。
   public ensureStarted(): void {
     if (this.autoStartUsed || !this.engine.ctx) return;
     this.autoStartUsed = true;
@@ -133,18 +128,17 @@ export class Bgm {
   }
 
   // === 試聴用 BGM (audition conductor) ===
-  // begin/end は設定パネルの開閉そのもので、試聴の線とゲーム内 BGM の両方に効く。
+  // beginAudition〜endAudition が試聴の期間で、その間ゲーム内 BGM を伏せる。
 
-  // 設定パネルが開いた。ゲーム内 BGM を伏せ、試聴だけが聞こえる状態にする。
-  // まだ線が無ければ、組まれたときに伏せた状態から始める。
+  // 試聴の期間を始め、ゲーム内 BGM を伏せる。まだ線が無ければ、組まれたときから伏せておく。
   public beginAudition(): void {
     this.paused = true;
     this.ambient?.pause();
   }
 
 
-  // 指定した曲を先頭から試聴する。AudioContext の unlock も最初のクリックで行う。
-  // 試聴の線は曲送りしないので、選んだ曲がそのまま鳴り続ける。
+  // 指定した曲を先頭から試聴し、曲送りせずに鳴らし続ける。AudioContext を unlock するので、
+  // ユーザー操作のハンドラから呼ぶ。
   public playAudition(index: number): void {
     this.engine.unlock();
     const ctx = this.engine.ctx;
@@ -155,7 +149,7 @@ export class Bgm {
     this.syncPump();
   }
 
-  // 試聴を止める。設定パネルは開いたままなので、ゲーム中の BGM は伏せたまま。
+  // 試聴を止める。試聴の期間は続くので、ゲーム中の BGM は伏せたまま。
   public stopAudition(): void {
     this.disposeAudition();
     this.syncPump();
@@ -177,8 +171,7 @@ export class Bgm {
     return track ? trackCycleDurationSec(track) : 0;
   }
 
-  // 設定パネルが閉じた。試聴の線を畳み、ゲーム中の BGM を元へ戻す。
-  // 開いた時点で鳴っていなかった場合は伏せて戻すだけなので、無音のままになる。
+  // 試聴の期間を終える。試聴の線を畳み、ゲーム中の BGM の伏せを解く(伏せる前に鳴っていなければ無音のまま)。
   public endAudition(): void {
     this.paused = false;
     this.disposeAudition();

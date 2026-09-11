@@ -1,6 +1,5 @@
-// タイトル画面の背景となる3D場面。モックアップのタンパク質図案を参照し、
-// 捻れたチューブ、枝分かれするロッド、結節、リング、カプセルを光沢プラスチックで
-// 抽象化して多数配置し、ゆっくり漂わせる。
+// タイトル画面の背景となる3D場面。タンパク質を抽象化した形(捻れたチューブ、枝分かれするロッド、
+// 結節、リング、カプセル)を光沢プラスチックで多数配置し、ゆっくり漂わせる。
 import * as THREE from 'three/webgpu';
 import { ACCENT, ACCENT_SOFT, BG, SIGNAL } from '../theme';
 
@@ -16,10 +15,10 @@ const OBJECT_COUNTS: Readonly<Record<TitleScenePattern, number>> = {
   lattice: 25,
 };
 
-// 材質。roughness 0.16–0.28 / metalness 0–0.06 / clearcoat 0.7–1.0 の光沢プラスチック帯。
+// 地の材質の色。乳白・煙色・黒・暖灰色。
 const BODY_COLORS = [0xf1edf0, 0xa8aec0, 0x48506a, 0xd6d6d0] as const;
 const BG_COLOR = Number.parseInt(BG.slice(1), 16);
-// 有彩色の図案は少数へ絞り、残りを乳白・煙色・黒・暖灰色で構成する。
+// 有彩色の材質を割り当てる物体の通し番号。有彩色は少数へ絞り、残りは地の材質にする。
 const ACCENT_INDICES = new Set([6, 18]);
 const ACCENT_SOFT_INDICES = new Set([11, 22]);
 const SIGNAL_INDEX = 15;
