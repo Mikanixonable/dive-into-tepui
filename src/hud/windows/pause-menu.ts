@@ -67,14 +67,12 @@ export class PauseMenu implements OverlayHandle {
     this.panel.id = 'hud-pause-menu';
     this.panel.className = 'panel ui-surface-focus';
 
-    this.panel.appendChild(this.buildBrand());
-
-    // ヘッダー: 見出し・最小化トグル・✕ ボタンと、ドラッグ移動の配線。
+    // ヘッダー: ロゴ・見出し・最小化トグル・✕ ボタンと、ドラッグ移動の配線。
     const header = document.createElement('div');
     header.className = 'pm-header';
-    const heading = document.createElement('h3');
-    heading.textContent = '一時停止 / 設定';
-    header.appendChild(heading);
+    const headerTop = document.createElement('div');
+    headerTop.className = 'pm-header-top';
+    headerTop.appendChild(this.buildBrand());
     this.minimizeToggle = document.createElement('button');
     this.minimizeToggle.type = 'button';
     this.minimizeToggle.className = 'pm-minimize';
@@ -85,7 +83,11 @@ export class PauseMenu implements OverlayHandle {
     headerActions.className = 'pm-header-actions';
     headerActions.appendChild(this.minimizeToggle);
     headerActions.appendChild(closeBtn.element);
-    header.appendChild(headerActions);
+    headerTop.appendChild(headerActions);
+    header.appendChild(headerTop);
+    const heading = document.createElement('h3');
+    heading.textContent = '一時停止 / 設定';
+    header.appendChild(heading);
     header.addEventListener('pointerdown', this.handleHeaderPointerDown);
     header.addEventListener('pointermove', this.handleHeaderPointerMove);
     header.addEventListener('pointerup', this.handleHeaderPointerUp);

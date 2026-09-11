@@ -11,9 +11,15 @@ export const PAUSE_MENU_STYLE = `
   overflow: hidden; pointer-events: auto;
 }
 #hud #hud-pause-menu { padding: var(--space-4); }
+#hud-pause-menu .pm-header {
+  display: flex; flex-direction: column; gap: var(--space-2); cursor: move;
+}
+#hud-pause-menu .pm-header-top {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: start;
+}
 #hud-pause-menu .pm-brand {
-  display: flex; align-items: center; justify-content: center; gap: var(--space-4);
-  padding-bottom: var(--space-2);
+  display: flex; grid-column: 2; align-items: center; justify-content: center; gap: var(--space-4);
 }
 #hud-pause-menu .pm-brand-logo {
   width: 2.5rem; height: 2.5rem; border-radius: var(--radius-control);
@@ -27,12 +33,9 @@ export const PAUSE_MENU_STYLE = `
 #hud-pause-menu .pm-brand-version {
   color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: 0.06em;
 }
-#hud-pause-menu .pm-header {
-  display: flex; align-items: center; gap: var(--space-6); margin-top: var(--space-2); cursor: move;
-}
-#hud-pause-menu .pm-header h3 { flex: 1 1 auto; min-width: 0; margin: 0; }
+#hud-pause-menu .pm-header h3 { min-width: 0; margin: 0; }
 #hud-pause-menu .pm-header-actions {
-  display: flex; align-items: center; gap: var(--space-2); flex: 0 0 auto;
+  display: flex; grid-column: 3; align-items: center; justify-self: end; gap: var(--space-2); flex: 0 0 auto;
 }
 #hud-pause-menu .pm-header .w-close, #hud-pause-menu .pm-minimize {
   flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%;
@@ -90,11 +93,13 @@ export const PAUSE_MENU_STYLE = `
   }
 }
 @media ${MQ_COMPACT} {
+  #hud-pause-menu .pm-header-top { grid-template-columns: minmax(0, 1fr) auto; }
+  #hud-pause-menu .pm-brand { grid-column: 1; justify-self: start; }
+  #hud-pause-menu .pm-header-actions { grid-column: 2; }
   #hud-pause-menu .pm-actions { grid-template-columns: 1fr; }
 }
 @media ${MQ_SHORT} {
-  #hud-pause-menu .pm-brand { padding-bottom: var(--space-1); }
-  #hud-pause-menu .pm-header,
+  #hud-pause-menu .pm-header { gap: var(--space-1); }
   #hud-pause-menu .pm-tabs,
   #hud-pause-menu .pm-tab-content { margin-top: var(--space-1); }
 }`;
