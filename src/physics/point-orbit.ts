@@ -1,4 +1,5 @@
-// 点1つぶんの軌道要素と、その時刻での位置評価。
+// 点1つぶんの軌道要素と、その時刻での位置評価。要素を時間に対して固定した二体ケプラー軌道
+// として評価するので、摂動による要素の永年変化は含まれない。
 import { Q_ECLY_TO_ECI } from './ecliptic';
 import { positionFromOrbitalElements, trueAnomalyFromMean } from './elements';
 import { qRotate } from '../math/quat';
@@ -16,7 +17,7 @@ export interface PointElements {
   readonly meanMotion: number; // 平均黄経の変化率 [rad/s]
 }
 
-// 時刻 t の中心天体基準の位置 [m]。ECI 化(中心天体の ECI 位置を足す)は呼び出し側の仕事。
+// 時刻 t [s] の、中心天体を原点とし ECI の軸をとった位置 [m]。
 export function pointPositionAt(el: PointElements, t: number): Vec3 {
   const m = el.l0 + el.meanMotion * t - el.lonPeri;
   const nu = trueAnomalyFromMean(m, el.e);
