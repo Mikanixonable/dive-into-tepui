@@ -151,7 +151,8 @@ export interface ProteinSaveData {
   modifications: Record<string, string>;
 }
 
-export interface ProteinHudSnapshot {
+/** 戦闘状態の、そのときの読み取り値。 */
+export interface ProteinCombatReadout {
   readonly phase: ProteinPhase;
   readonly integrityHp: number;
   readonly integrityMaxHp: number;

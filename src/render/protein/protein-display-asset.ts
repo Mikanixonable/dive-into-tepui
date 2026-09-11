@@ -34,7 +34,11 @@ export interface ProteinDisplayAsset {
       readonly chain: readonly string[];
     };
   };
-  readonly generator: { readonly name: string };
+  readonly generator: {
+    readonly name: string;
+    /** 生成物の内容ハッシュ。motion asset が参照する構造の同一性を確かめる。 */
+    readonly contentHash: string;
+  };
 }
 
 export function assertProteinDisplayAsset(value: ProteinDisplayAsset, expectedPdbId: string): void {

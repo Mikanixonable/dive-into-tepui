@@ -17,7 +17,7 @@ import type { SpawnGate } from '../entity-registry';
 import type { ProteinDisplaySettings } from '../../../render/protein/protein-display';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
 import type { ProteinRenderDefinition } from '../../../render/protein/protein-render-definition';
-import type { ProteinHudSnapshot } from '../../protein/protein-schema';
+import type { ProteinCombatReadout } from '../../protein/protein-schema';
 import type { EnemySaveData, ProteinEnemySaveData } from '../../save/save-data';
 import type { FormationRole } from './entity-kind';
 import { ProteinEnemyView } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
@@ -146,7 +146,7 @@ export class ProteinEnemy extends Enemy {
     this.displaySettings = display;
   }
 
-  public get hudSnapshot(): ProteinHudSnapshot { return this.combat.hudSnapshot(); }
+  public get combatReadout(): ProteinCombatReadout { return this.combat.combatReadout(); }
 
   // 表示設定と、被弾モデルの構造フェーズを共通の表示入力へ足す。
   protected override renderSource(
@@ -165,7 +165,7 @@ export class ProteinEnemy extends Enemy {
     const attackAction = this.combat.attackAction;
     if (attackAction === null) return false;
     const energyAvailable = isFormationEnergyAvailable(this.formationRole, this.formationId, enemies);
-    return this.combat.isActionEnabled(attackAction.id, energyAvailable);
+    return energyAvailable && this.combat.isActionEnabled(attackAction.id);
   }
 
   protected override muzzlePosition(): Vec3 {

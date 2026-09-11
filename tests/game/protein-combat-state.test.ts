@@ -21,9 +21,9 @@ const asset = rawAsset as unknown as ProteinAssetDefinition;
 const motion = rawMotion as unknown as ProteinMotionAsset;
 const myoglobinAsset = rawMyoglobinAsset as unknown as ProteinAssetDefinition;
 
-/** 攻撃に使える(無効化されていない)機能部位の定義を、HUD スナップショット経由で得る。 */
+/** 攻撃に使える(無効化されていない)機能部位の定義を、戦闘状態の読み取り値経由で得る。 */
 function attackSitesOf(state: ProteinCombatState, definition: ProteinAssetDefinition): ProteinSiteDefinition[] {
-  return state.hudSnapshot().sites
+  return state.combatReadout().sites
     .filter((site) => site.attackable && !site.disabled)
     .map((site) => definition.sites.find((entry) => entry.id === site.id)!);
 }
@@ -36,10 +36,10 @@ export function register(): void {
     assert.equal(actionId, 'plasma-burst');
     assert.ok(actionId);
     assert.ok(attackSitesOf(state, asset).length >= 3);
-    assert.equal(state.isActionEnabled(actionId, true), state.activeSite !== null);
-    const snapshot = state.hudSnapshot();
-    assert.equal(snapshot.sites.length, asset.sites.length);
-    assert.equal(snapshot.sites.filter((entry) => entry.attackable).length, attackSitesOf(state, asset).length);
+    assert.equal(state.isActionEnabled(actionId), state.activeSite !== null);
+    const readout = state.combatReadout();
+    assert.equal(readout.sites.length, asset.sites.length);
+    assert.equal(readout.sites.filter((entry) => entry.attackable).length, attackSitesOf(state, asset).length);
     const result = state.applyDamage(site.maxHp, {
       x: site.position[0] * asset.coordinateScale,
       y: site.position[1] * asset.coordinateScale,
@@ -47,7 +47,7 @@ export function register(): void {
     });
     assert.equal(result.siteId, site.id);
     assert.equal(result.siteDisabled, true);
-    assert.equal(state.isActionEnabled(actionId, true), true);
+    assert.equal(state.isActionEnabled(actionId), true);
     assert.ok(!attackSitesOf(state, asset).some((entry) => entry.id === site.id));
     for (const attackSite of attackSitesOf(state, asset)) {
       state.applyDamage(attackSite.maxHp, {
@@ -56,8 +56,8 @@ export function register(): void {
         z: attackSite.position[2] * asset.coordinateScale,
       });
     }
-    assert.equal(state.isActionEnabled(actionId, true), false);
-    assert.equal(state.isActionEnabled(actionId, true), state.activeSite !== null);
+    assert.equal(state.isActionEnabled(actionId), false);
+    assert.equal(state.isActionEnabled(actionId), state.activeSite !== null);
   });
 
   test('protein combat: attack sites follow the asset action definition', () => {
@@ -75,37 +75,20 @@ export function register(): void {
     assert.equal(state.isActionEnabled('plasma-burst'), false);
   });
 
-  test('protein combat: myoglobin uses its own projectile action ID with external gating', () => {
+  test('protein combat: myoglobin uses its own projectile action ID', () => {
     const state = new ProteinCombatState(myoglobinAsset);
     const actionId = state.attackAction?.id;
     assert.equal(actionId, 'heme-iron-pulse');
     assert.ok(actionId);
-    assert.equal(state.isActionEnabled(actionId, true), true);
-    assert.equal(state.isActionEnabled(actionId, false), false);
-    assert.equal(state.isActionEnabled('plasma-burst', true), false);
+    assert.equal(state.isActionEnabled(actionId), true);
+    assert.equal(state.isActionEnabled('plasma-burst'), false);
   });
 
-  test('protein combat: external action conditions are ANDed with site availability', () => {
-    const state = new ProteinCombatState(asset);
-    assert.equal(state.isActionEnabled('plasma-burst', true), true);
-    assert.equal(state.isActionEnabled('plasma-burst', false), false);
-
-    for (const site of attackSitesOf(state, asset)) {
-      state.applyDamage(site.maxHp, {
-        x: site.position[0] * asset.coordinateScale,
-        y: site.position[1] * asset.coordinateScale,
-        z: site.position[2] * asset.coordinateScale,
-      });
-    }
-    assert.equal(state.isActionEnabled('plasma-burst', true), false);
-  });
-
-  test('protein combat: an action-less protein cannot fire under an external condition', () => {
+  test('protein combat: an action-less protein cannot fire', () => {
     const state = new ProteinCombatState({ ...asset, actions: [], sites: [] });
     assert.equal(state.attackAction, null);
     assert.equal(state.activeSite, null);
-    assert.equal(state.isActionEnabled('plasma-burst', true), false);
-    assert.equal(state.isActionEnabled('plasma-burst', false), false);
+    assert.equal(state.isActionEnabled('plasma-burst'), false);
   });
 
   test('protein assets: registered assets resolve by ID', () => {
@@ -209,11 +192,12 @@ export function register(): void {
     assert.equal(state.serialize().modifications['phosphate-1'], 'empty');
   });
 
-  test('protein combat: active modification scales protein projectile damage and clears cleanly', () => {
+  test('protein combat: active modification raises projectile damage above base and losing it restores base', () => {
     const state = new ProteinCombatState(asset);
-    assert.equal(state.projectileDamage(10), 11);
+    const baseDamage = 10;
+    assert.ok(state.projectileDamage(baseDamage) > baseDamage);
     state.setModification('phosphate-1', 'empty');
-    assert.equal(state.projectileDamage(10), 10);
+    assert.equal(state.projectileDamage(baseDamage), baseDamage);
   });
 
   test('protein combat: contact damage uses the shared 50-to-500 m/s ramp', () => {

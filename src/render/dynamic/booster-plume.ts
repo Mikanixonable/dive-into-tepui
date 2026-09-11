@@ -28,8 +28,8 @@ interface BoosterPlumeSample {
  * 選んで制御する。
  */
 export class BoosterPlume {
-  public readonly core = new THREE.Object3D();
-  public readonly outer = new THREE.Object3D();
+  private readonly core = new THREE.Object3D();
+  private readonly outer = new THREE.Object3D();
   private readonly coreBillboard = new Billboard(BOOSTER_PLUME_CORE_COLOR);
   private readonly outerBillboard = new Billboard(BOOSTER_PLUME_OUTER_COLOR);
   private readonly schematicCone = new SchematicThrustCone();
@@ -37,8 +37,7 @@ export class BoosterPlume {
 
   // scene を渡すと、生成と同時にそこへ登録する。
   public constructor(scene?: THREE.Scene) {
-    // Billboard のメッシュを公開 Object3D の子にまとめる。匿名 Object3D を
-    // 用いることで、個別段の scene への追加/削除を一回で扱える。
+    // Billboard のメッシュを、scene と親から一括で外せる Object3D の子にまとめる。
     this.core.name = 'booster-plume-core';
     this.outer.name = 'booster-plume-outer';
     this.core.add(this.coreBillboard.mesh);

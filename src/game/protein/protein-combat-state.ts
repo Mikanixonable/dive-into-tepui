@@ -1,5 +1,5 @@
 import type {
-  ProteinActionDefinition, ProteinAssetDefinition, ProteinHudSnapshot, ProteinSaveData, ProteinSiteDefinition,
+  ProteinActionDefinition, ProteinAssetDefinition, ProteinCombatReadout, ProteinSaveData, ProteinSiteDefinition,
 } from './protein-schema';
 import type { ProteinPhase } from '../../render/protein/protein-display';
 
@@ -23,8 +23,8 @@ interface SiteState {
 export class ProteinCombatState {
   public readonly asset: ProteinAssetDefinition;
   public readonly integrityMaxHp: number;
-  public integrityHp: number;
-  public phase: ProteinPhase;
+  private _integrityHp: number;
+  private _phase: ProteinPhase;
   private readonly siteStates: SiteState[];
   private readonly modifications = new Map<string, string>();
   private selectedSiteId: string | null = null;
@@ -33,8 +33,8 @@ export class ProteinCombatState {
   public constructor(asset: ProteinAssetDefinition, saved?: ProteinSaveData) {
     this.asset = asset;
     this.integrityMaxHp = asset.integrity.maxHp;
-    this.integrityHp = saved?.integrityHp ?? this.integrityMaxHp;
-    this.phase = saved?.phase ?? 'intact';
+    this._integrityHp = saved?.integrityHp ?? this.integrityMaxHp;
+    this._phase = saved?.phase ?? 'intact';
     this.siteStates = asset.sites.map((definition) => {
       const old = saved?.sites.find((site) => site.id === definition.id);
       return { definition, hp: old?.hp ?? definition.maxHp, disabled: old?.disabled ?? false };
@@ -45,7 +45,10 @@ export class ProteinCombatState {
     this.reselectSite();
   }
 
-  private get defeated(): boolean { return this.integrityHp <= 0; }
+  public get integrityHp(): number { return this._integrityHp; }
+  public get phase(): ProteinPhase { return this._phase; }
+
+  private get defeated(): boolean { return this._integrityHp <= 0; }
 
   public get activeSite(): ProteinSiteDefinition | null {
     return this.attackSites[0] ?? null;
@@ -90,8 +93,9 @@ export class ProteinCombatState {
     this.selectedSiteId = this.siteStates.some((site) => site.definition.id === id) ? id : null;
   }
 
-  public isActionEnabled(action: string, externalCondition = true): boolean {
-    return externalCondition && this.siteStates.some((site) => !site.disabled && site.definition.actions.includes(action));
+  // action を持つ部位が1つでも機能していれば true。
+  public isActionEnabled(action: string): boolean {
+    return this.siteStates.some((site) => !site.disabled && site.definition.actions.includes(action));
   }
 
   private effectMultiplier(slotId: string, effect: string, fallback = 1): number {
@@ -110,7 +114,7 @@ export class ProteinCombatState {
 
   /** localPoint is in model-local units after the root display scale, not source Å. */
   public applyDamage(amount: number, localPoint: { x: number; y: number; z: number }): ProteinDamageResult {
-    const previousPhase = this.phase;
+    const previousPhase = this._phase;
     const candidate = this.closestSite(localPoint);
     let siteId: string | null = null;
     let siteDisabled = false;
@@ -122,26 +126,26 @@ export class ProteinCombatState {
       candidate.disabled = candidate.hp <= 0;
       siteDisabled = candidate.disabled;
       // Damaging a functional site also destabilizes the whole complex, but only partially.
-      this.integrityHp = Math.max(0, this.integrityHp - damage * 0.35);
+      this._integrityHp = Math.max(0, this._integrityHp - damage * 0.35);
     } else {
-      this.integrityHp = Math.max(0, this.integrityHp - damage);
+      this._integrityHp = Math.max(0, this._integrityHp - damage);
     }
     this.updateStructuralState();
     this.reselectSite();
     return {
       target: candidate ? 'site' : 'integrity', siteId, damage, siteDisabled,
-      phaseChanged: previousPhase !== this.phase, previousPhase, phase: this.phase, defeated: this.defeated,
+      phaseChanged: previousPhase !== this._phase, previousPhase, phase: this._phase, defeated: this.defeated,
     };
   }
 
   public applyContactDamage(amount: number): ProteinDamageResult {
-    const previousPhase = this.phase;
+    const previousPhase = this._phase;
     const damage = Math.max(0, amount);
-    this.integrityHp = Math.max(0, this.integrityHp - damage);
+    this._integrityHp = Math.max(0, this._integrityHp - damage);
     this.updateStructuralState();
     return {
       target: 'integrity', siteId: null, damage, siteDisabled: false,
-      phaseChanged: previousPhase !== this.phase, previousPhase, phase: this.phase, defeated: this.defeated,
+      phaseChanged: previousPhase !== this._phase, previousPhase, phase: this._phase, defeated: this.defeated,
     };
   }
 
@@ -149,20 +153,22 @@ export class ProteinCombatState {
     const sites = this.siteStates.map((site) => ({ id: site.definition.id, hp: site.hp, disabled: site.disabled }));
     return {
       schemaVersion: 1,
-      integrityHp: this.integrityHp,
-      phase: this.phase,
+      integrityHp: this._integrityHp,
+      phase: this._phase,
       sites,
       modifications: Object.fromEntries(this.modifications),
     };
   }
 
-  public hudSnapshot(): ProteinHudSnapshot {
+  // フェーズ・integrity・部位ごとの HP と攻撃可否の、いまの読み取り値を返す。
+  public combatReadout(): ProteinCombatReadout {
     return {
-      phase: this.phase,
-      integrityHp: this.integrityHp,
+      phase: this._phase,
+      integrityHp: this._integrityHp,
       integrityMaxHp: this.integrityMaxHp,
       selectedSiteId: this.selectedSiteId,
       sites: this.siteStates.map((site) => {
+        // 攻撃可否は部位が攻撃 action を持つかで決まり、機能停止とは独立に答える。
         const attackActionId = this.attackAction?.id;
         const attackable = attackActionId !== undefined && site.definition.actions.includes(attackActionId);
         return {
@@ -203,7 +209,7 @@ export class ProteinCombatState {
   }
 
   private updateStructuralState(): void {
-    if (this.integrityHp < this.integrityMaxHp * 0.65) {
+    if (this._integrityHp < this.integrityMaxHp * 0.65) {
       for (const slot of this.asset.modificationSlots) this.setModification(slot.id, 'empty');
     }
     this.updatePhase();
@@ -214,9 +220,9 @@ export class ProteinCombatState {
     const activeSites = this.siteStates.filter((site) => site.definition.type === 'active');
     const activeDisabled = activeSites.length > 0 && activeSites.every((site) => site.disabled);
     const coreDisabled = this.siteStates.some((site) => site.definition.type === 'core' && site.disabled);
-    const integrityRatio = this.integrityMaxHp > 0 ? this.integrityHp / this.integrityMaxHp : 0;
-    if (coreDisabled || integrityRatio <= 0.25) this.phase = 'critical';
-    else if (interfaceDisabled && activeDisabled) this.phase = 'dissociated';
-    else if (interfaceDisabled) this.phase = 'exposed';
+    const integrityRatio = this.integrityMaxHp > 0 ? this._integrityHp / this.integrityMaxHp : 0;
+    if (coreDisabled || integrityRatio <= 0.25) this._phase = 'critical';
+    else if (interfaceDisabled && activeDisabled) this._phase = 'dissociated';
+    else if (interfaceDisabled) this._phase = 'exposed';
   }
 }

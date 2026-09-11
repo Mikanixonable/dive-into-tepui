@@ -16,8 +16,7 @@ import { proteinMotionModeDisplacements } from '../../src/render/protein/protein
 import { proteinSecondaryKind } from '../../src/render/protein/protein-ribbon-color';
 import { LIT_OPAQUE_LAYER, SHADOW_CASTER_LAYER } from '../../src/render/pipeline/lit-layer';
 import {
-  DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, isProteinDisplaySettings, PROTEIN_COLOR_LABELS,
-  proteinColorModesFor,
+  DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, isProteinDisplaySettings, proteinColorModesFor,
 } from '../../src/render/protein/protein-display';
 import { testProteinAssetBundles } from '../protein-test-assets';
 import {
@@ -118,7 +117,7 @@ const source: ProteinRenderSource = {
         chain: ['A', 'A', 'A'],
       },
     },
-    generator: { name: 'test' },
+    generator: { name: 'test', contentHash: 'test' },
   },
 };
 
@@ -296,16 +295,20 @@ export function register(): void {
     assert.equal(ironFound, true);
   });
 
-  test('protein ribbon: shared renderer preserves each asset secondary structures', () => {
-    const myoglobinSource = sourceFor(myoglobinAsset, rawMyoglobinBackbone, rawMyoglobinStructure);
-    buildProteinRibbonShip(myoglobinSource, 'secondary-structure');
-    assert.deepEqual(ribbonKinds(myoglobinSource), new Set(['coil', 'helix']));
-
-    const complexSource = sourceFor(asset, rawBackbone, rawStructure);
-    buildProteinRibbonShip(complexSource, 'secondary-structure');
-    assert.ok(ribbonKinds(complexSource).has('helix'));
-    assert.ok(ribbonKinds(complexSource).has('sheet'));
-    assert.ok(ribbonKinds(complexSource).has('coil'));
+  test('protein ribbon: secondary-structure coloring gives each secondary kind of the asset its own color', () => {
+    for (const bundle of testProteinAssetBundles()) {
+      const root = buildProteinRibbonShip(bundle.render, 'secondary-structure');
+      const colors = new Set<string>();
+      root.traverse((child) => {
+        if (!child.userData.proteinRibbon) return;
+        const vertexColors = (child as THREE.Mesh).geometry.getAttribute('color');
+        for (let index = 0; index < vertexColors.count; index++) {
+          colors.add(`${vertexColors.getX(index)},${vertexColors.getY(index)},${vertexColors.getZ(index)}`);
+        }
+      });
+      assert.equal(colors.size, ribbonKinds(bundle.render).size, bundle.semantic.asset.id);
+      disposeObject(root);
+    }
   });
 
   test('protein silhouette: internal ribbon is white while the ligand remains visible', () => {
@@ -360,8 +363,6 @@ export function register(): void {
     assert.deepEqual(proteinColorModesFor('ribbon'), [
       'chain', 'b-factor', 'rainbow', 'secondary-structure', 'component',
     ]);
-    assert.equal(PROTEIN_COLOR_LABELS.chain, 'Chain');
-    assert.equal(PROTEIN_COLOR_LABELS.component, 'Component');
     assert.ok(isProteinDisplaySettings(DEFAULT_PROTEIN_DISPLAY));
     assert.deepEqual(DEFAULT_PROTEIN_DISPLAY, { representation: 'ribbon', colorMode: 'chain' });
     assert.ok(isProteinDisplaySettings(defaultProteinDisplayFor('molecular')));
