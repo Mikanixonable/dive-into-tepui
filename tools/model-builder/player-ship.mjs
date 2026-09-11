@@ -7,9 +7,8 @@ const { RCS_NOZZLES } = await importTsDataModule('src/render/rcs-nozzles.ts');
 const { PLAYER_MUZZLE_OFFSETS, RADIATOR_HINGE, RADIATOR_SEGMENT_LENGTH } =
   await importTsDataModule('src/physics/player-shape.ts');
 
-// 自機: テーパードハル + 突き出した砲身 + ベルノズルエンジン + 大型ソーラーパネル
-// コックピット窓・アンテナ・アーマーストリップを追加してリッチ化。
-// 機首は +Z 方向。
+// 自機を組み立てる。蛇腹の根元の Group は solarUp / solarDown / radiatorUp / radiatorDown で、
+// その i 番目の折り目は `${根元の名前}Fold${i}` の名前で引ける。
 export function buildPlayerShip() {
   const g = new THREE.Group();
 
@@ -98,7 +97,6 @@ export function buildPlayerShip() {
   const engMat     = std(F0_BURNT_STEEL, { metalness: 1, roughness: 0.45 });
   const nozzleMat  = std(F0_BURNT_STEEL, { metalness: 1, roughness: 0.28 });
   const glowMat    = new THREE.MeshBasicMaterial({ color: 0x77dbff, transparent: true, opacity: 0.92 });
-  const heatRingMat = new THREE.MeshBasicMaterial({ color: 0xff7722, transparent: true, opacity: 0.55 });
 
   // エンジン取付プレート(後端)
   const mountPlate = new THREE.Mesh(
@@ -133,7 +131,6 @@ export function buildPlayerShip() {
       glow.rotation.x = Math.PI / 2;
       glow.position.set(sx * 0.60, sy * 0.56, -3.70);
       g.add(glow);
-      // ヒートリングは省略
     }
   }
 
@@ -150,7 +147,7 @@ export function buildPlayerShip() {
     const baseName = side > 0 ? 'solarUp' : 'solarDown';
     const hinge = new THREE.Group();
     hinge.name = baseName;
-    // 胴体側面から伸びる (x = ±1.17, y = 0.52, z = -1.80)
+    // 胴体側面から伸びる
     hinge.position.set(side * 1.17, 0.52, -1.80);
     g.add(hinge);
 
@@ -185,20 +182,12 @@ export function buildPlayerShip() {
   }
 
   // === 展開式ラジエーター(機体側面・太陽電池パドル下に1枚ずつ、蛇腹6折り) ===
-  // 1折りはハル幅と揃えた 2.3×2.3 の正方形。折り目 Group を入れ子にし、
-  // 各折り目の rotation.y だけで蛇腹全体の伸縮を表現できるようにする
-  // (src/game/player/radiator.ts の sync が毎フレーム書き込む)。
-  // 折り目名 `${radiatorUp/Down}Fold${i}` は src/render/dynamic/player/radiator-view.ts が引く接頭辞と一致させる。
-  // ヒンジは太陽電池パネル(x=±2.62, y=0.52, z=-2.20)の直下・機体側面に取り付ける
-  // (up が +X 側、down が -X 側。名称は上下のまま維持)。y=0.30 はパネル下端(y≈0.4925)や
-  // パネル接続ストラット/ブラケット(y≈0.47〜0.57)と、蛇腹の骨格張り出し(±0.12)を含めても
-  // 干渉しない値。回転軸は Y、伸びる方向はローカル X(up は +X、down は -X)、
-  // 放熱面の薄い軸(法線)はローカル Z — 全開でパネル法線が太陽電池パネル(法線 +Y)と
-  // 垂直になり、前後方向から見て面積が最大に見える。
+  // 各折り目の rotation.y だけで蛇腹全体が伸縮する。伸びる向きはローカル X(up は +X、down は -X)、
+  // 放熱面の法線はローカル Z — 全開で太陽電池パネル(法線 +Y)と直交し、前後から見た面積が最大になる。
   const radiatorMat = std(0xdde3ea, { roughness: 0.8 });
   const radiatorSkeletonMat = std(F0_BURNT_STEEL, { metalness: 1, roughness: 0.55 });
   const RADIATOR_FOLD_COUNT = 6;
-  const RADIATOR_WIDTH = 2.3 / 4; // 大きさを1/4に
+  const RADIATOR_WIDTH = 2.3 / 4; // 放熱板の幅 [m]
   const RADIATOR_STACK_NUDGE = 0.012; // 収納時に折り目同士が同一平面へ重なる際の Z ファイティング回避
   const RADIATOR_SKELETON_OFFSET = 0.04; // 骨格を放熱面の反対側へ張り出す量
 
@@ -263,14 +252,14 @@ export function buildPlayerShip() {
     g.add(bell);
   }
 
-  // 左右向き並訳RCS (機体中央附近、前後 2 箇所)
+  // 左右向きの並進 RCS(機体中央付近、前後 2 箇所)
   const sideRcsNozzMat = std(0xb5bfc9, { metalness: 1, roughness: 0.28 });
   for (const sideX of [-1, 1]) {
     for (const sz of [0.8, -0.8]) {
       const block = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.20, 0.20), rcsMat);
       block.position.set(sideX * 1.22, 0, sz);
       g.add(block);
-      // ノズル（X方向に向く）
+      // ノズル(X方向に向く)
       const nzX = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.12, 6), sideRcsNozzMat);
       nzX.rotation.z = Math.PI / 2; // 軸をX方向に向ける
       nzX.position.set(sideX * (1.22 + 0.16), 0, sz);
@@ -278,15 +267,14 @@ export function buildPlayerShip() {
     }
   }
 
-  // 上下向き並訳RCS (機体上面/下面、前後 2 箇所)
+  // 上下向きの並進 RCS(機体上面/下面、前後 2 箇所)
   for (const sideY of [-1, 1]) {
     for (const sz of [0.6, -0.6]) {
       const block = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.20, 0.20), rcsMat);
       block.position.set(0, sideY * 1.05, sz);
       g.add(block);
-      // ノズル（Y方向に向く）
+      // ノズル(CylinderGeometry の軸がそのまま Y 方向を向く)
       const nzY = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.12, 6), sideRcsNozzMat);
-      nzY.rotation.z = 0; // 已に Y 軸方向
       nzY.position.set(0, sideY * (1.05 + 0.16), sz);
       g.add(nzY);
     }
@@ -296,7 +284,7 @@ export function buildPlayerShip() {
   const portMat    = std(F0_BURNT_STEEL, { metalness: 1, roughness: 0.35 });
   const portFrameMat = std(F0_STEEL, { metalness: 1, roughness: 0.40 });
 
-  // 取込口(右面 +X, z=+0.5 後方富)
+  // 取込口(右面 +X)
   const intakeSlot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.15, 0.82), portMat);
   intakeSlot.position.set(1.08, 0, 0.5);
   g.add(intakeSlot);
@@ -307,14 +295,14 @@ export function buildPlayerShip() {
   const intakeFrameBot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.88), portFrameMat);
   intakeFrameBot.position.set(1.08, -0.60, 0.5);
   g.add(intakeFrameBot);
-  // ガイドレール(上下内側に細張り)
+  // ガイドレール
   for (const gy of [-0.28, 0.28]) {
     const rail = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.06, 0.80), portFrameMat);
     rail.position.set(1.10, gy, 0.5);
     g.add(rail);
   }
 
-  // 排出口(左面 -X, z=-0.8 後方)
+  // 排出口(左面 -X)
   const ejectSlot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.05, 0.72), portMat);
   ejectSlot.position.set(-1.08, 0, -0.8);
   g.add(ejectSlot);
@@ -325,7 +313,7 @@ export function buildPlayerShip() {
   const ejectFrameBot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.78), portFrameMat);
   ejectFrameBot.position.set(-1.08, -0.55, -0.8);
   g.add(ejectFrameBot);
-  // 排出角(後方に傾斜のガイド)
+  // 排出ガイド
   const ejectRamp = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.06, 0.70), portFrameMat);
   ejectRamp.position.set(-1.10, 0, -0.8);
   g.add(ejectRamp);
