@@ -18,16 +18,16 @@ function terrain(key: ReturnType<typeof earthTileKey>): Uint8Array {
   const bytes = new Uint8Array(PAYLOAD_BYTES);
   bytes.set(new TextEncoder().encode('ESTN'));
   const view = new DataView(bytes.buffer);
-  view.setUint16(4, 1, true); view.setUint16(6, 32, true);
+  view.setUint16(4, 2, true); view.setUint16(6, 32, true);
   view.setUint16(8, 260, true); view.setUint16(10, 260, true);
   view.setUint8(12, key.z); view.setUint32(14, key.x, true); view.setUint32(18, key.y, true);
-  view.setUint8(22, 4); view.setUint8(23, 1); view.setUint32(24, EARTH_TERRAIN_BYTES, true);
+  view.setUint8(22, 4); view.setUint8(23, 2); view.setUint32(24, EARTH_TERRAIN_BYTES, true);
   return bytes;
 }
 
 function indexFor(keys: readonly ReturnType<typeof earthTileKey>[], wrongHash = false): EarthSurfaceTileIndexFile {
   return {
-    schemaVersion: 1, datasetId: 'fixture',
+    schemaVersion: 2, datasetId: 'fixture',
     entries: keys.map((key) => {
       const payload = terrain(key);
       const compressed = gzipSync(payload);

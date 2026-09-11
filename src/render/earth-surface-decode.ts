@@ -6,8 +6,9 @@ export const EARTH_TERRAIN_HEADER_BYTES = 32;
 export const EARTH_TERRAIN_WIDTH = 260;
 export const EARTH_TERRAIN_HEIGHT = 260;
 export const EARTH_TERRAIN_CHANNELS = 4;
-const FLOAT16_SCALAR = 1;
-export const EARTH_TERRAIN_BYTES = EARTH_TERRAIN_WIDTH * EARTH_TERRAIN_HEIGHT * EARTH_TERRAIN_CHANNELS * 2;
+export const EARTH_TERRAIN_FORMAT_VERSION = 2;
+const UINT8_SCALAR = 2;
+export const EARTH_TERRAIN_BYTES = EARTH_TERRAIN_WIDTH * EARTH_TERRAIN_HEIGHT * EARTH_TERRAIN_CHANNELS;
 export const EARTH_BASE_TERRAIN_WIDTH = EARTH_TERRAIN_WIDTH * 2 - 4 * EARTH_TILE_GUTTER;
 export const EARTH_BASE_TERRAIN_HEIGHT = EARTH_TERRAIN_HEIGHT - 2 * EARTH_TILE_GUTTER;
 
@@ -45,14 +46,15 @@ export interface EarthSurfaceTileRequest {
   readonly maxTerrainBytes?: number;
   readonly fetchImpl?: typeof fetch;
   readonly decodeImage?: (bytes: Uint8Array, signal?: AbortSignal) => Promise<unknown>;
+  readonly decodeTerrain?: typeof decodeEarthTerrainBytes;
 }
 
 export interface EarthSurfaceTilePayload {
   readonly key: EarthTileKey;
   readonly generation: number;
   readonly color: unknown;
-  // ESTNの本文を、GPUアップロード側が解釈できるlittle-endian binary16のまま渡す。
-  readonly terrain: Uint16Array;
+  // ESTNの八面体法線RG・roughness B・地表分類AをGPUへ渡す。
+  readonly terrain: Uint8Array;
 }
 
 const DEFAULT_COLOR_LIMIT = 16 * 1024 * 1024;
@@ -122,8 +124,8 @@ function readAscii(bytes: Uint8Array, start: number, end: number): string {
   return String.fromCharCode(...bytes.slice(start, end));
 }
 
-// 32bytesのESTNヘッダーを検査し、本文のbinary16配列を切り出す。
-export function decodeEarthTerrainPayload(payload: Uint8Array, key: EarthTileKey): Uint16Array {
+// 32bytesのESTNヘッダーを検査し、本文のRGBA8配列を切り出す。
+export function decodeEarthTerrainPayload(payload: Uint8Array, key: EarthTileKey): Uint8Array {
   if (payload.byteLength !== EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES) {
     throw new EarthSurfaceDecodeError('Invalid ESTN payload length');
   }
@@ -141,19 +143,19 @@ export function decodeEarthTerrainPayload(payload: Uint8Array, key: EarthTileKey
   const scalar = view.getUint8(23);
   const dataBytes = view.getUint32(24, true);
   const reserved2 = view.getUint32(28, true);
-  if (version !== 1 || headerBytes !== EARTH_TERRAIN_HEADER_BYTES || width !== EARTH_TERRAIN_WIDTH
-    || height !== EARTH_TERRAIN_HEIGHT || channels !== EARTH_TERRAIN_CHANNELS || scalar !== FLOAT16_SCALAR
+  if (version !== EARTH_TERRAIN_FORMAT_VERSION || headerBytes !== EARTH_TERRAIN_HEADER_BYTES
+    || width !== EARTH_TERRAIN_WIDTH
+    || height !== EARTH_TERRAIN_HEIGHT || channels !== EARTH_TERRAIN_CHANNELS || scalar !== UINT8_SCALAR
     || reserved !== 0 || reserved2 !== 0 || dataBytes !== EARTH_TERRAIN_BYTES) {
     throw new EarthSurfaceDecodeError('Invalid ESTN header');
   }
   assertKey(key, z, x, y);
-  return new Uint16Array(payload.buffer.slice(payload.byteOffset + EARTH_TERRAIN_HEADER_BYTES,
-    payload.byteOffset + payload.byteLength));
+  return payload.slice(EARTH_TERRAIN_HEADER_BYTES);
 }
 
-// 2枚のz=0 ESTNをまとめたESTBを、経度方向へ連結したbase用RGBA16Fへ展開する。
+// 2枚のz=0 ESTNをまとめたESTBを、経度方向へ連結したbase用RGBA8へ展開する。
 // ガターはタイル境界を越えて補間するときだけ必要なので、base画像では除外する。
-export function decodeEarthBaseTerrainPayload(payload: Uint8Array): Uint16Array {
+export function decodeEarthBaseTerrainPayload(payload: Uint8Array): Uint8Array {
   if (payload.byteLength !== EARTH_BASE_TERRAIN_PAYLOAD_BYTES) {
     throw new EarthSurfaceDecodeError('Invalid ESTB payload length');
   }
@@ -171,14 +173,14 @@ export function decodeEarthBaseTerrainPayload(payload: Uint8Array): Uint16Array 
   const scalar = view.getUint8(23);
   const dataBytes = view.getUint32(24, true);
   const reserved2 = view.getUint32(28, true);
-  if (version !== 1 || headerBytes !== EARTH_BASE_TERRAIN_HEADER_BYTES
+  if (version !== EARTH_TERRAIN_FORMAT_VERSION || headerBytes !== EARTH_BASE_TERRAIN_HEADER_BYTES
     || width !== EARTH_TERRAIN_WIDTH || height !== EARTH_TERRAIN_HEIGHT || z !== 0 || reserved !== 0
     || columns !== EARTH_BASE_TERRAIN_TILE_COUNT || rows !== 1 || channels !== EARTH_TERRAIN_CHANNELS
-    || scalar !== FLOAT16_SCALAR || dataBytes !== EARTH_BASE_TERRAIN_DATA_BYTES || reserved2 !== 0) {
+    || scalar !== UINT8_SCALAR || dataBytes !== EARTH_BASE_TERRAIN_DATA_BYTES || reserved2 !== 0) {
     throw new EarthSurfaceDecodeError('Invalid ESTB header');
   }
 
-  const output = new Uint16Array(
+  const output = new Uint8Array(
     EARTH_BASE_TERRAIN_WIDTH * EARTH_BASE_TERRAIN_HEIGHT * EARTH_TERRAIN_CHANNELS,
   );
   const tilePayloadBytes = EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES;
@@ -230,10 +232,23 @@ async function inflateTerrain(bytes: Uint8Array, limit: number, signal?: AbortSi
   return readResponse(new Response(stream), limit, signal);
 }
 
-// base地形のgzip本文をESTBからDataTexture用のRGBA16Fへ変換する。画像球はこの処理を待たずに表示し続ける。
+// gzip本文を展開・検証し、GPUへ渡す地形RGBA8を返す。
+export async function decodeEarthTerrainBytes(
+  compressed: Uint8Array, key: EarthTileKey, limit: number, expectedSha256?: string,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
+  const terrainBytes = await inflateTerrain(compressed, limit, signal);
+  const terrainHash = await sha256(terrainBytes);
+  if (expectedSha256 !== undefined && terrainHash !== expectedSha256) {
+    throw new EarthSurfaceDecodeError('ESTN payload hash mismatch');
+  }
+  return decodeEarthTerrainPayload(terrainBytes, key);
+}
+
+// base地形のgzip本文をESTBからDataTexture用のRGBA8へ変換する。画像球はこの処理を待たずに表示し続ける。
 export async function loadEarthBaseTerrain(
   url: string, fetchImpl: typeof fetch = fetch, signal?: AbortSignal,
-): Promise<Uint16Array> {
+): Promise<Uint8Array> {
   const response = await fetchImpl(url, { signal });
   const compressed = await readResponse(response, EARTH_BASE_TERRAIN_PAYLOAD_BYTES, signal);
   const payload = await inflateTerrain(compressed, EARTH_BASE_TERRAIN_PAYLOAD_BYTES, signal);
@@ -264,12 +279,9 @@ export async function decodeEarthSurfaceTile(request: EarthSurfaceTileRequest): 
     && await sha256(colorBytes) !== request.expectedColorSha256) {
     throw new EarthSurfaceDecodeError('Earth surface color hash mismatch');
   }
-  const terrainBytes = await inflateTerrain(compressedTerrain, terrainLimit, request.signal);
-  const terrainHash = await sha256(terrainBytes);
-  if (request.expectedTerrainSha256 !== undefined && terrainHash !== request.expectedTerrainSha256) {
-    throw new EarthSurfaceDecodeError('ESTN payload hash mismatch');
-  }
-  const terrain = decodeEarthTerrainPayload(terrainBytes, request.key);
+  const terrain = await (request.decodeTerrain ?? decodeEarthTerrainBytes)(
+    compressedTerrain, request.key, terrainLimit, request.expectedTerrainSha256, request.signal,
+  );
   const color = await (request.decodeImage ?? defaultDecodeImage)(colorBytes, request.signal);
   try {
     ensureNotAborted(request.signal);

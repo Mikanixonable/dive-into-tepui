@@ -22,8 +22,19 @@ _spec = importlib.util.spec_from_file_location("earth_surface_fetch", Path(__fil
 _fetch = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_fetch)
 
-# Float16のwire識別子。本文はIEEE 754 binary16、little-endian。
-FLOAT16_SCALAR = 1
+# ESTN/ESTB v2は八面体法線RG8、roughness R8、地表分類A8を持つ。
+# 形式の混在を防ぐため、生成と検査はRGBA16Fのv1を受け付けない。
+TERRAIN_FORMAT_VERSION = 2
+UINT8_SCALAR = 2
+TERRAIN_WIDTH = 260
+TERRAIN_HEIGHT = 260
+TERRAIN_CHANNELS = 4
+TERRAIN_TEXELS = TERRAIN_WIDTH * TERRAIN_HEIGHT
+TERRAIN_BYTES = TERRAIN_TEXELS * TERRAIN_CHANNELS
+MATERIAL_CLASS_WATER = 0
+MATERIAL_CLASS_LAND = 1
+MATERIAL_CLASS_ICE = 2
+MATERIAL_CLASS_UNKNOWN = 255
 TERRAIN_HEADER = struct.Struct("<4sHHHHBBIIBBII")
 BASE_HEADER = struct.Struct("<4sHHHHBBIIBBII")
 BASE_COLOR_ROOT_COUNT = 2
@@ -437,13 +448,19 @@ def bake_region(value, manifest):
     classes = manifest["roughness"]
     roughness = [classes["water"] * (1 - dry) + classes["land"] * (dry - frozen) + classes["ice"] * frozen
                  for dry, frozen in zip(land, ice)]
+    material_class = []
+    for dry, frozen in zip(land, ice):
+        candidates = ((1.0 - dry, MATERIAL_CLASS_WATER),
+                      (dry - frozen, MATERIAL_CLASS_LAND),
+                      (frozen, MATERIAL_CLASS_ICE))
+        material_class.append(max(candidates, key=lambda item: (item[0], item[1]))[1])
     result = {"schemaVersion": 1, "datasetId": manifest["datasetId"], "kind": "earth-surface-region-intermediate",
               "provenance": "synthetic_fixture" if value["kind"] == "earth-surface-region-fixture" else "source_window",
               "sourceManifestSha256": value["sourceManifestSha256"],
               "grid": value["grid"], "axesM": axes, "colorSrgb": colors, "ellipsoidHeightM": heights,
               "orthometricHeightM": orthometric, "landFraction": land, "iceFraction": ice,
               "iceUnknownFraction": [max(0.0, dry - frozen) for dry, frozen in zip(land, ice)],
-              "normals": normals, "roughness": roughness}
+              "normals": normals, "roughness": roughness, "materialClass": material_class}
     if "era5" in value:
         climate = value["era5"]
         source = next(item for item in manifest["sources"] if item["id"] == climate["sourceId"])
@@ -454,36 +471,84 @@ def bake_region(value, manifest):
     return result
 
 
-# 有効なタイル座標と260²のRGBA16Fから、32bytes固定ヘッダーを含む本文を作る。
-def encode_terrain_tile(normals, roughness, z, x, y):
+def encode_octahedral_normal(normal):
+    """単位法線を正規化八面体座標のRG8へ量子化する。"""
+    if (len(normal) != 3 or any(not math.isfinite(component) for component in normal)
+            or not math.isclose(sum(component ** 2 for component in normal), 1, abs_tol=1e-6)):
+        raise ValueError("地形タイルに非単位法線があります")
+    length = abs(normal[0]) + abs(normal[1]) + abs(normal[2])
+    u, v, w = (component / length for component in normal)
+    if w < 0:
+        u, v = ((1 - abs(v)) * (-1 if u < 0 else 1),
+                (1 - abs(u)) * (-1 if v < 0 else 1))
+    return (max(0, min(255, int(round((u * 0.5 + 0.5) * 255)))),
+            max(0, min(255, int(round((v * 0.5 + 0.5) * 255)))))
+
+
+def decode_octahedral_normal(encoded):
+    """正規化八面体RG8を単位法線へ復号する。"""
+    if len(encoded) != 2 or any(type(value) is not int or not 0 <= value <= 255 for value in encoded):
+        raise ValueError("octahedral法線はRG8が必要です")
+    u, v = (2 * value / 255 - 1 for value in encoded)
+    w = 1 - abs(u) - abs(v)
+    if w < 0:
+        u, v = ((1 - abs(v)) * (-1 if u < 0 else 1),
+                (1 - abs(u)) * (-1 if v < 0 else 1))
+    return normalize((u, v, w))
+
+
+# 有効なタイル座標と4 byte/texelから、32bytes固定ヘッダーを含む本文を作る。
+def encode_terrain_tile(normals, roughness, z, x, y, material_class=None):
     if any(type(value) is not int for value in (z, x, y)) or not (0 <= z <= 7 and 0 <= x < 2 ** (z + 1) and 0 <= y < 2 ** z):
         raise ValueError("タイル座標が不正です")
-    if len(normals) != 260 * 260 or len(roughness) != len(normals):
+    if len(normals) != TERRAIN_TEXELS or len(roughness) != len(normals):
         raise ValueError("地形タイルはガター込み260×260が必要です")
+    if material_class is None:
+        material_class = [MATERIAL_CLASS_UNKNOWN] * len(normals)
+    if len(material_class) != len(normals):
+        raise ValueError("materialClassは地形タイルと同じセル数が必要です")
     body = bytearray()
-    for normal, material in zip(normals, roughness):
-        if len(normal) != 3 or any(not math.isfinite(component) for component in normal) or not math.isclose(sum(component ** 2 for component in normal), 1, abs_tol=1e-6):
-            raise ValueError("地形タイルに非単位法線があります")
+    for normal, material, classification in zip(normals, roughness, material_class):
+        oct_u, oct_v = encode_octahedral_normal(normal)
         if not math.isfinite(material) or not 0 <= material <= 1:
             raise ValueError("roughnessは0..1が必要です")
-        body.extend(struct.pack("<4e", *normal, material))
-    return TERRAIN_HEADER.pack(b"ESTN", 1, 32, 260, 260, z, 0, x, y, 4, FLOAT16_SCALAR, len(body), 0) + body
+        if type(classification) is not int or not 0 <= classification <= 255:
+            raise ValueError("materialClassは0..255の整数が必要です")
+        body.extend((oct_u, oct_v, max(0, min(255, int(round(material * 255)))), classification))
+    return TERRAIN_HEADER.pack(b"ESTN", TERRAIN_FORMAT_VERSION, 32, TERRAIN_WIDTH, TERRAIN_HEIGHT,
+                               z, 0, x, y, TERRAIN_CHANNELS, UINT8_SCALAR, len(body), 0) + body
 
 
-# 形式・座標・長さ・hashを確かめ、Float16の法線とroughnessを検査する。
+# 形式・座標・長さ・hashを確かめ、octahedral法線と量子化値を検査する。
 def validate_terrain_tile(payload, key, expected_sha):
     if len(payload) < 32 or hashlib.sha256(payload).hexdigest() != expected_sha:
         raise ValueError("地形本文の長さまたはhashが不一致です")
     magic, version, header_bytes, width, height, z, reserved, x, y, channels, scalar, data_bytes, reserved2 = TERRAIN_HEADER.unpack_from(payload)
-    if (magic, version, header_bytes, width, height, channels, scalar, reserved, reserved2) != (b"ESTN", 1, 32, 260, 260, 4, FLOAT16_SCALAR, 0, 0):
+    if (magic, version, header_bytes, width, height, channels, scalar, reserved, reserved2) != (b"ESTN", TERRAIN_FORMAT_VERSION, 32, TERRAIN_WIDTH, TERRAIN_HEIGHT, TERRAIN_CHANNELS, UINT8_SCALAR, 0, 0):
         raise ValueError("地形ヘッダーが不正です")
     if (z, x, y) != tuple(key) or not (0 <= z <= 7 and x < 2 ** (z + 1) and y < 2 ** z):
         raise ValueError("地形ヘッダーのキーが不一致です")
-    if data_bytes != 260 * 260 * 8 or len(payload) != 32 + data_bytes:
+    if data_bytes != TERRAIN_BYTES or len(payload) != 32 + data_bytes:
         raise ValueError("地形本文のバイト数が不一致です")
-    for nx, ny, nz, material in struct.iter_unpack("<4e", payload[32:]):
-        if not all(math.isfinite(component) for component in (nx, ny, nz, material)) or not math.isclose(nx * nx + ny * ny + nz * nz, 1, abs_tol=0.002) or not 0 <= material <= 1:
+    for oct_u, oct_v, material, classification in struct.iter_unpack("<4B", payload[32:]):
+        normal = decode_octahedral_normal((oct_u, oct_v))
+        if not all(math.isfinite(component) for component in normal) or not 0 <= material <= 255:
             raise ValueError("地形本文に無効な法線またはroughnessがあります")
+        if classification not in (MATERIAL_CLASS_WATER, MATERIAL_CLASS_LAND, MATERIAL_CLASS_ICE,
+                                  MATERIAL_CLASS_UNKNOWN):
+            raise ValueError("地形本文に未知のmaterialClassがあります")
+
+
+def decode_terrain_tile(payload):
+    """検証済みESTN本文を復号し、テストと小規模producer検査へ返す。"""
+    header = TERRAIN_HEADER.unpack_from(payload)
+    validate_terrain_tile(payload, (header[5], header[7], header[8]), hashlib.sha256(payload).hexdigest())
+    normals, roughness, material_class = [], [], []
+    for oct_u, oct_v, material, classification in struct.iter_unpack("<4B", payload[32:]):
+        normals.append(decode_octahedral_normal((oct_u, oct_v)))
+        roughness.append(material / 255)
+        material_class.append(classification)
+    return normals, roughness, material_class
 
 
 def encode_base_terrain(terrain_payloads, root_columns=2, root_rows=1):
@@ -493,9 +558,9 @@ def encode_base_terrain(terrain_payloads, root_columns=2, root_rows=1):
     for x, payload in enumerate(terrain_payloads):
         validate_terrain_tile(payload, (0, x, 0), hashlib.sha256(payload).hexdigest())
     body = b"".join(terrain_payloads)
-    header = BASE_HEADER.pack(b"ESTB", 1, 32, 260, 260, 0, 0, root_columns, root_rows,
+    header = BASE_HEADER.pack(b"ESTB", TERRAIN_FORMAT_VERSION, 32, TERRAIN_WIDTH, TERRAIN_HEIGHT, 0, 0, root_columns, root_rows,
                               TERRAIN_HEADER.unpack_from(terrain_payloads[0])[9],
-                              FLOAT16_SCALAR, len(body), 0)
+                              UINT8_SCALAR, len(body), 0)
     return header + body
 
 
@@ -504,9 +569,10 @@ def validate_base_terrain(payload, expected_root_count=2):
         raise ValueError("ESTB headerが短すぎます")
     magic, version, header_bytes, width, height, z, reserved, columns, rows, channels, scalar, data_bytes, reserved2 = BASE_HEADER.unpack_from(payload)
     if (magic, version, header_bytes, width, height, z, reserved, columns, rows, channels, scalar, reserved2) != (
-            b"ESTB", 1, 32, 260, 260, 0, 0, 2, 1, 4, FLOAT16_SCALAR, 0):
+            b"ESTB", TERRAIN_FORMAT_VERSION, 32, TERRAIN_WIDTH, TERRAIN_HEIGHT, 0, 0, 2, 1,
+            TERRAIN_CHANNELS, UINT8_SCALAR, 0):
         raise ValueError("ESTB headerが不正です")
-    expected = expected_root_count * TERRAIN_HEADER.size + expected_root_count * (260 * 260 * 8)
+    expected = expected_root_count * TERRAIN_HEADER.size + expected_root_count * TERRAIN_BYTES
     if data_bytes != expected or len(payload) != BASE_HEADER.size + expected:
         raise ValueError("ESTB payload長が不正です")
     return {"rootColumns": columns, "rootRows": rows, "payloadBytes": data_bytes}
@@ -639,8 +705,16 @@ def global_manifest(manifest, source_manifest_path, source_manifest_hash, climat
         "datasetId": manifest["datasetId"],
         "sourceManifestSha256": source_manifest_hash,
         "sourceManifest": source_manifest_path,
-        "provenance": {"generator": "earth-surface-bundle/1", "sourceManifestHash": source_manifest_hash,
+        "provenance": {"generator": "earth-surface-bundle/2", "sourceManifestHash": source_manifest_hash,
                         "dataKind": data_provenance},
+        "terrainEncoding": {"formatVersion": TERRAIN_FORMAT_VERSION,
+                             "layout": "octahedral-rg8-roughness-r8-material-class-a8",
+                             "width": TERRAIN_WIDTH, "height": TERRAIN_HEIGHT,
+                             "channels": TERRAIN_CHANNELS, "scalar": "UInt8",
+                             "materialClasses": {"water": MATERIAL_CLASS_WATER,
+                                                  "land": MATERIAL_CLASS_LAND,
+                                                  "ice": MATERIAL_CLASS_ICE,
+                                                  "unknown": MATERIAL_CLASS_UNKNOWN}},
         "climateMap": manifest["climateMap"],
         "controlRegions": manifest["controlRegions"],
         "coverage": {"kind": coverage_kind, "maxZoom": max_zoom,
@@ -693,7 +767,7 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
         tile_index = staging / "tile-index.json"
         tile_index.parent.mkdir(parents=True, exist_ok=True)
         entries = tile_index.open("w", encoding="utf-8")
-        entries.write(json.dumps({"schemaVersion": 1, "datasetId": manifest["datasetId"]}, ensure_ascii=False)[:-1])
+        entries.write(json.dumps({"schemaVersion": 2, "datasetId": manifest["datasetId"]}, ensure_ascii=False)[:-1])
         entries.write(', "entries": [')
         first = True
         root_tiles = []

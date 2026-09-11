@@ -138,11 +138,25 @@ export function register(): void {
     assert.equal(coordinator.frames[0]?.signal?.aborted, false);
     const firstSignal = coordinator.frames[0]?.signal;
 
-    surface.syncFrame({ ...frame(camera), frame: 8 });
+    surface.syncFrame({ ...frame(camera), frame: 8, timeMs: 1201 });
     assert.equal(coordinator.frames.length, 2);
+    assert.equal(coordinator.frames[1]?.projection, coordinator.frames[0]?.projection);
     assert.equal(firstSignal?.aborted, false);
     assert.equal(coordinator.frames[1]?.signal, firstSignal);
     assert.equal(coordinator.frames[1]?.signal?.aborted, false);
+
+    camera.position.x = 1;
+    camera.updateMatrixWorld();
+    surface.syncFrame({ ...frame(camera), frame: 9, timeMs: 1250 });
+    assert.equal(coordinator.frames[2]?.projection, coordinator.frames[1]?.projection);
+    surface.syncFrame({ ...frame(camera), frame: 10, timeMs: 1300 });
+    assert.notEqual(coordinator.frames[3]?.projection, coordinator.frames[2]?.projection);
+    const beforeRewind = coordinator.frames[3]?.projection;
+    surface.syncFrame({ ...frame(camera), frame: 11, timeMs: 1299 });
+    assert.notEqual(coordinator.frames[4]?.projection, beforeRewind);
+    const beforeJump = coordinator.frames[4]?.projection;
+    surface.syncFrame({ ...frame(camera), frame: 12, timeMs: 2000 });
+    assert.equal(coordinator.frames[5]?.projection, beforeJump);
 
     surface.hide();
     assert.equal(coordinator.frames[1]?.signal?.aborted, true);
@@ -155,7 +169,7 @@ export function register(): void {
   test('earth surface: 対応GPUのcoordinatorをattachすると既存LODメッシュへ材質を接続する', async () => {
     const gpu = new EarthSurfaceGpuThree({
       texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS,
-      colorSrgbLinear: true, terrainFloat16Linear: true,
+      colorSrgbLinear: true, terrainRgba8Linear: true,
     });
     const coordinator = new CoordinatorSpy(gpu.textures);
     const fallback = CelestialSurface.solid([0.1, 0.1, 0.1]);
@@ -188,7 +202,7 @@ export function register(): void {
   test('earth surface: GPU接続を外すと初期fallback材質へ戻る', () => {
     const gpu = new EarthSurfaceGpuThree({
       texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS,
-      colorSrgbLinear: true, terrainFloat16Linear: true,
+      colorSrgbLinear: true, terrainRgba8Linear: true,
     });
     const coordinator = new CoordinatorSpy(gpu.textures);
     const fallback = CelestialSurface.solid([0.1, 0.1, 0.1]);

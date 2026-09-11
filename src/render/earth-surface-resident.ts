@@ -71,6 +71,13 @@ export class EarthSurfaceResidentCoordinator {
   private activeGeneration = -1;
   private nextFrame = 0;
   private recentFailureReason: string | null = null;
+  private residentRevision = 0;
+  private lastResidentRevision = -1;
+  private lastProjection: EarthTileProjection | null = null;
+  private lastGeneration = -1;
+  private lastTimeMs: number | null = null;
+  private synchronized = false;
+  private lastResult: EarthSurfaceResidentFrameResult = { frontier: [], requested: [], published: false };
   private disposed = false;
 
   public constructor(private readonly dependencies: EarthSurfaceResidentCoordinatorDependencies) {}
@@ -104,16 +111,38 @@ export class EarthSurfaceResidentCoordinator {
     if (!Number.isSafeInteger(input.generation) || input.generation < 0) {
       throw new RangeError('Invalid Earth tile generation');
     }
+    if (!Number.isFinite(input.timeMs)) throw new RangeError('Invalid Earth drawing time');
     const frame = input.frame ?? this.nextFrame;
     if (!Number.isSafeInteger(frame) || frame < 0) throw new RangeError('Invalid Earth frame');
     this.nextFrame = Math.max(this.nextFrame, frame + 1);
     if (this.activeGeneration !== -1 && this.activeGeneration !== input.generation) this.cancelOldRequests(input.generation);
     this.activeGeneration = input.generation;
 
+    const fadeTimeChanged = this.lastTimeMs !== input.timeMs
+      && (this.dependencies.tiles.hasActiveFades(input.timeMs)
+        || (this.lastTimeMs !== null && this.dependencies.tiles.hasActiveFades(this.lastTimeMs)));
+    const dirty = !this.synchronized
+      || this.lastGeneration !== input.generation
+      || this.lastProjection !== input.projection
+      || this.lastResidentRevision !== this.residentRevision
+      || fadeTimeChanged;
+    if (!dirty) {
+      this.lastTimeMs = input.timeMs;
+      return { frontier: this.lastResult.frontier, requested: [], published: false };
+    }
+
     const residents = this.dependencies.gpu.mode === 'tiles' ? this.dependencies.gpu.uploadedTiles() : [];
     this.dependencies.tiles.sync(input.projection, residents, input.timeMs);
+    this.lastProjection = input.projection;
+    this.lastGeneration = input.generation;
+    this.lastTimeMs = input.timeMs;
+    this.lastResidentRevision = this.residentRevision;
+    this.synchronized = true;
     if (this.dependencies.gpu.mode === 'base') {
-      return { frontier: this.dependencies.tiles.frontier.slice(), requested: [], published: false };
+      this.lastResult = {
+        frontier: this.dependencies.tiles.frontier.slice(), requested: [], published: false,
+      };
+      return this.lastResult;
     }
     const page = this.dependencies.tiles.pageTable();
     this.touchPinned(page);
@@ -121,7 +150,10 @@ export class EarthSurfaceResidentCoordinator {
     const published = this.dependencies.gpu.publishFrame(frame);
 
     const requested = this.requestCandidates(input);
-    return { frontier: this.dependencies.tiles.frontier.slice(), requested, published };
+    this.lastResult = {
+      frontier: this.dependencies.tiles.frontier.slice(), requested, published,
+    };
+    return this.lastResult;
   }
 
   // 進行中のdecode・色変換・GPU投入が落ち着くまで待つ。テストと実装側の境界を同期APIへ漏らさない。
@@ -151,6 +183,13 @@ export class EarthSurfaceResidentCoordinator {
     this.activeGeneration = -1;
     this.nextFrame = 0;
     this.recentFailureReason = null;
+    this.residentRevision++;
+    this.lastResidentRevision = -1;
+    this.lastProjection = null;
+    this.lastGeneration = -1;
+    this.lastTimeMs = null;
+    this.synchronized = false;
+    this.lastResult = { frontier: [], requested: [], published: false };
   }
 
   private cancelOldRequests(generation: number): void {
@@ -215,7 +254,9 @@ export class EarthSurfaceResidentCoordinator {
           }
           resident.state = 'uploaded';
         } catch (error) {
-          if (this.residents.get(id) === resident) this.residents.delete(id);
+          if (this.residents.get(id) === resident) {
+            this.residents.delete(id);
+          }
           if (!this.disposed && this.dependencies.gpu.reservation(layer) === reservation) {
             this.dependencies.gpu.releaseLayer(reservation);
           }
@@ -233,6 +274,7 @@ export class EarthSurfaceResidentCoordinator {
         this.recentFailureReason = `tile ${earthTileId(pending.key)}: ${reason}`;
       }
     }).finally(() => {
+      this.residentRevision++;
       this.dependencies.queue.release(pending.key, pending.generation);
       if (this.pending.get(earthTileId(pending.key))?.promise === pending.promise) {
         this.pending.delete(earthTileId(pending.key));
@@ -280,6 +322,7 @@ export class EarthSurfaceResidentCoordinator {
     for (const [id, resident] of evictable.slice(0, needed)) {
       this.dependencies.gpu.releaseLayer(resident.reservation);
       this.residents.delete(id);
+      this.residentRevision++;
     }
   }
 }

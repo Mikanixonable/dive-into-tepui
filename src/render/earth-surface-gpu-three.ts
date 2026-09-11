@@ -31,9 +31,9 @@ export function earthSurfaceGpuCapabilitiesOf(
   return {
     texture2dArray: webgpu,
     maxTextureArrayLayers,
-    // WebGPUのRGBA8 sRGBとRGBA16FはDataArrayTextureの標準形式として扱う。
+    // WebGPUのRGBA8 sRGBとRGBA8線形値はDataArrayTextureの標準形式として扱う。
     colorSrgbLinear: webgpu,
-    terrainFloat16Linear: webgpu,
+    terrainRgba8Linear: webgpu,
   };
 }
 
@@ -43,7 +43,7 @@ function requireLayer(layer: number): void {
   }
 }
 
-function requirePixels<T extends Uint8Array | Uint16Array>(pixels: T, expected: number, label: string): void {
+function requirePixels(pixels: Uint8Array, expected: number, label: string): void {
   if (pixels.length !== expected) throw new RangeError(`Invalid Earth ${label} size`);
 }
 
@@ -87,12 +87,11 @@ export class EarthSurfaceGpuThree implements EarthSurfaceGpuBackend {
     );
     const terrain = configureArrayTexture(
       new THREE.DataArrayTexture(
-        new Uint16Array(EARTH_TILE_COMPONENTS * EARTH_TILE_LAYERS),
+        new Uint8Array(EARTH_TILE_COMPONENTS * EARTH_TILE_LAYERS),
         EARTH_TILE_EXTENT, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS,
       ),
       THREE.NoColorSpace,
     );
-    terrain.type = THREE.HalfFloatType;
     const pageTable = configurePageTable(new THREE.DataTexture(
       new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * EARTH_CHANNELS),
       EARTH_PAGE_WIDTH, EARTH_PAGE_HEIGHT, THREE.RGBAFormat, THREE.UnsignedByteType,
@@ -112,12 +111,12 @@ export class EarthSurfaceGpuThree implements EarthSurfaceGpuBackend {
     return Promise.resolve();
   }
 
-  public writeTerrain(layer: number, pixels: Uint16Array): Promise<void> {
+  public writeTerrain(layer: number, pixels: Uint8Array): Promise<void> {
     const textures = this.requireTextures();
     requireLayer(layer);
     requirePixels(pixels, EARTH_TILE_COMPONENTS, 'terrain tile');
     const data = textures.terrain.image.data;
-    if (!(data instanceof Uint16Array)) throw new Error('Earth terrain texture has an unexpected format');
+    if (!(data instanceof Uint8Array)) throw new Error('Earth terrain texture has an unexpected format');
     data.set(pixels, layer * EARTH_TILE_COMPONENTS);
     textures.terrain.addLayerUpdate(layer);
     textures.terrain.needsUpdate = true;

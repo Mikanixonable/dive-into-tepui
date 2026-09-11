@@ -30,12 +30,29 @@ export interface EarthSurfaceAssetManifest {
   readonly schemaVersion: 1;
   readonly datasetId: string;
   readonly sourceManifestSha256: string;
+  readonly terrainEncoding: EarthSurfaceTerrainEncoding;
   readonly baseColor: string;
   readonly baseTerrain: string;
   readonly tileIndexUrl: string;
   readonly climateMaps: readonly string[];
   readonly climateEncoding: EarthSurfaceClimateEncoding;
   readonly attribution: readonly string[];
+}
+
+// manifestが宣言するESTN/ESTB v2のチャンネル配置と固定値。
+export interface EarthSurfaceTerrainEncoding {
+  readonly formatVersion: 2;
+  readonly layout: 'octahedral-rg8-roughness-r8-material-class-a8';
+  readonly width: 260;
+  readonly height: 260;
+  readonly channels: 4;
+  readonly scalar: 'UInt8';
+  readonly materialClasses: {
+    readonly water: 0;
+    readonly land: 1;
+    readonly ice: 2;
+    readonly unknown: 255;
+  };
 }
 
 function relativeAsset(baseUrl: string, path: string): string {
@@ -56,6 +73,14 @@ export function earthSurfaceSourceFromManifest(
 ): EarthSurfaceSource {
   if (manifest.schemaVersion !== 1) throw new Error('Unsupported Earth surface manifest schema');
   requireDatasetId(manifest.datasetId);
+  // runtimeのデコーダと異なるwire形式を、取得を始める前に拒否する。
+  const terrain = manifest.terrainEncoding;
+  if (terrain?.formatVersion !== 2 || terrain.layout !== 'octahedral-rg8-roughness-r8-material-class-a8'
+    || terrain.width !== 260 || terrain.height !== 260 || terrain.channels !== 4 || terrain.scalar !== 'UInt8'
+    || terrain.materialClasses?.water !== 0 || terrain.materialClasses.land !== 1
+    || terrain.materialClasses.ice !== 2 || terrain.materialClasses.unknown !== 255) {
+    throw new Error('Unsupported Earth surface terrain encoding');
+  }
   if (!/^[0-9a-f]{64}$/.test(manifest.sourceManifestSha256)) throw new Error('Invalid Earth surface source manifest hash');
   if (manifest.climateMaps.length !== 12) throw new Error('Earth surface requires 12 climate maps');
   for (const range of [manifest.climateEncoding.temperatureK, manifest.climateEncoding.cloudFraction,

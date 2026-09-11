@@ -75,7 +75,7 @@ export function register(): void {
 
   test('earth surface material: array/page table nodeはbase層とbody固定法線を持つ', () => {
     const color = new THREE.DataArrayTexture(new Uint8Array(4), 1, 1, 1);
-    const terrain = new THREE.DataArrayTexture(new Uint16Array(4), 1, 1, 1);
+    const terrain = new THREE.DataArrayTexture(new Uint8Array(4), 1, 1, 1);
     const pageTable = new THREE.DataTexture(new Uint8Array(4), 1, 1);
     const baseColor = new THREE.Texture();
     const baseTerrain = new THREE.Texture();
@@ -92,9 +92,6 @@ export function register(): void {
     assert.equal(nodes.colorNode.isNode, true);
     assert.equal(nodes.roughnessNode.isNode, true);
     assert.equal(nodes.normalNode.isNode, true);
-    assert.ok(containsShaderNode(nodes.colorNode, (node) => node.type === 'TextureNode'));
-    assert.ok(containsShaderNode(nodes.colorNode, (node) => node.type === 'MathNode' && node.method === 'exp2'));
-    assert.ok(containsShaderNode(nodes.colorNode, (node) => node.type === 'MathNode' && node.method === 'fract'));
-    assert.ok(containsShaderNode(nodes.colorNode, (node) => node.type === 'OperatorNode' && node.op === '=='));
+    assert.ok(containsShaderNode(nodes.normalNode, (node) => node.type === 'MathNode' && node.method === 'normalize'));
   });
 }

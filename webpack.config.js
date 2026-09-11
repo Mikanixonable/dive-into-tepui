@@ -9,7 +9,10 @@ const EARTH_SURFACE_DEV_PUBLIC_PATH = `/earth/${DEFAULT_EARTH_SURFACE_DATASET_ID
 const DEFAULT_EARTH_SURFACE_MANIFEST_URL = `${EARTH_SURFACE_DEV_PUBLIC_PATH.slice(1)}earth-surface.json`;
 
 module.exports = {
-  entry: './src/main.ts',
+  entry: {
+    main: './src/main.ts',
+    'earth-surface-terrain-worker': './src/render/earth-surface-terrain-worker.ts',
+  },
   resolve: {
     extensions: ['.ts', '.js'],
   },
@@ -57,7 +60,8 @@ module.exports = {
     ],
   },
   output: {
-    filename: '[name].[contenthash].js',
+    filename: ({ chunk }) => chunk?.name === 'earth-surface-terrain-worker'
+      ? '[name].js' : '[name].[contenthash].js',
     path: path.resolve(__dirname, 'docs'),
     clean: true,
   },
@@ -82,6 +86,7 @@ module.exports = {
       title: 'dive-into-tepui',
       template: './public/index.html',
       favicon: './public/favicon.svg',
+      chunks: ['main'],
     }),
     new webpack.DefinePlugin({
       __APP_VERSION__: JSON.stringify(version),

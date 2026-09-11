@@ -10,7 +10,7 @@ import {
 import type { EarthSurfaceGpuBackend, EarthSurfaceGpuCapabilities } from '../../src/render/earth-surface-gpu';
 
 const SUPPORTED: EarthSurfaceGpuCapabilities = {
-  texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS, colorSrgbLinear: true, terrainFloat16Linear: true,
+  texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS, colorSrgbLinear: true, terrainRgba8Linear: true,
 };
 const COMPONENTS = EARTH_TILE_EXTENT * EARTH_TILE_EXTENT * 4;
 
@@ -43,7 +43,7 @@ class FakeBackend implements EarthSurfaceGpuBackend {
   }
 
   // 地形だけの完了順を制御する。
-  public writeTerrain(layer: number, _pixels: Uint16Array): Promise<void> {
+  public writeTerrain(layer: number, _pixels: Uint8Array): Promise<void> {
     this.writes.push(`terrain:${layer}`);
     return this.terrain.promise;
   }
@@ -68,17 +68,17 @@ function page(layer = 255): Uint8Array {
 // この層の回帰テストを登録する。
 export function register(): void {
   test('earth GPU: Three実装は対応時だけ配列層を作り、層更新を実テクスチャへ反映する', async () => {
-    assert.equal(SUPPORTED.maxTextureArrayLayers, 144);
+    assert.equal(SUPPORTED.maxTextureArrayLayers, 96);
     const backend = new EarthSurfaceGpuThree(SUPPORTED);
     const textures = backend.textures;
     assert.ok(textures !== null);
     assert.equal(textures.color.image.depth, EARTH_TILE_LAYERS);
     assert.equal(textures.color.colorSpace, THREE.SRGBColorSpace);
     assert.equal(textures.color.minFilter, THREE.LinearFilter);
-    assert.equal(textures.terrain.type, THREE.HalfFloatType);
+    assert.equal(textures.terrain.type, THREE.UnsignedByteType);
     assert.equal(textures.pageTable.minFilter, THREE.NearestFilter);
     await backend.writeColor(3, new Uint8Array(COMPONENTS).fill(7));
-    await backend.writeTerrain(3, new Uint16Array(COMPONENTS).fill(11));
+    await backend.writeTerrain(3, new Uint8Array(COMPONENTS).fill(11));
     assert.equal(textures.color.image.data![3 * COMPONENTS], 7);
     assert.equal(textures.terrain.image.data![3 * COMPONENTS], 11);
     const pages = new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(255);
@@ -93,14 +93,14 @@ export function register(): void {
     assert.equal(backend.textures, null);
     assert.throws(() => backend.writeColor(0, new Uint8Array(COMPONENTS)), /global base/);
     assert.deepEqual(earthSurfaceGpuCapabilitiesOf({ isWebGPUBackend: false }), {
-      texture2dArray: false, maxTextureArrayLayers: 0, colorSrgbLinear: false, terrainFloat16Linear: false,
+      texture2dArray: false, maxTextureArrayLayers: 0, colorSrgbLinear: false, terrainRgba8Linear: false,
     });
   });
 
   test('earth GPU: 配列層や線形標本化が不足すればbaseへ固定する', () => {
     for (const capabilities of [
       { ...SUPPORTED, texture2dArray: false }, { ...SUPPORTED, maxTextureArrayLayers: EARTH_TILE_LAYERS - 1 },
-      { ...SUPPORTED, colorSrgbLinear: false }, { ...SUPPORTED, terrainFloat16Linear: false },
+      { ...SUPPORTED, colorSrgbLinear: false }, { ...SUPPORTED, terrainRgba8Linear: false },
     ]) {
       const backend = new FakeBackend(capabilities);
       const adapter = new EarthSurfaceGpuAdapter(backend);
@@ -116,7 +116,7 @@ export function register(): void {
     const adapter = new EarthSurfaceGpuAdapter(backend);
     adapter.reserveLayer(earthTileKey(0, 0, 0), 0);
     const reservation = adapter.reservation(0)!;
-    const upload = adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint16Array(COMPONENTS), reservation);
+    const upload = adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint8Array(COMPONENTS), reservation);
     backend.color.resolve();
     await Promise.resolve();
     assert.equal(adapter.uploadedTiles().length, 0);
@@ -134,7 +134,7 @@ export function register(): void {
     assert.equal(adapter.publishFrame(10), true);
     assert.equal(backend.pages[0]![0], 0);
     assert.throws(() => adapter.releaseLayer(reservation), /in use/);
-    await assert.rejects(adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint16Array(COMPONENTS), reservation), /writable/);
+    await assert.rejects(adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint8Array(COMPONENTS), reservation), /writable/);
     adapter.stagePageTable(page());
     assert.equal(adapter.publishFrame(10), false);
     assert.equal(adapter.publishFrame(11), true);
@@ -143,7 +143,7 @@ export function register(): void {
     // 同じ層番号を予約し直しても、前の世代が書き込む権利は復活しない。
     adapter.reserveLayer(earthTileKey(0, 1, 0), 0);
     assert.ok(adapter.reservation(0)!.generation > reservation.generation);
-    await assert.rejects(adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint16Array(COMPONENTS), reservation), /Stale/);
+    await assert.rejects(adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint8Array(COMPONENTS), reservation), /Stale/);
   });
 
   test('earth GPU: z1以降のページセルも対応するタイル層へ限定する', async () => {
@@ -156,7 +156,7 @@ export function register(): void {
     const parentReservation = adapter.reservation(0)!;
     const childReservation = adapter.reservation(1)!;
     const bytes = new Uint8Array(COMPONENTS);
-    const terrain = new Uint16Array(COMPONENTS);
+    const terrain = new Uint8Array(COMPONENTS);
     const parentUpload = adapter.uploadLayer(bytes, terrain, parentReservation);
     const childUpload = adapter.uploadLayer(bytes, terrain, childReservation);
     backend.color.resolve();
@@ -178,7 +178,7 @@ export function register(): void {
     const adapter = new EarthSurfaceGpuAdapter(backend);
     adapter.reserveLayer(earthTileKey(0, 0, 0), 0);
     const reservation = adapter.reservation(0)!;
-    const upload = adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint16Array(COMPONENTS), reservation);
+    const upload = adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint8Array(COMPONENTS), reservation);
     const rejected = assert.rejects(upload, /Synthetic/);
     backend.color.reject();
     await Promise.resolve();
@@ -193,7 +193,7 @@ export function register(): void {
     const backend = new FakeBackend();
     const adapter = new EarthSurfaceGpuAdapter(backend);
     adapter.reserveLayer(earthTileKey(0, 0, 0), 0);
-    const upload = adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint16Array(COMPONENTS), adapter.reservation(0)!);
+    const upload = adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint8Array(COMPONENTS), adapter.reservation(0)!);
     adapter.dispose();
     backend.terrain.resolve();
     backend.color.resolve();
