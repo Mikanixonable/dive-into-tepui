@@ -181,7 +181,7 @@ class BakeTests(unittest.TestCase):
         digest = hashlib.sha256(payload).hexdigest()
         bake.validate_terrain_tile(payload, (7, 3, 4), digest)
         self.assertEqual(gzip.decompress(gzip.compress(payload, mtime=0)), payload)
-        self.assertEqual(len(payload), 32 + 260 * 260 * 8)
+        self.assertEqual(len(payload), 32 + 260 * 260 * 4)
         for offset in (4, 8, 12, 23, 24, 28):
             broken = bytearray(payload)
             broken[offset] ^= 1
@@ -189,6 +189,40 @@ class BakeTests(unittest.TestCase):
                 bake.validate_terrain_tile(broken, (7, 3, 4), hashlib.sha256(broken).hexdigest())
         with self.assertRaises(ValueError):
             bake.validate_terrain_tile(payload[:-1], (7, 3, 4), digest)
+
+    # octahedral RG8の法線角度誤差とroughness R8の量子化誤差を測定する。
+    def test_lightweight_quantization_error(self):
+        golden_angle = math.pi * (3 - math.sqrt(5))
+        directions = []
+        for index in range(4096):
+            z = 1 - 2 * (index + .5) / 4096
+            radius = math.sqrt(1 - z * z)
+            directions.append((radius * math.cos(index * golden_angle),
+                               radius * math.sin(index * golden_angle), z))
+        directions.extend(((1., 0., 0.), (-1., 0., 0.), (0., 1., 0.), (0., -1., 0.),
+                           (0., 0., 1.), (0., 0., -1.), bake.normalize((1., 1., 0.)),
+                           bake.normalize((-1., 1., 0.)), bake.normalize((1., -1., 0.)),
+                           bake.normalize((-1., -1., 0.))))
+        encoded = [bake.encode_octahedral_normal(direction) for direction in directions]
+        decoded = [bake.decode_octahedral_normal(value) for value in encoded]
+        angles = [math.degrees(math.acos(max(-1, min(1, sum(a * b for a, b in zip(original, restored))))))
+                  for original, restored in zip(directions, decoded)]
+        self.assertLessEqual(max(angles), 1.)
+        values = [index / 100 for index in range(101)]
+        self.assertLessEqual(max(abs(round(value * 255) / 255 - value) for value in values), 0.5 / 255 + 1e-12)
+
+    # 隣接タイルの共有境界で同じ法線・materialを復号すると完全に一致する。
+    def test_tile_boundary_decode_consistency(self):
+        normal = bake.normalize((-.35, .42, .835))
+        left = bake.encode_terrain_tile([normal] * 67600, [.23] * 67600, 7, 0, 0,
+                                        [bake.MATERIAL_CLASS_LAND] * 67600)
+        right = bake.encode_terrain_tile([normal] * 67600, [.23] * 67600, 7, 1, 0,
+                                          [bake.MATERIAL_CLASS_LAND] * 67600)
+        left_normal, left_roughness, left_class = bake.decode_terrain_tile(left)
+        right_normal, right_roughness, right_class = bake.decode_terrain_tile(right)
+        self.assertEqual(left_normal[259], right_normal[0])
+        self.assertEqual(left_roughness[259], right_roughness[0])
+        self.assertEqual(left_class[259], right_class[0])
 
     # 全球z0..z7のキー数と経度連続性を固定する。
     def test_global_tile_coverage(self):
