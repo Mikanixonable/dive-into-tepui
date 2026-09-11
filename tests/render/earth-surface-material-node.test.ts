@@ -58,7 +58,7 @@ export function register(): void {
   });
 
   test('earth surface material: tile Vは各LOD行を走査し、全球南端を最終画素へ置く', () => {
-    for (const z of [1, 2, 7]) {
+    for (const z of [4, 5, 7]) {
       const rows = 2 ** z;
       const toTextureUv = (local: number): number => (2 + 0.5 + 256 * local) / 260;
       const expected = (v: number): number => toTextureUv(v === 1 ? 1 : v * rows - Math.floor(v * rows));

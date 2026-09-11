@@ -69,7 +69,7 @@ def _write_parallel(manifest, manifest_path, raw_root, output_root, workers, max
                                  ensure_ascii=False)[:-1])
         entries.write(', "entries": [')
         first = True
-        root_tiles = []
+        base_color_tiles = []
         keys = bake.global_tile_keys(max_zoom)
         context = multiprocessing.get_context("spawn")
         with ProcessPoolExecutor(max_workers=workers, mp_context=context,
@@ -89,8 +89,8 @@ def _write_parallel(manifest, manifest_path, raw_root, output_root, workers, max
                 color_path.write_bytes(color)
                 encoded = gzip.compress(terrain, mtime=0)
                 terrain_path.write_bytes(encoded)
-                if z == 0:
-                    root_tiles.append((bytes(color), terrain))
+                if z == bake.EARTH_TILE_MIN_Z:
+                    base_color_tiles.append(bytes(color))
                 entry = {"key": f"{z}/{x}/{y}", "z": z, "x": x, "y": y,
                          "color": {"url": color_url, "sha256": hashlib.sha256(color).hexdigest(),
                                    "encodedBytes": len(color), "payloadBytes": len(color)},
@@ -104,12 +104,15 @@ def _write_parallel(manifest, manifest_path, raw_root, output_root, workers, max
                     print(f"earth-surface: {count}/{len(keys)} tiles", file=sys.stderr, flush=True)
         entries.write("]}\n")
         entries.close()
-        if len(root_tiles) != 2:
-            raise ValueError("ESTBにはz=0の2枚が必要です")
+        if len(base_color_tiles) != bake.BASE_COLOR_ROOT_COUNT:
+            raise ValueError("base colorにはz4の512枚が必要です")
         base = staging / "base"
         base.mkdir(parents=True, exist_ok=True)
-        (base / "earth.jpg").write_bytes(bake.encode_base_color([root_tiles[0][0], root_tiles[1][0]]))
-        base_payload = bake.encode_base_terrain([root_tiles[0][1], root_tiles[1][1]])
+        (base / "earth.jpg").write_bytes(bake.encode_base_color(base_color_tiles))
+        base_roots = [renderer.render_tile((0, x, 0))[1] for x in (0, 1)]
+        for x, terrain in enumerate(base_roots):
+            bake.validate_terrain_tile(terrain, (0, x, 0), hashlib.sha256(terrain).hexdigest())
+        base_payload = bake.encode_base_terrain(base_roots)
         (base / "earth.bin.gz").write_bytes(gzip.compress(base_payload, mtime=0))
         (staging / "earth-surface.json").write_text(
             json.dumps(result_manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
@@ -138,8 +141,8 @@ def main():
     args = parser.parse_args()
     if type(args.workers) is not int or args.workers < 1:
         parser.error("--workersは1以上の整数が必要です")
-    if type(args.max_zoom) is not int or not 0 <= args.max_zoom <= 7:
-        parser.error("--max-zoomは0..7の整数が必要です")
+    if type(args.max_zoom) is not int or not bake.EARTH_TILE_MIN_Z <= args.max_zoom <= bake.EARTH_TILE_MAX_Z:
+        parser.error("--max-zoomは4..7の整数が必要です")
     manifest = bake._fetch.load_manifest(args.manifest)
     _write_parallel(manifest, args.manifest, args.raw_root, args.output, args.workers,
                     args.max_zoom)

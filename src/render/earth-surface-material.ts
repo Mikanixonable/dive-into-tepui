@@ -6,7 +6,7 @@
 import * as THREE from 'three/webgpu';
 import {
   EARTH_BASE_LAYER, EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER,
-  EARTH_TILE_TEXELS, earthPageAt, earthTileKey,
+  EARTH_TILE_MAX_Z, EARTH_TILE_TEXELS, EARTH_TILE_MIN_Z, earthPageAt, earthTileKey,
 } from './earth-surface-tiles';
 import type { EarthTileKey } from './earth-surface-tiles';
 import { earthSurfaceNormal, earthSurfaceUv, validateEarthAxes } from './earth-surface-coordinate';
@@ -54,7 +54,7 @@ export function earthSurfacePageCell(table: Uint8Array, u: number, v: number): E
   if (layer === EARTH_BASE_LAYER && (parentLayer !== EARTH_BASE_LAYER || z !== EARTH_BASE_LAYER)) {
     throw new Error('Invalid Earth base page cell');
   }
-  if (layer !== EARTH_BASE_LAYER && z > 7) throw new Error('Invalid Earth page level');
+  if (layer !== EARTH_BASE_LAYER && (z < EARTH_TILE_MIN_Z || z > EARTH_TILE_MAX_Z)) throw new Error('Invalid Earth page level');
   return { layer, parentLayer, z, fade: fadeByte / 255 };
 }
 
@@ -217,7 +217,7 @@ function samplePageLayer(
   finiteUnit(u, 'Earth material longitude UV');
   finiteUnit(v, 'Earth material latitude UV');
   if (layer === EARTH_BASE_LAYER) return reader.sampleBase(new THREE.Vector2(THREE.MathUtils.euclideanModulo(u, 1), THREE.MathUtils.clamp(v, 0, 1)));
-  if (!Number.isInteger(z) || z < 0 || z > 7) throw new RangeError('Invalid Earth material page level');
+  if (!Number.isInteger(z) || z < EARTH_TILE_MIN_Z || z > EARTH_TILE_MAX_Z) throw new RangeError('Invalid Earth material page level');
   const rows = 2 ** z;
   const columns = 2 * rows;
   const key = earthTileKey(z, Math.floor(THREE.MathUtils.euclideanModulo(u, 1) * columns), Math.min(rows - 1, Math.floor(THREE.MathUtils.clamp(v, 0, 1) * rows)));

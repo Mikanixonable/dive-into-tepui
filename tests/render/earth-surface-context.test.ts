@@ -7,7 +7,7 @@ import { bootstrapEarthSurface, earthSurfaceManifestUrl } from '../../src/game/c
 
 function source() {
   return earthSurfaceSourceFromManifest('https://example.test/earth/', 'https://example.test/earth/earth-surface.json', {
-    schemaVersion: 1, datasetId: 'earth-2026-09-09-a', sourceManifestSha256: '0'.repeat(64),
+    schemaVersion: 2, datasetId: 'earth-2026-09-09-a', sourceManifestSha256: '0'.repeat(64),
     terrainEncoding: {
       formatVersion: 2, layout: 'octahedral-rg8-roughness-r8-material-class-a8',
       width: 260, height: 260, channels: 4, scalar: 'UInt8',
@@ -20,6 +20,7 @@ function source() {
       orthometricElevation: { min: -1000, max: 9000 }, landFraction: { min: 0, max: 1 },
       waterOrthometricElevationM: 0,
     },
+    coverage: { kind: 'sparse', minZoom: 4, maxZoom: 7, expectedTiles: null },
     attribution: ['fixture'],
   });
 }
