@@ -48,12 +48,12 @@ const TRITON: SatelliteDef = {
   orbit: equatorialSatelliteOrbit({ a: 3.5476e8, e: 0.000016, incDeg: 156.885, planetMu: MU_NEPTUNE, planetPole: NEPTUNE_POLE }),
 };
 
-// ネレイド。トリトンの潮汐力に大きく乱された高離心率の遠方軌道で、黄道基準の平均要素を使う
-// (出典・GM/半径の扱いはヒマリア群と同じ)。
+// ネレイド。トリトンの潮汐力に大きく乱された高離心率の遠方軌道で、黄道基準の平均要素を使う。
+// 出典: JPL Solar System Dynamics の衛星平均要素 / Planetary Satellite Physical Parameters。
 const NEREID: SatelliteDef = {
   id: 'nereid',
-  // GM は未測定。同じ捕獲された不規則衛星で GM を持つ土星のフォイベと半径から
-  // 求めた密度 1,643 kg/m^3 を半径に掛けた。
+  // GM は未測定。同じ捕獲された不規則衛星で GM を持つ土星のフェーベの GM と半径から
+  // 求めた密度 1,643 kg/m^3 を、半径 170 km の球の体積に掛けた。
   mu: GRAVITATIONAL_CONSTANT * 3.38e19,
   radius: 1.7e5,
   orbit: jplSatelliteOrbit({ a: 5.5139e9, e: 0.751, incDeg: 5.1, periodDays: 360.133039, nodePeriodYears: 0, apsisPeriodYears: 0 }),
