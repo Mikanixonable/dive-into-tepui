@@ -33,6 +33,7 @@ class SlotPool {
   // 空き区間。開始位置の昇順で、隣り合うものは常に繋がっている。
   private free: Span[];
 
+  // 容量 capacity の区間全体を空きとして始める。
   public constructor(capacity: number) {
     this.free = [{ start: 0, length: capacity }];
   }

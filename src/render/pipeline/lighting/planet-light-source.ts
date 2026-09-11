@@ -1,6 +1,6 @@
 // 天体照の光源。恒星以外の天体が反射して届ける光を、一様な放射輝度の球光源として
 // スロット本数ぶん持ち、スロット 1 本がライティングパスの描画命令 1 本になる。
-// どの天体を載せるかは決めず、毎フレーム set() で渡された値をそのまま照らす。
+// 載せる天体とその値は、毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import { Fn, PI, acos, clamp, cos, dot, float, length, max, normalize, sin, sqrt, uniform } from 'three/tsl';
 import { LAMBERT_SPHERE_GEOMETRIC_ALBEDO_RATIO } from '../../../physics/lambert-sphere';

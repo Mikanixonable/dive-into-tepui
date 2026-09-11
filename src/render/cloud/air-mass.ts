@@ -42,6 +42,8 @@ export interface AirMassSample {
 
 export class AirMass {
   // 追跡の写し。R が出身の緯度のいまの緯度からの隔たり [rad]、G が追跡の風の速さ [m/s]。
+  // **出身の緯度そのものではなく隔たりを持つ** — 半精度の写しで絶対の緯度を持つと、量子化の刻み
+  // (|緯度| 1 rad で 1e-3)が中心差分の分母(2 × GRADIENT_STEP)に対して大きく、圧縮が数 % 揺らぐ。
   private readonly trace: BakedField;
 
   // projection は写しの持ち方、windAt は単位方向における追跡の風、surfaceRadius は気団が流れる
@@ -63,13 +65,7 @@ export class AirMass {
     this.trace.render(renderer, gpu);
   }
 
-  // 単位方向 direction(緯度 latitude [rad])における気団。写しを中心と東西南北の 5 点読み、中心から
-  // 隔たりと風の速さを、東西南北から隔たりの勾配を取る。
-  //
-  // **写しが持つのは出身の緯度そのものではなく、いまの緯度からの隔たり。** 半精度の写しで
-  // 絶対の緯度を持つと、量子化の刻み(|緯度| 1 rad で 1e-3)が中心差分の分母(0.02)に対して
-  // 大きく、圧縮が数 % 揺らぐ。隔たりは 0 のまわりに集まるので、同じ写しで桁が細かくなる。
-  // 出身の緯度の勾配は、隔たりの勾配へ緯度そのものの勾配(北向きの単位ベクトル)を足したもの。
+  // 単位方向 direction(緯度 latitude [rad])における気団。
   public at(direction: Vec3Node, latitude: FloatNode): AirMassSample {
     const east = eastAt(direction).mul(GRADIENT_STEP);
     const north = northAt(direction).mul(GRADIENT_STEP);
@@ -80,6 +76,7 @@ export class AirMass {
     const alongNorth = driftAt(direction.add(north)).sub(driftAt(direction.sub(north))).div(2 * GRADIENT_STEP);
     // 淀んだ所の押し縮まりは信じない。
     const trusted = smoothstep(CALM_SPEED, WINDY_SPEED, center.g);
+    // 出身の緯度の勾配は、隔たりの勾配へ緯度そのものの勾配(北向きの単位ベクトル)を足したもの。
     return {
       compression: length(vec2(alongEast, alongNorth.add(1))).sub(1).mul(trusted).add(1),
       warmth: abs(latitude).sub(abs(latitude.add(center.r))),
