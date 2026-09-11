@@ -3,7 +3,7 @@
 // スタイルで組んだ姿を返す。
 import * as THREE from 'three/webgpu';
 import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
-import { CelestialSurface } from '../../src/render/celestial-surface';
+import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
 import { CloudPresentation } from '../../src/render/cloud/cloud-presentation';
 import type { CloudLodMode } from '../../src/render/cloud/cloud-field-sampler';
 import { ClimateMap } from '../../src/render/cloud/climate-map';
@@ -11,15 +11,17 @@ import { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-fiel
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
 import climateTextureUrl from '../../src/assets/earth-climate.png';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
-import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-system/constants';
+import { R_EARTH, R_EARTH_EQ, R_SUN, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/constants';
 import { EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE } from '../../src/game/celestial/solar-system/earth-system';
 import { shapeAxes, shapeSpheroidRadii, type RingBandDef } from '../../src/physics/celestial-body-def';
-import { BodyGraticule } from '../../src/render/body-graticule';
-import { EarthCoastline } from '../../src/render/earth-coastline';
+import { BodyGraticule } from '../../src/render/celestial/body-graticule';
+import { LineOverlay, type LatLonPolyline } from '../../src/render/celestial/line-overlay';
+import coastlineData from '../../src/assets/earth-coastline.json';
 import { Curve } from '../../src/render/curve';
-import { createAnnulusRing, RingMaterials } from '../../src/render/ring';
-import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
-import { createStarSphere, type StarSphere } from '../../src/render/star-sphere';
+import { createAnnulusRing, RingMaterials } from '../../src/render/celestial/ring';
+import { buildBarrelMesh } from '../../src/render/dynamic/dynamic-entity/ejected-gun-part-view';
+import { buildPlayerShip } from '../../src/render/dynamic/player/player-view';
+import { createStarSphere, type StarSphere } from '../../src/render/celestial/star-sphere';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../src/render/pipeline/sun-light';
 import { SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { InstancedPool } from '../../src/render/instanced-pool';
@@ -31,7 +33,7 @@ import { sphereShadowBody, type ShadowBody } from '../../src/render/pipeline/sha
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
-import { RingView } from '../../src/render/ring-view';
+import { RingView } from '../../src/render/celestial/ring-view';
 import { AU } from '../../src/physics/astronomical-unit';
 import { MARS, MARS_ATMOSPHERE_OPTICS, MARS_TEXTURE } from '../../src/game/celestial/solar-system/mars-system';
 import { SATURN, SATURN_TEXTURE } from '../../src/game/celestial/solar-system/saturn-system';
@@ -56,6 +58,10 @@ const FOV_DEG = 50;
 // カメラの距離を、ケース既定の距離の何桁ぶんまで伸縮できるか(倍率の常用対数の絶対値の上限)。
 // **寄り切った先へ物体を置くケースは、この値から距離を逆算する。**
 export const MAX_CAMERA_DISTANCE_LOG = 2;
+
+// 地球ケースが貼る海岸線。tools/export-coastline.mjs が Natural Earth 110m coastline から
+// 焼き込んだ、緯度・経度 [deg] のペアを1本の折れ線として並べた配列の配列。
+const EARTH_COASTLINE = coastlineData as readonly LatLonPolyline[];
 
 // 土星ケースが使う実データの環。
 const SATURN_RINGS = (() => {
@@ -184,7 +190,7 @@ function circle(
     out.copy(center)
       .addScaledVector(u, radius * Math.cos(theta))
       .addScaledVector(v, radius * Math.sin(theta));
-  }, camera);
+  }, camera, VIEW_HEIGHT);
   return curve.object;
 }
 
@@ -639,7 +645,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
   const climate = ClimateMap.fromDeferredUrl(climateTextureUrl);
-  const cumulus = new CloudPresentation(GeneratedCloudField.global(climate), R_EARTH_EQ);
+  const cumulus = new CloudPresentation(GeneratedCloudField.global(climate, R_EARTH, SIDEREAL_DAY), R_EARTH_EQ);
   const surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
   surface.addTo(group);
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
@@ -648,7 +654,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   const graticule = new BodyGraticule();
   graticule.addTo(group);
   graticule.setVisible(style === 'schematic');
-  const coastline = new EarthCoastline();
+  const coastline = LineOverlay.of({ kind: 'latLonPolylines', polylines: EARTH_COASTLINE });
   coastline.addTo(group);
   coastline.setVisible(style === 'schematic');
   return {

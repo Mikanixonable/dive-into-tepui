@@ -1,13 +1,12 @@
 // 小惑星帯・木星トロヤ群・ヒルダ群・カイパーベルト・散乱円盤の点群を、軌道要素の統計分布として
-// 生成し位置を評価する。表示専用なので天体 id で引く経路(重力源・ピック対象・フォーカス対象)には
-// 載せない。THREE 非依存に保ってあり、生成の決定性と分布は tests/physics で検査する。
-// 各群は PointFieldDef 1つのデータで駆動する — 群を増やすには POINT_FIELD_DEFS に要素を足すだけ
-// でよく、生成コード自体に群固有の分岐を増やさない。
+// 生成する。天体名・分布・描画半径・色はここが決める。各群は PointFieldDef 1つのデータで
+// 駆動し、群を増やすには POINT_FIELD_DEFS に要素を足す。
 import { AU } from '../../../physics/astronomical-unit';
 import { MU_SUN } from './constants';
 import { JUPITER } from './jupiter-system';
 import { mulberry32 } from '../../../math/random';
-import type { PointElements, PointField } from '../point-field';
+import type { PointElements } from '../../../physics/point-orbit';
+import type { PointField } from '../../../render/celestial/point-field-view';
 import type { KeplerOrbit } from '../../../physics/kepler-orbit';
 
 // 軌道長半径の引き方。散乱円盤だけは近日点距離 q = a(1-e) に集中する分布なので、
@@ -23,13 +22,13 @@ export type PointFieldJupiterReference = Pick<KeplerOrbit, 'a' | 'l0' | 'lRate'>
 // 共鳴角 σ = p·λ_J − q·λ_H − (p−q)·ϖ_H を、librationCenterDeg の周りに
 // ±librationWidthDeg で散らす。n_H/n_J = p/q と取れば dσ/dt = 0 になり、σ は保たれる。
 // p=q(1:1, トロヤ群)のときは (p−q) 項が消えて ϖ_H が自由になる代わり、σ が直接 λ_H を決める。
-type ResonanceDistribution = {
+interface ResonanceDistribution {
   readonly meanMotionRatio: readonly [number, number]; // [p, q]
   readonly librationCenterDeg: number;
   readonly librationWidthDeg: number;
-};
+}
 
-type PointFieldDef = {
+interface PointFieldDef {
   readonly id: string;
   readonly drawRadius: number; // [m] 表示上の1点の大きさ
   readonly color: number;
@@ -40,7 +39,7 @@ type PointFieldDef = {
   readonly incRange: readonly [number, number]; // [rad]
   readonly incModes?: readonly [readonly [number, number], readonly [number, number]];
   readonly resonance?: ResonanceDistribution;
-};
+}
 
 const ASTEROID_SEED = 0x5eed_a571;
 
@@ -135,6 +134,7 @@ function uniform(rand: () => number, [min, max]: readonly [number, number]): num
   return min + rand() * (max - min);
 }
 
+// 傾斜角 [rad] を1つ引く。incModes があれば 35% を低傾斜側、残りを高傾斜側から引く。
 function sampleInclination(
   rand: () => number,
   def: PointFieldDef,
@@ -143,10 +143,8 @@ function sampleInclination(
   return uniform(rand, rand() < 0.35 ? def.incModes[0] : def.incModes[1]);
 }
 
-// 木星の平均黄経 [rad]。トロヤ群・ヒルダ群の共鳴基準にしか使わないので、位置の3段合成では
-// なく平均黄経の一次式だけを引く。**simZeroEt はこの星系を組んだ元期でなければならない** —
-// 要素は J2000 元期のままなので、ここで畳む量が本体の畳み込み(planetDefForSimZero)と
-// 食い違うと、トロヤ群が木星から外れた位置に生成される。
+// 木星の平均黄経 [rad](平均黄経の一次式)。**simZeroEt はこの星系を組んだ元期でなければ
+// ならない** — 畳む量が木星本体(planetDefForSimZero)と食い違うと、トロヤ群が木星から外れる。
 export function jupiterMeanLongitude(
   t: number, simZeroEt = 0, orbit: PointFieldJupiterReference = JUPITER.orbit,
 ): number {
@@ -189,9 +187,8 @@ function resonantAngles(
     const l0 = jupiterLambda0 - sigma / p;
     return { lonPeri: rand() * TAU, l0, meanMotion: jupiterLRate * (p / q) };
   }
-  // q 個の位相枝を明示的に混ぜる。特に Hilda の 3:2 共鳴では、同じ共鳴角を
-  // 保ったまま平均黄経が120°ずつ離れた3方向へ分かれるため、点群が三角形に見える。
-  // ϖ は木星の平均黄経近傍に置き、枝だけでこの3方向を作る。
+  // q 個の位相枝を混ぜる。ϖ を木星の平均黄経に置き、枝だけで平均黄経を 360°/q おきに分ける
+  // (ヒルダ群の 3:2 共鳴では120°おきの3方向になり、点群が三角形に見える)。
   const branch = Math.floor(rand() * q);
   const lonPeri = jupiterLambda0;
   const l0 = (p * jupiterLambda0 - (p - q) * lonPeri - sigma + branch * TAU) / q;

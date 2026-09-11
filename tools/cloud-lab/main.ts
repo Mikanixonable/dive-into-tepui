@@ -2,6 +2,8 @@
 import { CloudLabCanvas } from './lab';
 import { CLOUD_LAB_VIEWS, type CloudLabViewId } from './views';
 import { buildButtonRow, buildSlider, buildToggleField } from '../lab-controls';
+// 実験環境が回す天体の目盛り。lab と同じく地球で解く。
+import { R_EARTH } from '../../src/game/celestial/solar-system/constants';
 import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from '../../src/render/cloud/cyclone-tracks';
 import type { CyclonePlacement } from '../../src/render/cloud/cyclone-tracks';
 
@@ -136,7 +138,7 @@ async function init(): Promise<void> {
     capture: () => canvas.capture(),
     cyclonesAt: (hours) => ({
       tropical: tropicalPlacementAt(hours * 3600),
-      lows: Array.from({ length: LOW_COUNT }, (_, index) => lowPlacementAt(index, hours * 3600)),
+      lows: Array.from({ length: LOW_COUNT }, (_, index) => lowPlacementAt(index, hours * 3600, R_EARTH)),
     }),
   };
 }

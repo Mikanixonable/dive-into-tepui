@@ -1,6 +1,5 @@
-// 自機の姿勢制御 RCS ノズルの、機体座標での取付位置と噴射方向。造形・噴射パフの唯一の定義。
-// 他モジュールを import してはならない — tools/export-models.mjs がこのファイルを
-// TypeScript のまま transpile して読み込む。
+// 自機の姿勢制御 RCS ノズルの、機体座標での取付位置と噴射方向。
+// このファイルは単体で transpile して読まれる(tools/model-builder/)ので、import を足してはならない。
 
 interface RcsNozzle {
   readonly pos: { readonly x: number; readonly y: number; readonly z: number }; // 取付位置 [m]

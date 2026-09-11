@@ -1,18 +1,11 @@
-// 描画の品質設定。値の正本と localStorage への永続を持つ。
-//
-// **項目を1つ足すときに書き足すのは GRAPHICS_OPTIONS の記述1つだけ。** 設定値の型・品質プリセット
-// 3面・保存値の検証・設定パネルの並びは、すべてこの表から導く。
-//
-// 表へ載せてよいのは、切り替えた結果が絵か負荷で分かる項目だけ。真偽で持つものは「切れば
-// その要素が絵から消える」もの — 単独のメッシュ/描画物として存在しない要素は切れない。
-// 選択肢で持つものは、品質と負荷を刻んで釣り合わせる値か、絵の見え方を選ばせる値。
+// 描画の品質設定。切り替えられる項目の表 GRAPHICS_OPTIONS と、その値の型・品質プリセット・
+// 保存文字列との変換。項目を足すときは表へ1つ書き足せば、型・プリセット・保存値の検証・
+// 設定パネルの並びがそこから導かれる。表へ載せるのは切り替えた結果が絵か負荷に出る項目で、
+// 真偽は独立した描画物を消すもの、選択肢は品質と負荷を刻む値か見え方を選ぶ値。
 
 import { ATMOSPHERE_QUALITY } from './atmosphere';
 import { CUMULUS_DETAIL } from './cloud/cloud-presentation';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
-
-// ゲーム本体の設定の保存先(localStorage の鍵)。
-export const GRAPHICS_STORAGE_KEY = 'tepui.settings.graphics';
 
 export type QualityPreset = 'low' | 'medium' | 'high';
 
@@ -28,12 +21,12 @@ type GraphicsGroup = (typeof GRAPHICS_GROUPS)[number][0];
 type PresetValues<V> = Readonly<Record<QualityPreset, V>>;
 
 // 真偽の項目。オフにするとその要素が絵から消える。
-type ToggleOption = {
+interface ToggleOption {
   readonly kind: 'toggle';
   readonly group: GraphicsGroup;
   readonly label: string;
   readonly presets: PresetValues<boolean>;
-};
+}
 
 // 選択肢の項目が取りうる値。数値は段の大小に意味があり、文字列は名前で選ぶもの。
 export type ChoiceValue = number | string;
@@ -41,13 +34,13 @@ export type ChoiceValue = number | string;
 // 選択肢を持つ項目。items は [値, 表示ラベル] を、数値なら小さいほうから順に並べる。
 // kind は並べ方を決める — 'choice' は短い段をボタンで横に並べ、'select' は候補が多い/名前が
 // 長いものをプルダウンへ畳む。
-type ChoiceOption = {
+interface ChoiceOption {
   readonly kind: 'choice' | 'select';
   readonly group: GraphicsGroup;
   readonly label: string;
   readonly items: readonly (readonly [ChoiceValue, string])[];
   readonly presets: PresetValues<ChoiceValue>;
-};
+}
 
 type GraphicsOption = ToggleOption | ChoiceOption;
 
@@ -71,8 +64,8 @@ export const GRAPHICS_OPTIONS = {
     items: [[0.25, '−2'], [0.5, '−1'], [1, '±0'], [2, '+1'], [4, '+2']],
     presets: { low: 1, medium: 1, high: 1 },
   },
-  // トーンマッピング後の色へ当てるフィルムのルック。候補は同梱された .cube から起こすので、
-  // **この項目だけは選択肢が起動時にしか分からず**、値も段の番号ではなくルックの名前になる。
+  // トーンマッピング後の色へ当てるフィルムのルック。値はルックの名前で、候補は同梱の .cube から
+  // 起動時に決まる。
   filmLut: {
     kind: 'select', group: 'basic', label: 'フィルムのルック',
     items: FILM_LUT_ITEMS,
@@ -99,8 +92,7 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'element', label: 'オーロラ',
     presets: { low: false, medium: false, high: true },
   },
-  // 大気の描き方の段。**値は保存された設定を読む鍵なので、段を足すときも既存の値を動かさない**
-  // — 番号を詰め直すと、保存済みの設定が黙って別の段を指す。
+  // 大気の描き方の段。値は保存された設定を読む鍵なので、段を足しても既存の値は動かさない。
   atmosphere: {
     kind: 'choice', group: 'element', label: '大気',
     items: [
@@ -124,9 +116,8 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'element', label: '半透明の積雲',
     presets: { low: true, medium: true, high: true },
   },
-  // 積雲の殻を解くレイマーチの細かさ。段を上げるほど雲頂の起伏と縁が滑らかになる。オフでは殻も、
-  // それが落とす影も消え、薄い雲を焼き込んだ地表だけが残る。「標準」が絵の粗さの見えなくなる段で、
-  // 「精細」は積雲の破綻を地表側の破綻から切り分けるための段。
+  // 積雲の殻を解くレイマーチの細かさ。オフでは殻とその影が消える。「精細」は積雲の破綻を
+  // 地表側の破綻から切り分けるための段。
   cumulusDetail: {
     kind: 'choice', group: 'element', label: '積雲の精細さ',
     items: [
@@ -154,8 +145,7 @@ export const GRAPHICS_OPTIONS = {
     items: [[0, '点光源'], [1, '球光源']],
     presets: { low: 0, medium: 1, high: 1 },
   },
-  // 同時に照らす天体の数。1 本が描画命令 1 本。「なし」では影の中が太陽の直射だけになり、
-  // 減らすと光源になる天体の入れ替わりが絵に出うる。最大値は MAX_PLANET_LIGHT_SLOTS。
+  // 同時に照らす天体の数。1 体につき描画命令 1 本。最大値は MAX_PLANET_LIGHT_SLOTS。
   planetLightCount: {
     kind: 'choice', group: 'light', label: '天体照の光源の数',
     items: [[0, 'なし'], [1, '1'], [2, '2']],
@@ -183,7 +173,7 @@ export const GRAPHICS_OPTIONS = {
     presets: { low: false, medium: true, high: true },
   },
   // 細かい影を同時に落とせる箇所の数。減らすほど影パスの描画命令が減り、要求の緩い受け手から
-  // 粗い影で妥協させられる。**上限は受け手が引くグラフの形が決めるので、増やす段は無い。**
+  // 粗い影で妥協させられる。最大値は MAX_SHADOW_SLOTS。
   shadowSlotCount: {
     kind: 'choice', group: 'shadow', label: '影マップの枠の数',
     items: [[1, '1'], [2, '2'], [4, '4']],
@@ -206,13 +196,14 @@ export const GRAPHICS_OPTIONS = {
 
 export type GraphicsOptionKey = keyof typeof GRAPHICS_OPTIONS;
 
-// 項目1つが取る値の型。選択肢の項目は items に並べた値そのものへ絞る — こう書いておくと、
-// プリセットへ選択肢に無い値を書いた時点で型検査が落ちる。
+// 項目1つが取る値の型。選択肢の項目は items に並べた値へ絞るので、プリセットに候補外の値を
+// 書くと型検査で落ちる。
 type OptionValue<O> =
   O extends { readonly kind: 'toggle' } ? boolean
     : O extends { readonly items: readonly (readonly [infer V, string])[] } ? V
       : never;
 
+// 設定値一式。キーと値の型は GRAPHICS_OPTIONS から導く。
 export type GraphicsSettingsData = {
   readonly [K in GraphicsOptionKey]: OptionValue<(typeof GRAPHICS_OPTIONS)[K]>;
 };
@@ -222,20 +213,22 @@ function optionKeys(): readonly GraphicsOptionKey[] {
   return Object.keys(GRAPHICS_OPTIONS) as GraphicsOptionKey[];
 }
 
-// 表のプリセット値を1面ぶん集める。**表そのものが GraphicsSettingsData の導出元**なので、
-// キーの過不足も値の型違いも起こりえない — アサーションはその保証の上に立っている。
+// 表のプリセット値を1面ぶん集める。GraphicsSettingsData は表から導いた型なので、as での
+// 断定は安全。
 function presetData(preset: QualityPreset): GraphicsSettingsData {
   const entries = optionKeys().map((key) => [key, GRAPHICS_OPTIONS[key].presets[preset]] as const);
   return Object.fromEntries(entries) as GraphicsSettingsData;
 }
 
+// 品質プリセットごとの設定値一式。
 export const QUALITY_PRESETS: Readonly<Record<QualityPreset, GraphicsSettingsData>> = {
   low: presetData('low'),
   medium: presetData('medium'),
   high: presetData('high'),
 };
 
-const DEFAULTS: GraphicsSettingsData = QUALITY_PRESETS.high;
+// 保存が無いときの設定値一式。
+export const DEFAULT_GRAPHICS: GraphicsSettingsData = QUALITY_PRESETS.high;
 
 // 表の外から来た値を受け入れるか決める。真偽の項目は型だけ、選択肢の項目は現在の候補に
 // 含まれるかまで見て、外れていれば fallback を返す。
@@ -246,76 +239,34 @@ function acceptValue(
   return option.items.some(([candidate]) => candidate === value) ? value as ChoiceValue : fallback;
 }
 
-// 保存値は利用者がいつ書いたか分からないので、既知の項目だけを既定の上へ重ねる。
-function loadStored(storageKey: string): GraphicsSettingsData {
+// 保存された文字列を設定値一式へ読み直す。保存値は利用者がいつ書いたか分からないので、
+// 既知の項目だけを既定の上へ重ねる。
+export function parseGraphics(text: string | null): GraphicsSettingsData {
   try {
-    const raw = localStorage.getItem(storageKey);
-    if (raw === null) return DEFAULTS;
-    const saved = JSON.parse(raw) as Record<string, unknown>;
+    if (text === null) return DEFAULT_GRAPHICS;
+    const saved = JSON.parse(text) as Record<string, unknown>;
     // 表に無いキーは読まず、表にあって保存に無いキーは既定で埋まる。
     const entries = optionKeys().map(
-      (key) => [key, acceptValue(GRAPHICS_OPTIONS[key], saved[key], DEFAULTS[key])] as const,
+      (key) => [key, acceptValue(GRAPHICS_OPTIONS[key], saved[key], DEFAULT_GRAPHICS[key])] as const,
     );
     return Object.fromEntries(entries) as GraphicsSettingsData;
   } catch {
-    return DEFAULTS;
+    return DEFAULT_GRAPHICS;
   }
 }
 
-// 設定値の押し出し先。**値が変わった瞬間に何かを作り直す必要がある項目**(描画解像度、GPU
-// 資源の確保を伴う項目)はここで受け取る。毎フレームの分岐で足りる項目は current を読む。
-export interface GraphicsTarget {
-  applyGraphics(graphics: GraphicsSettingsData): void;
+// 設定値一式を保存へ載せる文字列にする。
+export function formatGraphics(data: GraphicsSettingsData): string {
+  return JSON.stringify(data);
 }
 
-export class GraphicsSettings {
-  private data: GraphicsSettingsData;
-  private readonly targets: GraphicsTarget[] = [];
-
-  // storageKey は設定を残すブラウザ側の鍵。null を渡すと読みも書きもせず、毎回既定から始まって
-  // このセッションの中だけで生きる。
-  public constructor(private readonly storageKey: string | null = GRAPHICS_STORAGE_KEY) {
-    this.data = storageKey === null ? DEFAULTS : loadStored(storageKey);
+// 与えた値一式と全項目が一致するプリセット。どれとも一致しなければ null。
+export function matchingGraphicsPreset(data: GraphicsSettingsData): QualityPreset | null {
+  const keys = optionKeys();
+  for (const [name, preset] of Object.entries(QUALITY_PRESETS)) {
+    if (keys.every((key) => preset[key] === data[key])) return name as QualityPreset;
   }
-
-  public get current(): GraphicsSettingsData { return this.data; }
-
-  // 押し出し先を登録し、現在値を一度反映する。
-  public bind(target: GraphicsTarget): void {
-    this.targets.push(target);
-    target.applyGraphics(this.data);
-  }
-
-  // 項目1つを差し替える。
-  public setOption(key: GraphicsOptionKey, value: boolean | ChoiceValue): void {
-    this.apply(withGraphicsOption(this.data, key, value));
-  }
-
-  // プリセットの各項目へ丸ごと揃える。
-  public applyPreset(preset: QualityPreset): void {
-    this.apply(QUALITY_PRESETS[preset]);
-  }
-
-  // 新しい値一式を正本にし、押し出しと保存まで行う。
-  private apply(data: GraphicsSettingsData): void {
-    this.data = data;
-    for (const target of this.targets) target.applyGraphics(data);
-    if (this.storageKey === null) return;
-    try {
-      localStorage.setItem(this.storageKey, JSON.stringify(this.data));
-    } catch {
-      // 保存できなくてもこのセッションの設定は生きている。
-    }
-  }
-
-  // 現在値と全項目が一致するプリセット。どれとも一致しなければ null。
-  public matchingPreset(): QualityPreset | null {
-    const keys = optionKeys();
-    for (const [name, preset] of Object.entries(QUALITY_PRESETS)) {
-      if (keys.every((key) => preset[key] === this.data[key])) return name as QualityPreset;
-    }
-    return null;
-  }
+  return null;
 }
 
 // 項目1つを差し替えた値一式を返す。**操作する UI は項目名を実行時に持つ**ので、キーと値の

@@ -23,19 +23,21 @@ export class GeneratedCloudField {
   private lastClimateMonth = -1;
   private lastClimateBlend = Number.NaN;
 
-  // 気候を全球正距円筒へ投影する。
+  // 気候を全球へ投影する。surfaceRadius は天体の半径 [m]、rotationPeriod は自転周期 [s]。
   public static global(
-    climate: ClimateMapLike, uvAt?: CloudUvAt,
+    climate: ClimateMapLike, surfaceRadius: number, rotationPeriod: number, uvAt?: CloudUvAt,
     projection: FieldProjection = new EquirectProjection(GLOBAL_FIELD_HEIGHT),
   ): GeneratedCloudField {
-    return new GeneratedCloudField(climate, projection, uvAt);
+    return new GeneratedCloudField(climate, projection, surfaceRadius, rotationPeriod, uvAt);
   }
 
-  // climate と、その中間場・出力場が共有する投影法を受け取る。
+  // climate と、その中間場・出力場が共有する投影法を受け取る。surfaceRadius は雲を載せる天体の
+  // 半径 [m]、rotationPeriod はその自転周期 [s]。
   public constructor(
-    private readonly climate: ClimateMapLike, projection: FieldProjection, uvAt?: CloudUvAt,
+    private readonly climate: ClimateMapLike, projection: FieldProjection,
+    surfaceRadius: number, rotationPeriod: number, uvAt?: CloudUvAt,
   ) {
-    this.model = new WeatherModel(climate, projection);
+    this.model = new WeatherModel(climate, projection, surfaceRadius, rotationPeriod);
     this.field = new CloudField(this.model, projection, uvAt);
   }
 

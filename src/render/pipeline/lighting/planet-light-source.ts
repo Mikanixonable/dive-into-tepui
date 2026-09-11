@@ -1,6 +1,6 @@
 // 天体照の光源。恒星以外の天体が反射して届ける光を、一様な放射輝度の球光源として
 // スロット本数ぶん持ち、スロット 1 本がライティングパスの描画命令 1 本になる。
-// どの天体を載せるかは決めず、毎フレーム set() で渡された値をそのまま照らす。
+// 載せる天体とその値は、毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import { Fn, PI, acos, clamp, cos, dot, float, length, max, normalize, sin, sqrt, uniform } from 'three/tsl';
 import { LAMBERT_SPHERE_GEOMETRIC_ALBEDO_RATIO } from '../../../physics/lambert-sphere';
@@ -22,7 +22,7 @@ export const MAX_PLANET_LIGHT_SLOTS = 2;
 const MIN_VISIBLE_CAP_ANGLE = 1e-4;
 
 // スロット 1 本の値。中心・半径は描画座標、放射輝度は色つき(SUN_IRRADIANCE_1AU の目盛り)。
-interface PlanetLightValue {
+export interface PlanetLightValue {
   readonly center: THREE.Vector3;
   readonly radius: number;
   readonly radiance: Albedo;

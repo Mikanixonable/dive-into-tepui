@@ -1,3 +1,4 @@
+// 前進・予測・接触の機構が個体と顔ぶれに求める面。
 import type { Vec3 } from '../../math/vec3';
 import type { Attitude } from '../../physics/attitude';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -8,6 +9,12 @@ import type { StageOutcome } from '../stages/stage-outcome';
 import type { Contact } from './dynamic-entity/contact';
 import type { EntityRegistry } from './entity-registry';
 import type { PredictedArc } from './predicted-arc';
+
+// 接触・焼失・喪失の反応が、ゲーム上の帰結(勝敗の記録・個体の生成)を書き込む先。
+export interface DynamicReactionServices {
+  readonly activeStage: StageOutcome;
+  readonly registry: EntityRegistry;
+}
 
 export interface PredictableMotion {
   hasFutureReader(canDisplayFuture: boolean): boolean;
@@ -42,8 +49,7 @@ export interface EntityContactParticipant extends KinematicParticipant {
   ): { readonly hit: SphereHit; readonly toi: number } | null;
   absorbHeat(specificJoules: number): void;
   collideWithEntity(
-    other: EntityContactParticipant, contact: Contact,
-    context: { readonly activeStage: StageOutcome; readonly registry: EntityRegistry },
+    other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
   ): void;
 }
 
@@ -52,8 +58,7 @@ export interface SurfaceContactParticipant extends KinematicParticipant {
   readonly attachedTo: EntityContactParticipant | null;
   absorbHeat(specificJoules: number): void;
   collideWithCelestialBody(
-    body: CelestialBody, contact: Contact,
-    context: { readonly activeStage: StageOutcome; readonly registry: EntityRegistry },
+    body: CelestialBody, contact: Contact, services: DynamicReactionServices,
   ): void;
 }
 
@@ -66,7 +71,7 @@ export interface DynamicSimulationParticipant extends EntityContactParticipant, 
   stepSimulation(
     dt: number, celestialBodies: readonly CelestialBody[], occluders: readonly CelestialBody[],
     atmosphereBody: CelestialBody | null, star: CelestialBody | null, pivot: number,
-    context: { readonly activeStage: StageOutcome; readonly registry: EntityRegistry },
+    services: DynamicReactionServices,
   ): boolean;
   nextSimulationEventTime(simTime: number): number | null;
 }
@@ -80,6 +85,7 @@ export interface SimulationControlled extends SimulationState {
 }
 
 export interface DynamicSimulationRoster {
+  // 顔ぶれが変わるたびに増える世代。
   readonly collectionRevision: number;
   allMotions(): readonly DynamicSimulationParticipant[];
 }

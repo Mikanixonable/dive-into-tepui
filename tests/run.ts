@@ -1,6 +1,6 @@
 // 回帰テストのエントリポイント。tsconfig.test.json でコンパイル後、これを node 実行する。
 //   node tests/dist/tests/run.js <層> [名前の一部]
-// 層はテスト対象が属する src/ のフォルダ名(physics / math / game / render)、
+// 層はテスト対象が属する src/ のフォルダ名(physics / math / game / render / settings)、
 // または全層を走らせる all。名前の一部を渡すと、それを含むケースだけを走らせる。
 import './repo-assets';
 import { readdirSync } from 'node:fs';
@@ -11,7 +11,7 @@ import { runAll } from './harness';
 // webpack 用に `require` がグローバル宣言されているので、node の require はここで作る。
 const nodeRequire = createRequire(__filename);
 
-const LAYERS = ['physics', 'math', 'game', 'render'] as const;
+const LAYERS = ['physics', 'math', 'game', 'render', 'settings'] as const;
 type Layer = typeof LAYERS[number];
 
 function isLayer(name: string): name is Layer {

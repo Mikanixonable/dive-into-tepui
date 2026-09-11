@@ -1,8 +1,9 @@
 // テストは webpack の asset/resource 変換(URL 文字列化)を経ずに直接 tsc/node で走るため、
 // 生成カタログの URL フィールドには実データそのものが入っている。それを使って
 // production の非同期 fetch 経路を経ずに bundle を組み立てる。
+import { PROTEIN_ASSET_SOURCES } from '../src/game/protein/protein-asset-catalog.generated';
 import {
-  buildProteinAssetBundle, PROTEIN_ASSET_IDS, PROTEIN_ASSET_SOURCES, type ProteinAssetBundle, type ProteinAssetId,
+  buildProteinAssetBundle, PROTEIN_ASSET_IDS, type ProteinAssetBundle, type ProteinAssetId,
 } from '../src/game/protein/protein-asset-loader';
 
 const bundleCache = new Map<ProteinAssetId, ProteinAssetBundle>();

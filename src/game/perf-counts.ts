@@ -1,16 +1,16 @@
 // ランの規模の計測値。
 import type { EntityCountKind } from './dynamic/dynamic-entity/entity-kind';
 import type { ProteinMotionFrameSample } from './protein/protein-motion-metrics';
-import type { CelestialSurfaceDiagnostics } from '../render/celestial-surface';
+import type { CelestialSurfaceDiagnostics } from '../render/celestial/celestial-surface';
 
-export type SurfacePerfCount = {
+export interface SurfacePerfCount {
   readonly id: string;
   readonly name: string;
   readonly diagnostics: CelestialSurfaceDiagnostics;
-};
+}
 
 // 計測表示に載せるエンティティ数・シミュレーション規模の一式。
-export type PerfCounts = {
+export interface PerfCounts {
   // 枠ごとの個体数。1体も出ていない枠は欠ける。
   entities: Partial<Record<EntityCountKind, number>>;
   predicted: number; predictComplete: number; predictorSteps: number;
@@ -22,7 +22,7 @@ export type PerfCounts = {
   planArcs: number; planSteps: number;
   timeCacheHits: number; timeCacheMisses: number;
   warp: number;
-};
+}
 
 // 1フレームぶんの計測値を差し出す口。
 export interface PerfCountSource {

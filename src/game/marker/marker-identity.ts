@@ -1,12 +1,10 @@
 // マーカーの見分けを決める字形と識別色。読み手が最初に判断するのは「その記号は物を指すのか、
 // 向きを指すのか、軌道上の特異点を指すのか」なので、塗りつぶし=実体・矢=方向・中空=軌道上の点、と
-// 字形の族をその区別に対応させる。どの字形と色を使うかは各マーカーの所有者が選ぶので、
-// ここが持つのは族ごとの選択肢だけで、キーとマーカーの対応は持たない。
+// 字形の族をその区別に対応させる。
 import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 
-// 陣営・対象ごとの識別色。UI の色は theme.ts、「どう見えるか」だけを決めるエフェクトの色は
-// render/vfx-style.ts が持つ。軌道3軸(prograde/normal/radial)は theme.ts の AXIS_* を使う —
-// Δv 編集の 3D ギズモと方位マーカーは同じ軸を指すので、二系統の色を持たせない。
+// 陣営・対象ごとの識別色。軌道3軸の色は Δv 編集の 3D ギズモと同じ軸を指すので、theme.ts の
+// AXIS_* を共有する。
 export const COLOR_MARKER_ALLY = '#ffffff';
 export const COLOR_MARKER_ENEMY = '#ffffff';
 export const COLOR_MARKER_NODE = '#8b93a0';

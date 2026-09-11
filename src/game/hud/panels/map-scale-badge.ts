@@ -1,6 +1,7 @@
 // マップビューの縮尺バー(#hud-map-scale)の要素へ、計算済みの縮尺値を書き込む。
 import { formatMapScaleDistance, mapScaleFor } from '../map-scale';
-import type { CameraSystem } from '../../camera/camera-system';
+import type { ScaleFn } from '../../../math/projection';
+import type { Vec3 } from '../../../math/vec3';
 
 export class MapScaleBadge {
   // 縮尺パネルへラベル要素(「縮尺」)を1度だけ差し込む。
@@ -13,19 +14,15 @@ export class MapScaleBadge {
     panel.prepend(label);
   }
 
-  // マップビューの縮尺は、カメラから画面中心までではなく、現在フォーカスしている対象の
-  // 深度における meters-per-pixel から求める。パンしてもフォーカス対象を基準にするため、
-  // 同じ天体を見続ける限り、表示値はスクロールズームだけに対応して変化する。
-  public sync(isMapView: boolean, cameraSystem: CameraSystem): void {
+  // フォーカス対象の ECI 位置 focus の深度での meters-per-pixel から縮尺を求めて書き込む。
+  // 同じ対象を見ている間、表示値はズームに追従する。縮尺が決まらなければパネルを隠す。
+  public sync(screenScale: ScaleFn, focus: Vec3): void {
     const panel = this.els.get('map-scale');
     if (!panel) return;
-    // 基底の CSS 規則(#hud-map-scale)は display:none で固定されているため、'' へ戻すだけでは
-    // 表示に復帰しない。表示側は常に明示の display 値を書く。
-    panel.style.display = isMapView ? 'block' : 'none';
-    if (!isMapView) return;
+    // 基底の CSS 規則(#hud-map-scale)が display:none なので、'' へ戻すと表示に復帰しない。
+    panel.style.display = 'block';
 
-    const focus = cameraSystem.mapCamera.resolvedFocus;
-    const metersPerPixel = cameraSystem.activeCameraScale(focus);
+    const metersPerPixel = screenScale(focus);
     const scale = mapScaleFor(metersPerPixel);
     const ruler = this.els.get('map-scale-ruler');
     if (!scale || !ruler) {

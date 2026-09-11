@@ -1,17 +1,18 @@
-// 焼いた基地の判定形状 (src/assets/models/baseCollision.json) を表示モデルへ突き合わせる。
-// 判定形状は部品ごとの凸包なので、覆いは構成から成り立つ — 崩れるとしたら部品の切り分けか、
-// 表示モデルを変えたのに焼き直していないかのどちらかで、どちらも黙って当たり方を変える。
+// 焼いた基地の判定形状 (src/assets/models/baseCollision.json) を、焼いた表示モデル
+// (src/assets/models/base.json) へ突き合わせる。判定形状は部品ごとの凸包なので、覆いは構成から
+// 成り立つ — 崩れるとしたら部品の切り分けか、表示モデルを変えたのに焼き直していないかのどちらかで、
+// どちらも黙って当たり方を変える。
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { BASE_COLLISION_RADIUS, baseRaycast } from '../../src/game/dynamic/dynamic-entity/base-collision';
-import { buildBaseModel } from '../../src/render/base-station-model';
 import { Triangle, buildBVH, raycastTriangles } from '../../src/math/triangle-mesh';
 import { mulberry32 } from '../../src/math/random';
 import { Vec3, v3, add, cross, dot, lenSq, norm, scale, sub } from '../../src/math/vec3';
 import { test } from '../harness';
 import bakedShape from '../../src/assets/models/baseCollision.json';
+import bakedModel from '../../src/assets/models/base.json';
 
-// 焼いた座標の刻み (tools/export-base-collision.mjs の COORDINATE_SCALE)。
+// 焼いた座標の刻み (tools/model-builder/export-base-collision.mjs の COORDINATE_SCALE)。
 const BAKED_COORDINATE_SCALE = 1e3;
 // 焼いた座標は mm 単位まで丸めてあるので、凸包の面が元の頂点より最大 √3/2 mm だけ内側へ寄る。
 // 覆いとめり込みの判定はその丸めより緩く取る。
@@ -116,8 +117,9 @@ function insideHull(hull: CollisionHull, p: Vec3, tolerance: number): boolean {
   return true;
 }
 
+// 焼いた表示モデルを読み、基地ローカル座標の三角形・重複を除いた頂点・外接箱・外接半径へ起こす。
 function buildDisplayModel(): DisplayModel {
-  const root = buildBaseModel();
+  const root = new THREE.ObjectLoader().parse(bakedModel);
   root.updateMatrixWorld(true);
 
   const triangles: Triangle[] = [];
