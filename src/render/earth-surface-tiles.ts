@@ -7,9 +7,9 @@ export const EARTH_TILE_TEXELS = 256;
 export const EARTH_TILE_GUTTER = 2;
 export const EARTH_TILE_EXTENT = EARTH_TILE_TEXELS + 2 * EARTH_TILE_GUTTER;
 // 安定frontierとLOD選択が参照するresident層の上限。
-export const EARTH_TILE_FRONTIER_LAYERS = 128;
+export const EARTH_TILE_FRONTIER_LAYERS = 80;
 // 親子fadeを含むGPU配列の物理層数。WebGPUの最低保証256層内に収める。
-export const EARTH_TILE_LAYERS = 144;
+export const EARTH_TILE_LAYERS = 96;
 export const EARTH_BASE_LAYER = 255;
 export const EARTH_PAGE_WIDTH = 2 ** (EARTH_TILE_MAX_Z + 1);
 export const EARTH_PAGE_HEIGHT = 2 ** EARTH_TILE_MAX_Z;
@@ -221,6 +221,12 @@ export class EarthSurfaceTiles {
   // 非表示へ移った葉はpinせず、可視frontierとfade中の層だけを返す。
   public pinnedLayers(): readonly number[] {
     return [...this.pinnedLeafLayers()];
+  }
+
+  // 現在時刻で親子fadeが進行中かを返す。fade中だけ時刻の変化がページ表を変える。
+  public hasActiveFades(timeMs = this.drawingTimeMs): boolean {
+    return this.leaves.some((leaf) => leaf.fadeStartMs !== null
+      && timeMs <= leaf.fadeStartMs + FADE_MS);
   }
 
   // 非表示からの再表示や配信版切り替えは全球baseから再開する。

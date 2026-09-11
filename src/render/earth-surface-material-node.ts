@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  exp2, floor, greaterThanEqual, int, max, min, mix, normalize, select, texture, vec2, vec4,
+  abs, clamp, exp2, float, floor, Fn, greaterThanEqual, If, int, max, min, mix, normalize, select, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import type { BoolNode, FloatNode, Mat3Node, Vec2Node, Vec3Node, Vec4Node } from './tsl-types';
 import { earthSurfaceUvFromRadialNode } from './earth-surface-coordinate';
@@ -102,11 +102,48 @@ function sampleArray(textureValue: THREE.Texture, uv: Vec2Node, z: FloatNode, la
   // 配列の範囲内へクランプした値だけを実際のサンプラへ渡す。
   const safeLayer = min(layer, EARTH_TILE_LAYERS - 1);
   const safeZ = earthSurfaceDetailLodNode(z);
-  return texture(textureValue, earthSurfaceTileUvNode(uv, safeZ)).depth(int(safeLayer));
+  return texture(textureValue, earthSurfaceTileUvNode(uv, safeZ)).depth(int(safeLayer)).level(float(0));
 }
 
 function sampleBase(textureValue: THREE.Texture, uv: Vec2Node): Vec4Node {
-  return texture(textureValue, uv);
+  return texture(textureValue, uv).level(float(0));
+}
+
+// 現在層を読み、baseまたは親から遷移している画素に限って追加の標本を読む。
+function sampleLodTexture(
+  detailTexture: THREE.Texture, baseTexture: THREE.Texture, uv: Vec2Node, z: FloatNode,
+  layer: FloatNode, parentLayer: FloatNode, fade: FloatNode,
+): Vec4Node {
+  const currentBase = greaterThanEqual(layer, EARTH_BASE_LAYER);
+  const parentBase = greaterThanEqual(parentLayer, EARTH_BASE_LAYER);
+  return Fn(() => {
+    const value = vec4(0).toVar();
+    If(currentBase, () => {
+      value.assign(sampleBase(baseTexture, uv));
+    }).Else(() => {
+      value.assign(sampleArray(detailTexture, uv, z, layer));
+      If(fade.lessThan(1), () => {
+        const previous = vec4(0).toVar();
+        If(parentBase, () => {
+          previous.assign(sampleBase(baseTexture, uv));
+        }).Else(() => {
+          previous.assign(sampleArray(detailTexture, uv, max(z.sub(1), 0), parentLayer));
+        });
+        value.assign(mix(previous, value, fade));
+      });
+    });
+    return value;
+  })() as Vec4Node;
+}
+
+// 正規化八面体RGを天体固定の単位法線へ戻す。
+export function decodeEarthSurfaceOctNormalNode(encoded: Vec2Node): Vec3Node {
+  const folded = encoded.mul(2).sub(1);
+  const z = float(1).sub(abs(folded.x)).sub(abs(folded.y));
+  const correction = clamp(z.negate(), 0, 1);
+  const x = folded.x.add(select(folded.x.greaterThanEqual(0), correction.negate(), correction));
+  const y = folded.y.add(select(folded.y.greaterThanEqual(0), correction.negate(), correction));
+  return normalize(vec3(x, y, z));
 }
 
 // 地球固定法線→共通地理UV→ページ表→現在/親層→色・法線・roughnessを一つのTSLグラフへ組む。
@@ -127,27 +164,17 @@ export function earthSurfaceMaterialNodes(
   const parentLayer = floor(page.g.mul(255).add(0.5));
   const z = floor(page.b.mul(255).add(0.5));
   const fade = page.a;
-  const currentBase = greaterThanEqual(layer, EARTH_BASE_LAYER);
-  const parentBase = greaterThanEqual(parentLayer, EARTH_BASE_LAYER);
-
-  const detailColor = sampleArray(textures.color, uv, z, layer).rgb;
-  const parentColor = sampleArray(textures.color, uv, max(z.sub(1), 0), parentLayer).rgb;
-  const baseColor = sampleBase(textures.baseColor, uv).rgb;
-  const currentColor = select(currentBase, baseColor, detailColor);
-  const previousColor = select(parentBase, baseColor, parentColor);
-  const colorNode = select(currentBase, baseColor, mix(previousColor, currentColor, fade));
-
-  const detailTerrain = sampleArray(textures.terrain, uv, z, layer);
-  const parentTerrain = sampleArray(textures.terrain, uv, max(z.sub(1), 0), parentLayer);
-  const baseTerrain = sampleBase(textures.baseTerrain, uv);
-  const currentTerrain = select(currentBase, baseTerrain, detailTerrain);
-  const previousTerrain = select(parentBase, baseTerrain, parentTerrain);
-  const terrain = select(currentBase, baseTerrain, mix(previousTerrain, currentTerrain, fade));
-  const normalBody = normalize(terrain.xyz);
+  const colorNode = sampleLodTexture(
+    textures.color, textures.baseColor, uv, z, layer, parentLayer, fade,
+  ).rgb;
+  const terrain = sampleLodTexture(
+    textures.terrain, textures.baseTerrain, uv, z, layer, parentLayer, fade,
+  );
+  const normalBody = decodeEarthSurfaceOctNormalNode(terrain.rg);
   const normalView = normalize(inputs.bodyToView.mul(normalBody));
   const normalNode = select(inputs.schematic, inputs.geometricNormalView, normalView);
 
-  return { colorNode, roughnessNode: terrain.a, normalNode };
+  return { colorNode, roughnessNode: terrain.b, normalNode };
 }
 
 // 共通のMeshStandardNodeMaterialへ接続する入口。base-only時は呼び手が既存のCelestialSurfaceを使う。
