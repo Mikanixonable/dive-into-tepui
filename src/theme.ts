@@ -197,8 +197,6 @@ function themeCssVariables(palette: ThemePalette): Readonly<Record<string, strin
 export const ACCENT = ACTIVE_THEME.accent;
 export const ACCENT_SOFT = ACTIVE_THEME.accentNear;
 export const SIGNAL = ACTIVE_THEME.signal;
-/** @deprecated Use SIGNAL. Kept as a compatibility alias for existing UI code. */
-export const ACCENT_SECONDARY = SIGNAL;
 const SUCCESS = ACTIVE_THEME.success;
 const WARNING = ACTIVE_THEME.warning;
 const DANGER = ACTIVE_THEME.error;
@@ -276,14 +274,11 @@ const GLYPH_BASE = '22px'; // .mk .sym の基準
 const GLYPH_POI = '5px'; // 天体ラベルの点(.mk-poi)
 const GLYPH_BORESIGHT = '36px'; // .mk-boresight
 
-// 角丸。役割名を正本とし、旧3段名は既存UIとの互換用に対応させる。
-const RADIUS_MICRO = '8px';
+// 角丸。役割ごとの4段。
+export const RADIUS_MICRO = '8px';
 export const RADIUS_CONTROL = '11px';
 export const RADIUS_PANEL = '16px';
 export const RADIUS_WINDOW = '22px';
-export const RADIUS_S = RADIUS_MICRO;
-export const RADIUS_M = RADIUS_CONTROL;
-export const RADIUS_L = RADIUS_PANEL;
 const RADIUS_PILL = '999px'; // トラックなど、完全な角丸ピル
 
 // 余白。6段。
@@ -403,9 +398,9 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--glyph-1-3': 'calc(var(--glyph-base) / 3)',
   '--glyph-poi': GLYPH_POI,
   '--glyph-boresight': GLYPH_BORESIGHT,
-  '--radius-s': RADIUS_S,
-  '--radius-m': RADIUS_M,
-  '--radius-l': RADIUS_L,
+  '--radius-s': RADIUS_MICRO,
+  '--radius-m': RADIUS_CONTROL,
+  '--radius-l': RADIUS_PANEL,
   '--radius-micro': RADIUS_MICRO,
   '--radius-control': RADIUS_CONTROL,
   '--radius-panel': RADIUS_PANEL,

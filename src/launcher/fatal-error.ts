@@ -1,7 +1,7 @@
 // 初期化中・実行中を問わず、継続不能な例外は画面内で明示する。
 // 壊れた Game/renderer を同一ページ内で再利用せず、復旧はページ全体の再読込だけにする。
 import {
-  ACCENT, SURFACE_OPAQUE, BG, TEXT, TEXT_DIM, FONT_FAMILY, FONT_M, FONT_XL, RADIUS_S, RADIUS_M,
+  ACCENT, SURFACE_OPAQUE, BG, TEXT, TEXT_DIM, FONT_FAMILY, FONT_M, FONT_XL, RADIUS_MICRO, RADIUS_CONTROL,
   Z_FATAL_ERROR,
 } from '../theme';
 import { hideLoading } from './loading-overlay';
@@ -24,7 +24,7 @@ export function showFatalError(title: string, message: string, error: unknown): 
 
   const panel = document.createElement('div');
   panel.style.cssText =
-    `max-width:680px;background:${SURFACE_OPAQUE};border:0;border-radius:${RADIUS_M};padding:22px 32px`;
+    `max-width:680px;background:${SURFACE_OPAQUE};border:0;border-radius:${RADIUS_CONTROL};padding:22px 32px`;
 
   // 見出し・本文メッセージ・例外の詳細を上から順に積む。
   const heading = document.createElement('div');
@@ -46,7 +46,7 @@ export function showFatalError(title: string, message: string, error: unknown): 
   reload.type = 'button';
   reload.style.cssText =
     `margin-top:14px;padding:8px 18px;color:${TEXT};background:${BG};border:0;` +
-    `border-radius:${RADIUS_S};font:inherit;cursor:pointer`;
+    `border-radius:${RADIUS_MICRO};font:inherit;cursor:pointer`;
   reload.textContent = 'ページを再読み込み';
   reload.addEventListener('click', () => location.reload());
   panel.appendChild(reload);
