@@ -8,12 +8,14 @@ import { kinematicState, type KinematicState } from '../../../physics/kinematic-
 import type { FlashEffects } from '../../vfx/flash-effects';
 import type { CapKind } from './entity-kind';
 import {
-  buildBoosterExplosiveBoltMesh, buildBoosterInterstageCoverPanelMesh,
-} from '../../../render/dynamic/booster-model';
+  BoosterExplosiveBoltView, BoosterInterstageCoverPanelView,
+} from '../../../render/dynamic/dynamic-entity/booster-interstage-part-view';
 import { CasingView } from '../../../render/dynamic/dynamic-entity/casing-view';
 import { DebrisFragmentView } from '../../../render/dynamic/dynamic-entity/debris-fragment-view';
-import { DynamicView } from '../../../render/dynamic/dynamic-view';
-import { buildBarrelMesh, buildMagazineFrameMesh } from '../../../render/dynamic/ejected-gun-part-model';
+import {
+  BarrelView, MagazineFrameView,
+} from '../../../render/dynamic/dynamic-entity/ejected-gun-part-view';
+import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import { DynamicEntity } from './dynamic-entity';
 import type { DebrisKind } from './debris-kind';
 import { DebrisMotion } from './debris-motion';
@@ -23,17 +25,15 @@ import {
   PLAYER_DESTROY_FRAG_COLOR,
 } from '../../../render/vfx-style';
 
-// 論理種別から、その破片を描く View を組み立てる。メッシュだけが違う種別は DynamicView をそのまま使う。
+// 論理種別から、その破片を描く View を組み立てる。
 function debrisPieceView(debrisKind: DebrisKind, scene?: THREE.Scene): DynamicView {
   switch (debrisKind.kind) {
     case 'fragment': return new DebrisFragmentView(debrisKind.accent, debrisKind.size, scene);
-    case 'barrel': return new DynamicView(buildBarrelMesh(), scene);
-    case 'magazineFrame': return new DynamicView(buildMagazineFrameMesh(), scene);
+    case 'barrel': return new BarrelView(scene);
+    case 'magazineFrame': return new MagazineFrameView(scene);
     case 'casing': return new CasingView(scene);
-    case 'boosterCover':
-      return new DynamicView(buildBoosterInterstageCoverPanelMesh(debrisKind.segment), scene);
-    case 'boosterBolt':
-      return new DynamicView(buildBoosterExplosiveBoltMesh(debrisKind.segment), scene);
+    case 'boosterCover': return new BoosterInterstageCoverPanelView(debrisKind.segment, scene);
+    case 'boosterBolt': return new BoosterExplosiveBoltView(debrisKind.segment, scene);
   }
 }
 
