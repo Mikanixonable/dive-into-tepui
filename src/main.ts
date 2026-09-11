@@ -26,7 +26,6 @@ import { LocalStorageSaveStore } from './launcher/save/save-store';
 import { SaveSlots } from './launcher/save/save-slots';
 import { SnapshotService } from './launcher/save/snapshot-service';
 import { AutoSave } from './launcher/save/autosave';
-import { migrateLegacySave } from './launcher/save/legacy-save';
 import { showLoading, hideLoading } from './launcher/loading-overlay';
 import { showFatalError } from './launcher/fatal-error';
 import type { GameHost } from './game/game-host';
@@ -158,22 +157,11 @@ function bindSettings(
   };
 }
 
-// 索引を読み、旧セーブを取り込み、遊ぶ先のスロットが必ず1つある状態にする。
-function initSaveSlots(store: LocalStorageSaveStore): SaveSlots {
-  const slots = new SaveSlots(store);
-  slots.pruneOrphans();
-  const migrated = migrateLegacySave(slots);
-  if (slots.activeSlotId === null) {
-    slots.setActiveSlot((migrated ?? slots.slots[0] ?? slots.createSlot('セーブデータ 1')).id);
-  }
-  return slots;
-}
-
 // 起動時に一度だけ走る、全システムの生成と配線。
 async function main() {
   const unlockManager = new UnlockManager();
   const saveStore = new LocalStorageSaveStore();
-  const slots = initSaveSlots(saveStore);
+  const slots = SaveSlots.load(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
   const settings = new UserSettings(browserSettingStorage);
   const gs = await initScene(settings.graphics.current);

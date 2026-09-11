@@ -7,7 +7,7 @@ import {
   proteinStandardMaterial,
   type ProteinMotionBinding,
 } from './protein-motion-material';
-import type { ProteinRenderSource } from './protein-render-definition';
+import type { ProteinBackboneAsset, ProteinRenderSource } from './protein-render-definition';
 
 const ELEMENT_COLORS: Readonly<Record<string, number>> = {
   H: 0xffffff, C: 0x909090, N: 0x3050f8, O: 0xff0d0d, F: 0x90e050,
@@ -42,18 +42,77 @@ function atomPosition(structure: ProteinDisplayAsset, atom: number): THREE.Vecto
   );
 }
 
+// 構造 asset の原子と表面頂点それぞれを、motion の残基へ対応付ける。source ごとに1回だけ組む。
 export function proteinResidueBindingLookup(source: ProteinRenderSource): ProteinResidueBindingLookup {
   let lookup = residueBindingLookups.get(source);
   if (lookup) return lookup;
 
   const structure = source.structure;
-  const backbone = source.backbone;
-  const residueByKey = new Map<string, number>();
-  const backboneByChain = new Map<string, number[]>();
+  const backboneByChain = backboneResiduesByChain(source.backbone);
   const atomPositions = Array.from({ length: structure.atoms.count }, (_, atom) => atomPosition(structure, atom));
+  const atomResidues = atomBackboneResidues(source, backboneByChain, atomPositions);
+  const surfaceResidues = surfaceBackboneResidues(source, backboneByChain, atomPositions, atomResidues);
 
+  // motion asset の対応が要素数と合えばそれを使い、合わなければ主鎖の索引を motion の残基へ写す。
+  const backboneResidues = source.motion.bindings.backboneResidues;
+  const mappedAtomResidues = source.motion.bindings.atomResidues.length === structure.atoms.count
+    ? source.motion.bindings.atomResidues
+    : atomResidues.map((residue) => backboneResidues[residue] ?? residue);
+  const mappedSurfaceResidues = source.motion.bindings.surfaceResidues.length === surfaceResidues.length
+    ? source.motion.bindings.surfaceResidues
+    : surfaceResidues.map((residue) => backboneResidues[residue] ?? residue);
+  lookup = { atomResidues: mappedAtomResidues, surfaceResidues: mappedSurfaceResidues };
+  residueBindingLookups.set(source, lookup);
+  return lookup;
+}
+
+// 主鎖の残基索引を、鎖ごとに昇順で並べる。
+function backboneResiduesByChain(backbone: ProteinBackboneAsset): ReadonlyMap<string, readonly number[]> {
+  const byChain = new Map<string, number[]>();
+  for (let residue = 0; residue < backbone.backboneCount; residue += 1) {
+    const chain = backbone.backboneChains[residue] ?? 'A';
+    const chainResidues = byChain.get(chain) ?? [];
+    chainResidues.push(residue);
+    byChain.set(chain, chainResidues);
+  }
+  return byChain;
+}
+
+// chain の主鎖残基のうち point に最も近いものの索引を返す。chain に主鎖が無ければ 0。
+function nearestBackboneResidue(
+  backbone: ProteinBackboneAsset,
+  backboneByChain: ReadonlyMap<string, readonly number[]>,
+  point: THREE.Vector3,
+  chain: string,
+): number {
+  const candidates = backboneByChain.get(chain) ?? [];
+  let best = candidates[0] ?? 0;
+  let bestDistance = Infinity;
+  // 同じ鎖の Cα の中から、二乗距離で最近傍を選ぶ。
+  for (const residue of candidates) {
+    const offset = residue * 3;
+    const dx = point.x - (backbone.backboneCoordinates[offset] ?? 0);
+    const dy = point.y - (backbone.backboneCoordinates[offset + 1] ?? 0);
+    const dz = point.z - (backbone.backboneCoordinates[offset + 2] ?? 0);
+    const distance = dx * dx + dy * dy + dz * dz;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = residue;
+    }
+  }
+  return best;
+}
+
+// 原子ごとに、属する主鎖残基の索引を返す。atomPositions は原子順の座標。
+function atomBackboneResidues(
+  source: ProteinRenderSource,
+  backboneByChain: ReadonlyMap<string, readonly number[]>,
+  atomPositions: readonly THREE.Vector3[],
+): readonly number[] {
+  const { structure, backbone } = source;
   // 主鎖 asset は残基番号を持たないので、Cα 座標を構造 asset の原子へ最近傍で突き合わせて
   // 残基キーを引き当てる。どちらの座標も同じ中心寄せ済みの Å 系にある。
+  const residueByKey = new Map<string, number>();
   for (let residue = 0; residue < backbone.backboneCount; residue += 1) {
     const offset = residue * 3;
     const chain = backbone.backboneChains[residue] ?? 'A';
@@ -74,40 +133,30 @@ export function proteinResidueBindingLookup(source: ProteinRenderSource): Protei
     }
     const residueNumber = bestAtom >= 0 ? structure.atoms.residueNumbers[bestAtom] : residue;
     residueByKey.set(`${chain}:${residueNumber ?? residue}`, residue);
-    const chainResidues = backboneByChain.get(chain) ?? [];
-    chainResidues.push(residue);
-    backboneByChain.set(chain, chainResidues);
   }
 
-  const nearestBackbone = (point: THREE.Vector3, chain: string): number => {
-    const candidates = backboneByChain.get(chain) ?? [];
-    let best = candidates[0] ?? 0;
-    let bestDistance = Infinity;
-    for (const residue of candidates) {
-      const offset = residue * 3;
-      const dx = point.x - (backbone.backboneCoordinates[offset] ?? 0);
-      const dy = point.y - (backbone.backboneCoordinates[offset + 1] ?? 0);
-      const dz = point.z - (backbone.backboneCoordinates[offset + 2] ?? 0);
-      const distance = dx * dx + dy * dy + dz * dz;
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = residue;
-      }
-    }
-    return best;
-  };
-
+  // 残基キーで引けない原子は、同じ鎖で最も近い主鎖残基へ寄せる。
   const atomResidues = new Array<number>(structure.atoms.count);
   for (let atom = 0; atom < structure.atoms.count; atom += 1) {
     const chain = atomChain(structure, atom);
     const residueNumber = structure.atoms.residueNumbers[atom] ?? atom;
     atomResidues[atom] = residueByKey.get(`${chain}:${residueNumber}`)
-      ?? nearestBackbone(atomPositions[atom]!, chain);
+      ?? nearestBackboneResidue(backbone, backboneByChain, atomPositions[atom]!, chain);
   }
+  return atomResidues;
+}
 
+// 表面頂点ごとに、由来する原子の主鎖残基の索引を返す。atomResidues は原子ごとの主鎖残基の索引。
+function surfaceBackboneResidues(
+  source: ProteinRenderSource,
+  backboneByChain: ReadonlyMap<string, readonly number[]>,
+  atomPositions: readonly THREE.Vector3[],
+  atomResidues: readonly number[],
+): readonly number[] {
+  const { structure, backbone } = source;
   // 表面頂点は原子の近傍から生成されているので、空間ハッシュで由来の原子を引き直す。
   // 全原子を走査すると O(表面 × 原子) になる。
-  const cellSize = 4;
+  const cellSize = 4; // [Å]
   const buckets = new Map<string, number[]>();
   const bucketKey = (x: number, y: number, z: number): string => `${x}:${y}:${z}`;
   for (let atom = 0; atom < atomPositions.length; atom += 1) {
@@ -117,12 +166,14 @@ export function proteinResidueBindingLookup(source: ProteinRenderSource): Protei
     bucket.push(atom);
     buckets.set(key, bucket);
   }
+  // point に最も近い同じ成分の原子の主鎖残基を返す。近傍に原子が無ければ主鎖の最近傍。
   const nearestSurfaceResidue = (point: THREE.Vector3, component: string): number => {
     const x = Math.floor(point.x / cellSize);
     const y = Math.floor(point.y / cellSize);
     const z = Math.floor(point.z / cellSize);
-    let best = nearestBackbone(point, component);
+    let best = nearestBackboneResidue(backbone, backboneByChain, point, component);
     let bestDistance = Infinity;
+    // 周囲 27 セルの原子を候補にする。
     for (let dz = -1; dz <= 1; dz += 1) for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) {
       for (const atom of buckets.get(bucketKey(x + dx, y + dy, z + dz)) ?? []) {
         if (atomChain(structure, atom) !== component) continue;
@@ -136,6 +187,7 @@ export function proteinResidueBindingLookup(source: ProteinRenderSource): Protei
     return best;
   };
 
+  // 表面頂点を原子と同じ中心寄せ済みの系へ移してから引く。
   const surface = structure.surface.mesh;
   const center = structure.coordinateFrame.centeredAt;
   const surfaceResidues = new Array<number>(surface.position.length / 3);
@@ -148,17 +200,7 @@ export function proteinResidueBindingLookup(source: ProteinRenderSource): Protei
     );
     surfaceResidues[vertex] = nearestSurfaceResidue(point, surface.component[vertex] ?? 'A');
   }
-
-  const backboneResidues = source.motion.bindings.backboneResidues;
-  const mappedAtomResidues = source.motion.bindings.atomResidues.length === structure.atoms.count
-    ? source.motion.bindings.atomResidues
-    : atomResidues.map((residue) => backboneResidues[residue] ?? residue);
-  const mappedSurfaceResidues = source.motion.bindings.surfaceResidues.length === surfaceResidues.length
-    ? source.motion.bindings.surfaceResidues
-    : surfaceResidues.map((residue) => backboneResidues[residue] ?? residue);
-  lookup = { atomResidues: mappedAtomResidues, surfaceResidues: mappedSurfaceResidues };
-  residueBindingLookups.set(source, lookup);
-  return lookup;
+  return surfaceResidues;
 }
 
 function atomMaterial(element: string, ligand = false, motion?: ProteinMotionBinding): THREE.MeshStandardNodeMaterial {

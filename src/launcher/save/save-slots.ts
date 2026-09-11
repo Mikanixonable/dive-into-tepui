@@ -9,6 +9,7 @@ import {
   SLOT_EXPORT_VERSION,
 } from './slot-data';
 import { SaveStore, SAVE_INDEX_VERSION } from './save-store';
+import { migrateLegacySave } from './legacy-save';
 
 export const AUTO_SNAPSHOT_LIMIT = 12;
 export const PINNED_SNAPSHOT_LIMIT = 30;
@@ -26,8 +27,21 @@ function isQuotaError(e: unknown): boolean {
 export class SaveSlots {
   private index: SaveIndex;
 
-  constructor(private readonly store: SaveStore) {
+  // store の索引を読む。索引が無ければ空の索引から始める。
+  private constructor(private readonly store: SaveStore) {
     this.index = store.readIndex() ?? { version: SAVE_INDEX_VERSION, slots: [], activeSlotId: null };
+  }
+
+  // store から索引を開く。参照されない本体を掃除し、旧セーブを取り込み、遊ぶ先のスロットが
+  // 必ず1つある状態で返す。
+  public static load(store: SaveStore): SaveSlots {
+    const slots = new SaveSlots(store);
+    slots.pruneOrphans();
+    const migrated = migrateLegacySave(slots);
+    if (slots.activeSlotId === null) {
+      slots.setActiveSlot((migrated ?? slots.slots[0] ?? slots.createSlot('セーブデータ 1')).id);
+    }
+    return slots;
   }
 
   get slots(): readonly SaveSlotMeta[] {
@@ -307,8 +321,8 @@ export class SaveSlots {
     return newSlot;
   }
 
-  // 索引のどこからも参照されていない本体キーを消す。起動時に1回だけ呼ぶ想定。
-  pruneOrphans(): void {
+  // 索引のどこからも参照されていない本体キーを消す。
+  private pruneOrphans(): void {
     const referenced = new Set<string>();
     for (const slot of this.index.slots) {
       for (const history of slot.stages) {
