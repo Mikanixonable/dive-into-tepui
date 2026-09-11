@@ -30,10 +30,15 @@ jobs:
       - run: npm run verify:ui-style
       - run: npm run typecheck
       - run: npm run test
-      - run: npm run build
+      - name: Build with external Earth surface bundle
+        env:
+          EARTH_SURFACE_BASE_URL: ${{ vars.EARTH_SURFACE_BASE_URL || 'https://assets.mikanixonable.net/earth/earth-2026-09-09-a/' }}
+          EARTH_SURFACE_MANIFEST_URL: ${{ vars.EARTH_SURFACE_MANIFEST_URL || 'https://assets.mikanixonable.net/earth/earth-2026-09-09-a/earth-surface.json' }}
+        run: npm run build
 
-      # 実データ未取得の間は決定的なfixtureをPagesへ配置する。実bundleを用意したときは
-      # EARTH_SURFACE_PAGES_INPUTを設定し、同じ入口で全bundleを検査してから公開する。
+      # 地表の本体データはR2から配信し、Pagesには決定的なfixtureを配置して
+      # 公開物のパスとbundle契約だけを検査する。実bundleをPagesへ置く場合は
+      # EARTH_SURFACE_PAGES_INPUTを設定する。
       - name: Stage Earth surface bundle for Pages
         env:
           EARTH_SURFACE_PAGES_INPUT: ${{ vars.EARTH_SURFACE_PAGES_INPUT }}
