@@ -117,7 +117,7 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
   protected override syncModel(
     source: ProteinVisualSource,
     displayed: KinematicState | null,
-    context: DynamicViewFrame,
+    viewFrame: DynamicViewFrame,
   ): void {
     this.syncDisplay(source.display);
     // 本体と同じ可視条件で表示時刻の状態を使う。
@@ -126,15 +126,15 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
     if (shown !== null) {
       const projectedDiameterPx = apparentSizePx(
         this.boundingRadius * 2,
-        context.camera.radialScale(shown.r),
+        viewFrame.camera.radialScale(shown.r),
       );
       this.lod = proteinMotionLodForProjectedSize(projectedDiameterPx, this.lod);
       if (this.lod !== 'marker') {
         const cpuStart = performance.now();
         // 揺らぎの表示が切られている間は、LOD を保ったまま係数だけを静止へ倒す。
         this.motionController.sampleAt(
-          context.displayTime,
-          context.visual.proteinVibration ? this.lod : 'marker',
+          viewFrame.displayTime,
+          viewFrame.visual.proteinVibration ? this.lod : 'marker',
           source.phase,
         );
         this.motionControllerCpuMs = performance.now() - cpuStart;
