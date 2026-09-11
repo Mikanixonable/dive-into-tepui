@@ -62,9 +62,9 @@ export class OpaqueCloudSurfaceRenderer {
   private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
   private activeLevel: SphereLodLevel | null = null;
 
-  // fieldSampler は共有雲場、bodyRadius は殻を載せる天体の基準半径 [m]。親は半径 bodyRadius の
+  // fieldSampler ははじめに読む雲場、bodyRadius は殻を載せる天体の基準半径 [m]。親は半径 bodyRadius の
   // 球へ合わせたスケールを与えればよく、雲頂ぶんの膨らみはこの renderer が持つ。
-  public constructor(private readonly fieldSampler: CloudFieldSampler, bodyRadius: number) {
+  public constructor(private fieldSampler: CloudFieldSampler, bodyRadius: number) {
     // 雲頂を含む殻の尺度と雲粒の周波数を組む。
     const shellScale = 1 + CLOUD_TOP_SPAN / bodyRadius;
     const grainFrequency = bodyRadius / CUMULUS_GRAIN_SIZE;
@@ -108,10 +108,23 @@ export class OpaqueCloudSurfaceRenderer {
     this.fieldSampler.setLodSampling(mode, fixedLevel);
   }
 
+  // 読む雲場を差し替える。読み取りはマテリアルへ焼かれているので、変わったときだけ組み直す。
+  // 差し替えた先の LOD 規則は、setLodSampling を呼び直すまでその sampler のまま。
+  public setFieldSampler(fieldSampler: CloudFieldSampler): void {
+    if (fieldSampler === this.fieldSampler) return;
+    this.fieldSampler = fieldSampler;
+    this.rebuildMaterial();
+  }
+
   // 標本の配り方を置き直す。回数はシェーダへ展開されるので、変わればマテリアルを組み直す。
   private setSampling(sampling: CumulusSampling): void {
     if (sampling.march === this.sampling.march && sampling.refine === this.sampling.refine) return;
     this.sampling = sampling;
+    this.rebuildMaterial();
+  }
+
+  // いまの標本の配り方と雲場でマテリアルを組み直し、全段のメッシュへ張り替える。
+  private rebuildMaterial(): void {
     const previous = this.material;
     this.material = this.buildMaterial();
     for (const mesh of this.meshes.values()) mesh.material = this.material;

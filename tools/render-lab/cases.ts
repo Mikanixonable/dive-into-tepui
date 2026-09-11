@@ -8,8 +8,10 @@ import { CloudPresentation } from '../../src/render/cloud/cloud-presentation';
 import type { CloudLodMode } from '../../src/render/cloud/cloud-field-sampler';
 import { ClimateMap } from '../../src/render/cloud/climate-map';
 import { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
+import { ObservedCloudField } from '../../src/render/cloud/observed-cloud-field';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
 import climateTextureUrl from '../../src/assets/earth-climate.png';
+import cloudFieldUrl from '../../src/assets/cloud-field.png';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
 import { R_EARTH, R_EARTH_EQ, R_SUN, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/constants';
 import { EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE } from '../../src/game/celestial/solar-system/earth-system';
@@ -646,7 +648,10 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
   const climate = ClimateMap.fromDeferredUrl(climateTextureUrl);
-  const cumulus = new CloudPresentation(GeneratedCloudField.global(climate, R_EARTH, SIDEREAL_DAY), R_EARTH_EQ);
+  const cumulus = new CloudPresentation(
+    GeneratedCloudField.global(climate, R_EARTH, SIDEREAL_DAY, null),
+    new ObservedCloudField(cloudFieldUrl), R_EARTH_EQ,
+  );
   const surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
   surface.addTo(group);
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
@@ -685,6 +690,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
     applyGraphics: (graphics) => {
       if (graphics.clouds) {
         cumulus.setCloudsVisible(true);
+        cumulus.setSource(graphics.cloudFieldSource);
         cumulus.setDetail(graphics.cumulusDetail);
         cumulus.syncLod(CLOSE_UP_DIAMETER_PX);
       } else {
