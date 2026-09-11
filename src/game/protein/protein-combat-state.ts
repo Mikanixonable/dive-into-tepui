@@ -1,6 +1,7 @@
 import type {
-  ProteinActionDefinition, ProteinAssetDefinition, ProteinHudSnapshot, ProteinPhase, ProteinSaveData, ProteinSiteDefinition,
+  ProteinActionDefinition, ProteinAssetDefinition, ProteinHudSnapshot, ProteinSaveData, ProteinSiteDefinition,
 } from './protein-schema';
+import type { ProteinPhase } from '../../render/protein/protein-display';
 
 interface ProteinDamageResult {
   readonly target: 'site' | 'integrity';

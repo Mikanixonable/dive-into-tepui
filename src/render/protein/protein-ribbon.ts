@@ -1,30 +1,13 @@
 // タンパク質の表示用 Cartoon リボンを生成する。
 import * as THREE from 'three/webgpu';
-import type { ProteinAssetDefinition, ProteinMotionAsset } from '../game/protein/protein-schema';
-import type { ProteinDisplayAsset } from '../game/protein/protein-display-asset';
-import type { ProteinRibbonColorMode } from '../game/protein/protein-display';
 import { proteinRibbonColor, triangleComponent } from './protein-ribbon-color';
 import {
   attachProteinResidueBinding,
   proteinStandardMaterial,
   type ProteinMotionBinding,
 } from './protein-motion-material';
-export interface ProteinBackboneAsset {
-  readonly backboneCount: number;
-  readonly backboneCoordinates: readonly number[];
-  /** カルボニル酸素の座標。 */
-  readonly backboneOCoordinates?: readonly number[];
-  readonly backboneSecondary: readonly string[];
-  readonly backboneChains: readonly string[];
-  readonly backboneEntities: readonly number[];
-  readonly backboneBFactors: readonly number[];
-}
-export interface ProteinRenderSource {
-  readonly semantic: ProteinAssetDefinition;
-  readonly motion: ProteinMotionAsset;
-  readonly backbone: ProteinBackboneAsset;
-  readonly structure: ProteinDisplayAsset;
-}
+import type { ProteinRibbonColorMode } from './protein-display';
+import type { ProteinRenderSource } from './protein-render-definition';
 
 /** 論文図向けの非金属 Ribbon 材質を返す。 */
 function ribbonMaterial(motion?: ProteinMotionBinding): THREE.MeshStandardNodeMaterial {

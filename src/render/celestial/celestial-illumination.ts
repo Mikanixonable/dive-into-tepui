@@ -8,42 +8,43 @@ import {
   REFERENCE_STAR_RADIANT_INTENSITY, STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE,
   STARLESS_SUN_RADIUS, SunLight,
 } from '../../render/pipeline/sun-light';
-import { ambientFraction, type AmbientSource } from '../../render/pipeline/lighting/ambient-source';
+import { ambientFraction } from '../../render/pipeline/lighting/ambient-source';
 import { selectPlanetLights } from '../../render/pipeline/lighting/planet-light-select';
 import { MAX_SHADOW_BODIES, type BodyShadow, type ShadowBody } from '../../render/pipeline/shadow/body-shadow';
 import {
   castsCumulusShadow, selectRingShadow, selectShadowBodies, type RingShadowCandidate,
 } from '../../render/pipeline/shadow/shadow-select';
-import { focusTargetId } from '../camera/focus-target';
 import { writeBodyFromWorld } from '../../render/celestial/body-frame';
 import type { Vec3 } from '../../math/vec3';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
-import type { Exposure } from '../../render/pipeline/exposure';
-import type { PlanetLightSource } from '../../render/pipeline/lighting/planet-light-source';
-import type { AtmospherePass } from '../../render/pipeline/atmosphere-pass';
-import type { RingShadow } from '../../render/pipeline/shadow/ring-shadow';
-import type { CumulusShadow } from '../../render/pipeline/shadow/cumulus-shadow';
-import type { CameraSystem } from '../camera/camera-system';
+import type { PlanetLightValue } from '../../render/pipeline/lighting/planet-light-source';
+import type { AtmosphereDraw } from '../../render/atmosphere';
+import type { RingBand } from '../../render/pipeline/shadow/ring-shadow';
+import type { ShadowCumulus } from '../../render/pipeline/shadow/cumulus-shadow';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { FloatingOrigin } from '../../render/camera/floating-origin';
-import type { CelestialBodies } from './celestial-bodies';
-import type { CelestialEntity } from './celestial-entity/celestial-entity';
-import type { StellarLightSource } from '../../render/celestial/celestial-entity/celestial-view';
-import type { MapVisibilityPolicy } from '../map/visibility-policy';
+import type {
+  CelestialIlluminationSource, StellarLightSource,
+} from './celestial-entity/celestial-view';
 
 const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);
 
 // 光源・影・大気が、この1フレームぶんの値を書き込まれる先。
 export interface IlluminationTargets {
+  // 恒星光と影を落とす天体の形は、環のマテリアルもこの実体から組む。
   readonly sunLight: SunLight;
-  readonly exposure: Exposure;
   readonly bodyShadow: BodyShadow;
-  readonly ringShadow: RingShadow;
-  readonly cumulusShadow: CumulusShadow;
-  readonly planetLight: PlanetLightSource;
-  readonly ambient: AmbientSource;
-  readonly atmosphere: AtmospherePass;
+  // 以下は書き込む口だけを受ける — 照明が読むのは、値を渡す1本ずつのメソッドだけ。
+  readonly exposure: {
+    setReference(reference: THREE.Vector3, sunPosition: THREE.Vector3, sunIntensity: number): void;
+    readonly fixedBrightnessScale: number;
+  };
+  readonly ringShadow: { set(center: THREE.Vector3, axis: THREE.Vector3, bands: readonly RingBand[]): void };
+  readonly cumulusShadow: { set(cumulus: ShadowCumulus | null): void };
+  readonly planetLight: { set(lights: readonly PlanetLightValue[]): void };
+  readonly ambient: { setFraction(fraction: number): void };
+  readonly atmosphere: { setDraws(draws: readonly AtmosphereDraw[]): void };
 }
 
 export class CelestialIllumination {
@@ -52,10 +53,8 @@ export class CelestialIllumination {
     axes: new THREE.Vector3(), bodyFromWorld: new THREE.Matrix4(),
   }));
 
-  // entities はこの星系の全天体(宣言順)、star はその主星の恒星光で、恒星を持たない星系では null。
+  // star はこの星系の主星の恒星光で、恒星光を持たない星系では null。
   public constructor(
-    private readonly celestialBodies: CelestialBodies,
-    private readonly entities: readonly CelestialEntity[],
     private readonly star: StellarLightSource | null,
     private readonly targets: IlluminationTargets,
   ) {}
@@ -66,9 +65,12 @@ export class CelestialIllumination {
 
   // 恒星・露出・環境光・天体照・影・大気を、この1フレームの表示状態に同期する。
   // **全天体の sync より後に呼ぶこと** — 積雲と大気の候補は個体の表示状態から決まる。
+  // sources はこの星系の全天体を、そのフレームの表示可否とともに並べたもの。focusPosition は
+  // 注視している天体の ECI 位置で、天体でない対象を注視しているフレームでは null。
+  // sunDirection は描画原点から見た恒星の向き(恒星を持たない星系の光源の置き場所を決める)。
   public sync(
-    displayTime: number, camera: CameraFrame, cameraSystem: CameraSystem,
-    graphics: GraphicsSettingsData, visibilityPolicy: MapVisibilityPolicy | null,
+    sources: readonly CelestialIlluminationSource[], displayTime: number, camera: CameraFrame,
+    graphics: GraphicsSettingsData, focusPosition: Vec3 | null, sunDirection: Vec3,
   ): void {
     const fo = camera.floatingOrigin;
     const star = this.star;
@@ -76,8 +78,7 @@ export class CelestialIllumination {
     // (基準強度どおりの放射照度が届き、影パスは誰も遮らないと答える)。
     const starPos = star === null ? null : star.motion.stateAt(displayTime).r;
     const sunPos = starPos === null
-      ? this.toThreeNormal(this.celestialBodies.sunDirFrom(fo.r, displayTime))
-        .multiplyScalar(STARLESS_SUN_DISTANCE)
+      ? this.toThreeNormal(sunDirection).multiplyScalar(STARLESS_SUN_DISTANCE)
       : fo.RtoThreeV3(starPos);
     // 露出の順応と天体照の選定の基準点。カメラ位置ではなく注視点から取る —
     // マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
@@ -88,18 +89,20 @@ export class CelestialIllumination {
       sunPos, star?.motion.def.radius ?? STARLESS_SUN_RADIUS,
       star?.stellarLight.color ?? STARLESS_SUN_COLOR, starIntensity);
     this.targets.ambient.setFraction(ambientFraction(camera.mode === 'map', graphics));
-    this.syncPlanetLights(displayTime, camera);
-    this.syncShadowSources(fo, displayTime, cameraSystem, graphics);
-    this.syncAtmosphere(displayTime, camera, graphics, visibilityPolicy);
+    this.syncPlanetLights(sources, displayTime, camera);
+    this.syncShadowSources(sources, fo, displayTime, focusPosition, graphics);
+    this.syncAtmosphere(sources, displayTime, camera, graphics);
   }
 
   // 天体照の光源の候補を組んで選定へ渡し、選ばれたものを描画座標へ移してライティング側の
   // スロットへ入れる。基準点は露出と同じ注視点。
-  private syncPlanetLights(displayTime: number, camera: CameraFrame): void {
+  private syncPlanetLights(
+    sources: readonly CelestialIlluminationSource[], displayTime: number, camera: CameraFrame,
+  ): void {
     // 全天体を候補にし、注視点から見た明るさで選ぶ。
-    const candidates = this.entities.map((entity) => ({
-      celestialBody: entity.motion,
-      albedo: entity.view.lightSourceAlbedo ?? DEFAULT_ALBEDO,
+    const candidates = sources.map((source) => ({
+      celestialBody: source.motion,
+      albedo: source.view.lightSourceAlbedo ?? DEFAULT_ALBEDO,
     }));
     const lights = selectPlanetLights(
       candidates, displayTime, this.star?.stellarLight.radiantIntensity ?? null,
@@ -115,16 +118,12 @@ export class CelestialIllumination {
   // 影パスへ、この1フレームの影を落とす天体と環の帯を渡す。候補を組んで選定へ回し、選ばれた
   // ものを描画座標へ移す。
   private syncShadowSources(
-    fo: FloatingOrigin, displayTime: number, cameraSystem: CameraSystem, graphics: GraphicsSettingsData,
+    sources: readonly CelestialIlluminationSource[], fo: FloatingOrigin, displayTime: number,
+    focusPosition: Vec3 | null, graphics: GraphicsSettingsData,
   ): void {
-    // マップの注視点(天体でない対象なら null)。
-    const focusId = focusTargetId(cameraSystem.mapCamera.focus);
-    const focusPos = focusId === undefined
-      ? null
-      : this.celestialBodies.findMotion(focusId)?.positionAt(displayTime) ?? null;
     // 選ばれた天体の形を、天体固定の半軸と向きの行列にして渡す。
     this.targets.bodyShadow.set(
-      selectShadowBodies(this.celestialBodies.celestialMotions, displayTime, fo.r, focusPos)
+      selectShadowBodies(sources.map((source) => source.motion), displayTime, fo.r, focusPosition)
         .map((body, slot): ShadowBody => {
           const shape = this.shadowBodyShapes[slot]!;
           const axes = shapeAxes(body.def.radius, shapeOf(body.def));
@@ -132,32 +131,36 @@ export class CelestialIllumination {
           writeBodyFromWorld(shape.bodyFromWorld, body, displayTime);
           return { center: fo.RtoThreeV3(body.positionAt(displayTime)), ...shape };
         }));
-    this.syncRingShadow(fo, displayTime, graphics);
-    this.syncCumulusShadow(fo, displayTime, graphics);
+    this.syncRingShadow(sources, fo, displayTime, graphics);
+    this.syncCumulusShadow(sources, fo, displayTime, graphics);
   }
 
   // 積雲の殻を持つ天体を影パスへ渡す。持つ天体が無いか、雲そのものか雲の影を切る設定なら
   // 源ごと切る。
   private syncCumulusShadow(
-    fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData,
+    sources: readonly CelestialIlluminationSource[], fo: FloatingOrigin, displayTime: number,
+    graphics: GraphicsSettingsData,
   ): void {
     const casters = castsCumulusShadow(graphics)
-      ? this.entities.flatMap((body) => body.view.cumulusShadowAt(body.motion, fo, displayTime) ?? [])
+      ? sources.flatMap((source) => source.view.cumulusShadowAt(source.motion, fo, displayTime) ?? [])
       : [];
     this.targets.cumulusShadow.set(casters[0] ?? null);
   }
 
   // 環を持つ天体を候補として選定へ回し、選ばれた1体の帯を影パスへ渡す。選ばれなければ
   // 帯を空にする(影は落ちない)。
-  private syncRingShadow(fo: FloatingOrigin, displayTime: number, graphics: GraphicsSettingsData): void {
+  private syncRingShadow(
+    sources: readonly CelestialIlluminationSource[], fo: FloatingOrigin, displayTime: number,
+    graphics: GraphicsSettingsData,
+  ): void {
     // 環を持つ天体を候補に組む(ECI)。
-    const candidates = this.entities.flatMap((body): RingShadowCandidate[] => {
-      const rings = body.view.rings(body.motion);
+    const candidates = sources.flatMap((source): RingShadowCandidate[] => {
+      const rings = source.view.rings(source.motion);
       if (rings === null) return [];
       return [{
-        center: body.motion.stateAt(displayTime).r,
-        axis: body.motion.orientationAt(displayTime)?.axis ?? null,
-        radius: body.motion.def.radius,
+        center: source.motion.stateAt(displayTime).r,
+        axis: source.motion.orientationAt(displayTime)?.axis ?? null,
+        radius: source.motion.def.radius,
         bands: rings.bands.map((band) => ({
           innerRadius: band.innerRadius,
           outerRadius: band.outerRadius,
@@ -180,14 +183,14 @@ export class CelestialIllumination {
 
   // 大気パスへ、このフレームに大気を描く天体とそのサンプル点の数を渡す。
   private syncAtmosphere(
-    displayTime: number, camera: CameraFrame,
-    graphics: GraphicsSettingsData, visibilityPolicy: MapVisibilityPolicy | null,
+    sources: readonly CelestialIlluminationSource[], displayTime: number, camera: CameraFrame,
+    graphics: GraphicsSettingsData,
   ): void {
     const scale = camera.radialScale;
-    const candidates = this.entities.flatMap((body) => {
-      if (visibilityPolicy !== null && !visibilityPolicy.body(body.id).category) return [];
-      const candidate = body.view.atmosphereCandidateAt(
-        body.motion, camera.floatingOrigin, displayTime, camera.position, scale, graphics);
+    const candidates = sources.flatMap((source) => {
+      if (!source.visible) return [];
+      const candidate = source.view.atmosphereCandidateAt(
+        source.motion, camera.floatingOrigin, displayTime, camera.position, scale, graphics);
       return candidate === null ? [] : [candidate];
     });
     this.targets.atmosphere.setDraws(atmosphereDraws(candidates, graphics.atmosphere));

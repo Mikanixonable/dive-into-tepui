@@ -5,7 +5,7 @@ import { qInvert, qRotate, type Quat } from '../../math/quat';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { linearSphereContact } from '../../physics/sphere-contact';
 import type { SphereHit } from '../../math/triangle-mesh';
-import type { ProteinBackboneAsset } from '../../render/protein-enemy-ship';
+import type { ProteinBackboneAsset } from '../../render/protein/protein-render-definition';
 
 // 主鎖の折れ線を覆うのに要る余裕 [Å]。表示リボンの断面(半幅 1.0・半厚 0.16)の半対角で、
 // coil の管の半径 0.38 より大きいのでこれで両方を覆う。

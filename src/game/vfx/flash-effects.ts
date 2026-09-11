@@ -1,173 +1,108 @@
-// 爆発・マズルフラッシュなどの一時エフェクト。寿命のあいだ発生源の速度で移流しながら、
-// ビルボードとして描かれる。
-import * as THREE from 'three/webgpu';
+// 爆発・マズルフラッシュなどの一時エフェクトの発生と寿命。生きているあいだ発生源の速度で
+// 移流させ、寿命が尽きたものを列から落とす。1件が何を示す閃光かは種別として持つ。
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { addScaled } from '../../math/vec3';
-import { flashResources } from '../../render/billboard';
-import { InstancedPool } from '../../render/instanced-pool';
-import { FloatingOrigin } from '../../render/camera/floating-origin';
-import {
-  BULLET_IMPACT_FLASH_COLOR, BULLET_IMPACT_FLASH_DURATION, BULLET_IMPACT_FLASH_SIZE0,
-  BULLET_IMPACT_FLASH_SIZE1, DESTROY_FLASH1_DURATION, DESTROY_FLASH1_SIZE0, DESTROY_FLASH1_SIZE1,
-  DESTROY_FLASH2_DURATION, DESTROY_FLASH2_SIZE0, DESTROY_FLASH2_SIZE1, DESTROY_FLASH_COLOR_1,
-  DESTROY_FLASH_COLOR_2, GAS_PUFF1_BRIGHTNESS, GAS_PUFF1_DURATION, GAS_PUFF1_SIZE0,
-  GAS_PUFF1_SIZE1, GAS_PUFF2_BRIGHTNESS, GAS_PUFF2_DURATION, GAS_PUFF2_SIZE0, GAS_PUFF2_SIZE1,
-  GAS_PUFF_COLOR_1, GAS_PUFF_COLOR_2, MUZZLE_FLASH_COLOR, MUZZLE_FLASH_DURATION,
-  MUZZLE_FLASH_SIZE0, MUZZLE_FLASH_SIZE1, PLASMA_IMPACT_FLASH_COLOR,
-  PLASMA_IMPACT_FLASH_DURATION, PLASMA_IMPACT_FLASH_SIZE0, PLASMA_IMPACT_FLASH_SIZE1,
-} from '../../render/vfx-style';
 
-const ZOOM_MUZZLE_FLASH_SCALE = 0.02; // ズーム中のマズルフラッシュ最大不透明度倍率(完全には消さない)
+// 種別ごとの寿命 [s]。
+const BULLET_IMPACT_FLASH_DURATION = 0.25;
+const PLASMA_IMPACT_FLASH_DURATION = 0.3;
+const MUZZLE_FLASH_DURATION = 0.07;
+const DESTROY_FLASH1_DURATION = 1.1;
+const DESTROY_FLASH2_DURATION = 0.5;
+const GAS_PUFF1_DURATION = 0.45;
+const GAS_PUFF2_DURATION = 0.35;
+const PROTEIN_STATE_FLASH_DURATION = 0.34;
 
-const MAX_FLASHES = 128; // 同時に存在しうるフラッシュ(発砲・命中・撃破・ガス)の上限。超過分は描画されない
+// フラッシュの種別。どの出来事を示す閃光かを表し、見え方はこれで決まる。
+export type FlashKind =
+  | 'bulletImpact'
+  | 'plasmaImpact'
+  | 'muzzle'
+  | 'destroy1'
+  | 'destroy2'
+  | 'gasPuff1'
+  | 'gasPuff2'
+  | 'proteinCritical'
+  | 'proteinDissociated'
+  | 'proteinDamaged';
 
-// 生存中のフラッシュ1件を InstancedPool へ積むための姿勢と色の置き場所。
-const scratchTransform = new THREE.Object3D();
-const scratchColor = new THREE.Color();
-
-// 一時エフェクト1件。軌道速度で流れて見えないよう、時刻つきの state を持ち、発生源の
-// 速度で現在の simTime まで移流させる。
-interface FlashEffect {
-  readonly baseColor: string | number;
-  state: KinematicState;
-  age: number;
-  readonly duration: number;
-  readonly size0: number;
-  readonly size1: number;
-  readonly peakBrightness: number; // 発生直後の最大の明るさ倍率
-  readonly dimsInGunsight: boolean; // ガンサイトズーム中に減光するか
+// 生きている一時エフェクト1件。
+export interface FlashEffect {
+  readonly kind: FlashKind;
+  // 発生位置・発生源速度と、その位置が表す時刻。
+  readonly state: KinematicState;
+  readonly age: number; // 発生からの経過 [s]
+  readonly duration: number; // 消えるまでの寿命 [s]
+  readonly sizeScale: number; // 見た目の大きさに掛かる倍率
 }
 
 export class FlashEffects {
   private effects: FlashEffect[] = [];
-  private readonly pool: InstancedPool;
-  private readonly geometry: THREE.BufferGeometry;
-  private readonly material: THREE.Material;
 
-  // フラッシュ用のインスタンス群を scene へ1つ置く。
-  constructor(scene: THREE.Scene) {
-    const { geometry, material } = flashResources();
-    this.geometry = geometry;
-    this.material = material;
-    // Billboard の既定 renderOrder(5)に合わせる。
-    this.pool = new InstancedPool(scene, geometry, material, MAX_FLASHES, true, 5);
+  // いま生きているエフェクト。spawn した順に並ぶ。
+  public get live(): readonly FlashEffect[] {
+    return this.effects;
   }
 
-  // 経過時間を進めて各エフェクトを simTime まで移流させ、寿命切れのものを破棄する。
-  update(dt: number, simTime: number): void {
-    this.effects = this.effects.filter((fx) => {
-      fx.age += dt;
-      if (fx.age >= fx.duration) return false;
-      const s = fx.state;
-      fx.state = kinematicState<'eci'>(simTime, addScaled(s.r, s.v, simTime - s.t), s.v);
-      return true;
-    });
-  }
-
-  // 生存中のフラッシュを現在の位置・寿命進捗・カメラ向きへ同期し、InstancedPool へ積む。
-  // zoomActive はガンサイトズーム中かどうか(dimsInGunsight なフラッシュだけ減光する)。
-  sync(fo: FloatingOrigin, activeCamera: THREE.Camera, zoomActive: boolean): void {
-    this.pool.beginFrame();
-    const camQuat = activeCamera.quaternion;
+  // 経過時間を進めて各エフェクトを simTime まで移流させ、寿命の尽きたものを落とす。
+  public update(dt: number, simTime: number): void {
+    const live: FlashEffect[] = [];
     for (const fx of this.effects) {
-      const t = fx.age / fx.duration;
-      const size = fx.size0 + (fx.size1 - fx.size0) * Math.sqrt(t);
-      const zoomScale = zoomActive && fx.dimsInGunsight ? ZOOM_MUZZLE_FLASH_SCALE : 1;
-      const brightness = fx.peakBrightness * (1 - t) * zoomScale;
-      scratchTransform.position.copy(fo.RtoThreeV3(fx.state.r));
-      scratchTransform.scale.setScalar(size);
-      scratchTransform.quaternion.copy(camQuat);
-      // **明るさは色に載せ、不透明度は 1 のままにする**(render/billboard.ts と同じ規約)。
-      // 加算ブレンドでは 最終色 = テクスチャ × material.color × instanceColor なので、
-      // 寿命による減衰も instanceColor 一本へ畳める。
-      scratchColor.set(fx.baseColor).multiplyScalar(brightness);
-      this.pool.push(scratchTransform, scratchColor);
+      const age = fx.age + dt;
+      if (age >= fx.duration) continue;
+      // 軌道速度で流れて見えないよう、発生源の速度で現在の simTime まで運ぶ。
+      const s = fx.state;
+      const state = kinematicState<'eci'>(simTime, addScaled(s.r, s.v, simTime - s.t), s.v);
+      live.push({ kind: fx.kind, state, age, duration: fx.duration, sizeScale: fx.sizeScale });
     }
-    this.pool.endFrame();
-  }
-
-  // flashResources() が個体ごとに新規生成する geometry/material を、プールと共に破棄する。
-  dispose(): void {
-    this.pool.dispose();
-    this.geometry.dispose();
-    this.material.dispose();
-    this.effects.length = 0;
+    this.effects = live;
   }
 
   // プラズマ弾命中フラッシュを生成する。
-  spawnPlasmaFlash(state: KinematicState): void {
-    this.spawnFlash(state,
-      PLASMA_IMPACT_FLASH_SIZE0,
-      PLASMA_IMPACT_FLASH_SIZE1,
-      PLASMA_IMPACT_FLASH_DURATION,
-      PLASMA_IMPACT_FLASH_COLOR);
+  public spawnPlasmaFlash(state: KinematicState): void {
+    this.spawn(state, 'plasmaImpact', PLASMA_IMPACT_FLASH_DURATION);
   }
 
   // 実弾命中フラッシュを生成する。
-  spawnBulletFlash(state: KinematicState): void {
-    this.spawnFlash(state,
-      BULLET_IMPACT_FLASH_SIZE0,
-      BULLET_IMPACT_FLASH_SIZE1,
-      BULLET_IMPACT_FLASH_DURATION,
-      BULLET_IMPACT_FLASH_COLOR);
+  public spawnBulletFlash(state: KinematicState): void {
+    this.spawn(state, 'bulletImpact', BULLET_IMPACT_FLASH_DURATION);
   }
 
   // 自機の撃破フラッシュ。芯と外殻の2枚を重ねる。
-  spawnPlayerDestroyFlash(state: KinematicState): void {
-    this.spawnFlash(state, DESTROY_FLASH1_SIZE0, DESTROY_FLASH1_SIZE1, DESTROY_FLASH1_DURATION, DESTROY_FLASH_COLOR_1);
-    this.spawnFlash(state, DESTROY_FLASH2_SIZE0, DESTROY_FLASH2_SIZE1, DESTROY_FLASH2_DURATION, DESTROY_FLASH_COLOR_2);
+  public spawnPlayerDestroyFlash(state: KinematicState): void {
+    this.spawn(state, 'destroy1', DESTROY_FLASH1_DURATION);
+    this.spawn(state, 'destroy2', DESTROY_FLASH2_DURATION);
   }
 
   // 敵機の撃破フラッシュ。芯と外殻の2枚を、機体メッシュのスケール meshScale へ見合った
   // 大きさで重ねる。
-  spawnEnemyDestroyFlash(state: KinematicState, meshScale: number): void {
-    this.spawnFlash(
-      state, DESTROY_FLASH1_SIZE0 * meshScale, DESTROY_FLASH1_SIZE1 * meshScale,
-      DESTROY_FLASH1_DURATION, DESTROY_FLASH_COLOR_1);
-    this.spawnFlash(
-      state, DESTROY_FLASH2_SIZE0 * meshScale, DESTROY_FLASH2_SIZE1 * meshScale,
-      DESTROY_FLASH2_DURATION, DESTROY_FLASH_COLOR_2);
+  public spawnEnemyDestroyFlash(state: KinematicState, meshScale: number): void {
+    this.spawn(state, 'destroy1', DESTROY_FLASH1_DURATION, meshScale);
+    this.spawn(state, 'destroy2', DESTROY_FLASH2_DURATION, meshScale);
   }
 
   // 気体が噴き出すエフェクト。大きさと色の違う2枚のパフを重ねる。
-  spawnGasPuff(state: KinematicState): void {
-    this.spawnFlash(state, GAS_PUFF1_SIZE0, GAS_PUFF1_SIZE1, GAS_PUFF1_DURATION, GAS_PUFF_COLOR_1, GAS_PUFF1_BRIGHTNESS);
-    this.spawnFlash(state, GAS_PUFF2_SIZE0, GAS_PUFF2_SIZE1, GAS_PUFF2_DURATION, GAS_PUFF_COLOR_2, GAS_PUFF2_BRIGHTNESS);
+  public spawnGasPuff(state: KinematicState): void {
+    this.spawn(state, 'gasPuff1', GAS_PUFF1_DURATION);
+    this.spawn(state, 'gasPuff2', GAS_PUFF2_DURATION);
   }
 
-  // マズルフラッシュを生成する(ガンサイトズーム中は減光される)。
-  spawnMuzzleFlash(state: KinematicState): void {
-    this.spawnFlash(
-      state,
-      MUZZLE_FLASH_SIZE0,
-      MUZZLE_FLASH_SIZE1,
-      MUZZLE_FLASH_DURATION,
-      MUZZLE_FLASH_COLOR,
-      1,
-      true,
-    );
+  // マズルフラッシュを生成する。
+  public spawnMuzzleFlash(state: KinematicState): void {
+    this.spawn(state, 'muzzle', MUZZLE_FLASH_DURATION);
   }
 
-  // タンパク質の状態遷移フラッシュ。kind('critical' / 'dissociated' / その他)で色を分ける。
-  spawnProteinStateFlash(state: KinematicState, kind: string): void {
-    const color = kind === 'critical' ? 0xff3d88 : kind === 'dissociated' ? 0xa76dff : 0x59e7ff;
-    this.spawnFlash(state, 2.5, 13, 0.34, color, 0.9, true);
+  // タンパク質の状態遷移フラッシュ。示す状態('critical' / 'dissociated' / それ以外の損傷)で
+  // 種別を分ける。
+  public spawnProteinStateFlash(state: KinematicState, proteinState: string): void {
+    const kind = proteinState === 'critical' ? 'proteinCritical'
+      : proteinState === 'dissociated' ? 'proteinDissociated' : 'proteinDamaged';
+    this.spawn(state, kind, PROTEIN_STATE_FLASH_DURATION);
   }
 
   // state は発生位置・発生源速度と、その位置が表す時刻(エポック)。積分前の座標から
   // 生成する場合も、その座標の時刻をそのまま渡せば取り残されない。
-  spawnFlash(
-    state: KinematicState,
-    size0: number,
-    size1: number,
-    duration: number,
-    color: string | number,
-    peakBrightness = 1,
-    dimsInGunsight = false,
-  ): void {
-    this.effects.push({
-      baseColor: color,
-      state, age: 0, duration, size0, size1, peakBrightness, dimsInGunsight,
-    });
+  private spawn(state: KinematicState, kind: FlashKind, duration: number, sizeScale = 1): void {
+    this.effects.push({ kind, state, age: 0, duration, sizeScale });
   }
 }

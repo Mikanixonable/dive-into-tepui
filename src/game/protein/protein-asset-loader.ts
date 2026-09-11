@@ -1,9 +1,13 @@
-import type { ProteinBackboneAsset } from '../../render/protein-enemy-ship';
-import { assertProteinDisplayAsset, type ProteinDisplayAsset } from './protein-display-asset';
+import { assertProteinDisplayAsset } from '../../render/protein/protein-display-asset';
+import { createProteinRenderDefinition } from '../../render/protein/protein-render-definition';
 import {
   validateProteinAsset, validateProteinMotionAsset, type ProteinAssetDefinition, type ProteinMotionAsset,
 } from './protein-schema';
 import { PROTEIN_ASSET_SOURCES } from './protein-asset-catalog.generated';
+import type { ProteinDisplayAsset } from '../../render/protein/protein-display-asset';
+import type {
+  ProteinBackboneAsset, ProteinRenderDefinition, ProteinRenderSource,
+} from '../../render/protein/protein-render-definition';
 
 export { PROTEIN_ASSET_SOURCES };
 
@@ -17,11 +21,17 @@ export interface ProteinAssetSource {
   readonly expectedPdbId: string;
 }
 
-export interface ProteinAssetBundle {
-  readonly semantic: ProteinAssetDefinition;
-  readonly backbone: ProteinBackboneAsset;
-  readonly structure: ProteinDisplayAsset;
+/** 意味論と判定形状が読む、1体ぶんの定義。 */
+export interface ProteinSemanticSource {
+  readonly asset: ProteinAssetDefinition;
   readonly motion: ProteinMotionAsset;
+  readonly backbone: ProteinBackboneAsset;
+}
+
+/** 検証済みの1体ぶんを、意味論・判定が読む面と表示が読む面へ分けて束ねたもの。 */
+export interface ProteinAssetBundle {
+  readonly semantic: ProteinSemanticSource;
+  readonly render: ProteinRenderSource;
 }
 
 const PROTEIN_ASSETS = Object.fromEntries(
@@ -67,7 +77,10 @@ export function buildProteinAssetBundle(
   const backboneHash = (backbone as ProteinBackboneAsset & { readonly contentHash?: string }).contentHash;
   if (motion.source.structureHash !== structureHash) throw new Error('Protein motion ' + expectedId + ' structure hash mismatch');
   if (motion.source.backboneHash !== backboneHash) throw new Error('Protein motion ' + expectedId + ' backbone hash mismatch');
-  return { semantic, backbone, structure, motion };
+  return {
+    semantic: { asset: semantic, motion, backbone },
+    render: { semantic, motion, backbone, structure },
+  };
 }
 
 // 主鎖・構造・モーションを取得してから検証する。
@@ -119,4 +132,19 @@ export function proteinAssetGate(id: ProteinAssetId): () => boolean {
 // 準備が整っている bundle だけを同期的に返す。未取得・取得中は null。
 export function proteinAssetBundleFor(id: string): ProteinAssetBundle | null {
   return resolvedProteinAssetBundles.get(id as ProteinAssetId) ?? null;
+}
+
+// 表示定義は束ねたアセットと同じ寿命で使い回す。組み立ての手順そのものは asset ごとに1つでよい。
+const proteinRenderDefinitions = new Map<ProteinAssetId, ProteinRenderDefinition>();
+
+/** id の表示定義。アセットが未取得なら null。 */
+export function proteinRenderDefinitionFor(id: string): ProteinRenderDefinition | null {
+  const assetId = id as ProteinAssetId;
+  const cached = proteinRenderDefinitions.get(assetId);
+  if (cached) return cached;
+  const bundle = proteinAssetBundleFor(assetId);
+  if (!bundle) return null;
+  const definition = createProteinRenderDefinition(bundle.render);
+  proteinRenderDefinitions.set(assetId, definition);
+  return definition;
 }

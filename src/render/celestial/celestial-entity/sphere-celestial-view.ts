@@ -15,7 +15,7 @@ import type { Albedo } from '../../celestial-albedo';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 import type { RenderStyle } from '../../render-style';
 import type { RingMaterials } from '../ring';
-import { CelestialView, type StellarLightSource } from './celestial-view';
+import { CelestialView, type DefinedCelestialBody, type StellarLightSource } from './celestial-view';
 import { RingView } from '../ring-view';
 
 export class SphereCelestialView extends CelestialView {
@@ -36,7 +36,7 @@ export class SphereCelestialView extends CelestialView {
   public get lightSourceAlbedo(): Albedo | null { return this.surface.photometry?.lightSourceAlbedo ?? null; }
   public get surfaceTextureUrl(): string | null { return this.surface.textureUrl; }
   // 定義に環がある天体だけ、その固定定義を返す。
-  public override rings(motion: CelestialMotion): RingSystemDef | null {
+  public override rings(motion: DefinedCelestialBody): RingSystemDef | null {
     return 'rings' in motion.def ? motion.def.rings ?? null : null;
   }
 
