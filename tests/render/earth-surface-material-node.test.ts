@@ -2,12 +2,12 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import {
-  configureEarthSurfaceTexture,
   earthSurfaceDetailLodNode,
   earthSurfaceTileUvNode,
   earthSurfaceMaterialNodes,
   earthSurfaceMaterialCapabilities,
 } from '../../src/render/earth-surface-material-node';
+import { configureEarthSurfaceTexture } from '../../src/render/earth-surface-texture';
 import { float, uniform, vec2, vec3 } from 'three/tsl';
 import { containsShaderNode, evaluateShaderNode } from './tsl-node-evaluator';
 
