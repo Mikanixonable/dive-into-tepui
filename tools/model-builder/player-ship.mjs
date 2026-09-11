@@ -4,13 +4,8 @@ import { importTsDataModule } from '../compile-source.mjs';
 import { F0_BURNT_STEEL, F0_STEEL, std } from './materials.mjs';
 
 const { RCS_NOZZLES } = await importTsDataModule('src/render/rcs-nozzles.ts');
-const { RADIATOR_HINGE } = await importTsDataModule('src/physics/player-shape.ts');
-
-// 機関砲の銃口位置(機体座標系、前面に縦に並んだ 2 つの大きな短い穴)。
-const MUZZLE_OFFSETS = [
-  { x: 0, y: 0.55, z: 2.55 },
-  { x: 0, y: -0.55, z: 2.55 },
-];
+const { PLAYER_MUZZLE_OFFSETS, RADIATOR_HINGE, RADIATOR_SEGMENT_LENGTH } =
+  await importTsDataModule('src/physics/player-shape.ts');
 
 // 自機: テーパードハル + 突き出した砲身 + ベルノズルエンジン + 大型ソーラーパネル
 // コックピット窓・アンテナ・アーマーストリップを追加してリッチ化。
@@ -71,7 +66,7 @@ export function buildPlayerShip() {
   const rimMat     = std(F0_STEEL, { metalness: 1, roughness: 0.28 });
   const barrelMat  = std(F0_BURNT_STEEL, { metalness: 1, roughness: 0.40 });
 
-  for (const m of MUZZLE_OFFSETS) {
+  for (const m of PLAYER_MUZZLE_OFFSETS) {
     // ハル内部を通る砲身チューブ(z=0.0 〜 z=2.45)
     const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.28, 2.0, 10), barrelMat);
     barrel.rotation.x = Math.PI / 2;
@@ -203,7 +198,6 @@ export function buildPlayerShip() {
   const radiatorMat = std(0xdde3ea, { roughness: 0.8 });
   const radiatorSkeletonMat = std(F0_BURNT_STEEL, { metalness: 1, roughness: 0.55 });
   const RADIATOR_FOLD_COUNT = 6;
-  const RADIATOR_SEG = (2.3 * 4) / RADIATOR_FOLD_COUNT; // 全長を変えない
   const RADIATOR_WIDTH = 2.3 / 4; // 大きさを1/4に
   const RADIATOR_STACK_NUDGE = 0.012; // 収納時に折り目同士が同一平面へ重なる際の Z ファイティング回避
   const RADIATOR_SKELETON_OFFSET = 0.04; // 骨格を放熱面の反対側へ張り出す量
@@ -220,12 +214,12 @@ export function buildPlayerShip() {
       const fold = new THREE.Group();
       fold.name = `${baseName}Fold${i}`;
       // 次の折り目は側面の外向き(up:+X、down:-X)へローカル X で積み重なる。
-      if (i > 0) fold.position.set(sx * RADIATOR_SEG, 0, 0);
+      if (i > 0) fold.position.set(sx * RADIATOR_SEGMENT_LENGTH, 0, 0);
       parent.add(fold);
 
       // 放熱面: 回転中心(折り目)がセグメントの根元に来るよう、板は半分先(次の折り目と同じ向き)へずらす。
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(RADIATOR_SEG, RADIATOR_WIDTH, 0.04), radiatorMat);
-      panel.position.set(sx * RADIATOR_SEG / 2, 0, i * RADIATOR_STACK_NUDGE);
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(RADIATOR_SEGMENT_LENGTH, RADIATOR_WIDTH, 0.04), radiatorMat);
+      panel.position.set(sx * RADIATOR_SEGMENT_LENGTH / 2, 0, i * RADIATOR_STACK_NUDGE);
       fold.add(panel);
 
       // 骨格: 放熱面と逆位相(偶数折りは +Z、奇数折りは -Z)に張り出す細材2本。
@@ -233,8 +227,8 @@ export function buildPlayerShip() {
       for (const wy of [-1, 1]) {
         // 骨格が板の端に来るように移動
         const rodY = wy * (RADIATOR_WIDTH / 2 - 0.04);
-        const rod = new THREE.Mesh(new THREE.BoxGeometry(RADIATOR_SEG, 0.08, 0.08), radiatorSkeletonMat);
-        rod.position.set(sx * RADIATOR_SEG / 2, rodY, skeletonZ);
+        const rod = new THREE.Mesh(new THREE.BoxGeometry(RADIATOR_SEGMENT_LENGTH, 0.08, 0.08), radiatorSkeletonMat);
+        rod.position.set(sx * RADIATOR_SEGMENT_LENGTH / 2, rodY, skeletonZ);
         fold.add(rod);
       }
 
