@@ -7,26 +7,25 @@ import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { ProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
 import { hudRail } from '../hud/hud-root';
 import { isPlayer } from '../player/player';
-import { DEFAULT_PROTEIN_DISPLAY, type ProteinDisplaySettings } from '../protein/protein-display';
+import { DEFAULT_PROTEIN_DISPLAY, type ProteinDisplaySettings } from '../../render/protein/protein-display';
 import { WaveAttack } from './stage-utils/wave-attack';
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { CameraSystem } from '../camera/camera-system';
-import type { FloatingOrigin } from '../camera/floating-origin';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
 
 export class CreativeStage extends Stage {
-  static readonly id = 'creative' as const;
-  static readonly epoch = STORY_EPOCH;
+  public static readonly id = 'creative' as const;
+  public static readonly epoch = STORY_EPOCH;
   // 開始日時の指定画面を挟む(SPEC GAME.md 9.0)。epoch はその欄の既定値になる。
-  static readonly picksStartEpoch = true;
-  static readonly selectLabel = 'CREATIVE';
-  static readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
-  static readonly selectGroup = 'クリエイティブモード';
-  static readonly selectKeys: string[] = [];
-  readonly executesPlans = true;
-  readonly authoring: ObjectAuthoring;
+  public static readonly picksStartEpoch = true;
+  public static readonly selectLabel = 'CREATIVE';
+  public static readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
+  public static readonly selectGroup = 'クリエイティブモード';
+  public static readonly selectKeys: string[] = [];
+  public readonly executesPlans = true;
+  public readonly authoring: ObjectAuthoring;
 
   private readonly objectPlacement: ObjectPlacement;
   private readonly manualSpawn: ManualSpawn;
@@ -37,13 +36,13 @@ export class CreativeStage extends Stage {
   private waveAttackEnabled: boolean;
 
   // ステージ開始時に出すブリーフィングの本文(HTML)。
-  briefingHtml(): string {
+  protected briefingHtml(): string {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
   }
 
   // 配置・手動スポーンとステージ操作パネルを組み、保存データがあればそこから状態を戻す。
   // saved の型が StageSaveData なのは、復元の構築シグネチャを全ステージで揃えるため。
-  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+  public constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     const savedCreative = saved as CreativeStageSaveData | undefined;
 
@@ -152,20 +151,20 @@ export class CreativeStage extends Stage {
   }
 
   // 共通のステータス表示に加えて、ステージ操作パネルと配置プレビューを同期する。
-  sync(
-    fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number,
+  public sync(
+    camera: CameraFrame, displayTime: number,
   ): void {
-    super.sync(fo, cameraSystem, displayTime);
+    super.sync(camera, displayTime);
     const ship = this.ship;
     this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.motion.alive);
-    this.mountStageControlsPanel(cameraSystem.view === 'map');
-    this.objectPlacement.sync(fo, cameraSystem, displayTime);
+    this.mountStageControlsPanel(camera.mode === 'map');
+    this.objectPlacement.sync(camera, displayTime);
     this.stageControlsPanel.element.classList.remove('hidden');
   }
 
   // 補給の投入と波状攻撃を進める。波状攻撃のトグルが決めるのは新しいウェーブが出るかどうかで、
   // OFF にしても既に出ている敵は残る。
-  update(dt: number, simTime: number, simSpeed: SimSpeedManager): void {
+  public update(dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (player) {
       this.logistics.updateLogistics(simTime, player, simSpeed, true);
@@ -179,7 +178,7 @@ export class CreativeStage extends Stage {
 
   // 'instant' の艦が次に消化するノードの時刻。積分をその時刻ちょうどで切らせるために返す。
   // 待っているノードが1つも無ければ null。
-  nextSimulationEventTime(simTime: number): number | null {
+  public nextSimulationEventTime(simTime: number): number | null {
     let next: number | null = null;
     for (const ship of this._dynamicSystem.all().filter(isPlayer)) {
       const t = ship.planExecution === 'instant' ? ship.plan.firstNode()?.t : undefined;
@@ -189,7 +188,7 @@ export class CreativeStage extends Stage {
   }
 
   // ノード時刻ちょうどでノードの絶対状態へ乗り移る。
-  applySimulationEvents(simTime: number): void {
+  public applySimulationEvents(simTime: number): void {
     for (const ship of this._dynamicSystem.all().filter(isPlayer)) {
       if (ship.planExecution !== 'instant') continue;
       const node = ship.plan.firstNode();
@@ -208,29 +207,29 @@ export class CreativeStage extends Stage {
   }
 
   // 勝利条件を持たないモードなので、常に false。
-  checkWin(): boolean {
+  protected checkWin(): boolean {
     return false;
   }
 
   // 艦を喪失したことを、トーストで知らせる。
-  recordPlayerLost(reason: string): void {
+  public recordPlayerLost(reason: string): void {
     this._hud.hint(reason);
   }
 
   // ステータス表示の副題に出す文字列。
-  hudSubStatus(): string {
+  protected hudSubStatus(): string {
     return this.waveAttackEnabled ? '波状攻撃: ON' : 'クリエイティブ';
   }
 
   // このステージが持つ表示物とパネルを片付ける。
-  dispose(): void {
+  public dispose(): void {
     super.dispose();
     this.objectPlacement.dispose();
     this.stageControlsPanel.element.remove();
   }
 
   // 共通のステージ保存データへ、波状攻撃のトグルと進行状況を足して返す。
-  serialize(): CreativeStageSaveData {
+  public serialize(): CreativeStageSaveData {
     return {
       ...super.serialize(),
       waveAttackEnabled: this.waveAttackEnabled,

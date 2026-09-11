@@ -1,6 +1,9 @@
 // ブースター段の剛体形状を、機体の長手方向をローカル Z 軸として定義する。
+// 他モジュールを import してはならない — tools/model-builder/ がこのファイルを
+// TypeScript のまま transpile して読み込む。
 export const BOOSTER_MOUNT_Z = -4.0; // 船体中心から最初の段の前端まで [m]
 
+// 段1本の寸法 [m]。Z は段前端(前側継手の位置)を原点とする段ローカル座標。
 export const BOOSTER_STAGE_DIMENSIONS = Object.freeze({
   frontZ: 0.08,
   aftZ: -7.92,
