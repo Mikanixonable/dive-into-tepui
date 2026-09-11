@@ -55,14 +55,14 @@ function fixtureSource() {
 
 function fixtureManifest(sourceManifestSha256) {
   return {
-    schemaVersion: 1, datasetId: DEFAULT_DATASET, sourceManifestSha256,
+    schemaVersion: 2, datasetId: DEFAULT_DATASET, sourceManifestSha256,
     sourceManifest: 'sources.json', provenance: { generator: 'pages-fixture/1' },
     terrainEncoding: { formatVersion: EARTH_TERRAIN_FORMAT_VERSION, layout: EARTH_TERRAIN_LAYOUT,
       width: 260, height: 260, channels: EARTH_TERRAIN_CHANNELS, scalar: 'UInt8',
       materialClasses: { water: 0, land: 1, ice: 2, unknown: 255 } },
     climateMap: { width: 1024, height: 512, channels: 4, scalar: 'UInt8' },
     controlRegions: Array.from({ length: 16 }, (_, index) => ({ id: `region-${index}`, west: -180, south: -80, east: 180, north: 80 })),
-    coverage: { kind: 'sparse', maxZoom: 7 }, baseColor: 'base/earth.jpg',
+    coverage: { kind: 'sparse', minZoom: 4, maxZoom: 7, expectedTiles: null }, baseColor: 'base/earth.jpg',
     baseTerrain: 'base/earth.bin.gz', tileIndexUrl: 'tile-index.json',
     climateMaps: Array.from({ length: 12 }, (_, index) => `climate/${String(index + 1).padStart(2, '0')}.png`),
     climateEncoding: {
@@ -78,22 +78,22 @@ async function createFixtureBundle(root) {
   const source = fixtureSource();
   const sourceHash = canonicalSha256(source);
   const manifest = fixtureManifest(sourceHash);
-  const terrain = terrainPayload(0, 0, 0);
+  const terrain = terrainPayload(4, 0, 0);
   const color = jpegFixture(260, 260);
-  const baseColor = jpegFixture(512, 256);
-  const entry = { key: '0/0/0', z: 0, x: 0, y: 0,
-    color: { url: 'tiles/0/0/0.jpg', sha256: createHash('sha256').update(color).digest('hex'), encodedBytes: color.length, payloadBytes: color.length },
-    terrain: { url: 'tiles/0/0/0.bin.gz', sha256: createHash('sha256').update(terrain).digest('hex'), encodedBytes: gzipSync(terrain, { mtime: 0 }).length, payloadBytes: terrain.length } };
+  const baseColor = jpegFixture(8192, 4096);
+  const entry = { key: '4/0/0', z: 4, x: 0, y: 0,
+    color: { url: 'tiles/4/0/0.jpg', sha256: createHash('sha256').update(color).digest('hex'), encodedBytes: color.length, payloadBytes: color.length },
+    terrain: { url: 'tiles/4/0/0.bin.gz', sha256: createHash('sha256').update(terrain).digest('hex'), encodedBytes: gzipSync(terrain, { mtime: 0 }).length, payloadBytes: terrain.length } };
   await mkdir(join(root, 'base'), { recursive: true });
   await mkdir(join(root, 'climate'), { recursive: true });
-  await mkdir(join(root, 'tiles/0/0'), { recursive: true });
+  await mkdir(join(root, 'tiles/4/0'), { recursive: true });
   await writeFile(join(root, 'sources.json'), `${JSON.stringify(source)}\n`);
   await writeFile(join(root, 'earth-surface.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   await writeFile(join(root, 'tile-index.json'), `${JSON.stringify({ schemaVersion: 2, datasetId: DEFAULT_DATASET, entries: [entry] }, null, 2)}\n`);
   await writeFile(join(root, 'base/earth.jpg'), baseColor);
   await writeFile(join(root, 'base/earth.bin.gz'), gzipSync(baseTerrain(), { mtime: 0 }));
-  await writeFile(join(root, 'tiles/0/0/0.jpg'), color);
-  await writeFile(join(root, 'tiles/0/0/0.bin.gz'), gzipSync(terrain, { mtime: 0 }));
+  await writeFile(join(root, 'tiles/4/0/0.jpg'), color);
+  await writeFile(join(root, 'tiles/4/0/0.bin.gz'), gzipSync(terrain, { mtime: 0 }));
   for (const [index, path] of manifest.climateMaps.entries()) {
     await writeFile(join(root, path), fixtureClimatePng(index));
   }
@@ -189,7 +189,7 @@ function rejectPartialProduction(shape, report, allowFixture) {
   if (allowFixture) return;
   const coverage = shape.manifest?.coverage;
   if (coverage?.kind !== 'complete') {
-    throw new Error(`Pages package is partial production coverage: max LOD ${report.maxLod ?? 'none'}, ${report.tileCount} tiles, expected complete z0-z7 coverage`);
+    throw new Error(`Pages package is partial production coverage: max LOD ${report.maxLod ?? 'none'}, ${report.tileCount} tiles, expected complete z4-z7 coverage`);
   }
   if (report.tileCount !== coverage.expectedTiles) {
     throw new Error(`Pages package is partial production coverage: max LOD ${report.maxLod ?? 'none'}, ${report.tileCount} tiles, expected ${coverage.expectedTiles}`);
@@ -207,7 +207,7 @@ async function receiptFor(root, manifest) {
   return { schemaVersion: 1, datasetId: manifest.datasetId, pagesPath: `earth-surface/${manifest.datasetId}`,
     manifestSha256: hashes.find((item) => item.path === 'earth-surface.json').sha256,
     sourceManifestSha256: manifest.sourceManifestSha256, files: hashes.length, totalBytes, treeSha256,
-    cachePolicy: { manifest: cacheControlForPages('earth-surface.json'), assets: cacheControlForPages('tiles/0/0/0.bin.gz') } };
+    cachePolicy: { manifest: cacheControlForPages('earth-surface.json'), assets: cacheControlForPages('tiles/4/0/0.bin.gz') } };
 }
 
 export async function checkPagesLayout(root, datasetId, options = {}) {

@@ -1,6 +1,7 @@
 // 地球タイルのGPU機能検査、非公開層への色・地形の書込みとフレーム境界での公開を担う。
 import {
   EARTH_BASE_LAYER, EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EARTH_TILE_MAX_Z,
+  EARTH_TILE_MIN_Z,
   earthTileId, earthTileParent,
 } from './earth-surface-tiles';
 import type { EarthTileKey, EarthTileResident } from './earth-surface-tiles';
@@ -139,7 +140,7 @@ export class EarthSurfaceGpuAdapter {
         continue;
       }
       const tile = this.requireUploaded(layer);
-      if (tile.key.z !== z) throw new Error('Earth page has the wrong tile level');
+      if (z < EARTH_TILE_MIN_Z || tile.key.z !== z) throw new Error('Earth page has the wrong tile level');
       const cell = offset / 4;
       const size = 2 ** (EARTH_TILE_MAX_Z - z);
       const cellX = cell % EARTH_PAGE_WIDTH;
