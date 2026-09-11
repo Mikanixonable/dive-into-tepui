@@ -85,23 +85,23 @@ export class BodyGraticule {
   private readonly line: THREE.LineSegments;
 
   // 共有ジオメトリ・共有マテリアルを参照する線オブジェクトを1つ作る。
-  constructor() {
+  public constructor() {
     this.line = new THREE.LineSegments(graticuleGeometry(), graticuleMaterial());
     markOverlay(this.line);
   }
 
   // 天体の姿勢を持つ group の子として置く。位置・スケール・自転姿勢は親から自動で継承する。
-  addTo(parent: THREE.Object3D): void {
+  public addTo(parent: THREE.Object3D): void {
     parent.add(this.line);
   }
 
   // グリッドの表示・非表示を切り替える。
-  setVisible(visible: boolean): void {
+  public setVisible(visible: boolean): void {
     this.line.visible = visible;
   }
 
   // line を親から外す。ジオメトリ・マテリアルは全天体で共有しているため解放しない。
-  dispose(): void {
+  public dispose(): void {
     this.line.removeFromParent();
   }
 }

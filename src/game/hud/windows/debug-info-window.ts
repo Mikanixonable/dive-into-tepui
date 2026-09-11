@@ -53,7 +53,7 @@ const RATE_COUNTS: readonly { key: string; label: string; group: string; read: (
 interface PhaseStats {
   sum: number;
   max: number;
-  samples: number[];
+  readonly samples: number[];
 }
 
 // 計測区間の累計・最大値・標本を空の状態で作る。

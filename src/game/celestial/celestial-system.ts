@@ -93,9 +93,9 @@ export class CelestialSystem implements CelestialBodies {
   private illumination!: CelestialIllumination;
   private readonly entitiesById: ReadonlyMap<string, CelestialEntity>;
   // 全登録天体の運動(entities と同じ宣言順)。
-  readonly celestialMotions: readonly CelestialMotion[];
+  public readonly celestialMotions: readonly CelestialMotion[];
   // 親を先に、その子を続けて並べた天体の列と、主星を 0 とする階層の深さ。
-  readonly orderedEntities: readonly { readonly entity: CelestialEntity; readonly depth: number }[];
+  public readonly orderedEntities: readonly { readonly entity: CelestialEntity; readonly depth: number }[];
   // 主星の個体。恒星を持たない星系では null。
   private readonly starEntity: CelestialEntity | null;
   private readonly stellarLightSource: StellarLightSource | null;
@@ -120,7 +120,7 @@ export class CelestialSystem implements CelestialBodies {
   // 組むのに使った初期位相で、セーブでそのまま返すために保持する。epoch は simTime=0 が指す絶対時刻。
   // pointFieldView は付随する小天体の点群(持たない星系では null)、ephemerisPoints は数値暦が
   // 収録している点の一覧。
-  constructor(
+  public constructor(
     public readonly entities: readonly CelestialEntity[],
     public readonly origin: CelestialEntity,
     private readonly phaseOffsets: PhaseOffsets,
@@ -151,7 +151,7 @@ export class CelestialSystem implements CelestialBodies {
   // シーンと、光源・影・大気の書き込み先(RenderPipeline が所有)を受け取り、全天体の
   // メッシュ・星野・グリッドをシーンへ登録する。1度だけ呼ぶ — update / sync はこの後でないと
   // 呼べない。
-  build(scene: THREE.Scene, illuminationTargets: IlluminationTargets): void {
+  public build(scene: THREE.Scene, illuminationTargets: IlluminationTargets): void {
     this.scene = scene;
     this.illumination = new CelestialIllumination(this.stellarLightSource, illuminationTargets);
     // 天体に付随する線・星野・グリッド。
@@ -170,24 +170,24 @@ export class CelestialSystem implements CelestialBodies {
   // ---------------------------------------------------------------- 天体の口
 
   // 天体 id の個体。未登録の id を渡すと例外になる。
-  entityOf(id: string): CelestialEntity {
+  public entityOf(id: string): CelestialEntity {
     const entity = this.entitiesById.get(id);
     if (entity === undefined) throw new Error(`CelestialSystem: 登録されていない天体 id: ${id}`);
     return entity;
   }
 
-  find(id: string): CelestialEntity | null { return this.entitiesById.get(id) ?? null; }
+  public find(id: string): CelestialEntity | null { return this.entitiesById.get(id) ?? null; }
 
-  has(id: string): boolean { return this.entitiesById.has(id); }
+  public has(id: string): boolean { return this.entitiesById.has(id); }
 
   // 天体 id の表示名。未登録の id はそのまま返す(架空天体のラベルを例外で止めない)。
-  nameOf(id: string): string { return this.entitiesById.get(id)?.name ?? id; }
+  public nameOf(id: string): string { return this.entitiesById.get(id)?.name ?? id; }
 
   // 主星の天体 id。恒星を持たない星系では null。
-  get starId(): string | null { return this.starEntity?.id ?? null; }
+  public get starId(): string | null { return this.starEntity?.id ?? null; }
 
   // ECI の原点に静止している天体の id。
-  get originId(): string { return this.origin.id; }
+  public get originId(): string { return this.origin.id; }
 
   // ---------------------------------------------------------------- 系の所属
 
@@ -195,7 +195,7 @@ export class CelestialSystem implements CelestialBodies {
   // 答える。
 
   // focusId と同じ親を持つ天体・その親・focusId 自身の id 集合。focusId 未指定なら空集合。
-  sameSystemIds(focusId: string | undefined): ReadonlySet<string> {
+  public sameSystemIds(focusId: string | undefined): ReadonlySet<string> {
     if (focusId === undefined) return new Set();
     const parent = this.find(focusId)?.motion.primary?.id ?? null;
     const ids = new Set<string>([focusId]);
@@ -210,7 +210,7 @@ export class CelestialSystem implements CelestialBodies {
   // position の主引力天体が、focus 天体と同じ惑星系に属するか。衛星をフォーカスした場合は親惑星を
   // 系の代表として扱う。天体以外(艦船・固定点など)へフォーカスしている場合は、どの天体系を表示
   // するかを恣意的に決めないため常に真。
-  isPositionInFocusedSystem(focusId: string | undefined, position: Vec3, pivot: number): boolean {
+  public isPositionInFocusedSystem(focusId: string | undefined, position: Vec3, pivot: number): boolean {
     const focus = focusId === undefined ? undefined : this.find(focusId)?.motion;
     if (focus === undefined) return true;
 
@@ -235,14 +235,14 @@ export class CelestialSystem implements CelestialBodies {
 
   // 天体 id あるいはラグランジュ点 id の親。undefined は id が不正/古いこと、null は恒星など
   // 親を持たない天体を表す。ラグランジュ点は id の親部分へ戻してから引く。
-  bodyParentId(id: string): string | null | undefined {
+  public bodyParentId(id: string): string | null | undefined {
     const lagrangeParent = isLagrangeId(id) ? lagrangeParentId(id) : undefined;
     if (lagrangeParent !== undefined) return this.has(lagrangeParent) ? lagrangeParent : undefined;
     return this.find(id)?.motion.primary?.id ?? (this.has(id) ? null : undefined);
   }
 
   // focusId の親を辿って主星まで遡った id の列(focusId 自身を含む)。
-  ancestorsOf(focusId: string): readonly string[] {
+  public ancestorsOf(focusId: string): readonly string[] {
     const chain: string[] = [];
     let cur: string | null = focusId;
     // 循環した親子定義でも止まるよう、登録数を上限にする。
@@ -255,19 +255,19 @@ export class CelestialSystem implements CelestialBodies {
   }
 
   // id から主星まで遡った id の列。未登録の id(生存中の重力天体)なら、その id 1つだけを返す。
-  chainFrom(id: string): readonly string[] {
+  public chainFrom(id: string): readonly string[] {
     return this.has(id) ? this.ancestorsOf(id) : [id];
   }
 
   // cameraPos で最も強く重力を及ぼす天体から主星まで遡った id の列(その天体自身を含む)。
-  systemChainAt(cameraPos: Vec3, pivot: number): readonly string[] {
+  public systemChainAt(cameraPos: Vec3, pivot: number): readonly string[] {
     if (this.entities.length === 0) return [];
     return this.chainFrom(strongestAttractor(cameraPos, this.celestialMotions, pivot).id);
   }
 
   // chain の列に、各天体の子(恒星の子は除く)を合わせた集合。近い順・各天体→その子の順に並ぶ
   // 配列で返す。
-  membersFrom(chain: readonly string[]): readonly string[] {
+  public membersFrom(chain: readonly string[]): readonly string[] {
     const seen = new Set<string>();
     const result: string[] = [];
     for (const id of chain) {
@@ -288,50 +288,50 @@ export class CelestialSystem implements CelestialBodies {
   }
 
   // systemChainAt の列に、各天体の子(恒星の子は除く)を合わせた集合。
-  systemMembersAt(cameraPos: Vec3, pivot: number): readonly string[] {
+  public systemMembersAt(cameraPos: Vec3, pivot: number): readonly string[] {
     return this.membersFrom(this.systemChainAt(cameraPos, pivot));
   }
 
   // ---------------------------------------------------------- 系レベルの物理
 
   // 重力源天体の運動(mu が 0 でないもの、宣言順)。
-  get gravityMotions(): readonly CelestialMotion[] { return this.gravityMotionList; }
+  public get gravityMotions(): readonly CelestialMotion[] { return this.gravityMotionList; }
 
   // 大気を持つ天体の運動(宣言順)。
-  get atmosphereMotions(): readonly CelestialMotion[] { return this.atmosphereMotionList; }
+  public get atmosphereMotions(): readonly CelestialMotion[] { return this.atmosphereMotionList; }
 
   // 天体 id の運動。未登録の id を渡すと例外になる。
-  motionOf(id: string): CelestialMotion { return this.entityOf(id).motion; }
+  public motionOf(id: string): CelestialMotion { return this.entityOf(id).motion; }
 
   // 天体 id の運動。未登録の id では null。
-  findMotion(id: string): CelestialMotion | null { return this.entitiesById.get(id)?.motion ?? null; }
+  public findMotion(id: string): CelestialMotion | null { return this.entitiesById.get(id)?.motion ?? null; }
 
   // 天体 id の分類。未登録の id では null。
-  bodyClassOf(id: string): CelestialClass | null { return this.entitiesById.get(id)?.bodyClass ?? null; }
+  public bodyClassOf(id: string): CelestialClass | null { return this.entitiesById.get(id)?.bodyClass ?? null; }
 
   // 天体 id の、pivot で厳密に引いた値から時刻 t へ2次外挿した ECI 位置・速度。t を省くと
   // pivot 自身の厳密な値。|t − pivot| は積分1歩の幅程度に収めること。
-  stateAt(id: string, pivot: number, t: number = pivot): KinematicState {
+  public stateAt(id: string, pivot: number, t: number = pivot): KinematicState {
     return this.motionOf(id).stateAt(pivot, t);
   }
 
   // 座標系の同一性(同じ対に同じ参照)と、天体でない基準の解決。
-  get frames(): ReferenceFrames { return this.referenceFrames; }
+  public get frames(): ReferenceFrames { return this.referenceFrames; }
 
   // ECI の点 r から見た恒星方向の単位ベクトル。恒星が無い星系では無害な既定方向(+X)を返す。
-  sunDirFrom(r: Vec3, t: number): Vec3 {
+  public sunDirFrom(r: Vec3, t: number): Vec3 {
     const star = this.starEntity;
     return star === null ? v3(1, 0, 0) : norm(sub(this.stateAt(star.id, t).r, r));
   }
 
   // 星系の再構築に要る値のスナップショット(セーブ用)。phaseOffsets は構築時に受け取った
   // record をそのまま返す(明示 0 のキーを落とさない)。
-  serialize(): { readonly phaseOffsets: PhaseOffsets; readonly earthSpinPhase0: number | undefined } {
+  public serialize(): { readonly phaseOffsets: PhaseOffsets; readonly earthSpinPhase0: number | undefined } {
     return { phaseOffsets: { ...this.phaseOffsets }, earthSpinPhase0: this.earthSpinPhase0() };
   }
 
   // 天体と地表が答える、デバッグ表示用の狭い計測値をまとめる。
-  perfCounts(): Pick<PerfCounts, 'surfaces'> & { timeCacheHits: number; timeCacheMisses: number } {
+  public perfCounts(): Pick<PerfCounts, 'surfaces'> & { timeCacheHits: number; timeCacheMisses: number } {
     let time = this.eciTransform.cacheStats;
     for (const motion of this.celestialMotions) time = addTimeCacheStats(time, motion.cacheStats);
     const surfaces = this.entities.flatMap((entity) => {
@@ -342,7 +342,7 @@ export class CelestialSystem implements CelestialBodies {
   }
 
   // 表示中の参照軌道線を、当たり判定用の ECI 点列として列挙する。
-  referenceOrbitSamples(count: number): readonly {
+  public referenceOrbitSamples(count: number): readonly {
     readonly id: string;
     readonly points: readonly Vec3[];
   }[] {
@@ -353,10 +353,10 @@ export class CelestialSystem implements CelestialBodies {
   }
 
   // ラグランジュ点まわりの軌道ガイド線。
-  get orbitGuide(): OrbitGuideModel { return this.orbitGuideModel; }
+  public get orbitGuide(): OrbitGuideModel { return this.orbitGuideModel; }
 
   // 表示中の軌道ガイド線を、当たり判定用の識別情報付き ECI 点列として列挙する。
-  orbitGuideSamples(count: number): readonly VisibleGuideLine[] {
+  public orbitGuideSamples(count: number): readonly VisibleGuideLine[] {
     return this.orbitGuideView.visibleLines(count);
   }
 
@@ -373,7 +373,7 @@ export class CelestialSystem implements CelestialBodies {
   // mapDisplay・grid・orbitGuide はこのフレームの表示パネルの設定。visibilityPolicy はマップ
   // ビューでは非 null、戦闘ビューでは null。描かれる対象と選べる対象が同じ判定から出るよう、
   // 同じフレームの update 位相で確定させたものを渡す。
-  sync(
+  public sync(
     displayTime: number,
     camera: CameraFrame,
     cameraSystem: CameraSystem,
@@ -454,7 +454,7 @@ export class CelestialSystem implements CelestialBodies {
   }
 
   // 天体ビュー・星殻・グリッド・点群・参照線を残さず解放する。
-  dispose(): void {
+  public dispose(): void {
     this.orbitGuideView.dispose();
     this.zeroVelocityView.dispose();
     // 星殻・天球グリッド・縮尺グリッド。

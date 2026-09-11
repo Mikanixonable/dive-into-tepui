@@ -24,7 +24,7 @@ const coefficientStorage = THREE.TSL.storage(coefficientBuffer, 'float', PROTEIN
 
 /** 共有バッファ上の連続区間。 */
 interface Span {
-  start: number;
+  readonly start: number;
   length: number;
 }
 

@@ -6,7 +6,7 @@ import { Vec3 } from '../math/vec3';
 
 // 1点の軌道。平均運動を要素と一緒に持つのは、位置評価が毎フレーム全点に及ぶため
 // (a から毎回 sqrt を引くのを避ける)。
-export type PointElements = {
+export interface PointElements {
   readonly a: number; // 軌道長半径 [m]
   readonly e: number;
   readonly inc: number; // 黄道面に対する傾斜 [rad]
@@ -14,7 +14,7 @@ export type PointElements = {
   readonly lonPeri: number; // 近点黄経 ϖ [rad]
   readonly l0: number; // t=0 の平均黄経 [rad]
   readonly meanMotion: number; // 平均黄経の変化率 [rad/s]
-};
+}
 
 // 時刻 t の中心天体基準の位置 [m]。ECI 化(中心天体の ECI 位置を足す)は呼び出し側の仕事。
 export function pointPositionAt(el: PointElements, t: number): Vec3 {

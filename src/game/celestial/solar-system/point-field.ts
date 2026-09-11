@@ -22,13 +22,13 @@ export type PointFieldJupiterReference = Pick<KeplerOrbit, 'a' | 'l0' | 'lRate'>
 // 共鳴角 σ = p·λ_J − q·λ_H − (p−q)·ϖ_H を、librationCenterDeg の周りに
 // ±librationWidthDeg で散らす。n_H/n_J = p/q と取れば dσ/dt = 0 になり、σ は保たれる。
 // p=q(1:1, トロヤ群)のときは (p−q) 項が消えて ϖ_H が自由になる代わり、σ が直接 λ_H を決める。
-type ResonanceDistribution = {
+interface ResonanceDistribution {
   readonly meanMotionRatio: readonly [number, number]; // [p, q]
   readonly librationCenterDeg: number;
   readonly librationWidthDeg: number;
-};
+}
 
-type PointFieldDef = {
+interface PointFieldDef {
   readonly id: string;
   readonly drawRadius: number; // [m] 表示上の1点の大きさ
   readonly color: number;
@@ -39,7 +39,7 @@ type PointFieldDef = {
   readonly incRange: readonly [number, number]; // [rad]
   readonly incModes?: readonly [readonly [number, number], readonly [number, number]];
   readonly resonance?: ResonanceDistribution;
-};
+}
 
 const ASTEROID_SEED = 0x5eed_a571;
 

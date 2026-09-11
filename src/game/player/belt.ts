@@ -16,7 +16,7 @@ export class Belt {
   }
 
   // 給弾進み(beltFeed)を弾薬状態から導出し、たわみ物理を進める。
-  update(
+  public update(
     dt: number,
     roundsInMag: number,
     att: Attitude,
@@ -39,12 +39,12 @@ export class Belt {
   public get twists(): readonly number[] { return this.physics.twists; }
 
   // 各リンクの体軸座標を ECI 絶対状態に変換し、衝突判定用の BeltSection として返す。
-  contactSections(t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
+  public contactSections(t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
     return this.physics.contactSections(t, dt, baseR, baseV, att);
   }
 
   // 衝突解決後の ECI 状態を体軸座標へ戻し、たわみ物理へ反映する。
-  applyContactSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
+  public applyContactSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
     this.physics.applyContactSections(dt, baseR, baseV, att);
   }
 }

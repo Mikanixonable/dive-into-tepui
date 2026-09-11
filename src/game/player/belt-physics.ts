@@ -35,10 +35,10 @@ export class BeltSection extends DynamicMotion {
 
 export class BeltPhysics {
   // 機体座標系の節点位置。
-  readonly positions: Vec3[] = [];
+  public readonly positions: Vec3[] = [];
   private readonly prevPositions: Vec3[] = [];
   // 各リンクのチェーン軸まわりのねじれ角 [rad]。常に ±MAG_CHAIN_MAX_ROLL_DEG に収まる。
-  readonly twists: number[] = [];
+  public readonly twists: number[] = [];
 
   private prevShipW = v3(); // 前フレームの機体角速度(ベルト物理の角加速度推定用)
   private angularAccel = v3();
@@ -49,7 +49,7 @@ export class BeltPhysics {
 
   // 節点はアンカーから等間隔に伸ばした形で始める。表示も接触も update より先に問われうるので、
   // 「まだ並べていない」状態を持たせない。
-  constructor(private readonly linkCount: number, private readonly owner: DynamicMotion) {
+  public constructor(private readonly linkCount: number, private readonly owner: DynamicMotion) {
     for (let i = 0; i < linkCount; i++) {
       const p = v3(MAG_BELT_ANCHOR_X + (i + 1) * MAG_BELT_PITCH, 0, 0);
       this.positions.push(p);
@@ -59,7 +59,7 @@ export class BeltPhysics {
   }
 
   // リンクを1つ手前へ詰め、末尾に新しいリンクを継ぎ足す。
-  shiftBeltNodes(): void {
+  public shiftBeltNodes(): void {
     const n = this.linkCount;
     if (n < 2) return;
 
@@ -83,7 +83,7 @@ export class BeltPhysics {
   // ベルトのたわみを解く。軌道上は自由落下なので重力ではたわまず、機体自身の推力加速度と
   // スピンが生む慣性力(並進慣性 -a、遠心力 -ω×(ω×r)、オイラー力 -α×r、コリオリ力 -2ω×v)
   // だけがベルトを機体座標系の中で揺らす。
-  update(dt: number, att: Attitude, thrustAccelVec: Vec3, beltFeed: number): void {
+  public update(dt: number, att: Attitude, thrustAccelVec: Vec3, beltFeed: number): void {
     const invDt = dt > 1e-6 ? 1 / dt : 0;
     this.estimateAngularAccel(att.w, invDt);
 
@@ -228,7 +228,7 @@ export class BeltPhysics {
 
   // 各節点の機体座標系での位置・速度をワールド KinematicState に変換し、衝突判定用の
   // プロキシ配列を返す。t は接触代理の KinematicState.t に使う現在時刻(掃引判定の区間を成す)。
-  contactSections(t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
+  public contactSections(t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
     const invDt = 1 / dt;
     for (const [i, bp] of this.positions.entries()) {
       const bpPrev = this.prevPositions[i]!;
@@ -249,7 +249,7 @@ export class BeltPhysics {
   }
 
   // 衝突解決後のワールド状態を機体座標系の節点位置・速度へ書き戻す。
-  applyContactSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
+  public applyContactSections(dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): void {
     const qInv = qInvert(att.q);
     for (const [i, s] of this.sections.entries()) {
       const bpLocal = qRotate(qInv, sub(s.state.r, baseR));

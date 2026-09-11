@@ -27,7 +27,7 @@ export interface BoosterStage {
 
 /** セーブデータに使うスタック全体の plain data。 */
 export interface BoosterStackData {
-  stages: BoosterStage[];
+  readonly stages: BoosterStage[];
 }
 
 /** 1 回の step で最後尾段が発生した燃焼結果。 */
@@ -132,27 +132,27 @@ function cloneStage(data: BoosterStage): BoosterStage {
 export class BoosterStack {
   private readonly _stages: BoosterStage[];
 
-  constructor(stages: readonly BoosterStage[] = []) {
+  public constructor(stages: readonly BoosterStage[] = []) {
     this._stages = stages.map(cloneStage);
   }
 
   /** 船体側から最後尾順の段を読む。外部からの変更でスタックの不変条件を壊せない。 */
-  get stages(): readonly BoosterStage[] {
+  public get stages(): readonly BoosterStage[] {
     return this._stages.map((stage) => ({ ...stage }));
   }
 
   /** 船体側から最後尾順の段の識別子。 */
-  get stageIds(): readonly string[] {
+  public get stageIds(): readonly string[] {
     return this._stages.map((stage) => stage.id);
   }
 
   /** 全段の乾燥質量と残燃料を足した、船体に加わる質量 [kg]。 */
-  get totalMass(): number {
+  public get totalMass(): number {
     return this._stages.reduce((sum, stage) => sum + stage.dryMass + stage.fuel, 0);
   }
 
   /** 段を最後尾へ追加する。入力段はコピーされる。 */
-  attach(stage: BoosterStage): void {
+  public attach(stage: BoosterStage): void {
     this._stages.push(cloneStage(stage));
   }
 
@@ -160,7 +160,7 @@ export class BoosterStack {
    * 最後尾段の点火状態を反転する。段が無い、または燃料が無い場合は点火せず false を返す。
    * 消火は燃料の有無によらず可能で、戻り値は操作後の点火状態。
    */
-  toggleIgnition(): boolean {
+  public toggleIgnition(): boolean {
     const stage = this._stages[this._stages.length - 1];
     if (!stage) return false;
     if (stage.ignited) {
@@ -179,7 +179,7 @@ export class BoosterStack {
    * 通常設定では fuelRate>0 を使う。dt 内で燃料が尽きたときは burnRatio と averageThrust
    * が燃焼時間の割合を返すので、呼び出し側はフレーム全体へ一定推力を誤って適用しない。
    */
-  step(dt: number): BoosterStepResult {
+  public step(dt: number): BoosterStepResult {
     if (!Number.isFinite(dt) || dt < 0) throw new RangeError('booster step dt must be finite and non-negative');
     if (dt === 0) return NO_BURN;
 
@@ -210,17 +210,17 @@ export class BoosterStack {
   }
 
   /** 最後尾段を状態ごと取り外して返す。空なら null。 */
-  detachOutermost(): BoosterStage | null {
+  public detachOutermost(): BoosterStage | null {
     return this._stages.pop() ?? null;
   }
 
   /** セーブ用 plain data。返却値を編集してもスタックへ影響しない。 */
-  exportData(): BoosterStackData {
+  public exportData(): BoosterStackData {
     return { stages: this._stages.map((stage) => ({ ...stage })) };
   }
 
   /** セーブ用 plain data から新しいスタックを復元する。 */
-  static importData(data: BoosterStackData): BoosterStack {
+  public static importData(data: BoosterStackData): BoosterStack {
     if (!data || !Array.isArray(data.stages)) throw new TypeError('booster stack data must contain a stages array');
     return new BoosterStack(data.stages);
   }
