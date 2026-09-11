@@ -1,3 +1,4 @@
+// 描画基盤一式(scene・WebGPU レンダラ・描画パイプライン)を組み、描画先の寸法と設定へ追従させる。
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
 import type { GraphicsSettingsData } from './graphics-settings';
@@ -12,7 +13,7 @@ export interface GameScene {
   readonly renderer: WebGPURenderer;
   readonly gpu: GpuTimings;
   readonly pipeline: RenderPipeline;
-  // いま描いているビューポート。ランの構築が最初のフレームを組むときにも読む。
+  // いま描いているビューポート(直近の syncViewport の値)。
   readonly viewport: Viewport;
   // 描画先の寸法をこのフレームの値へ合わせる。前回と同じなら何もしない。
   readonly syncViewport: (viewport: Viewport) => void;
@@ -20,20 +21,17 @@ export interface GameScene {
   readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
 }
 
-// 描画は自機中心のフローティングオリジン(単位: m)。宇宙船(数m)から
-// 地球(半径6,371km)・星空シェル(3.5e7m)までを1つの深度レンジに収める。深度は反転
-// (near=1 / far=0)して 32bit 浮動小数点で持つので、相対誤差は距離に依らず一定になる。
+// canvas へ描画基盤一式を組む。描画座標は自機中心 [m]。数 m の機体から星殻までを1つの深度
+// レンジに収めるため、深度は反転(near=1 / far=0)した 32bit 浮動小数点で持つ。
 export async function createGameScene(
   canvas: HTMLCanvasElement, graphics: GraphicsSettingsData, viewport: Viewport,
 ): Promise<GameScene> {
   const scene = new THREE.Scene();
-  // RenderPipeline はカメラのレイヤーを一時的に不透明物/背景へ絞る。Scene 自身が既定の
-  // layer 0 だけだと、その時点で子要素の走査まで止まるため、コンテナとして全レイヤーを受ける。
+  // Scene 自身が layer 0 だけだと、カメラのレイヤーを絞ったときに子の走査ごと止まる。
   scene.layers.enableAll();
 
-  // trackTimestamp も reversedDepthBuffer もレンダラ生成時にしか渡せない。前者はデバイスの
-  // 要求機能に載るため、後者は深度比較関数が構築時の値だけを読むため — あとから代入すると
-  // 投影行列とクリア値だけが反転し、比較関数が非反転のまま取り残される。
+  // trackTimestamp と reversedDepthBuffer は生成時に渡す。後者をあとから代入すると、深度比較
+  // 関数だけが非反転のまま残る。
   const renderer = new WebGPURenderer({
     canvas, trackTimestamp: true, reversedDepthBuffer: true,
   });
@@ -51,7 +49,7 @@ export async function createGameScene(
   applyResolution();
   await renderer.init();
 
-  // パスは初期化済みのレンダラでしか組めないので、init() のあとに作る。
+  // パスは初期化済みのレンダラを要するので、init() のあとに作る。
   const gpu = new GpuTimings(renderer);
   const pipeline = new RenderPipeline(renderer, graphics, gpu);
 

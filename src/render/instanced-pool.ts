@@ -4,8 +4,8 @@ import { markLitOpaque, markOverlay, markShadowCaster } from './pipeline/lit-lay
 import { INSTANCE_THERMAL_ATTRIBUTE, writeThermalState } from './thermal-emissive';
 import type { ShadowExtent } from './pipeline/shadow/shadow-casters';
 
-// three は instanceMatrix のバッファ長を最初の描画時に一度だけ確定する。よって count は
-// 容量に固定したまま動かさず、未使用の枠はゼロ行列で潰して描画対象から外す。
+// 空き枠へ置くゼロ行列。three は instanceMatrix のバッファ長を最初の描画で確定するので、
+// count は容量のまま動かさず、空き枠はこれで潰す。
 const PARKED = new THREE.Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
 // capacity 体までを1本の InstancedMesh で描く。beginFrame → push(...) → endFrame の順に
@@ -16,12 +16,12 @@ export class InstancedPool {
   private count = 0;
   // 前フレームに使った枠数。今フレームで余った枠だけをゼロ行列へ戻すために持つ。
   private lastCount = 0;
-  // 個体1つぶんの外接球半径 [ジオメトリ座標]。AABB を積むとき、インスタンスの位置へこれを
-  // スケール倍して広げる。InstancedMesh.computeBoundingBox() は一度計算すると結果を握り
-  // 続けるので、毎フレーム動く個体には使えない。
+  // 個体1つぶんの外接球半径 [ジオメトリ座標]。AABB は毎フレームこれで積み直す —
+  // InstancedMesh.computeBoundingBox() は最初の結果を握り続ける。
   private readonly instanceRadius: number;
-  // 今フレームに push された個体を包む描画座標の AABB。endFrame で公開用の箱へ移す。
+  // 今フレームに push された個体を包む描画座標の AABB。
   private readonly pending = new THREE.Box3();
+  // 影を落とす広がりとして公開する AABB。endFrame で pending から移す。
   private readonly extent: ShadowExtent = { worldBounds: new THREE.Box3() };
   // 個体ごとの熱の状態(温度・局所的な過熱・輻射率)。持たないプールでは null。
   private readonly thermal: THREE.InstancedBufferAttribute | null = null;
@@ -30,7 +30,8 @@ export class InstancedPool {
   private readonly scratchCenter = new THREE.Vector3();
   private readonly scratchCorner = new THREE.Vector3();
 
-  // geometry/material は呼び出し側が所有する共有資源。capacity 体ぶんの枠を確保して scene へ登録する。
+  // capacity 体ぶんの枠を確保して scene へ登録する。geometry/material は呼び出し側が所有する
+  // 共有資源で、perInstanceThermal なら geometry へ熱の状態の属性を足す。
   public constructor(
     scene: THREE.Scene,
     geometry: THREE.BufferGeometry,
@@ -43,9 +44,8 @@ export class InstancedPool {
     this.capacity = capacity;
     this.mesh = new THREE.InstancedMesh(geometry, material, this.capacity);
     this.mesh.renderOrder = renderOrder;
-    // 変換は storage バッファで渡す。既定の属性のままだと、three は容量ぶんの mat4 を
-    // uniform 配列として頂点シェーダへ焼き込むので、プールを1本足すたびに巨大な定数配列を
-    // 抱えたシェーダが1本増え、起動時のコンパイルがその本数ぶん伸びる。
+    // 変換は storage バッファで渡す。既定の属性だと容量ぶんの mat4 が uniform 配列として
+    // シェーダへ焼き込まれ、プールごとに起動時のコンパイルが伸びる。
     this.mesh.instanceMatrix = new THREE.StorageInstancedBufferAttribute(this.capacity, 16);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     if (perInstanceColor) {
@@ -57,7 +57,7 @@ export class InstancedPool {
       this.thermal.setUsage(THREE.DynamicDrawUsage);
       geometry.setAttribute(INSTANCE_THERMAL_ATTRIBUTE, this.thermal);
     }
-    // 個体が広い空間へ散らばるため、原点周りの外接球によるフラスタムカリングは意味を持たない。
+    // ジオメトリの外接球は散らばった個体を包まないので、フラスタム判定を切る。
     this.mesh.frustumCulled = false;
     markLitOpaque(this.mesh);
     markShadowCaster(this.mesh);
@@ -68,7 +68,7 @@ export class InstancedPool {
     scene.add(this.mesh);
   }
 
-  // 参照線と同じオーバーレイ層へ載せる。天体に遮られず、トーンマップも通さない見え方になる。
+  // 3D UI のオーバーレイ層へ載せ直す。
   public markAsOverlay(): void {
     markOverlay(this.mesh);
   }
@@ -79,8 +79,8 @@ export class InstancedPool {
     this.pending.makeEmpty();
   }
 
-  // visible な renderObject を capacity まで受け付け、matrixWorld をインスタンスへ転写する。
-  // シーン外の Object3D は事前に matrixWorld を同期して渡す。
+  // visible な renderObject を capacity まで受け付け、その変換・色・熱の状態をインスタンスへ
+  // 転写する。renderObject の matrixWorld はここで更新するが、親の matrixWorld は更新済みであること。
   public push(renderObject: THREE.Object3D, color?: THREE.Color): void {
     if (!renderObject.visible || this.count >= this.capacity) return;
     renderObject.updateMatrixWorld();

@@ -20,7 +20,7 @@ function ribbonMaterial(motion?: ProteinMotionBinding): THREE.MeshStandardNodeMa
   }, motion);
 }
 
-/** 鎖1本ぶんの geometry を、リボンとして辿れるようタグ付けした Mesh として group へ追加する。material の dispose は最初の Mesh だけが持つ。 */
+/** 鎖1本ぶんの geometry を、リボンの印を付けた Mesh として group へ加える。ownsMaterial なら Mesh が材質を破棄する。 */
 function addChainMesh(
   group: THREE.Group,
   geometry: THREE.BufferGeometry,
@@ -42,16 +42,16 @@ interface RibbonChainPart {
   readonly vertices: Map<number, number>;
 }
 
-/** 焼き込み済みメッシュの頂点(三角形をまたいで重複する場合がある)を鎖ごとのローカル頂点へ登録する。 */
+/** 焼き込み頂点を鎖のローカル頂点へ登録し、その索引を返す。同じ焼き込み頂点には同じ索引を返す。 */
 function ribbonLocalVertex(
   part: RibbonChainPart, source: ProteinRenderSource, mode: ProteinRibbonColorMode,
   fixedColor: THREE.Color | null, residues: readonly number[], sourceVertex: number,
 ): number {
-  // 同じ焼き込み頂点を指す2度目以降の三角形は、既に登録したローカル頂点を再利用する。
   const existing = part.vertices.get(sourceVertex);
   if (existing !== undefined) return existing;
   const local = part.vertices.size;
   part.vertices.set(sourceVertex, local);
+  // 原子と同じ中心寄せ済みの系へ移す。
   const mesh = source.structure.ribbon.mesh;
   const center = source.structure.coordinateFrame.centeredAt;
   const offset = sourceVertex * 3;
@@ -60,7 +60,7 @@ function ribbonLocalVertex(
     mesh.position[offset + 1]! - (center[1] ?? 0),
     mesh.position[offset + 2]! - (center[2] ?? 0),
   );
-  // 色は残基番号から都度計算する — 色分けモードは実行時に切り替わるため焼き込めない。
+  // 色分けは実行時に切り替わるので、残基から都度求める。
   const residue = residues[sourceVertex] ?? 0;
   const color = fixedColor ?? proteinRibbonColor(source, residue, mode);
   part.colors.push(color.r, color.g, color.b);
@@ -68,7 +68,7 @@ function ribbonLocalVertex(
   return local;
 }
 
-/** 焼き込み済みカートゥーンメッシュを鎖ごとに分割し、着色と GPU 変位バインディングを付けて構築する。 */
+/** 焼き込み済みのリボンメッシュを鎖ごとに分けて着色し、残基変位を結ぶ。fixedColor を与えれば全頂点をその色にする。 */
 export function buildProteinRibbon(
   source: ProteinRenderSource, mode: ProteinRibbonColorMode, fixedColor: THREE.Color | null = null,
   motion?: ProteinMotionBinding,
@@ -76,6 +76,7 @@ export function buildProteinRibbon(
   const group = new THREE.Group();
   const mesh = source.structure.ribbon.mesh;
   const residues = source.motion.bindings.ribbonResidues;
+  // 三角形を、頂点の鎖の多数決で鎖ごとに振り分ける。
   const parts = new Map<string, RibbonChainPart>();
   for (let offset = 0; offset + 2 < mesh.index.length; offset += 3) {
     const triangle = [mesh.index[offset]!, mesh.index[offset + 1]!, mesh.index[offset + 2]!] as const;
@@ -84,8 +85,7 @@ export function buildProteinRibbon(
     parts.set(chain, part);
     for (const vertex of triangle) part.indices.push(ribbonLocalVertex(part, source, mode, fixedColor, residues, vertex));
   }
-  // 材質は最初の mesh を作る直前まで遅らせる — 鎖が1本も成立しない source では誰にも
-  // 所有されない材質を残さない。
+  // 材質は最初の mesh を作るときに作り、その mesh に破棄を任せる。
   let material: THREE.MeshStandardNodeMaterial | null = null;
   for (const part of parts.values()) {
     if (part.indices.length === 0) continue;

@@ -39,7 +39,7 @@ export class DetachedBoosterView extends DynamicView<DetachedBoosterRenderSource
     displayed: KinematicState | null,
     viewFrame: DynamicViewFrame,
   ): void {
-    // 照準ズーム中は機体そのものを覗き込むので、炎で視界を潰さない。
+    // 照準ズーム中は機体そのものを覗き込むので、炎を隠す。
     if (displayed === null || source.burnRatio === null || viewFrame.camera.zoomed) {
       this.plume.hide();
       return;

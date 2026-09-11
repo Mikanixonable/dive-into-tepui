@@ -1,5 +1,5 @@
-// 空間に浮かぶ十字マーカー状の縮尺グリッド。呼び出し側が与えた1点を通る固定平面として描き、
-// 黄道面・赤道面は向きが固定、月軌道面・月赤道面は毎フレーム法線を受け取る。
+// 空間に浮かぶ十字マーカー状の縮尺グリッド。与えた1点を通る4面(黄道面・赤道面・月軌道面・
+// 月赤道面)に描き、月の2面は毎フレーム向きを受け取る。
 import * as THREE from 'three/webgpu';
 import { ECLIPTIC_BASIS, EQUATOR_BASIS, planeBasisFromPole, type PlaneBasis } from './plane-basis';
 import { CameraScale } from './camera-scale';
@@ -14,6 +14,7 @@ export interface ScaleGridVisibility {
   readonly moonEquator: boolean;
 }
 
+// ズーム段1つぶんの十字群。spacing は目盛り間隔 [m]。
 interface GridLevel {
   readonly spacing: number;
   readonly line: THREE.LineSegments;
@@ -23,14 +24,15 @@ interface GridLevel {
 // 縮尺の基準となる目盛り間隔。これ以上の段はラベルを ⊞、これ未満は ＋ で表す。
 const REFERENCE_SPACING = 1e8; // 100,000 km [m]
 
-// 基準を中心に、ズーム段階に応じて前後の縮尺を重ねる。
+// ズーム段ごとの目盛り間隔 [m]。
 const GRID_SPACINGS = [
   1e3, 1e4, 1e5, 1e6, 1e7, REFERENCE_SPACING,
   1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16,
 ] as const;
-const GRID_CROSS_CELLS = 40;
-const GRID_CROSS_HALF_LENGTH = 0.12;
+const GRID_CROSS_CELLS = 40; // 原点から各方向へ並べる格子の数
+const GRID_CROSS_HALF_LENGTH = 0.12; // 十字の腕の半長 [目盛り間隔]
 const GRID_BASE_OPACITY = 0.3;
+// 画面上の目盛り間隔 [px] に対する濃さ。FADE_IN→FULL で現れ、FULL_OUT→FADE_OUT で消える。
 const GRID_FADE_IN_PX = 8;
 const GRID_FULL_PX = 24;
 const GRID_FULL_OUT_PX = 80;
@@ -83,6 +85,7 @@ function spacingLabel(spacing: number): string {
   return `${(spacing / 1e3).toLocaleString('ja-JP')} km`;
 }
 
+// 面1枚ぶんの縮尺グリッド(全ズーム段)と縮尺ラベル。
 class ScaleGridPlane {
   private readonly levels: readonly GridLevel[];
   private readonly initialBasis: PlaneBasis;

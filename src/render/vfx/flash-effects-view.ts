@@ -107,16 +107,14 @@ export class FlashEffectsView {
       this.transform.position.copy(camera.floatingOrigin.RtoThreeV3(fx.state.r));
       this.transform.scale.setScalar(size);
       this.transform.quaternion.copy(cameraQuat);
-      // **明るさは色に載せ、不透明度は 1 のままにする**(render/billboard.ts と同じ規約)。
-      // 加算ブレンドでは 最終色 = テクスチャ × material.color × instanceColor なので、
-      // 寿命による減衰も instanceColor 一本へ畳める。
+      // 加算合成なので、明るさ(寿命による減衰を含む)は色に載せ、不透明度は 1 のままにする。
       this.color.set(appearance.color).multiplyScalar(brightness);
       this.pool.push(this.transform, this.color);
     }
     this.pool.endFrame();
   }
 
-  // flashResources() が個体ごとに新規生成する geometry/material を、プールと共に破棄する。
+  // プールと、このインスタンス用に作った geometry/material を破棄する。
   public dispose(): void {
     this.pool.dispose();
     this.geometry.dispose();

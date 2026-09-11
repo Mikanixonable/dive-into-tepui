@@ -13,6 +13,7 @@ import type { ProteinRenderMotion } from './protein-render-definition';
 
 type ProteinMotionBand = ProteinRenderMotion['modes'][number]['band'];
 
+/** LOD ごとに標本化するモード数。 */
 export const PROTEIN_MOTION_LOD_MODE_COUNTS: Readonly<Record<ProteinMotionLod, number>> = {
   near: 24,
   medium: 12,
@@ -20,7 +21,7 @@ export const PROTEIN_MOTION_LOD_MODE_COUNTS: Readonly<Record<ProteinMotionLod, n
   marker: 0,
 };
 
-/** 表示専用の phase gain。物理的な ANM 振幅は変えない。 */
+/** 構造フェーズごとの、表示上の揺らぎの倍率。 */
 export const PROTEIN_MOTION_PHASE_GAINS: Readonly<Record<ProteinPhase, number>> = {
   intact: 1,
   exposed: 1,
@@ -36,16 +37,14 @@ const LOD_MIN_PROJECTED_PX: Readonly<Record<ProteinMotionLod, number>> = {
 const LOD_HYSTERESIS_RATIO = 0.15;
 
 /**
- * 画面投影直径 [px] から次の LOD を選ぶ。`previous` を跨いだヒステリシスを掛けるため、
- * より細かい LOD へ上げるには自身の閾値を +15% 上回る必要があり、より粗い LOD へ下げるには
- * 現在の LOD の閾値を -15% 下回る必要がある。大きな距離の飛び(seek 直後など)では複数段
- * まとめて遷移する。
+ * 画面投影直径 [px] と直前の LOD から次の LOD を選ぶ。閾値の前後に不感帯を持ち、大きな飛びでは
+ * 複数段まとめて移る。NaN・負値は最も粗い側、+Infinity は near として扱う。
  */
 export function proteinMotionLodForProjectedSize(diameterPx: number, previous: ProteinMotionLod): ProteinMotionLod {
-  // NaN は 0(marker側)へ、+Infinity(視点が無く LOD を判断できない呼び出し)は近距離側へ倒す。
   const safeDiameter = diameterPx >= 0 ? diameterPx : 0;
   let index = LODS_FINE_TO_COARSE.indexOf(previous);
   if (index < 0) index = 0;
+  // 不感帯を越えている限り、1段ずつ粗く/細かく移す。
   for (;;) {
     const currentMin = LOD_MIN_PROJECTED_PX[LODS_FINE_TO_COARSE[index]!];
     if (index < LODS_FINE_TO_COARSE.length - 1 && safeDiameter < currentMin * (1 - LOD_HYSTERESIS_RATIO)) {
@@ -64,11 +63,13 @@ export function proteinMotionLodForProjectedSize(diameterPx: number, previous: P
 }
 
 const MAX_MOTION_MODES = PROTEIN_MOTION_LOD_MODE_COUNTS.near;
+// 粗い LOD の係数の更新周波数 [Hz]。
 const MEDIUM_UPDATE_HZ = 30;
 const FAR_UPDATE_HZ = 15;
 /** LOD 切替時、旧 LOD の変位から新 LOD の変位へ表示上ブレンドする時間 [s]。 */
 export const PROTEIN_MOTION_LOD_FADE_DURATION_SEC = 0.25;
 
+// value が undefined・非有限・負なら fallback を返す。
 function finiteNonNegative(value: number | undefined, fallback: number): number {
   return value !== undefined && Number.isFinite(value) && value >= 0 ? value : fallback;
 }
@@ -79,11 +80,13 @@ export function proteinMotionUpdatePhaseFor(enemyId: string): number {
   return mix32(seed ^ 0xa511e9b3) / UINT32_SCALE;
 }
 
+// 表示時刻 [s] を丸める。非有限・負は 0、上限は 1 MHz で量子化しても整数が安全に表せる範囲。
 function safeDisplayTime(time: number): number {
   if (!Number.isFinite(time) || time <= 0) return 0;
   return Math.min(time, Number.MAX_SAFE_INTEGER / 1_000_000);
 }
 
+// LOD ごとの係数の更新周波数 [Hz]。Infinity は毎フレームの更新を表す。
 function updateHzFor(lod: ProteinMotionLod): number {
   switch (lod) {
     case 'medium': return MEDIUM_UPDATE_HZ;
@@ -93,10 +96,12 @@ function updateHzFor(lod: ProteinMotionLod): number {
   }
 }
 
+// LOD で使うモード数。asset のモード数を上限とする。
 function modeCountFor(lod: ProteinMotionLod, availableModes: number): number {
   return Math.min(PROTEIN_MOTION_LOD_MODE_COUNTS[lod], availableModes);
 }
 
+// モードの帯域(集団運動/局所運動)に対応する表示 gain。
 function gainForBand(
   band: ProteinMotionBand,
   collectiveGain: number,
@@ -105,10 +110,7 @@ function gainForBand(
   return band === 'collective' ? collectiveGain : localGain;
 }
 
-/**
- * OU 過程からモードごとの振幅を取り出し、求められたときだけ、指定された残基の小集合について
- * xyz 変位へ投影する。Three.js や原子・リボン・表面の binding のことは意図的に何も知らない。
- */
+/** 個体1体ぶんの OU 過程を標本化してモード係数を確定させ、求めに応じて残基の小集合を xyz 変位へ投影する。 */
 export class ProteinMotionController {
   public readonly enemyId: string;
   public readonly residueCount: number;
@@ -132,7 +134,7 @@ export class ProteinMotionController {
   private fading = false;
   private fadeStartTime = 0;
 
-  // asset の固定モードと個体固有 seed から、再利用する計算バッファを初期化する。
+  // 揺らぎの軌跡は enemyId から決まる。残基数が不正か、モード数が MAX_MOTION_MODES を超えれば例外。
   public constructor(
     private readonly asset: ProteinRenderMotion,
     enemyId: string,
@@ -152,7 +154,7 @@ export class ProteinMotionController {
     this.updatePhase = proteinMotionUpdatePhaseFor(enemyId);
     this.collectiveGain = finiteNonNegative(asset.display.collectiveGain, 1);
     this.localGain = finiteNonNegative(asset.display.localGain, 1);
-    // OU sampler と係数バッファは個体の寿命中再利用し、毎フレームの割り当てを避ける。
+    // 標本化器と係数バッファを用意する。
     this.sampler = new ProteinBrownianSampler(
       this.modes.map((mode) => ({
         relaxationRate: mode.displayRelaxationRate,
@@ -165,7 +167,7 @@ export class ProteinMotionController {
     this.effectiveCoefficientsBuffer = new Float32Array(this.modeCount);
     this.rawCoefficientsBuffer = new Float32Array(this.modeCount);
     this.fadeFromCoefficientsBuffer = new Float32Array(this.modeCount);
-    // band 別 gain は asset だけで決まるため、構築時に焼いておく。
+    // band 別の gain は asset で決まるので、前もって求める。
     this.modeGains = new Float64Array(this.modeCount);
     for (let modeIndex = 0; modeIndex < this.modeCount; modeIndex += 1) {
       const mode = this.modes[modeIndex]!;
@@ -173,28 +175,25 @@ export class ProteinMotionController {
     }
   }
 
-  /** この係数バッファは、このコントローラーの生存期間中ずっと同じインスタンスを指す。 */
+  /** OU 過程の gain を掛ける前の標本値。生存期間中ずっと同じインスタンスを返す。 */
   public get modeCoefficients(): Float64Array {
     return this.modeCoefficientsBuffer;
   }
 
-  /**
-   * gain・phase gain・LOD によるモード数の打ち切り・LOD 切替の fade を折り込んだモード係数
-   * (打ち切られたモードは 0)。GPU の compute pass はこれと asset のモード変位を掛けて残基変位を
-   * 作る。`projectResidues` は同じことを CPU 側で、残基の小集合についてだけ行う。
-   */
+  /** gain・phase gain・LOD によるモード数の打ち切り(打ち切ったモードは 0)・LOD 切替の fade を折り込んだモード係数。 */
   public get effectiveModeCoefficients(): Float32Array {
     return this.effectiveCoefficientsBuffer;
   }
 
   /**
-   * いまのモード係数を、列挙された残基についてだけ `target`(残基あたり vec4)へ投影する。
-   * 列挙されなかった残基の要素は書き換えない。範囲外・非整数の残基インデックスは無視する。
+   * いまのモード係数を、列挙した残基について `target`(残基あたり vec4)へ投影する。
+   * 他の残基の要素はそのまま残し、範囲外・非整数の残基インデックスは飛ばす。
    */
   public projectResidues(residues: readonly number[], target: Float32Array): void {
     projectProteinResidues(this.asset, this.effectiveCoefficientsBuffer, residues, target);
   }
 
+  /** いまの LOD で使っているモード数。 */
   public get activeModeCount(): number {
     return this.currentModeCount;
   }
@@ -205,10 +204,9 @@ export class ProteinMotionController {
   }
 
   /**
-   * 表示時刻・LOD・構造フェーズでモード係数を確定させ、`effectiveModeCoefficients` へ書く。
-   * LOD が変わったときは、それまでの係数から新しい係数へ表示時刻で
-   * `PROTEIN_MOTION_LOD_FADE_DURATION_SEC` かけて混ぜる — 変位は係数の線形結合なので、
-   * これは変位そのものを混ぜるのと同じ結果になる。切替中も毎フレーム `sampleAt` を呼ぶだけでよい。
+   * 表示時刻 [s]・LOD・構造フェーズでモード係数を確定させ、`effectiveModeCoefficients` へ書く。
+   * LOD が変わると表示時刻で `PROTEIN_MOTION_LOD_FADE_DURATION_SEC` かけて新しい係数へ混ぜるので、
+   * 切替中も毎フレーム呼ぶ。
    */
   public sampleAt(
     time: number,
@@ -226,6 +224,7 @@ export class ProteinMotionController {
     if (!inputsChanged && !this.fading) return;
 
     if (inputsChanged) {
+      // LOD が変わったら、いまの係数から fade を始める。
       if (lod !== this.currentLod) {
         this.fadeFromCoefficientsBuffer.set(output);
         this.fading = true;
@@ -238,13 +237,14 @@ export class ProteinMotionController {
       this.computeCoefficients(this.rawCoefficientsBuffer, rawSampleTime, nextModeCount, phase);
     }
 
-    // LOD 遷移中だけ旧係数からの補間を続け、完了後は生の係数をそのまま返す。
+    // fade 中でなければ生の係数をそのまま使う。
     if (!this.fading) {
       output.set(this.rawCoefficientsBuffer);
       this.lastSampleTime = rawSampleTime;
       return;
     }
 
+    // 変位は係数の線形結合なので、係数を混ぜれば変位を混ぜたのと同じになる。
     const fadeT = Math.min(1, Math.max(0, (safeTime - this.fadeStartTime) / PROTEIN_MOTION_LOD_FADE_DURATION_SEC));
     for (let index = 0; index < output.length; index += 1) {
       const from = this.fadeFromCoefficientsBuffer[index]!;
@@ -265,12 +265,12 @@ export class ProteinMotionController {
     }
   }
 
+  // LOD の更新周波数で量子化した標本化時刻 [s]。near はそのままの時刻。
   private sampleTimeFor(time: number, lod: ProteinMotionLod): number {
     const safeTime = safeDisplayTime(time);
     const updateHz = updateHzFor(lod);
     if (!Number.isFinite(updateHz)) return safeTime;
-    // 絶対時刻を量子化することで、粗い更新をフレームレートに依存させない。
-    // enemy の phase が量子化の境界をずらし、sampler の seed が各 enemy の軌跡を独立させる。
+    // 絶対時刻で量子化してフレームレートから切り離し、量子化の境界は個体ごとの位相でずらす。
     return Math.floor(safeTime * updateHz + this.updatePhase) / updateHz;
   }
 }

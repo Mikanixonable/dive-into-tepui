@@ -1,7 +1,6 @@
-// 積雲(雲の場の R = 被覆率、G = 雲頂高度)を、地表の上に立つ不透明な雲として描くメッシュ。
-// 分割段ラダーの各段ぶんの球を1枚のマテリアルで束ね、見かけ直径に応じて1段だけを見せる。殻の面へ
-// 届いた視線は雲頂の高さ場まで下ろして交点を探し、そこの深度と法線を書く。場の texel より細かい
-// 粒は天体固定のノイズで足す。陰影・影・逆二乗の減衰はすべてパイプラインが与える。
+// 積雲(雲の場の R = 被覆率、G = 雲頂高度)を、地表の上に立つ不透明な雲頂として描く殻。天体の
+// 子として置き、見かけ直径から分割段を選ぶ。雲頂は深度と法線を持つ不透明な面として照らされ、
+// 場の texel より細かい起伏は天体固定の粒で足す。
 import * as THREE from 'three/webgpu';
 import {
   Discard, Fn, If, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
@@ -32,10 +31,9 @@ export type CumulusDetail = (typeof CUMULUS_DETAIL)[keyof typeof CUMULUS_DETAIL]
 // refine は雲頂をまたいだ区間を締める回数(最初は clearance の線形補間、残りは二分で精度を決める)。
 interface CumulusSampling { readonly march: number; readonly refine: number }
 
-// 段ごとの標本の配り方。費用は入口の1回 + march + refine 回の標本化。march 0 は殻を描かない。
-// **いちばん粗い段は march 1 本に留め、そのぶん refinement を増やす** — 刻みが 2 本以上あると手前と奥で
-// 拾った雲頂が 2 枚の層として重なって読める。線形補間で最初の交点を寄せてから締めるので、区間が
-// 殻の端から端まで広がる段でも、雲頂が深さの段へ割れて縞に見える量を抑えられる。
+// 段ごとの標本の配り方。費用は入口の1回 + march + refine 回の標本化。march 0 は殻を描かない段。
+// いちばん粗い段は march を 1 本にして refine で補う — 粗い刻みを 2 本以上にすると、手前と奥で
+// 拾った雲頂が 2 枚の層に重なって見える。
 const SAMPLING_OF_DETAIL = {
   [CUMULUS_DETAIL.off]: { march: 0, refine: 0 },
   [CUMULUS_DETAIL.coarse]: { march: 1, refine: 5 },
@@ -53,14 +51,14 @@ export class OpaqueCloudSurfaceRenderer {
   // 標本の配り方と、その回数まで展開したマテリアル。
   private sampling: CumulusSampling = SAMPLING_OF_DETAIL[CUMULUS_DETAIL.standard];
   private material: THREE.Material;
-  // 殻を半径 1 とする物体空間での地表の半径。レイマーチの下端になる。**天体ごとに違う値は
-  // uniform で渡す** — グラフへ焼くと、殻を持つ天体の数だけシェーダが増える。
+  // 殻を半径 1 とする物体空間での地表の半径。天体ごとの値は uniform で渡す — 定数で焼くと
+  // 殻を持つ天体の数だけシェーダが増える。
   private readonly groundRadius: FloatUniform;
   // 粒の 1 rad あたりの山の数と、雲頂の勾配を測る差分の幅 [rad]。差分は粒の半波長ぶんなので、
   // 場の起伏と粒の起伏が同じ 1 つの法線に出る。
   private readonly grainFrequency: FloatUniform;
   private readonly gradientAngle: FloatUniform;
-  // 段ごとの球。表示側が親の位置・スケール・自転姿勢を毎フレーム与える。
+  // 分割段ごとの球。
   private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
   private activeLevel: SphereLodLevel | null = null;
 
@@ -99,18 +97,18 @@ export class OpaqueCloudSurfaceRenderer {
     for (const mesh of this.meshes.values()) parent.add(mesh);
   }
 
-  // 積雲の精細さの段を置き直す。
+  // 積雲の精細さの段を置き直す。オフなら全段を隠す。
   public setDetail(detail: CumulusDetail): void {
     this.setSampling(SAMPLING_OF_DETAIL[detail]);
     if (detail === CUMULUS_DETAIL.off) this.hide();
   }
 
+  // 雲場の比較用の LOD 規則を置き直す。雲場は共有なので、同じ場を読むほかの描画にも効く。
   public setLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
     this.fieldSampler.setLodSampling(mode, fixedLevel);
   }
 
-  // 標本の配り方を置き直す。**回数はレイマーチの展開としてグラフへ焼かれている**ので、
-  // 変わったらマテリアルを組み直して全段のメッシュへ張り替える。
+  // 標本の配り方を置き直す。回数はシェーダへ展開されるので、変わればマテリアルを組み直す。
   private setSampling(sampling: CumulusSampling): void {
     if (sampling.march === this.sampling.march && sampling.refine === this.sampling.refine) return;
     this.sampling = sampling;
@@ -120,8 +118,7 @@ export class OpaqueCloudSurfaceRenderer {
     previous.dispose();
   }
 
-  // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。前回段はこのrendererだけが
-  // 所有し、screen-lod.tsの純粋な選択関数へ渡す。刻みを持たない配り方では全段を隠す。
+  // 見かけ直径 [px] から分割段を選び、その段のメッシュを見せる。精細さがオフなら全段を隠す。
   public syncLod(apparentDiameterPx: number): void {
     const level = sphereLodLevelWithHysteresis(
       apparentDiameterPx, this.activeLevel, this.sampling.march !== 0,
@@ -137,7 +134,7 @@ export class OpaqueCloudSurfaceRenderer {
     for (const mesh of this.meshes.values()) mesh.visible = false;
   }
 
-  // 全段のメッシュを親から外し、表面専用のマテリアルを解放する。雲場は CloudPresentation が解放する。
+  // 全段のメッシュを親から外し、マテリアルを解放する。fieldSampler は持ち主が解放する。
   public dispose(): void {
     this.hide();
     for (const mesh of this.meshes.values()) mesh.removeFromParent();

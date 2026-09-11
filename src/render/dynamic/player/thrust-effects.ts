@@ -1,4 +1,4 @@
-// マヌーバ噴射プルーム: 推力方向の逆側に置く発光ビルボード 2 枚(コア+アウター)+ エンジン音。
+// マヌーバ噴射プルーム: 推力方向の逆側に置く発光ビルボード 2 枚(コア+アウター)と、模式図用のコーン。
 import * as THREE from 'three/webgpu';
 import { Vec3, addScaled, len, scale } from '../../../math/vec3';
 import { mulberry32 } from '../../../math/random';
@@ -39,11 +39,9 @@ export class ThrustEffects {
     scene.add(this.core.mesh, this.outer.mesh, this.schematicCone.mesh);
   }
 
-  // 噴射プルームを thrust(今フレームの推力ベクトル、非噴射時は null)へ同期する。position は
-  // 噴射口を置く ECI 位置で、表示時刻の状態を引けないフレームは null。maxAccel は出力比
-  // (プルームの大きさ)を求めるための全開加速度。displayTime は明滅の位相を決める表示時刻で、
-  // 同じ時刻に何度呼んでも同じ絵になる。style が模式図なら、ビルボードの代わりに輪郭抽出へ
-  // 拾われるコーンを出す。
+  // 噴射プルームを thrust(推力による ECI 加速度 [m/s^2]、非噴射時は null)へ同期する。position は
+  // 噴射口を置く ECI 位置で、引けないフレームは null。出力比は maxAccel(全開加速度)との比。
+  // displayTime が明滅の位相を決め、同じ時刻には同じ絵になる。模式図ではコーンを出す。
   public sync(
     fo: FloatingOrigin, position: Vec3 | null, thrust: Vec3 | null, maxAccel: number,
     visible: boolean, cameraQuat: THREE.Quaternion, zoomActive: boolean,
