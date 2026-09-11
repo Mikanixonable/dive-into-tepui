@@ -36,5 +36,5 @@ Earthだけをmanifest、request queue、resident coordinator、GPU materialへ�
 `npm run dev`は`.earth-surface/bundle`を直接配信し、manifest URLと配信datasetIdを共有して`/earth/<datasetId>/`へ到達させる。
 開発時に5.5 GiBのbundleをdocsへコピーしない。
 
-実bundleを使ったstage00 smokeでは、5.812秒でcolor/terrain各z7 20件がHTTP 200となり、F3再読みでready/detailed・最高LOD z7、fatal/errorなしを確認した。
+実bundleを使ったstage00 smokeを3回連続実行し、5.083〜5.339秒で最高LOD z7へ到達した。color/terrain各24・36・32件がHTTP 200となり、ready/detailed、fatal/errorなしを確認した。
 15固定ケースの完全な視覚計測はT5に残っているため、全体完了とは扱わない。

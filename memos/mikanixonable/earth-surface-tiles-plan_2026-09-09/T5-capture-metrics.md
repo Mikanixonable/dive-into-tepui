@@ -27,8 +27,8 @@ Earthの色、法線、roughness、深度、LOD、通信、GPU常駐を再現可
 
 ## 実装状況（2026-09-11）
 
-capture APIとmetrics schema、fake transport/GPU再生を実装済み。実bundleを使ったstage00 smokeでは5.812秒で
-color/terrain各z7 20件がHTTP 200となり、F3再読みでready/detailed・最高LOD z7、fatal/errorなしを確認した。
+capture APIとmetrics schema、fake transport/GPU再生を実装済み。実bundleを使ったstage00 smokeを3回連続実行し、5.083〜5.339秒で最高LOD z7へ到達した。
+color/terrain各24・36・32件がHTTP 200となり、ready/detailed、fatal/errorなしを確認した。
 
 15固定ケースの完全なcolor/normal/depth/metrics取得は未実施である。したがってT5は未完了であり、stage00 smokeの成功を
 15ケースの完了へ読み替えない。
