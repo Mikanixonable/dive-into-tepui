@@ -33,14 +33,17 @@ export function register(): void {
     assert.equal(pageTable.magFilter, THREE.NearestFilter);
     assert.equal(pageTable.colorSpace, THREE.NoColorSpace);
     assert.equal(pageTable.generateMipmaps, false);
+    assert.equal(pageTable.flipY, false);
     assert.equal(color.minFilter, THREE.LinearFilter);
     assert.equal(color.magFilter, THREE.LinearFilter);
     assert.equal(color.colorSpace, THREE.SRGBColorSpace);
     assert.equal(color.generateMipmaps, false);
+    assert.equal(color.flipY, false);
     assert.equal(terrain.minFilter, THREE.LinearFilter);
     assert.equal(terrain.magFilter, THREE.LinearFilter);
     assert.equal(terrain.colorSpace, THREE.NoColorSpace);
     assert.equal(terrain.generateMipmaps, false);
+    assert.equal(terrain.flipY, false);
     assert.equal(pageTable.image, null);
     assert.equal(pageTable.version, 0);
     const data = new THREE.DataTexture(new Uint8Array(4), 1, 1);
