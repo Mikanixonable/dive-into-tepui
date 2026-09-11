@@ -1,11 +1,8 @@
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { lenSq, sub, type Vec3 } from '../../../math/vec3';
 import { ENGAGEMENT_RANGE } from '../engagement-zone';
-import type {
-  DynamicMotion,
-  DynamicMotionBehavior,
-  DynamicReactionServices,
-} from '../dynamic-motion';
+import type { DynamicMotion, DynamicMotionBehavior } from '../dynamic-motion';
+import type { DynamicReactionServices } from '../dynamic-simulation-participant';
 
 const SELF_CONTACT_GRACE = 2.0;
 const BULLET_CLOSE_PASS_DIST = 40;
