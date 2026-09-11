@@ -4,31 +4,28 @@ import { CloudField } from './cloud-field';
 import { WeatherModel } from './weather-model';
 import { monthlyClimateClockAt } from './monthly-climate-clock';
 import type { WebGPURenderer } from 'three/webgpu';
-import type { ClimateMapLike } from './climate-map';
+import type { ClimateMap } from './climate-map';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from './field-projection';
 import type { CloudFieldSampler } from './cloud-field-sampler';
 import type { CloudFieldSource } from './cloud-presentation';
+import type { MonthlyClimateMap } from './monthly-climate-map';
 
 export class GeneratedCloudField implements CloudFieldSource {
   private readonly model: WeatherModel;
   private readonly field: CloudField;
   // 最後に焼いた表示時刻。表示時刻が同じ間は生成済みの場を使う。
   private lastBakedDisplayTime: number | null = null;
-  // 気候テクスチャの到着前に焼いた場を、画像公開後の同じ時刻へ持ち越さない。
+  // 最後に焼いたときの気候の世代。月の選択か画像の公開が変われば、同じ表示時刻でも焼き直す。
   private lastBakedClimateGeneration: number | null = null;
   // 最後に焼いたときの投影の版。置き方が変われば、同じ表示時刻でも焼き直す。
   private lastBakedProjectionRevision: number | null = null;
-  private lastClimateMonth = -1;
-  private lastClimateBlend = Number.NaN;
 
   // climate と、その中間場・出力場が共有する投影法を受け取る。surfaceRadius は雲を載せる天体の
-  // 半径 [m]、rotationPeriod はその自転周期 [s]、climateEpochUnixSec は表示時刻 0 の UTC [s]
-  // (月別でない気候では null にする)。
+  // 半径 [m]、rotationPeriod はその自転周期 [s]、climateEpochUnixSec は表示時刻 0 の UTC [s]。
   public constructor(
-    private readonly climate: ClimateMapLike, private readonly projection: FieldProjection,
-    surfaceRadius: number, rotationPeriod: number,
-    private readonly climateEpochUnixSec: number | null,
+    private readonly climate: MonthlyClimateMap, private readonly projection: FieldProjection,
+    surfaceRadius: number, rotationPeriod: number, private readonly climateEpochUnixSec: number,
   ) {
     this.model = new WeatherModel(climate, projection, surfaceRadius, rotationPeriod);
     this.field = new CloudField(this.model, projection);
@@ -42,13 +39,14 @@ export class GeneratedCloudField implements CloudFieldSource {
 
   // この場を焼く天気のモデル・気候・投影。prepare で焼いた中間場を読むときに使い、寿命はこのクラスが持つ。
   public get weatherModel(): WeatherModel { return this.model; }
-  public get climateMap(): ClimateMapLike { return this.climate; }
+  public get climateMap(): ClimateMap { return this.climate; }
   public get fieldProjection(): FieldProjection { return this.projection; }
 
   // 表示時刻の雲場を、気候の月を合わせてから天気の中間場から順に焼く。
   public prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
-    // 気候の月を表示時刻へ合わせ、気候画像の取得を始める。
-    if (this.climateEpochUnixSec !== null) this.syncClimateTime(this.climateEpochUnixSec + displayTime);
+    // 気候の月を表示時刻の暦へ合わせ、気候画像の取得を始める。
+    const clock = monthlyClimateClockAt(this.climateEpochUnixSec + displayTime);
+    this.climate.setMonth(clock.monthIndex, clock.blend);
     this.climate.request();
     // 表示時刻・気候の入力・投影の置き方が前回と同じなら、焼いた場をそのまま使う。
     const climateGeneration = this.climate.generation;
@@ -63,26 +61,6 @@ export class GeneratedCloudField implements CloudFieldSource {
     this.lastBakedDisplayTime = displayTime;
     this.lastBakedClimateGeneration = climateGeneration;
     this.lastBakedProjectionRevision = projectionRevision;
-  }
-
-  // 絶対UTC秒を月別気候のcurrent/next選択へ変換する。
-  private syncClimateTime(unixSeconds: number): void {
-    const clock = monthlyClimateClockAt(unixSeconds);
-    if (clock.monthIndex === this.lastClimateMonth && clock.blend === this.lastClimateBlend) return;
-    this.syncClimateMonth(clock.monthIndex, clock.blend);
-  }
-
-  // 気候の月を monthIndex と次の月への混ぜ具合 blend へ置き直し、次の prepare で焼き直させる。
-  // 月別でない気候なら例外。
-  private syncClimateMonth(monthIndex: number, blend: number): void {
-    if (!('setMonth' in this.climate) || typeof this.climate.setMonth !== 'function') {
-      throw new Error('The configured climate map does not support monthly input');
-    }
-    this.climate.setMonth(monthIndex, blend);
-    this.lastClimateMonth = monthIndex;
-    this.lastClimateBlend = blend;
-    this.lastBakedDisplayTime = null;
-    this.lastBakedClimateGeneration = null;
   }
 
   // 保持している雲場を解放する。
