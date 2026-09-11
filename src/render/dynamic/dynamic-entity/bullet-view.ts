@@ -138,14 +138,14 @@ abstract class ProjectileView extends DynamicView {
   protected override syncModel(
     _source: DynamicRenderSource,
     displayed: KinematicState | null,
-    context: DynamicViewFrame,
+    viewFrame: DynamicViewFrame,
   ): void {
     if (displayed !== null
-      && orientProjectile(this.orientation, context.camera.floatingOrigin.VtoThreeV3(displayed.v))) {
+      && orientProjectile(this.orientation, viewFrame.camera.floatingOrigin.VtoThreeV3(displayed.v))) {
       this.object.quaternion.copy(this.orientation);
     }
     if (!this.object.visible) return;
-    this.pushToPool(context.pools.get(BulletPools));
+    this.pushToPool(viewFrame.pools.get(BulletPools));
   }
 
   // 自分の変換で、種別の共有描画資源をプールへ積む。

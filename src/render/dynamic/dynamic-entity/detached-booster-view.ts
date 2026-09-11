@@ -37,10 +37,10 @@ export class DetachedBoosterView extends DynamicView<DetachedBoosterRenderSource
   protected override syncModel(
     source: DetachedBoosterRenderSource,
     displayed: KinematicState | null,
-    context: DynamicViewFrame,
+    viewFrame: DynamicViewFrame,
   ): void {
     // 照準ズーム中は機体そのものを覗き込むので、炎で視界を潰さない。
-    if (displayed === null || source.burnRatio === null || context.camera.zoomed) {
+    if (displayed === null || source.burnRatio === null || viewFrame.camera.zoomed) {
       this.plume.hide();
       return;
     }
@@ -49,11 +49,11 @@ export class DetachedBoosterView extends DynamicView<DetachedBoosterRenderSource
     const nozzleWorld = add(displayed.r, qRotate(source.attitude, v3(0, 0, nozzleFromCenter)));
     const tailDirection = qRotate(source.attitude, v3(0, 0, -1));
     this.plume.sync({
-      position: context.camera.floatingOrigin.RtoThreeV3(nozzleWorld),
+      position: viewFrame.camera.floatingOrigin.RtoThreeV3(nozzleWorld),
       direction: new THREE.Vector3(tailDirection.x, tailDirection.y, tailDirection.z),
       intensity: Math.max(MIN_PLUME_INTENSITY, source.burnRatio),
       visible: true,
-    }, context.camera.camera.quaternion, context.style);
+    }, viewFrame.camera.camera.quaternion, viewFrame.style);
   }
 
   // 噴射炎を破棄してから、共通 View 資源を片付ける。

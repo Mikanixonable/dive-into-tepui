@@ -50,15 +50,15 @@ export class DetachedBooster extends DynamicEntity {
 
   // 噴射炎を描くフレームだけ、その燃焼比を表示入力へ足す。
   protected override renderSource(
-    context: DynamicViewFrame, visible: boolean, active: boolean,
+    viewFrame: DynamicViewFrame, visible: boolean, active: boolean,
     orbitReference: OrbitReference | undefined,
   ): DetachedBoosterRenderSource {
     const motion = this.motion as DetachedBoosterMotion;
     // 燃焼は積分の先端でしか決まっていないので、その時刻を映しているフレームだけ噴かせる。
     const burning = motion.thrust !== null
-      && Math.abs(context.displayTime - motion.state.t) <= BURN_DISPLAY_EPS;
+      && Math.abs(viewFrame.displayTime - motion.state.t) <= BURN_DISPLAY_EPS;
     return {
-      ...super.renderSource(context, visible, active, orbitReference),
+      ...super.renderSource(viewFrame, visible, active, orbitReference),
       burnRatio: burning ? motion.burnRatio : null,
     };
   }

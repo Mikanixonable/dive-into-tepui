@@ -143,8 +143,8 @@ export class DebrisFragmentView extends DynamicView {
   protected override syncModel(
     _source: DynamicRenderSource,
     _displayed: KinematicState | null,
-    context: DynamicViewFrame,
+    viewFrame: DynamicViewFrame,
   ): void {
-    context.pools.get(DebrisFragmentPools).push(this.fragmentVariant, this.object, this.fragmentColor);
+    viewFrame.pools.get(DebrisFragmentPools).push(this.fragmentVariant, this.object, this.fragmentColor);
   }
 }
