@@ -23,7 +23,7 @@ const COLOR_ZERO_VELOCITY_LINE = 0xd97a94;
 // 双方と、その外側に開くヤコビ定数の低い曲線の一部までを含む値として 1.6 を採る
 // (μ が小さい系でも副天体は 1 の近くにあり、L4/L5 は距離1の正三角配置にあるため、
 // 1.6 あれば両天体・共線点・トロヤ点のネックまで一通り入る)。系のスケールにのみ依存する
-// 無次元値なので、断面4つ(地球-月・太陽-地球 × xy/xz)すべてで共通に使える。
+// 無次元値なので、断面8つ(地球-月・太陽-地球・太陽-木星・太陽-土星 × xy/xz)すべてで共通に使える。
 const HALF = 1.6;
 // 片側の格子分割数。臨界ヤコビ定数付近でネックが偽って閉じない(=解像度不足で連結成分の
 // 判定を誤る)のを避けるため、負荷との兼ね合いでやや高めの300を採る。曲線の滑らかさは
@@ -41,7 +41,7 @@ type Point2 = readonly [number, number];
 // マップビュー以外のフレームで返す空の列。
 const NO_LINES: readonly ZeroVelocityDisplay[] = [];
 
-// 断面の定義。系と面の組は4つで固定。
+// 断面の定義。系と面の組は8つで固定。
 interface Section {
   readonly key: keyof ZeroVelocitySettings;
   readonly system: CatalogSystemId;
@@ -53,6 +53,10 @@ const SECTIONS: readonly Section[] = [
   { key: 'earthMoonXZ', system: 'earth-moon', plane: 'xz' },
   { key: 'sunEarthXY', system: 'sun-earth', plane: 'xy' },
   { key: 'sunEarthXZ', system: 'sun-earth', plane: 'xz' },
+  { key: 'sunJupiterXY', system: 'sun-jupiter', plane: 'xy' },
+  { key: 'sunJupiterXZ', system: 'sun-jupiter', plane: 'xz' },
+  { key: 'sunSaturnXY', system: 'sun-saturn', plane: 'xy' },
+  { key: 'sunSaturnXZ', system: 'sun-saturn', plane: 'xz' },
 ];
 
 // 断面上で抽出した1本ぶんの静的な形(無次元2次元座標)。時刻に依存しないので、設定が
