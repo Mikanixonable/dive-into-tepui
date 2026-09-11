@@ -330,13 +330,13 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     visual: EntityVisualSettings, orbitRef: OrbitReference | undefined,
   ): void {
     // 全個体が同じ1つのフレーム入力を読むよう、走査の前に組んでおく。
-    const context = { displayTime, camera, style, visual, pools: this.instancedPools };
+    const viewFrame = { displayTime, camera, style, visual, pools: this.instancedPools };
     // instance pool の受付期間で全 Entity を挟む。
     this.instancedPools.beginFrame();
     for (const e of this.entities) {
       // 種別ごとの表示可否はここで解決し、View へは結果だけを渡す。
       const visible = visibilityPolicy === null || e.mapVisibility(visibilityPolicy, active).category;
-      e.sync(context, visible, e === active, orbitRef);
+      e.sync(viewFrame, visible, e === active, orbitRef);
     }
     this.instancedPools.endFrame();
   }

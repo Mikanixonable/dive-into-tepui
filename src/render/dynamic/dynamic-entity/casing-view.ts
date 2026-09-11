@@ -55,8 +55,8 @@ export class CasingView extends DynamicView {
   protected override syncModel(
     _source: DynamicRenderSource,
     _displayed: KinematicState | null,
-    context: DynamicViewFrame,
+    viewFrame: DynamicViewFrame,
   ): void {
-    context.pools.get(CasingPool).push(this.object);
+    viewFrame.pools.get(CasingPool).push(this.object);
   }
 }

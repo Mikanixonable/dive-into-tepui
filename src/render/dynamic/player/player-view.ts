@@ -79,27 +79,27 @@ export class PlayerView extends DynamicView<PlayerRenderSource> {
   protected override syncModel(
     source: PlayerRenderSource,
     displayed: KinematicState | null,
-    context: DynamicViewFrame,
+    viewFrame: DynamicViewFrame,
   ): void {
     // 表示時刻の状態を各エフェクトへ渡し、引けなかったフレームは null で畳ませる。
-    const origin = context.camera.floatingOrigin;
+    const origin = viewFrame.camera.floatingOrigin;
     const effectPosition = displayed?.r ?? null;
     const effectVisible = this.object.visible;
-    const cameraQuat = context.camera.camera.quaternion;
-    const zoomActive = context.camera.zoomed;
+    const cameraQuat = viewFrame.camera.camera.quaternion;
+    const zoomActive = viewFrame.camera.zoomed;
 
     // 船外へ出るブースター・推力・RCS・再突入表現は同じ可視性に揃える。
     this.boosters.sync(
       origin,
       effectPosition,
-      context.displayTime,
+      viewFrame.displayTime,
       source.state.t,
       source.attitude,
       source.boosters,
       effectVisible,
       cameraQuat,
       zoomActive,
-      context.style,
+      viewFrame.style,
     );
     this.thrustEffects.sync(
       origin,
@@ -109,8 +109,8 @@ export class PlayerView extends DynamicView<PlayerRenderSource> {
       effectVisible,
       cameraQuat,
       zoomActive,
-      context.style,
-      context.displayTime,
+      viewFrame.style,
+      viewFrame.displayTime,
     );
     this.rcsEffects.sync(
       origin,
@@ -120,7 +120,7 @@ export class PlayerView extends DynamicView<PlayerRenderSource> {
       effectVisible,
       cameraQuat,
       zoomActive,
-      context.displayTime,
+      viewFrame.displayTime,
     );
     this.reentryEffects.sync(
       origin,
@@ -135,9 +135,9 @@ export class PlayerView extends DynamicView<PlayerRenderSource> {
     this.markers.sync(
       source.state,
       source.attitude,
-      context.camera.mode,
+      viewFrame.camera.mode,
       source.active,
-      context.camera.project,
+      viewFrame.camera.project,
       source.roundsInMag,
       source.magsLeft,
       source.averageMuzzleVelocity,
