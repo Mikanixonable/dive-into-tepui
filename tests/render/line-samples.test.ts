@@ -133,13 +133,13 @@ export function register(): void {
     const trajectory = orbitTrajectory();
     const line = new TrajectoryLine(STYLE);
     line.sync(trajectory, 0, 600, FRAME, 0, PARTS.system, ANCHORS, STYLE, camera);
-    const first = line.samplePoints(64, FRAME, 0, PARTS.referenceFrames, ANCHORS);
+    const first = line.samplePoints(64);
     assert.ok(first.length > 0, '軌跡を渡しても点列が空');
     // 2回目は再 bake が抑制される経路を通る。抑制されても点列は変わらない。
     line.sync(trajectory, 0, 600, FRAME, 0, PARTS.system, ANCHORS, STYLE, camera);
-    assert.deepEqual(line.samplePoints(64, FRAME, 0, PARTS.referenceFrames, ANCHORS), first, '同じ入力で点列が変わる');
+    assert.deepEqual(line.samplePoints(64), first, '同じ入力で点列が変わる');
     for (const count of COUNTS) {
-      const points = line.samplePoints(count, FRAME, 0, PARTS.referenceFrames, ANCHORS);
+      const points = line.samplePoints(count);
       assert.equal(points.length, count + 1, `分割数 ${count} に対する点数が合わない`);
     }
     line.dispose();
@@ -149,10 +149,10 @@ export function register(): void {
     const camera = cameraFrame();
     const line = new TrajectoryLine(STYLE);
     line.sync(orbitTrajectory(), 0, 600, FRAME, 0, PARTS.system, ANCHORS, STYLE, camera);
-    assert.ok(line.samplePoints(16, FRAME, 0, PARTS.referenceFrames, ANCHORS).length > 0, '軌跡を渡しても点列が空');
+    assert.ok(line.samplePoints(16).length > 0, '軌跡を渡しても点列が空');
     line.sync(null, null, null, FRAME, 0, PARTS.system, ANCHORS, STYLE, camera);
     assert.deepEqual(
-      line.samplePoints(16, FRAME, 0, PARTS.referenceFrames, ANCHORS), [], '線を消しても点列が残っている');
+      line.samplePoints(16), [], '線を消しても点列が残っている');
     line.dispose();
   });
 }

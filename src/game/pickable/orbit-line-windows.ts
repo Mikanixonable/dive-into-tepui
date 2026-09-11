@@ -14,7 +14,7 @@ const KIND_LABEL: Record<LinePickable['kind'], string> = {
   'orbit-body': '公転軌道', 'orbit-ship': '船の軌道', 'orbit-guide': '軌道ガイド',
 };
 const CALC_METHOD_LABEL: Record<LinePickable['method'], string> = {
-  analytic: '解析軌道', predicted: '予測軌道', guide: '軌道ガイド',
+  analytic: '解析軌道', numeric: '予測軌道', guide: '軌道ガイド',
 };
 
 export class OrbitLineWindows {

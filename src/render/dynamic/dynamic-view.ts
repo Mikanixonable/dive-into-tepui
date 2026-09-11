@@ -72,7 +72,7 @@ export interface DynamicLineDisplay {
 }
 
 export interface DynamicLineSamples {
-  readonly method: 'analytic' | 'predicted';
+  readonly method: 'analytic' | 'numeric';
   readonly points: readonly Vec3[];
 }
 
@@ -221,24 +221,17 @@ export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderS
   }
 
   // 現在描画している線を、当たり判定用の ECI 点列として読み出す。
-  public lineSamples(
-    count: number, frame: ReferenceFrame, displayTime: number,
-    celestialBodies: CelestialFrameSource, anchors: FrameAnchorSource,
-  ): DynamicLineSamples | null {
+  public lineSamples(count: number): DynamicLineSamples | null {
     // 解析線を優先し、積分線だけのときは過去→未来の順に連結する。
     if (this.orbitLineValue !== null) {
       return { method: 'analytic', points: this.orbitLineValue.line.samplePoints(count) };
     }
     if (this.predictedLineValue === null && this.actualLineValue === null) return null;
     return {
-      method: 'predicted',
+      method: 'numeric',
       points: [
-        ...(this.actualLineValue?.samplePoints(
-          count, frame, displayTime, celestialBodies.frames, anchors,
-        ) ?? []),
-        ...(this.predictedLineValue?.samplePoints(
-          count, frame, displayTime, celestialBodies.frames, anchors,
-        ) ?? []),
+        ...(this.actualLineValue?.samplePoints(count) ?? []),
+        ...(this.predictedLineValue?.samplePoints(count) ?? []),
       ],
     };
   }

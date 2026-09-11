@@ -7,7 +7,7 @@ import type { LineStyle } from '../line-style';
 import type { Vec3 } from '../../math/vec3';
 import type { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
-import type { CelestialFrameSource, FrameTransformSource } from '../lines/celestial-frame-source';
+import type { CelestialFrameSource } from '../lines/celestial-frame-source';
 
 // このフレームに描く折れ線1本。
 export interface PlanArcLine {
@@ -56,12 +56,8 @@ export class PlanPathView {
   }
 
   // 直近の sync で描いた折れ線を、当たり判定向けの ECI 点列として弧ごとに読み出す。
-  public lineSamples(
-    count: number, displayTime: number, frames: FrameTransformSource, frameAnchors: FrameAnchorSource,
-  ): readonly (readonly Vec3[])[] {
-    return this.arcs.map(
-      (arc, i) => this.lines[i]!.samplePoints(count, arc.frame, displayTime, frames, frameAnchors),
-    );
+  public lineSamples(count: number): readonly (readonly Vec3[])[] {
+    return this.lines.slice(0, this.arcs.length).map((line) => line.samplePoints(count));
   }
 
   // group をシーンから外し、プールした折れ線を解放する。
