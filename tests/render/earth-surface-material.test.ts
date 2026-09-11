@@ -11,7 +11,8 @@ import {
 import type {
   EarthSurfaceLayerSample, EarthSurfaceMaterialLayerReader,
 } from '../../src/render/earth-surface-material';
-import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, earthTileKey } from '../../src/render/earth-surface-tiles';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from '../../src/render/earth-surface-page-table';
+import { earthTileKey } from '../../src/render/earth-surface-tile-key';
 
 function layer(colorSrgb: { readonly r: number; readonly g: number; readonly b: number }, roughness: number,
   bodyNormal = new THREE.Vector3(0, 1, 0)): EarthSurfaceLayerSample {
