@@ -5,6 +5,7 @@ import { gunzipSync } from 'node:zlib';
 import { access, readFile, stat } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
 
+export const EARTH_TILE_MIN_Z = 4;
 export const EARTH_TILE_MAX_Z = 7;
 export const EARTH_TERRAIN_HEADER_BYTES = 32;
 export const EARTH_TERRAIN_WIDTH = 260;
@@ -19,10 +20,10 @@ export const EARTH_TERRAIN_PAYLOAD_BYTES = EARTH_TERRAIN_HEADER_BYTES + EARTH_TE
 export const EARTH_BASE_MAGIC = 'ESTB';
 export const EARTH_BASE_ROOT_COLUMNS = 2;
 export const EARTH_BASE_ROOT_ROWS = 1;
-export const EARTH_BASE_COLOR_WIDTH = 512;
-export const EARTH_BASE_COLOR_HEIGHT = 256;
+export const EARTH_BASE_COLOR_WIDTH = 8192;
+export const EARTH_BASE_COLOR_HEIGHT = 4096;
 export const EARTH_BASE_COLOR_COMPONENTS = 3;
-export const EARTH_GLOBAL_TILE_COUNT = 43690;
+export const EARTH_GLOBAL_TILE_COUNT = 43520;
 
 const DATASET = /^[a-z0-9-]+$/;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -97,7 +98,7 @@ function expectClimateEncoding(value) {
 
 export function validateManifest(value) {
   const manifest = expectObject(value, 'earth-surface manifest');
-  if (manifest.schemaVersion !== 1) fail('unsupported earth surface manifest schema');
+  if (manifest.schemaVersion !== 2) fail('unsupported earth surface manifest schema');
   if (typeof manifest.datasetId !== 'string' || !DATASET.test(manifest.datasetId)) fail('invalid earth surface datasetId');
   expectSha256(manifest.sourceManifestSha256, 'sourceManifestSha256');
   const provenance = expectObject(manifest.provenance, 'provenance');
@@ -116,11 +117,15 @@ export function validateManifest(value) {
   if (climateMap.width !== 1024 || climateMap.height !== 512 || climateMap.channels !== 4
     || climateMap.scalar !== 'UInt8') fail('climateMap must be 1024x512 RGBA8');
   const coverage = expectObject(manifest.coverage, 'coverage');
-  if (!['complete', 'sparse'].includes(coverage.kind) || coverage.maxZoom !== EARTH_TILE_MAX_Z) {
-    fail('coverage must declare complete or sparse z0..z7 coverage');
+  if (!['complete', 'sparse'].includes(coverage.kind) || coverage.minZoom !== EARTH_TILE_MIN_Z
+    || coverage.maxZoom !== EARTH_TILE_MAX_Z) {
+    fail('coverage must declare complete or sparse z4..z7 coverage');
   }
   if (coverage.kind === 'complete' && coverage.expectedTiles !== EARTH_GLOBAL_TILE_COUNT) {
-    fail('complete coverage must declare 43690 tiles');
+    fail('complete coverage must declare 43520 tiles');
+  }
+  if (coverage.kind === 'sparse' && coverage.expectedTiles !== null) {
+    fail('sparse coverage must declare null expectedTiles');
   }
   if (!Array.isArray(manifest.controlRegions) || manifest.controlRegions.length !== 16) {
     fail('exactly 16 controlRegions are required');
@@ -141,7 +146,7 @@ export function validateManifest(value) {
 }
 
 function validateTileKey(z, x, y, label) {
-  if (![z, x, y].every(Number.isSafeInteger) || z < 0 || z > EARTH_TILE_MAX_Z) fail(`${label} has an invalid z`);
+  if (![z, x, y].every(Number.isSafeInteger) || z < EARTH_TILE_MIN_Z || z > EARTH_TILE_MAX_Z) fail(`${label} has an invalid z`);
   if (x < 0 || x >= 2 ** (z + 1)) fail(`${label} has an invalid x`);
   if (y < 0 || y >= 2 ** z) fail(`${label} has an invalid y`);
   return { z, x, y };

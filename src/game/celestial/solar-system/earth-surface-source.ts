@@ -1,5 +1,6 @@
 // 地球の地表配信物をゲームへ渡すための、描画・気候共有契約。
 // URLの組み立てとdatasetIdの固定だけを持ち、タイル要求やGPU資源はrender側が所有する。
+import { EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z } from '../../../render/earth-surface-tiles';
 
 export interface EarthSurfaceSource {
   readonly datasetId: string;
@@ -27,7 +28,7 @@ export interface EarthSurfaceClimateEncoding {
 }
 
 export interface EarthSurfaceAssetManifest {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly datasetId: string;
   readonly sourceManifestSha256: string;
   readonly terrainEncoding: EarthSurfaceTerrainEncoding;
@@ -36,7 +37,15 @@ export interface EarthSurfaceAssetManifest {
   readonly tileIndexUrl: string;
   readonly climateMaps: readonly string[];
   readonly climateEncoding: EarthSurfaceClimateEncoding;
+  readonly coverage: EarthSurfaceCoverage;
   readonly attribution: readonly string[];
+}
+
+export interface EarthSurfaceCoverage {
+  readonly kind: 'complete' | 'sparse';
+  readonly minZoom: 4;
+  readonly maxZoom: 7;
+  readonly expectedTiles: number | null;
 }
 
 // manifestが宣言するESTN/ESTB v2のチャンネル配置と固定値。
@@ -71,8 +80,21 @@ function requireDatasetId(datasetId: string): void {
 export function earthSurfaceSourceFromManifest(
   baseUrl: string, manifestUrl: string, manifest: EarthSurfaceAssetManifest,
 ): EarthSurfaceSource {
-  if (manifest.schemaVersion !== 1) throw new Error('Unsupported Earth surface manifest schema');
+  if (manifest.schemaVersion !== 2) throw new Error('Unsupported Earth surface manifest schema');
   requireDatasetId(manifest.datasetId);
+  const coverage = manifest.coverage;
+  if (coverage?.kind !== 'complete' && coverage?.kind !== 'sparse') {
+    throw new Error('Invalid Earth surface coverage kind');
+  }
+  if (coverage.minZoom !== EARTH_TILE_MIN_Z || coverage.maxZoom !== EARTH_TILE_MAX_Z) {
+    throw new Error('Earth surface coverage must be z4..z7');
+  }
+  if (coverage.kind === 'complete' && coverage.expectedTiles !== 43_520) {
+    throw new Error('Complete Earth surface coverage must contain 43520 tiles');
+  }
+  if (coverage.kind === 'sparse' && coverage.expectedTiles !== null) {
+    throw new Error('Sparse Earth surface coverage must not declare expected tiles');
+  }
   // runtimeのデコーダと異なるwire形式を、取得を始める前に拒否する。
   const terrain = manifest.terrainEncoding;
   if (terrain?.formatVersion !== 2 || terrain.layout !== 'octahedral-rg8-roughness-r8-material-class-a8'

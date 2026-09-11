@@ -5,7 +5,8 @@ import {
 import type { BoolNode, FloatNode, Mat3Node, Vec2Node, Vec3Node, Vec4Node } from './tsl-types';
 import { earthSurfaceUvFromRadialNode } from './earth-surface-coordinate';
 import {
-  EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER, EARTH_TILE_LAYERS, EARTH_TILE_MAX_Z, EARTH_TILE_TEXELS,
+  EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER, EARTH_TILE_LAYERS, EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z,
+  EARTH_TILE_TEXELS,
 } from './earth-surface-tiles';
 
 export type EarthSurfaceMaterialTextureKind = 'pageTable' | 'color' | 'terrain';
@@ -96,7 +97,7 @@ export function earthSurfaceTileUvNode(uv: Vec2Node, z: FloatNode): Vec2Node {
 // ページ表のbase sentinelを詳細配列の有効LODへ戻す。base分岐でも詳細標本ノードは
 // グラフへ含まれるため、sentinelをそのままexp2へ渡さない。
 export function earthSurfaceDetailLodNode(z: FloatNode): FloatNode {
-  return min(z, EARTH_TILE_MAX_Z);
+  return min(max(z, EARTH_TILE_MIN_Z), EARTH_TILE_MAX_Z);
 }
 
 function sampleArray(textureValue: THREE.Texture, uv: Vec2Node, z: FloatNode, layer: FloatNode): Vec4Node {
@@ -129,7 +130,7 @@ function sampleLodTexture(
         If(parentBase, () => {
           previous.assign(sampleBase(baseTexture, uv));
         }).Else(() => {
-          previous.assign(sampleArray(detailTexture, uv, max(z.sub(1), 0), parentLayer));
+          previous.assign(sampleArray(detailTexture, uv, max(z.sub(1), EARTH_TILE_MIN_Z), parentLayer));
         });
         value.assign(mix(previous, value, fade));
       });

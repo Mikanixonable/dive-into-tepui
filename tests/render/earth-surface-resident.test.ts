@@ -11,7 +11,7 @@ import { EarthSurfaceTileRequestQueue, EarthSurfaceTileRequestSource } from '../
 import type { EarthSurfaceTileIndexFile } from '../../src/render/earth-surface-request';
 import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from '../../src/render/earth-surface-decode';
 import {
-  EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EarthSurfaceTiles, earthPageAt,
+  EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EARTH_TILE_MIN_Z, EarthSurfaceTiles, earthPageAt,
   earthTileChildren, earthTileId, earthTileKey,
 } from '../../src/render/earth-surface-tiles';
 import type { EarthTileKey, EarthTileProjection, EarthTileResident } from '../../src/render/earth-surface-tiles';
@@ -60,7 +60,7 @@ function indexFor(keys: readonly EarthTileKey[]): EarthSurfaceTileIndexFile {
 }
 
 class Projection implements EarthTileProjection {
-  public constructor(public readonly splitError = 3, public readonly maximumLevel = 0) {}
+  public constructor(public readonly splitError = 3, public readonly maximumLevel = EARTH_TILE_MIN_Z) {}
   public evaluate(key: EarthTileKey): { readonly visible: boolean; readonly errorPx: number; readonly priority: number } {
     return { visible: true, errorPx: key.z <= this.maximumLevel ? this.splitError : 0, priority: 1 / (1 + key.z) };
   }
@@ -201,8 +201,8 @@ function sync(resident: EarthSurfaceResidentCoordinator, projection: EarthTilePr
 
 export function register(): void {
   test('earth resident: 静止安定後は投影評価とページ表公開を繰り返さない', async () => {
-    const keys = [earthTileKey(0, 0, 0), earthTileKey(0, 1, 0)];
-    const fixture = coordinator(keys);
+    const keys = [earthTileKey(EARTH_TILE_MIN_Z, 0, 0), earthTileKey(EARTH_TILE_MIN_Z, 1, 0)];
+    const fixture = coordinator(keys, undefined, new ImmediateBackend(), undefined, new CandidateTiles(keys));
     const projection = new CountingProjection(0, -1);
     fixture.resident.sync({ projection, timeMs: 0, generation: 1 });
     await fixture.resident.settle();
@@ -303,7 +303,7 @@ export function register(): void {
   });
 
   test('earth resident: uploading中の層は最高zへ含めない', async () => {
-    const key = earthTileKey(0, 0, 0);
+    const key = earthTileKey(EARTH_TILE_MIN_Z, 0, 0);
     const backend = new GatedBackend();
     const fixture = coordinator([key], undefined, backend);
     sync(fixture.resident, new Projection(), 0);
@@ -311,12 +311,12 @@ export function register(): void {
     assert.equal(fixture.resident.residentMaxZ, null);
     backend.release();
     await fixture.resident.settle();
-    assert.equal(fixture.resident.residentMaxZ, 0);
+    assert.equal(fixture.resident.residentMaxZ, EARTH_TILE_MIN_Z);
     fixture.resident.dispose();
   });
 
   test('earth resident: 子の逆順到着でも全層がそろうまで親fallbackを維持する', async () => {
-    const roots = [earthTileKey(0, 0, 0), earthTileKey(0, 1, 0)];
+    const roots = [earthTileKey(EARTH_TILE_MIN_Z, 0, 0), earthTileKey(EARTH_TILE_MIN_Z, 1, 0)];
     const children = earthTileChildren(roots[0]!);
     // 子の色変換を4つとも届くまで止めて逆順に放し、層の予約順を到着順の逆に固定する。
     const releases: (() => void)[] = [];
@@ -332,31 +332,31 @@ export function register(): void {
     });
     const projection = new Projection();
     sync(fixture.resident, projection, 0);
-    assert.deepEqual(earthPageAt(fixture.backend.pages.at(-1)!, 0.1, 0.1), [255, 255, 255, 255]);
+    assert.deepEqual(earthPageAt(fixture.backend.pages.at(-1)!, 0.01, 0.01), [255, 255, 255, 255]);
     await fixture.resident.settle();
-    assert.equal(fixture.resident.residentMaxZ, 0);
+    assert.equal(fixture.resident.residentMaxZ, EARTH_TILE_MIN_Z);
     // 層は到着順に割り当たり、根2枚の到着順は digest・gzip 展開の完了順で揺れる。
     const parentLayer = fixture.gpu.uploadedTiles().find((tile) => earthTileId(tile.key) === earthTileId(roots[0]!))?.layer;
     assert.notEqual(parentLayer, undefined);
     sync(fixture.resident, projection, 300);
     await fixture.resident.settle();
     sync(fixture.resident, projection, 600);
-    assert.deepEqual(earthPageAt(fixture.backend.pages.at(-1)!, 0.1, 0.1).slice(2), [0, 255]);
+    assert.deepEqual(earthPageAt(fixture.backend.pages.at(-1)!, 0.01, 0.01).slice(2), [EARTH_TILE_MIN_Z, 255]);
     await fixture.resident.settle();
-    assert.equal(fixture.resident.residentMaxZ, 1);
+    assert.equal(fixture.resident.residentMaxZ, EARTH_TILE_MIN_Z + 1);
     sync(fixture.resident, projection, 900);
-    const childPage = earthPageAt(fixture.backend.pages.at(-1)!, 0.1, 0.1);
-    assert.equal(childPage[2], 1);
+    const childPage = earthPageAt(fixture.backend.pages.at(-1)!, 0.01, 0.01);
+    assert.equal(childPage[2], EARTH_TILE_MIN_Z + 1);
     assert.equal(childPage[1], parentLayer);
     assert.notEqual(childPage[0], 255);
     sync(fixture.resident, projection, 1200);
-    assert.equal(earthPageAt(fixture.backend.pages.at(-1)!, 0.1, 0.1)[3], 255);
+    assert.equal(earthPageAt(fixture.backend.pages.at(-1)!, 0.01, 0.01)[3], 255);
     fixture.resident.reset();
     assert.equal(fixture.resident.residentMaxZ, null);
   });
 
   test('earth resident: 恒久HTTP失敗はタイルIDと原原因を診断へ残す', async () => {
-    const key = earthTileKey(0, 0, 0);
+    const key = earthTileKey(EARTH_TILE_MIN_Z, 0, 0);
     const fixture = coordinator([key], async () => response(new Uint8Array(), 404));
     sync(fixture.resident, new Projection(), 0);
     await fixture.resident.settle();
@@ -368,14 +368,14 @@ export function register(): void {
   });
 
   test('earth resident: 色変換失敗はタイルIDと原原因を一時診断へ残す', async () => {
-    const key = earthTileKey(0, 0, 0);
-    const sibling = earthTileKey(0, 1, 0);
+    const key = earthTileKey(EARTH_TILE_MIN_Z, 0, 0);
+    const sibling = earthTileKey(EARTH_TILE_MIN_Z, 1, 0);
     const fixture = coordinator([key, sibling], undefined, new ImmediateBackend(), () => {
       throw new Error('color conversion failed');
-    });
+    }, new CandidateTiles([key, sibling]));
     sync(fixture.resident, new Projection(), 0);
     await fixture.resident.settle();
-    assert.match(fixture.resident.failureReason ?? '', /0\/[01]\/0.*color conversion failed/);
+    assert.match(fixture.resident.failureReason ?? '', /4\/[01]\/0.*color conversion failed/);
     const retry = fixture.resident.sync({ projection: new Projection(), timeMs: 1, generation: 1 });
     assert.equal(retry.requested.length, 2);
     await fixture.resident.settle();
@@ -385,7 +385,7 @@ export function register(): void {
   });
 
   test('earth resident: RGBA変換成功後にデコード画像を閉じる', async () => {
-    const key = earthTileKey(0, 0, 0);
+    const key = earthTileKey(EARTH_TILE_MIN_Z, 0, 0);
     let closed = 0;
     const image = { close: () => { closed += 1; } };
     let converted: unknown;
@@ -401,7 +401,7 @@ export function register(): void {
   });
 
   test('earth resident: RGBA変換後のabortでもデコード画像を閉じる', async () => {
-    const key = earthTileKey(0, 0, 0);
+    const key = earthTileKey(EARTH_TILE_MIN_Z, 0, 0);
     const controller = new AbortController();
     let closed = 0;
     const image = { close: () => { closed += 1; } };
@@ -417,7 +417,7 @@ export function register(): void {
   });
 
   test('earth resident: RGBA変換失敗でもデコード画像を閉じる', async () => {
-    const key = earthTileKey(0, 0, 0);
+    const key = earthTileKey(EARTH_TILE_MIN_Z, 0, 0);
     let closed = 0;
     const image = { close: () => { closed += 1; } };
     const fixture = coordinator([key], undefined, new ImmediateBackend(), () => {
@@ -431,7 +431,7 @@ export function register(): void {
   });
 
   test('earth resident: 色か地形の片側失敗は公開せず親を残す', async () => {
-    const roots = [earthTileKey(0, 0, 0), earthTileKey(0, 1, 0)];
+    const roots = [earthTileKey(EARTH_TILE_MIN_Z, 0, 0), earthTileKey(EARTH_TILE_MIN_Z, 1, 0)];
     const children = earthTileChildren(roots[0]!);
     const failed = children[3]!;
     const fixture = coordinator([...roots, ...children], async (input) => {
@@ -446,13 +446,13 @@ export function register(): void {
     sync(fixture.resident, projection, 300); await fixture.resident.settle();
     sync(fixture.resident, projection, 600); await fixture.resident.settle();
     sync(fixture.resident, projection, 900);
-    const page = earthPageAt(fixture.backend.pages.at(-1)!, 0.1, 0.1);
-    assert.equal(page[2], 0);
-    assert.equal(fixture.tiles.frontier.length, 2);
+    const page = earthPageAt(fixture.backend.pages.at(-1)!, 0.01, 0.01);
+    assert.equal(page[2], EARTH_TILE_MIN_Z);
+    assert.equal(fixture.tiles.frontier.length, 512);
   });
 
   test('earth resident: disposeは遅着を公開せずqueueとGPUを破棄する', async () => {
-    const key = earthTileKey(0, 0, 0);
+    const key = earthTileKey(EARTH_TILE_MIN_Z, 0, 0);
     let resolve!: () => void;
     const gate = new Promise<void>((done) => { resolve = done; });
     const fixture = coordinator([key], async (input, init) => {
@@ -465,7 +465,7 @@ export function register(): void {
     resolve();
     await fixture.resident.settle();
     assert.equal(fixture.backend.pages.length, 2);
-    assert.deepEqual(earthPageAt(fixture.backend.pages[1]!, 0.1, 0.1), [255, 255, 255, 255]);
+    assert.deepEqual(earthPageAt(fixture.backend.pages[1]!, 0.01, 0.01), [255, 255, 255, 255]);
     assert.equal(fixture.backend.disposed, true);
     assert.equal(fixture.gpu.uploadedTiles().length, 0);
     assert.equal(fixture.resident.failureReason, null);
@@ -473,7 +473,7 @@ export function register(): void {
 
   test('earth resident: 要求と予約は物理層上限を超えず遠い要求を増やさない', async () => {
     const keys: EarthTileKey[] = [];
-    for (let z = 0; z <= 4; z++) {
+    for (let z = EARTH_TILE_MIN_Z; z <= EARTH_TILE_MIN_Z; z++) {
       const height = 2 ** z;
       for (let y = 0; y < height; y++) for (let x = 0; x < 2 * height; x++) keys.push(earthTileKey(z, x, y));
     }
@@ -489,7 +489,7 @@ export function register(): void {
   });
 
   test('earth resident: GPU機能不足時は詳細要求を止めて全球baseを維持する', () => {
-    const fixture = coordinator([earthTileKey(0, 0, 0)]);
+    const fixture = coordinator([earthTileKey(EARTH_TILE_MIN_Z, 0, 0)]);
     const unsupported = new ImmediateBackend({ ...CAPABILITIES, texture2dArray: false });
     const baseGpu = new EarthSurfaceGpuAdapter(unsupported);
     const baseCoordinator = new EarthSurfaceResidentCoordinator({

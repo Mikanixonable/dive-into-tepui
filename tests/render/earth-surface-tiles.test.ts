@@ -3,13 +3,13 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import {
-  EARTH_BASE_LAYER, EARTH_TILE_FRONTIER_LAYERS, EarthSurfaceTiles, EarthSurfaceView, earthPageAt,
-  earthTileChildren, earthTileId, earthTileKey, earthTileNeighbors, earthTileParent,
+  EARTH_BASE_LAYER, EARTH_TILE_FRONTIER_LAYERS, EARTH_TILE_MIN_Z, EarthSurfaceTiles, EarthSurfaceView, earthPageAt,
+  earthTileChildren, earthTileId, earthTileKey, earthTileNeighbors, earthTileParent, earthTileRoots,
   earthTilesAdjacent, earthTileSampleUv,
 } from '../../src/render/earth-surface-tiles';
 import type { EarthTileKey, EarthTileMetric, EarthTileProjection, EarthTileResident } from '../../src/render/earth-surface-tiles';
 
-const ROOTS = [earthTileKey(0, 0, 0), earthTileKey(0, 1, 0)];
+const ROOTS = earthTileRoots().slice(0, 2);
 
 class SyntheticProjection implements EarthTileProjection {
   // 指定した1段の親を分割した後は、その子を安定して表示する。
@@ -17,7 +17,7 @@ class SyntheticProjection implements EarthTileProjection {
 
   // 全球を可視として、根の分割/統合の境界を独立に踏む。
   public evaluate(key: EarthTileKey): EarthTileMetric {
-    return { visible: true, errorPx: key.z === 0 ? this.rootError : 1.5, priority: 1 };
+    return { visible: true, errorPx: key.z === EARTH_TILE_MIN_Z ? this.rootError : 1.5, priority: 1 };
   }
 }
 
@@ -31,8 +31,11 @@ class DeepProjection implements EarthTileProjection {
 // 子ごとのpriorityが交錯しても、親単位の最大値でgroupを選ばせる投影。
 class InterleavedGroupProjection implements EarthTileProjection {
   public evaluate(key: EarthTileKey): EarthTileMetric {
-    if (key.z === 0) return { visible: true, errorPx: 3, priority: 0 };
-    if (key.z !== 1) return { visible: true, errorPx: 1.5, priority: 0 };
+    if (key.z === EARTH_TILE_MIN_Z) {
+      return { visible: key.x < 2 && key.y === 0, errorPx: 3, priority: 0 };
+    }
+    if (key.z !== EARTH_TILE_MIN_Z + 1) return { visible: false, errorPx: 1.5, priority: 0 };
+    if (key.x >= 4 || key.y >= 2) return { visible: false, errorPx: 1.5, priority: 0 };
     const priority = key.x < 2
       ? (key.x === 0 && key.y === 0 ? 90 : 1)
       : 100 - key.x * 10 - key.y * 10;
@@ -147,6 +150,8 @@ export function register(): void {
       }
     }
     assert.equal(earthTileChildren(earthTileKey(7, 0, 0)).length, 0);
+    assert.equal(earthTileRoots().length, 512);
+    assert.ok(earthTileRoots().every((key) => key.z === EARTH_TILE_MIN_Z));
   });
 
   test('earth tiles: stage00投影で取得順が変わってもz6/z7候補へ進みfrontierを保つ', () => {
@@ -185,15 +190,13 @@ export function register(): void {
   test('earth tiles: 1回のsyncで開始するsplit groupを4つに制限する', () => {
     const tiles = new EarthSurfaceTiles();
     const projection = new DeepProjection();
-    const roots = residents(ROOTS);
+    const roots = residents(earthTileRoots().slice(0, 4));
     tiles.sync(projection, roots, 0);
-    const z1 = ROOTS.flatMap(earthTileChildren);
-    tiles.sync(projection, roots.concat(residents(z1, 2)), 250);
-    const z2 = z1.flatMap(earthTileChildren);
-    tiles.sync(projection, roots.concat(residents(z1, 2), residents(z2, 10)), 500);
+    const z1 = roots.map((resident) => earthTileChildren(resident.key)).flat();
+    tiles.sync(projection, roots.concat(residents(z1, roots.length)), 250);
     const frontier = tiles.frontier.map((tile) => tile.key);
-    assert.equal(frontier.filter((key) => key.z === 1).length, 4);
-    assert.equal(frontier.filter((key) => key.z === 2).length, 16);
+    assert.equal(frontier.filter((key) => key.z === EARTH_TILE_MIN_Z).length, 508);
+    assert.equal(frontier.filter((key) => key.z === EARTH_TILE_MIN_Z + 1).length, 16);
     assertBalanced(frontier);
   });
 
@@ -231,7 +234,7 @@ export function register(): void {
     tiles.sync(projection, roots.concat(residents(firstChildren, 2), residents(targetChildren, 10)), 500);
     const frontier = tiles.frontier.map((tile) => tile.key);
     assert.ok(frontier.some((key) => earthTileId(key) === earthTileId(target)));
-    assert.ok(frontier.every((key) => key.z <= 1));
+    assert.ok(frontier.every((key) => key.z <= EARTH_TILE_MIN_Z + 1));
     assertBalanced(frontier);
   });
 
@@ -258,7 +261,7 @@ export function register(): void {
     camera.position.z = 3;
     const projection = view(camera);
     assert.equal(projection.evaluate(earthTileKey(7, 0, 63)).visible, false);
-    assert.equal(projection.evaluate(ROOTS[0]!).visible, true);
+    assert.equal(projection.evaluate(earthTileKey(EARTH_TILE_MIN_Z, 15, 4)).visible, true);
     assert.equal(projection.evaluate(earthTileKey(7, 127, 63)).visible, true);
     camera.rotation.y = Math.PI;
     assert.equal(view(camera).evaluate(earthTileKey(7, 127, 63)).visible, false);
@@ -275,10 +278,10 @@ export function register(): void {
     tiles.sync(projection, roots.concat(children.slice(1)), 300);
     assert.deepEqual(tiles.pageTable(), stable);
     tiles.sync(projection, roots.concat(children), 400);
-    assert.deepEqual(earthPageAt(tiles.pageTable(), 0.1, 0.1), [2, 0, 1, 0]);
+    assert.deepEqual(earthPageAt(tiles.pageTable(), 0.01, 0.01), [2, 0, EARTH_TILE_MIN_Z + 1, 0]);
     tiles.sync(projection, roots.concat(children), 525);
-    const halfway = earthPageAt(tiles.pageTable(), 0.1, 0.1);
-    assert.deepEqual(halfway.slice(0, 3), [2, 0, 1]);
+    const halfway = earthPageAt(tiles.pageTable(), 0.01, 0.01);
+    assert.deepEqual(halfway.slice(0, 3), [2, 0, EARTH_TILE_MIN_Z + 1]);
     assert.ok(halfway[3]! > 0 && halfway[3]! < 255);
     tiles.sync(projection, roots.concat(children), 650);
     assert.equal(earthPageAt(tiles.pageTable(), 0.1, 0.1)[3], 255);
@@ -286,13 +289,13 @@ export function register(): void {
     // 1..2pxの帯では分割状態を保ち、統合の途中は子/親を逆向きに混ぜる。
     projection.rootError = 1.5;
     tiles.sync(projection, roots.concat(children), 700);
-    assert.equal(earthPageAt(tiles.pageTable(), 0.1, 0.1)[2], 1);
+    assert.equal(earthPageAt(tiles.pageTable(), 0.01, 0.01)[2], EARTH_TILE_MIN_Z + 1);
     projection.rootError = 0.5;
     tiles.sync(projection, roots.concat(children), 800);
     tiles.sync(projection, roots.concat(children), 925);
-    assert.deepEqual(earthPageAt(tiles.pageTable(), 0.1, 0.1), halfway);
+    assert.deepEqual(earthPageAt(tiles.pageTable(), 0.01, 0.01), halfway);
     tiles.sync(projection, roots.concat(children), 1050);
-    assert.deepEqual(earthPageAt(tiles.pageTable(), 0.1, 0.1), [0, EARTH_BASE_LAYER, 0, 255]);
+    assert.deepEqual(earthPageAt(tiles.pageTable(), 0.01, 0.01), [0, EARTH_BASE_LAYER, EARTH_TILE_MIN_Z, 255]);
   });
 
   test('earth tiles: 別keyへ再利用されたlayerをleafとfade親へ誤適用しない', () => {
@@ -304,17 +307,17 @@ export function register(): void {
     leafReuse.sync(projection, roots, 0);
     leafReuse.sync(projection, roots, 250);
     leafReuse.sync(projection, roots.concat(children), 400);
-    const reusedLayer = { key: earthTileKey(1, 2, 0), layer: children[0]!.layer };
+    const reusedLayer = { key: earthTileKey(EARTH_TILE_MIN_Z + 1, 2, 0), layer: children[0]!.layer };
     leafReuse.sync(projection, roots.concat(children.slice(1), reusedLayer), 700);
-    assert.deepEqual(earthPageAt(leafReuse.pageTable(), 0.1, 0.1), [EARTH_BASE_LAYER, EARTH_BASE_LAYER, EARTH_BASE_LAYER, 255]);
+    assert.deepEqual(earthPageAt(leafReuse.pageTable(), 0.01, 0.01), [EARTH_BASE_LAYER, EARTH_BASE_LAYER, EARTH_BASE_LAYER, 255]);
 
     const parentReuse = new EarthSurfaceTiles();
     parentReuse.sync(projection, roots, 0);
     parentReuse.sync(projection, roots, 250);
     parentReuse.sync(projection, roots.concat(children), 400);
-    const reusedParent = { key: earthTileKey(1, 2, 0), layer: roots[0]!.layer };
+    const reusedParent = { key: earthTileKey(EARTH_TILE_MIN_Z + 1, 2, 0), layer: roots[0]!.layer };
     parentReuse.sync(projection, [roots[1]!, ...children, reusedParent], 450);
-    const page = earthPageAt(parentReuse.pageTable(), 0.1, 0.1);
+    const page = earthPageAt(parentReuse.pageTable(), 0.01, 0.01);
     assert.equal(page[0], children[0]!.layer);
     assert.equal(page[1], EARTH_BASE_LAYER);
     assert.equal(page[2], children[0]!.key.z);

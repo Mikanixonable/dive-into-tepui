@@ -12,7 +12,7 @@ import {
 import { SUN } from '../../src/game/celestial/solar-system/sun';
 
 const READY_MANIFEST = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   datasetId: 'earth-test-2026',
   sourceManifestSha256: '0'.repeat(64),
   terrainEncoding: {
@@ -29,6 +29,7 @@ const READY_MANIFEST = {
     orthometricElevation: { min: -1000, max: 9000 }, landFraction: { min: 0, max: 1 },
     waterOrthometricElevationM: 0,
   },
+  coverage: { kind: 'sparse', minZoom: 4, maxZoom: 7, expectedTiles: null },
   attribution: ['test'],
 };
 
@@ -36,9 +37,9 @@ const READY_INDEX = {
   schemaVersion: 2,
   datasetId: READY_MANIFEST.datasetId,
   entries: [{
-    key: '0/0/0', z: 0, x: 0, y: 0,
-    color: { url: '0-0-0.jpg', sha256: '0'.repeat(64), encodedBytes: 1, payloadBytes: 1 },
-    terrain: { url: '0-0-0.bin.gz', sha256: '0'.repeat(64), encodedBytes: 1, payloadBytes: 1 },
+    key: '4/0/0', z: 4, x: 0, y: 0,
+    color: { url: '4-0-0.jpg', sha256: '0'.repeat(64), encodedBytes: 1, payloadBytes: 1 },
+    terrain: { url: '4-0-0.bin.gz', sha256: '0'.repeat(64), encodedBytes: 1, payloadBytes: 1 },
   }],
 };
 

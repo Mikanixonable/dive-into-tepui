@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { earthPositionAtUv, validateEarthAxes } from './earth-surface-coordinate';
 
+export const EARTH_TILE_MIN_Z = 4;
 export const EARTH_TILE_MAX_Z = 7;
 export const EARTH_TILE_TEXELS = 256;
 export const EARTH_TILE_GUTTER = 2;
@@ -51,6 +52,13 @@ export function earthTileChildren(key: EarthTileKey): readonly EarthTileKey[] {
     earthTileKey(key.z + 1, key.x * 2, key.y * 2 + 1),
     earthTileKey(key.z + 1, key.x * 2 + 1, key.y * 2 + 1),
   ];
+}
+
+// 表示木の根を返す。z0のESTBは配信fallback専用で、詳細木はz4から始める。
+export function earthTileRoots(): readonly EarthTileKey[] {
+  const height = 2 ** EARTH_TILE_MIN_Z;
+  return Array.from({ length: height }, (_, y) => Array.from({ length: 2 * height }, (_, x) =>
+    earthTileKey(EARTH_TILE_MIN_Z, x, y))).flat();
 }
 
 // 同じ段の東西南北の隣接キー。極を越える辺は経度を半周ずらして反転する。
@@ -198,8 +206,7 @@ function fadeOf(leaf: TileLeaf, timeMs: number): number {
 }
 
 export class EarthSurfaceTiles {
-  private leaves: readonly TileLeaf[] = [stableLeaf(earthTileKey(0, 0, 0), EARTH_BASE_LAYER),
-    stableLeaf(earthTileKey(0, 1, 0), EARTH_BASE_LAYER)];
+  private leaves: readonly TileLeaf[] = earthTileRoots().map((key) => stableLeaf(key, EARTH_BASE_LAYER));
   private visibleLeaves: readonly TileLeaf[] = [];
   private drawingTimeMs = 0;
 
@@ -231,10 +238,7 @@ export class EarthSurfaceTiles {
 
   // 非表示からの再表示や配信版切り替えは全球baseから再開する。
   public reset(): void {
-    this.leaves = [
-      stableLeaf(earthTileKey(0, 0, 0), EARTH_BASE_LAYER),
-      stableLeaf(earthTileKey(0, 1, 0), EARTH_BASE_LAYER),
-    ];
+    this.leaves = earthTileRoots().map((key) => stableLeaf(key, EARTH_BASE_LAYER));
     this.visibleLeaves = [];
     this.drawingTimeMs = 0;
   }
@@ -296,6 +300,7 @@ export class EarthSurfaceTiles {
   ): void {
     const parents = new Map<string, EarthTileKey>();
     for (const leaf of this.leaves) {
+      if (leaf.key.z <= EARTH_TILE_MIN_Z) continue;
       const parent = earthTileParent(leaf.key);
       if (parent !== null) parents.set(earthTileId(parent), parent);
     }
@@ -451,7 +456,7 @@ export class EarthSurfaceTiles {
     return layers;
   }
 
-  // 現在の葉をz=7セルへ展開する。不可視セルは全球ベースを指す。
+  // 現在の葉をz=7セルへ展開する。未取得・不可視セルは全球ベースを指す。
   public pageTable(): Uint8Array {
     const table = new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(EARTH_BASE_LAYER);
     // 子の取得待機は親の葉が覆う範囲をそのまま保つ。

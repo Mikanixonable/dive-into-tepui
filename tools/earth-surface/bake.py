@@ -24,6 +24,8 @@ _spec.loader.exec_module(_fetch)
 
 # ESTN/ESTB v2は八面体法線RG8、roughness R8、地表分類A8を持つ。
 # 形式の混在を防ぐため、生成と検査はRGBA16Fのv1を受け付けない。
+EARTH_TILE_MIN_Z = 4
+EARTH_TILE_MAX_Z = 7
 TERRAIN_FORMAT_VERSION = 2
 UINT8_SCALAR = 2
 TERRAIN_WIDTH = 260
@@ -37,23 +39,24 @@ MATERIAL_CLASS_ICE = 2
 MATERIAL_CLASS_UNKNOWN = 255
 TERRAIN_HEADER = struct.Struct("<4sHHHHBBIIBBII")
 BASE_HEADER = struct.Struct("<4sHHHHBBIIBBII")
-BASE_COLOR_ROOT_COUNT = 2
+BASE_COLOR_Z = EARTH_TILE_MIN_Z
+BASE_COLOR_ROOT_COUNT = 2 ** (BASE_COLOR_Z + 1) * 2 ** BASE_COLOR_Z
 BASE_COLOR_TILE_TEXELS = 256
 BASE_COLOR_GUTTER_TEXELS = 2
 BASE_COLOR_TILE_SIZE = BASE_COLOR_TILE_TEXELS + 2 * BASE_COLOR_GUTTER_TEXELS
-BASE_COLOR_WIDTH = BASE_COLOR_ROOT_COUNT * BASE_COLOR_TILE_TEXELS
-BASE_COLOR_HEIGHT = BASE_COLOR_TILE_TEXELS
+BASE_COLOR_WIDTH = 2 ** (BASE_COLOR_Z + 1) * BASE_COLOR_TILE_TEXELS
+BASE_COLOR_HEIGHT = 2 ** BASE_COLOR_Z * BASE_COLOR_TILE_TEXELS
 
 
 # 全球の正規化されたWeb Mercatorではなく、計画書の経緯度四分木キーを列挙する。
-def global_tile_keys(max_zoom=7):
-    if type(max_zoom) is not int or not 0 <= max_zoom <= 7:
-        raise ValueError("max_zoomは0..7の整数が必要です")
-    return [(z, x, y) for z in range(max_zoom + 1)
+def global_tile_keys(max_zoom=EARTH_TILE_MAX_Z):
+    if type(max_zoom) is not int or not EARTH_TILE_MIN_Z <= max_zoom <= EARTH_TILE_MAX_Z:
+        raise ValueError("max_zoomは4..7の整数が必要です")
+    return [(z, x, y) for z in range(EARTH_TILE_MIN_Z, max_zoom + 1)
             for y in range(2 ** z) for x in range(2 ** (z + 1))]
 
 
-def global_tile_count(max_zoom=7):
+def global_tile_count(max_zoom=EARTH_TILE_MAX_Z):
     return len(global_tile_keys(max_zoom))
 
 
@@ -604,8 +607,8 @@ def _decode_jpeg(data, size, label):
         return image.copy()
 
 
-def encode_base_color(root_colors, base_color=None):
-    """z=0の2枚からgutterを除いた512x256の全球RGB JPEGを作る。"""
+def encode_base_color(tile_colors, base_color=None):
+    """z4の512枚からgutterを除いた8192x4096の全球RGB JPEGを作る。"""
     if base_color is not None:
         try:
             data = bytes(base_color)
@@ -613,26 +616,31 @@ def encode_base_color(root_colors, base_color=None):
             raise ValueError("base_colorはJPEG bytesが必要です") from error
         _decode_jpeg(data, (BASE_COLOR_WIDTH, BASE_COLOR_HEIGHT), "base_color").close()
         return data
-    if len(root_colors) != BASE_COLOR_ROOT_COUNT:
-        raise ValueError("base colorにはz=0の2枚のroot JPEGが必要です")
-    tiles = [_decode_jpeg(color, (BASE_COLOR_TILE_SIZE, BASE_COLOR_TILE_SIZE), f"z=0/{x}/0 color")
-             for x, color in enumerate(root_colors)]
+    if len(tile_colors) != BASE_COLOR_ROOT_COUNT:
+        raise ValueError("base colorにはz4の512枚のtile JPEGが必要です")
+    image = None
     try:
         from PIL import Image
         image = Image.new("RGB", (BASE_COLOR_WIDTH, BASE_COLOR_HEIGHT))
         interior = (BASE_COLOR_GUTTER_TEXELS, BASE_COLOR_GUTTER_TEXELS,
                     BASE_COLOR_GUTTER_TEXELS + BASE_COLOR_TILE_TEXELS,
                     BASE_COLOR_GUTTER_TEXELS + BASE_COLOR_TILE_TEXELS)
-        for x, tile in enumerate(tiles):
-            image.paste(tile.crop(interior), (x * BASE_COLOR_TILE_TEXELS, 0))
+        columns = 2 ** (BASE_COLOR_Z + 1)
+        for index, color in enumerate(tile_colors):
+            x, y = index % columns, index // columns
+            tile = _decode_jpeg(color, (BASE_COLOR_TILE_SIZE, BASE_COLOR_TILE_SIZE),
+                                f"z={BASE_COLOR_Z}/{x}/{y} color")
+            try:
+                image.paste(tile.crop(interior), (x * BASE_COLOR_TILE_TEXELS, y * BASE_COLOR_TILE_TEXELS))
+            finally:
+                tile.close()
         output = io.BytesIO()
         image.save(output, format="JPEG", quality=90, optimize=False,
                    progressive=False, subsampling=0)
         return output.getvalue()
     finally:
-        for tile in tiles:
-            tile.close()
-
+        if image is not None:
+            image.close()
 
 def climate_channel(value, minimum, maximum):
     if not math.isfinite(value) or not minimum <= value <= maximum:
@@ -694,14 +702,14 @@ def require_global_inputs(manifest, raw_root):
         raise GlobalInputError(f"全球bundleの入力が不足しています: {preview}{more}")
 
 
-def global_manifest(manifest, source_manifest_path, source_manifest_hash, climate_paths, coverage_kind="complete", max_zoom=7,
-                    data_provenance="source"):
+def global_manifest(manifest, source_manifest_path, source_manifest_hash, climate_paths, coverage_kind="complete",
+                    max_zoom=EARTH_TILE_MAX_Z, data_provenance="source"):
     """配信契約の正本を生成する。実体hashはtile writerが逐次追加する。"""
     attribution = []
     for source in manifest["sources"]:
         attribution.extend(source["attribution"])
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "datasetId": manifest["datasetId"],
         "sourceManifestSha256": source_manifest_hash,
         "sourceManifest": source_manifest_path,
@@ -717,7 +725,7 @@ def global_manifest(manifest, source_manifest_path, source_manifest_hash, climat
                                                   "unknown": MATERIAL_CLASS_UNKNOWN}},
         "climateMap": manifest["climateMap"],
         "controlRegions": manifest["controlRegions"],
-        "coverage": {"kind": coverage_kind, "maxZoom": max_zoom,
+        "coverage": {"kind": coverage_kind, "minZoom": EARTH_TILE_MIN_Z, "maxZoom": max_zoom,
                       "expectedTiles": global_tile_count(max_zoom) if coverage_kind == "complete" else None},
         "baseColor": "base/earth.jpg",
         "baseTerrain": "base/earth.bin.gz",
@@ -731,13 +739,13 @@ def global_manifest(manifest, source_manifest_path, source_manifest_hash, climat
 
 
 def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, render_tile,
-                        climate_maps, base_color=None, max_zoom=7, validate_inputs=True,
+                        climate_maps, base_color=None, max_zoom=EARTH_TILE_MAX_Z, validate_inputs=True,
                         data_provenance="source"):
     """各タイルを一枚ずつ生成し、stagingへ書き込む全球bundle writer。"""
     if validate_inputs:
         require_global_inputs(manifest, raw_root)
-    if type(max_zoom) is not int or not 0 <= max_zoom <= 7:
-        raise ValueError("max_zoomは0..7の整数が必要です")
+    if type(max_zoom) is not int or not EARTH_TILE_MIN_Z <= max_zoom <= EARTH_TILE_MAX_Z:
+        raise ValueError("max_zoomは4..7の整数が必要です")
     output = Path(output_root)
     staging = output.with_name(f"{output.name}.staging-{os.getpid()}")
     if staging.exists():
@@ -748,11 +756,11 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
     source_manifest_file = Path(source_manifest_path)
     if not source_manifest_file.is_file():
         raise GlobalInputError(f"source manifestがありません: {source_manifest_path}")
-    coverage_kind = "complete" if max_zoom == 7 else "sparse"
-    # sparse fixture output may contain only a low-LOD prefix, but the runtime
-    # contract always describes the z0..z7 address space it can index.
+    coverage_kind = "complete" if max_zoom == EARTH_TILE_MAX_Z else "sparse"
+    # sparse fixture output may contain only a z4 prefix, but the runtime
+    # contract always describes the z4..z7 address space it can index.
     result_manifest = global_manifest(manifest, "sources.json", source_hash, climate_paths,
-                                      coverage_kind, 7, data_provenance)
+                                      coverage_kind, EARTH_TILE_MAX_Z, data_provenance)
     try:
         climate_values = list(climate_maps)
         if (len(climate_values) != 12 or any(not isinstance(value, (bytes, bytearray)) or not value
@@ -770,7 +778,7 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
         entries.write(json.dumps({"schemaVersion": 2, "datasetId": manifest["datasetId"]}, ensure_ascii=False)[:-1])
         entries.write(', "entries": [')
         first = True
-        root_tiles = []
+        base_color_tiles = []
         for key in global_tile_keys(max_zoom):
             color, terrain = render_tile(key)
             if (not isinstance(color, (bytes, bytearray)) or len(color) < 4
@@ -786,8 +794,8 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
             color_path.write_bytes(color)
             encoded = gzip.compress(terrain, mtime=0)
             terrain_path.write_bytes(encoded)
-            if z == 0:
-                root_tiles.append((bytes(color), terrain))
+            if z == EARTH_TILE_MIN_Z:
+                base_color_tiles.append(bytes(color))
             entry = {"key": f"{z}/{x}/{y}", "z": z, "x": x, "y": y,
                      "color": {"url": color_url, "sha256": hashlib.sha256(color).hexdigest(),
                                "encodedBytes": len(color), "payloadBytes": len(color)},
@@ -799,13 +807,16 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
             first = False
         entries.write("]}\n")
         entries.close()
-        if len(root_tiles) != 2:
-            raise ValueError("ESTBにはz=0の2枚が必要です")
+        if len(base_color_tiles) != BASE_COLOR_ROOT_COUNT:
+            raise ValueError("base colorにはz4の512枚が必要です")
         base = staging / "base"
         base.mkdir(parents=True, exist_ok=True)
-        base_color_data = encode_base_color([root_tiles[0][0], root_tiles[1][0]], base_color)
+        base_color_data = encode_base_color(base_color_tiles, base_color)
         (base / "earth.jpg").write_bytes(base_color_data)
-        base_payload = encode_base_terrain([root_tiles[0][1], root_tiles[1][1]])
+        base_roots = [render_tile((0, x, 0))[1] for x in (0, 1)]
+        for x, terrain in enumerate(base_roots):
+            validate_terrain_tile(terrain, (0, x, 0), hashlib.sha256(terrain).hexdigest())
+        base_payload = encode_base_terrain(base_roots)
         (base / "earth.bin.gz").write_bytes(gzip.compress(base_payload, mtime=0))
         (staging / "earth-surface.json").write_text(json.dumps(result_manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
         (staging / "attribution.json").write_text(json.dumps({"datasetId": manifest["datasetId"], "attribution": result_manifest["attribution"]}, ensure_ascii=False, indent=2) + "\n")
@@ -826,7 +837,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input")
     parser.add_argument("--global", action="store_true", dest="global_bundle",
-                        help="全43690タイルのbundle生成入口。入力不足は生成前に失敗する")
+                        help="z4..z7の全43520タイルbundle生成入口。入力不足は生成前に失敗する")
     parser.add_argument("--fixture-global", metavar="PATH",
                         help="明示したsynthetic fixtureから小さなbundleを生成するテスト入口")
     parser.add_argument("--raw-root", default=".earth-surface/raw")

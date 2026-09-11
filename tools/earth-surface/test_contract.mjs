@@ -81,14 +81,14 @@ function jpegFixture({ width = EARTH_BASE_COLOR_WIDTH, height = EARTH_BASE_COLOR
 
 function manifest(sourceManifestSha256, datasetId = 'earth-fixture-a') {
   return {
-    schemaVersion: 1, datasetId, sourceManifestSha256,
+    schemaVersion: 2, datasetId, sourceManifestSha256,
     provenance: { generator: 'fixture/1' },
     terrainEncoding: { formatVersion: EARTH_TERRAIN_FORMAT_VERSION, layout: EARTH_TERRAIN_LAYOUT,
       width: 260, height: 260, channels: EARTH_TERRAIN_CHANNELS, scalar: 'UInt8',
       materialClasses: { water: 0, land: 1, ice: 2, unknown: 255 } },
     climateMap: { width: 1024, height: 512, channels: 4, scalar: 'UInt8' },
     controlRegions: Array.from({ length: 16 }, (_, index) => ({ id: `region-${index}`, west: -180, south: -80, east: 180, north: 80 })),
-    coverage: { kind: 'sparse', maxZoom: 7 },
+    coverage: { kind: 'sparse', minZoom: 4, maxZoom: 7, expectedTiles: null },
     baseColor: 'base/earth.jpg', baseTerrain: 'base/earth.bin.gz', tileIndexUrl: 'tile-index.json',
     climateMaps: Array.from({ length: 12 }, (_, index) => `climate/${String(index + 1).padStart(2, '0')}.png`),
     climateEncoding: {
@@ -105,15 +105,15 @@ async function createBundle() {
   const source = { schemaVersion: 1, datasetId: 'earth-fixture-a', sources: [{ id: 'fixture', inputSha256: [] }] };
   const sourceHash = canonicalSha256(source);
   const color = jpegFixture();
-  const terrain = terrainPayload();
+  const terrain = terrainPayload({ z: 4 });
   const compressedTerrain = gzipSync(terrain, { mtime: 0 });
   const manifestValue = manifest(sourceHash);
   const tile = {
     schemaVersion: 2, datasetId: manifestValue.datasetId,
     entries: [{
-      key: '0/0/0', z: 0, x: 0, y: 0,
-      color: { url: 'tiles/0/0/0.jpg', sha256: createHash('sha256').update(color).digest('hex'), encodedBytes: color.length, payloadBytes: color.length },
-      terrain: { url: 'tiles/0/0/0.bin.gz', sha256: createHash('sha256').update(terrain).digest('hex'), encodedBytes: compressedTerrain.length, payloadBytes: terrain.length },
+      key: '4/0/0', z: 4, x: 0, y: 0,
+      color: { url: 'tiles/4/0/0.jpg', sha256: createHash('sha256').update(color).digest('hex'), encodedBytes: color.length, payloadBytes: color.length },
+      terrain: { url: 'tiles/4/0/0.bin.gz', sha256: createHash('sha256').update(terrain).digest('hex'), encodedBytes: compressedTerrain.length, payloadBytes: terrain.length },
     }],
   };
   await writeFile(join(root, 'sources.json'), `${JSON.stringify(source)}\n`);
@@ -125,9 +125,9 @@ async function createBundle() {
   for (const [index, path] of manifestValue.climateMaps.entries()) {
     await writeFile(join(root, path), fixtureClimatePng(index));
   }
-  await mkdir(join(root, 'tiles/0/0'), { recursive: true });
-  await writeFile(join(root, 'tiles/0/0/0.jpg'), color);
-  await writeFile(join(root, 'tiles/0/0/0.bin.gz'), compressedTerrain);
+  await mkdir(join(root, 'tiles/4/0'), { recursive: true });
+  await writeFile(join(root, 'tiles/4/0/0.jpg'), color);
+  await writeFile(join(root, 'tiles/4/0/0.bin.gz'), compressedTerrain);
   return { root, source, manifest: manifestValue, tile, color, terrain };
 }
 
@@ -148,15 +148,15 @@ async function run() {
     assert.match(cli.stdout, /earth-surface:check: earth-fixture-a/);
     for (const path of [
       'earth-surface.json', 'tile-index.json', 'attribution.json', fixture.manifest.baseColor, fixture.manifest.baseTerrain,
-      ...fixture.manifest.climateMaps, 'tiles/0/0/0.jpg', 'tiles/0/0/0.bin.gz',
+      ...fixture.manifest.climateMaps, 'tiles/4/0/0.jpg', 'tiles/4/0/0.bin.gz',
       'receipt.json',
     ]) await readFile(join(packaged, path));
     assert.deepEqual(await readFile(join(fixture.root, 'earth-surface.json')), before);
 
     const baseColorPath = join(packaged, fixture.manifest.baseColor);
     for (const [replacement, pattern] of [
-      [jpegFixture({ width: 260, height: 260 }), /baseColor JPEG must be 512x256 with 3 components/],
-      [jpegFixture({ components: 1 }), /baseColor JPEG must be 512x256 with 3 components/],
+      [jpegFixture({ width: 260, height: 260 }), /baseColor JPEG must be 8192x4096 with 3 components/],
+      [jpegFixture({ components: 1 }), /baseColor JPEG must be 8192x4096 with 3 components/],
       [Buffer.from('not-a-jpeg'), /baseColor JPEG must start with SOI/],
       [jpegFixture().subarray(0, -2), /baseColor JPEG scan is truncated/],
       [(() => { const malformed = jpegFixture(); malformed[4] = 0; malformed[5] = 1; return malformed; })(), /baseColor JPEG marker length is invalid/],
@@ -166,10 +166,10 @@ async function run() {
     }
     await writeFile(baseColorPath, fixture.color);
 
-    const changedColor = await readFile(join(packaged, 'tiles/0/0/0.jpg'));
-    changedColor[0] ^= 1; await writeFile(join(packaged, 'tiles/0/0/0.jpg'), changedColor);
+    const changedColor = await readFile(join(packaged, 'tiles/4/0/0.jpg'));
+    changedColor[0] ^= 1; await writeFile(join(packaged, 'tiles/4/0/0.jpg'), changedColor);
     await expectFailure(() => checkEarthSurface({ inputRoot: packaged }), /color .*hash mismatch/);
-    await writeFile(join(packaged, 'tiles/0/0/0.jpg'), fixture.color);
+    await writeFile(join(packaged, 'tiles/4/0/0.jpg'), fixture.color);
 
     const sourcePath = join(fixture.root, 'sources.json');
     const sourceChanged = { ...fixture.source, datasetId: 'earth-other' };
@@ -183,11 +183,11 @@ async function run() {
     await expectFailure(() => packageEarthSurface({ inputRoot: fixture.root, outputRoot: output, sourceManifestPath: 'sources.json' }), /datasetId mismatch/);
     index.datasetId = fixture.manifest.datasetId; await writeFile(indexPath, JSON.stringify(index));
 
-    index.entries[0].color.url = 'tiles/../0/0/0.jpg'; await writeFile(indexPath, JSON.stringify(index));
+    index.entries[0].color.url = 'tiles/../4/0/0.jpg'; await writeFile(indexPath, JSON.stringify(index));
     await expectFailure(() => checkEarthSurface({ inputRoot: fixture.root }), /invalid path/);
-    index.entries[0].color.url = 'tiles/0/0/0.jpg'; await writeFile(indexPath, JSON.stringify(index));
+    index.entries[0].color.url = 'tiles/4/0/0.jpg'; await writeFile(indexPath, JSON.stringify(index));
 
-    const terrainPath = join(fixture.root, 'tiles/0/0/0.bin.gz');
+    const terrainPath = join(fixture.root, 'tiles/4/0/0.bin.gz');
     const mismatch = terrainPayload({ x: 1 });
     const mismatchCompressed = gzipSync(mismatch, { mtime: 0 });
     index.entries[0].terrain.encodedBytes = mismatchCompressed.length;
@@ -212,7 +212,7 @@ async function run() {
     await writeFile(indexPath, JSON.stringify(index));
     await writeFile(terrainPath, gzipSync(fixture.terrain, { mtime: 0 }));
 
-    index.entries.push({ ...index.entries[0], key: '0/0/0', color: index.entries[0].color, terrain: index.entries[0].terrain });
+    index.entries.push({ ...index.entries[0], key: '4/0/0', color: index.entries[0].color, terrain: index.entries[0].terrain });
     await writeFile(indexPath, JSON.stringify(index));
     await expectFailure(() => checkEarthSurface({ inputRoot: fixture.root, sourceManifestPath: 'sources.json' }), /duplicate tile-index key/);
     console.log('earth-surface contract fixtures: ok');
