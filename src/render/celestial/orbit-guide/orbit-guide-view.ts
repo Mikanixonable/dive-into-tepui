@@ -8,7 +8,7 @@ import type { CurveColorSampler } from '../../curve';
 import type { CameraFrame } from '../../camera/camera-frame';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import type { Vec3 } from '../../../math/vec3';
-import type { DirectionMarkerMode } from '../../../game/celestial/orbit-guide/orbit-guide-settings';
+import type { DirectionMarkerMode } from './direction-markers';
 
 // マーカーの InstancedPool 容量。これを超えた個数のマーカーは溢れて描かれない。
 const MARKER_POOL_CAPACITY = 3000;

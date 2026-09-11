@@ -15,7 +15,7 @@ import type { CameraFrame } from '../camera/camera-frame';
 import { EllipseLine } from '../lines/ellipse-line';
 import { TargetRelativeLine } from '../lines/target-relative-line';
 import { TrajectoryLine } from '../lines/trajectory-line';
-import type { CelestialBodies } from '../../game/celestial/celestial-bodies';
+import type { CelestialFrameSource } from '../lines/celestial-frame-source';
 import type { InstancedPools } from './instanced-pools';
 import { syncThermalState } from '../thermal-emissive';
 
@@ -53,7 +53,7 @@ export interface DynamicViewFrame {
 // 線の形状の基準になる、1体ぶんの時刻問い合わせ。
 interface DynamicStateSource {
   readonly state: KinematicState;
-  stateAt(t: number, celestialBodies?: CelestialBodies): KinematicState | null;
+  stateAt(t: number, celestialBodies?: CelestialFrameSource): KinematicState | null;
 }
 
 // 線として焼く軌跡と、その時刻問い合わせ。
@@ -142,7 +142,7 @@ export class DynamicView<S extends DynamicRenderSource = DynamicRenderSource> {
   // 宣言された軌道表現の種類へ資源を揃え、そのフレームの形状と見た目を反映する。
   private syncOrbitLine(
     display: DynamicLineDisplay['orbit'],
-    motion: DynamicLineSource, displayTime: number, celestialBodies: CelestialBodies,
+    motion: DynamicLineSource, displayTime: number, celestialBodies: CelestialFrameSource,
     camera: CameraFrame, anchors: FrameAnchorSource,
   ): void {
     if (display === null) {
@@ -186,7 +186,7 @@ export class DynamicView<S extends DynamicRenderSource = DynamicRenderSource> {
   private syncTrajectoryLine(
     current: TrajectoryLine | null, style: LineStyle | null,
     trajectory: DynamicTrajectory | null, from: number, to: number | null,
-    frame: ReferenceFrame, displayTime: number, celestialBodies: CelestialBodies,
+    frame: ReferenceFrame, displayTime: number, celestialBodies: CelestialFrameSource,
     camera: CameraFrame, anchors: FrameAnchorSource,
   ): TrajectoryLine | null {
     if (style === null) {
@@ -203,7 +203,7 @@ export class DynamicView<S extends DynamicRenderSource = DynamicRenderSource> {
   public syncLines(
     display: DynamicLineDisplay,
     motion: DynamicLineSource, frame: ReferenceFrame, simTime: number, displayTime: number,
-    pastDuration: number, predictedTo: number | null, celestialBodies: CelestialBodies,
+    pastDuration: number, predictedTo: number | null, celestialBodies: CelestialFrameSource,
     camera: CameraFrame, anchors: FrameAnchorSource,
   ): void {
     // 過去線は表示窓の過去側、予測線は現在から予測終端までを同じ参照系で同期する。
@@ -223,7 +223,7 @@ export class DynamicView<S extends DynamicRenderSource = DynamicRenderSource> {
   // 現在描画している線を、当たり判定用の ECI 点列として読み出す。
   public lineSamples(
     count: number, frame: ReferenceFrame, displayTime: number,
-    celestialBodies: CelestialBodies, anchors: FrameAnchorSource,
+    celestialBodies: CelestialFrameSource, anchors: FrameAnchorSource,
   ): DynamicLineSamples | null {
     // 解析線を優先し、積分線だけのときは過去→未来の順に連結する。
     if (this.orbitLineValue !== null) {
