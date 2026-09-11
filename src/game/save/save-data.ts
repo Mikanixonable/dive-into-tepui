@@ -6,34 +6,34 @@ import type { Attitude } from '../../physics/attitude';
 import type { EphemerisContext } from '../../physics/ephemeris/ephemeris-context';
 import type { FormationRole } from '../dynamic/dynamic-entity/entity-kind';
 import type { ProteinAssetId } from '../protein/protein-asset-loader';
-import type { ProteinDisplaySettings } from '../protein/protein-display';
+import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
 import type { GamePhase } from '../stages/stage';
 import type { WaveAttackSaveData } from '../stages/stage-utils/wave-attack';
 import type { ProteinSaveData } from '../protein/protein-schema';
-import type { BoosterStackData, BoosterStageData } from '../player/booster-stack';
+import type { BoosterStackData, BoosterStage } from '../player/booster-stack';
 
 interface Vec3SaveData {
-  x: number;
-  y: number;
-  z: number;
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
 }
 
 interface QuatSaveData {
-  x: number;
-  y: number;
-  z: number;
-  w: number;
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly w: number;
 }
 
 interface EntitySaveData {
-  id: string;
-  name?: string;
+  readonly id: string;
+  readonly name?: string;
   // 具象クラスのタグ。
-  kind: 'player' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel' | 'booster' | 'base';
-  r: Vec3SaveData;
-  v: Vec3SaveData;
-  q: QuatSaveData;
-  w: Vec3SaveData;
+  readonly kind: 'player' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel' | 'booster' | 'base';
+  readonly r: Vec3SaveData;
+  readonly v: Vec3SaveData;
+  readonly q: QuatSaveData;
+  readonly w: Vec3SaveData;
 }
 
 // 保存された位置・速度を、復元時刻の ECI 運動状態へ戻す。
@@ -47,131 +47,131 @@ export function savedAttitude(saved: EntitySaveData, inertia: Vec3): Attitude {
 }
 
 interface KinematicStateSaveData {
-  t: number;
-  r: Vec3SaveData;
-  v: Vec3SaveData;
+  readonly t: number;
+  readonly r: Vec3SaveData;
+  readonly v: Vec3SaveData;
 }
 
 export interface PlanSaveData {
-  anchor: KinematicStateSaveData;
-  nodes: KinematicStateSaveData[];
+  readonly anchor: KinematicStateSaveData;
+  readonly nodes: KinematicStateSaveData[];
 }
 
 export interface FireSaveData {
-  mags: number;
-  rounds: number;
-  barrel: number;
+  readonly mags: number;
+  readonly rounds: number;
+  readonly barrel: number;
   // 装着している砲身の平均温度 [K] と、薬室側が平均より高い温度差 [K]。
   // 欠けているときは環境温度の等温な砲身として復元する。
-  barrelTemperature?: number;
-  barrelDeviation?: number;
-  cooldown: number;
-  muzzleIdx: number;
+  readonly barrelTemperature?: number;
+  readonly barrelDeviation?: number;
+  readonly cooldown: number;
+  readonly muzzleIdx: number;
 }
 
 interface ThermalSaveData {
-  hullTemp: number;
+  readonly hullTemp: number;
 }
 
 interface RadiatorPanelSaveData {
-  deployTarget: 0 | 1;
-  deploy: number;
+  readonly deployTarget: 0 | 1;
+  readonly deploy: number;
 }
 
 export interface RadiatorSaveData {
-  up: RadiatorPanelSaveData;
-  down: RadiatorPanelSaveData;
+  readonly up: RadiatorPanelSaveData;
+  readonly down: RadiatorPanelSaveData;
 }
 
 export interface PowerSaveData {
-  charge: number;
+  readonly charge: number;
 }
 
 export interface ThrottleSaveData {
-  throttleIdx: number;
-  // 旧セーブデータには無いフィールドなので任意。無ければ既定値(true)。
-  rcsDamp?: boolean;
-  progradeHold?: boolean;
+  readonly throttleIdx: number;
+  // 無ければ既定値(true)。
+  readonly rcsDamp?: boolean;
+  readonly progradeHold?: boolean;
 }
 
 export interface PlayerSaveData extends EntitySaveData {
-  kind: 'player';
-  fire: FireSaveData;
-  thermal: ThermalSaveData;
-  radiator: RadiatorSaveData;
-  power: PowerSaveData;
-  throttle: ThrottleSaveData;
-  parts: AnyPart[];
-  plan: PlanSaveData | null;
-  // 旧セーブデータには無いフィールドなので任意。無ければ followPlan から移行する。'powered' は
-  // 廃止済みモードだが、旧セーブの読み込みのために型として残す。
-  planExecution?: 'off' | 'instant' | 'powered';
-  // 'planExecution' 導入前のセーブが持っていたフィールド。
-  followPlan?: boolean;
-  // 旧セーブデータには無いフィールドなので任意。無ければ既定値(false)。
-  fineAttitude?: boolean;
-  // プロパティウィンドウの軌道線表示トグル。旧セーブには無いため任意(既定 false)。
-  showTrajectoryLine?: boolean;
-  // 接続中のブースター。旧セーブには無いため任意(既定は空スタック)。
-  boosters?: BoosterStackData;
+  readonly kind: 'player';
+  readonly fire: FireSaveData;
+  readonly thermal: ThermalSaveData;
+  readonly radiator: RadiatorSaveData;
+  readonly power: PowerSaveData;
+  readonly throttle: ThrottleSaveData;
+  readonly parts: AnyPart[];
+  readonly plan: PlanSaveData | null;
+  // 無いか現行のモードでなければ followPlan から読み替える。'powered' は読み込みのために
+  // 型へ残す廃止モード。
+  readonly planExecution?: 'off' | 'instant' | 'powered';
+  // planExecution の読み替え元。
+  readonly followPlan?: boolean;
+  // 無ければ既定値(false)。
+  readonly fineAttitude?: boolean;
+  // プロパティウィンドウの軌道線表示トグル。無ければ false。
+  readonly showTrajectoryLine?: boolean;
+  // 接続中のブースター。無ければ空スタック。
+  readonly boosters?: BoosterStackData;
 }
 
 // 分離後も独立して燃焼・慣性飛行するブースター。接続中の段は PlayerSaveData 側へ保存する。
 export interface DetachedBoosterSaveData extends EntitySaveData {
-  kind: 'booster';
-  stage: BoosterStageData;
-  // 分離直後の親艦との再接触を避ける猶予期限。旧データでは即時接触可能とする。
-  collisionEnableAt?: number;
+  readonly kind: 'booster';
+  readonly stage: BoosterStage;
+  // 分離直後の親艦との再接触を避ける猶予の期限。無ければ即時に接触できる。
+  readonly collisionEnableAt?: number;
 }
 
 export interface BaseSaveData extends EntitySaveData {
-  kind: 'base';
-  money: number;
-  // 基地の燃料。旧セーブには無いため任意。
-  fuel?: number;
-  throttle?: ThrottleSaveData;
-  // プロパティウィンドウの軌道線表示トグル。旧セーブには無いため任意(既定 false)。
-  showTrajectoryLine?: boolean;
+  readonly kind: 'base';
+  readonly money: number;
+  // 基地の燃料。
+  readonly fuel?: number;
+  readonly throttle?: ThrottleSaveData;
+  // プロパティウィンドウの軌道線表示トグル。無ければ false。
+  readonly showTrajectoryLine?: boolean;
 }
 
 export interface EnemySaveData extends EntitySaveData {
-  kind: 'metal-enemy' | 'protein-enemy';
-  alive: boolean;
-  health: number;
+  readonly kind: 'metal-enemy' | 'protein-enemy';
+  readonly alive: boolean;
+  readonly health: number;
   // マーカー色・集団識別と、マーカー・軌道線の色。
-  accent: string | number;
-  orbitLineColor: string | number;
-  waveId?: number;
+  readonly accent: string | number;
+  readonly orbitLineColor: string | number;
+  readonly waveId?: number;
   // 陣形に属する敵だけが持つ識別子と役割。無ければ単体敵として復元する。
-  formationId?: string;
-  formationRole?: FormationRole;
+  readonly formationId?: string;
+  readonly formationRole?: FormationRole;
   // バースト射撃の残弾・次弾までの残り時間。未着手なら両方 undefined。
-  burstLeft?: number;
-  burstDelay?: number;
-  // プロパティウィンドウの軌道線表示トグル。無ければ既定 false。
-  showTrajectoryLine?: boolean;
+  readonly burstLeft?: number;
+  readonly burstDelay?: number;
+  // プロパティウィンドウの軌道線表示トグル。無ければ false。
+  readonly showTrajectoryLine?: boolean;
 }
 
 export interface MetalEnemySaveData extends EnemySaveData {
-  kind: 'metal-enemy';
+  readonly kind: 'metal-enemy';
   // 機体テンプレート番号。型番を持たない漂流機体は null。
-  typeIndex: number | null;
+  readonly typeIndex: number | null;
 }
 
 export interface ProteinEnemySaveData extends EnemySaveData {
-  kind: 'protein-enemy';
-  assetId: ProteinAssetId;
-  display: ProteinDisplaySettings;
+  readonly kind: 'protein-enemy';
+  readonly assetId: ProteinAssetId;
+  readonly display: ProteinDisplaySettings;
   // 機能部位の HP・フェーズ・修飾。
-  protein: ProteinSaveData;
+  readonly protein: ProteinSaveData;
 }
 
 export interface AmmoPickupSaveData extends EntitySaveData {
-  kind: 'ammo';
+  readonly kind: 'ammo';
 }
 
 export interface RcsFuelPickupSaveData extends EntitySaveData {
-  kind: 'rcs-fuel';
+  readonly kind: 'rcs-fuel';
 }
 
 // 顔ぶれ1体分の保存形。kind で具象を判別する。
@@ -185,42 +185,40 @@ export type EntitySaveDataUnion =
   | BaseSaveData;
 
 export interface ScoreCounterSaveData {
-  shots: number;
-  hits: number;
-  kills: number;
-  losses: number;
-  totalEnemiesSpawned: number;
+  readonly shots: number;
+  readonly hits: number;
+  readonly kills: number;
+  readonly losses: number;
+  readonly totalEnemiesSpawned: number;
 }
 
 export interface LogisticsSaveData {
-  resupplyCheckAt: number;
-  resupplyEnabled: boolean;
-  // 旧セーブデータには無い。無ければ自動投入を有効にする。
-  rcsFuelResupplyEnabled?: boolean;
+  readonly resupplyCheckAt: number;
+  readonly resupplyEnabled: boolean;
+  // 無ければ自動投入を有効にする。
+  readonly rcsFuelResupplyEnabled?: boolean;
 }
 
-// 全ステージ共通の内訳(スコア・決着状態・補給タイマー)。ステージ固有の内訳を持つ
-// 具象ステージはこれを拡張した型を自分の serialize() とコンストラクタで使う(stage0.ts の
-// Stage0SaveData・stage00.ts の Stage00SaveData)。
+// 全ステージ共通の内訳(スコア・決着状態・補給タイマー)。ステージ固有の内訳は、これを拡張した
+// 型に持つ。
 export interface StageSaveData {
-  scoreCounter: ScoreCounterSaveData;
-  phase: GamePhase;
-  logistics: LogisticsSaveData;
+  readonly scoreCounter: ScoreCounterSaveData;
+  readonly phase: GamePhase;
+  readonly logistics: LogisticsSaveData;
 }
 
 export interface Stage0SaveData extends StageSaveData {
-  timeLeft: number;
+  readonly timeLeft: number;
 }
 
 export interface Stage00SaveData extends StageSaveData, WaveAttackSaveData {
 }
 
-// クリエイティブモードの内訳。艦0..n隻を自由に配置するモード自身の状態(トグル)に加えて、
-// 任意で動かす WaveAttack の進行状態を持つ — waveAttack は waveAttackEnabled が false の
-// 間も直前の状態を保つ(OFF→ON で再開したとき波数が0に戻らないように)。
+// クリエイティブモードの内訳。波状攻撃のトグルと進行状態を持ち、進行状態はトグルが OFF の間も
+// 保つ(ON に戻したとき波数を続きから再開する)。
 export interface CreativeStageSaveData extends StageSaveData {
-  waveAttackEnabled: boolean;
-  waveAttack: WaveAttackSaveData;
+  readonly waveAttackEnabled: boolean;
+  readonly waveAttack: WaveAttackSaveData;
 }
 
 // GameSaveData の形式バージョン。値が変わった時点で、それ以前に書かれたスナップショットは
@@ -229,16 +227,16 @@ export const SAVE_VERSION = 3;
 
 // chase にこの形が入っている保存データは読み捨て、戦闘視点を既定で組む。
 export interface ChaseSaveDataV1 {
-  rot: QuatSaveData;
-  dist: number;
-  pan: Vec3SaveData;
-  followAttitude: boolean;
+  readonly rot: QuatSaveData;
+  readonly dist: number;
+  readonly pan: Vec3SaveData;
+  readonly followAttitude: boolean;
 }
 
 // FrameRotationSource の保存形。
 export interface FrameRotationSourceSaveData {
-  kind: 'revolution' | 'spin';
-  id: string;
+  readonly kind: 'revolution' | 'spin';
+  readonly id: string;
 }
 
 // カメラの回転追従の保存形。'attitude' はフォーカス機体の姿勢追従(対象は id でなく
@@ -246,59 +244,59 @@ export interface FrameRotationSourceSaveData {
 export type CameraRotationFollowSaveData = FrameRotationSourceSaveData | { kind: 'attitude' };
 
 // FocusCamera のフォーカス対象(FocusTarget の保存形)。'point' は焼き込み先の座標系
-// (center/rotatingWith)と、その座標系相対の点をそのまま持つ。rotatingWith は
-// 旧セーブでは文字列(公転対象の id)または null だったので、読み込み側がその形も受け付ける。
+// (center/rotatingWith)と、その座標系相対の点をそのまま持つ。rotatingWith は文字列
+// (公転対象の id)と null の形も受け付ける。
 type FocusTargetSaveData =
   | { kind: 'object'; id: string }
   | { kind: 'point'; center: string; rotatingWith: FrameRotationSourceSaveData | string | null; point: Vec3SaveData };
 
 export interface FocusCameraSaveData {
-  offset: Vec3SaveData;
-  pan: Vec3SaveData;
-  up: Vec3SaveData;
-  rotatingWith: CameraRotationFollowSaveData | string | null;
-  focus: FocusTargetSaveData;
-  // 旧セーブデータには無い。無ければ既定のオイラー操作。
-  rotationMode?: 'quaternion' | 'euler';
-  // 省略されている保存データでは既定の FOV を使う。
-  fovDeg?: number;
-  // 旧セーブデータには無い。無ければ赤道面。
-  referencePlane?: 'ecliptic' | 'equator' | 'moonOrbit';
-  projectionMode?: 'perspective' | 'orthographic';
-  orthographicHalfHeight?: number;
+  readonly offset: Vec3SaveData;
+  readonly pan: Vec3SaveData;
+  readonly up: Vec3SaveData;
+  readonly rotatingWith: CameraRotationFollowSaveData | string | null;
+  readonly focus: FocusTargetSaveData;
+  // 無ければ既定のオイラー操作。
+  readonly rotationMode?: 'quaternion' | 'euler';
+  // 無ければ既定の FOV。
+  readonly fovDeg?: number;
+  // 無ければ赤道面。
+  readonly referencePlane?: 'ecliptic' | 'equator' | 'moonOrbit';
+  readonly projectionMode?: 'perspective' | 'orthographic';
+  readonly orthographicHalfHeight?: number;
 }
 
 export interface CameraSaveData {
-  view: 'combat' | 'map';
+  readonly view: 'combat' | 'map';
   // 戦闘ビューの視点。ChaseSaveDataV1 形なら読み捨てられる。
-  chase: FocusCameraSaveData | ChaseSaveDataV1;
+  readonly chase: FocusCameraSaveData | ChaseSaveDataV1;
   // マップビューの視点。
-  overview: FocusCameraSaveData;
+  readonly overview: FocusCameraSaveData;
 }
 
 interface NavTargetSaveData {
-  id: string;
-  name: string;
+  readonly id: string;
+  readonly name: string;
 }
 
 export interface GameSaveData {
-  version: number;
-  stageId: string;
-  simTime: number;
+  readonly version: number;
+  readonly stageId: string;
+  readonly simTime: number;
   /**
-   * そのランの元期と、それが選ぶ暦データの識別。旧スナップショットには無い。
-   * 元期は読み込み側が継承する値で、照合するのは暦データのほうだけ。
+   * そのランの元期と、それが選ぶ暦データの識別。元期は読み込み側が継承する値で、照合するのは
+   * 暦データの識別。
    */
-  ephemerisContext?: EphemerisContext;
-  phaseOffsets: Partial<Record<string, number>>;
-  /** 旧スナップショットには無い。存在しなければ地球の自転初期位相は復元されない。 */
-  earthSpinPhase0?: number;
+  readonly ephemerisContext?: EphemerisContext;
+  readonly phaseOffsets: Partial<Record<string, number>>;
+  /** 無ければ地球の自転初期位相は復元されない。 */
+  readonly earthSpinPhase0?: number;
   // 顔ぶれ。種別は各要素の kind が持つ。
-  entities: EntitySaveDataUnion[];
-  activeControlledId: string | null;
-  stage: StageSaveData;
-  // 旧セーブデータには無いフィールドなので任意。無ければ視点は既定のまま始まる。
-  camera?: CameraSaveData;
-  // 旧セーブデータには無い。無ければターゲット未選択のまま始まる。
-  navTarget?: NavTargetSaveData | null;
+  readonly entities: EntitySaveDataUnion[];
+  readonly activeControlledId: string | null;
+  readonly stage: StageSaveData;
+  // 無ければ視点は既定のまま始まる。
+  readonly camera?: CameraSaveData;
+  // 無ければターゲット未選択のまま始まる。
+  readonly navTarget?: NavTargetSaveData | null;
 }

@@ -7,19 +7,43 @@ import type { Attitude } from '../../../physics/attitude';
 import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import type { CapKind } from './entity-kind';
-import { buildDebrisPieceView } from './debris-piece-view';
+import {
+  BoosterExplosiveBoltView, BoosterInterstageCoverPanelView,
+} from '../../../render/dynamic/dynamic-entity/booster-interstage-part-view';
+import { CasingView } from '../../../render/dynamic/dynamic-entity/casing-view';
+import { DebrisFragmentView } from '../../../render/dynamic/dynamic-entity/debris-fragment-view';
+import {
+  BarrelView, MagazineFrameView,
+} from '../../../render/dynamic/dynamic-entity/ejected-gun-part-view';
+import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import { DynamicEntity } from './dynamic-entity';
 import type { DebrisKind } from './debris-kind';
 import { DebrisMotion } from './debris-motion';
 import { DebrisReaction } from './debris-reaction';
-import {
-  DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, ENEMY_DESTROY_FRAG_COLOR,
-  PLAYER_DESTROY_FRAG_COLOR,
-} from '../../../render/vfx-style';
+
+// 撃破で飛び散る破片の大きさの範囲。敵機では機体サイズに合わせて拡大する。
+export const DESTROY_FRAG_SIZE_MIN = 1.5;
+export const DESTROY_FRAG_SIZE_MAX = 6.0;
+// 撃破で飛び散る破片の色。
+export const PLAYER_DESTROY_FRAG_COLOR = '#9fd8e8';
+const ENEMY_DESTROY_FRAG_COLOR = '#ff6a4a';
+
+// 論理種別から、その破片を描く View を組み立てる。
+function debrisPieceView(debrisKind: DebrisKind, scene?: THREE.Scene): DynamicView {
+  switch (debrisKind.kind) {
+    case 'fragment': return new DebrisFragmentView(debrisKind.accent, debrisKind.size, scene);
+    case 'barrel': return new BarrelView(scene);
+    case 'magazineFrame': return new MagazineFrameView(scene);
+    case 'casing': return new CasingView(scene);
+    case 'boosterCover': return new BoosterInterstageCoverPanelView(debrisKind.segment, scene);
+    case 'boosterBolt': return new BoosterExplosiveBoltView(debrisKind.segment, scene);
+  }
+}
 
 export class DebrisPiece extends DynamicEntity {
   public override readonly capKind: CapKind;
 
+  // 破片1個を、種別 debrisKind に応じた View と Motion で組み立てる。
   public constructor(
     state: KinematicState,
     debrisKind: DebrisKind,
@@ -30,10 +54,6 @@ export class DebrisPiece extends DynamicEntity {
     scene?: THREE.Scene,
   ) {
     super(
-      state,
-      buildDebrisPieceView(debrisKind, scene),
-      attitude,
-      undefined,
       () => new DebrisMotion(state, attitude, {
         kind: debrisKind.kind,
         behavior: new DebrisReaction(
@@ -43,16 +63,20 @@ export class DebrisPiece extends DynamicEntity {
           effects,
         ),
         radius,
+        // 砲身の破片は、外れた時点の温度と温度差を引き継ぐ
         temperature: debrisKind.kind === 'barrel' ? debrisKind.bornTemperature : undefined,
         thermalDeviation: debrisKind.kind === 'barrel'
           ? debrisKind.bornThermalDeviation
           : undefined,
       }),
+      debrisPieceView(debrisKind, scene),
     );
     this.capKind = debrisKind.kind === 'casing' ? 'casing' : 'debris';
   }
 }
 
+// origin のまわりへ count 個の破片を散らす。速度は baseVel に最大 spread [m/s] のばらつきを足し、
+// 大きさは [sizeMin, sizeMax] から一様に選ぶ。
 export function buildDestroyFragments(
   t: number,
   origin: Vec3,
@@ -69,6 +93,7 @@ export function buildDestroyFragments(
   for (let i = 0; i < count; i++) {
     const size = sizeMin + Math.random() * (sizeMax - sizeMin);
     const state = kinematicState<'eci'>(t, add(origin, randVec(2.5)), add(baseVel, randVec(spread)));
+    // 姿勢はばらばらに、回転は y 軸まわりを主にどちらかの向きへ振る。
     const attitude = {
       q: randomQuat(),
       w: v3(
