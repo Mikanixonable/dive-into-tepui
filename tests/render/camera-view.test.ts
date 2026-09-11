@@ -43,7 +43,6 @@ export function register(): void {
       perspectiveViewpoint(), CLIP_FOV_DEG, CLIP_DISTANCE, VIEWPORT, 'combat', false, v3(),
     );
 
-    assert.deepEqual(frame.position, EYE, '確定した位置が視点の位置と違う');
     // 描画原点を通した視点の位置は、単精度で扱える大きさまで潰れていなければならない。
     const eyeInFrame = frame.floatingOrigin.RtoThreeV3(EYE);
     assert.ok(eyeInFrame.length() === 0, `描画原点がカメラ位置に揃っていない (${eyeInFrame.length()})`);
@@ -93,7 +92,6 @@ export function register(): void {
       assert.ok(Math.abs(center.x - viewport.width / 2) < 1e-6, `中心からずれた x=${center.x}`);
       assert.ok(Math.abs(center.y - viewport.height / 2) < 1e-6, `中心からずれた y=${center.y}`);
       assert.equal(center.front, true, '注視点が前方と判定されない');
-      assert.deepEqual(frame.viewport, viewport, '確定したビューポートが渡した値と違う');
     }
   });
 

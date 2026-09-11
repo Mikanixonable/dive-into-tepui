@@ -264,11 +264,9 @@ interface EarthSurfaceConnection {
 function detailedMaterialFor(
   source: EarthSurfaceSource, textures: EarthSurfaceGpuTextures, fetchImpl?: typeof fetch,
 ): EarthSurfaceMaterialAttachment {
-  const binding = createEarthSurfaceMaterialBinding(textures, {
-    baseColorUrl: source.baseColorUrl,
-    baseTerrainUrl: source.baseTerrainUrl,
-    fetchImpl,
-  });
+  const binding = createEarthSurfaceMaterialBinding(
+    textures, source.baseColorUrl, source.baseTerrainUrl, fetchImpl,
+  );
   return {
     material: binding.material,
     deferred: binding.deferredTextures,

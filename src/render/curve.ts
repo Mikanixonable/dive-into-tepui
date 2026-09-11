@@ -5,6 +5,7 @@
 import * as THREE from 'three/webgpu';
 import { MaxHeap } from '../math/max-heap';
 import { CameraScale } from './camera-scale';
+import { buildHermiteCurve, type HermiteCurve } from './hermite-curve';
 import type { LineStyle } from './line-style';
 import { markOverlay } from './pipeline/lit-layer';
 
@@ -60,52 +61,6 @@ export type CurveKnots = {
   readonly tangents: readonly number[];
 };
 
-// 節点列から組んだ曲線。ts は節点自身のパラメータ列で、そのまま初期頂点の位置になる。
-type HermiteCurve = { readonly sample: CurveSampler; readonly ts: ArrayLike<number> };
-
-// 節点間を3次エルミート(両端の位置を通り、両端の接線を持つ)で埋めた曲線を組む。節点が
-// maxCount 個を超えるぶんは元の並びの上で等間隔に間引く(両端は残すので定義域は縮まない)。
-function buildHermiteCurve(knots: CurveKnots, maxCount: number): HermiteCurve {
-  const source = knots.ts;
-  if (source.length < 2) throw new Error(`Curve: 節点が ${source.length} 個では曲線にならない`);
-  const last = source.length - 1;
-  const count = Math.min(source.length, maxCount);
-  const ts = new Float64Array(count);
-  const positions = new Float64Array(count * 3);
-  const tangents = new Float64Array(count * 3);
-  for (let i = 0; i < count; i++) {
-    const j = count === source.length ? i : Math.round((i * last) / (count - 1));
-    ts[i] = source[j]!;
-    if (i > 0 && ts[i]! <= ts[i - 1]!) throw new Error(`Curve: 節点のパラメータが昇順でない (i=${j})`);
-    for (let k = 0; k < 3; k++) {
-      positions[i * 3 + k] = knots.positions[j * 3 + k]!;
-      tangents[i * 3 + k] = knots.tangents[j * 3 + k]!;
-    }
-  }
-
-  // 節点区間の両端の位置と接線から、区間内を3次エルミートで埋める。
-  const sample: CurveSampler = (t, out) => {
-    // t を含む区間 [i, i+1] を二分探索で引く。両端の外は端の区間へ寄せる。
-    let lo = 0, hi = count - 2;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (ts[mid]! <= t) lo = mid; else hi = mid - 1;
-    }
-    const h = ts[lo + 1]! - ts[lo]!;
-    const s = Math.max(0, Math.min(1, (t - ts[lo]!) / h));
-    const s2 = s * s, s3 = s2 * s;
-    const w0 = 2 * s3 - 3 * s2 + 1, w1 = (s3 - 2 * s2 + s) * h;
-    const w2 = -2 * s3 + 3 * s2, w3 = (s3 - s2) * h;
-    const a = lo * 3, b = a + 3;
-    out.set(
-      w0 * positions[a]! + w1 * tangents[a]! + w2 * positions[b]! + w3 * tangents[b]!,
-      w0 * positions[a + 1]! + w1 * tangents[a + 1]! + w2 * positions[b + 1]! + w3 * tangents[b + 1]!,
-      w0 * positions[a + 2]! + w1 * tangents[a + 2]! + w2 * positions[b + 2]! + w3 * tangents[b + 2]!,
-    );
-  };
-  return { sample, ts };
-}
-
 // 点 p を線分 ab へ射影した点(線分の外へ出るぶんは端点へ丸める)を out へ書く。
 function projectToSegment(
   px: number, py: number, pz: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number,
@@ -120,10 +75,10 @@ function projectToSegment(
 }
 
 export class Curve {
-  readonly object: THREE.Object3D;
+  public readonly object: THREE.Object3D;
   private readonly line: THREE.LineSegments;
   private readonly geom: THREE.BufferGeometry;
-  private readonly mat: THREE.Material;
+  private readonly mat: THREE.LineBasicMaterial;
   private readonly positions: Float32Array;
   private readonly indices: Uint32Array;
   private readonly maxVertices: number;
@@ -132,9 +87,8 @@ export class Curve {
   private vertexCount = 0;
   private wantVisible = true;
 
-  // 直近に setStyle で反映済みの見た目。個別 setter を経由すると null に戻し、
-  // 次の setStyle が確実に書き直すようにする。
-  private appliedStyle: LineStyle | null = null;
+  // 直近にマテリアルと線へ反映済みの見た目。
+  private appliedStyle: LineStyle;
 
   // 適応分割で焼いた頂点(sample の座標系のまま)。GPU へ渡す positions(f32)は常にこの配列
   // から localCam を差し引いて書くので、差し引く前の精度を落とさないよう倍精度で持つ。
@@ -184,7 +138,7 @@ export class Curve {
 
   // 頂点バッファは maxVertices ぶんを生成時に1回だけ確保する。maxVertices は、適応分割が
   // 収束しない曲線に対する最悪描画コストの打ち切り。style.dash があれば破線になる。
-  constructor(style: LineStyle, maxVertices: number = DEFAULT_MAX_VERTICES) {
+  public constructor(style: LineStyle, maxVertices: number = DEFAULT_MAX_VERTICES) {
     const { color, opacity, renderOrder, dash } = style;
     this.maxVertices = maxVertices;
     this.maxInitialVertices = Math.max(INITIAL_SEGMENTS + 1, Math.floor(maxVertices * MAX_INITIAL_VERTEX_RATIO));
@@ -343,7 +297,7 @@ export class Curve {
   // 高さ。initialSegments は適応分割を始める区間数 — 適応分割は弦の中点しか見ないので、1区間に
   // 何周ぶんも入る曲線では中点がたまたま曲線上に乗り、区間まるごとが直線に化ける。「1区間が
   // 曲線の半周を超えない」下限を渡してそれを防ぐ。colorAt は線の中で色が変わるときだけ渡す。
-  setAnalyticCurve(
+  public setAnalyticCurve(
     sample: CurveSampler, camera: THREE.Camera, viewportHeight: number,
     initialSegments?: number, colorAt?: CurveColorSampler,
   ): void {
@@ -354,7 +308,7 @@ export class Curve {
 
   // 離散サンプルとしてしか手に入らない曲線を、節点間を3次エルミートで埋めて描く。節点は
   // そのまま初期頂点になる。camera・viewportHeight・colorAt の意味は setAnalyticCurve と同じ。
-  setHermiteCurve(
+  public setHermiteCurve(
     knots: CurveKnots, camera: THREE.Camera, viewportHeight: number, colorAt?: CurveColorSampler,
   ): void {
     let hermite = this.hermite;
@@ -367,7 +321,7 @@ export class Curve {
   }
 
   // いま描いている曲線を t∈[0,1] で評価する。曲線をまだ渡されていなければ原点を返す。
-  sampleAt(t: number, out: THREE.Vector3): void {
+  public sampleAt(t: number, out: THREE.Vector3): void {
     if (this.sampler) this.sampler(t, out);
     else out.set(0, 0, 0);
   }
@@ -435,7 +389,7 @@ export class Curve {
   }
 
   // 曲線を持たない状態へ戻す。表示要求に関わらず何も描かれなくなる。
-  clear(): void {
+  public clear(): void {
     this.bakedCount = 0;
     this.sampler = null;
     this.hermiteKnots = null;
@@ -445,57 +399,34 @@ export class Curve {
     this.applyVisible();
   }
 
-  // 破線パターンを書き換える。破線でないマテリアルでは何もしない。
-  setDash(dashSize: number, gapSize: number): void {
-    if (this.mat instanceof THREE.LineDashedMaterial) {
-      this.mat.dashSize = dashSize;
-      this.mat.gapSize = gapSize;
-    }
-    this.appliedStyle = null;
-  }
-
-  // マテリアルの不透明度を書き換える。
-  setOpacity(opacity: number): void {
-    this.mat.opacity = opacity;
-    this.appliedStyle = null;
-  }
-
-  // マテリアルを作り直さず色だけ更新する。既に同じ色なら何もしない。
-  setColor(color: THREE.ColorRepresentation): void {
-    const material = this.mat as THREE.LineBasicMaterial | THREE.LineDashedMaterial;
-    this.scratchStyleColor.set(color);
-    if (material.color.equals(this.scratchStyleColor)) return;
-    material.color.copy(this.scratchStyleColor);
-    material.needsUpdate = true;
-    this.appliedStyle = null;
-  }
-
-  // 他の線と重なったときの前後を書き換える。
-  setRenderOrder(renderOrder: number): void {
-    this.line.renderOrder = renderOrder;
-    this.appliedStyle = null;
-  }
-
-  // 見た目をまとめて書き換える。適用済みの値と一致するなら何もしない。
-  setStyle(style: LineStyle): void {
+  // 見た目をまとめて書き換える。適用済みの値と一致するなら何もしない。破線パターンは、破線として
+  // 組んだ線にだけ効く。
+  public setStyle(style: LineStyle): void {
     const applied = this.appliedStyle;
-    if (applied
-      && applied.color === style.color
+    if (applied.color === style.color
       && applied.opacity === style.opacity
       && applied.renderOrder === style.renderOrder
       && applied.dash?.dashSize === style.dash?.dashSize
       && applied.dash?.gapSize === style.dash?.gapSize) {
       return;
     }
-    this.setColor(style.color);
-    this.setOpacity(style.opacity);
-    this.setRenderOrder(style.renderOrder);
-    if (style.dash) this.setDash(style.dash.dashSize, style.dash.gapSize);
+    // 色はマテリアルを作り直さずに書き換え、同じ色ならシェーダの更新を立てない。
+    this.scratchStyleColor.set(style.color);
+    if (!this.mat.color.equals(this.scratchStyleColor)) {
+      this.mat.color.copy(this.scratchStyleColor);
+      this.mat.needsUpdate = true;
+    }
+    this.mat.opacity = style.opacity;
+    this.line.renderOrder = style.renderOrder;
+    if (style.dash && this.mat instanceof THREE.LineDashedMaterial) {
+      this.mat.dashSize = style.dash.dashSize;
+      this.mat.gapSize = style.dash.gapSize;
+    }
     this.appliedStyle = style;
   }
 
   // sample の座標系をワールドへ写す変換を渡す。
-  setTransform(position: THREE.Vector3, quaternion?: THREE.Quaternion): void {
+  public setTransform(position: THREE.Vector3, quaternion?: THREE.Quaternion): void {
     this.reqPosition.copy(position);
     if (quaternion) this.reqQuaternion.copy(quaternion);
     else this.reqQuaternion.identity();
@@ -503,7 +434,7 @@ export class Curve {
   }
 
   // 表示を要求する。頂点数が2未満の間は隠れたままになる。
-  setVisible(v: boolean): void {
+  public setVisible(v: boolean): void {
     this.wantVisible = v;
     this.applyVisible();
   }
@@ -514,7 +445,7 @@ export class Curve {
   }
 
   // ジオメトリとマテリアルを解放する。以後この曲線は描けない。
-  dispose(): void {
+  public dispose(): void {
     this.geom.dispose();
     this.mat.dispose();
   }

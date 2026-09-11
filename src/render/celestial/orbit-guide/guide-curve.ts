@@ -2,7 +2,7 @@
 // 描画原点の移動へ毎フレーム追随させる。描かれている曲線上の点を ECI 絶対座標で引く口も
 // 持つので、進行方向マーカーと当たり判定は線と同じ曲線を読める。
 import * as THREE from 'three/webgpu';
-import { Vec3 } from '../../../math/vec3';
+import { v3, Vec3 } from '../../../math/vec3';
 import { Curve, CurveColorSampler, CurveKnots, CurveSampler } from '../../curve';
 import { LineStyle } from '../../line-style';
 import type { CameraFrame } from '../../camera/camera-frame';
@@ -65,15 +65,14 @@ export class GuideCurve {
     this.curve.setVisible(true);
   }
 
-  // 曲線上の t∈[0,1] の点を ECI 絶対座標で返す。線が消えているあいだは原点。
+  // 曲線上の t∈[0,1] の点を ECI 絶対座標で返す。直近の sync が曲線を渡したフレームでだけ呼べ、
+  // 線が消えているあいだに呼ぶと例外を投げる。
   public pointAt(t: number): Vec3 {
     const display = this.display;
-    if (display === null) return { x: 0, y: 0, z: 0 } as Vec3;
+    if (display === null) throw new Error('GuideCurve: 線が消えているあいだは曲線上の点を引けない');
     const origin = display.origin;
     this.curve.sampleAt(t, this.scratch);
-    return {
-      x: origin.x + this.scratch.x, y: origin.y + this.scratch.y, z: origin.z + this.scratch.z,
-    } as Vec3;
+    return v3(origin.x + this.scratch.x, origin.y + this.scratch.y, origin.z + this.scratch.z);
   }
 
   // 曲線上の count+1 点を ECI 絶対座標で返す(両端を含む)。線が消えているあいだは空。

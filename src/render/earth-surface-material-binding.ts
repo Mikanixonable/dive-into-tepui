@@ -12,12 +12,6 @@ import type { EarthSurfaceGpuTextures } from './earth-surface-gpu';
 import { createEarthSurfaceNodeMaterial } from './earth-surface-material-node';
 import type { Mat3Uniform, Vec3Node, Vec3Uniform, BoolUniform } from './tsl-types';
 
-export interface EarthSurfaceMaterialBindingOptions {
-  readonly baseColorUrl: string;
-  readonly baseTerrainUrl: string;
-  readonly fetchImpl?: typeof fetch;
-}
-
 export interface EarthSurfaceMaterialBinding {
   readonly material: THREE.MeshStandardNodeMaterial;
   readonly deferredTextures: readonly DeferredTexture[];
@@ -55,11 +49,13 @@ function createBaseTerrainTexture(): { readonly texture: THREE.DataTexture; read
   return { texture, data };
 }
 
-// sourceのbaseColor/baseTerrainを共通の材質へ束ねる。baseTerrainの取得に失敗しても、平面法線・粗さ1の
-// 初期データを残すため、地表が黒く欠けるのではなくタイルのfallbackへ戻れる。
+// baseColorUrl/baseTerrainUrlの画像を共通の材質へ束ねる。fetchImplはbaseTerrainの取得に使い、省けば
+// fetch。baseTerrainの取得に失敗しても、平面法線・粗さ1の初期データを残すため、地表が黒く欠けるの
+// ではなくタイルのfallbackへ戻れる。
 export function createEarthSurfaceMaterialBinding(
-  textures: EarthSurfaceGpuTextures, options: EarthSurfaceMaterialBindingOptions,
+  textures: EarthSurfaceGpuTextures, baseColorUrl: string, baseTerrainUrl: string, fetchImpl?: typeof fetch,
 ): EarthSurfaceMaterialBinding {
+  // base画像の取得失敗は、最初の1件だけを理由として残す。
   let disposed = false;
   let baseFailureReason: string | null = null;
   const recordBaseFailure = (label: string, error: unknown): void => {
@@ -67,8 +63,9 @@ export function createEarthSurfaceMaterialBinding(
     const detail = error instanceof Error ? error.message : String(error);
     baseFailureReason = `${label}: ${detail}`;
   };
+  // base画像のテクスチャと、フレームごとに書き換える天体の形・姿勢のuniform。
   const baseColor = new DeferredTexture(
-    options.baseColorUrl, THREE.SRGBColorSpace,
+    baseColorUrl, THREE.SRGBColorSpace,
     (error) => recordBaseFailure('Earth base color unavailable', error),
   );
   const baseTerrain = createBaseTerrainTexture();
@@ -77,6 +74,7 @@ export function createEarthSurfaceMaterialBinding(
   const bodyToView: Mat3Uniform = uniform(new THREE.Matrix3());
   const schematic: BoolUniform = uniform(false);
   const bodyDirection = positionLocal.mul(axes) as unknown as Vec3Node;
+  // 材質を組めなければ、先に確保した取得とテクスチャを解放してから投げ直す。
   let material: THREE.MeshStandardNodeMaterial;
   try {
     material = createEarthSurfaceNodeMaterial(
@@ -95,7 +93,8 @@ export function createEarthSurfaceMaterialBinding(
     baseTerrain.texture.dispose();
     throw error;
   }
-  void loadEarthBaseTerrain(options.baseTerrainUrl, options.fetchImpl ?? fetch, abortController.signal)
+  // baseTerrainは届いた時点で初期データへ上書きする。
+  void loadEarthBaseTerrain(baseTerrainUrl, fetchImpl ?? fetch, abortController.signal)
     .then((data) => {
       if (disposed) return;
       baseTerrain.data.set(data);
