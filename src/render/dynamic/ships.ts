@@ -4,11 +4,10 @@
 // src/assets/models/*.json として事前に焼き出したものを ObjectLoader で読み込む。
 import * as THREE from 'three/webgpu';
 import { ENEMY_PLASMA_COLOR } from '../vfx-style';
-import { F0_BURNT_STEEL, F0_STEEL } from './metal-f0';
 import { mulberry32 } from '../../math/random';
 import { MAG_THICKNESS } from '../../physics/player-shape';
 import { markLitOpaque, markShadowCaster } from '../pipeline/lit-layer';
-import { attachThermalEmissive, makeThermallyEmissive, THERMAL_SHAPE_ATTRIBUTE } from '../thermal-emissive';
+import { attachThermalEmissive, makeThermallyEmissive } from '../thermal-emissive';
 
 // BufferGeometry を属性・index ごと複製する(clone() だけでは頂点属性配列を共有したままになる)。
 function deepCloneGeometry(geo: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -32,6 +31,7 @@ import magazineData from '../../assets/models/magazine.json';
 import ammoPickupData from '../../assets/models/ammo.json';
 import bulletData from '../../assets/models/bullet.json';
 import plasmaData from '../../assets/models/plasma.json';
+import barrelData from '../../assets/models/barrel.json';
 import casingData from '../../assets/models/casing.json';
 import debrisChunkData from '../../assets/models/debrisChunk.json';
 import debrisPanelData from '../../assets/models/debrisPanel.json';
@@ -427,108 +427,25 @@ export function debrisFragmentResources(): { geometries: readonly THREE.BufferGe
 }
 
 
-// リロード時に放出される砲身（バレル）メッシュ
-// 砲身本体 + 後端フランジ + 放熱フィン + マズルブレーキ + ガスポート
-
-// 薬室の位置 [m] と、そこから砲口へ向かって温度差が落ちる長さ [m]。発射ガスは銃身に沿って
-// 熱を置いていくので、薬室側がいちばん熱く、砲口へ向かって指数で下がる。
-const BARREL_BREECH_Z = -2.3;
-const BARREL_HEAT_FALLOFF = 1.2;
-
-// 砲身の各メッシュへ、平均温度からの温度差の分布(薬室側 1、砲口側 0)を焼く。
-function bakeBarrelThermalShape(root: THREE.Object3D): void {
-  const vertex = new THREE.Vector3();
-  root.traverse((child) => {
-    const mesh = child as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    mesh.updateMatrix();
-    const position = mesh.geometry.getAttribute('position');
-    const shape = new Float32Array(position.count);
-    for (let i = 0; i < position.count; i++) {
-      vertex.fromBufferAttribute(position, i).applyMatrix4(mesh.matrix);
-      shape[i] = Math.min(1, Math.exp(-(vertex.z - BARREL_BREECH_Z) / BARREL_HEAT_FALLOFF));
-    }
-    mesh.geometry.setAttribute(THERMAL_SHAPE_ATTRIBUTE, new THREE.Float32BufferAttribute(shape, 1));
-  });
-}
-
+// リロード時に放出される砲身のテンプレート。geometry/material は全個体で共有し、
+// 熱の状態は個体ごとの userData が運ぶ。
 let barrelTemplate: THREE.Group | null = null;
 
+// 砲身のメッシュをテンプレートから複製して返す。geometry/material は全個体の共有物。
 export function buildBarrelMesh(): THREE.Group {
-  if (barrelTemplate !== null) return barrelTemplate.clone(true) as THREE.Group;
-
-  const g = new THREE.Group();
-  const S = 0.7; // 直径スケール係数
-
-  // --- 砲身チューブ本体(熱焼け黒鋼) ---
-  const tubeGeo = new THREE.CylinderGeometry(0.58 * S, 0.64 * S, 4.4, 12);
-  const tubeMat = new THREE.MeshStandardMaterial({ color: F0_BURNT_STEEL, roughness: 0.38, metalness: 1 });
-  const tube = new THREE.Mesh(tubeGeo, tubeMat);
-  tube.rotation.x = Math.PI / 2;
-  g.add(tube);
-
-  // --- 後端フランジ(薬室側・太めリング) ---
-  const flangeMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, roughness: 0.42, metalness: 1 });
-  const flange = new THREE.Mesh(new THREE.CylinderGeometry(0.88 * S, 0.85 * S, 0.32, 12), flangeMat);
-  flange.rotation.x = Math.PI / 2;
-  flange.position.z = -2.3;
-  g.add(flange);
-
-  // 後端中補強リング
-  const midRing = new THREE.Mesh(new THREE.CylinderGeometry(0.72 * S, 0.72 * S, 0.10, 12), flangeMat);
-  midRing.rotation.x = Math.PI / 2;
-  midRing.position.z = -0.8;
-  g.add(midRing);
-
-  // --- 放熱フィン(6枚、後部寄りに配置) ---
-  const finMat = new THREE.MeshStandardMaterial({ color: F0_BURNT_STEEL, roughness: 0.52, metalness: 1 });
-  const FIN_COUNT = 6;
-  for (let i = 0; i < FIN_COUNT; i++) {
-    const angle = (i / FIN_COUNT) * Math.PI * 2;
-    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.52 * S, 1.6), finMat);
-    fin.rotation.z = angle;
-    fin.position.set(Math.cos(angle) * 0.90 * S, Math.sin(angle) * 0.90 * S, -0.8);
-    g.add(fin);
+  if (barrelTemplate === null) {
+    const g = loader.parse(barrelData) as THREE.Group;
+    makeThermallyEmissive(g);
+    g.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.userData.ownsGeometry = false;
+      mesh.userData.ownsMaterial = false;
+    });
+    // layers.mask は Object3D.clone(true) が子孫までコピーするので、テンプレートへ一度だけ印す。
+    markLitOpaque(g);
+    markShadowCaster(g);
+    barrelTemplate = g;
   }
-
-  // --- ガスポートリング(中間部) ---
-  const gasPortMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, roughness: 0.50, metalness: 1 });
-  const gasPort = new THREE.Mesh(new THREE.TorusGeometry(0.66 * S, 0.065, 6, 16), gasPortMat);
-  gasPort.rotation.x = Math.PI / 2;
-  gasPort.position.z = 0.4;
-  g.add(gasPort);
-
-  // --- マズルブレーキ(先端3連リング) ---
-  const brakeMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, roughness: 0.30, metalness: 1 });
-  for (let ri = 0; ri < 3; ri++) {
-    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.76 * S, 0.70 * S, 0.11, 12), brakeMat);
-    ring.rotation.x = Math.PI / 2;
-    ring.position.z = 1.55 + ri * 0.24;
-    g.add(ring);
-  }
-
-  // --- 砲口ボア(最前端・暗い穴) ---
-  // 発射煙のすすで覆われた内壁なので金属ではない。ベース色は拡散アルベドとして読まれる。
-  const boreMat = new THREE.MeshStandardMaterial({ color: 0x080b10, roughness: 0.80, metalness: 0 });
-  const bore = new THREE.Mesh(new THREE.CylinderGeometry(0.34 * S, 0.34 * S, 0.14, 10), boreMat);
-  bore.rotation.x = Math.PI / 2;
-  bore.position.z = 2.28;
-  g.add(bore);
-
-  bakeBarrelThermalShape(g);
-  makeThermallyEmissive(g);
-  barrelTemplate = g;
-  // 子 mesh の geometry/material は上のテンプレートを全個体で共有する。flags は未設定でも
-  // 共有扱いだが、破棄側の契約を明示して将来の個別変更で誤って解放しないようにする。
-  g.traverse((child) => {
-    const mesh = child as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    mesh.userData.ownsGeometry = false;
-    mesh.userData.ownsMaterial = false;
-  });
-  // layers.mask は Object3D.clone(true) が子孫までコピーするため、テンプレートへ一度だけ
-  // 設定すれば以降の複製全てへ引き継がれる。
-  markLitOpaque(g);
-  markShadowCaster(g);
-  return g;
+  return barrelTemplate.clone(true) as THREE.Group;
 }
