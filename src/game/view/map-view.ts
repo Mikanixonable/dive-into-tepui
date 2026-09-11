@@ -50,7 +50,7 @@ export class MapView implements ViewFrame {
     private readonly markerManager: MarkerManager,
     private readonly displayWindowManager: DisplayWindowManager,
     private readonly frameControls: FrameControls,
-    private readonly frameAnchors: FrameAnchors,
+    frameAnchors: FrameAnchors,
     private readonly controlSelection: ControlSelection,
     simSpeedManager: SimSpeedManager,
     planDisplay: PlanDisplay,
@@ -157,7 +157,7 @@ export class MapView implements ViewFrame {
       this.markerManager.combatMarkers, this.celestialSystem.celestialMotions, displayWindow.displayTime,
       camera.project, camera.position,
     );
-    this.linePickables.refresh(displayWindow, this.frameAnchors);
+    this.linePickables.refresh();
   }
 
   // 編集 UI とクリックの当て先を片付ける。
