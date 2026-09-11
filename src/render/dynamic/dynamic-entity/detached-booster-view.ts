@@ -2,11 +2,8 @@ import * as THREE from 'three/webgpu';
 import { qRotate } from '../../../math/quat';
 import { add, v3 } from '../../../math/vec3';
 import type { KinematicState } from '../../../physics/kinematic-state';
-import {
-  BoosterPlume,
-  buildBoosterStage,
-  type BoosterStage as BoosterStageModel,
-} from '../booster';
+import { BoosterPlume } from '../booster-plume';
+import { buildBoosterStage } from '../ships';
 import { BOOSTER_STAGE_DIMENSIONS } from '../../../physics/booster-stage-shape';
 import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
 
@@ -24,16 +21,15 @@ export interface DetachedBoosterRenderSource extends DynamicRenderSource {
 
 // 分離ブースターの機体モデルと噴射炎を所有し、運動状態へ同期する。
 export class DetachedBoosterView extends DynamicView<DetachedBoosterRenderSource> {
-  private readonly model: BoosterStageModel;
   private readonly plume: BoosterPlume;
 
   // 分離段の本体と、scene 直下に置く噴射炎を同じ寿命で組み立てる。
   public constructor(scene: THREE.Scene) {
     const root = new THREE.Group();
     super(root, scene);
-    this.model = buildBoosterStage({ interstageCover: false });
-    this.model.position.z = -STAGE_CENTER_Z;
-    root.add(this.model);
+    const model = buildBoosterStage(false);
+    model.position.z = -STAGE_CENTER_Z;
+    root.add(model);
     this.plume = new BoosterPlume(scene);
   }
 
@@ -60,10 +56,9 @@ export class DetachedBoosterView extends DynamicView<DetachedBoosterRenderSource
     }, context.camera.camera.quaternion, context.style);
   }
 
-  // 噴射炎と段モデルを破棄してから、共通 View 資源を片付ける。
+  // 噴射炎を破棄してから、共通 View 資源を片付ける。
   public override dispose(): void {
     this.plume.dispose(this.scene!);
-    this.model.dispose();
     super.dispose();
   }
 }
