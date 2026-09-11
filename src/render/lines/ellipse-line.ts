@@ -1,5 +1,4 @@
-// OrbitalElements から軌道楕円を描画する。頂点は中心天体(OrbitalElements.center)相対座標のまま
-// 保持し、フローティングオリジンによる Object3D 平行移動でその天体の ECI 位置へ置く。
+// OrbitalElements から軌道楕円を1本描く。楕円は中心天体の ECI 位置に付いて動く。
 import * as THREE from 'three/webgpu';
 import { OrbitalElements } from '../../physics/elements';
 import { add, v3, Vec3 } from '../../math/vec3';
@@ -11,9 +10,11 @@ import { LineStyle } from '../line-style';
 function ellipseSampler(el: OrbitalElements): CurveSampler {
   const b = el.a * Math.sqrt(1 - el.e * el.e);
   return (t, out) => {
+    // 軌道面内の座標。原点は焦点(中心天体)、x は近点方向。
     const E = t * Math.PI * 2;
     const x = el.a * (Math.cos(E) - el.e);
     const y = b * Math.sin(E);
+    // 軌道面の基底 pHat・qHat で ECI の向きへ写す。
     out.set(
       el.pHat.x * x + el.qHat.x * y,
       el.pHat.y * x + el.qHat.y * y,
@@ -52,14 +53,15 @@ export class EllipseLine {
     this.curve.setVisible(true);
   }
 
-  // 現在描いている楕円上のサンプル点列を ECI 絶対座標で返す(右クリックの当たり判定向け)。
-  // 要素を持たない間は空配列。
+  // 現在描いている楕円を count 等分した count+1 点(末尾は先頭と重なる)を ECI 絶対座標で返す。
+  // 楕円が消えている間は空配列。
   public samplePoints(count: number): readonly Vec3[] {
     const el = this.elements;
     if (!el) return [];
     const sampler = ellipseSampler(el);
     const points: Vec3[] = [];
     const scratch = new THREE.Vector3();
+    // 中心天体相対の点へ、中心天体の ECI 位置を足し戻す。
     for (let i = 0; i <= count; i++) {
       sampler(i / count, scratch);
       points.push(add(el.centerState.r, v3(scratch.x, scratch.y, scratch.z)));

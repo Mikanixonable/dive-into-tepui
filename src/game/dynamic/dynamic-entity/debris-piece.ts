@@ -63,6 +63,7 @@ export class DebrisPiece extends DynamicEntity {
           effects,
         ),
         radius,
+        // 砲身の破片は、外れた時点の温度と温度差を引き継ぐ
         temperature: debrisKind.kind === 'barrel' ? debrisKind.bornTemperature : undefined,
         thermalDeviation: debrisKind.kind === 'barrel'
           ? debrisKind.bornThermalDeviation
@@ -74,6 +75,8 @@ export class DebrisPiece extends DynamicEntity {
   }
 }
 
+// origin のまわりへ count 個の破片を散らす。速度は baseVel に最大 spread [m/s] のばらつきを足し、
+// 大きさは [sizeMin, sizeMax] から一様に選ぶ。
 export function buildDestroyFragments(
   t: number,
   origin: Vec3,
@@ -90,6 +93,7 @@ export function buildDestroyFragments(
   for (let i = 0; i < count; i++) {
     const size = sizeMin + Math.random() * (sizeMax - sizeMin);
     const state = kinematicState<'eci'>(t, add(origin, randVec(2.5)), add(baseVel, randVec(spread)));
+    // 姿勢はばらばらに、回転は y 軸まわりを主にどちらかの向きへ振る。
     const attitude = {
       q: randomQuat(),
       w: v3(

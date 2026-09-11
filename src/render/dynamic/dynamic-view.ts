@@ -19,7 +19,7 @@ import type { CelestialFrameSource } from '../lines/celestial-frame-source';
 import type { InstancedPools } from './instanced-pools';
 import { syncThermalState } from '../thermal-emissive';
 
-// 熱による発光の表示入力。
+// 熱による発光の表示入力。温度と過熱の振幅は [K]。
 export interface DynamicThermalSource {
   readonly temperature: number;
   readonly deviation: number;
@@ -87,7 +87,7 @@ export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderS
   private predictedLineValue: TrajectoryLine | null = null;
   private actualLineValue: TrajectoryLine | null = null;
 
-  // object を表示ツリーの根として所有し、指定された場合だけ scene へ登録する。
+  // object を表示ツリーの根として所有する。addToScene なら scene へ登録する。
   public constructor(
     public readonly object: THREE.Object3D,
     protected readonly scene?: THREE.Scene,
@@ -108,9 +108,11 @@ export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderS
     const state = source.stateAt(viewFrame.displayTime);
     this.object.visible = state !== null && source.visible;
     if (state === null) return null;
+    // 位置は表示時刻の状態から、姿勢は現在の値から置く。
     this.object.position.copy(viewFrame.camera.floatingOrigin.RtoThreeV3(state.r));
     const q = source.attitude;
     this.object.quaternion.set(q.x, q.y, q.z, q.w);
+    // 熱の表現を持つ個体は、発光を温度へ合わせる。
     const thermal = source.thermal;
     if (thermal !== null) {
       syncThermalState(this.object, thermal.temperature, thermal.deviation, thermal.emissivity);
@@ -118,12 +120,13 @@ export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderS
     return state;
   }
 
+  // 種別固有の表示を同期する。displayed は表示時刻の状態で、本体を置けなかったフレームは null。
   protected syncModel(
     _source: S, _displayed: KinematicState | null, _viewFrame: DynamicViewFrame,
   ): void {
   }
 
-  // 解析軌道用の THREE 資源だけを scene から外して破棄する。
+  // 軌道線の資源があれば、scene から外して破棄する。
   private disposeOrbitLine(): void {
     if (this.orbitLineValue === null) return;
     this.scene?.remove(this.orbitLineValue.line.line);
@@ -175,14 +178,15 @@ export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderS
     orbitLine.line.sync(elements, display.style, camera);
   }
 
-  // 予測・過去軌跡の資源を、存在する場合だけ scene から外して破棄する。
+  // 予測・過去軌跡の線 line があれば、scene から外して破棄する。
   private disposeTrajectoryLine(line: TrajectoryLine | null): void {
     if (line === null) return;
     this.scene?.remove(line.line);
     line.dispose();
   }
 
-  // style を非表示宣言(null)込みの資源の有無として扱い、線があればそのフレームの軌跡を焼く。
+  // style が null なら current を破棄して null を返す。そうでなければ線を用意して [from, to] の
+  // 軌跡を焼き、その線を返す。
   private syncTrajectoryLine(
     current: TrajectoryLine | null, style: LineStyle | null,
     trajectory: DynamicTrajectory | null, from: number, to: number | null,
@@ -236,7 +240,7 @@ export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderS
     };
   }
 
-  // この View が所有する THREE / DOM 資源を解放する。
+  // この View が所有する資源を解放する。以後この View は使えない。
   public dispose(): void {
     this.disposeOrbitLine();
     this.disposeTrajectoryLine(this.predictedLineValue);

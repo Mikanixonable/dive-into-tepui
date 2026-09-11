@@ -89,7 +89,7 @@ export interface PowerSaveData {
 
 export interface ThrottleSaveData {
   readonly throttleIdx: number;
-  // 旧セーブデータには無いフィールドなので任意。無ければ既定値(true)。
+  // 無ければ既定値(true)。
   readonly rcsDamp?: boolean;
   readonly progradeHold?: boolean;
 }
@@ -103,16 +103,16 @@ export interface PlayerSaveData extends EntitySaveData {
   readonly throttle: ThrottleSaveData;
   readonly parts: AnyPart[];
   readonly plan: PlanSaveData | null;
-  // 旧セーブデータには無いフィールドなので任意。無ければ followPlan から移行する。'powered' は
-  // 廃止済みモードだが、旧セーブの読み込みのために型として残す。
+  // 無いか現行のモードでなければ followPlan から読み替える。'powered' は読み込みのために
+  // 型へ残す廃止モード。
   readonly planExecution?: 'off' | 'instant' | 'powered';
-  // 'planExecution' 導入前のセーブが持っていたフィールド。
+  // planExecution の読み替え元。
   readonly followPlan?: boolean;
-  // 旧セーブデータには無いフィールドなので任意。無ければ既定値(false)。
+  // 無ければ既定値(false)。
   readonly fineAttitude?: boolean;
-  // プロパティウィンドウの軌道線表示トグル。旧セーブには無いため任意(既定 false)。
+  // プロパティウィンドウの軌道線表示トグル。無ければ false。
   readonly showTrajectoryLine?: boolean;
-  // 接続中のブースター。旧セーブには無いため任意(既定は空スタック)。
+  // 接続中のブースター。無ければ空スタック。
   readonly boosters?: BoosterStackData;
 }
 
@@ -120,17 +120,17 @@ export interface PlayerSaveData extends EntitySaveData {
 export interface DetachedBoosterSaveData extends EntitySaveData {
   readonly kind: 'booster';
   readonly stage: BoosterStage;
-  // 分離直後の親艦との再接触を避ける猶予期限。旧データでは即時接触可能とする。
+  // 分離直後の親艦との再接触を避ける猶予の期限。無ければ即時に接触できる。
   readonly collisionEnableAt?: number;
 }
 
 export interface BaseSaveData extends EntitySaveData {
   readonly kind: 'base';
   readonly money: number;
-  // 基地の燃料。旧セーブには無いため任意。
+  // 基地の燃料。
   readonly fuel?: number;
   readonly throttle?: ThrottleSaveData;
-  // プロパティウィンドウの軌道線表示トグル。旧セーブには無いため任意(既定 false)。
+  // プロパティウィンドウの軌道線表示トグル。無ければ false。
   readonly showTrajectoryLine?: boolean;
 }
 
@@ -148,7 +148,7 @@ export interface EnemySaveData extends EntitySaveData {
   // バースト射撃の残弾・次弾までの残り時間。未着手なら両方 undefined。
   readonly burstLeft?: number;
   readonly burstDelay?: number;
-  // プロパティウィンドウの軌道線表示トグル。無ければ既定 false。
+  // プロパティウィンドウの軌道線表示トグル。無ければ false。
   readonly showTrajectoryLine?: boolean;
 }
 
@@ -195,13 +195,12 @@ export interface ScoreCounterSaveData {
 export interface LogisticsSaveData {
   readonly resupplyCheckAt: number;
   readonly resupplyEnabled: boolean;
-  // 旧セーブデータには無い。無ければ自動投入を有効にする。
+  // 無ければ自動投入を有効にする。
   readonly rcsFuelResupplyEnabled?: boolean;
 }
 
-// 全ステージ共通の内訳(スコア・決着状態・補給タイマー)。ステージ固有の内訳を持つ
-// 具象ステージはこれを拡張した型を自分の serialize() とコンストラクタで使う(stage0.ts の
-// Stage0SaveData・stage00.ts の Stage00SaveData)。
+// 全ステージ共通の内訳(スコア・決着状態・補給タイマー)。ステージ固有の内訳は、これを拡張した
+// 型に持つ。
 export interface StageSaveData {
   readonly scoreCounter: ScoreCounterSaveData;
   readonly phase: GamePhase;
@@ -215,9 +214,8 @@ export interface Stage0SaveData extends StageSaveData {
 export interface Stage00SaveData extends StageSaveData, WaveAttackSaveData {
 }
 
-// クリエイティブモードの内訳。艦0..n隻を自由に配置するモード自身の状態(トグル)に加えて、
-// 任意で動かす WaveAttack の進行状態を持つ — waveAttack は waveAttackEnabled が false の
-// 間も直前の状態を保つ(OFF→ON で再開したとき波数が0に戻らないように)。
+// クリエイティブモードの内訳。波状攻撃のトグルと進行状態を持ち、進行状態はトグルが OFF の間も
+// 保つ(ON に戻したとき波数を続きから再開する)。
 export interface CreativeStageSaveData extends StageSaveData {
   readonly waveAttackEnabled: boolean;
   readonly waveAttack: WaveAttackSaveData;
@@ -246,8 +244,8 @@ export interface FrameRotationSourceSaveData {
 export type CameraRotationFollowSaveData = FrameRotationSourceSaveData | { kind: 'attitude' };
 
 // FocusCamera のフォーカス対象(FocusTarget の保存形)。'point' は焼き込み先の座標系
-// (center/rotatingWith)と、その座標系相対の点をそのまま持つ。rotatingWith は
-// 旧セーブでは文字列(公転対象の id)または null だったので、読み込み側がその形も受け付ける。
+// (center/rotatingWith)と、その座標系相対の点をそのまま持つ。rotatingWith は文字列
+// (公転対象の id)と null の形も受け付ける。
 type FocusTargetSaveData =
   | { kind: 'object'; id: string }
   | { kind: 'point'; center: string; rotatingWith: FrameRotationSourceSaveData | string | null; point: Vec3SaveData };
@@ -258,11 +256,11 @@ export interface FocusCameraSaveData {
   readonly up: Vec3SaveData;
   readonly rotatingWith: CameraRotationFollowSaveData | string | null;
   readonly focus: FocusTargetSaveData;
-  // 旧セーブデータには無い。無ければ既定のオイラー操作。
+  // 無ければ既定のオイラー操作。
   readonly rotationMode?: 'quaternion' | 'euler';
-  // 省略されている保存データでは既定の FOV を使う。
+  // 無ければ既定の FOV。
   readonly fovDeg?: number;
-  // 旧セーブデータには無い。無ければ赤道面。
+  // 無ければ赤道面。
   readonly referencePlane?: 'ecliptic' | 'equator' | 'moonOrbit';
   readonly projectionMode?: 'perspective' | 'orthographic';
   readonly orthographicHalfHeight?: number;
@@ -286,19 +284,19 @@ export interface GameSaveData {
   readonly stageId: string;
   readonly simTime: number;
   /**
-   * そのランの元期と、それが選ぶ暦データの識別。旧スナップショットには無い。
-   * 元期は読み込み側が継承する値で、照合するのは暦データのほうだけ。
+   * そのランの元期と、それが選ぶ暦データの識別。元期は読み込み側が継承する値で、照合するのは
+   * 暦データの識別。
    */
   readonly ephemerisContext?: EphemerisContext;
   readonly phaseOffsets: Partial<Record<string, number>>;
-  /** 旧スナップショットには無い。存在しなければ地球の自転初期位相は復元されない。 */
+  /** 無ければ地球の自転初期位相は復元されない。 */
   readonly earthSpinPhase0?: number;
   // 顔ぶれ。種別は各要素の kind が持つ。
   readonly entities: EntitySaveDataUnion[];
   readonly activeControlledId: string | null;
   readonly stage: StageSaveData;
-  // 旧セーブデータには無いフィールドなので任意。無ければ視点は既定のまま始まる。
+  // 無ければ視点は既定のまま始まる。
   readonly camera?: CameraSaveData;
-  // 旧セーブデータには無い。無ければターゲット未選択のまま始まる。
+  // 無ければターゲット未選択のまま始まる。
   readonly navTarget?: NavTargetSaveData | null;
 }

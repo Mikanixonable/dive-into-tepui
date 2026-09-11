@@ -12,7 +12,7 @@ import { buildProteinRibbon } from './protein-ribbon';
 import type { ProteinDisplaySettings, ProteinRibbonColorMode } from './protein-display';
 import type { ProteinRenderSource } from './protein-render-definition';
 
-// binding は個体ごとの借り位置なので、asset の残基数と食い違ったまま描くと別の体の変位を読む。
+// binding の残基数が asset と食い違えば例外を投げる。食い違ったまま描くと別の体の変位を読む。
 function validateMotionBinding(source: ProteinRenderSource, motion?: ProteinMotionBinding): void {
   if (motion && motion.residueCount !== source.motion.residueCount) {
     throw new Error(`Protein motion binding residueCount ${motion.residueCount} does not match asset ${source.motion.residueCount}`);
@@ -58,8 +58,7 @@ export function buildProteinEnemyShip(
   const root = proteinCoordinateRoot(structure, source.semantic.coordinateScale);
   markLitOpaque(root);
   markShadowCaster(root);
-  // 半透明の外殻は world パスで合成する。不透明の G バッファに残すと、内部リボンの深度と
-  // 法線を上書きしてしまう。
+  // 半透明の外殻は world パスで合成する。G バッファに残すと内部リボンの深度と法線を上書きする。
   if (display.representation === 'silhouette') {
     root.traverse((child) => {
       if (child.userData.proteinTranslucentShell === true) child.layers.set(0);
@@ -68,7 +67,7 @@ export function buildProteinEnemyShip(
   return root;
 }
 
-/** target の子を破棄して replacement の子へ入れ替える。target 自身の姿勢と倍率は残る。 */
+/** target の子を破棄して replacement の子へ入れ替え、replacement は空になる。target 自身の姿勢と倍率は残る。 */
 export function replaceProteinEnemyShip(target: THREE.Object3D, replacement: THREE.Object3D): void {
   for (const child of [...target.children]) {
     disposeOwnedRenderResources(child);

@@ -35,6 +35,7 @@ const BODY_LABEL_PRIORITY: Readonly<Record<CelestialClass, number>> = {
 export class CelestialEntity implements ObjectPickable {
   public readonly id: string;
 
+  // 天体1体の運動・表示名・分類・表示を結び付ける。id は運動の id を引き継ぐ。
   public constructor(
     public readonly motion: CelestialMotion,
     public readonly name: string,

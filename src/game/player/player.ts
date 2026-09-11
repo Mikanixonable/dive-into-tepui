@@ -98,8 +98,8 @@ export type PlayerInit =
   | { readonly name?: string; readonly state?: KinematicState; readonly id?: string; readonly ammo?: AmmoLoad }
   | { readonly saved: PlayerSaveData; readonly simTime: number };
 
-// プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、それらを反映した
-// 見た目(モデル・エフェクトメッシュの管理と毎フレーム更新)を持つ。
+// プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、被弾・接触の帰結、保存、
+// 一覧・メニューでの振る舞いを持つ。
 export class Player extends Ship implements Controllable, ObjectPickable {
   public override readonly mapKind: DynamicEntityKind = 'player';
   public override readonly controllable = true;
@@ -186,8 +186,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     );
 
     if (saved) {
-      // 旧セーブは followPlan: boolean だった(true→'instant' / false→'off')。'powered' だった
-      // セーブは廃止済みモードなので既定の 'instant' へ寄せる。
+      // 現行のモードでない planExecution は、保存形の followPlan(boolean)から読み替える。
       this.planExecution = saved.planExecution === 'off' || saved.planExecution === 'instant'
         ? saved.planExecution
         : (saved.followPlan ? 'instant' : 'off');
@@ -197,7 +196,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       this.refreshFromParts();
 
       if (saved.plan) {
-        // 保存された起点を addNode の from として与える。
+        // 計画を保存時の起点から組み直す。起点より前のノードは復元できない。
         const anchor = kinematicState<'eci'>(
           saved.plan.anchor.t,
           v3(saved.plan.anchor.r.x, saved.plan.anchor.r.y, saved.plan.anchor.r.z),
@@ -307,6 +306,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 自機側キー1個を処理する。処理したキーは true を返し input.takeKeys に消費させる。
   private handleEdgePress(code: string, registry: EntityRegistry): boolean {
+    // キーごとに姿勢・スロットル・ブースター・放熱板・太陽電池・装填の各系へ振り分ける
     switch (code) {
       case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return true;
       case K.progradeReset.code: this.throttle.enableProgradeReset(); return true;
@@ -342,6 +342,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     activeStage: StageOutcome, registry: EntityRegistry,
     side: RadiatorSide | null = null,
   ): void {
+    // 熱とダメージを入れ、放熱板パーツが壊れたらその場で破片を出す
     this.motion.absorbHeat(BULLET_IMPACT_HEAT / PLAYER_MASS);
     const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
     this.applyDamageToParts(side === null ? damage : RADIATOR_BULLET_DAMAGE, damagedPart);
@@ -351,18 +352,21 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       return;
     }
 
+    // HP が尽きたら喪失させる
     this.motion.alive = false;
     const reason = shooter === 'player' ? '自弾の被弾により機体を喪失した' : '敵のエネルギー弾により機体を喪失した';
     activeStage.recordPlayerLost(reason);
     this.destroyEffect(registry);
   }
 
-  // 弾は武装のダメージを、それ以外は接触の接近速度と相手の種別を根拠にする(ゲームバランスの量)。
+  // 他の動体との接触の帰結。弾なら武装のダメージを、それ以外は接近速度と相手の種別を根拠に
+  // 無作為なパーツへダメージを入れる(ゲームバランスの量)。
   private receiveEntityContact(
     other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void {
     if (!this.motion.alive) return;
 
+    // 弾の命中
     const bullet = bulletReactionOf(other);
     if (bullet !== null) {
       this.attackedByBullet(
@@ -372,6 +376,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       return;
     }
 
+    // 弾以外との衝突
     this.damagedByContact(
       contactDamageSpeed(other, contact), null, '高速接触により機体を喪失した',
       services.activeStage, services.registry,
@@ -393,6 +398,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   ): void {
     if (!this.motion.alive) return;
 
+    // 弾の命中
     const bullet = bulletReactionOf(other);
     if (bullet !== null) {
       this.attackedByBullet(
@@ -402,6 +408,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       return;
     }
 
+    // 弾以外との衝突
     this.damagedByContact(
       contactDamageSpeed(other, contact), side, '高速接触により機体を喪失した',
       services.activeStage, services.registry,
@@ -414,6 +421,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     damageSpeed: number, side: RadiatorSide | null, lossReason: string, activeStage: StageOutcome,
     registry: EntityRegistry,
   ): void {
+    // ダメージを入れ、放熱板パーツが壊れたらその場で破片を出す
     const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
     if (!this.applyCollisionDamage(damageSpeed, damagedPart)) return;
     if (side !== null && damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side, registry);
@@ -423,6 +431,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       return;
     }
 
+    // HP が尽きたら喪失させる
     this.motion.alive = false;
     activeStage.recordPlayerLost(lossReason);
     this.destroyEffect(registry);
@@ -454,9 +463,10 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     activeStage.recordPlayerLost(reason);
   }
 
-  // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
+  // 被弾して生き残ったときの音・閃光・ガスの演出。
   private impactEffect(bulletType: BulletType, impactPoint: Vec3): void {
     this.worldSfx.hit(len(sub(impactPoint, this.motion.state.r)));
+    // 閃光は弾種で分け、ガスは弾種によらず着弾点から噴く
     if (bulletType === 'plasma') {
       this.fx.spawnPlasmaFlash(kinematicState<'eci'>(
         this.motion.state.t, impactPoint, this.motion.state.v,
@@ -527,6 +537,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       vel,
       priority: MARKER_PRIORITY.PLAYER,
       name: this.name,
+      // 画面外の方位マーカーは ALLY_BEARING_MAX_DISTANCE 以内の艦にだけ出す
       bearingColor: COLOR_MARKER_ALLY,
       bearingSym: DIRECTION_GLYPH.allyBearing,
       bearingClass: 'mk-dir mk-ally-dir',
@@ -584,16 +595,19 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       id: this.id,
       name: this.name,
       kind: 'player',
+      // 運動状態
       r: { ...this.motion.state.r },
       v: { ...this.motion.state.v },
       q: { ...this.motion.att.q },
       w: { ...this.motion.att.w },
+      // 下位系の状態
       fire: this.fire.serialize(),
       thermal: { hullTemp: this.motion.temperature },
       radiator: this.motion.radiator.serialize(),
       power: this.motion.power.serialize(),
       throttle: this.throttle.serialize(),
       parts: this.parts.map(p => ({ ...p })) as AnyPart[],
+      // 操作・表示の設定と計画
       planExecution: this.planExecution,
       fineAttitude: this.fineAttitude,
       showTrajectoryLine: this.trajectoryLineVisible,
@@ -678,7 +692,8 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     ];
   }
 
-  // 軌道線の表示と計画実行モードは自分の状態を書き換える。
+  // menuItems の操作 act を実行する。軌道線の表示と計画実行モードは自分の状態を書き換え、
+  // 操作対象の切り替え・複製・削除は controlSelection / authoring へ依頼する。
   public runMenu(
     act: MenuAction, controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
   ): void {
@@ -689,6 +704,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     } else if (act === 'deactivate') {
       controlSelection.release(this);
     } else if (act === 'planExecCycle') {
+      // 巡回順で次のモードへ
       const i = PLAN_EXECUTION_MODES.indexOf(this.planExecution);
       this.planExecution = PLAN_EXECUTION_MODES[(i + 1) % PLAN_EXECUTION_MODES.length]!;
     } else if (act === 'duplicate') {
@@ -704,11 +720,13 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     celestialBodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
     return [
+      // 詳細トグルで畳む行
       {
         key: 'operated', label: '操作対象か',
         value: this === viewer ? 'はい' : 'いいえ', collapsible: true,
       },
       { key: 'follow', label: '計画実行', value: planExecutionLabel(this.planExecution), collapsible: true },
+      // 主要行
       { key: 'hp', label: '装甲', value: `${Math.floor(this.hp)} / ${this.maxHp}` },
       { key: 'temp', label: '温度', value: `${this.motion.temperature.toFixed(0)} K` },
       { key: 'power', label: '電力', value: fmtEnergy(this.motion.power.chargeJ) },
@@ -719,7 +737,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   public readonly rename = (name: string): void => { this.setName(name); };
 
-  // 単クリックはプロパティウィンドウを開くだけに留め、操作対象は変えない。
+  // 単クリックでプロパティウィンドウを開く。操作対象の切り替えは注視(onMapFocus)が担う。
   public readonly onMapSelect = (windows: PropertyWindowOpener, clientX: number, clientY: number): void => {
     windows.openProperties(this, clientX, clientY);
   };

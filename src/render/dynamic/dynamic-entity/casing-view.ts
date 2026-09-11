@@ -13,11 +13,11 @@ const parseCasing = memoParseIndependent<THREE.Mesh>(casingData);
 // 全薬莢が共有する geometry/material。初回に生成する。
 let casingBody: { readonly geometry: THREE.BufferGeometry; readonly material: THREE.Material } | null = null;
 
-// 全薬莢が共有する geometry/material を返す。geometry はテンプレートの複製へ全長補正を焼き込み、
-// material はテンプレートから一度だけ複製したものを不変資源として使う。
+// 全薬莢が共有する geometry/material を返す。初回に生成する。
 function casingBodyResources(): { geometry: THREE.BufferGeometry; material: THREE.Material } {
   if (casingBody === null) {
     const template = parseCasing();
+    // 焼いたモデルへ全長の補正を焼き込む。
     const geometry = template.geometry.clone();
     geometry.scale(1, 2, 1);
     const material = template.material as THREE.MeshStandardNodeMaterial;

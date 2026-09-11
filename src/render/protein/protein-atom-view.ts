@@ -1,3 +1,4 @@
+// 分子模型(原子の球と結合線)を組み、原子と表面頂点を motion の残基へ対応付ける。
 import * as THREE from 'three/webgpu';
 import type { ProteinDisplayAsset } from './protein-display-asset';
 import {
@@ -9,6 +10,7 @@ import {
 } from './protein-motion-material';
 import type { ProteinBackboneAsset, ProteinRenderSource } from './protein-render-definition';
 
+// 元素ごとの原子色(Jmol 配色)。
 const ELEMENT_COLORS: Readonly<Record<string, number>> = {
   H: 0xffffff, C: 0x909090, N: 0x3050f8, O: 0xff0d0d, F: 0x90e050,
   P: 0xff8000, S: 0xffff30, CL: 0x1ff01f, SE: 0xffa100, MG: 0x8aff00,
@@ -21,18 +23,22 @@ interface ProteinResidueBindingLookup {
   readonly surfaceResidues: readonly number[];
 }
 
+// 原子の元素記号(表の表記のまま)。索引が表に無ければ 'C'。
 function atomElement(structure: ProteinDisplayAsset, atom: number): string {
   return structure.atoms.elementTable[structure.atoms.elements[atom] ?? 1] ?? 'C';
 }
 
+// 原子の残基名。索引が表に無ければ空文字。
 function atomResidue(structure: ProteinDisplayAsset, atom: number): string {
   return structure.atoms.residueTable[structure.atoms.residues[atom] ?? 0] ?? '';
 }
 
+// 原子の鎖 ID。索引が表に無ければ 'A'。
 function atomChain(structure: ProteinDisplayAsset, atom: number): string {
   return structure.atoms.chainTable[structure.atoms.chains[atom] ?? 0] ?? 'A';
 }
 
+// 原子の中心寄せ済みの座標 [Å] を、新しい Vector3 で返す。
 function atomPosition(structure: ProteinDisplayAsset, atom: number): THREE.Vector3 {
   const offset = atom * 3;
   return new THREE.Vector3(
@@ -42,11 +48,12 @@ function atomPosition(structure: ProteinDisplayAsset, atom: number): THREE.Vecto
   );
 }
 
-// 構造 asset の原子と表面頂点それぞれを、motion の残基へ対応付ける。source ごとに1回だけ組む。
+// 構造 asset の原子と表面頂点それぞれに対応する motion の残基索引を返す。結果は source ごとに共有する。
 export function proteinResidueBindingLookup(source: ProteinRenderSource): ProteinResidueBindingLookup {
   let lookup = residueBindingLookups.get(source);
   if (lookup) return lookup;
 
+  // 座標の近さから、原子と表面頂点が属する主鎖残基を推定する。
   const structure = source.structure;
   const backboneByChain = backboneResiduesByChain(source.backbone);
   const atomPositions = Array.from({ length: structure.atoms.count }, (_, atom) => atomPosition(structure, atom));
@@ -110,8 +117,7 @@ function atomBackboneResidues(
   atomPositions: readonly THREE.Vector3[],
 ): readonly number[] {
   const { structure, backbone } = source;
-  // 主鎖 asset は残基番号を持たないので、Cα 座標を構造 asset の原子へ最近傍で突き合わせて
-  // 残基キーを引き当てる。どちらの座標も同じ中心寄せ済みの Å 系にある。
+  // 主鎖 asset に残基番号が無いので、各 Cα に最も近い同じ鎖の原子から残基キーを引く(座標系は共通)。
   const residueByKey = new Map<string, number>();
   for (let residue = 0; residue < backbone.backboneCount; residue += 1) {
     const offset = residue * 3;
@@ -154,8 +160,7 @@ function surfaceBackboneResidues(
   atomResidues: readonly number[],
 ): readonly number[] {
   const { structure, backbone } = source;
-  // 表面頂点は原子の近傍から生成されているので、空間ハッシュで由来の原子を引き直す。
-  // 全原子を走査すると O(表面 × 原子) になる。
+  // 表面頂点は由来の原子の近くにあるので、周囲のセルだけを見る空間ハッシュで引く。
   const cellSize = 4; // [Å]
   const buckets = new Map<string, number[]>();
   const bucketKey = (x: number, y: number, z: number): string => `${x}:${y}:${z}`;
@@ -203,6 +208,7 @@ function surfaceBackboneResidues(
   return surfaceResidues;
 }
 
+// 元素の原子球の材質。リガンドの鉄は発光させる。
 function atomMaterial(element: string, ligand = false, motion?: ProteinMotionBinding): THREE.MeshStandardNodeMaterial {
   return proteinStandardMaterial({
     color: ELEMENT_COLORS[element.toUpperCase()] ?? 0xc0c0c0,
@@ -213,6 +219,10 @@ function atomMaterial(element: string, ligand = false, motion?: ProteinMotionBin
   }, motion);
 }
 
+/**
+ * 原子を鎖・元素ごとの球と鎖ごとの結合線へ組む。selected が null なら全原子、与えれば両端とも
+ * 含まれる結合を引く。ligand ならリガンドの大きさと色で描く。
+ */
 export function buildProteinAtoms(
   source: ProteinRenderSource,
   selected: ReadonlySet<number> | null,
@@ -222,9 +232,9 @@ export function buildProteinAtoms(
   const structure = source.structure;
   const bindings = proteinResidueBindingLookup(source);
   const group = new THREE.Group();
-  // 色は元素と ligand の別だけで決まり、chain には依存しないので、
-  // 同じ呼び出し内で chain をまたいでマテリアルを共有する。
+  // 色は元素と ligand で決まるので、材質は鎖をまたいで共有する。
   const atomMaterialsByElement = new Map<string, THREE.MeshStandardNodeMaterial>();
+  // 原子を鎖・元素ごとに振り分ける。
   const byChain = new Map<string, Map<string, number[]>>();
   for (let atom = 0; atom < structure.atoms.count; atom++) {
     if (selected && !selected.has(atom)) continue;
@@ -236,6 +246,7 @@ export function buildProteinAtoms(
     byElement.set(element, list);
     byChain.set(chain, byElement);
   }
+  // 鎖・元素ごとに球を並べる。
   for (const [chain, byElement] of byChain) {
     const chainGroup = new THREE.Group();
     chainGroup.userData.proteinComponent = chain;
@@ -271,6 +282,7 @@ export function buildProteinAtoms(
     group.add(chainGroup);
   }
 
+  // 結合を、始点の原子の鎖ごとの線分列に集める。
   const bondPositionsByChain = new Map<string, number[]>();
   const bondResiduesByChain = new Map<string, number[]>();
   for (let offset = 0; offset + 1 < structure.bonds.pairs.length; offset += 2) {
@@ -313,6 +325,7 @@ export function buildProteinAtoms(
   return group;
 }
 
+/** semantic が挙げるリガンド残基の原子を、リガンドの見た目で分子模型に組む。 */
 export function buildProteinLigands(source: ProteinRenderSource, motion?: ProteinMotionBinding): THREE.Group {
   const residues = new Set(source.semantic.ligands.map((ligand) => ligand.residue.toUpperCase()));
   const selected = new Set<number>();

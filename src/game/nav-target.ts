@@ -27,9 +27,9 @@ import type { OrbitReference } from './orbit-reference';
 // 再接近点探索: 自艦とターゲットの相対距離を今から何秒先まで走査するか。低軌道の
 // 数周ぶんに相当する1日。
 const CLOSEST_APPROACH_SPAN_SEC = 86400;
+// 走査区間を等分する標本数。
 const CLOSEST_APPROACH_SAMPLES = 200;
-// 黄金分割探索の反復回数。固定回数にしているのは、収束判定にすると反復回数がフレームごとに
-// 変動し、その分だけ結果がわずかに揺れるため。
+// 黄金分割探索の反復回数。収束判定にすると反復回数がフレームごとに変わり、結果が揺れる。
 const CLOSEST_APPROACH_REFINE_ITERATIONS = 20;
 
 // 自艦とターゲットの相対距離が、今から CLOSEST_APPROACH_SPAN_SEC 先までのあいだで最初に
@@ -66,8 +66,7 @@ function findClosestApproach(
 export class NavTarget {
   private targetId: string | null = null;
   private targetName: string | null = null;
-  // 自機軌道上の AN/DN。位置は絶対座標(地球中心)で、通過時刻は自機軌道要素の現在真近点角
-  // からの飛行時間を加えて求める。対象の軌道面が定まらなければどちらも解けない。
+  // 自機軌道上の相対 AN/DN。対象の軌道面が定まらなければどちらも解けない。
   private readonly ascendingNode = new RelativeNodeMarker('an');
   private readonly descendingNode = new RelativeNodeMarker('dn');
   // 自艦とターゲットの相対距離が最初に極小になる点。同じ中心天体を周回していない、または
@@ -92,8 +91,7 @@ export class NavTarget {
   private setInternal(id: string | null, name: string | null): void {
     this.targetId = id;
     this.targetName = name;
-    // 対象を切り替えた時点で即座に降ろす — 次の update までターゲットが変わらない前提の
-    // 個体に、外れたあとも未来予測の負担を残さない。
+    // 切り替えた時点で予測の依頼を降ろし、外れた個体に次の update まで負担を残さない。
     this.setReaderEntity(null);
   }
 
@@ -116,13 +114,13 @@ export class NavTarget {
     }
   }
 
-  // Tキーなど、絶対値で敵・自艦・基地をターゲットに設定/解除する経路用。
+  // 敵・自艦・基地を(トグルでなく)ターゲットに設定する。null で解除。
   public setCombatTarget(entity: CombatTarget | null): void {
     this.setInternal(entity?.id ?? null, entity?.name ?? null);
     this._notifier.hint(entity ? `ターゲット固定: ${entity.name}` : 'ターゲット固定解除');
   }
 
-  // 対象消滅を伴わない一括解除(操作対象の切替など)。ヒントは出さない。
+  // ターゲットを解除する。ヒントは出さない。
   public clear(): void {
     this.setInternal(null, null);
   }

@@ -18,8 +18,8 @@ function parseStage0Enemy(typeIndex: number): THREE.Group {
   return parseStage0EnemyA();
 }
 
-// 焼いたモデルのうち userData.role === 'accent' のマテリアルだけを accent 色へ塗り替え、
-// アセット座標のモデルを modelScale 倍で物理寸法へ合わせる。
+// model の userData.role === 'accent' のマテリアルを accent 色へ塗り、modelScale 倍で物理寸法へ
+// 合わせる。model そのものを書き換えて返す。
 function enemyModel(model: THREE.Group, accent: string | number, modelScale: number): THREE.Object3D {
   // accent 役のマテリアルだけを塗り替える。
   model.traverse((child) => {

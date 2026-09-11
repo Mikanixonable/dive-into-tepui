@@ -1,5 +1,5 @@
 // 天体の気候の事前テクスチャ(正距円筒 RGB8: R 平均気温 / G 平年の雲量 / B 標高)を読み、単位方向で
-// 標本化する。雲より桁で低周波な、その天体固有の分布だけを持つ。
+// 標本化する。雲より桁で低周波な、その天体固有の分布を持つ。
 import * as THREE from 'three/webgpu';
 import { smoothstep, texture, vec2 } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
@@ -7,6 +7,7 @@ import { equirectUvFromDirection } from './field-projection';
 import { eastAt, northAt } from './sphere-frame';
 import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 
+// 月別の気候入力の RGBA 各チャンネル 0..1 が写す値域。気温 [K]、雲量、標高 [m]、陸地被覆率。
 export const CLIMATE_TEMPERATURE_MIN_K = 180;
 export const CLIMATE_TEMPERATURE_MAX_K = 330;
 export const CLIMATE_CLOUD_MIN = 0;
@@ -25,6 +26,7 @@ const LAND_ELEVATION = 100;
 // 標高の勾配を取る中心差分の刻み [rad]。テクスチャの texel(2π/512)より大きく、山脈の幅より小さい。
 const SLOPE_STEP = 0.02;
 
+// 天体の気候を単位方向で答える入力。generation は画像が GPU へ公開されるたびに進む世代。
 export interface ClimateMapLike {
   readonly generation: number;
   temperatureK(direction: Vec3Node): FloatNode;
@@ -54,8 +56,8 @@ export function climateSlope(
   );
 }
 
-// 気候入力はデータ値をそのまま線形補間するため、色変換と mipmap を持たせない。
-// MonthlyClimateMap もこの設定を使い、単月と月別でサンプルの境界を揃える。
+// 気候テクスチャを、データ値のまま線形補間で読める設定にして返す。単月と月別の入力で同じ設定を
+// 使い、標本の境界を揃える。
 export function configureClimateTexture(map: THREE.Texture): THREE.Texture {
   map.wrapS = THREE.RepeatWrapping;
   map.wrapT = THREE.ClampToEdgeWrapping;
@@ -74,7 +76,7 @@ export class ClimateMap implements ClimateMapLike {
     return new ClimateMap(ClimateMap.configure(map), null);
   }
 
-  // URL を保持したまま、既存の遅延テクスチャ経路で後から画像を公開する器を返す。
+  // url の画像の取得を request() まで遅らせる器を返す。
   public static fromDeferredUrl(url: string): ClimateMap {
     const deferred = new DeferredTexture(url, THREE.NoColorSpace);
     return new ClimateMap(ClimateMap.configure(deferred.texture), deferred);
@@ -90,15 +92,13 @@ export class ClimateMap implements ClimateMapLike {
     return configureClimateTexture(map);
   }
 
-  // 遅延版だけ画像取得を開始する。ロード済み版では何もしない。
+  // 画像の取得を始める。fromDeferredUrl で作った器で効く。
   public request(): void { this.deferred?.request(); }
 
-  // 画像がGPUへ公開された回数。静的に読み込んだ地図ではtexture.versionを使う。
-  // 雲場のキャッシュは表示時刻だけでなくこの入力世代もキーへ含める。
+  // 入力の世代。画像が GPU へ公開されるたびに進む。
   public get generation(): number { return this.deferred?.generation ?? this.map.version; }
 
-  // 旧 RGB8 入力の R は -40..40 °C を 0..1 で持つ。既存の雲生成では未使用だが、
-  // 月別入力と同じ ClimateMapLike 境界へそろえるため Kelvin へ戻す。
+  // 平均気温 [K]。R は -40..40 °C を 0..1 で持つ。
   public temperatureK(direction: Vec3Node): FloatNode {
     return this.sample(direction).r.mul(80).add(233.15);
   }

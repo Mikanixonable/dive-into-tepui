@@ -85,15 +85,14 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public get totalFuelConsumptionRate(): number { return BASE_FUEL_RATE; }
   public get totalFuel(): number { return this.motion.fuel; }
   public get totalMaxFuel(): number { return this.motion.maxFuel; }
-  // 基地は装甲を持たない。撃たれても削れる耐久値そのものが無い。
   public readonly hp = null;
   public readonly maxHp = null;
 
-  // 基地は機関砲・分離式ブースターを持たない。
   public readonly fire = null;
   public readonly boosters = null;
   public readonly altitudeAlarm = null;
 
+  // 燃料を amount だけ使い、要求に対して実際に賄えた割合 [0, 1] を返す。
   public consumeFuel(amount: number): number {
     if (amount <= 0) return 1.0;
     return this.motion.consumeFuel(amount);
@@ -164,6 +163,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       this.clearTransientCommands();
       return;
     }
+    // RCS 減衰・プログレードの切り替えがトルクの計算へ効くので、エッジ入力を先に消費する。
     this.handleEdgeInput(input);
     this.motion.torque = this.throttle.updateTorque(
       this.motion.att, this.motion.state.r, this.motion.state.v, input, false, dt, simDt, this,
@@ -173,6 +173,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     this.motion.thrust = this.throttle.updateThrustState(input, this.motion.att, simDt, this);
   }
 
+  // 推力・トルクの指令とスロットルの一時状態を解く。
   public clearTransientCommands(): void {
     this.motion.thrust = null;
     this.motion.torque = v3();
@@ -181,6 +182,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // 基地側のキー（RCS減衰・プログレード・スロットル等）を1フレーム分消費する。
   private handleEdgeInput(input: Input): void {
+    // 姿勢保持とスロットル段のキーを受け付ける
     input.takeKeys((code) => {
       switch (code) {
         case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return true;
@@ -226,10 +228,12 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       id: this.id,
       kind: 'base',
       name: this.name,
+      // 運動状態
       r: { ...this.motion.state.r },
       v: { ...this.motion.state.v },
       q: { ...this.motion.att.q },
       w: { ...this.motion.att.w },
+      // 基地の資源と、操作・表示の設定
       money: this._money,
       fuel: this.motion.fuel,
       throttle: this.throttle.serialize(),
@@ -256,7 +260,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(this.markerKey); }
 
-  // 自艦がいれば自艦からの距離。いなければ出さない。
+  // 自艦からの距離。自艦がいなければ空文字。
   public listDetail(
     _celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number,
   ): string {
@@ -280,6 +284,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       ? { label: '操作対象を解除', act: 'deactivate' }
       : { label: '操作対象にする', act: 'activate' };
 
+    // 見出しに所持金を添え、共通の操作項目を並べる
     return [
       { type: 'header', label: this.name, subLabel },
       MenuCommon.target(navTargetId === this.id),
@@ -292,10 +297,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     ];
   }
 
-  // 軌道線の表示だけ自分の状態を書き換える。
+  // menuItems が出した操作 act を実行する。
   public runMenu(
     act: MenuAction, controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
   ): void {
+    // 軌道線の表示は自分の状態を書き換え、それ以外は controlSelection / authoring へ依頼する
     if (act === 'activate') {
       controlSelection.select(this);
     } else if (act === 'deactivate') {
@@ -309,11 +315,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     }
   }
 
-  // プロパティウィンドウに出す行。所持金・自艦からの距離を主要行とし、操作対象かは
-  // 詳細トグル、軌道要素は「軌道」グループの下に畳む。自艦がいなければ距離の行は落ちる。
+  // プロパティウィンドウに出す行。自艦がいなければ距離の行を省く。
   public propertyRows(
     celestialBodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
+    // 詳細トグルで畳む行と、所持金
     const rows: PropertyRow[] = [
       {
         key: 'operated', label: '操作対象か',
@@ -321,6 +327,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       },
       { key: 'money', label: '所持金', value: `${this._money.toLocaleString()} Cr` },
     ];
+    // 自艦からの距離と軌道要素
     if (viewer) rows.push({
       key: 'dist', label: '距離',
       value: fmtDist(len(sub(this.motion.state.r, viewer.motion.state.r))),
@@ -332,12 +339,10 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public readonly rename = (name: string): void => { this.setName(name); };
 
   public readonly onMapSelect = null;
-
-  // 注視されても操作対象にはならない。
   public readonly onMapFocus = null;
 }
 
-// この個体が基地か。顔ぶれから基地だけを絞るときに使う。
+// entity を基地へ絞り込む型ガード。
 export function isBase(entity: DynamicEntity): entity is Base {
   return entity instanceof Base;
 }

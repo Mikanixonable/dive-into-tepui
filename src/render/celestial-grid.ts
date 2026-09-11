@@ -1,5 +1,5 @@
-// 赤道面・黄道面の目安グリッド(緯線・経線)と両極マーカー。頂点は ECI に固定した
-// 単位球面上の点(星殻と同じ半径)で、自機中心に追従する固定半径殻として描く。
+// 赤道面・黄道面の目安グリッド(基準円・経緯線の交点・両極マーカー)と座標ラベル、およびその
+// 表示可否の状態。描画原点を中心とする星殻と同じ半径の殻へ、ECI の向きで描く。
 import * as THREE from 'three/webgpu';
 import { ECLIPTIC_BASIS, EQUATOR_BASIS, type PlaneBasis } from './plane-basis';
 import { STAR_SHELL_RADIUS } from './stars';
@@ -8,6 +8,7 @@ import { SCHEMATIC_LINE } from './schematic-style';
 import { RenderStyleGate, type RenderStyle } from './render-style';
 import type { Viewport } from './viewport';
 
+// 天球の目安表示(星・黄道/赤道・縮尺グリッド)ごとの表示可否。
 export interface CelestialGridVisibility {
   readonly stars: boolean;
   readonly ecliptic: boolean;
@@ -24,7 +25,7 @@ export interface CelestialGridVisibility {
   readonly moonEquatorScaleGrid: boolean;
 }
 
-// 何も選んでいない状態。星だけを出す。
+// 既定の表示可否。星を出し、他は隠す。
 export const DEFAULT_GRID_VISIBILITY: CelestialGridVisibility = {
   stars: true,
   ecliptic: false,
@@ -49,17 +50,18 @@ const GRID_CATEGORIES: readonly GridCategory[] = [
   { category: 'equator', children: ['equatorPlane', 'equatorPole', 'equatorGrid'] },
 ];
 
-// キー1つの切り替えを反映する。子キーならカテゴリを子の状態から計算し直し、カテゴリキー
-// そのものなら子を全て同じ値へ揃える。
+// キー1つの切り替えを反映した新しい可視状態を返す。current は書き換えない。
 export function applyGridToggle(
   current: CelestialGridVisibility, key: keyof CelestialGridVisibility, on: boolean,
 ): CelestialGridVisibility {
+  // カテゴリキーなら、配下の子を全て同じ値へ揃える。
   const asCategory = GRID_CATEGORIES.find((c) => c.category === key);
   if (asCategory !== undefined) {
     const next = { ...current, [key]: on };
     for (const child of asCategory.children) next[child] = on;
     return next;
   }
+  // 子キーなら、カテゴリを子の状態から計算し直す。
   const owner = GRID_CATEGORIES.find((c) => c.children.includes(key));
   if (owner === undefined) return { ...current, [key]: on };
   const next = { ...current, [key]: on };
@@ -67,7 +69,7 @@ export function applyGridToggle(
   return next;
 }
 
-// 保存データ・既定値を読み込んだ直後に、カテゴリトグルを子の状態から一括で計算し直す。
+// カテゴリトグルを子の状態から計算し直した可視状態を返す。外から読み込んだ値はこれを通す。
 export function normalizeGridVisibility(visibility: CelestialGridVisibility): CelestialGridVisibility {
   const next = { ...visibility };
   for (const { category, children } of GRID_CATEGORIES) {
@@ -95,7 +97,7 @@ export function formatGridVisibility(visibility: CelestialGridVisibility): strin
 
 const GRID_LAT_STEP_DEG = 15; // 交点の緯度間隔
 const GRID_LON_STEP_DEG = 15; // 交点の経度間隔
-const GRID_LABEL_STEP_DEG = 30; // 座標ラベルは間隔を空けて表示
+const GRID_LABEL_STEP_DEG = 30; // 座標ラベルを置く交点の緯度・経度間隔
 const CIRCLE_SEGMENTS = 64; // 円1本あたりの分割数
 const POLE_MARKER_HALF_LEN = STAR_SHELL_RADIUS * 0.04; // 極マーカーの殻面からの突き出し長さ
 
@@ -118,21 +120,19 @@ function makeLine(color: number, opacity: number): THREE.Line {
   const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
   const line = new THREE.Line(geo, mat);
   markOverlay(line);
-  // 描画原点に固定した星殻と同じ大きさの殻なので、外接球によるフラスタム判定は
-  // 常に「視界内」を返し意味を持たない。
+  // 殻はカメラを囲むので、外接球によるフラスタム判定は意味を持たない。
   line.frustumCulled = false;
   line.renderOrder = 0;
   return line;
 }
 
-// 経緯線の交点マーカー・両極マーカーは、目盛りの数だけ THREE.LineSegments の
-// 頂点対として1つのバッファへ詰め、1グループ=1描画にまとめる。
+// 星殻に乗せる、頂点対ごとに独立した線分の集まり。頂点は setLinePoints で後から入れる。
 function makeLineSegments(color: number, opacity: number): THREE.LineSegments {
   const geo = new THREE.BufferGeometry();
   const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
   const line = new THREE.LineSegments(geo, mat);
   markOverlay(line);
-  // 描画原点に固定した殻なので、外接球によるフラスタム判定は意味を持たない。
+  // 殻はカメラを囲むので、外接球によるフラスタム判定は意味を持たない。
   line.frustumCulled = false;
   line.renderOrder = 0;
   return line;
@@ -140,6 +140,7 @@ function makeLineSegments(color: number, opacity: number): THREE.LineSegments {
 
 // 頂点列を新しい BufferGeometry へ焼き直し、前の geometry を解放する。
 function setLinePoints(line: THREE.Line, points: readonly THREE.Vector3[]): void {
+  // 頂点を座標の平坦な列へ詰める。
   const arr = new Float32Array(points.length * 3);
   for (let i = 0; i < points.length; i++) {
     const p = points[i]!;
@@ -147,14 +148,15 @@ function setLinePoints(line: THREE.Line, points: readonly THREE.Vector3[]): void
     arr[i * 3 + 1] = p.y;
     arr[i * 3 + 2] = p.z;
   }
+  // 前の geometry を捨てて差し替える。
   line.geometry.dispose();
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
   line.geometry = geo;
 }
 
-// 緯度・経度の交点における東西・南北の短い十字を、LineSegments 用の頂点対4つ
-// ([東西の2点, 南北の2点])として返す。交点だけを示すので視界を塞がずに済む。
+// 緯度・経度の交点における東西・南北の短い十字を、LineSegments 用の頂点対2組
+// ([東西の2点, 南北の2点])として返す。
 function intersectionCrossPoints(basis: PlaneBasis, radius: number, latRad: number, lonRad: number): THREE.Vector3[] {
   const p = planePoint(basis, radius, latRad, lonRad);
   const eps = radius * 0.012;
@@ -177,8 +179,8 @@ function intersectionCrossPoints(basis: PlaneBasis, radius: number, latRad: numb
   ];
 }
 
-// 極点(緯度±90°)の交点十字。経度が縮退するため intersectionCrossPoints の東西腕
-// (経度方向)は使えず、直交する2本の子午線方向(e1・e2)をそのまま腕にする。
+// 極点(緯度 ±90°、sign で北 1・南 -1)の交点十字。極では経度方向が縮退するので、腕は e1・e2
+// の向きに取る。
 function poleCrossPoints(basis: PlaneBasis, radius: number, sign: 1 | -1): THREE.Vector3[] {
   const p = new THREE.Vector3(basis.pole.x, basis.pole.y, basis.pole.z).multiplyScalar(radius * sign);
   const eps = radius * 0.012;

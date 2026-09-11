@@ -1,5 +1,5 @@
 // マップ上のクリックを候補列へ当て、当たった被選択物のウィンドウ・注視へ配る。軌道物体一覧
-// パネルと軌道線のプロパティウィンドウは、どちらもマップにしか出ないのでここが持つ。
+// パネルと軌道線のプロパティウィンドウも持つ。
 import type { HudLayers } from '../hud/hud-layers';
 import type { Notifier } from '../../hud/notifier';
 import { pickFrontmostBody, pickNearest, projectMarker } from './object-pickable';
@@ -34,7 +34,6 @@ const ORBIT_LINE_PICK_PX_SQ_COARSE = 1936;
 
 export class MapPicking {
   private readonly listPanel: PhysicalObjectListPanel;
-  // 軌道線のプロパティウィンドウ。線が出るのはマップだけなので、ここが持つ。
   private readonly orbitLineWindows: OrbitLineWindows;
 
   // 候補列と、当たった対象の落とし先(ObjectWindows)を参照として受け取る。
@@ -58,8 +57,7 @@ export class MapPicking {
       (clientX, clientY, target) => this.objectWindows.open(
         clientX, clientY, target, this.pickables.lastSimTime),
     );
-    // 一覧の行は隠れている対象でも操作できる(SPEC/MAP.md §10) — pickable によるマップ上の
-    // 衝突判定はマーカーのヒットテストにだけ適用され、一覧からの id 一致には適用しない。
+    // 一覧の行は、マップ上で隠れている対象でも id で操作できる(SPEC/MAP.md §10)。
     this.listPanel.onFocus = (id) => {
       this.focusTarget(id, this.pickables.pickables.find((i) => i.id === id));
     };
@@ -75,20 +73,21 @@ export class MapPicking {
     };
   }
 
-  // 画面上の (x, y) に当たった被選択物。マーカーへ一定のピクセル半径で当て、外れたら
-  // 描かれている本体へ視線を通す(SPEC/MAP.md §11)。マーカー段はラベル衝突で非表示に
-  // なった対象を外すが、本体段は外さない — 円盤が見えているのに掴めないのは嘘になる。
+  // 画面上の (x, y) に当たった被選択物を、マーカー段・本体段の順に探す(SPEC/MAP.md §11)。
+  // どちらにも当たらなければ null。
   private pickAt<T extends MapPickable>(
     candidates: readonly T[], x: number, y: number, viewport: Viewport,
   ): T | null {
     const project = this.cameraSystem.activeProjection(viewport);
     const displayTime = this.pickables.lastDisplayTime;
+    // マーカー段: 表示中のマーカーへ一定のピクセル半径で当てる。
     const marker = pickNearest(
       candidates.filter((item) => item.shownOnMap(this.markers)),
       (item) => projectMarker(item, displayTime, project),
       x, y, pickRadiusSq(OBJECT_PICK_PX_SQ, OBJECT_PICK_PX_SQ_COARSE),
     );
     if (marker !== null) return marker;
+    // 本体段: 描かれている本体へ視線を通す。
     const ray = rayThroughScreen(
       this.cameraSystem.activeViewpoint, x, y, viewport.width, viewport.height);
     return pickFrontmostBody(candidates, ray, displayTime);
@@ -105,12 +104,12 @@ export class MapPicking {
     });
   }
 
-  // 被選択物・ノードハンドルのどちらにも当たらなかった右クリックに対し、表示中の軌道線
-  // (公転軌道・船の軌道・軌道ガイド)への当たり判定を試みる。当たれば軌道のプロパティ
-  // ウィンドウを開いて消費する。handleEmptySpaceRightClick より前、editor.handleMapPointer
-  // より後に呼ぶ(11節の判定順序)。
+  // 右クリックを表示中の軌道線(公転軌道・船の軌道・軌道ガイド)へ当て、当たれば軌道の
+  // プロパティウィンドウを開いて消費する。SPEC/MAP.md §11 の判定順に従い、ノードハンドルの
+  // 判定(PlanEditor.handleMapPointer)より後、handleEmptySpaceRightClick より前に呼ぶ。
   public handleLineRightClick(input: Input, viewport: Viewport): void {
     input.takeRightClicks((p) => {
+      // 候補の点列を求めた表示時刻で遮蔽を引き、判定半径内で最も近い線を探す。
       const orbit = pickNearestLine(
         this.linePickables.pickables, p.x, p.y,
         this.cameraSystem.activeProjection(viewport),
@@ -125,8 +124,8 @@ export class MapPicking {
   }
 
   // 左クリック位置の、選択に応じる被選択物を選ぶ。当たらなければ消費せず、PlanEditor の
-  // ノード配置/選択解除に読み進める(呼び出し側が editor.handleMapPointer より先に呼ぶことで、
-  // マーカーへの命中をノード配置より優先する)。
+  // ノード配置/選択解除へ読み進める。マーカーへの命中をノード配置より優先するため、
+  // PlanEditor.handleMapPointer より先に呼ぶ。
   public handleLeftClick(input: Input, viewport: Viewport): void {
     input.takeClicks((p) => {
       const target = this.pickAt(
@@ -162,9 +161,8 @@ export class MapPicking {
     this.hud.hint(`${name} にフォーカス`);
   }
 
-  // マップ視点のフォーカスを対象へ移す。対象が自艦なら操作対象にもなる(SPEC/MAP.md §10)。
-  // ダブルクリックと一覧パネルのフォーカス行はどちらもここを通す。id は一覧側が候補列に
-  // 頼らず持っている値、target は見つかっていれば名前・種別の解決に使う。
+  // マップ視点のフォーカスを id の対象へ移す。対象が自艦なら操作対象にもなる(SPEC/MAP.md §10)。
+  // target は候補列で見つかっていれば渡し、表示名と操作対象の切り替えに使う。
   private focusTarget(id: string, target: MapPickable | undefined): void {
     this.focusSink.setFocus({ kind: 'object', id });
     this.hud.hint(`${target?.name ?? id} にフォーカス`);
@@ -192,6 +190,7 @@ export class MapPicking {
     this.orbitLineWindows.close();
   }
 
+  // 一覧パネルを取り除く。
   public dispose(): void {
     this.listPanel.dispose();
   }

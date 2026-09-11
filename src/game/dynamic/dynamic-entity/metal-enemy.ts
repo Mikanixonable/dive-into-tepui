@@ -61,26 +61,32 @@ export class MetalEnemy extends Enemy {
     if ('saved' in init) this.setOverallHp(init.saved.health);
   }
 
+  // 金属機体はいつでも撃てる。
   protected override canFire(): boolean {
     return true;
   }
 
+  // 機体の中心から撃つ。
   protected override muzzlePosition(): Vec3 {
     return this.motion.state.r;
   }
 
+  // 既定のプラズマ弾のダメージ。
   protected override plasmaDamage(): number {
     return PLASMA_BULLET_DAMAGE;
   }
 
+  // 被弾位置によらず、健全な部品へ無作為に割り振る。
   protected override applyBulletDamage(damage: number): void {
     this.applyDamageToParts(damage);
   }
 
+  // 接近速度に応じたダメージを、健全な部品へ無作為に割り振る。
   protected override applyImpactDamage(damageSpeed: number): boolean {
     return this.applyCollisionDamage(damageSpeed);
   }
 
+  // 敵に共通する保存項目へ型番を足す。
   public override serialize(): MetalEnemySaveData {
     return { ...this.serializeEnemyFields(), kind: MetalEnemy.kind, typeIndex: this.typeIndex };
   }

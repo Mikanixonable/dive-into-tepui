@@ -155,7 +155,7 @@ export class DebugInfoWindow {
     this.renderTarget.setEnabled(style !== 'schematic');
   }
 
-  // デバッグ情報ウィンドウを開く。既に開いていれば手前へ出すだけ。
+  // デバッグ情報ウィンドウを開き、計測を始める。既に開いていれば手前へ出す。
   public open(): void {
     if (this.win) {
       this.win.bringToFront();
@@ -219,7 +219,7 @@ export class DebugInfoWindow {
   }
 
   // このフレームの update/sync/render 所要時間と、フレームごとに数え直される個数系の値を積算し、
-  // 表示更新のタイミングなら flush する。counts は同じフレームで計測対象になっていた Game 自身が渡す。
+  // 表示更新のタイミングなら flush する。counts はこのフレームの計測値の供給元。
   public record(counts: PerfCountSource, updateMs: number, syncMs: number, renderMs: number, now: number): void {
     this.addSample(this.updateStats, updateMs);
     this.addSample(this.syncStats, syncMs);
