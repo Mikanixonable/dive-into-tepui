@@ -1,13 +1,15 @@
 // 地表タイルの要求、同一層への色・地形投入、ページ表公開を1フレーム境界へ束ねる。
 import {
-  EARTH_BASE_LAYER, EARTH_TILE_LAYERS,
-  EarthSurfaceTiles, earthTileId,
+  EarthSurfaceTiles,
 } from './earth-surface-tiles';
-import type { EarthTileKey, EarthTileProjection, EarthTileResident } from './earth-surface-tiles';
-import { closeEarthSurfaceImage } from './earth-surface-decode';
+import { EARTH_BASE_LAYER, EARTH_TILE_LAYERS, earthTileId } from './earth-surface-tile-key';
+import type { EarthTileKey } from './earth-surface-tile-key';
+import type { EarthTileResident } from './earth-surface-tiles';
+import type { EarthTileProjection } from './earth-surface-tile-projection';
+import { closeEarthSurfaceImage } from './earth-surface-tile-decode';
 import { EarthSurfaceGpuAdapter } from './earth-surface-gpu';
 import type { EarthLayerReservation, EarthSurfaceGpuTextures } from './earth-surface-gpu';
-import { EarthSurfaceTileRequestQueue } from './earth-surface-request';
+import { EarthSurfaceTileRequestQueue } from './earth-surface-tile-queue';
 
 export type EarthSurfaceColorToRgba8 =
   (color: unknown, key: EarthTileKey) => Uint8Array | Promise<Uint8Array>;

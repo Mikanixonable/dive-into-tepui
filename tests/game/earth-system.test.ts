@@ -5,10 +5,10 @@ import { test } from '../harness';
 import { StarMotion } from '../../src/physics/celestial-motion';
 import { TEST_EPOCH } from '../physics/test-helpers';
 import { CelestialSystem } from '../../src/game/celestial/celestial-system';
-import { EARTH_TILE_LAYERS } from '../../src/render/earth-surface-tiles';
-import {
-  createEarthSurfaceRuntime, EARTH_SURFACE_FIXTURE_SOURCE, EARTH_TEXTURE, earthSystem,
-} from '../../src/game/celestial/solar-system/earth-system';
+import { EARTH_TILE_LAYERS } from '../../src/render/earth-surface-tile-key';
+import { earthSystem } from '../../src/game/celestial/solar-system/earth-system';
+import { createEarthSurfaceRuntime } from '../../src/render/earth-surface-factory';
+import { EARTH_SURFACE_FIXTURE_SOURCE, EARTH_TEXTURE } from '../../src/render/earth-surface-defaults';
 import { SUN } from '../../src/game/celestial/solar-system/sun';
 
 const READY_MANIFEST = {

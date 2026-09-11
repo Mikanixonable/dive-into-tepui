@@ -1,6 +1,6 @@
 // 地表地形のgzip展開、hash検証、形式検証を描画スレッド外で行う。
-import { decodeEarthTerrainBytes } from './earth-surface-decode';
-import { earthTileKey } from './earth-surface-tiles';
+import { decodeEarthTerrainBytes } from './earth-surface-terrain-codec';
+import { earthTileKey } from './earth-surface-tile-key';
 
 interface TerrainWorkerRequest {
   readonly id: number;

@@ -1,6 +1,7 @@
 // 地表地形Workerの要求識別、キャンセル、異常終了を管理する。
-import { decodeEarthTerrainBytes, EarthSurfaceDecodeError } from './earth-surface-decode';
-import type { EarthTileKey } from './earth-surface-tiles';
+import { EarthSurfaceDecodeError } from './earth-surface-decode-errors';
+import { decodeEarthTerrainBytes } from './earth-surface-terrain-codec';
+import type { EarthTileKey } from './earth-surface-tile-key';
 
 interface PendingTerrain {
   readonly resolve: (terrain: Uint8Array) => void;

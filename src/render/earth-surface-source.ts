@@ -1,6 +1,14 @@
-// 地球の地表配信物をゲームへ渡すための、描画・気候共有契約。
-// URLの組み立てとdatasetIdの固定だけを持ち、タイル要求やGPU資源はrender側が所有する。
-import { EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z } from '../../../render/earth-surface-tiles';
+// 地球の地表配信物を描画・気候共有契約へ正規化する。
+// URLの組み立てとdatasetIdの固定だけを持ち、タイル要求やGPU資源は別のrender層が所有する。
+import { EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z } from './earth-surface-tile-key';
+import {
+  EARTH_SURFACE_TERRAIN_FORMAT_VERSION,
+  EARTH_TERRAIN_CHANNELS,
+  EARTH_TERRAIN_HEIGHT,
+  EARTH_TERRAIN_LAYOUT,
+  EARTH_TERRAIN_MATERIAL_CLASSES,
+  EARTH_TERRAIN_WIDTH,
+} from './earth-surface-format';
 
 export interface EarthSurfaceSource {
   readonly datasetId: string;
@@ -52,17 +60,17 @@ export interface EarthSurfaceCoverage {
 
 // manifestが宣言するESTN/ESTB v2のチャンネル配置と固定値。
 export interface EarthSurfaceTerrainEncoding {
-  readonly formatVersion: 2;
-  readonly layout: 'octahedral-rg8-roughness-r8-material-class-a8';
-  readonly width: 260;
-  readonly height: 260;
-  readonly channels: 4;
+  readonly formatVersion: typeof EARTH_SURFACE_TERRAIN_FORMAT_VERSION;
+  readonly layout: typeof EARTH_TERRAIN_LAYOUT;
+  readonly width: typeof EARTH_TERRAIN_WIDTH;
+  readonly height: typeof EARTH_TERRAIN_HEIGHT;
+  readonly channels: typeof EARTH_TERRAIN_CHANNELS;
   readonly scalar: 'UInt8';
   readonly materialClasses: {
-    readonly water: 0;
-    readonly land: 1;
-    readonly ice: 2;
-    readonly unknown: 255;
+    readonly water: typeof EARTH_TERRAIN_MATERIAL_CLASSES.water;
+    readonly land: typeof EARTH_TERRAIN_MATERIAL_CLASSES.land;
+    readonly ice: typeof EARTH_TERRAIN_MATERIAL_CLASSES.ice;
+    readonly unknown: typeof EARTH_TERRAIN_MATERIAL_CLASSES.unknown;
   };
 }
 
@@ -114,10 +122,13 @@ export function earthSurfaceSourceFromManifest(
   }
   // runtimeのデコーダと異なるwire形式を、取得を始める前に拒否する。
   const terrain = manifest.terrainEncoding;
-  if (terrain?.formatVersion !== 2 || terrain.layout !== 'octahedral-rg8-roughness-r8-material-class-a8'
-    || terrain.width !== 260 || terrain.height !== 260 || terrain.channels !== 4 || terrain.scalar !== 'UInt8'
-    || terrain.materialClasses?.water !== 0 || terrain.materialClasses.land !== 1
-    || terrain.materialClasses.ice !== 2 || terrain.materialClasses.unknown !== 255) {
+  if (terrain?.formatVersion !== EARTH_SURFACE_TERRAIN_FORMAT_VERSION || terrain.layout !== EARTH_TERRAIN_LAYOUT
+    || terrain.width !== EARTH_TERRAIN_WIDTH || terrain.height !== EARTH_TERRAIN_HEIGHT
+    || terrain.channels !== EARTH_TERRAIN_CHANNELS || terrain.scalar !== 'UInt8'
+    || terrain.materialClasses?.water !== EARTH_TERRAIN_MATERIAL_CLASSES.water
+    || terrain.materialClasses.land !== EARTH_TERRAIN_MATERIAL_CLASSES.land
+    || terrain.materialClasses.ice !== EARTH_TERRAIN_MATERIAL_CLASSES.ice
+    || terrain.materialClasses.unknown !== EARTH_TERRAIN_MATERIAL_CLASSES.unknown) {
     throw new Error('Unsupported Earth surface terrain encoding');
   }
   if (!/^[0-9a-f]{64}$/.test(manifest.sourceManifestSha256)) throw new Error('Invalid Earth surface source manifest hash');

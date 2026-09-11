@@ -3,18 +3,19 @@ import * as assert from 'node:assert/strict';
 import { gzipSync } from 'node:zlib';
 import { test } from '../harness';
 import {
-  EARTH_TERRAIN_BYTES,
-  EARTH_TERRAIN_HEADER_BYTES,
-  EARTH_TERRAIN_HEIGHT,
-  EARTH_TERRAIN_WIDTH,
   EARTH_BASE_TERRAIN_HEIGHT,
   EARTH_BASE_TERRAIN_WIDTH,
+} from '../../src/render/earth-surface-terrain-codec';
+import {
   decodeEarthBaseTerrainPayload,
-  decodeEarthSurfaceTile,
   decodeEarthTerrainPayload,
-  EarthSurfaceDecodeError,
-} from '../../src/render/earth-surface-decode';
-import { earthTileKey } from '../../src/render/earth-surface-tiles';
+} from '../../src/render/earth-surface-terrain-codec';
+import { decodeEarthSurfaceTile } from '../../src/render/earth-surface-tile-decode';
+import { EarthSurfaceDecodeError } from '../../src/render/earth-surface-decode-errors';
+import {
+  EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES, EARTH_TERRAIN_HEIGHT, EARTH_TERRAIN_WIDTH,
+} from '../../src/render/earth-surface-format';
+import { earthTileKey } from '../../src/render/earth-surface-tile-key';
 import { decodeEarthTerrainOffThread } from '../../src/render/earth-surface-terrain-worker-client';
 
 const KEY = earthTileKey(1, 2, 1);

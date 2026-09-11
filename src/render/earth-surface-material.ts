@@ -5,10 +5,11 @@
 // 座標系を値と純粋関数で固定する。
 import * as THREE from 'three/webgpu';
 import {
-  EARTH_BASE_LAYER, EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER,
-  EARTH_TILE_MAX_Z, EARTH_TILE_TEXELS, EARTH_TILE_MIN_Z, earthPageAt, earthTileKey,
-} from './earth-surface-tiles';
-import type { EarthTileKey } from './earth-surface-tiles';
+  EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER, EARTH_TILE_MAX_Z, EARTH_TILE_TEXELS, EARTH_TILE_MIN_Z,
+  earthTileKey,
+} from './earth-surface-tile-key';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, earthPageAt } from './earth-surface-page-table';
+import type { EarthTileKey } from './earth-surface-tile-key';
 import { earthSurfaceNormal, earthSurfaceUv, validateEarthAxes } from './earth-surface-coordinate';
 
 export type EarthSurfaceColorSpace = 'srgb';
