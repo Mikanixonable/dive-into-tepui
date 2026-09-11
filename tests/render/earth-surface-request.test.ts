@@ -52,8 +52,16 @@ function deferred(): { readonly promise: Promise<void>; readonly resolve: () => 
 }
 
 export function register(): void {
+  test('earth requests: z3以下の詳細tile-indexを拒否し、z4から受け付ける', () => {
+    assert.throws(
+      () => new EarthSurfaceTileRequestSource(indexFor([earthTileKey(3, 0, 0)])),
+      /Invalid tile-index key level/,
+    );
+    assert.doesNotThrow(() => new EarthSurfaceTileRequestSource(indexFor([earthTileKey(4, 0, 0)])));
+  });
+
   test('earth requests: fetchImplをreceiverなしでindexと色・地形へ使う', async () => {
-    const key = earthTileKey(1, 0, 0);
+    const key = earthTileKey(4, 0, 0);
     const index = indexFor([key]);
     const calls: string[] = [];
     const fetchImpl: typeof fetch = async function (this: unknown, input, _init) {
@@ -80,7 +88,7 @@ export function register(): void {
   });
 
   test('earth requests: tile-indexを一度だけ解決し、HTTP6とdecode2を別に数える', async () => {
-    const keys = [earthTileKey(1, 0, 0), earthTileKey(1, 1, 0), earthTileKey(1, 2, 0)];
+    const keys = [earthTileKey(4, 0, 0), earthTileKey(4, 1, 0), earthTileKey(4, 2, 0)];
     const index = indexFor(keys);
     let indexFetches = 0;
     let activeHttp = 0;
@@ -120,7 +128,7 @@ export function register(): void {
   });
 
   test('earth requests: 408/429/5xxとnetworkだけを最大2回再試行する', async () => {
-    const key = earthTileKey(1, 0, 0);
+    const key = earthTileKey(4, 0, 0);
     const source = new EarthSurfaceTileRequestSource(indexFor([key]));
     let colorAttempts = 0;
     const queue = new EarthSurfaceTileRequestQueue(source, {
@@ -136,7 +144,7 @@ export function register(): void {
   });
 
   test('earth requests: 404とhash不一致は再試行せず版内永久失敗にする', async () => {
-    const notFound = earthTileKey(1, 0, 0);
+    const notFound = earthTileKey(4, 0, 0);
     const notFoundSource = new EarthSurfaceTileRequestSource(indexFor([notFound]));
     let notFoundCalls = 0;
     const notFoundQueue = new EarthSurfaceTileRequestQueue(notFoundSource, {
@@ -147,7 +155,7 @@ export function register(): void {
     assert.equal(notFoundCalls, 2);
     assert.equal(notFoundQueue.metrics.retries, 0);
 
-    const invalid = earthTileKey(1, 1, 0);
+    const invalid = earthTileKey(4, 1, 0);
     const invalidQueue = new EarthSurfaceTileRequestQueue(new EarthSurfaceTileRequestSource(indexFor([invalid], true)), {
       fetchImpl: async (input) => String(input).endsWith('.jpg') ? response(COLOR) : response(gzipSync(terrain(invalid))),
       decodeImage: async (bytes) => bytes,
@@ -171,7 +179,7 @@ export function register(): void {
   });
 
   test('earth requests: generationのabortとdisposeは待機中の本文を公開しない', async () => {
-    const key = earthTileKey(1, 0, 0);
+    const key = earthTileKey(4, 0, 0);
     const source = new EarthSurfaceTileRequestSource(indexFor([key]));
     const started = deferred();
     const gate = deferred();

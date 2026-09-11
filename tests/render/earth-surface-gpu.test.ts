@@ -5,7 +5,7 @@ import { test } from '../harness';
 import { EarthSurfaceGpuAdapter } from '../../src/render/earth-surface-gpu';
 import { EarthSurfaceGpuThree, earthSurfaceGpuCapabilitiesOf } from '../../src/render/earth-surface-gpu-three';
 import {
-  EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, earthTileKey,
+  EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EARTH_TILE_MIN_Z, earthTileKey,
 } from '../../src/render/earth-surface-tiles';
 import type { EarthSurfaceGpuBackend, EarthSurfaceGpuCapabilities } from '../../src/render/earth-surface-gpu';
 
@@ -55,12 +55,15 @@ class FakeBackend implements EarthSurfaceGpuBackend {
   public dispose(): void { this.disposals++; }
 }
 
-// 西半球の根を1層へ写すページ表。引数省略時は全球ベース。
-function page(layer = 255): Uint8Array {
+// 指定したz4以上のタイルを1層へ写すページ表。引数省略時は全球ベース。
+function page(layer = 255, key = earthTileKey(EARTH_TILE_MIN_Z, 0, 0)): Uint8Array {
   const table = new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(255);
   if (layer === 255) return table;
-  for (let y = 0; y < EARTH_PAGE_HEIGHT; y++) {
-    for (let x = 0; x < EARTH_PAGE_WIDTH / 2; x++) table.set([layer, 255, 0, 255], (y * EARTH_PAGE_WIDTH + x) * 4);
+  const size = 2 ** (7 - key.z);
+  for (let y = key.y * size; y < (key.y + 1) * size; y++) {
+    for (let x = key.x * size; x < (key.x + 1) * size; x++) {
+      table.set([layer, 255, key.z, 255], (y * EARTH_PAGE_WIDTH + x) * 4);
+    }
   }
   return table;
 }
@@ -105,7 +108,7 @@ export function register(): void {
       const backend = new FakeBackend(capabilities);
       const adapter = new EarthSurfaceGpuAdapter(backend);
       assert.equal(adapter.mode, 'base');
-      assert.throws(() => adapter.reserveLayer(earthTileKey(0, 0, 0), 0));
+      assert.throws(() => adapter.reserveLayer(earthTileKey(EARTH_TILE_MIN_Z, 0, 0), 0));
       assert.equal(adapter.publishFrame(0), false);
       assert.equal(backend.writes.length, 0);
     }
@@ -114,7 +117,7 @@ export function register(): void {
   test('earth GPU: 色と地形がそろった層をフレーム境界で同時に公開する', async () => {
     const backend = new FakeBackend();
     const adapter = new EarthSurfaceGpuAdapter(backend);
-    adapter.reserveLayer(earthTileKey(0, 0, 0), 0);
+    adapter.reserveLayer(earthTileKey(EARTH_TILE_MIN_Z, 0, 0), 0);
     const reservation = adapter.reservation(0)!;
     const upload = adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint8Array(COMPONENTS), reservation);
     backend.color.resolve();
@@ -141,16 +144,16 @@ export function register(): void {
     adapter.releaseLayer(reservation);
 
     // 同じ層番号を予約し直しても、前の世代が書き込む権利は復活しない。
-    adapter.reserveLayer(earthTileKey(0, 1, 0), 0);
+    adapter.reserveLayer(earthTileKey(EARTH_TILE_MIN_Z, 1, 0), 0);
     assert.ok(adapter.reservation(0)!.generation > reservation.generation);
     await assert.rejects(adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint8Array(COMPONENTS), reservation), /Stale/);
   });
 
-  test('earth GPU: z1以降のページセルも対応するタイル層へ限定する', async () => {
+  test('earth GPU: z5以降のページセルも対応するタイル層へ限定する', async () => {
     const backend = new FakeBackend();
     const adapter = new EarthSurfaceGpuAdapter(backend);
-    const parent = earthTileKey(0, 1, 0);
-    const child = earthTileKey(1, 2, 1);
+    const parent = earthTileKey(EARTH_TILE_MIN_Z, 1, 0);
+    const child = earthTileKey(EARTH_TILE_MIN_Z + 1, 2, 1);
     adapter.reserveLayer(parent, 0);
     adapter.reserveLayer(child, 1);
     const parentReservation = adapter.reservation(0)!;
@@ -162,11 +165,11 @@ export function register(): void {
     backend.color.resolve();
     backend.terrain.resolve();
     await Promise.all([parentUpload, childUpload]);
-    const table = page();
-    const size = EARTH_PAGE_WIDTH / 4;
-    for (let y = EARTH_PAGE_HEIGHT / 2; y < EARTH_PAGE_HEIGHT; y++) {
-      for (let x = size * 2; x < size * 3; x++) {
-        table.set([1, 0, 1, 255], (y * EARTH_PAGE_WIDTH + x) * 4);
+    const table = page(0, parent);
+    const size = 2 ** (7 - child.z);
+    for (let y = child.y * size; y < (child.y + 1) * size; y++) {
+      for (let x = child.x * size; x < (child.x + 1) * size; x++) {
+        table.set([1, 0, child.z, 255], (y * EARTH_PAGE_WIDTH + x) * 4);
       }
     }
     adapter.stagePageTable(table);
@@ -176,7 +179,7 @@ export function register(): void {
   test('earth GPU: 一方が失敗しても残る書込みが終わるまで再利用できない', async () => {
     const backend = new FakeBackend();
     const adapter = new EarthSurfaceGpuAdapter(backend);
-    adapter.reserveLayer(earthTileKey(0, 0, 0), 0);
+    adapter.reserveLayer(earthTileKey(EARTH_TILE_MIN_Z, 0, 0), 0);
     const reservation = adapter.reservation(0)!;
     const upload = adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint8Array(COMPONENTS), reservation);
     const rejected = assert.rejects(upload, /Synthetic/);
@@ -192,7 +195,7 @@ export function register(): void {
   test('earth GPU: dispose後に完了しても層やページ表を公開しない', async () => {
     const backend = new FakeBackend();
     const adapter = new EarthSurfaceGpuAdapter(backend);
-    adapter.reserveLayer(earthTileKey(0, 0, 0), 0);
+    adapter.reserveLayer(earthTileKey(EARTH_TILE_MIN_Z, 0, 0), 0);
     const upload = adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint8Array(COMPONENTS), adapter.reservation(0)!);
     adapter.dispose();
     backend.terrain.resolve();
