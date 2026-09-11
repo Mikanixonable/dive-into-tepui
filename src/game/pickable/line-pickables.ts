@@ -1,9 +1,7 @@
 // 右クリックの当たり判定にかける線の候補集合を1フレーム分組み立てる。サンプル点列そのものは
 // 各描画クラス(EllipseLine/TrajectoryLine/TargetRelativeLine/OrbitGuideView)が持つので、
 // ここは「いまフレームにどの線が表示されているか」を集めるだけ — マップ視点でなければ空になる。
-import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import { guideSecondary } from '../../physics/orbit-guide';
-import type { DisplayWindow } from '../display-window-manager';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
@@ -33,11 +31,9 @@ export class LinePickables {
   }
 
   // このフレームに表示されている軌道線の候補列を組み直す。
-  // displayWindow.frame/displayTime は船の予測線・過去線の座標系相対 → ECI 変換に使う。
-  refresh(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource): void {
+  refresh(): void {
     // 天体参照線・Entity 線・ガイド線の順で、各所有元が公開する点列だけを読む。
     this.items.length = 0;
-    const { frame, displayTime } = displayWindow;
 
     for (const { id, points } of this.celestialSystem.referenceOrbitSamples(ORBIT_PICK_SAMPLES)) {
       this.items.push({ key: `orbit-body:${id}`, kind: 'orbit-body', method: 'analytic', ownerKeys: [id], points });
@@ -45,7 +41,7 @@ export class LinePickables {
 
     // EntityLineManager がこのフレームに同期した線だけがサンプルを返す。
     for (const ship of this.roster.all().filter(isCombatTarget)) {
-      this.addShipOrbit(ship, frame, displayTime, frameAnchors);
+      this.addShipOrbit(ship);
     }
 
     for (const guide of this.celestialSystem.orbitGuideSamples(ORBIT_PICK_SAMPLES)) {
@@ -69,13 +65,9 @@ export class LinePickables {
 
   // 船(自艦・敵・基地)1隻ぶんの軌道線を候補へ積む。表示方式(解析楕円 or 予測線・過去線)は
   // EntityLineManager が既に決めているので、ここではどちらが出ているかを読むだけ。
-  private addShipOrbit(
-    entity: DynamicEntity, frame: ReferenceFrame, displayTime: number, frameAnchors: FrameAnchorSource,
-  ): void {
+  private addShipOrbit(entity: DynamicEntity): void {
     if (!entity.motion.alive) return;
-    const sample = entity.view.lineSamples(
-      ORBIT_PICK_SAMPLES, frame, displayTime, this.celestialSystem, frameAnchors,
-    );
+    const sample = entity.view.lineSamples(ORBIT_PICK_SAMPLES);
     if (sample === null || sample.points.length < 2) return;
     this.items.push({
       key: `orbit-ship:${entity.id}`, kind: 'orbit-ship', method: sample.method,

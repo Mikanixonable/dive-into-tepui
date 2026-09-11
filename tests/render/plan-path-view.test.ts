@@ -66,7 +66,7 @@ function arcLines(trajectory: DynamicTrajectory, count: number): readonly PlanAr
 
 // view が描いている点列。区間ごとに1本ずつ返る。
 function lineSamples(view: PlanPathView): readonly (readonly unknown[])[] {
-  return view.lineSamples(SAMPLE_COUNT, 0, PARTS.referenceFrames, ANCHORS);
+  return view.lineSamples(SAMPLE_COUNT);
 }
 
 export function register(): void {
