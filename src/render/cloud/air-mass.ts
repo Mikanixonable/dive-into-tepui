@@ -9,6 +9,7 @@ import { BakedField } from './baked-field';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { windStep } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
+import type { GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from './field-projection';
 import type { BalancedWind } from './wind-law';
 import type { FloatNode, Vec3Node } from '../tsl-types';
@@ -58,8 +59,8 @@ export class AirMass {
   }
 
   // いまの時刻の気団を写しへ焼く。at() のグラフを描く前に、気圧を焼いたあとで呼ぶ。
-  public bake(renderer: WebGPURenderer): void {
-    this.trace.render(renderer);
+  public bake(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
+    this.trace.render(renderer, gpu);
   }
 
   // 単位方向 direction(緯度 latitude [rad])における気団。写しを中心と東西南北の 5 点読み、中心から

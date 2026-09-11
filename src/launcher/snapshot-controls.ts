@@ -1,10 +1,9 @@
-import { Game } from '../game/game';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { Notifier } from '../hud/notifier';
 import { PauseMenu } from '../hud/windows/pause-menu';
 import { SaveBrowser } from './save-browser/save-browser';
-import { SnapshotService } from './save/snapshot-service';
+import { SnapshotService, type SnapshotCaptureSource } from './save/snapshot-service';
 
 // F5(クリップ)/F9(一覧開閉)の入力を担う。handleInput は Game.update のあとに呼ぶ —
 // その回で Game が消費しなかった入力エッジだけを見る。
@@ -16,8 +15,8 @@ export class SnapshotControls {
     private readonly service: SnapshotService,
   ) {}
 
-  handleInput(input: Input, game: Game): void {
-    if (input.takeKey(K.clipSnapshot)) this.captureManual(game);
+  handleInput(input: Input, source: SnapshotCaptureSource): void {
+    if (input.takeKey(K.clipSnapshot)) this.captureManual(source);
 
     if (input.takeKey(K.openSnapshots)) {
       if (this.browser.visible) {
@@ -31,17 +30,17 @@ export class SnapshotControls {
   }
 
   // 現在の瞬間を名前付きスナップショットとして残す。[F5] と ESC メニューの「セーブ」
-  // ボタンの共通処理。game が無ければ何もしない。
-  captureManual(game: Game | null): void {
-    if (game === null) return;
+  // ボタンの共通処理。保存sourceが無ければ何もしない。
+  captureManual(source: SnapshotCaptureSource | null): void {
+    if (source === null) return;
     // 決着後の phase(won/lost/timeup)は復元する経路を持たない — 復元は phase を
     // そのまま代入するだけで結果画面を出し直さないので、ロードすると結果画面の無いまま
     // 決着済みのステージが続くことになる。
-    if (!game.activeStage.isPlaying) {
+    if (!source.isPlaying) {
       this.notifier.hint('決着後はスナップショットを残せません');
       return;
     }
-    const snap = this.service.capture(game, 'manual', null, true);
+    const snap = this.service.capture(source.runSummary(), source.serialize(), 'manual', null, true);
     this.notifier.hint(snap ? `クリップしました: ${snap.name}` : 'クリップに失敗しました');
   }
 }

@@ -334,9 +334,16 @@ export class ViewOptionsPanel {
     // 星空トグルと、ゼロ速度曲線節(独立部品として埋め込む)。
     const starsRow = document.createElement('div');
     starsRow.className = 'body-class-row grid-class-row';
-    const starsButton = this.toggleButton('星空', '星空を表示', 'stars', this.gridCurrent, (key, on) => this.onGridToggle?.(key, on));
-    starsButton.element.classList.add('body-class-title');
-    starsRow.appendChild(starsButton.element);
+    const starsTitle = document.createElement('span');
+    starsTitle.className = 'body-class-title';
+    starsTitle.textContent = '星空';
+    starsRow.appendChild(starsTitle);
+    const starsButton = this.toggleButton('✦', '星空を表示', 'stars', this.gridCurrent, (key, on) => this.onGridToggle?.(key, on));
+    starsButton.element.classList.add('body-class-icon-btn');
+    const starsControls = document.createElement('div');
+    starsControls.className = 'body-class-btns';
+    starsControls.appendChild(starsButton.element);
+    starsRow.appendChild(starsControls);
     guideBody.appendChild(starsRow);
 
     const zeroVelocitySection = new ZeroVelocitySection(DEFAULT_ORBIT_GUIDE_SETTINGS.zeroVelocity);

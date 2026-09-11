@@ -1,5 +1,5 @@
-// マップビューの「カメラ」「軌道フレーム」2パネルを所有し、カメラの視点と未来表示の描画基準を
-// 選ばせる。カメラのフォーカス変更への軌道フレームの追随など、2パネル間の連動もここが持つ。
+// マップビューの「カメラ」「軌道フレーム」パネルと、戦闘ビューのカメラパネルを所有し、カメラの
+// 視点と未来表示の描画基準を選ばせる。カメラのフォーカス変更への軌道フレームの追随もここが持つ。
 import { bodyAnchorSource } from '../../../physics/attractor';
 import { FRAME_ROLES, FrameRole, FrameRotationSource, frameRoleOf } from '../../../physics/frame';
 import type { FrameAnchorSource } from '../../../physics/frame';
@@ -10,28 +10,36 @@ import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-targe
 import type { DisplayFrameSelection } from '../../display-frame-selection';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { CameraFramePanel } from './camera-frame-panel';
+import { CombatCameraPanel } from './combat-camera-panel';
 import { TrajectoryFramePanel } from './trajectory-frame-panel';
 import type { ListedObject } from '../../pickable/listed-object';
 
 export class FrameControls {
   private readonly cameraPanel: CameraFramePanel;
+  private readonly combatCameraPanel: CombatCameraPanel;
   private readonly trajectoryPanel: TrajectoryFramePanel;
   // 固定解除は DOM イベント(フレームの外)から起きるので、直近の sync が見た時刻を控える。
   private lastTime = 0;
 
-  // 2パネルを panelRoot へ組む。各パネルのポップアップは popupRoot へ出る。
+  // マップと戦闘のカメラパネル、マップの軌道フレームパネルを組む。各パネルのポップアップは
+  // popupRoot へ出る。
   public constructor(
-    panelRoot: HTMLElement,
+    mapPanelRoot: HTMLElement,
+    combatPanelRoot: HTMLElement,
     popupRoot: HTMLElement,
     private readonly celestialBodies: CelestialBodies,
     private readonly mapCamera: FocusCamera,
+    combatCamera: FocusCamera,
     private readonly displayFrame: DisplayFrameSelection,
     overlayManager: OverlayManager,
     private readonly frameAnchors: FrameAnchorSource,
   ) {
-    this.cameraPanel = new CameraFramePanel(panelRoot, popupRoot, celestialBodies, mapCamera, overlayManager);
+    this.cameraPanel = new CameraFramePanel(
+      mapPanelRoot, popupRoot, celestialBodies, mapCamera, overlayManager,
+    );
+    this.combatCameraPanel = new CombatCameraPanel(combatPanelRoot, combatCamera);
     this.trajectoryPanel = new TrajectoryFramePanel(
-      panelRoot, popupRoot, celestialBodies, displayFrame, overlayManager,
+      mapPanelRoot, popupRoot, celestialBodies, displayFrame, overlayManager,
     );
 
     this.cameraPanel.onSelectCenter = (id) => this.selectCameraCenter(id);
@@ -91,12 +99,14 @@ export class FrameControls {
     this.lastTime = simTime;
     const members = this.celestialBodies.systemMembersAt(cameraPos, displayTime);
     this.cameraPanel.sync(pickables, members, displayTime);
+    this.combatCameraPanel.sync();
     this.trajectoryPanel.sync(pickables, members, displayTime, this.validRevolutionRoles(displayTime));
   }
 
-  // 両パネルを片付ける。
+  // 各パネルを片付ける。
   public dispose(): void {
     this.cameraPanel.dispose();
+    this.combatCameraPanel.dispose();
     this.trajectoryPanel.dispose();
   }
 }
