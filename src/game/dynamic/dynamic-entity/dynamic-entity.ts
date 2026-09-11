@@ -1,26 +1,17 @@
-import type { Attitude } from '../../../physics/attitude';
-import type { KinematicState } from '../../../physics/kinematic-state';
-import { Q_IDENTITY } from '../../../math/quat';
 import type { Ray } from '../../../math/ray';
-import { v3, type Vec3 } from '../../../math/vec3';
+import type { Vec3 } from '../../../math/vec3';
 import { MARKER_VISIBILITY, type MapVisibility, type MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { EntitySaveDataUnion } from '../../save/save-data';
 import type { OrbitingObject } from './orbiting-object';
 import type { CapKind, DynamicEntityKind } from './entity-kind';
 import { EntityIdAllocator } from './entity-id';
-import { DynamicMotion } from '../dynamic-motion';
+import type { DynamicMotion } from '../dynamic-motion';
 import type { OrbitReference } from '../../orbit-reference';
-import {
-  DynamicView, type DynamicRenderSource, type DynamicViewFrame,
+import type {
+  DynamicView, DynamicRenderSource, DynamicViewFrame,
 } from '../../../render/dynamic/dynamic-view';
 
 export type DynamicMotionFactory = (owner: DynamicEntity) => DynamicMotion;
-export type DynamicViewFactory = (owner: DynamicEntity) => DynamicView;
-
-// 姿勢を持たない生成元に与える、回転・角速度なしの既定姿勢。
-function identityAttitude(): Attitude {
-  return { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
-}
 
 // 1体ぶんの Motion と View を結び、両者に共通するゲーム上の識別と判断だけを持つ。
 export class DynamicEntity {
@@ -41,18 +32,13 @@ export class DynamicEntity {
 
   private nameValue: string;
 
-  // 識別、Motion、View を1体の寿命へ束ねる。factory には生成済みの owner を渡す。
-  public constructor(
-    state: KinematicState,
-    view: DynamicView | DynamicViewFactory,
-    attitude: Attitude = identityAttitude(),
-    id?: string,
-    motionFactory?: DynamicMotionFactory,
-  ) {
+  // 識別、Motion、View を1体の寿命へ束ねる。motionFactory には id を確定させた owner を渡す。
+  // id を省くと基底の採番で発番する。
+  public constructor(motionFactory: DynamicMotionFactory, view: DynamicView, id?: string) {
     this.id = id ?? DynamicEntity.idAllocator.next();
     this.nameValue = this.id;
-    this.motion = motionFactory?.(this) ?? new DynamicMotion(state, { attitude });
-    this.view = typeof view === 'function' ? view(this) : view;
+    this.motion = motionFactory(this);
+    this.view = view;
   }
 
   public get name(): string { return this.nameValue; }

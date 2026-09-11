@@ -24,7 +24,7 @@ export class DetachedBoosterView extends DynamicView<DetachedBoosterRenderSource
   private readonly plume: BoosterPlume;
 
   // 分離段の本体と、scene 直下に置く噴射炎を同じ寿命で組み立てる。
-  public constructor(scene: THREE.Scene) {
+  public constructor(protected override readonly scene: THREE.Scene) {
     const root = new THREE.Group();
     super(root, scene);
     const model = buildBoosterStage(false);
@@ -58,7 +58,7 @@ export class DetachedBoosterView extends DynamicView<DetachedBoosterRenderSource
 
   // 噴射炎を破棄してから、共通 View 資源を片付ける。
   public override dispose(): void {
-    this.plume.dispose(this.scene!);
+    this.plume.dispose(this.scene);
     super.dispose();
   }
 }
