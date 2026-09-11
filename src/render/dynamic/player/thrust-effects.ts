@@ -3,16 +3,24 @@ import * as THREE from 'three/webgpu';
 import { Vec3, addScaled, len, scale } from '../../../math/vec3';
 import { mulberry32 } from '../../../math/random';
 import { Billboard } from '../../billboard';
-import {
-  THRUST_PLUME_CORE_BRIGHTNESS, THRUST_PLUME_CORE_COLOR, THRUST_PLUME_CORE_OFFSET,
-  THRUST_PLUME_CORE_SIZE_RATIO, THRUST_PLUME_OUTER_BRIGHTNESS, THRUST_PLUME_OUTER_COLOR,
-  THRUST_PLUME_OUTER_OFFSET, THRUST_PLUME_OUTER_SIZE_RATIO, THRUST_PLUME_SIZE_MIN,
-  THRUST_PLUME_SIZE_SPAN,
-} from '../../vfx-style';
 import { SchematicThrustCone } from '../../schematic-thrust-cone';
 import { FloatingOrigin } from '../../camera/floating-origin';
 import { plumeNoiseSeed } from './plume-noise';
 import type { RenderStyle } from '../../render-style';
+
+const THRUST_PLUME_CORE_COLOR = 0xaee6ff;
+const THRUST_PLUME_OUTER_COLOR = 0x4f9fff;
+// 出力比 0..1 に対するプルームの基準サイズ [m]。
+const THRUST_PLUME_SIZE_MIN = 1.5;
+const THRUST_PLUME_SIZE_SPAN = 2.5;
+// 基準サイズに対するコア・アウターの倍率と、機体からノズル方向へのずらし量 [m]。
+const THRUST_PLUME_CORE_SIZE_RATIO = 1.6;
+const THRUST_PLUME_OUTER_SIZE_RATIO = 3.6;
+const THRUST_PLUME_CORE_OFFSET = -3.4;
+const THRUST_PLUME_OUTER_OFFSET = -5.6;
+// TODO: 明るさは 1 天文単位を基準にした目盛りへ手で置いた表示値。ボリュームレンダリングで放射量として組み直す。
+const THRUST_PLUME_CORE_BRIGHTNESS = 0.85;
+const THRUST_PLUME_OUTER_BRIGHTNESS = 0.32;
 
 // 本体の噴射口は1つなので、揺らぎの種はこの番号で引く。
 const MAIN_NOZZLE_INDEX = 0;

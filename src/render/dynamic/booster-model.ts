@@ -2,7 +2,7 @@
 // 片付けは親から外すだけでよい。
 import * as THREE from 'three/webgpu';
 import { markLitOpaque, markShadowCaster } from '../pipeline/lit-layer';
-import { memoTemplate } from './baked-model';
+import { markSharedResources, memoTemplate } from './baked-model';
 import boosterStageData from '../../assets/models/boosterStage.json';
 import boosterInterstageCoverData from '../../assets/models/boosterInterstageCover.json';
 
@@ -33,8 +33,7 @@ export function buildBoosterExplosiveBoltMesh(segment: number): THREE.Group {
 function interstageCoverPart(name: string): THREE.Group {
   const part = boosterInterstageCoverTemplate().getObjectByName(name)!.clone() as THREE.Mesh;
   part.position.set(0, 0, 0);
-  part.userData.ownsGeometry = false;
-  part.userData.ownsMaterial = false;
+  markSharedResources(part);
   const root = new THREE.Group();
   root.add(part);
   markLitOpaque(root);

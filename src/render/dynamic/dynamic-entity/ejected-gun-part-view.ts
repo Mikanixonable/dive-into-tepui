@@ -3,20 +3,10 @@
 import * as THREE from 'three/webgpu';
 import { markLitOpaque, markShadowCaster } from '../../pipeline/lit-layer';
 import { makeThermallyEmissive } from '../../thermal-emissive';
-import { memoParseIndependent, memoTemplate } from '../baked-model';
+import { markSharedResources, memoParseIndependent, memoTemplate } from '../baked-model';
 import { DynamicView } from '../dynamic-view';
 import barrelData from '../../../assets/models/barrel.json';
 import magazineData from '../../../assets/models/magazine.json';
-
-// root 配下のメッシュが握る geometry/material を、全個体の共有物として印す。
-function markSharedResources(root: THREE.Object3D): void {
-  root.traverse((child) => {
-    const mesh = child as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    mesh.userData.ownsGeometry = false;
-    mesh.userData.ownsMaterial = false;
-  });
-}
 
 // 砲身のテンプレート。熱の状態は個体ごとの userData が運ぶ。
 let barrelTemplate: THREE.Group | null = null;

@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { InstancedPool } from '../../instanced-pool';
 import { attachThermalEmissive } from '../../thermal-emissive';
-import { memoParseIndependent } from '../baked-model';
+import { markSharedResources, memoParseIndependent } from '../baked-model';
 import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
 import casingData from '../../../assets/models/casing.json';
 import type { InstancedPoolSet } from '../instanced-pools';
@@ -46,8 +46,7 @@ export class CasingView extends DynamicView {
   public constructor(scene?: THREE.Scene) {
     const body = casingBodyResources();
     const mesh = new THREE.Mesh(body.geometry, body.material);
-    mesh.userData.ownsGeometry = false;
-    mesh.userData.ownsMaterial = false;
+    markSharedResources(mesh);
     super(mesh, scene, false);
   }
 

@@ -1,5 +1,6 @@
 // tools/model-builder/export-models.mjs が src/assets/models/*.json へ焼いたモデルを ObjectLoader で読み、
 // 初回だけパースしたテンプレートから複製を作る。テンプレートそのものは書き換えない。
+// メッシュが握る geometry/material を個体の持ち物とするか、全個体の共有物とするかの印も付ける。
 import * as THREE from 'three/webgpu';
 import { markLitOpaque, markShadowCaster } from '../pipeline/lit-layer';
 import { makeThermallyEmissive } from '../thermal-emissive';
@@ -51,4 +52,14 @@ export function memoParseIndependent<T extends THREE.Object3D>(data: unknown): (
 export function memoParseShared<T extends THREE.Object3D>(data: unknown): () => T {
   const template = memoTemplate<T>(data);
   return () => template().clone(true) as T;
+}
+
+// root 配下のメッシュが握る geometry/material を、全個体の共有物として印す。
+export function markSharedResources(root: THREE.Object3D): void {
+  root.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.userData.ownsGeometry = false;
+    mesh.userData.ownsMaterial = false;
+  });
 }

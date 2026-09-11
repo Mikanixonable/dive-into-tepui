@@ -4,7 +4,6 @@ import * as THREE from 'three/webgpu';
 import { mulberry32 } from '../../../math/random';
 import { InstancedPool } from '../../instanced-pool';
 import { attachThermalEmissive } from '../../thermal-emissive';
-import { SHIP_DARK_HULL_COLOR } from '../../vfx-style';
 import { memoTemplate } from '../baked-model';
 import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
 import debrisChunkData from '../../../assets/models/debrisChunk.json';
@@ -19,6 +18,8 @@ import type { KinematicState } from '../../../physics/kinematic-state';
 const DEBRIS_FRAGMENT_VARIANT_COUNT = 7;
 // バリアントの寸法を決める乱数のシード(起動のたびに形が変わらないよう固定する)。
 const DEBRIS_FRAGMENT_SEED = 0xdeb71;
+// 破片のうち、外殻の塗装ではなく機体内部の暗色部が割れたぶんの色。
+const SHIP_DARK_HULL_COLOR = '#2e3340';
 
 const debrisChunkTemplate = memoTemplate<THREE.Mesh>(debrisChunkData);
 const debrisPanelTemplate = memoTemplate<THREE.Mesh>(debrisPanelData);

@@ -4,16 +4,6 @@
 import * as THREE from 'three/webgpu';
 import { flashResources } from '../billboard';
 import { InstancedPool } from '../instanced-pool';
-import {
-  BULLET_IMPACT_FLASH_COLOR, BULLET_IMPACT_FLASH_SIZE0, BULLET_IMPACT_FLASH_SIZE1,
-  DESTROY_FLASH1_SIZE0, DESTROY_FLASH1_SIZE1, DESTROY_FLASH2_SIZE0, DESTROY_FLASH2_SIZE1,
-  DESTROY_FLASH_COLOR_1, DESTROY_FLASH_COLOR_2, GAS_PUFF1_BRIGHTNESS, GAS_PUFF1_SIZE0,
-  GAS_PUFF1_SIZE1, GAS_PUFF2_BRIGHTNESS, GAS_PUFF2_SIZE0, GAS_PUFF2_SIZE1, GAS_PUFF_COLOR_1,
-  GAS_PUFF_COLOR_2, MUZZLE_FLASH_COLOR, MUZZLE_FLASH_SIZE0, MUZZLE_FLASH_SIZE1,
-  PLASMA_IMPACT_FLASH_COLOR, PLASMA_IMPACT_FLASH_SIZE0, PLASMA_IMPACT_FLASH_SIZE1,
-  PROTEIN_CRITICAL_FLASH_COLOR, PROTEIN_DAMAGED_FLASH_COLOR, PROTEIN_DISSOCIATED_FLASH_COLOR,
-  PROTEIN_STATE_FLASH_BRIGHTNESS, PROTEIN_STATE_FLASH_SIZE0, PROTEIN_STATE_FLASH_SIZE1,
-} from '../vfx-style';
 import type { CameraFrame } from '../camera/camera-frame';
 import type { KinematicState } from '../../physics/kinematic-state';
 
@@ -53,49 +43,33 @@ interface FlashAppearance {
   readonly dimsInGunsight: boolean; // ガンサイトズーム中に減光するか
 }
 
+// タンパク質の状態遷移フラッシュの大きさ [m] と明るさ。危篤・解離・それ以外の損傷で共通にし、色だけで分ける。
+const PROTEIN_STATE_FLASH_SIZE0 = 2.5;
+const PROTEIN_STATE_FLASH_SIZE1 = 13;
+const PROTEIN_STATE_FLASH_BRIGHTNESS = 0.9;
+
+// TODO: 明るさは 1 天文単位を基準にした目盛りへ手で置いた表示値。ボリュームレンダリングで放射量として組み直す。
 const FLASH_APPEARANCE: Record<FlashKind, FlashAppearance> = {
-  bulletImpact: {
-    color: BULLET_IMPACT_FLASH_COLOR, size0: BULLET_IMPACT_FLASH_SIZE0,
-    size1: BULLET_IMPACT_FLASH_SIZE1, peakBrightness: 1, dimsInGunsight: false,
-  },
-  plasmaImpact: {
-    color: PLASMA_IMPACT_FLASH_COLOR, size0: PLASMA_IMPACT_FLASH_SIZE0,
-    size1: PLASMA_IMPACT_FLASH_SIZE1, peakBrightness: 1, dimsInGunsight: false,
-  },
-  muzzle: {
-    color: MUZZLE_FLASH_COLOR, size0: MUZZLE_FLASH_SIZE0,
-    size1: MUZZLE_FLASH_SIZE1, peakBrightness: 1, dimsInGunsight: true,
-  },
-  destroy1: {
-    color: DESTROY_FLASH_COLOR_1, size0: DESTROY_FLASH1_SIZE0,
-    size1: DESTROY_FLASH1_SIZE1, peakBrightness: 1, dimsInGunsight: false,
-  },
-  destroy2: {
-    color: DESTROY_FLASH_COLOR_2, size0: DESTROY_FLASH2_SIZE0,
-    size1: DESTROY_FLASH2_SIZE1, peakBrightness: 1, dimsInGunsight: false,
-  },
-  gasPuff1: {
-    color: GAS_PUFF_COLOR_1, size0: GAS_PUFF1_SIZE0,
-    size1: GAS_PUFF1_SIZE1, peakBrightness: GAS_PUFF1_BRIGHTNESS, dimsInGunsight: false,
-  },
-  gasPuff2: {
-    color: GAS_PUFF_COLOR_2, size0: GAS_PUFF2_SIZE0,
-    size1: GAS_PUFF2_SIZE1, peakBrightness: GAS_PUFF2_BRIGHTNESS, dimsInGunsight: false,
-  },
+  bulletImpact: { color: '#ffe2a0', size0: 1.5, size1: 6, peakBrightness: 1, dimsInGunsight: false },
+  plasmaImpact: { color: '#ffa0ff', size0: 2, size1: 8, peakBrightness: 1, dimsInGunsight: false },
+  muzzle: { color: '#fff0b8', size0: 2.2, size1: 6, peakBrightness: 1, dimsInGunsight: true },
+  // 撃破の芯(1)と外殻(2)の2枚。
+  destroy1: { color: '#ffb36b', size0: 10, size1: 110, peakBrightness: 1, dimsInGunsight: false },
+  destroy2: { color: '#fffbe8', size0: 6, size1: 40, peakBrightness: 1, dimsInGunsight: false },
+  // ガスの放出。薄く広がる灰色の板を2枚重ねて気体らしさを出す。
+  gasPuff1: { color: '#aaaaaa', size0: 1.0, size1: 8.0, peakBrightness: 0.3, dimsInGunsight: false },
+  gasPuff2: { color: '#ffffff', size0: 0.5, size1: 6.0, peakBrightness: 0.4, dimsInGunsight: false },
   proteinCritical: {
-    color: PROTEIN_CRITICAL_FLASH_COLOR, size0: PROTEIN_STATE_FLASH_SIZE0,
-    size1: PROTEIN_STATE_FLASH_SIZE1, peakBrightness: PROTEIN_STATE_FLASH_BRIGHTNESS,
-    dimsInGunsight: true,
+    color: 0xff3d88, size0: PROTEIN_STATE_FLASH_SIZE0, size1: PROTEIN_STATE_FLASH_SIZE1,
+    peakBrightness: PROTEIN_STATE_FLASH_BRIGHTNESS, dimsInGunsight: true,
   },
   proteinDissociated: {
-    color: PROTEIN_DISSOCIATED_FLASH_COLOR, size0: PROTEIN_STATE_FLASH_SIZE0,
-    size1: PROTEIN_STATE_FLASH_SIZE1, peakBrightness: PROTEIN_STATE_FLASH_BRIGHTNESS,
-    dimsInGunsight: true,
+    color: 0xa76dff, size0: PROTEIN_STATE_FLASH_SIZE0, size1: PROTEIN_STATE_FLASH_SIZE1,
+    peakBrightness: PROTEIN_STATE_FLASH_BRIGHTNESS, dimsInGunsight: true,
   },
   proteinDamaged: {
-    color: PROTEIN_DAMAGED_FLASH_COLOR, size0: PROTEIN_STATE_FLASH_SIZE0,
-    size1: PROTEIN_STATE_FLASH_SIZE1, peakBrightness: PROTEIN_STATE_FLASH_BRIGHTNESS,
-    dimsInGunsight: true,
+    color: 0x59e7ff, size0: PROTEIN_STATE_FLASH_SIZE0, size1: PROTEIN_STATE_FLASH_SIZE1,
+    peakBrightness: PROTEIN_STATE_FLASH_BRIGHTNESS, dimsInGunsight: true,
   },
 };
 

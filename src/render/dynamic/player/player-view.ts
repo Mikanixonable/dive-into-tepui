@@ -8,7 +8,7 @@ import {
 } from '../dynamic-view';
 import { AttachedBoostersView, type AttachedBoostersDisplay } from './attached-boosters-view';
 import { BeltView, type BeltNodes } from './belt-view';
-import { PlayerMarkers } from '../../../game/player/player-markers';
+import { PlayerMarkers } from '../../../game/marker/player-markers';
 import { FoldingPanelsView, type RadiatorDisplay, type SolarDeploy } from './folding-panels-view';
 import { RcsEffects } from './rcs-effects';
 import { ReentryEffects } from './reentry-effects';
