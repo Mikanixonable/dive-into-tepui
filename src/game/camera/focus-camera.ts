@@ -1,13 +1,8 @@
 // フォーカス対象を注視点に置く軌道カメラ。フォーカスの毎フレーム解決と、フォーカス対象から
 // 導かれる回転追従(慣性系・公転・自転・姿勢)を持つ。
-//
-// **chase は「動く実体を追っている視点」を指す語。** 天体や空間上の固定点ではなく機体
-// (艦・敵・基地・弾薬)をフォーカスしている状態のことで、DOM id(#notifier-chase-reset)・
-// セーブキー(camera.chase)はこの意味で使う。カメラの実装が2つあった頃の名残ではない。
-import * as THREE from 'three/webgpu';
 import { Vec3, add, addScaled, cross, len, lenSq, norm, projectOntoPlane, scale, sub, v3 } from '../../math/vec3';
-import { CELESTIAL_SHELL_RADIUS } from '../../render/stars';
 import type { Notifier } from '../../hud/notifier';
+import type { Viewport } from '../../render/viewport';
 import { MouseDelta } from '../../input/input';
 import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../math/projection';
 import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, rotationSourceKey, toFrameDir, toInertialDir } from '../../physics/frame';
@@ -22,56 +17,25 @@ import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
 import { FocusTarget, focusTargetId, resolveFocusTarget, type FocusCandidate } from './focus-target';
 import { CameraRotationFollowSaveData, FrameRotationSourceSaveData, FocusCameraSaveData } from '../save/save-data';
 
-// 冥王星(遠日点約70AU)やエリス(遠日点約97AU)、散乱円盤の遠日点(数百AU)まで
-// 視界に収められる引きの上限。
 export const FOCUS_CAMERA_MIN_DIST = 1e3; // 天体フォーカス時の注視距離の下限 [m]
 export const FOCUS_CAMERA_FOV_MIN = 15; // 最小垂直画角 [deg]
 export const FOCUS_CAMERA_FOV_MAX = 120; // 最大垂直画角 [deg]
+// 注視距離の上限 [m]。冥王星(遠日点約70AU)やエリス(遠日点約97AU)、散乱円盤の遠日点
+// (数百AU)まで視界に収められる引き。
 const FOCUS_CAMERA_MAX_DIST = 1e14;
 
-// near は固定値ではなく、注視点までの距離をこの比で割った値を毎フレーム使う
-// (near = dist / FOCUS_CAMERA_NEAR_RATIO)。比を大きくすると near が注視点に近づいて
-// 手前がクリップされにくくなる。反転 32bit 深度では分解能が near に依らないので、
-// この比が深度精度と取引になることはない。
-const FOCUS_CAMERA_NEAR_RATIO = 1000;
-
-// near = dist / FOCUS_CAMERA_NEAR_RATIO の比例則は dist の上限では星球シェル・
-// 天球グリッド(CELESTIAL_SHELL_RADIUS)より大きくなる(dist=1e14 で near=1e11)。
-// near クリップは光軸からの角度 θ に対して球殻上の点を R·cosθ まで切り詰めるので、
-// R そのものでなく画面対角の半視野角 θ_diag での R·cosθ_diag を上限に取らないと、
-// 画面中心だけ残して周辺・四隅の星が消える(FocusCamera.near 参照)。
-// 1 未満のこの係数はその余弦にさらに掛ける安全マージン。
-const FOCUS_CAMERA_NEAR_SHELL_MARGIN = 0.9;
-
-// far も near と同様に固定値ではなく dist に連動させる
-// (far = clamp(dist × FOCUS_CAMERA_FAR_RATIO, FOCUS_CAMERA_FAR_MIN, FOCUS_CAMERA_FAR_MAX))。
-// far を dist に比例させないと、太陽・木星のような遠方天体は引いたカメラでは
-// far 平面の外に出て消える。逆に近距離域で far を大きく取ることの費用は、反転 32bit 深度では
-// 事実上ゼロ。
-const FOCUS_CAMERA_FAR_RATIO = 100;
-
-// 艦至近(dist = ENTITY_MIN_DIST)まで寄っても、見かけ直径が残る最遠の天体
-// (直径 1.4e9 m の恒星を LOD 上限で見た 1.4e12 m)が far の外に出ないための下限。
-const FOCUS_CAMERA_FAR_MIN = 2e12;
-
-// FOCUS_CAMERA_MAX_DIST × FOCUS_CAMERA_FAR_RATIO と等しい値。これより小さいと
-// 最大ズームアウト付近で far = dist × FAR_RATIO の比例則がこの上限に張り付いてしまい、
-// 注視点より奥にある軌道線・天体が far 平面でクリップされる。
-const FOCUS_CAMERA_FAR_MAX = 1e16;
-
-// ホイール1目盛りのズーム率。exp(wheel × この値) を注視距離に掛ける(両ビュー共通)。
+// ホイール1目盛りのズーム率。exp(wheel × この値) を注視距離に掛ける。
 const WHEEL_ZOOM_RATE = 0.0015;
 const DRAG_RAD_PER_PX = 0.005; // ドラッグ1pxあたりの視点回転量 [rad]
 
 // 機体・固定点フォーカスでの最小注視距離 [m](艦を間近に見る寄り)。
 const ENTITY_MIN_DIST = 12;
 
-// 回転追従の選択(null は慣性系)。選択肢はフォーカス対象から導かれる —
-// availableRotationFollows() が唯一の出所。'attitude' はフォーカス機体の姿勢への追従で、
-// ReferenceFrame ではなくカメラ内の合成で実現される。
+// 回転追従の選択(null は慣性系)。選べる値は availableRotationFollows() が答える。
+// 'attitude' はフォーカス機体の姿勢への追従で、対応する ReferenceFrame を持たない。
 export type CameraRotationFollow = FrameRotationSource | { readonly kind: 'attitude' };
 
-// 選択の同一性の照合キー(選択 UI・妥当性検査が使う)。
+// 選択の同一性の照合キー。
 export function rotationFollowKey(follow: CameraRotationFollow | null): string {
   if (follow === null) return '';
   return follow.kind === 'attitude' ? 'attitude' : rotationSourceKey(follow);
@@ -100,7 +64,7 @@ interface FocusCameraConfig {
   readonly attitudeOf: (id: string, t: number) => Quat | null;
 }
 
-// マップビュー用の初期状態(地球を見下ろす従来の既定)。
+// マップビュー用の初期状態(原点天体を斜め上から見下ろす)。
 export function defaultMapViewInitial(celestialBodies: CelestialBodies): FocusCameraInitial {
   return {
     angles: { yaw: 0.7, pitch: 0.45, roll: 0 }, dist: 4.5e7, fovDeg: FOCUS_CAMERA_FOV,
@@ -109,8 +73,8 @@ export function defaultMapViewInitial(celestialBodies: CelestialBodies): FocusCa
   };
 }
 
-// セーブデータの rotatingWith を FrameRotationSource へ変換する。旧セーブは公転対象の id を
-// 文字列(または回さないなら null)でそのまま持っていたので、その形は公転として受ける。
+// セーブデータの rotatingWith を FrameRotationSource へ変換する。文字列は公転対象の id を
+// 直接持つ形式として、公転で受ける。
 function rotationSourceFromSaveData(saved: FrameRotationSourceSaveData | string | null): FrameRotationSource | null {
   if (saved === null) return null;
   if (typeof saved === 'string') return { kind: 'revolution', id: saved };
@@ -128,19 +92,16 @@ const FOCUS_CAMERA_FOV = 50;
 export type CameraReferencePlane = 'ecliptic' | 'equator' | 'moonOrbit';
 export type CameraReferenceView = 'above' | 'side';
 
+// FrameDir の成分をそのまま Vec3 として読む(座標系は変えない)。
 function frameDirVector(value: FrameDir): Vec3 {
   return v3(value.x, value.y, value.z);
 }
 
 export class FocusCamera {
-  // 透視/平行の THREE カメラ実体。どちらを描画に使うかは projectionMode で決まる。
-  private readonly perspectiveCamera: THREE.PerspectiveCamera;
-  private readonly orthographicCamera: THREE.OrthographicCamera;
   private fovDeg = FOCUS_CAMERA_FOV;
   private projectionMode: ProjectionMode;
   private orthographicHalfHeight = 1;
   // カメラのローカル(+Z=注視点からカメラ、+Y=画面上)を cameraFrame へ写す向き。
-  // 二表現の同期と姿勢追従の合成は CameraOrientation が担う。
   private readonly orientation: CameraOrientation;
 
   // offset_r … 注視点 → カメラの相対位置ベクトル(方位・仰角・距離を兼ねる)
@@ -154,24 +115,24 @@ export class FocusCamera {
   // 選択中の追従が選択肢から外れた連続フレーム数。役割・機体の一時的な解決失敗に、
   // フォーカスと同じ2フレームの猶予を与える。
   private staleFollowFrames = 0;
-  private displayTime = 0; // set cameraFrame の座標変換に使う。線・メッシュと同じ表示時刻に揃える。
-  // 最新の update 呼び出しが受け取った FrameAnchorSource。reset/resetPan/cameraFrame setter は
-  // フレームの外(入力ハンドラ)から呼ばれるため、update と同じ値をここから読む。
+  private displayTime = 0; // 最新の update が受け取った表示時刻。座標変換はこの時刻で行う。
+  // 最新の update が受け取った FrameAnchorSource。フレームの外(入力ハンドラ)から呼ばれる
+  // 操作も、update と同じこの値で座標変換する。
   private frameAnchors: FrameAnchorSource = bodyAnchorSource([], 0);
   private _focus: FocusTarget;
   private missingFocusFrames = 0;
   private lastResolvedFocus = v3();
   private _focusVelocity: Vec3 | null = null;
 
-  get focus(): FocusTarget { return this._focus; }
+  public get focus(): FocusTarget { return this._focus; }
 
   // 注視点の ECI 速度。速度を答えられない対象を注視しているあいだは null。
-  get focusVelocity(): Vec3 | null { return this._focusVelocity; }
+  public get focusVelocity(): Vec3 | null { return this._focusVelocity; }
 
   // target が 'point'(座標系に焼き込んだ固定点)で frame が回転系なら、その天体の
   // 公転に追随する固定点になる。フォーカスが変わると回転追従の選択肢も変わるので、
   // 外れた選択は慣性系へ落とす。
-  setFocusTarget(target: FocusTarget, resetPan = true): void {
+  public setFocusTarget(target: FocusTarget, resetPan = true): void {
     this._focus = target;
     this.missingFocusFrames = 0;
     if (resetPan) this.resetPan();
@@ -179,30 +140,35 @@ export class FocusCamera {
     if (follow !== null && !this.isFollowAvailable(follow)) this.setRotationFollow(null);
   }
 
-  clearFocusIf(id: string): void {
+  // フォーカスが機体 id なら原点天体へ戻す。対象が消えるときに呼ぶ。
+  public clearFocusIf(id: string): void {
     if (this._focus.kind === 'object' && this._focus.id === id) {
       this.setFocusTarget({ kind: 'object', id: this.celestialBodies.originId });
     }
   }
 
-  viewpoint: Viewpoint = {
-    position: v3(),
-    lookTarget: v3(),
-    up: WORLD_UP,
-    fovDeg: FOCUS_CAMERA_FOV,
-    aspect: window.innerWidth / window.innerHeight,
-    projection: 'perspective',
-  };
+  // このフレームの視点。update が毎フレーム組み直す。
+  public viewpoint: Viewpoint;
 
-  // THREE.PerspectiveCamera と初期視点(offset_r/pan_r/up_r/座標系/フォーカス)を組む。saved が
-  // あればその値から、無ければ既定の見下ろし視点から組む。座標系は必ず frames.frameOf 経由で
-  // 解決する — ReferenceFrame をリテラルで組むと参照同一性が崩れる(frame.ts 参照)。
-  constructor(
+  // 初期視点(offset_r/pan_r/up_r/座標系/フォーカス)を組む。saved があればその値から、
+  // 無ければ config.initial から組む。座標系は必ず frames.frameOf 経由で解決する —
+  // ReferenceFrame をリテラルで組むと参照同一性が崩れる。
+  public constructor(
     private readonly _notifier: Notifier,
     private readonly celestialBodies: CelestialBodies,
     private readonly config: FocusCameraConfig,
-    saved?: FocusCameraSaveData,
+    saved: FocusCameraSaveData | undefined,
+    viewport: Viewport,
   ) {
+    // 向きの解決(eulerPolarAxis)がカメラ位置を読むので、視点は他の初期化より先に置く。
+    this.viewpoint = {
+      position: v3(),
+      lookTarget: v3(),
+      up: WORLD_UP,
+      fovDeg: FOCUS_CAMERA_FOV,
+      aspect: viewport.width / viewport.height,
+      projection: 'perspective',
+    };
     this.projectionMode = saved?.projectionMode === 'orthographic' ? 'orthographic' : 'perspective';
     this._referencePlane = saved?.referencePlane === 'ecliptic' || saved?.referencePlane === 'moonOrbit'
       ? saved.referencePlane : 'equator';
@@ -244,24 +210,14 @@ export class FocusCamera {
       qFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r)),
       initialEulerPolarAxis, saved?.rotationMode ?? 'euler', followAttitude, null,
     );
-    const defaultHalfHeight = this.dist * Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5));
+    const defaultHalfHeight = this.dist * Math.tan((this.fovDeg * 0.5 * Math.PI) / 180);
     const savedHalfHeight = saved?.orthographicHalfHeight;
     const halfHeight = savedHalfHeight !== undefined && Number.isFinite(savedHalfHeight) ? savedHalfHeight : defaultHalfHeight;
     this.orthographicHalfHeight = Math.max(FOCUS_CAMERA_MIN_DIST * 1e-6,
       Math.min(FOCUS_CAMERA_MAX_DIST, halfHeight));
-    this.perspectiveCamera = new THREE.PerspectiveCamera(
-      this.fovDeg,
-      window.innerWidth / window.innerHeight,
-      this.near,
-      this.far,
-    );
-    this.orthographicCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, this.near, this.far);
   }
 
-  public get camera(): THREE.Camera {
-    return this.projectionMode === 'orthographic' ? this.orthographicCamera : this.perspectiveCamera;
-  }
-
+  // 垂直画角 [deg] を許容範囲へ収める。非有限値は既定の画角にする。
   private clampFov(fovDeg: number): number {
     return Math.max(FOCUS_CAMERA_FOV_MIN, Math.min(FOCUS_CAMERA_FOV_MAX,
       Number.isFinite(fovDeg) ? fovDeg : FOCUS_CAMERA_FOV));
@@ -271,11 +227,12 @@ export class FocusCamera {
   // カメラが天体近傍(1,000,000 km 以内)にある場合は最寄り天体の自転軸、広域にある場合は黄道面法線。
   private referenceUpAxisEci(): Vec3 {
     if (this.frameAnchors.bodies.length > 0) {
+      // 最も強く引く天体を「最寄り」とし、その中心までの距離で近傍かを判定する。
       const cameraPos = this.viewpoint.position;
       const pivot = this.frameAnchors.bodiesPivot;
       const nearest = strongestAttractor(cameraPos, this.frameAnchors.bodies, pivot);
       const distToBody = len(sub(cameraPos, nearest.positionAt(pivot)));
-      const PLANETARY_SCALE_THRESHOLD = 1e9; // 1,000,000 km in meters
+      const PLANETARY_SCALE_THRESHOLD = 1e9; // 近傍とみなす距離 [m](100万 km)
 
       const nearestBody = this.celestialBodies.findMotion(nearest.id);
       if (distToBody <= PLANETARY_SCALE_THRESHOLD && nearestBody !== null) {
@@ -310,6 +267,7 @@ export class FocusCamera {
     this.orientation.rebase(this.eulerPolarAxis());
   }
 
+  // 基準面の法線(ECI)。月軌道面・赤道面は表示時刻での月の軌道・地球の自転軸から引く。
   private framePlaneNormal(plane: CameraReferencePlane): Vec3 {
     if (plane === 'ecliptic') return ECL_POLE_ECI;
     if (plane === 'moonOrbit') {
@@ -321,55 +279,64 @@ export class FocusCamera {
         ?? this.celestialBodies.motionOf(this.celestialBodies.originId);
       return earth.orientationAt(this.displayTime)?.axis ?? ECI_POLE;
     }
+    // 月が周回運動でない系の月軌道面は黄道面へ落とす。
     return ECL_POLE_ECI;
   }
 
   // 注視点からカメラまでの距離を返す。
-  get dist(): number {
+  public get dist(): number {
     return Math.hypot(this.offset_r.x, this.offset_r.y, this.offset_r.z);
   }
 
+  // 垂直画角 [deg]。
   public get fov(): number {
     return this.fovDeg;
   }
 
+  // 回転操作の方式(オイラー/クォータニオン)。
   public get cameraRotationMode(): CameraRotationMode {
     return this.orientation.rotationMode;
   }
 
+  // 投影方式(透視/正射影)。
   public get projection(): ProjectionMode {
     return this.projectionMode;
   }
 
+  // setReferenceView が真上/真横を取るときの基準面。
   public get referencePlane(): CameraReferencePlane {
     return this._referencePlane;
   }
 
+  // 垂直画角 [deg] を範囲内で設定する。透視投影では見かけの大きさが変わらないよう注視距離も変える。
   public setFovDeg(fovDeg: number): void {
     const nextFov = this.clampFov(fovDeg);
     if (nextFov === this.fovDeg) return;
     if (this.projectionMode === 'perspective') {
-      const oldScale = Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5));
-      const newScale = Math.tan(THREE.MathUtils.degToRad(nextFov * 0.5));
+      const oldScale = Math.tan((this.fovDeg * 0.5 * Math.PI) / 180);
+      const newScale = Math.tan((nextFov * 0.5 * Math.PI) / 180);
       this.setDistance(this.dist * newScale / oldScale);
     }
     this.fovDeg = nextFov;
   }
 
+  // 画角を既定値へ戻す(setFovDeg と同じく注視距離も追従する)。
   public resetFov(): void {
     this.setFovDeg(FOCUS_CAMERA_FOV);
   }
 
+  // 投影方式を切り替える。注視点の見かけの大きさが揃うよう、正射影の半高さと注視距離を相互に換算する。
   public setProjectionMode(mode: ProjectionMode): void {
     if (mode === this.projectionMode) return;
     if (mode === 'orthographic') {
-      this.orthographicHalfHeight = this.dist * Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5));
+      this.orthographicHalfHeight = this.dist * Math.tan((this.fovDeg * 0.5 * Math.PI) / 180);
     } else {
-      this.setDistance(this.orthographicHalfHeight / Math.tan(THREE.MathUtils.degToRad(this.fovDeg * 0.5)));
+      this.setDistance(this.orthographicHalfHeight / Math.tan((this.fovDeg * 0.5 * Math.PI) / 180));
     }
     this.projectionMode = mode;
   }
 
+  // 注視距離 [m] を許容範囲へ収めて設定する。視線の向きは保つ。
   private setDistance(distance: number): void {
     const current = this.dist;
     const next = Math.max(this.minDist, Math.min(FOCUS_CAMERA_MAX_DIST, distance));
@@ -381,18 +348,22 @@ export class FocusCamera {
     );
   }
 
+  // 回転操作の方式(オイラー/クォータニオン)を切り替える。切り替えた瞬間の向きは変えない。
   public setCameraRotationMode(mode: CameraRotationMode): void {
     this.orientation.setMode(mode, this.eulerPolarAxis());
   }
 
-  // 真上/真横の基準面。セーブ対象ではなく、次回の操作状態を示すHUD表示用の状態。
+  // setReferenceView が真上/真横を取るときの基準面。
   private _referencePlane: CameraReferencePlane = 'equator';
 
+  // setReferenceView の基準面を差し替える。視点は次の setReferenceView で動く。
   public setReferencePlane(plane: CameraReferencePlane): void {
     this._referencePlane = plane;
   }
 
+  // 視点を基準面の真上('above')か真横('side')へ回し、パンを戻す。真上では春分方向を画面上に取る。
   public setReferenceView(view: CameraReferenceView): void {
+    // 基準面の法線をカメラの座標系で引く。
     const tf = this.celestialBodies.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     const normal = norm(frameDirVector(toFrameDir(tf, this.framePlaneNormal(this._referencePlane))));
     const currentOffset = qRotate(this.orientation.effective(), LOCAL_FORWARD);
@@ -403,6 +374,7 @@ export class FocusCamera {
       up = projectOntoPlane(frameDirVector(toFrameDir(tf, ECL_VERNAL)), normal);
       if (lenSq(up) < 1e-8) up = projectOntoPlane(LOCAL_RIGHT, normal);
     } else {
+      // 真横は今の視線を基準面へ倒す。退化したら春分方向、右方向の順に代える。
       offset = projectOntoPlane(currentOffset, normal);
       if (lenSq(offset) < 1e-8) offset = projectOntoPlane(frameDirVector(toFrameDir(tf, ECL_VERNAL)), normal);
       if (lenSq(offset) < 1e-8) offset = projectOntoPlane(LOCAL_RIGHT, normal);
@@ -415,25 +387,6 @@ export class FocusCamera {
     this._notifier.hint(view === 'above' ? '基準面の真上を表示' : '基準面の真横を表示');
   }
 
-  // CameraSystem.sync が読む近クリップ距離。dist に比例させることで、どのズーム段でも
-  // 注視点を切り落とさない(FOCUS_CAMERA_NEAR_RATIO 参照)。
-  // near クリップは光軸からの角度 θ の点を R·cosθ で切り詰める平面なので、画面対角の
-  // 半視野角(fov・aspect から求まる)での R·cosθ_diag を超えないようクランプし、
-  // 星球シェル・天球グリッドの周辺・四隅がクリップされないようにする。
-  get near(): number {
-    const halfV = THREE.MathUtils.degToRad(this.fov * 0.5);
-    const halfH = Math.atan(Math.tan(halfV) * window.innerWidth / window.innerHeight);
-    const halfDiag = Math.atan(Math.hypot(Math.tan(halfV), Math.tan(halfH)));
-    const nearMax = CELESTIAL_SHELL_RADIUS * Math.cos(halfDiag) * FOCUS_CAMERA_NEAR_SHELL_MARGIN;
-    return Math.min(nearMax, this.dist / FOCUS_CAMERA_NEAR_RATIO);
-  }
-
-  // CameraSystem.sync が読む遠クリップ距離。dist に比例させることで、引いたカメラでも
-  // 太陽・木星のような遠方天体が far の外に出て消えない(FOCUS_CAMERA_FAR_RATIO 参照)。
-  get far(): number {
-    return Math.min(FOCUS_CAMERA_FAR_MAX, Math.max(FOCUS_CAMERA_FAR_MIN, this.dist * FOCUS_CAMERA_FAR_RATIO));
-  }
-
   // 現在のフォーカス対象がクランプ後も表面下にめり込まない最小注視距離。
   // 天体は半径まで、機体・固定点は艦を間近に見る距離まで寄れる。
   private get minDist(): number {
@@ -444,7 +397,7 @@ export class FocusCamera {
 
   // ロールを初期状態(天体近傍: 自転軸、広域: 黄道面法線)に戻し、パンでフォーカスから
   // ずれていた注視点もフォーカス位置へ戻す。
-  reset(): void {
+  public reset(): void {
     const tf = this.celestialBodies.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     const offset = qRotate(this.orientation.effective(), LOCAL_FORWARD);
     const upAxisEci = this.referenceUpAxisEci();
@@ -467,8 +420,7 @@ export class FocusCamera {
   );
 
   // 注視点の位置を返し、速度は focusVelocity へ残す。候補が一時的に欠けたフレームでは直前の
-  // 注視点を保ち、連続して消えた対象は ECI 原点へ戻す。
-  // point は座標系が回っていれば ECI 座標が動くため、毎フレーム焼き直す。
+  // 注視点を保ち、連続して消えた対象は focusLossPolicy に従って扱う。
   private resolveFocus(candidates: readonly FocusCandidate[], displayTime: number, frameAnchors: FrameAnchorSource): Vec3 {
     const result = resolveFocusTarget(
       this._focus, candidates, displayTime, frameAnchors,
@@ -489,40 +441,42 @@ export class FocusCamera {
   }
 
   // 現在視点を固定している座標系を返す。
-  get cameraFrame(): ReferenceFrame {
+  public get cameraFrame(): ReferenceFrame {
     return this._cameraFrame;
   }
 
   // 最後に resolveFocus が解決した注視点の ECI 位置。
-  get resolvedFocus(): Vec3 {
+  public get resolvedFocus(): Vec3 {
     return this.lastResolvedFocus;
   }
 
   // 選択中の回転追従(null は慣性系)。
-  get rotationFollow(): CameraRotationFollow | null {
+  public get rotationFollow(): CameraRotationFollow | null {
     return this.orientation.followingAttitude ? { kind: 'attitude' } : this._cameraFrame.rotatingWith;
   }
 
-  // いま選べる回転追従の選択肢(慣性系は常に選べるので含めない)。フォーカスが天体なら
-  // 自分の公転・子の公転・自分の自転、機体・役割なら(周回中のみ)公転と姿勢。固定点は空。
-  availableRotationFollows(displayTime: number): readonly CameraRotationFollow[] {
+  // いま選べる回転追従の選択肢(慣性系は常に選べるので含めない)。固定点フォーカスでは空。
+  public availableRotationFollows(displayTime: number): readonly CameraRotationFollow[] {
     if (this._focus.kind === 'point') return [];
     const id = this._focus.id;
     const out: CameraRotationFollow[] = [];
     const body = this.celestialBodies.findMotion(id);
     if (body !== null) {
+      // 天体: 自分の公転・子の公転・自分の自転
       if (body.primary !== null) out.push({ kind: 'revolution', id });
       for (const motion of this.celestialBodies.celestialMotions) {
         if (motion.primary?.id === id) out.push({ kind: 'revolution', id: motion.id });
       }
       if (body.spinRotationAt(displayTime) !== null) out.push({ kind: 'spin', id });
     } else {
+      // 機体・役割: 周回中なら公転、姿勢を引ければ姿勢
       if (this.frameAnchors.attractorOf(id, displayTime) !== null) out.push({ kind: 'revolution', id });
       if (this.config.attitudeOf(id, displayTime) !== null) out.push({ kind: 'attitude' });
     }
     return out;
   }
 
+  // follow が表示時刻の選択肢に含まれるか。
   private isFollowAvailable(follow: CameraRotationFollow): boolean {
     const key = rotationFollowKey(follow);
     return this.availableRotationFollows(this.displayTime).some((f) => rotationFollowKey(f) === key);
@@ -530,10 +484,11 @@ export class FocusCamera {
 
   // 回転追従を切り替える。選択肢に無い値は慣性系として扱う。どの切替でも視点は跳ばない —
   // 保持していた向きを新しい基準へ読み替える。
-  setRotationFollow(follow: CameraRotationFollow | null): void {
+  public setRotationFollow(follow: CameraRotationFollow | null): void {
     const valid = follow !== null && this.isFollowAvailable(follow) ? follow : null;
     this.orientation.endAttitudeFollow(this.eulerPolarAxis());
     if (valid?.kind === 'attitude') {
+      // 姿勢追従は座標系を慣性系に固定し、対象の姿勢を向きへ合成する。
       const id = focusTargetId(this._focus);
       const att = id !== undefined ? this.config.attitudeOf(id, this.displayTime) : null;
       if (att === null) return;
@@ -544,8 +499,8 @@ export class FocusCamera {
     this.setCameraRotation(valid);
   }
 
-  // [G] の実体: フォーカスが機体なら姿勢追従⇄慣性系をトグルして true。それ以外は何もせず false。
-  toggleAttitudeFollow(): boolean {
+  // フォーカスが機体なら姿勢追従⇄慣性系をトグルして true。姿勢追従を選べなければ false。
+  public toggleAttitudeFollow(): boolean {
     if (this.orientation.followingAttitude) {
       this.orientation.endAttitudeFollow(this.eulerPolarAxis());
       return true;
@@ -557,11 +512,12 @@ export class FocusCamera {
 
   // フォーカス・回転追従・視点・画角を初期状態(config.initial)へ戻す。
   // 姿勢追従中にリセットすると、既定の視点は追従基準に対して置かれる(= 対象の後方見下ろしへ戻る)。
-  resetToInitial(): void {
+  public resetToInitial(): void {
     const init = this.config.initial;
     this._focus = init.focus;
     this.missingFocusFrames = 0;
     this.orientation.restoreFollow(this.applyInitialFrame(init.follow));
+    // 視点を初期の角度・距離から組み直す。
     const offset = sphericalOffset(init.angles, init.dist);
     this.offset_r = frameDir(offset.x, offset.y, offset.z);
     this.up_r = frameDir(WORLD_UP.x, WORLD_UP.y, WORLD_UP.z);
@@ -604,14 +560,14 @@ export class FocusCamera {
     this.orientation.refreshAttitude(attitude, this.eulerPolarAxis());
   }
 
-  // カメラ視点の回転対象を切り替える。中心は常に ECI 中心天体 — offset_r/pan_r/up_r は
-  // 方向(FrameDir)しか持たず原点移動の影響を受けないので、中心をどれにしても視点は変わらない。
-  // 切替の瞬間にカメラ視点(ECI)を跳ばせないよう、現在の座標系から新しい座標系へ変換し直す。
+  // カメラ視点の回転対象を切り替える。視点ベクトルを新しい座標系へ読み替えるので、ECI での
+  // 視点は跳ばない。
   private setCameraRotation(rotatingWith: FrameRotationSource | null): void {
     const frames = this.celestialBodies.frames;
     const frame = frames.frameOf(this.celestialBodies.originId, rotatingWith);
     const from = this._cameraFrame;
     if (frame === from) return;
+    // 旧座標系 → ECI → 新座標系へ視点ベクトルを移す。
     const tfFrom = frames.transformAt(from, this.displayTime, this.frameAnchors);
     const offEci = toInertialDir(tfFrom, this.offset_r);
     const panEci = toInertialDir(tfFrom, this.pan_r);
@@ -628,13 +584,14 @@ export class FocusCamera {
   // マウス/キー入力から viewpoint を1フレーム分更新する。displayTime は線・メッシュが描かれる
   // のと同じ表示時刻 — 座標系変換をそこに揃えないと、回転系選択時に線・メッシュだけが
   // displayTime へ動いてカメラだけ現在時刻に取り残される。
-  update(
+  public update(
     mouse: MouseDelta,
     keyYawRad: number,
     keyPitchRad: number,
     displayTime: number,
     candidates: readonly FocusCandidate[],
     frameAnchors: FrameAnchorSource,
+    viewport: Viewport,
   ): void {
     this.displayTime = displayTime;
     this.frameAnchors = frameAnchors;
@@ -677,8 +634,8 @@ export class FocusCamera {
       const right = norm(cross(viewDir, upEci));
       const camUp = norm(cross(right, viewDir));
       const metersPerPixel = this.projectionMode === 'orthographic'
-        ? (2 * this.orthographicHalfHeight) / Math.max(1, window.innerHeight)
-        : metersPerPixelAtDepth(this.fovDeg, dist, Math.max(1, window.innerHeight));
+        ? (2 * this.orthographicHalfHeight) / Math.max(1, viewport.height)
+        : metersPerPixelAtDepth(this.fovDeg, dist, Math.max(1, viewport.height));
       panEci = addScaled(panEci, right, -mouse.panDx * metersPerPixel);
       panEci = addScaled(panEci, camUp, mouse.panDy * metersPerPixel);
     }
@@ -690,7 +647,7 @@ export class FocusCamera {
       lookTarget,
       up: upEci,
       fovDeg: this.fovDeg,
-      aspect: window.innerWidth / window.innerHeight,
+      aspect: viewport.width / viewport.height,
       projection: this.projectionMode,
       orthographicHalfHeight: this.orthographicHalfHeight,
     };
@@ -701,7 +658,8 @@ export class FocusCamera {
   }
 
   // offset_r/pan_r/up_r・視点の座標系・フォーカス対象をセーブデータへ書き出す。
-  serialize(): FocusCameraSaveData {
+  public serialize(): FocusCameraSaveData {
+    // 固定点フォーカスは、焼き込んだ座標系ごと書き出す。
     const focus: FocusCameraSaveData['focus'] = this._focus.kind === 'object'
       ? { kind: 'object', id: this._focus.id }
       : {

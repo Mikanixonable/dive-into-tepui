@@ -1,8 +1,8 @@
 // 天体表面の共通契約。既存CelestialSurfaceを差し替え可能な型として受けられることを固定する。
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
-import { CelestialSurface } from '../../src/render/celestial-surface';
-import type { CelestialSurfaceLike } from '../../src/render/celestial-surface';
+import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
+import type { CelestialSurfaceLike } from '../../src/render/celestial/celestial-surface';
 import { test } from '../harness';
 
 function frame(): Parameters<CelestialSurfaceLike['syncFrame']>[0] {
