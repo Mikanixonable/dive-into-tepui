@@ -288,20 +288,26 @@ export function register(): void {
   test('earth resident: 子の逆順到着でも全層がそろうまで親fallbackを維持する', async () => {
     const roots = [earthTileKey(0, 0, 0), earthTileKey(0, 1, 0)];
     const children = earthTileChildren(roots[0]!);
-    const fixture = coordinator([...roots, ...children], async (input) => {
-      const url = String(input);
-      const id = url.replace(/\.(jpg|bin\.gz)$/, '');
-      const key = [...roots, ...children].find((candidate) => earthTileId(candidate) === id);
-      if (key === undefined) throw new Error(`missing fixture ${id}`);
-      const order = children.findIndex((candidate) => earthTileId(candidate) === id);
-      if (order >= 0) await new Promise((resolve) => setTimeout(resolve, (children.length - order) * 2));
-      return url.endsWith('.jpg') ? response(COLOR) : response(gzipSync(terrain(key)));
+    // 子の色変換を4つとも届くまで止めて逆順に放し、層の予約順を到着順の逆に固定する。
+    const releases: (() => void)[] = [];
+    const fixture = coordinator([...roots, ...children], undefined, new ImmediateBackend(), async (color, key) => {
+      if (!(color instanceof Uint8Array)) throw new Error('fixture color is not RGBA8');
+      const order = children.findIndex((candidate) => earthTileId(candidate) === earthTileId(key));
+      if (order < 0) return color;
+      await new Promise<void>((resolve) => {
+        releases[order] = resolve;
+        if (Object.keys(releases).length === children.length) releases.slice().reverse().forEach((release) => release());
+      });
+      return color;
     });
     const projection = new Projection();
     sync(fixture.resident, projection, 0);
     assert.deepEqual(earthPageAt(fixture.backend.pages.at(-1)!, 0.1, 0.1), [255, 255, 255, 255]);
     await fixture.resident.settle();
     assert.equal(fixture.resident.residentMaxZ, 0);
+    // 層は到着順に割り当たり、根2枚の到着順は digest・gzip 展開の完了順で揺れる。
+    const parentLayer = fixture.gpu.uploadedTiles().find((tile) => earthTileId(tile.key) === earthTileId(roots[0]!))?.layer;
+    assert.notEqual(parentLayer, undefined);
     sync(fixture.resident, projection, 300);
     await fixture.resident.settle();
     sync(fixture.resident, projection, 600);
@@ -311,7 +317,7 @@ export function register(): void {
     sync(fixture.resident, projection, 900);
     const childPage = earthPageAt(fixture.backend.pages.at(-1)!, 0.1, 0.1);
     assert.equal(childPage[2], 1);
-    assert.equal(childPage[1], 0);
+    assert.equal(childPage[1], parentLayer);
     assert.notEqual(childPage[0], 255);
     sync(fixture.resident, projection, 1200);
     assert.equal(earthPageAt(fixture.backend.pages.at(-1)!, 0.1, 0.1)[3], 255);
