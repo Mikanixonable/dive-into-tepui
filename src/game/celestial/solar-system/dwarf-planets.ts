@@ -5,9 +5,9 @@ import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
 import { GRAVITATIONAL_CONSTANT } from './constants';
-import { CelestialSurface } from '../../../render/celestial-surface';
+import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { SphereCelestialView } from '../celestial-entity/sphere-celestial-view';
+import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
 import { PLUTO_POLE, equatorBasis } from './poles';
 import { jplSatelliteOrbit } from './satellite-orbit-builders';
 
@@ -19,15 +19,12 @@ export type DwarfPlanetId =
   | 'makemake'
   | 'eris' | 'dysnomia';
 
-// 準惑星・大型小惑星・彗星核。永年摂動項は解いておらず raanRate 等は
-// すべて 0 — 二体ケプラー軌道のみで、木星等による摂動(彗星核では非重力効果も)は含まない。
-// 軌道要素は JPL Small-Body Database(sbdb.api、full-prec=true)から取得した黄道座標・
-// J2000 の a/e/i/Ω(om)/ω(w)/M(ma) と、その要素の元期(JD)。ハレー・エンケの元期の平均近点角
-// は取得元期のものなので、そこから J2000 まで平均運動で外挿している(冥王星のみ後述の別出典)。
-// lRateDegPerCentury は平均運動 n = 360°/period を世紀あたりへ換算したもの — 周期はケプラー第3
-// 法則 T = 2π√(a³/μ_sun) から SBDB の a のみで独立に計算し(SBDB の per フィールドとも一致)、
-// n = 360°/T。l0Deg(J2000 の平均黄経)は取得元期の平均黄経 L = M+ω+Ω を、この n で J2000 まで
-// 外挿して求めた。
+// 準惑星・大型小惑星。永年摂動項は解いておらず raanRate 等はすべて 0 — 二体ケプラー軌道のみで、
+// 木星等による摂動は含まない。軌道要素は JPL Small-Body Database(sbdb.api、full-prec=true)の
+// 黄道座標・J2000 の a/e/i/Ω(om)/ω(w)/M(ma) と、その要素の元期(JD)から求めた(冥王星のみ後述の
+// 別出典)。lRateDegPerCentury は平均運動 n = 360°/T を世紀あたりへ換算したもので、T はケプラー
+// 第3法則 T = 2π√(a³/μ_sun) で SBDB の a から求める(SBDB の per フィールドとも一致)。l0Deg
+// (J2000 の平均黄経)は取得元期の平均黄経 L = M+ω+Ω を、この n で J2000 まで外挿した。
 export const CERES: PlanetDef = {
   id: 'ceres',
   mu: 6.26e10,
@@ -248,7 +245,7 @@ const ERIS: PlanetDef = {
   }),
 };
 
-// エリスの衛星ディスノミア。基準面は黄道面(出典・扱いはハウメアの衛星と同じ)。
+// エリスの衛星ディスノミア。基準面は黄道面の二次引用の要素で、歳差周期は未公開(=0)。
 const DYSNOMIA: SatelliteDef = {
   id: 'dysnomia',
   mu: GRAVITATIONAL_CONSTANT * 8.2e19,

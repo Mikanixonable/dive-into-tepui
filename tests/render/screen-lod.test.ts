@@ -4,7 +4,7 @@ import {
   sphereLodLevel,
   sphereLodLevelWithHysteresis,
   sphereLodTransitionThresholds,
-} from '../../src/render/screen-lod';
+} from '../../src/render/celestial/screen-lod';
 import { test } from '../harness';
 
 export function register(): void {

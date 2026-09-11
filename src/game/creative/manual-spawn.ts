@@ -13,14 +13,14 @@ import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { Enemy } from '../dynamic/dynamic-entity/enemy';
 import type { SpawnGate } from '../dynamic/entity-registry';
 import type { Player } from '../player/player';
-import type { ProteinDisplaySettings } from '../protein/protein-display';
+import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
 import type { FlashEffects } from '../vfx/flash-effects';
 
 // 敵1体の生成。gate が通ってから build を呼ぶ。待つものが無ければ gate は null。
-export type EnemySpawn = {
+export interface EnemySpawn {
   readonly gate: SpawnGate | null;
   readonly build: () => Enemy;
-};
+}
 
 // 敵を出す、自機前方の既定距離 [m]。
 const DEFAULT_SPAWN_DISTANCE = 2000;

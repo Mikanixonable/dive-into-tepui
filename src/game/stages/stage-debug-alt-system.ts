@@ -1,6 +1,6 @@
 // デバッグ用ステージ: 現実の太陽系とは無関係な架空のレジストリ・原点で進行する。恒星1体・
-// 惑星1体・衛星1体だけの最小構成で、輻射源・日照率・点群などの経路が太陽系のレジストリに
-// 依存していないことを実演する。タイトルの通常ボタン列には出ない。
+// 惑星1体・衛星1体の最小構成で、輻射源・日照率・点群などの経路が任意のレジストリで動くことを
+// 確かめる。
 import * as THREE from 'three/webgpu';
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
@@ -15,13 +15,13 @@ import { kinematicState } from '../../physics/kinematic-state';
 import { add } from '../../math/vec3';
 import type { StageSaveData } from '../save/save-data';
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
-import { CelestialSurface } from '../../render/celestial-surface';
+import { CelestialSurface } from '../../render/celestial/celestial-surface';
 import { celestialClassOfKind } from '../celestial/celestial-entity/celestial-entity-def';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { CelestialSystem } from '../celestial/celestial-system';
 import type { TdbJulianDate } from '../../physics/time';
-import { SphereCelestialView } from '../celestial/celestial-entity/sphere-celestial-view';
-import { StarCelestialView } from '../celestial/celestial-entity/star-celestial-view';
+import { SphereCelestialView } from '../../render/celestial/celestial-entity/sphere-celestial-view';
+import { StarCelestialView } from '../../render/celestial/celestial-entity/star-celestial-view';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../render/pipeline/sun-light';
 import { MAG_ROUNDS } from '../player/ammo-spec';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -89,9 +89,10 @@ function fallbackEntity(motion: CelestialBody): CelestialEntity {
 }
 
 export class StageDebugAltSystem extends Stage {
-  static readonly id = 'debug-alt-system' as const;
-  static readonly epoch = STORY_EPOCH;
-  static async createCelestialSystem(
+  public static readonly id = 'debug-alt-system' as const;
+  public static readonly epoch = STORY_EPOCH;
+  // 架空の3体を並べ、惑星 zephyrus を原点とする天体系を組む。
+  public static async createCelestialSystem(
     phaseOffsets: PhaseOffsets, _earthSpinPhase0: number, epoch: TdbJulianDate,
     _onProgress?: (ratio: number) => void, _renderer?: THREE.WebGPURenderer,
   ): Promise<CelestialSystem> {
@@ -99,17 +100,19 @@ export class StageDebugAltSystem extends Stage {
     const origin = bodies.find((b) => b.id === PRIMARY_ID)!;
     return new CelestialSystem(bodies, origin, phaseOffsets, epoch);
   }
-  static readonly selectLabel = 'DEBUG(架空星系)';
-  static readonly selectSub = '【デバッグ】架空天体3体だけのレジストリで起動する';
-  static readonly hiddenFromSelect = true;
-  static readonly selectKeys = ['KeyE'];
+  public static readonly selectLabel = 'DEBUG(架空星系)';
+  public static readonly selectSub = '【デバッグ】架空天体3体だけのレジストリで起動する';
+  public static readonly hiddenFromSelect = true;
+  public static readonly selectKeys = ['KeyE'];
 
-  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+  // saved があればそこから復元し、無ければ初期配置してステージを始める。
+  public constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     this.begin();
   }
 
-  briefingHtml(): string {
+  // ステージ開始時に出すブリーフィングの本文(HTML)。
+  protected briefingHtml(): string {
     return `<b>架空星系デバッグステージ</b><br>${STAR_ID} 系の ${PRIMARY_ID} で起動`;
   }
 
@@ -126,14 +129,14 @@ export class StageDebugAltSystem extends Stage {
   }
 
   // 補給を1フレーム分進める。自艦がいなければ何もしない。
-  update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
+  public update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }
 
   // 検証を継続できるよう、勝敗を発生させない(クリア回数にも入らない)。
-  checkWin(): boolean {
+  protected checkWin(): boolean {
     return false;
   }
 }
