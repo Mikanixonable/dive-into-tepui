@@ -174,10 +174,10 @@ export function register(): void {
     }
   });
 
-  test('protein ribbon geometry: component colors stay distinct beyond the old 6-color palette', () => {
+  test('protein ribbon geometry: component colors stay distinct across more than 6 roles', () => {
     const source = sourceFor('pdb-6n2y-atp-synthase');
     const roleCount = new Set(source.semantic.components.map((component) => component.role)).size;
-    assert.ok(roleCount > 6, 'fixture should exercise more roles than the retired fixed palette held');
+    assert.ok(roleCount > 6, 'fixture should exercise more than 6 roles');
 
     const colorsByRole = new Map<string, THREE.Color>();
     for (const component of source.semantic.components) {
