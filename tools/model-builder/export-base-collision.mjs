@@ -3,9 +3,9 @@
 // 成分の全頂点を必ず内側へ含むので、見えている構造を弾がすり抜けることも、見えている面へ自機が
 // めり込むことも起きない。細かい部材の足切りはしない — 落とすと判定形状の外へはみ出す。
 //
-// 実行: node tools/export-base-collision.mjs [--check]
+// 実行: node tools/model-builder/export-base-collision.mjs [--check]
 //   --check は焼き直しても差分が出ないことだけを見る(書き換えない)。
-//   base.json は tools/export-models.mjs が書くので、造形を変えたらその後に走らせる。
+//   base.json は export-models.mjs が書くので、造形を変えたらその後に走らせる。
 //
 // 注意: これは 'three' (プレーン NPM パッケージ) を使うツール専用スクリプト。
 // src/ 配下では 'three/webgpu' 以外から THREE をインポートしてはならない。
@@ -15,7 +15,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const modelPath = join(repoRoot, 'src', 'assets', 'models', 'base.json');
 const outPath = join(repoRoot, 'src', 'assets', 'models', 'baseCollision.json');
 const checkOnly = process.argv.includes('--check');

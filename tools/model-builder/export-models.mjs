@@ -2,7 +2,7 @@
 // THREE.Object3D.toJSON() でシリアライズして src/assets/models/*.json に書き出すツール。
 // 実行時はこの JSON を THREE.ObjectLoader でパースして使う。
 //
-// 実行: node tools/export-models.mjs
+// 実行: node tools/model-builder/export-models.mjs
 //
 // 注意: これは 'three' (プレーン NPM パッケージ) を使うツール専用スクリプト。
 // src/ 配下では 'three/webgpu' 以外から THREE をインポートしてはならない
@@ -12,11 +12,11 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildBaseModel } from './base-station-model.mjs';
-import { importTsDataModule, loadSourceModules } from './compile-source.mjs';
+import { buildBaseModel } from './base-station.mjs';
+import { importTsDataModule, loadSourceModules } from '../compile-source.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const outDir = join(__dirname, '..', 'src', 'assets', 'models');
+const outDir = join(__dirname, '..', '..', 'src', 'assets', 'models');
 mkdirSync(outDir, { recursive: true });
 
 const { RCS_NOZZLES } = await importTsDataModule('src/render/rcs-nozzles.ts');

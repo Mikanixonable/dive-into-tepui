@@ -1,5 +1,5 @@
 // 自機の物理判定・部品配置・描画が共有する機体座標系の寸法。
-// 他モジュールを import してはならない — tools/export-models.mjs がこのファイルを
+// 他モジュールを import してはならない — tools/model-builder/ がこのファイルを
 // TypeScript のまま transpile して読み込む。
 
 // 機関砲の銃口位置。発射、発光、薬莢排出はこの2点を交互に使う。
@@ -8,7 +8,7 @@ export const PLAYER_MUZZLE_OFFSETS: readonly { x: number; y: number; z: number }
   { x: 0, y: -0.55, z: 2.55 },
 ];
 
-// 蛇腹1折りの一辺 [m]。tools/export-models.mjs と一致させる。
+// 蛇腹1折りの一辺 [m]。tools/model-builder/export-models.mjs と一致させる。
 export const RADIATOR_SEGMENT_LENGTH = (2.3 * 4) / 6;
 
 // 全開時に各折りが展開軸から残す傾き [rad]。

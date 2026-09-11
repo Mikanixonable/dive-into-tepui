@@ -1,10 +1,6 @@
 // 基地の造形。主トラスを挟んで、居住区(+Z)とカウンターウェイトの貨物区(-Z)が向かい合う。
-// tools/export-models.mjs が src/assets/models/base.json へ書き出す。
-//
-// 注意: これは 'three' (プレーン NPM パッケージ) を使うツール専用スクリプト。
-// src/ 配下では 'three/webgpu' 以外から THREE をインポートしてはならない。
 import * as THREE from 'three';
-import { importTsDataModule } from './compile-source.mjs';
+import { importTsDataModule } from '../compile-source.mjs';
 
 const { F0_STEEL } = await importTsDataModule('src/render/dynamic/metal-f0.ts');
 

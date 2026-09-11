@@ -41,7 +41,7 @@ function yRotatedOffset(theta: number, x: number): Vec3 {
 }
 
 // side の fold 番目の折りの中心位置(機体座標系)。RADIATOR_HINGE から蛇腹を辿り、
-// 各折りの根本から半セグメント先(export-models.mjs の panel.position と同じ位置)を返す。
+// 各折りの根本から半セグメント先(tools/model-builder/export-models.mjs の panel.position と同じ位置)を返す。
 function foldLocalPosition(side: RadiatorSide, fold: number, even: number, odd: number): Vec3 {
   const sign = sideSign(side);
   let origin = v3(sign * RADIATOR_HINGE.x, RADIATOR_HINGE.y, RADIATOR_HINGE.z);
