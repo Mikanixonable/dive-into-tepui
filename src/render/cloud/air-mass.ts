@@ -35,10 +35,10 @@ const WINDY_SPEED = 7;
 // 単位方向における気団。compression は気団の境目の押し縮まり(何も起きていない所と、追跡の風が
 // 淀んで境目を信じられない所で 1)、warmth はいまの緯度と出身の緯度の差 [rad](正で暖気の流入、
 // 負で寒気の流入)。
-export type AirMassSample = {
+export interface AirMassSample {
   readonly compression: FloatNode;
   readonly warmth: FloatNode;
-};
+}
 
 export class AirMass {
   // 追跡の写し。R が出身の緯度のいまの緯度からの隔たり [rad]、G が追跡の風の速さ [m/s]。

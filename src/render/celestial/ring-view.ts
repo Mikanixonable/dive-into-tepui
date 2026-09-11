@@ -19,14 +19,14 @@ import { ringPixelCoverage } from './screen-lod';
 import type { GraphicsSettingsData } from '../graphics-settings';
 import type { ScaleFn } from '../../math/projection';
 
-type CoverageBand = {
+interface CoverageBand {
   readonly widthMeters: number;
   readonly annulus: RingVisual;
   readonly line: RingLineVisual;
-};
+}
 
 export class RingView {
-  readonly group = new THREE.Group();
+  public readonly group = new THREE.Group();
   private readonly coverageBands: CoverageBand[] = [];
   private readonly visuals: RingVisual[] = [];
   // 模式図で環の代わりに出す、環全体の最内・最外半径の輪郭円。

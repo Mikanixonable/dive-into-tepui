@@ -89,9 +89,9 @@ function fallbackEntity(motion: CelestialBody): CelestialEntity {
 }
 
 export class StageDebugAltSystem extends Stage {
-  static readonly id = 'debug-alt-system' as const;
-  static readonly epoch = STORY_EPOCH;
-  static async createCelestialSystem(
+  public static readonly id = 'debug-alt-system' as const;
+  public static readonly epoch = STORY_EPOCH;
+  public static async createCelestialSystem(
     phaseOffsets: PhaseOffsets, _earthSpinPhase0: number, epoch: TdbJulianDate,
     _onProgress?: (ratio: number) => void, _renderer?: THREE.WebGPURenderer,
   ): Promise<CelestialSystem> {
@@ -99,17 +99,17 @@ export class StageDebugAltSystem extends Stage {
     const origin = bodies.find((b) => b.id === PRIMARY_ID)!;
     return new CelestialSystem(bodies, origin, phaseOffsets, epoch);
   }
-  static readonly selectLabel = 'DEBUG(架空星系)';
-  static readonly selectSub = '【デバッグ】架空天体3体だけのレジストリで起動する';
-  static readonly hiddenFromSelect = true;
-  static readonly selectKeys = ['KeyE'];
+  public static readonly selectLabel = 'DEBUG(架空星系)';
+  public static readonly selectSub = '【デバッグ】架空天体3体だけのレジストリで起動する';
+  public static readonly hiddenFromSelect = true;
+  public static readonly selectKeys = ['KeyE'];
 
-  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+  public constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     this.begin();
   }
 
-  briefingHtml(): string {
+  protected briefingHtml(): string {
     return `<b>架空星系デバッグステージ</b><br>${STAR_ID} 系の ${PRIMARY_ID} で起動`;
   }
 
@@ -126,14 +126,14 @@ export class StageDebugAltSystem extends Stage {
   }
 
   // 補給を1フレーム分進める。自艦がいなければ何もしない。
-  update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
+  public update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }
 
   // 検証を継続できるよう、勝敗を発生させない(クリア回数にも入らない)。
-  checkWin(): boolean {
+  protected checkWin(): boolean {
     return false;
   }
 }

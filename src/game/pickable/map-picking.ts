@@ -38,7 +38,7 @@ export class MapPicking {
   private readonly orbitLineWindows: OrbitLineWindows;
 
   // 候補列と、当たった対象の落とし先(ObjectWindows)を参照として受け取る。
-  constructor(
+  public constructor(
     private readonly hud: HudLayers & Notifier,
     private readonly cameraSystem: CameraSystem,
     private readonly roster: EntityRoster,
@@ -96,7 +96,7 @@ export class MapPicking {
 
   // 右クリック位置の被選択物(天体・自艦・他艦・ノード等)のプロパティウィンドウを開く。
   // 当たらなければ消費せず、handleEmptySpaceRightClick へ読み進める。
-  handleRightClick(input: Input, simTime: number, viewport: Viewport): void {
+  public handleRightClick(input: Input, simTime: number, viewport: Viewport): void {
     input.takeRightClicks((p) => {
       const target = this.pickAt(this.pickables.pickables, p.x, p.y, viewport);
       if (!target) return false;
@@ -109,7 +109,7 @@ export class MapPicking {
   // (公転軌道・船の軌道・軌道ガイド)への当たり判定を試みる。当たれば軌道のプロパティ
   // ウィンドウを開いて消費する。handleEmptySpaceRightClick より前、editor.handleMapPointer
   // より後に呼ぶ(11節の判定順序)。
-  handleLineRightClick(input: Input, viewport: Viewport): void {
+  public handleLineRightClick(input: Input, viewport: Viewport): void {
     input.takeRightClicks((p) => {
       const orbit = pickNearestLine(
         this.linePickables.pickables, p.x, p.y,
@@ -127,7 +127,7 @@ export class MapPicking {
   // 左クリック位置の、選択に応じる被選択物を選ぶ。当たらなければ消費せず、PlanEditor の
   // ノード配置/選択解除に読み進める(呼び出し側が editor.handleMapPointer より先に呼ぶことで、
   // マーカーへの命中をノード配置より優先する)。
-  handleLeftClick(input: Input, viewport: Viewport): void {
+  public handleLeftClick(input: Input, viewport: Viewport): void {
     input.takeClicks((p) => {
       const target = this.pickAt(
         this.pickables.pickables.filter((i) => i.onMapSelect !== null), p.x, p.y, viewport);
@@ -139,7 +139,7 @@ export class MapPicking {
 
   // ダブルクリック位置の被選択物へフォーカスを移し、自艦であれば操作対象にも切り替える。
   // 種別を問わず候補列全体から探す。
-  handleDoubleClick(input: Input, viewport: Viewport): void {
+  public handleDoubleClick(input: Input, viewport: Viewport): void {
     input.takeDoubleClicks((p) => {
       const target = this.pickAt(this.pickables.pickables, p.x, p.y, viewport);
       if (!target) return false;
@@ -149,7 +149,7 @@ export class MapPicking {
   }
 
   // 何も当たらなかった右クリックを「空域」として扱う(他のハンドラの後に呼ぶ)。
-  handleEmptySpaceRightClick(input: Input, simTime: number): void {
+  public handleEmptySpaceRightClick(input: Input, simTime: number): void {
     input.takeRightClicks((p) => {
       this.objectWindows.openEmptySpaceMenu(p.x, p.y, simTime);
       return true;
@@ -172,7 +172,7 @@ export class MapPicking {
   }
 
   // 軌道物体一覧を、このフレームの候補列で組み直す。
-  sync(displayTime: number, viewer: OrbitingObject | null): void {
+  public sync(displayTime: number, viewer: OrbitingObject | null): void {
     // 親が無ければ(恒星、もしくは主天体が未登録)載せず、根として扱う。
     const parentOf = new Map<string, string>();
     for (const item of this.celestialMarkers.allItems) {
@@ -187,12 +187,12 @@ export class MapPicking {
   }
 
   // 一覧と軌道線のウィンドウを畳む。マップビューを離れるときに呼ぶ。
-  close(): void {
+  public close(): void {
     this.listPanel.setVisible(false);
     this.orbitLineWindows.close();
   }
 
-  dispose(): void {
+  public dispose(): void {
     this.listPanel.dispose();
   }
 }

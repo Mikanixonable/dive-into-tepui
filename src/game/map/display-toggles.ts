@@ -3,7 +3,7 @@
 // 保存される boolean の組も、この1つの表が正本。
 import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 
-export type MapDisplayToggles = {
+export interface MapDisplayToggles {
   readonly planetVisible: boolean;
   readonly planetOrbit: boolean;
   readonly planetName: boolean;
@@ -28,7 +28,7 @@ export type MapDisplayToggles = {
   readonly fuelName: boolean; readonly fuelOrbit: boolean;
   readonly baseVisible: boolean;
   readonly baseName: boolean; readonly baseOrbit: boolean;
-};
+}
 
 export type MapDisplayMode = 'orbit' | 'label' | 'hidden';
 
