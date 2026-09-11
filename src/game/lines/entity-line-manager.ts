@@ -90,7 +90,7 @@ export class EntityLineManager {
     );
   }
 
-  // 1フレーム分の表示判断を各対象へ配る。View にはこの結果だけを渡し、設定の正本を置かない。
+  // 1フレーム分の表示判断を各対象へ配る。
   private forEachDisplay(
     active: Controllable | null, primaryTarget: CombatTarget | null,
     view: ViewMode, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
@@ -98,7 +98,7 @@ export class EntityLineManager {
     accept: (entity: DynamicEntity, display: DynamicLineDisplay) => void,
   ): void {
     const { pastDuration } = displayWindow;
-    // マップビューは軌道情報パネルの固定設定に従わず、常に自動選択(最も強く引く天体)で描く。
+    // マップビューでは軌道基準を常に自動選択(最も強く引く天体)にする。
     const lineOrbitRef = view === 'map' ? undefined : orbitRef;
     const palette = currentThemePalette();
     const primaryStyle: LineStyle = {
@@ -142,7 +142,7 @@ export class EntityLineManager {
       });
     };
 
-    // 種別ごとの差は色と表示設定だけに留め、最終判断は同じ resolve を通す。
+    // 自艦・敵・基地の順に、種別ごとの色と表示設定で resolve を通す。
     for (const ship of this.roster.all().filter(isPlayer)) {
       const isActive = ship === active;
       const visibility = visibilityPolicy?.entity('player', isActive);

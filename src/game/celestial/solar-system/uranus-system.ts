@@ -46,7 +46,7 @@ const PUCK: SatelliteDef = {
   id: 'puck',
   // GM は表に無い(6衛星中パックだけ未測定)。半径は Wikipedia "Puck (moon)" 経由
   // (一次は Karkoschka 2001 の Voyager 2 画像解析、平均半径 81±2 km)。質量は
-  // この表のミランダが示す密度 1,173 kg/m^3 をその半径に掛けて見積もった。
+  // この表のミランダが示す密度 1,173 kg/m^3 をその半径の球の体積に掛けて見積もった。
   mu: GRAVITATIONAL_CONSTANT * 2.61e18,
   radius: 81e3,
   orbit: jplSatelliteOrbit({ a: 86004e3, e: 0.000, incDeg: 0.3, periodDays: 0.761833, nodePeriodYears: 0, apsisPeriodYears: 0, basisToEci: equatorBasis(URANUS_POLE) }),

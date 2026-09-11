@@ -1,6 +1,4 @@
-// 右クリックの当たり判定にかける線の候補集合を1フレーム分組み立てる。サンプル点列そのものは
-// 各描画クラス(EllipseLine/TrajectoryLine/TargetRelativeLine/OrbitGuideView)が持つので、
-// ここは「いまフレームにどの線が表示されているか」を集めるだけ — マップ視点でなければ空になる。
+// 右クリックの当たり判定にかける線の候補集合を、いま表示されている線から1フレーム分組み立てる。
 import { guideSecondary } from '../../physics/orbit-guide';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialSystem } from '../celestial/celestial-system';
@@ -10,8 +8,7 @@ import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { isCombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import { LinePickable } from './line-pickable';
 
-// 当たり判定用サンプル点数。描画の適応分割ほどの精度は要らず、画面上のピクセル半径内かの判定さえ
-// 通ればよいので、頂点予算より一段粗い固定値にする。
+// 線1本あたりの当たり判定用サンプル点数。ピクセル半径内かの判定に足りる粗さで固定する。
 const ORBIT_PICK_SAMPLES = 128;
 
 export class LinePickables {
@@ -25,21 +22,21 @@ export class LinePickables {
     private readonly celestialSystem: CelestialSystem,
   ) {}
 
-  // 候補列を空にする(軌道線が表示されないビューで呼ぶ)。
+  // 候補列を空にする。軌道線を出さないフレームで refresh の代わりに呼ぶ。
   public clear(): void {
     this.items.length = 0;
   }
 
   // このフレームに表示されている軌道線の候補列を組み直す。
   public refresh(): void {
-    // 天体参照線・Entity 線・ガイド線の順で、各所有元が公開する点列だけを読む。
+    // 天体参照線・船の線・ガイド線の順に、各所有元が公開する点列を積む。
     this.items.length = 0;
 
     for (const { id, points } of this.celestialSystem.referenceOrbitSamples(ORBIT_PICK_SAMPLES)) {
       this.items.push({ key: `orbit-body:${id}`, kind: 'orbit-body', method: 'analytic', ownerKeys: [id], points });
     }
 
-    // EntityLineManager がこのフレームに同期した線だけがサンプルを返す。
+    // 船の線は、このフレームに表示されているもの。
     for (const ship of this.roster.all().filter(isCombatTarget)) {
       this.addShipOrbit(ship);
     }
@@ -52,8 +49,8 @@ export class LinePickables {
     }
   }
 
-  // ガイド線1本の当たり判定の所有者。地球専用参照軌道(system が無い)は系トグルの対象外
-  // なので地球1つだけ、CR3BP の族・リサジューは主星・副星(・ラグランジュ点)になる。
+  // ガイド線1本の所属先。system を持たない地球専用参照軌道は地球、CR3BP の族・リサジューは
+  // (ラグランジュ点・)主星・副星。
   private guideOwnerKeys(guide: VisibleGuideLine): readonly string[] {
     if (guide.system === null) return ['earth'];
     const secondary = guideSecondary(guide.system);
@@ -63,8 +60,7 @@ export class LinePickables {
     return [pointId, primary, secondary];
   }
 
-  // 船(自艦・敵・基地)1隻ぶんの軌道線を候補へ積む。表示方式(解析楕円 or 予測線・過去線)は
-  // EntityLineManager が既に決めているので、ここではどちらが出ているかを読むだけ。
+  // 船(自艦・敵・基地)1隻ぶんの、いま表示されている軌道線を候補へ積む。
   private addShipOrbit(entity: DynamicEntity): void {
     if (!entity.motion.alive) return;
     const sample = entity.view.lineSamples(ORBIT_PICK_SAMPLES);

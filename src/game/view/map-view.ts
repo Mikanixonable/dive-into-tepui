@@ -33,7 +33,6 @@ import type { PerfCounts } from '../perf-counts';
 
 export class MapView implements ViewFrame {
   private readonly picking: MapPicking;
-  // マップでしか使わないものはここが持つ。計画の編集、被選択物の候補列、軌道線の候補列。
   public readonly planEditor: PlanEditor;
   private readonly objectPickables: ObjectPickables;
   private readonly linePickables: LinePickables;

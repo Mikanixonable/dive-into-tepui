@@ -1,6 +1,5 @@
 // 軌道線(公転軌道・船の軌道・軌道ガイド)のプロパティウィンドウ。1本につき高々1枚を保ち、
-// 「所属」欄からその軌道の持ち主のウィンドウを開けるようにする。排他グループを持たせず、
-// 被選択物のウィンドウと共存させる。
+// 「所属」欄からその軌道の持ち主のウィンドウを開けるようにする。被選択物のウィンドウと共存する。
 import { PropertyWindow } from '../../hud/windows/property-window';
 import type { InspectedObject } from './inspected-object';
 import type { PropertyWindowContent, PropertyWindowRelatedItem } from '../../hud/windows/property-window-content';
@@ -30,7 +29,7 @@ export class OrbitLineWindows {
     private readonly openOwnerWindow: (clientX: number, clientY: number, target: InspectedObject) => void,
   ) {}
 
-  // 軌道線のウィンドウを開く。既に開いていればクリック位置へ動かして最前面に出すだけにする。
+  // 軌道線のウィンドウを開く。既に開いていれば、それをクリック位置へ動かして最前面に出す。
   public open(clientX: number, clientY: number, orbit: LinePickable): void {
     const existing = this.windows.get(orbit.key);
     if (existing) {
@@ -38,6 +37,7 @@ export class OrbitLineWindows {
       existing.bringToFront();
       return;
     }
+    // 新しく開き、閉じたら表から外す。
     const win = new PropertyWindow<MenuAction>(
       this.hud.layers.window, clientX, clientY, this.content(orbit), this.hud.overlayManager,
     );
@@ -81,6 +81,7 @@ export class OrbitLineWindows {
         id: ownerId,
         label: target.name,
         onFocus: () => this.focusOwner(target.id, target.name),
+        // 右クリックした時点の対象を引き直して開く。
         onContextMenu: (clientX, clientY) => {
           const current = this.pickables.pickables.find((candidate) => candidate.id === ownerId);
           if (current) this.openOwnerWindow(clientX, clientY, current);

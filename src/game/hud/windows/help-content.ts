@@ -41,13 +41,12 @@ export const HELP_CATEGORIES: readonly { id: HelpCategory; label: string; glyph:
   { id: 'gesture', label: 'マウス・タッチ', glyph: '✦' },
 ];
 
-// 説明文はここで管理し、キー名・キーコードは必ず KEY_MAPPING の値から取る。
-// scope が both でない項目は、戦闘/マップの現在モードに応じて一覧と図から切り替える。
-// 操作説明の一覧。ゲーム側の定数を説明文へ埋め込むので、モジュール評価時ではなく
-// 呼び出し時に組み立てる — このモジュールは HUD の import 環の中にあり、評価時に
+// 操作説明の一覧。キー名・キーコードは必ず KEY_MAPPING の値から取る。ゲーム側の定数を説明文へ
+// 埋め込むので呼び出し時に組み立てる — このモジュールは HUD の import 環の中にあり、評価時に
 // 他モジュールの定数を読むと循環の順序次第で未初期化のものを掴む。
 export function helpEntries(): readonly HelpEntry[] {
   return [
+    // 機体・戦闘の操作。
     {
       id: 'translation', category: 'basic', label: '機体の並進',
       description: '前 / 後 / 左 / 右 / 上 / 下へ推進する。キーを押している間だけ出力する。',
@@ -129,6 +128,7 @@ export function helpEntries(): readonly HelpEntry[] {
       description: '残弾のあるマガジンを捨てて、新しいマガジンを装填する。',
       keys: [K.reload], inputs: ['keyboard'], scope: 'combat', behavior: 'press',
     },
+    // 視点の操作。
     {
       id: 'camera-rotate', category: 'camera', label: '視点回転',
       description: 'マウスの左ドラッグ、または矢印キーで視点を回転する。',
@@ -151,6 +151,7 @@ export function helpEntries(): readonly HelpEntry[] {
       description: 'マウスホイールまたはピンチでカメラ距離を変更する。',
       inputs: ['mouse', 'touch'], scope: 'both', behavior: 'gesture',
     },
+    // 時間操作と軌道計画。
     {
       id: 'warp', category: 'time', label: '時間加速',
       description: '時間加速の段階を増減する。',
@@ -212,6 +213,7 @@ export function helpEntries(): readonly HelpEntry[] {
       description: 'ノード近傍で右クリックすると、この時刻までの自動ワープ・ノード削除・キャンセルを選べる。',
       inputs: ['mouse', 'touch'], scope: 'map', behavior: 'press',
     },
+    // 画面上のマーカー・線の見方。
     {
       id: 'orbit-markers', category: 'map', label: 'AN / DN マーカー',
       description: '自機軌道とターゲット軌道面の交点。面変更（ノーマル / アンチノーマル burn）の目安位置。',
@@ -242,6 +244,7 @@ export function helpEntries(): readonly HelpEntry[] {
       description: `${MAG_ROUNDS} 発でマガジン 1 連を消費する。残弾が少なくなると軌道上へ補給が投入されるので、AMMO マーカーへ接近して回収する。`,
       inputs: ['mouse', 'touch'], scope: 'combat', behavior: 'gesture',
     },
+    // マウス・タッチのジェスチャ。
     {
       id: 'right-click', category: 'gesture', label: '右クリック / 長押し',
       description: 'プロパティ・空域・ノードメニューを開く。敵の右クリックはターゲットの固定 / 解除、射撃にも使える。',
@@ -262,6 +265,7 @@ export function helpEntries(): readonly HelpEntry[] {
       description: 'カメラをズームする。二本指を回すと視点ロールも入力できる。',
       inputs: ['touch'], scope: 'both', behavior: 'gesture',
     },
+    // 画面・メニュー。
     {
       id: 'help', category: 'ui', label: 'このヘルプ',
       description: '操作説明を開閉する。ヘルプ内では H / ESC でも閉じられる。',

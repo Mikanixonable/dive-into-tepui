@@ -170,6 +170,7 @@ export class Hud implements HudLayers, Notifier {
     const toast = document.getElementById('hud-toast');
     if (!toast) return;
     const now = performance.now();
+    // 控えがあれば差し替えて期限を張り直し、無ければ期限切れのものを消す。
     if (this.pendingToast) {
       toast.innerHTML = this.pendingToast.html;
       toast.style.opacity = '1';

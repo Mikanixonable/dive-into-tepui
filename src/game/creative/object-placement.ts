@@ -171,6 +171,7 @@ export class ObjectPlacement {
 
   // 種類ごとに実体を作り、id を採番して、空欄の名前を種類ごとの既定名で埋める。
   private createObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): PlacedObject {
+    // 自機は生成引数、それ以外は実体として返す。
     switch (entityKind) {
       case 'player': {
         const id = this.playerIdAllocator.next();

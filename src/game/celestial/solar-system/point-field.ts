@@ -134,6 +134,7 @@ function uniform(rand: () => number, [min, max]: readonly [number, number]): num
   return min + rand() * (max - min);
 }
 
+// 傾斜角 [rad] を1つ引く。incModes があれば 35% を低傾斜側、残りを高傾斜側から引く。
 function sampleInclination(
   rand: () => number,
   def: PointFieldDef,
@@ -142,10 +143,8 @@ function sampleInclination(
   return uniform(rand, rand() < 0.35 ? def.incModes[0] : def.incModes[1]);
 }
 
-// 木星の平均黄経 [rad]。トロヤ群・ヒルダ群の共鳴基準にしか使わないので、位置の3段合成では
-// なく平均黄経の一次式だけを引く。**simZeroEt はこの星系を組んだ元期でなければならない** —
-// 要素は J2000 元期のままなので、ここで畳む量が本体の畳み込み(planetDefForSimZero)と
-// 食い違うと、トロヤ群が木星から外れた位置に生成される。
+// 木星の平均黄経 [rad](平均黄経の一次式)。**simZeroEt はこの星系を組んだ元期でなければ
+// ならない** — 畳む量が木星本体(planetDefForSimZero)と食い違うと、トロヤ群が木星から外れる。
 export function jupiterMeanLongitude(
   t: number, simZeroEt = 0, orbit: PointFieldJupiterReference = JUPITER.orbit,
 ): number {
@@ -188,9 +187,8 @@ function resonantAngles(
     const l0 = jupiterLambda0 - sigma / p;
     return { lonPeri: rand() * TAU, l0, meanMotion: jupiterLRate * (p / q) };
   }
-  // q 個の位相枝を明示的に混ぜる。特に Hilda の 3:2 共鳴では、同じ共鳴角を
-  // 保ったまま平均黄経が120°ずつ離れた3方向へ分かれるため、点群が三角形に見える。
-  // ϖ は木星の平均黄経近傍に置き、枝だけでこの3方向を作る。
+  // q 個の位相枝を混ぜる。ϖ を木星の平均黄経に置き、枝だけで平均黄経を 360°/q おきに分ける
+  // (ヒルダ群の 3:2 共鳴では120°おきの3方向になり、点群が三角形に見える)。
   const branch = Math.floor(rand() * q);
   const lonPeri = jupiterLambda0;
   const l0 = (p * jupiterLambda0 - (p - q) * lonPeri - sigma + branch * TAU) / q;

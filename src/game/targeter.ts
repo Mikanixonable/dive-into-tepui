@@ -33,6 +33,7 @@ const BOARD_MARK_LIFETIME = 5.0; // 表示時間 [s]
 const MAX_BOARD_MARKS = 1; // 同時に出す通過点の数。増やすと照準の目安として紛らわしい
 const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は記録しない)
 
+// マップ上の弾薬・燃料マーカーが薄れ始める/消える、自機からの距離 [m]。
 const MAP_AMMO_FADE_START = 5e7;
 const MAP_AMMO_FADE_END = 1e8;
 
@@ -124,8 +125,7 @@ export class Targeter {
     viewer: OrbitingObject | null, displayTime: number, simTime: number, camera: CameraFrame,
     visibilityPolicy: MapVisibilityPolicy | null, celestialLabels: readonly ActiveCelestialLabel[],
   ): void {
-    // マーカーは操作対象自身も他の船と同列に扱う。自分自身を候補から外すのは、ターゲット選定
-    // (handleTargetSelectKey)の側だけ。
+    // 戦闘対象(マップでは操作対象自身を含む)のマーカー。
     const targets = this.roster.all().filter(isCombatTarget);
     const ammoPickups = this.roster.all().filter(isAmmoPickup);
     const fuelPickups = this.roster.all().filter(isRcsFuelPickup);
@@ -156,13 +156,13 @@ export class Targeter {
         tgt === this.aliveTarget ? withTargetRole(item) : item,
         viewerPos, mapView, visibility, mapOpacity, mapOccluded);
     }
-    // 部位マーカーは死んだ個体まで辿って確定する。上のループは生存個体しか通らないので、
-    // ここで畳まないと撃破直後の部位マーカーが残る。
+    // 部位マーカーは死んだ個体まで辿る — 生存個体だけだと撃破直後の部位マーカーが残る。
     for (const tgt of targets) {
       if (!(tgt instanceof ProteinEnemy)) continue;
       const ds = tgt.motion.alive ? tgt.motion.stateAt(displayTime) : null;
       this.syncProteinSiteMarkers(tgt, ds?.r ?? null, viewerPos, mapView, project, camera.position);
     }
+    // 弾薬・燃料のマーカー。マップでは自機から遠いほど薄れる。
     for (const ammo of ammoPickups) {
       if (!ammo.motion.alive) continue;
       const visibility = visibilityPolicy?.entity('ammo');
@@ -261,6 +261,7 @@ export class Targeter {
       this.markerManager.hide('atgdir');
       return;
     }
+    // ターゲット方向と、その反対方向の2本。
     const tgtDir = norm(sub(tgt.motion.state.r, viewer.motion.state.r));
     this.markerManager.setDirection(
       'tgtdir', 'mk-tgtdir', DIRECTION_GLYPH.target, viewer.motion.state.r, tgtDir, project,

@@ -8,10 +8,10 @@ import { sunSyncRevsPerDayRange } from '../../../physics/earth-reference-orbits'
 import { J2_EARTH, MU_EARTH, R_EARTH_EQ } from '../../celestial/solar-system/constants';
 import type { DirectionMarkerMode } from '../../../render/celestial/orbit-guide/direction-markers';
 
-// 太陽同期条件が成立する「1日あたり周回数」の範囲。地球専用参照軌道の行だけが使う。
+// 太陽同期条件が成立する「1日あたり周回数」の範囲。
 const SUN_SYNC_REVS_PER_DAY_RANGE = sunSyncRevsPerDayRange(MU_EARTH, R_EARTH_EQ, J2_EARTH);
 
-// 進行方向マーカーの出し方(SegmentedControl の選択肢)。族・地球専用参照軌道の双方が使う。
+// 進行方向マーカーの出し方(SegmentedControl の選択肢)。
 export const DIRECTION_ITEMS: readonly (readonly [DirectionMarkerMode, string])[] = [
   ['none', '表示しない'], ['single', '1周に1つ'], ['many', '多数'],
 ];
@@ -31,6 +31,7 @@ interface ValueMapping {
   readonly unit?: string;
 }
 
+// value を [lo, hi] へ切り詰める。有限でなければ lo。
 function clamp(value: number, lo: number, hi: number): number {
   return Number.isFinite(value) ? Math.min(hi, Math.max(lo, value)) : lo;
 }
@@ -156,6 +157,7 @@ export function buildKindRowHeading(
 ): { readonly heading: Button; readonly configPanel: HTMLElement } {
   const root = document.createElement('div');
   root.className = 'orbit-guide-kind-row';
+  // 見出し行(トグルボタン)。
   const heading = new Button(label, onToggle);
   heading.element.classList.add('orbit-guide-kind-heading-btn');
   if (extraHeadingClass !== undefined) heading.element.classList.add(extraHeadingClass);
@@ -163,6 +165,7 @@ export function buildKindRowHeading(
   headingRow.className = 'orbit-guide-kind-heading';
   headingRow.appendChild(heading.element);
   root.appendChild(headingRow);
+  // 設定パネル。隠した状態で始める。
   const configPanel = document.createElement('div');
   configPanel.className = 'orbit-guide-kind-config hidden';
   root.appendChild(configPanel);
@@ -179,6 +182,7 @@ export function buildColorField(label: string, value: number, onCommit: (value: 
   return { row, input };
 }
 
+// 0xRRGGBB の数値を '#rrggbb' の文字列にする。
 export function hexColorString(value: number): string {
   return `#${value.toString(16).padStart(6, '0')}`;
 }
@@ -187,16 +191,16 @@ export function hexColorString(value: number): string {
 export const REPEAT_DAYS_MAPPING: ValueMapping = integerCountMapping(30);
 
 // 回帰日数の間に周回する回数(整数)。高度200km前後で1日16周弱になるので、30日ぶんまで
-// 動かせるよう上限を広めに取る。太陽同期条件を満たさない組み合わせはスライダーの色で示すだけで、
-// 範囲自体は曲げない。
+// 動かせるよう上限を広めに取る。太陽同期条件を満たす範囲はスライダーの色で示す。
 export const REVS_PER_REPEAT_MAPPING: ValueMapping = integerCountMapping(480);
 
+// value のスライダー上の位置を、可動範囲に対する 0〜1 の比で返す。
 function sliderRatio(mapping: ValueMapping, value: number): number {
   return (mapping.toSlider(value) - mapping.sliderMin) / (mapping.sliderMax - mapping.sliderMin);
 }
 
 // 回帰日数・周回数スライダーのトラックへ、もう一方の現在値に対して太陽同期条件を満たす範囲を
-// 色分けして示す(可動範囲自体は変えない)。
+// 色分けして示す。
 export function syncSunSyncValidRange(
   repeatDaysField: ValueField, revsPerRepeatField: ValueField, repeatDays: number, revsPerRepeat: number,
 ): void {
@@ -227,5 +231,5 @@ export const RAAN_MAPPING: ValueMapping = {
   inputMin: 0, inputMax: 360, inputStep: 0.1, unit: '°',
 };
 
-// ゼロ速度曲線を何本描くか。上限は設定モジュールが持つ。
+// ゼロ速度曲線を何本描くか。
 export const ZERO_VELOCITY_COUNT_MAPPING: ValueMapping = integerCountMapping(MAX_ZERO_VELOCITY_CURVES);

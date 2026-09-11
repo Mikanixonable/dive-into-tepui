@@ -30,7 +30,7 @@ export class ViewOptionsControl {
     };
     this.panel.setBodyClassToggles(mapDisplay.current);
 
-    // 天球グリッド。親子のトグルの整合は applyGridToggle が取る。
+    // 天球グリッド。親子のトグルの整合を取ってから正本にする。
     this.panel.onGridToggle = (key, on) => {
       const next = applyGridToggle(grid.current, key, on);
       grid.set(next);

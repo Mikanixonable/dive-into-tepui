@@ -1,6 +1,5 @@
-// 見出し(h3)+折りたたみトグル+本文の共通パネル外枠。折りたたみ状態はビューごとに
-// localStorageへ永続する — 左右レールごと畳む現行の2段目の収納(.hud-rail.collapsed)とは
-// 独立な、パネル単体の収納。
+// 見出し(h3)+折りたたみトグル+本文の共通パネル外枠と、ビューごとに localStorage へ
+// 永続する折りたたみ状態。
 import {
   COLLAPSE_COLLAPSED_GLYPH,
   COLLAPSE_EXPANDED_GLYPH,
@@ -37,7 +36,7 @@ function parseBucketValue(parsed: unknown): PanelCollapsedBucket | null {
   return bucket;
 }
 
-// ビュー1つぶんの畳み状態表を、未知の形なら空として読み出す。
+// ビュー1つぶんの畳み状態表を読み出す。読めなければ null。
 function parseBucket(raw: string | null): PanelCollapsedBucket | null {
   if (!raw) return null;
   try {
@@ -91,14 +90,13 @@ export function setPanelCollapsedView(view: ViewMode): void {
   for (const listener of viewListeners) listener(view);
 }
 
-// 折りたたみUIがビュー切り替えを購読する。戻り値は将来の破棄時に使える解除関数。
+// 折りたたみUIがビュー切り替えを購読する。戻り値は購読の解除関数。
 function onPanelCollapsedViewChange(listener: PanelCollapsedViewListener): () => void {
   viewListeners.add(listener);
   return () => viewListeners.delete(listener);
 }
 
 // id の保存済み折りたたみ状態を現在のビューから返す。一度も操作されていなければ undefined。
-// PanelShell 以外の折りたたみ可能な置き場(左右レール)も同じビュー別状態を共有する。
 export function loadPanelCollapsed(id: string): boolean | undefined {
   return loadCollapsedState()[currentView][id];
 }
@@ -122,9 +120,8 @@ interface PanelCollapseWiring {
 }
 
 // 折りたたみトグルの配線一式(生成・保存状態の復元・ビュー切替の購読・クリック時の保存)を
-// 1回で行う。対象要素・ラベル・保存 id を引数で受けるので、外枠の形が違うパネルからも使える。
-// defaultCollapsed に関数を渡すと、ビューが切り替わるたびに現在のビューで再評価する。
-// 戻り値は onPanelCollapsedViewChange の購読解除関数。
+// 1回で行う。defaultCollapsed に関数を渡すと、ビューが切り替わるたびに現在のビューで再評価する。
+// 戻り値はビュー切替の購読の解除関数。
 export function wirePanelCollapse(params: PanelCollapseWiring): () => void {
   const { toggleRoot, toggleId, toggleClassName, target, labels, storageId, defaultCollapsed = false, extraHitEls = [] } = params;
   const toggle = buildCollapseToggle(toggleRoot, toggleId, toggleClassName, target, labels, extraHitEls);
@@ -146,10 +143,8 @@ export class PanelShell {
   public readonly titleEl: HTMLHeadingElement;
   public readonly body: HTMLElement;
 
-  // parent の子として id のパネルを組む。title は見出しの初期テキスト — 呼び出し側は
-  // titleEl を直接書き換えて埋め込み要素(件数バッジ等)を足してよい。折りたたみ状態は
-  // 現在のビューで直前にこの id で畳まれていれば引き継ぎ、一度も操作されていなければ
-  // defaultCollapsed に従う。
+  // parent の子として id のパネルを組む。title は見出しの初期テキストで、titleEl へ要素(件数
+  // バッジ等)を足してよい。折りたたみ状態は現在のビューでのこの id の保存値、無ければ defaultCollapsed。
   public constructor(parent: HTMLElement, id: string, title: string, defaultCollapsed: PanelDefaultCollapsed = false) {
     this.el = document.createElement('div');
     this.el.id = id;

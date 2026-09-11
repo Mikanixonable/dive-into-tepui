@@ -1,5 +1,4 @@
-// 戦闘ビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。呼ぶ位置と順序は
-// Game / ViewManager が持つ。
+// 戦闘ビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { pickCombatEntityAtPoint } from '../pickable/combat-pick';
@@ -28,8 +27,7 @@ import type { CelestialLabelHiding } from '../marker/celestial-label-hiding';
 export class CombatView implements ViewFrame {
   private readonly planGuide: PlanGuide;
 
-  // 直近ノードの実行ガイドは戦闘ビューにいる間しか出さないので、受け取った材料から
-  // ここで組んで持つ。
+  // 直近ノードの実行ガイドを、受け取った材料から組んで持つ。
   public constructor(
     private readonly input: Input,
     private readonly cameraSystem: CameraSystem,
@@ -53,6 +51,7 @@ export class CombatView implements ViewFrame {
   public readonly visibilityPolicy = null;
   public readonly planEditor = null;
 
+  // マップの計測値は、戦闘ビューでは常に 0。
   public perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'> {
     return { mapMode: false, mapItems: 0, mapLabels: 0 };
   }
@@ -84,13 +83,13 @@ export class CombatView implements ViewFrame {
     this.notifier.hint('マニューバ計画を破棄');
   }
 
-  // 照準キーと右クリックの配分。操作対象がいなければ照準先が無いので配らない。
-  // 右クリックは実体に当たればそのプロパティウィンドウを、外れれば空域メニューを開く。
+  // 照準キーと右クリックを配る。操作対象がいなければ照準先が無いので何もしない。
   public handlePointer(simTime: number, viewport: Viewport): void {
     const controlled = this.controlSelection.current;
     if (!controlled) return;
     const project = this.cameraSystem.activeProjection(viewport);
     this.targeter.handleTargetSelectKey(this.input, controlled, project, viewport);
+    // 右クリックは実体に当たればそのプロパティウィンドウを、外れれば空域メニューを開く。
     this.input.takeRightClicks((p) => {
       const hit = pickCombatEntityAtPoint(
         this.roster, this.cameraSystem.activeViewpoint, project, p.x, p.y, viewport);
