@@ -24,11 +24,16 @@ const LEVELS = 5;
 const GLARE_FRACTION = 0.03;
 
 // 条を引く段。**この段のテクセル寸法がそのまま条の太さになる。** 長さはパス数が別に稼ぐので、
-// ここは太さだけで選んでよい(1/4 なら 4 画面px)。
-const STREAK_LEVEL = 1;
+// ここは太さだけで選んでよい(1/2 なら 2 画面px)。
+const STREAK_LEVEL = 0;
+// 仮想絞りの羽根数。偶数なら羽根数ぶん、奇数なら羽根数の 2 倍の腕が出る。
+const APERTURE_BLADE_COUNT = 8;
 // 条の向きの数。**1 方向につき 1 本の鎖**が要る。中心を通る条 1 本が正反対の 2 方向を占めるので、
-// 見た目の本数はこの半分になる。
-const STREAK_DIRECTIONS = 10;
+// 偶数羽根では羽根数と同じ腕数、奇数羽根では羽根数の 2 倍の腕数になる。
+const STREAK_DIRECTIONS = APERTURE_BLADE_COUNT % 2 === 0
+  ? APERTURE_BLADE_COUNT : APERTURE_BLADE_COUNT * 2;
+// レンズを取り付けた向き。画面の水平・垂直に条が重ならないよう、センサー座標へ固定する。
+const STREAK_ANGLE_OFFSET = Math.PI / 8;
 // 条を伸ばすパスの数。刻みがパスごとにタップ数倍になるので、到達距離はこれに対して指数で伸びる。
 const STREAK_PASSES = 2;
 // 核のうち条へ回す割合。**滲みの重みから引く**ので、核の総和は 1 のまま動かない。
@@ -38,7 +43,7 @@ const STREAK_SHARE = 0.1;
 // **1 枚ごとのぼけ量の選択肢として、ここから 3 段ぶんの縮小段と、同じ段の滲みの像を読む。**
 const GHOST_LEVEL = 2;
 // 核のうちゴーストへ回す割合。条と同じく滲みの重みから引く。
-const GHOST_SHARE = 0.08;
+const GHOST_SHARE = 0.04;
 
 // 1 回の全画面描画。読み元のテクセル寸法だけが違うので、そこを uniform で持つ。**書き込み先は
 // 描く側が選ぶ** — 条の鎖のように、複数のフィルタが同じ 2 枚を往復して使うことがある。
@@ -134,7 +139,7 @@ export class LensPass {
     // 鎖は 1 本ずつ順に走らせるので、途中の作業用ターゲットは全鎖で使い回せる。
     this.streakScratch = Array.from({ length: STREAK_PASSES - 1 }, () => createTarget());
     this.streakChain = Array.from({ length: STREAK_DIRECTIONS }, (_, axis) => {
-      const angle = (2 * Math.PI * axis) / STREAK_DIRECTIONS;
+      const angle = STREAK_ANGLE_OFFSET + (2 * Math.PI * axis) / STREAK_DIRECTIONS;
       const direction: Vec2Uniform = uniform(
         new THREE.Vector2(Math.cos(angle), Math.sin(angle)),
       );
@@ -146,7 +151,7 @@ export class LensPass {
         const stride: FloatUniform = uniform(streakStride(pass));
         // 最後のパスだけ本数で割る。鎖 1 本ぶんが 1/本数 を持ち、加算して総和 1 になる。
         const gain: FloatUniform = uniform(last ? 1 / STREAK_DIRECTIONS : 1);
-        return createFilter((texel) => streakPass(from, texel, direction, stride).mul(gain), last);
+        return createFilter((texel) => streakPass(from, texel, direction, stride, last).mul(gain), last);
       });
     });
     this.ghosts = createStage(() => apertureGhosts([
