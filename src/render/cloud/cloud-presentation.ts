@@ -9,10 +9,10 @@ import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudFieldSampler, CloudLodMode } from './cloud-field-sampler';
 
-// 雲場の出どころ。generated は気候から時々刻々焼く場、observed は衛星写真から分けた静止した場。
+// 雲場の出どころの種類。generated は気候から時々刻々焼く場、observed は衛星写真から分けた静止した場。
 // 値は保存された描画設定を読む鍵なので動かさない。
-export const CLOUD_FIELD_SOURCE = { observed: 'observed', generated: 'generated' } as const;
-export type CloudFieldSourceKind = (typeof CLOUD_FIELD_SOURCE)[keyof typeof CLOUD_FIELD_SOURCE];
+export const CLOUD_FIELD_SOURCE_KIND = { observed: 'observed', generated: 'generated' } as const;
+export type CloudFieldSourceKind = (typeof CLOUD_FIELD_SOURCE_KIND)[keyof typeof CLOUD_FIELD_SOURCE_KIND];
 
 // 雲場の出どころ1つが供給するもの。texture と sampler は同じ場を指し、寿命は出どころが持つ。
 export interface CloudFieldSource {
