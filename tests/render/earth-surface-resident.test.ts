@@ -17,7 +17,7 @@ import {
 import type { EarthTileKey, EarthTileProjection, EarthTileResident } from '../../src/render/earth-surface-tiles';
 
 const CAPABILITIES: EarthSurfaceGpuCapabilities = {
-  texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS, colorSrgbLinear: true, terrainFloat16Linear: true,
+  texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS, colorSrgbLinear: true, terrainRgba8Linear: true,
 };
 const PIXELS = EARTH_TILE_EXTENT * EARTH_TILE_EXTENT * 4;
 const COLOR = new Uint8Array(PIXELS).fill(17);
@@ -28,7 +28,7 @@ class ImmediateBackend implements EarthSurfaceGpuBackend {
   public disposed = false;
   public constructor(public readonly capabilities = CAPABILITIES) {}
   public writeColor(layer: number, _pixels: Uint8Array): Promise<void> { this.writes.push(layer); return Promise.resolve(); }
-  public writeTerrain(_layer: number, _pixels: Uint16Array): Promise<void> { return Promise.resolve(); }
+  public writeTerrain(_layer: number, _pixels: Uint8Array): Promise<void> { return Promise.resolve(); }
   public swapPageTable(pixels: Uint8Array): void { this.pages.push(pixels.slice()); }
   public dispose(): void { this.disposed = true; }
 }
@@ -37,16 +37,16 @@ function terrain(key: EarthTileKey): Uint8Array {
   const bytes = new Uint8Array(EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES);
   bytes.set(new TextEncoder().encode('ESTN'));
   const view = new DataView(bytes.buffer);
-  view.setUint16(4, 1, true); view.setUint16(6, 32, true);
+  view.setUint16(4, 2, true); view.setUint16(6, 32, true);
   view.setUint16(8, 260, true); view.setUint16(10, 260, true);
   view.setUint8(12, key.z); view.setUint32(14, key.x, true); view.setUint32(18, key.y, true);
-  view.setUint8(22, 4); view.setUint8(23, 1); view.setUint32(24, EARTH_TERRAIN_BYTES, true);
+  view.setUint8(22, 4); view.setUint8(23, 2); view.setUint32(24, EARTH_TERRAIN_BYTES, true);
   return bytes;
 }
 
 function indexFor(keys: readonly EarthTileKey[]): EarthSurfaceTileIndexFile {
   return {
-    schemaVersion: 1, datasetId: 'resident-fixture',
+    schemaVersion: 2, datasetId: 'resident-fixture',
     entries: keys.map((key) => {
       const payload = terrain(key);
       const id = earthTileId(key);
@@ -63,6 +63,15 @@ class Projection implements EarthTileProjection {
   public constructor(public readonly splitError = 3, public readonly maximumLevel = 0) {}
   public evaluate(key: EarthTileKey): { readonly visible: boolean; readonly errorPx: number; readonly priority: number } {
     return { visible: true, errorPx: key.z <= this.maximumLevel ? this.splitError : 0, priority: 1 / (1 + key.z) };
+  }
+}
+
+class CountingProjection extends Projection {
+  public evaluations = 0;
+
+  public override evaluate(key: EarthTileKey): { readonly visible: boolean; readonly errorPx: number; readonly priority: number } {
+    this.evaluations++;
+    return super.evaluate(key);
   }
 }
 
@@ -141,7 +150,7 @@ class GatedBackend extends ImmediateBackend {
     await this.gate;
     return super.writeColor(layer, pixels);
   }
-  public async writeTerrain(layer: number, pixels: Uint16Array): Promise<void> {
+  public async writeTerrain(layer: number, pixels: Uint8Array): Promise<void> {
     await this.gate;
     return super.writeTerrain(layer, pixels);
   }
@@ -179,7 +188,7 @@ class GenerationRaceBackend extends ImmediateBackend {
     if (layer === 1) this.markSecondWrite();
   }
 
-  public async writeTerrain(layer: number, pixels: Uint16Array): Promise<void> {
+  public async writeTerrain(layer: number, pixels: Uint8Array): Promise<void> {
     if (layer === 0) await this.firstGate;
     await super.writeTerrain(layer, pixels);
     if (layer === 1) this.markSecondWrite();
@@ -191,6 +200,27 @@ function sync(resident: EarthSurfaceResidentCoordinator, projection: EarthTilePr
 }
 
 export function register(): void {
+  test('earth resident: 静止安定後は投影評価とページ表公開を繰り返さない', async () => {
+    const keys = [earthTileKey(0, 0, 0), earthTileKey(0, 1, 0)];
+    const fixture = coordinator(keys);
+    const projection = new CountingProjection(0, -1);
+    fixture.resident.sync({ projection, timeMs: 0, generation: 1 });
+    await fixture.resident.settle();
+    fixture.resident.sync({ projection, timeMs: 1, generation: 1 });
+    await fixture.resident.settle();
+    fixture.resident.sync({ projection, timeMs: 252, generation: 1 });
+    const evaluations = projection.evaluations;
+    const pages = fixture.backend.pages.length;
+    await fixture.resident.settle();
+
+    const result = fixture.resident.sync({ projection, timeMs: 1000, generation: 1 });
+    assert.equal(result.published, false);
+    assert.deepEqual(result.requested, []);
+    assert.equal(projection.evaluations, evaluations);
+    assert.equal(fixture.backend.pages.length, pages);
+    fixture.resident.dispose();
+  });
+
   test('earth resident: 候補が多くても同時pendingは8層以下に制限する', async () => {
     const keys = candidateKeys(16);
     const fixture = coordinator(keys, undefined, new ImmediateBackend(), undefined, new CandidateTiles(keys));
@@ -259,7 +289,7 @@ export function register(): void {
     fixture.resident.dispose();
   });
 
-  test('earth resident: 物理144層へ追加要求を収める', async () => {
+  test('earth resident: 物理96層へ追加要求を収める', async () => {
     const keys = candidateKeys(EARTH_TILE_LAYERS);
     const tiles = new CandidateTiles(keys);
     const fixture = coordinator(keys, undefined, new ImmediateBackend(), undefined, tiles);

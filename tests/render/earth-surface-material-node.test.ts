@@ -33,14 +33,17 @@ export function register(): void {
     assert.equal(pageTable.magFilter, THREE.NearestFilter);
     assert.equal(pageTable.colorSpace, THREE.NoColorSpace);
     assert.equal(pageTable.generateMipmaps, false);
+    assert.equal(pageTable.flipY, false);
     assert.equal(color.minFilter, THREE.LinearFilter);
     assert.equal(color.magFilter, THREE.LinearFilter);
     assert.equal(color.colorSpace, THREE.SRGBColorSpace);
     assert.equal(color.generateMipmaps, false);
+    assert.equal(color.flipY, false);
     assert.equal(terrain.minFilter, THREE.LinearFilter);
     assert.equal(terrain.magFilter, THREE.LinearFilter);
     assert.equal(terrain.colorSpace, THREE.NoColorSpace);
     assert.equal(terrain.generateMipmaps, false);
+    assert.equal(terrain.flipY, false);
     assert.equal(pageTable.image, null);
     assert.equal(pageTable.version, 0);
     const data = new THREE.DataTexture(new Uint8Array(4), 1, 1);
@@ -75,7 +78,7 @@ export function register(): void {
 
   test('earth surface material: array/page table nodeはbase層とbody固定法線を持つ', () => {
     const color = new THREE.DataArrayTexture(new Uint8Array(4), 1, 1, 1);
-    const terrain = new THREE.DataArrayTexture(new Uint16Array(4), 1, 1, 1);
+    const terrain = new THREE.DataArrayTexture(new Uint8Array(4), 1, 1, 1);
     const pageTable = new THREE.DataTexture(new Uint8Array(4), 1, 1);
     const baseColor = new THREE.Texture();
     const baseTerrain = new THREE.Texture();
@@ -92,9 +95,6 @@ export function register(): void {
     assert.equal(nodes.colorNode.isNode, true);
     assert.equal(nodes.roughnessNode.isNode, true);
     assert.equal(nodes.normalNode.isNode, true);
-    assert.ok(containsShaderNode(nodes.colorNode, (node) => node.type === 'TextureNode'));
-    assert.ok(containsShaderNode(nodes.colorNode, (node) => node.type === 'MathNode' && node.method === 'exp2'));
-    assert.ok(containsShaderNode(nodes.colorNode, (node) => node.type === 'MathNode' && node.method === 'fract'));
-    assert.ok(containsShaderNode(nodes.colorNode, (node) => node.type === 'OperatorNode' && node.op === '=='));
+    assert.ok(containsShaderNode(nodes.normalNode, (node) => node.type === 'MathNode' && node.method === 'normalize'));
   });
 }

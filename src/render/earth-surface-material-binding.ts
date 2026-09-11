@@ -22,26 +22,22 @@ export interface EarthSurfaceMaterialBinding {
   dispose(): void;
 }
 
-// half float の 1.0 のビット列。
-const FLOAT16_ONE = 0x3c00;
-
-// 取得が届くまでの base terrain。全 texel を平面法線・粗さ 1 を表す値で埋める。
-function defaultTerrainData(): Uint16Array {
-  const data = new Uint16Array(EARTH_BASE_TERRAIN_WIDTH * EARTH_BASE_TERRAIN_HEIGHT * 4);
+function defaultTerrainData(): Uint8Array {
+  const data = new Uint8Array(EARTH_BASE_TERRAIN_WIDTH * EARTH_BASE_TERRAIN_HEIGHT * 4);
   for (let offset = 0; offset < data.length; offset += 4) {
-    data[offset + 1] = FLOAT16_ONE;
-    data[offset + 3] = FLOAT16_ONE;
+    data[offset] = 128;
+    data[offset + 1] = 128;
+    data[offset + 2] = 255;
+    data[offset + 3] = 255;
   }
   return data;
 }
 
-// base terrain を受ける half float のテクスチャと、その裏の配列。配列を書き換えて
-// needsUpdate を立てると描画へ反映される。
-function createBaseTerrainTexture(): { readonly texture: THREE.DataTexture; readonly data: Uint16Array } {
+function createBaseTerrainTexture(): { readonly texture: THREE.DataTexture; readonly data: Uint8Array } {
   const data = defaultTerrainData();
   const texture = new THREE.DataTexture(
     data, EARTH_BASE_TERRAIN_WIDTH, EARTH_BASE_TERRAIN_HEIGHT,
-    THREE.RGBAFormat, THREE.HalfFloatType,
+    THREE.RGBAFormat, THREE.UnsignedByteType,
   );
   // 色ではなく数値として、ミップを持たずに線形補間で読む。
   texture.minFilter = THREE.LinearFilter;

@@ -8,6 +8,11 @@ import { bootstrapEarthSurface, earthSurfaceManifestUrl } from '../../src/game/c
 function source() {
   return earthSurfaceSourceFromManifest('https://example.test/earth/', 'https://example.test/earth/earth-surface.json', {
     schemaVersion: 1, datasetId: 'earth-2026-09-09-a', sourceManifestSha256: '0'.repeat(64),
+    terrainEncoding: {
+      formatVersion: 2, layout: 'octahedral-rg8-roughness-r8-material-class-a8',
+      width: 260, height: 260, channels: 4, scalar: 'UInt8',
+      materialClasses: { water: 0, land: 1, ice: 2, unknown: 255 },
+    },
     baseColor: 'earth.jpg', baseTerrain: 'base.bin.gz', tileIndexUrl: 'tile-index.json',
     climateMaps: Array.from({ length: 12 }, (_, index) => `climate-${String(index + 1).padStart(2, '0')}.png`),
     climateEncoding: {
