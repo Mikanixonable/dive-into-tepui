@@ -2,11 +2,12 @@
 // 到着順を表示順とみなさず、世代と版内のタイル識別子を境界にする。
 import { decodeEarthSurfaceTile, EarthSurfaceHttpError } from './earth-surface-decode';
 import type { EarthSurfaceTilePayload } from './earth-surface-decode';
+import { decodeEarthTerrainOffThread } from './earth-surface-terrain-worker-client';
 import { earthTileId, earthTileKey } from './earth-surface-tiles';
 import type { EarthTileKey } from './earth-surface-tiles';
 
 export interface EarthSurfaceTileIndexFile {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly datasetId: string;
   readonly entries: readonly EarthSurfaceTileIndexEntry[];
 }
@@ -70,7 +71,7 @@ function file(value: unknown, name: string): EarthSurfaceTileFile {
 function normalizeIndex(value: unknown, expectedDatasetId?: string): EarthSurfaceTileIndexFile {
   if (value === null || typeof value !== 'object') throw new EarthSurfaceRequestError('tile-index is not an object');
   const index = value as Partial<EarthSurfaceTileIndexFile>;
-  if (index.schemaVersion !== 1 || typeof index.datasetId !== 'string' || !/^[a-z0-9-]+$/.test(index.datasetId)
+  if (index.schemaVersion !== 2 || typeof index.datasetId !== 'string' || !/^[a-z0-9-]+$/.test(index.datasetId)
     || !Array.isArray(index.entries) || index.entries.length === 0) {
     throw new EarthSurfaceRequestError('Invalid Earth surface tile-index');
   }
@@ -103,7 +104,7 @@ function normalizeIndex(value: unknown, expectedDatasetId?: string): EarthSurfac
     ids.add(entry.key);
     entries.push({ key: entry.key, z: key.z, x: key.x, y: key.y, color, terrain });
   }
-  return { schemaVersion: 1, datasetId: index.datasetId, entries };
+  return { schemaVersion: 2, datasetId: index.datasetId, entries };
 }
 
 function assetUrl(baseUrl: string, path: string): string {
@@ -401,7 +402,8 @@ export class EarthSurfaceTileRequestQueue {
               key: item.key, colorUrl: descriptor.colorUrl, terrainUrl: descriptor.terrainUrl,
               generation: item.generation, signal: attemptController.signal,
               fetchImpl: this.limitedFetch(item.generation),
-              decodeImage: this.options.decodeImage, expectedColorSha256: descriptor.colorSha256,
+              decodeImage: this.options.decodeImage, decodeTerrain: decodeEarthTerrainOffThread,
+              expectedColorSha256: descriptor.colorSha256,
               expectedTerrainSha256: descriptor.terrainSha256, expectedColorBytes: descriptor.colorEncodedBytes,
               expectedTerrainEncodedBytes: descriptor.terrainEncodedBytes,
             });

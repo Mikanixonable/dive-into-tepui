@@ -17,7 +17,7 @@ export interface EarthSurfaceGpuCapabilities {
   readonly texture2dArray: boolean;
   readonly maxTextureArrayLayers: number;
   readonly colorSrgbLinear: boolean;
-  readonly terrainFloat16Linear: boolean;
+  readonly terrainRgba8Linear: boolean;
 }
 
 export interface EarthSurfaceGpuBackend {
@@ -25,7 +25,7 @@ export interface EarthSurfaceGpuBackend {
   readonly textures?: EarthSurfaceGpuTextures | null;
   // 解決時点で、後続の描画が書込みを読む順序を保証する。
   writeColor(layer: number, pixels: Uint8Array): Promise<void>;
-  writeTerrain(layer: number, pixels: Uint16Array): Promise<void>;
+  writeTerrain(layer: number, pixels: Uint8Array): Promise<void>;
   // フレーム境界で同期的に交換する。例外時は直前のページ表を維持する。
   swapPageTable(pixels: Uint8Array): void;
   dispose(): void;
@@ -43,7 +43,7 @@ interface LayerSlot {
 // 必須の線形標本化と配列層数がそろう場合に詳細タイルを利用できる。
 export function supportsEarthSurfaceTiles(capabilities: EarthSurfaceGpuCapabilities): boolean {
   return capabilities.texture2dArray && capabilities.maxTextureArrayLayers >= EARTH_TILE_LAYERS
-    && capabilities.colorSrgbLinear && capabilities.terrainFloat16Linear;
+    && capabilities.colorSrgbLinear && capabilities.terrainRgba8Linear;
 }
 
 export class EarthSurfaceGpuAdapter {
@@ -81,9 +81,9 @@ export class EarthSurfaceGpuAdapter {
     return this.slots.get(layer)?.reservation ?? null;
   }
 
-  // 色RGBA8/sRGBと地形RGBA16Fの同じ層への書込みがそろったとき、その予約を公開可能にする。
+  // 色RGBA8/sRGBと地形RGBA8の同じ層への書込みがそろったとき、その予約を公開可能にする。
   public async uploadLayer(
-    color: Uint8Array, terrain: Uint16Array, reservation: EarthLayerReservation,
+    color: Uint8Array, terrain: Uint8Array, reservation: EarthLayerReservation,
   ): Promise<void> {
     this.requireActive();
     const slot = this.requireReservation(reservation);
