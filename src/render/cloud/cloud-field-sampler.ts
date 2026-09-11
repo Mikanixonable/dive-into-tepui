@@ -1,6 +1,5 @@
-// 雲場テクスチャを天体固定の方向から読む共有入力。テクスチャの所有者は GeneratedCloudField であり、
-// この型は読み取り用の TSL ノードと UV/mip の規則だけを持つ。表現 renderer は同じ sampler を参照し、
-// それぞれが sphereMeshUv や fieldLodForWidth を再実装しない。
+// 雲場テクスチャを、天体固定の単位方向から読む。読み取りの TSL ノードと、UV・mip 段の選び方を
+// 持つ。差し込まれたテクスチャは借り物で、解放は差し込んだ側が行う。
 import * as THREE from 'three/webgpu';
 import { float, fract, greaterThan, int, log2, max, min, select, texture, uniform, vec2 } from 'three/tsl';
 import { sphereMeshUv } from '../celestial/celestial-surface';
@@ -9,23 +8,27 @@ import { maxAvailableMipLevelOf } from './baked-field';
 import { cloudSampleFromTexel, type CloudSample } from './cloud-field-sample';
 import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 
+// 天体固定の単位方向を雲場の UV へ写す関数。
 export type CloudUvAt = (direction: Vec3Node) => Vec2Node;
+// mip 段の選び方。'explicit' は読み手の指定(指定が無ければ画面微分)、'fixed' は全読みを固定段で
+// 読む診断用。
 export type CloudLodMode = 'explicit' | 'fixed';
 
 export class CloudFieldSampler {
-  // EMPTY_CLOUD_FIELD は場を持たない renderer がグラフを組むための初期値であり、sampler は
-  // texture ノードの差し替えだけを行う。RenderTarget の dispose は GeneratedCloudField が行う。
+  // 読む雲場のテクスチャノード。場が差し込まれるまでは EMPTY_CLOUD_FIELD を読み、setTexture は
+  // 同じノードの値を差し替える。
   private readonly field = texture(EMPTY_CLOUD_FIELD);
 
-  // 場の幅は生成側の projection の変更を受けるため、テクスチャから読む共有ノードにする。
+  // 場の幅 [texel]。差し込むテクスチャで変わるので、テクスチャから読むノードにする。
   private readonly fieldWidth = (this.field.size(int(0)) as THREE.Node<'uvec2'>).x;
-  // texture.mipmaps.lengthではGPU自動生成分を読めない。テクスチャ設定と寸法から契約上の最大
-  // LODをuniformへ置き、未生成テクスチャへ明示LODを発行しない。
+  // 読める最大の mip 段。texture.mipmaps.length は GPU が自動生成した段を数えないので、テクスチャの
+  // 設定と寸法から求める — 生成されていない段を明示 LOD で読まないため。
   private readonly maxMipLevel = uniform(0);
-  // 診断時だけ固定LODへ切り替える。0 は現行の明示/暗黙の選択、1 は fixedLod を全読みに適用する。
+  // 1 なら全読みを fixedLod の段で読む(診断用)。0 なら読み手の指定に従う。
   private readonly fixedLodMode = uniform(0);
   private readonly fixedLod = uniform(0);
 
+  // field を渡せば、はじめからその場を読む。uvAt は方向から雲場 UV への写しで、既定は球メッシュの uv。
   public constructor(
     field?: THREE.Texture,
     private readonly uvAt: CloudUvAt = sphereMeshUv,
@@ -35,7 +38,7 @@ export class CloudFieldSampler {
 
   public get texture(): THREE.Texture { return this.field.value as THREE.Texture; }
 
-  // 表現 renderer が現在の生成場へ同期する。sampler は texture の所有権を持たない。
+  // 読む雲場を差し替え、読める最大の mip 段を引き直す。テクスチャの所有権は移らない。
   public setTexture(field: THREE.Texture): void {
     this.field.value = field;
     const image = field.image as { readonly width?: number; readonly height?: number } | undefined;
@@ -44,21 +47,24 @@ export class CloudFieldSampler {
     );
   }
 
-  // 雲場の比較用LOD規則を置き直す。固定LODも実在するミップ段へクランプされるので、
-  // 診断設定から未生成ミップを読むことはない。
+  // mip 段の選び方を切り替える(診断用)。fixedLevel は 'fixed' のときに読む段で、実在する段へ
+  // 切り詰めて読む。
   public setLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
     this.fixedLodMode.value = mode === 'fixed' ? 1 : 0;
     this.fixedLod.value = fixedLevel;
   }
 
-  // 天体固定の単位方向を、生成側から注入された雲場 UV へ変換して読む。経度の wrap を明示し、
-  // mip が画面微分へ依存しない読み手では lod を指定する。
+  // 単位方向 direction の雲場の texel。lod を渡せばその mip 段で読み、渡さなければ画面微分で
+  // 段を選ぶ。
   private sample(direction: Vec3Node, lod?: FloatNode): Vec4Node {
+    // uv の経度は 0..1 の外へ出うるので、周回させて読む。
     const uv = this.uvAt(direction);
     const sample = this.field.sample(vec2(fract(uv.x), uv.y));
+    // 読み手の指定した段は、実在する段へ切り詰める。
     const selected = lod === undefined
       ? sample
       : sample.level(min(max(lod, 0), this.maxMipLevel));
+    // 診断の固定段が立っていれば、読み手の指定より優先する。
     return select(
       greaterThan(this.fixedLodMode, 0.5),
       sample.level(min(max(this.fixedLod, 0), this.maxMipLevel)),
@@ -66,12 +72,13 @@ export class CloudFieldSampler {
     );
   }
 
-  // 生のRGBAではなく、生成時と同じ単位の雲標本として読む。LODを指定する読み手もこの変換を共有する。
+  // 単位方向 direction の雲標本を、生成時と同じ単位で読む。lod を渡せばその mip 段で読む。
   public sampleCloud(direction: Vec3Node, lod?: FloatNode): CloudSample {
     return cloudSampleFromTexel(this.sample(direction, lod));
   }
 
-  // 光路上の標本のように画面の隣接画素と連続しない標本の mip を共通選択する。
+  // 幅 width [m] を 1 texel で覆う mip 段。半径 radius [m] の球面で測る。画面の隣接画素と連続しない
+  // 標本(光路上など)の lod に渡す。
   public lodForWidth(width: FloatNode, radius: FloatNode): FloatNode {
     const texelWidth = this.fieldTexelWidth(radius);
     return min(max(log2(width.div(max(texelWidth, 1))), float(0)), this.maxMipLevel);

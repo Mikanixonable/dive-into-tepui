@@ -90,9 +90,8 @@ class Trough {
     this.eyeStrength.value = eyeStrengthOf(depth, radius, latitude, this.surfaceRadius, this.rotationPeriod);
   }
 
-  // 中心からの弦の二乗。距離を弦で測るので、対蹠点に鏡像が出ない。弦は二乗のまま扱う — 長さを
-  // 取ってから二乗し直すと、平方根と累乗を 1 つずつ余計に踏む。長軸に沿う成分は axisShrink の分だけ
-  // 縮めて測るので、谷はその向きへ長軸/短軸の比の倍に広がる。
+  // 中心からの弦の二乗。距離を弦で測るので、対蹠点に鏡像が出ない。長軸に沿う成分は axisShrink の
+  // 分だけ縮めて測るので、谷はその向きへ長軸/短軸の比の倍に広がる。
   private chordSquared(direction: Vec3Node): FloatNode {
     const offset = direction.sub(this.center);
     const alongAxis = dot(offset, this.axis);

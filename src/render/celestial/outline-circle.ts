@@ -11,6 +11,7 @@ let sharedGeometry: THREE.BufferGeometry | null = null;
 // 半径1・XY平面上の単位円ジオメトリを遅延生成して使い回す。
 function getSharedGeometry(): THREE.BufferGeometry {
   if (sharedGeometry !== null) return sharedGeometry;
+  // 始点と終点を重ねた SEGMENTS + 1 点で円周を閉じる。
   const positions = new Float32Array((SEGMENTS + 1) * 3);
   for (let i = 0; i <= SEGMENTS; i++) {
     const a = (i / SEGMENTS) * Math.PI * 2;

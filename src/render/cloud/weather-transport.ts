@@ -100,14 +100,13 @@ export class WeatherTransport {
     this.advectionCycle.value = cycle < 0 ? cycle + 1 : cycle;
   }
 
-  // 移流前の場を写しへ描く。sourceAt()で読む前に必ず一度呼ぶ。
+  // 移流前の場を写しへ焼く。advectedAt() と surfaceHumidityAt() のグラフを描く前に呼ぶ。
   public bake(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
     this.humiditySource.render(renderer, gpu);
     this.convectionSource.render(renderer, gpu);
   }
 
-  // 移流前の湿度(xが地表付近、yが上層)。平年の雲量はここへ入れず、場所に貼り付いた気候として
-  // WeatherModelが移流後へ加える。
+  // 移流前の湿度(xが地表付近、yが上層)。
   public humiditySourceAt(direction: Vec3Node): Vec2Node {
     return vec2(
       float(SURFACE_HUMIDITY_BASE).add(this.surfaceHumidityNoise.at(direction).mul(SURFACE_HUMIDITY_NOISE_AMPLITUDE)),
@@ -120,7 +119,7 @@ export class WeatherTransport {
     return this.convectionNoise.pairAt(direction).mul(CONVECTION_NOISE_AMPLITUDE);
   }
 
-  // 湿度写しの地表成分の標本。前線へ渡す水平勾配を求めるため、焼いた場から読む。
+  // 焼いた湿度の写しの、地表成分の標本(移流前)。
   public surfaceHumidityAt(direction: Vec3Node): FloatNode {
     return this.humiditySource.at(direction).r;
   }

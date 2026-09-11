@@ -46,8 +46,8 @@ export interface BalancedWind {
   readonly turn: FloatNode;
 }
 
-// Compose a local pressure anomaly with a global background flow while keeping
-// one turning diagnostic for the resulting parcel trajectory.
+// 局所の気圧から出た風 local へ、全球の背景流 background [m/s] を足す。流れが向きを変える角速度は
+// local のものを保つ。
 export function composeWind(local: BalancedWind, background: Vec3Node): BalancedWind {
   return { velocity: local.velocity.add(background), turn: local.turn };
 }
