@@ -4,12 +4,11 @@ import {
   proteinAssetBundleFor, proteinAssetFor, type ProteinAssetId, type ProteinSemanticSource,
 } from './protein-asset-loader';
 import { buildProteinCollisionSpheres, type ProteinCollisionSphere } from './protein-sphere-collision';
-import type { ProteinAssetDefinition, ProteinMotionAsset } from './protein-schema';
+import type { ProteinAssetDefinition } from './protein-schema';
 
 export interface ProteinEnemyDefinition {
   readonly assetId: ProteinAssetId;
   readonly asset: ProteinAssetDefinition;
-  readonly motion: ProteinMotionAsset;
   /** 表示形態に依らない判定形状。アセットごとに1つで、個体は位置と姿勢だけを渡す。 */
   readonly collisionSpheres: readonly ProteinCollisionSphere[];
 }
@@ -22,7 +21,6 @@ export function createProteinEnemyDefinition(
   return {
     assetId,
     asset: source.asset,
-    motion: source.motion,
     collisionSpheres: buildProteinCollisionSpheres(source.backbone, source.asset.coordinateScale),
   };
 }

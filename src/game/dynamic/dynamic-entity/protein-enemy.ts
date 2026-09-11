@@ -14,9 +14,7 @@ import {
   proteinAssetGate, proteinRenderDefinitionFor, type ProteinAssetId,
 } from '../../protein/protein-asset-loader';
 import type { SpawnGate } from '../entity-registry';
-import type {
-  ProteinDisplaySettings, ProteinMotionDisplay, ProteinMotionLod,
-} from '../../../render/protein/protein-display';
+import type { ProteinDisplaySettings } from '../../../render/protein/protein-display';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
 import type { ProteinRenderDefinition } from '../../../render/protein/protein-render-definition';
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
@@ -24,10 +22,6 @@ import type { EnemySaveData, ProteinEnemySaveData } from '../../save/save-data';
 import type { FormationRole } from './entity-kind';
 import { ProteinEnemyView } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
 import type { EnemyCollisionShape } from './enemy-motion';
-import { apparentSizePx } from '../../../math/projection';
-import {
-  ProteinMotionController, proteinMotionLodForProjectedSize,
-} from '../../protein/protein-motion-controller';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
 import type { ProteinVisualSource } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
 import type { OrbitReference } from '../../orbit-reference';
@@ -92,10 +86,6 @@ export class ProteinEnemy extends Enemy {
   private readonly assetId: ProteinAssetId;
   private displaySettings: ProteinDisplaySettings;
   private readonly combat: ProteinCombatState;
-  private readonly motionController: ProteinMotionController;
-  private motionLodValue: ProteinMotionLod = 'near';
-  private motionDisplayActive = false;
-  private motionCpuMsValue = 0;
 
   // 表示メッシュを組み、アセットが持つ球列へ判定形状を当てる。アセットが未取得なら投げるので、
   // EnemyClass.spawnGate で準備完了を待ってから構築すること。
@@ -113,10 +103,12 @@ export class ProteinEnemy extends Enemy {
       definition.asset,
       'saved' in init ? (init.saved as ProteinEnemySaveData).protein : undefined,
     );
-    const proteinView = new ProteinEnemyView(renderDefinitionFor(assetId), display, ENEMY_MODEL_SCALE, scene);
     // 表示が原子模型へ切り替わっても、判定形状は常に同じ球列に固定する。
     const collision = new ProteinSphereCollisionGeometry(
       definition.collisionSpheres, ENEMY_MODEL_SCALE,
+    );
+    const proteinView = new ProteinEnemyView(
+      renderDefinitionFor(assetId), display, ENEMY_MODEL_SCALE, collision.outerRadius, id, scene,
     );
     const shape: EnemyCollisionShape = {
       testSphereCollision: (self, sphereCenter, sphereRadius, selfState) => (
@@ -137,7 +129,6 @@ export class ProteinEnemy extends Enemy {
     this.assetId = assetId;
     this.displaySettings = display;
     this.combat = combat;
-    this.motionController = new ProteinMotionController(definition.motion, id);
   }
 
   // HP の正本は combat 側なので、艦の既定パーツは積まない。
@@ -149,18 +140,6 @@ export class ProteinEnemy extends Enemy {
   public override set maxHp(_value: number) {}
 
   public get display(): ProteinDisplaySettings { return this.displaySettings; }
-  public get motionLod(): ProteinMotionLod { return this.motionLodValue; }
-  public get motionCpuMs(): number { return this.motionCpuMsValue; }
-  // View が読む変形入力を、この Entity が確定済みの値だけで宣言する。
-  public get motionDisplay(): ProteinMotionDisplay {
-    return {
-      active: this.motionDisplayActive,
-      lod: this.motionLodValue,
-      sampleTime: this.motionController.sampleTime,
-      phase: this.combat.phase,
-      coefficients: this.motionController.effectiveModeCoefficients,
-    };
-  }
 
   // ステージ操作の表示形態・着色変更を反映する。
   public setDisplay(display: ProteinDisplaySettings): void {
@@ -169,40 +148,7 @@ export class ProteinEnemy extends Enemy {
 
   public get hudSnapshot(): ProteinHudSnapshot { return this.combat.hudSnapshot(); }
 
-  // View へ渡す LOD とモード係数を、外部のフレーム入力から確定してから描画同期へ進む。
-  public override sync(
-    context: DynamicViewFrame, visible: boolean, active: boolean,
-    orbitReference: OrbitReference | undefined,
-  ): void {
-    // 本体と同じ可視条件で表示時刻の状態を引き、非表示フレームは変形計算を止める。
-    const displayed = this.motion.alive && visible
-      ? this.motion.stateAt(context.displayTime)
-      : null;
-    this.motionDisplayActive = displayed !== null;
-    this.motionCpuMsValue = 0;
-    if (displayed !== null) {
-      const projectedDiameterPx = apparentSizePx(
-        this.motion.radius * 2,
-        context.camera.radialScale(displayed.r),
-      );
-      this.motionLodValue = proteinMotionLodForProjectedSize(
-        projectedDiameterPx, this.motionLodValue,
-      );
-      // ヒステリシスと係数遷移の履歴は Entity 側で進め、View へは結果だけを渡す。
-      if (this.motionLodValue !== 'marker') {
-        const cpuStart = performance.now();
-        this.motionController.update(
-          context.displayTime,
-          context.visual.proteinVibration ? this.motionLodValue : 'marker',
-          this.combat.phase,
-        );
-        this.motionCpuMsValue = performance.now() - cpuStart;
-      }
-    }
-    super.sync(context, visible, active, orbitReference);
-  }
-
-  // 表示設定と、このフレームに確定した変形係数を共通の表示入力へ足す。
+  // 表示設定と、被弾モデルの構造フェーズを共通の表示入力へ足す。
   protected override renderSource(
     context: DynamicViewFrame, visible: boolean, active: boolean,
     orbitReference: OrbitReference | undefined,
@@ -210,7 +156,7 @@ export class ProteinEnemy extends Enemy {
     return {
       ...super.renderSource(context, visible, active, orbitReference),
       display: this.displaySettings,
-      motionDisplay: this.motionDisplay,
+      phase: this.combat.phase,
     };
   }
 

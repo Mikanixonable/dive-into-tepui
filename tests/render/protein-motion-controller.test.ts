@@ -7,7 +7,7 @@ import {
   ProteinMotionController,
   proteinMotionLodForProjectedSize,
   proteinMotionUpdatePhaseFor,
-} from '../../src/game/protein/protein-motion-controller';
+} from '../../src/render/protein/protein-motion-controller';
 import type { ProteinMotionAsset } from '../../src/game/protein/protein-schema';
 
 function assetFor(residueCount: number, modeCount = 24): ProteinMotionAsset {
@@ -97,28 +97,28 @@ export function register(): void {
     assert.deepEqual(PROTEIN_MOTION_LOD_MODE_COUNTS, { near: 24, medium: 12, far: 4, marker: 0 });
     const settleGap = PROTEIN_MOTION_LOD_FADE_DURATION_SEC + 0.01;
 
-    // LOD 切替の直後、fade 時間より先の時刻でもう一度 update してクロスフェードを完了させ、
+    // LOD 切替の直後、fade 時間より先の時刻でもう一度 sampleAt してクロスフェードを完了させ、
     // 確定した係数を読む。
     let time = 2.25;
-    controller.update(time, 'near');
+    controller.sampleAt(time, 'near');
     assert.equal(controller.activeModeCount, 24);
     const near = projectAllResidues(controller, 2, asset);
 
-    controller.update(time, 'medium');
+    controller.sampleAt(time, 'medium');
     time += settleGap;
-    controller.update(time, 'medium');
+    controller.sampleAt(time, 'medium');
     assert.equal(controller.activeModeCount, 12);
     const medium = projectAllResidues(controller, 2, asset);
 
-    controller.update(time, 'far');
+    controller.sampleAt(time, 'far');
     time += settleGap;
-    controller.update(time, 'far');
+    controller.sampleAt(time, 'far');
     assert.equal(controller.activeModeCount, 4);
     const far = projectAllResidues(controller, 2, asset);
 
-    controller.update(time, 'marker');
+    controller.sampleAt(time, 'marker');
     time += settleGap;
-    controller.update(time, 'marker');
+    controller.sampleAt(time, 'marker');
     assert.equal(controller.activeModeCount, 0);
     assert.ok(controller.effectiveModeCoefficients.every((value) => value === 0));
     assert.ok(projectAllResidues(controller, 2, asset).every((value) => value === 0));
@@ -131,18 +131,21 @@ export function register(): void {
     const fading = new ProteinMotionController(asset, 'protein-enemy-fade');
     const reference = new ProteinMotionController(asset, 'protein-enemy-fade');
 
-    fading.update(0, 'near');
+    fading.sampleAt(0, 'near');
     const before = [...fading.effectiveModeCoefficients];
-    const atSwitch = [...fading.update(0, 'medium')];
+    fading.sampleAt(0, 'medium');
+    const atSwitch = [...fading.effectiveModeCoefficients];
     assert.deepEqual(atSwitch, before);
 
     // reference は 'medium' へ切り替えて十分待たせ、以降は遷移なしの純粋な medium 目標値を返す。
-    reference.update(0, 'medium');
-    reference.update(1000, 'medium');
+    reference.sampleAt(0, 'medium');
+    reference.sampleAt(1000, 'medium');
 
     const halfwayTime = PROTEIN_MOTION_LOD_FADE_DURATION_SEC / 2;
-    const halfway = [...fading.update(halfwayTime, 'medium')];
-    const pureMediumAtHalfway = [...reference.update(halfwayTime, 'medium')];
+    fading.sampleAt(halfwayTime, 'medium');
+    const halfway = [...fading.effectiveModeCoefficients];
+    reference.sampleAt(halfwayTime, 'medium');
+    const pureMediumAtHalfway = [...reference.effectiveModeCoefficients];
     for (let index = 0; index < before.length; index += 1) {
       const expected = before[index]! + (pureMediumAtHalfway[index]! - before[index]!) * 0.5;
       assert.ok(Math.abs(halfway[index]! - expected) < 1e-4);
@@ -160,17 +163,19 @@ export function register(): void {
     }
 
     const settleTime = PROTEIN_MOTION_LOD_FADE_DURATION_SEC + 1;
-    const settled = [...fading.update(settleTime, 'medium')];
-    const pureMediumSettled = [...reference.update(settleTime, 'medium')];
+    fading.sampleAt(settleTime, 'medium');
+    const settled = [...fading.effectiveModeCoefficients];
+    reference.sampleAt(settleTime, 'medium');
+    const pureMediumSettled = [...reference.effectiveModeCoefficients];
     assert.deepEqual(settled, pureMediumSettled);
   });
 
   test('protein motion controller: critical phase applies display-only gain', () => {
     const asset = assetFor(2);
     const controller = new ProteinMotionController(asset, 'protein-enemy-critical');
-    controller.update(2.25, 'near', 'intact');
+    controller.sampleAt(2.25, 'near', 'intact');
     const intact = projectAllResidues(controller, 2, asset);
-    controller.update(2.25, 'near', 'critical');
+    controller.sampleAt(2.25, 'near', 'critical');
     const critical = projectAllResidues(controller, 2, asset);
 
     const gainRatio = PROTEIN_MOTION_PHASE_GAINS.critical / PROTEIN_MOTION_PHASE_GAINS.intact;
@@ -183,8 +188,8 @@ export function register(): void {
     const controller = new ProteinMotionController(assetFor(3), 'protein-enemy-2');
     const coefficients = controller.modeCoefficients;
     const effective = controller.effectiveModeCoefficients;
-    controller.update(0, 'near');
-    controller.update(1.5, 'near');
+    controller.sampleAt(0, 'near');
+    controller.sampleAt(1.5, 'near');
     assert.strictEqual(controller.modeCoefficients, coefficients);
     assert.strictEqual(controller.effectiveModeCoefficients, effective);
     assert.equal(controller.modeCoefficients.length, 24);
@@ -209,19 +214,19 @@ export function register(): void {
     const backward = new ProteinMotionController(asset, 'protein-enemy-seek');
     const targetTime = 12.375;
 
-    sixtyHz.update(0, 'near');
+    sixtyHz.sampleAt(0, 'near');
     for (let frame = 1; frame <= 60 * targetTime; frame += 1) {
-      sixtyHz.update(frame / 60, 'near');
+      sixtyHz.sampleAt(frame / 60, 'near');
     }
-    sixtyHz.update(targetTime, 'near');
-    thirtyHz.update(0, 'near');
+    sixtyHz.sampleAt(targetTime, 'near');
+    thirtyHz.sampleAt(0, 'near');
     for (let frame = 1; frame <= 30 * targetTime; frame += 1) {
-      thirtyHz.update(frame / 30, 'near');
+      thirtyHz.sampleAt(frame / 30, 'near');
     }
-    thirtyHz.update(targetTime, 'near');
-    backward.update(100, 'near');
-    backward.update(2, 'near');
-    backward.seek(targetTime, 'near');
+    thirtyHz.sampleAt(targetTime, 'near');
+    backward.sampleAt(100, 'near');
+    backward.sampleAt(2, 'near');
+    backward.sampleAt(targetTime, 'near');
 
     assert.deepEqual([...sixtyHz.effectiveModeCoefficients], [...thirtyHz.effectiveModeCoefficients]);
     assert.deepEqual([...sixtyHz.effectiveModeCoefficients], [...backward.effectiveModeCoefficients]);

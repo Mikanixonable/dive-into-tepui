@@ -7,7 +7,7 @@ import {
 import type { ProteinDisplaySettings, ProteinRepresentation } from '../../src/render/protein/protein-display';
 import { buildProteinEnemyShip } from '../../src/render/protein/protein-enemy-ship';
 import type { ProteinRenderSource } from '../../src/render/protein/protein-render-definition';
-import { ProteinMotionController } from '../../src/game/protein/protein-motion-controller';
+import { ProteinMotionController } from '../../src/render/protein/protein-motion-controller';
 import { proteinMotionModeDisplacements } from '../../src/render/protein/protein-motion-modes';
 import {
   createProteinMotionBinding, disposeProteinMotionBinding, updateProteinMotionCoefficients,
@@ -77,7 +77,7 @@ function proteinCase(): LabCase {
     },
     updateProteinMotion(displayTime) {
       const startedAt = performance.now();
-      controller.update(displayTime, 'near');
+      controller.sampleAt(displayTime, 'near');
       updateProteinMotionCoefficients(binding, controller.effectiveModeCoefficients);
       return {
         cpuMs: performance.now() - startedAt,

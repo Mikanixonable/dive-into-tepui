@@ -6,12 +6,12 @@ import {
   proteinBrownianSeedFor,
   UINT32_SCALE,
 } from './protein-brownian-motion';
-import { projectProteinResidues } from '../../render/protein/protein-motion-modes';
-import { LODS_FINE_TO_COARSE } from '../../render/protein/protein-display';
-import type { ProteinMotionAsset } from './protein-schema';
-import type { ProteinMotionLod, ProteinPhase } from '../../render/protein/protein-display';
+import { projectProteinResidues } from './protein-motion-modes';
+import { LODS_FINE_TO_COARSE } from './protein-display';
+import type { ProteinMotionLod, ProteinPhase } from './protein-display';
+import type { ProteinRenderMotion } from './protein-render-definition';
 
-type ProteinMotionBand = ProteinMotionAsset['modes'][number]['band'];
+type ProteinMotionBand = ProteinRenderMotion['modes'][number]['band'];
 
 export const PROTEIN_MOTION_LOD_MODE_COUNTS: Readonly<Record<ProteinMotionLod, number>> = {
   near: 24,
@@ -69,12 +69,6 @@ const FAR_UPDATE_HZ = 15;
 /** LOD 切替時、旧 LOD の変位から新 LOD の変位へ表示上ブレンドする時間 [s]。 */
 export const PROTEIN_MOTION_LOD_FADE_DURATION_SEC = 0.25;
 
-interface ProteinMotionControllerOptions {
-  /** 表示専用の任意上書き値。物理的なモード振幅は asset のデータのままとする。 */
-  readonly collectiveGain?: number;
-  readonly localGain?: number;
-}
-
 function finiteNonNegative(value: number | undefined, fallback: number): number {
   return value !== undefined && Number.isFinite(value) && value >= 0 ? value : fallback;
 }
@@ -123,7 +117,7 @@ export class ProteinMotionController {
   public readonly collectiveGain: number;
   public readonly localGain: number;
 
-  private readonly modes: readonly ProteinMotionAsset['modes'][number][];
+  private readonly modes: readonly ProteinRenderMotion['modes'][number][];
   private readonly sampler: ProteinBrownianSampler;
   private readonly modeCoefficientsBuffer: Float64Array;
   private readonly effectiveCoefficientsBuffer: Float32Array;
@@ -140,9 +134,8 @@ export class ProteinMotionController {
 
   // asset の固定モードと個体固有 seed から、再利用する計算バッファを初期化する。
   public constructor(
-    private readonly asset: ProteinMotionAsset,
+    private readonly asset: ProteinRenderMotion,
     enemyId: string,
-    options: ProteinMotionControllerOptions = {},
   ) {
     if (!Number.isInteger(asset.residueCount) || asset.residueCount < 0) {
       throw new RangeError('Protein motion residueCount must be a non-negative integer');
@@ -157,8 +150,8 @@ export class ProteinMotionController {
     this.currentModeCount = Math.min(MAX_MOTION_MODES, this.modeCount);
     this.modes = asset.modes;
     this.updatePhase = proteinMotionUpdatePhaseFor(enemyId);
-    this.collectiveGain = finiteNonNegative(options.collectiveGain, finiteNonNegative(asset.display.collectiveGain, 1));
-    this.localGain = finiteNonNegative(options.localGain, finiteNonNegative(asset.display.localGain, 1));
+    this.collectiveGain = finiteNonNegative(asset.display.collectiveGain, 1);
+    this.localGain = finiteNonNegative(asset.display.localGain, 1);
     // OU sampler と係数バッファは個体の寿命中再利用し、毎フレームの割り当てを避ける。
     this.sampler = new ProteinBrownianSampler(
       this.modes.map((mode) => ({
@@ -172,7 +165,7 @@ export class ProteinMotionController {
     this.effectiveCoefficientsBuffer = new Float32Array(this.modeCount);
     this.rawCoefficientsBuffer = new Float32Array(this.modeCount);
     this.fadeFromCoefficientsBuffer = new Float32Array(this.modeCount);
-    // band 別 gain は asset/options だけで決まるため、構築時に焼いておく。
+    // band 別 gain は asset だけで決まるため、構築時に焼いておく。
     this.modeGains = new Float64Array(this.modeCount);
     for (let modeIndex = 0; modeIndex < this.modeCount; modeIndex += 1) {
       const mode = this.modes[modeIndex]!;
@@ -212,17 +205,16 @@ export class ProteinMotionController {
   }
 
   /**
-   * 表示時刻を与えて更新し、毎回同じモード係数バッファを返す。`sampleAt` と `seek` は別名で、
-   * 呼び出し側が意図を書き分けるためだけにあり、決定的なサンプリングの意味は変わらない。
+   * 表示時刻・LOD・構造フェーズでモード係数を確定させ、`effectiveModeCoefficients` へ書く。
    * LOD が変わったときは、それまでの係数から新しい係数へ表示時刻で
    * `PROTEIN_MOTION_LOD_FADE_DURATION_SEC` かけて混ぜる — 変位は係数の線形結合なので、
-   * これは変位そのものを混ぜるのと同じ結果になる。切替中も毎フレーム `update` を呼ぶだけでよい。
+   * これは変位そのものを混ぜるのと同じ結果になる。切替中も毎フレーム `sampleAt` を呼ぶだけでよい。
    */
-  public update(
+  public sampleAt(
     time: number,
-    lod: ProteinMotionLod = 'near',
+    lod: ProteinMotionLod,
     phase: ProteinPhase = this.currentPhase,
-  ): Float32Array {
+  ): void {
     // LOD・量子化時刻・phase のいずれかが変わったときだけ、生の係数を求め直す。
     const output = this.effectiveCoefficientsBuffer;
     const nextModeCount = modeCountFor(lod, this.modeCount);
@@ -231,7 +223,7 @@ export class ProteinMotionController {
     const inputsChanged = lod !== this.currentLod || nextModeCount !== this.currentModeCount
       || rawSampleTime !== this.lastRawSampleTime || phase !== this.currentPhase;
 
-    if (!inputsChanged && !this.fading) return output;
+    if (!inputsChanged && !this.fading) return;
 
     if (inputsChanged) {
       if (lod !== this.currentLod) {
@@ -250,7 +242,7 @@ export class ProteinMotionController {
     if (!this.fading) {
       output.set(this.rawCoefficientsBuffer);
       this.lastSampleTime = rawSampleTime;
-      return output;
+      return;
     }
 
     const fadeT = Math.min(1, Math.max(0, (safeTime - this.fadeStartTime) / PROTEIN_MOTION_LOD_FADE_DURATION_SEC));
@@ -260,7 +252,6 @@ export class ProteinMotionController {
     }
     this.lastSampleTime = safeTime;
     if (fadeT >= 1) this.fading = false;
-    return output;
   }
 
   /** OU 過程を標本化し、gain・phase gain・LOD によるモード数の打ち切りを掛けて `target` へ書く。 */
@@ -272,14 +263,6 @@ export class ProteinMotionController {
     for (let modeIndex = 0; modeIndex < activeModeCount; modeIndex += 1) {
       target[modeIndex] = this.modeCoefficientsBuffer[modeIndex]! * this.modeGains[modeIndex]! * phaseGain;
     }
-  }
-
-  public sampleAt(time: number, lod: ProteinMotionLod = this.currentLod, phase: ProteinPhase = this.currentPhase): Float32Array {
-    return this.update(time, lod, phase);
-  }
-
-  public seek(time: number, lod: ProteinMotionLod = this.currentLod, phase: ProteinPhase = this.currentPhase): Float32Array {
-    return this.update(time, lod, phase);
   }
 
   private sampleTimeFor(time: number, lod: ProteinMotionLod): number {

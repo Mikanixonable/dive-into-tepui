@@ -54,7 +54,21 @@ export interface ProteinRenderMotion {
     readonly ribbonResidues: readonly number[];
     readonly siteResidues: readonly number[];
   };
-  readonly modes: readonly { readonly displacements: readonly number[] }[];
+  readonly modes: readonly {
+    readonly band: 'collective' | 'local';
+    /** OU 過程の緩和率 [1/s]。 */
+    readonly displayRelaxationRate: number;
+    /** モードの定常 RMS 振幅 [Å]。物理値が無いモードは表示値を持つ。 */
+    readonly physicalRmsAngstrom?: number;
+    readonly displayRmsAngstrom?: number;
+    readonly displacements: readonly number[];
+  }[];
+  readonly display: {
+    /** OU 過程の標本化周波数 [Hz]。 */
+    readonly sampleHz: number;
+    readonly collectiveGain: number;
+    readonly localGain: number;
+  };
 }
 
 /** 表示ツリーと変形資源が読む、1体ぶんのアセット由来の入力。 */

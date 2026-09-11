@@ -2,7 +2,7 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
   ProteinBrownianSampler, proteinBrownianSeedFor,
-} from '../../src/game/protein/protein-brownian-motion';
+} from '../../src/render/protein/protein-brownian-motion';
 
 export function register(): void {
   test('protein Brownian: identifier seeds are stable and well distributed', () => {

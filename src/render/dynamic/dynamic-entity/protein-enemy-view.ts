@@ -1,20 +1,24 @@
 import * as THREE from 'three/webgpu';
+import { apparentSizePx } from '../../../math/projection';
 import { proteinMotionModeDisplacements } from '../../protein/protein-motion-modes';
 import { ProteinRuntime } from '../../protein/protein-runtime';
 import { createProteinMotionBinding } from '../../protein/protein-motion-material';
 import {
+  ProteinMotionController, proteinMotionLodForProjectedSize,
+} from '../../protein/protein-motion-controller';
+import {
   DynamicView, type DynamicRenderSource, type DynamicViewFrame,
 } from '../dynamic-view';
 import type { ProteinRenderDefinition } from '../../protein/protein-render-definition';
-import type { ProteinDisplaySettings, ProteinMotionDisplay } from '../../protein/protein-display';
+import type { ProteinDisplaySettings, ProteinMotionLod, ProteinPhase } from '../../protein/protein-display';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import type { Quat } from '../../../math/quat';
 import type { Vec3 } from '../../../math/vec3';
 
-// タンパク質の敵1体ぶんの、そのフレームの表示入力。表示設定と変形係数を共通の面へ足す。
+// タンパク質の敵1体ぶんの、そのフレームの表示入力。表示設定と構造フェーズを共通の面へ足す。
 export interface ProteinVisualSource extends DynamicRenderSource {
   readonly display: ProteinDisplaySettings;
-  readonly motionDisplay: ProteinMotionDisplay;
+  readonly phase: ProteinPhase;
 }
 
 /** 部位マーカーの、位置以外の表示内容。 */
@@ -32,17 +36,26 @@ export interface ProteinSiteMarker extends ProteinSiteStatus {
   readonly worldPos: Vec3;
 }
 
-// タンパク質モデル、構造ゆらぎ、結合線を所有する。
+// タンパク質モデル、構造ゆらぎ、結合線を所有する。ゆらぎの LOD と係数遷移の履歴も、
+// 表示フレームの入力だけで進む表示の状態としてここが持つ。
 export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
   private readonly runtime: ProteinRuntime;
   private renderedDisplay: ProteinDisplaySettings;
+  private readonly motionController: ProteinMotionController;
+  private lod: ProteinMotionLod = 'near';
+  // 直近の同期でモード係数の確定に要した CPU 時間 [ms]。
+  private motionControllerCpuMs = 0;
 
   // 初期表示設定で THREE ツリーと共有 GPU binding を組み立てる。
-  // modelScale は機体モデルへ掛ける表示倍率。物理の判定半径と同じ値を組み立て側が配る。
+  // modelScale は機体モデルへ掛ける表示倍率、boundingRadius は LOD を選ぶ投影直径の基準にする
+  // 外接半径 [m]。どちらも物理の判定形状と同じ値を組み立て側が配る。enemyId はゆらぎの個体差を
+  // 決める鍵で、同じ鍵の個体は同じように揺らぐ。
   public constructor(
     private readonly definition: ProteinRenderDefinition,
     display: ProteinDisplaySettings,
     modelScale: number,
+    private readonly boundingRadius: number,
+    enemyId: string,
     scene?: THREE.Scene,
   ) {
     // モード変位は asset 単位のキャッシュを使い、個体ごとには係数スロットだけを確保する。
@@ -58,6 +71,7 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
     super(root, scene);
     this.runtime = new ProteinRuntime(root, definition.source.semantic, motion, motionBinding);
     this.renderedDisplay = { ...display };
+    this.motionController = new ProteinMotionController(motion, enemyId);
   }
 
   // 表現種別か着色が変わったときだけ THREE 子要素を再構築する。
@@ -70,13 +84,15 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
     this.renderedDisplay = { ...display };
   }
 
-  // 直近の表示反映に要した CPU 時間と GPU 転送量を公開する。
+  // 直近の同期で選んだ LOD と、係数の確定から表示反映までに要した CPU 時間・GPU 転送量を公開する。
   public get motionMetrics(): {
+    readonly lod: ProteinMotionLod;
     readonly cpuMs: number;
     readonly uploadBytes: number;
   } {
     return {
-      cpuMs: this.runtime.cpuMs,
+      lod: this.lod,
+      cpuMs: this.motionControllerCpuMs + this.runtime.cpuMs,
       uploadBytes: this.runtime.uploadBytes,
     };
   }
@@ -96,14 +112,41 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
     }));
   }
 
-  // 表示設定と外部で確定した変形係数を、タンパク質の THREE 資源へ反映する。
+  // 表示設定を反映し、投影サイズから LOD を選んで表示時刻のモード係数を確定させ、変形資源へ渡す。
+  // 本体を出さないフレームは LOD を保ったまま変形を止める。
   protected override syncModel(
     source: ProteinVisualSource,
-    _displayed: KinematicState | null,
-    _context: DynamicViewFrame,
+    displayed: KinematicState | null,
+    context: DynamicViewFrame,
   ): void {
     this.syncDisplay(source.display);
-    this.runtime.syncVisual(source.motionDisplay);
+    // 本体と同じ可視条件で表示時刻の状態を使う。
+    const shown = source.visible ? displayed : null;
+    this.motionControllerCpuMs = 0;
+    if (shown !== null) {
+      const projectedDiameterPx = apparentSizePx(
+        this.boundingRadius * 2,
+        context.camera.radialScale(shown.r),
+      );
+      this.lod = proteinMotionLodForProjectedSize(projectedDiameterPx, this.lod);
+      if (this.lod !== 'marker') {
+        const cpuStart = performance.now();
+        // 揺らぎの表示が切られている間は、LOD を保ったまま係数だけを静止へ倒す。
+        this.motionController.sampleAt(
+          context.displayTime,
+          context.visual.proteinVibration ? this.lod : 'marker',
+          source.phase,
+        );
+        this.motionControllerCpuMs = performance.now() - cpuStart;
+      }
+    }
+    this.runtime.syncVisual({
+      active: shown !== null,
+      lod: this.lod,
+      sampleTime: this.motionController.sampleTime,
+      phase: source.phase,
+      coefficients: this.motionController.effectiveModeCoefficients,
+    });
   }
 
   // タンパク質固有の GPU・結合線資源を先に破棄する。
