@@ -4,7 +4,7 @@
 // 時刻範囲を切り出し、位置と接線を持つ節点列として Curve へ渡すことと、その曲線が描かれる
 // 座標系の管理。節点の間をどう埋めるか(画面上のサジッタに応じた適応分割)は Curve が持つ。
 //
-// 座標変換は physics/frame.ts / game/celestial/reference-frames.ts へ委譲する二段構え:
+// 座標変換は physics/frame.ts と、供給された座標系の剛体運動へ委譲する二段構え:
 //  - bake(点列・frame が変わったときだけ): 各サンプルの KinematicState をその時刻の座標系相対へ
 //    変換する(frameTransformAt→toFrameState)。点ごとに座標系の姿勢・原点が違う非剛体変形なので、
 //    時刻ごとに変換し直す(慣性系なら無変換)。
@@ -17,7 +17,6 @@
 import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { FrameAnchorSource, framePoint, ReferenceFrame, toFrameState, toInertialPoint } from '../../physics/frame';
-import type { ReferenceFrames } from '../../game/celestial/reference-frames';
 import { DynamicTrajectory, ExtrapolationCenter } from '../../physics/dynamic-trajectory';
 import { extrapolatedRelativeStates } from '../../physics/kepler-extrapolation';
 import { StateQueue } from '../../physics/state-queue';
@@ -25,7 +24,7 @@ import { add, Vec3 } from '../../math/vec3';
 import type { CameraFrame } from '../camera/camera-frame';
 import { Curve, CurveKnots } from '../curve';
 import { LineStyle } from '../line-style';
-import type { CelestialBodies } from '../../game/celestial/celestial-bodies';
+import type { CelestialFrameSource, FrameTransformSource } from './celestial-frame-source';
 
 // 頂点数の打ち切り。数周ぶんの軌跡なら数百頂点で収束するが、28日表示のように数百周が
 // 重なる区間は何頂点あっても収束しないので、どこで頭打ちにするかをここで決める。
@@ -53,7 +52,7 @@ function extrapolationTargetInterval(baseInterval: number, span: number): number
 // 双曲線などで外挿できない場合は空配列。
 function extrapolatedTailStates(
   tip: KinematicState, center: ExtrapolationCenter, to: number,
-  baseInterval: number, celestialBodies: CelestialBodies,
+  baseInterval: number, celestialBodies: CelestialFrameSource,
 ): KinematicState[] {
   const span = to - tip.t;
   const target = extrapolationTargetInterval(baseInterval, span);
@@ -99,7 +98,7 @@ export class TrajectoryLine {
   // trajectory が null か、描ける区間が潰れているときは線が消え、samplePoints も空になる。
   public sync(
     trajectory: DynamicTrajectory | null, from: number | null, to: number | null,
-    frame: ReferenceFrame, displayTime: number, celestialBodies: CelestialBodies,
+    frame: ReferenceFrame, displayTime: number, celestialBodies: CelestialFrameSource,
     frameAnchors: FrameAnchorSource, style: LineStyle, camera: CameraFrame,
   ): void {
     this.curve.setStyle(style);
@@ -128,7 +127,7 @@ export class TrajectoryLine {
   // だけで見た目には出ない。
   private bakeKnots(
     trajectory: DynamicTrajectory | null, from: number | null, to: number | null, frame: ReferenceFrame,
-    celestialBodies: CelestialBodies, frameAnchors: FrameAnchorSource,
+    celestialBodies: CelestialFrameSource, frameAnchors: FrameAnchorSource,
   ): void {
     const samples = trajectory?.samplesOldestFirst() ?? NO_SAMPLES;
     const tip = samples.length > 0 ? samples[samples.length - 1]! : null;
@@ -193,7 +192,7 @@ export class TrajectoryLine {
   // 直近に bake した描画区間から、当たり判定向けの ECI 絶対座標のサンプル点列を返す。
   // 座標系相対 → 慣性系の変換は表示時刻の剛体運動(sync の un-bake と同じ変換)で行う。
   public samplePoints(
-    count: number, frame: ReferenceFrame, displayTime: number, frames: ReferenceFrames,
+    count: number, frame: ReferenceFrame, displayTime: number, frames: FrameTransformSource,
     frameAnchors: FrameAnchorSource,
   ): readonly Vec3[] {
     const start = this.startTime;

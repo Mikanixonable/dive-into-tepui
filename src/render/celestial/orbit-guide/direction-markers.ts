@@ -9,7 +9,9 @@ import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../../../math/projectio
 import { InstancedPool } from '../../instanced-pool';
 import { FloatingOrigin } from '../../camera/floating-origin';
 import type { CameraFrame } from '../../camera/camera-frame';
-import type { DirectionMarkerMode } from '../../../game/celestial/orbit-guide/orbit-guide-settings';
+
+// 進行方向マーカーの出し方。
+export type DirectionMarkerMode = 'none' | 'single' | 'many';
 
 // 画面上のマーカーの高さ [px](頂点から底辺まで)。
 const MARKER_HEIGHT_PX = 10;
