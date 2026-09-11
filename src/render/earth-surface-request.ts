@@ -3,7 +3,7 @@
 import { decodeEarthSurfaceTile, EarthSurfaceHttpError } from './earth-surface-decode';
 import type { EarthSurfaceTilePayload } from './earth-surface-decode';
 import { decodeEarthTerrainOffThread } from './earth-surface-terrain-worker-client';
-import { earthTileId, earthTileKey } from './earth-surface-tiles';
+import { EARTH_TILE_MIN_Z, earthTileId, earthTileKey } from './earth-surface-tiles';
 import type { EarthTileKey } from './earth-surface-tiles';
 
 export interface EarthSurfaceTileIndexFile {
@@ -88,6 +88,7 @@ function normalizeIndex(value: unknown, expectedDatasetId?: string): EarthSurfac
       throw new EarthSurfaceRequestError('Invalid tile-index key');
     }
     const key = earthTileKey(entry.z!, entry.x!, entry.y!);
+    if (key.z < EARTH_TILE_MIN_Z) throw new EarthSurfaceRequestError('Invalid tile-index key level');
     if (earthTileId(key) !== entry.key || ids.has(entry.key)) throw new EarthSurfaceRequestError('Duplicate tile-index key');
     const raw = entry as unknown as Record<string, unknown>;
     const color = file(entry.color ?? {
