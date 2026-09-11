@@ -10,7 +10,7 @@ import type { ProteinMotionAsset } from '../../src/game/protein/protein-schema';
 import { collisionDamageFraction } from '../../src/game/dynamic/dynamic-entity/contact-damage';
 import * as THREE from 'three/webgpu';
 import { ProteinRuntime } from '../../src/render/protein/protein-runtime';
-import { ProteinMotionController } from '../../src/game/protein/protein-motion-controller';
+import { ProteinMotionController } from '../../src/render/protein/protein-motion-controller';
 import { PROTEIN_ASSET_IDS, proteinAssetFor } from '../../src/game/protein/protein-asset-loader';
 import { createProteinEnemyDefinition } from '../../src/game/protein/protein-enemy-registry';
 import { testProteinAssetBundleFor } from '../protein-test-assets';
@@ -262,7 +262,7 @@ export function register(): void {
     const runtime = new ProteinRuntime(root, asset, motion);
     const controller = new ProteinMotionController(motion, 'enemy-42');
     const syncVisual = (): void => {
-      controller.update(12.5, 'near', combat.phase);
+      controller.sampleAt(12.5, 'near', combat.phase);
       runtime.syncVisual({
         active: true,
         lod: 'near',
