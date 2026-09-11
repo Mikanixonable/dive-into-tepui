@@ -29,11 +29,14 @@ export class UserSettings {
   // 軌道ガイドの設定。
   public readonly orbitGuide: StoredSetting<OrbitGuideSettings>;
 
-  // storage は設定一式を残す先。
+  // storage は設定一式を残す先。鍵は**既存ユーザーの保存に残っている文字列**なので、
+  // 生成の並びと一緒にここへ直に書く。
   public constructor(storage: SettingStorage) {
+    // 画面全体に効く設定。設定ビューと一時停止メニューが書き換える。
     this.graphics = new StoredSetting(storage, 'tepui.settings.graphics', parseGraphics, formatGraphics);
     this.renderStyle = new StoredSetting(storage, 'tepui.settings.renderStyle', parseRenderStyle, (style) => style);
     this.bgmVolume = new StoredSetting(storage, 'tepui.settings.bgm_vol', parseBgmVolume, (vol) => String(vol));
+    // マップの表示パネルが書き換える設定。ランの中から編集され、ランを跨いで残る。
     this.mapDisplayToggles = new StoredSetting(
       storage, 'tepui.mapDisplayToggles', parseMapDisplayToggles, formatMapDisplayToggles,
     );
