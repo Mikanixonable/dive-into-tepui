@@ -9,8 +9,6 @@ import type {
   ProteinBackboneAsset, ProteinRenderDefinition, ProteinRenderSource,
 } from '../../render/protein/protein-render-definition';
 
-export { PROTEIN_ASSET_SOURCES };
-
 // 生成カタログ1体分。semantic はバンドルに含め、主鎖・構造・モーションは URL から取得する。
 export interface ProteinAssetSource {
   readonly semantic: ProteinAssetDefinition;
@@ -73,7 +71,7 @@ export function buildProteinAssetBundle(
     modificationResidues: semantic.modificationSlots.length,
   });
   if (motionIssues.length > 0) throw new Error('Invalid protein motion asset ' + expectedId + ': ' + motionIssues.join('; '));
-  const structureHash = (structure as ProteinDisplayAsset & { readonly generator?: { readonly contentHash?: string } }).generator?.contentHash;
+  const structureHash = structure.generator.contentHash;
   const backboneHash = (backbone as ProteinBackboneAsset & { readonly contentHash?: string }).contentHash;
   if (motion.source.structureHash !== structureHash) throw new Error('Protein motion ' + expectedId + ' structure hash mismatch');
   if (motion.source.backboneHash !== backboneHash) throw new Error('Protein motion ' + expectedId + ' backbone hash mismatch');

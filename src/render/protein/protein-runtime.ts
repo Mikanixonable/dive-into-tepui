@@ -30,10 +30,8 @@ interface ProteinBondVisual {
 
 // 外部で計算済みのタンパク質変形を反映する GPU 資源と、転送・アンカー計算キャッシュを保つ。
 export class ProteinRuntime {
-  private readonly motion: ProteinRenderMotion;
   // 共有バッファのスロットが尽きていれば null。そのときは変形せず、静止した構造で描く。
   public readonly motionBinding: ProteinMotionBinding | null;
-  private readonly root: THREE.Object3D;
   private readonly siteDefinitions = new Map<string, ProteinRenderSite>();
   private readonly baseSitePositions = new Map<string, THREE.Vector3>();
   private readonly siteResidueGroups = new Map<string, readonly number[]>();
@@ -49,14 +47,12 @@ export class ProteinRuntime {
 
   // root に binding と部位・結合線の表示資源を結び付ける。
   public constructor(
-    root: THREE.Object3D,
+    private readonly root: THREE.Object3D,
     private readonly asset: ProteinRenderAsset,
-    motion: ProteinRenderMotion,
+    private readonly motion: ProteinRenderMotion,
     motionBinding?: ProteinMotionBinding | null,
   ) {
     // 固定定義の索引と、外部係数を適用する binding を同じ runtime に束ねる。
-    this.root = root;
-    this.motion = motion;
     for (const site of asset.sites) this.siteDefinitions.set(site.id, site);
     this.motionBinding = motionBinding ?? createProteinMotionBinding(
       motion.residueCount, proteinMotionModeDisplacements(motion), motion.modes.length,
