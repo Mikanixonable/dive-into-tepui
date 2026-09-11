@@ -9,7 +9,6 @@ import type { Notifier } from '../../hud/notifier';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { TouchControls } from '../hud/touch-controls';
 import type { CameraSystem } from '../camera/camera-system';
-import { screenProjection } from '../../math/projection';
 import type { Viewport } from '../../render/viewport';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { ObjectWindows } from '../pickable/object-windows';
@@ -90,7 +89,7 @@ export class CombatView implements ViewFrame {
   public handlePointer(simTime: number, viewport: Viewport): void {
     const controlled = this.controlSelection.current;
     if (!controlled) return;
-    const project = screenProjection(this.cameraSystem.activeViewpoint, viewport.width, viewport.height);
+    const project = this.cameraSystem.activeProjection(viewport);
     this.targeter.handleTargetSelectKey(this.input, controlled, project, viewport);
     this.input.takeRightClicks((p) => {
       const hit = pickCombatEntityAtPoint(
