@@ -66,7 +66,7 @@ const PENDING_UID_CAP = GPU_PASS_COUNT * 8;
 // よう、GpuTimings とは別のクラスにする。
 class PassInspector extends InspectorBase {
   // onBegin は render() の呼び出しごとにその uid を、onFinish はその終わりを受け取る。
-  constructor(
+  public constructor(
     private readonly onBegin: (uid: string) => void,
     private readonly onFinish: () => void,
   ) {
@@ -74,19 +74,19 @@ class PassInspector extends InspectorBase {
   }
 
   // レンダラーが render() を呼ぶたびに、その呼び出しの uid を添えて呼ばれる。
-  beginRender(uid: string): void {
+  public beginRender(uid: string): void {
     this.onBegin(uid);
   }
 
   // その render() が終わるたびに呼ばれる。入れ子の呼び出しでは内側が先に閉じる。
-  finishRender(): void {
+  public finishRender(): void {
     this.onFinish();
   }
 }
 
 export class GpuTimings {
   // 集計の可否。偽の間は届いた値を捨てる。
-  enabled = false;
+  public enabled = false;
   private readonly elapsedMs = new Float64Array(GPU_PASS_COUNT);
   // 解決は非同期なので、前回の解決が返る前に次を積まない。
   private resolving = false;
@@ -103,7 +103,7 @@ export class GpuTimings {
 
   // 自分専用の Inspector をレンダラーへ据え、以後の render() 呼び出しの uid を
   // beginPass が宣言したパスへ結び付けられるようにする。
-  constructor(private readonly renderer: WebGPURenderer) {
+  public constructor(private readonly renderer: WebGPURenderer) {
     renderer.inspector = new PassInspector(
       (uid) => this.onBeginRender(uid),
       () => this.onFinishRender(),
@@ -111,11 +111,11 @@ export class GpuTimings {
   }
 
   // 時刻印が実際に取れているか。デバイスが timestamp-query を持たない環境では偽のままになる。
-  get supported(): boolean { return this.available; }
+  public get supported(): boolean { return this.available; }
 
   // このあと最初に来る renderer.render() 呼び出しが id の描画パスであることを宣言する。パスを
   // 発行する直前に毎回呼ぶ。enabled が偽の間は宣言を捨てる。
-  beginPass(id: GpuPassId): void {
+  public beginPass(id: GpuPassId): void {
     if (!this.enabled) return;
     this.pendingPass = id;
   }
@@ -141,7 +141,7 @@ export class GpuTimings {
   //
   // 呼ばない期間があるとレンダラ側の時刻印クエリが溜まって上限に当たるため、`enabled` に
   // かかわらず毎フレーム呼ぶこと。ゲート下にあるのは集計だけで、要求そのものではない。
-  resolve(): void {
+  public resolve(): void {
     if (this.resolving) return;
     this.resolving = true;
     this.resolvePromise = this.renderer.resolveTimestampsAsync(TimestampQuery.RENDER)
@@ -180,13 +180,13 @@ export class GpuTimings {
   }
 
   // 直近の resolve() が届くまで待つ。非同期の結果を決まった時点で読みたい計測用の口。
-  async waitForResolve(): Promise<void> {
+  public async waitForResolve(): Promise<void> {
     await this.resolvePromise;
   }
 
   // 溜めた読みを捨てて数え直す。**先に waitForResolve() を待つこと** —
   // 待たずに呼ぶと、遅れて届いた前の窓の値が捨てたはずの器へ入る。
-  reset(): void {
+  public reset(): void {
     this.elapsedMs.fill(0);
     this.available = false;
     this.pendingPass = null;
@@ -194,12 +194,12 @@ export class GpuTimings {
   }
 
   // 全パスの直近の所要時間 [ms] を、パス id の並びのまま写して返す。
-  snapshot(): GpuTimingSnapshot {
+  public snapshot(): GpuTimingSnapshot {
     return { supported: this.available, elapsedMs: Array.from(this.elapsedMs) };
   }
 
   // パス id の直近の所要時間 [ms]。
-  msOf(id: GpuPassId): number { return this.elapsedMs[id]!; }
+  public msOf(id: GpuPassId): number { return this.elapsedMs[id]!; }
 
   // render 用の timestampQueryPool を返す。公開型に無い内部プロパティを読む唯一のキャスト箇所。
   private renderTimestampPool(): RenderTimestampPool | undefined {
