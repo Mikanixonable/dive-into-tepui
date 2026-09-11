@@ -6,15 +6,15 @@ import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
 import { CloudPresentation } from '../../src/render/cloud/cloud-presentation';
 import type { CloudLodMode } from '../../src/render/cloud/cloud-field-sampler';
-import { ClimateMap } from '../../src/render/cloud/climate-map';
-import { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
 import { ObservedCloudField } from '../../src/render/cloud/observed-cloud-field';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
-import climateTextureUrl from '../../src/assets/earth-climate.png';
 import cloudFieldUrl from '../../src/assets/cloud-field.png';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
-import { R_EARTH, R_EARTH_EQ, R_SUN, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/constants';
-import { EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE } from '../../src/game/celestial/solar-system/earth-system';
+import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-system/constants';
+import {
+  EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE, earthGeneratedCloudField,
+} from '../../src/game/celestial/solar-system/earth-system';
+import { bootstrapEarthSurface } from '../../src/game/celestial/solar-system/earth-surface-runtime';
 import { shapeAxes, shapeSpheroidRadii, type RingBandDef } from '../../src/physics/celestial-body-def';
 import { BodyGraticule } from '../../src/render/celestial/body-graticule';
 import { LineOverlay, type LatLonPolyline } from '../../src/render/celestial/line-overlay';
@@ -647,9 +647,10 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   const axes = shapeAxes(R_EARTH_EQ, EARTH.shape);
   const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
-  const climate = ClimateMap.fromDeferredUrl(climateTextureUrl);
+  // 雲場の表示時刻 0 の UTC [s]。気候の月は、ここから表示時刻ぶん進んだ暦で選ばれる。
+  const climateEpochUnixSec = 0;
   const cumulus = new CloudPresentation(
-    GeneratedCloudField.global(climate, R_EARTH, SIDEREAL_DAY, null),
+    earthGeneratedCloudField(climateEpochUnixSec, bootstrapEarthSurface()),
     new ObservedCloudField(cloudFieldUrl), R_EARTH_EQ,
   );
   const surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);

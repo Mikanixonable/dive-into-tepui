@@ -15,6 +15,8 @@ export type FieldProjection = {
   readonly texelAngle: FloatNode;
   // 同じ角のいまの値。写しをどこまで粗く焼いてよいかを CPU 側で決めるのに使う。
   readonly texelAngleValue: number;
+  // 写しの置き方の版。置き方が変わるたびに進むので、焼いた写しがいまの置き方のものかを見分けられる。
+  readonly revision: number;
   // uv(0..1)の指す単位方向。1 texel を焼くのに 1 回走る。
   directionAt(uv: Vec2Node): Vec3Node;
   // 単位方向を写す uv(0..1)。1 texel を焼くのに何度も走るので、費用はこちらが効く。
@@ -46,6 +48,8 @@ export class EquirectProjection implements FieldProjection {
   public readonly wrapT: THREE.Wrapping = THREE.ClampToEdgeWrapping;
   public readonly texelAngle: FloatNode;
   public readonly texelAngleValue: number;
+  // 全球を覆う置き方は構築時に決まるので、版は 0 のまま。
+  public readonly revision = 0;
 
   // height は緯度 180° を割る texel 数。幅はその 2 倍。
   public constructor(public readonly height: number) {
@@ -76,6 +80,8 @@ export class EllipsoidEquirectProjection implements FieldProjection {
   public readonly wrapT: THREE.Wrapping = THREE.ClampToEdgeWrapping;
   public readonly texelAngle: FloatNode;
   public readonly texelAngleValue: number;
+  // 全球を覆う置き方は構築時に決まるので、版は 0 のまま。
+  public readonly revision = 0;
 
   public constructor(public readonly height: number, private readonly axes: Vec3Node) {
     this.width = height * 2;
@@ -114,6 +120,7 @@ export class OrthographicCap implements FieldProjection {
   private readonly east: Vec3Uniform = uniform(new THREE.Vector3());
   private readonly north: Vec3Uniform = uniform(new THREE.Vector3());
   private readonly sinRadius: FloatUniform = uniform(0);
+  private revisionValue = 0;
   // 投影面は円板の直径を size texel で割るので、中心での 1 texel は 2 sin(半径) / size [rad]。
   // 外周へ向かって texel は角度としては粗くなるが、それは球の傾きぶんで、画面上では一定に見える。
   public readonly texelAngle: FloatNode;
@@ -137,11 +144,15 @@ export class OrthographicCap implements FieldProjection {
     this.east.value.set(cosLongitude, 0, -sinLongitude);
     this.north.value.set(-sinLatitude * sinLongitude, cosLatitude, -sinLatitude * cosLongitude);
     this.sinRadius.value = Math.sin(radius);
+    this.revisionValue += 1;
   }
 
   public get texelAngleValue(): number {
     return (this.sinRadius.value * 2) / this.width;
   }
+
+  // 置き方の版。aim() のたびに進む。
+  public get revision(): number { return this.revisionValue; }
 
   public directionAt(uv: Vec2Node): Vec3Node {
     // v は北から南へ増えるので、北成分は符号を返す。円板の外では中心からの距離を 1 で止める。
