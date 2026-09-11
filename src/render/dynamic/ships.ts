@@ -6,6 +6,7 @@ import { ENEMY_PLASMA_COLOR } from '../vfx-style';
 import { mulberry32 } from '../../math/random';
 import { markLitOpaque, markShadowCaster } from '../pipeline/lit-layer';
 import { attachThermalEmissive, makeThermallyEmissive } from '../thermal-emissive';
+import { memoParseIndependent, memoParseShared, memoTemplate } from './baked-model';
 
 // BufferGeometry を属性・index ごと複製する(clone() だけでは頂点属性配列を共有したままになる)。
 function deepCloneGeometry(geo: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -39,75 +40,20 @@ import debrisChunkData from '../../assets/models/debrisChunk.json';
 import debrisPanelData from '../../assets/models/debrisPanel.json';
 import debrisRodData from '../../assets/models/debrisRod.json';
 
-const loader = new THREE.ObjectLoader();
-
-// クローン時、THREE の Object3D.clone(true) は同じ parse から得た
-// マテリアル/ジオメトリを参照共有する。呼び出し側が個体ごとに
-// material の色や opacity を書き換える(マズルフラッシュ等)場合があるため、
-// そうした用途のテンプレートは clone のたびに traverse してマテリアルを
-// 複製し直す。ここで扱うテンプレート自体は opacity 等を実行時に書き換えない
-// ものばかりだが、将来の変更に備えて一律で安全側(非共有)にしておく。
-function cloneIndependent<T extends THREE.Object3D>(template: T): T {
-  const clone = template.clone(true) as T;
-  // 各メッシュのマテリアルを独立に複製する
-  clone.traverse((child) => {
-    const mesh = child as THREE.Mesh;
-    if (mesh.isMesh && mesh.material) {
-      if (Array.isArray(mesh.material)) {
-        mesh.material = mesh.material.map((m) => m.clone());
-      } else {
-        mesh.material = mesh.material.clone();
-      }
-      mesh.userData.ownsMaterial = true;
-    }
-  });
-  makeThermallyEmissive(clone);
-  markLitOpaque(clone);
-  markShadowCaster(clone);
-  return clone;
-}
-
-// data を初回だけパースしてキャッシュし、以後も同じテンプレートを返す関数を作る。
-// テンプレートそのものは書き換えず、複製して使う。
-function memoTemplate<T extends THREE.Object3D>(data: unknown): () => T {
-  let cached: T | null = null;
-  return () => {
-    if (!cached) cached = loader.parse(data) as T;
-    return cached;
-  };
-}
-
-// data を初回だけパースしてキャッシュし、以後は cloneIndependent で複製を返すビルダーを作る。
-function memoParse<T extends THREE.Object3D>(data: unknown): () => T {
-  const template = memoTemplate<T>(data);
-  return () => cloneIndependent(template());
-}
-
-// 弾(bullet/plasma)専用: 大量発射されるため、geometry/material をクローンせず
-// Object3D 階層だけ複製して共有する(THREE の Object3D.clone(true) は既定で
-// geometry/material を参照共有するので、cloneIndependent と違い追加の
-// .clone() は行わない)。弾本体のマテリアルは発射後に書き換えられないので
-// 個体ごとの独立コピーは不要 — これにより毎発の生成で新規 GPU リソースが
-// 増え続けるリークを防ぐ。
-function memoParseShared<T extends THREE.Object3D>(data: unknown): () => T {
-  const template = memoTemplate<T>(data);
-  return () => template().clone(true) as T;
-}
-
-const parsePlayer = memoParse<THREE.Group>(playerData);
-const parseEnemy = memoParse<THREE.Group>(enemyData);
-const parseStage0EnemyA = memoParse<THREE.Group>(stage0EnemyDataA);
-const parseStage0EnemyB = memoParse<THREE.Group>(stage0EnemyDataB);
-const parseStage0EnemyC = memoParse<THREE.Group>(stage0EnemyDataC);
-const parseMagazine = memoParse<THREE.Group>(magazineData);
-const parseAmmoPickup = memoParse<THREE.Group>(ammoPickupData);
-const parseRcsFuelPickup = memoParse<THREE.Group>(rcsFuelPickupData);
+const parsePlayer = memoParseIndependent<THREE.Group>(playerData);
+const parseEnemy = memoParseIndependent<THREE.Group>(enemyData);
+const parseStage0EnemyA = memoParseIndependent<THREE.Group>(stage0EnemyDataA);
+const parseStage0EnemyB = memoParseIndependent<THREE.Group>(stage0EnemyDataB);
+const parseStage0EnemyC = memoParseIndependent<THREE.Group>(stage0EnemyDataC);
+const parseMagazine = memoParseIndependent<THREE.Group>(magazineData);
+const parseAmmoPickup = memoParseIndependent<THREE.Group>(ammoPickupData);
+const parseRcsFuelPickup = memoParseIndependent<THREE.Group>(rcsFuelPickupData);
 const parseBullet = memoParseShared<THREE.Mesh>(bulletData);
 const parsePlasma = memoParseShared<THREE.Mesh>(plasmaData);
-const parseCasing = memoParse<THREE.Mesh>(casingData);
-const parseDebrisChunk = memoParse<THREE.Mesh>(debrisChunkData);
-const parseDebrisPanel = memoParse<THREE.Mesh>(debrisPanelData);
-const parseDebrisRod = memoParse<THREE.Mesh>(debrisRodData);
+const parseCasing = memoParseIndependent<THREE.Mesh>(casingData);
+const parseDebrisChunk = memoParseIndependent<THREE.Mesh>(debrisChunkData);
+const parseDebrisPanel = memoParseIndependent<THREE.Mesh>(debrisPanelData);
+const parseDebrisRod = memoParseIndependent<THREE.Mesh>(debrisRodData);
 const parseBase = memoParseShared<THREE.Group>(baseData);
 const boosterStageTemplate = memoTemplate<THREE.Group>(boosterStageData);
 const boosterInterstageCoverTemplate = memoTemplate<THREE.Group>(boosterInterstageCoverData);
@@ -429,7 +375,7 @@ let barrelTemplate: THREE.Group | null = null;
 // 砲身のメッシュをテンプレートから複製して返す。geometry/material は全個体の共有物。
 export function buildBarrelMesh(): THREE.Group {
   if (barrelTemplate === null) {
-    const g = loader.parse(barrelData) as THREE.Group;
+    const g = memoTemplate<THREE.Group>(barrelData)();
     makeThermallyEmissive(g);
     g.traverse((child) => {
       const mesh = child as THREE.Mesh;
