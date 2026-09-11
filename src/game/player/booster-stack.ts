@@ -25,12 +25,9 @@ export interface BoosterStage {
   ignited: boolean;
 }
 
-/** セーブデータに使う JSON 化可能な一段の形。 */
-export type BoosterStageData = BoosterStage;
-
 /** セーブデータに使うスタック全体の plain data。 */
 export interface BoosterStackData {
-  stages: BoosterStageData[];
+  stages: BoosterStage[];
 }
 
 /** 1 回の step で最後尾段が発生した燃焼結果。 */
@@ -97,7 +94,7 @@ function finiteNonNegative(value: number, name: string): void {
   }
 }
 
-function cloneStage(data: BoosterStageData): BoosterStage {
+function cloneStage(data: BoosterStage): BoosterStage {
   if (typeof data.id !== 'string' || data.id.length === 0) {
     throw new TypeError('booster stage id must be a non-empty string');
   }
@@ -135,7 +132,7 @@ function cloneStage(data: BoosterStageData): BoosterStage {
 export class BoosterStack {
   private readonly _stages: BoosterStage[];
 
-  constructor(stages: readonly BoosterStageData[] = []) {
+  constructor(stages: readonly BoosterStage[] = []) {
     this._stages = stages.map(cloneStage);
   }
 
@@ -155,7 +152,7 @@ export class BoosterStack {
   }
 
   /** 段を最後尾へ追加する。入力段はコピーされる。 */
-  attach(stage: BoosterStageData): void {
+  attach(stage: BoosterStage): void {
     this._stages.push(cloneStage(stage));
   }
 

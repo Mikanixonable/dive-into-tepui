@@ -10,7 +10,7 @@ import type { ProteinDisplaySettings } from '../../render/protein/protein-displa
 import type { GamePhase } from '../stages/stage';
 import type { WaveAttackSaveData } from '../stages/stage-utils/wave-attack';
 import type { ProteinSaveData } from '../protein/protein-schema';
-import type { BoosterStackData, BoosterStageData } from '../player/booster-stack';
+import type { BoosterStackData, BoosterStage } from '../player/booster-stack';
 
 interface Vec3SaveData {
   x: number;
@@ -119,7 +119,7 @@ export interface PlayerSaveData extends EntitySaveData {
 // 分離後も独立して燃焼・慣性飛行するブースター。接続中の段は PlayerSaveData 側へ保存する。
 export interface DetachedBoosterSaveData extends EntitySaveData {
   kind: 'booster';
-  stage: BoosterStageData;
+  stage: BoosterStage;
   // 分離直後の親艦との再接触を避ける猶予期限。旧データでは即時接触可能とする。
   collisionEnableAt?: number;
 }

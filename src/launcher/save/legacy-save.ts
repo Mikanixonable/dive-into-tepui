@@ -1,6 +1,6 @@
 import { type GameSaveData, SAVE_VERSION } from '../../game/save/save-data';
 import type { SaveSlotMeta, SnapshotMeta } from './slot-data';
-import { SaveSlots } from './save-slots';
+import type { SaveSlots } from './save-slots';
 
 // 単一スロット時代の固定キー(tepui.save)に残っているセーブを、スロット/スナップショット
 // 構造へ1回だけ引き取る。

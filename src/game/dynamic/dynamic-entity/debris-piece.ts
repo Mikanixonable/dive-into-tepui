@@ -20,10 +20,13 @@ import { DynamicEntity } from './dynamic-entity';
 import type { DebrisKind } from './debris-kind';
 import { DebrisMotion } from './debris-motion';
 import { DebrisReaction } from './debris-reaction';
-import {
-  DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, ENEMY_DESTROY_FRAG_COLOR,
-  PLAYER_DESTROY_FRAG_COLOR,
-} from '../../../render/vfx-style';
+
+// 撃破で飛び散る破片の大きさの範囲。敵機では機体サイズに合わせて拡大する。
+export const DESTROY_FRAG_SIZE_MIN = 1.5;
+export const DESTROY_FRAG_SIZE_MAX = 6.0;
+// 撃破で飛び散る破片の色。
+export const PLAYER_DESTROY_FRAG_COLOR = '#9fd8e8';
+const ENEMY_DESTROY_FRAG_COLOR = '#ff6a4a';
 
 // 論理種別から、その破片を描く View を組み立てる。
 function debrisPieceView(debrisKind: DebrisKind, scene?: THREE.Scene): DynamicView {

@@ -2,15 +2,14 @@
 // タイトルの通常ボタン列には出ない。
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
+import {
+  DebrisPiece, DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN,
+} from '../dynamic/dynamic-entity/debris-piece';
 import { randomQuat } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
 import { mulberry32 } from '../../math/random';
 import { add, v3, Vec3 } from '../../math/vec3';
 import type { StageSaveData } from '../save/save-data';
-import {
-  DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN,
-} from '../../render/vfx-style';
 import { MAG_ROUNDS } from '../player/ammo-spec';
 
 // 破片は衛星の破壊直後の雲を想定し、自機の周囲に留める。
