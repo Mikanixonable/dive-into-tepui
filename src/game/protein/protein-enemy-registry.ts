@@ -25,11 +25,10 @@ export function createProteinEnemyDefinition(
   };
 }
 
-// asset の fetch 完了(protein-asset-loader.requestProteinAsset が起こす)を待ってから作るため、
-// 事前に全件は構築できない。id ごとに初回アクセス時に組み、以降は使い回す。
+// id ごとに、アセットが揃ってから初めて引かれたときに組んだ定義。
 const proteinEnemyDefinitionCache = new Map<ProteinAssetId, ProteinEnemyDefinition>();
 
-/** 任意の文字列から登録済みタンパク質敵定義を検索する。asset 未取得なら null。 */
+/** 任意の文字列から登録済みタンパク質敵定義を検索する。未登録の id か、asset 未取得なら null。 */
 export function proteinEnemyDefinitionFor(id: string): ProteinEnemyDefinition | null {
   if (!proteinAssetFor(id)) return null;
   const assetId = id as ProteinAssetId;
