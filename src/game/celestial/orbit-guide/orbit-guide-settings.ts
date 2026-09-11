@@ -2,14 +2,12 @@
 // 可否・本数・族の範囲・色・進行方向マーカー・安定度の見せ方と、保存文字列との変換を持つ。
 // どの系にどの種類があるかは焼き込みカタログが持ち、ここは選択だけを持つ。
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
+import type { DirectionMarkerMode } from '../../../render/celestial/orbit-guide/direction-markers';
 
 // 軌道の種類をまとめる群。系のトグルは群ごとに1組持つ。
 export type GuideGroupId = 'collinear' | 'triangular' | 'secondary' | 'resonant';
 
 export const GUIDE_GROUPS: readonly GuideGroupId[] = ['collinear', 'triangular', 'secondary', 'resonant'];
-
-// 進行方向マーカーの出し方。
-export type DirectionMarkerMode = 'none' | 'single' | 'many';
 
 // 1種類あたりに描ける線の本数の上限。
 export const MAX_LINES_PER_KIND = 40;

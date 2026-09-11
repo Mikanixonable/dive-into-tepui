@@ -2,6 +2,7 @@
 // 移流させ、寿命が尽きたものを列から落とす。1件が何を示す閃光かは種別として持つ。
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { addScaled } from '../../math/vec3';
+import type { FlashEffect, FlashKind } from '../../render/vfx/flash-effects-view';
 
 // 種別ごとの寿命 [s]。
 const BULLET_IMPACT_FLASH_DURATION = 0.25;
@@ -12,29 +13,6 @@ const DESTROY_FLASH2_DURATION = 0.5;
 const GAS_PUFF1_DURATION = 0.45;
 const GAS_PUFF2_DURATION = 0.35;
 const PROTEIN_STATE_FLASH_DURATION = 0.34;
-
-// フラッシュの種別。どの出来事を示す閃光かを表し、見え方はこれで決まる。
-export type FlashKind =
-  | 'bulletImpact'
-  | 'plasmaImpact'
-  | 'muzzle'
-  | 'destroy1'
-  | 'destroy2'
-  | 'gasPuff1'
-  | 'gasPuff2'
-  | 'proteinCritical'
-  | 'proteinDissociated'
-  | 'proteinDamaged';
-
-// 生きている一時エフェクト1件。
-export interface FlashEffect {
-  readonly kind: FlashKind;
-  // 発生位置・発生源速度と、その位置が表す時刻。
-  readonly state: KinematicState;
-  readonly age: number; // 発生からの経過 [s]
-  readonly duration: number; // 消えるまでの寿命 [s]
-  readonly sizeScale: number; // 見た目の大きさに掛かる倍率
-}
 
 export class FlashEffects {
   private effects: FlashEffect[] = [];

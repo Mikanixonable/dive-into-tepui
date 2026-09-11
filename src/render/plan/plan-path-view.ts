@@ -7,8 +7,7 @@ import type { LineStyle } from '../line-style';
 import type { Vec3 } from '../../math/vec3';
 import type { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
-import type { CelestialBodies } from '../../game/celestial/celestial-bodies';
-import type { ReferenceFrames } from '../../game/celestial/reference-frames';
+import type { CelestialFrameSource, FrameTransformSource } from '../lines/celestial-frame-source';
 
 // このフレームに描く折れ線1本。
 export interface PlanArcLine {
@@ -35,7 +34,7 @@ export class PlanPathView {
 
   // 宣言された弧をそれぞれの折れ線へ焼く。displayTime は un-bake に使う表示時刻。
   public sync(
-    arcs: readonly PlanArcLine[], displayTime: number, celestialBodies: CelestialBodies,
+    arcs: readonly PlanArcLine[], displayTime: number, celestialBodies: CelestialFrameSource,
     frameAnchors: FrameAnchorSource, camera: CameraFrame,
   ): void {
     for (let i = 0; i < arcs.length; i++) {
@@ -58,7 +57,7 @@ export class PlanPathView {
 
   // 直近の sync で描いた折れ線を、当たり判定向けの ECI 点列として弧ごとに読み出す。
   public lineSamples(
-    count: number, displayTime: number, frames: ReferenceFrames, frameAnchors: FrameAnchorSource,
+    count: number, displayTime: number, frames: FrameTransformSource, frameAnchors: FrameAnchorSource,
   ): readonly (readonly Vec3[])[] {
     return this.arcs.map(
       (arc, i) => this.lines[i]!.samplePoints(count, arc.frame, displayTime, frames, frameAnchors),

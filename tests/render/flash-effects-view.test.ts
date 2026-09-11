@@ -8,7 +8,7 @@ import { FlashEffectsView } from '../../src/render/vfx/flash-effects-view';
 import { CameraView } from '../../src/render/camera/camera-view';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/math/vec3';
-import type { FlashEffect, FlashKind } from '../../src/game/vfx/flash-effects';
+import type { FlashEffect, FlashKind } from '../../src/render/vfx/flash-effects-view';
 import type { CameraFrame } from '../../src/render/camera/camera-frame';
 import type { Viewpoint } from '../../src/math/projection';
 import type { Viewport } from '../../src/render/viewport';

@@ -18,11 +18,12 @@ import {
   familyGradientColor, familyGradientColorAt, type GuideLineDisplay,
 } from '../../../render/celestial/orbit-guide/orbit-guide-view';
 import {
-  DirectionMarkerMode, GuideGroupId, GuideKindSettings, OrbitGuideSettings,
+  GuideGroupId, GuideKindSettings, OrbitGuideSettings,
 } from './orbit-guide-settings';
 import { combinedCandidateIds, parseGuideKindId } from './orbit-guide-kind-ids';
 import { OrbitGuideCatalog } from './orbit-guide-catalog';
 import type { CelestialBody } from '../../../physics/celestial-body';
+import type { DirectionMarkerMode } from '../../../render/celestial/orbit-guide/direction-markers';
 
 // リサジューの頂点数の打ち切り。周回数ぶんだけ経路が伸びるので、1周ぶんの曲線と違って
 // 適応分割は収束しない。最大周回数(30)でも1周あたり数十頂点は残る水準を採る。

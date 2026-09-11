@@ -42,6 +42,9 @@
 32. 1体ぶんの表示入力は `src/render/dynamic/dynamic-view.ts` の `DynamicRenderSource`(`id` / `name` / `visible` / `alive` / `stateAt(t)` / `attitude` / `thermal`)。種別ごとの面はこれを extends し、`DynamicView<S>` が受ける。組み立ては `DynamicEntity.renderSource(context, visible, active, orbitReference)` の1箇所。
 33. **線の宣言は `DynamicRenderSource` に載せない。** 線の見た目は `targeter.aliveTarget` が決まったあとでないと確定せず、それは `dynamicSystem.sync` より後の位相にある。`EntityLineManager` が `view.syncLines(...)` を別の pass で渡す現行の形を維持する。
 34. 噴射・RCS の揺らぎの種は `src/render/dynamic/player/plume-noise.ts` の `plumeNoiseSeed(id, displayTime, nozzleIndex)`。フレーム番号や sync の回数は種に入れない。
+35. protein は、表示の語彙・表示 asset の schema・GPU displacement の平坦化・THREE の runtime が `src/render/protein/`、combat state・Brownian/motion の更新・判定球・セーブ/HUD の状態が `src/game/protein/`。表示ツリーの組み立て手順は `ProteinRenderDefinition`、判定球と意味論は `ProteinEnemyDefinition`。アセットは `ProteinAssetBundle`(`semantic` / `render`)で束ねる。
+36. `CelestialIllumination` は `src/render/celestial/`。`sync(sources, displayTime, camera, graphics, focusPosition, sunDirection)` で、game が渡すのは恒星・天体ごとの可視・注視点の位置・恒星の向きという選択の結果だけ。書き込み先 `IlluminationTargets` は、照明が使う口だけの面(環のマテリアルも読む `sunLight` / `bodyShadow` だけ実体)。
+37. 一時エフェクトは、state と spawn と寿命が `src/game/vfx/flash-effects.ts`、Billboard と InstancedPool への出力が `src/render/vfx/flash-effects-view.ts`。view は `dt` も spawn も持たない。
 
 ## 達成目標
 
@@ -55,110 +58,6 @@
 - orbit/reference/trajectory line の `samplePoints` / `lineSamples` query が、表示済み revision と同じ点列を返すテストを持ち、`game/pickable/line-pickables.ts` はその query を使い続ける。
 - 同じ入力で `thrust-effects` / `rcs-effects` を同一 display time に複数回 sync しても乱数結果が変わらない。
 - 全手順で `npm run typecheck` が通り、最終的に `npm run test:physics`、`npm run test:game`、`npm run test:render`、`npm run test:settings` が通る。
-
-## 手順
-
-### 手順 9. protein の論理定義と表示 runtime を分離する
-
-#### 目的
-
-protein の display vocabulary、GPU motion binding、THREE object builder/cache を render に集め、combat state、Brownian/motion update、collision definition、save/HUD state は game に残す。render view は game の schema/runtime/registry を import せず、表示に必要な構造的 subset だけを受ける。この時点で asset format、collision sphere、LOD threshold、色選択の挙動は変えない。
-
-#### 変更が必要な箇所
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/render/protein/protein-display.ts`（`src/game/protein/protein-display.ts` から移動） | representation/color setting の値型、label、pure update/validator を表示語彙として所有する。 |
-| `src/render/protein/protein-display-asset.ts`（`src/game/protein/protein-display-asset.ts` から移動） | 表示 asset schema と validator を所有する。 |
-| `src/render/protein/protein-motion-modes.ts`（`src/game/protein/protein-motion-modes.ts` から移動） | GPU displacement 用の immutable flattening を所有する。 |
-| `src/render/protein/protein-runtime.ts`（`src/game/protein/protein-runtime.ts` から移動） | THREE/GPU resource、visual rebuild/cache、dispose を所有する。 |
-| `src/render/protein/protein-render-definition.ts`（新規） | build/recolor closure と `ProteinRenderSource` を game の collision definition から分ける。 |
-| `src/render/protein-atom-view.ts` | `src/render/protein/protein-atom-view.ts` へ移し、render 側の狭い display asset を読む。 |
-| `src/render/protein-ribbon.ts:3-5` | `src/render/protein/protein-ribbon.ts` へ移し、game schema import を render 側の asset/motion source に置換する。 |
-| `src/render/protein-ribbon-color.ts:3` | `src/render/protein/protein-ribbon-color.ts` へ移し、render 所有の color mode を読む。 |
-| `src/render/protein-silhouette-view.ts:2` | `src/render/protein/protein-silhouette-view.ts` へ移し、render 所有の display setting を読む。 |
-| `src/render/protein-enemy-ship.ts:2-11` | `src/render/protein/protein-enemy-ship.ts` へ移し、render definition/source だけを受ける。 |
-| `src/render/protein-motion-material.ts` | `src/render/protein/protein-motion-material.ts` へ移し、GPU motion binding の owner をまとめる。 |
-| `src/render/dynamic/dynamic-entity/protein-enemy-view.ts:2-18,39-114` | game Runtime/Definition/Display/MotionDisplay/HudSnapshot/DynamicMotion を除き、render definition と protein render source を受ける。 |
-| `src/game/protein/protein-enemy-registry.ts:1-57` | collision sphere、semantic asset id、motion definition だけを返す game registry と、render definition の assembly に分ける。THREE/build/recolor を除く。 |
-| `src/game/protein/protein-asset-loader.ts:1-20,45-90` | semantic/collision source と render source を明示的に分けて bundle する。 |
-| `src/game/protein/protein-schema.ts:68-168` | combat/save/HUD schema を残す。render が必要な geometry/motion subset は render interface に構造的に適合させる。 |
-| `src/game/protein/protein-motion-controller.ts:11-38,150-317` | mutable sampling/LOD state を game に残し、`ProteinMotionDisplay` は render 側の readonly value に適合させる。 |
-| `src/game/protein/protein-combat-state.ts` | render runtime を import せず semantic combat state だけを保持する。 |
-| `src/game/dynamic/dynamic-entity/protein-enemy.ts:7-28,73-162` | game definition と render definition を組み立て、display/motion/HUD の必要値を別々の consumer へ渡す。 |
-| `src/launcher/debug-info-window.ts:16` | LOD label 用の immutable 候補表を render の display vocabulary から読む。 |
-| `tools/render-lab/protein-cases.ts:5-7` | render definition/display 型を新 path から使い、必要なら game motion controller を fixture として注入する。 |
-| `tests/protein-test-assets.ts` | semantic asset と render source の fixture を分ける。 |
-| `tests/render/protein-ribbon-geometry.test.ts` | 新しい render source contract を使う。 |
-| `tests/render/protein-render-bindings.test.ts:4-9` | game schema/motion-mode import を除き、render binding のみ検証する。 |
-| `tests/game/protein-motion-controller.test.ts` | mutable motion controller の既存回帰を維持する。 |
-| `tests/game/protein-combat-state.test.ts:11-31` | collision/combat と render definition を別 fixture にし、game test が THREE runtime を生成しないようにする。 |
-| `tsconfig.test.json:19-39` | 移動後の game/render protein module を正しい layer test に含める。 |
-
-#### 達成条件と検証
-
-- `rg -n 'game/protein|game/dynamic' src/render/protein src/render/dynamic/dynamic-entity/protein-enemy-view.ts` が 0 件。
-- `rg -n 'three/webgpu|render/' src/game/protein/protein-enemy-registry.ts src/game/protein/protein-runtime.ts` は旧 runtime 削除後 0 件。
-- game protein tests が THREE object/runtime を構築せず、render tests が combat mutable state を構築しない。
-- `npm run typecheck`
-- `npm run test:game`
-- `npm run test:render`
-
-### 手順 10. celestial illumination を render view にする
-
-#### 目的
-
-lighting/shadow/atmosphere target へ値を書く表示同期を render へ移す。game の CelestialSystem は star、focus position、可視性を選び、render は readonly celestial light source と display time から照明候補・影・atmosphere draw を計算する。巨大な計算済み target 配列は game から渡さない。
-
-#### 変更が必要な箇所
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/render/celestial/celestial-illumination.ts`（`src/game/celestial/celestial-illumination.ts` から移動・分割） | THREE scratch/cache と sun/exposure/ambient/planet-light/shadow/atmosphere の表示計算を所有する。CelestialBodies/Entity/CameraSystem/MapVisibilityPolicy は import しない。 |
-| `src/render/celestial/celestial-entity/celestial-view.ts:41-165` | illumination が読む light/albedo/ring/cumulus/atmosphere の readonly source を render 側で定義する。 |
-| `src/render/celestial/celestial-entity/point-celestial-view.ts` | body-frame と atmosphere/light source を新 contract に適合させる。 |
-| `src/render/celestial/celestial-entity/sphere-celestial-view.ts` | 同上。 |
-| `src/render/celestial/celestial-entity/star-celestial-view.ts` | star light source を新 contract に適合させる。 |
-| `src/game/celestial/celestial-system.ts:19,81,147-150,362-405` | star/focus/visible の選択、Motion→View の結節、illumination view の sync を行う。 |
-| `src/game/celestial/celestial-entity/celestial-entity.ts` | motion と view を結ぶ箇所で illumination source を構造的に提供する。 |
-| `src/game/map/visibility-policy.ts:92-186` | policy と Earth satellite 特例を game に維持し、最終 category visible だけを CelestialSystem へ返す。 |
-| `tests/render/celestial-illumination.test.ts`（新規） | fixed source から light/shadow/atmosphere target へ書く値と、非表示候補の除外を検証する。 |
-
-#### 達成条件と検証
-
-- `src/game/celestial/celestial-illumination.ts` がなくなる。
-- `rg -n 'CelestialBodies|CelestialEntity|CameraSystem|MapVisibilityPolicy|focusTargetId' src/render/celestial/celestial-illumination.ts` が 0 件。
-- lighting/影/atmosphere の候補選択は render 内に残り、game が GPU target 用配列を事前構築していない。
-- `npm run typecheck`
-- `npm run test:physics`
-- `npm run test:game`
-- `npm run test:render`
-
-### 手順 11. flash effect の寿命 state と表示 pool を分離する
-
-#### 目的
-
-一時 effect の生成・寿命・移流という mutable game state と、Billboard/InstancedPool への出力を分ける。既存 spawn API は game owner に残して呼び出し側の変更を絞り、render view は生存中 effect の readonly 列を sync する。この時点で duration、size curve、color、移流は変えない。
-
-#### 変更が必要な箇所
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/game/vfx/flash-effects.ts:20-42,56-64,97-172` | THREE/resource/style を除き、effect state、spawn、update、readonly display source を所有する。 |
-| `src/render/vfx/flash-effects-view.ts`（新規） | geometry/material/InstancedPool/scratch transform を所有し、effect source、FloatingOrigin、CameraFrame から sync する。 |
-| `src/game/game.ts:18,92,186,317-334,531` | game state と render view を別々に生成・update・sync・dispose する。 |
-| `src/render/vfx-style.ts:9-18` | visual constants の owner を維持し、render view から使う。 |
-| `tests/game/flash-effects.test.ts`（新規） | spawn、age、移流、期限切れ、上限へ渡す readonly source を検証する。 |
-| `tests/render/flash-effects-view.test.ts`（新規） | size/brightness/zoom dimming と pool count の同期を固定 source で検証する。 |
-
-#### 達成条件と検証
-
-- `rg -n 'three/webgpu|render/|FloatingOrigin' src/game/vfx/flash-effects.ts` が 0 件。
-- render view に `update(dt)`、spawn、寿命 state がなく、game state に THREE/GPU resource がない。
-- 既存の FlashEffects 利用者は game の spawn interface を使い続け、render view を参照しない。
-- `npm run typecheck`
-- `npm run test:game`
-- `npm run test:render`
 
 ## 見積り
 
