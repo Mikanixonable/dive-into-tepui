@@ -14,9 +14,8 @@ import {
 } from '../../src/physics/collision-response';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { Vec3, scale, v3 } from '../../src/math/vec3';
-import {
-  DynamicMotion, type DynamicReactionServices,
-} from '../../src/game/dynamic/dynamic-motion';
+import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
+import type { DynamicReactionServices } from '../../src/game/dynamic/dynamic-simulation-participant';
 
 // closingSpeed が読むのは速度と法線だけなので、時刻と接触点は退化させてよい。
 function contact(selfV: Vec3, otherV: Vec3, normal: Vec3): Contact {
@@ -41,14 +40,14 @@ export function register(): void {
     let received: readonly unknown[] | null = null;
     const self = new DynamicMotion(state, {
       behavior: {
-        contactKind: 'test',
+        contactKind: 'debris',
         onEntityContact: (...args) => { received = args; },
       },
     });
 
     self.collideWithEntity(other, event, services);
 
-    assert.equal(self.contactKind, 'test');
+    assert.equal(self.contactKind, 'debris');
     assert.deepEqual(received, [self, other, event, services]);
   });
 

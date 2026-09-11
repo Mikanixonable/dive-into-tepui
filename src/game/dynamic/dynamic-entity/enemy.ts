@@ -164,16 +164,16 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
       ENEMY_MAX_HP,
       placed.id,
       owner => new EnemyMotion(placed.state, attitude, radius, {
-        receiveEntityContact: (other, contact, context) => (
+        receiveEntityContact: (other, contact, services) => (
           (owner as Enemy).receiveEntityContact(
-            other, contact, context.activeStage, context.registry,
+            other, contact, services.activeStage, services.registry,
           )
         ),
-        receiveSurfaceContact: (contact, context) => (
-          (owner as Enemy).receiveSurfaceContact(contact, context.activeStage, context.registry)
+        receiveSurfaceContact: (contact, services) => (
+          (owner as Enemy).receiveSurfaceContact(contact, services.activeStage, services.registry)
         ),
-        receiveBurnUp: context => (
-          (owner as Enemy).receiveBurnUp(context.activeStage, context.registry)
+        receiveBurnUp: services => (
+          (owner as Enemy).receiveBurnUp(services.activeStage, services.registry)
         ),
       }, shape),
     );
