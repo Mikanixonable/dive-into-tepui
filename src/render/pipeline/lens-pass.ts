@@ -14,7 +14,8 @@ import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { mix, screenUV, texture, uniform, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import type { FloatUniform, Vec2Uniform, Vec3Node } from '../tsl-types';
-import { apertureGhosts, downsample, streakPass, streakStride, tentUpsample } from './lens-kernels';
+import { APERTURE_PSF_DIRECTIONS, APERTURE_PSF_PASSES } from './aperture-psf';
+import { apertureGhosts, diffractionPass, downsample, tentUpsample } from './lens-kernels';
 import { compileInto } from './compile-into';
 
 // 縮小チェーンの段数。いちばん粗い段の 1 テクセルが画面の 1/32 を覆う。
@@ -25,19 +26,9 @@ const GLARE_FRACTION = 0.03;
 
 // 条を引く段。**この段のテクセル寸法がそのまま条の太さになる。** 長さはパス数が別に稼ぐので、
 // ここは太さだけで選んでよい(1/2 なら 2 画面px)。
-const STREAK_LEVEL = 0;
-// 仮想絞りの羽根数。偶数なら羽根数ぶん、奇数なら羽根数の 2 倍の腕が出る。
-const APERTURE_BLADE_COUNT = 8;
-// 条の向きの数。**1 方向につき 1 本の鎖**が要る。中心を通る条 1 本が正反対の 2 方向を占めるので、
-// 偶数羽根では羽根数と同じ腕数、奇数羽根では羽根数の 2 倍の腕数になる。
-const STREAK_DIRECTIONS = APERTURE_BLADE_COUNT % 2 === 0
-  ? APERTURE_BLADE_COUNT : APERTURE_BLADE_COUNT * 2;
-// レンズを取り付けた向き。画面の水平・垂直に条が重ならないよう、センサー座標へ固定する。
-const STREAK_ANGLE_OFFSET = Math.PI / 8;
-// 条を伸ばすパスの数。刻みがパスごとにタップ数倍になるので、到達距離はこれに対して指数で伸びる。
-const STREAK_PASSES = 2;
-// 核のうち条へ回す割合。**滲みの重みから引く**ので、核の総和は 1 のまま動かない。
-const STREAK_SHARE = 0.1;
+const DIFFRACTION_LEVEL = 0;
+// 核のうち回折PSFの主ローブへ回す割合。**滲みの重みから引く**ので、核の総和は1のまま動かない。
+const DIFFRACTION_SHARE = 0.1;
 
 // ゴーストのいちばん締まった読み元の段。この段の解像度がそのままゴーストの出力の解像度になり、
 // **1 枚ごとのぼけ量の選択肢として、ここから 3 段ぶんの縮小段と、同じ段の滲みの像を読む。**
@@ -98,9 +89,9 @@ export class LensPass {
   private readonly up: readonly Stage[];
   // 条。**軸ごとに独立した鎖**で、鎖の途中は 2 枚の作業用ターゲットを往復し、最後のパスだけが
   // 出力へ加算で積まれる。滲みとは別の核なので、読む側が滲みと配分を分け合う。
-  private readonly streakChain: readonly (readonly Filter[])[];
-  private readonly streakScratch: readonly THREE.RenderTarget[];
-  private readonly streakTarget = createTarget();
+  private readonly diffractionChains: readonly (readonly Filter[])[];
+  private readonly diffractionScratch: readonly THREE.RenderTarget[];
+  private readonly diffractionTarget = createTarget();
   // ゴースト。同じく別の核。
   private readonly ghosts: Stage;
   private width = 0;
@@ -137,21 +128,17 @@ export class LensPass {
     this.down = down;
     this.up = up;
     // 鎖は 1 本ずつ順に走らせるので、途中の作業用ターゲットは全鎖で使い回せる。
-    this.streakScratch = Array.from({ length: STREAK_PASSES - 1 }, () => createTarget());
-    this.streakChain = Array.from({ length: STREAK_DIRECTIONS }, (_, axis) => {
-      const angle = STREAK_ANGLE_OFFSET + (2 * Math.PI * axis) / STREAK_DIRECTIONS;
-      const direction: Vec2Uniform = uniform(
-        new THREE.Vector2(Math.cos(angle), Math.sin(angle)),
-      );
-      return Array.from({ length: STREAK_PASSES }, (_, pass) => {
-        const last = pass === STREAK_PASSES - 1;
+    this.diffractionScratch = Array.from({ length: APERTURE_PSF_PASSES.length - 1 }, () => createTarget());
+    this.diffractionChains = APERTURE_PSF_DIRECTIONS.map(([x, y]) => {
+      const direction: Vec2Uniform = uniform(new THREE.Vector2(x, y));
+      return APERTURE_PSF_PASSES.map((psfTaps, pass) => {
+        const last = pass === APERTURE_PSF_PASSES.length - 1;
         const from = pass === 0
-          ? down[STREAK_LEVEL]!.target.texture
-          : this.streakScratch[pass - 1]!.texture;
-        const stride: FloatUniform = uniform(streakStride(pass));
+          ? down[DIFFRACTION_LEVEL]!.target.texture
+          : this.diffractionScratch[pass - 1]!.texture;
         // 最後のパスだけ本数で割る。鎖 1 本ぶんが 1/本数 を持ち、加算して総和 1 になる。
-        const gain: FloatUniform = uniform(last ? 1 / STREAK_DIRECTIONS : 1);
-        return createFilter((texel) => streakPass(from, texel, direction, stride, last).mul(gain), last);
+        const gain: FloatUniform = uniform(last ? 1 / APERTURE_PSF_DIRECTIONS.length : 1);
+        return createFilter((texel) => diffractionPass(from, texel, direction, psfTaps).mul(gain), last);
       });
     });
     this.ghosts = createStage(() => apertureGhosts([
@@ -176,21 +163,23 @@ export class LensPass {
   // 任せる(ぼけた像なのでそれで足りる)。
   private redistributed(scale: number): Vec3Node {
     const glare = texture(this.up[0]!.target.texture, screenUV).rgb;
-    const streak = texture(this.streakTarget.texture, screenUV).rgb;
+    const diffraction = texture(this.diffractionTarget.texture, screenUV).rgb;
     const ghosts = texture(this.ghosts.target.texture, screenUV).rgb;
-    return mix(mix(glare, streak, STREAK_SHARE), ghosts, GHOST_SHARE).mul(scale);
+    return mix(mix(glare, diffraction, DIFFRACTION_SHARE), ghosts, GHOST_SHARE).mul(scale);
   }
 
   // 1 フレームぶんのレンズ効果を発行する。呼ぶのは world パスの後・合成パスの前。
   render(width: number, height: number): void {
     this.resize(width, height);
     for (const stage of this.down) this.draw(stage, stage.target);
-    for (const [axis, passes] of this.streakChain.entries()) {
+    for (const [axis, passes] of this.diffractionChains.entries()) {
       for (const [pass, filter] of passes.entries()) {
-        const last = pass === STREAK_PASSES - 1;
+        const last = pass === APERTURE_PSF_PASSES.length - 1;
         // 最後のパスは加算で積むので、**最初の 1 本だけがクリアする。** クリアを落とすと前の
         // フレームの上へ積み上がり、半精度の上限を越えて画面が NaN になる。
-        this.draw(filter, last ? this.streakTarget : this.streakScratch[pass]!, !last || axis === 0);
+        this.draw(
+          filter, last ? this.diffractionTarget : this.diffractionScratch[pass]!, !last || axis === 0,
+        );
       }
     }
     for (let i = LEVELS - 2; i >= 0; i--) this.draw(this.up[i]!, this.up[i]!.target);
@@ -204,9 +193,9 @@ export class LensPass {
   async compile(width: number, height: number): Promise<void> {
     this.resize(width, height);
     for (const stage of this.down) await compileInto(this.renderer, stage.target, stage.quad, stage.quad.camera);
-    for (const filters of this.streakChain) {
+    for (const filters of this.diffractionChains) {
       for (const filter of filters) {
-        await compileInto(this.renderer, this.streakTarget, filter.quad, filter.quad.camera);
+        await compileInto(this.renderer, this.diffractionTarget, filter.quad, filter.quad.camera);
       }
     }
     for (const stage of this.up) await compileInto(this.renderer, stage.target, stage.quad, stage.quad.camera);
@@ -222,7 +211,7 @@ export class LensPass {
     const savedColor = this.renderer.getClearColor(this.clearColor).clone();
     const savedAlpha = this.renderer.getClearAlpha();
     this.renderer.setClearColor(0x000000, 0);
-    for (const target of [this.up[0]!.target, this.streakTarget, this.ghosts.target]) {
+    for (const target of [this.up[0]!.target, this.diffractionTarget, this.ghosts.target]) {
       this.renderer.setRenderTarget(target);
       this.renderer.clear(true, false, false);
     }
@@ -262,12 +251,14 @@ export class LensPass {
       stage.sourceTexel.value.set(1 / coarser.width, 1 / coarser.height);
     }
     // 条の鎖はすべて読み元と同じ寸法で、往復するあいだ寸法が変わらない。
-    const streakSource = this.down[STREAK_LEVEL]!.target;
-    for (const target of [...this.streakScratch, this.streakTarget]) {
-      target.setSize(streakSource.width, streakSource.height);
+    const diffractionSource = this.down[DIFFRACTION_LEVEL]!.target;
+    for (const target of [...this.diffractionScratch, this.diffractionTarget]) {
+      target.setSize(diffractionSource.width, diffractionSource.height);
     }
-    for (const passes of this.streakChain) {
-      for (const filter of passes) filter.sourceTexel.value.set(1 / streakSource.width, 1 / streakSource.height);
+    for (const passes of this.diffractionChains) {
+      for (const filter of passes) {
+        filter.sourceTexel.value.set(1 / diffractionSource.width, 1 / diffractionSource.height);
+      }
     }
     const ghostSource = this.down[GHOST_LEVEL]!.target;
     this.ghosts.target.setSize(ghostSource.width, ghostSource.height);
@@ -280,7 +271,7 @@ export class LensPass {
       stage.target.dispose();
       stage.material.dispose();
     }
-    for (const target of [...this.streakScratch, this.streakTarget]) target.dispose();
-    for (const passes of this.streakChain) for (const filter of passes) filter.material.dispose();
+    for (const target of [...this.diffractionScratch, this.diffractionTarget]) target.dispose();
+    for (const passes of this.diffractionChains) for (const filter of passes) filter.material.dispose();
   }
 }

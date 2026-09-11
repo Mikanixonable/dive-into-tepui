@@ -3,19 +3,9 @@
 // 減らす)ようになってしまう。総和が 1 なら出力は入力の最大値(太陽面の 4.62e4)を超えないので、
 // 半精度浮動小数点の上限(65504)を跨ぐことも構造的に起きない。
 import * as THREE from 'three/webgpu';
-import { and, greaterThan, lessThan, mix, screenSize, screenUV, select, texture, vec2, vec3 } from 'three/tsl';
-import type { FloatNode, FloatUniform, Vec2Node, Vec2Uniform, Vec3Node } from '../tsl-types';
-
-// 条の 1 パスあたりのタップ数。**パスをまたぐ刻みをこの数と同じにする。**
-const STREAK_TAPS = 12;
-// 条の減衰長 [読み元のテクセル]。1/2 解像度で約 2 画面pxの細さを保ちつつ、画面上の長さを維持する。
-const STREAK_FALLOFF = 100;
-// 条の末端を尖らせ始める位置。末端側のタップだけをさらに絞り、丸い減衰終端を避ける。
-const STREAK_TIP_START = 0.7;
-// 末端の絞り込み具合。2 なら線形テーパより先端側が細くなる。
-const STREAK_TIP_POWER = 2;
-// 太陽の光芒へ残す色成分の割合。輝度は保ったまま、黄色い色かぶりを白へ寄せる。
-const STREAK_COLOR_SATURATION = 0.3;
+import { and, greaterThan, lessThan, screenSize, screenUV, select, texture, vec2, vec3 } from 'three/tsl';
+import type { FloatNode, Vec2Node, Vec2Uniform, Vec3Node } from '../tsl-types';
+import type { AperturePsfTap } from './aperture-psf';
 
 // scale と power を測る基準の半径 [画面の高さ]。半径写像はここで scale そのものになる。
 const GHOST_REFERENCE_RADIUS = 0.5;
@@ -160,12 +150,7 @@ export function tentUpsample(source: THREE.Texture, texel: Vec2Uniform): Vec3Nod
   return sumOf([corners, edges.mul(2), tap(0, 0).mul(4)]).mul(1 / 16);
 }
 
-// 条 1 パスぶんの刻み [読み元のテクセル]。**パスをまたいでタップ数倍になる。**
-export function streakStride(pass: number): number {
-  return STREAK_TAPS ** pass;
-}
-
-// 条の 1 パス。direction の向きへ stride 刻みのタップを**片側だけ**積む。**向きは光源
+// 回折PSFの主ローブ1段。direction の向きへタップを**片側だけ**積む。**向きは光源
 // ではなく画面が決める** — カメラを回しても条は光源に貼り付いて回らない。
 //
 // **1 つのパスの中では刻みを空けない。** 空けるとタップ 1 つ 1 つが光源の複製として点々に見え、
@@ -177,30 +162,18 @@ export function streakStride(pass: number): number {
 // **タップを片側だけにするのが要。** 両側にすると、距離 d に届く経路が複数でき(たとえば
 // 12 進んで 3 戻る)、そのどれもが「進んだ総量」ぶん減衰した重みを持つ。結果として核は
 // exp(-d/減衰長) から周期的に凹み、**刻みの周期で明暗の縞が見える。** 片側だけなら、タップ距離の
-// 組み合わせは d のタップ数進法の表現そのものになって一意に決まる。末端テーパは最後のパスだけ
-// に掛ける — 途中のパスまで尖らせると、次のパスへ渡す鎖の連続性が失われ、条が点々に見える。
-// **向き 1 つにつき 1 本の鎖**が要る。
+// 組み合わせは d のタップ数進法の表現そのものになって一意に決まり、各段の指数係数の積も距離 d の
+// 指数分布になる。**向き 1 つにつき 1 本の鎖**が要る。
 //
 // **鎖どうしを混ぜないこと。** 1 つのパスで複数の向きをまとめて処理すると、次のパスがその結果を
 // さらに別の向きへ広げて「星の星」になる。
-export function streakPass(
-  source: THREE.Texture, texel: Vec2Uniform, direction: Vec2Uniform, stride: FloatUniform,
-  taperTip = false,
+export function diffractionPass(
+  source: THREE.Texture, texel: Vec2Uniform, direction: Vec2Uniform,
+  psfTaps: readonly AperturePsfTap[],
 ): Vec3Node {
-  const taps: Vec3Node[] = [];
-  const weights: FloatNode[] = [];
-  for (let step = 0; step < STREAK_TAPS; step++) {
-    const distance = stride.mul(step);
-    const normalizedStep = step / (STREAK_TAPS - 1);
-    const tipT = Math.max(0, (normalizedStep - STREAK_TIP_START) / (1 - STREAK_TIP_START));
-    const tipWeight = taperTip ? (1 - tipT) ** STREAK_TIP_POWER : 1;
-    const weight = distance.div(-STREAK_FALLOFF).exp().mul(tipWeight);
-    taps.push(spreadBy(source, texel, direction.mul(distance)).mul(weight));
-    weights.push(weight);
-  }
-  const streak = sumOf(taps).div(sumOf(weights));
-  const luminance = streak.dot(vec3(0.2126, 0.7152, 0.0722));
-  return mix(vec3(luminance), streak, STREAK_COLOR_SATURATION);
+  return sumOf(psfTaps.map((tap) => (
+    spreadBy(source, texel, direction.mul(tap.offset)).mul(tap.weight)
+  )));
 }
 
 // 1 枚ぶんの像。**読む位置への倍率を半径だけの関数にする**ので、写像は光軸まわりの回転と可換に
