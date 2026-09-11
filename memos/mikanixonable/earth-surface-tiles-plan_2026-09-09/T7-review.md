@@ -30,6 +30,9 @@
 `npm run dev`は`.earth-surface/bundle`を`/earth/<datasetId>/`へ直接配信し、manifest URLと配信datasetIdを共有する。
 `docs/earth/<datasetId>/`が正しいPages layoutであり、5.5 GiB実bundleのPages配備は範囲外である。
 
-今回の実ブラウザstage00レビューでは5.812秒でcolor/terrain各z7 20件がHTTP 200となり、F3再読みで「地球 ready/detailed」
-「地球 最高LOD z7」、fatal/errorなしを同一runで確認した。ただし15固定ケースの完全な視覚計測は未実施であり、
+今回の実ブラウザstage00レビューは3回連続で成功し、5.083〜5.339秒で最高LOD z7へ到達した。color/terrain各24・36・32件がHTTP 200となり、
+「地球 ready/detailed」「地球 最高LOD z7」、fatal/errorなしを全runで確認した。
+
+レビューで見つかった旧世代upload競合、ImageBitmap解放漏れ、base sentinelの詳細UV流入、base取得失敗の診断欠落、
+2:1依存分割の飢餓、再利用層の別tile誤参照は回帰テスト付きで修正した。ただし15固定ケースの完全な視覚計測は未実施であり、
 T7はその検証が終わるまで未完了とする。
