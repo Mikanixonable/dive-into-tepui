@@ -59,6 +59,40 @@
 - 同じ入力で `thrust-effects` / `rcs-effects` を同一 display time に複数回 sync しても乱数結果が変わらない。
 - 全手順で `npm run typecheck` が通り、最終的に `npm run test:physics`、`npm run test:game`、`npm run test:render`、`npm run test:settings` が通る。
 
+## 実施の記録
+
+全 11 手順を実施済み。`workspace4` の `54cdb610`(実施前)から現在までがその範囲。
+「決めたこと」に 10 以降として足してあるのが、実施の中で確定した契約と置き場所。
+
+**当初の計画から外した判断**
+
+- **`LineStyle`(色・不透明度・描画順)の組み立ては `game/` に残した。** 手順 6・7 の達成条件は
+  これを `game/lines` と orbit guide から 0 件にすることだったが、CODING-RULE 2.2 が
+  「軌道線・軌跡線を含む表示状態は View の外に正本を置き、毎フレーム `sync` の入力として渡す」と
+  定めている。敵ごとの軌道線色は game 側の識別色なので、semantic role へ畳むと
+  render が entity 種別を推測することになり、計画自身が挙げた落とし穴を踏む。
+- **`DynamicRenderSource` に線の宣言を載せなかった。** 線の見た目は `targeter.aliveTarget` が
+  決まったあとでないと確定せず、それは `dynamicSystem.sync` より後の位相にある。
+  `EntityLineManager` が別の pass で渡す現行の形を維持した。
+- **テストの層は `settings`(`tests/settings/`、`npm run test:settings`)。** 計画は
+  `tests/launcher/` と `test:launcher` だったが、`tests/run.ts` は層名を `src/` の
+  フォルダ名と定めており、`src/settings/` は `launcher/` とは別の層である。
+- **`render/celestial/orbit-guide/line-display.ts` は作らなかった。** dynamic の線宣言と
+  celestial の参照線は共有する中身を持たず、早急な一般化になる。
+- **`tests/game/line-pickables.test.ts` は書かなかった。** 「render から受けた点列を
+  変換せず使う」ことの検査は、CODING-RULE 4.1 が禁じる「委譲だけの経路のテスト」にあたる。
+  表示済み点列の不変条件は `tests/render/line-samples.test.ts` が持つ。
+
+**残した TODO と、気づいた既存の不具合**
+
+- `src/render/camera/camera-view.ts` — 照準ズーム中も近遠クリップ面は軌道視点の画角と
+  注視距離が決める。現行の挙動を保つためにそうしてあり、明言された仕様に基づかない。
+- `src/game/creative/object-placement.ts` — 配置プレビューの ▷ マーカーが、プレビューを
+  出せないときに `fadeOut`、天体に遮られたときに `hide` で、`celestial-markers.ts` や
+  `MarkerSlots.fadeOut` 自身のコメントと逆向き。挙動を変えない方針でそのまま保った。
+- `src/game/plan/`・`src/game/creative/` に残る `three/webgpu` は `THREE.Scene` の型 import
+  だけ。消すには `game.ts` の scene 配布の規約を変える必要がある。
+
 ## 見積り
 
 作業量の単位は、途中で typecheck と担当層 test を通して独立 commit にできる境界変更とする。
