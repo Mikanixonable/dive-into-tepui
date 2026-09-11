@@ -114,6 +114,7 @@ export class PointCelestialView extends SphereCelestialView {
     // 雲。
     if (graphics.clouds) {
       this.cumulus?.setCloudsVisible(true);
+      this.cumulus?.setSource(graphics.cloudFieldSource);
       this.cumulus?.setDetail(graphics.cumulusDetail);
       this.cumulus?.syncLod(apparentDiameterPx);
     } else {
