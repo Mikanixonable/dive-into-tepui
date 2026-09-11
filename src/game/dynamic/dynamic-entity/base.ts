@@ -77,13 +77,15 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public override readonly showsEquatorNodesAlways = true;
   public baseState: BaseState = { money: 100000 };
 
+  public declare readonly motion: BaseMotion;
+
   // --- Controllable 実装 ---
   readonly throttle: Throttle;
   get totalThrust(): number { return BASE_THRUST; }
   get totalTorque(): number { return BASE_TORQUE; }
   get totalFuelConsumptionRate(): number { return BASE_FUEL_RATE; }
-  get totalFuel(): number { return (this.motion as BaseMotion).fuel; }
-  get totalMaxFuel(): number { return (this.motion as BaseMotion).maxFuel; }
+  get totalFuel(): number { return this.motion.fuel; }
+  get totalMaxFuel(): number { return this.motion.maxFuel; }
   // 基地は装甲を持たない。撃たれても削れる耐久値そのものが無い。
   readonly hp = null;
   readonly maxHp = null;
@@ -95,15 +97,17 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   consumeFuel(amount: number): number {
     if (amount <= 0) return 1.0;
-    return (this.motion as BaseMotion).consumeFuel(amount);
+    return this.motion.consumeFuel(amount);
   }
 
+  // 基地を組む。復元時は操作状態・所持金・軌道線の表示も戻す。
   constructor(
     init: BaseInit,
     scene: THREE.Scene,
     notifier: Notifier,
     markers: MarkerSlots,
   ) {
+    // 復元と新規配置を同じ形へ均してから基底へ渡す。
     const { state, name, att, id } = 'saved' in init
       ? {
         state: savedKinematicState(init.saved, init.simTime),
@@ -121,12 +125,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z),
     };
     const fuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : undefined;
+    const entityId = idAllocator.next(id);
     super(
-      state,
-      owner => new BaseView(scene, owner.id, markers),
-      attitude,
-      idAllocator.next(id),
       () => new BaseMotion(state, attitude, fuel),
+      new BaseView(scene, entityId, markers),
+      entityId,
     );
     this.setName(name);
     this.throttle = new Throttle(notifier, 'saved' in init ? init.saved.throttle : undefined);
@@ -142,7 +145,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     viewFrame: DynamicViewFrame, visible: boolean, active: boolean,
     orbitReference: OrbitReference | undefined,
   ): BaseRenderSource {
-    const motion = this.motion as BaseMotion;
+    const motion = this.motion;
     return {
       ...super.renderSource(viewFrame, visible, active, orbitReference),
       thrust: motion.thrust,
@@ -229,7 +232,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       q: { ...this.motion.att.q },
       w: { ...this.motion.att.w },
       money: this.baseState.money,
-      fuel: (this.motion as BaseMotion).fuel,
+      fuel: this.motion.fuel,
       throttle: this.throttle.serialize(),
       showTrajectoryLine: this.trajectoryLineVisible,
     };

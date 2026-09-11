@@ -39,7 +39,7 @@ export class BaseView extends DynamicView<BaseRenderSource> {
 
   // 基地モデルと噴射用 THREE 資源だけを組み立てる。
   public constructor(
-    scene: THREE.Scene,
+    protected override readonly scene: THREE.Scene,
     private readonly ownerId: string,
     private readonly markers: MarkerSlots,
   ) {
@@ -88,8 +88,8 @@ export class BaseView extends DynamicView<BaseRenderSource> {
   public override dispose(): void {
     this.markers.remove(`base-${this.ownerId}`);
     this.markers.remove(`base-${this.ownerId}-bearing`);
-    this.thrustEffects.dispose(this.scene!);
-    this.rcsEffects.dispose(this.scene!);
+    this.thrustEffects.dispose(this.scene);
+    this.rcsEffects.dispose(this.scene);
     super.dispose();
   }
 }
