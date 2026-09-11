@@ -5,7 +5,7 @@
 import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 
 // 陣営・対象ごとの識別色。UI の色は theme.ts、「どう見えるか」だけを決めるエフェクトの色は
-// render/vfx-style.ts が持つ。軌道3軸(prograde/normal/radial)は theme.ts の AXIS_* を使う —
+// そのエフェクトを組むモジュールが持つ。軌道3軸(prograde/normal/radial)は theme.ts の AXIS_* を使う —
 // Δv 編集の 3D ギズモと方位マーカーは同じ軸を指すので、二系統の色を持たせない。
 export const COLOR_MARKER_ALLY = '#ffffff';
 export const COLOR_MARKER_ENEMY = '#ffffff';
