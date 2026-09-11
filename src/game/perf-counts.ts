@@ -1,6 +1,13 @@
 // ランの規模の計測値。
 import type { EntityCountKind } from './dynamic/dynamic-entity/entity-kind';
 import type { ProteinMotionFrameSample } from './protein/protein-motion-metrics';
+import type { CelestialSurfaceDiagnostics } from '../render/celestial/celestial-surface';
+
+export type SurfacePerfCount = {
+  readonly id: string;
+  readonly name: string;
+  readonly diagnostics: CelestialSurfaceDiagnostics;
+};
 
 // 計測表示に載せるエンティティ数・シミュレーション規模の一式。
 export type PerfCounts = {
@@ -11,6 +18,7 @@ export type PerfCounts = {
   mapMode: boolean; mapItems: number; mapLabels: number; displayDurationSec: number;
   simSubsteps: number; simIntegrated: number; simFollowed: number; gravitySources: number;
   surfaceCandidates: number; contactPairs: number; contactParticipants: number;
+  surfaces: readonly SurfacePerfCount[];
   planArcs: number; planSteps: number;
   timeCacheHits: number; timeCacheMisses: number;
   warp: number;
