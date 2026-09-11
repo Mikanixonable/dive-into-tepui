@@ -21,7 +21,6 @@ interface SiteState {
 }
 
 export class ProteinCombatState {
-  public readonly asset: ProteinAssetDefinition;
   public readonly integrityMaxHp: number;
   private _integrityHp: number;
   private _phase: ProteinPhase;
@@ -30,8 +29,8 @@ export class ProteinCombatState {
   private selectedSiteId: string | null = null;
   private attackSiteCursor = 0;
 
-  public constructor(asset: ProteinAssetDefinition, saved?: ProteinSaveData) {
-    this.asset = asset;
+  // asset の定義から戦闘状態を組む。saved があれば、その HP・フェーズ・部位・修飾の状態から戻す。
+  public constructor(public readonly asset: ProteinAssetDefinition, saved?: ProteinSaveData) {
     this.integrityMaxHp = asset.integrity.maxHp;
     this._integrityHp = saved?.integrityHp ?? this.integrityMaxHp;
     this._phase = saved?.phase ?? 'intact';
