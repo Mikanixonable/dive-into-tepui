@@ -21,7 +21,7 @@ import type { NavTarget } from '../nav-target';
 import type { CameraSystem } from '../camera/camera-system';
 import type { Viewport } from '../../render/viewport';
 import type { ControlSelection } from '../control-selection';
-import { rayThroughScreen, screenProjection } from '../../math/projection';
+import { rayThroughScreen } from '../../math/projection';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { FocusSink } from '../camera/focus-target';
 
@@ -81,7 +81,7 @@ export class MapPicking {
   private pickAt<T extends MapPickable>(
     candidates: readonly T[], x: number, y: number, viewport: Viewport,
   ): T | null {
-    const project = screenProjection(this.cameraSystem.activeViewpoint, viewport.width, viewport.height);
+    const project = this.cameraSystem.activeProjection(viewport);
     const displayTime = this.pickables.lastDisplayTime;
     const marker = pickNearest(
       candidates.filter((item) => item.shownOnMap(this.markers)),
@@ -113,7 +113,7 @@ export class MapPicking {
     input.takeRightClicks((p) => {
       const orbit = pickNearestLine(
         this.linePickables.pickables, p.x, p.y,
-        screenProjection(this.cameraSystem.activeViewpoint, viewport.width, viewport.height),
+        this.cameraSystem.activeProjection(viewport),
         pickRadiusSq(ORBIT_LINE_PICK_PX_SQ, ORBIT_LINE_PICK_PX_SQ_COARSE),
         this.cameraSystem.activeCameraPos, this.celestialBodies.celestialMotions,
         this.pickables.lastDisplayTime,

@@ -26,8 +26,9 @@ export class PauseMenu implements OverlayHandle {
   private readonly tabContent: HTMLElement;
   private readonly pauseTabPanel: HTMLElement;
   private readonly tabBar: TabBar<PauseMenuTab>;
-  // 設定タブへ埋め込んだ設定面。設定の変更の口はこれが持ち、main が配線する。
-  public readonly settingsView: SettingsView;
+  // 設定タブへ埋め込んだ設定面。設定の変更の口はこれが持つ。
+  private readonly _settingsView: SettingsView;
+  public get settingsView(): SettingsView { return this._settingsView; }
   private readonly minimizeToggle: HTMLButtonElement;
   private _isOpen = false;
   private minimized = false;
@@ -62,7 +63,7 @@ export class PauseMenu implements OverlayHandle {
     injectOnce('pause-menu', PAUSE_MENU_STYLE);
     injectOnce('settings-view', SETTINGS_VIEW_STYLE);
     this.overlayManager = overlayManager;
-    this.settingsView = new SettingsView(bgm, graphics, bgmVolume);
+    this._settingsView = new SettingsView(bgm, graphics, bgmVolume);
     this.panel = document.createElement('div');
     this.panel.id = 'hud-pause-menu';
     this.panel.className = 'panel ui-surface-focus';
@@ -112,66 +113,20 @@ export class PauseMenu implements OverlayHandle {
     this.pauseTabPanel.setAttribute('aria-label', '一時停止');
     this.tabContent.appendChild(this.pauseTabPanel);
 
-    this.settingsView.element.setAttribute('role', 'tabpanel');
-    this.settingsView.element.setAttribute('aria-label', '設定');
-    this.tabContent.appendChild(this.settingsView.element);
+    this._settingsView.element.setAttribute('role', 'tabpanel');
+    this._settingsView.element.setAttribute('aria-label', '設定');
+    this.tabContent.appendChild(this._settingsView.element);
     this.syncMinimizeToggle();
 
-    // BGM 音量行: スライダーと消音ボタン。
-    const bgmRow = document.createElement('div');
-    bgmRow.className = 'pm-row';
-    const bgmLabel = document.createElement('span');
-    bgmLabel.className = 'k';
-    bgmLabel.textContent = 'BGM Vol';
-    bgmRow.appendChild(bgmLabel);
+    // 一時停止タブ: BGM 音量行と操作ボタンのグリッド。
     this.bgmSlider = new Slider({ min: 0, max: 1, step: 0.05 }, (vol) => {
       this.updateMuteState(vol);
       this.onBgmVolumeChange?.(vol);
     });
-    this.bgmSlider.element.style.flex = '1';
-    this.bgmSlider.element.style.marginLeft = SPACE_4;
-    bgmRow.appendChild(this.bgmSlider.element);
     this.bgmMute = new Button('消音', () => this.toggleMute());
-    this.bgmMute.element.style.marginLeft = SPACE_4;
-    bgmRow.appendChild(this.bgmMute.element);
-    this.pauseTabPanel.appendChild(bgmRow);
+    this.pauseTabPanel.appendChild(this.buildBgmRow());
     this.syncBgmVolume(bgmVolume);
-
-    // 以降の各行はセーブ・セーブデータ管理・デバッグ表示の導線となる単一ボタン。幅を使って
-    // 2列に詰められるよう、操作行だけを専用のグリッドへまとめる。
-    const actionGrid = document.createElement('div');
-    actionGrid.className = 'pm-actions';
-    this.pauseTabPanel.appendChild(actionGrid);
-
-    const saveRow = document.createElement('div');
-    saveRow.className = 'pm-row';
-    const saveBtn = new Button('セーブ', () => this.onSave?.());
-    saveBtn.element.classList.add('pm-menu-btn');
-    saveBtn.element.style.flex = '1';
-    saveRow.appendChild(saveBtn.element);
-    actionGrid.appendChild(saveRow);
-
-    const saveBrowserRow = document.createElement('div');
-    saveBrowserRow.className = 'pm-row';
-    const saveBrowserBtn = new Button('セーブデータの管理', () => this.onOpenSaveBrowser?.());
-    saveBrowserBtn.element.classList.add('pm-menu-btn');
-    saveBrowserBtn.element.style.flex = '1';
-    saveBrowserRow.appendChild(saveBrowserBtn.element);
-    actionGrid.appendChild(saveBrowserRow);
-
-    const perfRow = document.createElement('div');
-    perfRow.className = 'pm-row';
-    const debugInfoBtn = new Button(
-      `デバッグを表示 [${K.toggleDebugInfoWindow.label}]`, () => this.onOpenDebugInfoWindow?.(),
-    );
-    debugInfoBtn.element.classList.add('pm-menu-btn');
-    debugInfoBtn.element.style.flex = '1';
-    perfRow.appendChild(debugInfoBtn.element);
-    actionGrid.appendChild(perfRow);
-
-    const quitBtn = new Button('ゲームを中断してタイトル画面に戻る', () => this.onQuitToTitle?.());
-    quitBtn.element.classList.add('pm-menu-btn', 'pm-quit');
-    actionGrid.appendChild(quitBtn.element);
+    this.pauseTabPanel.appendChild(this.buildActionGrid());
 
     root.appendChild(this.panel);
     this.setActiveTab('pause');
@@ -200,6 +155,48 @@ export class PauseMenu implements OverlayHandle {
     brandText.appendChild(brandVersion);
     brand.appendChild(brandText);
     return brand;
+  }
+
+  // ラベル・音量スライダー・消音ボタンを1行に並べる。
+  private buildBgmRow(): HTMLElement {
+    const bgmRow = document.createElement('div');
+    bgmRow.className = 'pm-row';
+    const bgmLabel = document.createElement('span');
+    bgmLabel.className = 'k';
+    bgmLabel.textContent = 'BGM Vol';
+    bgmRow.appendChild(bgmLabel);
+    // スライダーが残りの幅を取り、消音ボタンは右端に寄る。
+    this.bgmSlider.element.style.flex = '1';
+    this.bgmSlider.element.style.marginLeft = SPACE_4;
+    bgmRow.appendChild(this.bgmSlider.element);
+    this.bgmMute.element.style.marginLeft = SPACE_4;
+    bgmRow.appendChild(this.bgmMute.element);
+    return bgmRow;
+  }
+
+  // セーブ・セーブデータ管理・デバッグ表示の導線と、タイトルへ戻るボタンを並べる。幅を使って
+  // 2列に詰められるよう、操作行だけを専用のグリッドへまとめる。
+  private buildActionGrid(): HTMLElement {
+    const actionGrid = document.createElement('div');
+    actionGrid.className = 'pm-actions';
+    // 幅いっぱいのボタン1つだけを持つ行を足す。
+    const addButtonRow = (label: string, onClick: () => void): void => {
+      const row = document.createElement('div');
+      row.className = 'pm-row';
+      const btn = new Button(label, onClick);
+      btn.element.classList.add('pm-menu-btn');
+      btn.element.style.flex = '1';
+      row.appendChild(btn.element);
+      actionGrid.appendChild(row);
+    };
+    addButtonRow('セーブ', () => this.onSave?.());
+    addButtonRow('セーブデータの管理', () => this.onOpenSaveBrowser?.());
+    addButtonRow(`デバッグを表示 [${K.toggleDebugInfoWindow.label}]`, () => this.onOpenDebugInfoWindow?.());
+
+    const quitBtn = new Button('ゲームを中断してタイトル画面に戻る', () => this.onQuitToTitle?.());
+    quitBtn.element.classList.add('pm-menu-btn', 'pm-quit');
+    actionGrid.appendChild(quitBtn.element);
+    return actionGrid;
   }
 
   // ミュート/復帰を切り替える。復帰は直前の音量へ戻す。
@@ -232,8 +229,8 @@ export class PauseMenu implements OverlayHandle {
     this.activeTab = tab;
     this.tabBar.setSelected(tab);
     this.pauseTabPanel.hidden = tab !== 'pause';
-    this.settingsView.element.hidden = tab !== 'settings';
-    this.settingsView.setActive(tab === 'settings');
+    this._settingsView.element.hidden = tab !== 'settings';
+    this._settingsView.setActive(tab === 'settings');
     if (this._isOpen) this.overlayManager.reconfigure('pause-menu', this.overlaySpec());
     this.reclamp();
   }
