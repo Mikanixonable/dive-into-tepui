@@ -47,8 +47,7 @@ export class BeltPhysics {
 
   public get anchor(): Vec3 { return this.anchorValue; }
 
-  // 節点はアンカーから等間隔に伸ばした形で始める。表示も接触も update より先に問われうるので、
-  // 「まだ並べていない」状態を持たせない。
+  // 節点はアンカーから等間隔に伸ばした形で始め、最初の update より前から位置を答えられる。
   public constructor(private readonly linkCount: number, private readonly owner: DynamicMotion) {
     for (let i = 0; i < linkCount; i++) {
       const p = v3(MAG_BELT_ANCHOR_X + (i + 1) * MAG_BELT_PITCH, 0, 0);
@@ -70,7 +69,7 @@ export class BeltPhysics {
       this.twists[i] = this.twists[i + 1]!;
     }
 
-    // 末尾へ新ノードを追加。直後に非表示になるので位置精度は問わない(次フレームで収束する)。
+    // 末尾へ新ノードを追加。位置は概算でよく、次フレームの拘束で収束する。
     const last = this.positions[n - 2]!;
     const lastPrev = this.prevPositions[n - 2]!;
     const vel = sub(last, lastPrev); // 前のノードの速度ベクトルを引き継いで自然に延長
@@ -105,7 +104,7 @@ export class BeltPhysics {
   // 各節点の位置を擬似力込みで Verlet 積分する。
   private integrateVerlet(dt: number, w: Vec3, aThrustShip: Vec3): void {
     const h = Math.min(dt, 0.05); // 積分刻みの上限(大きな dt でのはみ出し防止)
-    const damping = 0.99; // 慣性を維持しつつ、毎ステップ2%だけ減衰させる
+    const damping = 0.99; // 慣性を維持しつつ、毎ステップ速度を1%減衰させる
     const invDt = dt > 1e-6 ? 1 / dt : 0;
     // コリオリ力 -2ω×v の係数: vel = pos-prevPos = v*dt なので速度への変換に 2/dt を使う。
     // (2/h ではなく実際の dt を使わないと dt > 0.05 のときコリオリ力が過大になる。)
@@ -161,9 +160,8 @@ export class BeltPhysics {
     }
   }
 
-  // つなぎ目ごとに許容するピッチ/ヨーの角度上限を tan クランプで適用し、クランプ後の方向を
-  // 節点位置へ書き戻す。併せてねじれ角を積分する。根本から2番目の
-  // つなぎ目だけは、次にリンク0へ昇格する前に直立させるため feed に応じて上限を0へ絞る。
+  // つなぎ目ごとにピッチ/ヨーの角度上限を課して節点位置へ書き戻し、併せてねじれ角を進める。
+  // 根本から2番目のつなぎ目は、次にリンク0へ昇格する前に直立させるため feed に応じて上限を0へ絞る。
   private advanceOrientationConstraints(dt: number, att: Attitude, feed: number): void {
     const maxRoll = (MAG_CHAIN_MAX_ROLL_DEG * Math.PI) / 180;
     const maxPitchRad = (MAG_CHAIN_MAX_PITCH_DEG * Math.PI) / 180;
@@ -224,10 +222,12 @@ export class BeltPhysics {
     return this.twists[i]!;
   }
 
+  // 節点ごとの接触代理。初回の contactSections で生成し、以後は使い回す。
   private readonly sections: BeltSection[] = [];
 
   // 各節点の機体座標系での位置・速度をワールド KinematicState に変換し、衝突判定用の
   // プロキシ配列を返す。t は接触代理の KinematicState.t に使う現在時刻(掃引判定の区間を成す)。
+  // 返す配列と代理は呼び出しをまたいで同じもので、状態だけが書き換わる。
   public contactSections(t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
     const invDt = 1 / dt;
     for (const [i, bp] of this.positions.entries()) {

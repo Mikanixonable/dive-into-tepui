@@ -182,6 +182,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // 基地側のキー（RCS減衰・プログレード・スロットル等）を1フレーム分消費する。
   private handleEdgeInput(input: Input): void {
+    // 姿勢保持とスロットル段のキーを受け付ける
     input.takeKeys((code) => {
       switch (code) {
         case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return true;
@@ -227,10 +228,12 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       id: this.id,
       kind: 'base',
       name: this.name,
+      // 運動状態
       r: { ...this.motion.state.r },
       v: { ...this.motion.state.v },
       q: { ...this.motion.att.q },
       w: { ...this.motion.att.w },
+      // 基地の資源と、操作・表示の設定
       money: this._money,
       fuel: this.motion.fuel,
       throttle: this.throttle.serialize(),
@@ -281,6 +284,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       ? { label: '操作対象を解除', act: 'deactivate' }
       : { label: '操作対象にする', act: 'activate' };
 
+    // 見出しに所持金を添え、共通の操作項目を並べる
     return [
       { type: 'header', label: this.name, subLabel },
       MenuCommon.target(navTargetId === this.id),
@@ -297,6 +301,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public runMenu(
     act: MenuAction, controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
   ): void {
+    // 軌道線の表示は自分の状態を書き換え、それ以外は controlSelection / authoring へ依頼する
     if (act === 'activate') {
       controlSelection.select(this);
     } else if (act === 'deactivate') {
@@ -314,6 +319,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public propertyRows(
     celestialBodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
+    // 詳細トグルで畳む行と、所持金
     const rows: PropertyRow[] = [
       {
         key: 'operated', label: '操作対象か',
@@ -321,6 +327,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       },
       { key: 'money', label: '所持金', value: `${this._money.toLocaleString()} Cr` },
     ];
+    // 自艦からの距離と軌道要素
     if (viewer) rows.push({
       key: 'dist', label: '距離',
       value: fmtDist(len(sub(this.motion.state.r, viewer.motion.state.r))),

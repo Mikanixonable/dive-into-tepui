@@ -76,6 +76,7 @@ export class DetachedBooster extends DynamicEntity {
       v: { ...motion.state.v },
       q: { ...motion.att.q },
       w: { ...motion.att.w },
+      // 段の ID はエンティティの ID に揃えて保存する
       stage: { ...motion.stage, id: this.id },
       collisionEnableAt: motion.collisionEnableAt,
     };

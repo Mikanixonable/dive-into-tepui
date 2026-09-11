@@ -234,6 +234,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   // 撃破に至らない被弾の音・閃光・ガスの噴出。
   private impactEffect(bulletType: BulletType, impactPoint: Vec3): void {
     this._worldSfx.enemyHit();
+    // 閃光は弾種で分け、ガスは弾種によらず着弾点から噴く
     if (bulletType === 'plasma') {
       this._fx.spawnPlasmaFlash(kinematicState<'eci'>(
         this.motion.state.t, impactPoint, this.motion.state.v,
