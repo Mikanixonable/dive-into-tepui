@@ -18,7 +18,8 @@ import { LineOverlay, type LatLonPolyline } from '../../src/render/celestial/lin
 import coastlineData from '../../src/assets/earth-coastline.json';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing, RingMaterials } from '../../src/render/celestial/ring';
-import { buildBarrelMesh, buildPlayerShip } from '../../src/render/dynamic/ships';
+import { buildDebrisPieceView } from '../../src/render/dynamic/dynamic-entity/debris-piece-view';
+import { buildPlayerShip } from '../../src/render/dynamic/player/player-view';
 import { createStarSphere, type StarSphere } from '../../src/render/celestial/star-sphere';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../src/render/pipeline/sun-light';
 import { SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
@@ -971,7 +972,7 @@ function blackbody(): LabCase {
   objects.push(bar);
   objects.push(blackbodyInstancedRow(new THREE.Vector3(-14, -8, -BLACKBODY_DEPTH), 3));
   // 排出直後の砲身。**赤熱が薬室から砲口へ向かって連続して落ちる**ことを見る。
-  const barrel = buildBarrelMesh();
+  const barrel = buildDebrisPieceView({ kind: 'barrel' }).object;
   barrel.position.set(0, 6, -20);
   barrel.rotation.set(0, Math.PI / 2, 0.06);
   syncThermalState(barrel, BLACKBODY_BARREL_TEMPERATURE, BLACKBODY_BARREL_DEVIATION, HULL_EMISS);

@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import type { Vec3 } from '../../../math/vec3';
 import type { KinematicState } from '../../../physics/kinematic-state';
-import { buildPlayerShip } from '../ships';
+import { memoParseIndependent } from '../baked-model';
 import type { MarkerSlots } from '../../../game/marker/marker-slots';
 import {
   DynamicView, type DynamicRenderSource, type DynamicViewFrame,
@@ -14,6 +14,14 @@ import { RcsEffects } from './rcs-effects';
 import { RadiatorView, type RadiatorDisplay } from './radiator-view';
 import { ReentryEffects } from './reentry-effects';
 import { ThrustEffects } from './thrust-effects';
+import playerData from '../../../assets/models/player.json';
+
+const parsePlayer = memoParseIndependent<THREE.Group>(playerData);
+
+// 自機のモデルを複製する。機首は +Z。
+export function buildPlayerShip(): THREE.Group {
+  return parsePlayer();
+}
 
 // 自機1体ぶんの、そのフレームの表示入力。
 export interface PlayerRenderSource extends DynamicRenderSource {

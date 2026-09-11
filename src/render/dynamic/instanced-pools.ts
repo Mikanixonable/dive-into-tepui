@@ -2,10 +2,8 @@
 // 種別ごとに InstancedMesh 1本へまとめて描くためのプール一式。
 import * as THREE from 'three/webgpu';
 import { InstancedPool } from '../instanced-pool';
-import {
-  bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources,
-  debrisFragmentResources,
-} from './ships';
+import { bulletBodyResources, bulletHaloResources, plasmaBodyResources } from './dynamic-entity/bullet-view';
+import { casingBodyResources, debrisFragmentResources } from './dynamic-entity/debris-piece-view';
 
 export class InstancedPools {
   private readonly bulletBody: InstancedPool;
