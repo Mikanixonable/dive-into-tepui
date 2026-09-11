@@ -79,7 +79,7 @@ function screenDistSq(a: Projected, b: Projected): number {
 }
 
 export class PlanDisplay {
-  readonly path: PlanPath;
+  public readonly path: PlanPath;
 
   private readonly apsisPe = new ApsisMarker('pe');
   private readonly apsisAp = new ApsisMarker('ap');
@@ -88,7 +88,7 @@ export class PlanDisplay {
   private displayedPlan: PlanData | null = null;
 
   // scene に描く計画折れ線を構築する。
-  constructor(
+  public constructor(
     scene: THREE.Scene,
     private readonly markers: MarkerSlots,
     private readonly celestialBodies: CelestialBodies,
@@ -100,7 +100,7 @@ export class PlanDisplay {
 
   // 計画折れ線を再積分し、アプシスアイコンを求め直す。
   // 折れ線は戦闘ビューでも描く — 計画どおりに機体を動かすのは戦闘ビューだから。
-  update(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource, view: ViewMode): void {
+  public update(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource, view: ViewMode): void {
     const ship = this.controlSelection.current;
     this.displayedPlan = this.planToDisplay(ship, view);
     const { frame, simTime, displayTime, duration } = displayWindow;
@@ -115,14 +115,14 @@ export class PlanDisplay {
   }
 
   // owner の計画折れ線がこのフレームに出ていれば、その座標系とサンプル列。出ていなければ null。
-  displayedPathOf(ownerId: string): DisplayedPath | null {
+  public displayedPathOf(ownerId: string): DisplayedPath | null {
     if (this.displayedPlan === null || this.controlSelection.current?.id !== ownerId) return null;
     const samples = this.path.displayedSamples();
     return samples.length === 0 ? null : { frame: this.path.displayFrame, samples };
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコン・目盛を、焼かれた折れ線から組んで置く。
-  sync(camera: CameraFrame, displayWindow: DisplayWindow): void {
+  public sync(camera: CameraFrame, displayWindow: DisplayWindow): void {
     // 描く弧が無いフレームも折れ線の同期は通す — 止めると、消えたはずの線がそのまま残る。
     this.path.sync(camera);
     if (this.displayedPlan === null) { this.hide(); return; }
@@ -138,17 +138,17 @@ export class PlanDisplay {
   }
 
   // このフレームに表示している計画区間の弧。表示している計画が無ければ空。
-  growableArcs(): readonly PredictedArc[] {
+  public growableArcs(): readonly PredictedArc[] {
     return this.displayedPlan === null ? [] : this.path.growableArcs();
   }
 
   // 直近のフレームで作り直した計画区間の本数。
-  perfCounts(): Pick<PerfCounts, 'planArcs'> {
+  public perfCounts(): Pick<PerfCounts, 'planArcs'> {
     return { planArcs: this.path.lastRebuiltArcs };
   }
 
   // 計画折れ線の描画資源を片付ける。
-  dispose(): void {
+  public dispose(): void {
     this.path.dispose();
   }
 
@@ -171,7 +171,7 @@ export class PlanDisplay {
   }
 
   // 近地点・遠地点アイコンの右クリック候補(このフレームに求まったものだけ)。
-  get apsisMarkers(): readonly ObjectPickable[] {
+  public get apsisMarkers(): readonly ObjectPickable[] {
     return [this.apsisPe, this.apsisAp].filter((marker) => !marker.gone);
   }
 

@@ -43,14 +43,14 @@ export class Simulator {
   private readonly surfaceContactPhysics = new SurfaceContactPhysics();
   private readonly entityContactPhysics = new EntityContactPhysics();
 
-  simTime: number;
-  lastSimDt = 0;
-  lastSubsteps = 0;
-  lastGravitySourceCount = 0;
+  public simTime: number;
+  public lastSimDt = 0;
+  private lastSubsteps = 0;
+  private lastGravitySourceCount = 0;
   // 今フレームに走った軌道積分の延べ数。
-  lastIntegratedSteps = 0;
+  private lastIntegratedSteps = 0;
   // 今フレームに予測列から消費した(積分を省いた)延べ数。
-  lastFollowedSteps = 0;
+  private lastFollowedSteps = 0;
   private readonly nextEventTime = new NextEventTime();
   // ゼロ長サブステップが連続した回数。simTime が実際に進んだら 0 へ戻す。
   private consecutiveZeroSteps = 0;
@@ -61,7 +61,7 @@ export class Simulator {
   private readonly bodies = new SubstepCelestialBodies();
 
   // initialSimTime はシミュレーションの開始時刻。
-  constructor(
+  public constructor(
     private readonly roster: DynamicSimulationRoster,
     private readonly lifecycle: SimulationLifecycle,
     private readonly registry: EntityRegistry,
@@ -76,7 +76,7 @@ export class Simulator {
   // 進めてから剛体接触(弾命中含む)を解く。
   // 交戦圏は canEngage のときだけ組まれ、物体どうしの接触はその内側で解く。
   // nanWatchdog は個体の前進・天体接触・物体どうしの接触の各境界ごとに操作対象を検査する。
-  advance(
+  public advance(
     dt: number,
     simDt: number,
     controlled: SimulationControlled | null,
@@ -236,7 +236,7 @@ export class Simulator {
   }
 
   // デバッグ情報ウィンドウが読む、直近フレームの積分規模と接触候補の件数。
-  perfCounts(): Pick<PerfCounts,
+  public perfCounts(): Pick<PerfCounts,
   'simSubsteps' | 'simIntegrated' | 'simFollowed' | 'gravitySources'
   | 'surfaceCandidates' | 'contactPairs' | 'contactParticipants'> {
     return {

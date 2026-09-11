@@ -53,7 +53,7 @@ export class GeostationaryOverlay {
 
   // 天体の重力定数と自転周期から同期軌道を解く。自転モデルを持たない天体、あるいは解が
   // 表面より内側になる天体では同期軌道が引けないので null。
-  static of(motion: CelestialBody): GeostationaryOverlay | null {
+  public static of(motion: CelestialBody): GeostationaryOverlay | null {
     const spinRate = motion.spinRate;
     if (spinRate === null || spinRate === 0) return null;
     const period = Math.abs((2 * Math.PI) / spinRate);
@@ -63,13 +63,13 @@ export class GeostationaryOverlay {
   }
 
   // リングをシーンへ一度だけ登録する。ラベルは MarkerSlots が持つので登録は要らない。
-  build(scene: THREE.Scene): void {
+  public build(scene: THREE.Scene): void {
     scene.add(this.line.line);
   }
 
   // リングとラベルをこのフレームの表示状態へ同期する。visible は所有者の判断
   // (マップ視点 かつ 同期軌道トグル ON)。
-  sync(
+  public sync(
     center: CelestialBody, pivot: number, camera: CameraFrame,
     markers: MarkerSlots, celestialBodies: readonly CelestialBody[], visible: boolean,
   ): void {
@@ -85,7 +85,7 @@ export class GeostationaryOverlay {
   }
 
   // リングを親から外して解放する。
-  dispose(): void {
+  public dispose(): void {
     this.line.line.removeFromParent();
     this.line.dispose();
   }
