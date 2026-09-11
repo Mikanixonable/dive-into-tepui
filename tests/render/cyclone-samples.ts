@@ -1,9 +1,13 @@
-// 低気圧の谷の配置の系列を時刻で標本化し、生まれてから消えるまでの一生へ切り分ける道具。
-// render/cloud の配置と谷の回帰テストが共有する。
+// 低気圧の谷の配置の系列を時刻で標本化し、生まれてから消えるまでの一生へ切り分ける道具と、
+// 谷を置く天体の目盛り。render/cloud の配置と谷の回帰テストが共有する。
 import type { CyclonePlacement } from '../../src/render/cloud/cyclone-tracks';
 
 // 標本の刻み [s]。低気圧の一生(4 日以上)を数十点で、熱帯低気圧の一生(7 日以上)を百数十点で追える細かさ。
 export const SAMPLE_STEP = 3600;
+
+// 谷を置く天体。地球の平均半径 [m] と恒星日 [s]。
+export const EARTH_SURFACE_RADIUS = 6.371e6;
+export const EARTH_ROTATION_PERIOD = 86164.0905;
 
 // 時刻 [s] → 配置の 1 系列。
 export type Placements = (seconds: number) => CyclonePlacement | null;

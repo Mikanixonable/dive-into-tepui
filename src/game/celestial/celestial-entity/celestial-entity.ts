@@ -12,8 +12,9 @@ import { hitsSphere, type Ray } from '../../../math/ray';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { CelestialClass } from './celestial-entity-def';
 import type { Vec3 } from '../../../math/vec3';
-import type { CelestialView } from './celestial-view';
-import type { CelestialSurfaceDiagnostics } from '../../../render/celestial-surface';
+import type {
+  CelestialIlluminationSource, CelestialView,
+} from '../../../render/celestial/celestial-entity/celestial-view';
 import type { CelestialBodies } from '../celestial-bodies';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { MenuItem } from '../../hud/windows/context-menu';
@@ -34,6 +35,7 @@ const BODY_LABEL_PRIORITY: Readonly<Record<CelestialClass, number>> = {
 export class CelestialEntity implements ObjectPickable {
   public readonly id: string;
 
+  // 天体1体の運動・表示名・分類・表示を結び付ける。id は運動の id を引き継ぐ。
   public constructor(
     public readonly motion: CelestialMotion,
     public readonly name: string,
@@ -43,13 +45,15 @@ export class CelestialEntity implements ObjectPickable {
     this.id = motion.id;
   }
 
+  // この1フレームに、照明・影・大気の源として差し出す運動と表示の組。visible は分類トグルが
+  // 開いているか。
+  public illuminationSource(visible: boolean): CelestialIlluminationSource {
+    return { motion: this.motion, view: this.view, visible };
+  }
+
   // 天体ラベルとしての振る舞い。
   // マップのマーカーへ描く表記。
   public get markerLabel(): string { return this.name; }
-  // 表面テクスチャの公開窓口。描画資源は view が所有するが、天体の既存利用側からは
-  // 天体の表示属性として読めるようにする。
-  public get surfaceTextureUrl(): string | null { return this.view.surfaceTextureUrl; }
-  public get surfaceDiagnostics(): CelestialSurfaceDiagnostics | null { return this.view.surfaceDiagnostics; }
   // マーカーの CSS クラス。
   public readonly markerClass = 'mk-poi';
   // ラベルが混雑したときに優先して残す度合い。大きいほど残る。
