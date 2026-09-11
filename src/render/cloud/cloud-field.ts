@@ -3,7 +3,7 @@
 // 正規化した値、CloudSample の cloudTop はメートルである。
 import * as THREE from 'three/webgpu';
 import { BakedField } from './baked-field';
-import { CloudFieldSampler, type CloudUvAt } from './cloud-field-sampler';
+import { CloudFieldSampler } from './cloud-field-sampler';
 import { condense } from './condensation';
 import { cloudFieldTexelFromSample, type CloudSample } from './cloud-field-sample';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -16,13 +16,14 @@ export class CloudField {
   private readonly field: BakedField;
   private readonly sampler: CloudFieldSampler;
 
-  // model がいま指している時刻の雲を、projection の持ち方で焼く写し。
-  public constructor(model: WeatherModel, projection: FieldProjection, uvAt?: CloudUvAt) {
+  // model がいま指している時刻の雲を、projection の持ち方で焼く写し。読むときも projection の uv で読む。
+  public constructor(model: WeatherModel, projection: FieldProjection) {
     this.field = new BakedField('cloud', THREE.RGBAFormat, projection, 1, (direction) => {
       const cloud = condense(model.weatherAt(direction));
       return cloudFieldTexelFromSample(cloud);
     });
-    this.sampler = new CloudFieldSampler(this.field.texture, uvAt ?? projection.uvAt);
+    // 投影の uvAt は投影自身の uniform を読むので、投影に束縛して渡す。
+    this.sampler = new CloudFieldSampler(this.field.texture, (direction) => projection.uvAt(direction));
   }
 
   // いまの時刻の雲を写しへ描く。at() で読む前に必ず一度呼ぶ。
