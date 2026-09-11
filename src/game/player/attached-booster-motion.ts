@@ -1,6 +1,5 @@
 import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import { scale, v3, type Vec3 } from '../../math/vec3';
-import type { AttachedBoostersDisplay } from '../../render/dynamic/player/attached-boosters-view';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import {
   PLAYER_INERTIA_PITCH,
@@ -29,17 +28,12 @@ export class AttachedBoosterMotion {
   }
 
   public get stages(): readonly BoosterStage[] { return this.stack.stages; }
+  // 船体側から最後尾へ並ぶ段の識別子。
+  public get stageIds(): readonly string[] { return this.stack.stageIds; }
+  // 直近の区間の推力加速度(ECI)。噴いていなければ null。
   public get thrust(): Vec3 | null { return this.thrustValue; }
+  // 直近の区間のうち燃焼していた割合 (0..1)。
   public get burnRatio(): number { return this.burnRatioValue; }
-
-  // 段の並びと噴射炎を組むための、そのフレームの表示値。
-  public get display(): AttachedBoostersDisplay {
-    return {
-      stageIds: this.stack.stageIds,
-      firing: this.thrustValue !== null,
-      burnRatio: this.burnRatioValue,
-    };
-  }
 
   // 段を最後尾へ接続する。
   public attach(stage: BoosterStage): void {

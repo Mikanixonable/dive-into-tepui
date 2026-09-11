@@ -3,7 +3,6 @@ import { Attitude } from '../../physics/attitude';
 import { Vec3 } from '../../math/vec3';
 import { BeltPhysics, BeltSection } from './belt-physics';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
-import type { BeltNodes } from '../../render/dynamic/player/belt-view';
 import { MAG_ROUNDS } from './ammo-spec';
 
 export class Belt {
@@ -33,8 +32,11 @@ export class Belt {
     this.physics.update(dt, att, thrustAccelVec, this.feed);
   }
 
-  // たわみ物理が解いた、機体座標系の節点配置。
-  get nodes(): BeltNodes { return this.physics; }
+  // たわみ物理が解いた節点配置(いずれも機体座標系)。給弾口側の吊り元、吊り元から順に並ぶ
+  // 各節の位置、各節のチェーン軸まわりのねじれ角 [rad]。
+  public get anchor(): Vec3 { return this.physics.anchor; }
+  public get positions(): readonly Vec3[] { return this.physics.positions; }
+  public get twists(): readonly number[] { return this.physics.twists; }
 
   // 各リンクの体軸座標を ECI 絶対状態に変換し、衝突判定用の BeltSection として返す。
   contactSections(t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {

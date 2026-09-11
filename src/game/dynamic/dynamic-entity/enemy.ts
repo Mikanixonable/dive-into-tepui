@@ -125,9 +125,6 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   // false の間はこの機体が射撃を行わない。移動・AI の他の判定には影響しない。
   public fireEnabled = true;
 
-  protected readonly _worldSfx: WorldSfx;
-  protected readonly _fx: FlashEffects;
-
   // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径)を受けて、
   // 敵に共通する識別・色・陣形所属を初期化する。復元時は保存済みの生死・バースト状態も戻す。
   protected constructor(
@@ -135,8 +132,8 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     view: DynamicView,
     inertia: Vec3,
     radius: number,
-    worldSfx: WorldSfx,
-    fx: FlashEffects,
+    protected readonly _worldSfx: WorldSfx,
+    protected readonly _fx: FlashEffects,
     shape?: EnemyCollisionShape,
   ) {
     // 復元と新規配置を同じ形へ均してから基底へ渡す。
@@ -157,12 +154,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     const attitude = { q: placed.q, w: placed.w, inertia };
     super(
       placed.name,
-      placed.state,
-      view,
-      attitude,
-      radius,
       ENEMY_MAX_HP,
-      placed.id,
       owner => new EnemyMotion(placed.state, attitude, radius, {
         receiveEntityContact: (other, contact, services) => (
           (owner as Enemy).receiveEntityContact(
@@ -176,9 +168,9 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
           (owner as Enemy).receiveBurnUp(services.activeStage, services.registry)
         ),
       }, shape),
+      view,
+      placed.id,
     );
-    this._worldSfx = worldSfx;
-    this._fx = fx;
     this.accent = placed.accent;
     this.orbitLineColor = placed.orbitLineColor;
     this.waveId = placed.waveId;

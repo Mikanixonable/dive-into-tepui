@@ -51,10 +51,6 @@ export class DebrisPiece extends DynamicEntity {
     scene?: THREE.Scene,
   ) {
     super(
-      state,
-      debrisPieceView(debrisKind, scene),
-      attitude,
-      undefined,
       () => new DebrisMotion(state, attitude, {
         kind: debrisKind.kind,
         behavior: new DebrisReaction(
@@ -69,6 +65,7 @@ export class DebrisPiece extends DynamicEntity {
           ? debrisKind.bornThermalDeviation
           : undefined,
       }),
+      debrisPieceView(debrisKind, scene),
     );
     this.capKind = debrisKind.kind === 'casing' ? 'casing' : 'debris';
   }

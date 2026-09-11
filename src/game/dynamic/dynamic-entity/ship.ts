@@ -1,12 +1,7 @@
 import { Attitude } from '../../../physics/attitude';
-import { KinematicState } from '../../../physics/kinematic-state';
-import {
-  DynamicEntity,
-  type DynamicMotionFactory,
-  type DynamicViewFactory,
-} from './dynamic-entity';
+import { DynamicEntity, type DynamicMotionFactory } from './dynamic-entity';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
-import { DynamicMotion, type DynamicMotionProperties } from '../dynamic-motion';
+import type { DynamicMotionProperties } from '../dynamic-motion';
 import { Part, PartType, createPart } from './parts';
 import { collisionDamageFraction } from './contact-damage';
 import { SHIP_ARROWHEAD_POINTS, triangleHpMarkerSvg } from '../../marker/marker-shapes';
@@ -87,24 +82,15 @@ export abstract class Ship extends DynamicEntity {
   private hullPart: Part | undefined;
   private cockpitPart: CockpitPart | undefined;
 
-  // 名前・剛体接触半径・HP を初期化し、基底の状態/メッシュ/姿勢を構築する。
+  // 基底の識別・Motion・View を組み、名前と HP を初期化して既定パーツを積む。
   public constructor(
     name: string,
-    state: KinematicState,
-    view: DynamicView | DynamicViewFactory,
-    att: Attitude,
-    radius: number,
     hp: number,
+    motionFactory: DynamicMotionFactory,
+    view: DynamicView,
     id?: string,
-    motionFactory?: DynamicMotionFactory,
   ) {
-    super(
-      state,
-      view,
-      att,
-      id,
-      motionFactory ?? (() => new DynamicMotion(state, shipMotionOptions(att, radius))),
-    );
+    super(motionFactory, view, id);
     this.setName(name);
     this.hp = hp;
     this.maxHp = hp;

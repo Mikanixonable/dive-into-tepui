@@ -29,7 +29,10 @@ type DetachedBoosterInit =
 export class DetachedBooster extends DynamicEntity {
   public override readonly mapKind: DynamicEntityKind = 'player';
   public override readonly capKind = 'booster';
+  public declare readonly motion: DetachedBoosterMotion;
 
+  // 新規の分離は切り離した段と分離時の状態から、再開は saved を simTime 付きの状態として展開して
+  // 組む。id は段の id を引き継ぐ。
   public constructor(init: DetachedBoosterInit, scene: THREE.Scene) {
     const restored = 'saved' in init;
     const stage = restored ? { ...init.saved.stage, id: init.saved.id } : { ...init.stage };
@@ -39,11 +42,9 @@ export class DetachedBooster extends DynamicEntity {
       ? (init.saved.collisionEnableAt ?? init.simTime)
       : init.collisionEnableAt;
     super(
-      state,
-      new DetachedBoosterView(scene),
-      attitude,
-      nextBoosterId(stage.id),
       () => new DetachedBoosterMotion(state, attitude, stage, collisionEnableAt),
+      new DetachedBoosterView(scene),
+      nextBoosterId(stage.id),
     );
     this.setName('分離ブースター');
   }
@@ -53,7 +54,7 @@ export class DetachedBooster extends DynamicEntity {
     viewFrame: DynamicViewFrame, visible: boolean, active: boolean,
     orbitReference: OrbitReference | undefined,
   ): DetachedBoosterRenderSource {
-    const motion = this.motion as DetachedBoosterMotion;
+    const motion = this.motion;
     // 燃焼は積分の先端でしか決まっていないので、その時刻を映しているフレームだけ噴かせる。
     const burning = motion.thrust !== null
       && Math.abs(viewFrame.displayTime - motion.state.t) <= BURN_DISPLAY_EPS;
@@ -65,7 +66,7 @@ export class DetachedBooster extends DynamicEntity {
 
   // 運動状態と残存段をセーブ用データへ変換する。
   public override serialize(): DetachedBoosterSaveData {
-    const motion = this.motion as DetachedBoosterMotion;
+    const motion = this.motion;
     return {
       id: this.id,
       name: this.name,

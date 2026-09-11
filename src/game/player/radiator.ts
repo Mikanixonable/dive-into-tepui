@@ -11,7 +11,6 @@ import {
   RADIATOR_SEGMENT_LENGTH,
 } from '../../physics/player-shape';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
-import type { RadiatorDisplay } from '../../render/dynamic/player/folding-panels-view';
 import type { RadiatorSaveData } from '../save/save-data';
 import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
@@ -136,18 +135,10 @@ export class RadiatorSystem {
 
   // 偶数折り目/奇数折り目それぞれの、ヒンジ基準での累積回転角 [rad]。展開方向は side ごとに
   // 符号が付くので、回転角自体は side に依らず ±psi で揃う。
-  private foldThetas(side: RadiatorSide): { even: number; odd: number } {
+  public foldThetas(side: RadiatorSide): { even: number; odd: number } {
     const sign = sideSign(side);
     const psi = this.tilt(this.panels[side].deploy);
     return { even: sign * psi, odd: -sign * psi };
-  }
-
-  // 蛇腹を倒すための、上下2枚ぶんの損耗と折り角。
-  get panelDisplay(): RadiatorDisplay {
-    return {
-      up: { wear: this.wear.up, ...this.foldThetas('up') },
-      down: { wear: this.wear.down, ...this.foldThetas('down') },
-    };
   }
 
   // side の有効な放熱面積 [m^2]。totalCoolingRate は放熱板部品の面積の総和で、展開度と

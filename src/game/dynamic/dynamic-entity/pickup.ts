@@ -84,7 +84,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
         id: init.saved.id || undefined,
       }
       : init;
-    super(state, view, att, idAllocator.next(id), () => new PickupMotion(state, att, kind));
+    super(() => new PickupMotion(state, att, kind), view, idAllocator.next(id));
     this.markerKey = `${kind}-${this.id}`;
     this.setName(defaultName);
   }

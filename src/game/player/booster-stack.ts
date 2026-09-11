@@ -36,15 +36,11 @@ export interface BoosterStackData {
 /** 1 回の step で最後尾段が発生した燃焼結果。 */
 interface BoosterStepResult {
   /** この dt 全体で平均した推力 [N]。フレーム途中で燃料が切れれば小さくなる。 */
-  readonly thrust: number;
-  /** thrust と同じ値を意味が明確な名前でも返す。 */
   readonly averageThrust: number;
   /** dt のうち燃焼していた割合 (0..1)。 */
   readonly burnRatio: number;
   /** この step で消費した燃料 [kg]。 */
   readonly fuelConsumed: number;
-  /** この step で点火していたか。燃料切れ直後も、発生推力の有無を追跡しやすい。 */
-  readonly burning: boolean;
 }
 
 // 燃焼区間で質量が線形に減るときの平均加速度。平均推力を最終質量だけで割ると、
@@ -90,11 +86,9 @@ export function boosterSeparationVelocities(
 }
 
 const NO_BURN: BoosterStepResult = Object.freeze({
-  thrust: 0,
   averageThrust: 0,
   burnRatio: 0,
   fuelConsumed: 0,
-  burning: false,
 });
 
 function finiteNonNegative(value: number, name: string): void {
@@ -129,10 +123,6 @@ function cloneStage(data: BoosterStageData): BoosterStage {
     // 燃料ゼロの保存データを読み込んでも「空の段が点火中」にはしない。
     ignited: data.fuel > 0 && data.ignited,
   };
-}
-
-function noBurn(): BoosterStepResult {
-  return NO_BURN;
 }
 
 /**
@@ -194,12 +184,12 @@ export class BoosterStack {
    */
   step(dt: number): BoosterStepResult {
     if (!Number.isFinite(dt) || dt < 0) throw new RangeError('booster step dt must be finite and non-negative');
-    if (dt === 0) return noBurn();
+    if (dt === 0) return NO_BURN;
 
     const stage = this._stages[this._stages.length - 1];
     if (!stage || !stage.ignited || stage.fuel <= 0) {
       if (stage && stage.fuel <= 0) stage.ignited = false;
-      return noBurn();
+      return NO_BURN;
     }
 
     // rate=0 なら燃焼時間は dt 全体。有限 rate なら燃料が尽きるまでの時間を求める。
@@ -215,13 +205,10 @@ export class BoosterStack {
     }
 
     const burnRatio = burnTime / dt;
-    const averageThrust = stage.thrust * burnRatio;
     return {
-      thrust: averageThrust,
-      averageThrust,
+      averageThrust: stage.thrust * burnRatio,
       burnRatio,
       fuelConsumed: consumed,
-      burning: burnTime > 0,
     };
   }
 

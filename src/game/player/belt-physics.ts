@@ -43,7 +43,9 @@ export class BeltPhysics {
   private prevShipW = v3(); // 前フレームの機体角速度(ベルト物理の角加速度推定用)
   private angularAccel = v3();
   // 給弾進みに応じて動く根本の固定点(機体座標系)。
-  anchor: Vec3 = v3(MAG_BELT_ANCHOR_X, 0, 0);
+  private anchorValue: Vec3 = v3(MAG_BELT_ANCHOR_X, 0, 0);
+
+  public get anchor(): Vec3 { return this.anchorValue; }
 
   // 節点はアンカーから等間隔に伸ばした形で始める。表示も接触も update より先に問われうるので、
   // 「まだ並べていない」状態を持たせない。
@@ -130,9 +132,9 @@ export class BeltPhysics {
 
   // アンカーを給弾進みに応じて更新し、根本(リンク0)を固定する
   private pinRootToAnchor(beltFeed: number): void {
-    this.anchor = v3(MAG_BELT_ANCHOR_X - beltFeed * MAG_BELT_PITCH, 0, 0);
+    this.anchorValue = v3(MAG_BELT_ANCHOR_X - beltFeed * MAG_BELT_PITCH, 0, 0);
 
-    const root = v3(this.anchor.x + MAG_BELT_PITCH, this.anchor.y, this.anchor.z);
+    const root = v3(this.anchorValue.x + MAG_BELT_PITCH, this.anchorValue.y, this.anchorValue.z);
     this.positions[0] = root;
     this.prevPositions[0] = (root);
   }
@@ -142,7 +144,7 @@ export class BeltPhysics {
     const n = this.linkCount;
     for (let iter = 0; iter < 6; iter++) {
       for (let i = 0; i < n; i++) {
-        const a = i === 0 ? this.anchor : this.positions[i - 1]!;
+        const a = i === 0 ? this.anchorValue : this.positions[i - 1]!;
         const b = this.positions[i]!;
         const delta = sub(b, a);
         const dist = len(delta);
@@ -168,7 +170,7 @@ export class BeltPhysics {
     const maxYawRad = (MAG_CHAIN_MAX_YAW_DEG * Math.PI) / 180;
     const secondLinkNarrowing = clamp(1 - feed, 0, 1);
     const rollLerp = Math.min(1, dt * MAG_CHAIN_ROLL_RATE);
-    let prevPoint = this.anchor;
+    let prevPoint = this.anchorValue;
     let prevQ: Quat = Q_IDENTITY; // アンカー(機体)側の基準姿勢: ベルトは+X方向へ伸びる
     let prevTwist = att.w.z * MAG_CHAIN_ROLL_GAIN; // ねじれの発生源: 機体のロール角速度
 
