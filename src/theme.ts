@@ -1,9 +1,10 @@
-// Runtime UI の色システム。
-// Primitive (色相・明度の値) と Semantic (UI上の意味) を同じパレットで公開する。
-// ゲーム世界(マーカー・演出・船体など)の Material 色は const.ts が持ち、ここには含まない。
+// UI のデザイントークン(配色・文字・角丸・余白・重なり順)と、それを :root の CSS 変数へ
+// 注入・差し替える口。配色はプリセットから選び、Primitive(色の値)と Semantic(UI 上の意味)を
+// 同じパレットで公開する。
 
 import { themeIdSetting } from './settings/theme-setting';
 
+// 配色プリセット1つ。
 interface ThemePalette {
   readonly id: string;
   readonly name: string;
@@ -21,9 +22,9 @@ interface ThemePalette {
   readonly bright: string;
   readonly accent: string;
   readonly accentNear: string;
-  // Semantic key colors
+  // 主役色と対になる差し色。
   readonly signal: string;
-  // Semantic state colors
+  // 状態色。
   readonly success: string;
   readonly warning: string;
   readonly error: string;
@@ -47,7 +48,7 @@ const LIGHT_SEMANTIC = {
   focus: '#ffd43b', focusContrast: '#000000',
 } as const;
 
-// モックアップ §4.3 のプリセット。初期値は既存ランタイムの Fluorescent red / blue を保つ。
+// 選べる配色プリセット。
 export const THEME_PRESETS: readonly ThemePalette[] = [
   {
     id: 'orbital-orange', name: 'Solar Flare', description: '暖色の主役とエメラルド Signal', tone: 'dark',
@@ -99,9 +100,10 @@ export const THEME_PRESETS: readonly ThemePalette[] = [
   },
 ] as const;
 
-// 模式図での固定色上書きに使う、選択中の配色によらない light パレット。
+// 選択中の配色によらず固定の light パレット。
 export const LIGHT_PALETTE: ThemePalette = THEME_PRESETS.find((palette) => palette.tone === 'light') ?? THEME_PRESETS[0]!;
 
+// 未保存・プリセットに無い id のときの配色。
 const DEFAULT_THEME_ID = 'fluorescent-red-blue';
 
 // id が指すパレット。プリセットに無い id は既定の配色へ落ちる。
@@ -109,6 +111,7 @@ function findThemePalette(id: string): ThemePalette {
   return THEME_PRESETS.find((palette) => palette.id === id) ?? THEME_PRESETS.find((palette) => palette.id === DEFAULT_THEME_ID)!;
 }
 
+// 起動時に選ばれていた配色。これから導く定数(ACCENT・TEXT など)は applyThemePalette で変わらない。
 export const ACTIVE_THEME = findThemePalette(themeIdSetting.current);
 
 let activePalette: ThemePalette = ACTIVE_THEME;
@@ -118,10 +121,12 @@ export function currentThemePalette(): ThemePalette {
   return activePalette;
 }
 
+// id が指すプリセット。無ければ undefined。
 function getThemePalette(id: string): ThemePalette | undefined {
   return THEME_PRESETS.find((palette) => palette.id === id);
 }
 
+// '#rrggbb' の色に alpha を添えた CSS の rgba() 文字列。
 function rgba(hex: string, alpha: number): string {
   const value = Number.parseInt(hex.slice(1), 16);
   const red = (value >> 16) & 0xff;
@@ -130,6 +135,7 @@ function rgba(hex: string, alpha: number): string {
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
+// palette で差し替わる CSS 変数の名前と値。
 function themeCssVariables(palette: ThemePalette): Readonly<Record<string, string>> {
   return {
     // 主役色。
@@ -225,7 +231,7 @@ export function currentEdgeColor(): string {
 }
 
 const TEXT_STRONG = ACTIVE_THEME.bright;
-// UI用のわずかに紫がかった白。ゲーム世界のマーカー色とは独立したHUD基準色。
+// UI の基準の文字色。
 export const TEXT = ACTIVE_THEME.title;
 export const TEXT_MUTED = ACTIVE_THEME.body;
 export const TEXT_DIM = ACTIVE_THEME.muted;
@@ -235,7 +241,7 @@ export const TEXT_FAINT = ACTIVE_THEME.faint;
 const ACCENT_FILL_WEAK = rgba(ACCENT, 0.08); // 選択されていない行の背景など、ごく控えめな地色
 const ACCENT_FILL = rgba(ACCENT, 0.16); // 選択中・ホバー中の地色
 const ACCENT_FILL_STRONG = rgba(ACCENT, 0.24); // 押下中・強調表示の地色
-// 中立の薄膜。値が大きいほど強く主張する。EDGE と同じオフホワイトを基調とする。
+// 中立の薄膜。値が大きいほど強く主張する。EDGE と同じく文字色から導く。
 const FILL_1 = rgba(TEXT, 0.04);
 const FILL_2 = rgba(TEXT, 0.09);
 const FILL_3 = rgba(TEXT, 0.16);
@@ -254,7 +260,7 @@ const BAR_BG = ACTIVE_THEME.surface3; // ゲージ類の不透明な地(背後�
 const GLOW_STRONG = '60%'; // 通常のグロー
 const GLOW_WEAK = '35%'; // 淡い外側のグロー
 
-// Δv 編集の3軸。plan-editor.ts の DOM パネルと plan-gizmo-3d.ts の3D矢印が共有する。
+// Δv 編集の3軸(順行・法線・動径)の色。
 export const AXIS_PROGRADE = '#3b82f6';
 export const AXIS_NORMAL = '#10b981';
 export const AXIS_RADIAL = '#ef4444';
@@ -295,13 +301,12 @@ export const TRANSITION_SLOW = '0.24s';
 
 const HIT_TARGET_MIN = '44px'; // タップ最小寸法
 
-// ページ直下(body の子)の要素間の重なり順。#hud の子(パネル/ウィンドウ/ポップアップ等)の
-// 重なりはここではなく overlay-layer.ts の8層(OverlayLayerName、z-index 10〜17)が持つ——
-// Z_HUD が同じ「10」に見えるのは別のスタッキング文脈(ページ直下 vs #hud 内部)だからで、衝突ではない。
+// ページ直下(body の子)の要素間の重なり順。#hud の内部は別のスタッキング文脈なので、
+// #hud 内部の z-index とは比べない。
 export const Z_TOUCH_UI = 9;
 const Z_HUD = 10;
-export const Z_HUD_NODE_GIZMO = 5; // #hud 内部だが overlay-layer の層を経由しない特例
-const Z_HUD_RAIL_TOGGLE = 20; // 同上
+export const Z_HUD_NODE_GIZMO = 5; // #hud 内部で、HUD の層の外に置く要素
+const Z_HUD_RAIL_TOGGLE = 20; // #hud 内部で、HUD の層の外に置く要素
 const Z_HUD_TITLE_MENU = 110;
 export const Z_STAGE_SELECT = 100;
 export const Z_LOADING_OVERLAY = 200;
@@ -314,8 +319,7 @@ export const SAFE_AREA_RIGHT = 'env(safe-area-inset-right, 0px)';
 export const SAFE_AREA_BOTTOM = 'env(safe-area-inset-bottom, 0px)';
 export const SAFE_AREA_LEFT = 'env(safe-area-inset-left, 0px)';
 
-// ラテン字形は JetBrains Mono、日本語を含む残りは HackGen が担う。どちらも main.ts が
-// バンドルから読み込むので、外部への追加リクエストは発生しない。
+// ラテン字形は JetBrains Mono、日本語を含む残りは HackGen が担う。
 export const FONT_FAMILY =
   "'JetBrains Mono', 'HackGen', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace";
 
@@ -425,6 +429,7 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--font-family': FONT_FAMILY,
 };
 
+// '#rrggbb' の色の WCAG 相対輝度 [0〜1]。
 function relativeLuminance(hex: string): number {
   const value = Number.parseInt(hex.slice(1), 16);
   const channels = [value >> 16, value >> 8, value].map((channel) => (channel & 0xff) / 255);
@@ -432,6 +437,7 @@ function relativeLuminance(hex: string): number {
   return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
 }
 
+// 2色の WCAG コントラスト比 [1〜21]。引数の順によらない。
 function contrastRatio(foreground: string, background: string): number {
   const foregroundLuminance = relativeLuminance(foreground);
   const backgroundLuminance = relativeLuminance(background);
@@ -447,9 +453,9 @@ interface ThemeContrastIssue {
   readonly minimum: number;
 }
 
-// 全プリセットのSemantic文字/非文字ペアに対するWCAG準拠の検査。tools/verify-theme-contrast.mjs
-// がビルド外から呼ぶため、src/ 内に参照が無くても消さない。
+// palette の色の組のうち、WCAG のコントラスト比の基準に満たないもの。
 function themeContrastIssues(palette: ThemePalette): readonly ThemeContrastIssue[] {
+  // 文字とその地の組は 4.5 以上。
   const textPairs = [
     ['text', palette.title, palette.surface1],
     ['body', palette.body, palette.surface1],
@@ -465,19 +471,22 @@ function themeContrastIssues(palette: ThemePalette): readonly ThemeContrastIssue
     const ratio = contrastRatio(foreground, background);
     return ratio >= 4.5 ? [] : [{ themeId: palette.id, pair, ratio, minimum: 4.5 }];
   });
+  // フォーカス枠は非文字なので 3 以上。
   const focusRatio = contrastRatio(palette.focus, palette.focusContrast);
   if (focusRatio < 3) issues.push({ themeId: palette.id, pair: 'focus-keyline', ratio: focusRatio, minimum: 3 });
   return issues;
 }
 
+// 全プリセットのコントラスト不足の一覧。tools/verify-theme-contrast.mjs がビルドの外から呼ぶので、
+// src/ に参照が無くても消さない。
 export function allThemeContrastIssues(): readonly ThemeContrastIssue[] {
   return THEME_PRESETS.flatMap(themeContrastIssues);
 }
 
 let injected = false;
 
-// 全トークンを :root にカスタムプロパティとして注入する。#touch-ui は #hud の外
-// (body 直下)にあるため、両方から見える :root に置く。多重呼び出しに耐える。
+// 全トークンを :root の CSS 変数として注入する。#hud の外の要素からも見えるよう :root に置く。
+// 何度呼んでもよい。
 export function injectThemeVariables(): void {
   if (injected) return;
   injected = true;

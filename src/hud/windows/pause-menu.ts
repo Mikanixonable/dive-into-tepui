@@ -45,8 +45,7 @@ export class PauseMenu implements OverlayHandle {
   private readonly overlayManager: OverlayManager;
   private readonly bgmSlider: Slider;
   private readonly bgmMute: Button;
-  // ミュート/復帰を切り替えるための直前の音量。ミュート状態そのものは bgmSlider の値
-  // (0 かどうか)から読めるので別に持たない。
+  // 消音から復帰するときに戻す音量。消音中かどうかは bgmSlider の値が 0 かで読む。
   private lastVol = 1;
 
   private dragPointerId: number | null = null;
@@ -143,6 +142,7 @@ export class PauseMenu implements OverlayHandle {
     brandLogo.src = faviconUrl;
     brandLogo.alt = '';
     brand.appendChild(brandLogo);
+    // タイトルとバージョンを1つの文字の塊にまとめる。
     const brandText = document.createElement('div');
     brandText.className = 'pm-brand-text';
     const brandTitle = document.createElement('span');
@@ -174,8 +174,7 @@ export class PauseMenu implements OverlayHandle {
     return bgmRow;
   }
 
-  // セーブ・セーブデータ管理・デバッグ表示の導線と、タイトルへ戻るボタンを並べる。幅を使って
-  // 2列に詰められるよう、操作行だけを専用のグリッドへまとめる。
+  // セーブ・セーブデータ管理・デバッグ表示の導線と、タイトルへ戻るボタンを1つのグリッドへ並べる。
   private buildActionGrid(): HTMLElement {
     const actionGrid = document.createElement('div');
     actionGrid.className = 'pm-actions';
@@ -256,12 +255,12 @@ export class PauseMenu implements OverlayHandle {
     return this.panel.contains(target);
   }
 
-  // OverlayHandle 実装。ESC で閉じる際も toggle(false) と等価に扱う。
+  // OverlayHandle 実装。toggle(false) と同じく閉じる。
   public close(): void {
     this.toggle(false);
   }
 
-  // タイトル画面などの設定導線から、ESC メニューの設定タブを開く。
+  // ESC メニューを展開した状態で開き、設定タブを選ぶ。
   public openSettings(): void {
     this.toggle(true);
     this.setMinimized(false);
@@ -272,10 +271,12 @@ export class PauseMenu implements OverlayHandle {
   public toggle(force?: boolean): void {
     const show = force !== undefined ? force : !this._isOpen;
     if (show === this._isOpen) return;
+    // 閉じる前にタブを戻し、設定タブの試聴と入力遮断を解いておく。
     if (!show) this.setActiveTab('pause');
     this._isOpen = show;
     this.panel.style.display = show ? 'flex' : 'none';
     if (show) {
+      // 開くたびに一時停止タブ・展開状態から始め、動かされていなければ中央へ置く。
       this.setActiveTab('pause');
       this.setMinimized(false);
       if (!this.hasCustomPosition) this.centerPanel();
