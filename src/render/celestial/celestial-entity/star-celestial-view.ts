@@ -62,7 +62,7 @@ export class StarCelestialView extends CelestialView {
     this.outline.line.visible = false;
     // マップビューは実球体で描く — 引いた視点では近平面が星殻より遠く、点像が写らない。
     if (camera.mode === 'map') {
-      star.syncSphere(p, radius);
+      star.syncSphere(p, radius, camera.camera.quaternion);
       return;
     }
     star.sync(

@@ -1,10 +1,11 @@
 // 地球タイルのGPU機能検査、非公開層への色・地形の書込みとフレーム境界での公開を担う。
 import {
-  EARTH_BASE_LAYER, EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EARTH_TILE_MAX_Z,
-  EARTH_TILE_MIN_Z,
+  EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z,
   earthTileId, earthTileParent,
-} from './earth-surface-tiles';
-import type { EarthTileKey, EarthTileResident } from './earth-surface-tiles';
+} from './earth-surface-tile-key';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from './earth-surface-page-table';
+import type { EarthTileKey } from './earth-surface-tile-key';
+import type { EarthTileResident } from './earth-surface-tiles';
 import type { DataArrayTexture, DataTexture } from 'three/webgpu';
 
 // Three.js側の実テクスチャ。GPU固有の書込みはearth-surface-gpu-three.tsへ閉じ込める。
