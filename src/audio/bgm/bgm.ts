@@ -26,6 +26,11 @@ export function parseBgmVolume(text: string | null): number {
   return Math.min(1, Math.max(0, vol));
 }
 
+// ユーザー音量を保存文字列へ書き出す。
+export function formatBgmVolume(vol: number): string {
+  return String(vol);
+}
+
 export class Bgm {
   private masterGain: GainNode | null = null;
   private ambient: Conductor | null = null;

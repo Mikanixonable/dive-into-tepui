@@ -42,6 +42,8 @@ export interface PlayerMotionReactions {
 
 class PlayerBehavior implements DynamicMotionBehavior {
   public readonly contactKind = 'player';
+  // contactProxies が毎回詰め直して返す接触代理の列。
+  private readonly contactProxyScratch: DynamicMotion[] = [];
 
   public constructor(private readonly reactions: PlayerMotionReactions) {}
 
@@ -71,14 +73,14 @@ class PlayerBehavior implements DynamicMotionBehavior {
   // 艦体と、展開中の放熱板・ベルト節点を接触形状として返す。
   public contactProxies(self: DynamicMotion, simTime: number, dt: number): readonly DynamicMotion[] {
     const motion = self as PlayerMotion;
-    motion.contactProxyScratch.length = 0;
-    motion.contactProxyScratch.push(...motion.radiator.contactFolds(
+    this.contactProxyScratch.length = 0;
+    this.contactProxyScratch.push(...motion.radiator.contactFolds(
       motion.state.r, motion.state.v, motion.att, simTime,
     ));
-    motion.contactProxyScratch.push(...motion.belt.contactSections(
+    this.contactProxyScratch.push(...motion.belt.contactSections(
       simTime, dt, motion.state.r, motion.state.v, motion.att,
     ));
-    return motion.contactProxyScratch;
+    return this.contactProxyScratch;
   }
 
   // 接触解決後のベルト節点を、機体座標系の鎖へ書き戻す。
@@ -139,7 +141,6 @@ export class PlayerMotion extends DynamicMotion {
   public readonly radiator: RadiatorSystem;
   public readonly power: PowerSystem;
   public readonly attachedBoosters: AttachedBoosterMotion;
-  public readonly contactProxyScratch: DynamicMotion[] = [];
 
   // beltLinkCount は給弾ベルトの節点数で、表示するリンクメッシュの数と揃える。
   public constructor(

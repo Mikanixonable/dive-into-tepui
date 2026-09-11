@@ -4,15 +4,17 @@ import { qRotate, type Quat } from '../../../math/quat';
 import { mulberry32 } from '../../../math/random';
 import { Vec3, add, cross, dot, lenSq, scale, v3 } from '../../../math/vec3';
 import { Billboard } from '../../billboard';
-import {
-  RCS_PLUME_BRIGHTNESS, RCS_PLUME_COLOR, RCS_PLUME_OFFSET, RCS_PLUME_SIZE,
-} from '../../vfx-style';
 import { RCS_NOZZLES } from '../../rcs-nozzles';
 import { FloatingOrigin } from '../../camera/floating-origin';
 import { plumeNoiseSeed } from './plume-noise';
 
 export const RCS_PUFF_TORQUE_EPS = 0.15; // RCSパフを表示する実トルクしきい値 [rad/s^2](inertia=1前提)
 
+const RCS_PLUME_COLOR = 0xcfeaff;
+const RCS_PLUME_OFFSET = 0.55; // ノズルからプルーム中心までの距離 [m]
+const RCS_PLUME_SIZE = 0.55;
+// TODO: 明るさは 1 天文単位を基準にした目盛りへ手で置いた表示値。ボリュームレンダリングで放射量として組み直す。
+const RCS_PLUME_BRIGHTNESS = 0.75;
 
 export class RcsEffects {
   // ノズルごとの取付位置・噴射方向・噴射で機体に生じるトルク(いずれも機体座標)とプルーム。
@@ -67,6 +69,7 @@ export class RcsEffects {
     }
   }
 
+  // 全ノズルのプルームのビルボードを scene から取り除き解放する。
   dispose(scene: THREE.Scene): void {
     for (const { plume } of this.puffs) {
       scene.remove(plume.mesh);
