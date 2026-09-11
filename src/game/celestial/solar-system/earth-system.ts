@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import earthTextureUrl from '../../../assets/earth.jpg';
+import cloudFieldUrl from '../../../assets/cloud-field.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import coastlineData from '../../../assets/earth-coastline.json';
 import moonFeaturesData from '../../../assets/moon-features.json';
@@ -34,6 +35,7 @@ import {
 } from './earth-surface-runtime';
 import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
+import { ObservedCloudField } from '../../../render/cloud/observed-cloud-field';
 import { createDevelopmentClimateMap } from '../../../render/cloud/monthly-climate-fixture';
 import { EllipsoidEquirectProjection } from '../../../render/cloud/field-projection';
 import { earthSurfaceUvFromRadialNode } from '../../../render/earth-surface-coordinate';
@@ -434,9 +436,10 @@ export function earthSystem(
   // 天気を解く半径は全球を一様な球とみなす平均半径、殻を載せる球の半径は本体メッシュと同じ赤道半径。
   const cumulus = new CloudPresentation(
     GeneratedCloudField.global(
-      climate, R_EARTH, SIDEREAL_DAY, climateUvAt,
+      climate, R_EARTH, SIDEREAL_DAY, climateEpochUnixSec, climateUvAt,
       new EllipsoidEquirectProjection(512, EARTH_CLIMATE_AXES),
-    ), R_EARTH_EQ, climateEpochUnixSec,
+    ),
+    new ObservedCloudField(cloudFieldUrl), R_EARTH_EQ,
   );
   const earthSurface = earthSurfaceRuntime.surface;
   return {
