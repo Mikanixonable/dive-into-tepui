@@ -101,7 +101,7 @@ export class Hud implements HudLayers, Notifier {
     this.orbitPanel.sync(game);
     // ビュー固有のパネル。
     if (map) {
-      this.mapScaleBadge.sync(map, camera.scale, game.cameraSystem.mapCamera.resolvedFocus);
+      this.mapScaleBadge.sync(camera.scale, game.cameraSystem.mapCamera.resolvedFocus);
     } else {
       this.vesselPanel.sync(game.activeControllable, game.activeStage, game.cameraSystem, map);
       this.targetPanel.sync(game.activeControllable, game.celestialSystem, game.targeter);
