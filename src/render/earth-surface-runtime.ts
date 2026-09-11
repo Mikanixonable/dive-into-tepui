@@ -5,7 +5,7 @@ import {
   type EarthSurfaceAssetManifest,
   type EarthSurfaceSource,
 } from './earth-surface-source';
-import { EarthSurfaceTileRequestSource } from '../../../render/earth-surface-request';
+import { EarthSurfaceTileRequestSource } from './earth-surface-tile-source';
 
 const DATASET_ID = /^[a-z0-9-]+$/;
 export type EarthSurfaceBootstrapState = 'loading' | 'ready' | 'error' | 'fallback';

@@ -5,9 +5,9 @@ import { EarthSurfaceContext } from '../../src/render/earth-surface';
 import {
   assertEarthSurfaceDataset, earthSurfaceSourceFromManifest,
   type EarthSurfaceAssetManifest,
-} from '../../src/game/celestial/solar-system/earth-surface-source';
-import { bootstrapEarthSurface, earthSurfaceManifestUrl } from '../../src/game/celestial/solar-system/earth-surface-runtime';
-import { earthTileKey } from '../../src/render/earth-surface-tiles';
+} from '../../src/render/earth-surface-source';
+import { bootstrapEarthSurface, earthSurfaceManifestUrl } from '../../src/render/earth-surface-runtime';
+import { earthTileKey } from '../../src/render/earth-surface-tile-key';
 
 function manifest(schemaVersion: 1 | 2 = 2): EarthSurfaceAssetManifest {
   return {
