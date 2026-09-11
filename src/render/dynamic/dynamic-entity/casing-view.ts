@@ -1,9 +1,11 @@
-// 射撃のたびに排出される薬莢1個の表示と、全薬莢が共有する描画資源。
+// 射撃のたびに排出される薬莢1個の表示と、全薬莢が共有する描画資源とプール。
 import * as THREE from 'three/webgpu';
+import { InstancedPool } from '../../instanced-pool';
 import { attachThermalEmissive } from '../../thermal-emissive';
 import { memoParseIndependent } from '../baked-model';
 import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
 import casingData from '../../../assets/models/casing.json';
+import type { InstancedPoolSet } from '../instanced-pools';
 import type { KinematicState } from '../../../physics/kinematic-state';
 
 const parseCasing = memoParseIndependent<THREE.Mesh>(casingData);
@@ -13,7 +15,7 @@ let casingBody: { readonly geometry: THREE.BufferGeometry; readonly material: TH
 
 // 全薬莢が共有する geometry/material を返す。geometry はテンプレートの複製へ全長補正を焼き込み、
 // material はテンプレートから一度だけ複製したものを不変資源として使う。
-export function casingBodyResources(): { geometry: THREE.BufferGeometry; material: THREE.Material } {
+function casingBodyResources(): { geometry: THREE.BufferGeometry; material: THREE.Material } {
   if (casingBody === null) {
     const template = parseCasing();
     const geometry = template.geometry.clone();
@@ -27,6 +29,15 @@ export function casingBodyResources(): { geometry: THREE.BufferGeometry; materia
     casingBody = { geometry, material };
   }
   return casingBody;
+}
+
+// 全薬莢を1本の InstancedMesh へ積むプール。
+export class CasingPool extends InstancedPool implements InstancedPoolSet {
+  // 1フレームに積める薬莢の数 capacity だけ枠を確保する。
+  public constructor(scene: THREE.Scene, capacity: number) {
+    const body = casingBodyResources();
+    super(scene, body.geometry, body.material, capacity, false, 0, true);
+  }
 }
 
 // 薬莢1個の表示。全薬莢で共有する1本のプールへ積む。
@@ -46,6 +57,6 @@ export class CasingView extends DynamicView {
     _displayed: KinematicState | null,
     context: DynamicViewFrame,
   ): void {
-    context.pools.pushCasing(this.object);
+    context.pools.get(CasingPool).push(this.object);
   }
 }
