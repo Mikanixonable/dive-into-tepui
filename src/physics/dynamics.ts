@@ -9,6 +9,17 @@ import { srpAccel } from './srp';
 import { Vec3, add, cross, dot, sub, v3 } from '../math/vec3';
 import type { CelestialBody, Degree2Gravity } from './celestial-body';
 
+export interface DynamicsEnvironmentSample {
+  readonly t: number;
+  readonly r: Vec3;
+  readonly v: Vec3;
+  readonly sunDist: number;
+  readonly sunlit: number;
+  readonly sunDir: Vec3;
+  readonly atmosphere: ReturnType<CelestialBody['atmosphereAt']>;
+  readonly atmosphereState: KinematicState | null;
+}
+
 // 状態(位置・速度)から加速度を返すコールバック。RK4 の各中間段(k1〜k4)ごとに、その段が
 // 実際に評価されるべき絶対時刻 t とともに呼ばれる。RK4 が4次精度を持つのは非自励系
 // y' = f(t, y) の各段をそれぞれ正しい時刻で評価したときに限られ、t を1点(例えばステップ
@@ -105,19 +116,33 @@ export function stepRK4(s: KinematicState, dt: number, accel: AccelFn): Kinemati
 // 持つ天体ぶんのその摂動、大気抵抗、太陽輻射圧。t は accel を評価すべき絶対時刻(RK4 の各段
 // の時刻)で、重力項(質点・2次重力場とも)は天体位置を pivot からその時刻へ外挿してから
 // 評価する — 距離の3乗で効く重力はステップ幅ぶんの天体の移動が精度を左右するため。
-// 日照率と輻射圧の太陽方向だけは pivot に据え置く: 遮蔽の幾何と 1AU 先の太陽方向は
-// ステップ内での天体の移動にほとんど左右されない。
+// 日照率・輻射圧・大気も重力と同じく各評価段の時刻で評価する。これらを pivot に据え置くと、
+// ステップが長い時間加速時に SRP/食と大気相対速度が同じ時刻を見なくなる。
+export function environmentSampleAt(
+  t: number, r: Vec3, v: Vec3, star: CelestialBody | null,
+  occluders: readonly CelestialBody[], atmosphereBody: CelestialBody | null, pivot: number,
+): DynamicsEnvironmentSample {
+  const toSun = star === null ? v3() : sub(star.positionAt(pivot, t), r);
+  const sunDist = Math.hypot(toSun.x, toSun.y, toSun.z);
+  const sunDir = sunDist > 0 ? v3(toSun.x / sunDist, toSun.y / sunDist, toSun.z / sunDist) : v3();
+  const sunlit = star === null ? 0 : sunlitFactor(r, star, occluders, pivot, t);
+  const atmosphere = atmosphereBody === null ? null : atmosphereBody.atmosphereAt(t);
+  const atmosphereState = atmosphereBody === null || atmosphere === null
+    ? null : atmosphereBody.stateAt(pivot, t);
+  return { t, r, v, sunDist, sunlit, sunDir, atmosphere, atmosphereState };
+}
+
 function totalAccel(
   t: number,
   r: Vec3,
   v: Vec3,
   attractors: readonly CelestialBody[],
-  occluders: readonly CelestialBody[],
   atmosphereBody: CelestialBody | null,
   pivot: number,
   bcInv: number,
   srpCoeff: number,
   dt: number,
+  environment: DynamicsEnvironmentSample,
 ): Vec3 {
   let ax = 0, ay = 0, az = 0;
   for (const attractor of attractors) {
@@ -132,15 +157,14 @@ function totalAccel(
     }
     // 恒星ぶんの輻射圧をすべて加算する(恒星0個なら寄与0)。
     if (attractor.kind === 'star' && srpCoeff !== 0) {
-      const sunlit = sunlitFactor(r, attractor, occluders, pivot);
-      const srp = srpAccel(r, attractor, pivot, srpCoeff, sunlit);
+      const srp = srpAccel(r, attractor, pivot, srpCoeff, environment.sunlit, t);
       ax += srp.x; ay += srp.y; az += srp.z;
     }
   }
-  const atmosphere = atmosphereBody === null ? null : atmosphereBody.atmosphereAt(pivot);
+  const atmosphere = environment.atmosphere;
   if (atmosphereBody === null || atmosphere === null) return v3(ax, ay, az);
   // 抗力はその天体の中心を基準に測る。天体位置は重力項と同じくこの段の時刻へ外挿する。
-  const atmosphereState = atmosphereBody.stateAt(pivot);
+  const atmosphereState = environment.atmosphereState!;
   const b = atmosphereBody.positionAt(pivot, t);
   const drag = dragAccel(
     v3(r.x - b.x, r.y - b.y, r.z - b.z), sub(v, atmosphereState.v), bcInv, atmosphere, dt,
@@ -163,10 +187,31 @@ export function stepDynamics(
   srpCoeff: number,
   thrust: Vec3 | null,
 ): KinematicState {
-  return stepRK4(state, dt, (t, rx, ry, rz, vx, vy, vz) => {
+  return stepDynamicsWithSamples(
+    state, dt, attractors, occluders, atmosphereBody, pivot, bcInv, srpCoeff, thrust).state;
+}
+
+export function stepDynamicsWithSamples(
+  state: KinematicState,
+  dt: number,
+  attractors: readonly CelestialBody[],
+  occluders: readonly CelestialBody[],
+  atmosphereBody: CelestialBody | null,
+  pivot: number,
+  bcInv: number,
+  srpCoeff: number,
+  thrust: Vec3 | null,
+  star: CelestialBody | null = attractors.find((body) => body.kind === 'star') ?? null,
+): { readonly state: KinematicState; readonly samples: readonly DynamicsEnvironmentSample[] } {
+  const samples: DynamicsEnvironmentSample[] = [];
+  const next = stepRK4(state, dt, (t, rx, ry, rz, vx, vy, vz) => {
+    const r = v3(rx, ry, rz);
+    const v = v3(vx, vy, vz);
+    const environment = environmentSampleAt(t, r, v, star, occluders, atmosphereBody, pivot);
+    samples.push(environment);
     const a = totalAccel(
-      t, v3(rx, ry, rz), v3(vx, vy, vz), attractors, occluders, atmosphereBody,
-      pivot, bcInv, srpCoeff, dt);
+      t, r, v, attractors, atmosphereBody, pivot, bcInv, srpCoeff, dt, environment);
     return thrust ? add(a, thrust) : a;
   });
+  return { state: next, samples };
 }

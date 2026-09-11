@@ -7,6 +7,7 @@
 // 焼き込みの対象になる系。JPL の周期軌道カタログが配信する系と同じ識別子を使う。
 export type CatalogSystemId =
   | 'earth-moon' | 'sun-earth' | 'sun-mars'
+  | 'sun-jupiter' | 'sun-saturn'
   | 'jupiter-europa' | 'saturn-titan' | 'saturn-enceladus' | 'mars-phobos';
 
 // 軌道族の識別子。`<族>` または `<族>-<ラグランジュ点>` または `<族>-<ラグランジュ点>-<枝>`。

@@ -8,22 +8,24 @@ import { bringToFront } from '../../../hud/overlay-layer';
 import { onViewportChange } from '../../../hud/viewport';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
 import { injectOnce } from '../../../hud/inject-style';
+import { injectCommonUiStyle } from '../../../hud/style/common-ui-style';
+import { bindActivation, expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
 
 const STYLE = `
 #hud .ctx-menu {
   position: fixed; display: none; min-width: 168px;
-  pointer-events: auto; padding: var(--space-2); background: var(--glass-focus); border: 0;
+  pointer-events: auto; padding: var(--space-2);
   border-radius: var(--radius-panel); overflow: hidden; font-size: var(--font-m);
   font-family: var(--font-family); user-select: none;
-  box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
   -webkit-user-select: none;
 }
 #hud .ctx-menu-item {
-  padding: var(--space-4) var(--space-5); color: var(--text-muted); cursor: pointer;
-  border: 0; border-radius: var(--radius-micro);
+  padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
+  border: 0; border-radius: var(--radius-control);
 }
+#hud .ctx-menu-item.w-hit { display: block; }
 #hud .ctx-menu-item:hover, #hud .ctx-menu-item:active {
-  background: var(--surface-2); color: var(--color-primary-hover);
+  background: var(--glass-control-hover); color: var(--color-primary-hover);
 }
 #hud .ctx-menu-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .ctx-menu-header {
@@ -68,10 +70,11 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
   // メニュー要素を popupLayer(#hud の popup レイヤ)へ追加し、overlayManager へ登録する。
   public constructor(popupLayer: HTMLElement, private readonly overlayManager: OverlayManager) {
     this.overlayId = `ctx-menu-${ContextMenu.nextId++}`;
+    injectCommonUiStyle();
     injectOnce('ctx-menu', STYLE);
     // メニュー要素を組み立てて popupLayer へ追加する。
     this.el = document.createElement('div');
-    this.el.className = 'ctx-menu';
+    this.el.className = 'ctx-menu ui-surface-focus';
     this.el.setAttribute('role', 'menu');
     popupLayer.appendChild(this.el);
     this.el.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -133,24 +136,21 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
         continue;
       }
       const item = document.createElement('div');
-      item.className = 'ctx-menu-item';
+      item.className = 'ctx-menu-item ui-selectable w-hit';
       item.setAttribute('role', 'menuitem');
       item.tabIndex = -1;
+      item.classList.toggle('on', it.selected === true);
       item.dataset['act'] = it.act || '';
       item.dataset['shortcut'] = it.shortcut || '';
       item.textContent = it.label + (it.shortcut ? ` [${shortcutKeyLabel(it.shortcut)}]` : '');
+      stopDragPropagation(item);
+      expandHitTarget(item);
       // クリックされた項目の act を、開いた時点の対象とともに通知して閉じる
-      item.addEventListener('click', (e) => {
-        e.stopPropagation();
+      bindActivation(item, () => {
         const act = item.dataset['act'] as A;
         const t = this.target;
         this.close();
         if (t !== null) this.onSelect?.(act, t);
-      });
-      item.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter' && e.key !== ' ') return;
-        e.preventDefault();
-        item.click();
       });
       item.addEventListener('focus', () => this.setRovingItem(item));
       this.el.appendChild(item);

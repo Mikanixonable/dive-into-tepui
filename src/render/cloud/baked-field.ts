@@ -3,8 +3,26 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { mrt, screenUV, texture } from 'three/tsl';
+import { GPU_PASS, type GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from './field-projection';
 import type { Vec3Node, Vec4Node } from '../tsl-types';
+
+// Three.js/WebGPUが generateMipmaps=true のRenderTargetへ確保するレベル数。mipmaps配列は
+// CPU入力用の手動mipだけを表し、GPU側で自動生成されたレベルはそこへ現れないため、寸法から
+// 契約上の最大LODを求める。
+export function maxMipLevelOf(width: number, height: number): number {
+  return Math.floor(Math.log2(Math.max(1, width, height)));
+}
+
+// 自動生成を使わないテクスチャでは、手動で渡された mip の数だけを実在レベルとして返す。
+// mipmaps が空なら level 0 だけを読める。自動生成時はGPUが寸法に応じた全レベルを確保する。
+export function maxAvailableMipLevelOf(
+  width: number, height: number, generateMipmaps: boolean, mipmapCount: number,
+): number {
+  const dimensionMax = maxMipLevelOf(width, height);
+  if (generateMipmaps) return dimensionMax;
+  return Math.min(dimensionMax, Math.max(0, Math.floor(mipmapCount) - 1));
+}
 
 export class BakedField {
   private readonly target: THREE.RenderTarget;
@@ -21,9 +39,17 @@ export class BakedField {
     coarseness: number,
     source: (direction: Vec3Node) => Vec4Node,
   ) {
+    const width = Math.max(1, Math.floor(projection.width / coarseness));
+    const height = Math.max(1, Math.floor(projection.height / coarseness));
     this.target = new THREE.RenderTarget(
-      projection.width / coarseness, projection.height / coarseness,
-      { count: 1, depthBuffer: false, samples: 0 });
+      width, height,
+      {
+        count: 1,
+        depthBuffer: false,
+        samples: 0,
+        generateMipmaps: true,
+        minFilter: THREE.LinearMipmapLinearFilter,
+      });
     const map = this.target.textures[0]!;
     map.name = name;
     map.format = format;
@@ -31,15 +57,20 @@ export class BakedField {
     map.type = THREE.HalfFloatType;
     map.wrapS = projection.wrapS;
     map.wrapT = projection.wrapT;
-    map.generateMipmaps = false;
+    // RenderTargetの生成契約を、後からテクスチャ設定を変更するコードにも見える形で保持する。
+    // WebGPUではrender contextの送信後に全レベルが生成される。
+    map.generateMipmaps = true;
+    map.minFilter = THREE.LinearMipmapLinearFilter;
+    map.magFilter = THREE.LinearFilter;
     this.material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
     this.material.mrtNode = mrt({ [name]: source(projection.directionAt(screenUV)) });
     this.quad = new QuadMesh(this.material);
   }
 
   // いま source の uniform が指している時刻の場を写しへ描く。at() で読む前に必ず一度呼ぶ。
-  public render(renderer: WebGPURenderer): void {
+  public render(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
     renderer.setRenderTarget(this.target);
+    gpu?.beginPass(GPU_PASS.cloudBake);
     this.quad.render(renderer);
     renderer.setRenderTarget(null);
   }

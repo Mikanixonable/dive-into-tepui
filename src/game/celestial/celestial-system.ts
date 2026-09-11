@@ -3,14 +3,14 @@ import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import { CelestialMotion, OrbitingMotion, PlanetMotion } from '../../physics/celestial-motion';
 import { PhaseOffsets } from '../../physics/celestial-body-def';
-import { strongestAttractor } from '../../physics/attractor';
+import { attractorAccel, strongestAttractor } from '../../physics/attractor';
 import { EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
 import { EciTransform } from '../../physics/eci-transform';
 import { ReferenceFrames } from './reference-frames';
 import { isLagrangeId, lagrangeParentId } from './lagrange-id';
 import { addTimeCacheStats } from '../../physics/time-ring';
 import { KinematicState } from '../../physics/kinematic-state';
-import { norm, sub, v3, Vec3 } from '../../math/vec3';
+import { lenSq, norm, sub, v3, Vec3 } from '../../math/vec3';
 import { CELESTIAL_SHELL_SCALE, createStars, Stars } from '../../render/stars';
 import { CelestialGrid, CelestialGridVisibility, DEFAULT_GRID_VISIBILITY } from '../../render/celestial-grid';
 import type { CameraSystem } from '../camera/camera-system';
@@ -28,9 +28,12 @@ import type { MarkerSlots } from '../marker/marker-slots';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { PointFieldView } from './point-field-view';
+import type { GpuTimingSink } from '../../render/gpu-timings';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialBodies } from './celestial-bodies';
 import type { CelestialClass } from './celestial-entity/celestial-entity-def';
+import type { PerfCounts } from '../perf-counts';
+import { STICKY_MARGIN_SQ } from './nearby-system-tracker';
 
 // 数値暦が収録している点を、結び先のノードへ配る。暦は id ごとに天体本体を収録している場合と
 // 惑星系の重心を収録している場合があり、宣言と食い違う点へ結ぶとその系がまるごと重心オフセット
@@ -210,7 +213,18 @@ export class CelestialSystem implements CelestialBodies {
     const initial = strongestAttractor(position, this.celestialMotions, pivot).id;
     // 太陽を直接周回中でどの惑星系にも属さない対象は、どの惑星がフォーカスされていても常に含める。
     if (this.find(initial)?.motion.kind === 'star') return true;
-    return this.ancestorsOf(initial).includes(systemFocusId);
+
+    // フォーカス系の天体と、それ以外の天体の最大加速度を同じ規則で比べる。フォーカス系側が
+    // 1.2倍まで弱い間は表示対象に残し、境界を往復する物体の表示が1フレームごとに切り替わるのを防ぐ。
+    let focusedAccelSq = 0;
+    let outsideAccelSq = 0;
+    for (const motion of this.celestialMotions) {
+      const accelSq = lenSq(attractorAccel(position, motion, pivot));
+      const inFocusedSystem = motion.id === systemFocusId || this.ancestorsOf(motion.id).includes(systemFocusId);
+      if (inFocusedSystem) focusedAccelSq = Math.max(focusedAccelSq, accelSq);
+      else outsideAccelSq = Math.max(outsideAccelSq, accelSq);
+    }
+    return outsideAccelSq === 0 || focusedAccelSq >= outsideAccelSq / STICKY_MARGIN_SQ;
   }
 
   // 天体 id あるいはラグランジュ点 id の親。undefined は id が不正/古いこと、null は恒星など
@@ -310,11 +324,15 @@ export class CelestialSystem implements CelestialBodies {
     return { phaseOffsets: { ...this.phaseOffsets }, earthSpinPhase0: this.earthSpinPhase0() };
   }
 
-  // 天体窓の時刻キャッシュのヒット/ミス累計。
-  perfCounts(): { timeCacheHits: number; timeCacheMisses: number } {
+  // 天体と地表が答える、デバッグ表示用の狭い計測値をまとめる。
+  perfCounts(): Pick<PerfCounts, 'surfaces'> & { timeCacheHits: number; timeCacheMisses: number } {
     let time = this.eciTransform.cacheStats;
     for (const motion of this.celestialMotions) time = addTimeCacheStats(time, motion.cacheStats);
-    return { timeCacheHits: time.hits, timeCacheMisses: time.misses };
+    const surfaces = this.entities.flatMap((entity) => {
+      const diagnostics = entity.surfaceDiagnostics;
+      return diagnostics === null ? [] : [{ id: entity.id, name: entity.name, diagnostics }];
+    });
+    return { timeCacheHits: time.hits, timeCacheMisses: time.misses, surfaces };
   }
 
   // 軌道ガイドタブ(表示パネル5.2節)の設定。変更のたびに渡す。
@@ -408,8 +426,8 @@ export class CelestialSystem implements CelestialBodies {
   }
 
   // このフレームに積雲殻を描く天体の雲場を焼く。
-  public bakeClouds(renderer: WebGPURenderer, displayTime: number): void {
-    for (const body of this.entities) body.view.bakeClouds(renderer, displayTime);
+  public bakeClouds(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
+    for (const body of this.entities) body.view.bakeClouds(renderer, displayTime, gpu);
   }
 
   // 星球は描画原点(= カメラ)に固定した半径の殻。

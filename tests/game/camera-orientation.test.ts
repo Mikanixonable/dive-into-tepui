@@ -59,7 +59,7 @@ export function register(): void {
     o.beginAttitudeFollow(attitude, POLAR);
     // 生の値は対象姿勢からの相対値になり、実効回転だけが元の向きを保つ。
     assert.ok(!sameOrientation(o.stored, relative), '生の値が相対値へ読み替えられていない');
-    o.refreshAttitude(qFromAxisAngle(v3(0, 1, 0), Math.PI));
+    o.refreshAttitude(qFromAxisAngle(v3(0, 1, 0), Math.PI), POLAR);
     const turned = o.effective();
     assert.ok(!sameOrientation(turned, o.stored), '対象の姿勢が実効回転へ合成されていない');
   });
@@ -69,7 +69,7 @@ export function register(): void {
     const attitude = qFromAxisAngle(v3(0, 0, 1), 0.4);
     o.beginAttitudeFollow(attitude, POLAR);
     const before = o.effective();
-    o.refreshAttitude(null);
+    o.refreshAttitude(null, POLAR);
     assert.ok(sameOrientation(o.effective(), before));
   });
 
@@ -91,11 +91,16 @@ export function register(): void {
     assert.ok(sameOrientation(o.effective(), absolute));
   });
 
-  test('camera-orientation: 姿勢追従中はオイラー経路を使わない', () => {
+  test('camera-orientation: 姿勢追従中もオイラー経路を使う', () => {
     const o = orientation('euler');
     assert.equal(o.usesEuler, true);
-    o.beginAttitudeFollow(qFromAxisAngle(v3(0, 1, 0), 1.0), POLAR);
-    assert.equal(o.usesEuler, false);
+    const attitude = qFromAxisAngle(v3(0, 1, 0), 1.0);
+    o.beginAttitudeFollow(attitude, POLAR);
+    assert.equal(o.usesEuler, true);
+    const before = o.effective();
+    const stored = o.turn(0.2, 0, 0, LOCAL_UP);
+    assert.ok(!sameOrientation(o.effective(), before));
+    assert.ok(!sameOrientation(o.effective(), stored), '対象の姿勢が実効回転へ合成されていない');
   });
 
   test('camera-orientation: オイラー入力の往復は元の向きへ戻る', () => {

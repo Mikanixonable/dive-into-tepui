@@ -1,14 +1,16 @@
 // 初期化中・実行中を問わず、継続不能な例外は画面内で明示する。
 // 壊れた Game/renderer を同一ページ内で再利用せず、復旧はページ全体の再読込だけにする。
 import {
-  ACCENT, SURFACE_OPAQUE, currentEdgeColor, BG, TEXT, TEXT_DIM, FONT_FAMILY, FONT_M, FONT_XL, RADIUS_S, RADIUS_M,
+  ACCENT, SURFACE_OPAQUE, BG, TEXT, TEXT_DIM, FONT_FAMILY, FONT_M, FONT_XL, RADIUS_S, RADIUS_M,
   Z_FATAL_ERROR,
 } from '../theme';
 import { hideLoading } from './loading-overlay';
+import { injectCommonUiStyle } from '../hud/style/common-ui-style';
 
 // title/message/error から画面全体のオーバーレイを組み立てて表示する。既に出ていれば何もしない。
 export function showFatalError(title: string, message: string, error: unknown): void {
   hideLoading();
+  injectCommonUiStyle();
   if (document.getElementById('fatal-error-overlay')) return;
 
   // 画面全体を覆う背景と、その中央に置く本体パネル。
@@ -22,7 +24,7 @@ export function showFatalError(title: string, message: string, error: unknown): 
 
   const panel = document.createElement('div');
   panel.style.cssText =
-    `max-width:680px;background:${SURFACE_OPAQUE};border:1px solid ${currentEdgeColor()};border-radius:${RADIUS_M};padding:22px 32px`;
+    `max-width:680px;background:${SURFACE_OPAQUE};border:0;border-radius:${RADIUS_M};padding:22px 32px`;
 
   // 見出し・本文メッセージ・例外の詳細を上から順に積む。
   const heading = document.createElement('div');
@@ -43,7 +45,7 @@ export function showFatalError(title: string, message: string, error: unknown): 
   const reload = document.createElement('button');
   reload.type = 'button';
   reload.style.cssText =
-    `margin-top:14px;padding:8px 18px;color:${TEXT};background:${BG};border:1px solid ${ACCENT};` +
+    `margin-top:14px;padding:8px 18px;color:${TEXT};background:${BG};border:0;` +
     `border-radius:${RADIUS_S};font:inherit;cursor:pointer`;
   reload.textContent = 'ページを再読み込み';
   reload.addEventListener('click', () => location.reload());

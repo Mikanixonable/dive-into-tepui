@@ -5,6 +5,7 @@
 import { clampOverlayPosition } from '../../../hud/layout';
 import { Button, buildLabeledRow } from '../../../hud/widgets';
 import { injectOnce } from '../../../hud/inject-style';
+import { injectCommonUiStyle } from '../../../hud/style/common-ui-style';
 import { bringToFront } from '../../../hud/overlay-layer';
 import { isCompactViewport, MQ_COMPACT } from '../../../hud/breakpoints';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
@@ -12,10 +13,9 @@ import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager
 const STYLE = `
 #hud .object-picker-pop {
   position: fixed; display: none; pointer-events: auto;
-  background: var(--glass-focus); border: 0; border-radius: var(--radius-window);
+  border-radius: var(--radius-window);
   font-family: var(--font-family); font-size: var(--font-m); color: var(--text);
   width: min(520px, calc(100vw - 24px)); max-height: 60vh; max-height: 60dvh; overflow-y: auto; user-select: none;
-  box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
   -webkit-user-select: none;
 }
 /* compact: トリガー直下ではなく画面下端のシートとして開く(left/top は付けない —
@@ -28,7 +28,7 @@ const STYLE = `
 }
 #hud .object-picker-pop .op-filter {
   width: 100%; box-sizing: border-box; padding: var(--space-3) var(--space-5); margin: 0;
-  background: var(--surface-2); border: none;
+  background: var(--glass-inset); border: 0;
   color: var(--text); font-family: var(--font-family); font-size: var(--font-m); outline: none;
 }
 #hud .object-picker-pop .op-grid {
@@ -39,10 +39,12 @@ const STYLE = `
 }
 #hud .object-picker-pop .op-row {
   margin: var(--space-1); padding: var(--space-3) var(--space-5); cursor: pointer;
-  border: 0; border-radius: var(--radius-micro);
+  border: 0; border-radius: var(--radius-control);
 }
-#hud .object-picker-pop .op-row:hover { background: var(--surface-2); color: var(--color-primary-hover); }
-#hud .object-picker-pop .op-row.on { color: var(--color-primary); background: var(--color-primary-fill); }
+#hud .object-picker-pop .op-row:hover { background: var(--glass-control-hover); color: var(--color-primary-hover); }
+#hud .object-picker-pop .op-row.on {
+  color: var(--color-primary); background: var(--color-primary-fill);
+}
 #hud .object-picker-pop .op-row:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .object-picker-pop .op-empty { grid-column: 1 / -1; padding: var(--space-4) var(--space-5); opacity: 0.5; }
 `;
@@ -87,6 +89,7 @@ export class ObjectPicker<T> implements OverlayHandle {
     private readonly overlayManager: OverlayManager,
   ) {
     this.overlayId = `object-picker-${ObjectPicker.nextId++}`;
+    injectCommonUiStyle();
     injectOnce('obj-picker', STYLE);
     this.onSelect = onSelect;
 
@@ -99,7 +102,7 @@ export class ObjectPicker<T> implements OverlayHandle {
 
     // ポップアップ本体(絞り込み入力+候補一覧)を組み立てる。
     this.pop = document.createElement('div');
-    this.pop.className = 'object-picker-pop';
+    this.pop.className = 'object-picker-pop ui-surface-focus';
     this.pop.setAttribute('role', 'dialog');
     this.pop.setAttribute('aria-label', title);
     this.pop.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -280,7 +283,7 @@ export class ObjectPicker<T> implements OverlayHandle {
       // 各候補行を組み立て、クリック・キー操作・フォーカスの挙動を配線する。
       for (const [value, label] of items) {
         const row = document.createElement('div');
-        row.className = 'op-row';
+        row.className = 'op-row ui-selectable';
         row.setAttribute('role', 'option');
         row.setAttribute('aria-selected', String(value === this.selected));
         row.tabIndex = -1;

@@ -104,6 +104,10 @@ export interface ZeroVelocitySettings {
   readonly earthMoonXZ: boolean;
   readonly sunEarthXY: boolean;
   readonly sunEarthXZ: boolean;
+  readonly sunJupiterXY: boolean;
+  readonly sunJupiterXZ: boolean;
+  readonly sunSaturnXY: boolean;
+  readonly sunSaturnXZ: boolean;
   // 1本だけ描くか、範囲を等分して多数描くか。
   readonly multiple: boolean;
   readonly jacobi: number;
@@ -218,7 +222,7 @@ export const DEFAULT_ORBIT_GUIDE_SETTINGS: OrbitGuideSettings = {
   },
   tundra: {
     on: false,
-    perigeeAltitude: 600e3,
+    perigeeAltitude: 24_000e3,
     raan: 0,
     colorStart: 0x8b96c9,
     opacity: 0.4,
@@ -230,6 +234,10 @@ export const DEFAULT_ORBIT_GUIDE_SETTINGS: OrbitGuideSettings = {
     earthMoonXZ: false,
     sunEarthXY: false,
     sunEarthXZ: false,
+    sunJupiterXY: false,
+    sunJupiterXZ: false,
+    sunSaturnXY: false,
+    sunSaturnXZ: false,
     multiple: false,
     jacobi: 3.18,
     jacobiMin: 3.0,

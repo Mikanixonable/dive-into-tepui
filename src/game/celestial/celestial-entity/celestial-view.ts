@@ -1,6 +1,7 @@
 // 天体1体の3D表示資源を所有し、毎フレーム渡される運動と表示設定を描画座標へ同期する。
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
+import type { GpuTimingSink } from '../../../render/gpu-timings';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
 import { shapeSpheroidRadii, type RingSystemDef } from '../../../physics/celestial-body-def';
 import { orbitalElementsOf } from '../../../physics/elements';
@@ -11,8 +12,9 @@ import type { GraphicsSettingsData } from '../../../render/graphics-settings';
 import type { RenderStyle } from '../../../render/render-style';
 import type { RingMaterials } from '../../../render/ring';
 import type { Albedo } from '../../../render/celestial-albedo';
+import type { CelestialSurfaceDiagnostics } from '../../../render/celestial-surface';
 import type { AtmosphereClouds, AtmosphereOptics, AtmosphereCandidate } from '../../../render/atmosphere';
-import type { ShadowCumulus } from '../../../render/pipeline/shadow/cumulus-shadow';
+import type { ShadowCumulus } from '../../../render/pipeline/shadow/cloud-shadow-renderer';
 import type { MarkerSlots } from '../../marker/marker-slots';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import { EllipseLine } from '../../lines/ellipse-line';
@@ -45,6 +47,7 @@ export abstract class CelestialView {
   public get atmosphereOptics(): AtmosphereOptics | null { return null; }
   public get lightSourceAlbedo(): Albedo | null { return null; }
   public get surfaceTextureUrl(): string | null { return null; }
+  public get surfaceDiagnostics(): CelestialSurfaceDiagnostics | null { return null; }
   public rings(_motion: CelestialMotion): RingSystemDef | null { return null; }
 
   public abstract build(
@@ -91,7 +94,7 @@ export abstract class CelestialView {
   ): AtmosphereClouds | null { return null; }
 
   // この天体が持つ動的な雲場を表示時刻へ焼く。
-  public bakeClouds(_renderer: WebGPURenderer, _displayTime: number): void {}
+  public bakeClouds(_renderer: WebGPURenderer, _displayTime: number, _gpu?: GpuTimingSink): void {}
 
   public cumulusShadowAt(
     _motion: CelestialMotion, _floatingOrigin: FloatingOrigin, _displayTime: number,

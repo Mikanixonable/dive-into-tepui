@@ -2,14 +2,14 @@ import { hudRail } from '../hud-root';
 import {
   Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, SegmentedControl, type CollapseToggleLabels,
 } from '../../../hud/widgets';
-import { expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
+import { bindActivation, expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
 import { injectOnce } from '../../../hud/inject-style';
 import { loadPanelCollapsed, savePanelCollapsed, wirePanelCollapse } from '../panel-shell';
 import { MQ_COARSE } from '../../../hud/breakpoints';
-import { PhysicalObjectListTree } from './physical-object-list-tree';
+import { PhysicalObjectListRowTree as PhysicalObjectListTree } from './physical-object-list-row-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
-import type { RowNode } from './physical-object-list-tree';
+import type { RowNode } from './physical-object-list-row-tree';
 import type { PhysicalObjectListFilter, PhysicalObjectListSort, SectionOrder } from './physical-object-list-order';
 import type { MapListSection } from '../../pickable/pickable-listing';
 import type { ListedObject } from '../../pickable/listed-object';
@@ -67,7 +67,7 @@ const STYLE = `
 }
 #hud-physical-object-list .physical-object-list-title { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 #hud-physical-object-list .physical-object-list-body.collapsed { display: none !important; }
-#hud-physical-object-list .physical-object-list-breadcrumb { padding: var(--space-1) var(--space-3); font-size: var(--font-xxs); color:var(--text-dim); border-bottom:1px solid var(--edge); }
+#hud-physical-object-list .physical-object-list-breadcrumb { padding: var(--space-1) var(--space-3); font-size: var(--font-xxs); color:var(--text-dim); }
 /* 全展開して数百行をスクロールしても今どの区画かを見失わないよう、見出しを内側スクロール
    領域の先頭へ貼り付ける。背景の不透明化は map-view-style.ts 側(見た目のトークン)が持つ。 */
 #hud-physical-object-list .physical-object-list-section-header {
@@ -214,10 +214,12 @@ export class PhysicalObjectListPanel {
     for (const { section: sectionKey } of SECTIONS) {
       const sectionId = `hud-physical-object-list-section-${sectionKey}`;
       const header = document.createElement('div');
-      header.className = 'physical-object-list-section-header';
+      header.className = 'physical-object-list-section-header ui-selectable';
       header.tabIndex = 0;
       header.setAttribute('role', 'button');
       header.setAttribute('aria-controls', sectionId);
+      stopDragPropagation(header);
+      expandHitTarget(header);
       const labelEl = document.createElement('span');
       labelEl.className = 'physical-object-list-section-header-label';
       const glyphEl = document.createElement('span');
@@ -242,12 +244,7 @@ export class PhysicalObjectListPanel {
         this.applyExpanded(section);
         savePanelCollapsed(sectionId, !section.expanded);
       };
-      header.addEventListener('click', toggleSection);
-      header.addEventListener('keydown', (event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        event.preventDefault();
-        toggleSection();
-      });
+      bindActivation(header, toggleSection);
       this.sections.set(sectionKey, section);
       body.appendChild(header);
       // 入れ子を持つのは天体区画だけなので、一括開閉ボタンもここにだけ添える。区画本体の中

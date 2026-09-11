@@ -3,7 +3,9 @@
 import type { Input } from '../../../input/input';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { injectOnce } from '../../../hud/inject-style';
+import { injectCommonUiStyle } from '../../../hud/style/common-ui-style';
 import { HELP_PANEL_STYLE } from '../style/help-panel-style';
+import { stopDragPropagation } from '../../../hud/widgets/widget-base';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
 import {
   ARROW_KEYS, AUXILIARY_KEYS, BEHAVIOR_LABELS, HELP_CATEGORIES, helpEntries, INPUT_LABELS, KEYBOARD_ROWS,
@@ -38,10 +40,11 @@ export class HelpPanel implements OverlayHandle {
   // 操作説明パネルの DOM 一式を組み立てて root へ追加し、クリック・検索入力の購読を開始する。
   // 開閉状態は閉じたまま(open を呼ぶまで非表示)で始まる。
   public constructor(root: HTMLElement, private readonly overlayManager: OverlayManager) {
+    injectCommonUiStyle();
     injectOnce('help-panel', HELP_PANEL_STYLE);
     this.el = document.createElement('div');
     this.el.id = 'hud-help';
-    this.el.className = 'panel';
+    this.el.className = 'panel ui-surface-focus';
     this.el.setAttribute('role', 'dialog');
     this.el.setAttribute('aria-modal', 'true');
     this.el.setAttribute('aria-labelledby', 'hud-help-title');
@@ -53,14 +56,14 @@ export class HelpPanel implements OverlayHandle {
           <h3 id="hud-help-title">操作説明 <span class="help-close-hint">[H / ESC で閉じる]</span></h3>
           <div class="help-mode-status" data-help-mode-status></div>
         </div>
-        <button type="button" class="help-close-button" data-help-action="close" aria-label="操作説明を閉じる">×</button>
+        <button type="button" class="help-close-button w-close ui-selectable w-hit" data-help-action="close" aria-label="操作説明を閉じる">×</button>
       </div>
       <div class="help-toolbar">
         <div class="help-toolbar-row">
           <div class="help-tab-group" role="tablist" aria-label="表示モード">
             <span class="help-toolbar-label">表示対象</span>
-            <button type="button" class="help-tab" role="tab" data-help-mode="combat">戦闘ビュー</button>
-            <button type="button" class="help-tab" role="tab" data-help-mode="map">マップモード</button>
+            <button type="button" class="help-tab w-btn ui-selectable w-hit" role="tab" data-help-mode="combat">戦闘ビュー</button>
+            <button type="button" class="help-tab w-btn ui-selectable w-hit" role="tab" data-help-mode="map">マップモード</button>
           </div>
           <label class="help-search">
             <span class="help-visually-hidden">操作を検索</span>
@@ -70,14 +73,14 @@ export class HelpPanel implements OverlayHandle {
         </div>
         <div class="help-toolbar-row help-input-tabs" role="tablist" aria-label="入力方式">
           <span class="help-toolbar-label">入力方式</span>
-          <button type="button" class="help-tab" role="tab" data-help-input="all">すべて</button>
-          <button type="button" class="help-tab" role="tab" data-help-input="keyboard">キーボード</button>
-          <button type="button" class="help-tab" role="tab" data-help-input="mouse">マウス</button>
-          <button type="button" class="help-tab" role="tab" data-help-input="touch">タッチ</button>
+          <button type="button" class="help-tab w-btn ui-selectable w-hit" role="tab" data-help-input="all">すべて</button>
+          <button type="button" class="help-tab w-btn ui-selectable w-hit" role="tab" data-help-input="keyboard">キーボード</button>
+          <button type="button" class="help-tab w-btn ui-selectable w-hit" role="tab" data-help-input="mouse">マウス</button>
+          <button type="button" class="help-tab w-btn ui-selectable w-hit" role="tab" data-help-input="touch">タッチ</button>
         </div>
         <div class="help-category-tabs" role="tablist" aria-label="操作カテゴリ">
-          <button type="button" class="help-tab" role="tab" data-help-category="all">すべて</button>
-          ${HELP_CATEGORIES.map((category) => `<button type="button" class="help-tab" role="tab" data-help-category="${category.id}">${category.glyph} ${category.label}</button>`).join('')}
+          <button type="button" class="help-tab w-btn ui-selectable w-hit" role="tab" data-help-category="all">すべて</button>
+          ${HELP_CATEGORIES.map((category) => `<button type="button" class="help-tab w-btn ui-selectable w-hit" role="tab" data-help-category="${category.id}">${category.glyph} ${category.label}</button>`).join('')}
         </div>
       </div>
       <div class="help-body">
@@ -97,6 +100,7 @@ export class HelpPanel implements OverlayHandle {
       <div class="help-live-status help-visually-hidden" aria-live="polite" data-help-live-status></div>
     `;
     root.appendChild(this.el);
+    stopDragPropagation(this.el);
 
     // 描画のたびに書き換える要素への参照を保持しておき、以降の render はこれらの
     // innerHTML/表示状態だけを差し替える。
@@ -108,6 +112,7 @@ export class HelpPanel implements OverlayHandle {
     this.content = this.el.querySelector<HTMLElement>('[data-help-content]')!;
     this.liveStatus = this.el.querySelector<HTMLElement>('[data-help-live-status]')!;
     this.el.addEventListener('click', this.handleClick);
+    this.el.addEventListener('keydown', this.handleEntryKeyDown);
     this.searchInput.addEventListener('input', this.handleSearchInput);
     this.render();
   }
@@ -190,6 +195,20 @@ export class HelpPanel implements OverlayHandle {
     this.selectedCode = null;
     this.selectedEntryId = null;
     this.render();
+  };
+
+  // フォーカスした操作カードを Enter/Space で選択する。カード内のキー部品は自身の
+  // ネイティブ操作を優先し、カード選択へ二重に伝播させない。
+  private readonly handleEntryKeyDown = (event: KeyboardEvent): void => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (event.target instanceof HTMLElement && event.target.closest('.help-entry-key')) return;
+    const entry = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('.help-entry') : null;
+    if (!entry || !this.el.contains(entry)) return;
+    const entryId = entry.dataset['helpEntry'];
+    if (!entryId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.selectEntry(entryId);
   };
 
   // パネル内のクリックを、押された要素の data 属性に応じて分岐させる唯一の入口。
@@ -368,7 +387,7 @@ export class HelpPanel implements OverlayHandle {
     const matching = entries.filter((entry) => matchingEntries.includes(entry));
     const categories = [...new Set(entries.map((entry) => entry.category))];
     const classes = [
-      'help-key', key.className ?? '', ...categories.map((category) => `cat-${category}`),
+      'help-key', 'ui-selectable', 'w-hit', key.className ?? '', ...categories.map((category) => `cat-${category}`),
       entries.length ? 'mapped' : 'unmapped', dimUnmatched && matching.length === 0 ? 'search-muted' : '',
     ].filter(Boolean).join(' ');
     const title = entries.length ? entries.map((entry) => entry.label).join(' / ') : '割り当てなし';
@@ -386,7 +405,7 @@ export class HelpPanel implements OverlayHandle {
       const open = Boolean(query) || this.categoryFilter !== 'all' || category.id === 'basic';
       return `
         <details class="help-group cat-${category.id}" ${open ? 'open' : ''}>
-          <summary><span><i aria-hidden="true">${category.glyph}</i>${category.label}</span><em>${groupEntries.length}</em></summary>
+          <summary class="ui-selectable w-hit"><span><i aria-hidden="true">${category.glyph}</i>${category.label}</span><em>${groupEntries.length}</em></summary>
           <div class="help-group-body">${groupEntries.map((entry) => this.renderEntry(entry)).join('')}</div>
         </details>`;
     }).join('');
@@ -406,7 +425,7 @@ export class HelpPanel implements OverlayHandle {
     const behavior = entry.behavior ? `<span class="help-behavior">${BEHAVIOR_LABELS[entry.behavior]}</span>` : '';
     const inputs = entry.inputs.map((input) => `<span class="help-input-tag input-${input}">${INPUT_LABELS[input]}</span>`).join('');
     return `
-      <article class="help-entry cat-${entry.category}" id="help-entry-${entry.id}" data-help-entry="${entry.id}" data-help-codes="${escapeHtml(codes.join(' '))}">
+      <article class="help-entry cat-${entry.category} ui-selectable" id="help-entry-${entry.id}" data-help-entry="${entry.id}" data-help-codes="${escapeHtml(codes.join(' '))}" role="button" tabindex="0">
         <div class="help-entry-keyset">${keyMarkup}</div>
         <div class="help-entry-copy">
           <div class="help-entry-title"><strong>${escapeHtml(entry.label)}</strong><span class="help-entry-tags">${behavior}${inputs}</span></div>
@@ -419,7 +438,7 @@ export class HelpPanel implements OverlayHandle {
   // キーボード図・一覧の両方で使う、1つのキーコードに対応するクリック可能なボタンを描画する。
   // muted は代替コード側の表示を主コードより控えめにするためのもの。
   private renderEntryKey(code: string, label: string, entry: HelpEntry, muted = false): string {
-    return `<button type="button" class="help-entry-key ${muted ? 'muted' : ''}" data-help-code="${escapeHtml(code)}" data-help-entry="${entry.id}">${escapeHtml(label)}</button>`;
+    return `<button type="button" class="help-entry-key ui-selectable w-hit ${muted ? 'muted' : ''}" data-help-code="${escapeHtml(code)}" data-help-entry="${entry.id}">${escapeHtml(label)}</button>`;
   }
 
   // 指定コードに割り当てられた操作をハイライト対象として選択する。該当する操作が
@@ -449,21 +468,21 @@ export class HelpPanel implements OverlayHandle {
   // 現在の selectedCode / selectedEntryId を、キーボード図・一覧のハイライトクラスへ反映する。
   // 描画のたびに一度全消灯してから、該当する要素だけへ点灯クラスを付け直す。
   private applySelection(): void {
-    for (const element of Array.from(this.el.querySelectorAll<HTMLElement>('.help-key.is-selected, .help-entry.is-selected'))) {
-      element.classList.remove('is-selected');
+    for (const element of Array.from(this.el.querySelectorAll<HTMLElement>('.help-key.on, .help-entry.on, .help-entry-key.on'))) {
+      element.classList.remove('on');
     }
     if (this.selectedCode) {
       // キーボード図側のボタンと、そのコードを含む一覧カードの両方を点灯させる。
       for (const element of Array.from(this.el.querySelectorAll<HTMLElement>('[data-help-code]'))) {
-        if (element.dataset['helpCode'] === this.selectedCode) element.classList.add('is-selected');
+        if (element.dataset['helpCode'] === this.selectedCode) element.classList.add('on');
       }
       for (const element of Array.from(this.el.querySelectorAll<HTMLElement>('.help-entry[data-help-codes]'))) {
         const codes = element.dataset['helpCodes']?.split(' ') ?? [];
-        if (codes.includes(this.selectedCode!)) element.classList.add('is-selected');
+        if (codes.includes(this.selectedCode!)) element.classList.add('on');
       }
     }
     if (this.selectedEntryId) {
-      this.el.querySelector<HTMLElement>(`[data-help-entry="${this.selectedEntryId}"]`)?.classList.add('is-selected');
+      this.el.querySelector<HTMLElement>(`#help-entry-${this.selectedEntryId}`)?.classList.add('on');
     }
   }
 }
