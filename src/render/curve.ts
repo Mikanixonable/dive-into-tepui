@@ -55,11 +55,11 @@ const MIN_T_SPAN = 2 ** -24;
 // 離散サンプルとしてしか手に入らない曲線の節点列。ts は節点の曲線パラメータ(昇順、先頭 0・
 // 末尾 1)、positions と tangents は各節点の位置と d(位置)/d(パラメータ) を [x, y, z] の順に
 // 並べた長さ ts.length * 3 の列。
-export type CurveKnots = {
+export interface CurveKnots {
   readonly ts: readonly number[];
   readonly positions: readonly number[];
   readonly tangents: readonly number[];
-};
+}
 
 // 点 p を線分 ab へ射影した点(線分の外へ出るぶんは端点へ丸める)を out へ書く。
 function projectToSegment(

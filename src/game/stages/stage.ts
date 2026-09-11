@@ -90,12 +90,12 @@ export type ClearCounts = Readonly<Record<string, number>>;
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
 // 決着した周回の結果画面に出す内容。
-export type StageResult = {
+export interface StageResult {
   readonly win: boolean;
   // 勝敗から決まる既定の見出しに収まらないときだけ差し替える。
   readonly title: string | null;
   readonly detailHtml: string;
-};
+}
 
 export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 起動時に1度だけ組む星系。既定は現実の太陽系で、元期(simTime=0 が指す絶対時刻)が

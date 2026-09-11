@@ -129,15 +129,15 @@ export class FocusCamera {
   private lastResolvedFocus = v3();
   private _focusVelocity: Vec3 | null = null;
 
-  get focus(): FocusTarget { return this._focus; }
+  public get focus(): FocusTarget { return this._focus; }
 
   // 注視点の ECI 速度。速度を答えられない対象を注視しているあいだは null。
-  get focusVelocity(): Vec3 | null { return this._focusVelocity; }
+  public get focusVelocity(): Vec3 | null { return this._focusVelocity; }
 
   // target が 'point'(座標系に焼き込んだ固定点)で frame が回転系なら、その天体の
   // 公転に追随する固定点になる。フォーカスが変わると回転追従の選択肢も変わるので、
   // 外れた選択は慣性系へ落とす。
-  setFocusTarget(target: FocusTarget, resetPan = true): void {
+  public setFocusTarget(target: FocusTarget, resetPan = true): void {
     this._focus = target;
     this.missingFocusFrames = 0;
     if (resetPan) this.resetPan();
@@ -145,18 +145,18 @@ export class FocusCamera {
     if (follow !== null && !this.isFollowAvailable(follow)) this.setRotationFollow(null);
   }
 
-  clearFocusIf(id: string): void {
+  public clearFocusIf(id: string): void {
     if (this._focus.kind === 'object' && this._focus.id === id) {
       this.setFocusTarget({ kind: 'object', id: this.celestialBodies.originId });
     }
   }
 
-  viewpoint: Viewpoint;
+  public viewpoint: Viewpoint;
 
   // 初期視点(offset_r/pan_r/up_r/座標系/フォーカス)を組む。saved があればその値から、
   // 無ければ既定の見下ろし視点から組む。座標系は必ず frames.frameOf 経由で解決する —
   // ReferenceFrame をリテラルで組むと参照同一性が崩れる(frame.ts 参照)。
-  constructor(
+  public constructor(
     private readonly _notifier: Notifier,
     private readonly celestialBodies: CelestialBodies,
     private readonly config: FocusCameraConfig,
@@ -283,7 +283,7 @@ export class FocusCamera {
   }
 
   // 注視点からカメラまでの距離を返す。
-  get dist(): number {
+  public get dist(): number {
     return Math.hypot(this.offset_r.x, this.offset_r.y, this.offset_r.z);
   }
 
@@ -383,7 +383,7 @@ export class FocusCamera {
 
   // ロールを初期状態(天体近傍: 自転軸、広域: 黄道面法線)に戻し、パンでフォーカスから
   // ずれていた注視点もフォーカス位置へ戻す。
-  reset(): void {
+  public reset(): void {
     const tf = this.celestialBodies.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     const offset = qRotate(this.orientation.effective(), LOCAL_FORWARD);
     const upAxisEci = this.referenceUpAxisEci();
@@ -428,23 +428,23 @@ export class FocusCamera {
   }
 
   // 現在視点を固定している座標系を返す。
-  get cameraFrame(): ReferenceFrame {
+  public get cameraFrame(): ReferenceFrame {
     return this._cameraFrame;
   }
 
   // 最後に resolveFocus が解決した注視点の ECI 位置。
-  get resolvedFocus(): Vec3 {
+  public get resolvedFocus(): Vec3 {
     return this.lastResolvedFocus;
   }
 
   // 選択中の回転追従(null は慣性系)。
-  get rotationFollow(): CameraRotationFollow | null {
+  public get rotationFollow(): CameraRotationFollow | null {
     return this.orientation.followingAttitude ? { kind: 'attitude' } : this._cameraFrame.rotatingWith;
   }
 
   // いま選べる回転追従の選択肢(慣性系は常に選べるので含めない)。フォーカスが天体なら
   // 自分の公転・子の公転・自分の自転、機体・役割なら(周回中のみ)公転と姿勢。固定点は空。
-  availableRotationFollows(displayTime: number): readonly CameraRotationFollow[] {
+  public availableRotationFollows(displayTime: number): readonly CameraRotationFollow[] {
     if (this._focus.kind === 'point') return [];
     const id = this._focus.id;
     const out: CameraRotationFollow[] = [];
@@ -469,7 +469,7 @@ export class FocusCamera {
 
   // 回転追従を切り替える。選択肢に無い値は慣性系として扱う。どの切替でも視点は跳ばない —
   // 保持していた向きを新しい基準へ読み替える。
-  setRotationFollow(follow: CameraRotationFollow | null): void {
+  public setRotationFollow(follow: CameraRotationFollow | null): void {
     const valid = follow !== null && this.isFollowAvailable(follow) ? follow : null;
     this.orientation.endAttitudeFollow(this.eulerPolarAxis());
     if (valid?.kind === 'attitude') {
@@ -484,7 +484,7 @@ export class FocusCamera {
   }
 
   // [G] の実体: フォーカスが機体なら姿勢追従⇄慣性系をトグルして true。それ以外は何もせず false。
-  toggleAttitudeFollow(): boolean {
+  public toggleAttitudeFollow(): boolean {
     if (this.orientation.followingAttitude) {
       this.orientation.endAttitudeFollow(this.eulerPolarAxis());
       return true;
@@ -496,7 +496,7 @@ export class FocusCamera {
 
   // フォーカス・回転追従・視点・画角を初期状態(config.initial)へ戻す。
   // 姿勢追従中にリセットすると、既定の視点は追従基準に対して置かれる(= 対象の後方見下ろしへ戻る)。
-  resetToInitial(): void {
+  public resetToInitial(): void {
     const init = this.config.initial;
     this._focus = init.focus;
     this.missingFocusFrames = 0;
@@ -567,7 +567,7 @@ export class FocusCamera {
   // マウス/キー入力から viewpoint を1フレーム分更新する。displayTime は線・メッシュが描かれる
   // のと同じ表示時刻 — 座標系変換をそこに揃えないと、回転系選択時に線・メッシュだけが
   // displayTime へ動いてカメラだけ現在時刻に取り残される。
-  update(
+  public update(
     mouse: MouseDelta,
     keyYawRad: number,
     keyPitchRad: number,
@@ -641,7 +641,7 @@ export class FocusCamera {
   }
 
   // offset_r/pan_r/up_r・視点の座標系・フォーカス対象をセーブデータへ書き出す。
-  serialize(): FocusCameraSaveData {
+  public serialize(): FocusCameraSaveData {
     const focus: FocusCameraSaveData['focus'] = this._focus.kind === 'object'
       ? { kind: 'object', id: this._focus.id }
       : {

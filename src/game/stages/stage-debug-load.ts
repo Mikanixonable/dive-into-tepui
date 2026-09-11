@@ -19,19 +19,19 @@ const PLACEMENT_MIN_DIST = 5000; // 自機からの配置距離下限 [m]
 const RNG_SEED = 20260810;
 
 export class StageDebugLoad extends Stage {
-  static readonly id = 'debug-load' as const;
-  static readonly epoch = STORY_EPOCH;
-  static readonly selectLabel = 'DEBUG(高負荷)';
-  static readonly selectSub = '【デバッグ】破片を多数配置し積分を高負荷にする・撃破しても終了しない';
-  static readonly hiddenFromSelect = true;
-  static readonly selectKeys = ['KeyL'];
+  public static readonly id = 'debug-load' as const;
+  public static readonly epoch = STORY_EPOCH;
+  public static readonly selectLabel = 'DEBUG(高負荷)';
+  public static readonly selectSub = '【デバッグ】破片を多数配置し積分を高負荷にする・撃破しても終了しない';
+  public static readonly hiddenFromSelect = true;
+  public static readonly selectKeys = ['KeyL'];
 
-  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+  public constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     this.begin();
   }
 
-  briefingHtml(): string {
+  protected briefingHtml(): string {
     return `<b>高負荷デバッグステージ</b><br>破片 ${DEBRIS_COUNT} 個を配置`;
   }
 
@@ -51,14 +51,14 @@ export class StageDebugLoad extends Stage {
   }
 
   // 補給を1フレーム分進める。自艦がいなければ何もしない。
-  update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
+  public update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }
 
   // 検証を継続できるよう、勝敗を発生させない(クリア回数にも入らない)。
-  checkWin(): boolean {
+  protected checkWin(): boolean {
     return false;
   }
 }

@@ -18,20 +18,20 @@ export class LinePickables {
   private readonly items: LinePickable[] = [];
 
   // このフレームの候補列。refresh の後に読む。
-  get pickables(): readonly LinePickable[] { return this.items; }
+  public get pickables(): readonly LinePickable[] { return this.items; }
 
-  constructor(
+  public constructor(
     private readonly roster: EntityRoster,
     private readonly celestialSystem: CelestialSystem,
   ) {}
 
   // 候補列を空にする(軌道線が表示されないビューで呼ぶ)。
-  clear(): void {
+  public clear(): void {
     this.items.length = 0;
   }
 
   // このフレームに表示されている軌道線の候補列を組み直す。
-  refresh(): void {
+  public refresh(): void {
     // 天体参照線・Entity 線・ガイド線の順で、各所有元が公開する点列だけを読む。
     this.items.length = 0;
 

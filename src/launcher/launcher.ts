@@ -54,9 +54,9 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   // 遷移中に再入すると、組み立て中の Game が dispose されないまま取り残される。
   private transitioning = false;
 
-  get currentGame(): Game | null { return this.game; }
+  public get currentGame(): Game | null { return this.game; }
 
-  get current(): CurrentGameSource['current'] {
+  public get current(): CurrentGameSource['current'] {
     const game = this.game;
     if (game === null) return null;
     return {
@@ -75,7 +75,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   }
 
   // ラン跨ぎの持ち物と、ランを起こすときに読む設定の現在値を受け取り、結果画面を組む。
-  constructor(
+  public constructor(
     private readonly shell: HudShell,
     private readonly host: GameHost,
     private readonly audioEngine: AudioEngine,
@@ -91,7 +91,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   }
 
   // タイトル解決から Game の起動までを行う。
-  async start(): Promise<void> {
+  public async start(): Promise<void> {
     if (this.transitioning) return;
     this.transitioning = true;
     try {
@@ -205,13 +205,13 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // [R] は決着後だけ再出撃キーとして働く。この呼び出し時点で game.update が消費しなかった
   // エッジだけを見る。
-  handleInput(input: Input): void {
+  public handleInput(input: Input): void {
     if (this.game === null || this.game.activeStage.isPlaying) return;
     if (input.takeKey(K.restart)) this.restart();
   }
 
   // 現在の起動ステージへ作り直す。まだ何も起動していなければ何もしない。
-  restart(): void {
+  public restart(): void {
     if (this.launchedStage === null) return;
     if (this.transitioning) return;
     this.transitioning = true;
@@ -222,7 +222,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // 選択画面を出し直し、選ばれたステージで作り直す。noteRunEnded で「直前に遊んでいたステージ」を
   // クリアし、リロード時の復元(resolveStage)がタイトル画面へフォールバックできるようにする。
-  returnToTitle(): void {
+  public returnToTitle(): void {
     if (this.transitioning) return;
     this.transitioning = true;
     this.endRun();
@@ -236,7 +236,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // 現在の起動ステージを、指定したスナップショットの状態から作り直す。
   // まだ何も起動していなければ何もしない。
-  loadSnapshot(snapshotId: string): void {
+  public loadSnapshot(snapshotId: string): void {
     if (this.launchedStage === null) return;
     if (this.transitioning) return;
     this.transitioning = true;
@@ -247,7 +247,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // アクティブスロットが切り替わった後に呼ぶ。再開できる起動先があればそれで、
   // 無ければ選択画面で決めたステージで作り直す。
-  switchSlot(): void {
+  public switchSlot(): void {
     if (this.transitioning) return;
     this.transitioning = true;
     this.endRun();

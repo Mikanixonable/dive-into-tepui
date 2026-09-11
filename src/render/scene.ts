@@ -8,16 +8,16 @@ import type { Viewport } from './viewport';
 
 // canvas と同じ寿命を持つ描画基盤一式。GPU 資源を確保するので、1つだけ作って使い回す。
 export interface GameScene {
-  scene: THREE.Scene;
-  renderer: WebGPURenderer;
-  gpu: GpuTimings;
-  pipeline: RenderPipeline;
+  readonly scene: THREE.Scene;
+  readonly renderer: WebGPURenderer;
+  readonly gpu: GpuTimings;
+  readonly pipeline: RenderPipeline;
   // いま描いているビューポート。ランの構築が最初のフレームを組むときにも読む。
-  viewport: Viewport;
+  readonly viewport: Viewport;
   // 描画先の寸法をこのフレームの値へ合わせる。前回と同じなら何もしない。
-  syncViewport: (viewport: Viewport) => void;
+  readonly syncViewport: (viewport: Viewport) => void;
   // 描画解像度の倍率とパスの品質を設定から取り直す。リサイズをまたいでも維持される。
-  applyGraphics: (graphics: GraphicsSettingsData) => void;
+  readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
 }
 
 // 描画は自機中心のフローティングオリジン(単位: m)。宇宙船(数m)から

@@ -53,7 +53,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   private readonly nanWatchdog: NanWatchdog;
 
   // 描画資源のプールと前進の機構を組んでから、saved があればその顔ぶれを復元する。
-  constructor(
+  public constructor(
     scene: THREE.Scene,
     notifier: Notifier,
     worldSfx: WorldSfx,
@@ -98,7 +98,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   private _collectionRevision = 0;
 
   // 保持するエンティティの顔ぶれの世代。追加・除去・prune のいずれでも増える。
-  get collectionRevision(): number {
+  public get collectionRevision(): number {
     return this._collectionRevision;
   }
 
@@ -231,16 +231,16 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   }
 
   // 過去表示に要る履歴の保持時間 [s] を全エンティティへ要求する。履歴を持たない種別は無視する。
-  requestHistoryDuration(sec: number): void {
+  public requestHistoryDuration(sec: number): void {
     for (const entity of this.entities) entity.motion.requestHistoryDuration(sec);
   }
 
   // 顔ぶれをどこまで進めたか。積分の先端時刻と、直前のフレームで進めた長さ [sim s]。
-  get simTime(): number { return this.simulator.simTime; }
-  get lastSimDt(): number { return this.simulator.lastSimDt; }
+  public get simTime(): number { return this.simulator.simTime; }
+  public get lastSimDt(): number { return this.simulator.lastSimDt; }
 
   // 時間が止まったことを記録し、次のフレームへ持ち越してはならない連続指令を畳む。
-  pause(): void {
+  public pause(): void {
     this.simulator.lastSimDt = 0;
     for (const controllable of this.controllables) controllable.clearTransientCommands();
   }
@@ -250,7 +250,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 済ませられる。
   //
   // 各段の境界で操作対象を検査する。どの境界で落ちたかが、汚染したのがどの段かを一意に決める。
-  update(
+  public update(
     active: Controllable | null, input: Input, operable: boolean,
     dt: number, simDt: number, canEngage: boolean, activeStage: StageOutcome & StageSimulationEvents,
   ): void {
@@ -342,7 +342,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   }
 
   // 保持する全エンティティと描画資源プールを、生死によらず破棄する。
-  dispose(): void {
+  public dispose(): void {
     for (const e of this.entities) e.dispose();
     this.entities.length = 0;
     // 待ち行列の build は scene などを掴んだままなので、実体化されないまま残さない。
@@ -356,7 +356,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 枠ごとの現在の個体数。個体は自分がどの枠・どの種別に属するかを既に宣言しているので、
   // 顔ぶれを1度だけ辿ってそのとおりに数える。枠を持つ個体を枠の側で数えるのは、切り離した
   // ブースターのように「表示トグルは自機だが数は別に見たい」種別があるため。
-  perfCounts(): Pick<PerfCounts, 'entities'> & ReturnType<Simulator['perfCounts']> {
+  public perfCounts(): Pick<PerfCounts, 'entities'> & ReturnType<Simulator['perfCounts']> {
     const entities: Partial<Record<EntityCountKind, number>> = {};
     for (const e of this.entities) {
       const kind = e.capKind ?? e.mapKind;

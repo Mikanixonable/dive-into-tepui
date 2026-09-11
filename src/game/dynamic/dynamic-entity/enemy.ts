@@ -64,10 +64,10 @@ const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
 const ENEMY_APPROACH_DIST = 2e5;
 
 // スナップショットからの再開。復元の腕は全具象で共通でなければならない。
-export type EnemyRestore = { readonly saved: EnemySaveData; readonly simTime: number };
+export interface EnemyRestore { readonly saved: EnemySaveData; readonly simTime: number }
 
 // 新規配置。具象ごとに固有の項目(機体テンプレート番号・タンパク質アセット)を足して使う。
-export type EnemyPlacement = {
+export interface EnemyPlacement {
   readonly name: string;
   readonly state: KinematicState;
   readonly q: Quat;
@@ -78,7 +78,7 @@ export type EnemyPlacement = {
   readonly id?: string;
   readonly formationId?: string;
   readonly formationRole?: FormationRole;
-};
+}
 
 // 敵クラスの静的側。セーブからの復元はここから読む。
 export interface EnemyClass {

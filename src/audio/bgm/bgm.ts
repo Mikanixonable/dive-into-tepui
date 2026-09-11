@@ -104,14 +104,14 @@ export class Bgm {
   // 最初のユーザー操作から呼ばれ、ゲーム内 BGM を一度だけ始める。この操作はキー入力・
   // ポインタ入力のたびに飛ぶので、二度目以降は何もしない — 決着で止めた BGM が、次の
   // キー入力で蘇らないため。
-  ensureStarted(): void {
+  public ensureStarted(): void {
     if (this.autoStartUsed || !this.engine.ctx) return;
     this.autoStartUsed = true;
     if (this.volume > 0) this.start();
   }
 
   // ゲーム内 BGM を再開する。直前に鳴らしていた曲から始める。
-  resume(): void {
+  public resume(): void {
     const ctx = this.engine.ctx;
     if (this.volume <= 0 || !ctx) return;
     this.start(this.ensureAmbient(ctx).currentTrackIndex);
@@ -127,7 +127,7 @@ export class Bgm {
   }
 
   // ゲーム中の BGM を fadeSec 秒かけてフェードアウトする。
-  stop(fadeSec = 2.5): void {
+  public stop(fadeSec = 2.5): void {
     this.ambient?.stop(fadeSec);
     this.syncPump();
   }
@@ -137,7 +137,7 @@ export class Bgm {
 
   // 設定パネルが開いた。ゲーム内 BGM を伏せ、試聴だけが聞こえる状態にする。
   // まだ線が無ければ、組まれたときに伏せた状態から始める。
-  beginAudition(): void {
+  public beginAudition(): void {
     this.paused = true;
     this.ambient?.pause();
   }
@@ -145,7 +145,7 @@ export class Bgm {
 
   // 指定した曲を先頭から試聴する。AudioContext の unlock も最初のクリックで行う。
   // 試聴の線は曲送りしないので、選んだ曲がそのまま鳴り続ける。
-  playAudition(index: number): void {
+  public playAudition(index: number): void {
     this.engine.unlock();
     const ctx = this.engine.ctx;
     if (!ctx || BGM_TRACKS.length === 0) return;
@@ -156,30 +156,30 @@ export class Bgm {
   }
 
   // 試聴を止める。設定パネルは開いたままなので、ゲーム中の BGM は伏せたまま。
-  stopAudition(): void {
+  public stopAudition(): void {
     this.disposeAudition();
     this.syncPump();
   }
 
   // 試聴中の曲を、一巡の中の timeSec 秒の位置へ飛ばす。試聴していなければ何もしない。
-  seekAudition(timeSec: number): void {
+  public seekAudition(timeSec: number): void {
     this.audition?.seek(timeSec);
   }
 
   // 試聴中の曲の、一巡の中での経過秒数。試聴していなければ 0。
-  auditionElapsedSec(): number {
+  public auditionElapsedSec(): number {
     return this.audition?.elapsedSec ?? 0;
   }
 
   // 指定した曲が一巡する長さ(秒)。一巡という概念を持たない曲では 0。
-  auditionDurationSec(index: number): number {
+  public auditionDurationSec(index: number): number {
     const track = BGM_TRACKS[index];
     return track ? trackCycleDurationSec(track) : 0;
   }
 
   // 設定パネルが閉じた。試聴の線を畳み、ゲーム中の BGM を元へ戻す。
   // 開いた時点で鳴っていなかった場合は伏せて戻すだけなので、無音のままになる。
-  endAudition(): void {
+  public endAudition(): void {
     this.paused = false;
     this.disposeAudition();
     this.ambient?.resume();

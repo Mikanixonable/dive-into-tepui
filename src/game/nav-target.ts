@@ -76,15 +76,15 @@ export class NavTarget {
   // 戦闘ビューでもターゲットの未来の軌道計算を止めないため navTargetReader を立てている個体。
   private readerEntity: DynamicEntity | null = null;
 
-  constructor(private readonly _notifier: Notifier, private readonly markers: MarkerSlots) {}
+  public constructor(private readonly _notifier: Notifier, private readonly markers: MarkerSlots) {}
 
   // 現在のターゲットの id。未設定なら null。
-  get id(): string | null {
+  public get id(): string | null {
     return this.targetId;
   }
 
   // 現在のターゲットの表示名。未設定なら null。
-  get name(): string | null {
+  public get name(): string | null {
     return this.targetName;
   }
 
@@ -106,7 +106,7 @@ export class NavTarget {
   }
 
   // id と現在の設定が同じなら解除、そうでなければ id をターゲットにする。
-  toggleTarget(id: string, name: string): void {
+  public toggleTarget(id: string, name: string): void {
     if (this.targetId === id) {
       this.setInternal(null, null);
       this._notifier.hint('ターゲット解除');
@@ -117,20 +117,20 @@ export class NavTarget {
   }
 
   // Tキーなど、絶対値で敵・自艦・基地をターゲットに設定/解除する経路用。
-  setCombatTarget(entity: CombatTarget | null): void {
+  public setCombatTarget(entity: CombatTarget | null): void {
     this.setInternal(entity?.id ?? null, entity?.name ?? null);
     this._notifier.hint(entity ? `ターゲット固定: ${entity.name}` : 'ターゲット固定解除');
   }
 
   // 対象消滅を伴わない一括解除(操作対象の切替など)。ヒントは出さない。
-  clear(): void {
+  public clear(): void {
     this.setInternal(null, null);
   }
 
   // セーブデータからの復元用。id が敵・自機・基地を指していた場合はそれが生存していないと
   // 復元しない(撃墜・破壊されていれば未選択に戻す)。天体・ラグランジュ点など消滅しない対象は
   // 常に復元する。ヒントは出さない。
-  restore(data: { id: string; name: string } | null | undefined, roster: EntityRoster): void {
+  public restore(data: { id: string; name: string } | null | undefined, roster: EntityRoster): void {
     if (!data) return;
     const wasTarget = combatTargetById(roster.all(), data.id);
     if (wasTarget !== null && !wasTarget.motion.alive) return;
@@ -139,7 +139,7 @@ export class NavTarget {
 
   // 現在のターゲットを、生存中の戦闘対象(敵・自艦・基地)として解決する。天体・ラグランジュ点
   // など戦闘対象になれない対象がターゲットの場合は null。
-  resolveCombatTarget(roster: EntityRoster): CombatTarget | null {
+  public resolveCombatTarget(roster: EntityRoster): CombatTarget | null {
     if (this.targetId === null) return null;
     return aliveCombatTarget(roster.all(), this.targetId);
   }
@@ -157,7 +157,7 @@ export class NavTarget {
   // 自機軌道要素と対象の軌道面法線から相対 AN/DN の位置・通過時刻を求め直す。
   // 対象の軌道面が定まらない(地球・太陽自身など)場合や操作対象の軌道要素が無い場合は、
   // どちらの交点も解けていない状態にする。
-  update(
+  public update(
     controlled: Controllable | null, roster: EntityRoster, celestialBodies: CelestialBodies, displayWindow: DisplayWindow,
     frameAnchors: FrameAnchorSource,
   ): void {
@@ -210,14 +210,14 @@ export class NavTarget {
   }
 
   // id がいまのターゲットなら解除する。
-  clearIfTargeting(id: string): void {
+  public clearIfTargeting(id: string): void {
     if (this.targetId === id) this.setInternal(null, null);
   }
 
   // 現在のターゲットの時刻 t における位置・速度。重力中心になれるのは登録天体だけで、
   // ラグランジュ点・船・基地は hasMass=false で返る。船・基地は軌道線を相対軌跡へ切り替え
   // られるよう entity 自身も添える。ターゲット未設定・解決不能なら null。
-  resolveState(
+  public resolveState(
     roster: EntityRoster, celestialBodies: CelestialBodies,
     attractors: readonly CelestialBody[], t: number,
   ): OrbitReference | null {
@@ -252,7 +252,7 @@ export class NavTarget {
   }
 
   // id がターゲットになれる(軌道面が定まる)かどうか。
-  canTarget(id: string, roster: EntityRoster, celestialBodies: CelestialBodies, t: number): boolean {
+  public canTarget(id: string, roster: EntityRoster, celestialBodies: CelestialBodies, t: number): boolean {
     return this.resolvePlaneNormal(id, roster, celestialBodies, t) !== null;
   }
 
@@ -278,13 +278,13 @@ export class NavTarget {
   }
 
   // 右クリック対象として公開する AN/DN・再接近点アイコン。出す理由が残っているぶんを返す。
-  pickables(): readonly ObjectPickable[] {
+  public pickables(): readonly ObjectPickable[] {
     return this.nodeMarkers.filter((marker) => !marker.gone);
   }
 
   // AN/DN・再接近点のマーカーを置く。マップビューでは天体に遮蔽された点を隠す。
   // occluders は遮蔽判定に使う天体で、occludersPivot はその位置を引く時刻。
-  sync(
+  public sync(
     camera: CameraFrame, occluders: readonly CelestialBody[],
     occludersPivot: number, timeLabel: TimeLabelSetting,
   ): void {

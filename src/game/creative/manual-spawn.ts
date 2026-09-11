@@ -17,10 +17,10 @@ import type { ProteinDisplaySettings } from '../../render/protein/protein-displa
 import type { FlashEffects } from '../vfx/flash-effects';
 
 // 敵1体の生成。gate が通ってから build を呼ぶ。待つものが無ければ gate は null。
-export type EnemySpawn = {
+export interface EnemySpawn {
   readonly gate: SpawnGate | null;
   readonly build: () => Enemy;
-};
+}
 
 // 敵を出す、自機前方の既定距離 [m]。
 const DEFAULT_SPAWN_DISTANCE = 2000;

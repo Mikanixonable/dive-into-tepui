@@ -7,26 +7,26 @@ import { mulberry32, randSym } from '../../math/random';
 
 // 谷 1 つの配置。緯度・経度 [rad](緯度は南半球で負。経度は畳まない)、深さ [hPa](0 以上)、
 // 短軸の半径 [m]、長軸/短軸の比。
-export type CyclonePlacement = {
+export interface CyclonePlacement {
   readonly latitude: number;
   readonly longitude: number;
   readonly depth: number;
   readonly radius: number;
   readonly elongation: number;
-};
+}
 
 // 進路の上の点 [°]。経度は連続な数で持ち、180° をまたぐ進路は 180 を超える値で書く。
-type Waypoint = {
+interface Waypoint {
   readonly latitude: number;
   readonly longitude: number;
-};
+}
 
 // 進路。生まれる点 origin から消える点 terminus へ、道のりの半ば(s = 0.5)で turn を通る弧。
-type Course = {
+interface Course {
   readonly origin: Waypoint;
   readonly turn: Waypoint;
   readonly terminus: Waypoint;
-};
+}
 
 // 一様乱数を引く幅 [min, max]。
 type Range = readonly [min: number, max: number];
@@ -149,7 +149,7 @@ function courseAt(course: Course, s: number): Waypoint {
 // 中緯度の低気圧 1 つの一生。周期の頭から生まれるまでの時間 onset [s]、寿命 lifetime [s]、進路
 // course(緯度は半球の符号を含む)、減速の指数 brake、最深 peakDepth [hPa]、生まれる半径
 // birthRadius [m]、消えるまでに半径が増える割合 growth。
-type LowTrack = {
+interface LowTrack {
   readonly onset: number;
   readonly lifetime: number;
   readonly course: Course;
@@ -157,7 +157,7 @@ type LowTrack = {
   readonly peakDepth: number;
   readonly birthRadius: number;
   readonly growth: number;
-};
+}
 
 // 枡 index に世代 generation で生まれる低気圧。乱数は世代ごとに 1 列で、引く順が一生を決める。
 // surfaceRadius [m] は天体の半径で、走る速さ [m/s] を経度の進み [°] へ直すのに要る。
@@ -214,14 +214,14 @@ export function lowPlacementAt(
 
 // 熱帯低気圧 1 つの一生。寿命 lifetime [s]、進路 course、最深 peakDepth [hPa]、生まれる半径
 // birthRadius [m]、温帯化で半径が増える割合 growth と行き着く長軸/短軸の比 finalElongation。
-type TropicalTrack = {
+interface TropicalTrack {
   readonly lifetime: number;
   readonly course: Course;
   readonly peakDepth: number;
   readonly birthRadius: number;
   readonly growth: number;
   readonly finalElongation: number;
-};
+}
 
 // 世代 generation の熱帯低気圧。乱数は世代ごとに 1 列で、引く順が一生を決める。海域は世代の順に巡る。
 function tropicalTrackOf(generation: number): TropicalTrack {

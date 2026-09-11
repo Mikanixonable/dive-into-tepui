@@ -41,10 +41,10 @@ export function isobarAt(direction: Vec3Node, gradient: Vec3Node): Vec3Node {
 
 // 釣り合った風。velocity は [m/s]、turn は流れが向きを変える角速度 [rad/s](天頂まわりに右ねじ正で、
 // 北半球の低気圧で正)。曲率半径は |velocity| / turn。
-export type BalancedWind = {
+export interface BalancedWind {
   readonly velocity: Vec3Node;
   readonly turn: FloatNode;
-};
+}
 
 // Compose a local pressure anomaly with a global background flow while keeping
 // one turning diagnostic for the resulting parcel trajectory.

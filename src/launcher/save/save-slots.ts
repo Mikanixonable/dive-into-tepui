@@ -25,7 +25,7 @@ function isQuotaError(e: unknown): boolean {
 // セーブ索引(SaveIndex)の読み書き・スロット/スナップショットのメタ操作のみを担う。
 // スナップショット本体の永続化は一切自分で持たず、常に SaveStore へ委譲する。
 export class SaveSlots {
-  private index: SaveIndex;
+  private readonly index: SaveIndex;
 
   // store の索引を読む。索引が無ければ空の索引から始める。
   private constructor(private readonly store: SaveStore) {
@@ -44,28 +44,28 @@ export class SaveSlots {
     return slots;
   }
 
-  get slots(): readonly SaveSlotMeta[] {
+  public get slots(): readonly SaveSlotMeta[] {
     return this.index.slots;
   }
 
-  get activeSlotId(): string | null {
+  public get activeSlotId(): string | null {
     return this.index.activeSlotId;
   }
 
   // 現在アクティブなスロットのメタを返す。無ければ null。
-  activeSlot(): SaveSlotMeta | null {
+  public activeSlot(): SaveSlotMeta | null {
     return this.index.slots.find((s) => s.id === this.index.activeSlotId) ?? null;
   }
 
   // id が索引に存在するスロットである前提で呼ぶ。
-  setActiveSlot(id: string): void {
+  public setActiveSlot(id: string): void {
     this.index.activeSlotId = id;
     this.persist();
   }
 
   // 空のスロットを索引へ追加して返す。どのステージを遊ぶかはまだ決まっていないので、
   // それは実際に開始したときに noteLaunch が埋める。
-  createSlot(name: string): SaveSlotMeta {
+  public createSlot(name: string): SaveSlotMeta {
     const now = Date.now();
     const slot: SaveSlotMeta = {
       id: this.genId(),
@@ -81,7 +81,7 @@ export class SaveSlots {
   }
 
   // 実際に遊び始めたステージをスロットへ記録する。ゲーム開始時に一度だけ呼ぶ。
-  noteLaunch(slotId: string, stageId: string): void {
+  public noteLaunch(slotId: string, stageId: string): void {
     const slot = this.index.slots.find((s) => s.id === slotId);
     if (!slot) return;
     slot.lastStageId = stageId;
@@ -91,7 +91,7 @@ export class SaveSlots {
 
   // 決着した周回を締める。lastStageId を空にし、同じステージの次回起動が
   // このスロットの最新スナップショットを進行中の周回と誤認して自動復元しないようにする。
-  noteRunEnded(slotId: string): void {
+  public noteRunEnded(slotId: string): void {
     const slot = this.index.slots.find((s) => s.id === slotId);
     if (!slot) return;
     slot.lastStageId = '';
@@ -100,7 +100,7 @@ export class SaveSlots {
   }
 
   // id のスロットが存在する前提で呼ぶ。
-  renameSlot(id: string, name: string): void {
+  public renameSlot(id: string, name: string): void {
     const slot = this.index.slots.find((s) => s.id === id);
     if (!slot) return;
     slot.name = name;
@@ -110,7 +110,7 @@ export class SaveSlots {
   // そのスロットが参照する全スナップショット本体を先に消してから索引から外す。遊んでいた
   // スロットを消した場合は、残っているスロットの1つをアクティブにする(遊ぶ先が無いと
   // 以降どの経路でもスナップショットを撮れなくなるため)。
-  deleteSlot(id: string): void {
+  public deleteSlot(id: string): void {
     const slot = this.index.slots.find((s) => s.id === id);
     if (!slot) return;
     for (const history of slot.stages) {
@@ -122,7 +122,7 @@ export class SaveSlots {
   }
 
   // 元スロットの複製を新規スロットとして作る。upToSnapshotId 以前(同時刻含む)だけを残す。
-  duplicateSlot(id: string, upToSnapshotId?: string): SaveSlotMeta | null {
+  public duplicateSlot(id: string, upToSnapshotId?: string): SaveSlotMeta | null {
     const source = this.index.slots.find((s) => s.id === id);
     if (!source) return null;
 
@@ -155,7 +155,7 @@ export class SaveSlots {
   }
 
   // slotId/stageId のステージ履歴を返す。無ければ作って索引に足す。
-  historyFor(slotId: string, stageId: string): StageHistoryMeta | null {
+  private historyFor(slotId: string, stageId: string): StageHistoryMeta | null {
     const slot = this.index.slots.find((s) => s.id === slotId);
     if (!slot) return null;
     let history = slot.stages.find((h) => h.stageId === stageId);
@@ -168,7 +168,7 @@ export class SaveSlots {
   }
 
   // 新しい順の先頭が最新スナップショット。
-  latestSnapshot(slotId: string, stageId: string): SnapshotMeta | null {
+  public latestSnapshot(slotId: string, stageId: string): SnapshotMeta | null {
     const slot = this.index.slots.find((s) => s.id === slotId);
     const history = slot?.stages.find((h) => h.stageId === stageId);
     return history?.snapshots[0] ?? null;
@@ -177,7 +177,7 @@ export class SaveSlots {
   // 本体を書き、メタを履歴の先頭へ入れ、pinned:false の超過分を古い順に剪定する。
   // 容量超過で書き込みに失敗した場合は pinned:false を1件ずつ消しながら再試行する。
   // クリップ済みが上限に達している履歴へ pinned:true を足すことはできない(false を返す)。
-  addSnapshot(slotId: string, stageId: string, meta: SnapshotMeta, data: GameSaveData): boolean {
+  public addSnapshot(slotId: string, stageId: string, meta: SnapshotMeta, data: GameSaveData): boolean {
     const history = this.historyFor(slotId, stageId);
     if (!history) return false;
     if (meta.pinned && history.snapshots.filter((m) => m.pinned).length >= PINNED_SNAPSHOT_LIMIT) return false;
@@ -211,7 +211,7 @@ export class SaveSlots {
   }
 
   // 全スロット・全履歴を横断してスナップショット id から所属を引く。
-  findSnapshot(snapshotId: string): { slot: SaveSlotMeta; history: StageHistoryMeta; meta: SnapshotMeta } | null {
+  private findSnapshot(snapshotId: string): { slot: SaveSlotMeta; history: StageHistoryMeta; meta: SnapshotMeta } | null {
     for (const slot of this.index.slots) {
       for (const history of slot.stages) {
         const meta = history.snapshots.find((m) => m.id === snapshotId);
@@ -222,7 +222,7 @@ export class SaveSlots {
   }
 
   // pinned:true への昇格は履歴ごとの上限 PINNED_SNAPSHOT_LIMIT を超えない範囲でのみ許す。
-  setPinned(snapshotId: string, pinned: boolean): boolean {
+  public setPinned(snapshotId: string, pinned: boolean): boolean {
     const found = this.findSnapshot(snapshotId);
     if (!found) return false;
     if (pinned) {
@@ -234,14 +234,14 @@ export class SaveSlots {
     return true;
   }
 
-  renameSnapshot(snapshotId: string, name: string): void {
+  public renameSnapshot(snapshotId: string, name: string): void {
     const found = this.findSnapshot(snapshotId);
     if (!found) return;
     found.meta.name = name;
     this.persist();
   }
 
-  deleteSnapshot(snapshotId: string): void {
+  public deleteSnapshot(snapshotId: string): void {
     const found = this.findSnapshot(snapshotId);
     if (!found) return;
     this.removeSnapshotFrom(found.history, snapshotId);
@@ -249,7 +249,7 @@ export class SaveSlots {
   }
 
   // ロード後に呼ぶ想定: 復元元より後(createdAtReal が新しい)の pinned:false を捨てる。
-  discardAfter(snapshotId: string): void {
+  public discardAfter(snapshotId: string): void {
     const found = this.findSnapshot(snapshotId);
     if (!found) return;
     const cutoff = found.meta.createdAtReal;
@@ -259,7 +259,7 @@ export class SaveSlots {
   }
 
   // pinnedOnly なら pinned:true のメタ・本体だけを含める。本体が読めなかった件はメタからも落とす。
-  exportSlot(slotId: string, pinnedOnly: boolean): SlotExport | null {
+  public exportSlot(slotId: string, pinnedOnly: boolean): SlotExport | null {
     const slot = this.index.slots.find((s) => s.id === slotId);
     if (!slot) return null;
 
@@ -288,7 +288,7 @@ export class SaveSlots {
 
   // 常に新規スロットとして追加する。id を振り直すのは、既に import 済みの同じファイルを
   // もう一度読んだ時に既存スロットを壊さないため。書き込み途中で失敗したら書いた分を消して null。
-  importSlot(exp: SlotExport): SaveSlotMeta | null {
+  public importSlot(exp: SlotExport): SaveSlotMeta | null {
     const newSlot: SaveSlotMeta = {
       ...exp.slot,
       id: this.genId(),

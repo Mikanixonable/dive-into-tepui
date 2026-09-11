@@ -25,12 +25,12 @@ type GraphicsGroup = (typeof GRAPHICS_GROUPS)[number][0];
 type PresetValues<V> = Readonly<Record<QualityPreset, V>>;
 
 // 真偽の項目。オフにするとその要素が絵から消える。
-type ToggleOption = {
+interface ToggleOption {
   readonly kind: 'toggle';
   readonly group: GraphicsGroup;
   readonly label: string;
   readonly presets: PresetValues<boolean>;
-};
+}
 
 // 選択肢の項目が取りうる値。数値は段の大小に意味があり、文字列は名前で選ぶもの。
 export type ChoiceValue = number | string;
@@ -38,13 +38,13 @@ export type ChoiceValue = number | string;
 // 選択肢を持つ項目。items は [値, 表示ラベル] を、数値なら小さいほうから順に並べる。
 // kind は並べ方を決める — 'choice' は短い段をボタンで横に並べ、'select' は候補が多い/名前が
 // 長いものをプルダウンへ畳む。
-type ChoiceOption = {
+interface ChoiceOption {
   readonly kind: 'choice' | 'select';
   readonly group: GraphicsGroup;
   readonly label: string;
   readonly items: readonly (readonly [ChoiceValue, string])[];
   readonly presets: PresetValues<ChoiceValue>;
-};
+}
 
 type GraphicsOption = ToggleOption | ChoiceOption;
 

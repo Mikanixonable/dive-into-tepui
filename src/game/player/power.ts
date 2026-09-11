@@ -12,8 +12,8 @@ const SOLAR_PANEL_EFFICIENCY = 0.25; // 太陽光→電力の変換効率
 export type SolarSide = 'up' | 'down';
 
 class Panel {
-  deployTarget: 0 | 1 = 1; // 展開状態で開始
-  deploy = 1;
+  public deployTarget: 0 | 1 = 1; // 展開状態で開始
+  public deploy = 1;
 }
 
 export class PowerSystem {
@@ -27,20 +27,20 @@ export class PowerSystem {
   }
 
   // side のパネルの展開/収納目標を反転する。
-  toggle(side: SolarSide): void {
+  public toggle(side: SolarSide): void {
     const p = this.panels[side];
     p.deployTarget = p.deployTarget === 0 ? 1 : 0;
   }
 
   // side の展開目標を明示的に設定する。HUD の「展開」「収納」ボタンから使う。
-  setDeployed(side: SolarSide, deployed: boolean): void {
+  public setDeployed(side: SolarSide, deployed: boolean): void {
     const p = this.panels[side];
     const target: 0 | 1 = deployed ? 1 : 0;
     if (p.deployTarget !== target) p.deployTarget = target;
   }
 
   // 毎フレーム呼ぶ。sunlit は sunlitFactor(0..1)、sunDir は太陽方向の単位ベクトル(world)。
-  update(
+  public update(
     dt: number, sunlit: number, sunDir: Vec3, att: Attitude, installedGeneration: number,
   ): void {
     // 展開度の更新
@@ -65,18 +65,18 @@ export class PowerSystem {
   }
 
   // HUD 表示用。0..1。
-  get chargeRatio(): number {
+  public get chargeRatio(): number {
     return this.charge / POWER_CAPACITY;
   }
 
   // HUD 表示用。蓄電量そのもの [J]。
-  get chargeJ(): number {
+  public get chargeJ(): number {
     return this.charge;
   }
 
-  deployOf(side: SolarSide): number { return this.panels[side].deploy; }
+  public deployOf(side: SolarSide): number { return this.panels[side].deploy; }
 
-  serialize(): PowerSaveData {
+  public serialize(): PowerSaveData {
     return { charge: this.charge };
   }
 }

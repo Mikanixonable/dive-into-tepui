@@ -25,11 +25,11 @@ function getSharedGeometry(): THREE.BufferGeometry {
   return geo;
 }
 
-export type OutlineCircle = {
+export interface OutlineCircle {
   readonly line: THREE.Line;
   // 自前の material だけを解放する。geometry は全利用者で共有しているため解放しない。
   readonly dispose: () => void;
-};
+}
 
 // 単位円の輪郭線を1つ作る。呼び出し側は scale/position/quaternion で半径・位置・向きを与える。
 export function createOutlineCircle(): OutlineCircle {

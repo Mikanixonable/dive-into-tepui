@@ -26,7 +26,7 @@ export class RcsEffects {
 
   // 全ノズルのプルームのビルボードを生成し scene へ追加する。ownerId は明滅の種に混ぜる
   // 個体の識別。
-  constructor(
+  public constructor(
     scene: THREE.Scene,
     private readonly ownerId: string,
   ) {
@@ -36,7 +36,7 @@ export class RcsEffects {
   // 機体座標の指令 torque に寄与するノズルだけプルームを出し、位置・大きさを同期する。
   // position は機体を置く ECI 位置で、表示時刻の状態を引けないフレームは null。displayTime は
   // 明滅の位相を決める表示時刻で、同じ時刻に何度呼んでも同じ絵になる。
-  sync(
+  public sync(
     fo: FloatingOrigin,
     position: Vec3 | null,
     torque: Vec3,
@@ -70,7 +70,7 @@ export class RcsEffects {
   }
 
   // 全ノズルのプルームのビルボードを scene から取り除き解放する。
-  dispose(scene: THREE.Scene): void {
+  public dispose(scene: THREE.Scene): void {
     for (const { plume } of this.puffs) {
       scene.remove(plume.mesh);
       plume.dispose();

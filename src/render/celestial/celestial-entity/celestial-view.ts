@@ -29,10 +29,10 @@ const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9;
 const REFERENCE_LINE_OPACITY = 0.3;
 
 // 恒星が距離の二乗に反比例する光源として持つ値。
-export type StellarLight = {
+export interface StellarLight {
   readonly color: THREE.Color;
   readonly radiantIntensity: number;
-};
+}
 
 // 照明・影・大気が読む天体1体の運動。楕円体の半軸・環の帯・大気の光学は分類ごとの宣言が
 // 決めるので、CelestialBody の宣言をその定義そのままで受け直す。
@@ -41,10 +41,10 @@ export interface DefinedCelestialBody extends CelestialBody {
 }
 
 // 他の天体の表示が恒星光を引くために必要な読み取り面。
-export type StellarLightSource = {
+export interface StellarLightSource {
   readonly motion: DefinedCelestialBody;
   readonly stellarLight: StellarLight;
-};
+}
 
 // 天体1体の表示が、照らす源・遮る源・霞ませる源として答える面。
 export interface CelestialIlluminationView {

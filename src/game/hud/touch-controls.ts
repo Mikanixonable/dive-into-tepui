@@ -131,7 +131,7 @@ export class TouchControls {
 
   // 直近の入力種別に応じて表示を切り替える。タッチなら表示して起こし、マウス/キーボードなら
   // (既に表示済みであれば)半透明化する。Input.onPointerKindChange から呼ばれる想定。
-  setPointerKind(kind: PointerKind): void {
+  public setPointerKind(kind: PointerKind): void {
     if (kind === 'touch') {
       this.shown = true;
       this.root.classList.remove('faded');
@@ -143,7 +143,7 @@ export class TouchControls {
   }
 
   // トグル系ボタン・推力ラッチの点灯を実際の状態へ合わせる。毎フレーム呼ぶ。
-  syncModeButtons(
+  public syncModeButtons(
     rcsDamp: boolean, fineAttitude: boolean, progradeHold: boolean,
     isThrustLatched: (key: KeyBinding) => boolean,
   ): void {
@@ -159,7 +159,7 @@ export class TouchControls {
   }
 
   // マップビュー中は並進・回転・射撃・ズーム・制動/微動のパッドを隠す。
-  setView(view: ViewMode): void {
+  public setView(view: ViewMode): void {
     const active = view === 'map';
     this.root.classList.toggle('map-mode', active);
     for (const id of ['touch-pad-rot', 'touch-pad-move', 'touch-fire', 'touch-zoom', 'touch-mode-col']) {
@@ -169,7 +169,7 @@ export class TouchControls {
   }
 
   // 仮想パッド一式の DOM を組み立てる。
-  constructor(private readonly input: Input) {
+  public constructor(private readonly input: Input) {
     injectCommonUiStyle();
     const built = this.buildRoot();
     this.root = built.root;
@@ -203,7 +203,7 @@ export class TouchControls {
   }
 
   // window に張ったリスナーを外し、追加したスタイルシート・仮想パッド一式の DOM を取り除く。
-  dispose(): void {
+  public dispose(): void {
     window.removeEventListener('tepui-release-touch-inputs', this.handleReleaseTouchInputs);
     this.root.remove();
     this.styleEl.remove();

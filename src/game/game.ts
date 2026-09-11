@@ -63,37 +63,37 @@ export class Game {
   private readonly renderer: THREE.WebGPURenderer;
   private readonly pipeline: RenderPipeline;
   private readonly gpu: GpuTimingSink;
-  readonly input: Input;
+  public readonly input: Input;
   private readonly touchControls: TouchControls | null;
   private readonly _hud: Hud;
   private readonly _worldSfx: WorldSfx;
   private readonly pauseMenu: PauseMenu;
   private readonly markerManager: MarkerManager;
   private readonly celestialMarkers: CelestialMarkers;
-  readonly cameraSystem: CameraSystem;
+  public readonly cameraSystem: CameraSystem;
   // 論理視点を表示値へ写す側。sync が確定させた1フレームぶんの値を cameraFrame が持つ。
   private readonly cameraView = new CameraView();
   private cameraFrame: CameraFrame | null = null;
   // 操作対象(艦 0..n 隻と基地のうちどれを操作するか)の切替を持つ。
   private readonly controlSelection: ControlSelection;
   // いま操作している対象。操作しているものが無ければ null。
-  get activeControllable(): Controllable | null { return this.controlSelection.current; }
-  readonly simSpeedManager: SimSpeedManager;
+  public get activeControllable(): Controllable | null { return this.controlSelection.current; }
+  public readonly simSpeedManager: SimSpeedManager;
 
   private readonly planDisplay: PlanDisplay;
   // このフレームの表示座標系・表示時刻窓と、表示側の重力源窓。update で確定させ、sync が読む。
-  readonly displayWindowManager: DisplayWindowManager;
-  readonly viewManager: ViewManager;
+  public readonly displayWindowManager: DisplayWindowManager;
+  private readonly viewManager: ViewManager;
   private readonly objectWindows: ObjectWindows;
 
-  readonly activeStage: Stage;
+  public readonly activeStage: Stage;
   // ポーズは Game 自身の状態として持つ。「時間を止めるか」と「どの倍率まで相互作用を成立させるか」
   // は別の関心事。
   private _isPaused = false;
-  get isPaused(): boolean { return this._isPaused; }
+  public get isPaused(): boolean { return this._isPaused; }
 
   private readonly _celestialSystem: CelestialSystem;
-  get celestialSystem(): CelestialSystem { return this._celestialSystem; }
+  public get celestialSystem(): CelestialSystem { return this._celestialSystem; }
   // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。
   private readonly viewOptions: ViewOptionsControl;
   // マップの表示トグル。可視性ポリシーと点群の可視判定が、このフレームの値を読む。
@@ -103,11 +103,11 @@ export class Game {
   // 軌道ガイドの設定。
   private readonly orbitGuide: RunSetting<OrbitGuideSettings>;
 
-  readonly targeter: Targeter;
-  readonly navTarget: NavTarget;
+  public readonly targeter: Targeter;
+  public readonly navTarget: NavTarget;
   private readonly frameAnchors: FrameAnchors;
-  readonly orbitReference = new OrbitReferenceSelector();
-  readonly dynamicSystem: DynamicSystem;
+  public readonly orbitReference = new OrbitReferenceSelector();
+  public readonly dynamicSystem: DynamicSystem;
   // 閃光・ガスパフなど、寿命だけで消えていく一過性の見た目。
   private readonly flashEffects: FlashEffects;
   private readonly flashEffectsView: FlashEffectsView;
@@ -121,7 +121,7 @@ export class Game {
 
   // 星系を組んでから、このランを組み立てる。段の切れ目で描画を明け渡すので、
   // 組み立て中の Game は誰にも観測されないまま数フレームをまたぐ。
-  static async create(
+  public static async create(
     host: GameHost,
     stageClass: StageClass,
     audioEngine: AudioEngine,
@@ -166,7 +166,7 @@ export class Game {
   }
 
   // このランを1件ぶんのセーブ本体へ畳む。
-  serialize(): GameSaveData {
+  public serialize(): GameSaveData {
     const { phaseOffsets, earthSpinPhase0 } = this._celestialSystem.serialize();
     return {
       version: SAVE_VERSION,
@@ -327,19 +327,19 @@ export class Game {
   // ------------------------------------------------------------------ lifecycle
 
   // 時間を止め、連続指令を畳む。
-  pause(): void {
+  public pause(): void {
     this._worldSfx.setThrust(false);
     this._worldSfx.setRcs(false);
     this.dynamicSystem.pause();
     this._isPaused = true;
   }
 
-  resume(): void { this._isPaused = false; }
+  public resume(): void { this._isPaused = false; }
 
   // このゲームが scene・Hud・window/document/canvas へ足したものを残らず取り除く。呼んだ後の
   // このインスタンスは使えない。構築の逆順で辿る — 後から組んだものほど先に組んだものを参照する。
   // マーカープールは最後 — 各表示物が自分の dispose で自分のキーを外していくため。
-  dispose(): void {
+  public dispose(): void {
     this.viewBadge.dispose();
     this.viewManager.dispose();
     this.objectWindows.dispose();
@@ -364,11 +364,11 @@ export class Game {
     this.markerManager.dispose();
   }
 
-  get simTime(): number { return this.dynamicSystem.simTime; }
+  public get simTime(): number { return this.dynamicSystem.simTime; }
 
   // ------------------------------------------------------------ update
 
-  update(dtRaw: number, viewport: Viewport): void {
+  public update(dtRaw: number, viewport: Viewport): void {
     this.sections.enter(SECTION.input);
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
@@ -502,7 +502,7 @@ export class Game {
 
   // ------------------------------------------------------------------ sync
 
-  sync(graphics: GraphicsSettingsData, style: RenderStyle, viewport: Viewport): void {
+  public sync(graphics: GraphicsSettingsData, style: RenderStyle, viewport: Viewport): void {
     const controlled = this.activeControllable;
     // update() が確定させた、このフレームの表示窓。
     const displayWindow = this.displayWindowManager.current;
@@ -591,7 +591,7 @@ export class Game {
   // ------------------------------------------------------------------ render
 
   // このフレームの sync が確定させたカメラで描く。まだ1度も sync していなければ何も描かない。
-  render(style: RenderStyle): void {
+  public render(style: RenderStyle): void {
     if (this.cameraFrame === null) return;
     this.pipeline.render(this._scene, this.cameraFrame.camera, style);
   }
@@ -599,7 +599,7 @@ export class Game {
   // ------------------------------------------------------------------ debug
 
   // 各モジュールが答えた計測値を1つに合流させる。
-  perfCounts(): PerfCounts {
+  public perfCounts(): PerfCounts {
     return {
       ...this.dynamicSystem.perfCounts(),
       ...this.predictor.perfCounts(
@@ -615,7 +615,7 @@ export class Game {
   }
 
   // タンパク質敵モーションの集計値。
-  proteinMotionFrameSample(): ProteinMotionFrameSample {
+  public proteinMotionFrameSample(): ProteinMotionFrameSample {
     return proteinMotionFrameSample(this.dynamicSystem.all());
   }
 }

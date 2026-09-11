@@ -8,28 +8,28 @@ export class StateQueue {
   private readonly deque: Deque<KinematicState>;
 
   // capacity 件分の内部バッファを確保して空のキューを作る。
-  constructor(capacity = 8) {
+  public constructor(capacity = 8) {
     this.deque = new Deque<KinematicState>(capacity);
   }
 
-  get size(): number { return this.deque.size; }
-  get empty(): boolean { return this.deque.empty; }
+  public get size(): number { return this.deque.size; }
+  public get empty(): boolean { return this.deque.empty; }
 
   // 最新サンプル(補間しない生の値)。空なら null。
-  get newest(): KinematicState | null { return this.deque.empty ? null : this.deque.peekLeft(); }
+  public get newest(): KinematicState | null { return this.deque.empty ? null : this.deque.peekLeft(); }
 
   // 最も古いサンプル(補間しない生の値)。空なら null。
-  get oldest(): KinematicState | null { return this.deque.empty ? null : this.deque.peekRight(); }
+  public get oldest(): KinematicState | null { return this.deque.empty ? null : this.deque.peekRight(); }
 
   // 最も新しい2サンプルの時刻差 [s]。2件未満なら 0。
-  get newestGap(): number {
+  public get newestGap(): number {
     if (this.deque.size < 2) return 0;
     return this.deque.at(0).t - this.deque.at(1).t;
   }
 
   // 最も古い2サンプルの時刻差 [s]。2件未満なら 0。列の古い端での間引きの粗さを表し、
   // その端を挟む at() の補間誤差を見積もる基準になる。
-  get oldestGap(): number {
+  public get oldestGap(): number {
     if (this.deque.size < 2) return 0;
     const oldest = this.deque.at(this.deque.size - 1);
     const next = this.deque.at(this.deque.size - 2);
@@ -51,7 +51,7 @@ export class StateQueue {
   }
 
   // 最新サンプルとして1件積む。時刻が既存の最新以下なら、その時刻以降を破棄してから積み直す。
-  push(state: KinematicState): void {
+  public push(state: KinematicState): void {
     if (this.deque.empty || state.t > this.deque.peekLeft().t) {
       this.deque.pushLeft(state);
       return;
@@ -62,7 +62,7 @@ export class StateQueue {
 
   // 呼び出し後も at(newest.t - maxAge) が参照できること、かつ minCount 件以上が残っている
   // ことを保証しながら、それ以外の古いサンプルを削除する。
-  cleanup(maxAge: number, minCount: number): void {
+  public cleanup(maxAge: number, minCount: number): void {
     if (this.deque.empty) return;
     if (maxAge === 0) {
       this.deque.deleteRightN(Math.max(0, this.deque.size - minCount));
@@ -75,20 +75,20 @@ export class StateQueue {
   }
 
   // 最新のサンプル1件だけを捨てる。空なら何もしない。
-  discardNewest(): void {
+  public discardNewest(): void {
     if (!this.deque.empty) this.deque.deleteLeftN(1);
   }
 
   // 保持しているサンプルを古い順(= 内部の降順と逆順)の配列で返す。折れ線描画
   // (render/lines/trajectory-line.ts の TrajectoryLine.sync)は時系列順の配列を要求するため。
-  toArrayOldestFirst(): KinematicState[] {
+  public toArrayOldestFirst(): KinematicState[] {
     const out: KinematicState[] = new Array(this.deque.size);
     for (let i = 0; i < this.deque.size; i++) out[i] = this.deque.at(this.deque.size - 1 - i);
     return out;
   }
 
   // 時刻 t のエルミート補間済み KinematicState。保持範囲(最古 〜 最新)の外は null。
-  at(t: number): KinematicState | null {
+  public at(t: number): KinematicState | null {
     if (this.deque.empty) return null;
     const newest = this.deque.peekLeft();
     const oldest = this.deque.peekRight();

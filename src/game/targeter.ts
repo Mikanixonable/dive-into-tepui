@@ -52,7 +52,7 @@ export class Targeter {
   // ターゲット相対のオフセットで持つ。
   private boardMarks: { off: Vec3; age: number; }[] = [];
 
-  constructor(
+  public constructor(
     private readonly markerManager: MarkerManager,
     private readonly navTarget: NavTarget, private readonly roster: EntityRoster,
     private readonly celestialBodies: readonly CelestialBody[],
@@ -60,12 +60,12 @@ export class Targeter {
 
   // 航法ターゲットを生存中の敵・自艦・基地として解決したもの。戦闘対象になれない対象
   // (天体・ラグランジュ点)や撃破済みなら null。
-  get aliveTarget(): CombatTarget | null {
+  public get aliveTarget(): CombatTarget | null {
     return this.navTarget.resolveCombatTarget(this.roster);
   }
 
   // Tキーで、照準中心にもっとも近い対象をターゲットにする。操作中の艦自身は候補から外す。
-  handleTargetSelectKey(input: Input, viewer: OrbitingObject, project: ProjectFn, viewport: Viewport): void {
+  public handleTargetSelectKey(input: Input, viewer: OrbitingObject, project: ProjectFn, viewport: Viewport): void {
     if (!input.takeKey(K.targetSelect)) return;
     const targets = this.roster.all()
       .filter(isCombatTarget).filter((e) => e.motion.alive && e !== viewer);
@@ -75,7 +75,7 @@ export class Targeter {
   }
 
   // 発射弾が標的面を自機側から通過した点をターゲット相対で記録し、既存の記録の寿命を進める。
-  updateBoardMarks(dt: number, viewer: OrbitingObject | null): void {
+  public updateBoardMarks(dt: number, viewer: OrbitingObject | null): void {
     const target = this.aliveTarget;
     if (!viewer || !target) {
       this.boardMarks.length = 0;
@@ -108,7 +108,7 @@ export class Targeter {
   // ターゲットに紐づく表示物(的通過マーク・方位マーカー)と、全戦闘対象のマーカー集合を
   // まとめて更新する。celestialLabels は今フレームに描かれた天体ラベルで、マップでの重なりを
   // 避けるために読む。
-  sync(
+  public sync(
     viewer: OrbitingObject | null, camera: CameraFrame, displayTime: number, simTime: number,
     visibilityPolicy: MapVisibilityPolicy | null, celestialLabels: readonly ActiveCelestialLabel[],
   ): void {

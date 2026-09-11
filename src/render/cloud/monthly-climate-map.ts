@@ -25,12 +25,12 @@ export const MONTHS_PER_YEAR = 12;
 
 export type MonthlyClimateRgba = readonly [number, number, number, number];
 
-export type MonthlyClimateTexture = {
+export interface MonthlyClimateTexture {
   readonly texture: THREE.Texture;
   readonly generation: number;
   request(): void;
   dispose(): void;
-};
+}
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));

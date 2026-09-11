@@ -29,7 +29,7 @@ import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 // (温帯では前線、眼を持つ渦のまわりでは雨帯。1 で飽和)、暖気の流入は出身地からの緯度の差 [rad]
 // (負で寒気)、金床は平らな天蓋の濃さ 0..1、平年の雲量と陸らしさは気候の分布 0..1、圏界面は
 // その緯度の対流の天井 [m]。
-export type WeatherSample = {
+export interface WeatherSample {
   readonly pressure: FloatNode;
   readonly surfaceWind: Vec2Node;
   readonly lift: FloatNode;
@@ -44,16 +44,16 @@ export type WeatherSample = {
   readonly meanCloudiness: FloatNode;
   readonly landFraction: FloatNode;
   readonly tropopause: FloatNode;
-};
+}
 
 // 気圧の写しから読んだ、風を解くのに要る量。gradient は勾配の接ベクトル [hPa/rad]、isobar は
 // 等圧線方向の単位接ベクトル、bend は等圧線方向の 2 階微分 [hPa/rad²]。
-type PressureField = {
+interface PressureField {
   readonly pressure: FloatNode;
   readonly gradient: Vec3Node;
   readonly isobar: Vec3Node;
   readonly bend: FloatNode;
-};
+}
 
 // ノイズの段の表。周波数は 1 rad あたりの山の数で、角波長 [km] は 6371 ÷ 周波数。
 // 気圧は 1 段しか持たない。総観規模より細かい構造を実際に持たないうえ、上昇流が気圧そのものの

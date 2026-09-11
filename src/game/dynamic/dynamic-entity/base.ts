@@ -60,14 +60,14 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public override readonly controllable = true;
   public override readonly pickable = true;
 
-  readonly plan = new Plan();
-  planExecution: PlanExecutionMode = 'off';
-  fineAttitude = false;
+  public readonly plan = new Plan();
+  public planExecution: PlanExecutionMode = 'off';
+  public fineAttitude = false;
   // 除去の前に注視・操作対象の参照を引き継ぐ必要があるので、所有者側に回収させる。
   public override readonly reclaimedByOwner = true;
-  readonly releaseHint = '基地の操作を解除しました';
+  public readonly releaseHint = '基地の操作を解除しました';
   // 基地は自機と操作キーの並びが違うので、選んだ時点で案内を出す。
-  get controlHint(): string {
+  public get controlHint(): string {
     return `基地「${this.name}」の操作モードに入りました (WASDQE: 噴射 / IJKLUO: 姿勢制御 / T: RCS減衰 / C: プログレード)`;
   }
   // 基地は常設の軌道構造物なので、選択の有無に関わらず赤道交点マーカーを出す。
@@ -79,28 +79,28 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public declare readonly motion: BaseMotion;
 
   // --- Controllable 実装 ---
-  readonly throttle: Throttle;
-  get totalThrust(): number { return BASE_THRUST; }
-  get totalTorque(): number { return BASE_TORQUE; }
-  get totalFuelConsumptionRate(): number { return BASE_FUEL_RATE; }
-  get totalFuel(): number { return this.motion.fuel; }
-  get totalMaxFuel(): number { return this.motion.maxFuel; }
+  public readonly throttle: Throttle;
+  public get totalThrust(): number { return BASE_THRUST; }
+  public get totalTorque(): number { return BASE_TORQUE; }
+  public get totalFuelConsumptionRate(): number { return BASE_FUEL_RATE; }
+  public get totalFuel(): number { return this.motion.fuel; }
+  public get totalMaxFuel(): number { return this.motion.maxFuel; }
   // 基地は装甲を持たない。撃たれても削れる耐久値そのものが無い。
-  readonly hp = null;
-  readonly maxHp = null;
+  public readonly hp = null;
+  public readonly maxHp = null;
 
   // 基地は機関砲・分離式ブースターを持たない。
-  readonly fire = null;
-  readonly boosters = null;
-  readonly altitudeAlarm = null;
+  public readonly fire = null;
+  public readonly boosters = null;
+  public readonly altitudeAlarm = null;
 
-  consumeFuel(amount: number): number {
+  public consumeFuel(amount: number): number {
     if (amount <= 0) return 1.0;
     return this.motion.consumeFuel(amount);
   }
 
   // 基地を組む。復元時は操作状態・所持金・軌道線の表示も戻す。
-  constructor(
+  public constructor(
     init: BaseInit,
     scene: THREE.Scene,
     notifier: Notifier,
@@ -156,7 +156,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // --- 操作制御 ---
 
   // 毎フレーム、全ての基地に対して1度だけ呼ぶ。input が null なら操作されない。
-  updateControls(
+  public updateControls(
     input: Input | null, dt: number, simDt: number,
     _registry: EntityRegistry, _activeStage: StageOutcome, _celestialBodies: CelestialBodies,
   ): void {
@@ -173,7 +173,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     this.motion.thrust = this.throttle.updateThrustState(input, this.motion.att, simDt, this);
   }
 
-  clearTransientCommands(): void {
+  public clearTransientCommands(): void {
     this.motion.thrust = null;
     this.motion.torque = v3();
     this.throttle.clearTransientState();
@@ -199,7 +199,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   private get markerKey(): string { return `base-${this.id}`; }
 
   // 基地のマーカー表示項目。pos/vel には構造メッシュと同じ表示時刻の状態を渡すこと。
-  markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3): GroupedMarkerItem {
+  public markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3): GroupedMarkerItem {
     // 代表選出の優先度は、近い個体ほど高くする
     const dist = len(sub(pos, viewerPos));
     return {

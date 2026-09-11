@@ -204,7 +204,7 @@ class GridPlane {
   private readonly styleGate = new RenderStyleGate();
 
   // 面 1 枚ぶんの線を scene へ、ラベル層を document.body へ組み立てる。
-  constructor(scene: THREE.Scene, basis: PlaneBasis, color: number, name: string) {
+  public constructor(scene: THREE.Scene, basis: PlaneBasis, color: number, name: string) {
     this.basis = basis;
     this.realisticColor = `#${color.toString(16).padStart(6, '0')}`;
     this.labelLayer = document.createElement('div');
@@ -267,7 +267,7 @@ class GridPlane {
   }
 
   // 3本の線を親から外して解放し、ラベル層(配下のラベルごと)を document.body から外す。
-  dispose(): void {
+  public dispose(): void {
     for (const line of [this.planeLine, this.gridLine, this.poleLine]) {
       line.removeFromParent();
       line.geometry.dispose();
@@ -290,7 +290,7 @@ class GridPlane {
   }
 
   // 3 種の線とラベルを、この面の可視トグルとカメラへ合わせる。scale は星殻半径への倍率。
-  sync(
+  public sync(
     style: RenderStyle, planeVisible: boolean, poleVisible: boolean, gridVisible: boolean,
     scale: number, camera: THREE.Camera, viewport: Viewport,
   ): void {
@@ -361,14 +361,14 @@ export class CelestialGrid {
   private readonly ecliptic: GridPlane;
 
   // 赤道面・黄道面の 2 枚を scene へ置く。
-  constructor(scene: THREE.Scene) {
+  public constructor(scene: THREE.Scene) {
     this.equator = new GridPlane(scene, EQUATOR_BASIS, 0x8b93a0, 'EQUATOR');
     this.ecliptic = new GridPlane(scene, ECLIPTIC_BASIS, 0xc0a878, 'ECLIPTIC');
   }
 
   // 星殻と同じく描画原点(= カメラ)に固定した半径殻として、2 面ぶんの可視状態を反映する。
   // scale は星殻半径 STAR_SHELL_RADIUS に対する拡大率(stars.ts の CELESTIAL_SHELL_SCALE)。
-  sync(
+  public sync(
     style: RenderStyle, visibility: CelestialGridVisibility, cam: THREE.Camera, scale: number,
     viewport: Viewport,
   ): void {
@@ -381,7 +381,7 @@ export class CelestialGrid {
   }
 
   // 2面ぶんの GridPlane を解放する。
-  dispose(): void {
+  public dispose(): void {
     this.equator.dispose();
     this.ecliptic.dispose();
   }
