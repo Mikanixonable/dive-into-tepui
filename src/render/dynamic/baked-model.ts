@@ -1,4 +1,4 @@
-// tools/export-models.mjs が src/assets/models/*.json へ焼いたモデルを ObjectLoader で読み、
+// tools/model-builder/export-models.mjs が src/assets/models/*.json へ焼いたモデルを ObjectLoader で読み、
 // 初回だけパースしたテンプレートから複製を作る。テンプレートそのものは書き換えない。
 import * as THREE from 'three/webgpu';
 import { markLitOpaque, markShadowCaster } from '../pipeline/lit-layer';
