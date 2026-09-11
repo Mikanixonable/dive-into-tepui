@@ -6,11 +6,12 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { add, cross, dot, rotateAxis, v3, Vec3 } from '../../math/vec3';
 import {
   RADIATOR_DEPLOY_TILT,
+  RADIATOR_FOLD_COUNT,
   RADIATOR_HINGE,
   RADIATOR_SEGMENT_LENGTH,
 } from '../../physics/player-shape';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
-import type { RadiatorDisplay } from '../../render/dynamic/player/radiator-view';
+import type { RadiatorDisplay } from '../../render/dynamic/player/folding-panels-view';
 import type { RadiatorSaveData } from '../save/save-data';
 import {
   DynamicMotion,
@@ -18,7 +19,6 @@ import {
   type DynamicReactionServices,
 } from '../dynamic/dynamic-motion';
 
-const RADIATOR_FOLD_COUNT = 6; // 蛇腹の折り数(1枚あたり)
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
 

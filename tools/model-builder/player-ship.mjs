@@ -4,8 +4,9 @@ import { importTsDataModule } from '../compile-source.mjs';
 import { F0_BURNT_STEEL, F0_STEEL, std } from './materials.mjs';
 
 const { RCS_NOZZLES } = await importTsDataModule('src/render/rcs-nozzles.ts');
-const { PLAYER_MUZZLE_OFFSETS, RADIATOR_HINGE, RADIATOR_SEGMENT_LENGTH } =
-  await importTsDataModule('src/physics/player-shape.ts');
+const {
+  PLAYER_MUZZLE_OFFSETS, RADIATOR_FOLD_COUNT, RADIATOR_HINGE, RADIATOR_SEGMENT_LENGTH, SOLAR_FOLD_COUNT,
+} = await importTsDataModule('src/physics/player-shape.ts');
 
 // 自機を組み立てる。蛇腹の根元の Group は solarUp / solarDown / radiatorUp / radiatorDown で、
 // その i 番目の折り目は `${根元の名前}Fold${i}` の名前で引ける。
@@ -135,7 +136,6 @@ export function buildPlayerShip() {
   }
 
   // === 太陽電池パドル (展開式・蛇腹6折り) ===
-  const SOLAR_FOLD_COUNT = 6;
   const SOLAR_LENGTH = 2.4;
   const SOLAR_SEG = SOLAR_LENGTH / SOLAR_FOLD_COUNT;
   const SOLAR_WIDTH = 1.5;
@@ -186,7 +186,6 @@ export function buildPlayerShip() {
   // 放熱面の法線はローカル Z — 全開で太陽電池パネル(法線 +Y)と直交し、前後から見た面積が最大になる。
   const radiatorMat = std(0xdde3ea, { roughness: 0.8 });
   const radiatorSkeletonMat = std(F0_BURNT_STEEL, { metalness: 1, roughness: 0.55 });
-  const RADIATOR_FOLD_COUNT = 6;
   const RADIATOR_WIDTH = 2.3 / 4; // 放熱板の幅 [m]
   const RADIATOR_STACK_NUDGE = 0.012; // 収納時に折り目同士が同一平面へ重なる際の Z ファイティング回避
   const RADIATOR_SKELETON_OFFSET = 0.04; // 骨格を放熱面の反対側へ張り出す量

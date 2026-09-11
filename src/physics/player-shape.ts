@@ -8,8 +8,14 @@ export const PLAYER_MUZZLE_OFFSETS: readonly { x: number; y: number; z: number }
   { x: 0, y: -0.55, z: 2.55 },
 ];
 
-// 蛇腹1折りの一辺 [m]。
-export const RADIATOR_SEGMENT_LENGTH = (2.3 * 4) / 6;
+// 放熱板の蛇腹の折り数(1枚あたり)。
+export const RADIATOR_FOLD_COUNT = 6;
+
+// 太陽電池パネルの蛇腹の折り数(1枚あたり)。
+export const SOLAR_FOLD_COUNT = 6;
+
+// 放熱板の蛇腹1折りの一辺 [m]。
+export const RADIATOR_SEGMENT_LENGTH = (2.3 * 4) / RADIATOR_FOLD_COUNT;
 
 // 全開時に各折りが展開軸から残す傾き [rad]。
 export const RADIATOR_DEPLOY_TILT = 15 * Math.PI / 180;

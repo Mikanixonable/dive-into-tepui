@@ -9,9 +9,8 @@ import {
 import { AttachedBoostersView, type AttachedBoostersDisplay } from './attached-boosters-view';
 import { BeltView, type BeltNodes } from './belt-view';
 import { PlayerMarkers } from '../../../game/player/player-markers';
-import { PowerView, type SolarDeploy } from './power-view';
+import { FoldingPanelsView, type RadiatorDisplay, type SolarDeploy } from './folding-panels-view';
 import { RcsEffects } from './rcs-effects';
-import { RadiatorView, type RadiatorDisplay } from './radiator-view';
 import { ReentryEffects } from './reentry-effects';
 import { ThrustEffects } from './thrust-effects';
 import playerData from '../../../assets/models/player.json';
@@ -51,8 +50,7 @@ export class PlayerView extends DynamicView<PlayerRenderSource> {
   private readonly rcsEffects: RcsEffects;
   private readonly reentryEffects: ReentryEffects;
   private readonly belt: BeltView;
-  private readonly radiator: RadiatorView;
-  private readonly power: PowerView;
+  private readonly panels: FoldingPanelsView;
   private readonly boosters: AttachedBoostersView;
   private readonly markers: PlayerMarkers;
 
@@ -71,8 +69,7 @@ export class PlayerView extends DynamicView<PlayerRenderSource> {
     this.rcsEffects = new RcsEffects(scene, ownerId);
     this.reentryEffects = new ReentryEffects(scene);
     this.belt = new BeltView(model, beltLinkCount);
-    this.radiator = new RadiatorView(model);
-    this.power = new PowerView(model);
+    this.panels = new FoldingPanelsView(model);
     // scene 直下へ出る噴射と DOM マーカーも、この View の寿命に揃える。
     this.boosters = new AttachedBoostersView(scene, model);
     this.markers = new PlayerMarkers(markerSlots, ownerId);
@@ -134,8 +131,7 @@ export class PlayerView extends DynamicView<PlayerRenderSource> {
     );
     // 船体に属する可動部と、操作対象だけの DOM マーカーを供給された値へ合わせる。
     this.belt.sync(source.magsLeft, source.belt);
-    this.radiator.sync(source.radiator);
-    this.power.sync(source.solar);
+    this.panels.sync(source.solar, source.radiator);
     this.markers.sync(
       source.state,
       source.attitude,
