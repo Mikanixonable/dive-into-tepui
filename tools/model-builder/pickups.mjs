@@ -5,19 +5,22 @@ import { buildMagazineMesh } from './gun-parts.mjs';
 
 const { MAG_THICKNESS } = await importTsDataModule('src/physics/player-shape.ts');
 
-// 軌道上の弾薬補給ピックアップ。マガジン数個(既定 4)とビーコンを束ねる。
-export function buildAmmoPickup(count = 4) {
+// 弾薬補給ピックアップ1個が束ねるマガジンの数。
+const AMMO_PICKUP_MAGAZINES = 4;
+
+// 軌道上の弾薬補給ピックアップ。マガジンを Y 方向へ積み、その上にビーコンを載せる。
+export function buildAmmoPickup() {
   const g = new THREE.Group();
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < AMMO_PICKUP_MAGAZINES; i++) {
     const mag = buildMagazineMesh();
-    mag.position.y = (i - (count - 1) / 2) * (MAG_THICKNESS + 0.12);
+    mag.position.y = (i - (AMMO_PICKUP_MAGAZINES - 1) / 2) * (MAG_THICKNESS + 0.12);
     g.add(mag);
   }
   const beacon = new THREE.Mesh(
     new THREE.OctahedronGeometry(0.35, 0),
     new THREE.MeshBasicMaterial({ color: 0x4de8ff }),
   );
-  beacon.position.y = (count / 2) * (MAG_THICKNESS + 0.12) + 0.4;
+  beacon.position.y = (AMMO_PICKUP_MAGAZINES / 2) * (MAG_THICKNESS + 0.12) + 0.4;
   g.add(beacon);
   return g;
 }

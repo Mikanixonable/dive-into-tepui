@@ -27,6 +27,7 @@ function addAxialMesh(parent, geometry, material, z, name) {
   parent.add(mesh);
 }
 
+// ブースター1段。タンク・前端カプラー・後端デカプラー・ノズル・安定フィンから成り、部位は名前で引ける。
 export function buildBoosterStage() {
   const g = new THREE.Group();
   g.name = 'booster-stage';
@@ -99,7 +100,7 @@ export function buildBoosterStage() {
 
 // 段間カバー。接続中は後ろの段のデカプラー側面を6枚のパネルで囲み、爆砕ボルトで留める。
 // 部品名 `interstage-cover-panel-${i}` / `interstage-explosive-bolt-${i}` は、分離した部品を
-// src/render/dynamic/booster-model.ts が引く鍵なので変えない。
+// 名前で引くための鍵なので変えない。
 export function buildBoosterInterstageCover() {
   const cover = new THREE.Group();
   cover.name = 'interstage-cover';

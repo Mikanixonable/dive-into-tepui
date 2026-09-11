@@ -5,7 +5,7 @@ import * as THREE from 'three';
 export function buildBulletMesh() {
   const geo = new THREE.BoxGeometry(0.22, 0.22, 6);
   const mat = new THREE.MeshBasicMaterial({
-    // 明るさは色に載せ、不透明度は 1 のままにする(src/render/billboard.ts と同じ規約)。
+    // 明るさは色に載せ、不透明度は 1 のままにする。
     color: new THREE.Color(0xffc86e).multiplyScalar(0.95),
     transparent: true,
     blending: THREE.AdditiveBlending,
@@ -14,7 +14,7 @@ export function buildBulletMesh() {
   return new THREE.Mesh(geo, mat);
 }
 
-// ------------------------------------------------------------- プラズマ弾
+// プラズマ弾。長さ軸を +Z へ向ける回転は頂点に焼き込んである。
 export function buildPlasmaBullet() {
   const geo = new THREE.CylinderGeometry(0.2, 0.2, 4.0, 5);
   geo.rotateX(Math.PI / 2);

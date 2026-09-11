@@ -9,6 +9,7 @@ const { THERMAL_SHAPE_ATTRIBUTE } = thermalSource.thermalEmissive;
 thermalSource.dispose();
 
 // ------------------------------------------------------------- マガジン
+// 給弾方向(+Z)の奥行き [m] と、並べる弾の段数・列数。
 const MAG_DEPTH = MAG_THICKNESS * 3 * (2 / 3);
 const MAG_ROWS = 4;
 const MAG_COLS = 8;
@@ -18,9 +19,10 @@ const magRoundMat  = std(F0_BRASS, { metalness: 1, roughness: 0.32 }); // 真鍮
 const magTipMat    = std(F0_ALUMINIUM, { metalness: 1, roughness: 0.36 }); // シルバーチップ
 const magPlateGeo  = new THREE.BoxGeometry(MAG_WIDTH, 0.055, MAG_DEPTH);
 const magPostGeo   = new THREE.BoxGeometry(0.07, MAG_THICKNESS, 0.07);
-const magRoundGeo  = new THREE.CylinderGeometry(0.11, 0.11, MAG_DEPTH * 0.8, 8); // 8セグメントでやや滑らか
+const magRoundGeo  = new THREE.CylinderGeometry(0.11, 0.11, MAG_DEPTH * 0.8, 8);
 const magTipGeo    = new THREE.ConeGeometry(0.11, 0.18, 8);
 
+// 実弾入りのマガジン。給弾口は +Z。弾と弾頭のメッシュは userData.role = 'round' を持つ。
 export function buildMagazineMesh() {
   const g = new THREE.Group();
 
@@ -124,8 +126,8 @@ export function buildMagazineMesh() {
 }
 
 // ------------------------------------------------------------- 薬莢
-// CIWS 艦砲弾薬をモチーフにしたボトルネック Lathe 形状。
-// セグメント数 8(約半分)に削減。直径を 0.7 倍にしてスリムに、全長を 2/3 倍に短縮。
+// CIWS 艦砲弾薬をモチーフにしたボトルネック形状。輪郭は (半径, 長手方向の位置) の組で、
+// 径と長さに別々の縮尺を掛ける。
 const CASING_SCALE = 0.7;
 const CASING_LENGTH_SCALE = 2 / 3;
 const casingProfile = [
@@ -142,8 +144,9 @@ const casingProfile = [
   new THREE.Vector2(0.115 * CASING_SCALE,  0.54 * CASING_LENGTH_SCALE),  // マウス内径
 ];
 
+// 薬莢。輪郭をローカル Y 軸まわりに回した回転体で、口が +Y。
 export function buildCasingMesh() {
-  const geo = new THREE.LatheGeometry(casingProfile, 8); // 8セグメント(ポリゴン数約半分)
+  const geo = new THREE.LatheGeometry(casingProfile, 8);
   const mat = new THREE.MeshStandardMaterial({
     color: F0_BRASS,
     metalness: 1,
@@ -153,7 +156,6 @@ export function buildCasingMesh() {
 }
 
 // ------------------------------------------------------------- 砲身
-// リロード時に放出される砲身。砲身本体 + 後端フランジ + 放熱フィン + マズルブレーキ + ガスポート。
 
 // 薬室の位置 [m] と、そこから砲口へ向かって温度差が落ちる長さ [m]。発射ガスは銃身に沿って
 // 熱を置いていくので、薬室側がいちばん熱く、砲口へ向かって指数で下がる。
@@ -179,6 +181,8 @@ function bakeBarrelThermalShape(root) {
   });
 }
 
+// リロード時に放出される砲身。長手方向は Z で砲口が +Z、薬室側が -Z。
+// 各頂点に、薬室からの距離で決まる温度差の分布を焼いた属性を持つ。
 export function buildBarrelMesh() {
   const g = new THREE.Group();
   const S = 0.7; // 直径スケール係数
