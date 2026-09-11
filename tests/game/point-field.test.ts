@@ -10,7 +10,7 @@ import {
 import { AU } from '../../src/physics/astronomical-unit';
 import { eciToEcl } from '../../src/physics/ecliptic';
 import type { Vec3 } from '../../src/math/vec3';
-import { motionOf, solarSystemParts, TEST_EPOCH, TEST_SIM_ZERO_ET } from '../physics/test-helpers';
+import { motionOf, orbitingMotionOf, solarSystemParts, TEST_EPOCH, TEST_SIM_ZERO_ET } from '../physics/test-helpers';
 import { createJulianDate, ephemerisSeconds, TdbJulianDate } from '../../src/physics/time';
 
 const DEG = Math.PI / 180;
@@ -95,6 +95,26 @@ export function register(): void {
     }
   });
 
+  test('point-field: trojans use the supplied Jupiter reference', () => {
+    const reference = orbitingMotionOf(solarSystemParts({}, TEST_EPOCH), 'jupiter').keplerOrbit;
+    const custom = { ...reference, a: reference.a * 1.01, l0: reference.l0 + 0.4 };
+    const field = generatePointField(0, 123, custom);
+    const expectedLongitude = jupiterMeanLongitude(0, 0, custom);
+    for (const id of ['trojan-l4', 'trojan-l5']) {
+      for (const point of groupOf(field, id).points) {
+        assert.equal(point.a, custom.a, `${id} should use the supplied semi-major axis`);
+        assert.ok(Number.isFinite(wrapPi(point.l0 - expectedLongitude)), `${id} should use the supplied epoch`);
+      }
+    }
+  });
+
+  test('point-field: Hilda mean motion is exactly the 3:2 resonance with Jupiter', () => {
+    const jupiterRate = orbitingMotionOf(solarSystemParts({}, TEST_EPOCH), 'jupiter').keplerOrbit.lRate;
+    for (const point of groupOf(generatePointField(TEST_SIM_ZERO_ET), 'hilda').points) {
+      assert.ok(Math.abs(point.meanMotion - (2 / 3) * jupiterRate) / jupiterRate < 1e-14);
+    }
+  });
+
   test('point-field: Kuiper cold/hot inclination distributions are separated', () => {
     const field = generatePointField(TEST_SIM_ZERO_ET);
     const cold = groupOf(field, 'kuiper-cold').points.map((el) => el.inc);
@@ -102,6 +122,15 @@ export function register(): void {
     const coldMax = Math.max(...cold);
     const hotMean = hot.reduce((s, x) => s + x, 0) / hot.length;
     assert.ok(coldMax < hotMean, `cold max ${coldMax / DEG} deg should be below hot mean ${hotMean / DEG} deg`);
+  });
+
+  test('point-field: Kuiper hot inclinations retain two separated modes', () => {
+    const points = groupOf(generatePointField(TEST_SIM_ZERO_ET), 'kuiper-hot').points;
+    const bands = new Array(6).fill(0) as number[];
+    for (const point of points) bands[Math.min(5, Math.floor(point.inc / (5 * DEG)))]!++;
+    assert.ok(bands[0]! > 0, 'hot group should retain a low-inclination mode');
+    assert.equal(bands[1]! + bands[2]!, 0, 'the modes should not collapse into a flat distribution');
+    assert.ok(bands[3]! > 0 && bands[4]! > 0 && bands[5]! > 0, 'hot group should retain a high-inclination mode');
   });
 
   test('point-field: scattered disk perihelion stays within 30-40 AU', () => {
@@ -114,7 +143,7 @@ export function register(): void {
 
   // ヒルダ群が三角形に見えるかは、共鳴角そのものではなく**実際の日心黄経の分布**で見る —
   // σ の集まり方を検査すると生成式をそのまま読み返すだけの循環したテストになる。
-  // 3:2 共鳴では M = 3(λ_H − λ_J) + σ となるため遠日点が木星に対して 120° おきの3方向で
+  // 3:2 共鳴では点群の平均運動が木星の2/3となるため、遠日点が木星に対して120°おきの3方向で
   // 繰り返し、遠日点付近に長く留まる効果で3箇所に濃淡が出る(頂点は木星の L4/L3/L5)。
   test('point-field: hildas form a triangle in longitude relative to Jupiter', () => {
     const points = groupOf(generatePointField(TEST_SIM_ZERO_ET), 'hilda').points;

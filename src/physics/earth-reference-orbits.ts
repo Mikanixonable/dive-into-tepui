@@ -2,7 +2,10 @@
 // ドーンダスク・モルニヤ・ツンドラ)の軌道要素を組む。いずれも中心天体の重心を原点とした
 // OrbitalElements を返し、実際の天体位置への配置は呼び出し側(orbit-guide.ts)が行う。
 // 中心天体の重力・扁平・自転周期は呼び出し側から受け取る。
-import { orbitalElementsFromClassical, OrbitalElements, semiMajorFromPeriod } from './elements';
+import {
+  meanMotionFromSemiMajor, orbitalElementsFromClassical, OrbitalElements, semiMajorFromMeanMotion,
+  semiMajorFromPeriod,
+} from './elements';
 import type { CelestialBody } from './celestial-body';
 
 // 太陽に対する昇交点の歳差が一致すべき角速度の基準となる回帰年 [s]。
@@ -10,6 +13,13 @@ const TROPICAL_YEAR_SEC = 365.2422 * 86400;
 
 // 臨界傾斜角(近地点引数の長期摂動が止まる傾斜角、cos²i = 1/5) [deg]。モルニヤ・ツンドラ軌道が使う。
 const CRITICAL_INCLINATION_DEG = (Math.acos(1 / Math.sqrt(5)) * 180) / Math.PI;
+const J2_MEAN_MOTION_ITERATIONS = 6;
+
+// 円軌道の接触軌道要素で、ケプラー平均運動 nK と J2 の一次平均運動 nbar を結ぶ係数。
+// 一次の永年摂動だけを参照軌道へ反映し、実際の物体の積分(J2加速度を直接適用)とは分ける。
+function j2MeanMotionFactor(j2: number, refRadius: number, a: number, cosInc: number): number {
+  return 1 + 0.75 * j2 * (refRadius / a) ** 2 * (3 * cosInc * cosInc - 1);
+}
 
 // 回帰日数 repeatDays の間に revsPerRepeat 回(いずれも正の整数)中心天体を周回し、かつ昇交点が
 // 太陽と同じ角速度で歳差する円軌道の高度・傾斜角を解く。raanOffsetDeg は昇交点の初期位置
@@ -20,13 +30,24 @@ function sunSynchronousElements(
 ): OrbitalElements | null {
   const degree2 = planet.degree2At(planetPivot);
   if (degree2 === null) return null;
-  const n = (revsPerRepeat * 2 * Math.PI) / (repeatDays * 86400);
-  const a = Math.cbrt(planet.def.mu / (n * n));
-  if (a <= planet.def.radius) return null; // 解の高度が地表以下(中心天体に埋まる非物理的な解)。
+  const requestedMeanMotion = (revsPerRepeat * 2 * Math.PI) / (repeatDays * 86400);
   const sunRate = (2 * Math.PI) / TROPICAL_YEAR_SEC;
-  const precessionPerRad = -1.5 * n * degree2.j2 * (degree2.refRadius / a) ** 2;
-  const cosInc = sunRate / precessionPerRad;
+  let a = semiMajorFromMeanMotion(requestedMeanMotion, planet.def.mu);
+  let cosInc = 0;
+  for (let i = 0; i < J2_MEAN_MOTION_ITERATIONS; i++) {
+    const keplerMeanMotion = meanMotionFromSemiMajor(a, planet.def.mu);
+    const precessionPerRad = -1.5 * keplerMeanMotion * degree2.j2 * (degree2.refRadius / a) ** 2;
+    cosInc = sunRate / precessionPerRad;
+    if (!(cosInc >= -1 && cosInc <= 1)) return null;
+    const correctedMeanMotion = requestedMeanMotion
+      / j2MeanMotionFactor(degree2.j2, degree2.refRadius, a, cosInc);
+    a = semiMajorFromMeanMotion(correctedMeanMotion, planet.def.mu);
+  }
+  const finalKeplerMeanMotion = meanMotionFromSemiMajor(a, planet.def.mu);
+  const finalPrecessionPerRad = -1.5 * finalKeplerMeanMotion * degree2.j2 * (degree2.refRadius / a) ** 2;
+  cosInc = sunRate / finalPrecessionPerRad;
   if (!(cosInc >= -1 && cosInc <= 1)) return null;
+  if (a <= planet.def.radius) return null; // 解の高度が地表以下(中心天体に埋まる非物理的な解)。
   const incDeg = (Math.acos(cosInc) * 180) / Math.PI;
   return orbitalElementsFromClassical(
     a, 0, incDeg, raanOffsetDeg, 0, planet, planet.stateAt(planetPivot));
@@ -41,9 +62,13 @@ export function sunSyncRevsPerDayRange(
 ): { readonly min: number; readonly max: number } {
   const sunRate = (2 * Math.PI) / TROPICAL_YEAR_SEC;
   // cosInc = -1(太陽同期条件の下限)。
-  const nMin = ((sunRate * mu ** (2 / 3)) / (1.5 * j2 * equatorRadius ** 2)) ** (3 / 7);
+  const nKeplerMin = ((sunRate * mu ** (2 / 3)) / (1.5 * j2 * equatorRadius ** 2)) ** (3 / 7);
+  const aMin = semiMajorFromMeanMotion(nKeplerMin, mu);
+  const nMin = nKeplerMin * j2MeanMotionFactor(j2, equatorRadius, aMin, -1);
   // a = equatorRadius(解の高度が地表に一致する上限)。
-  const nMax = Math.sqrt(mu / equatorRadius ** 3);
+  const keplerNMax = Math.sqrt(mu / equatorRadius ** 3);
+  const cosAtSurface = sunRate / (-1.5 * keplerNMax * j2);
+  const nMax = keplerNMax * j2MeanMotionFactor(j2, equatorRadius, equatorRadius, cosAtSurface);
   const revPerDay = (n: number) => (n * 86400) / (2 * Math.PI);
   return { min: revPerDay(nMin), max: revPerDay(nMax) };
 }
