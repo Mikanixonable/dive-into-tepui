@@ -108,22 +108,22 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   public override readonly reclaimedByOwner = true;
 
   public declare readonly motion: PlayerMotion;
-  readonly throttle: Throttle;
-  readonly fire: FireControl;
-  readonly altitudeAlarm: AltitudeAlarm;
-  readonly boosters: AttachedBoosters;
+  public readonly throttle: Throttle;
+  public readonly fire: FireControl;
+  public readonly altitudeAlarm: AltitudeAlarm;
+  public readonly boosters: AttachedBoosters;
   // この艦自身のマニューバ計画。
-  readonly plan = new Plan();
-  planExecution: PlanExecutionMode = 'instant';
+  public readonly plan = new Plan();
+  public planExecution: PlanExecutionMode = 'instant';
 
-  fineAttitude = false;
+  public fineAttitude = false;
   // 自機の操作方法は HUD とヘルプが常設で示しているので、選び直しても案内は出さない。
-  readonly controlHint = null;
-  readonly releaseHint = null;
+  public readonly controlHint = null;
+  public readonly releaseHint = null;
 
   // init 省略時は無作為な名前と既定軌道の新規艦になる。id を省いたときは name がそのまま
   // 艦の識別子になるので、複数隻を並べるなら name も分ける。
-  constructor(
+  public constructor(
     private readonly notifier: Notifier,
     private readonly worldSfx: WorldSfx,
     scene: THREE.Scene,
@@ -241,12 +241,12 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   // -------------------------------------------------------- 移動/射撃 状態
-  get roundsInMag(): number { return this.fire.rounds; }
-  get magsLeft(): number { return this.fire.mags; }
-  get reloadTimer(): number { return this.fire.cooldown; }
+  public get roundsInMag(): number { return this.fire.rounds; }
+  public get magsLeft(): number { return this.fire.mags; }
+  public get reloadTimer(): number { return this.fire.cooldown; }
 
   // 弾薬ピックアップで得たマグ数を加算する。
-  onPickup(mags: number): void {
+  public onPickup(mags: number): void {
     this.fire.onPickup(mags);
   }
 
@@ -286,7 +286,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 次のフレームへ持ち越してはならない連続指令(推力・トルク・射撃)を畳む。角速度による
   // coast はそのまま続く。
-  clearTransientCommands(): void {
+  public clearTransientCommands(): void {
     this.motion.thrust = null;
     this.motion.attachedBoosters.clearThrust();
     this.motion.torque = v3();
@@ -295,7 +295,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   // 姿勢微調整モードの ON/OFF を切り替える。
-  toggleFineAttitude(): void {
+  private toggleFineAttitude(): void {
     this.fineAttitude = !this.fineAttitude;
     this.notifier.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
   }
@@ -516,7 +516,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 画面マーカー・一覧に出すこの艦の項目。isActive はマップ上で自艦と僚艦を塗り分ける
   // ための操作対象フラグ。
-  markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode, isActive: boolean): GroupedMarkerItem {
+  public markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode, isActive: boolean): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
     return {
       key: this.markerKey,
@@ -571,7 +571,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   // 自身に関するメッシュやエフェクトを解放する。
-  dispose(): void {
+  public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     this.clearTransientCommands();

@@ -81,7 +81,7 @@ export class ProteinMotionMetricsRecorder {
   private readonly uploadSamples: number[] = [];
   private readonly lodTotals = emptyLodCounts();
 
-  record(sample: ProteinMotionFrameSample): void {
+  public record(sample: ProteinMotionFrameSample): void {
     this.cpuSamples.push(finiteNonNegative(sample.cpuMs));
     this.uploadSamples.push(finiteNonNegative(sample.uploadBytes));
     for (const lod of LODS_FINE_TO_COARSE) {
@@ -89,13 +89,13 @@ export class ProteinMotionMetricsRecorder {
     }
   }
 
-  reset(): void {
+  public reset(): void {
     this.cpuSamples.length = 0;
     this.uploadSamples.length = 0;
     for (const lod of LODS_FINE_TO_COARSE) this.lodTotals[lod] = 0;
   }
 
-  summary(): ProteinMotionMetricSummary {
+  public summary(): ProteinMotionMetricSummary {
     const frames = this.cpuSamples.length;
     const lodCounts = emptyLodCounts();
     for (const lod of LODS_FINE_TO_COARSE) {

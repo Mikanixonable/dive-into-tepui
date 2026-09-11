@@ -11,10 +11,10 @@ import { stepDynamicsWithSamples, type DynamicsEnvironmentSample } from './dynam
 import type { CelestialBody } from './celestial-body';
 
 // 先端を二体ケプラー軌道とみなすときの中心天体と、それを厳密に引いた時刻。
-export type ExtrapolationCenter = {
+export interface ExtrapolationCenter {
   readonly celestialBody: CelestialBody;
   readonly pivot: number;
-};
+}
 
 export class DynamicTrajectory {
   // 直前ステップの状態。samples とは別フィールドで持つ — 間引かれた samples からは
@@ -33,18 +33,18 @@ export class DynamicTrajectory {
   private _extrapolationCenter: ExtrapolationCenter | null = null;
 
   // state・prevState をともに初期状態で始める。
-  constructor(state: KinematicState) {
+  public constructor(state: KinematicState) {
     this._samples.push(state);
     this._prevState = state;
   }
 
-  get state(): KinematicState { return this._samples.newest!; }
-  get prevState(): KinematicState { return this._prevState; }
-  get extrapolationCenter(): ExtrapolationCenter | null { return this._extrapolationCenter; }
+  public get state(): KinematicState { return this._samples.newest!; }
+  public get prevState(): KinematicState { return this._prevState; }
+  public get extrapolationCenter(): ExtrapolationCenter | null { return this._extrapolationCenter; }
   // 列の最も古い端での間引き間隔 [s]。列がどれだけ粗いかは列自身の属性であり、積んだ後に
   // 呼び出し側の設定が変わっても、既に積んだサンプルの粗さは変わらない。保持窓が飽和した
   // 列では、この端が最も古い保持サンプルとその1つ新しい側を挟む補間区間にあたる。
-  get sampleInterval(): number { return this._samples.oldestGap; }
+  public get sampleInterval(): number { return this._samples.oldestGap; }
 
   // 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力で 1 ステップ RK4 積分する
   // (dynamics.ts の stepDynamics)。attractors はそのステップぶん呼び出し側が確定させた
@@ -52,7 +52,7 @@ export class DynamicTrajectory {
   // 大気天体(null なら抗力なし)。
   // sampleInterval・keepDuration は先端を積むときの保持方針(advanceTip)。
   // extrapolationCenter は extrapolatedAt が使う中心天体(省略時 null)。
-  step(
+  public step(
     dt: number,
     attractors: readonly CelestialBody[],
     occluders: readonly CelestialBody[],
@@ -74,7 +74,7 @@ export class DynamicTrajectory {
   }
 
   // 積分せず、外から与えられた状態を先端にする。保持方針・prevState の更新は step と同じ。
-  follow(state: KinematicState, sampleInterval: number, keepDuration: number): void {
+  public follow(state: KinematicState, sampleInterval: number, keepDuration: number): void {
     this.advanceTip(state, sampleInterval, keepDuration);
   }
 
@@ -97,7 +97,7 @@ export class DynamicTrajectory {
   // 不連続な差し替え(剛体接触・反動など、積分を経ない外部からの上書き)。push の訂正契約
   // (StateQueue 冒頭のコメント)により、新しい時刻以降の無効になったサンプルは捨てられる。
   // 中心天体も、差し替えで先端の軌道自体が変わるため破棄する。
-  reset(state: KinematicState): void {
+  public reset(state: KinematicState): void {
     this._prevState = this.state;
     this._samples.push(state);
     this._extrapolationCenter = null;
@@ -106,19 +106,19 @@ export class DynamicTrajectory {
 
   // 保持区間全体を古い順に並べた1本の列。先端が動かない限り同じ配列参照を返す
   // (TrajectoryLine.sync の再 bake 抑制が参照同一性で判定するため)。
-  samplesOldestFirst(): readonly KinematicState[] {
+  public samplesOldestFirst(): readonly KinematicState[] {
     if (this._samplesCache === null) this._samplesCache = this._samples.toArrayOldestFirst();
     return this._samplesCache;
   }
 
   // 保持区間内(最古 〜 先端)の任意時刻の状態。区間外は null。
-  at(t: number): KinematicState | null { return this._samples.at(t); }
+  public at(t: number): KinematicState | null { return this._samples.at(t); }
 
   // state より新しい時刻 t を、先端(state)を extrapolationCenter まわりの二体ケプラー軌道と
   // みなして外挿する。t が state 以前、または中心天体を保持していなければ at(t) と同じ。
   // centerStateAtT は問い合わせ時刻 t における中心天体の ECI 状態 — 天体暦への依存を
   // 持ち込まないため、解決は呼び出し側が行う。
-  extrapolatedAt(t: number, centerStateAtT: KinematicState): KinematicState | null {
+  public extrapolatedAt(t: number, centerStateAtT: KinematicState): KinematicState | null {
     const tip = this.state;
     if (t <= tip.t || this._extrapolationCenter === null) return this.at(t);
     const center = this._extrapolationCenter;

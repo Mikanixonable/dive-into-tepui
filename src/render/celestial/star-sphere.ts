@@ -47,26 +47,26 @@ class StarSphereObject implements StarSphere {
   // addTo まで作らない。
   private point!: Billboard;
 
-  constructor(
+  public constructor(
     private readonly color: string | number,
     private readonly surfaceRadiance: number,
   ) {
     this.mesh = createStarMesh(color, surfaceRadiance);
   }
 
-  addTo(scene: THREE.Scene): void {
+  public addTo(scene: THREE.Scene): void {
     this.point = new Billboard(this.color, -9);
     scene.add(this.mesh, this.point.mesh);
   }
 
-  setVisible(visible: boolean): void {
+  public setVisible(visible: boolean): void {
     this.mesh.visible = visible;
     this.point.mesh.visible = visible;
   }
 
-  get visible(): boolean { return this.mesh.visible || this.point.mesh.visible; }
+  public get visible(): boolean { return this.mesh.visible || this.point.mesh.visible; }
 
-  sync(
+  public sync(
     position: THREE.Vector3, radius: number, apparentDiameterPx: number,
     cameraQuaternion: THREE.Quaternion,
   ): void {
@@ -83,19 +83,19 @@ class StarSphereObject implements StarSphere {
     );
   }
 
-  syncSphere(position: THREE.Vector3, radius: number): void {
+  public syncSphere(position: THREE.Vector3, radius: number): void {
     this.point.hide();
     this.mesh.visible = true;
     this.mesh.position.copy(position);
     this.mesh.scale.setScalar(radius);
   }
 
-  hide(): void {
+  public hide(): void {
     this.mesh.visible = false;
     this.point.hide();
   }
 
-  dispose(): void {
+  public dispose(): void {
     this.mesh.removeFromParent();
     this.mesh.geometry.dispose();
     (this.mesh.material as THREE.Material).dispose();

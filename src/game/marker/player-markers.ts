@@ -11,13 +11,13 @@ import type { ProjectFn } from '../../math/projection';
 const COMBAT_KEYS = ['pro', 'retro', 'nrm', 'anm', 'radout', 'radin', 'bore'] as const;
 
 export class PlayerMarkers {
-  constructor(
+  public constructor(
     private readonly markers: MarkerSlots,
     private readonly id: string,
   ) { }
 
   // 戦闘ビューかつ操作対象のときは軌道軸・ボアサイトを出し、それ以外では戦闘ビュー用マーカーを隠す。
-  sync(
+  public sync(
     currentState: KinematicState, attitude: Quat, view: ViewMode, isActive: boolean, project: ProjectFn,
     rounds: number, beltLinks: number, muzzleSpeed: number, orbitAxesReference: KinematicState | null,
   ): void {
@@ -30,7 +30,7 @@ export class PlayerMarkers {
   }
 
   // キーは艦ごとに一意で増え続けるため、hide ではなく remove で DOM ごと片付ける。
-  dispose(): void {
+  public dispose(): void {
     for (const key of COMBAT_KEYS) this.markers.remove(`${key}-${this.id}`);
   }
 

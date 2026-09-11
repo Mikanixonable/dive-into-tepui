@@ -70,7 +70,7 @@ function el(tag: string, id: string, parent: HTMLElement, className = ''): HTMLE
 }
 
 export class MarkerManager implements MarkerSlots {
-  private markerDictionary = new Map<string, MarkerRecord>();
+  private readonly markerDictionary = new Map<string, MarkerRecord>();
   private readonly occlusionFadeTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly declutter = new LabelDeclutter();
   private readonly labelLayout: LabelLayout;
@@ -78,12 +78,12 @@ export class MarkerManager implements MarkerSlots {
   // 単独のオブジェクトでは決められないマーカー集合。敵マーカーは「画面上で近接するものを
   // まとめる」ために集合全体を、LEAD マーカーは自機と敵の両方を必要とする。
   // TODO: この2つは「表示機構」であるこのクラスとは別の分類にあたる。適切な所有者を決めて移す。
-  readonly combatMarkers: GroupedMarkers;
-  readonly leadMarkers: LeadMarkers;
+  public readonly combatMarkers: GroupedMarkers;
+  public readonly leadMarkers: LeadMarkers;
 
   // root: マーカー要素を追加する親(#hud)。svgOverlay: ラベル引き出し線を描く SVG。
-  constructor(
-    private root: HTMLElement,
+  public constructor(
+    private readonly root: HTMLElement,
     svgOverlay: SVGSVGElement,
   ) {
     this.labelLayout = new LabelLayout(svgOverlay);
@@ -92,7 +92,7 @@ export class MarkerManager implements MarkerSlots {
   }
 
   // マーカー(スクリーン座標)。visible=false で非表示。
-  set(
+  public set(
     key: string,
     cls: string,
     sym: string,
@@ -163,7 +163,7 @@ export class MarkerManager implements MarkerSlots {
   }
 
   // 3D空間上の「位置」を示すマーカー(敵機・補給・ノードなど、実在の座標そのもの)。
-  setPosition(
+  public setPosition(
     key: string,
     cls: string,
     sym: string,
@@ -184,7 +184,7 @@ export class MarkerManager implements MarkerSlots {
   }
 
   // 遮蔽判定を行い、天体に遮蔽されている場合は fadeOut、表示されている場合は setPosition するヘルパー。
-  setNodePosition(
+  public setNodePosition(
     key: string,
     cls: string,
     sym: string,
@@ -205,7 +205,7 @@ export class MarkerManager implements MarkerSlots {
   }
 
   // 3D空間上の「方向」を示すマーカー。origin から dir 方向へ MARKER_DIR_DIST だけ離れた仮想点を投影する。
-  setDirection(
+  public setDirection(
     key: string,
     cls: string,
     sym: string,
@@ -228,7 +228,7 @@ export class MarkerManager implements MarkerSlots {
   // 向ける rotationDeg に変換する(atan2 は 0=右方向を返すため +90 して補正する)。
   // set/setPosition の rotationDeg 引数へそのまま渡せる。速度が視線とほぼ平行で
   // 投影差が縮退し方位を定められないときは undefined を返す。
-  headingRotationDeg(
+  public headingRotationDeg(
     worldPos: Vec3,
     vel: Vec3,
     project: ProjectFn,
@@ -250,7 +250,7 @@ export class MarkerManager implements MarkerSlots {
   }
 
   // 方位角に 90° 足して回すので、sym は上向きの記号でなければならない。
-  setBearing(
+  public setBearing(
     key: string,
     cls: string,
     sym: string,
@@ -280,13 +280,13 @@ export class MarkerManager implements MarkerSlots {
   }
 
   // そのキーのマーカーを直前のフレームで画面へ出したか。遮蔽で薄れている途中も出していない扱い。
-  shows(key: string): boolean {
+  public shows(key: string): boolean {
     const m = this.markerDictionary.get(key);
     return m !== undefined && !m.hidden && !m.occlusionHidden && !this.occlusionFadeTimers.has(key);
   }
 
   // マーカーを隠す。要素は残るので、キーが有限で使い回す対象に使う。
-  hide(key: string): void {
+  public hide(key: string): void {
     const m = this.markerDictionary.get(key);
     if (!m) return;
     this.cancelOcclusionFade(key);
@@ -296,7 +296,7 @@ export class MarkerManager implements MarkerSlots {
   }
 
   // 透明化は CSS の遷移に任せるので、畳むのは遷移が終わる 300ms 後になる。
-  fadeOut(key: string): void {
+  public fadeOut(key: string): void {
     const m = this.markerDictionary.get(key);
     if (!m || m.occlusionHidden || m.hidden || this.occlusionFadeTimers.has(key)) return;
     m.root.style.display = 'block';
@@ -315,7 +315,7 @@ export class MarkerManager implements MarkerSlots {
   }
 
   // マーカーを DOM ごと削除する。
-  remove(key: string): void {
+  public remove(key: string): void {
     const m = this.markerDictionary.get(key);
     if (!m) return;
     this.cancelOcclusionFade(key);
@@ -324,7 +324,7 @@ export class MarkerManager implements MarkerSlots {
   }
 
   // マーカーの要素を一括で片付ける。root 自体は Hud の所有物なので中身を空にするだけにとどめる。
-  dispose(): void {
+  public dispose(): void {
     // 破棄後に発火して片付けた要素を触りにいかないよう、保留中のフェードは先に解除する。
     for (const timer of this.occlusionFadeTimers.values()) clearTimeout(timer);
     this.occlusionFadeTimers.clear();
@@ -343,7 +343,7 @@ export class MarkerManager implements MarkerSlots {
 
   // 全マーカーの優先度に基づくアイコン/ラベル間引きと、残ったラベルどうしの衝突緩和。
   // マップビューでのみ優先度間引きを行う。戦闘ビューでは照準や敵アイコン等を隠さない。
-  resolveCollisions(view: ViewMode): void {
+  public resolveCollisions(view: ViewMode): void {
     const activeRecords = this.collectActiveMarkerRecords();
     const hidden = this.declutter.compute(activeRecords, view === 'map');
     // 間引きの結果を CSS へ渡し、次フレームのヒステリシスが読む直前の状態として書き戻す。
