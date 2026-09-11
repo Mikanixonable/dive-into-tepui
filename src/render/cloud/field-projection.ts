@@ -1,5 +1,5 @@
-// 単位方向とテクスチャの uv の対応。雲の場を焼く側も読む側も、往復はこの契約だけを通る —
-// どの図法で持っているかを、写しの器も読み手も知らない。
+// 単位方向とテクスチャの uv の対応を図法ごとに持つ。雲の場を焼く側と読む側は、この契約を通して
+// 同じ図法を共有する。
 import * as THREE from 'three/webgpu';
 import { asin, atan, clamp, cos, dot, float, max, normalize, sin, sqrt, step, uniform, vec2, vec3 } from 'three/tsl';
 import { earthSurfaceUvFromRadialNode } from '../earth-surface-coordinate';
@@ -58,10 +58,12 @@ export class EquirectProjection implements FieldProjection {
     this.texelAngle = float(this.texelAngleValue);
   }
 
+  // u を経度、v を緯度(0 が北極)として読んだ単位方向。
   public directionAt(uv: Vec2Node): Vec3Node {
     return directionFromEquirectUv(uv);
   }
 
+  // 単位方向の経度・緯度の uv。u は 0..1 に畳む。
   public uvAt(direction: Vec3Node): Vec2Node {
     return equirectUvFromDirection(direction);
   }
@@ -72,8 +74,8 @@ export class EquirectProjection implements FieldProjection {
   }
 }
 
-// 正距円筒の地理UVを、指定した半軸の回転楕円体上の放射方向へ写す。地球の雲場は、
-// climate mapを読むUVと同じ楕円体の地理座標で焼いて読む。
+// 全球を、半軸 axes の回転楕円体の地理緯度・経度の正距円筒で持つ。u は地理経度、v は地理緯度
+// (0 が北極)で、中心からの放射方向と対応させる。
 export class EllipsoidEquirectProjection implements FieldProjection {
   public readonly width: number;
   public readonly wrapS: THREE.Wrapping = THREE.RepeatWrapping;
@@ -83,12 +85,14 @@ export class EllipsoidEquirectProjection implements FieldProjection {
   // 全球を覆う置き方は構築時に決まるので、版は 0 のまま。
   public readonly revision = 0;
 
+  // height は緯度 180° を割る texel 数(幅はその 2 倍)、axes は回転楕円体の半軸。
   public constructor(public readonly height: number, private readonly axes: Vec3Node) {
     this.width = height * 2;
     this.texelAngleValue = Math.PI / height;
     this.texelAngle = float(this.texelAngleValue);
   }
 
+  // uv の地理緯度・経度に法線が立つ楕円体上の点の、中心からの単位方向。
   public directionAt(uv: Vec2Node): Vec3Node {
     const longitude = uv.x.sub(0.5).mul(2 * Math.PI);
     const latitude = uv.y.sub(0.5).negate().mul(Math.PI);
@@ -98,10 +102,12 @@ export class EllipsoidEquirectProjection implements FieldProjection {
     return normalize(geographicNormal.mul(this.axes).mul(this.axes));
   }
 
+  // 中心からの単位方向が指す楕円体上の点の、地理緯度・経度の uv。
   public uvAt(direction: Vec3Node): Vec2Node {
     return earthSurfaceUvFromRadialNode(direction, this.axes);
   }
 
+  // 全球を覆うので、どの uv も値を持つ。
   public insideAt(): FloatNode {
     return float(1);
   }
@@ -147,6 +153,7 @@ export class OrthographicCap implements FieldProjection {
     this.revisionValue += 1;
   }
 
+  // 中心での 1 texel の角 [rad]。aim() で半径を置き直すと変わる。
   public get texelAngleValue(): number {
     return (this.sinRadius.value * 2) / this.width;
   }
@@ -154,6 +161,7 @@ export class OrthographicCap implements FieldProjection {
   // 置き方の版。aim() のたびに進む。
   public get revision(): number { return this.revisionValue; }
 
+  // 投影面上の uv から球面へ戻した単位方向。
   public directionAt(uv: Vec2Node): Vec3Node {
     // v は北から南へ増えるので、北成分は符号を返す。円板の外では中心からの距離を 1 で止める。
     const plane = vec2(uv.x.mul(2).sub(1), float(1).sub(uv.y.mul(2))).mul(this.sinRadius);
@@ -161,11 +169,13 @@ export class OrthographicCap implements FieldProjection {
     return this.east.mul(plane.x).add(this.north.mul(plane.y)).add(this.center.mul(alongCenter));
   }
 
+  // 単位方向を中心の接平面へ正射影した uv。裏側の半球も表側と同じ uv へ写る。
   public uvAt(direction: Vec3Node): Vec2Node {
     const plane = vec2(dot(direction, this.east), dot(direction, this.north)).div(this.sinRadius);
     return vec2(plane.x, plane.y.negate()).mul(0.5).add(0.5);
   }
 
+  // uv が円板の内側なら 1、四隅なら 0。
   public insideAt(uv: Vec2Node): FloatNode {
     const offset = uv.mul(2).sub(1);
     return step(dot(offset, offset), 1);

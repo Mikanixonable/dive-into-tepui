@@ -1,8 +1,5 @@
 // 描画パスごとの GPU 実行時間 [ms] を溜める。パスは数値インデックスで指す(`GPU_PASS` の各値)。
-//
-// `frame-sections.ts` の update 側と同型だが、値が非同期に届く点だけが違う。GPU の時刻印は
-// フレーム N のぶんがフレーム N+k に返るので、`enter`/`exit` がその場で確定する `FrameSections`
-// とは器を分ける。表示は 500ms 窓の平均なので、この遅れは読みに出ない。
+// GPU の時刻印はフレーム N のぶんがフレーム N+k に返るので、値は数フレーム遅れて非同期に届く。
 import { InspectorBase, TimestampQuery, type WebGPURenderer } from 'three/webgpu';
 
 // パスの識別子。並びは描画フェーズでの実行順。
@@ -65,9 +62,10 @@ interface RenderTimestampPool {
 const PENDING_UID_CAP = GPU_PASS_COUNT * 8;
 
 // renderer.render() 呼び出しの uid を、直前の GpuTimings.beginPass が宣言したパスへ結び付ける
-// だけの Inspector。GpuTimings 自身に InspectorBase を継承させず別クラスへ切り出すのは、
-// InspectorBase が持つ広いメソッド一式(beginCompute など)を GpuTimings の公開面へ持ち込まないため。
+// Inspector。InspectorBase の広いメソッド一式(beginCompute など)を GpuTimings の公開面へ持ち込まない
+// よう、GpuTimings とは別のクラスにする。
 class PassInspector extends InspectorBase {
+  // onBegin は render() の呼び出しごとにその uid を、onFinish はその終わりを受け取る。
   constructor(
     private readonly onBegin: (uid: string) => void,
     private readonly onFinish: () => void,
@@ -115,11 +113,8 @@ export class GpuTimings {
   // 時刻印が実際に取れているか。デバイスが timestamp-query を持たない環境では偽のままになる。
   get supported(): boolean { return this.available; }
 
-  // このあと最初に来る renderer.render() 呼び出しが id の描画パスであることを宣言する。
-  // パイプラインはそのパスを発行する直前に毎回呼ぶ。
-  //
-  // 窓が閉じている間は「測定は何もしない」という enabled の規則どおり、フレームごとの
-  // 記帳自体を省く。
+  // このあと最初に来る renderer.render() 呼び出しが id の描画パスであることを宣言する。パスを
+  // 発行する直前に毎回呼ぶ。enabled が偽の間は宣言を捨てる。
   beginPass(id: GpuPassId): void {
     if (!this.enabled) return;
     this.pendingPass = id;
@@ -135,9 +130,9 @@ export class GpuTimings {
     if (this.enabled && this.outerPass !== null) this.passByUid.set(uid, this.outerPass);
   }
 
-  // 深さの記帳は enabled によらず行う。窓の開閉が描画の途中に挟まっても、深さが
-  // 釣り合わないまま取り残されないようにする。
+  // render() の終わりで入れ子の深さを戻し、いちばん外側が閉じたらパスの帰属を解く。
   private onFinishRender(): void {
+    // 深さは enabled によらず戻す — 窓の開閉が描画の途中に挟まると、深さが釣り合わなくなる。
     if (this.renderDepth > 0) this.renderDepth--;
     if (this.renderDepth === 0) this.outerPass = null;
   }

@@ -1,6 +1,5 @@
 // 1 天体ぶんの雲場と、表現 renderer へ渡す表示状態を束ねるゲーム境界。雲場の出どころ(生成/実写)を
-// 選び、選んだ場の用意と不透明表面 renderer の寿命をここで管理するが、大気・影 renderer の GPU
-// 資源は所有しない。
+// 選び、選んだ場の用意と不透明表面 renderer の寿命を管理する。
 import * as THREE from 'three/webgpu';
 import {
   CUMULUS_DETAIL, OpaqueCloudSurfaceRenderer, type CumulusDetail,
