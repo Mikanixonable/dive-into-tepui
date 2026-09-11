@@ -1,6 +1,9 @@
 // 軌道上の補給物のモデル。種類ごとに色の違うビーコンを載せる。
 import * as THREE from 'three';
-import { buildMagazineMesh, MAG_THICKNESS } from './gun-parts.mjs';
+import { importTsDataModule } from '../compile-source.mjs';
+import { buildMagazineMesh } from './gun-parts.mjs';
+
+const { MAG_THICKNESS } = await importTsDataModule('src/physics/player-shape.ts');
 
 // 軌道上の弾薬補給ピックアップ。マガジン数個(既定 4)とビーコンを束ねる。
 export function buildAmmoPickup(count = 4) {
