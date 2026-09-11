@@ -8,8 +8,12 @@ import { kinematicState, type KinematicState } from '../../../physics/kinematic-
 import type { FlashEffects } from '../../vfx/flash-effects';
 import type { CapKind } from './entity-kind';
 import {
-  buildDebrisPieceView, type DebrisPieceVariant,
-} from '../../../render/dynamic/dynamic-entity/debris-piece-view';
+  buildBoosterExplosiveBoltMesh, buildBoosterInterstageCoverPanelMesh,
+} from '../../../render/dynamic/booster-model';
+import { CasingView } from '../../../render/dynamic/dynamic-entity/casing-view';
+import { DebrisFragmentView } from '../../../render/dynamic/dynamic-entity/debris-fragment-view';
+import { DynamicView } from '../../../render/dynamic/dynamic-view';
+import { buildBarrelMesh, buildMagazineFrameMesh } from '../../../render/dynamic/ejected-gun-part-model';
 import { DynamicEntity } from './dynamic-entity';
 import type { DebrisKind } from './debris-kind';
 import { DebrisMotion } from './debris-motion';
@@ -19,24 +23,24 @@ import {
   PLAYER_DESTROY_FRAG_COLOR,
 } from '../../../render/vfx-style';
 
-// 論理種別を、その破片をどう描くかの宣言へ移す。
-function debrisPieceVariant(debrisKind: DebrisKind): DebrisPieceVariant {
+// 論理種別から、その破片を描く View を組み立てる。メッシュだけが違う種別は DynamicView をそのまま使う。
+function debrisPieceView(debrisKind: DebrisKind, scene?: THREE.Scene): DynamicView {
   switch (debrisKind.kind) {
-    case 'fragment':
-      return { kind: 'fragment', accent: debrisKind.accent, size: debrisKind.size };
-    case 'barrel': return { kind: 'barrel' };
-    case 'magazineFrame': return { kind: 'magazineFrame' };
-    case 'casing': return { kind: 'casing' };
+    case 'fragment': return new DebrisFragmentView(debrisKind.accent, debrisKind.size, scene);
+    case 'barrel': return new DynamicView(buildBarrelMesh(), scene);
+    case 'magazineFrame': return new DynamicView(buildMagazineFrameMesh(), scene);
+    case 'casing': return new CasingView(scene);
     case 'boosterCover':
-      return { kind: 'boosterCover', segment: debrisKind.segment };
+      return new DynamicView(buildBoosterInterstageCoverPanelMesh(debrisKind.segment), scene);
     case 'boosterBolt':
-      return { kind: 'boosterBolt', segment: debrisKind.segment };
+      return new DynamicView(buildBoosterExplosiveBoltMesh(debrisKind.segment), scene);
   }
 }
 
 export class DebrisPiece extends DynamicEntity {
   public override readonly capKind: CapKind;
 
+  // 破片1個を、種別 debrisKind に応じた View と Motion で組み立てる。
   public constructor(
     state: KinematicState,
     debrisKind: DebrisKind,
@@ -48,7 +52,7 @@ export class DebrisPiece extends DynamicEntity {
   ) {
     super(
       state,
-      buildDebrisPieceView(debrisPieceVariant(debrisKind), scene),
+      debrisPieceView(debrisKind, scene),
       attitude,
       undefined,
       () => new DebrisMotion(state, attitude, {
