@@ -177,6 +177,14 @@ interface TileLeaf extends EarthTileResident {
   readonly fadingOut: boolean;
 }
 
+interface SplitPlanGroup {
+  readonly key: EarthTileKey;
+  readonly parentId: string;
+  readonly priority: number;
+  readonly keys: readonly EarthTileKey[];
+  readonly dependencies: Set<string>;
+}
+
 // 安定して表示する葉を作る。base層の場合も、その葉の地理的な範囲を保つ。
 function stableLeaf(key: EarthTileKey, layer: number): TileLeaf {
   return { key, layer, parentLayer: EARTH_BASE_LAYER, fadeStartMs: null, fadingOut: false };
@@ -200,35 +208,14 @@ export class EarthSurfaceTiles {
   // 次の分割で必要になる層を返す。frontierの選択は変えず、要求側が親を表示したまま
   // 子を先行取得できるように候補だけを計算する。
   public requestCandidates(projection: EarthTileProjection): readonly EarthTileKey[] {
-    const groups = new Map<string, {
-      readonly parentId: string;
-      readonly priority: number;
-      readonly keys: readonly EarthTileKey[];
-    }>();
-    for (const leaf of this.leaves) {
-      if (leaf.fadeStartMs !== null) continue;
-      const metric = projection.evaluate(leaf.key);
-      if (!metric.visible) continue;
-      // 全球baseにはまだ詳細層がないため、まずその地域の根を要求する。
-      if (leaf.layer === EARTH_BASE_LAYER) {
-        const parentId = earthTileId(leaf.key);
-        groups.set(parentId, { parentId, priority: metric.priority, keys: [leaf.key] });
-        continue;
-      }
-      if (leaf.key.z >= EARTH_TILE_MAX_Z || metric.errorPx <= SPLIT_ERROR_PX) continue;
-      // 2:1制約と親子fadeを同時に満たすには、分割する親の4子が必要になる。
-      const children = earthTileChildren(leaf.key);
-      const childMetrics = children.map((child) => projection.evaluate(child));
-      const priority = Math.max(metric.priority, ...childMetrics.map((child) => child.priority));
-      const parentId = earthTileId(leaf.key);
-      groups.set(parentId, {
-        parentId, priority,
-        keys: children.slice().sort((a, b) => earthTileId(a).localeCompare(earthTileId(b))),
-      });
-    }
-    return [...groups.values()]
-      .sort((a, b) => b.priority - a.priority || a.parentId.localeCompare(b.parentId))
-      .flatMap((group) => group.keys);
+    const metrics = new Map<string, EarthTileMetric>();
+    const evaluate = (key: EarthTileKey): EarthTileMetric => {
+      const id = earthTileId(key);
+      const value = metrics.get(id) ?? projection.evaluate(key);
+      metrics.set(id, value);
+      return value;
+    };
+    return this.orderSplitPlan(this.planSplitGroups(this.leaves, evaluate)).flatMap((group) => group.keys);
   }
 
   // 非表示へ移った葉はpinせず、可視frontierとfade中の層だけを返す。
@@ -252,12 +239,14 @@ export class EarthSurfaceTiles {
     const available = new Map(residents.map((tile) => [earthTileId(tile.key), tile]));
     this.drawingTimeMs = timeMs;
     this.finishFades(timeMs);
-    const availableLayers = new Set(residents.map((tile) => tile.layer));
     // coordinatorが画面外の層を再利用した場合、leafが持つ旧layerをそのまま
     // ページ表へ出さない。次の分割はbaseから再取得する。
     this.leaves = this.leaves.map((leaf) => {
-      const layerValid = leaf.layer === EARTH_BASE_LAYER || availableLayers.has(leaf.layer);
-      const parentValid = leaf.parentLayer === EARTH_BASE_LAYER || availableLayers.has(leaf.parentLayer);
+      const resident = available.get(earthTileId(leaf.key));
+      const parent = earthTileParent(leaf.key);
+      const layerValid = leaf.layer === EARTH_BASE_LAYER || resident?.layer === leaf.layer;
+      const parentValid = leaf.parentLayer === EARTH_BASE_LAYER
+        || (parent !== null && available.get(earthTileId(parent))?.layer === leaf.parentLayer);
       if (!layerValid) return stableLeaf(leaf.key, EARTH_BASE_LAYER);
       if (!parentValid) return { ...leaf, parentLayer: EARTH_BASE_LAYER, fadeStartMs: null, fadingOut: false };
       return leaf;
@@ -331,10 +320,10 @@ export class EarthSurfaceTiles {
     let frontier = this.leaves.map((leaf) => leaf.key);
     let splitGroups = 0;
     let pinned = this.pinnedLeafLayers();
-    const candidates = frontier.filter((key) => evaluate(key).visible && evaluate(key).errorPx > SPLIT_ERROR_PX)
-      .sort((a, b) => evaluate(b).priority - evaluate(a).priority);
-    for (const key of candidates) {
+    const groups = this.orderSplitPlan(this.planSplitGroups(this.leaves, evaluate));
+    for (const group of groups) {
       if (splitGroups >= SPLIT_GROUPS_PER_SYNC) break;
+      const key = group.key;
       if (!canSplit(key) || !frontier.some((leaf) => earthTileId(leaf) === earthTileId(key))) continue;
       const proposal = this.splitFrontier(frontier, key);
       if (proposal === null) continue;
@@ -365,14 +354,84 @@ export class EarthSurfaceTiles {
 
   // 2:1制約を壊す分割を延期し、現在のfrontierを有効な葉のまま保つ。
   private splitFrontier(frontier: readonly EarthTileKey[], parent: EarthTileKey): readonly EarthTileKey[] | null {
+    if (this.splitBlockers(frontier, parent).length > 0) return null;
     const remaining = frontier.filter((key) => earthTileId(key) !== earthTileId(parent));
     const children = earthTileChildren(parent);
-    for (const child of children) {
+    return remaining.concat(children);
+  }
+
+  // 親を分割すると2:1制約を壊す、より粗い隣接leafを決定的に返す。
+  private splitBlockers(frontier: readonly EarthTileKey[], parent: EarthTileKey): readonly EarthTileKey[] {
+    const remaining = frontier.filter((key) => earthTileId(key) !== earthTileId(parent));
+    const blockers = new Map<string, EarthTileKey>();
+    for (const child of earthTileChildren(parent)) {
       for (const leaf of remaining) {
-        if (leaf.z < parent.z && earthTilesAdjacent(child, leaf)) return null;
+        if (leaf.z < parent.z && earthTilesAdjacent(child, leaf)) blockers.set(earthTileId(leaf), leaf);
       }
     }
-    return remaining.concat(children);
+    return [...blockers.values()].sort((a, b) => earthTileId(a).localeCompare(earthTileId(b)));
+  }
+
+  // 高errorの分割と、それを2:1のために先行させる粗い隣接分割の閉包を作る。
+  private planSplitGroups(
+    leaves: readonly TileLeaf[], evaluate: (key: EarthTileKey) => EarthTileMetric,
+  ): readonly SplitPlanGroup[] {
+    const groups = new Map<string, SplitPlanGroup>();
+    const frontier = leaves.map((leaf) => leaf.key);
+    const byId = new Map(leaves.map((leaf) => [earthTileId(leaf.key), leaf]));
+    const add = (key: EarthTileKey): SplitPlanGroup => {
+      const parentId = earthTileId(key);
+      const existing = groups.get(parentId);
+      if (existing !== undefined) return existing;
+      const leaf = byId.get(parentId);
+      const metric = evaluate(key);
+      if (leaf?.layer === EARTH_BASE_LAYER || key.z >= EARTH_TILE_MAX_Z) {
+        const group: SplitPlanGroup = { key, parentId, priority: metric.priority, keys: [key], dependencies: new Set() };
+        groups.set(parentId, group);
+        return group;
+      }
+      const children = earthTileChildren(key);
+      const childMetrics = children.map((child) => evaluate(child));
+      const group: SplitPlanGroup = {
+        key, parentId,
+        priority: Math.max(metric.priority, ...childMetrics.map((child) => child.priority)),
+        keys: children.slice().sort((a, b) => earthTileId(a).localeCompare(earthTileId(b))),
+        dependencies: new Set(),
+      };
+      groups.set(parentId, group);
+      for (const blocker of this.splitBlockers(frontier, key)) {
+        const dependency = add(blocker);
+        group.dependencies.add(dependency.parentId);
+      }
+      return group;
+    };
+
+    for (const leaf of leaves) {
+      if (leaf.fadeStartMs !== null) continue;
+      const metric = evaluate(leaf.key);
+      if (leaf.layer === EARTH_BASE_LAYER) {
+        if (metric.visible) add(leaf.key);
+      } else if (metric.visible && metric.errorPx > SPLIT_ERROR_PX) {
+        add(leaf.key);
+      }
+    }
+    return [...groups.values()];
+  }
+
+  // 依存groupを必ず先に置き、同じ段ではpriorityと親IDで順序を固定する。
+  private orderSplitPlan(groups: readonly SplitPlanGroup[]): readonly SplitPlanGroup[] {
+    const ordered: SplitPlanGroup[] = [];
+    const emitted = new Set<string>();
+    while (ordered.length < groups.length) {
+      const ready = groups.filter((group) => !emitted.has(group.parentId)
+        && [...group.dependencies].every((dependency) => emitted.has(dependency)))
+        .sort((a, b) => b.priority - a.priority || a.parentId.localeCompare(b.parentId));
+      const next = ready[0];
+      if (next === undefined) break;
+      ordered.push(next);
+      emitted.add(next.parentId);
+    }
+    return ordered;
   }
 
   private pinnedLeafLayers(): Set<number> {
