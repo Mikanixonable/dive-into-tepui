@@ -301,8 +301,8 @@ export class LabView {
     return this.scratchBox.getCenter(this.caseCenterVector);
   }
 
-  // いまのケースを、観察の向きと描画品質設定の現在値で 1 フレーム描く。
-  public render(): void {
+  // いまのケースを、観察の向きと描画品質設定の現在値で、表示時刻 displayTime [s] の 1 フレームとして描く。
+  public render(displayTime = 0): void {
     if (this.current === null) return;
     // ケースの部品が読む設定は、この1フレームを組む前に押し込む。
     this.applyCloudSampling();
@@ -343,7 +343,7 @@ export class LabView {
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
     this.pipeline.cumulusShadow.set(
       castsCumulusShadow(this.graphicsData) ? this.current.cumulus ?? null : null);
-    this.current.bakeClouds?.(this.renderer, 0);
+    this.current.bakeClouds?.(this.renderer, displayTime, this.gpu);
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     // 雲を切る設定では、大気へ立てる殻もゲーム本体と同じように外す。
     this.pipeline.atmosphere.setDraws(atmosphereDraws(
@@ -373,9 +373,11 @@ export class LabView {
     this.gpu.reset();
 
     // 暖機。計測に入れないフレームを回して、シェーダのコンパイルや初回の転送を済ませる。
+    // 表示時刻は 60fps で進める — 雲場は表示時刻が変わったフレームにだけ焼くので、止めると生成を測れない。
     for (let frame = 0; frame < warmupFrames; frame++) {
-      this.current?.updateProteinMotion?.((frame + 1) / 60);
-      this.render();
+      const displayTime = (frame + 1) / 60;
+      this.current?.updateProteinMotion?.(displayTime);
+      this.render(displayTime);
       await this.gpu.waitForResolve();
     }
     this.gpu.reset();
@@ -385,8 +387,9 @@ export class LabView {
     const gpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => [] as number[]);
     const motion = new ProteinMotionMetricsRecorder();
     for (let frame = 0; frame < sampleFrames; frame++) {
-      const motionSample = this.current?.updateProteinMotion?.((warmupFrames + frame + 1) / 60);
-      this.render();
+      const displayTime = (warmupFrames + frame + 1) / 60;
+      const motionSample = this.current?.updateProteinMotion?.(displayTime);
+      this.render(displayTime);
       cpuSamples.push(this.lastRenderCpuMs);
       await this.gpu.waitForResolve();
       const snapshot = this.gpu.snapshot();
