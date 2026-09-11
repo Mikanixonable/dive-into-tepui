@@ -6,9 +6,10 @@ import type { CelestialSurfaceFrame } from './celestial/celestial-surface';
 import { DeferredTexture } from './deferred-texture';
 import {
   EARTH_BASE_TERRAIN_HEIGHT, EARTH_BASE_TERRAIN_WIDTH, loadEarthBaseTerrain,
-} from './earth-surface-decode';
+} from './earth-surface-terrain-codec';
 import type { EarthSurfaceGpuTextures } from './earth-surface-gpu';
 import { createEarthSurfaceNodeMaterial } from './earth-surface-material-node';
+import { configureEarthSurfaceTexture } from './earth-surface-texture';
 import type { Mat3Uniform, Vec3Node, Vec3Uniform, BoolUniform } from './tsl-types';
 
 export interface EarthSurfaceMaterialBinding {
@@ -39,13 +40,7 @@ function createBaseTerrainTexture(): { readonly texture: THREE.DataTexture; read
     data, EARTH_BASE_TERRAIN_WIDTH, EARTH_BASE_TERRAIN_HEIGHT,
     THREE.RGBAFormat, THREE.UnsignedByteType,
   );
-  // 色ではなく数値として、ミップを持たずに線形補間で読む。
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  texture.colorSpace = THREE.NoColorSpace;
-  texture.generateMipmaps = false;
-  texture.flipY = false;
-  texture.unpackAlignment = 1;
+  configureEarthSurfaceTexture(texture, 'terrain');
   texture.needsUpdate = true;
   return { texture, data };
 }

@@ -7,9 +7,10 @@ import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
 import { EarthSurfaceGpuThree } from '../../src/render/earth-surface-gpu-three';
 import { createEarthSurfaceMaterialBinding } from '../../src/render/earth-surface-material-binding';
 import type { EarthSurfaceGpuTextures } from '../../src/render/earth-surface-gpu';
-import { EARTH_TILE_LAYERS, EarthSurfaceView } from '../../src/render/earth-surface-tiles';
+import { EARTH_TILE_LAYERS } from '../../src/render/earth-surface-tile-key';
+import { EarthSurfaceView } from '../../src/render/earth-surface-tile-projection';
 import type { EarthSurfaceResidentFrame } from '../../src/render/earth-surface-resident';
-import type { EarthSurfaceSource } from '../../src/game/celestial/solar-system/earth-surface-source';
+import type { EarthSurfaceSource } from '../../src/render/earth-surface-source';
 import type {
   CelestialSurfaceFrame,
   CelestialSurfaceLike,
@@ -224,5 +225,26 @@ export function register(): void {
 
     surface.dispose();
     gpu.dispose();
+  });
+
+  test('earth surface: source切替は旧coordinatorと詳細材質を同じ境界で解放する', () => {
+    const fallback = CelestialSurface.solid([0.1, 0.1, 0.1]);
+    const surface = new EarthSurface(new EarthSurfaceContext(SOURCE), fallback);
+    const coordinator = new CoordinatorSpy();
+    const detailMaterial = new THREE.MeshStandardMaterial();
+    let disposed = 0;
+    const nextSource = { ...SOURCE, datasetId: 'earth-test-next' };
+
+    surface.attach(SOURCE, coordinator, 'ready', {
+      material: detailMaterial,
+      deferred: [],
+      onDispose: () => { disposed++; },
+      syncFrame: () => {},
+    });
+    surface.attach(nextSource, null, 'fallback');
+
+    assert.equal(coordinator.disposed, true);
+    assert.equal(disposed, 1);
+    surface.dispose();
   });
 }

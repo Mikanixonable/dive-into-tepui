@@ -12,7 +12,8 @@ import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albe
 import climateTextureUrl from '../../src/assets/earth-climate.png';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
 import { R_EARTH, R_EARTH_EQ, R_SUN, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/constants';
-import { EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE } from '../../src/game/celestial/solar-system/earth-system';
+import { EARTH, EARTH_ATMOSPHERE_OPTICS } from '../../src/game/celestial/solar-system/earth-system';
+import { EARTH_TEXTURE } from '../../src/render/earth-surface-defaults';
 import { shapeAxes, shapeSpheroidRadii, type RingBandDef } from '../../src/physics/celestial-body-def';
 import { BodyGraticule } from '../../src/render/celestial/body-graticule';
 import { LineOverlay, type LatLonPolyline } from '../../src/render/celestial/line-overlay';

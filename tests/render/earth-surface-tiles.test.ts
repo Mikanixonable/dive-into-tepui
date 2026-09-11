@@ -3,11 +3,16 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import {
-  EARTH_BASE_LAYER, EARTH_TILE_FRONTIER_LAYERS, EARTH_TILE_MIN_Z, EarthSurfaceTiles, EarthSurfaceView, earthPageAt,
+  EARTH_BASE_LAYER, EARTH_TILE_FRONTIER_LAYERS, EARTH_TILE_MIN_Z,
   earthTileChildren, earthTileId, earthTileKey, earthTileNeighbors, earthTileParent, earthTileRoots,
-  earthTilesAdjacent, earthTileSampleUv,
-} from '../../src/render/earth-surface-tiles';
-import type { EarthTileKey, EarthTileMetric, EarthTileProjection, EarthTileResident } from '../../src/render/earth-surface-tiles';
+  earthTilesAdjacent,
+} from '../../src/render/earth-surface-tile-key';
+import { earthPageAt, earthTileSampleUv } from '../../src/render/earth-surface-page-table';
+import { EarthSurfaceView } from '../../src/render/earth-surface-tile-projection';
+import { EarthSurfaceTiles } from '../../src/render/earth-surface-tiles';
+import type { EarthTileResident } from '../../src/render/earth-surface-tiles';
+import type { EarthTileKey } from '../../src/render/earth-surface-tile-key';
+import type { EarthTileMetric, EarthTileProjection } from '../../src/render/earth-surface-tile-projection';
 
 const ROOTS = earthTileRoots().slice(0, 2);
 

@@ -2,15 +2,15 @@
 // タイル選択・世代・公開順はEarthSurfaceGpuAdapterが所有し、このクラスは実テクスチャの
 // 生成と非公開層へのバッファ書込みだけを担当する。WebGPU非対応時は配列層を作らずbaseへ固定する。
 import * as THREE from 'three/webgpu';
-import {
-  EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS,
-} from './earth-surface-tiles';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from './earth-surface-page-table';
+import { EARTH_TILE_EXTENT, EARTH_TILE_LAYERS } from './earth-surface-tile-key';
 import {
   supportsEarthSurfaceTiles,
   type EarthSurfaceGpuBackend,
   type EarthSurfaceGpuCapabilities,
   type EarthSurfaceGpuTextures,
 } from './earth-surface-gpu';
+import { configureEarthSurfaceTexture } from './earth-surface-texture';
 
 const EARTH_CHANNELS = 4;
 const EARTH_TILE_COMPONENTS = EARTH_TILE_EXTENT * EARTH_TILE_EXTENT * EARTH_CHANNELS;
@@ -47,28 +47,6 @@ function requirePixels(pixels: Uint8Array, expected: number, label: string): voi
   if (pixels.length !== expected) throw new RangeError(`Invalid Earth ${label} size`);
 }
 
-function configureArrayTexture(
-  texture: THREE.DataArrayTexture, colorSpace: THREE.ColorSpace,
-): THREE.DataArrayTexture {
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  texture.colorSpace = colorSpace;
-  texture.generateMipmaps = false;
-  texture.flipY = false;
-  texture.unpackAlignment = 1;
-  return texture;
-}
-
-function configurePageTable(texture: THREE.DataTexture): THREE.DataTexture {
-  texture.minFilter = THREE.NearestFilter;
-  texture.magFilter = THREE.NearestFilter;
-  texture.colorSpace = THREE.NoColorSpace;
-  texture.generateMipmaps = false;
-  texture.flipY = false;
-  texture.unpackAlignment = 1;
-  return texture;
-}
-
 export class EarthSurfaceGpuThree implements EarthSurfaceGpuBackend {
   public readonly textures: EarthSurfaceGpuTextures | null;
   private disposed = false;
@@ -78,24 +56,22 @@ export class EarthSurfaceGpuThree implements EarthSurfaceGpuBackend {
       this.textures = null;
       return;
     }
-    const color = configureArrayTexture(
+    const color = configureEarthSurfaceTexture(
       new THREE.DataArrayTexture(
         new Uint8Array(EARTH_TILE_COMPONENTS * EARTH_TILE_LAYERS),
         EARTH_TILE_EXTENT, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS,
-      ),
-      THREE.SRGBColorSpace,
+      ), 'color',
     );
-    const terrain = configureArrayTexture(
+    const terrain = configureEarthSurfaceTexture(
       new THREE.DataArrayTexture(
         new Uint8Array(EARTH_TILE_COMPONENTS * EARTH_TILE_LAYERS),
         EARTH_TILE_EXTENT, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS,
-      ),
-      THREE.NoColorSpace,
+      ), 'terrain',
     );
-    const pageTable = configurePageTable(new THREE.DataTexture(
+    const pageTable = configureEarthSurfaceTexture(new THREE.DataTexture(
       new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * EARTH_CHANNELS),
       EARTH_PAGE_WIDTH, EARTH_PAGE_HEIGHT, THREE.RGBAFormat, THREE.UnsignedByteType,
-    ));
+    ), 'pageTable');
     this.textures = { color, terrain, pageTable };
   }
 

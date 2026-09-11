@@ -6,6 +6,10 @@ import { DeferredTexture } from '../deferred-texture';
 import { markLitOpaque } from '../pipeline/lit-layer';
 import { rec709Luminance, scaledToBondAlbedo, type Albedo } from '../celestial-albedo';
 import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './screen-lod';
+import {
+  disposeCelestialSurfaceMaterialAttachment,
+  type CelestialSurfaceMaterialAttachment,
+} from './celestial-surface-material';
 import type { CelestialTexture } from '../celestial-textures';
 import type { Vec2Node, Vec3Node } from '../tsl-types';
 import type { RenderStyle } from '../render-style';
@@ -117,14 +121,6 @@ export interface CelestialSurfaceLike {
   dispose(): void;
 }
 
-// replaceMaterial へ渡す詳細材質と、表面が解放まで持つ資源。onDispose は材質を外すときに呼ばれる。
-export interface CelestialSurfaceMaterialAttachment {
-  readonly material: THREE.Material;
-  readonly deferred: readonly DeferredTexture[];
-  readonly textures?: readonly THREE.Texture[];
-  readonly onDispose?: () => void;
-}
-
 // 実写テクスチャの測光。倍率を掛ける前の平均色を、その天体のボンドアルベドへ合わせる。
 function photometryOf(texture: CelestialTexture): SurfacePhotometry {
   return {
@@ -137,27 +133,21 @@ export class CelestialSurface implements CelestialSurfaceLike {
   // 段ごとの半径 1 の球。表示側が親の位置・スケール・自転姿勢を毎フレーム与える。
   private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
   private activeLevel: SphereLodLevel | null = null;
-  private readonly fallbackMaterial: THREE.Material;
-  private readonly fallbackDeferred: readonly DeferredTexture[];
-  private readonly fallbackTextures: readonly THREE.Texture[];
-  private usingFallbackMaterial = true;
-  private materialOnDispose: (() => void) | undefined;
+  private readonly fallbackAttachment: CelestialSurfaceMaterialAttachment;
+  private activeAttachment: CelestialSurfaceMaterialAttachment;
 
   // material と deferred のテクスチャは解放までこの表面が持つ。photometry / textureUrl は静的事実。
   private constructor(
-    private material: THREE.Material,
-    private deferred: readonly DeferredTexture[],
-    private ownedTextures: readonly THREE.Texture[],
+    fallbackAttachment: CelestialSurfaceMaterialAttachment,
     public readonly photometry: SurfacePhotometry | null,
     public readonly textureUrl: string | null,
   ) {
-    this.fallbackMaterial = material;
-    this.fallbackDeferred = deferred;
-    this.fallbackTextures = ownedTextures;
+    this.fallbackAttachment = fallbackAttachment;
+    this.activeAttachment = fallbackAttachment;
     const meshes = new Map<SphereLodLevel, THREE.Mesh>();
     // 段ごとにメッシュを持つ — WebGPU では mesh.geometry の差し替えが効かない。
     for (const level of SPHERE_LOD_LADDER) {
-      const mesh = new THREE.Mesh(unitSphereGeometry(level), material);
+      const mesh = new THREE.Mesh(unitSphereGeometry(level), fallbackAttachment.material);
       mesh.visible = false;
       markLitOpaque(mesh);
       meshes.set(level, mesh);
@@ -182,8 +172,10 @@ export class CelestialSurface implements CelestialSurfaceLike {
       material.roughnessNode = textureNode(smoothnessMap.texture, uv()).r.oneMinus();
     }
     return new CelestialSurface(
-      material, smoothnessMap === null ? [map] : [map, smoothnessMap],
-      [],
+      {
+        material,
+        deferred: smoothnessMap === null ? [map] : [map, smoothnessMap],
+      },
       photometryOf(texture), texture.url);
   }
 
@@ -194,7 +186,7 @@ export class CelestialSurface implements CelestialSurfaceLike {
       roughness: 1, metalness: 0,
     });
     return new CelestialSurface(
-      material, [], [], { bondAlbedo: rec709Luminance(albedo), lightSourceAlbedo: albedo }, null);
+      { material, deferred: [] }, { bondAlbedo: rec709Luminance(albedo), lightSourceAlbedo: albedo }, null);
   }
 
   public get diagnostics(): CelestialSurfaceDiagnostics | null { return null; }
@@ -208,41 +200,27 @@ export class CelestialSurface implements CelestialSurfaceLike {
   // restoreFallbackMaterial のために残す。
   public replaceMaterial(attachment: CelestialSurfaceMaterialAttachment): void {
     // 前に差し込んだ詳細材質とその資源を解放する。
-    if (!this.usingFallbackMaterial) {
-      this.materialOnDispose?.();
-      this.material.dispose();
-      for (const deferred of this.deferred) deferred.dispose();
-      for (const texture of this.ownedTextures) texture.dispose();
+    if (this.activeAttachment !== this.fallbackAttachment) {
+      disposeCelestialSurfaceMaterialAttachment(this.activeAttachment);
     }
     // 新しい材質を全段へ付け替える。
-    this.material = attachment.material;
-    this.deferred = attachment.deferred;
-    this.ownedTextures = attachment.textures ?? [];
-    this.materialOnDispose = attachment.onDispose;
-    this.usingFallbackMaterial = false;
+    this.activeAttachment = attachment;
     for (const mesh of this.meshes.values()) mesh.material = attachment.material;
   }
 
   // 差し込んだ詳細材質とその資源を解放し、初期の材質へ戻す。詳細材質が無ければ何もしない。
   public restoreFallbackMaterial(): void {
-    if (this.usingFallbackMaterial) return;
+    if (this.activeAttachment === this.fallbackAttachment) return;
     // 詳細材質とその資源を解放する。
-    this.materialOnDispose?.();
-    this.material.dispose();
-    for (const deferred of this.deferred) deferred.dispose();
-    for (const texture of this.ownedTextures) texture.dispose();
+    disposeCelestialSurfaceMaterialAttachment(this.activeAttachment);
     // 初期の材質を全段へ戻す。
-    this.material = this.fallbackMaterial;
-    this.deferred = this.fallbackDeferred;
-    this.ownedTextures = this.fallbackTextures;
-    this.materialOnDispose = undefined;
-    this.usingFallbackMaterial = true;
-    for (const mesh of this.meshes.values()) mesh.material = this.material;
+    this.activeAttachment = this.fallbackAttachment;
+    for (const mesh of this.meshes.values()) mesh.material = this.fallbackAttachment.material;
   }
 
   // 見かけ直径 [px] から分割段を選び、その段のメッシュを見せる。テクスチャ画像の取得もここで始める。
   public syncLod(apparentDiameterPx: number): void {
-    for (const deferred of this.deferred) deferred.request();
+    for (const deferred of this.activeAttachment.deferred) deferred.request();
     const level = sphereLodLevel(apparentDiameterPx);
     if (level === this.activeLevel) return;
     this.activeLevel = level;
@@ -262,21 +240,9 @@ export class CelestialSurface implements CelestialSurfaceLike {
   // 連鎖解放されないので個別に解放する。
   public dispose(): void {
     for (const mesh of this.meshes.values()) mesh.removeFromParent();
-    this.materialOnDispose?.();
-    this.materialOnDispose = undefined;
-    // 初期の材質のままなら、それを解放して終える。
-    if (this.usingFallbackMaterial) {
-      this.fallbackMaterial.dispose();
-      for (const deferred of this.fallbackDeferred) deferred.dispose();
-      for (const texture of this.fallbackTextures) texture.dispose();
-      return;
+    if (this.activeAttachment !== this.fallbackAttachment) {
+      disposeCelestialSurfaceMaterialAttachment(this.activeAttachment);
     }
-    // 詳細材質と初期の材質の両方を解放する。
-    this.material.dispose();
-    for (const deferred of this.deferred) deferred.dispose();
-    for (const texture of this.ownedTextures) texture.dispose();
-    this.fallbackMaterial.dispose();
-    for (const deferred of this.fallbackDeferred) deferred.dispose();
-    for (const texture of this.fallbackTextures) texture.dispose();
+    disposeCelestialSurfaceMaterialAttachment(this.fallbackAttachment);
   }
 }
