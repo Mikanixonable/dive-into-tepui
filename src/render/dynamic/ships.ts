@@ -4,7 +4,6 @@
 import * as THREE from 'three/webgpu';
 import { ENEMY_PLASMA_COLOR } from '../vfx-style';
 import { mulberry32 } from '../../math/random';
-import { MAG_THICKNESS } from '../../physics/player-shape';
 import { markLitOpaque, markShadowCaster } from '../pipeline/lit-layer';
 import { attachThermalEmissive, makeThermallyEmissive } from '../thermal-emissive';
 
@@ -168,32 +167,9 @@ export function buildMagazineFrame(): THREE.Group {
   return magazineFrameTemplate.clone(true) as THREE.Group;
 }
 
-// 軌道上の弾薬補給ピックアップ。マガジン数個を束ねてビーコンを付けた漂流物。
-// テンプレートは既定の count=4 で焼き出し済み。count が既定と異なる場合は、
-// マガジンサブメッシュを buildMagazineMesh() 経由で再利用しながら都度組み立てる。
-let ammoPickupBeaconGeometry: THREE.OctahedronGeometry | null = null;
-let ammoPickupBeaconMaterial: THREE.MeshBasicMaterial | null = null;
-
-// 軌道上補給物のメッシュを生成する。count はマガジン本数(既定 4 はテンプレートを再利用)。
-export function buildAmmoPickup(count = 4): THREE.Group {
-  if (count === 4) return parseAmmoPickup();
-  const g = new THREE.Group();
-  // マガジンを count 本、縦一列に並べる
-  for (let i = 0; i < count; i++) {
-    const mag = buildMagazineMesh();
-    mag.position.y = (i - (count - 1) / 2) * (MAG_THICKNESS + 0.12);
-    g.add(mag);
-  }
-  if (!ammoPickupBeaconGeometry) ammoPickupBeaconGeometry = new THREE.OctahedronGeometry(0.35, 0);
-  if (!ammoPickupBeaconMaterial) {
-    ammoPickupBeaconMaterial = new THREE.MeshBasicMaterial({ color: 0x4de8ff });
-  }
-
-  // 先端にビーコンを追加する
-  const beacon = withDispose(new THREE.Mesh(ammoPickupBeaconGeometry, ammoPickupBeaconMaterial.clone()), false, true);
-  beacon.position.y = (count / 2) * (MAG_THICKNESS + 0.12) + 0.4;
-  g.add(beacon);
-  return g;
+// 軌道上の弾薬補給ピックアップ(マガジン数個を束ねてビーコンを付けた漂流物)のメッシュを生成する。
+export function buildAmmoPickup(): THREE.Group {
+  return parseAmmoPickup();
 }
 
 // 軌道上の RCS 燃料補給ピックアップのメッシュを生成する。
@@ -366,13 +342,6 @@ export function casingBodyResources(): { geometry: THREE.BufferGeometry; materia
 // 個体ごとに乱数でジオメトリを作ることはしない — 起動時に一度だけ
 // DEBRIS_FRAGMENT_VARIANT_COUNT 種類のジオメトリ(単位スケール)を焼き、色は InstancedPool の
 // per-instance color で個体ごとに与える(debrisFragmentResources)。
-
-// ジオメトリ・マテリアルの所有権をマークするヘルパー
-function withDispose(mesh: THREE.Mesh, ownsGeom = true, ownsMat = true): THREE.Mesh {
-  mesh.userData.ownsGeometry = ownsGeom;
-  mesh.userData.ownsMaterial = ownsMat;
-  return mesh;
-}
 
 // 頂点を index 順に写像して法線を再計算する(乱数を使う写像でも呼び出し順が保たれる)
 function displaceVertices(geo: THREE.BufferGeometry, map: (x: number, y: number, z: number) => [number, number, number]): void {
