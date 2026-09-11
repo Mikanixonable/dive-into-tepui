@@ -4,7 +4,7 @@ import { add, v3, type Vec3 } from '../../../math/vec3';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { RenderStyle } from '../../render-style';
 import { BoosterPlumeSet } from '../booster-plume';
-import { buildBoosterStage } from '../ships';
+import { buildBoosterStage } from '../booster-model';
 import { BOOSTER_MOUNT_Z, BOOSTER_STAGE_DIMENSIONS } from '../../../physics/booster-stage-shape';
 
 // 接続中ブースターの、そのフレームの表示入力。

@@ -11,6 +11,7 @@ const loader = new THREE.ObjectLoader();
 // 全個体へ波及する。
 function cloneIndependent<T extends THREE.Object3D>(template: T): T {
   const clone = template.clone(true) as T;
+  // 各メッシュのマテリアルを個体ごとに複製し、個体の破棄で解放させる。
   clone.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (mesh.isMesh && mesh.material) {
@@ -22,6 +23,7 @@ function cloneIndependent<T extends THREE.Object3D>(template: T): T {
       mesh.userData.ownsMaterial = true;
     }
   });
+  // 熱発光と照明・影のレイヤを印す。
   makeThermallyEmissive(clone);
   markLitOpaque(clone);
   markShadowCaster(clone);
