@@ -17,10 +17,10 @@ import type {
 
 const STYLE = `
 #hud .prop-window-title-input {
-  width: 100%; background: var(--surface-2); border: 1px solid transparent; border-radius: var(--radius-control);
+  width: 100%; background: var(--glass-control); border: 0; border-radius: var(--radius-control);
   color: var(--text); font: inherit; font-weight: bold; padding: var(--space-1) var(--space-2); box-sizing: border-box;
 }
-#hud .dg-window.property-window { width: 560px; max-width: 560px; }
+#hud .property-window { width: 560px; max-width: 560px; }
 #hud .prop-window-rows { padding: var(--space-2) 0; }
 #hud .prop-window-row {
   display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) var(--space-5); color: var(--text);
@@ -37,18 +37,18 @@ const STYLE = `
 #hud .prop-window-row-group-toggle:hover { opacity: 1; color: var(--color-primary-hover); }
 #hud .prop-window-controls {
   padding: var(--space-4) var(--space-5);
-  background: color-mix(in srgb, var(--surface-0) 28%, transparent);
+  background: var(--glass-inset);
 }
 /* .w-btn の padding は #hud 修飾を持たないため、#hud 側のリセットに詳細度で負ける。
    詰まったボタンにならないよう、#hud 修飾つきで既定の余白へ戻す。 */
 #hud .prop-window-controls .w-btn { padding: var(--space-4) var(--space-5); }
 #hud .prop-window-items {
   padding: var(--space-2);
-  background: color-mix(in srgb, var(--surface-0) 28%, transparent);
+  background: var(--glass-inset);
 }
 #hud .prop-window-related {
   padding: var(--space-2);
-  background: color-mix(in srgb, var(--surface-0) 28%, transparent);
+  background: var(--glass-inset);
 }
 #hud .prop-window-related-title {
   padding: var(--space-2) var(--space-5);
@@ -60,19 +60,19 @@ const STYLE = `
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1);
 }
 #hud .prop-window-related-item {
-  padding: var(--space-4) var(--space-5); color: var(--text-muted); cursor: pointer;
-  border: 0; border-radius: var(--radius-micro);
+  padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
+  border: 0; border-radius: var(--radius-control);
 }
 #hud .prop-window-related-item:hover, #hud .prop-window-related-item:active {
-  background: var(--surface-2); color: var(--color-primary-hover);
+  background: var(--glass-control-hover); color: var(--color-primary-hover);
 }
 #hud .prop-window-related-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .prop-window-item {
-  padding: var(--space-4) var(--space-5); color: var(--text-muted); cursor: pointer;
-  border: 0; border-radius: var(--radius-micro);
+  padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
+  border: 0; border-radius: var(--radius-control);
 }
 #hud .prop-window-item:hover, #hud .prop-window-item:active {
-  background: var(--surface-2); color: var(--color-primary-hover);
+  background: var(--glass-control-hover); color: var(--color-primary-hover);
 }
 #hud .prop-window-item.on {
   color: var(--color-primary); background: var(--color-primary-fill);

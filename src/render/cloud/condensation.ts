@@ -1,16 +1,9 @@
 // 天気から凝結する雲。地表付近の湿度と対流が不透明な雲に、上層の湿度が薄く透ける雲になる。
 // 2つは別の湿度の場から出るので、独立に分布する。値はすべて見えのための調整値。
 import { exp, float, inverseSqrt, max, mix, smoothstep, tanh } from 'three/tsl';
+import type { CloudSample } from './cloud-field-sample';
 import type { WeatherSample } from './weather-model';
-import type { FloatNode } from '../tsl-types';
-
-// 単位方向における雲。被覆率はその texel が雲に覆われている割合 0..1、雲頂高度は [m]、
-// 薄い雲は鉛直の光学的厚み(0 で雲なし)。
-export type CloudSample = {
-  readonly coverage: FloatNode;
-  readonly cloudTop: FloatNode;
-  readonly translucent: FloatNode;
-};
+export type { CloudSample } from './cloud-field-sample';
 
 // 被覆率が効き始める湿度と、そこから先の 1 単位ぶんの幅(被覆率が 0 から 0.56 へ上がる湿度の
 // 範囲)。湿度に対流の強弱を足したものを渡すので、**効き始めの近くにある所だけが対流の周波数で
@@ -151,7 +144,8 @@ export function condense(weather: WeatherSample): CloudSample {
   const clear = excess.mul(excess).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
   const coverage = clear.oneMinus();
   // 小さな雲を高い柱にしないため、雲底からの高さだけを被覆率で縮める。被覆率 0 では雲底へ
-  // 落ちるが、その柱は opaqueFractionOf の門を通らないので晴天に雲や影が現れることはない。
+  // 落ちるが、その柱は CloudShapeEvaluator の連続したcoverage境界を通らないので晴天に雲や影が
+  // 現れることはない。
   const cloudTop = max(tower, anvil);
   const scaledCloudTop = max(cloudTop.sub(CLOUD_BASE_HEIGHT), 0).mul(coverage).add(CLOUD_BASE_HEIGHT);
   // 薄い雲: 靄の項と筋の項の和を、上限へ漸近させる。

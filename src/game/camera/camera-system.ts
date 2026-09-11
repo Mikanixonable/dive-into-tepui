@@ -214,11 +214,17 @@ export class CameraSystem {
         focus: { kind: 'object', id: frameRoleAnchorId('controlled') },
         follow: { kind: 'attitude' },
       },
+      eulerPole: 'attitude',
       attitudeOf,
     }, combatSaved);
     this.mapCamera = new FocusCamera(
       hud, celestialBodies,
-      { focusLossPolicy: 'fallToOrigin', initial: defaultMapViewInitial(celestialBodies), attitudeOf },
+      {
+        focusLossPolicy: 'fallToOrigin',
+        initial: defaultMapViewInitial(celestialBodies),
+        eulerPole: 'reference',
+        attitudeOf,
+      },
       saved?.overview,
     );
     // 表示パネルと天体クラス側操作のコールバック
