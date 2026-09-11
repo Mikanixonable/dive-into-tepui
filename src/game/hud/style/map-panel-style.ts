@@ -31,7 +31,7 @@ export const MAP_PANEL_STYLE = `
 @media ${MQ_COARSE} {
   #hud span.body-class-icon-btn { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
 }
-#hud .body-class-row.category-off .body-class-icon-btn.on { border-color: var(--edge); color: var(--text-dim); font-weight: 700; opacity: .65; }
+#hud .body-class-row.category-off .body-class-icon-btn.on { color: var(--text-dim); font-weight: 700; opacity: .65; }
 @media ${MQ_MEDIUM_DOWN} {
   #hud-plan { min-width: 0; max-width: none; }
 }
@@ -77,7 +77,7 @@ export const MAP_PANEL_STYLE = `
 #hud-predict.collapsed { display: none !important; }
 #hud-predict-toggle {
   display: none; order: 1; align-self: center; pointer-events: auto; cursor: pointer;
-  width: 26px; height: 26px; border: 1px solid var(--edge); border-radius: var(--radius-m);
+  width: 26px; height: 26px; border: 0; border-radius: 50%;
   background: var(--surface); color: var(--color-primary);
 }
 #hud .hud-map-root.active #hud-predict-toggle { display: block; }
@@ -88,10 +88,10 @@ export const MAP_PANEL_STYLE = `
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-predict span.predict-reset {
   flex: 0 0 auto; padding: 0;
-  width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 50%;
   font-size: var(--font-m);
 }
-#hud-predict span.predict-reset:hover { border-color: var(--color-primary); color: var(--color-primary); }
+#hud-predict span.predict-reset:hover { color: var(--color-primary); }
 #hud-predict .predict-slider-wrap { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; height: 22px; }
 #hud-predict input[type="range"] { width: 100%; height: 22px; margin: 0; pointer-events: auto; accent-color: var(--color-primary); }
 #hud-predict .predict-elapsed {
@@ -175,7 +175,7 @@ export const MAP_PANEL_STYLE = `
 .orbit-guide-kind-heading-btn { width: 100%; text-align: left; }
 .orbit-guide-kind-heading-btn-resonant { padding: 10.5px calc(var(--space-5) * 1.5); font-size: calc(var(--font-s) * 1.5); text-align: center; }
 .orbit-guide-combined-heading { font-size: var(--font-xxs); font-weight: 600; padding: var(--space-2) 0; }
-.orbit-guide-kind-config { display: flex; flex-direction: column; gap: var(--space-2); padding-left: var(--space-3); border-left: 1px solid var(--line-subtle); }
+.orbit-guide-kind-config { display: flex; flex-direction: column; gap: var(--space-2); padding-left: var(--space-3); }
 .orbit-guide-kind-config.hidden { display: none; }
 .orbit-guide-toggle-row { flex-wrap: wrap; }
 .orbit-guide-value-row { flex-wrap: nowrap; align-items: center; }
@@ -198,12 +198,12 @@ export const MAP_PANEL_STYLE = `
 #hud-stage-controls .stage-controls-body { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
 #hud-stage-controls .stage-control-enemy-tabs { display: flex; gap: var(--space-2); }
 #hud-stage-controls .stage-control-enemy-tabs .w-btn { flex: 1 1 0; min-width: 0; }
-#hud-stage-controls .stage-control-section { display: grid; gap: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--edge); }
+#hud-stage-controls .stage-control-section { display: grid; gap: var(--space-2); padding-top: var(--space-2); }
 #hud-stage-controls .stage-control-section-title { color: var(--text); font-size: var(--font-xxs); letter-spacing: .04em; }
 #hud-stage-controls .stage-control-shapes { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 #hud-stage-controls .stage-control-shapes .w-group-title { flex: 0 0 100%; }
 #hud-stage-controls .stage-control-shapes .w-btn { flex: 1 1 0; min-width: 0; }
-#hud-stage-controls .stage-control-shapes .w-btn.on { background: var(--color-primary-fill); border-color: var(--color-primary); color: var(--color-primary); }
+#hud-stage-controls .stage-control-shapes .w-btn.on { background: var(--color-primary-fill); color: var(--color-primary); }
 #hud-stage-controls .stage-control-protein-representation,
 #hud-stage-controls .stage-control-protein-colors { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 #hud-stage-controls .stage-control-protein-representation .w-group-title,
@@ -215,7 +215,7 @@ export const MAP_PANEL_STYLE = `
   flex: 1 1 calc(50% - var(--space-2)); min-width: 110px; white-space: normal; overflow-wrap: anywhere;
 }
 #hud-stage-controls .stage-control-protein-representation .w-btn.on,
-#hud-stage-controls .stage-control-protein-colors .w-btn.on { background: var(--color-primary-fill); border-color: var(--color-primary); color: var(--color-primary); }
+#hud-stage-controls .stage-control-protein-colors .w-btn.on { background: var(--color-primary-fill); color: var(--color-primary); }
 #hud-stage-controls .stage-control-select { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); color: var(--text-dim); font-size: var(--font-xxs); }
 #hud-stage-controls .stage-control-select .w-select { min-width: 86px; }
 #hud-stage-controls .stage-control-select .w-input { width: 72px; text-align: right; }
@@ -235,7 +235,7 @@ export const MAP_PANEL_STYLE = `
 #hud-object-placer .slider-field .slider-ticks span:last-child { text-align: right; }
 #hud-object-placer input[type="text"] { flex: 1; width: auto; }
 #hud-object-placer .preset-row { flex-wrap: wrap; gap: var(--space-3); }
-#hud-object-placer .field-issue { border: 1px solid var(--color-error); border-radius: var(--radius-s); padding: var(--space-1) var(--space-2); }
-#hud-object-placer .issue-list { margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-error); border-radius: var(--radius-s); background: var(--color-error-fill); }
+#hud-object-placer .field-issue { border: 0; border-radius: var(--radius-s); padding: var(--space-1) var(--space-2); color: var(--color-error); }
+#hud-object-placer .issue-list { margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); border: 0; border-radius: var(--radius-s); background: var(--color-error-fill); }
 #hud-object-placer .issue-list .issue-line { font-size: var(--font-s); color: var(--color-error); }
 `;

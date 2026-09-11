@@ -356,6 +356,21 @@ export class DebugInfoWindow {
         key: `ent-${r.key}`, label: r.label, value: `${c.entities[r.key] ?? 0}`, group: 'エンティティ',
       })),
 
+      ...c.surfaces.flatMap((surface) => [
+        {
+          key: `surface-${surface.id}-state`, label: surface.name, group: '地表',
+          value: `${surface.diagnostics.status}/${surface.diagnostics.usesDetailedMaterial ? 'detailed' : 'base'}`,
+        },
+        {
+          key: `surface-${surface.id}-lod`, label: `${surface.name} 最高LOD`, group: '地表',
+          value: surface.diagnostics.residentMaxZ === null ? '—' : `z${surface.diagnostics.residentMaxZ}`,
+        },
+        {
+          key: `surface-${surface.id}-reason`, label: `${surface.name} 理由`, group: '地表',
+          value: surface.diagnostics.reason ?? '—',
+        },
+      ]),
+
       { key: 'heap', label: 'JS heap', group: 'メモリ',
         value: mem ? `${(mem.usedJSHeapSize / 1048576).toFixed(1)} MB` : '--' },
 

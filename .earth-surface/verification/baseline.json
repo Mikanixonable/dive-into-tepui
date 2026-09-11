@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-10T02:19:16+09:00",
+  "repository": {
+    "commit": "1eb9421855bee8cea53cc6404b0f6c747b0f9386",
+    "shortCommit": "1eb94218",
+    "workingTreeBefore": "clean",
+    "workingTreeAfter": "clean",
+    "capturedBeforePlanChanges": true,
+    "unrelatedChanges": []
+  },
+  "environment": {
+    "os": "macOS 26.3.1 (25D771280a)",
+    "node": "v24.14.0",
+    "npm": "11.9.0",
+    "browsersInstalled": ["Google Chrome", "Microsoft Edge", "Firefox", "Safari"],
+    "browserVersion": "unrecorded: browser CLI/version probe is not part of the repository baseline command",
+    "webgpu": {
+      "status": "unavailable",
+      "reason": "No browser WebGPU session or renderer backend probe is available during the repository baseline run"
+    },
+    "drawingBuffer": {
+      "status": "unavailable",
+      "reason": "No browser render session was started"
+    }
+  },
+  "commands": [
+    {
+      "command": "npm run typecheck",
+      "status": "passed",
+      "exitCode": 0,
+      "summary": "tsc --noEmit completed"
+    },
+    {
+      "command": "npm run test:render",
+      "status": "passed",
+      "exitCode": 0,
+      "summary": "85/85 passed"
+    },
+    {
+      "command": "npm run test:game",
+      "status": "passed",
+      "exitCode": 0,
+      "summary": "200/200 passed"
+    },
+    {
+      "command": "npm run earth-surface:test",
+      "status": "passed",
+      "exitCode": 0,
+      "summary": "earth-surface contract fixtures: ok"
+    },
+    {
+      "command": "python3 -m unittest discover -s tools/earth-surface -p 'test_*.py'",
+      "status": "passed",
+      "exitCode": 0,
+      "summary": "Ran 15 tests; OK"
+    }
+  ],
+  "dataAndBundle": {
+    "realSourceInputs": "unavailable: no real ETOPO/GSHHG/ERA5/BMNG acquisition was performed",
+    "globalBundle": "not generated",
+    "browserCapture": "not run"
+  }
+}

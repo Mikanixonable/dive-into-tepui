@@ -1,11 +1,32 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { releaseConfigFromEnvironment } from './earth-surface/release-config.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const conflictPattern = /^(<<<<<<<|=======|>>>>>>>)(?: .*)?$/m;
 const sourceRoots = ['src', 'public'];
 const sourceFiles = ['package.json', 'webpack.config.js', 'tsconfig.json'];
 const sourceOnly = process.argv.includes('--source-only');
+
+function argumentValue(name) {
+  const index = process.argv.indexOf(name);
+  if (index === -1) return undefined;
+  const value = process.argv[index + 1];
+  if (value === undefined || value.startsWith('--')) throw new Error(`${name} requires a value`);
+  return value;
+}
+
+function argumentValues(name) {
+  const values = [];
+  for (let index = 0; index < process.argv.length; index += 1) {
+    if (process.argv[index] !== name) continue;
+    const value = process.argv[index + 1];
+    if (value === undefined || value.startsWith('--')) throw new Error(`${name} requires a value`);
+    values.push(value);
+    index += 1;
+  }
+  return values;
+}
 
 async function collectFiles(relativePath) {
   const absolutePath = path.join(root, relativePath);
@@ -30,6 +51,18 @@ for (const file of checkedFiles) {
 }
 if (conflicted.length > 0) {
   throw new Error(`Unresolved conflict marker(s): ${conflicted.join(', ')}`);
+}
+
+const earthSurfaceBaseUrl = argumentValue('--earth-surface-base-url');
+if (earthSurfaceBaseUrl !== undefined) {
+  const releaseArguments = ['--base-url', earthSurfaceBaseUrl];
+  const earthSurfaceDatasetId = argumentValue('--earth-surface-dataset-id');
+  if (earthSurfaceDatasetId !== undefined) releaseArguments.push('--dataset-id', earthSurfaceDatasetId);
+  for (const origin of argumentValues('--earth-surface-allowed-origin')) {
+    releaseArguments.push('--allowed-origin', origin);
+  }
+  const checked = releaseConfigFromEnvironment(releaseArguments);
+  console.log(`Earth surface release configuration passed: ${checked.datasetId} (${checked.origin}).`);
 }
 
 if (sourceOnly) {

@@ -1,6 +1,5 @@
-import type { Game } from '../../game/game';
 import { SAVE_VERSION } from '../../game/save/save-data';
-import { runSummary, type RunSummary } from '../../game/run-summary';
+import type { RunSummary } from '../../game/run-summary';
 import { fmtDist, fmtTime } from '../../hud/utils';
 import { SaveStore } from './save-store';
 import { SaveSlots } from './save-slots';
@@ -8,18 +7,30 @@ import { isEphemerisContextRestorable } from '../../physics/ephemeris/ephemeris-
 import type { GameSaveData } from '../../game/save/save-data';
 import type { SnapshotKind, SnapshotMeta } from './slot-data';
 
+export interface SnapshotCaptureSource {
+  readonly isPaused: boolean;
+  readonly isPlaying: boolean;
+  runSummary(): RunSummary;
+  serialize(): GameSaveData;
+}
+
 // スナップショットの出し入れを担う。撮るときは索引のメタを組んでスロットへ収め、読むときは
 // 保存形式を検証する。
 export class SnapshotService {
   constructor(private readonly store: SaveStore, private readonly slots: SaveSlots) {}
 
-  // 現在の game 状態を1件のスナップショットとして永続化し、そのメタを返す。
+  // 要約と保存本体を1件のスナップショットとして永続化し、そのメタを返す。
   // アクティブスロットが無い、またはストア書き込みに失敗した場合は null。
-  capture(game: Game, kind: SnapshotKind, name: string | null, pinned: boolean): SnapshotMeta | null {
+  capture(
+    summary: RunSummary,
+    save: GameSaveData,
+    kind: SnapshotKind,
+    name: string | null,
+    pinned: boolean,
+  ): SnapshotMeta | null {
     const slotId = this.slots.activeSlotId;
     if (slotId === null) return null;
 
-    const summary = runSummary(game);
     const meta: SnapshotMeta = {
       id: generateSnapshotId(),
       kind,
@@ -39,7 +50,6 @@ export class SnapshotService {
       phase: summary.phase,
     };
 
-    const save = game.serialize();
     return this.slots.addSnapshot(slotId, save.stageId, meta, save) ? meta : null;
   }
 

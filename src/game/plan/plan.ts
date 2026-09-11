@@ -161,7 +161,7 @@ export class Plan {
     idx: number, from: KinematicState, celestialBodies: readonly CelestialBody[], displayDuration: DisplayDurationSource,
   ): TimeRange {
     const prev = this.data?.nodes[idx - 1] ?? this.anchorOr(from);
-    
+
     return { min: prev.t, max: prev.t + segmentDurationFrom(prev, celestialBodies, displayDuration) };
   }
 
