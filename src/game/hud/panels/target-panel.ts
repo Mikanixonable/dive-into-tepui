@@ -5,7 +5,7 @@ import { SyncThrottle } from '../sync-throttle';
 import { relativeInfo } from '../../orbit-info';
 import { ProteinEnemy } from '../../dynamic/dynamic-entity/protein-enemy';
 import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
-import type { ProteinHudSnapshot } from '../../protein/protein-schema';
+import type { ProteinCombatReadout } from '../../protein/protein-schema';
 import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { Targeter } from '../../targeter';
@@ -20,7 +20,7 @@ interface TargetPanelData {
   // 装甲を持たない対象(基地)では null。
   readonly hp: number | null;
   readonly maxHp: number | null;
-  readonly protein: ProteinHudSnapshot | null;
+  readonly protein: ProteinCombatReadout | null;
 }
 
 export class TargetPanel {
@@ -59,7 +59,7 @@ export class TargetPanel {
       relativeSpeedMps: relative.relSpeed,
       hp: target.hp,
       maxHp: target.maxHp,
-      protein: target instanceof ProteinEnemy ? target.hudSnapshot : null,
+      protein: target instanceof ProteinEnemy ? target.combatReadout : null,
     });
   }
 
