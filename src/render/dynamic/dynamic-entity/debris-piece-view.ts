@@ -2,14 +2,12 @@ import * as THREE from 'three/webgpu';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import {
   buildBarrelMesh,
+  buildBoosterExplosiveBoltMesh,
+  buildBoosterInterstageCoverPanelMesh,
   buildCasingMesh,
   buildMagazineFrame,
   DEBRIS_FRAGMENT_VARIANT_COUNT,
 } from '../ships';
-import {
-  buildBoosterExplosiveBoltMesh,
-  buildBoosterInterstageCoverPanelMesh,
-} from '../booster';
 import { SHIP_DARK_HULL_COLOR } from '../../vfx-style';
 import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
 

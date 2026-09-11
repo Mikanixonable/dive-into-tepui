@@ -3,11 +3,8 @@ import { qRotate, type Quat } from '../../../math/quat';
 import { add, v3, type Vec3 } from '../../../math/vec3';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { RenderStyle } from '../../render-style';
-import {
-  BoosterPlumeSet,
-  buildBoosterStage,
-  type BoosterStage as BoosterStageModel,
-} from '../booster';
+import { BoosterPlumeSet } from '../booster-plume';
+import { buildBoosterStage } from '../ships';
 import { BOOSTER_MOUNT_Z, BOOSTER_STAGE_DIMENSIONS } from '../../../physics/booster-stage-shape';
 
 // 接続中ブースターの、そのフレームの表示入力。
@@ -20,7 +17,7 @@ export interface AttachedBoostersDisplay {
 // 接続中ブースターのモデルと噴射炎を所有し、供給された段の並びと燃焼へ同期する。
 export class AttachedBoostersView {
   private readonly plumes: BoosterPlumeSet;
-  private readonly models: BoosterStageModel[] = [];
+  private readonly models: THREE.Group[] = [];
   private stageIds: readonly string[] = [];
 
   public constructor(scene: THREE.Scene, private readonly root: THREE.Object3D) {
@@ -29,10 +26,10 @@ export class AttachedBoostersView {
 
   // 段の顔ぶれが変わったときだけ、機体へ並べ直す。最後尾以外は段間カバーを被せる。
   private setStages(stageIds: readonly string[]): void {
-    for (const model of this.models) model.dispose();
+    for (const model of this.models) model.removeFromParent();
     this.models.length = 0;
     for (let i = 0; i < stageIds.length; i++) {
-      const model = buildBoosterStage({ interstageCover: i < stageIds.length - 1 });
+      const model = buildBoosterStage(i < stageIds.length - 1);
       model.position.z = BOOSTER_MOUNT_Z - i * BOOSTER_STAGE_DIMENSIONS.length;
       this.root.add(model);
       this.models.push(model);
@@ -82,9 +79,10 @@ export class AttachedBoostersView {
     }], cameraQuat, style);
   }
 
+  // 噴射炎を破棄し、段のモデルを機体から外す。
   public dispose(): void {
     this.plumes.dispose();
-    for (const model of this.models) model.dispose();
+    for (const model of this.models) model.removeFromParent();
     this.models.length = 0;
   }
 }

@@ -32,6 +32,9 @@ import bulletData from '../../assets/models/bullet.json';
 import plasmaData from '../../assets/models/plasma.json';
 import barrelData from '../../assets/models/barrel.json';
 import baseData from '../../assets/models/base.json';
+import rcsFuelPickupData from '../../assets/models/rcsFuel.json';
+import boosterStageData from '../../assets/models/boosterStage.json';
+import boosterInterstageCoverData from '../../assets/models/boosterInterstageCover.json';
 import casingData from '../../assets/models/casing.json';
 import debrisChunkData from '../../assets/models/debrisChunk.json';
 import debrisPanelData from '../../assets/models/debrisPanel.json';
@@ -65,13 +68,20 @@ function cloneIndependent<T extends THREE.Object3D>(template: T): T {
   return clone;
 }
 
-// data を初回だけパースしてキャッシュし、以後は cloneIndependent で複製を返すビルダーを作る。
-function memoParse<T extends THREE.Object3D>(data: unknown): () => T {
+// data を初回だけパースしてキャッシュし、以後も同じテンプレートを返す関数を作る。
+// テンプレートそのものは書き換えず、複製して使う。
+function memoTemplate<T extends THREE.Object3D>(data: unknown): () => T {
   let cached: T | null = null;
   return () => {
     if (!cached) cached = loader.parse(data) as T;
-    return cloneIndependent(cached);
+    return cached;
   };
+}
+
+// data を初回だけパースしてキャッシュし、以後は cloneIndependent で複製を返すビルダーを作る。
+function memoParse<T extends THREE.Object3D>(data: unknown): () => T {
+  const template = memoTemplate<T>(data);
+  return () => cloneIndependent(template());
 }
 
 // 弾(bullet/plasma)専用: 大量発射されるため、geometry/material をクローンせず
@@ -81,11 +91,8 @@ function memoParse<T extends THREE.Object3D>(data: unknown): () => T {
 // 個体ごとの独立コピーは不要 — これにより毎発の生成で新規 GPU リソースが
 // 増え続けるリークを防ぐ。
 function memoParseShared<T extends THREE.Object3D>(data: unknown): () => T {
-  let cached: T | null = null;
-  return () => {
-    if (!cached) cached = loader.parse(data) as T;
-    return cached.clone(true) as T;
-  };
+  const template = memoTemplate<T>(data);
+  return () => template().clone(true) as T;
 }
 
 const parsePlayer = memoParse<THREE.Group>(playerData);
@@ -95,6 +102,7 @@ const parseStage0EnemyB = memoParse<THREE.Group>(stage0EnemyDataB);
 const parseStage0EnemyC = memoParse<THREE.Group>(stage0EnemyDataC);
 const parseMagazine = memoParse<THREE.Group>(magazineData);
 const parseAmmoPickup = memoParse<THREE.Group>(ammoPickupData);
+const parseRcsFuelPickup = memoParse<THREE.Group>(rcsFuelPickupData);
 const parseBullet = memoParseShared<THREE.Mesh>(bulletData);
 const parsePlasma = memoParseShared<THREE.Mesh>(plasmaData);
 const parseCasing = memoParse<THREE.Mesh>(casingData);
@@ -102,6 +110,8 @@ const parseDebrisChunk = memoParse<THREE.Mesh>(debrisChunkData);
 const parseDebrisPanel = memoParse<THREE.Mesh>(debrisPanelData);
 const parseDebrisRod = memoParse<THREE.Mesh>(debrisRodData);
 const parseBase = memoParseShared<THREE.Group>(baseData);
+const boosterStageTemplate = memoTemplate<THREE.Group>(boosterStageData);
+const boosterInterstageCoverTemplate = memoTemplate<THREE.Group>(boosterInterstageCoverData);
 
 // 薬莢は大量に生成されるため、排莢個体ごとの geometry/material は作らない。
 // geometry はテンプレートを一度だけ deep clone して全長補正を焼き込み、material は
@@ -186,33 +196,40 @@ export function buildAmmoPickup(count = 4): THREE.Group {
   return g;
 }
 
-// 軌道上の RCS 燃料補給ピックアップ。弾薬と見分けやすい黄色のタンクとビーコンで構成する。
+// 軌道上の RCS 燃料補給ピックアップのメッシュを生成する。
 export function buildRcsFuelPickup(): THREE.Group {
-  const g = new THREE.Group();
-  const tank = withDispose(new THREE.Mesh(
-    new THREE.CylinderGeometry(0.45, 0.45, 1.8, 10),
-    new THREE.MeshStandardMaterial({ color: 0xffb347, metalness: 0.75, roughness: 0.3 }),
-  ));
-  tank.rotation.z = Math.PI / 2;
-  g.add(tank);
+  return parseRcsFuelPickup();
+}
 
-  const band = withDispose(new THREE.Mesh(
-    new THREE.TorusGeometry(0.46, 0.06, 6, 12),
-    new THREE.MeshStandardMaterial({ color: 0xffe0a3, metalness: 0.8, roughness: 0.25 }),
-  ));
-  band.rotation.y = Math.PI / 2;
-  g.add(band);
+// 一段ぶんのブースターを生成する。機首(前端)が +Z。interstageCover なら段間カバーを被せる。
+// geometry/material は全段の共有物なので、片付けは親から外すだけでよい。
+export function buildBoosterStage(interstageCover: boolean): THREE.Group {
+  const stage = boosterStageTemplate().clone(true);
+  if (interstageCover) stage.add(boosterInterstageCoverTemplate().clone(true));
+  markLitOpaque(stage);
+  markShadowCaster(stage);
+  return stage;
+}
 
-  const beacon = withDispose(new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.28, 0),
-    new THREE.MeshBasicMaterial({ color: 0xffd166 }),
-  ));
-  beacon.position.x = 1.15;
-  g.add(beacon);
-  makeThermallyEmissive(g);
-  markLitOpaque(g);
-  markShadowCaster(g);
-  return g;
+// 段間カバーの segment 番目のパネルを、原点に置いて複製する。geometry/material は共有物。
+export function buildBoosterInterstageCoverPanelMesh(segment: number): THREE.Mesh {
+  return interstageCoverPart(`interstage-cover-panel-${segment}`);
+}
+
+// 段間カバーの segment 番目の爆砕ボルトを、原点に置いて複製する。geometry/material は共有物。
+export function buildBoosterExplosiveBoltMesh(segment: number): THREE.Mesh {
+  return interstageCoverPart(`interstage-explosive-bolt-${segment}`);
+}
+
+// 段間カバーから name の部品を、段の中での取り付け位置を外して複製する。
+function interstageCoverPart(name: string): THREE.Mesh {
+  const part = boosterInterstageCoverTemplate().getObjectByName(name)!.clone() as THREE.Mesh;
+  part.position.set(0, 0, 0);
+  part.userData.ownsGeometry = false;
+  part.userData.ownsMaterial = false;
+  markLitOpaque(part);
+  markShadowCaster(part);
+  return part;
 }
 
 // userData.role === 'accent' が付与されたマテリアルだけを accent 色へ塗り替える。
