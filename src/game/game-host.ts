@@ -13,8 +13,6 @@ export interface GameHost {
   readonly sections: FrameSections;
   // マップに出す天体分類・個体種別のトグル。
   readonly mapDisplay: RunSetting<MapDisplayToggles>;
-  // 天球グリッドの表示。
   readonly grid: RunSetting<CelestialGridVisibility>;
-  // 軌道ガイドの設定。
   readonly orbitGuide: RunSetting<OrbitGuideSettings>;
 }

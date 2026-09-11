@@ -1,5 +1,5 @@
 // 常設 TARGET パネル(#hud-target)の同期。ロック中ターゲットの名前・装甲・距離・
-// 接近速度・相対速度を、ターゲットが固定されている間だけ表示する。
+// 接近速度・相対速度を、ターゲットの固定中に表示する。
 import { fmtDist, fmtSpeed, setElementText } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
 import { relativeInfo } from '../../orbit-info';
@@ -63,7 +63,7 @@ export class TargetPanel {
     });
   }
 
-  // 安定した DOM へ値だけを同期し、高速更新でも読み上げ対象の要素を作り直さない。
+  // 値を既存の DOM へ書き込む。target が null なら名前を空欄にし、タンパク質欄を畳む。
   private syncTarget(target: TargetPanelData | null): void {
     if (!target) {
       setElementText(this.els, 'tgtname', '—');

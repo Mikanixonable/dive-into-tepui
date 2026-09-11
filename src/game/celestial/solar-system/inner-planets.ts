@@ -51,7 +51,7 @@ const MERCURY: PlanetDef = {
 export const VENUS: PlanetDef = {
   id: 'venus',
   mu: 3.24859e14,
-  radius: 6.0518e6, // 扁平率 0(pck00011.tpc BODY_RADII は赤道・極とも等値)なので shape なし
+  radius: 6.0518e6, // 球。出典: pck00011.tpc BODY_RADII(赤道・極とも等値)
   orbit: planetOrbit({
     a: 0.72333566 * AU,
     e: 0.00677672,
