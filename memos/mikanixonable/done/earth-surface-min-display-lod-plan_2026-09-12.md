@@ -1,6 +1,20 @@
-# 地球詳細テクスチャの最小表示LODをz4へ変更する計画
+# [完了] 地球詳細テクスチャの最小表示LODをz4へ変更する計画
 
 作成日: 2026-09-12
+
+## 実施結果（2026-09-12）
+
+z4最小表示LODのコード・生成契約・fixture・回帰テストの更新は完了し、`done/`へ移動した。
+
+- runtimeの表示rootと要求境界をz4へ変更した。
+- generator、manifest契約、Pages fixtureをz4〜z7へ揃えた。
+- z3以下の詳細タイル拒否、z4 root、生成枚数、Pages layoutを検査した。
+- `npm run typecheck`、`npm run test:render`、`npm run test:game`、
+  `npm run earth-surface:test`、`npm run earth-surface:pages-test`を通過した。
+- 旧schema1 bundleは互換入力として読み込み可能だが、z0〜z3は表示・要求経路から除外している。
+
+schema2のz4〜z7実bundle生成と実ブラウザでの表示確認は別タスクとして、
+[残タスク一覧](../remaining-tasks_2026-09-12.md)に分離した。
 
 ## 目的
 

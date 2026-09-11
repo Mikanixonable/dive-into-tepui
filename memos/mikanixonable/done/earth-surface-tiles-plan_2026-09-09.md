@@ -3,7 +3,7 @@
 作成日: 2026-09-10
 
 未完了タスクを実行するときは、親計画の
-[earth-surface-tiles-plan_2026-09-09.md](../earth-surface-tiles-plan_2026-09-09.md)だけを読む。
+[earth-surface-tiles-plan_2026-09-09-superseded.md](../suspended/earth-surface-tiles-plan_2026-09-09-superseded.md)だけを読む。
 このファイルは、すでに実装してworkspace3へ統合した境界と、その判断の根拠を残すための記録である。
 ここに書かれている内容を再実装しない。
 

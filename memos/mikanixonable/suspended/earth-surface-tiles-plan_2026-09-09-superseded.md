@@ -107,16 +107,16 @@ T0 基準記録
 
 | ID | 作業ファイル | 目的 | 依存 | 本番必須 |
 | --- | --- | --- | --- | --- |
-| T0 | [T0-baseline.md](earth-surface-tiles-plan_2026-09-09/T0-baseline.md) | 基準状態と検証結果を保存 | なし | はい |
-| T1 | [T1-data-bundle.md](earth-surface-tiles-plan_2026-09-09/T1-data-bundle.md) | 実データから全球bundleを生成 | T0 | はい |
-| T2 | [T2-gpu-material.md](earth-surface-tiles-plan_2026-09-09/T2-gpu-material.md) | 実GPU配列層とTSL materialを完成 | T0 | はい |
-| T3 | [T3-earth-connection.md](earth-surface-tiles-plan_2026-09-09/T3-earth-connection.md) | Earth entityとruntime bootstrapを接続 | T1,T2 | はい |
-| T4 | [T4-climate-connection.md](earth-surface-tiles-plan_2026-09-09/T4-climate-connection.md) | 月別気候を雲・雲影・大気へ接続 | T1,T3 | はい |
-| T5 | [T5-capture-metrics.md](earth-surface-tiles-plan_2026-09-09/T5-capture-metrics.md) | 実行時画像とmetricsを完成 | T3,T4 | はい |
-| T6-1 | [T6-1-pages.md](earth-surface-tiles-plan_2026-09-09/T6-1-pages.md) | Pagesプレビューを接続 | T1,T5 | いいえ |
+| T0 | [T0-baseline.md](../earth-surface-tiles-plan_2026-09-09/T0-baseline.md) | 基準状態と検証結果を保存 | なし | はい |
+| T1 | [T1-data-bundle.md](../earth-surface-tiles-plan_2026-09-09/T1-data-bundle.md) | 実データから全球bundleを生成 | T0 | はい |
+| T2 | [T2-gpu-material.md](../earth-surface-tiles-plan_2026-09-09/T2-gpu-material.md) | 実GPU配列層とTSL materialを完成 | T0 | はい |
+| T3 | [T3-earth-connection.md](../earth-surface-tiles-plan_2026-09-09/T3-earth-connection.md) | Earth entityとruntime bootstrapを接続 | T1,T2 | はい |
+| T4 | [T4-climate-connection.md](../earth-surface-tiles-plan_2026-09-09/T4-climate-connection.md) | 月別気候を雲・雲影・大気へ接続 | T1,T3 | はい |
+| T5 | [T5-capture-metrics.md](../earth-surface-tiles-plan_2026-09-09/T5-capture-metrics.md) | 実行時画像とmetricsを完成 | T3,T4 | はい |
+| T6-1 | [T6-1-pages.md](../earth-surface-tiles-plan_2026-09-09/T6-1-pages.md) | Pagesプレビューを接続 | T1,T5 | いいえ |
 | T6-2 | — | 外部静的配信要件を廃止（実装・公開経路から除去） | — | いいえ |
-| T6-3 | [T6-3-runtime.md](earth-surface-tiles-plan_2026-09-09/T6-3-runtime.md) | 旧runtime記述をT3へ統合して廃止 | T3へ統合 | いいえ |
-| T7 | [T7-review.md](earth-surface-tiles-plan_2026-09-09/T7-review.md) | 全体レビュー、整理、記録 | T0〜T6-1 | はい |
+| T6-3 | [T6-3-runtime.md](../earth-surface-tiles-plan_2026-09-09/T6-3-runtime.md) | 旧runtime記述をT3へ統合して廃止 | T3へ統合 | いいえ |
+| T7 | [T7-review.md](../earth-surface-tiles-plan_2026-09-09/T7-review.md) | 全体レビュー、整理、記録 | T0〜T6-1 | はい |
 
 ## 6.1 実装状況（2026-09-10）
 
