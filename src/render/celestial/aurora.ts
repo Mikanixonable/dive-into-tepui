@@ -10,7 +10,7 @@ const INTENSITY_SCALE = 0.15; // 発光全体の強さ倍率
 
 // カーテンを載せる天体の、オーロラの見えを決める量。発光高度は大気の組成と降り込む粒子の
 // エネルギーで、色は励起される原子の輝線で決まるので、どちらも天体ごとの静的事実。
-export type AuroraOptics = {
+export interface AuroraOptics {
   readonly bodyRadius: number; // カーテンの基準になる天体半径 [m]
   readonly ovalLatitudeDeg: number; // オーロラオーバルの中心緯度 [deg]
   readonly magneticPoleLatitudeDeg?: number; // 簡易双極子の磁極緯度 [deg]
@@ -22,10 +22,10 @@ export type AuroraOptics = {
   readonly topAltitudeVariation: number; // 周方向の伸び縮み [m]
   // 鉛直4頂点の色(明るさ 1 のときの線形 RGB)。下端フェード・核・中間・上端フェードの順。
   readonly layerColors: readonly [readonly number[], readonly number[], readonly number[], readonly number[]];
-};
+}
 
 export class Aurora {
-  readonly mesh: THREE.Mesh;
+  public readonly mesh: THREE.Mesh;
   private readonly geo = new THREE.BufferGeometry();
   private readonly material: THREE.MeshBasicMaterial;
   private readonly positions = new Float32Array((SEG + 1) * (V_SEG + 1) * 3);
@@ -35,7 +35,7 @@ export class Aurora {
   // sign は北極側(+1)/南極側(-1)。geomSeed/colorSeed は形状と色の位相 — 同じ極に重ねる層は
   // geomSeed を揃えると平行になり交差を防げる。radiusOffset/latOffsetDeg はその層どうしの
   // ずらし量、phaseOffset は明滅のずらし量。
-  constructor(
+  public constructor(
     private readonly optics: AuroraOptics,
     sign: 1 | -1,
     geomSeed: number,
@@ -82,14 +82,14 @@ export class Aurora {
   }
 
   // 波打ちと明滅を phase の時点へ合わせる。
-  sync(phase: number, solarMeridianRad = 0): void {
+  public sync(phase: number, solarMeridianRad = 0): void {
     this.writeVertices(phase, solarMeridianRad);
     this.geo.attributes.position!.needsUpdate = true;
     this.geo.attributes.color!.needsUpdate = true;
   }
 
   // mesh を親から外し、ジオメトリ・マテリアルを解放する。
-  dispose(): void {
+  public dispose(): void {
     this.mesh.removeFromParent();
     this.geo.dispose();
     this.material.dispose();

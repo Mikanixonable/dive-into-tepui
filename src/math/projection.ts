@@ -6,18 +6,18 @@
 import { Vec3, add, cross, dot, norm, scale, sub } from './vec3';
 import type { Ray } from './ray';
 
-export type Projected = { x: number; y: number; front: boolean };
+export interface Projected { readonly x: number; readonly y: number; readonly front: boolean }
 export type ProjectionMode = 'perspective' | 'orthographic';
 
 export interface Viewpoint {
-  position: Vec3; // 視点の絶対 ECI 位置
-  lookTarget: Vec3; // 注視点の絶対 ECI 位置(forward = normalize(lookTarget - position))
-  up: Vec3; // 上方向のヒント(forward と直交している必要はない — lookAt と同様に再直交化する)
-  fovDeg: number; // 垂直画角
-  aspect: number; // width / height
-  projection?: ProjectionMode;
+  readonly position: Vec3; // 視点の絶対 ECI 位置
+  readonly lookTarget: Vec3; // 注視点の絶対 ECI 位置(forward = normalize(lookTarget - position))
+  readonly up: Vec3; // 上方向のヒント(forward と直交している必要はない — lookAt と同様に再直交化する)
+  readonly fovDeg: number; // 垂直画角
+  readonly aspect: number; // width / height
+  readonly projection?: ProjectionMode;
   // 直交投影時の画面中央から上下端までの実距離 [m]。
-  orthographicHalfHeight?: number;
+  readonly orthographicHalfHeight?: number;
 }
 
 // 視点を束縛した投影。worldPos を画面ピクセルへ写す。

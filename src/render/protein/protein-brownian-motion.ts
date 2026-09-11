@@ -67,7 +67,7 @@ interface SanitizedMode {
 }
 
 export class ProteinBrownianSampler {
-  readonly modeCount: number;
+  private readonly modeCount: number;
 
   private readonly sampleHz: number;
   private readonly seed: number;
@@ -79,7 +79,7 @@ export class ProteinBrownianSampler {
   private nextValues: Float64Array;
   private currentTick = -1;
 
-  constructor(modes: readonly ProteinBrownianModeParameters[], sampleHz: number, seed: number) {
+  public constructor(modes: readonly ProteinBrownianModeParameters[], sampleHz: number, seed: number) {
     this.modeCount = modes.length;
     this.sampleHz = Number.isFinite(sampleHz) && sampleHz > 0
       ? Math.min(Math.max(sampleHz, 1e-6), 1e6)
@@ -114,7 +114,7 @@ export class ProteinBrownianSampler {
   }
 
   /** Returns the value at `time`, interpolated between fixed-rate samples. */
-  sampleAt(time: number, out: Float64Array): Float64Array {
+  public sampleAt(time: number, out: Float64Array): Float64Array {
     if (out.length < this.modeCount) {
       throw new RangeError(`Protein Brownian output requires ${this.modeCount} values`);
     }

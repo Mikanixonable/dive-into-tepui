@@ -25,20 +25,20 @@ export class ObjectPickables {
   private readonly nearbyTracker = new NearbySystemTracker();
 
   // このフレームの被選択物候補。refresh の後に読む。マップ視点でないフレームは空。
-  get pickables(): readonly ObjectPickable[] { return this.candidateItems; }
+  public get pickables(): readonly ObjectPickable[] { return this.candidateItems; }
 
   // このフレームの表示・選択可否。マップビュー以外では null。
-  get visibilityPolicy(): MapVisibilityPolicy | null { return this._visibilityPolicy; }
+  public get visibilityPolicy(): MapVisibilityPolicy | null { return this._visibilityPolicy; }
 
   // 直近の refresh が受け取った simTime。ヒットテスト側が時刻依存の項目(通過時刻等)を
   // 同じ時刻で求め直すために読む。
-  get lastSimTime(): number { return this._lastSimTime; }
+  public get lastSimTime(): number { return this._lastSimTime; }
 
   // 直近の refresh が候補の位置を求めた表示時刻。候補の位置を引き直すときはこの時刻を渡す。
-  get lastDisplayTime(): number { return this._lastDisplayTime; }
+  public get lastDisplayTime(): number { return this._lastDisplayTime; }
 
   // 候補の供給元を参照として受け取る。
-  constructor(
+  public constructor(
     private readonly controlSelection: ControlSelection,
     private readonly roster: EntityRoster,
     private readonly celestialBodies: CelestialBodies,
@@ -51,7 +51,7 @@ export class ObjectPickables {
   ) {}
 
   // 候補列と可視性ポリシーを空へ戻す。マップを離れるときに呼ぶ。
-  clear(): void {
+  public clear(): void {
     this.candidateItems.length = 0;
     this._visibilityPolicy = null;
   }
@@ -60,7 +60,7 @@ export class ObjectPickables {
   // + AN/DN アイコン + 近地点・遠地点アイコン)。天体側も表示と同じ MapVisibilityPolicy を
   // 通し、非表示にした対象を選べない状態にする。物理積分の後に呼ぶ: 積分前に組むと、同フレームで
   // sync されるメッシュと座標が1ステップずれる。
-  refresh(displayWindow: DisplayWindow, mapDisplay: MapDisplayToggles): void {
+  public refresh(displayWindow: DisplayWindow, mapDisplay: MapDisplayToggles): void {
     const { simTime, displayTime } = displayWindow;
     this._lastSimTime = simTime;
     this._lastDisplayTime = displayTime;

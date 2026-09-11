@@ -30,7 +30,7 @@ export type CumulusDetail = (typeof CUMULUS_DETAIL)[keyof typeof CUMULUS_DETAIL]
 
 // 雲頂を探す標本の配り方。march は殻の中を等間隔にたどる刻みの数(どの交点を見つけるかを決める)、
 // refine は雲頂をまたいだ区間を締める回数(最初は clearance の線形補間、残りは二分で精度を決める)。
-type CumulusSampling = { readonly march: number; readonly refine: number };
+interface CumulusSampling { readonly march: number; readonly refine: number }
 
 // 段ごとの標本の配り方。費用は入口の1回 + march + refine 回の標本化。march 0 は殻を描かない。
 // **いちばん粗い段は march 1 本に留め、そのぶん refinement を増やす** — 刻みが 2 本以上あると手前と奥で

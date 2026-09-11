@@ -29,19 +29,19 @@ const STAGE_CONTROL_ENEMY_COLORS = [
 ] as const;
 
 export class StageControlsPanel {
-  readonly element: HTMLElement;
+  public readonly element: HTMLElement;
   // sync() が操作艦の有無に応じて有効/無効を切り替える対象。
-  readonly spawnEnemyButtons: readonly Button[];
+  private readonly spawnEnemyButtons: readonly Button[];
 
-  onToggleResupply: ((on: boolean) => void) | null = null;
-  onToggleFuelResupply: ((on: boolean) => void) | null = null;
-  onToggleWaveAttack: ((on: boolean) => void) | null = null;
-  onAddMagazine: (() => void) | null = null;
-  onRefillFuel: (() => void) | null = null;
-  onSpawnDistanceChange: ((distanceM: number) => void) | null = null;
-  onSpawnEnemy: ((shape: EnemySpawnShape, colorValue: string) => void) | null = null;
-  onSpawnFormation: (() => void) | null = null;
-  onProteinDisplayChange: ((display: ProteinDisplaySettings) => void) | null = null;
+  public onToggleResupply: ((on: boolean) => void) | null = null;
+  public onToggleFuelResupply: ((on: boolean) => void) | null = null;
+  public onToggleWaveAttack: ((on: boolean) => void) | null = null;
+  public onAddMagazine: (() => void) | null = null;
+  public onRefillFuel: (() => void) | null = null;
+  public onSpawnDistanceChange: ((distanceM: number) => void) | null = null;
+  public onSpawnEnemy: ((shape: EnemySpawnShape, colorValue: string) => void) | null = null;
+  public onSpawnFormation: (() => void) | null = null;
+  public onProteinDisplayChange: ((display: ProteinDisplaySettings) => void) | null = null;
 
   // 入力欄が無効値を弾いたときに直前の有効値へ戻すための保持値。
   private spawnDistance: number;
@@ -51,7 +51,7 @@ export class StageControlsPanel {
 
   // 各初期値は呼び出し側(CreativeStage)が持つ現在の状態を渡す。以後の変更は onXxx コールバックで
   // 呼び出し側へ通知するので、このクラス自身は補給状態や実体の生成には触れない。
-  constructor(
+  public constructor(
     resupplyEnabled: boolean, rcsFuelResupplyEnabled: boolean, waveAttackEnabled: boolean,
     initialSpawnDistance: number, initialProteinDisplay: ProteinDisplaySettings,
   ) {
@@ -90,7 +90,7 @@ export class StageControlsPanel {
   }
 
   // 操作艦の有無に応じて、敵スポーン系のボタンをまとめて有効/無効にする。
-  setSpawnButtonsEnabled(enabled: boolean): void {
+  public setSpawnButtonsEnabled(enabled: boolean): void {
     for (const button of this.spawnEnemyButtons) button.setEnabled(enabled);
   }
 

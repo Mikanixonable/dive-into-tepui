@@ -136,11 +136,11 @@ export class DynamicMotion {
   public att: Attitude;
   public alive = true;
   public mass: number;
-  public radius: number;
-  public collides: boolean;
-  public engagementAnchor: boolean;
-  public preciseReentry: boolean;
-  public contactDamageWeight: number;
+  public readonly radius: number;
+  public readonly collides: boolean;
+  public readonly engagementAnchor: boolean;
+  public readonly preciseReentry: boolean;
+  public readonly contactDamageWeight: number;
   public attachedTo: DynamicMotion | null = null;
   public torque: Vec3 = v3();
   public readonly bcInv: number;

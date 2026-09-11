@@ -15,10 +15,10 @@ const markerKey = (target: CombatTarget): string => `lead-${target.id}`;
 export class LeadMarkers {
   private shownKeys: readonly string[] = [];
 
-  constructor(private readonly markers: MarkerSlots) { }
+  public constructor(private readonly markers: MarkerSlots) { }
 
   // 射撃できない状況(マップビュー・自機喪失)では表示せず、保持していたロック履歴も捨てる。
-  sync(
+  public sync(
     player: Player,
     targetsArray: readonly CombatTarget[],
     target: CombatTarget | null,
