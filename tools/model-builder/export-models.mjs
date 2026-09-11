@@ -25,14 +25,8 @@ const outDir = join(__dirname, '..', '..', 'src', 'assets', 'models');
 mkdirSync(outDir, { recursive: true });
 
 // ------------------------------------------------------------- 静的子メッシュの統合
-// 実行時にはメッシュ数がそのまま draw call 数になるため、互いに相対運動しない
-// (= 実行時に個別の Object3D として名前検索・変換されない)兄弟メッシュは
-// 構築時にジオメトリごと1つへ統合し、draw call を減らす。
-// group の直属の Mesh 子だけを対象に、同一 material 参照ごとにジオメトリを
-// ワールド変換込みで結合する。子 Group には踏み込まない(呼び出し側が
-// mergeStaticChildren で再帰する)ので、蛇腹の折り目 Group のように実行時に
-// getObjectByName で引いて個別に rotation を書く Group は、その子だけが
-// 統合され、Group 自身は境界として保たれる。
+// メッシュ数はそのまま draw call 数になるので、group の直属の Mesh 子を material ごとに1つへ統合する。
+// 子 Group は統合せず境界として残す — 蛇腹の折り目のように名前で引いて個別に動かす Group を壊さないため。
 function mergeSiblingMeshesByMaterial(group) {
   const byMaterial = new Map();
   for (const child of [...group.children]) {
@@ -91,20 +85,14 @@ const models = {
   boosterInterstageCover: buildBoosterInterstageCover(),
 };
 
-// player・magazine(ammo が内包する分も含む)は draw call 数の大半を占めるため、
-// 静的な子メッシュを統合する。他のモデルは対象が少なく現状のままでよい。
+// draw call の大半を占める player と magazine(ammo が束ねる分も)の静的な子メッシュを統合する。
 mergeStaticChildren(models.player);
 mergeStaticChildren(models.magazine);
 mergeStaticChildren(models.ammo);
 
 for (const [name, object] of Object.entries(models)) {
-  // toJSON() は各ノードの `matrix` プロパティをそのままシリアライズするだけで、
-  // position/rotation/scale から再合成はしない。ここはレンダーループの外(ヘッド
-  // レスな export スクリプト)なので、three.js が通常フレーム毎に自動で行う
-  // updateMatrix() が一度も呼ばれておらず、matrix は単位行列のまま出力されてしまう
-  // (= ObjectLoader.parse() 側で decompose しても位置・回転が全部ゼロになる)。
-  // toJSON() の前に明示的に updateMatrixWorld(true) を呼び、全ノードの matrix に
-  // position/quaternion/scale を焼き込んでからシリアライズする。
+  // toJSON() は各ノードの matrix をそのまま書き、position/quaternion/scale から組み直さない。
+  // レンダーループの外では matrix が単位行列のままなので、書き出す前に焼き込む。
   object.updateMatrixWorld(true);
   const json = object.toJSON();
   const outPath = join(outDir, `${name}.json`);
