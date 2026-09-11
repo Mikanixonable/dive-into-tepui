@@ -1,3 +1,4 @@
+// シルエット表示を組む。溶媒排除表面を半透明の外殻にして電荷か疎水性で塗り、内側にリボンとリガンドを置く。
 import * as THREE from 'three/webgpu';
 import type { ProteinSilhouetteColorMode } from './protein-display';
 import {
@@ -10,6 +11,7 @@ import { buildProteinRibbon } from './protein-ribbon';
 import { triangleComponent } from './protein-ribbon-color';
 import type { ProteinRenderSource } from './protein-render-definition';
 
+// 表面の値 -127〜127 を色へ写す。電荷は負が赤・正が青、疎水性は低いと青・高いと橙。
 function surfaceColor(value: number, mode: ProteinSilhouetteColorMode): THREE.Color {
   const t = Math.max(0, Math.min(1, (value + 127) / 254));
   if (mode === 'surface-charge') {
@@ -27,20 +29,21 @@ interface ProteinSurfacePart {
   readonly vertices: Map<number, number>;
 }
 
+/** mode の着色で、鎖ごとの外殻と白いリボン・リガンドを1体ぶん組む。 */
 export function buildProteinSilhouette(
   source: ProteinRenderSource,
   mode: ProteinSilhouetteColorMode,
   motion?: ProteinMotionBinding,
 ): THREE.Group {
   const group = new THREE.Group();
-  // 外殻が選択されたスカラー場を担うので、内部のリボンは白のまま置く — 半透明の殻越しでも
-  // 形が読めるようにするため。
+  // 色は外殻が担うので、内部のリボンは白にして殻越しに形を読ませる。
   group.add(buildProteinRibbon(source, 'chain', new THREE.Color(0xffffff), motion));
   if (source.semantic.ligands.length) group.add(buildProteinLigands(source, motion));
   const surface = source.structure.surface.mesh;
   const bindings = proteinResidueBindingLookup(source);
   const values = mode === 'surface-charge' ? surface.charge : surface.hydrophobicity;
   const center = source.structure.coordinateFrame.centeredAt;
+  // 三角形を鎖ごとに振り分け、頂点を中心寄せ済みの系へ移して色を付ける。
   const parts = new Map<string, ProteinSurfacePart>();
   for (let offset = 0; offset + 2 < surface.index.length; offset += 3) {
     const triangle = [surface.index[offset]!, surface.index[offset + 1]!, surface.index[offset + 2]!] as const;
@@ -65,11 +68,13 @@ export function buildProteinSilhouette(
     }
     parts.set(component, part);
   }
+  // 鎖ごとの外殻を半透明で重ねる。
   for (const [component, part] of parts) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(part.positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(part.colors, 3));
     geometry.setIndex(part.indices);
+    // vertices の挿入順がローカル頂点の順と一致する。
     const residueIndices = [...part.vertices.keys()].map((vertex) => bindings.surfaceResidues[vertex] ?? 0);
     attachProteinResidueBinding(geometry, residueIndices);
     geometry.computeVertexNormals();

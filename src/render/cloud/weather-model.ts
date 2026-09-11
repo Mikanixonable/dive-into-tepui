@@ -1,6 +1,5 @@
-// 状態を持たない天気のモデル。天体固定の単位方向と時刻から、気圧 → 風 → 上昇流 → 湿度・対流と
-// 辿るグラフを TSL で組む。時刻の閉じた関数なので、どの時刻へ飛んでも同じ空が出る。値はすべて
-// 見えのための調整値。
+// 天気のモデル。天体固定の単位方向と時刻から、気圧 → 風 → 上昇流 → 湿度・対流の天気を TSL の
+// グラフで組む。時刻の閉じた関数で、同じ時刻には同じ空が出る。値はすべて見えのための調整値。
 import { abs, clamp, cos, dot, exp, max, min, normalize, sin, smoothstep, tanh, vec2, vec4 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import { AirMass } from './air-mass';
@@ -22,28 +21,22 @@ import type { FieldProjection } from './field-projection';
 import type { BalancedWind } from './wind-law';
 import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 
-// 単位方向における天気。気圧は平年からの偏差 [hPa]、地表の風は東向き・北向きの成分 [m/s]、
-// 上昇流は [m/s](地形と気圧による、負なら下降)、地表付近と上層の湿度は 0..1、対流は対流セルの
-// 強弱(0 中心の高周波、x が粒・y が網目)、対流の活発度はその強弱がどれだけ強く現れるか 0..1、
-// 圧縮は気団の境目の押し縮まり(1 で何も起きていない)、帯は気団の折り目に立つ雲の帯の強さ 0..1
-// (温帯では前線、眼を持つ渦のまわりでは雨帯。1 で飽和)、暖気の流入は出身地からの緯度の差 [rad]
-// (負で寒気)、金床は平らな天蓋の濃さ 0..1、平年の雲量と陸らしさは気候の分布 0..1、圏界面は
-// その緯度の対流の天井 [m]。
+// 単位方向における天気。
 export interface WeatherSample {
-  readonly pressure: FloatNode;
-  readonly surfaceWind: Vec2Node;
-  readonly lift: FloatNode;
-  readonly surfaceHumidity: FloatNode;
-  readonly upperHumidity: FloatNode;
-  readonly convection: Vec2Node;
-  readonly convectiveActivity: FloatNode;
-  readonly compression: FloatNode;
-  readonly band: FloatNode;
-  readonly warmth: FloatNode;
-  readonly anvil: FloatNode;
-  readonly meanCloudiness: FloatNode;
-  readonly landFraction: FloatNode;
-  readonly tropopause: FloatNode;
+  readonly pressure: FloatNode; // 平年からの偏差 [hPa]
+  readonly surfaceWind: Vec2Node; // 地表の風の東向き・北向きの成分 [m/s]
+  readonly lift: FloatNode; // 上昇流 [m/s](負なら下降)
+  readonly surfaceHumidity: FloatNode; // 地表付近の湿度 0..1
+  readonly upperHumidity: FloatNode; // 上層の湿度 0..1
+  readonly convection: Vec2Node; // 対流セルの強弱(0 中心の高周波、x が粒・y が網目)
+  readonly convectiveActivity: FloatNode; // 対流の強弱がどれだけ強く現れるか 0..1
+  readonly compression: FloatNode; // 気団の境目の押し縮まり(1 で何も起きていない)
+  readonly band: FloatNode; // 気団の折り目に立つ雲の帯(温帯で前線、眼を持つ渦のまわりで雨帯)の強さ 0..1
+  readonly warmth: FloatNode; // 暖気の流入 = 出身地からの緯度の差 [rad](負で寒気)
+  readonly anvil: FloatNode; // 金床(平らな天蓋)の濃さ 0..1
+  readonly meanCloudiness: FloatNode; // 平年の雲量 0..1
+  readonly landFraction: FloatNode; // 陸らしさ 0..1
+  readonly tropopause: FloatNode; // その緯度の対流の天井(圏界面の高さ)[m]
 }
 
 // 気圧の写しから読んだ、風を解くのに要る量。gradient は勾配の接ベクトル [hPa/rad]、isobar は
@@ -55,74 +48,57 @@ interface PressureField {
   readonly bend: FloatNode;
 }
 
-// ノイズの段の表。周波数は 1 rad あたりの山の数で、角波長 [km] は 6371 ÷ 周波数。
-// 気圧は 1 段しか持たない。総観規模より細かい構造を実際に持たないうえ、上昇流が気圧そのものの
-// 関数なので、段を増やすとノイズの格子が雲へそのまま出る。
+// ノイズの段の表。周波数は 1 rad あたりの山の数で、角波長 [km] は 6371 ÷ 周波数。気圧は 1 段に
+// 取る — 上昇流が気圧そのものの関数なので、段を増やすとノイズの格子が雲へそのまま出る。
 const PRESSURE_NOISE: readonly NoiseOctave[] = [
   { frequency: 1.2, amplitude: 1 }, // 5300 km
 ];
-// 場の振れ幅。CirculatingNoise が段の振幅の総和で割って返すので、段数を変えてもここは動かない。
+// 場の振れ幅 [hPa]。段数によらない。
 const PRESSURE_NOISE_AMPLITUDE = 18;
 
-// 気圧の偏差から出る上昇流。利得 [m/s] が高気圧側の吹きおろしの上限で、低気圧側は圧力の尺度
-// [hPa] ごとに e 倍に伸びる。上昇は狭く強く、下降は広く弱いので、写像は原点で非対称に取る。
-// 利得を上げると低気圧が湿度へ飽和した円盤を書き、流入が巻き込んだ渦をその上から塗り潰す
-// — 渦の見えは、滑らかな円盤ではなく、流入が既にある雲を縮める分から出る。尺度は、並の低気圧の
-// 芯(24 hPa)で 0.03 m/s になる長さ。
+// 気圧の偏差から出る上昇流。利得 [m/s] が高気圧側の吹きおろしの上限、低気圧側は尺度 [hPa] ごとに
+// e 倍に伸びる(上昇は狭く強く、下降は広く弱い)。尺度は並の低気圧の芯(24 hPa)で 0.03 m/s に
+// なる長さ。利得を上げると低気圧が飽和した円盤になり、流入が巻き込んだ渦を塗り潰す。
 const PRESSURE_LIFT_GAIN = 0.02;
 const PRESSURE_LIFT_SCALE = 27;
-// 上昇流の頭打ち [m/s]。急な斜面へ強い風が当たる所と深い谷の芯では上昇流が並の何倍にもなり、
-// 線形のままだと湿度が 0/1 で切れて硬い縁の白い塊になる。漸近させて、並の上昇流はほぼ素通しにする。
+// 上昇流の頭打ち [m/s]。急な斜面と深い谷の芯では上昇流が並の何倍にもなり、線形のままだと湿度が
+// 0/1 で切れて硬い縁の白い塊になる。
 const LIFT_LIMIT = 0.06;
-// 前線の帯。気団の圧縮が効き始めを超えてから幅ぶん進む所まで、帯の強さが 0 から 1 へ渡る。前線は
-// 低気圧を囲む閉じた流れ(猫の目)の縁に沿う浅い弧に立つ。効き始めは、低気圧から離れた 35〜60° の
-// 帯が背景として持つ圧縮(90 パーセンタイルの実測 1.19〜1.28)の 2 割上に取る — ここを下げると
-// 気団の境目ではなく空の半分が前線になる。**幅は、折り目の丘そのものが飽和する狭さに取る** —
-// 圧縮の稜線は線ではなく幅 500〜600 km の丘で、その頂点(99 パーセンタイルの実測 2.3〜2.7)だけを
-// 飽和させると、帯は丘の芯を走る細い筋になっていちばん白い所が帯の幅を持たない
-// (`DEVELOP/SPEC/RENDERING.md`「いちばん白い芯も帯の幅いっぱいを占め」)。上端は、35〜60° の帯の
-// 4%(北)・7%(南)が飽和する高さ。**幅を狭めても帯が湿度へ足す総量は動かない** — 飽和する面が
-// 広がった分だけ半端な強さの裾が痩せるので、同じ量が細い筋から幅のある面へ移るだけになる。
+// 前線の帯。気団の圧縮が効き始めから幅ぶん進む間に、帯の強さが 0 から 1 へ渡る。効き始めは 35〜60° の
+// 帯が背景として持つ圧縮(90 パーセンタイルで 1.19〜1.28)の 2 割上 — 下げると空の半分が前線になる。
+// 幅は、圧縮の稜線(幅 500〜600 km の丘、頂点は 99 パーセンタイルで 2.3〜2.7)が丘ごと飽和する狭さに
+// 取り、いちばん白い芯に帯の幅を持たせる(`DEVELOP/SPEC/RENDERING.md`「いちばん白い芯も帯の幅
+// いっぱいを占め」)。
 const FRONT_ONSET = 1.45;
 const FRONT_WIDTH = 0.35;
-// 湿度の水平勾配 [1/rad]。気団の温度差だけでなく、湿った空気と乾いた空気の境界でも前線の
-// 雲帯が強まるようにする。湿度写しの量子化より十分広い幅で渡し、線状の格子を作らない。
+// 前線を強める湿度の水平勾配の効き始めと幅 [1/rad]。湿った空気と乾いた空気の境目にも雲帯を立てる。
+// 幅は湿度写しの量子化より十分広く取る — 狭いと線状の格子が出る。
 const MOISTURE_GRADIENT_ONSET = 0.12;
 const MOISTURE_GRADIENT_WIDTH = 0.28;
-// 雨帯。眼を持つ渦が周りの気団を巻き込んで折り畳んだ筋で、圧縮は前線の帯より桁が大きい(台風の芯から
-// ±1180 km では 45% が 2 を超え、腕の稜線は 5〜9)。効き始めは稜線の下端に置き、幅は稜線の中でいちばん
-// 押し縮まった区間だけが帯として飽和して、腕の先へ向けて連続に薄れる長さに取る — 芯のまわりのシアの丘
-// (2〜4)と、渦から離れた熱帯の背景(99.9 パーセンタイルの実測 3.2)には掛からない。ここを狭めると
-// 稜線が丸ごと飽和し、腕は太い真っ白な帯になって被覆率が実写の 2 倍を超える(`DEVELOP/SPEC/
-// RENDERING.md`「雨帯は、渦が周りの気団を巻き込んで折り畳んだ筋に沿う」)。
+// 雨帯。眼を持つ渦が周りの気団を巻き込んで折り畳んだ筋で、圧縮は前線より桁が大きい(腕の稜線で 5〜9)。
+// 稜線の最も押し縮まった区間だけが飽和して腕の先へ連続に薄れる幅に取り、芯のまわりのシアの丘(2〜4)と
+// 熱帯の背景(99.9 パーセンタイルで 3.2)を拾わない。狭めると腕が太い真っ白な帯になる
+// (`DEVELOP/SPEC/RENDERING.md`「雨帯は、渦が周りの気団を巻き込んで折り畳んだ筋に沿う」)。
 const RAINBAND_ONSET = 5;
 const RAINBAND_WIDTH = 4;
-// 帯が飽和した所で立つ上昇流 [m/s]。頭打ち(LIFT_LIMIT)と同じ高さに取る — 帯の中は深い谷の芯と
-// 同じだけ持ち上がる。
+// 帯が飽和した所で立つ上昇流 [m/s]。深い谷の芯と同じだけ持ち上げるよう、頭打ち(LIFT_LIMIT)に揃える。
 const BAND_LIFT = 0.06;
-// 帯が飽和した所で地表付近の湿度へ足す底上げ。被覆率の伝達関数の幅(0.22)の 1.4 倍で、帯の芯
-// (強さ 1)では帯の上昇流が偏差を増幅する分(VORTEX_CONTRAST)と合わせて被覆率が上端へ届き、途切れない
-// 帯になる(`DEVELOP/SPEC/RENDERING.md`「前線の帯そのものが、その空でいちばん厚い雲になる」)。
-// 帯の外へ落ちていく縁では底上げも比例して痩せ、移流した湿度の濃淡が階調として残る。
+// 帯が飽和した所で地表付近の湿度へ足す底上げ。被覆率の伝達関数の幅(0.22)の 1.4 倍で、帯の芯では
+// 上昇流による偏差の増幅(VORTEX_CONTRAST)と合わせて被覆率が上端へ届き、途切れない帯になる
+// (`DEVELOP/SPEC/RENDERING.md`「前線の帯そのものが、その空でいちばん厚い雲になる」)。
 const BAND_HUMIDITY = 0.3;
-// 前線が立つ緯度の門。**前線と、その両側の気団の性質はどちらもこの門を通る** — 前線の伝達関数
-// (効き始め 1.45)は温帯だけに掛け、熱帯では貿易風の収束が緯線に沿った圧縮の環を作るので、代わりに
-// 雨帯の伝達関数(効き始め 4)が眼を持つ渦の腕の稜線だけを拾う。気団の流入も、熱帯では貿易風が
-// どこでも高緯度から吹き込むので、門が無いと熱帯全体が一律に乾く。
+// 温帯と熱帯を分ける緯度の門。温帯では前線の、熱帯では雨帯の伝達関数を使い、暖気の流入も温帯に
+// 効かせる — 熱帯では貿易風の収束が緯線に沿った圧縮の環を作り、流入を通すと熱帯全体が一律に乾く。
 const FRONT_LATITUDE_START = THREE.MathUtils.degToRad(20);
 const FRONT_LATITUDE_FULL = THREE.MathUtils.degToRad(35);
-// 風が斜面を駆け上がる分の利得。等倍だと、偏西風や貿易風が山脈へ当たり続けるだけで上昇流が
-// 頭打ちに達し、気候と無関係な地形の縞が年中貼り付く。慢性的な湿潤・乾燥は平年の雲量が持つので、
-// ここは低気圧が山へぶつかったときだけ効く高さへ落とす。
+// 風が斜面を駆け上がる分の利得。等倍では偏西風や貿易風が山脈へ当たり続けるだけで上昇流が頭打ちに
+// 達し、地形の縞が年中貼り付く — 慢性的な湿潤・乾燥は平年の雲量が持つ。
 const TERRAIN_LIFT_GAIN = 0.35;
 // 陸へ上乗せする高さ [m]。海と陸の比熱の差を、海岸へ吹き込む風が駆け上がる斜面として代用する。
-// 地形の上昇流は釣り合い風(帯の平均風を含まない)から出るので、低気圧が海から吹き込むときだけ効く。
 const LAND_HEIGHT_BIAS = 800;
-// 上昇流の利得 [per m/s]。上向きは地表付近と上層の両方を湿らせ、下向きは地表付近だけを乾かす。
-// **地表付近の上向きの湿りは、足す分(ここ)と、移流した湿度の偏差を増幅する分(VORTEX_CONTRAST)に
-// 分けて持つ。** 足すだけでは渦の上に飽和した円盤を塗り、流入が巻き込んだ筋を消す — 増幅は
-// 螺旋を残し、湿った筋をより白く、乾いた隙間をより晴らす。**下降の利得は上昇より小さく取る。**
-// 沈降は自由大気を乾かすが、その下の海洋境界層は湿ったまま層積雲を保つ — 同じ利得で乾かすと、
+// 上昇流が湿度へ効く利得 [per m/s]。地表付近の上向きの湿りは、足す分(ここ)と偏差を増幅する分
+// (VORTEX_CONTRAST)に分ける — 足すだけでは渦の上に飽和した円盤を塗り、流入が巻き込んだ筋を消す。
+// 地表付近の沈降の乾きは上昇より弱く取る — 海洋境界層は沈降の下でも層積雲を保ち、同じ利得では
 // 亜熱帯高圧帯の下の海が丸ごと晴れる。
 const SURFACE_LIFT_HUMIDITY = 1.3;
 const SURFACE_SUBSIDENCE_DRYING = 1.0;
@@ -155,52 +131,40 @@ const BEND_STEP = 0.02;
 // 対流を流す風の摩擦 [1/s]。湿度を流す風より強く取ると、等圧線を深く横切って 20〜30° 違う向きへ
 // 伸びる。同じ風で流すと 2 枚が同じ向きへ伸びて、掛け合わせても筋のままになる。
 const CONVECTION_FRICTION = 3 * FRICTION_RATE;
-// 風が等圧線を横切る角の上限 [rad]。湿度を流す風と対流を流す風で別に持つ。湿度の風の上限は中緯度で
-// 摩擦が作る角そのもの(45° で 30°)で、熱帯の外では 45° より低緯度の流れが高気圧性に曲がる所でだけ
-// 効く(実測: 45°N の低気圧の撮影で風の写しが動くのは texel の 2.6%、それも 5 LSB 以下で、35〜60° の
-// 帯の平均は動かない)。対流の風は中緯度で摩擦が作る 60° より内側の 50° に常に抑えられ、湿度の風と
-// 向きが 20° 離れたままになる — 2 枚の移流場は同じ向きへ筋を引かず交差する。熱帯(15°)では上限が
-// 57° と 78° の流入を切り、台風のまわりで粒が放射状の筋に引かれるのを止める。
+// 風が等圧線を横切る角の上限 [rad]。湿度の風は中緯度で摩擦が作る角(45° で 30°)そのものに取る。
+// 対流の風は摩擦が作る 60° を 50° に抑え、湿度の風と向きを 20° 離して 2 枚の移流場を交差させる。
+// 熱帯では両方が大きな流入角を切り、台風のまわりで粒が放射状の筋に引かれるのを止める。
 const SURFACE_WIND_CROSSING_LIMIT = THREE.MathUtils.degToRad(30);
 const CONVECTION_WIND_CROSSING_LIMIT = THREE.MathUtils.degToRad(50);
 
-// 渦の目。移流の後の湿度をこれだけ下げる。目は渦とともに動く定常の構造なので、風に流さない。
-// 眼壁は上昇流が頭打ちに張り付いて飽和し、その上に金床の天蓋(ANVIL_HUMIDITY)が乗るので、
-// 両方を貫く深さが要る。上層を深く引くのは、薄い雲の穴を厚い雲の目よりひとまわり広く開けるため。
+// 渦の目が移流後の湿度から引く深さ。眼壁の飽和と金床の天蓋(ANVIL_HUMIDITY)の両方を貫く深さに
+// 取る。上層を深く引いて、薄い雲の穴を厚い雲の目よりひとまわり広く開ける。
 const SURFACE_EYE_DRYNESS = 0.8;
 const UPPER_EYE_DRYNESS = 2;
-// 金床の天蓋が地表付近の湿度へ足す高さ。天蓋の下の円盤は隙間なく埋まるべきなので、並の湿度からでも
-// 雲量が飽和する分を足す。目はこの後に引くので、天蓋を貫いて開く深さは SURFACE_EYE_DRYNESS が持つ。
+// 金床の天蓋が地表付近の湿度へ足す高さ。天蓋の下の円盤が隙間なく埋まるよう、並の湿度からでも
+// 雲量が飽和する分を足す。
 const ANVIL_HUMIDITY = 0.5;
-// 暖気の流入が地表付近の湿度へ効く利得 [per rad]。36 h の追跡で気団は最大 0.3 rad ぶんの緯度を
-// 越えてくるので、並の流入(0.26 rad)で伝達関数の幅の半分ほど動く高さに取る。**この項は
-// 平均が 0 ではない** — 暖気の流入する所のほうが広いので、底上げをそのぶん下げて釣り合わせる。
+// 暖気の流入が地表付近の湿度へ効く利得 [per rad]。並の流入(0.26 rad)で伝達関数の幅の半分ほど
+// 動く高さ。この項の平均は正なので、源の底上げ(SURFACE_HUMIDITY_BASE)をそのぶん下げて釣り合わせる。
 const WARM_HUMIDITY = 0.6;
-// 湿度の底上げ(移流前の源が持つ、平年の雲量を抜きにした値)と、移流後に足す平年の雲量の重み。
-// 地表付近と上層で別に持つ。重みは、雲量の地理的な差が凝結のしきい値をまたぐ幅に取る — 小さく
-// 取ると砂漠にも海と同じだけ雲が湧き、大きく取ると雲の多い海が覆われたまま動かなくなって、
-// 平年の雲量図がそのまま貼り付く。底上げは層ごとに合わせる量が違う。地表付近は、重みを変えても
-// 平年並みの土地の湿度が動かないように取る(平年の雲量の中央値 0.70 ぶんを差し引き、さらに前線の
-// 上昇流と暖気の流入が平均で足す分を差し引く)。上層は、±60° の薄い雲の明るさ(1 − e^−τ)の平均が
-// 実写(0.13 付近)に合う高さに実測で取る。
+// 移流後に足す平年の雲量の重み(地表付近と上層)。雲量の地理的な差が凝結のしきい値をまたぐ幅に
+// 取る — 小さいと砂漠にも海と同じだけ雲が湧き、大きいと雲の多い海が覆われたまま平年の雲量図が
+// 貼り付く。
 const SURFACE_MEAN_CLOUDINESS_WEIGHT = 0.30;
 const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.24;
-// 平年の雲量を湿度へ渡す S 字の裾と肩。**線形では乾燥帯だけを強く晴らせない** — 砂漠を晴らす
-// 重みでは、雲の多い海が覆われたまま動かなくなる。裾は砂漠(0.14)より下、肩は年中曇りの海
-// (0.89)の側へ置き、あいだを広く渡す — 幅を狭めると、乾いた大陸(0.43〜0.51)や貿易風帯の海
-// (0.50〜0.65)まで裾へ落ちて、砂漠でない土地まで丸ごと雲を失う。
+// 平年の雲量を湿度へ渡す S 字の裾と肩。線形では、砂漠を晴らす重みで雲の多い海が覆われたまま動かなく
+// なる。裾は砂漠(0.14)の下、肩は年中曇りの海(0.89)の側に置く — 狭めると乾いた大陸(0.43〜0.51)や
+// 貿易風帯の海(0.50〜0.65)まで雲を失う。
 const MEAN_CLOUDINESS_DRY = 0.10;
 const MEAN_CLOUDINESS_WET = 0.85;
 
 export class WeatherModel {
-  // One physical background profile is shared by the local pressure solver,
-  // upper-air transport, and the pattern circulations below.
+  // 大循環の平均風。地表付近と上層の背景風をここから引く。
   private readonly atmosphericWind = new AtmosphericWindField();
   private readonly surfaceCirculation = new Circulation(SURFACE_BANDS);
   private readonly upperCirculation = new Circulation(UPPER_BANDS);
   private readonly rossbyWave = new RossbyWave();
   private readonly cyclones: Cyclones;
-  // ノイズは焼く先の texel で標本化できない段を畳むので、写しの持ち方が決まってから組む。
   private readonly pressureNoise: CirculatingNoise;
   private readonly transport: WeatherTransport;
   private readonly pressure: BakedField;
@@ -252,8 +216,7 @@ export class WeatherModel {
 
     const { pressure, gradient, isobar, bend } = this.pressureFieldAt(direction, east, north);
 
-    // 湿度と対流は、同じ物理的な背景風へ局所的な気圧風を重ねる。上層は同じ局所風に
-    // 高度依存の偏西風を重ね、雲・気団・前線が別々の平均風を持たないようにする。
+    // 風: 局所的な気圧風へ、大循環の背景風(地表付近/上層)とロスビー波を重ねる。
     const rossby = this.rossbyWave.perturbationAt(direction, this.surfaceRadius);
     const surfaceMean = this.atmosphericWind.sampleNode(latitude, SURFACE_HEIGHT);
     const upperMean = this.atmosphericWind.sampleNode(latitude, UPPER_CLOUD_HEIGHT);
@@ -272,7 +235,7 @@ export class WeatherModel {
       this.surfaceRadius, this.rotationPeriod,
     ), upperBackground);
 
-    // 湿度場も同じ風で移流したあと、温度代理(気団圧縮)と湿度勾配を前線へ渡す。
+    // 風で流した湿度・対流と、前線を強める湿度の勾配。
     const advected = this.transport.advectedAt(direction, surfaceWind, upperWind, convectionWind);
     const moistureGradient = this.moistureGradientAt(direction, east, north);
 
@@ -283,9 +246,8 @@ export class WeatherModel {
     const warmth = airMass.warmth.mul(extratropical);
     const terrainLift = dot(windComponents, this.climate.slope(direction, LAND_HEIGHT_BIAS, this.surfaceRadius))
       .mul(TERRAIN_LIFT_GAIN);
-    // 折り目の帯: 温帯では前線の伝達関数が、熱帯では雨帯の伝達関数が、圧縮の稜線を帯の強さへ写す。
-    // Fronts follow the air-mass temperature gradient, with a small continuous
-    // enhancement where pressure-driven ascent supplies convergence/updraft.
+    // 折り目の帯: 温帯では前線(気団の圧縮へ、湿度の境目と気圧の上昇流を少し足す)、熱帯では雨帯の
+    // 伝達関数が圧縮の稜線を帯の強さへ写す。
     const updraft = smoothstep(0.01, 0.04, max(liftFromPressure(pressure), 0));
     const temperatureFront = smoothstep(FRONT_ONSET, FRONT_ONSET + FRONT_WIDTH, airMass.compression);
     const moistureFront = smoothstep(
@@ -300,9 +262,7 @@ export class WeatherModel {
     const bandLift = band.mul(BAND_LIFT);
     const lift = limitLift(terrainLift.add(liftFromPressure(pressure)).add(bandLift));
 
-    // 湿度は、風で流した写しへ、その場の平年の雲量と上昇流と金床を足し、渦の目のぶんを引いたもの。
-    // 写しの偏差は上昇流が増幅する。写し以外は移流を通らないので、気候と地形と渦に貼り付いたまま
-    // 歪まない。
+    // 湿度: 流した写しへ、場所と渦に貼り付く項(平年の雲量・上昇流・帯・金床・目)を足し引きする。
     const meanCloudiness = this.climate.meanCloudiness(direction);
     const landFraction = this.climate.landFraction(direction);
     const eye = this.cyclones.eyeAt(direction);
@@ -338,8 +298,7 @@ export class WeatherModel {
     };
   }
 
-  // 単位方向 direction(接平面の東 east・北 north)における気圧の写しの読み。4 点差分から勾配を、
-  // 等圧線方向の 2 点差分からその向きの 2 階微分を取る。
+  // 単位方向 direction(接平面の東 east・北 north)における気圧と、その勾配・等圧線方向の曲がり。
   private pressureFieldAt(direction: Vec3Node, east: Vec3Node, north: Vec3Node): PressureField {
     const pressure = this.pressure.at(direction).r;
     const eastStep = east.mul(GRADIENT_STEP);
@@ -359,7 +318,7 @@ export class WeatherModel {
     return { pressure, gradient, isobar, bend };
   }
 
-  // 湿度写しの地表成分の水平勾配 [1/rad]。気団の温度代理とは別の境界を前線強度へ渡す。
+  // 移流前の地表付近の湿度の、水平勾配の大きさ [1/rad]。
   private moistureGradientAt(direction: Vec3Node, east: Vec3Node, north: Vec3Node): FloatNode {
     const eastStep = east.mul(GRADIENT_STEP);
     const northStep = north.mul(GRADIENT_STEP);
@@ -376,13 +335,8 @@ export class WeatherModel {
     return eastNorthComponents(this.traceFlowAt(direction).velocity, eastAt(direction), northAt(direction));
   }
 
-  // 気団を風上へ遡らせる風。**経度に依らない流れをすべて落とし、渦と総観規模の擾乱だけで遡る。**
-  // 気圧の勾配からは大循環の気圧帯を差し引き、帯の平均風は東向きの成分だけを足す — どちらも
-  // 南北の成分は経度に依らないので、残すと収束する緯度に緯線に沿った圧縮の環と、緯度で決まる
-  // 気団の流入の偏りができる。東西の流れが緯度で変わる分は残す。渦の作った気団の境目を
-  // 南西–北東へ傾けるのがそれで、経度に依らない流れでも圧縮は作らない。
-  // **移流の風には平均風を足さない** — 2 位相移流へ入れると、位相 A と B が数百 km ずれた別の
-  // 模様を混ぜることになり、背景が全域でぼける。
+  // 気団を風上へ遡らせる風。大循環の気圧帯を差し引いた気圧の勾配から解いた釣り合い風へ、大循環の
+  // 平均風とロスビー波を重ねる。気圧帯を残すと、収束する緯度に緯線に沿った圧縮の環が立つ。
   private traceFlowAt(direction: Vec3Node): BalancedWind {
     const east = eastAt(direction);
     const north = northAt(direction);
@@ -410,11 +364,8 @@ export class WeatherModel {
       .add(this.cyclones.pressureAt(direction));
   }
 
-  // 移流前の湿度(x が地表付近、y が上層)。ここへ入れたものが風で流れる。
-  //
-  // **平年の雲量はここへ入れない。** 移流の変位は雲を筋に引くのに要る大きさなので、通すと気候の
-  // 分布がその変位ぶん歪んで読めなくなる — 慢性的な湿潤・乾燥は場所に貼り付いているべきもので、
-  // 流れていくものではない。
+  // 移流前の湿度(x が地表付近、y が上層)。平年の雲量は移流の後に weatherAt が足す — 移流を通すと
+  // 気候の分布が雲を筋に引く変位ぶん歪む。
   public humiditySourceAt(direction: Vec3Node): Vec2Node {
     return this.transport.humiditySourceAt(direction);
   }
@@ -424,8 +375,7 @@ export class WeatherModel {
     return this.atmosphericWind.sampleNode(latitudeOf(direction), SURFACE_HEIGHT);
   }
 
-  // 移流前の対流の強弱(0 中心の高周波)。x が粒(細胞の芯)、y が網目(細胞の壁)で、**同じ
-  // 勾配ノイズから出るので 1 回の評価で両方が積める。** 湿度と別の写しへ焼き、別の風で流す。
+  // 移流前の対流の強弱(0 中心の高周波)。x が粒(細胞の芯)、y が網目(細胞の壁)。
   public convectionSourceAt(direction: Vec3Node): Vec2Node {
     return this.transport.convectionSourceAt(direction);
   }

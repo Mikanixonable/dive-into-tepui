@@ -24,6 +24,7 @@ export class Bullet extends DynamicEntity {
   }
 }
 
+// entity を弾へ絞り込む型ガード。
 export function isBullet(entity: DynamicEntity): entity is Bullet {
   return entity instanceof Bullet;
 }

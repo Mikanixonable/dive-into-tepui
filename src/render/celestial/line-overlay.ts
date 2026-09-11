@@ -1,7 +1,6 @@
-// 模式図スタイルの地表へ貼る線(海岸線・海/クレーターの輪郭など)。頂点データから折れ線を起こし、
-// 同じ頂点データから起こした geometry を使い回す。頂点は body-graticule.ts と同じモデル座標規約
-// (+Y が自転軸、+Z が本初子午線)で、半径 1 の球面から SURFACE_LINE_RADIUS_RATIO 倍だけ外側へ置く。
-// markOverlay で輪郭抽出をバイパスし、直接合成する 3D UI パスへ乗せる。
+// 模式図スタイルの地表へ貼る線(海岸線・海/クレーターの輪郭など)。頂点はモデル座標(+Y が
+// 自転軸、+Z が本初子午線)で、半径 1 の球面の SURFACE_LINE_RADIUS_RATIO 倍に置く。同じ頂点
+// データから起こした geometry は共有する。
 import * as THREE from 'three/webgpu';
 import { markOverlay } from '../pipeline/lit-layer';
 import { latLonPoint, pushSegment } from './body-graticule';
@@ -57,8 +56,7 @@ function buildGeometry(lines: SurfaceLines): THREE.BufferGeometry {
   return geometry;
 }
 
-// 起こした geometry の共有表。鍵は頂点データの配列そのものと、隣接点の繋ぎ方を決める kind の組
-// で、どちらも頂点の並びを変えるため両方を鍵に入れる。載せた geometry は以後ずっと使い回す。
+// 起こした geometry の共有表。kind ごとに、頂点データの配列の同一性で引く。
 const sharedGeometries: Record<SurfaceLines['kind'], WeakMap<object, THREE.BufferGeometry>> = {
   latLonPolylines: new WeakMap(),
   unitSphereLoops: new WeakMap(),
@@ -98,16 +96,17 @@ export class LineOverlay {
     return new LineOverlay(sharedGeometry(lines), surfaceLineMaterial());
   }
 
-  // 天体の姿勢を持つ group の子として置く。位置・スケール・自転姿勢は親から自動で継承する。
+  // 天体の位置・スケール・自転姿勢を持つ group の子として置く。
   public addTo(parent: THREE.Object3D): void {
     parent.add(this.line);
   }
 
+  // 線の表示・非表示を切り替える。
   public setVisible(visible: boolean): void {
     this.line.visible = visible;
   }
 
-  // line を親から外す。geometry と material は module の共有表が保持し続ける。
+  // line を親から外す。共有の geometry・material は残す。
   public dispose(): void {
     this.line.removeFromParent();
   }

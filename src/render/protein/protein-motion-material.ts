@@ -1,9 +1,10 @@
-// タンパク質の残基変形を GPU で解く器。**体ごとの区別は共有バッファ上の借り位置(uniform)
-// だけに置く** — storage バッファの名前は WGSL の本文へ出るので、体ごとにバッファを作ると
-// 敵が湧くたびにその体専用のシェーダがコンパイルされる。
+// タンパク質の残基変形を GPU で解き、マテリアルの頂点位置へ結ぶ。体ごとの区別は共有バッファ上の
+// 借り位置(uniform)で表す — storage バッファの名前は WGSL の本文へ出るので、体ごとにバッファを
+// 作ると敵が湧くたびにその体専用のシェーダがコンパイルされる。
 import * as THREE from 'three/webgpu';
 import type { UintUniform } from '../tsl-types';
 
+// 頂点の残基索引 A・B と、その補間率 T の属性名。
 export const PROTEIN_RESIDUE_A_ATTRIBUTE = 'proteinResidueA';
 export const PROTEIN_RESIDUE_B_ATTRIBUTE = 'proteinResidueB';
 export const PROTEIN_RESIDUE_T_ATTRIBUTE = 'proteinResidueT';
@@ -13,12 +14,11 @@ const PROTEIN_RESIDUE_SLOTS = 65536;
 /** 同じくモード係数の共有バッファの容量 [float]。 */
 const PROTEIN_MODE_SLOTS = 4096;
 
-// compute pass が書き、頂点シェーダが読む残基変位。全体で 1 本しか持たない。
+// 全体で共有する残基変位。compute pass が書き、頂点シェーダが読む。
 const residueOffsetBuffer = new THREE.StorageBufferAttribute(new Float32Array(PROTEIN_RESIDUE_SLOTS * 4), 4);
 // そのフレームのモード振幅。CPU から書く。
 const coefficientBuffer = new THREE.StorageBufferAttribute(new Float32Array(PROTEIN_MODE_SLOTS), 1);
-// **ノード実体も 1 つずつしか作らない。** storage の構造体名にはノード id が入るので、
-// 作り直すと本文が変わる。
+// ノード実体も 1 つずつを使い回す — storage の構造体名にはノード id が入るので、作り直すと本文が変わる。
 const residueOffsetStorage = THREE.TSL.storage(residueOffsetBuffer, 'vec4', PROTEIN_RESIDUE_SLOTS);
 const coefficientStorage = THREE.TSL.storage(coefficientBuffer, 'float', PROTEIN_MODE_SLOTS);
 
@@ -73,35 +73,35 @@ export interface ProteinModeDisplacements {
 }
 
 /**
- * 敵1体ぶんの残基変形を、描画側から扱うための持ち手。
- *
- * compute pass が `modeDisplacements` とそのフレームのモード振幅を掛け合わせて共有バッファの
- * 借り位置を埋め、この binding から作ったマテリアルはみなそこを読む。
+ * 敵1体ぶんの残基変形の持ち手。この binding から作ったマテリアルは、共有バッファ上の借り位置から
+ * 残基変位を読む。
  */
 export interface ProteinMotionBinding {
   readonly residueCount: number;
   readonly modeCount: number;
-  // 共有バッファ上の借り位置。**uniform は WGSL の本文へ出ない**ので、体が増えても
-  // 頂点シェーダは 1 本のままでいる。
+  // 共有バッファ上の借り位置(残基変位とモード係数)。
   readonly residueBase: UintUniform;
   readonly modeBase: UintUniform;
   readonly modeDisplacements: ProteinModeDisplacements;
-  /** 初回の flush まで作らない — renderer を持たない呼び出し側でも binding を作れるようにするため。 */
+  /** 初回の flush で作る compute ノード。 */
   computeNode?: THREE.Node;
   disposed?: boolean;
 }
 
+// 係数が書き換わり、次の flush で compute を発行する binding。
 const dirtyBindings = new Set<ProteinMotionBinding>();
 
 /** asset 単位で共有するモード変位。鍵は、その asset の binding が共通で指す CPU 配列。 */
 const sharedModeDisplacements = new WeakMap<Float32Array, ProteinModeDisplacements>();
 
+// modeDisplacements の共有モード変位を、参照数を1つ増やして返す。
 function acquireModeDisplacements(modeDisplacements: Float32Array): ProteinModeDisplacements {
   const existing = sharedModeDisplacements.get(modeDisplacements);
   if (existing) {
     existing.refCount += 1;
     return existing;
   }
+  // 初めての asset なら GPU バッファとノードを作る。
   const attribute = new THREE.StorageBufferAttribute(modeDisplacements, 4);
   const shared: ProteinModeDisplacements = {
     attribute,
@@ -120,6 +120,7 @@ function releaseModeDisplacements(shared: ProteinModeDisplacements): boolean {
   return true;
 }
 
+// WebGPURenderer の非公開の属性レジストリ。
 interface ProteinMotionRendererInternals {
   readonly _attributes: {
     has(attribute: THREE.StorageBufferAttribute): boolean;
@@ -127,6 +128,7 @@ interface ProteinMotionRendererInternals {
   } | null;
 }
 
+// 登録済みのレンダラと、その登録数。
 const proteinMotionRenderers = new Map<ProteinMotionRendererInternals, number>();
 
 type ProteinMotionNodeMaterial =
@@ -134,6 +136,7 @@ type ProteinMotionNodeMaterial =
   | THREE.MeshBasicNodeMaterial
   | THREE.MeshStandardNodeMaterial;
 
+// 残基数が正の整数でなければ例外を投げる。
 function assertResidueCount(residueCount: number): void {
   if (!Number.isInteger(residueCount) || residueCount <= 0) {
     throw new RangeError('Protein motion residueCount must be a positive integer');
@@ -141,10 +144,9 @@ function assertResidueCount(residueCount: number): void {
 }
 
 /**
- * 敵1体ぶんの binding を作る。共有バッファから残基変位とモード係数の区間を借り、体ごとの
- * 区別はその借り位置の uniform だけで表す。モード変位の GPU バッファは、同じ
- * `modeDisplacements`(= 同じ asset)から作った binding どうしで共有し、参照数が
- * 尽きたときだけ解放する。**空きが尽きたら null を返す** — 呼び手は motion 無しで描く。
+ * 敵1体ぶんの binding を作り、共有バッファの区間を借りる。使い終えたら disposeProteinMotionBinding で返す。
+ * 同じ `modeDisplacements` の binding どうしはモード変位の GPU バッファを共有する。
+ * 空きが尽きたら null、配列長が合わなければ例外を投げる。
  */
 export function createProteinMotionBinding(
   residueCount: number,
@@ -169,8 +171,7 @@ export function createProteinMotionBinding(
     modeBase: THREE.TSL.uniform(modeStart, 'uint') as UintUniform,
     modeDisplacements: acquireModeDisplacements(modeDisplacements),
   };
-  // 借りた区間には前の借り手の係数が残っている。0 を積んで compute を 1 度通し、
-  // 変位が 0 の状態から始める。
+  // 借りた区間には前の借り手の値が残るので、0 の係数で compute を 1 度通してから使う。
   updateProteinMotionCoefficients(binding, new Float32Array(modeCount));
   return binding;
 }
@@ -188,15 +189,15 @@ export function updateProteinMotionCoefficients(binding: ProteinMotionBinding, c
 }
 
 /**
- * 残基ごとに全モードの寄与を足し込んで、共有バッファの借り位置を埋める compute ノードを組む。
- * **体ごとに 1 つ作る** — 借り位置の uniform を体ごとに持つ必要がある。本文が変わるのは
- * モード基底の名前だけなので、同じ asset の体どうしはシェーダを共有する。
+ * 残基ごとに全モードの寄与を足し込み、共有バッファの借り位置を埋める compute ノードを体ごとに組む。
+ * シェーダ本文はモード基底の名前で決まるので、同じ asset の体どうしはシェーダを共有する。
  */
 function proteinMotionComputeNode(binding: ProteinMotionBinding): THREE.Node {
   const { Fn, Loop, instanceIndex, uint, uniform } = THREE.TSL;
   const modeDisplacements = binding.modeDisplacements.storage;
   const residueCount = uniform(binding.residueCount, 'uint');
   const modeCount = uniform(binding.modeCount, 'uint');
+  // 1スレッドが1残基を受け持ち、モード変位 × 係数を全モードで足す。
   return Fn(() => {
     const total = THREE.TSL.vec3(0, 0, 0).toVar();
     Loop({ start: uint(0), end: modeCount, type: 'uint' }, ({ i }) => {
@@ -218,13 +219,12 @@ export function flushProteinMotionComputes(renderer: THREE.WebGPURenderer): void
   dirtyBindings.clear();
 }
 
-// 残基バッファを持ちうるレンダラを登録し、登録を解く関数を返す。同じレンダラを共有する
-// パイプラインのために参照カウントで数える。**three は StorageBufferAttribute の解放口を
-// 公開していない** — バックエンドのバッファを壊して renderer.info を更新できるのは内部の
-// 属性レジストリだけなので、そこへ触れる箇所をこの登録へ閉じ込める。
+// binding の GPU バッファを解放する先としてレンダラを登録し、登録を解く関数を返す。同じレンダラは
+// 登録した回数だけ解くまで登録されたままになる。
 export function registerProteinMotionRenderer(renderer: THREE.WebGPURenderer): () => void {
   const internals = renderer as THREE.WebGPURenderer & ProteinMotionRendererInternals;
   proteinMotionRenderers.set(internals, (proteinMotionRenderers.get(internals) ?? 0) + 1);
+  // 返す関数は何度呼んでも1回分として数える。
   let registered = true;
   return () => {
     if (!registered) return;
@@ -236,19 +236,20 @@ export function registerProteinMotionRenderer(renderer: THREE.WebGPURenderer): (
 }
 
 /**
- * 借りていた区間を返し、この binding が持つ GPU バッファを renderer から解放する。
- * モード変位のバッファは同じ asset の binding で共有しているので、参照数が尽きたときだけ
- * 解放する — まだ使っている binding があるのに解放すると画面がまるごと黒くなる。
- * 共有元の `Float32Array` はどちらの場合も壊さない。
+ * 借りていた区間を返し、モード変位の GPU バッファは最後の参照者のときに renderer から解放する。
+ * 二度呼んでもよい。共有元の `Float32Array` はそのまま残る。
  */
 export function disposeProteinMotionBinding(binding: ProteinMotionBinding): void {
   if (binding.disposed) return;
   binding.disposed = true;
   dirtyBindings.delete(binding);
+  // 借りていた区間を返す。
   residueSlots.release(binding.residueBase.value, binding.residueCount);
   modeSlots.release(binding.modeBase.value, binding.modeCount);
+  // 他の binding が使っているうちに解放すると画面がまるごと黒くなる。
   if (!releaseModeDisplacements(binding.modeDisplacements)) return;
   const { attribute } = binding.modeDisplacements;
+  // three は StorageBufferAttribute の解放 API を公開していないので、内部の属性レジストリから消す。
   for (const renderer of proteinMotionRenderers.keys()) {
     const attributes = renderer._attributes;
     if (attributes?.has(attribute)) attributes.delete(attribute);
@@ -257,6 +258,7 @@ export function disposeProteinMotionBinding(binding: ProteinMotionBinding): void
   attribute.needsUpdate = true;
 }
 
+// 頂点の残基 A・B の変位を補間率 T で混ぜた、ローカル座標の変位ノード。残基数が不正なら例外。
 function residueOffsetNode(binding: ProteinMotionBinding): THREE.Node<'vec3'> {
   assertResidueCount(binding.residueCount);
   const residueA = THREE.TSL.attribute(PROTEIN_RESIDUE_A_ATTRIBUTE, 'uint') as THREE.Node<'uint'>;
@@ -268,8 +270,7 @@ function residueOffsetNode(binding: ProteinMotionBinding): THREE.Node<'vec3'> {
   return offsetA.mul(THREE.TSL.float(1).sub(residueT)).add(offsetB.mul(residueT));
 }
 
-// 共有の残基変位をマテリアルのローカル位置へ結ぶ。positionNode は元の物体のマテリアルが
-// 持つので、G バッファと override マテリアルの影の経路が同じノードをそのまま運べる。
+// 残基変位をマテリアルの positionNode へ結ぶ。G バッファでも影の経路でも同じ変位で描かれる。
 function applyProteinMotionBinding<T extends ProteinMotionNodeMaterial>(
   material: T,
   binding: ProteinMotionBinding,
@@ -280,6 +281,7 @@ function applyProteinMotionBinding<T extends ProteinMotionNodeMaterial>(
   return material;
 }
 
+// binding を与えれば残基変位で動く MeshStandardNodeMaterial を作る。
 export function proteinStandardMaterial(
   parameters: THREE.MeshStandardNodeMaterialParameters,
   binding?: ProteinMotionBinding,
@@ -288,6 +290,7 @@ export function proteinStandardMaterial(
   return binding ? applyProteinMotionBinding(material, binding) : material;
 }
 
+// binding を与えれば残基変位で動く LineBasicNodeMaterial を作る。
 export function proteinLineMaterial(
   parameters: THREE.LineBasicNodeMaterialParameters,
   binding?: ProteinMotionBinding,
@@ -296,11 +299,12 @@ export function proteinLineMaterial(
   return binding ? applyProteinMotionBinding(material, binding) : material;
 }
 
+// values の個数が count と違えば例外を投げる。
 function assertAttributeLength(name: string, values: ArrayLike<number>, count: number): void {
   if (values.length !== count) throw new RangeError(`${name} must match geometry vertex count`);
 }
 
-// 補間つきの残基インデックスを、通常のメッシュ/線のジオメトリへ結ぶ。
+// 補間つきの残基インデックスを頂点属性として結ぶ。各配列は頂点数と同じ長さで、違えば例外を投げる。
 export function attachProteinResidueBinding(
   geometry: THREE.BufferGeometry,
   residueA: ArrayLike<number>,
@@ -317,7 +321,7 @@ export function attachProteinResidueBinding(
   geometry.userData.proteinResidueBinding = true;
 }
 
-// 補間つきの残基インデックスを、InstancedMesh のインスタンスデータへ結ぶ。
+// 補間つきの残基インデックスをインスタンス属性として結ぶ。各配列はインスタンス数と同じ長さで、違えば例外を投げる。
 export function attachProteinInstancedResidueBinding(
   mesh: THREE.InstancedMesh,
   residueA: ArrayLike<number>,

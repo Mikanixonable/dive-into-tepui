@@ -1,8 +1,11 @@
+// タンパク質の敵1体の被弾モデル。機能部位ごとの HP・機能停止と、構造全体の integrity・
+// フェーズ・修飾の状態を持つ。
 import type {
   ProteinActionDefinition, ProteinAssetDefinition, ProteinCombatReadout, ProteinSaveData, ProteinSiteDefinition,
 } from './protein-schema';
 import type { ProteinPhase } from '../../render/protein/protein-display';
 
+// 1回のダメージの結果。
 interface ProteinDamageResult {
   readonly target: 'site' | 'integrity';
   readonly siteId: string | null;
@@ -14,6 +17,7 @@ interface ProteinDamageResult {
   readonly defeated: boolean;
 }
 
+// 機能部位1つの戦闘中の状態。
 interface SiteState {
   readonly definition: ProteinSiteDefinition;
   hp: number;
@@ -34,6 +38,7 @@ export class ProteinCombatState {
     this.integrityMaxHp = asset.integrity.maxHp;
     this._integrityHp = saved?.integrityHp ?? this.integrityMaxHp;
     this._phase = saved?.phase ?? 'intact';
+    // 部位と修飾は定義の並びで組み、保存に無い項目は定義の初期値にする。
     this.siteStates = asset.sites.map((definition) => {
       const old = saved?.sites.find((site) => site.id === definition.id);
       return { definition, hp: old?.hp ?? definition.maxHp, disabled: old?.disabled ?? false };
@@ -49,15 +54,17 @@ export class ProteinCombatState {
 
   private get defeated(): boolean { return this._integrityHp <= 0; }
 
+  // 攻撃を撃ち出せる部位のうち先頭。1つも無ければ null。
   public get activeSite(): ProteinSiteDefinition | null {
     return this.attackSites[0] ?? null;
   }
 
+  // 弾を撃つ action。持たないタンパク質では null。
   public get attackAction(): ProteinActionDefinition | null {
     return this.asset.actions.find((action) => action.kind === 'projectile') ?? null;
   }
 
-  /** Functional regions that can independently originate the protein's attack. */
+  // 攻撃 action を持ち、機能している部位。
   private get attackSites(): readonly ProteinSiteDefinition[] {
     const actionId = this.attackAction?.id;
     if (!actionId) return [];
@@ -66,7 +73,7 @@ export class ProteinCombatState {
       .map((site) => site.definition);
   }
 
-  /** Pick the next still-functional attack region for an ordinary enemy shot. */
+  // 次に撃つ部位を、機能している攻撃部位から順繰りに選ぶ。1つも無ければ null。
   public nextAttackSite(): ProteinSiteDefinition | null {
     const sites = this.attackSites;
     if (sites.length === 0) return null;
@@ -75,12 +82,14 @@ export class ProteinCombatState {
     return site;
   }
 
+  // id の部位定義。無ければ null。
   public site(id: string): ProteinSiteDefinition | null {
     return this.siteStates.find((site) => site.definition.id === id)?.definition ?? null;
   }
 
   private modificationState(id: string): string | null { return this.modifications.get(id) ?? null; }
 
+  // 修飾スロット id を state にする。スロットか状態が定義に無ければ false を返し、状態を保つ。
   public setModification(id: string, state: string): boolean {
     const slot = this.asset.modificationSlots.find((entry) => entry.id === id);
     if (!slot || !slot.states.includes(state)) return false;
@@ -88,6 +97,7 @@ export class ProteinCombatState {
     return true;
   }
 
+  // 選択中の部位を id にする。定義に無い id なら選択を外す。
   public setSelectedSite(id: string | null): void {
     this.selectedSiteId = this.siteStates.some((site) => site.definition.id === id) ? id : null;
   }
@@ -97,12 +107,14 @@ export class ProteinCombatState {
     return this.siteStates.some((site) => !site.disabled && site.definition.actions.includes(action));
   }
 
+  // 修飾スロット slotId のいまの状態が effect に与える倍率。定義に無ければ fallback。
   private effectMultiplier(slotId: string, effect: string, fallback = 1): number {
     const slot = this.asset.modificationSlots.find((entry) => entry.id === slotId);
     const state = this.modificationState(slotId);
     return slot?.effects[state ?? '']?.[effect] ?? fallback;
   }
 
+  // 全修飾スロットの damageMultiplier を baseDamage に掛けた、弾1発のダメージ。
   public projectileDamage(baseDamage: number): number {
     let multiplier = 1;
     for (const slot of this.asset.modificationSlots) {
@@ -111,7 +123,8 @@ export class ProteinCombatState {
     return Math.max(0, baseDamage) * multiplier;
   }
 
-  /** localPoint is in model-local units after the root display scale, not source Å. */
+  // amount を、localPoint を含む機能部位のうち最も近いものへ当てる。含む部位が無ければ integrity を
+  // 直接削る。localPoint は原子の座標 [Å] ではなく、表示の基準倍率を掛けたモデル座標。
   public applyDamage(amount: number, localPoint: { x: number; y: number; z: number }): ProteinDamageResult {
     const previousPhase = this._phase;
     const candidate = this.closestSite(localPoint);
@@ -124,7 +137,7 @@ export class ProteinCombatState {
       candidate.hp = Math.max(0, candidate.hp - damage);
       candidate.disabled = candidate.hp <= 0;
       siteDisabled = candidate.disabled;
-      // Damaging a functional site also destabilizes the whole complex, but only partially.
+      // 部位への被弾は、構造全体も部分的に不安定にする。
       this._integrityHp = Math.max(0, this._integrityHp - damage * 0.35);
     } else {
       this._integrityHp = Math.max(0, this._integrityHp - damage);
@@ -137,6 +150,7 @@ export class ProteinCombatState {
     };
   }
 
+  // 部位を選ばず、integrity を amount 削る。
   public applyContactDamage(amount: number): ProteinDamageResult {
     const previousPhase = this._phase;
     const damage = Math.max(0, amount);
@@ -148,6 +162,7 @@ export class ProteinCombatState {
     };
   }
 
+  // いまの HP・フェーズ・部位・修飾の状態を保存形にする。
   public serialize(): ProteinSaveData {
     const sites = this.siteStates.map((site) => ({ id: site.definition.id, hp: site.hp, disabled: site.disabled }));
     return {
@@ -182,9 +197,11 @@ export class ProteinCombatState {
     };
   }
 
+  // localPoint を半径の内に含む機能部位のうち、中心が最も近いもの。無ければ null。
   private closestSite(localPoint: { x: number; y: number; z: number }): SiteState | null {
     let closest: SiteState | null = null;
     let closestDistance = Number.POSITIVE_INFINITY;
+    // 部位の位置と半径は原子の座標なので、モデル座標へ直して比べる。
     const coordinateScale = this.asset.coordinateScale;
     for (const site of this.siteStates) {
       if (site.disabled) continue;
@@ -202,11 +219,13 @@ export class ProteinCombatState {
     return closest;
   }
 
+  // 選択中の部位が機能停止していれば、先頭の攻撃部位か、機能している最初の部位へ移す。
   private reselectSite(): void {
     if (this.selectedSiteId && this.siteStates.some((site) => site.definition.id === this.selectedSiteId && !site.disabled)) return;
     this.selectedSiteId = this.activeSite?.id ?? this.siteStates.find((site) => !site.disabled)?.definition.id ?? null;
   }
 
+  // integrity の減りに応じて修飾を外し、フェーズを更新する。
   private updateStructuralState(): void {
     if (this._integrityHp < this.integrityMaxHp * 0.65) {
       for (const slot of this.asset.modificationSlots) this.setModification(slot.id, 'empty');
@@ -214,6 +233,7 @@ export class ProteinCombatState {
     this.updatePhase();
   }
 
+  // 機能停止した部位の種類と integrity の残りから、フェーズを決める。
   private updatePhase(): void {
     const interfaceDisabled = this.siteStates.some((site) => site.definition.type === 'interface' && site.disabled);
     const activeSites = this.siteStates.filter((site) => site.definition.type === 'active');

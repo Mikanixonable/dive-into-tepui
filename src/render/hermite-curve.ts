@@ -19,6 +19,7 @@ export function buildHermiteCurve(knots: CurveKnots, maxCount: number): HermiteC
   const ts = new Float64Array(count);
   const positions = new Float64Array(count * 3);
   const tangents = new Float64Array(count * 3);
+  // 節点を等間隔に間引きながら写し、昇順を確かめる。
   for (let i = 0; i < count; i++) {
     const j = count === source.length ? i : Math.round((i * last) / (count - 1));
     ts[i] = source[j]!;
@@ -39,6 +40,7 @@ export function buildHermiteCurve(knots: CurveKnots, maxCount: number): HermiteC
     }
     const h = ts[lo + 1]! - ts[lo]!;
     const s = Math.max(0, Math.min(1, (t - ts[lo]!) / h));
+    // エルミート基底の重み。接線の項は区間幅 h を掛けて、区間内の変数 s の微分へ直す。
     const s2 = s * s, s3 = s2 * s;
     const w0 = 2 * s3 - 3 * s2 + 1, w1 = (s3 - 2 * s2 + s) * h;
     const w2 = -2 * s3 + 3 * s2, w3 = (s3 - s2) * h;
