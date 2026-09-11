@@ -43,6 +43,7 @@ export class PauseMenu implements OverlayHandle {
   public onOpenDebugInfoWindow: (() => void) | null = null;
 
   private readonly overlayManager: OverlayManager;
+  private readonly resizeObserver: ResizeObserver;
   private readonly bgmSlider: Slider;
   private readonly bgmMute: Button;
   // 消音から復帰するときに戻す音量。消音中かどうかは bgmSlider の値が 0 かで読む。
@@ -131,8 +132,10 @@ export class PauseMenu implements OverlayHandle {
 
     root.appendChild(this.panel);
     this.setActiveTab('pause');
-    // ビューポート変化のたびに現在位置を収め直す。
+    // ビューポート変化と内容サイズの変化のたびに現在位置を収め直す。
     onViewportChange(() => this.reclamp());
+    this.resizeObserver = new ResizeObserver(() => this.reclamp());
+    this.resizeObserver.observe(this.panel);
   }
 
   // ロゴ・タイトル・バージョンを ESC メニュー上部へ積む。
