@@ -131,7 +131,7 @@ T0 基準記録
 | T6-2 | 廃止 | 2026-09-10に外部静的配信要件を廃止 | 既存のremote-check実装を削除し、Pages同一origin検査へ集約 |
 | T6-1 | fixture Pages・layout/contractゲート完了。Pagesはpreview用途 | `docs/earth/<datasetId>/`を正しいlayoutとし、ローカルは`.earth-surface/bundle`の直接配信で検査 | 5.5 GiB実bundleのPages配備は範囲外 |
 | T4 | コード・実データmap生成完了 | UTC月時計、共有楕円体UV、雲・雲影・大気への同一投影、ERA5を焼いた12枚のmapを確認 | 実ブラウザで気候map適用後の標識一致を未検証 |
-| T5 | コード・実bundle stage00 smoke完了。15固定ケースは未完了 | 実ブラウザstage00で5.812秒、color/terrain各z7 20件がHTTP 200、F3再読みによりready/detailed・最高LOD z7、fatal/errorなし | 15固定ケースの完全な視覚計測が未実施のため完了扱いにしない |
+| T5 | コード・実bundle stage00 smoke完了。15固定ケースは未完了 | 実ブラウザstage00を3回連続検証し5.083〜5.339秒で最高LOD z7へ到達。color/terrain各24・36・32件がHTTP 200、ready/detailed、fatal/errorなし | 15固定ケースの完全な視覚計測が未実施のため完了扱いにしない |
 | T7 | レビュー記録を更新中 | dev配信、datasetId整合、global base、物理144層、stage00 smokeの証拠を反映 | 15固定ケースの完全な視覚計測が終わるまで全体完了にしない |
 
 ## 7. 検証
