@@ -1,10 +1,9 @@
 // 月別の気候入力を2枚だけ読み、同じ全球 UV のサンプルを月境界で補間する。
 // 画像は R=気温、G=雲量、B=ETOPO 正高、A=GSHHG 陸地被覆率を 0..1 で持つ。
 import * as THREE from 'three/webgpu';
-import { float, greaterThan, mix, select, texture, uniform, vec2 } from 'three/tsl';
+import { float, greaterThan, mix, select, texture, uniform } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
 import { equirectUvFromDirection } from './field-projection';
-import { eastAt, northAt } from './sphere-frame';
 import {
   CLIMATE_CLOUD_MAX,
   CLIMATE_CLOUD_MIN,
@@ -14,6 +13,7 @@ import {
   CLIMATE_LAND_MIN,
   CLIMATE_TEMPERATURE_MAX_K,
   CLIMATE_TEMPERATURE_MIN_K,
+  climateSlope,
   configureClimateTexture,
 } from './climate-map';
 import type { ClimateMapLike } from './climate-map';
@@ -22,7 +22,6 @@ import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../t
 export type ClimateUvAt = (direction: Vec3Node) => Vec2Node;
 
 export const MONTHS_PER_YEAR = 12;
-const SLOPE_STEP = 0.02;
 
 export type MonthlyClimateRgba = readonly [number, number, number, number];
 
@@ -187,18 +186,10 @@ export class MonthlyClimateMap implements ClimateMapLike {
     return this.sample(direction).a.mul(CLIMATE_LAND_MAX - CLIMATE_LAND_MIN).add(CLIMATE_LAND_MIN);
   }
 
-  // 斜面の勾配(東向き・北向き成分)[m/m]。surfaceRadius [m] はこの天体の半径で、勾配を角あたり
-  // から長さあたりへ直すのに要る。
+  // 斜面の勾配(東向き・北向き成分)[m/m]。landHeight [m] は陸へ上乗せする高さ、surfaceRadius [m] は
+  // この天体の半径。
   public slope(direction: Vec3Node, landHeight: number, surfaceRadius: number): Vec2Node {
-    const east = eastAt(direction).mul(SLOPE_STEP);
-    const north = northAt(direction).mul(SLOPE_STEP);
-    const stepMeters = SLOPE_STEP * 2 * surfaceRadius;
-    const height = (sampleDirection: Vec3Node): FloatNode => this.elevation(sampleDirection)
-      .add(this.landFraction(sampleDirection).mul(landHeight));
-    return vec2(
-      height(direction.add(east)).sub(height(direction.sub(east))).div(stepMeters),
-      height(direction.add(north)).sub(height(direction.sub(north))).div(stepMeters),
-    );
+    return climateSlope(this, direction, landHeight, surfaceRadius);
   }
 
   public dispose(): void {

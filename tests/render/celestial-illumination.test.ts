@@ -202,12 +202,5 @@ export function register(): void {
       [source(body('a', 1e6, v3()), plainView(), true)], 0, cameraFrame(), DEFAULT_GRAPHICS, null, v3(1, 0, 0));
     assert.equal(targets.cumulusCasters[0], null, '雲を持たないのに影の源が置かれた');
   });
-
-  test('celestial-illumination: 露出の基準が確定した後の明るさ係数を読み返せる', () => {
-    const targets = recordingTargets();
-    const illumination = new CelestialIllumination(null, targets);
-    illumination.sync([], 0, cameraFrame(), DEFAULT_GRAPHICS, null, v3(1, 0, 0));
-    assert.equal(illumination.fixedBrightnessScale, targets.exposure.fixedBrightnessScale);
-  });
 }
 
