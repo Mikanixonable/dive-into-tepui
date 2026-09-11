@@ -8,19 +8,18 @@ import { BulletMotion } from './bullet-motion';
 export class Bullet extends DynamicEntity {
   public override readonly capKind = 'bullet';
 
+  // shooter が撃った type の弾1発を、state から lifetime [sim s] だけ飛ぶ個体として組む。
+  // damage は命中した相手へ与えるダメージ [HP]。
   public constructor(
     state: KinematicState, lifetime: number, shooter: Shooter, type: BulletType, damage: number,
     worldSfx: WorldSfx,
   ) {
     super(
-      state,
-      type === 'plasma' ? new PlasmaBulletView() : new NormalBulletView(),
-      undefined,
-      undefined,
       () => new BulletMotion(
         state,
         new BulletReaction(state.t, lifetime, shooter, type, damage, worldSfx),
       ),
+      type === 'plasma' ? new PlasmaBulletView() : new NormalBulletView(),
     );
   }
 }

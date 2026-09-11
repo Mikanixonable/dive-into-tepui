@@ -114,14 +114,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   readonly plan = new Plan();
   planExecution: PlanExecutionMode = 'instant';
 
-  private readonly _notifier: Notifier;
-  private readonly _worldSfx: WorldSfx;
-  private readonly _fx: FlashEffects;
-
   fineAttitude = false;
-  // このフレームの操作対象か。方向マーカーを出すか、照準ズーム中に自機を隠すかがこれで決まる。
-  // 表示可否と同じく、操作対象を選ぶ側が sync の入力として毎フレーム書く。
-  active = false;
   // 自機の操作方法は HUD とヘルプが常設で示しているので、選び直しても案内は出さない。
   readonly controlHint = null;
   readonly releaseHint = null;
@@ -129,10 +122,10 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // init 省略時は無作為な名前と既定軌道の新規艦になる。id を省いたときは name がそのまま
   // 艦の識別子になるので、複数隻を並べるなら name も分ける。
   constructor(
-    _notifier: Notifier,
-    _worldSfx: WorldSfx,
+    private readonly notifier: Notifier,
+    private readonly worldSfx: WorldSfx,
     scene: THREE.Scene,
-    _fx: FlashEffects,
+    private readonly fx: FlashEffects,
     markers: MarkerSlots,
     init: PlayerInit = {},
   ) {
@@ -168,12 +161,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     });
     super(
       name,
-      state,
-      owner => new PlayerView(scene, owner.id, markers, BELT_MAX_VISIBLE),
-      att,
-      PLAYER_HULL_RADIUS,
       PLAYER_MAX_HP,
-      id,
       owner => new PlayerMotion(
         state,
         att,
@@ -185,15 +173,14 @@ export class Player extends Ship implements Controllable, ObjectPickable {
         saved?.power,
         saved?.boosters,
       ),
+      new PlayerView(scene, id, markers, BELT_MAX_VISIBLE),
+      id,
     );
-    this._notifier = _notifier;
-    this._worldSfx = _worldSfx;
-    this._fx = _fx;
-    this.throttle = new Throttle(_notifier, saved?.throttle);
-    this.fire = new FireControl(this, _notifier, _worldSfx, scene, _fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
-    this.altitudeAlarm = new AltitudeAlarm(_notifier, _worldSfx);
+    this.throttle = new Throttle(notifier, saved?.throttle);
+    this.fire = new FireControl(this, notifier, worldSfx, scene, fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
+    this.altitudeAlarm = new AltitudeAlarm(notifier, worldSfx);
     this.boosters = new AttachedBoosters(
-      this.motion, this.motion.attachedBoosters, _notifier, _worldSfx, scene, _fx,
+      this.motion, this.motion.attachedBoosters, notifier, worldSfx, scene, fx,
     );
 
     if (saved) {
@@ -219,7 +206,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
           const idx = this.plan.addNode(kinematicState<'eci'>(n.t, v3(n.r.x, n.r.y, n.r.z), v3(n.v.x, n.v.y, n.v.z)), anchor);
           if (idx < 0) rejected++;
         }
-        if (rejected > 0) _notifier.hint(`${this.name}: 起点より前のマニューバノード ${rejected} 件を復元できません`);
+        if (rejected > 0) notifier.hint(`${this.name}: 起点より前のマニューバノード ${rejected} 件を復元できません`);
       }
     }
   }
@@ -308,7 +295,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 姿勢微調整モードの ON/OFF を切り替える。
   toggleFineAttitude(): void {
     this.fineAttitude = !this.fineAttitude;
-    this._notifier.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
+    this.notifier.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
   }
 
   // 自機側のキー(RCS減衰・プログレード・スロットル等)を1フレーム分消費する。
@@ -429,8 +416,8 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     if (!this.applyCollisionDamage(damageSpeed, damagedPart)) return;
     if (side !== null && damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side, registry);
     if (this.hp > 0) {
-      this._worldSfx.clank();
-      this._fx.spawnGasPuff(this.motion.state);
+      this.worldSfx.clank();
+      this.fx.spawnGasPuff(this.motion.state);
       return;
     }
 
@@ -467,26 +454,26 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
   private impactEffect(bulletType: BulletType, impactPoint: Vec3): void {
-    this._worldSfx.hit(len(sub(impactPoint, this.motion.state.r)));
+    this.worldSfx.hit(len(sub(impactPoint, this.motion.state.r)));
     if (bulletType === 'plasma') {
-      this._fx.spawnPlasmaFlash(kinematicState<'eci'>(
+      this.fx.spawnPlasmaFlash(kinematicState<'eci'>(
         this.motion.state.t, impactPoint, this.motion.state.v,
       ));
     } else {
-      this._fx.spawnBulletFlash(kinematicState<'eci'>(
+      this.fx.spawnBulletFlash(kinematicState<'eci'>(
         this.motion.state.t, impactPoint, this.motion.state.v,
       ));
     }
-    this._fx.spawnGasPuff(kinematicState<'eci'>(
+    this.fx.spawnGasPuff(kinematicState<'eci'>(
       this.motion.state.t, impactPoint, this.motion.state.v,
     ));
   }
 
   // 機体喪失時の爆発音・爆発エフェクトを発生させる。
   private destroyEffect(registry: EntityRegistry): void {
-    this._worldSfx.explosion();
-    this._fx.spawnPlayerDestroyFlash(this.motion.state);
-    for (const piece of playerDestroyFragments(this.motion.state, this._worldSfx, this._fx)) {
+    this.worldSfx.explosion();
+    this.fx.spawnPlayerDestroyFlash(this.motion.state);
+    for (const piece of playerDestroyFragments(this.motion.state, this.worldSfx, this.fx)) {
       registry.add(piece);
     }
   }
@@ -494,11 +481,11 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // ラジエーターが全損した瞬間の破片エフェクトを、そのパネル先端付近から発生させる。
   private radiatorBreakEffect(side: RadiatorSide, registry: EntityRegistry): void {
     const tipR = this.motion.radiator.tipWorldPosition(side, this.motion.state.r, this.motion.att);
-    this._worldSfx.hit(len(sub(tipR, this.motion.state.r)));
+    this.worldSfx.hit(len(sub(tipR, this.motion.state.r)));
     for (const piece of buildDestroyFragments(
       this.motion.state.t, tipR, this.motion.state.v, 4, PLAYER_DESTROY_FRAG_COLOR,
       DESTROY_FRAG_SIZE_MIN, DESTROY_FRAG_SIZE_MAX, 8.0,
-      this._worldSfx, this._fx,
+      this.worldSfx, this.fx,
     )) registry.add(piece);
   }
 
@@ -515,7 +502,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       dt,
       simDt,
       this,
-      () => this._notifier.hint('進行方向ホールド解除(手動操作)'),
+      () => this.notifier.hint('進行方向ホールド解除(手動操作)'),
     );
   }
 
@@ -554,9 +541,10 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     orbitReference: OrbitReference | undefined,
   ): PlayerRenderSource {
     const motion = this.motion;
-    const boosters = motion.attachedBoosters;
+    const { attachedBoosters: boosters, belt, power, radiator } = motion;
     // 指令の有無は加速度の大きさで決まるので、噴射していないフレームは null として渡す。
     const thrustAcceleration = this.throttle.thrustAccelVec;
+    const radiatorPanel = (side: RadiatorSide) => ({ wear: radiator.wearOf(side), ...radiator.foldThetas(side) });
     return {
       ...super.renderSource(viewFrame, visible, active, orbitReference),
       state: motion.state,
@@ -565,13 +553,17 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       maximumAcceleration: motion.mass > 0 ? this.totalThrust / motion.mass : 0,
       torque: motion.torque,
       dynamicPressure: motion.aero.qdyn,
-      boosters: boosters.display,
-      belt: motion.belt.nodes,
+      boosters: {
+        stageIds: boosters.stageIds,
+        firing: boosters.thrust !== null,
+        burnRatio: boosters.burnRatio,
+      },
+      belt: { anchor: belt.anchor, positions: belt.positions, twists: belt.twists },
       magsLeft: this.magsLeft,
       roundsInMag: this.roundsInMag,
       averageMuzzleVelocity: this.averageMuzzleVelocity,
-      solar: motion.power.panelDeploy,
-      radiator: motion.radiator.panelDisplay,
+      solar: { up: power.deployOf('up'), down: power.deployOf('down') },
+      radiator: { up: radiatorPanel('up'), down: radiatorPanel('down') },
       orbitAxesReference: orbitReference?.state ?? null,
     };
   }
@@ -733,7 +725,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 注視されたら操作対象にもなる(操作艦を切り替える最速の手段)。
   public readonly onMapFocus = (controlSelection: ControlSelection): void => {
     controlSelection.select(this);
-    this._notifier.hint(`${this.name} を操作対象に設定`);
+    this.notifier.hint(`${this.name} を操作対象に設定`);
   };
 }
 
