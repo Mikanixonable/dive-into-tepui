@@ -8,7 +8,7 @@ import {
   DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, PROTEIN_COLOR_LABELS, PROTEIN_DISPLAY_LABELS,
   proteinColorModesFor, proteinDisplayWithColor, type ProteinColorMode, type ProteinDisplaySettings,
   type ProteinRepresentation,
-} from '../protein/protein-display';
+} from '../../render/protein/protein-display';
 
 type EnemyShapeDefinition =
   | { readonly id: 'drifting'; readonly family: 'conventional'; readonly kind: 'drifting' }

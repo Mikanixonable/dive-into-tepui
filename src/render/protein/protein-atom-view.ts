@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import type { ProteinDisplayAsset } from '../game/protein/protein-display-asset';
+import type { ProteinDisplayAsset } from './protein-display-asset';
 import {
   attachProteinInstancedResidueBinding,
   attachProteinResidueBinding,
@@ -7,7 +7,7 @@ import {
   proteinStandardMaterial,
   type ProteinMotionBinding,
 } from './protein-motion-material';
-import type { ProteinRenderSource } from './protein-ribbon';
+import type { ProteinRenderSource } from './protein-render-definition';
 
 const ELEMENT_COLORS: Readonly<Record<string, number>> = {
   H: 0xffffff, C: 0x909090, N: 0x3050f8, O: 0xff0d0d, F: 0x90e050,
@@ -52,9 +52,8 @@ export function proteinResidueBindingLookup(source: ProteinRenderSource): Protei
   const backboneByChain = new Map<string, number[]>();
   const atomPositions = Array.from({ length: structure.atoms.count }, (_, atom) => atomPosition(structure, atom));
 
-  // Backbone assets predate residue numbers, so recover the exact residue key
-  // by matching each C-alpha coordinate to the structure asset once at build
-  // time. The generated coordinates share the same centered Å frame.
+  // 主鎖 asset は残基番号を持たないので、Cα 座標を構造 asset の原子へ最近傍で突き合わせて
+  // 残基キーを引き当てる。どちらの座標も同じ中心寄せ済みの Å 系にある。
   for (let residue = 0; residue < backbone.backboneCount; residue += 1) {
     const offset = residue * 3;
     const chain = backbone.backboneChains[residue] ?? 'A';
@@ -106,8 +105,8 @@ export function proteinResidueBindingLookup(source: ProteinRenderSource): Protei
       ?? nearestBackbone(atomPositions[atom]!, chain);
   }
 
-  // Surface vertices are generated from an atom-neighborhood contour. A small
-  // spatial hash preserves that provenance without an O(surface × atom) scan.
+  // 表面頂点は原子の近傍から生成されているので、空間ハッシュで由来の原子を引き直す。
+  // 全原子を走査すると O(表面 × 原子) になる。
   const cellSize = 4;
   const buckets = new Map<string, number[]>();
   const bucketKey = (x: number, y: number, z: number): string => `${x}:${y}:${z}`;

@@ -1,14 +1,17 @@
 // Render Lab のタンパク質ケース。catalog へ登録済みの asset から、motion controller と GPU
 // binding 込みでゲーム本体と同じ描画経路を組み立て、1 体を固定構図で返す。
 import * as THREE from 'three/webgpu';
-import { proteinAssetBundleFor, type ProteinAssetId } from '../../src/game/protein/protein-asset-loader';
-import type { ProteinDisplaySettings, ProteinRepresentation } from '../../src/game/protein/protein-display';
-import { buildProteinEnemyShip, type ProteinRenderSource } from '../../src/render/protein-enemy-ship';
+import {
+  proteinAssetBundleFor, type ProteinAssetBundle, type ProteinAssetId,
+} from '../../src/game/protein/protein-asset-loader';
+import type { ProteinDisplaySettings, ProteinRepresentation } from '../../src/render/protein/protein-display';
+import { buildProteinEnemyShip } from '../../src/render/protein/protein-enemy-ship';
+import type { ProteinRenderSource } from '../../src/render/protein/protein-render-definition';
 import { ProteinMotionController } from '../../src/game/protein/protein-motion-controller';
-import { proteinMotionModeDisplacements } from '../../src/game/protein/protein-motion-modes';
+import { proteinMotionModeDisplacements } from '../../src/render/protein/protein-motion-modes';
 import {
   createProteinMotionBinding, disposeProteinMotionBinding, updateProteinMotionCoefficients,
-} from '../../src/render/protein-motion-material';
+} from '../../src/render/protein/protein-motion-material';
 import type { LabCase } from './cases';
 
 // 描画は cases.ts と同じ 960×540 固定。
@@ -36,17 +39,19 @@ export interface ProteinLabCaseMetadata {
   readonly baselineLod: 'near';
 }
 
-// 登録済み asset を描画 source として取得する。未登録の id なら投げる。
-function sourceFor(assetId: ProteinAssetId): ProteinRenderSource {
+// 登録済み asset を束ねたまま取得する。未登録の id なら投げる。
+function bundleFor(assetId: ProteinAssetId): ProteinAssetBundle {
   const bundle = proteinAssetBundleFor(assetId);
   if (!bundle) throw new Error(`Unknown Render Lab protein asset: ${assetId}`);
-  return { semantic: bundle.semantic, backbone: bundle.backbone, structure: bundle.structure, motion: bundle.motion };
+  return bundle;
 }
 
 // 1 体を固定構図で描くケース。残基 motion は updateProteinMotion を呼んだぶんだけ進む。
 function proteinCase(): LabCase {
-  const source = sourceFor(ASSET_ID);
-  const controller = new ProteinMotionController(source.motion, `render-lab-${ASSET_ID}`);
+  const bundle = bundleFor(ASSET_ID);
+  const source: ProteinRenderSource = bundle.render;
+  // 変形の係数はゲーム本体と同じ motion controller が進める。読むのは意味論側の定義。
+  const controller = new ProteinMotionController(bundle.semantic.motion, `render-lab-${ASSET_ID}`);
   const binding = createProteinMotionBinding(
     source.motion.residueCount, proteinMotionModeDisplacements(source.motion), source.motion.modes.length,
   );

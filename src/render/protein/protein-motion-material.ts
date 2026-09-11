@@ -2,7 +2,7 @@
 // だけに置く** — storage バッファの名前は WGSL の本文へ出るので、体ごとにバッファを作ると
 // 敵が湧くたびにその体専用のシェーダがコンパイルされる。
 import * as THREE from 'three/webgpu';
-import type { UintUniform } from './tsl-types';
+import type { UintUniform } from '../tsl-types';
 
 export const PROTEIN_RESIDUE_A_ATTRIBUTE = 'proteinResidueA';
 export const PROTEIN_RESIDUE_B_ATTRIBUTE = 'proteinResidueB';
@@ -77,7 +77,6 @@ export interface ProteinModeDisplacements {
  *
  * compute pass が `modeDisplacements` とそのフレームのモード振幅を掛け合わせて共有バッファの
  * 借り位置を埋め、この binding から作ったマテリアルはみなそこを読む。
- * game 層を import せずに済むよう、受け取るのは素の typed array だけにしている。
  */
 export interface ProteinMotionBinding {
   readonly residueCount: number;

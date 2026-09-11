@@ -13,7 +13,7 @@ import type { OverlayManager } from '../hud/overlay-manager';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { ProteinMotionMetricsRecorder } from '../game/protein/protein-motion-metrics';
-import { LODS_FINE_TO_COARSE } from '../game/protein/protein-motion-controller';
+import { LODS_FINE_TO_COARSE } from '../render/protein/protein-display';
 import type { PerfCounts, PerfCountSource } from '../game/perf-counts';
 import type { EntityCountKind } from '../game/dynamic/dynamic-entity/entity-kind';
 import type { PropertyRow } from '../hud/windows/property-window-content';

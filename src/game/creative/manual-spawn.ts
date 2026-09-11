@@ -13,7 +13,7 @@ import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { Enemy } from '../dynamic/dynamic-entity/enemy';
 import type { SpawnGate } from '../dynamic/entity-registry';
 import type { Player } from '../player/player';
-import type { ProteinDisplaySettings } from '../protein/protein-display';
+import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
 import type { FlashEffects } from '../vfx/flash-effects';
 
 // 敵1体の生成。gate が通ってから build を呼ぶ。待つものが無ければ gate は null。

@@ -1,17 +1,15 @@
 import * as THREE from 'three/webgpu';
-import { proteinMotionModeDisplacements } from '../../../game/protein/protein-motion-modes';
-import { ProteinRuntime } from '../../../game/protein/protein-runtime';
-import { createProteinMotionBinding } from '../../protein-motion-material';
-import type { ProteinEnemyDefinition } from '../../../game/protein/protein-enemy-registry';
-import type { ProteinDisplaySettings } from '../../../game/protein/protein-display';
-import type { KinematicState } from '../../../physics/kinematic-state';
+import { proteinMotionModeDisplacements } from '../../protein/protein-motion-modes';
+import { ProteinRuntime } from '../../protein/protein-runtime';
+import { createProteinMotionBinding } from '../../protein/protein-motion-material';
 import {
   DynamicView, type DynamicRenderSource, type DynamicViewFrame,
 } from '../dynamic-view';
+import type { ProteinRenderDefinition } from '../../protein/protein-render-definition';
+import type { ProteinDisplaySettings, ProteinMotionDisplay } from '../../protein/protein-display';
+import type { KinematicState } from '../../../physics/kinematic-state';
 import type { Quat } from '../../../math/quat';
 import type { Vec3 } from '../../../math/vec3';
-import type { ProteinMotionDisplay } from '../../../game/protein/protein-motion-controller';
-import type { ProteinHudSnapshot } from '../../../game/protein/protein-schema';
 
 // タンパク質の敵1体ぶんの、そのフレームの表示入力。表示設定と変形係数を共通の面へ足す。
 export interface ProteinVisualSource extends DynamicRenderSource {
@@ -19,14 +17,19 @@ export interface ProteinVisualSource extends DynamicRenderSource {
   readonly motionDisplay: ProteinMotionDisplay;
 }
 
-export interface ProteinSiteMarker {
+/** 部位マーカーの、位置以外の表示内容。 */
+export interface ProteinSiteStatus {
   readonly id: string;
-  readonly worldPos: Vec3;
   readonly abbreviation: string;
   readonly hp: number;
   readonly maxHp: number;
   readonly disabled: boolean;
   readonly attackable: boolean;
+}
+
+/** 変形済みアンカーのワールド座標を添えた部位マーカー。 */
+export interface ProteinSiteMarker extends ProteinSiteStatus {
+  readonly worldPos: Vec3;
 }
 
 // タンパク質モデル、構造ゆらぎ、結合線を所有する。
@@ -37,22 +40,23 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
   // 初期表示設定で THREE ツリーと共有 GPU binding を組み立てる。
   // modelScale は機体モデルへ掛ける表示倍率。物理の判定半径と同じ値を組み立て側が配る。
   public constructor(
-    private readonly definition: ProteinEnemyDefinition,
+    private readonly definition: ProteinRenderDefinition,
     display: ProteinDisplaySettings,
     modelScale: number,
     scene?: THREE.Scene,
   ) {
     // モード変位は asset 単位のキャッシュを使い、個体ごとには係数スロットだけを確保する。
+    const motion = definition.source.motion;
     const motionBinding = createProteinMotionBinding(
-      definition.motion.residueCount,
-      proteinMotionModeDisplacements(definition.motion),
-      definition.motion.modes.length,
+      motion.residueCount,
+      proteinMotionModeDisplacements(motion),
+      motion.modes.length,
     );
     // 表示ツリーと runtime は同じ root/binding を共有し、寿命も View に揃える。
     const root = definition.buildRenderObject(display, motionBinding ?? undefined);
     root.scale.setScalar(modelScale);
     super(root, scene);
-    this.runtime = new ProteinRuntime(root, definition.asset, definition.motion, motionBinding);
+    this.runtime = new ProteinRuntime(root, definition.source.semantic, motion, motionBinding);
     this.renderedDisplay = { ...display };
   }
 
@@ -79,7 +83,7 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
 
   // 部位マーカーは表示中のタンパク質変形と同じアンカー位置を使う。
   public siteMarkers(
-    displayPos: Vec3, attitude: Quat, sites: ProteinHudSnapshot['sites'],
+    displayPos: Vec3, attitude: Quat, sites: readonly ProteinSiteStatus[],
   ): readonly ProteinSiteMarker[] {
     return sites.map((site) => ({
       id: site.id,

@@ -6,7 +6,7 @@ import type { Attitude } from '../../physics/attitude';
 import type { EphemerisContext } from '../../physics/ephemeris/ephemeris-context';
 import type { FormationRole } from '../dynamic/dynamic-entity/entity-kind';
 import type { ProteinAssetId } from '../protein/protein-asset-loader';
-import type { ProteinDisplaySettings } from '../protein/protein-display';
+import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
 import type { GamePhase } from '../stages/stage';
 import type { WaveAttackSaveData } from '../stages/stage-utils/wave-attack';
 import type { ProteinSaveData } from '../protein/protein-schema';

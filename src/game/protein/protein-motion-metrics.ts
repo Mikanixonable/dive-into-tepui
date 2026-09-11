@@ -1,7 +1,7 @@
 // タンパク質の motion 更新の性能計測。1フレームぶんの CPU 時間・GPU 転送量・LOD ごとの体数を
 // 拾い、計測窓ぶんの分布へまとめる。
 
-import { LODS_FINE_TO_COARSE, type ProteinMotionLod } from './protein-motion-controller';
+import { LODS_FINE_TO_COARSE, type ProteinMotionLod } from '../../render/protein/protein-display';
 import { ProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 

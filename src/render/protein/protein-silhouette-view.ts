@@ -1,13 +1,14 @@
 import * as THREE from 'three/webgpu';
-import type { ProteinSilhouetteColorMode } from '../game/protein/protein-display';
+import type { ProteinSilhouetteColorMode } from './protein-display';
 import {
   attachProteinResidueBinding,
   proteinStandardMaterial,
   type ProteinMotionBinding,
 } from './protein-motion-material';
 import { buildProteinLigands, proteinResidueBindingLookup } from './protein-atom-view';
-import { buildProteinRibbon, type ProteinRenderSource } from './protein-ribbon';
+import { buildProteinRibbon } from './protein-ribbon';
 import { triangleComponent } from './protein-ribbon-color';
+import type { ProteinRenderSource } from './protein-render-definition';
 
 function surfaceColor(value: number, mode: ProteinSilhouetteColorMode): THREE.Color {
   const t = Math.max(0, Math.min(1, (value + 127) / 254));
@@ -32,8 +33,8 @@ export function buildProteinSilhouette(
   motion?: ProteinMotionBinding,
 ): THREE.Group {
   const group = new THREE.Group();
-  // The shell carries the selected scalar field; the internal cartoon stays white so
-  // it remains legible through the translucent surface in every protein asset.
+  // 外殻が選択されたスカラー場を担うので、内部のリボンは白のまま置く — 半透明の殻越しでも
+  // 形が読めるようにするため。
   group.add(buildProteinRibbon(source, 'chain', new THREE.Color(0xffffff), motion));
   if (source.semantic.ligands.length) group.add(buildProteinLigands(source, motion));
   const surface = source.structure.surface.mesh;

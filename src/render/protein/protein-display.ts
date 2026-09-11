@@ -1,3 +1,5 @@
+// タンパク質の表示の語彙。表現形態・配色・構造フェーズ・詳細度の値と、その組み合わせの
+// 検証をここが定める。表示資源は持たず、値だけを扱う。
 export type ProteinRepresentation = 'molecular' | 'ribbon' | 'silhouette';
 
 type ProteinMolecularColorMode = 'element';
@@ -9,6 +11,9 @@ export type ProteinRibbonColorMode =
   | 'component';
 export type ProteinSilhouetteColorMode = 'surface-charge' | 'hydrophobicity';
 export type ProteinColorMode = ProteinMolecularColorMode | ProteinRibbonColorMode | ProteinSilhouetteColorMode;
+
+/** タンパク質の構造フェーズ。結合線の濃さと変形の強さを決める。 */
+export type ProteinPhase = 'intact' | 'exposed' | 'dissociated' | 'critical';
 
 export type ProteinDisplaySettings =
   | { readonly representation: 'molecular'; readonly colorMode: ProteinMolecularColorMode }
@@ -36,6 +41,21 @@ export const PROTEIN_COLOR_LABELS: Readonly<Record<ProteinColorMode, string>> = 
   'surface-charge': '表面電荷（近似）',
   hydrophobicity: '疎水性',
 };
+
+/** 残基変形の詳細度。 */
+export type ProteinMotionLod = 'near' | 'medium' | 'far' | 'marker';
+
+// 細かい方から粗い方への並び。LOD の切り替えも計測の集計もこの並びで走る。
+export const LODS_FINE_TO_COARSE: readonly ProteinMotionLod[] = ['near', 'medium', 'far', 'marker'];
+
+/** そのフレームの残基変形を表示資源へ渡すための、確定済みの値。 */
+export interface ProteinMotionDisplay {
+  readonly active: boolean;
+  readonly lod: ProteinMotionLod;
+  readonly sampleTime: number;
+  readonly phase: ProteinPhase;
+  readonly coefficients: Float32Array;
+}
 
 /** 表示形態で選択できる着色を表示順に返す。 */
 export function proteinColorModesFor(representation: ProteinRepresentation): readonly ProteinColorMode[] {

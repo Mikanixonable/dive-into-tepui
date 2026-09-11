@@ -16,7 +16,8 @@ import { CelestialGrid, CelestialGridVisibility, DEFAULT_GRID_VISIBILITY } from 
 import type { CameraSystem } from '../camera/camera-system';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { ScaleGridView } from './scale-grid-view';
-import { CelestialIllumination, type IlluminationTargets } from './celestial-illumination';
+import { focusTargetId } from '../camera/focus-target';
+import { CelestialIllumination, type IlluminationTargets } from '../../render/celestial/celestial-illumination';
 import { RingMaterials } from '../../render/celestial/ring';
 import { CelestialEntity } from './celestial-entity/celestial-entity';
 import type { StellarLightSource } from '../../render/celestial/celestial-entity/celestial-view';
@@ -49,6 +50,11 @@ function bindEphemerides(motions: readonly CelestialMotion[], points: EphemerisP
   for (const system of systems) {
     system.bindEphemeris(ephemerisPointOf(points, system.id, 'systemBarycenter'));
   }
+}
+
+// 天体 id の分類トグルが開いているか。表示ポリシーを持たない戦闘ビューではすべて開いている。
+function categoryVisible(policy: MapVisibilityPolicy | null, id: string): boolean {
+  return policy === null || policy.body(id).category;
 }
 
 // 親を先に、その子を続けて並べた列と、主星を 0 とする階層の深さ。親子関係が循環していても
@@ -146,8 +152,7 @@ export class CelestialSystem implements CelestialBodies {
   // 呼べない。
   build(scene: THREE.Scene, illuminationTargets: IlluminationTargets): void {
     this.scene = scene;
-    this.illumination = new CelestialIllumination(
-      this, this.entities, this.stellarLightSource, illuminationTargets);
+    this.illumination = new CelestialIllumination(this.stellarLightSource, illuminationTargets);
     // 天体に付随する線・星野・グリッド。
     this.orbitGuideModel = new OrbitGuideModel(this);
     this.orbitGuideView = new OrbitGuideView(scene);
@@ -376,12 +381,20 @@ export class CelestialSystem implements CelestialBodies {
     const floatingOrigin = camera.floatingOrigin;
     const star = this.stellarLightSource;
     for (const body of this.entities) {
-      const visible = visibilityPolicy === null || visibilityPolicy.body(body.id).category;
       body.view.sync(
-        body.motion, displayTime, camera, star, graphics, style, visible,
+        body.motion, displayTime, camera, star, graphics, style,
+        categoryVisible(visibilityPolicy, body.id),
       );
     }
-    this.illumination.sync(displayTime, camera, cameraSystem, graphics, visibilityPolicy);
+    // 注視中の天体は、影の濃さをカメラ位置と並べて測る基準点になる。天体でない対象を
+    // 注視しているフレームでは持たない。
+    const focusId = focusTargetId(cameraSystem.mapCamera.focus);
+    const focusPosition = focusId === undefined
+      ? null : this.findMotion(focusId)?.positionAt(displayTime) ?? null;
+    this.illumination.sync(
+      this.entities.map(
+        (body) => body.illuminationSource(categoryVisible(visibilityPolicy, body.id))),
+      displayTime, camera, graphics, focusPosition, this.sunDirFrom(floatingOrigin.r, displayTime));
 
     // 露出に順応しない星殻と点群は、露出の基準が確定した後の係数を受け取る。
     const fixedBrightnessScale = this.illumination.fixedBrightnessScale;
@@ -395,11 +408,10 @@ export class CelestialSystem implements CelestialBodies {
     this.syncReferenceLines(displayTime, camera, visibilityPolicy);
     // 地球の静止軌道リングなど、天体固有のマップ付随表示。
     for (const body of this.entities) {
-      const categoryVisible = visibilityPolicy === null
-        || visibilityPolicy.body(body.id).category;
       body.view.syncMapOverlay(
         body.motion, displayTime, camera, markers, this.celestialMotions,
-        camera.mode === 'map' && geostationaryOrbitVisible && categoryVisible);
+        camera.mode === 'map' && geostationaryOrbitVisible
+          && categoryVisible(visibilityPolicy, body.id));
     }
     this.orbitGuideView.sync(
       this.orbitGuideModel.sync(this.orbitGuideSettings, displayTime, style, camera.mode), camera);

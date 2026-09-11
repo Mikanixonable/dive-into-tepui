@@ -4,39 +4,39 @@
 // ここの明るさは物理量ではなく手書きの表示値のまま。放射量として組み直すのはボリューム
 // レンダリングの段階で、それまでは 1 天文単位を基準にした表示値の目盛りで置く。
 
-// --- 被弾・撃破フラッシュ(サイズは [m]、DURATION は [s]) ---
+// --- 被弾・撃破フラッシュ(サイズは [m]) ---
 export const BULLET_IMPACT_FLASH_COLOR = '#ffe2a0';
 export const BULLET_IMPACT_FLASH_SIZE0 = 1.5;
 export const BULLET_IMPACT_FLASH_SIZE1 = 6;
-export const BULLET_IMPACT_FLASH_DURATION = 0.25;
 export const MUZZLE_FLASH_COLOR = '#fff0b8';
 export const MUZZLE_FLASH_SIZE0 = 2.2;
 export const MUZZLE_FLASH_SIZE1 = 6;
-export const MUZZLE_FLASH_DURATION = 0.07;
 export const PLASMA_IMPACT_FLASH_COLOR = '#ffa0ff';
 export const PLASMA_IMPACT_FLASH_SIZE0 = 2;
 export const PLASMA_IMPACT_FLASH_SIZE1 = 8;
-export const PLASMA_IMPACT_FLASH_DURATION = 0.3;
 // 被弾・デブリ命中時のガス放出。薄く広がる灰色のビルボードを2枚重ねて気体らしさを出す。
 export const GAS_PUFF_COLOR_1 = '#aaaaaa';
 export const GAS_PUFF1_SIZE0 = 1.0;
 export const GAS_PUFF1_SIZE1 = 8.0;
-export const GAS_PUFF1_DURATION = 0.45;
 export const GAS_PUFF1_BRIGHTNESS = 0.3;
 export const GAS_PUFF_COLOR_2 = '#ffffff';
 export const GAS_PUFF2_SIZE0 = 0.5;
 export const GAS_PUFF2_SIZE1 = 6.0;
-export const GAS_PUFF2_DURATION = 0.35;
 export const GAS_PUFF2_BRIGHTNESS = 0.4;
 // 撃破フラッシュ。芯(1)と外殻(2)の2枚。敵機では機体サイズに合わせて呼び出し側が拡大する。
 export const DESTROY_FLASH_COLOR_1 = '#ffb36b';
 export const DESTROY_FLASH1_SIZE0 = 10;
 export const DESTROY_FLASH1_SIZE1 = 110;
-export const DESTROY_FLASH1_DURATION = 1.1;
 export const DESTROY_FLASH_COLOR_2 = '#fffbe8';
 export const DESTROY_FLASH2_SIZE0 = 6;
 export const DESTROY_FLASH2_SIZE1 = 40;
-export const DESTROY_FLASH2_DURATION = 0.5;
+// タンパク質の状態遷移フラッシュ。大きさは共通で、危篤・解離・それ以外の損傷を色で分ける。
+export const PROTEIN_CRITICAL_FLASH_COLOR = 0xff3d88;
+export const PROTEIN_DISSOCIATED_FLASH_COLOR = 0xa76dff;
+export const PROTEIN_DAMAGED_FLASH_COLOR = 0x59e7ff;
+export const PROTEIN_STATE_FLASH_SIZE0 = 2.5;
+export const PROTEIN_STATE_FLASH_SIZE1 = 13;
+export const PROTEIN_STATE_FLASH_BRIGHTNESS = 0.9;
 
 // --- 破片 ---
 export const DESTROY_FRAG_SIZE_MIN = 1.5; // 撃破デブリの破片サイズ下限。敵機では機体サイズに合わせて拡大する

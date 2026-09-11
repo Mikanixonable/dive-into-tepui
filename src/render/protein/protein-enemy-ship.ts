@@ -1,24 +1,25 @@
+// 表示形態ごとの構造メッシュを、外から倍率と姿勢を掛けられる1本の root へ束ねる。
 import * as THREE from 'three/webgpu';
-import type { ProteinDisplaySettings, ProteinRibbonColorMode } from '../game/protein/protein-display';
 import {
   buildProteinAtoms,
   buildProteinLigands,
 } from './protein-atom-view';
 import { type ProteinMotionBinding } from './protein-motion-material';
-import { disposeOwnedRenderResources } from './dispose-owned-render-resources';
-import { markLitOpaque, markShadowCaster } from './pipeline/lit-layer';
+import { disposeOwnedRenderResources } from '../dispose-owned-render-resources';
+import { markLitOpaque, markShadowCaster } from '../pipeline/lit-layer';
 import { buildProteinSilhouette } from './protein-silhouette-view';
-import { buildProteinRibbon, type ProteinRenderSource } from './protein-ribbon';
+import { buildProteinRibbon } from './protein-ribbon';
+import type { ProteinDisplaySettings, ProteinRibbonColorMode } from './protein-display';
+import type { ProteinRenderSource } from './protein-render-definition';
 
-export type { ProteinBackboneAsset, ProteinRenderSource } from './protein-ribbon';
-
+// binding は個体ごとの借り位置なので、asset の残基数と食い違ったまま描くと別の体の変位を読む。
 function validateMotionBinding(source: ProteinRenderSource, motion?: ProteinMotionBinding): void {
   if (motion && motion.residueCount !== source.motion.residueCount) {
     throw new Error(`Protein motion binding residueCount ${motion.residueCount} does not match asset ${source.motion.residueCount}`);
   }
 }
 
-/** Keep the Å-to-object conversion below the enemy root, whose scale is game-owned. */
+/** Å からオブジェクト座標への変換を、外から倍率を掛けられる root の下へ閉じ込める。 */
 function proteinCoordinateRoot(structure: THREE.Group, coordinateScale: number): THREE.Group {
   const root = new THREE.Group();
   structure.scale.setScalar(coordinateScale);
@@ -27,6 +28,7 @@ function proteinCoordinateRoot(structure: THREE.Group, coordinateScale: number):
   return root;
 }
 
+/** Cartoon リボンとリガンドを、指定した着色で1体ぶんの root へ組む。 */
 export function buildProteinRibbonShip(
   source: ProteinRenderSource,
   mode: ProteinRibbonColorMode,
@@ -42,6 +44,7 @@ export function buildProteinRibbonShip(
   return root;
 }
 
+/** 表示設定が指す表現形態で、1体ぶんの root を組む。 */
 export function buildProteinEnemyShip(
   source: ProteinRenderSource,
   display: ProteinDisplaySettings,
@@ -65,6 +68,7 @@ export function buildProteinEnemyShip(
   return root;
 }
 
+/** target の子を破棄して replacement の子へ入れ替える。target 自身の姿勢と倍率は残る。 */
 export function replaceProteinEnemyShip(target: THREE.Object3D, replacement: THREE.Object3D): void {
   for (const child of [...target.children]) {
     disposeOwnedRenderResources(child);

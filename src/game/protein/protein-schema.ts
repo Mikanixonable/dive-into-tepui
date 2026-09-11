@@ -1,7 +1,8 @@
+import type { ProteinPhase } from '../../render/protein/protein-display';
+
 type ProteinVec3 = readonly [number, number, number];
 type ProteinSource = 'author' | 'computed' | 'game';
 type ProteinSiteType = 'active' | 'interface' | 'core' | 'modification';
-export type ProteinPhase = 'intact' | 'exposed' | 'dissociated' | 'critical';
 
 interface ProteinComponentDefinition {
   readonly id: string;

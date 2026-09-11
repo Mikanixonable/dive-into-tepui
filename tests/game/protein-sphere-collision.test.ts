@@ -31,10 +31,10 @@ function residueAt(
 export function register(): void {
   // 覆い・連続性・大きさは球の組み方そのものの契約なので、全アセットで見る。
   for (const bundle of testProteinAssetBundles()) {
-    const id = bundle.semantic.id;
-    const { coordinateScale } = bundle.semantic;
-    const { backboneCoordinates, backboneCount, backboneChains } = bundle.backbone;
-    const spheres = buildProteinCollisionSpheres(bundle.backbone, coordinateScale);
+    const id = bundle.semantic.asset.id;
+    const { coordinateScale } = bundle.semantic.asset;
+    const { backboneCoordinates, backboneCount, backboneChains } = bundle.semantic.backbone;
+    const spheres = buildProteinCollisionSpheres(bundle.semantic.backbone, coordinateScale);
 
     test(`protein sphere collision: ${id} covers every residue`, () => {
       for (let index = 0; index < backboneCount; index++) {

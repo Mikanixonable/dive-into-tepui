@@ -32,7 +32,7 @@ import { Exposure } from './exposure';
 import { SunLight } from './sun-light';
 import { ShadowMaps } from './shadow/shadow-maps';
 import { viewPositionAt } from './view-ray';
-import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
+import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein/protein-motion-material';
 import { FilmLut } from './film-lut';
 import { compileInto, compileIntoOutput } from './compile-into';
 import { DeferredTexture } from '../deferred-texture';

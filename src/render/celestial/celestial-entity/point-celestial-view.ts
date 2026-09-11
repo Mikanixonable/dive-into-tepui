@@ -29,7 +29,7 @@ import type { ShadowCumulus } from '../../pipeline/shadow/cumulus-shadow';
 import type { RenderStyle } from '../../render-style';
 import type { AtmosphereClouds, AtmosphereOptics } from '../../atmosphere';
 import type { CelestialBody } from '../../../physics/celestial-body';
-import { CelestialView, type StellarLightSource } from './celestial-view';
+import { CelestialView, type DefinedCelestialBody, type StellarLightSource } from './celestial-view';
 
 // 輝点スプライトの一辺 [m]。星殻上へ置くので、点像の角の広がりへ星殻半径を掛けたもの。
 const POINT_SPRITE_SIZE = POINT_IMAGE_ANGULAR_SIZE * STAR_SHELL_RADIUS;
@@ -50,7 +50,7 @@ const tmpPos = new THREE.Vector3();
 const tmpToObserver = new THREE.Vector3();
 
 // 点表現の外径計算に使う環定義を、環を持てる天体だけから取り出す。
-function ringsOf(motion: CelestialMotion): RingSystemDef | null {
+function ringsOf(motion: DefinedCelestialBody): RingSystemDef | null {
   return 'rings' in motion.def ? motion.def.rings ?? null : null;
 }
 
@@ -95,7 +95,7 @@ export class PointCelestialView extends CelestialView {
 
   public get surfaceTextureUrl(): string | null { return this.surface.textureUrl; }
 
-  public override rings(motion: CelestialMotion): RingSystemDef | null { return ringsOf(motion); }
+  public override rings(motion: DefinedCelestialBody): RingSystemDef | null { return ringsOf(motion); }
 
   // マップビュー用の実体表面と輝点用ビルボードをシーンへ一度だけ登録する。
   public build(motion: CelestialMotion, scene: THREE.Scene, ringMaterials: RingMaterials): void {
@@ -180,7 +180,7 @@ export class PointCelestialView extends CelestialView {
   // 影パスへ渡す積雲の殻。**描いている殻だけが影を落とす。** 姿勢は自転位相まで込みで組む —
   // 軸だけでは場が地表と一緒に回らない。
   public cumulusShadowAt(
-    motion: CelestialMotion, fo: FloatingOrigin, displayTime: number,
+    motion: DefinedCelestialBody, fo: FloatingOrigin, displayTime: number,
   ): ShadowCumulus | null {
     // 本体または雲殻を描いていないフレームは、影の入力にも含めない。
     if (this.cumulus === null || !this.group.visible || !this.cumulus.visible) return null;
@@ -199,7 +199,7 @@ export class PointCelestialView extends CelestialView {
   // 軸だけでは場が地表と一緒に回らない。**姿勢はこの1体ぶんの実体で返す** — 大気パスが読むのは
   // 描画のときなので、影へ渡す使い回しの実体を渡すと、同期のあいだに書き換わる。
   public override atmosphereCloudsAt(
-    motion: CelestialMotion, displayTime: number,
+    motion: DefinedCelestialBody, displayTime: number,
   ): AtmosphereClouds | null {
     if (this.cumulus === null || !this.group.visible || !this.cumulus.cloudsVisible) return null;
     return {

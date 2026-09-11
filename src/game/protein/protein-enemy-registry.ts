@@ -1,40 +1,29 @@
-import * as THREE from 'three/webgpu';
+// タンパク質の敵1体ぶんの、意味論と判定形状の定義。アセットが揃った id から1つだけ組み、
+// 以降は使い回す。
 import {
-  buildProteinEnemyShip, replaceProteinEnemyShip, type ProteinRenderSource,
-} from '../../render/protein-enemy-ship';
-import {
-  proteinAssetBundleFor, proteinAssetFor, type ProteinAssetId,
+  proteinAssetBundleFor, proteinAssetFor, type ProteinAssetId, type ProteinSemanticSource,
 } from './protein-asset-loader';
 import { buildProteinCollisionSpheres, type ProteinCollisionSphere } from './protein-sphere-collision';
 import type { ProteinAssetDefinition, ProteinMotionAsset } from './protein-schema';
-import type { ProteinDisplaySettings } from './protein-display';
-import type { ProteinMotionBinding } from '../../render/protein-motion-material';
 
 export interface ProteinEnemyDefinition {
   readonly assetId: ProteinAssetId;
   readonly asset: ProteinAssetDefinition;
   readonly motion: ProteinMotionAsset;
-  readonly buildRenderObject: (display: ProteinDisplaySettings, motion?: ProteinMotionBinding) => THREE.Object3D;
-  readonly recolorRenderObject: (target: THREE.Object3D, display: ProteinDisplaySettings, motion?: ProteinMotionBinding) => void;
   /** 表示形態に依らない判定形状。アセットごとに1つで、個体は位置と姿勢だけを渡す。 */
   readonly collisionSpheres: readonly ProteinCollisionSphere[];
 }
 
-/** 描画と判定形状を共有 asset へ束ねた敵定義を作る。 */
+/** 判定形状を組み、意味論の定義と束ねた敵定義を作る。 */
 export function createProteinEnemyDefinition(
   assetId: ProteinAssetId,
-  source: ProteinRenderSource,
+  source: ProteinSemanticSource,
 ): ProteinEnemyDefinition {
-  // 表示の再構築だけが設定へ追従し、判定形状は表示形態に依らない1つに固定する。
   return {
     assetId,
-    asset: source.semantic,
+    asset: source.asset,
     motion: source.motion,
-    buildRenderObject: (display, motion) => buildProteinEnemyShip(source, display, motion),
-    recolorRenderObject: (target, display, motion) => replaceProteinEnemyShip(
-      target, buildProteinEnemyShip(source, display, motion),
-    ),
-    collisionSpheres: buildProteinCollisionSpheres(source.backbone, source.semantic.coordinateScale),
+    collisionSpheres: buildProteinCollisionSpheres(source.backbone, source.asset.coordinateScale),
   };
 }
 
@@ -50,7 +39,7 @@ export function proteinEnemyDefinitionFor(id: string): ProteinEnemyDefinition | 
   if (cached) return cached;
   const bundle = proteinAssetBundleFor(assetId);
   if (!bundle) return null;
-  const definition = createProteinEnemyDefinition(assetId, bundle);
+  const definition = createProteinEnemyDefinition(assetId, bundle.semantic);
   proteinEnemyDefinitionCache.set(assetId, definition);
   return definition;
 }

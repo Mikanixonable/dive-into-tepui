@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
-import { shapeSpheroidRadii, type RingSystemDef } from '../../../physics/celestial-body-def';
+import { shapeSpheroidRadii, type CelestialBodyDef, type RingSystemDef } from '../../../physics/celestial-body-def';
 import { orbitalElementsOf } from '../../../physics/elements';
 import { len, sub, type Vec3 } from '../../../math/vec3';
 import type { FloatingOrigin } from '../../camera/floating-origin';
@@ -32,11 +32,39 @@ export type StellarLight = {
   readonly radiantIntensity: number;
 };
 
+// 照明・影・大気が読む天体1体の運動。楕円体の半軸・環の帯・大気の光学は分類ごとの宣言が
+// 決めるので、CelestialBody の宣言をその定義そのままで受け直す。
+export interface DefinedCelestialBody extends CelestialBody {
+  readonly def: CelestialBodyDef;
+}
+
 // 他の天体の表示が恒星光を引くために必要な読み取り面。
 export type StellarLightSource = {
-  readonly motion: CelestialMotion;
+  readonly motion: DefinedCelestialBody;
   readonly stellarLight: StellarLight;
 };
+
+// 天体1体の表示が、照らす源・遮る源・霞ませる源として答える面。
+export interface CelestialIlluminationView {
+  // 光源として扱うときの色つきボンドアルベド。反射光を配らない天体では null。
+  readonly lightSourceAlbedo: Albedo | null;
+  rings(motion: DefinedCelestialBody): RingSystemDef | null;
+  cumulusShadowAt(
+    motion: DefinedCelestialBody, floatingOrigin: FloatingOrigin, displayTime: number,
+  ): ShadowCumulus | null;
+  atmosphereCandidateAt(
+    motion: DefinedCelestialBody, floatingOrigin: FloatingOrigin, displayTime: number,
+    cameraPos: Vec3, radialScale: (center: Vec3) => number, graphics: GraphicsSettingsData,
+  ): AtmosphereCandidate | null;
+}
+
+// 天体1体が、この1フレームの照明・影・大気へ差し出す源。visible はそのフレームに大気を
+// 描いてよい天体か。
+export interface CelestialIlluminationSource {
+  readonly motion: DefinedCelestialBody;
+  readonly view: CelestialIlluminationView;
+  readonly visible: boolean;
+}
 
 export abstract class CelestialView {
   private referenceLineValue: EllipseLine | null = null;
@@ -45,7 +73,7 @@ export abstract class CelestialView {
   public get atmosphereOptics(): AtmosphereOptics | null { return null; }
   public get lightSourceAlbedo(): Albedo | null { return null; }
   public get surfaceTextureUrl(): string | null { return null; }
-  public rings(_motion: CelestialMotion): RingSystemDef | null { return null; }
+  public rings(_motion: DefinedCelestialBody): RingSystemDef | null { return null; }
 
   public abstract build(
     motion: CelestialMotion, scene: THREE.Scene, ringMaterials: RingMaterials,
@@ -58,7 +86,7 @@ export abstract class CelestialView {
 
   // 大気の表示候補を、描画座標・画面密度・雲殻を含む renderer 入力へ変換する。
   public atmosphereCandidateAt(
-    motion: CelestialMotion, floatingOrigin: FloatingOrigin, displayTime: number,
+    motion: DefinedCelestialBody, floatingOrigin: FloatingOrigin, displayTime: number,
     cameraPos: Vec3, radialScale: (center: Vec3) => number,
     graphics: GraphicsSettingsData,
   ): AtmosphereCandidate | null {
@@ -87,14 +115,14 @@ export abstract class CelestialView {
   }
 
   public atmosphereCloudsAt(
-    _motion: CelestialMotion, _displayTime: number,
+    _motion: DefinedCelestialBody, _displayTime: number,
   ): AtmosphereClouds | null { return null; }
 
   // この天体が持つ動的な雲場を表示時刻へ焼く。
   public bakeClouds(_renderer: WebGPURenderer, _displayTime: number): void {}
 
   public cumulusShadowAt(
-    _motion: CelestialMotion, _floatingOrigin: FloatingOrigin, _displayTime: number,
+    _motion: DefinedCelestialBody, _floatingOrigin: FloatingOrigin, _displayTime: number,
   ): ShadowCumulus | null { return null; }
 
   public syncMapOverlay(

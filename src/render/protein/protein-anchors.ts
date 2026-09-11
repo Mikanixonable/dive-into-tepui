@@ -1,18 +1,14 @@
+// 部位のアンカーを、静止座標と残基変位から求める。表示中の変形へマーカー・結合線・銃口を
+// 合わせるための座標変換だけを持つ。
 import { qInvert, qRotate, type Quat } from '../../math/quat';
 import { add, sub, type Vec3, v3 } from '../../math/vec3';
-import type {
-  ProteinModificationDefinition,
-  ProteinMotionAsset,
-  ProteinSiteDefinition,
-} from './protein-schema';
+import type { ProteinRenderMotion, ProteinRenderSite } from './protein-render-definition';
 
-type AnchorDefinition = ProteinSiteDefinition | ProteinModificationDefinition;
-
-/** Resolve a semantic anchor's residue descriptors to motion-asset indices. */
+/** 部位の残基記述子を、モード asset の残基インデックスへ解決する。引けなければ既定値1つ。 */
 export function proteinAnchorResidues(
-  anchor: AnchorDefinition,
+  anchor: ProteinRenderSite,
   index: number,
-  motion: ProteinMotionAsset,
+  motion: ProteinRenderMotion,
   fallbackValues: readonly number[],
 ): readonly number[] {
   const fallback = fallbackValues[index];
@@ -33,7 +29,7 @@ export function proteinAnchorResidues(
   return fallback === undefined ? [] : [fallback];
 }
 
-/** Average the xyz displacement of all residues associated with an anchor. */
+/** アンカーに属する残基の xyz 変位を平均する。空の群では原点変位を返す。 */
 export function proteinAnchorOffset(
   group: readonly number[],
   residueOffsets: ArrayLike<number>,
@@ -52,9 +48,9 @@ export function proteinAnchorOffset(
   return count === 0 ? [0, 0, 0] : [x / count, y / count, z / count];
 }
 
-/** Compute an active-site world position from its static coordinate and residue motion. */
+/** 部位の静止座標と残基変位から、ワールド座標を求める。部位が無いときは origin をそのまま返す。 */
 export function proteinSiteWorldPosition(
-  site: ProteinSiteDefinition | null,
+  site: ProteinRenderSite | null,
   group: readonly number[],
   residueOffsets: ArrayLike<number>,
   residueCount: number,
@@ -71,7 +67,7 @@ export function proteinSiteWorldPosition(
   return add(origin, qRotate(attitude, local));
 }
 
-/** Convert a world impact point into the protein runtime's local coordinate system. */
+/** ワールド座標の着弾点を、root の倍率を外した模型ローカル座標へ写す。 */
 export function proteinLocalImpactPoint(worldPoint: Vec3, origin: Vec3, attitude: Quat, rootScale: number): Vec3 {
   const oriented = qRotate(qInvert(attitude), sub(worldPoint, origin));
   return v3(oriented.x / rootScale, oriented.y / rootScale, oriented.z / rootScale);
