@@ -59,28 +59,30 @@ export class SettingsView {
       const sectionTitle = document.createElement('h3');
       sectionTitle.textContent = title;
       section.appendChild(sectionTitle);
+      const sectionBody = document.createElement('div');
+      sectionBody.className = 'sv-section-body';
+      section.appendChild(sectionBody);
       tabPanels.set(tab, section);
-      return section;
+      return sectionBody;
     };
 
     // 3面それぞれの操作を、対応する自分の口へ繋ぎ替える。
-    const graphicsSection = addTabPanel('graphics', '描画');
+    const graphicsSectionBody = addTabPanel('graphics', '描画');
     const graphicsPanel = new GraphicsPanel(graphics);
     graphicsPanel.onChange = (changed) => this.onGraphicsChange?.(changed);
-    graphicsSection.appendChild(graphicsPanel.element);
-    this.element.appendChild(graphicsSection);
+    graphicsSectionBody.appendChild(graphicsPanel.element);
 
-    const bgmSection = addTabPanel('bgm', 'BGM');
+    const bgmSectionBody = addTabPanel('bgm', 'BGM');
     this.bgmPanel = new BgmSettingsPanel(bgm, bgmVolume);
     this.bgmPanel.onVolumeChange = (volume) => this.onBgmVolumeChange?.(volume);
-    bgmSection.appendChild(this.bgmPanel.element);
-    this.element.appendChild(bgmSection);
+    bgmSectionBody.appendChild(this.bgmPanel.element);
 
-    const themeSection = addTabPanel('theme', '配色');
+    const themeSectionBody = addTabPanel('theme', '配色');
     const themePanel = new ThemePanel();
     themePanel.onSelect = (id) => this.onThemeIdChange?.(id);
-    themeSection.appendChild(themePanel.element);
-    this.element.appendChild(themeSection);
+    themeSectionBody.appendChild(themePanel.element);
+
+    for (const section of tabPanels.values()) this.element.appendChild(section);
 
     tabs.setSelected('graphics');
     const initialPanel = tabPanels.get('graphics');
