@@ -1,6 +1,6 @@
 // デバッグ用ステージ: 現実の太陽系とは無関係な架空のレジストリ・原点で進行する。恒星1体・
-// 惑星1体・衛星1体だけの最小構成で、輻射源・日照率・点群などの経路が太陽系のレジストリに
-// 依存していないことを実演する。タイトルの通常ボタン列には出ない。
+// 惑星1体・衛星1体の最小構成で、輻射源・日照率・点群などの経路が任意のレジストリで動くことを
+// 確かめる。
 import * as THREE from 'three/webgpu';
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
@@ -91,6 +91,7 @@ function fallbackEntity(motion: CelestialBody): CelestialEntity {
 export class StageDebugAltSystem extends Stage {
   public static readonly id = 'debug-alt-system' as const;
   public static readonly epoch = STORY_EPOCH;
+  // 架空の3体を並べ、惑星 zephyrus を原点とする天体系を組む。
   public static async createCelestialSystem(
     phaseOffsets: PhaseOffsets, _earthSpinPhase0: number, epoch: TdbJulianDate,
     _onProgress?: (ratio: number) => void, _renderer?: THREE.WebGPURenderer,
@@ -104,11 +105,13 @@ export class StageDebugAltSystem extends Stage {
   public static readonly hiddenFromSelect = true;
   public static readonly selectKeys = ['KeyE'];
 
+  // saved があればそこから復元し、無ければ初期配置してステージを始める。
   public constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     this.begin();
   }
 
+  // ステージ開始時に出すブリーフィングの本文(HTML)。
   protected briefingHtml(): string {
     return `<b>架空星系デバッグステージ</b><br>${STAR_ID} 系の ${PRIMARY_ID} で起動`;
   }
