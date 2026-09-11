@@ -10,8 +10,11 @@ export const EARTH_TERRAIN_HEADER_BYTES = 32;
 export const EARTH_TERRAIN_WIDTH = 260;
 export const EARTH_TERRAIN_HEIGHT = 260;
 export const EARTH_TERRAIN_CHANNELS = 4;
-export const EARTH_TERRAIN_SCALAR_FLOAT16 = 1;
-export const EARTH_TERRAIN_BYTES = EARTH_TERRAIN_WIDTH * EARTH_TERRAIN_HEIGHT * EARTH_TERRAIN_CHANNELS * 2;
+export const EARTH_TERRAIN_FORMAT_VERSION = 2;
+export const EARTH_TERRAIN_SCALAR_UINT8 = 2;
+export const EARTH_TERRAIN_BYTES = EARTH_TERRAIN_WIDTH * EARTH_TERRAIN_HEIGHT * EARTH_TERRAIN_CHANNELS;
+export const EARTH_TERRAIN_LAYOUT = 'octahedral-rg8-roughness-r8-material-class-a8';
+export const EARTH_MATERIAL_CLASS = Object.freeze({ water: 0, land: 1, ice: 2, unknown: 255 });
 export const EARTH_TERRAIN_PAYLOAD_BYTES = EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES;
 export const EARTH_BASE_MAGIC = 'ESTB';
 export const EARTH_BASE_ROOT_COLUMNS = 2;
@@ -99,6 +102,16 @@ export function validateManifest(value) {
   expectSha256(manifest.sourceManifestSha256, 'sourceManifestSha256');
   const provenance = expectObject(manifest.provenance, 'provenance');
   expectString(provenance.generator, 'provenance.generator');
+  const terrainEncoding = expectObject(manifest.terrainEncoding, 'terrainEncoding');
+  if (terrainEncoding.formatVersion !== EARTH_TERRAIN_FORMAT_VERSION
+    || terrainEncoding.layout !== EARTH_TERRAIN_LAYOUT || terrainEncoding.width !== EARTH_TERRAIN_WIDTH
+    || terrainEncoding.height !== EARTH_TERRAIN_HEIGHT || terrainEncoding.channels !== EARTH_TERRAIN_CHANNELS
+    || terrainEncoding.scalar !== 'UInt8') fail('unsupported terrainEncoding');
+  const materialClasses = expectObject(terrainEncoding.materialClasses, 'terrainEncoding.materialClasses');
+  if (materialClasses.water !== EARTH_MATERIAL_CLASS.water || materialClasses.land !== EARTH_MATERIAL_CLASS.land
+    || materialClasses.ice !== EARTH_MATERIAL_CLASS.ice || materialClasses.unknown !== EARTH_MATERIAL_CLASS.unknown) {
+    fail('unsupported terrain material classes');
+  }
   const climateMap = expectObject(manifest.climateMap, 'climateMap');
   if (climateMap.width !== 1024 || climateMap.height !== 512 || climateMap.channels !== 4
     || climateMap.scalar !== 'UInt8') fail('climateMap must be 1024x512 RGBA8');
@@ -167,7 +180,7 @@ function entryFile(entry, kind) {
 
 export function validateTileIndex(value, manifest) {
   const index = expectObject(value, 'tile-index');
-  if (index.schemaVersion !== 1) fail('unsupported tile-index schema');
+  if (index.schemaVersion !== 2) fail('unsupported tile-index schema');
   if (index.datasetId !== manifest.datasetId) fail('tile-index datasetId mismatch');
   if (!Array.isArray(index.entries) || index.entries.length === 0) fail('tile-index entries must be non-empty');
   const keys = new Set();
@@ -229,9 +242,9 @@ function readEstnHeader(payload, key) {
   const scalar = payload.readUInt8(23);
   const dataBytes = payload.readUInt32LE(24);
   const reserved2 = payload.readUInt32LE(28);
-  if (version !== 1 || headerBytes !== EARTH_TERRAIN_HEADER_BYTES || width !== EARTH_TERRAIN_WIDTH
+  if (version !== EARTH_TERRAIN_FORMAT_VERSION || headerBytes !== EARTH_TERRAIN_HEADER_BYTES || width !== EARTH_TERRAIN_WIDTH
     || height !== EARTH_TERRAIN_HEIGHT || reserved !== 0 || channels !== EARTH_TERRAIN_CHANNELS
-    || scalar !== EARTH_TERRAIN_SCALAR_FLOAT16 || dataBytes !== EARTH_TERRAIN_BYTES || reserved2 !== 0
+    || scalar !== EARTH_TERRAIN_SCALAR_UINT8 || dataBytes !== EARTH_TERRAIN_BYTES || reserved2 !== 0
     || z !== key.z || x !== key.x || y !== key.y) fail(`ESTN header key or format mismatch: ${key.id}`);
 }
 
@@ -388,9 +401,9 @@ function readEstbHeader(payload) {
   const dataBytes = payload.readUInt32LE(24);
   const reserved2 = payload.readUInt32LE(28);
   const expectedDataBytes = EARTH_BASE_ROOT_COLUMNS * EARTH_BASE_ROOT_ROWS * EARTH_TERRAIN_PAYLOAD_BYTES;
-  if (version !== 1 || headerBytes !== EARTH_TERRAIN_HEADER_BYTES || width !== EARTH_TERRAIN_WIDTH
+  if (version !== EARTH_TERRAIN_FORMAT_VERSION || headerBytes !== EARTH_TERRAIN_HEADER_BYTES || width !== EARTH_TERRAIN_WIDTH
     || height !== EARTH_TERRAIN_HEIGHT || z !== 0 || reserved !== 0 || columns !== EARTH_BASE_ROOT_COLUMNS
-    || rows !== EARTH_BASE_ROOT_ROWS || channels !== EARTH_TERRAIN_CHANNELS || scalar !== EARTH_TERRAIN_SCALAR_FLOAT16
+    || rows !== EARTH_BASE_ROOT_ROWS || channels !== EARTH_TERRAIN_CHANNELS || scalar !== EARTH_TERRAIN_SCALAR_UINT8
     || dataBytes !== expectedDataBytes || reserved2 !== 0 || payload.byteLength !== headerBytes + dataBytes) {
     fail('ESTB header or payload mismatch');
   }

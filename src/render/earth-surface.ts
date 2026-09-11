@@ -22,6 +22,8 @@ export interface EarthSurfaceRequestLease {
 
 export type EarthSurfaceStatus = CelestialSurfaceStatus;
 
+const PROJECTION_REBUILD_INTERVAL_MS = 100; // [ms]
+
 // 実GPU実装を直接所有せず、ゲーム側から差し込める地表常駐の最小境界。
 // 具象coordinatorはタイル要求とGPU寿命を持つため、EarthSurfaceはこの2操作だけを知る。
 export interface EarthSurfaceResidentCoordinatorLike {
@@ -106,6 +108,17 @@ export class EarthSurfaceContext {
 export class EarthSurface implements CelestialSurfaceLike {
   private requestLeaseValue: EarthSurfaceRequestLease | null = null;
   private coordinatorValue: EarthSurfaceResidentCoordinatorLike | null;
+  private projectionValue: EarthSurfaceView | null = null;
+  private projectionBuiltTimeMs: number | null = null;
+  private projectionCameraWorldValue: THREE.Matrix4 | null = null;
+  private projectionCameraViewValue: THREE.Matrix4 | null = null;
+  private projectionMatrixValue: THREE.Matrix4 | null = null;
+  private bodyToViewValue: THREE.Matrix4 | null = null;
+  private axesValue: THREE.Vector3 | null = null;
+  private projectionViewportValue: { width: number; height: number } | null = null;
+  private projectionCameraTypeValue: 'perspective' | 'orthographic' | null = null;
+  private projectionCoordinateSystemValue: number | null = null;
+  private projectionReversedDepthValue: boolean | null = null;
   private materialSyncValue: ((frame: CelestialSurfaceFrame) => void) | null = null;
   private detailedMaterialValue = false;
   private materialFailureReasonValue: (() => string | null) | null = null;
@@ -165,10 +178,46 @@ export class EarthSurface implements CelestialSurfaceLike {
       this.requestLeaseValue = null;
       return;
     }
-    const bodyToWorld = frame.camera.matrixWorld.clone().multiply(frame.bodyToView);
-    const projection = new EarthSurfaceView(
-      frame.camera, bodyToWorld, frame.axes, frame.viewport.width, frame.viewport.height,
-    );
+    const cameraType = frame.camera instanceof THREE.PerspectiveCamera ? 'perspective' : 'orthographic';
+    const projectionChanged = this.projectionValue === null
+      || this.projectionCameraViewValue === null
+      || this.projectionCameraWorldValue === null
+      || !this.projectionCameraWorldValue.equals(frame.camera.matrixWorld)
+      || !this.projectionCameraViewValue.equals(frame.camera.matrixWorldInverse)
+      || this.projectionMatrixValue === null
+      || !this.projectionMatrixValue.equals(frame.camera.projectionMatrix)
+      || this.bodyToViewValue === null
+      || !this.bodyToViewValue.equals(frame.bodyToView)
+      || this.axesValue === null
+      || !this.axesValue.equals(frame.axes)
+      || this.projectionViewportValue?.width !== frame.viewport.width
+      || this.projectionViewportValue?.height !== frame.viewport.height
+      || this.projectionCameraTypeValue !== cameraType
+      || this.projectionCoordinateSystemValue !== frame.camera.coordinateSystem
+      || this.projectionReversedDepthValue !== frame.camera.reversedDepth;
+    const timeRewound = this.projectionBuiltTimeMs !== null && frame.timeMs < this.projectionBuiltTimeMs;
+    const rebuildWindowElapsed = this.projectionBuiltTimeMs !== null
+      && frame.timeMs - this.projectionBuiltTimeMs >= PROJECTION_REBUILD_INTERVAL_MS;
+    const rebuildProjection = this.projectionValue === null
+      || timeRewound || (projectionChanged && rebuildWindowElapsed);
+    if (rebuildProjection) {
+      const bodyToWorld = frame.camera.matrixWorld.clone().multiply(frame.bodyToView);
+      this.projectionValue = new EarthSurfaceView(
+        frame.camera, bodyToWorld, frame.axes, frame.viewport.width, frame.viewport.height,
+      );
+      this.projectionCameraWorldValue = frame.camera.matrixWorld.clone();
+      this.projectionCameraViewValue = frame.camera.matrixWorldInverse.clone();
+      this.projectionMatrixValue = frame.camera.projectionMatrix.clone();
+      this.bodyToViewValue = frame.bodyToView.clone();
+      this.axesValue = frame.axes.clone();
+      this.projectionViewportValue = { width: frame.viewport.width, height: frame.viewport.height };
+      this.projectionCameraTypeValue = cameraType;
+      this.projectionCoordinateSystemValue = frame.camera.coordinateSystem;
+      this.projectionReversedDepthValue = frame.camera.reversedDepth;
+      this.projectionBuiltTimeMs = frame.timeMs;
+    }
+    const projection = this.projectionValue;
+    if (projection === null) throw new Error('Earth surface projection is unavailable');
     const residentFrame: EarthSurfaceResidentFrame = {
       projection,
       timeMs: frame.timeMs,
@@ -191,6 +240,7 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.requestLeaseValue = null;
     this.context.invalidateRequests();
     this.coordinatorValue?.reset?.();
+    this.clearProjectionCache();
     this.fallback.hide();
   }
 
@@ -201,6 +251,7 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.requestLeaseValue = null;
     this.context.replaceSource(source);
     this.coordinatorValue?.reset?.();
+    this.clearProjectionCache();
   }
 
   // 非同期bootstrap完了後に新しいsource/coordinatorを同じEarthへ接続する。
@@ -226,6 +277,7 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.materialSyncValue = null;
     this.materialFailureReasonValue = null;
     this.detailedMaterialValue = false;
+    this.clearProjectionCache();
     if (material !== null) {
       const host = this.fallback as unknown as CelestialSurfaceMaterialHost;
       if (typeof host.replaceMaterial !== 'function') {
@@ -254,5 +306,20 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.coordinatorValue?.dispose();
     this.context.dispose();
     this.fallback.dispose();
+  }
+
+  // sourceや表示寿命の境界で、次のframeに最新の投影を必ず作らせる。
+  private clearProjectionCache(): void {
+    this.projectionValue = null;
+    this.projectionBuiltTimeMs = null;
+    this.projectionCameraWorldValue = null;
+    this.projectionCameraViewValue = null;
+    this.projectionMatrixValue = null;
+    this.bodyToViewValue = null;
+    this.axesValue = null;
+    this.projectionViewportValue = null;
+    this.projectionCameraTypeValue = null;
+    this.projectionCoordinateSystemValue = null;
+    this.projectionReversedDepthValue = null;
   }
 }
