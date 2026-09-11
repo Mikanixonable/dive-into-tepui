@@ -234,7 +234,7 @@ function buildPlayerShip() {
   // 1折りはハル幅と揃えた 2.3×2.3 の正方形。折り目 Group を入れ子にし、
   // 各折り目の rotation.y だけで蛇腹全体の伸縮を表現できるようにする
   // (src/game/player/radiator.ts の sync が毎フレーム書き込む)。
-  // 折り目名 `${radiatorUp/Down}Fold${i}` は src/render/dynamic/ships.ts の radiatorFoldName と一致させる。
+  // 折り目名 `${radiatorUp/Down}Fold${i}` は src/render/dynamic/player/radiator-view.ts が引く接頭辞と一致させる。
   // ヒンジは太陽電池パネル(x=±2.62, y=0.52, z=-2.20)の直下・機体側面に取り付ける
   // (up が +X 側、down が -X 側。名称は上下のまま維持)。y=0.30 はパネル下端(y≈0.4925)や
   // パネル接続ストラット/ブラケット(y≈0.47〜0.57)と、蛇腹の骨格張り出し(±0.12)を含めても
@@ -942,7 +942,7 @@ function buildBoosterStage() {
 
 // 段間カバー。接続中は後ろの段のデカプラー側面を6枚のパネルで囲み、爆砕ボルトで留める。
 // 部品名 `interstage-cover-panel-${i}` / `interstage-explosive-bolt-${i}` は、分離した部品を
-// src/render/dynamic/ships.ts が引く鍵なので変えない。
+// src/render/dynamic/booster-model.ts が引く鍵なので変えない。
 function buildBoosterInterstageCover() {
   const cover = new THREE.Group();
   cover.name = 'interstage-cover';

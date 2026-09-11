@@ -3,13 +3,14 @@ import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import { ENEMY_MODEL_SCALE } from '../../src/game/dynamic/dynamic-entity/enemy';
 import { metalEnemyCollisionRadius } from '../../src/game/dynamic/dynamic-entity/metal-enemy';
-import { buildEnemyShip, buildStage0EnemyShip } from '../../src/render/dynamic/ships';
+import { MetalEnemyView, Stage0MetalEnemyView } from '../../src/render/dynamic/dynamic-entity/metal-enemy-view';
 
-// 組み立てが View へ渡すのと同じ倍率でモデルを作り、その外接球半径を測る。
+// 組み立てが渡すのと同じ倍率で View を作り、そのモデルの外接球半径を測る。
 function renderedRadius(typeIndex: number | null): number {
-  const model = typeIndex === null ? buildEnemyShip() : buildStage0EnemyShip(0xffffff, typeIndex);
-  model.scale.setScalar(ENEMY_MODEL_SCALE);
-  return new THREE.Box3().setFromObject(model).getBoundingSphere(new THREE.Sphere()).radius;
+  const view = typeIndex === null
+    ? new MetalEnemyView(0xffffff, ENEMY_MODEL_SCALE)
+    : new Stage0MetalEnemyView(0xffffff, typeIndex, ENEMY_MODEL_SCALE);
+  return new THREE.Box3().setFromObject(view.object).getBoundingSphere(new THREE.Sphere()).radius;
 }
 
 export function register(): void {
