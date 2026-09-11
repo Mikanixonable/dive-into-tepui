@@ -6,9 +6,9 @@ import { PhaseOffsets, PlanetDef, planetDefForSimZero } from '../../../physics/c
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
-import { CelestialSurface } from '../../../render/celestial-surface';
+import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { PointCelestialView } from '../celestial-entity/point-celestial-view';
+import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
 
 // 内惑星に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type InnerPlanetId = 'mercury' | 'venus';
@@ -51,7 +51,7 @@ const MERCURY: PlanetDef = {
 export const VENUS: PlanetDef = {
   id: 'venus',
   mu: 3.24859e14,
-  radius: 6.0518e6, // 扁平率 0(pck00011.tpc BODY_RADII は赤道・極とも等値)なので shape なし
+  radius: 6.0518e6, // 球。出典: pck00011.tpc BODY_RADII(赤道・極とも等値)
   orbit: planetOrbit({
     a: 0.72333566 * AU,
     e: 0.00677672,

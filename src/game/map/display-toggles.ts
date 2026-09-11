@@ -3,7 +3,7 @@
 // 保存される boolean の組も、この1つの表が正本。
 import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 
-export type MapDisplayToggles = {
+export interface MapDisplayToggles {
   readonly planetVisible: boolean;
   readonly planetOrbit: boolean;
   readonly planetName: boolean;
@@ -28,16 +28,12 @@ export type MapDisplayToggles = {
   readonly fuelName: boolean; readonly fuelOrbit: boolean;
   readonly baseVisible: boolean;
   readonly baseName: boolean; readonly baseOrbit: boolean;
-};
+}
 
 export type MapDisplayMode = 'orbit' | 'label' | 'hidden';
 
-// 軌道線(Orbit)は面積を食う——全登録天体ぶん描くと内側太陽系がその天体の軌道線で埋まる
-// ため、数の多いクラス(dwarf・smallBody・satellite)は既定 off にする。planet だけは数が
-// 少なく太陽系の骨格をなすので軌道線まで既定 on。一方 Name は天体ラベルの混雑抑制
-// (画面上で近すぎるラベルを間引く)が効くので溢れる心配が無く、planet と同様 dwarf・
-// smallBody・satellite も既定 on にする。lagrange は力学的に意味を持つ点(共線点の余裕・
-// 三角点の安定性を満たすもの)だけに絞り込まれていて同じ懸念が当たらないため、既定 on にする。
+// 既定値(SPEC/MAP.md §4)。準惑星・小天体の軌道線は、数が多く内側太陽系を埋めるので off。
+// ラベルは混雑時に間引かれるので全クラス on。
 export const DEFAULT_MAP_DISPLAY_TOGGLES: MapDisplayToggles = {
   planetVisible: true,
   planetOrbit: true, planetName: true,
@@ -62,10 +58,7 @@ export const DEFAULT_MAP_DISPLAY_TOGGLES: MapDisplayToggles = {
 };
 
 // 各クラスの「クラス全体」トグルと、その配下にある子トグル(ラベル・軌道線)の対応。
-// 表示パネルのボタン構成もこの表を正本として組み立て、UI 側で別の対応関係を持たない。
-// 子トグルは1つでもONならクラス全体を自動でONにし、全てOFFになれば自動でOFFにする
-// (normalizeMapDisplayToggles)。lagrange は軌道という概念自体が
-// 無いため children はラベルのみ。
+// 表示パネルのボタン構成もこの表が正本。軌道を持たない lagrange は orbit が null。
 interface MapDisplayCategory {
   readonly category: keyof MapDisplayToggles;
   readonly name: keyof MapDisplayToggles;
@@ -100,9 +93,8 @@ export function mapDisplayModeOf(
   return entry.orbit !== null && toggles[entry.orbit] ? 'orbit' : 'label';
 }
 
-// 表示パネルの1ボタンを押したときの次の状態。軌道を持つ対象は
-// 「非表示 → ラベル → ラベル＋軌道」を循環し、軌道を持たないラグランジュ点だけは、
-// 見た目が同じ状態を重複させず「非表示 / ラベル」を循環する。
+// 表示パネルの1ボタンを押したときの次の状態。軌道を持つ対象は「非表示 → ラベル →
+// ラベル＋軌道」、持たない対象は「非表示 / ラベル」を循環する。
 export function nextMapDisplayMode(
   current: MapDisplayMode, hasOrbit: boolean,
 ): MapDisplayMode {
@@ -114,8 +106,7 @@ export function nextMapDisplayMode(
   }
 }
 
-// 表示パネルの表示状態を保存形式へ反映する。非表示ではカテゴリも閉じるため、
-// 既存の category/icon/label/orbit の各利用側が同じ意味を受け取れる。
+// 表示パネルの表示状態を保存形式へ反映する。非表示ならクラス全体のトグルも閉じる。
 export function applyMapDisplayMode(
   current: MapDisplayToggles, category: keyof MapDisplayToggles, mode: MapDisplayMode,
 ): MapDisplayToggles {
@@ -129,8 +120,8 @@ export function applyMapDisplayMode(
   return next;
 }
 
-// 保存データ・既定値を読み込んだ直後に、クラス全体トグルを子の状態から一括で計算し直す。
-// 過去バージョンの保存データや将来の手書き編集で親子が食い違っていても、ここを通せば正す。
+// クラス全体トグルを子の状態から計算し直す — 子が1つでも on なら on。保存データ・既定値を
+// 読み込んだ直後に通し、親子の食い違いを正す。
 export function normalizeMapDisplayToggles(toggles: MapDisplayToggles): MapDisplayToggles {
   const next = { ...toggles };
   for (const { category, children } of MAP_DISPLAY_CATEGORIES) {
@@ -139,7 +130,24 @@ export function normalizeMapDisplayToggles(toggles: MapDisplayToggles): MapDispl
   return next;
 }
 
-// カテゴリー名のトグル。恒星は表示の基準点なのでカテゴリー操作の対象外。
+// 保存された文字列をトグルの組へ読み直す。読めなければ既定値に戻る。
+export function parseMapDisplayToggles(text: string | null): MapDisplayToggles {
+  try {
+    if (!text) return DEFAULT_MAP_DISPLAY_TOGGLES;
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed !== 'object' || parsed === null) return DEFAULT_MAP_DISPLAY_TOGGLES;
+    return normalizeMapDisplayToggles({ ...DEFAULT_MAP_DISPLAY_TOGGLES, ...parsed });
+  } catch {
+    return DEFAULT_MAP_DISPLAY_TOGGLES;
+  }
+}
+
+// トグルの組を保存へ載せる文字列にする。
+export function formatMapDisplayToggles(toggles: MapDisplayToggles): string {
+  return JSON.stringify(toggles);
+}
+
+// 天体クラスの表示トグル。恒星は表示の基準点なので常に true。
 export function celestialClassVisible(cls: CelestialClass, toggles: MapDisplayToggles): boolean {
   switch (cls) {
     case 'planet': return toggles.planetVisible;
@@ -150,8 +158,7 @@ export function celestialClassVisible(cls: CelestialClass, toggles: MapDisplayTo
   }
 }
 
-// トグルで足されるクラス(planet/dwarf/satellite/smallBody)の Name を、そのクラスのトグル値
-// から読む。恒星・focus 近傍の常時表示はここを経由しない(呼び出し側の判断)。
+// 天体クラスの名前トグル。クラス全体が非表示なら false、恒星は false。
 export function celestialNameVisible(cls: CelestialClass, toggles: MapDisplayToggles): boolean {
   if (!celestialClassVisible(cls, toggles)) return false;
   switch (cls) {
@@ -162,6 +169,3 @@ export function celestialNameVisible(cls: CelestialClass, toggles: MapDisplayTog
     default: return false;
   }
 }
-
-// focusId と同じ系にある天体(自分・親・子・親を共有する兄弟)。UI が「いま見ている系」を
-// 先頭に出すときの判定もこれを使う — 可視性と選択候補の並びで系の切り方が食い違わないように。

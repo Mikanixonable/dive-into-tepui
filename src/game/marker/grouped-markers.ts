@@ -1,12 +1,8 @@
-// 多数の対象を「画面上のマーカー集合」として破綻なく並べる表示器。対象の種類には
-// 依存せず、投影後のスクリーン座標だけを見て
-//   ① 画面上で近接するものを 1 つの代表にまとめる(代表以外はラベルを落とす)
-//   ② 画面外へ出たものは画面端の方位マーカー(▲)に置き換える(置き方そのものは
-//      MarkerManager.setBearing の担当で、ここは対象ごとに呼ぶだけ)
-// を行う。どちらも「対象 1 体では決められない = 集合の側の責務」であり、逆に対象ごとの
-// 見た目とラベル内容(GroupedMarkerItem)は対象自身が用意する。
+// 多数の対象のマーカーを、投影後のスクリーン座標だけを見て破綻なく並べる表示器。画面上で
+// 近接するものを1つの代表にまとめ、画面外へ出たものは画面端の方位マーカーに置き換える。
+// 対象ごとの見た目とラベル内容(GroupedMarkerItem)は対象自身が用意する。
 import { Vec3, len, sub } from '../../math/vec3';
-import type { View } from '../view/view';
+import type { ViewMode } from '../../render/view-mode';
 import { Projected } from '../../math/projection';
 import type { ActiveCelestialLabel } from './celestial-markers';
 import type { MarkerManager } from './marker-manager';
@@ -32,7 +28,7 @@ export interface GroupedMarkerItem {
   bearingClass?: string; // 画面外方位マーカーの CSS クラス
   bearingVisible?: boolean; // false のときは画面外でも方位マーカーを出さない
   color?: string; // 画面内マーカー自体の色。省略時は cls の CSS 色に従う
-  symMarkup?: boolean;
+  symMarkup?: boolean; // sym をマークアップ(SVG など)として扱うか
   opacity?: number; // 画面内マーカーの不透明度。0 以下なら非表示
   occluded?: boolean; // 惑星遮蔽中は表示位置を維持したままフェードアウトする
 }
@@ -73,20 +69,19 @@ export class GroupedMarkers {
   private prevHiddenByCelestialLabel = new Set<string>();
 
   // 直前の sync で天体ラベルへラベルを譲った項目。天体ラベル下のサブ行の候補になる。
-  getHiddenItems(): readonly GroupedMarkerItem[] {
+  public getHiddenItems(): readonly GroupedMarkerItem[] {
     return this.hiddenItemsList;
   }
 
-  constructor(private readonly markerManager: MarkerManager) { }
+  public constructor(private readonly markerManager: MarkerManager) { }
 
-  // items が空なら前フレームのマーカーをすべて片付けるだけになる(非表示にしたいときは
-  // 空配列を渡せばよく、専用の hide は要らない)。マップビュー中は対象そのものが
-  // 画面内に見えているので、画面端の方位マーカーは出さず、代わりに vel から進行方向を
-  // 求めてマーカー自体を回す(円軌道では静止画から回転方向が読めないための対策)。
-  sync(
+  // items のマーカーをこのフレームの位置へ置き、前フレームから消えた対象のマーカーを片付ける。
+  // 全て隠すには空配列を渡す。マップビューでは方位マーカーの代わりに、マーカー自体を vel の
+  // 進行方向へ回す(円軌道では静止画から回転方向が読めないため)。
+  public sync(
     items: readonly GroupedMarkerItem[],
     project: ProjectFn,
-    view: View,
+    view: ViewMode,
     scale: ScaleFn,
     celestialLabels: readonly ActiveCelestialLabel[] = [],
     celestialBodies: readonly CelestialBody[] = [],
@@ -117,8 +112,7 @@ export class GroupedMarkers {
         m.item.key, m.item.cls, m.item.sym, m.p.x, m.p.y, m.p.front, label, opacity, m.item.color,
         rotationDeg, m.item.symMarkup, false, m.item.priority, m.dist,
       );
-      // 画面外(背面を含む)の対象は、画面端の方位マーカーで方位だけを示す。
-      // bearingVisible は味方機など、距離によって方位マーカーを抑制する対象に使う。
+      // 画面外(背面を含む)の対象は、画面端の方位マーカーで方位を示す。
       if (view === 'map' || m.item.bearingVisible === false) this.markerManager.hide(bearingKey(m.item.key));
       else this.markerManager.setBearing(
         bearingKey(m.item.key), m.item.bearingClass ?? 'mk-dir', m.item.bearingSym ?? DIRECTION_GLYPH.bearing,
@@ -130,7 +124,7 @@ export class GroupedMarkers {
     const addedKeys = new Set<string>();
 
     for (const m of placed) {
-      // 天体ラベルと近接してマーカーが非表示化され、かつ惑星に遮蔽(掩蔽)されていないオブジェクトのみを天体サブ行の候補とする
+      // 天体ラベルへラベルを譲り、惑星に遮蔽されていない対象を天体サブ行の候補にする。
       if (m.hiddenByCelestialLabel && !m.item.occluded && m.p.front) {
         if (m.groupMembers && m.groupMembers.length > 0) {
           for (const member of m.groupMembers) {
@@ -177,8 +171,7 @@ export class GroupedMarkers {
         if (!m.labeled || !m.p.front) continue;
         for (const c of celestialLabels) {
           if (!c.labelVisible || Math.hypot(m.p.x - c.x, m.p.y - c.y) >= CLUSTER_RADIUS_PX) continue;
-          // 天体ラベル側(c)の前フレームの間引き状態はここでは追跡していない(CelestialMarkers が
-          // 別に持つ)ため、常に基準の depthGuardRatio を使う(false)。
+          // 天体ラベル側(c)には、前フレームの間引き状態に依らない基準の depthGuardRatio を当てる(false)。
           const pick = resolveCrowdingWinner(
             m.item.key, m.item.priority, m.dist, this.prevHiddenByCelestialLabel.has(m.item.key),
             c.id, c.priority, c.dist, false,
@@ -201,9 +194,8 @@ export class GroupedMarkers {
   }
 
   // 代表のラベル文字列を組み立てる。
-  //   - 2隻近接の時: 2行でそれぞれの正式名称を、各自の色で表示
-  //   - 3隻以上近接の時: "xN" の形式とし、正式名称は表示しない
   private label(item: GroupedMarkerItem, count: number, members?: readonly GroupedMarkerItem[]): string {
+    // 2つ近接: それぞれの正式名称を各自の色で2行に。3つ以上: "xN" の件数表記に。
     if (count === 2 && members && members.length >= 2) {
       const line = (m: GroupedMarkerItem): string => m.color
         ? `<span style="color:${m.color}">${m.name}</span>`
@@ -216,7 +208,8 @@ export class GroupedMarkers {
     return item.detail ? `${item.name}\n${item.detail}` : item.name;
   }
 
-  // key は対象(敵)ごとに一意で増え続けるため hide ではなく remove で DOM ごと片付ける。
+  // 前フレームに出して keys に無いマーカーを DOM ごと片付ける。key は対象ごとに一意で増え続ける
+  // ので、隠さずに消す。
   private retire(keys: readonly string[]): void {
     const kept = new Set(keys);
     for (const key of this.shownKeys) {

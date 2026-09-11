@@ -1,0 +1,133 @@
+// 選択中ノードの Δv アーム6本(PRO/RET・NRM/ANM・OUT/IN)を表す 3D 矢印ギズモ。宣言された
+// ノード位置へ置いて軌道基準枠へ向け、伸ばすと宣言された1本を伸ばして見せる。
+import * as THREE from 'three/webgpu';
+import { qFromBasis } from '../../math/quat';
+import { AXIS_PROGRADE, AXIS_NORMAL, AXIS_RADIAL } from '../../theme';
+import { markOverlay } from '../pipeline/lit-layer';
+import type { Vec3 } from '../../math/vec3';
+
+const APPARENT_SIZE_PER_MAP_DIST = 0.002; // マップカメラ距離 1 あたりのスケール(見かけの大きさを一定に保つ)
+
+// 矢印1本の寸法(group のローカル単位。画面上の大きさは APPARENT_SIZE_PER_MAP_DIST で決まる)
+const ARROW_LENGTH = 20; // 素の全長
+const ARROW_HEAD_LENGTH = 4; // 先端の円錐の長さ
+const ARROW_HEAD_WIDTH = 2.5; // 先端の円錐の底面半径
+const ARROW_STEM_WIDTH = 0.5; // 軸の円柱の半径
+const ARROW_OPACITY = 0.8;
+
+const DRAG_STRETCH = 0.2; // ラッチ前のドラッグ中に矢印を伸ばす割合
+const LATCH_STRETCH_PER_PX = 0.01; // ラッチ超過 1px あたりの伸び
+const LATCH_STRETCH_MAX = 0.5; // ラッチで伸ばす割合の上限
+
+// 伸ばして見せる Δv アーム1本。axis は 0=PRO/RET, 1=NRM/ANM, 2=OUT/IN、sign はその正負側。
+// excessPx はラッチ閾値の超過量 [px] で、ラッチ前は null。
+export interface StretchedArm {
+  readonly axis: 0 | 1 | 2;
+  readonly sign: 1 | -1;
+  readonly excessPx: number | null;
+}
+
+// そのフレームのギズモの表示値。
+export interface PlanGizmoDisplay {
+  readonly position: THREE.Vector3; // 描画フレームでのノード位置
+  readonly prograde: Vec3; // 表示座標での進行方向
+  readonly normal: Vec3; // 表示座標での軌道面法線
+  readonly mapDist: number; // マップカメラの距離。見かけの大きさをこれで一定に保つ
+  // 伸ばして見せるアーム。1本も伸ばさないなら null。
+  readonly stretchedArm: StretchedArm | null;
+}
+
+// 矢印1本ぶんのメッシュ。dir は group のローカル座標での向き(単位ベクトル)。
+interface ArrowPart {
+  readonly stem: THREE.Mesh;
+  readonly head: THREE.Mesh;
+  readonly dir: THREE.Vector3;
+}
+
+export class PlanGizmo3D {
+  private readonly group = new THREE.Group();
+  // 6本の矢印。index は axis*2 + (sign<0 ? 1 : 0)。
+  private readonly parts: ArrowPart[] = [];
+
+  // 6本の矢印を組んでシーンへ登録し、非表示で始める。ローカル軸は X=RAD, Y=PRO, Z=NRM。
+  public constructor(scene: THREE.Scene) {
+    this.createAxis(new THREE.Vector3(0, 1, 0), AXIS_PROGRADE); // PRO
+    this.createAxis(new THREE.Vector3(0, -1, 0), AXIS_PROGRADE); // RET
+    this.createAxis(new THREE.Vector3(0, 0, 1), AXIS_NORMAL); // NRM
+    this.createAxis(new THREE.Vector3(0, 0, -1), AXIS_NORMAL); // ANM
+    this.createAxis(new THREE.Vector3(1, 0, 0), AXIS_RADIAL); // OUT
+    this.createAxis(new THREE.Vector3(-1, 0, 0), AXIS_RADIAL); // IN
+
+    this.group.visible = false;
+    scene.add(this.group);
+  }
+
+  // ローカル方向 dir(単位ベクトル)を向く矢印(軸+頭)を1本作り、group へ加える。
+  private createAxis(dir: THREE.Vector3, color: string): void {
+    const stemLength = ARROW_LENGTH - ARROW_HEAD_LENGTH;
+    const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: ARROW_OPACITY });
+
+    const stemGeom = new THREE.CylinderGeometry(ARROW_STEM_WIDTH, ARROW_STEM_WIDTH, stemLength, 8);
+    const stem = new THREE.Mesh(stemGeom, material);
+    stem.position.copy(dir).multiplyScalar(stemLength / 2);
+
+    const headGeom = new THREE.ConeGeometry(ARROW_HEAD_WIDTH, ARROW_HEAD_LENGTH, 12);
+    const head = new THREE.Mesh(headGeom, material);
+    head.position.copy(dir).multiplyScalar(ARROW_LENGTH - ARROW_HEAD_LENGTH / 2);
+
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    stem.quaternion.copy(quaternion);
+    head.quaternion.copy(quaternion);
+
+    // 物理的な明るさを持たない表示値なので 3D UI パスへ置く(深度テストは効かせ、不透明物に隠れる)。
+    markOverlay(stem);
+    markOverlay(head);
+    this.group.add(stem);
+    this.group.add(head);
+    this.parts.push({ stem, head, dir });
+  }
+
+  // このフレームの表示値をギズモへ反映する。display が null ならギズモ全体を隠す。
+  public sync(display: PlanGizmoDisplay | null): void {
+    this.group.visible = display !== null;
+    if (display === null) return;
+    this.place(display.position, display.prograde, display.normal, display.mapDist);
+    this.stretchArms(display.stretchedArm);
+  }
+
+  // group をシーンから外し、6本の矢印のジオメトリ・マテリアルを解放する。
+  public dispose(): void {
+    this.group.removeFromParent();
+    for (const part of this.parts) {
+      part.stem.geometry.dispose();
+      part.head.geometry.dispose();
+      (part.stem.material as THREE.Material).dispose();
+    }
+  }
+
+  // ギズモをノード位置へ置き、ローカル軸(X=RAD, Y=PRO, Z=NRM)を軌道基準系 pro/nrm/rad に揃える。
+  private place(pos: THREE.Vector3, pro: Vec3, nrm: Vec3, mapDist: number): void {
+    this.group.position.copy(pos);
+
+    // qFromBasis(nrm, pro) の列は (pro×nrm, pro, nrm) = (RAD, PRO, NRM)。
+    const q = qFromBasis(nrm, pro);
+    this.group.quaternion.set(q.x, q.y, q.z, q.w);
+    this.group.scale.setScalar(mapDist * APPARENT_SIZE_PER_MAP_DIST);
+  }
+
+  // 宣言された1本を伸ばし、残りは素の長さへ戻す。arm が null なら全本を戻す。
+  private stretchArms(arm: StretchedArm | null): void {
+    // ラッチ前は固定の割合、ラッチ後は超過量に比例させて上限で止める
+    const stretch = arm === null ? 0
+      : arm.excessPx === null ? DRAG_STRETCH
+      : Math.min(arm.excessPx * LATCH_STRETCH_PER_PX, LATCH_STRETCH_MAX);
+    const activeIdx = arm === null ? null : arm.axis * 2 + (arm.sign < 0 ? 1 : 0);
+    this.parts.forEach((part, idx) => {
+      const length = ARROW_LENGTH * (idx === activeIdx ? 1 + stretch : 1);
+      const stemLength = length - ARROW_HEAD_LENGTH;
+      part.stem.scale.y = stemLength / (ARROW_LENGTH - ARROW_HEAD_LENGTH);
+      part.stem.position.copy(part.dir).multiplyScalar(stemLength / 2);
+      part.head.position.copy(part.dir).multiplyScalar(length - ARROW_HEAD_LENGTH / 2);
+    });
+  }
+}
