@@ -2,13 +2,14 @@
 import * as THREE from 'three/webgpu';
 import { InstancedPool } from '../../instanced-pool';
 import { orientProjectile } from '../../projectile-orientation';
-import { ENEMY_PLASMA_COLOR } from '../../vfx-style';
 import { memoParseShared } from '../baked-model';
 import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
 import bulletData from '../../../assets/models/bullet.json';
 import plasmaData from '../../../assets/models/plasma.json';
 import type { InstancedPoolSet } from '../instanced-pools';
 import type { KinematicState } from '../../../physics/kinematic-state';
+
+const ENEMY_PLASMA_COLOR = '#ff3333'; // 蛍光色の赤
 
 const parseBullet = memoParseShared<THREE.Mesh>(bulletData);
 const parsePlasma = memoParseShared<THREE.Mesh>(plasmaData);

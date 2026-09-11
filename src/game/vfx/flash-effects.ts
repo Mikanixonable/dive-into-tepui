@@ -3,6 +3,7 @@
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { addScaled } from '../../math/vec3';
 import type { FlashEffect, FlashKind } from '../../render/vfx/flash-effects-view';
+import type { ProteinPhase } from '../../render/protein/protein-display';
 
 // 種別ごとの寿命 [s]。
 const BULLET_IMPACT_FLASH_DURATION = 0.25;
@@ -13,6 +14,16 @@ const DESTROY_FLASH2_DURATION = 0.5;
 const GAS_PUFF1_DURATION = 0.45;
 const GAS_PUFF2_DURATION = 0.35;
 const PROTEIN_STATE_FLASH_DURATION = 0.34;
+
+// タンパク質の遷移先のフェーズ、または部位の機能停止('site-disabled')ごとの閃光の種別。
+// 危篤・解離はそれぞれの種別、それ以外は損傷として示す。
+const PROTEIN_STATE_FLASH_KIND: Readonly<Record<ProteinPhase | 'site-disabled', FlashKind>> = {
+  intact: 'proteinDamaged',
+  exposed: 'proteinDamaged',
+  dissociated: 'proteinDissociated',
+  critical: 'proteinCritical',
+  'site-disabled': 'proteinDamaged',
+};
 
 export class FlashEffects {
   private effects: FlashEffect[] = [];
@@ -70,12 +81,10 @@ export class FlashEffects {
     this.spawn(state, 'muzzle', MUZZLE_FLASH_DURATION);
   }
 
-  // タンパク質の状態遷移フラッシュ。示す状態('critical' / 'dissociated' / それ以外の損傷)で
-  // 種別を分ける。
-  public spawnProteinStateFlash(state: KinematicState, proteinState: string): void {
-    const kind = proteinState === 'critical' ? 'proteinCritical'
-      : proteinState === 'dissociated' ? 'proteinDissociated' : 'proteinDamaged';
-    this.spawn(state, kind, PROTEIN_STATE_FLASH_DURATION);
+  // タンパク質の状態遷移フラッシュ。proteinState は遷移先のフェーズか、部位の機能停止
+  // ('site-disabled')で、これが種別を決める。
+  public spawnProteinStateFlash(state: KinematicState, proteinState: ProteinPhase | 'site-disabled'): void {
+    this.spawn(state, PROTEIN_STATE_FLASH_KIND[proteinState], PROTEIN_STATE_FLASH_DURATION);
   }
 
   // state は発生位置・発生源速度と、その位置が表す時刻(エポック)。積分前の座標から

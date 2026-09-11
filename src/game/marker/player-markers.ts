@@ -1,11 +1,10 @@
 // 自機の姿勢だけから決まる戦闘ビュー専用 HUD マーカー(軌道基準の方向マーカーと機首ボアサイト)。
-// マップ上の自機位置マーカーは他の船と同じく Targeter → GroupedMarkers が描く。
 import { LOCAL_FORWARD, qRotate, type Quat } from '../../math/quat';
 import type { ViewMode } from '../../render/view-mode';
 import { KinematicState, kinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { scale, sub } from '../../math/vec3';
-import type { MarkerSlots } from '../marker/marker-slots';
-import { DIRECTION_GLYPH } from '../marker/marker-identity';
+import type { MarkerSlots } from './marker-slots';
+import { DIRECTION_GLYPH } from './marker-identity';
 import type { ProjectFn } from '../../math/projection';
 
 // 戦闘ビュー専用のマーカー。マップビューではまとめて隠す。
@@ -17,8 +16,7 @@ export class PlayerMarkers {
     private readonly id: string,
   ) { }
 
-  // 戦闘ビューかつ操作対象のときだけ軌道軸・ボアサイトを出す。マップビューでは既存の
-  // 戦闘ビュー用マーカーを片付けるだけで、自機位置マーカー自体は描かない。
+  // 戦闘ビューかつ操作対象のときは軌道軸・ボアサイトを出し、それ以外では戦闘ビュー用マーカーを隠す。
   sync(
     currentState: KinematicState, attitude: Quat, view: ViewMode, isActive: boolean, project: ProjectFn,
     rounds: number, beltLinks: number, muzzleSpeed: number, orbitAxesReference: KinematicState | null,
@@ -62,8 +60,7 @@ export class PlayerMarkers {
   // 機首方向にボアサイトマーカーを置く。
   private syncBoresight(state: KinematicState, attitude: Quat, project: ProjectFn, rounds: number, beltLinks: number, muzzleSpeed: number): void {
     const fwd = qRotate(attitude, LOCAL_FORWARD);
-    // 中央に切り欠きを残した、細い線だけの三尖星(120度間隔)。
-    // 塗りつぶしや長方形の輪郭は使わず、各アームを独立した線分として描く。
+    // 中央に切り欠きを残した、細い線の三尖星(120度間隔)。
     const star = '<svg viewBox="0 0 24 24" width="48" height="48" aria-label="照準"><g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="butt"><path d="M12 9.7V2"/><path d="M12 9.7V2" transform="rotate(120 12 12)"/><path d="M12 9.7V2" transform="rotate(240 12 12)"/></g></svg>';
     const label = `AMMO ${Math.max(0, rounds)}\nBELT ${Math.max(0, beltLinks)}\n${muzzleSpeed.toFixed(0)} m/s`;
     this.markers.setDirection(`bore-${this.id}`, 'mk-boresight', star, state.r, fwd, project, label, 1, undefined, undefined, true, true);
