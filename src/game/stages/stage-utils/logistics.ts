@@ -3,8 +3,10 @@ import * as THREE from 'three/webgpu';
 import { randomQuat } from '../../../math/quat';
 import { randSym } from '../../../math/random';
 import { add, len, lenSq, randVec, rotateAxis, sub, v3 } from '../../../math/vec3';
-import { AmmoPickup, AMMO_PICKUP_RADIUS, isAmmoPickup } from '../../dynamic/dynamic-entity/ammo-pickup';
-import { isRcsFuelPickup, RcsFuelPickup, RCS_FUEL_PICKUP_RADIUS, RCS_FUEL_PICKUP_AMOUNT } from '../../dynamic/dynamic-entity/rcs-fuel-pickup';
+import {
+  AmmoPickup, AMMO_PICKUP_RADIUS, isAmmoPickup,
+  isRcsFuelPickup, RcsFuelPickup, RCS_FUEL_PICKUP_RADIUS, RCS_FUEL_PICKUP_AMOUNT,
+} from '../../dynamic/dynamic-entity/pickup';
 import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import type { Notifier } from '../../../hud/notifier';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
