@@ -17,6 +17,7 @@ const PICKUP_PHYSICAL_RADIUS = 1.3; // [m]
 
 // 補給物の軌道・姿勢・物性・接触種別を所有する。
 export class PickupMotion extends DynamicMotion {
+  // 小さな金属片と同じ物性で、質量と接触ダメージの重みを 0 にした漂流物として組む。
   public constructor(state: KinematicState, attitude: Attitude | undefined, kind: PickupKind) {
     super(state, {
       attitude,

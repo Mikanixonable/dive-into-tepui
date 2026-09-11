@@ -1,5 +1,5 @@
-// 「テクスチャ球」で済む天体(月・木星など)の見た目を実 ECI 位置・実半径で描く。
-// 見かけ直径が閾値未満なら球自体を描かない。
+// 表面・経緯度グリッド・環を持つ球天体の見た目を、実 ECI 位置・実半径・自転姿勢で描く。
+// 見かけ直径が閾値未満のフレームは球と環を隠す。
 import * as THREE from 'three/webgpu';
 import { shapeAxes, type RingSystemDef } from '../../../physics/celestial-body-def';
 import { spinOrientation } from '../../../physics/body-orientation';
@@ -75,7 +75,7 @@ export class SphereCelestialView extends CelestialView {
     }
   }
 
-  // displayTime 時点の位置へ同期する。見かけ直径が閾値未満なら球自体(と環)を描かない。
+  // displayTime 時点の位置へ同期する。見かけ直径が閾値未満なら球と環を隠す。
   public sync(
     motion: CelestialMotion, displayTime: number, camera: CameraFrame,
     star: StellarLightSource | null,
@@ -136,7 +136,7 @@ export class SphereCelestialView extends CelestialView {
     _graphics: GraphicsSettingsData, _style: RenderStyle,
   ): void {}
 
-  // 見かけ直径が閾値未満のときの共通後始末: 表面と環を隠す。
+  // 表面・グリッド・表面ライン・環を隠す。
   private hidePhysical(): void {
     this.surface.hide();
     this.graticule.setVisible(false);

@@ -1,6 +1,5 @@
 // 天体表面のメッシュ。分割段ラダーの各段ぶんの球を1枚のマテリアルで束ね、見かけ直径に応じて
-// 1段だけを見せる。艦艇と同じライトプリパスの受け手として立ち、陰影・影・逆二乗の減衰は
-// すべてパイプラインが与える。**画像の取得は addTo まで遅らせる。**
+// 1段を見せる。ライトプリパスの受け手として描かれる。テクスチャ画像は最初の syncLod で取りに行く。
 import * as THREE from 'three/webgpu';
 import { texture as textureNode, asin, atan, clamp, uv, vec2 } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
@@ -15,7 +14,7 @@ import type { RenderStyle } from '../render-style';
 // モデルの本初子午線(+Z)へ来る向きから分割を始める。
 const PRIME_MERIDIAN_PHI = -Math.PI / 2;
 
-// 天体固定の単位方向を、球メッシュが持つ uv へ写す(分割の逆写像)。u は 0..1 へ畳まないので、
+// 天体固定の単位方向を、球メッシュが持つ uv へ写す(分割の逆写像)。u は 0..1 の外へ出うるので、
 // この uv でテクスチャを読む側は経度方向を巻いておく。
 export function sphereMeshUv(direction: Vec3Node): Vec2Node {
   const longitude = atan(direction.z, direction.x.negate());
@@ -48,6 +47,7 @@ export interface SurfacePhotometry {
 
 export type CelestialSurfaceStatus = 'loading' | 'ready' | 'error' | 'fallback';
 
+// 表面の読み込み状態の診断値。
 export interface CelestialSurfaceDiagnostics {
   readonly status: CelestialSurfaceStatus;
   readonly reason: string | null;
@@ -66,10 +66,11 @@ export interface CelestialSurfaceFrame {
   readonly style: RenderStyle;
 }
 
+// 表面の同期が使う描画先の大きさ [px]。
 let surfaceViewport = { width: 1, height: 1 };
 
-// RenderPipelineが毎フレーム確定したdrawing bufferをsurface同期へ共有する。
-// windowのCSS寸法はdevicePixelRatioや解像度設定と一致しないため、LOD判定には使わない。
+// 表面の同期が使う描画先の大きさ [px] を設定する。確定した drawing buffer の寸法を渡す — window
+// の CSS 寸法は devicePixelRatio や解像度設定でずれる。正の有限値でなければ RangeError。
 export function setCelestialSurfaceViewport(width: number, height: number): void {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
     throw new RangeError('Invalid celestial surface viewport');
@@ -77,19 +78,21 @@ export function setCelestialSurfaceViewport(width: number, height: number): void
   surfaceViewport = { width, height };
 }
 
+// 最後に設定した描画先の大きさ [px]。未設定なら 1×1。
 export function celestialSurfaceViewport(): { readonly width: number; readonly height: number } {
   return surfaceViewport;
 }
 
 const UNIT_SCALE = new THREE.Vector3(1, 1, 1);
 
-// 天体の位置・姿勢だけをbody-to-viewへ組み込む。表面の非一様スケールは法線変換を
-// 壊すため、axesとして別に渡す。
+// 天体の位置・姿勢から body-to-view を組んだフレーム値を作る。扁平のスケールは法線変換を
+// 壊すので行列へ入れず、axes として別に渡す。
 export function createCelestialSurfaceFrame(
   camera: THREE.Camera, position: THREE.Vector3, quaternion: THREE.Quaternion,
   axes: THREE.Vector3, frame: number, timeMs: number, style: RenderStyle,
   viewport = surfaceViewport,
 ): CelestialSurfaceFrame {
+  // 渡された行列・ベクトルは複製し、このフレームの値として固定する。
   const bodyToWorld = new THREE.Matrix4().compose(position, quaternion, UNIT_SCALE);
   return {
     camera,
@@ -102,6 +105,7 @@ export function createCelestialSurfaceFrame(
   };
 }
 
+// 天体表面の表示が満たす面。
 export interface CelestialSurfaceLike {
   readonly photometry: SurfacePhotometry | null;
   readonly textureUrl: string | null;
@@ -113,6 +117,7 @@ export interface CelestialSurfaceLike {
   dispose(): void;
 }
 
+// replaceMaterial へ渡す詳細材質と、表面が解放まで持つ資源。onDispose は材質を外すときに呼ばれる。
 export interface CelestialSurfaceMaterialAttachment {
   readonly material: THREE.Material;
   readonly deferred: readonly DeferredTexture[];
@@ -182,8 +187,7 @@ export class CelestialSurface implements CelestialSurfaceLike {
       photometryOf(texture), texture.url);
   }
 
-  // テクスチャを持たない天体の単色球面。albedo は線形 RGB の拡散アルベド
-  // (render/celestial-albedo.ts)で、sRGB の見た目色ではない。
+  // テクスチャを持たない天体の単色球面。albedo は線形 RGB の拡散アルベド。
   public static solid(albedo: Albedo): CelestialSurface {
     const material = new THREE.MeshStandardMaterial({
       color: new THREE.Color().setRGB(albedo[0], albedo[1], albedo[2], THREE.LinearSRGBColorSpace),
@@ -200,15 +204,17 @@ export class CelestialSurface implements CelestialSurfaceLike {
     for (const mesh of this.meshes.values()) parent.add(mesh);
   }
 
-  // EarthSurfaceの詳細材質を既存の球LOD群へ差し替える。初期fallbackは再接続時に戻せるよう
-  // surfaceが保持し、以前の詳細材質とその資源は直ちに解放する。
+  // 全段のメッシュの材質を詳細材質へ差し替え、attachment の資源を解放まで持つ。初期の材質は
+  // restoreFallbackMaterial のために残す。
   public replaceMaterial(attachment: CelestialSurfaceMaterialAttachment): void {
+    // 前に差し込んだ詳細材質とその資源を解放する。
     if (!this.usingFallbackMaterial) {
       this.materialOnDispose?.();
       this.material.dispose();
       for (const deferred of this.deferred) deferred.dispose();
       for (const texture of this.ownedTextures) texture.dispose();
     }
+    // 新しい材質を全段へ付け替える。
     this.material = attachment.material;
     this.deferred = attachment.deferred;
     this.ownedTextures = attachment.textures ?? [];
@@ -217,13 +223,15 @@ export class CelestialSurface implements CelestialSurfaceLike {
     for (const mesh of this.meshes.values()) mesh.material = attachment.material;
   }
 
-  // GPU材質を外したとき、破棄済みのGPUテクスチャを読む代わりに初期fallbackへ戻す。
+  // 差し込んだ詳細材質とその資源を解放し、初期の材質へ戻す。詳細材質が無ければ何もしない。
   public restoreFallbackMaterial(): void {
     if (this.usingFallbackMaterial) return;
+    // 詳細材質とその資源を解放する。
     this.materialOnDispose?.();
     this.material.dispose();
     for (const deferred of this.deferred) deferred.dispose();
     for (const texture of this.ownedTextures) texture.dispose();
+    // 初期の材質を全段へ戻す。
     this.material = this.fallbackMaterial;
     this.deferred = this.fallbackDeferred;
     this.ownedTextures = this.fallbackTextures;
@@ -232,8 +240,7 @@ export class CelestialSurface implements CelestialSurfaceLike {
     for (const mesh of this.meshes.values()) mesh.material = this.material;
   }
 
-  // 見かけ直径 [px] から分割段を選び、その段のメッシュだけを見せる。テクスチャ画像の取得も
-  // ここで始める — 球として描く価値が出るまで、遠くの天体の画像を取りに行かないため。
+  // 見かけ直径 [px] から分割段を選び、その段のメッシュを見せる。テクスチャ画像の取得もここで始める。
   public syncLod(apparentDiameterPx: number): void {
     for (const deferred of this.deferred) deferred.request();
     const level = sphereLodLevel(apparentDiameterPx);
@@ -242,7 +249,7 @@ export class CelestialSurface implements CelestialSurfaceLike {
     for (const [meshLevel, mesh] of this.meshes) mesh.visible = meshLevel === level;
   }
 
-  // 地球固有の表面同期を差し込む共通境界。静的な球面では何もしない。
+  // 位置・姿勢・形状が確定したフレーム値で表面を同期する。静的な球面では空。
   public syncFrame(_frame: CelestialSurfaceFrame): void {}
 
   // 全段のメッシュを隠す。次の syncLod で段を選び直す。
@@ -251,18 +258,20 @@ export class CelestialSurface implements CelestialSurfaceLike {
     for (const mesh of this.meshes.values()) mesh.visible = false;
   }
 
-  // 全段のメッシュを親から外し、マテリアルとテクスチャを解放する。テクスチャは
-  // マテリアル側から連鎖解放されないので個別に dispose する。
+  // 全段のメッシュを親から外し、マテリアルとテクスチャを解放する。テクスチャはマテリアルから
+  // 連鎖解放されないので個別に解放する。
   public dispose(): void {
     for (const mesh of this.meshes.values()) mesh.removeFromParent();
     this.materialOnDispose?.();
     this.materialOnDispose = undefined;
+    // 初期の材質のままなら、それを解放して終える。
     if (this.usingFallbackMaterial) {
       this.fallbackMaterial.dispose();
       for (const deferred of this.fallbackDeferred) deferred.dispose();
       for (const texture of this.fallbackTextures) texture.dispose();
       return;
     }
+    // 詳細材質と初期の材質の両方を解放する。
     this.material.dispose();
     for (const deferred of this.deferred) deferred.dispose();
     for (const texture of this.ownedTextures) texture.dispose();
