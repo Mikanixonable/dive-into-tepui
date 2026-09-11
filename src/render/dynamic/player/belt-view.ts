@@ -31,8 +31,7 @@ export class BeltView {
     root.add(group);
   }
 
-  // magsLeft は残弾数(その本数までのリンクだけを見せる)。各リンクは前の節との中点へ置き、
-  // 節の向きへ倒したうえでベルトのねじれを重ねる。
+  // リンク列を nodes の節点へ合わせ、先頭から magsLeft 本(残マガジン数)を見せる。
   public sync(magsLeft: number, nodes: BeltNodes): void {
     const { anchor, positions, twists } = nodes;
     let prevPoint = anchor;
@@ -40,8 +39,10 @@ export class BeltView {
     for (let i = 0; i < this.links.length; i++) {
       const link = this.links[i]!;
       link.visible = i < Math.min(magsLeft, this.links.length);
+      // リンクは前の節との中点へ置く。
       const pos = positions[i]!;
       link.position.set((prevPoint.x + pos.x) / 2, (prevPoint.y + pos.y) / 2, (prevPoint.z + pos.z) / 2);
+      // 前のリンクの向きから節の向きへ倒し、ベルトのねじれを重ねる。
       const dir = sub(pos, prevPoint);
       const segLen = len(dir);
       let bendQ = prevQ;

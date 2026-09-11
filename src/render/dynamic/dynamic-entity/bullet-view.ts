@@ -29,7 +29,7 @@ function bulletHaloResources(): { geometry: THREE.BufferGeometry; material: THRE
     const geometry = new THREE.CylinderGeometry(0.5, 0.5, 7, 8);
     geometry.rotateX(Math.PI / 2); // 進行方向(Z軸)に合わせる
     const material = new THREE.MeshBasicMaterial({
-      // 明るさは色に載せ、不透明度は 1 のままにする(render/billboard.ts と同じ規約)。
+      // 加算合成なので、明るさは色に載せ、不透明度は 1 のままにする。
       color: new THREE.Color(0xffc86e).multiplyScalar(0.35),
       transparent: true,
       blending: THREE.AdditiveBlending,
@@ -54,7 +54,7 @@ let plasmaBodyMat: THREE.MeshBasicMaterial | null = null;
 // 敵プラズマ弾のメッシュ(本体のみ)を組み立てる。マテリアルは全弾で1つを共有する。
 function buildPlasmaMesh(): THREE.Mesh {
   const m = parsePlasma();
-  // 焼いた頂点は長さ軸が既に +Z を向いている。ここで rotateX() すると二重に回る。
+  // 焼いた頂点は長さ軸が既に +Z なので、rotateX() を足すと二重に回る。
   if (!plasmaBodyMat) {
     plasmaBodyMat = new THREE.MeshBasicMaterial({
       color: ENEMY_PLASMA_COLOR,

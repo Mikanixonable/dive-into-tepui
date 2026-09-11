@@ -1,5 +1,5 @@
-// geometry/material を全個体で共有し InstancedMesh で描く種別の、プールの束を1フレームずつまとめて
-// 受け付け、各 View が自分の種別の束を引く口。
+// InstancedMesh で描く種別ごとのプールの束をまとめ、1フレームぶんの積み始め・積み終えを一括する。
+// 束は種別のクラスで引く。
 
 // 1種別ぶんの InstancedPool の束。種別ごとに1つのクラスとして定義する。
 export interface InstancedPoolSet {

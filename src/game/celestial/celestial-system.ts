@@ -99,7 +99,7 @@ export class CelestialSystem implements CelestialBodies {
   // 主星の個体。恒星を持たない星系では null。
   private readonly starEntity: CelestialEntity | null;
   private readonly stellarLightSource: StellarLightSource | null;
-  // 天体の値を ECI へ移す変換器。どの天体を原点に置くかは系レベルの選択なので、正本はここが持つ。
+  // 天体の値を ECI へ移す変換器。原点天体の選択の正本。
   private readonly eciTransform: EciTransform;
   // 座標系の同一性。entities の motion から組む。
   private readonly referenceFrames: ReferenceFrames;
@@ -109,17 +109,16 @@ export class CelestialSystem implements CelestialBodies {
   private readonly gravityMotionList: readonly CelestialMotion[];
   private readonly atmosphereMotionList: readonly CelestialMotion[];
 
-  // ラグランジュ点まわりの周期・準周期軌道のガイド線(表示パネルの軌道ガイドタブ、静止軌道を除く)。
+  // 軌道ガイド線(周期軌道族・リサジュー・地球専用の参照軌道)。
   private readonly orbitGuideModel: OrbitGuideModel;
   private orbitGuideView!: OrbitGuideView;
-  // ゼロ速度曲線(ガイドタブ5.3節)。
+  // ゼロ速度曲線。
   private readonly zeroVelocityModel: ZeroVelocityModel;
   private zeroVelocityView!: ZeroVelocityView;
 
   // entities はこの星系の全天体(宣言順)、origin はその中の ECI 中心天体。phaseOffsets は motion を
-  // 組むのに使った初期位相で、セーブでそのまま返すために保持する。epoch は simTime=0 が指す絶対時刻。
-  // pointFieldView は付随する小天体の点群(持たない星系では null)、ephemerisPoints は数値暦が
-  // 収録している点の一覧。
+  // 組んだ初期位相(セーブでそのまま返す)。epoch は simTime=0 が指す絶対時刻。pointFieldView は
+  // 小天体の点群(持たない星系では null)、ephemerisPoints は数値暦が収録している点の一覧。
   public constructor(
     public readonly entities: readonly CelestialEntity[],
     public readonly origin: CelestialEntity,
@@ -352,7 +351,7 @@ export class CelestialSystem implements CelestialBodies {
     });
   }
 
-  // ラグランジュ点まわりの軌道ガイド線。
+  // 軌道ガイド線のモデル。
   public get orbitGuide(): OrbitGuideModel { return this.orbitGuideModel; }
 
   // 表示中の軌道ガイド線を、当たり判定用の識別情報付き ECI 点列として列挙する。
@@ -370,9 +369,8 @@ export class CelestialSystem implements CelestialBodies {
   }
 
   // 天体ビュー・星・照明・影・参照線・天球グリッドを、この1フレームの表示状態に同期する。
-  // mapDisplay・grid・orbitGuide はこのフレームの表示パネルの設定。visibilityPolicy はマップ
-  // ビューでは非 null、戦闘ビューでは null。描かれる対象と選べる対象が同じ判定から出るよう、
-  // 同じフレームの update 位相で確定させたものを渡す。
+  // mapDisplay・grid・orbitGuide はこのフレームの表示設定。visibilityPolicy は戦闘ビューでは null で、
+  // 選べる対象と同じ判定になるよう、同じフレームの update 位相で確定させたものを渡す。
   public sync(
     displayTime: number,
     camera: CameraFrame,
@@ -441,7 +439,6 @@ export class CelestialSystem implements CelestialBodies {
   }
 
   // 参照軌道線を出すかを表示ポリシーから決め、毎フレームの enabled 値として個体へ渡す。
-  // cameraPos は個体がフェードを測る基準(カメラの真の ECI 位置)。
   private syncReferenceLines(
     displayTime: number, camera: CameraFrame, visibilityPolicy: MapVisibilityPolicy | null,
   ): void {

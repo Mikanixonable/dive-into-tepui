@@ -38,12 +38,11 @@ const MAX_PLAN_NODE_MARKERS = 12; // 画面上に表示するノードマーカ�
 const PE_WARN_DENSITY = 2.4e-8; // 噴射後の軌道の近点がこの大気密度に達したら警告する [kg/m^3]。地球の高度 120km 相当
 
 export class PlanEditor {
-  // 編集対象として選択中のノード。ノードは不変オブジェクトで、編集のたびに新しい
-  // KinematicState へ置き換わる — 選択を参照で持てば、編集で置き換わった場合も、
-  // 実行済みとして列の前方から取り除かれた場合も、同じ同一性判定で追随できる。
+  // 編集対象として選択中のノード。index でなく参照で持つので、実行済みノードが列の前方から
+  // 取り除かれても選択がずれない。ノードを置き換えたらこの参照も差し替える。
   private selectedNode: KinematicState | null = null;
 
-  // 直前の update() で操作対象だったもの。切替の検出だけに使う(正本は ControlSelection)。
+  // 直前の update() で操作対象だったもの。操作対象の切替を検出する。
   private lastSeenShip: Controllable | null = null;
 
   // 選択中ノードの現在の index。列に無ければ null。
@@ -276,8 +275,7 @@ export class PlanEditor {
   private handleNodeRightClick(mx: number, my: number): boolean {
     const bestIdx = this.pickNodeAt(mx, my);
     if (bestIdx === null) {
-      // 計画軌道上の右クリックは、その位置の時刻へのワープメニュー。描画と同じサンプル列から
-      // 求めるので、表示変換や月基準フレームとずれない。
+      // 計画軌道上の右クリックは、その位置の時刻へのワープメニュー。
       const picked = this.path.nearestSample(mx, my, NODE_PICK_PX, -Infinity);
       if (!picked) return false;
       this.selectedNodeIdx = null;
@@ -317,9 +315,8 @@ export class PlanEditor {
     }
   }
 
-  // 選択中ノードを、現在時刻から指定した秒数後の計画軌道サンプルへ移動する。位置を
-  // 時刻として指定することで、J2・大気抵抗・第三天体摂動を含む数値積分結果とノードの
-  // 位置を一致させる。Δv はドラッグ移動と同じく到着軌道のローカル成分を維持する。
+  // 選択中ノードを、現在時刻から secondsFromNow 秒後の計画軌道サンプルへ移動する。Δv は到着軌道の
+  // ローカル成分を保つ。置ける範囲外・軌道が求まらない時刻ではヒントを出すだけにする。
   private setSelectedNodeTime(secondsFromNow: number): void {
     const ship = this.ship;
     const plan = this.plan;
@@ -358,8 +355,8 @@ export class PlanEditor {
     if (hasDownstreamNodes) this.hud.hint('ノード位置を変更しました。後続ノードを再設定してください');
   }
 
-  // ドラッグで時刻を動かしても、ノードのΔv(機体座標系の加減速)は維持する。
-  // これにより、同じマニューバを別時刻へ移し替えた計画として再描画できる。
+  // idx 番目のノードを区間 arcIdx 上の sample へ移した新しいノード状態。Δv は到着軌道の
+  // ローカル成分を保つ。Δv や通過ノードの到着状態が求まらなければ null。
   private rebuildDraggedNode(
     sample: KinematicState,
     arcIdx: number,
@@ -370,9 +367,7 @@ export class PlanEditor {
     const dvLocal = this.nodeDvLocal(idx, arriving);
     if (!plan || dvLocal === null) return null;
 
-    // 移動先のサンプル速度は、そこまでに実行されたノードの Δv をすべて含む。置ける時刻範囲は
-    // 2つ以上先の arc へも届くので、自ノードぶんだけ引くと中間ノードの Δv が残る — 通過した
-    // ノードの Δv を全部引いてプレバーン速度へ戻す。
+    // サンプル速度は通過したノードの Δv を全部含む — 自ノードぶんだけ引くと中間ノードの Δv が残る。
     let baseV: Vec3 = sample.v;
     for (let i = idx; i < arcIdx; i++) {
       const passed = plan.nodes[i];
@@ -394,8 +389,7 @@ export class PlanEditor {
     const idx = this.selectedNodeIdx;
     const plan = this.plan;
     if (idx === null || plan === null || amount === 0) return;
-    // 基底は到着(噴射前)状態のもの。噴射後の基底で組むと、パネル・3D 矢印・アームと基底が
-    // 食い違い、Δv が大きいほど「PRO へ動かしたのに他成分も動く」ずれになる。
+    // 基底は到着(噴射前)状態で組む — 噴射後の基底ではパネル・3D 矢印・アームの基底と食い違う。
     const arr = this.path.arrivalStates()[idx];
     if (!arr) return;
     const d = amount * sign;
@@ -551,8 +545,7 @@ export class PlanEditor {
 
   // 操作対象の切り替えを検出してメニューを畳み、ワープメニューが使う現在時刻を差し込む。
   public update(simTime: number): void {
-    // 艦が替わったフレームで、前の艦のノードに対して開いたままのメニューを畳む(選択中ノードは
-    // 参照で解決するので、計画が替われば同一性が外れて自然に選択なしになる)。
+    // 艦が替わったフレームで、前の艦のノードに対して開いたままのメニューを畳む。
     const ship = this.ship;
     if (ship !== this.lastSeenShip) {
       this.lastSeenShip = ship;

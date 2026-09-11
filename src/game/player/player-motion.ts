@@ -19,6 +19,7 @@ import { Belt } from './belt';
 import { PowerSystem } from './power';
 import { RadiatorSystem, type RadiatorSide } from './radiator';
 
+// 自機の Motion が Entity 側から読む値と、接触・喪失を通知する先。
 export interface PlayerMotionReactions {
   roundsInMagazine(): number;
   thrustAcceleration(): Vec3;
@@ -40,6 +41,7 @@ export interface PlayerMotionReactions {
   receiveBurnUp(services: DynamicReactionServices): void;
 }
 
+// 自機に付随する物理系を進め、接触・喪失を reactions へ通知する振る舞い。
 class PlayerBehavior implements DynamicMotionBehavior {
   public readonly contactKind = 'player';
   // contactProxies が毎回詰め直して返す接触代理の列。
@@ -57,6 +59,7 @@ class PlayerBehavior implements DynamicMotionBehavior {
     sunDir: Vec3,
   ): void {
     const motion = self as PlayerMotion;
+    // 撃破された機体の付随物理系は凍結する。
     if (!motion.alive) return;
     motion.belt.update(
       dt, this.reactions.roundsInMagazine(), motion.att, this.reactions.thrustAcceleration(),
@@ -89,12 +92,14 @@ class PlayerBehavior implements DynamicMotionBehavior {
     motion.belt.applyContactSections(dt, motion.state.r, motion.state.v, motion.att);
   }
 
+  // 艦体の放射面積に、展開中の放熱板の面積を足した質量あたりの値 [m^2/kg]。
   public radiatingAreaPerMass(self: DynamicMotion): number {
     const motion = self as PlayerMotion;
     return SHIP_RADIATING_AREA_PER_MASS
       + motion.radiator.radiatingArea(this.reactions.totalCoolingRate()) / PLAYER_MASS;
   }
 
+  // 艦体と放熱板が sunDir からの日射を吸収する、質量あたりの面積 [m^2/kg]。
   public solarAbsorbAreaPerMass(self: DynamicMotion, sunDir: Vec3): number {
     const motion = self as PlayerMotion;
     const hullArea = (motion.emissivity * motion.bcInv) / 2.2;
@@ -103,12 +108,14 @@ class PlayerBehavior implements DynamicMotionBehavior {
     ) / PLAYER_MASS;
   }
 
+  // 他の個体との接触を reactions へ渡す。
   public onEntityContact(
     _self: DynamicMotion, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void {
     this.reactions.receiveEntityContact(other, contact, services);
   }
 
+  // 天体表面への接触を reactions へ渡す。
   public onSurfaceContact(
     _self: DynamicMotion,
     _body: CelestialBody,
@@ -118,10 +125,12 @@ class PlayerBehavior implements DynamicMotionBehavior {
     this.reactions.receiveSurfaceContact(contact, services);
   }
 
+  // 温度上限を超えた焼失を reactions へ渡す。
   public onBurnUp(_self: DynamicMotion, services: DynamicReactionServices): void {
     this.reactions.receiveBurnUp(services);
   }
 
+  // 空力荷重が構造限界を超えていれば、構造喪失を reactions へ渡す。
   public checkLoss(
     self: DynamicMotion,
     _dt: number,
@@ -163,6 +172,7 @@ export class PlayerMotion extends DynamicMotion {
       maxTemperature: MAX_HULL_TEMP,
       behavior: new PlayerBehavior(reactions),
     }));
+    // 付随物理系は、この Motion を本体として組む。保存があればその状態から戻す。
     this.belt = new Belt(this, beltLinkCount);
     this.radiator = new RadiatorSystem(
       this,
@@ -176,7 +186,7 @@ export class PlayerMotion extends DynamicMotion {
   }
 }
 
-// 操作対象の Motion が、自機固有の物理系を持つか。
+// motion を自機の Motion へ絞り込む型ガード。
 export function isPlayerMotion(motion: DynamicMotion): motion is PlayerMotion {
   return motion instanceof PlayerMotion;
 }

@@ -1,9 +1,5 @@
-// マップビューのガイドとして描く、CR3BP のゼロ速度曲線の宣言を組む(表示パネルのガイドタブ
-// 5.3節)。断面(系×面)ごと・ヤコビ定数ごと・連結成分ごとに1本の曲線を組む。
-//
-// 2D の等高線抽出(zeroVelocityCurves、O(resolution²))と、それを ECI へ埋め込む変換
-// (rotatingFrame、O(1))とで重さが大きく違うので、設定が変わったときだけ前者をやり直し、
-// 回転基底が進んだときは後者だけをやり直す。
+// マップビューのガイドとして描く、CR3BP のゼロ速度曲線の宣言を組む。断面(系×面)ごと・
+// ヤコビ定数ごと・連結成分ごとに1本の曲線を組む。
 import { OrbitingMotion } from '../../../physics/celestial-motion';
 import { secondaryFrameOf } from '../../../physics/lagrange';
 import type { CelestialBodies } from '../celestial-bodies';
@@ -19,22 +15,16 @@ import { catalogSystemScale } from './orbit-guide-catalog';
 
 const COLOR_ZERO_VELOCITY_LINE = 0xd97a94;
 
-// 断面の描画範囲 [両天体間距離を1とする無次元単位]。主天体(原点寄り)・副天体(1−μ 付近)の
-// 双方と、その外側に開くヤコビ定数の低い曲線の一部までを含む値として 1.6 を採る
-// (μ が小さい系でも副天体は 1 の近くにあり、L4/L5 は距離1の正三角配置にあるため、
-// 1.6 あれば両天体・共線点・トロヤ点のネックまで一通り入る)。系のスケールにのみ依存する
-// 無次元値なので、断面8つ(地球-月・太陽-地球・太陽-木星・太陽-土星 × xy/xz)すべてで共通に使える。
+// 断面の描画範囲 [両天体間距離を1とする無次元単位]。両天体・共線点・トロヤ点(距離1の正三角配置)
+// のネックと、その外側に開くヤコビ定数の低い曲線の一部までが入る値。無次元なので全断面で共通。
 const HALF = 1.6;
-// 片側の格子分割数。臨界ヤコビ定数付近でネックが偽って閉じない(=解像度不足で連結成分の
-// 判定を誤る)のを避けるため、負荷との兼ね合いでやや高めの300を採る。曲線の滑らかさは
-// 節点間のエルミート補間と描画側の適応分割が決めるので、この値には依らない。
+// 片側の格子分割数。臨界ヤコビ定数付近でネックが解像度不足で偽って閉じないよう、やや高めに取る。
 const RESOLUTION = 300;
 // 曲線を ECI へ埋め込み直す表示時刻の間隔 [s]。回転系では曲線が静止しているので、時刻の効果は
 // 基底の回転だけに現れる。最も速い地球-月系(周期 27.3 日)でもこの間に 0.05° しか回らない。
 const RECOMPUTE_INTERVAL = 300;
-// 始点・終点をこれ未満の距離(無次元単位)で「同じ点」とみなし、閉じた輪として描く。
-// zeroVelocityCurves が実際に一周した成分は始点と終点が完全に一致する(浮動小数の丸め
-// ぶんだけ僅かに異なりうる)ので、格子の1辺よりずっと小さい値で十分。
+// 始点・終点がこれ未満の距離(無次元単位)なら閉じた輪として描く。一周した成分の端点は丸め誤差の
+// 範囲で一致するので、格子の1辺よりずっと小さい値でよい。
 const CLOSE_EPSILON = 1e-9;
 type Point2 = readonly [number, number];
 
@@ -68,8 +58,7 @@ interface ShapeEntry {
   readonly closed: boolean;
 }
 
-// 断面の形を表示時刻の回転基底へ埋め込んだ曲線1本。形が変わらない限り同じオブジェクトを
-// 保つ — 描画側はこの同一性で点列の引き直しを省く。
+// 断面の形を表示時刻の回転基底へ埋め込んだ曲線1本。
 interface EmbeddedContour {
   readonly origin: ZeroVelocityDisplay['origin'];
   readonly shape: ZeroVelocityDisplay['shape'];
@@ -115,8 +104,7 @@ function jacobiValues(settings: ZeroVelocitySettings): readonly number[] {
   return Array.from({ length: count }, (_, i) => jacobiMin + ((jacobiMax - jacobiMin) * i) / (count - 1));
 }
 
-// 設定のうち、抽出する曲線の形(=マーチングスクエア再実行の要否)を決める部分だけの識別子。
-// opacity は形に関わらないので含めない。
+// 抽出する曲線の形を決める設定(描く断面とヤコビ定数の列)だけの識別子。
 function structuralKey(settings: ZeroVelocitySettings): string {
   const on = SECTIONS.filter((s) => settings[s.key] === true).map((s) => s.key).join(',');
   const jacobi = jacobiValues(settings).join(',');
@@ -127,6 +115,7 @@ export class ZeroVelocityModel {
   private shapes: readonly ShapeEntry[] = [];
   // shapes と同じ並びで、埋め込めた断面だけを持つ曲線。
   private contours: readonly EmbeddedContour[] = [];
+  // 直近に形を抽出した設定の識別子と、曲線を埋め込んだ表示時刻。
   private structureKey = '';
   private lastComputedTime: number | null = null;
 
@@ -168,7 +157,7 @@ export class ZeroVelocityModel {
     return this.displays;
   }
 
-  // 系ごとの μ。索引から引くので、族の点列の読み込みを待たない。
+  // 系ごとの μ。族の点列の読み込み前でも答える。索引に無い系は null。
   private muFor(system: CatalogSystemId): number | null {
     return catalogSystemScale(system)?.mu ?? null;
   }

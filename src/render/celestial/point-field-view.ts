@@ -5,8 +5,7 @@ import { Vec3 } from '../../math/vec3';
 import { PointElements, pointPositionAt } from '../../physics/point-orbit';
 import { FloatingOrigin } from '../camera/floating-origin';
 
-// 表示する点群1群。drawRadius と color は群ごとの見た目で、内側の群と外側の群とでは
-// 見合う大きさ・色が一桁変わるため群ごとに持つ。
+// 表示する点群1群。drawRadius と color は群ごとの見た目。
 export interface PointFieldGroup {
   readonly id: string;
   readonly points: readonly PointElements[];
@@ -16,8 +15,7 @@ export interface PointFieldGroup {
 
 export type PointField = readonly PointFieldGroup[];
 
-// 1フレームで位置を引き直す点の割合の逆数。外側の群ほど公転が遅いので、マップのズーム域では
-// 数フレーム遅れた位置と現在位置は1画素も違わない。
+// 1フレームで位置を引き直す点の割合の逆数。公転が遅いので、数フレームの遅れは画面に出ない。
 const UPDATE_FRACTION = 8;
 
 // 群1つぶんの InstancedMesh と、そこへ書き込む位置のラウンドロビン更新を持つ。
@@ -30,30 +28,26 @@ class PointFieldGroupView {
   private readonly matrix = new THREE.Matrix4();
   // ラウンドロビンで次に引き直す点の先頭。
   private cursor = 0;
-  // 初回の sync で全点を評価済みか。ラウンドロビンに任せると、マップを開いた直後の数フレームは
-  // 未評価の点(零ベクトル)が太陽位置に固まって描かれる。
+  // 初回の sync で全点を評価済みか。未評価の点は恒星の位置に固まって写る。
   private primed = false;
 
   // 群1つぶんの InstancedMesh を、その群の描画半径・色で組んでシーンへ登録する。
   public constructor(group: PointFieldGroup, scene: THREE.Scene) {
     this.points = group.points;
-    // 正四面体を使うのは、全インスタンスが同じ姿勢で並ぶため — 平板だと視線方向によっては
-    // 群全体が同時に消える。
+    // 正四面体を使う — 全インスタンスが同じ姿勢なので、平板だと視線によって群ごと消える。
     const geom = new THREE.TetrahedronGeometry(group.drawRadius);
     this.material = new THREE.MeshBasicMaterial({ color: group.color, depthWrite: false });
     this.baseColor = new THREE.Color(group.color);
     this.mesh = new THREE.InstancedMesh(geom, this.material, this.points.length);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    // 個体が群の軌道全域(main-belt〜kuiper-belt は AU スケール)へ散らばるため、
-    // 原点周りの外接球によるフラスタムカリングは意味を持たない。
+    // 点は AU スケールに散らばるので、外接球によるフラスタムカリングを切る。
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
     scene.add(this.mesh);
   }
 
   // 表示時刻 t の点の位置を、ラウンドロビンで一部ずつ引き直して置く。starPos は点を置く恒星の
-  // ECI 位置で、置かないフレームでは null。点は恒星中心のローカル座標に置き、浮動原点との差は
-  // mesh の位置が吸う。
+  // ECI 位置で、null のフレームは群を隠す。
   public sync(
     fo: FloatingOrigin, t: number, starPos: Vec3 | null, fixedBrightnessScale: number,
   ): void {
@@ -107,8 +101,7 @@ export class PointFieldView {
   ): void {
     // このフレームに点を置く恒星の位置。置かないフレームは null。
     const placeAt = visible ? starPos : null;
-    // InstancedMesh の確保は、点を最初に見せるフレームまで遅らせる — 点群を切った設定や
-    // マップを開かないランで、起動時に確保の負荷を負うのを避けるため。
+    // InstancedMesh は点を最初に見せるフレームで確保する — 点群を見ないランの起動負荷を避ける。
     if (this.groups === null) {
       const scene = this.scene;
       if (placeAt === null || scene === null) return;

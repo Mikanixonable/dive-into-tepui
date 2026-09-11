@@ -50,11 +50,11 @@ const ENEMY_MAX_HP = 6; // 敵機の総 HP
 
 export const PLASMA_BULLET_DAMAGE = 1.25; // 自機がプラズマ弾で被弾した際のダメージ [HP]
 
-const PLASMA_BULLET_SPEED = MUZZLE_SPEED * 2 / 3; // MUZZLE_SPEED の 2/3
+const PLASMA_BULLET_SPEED = MUZZLE_SPEED * 2 / 3; // プラズマ弾の初速 [m/s]
 const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
 const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]
 const ENEMY_BURST_INTERVAL = 0.08; // 敵のバースト射撃時の連射間隔 [s]
-const ENEMY_AI_MIN_RANGE = 50; // これより近いと射撃しない(至近距離) [m]
+const ENEMY_AI_MIN_RANGE = 50; // 射撃する最短距離 [m]
 const ENEMY_MAX_ATTACKERS_PER_GROUP = 3; // 同一集団内で同時に攻撃する最大機数
 const ENEMY_ATTACK_CHANCE = 0.6; // 各機が攻撃(バースト)を開始する確率
 const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の候補
@@ -110,19 +110,18 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   public override readonly mapKind: DynamicEntityKind = 'enemy';
   public override readonly pickable = true;
 
-  // 敵機は熱防御を持たないので、自機より低い温度で構造が保たなくなる。
-  public readonly accent: string | number; // マーカー色・集団識別。全敵が保持する
+  public readonly accent: string | number; // マーカー色。同じ色の敵を1つの集団とみなす
   public readonly orbitLineColor: string | number;
-  public readonly waveId?: number; // stage00 のウェーブ敵のみ。生存ウェーブ集計に使う
+  public readonly waveId?: number; // 所属するウェーブの番号。ウェーブに属さない敵は undefined
   public readonly formationId?: string;
   public readonly formationRole?: FormationRole;
 
   // 実行時状態(遅延初期化)。未設定 = まだその状態に入っていない
   private lastFireSim?: number; // 最後に発砲判定した時刻。初回は発砲タイミングをずらすため遅延初期化
   private burstLeft?: number; // バースト射撃の残弾
-  private burstDelay?: number; // 次のバースト弾までの残り時間
-  private lastBehaviorSim?: number;
-  // false の間はこの機体が射撃を行わない。移動・AI の他の判定には影響しない。
+  private burstDelay?: number; // 次のバースト弾までの残り時間 [sim s]
+  private lastBehaviorSim?: number; // 前回 behave した時刻 [sim s]
+  // 射撃を許すか。
   public fireEnabled = true;
 
   // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径)を受けて、
@@ -200,7 +199,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   // 接触ダメージを当て、ダメージが発生したかを返す。しきい値未満なら false。
   protected abstract applyImpactDamage(damageSpeed: number): boolean;
 
-  // 個体色の CSS 表記。方位マーカー・LEAD マーカーの着色に使う。
+  // 個体色の CSS 表記。
   public get accentColor(): string {
     if (typeof this.accent === 'string') return this.accent;
     return '#' + this.accent.toString(16).padStart(6, '0');
@@ -232,7 +231,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     };
   }
 
-  // 被弾時の音・火花・欠片(致死判定に関係なく毎回発生する演出)。
+  // 撃破に至らない被弾の音・閃光・ガスの噴出。
   private impactEffect(bulletType: BulletType, impactPoint: Vec3): void {
     this._worldSfx.enemyHit();
     if (bulletType === 'plasma') {
@@ -327,7 +326,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     activeStage.recordEnemyDeath(this, simTime, 'despawn');
   }
 
-  // 大気での焼失による自然死。固体表面への接触は注入した接触反応が扱う。
+  // 大気での焼失による自然死。
   private receiveBurnUp(activeStage: StageOutcome, registry: EntityRegistry): void {
     this.motion.alive = false;
     this.destroyEffect(registry);
@@ -335,7 +334,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   }
 
   // 行動関数。enemies は同一集団の同時攻撃数を数える母集団、registry は弾の追加先。
-  // operable が偽の間は指令を決めない。
+  // operable が偽の間は経過時刻だけを記録する。
   public behave(
     simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
     operable: boolean, celestialBodies: CelestialBodies,
@@ -387,7 +386,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     return n;
   }
 
-  // 発砲の演出。既定では何も出さない。
+  // 発砲の演出。既定は空。
   protected muzzleEffect(_muzzleState: KinematicState): void {}
 
   // player へ向けた見越し射撃でプラズマ弾を1発生成し、registry へ足す。
@@ -434,7 +433,6 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
       id: this.id,
       name: this.name,
       kind: this.enemyClass.kind,
-      // 運動状態・姿勢。
       r: { ...this.motion.state.r },
       v: { ...this.motion.state.v },
       q: { ...this.motion.att.q },
@@ -510,7 +508,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     ];
   }
 
-  // 削除と軌道線の表示は自分の状態を書き換える。
+  // menuItems が出した操作 act を実行する。
   public runMenu(
     act: MenuAction, _controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
   ): void {
@@ -522,8 +520,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     }
   }
 
-  // プロパティウィンドウに出す行。装甲・距離・接近速度を主要行とし、相対速度は詳細トグル、
-  // 軌道要素と相対傾斜角は「軌道」グループの下に畳む。viewer が null なら相対量の行は落ちる。
+  // プロパティウィンドウに出す行。viewer が null なら相対量の行を省く。
   public propertyRows(
     celestialBodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
@@ -553,7 +550,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   public readonly onMapFocus = null;
 }
 
-// この個体が敵か。顔ぶれから敵だけを絞るときに使う。
+// entity を敵へ絞り込む型ガード。
 export function isEnemy(entity: DynamicEntity): entity is Enemy {
   return entity instanceof Enemy;
 }

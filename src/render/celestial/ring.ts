@@ -1,9 +1,6 @@
-// 物理パラメータから環を描く。環の alpha は TSL で
-//   T = exp(-tauNormal / |N.V|)
-// と単一散乱を評価して決める。
-//
-// **帯ごとに違う値はマテリアルではなくジオメトリが運ぶ。** 光学値は頂点属性へ、環軸はモデル
-// 行列から引くので、全天体・全帯が RingMaterials の 2 枚を共有できる。
+// 環の帯の表示物(面・線・拡散環の角柱)と、全天体・全帯で共有するマテリアルを組む。透過率
+// T = exp(-tauNormal / |N·V|) と単一散乱で色と不透明度を決める。帯ごとの光学値は頂点属性、
+// 環軸はモデル行列が運ぶ。
 import * as THREE from 'three/webgpu';
 import {
   cameraProjectionMatrixInverse,
@@ -31,6 +28,7 @@ const RING_COLOR: readonly [number, number, number] = [0.72, 0.68, 0.58];
 export const RING_TILT = -Math.PI / 2;
 const D2R = Math.PI / 180;
 const FOUR_PI = 4 * Math.PI;
+// |N·V| の下限。環面を真横から見たときに光学的厚みが発散しないよう抑える。
 const MU_MIN = 0.015;
 
 // 帯 1 本ぶんの光学値を運ぶ頂点属性(x = 光学的厚み、y = 単散乱アルベド、z = 位相 g)。
@@ -56,8 +54,7 @@ interface RingSector {
   readonly scale: number;
 }
 
-// annulus/line 共通の光学TSLグラフ。coverage は帯の画面上被覆率(1px未満の細帯を
-// 減光するための係数)で、面・線どちらのジオメトリへ載せても解釈は同じ。
+// 帯の色と不透明度の TSL グラフ。coverage は 1px 未満へ痩せた帯を減光する画面上の被覆率 [0,1]。
 function ringOpticsNodes(
   coverage: FloatNode, bodyShadow: BodyShadow, sunLight: SunLight,
 ): { colorNode: Vec3Node; opacityNode: FloatNode } {
@@ -66,18 +63,15 @@ function ringOpticsNodes(
   const albedo = optics.y as FloatNode;
   const phaseG = optics.z as FloatNode;
 
-  // 恒星の向きと、そのフラグメントが受けている放射照度。天体表面と同じ 1 か所から引くので、
-  // 環だけが別の明るさ基準に乗ることはない。
+  // 恒星の向きと、そのフラグメントが受ける放射照度。
   const toSun = sunLight.position.sub(positionWorld);
   const sunDirection: Vec3Node = normalize(toSun);
   const sunIrradiance: FloatNode = sunLight.intensity.div(max(dot(toSun, toSun), 1));
 
-  // 面から視点へ向かう向き = 視線の逆向き。**「カメラ位置から引く」形は透視投影でしか成り立たない**
-  // ので、画面空間のパスと同じ器(pipeline/view-ray.ts)から取って world へ回す。
+  // 面から視点への向き。カメラ位置との差では平行投影で壊れるので、視線レイから引く。
   const viewDirection = cameraWorldMatrix.mul(vec4(viewRayAt(cameraProjectionMatrixInverse).direction.negate(), 0)).xyz;
-  // RingGeometry の面法線だけでなく、側壁を持つ拡散環でも環面に垂直な
-  // normal optical depth を評価するため、常に物理的な環軸を使う。**帯のジオメトリは XY 平面へ
-  // 組んで RING_TILT で寝かせてあるので、メッシュのローカル +Z がそのまま環面の法線。**
+  // 側壁を持つ拡散環でも環面に垂直な光学的厚みを評価するため、面法線ではなく環軸を使う。
+  // 帯は XY 平面で組んで RING_TILT で寝かせてあるので、ローカル +Z が環軸。
   const ringAxis = normalize(modelWorldMatrix.mul(vec4(0, 0, 1, 0)).xyz);
   const muView = max(dot(ringAxis, viewDirection).abs(), MU_MIN);
   const muSun = max(dot(ringAxis, sunDirection).abs(), MU_MIN);
@@ -87,9 +81,8 @@ function ringOpticsNodes(
   const baseExtinction = float(1).sub(transmittance);
   const extinction = baseExtinction.mul(coverage);
 
-  // 直射散乱が受ける影。本体も他の天体も、影パスの受け手と同じ 1 つの関数から引く
-  // ので、境界は半影の幅でぼける。**環の帯は源から外す** — 環のフラグメントは自分が乗って
-  // いる帯の平面上に居るため、含めると自分自身の影で刃こぼれする。
+  // 直射散乱が受ける天体の影。環の帯は影の源に含めない — 帯の平面上のフラグメントが自分の影で
+  // 刃こぼれする。
   const directLight = bodyShadow.transmittance(positionWorld);
 
   const denominator = float(1).add(phaseG.mul(phaseG)).sub(
@@ -103,12 +96,11 @@ function ringOpticsNodes(
     .mul(exp(tauView.mul(-0.5)))
     .mul(phase.mul(FOUR_PI))
     .mul(directLight);
-  // 通常alpha合成では color * alpha が画面へ寄与する。coverage を含まない
-  // baseExtinction で割ることで、散乱輝度にもcoverageが一度だけ掛かる。
+  // alpha 合成では color × alpha が画面へ出るので、coverage を含まない baseExtinction で割り、
+  // 散乱輝度に coverage が1度だけ掛かるようにする。
   const safeBaseExtinction = max(baseExtinction, 0.001);
 
-  // 放射照度を 1/π 倍して輝度へ直す — ランバート面が同じ反射率で返す輝度と揃うので、
-  // 本体と環が1つの明るさ基準に乗る。
+  // 放射照度を 1/π 倍して輝度へ直し、ランバート面の本体と同じ明るさ基準に乗せる。
   const radiance = scattering.div(safeBaseExtinction).mul(sunIrradiance.div(Math.PI));
 
   return {
@@ -117,12 +109,11 @@ function ringOpticsNodes(
   };
 }
 
-// 環の帯が使うマテリアル。全天体・全帯で共有するので、作るのも解放するのも 1 か所。
+// 全天体・全帯で共有する環のマテリアル。
 export class RingMaterials {
-  // annulus と annular prism。半透明で深度は書かない。
+  // 面と拡散環の角柱が使う、深度を書かない半透明のマテリアル。
   public readonly surface: THREE.MeshBasicNodeMaterial;
-  // 1px未満に痩せる細帯はラスタライズで面のまま描くと消えうるので、常にこの線1本で表す
-  // (coverage が被覆率ぶん減光するので、遠方ほど濃くなることはない)。
+  // 1px 未満に痩せた帯を線1本で描くマテリアル(面のままでは消えうる)。被覆率ぶん減光する。
   public readonly line: THREE.LineBasicNodeMaterial;
 
   // bodyShadow と sunLight は、帯が直射散乱の影と明るさを引く先。
@@ -144,17 +135,18 @@ export class RingMaterials {
     this.line.opacityNode = lineOptics.opacityNode;
   }
 
+  // 両マテリアルを解放する。共有しているすべての帯が描けなくなる。
   public dispose(): void {
     this.surface.dispose();
     this.line.dispose();
   }
 }
 
-// 帯の光学値を全頂点へ焼く。**物理的にありえない値はここで丸める** — グラフは属性を素通しで
-// 使うので、帯を組むときが最後の関門になる。
+// 帯の光学値を全頂点の頂点属性へ焼く。
 function bakeRingOptics(geometry: THREE.BufferGeometry, optics: RingOpticsDef): void {
   const count = geometry.getAttribute('position').count;
   const values = new Float32Array(count * 3);
+  // 物理的にありえない値を丸める — グラフは属性をそのまま使う。
   const tauNormal = Math.max(0, optics.normalOpticalDepth);
   const albedo = Math.max(0, Math.min(1, optics.singleScatteringAlbedo));
   const phaseG = Math.max(-0.999, Math.min(0.999, optics.phaseG));
@@ -233,7 +225,7 @@ function buildAnnulusMesh(
   return { object: mesh, dispose: () => geo.dispose() };
 }
 
-/** 薄い環。アークは非重複sectorへ分割するため、実効tauが二重合成されない。 */
+/** 厚み 0 の帯の面。半径は「本体半径 = 1」単位、arcs は扇形ごとに光学的厚みへ掛かる。 */
 export function createAnnulusRing(
   optics: RingOpticsDef,
   innerRadius: number,
@@ -282,7 +274,7 @@ function buildLineRingSegment(
   };
 }
 
-/** 実幅が細い環の1px前後表示。アークは非重複sectorへ分割するため、実効tauが二重合成されない。 */
+/** 厚み 0 の帯を、半径 radius の線1本で表す。見かけ幅が 1px を割ったときに使う。 */
 export function createRingLine(
   optics: RingOpticsDef,
   radius: number,
@@ -331,7 +323,7 @@ function annularPrism(innerRadius: number, outerRadius: number, height: number):
   return geo;
 }
 
-/** 拡散環。扁平球ではなく内径を持つannular prismとして構築する。 */
+/** 厚みのある拡散環。内径・外径・厚みを持つ角柱で表す。 */
 export function createTorusRing(
   optics: RingOpticsDef,
   innerRadius: number,

@@ -13,7 +13,7 @@ import { DynamicEntity } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
 import type { OrbitReference } from '../../orbit-reference';
 
-// 表示時刻を「現在」とみなす許容差 [sim s]。過去・未来を映しているフレームでは燃焼を描かない。
+// 表示時刻を「現在」とみなす許容差 [sim s]。
 const BURN_DISPLAY_EPS = 1e-6;
 
 type DetachedBoosterInit =
@@ -34,6 +34,7 @@ export class DetachedBooster extends DynamicEntity {
   // 新規の分離は切り離した段と分離時の状態から、再開は saved を simTime 付きの状態として展開して
   // 組む。id は段の id を引き継ぐ。
   public constructor(init: DetachedBoosterInit, scene: THREE.Scene) {
+    // 復元と新規の分離を同じ形へ均してから基底へ渡す。
     const restored = 'saved' in init;
     const stage = restored ? { ...init.saved.stage, id: init.saved.id } : { ...init.stage };
     const state = restored ? savedKinematicState(init.saved, init.simTime) : init.state;
@@ -49,7 +50,7 @@ export class DetachedBooster extends DynamicEntity {
     this.setName('分離ブースター');
   }
 
-  // 噴射炎を描くフレームだけ、その燃焼比を表示入力へ足す。
+  // 燃焼比を表示入力へ足す。噴射炎を描かないフレームでは null。
   protected override renderSource(
     viewFrame: DynamicViewFrame, visible: boolean, active: boolean,
     orbitReference: OrbitReference | undefined,

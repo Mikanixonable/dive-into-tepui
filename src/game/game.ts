@@ -87,8 +87,7 @@ export class Game {
   private readonly objectWindows: ObjectWindows;
 
   public readonly activeStage: Stage;
-  // ポーズは Game 自身の状態として持つ。「時間を止めるか」と「どの倍率まで相互作用を成立させるか」
-  // は別の関心事。
+  // ポーズ中か。時間倍率とは独立に時間を止める。
   private _isPaused = false;
   public get isPaused(): boolean { return this._isPaused; }
 
@@ -96,7 +95,7 @@ export class Game {
   public get celestialSystem(): CelestialSystem { return this._celestialSystem; }
   // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。
   private readonly viewOptions: ViewOptionsControl;
-  // マップの表示トグル。可視性ポリシーと点群の可視判定が、このフレームの値を読む。
+  // マップの表示トグル。
   private readonly mapDisplay: RunSetting<MapDisplayToggles>;
   // 天球グリッドの表示。
   private readonly grid: RunSetting<CelestialGridVisibility>;
@@ -134,9 +133,8 @@ export class Game {
   ): Promise<Game> {
     const { scene: gs } = host;
     await progress.enter('system');
-    // このランの元期。スナップショットを読むならその元期をそのまま継ぐ — 保存されている simTime
-    // はその元期からの経過秒なので、別の元期で組むと全天体がずれる。次に開始日時の指定、最後に
-    // ステージの宣言。星系を組む前に決まっていなければならない。
+    // このランの元期。セーブの元期、開始日時の指定、ステージの宣言の順に採る — 保存された simTime
+    // はセーブの元期からの経過秒なので、別の元期で組むと全天体がずれる。
     const savedJdTdb = initialSave?.ephemerisContext?.epochJdTdb;
     const epoch = savedJdTdb !== undefined ? createJulianDate('TDB', savedJdTdb) : startEpoch ?? stageClass.epoch;
     // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
@@ -175,7 +173,6 @@ export class Game {
       ephemerisContext: { ...ephemerisContextFor(this._celestialSystem.epoch) },
       phaseOffsets,
       earthSpinPhase0,
-      // 顔ぶれは個体自身へ畳ませる。
       entities: this.dynamicSystem.serialize(),
       activeControlledId: this.activeControllable?.id ?? null,
       stage: this.activeStage.serialize(),
@@ -285,8 +282,7 @@ export class Game {
       this.flashEffects, this.markerManager, celestialSystem, this.controlSelection,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
-    // activeStage の authoring/executesPlans を読むので、その直後に生成する。候補列と計画の
-    // 編集口はマップビューが持つので、ビューより先に組み上がるここへは遅延評価で渡す。
+    // activeStage を読むのでその後に組む。ビューより先に組み上がるので、現在のビューは遅延評価で渡す。
     this.objectWindows = new ObjectWindows(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
       this.cameraSystem, () => this.viewManager.activeView, this.pauseMenu,
@@ -368,6 +364,8 @@ export class Game {
 
   // ------------------------------------------------------------ update
 
+  // 1フレームぶんの update フェーズ。dtRaw [s] は実時間の経過。ポーズ中・決着後もシミュレーション
+  // 以外の更新は通す。
   public update(dtRaw: number, viewport: Viewport): void {
     this.sections.enter(SECTION.input);
     this.input.update();
@@ -395,8 +393,7 @@ export class Game {
     this.sections.exit(SECTION.plan);
     // 予測の伸長対象は軌道分析ウィンドウが見ている個体を含むので、予測より先に確定させる。
     this._hud.updateAnalysisReaders(this);
-    // ポーズ中・決着後も無条件に呼ぶ: simTime が止まっている間はサブステップも進まず、
-    // 消費も期限切れの張り直しも起きないので、予測は伸び切ったところで止まるだけで害はない。
+    // ポーズ中・決着後も呼ぶ。simTime が止まっていれば予測は伸び切ったところで止まる。
     this.sections.enter(SECTION.predict);
     this.predictor.update(
       this.dynamicSystem.simTime, this.dynamicSystem.lastSimDt,
@@ -425,9 +422,8 @@ export class Game {
       this.frameAnchors, activeControllable, viewport,
     );
     this.sections.exit(SECTION.camera);
-    // カメラ更新の後に置く: 候補列の組み直しが読む近傍系抽出・遮蔽判定・可視マーカー更新は
-    // cameraSystem.activeCameraPos を使うので、先に組むとこのフレームの sync が1フレーム古い
-    // カメラ位置基準の判定を読むことになる。
+    // カメラ更新の後に置く — 候補列の組み直しは遮蔽判定などにカメラ位置を読むので、先に組むと
+    // このフレームの sync が1フレーム古いカメラ位置での判定を読む。
     this.sections.enter(SECTION.mapPick);
     this.viewManager.activeView.update(displayWindow);
     this.sections.exit(SECTION.mapPick);
@@ -502,6 +498,7 @@ export class Game {
 
   // ------------------------------------------------------------------ sync
 
+  // 1フレームぶんの sync フェーズ。update が確定させた表示窓とカメラを表示物へ写す。
   public sync(graphics: GraphicsSettingsData, style: RenderStyle, viewport: Viewport): void {
     const controlled = this.activeControllable;
     // update() が確定させた、このフレームの表示窓。
@@ -609,6 +606,7 @@ export class Game {
       ...this.planDisplay.perfCounts(),
       ...this._celestialSystem.perfCounts(),
       ...this.viewManager.activeView.perfCounts(),
+      // ここから下は Game 自身が答える値。
       displayDurationSec: this.displayWindowManager.current.duration,
       warp: this.simSpeedManager.simSpeed,
     };

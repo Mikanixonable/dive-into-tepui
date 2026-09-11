@@ -40,12 +40,12 @@ export class ReentryEffects {
   ): void {
     const t = (qdyn - REENTRY_GLOW_MIN_Q) / (REENTRY_GLOW_FULL_Q - REENTRY_GLOW_MIN_Q);
     const intensity = Math.max(0, Math.min(1, t));
-    // 衝撃波は対気速度方向に立つので、向きは ECI の絶対速度で決める。
     if (state === null || !visible || intensity <= 0 || lenSq(state.v) <= 1e-6) {
       this.core.hide();
       this.outer.hide();
       return;
     }
+    // TODO: 仕様(FLIGHT.md)は対気速度方向の前方だが、向きを ECI の絶対速度で決めている。
     const dir = norm(state.v);
     const sc = REENTRY_SIZE_MIN + REENTRY_SIZE_SPAN * intensity;
     this.core.sync(fo.RtoThreeV3(addScaled(state.r, dir, REENTRY_CORE_OFFSET)),

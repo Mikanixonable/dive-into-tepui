@@ -1,3 +1,4 @@
+// 前進・予測・接触の機構が個体と顔ぶれに求める面。
 import type { Vec3 } from '../../math/vec3';
 import type { Attitude } from '../../physics/attitude';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -84,6 +85,7 @@ export interface SimulationControlled extends SimulationState {
 }
 
 export interface DynamicSimulationRoster {
+  // 顔ぶれが変わるたびに増える世代。
   readonly collectionRevision: number;
   allMotions(): readonly DynamicSimulationParticipant[];
 }

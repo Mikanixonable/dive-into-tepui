@@ -37,7 +37,7 @@ export class ObjectPlacementPreviewView {
     style: LineStyle, camera: CameraFrame,
   ): void {
     this.ellipseLine.sync(elements, style, camera);
-    // ▷ マーカーは、位置を示すフレームだけ投影する。
+    // ▷ マーカーを宣言された表示へ切り替える。
     switch (marker.kind) {
       case 'shown':
         this.markers.setPosition(

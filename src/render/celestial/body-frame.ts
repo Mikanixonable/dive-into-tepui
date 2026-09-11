@@ -1,14 +1,12 @@
-// 天体固定の基準系を、描画が受け取る行列へ解決する。歪んだ形を持つ天体は半軸を天体固定の軸で
-// 持つので、その形を使う描画にはこの向きが要る。
+// 天体固定の基準系(歪んだ形の半軸が乗る軸)を、描画が受け取る行列へ解決する。
 import * as THREE from 'three/webgpu';
 import { spinOrientation } from '../../physics/body-orientation';
 import type { CelestialBody } from '../../physics/celestial-body';
 
 const tmpSpin = new THREE.Quaternion();
 
-// 時刻 t の自転姿勢から、描画座標のベクトルを天体固定の向きへ回す行列を target へ書く。
-// **自転姿勢を持たない天体では単位行列を書く** — 向きの定まらない形は真球としてしか意味を
-// 持たないので、どう回しても同じ答えになる。
+// 時刻 t の自転姿勢から、描画座標のベクトルを天体固定の向きへ回す行列を target へ書いて返す。
+// 自転姿勢を持たない天体(真球として扱う)では単位行列を書く。
 export function writeBodyFromWorld(
   target: THREE.Matrix4, motion: CelestialBody, t: number,
 ): THREE.Matrix4 {

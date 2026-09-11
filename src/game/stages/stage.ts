@@ -29,15 +29,14 @@ import type { EntityRoster } from '../dynamic/entity-roster';
 import type { EntityRegistry, SpawnGate } from '../dynamic/entity-registry';
 
 // 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。各ステージが
-// 自分の epoch としてこれを宣言する — ステージに別の日時を与えるのはその1行を変えるだけ。
-// **この定数を stage.ts の外から import しない**(元期は共有の定数ではなく、ステージの宣言)。
+// 自分の epoch としてこれを宣言する。ステージの宣言以外から読まない(元期は共有の定数ではなく、
+// ステージの宣言)。
 export const STORY_EPOCH: TdbJulianDate =
   calendarDateToJulianDate(parseCalendarDate('20115-05-14T06:00:00', 'TDB'));
 
 export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
 
-// 自然損耗の理由ごとのヒント文。Record にすることで、cause を足したときに文言の
-// 追加漏れが型検査で落ちる(三項演算子では黙って既定の文言に落ちていた)。
+// 自然損耗の理由ごとのヒント文。cause を足すと文言の追加漏れが型検査で落ちる。
 const ENEMY_LOSS_HINT: Record<Exclude<EnemyDeathCause, 'killed'>, string> = {
   burnup: '大気圏で焼失',
   collision: '天体へ衝突',
@@ -83,8 +82,7 @@ export interface StageClass {
   new (saved: StageSaveData | undefined, ...deps: StageDeps): Stage;
 }
 
-// ステージ ID → クリア回数。将来の拡張(周回数によるアンロック等)を見越して、
-// 「クリアしたか否か」ではなく回数を記録する。
+// ステージ ID → クリア回数(周回数によるアンロックに備えて、クリアの有無でなく回数で持つ)。
 export type ClearCounts = Readonly<Record<string, number>>;
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
@@ -92,7 +90,7 @@ export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 // 決着した周回の結果画面に出す内容。
 export interface StageResult {
   readonly win: boolean;
-  // 勝敗から決まる既定の見出しに収まらないときだけ差し替える。
+  // 結果画面の見出し。null なら勝敗から決まる既定の見出し。
   readonly title: string | null;
   readonly detailHtml: string;
 }
@@ -117,7 +115,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   public static readonly hiddenFromSelect: boolean = false;
   // 開始前に開始日時の指定画面を挟まない。挟むステージだけが true を宣言する。
   public static readonly picksStartEpoch: boolean = false;
-  // 選択画面でこのステージを並べるタブの名前。表示のまとまりだけを決め、挙動には影響しない。
+  // 選択画面でこのステージを並べるタブの名前。
   public static readonly selectGroup: string = 'ステージモード';
 
   // このステージが解放済みかどうかをクリア回数から判定する。既定では常に解放。
@@ -182,6 +180,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this._markers = markers;
     this._celestialSystem = celestialSystem;
     this._controlSelection = controlSelection;
+    // 進行状態は saved から復元し、無ければ新規開始の既定値で始める。
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
     this._phase = saved?.phase ?? 'playing';
     this.restored = saved !== undefined;

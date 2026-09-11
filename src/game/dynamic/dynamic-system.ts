@@ -43,13 +43,13 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 持ち回る。
   public get controllables(): readonly Controllable[] { return this.entities.filter(isControllable); }
 
-  // プールで描く種別の描画資源。どの種別がどのプールへ積むかは個体自身が知っている。
+  // プールで描く種別の描画資源。
   private readonly instancedPools: InstancedPools;
 
   // 顔ぶれを1フレームずつ進める積分機構。simTime の正本はここが持つ。
   private readonly simulator: Simulator;
 
-  // 個体の状態が非有限値に汚染された瞬間を捕まえる見張り。下の各境界で検査する。
+  // 個体の状態が非有限値に汚染された瞬間を捕まえる見張り。
   private readonly nanWatchdog: NanWatchdog;
 
   // 描画資源のプールと前進の機構を組んでから、saved があればその顔ぶれを復元する。
@@ -74,8 +74,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     if (saved) this.restoreFromSave(saved, notifier, worldSfx, flash, scene, markers);
   }
 
-  // スナップショットの顔ぶれを復元する。組み立て方は種別ごとの辞書が答え、知らない種別は
-  // 読み飛ばす。
+  // スナップショットの顔ぶれを復元する。知らない種別は読み飛ばす。
   private restoreFromSave(
     save: GameSaveData, notifier: Notifier, worldSfx: WorldSfx, flash: FlashEffects, scene: THREE.Scene,
     markers: MarkerSlots,
@@ -191,6 +190,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     return this.entities;
   }
 
+  // 全エンティティの Motion を追加順に並べた新しい配列。
   public allMotions(): readonly DynamicMotion[] {
     return this.entities.map(entity => entity.motion);
   }
@@ -245,11 +245,8 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     for (const controllable of this.controllables) controllable.clearTransientCommands();
   }
 
-  // 顔ぶれを1フレーム進める。個体が自分で決める推力を先に確定させ、操作されうる個体と敵へ
-  // 指令を決めさせてから積分する — 推力は自分の状態だけで決まるので、操作の可否に依らず先に
-  // 済ませられる。
-  //
-  // 各段の境界で操作対象を検査する。どの境界で落ちたかが、汚染したのがどの段かを一意に決める。
+  // 顔ぶれを1フレーム進める。自律の推力、操作・敵の指令を決めてから積分する。各段の境界で
+  // 操作対象の非有限値を検査し、どの境界で落ちたかで汚染した段を特定する。
   public update(
     active: Controllable | null, input: Input, operable: boolean,
     dt: number, simDt: number, canEngage: boolean, activeStage: StageOutcome & StageSimulationEvents,
@@ -284,14 +281,14 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     }
   }
 
-  // 操作されうる全個体へ updateControls を1度ずつ通す。「操作対象でない」と
-  // 「操作できないワープ倍率」は同じ状態なので、input を渡すかどうかで一つに束ねる。
+  // 生存中の操作されうる全個体へ updateControls を1度ずつ通す。
   private updateControllables(
     active: Controllable | null, input: Input, operable: boolean,
     dt: number, simDt: number, activeStage: StageOutcome,
   ): void {
     for (const controllable of this.controllables) {
       if (!controllable.motion.alive) continue;
+      // 「操作対象でない」と「操作できないワープ倍率」は同じ状態として input なしで進める。
       controllable.updateControls(
         controllable === active && operable ? input : null,
         dt,
@@ -322,8 +319,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     return this.entities.filter(isPlayer).find((p) => p.motion.alive) ?? null;
   }
 
-  // このフレームの表示物を同期する。何をどう出すかは個体が答えるので、ここは顔ぶれを1度だけ
-  // 辿るだけ。積む変換を作るのは個体自身なので、プールの1フレームをこの走査で挟む。
+  // このフレームの表示物を、顔ぶれを1度辿って同期する。
   public sync(
     displayTime: number, active: Controllable | null,
     visibilityPolicy: MapVisibilityPolicy | null, camera: CameraFrame, style: RenderStyle,
@@ -353,9 +349,8 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     this.bumpCollectionRevision();
   }
 
-  // 枠ごとの現在の個体数。個体は自分がどの枠・どの種別に属するかを既に宣言しているので、
-  // 顔ぶれを1度だけ辿ってそのとおりに数える。枠を持つ個体を枠の側で数えるのは、切り離した
-  // ブースターのように「表示トグルは自機だが数は別に見たい」種別があるため。
+  // 枠ごとの現在の個体数。枠を持つ個体は枠で数える — 切り離したブースターのように、表示トグルは
+  // 自機だが数は別に見たい種別があるため。
   public perfCounts(): Pick<PerfCounts, 'entities'> & ReturnType<Simulator['perfCounts']> {
     const entities: Partial<Record<EntityCountKind, number>> = {};
     for (const e of this.entities) {

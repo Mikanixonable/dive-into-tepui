@@ -1,8 +1,6 @@
-// 物体どうしの剛体接触の列挙・解決。交戦圏ごとに、その内側で collides を立てた Motion
-// どうしを参加者とし、反発が起きた当事者へ collideWithEntity を呼ぶ。ダメージ・音・エフェクトは
-// Motion へ注入された反応が引き受ける。1 substep 内の接触は TOI(接触時刻)昇順で解決する —
-// 参加者は互いの状態を書き換えるので、天体との接触(surface-contact-physics.ts)と違って作業列と
-// 解決回数の上限が要る。
+// 物体どうしの剛体接触の列挙・解決。交戦圏ごとに、その内側で collides を立てた参加者どうしの
+// 接触を 1 substep ぶん TOI(接触時刻)昇順で解き、反発が起きた当事者へ collideWithEntity を呼ぶ。
+// 参加者は互いの状態を書き換えるので、1 substep に解く件数に上限を置く。
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, scale, sameVec } from '../../math/vec3';
 import { HierarchicalSpatialGrid } from '../../math/hierarchical-spatial-grid';
@@ -29,10 +27,9 @@ interface Candidate {
   resolved: boolean;
 }
 
-// 位置と速度がどちらも動いていない当事者は、working も changed も触らない。書き戻しは
-// 予測弧を捨てるので、質量 0 の相手に触れられただけの艦がそれで作り直しになるのを防ぐ。
-// changed へ重複を積まないのも同じ理由 — state セッタが prevState を進めるので、
-// 1つの当事者への書き戻しは substep 内で1回に限る。
+// 動いた当事者だけ working[i] を after へ差し替え、changed へ1度だけ積む。書き戻しは予測弧を
+// 捨て、state セッタは prevState を進めるので、動いていない当事者を書き戻したり、同じ当事者を
+// substep 内で2度書き戻したりしてはならない。
 function replaceIfMoved(
   i: number,
   after: { readonly r: Vec3; readonly v: Vec3 },
@@ -55,17 +52,16 @@ function contactReach(entity: EntityContactParticipant, working: KinematicState,
 }
 
 export class EntityContactPhysics {
-  // 接触解決は Simulator の substep ごとに同期的に完了するため、入力の抽出・作業集合を
-  // インスタンス単位で再利用できる。配列の詰め直しは元の配列走査順をそのまま保つ。
+  // 作業用の配列。解決は1回の呼び出しの内で完結するので使い回せる。詰め直しは元の走査順を保つ。
   private readonly participantScratch: EntityContactParticipant[] = [];
   private readonly workingScratch: KinematicState[] = [];
   private readonly changedScratch: number[] = [];
   private readonly pairScratch: number[] = [];
   private readonly gridScratch = new HierarchicalSpatialGrid<number>(CONTACT_GRID_MIN_CELL_SIZE);
   private readonly candidateScratch: Candidate[] = [];
-  // デバッグ情報ウィンドウが読む、列挙した延べ候補ペア数。フレーム頭で Simulator が 0 へ戻す。
+  // 列挙した延べ候補ペア数。解決のたびに積み増す。
   public candidatePairs = 0;
-  // デバッグ情報ウィンドウが読む、交戦圏ごとの参加者数の延べ数。フレーム頭で Simulator が 0 へ戻す。
+  // 交戦圏ごとの参加者数の延べ数。解決のたびに積み増す。
   public participants = 0;
 
   // 交戦圏ごとに、その内側にいる参加者どうしの 1 substep ぶんの接触を解く。交戦圏どうしは
@@ -95,8 +91,6 @@ export class EntityContactPhysics {
 
   // 参加者どうしの接触候補を1回だけ列挙し、TOI が最小のものから1件ずつ解決する。上限回数を
   // 超えた分は次の substep へ持ち越す。
-  // Motion.state への書き戻しは全解決が終わってから一括で行う — ループの途中で書き戻すと
-  // state セッタ自身が prevState を書き換えてしまい、以降の反復が区間の始点を失う。
   private resolveInOrder(
     all: readonly EntityContactParticipant[],
     simTime: number,
@@ -125,6 +119,7 @@ export class EntityContactPhysics {
       dirtyA = best.ai;
       dirtyB = best.bi;
     }
+    // 書き戻しは全解決の後に一括で — 途中で書くと state セッタが prevState を進め、区間の始点を失う。
     for (const i of changed) all[i]!.state = working[i]!;
     // 使わなかった末尾を落とす — 候補は反発の計算結果を抱えるので、残すと使われない
     // CollisionResponse が候補列の中だけ生き続ける。
@@ -177,8 +172,7 @@ export class EntityContactPhysics {
     }
   }
 
-  // 未解決の候補のうち TOI が最小のものを返す(接触するものが無ければ null)。dirtyA/dirtyB を
-  // 当事者に含む候補は、走査のついでに現在の working 上の値で response を引き直す。
+  // 未解決の候補のうち TOI が最小のものを返す(接触するものが無ければ null)。
   private earliestContact(
     count: number,
     dirtyA: number,
@@ -190,6 +184,7 @@ export class EntityContactPhysics {
     for (let i = 0; i < count; i++) {
       const candidate = this.candidateScratch[i]!;
       if (candidate.resolved) continue;
+      // dirtyA/dirtyB を当事者に含む候補は、いまの working 上の値で response を引き直す。
       const { ai, bi } = candidate;
       if (ai === dirtyA || ai === dirtyB || bi === dirtyA || bi === dirtyB) {
         candidate.response = entityContactResponse(all[ai]!, working[ai]!, all[bi]!, working[bi]!);

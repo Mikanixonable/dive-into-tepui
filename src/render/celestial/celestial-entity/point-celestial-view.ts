@@ -1,5 +1,5 @@
-// 戦闘ビューで肉眼の「明るい星」程度にしか見えない惑星の見た目。見かけ直径が閾値未満なら実体を
-// 隠し、戦闘ビューでは星殻上の輝点スプライトへ切り替える。
+// 遠くでは輝点として見える惑星の見た目。見かけ直径が閾値未満なら実体を隠し、戦闘ビューでは
+// 星殻上の輝点スプライトへ切り替える。積雲の殻・オーロラ・同期軌道リングも持てる。
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import { lambertSphereIrradiance } from '../../../physics/lambert-sphere';
@@ -55,9 +55,9 @@ function sunIrradianceAt(star: StellarLightSource | null, pos: Vec3, displayTime
 }
 
 export class PointCelestialView extends SphereCelestialView {
-  // 輝点スプライト。グローテクスチャの生成が DOM を要するので build まで作らない。
+  // 輝点スプライト。build で作る(グローテクスチャの生成が DOM を要する)。
   private billboard!: Billboard;
-  // 描画座標のベクトルを天体固定の向きへ戻す回転。影パスへ渡すあいだだけ生きていればよい。
+  // cumulusShadowAt が呼ばれるたびに書き換えて返す、描画座標から天体固定の向きへの回転。
   private readonly bodyFromWorld = new THREE.Matrix4();
   // 表面へ渡すフレーム番号。
   private surfaceFrame = 0;
@@ -137,12 +137,11 @@ export class PointCelestialView extends SphereCelestialView {
     this.billboard.hide();
   }
 
-  // 影パスへ渡す積雲の殻。**描いている殻だけが影を落とす。** 姿勢は自転位相まで込みで組む —
-  // 軸だけでは場が地表と一緒に回らない。
+  // 影パスへ渡す積雲の殻。本体と雲殻を描いているフレームでだけ返す。返す bodyFromWorld は
+  // 使い回しの実体で、次の呼び出しで書き換わる。
   public override cumulusShadowAt(
     motion: DefinedCelestialBody, fo: FloatingOrigin, displayTime: number,
   ): ShadowCumulus | null {
-    // 本体または雲殻を描いていないフレームは、影の入力にも含めない。
     if (this.cumulus === null || !this.group.visible || !this.cumulus.visible) return null;
     writeBodyFromWorld(this.bodyFromWorld, motion, displayTime);
     return {
@@ -155,9 +154,8 @@ export class PointCelestialView extends SphereCelestialView {
     };
   }
 
-  // 大気の散乱へ立てる雲。**雲全体を描くときだけ立つ。** 姿勢は自転位相まで込みで組む —
-  // 軸だけでは場が地表と一緒に回らない。**姿勢はこの1体ぶんの実体で返す** — 大気パスが読むのは
-  // 描画のときなので、影へ渡す使い回しの実体を渡すと、同期のあいだに書き換わる。
+  // 大気の散乱へ立てる雲。本体と雲を描いているフレームでだけ返す。姿勢の行列は毎回新しく作る
+  // — 描画時まで読まれるので、cumulusShadowAt の使い回しの実体では同期中に書き換わる。
   public override atmosphereCloudsAt(
     motion: DefinedCelestialBody, displayTime: number,
   ): AtmosphereClouds | null {
@@ -199,8 +197,8 @@ export class PointCelestialView extends SphereCelestialView {
   ): void {
     const observerDistance = p.length();
     const sunDir = star === null ? v3(1, 0, 0) : norm(sub(star.motion.stateAt(displayTime).r, pos));
-    // 位相角は天体から見た恒星方向と観測者方向の成す角。観測者は描画原点なので -p̂ で、
-    // フローティングオリジンは平行移動しかしないため、描画座標の向きは ECI の向きと一致する。
+    // 位相角は天体から見た恒星方向と観測者方向(-p̂)の成す角。描画座標は ECI の平行移動なので、
+    // ECI の sunDir と描画座標の p̂ の向きを混ぜてよい。
     tmpToObserver.copy(p).negate().normalize();
     const cosPhase = Math.max(-1, Math.min(1,
       sunDir.x * tmpToObserver.x + sunDir.y * tmpToObserver.y + sunDir.z * tmpToObserver.z));

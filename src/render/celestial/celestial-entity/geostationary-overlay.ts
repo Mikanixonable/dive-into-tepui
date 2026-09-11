@@ -1,5 +1,5 @@
 // 同期軌道(自転と同じ周期で公転する赤道円軌道)の高度を示す、マップ専用のリングとラベル。
-// 実在の衛星や特定経度ではなく、高度の目盛りとして引く1本。
+// 高度の目盛りとして引く1本。
 import * as THREE from 'three/webgpu';
 import { OrbitalElements, orbitalElementsFromClassical } from '../../../physics/elements';
 import { isOccluded } from '../../../physics/occlusion';
@@ -25,7 +25,7 @@ function ringStyle(fade: number): LineStyle {
   return { color: RING_COLOR, opacity: RING_OPACITY * fade, renderOrder: LINE_RENDER_ORDER.reference };
 }
 
-// ラベルを置く軌道上の位相。
+// ラベルを置く軌道上の真近点角 [rad]。
 const LABEL_ANOMALY = Math.PI / 4;
 
 const MARKER_KEY = 'geolabel';
@@ -33,7 +33,7 @@ const MARKER_KEY = 'geolabel';
 // 真円に近い離心率。厳密な 0 は軌道面基底が縮退するので避ける。
 const NEAR_CIRCULAR_E = 1e-6;
 
-// 高度 [m] を「35,786km」の形の表示へ整える。
+// 高度 [m] を「GEO (35,786km)」の形のラベルへ整える。
 function altitudeLabel(altitude: number): string {
   const km = Math.round(altitude / 1000).toString();
   return `GEO (${km.replace(/\B(?=(\d{3})+$)/g, ',')}km)`;
@@ -62,13 +62,12 @@ export class GeostationaryOverlay {
     return new GeostationaryOverlay(motion, a);
   }
 
-  // リングをシーンへ一度だけ登録する。ラベルは MarkerSlots が持つので登録は要らない。
+  // リングをシーンへ一度だけ登録する。
   public build(scene: THREE.Scene): void {
     scene.add(this.line.line);
   }
 
-  // リングとラベルをこのフレームの表示状態へ同期する。visible は所有者の判断
-  // (マップ視点 かつ 同期軌道トグル ON)。
+  // リングとラベルを、表示時刻 pivot のこのフレームの表示状態へ同期する。
   public sync(
     center: CelestialBody, pivot: number, camera: CameraFrame,
     markers: MarkerSlots, celestialBodies: readonly CelestialBody[], visible: boolean,

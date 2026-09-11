@@ -1,8 +1,5 @@
-// 多ノードの計画軌道を arc 単位で解く。Plan の corners を区間へ分解し、区間ごとに区間ソース
-// (SegmentSource: 統一 PredictedArc への参照と、そこから読む [from, to])を持つ。ノードを1つも
-// 持たない唯一の区間は操作対象自身の予測弧を借用し(owned=false)、それ以外は起点・重力源が既存の
-// 弧と変われば作り直し、終端だけが動いた区間は requiredEnd の書き換えだけで済ませる。
-// 折れ線を描く PlanPathView を所有してそのフレームに描く弧を宣言し、画面判定も同じ表示変換を通す。
+// 多ノードの計画軌道を区間ごとの予測弧として解く。計画を区間へ分解し、各区間の到達状態・
+// アプシス・衝突点と、画面上の最寄り点を答える。折れ線は PlanPathView へ宣言して描く。
 import type * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { KinematicState } from '../../physics/kinematic-state';
@@ -28,18 +25,17 @@ import { PLAYER_HULL_RADIUS } from '../player/player';
 // 許容差以内の候補のうち最も早い時刻のものを選ぶ [px]
 const NEAREST_SAMPLE_TIE_PX = 3;
 
-// 計画軌道の折れ線を破線で描くときの、破線1本・間隔の画面上の長さ [px] と不透明度。
-// 実距離ではなく画面ピクセルで持つのは、マップの倍率が数桁変わるため実距離で固定すると
-// 拡大時は数本の線分に、縮小時はサブピクセルになって実線と区別できなくなるため。
+// 計画軌道の破線1本・間隔の画面上の長さ [px] と不透明度。マップの倍率は数桁変わるので、
+// 実距離で固定すると拡大時は数本の線分に、縮小時はサブピクセルになって実線と区別できない。
 const PLAN_ARC_DASH_PX = 8;
 const PLAN_ARC_GAP_PX = 6;
 const PLAN_ARC_OPACITY = 0.85;
 
+// 区間 index ごとの折れ線の色。末尾の色を以降の区間で使い回す。
 const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
 const arcColor = (i: number): number => SEGMENT_COLORS[Math.min(i, SEGMENT_COLORS.length - 1)]!;
 
-// i 番目の区間の折れ線の見た目。mpp [m/px] は破線の画面ピクセル指定を実距離へ直す尺度で、
-// ズームによらず画面上の間隔を一定に保つ。
+// i 番目の区間の折れ線の見た目。mpp [m/px] は破線の画面ピクセル指定を実距離へ直す尺度。
 function lineStyle(i: number, mpp: number): LineStyle {
   return {
     color: arcColor(i), opacity: PLAN_ARC_OPACITY, renderOrder: LINE_RENDER_ORDER.plan,
@@ -56,17 +52,16 @@ const TIME_TIE_SEC = 1e-6;
 // nearestSample が最寄りサンプルの左右区間を補間曲線上で細分するときの黄金分割探索の反復回数。
 const NEAREST_SAMPLE_REFINE_ITERATIONS = 20;
 
+// 起点状態 state0 から時刻 end [s] までの1区間。
 interface Segment { state0: KinematicState; end: number }
 
-// 1区間ぶんの積分ソース。owned が真なら PlanPath がこの弧の生成・requiredEnd/retainFrom の
-// 書き込みまで持つ(伸ばすのは Predictor の予算パス — growableArcs 参照)。偽ならノードを1つも
-// 持たない唯一の区間で、arc は操作艦自身の予測弧をそのまま借りたもの(艦の予測がまだ無い
-// フレームは null)。
+// 1区間ぶんの積分ソース。弧の [from, to] を読む。owned が偽なら、ノードを1つも持たない唯一の
+// 区間が操作艦自身の予測弧を借りたもの(艦の予測がまだ無いフレームは arc が null)。
 interface SegmentSource { arc: PredictedArc | null; from: number; to: number; owned: boolean }
 
 // 最後のバーン後(これから乗る軌道)の区間で見つかったアプシス。
 // periapsis/apoapsis は、区間が地表到達等で打ち切られてその極値へ届かなければ null。
-// apsisCenter はその極値を検出した弧自身が答える中心天体。
+// *Center はその極値を検出した弧が答える中心天体。
 interface FinalSegment {
   readonly periapsis: KinematicState | null;
   readonly apoapsis: KinematicState | null;
@@ -74,6 +69,7 @@ interface FinalSegment {
   readonly apoapsisCenter: CelestialBody | null;
 }
 
+// 計画軌道上の1点と、それが属する区間の index。
 interface PlanPathSample {
   readonly state: KinematicState;
   readonly arcIdx: number;
@@ -101,12 +97,11 @@ export class PlanPath {
   // 折れ線が載っている座標系。update() を通した後に読む。
   public get displayFrame(): ReferenceFrame { return this.requireDisplayTransform().frame; }
   private project: ProjectFn | null = null;
-  // sync が最後に受け取ったカメラ位置。nearestSample の遮蔽判定に使う(呼び出しは DOM
-  // ポインタイベント起点でフレーム外なので、直近の sync から引き継ぐ)。
+  // sync が最後に受け取ったカメラ位置。nearestSample の遮蔽判定に使う。
   private cameraPos: Vec3 | null = null;
   private final: FinalSegment | null = null;
-  // 計画を積分して保持する範囲とは別に、画面へ描く時間窓を持つ。ノードが複数あると
-  // 計画全体は表示期間より長くなり得るため、折れ線と目盛が同じ窓を読むようにする。
+  // 画面へ描く時間窓 [s]。ノードが複数あると計画全体は表示期間より長くなり得るので、
+  // 積分範囲とは別に持つ。
   private displayFrom = 0;
   private displayTo = 0;
   // clipSamplesTo が実際に切り詰めた(= 新規配列を作った)結果を区間の index ごとに
@@ -125,9 +120,8 @@ export class PlanPath {
   }
 
   // このフレームの表示変換(座標系・un-bake 時刻)を確定させ、起点とノード列から区間列を組み直す。
-  // planData が null なら表示変換だけを確定させて区間を空にする。ノードの無い唯一の区間は ship
-  // 自身の予測弧を借用し、それ以外は起点・重力源が既存の弧と一致すれば requiredEnd/retainFrom の
-  // 書き換えだけで済ませ、一致しなければ作り直す(伸ばすのは呼び出し側の予算パス)。
+  // planData が null なら表示変換だけを確定させて区間を空にする。組み直した弧は growableArcs() が
+  // 返すので、呼び出し側がそれを requiredEnd まで伸ばす。
   public update(
     planData: PlanData | null, ship: Controllable | null, frame: ReferenceFrame,
     simTime: number, displayTime: number, frameAnchors: FrameAnchorSource, displayDurationSec: number,
@@ -160,9 +154,8 @@ export class PlanPath {
       const prev = this.sources[i];
       let arc = prev?.owned ? prev.arc : null;
       if (!arc || !arc.represents(seg.state0, seg.end)) {
-        // 惑星への周回計画のみが対象なので、自機自身の諸元(PLAYER_HULL_RADIUS/SHIP_BCINV/
-        // SHIP_SRP_COEFF)で積分する。外挿の尾は持たない(keplerTail=false) — 尾の上にノードを
-        // 置くと、実際に積分し直した次のノードと繋がらなくなるため。
+        // 惑星への周回計画のみが対象なので自機の諸元で積分する。外挿の尾を付けると、尾の上に
+        // 置いたノードが積分し直した次のノードと繋がらなくなる。
         arc = new PredictedArc(
           seg.state0, this.celestialBodies.celestialMotions, PLAYER_HULL_RADIUS, SHIP_BCINV, SHIP_SRP_COEFF,
           /* keplerTail */ false, /* consumable */ false,
@@ -191,6 +184,7 @@ export class PlanPath {
   public displayedSamples(): readonly (readonly KinematicState[])[] {
     const out: (readonly KinematicState[])[] = [];
     for (let i = 0; i < this.activeCount; i++) {
+      // 区間の範囲と表示窓の重なりを描いている部分とし、2点に満たなければ線にならない。
       const source = this.sources[i]!;
       const from = Math.max(this.displayFrom, source.from);
       const to = Math.min(this.displayTo, source.to);
@@ -202,7 +196,7 @@ export class PlanPath {
     return out;
   }
 
-  // このフレーム owned な弧を区間順(= 時刻順)で返す。Predictor の予算パスが実際に伸ばす対象。
+  // このフレーム owned な弧を区間順(= 時刻順)で返す。どれも requiredEnd まで伸ばす対象。
   public growableArcs(): readonly PredictedArc[] {
     const out: PredictedArc[] = [];
     for (let i = 0; i < this.activeCount; i++) {
@@ -217,8 +211,8 @@ export class PlanPath {
     return this.final;
   }
 
-  // このフレームに描く弧を view へ宣言する。画面判定が使う視点もここで受け取り、毎フレーム
-  // 上書きする — 止めると、クリック当たり判定が古い視点のまま残る。
+  // このフレームに描く弧を view へ宣言し、画面判定が使う視点を更新する。毎フレーム呼ぶ —
+  // 止めると、クリック当たり判定が古い視点のまま残る。
   public sync(camera: CameraFrame): void {
     this.project = camera.project;
     this.cameraPos = camera.position;
@@ -235,8 +229,7 @@ export class PlanPath {
     this.view.dispose();
   }
 
-  // frame に載せて描く弧の宣言。ノードの無い計画は操作対象の現在軌道そのもの、借用中の区間は
-  // 操作対象自身の予測線が描くものなので、どちらも1本も宣言しない。
+  // frame に載せて描く owned な区間の弧。ノードの無い計画は操作対象の予測線と同じ軌道なので空。
   private arcLines(scale: ScaleFn, frame: ReferenceFrame): readonly PlanArcLine[] {
     if (this._nodeCount === 0) return [];
     const lines: PlanArcLine[] = [];
@@ -276,6 +269,7 @@ export class PlanPath {
     let minT = Infinity;
     let maxT = -Infinity;
     for (let i = 0; i < this.activeCount; i++) {
+      // 区間のサンプル範囲を表示窓で切り、全区間の端を集める。
       const samples = this.samplesOf(i, this.sources[i]!);
       if (samples.length === 0) continue;
       const from = Math.max(samples[0]!.t, this.displayFrom);
@@ -308,9 +302,8 @@ export class PlanPath {
     return this.sampleAtWithArc(t)?.state ?? null;
   }
 
-  // 時刻 t の補間状態と、それが属する区間の index を返す。ノードを別区間へ移すときは、
-  // その区間までに適用済みの Δv を差し引いてから新しい到着状態を組み立てる必要があるため、
-  // PlanEditor は sampleAt() ではなくこちらを使う。
+  // 時刻 t の補間状態と、それが属する区間の index を返す。区間ごとに適用済みの Δv が違うので、
+  // ノードを区間を跨いで動かすときはこちらで区間を知る。
   public sampleAtWithArc(t: number): PlanPathSample | null {
     for (let i = 0; i < this.activeCount; i++) {
       const s = this.stateAtSource(this.sources[i]!, t);
@@ -320,17 +313,14 @@ export class PlanPath {
   }
 
   // 時刻 t のサンプル位置 r を、現在の表示座標(ECI)へ変換する。座標系の原点・姿勢はサンプル
-  // 時刻 t で bake し、表示時刻で un-bake する(点なので FrameTransform を2つ引く)。
-  // update() を通した後に呼ぶ。
+  // 時刻 t で bake し、表示時刻で un-bake する。update() を通した後に呼ぶ。
   public toDisplay(r: Vec3, t: number): Vec3 {
     const { frame, frameAnchors, unbake } = this.requireDisplayTransform();
     const bakeTf = this.celestialBodies.frames.transformAt(frame, t, frameAnchors);
     return toInertialPoint(unbake, toFramePoint(bakeTf, r));
   }
 
-  // 時刻 t の方向ベクトル dir を、現在の表示座標(ECI)へ変換する。方向なので原点移動は掛からず、
-  // サンプル時刻 t の bake 姿勢と表示時刻の un-bake 姿勢の回転だけを受ける。update() を通した
-  // 後に呼ぶ。
+  // 時刻 t の方向ベクトル dir を、現在の表示座標(ECI)へ回転する。update() を通した後に呼ぶ。
   public toDisplayDir(dir: Vec3, t: number): Vec3 {
     const { frame, frameAnchors, unbake } = this.requireDisplayTransform();
     const bakeTf = this.celestialBodies.frames.transformAt(frame, t, frameAnchors);
@@ -343,15 +333,9 @@ export class PlanPath {
     return this.project(this.toDisplay(r, t));
   }
 
-  // 画面座標に最も近い計画軌道上の点(maxPx 以内)。なければ null。range を渡すと、
-  // その時刻範囲に入るサンプルだけを候補にする。まず画面距離だけで最寄りの arc を選び
-  // (バーン前後で arc をまたぐと t の大小関係が逆転するため、複数 arc を通して時刻を
-  // 比べると誤った arc を選びかねない)、その arc の中で画面最短距離から NEAREST_SAMPLE_TIE_PX
-  // 以内の候補に絞ってから referenceT に最も近い時刻を選ぶ — 新規配置は範囲の下端(= 最も
-  // 早く到達する時刻)を、既存ノードのドラッグはそのノードの現在時刻を渡すことで、
-  // 「表示期間が延びて折れ線が自分自身に重なる区間」の曖昧さを呼び出しの意図どおりに解く。
-  // こうして選んだ1点の左右の隣接サンプルまでを区間とし、区間内では画面距離が単峰であると
-  // みなして黄金分割探索を掛け、補間曲線上の最寄り点まで追い込む。
+  // 画面座標に最も近い計画軌道上の点(maxPx 以内)。なければ null。range を渡すとその時刻範囲に
+  // 限る。折れ線が自分自身に重なる所では referenceT に最も近い時刻を選ぶので、新規配置は範囲の
+  // 下端を、既存ノードのドラッグはそのノードの現在時刻を渡す。
   public nearestSample(
     mx: number,
     my: number,
@@ -370,7 +354,6 @@ export class PlanPath {
       for (let j = 0; j < samples.length; j++) {
         const s = samples[j]!;
         if (range && (s.t < range.min || s.t > range.max)) continue;
-        // 表示座標への変換はサンプルごとに1回だけ行い、遮蔽判定と投影で共有する。
         const pos = this.toDisplay(s.r, s.t);
         // 天体に遮蔽されて画面上見えていない点は候補から除く。
         if (cameraPos && isOccluded(cameraPos, pos, motions, transform.frameAnchors.bodiesPivot)) continue;
@@ -382,7 +365,7 @@ export class PlanPath {
     }
     if (candidates.length === 0) return null;
 
-    // 画面最短距離の候補が属する arc だけを tie-break の対象にする。
+    // 区間は画面距離だけで選ぶ — バーン前後で区間を跨ぐと t の大小が逆転し、時刻で比べると誤る。
     let nearest = candidates[0]!;
     for (const c of candidates) if (c.dSq < nearest.dSq) nearest = c;
     const toleranceDSq = (Math.sqrt(nearest.dSq) + NEAREST_SAMPLE_TIE_PX) ** 2;
@@ -398,6 +381,7 @@ export class PlanPath {
     }
     if (!best) return null;
 
+    // 選んだ点の左右の隣接サンプルの間で画面距離を単峰とみなし、補間曲線上の最寄り点へ追い込む。
     const source = this.sources[best.arcIdx]!;
     const samples = this.samplesOf(best.arcIdx, source);
     let lo = best.sampleIdx > 0 ? samples[best.sampleIdx - 1]!.t : best.state.t;
@@ -427,8 +411,7 @@ export class PlanPath {
     return this.displayTransform;
   }
 
-  // source を to でクリップしたサンプル列。source.arc が無ければ空配列。切り詰めが要ったときは
-  // index ごとに (元配列, to) でメモ化するので、同じ組である限り常に同じ配列参照が返る。
+  // source を to でクリップしたサンプル列(arc が無ければ空)。元配列と to が同じ間は同じ配列参照を返す。
   private samplesOf(i: number, source: SegmentSource): readonly KinematicState[] {
     if (!source.arc) return NO_SAMPLES;
     const raw = source.arc.trajectory.samplesOldestFirst();

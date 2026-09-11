@@ -26,8 +26,7 @@ function lRateFromSemiMajorAxis(a: number): number {
   return (360 * JULIAN_CENTURY) / keplerPeriod(a, MU_SUN);
 }
 
-// JPL Small-Body Database の単一元期の接触要素をそのまま受ける日心軌道。永年変化率は
-// いずれも 0(SBDB は単一元期の要素しか公開しない)で、平均運動は長半径から導く。
+// JPL Small-Body Database の単一元期の接触要素をそのまま受ける日心軌道。
 function sbdbOrbit(p: {
   aAu: number;
   e: number;
@@ -44,6 +43,7 @@ function sbdbOrbit(p: {
     raanDeg: p.raanDeg,
     lonPeriDeg: p.lonPeriDeg,
     l0Deg: p.l0Deg,
+    // 平均運動は長半径から導き、永年変化率は 0(SBDB は単一元期の要素しか公開しない)。
     lRateDegPerCentury: lRateFromSemiMajorAxis(a),
     raanRateDegPerCentury: 0,
     incRateDegPerCentury: 0,
@@ -98,19 +98,15 @@ const ENCKE: PlanetDef = {
   }),
 };
 
-// 太陽を公転する小天体32個。永年変化率はいずれも0(SBDBは単一元期の接触要素のみを公開)。
-// 軌道要素は JPL Small-Body Database(sbdb.api、full-prec=true、元期 JD2461200.5)の
-// 黄道座標・J2000 の a/e/i/Ω(om)/ω(w)/M(ma) から、raanDeg=Ω・lonPeriDeg=Ω+ω・
-// l0Deg=Ω+ω+M として求めた(360を超えて構わない)。lRateDegPerCentury は
-// lRateFromSemiMajorAxis(a) がケプラー第3法則から導く。SBDB の元期は天体ごとに異なり、
-// tempel1(JD2457470.5)・wild2(JD2458808.5)・
-// hartley2(JD2457152.5)・bennu(JD2455562.5)だけが上記と別の元期を持つ — この実装は
+// 太陽を公転する小天体32個。軌道要素は JPL Small-Body Database(sbdb.api、full-prec=true、
+// 元期 JD2461200.5)の黄道座標・J2000 の a/e/i/Ω(om)/ω(w)/M(ma) から、raanDeg=Ω・
+// lonPeriDeg=Ω+ω・l0Deg=Ω+ω+M として求めた(360を超えて構わない)。tempel1(JD2457470.5)・
+// wild2(JD2458808.5)・hartley2(JD2457152.5)・bennu(JD2455562.5)だけは別の元期を持つ。
 // どの元期も simTime=0 に対応させるので、同一の実在時刻の空を再現しているわけではない。
-// 直径は SBDB または各天体の観測文献。GM を SBDB が持つのはヒギエア・プシケ・エロス・
-// リュウグウ・ベンヌ・ディディモスだけなので、他は天体ごとに質量の出典か見積り方をその場に書く。
-// セドナのみ直径が未測定なので、掩蔽・熱赤外観測から広く引用される推定値(半径 500 km)を
-// 代わりに使う — 描画にも衝突判定にも半径が要るため、値が無いままにはできない。
-// 三軸半径 [km](a>=b>=c)は探査機・掩蔽・レーダー・適応光学など天体ごとに別の観測による。
+// 直径は SBDB または各天体の観測文献、三軸半径 [m](a>=b>=c)は探査機・掩蔽・レーダー・適応光学
+// など天体ごとの観測による。GM を SBDB が持つのはヒギエア・プシケ・エロス・リュウグウ・ベンヌ・
+// ディディモスだけで、他は天体ごとに質量の出典か見積り方をその場に書く。セドナは直径が未測定
+// なので、掩蔽・熱赤外観測から広く引用される推定値(半径 500 km)を使う。
 const SEDNA: PlanetDef = {
   id: 'sedna',
   // 質量は未測定。同規模の太陽系外縁天体(オルクス 1,190・クワオアー 1,790・ゴンゴン 1,740 kg/m^3)
@@ -130,7 +126,7 @@ export const QUAOAR: PlanetDef = {
   orbit: sbdbOrbit({ aAu: 43.1561765, e: 0.0352002, incDeg: 7.9915758, raanDeg: 188.9191248, lonPeriDeg: 352.1281758, l0Deg: 644.9769333 }),
 };
 
-// クワオアーの衛星ウェイウォット。基準面は黄道面(出典・扱いはハウメアの衛星と同じ)。
+// クワオアーの衛星ウェイウォット。基準面は黄道面の二次引用の要素で、歳差周期は未公開(=0)。
 const WEYWOT: SatelliteDef = {
   id: 'weywot',
   mu: GRAVITATIONAL_CONSTANT * 2.4e18,
@@ -188,7 +184,7 @@ export const ORCUS: PlanetDef = {
   orbit: sbdbOrbit({ aAu: 39.377, e: 0.22052, incDeg: 20.5568, raanDeg: 268.4054, lonPeriDeg: 341.9739, l0Deg: 531.0712 }),
 };
 
-// オルクスの衛星ヴァンス。基準面は黄道面(出典・扱いはハウメアの衛星と同じ)。
+// オルクスの衛星ヴァンス。基準面は黄道面の二次引用の要素で、歳差周期は未公開(=0)。
 const VANTH: SatelliteDef = {
   id: 'vanth',
   mu: GRAVITATIONAL_CONSTANT * 8.7e19,

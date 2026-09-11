@@ -13,8 +13,7 @@ import { CelestialView, type StellarLight, type StellarLightSource } from './cel
 
 export class StarCelestialView extends CelestialView {
   private star: StarSphere | null = null;
-  // 模式図で恒星の代わりに出す、実位置・実半径の輪郭円。球のシルエットなので毎フレーム
-  // カメラへ正対させる。
+  // 模式図で恒星の代わりに出す、実位置・実半径の輪郭円。
   private readonly outline: OutlineCircle = createOutlineCircle();
 
   // surfaceColor は恒星面の自発光色。
@@ -37,7 +36,7 @@ export class StarCelestialView extends CelestialView {
     scene.add(this.outline.line);
   }
 
-  // displayTime 時点の実位置へ恒星を置く。
+  // displayTime 時点の実位置へ恒星を置く。模式図では輪郭円、それ以外は実球体か点像で描く。
   public sync(
     motion: CelestialMotion, displayTime: number, camera: CameraFrame,
     _star: StellarLightSource | null,
@@ -53,7 +52,7 @@ export class StarCelestialView extends CelestialView {
     const radius = motion.def.radius;
     if (style === 'schematic') {
       star.hide();
-      // 円は姿勢を持たないので、球のシルエットとして見せるには毎フレームカメラへ正対させる。
+      // 球のシルエットとして見せるため、毎フレームカメラへ正対させる。
       this.outline.line.visible = true;
       this.outline.line.position.copy(p);
       this.outline.line.scale.setScalar(radius);
@@ -61,8 +60,7 @@ export class StarCelestialView extends CelestialView {
       return;
     }
     this.outline.line.visible = false;
-    // マップビューでは実球体だけを使う。**点像を置く星殻がカメラの近平面より手前にあるとは
-    // 限らない** — 引いたマップビューでは近平面が星殻より遠く、置いても写らない。
+    // マップビューは実球体で描く — 引いた視点では近平面が星殻より遠く、点像が写らない。
     if (camera.mode === 'map') {
       star.syncSphere(p, radius);
       return;

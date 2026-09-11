@@ -1,6 +1,5 @@
-// ECI 絶対座標の曲線を1本の折れ線として描く。曲線を基準点からの相対で保って Curve へ流し、
-// 描画原点の移動へ毎フレーム追随させる。描かれている曲線上の点を ECI 絶対座標で引く口も
-// 持つので、進行方向マーカーと当たり判定は線と同じ曲線を読める。
+// ECI 絶対座標の曲線を1本の折れ線として描き、描画原点の移動へ毎フレーム追随させる。
+// 描かれている曲線上の点を ECI 絶対座標で引ける。
 import * as THREE from 'three/webgpu';
 import { v3, Vec3 } from '../../../math/vec3';
 import { Curve, CurveColorSampler, CurveKnots, CurveSampler } from '../../curve';
@@ -8,7 +7,7 @@ import { LineStyle } from '../../line-style';
 import type { CameraFrame } from '../../camera/camera-frame';
 
 // 描く曲線の形。閉じた式で書けるものと、離散サンプルの節点列の2つがある。sample と knots は
-// 基準点(GuideCurveDisplay.origin)からの相対位置を返す。initialSegments の意味は Curve と同じ。
+// 基準点(GuideCurveDisplay.origin)からの相対位置を返す。
 export type GuideCurveShape =
   | { readonly kind: 'analytic'; readonly sample: CurveSampler; readonly initialSegments?: number }
   | { readonly kind: 'hermite'; readonly knots: CurveKnots };
@@ -20,7 +19,7 @@ export interface GuideCurveDisplay {
   readonly origin: Vec3;
   readonly shape: GuideCurveShape;
   readonly style: LineStyle;
-  // 線の中で色が変わる線だけが持つ。単色の線は style.color だけで塗る。
+  // 線の中で色を変えるときの色。無ければ style.color 一色で塗る。
   readonly colorAt?: CurveColorSampler;
 }
 
@@ -37,7 +36,7 @@ export class GuideCurve {
   private readonly scratch = new THREE.Vector3();
 
   // 線を1本組む。style は最初のフレームの見た目で、以後は sync が渡す値で上書きされる。
-  // maxVertices の意味は Curve と同じ(収束しない曲線の打ち切り)。
+  // maxVertices は収束しない曲線の頂点数の打ち切り。
   public constructor(style: LineStyle, maxVertices?: number) {
     this.curve = new Curve(style, maxVertices);
     this.line = this.curve.object;
@@ -53,7 +52,7 @@ export class GuideCurve {
     }
     this.curve.setStyle(display.style);
     this.curve.setTransform(camera.floatingOrigin.RtoThreeV3(display.origin));
-    // 頂点をどう配るかはカメラが決めるので、形の種類ごとに現在のカメラごと渡し直す。
+    // 頂点の配り方はカメラで変わるので、毎フレーム現在のカメラごと渡す。
     const viewportHeight = camera.viewport.height;
     const shape = display.shape;
     if (shape.kind === 'analytic') {
@@ -76,7 +75,7 @@ export class GuideCurve {
   }
 
   // 曲線上の count+1 点を ECI 絶対座標で返す(両端を含む)。線が消えているあいだは空。
-  // 曲線の形と基準点が変わるまでは同じ配列を返す(毎フレーム呼ばれても引き直さない)。
+  // 曲線の形・基準点・count が変わるまでは同じ配列を返す。
   public samplePoints(count: number): readonly Vec3[] {
     const display = this.display;
     if (display === null) return [];

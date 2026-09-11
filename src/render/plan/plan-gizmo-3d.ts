@@ -79,8 +79,7 @@ export class PlanGizmo3D {
     stem.quaternion.copy(quaternion);
     head.quaternion.copy(quaternion);
 
-    // ギズモは表示値であって物理的な明るさを持たないので、3D UI パスへ置く。深度テストは
-    // 効かせたまま — 不透明物には隠れるのが 3D UI の約束。
+    // 物理的な明るさを持たない表示値なので 3D UI パスへ置く(深度テストは効かせ、不透明物に隠れる)。
     markOverlay(stem);
     markOverlay(head);
     this.group.add(stem);

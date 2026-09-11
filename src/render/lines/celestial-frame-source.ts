@@ -1,4 +1,4 @@
-// 折れ線を座標系相対へ焼き直し、外挿した先端を ECI へ戻すために、線の描画が天体側へ問い合わせる面。
+// 線の描画に要る、座標系の剛体運動と天体の ECI 状態を答える面。
 import type { FrameAnchorSource, FrameTransform, ReferenceFrame } from '../../physics/frame';
 import type { KinematicState } from '../../physics/kinematic-state';
 

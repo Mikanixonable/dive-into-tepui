@@ -22,7 +22,7 @@ export interface ProteinBackboneAsset {
 export interface ProteinRenderSite {
   readonly id: string;
   readonly position: readonly [number, number, number];
-  /** 動くアンカーを引くための残基記述子。 */
+  /** 動くアンカーを引く残基記述子「残基名 鎖 番号 [原子名]」。 */
   readonly residues?: readonly string[];
 }
 
@@ -47,6 +47,7 @@ export interface ProteinRenderMotion {
     readonly chains: readonly string[];
     readonly residueNumbers: readonly number[];
   };
+  /** 原子・主鎖・表面頂点・リボン頂点・部位それぞれの motion 残基索引。 */
   readonly bindings: {
     readonly atomResidues: readonly number[];
     readonly backboneResidues: readonly number[];

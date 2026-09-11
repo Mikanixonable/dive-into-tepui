@@ -47,14 +47,14 @@ export class RcsEffects {
     displayTime: number,
     plumeScale = 1.0,
   ): void {
-    // 回転していない、またはズーム視点なら全パフを隠して終える
+    // 置けない・見えない・ズーム中・指令トルクが小さいフレームは全パフを隠す
     if (position === null || !visible || zoomActive
       || lenSq(torque) <= RCS_PUFF_TORQUE_EPS * RCS_PUFF_TORQUE_EPS) {
       for (const { plume } of this.puffs) plume.hide();
       return;
     }
     for (const [index, puff] of this.puffs.entries()) {
-      // 噴くと指令トルクから遠ざかるノズルは点火しない
+      // 指令トルクへの寄与が小さいノズルは消す
       if (dot(puff.torque, torque) <= 0.2) {
         puff.plume.hide();
         continue;

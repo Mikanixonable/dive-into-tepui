@@ -1,5 +1,5 @@
-// 撃破時に飛び散る破片1個の表示と、全個体が共有する描画資源とプール。形は数種類のジオメトリ(単位
-// スケール)を一度だけ焼いて全個体で共有し、個体は形をその中から抽選し、色を per-instance color で持つ。
+// 撃破時に飛び散る破片1個の表示と、全個体が共有する描画資源とプール。個体は数種類の形から1つを
+// 抽選し、個体ごとの色で描く。
 import * as THREE from 'three/webgpu';
 import { mulberry32 } from '../../../math/random';
 import { InstancedPool } from '../../instanced-pool';
@@ -12,9 +12,8 @@ import debrisRodData from '../../../assets/models/debrisRod.json';
 import type { InstancedPoolSet } from '../instanced-pools';
 import type { KinematicState } from '../../../physics/kinematic-state';
 
-// 飛散片ジオメトリのバリアント本数。バリアント1本につき InstancedPool が1本増え、G バッファと影パスの
-// シェーダが1本ずつ起動時にコンパイルされるので、増やすほど起動が伸びる。**7 を下回らせない** — 形の帯を
-// 等間隔に叩くので、これより少ないと 6 つの形のどれかが 1 本も出なくなる。
+// 飛散片ジオメトリのバリアント数。1つごとにプールが1本増え、起動時のシェーダのコンパイルが伸びる。
+// **7 未満にすると**、形の帯を等間隔に叩くので 6 つの形のどれかが 1 本も出なくなる。
 const DEBRIS_FRAGMENT_VARIANT_COUNT = 7;
 // バリアントの寸法を決める乱数のシード(起動のたびに形が変わらないよう固定する)。
 const DEBRIS_FRAGMENT_SEED = 0xdeb71;
@@ -119,13 +118,13 @@ export class DebrisFragmentPools implements InstancedPoolSet {
     for (const pool of this.pools) pool.dispose();
   }
 
-  // variant はどのバリアントジオメトリで描くか、color は個体ごとの色。
+  // 飛散片1個を、バリアント variant のプールへ個体色 color で積む。
   public push(variant: number, fragment: THREE.Object3D, color: THREE.Color): void {
     this.pools[variant]!.push(fragment, color);
   }
 }
 
-// 飛散片1個。変換だけを持つ表示ルートを、バリアントごとの共有ジオメトリへ積む。
+// 飛散片1個。表示ルートの変換で、抽選したバリアントの共有ジオメトリをプールへ積む。
 export class DebrisFragmentView extends DynamicView {
   private readonly fragmentVariant: number;
   private readonly fragmentColor: THREE.Color;

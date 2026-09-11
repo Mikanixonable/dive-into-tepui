@@ -141,7 +141,7 @@ export class ProteinEnemy extends Enemy {
 
   public get display(): ProteinDisplaySettings { return this.displaySettings; }
 
-  // ステージ操作の表示形態・着色変更を反映する。
+  // 表示形態・着色を切り替える。
   public setDisplay(display: ProteinDisplaySettings): void {
     this.displaySettings = display;
   }
@@ -168,6 +168,7 @@ export class ProteinEnemy extends Enemy {
     return energyAvailable && this.combat.isActionEnabled(attackAction.id);
   }
 
+  // 次に撃つ機能部位の ECI 位置。呼ぶたびに撃つ部位を順繰りに進める。
   protected override muzzlePosition(): Vec3 {
     return proteinSiteWorldPosition(
       this.combat.nextAttackSite(), [], [], 0,
@@ -176,20 +177,23 @@ export class ProteinEnemy extends Enemy {
     );
   }
 
+  // 修飾の倍率を掛けたプラズマ弾のダメージ。
   protected override plasmaDamage(): number {
     return this.combat.projectileDamage(PLASMA_BULLET_DAMAGE);
   }
 
+  // 発砲位置にマズルフラッシュを出す。
   protected override muzzleEffect(muzzleState: KinematicState): void {
     this._fx.spawnMuzzleFlash(muzzleState);
   }
 
-  // 被弾位置に最も近い機能部位へダメージを割り振る。部位の機能停止・フェーズ遷移は閃光で示す。
+  // 被弾位置に最も近い機能部位へダメージを割り振る。
   protected override applyBulletDamage(damage: number, impactPoint: Vec3): void {
     const localPoint = proteinLocalImpactPoint(
       impactPoint, this.motion.state.r, this.motion.att.q, ENEMY_MODEL_SCALE,
     );
     const result = this.combat.applyDamage(damage, localPoint);
+    // 部位の機能停止・フェーズ遷移は閃光で示す。
     if (result.siteDisabled || result.phaseChanged) {
       this._fx.spawnProteinStateFlash(
         kinematicState<'eci'>(this.motion.state.t, impactPoint, this.motion.state.v),
@@ -206,6 +210,7 @@ export class ProteinEnemy extends Enemy {
     return true;
   }
 
+  // 敵に共通する保存項目へ、アセット・表示設定・被弾モデルの状態を足す。
   public override serialize(): ProteinEnemySaveData {
     return {
       ...this.serializeEnemyFields(),

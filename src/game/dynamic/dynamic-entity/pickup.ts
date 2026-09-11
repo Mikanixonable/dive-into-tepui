@@ -172,7 +172,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
     ];
   }
 
-  // 削除は自分の alive を落とす。
+  // menuItems が出した操作 act を実行する。
   public runMenu(
     act: MenuAction, _controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
   ): void {
@@ -180,8 +180,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
     else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.mapKind, this.motion.state);
   }
 
-  // プロパティウィンドウに出す行。自艦からの距離と補給の中身を主要行とし、軌道要素は「軌道」
-  // グループの下に畳む。viewer が null なら距離の行は落ちる。
+  // プロパティウィンドウに出す行。viewer が null なら距離の行を省く。
   public propertyRows(
     celestialBodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
@@ -267,12 +266,12 @@ export class RcsFuelPickup extends Pickup {
   }
 }
 
-// この個体が弾薬補給か。顔ぶれから弾薬補給だけを絞るときに使う。
+// entity を弾薬補給へ絞り込む型ガード。
 export function isAmmoPickup(entity: DynamicEntity): entity is AmmoPickup {
   return entity instanceof AmmoPickup;
 }
 
-// この個体が RCS 燃料補給か。顔ぶれから RCS 燃料補給だけを絞るときに使う。
+// entity を RCS 燃料補給へ絞り込む型ガード。
 export function isRcsFuelPickup(entity: DynamicEntity): entity is RcsFuelPickup {
   return entity instanceof RcsFuelPickup;
 }

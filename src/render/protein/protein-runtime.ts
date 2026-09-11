@@ -20,6 +20,7 @@ import type {
   ProteinRenderSite,
 } from './protein-render-definition';
 
+// runtime が root に加えた子に付ける userData の印。
 const RUNTIME_VISUAL = 'protein-runtime-visual';
 
 interface ProteinBondVisual {
@@ -28,9 +29,9 @@ interface ProteinBondVisual {
   readonly toSiteId: string;
 }
 
-// 外部で計算済みのタンパク質変形を反映する GPU 資源と、転送・アンカー計算キャッシュを保つ。
+// 1体ぶんの確定済みモード係数を GPU へ渡し、部位のアンカーと結合線を残基変形に合わせる。
 export class ProteinRuntime {
-  // 共有バッファのスロットが尽きていれば null。そのときは変形せず、静止した構造で描く。
+  // 共有バッファの空きが尽きていれば null で、そのときは静止した構造で描く。
   public readonly motionBinding: ProteinMotionBinding | null;
   private readonly siteDefinitions = new Map<string, ProteinRenderSite>();
   private readonly baseSitePositions = new Map<string, THREE.Vector3>();
@@ -45,14 +46,13 @@ export class ProteinRuntime {
   private lastCpuMs = 0;
   private lastUploadBytes = 0;
 
-  // root に binding と部位・結合線の表示資源を結び付ける。
+  // root に部位の結合線を加える。motionBinding が無ければ自分で借りる。残基数が合わなければ例外。
   public constructor(
     private readonly root: THREE.Object3D,
     private readonly asset: ProteinRenderAsset,
     private readonly motion: ProteinRenderMotion,
     motionBinding?: ProteinMotionBinding | null,
   ) {
-    // 固定定義の索引と、外部係数を適用する binding を同じ runtime に束ねる。
     for (const site of asset.sites) this.siteDefinitions.set(site.id, site);
     this.motionBinding = motionBinding ?? createProteinMotionBinding(
       motion.residueCount, proteinMotionModeDisplacements(motion), motion.modes.length,
@@ -65,12 +65,13 @@ export class ProteinRuntime {
     this.rebuildVisuals();
   }
 
+  // 直前の syncVisual の CPU 時間 [ms] と GPU への転送量 [byte]。
   public get cpuMs(): number { return this.lastCpuMs; }
   public get uploadBytes(): number { return this.lastUploadBytes; }
 
-  // runtime が追加した THREE 子要素と、その参照キャッシュだけを空にする。
+  // runtime が root に加えた子を破棄し、アンカーの索引を空にする。root の本体の形状は残る。
   public clearVisuals(): void {
-    // userData の印がある子だけを対象にし、定義側が作った本体形状は残す。
+    // 印の付いた子を破棄する。
     for (const child of [...this.root.children]) {
       if (child.userData[RUNTIME_VISUAL] !== true) continue;
       child.traverse((nested) => {
@@ -85,7 +86,7 @@ export class ProteinRuntime {
       });
       this.root.remove(child);
     }
-    // THREE 資源と対応する索引を同時に空へ戻す。
+    // 対応する索引も空にする。
     this.baseSitePositions.clear();
     this.siteResidueGroups.clear();
     this.bondVisuals.length = 0;
@@ -93,8 +94,8 @@ export class ProteinRuntime {
 
   // asset の部位・結合情報から、表示用 THREE 資源とアンカー索引を作り直す。
   public rebuildVisuals(): void {
-    // 再着色後にも呼べるよう、旧 runtime 資源を必ず除いてから作る。
     this.clearVisuals();
+    // 部位の静止位置と、アンカーを引く残基群。
     const scale = this.asset.coordinateScale;
     for (let index = 0; index < this.asset.sites.length; index += 1) {
       const site = this.asset.sites[index]!;
@@ -102,7 +103,7 @@ export class ProteinRuntime {
       this.baseSitePositions.set(site.id, new THREE.Vector3(x * scale, y * scale, z * scale));
       this.siteResidueGroups.set(site.id, proteinAnchorResidues(site, index, this.motion, this.motion.bindings.siteResidues));
     }
-    // 結合線は部位 id で保持し、sync 時に変形済みアンカーへ端点を更新する。
+    // 結合線を部位の静止位置で引く。端点は syncVisual で動かす。
     for (const bond of this.asset.bonds) {
       const from = this.siteDefinitions.get(bond.from);
       const to = this.siteDefinitions.get(bond.to);
@@ -118,17 +119,18 @@ export class ProteinRuntime {
       this.root.add(line);
       this.bondVisuals.push({ line, fromSiteId: bond.from, toSiteId: bond.to });
     }
+    // 変位を CPU でも求める残基。
     this.trackedResidues = [...new Set([...this.siteResidueGroups.values()].flat())];
   }
 
-  // 外部で確定した LOD・係数を GPU とアンカー位置へ反映する。
+  // 確定したモード係数を GPU へ渡し、アンカーと結合線を変形に合わせる。active でないか marker なら計測値を 0 にして戻る。
   public syncVisual(display: ProteinMotionDisplay): void {
     if (!display.active || display.lod === 'marker') {
       this.lastCpuMs = 0;
       this.lastUploadBytes = 0;
       return;
     }
-    // GPU 転送は完全な入力キーが変わったフレームだけ行う。
+    // LOD・標本化時刻・フェーズのどれかが変わったフレームで GPU へ転送する。
     const cpuStart = performance.now();
     if (this.uploadedLod !== display.lod || this.uploadedSampleTime !== display.sampleTime
       || this.uploadedPhase !== display.phase) {
@@ -141,11 +143,12 @@ export class ProteinRuntime {
     } else {
       this.lastUploadBytes = 0;
     }
-    // DOM 部位マーカーと結合線が GPU 変形と同じ位置を使えるよう、必要な残基だけ CPU 投影する。
+    // アンカーが GPU の変形と同じ位置になるよう、部位の残基を CPU でも投影する。
     projectProteinResidues(
       this.motion, display.coefficients, this.trackedResidues, this.trackedResidueOffsets,
     );
     this.lastCpuMs = performance.now() - cpuStart;
+    // 結合線の端点を変形済みアンカーへ動かし、フェーズで濃さを変える。
     const scale = this.asset.coordinateScale;
     for (const bond of this.bondVisuals) {
       const fromBase = this.baseSitePositions.get(bond.fromSiteId);
@@ -163,14 +166,13 @@ export class ProteinRuntime {
       : display.phase === 'critical' ? 0.12 : 0.68;
   }
 
-  // 部位 id の変形済みアンカーを、指定されたワールド姿勢へ写す。
+  // 部位 id の変形済みアンカーを、個体の位置・姿勢でワールド座標へ写す。id が無ければ origin。
   public siteWorldPositionById(id: string, origin: Vec3, attitude: Quat): Vec3 {
     return this.siteWorldPosition(this.siteDefinitions.get(id) ?? null, origin, attitude);
   }
 
-  // 変形済みローカルアンカーを、外部から渡された個体姿勢でワールド座標へ写す。
+  // 部位の変形済みアンカーを、個体の位置・姿勢でワールド座標へ写す。site が null なら origin。
   private siteWorldPosition(site: ProteinRenderSite | null, origin: Vec3, attitude: Quat): Vec3 {
-    // 部位が見つからない場合も共通変換へ null を渡し、origin 基準の安全な結果にする。
     return proteinSiteWorldPosition(
       site,
       site ? this.siteResidueGroups.get(site.id) ?? [] : [],
@@ -183,7 +185,7 @@ export class ProteinRuntime {
     );
   }
 
-  // runtime が所有する THREE/GPU 資源をすべて破棄する。
+  // root に加えた資源と motionBinding(外から渡したものも)を破棄する。
   public dispose(): void {
     this.clearVisuals();
     this.bondMaterial.dispose();

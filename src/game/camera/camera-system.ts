@@ -20,13 +20,11 @@ import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 // 戦闘ビューの初期視点: 操作対象の後方やや上から見下ろす(役割フォーカス+姿勢追従)。
 const COMBAT_CAMERA_FOV = 55; // 通常時の垂直画角 [deg]
 const COMBAT_CAMERA_INIT_ANGLES = { yaw: -Math.PI / 2, pitch: 0.3 - (10 * Math.PI) / 180, roll: 0 };
-const COMBAT_CAMERA_INIT_DIST = 38;
+const COMBAT_CAMERA_INIT_DIST = 38; // [m]
 
 const ZOOM_LERP_RATE = 9; // ガンサイトとの画角遷移の追従速度 [1/s]
 
-// current から target へ、fovDeg だけを指数的に近づけた Viewpoint を返す(position/lookTarget/up/
-// aspect はアニメーションせず target の値をそのまま採用する — カメラの向き自体は毎フレーム
-// 追従してよく、揺れて見えるのは FOV だけで十分なため)。
+// current から target へ fovDeg を指数的に近づけた Viewpoint を返す。他の成分は target の値。
 function lerpViewpointFov(current: Viewpoint, target: Viewpoint, dt: number): Viewpoint {
   const k = 1 - Math.exp(-ZOOM_LERP_RATE * dt);
   return { ...target, fovDeg: current.fovDeg + (target.fovDeg - current.fovDeg) * k };
@@ -71,10 +69,9 @@ export class CameraSystem {
     this.hud.hint('視点をリセット');
   }
 
-  // 両カメラを構築し、視点リセットボタンを配線する。
-  // saved があれば両カメラをその視点から組む。currentView はビューの正本を引く関数 —
-  // ViewManager より先に生成されるため、参照でなく遅延評価で受ける。
-  // attitudeOf はフォーカス機体の姿勢追従に使う解決関数(FocusCameraConfig 参照)。
+  // 両カメラを構築し、視点リセットボタンを配線する。saved があれば両カメラをその視点から組む。
+  // currentView は現在のビューを毎回引く関数、attitudeOf はフォーカス id の時刻 t の姿勢
+  // (引けなければ null)。
   public constructor(
     private readonly hud: HudLayers & Notifier,
     celestialBodies: CelestialBodies,
@@ -125,11 +122,12 @@ export class CameraSystem {
     this.viewResetBtn?.removeEventListener('pointerdown', this.handleViewReset);
   }
 
-  // 駆動・描画に使うカメラ実体。ビューの切替で、どちらの実体を通すかだけが変わる。
+  // 現在のビューで駆動するカメラ実体。
   private get activeFocusCamera(): FocusCamera {
     return this.mapActive ? this.mapCamera : this.combatCamera;
   }
 
+  // 現在のビューの視点。戦闘ビューはガンサイトとの画角遷移を掛けた後の値。
   public get activeViewpoint(): Viewpoint {
     return this.mapActive ? this.mapCamera.viewpoint : this.combatViewpoint;
   }
@@ -154,9 +152,8 @@ export class CameraSystem {
     return !this.mapActive && this._zoomActive;
   }
 
-  // 入力からカメラの向き・ズームを更新する。ビューに応じてどちらか一方のインスタンスだけを
-  // 駆動する。displayTime/frameAnchors は座標系変換に使う — 線・メッシュと同じ表示時刻でないと
-  // 回転系選択時にカメラだけが現在時刻に取り残される。controlled は照準ズームの可否と
+  // 入力から現在のビューのカメラの向き・ズームを更新する。displayTime は線・メッシュと同じ表示
+  // 時刻を渡す — ずれると回転系選択時にカメラだけが取り残される。controlled は照準ズームの可否と
   // その視点を決める。
   public update(
     displayTime: number,
@@ -207,8 +204,7 @@ export class CameraSystem {
       return;
     }
     this._zoomActive = input.down(K.gunsightZoom);
-    // 照準ズームは機関砲の照準器なので、砲を積んでいる操作対象にしか無い。持たない相手を
-    // 操作している間はズーム要求を無視して軌道視点のままにする。
+    // 照準ズームは機関砲の照準器なので、砲を積む操作対象にだけ効く。
     const useGunsight = this._zoomActive && controlled?.fire != null;
     // ガンサイト中の視点操作は、覗いていない軌道視点へ届かせない(解除時に視点が跳ぶ)。
     const stillMouse = { ...mouse, dx: 0, dy: 0, wheel: 0, panDx: 0, panDy: 0, roll: 0 };
@@ -233,14 +229,13 @@ export class CameraSystem {
     return this.activeFocusCamera.dist;
   }
 
-  // アクティブカメラが注視している点の ECI 速度。カメラの並進はこの点が決める —
-  // 注視点まわりの旋回・パン・ズームは含めない。
-  // 速度を答えられない対象(点マーカー)を注視しているあいだは慣性系静止として扱う。
+  // アクティブカメラが注視している点の ECI 速度(カメラの並進速度。旋回・パン・ズームぶんは
+  // 含めない)。速度を答えられない対象を注視しているあいだはゼロ。
   public get focusVelocity(): Vec3 {
     return this.activeFocusCamera.focusVelocity ?? v3();
   }
 
-  // 両サブカメラの視点状態をセーブデータへ書き出す。どちらが表示中かは ViewManager の責務。
+  // 両サブカメラの視点状態をセーブデータへ書き出す。chase が戦闘ビュー、overview がマップビュー。
   public serialize(): Pick<CameraSaveData, 'chase' | 'overview'> {
     return { chase: this.combatCamera.serialize(), overview: this.mapCamera.serialize() };
   }

@@ -11,43 +11,32 @@ import type { CameraFrame } from './camera-frame';
 import type { ViewMode } from '../view-mode';
 import type { Viewport } from '../viewport';
 
-// near は固定値ではなく、注視点までの距離をこの比で割った値を毎フレーム使う
-// (near = dist / NEAR_RATIO)。比を大きくすると near が注視点に近づいて
-// 手前がクリップされにくくなる。反転 32bit 深度では分解能が near に依らないので、
-// この比が深度精度と取引になることはない。
+// 近クリップ距離 = 注視距離 / NEAR_RATIO。比を大きくするほど手前がクリップされにくい。
+// 反転 32bit 深度では分解能が near に依らないので、大きくしても深度精度は落ちない。
 const NEAR_RATIO = 1000;
 
-// near = dist / NEAR_RATIO の比例則は dist の上限では星球シェル・
-// 天球グリッド(CELESTIAL_SHELL_RADIUS)より大きくなる(dist=1e14 で near=1e11)。
-// near クリップは光軸からの角度 θ に対して球殻上の点を R·cosθ まで切り詰めるので、
-// R そのものでなく画面対角の半視野角 θ_diag での R·cosθ_diag を上限に取らないと、
-// 画面中心だけ残して周辺・四隅の星が消える。
-// 1 未満のこの係数はその余弦にさらに掛ける安全マージン。
+// 注視距離が大きいと near が星球シェル半径 R を超える(dist=1e14 で near=1e11)。near 面は光軸から
+// θ の点を R·cosθ まで切り詰めるので、上限は R でなく画面対角の半視野角での R·cosθ_diag に取る
+// (R で抑えると周辺・四隅の星が消える)。これはその余弦に掛ける 1 未満の安全マージン。
 const NEAR_SHELL_MARGIN = 0.9;
 
-// far も near と同様に固定値ではなく dist に連動させる
-// (far = clamp(dist × FAR_RATIO, FAR_MIN, FAR_MAX))。
-// far を dist に比例させないと、太陽・木星のような遠方天体は引いたカメラでは
-// far 平面の外に出て消える。逆に近距離域で far を大きく取ることの費用は、反転 32bit 深度では
-// 事実上ゼロ。
+// 遠クリップ距離の注視距離に対する比。引いたカメラでも太陽・木星のような遠方天体を far の内に
+// 収める。反転 32bit 深度では far を大きく取る費用は事実上ゼロ。
 const FAR_RATIO = 100;
 
 // 艦至近(dist = ENTITY_MIN_DIST)まで寄っても、見かけ直径が残る最遠の天体
 // (直径 1.4e9 m の恒星を LOD 上限で見た 1.4e12 m)が far の外に出ないための下限。
 const FAR_MIN = 2e12;
 
-// 注視距離の上限 × FAR_RATIO と等しい値。これより小さいと
-// 最大ズームアウト付近で far = dist × FAR_RATIO の比例則がこの上限に張り付いてしまい、
-// 注視点より奥にある軌道線・天体が far 平面でクリップされる。
+// 注視距離の上限 × FAR_RATIO。これより小さいと、最大ズームアウト付近で注視点より奥の
+// 軌道線・天体が far 平面で切れる。
 const FAR_MAX = 1e16;
 
 // 平行投影の半画面高さ [m] の下限。0 では投影行列が退化する。
 const ORTHOGRAPHIC_HALF_HEIGHT_MIN = 1e-3;
 
-// 近クリップ距離。注視距離に比例させることで、どのズーム段でも注視点を切り落とさない
-// (NEAR_RATIO 参照)。near クリップは光軸からの角度 θ の点を R·cosθ で切り詰める平面なので、
-// 画面対角の半視野角(画角・アスペクト比から求まる)での R·cosθ_diag を超えないようクランプし、
-// 星球シェル・天球グリッドの周辺・四隅がクリップされないようにする。
+// 近クリップ距離 [m]。どのズーム段でも注視点を切り落とさず、星球シェル・天球グリッドを
+// 画面の四隅まで残す値を返す。
 function nearClip(clipFovDeg: number, clipDistance: number, viewport: Viewport): number {
   const halfV = THREE.MathUtils.degToRad(clipFovDeg * 0.5);
   const halfH = Math.atan(Math.tan(halfV) * viewport.width / viewport.height);
@@ -56,8 +45,7 @@ function nearClip(clipFovDeg: number, clipDistance: number, viewport: Viewport):
   return Math.min(nearMax, clipDistance / NEAR_RATIO);
 }
 
-// 遠クリップ距離。注視距離に比例させることで、引いたカメラでも太陽・木星のような遠方天体が
-// far の外に出て消えない(FAR_RATIO 参照)。
+// 遠クリップ距離 [m]。引いたカメラでも、遠方天体と注視点より奥の軌道線を far の内に収める。
 function farClip(clipDistance: number): number {
   return Math.min(FAR_MAX, Math.max(FAR_MIN, clipDistance * FAR_RATIO));
 }
@@ -138,8 +126,7 @@ export class CameraView {
     // 注視距離が決める。明言された仕様に基づくものではない。
     const near = nearClip(clipFovDeg, clipDistance, viewport);
     const far = farClip(clipDistance);
-    // 描画原点はカメラの ECI 位置そのもの。カメラ自身の位置成分をほぼ0にしておかないと、
-    // 遠方の描画対象が f32 の桁落ちでカメラの動きに合わせて振動する。
+    // 描画原点をカメラの ECI 位置に揃えないと、遠方の描画対象が f32 の桁落ちで振動する。
     const position = viewpoint.position;
     const camera = viewpoint.projection === 'orthographic' ? this.orthographicCamera : this.perspectiveCamera;
     syncCameraToViewpoint(camera, viewpoint, near, far, position);

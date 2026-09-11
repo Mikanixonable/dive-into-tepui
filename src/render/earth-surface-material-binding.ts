@@ -1,6 +1,5 @@
-// 地球表面のGPUテクスチャとNodeMaterialを、既存の球メッシュへ束ねて渡す。
-// タイルの選択・公開はcoordinator、球メッシュの材質所有はCelestialSurfaceが担当し、ここは両者の
-// 描画用入力を安定したTSLノードへ接続する。
+// 地球表面の材質を組む。タイルの GPU テクスチャと base 画像を1枚の NodeMaterial へ束ね、
+// 天体の形・姿勢と見せ方をフレームごとに渡す。
 import * as THREE from 'three/webgpu';
 import { normalView, positionLocal, uniform } from 'three/tsl';
 import type { CelestialSurfaceFrame } from './celestial/celestial-surface';
@@ -16,14 +15,17 @@ export interface EarthSurfaceMaterialBinding {
   readonly material: THREE.MeshStandardNodeMaterial;
   readonly deferredTextures: readonly DeferredTexture[];
   readonly textures: readonly THREE.Texture[];
+  // base 画像の取得に失敗した最初の理由。失敗していなければ null。
   readonly failureReason: () => string | null;
   syncFrame(frame: CelestialSurfaceFrame): void;
-  // material/texturesはCelestialSurfaceが所有するため、ここでは非同期処理だけを止める。
+  // base 画像の取得を止める。material・deferredTextures・textures の解放は受け取った側が行う。
   dispose(): void;
 }
 
+// half float の 1.0 のビット列。
 const FLOAT16_ONE = 0x3c00;
 
+// 取得が届くまでの base terrain。全 texel を平面法線・粗さ 1 を表す値で埋める。
 function defaultTerrainData(): Uint16Array {
   const data = new Uint16Array(EARTH_BASE_TERRAIN_WIDTH * EARTH_BASE_TERRAIN_HEIGHT * 4);
   for (let offset = 0; offset < data.length; offset += 4) {
@@ -33,12 +35,15 @@ function defaultTerrainData(): Uint16Array {
   return data;
 }
 
+// base terrain を受ける half float のテクスチャと、その裏の配列。配列を書き換えて
+// needsUpdate を立てると描画へ反映される。
 function createBaseTerrainTexture(): { readonly texture: THREE.DataTexture; readonly data: Uint16Array } {
   const data = defaultTerrainData();
   const texture = new THREE.DataTexture(
     data, EARTH_BASE_TERRAIN_WIDTH, EARTH_BASE_TERRAIN_HEIGHT,
     THREE.RGBAFormat, THREE.HalfFloatType,
   );
+  // 色ではなく数値として、ミップを持たずに線形補間で読む。
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
   texture.colorSpace = THREE.NoColorSpace;
@@ -49,15 +54,15 @@ function createBaseTerrainTexture(): { readonly texture: THREE.DataTexture; read
   return { texture, data };
 }
 
-// baseColorUrl/baseTerrainUrlの画像を共通の材質へ束ねる。fetchImplはbaseTerrainの取得に使い、省けば
-// fetch。baseTerrainの取得に失敗しても、平面法線・粗さ1の初期データを残すため、地表が黒く欠けるの
-// ではなくタイルのfallbackへ戻れる。
+// タイルの textures と base 画像(baseColorUrl・baseTerrainUrl)を束ねた材質を組む。fetchImpl は
+// baseTerrain の取得に使う(省けば fetch)。base 画像が届かない間も、平面法線・粗さ 1 の初期
+// データで描ける。
 export function createEarthSurfaceMaterialBinding(
   textures: EarthSurfaceGpuTextures, baseColorUrl: string, baseTerrainUrl: string, fetchImpl?: typeof fetch,
 ): EarthSurfaceMaterialBinding {
-  // base画像の取得失敗は、最初の1件だけを理由として残す。
   let disposed = false;
   let baseFailureReason: string | null = null;
+  // base 画像の取得失敗を記録する。理由として残すのは最初の1件で、dispose 後は記録しない。
   const recordBaseFailure = (label: string, error: unknown): void => {
     if (disposed || baseFailureReason !== null) return;
     const detail = error instanceof Error ? error.message : String(error);

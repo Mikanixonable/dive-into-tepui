@@ -1,19 +1,6 @@
-// 時刻付き点列(KinematicState)を1本の単色折れ線として描く。保持区間が描画上限(to)に届かない
-// ときは、先端を中心天体まわりの二体軌道とみなしたケプラー外挿(kepler-extrapolation.ts)で to
-// まで継ぎ足す。このモジュールの責務は、DynamicTrajectory の保持区間(+ 外挿ぶん)から描画対象の
-// 時刻範囲を切り出し、位置と接線を持つ節点列として Curve へ渡すことと、その曲線が描かれる
-// 座標系の管理。節点の間をどう埋めるか(画面上のサジッタに応じた適応分割)は Curve が持つ。
-//
-// 座標変換は physics/frame.ts と、供給された座標系の剛体運動へ委譲する二段構え:
-//  - bake(点列・frame が変わったときだけ): 各サンプルの KinematicState をその時刻の座標系相対へ
-//    変換する(frameTransformAt→toFrameState)。点ごとに座標系の姿勢・原点が違う非剛体変形なので、
-//    時刻ごとに変換し直す(慣性系なら無変換)。
-//  - un-bake(毎フレーム): 表示時刻の座標系の剛体運動(frameTransformAt)を Curve の transform と
-//    して与え、座標系相対頂点を慣性系へ戻す。全頂点一律なので O(1)。
-//  - フローティングオリジン補正(毎フレーム): transform の位置 = 座標系原点の描画フレーム位置
-//    (原点が動く座標系でもここだけ直せば済むよう、頂点は書き換えない)。
-// THREE の合成は world = position + quaternion·vertex なので、原点まわりの un-bake 回転 →
-// 平行移動の順で正しい。
+// 軌跡(DynamicTrajectory)の描画区間 [from, to] を1本の単色折れ線として描く。区間の状態を各時刻の
+// 座標系相対へ焼き(bake)、表示時刻の座標系の剛体運動で慣性系へ戻して(un-bake)描く。保持区間が
+// to に届かないときは、先端を中心天体まわりの二体軌道とみなして to まで外挿し継ぎ足す。
 import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { FrameAnchorSource, FrameTransform, framePoint, ReferenceFrame, toFrameState, toInertialPoint } from '../../physics/frame';
@@ -26,18 +13,16 @@ import { Curve, CurveKnots } from '../curve';
 import { LineStyle } from '../line-style';
 import type { CelestialFrameSource } from './celestial-frame-source';
 
-// 頂点数の打ち切り。数周ぶんの軌跡なら数百頂点で収束するが、28日表示のように数百周が
-// 重なる区間は何頂点あっても収束しないので、どこで頭打ちにするかをここで決める。
-// マップの通常のズームで残留誤差が 99% の区間でサジッタ目標(0.5px)を下回る水準を採る
-// (400周ぶんの軌跡の内側にカメラを置くと 1.4px ほどまで上がるが、その視点では軌跡自体が
-// 画面を埋める網目になっていて見分けられない)。
+// 頂点数の上限。数百周が重なる区間(28日表示など)は何頂点あっても収束しないので頭打ちにする。
+// 値は、マップの通常のズームで 99% の区間の残留誤差がサジッタ目標(0.5px)を下回る水準(400周の
+// 軌跡の内側から見ると 1.4px まで上がるが、軌跡が画面を埋める網目になり見分けられない)。
 const MAX_VERTICES = 4096;
 
 // 外挿区間に足すサンプル数の上限。
 const MAX_EXTRAPOLATED_SAMPLES = 2048;
 
-// 描く軌跡が無いときの点列。再 bake するかを点列の参照同一性で判定するので、そのフレームだけ
-// 空になった線が毎フレーム焼き直しにならないよう、共有インスタンスを使う。
+// 描く軌跡が無いときの点列。再 bake は点列の参照で判定するので、空の点列を毎回作ると
+// 空の線が毎フレーム焼き直しになる。
 const NO_SAMPLES: readonly KinematicState[] = [];
 
 // 外挿区間に使う目標サンプル間隔 [s]。既存の保持列の間引き間隔(baseInterval)に合わせ、
@@ -47,9 +32,7 @@ function extrapolationTargetInterval(baseInterval: number, span: number): number
 }
 
 // tip(保持区間の末尾)から to までを、tip を center まわりの二体ケプラー軌道とみなして外挿した
-// ECI 絶対状態列(時刻昇順、tip 自身は含まない)。kepler-extrapolation.ts の返り値は center 相対
-// なので、各サンプル自身の時刻における center の ECI 状態を足し戻す。離心率が高すぎる・
-// 双曲線などで外挿できない場合は空配列。
+// ECI 絶対状態列(時刻昇順、tip 自身を除く)。離心率が高すぎる・双曲線などで外挿できないときは空配列。
 function extrapolatedTailStates(
   tip: KinematicState, center: ExtrapolationCenter, to: number,
   baseInterval: number, celestialBodies: CelestialFrameSource,
@@ -57,6 +40,7 @@ function extrapolatedTailStates(
   const span = to - tip.t;
   const target = extrapolationTargetInterval(baseInterval, span);
   const count = Math.min(MAX_EXTRAPOLATED_SAMPLES, Math.max(2, Math.ceil(span / target)));
+  // 外挿は center 相対なので、各サンプルの時刻の center の ECI 状態を足し戻す。
   return extrapolatedRelativeStates(tip, center.celestialBody, center.pivot, to, count).map((s) => {
     const centerState = celestialBodies.stateAt(center.celestialBody.id, s.t);
     return kinematicState<'eci'>(s.t, add(s.r, centerState.r), add(s.v, centerState.v));
@@ -70,8 +54,8 @@ export class TrajectoryLine {
   private lastFrame: ReferenceFrame | null = null;
   private lastFrom: number | null = null;
   private lastTo: number | null = null;
-  // 直近に焼き込んだ外挿区間の to。外挿を持たない bake では null に戻す — 次に外挿区間が
-  // 必要になったフレームで必ず焼き直させるため。
+  // 直近に焼き込んだ外挿区間の to。外挿を持たない bake では null に戻し、次に外挿が要る
+  // フレームで必ず焼き直させる。
   private lastExtrapolatedTo: number | null = null;
   private readonly unbakeQuat = new THREE.Quaternion();
 
@@ -96,7 +80,7 @@ export class TrajectoryLine {
   }
 
   // このフレームに描く軌跡・区間・座標系・見た目を反映する。from/to はそれぞれ描画の下限/上限
-  // 時刻で、null ならその側は無制限。displayTime は un-bake に使う表示時刻(通常 simTime)。
+  // 時刻で、null ならその側は無制限。displayTime は un-bake に使う表示時刻。
   // trajectory が null か、描ける区間が潰れているときは線が消え、samplePoints も空になる。
   public sync(
     trajectory: DynamicTrajectory | null, from: number | null, to: number | null,
@@ -113,8 +97,7 @@ export class TrajectoryLine {
       this.curve.clear();
       return;
     }
-    // 剛体 un-bake(回転)とフローティングオリジン補正(平行移動 = 座標系原点)は、頂点を焼く
-    // 前に渡す — 適応分割はこの変換を通した画面上の大きさで区間の粗さを測る。
+    // un-bake の変換は曲線を焼く前に渡す — 適応分割はこの変換を通した画面上の大きさで粗さを測る。
     const tf = celestialBodies.frames.transformAt(frame, displayTime, frameAnchors);
     this.unbakeTransform = tf;
     this.unbakeQuat.set(tf.q.x, tf.q.y, tf.q.z, tf.q.w);
@@ -122,13 +105,8 @@ export class TrajectoryLine {
     this.curve.setHermiteCurve(knots, camera.camera, camera.viewport.height);
   }
 
-  // trajectory の保持区間のうち [from, to] を、座標系相対の節点列へ焼く。区間の外は補間できない
-  // ので、from/to はそれぞれ先頭/末尾へクランプする。保持区間の末尾が to に届かず、かつ先端が
-  // 中心天体を持つ場合は、二体ケプラー軌道とみなして to まで外挿し継ぎ足す。
-  // 座標系相対への焼き直し(frameTransformAt を伴う高コストな処理)は、保持列の参照または
-  // frame が変わったときだけ行う。外挿区間を持つ間はそれに加え、to が外挿1サンプルぶんの間隔
-  // 以上動いたときにも焼き直す — 動いた分がその間隔未満なら、描画末尾が最大1間隔ぶん遅れる
-  // だけで見た目には出ない。
+  // trajectory の保持区間のうち [from, to](保持区間の端へクランプ)を座標系相対の節点列へ焼く。
+  // 保持区間が to に届かず先端が中心天体を持つなら、to まで外挿して継ぎ足す。
   private bakeKnots(
     trajectory: DynamicTrajectory | null, from: number | null, to: number | null, frame: ReferenceFrame,
     celestialBodies: CelestialFrameSource, frameAnchors: FrameAnchorSource,
@@ -138,6 +116,8 @@ export class TrajectoryLine {
     const center = trajectory?.extrapolationCenter ?? null;
     const extrapolating = to !== null && tip !== null && center !== null && to > tip.t;
 
+    // 座標系相対への焼き直しは重いので、保持列か frame が変わったときと、外挿中に to が外挿
+    // 1間隔以上動いたときに限る(1間隔未満なら描画末尾の遅れは見た目に出ない)。
     const rebaked = !extrapolating
       ? samples !== this.lastSamples || frame !== this.lastFrame
       : samples !== this.lastSamples || frame !== this.lastFrame || this.lastExtrapolatedTo === null
@@ -150,9 +130,8 @@ export class TrajectoryLine {
         ? extrapolatedTailStates(tip!, center!, to!, trajectory!.sampleInterval, celestialBodies)
         : [];
       const combined = tail.length > 0 ? [...samples, ...tail] : samples;
-      // エルミート補間は座標系に依らない (時刻, 位置, 接線) の多項式なので、座標系相対の
-      // 位置と速度をそのまま KinematicState に詰めて渡す(この慣性系ブランドは関数の外へ出ない)。
-      // 座標系の原点・姿勢はサンプルごとの時刻で評価する(回転系は時刻で向きが変わるため)。
+      // 補間は座標系に依らないので、座標系相対の位置・速度を 'eci' ブランドのまま詰める
+      // (このブランドは関数の外へ出ない)。回転系は時刻で向きが変わるので、サンプルごとの時刻で評価する。
       const queue = new StateQueue(Math.max(1, combined.length));
       for (const s of combined) {
         const rel = toFrameState(celestialBodies.frames.transformAt(frame, s.t, frameAnchors), s);
@@ -162,6 +141,7 @@ export class TrajectoryLine {
       this.bakedTimes = combined.map((s) => s.t);
       this.lastExtrapolatedTo = extrapolating ? to : null;
     }
+    // 描画区間を焼いた区間へクランプし、区間が変わったら節点列を組み直す。
     this.startTime = this.baked.size > 0 ? Math.max(from ?? -Infinity, this.baked.oldest!.t) : null;
     this.endTime = this.baked.size > 0 ? Math.min(to ?? Infinity, this.baked.newest!.t) : null;
     if (rebaked || from !== this.lastFrom || to !== this.lastTo) {

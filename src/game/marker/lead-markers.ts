@@ -1,5 +1,4 @@
-// LEAD(見越し)マーカー: 自機の弾がその敵に命中する未来位置を示す。自機と敵の双方の
-// 状態に依存するため、Enemy にも Targeter にも属さない独立責務として切り出してある。
+// LEAD(見越し)マーカー: 自機の弾がその敵に命中する未来位置を示す。
 import { leadPoint } from '../../physics/intercept';
 import type { ViewMode } from '../../render/view-mode';
 import type { MarkerSlots } from './marker-slots';
@@ -8,7 +7,7 @@ import { Player } from '../player/player';
 import { COLOR_MARKER_ALLY } from './marker-identity';
 import type { ProjectFn } from '../../math/projection';
 
-const LEAD_MAX_TIME = 25; // これより先にしか当たらない見越し解は表示しない [s]
+const LEAD_MAX_TIME = 25; // 表示する見越し解の、命中までの最長時間 [s]
 
 const markerKey = (target: CombatTarget): string => `lead-${target.id}`;
 
@@ -17,7 +16,7 @@ export class LeadMarkers {
 
   public constructor(private readonly markers: MarkerSlots) { }
 
-  // 射撃できない状況(マップビュー・自機喪失)では表示せず、保持していたロック履歴も捨てる。
+  // target の LEAD マーカーを置き、それ以外を片付ける。マップビューでは全て片付ける。
   public sync(
     player: Player,
     targetsArray: readonly CombatTarget[],
@@ -51,10 +50,8 @@ export class LeadMarkers {
     this.retire(shownKeys);
   }
 
-  // key は敵ごとに一意で増え続けるため hide ではなく remove で DOM ごと片付ける。
-  // マップビュー突入・自機喪失のたびに sync が retire([]) を呼んで全消去するが、
-  // マーカーの生成自体はマップの開閉ごとに一度きりで毎フレームではないため、
-  // 戦闘ビューへ戻った際の再生成コストは無視できる。
+  // 前フレームに出して keys に無いマーカーを DOM ごと片付ける。key は敵ごとに一意で増え続けるので、
+  // 隠さずに消す。
   private retire(keys: readonly string[]): void {
     const kept = new Set(keys);
     for (const key of this.shownKeys) {

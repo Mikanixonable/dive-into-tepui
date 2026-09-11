@@ -29,14 +29,13 @@ export class PlayerMarkers {
     this.syncBoresight(currentState, attitude, project, rounds, beltLinks, muzzleSpeed);
   }
 
-  // キーは艦ごとに一意で増え続けるため、hide ではなく remove で DOM ごと片付ける。
+  // この艦のマーカーを DOM ごと片付ける。キーは艦ごとに一意で増え続けるので、隠さずに消す。
   public dispose(): void {
     for (const key of COMBAT_KEYS) this.markers.remove(`${key}-${this.id}`);
   }
 
   // prograde/retrograde/normal/antinormal/radial in-out の6方向マーカーを配置する。
-  // 方向は reference が指す基準(null なら ECI = 地球基準)に対する相対 r/v から求める——
-  // マーカーの設置位置(pr)は常に艦の絶対位置のまま変わらない。
+  // 方向は reference(null なら ECI = 地球基準)に対する相対 r/v から求める。
   private syncOrbitAxes(
     state: KinematicState, project: ProjectFn, reference: KinematicState | null,
   ): void {

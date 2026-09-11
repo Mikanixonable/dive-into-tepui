@@ -1,11 +1,7 @@
-// 表示パネル(マップモード左レール)の軌道ガイドタブ。CR3BP の周期軌道族(約37種、
-// DEVELOP/SPEC/MAP.md 4.1 の表が正本)と地球専用の参照軌道4種を、基本/共線点/三角点/
-// 副天体周回/共鳴の5群へ分け、群を横並びタブで切り替える(TabBar を流用)。種類の見出しは
-// その種類の表示トグルを兼ね、ON の種類だけ設定行を下に出す。状態の正本は持たず、
-// 操作のたびに現在の鏡映しから次の OrbitGuideSettings を組んで onSettingsChange へ渡す。
-//
-// 族 id(焼き込みカタログのキー)から画面に出す群・表示名を導く対応表は、実在する族を
-// 呼び出し側から受け取った availableFamilies から作る——族の集合を推測でここへ書き写さない。
+// 表示パネルの軌道ガイドタブ。CR3BP の周期軌道族(DEVELOP/SPEC/MAP.md 4.1 の表が正本)と地球専用の
+// 参照軌道4種を、基本/共線点/三角点/副天体周回/共鳴の5群タブに分けて並べる。種類の見出しはその
+// 種類の表示トグルを兼ね、ON の種類だけ設定行を出す。操作のたびに次の OrbitGuideSettings を組んで
+// onSettingsChange へ渡す。並べる族は、実在する族を示す availableFamilies から作る。
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import { buildLabeledRow, Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../../../hud/widgets';
 import {
@@ -70,7 +66,7 @@ interface CombinedKindRow extends SharedKindFields {
 }
 
 // SharedKindFields(種類1行・小題1行の共有設定パネル)を現在の設定値へ合わせる。見出しの
-// 表示トグルと configPanel の hidden 判定は、行の種類ごとに条件が異なるため呼び出し側が持つ。
+// 表示トグルと configPanel の表示は、行の種類ごとに呼び出し側で合わせる。
 function syncSharedKindFields(row: SharedKindFields, settings: GuideKindSharedSettings): void {
   syncValueField(row.countField, COUNT_MAPPING, settings.count);
   syncValueField(row.rangeMinField, RANGE_MAPPING, settings.rangeMin);
@@ -188,8 +184,7 @@ export class OrbitGuideTab {
     );
     groupTabBodies.set('basic', basicBody);
 
-    // 共線点群: 小題(CombinedKindDef)・族idごとに独立した種類に続けて、族を持たないリサジュー
-    // 軌道行を積む。リサジュー軌道は共線点にしか無い専用行なので、他の群と分けて直線的に組む。
+    // 共線点群: 小題・独立した種類に続けて、共線点にしか無いリサジュー軌道の専用行を積む。
     const collinearBody = this.buildGroupTabBody('collinear');
     for (const def of this.combinedDefs.get('collinear') ?? []) this.buildCombinedKindRow(collinearBody, def);
     for (const def of this.kindDefs.get('collinear') ?? []) this.buildKindRow(collinearBody, def);
@@ -240,7 +235,7 @@ export class OrbitGuideTab {
     for (const [tab, el] of this.groupTabBodies) el.classList.toggle('hidden', tab !== this.selectedGroupTab);
   }
 
-  // タブ上部に置く系トグル。全群に共通で効くので折りたたみは設けず7系すべてを並べる。
+  // タブ上部に置く系トグル。全群に共通で効く。
   private buildSystemRow(parent: HTMLElement): void {
     const row = document.createElement('div');
     row.className = 'orbit-guide-system-row';
@@ -366,8 +361,7 @@ export class OrbitGuideTab {
   }
 
   // 小題1行(軸ボタン+共有設定パネル)を組む。軸ボタンは表示ON/OFFの複数選択トグルで、押した
-  // 軸値すべての積を満たす族だけが表示される。押されている組み合わせが1つも無い間は共有設定
-  // パネルを隠す(種類1行が on の間だけ設定を見せるのと同じ考え方)。
+  // 軸値すべての積を満たす族が表示される。押されている組み合わせが無い間は共有設定パネルを隠す。
   private buildCombinedKindRow(parent: HTMLElement, def: CombinedKindDef): void {
     const root = document.createElement('div');
     root.className = 'orbit-guide-kind-row';
@@ -377,8 +371,8 @@ export class OrbitGuideTab {
     heading.textContent = def.label;
     root.appendChild(heading);
 
-    // value は settings.combinedKinds[key].axisValues のキーと一致する point/branch/ew/区間の
-    // 生値。displayLabel はボタンの表示文字列だけに使い、判定には使わない。
+    // value は settings.combinedKinds[key].axisValues のキーになる point/branch/ew/区間の生値、
+    // displayLabel はボタンの表示文字列。
     const axisButtons = new Map<string, Button>();
     // 軸1つぶんのボタン行。def が持たない軸(entries が空)は行ごと出さない。
     const buildAxisRow = (label: string, entries: readonly (readonly [string, string])[]): void => {
@@ -414,8 +408,7 @@ export class OrbitGuideTab {
     this.combinedRows.set(def.key, { configPanel, axisButtons, ...shared });
   }
 
-  // 軸値表示ラベル('北'/'南'/'区間1'/'基本' 等)と axisValues のキーは一致させている
-  // (buildAxisRow が渡す value がそのままキーになる)。
+  // 小題 key の軸値 axisValue(軸ボタンの value)が押されているか。
   private isAxisValueOn(key: string, axisValue: string): boolean {
     return this.current.combinedKinds[key]?.axisValues[axisValue] ?? false;
   }
@@ -580,7 +573,7 @@ export class OrbitGuideTab {
     this.tundraRow.sync(this.current.tundra);
   }
 
-  // 正本からの鏡映し反映。
+  // 外から渡された設定へ見た目を合わせる。onSettingsChange は呼ばない。
   public setSettings(settings: OrbitGuideSettings): void {
     this.current = settings;
     this.syncAll();

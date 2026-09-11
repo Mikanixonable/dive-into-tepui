@@ -1,6 +1,4 @@
-// 戦闘の対象になれる個体(自艦・敵艦・基地)が答えるもの。世界に実体を持ち(DynamicEntity)、
-// マップから選べ(ObjectPickable)、マップの表示トグルを持つ種別に属し、自分の画面マーカーを
-// 組めるものだけが実装できる。
+// 戦闘の対象になれる個体(自艦・敵艦・基地)が答えるもの。
 import type { Vec3 } from '../../../math/vec3';
 import type { ViewMode } from '../../../render/view-mode';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
@@ -16,11 +14,11 @@ export interface CombatTarget extends DynamicEntity, ObjectPickable {
   readonly maxHp: number | null;
 
   // 画面マーカー・一覧に出す項目。pos/vel にはメッシュと同じ表示時刻の状態を渡すこと。
-  // isActive はこの個体が操作対象かどうか(マップ上の塗り分けに使う)。
+  // isActive はこの個体が操作対象かどうか。
   markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode, isActive: boolean): GroupedMarkerItem;
 }
 
-// この個体が戦闘対象になりうるか。顔ぶれから戦闘対象だけを絞るときに使う。
+// entity を戦闘対象へ絞り込む型ガード。
 export function isCombatTarget(entity: DynamicEntity): entity is CombatTarget {
   return entity.combatTarget;
 }
@@ -32,7 +30,7 @@ export function combatTargetById(
   return entities.find((e): e is CombatTarget => e.id === id && e.combatTarget) ?? null;
 }
 
-// id で名指しされた、生存中の戦闘対象。天体・ラグランジュ点は実体を持たないため対象外。
+// id で名指しされた、生存中の戦闘対象。見つからないか死んでいれば null。
 export function aliveCombatTarget(
   entities: readonly DynamicEntity[], id: string,
 ): CombatTarget | null {

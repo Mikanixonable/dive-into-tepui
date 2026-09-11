@@ -1,10 +1,9 @@
-// 部位のアンカーを、静止座標と残基変位から求める。表示中の変形へマーカー・結合線・銃口を
-// 合わせるための座標変換だけを持つ。
+// 部位のアンカーを、静止座標と残基変位から表示中の変形に合わせた座標へ写す。
 import { qInvert, qRotate, type Quat } from '../../math/quat';
 import { add, sub, type Vec3, v3 } from '../../math/vec3';
 import type { ProteinRenderMotion, ProteinRenderSite } from './protein-render-definition';
 
-/** 部位の残基記述子を、モード asset の残基インデックスへ解決する。引けなければ既定値1つ。 */
+/** 部位の残基記述子を motion の残基インデックスへ解決する。1つも引けなければ fallbackValues[index](無ければ空)。 */
 export function proteinAnchorResidues(
   anchor: ProteinRenderSite,
   index: number,
@@ -13,6 +12,7 @@ export function proteinAnchorResidues(
 ): readonly number[] {
   const fallback = fallbackValues[index];
   const resolved: number[] = [];
+  // 記述子「残基名 鎖 番号 [原子名]」の鎖と番号で motion の残基を引く。
   for (const descriptor of anchor.residues ?? []) {
     const match = /\s+([^\s]+)\s+(-?\d+)/.exec(descriptor);
     if (!match) continue;
@@ -29,7 +29,7 @@ export function proteinAnchorResidues(
   return fallback === undefined ? [] : [fallback];
 }
 
-/** アンカーに属する残基の xyz 変位を平均する。空の群では原点変位を返す。 */
+/** 群の残基の xyz 変位を平均する(residueOffsets は残基あたり vec4)。有効な残基が無ければ原点。 */
 export function proteinAnchorOffset(
   group: readonly number[],
   residueOffsets: ArrayLike<number>,
@@ -37,6 +37,7 @@ export function proteinAnchorOffset(
 ): readonly [number, number, number] {
   if (group.length === 0) return [0, 0, 0];
   let x = 0; let y = 0; let z = 0; let count = 0;
+  // 有効な残基の変位を足し合わせる。
   for (const residue of group) {
     if (!Number.isInteger(residue) || residue < 0 || residue >= residueCount) continue;
     const offset = residue * 4;

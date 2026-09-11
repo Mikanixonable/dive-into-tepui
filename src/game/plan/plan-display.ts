@@ -37,10 +37,8 @@ const PLAN_TICK_MIN_PX = 40; // 目盛同士の最小画面間隔 [px]
 const PLAN_TICK_LABEL_MIN_PX = 90; // ラベルを付ける最小画面間隔 [px]
 const PLAN_TICK_MAX_COUNT = 400; // 日・月・年階級の目盛候補の上限本数
 
-// 時階級(1/3/6/12時間ごと)の目盛候補の上限本数。時階級の刻みは互いに包含関係にあるので、
-// この上限に収まる限り常に最も細かい1時間ごとで列挙し、出す粒度は画面距離での間引きに委ねる
-// — 区間の長さだけで階級が丸ごと切り替わると、ズームに対して連続に見えなくなる。
-// 既定の最長表示区間(28日)の1時間ごとが丸ごと落ちない本数を取る。
+// 時階級(1/3/6/12時間ごと)の目盛候補の上限本数。既定の最長表示区間(28日)の1時間ごとが収まる
+// 本数 — 区間の長さで階級が丸ごと切り替わるとズームに対して連続に見えないので、最細で列挙する。
 const PLAN_TICK_HOUR_FAMILY_MAX_COUNT = 1200;
 
 // 目盛点の半径 [px]。表示中の最細目盛からの相対階層(0/1/2以上)で引く。
@@ -83,6 +81,7 @@ export class PlanDisplay {
 
   private readonly apsisPe = new ApsisMarker('pe');
   private readonly apsisAp = new ApsisMarker('ap');
+  // 直前のフレームに置いた目盛のキー。
   private lastTickKeys: readonly string[] = [];
   // このフレームに描く計画の材料。描く計画が無ければ null。
   private displayedPlan: PlanData | null = null;
@@ -197,6 +196,7 @@ export class PlanDisplay {
       this.markers.hide('plannedPlayer');
       return;
     }
+    // マップビューでは天体の陰に入ったら薄れて消える。
     if (view === 'map' && this.occludedByCelestialBody(cameraPos, ghost.pos, displayTime)) {
       this.markers.fadeOut('plannedPlayer');
       return;
@@ -326,6 +326,7 @@ export class PlanDisplay {
   ): void {
     const impactIcons = this.impactIconsOf();
     for (const key of IMPACT_MARKER_KEYS) {
+      // 衝突の無い区間は隠し、マップビューで天体の陰に入ったものは薄れて消える。
       const icon = impactIcons.find((m) => m.key === key);
       if (!icon) {
         this.markers.hide(key);

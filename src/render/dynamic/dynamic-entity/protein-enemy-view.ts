@@ -36,8 +36,7 @@ export interface ProteinSiteMarker extends ProteinSiteStatus {
   readonly worldPos: Vec3;
 }
 
-// タンパク質モデル、構造ゆらぎ、結合線を所有する。ゆらぎの LOD と係数遷移の履歴も、
-// 表示フレームの入力だけで進む表示の状態としてここが持つ。
+// タンパク質モデル、構造ゆらぎ、結合線と、ゆらぎの LOD・係数遷移の履歴を所有する。
 export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
   private readonly runtime: ProteinRuntime;
   private renderedDisplay: ProteinDisplaySettings;
@@ -46,10 +45,9 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
   // 直近の同期でモード係数の確定に要した CPU 時間 [ms]。
   private motionControllerCpuMs = 0;
 
-  // 初期表示設定で THREE ツリーと共有 GPU binding を組み立てる。
-  // modelScale は機体モデルへ掛ける表示倍率、boundingRadius は LOD を選ぶ投影直径の基準にする
-  // 外接半径 [m]。どちらも物理の判定形状と同じ値を組み立て側が配る。enemyId はゆらぎの個体差を
-  // 決める鍵で、同じ鍵の個体は同じように揺らぐ。
+  // 初期表示設定で THREE ツリーと共有 GPU binding を組み立てる。modelScale(表示倍率)と
+  // boundingRadius(LOD を選ぶ外接半径 [m])には物理の判定形状と同じ値を渡す。enemyId は
+  // ゆらぎの個体差の鍵で、同じ鍵の個体は同じように揺らぐ。
   public constructor(
     private readonly definition: ProteinRenderDefinition,
     display: ProteinDisplaySettings,
@@ -58,7 +56,7 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
     enemyId: string,
     scene?: THREE.Scene,
   ) {
-    // モード変位は asset 単位のキャッシュを使い、個体ごとには係数スロットだけを確保する。
+    // モード変位は asset 単位で共有し、個体ごとに係数スロットを確保する。
     const motion = definition.source.motion;
     const motionBinding = createProteinMotionBinding(
       motion.residueCount,
@@ -97,7 +95,8 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
     };
   }
 
-  // 部位マーカーは表示中のタンパク質変形と同じアンカー位置を使う。
+  // sites に、表示中の変形を掛けたアンカーのワールド座標を添えて返す。displayPos・attitude は
+  // 本体を置いた位置と姿勢。
   public siteMarkers(
     displayPos: Vec3, attitude: Quat, sites: readonly ProteinSiteStatus[],
   ): readonly ProteinSiteMarker[] {

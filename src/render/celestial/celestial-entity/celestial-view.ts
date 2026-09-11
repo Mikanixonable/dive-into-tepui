@@ -20,6 +20,7 @@ import type { CelestialBody } from '../../../physics/celestial-body';
 import { EllipseLine } from '../../lines/ellipse-line';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../line-style';
 
+// 参照軌道線の色と、カメラ距離 [m] で濃さを上げるフェード帯(NEAR で 0、FAR で最大)。
 const SATELLITE_REFERENCE_LINE_COLOR = 0xaab3c0;
 const PLANET_REFERENCE_LINE_COLOR = 0xffffff;
 const PLANET_ORBIT_LINE_FADE_NEAR_DIST = 1e9;
@@ -34,13 +35,12 @@ export interface StellarLight {
   readonly radiantIntensity: number;
 }
 
-// 照明・影・大気が読む天体1体の運動。楕円体の半軸・環の帯・大気の光学は分類ごとの宣言が
-// 決めるので、CelestialBody の宣言をその定義そのままで受け直す。
+// 分類ごとの宣言(楕円体の半軸・環の帯・大気の光学)を def として読める天体1体の運動。
 export interface DefinedCelestialBody extends CelestialBody {
   readonly def: CelestialBodyDef;
 }
 
-// 他の天体の表示が恒星光を引くために必要な読み取り面。
+// 恒星1体の運動と、それが放つ光。
 export interface StellarLightSource {
   readonly motion: DefinedCelestialBody;
   readonly stellarLight: StellarLight;
@@ -78,9 +78,11 @@ export abstract class CelestialView {
   public get surfaceDiagnostics(): CelestialSurfaceDiagnostics | null { return null; }
   public rings(_motion: DefinedCelestialBody): RingSystemDef | null { return null; }
 
+  // 表示資源を組み、シーンへ一度だけ登録する。
   public abstract build(
     motion: CelestialMotion, scene: THREE.Scene, ringMaterials: RingMaterials,
   ): void;
+  // displayTime 時点の運動と表示設定へ同期する。visible が false のフレームは全体を隠す。
   public abstract sync(
     motion: CelestialMotion, displayTime: number, camera: CameraFrame,
     star: StellarLightSource | null,
@@ -93,7 +95,7 @@ export abstract class CelestialView {
     cameraPos: Vec3, radialScale: (center: Vec3) => number,
     graphics: GraphicsSettingsData,
   ): AtmosphereCandidate | null {
-    // 大気を持たない具象は候補を作らず、renderer 側へ空の殻を漏らさない。
+    // 大気の光学を持たない天体では null。
     const optics = this.atmosphereOptics;
     if (optics === null) return null;
     const center = motion.stateAt(displayTime).r;
@@ -117,6 +119,7 @@ export abstract class CelestialView {
     };
   }
 
+  // 大気の散乱へ立てる雲。雲を持たない天体では null。
   public atmosphereCloudsAt(
     _motion: DefinedCelestialBody, _displayTime: number,
   ): AtmosphereClouds | null { return null; }
@@ -124,10 +127,12 @@ export abstract class CelestialView {
   // この天体が持つ動的な雲場を表示時刻へ焼く。
   public bakeClouds(_renderer: WebGPURenderer, _displayTime: number, _gpu?: GpuTimingSink): void {}
 
+  // 影パスへ渡す積雲の殻。積雲を持たない天体では null。
   public cumulusShadowAt(
     _motion: DefinedCelestialBody, _floatingOrigin: FloatingOrigin, _displayTime: number,
   ): ShadowCumulus | null { return null; }
 
+  // マップ専用の重ね書きを、このフレームの表示状態へ同期する。
   public syncMapOverlay(
     _motion: CelestialMotion, _displayTime: number, _camera: CameraFrame,
     _markers: MarkerSlots,
@@ -135,10 +140,10 @@ export abstract class CelestialView {
   ): void {}
 
   // 表示時刻の接触軌道要素と、カメラからの距離で決まる濃さへ参照軌道線を同期する。
+  // visible が false のフレームは線の資源ごと解放する。
   public syncReferenceLine(
     motion: CelestialMotion, scene: THREE.Scene, displayTime: number, camera: CameraFrame, visible: boolean,
   ): void {
-    // false は資源を残す非表示ではなく、参照線そのものが不要という宣言として扱う。
     if (!visible) {
       this.disposeReferenceLine();
       return;
@@ -148,7 +153,7 @@ export abstract class CelestialView {
       this.referenceLineValue = new EllipseLine(style);
       scene.add(this.referenceLineValue.line);
     }
-    // 資源を揃えた後、表示時刻の接触要素と距離フェードを毎フレーム反映する。
+    // 表示時刻の接触要素と距離フェードを反映する。
     const centerMotion = motion.primary;
     const elements = centerMotion === null
       ? null : orbitalElementsOf(motion.stateAt(displayTime), centerMotion, displayTime);
@@ -165,7 +170,7 @@ export abstract class CelestialView {
     };
   }
 
-  // 現在描画している参照軌道線を、当たり判定用の ECI 点列として読み出す。
+  // 描画中の参照軌道線を ECI 点列として返す。線が無いあいだは空。
   public referenceLineSamples(count: number): readonly Vec3[] {
     return this.referenceLineValue?.samplePoints(count) ?? [];
   }
@@ -184,6 +189,7 @@ export abstract class CelestialView {
     this.disposeContents();
   }
 
+  // 具象 View が持つ表示資源を解放する。
   protected abstract disposeContents(): void;
 
   // 天体種別ごとの距離帯を使い、参照線の不透明度を連続的に求める。
