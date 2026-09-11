@@ -5,7 +5,6 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
-import struct
 import tempfile
 import unittest
 
@@ -128,7 +127,7 @@ class RendererTests(unittest.TestCase):
         ]}]
         renderer = real_renderer.create_fixture_renderer(self.manifest, self.write_fixture(fixture))
         _, terrain = renderer.render_tile((0, 0, 0))
-        roughness = [values[3] for values in struct.iter_unpack("<4e", terrain[32:])]
+        roughness = [value / 255 for value in memoryview(terrain[32:]).cast("B").tolist()[2::4]]
         self.assertTrue(any(value < .1 for value in roughness))
         self.assertTrue(any(value > .7 for value in roughness))
 

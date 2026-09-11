@@ -65,7 +65,7 @@ def _write_parallel(manifest, manifest_path, raw_root, output_root, workers, max
 
         tile_index = staging / "tile-index.json"
         entries = tile_index.open("w", encoding="utf-8")
-        entries.write(json.dumps({"schemaVersion": 1, "datasetId": manifest["datasetId"]},
+        entries.write(json.dumps({"schemaVersion": 2, "datasetId": manifest["datasetId"]},
                                  ensure_ascii=False)[:-1])
         entries.write(', "entries": [')
         first = True
