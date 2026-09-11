@@ -18,7 +18,7 @@ import {
 } from '../../map/display-toggles';
 import type { CelestialGridVisibility } from '../../../render/celestial-grid';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import type { OrbitGuideSettings, ZeroVelocitySettings } from '../../celestial/orbit-guide/orbit-guide-settings';
+import type { OrbitGuideSettings } from '../../celestial/orbit-guide/orbit-guide-settings';
 import { DEFAULT_ORBIT_GUIDE_SETTINGS } from '../../celestial/orbit-guide/orbit-guide-settings';
 import { OrbitGuideTab } from './orbit-guide-tab';
 import { ZeroVelocitySection } from './zero-velocity-section';
@@ -63,8 +63,8 @@ function buildTabBody(tab: ViewOptionsTab): HTMLElement {
   return el;
 }
 
-// クラス別トグルの1行分。orbitKey が null のクラス(衛星・ラグランジュ点)は軌道線ボタンを持たない
-// ——衛星の参照軌道線はフォーカス中の系かどうかで別途決まり、ラグランジュ点はそもそも軌道を持たない。
+// クラス別トグルの1行分。orbitKey が null のクラス(ラグランジュ点)は軌道を持たず、ラベルと
+// 非表示だけを循環する。
 interface BodyClassRow {
   readonly label: string;
   readonly categoryKey: keyof MapDisplayToggles;
@@ -72,6 +72,7 @@ interface BodyClassRow {
   readonly orbitKey: keyof MapDisplayToggles | null;
 }
 
+// 天体のクラス別トグル。
 const BODY_CLASS_ROWS: readonly BodyClassRow[] = [
   { label: '惑星', categoryKey: 'planetVisible', nameKey: 'planetName', orbitKey: 'planetOrbit' },
   { label: '衛星', categoryKey: 'satelliteVisible', nameKey: 'satelliteName', orbitKey: 'satelliteOrbit' },
@@ -87,6 +88,7 @@ const VIEW_OPTIONS_COLLAPSE_LABELS: CollapseToggleLabels = {
   collapsedTitle: '表示を開く',
 };
 
+// 機体と設備のクラス別トグル。
 const ENTITY_ROWS: readonly BodyClassRow[] = [
   { label: '自艦', categoryKey: 'playerVisible', nameKey: 'playerName', orbitKey: 'playerOrbit' },
   { label: '敵', categoryKey: 'enemyVisible', nameKey: 'enemyName', orbitKey: 'enemyOrbit' },
@@ -103,6 +105,7 @@ const BODY_CLASS_DISPLAY_ICONS: Readonly<Record<MapDisplayMode, string>> = {
   orbit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><ellipse cx="12" cy="12" rx="9" ry="4.5" transform="rotate(-28 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="4.5" transform="rotate(28 12 12)"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/></svg>',
 };
 
+// 表示モード mode を示すアイコンの SVG マークアップ。
 function bodyClassDisplayIcon(mode: MapDisplayMode): string {
   return BODY_CLASS_DISPLAY_ICONS[mode];
 }
@@ -147,8 +150,7 @@ function appendSectionDivider(parent: HTMLElement, title: string): void {
   parent.appendChild(divider);
 }
 
-// トグルのグリフと意味を並記する列見出し(天球グリッドの面/極/網/縮尺)。タブ名と重複する
-// 節タイトルは持たず、凡例だけを出す。
+// トグルのグリフと意味を並記する列見出し(天球グリッドの面/極/網/縮尺の凡例)。
 function appendColumnLegend(parent: HTMLElement, columns: readonly ViewOptionColumn[]): void {
   const heading = document.createElement('div');
   heading.className = 'view-options-section-heading';
@@ -169,18 +171,20 @@ function appendColumnLegend(parent: HTMLElement, columns: readonly ViewOptionCol
 export class ViewOptionsPanel {
   public onBodyClassModeChange: ((key: keyof MapDisplayToggles, mode: MapDisplayMode) => void) | null = null;
   public onGridToggle: ((key: keyof CelestialGridVisibility, on: boolean) => void) | null = null;
+  // 軌道ガイドタブかゼロ速度曲線節を編集するたびに、編集後の軌道ガイド設定全体で呼ばれる。
   public onOrbitGuideChange: ((settings: OrbitGuideSettings) => void) | null = null;
-  public onZeroVelocityChange: ((settings: ZeroVelocitySettings) => void) | null = null;
 
   private readonly tabBar: TabBar<ViewOptionsTab>;
   private readonly tabBodies: ReadonlyMap<ViewOptionsTab, HTMLElement>;
   private selectedTab: ViewOptionsTab;
+  // 軌道ガイド設定の鏡映し。軌道ガイドタブとゼロ速度曲線節はどちらも setOrbitGuideSettings で
+  // これと揃え、ゼロ速度曲線節の編集はこれへ重ねて設定全体に組み戻す。
+  private orbitGuideSettings: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
   private readonly orbitGuideTab: OrbitGuideTab;
   private readonly zeroVelocitySection: ZeroVelocitySection;
 
   private readonly bodyClassModeButtons: readonly (readonly [BodyClassRow, Button, HTMLElement])[];
-  // 各ボタンの現在状態の鏡映し。正本は setBodyClassToggles が受け取る boolean 組にあり、
-  // ここはクリック時に次の3状態を決めるためだけに保つ。
+  // 各ボタンの現在の表示モードの鏡映し。クリック時に次の状態を決めるのに使う。
   private readonly bodyClassModes = new Map<keyof MapDisplayToggles, MapDisplayMode>();
 
   private readonly gridButtons: readonly (readonly [keyof CelestialGridVisibility, Button])[];
@@ -246,8 +250,6 @@ export class ViewOptionsPanel {
   }
 
   // 対象タブ: マップに出す対象クラスごとに、ラベル+軌道 / ラベル / 非表示を1ボタンで循環する。
-  // 恒星・惑星と、フォーカス中の系の親子は常に出るので、ここで足すのは「その外まで見たい」
-  // という明示の意思表示にあたる。
   private buildTargetTab(
     body: HTMLElement,
   ): { readonly element: HTMLElement; readonly buttons: readonly (readonly [BodyClassRow, Button, HTMLElement])[] } {
@@ -347,7 +349,7 @@ export class ViewOptionsPanel {
     guideBody.appendChild(starsRow);
 
     const zeroVelocitySection = new ZeroVelocitySection(DEFAULT_ORBIT_GUIDE_SETTINGS.zeroVelocity);
-    zeroVelocitySection.onChange = (settings) => this.onZeroVelocityChange?.(settings);
+    zeroVelocitySection.onChange = (zeroVelocity) => this.commitOrbitGuide({ ...this.orbitGuideSettings, zeroVelocity });
     guideBody.appendChild(zeroVelocitySection.element);
 
     return { element: guideBody, gridButtons, gridCategoryButtons: gridCategories, starsButton, zeroVelocitySection };
@@ -360,9 +362,15 @@ export class ViewOptionsPanel {
     const orbitBody = buildTabBody('orbit');
     body.appendChild(orbitBody);
     const orbitGuideTab = new OrbitGuideTab(availableFamilies);
-    orbitGuideTab.onSettingsChange = (settings) => this.onOrbitGuideChange?.(settings);
+    orbitGuideTab.onSettingsChange = (settings) => this.commitOrbitGuide(settings);
     orbitBody.appendChild(orbitGuideTab.element);
     return { element: orbitBody, tab: orbitGuideTab };
+  }
+
+  // 編集後の軌道ガイド設定を、軌道ガイドタブとゼロ速度曲線節の両方へ揃えてから通知する。
+  private commitOrbitGuide(next: OrbitGuideSettings): void {
+    this.setOrbitGuideSettings(next);
+    this.onOrbitGuideChange?.(next);
   }
 
   // タブボタン押下で選択タブを切り替え、保存する。
@@ -454,18 +462,15 @@ export class ViewOptionsPanel {
     }
   }
 
-  // 軌道ガイドタブの表示状態を現在値へ合わせる。
+  // 軌道ガイドタブとゼロ速度曲線節(ガイドタブ)の表示状態を、軌道ガイド設定の現在値へ合わせる。
   public setOrbitGuideSettings(settings: OrbitGuideSettings): void {
+    this.orbitGuideSettings = settings;
     this.orbitGuideTab.setSettings(settings);
+    this.zeroVelocitySection.setSettings(settings.zeroVelocity);
   }
 
-  // 描いている軌道ガイド線の総数を軌道ガイドタブへ中継する(300本目安の警告に使う)。
+  // 描いている軌道ガイド線の総数を軌道ガイドタブへ中継する。毎フレーム渡してよい。
   public setOrbitGuideLineCount(total: number): void {
     this.orbitGuideTab.setLineCount(total);
-  }
-
-  // ゼロ速度曲線(ガイドタブ)の表示状態を現在値へ合わせる。
-  public setZeroVelocitySettings(settings: ZeroVelocitySettings): void {
-    this.zeroVelocitySection.setSettings(settings);
   }
 }

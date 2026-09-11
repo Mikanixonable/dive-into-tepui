@@ -1,5 +1,5 @@
 // assets-src/moon-features.json(海・クレーターの中心緯度経度と直径、出典 Wikipedia の月の海/
-// クレーター一覧)を、src/render/moon-surface-markings.ts が読む円ループの配列(単位球面上の
+// クレーター一覧)を、円ループの配列(単位球面上の
 // xyz 頂点列)へ落とす。海・クレーターとも円で近似する(元データが直径1つしか持たないため)。
 //
 // 実行: node tools/export-moon-features.mjs
