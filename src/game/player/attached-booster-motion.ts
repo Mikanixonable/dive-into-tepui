@@ -21,6 +21,8 @@ export class AttachedBoosterMotion {
   private thrustValue: Vec3 | null = null;
   private burnRatioValue = 0;
 
+  // ship の質量・慣性に段を反映して始める。saved があれば段スタックを復元し、その段の ID を
+  // 採番済みにする。
   public constructor(private readonly ship: DynamicMotion, saved?: BoosterStackData) {
     this.stack = saved ? BoosterStack.importData(saved) : new BoosterStack();
     for (const stage of this.stack.stages) nextBoosterId(stage.id);
@@ -42,14 +44,14 @@ export class AttachedBoosterMotion {
     this.ship.invalidatePrediction();
   }
 
-  // 最後尾段の点火状態を反転する。
+  // 最後尾段の点火状態を反転し、操作後の点火状態を返す。
   public toggleIgnition(): boolean {
     const ignited = this.stack.toggleIgnition();
     this.ship.invalidatePrediction();
     return ignited;
   }
 
-  // 最後尾段を物理状態から外し、外した段を返す。
+  // 最後尾段を物理状態から外し、外した段を返す。段が無ければ null。
   public detachOutermost(): BoosterStage | null {
     const stage = this.stack.detachOutermost();
     if (stage === null) return null;
@@ -77,6 +79,7 @@ export class AttachedBoosterMotion {
     this.burnRatioValue = 0;
   }
 
+  // 段スタックの保存形。
   public serialize(): BoosterStackData {
     return this.stack.exportData();
   }
@@ -84,6 +87,7 @@ export class AttachedBoosterMotion {
   // 段の質量と長さを機体全体の質量・慣性へ反映する。
   private refreshShipMassAndInertia(): void {
     this.ship.mass = PLAYER_MASS + this.stack.totalMass;
+    // 慣性は質量比に比例し、ピッチ・ヨーだけは段の列が長いほど増える(ロールは機軸まわり)
     const massRatio = this.ship.mass / PLAYER_MASS;
     const lengthFactor = 1 + 0.35 * this.stack.stages.length ** 2;
     this.ship.att = {
