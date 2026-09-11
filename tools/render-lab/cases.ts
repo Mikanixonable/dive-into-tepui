@@ -46,6 +46,7 @@ import type { FloatNode } from '../../src/render/tsl-types';
 import type { AtmosphereBody } from '../../src/render/atmosphere';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
+import type { GpuTimingSink } from '../../src/render/gpu-timings';
 import type { CelestialTexture } from '../../src/render/celestial-textures';
 import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -123,8 +124,8 @@ export interface LabCase {
   readonly rings?: { readonly center: THREE.Vector3; readonly axis: THREE.Vector3; readonly bands: readonly RingBand[] };
   // 影パスへ渡す積雲の殻。
   readonly cumulus?: ShadowCumulus;
-  // 動的な雲場を表示時刻へ焼く。
-  readonly bakeClouds?: (renderer: WebGPURenderer, displayTime: number) => void;
+  // 動的な雲場を表示時刻へ焼く。gpu を渡すと、焼いた GPU 時間をそこへ計上する。
+  readonly bakeClouds?: (renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink) => void;
   // 雲場のLOD比較設定を表面へ渡す。大気・影はRenderPipelineが同じ設定を受ける。
   readonly setCloudLodSampling?: (mode: CloudLodMode, fixedLevel?: number) => void;
   // 動的な雲場を解放する。
@@ -634,7 +635,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   readonly cumulus: ShadowCumulus;
   readonly shadowBody: ShadowBody;
   readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
-  readonly bakeClouds: (renderer: WebGPURenderer, displayTime: number) => void;
+  readonly bakeClouds: (renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink) => void;
   readonly setCloudLodSampling: (mode: CloudLodMode, fixedLevel?: number) => void;
   readonly disposeClouds: () => void;
 } {
@@ -690,7 +691,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
         cumulus.setCloudsVisible(false);
       }
     },
-    bakeClouds: (renderer, displayTime) => cumulus.bake(renderer, displayTime),
+    bakeClouds: (renderer, displayTime, gpu) => cumulus.bake(renderer, displayTime, gpu),
     setCloudLodSampling: (mode, fixedLevel) => cumulus.setLodSampling(mode, fixedLevel),
     disposeClouds: () => cumulus.dispose(),
   };
