@@ -2,7 +2,6 @@
 // 別々の風で運ぶが、すべて同じ2位相移流の規則と写しの寿命で管理する。
 import * as THREE from 'three/webgpu';
 import { abs, float, fract, inverseSqrt, mix, normalize, uniform, vec2, vec4 } from 'three/tsl';
-import { R_EARTH } from '../../game/celestial/solar-system/constants';
 import { BakedField } from './baked-field';
 import { CirculatingNoise, coarsenessFor } from './circulating-noise';
 import { Circulation } from './circulation';
@@ -55,11 +54,11 @@ const UPPER_ADVECTION = 1.6;
 const CONVECTION_WINDING = 2.5;
 
 // 移流後の場。地表付近と上層の湿度は0..1、対流は0中心の高周波(xが粒、yが網目)。
-export type AdvectedFields = {
+export interface AdvectedFields {
   readonly surfaceHumidity: FloatNode;
   readonly upperHumidity: FloatNode;
   readonly convection: Vec2Node;
-};
+}
 
 export class WeatherTransport {
   private readonly surfaceHumidityNoise: CirculatingNoise;
@@ -70,8 +69,11 @@ export class WeatherTransport {
   // 2位相移流の周期の中の位置0..1。
   private readonly advectionCycle: FloatUniform = uniform(0);
 
+  // 地表付近と上層の循環が流すノイズから、projection の持ち方で源の写しを組む。surfaceRadius は
+  // 湿度と対流を運ぶ天体の半径 [m]。
   public constructor(
     surfaceCirculation: Circulation, upperCirculation: Circulation, projection: FieldProjection,
+    private readonly surfaceRadius: number,
   ) {
     // 湿度は雲塊の配置しか持たないので投影より粗くて足りることがあり、同じ細かさを要る対流とは
     // 写しを分ける。
@@ -98,14 +100,13 @@ export class WeatherTransport {
     this.advectionCycle.value = cycle < 0 ? cycle + 1 : cycle;
   }
 
-  // 移流前の場を写しへ描く。sourceAt()で読む前に必ず一度呼ぶ。
+  // 移流前の場を写しへ焼く。advectedAt() と surfaceHumidityAt() のグラフを描く前に呼ぶ。
   public bake(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
     this.humiditySource.render(renderer, gpu);
     this.convectionSource.render(renderer, gpu);
   }
 
-  // 移流前の湿度(xが地表付近、yが上層)。平年の雲量はここへ入れず、場所に貼り付いた気候として
-  // WeatherModelが移流後へ加える。
+  // 移流前の湿度(xが地表付近、yが上層)。
   public humiditySourceAt(direction: Vec3Node): Vec2Node {
     return vec2(
       float(SURFACE_HUMIDITY_BASE).add(this.surfaceHumidityNoise.at(direction).mul(SURFACE_HUMIDITY_NOISE_AMPLITUDE)),
@@ -118,7 +119,7 @@ export class WeatherTransport {
     return this.convectionNoise.pairAt(direction).mul(CONVECTION_NOISE_AMPLITUDE);
   }
 
-  // 湿度写しの地表成分の標本。前線へ渡す水平勾配を求めるため、焼いた場から読む。
+  // 焼いた湿度の写しの、地表成分の標本(移流前)。
   public surfaceHumidityAt(direction: Vec3Node): FloatNode {
     return this.humiditySource.at(direction).r;
   }
@@ -133,7 +134,7 @@ export class WeatherTransport {
     const weightA = float(1).sub(abs(phaseA.mul(2).sub(1)));
     // seconds秒だけflowに流された点のsource。負に取れば風上へ遡る。
     const sourceAt = (source: BakedField, flow: BalancedWind, seconds: FloatNode): Vec4Node =>
-      source.at(normalize(direction.add(windStep(flow, direction, seconds).div(R_EARTH))));
+      source.at(normalize(direction.add(windStep(flow, direction, seconds).div(this.surfaceRadius))));
     // 遡る秒数[s](負)。位相が周期の終わりへ近づくほど遠くまで遡る。
     const stepA = phaseA.mul(-ADVECTION_PERIOD);
     const stepB = phaseB.mul(-ADVECTION_PERIOD);
