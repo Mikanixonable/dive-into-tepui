@@ -4,19 +4,11 @@ import {
 } from 'three/tsl';
 import type { BoolNode, FloatNode, Mat3Node, Vec2Node, Vec3Node, Vec4Node } from './tsl-types';
 import { earthSurfaceUvFromRadialNode } from './earth-surface-coordinate';
+import { configureEarthSurfaceTexture } from './earth-surface-texture';
 import {
   EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER, EARTH_TILE_LAYERS, EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z,
   EARTH_TILE_TEXELS,
-} from './earth-surface-tiles';
-
-export type EarthSurfaceMaterialTextureKind = 'pageTable' | 'color' | 'terrain';
-
-export interface EarthSurfaceMaterialTextureSettings {
-  readonly minFilter: typeof THREE.NearestFilter | typeof THREE.LinearFilter;
-  readonly magFilter: typeof THREE.NearestFilter | typeof THREE.LinearFilter;
-  readonly colorSpace: THREE.ColorSpace;
-  readonly generateMipmaps: false;
-}
+} from './earth-surface-tile-key';
 
 export interface EarthSurfaceMaterialCapabilities {
   readonly useBaseFallback: boolean;
@@ -44,42 +36,6 @@ export interface EarthSurfaceMaterialNodes {
   readonly colorNode: Vec3Node;
   readonly roughnessNode: FloatNode;
   readonly normalNode: Vec3Node;
-}
-
-const TEXTURE_SETTINGS: Record<EarthSurfaceMaterialTextureKind, EarthSurfaceMaterialTextureSettings> = {
-  pageTable: {
-    minFilter: THREE.NearestFilter,
-    magFilter: THREE.NearestFilter,
-    colorSpace: THREE.NoColorSpace,
-    generateMipmaps: false,
-  },
-  color: {
-    minFilter: THREE.LinearFilter,
-    magFilter: THREE.LinearFilter,
-    colorSpace: THREE.SRGBColorSpace,
-    generateMipmaps: false,
-  },
-  terrain: {
-    minFilter: THREE.LinearFilter,
-    magFilter: THREE.LinearFilter,
-    colorSpace: THREE.NoColorSpace,
-    generateMipmaps: false,
-  },
-};
-
-export function configureEarthSurfaceTexture<T extends THREE.Texture>(
-  texture: T,
-  kind: EarthSurfaceMaterialTextureKind,
-): T {
-  const settings = TEXTURE_SETTINGS[kind];
-  texture.minFilter = settings.minFilter;
-  texture.magFilter = settings.magFilter;
-  texture.colorSpace = settings.colorSpace;
-  texture.generateMipmaps = settings.generateMipmaps;
-  // 地理画像は北端を先頭行へ置くため、GPUへ行順をそのまま渡す。
-  texture.flipY = false;
-  if (texture.image !== null && texture.image !== undefined) texture.needsUpdate = true;
-  return texture;
 }
 
 // 全球地理UVを、指定LODのタイル内UVへ写す。v=1は南端の最終画素側へ残す。

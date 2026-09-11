@@ -1,19 +1,23 @@
 // 地球表面。EarthSurfaceContext は配信版と、地表要求の世代・キャンセル信号を配る。EarthSurface は
 // 天体表面の球へ、詳細な材質とタイルの常駐を接続する。
 import * as THREE from 'three/webgpu';
-import type { EarthSurfaceSource } from '../game/celestial/solar-system/earth-surface-source';
-import { EarthSurfaceView } from './earth-surface-tiles';
+import type { EarthSurfaceSource } from './earth-surface-source';
 import type {
   EarthSurfaceResidentFrame,
 } from './earth-surface-resident';
+import { EarthSurfaceProjectionCache } from './earth-surface-projection';
 import type {
   CelestialSurfaceFrame,
   CelestialSurfaceDiagnostics,
   CelestialSurfaceLike,
-  CelestialSurfaceMaterialAttachment,
   CelestialSurfaceStatus,
   SurfacePhotometry,
 } from './celestial/celestial-surface';
+import {
+  disposeCelestialSurfaceMaterialAttachment,
+  type CelestialSurfaceMaterialAttachment,
+  type CelestialSurfaceMaterialHost,
+} from './celestial/celestial-surface-material';
 
 // 地表要求1件ぶんの世代とキャンセル信号。使い終えたら release する(信号は中断される)。
 export interface EarthSurfaceRequestLease {
@@ -23,8 +27,6 @@ export interface EarthSurfaceRequestLease {
 }
 
 export type EarthSurfaceStatus = CelestialSurfaceStatus;
-
-const PROJECTION_REBUILD_INTERVAL_MS = 100; // [ms]
 
 // 実GPU実装を直接所有せず、ゲーム側から差し込める地表常駐の最小境界。
 // 具象coordinatorはタイル要求とGPU寿命を持つため、EarthSurfaceはこの2操作だけを知る。
@@ -42,18 +44,11 @@ export interface EarthSurfaceMaterialAttachment extends CelestialSurfaceMaterial
   readonly failureReason?: () => string | null;
 }
 
-// 材質を差し替えられる天体表面。fallback がこれを満たせば詳細な材質を差し込める。
-interface CelestialSurfaceMaterialHost {
-  replaceMaterial(attachment: CelestialSurfaceMaterialAttachment): void;
-  restoreFallbackMaterial?(): void;
-}
-
-// 差し込めなかった材質を、持ち物のテクスチャごと解放する。
-function disposeMaterialAttachment(attachment: EarthSurfaceMaterialAttachment): void {
-  attachment.onDispose?.();
-  attachment.material.dispose();
-  for (const deferred of attachment.deferred) deferred.dispose();
-  for (const texture of attachment.textures ?? []) texture.dispose();
+function isMaterialHost(
+  surface: CelestialSurfaceLike,
+): surface is CelestialSurfaceLike & CelestialSurfaceMaterialHost {
+  const candidate = surface as unknown as { replaceMaterial?: unknown };
+  return typeof candidate.replaceMaterial === 'function';
 }
 
 // 配信版(source)を持ち、地表要求へ世代とキャンセル信号を配る。世代を進めると、それまでに
@@ -118,17 +113,7 @@ export class EarthSurfaceContext {
 export class EarthSurface implements CelestialSurfaceLike {
   private requestLeaseValue: EarthSurfaceRequestLease | null = null;
   private coordinatorValue: EarthSurfaceResidentCoordinatorLike | null;
-  private projectionValue: EarthSurfaceView | null = null;
-  private projectionBuiltTimeMs: number | null = null;
-  private projectionCameraWorldValue: THREE.Matrix4 | null = null;
-  private projectionCameraViewValue: THREE.Matrix4 | null = null;
-  private projectionMatrixValue: THREE.Matrix4 | null = null;
-  private bodyToViewValue: THREE.Matrix4 | null = null;
-  private axesValue: THREE.Vector3 | null = null;
-  private projectionViewportValue: { width: number; height: number } | null = null;
-  private projectionCameraTypeValue: 'perspective' | 'orthographic' | null = null;
-  private projectionCoordinateSystemValue: number | null = null;
-  private projectionReversedDepthValue: boolean | null = null;
+  private readonly projectionCache = new EarthSurfaceProjectionCache();
   private materialSyncValue: ((frame: CelestialSurfaceFrame) => void) | null = null;
   private detailedMaterialValue = false;
   private materialFailureReasonValue: (() => string | null) | null = null;
@@ -192,46 +177,7 @@ export class EarthSurface implements CelestialSurfaceLike {
       this.requestLeaseValue = null;
       return;
     }
-    const cameraType = frame.camera instanceof THREE.PerspectiveCamera ? 'perspective' : 'orthographic';
-    const projectionChanged = this.projectionValue === null
-      || this.projectionCameraViewValue === null
-      || this.projectionCameraWorldValue === null
-      || !this.projectionCameraWorldValue.equals(frame.camera.matrixWorld)
-      || !this.projectionCameraViewValue.equals(frame.camera.matrixWorldInverse)
-      || this.projectionMatrixValue === null
-      || !this.projectionMatrixValue.equals(frame.camera.projectionMatrix)
-      || this.bodyToViewValue === null
-      || !this.bodyToViewValue.equals(frame.bodyToView)
-      || this.axesValue === null
-      || !this.axesValue.equals(frame.axes)
-      || this.projectionViewportValue?.width !== frame.viewport.width
-      || this.projectionViewportValue?.height !== frame.viewport.height
-      || this.projectionCameraTypeValue !== cameraType
-      || this.projectionCoordinateSystemValue !== frame.camera.coordinateSystem
-      || this.projectionReversedDepthValue !== frame.camera.reversedDepth;
-    const timeRewound = this.projectionBuiltTimeMs !== null && frame.timeMs < this.projectionBuiltTimeMs;
-    const rebuildWindowElapsed = this.projectionBuiltTimeMs !== null
-      && frame.timeMs - this.projectionBuiltTimeMs >= PROJECTION_REBUILD_INTERVAL_MS;
-    const rebuildProjection = this.projectionValue === null
-      || timeRewound || (projectionChanged && rebuildWindowElapsed);
-    if (rebuildProjection) {
-      const bodyToWorld = frame.camera.matrixWorld.clone().multiply(frame.bodyToView);
-      this.projectionValue = new EarthSurfaceView(
-        frame.camera, bodyToWorld, frame.axes, frame.viewport.width, frame.viewport.height,
-      );
-      this.projectionCameraWorldValue = frame.camera.matrixWorld.clone();
-      this.projectionCameraViewValue = frame.camera.matrixWorldInverse.clone();
-      this.projectionMatrixValue = frame.camera.projectionMatrix.clone();
-      this.bodyToViewValue = frame.bodyToView.clone();
-      this.axesValue = frame.axes.clone();
-      this.projectionViewportValue = { width: frame.viewport.width, height: frame.viewport.height };
-      this.projectionCameraTypeValue = cameraType;
-      this.projectionCoordinateSystemValue = frame.camera.coordinateSystem;
-      this.projectionReversedDepthValue = frame.camera.reversedDepth;
-      this.projectionBuiltTimeMs = frame.timeMs;
-    }
-    const projection = this.projectionValue;
-    if (projection === null) throw new Error('Earth surface projection is unavailable');
+    const projection = this.projectionCache.get(frame);
     const residentFrame: EarthSurfaceResidentFrame = {
       projection,
       timeMs: frame.timeMs,
@@ -259,16 +205,6 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.fallback.hide();
   }
 
-  // 実行中の配信版を破棄し、新しい版を base から再開できる状態へ戻す。
-  public replaceSource(source: EarthSurfaceSource): void {
-    if (this.disposed) return;
-    this.requestLeaseValue?.release();
-    this.requestLeaseValue = null;
-    this.context.replaceSource(source);
-    this.coordinatorValue?.reset?.();
-    this.clearProjectionCache();
-  }
-
   // source・coordinator・材質を差し替えて接続する。渡したものの所有を引き継ぎ、dispose 後に
   // 渡されたものはその場で解放する。
   public attach(
@@ -280,7 +216,7 @@ export class EarthSurface implements CelestialSurfaceLike {
   ): void {
     if (this.disposed) {
       coordinator?.dispose();
-      if (material !== null) disposeMaterialAttachment(material);
+      if (material !== null) disposeCelestialSurfaceMaterialAttachment(material);
       return;
     }
     // 前の要求・常駐・材質の状態を捨てて、渡されたものへ置き換える。
@@ -296,22 +232,20 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.detailedMaterialValue = false;
     this.clearProjectionCache();
     if (material !== null) {
-      const host = this.fallback as unknown as CelestialSurfaceMaterialHost;
-      if (typeof host.replaceMaterial !== 'function') {
-        disposeMaterialAttachment(material);
+      if (!isMaterialHost(this.fallback)) {
+        disposeCelestialSurfaceMaterialAttachment(material);
         this.coordinatorValue?.dispose();
         this.coordinatorValue = null;
         this.statusValue = 'fallback';
         this.reasonValue = 'detailed material connection unavailable';
       } else {
-        host.replaceMaterial(material);
+        this.fallback.replaceMaterial(material);
         this.materialSyncValue = material.syncFrame;
         this.materialFailureReasonValue = material.failureReason ?? null;
         this.detailedMaterialValue = true;
       }
     } else {
-      const host = this.fallback as unknown as CelestialSurfaceMaterialHost;
-      host.restoreFallbackMaterial?.();
+      if (isMaterialHost(this.fallback)) this.fallback.restoreFallbackMaterial?.();
     }
   }
 
@@ -328,16 +262,6 @@ export class EarthSurface implements CelestialSurfaceLike {
 
   // sourceや表示寿命の境界で、次のframeに最新の投影を必ず作らせる。
   private clearProjectionCache(): void {
-    this.projectionValue = null;
-    this.projectionBuiltTimeMs = null;
-    this.projectionCameraWorldValue = null;
-    this.projectionCameraViewValue = null;
-    this.projectionMatrixValue = null;
-    this.bodyToViewValue = null;
-    this.axesValue = null;
-    this.projectionViewportValue = null;
-    this.projectionCameraTypeValue = null;
-    this.projectionCoordinateSystemValue = null;
-    this.projectionReversedDepthValue = null;
+    this.projectionCache.reset();
   }
 }
