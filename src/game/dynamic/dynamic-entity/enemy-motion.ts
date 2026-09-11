@@ -1,11 +1,8 @@
 import type { Attitude } from '../../../physics/attitude';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { KinematicState } from '../../../physics/kinematic-state';
-import {
-  DynamicMotion,
-  type DynamicMotionBehavior,
-  type DynamicReactionServices,
-} from '../dynamic-motion';
+import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic-motion';
+import type { DynamicReactionServices } from '../dynamic-simulation-participant';
 import type { Contact } from './contact';
 import { shipMotionOptions } from './ship';
 
@@ -14,10 +11,10 @@ const ENEMY_MASS = 10000; // [kg]
 
 interface EnemyMotionReactions {
   receiveEntityContact(
-    other: DynamicMotion, contact: Contact, context: DynamicReactionServices,
+    other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void;
-  receiveSurfaceContact(contact: Contact, context: DynamicReactionServices): void;
-  receiveBurnUp(context: DynamicReactionServices): void;
+  receiveSurfaceContact(contact: Contact, services: DynamicReactionServices): void;
+  receiveBurnUp(services: DynamicReactionServices): void;
 }
 
 export type EnemyCollisionShape = Pick<
@@ -39,19 +36,19 @@ class EnemyBehavior implements DynamicMotionBehavior {
   }
 
   public onEntityContact(
-    _self: DynamicMotion, other: DynamicMotion, contact: Contact, context: DynamicReactionServices,
+    _self: DynamicMotion, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void {
-    this.reactions.receiveEntityContact(other, contact, context);
+    this.reactions.receiveEntityContact(other, contact, services);
   }
 
   public onSurfaceContact(
-    _self: DynamicMotion, _body: CelestialBody, contact: Contact, context: DynamicReactionServices,
+    _self: DynamicMotion, _body: CelestialBody, contact: Contact, services: DynamicReactionServices,
   ): void {
-    this.reactions.receiveSurfaceContact(contact, context);
+    this.reactions.receiveSurfaceContact(contact, services);
   }
 
-  public onBurnUp(_self: DynamicMotion, context: DynamicReactionServices): void {
-    this.reactions.receiveBurnUp(context);
+  public onBurnUp(_self: DynamicMotion, services: DynamicReactionServices): void {
+    this.reactions.receiveBurnUp(services);
   }
 }
 
