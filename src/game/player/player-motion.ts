@@ -5,11 +5,8 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import type { BoosterStackData } from './booster-stack';
 import type { PowerSaveData, RadiatorSaveData } from '../save/save-data';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
-import {
-  DynamicMotion,
-  type DynamicMotionBehavior,
-  type DynamicReactionServices,
-} from '../dynamic/dynamic-motion';
+import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic/dynamic-motion';
+import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
 import {
   MAX_HULL_TEMP,
   PLAYER_MASS,
@@ -33,14 +30,14 @@ export interface PlayerMotionReactions {
     dt: number, position: Vec3, atmosphereBody: CelestialBody | null, atmospherePivot: number,
   ): void;
   receiveEntityContact(
-    other: DynamicMotion, contact: Contact, context: DynamicReactionServices,
+    other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void;
   receiveRadiatorContact(
-    side: RadiatorSide, other: DynamicMotion, contact: Contact, context: DynamicReactionServices,
+    side: RadiatorSide, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void;
-  receiveSurfaceContact(contact: Contact, context: DynamicReactionServices): void;
-  receiveStructuralLoss(context: DynamicReactionServices): void;
-  receiveBurnUp(context: DynamicReactionServices): void;
+  receiveSurfaceContact(contact: Contact, services: DynamicReactionServices): void;
+  receiveStructuralLoss(services: DynamicReactionServices): void;
+  receiveBurnUp(services: DynamicReactionServices): void;
 }
 
 class PlayerBehavior implements DynamicMotionBehavior {
@@ -105,32 +102,32 @@ class PlayerBehavior implements DynamicMotionBehavior {
   }
 
   public onEntityContact(
-    _self: DynamicMotion, other: DynamicMotion, contact: Contact, context: DynamicReactionServices,
+    _self: DynamicMotion, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void {
-    this.reactions.receiveEntityContact(other, contact, context);
+    this.reactions.receiveEntityContact(other, contact, services);
   }
 
   public onSurfaceContact(
     _self: DynamicMotion,
     _body: CelestialBody,
     contact: Contact,
-    context: DynamicReactionServices,
+    services: DynamicReactionServices,
   ): void {
-    this.reactions.receiveSurfaceContact(contact, context);
+    this.reactions.receiveSurfaceContact(contact, services);
   }
 
-  public onBurnUp(_self: DynamicMotion, context: DynamicReactionServices): void {
-    this.reactions.receiveBurnUp(context);
+  public onBurnUp(_self: DynamicMotion, services: DynamicReactionServices): void {
+    this.reactions.receiveBurnUp(services);
   }
 
   public checkLoss(
     self: DynamicMotion,
     _dt: number,
     _simTime: number,
-    context: DynamicReactionServices,
+    services: DynamicReactionServices,
   ): void {
     if ((self as PlayerMotion).aero.overStructuralLimit) {
-      this.reactions.receiveStructuralLoss(context);
+      this.reactions.receiveStructuralLoss(services);
     }
   }
 }
@@ -168,8 +165,8 @@ export class PlayerMotion extends DynamicMotion {
     this.belt = new Belt(this, beltLinkCount);
     this.radiator = new RadiatorSystem(
       this,
-      (side, other, contact, context) => (
-        reactions.receiveRadiatorContact(side, other, contact, context)
+      (side, other, contact, services) => (
+        reactions.receiveRadiatorContact(side, other, contact, services)
       ),
       radiatorSave,
     );

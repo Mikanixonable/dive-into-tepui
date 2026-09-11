@@ -10,7 +10,8 @@ import {
   SMALL_DEBRIS_SRP_COEFF,
 } from '../dynamic-motion';
 
-type PickupKind = 'ammo' | 'rcs-fuel';
+// 補給物の種別。接触の種別としても名乗る。
+export type PickupKind = 'ammo' | 'rcs-fuel';
 
 const PICKUP_PHYSICAL_RADIUS = 1.3; // [m]
 
