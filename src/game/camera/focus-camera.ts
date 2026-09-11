@@ -293,14 +293,17 @@ export class FocusCamera {
     return this.fovDeg;
   }
 
+  // 回転操作の方式(オイラー/クォータニオン)。
   public get cameraRotationMode(): CameraRotationMode {
     return this.orientation.rotationMode;
   }
 
+  // 投影方式(透視/正射影)。
   public get projection(): ProjectionMode {
     return this.projectionMode;
   }
 
+  // setReferenceView が真上/真横を取るときの基準面。
   public get referencePlane(): CameraReferencePlane {
     return this._referencePlane;
   }
@@ -353,6 +356,7 @@ export class FocusCamera {
   // setReferenceView が真上/真横を取るときの基準面。
   private _referencePlane: CameraReferencePlane = 'equator';
 
+  // setReferenceView の基準面を差し替える。視点は次の setReferenceView で動く。
   public setReferencePlane(plane: CameraReferencePlane): void {
     this._referencePlane = plane;
   }

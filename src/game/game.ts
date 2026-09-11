@@ -166,6 +166,7 @@ export class Game {
   // このランを1件ぶんのセーブ本体へ畳む。
   public serialize(): GameSaveData {
     const { phaseOffsets, earthSpinPhase0 } = this._celestialSystem.serialize();
+    // 元期・星系の位相と、実体・操作対象・ステージ・カメラ・航法ターゲット。
     return {
       version: SAVE_VERSION,
       stageId: this.activeStage.id,
