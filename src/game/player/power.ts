@@ -2,7 +2,7 @@ import { Attitude } from '../../physics/attitude';
 import { LOCAL_UP, qRotate } from '../../math/quat';
 import { Vec3, dot } from '../../math/vec3';
 import { SOLAR_CONSTANT } from '../../physics/srp';
-import type { SolarDeploy } from '../../render/dynamic/player/power-view';
+import type { SolarDeploy } from '../../render/dynamic/player/folding-panels-view';
 import type { PowerSaveData } from '../save/save-data';
 import { RADIATOR_DEPLOY_TIME } from './radiator';
 
@@ -22,7 +22,7 @@ export class PowerSystem {
 
   private readonly panels: Record<SolarSide, Panel> = { up: new Panel(), down: new Panel() };
 
-  // saved があれば蓄電量を復元する。パネルの表示物は PowerView が所有する。
+  // saved があれば蓄電量を復元する。
   public constructor(saved?: PowerSaveData) {
     if (saved) this.charge = saved.charge;
   }
