@@ -1,0 +1,93 @@
+// シルエット表示を組む。溶媒排除表面を半透明の外殻にして電荷か疎水性で塗り、内側にリボンとリガンドを置く。
+import * as THREE from 'three/webgpu';
+import type { ProteinSilhouetteColorMode } from './protein-display';
+import {
+  attachProteinResidueBinding,
+  proteinStandardMaterial,
+  type ProteinMotionBinding,
+} from './protein-motion-material';
+import { buildProteinLigands, proteinResidueBindingLookup } from './protein-atom-view';
+import { buildProteinRibbon } from './protein-ribbon';
+import { triangleComponent } from './protein-ribbon-color';
+import type { ProteinRenderSource } from './protein-render-definition';
+
+// 表面の値 -127〜127 を色へ写す。電荷は負が赤・正が青、疎水性は低いと青・高いと橙。
+function surfaceColor(value: number, mode: ProteinSilhouetteColorMode): THREE.Color {
+  const t = Math.max(0, Math.min(1, (value + 127) / 254));
+  if (mode === 'surface-charge') {
+    if (t < 0.5) return new THREE.Color(0xd84a4a).lerp(new THREE.Color(0xf4f0e8), t * 2);
+    return new THREE.Color(0xf4f0e8).lerp(new THREE.Color(0x477fd1), (t - 0.5) * 2);
+  }
+  return new THREE.Color(0x4575b4).lerp(new THREE.Color(0xf7f7f7), Math.min(1, t * 2))
+    .lerp(new THREE.Color(0xd95f02), Math.max(0, (t - 0.5) * 2));
+}
+
+interface ProteinSurfacePart {
+  readonly positions: number[];
+  readonly colors: number[];
+  readonly indices: number[];
+  readonly vertices: Map<number, number>;
+}
+
+/** mode の着色で、鎖ごとの外殻と白いリボン・リガンドを1体ぶん組む。 */
+export function buildProteinSilhouette(
+  source: ProteinRenderSource,
+  mode: ProteinSilhouetteColorMode,
+  motion?: ProteinMotionBinding,
+): THREE.Group {
+  const group = new THREE.Group();
+  // 色は外殻が担うので、内部のリボンは白にして殻越しに形を読ませる。
+  group.add(buildProteinRibbon(source, 'chain', new THREE.Color(0xffffff), motion));
+  if (source.semantic.ligands.length) group.add(buildProteinLigands(source, motion));
+  const surface = source.structure.surface.mesh;
+  const bindings = proteinResidueBindingLookup(source);
+  const values = mode === 'surface-charge' ? surface.charge : surface.hydrophobicity;
+  const center = source.structure.coordinateFrame.centeredAt;
+  // 三角形を鎖ごとに振り分け、頂点を中心寄せ済みの系へ移して色を付ける。
+  const parts = new Map<string, ProteinSurfacePart>();
+  for (let offset = 0; offset + 2 < surface.index.length; offset += 3) {
+    const triangle = [surface.index[offset]!, surface.index[offset + 1]!, surface.index[offset + 2]!] as const;
+    const component = triangleComponent(surface.component, ...triangle);
+    const part: ProteinSurfacePart = parts.get(component) ?? {
+      positions: [], colors: [], indices: [], vertices: new Map<number, number>(),
+    };
+    for (const sourceVertex of triangle) {
+      let localVertex = part.vertices.get(sourceVertex);
+      if (localVertex === undefined) {
+        localVertex = part.vertices.size;
+        part.vertices.set(sourceVertex, localVertex);
+        part.positions.push(
+          surface.position[sourceVertex * 3]! - (center[0] ?? 0),
+          surface.position[sourceVertex * 3 + 1]! - (center[1] ?? 0),
+          surface.position[sourceVertex * 3 + 2]! - (center[2] ?? 0),
+        );
+        const color = surfaceColor(values[sourceVertex] ?? 0, mode);
+        part.colors.push(color.r, color.g, color.b);
+      }
+      part.indices.push(localVertex);
+    }
+    parts.set(component, part);
+  }
+  // 鎖ごとの外殻を半透明で重ねる。
+  for (const [component, part] of parts) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(part.positions, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(part.colors, 3));
+    geometry.setIndex(part.indices);
+    // vertices の挿入順がローカル頂点の順と一致する。
+    const residueIndices = [...part.vertices.keys()].map((vertex) => bindings.surfaceResidues[vertex] ?? 0);
+    attachProteinResidueBinding(geometry, residueIndices);
+    geometry.computeVertexNormals();
+    const mesh = new THREE.Mesh(geometry, proteinStandardMaterial({
+      color: 0xffffff, vertexColors: true, roughness: 0.32, metalness: 0.08,
+      side: THREE.DoubleSide, transparent: true, opacity: 0.28, depthWrite: false,
+    }, motion));
+    mesh.renderOrder = 2;
+    mesh.userData.proteinComponent = component;
+    mesh.userData.proteinTranslucentShell = true;
+    mesh.userData.ownsGeometry = true;
+    mesh.userData.ownsMaterial = true;
+    group.add(mesh);
+  }
+  return group;
+}
