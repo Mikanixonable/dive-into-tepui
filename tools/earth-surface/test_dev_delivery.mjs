@@ -16,15 +16,31 @@ const DATASET_ID = 'earth-2026-09-09-a';
 const BUNDLE_PUBLIC_PATH = `/earth/${DATASET_ID}/`;
 const MANIFEST_URL = `earth/${DATASET_ID}/earth-surface.json`;
 
-function webpackConfigWithoutManifestOverride() {
-  const previous = process.env.EARTH_SURFACE_MANIFEST_URL;
-  delete process.env.EARTH_SURFACE_MANIFEST_URL;
+const R2_BASE_URL = 'https://assets.mikanixonable.net/earth/earth-2026-09-09-a/';
+const R2_MANIFEST_URL = `${R2_BASE_URL}earth-surface.json`;
+
+function webpackConfigWithEnvironment({ baseUrl, manifestUrl, localBundle = true } = {}) {
+  const nodeFs = require('node:fs');
+  const previousBase = process.env.EARTH_SURFACE_BASE_URL;
+  const previousManifest = process.env.EARTH_SURFACE_MANIFEST_URL;
+  const previousExistsSync = nodeFs.existsSync;
+  if (baseUrl === undefined) delete process.env.EARTH_SURFACE_BASE_URL;
+  else process.env.EARTH_SURFACE_BASE_URL = baseUrl;
+  if (manifestUrl === undefined) delete process.env.EARTH_SURFACE_MANIFEST_URL;
+  else process.env.EARTH_SURFACE_MANIFEST_URL = manifestUrl;
+  if (!localBundle) {
+    nodeFs.existsSync = (filePath) => filePath === join(ROOT, '.earth-surface/bundle/earth-surface.json')
+      ? false : previousExistsSync(filePath);
+  }
   try {
     delete require.cache[require.resolve('../../webpack.config.js')];
     return require('../../webpack.config.js');
   } finally {
-    if (previous === undefined) delete process.env.EARTH_SURFACE_MANIFEST_URL;
-    else process.env.EARTH_SURFACE_MANIFEST_URL = previous;
+    nodeFs.existsSync = previousExistsSync;
+    if (previousBase === undefined) delete process.env.EARTH_SURFACE_BASE_URL;
+    else process.env.EARTH_SURFACE_BASE_URL = previousBase;
+    if (previousManifest === undefined) delete process.env.EARTH_SURFACE_MANIFEST_URL;
+    else process.env.EARTH_SURFACE_MANIFEST_URL = previousManifest;
   }
 }
 
@@ -101,9 +117,18 @@ async function assertHttpDelivery(config) {
 }
 
 async function run() {
-  const config = webpackConfigWithoutManifestOverride();
-  assertConfigContract(config);
-  await assertHttpDelivery(config);
+  const localConfig = webpackConfigWithEnvironment({ manifestUrl: MANIFEST_URL });
+  assertConfigContract(localConfig);
+  await assertHttpDelivery(localConfig);
+
+  const externalConfig = webpackConfigWithEnvironment({ baseUrl: R2_BASE_URL });
+  const definitions = definePlugin(externalConfig)?.definitions;
+  assert.equal(JSON.parse(definitions.__EARTH_SURFACE_BASE_URL__), R2_BASE_URL);
+  assert.equal(JSON.parse(definitions.__EARTH_SURFACE_MANIFEST_URL__), R2_MANIFEST_URL);
+
+  const defaultConfig = webpackConfigWithEnvironment({ localBundle: false });
+  const defaultDefinitions = definePlugin(defaultConfig)?.definitions;
+  assert.equal(JSON.parse(defaultDefinitions.__EARTH_SURFACE_MANIFEST_URL__), R2_MANIFEST_URL);
   console.log('earth-surface dev delivery contract: ok');
 }
 
