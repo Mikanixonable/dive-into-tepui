@@ -4,11 +4,12 @@ import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { test } from '../harness';
 import {
-  EarthSurfaceTileRequestQueue, EarthSurfaceTileRequestSource,
-} from '../../src/render/earth-surface-request';
-import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from '../../src/render/earth-surface-decode';
-import { earthTileKey } from '../../src/render/earth-surface-tiles';
-import type { EarthSurfaceTileIndexFile } from '../../src/render/earth-surface-request';
+  EarthSurfaceTileRequestQueue,
+} from '../../src/render/earth-surface-tile-queue';
+import { EarthSurfaceTileRequestSource } from '../../src/render/earth-surface-tile-source';
+import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from '../../src/render/earth-surface-format';
+import { earthTileKey } from '../../src/render/earth-surface-tile-key';
+import type { EarthSurfaceTileIndexFile } from '../../src/render/earth-surface-tile-source';
 
 const COLOR = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 const COLOR_HASH = createHash('sha256').update(COLOR).digest('hex');
