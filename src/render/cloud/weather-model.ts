@@ -16,7 +16,7 @@ import { composeWind, FRICTION_RATE, balancedWind, isobarAt } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { NoiseOctave } from './circulating-noise';
-import type { ClimateMapLike } from './climate-map';
+import type { ClimateMap } from './climate-map';
 import type { FieldProjection } from './field-projection';
 import type { BalancedWind } from './wind-law';
 import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
@@ -174,7 +174,7 @@ export class WeatherModel {
   // 時刻 0 の天気で始める。climate はこの天体の気候の事前分布、projection は写しの持ち方、
   // surfaceRadius は天体の半径 [m]、rotationPeriod は自転周期 [s]。
   public constructor(
-    private readonly climate: ClimateMapLike, projection: FieldProjection,
+    private readonly climate: ClimateMap, projection: FieldProjection,
     private readonly surfaceRadius: number, private readonly rotationPeriod: number,
   ) {
     const texel = projection.texelAngle;
