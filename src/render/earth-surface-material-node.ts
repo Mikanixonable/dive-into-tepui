@@ -75,6 +75,8 @@ export function configureEarthSurfaceTexture<T extends THREE.Texture>(
   texture.magFilter = settings.magFilter;
   texture.colorSpace = settings.colorSpace;
   texture.generateMipmaps = settings.generateMipmaps;
+  // 地理画像は北端を先頭行へ置くため、GPUへ行順をそのまま渡す。
+  texture.flipY = false;
   if (texture.image !== null && texture.image !== undefined) texture.needsUpdate = true;
   return texture;
 }
