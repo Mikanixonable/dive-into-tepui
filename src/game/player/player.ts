@@ -26,7 +26,10 @@ import { Throttle } from './throttle';
 import { FireControl, type AmmoLoad } from './fire-control';
 import { AltitudeAlarm } from './altitude-alarm';
 import type { FlashEffects } from '../vfx/flash-effects';
-import { buildDestroyFragments, playerDestroyFragments } from '../dynamic/dynamic-entity/debris-piece';
+import {
+  buildDestroyFragments, DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, PLAYER_DESTROY_FRAG_COLOR,
+  playerDestroyFragments,
+} from '../dynamic/dynamic-entity/debris-piece';
 import { PlayerView, type PlayerRenderSource } from '../../render/dynamic/player/player-view';
 import type { DynamicViewFrame } from '../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../orbit-reference';
@@ -40,7 +43,6 @@ import { partFromSaveData, type AnyPart } from '../dynamic/dynamic-entity/parts'
 import { DIRECTION_GLYPH, ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import { shipMarkerSvg } from '../marker/marker-shapes';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
-import { DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN, PLAYER_DESTROY_FRAG_COLOR } from '../../render/vfx-style';
 import { AttachedBoosters } from './attached-boosters';
 import { MARKER_PRIORITY } from '../marker/crowding';
 import { strongestAttractor } from '../../physics/attractor';

@@ -1,22 +1,22 @@
 // デバッグ情報ウィンドウ: フレーム時間の計測・集計と、その表示、そして描画パスの中間結果を映す
 // デバッグ表示の選択。窓が開いている間だけ計測が走る(`on` が計測の可否そのもの)。
 import type { WebGPURenderer } from 'three/webgpu';
-import { PropertyWindow } from '../hud/windows/property-window';
-import { SegmentedControl, TabBar } from '../hud/widgets';
-import { injectOnce } from '../hud/inject-style';
-import { DEBUG_TARGETS, type DebugTargetHost, type DebugTargetId } from '../render/pipeline/debug-target';
-import type { RenderStyle } from '../render/render-style';
-import { fmtDuration } from '../hud/utils';
-import { FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from '../game/frame-sections';
-import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings, type GpuPassId } from '../render/gpu-timings';
-import type { OverlayManager } from '../hud/overlay-manager';
-import type { Input } from '../input/input';
-import { KEY_MAPPING as K } from '../input/key-mapping';
-import { ProteinMotionMetricsRecorder } from '../game/protein/protein-motion-metrics';
-import { LODS_FINE_TO_COARSE } from '../render/protein/protein-display';
-import type { PerfCounts, PerfCountSource } from '../game/perf-counts';
-import type { EntityCountKind } from '../game/dynamic/dynamic-entity/entity-kind';
-import type { PropertyRow } from '../hud/windows/property-window-content';
+import { PropertyWindow } from '../../../hud/windows/property-window';
+import { SegmentedControl, TabBar } from '../../../hud/widgets';
+import { injectOnce } from '../../../hud/inject-style';
+import { DEBUG_TARGETS, type DebugTargetHost, type DebugTargetId } from '../../../render/pipeline/debug-target';
+import type { RenderStyle } from '../../../render/render-style';
+import { fmtDuration } from '../../../hud/utils';
+import { FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from '../../frame-sections';
+import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings, type GpuPassId } from '../../../render/gpu-timings';
+import type { OverlayManager } from '../../../hud/overlay-manager';
+import type { Input } from '../../../input/input';
+import { KEY_MAPPING as K } from '../../../input/key-mapping';
+import { ProteinMotionMetricsRecorder } from '../../protein/protein-motion-metrics';
+import { LODS_FINE_TO_COARSE } from '../../../render/protein/protein-display';
+import type { PerfCounts, PerfCountSource } from '../../perf-counts';
+import type { EntityCountKind } from '../../dynamic/dynamic-entity/entity-kind';
+import type { PropertyRow } from '../../../hud/windows/property-window-content';
 
 // エンティティ数の行。並び順と表示名はここで決める。
 const ENTITY_COUNT_ROWS: readonly { key: EntityCountKind; label: string }[] = [
@@ -122,7 +122,7 @@ export class DebugInfoWindow {
   public get on(): boolean { return this.win !== null; }
 
   // 計測対象と表示先を受け取り、デバッグ表示の操作部品を組み立てる。renderStyle は組み立て時の
-  // 見せ方。?perf=1 が付いていれば起動直後から窓を開く。
+  // 見せ方。openAtStart が真なら組み立てた直後に窓を開く。
   public constructor(
     private readonly root: HTMLElement,
     private readonly renderer: WebGPURenderer,
@@ -131,6 +131,7 @@ export class DebugInfoWindow {
     private readonly overlayManager: OverlayManager,
     private readonly debugTargetHost: DebugTargetHost,
     renderStyle: RenderStyle,
+    openAtStart: boolean,
   ) {
     // 描画タブの選択欄とタブ切り替えを組む。
     injectOnce('debug-info-window', STYLE);
@@ -145,7 +146,7 @@ export class DebugInfoWindow {
     this.controls.appendChild(this.tabBar.element);
     this.controls.appendChild(this.renderTarget.element);
     this.syncRenderStyle(renderStyle);
-    if (new URLSearchParams(location.search).get('perf') === '1') this.open();
+    if (openAtStart) this.open();
   }
 
   // 描画パスの中間結果を選べるのは写実の見せ方のときだけ(DEVELOP/SPEC/RENDERING.md)なので、
