@@ -12,6 +12,8 @@ export interface EarthSurfaceSource {
   readonly baseColorUrl: string;
   readonly baseTerrainUrl: string;
   readonly climateMapUrls: readonly string[];
+  /** 現行描画LODへ移行する前の配信物。z0..z3は要求対象から除外する。 */
+  readonly legacyBundle?: boolean;
 }
 
 export interface EarthSurfaceClimateRange {
@@ -28,7 +30,7 @@ export interface EarthSurfaceClimateEncoding {
 }
 
 export interface EarthSurfaceAssetManifest {
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 1 | 2;
   readonly datasetId: string;
   readonly sourceManifestSha256: string;
   readonly terrainEncoding: EarthSurfaceTerrainEncoding;
@@ -37,13 +39,13 @@ export interface EarthSurfaceAssetManifest {
   readonly tileIndexUrl: string;
   readonly climateMaps: readonly string[];
   readonly climateEncoding: EarthSurfaceClimateEncoding;
-  readonly coverage: EarthSurfaceCoverage;
+  readonly coverage?: EarthSurfaceCoverage;
   readonly attribution: readonly string[];
 }
 
 export interface EarthSurfaceCoverage {
   readonly kind: 'complete' | 'sparse';
-  readonly minZoom: 4;
+  readonly minZoom?: number;
   readonly maxZoom: 7;
   readonly expectedTiles: number | null;
 }
@@ -80,20 +82,35 @@ function requireDatasetId(datasetId: string): void {
 export function earthSurfaceSourceFromManifest(
   baseUrl: string, manifestUrl: string, manifest: EarthSurfaceAssetManifest,
 ): EarthSurfaceSource {
-  if (manifest.schemaVersion !== 2) throw new Error('Unsupported Earth surface manifest schema');
+  if (manifest.schemaVersion !== 1 && manifest.schemaVersion !== 2) {
+    throw new Error('Unsupported Earth surface manifest schema');
+  }
+  const legacyBundle = manifest.schemaVersion === 1;
   requireDatasetId(manifest.datasetId);
   const coverage = manifest.coverage;
   if (coverage?.kind !== 'complete' && coverage?.kind !== 'sparse') {
     throw new Error('Invalid Earth surface coverage kind');
   }
-  if (coverage.minZoom !== EARTH_TILE_MIN_Z || coverage.maxZoom !== EARTH_TILE_MAX_Z) {
-    throw new Error('Earth surface coverage must be z4..z7');
-  }
-  if (coverage.kind === 'complete' && coverage.expectedTiles !== 43_520) {
-    throw new Error('Complete Earth surface coverage must contain 43520 tiles');
-  }
-  if (coverage.kind === 'sparse' && coverage.expectedTiles !== null) {
-    throw new Error('Sparse Earth surface coverage must not declare expected tiles');
+  if (legacyBundle) {
+    if (coverage.maxZoom !== EARTH_TILE_MAX_Z) {
+      throw new Error('Legacy Earth surface coverage must end at z7');
+    }
+    if (coverage.kind === 'complete' && coverage.expectedTiles !== 43_690) {
+      throw new Error('Complete legacy Earth surface coverage must contain 43690 tiles');
+    }
+    if (coverage.kind === 'sparse' && coverage.expectedTiles !== null) {
+      throw new Error('Sparse legacy Earth surface coverage must not declare expected tiles');
+    }
+  } else {
+    if (coverage.minZoom !== EARTH_TILE_MIN_Z || coverage.maxZoom !== EARTH_TILE_MAX_Z) {
+      throw new Error('Earth surface coverage must be z4..z7');
+    }
+    if (coverage.kind === 'complete' && coverage.expectedTiles !== 43_520) {
+      throw new Error('Complete Earth surface coverage must contain 43520 tiles');
+    }
+    if (coverage.kind === 'sparse' && coverage.expectedTiles !== null) {
+      throw new Error('Sparse Earth surface coverage must not declare expected tiles');
+    }
   }
   // runtimeのデコーダと異なるwire形式を、取得を始める前に拒否する。
   const terrain = manifest.terrainEncoding;
@@ -131,6 +148,7 @@ export function earthSurfaceSourceFromManifest(
     baseColorUrl: relativeAsset(baseUrl, manifest.baseColor),
     baseTerrainUrl: relativeAsset(baseUrl, manifest.baseTerrain),
     climateMapUrls: manifest.climateMaps.map((path) => relativeAsset(baseUrl, path)),
+    legacyBundle: legacyBundle || undefined,
   };
 }
 
