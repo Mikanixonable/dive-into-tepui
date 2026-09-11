@@ -1,5 +1,5 @@
-// 噴射の揺らぎに使う乱数の種。同じ個体・同じ表示時刻・同じノズルからは必ず同じ値になり、
-// フレーム番号や sync の回数には依らない — ポーズ中や再同期で見た目が変わらないようにする。
+// 噴射の揺らぎに使う乱数の種。個体・表示時刻・ノズルの組が同じなら常に同じ値を返し、
+// ポーズ中や再同期でも見た目を保つ。
 
 // id は個体、displayTime は表示時刻 [s]、nozzleIndex はその個体の何番目のノズルか。
 export function plumeNoiseSeed(id: string, displayTime: number, nozzleIndex: number): number {

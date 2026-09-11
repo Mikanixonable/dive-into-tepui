@@ -24,7 +24,7 @@ function buildBaseModel(): THREE.Group {
 
 // 基地の表示入力。
 export interface BaseRenderSource extends DynamicRenderSource {
-  // 今フレームの並進推力。噴いていなければ null。
+  // 今フレームの並進推力による加速度 [m/s^2](ECI)。噴いていなければ null。
   readonly thrust: Vec3 | null;
   // 全開時の加速度 [m/s^2]。プルームの大きさを出力比で決めるのに使う。
   readonly maximumAcceleration: number;
@@ -37,7 +37,7 @@ export class BaseView extends DynamicView<BaseRenderSource> {
   private readonly thrustEffects: ThrustEffects;
   private readonly rcsEffects: RcsEffects;
 
-  // 基地モデルと噴射用 THREE 資源だけを組み立てる。
+  // 基地モデルと噴射用 THREE 資源を組み立てる。markers からは破棄時にこの基地のマーカーを外す。
   public constructor(
     protected override readonly scene: THREE.Scene,
     private readonly ownerId: string,
@@ -70,7 +70,7 @@ export class BaseView extends DynamicView<BaseRenderSource> {
       viewFrame.displayTime,
       BASE_PLUME_SCALE,
     );
-    // 並進噴射と姿勢制御噴射は別資源なので、それぞれ同じ可視判定を渡す。
+    // 姿勢制御噴射も、並進噴射と同じ可視判定・倍率で出す。
     this.rcsEffects.sync(
       viewFrame.camera.floatingOrigin,
       position,

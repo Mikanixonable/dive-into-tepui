@@ -1,5 +1,5 @@
-// 星系の天体を、この1フレームの照らす源・遮る源・霞ませる源として選ぶ。候補は ECI で組み、
-// 描画座標へ移してから、恒星光・露出・環境光・天体照・影・大気の各パスへ書き込む。
+// 星系の天体から、この1フレームの照らす源・遮る源・霞ませる源を選び、恒星光・露出・環境光・
+// 天体照・影・大気の各パスへ描画座標で書き込む。
 import * as THREE from 'three/webgpu';
 import { shapeAxes, shapeInscribedRadius, shapeOf } from '../../physics/celestial-body-def';
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
@@ -32,10 +32,10 @@ const UP_VECTOR = new THREE.Vector3(0, 1, 0);
 
 // 光源・影・大気が、この1フレームぶんの値を書き込まれる先。
 export interface IlluminationTargets {
-  // 恒星光と影を落とす天体の形は、環のマテリアルもこの実体から組む。
+  // 恒星光と、影を落とす天体の形の書き込み先。
   readonly sunLight: SunLight;
   readonly bodyShadow: BodyShadow;
-  // 以下は書き込む口だけを受ける — 照明が読むのは、値を渡す1本ずつのメソッドだけ。
+  // 以下は値を書き込むメソッドの口で受ける。
   readonly exposure: {
     setReference(reference: THREE.Vector3, sunPosition: THREE.Vector3, sunIntensity: number): void;
     readonly fixedBrightnessScale: number;
@@ -63,25 +63,21 @@ export class CelestialIllumination {
   // 確定させた後にだけ正しい値を返す。
   public get fixedBrightnessScale(): number { return this.targets.exposure.fixedBrightnessScale; }
 
-  // 恒星・露出・環境光・天体照・影・大気を、この1フレームの表示状態に同期する。
-  // **全天体の sync より後に呼ぶこと** — 積雲と大気の候補は個体の表示状態から決まる。
-  // sources はこの星系の全天体を、そのフレームの表示可否とともに並べたもの。focusPosition は
-  // 注視している天体の ECI 位置で、天体でない対象を注視しているフレームでは null。
-  // sunDirection は描画原点から見た恒星の向き(恒星を持たない星系の光源の置き場所を決める)。
+  // 恒星・露出・環境光・天体照・影・大気を、この1フレームの表示状態に同期する。全天体の sync の
+  // 後に呼ぶ。sources は星系の全天体とその表示可否、focusPosition は注視中の天体の ECI 位置
+  // (天体以外を注視中は null)、sunDirection は恒星を持たない星系で光源を置く向き。
   public sync(
     sources: readonly CelestialIlluminationSource[], displayTime: number, camera: CameraFrame,
     graphics: GraphicsSettingsData, focusPosition: Vec3 | null, sunDirection: Vec3,
   ): void {
     const fo = camera.floatingOrigin;
     const star = this.star;
-    // 主星が無いレジストリでは、描画原点から見た恒星方向へ 1 天文単位の位置に半径 0 の光源を置く
-    // (基準強度どおりの放射照度が届き、影パスは誰も遮らないと答える)。
+    // 主星が無い星系の光源は、sunDirection の向きの固定距離に置く。
     const starPos = star === null ? null : star.motion.stateAt(displayTime).r;
     const sunPos = starPos === null
       ? this.toThreeNormal(sunDirection).multiplyScalar(STARLESS_SUN_DISTANCE)
       : fo.RtoThreeV3(starPos);
-    // 露出の順応と天体照の選定の基準点。カメラ位置ではなく注視点から取る —
-    // マップビューではカメラが太陽系の外にいることがあり、そこを基準にすると露出が発散する。
+    // 露出と天体照の基準点は注視点 — カメラ位置だと、太陽系の外にいるマップビューで露出が発散する。
     const reference = fo.RtoThreeV3(camera.viewpoint.lookTarget);
     const starIntensity = star?.stellarLight.radiantIntensity ?? REFERENCE_STAR_RADIANT_INTENSITY;
     this.targets.exposure.setReference(reference, sunPos, starIntensity);
@@ -115,8 +111,7 @@ export class CelestialIllumination {
     })));
   }
 
-  // 影パスへ、この1フレームの影を落とす天体と環の帯を渡す。候補を組んで選定へ回し、選ばれた
-  // ものを描画座標へ移す。
+  // 影パスへ、この1フレームの影を落とす天体・環の帯・積雲の殻を渡す。
   private syncShadowSources(
     sources: readonly CelestialIlluminationSource[], fo: FloatingOrigin, displayTime: number,
     focusPosition: Vec3 | null, graphics: GraphicsSettingsData,
@@ -135,8 +130,7 @@ export class CelestialIllumination {
     this.syncCumulusShadow(sources, fo, displayTime, graphics);
   }
 
-  // 積雲の殻を持つ天体を影パスへ渡す。持つ天体が無いか、雲そのものか雲の影を切る設定なら
-  // 源ごと切る。
+  // 積雲の殻を返す最初の1体を影パスへ渡す。該当が無いか、設定が雲の影を切るなら null を渡す。
   private syncCumulusShadow(
     sources: readonly CelestialIlluminationSource[], fo: FloatingOrigin, displayTime: number,
     graphics: GraphicsSettingsData,

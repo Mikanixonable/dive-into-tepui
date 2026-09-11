@@ -1,5 +1,4 @@
-// タンパク質の表示の語彙。表現形態・配色・構造フェーズ・詳細度の値と、その組み合わせの
-// 検証をここが定める。表示資源は持たず、値だけを扱う。
+// タンパク質の表示の語彙。表現形態・配色・構造フェーズ・詳細度の値と、その組み合わせの検証を定める。
 export type ProteinRepresentation = 'molecular' | 'ribbon' | 'silhouette';
 
 type ProteinMolecularColorMode = 'element';
@@ -45,13 +44,13 @@ export const PROTEIN_COLOR_LABELS: Readonly<Record<ProteinColorMode, string>> = 
 /** 残基変形の詳細度。 */
 export type ProteinMotionLod = 'near' | 'medium' | 'far' | 'marker';
 
-// 細かい方から粗い方への並び。LOD の切り替えも計測の集計もこの並びで走る。
 export const LODS_FINE_TO_COARSE: readonly ProteinMotionLod[] = ['near', 'medium', 'far', 'marker'];
 
 /** そのフレームの残基変形を表示資源へ渡すための、確定済みの値。 */
 export interface ProteinMotionDisplay {
   readonly active: boolean;
   readonly lod: ProteinMotionLod;
+  /** 係数が表す量子化済みの表示時刻 [s]。 */
   readonly sampleTime: number;
   readonly phase: ProteinPhase;
   readonly coefficients: Float32Array;
@@ -71,7 +70,7 @@ export function defaultProteinDisplayFor(representation: ProteinRepresentation):
   return { representation, colorMode: 'chain' };
 }
 
-/** 現在の表示形態と互換な着色だけを反映する。 */
+/** 表示形態と着色の組を設定にする。互換でない組なら null。 */
 export function proteinDisplayWithColor(
   representation: ProteinRepresentation, colorMode: ProteinColorMode,
 ): ProteinDisplaySettings | null {

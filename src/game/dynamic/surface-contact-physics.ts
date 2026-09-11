@@ -1,7 +1,6 @@
 // 天体の表面との剛体接触。個体1つにつき、区間内で最も早く触れる天体を1体だけ解いて反発を
-// 当て、当事者へ collideWithCelestialBody を呼ぶ。天体は状態を書き換えられないので個体ごとに
-// 独立に解け、解決の順序も件数の上限も要らない — 物体どうしの接触
-// (entity-contact-physics.ts)とは機構を共有しない。
+// 当て、当事者へ collideWithCelestialBody を呼ぶ。天体の状態は書き換わらないので、個体ごとに
+// 独立に解ける。
 import { distributeFixedContact } from '../../physics/collision-response';
 import { firstSurfaceContact } from '../../physics/surface-contact';
 import { kinematicState } from '../../physics/kinematic-state';
@@ -12,11 +11,12 @@ import { SurfaceCandidates } from './surface-candidates';
 import { CONTACT_RESTITUTION } from './entity-contact-response';
 import type { CelestialBody } from '../../physics/celestial-body';
 
-// フレームの区間で取る到達範囲の倍率。1 は掃引そのもの。
+// フレームの区間で取る到達範囲の倍率。1 は掃引そのもの。サブステップ中点から引いた天体位置の
+// ずれ(掃引の (n·h)²/6 倍以下、最高段の月で 9%)を掃引ぶんの余裕で覆う。絞り込みは通す側へ
+// 外れてよく、落としてはいけない。
 const SPAN_REACH_MARGIN = 2;
 
-// 天体との接触に参加するのは、独立した実体すべて。艦に取り付いた接触代理(ベルトの節点・
-// 放熱板の折り)は艦本体が代表するので参加しない。
+// 天体との接触に参加するか。取り付いた付属物は本体が代表する。
 function isParticipant(e: SurfaceContactParticipant): boolean {
   return e.alive && e.attachedTo === null && isFiniteSurfaceParticipant(e);
 }
@@ -37,16 +37,11 @@ export class SurfaceContactPhysics {
   private readonly nearbyScratch: CelestialBody[] = [];
   // 天体の位置を厳密に引く時刻。beginSubstep が受け取り、そのサブステップの解決すべてで使う。
   private pivot = 0;
-  // デバッグ情報ウィンドウが読む、絞り込みを通した延べ候補天体数。フレーム頭で Simulator が 0 へ戻す。
+  // 絞り込みを通した延べ候補天体数。解決のたびに積み増す。
   public candidateBodies = 0;
 
   // フレームの区間 [tStart, tEnd] で触れうる天体の下ごしらえ。判定できる天体を選び、各天体の
-  // 表面がその区間のあいだに届きうる範囲を求める。どちらも区間だけで決まるので、フレームに
-  // 1組で足りる。
-  //
-  // **範囲は掃引の 2 倍を取る。** 絞り込みは通す側へ外れてよく、落としてはいけない。サブステップ
-  // 中点から引いた位置はフレーム中点から引いた位置と 3 次以上の項ぶんずれ、そのずれは掃引の
-  // (n·h)²/6 倍以下(最高段の月で 9%)なので、掃引ぶんの余裕がそれを覆う。
+  // 表面がその区間のあいだに届きうる範囲を求める。フレームに1度、サブステップより先に呼ぶ。
   public beginFrame(
     celestialBodies: readonly CelestialBody[], framePivot: number, tStart: number, tEnd: number,
   ): void {

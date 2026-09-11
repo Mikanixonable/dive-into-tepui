@@ -5,6 +5,7 @@ import type { ProteinRenderSource } from './protein-render-definition';
 
 export type ProteinSecondaryKind = 'coil' | 'helix' | 'sheet';
 
+// ColorBrewer Set2 の8色。
 const CHAIN_PALETTE = [
   0x66c2a5, 0xfc8d62, 0x8da0cb, 0xe78ac3,
   0xa6d854, 0xffd92f, 0xe5c494, 0xb3b3b3,

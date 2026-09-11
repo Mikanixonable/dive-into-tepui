@@ -1,38 +1,36 @@
-// 見かけの大きさ [px] から詳細度を決める純関数群。THREE にも game/・physics/ の座標型にも
-// 依存しない(引数はスカラーのみ)。m → px の換算は math/projection.ts の apparentSizePx。
+// 見かけの大きさ [px] から詳細度(球の分割段・環の被覆率・球として描くか)を決める純関数群。
 
+// 球の分割段。経度方向・緯度方向の分割数。
 export interface SphereLodLevel {
   readonly widthSegments: number;
   readonly heightSegments: number;
 }
 
-// 4:3(横×縦)を保った固定3段。最上段の 384×288 は見かけ直径 6万px まで下記の誤差
-// 上限を満たすので、天体が画面をはみ出して写る状況にも余裕がある。
+// 分割数 4:3(横×縦)の固定3段。最上段は見かけ直径約 6 万 px までシルエット誤差 1px に収まる。
 export const SPHERE_LOD_LADDER: readonly SphereLodLevel[] = [
   { widthSegments: 64, heightSegments: 48 },
   { widthSegments: 160, heightSegments: 120 },
   { widthSegments: 384, heightSegments: 288 },
 ];
 
+// シルエットの許容誤差 [px]。
 const SILHOUETTE_ERROR_PX = 1;
-// 退出時は許容誤差の半分まで粗い段の誤差が下がってから戻す。1pxの許容境界を跨いだだけで
-// 戻さないための帯だが、画面上で意味のない大きな固定マージンではなく、同じ誤差モデルから導く。
+// 粗い段へ戻すのは、粗い段の誤差が許容誤差のこの割合まで下がってから。
 const HYSTERESIS_EXIT_ERROR_FRACTION = 0.5;
 
-// 分割数 widthSegments の球を平面近似したときのシルエットのたるみ(弧と弦の最大差)
-// ≈ R·(π/N)²/2 を、見かけ直径 diameterPx の下で px 換算する。R/metersPerPixel =
-// diameterPx/2 の関係だけで metersPerPixel を経由せずに求まる: たるみ[px] = (π/N)²·diameterPx/4。
+// 分割数 widthSegments の球のシルエットのたるみ(弧と弦の最大差)[px]。半径 R のたるみ
+// R·(π/N)²/2 に R/metersPerPixel = diameterPx/2 を入れて (π/N)²·diameterPx/4。
 function silhouetteSagPx(widthSegments: number, apparentDiameterPx: number): number {
   const t = Math.PI / widthSegments;
   return (t * t * apparentDiameterPx) / 4;
 }
 
-// 指定したシルエット誤差へ収まる見かけ直径の上限 [px]。sphereLodLevel とヒステリシスが
-// 同じ幾何式を使うため、段を追加しても境界の導出を個別に書き直さずに済む。
+// 分割数 widthSegments の球のシルエット誤差が errorPx に収まる見かけ直径の上限 [px]。
 function diameterForSilhouetteError(widthSegments: number, errorPx: number): number {
   return (4 * errorPx) / ((Math.PI / widthSegments) ** 2);
 }
 
+// 隣り合う段の境界の見かけ直径 [px]。enter を超えたら細かい段へ、exit 以下で粗い段へ戻る。
 export interface SphereLodTransitionThresholds {
   readonly enterDiameterPx: number;
   readonly exitDiameterPx: number;
@@ -58,7 +56,7 @@ export function sphereLodTransitionThresholds(
 
 /** 見かけ直径 [px] から、シルエット誤差が概ね1pxを超えない最小の球分割段を選ぶ。 */
 export function sphereLodLevel(apparentDiameterPx: number): SphereLodLevel {
-  // 不正な射影値は最小の描画段へ倒す。+Infinityだけは「無限に寄った」と解釈して最細段へ送る。
+  // NaN は最も粗い段へ倒す(+Infinity は下の既定で最も細かい段になる)。
   if (Number.isNaN(apparentDiameterPx)) return SPHERE_LOD_LADDER[0]!;
   return (
     SPHERE_LOD_LADDER.find((level) => silhouetteSagPx(level.widthSegments, apparentDiameterPx) <= SILHOUETTE_ERROR_PX)
@@ -67,9 +65,8 @@ export function sphereLodLevel(apparentDiameterPx: number): SphereLodLevel {
   );
 }
 
-// 前回選択した段を受け取り、境界にヒステリシスを適用して次の段を純粋に選ぶ。
-// activeLevel は呼び出し側が所有する状態であり、この関数は隠れた可変状態を持たない。enabled=false
-// は雲をオフにした状態で、表面rendererが次回の有効化時に null から初期選択をやり直せるようにする。
+// 前回選んだ段 activeLevel(初回は null)から、境界にヒステリシスを掛けて次の段を選ぶ。
+// enabled が false なら null を返し、次に有効にしたとき初期選択からやり直させる。
 export function sphereLodLevelWithHysteresis(
   apparentDiameterPx: number,
   activeLevel: SphereLodLevel | null,
@@ -79,9 +76,11 @@ export function sphereLodLevelWithHysteresis(
   if (Number.isNaN(apparentDiameterPx)) return SPHERE_LOD_LADDER[0]!;
   if (activeLevel === null) return sphereLodLevel(apparentDiameterPx);
 
+  // ラダーに無い段を渡されたら、ヒステリシス無しで選び直す。
   const activeIndex = SPHERE_LOD_LADDER.indexOf(activeLevel);
   if (activeIndex < 0) return sphereLodLevel(apparentDiameterPx);
 
+  // 近づいたぶん細かい段へ進め、遠ざかったぶん粗い段へ戻す。
   let index = activeIndex;
   while (index < SPHERE_LOD_LADDER.length - 1) {
     const threshold = sphereLodTransitionThresholds(index)!;
@@ -96,14 +95,13 @@ export function sphereLodLevelWithHysteresis(
   return SPHERE_LOD_LADDER[index]!;
 }
 
-/** 環バンドの見かけ幅が1pxを下回る割合(画面被覆率)。1pxを下回っても総光量が増えないよう、線表示側の重みに使う。 */
+/** 環の帯が1画素の幅を覆う割合 [0,1](見かけ幅 [px] を 1 で頭打ち)。幅か換算が正でなければ 0。 */
 export function ringPixelCoverage(widthMeters: number, metersPerPixel: number): number {
   if (!(widthMeters > 0) || !(metersPerPixel > 0)) return 0;
   return Math.max(0, Math.min(1, widthMeters / metersPerPixel));
 }
 
-// この px を下回ったら、天体を球体として描く価値がない(輝点表示を持つ天体はそちらへ、
-// 持たない天体は非表示へ譲る)。
+// 天体を球体として描く見かけ直径の下限 [px]。
 const PHYSICAL_DIAMETER_THRESHOLD_PX = 2;
 
 /** 見かけ直径 [px] が、天体を球体として描くに値するか。 */

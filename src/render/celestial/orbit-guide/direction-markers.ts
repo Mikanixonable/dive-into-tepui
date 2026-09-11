@@ -1,8 +1,6 @@
-// 軌道ガイド線の進行方向マーカー。頂点が進行方向を向いた小さな正三角形を、InstancedPool で
-// まとめて描く。画面上の大きさはズームによらず一定に保ち(scaleAtLocal と同じ考え方で
-// カメラからの距離を m/px へ換算する)、animate ON のときは曲線のパラメータ(周期に対する
-// 経過時刻の割合)に沿って進める — パラメータが時刻なので、等速で進めるだけで
-// 「近点で速く・遠点で遅く」の動きになる。
+// 軌道ガイド線の進行方向マーカー。頂点が進行方向を向いた小さな三角形を、画面上で一定の大きさに
+// まとめて描く。animate のときは曲線のパラメータ(周期に対する経過時刻の割合)に沿って等速で
+// 進める — 軌道上では近点で速く・遠点で遅く動く(SPEC/MAP.md)。
 import * as THREE from 'three/webgpu';
 import { GuideCurve } from './guide-curve';
 import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../../../math/projection';
@@ -26,8 +24,8 @@ const TANGENT_PROBE_SPAN = 1e-3;
 // アニメーションが1周(パラメータ 0→1)にかける実時間 [s]。
 const ANIMATION_PERIOD_SEC = 20;
 
-// アニメーションの位相を進める実時刻 [s]。表示時刻(ゲーム内時間)で進めると、タイムワープ中に
-// マーカーが飛び、一時停止中に止まってしまう。
+// 実時刻から求めたアニメーションの位相 [0,1)。表示時刻で進めると、タイムワープ中にマーカーが
+// 飛び、一時停止中に止まる。
 function animationPhase(): number {
   return (performance.now() / 1000 / ANIMATION_PERIOD_SEC) % 1;
 }
@@ -52,7 +50,7 @@ export class DirectionMarkers {
     color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide,
   });
 
-  // 使い回すスクラッチ(毎フレーム多数呼ばれるため確保を避ける)。
+  // マーカーごとに使い回す一時値。
   private readonly dummy = new THREE.Object3D();
   private readonly pos = new THREE.Vector3();
   private readonly tangent = new THREE.Vector3();
@@ -65,6 +63,7 @@ export class DirectionMarkers {
   private readonly basis = new THREE.Matrix4();
   private readonly camPos = new THREE.Vector3();
   private readonly color = new THREE.Color();
+  // cacheCamera が読んだ、このフレームのカメラの値。
   private tanHalfFov = 0;
   private orthoHalfHeight = 0;
   private camNear = 0;
@@ -73,11 +72,11 @@ export class DirectionMarkers {
   // capacity 個までのマーカーを1本のプールで描く。renderOrder は添える線と同じ値を渡す。
   public constructor(scene: THREE.Scene, capacity: number, renderOrder: number) {
     this.pool = new InstancedPool(scene, this.geometry, this.material, capacity, true, renderOrder);
-    // マーカーは軌道ガイド線に添えるものなので、線と同じオーバーレイ層に載せる
-    // (世界パスに置くと天体に隠れ、線だけが手前に残って見える)。
+    // 線と同じオーバーレイ層に載せる — 世界パスでは天体に隠れ、線だけが手前に残る。
     this.pool.markAsOverlay();
   }
 
+  // addLoop は beginFrame と endFrame の間で呼ぶ。
   public beginFrame(): void { this.pool.beginFrame(); }
   public endFrame(): void { this.pool.endFrame(); }
 
@@ -86,6 +85,7 @@ export class DirectionMarkers {
     const camera = frame.camera;
     this.viewportHeight = frame.viewport.height;
     this.camPos.setFromMatrixPosition(camera.matrixWorld);
+    // 透視投影は画角と距離から、平行投影は高さから m/px が決まる。
     if (camera instanceof THREE.PerspectiveCamera) {
       this.tanHalfFov = Math.tan((camera.fov * Math.PI) / 360);
       this.orthoHalfHeight = 0;
@@ -95,6 +95,7 @@ export class DirectionMarkers {
       this.orthoHalfHeight = (camera.top - camera.bottom) * 0.5;
       this.camNear = camera.near;
     } else {
+      // それ以外のカメラは画角 50° の透視投影とみなす。
       this.tanHalfFov = Math.tan((50 * Math.PI) / 360);
       this.orthoHalfHeight = 0;
       this.camNear = MIN_DEPTH;
@@ -117,14 +118,16 @@ export class DirectionMarkers {
     }
   }
 
+  // 'many' モードで並べる個数。周回数に比例させ、1〜MAX_MARKERS_PER_LOOP 個に収める。
   private manyCount(revolutions: number): number {
     const count = Math.round(revolutions * MANY_MARKERS_PER_REVOLUTION);
     return Math.max(1, Math.min(MAX_MARKERS_PER_LOOP, count));
   }
 
-  // 周期に対する経過時刻の割合 phase(0..1)における位置・進行方向(接線)を、描かれている
-  // 曲線から直に引いてマーカーを1個置く。接線は少し先の点との差で取る。
+  // 曲線のパラメータ phase(0..1)の位置に、描かれている曲線の接線を進行方向としたマーカーを
+  // 1個置く。
   private placeMarker(curve: GuideCurve, phase: number, fo: FloatingOrigin): void {
+    // 少し前後の2点から位置と接線を引く。
     const ahead = Math.min(1, phase + TANGENT_PROBE_SPAN);
     const behind = ahead - TANGENT_PROBE_SPAN;
     const w0 = fo.RtoThreeV3(curve.pointAt(behind));
@@ -134,9 +137,8 @@ export class DirectionMarkers {
     if (this.tangent.lengthSq() < 1e-12) this.tangent.set(0, 0, 1);
     this.tangent.normalize();
 
-    // カメラに正対する平面(normal)上へ接線を射影し、その向きを画面上の「進行方向」とする
-    // (velocity-aligned billboard)。ほぼ視線と平行な区間では射影がほぼ0になるので、
-    // その場合は billboard の up をそのまま向きに使う(退化を避けるだけで、意味は無い)。
+    // 接線をカメラ正対の平面へ射影した向きを、画面上の進行方向とする。視線とほぼ平行な区間は
+    // 射影が退化するので、billboard の up を使う。
     this.normal.copy(this.camPos).sub(this.pos).normalize();
     this.right.crossVectors(this.worldUp, this.normal);
     if (this.right.lengthSq() < 1e-9) this.right.set(1, 0, 0);

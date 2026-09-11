@@ -1,5 +1,5 @@
-// 模式図スタイルで、環・太陽など world パスで自己完結する物体の輪郭を線1本の円として描く
-// 下請け。単位円(半径1)のジオメトリを全利用者で共有し、利用者ごとの姿勢は Object3D 側へ持つ。
+// 模式図スタイルで、環・恒星などの輪郭を線1本の円として描く。単位円(XY 平面、半径 1)の
+// ジオメトリを全利用者で共有し、半径・位置・向きは線の Object3D に与える。
 import * as THREE from 'three/webgpu';
 import { markOverlay } from '../pipeline/lit-layer';
 import { OUTLINE_CIRCLE_COLOR } from '../schematic-style';
@@ -11,7 +11,6 @@ let sharedGeometry: THREE.BufferGeometry | null = null;
 // 半径1・XY平面上の単位円ジオメトリを遅延生成して使い回す。
 function getSharedGeometry(): THREE.BufferGeometry {
   if (sharedGeometry !== null) return sharedGeometry;
-  // 頂点座標を刻んで単位円を1周ぶん作る。
   const positions = new Float32Array((SEGMENTS + 1) * 3);
   for (let i = 0; i <= SEGMENTS; i++) {
     const a = (i / SEGMENTS) * Math.PI * 2;
@@ -27,7 +26,7 @@ function getSharedGeometry(): THREE.BufferGeometry {
 
 export interface OutlineCircle {
   readonly line: THREE.Line;
-  // 自前の material だけを解放する。geometry は全利用者で共有しているため解放しない。
+  // 自前の material を解放する。共有の geometry は残す。
   readonly dispose: () => void;
 }
 
