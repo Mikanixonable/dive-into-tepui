@@ -6,23 +6,46 @@ import type { LagrangeLabel } from '../../../physics/lagrange';
 import type {
   CatalogSystem, CatalogSystemId, CatalogSystemScale, OrbitCatalog, OrbitCatalogIndex,
 } from '../../../physics/orbit-catalog';
+import { MU_JUPITER, MU_SATURN, MU_SUN } from '../solar-system/constants';
+import { JUPITER } from '../solar-system/jupiter-system';
+import { SATURN } from '../solar-system/saturn-system';
 import indexTable from '../../../assets/orbits/lagrange-orbits-index.json';
 
 const CATALOG_INDEX = indexTable as unknown as OrbitCatalogIndex;
 
+const SUN_JUPITER_SCALE: CatalogSystemScale = {
+  mu: MU_JUPITER / (MU_SUN + MU_JUPITER),
+  lunit: JUPITER.orbit.a / 1e3,
+  tunit: Math.sqrt(JUPITER.orbit.a ** 3 / (MU_SUN + MU_JUPITER)),
+  secondaryRadius: JUPITER.radius / 1e3,
+};
+const SUN_SATURN_SCALE: CatalogSystemScale = {
+  mu: MU_SATURN / (MU_SUN + MU_SATURN),
+  lunit: SATURN.orbit.a / 1e3,
+  tunit: Math.sqrt(SATURN.orbit.a ** 3 / (MU_SUN + MU_SATURN)),
+  secondaryRadius: SATURN.radius / 1e3,
+};
+const DERIVED_SCALES: Readonly<Partial<Record<CatalogSystemId, CatalogSystemScale>>> = {
+  'sun-jupiter': SUN_JUPITER_SCALE,
+  'sun-saturn': SUN_SATURN_SCALE,
+};
+
 // 系の質量比・単位。族の点列を待たずに引ける。
 export function catalogSystemScale(id: CatalogSystemId): CatalogSystemScale | null {
-  return CATALOG_INDEX.scales[id] ?? null;
+  return CATALOG_INDEX.scales[id] ?? DERIVED_SCALES[id] ?? null;
 }
 
 // L1〜L5 のヤコビ定数は系ごとの mu で決まる。
-export function lagrangePointJacobi(system: 'earth-moon' | 'sun-earth', point: LagrangeLabel): number {
-  const fallback = system === 'earth-moon' ? 0.012150585 : 3.003e-6;
+export function lagrangePointJacobi(
+  system: 'earth-moon' | 'sun-earth' | 'sun-jupiter' | 'sun-saturn', point: LagrangeLabel,
+): number {
+  const fallback = system === 'earth-moon' ? 0.012150585
+    : catalogSystemScale(system)?.mu ?? 3.003e-6;
   return lagrangeJacobi(catalogSystemScale(system)?.mu ?? fallback, point);
 }
 
 // 系ごとの取得関数。系ごとに1個の別ファイルを充てる。
-const LAZY_IMPORTS: Readonly<Record<CatalogSystemId, () => Promise<{ readonly default: unknown }>>> = {
+const LAZY_IMPORTS: Readonly<Partial<Record<CatalogSystemId, () => Promise<{ readonly default: unknown }>>>> = {
   'earth-moon': () => import('../../../assets/orbits/lagrange-orbits-earth-moon.json'),
   'sun-earth': () => import('../../../assets/orbits/lagrange-orbits-sun-earth.json'),
   'sun-mars': () => import('../../../assets/orbits/lagrange-orbits-sun-mars.json'),
@@ -67,7 +90,13 @@ export class OrbitGuideCatalog {
 
   private startLoad(id: CatalogSystemId): void {
     this.loadState.set(id, 'loading');
-    LAZY_IMPORTS[id]()
+    const load = LAZY_IMPORTS[id];
+    if (load === undefined) {
+      this.loadState.set(id, 'failed');
+      this.generation++;
+      return;
+    }
+    load()
       .then((mod) => {
         const catalog = mod.default as unknown as OrbitCatalog;
         const system = catalog.systems[id];

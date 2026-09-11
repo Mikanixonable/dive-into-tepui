@@ -88,6 +88,11 @@ export function encodeRgbPng(width, height, rgb) {
   return encodePng(width, height, rgb, 3, 2);
 }
 
+// 行優先の RGBA8 画素列(width × height × 4 byte)を PNG のバイト列へ。
+export function encodeRgbaPng(width, height, rgba) {
+  return encodePng(width, height, rgba, 4, 6);
+}
+
 // channels byte/画素の走査線を、colorType の PNG として符号化する。
 function encodePng(width, height, pixels, channels, colorType) {
   const stride = width * channels;

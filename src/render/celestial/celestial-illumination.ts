@@ -20,7 +20,7 @@ import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { PlanetLightValue } from '../../render/pipeline/lighting/planet-light-source';
 import type { AtmosphereDraw } from '../../render/atmosphere';
 import type { RingBand } from '../../render/pipeline/shadow/ring-shadow';
-import type { ShadowCumulus } from '../../render/pipeline/shadow/cumulus-shadow';
+import type { ShadowCumulus } from '../../render/pipeline/shadow/cloud-shadow-renderer';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { FloatingOrigin } from '../../render/camera/floating-origin';
 import type {

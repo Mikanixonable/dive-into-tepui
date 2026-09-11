@@ -13,7 +13,7 @@ import { v3, type Vec3 } from '../../src/math/vec3';
 import { DEFAULT_GRAPHICS } from '../../src/render/graphics-settings';
 import type { AtmosphereDraw } from '../../src/render/atmosphere';
 import type { PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
-import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cumulus-shadow';
+import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type {
   CelestialIlluminationSource, CelestialIlluminationView, DefinedCelestialBody,

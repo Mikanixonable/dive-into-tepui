@@ -1,4 +1,5 @@
-// マップビューの「カメラ」パネル。カメラの注視対象・回転追従・平行/透視投影・画角・基準面設定を担当する。
+// マップビューの詳細な「カメラ」パネル。カメラの注視対象・回転追従・平行/透視投影・画角・
+// 基準面設定を担当する。
 import { frameRoleOf } from '../../../physics/frame';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import { CameraReferencePlane, CameraReferenceView, FocusCamera, FOCUS_CAMERA_FOV_MIN, FOCUS_CAMERA_FOV_MAX } from '../../camera/focus-camera';
@@ -6,6 +7,7 @@ import { focusTargetId } from '../../camera/focus-target';
 import { AnchorZone } from './anchor-zone';
 import { CameraRotationZone } from './rotation-zone';
 import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from '../../../hud/widgets';
+import { CameraRotationModeControl } from './camera-rotation-mode-control';
 import { frameRoleName, rotationFollowLabel } from './frame-labels';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { buildPanel } from './frame-panel';
@@ -22,7 +24,7 @@ export class CameraFramePanel {
   private readonly panel: HTMLElement;
   private readonly cameraCenterZone: AnchorZone;
   private readonly cameraRotationZone: CameraRotationZone;
-  private readonly cameraRotationModeToggle: ToggleSwitch;
+  private readonly cameraRotationModeControl: CameraRotationModeControl;
   private readonly projectionToggle: ToggleSwitch;
   private readonly fovSlider: Slider;
   private readonly fovInput: ValueInput;
@@ -52,10 +54,8 @@ export class CameraFramePanel {
     this.cameraRotationZone.onSelect = (follow) => mapCamera.setRotationFollow(follow);
     this.panel.appendChild(this.cameraRotationZone.element);
 
-    this.cameraRotationModeToggle = new ToggleSwitch('クオータニオン操作', (on) => {
-      mapCamera.setCameraRotationMode(on ? 'quaternion' : 'euler');
-    });
-    this.panel.appendChild(this.cameraRotationModeToggle.element);
+    this.cameraRotationModeControl = new CameraRotationModeControl(mapCamera);
+    this.panel.appendChild(this.cameraRotationModeControl.element);
 
     this.projectionToggle = new ToggleSwitch('平行投影', (on) => {
       mapCamera.setProjectionMode(on ? 'orthographic' : 'perspective');
@@ -127,7 +127,7 @@ export class CameraFramePanel {
     // 回転追従の選択肢と、クオータニオン/オイラーの操作モード表示を合わせる。
     this.cameraRotationZone.setChoices(this.mapCamera.availableRotationFollows(displayTime));
     this.cameraRotationZone.setSelected(this.mapCamera.rotationFollow);
-    this.cameraRotationModeToggle.setOn(this.mapCamera.cameraRotationMode === 'quaternion');
+    this.cameraRotationModeControl.sync();
 
     // 平行投影は画角という概念自体を欠くため、画角の操作系一式を無効化して案内を出す。
     const isOrthographic = this.mapCamera.projection === 'orthographic';

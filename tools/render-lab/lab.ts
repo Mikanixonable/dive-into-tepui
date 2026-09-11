@@ -21,6 +21,7 @@ import { pixelsToPngDataUrl } from '../lab-png';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { RenderStyle } from '../../src/render/render-style';
+import type { CloudLodMode } from '../../src/render/cloud/cloud-field-sampler';
 
 // 所要時間 [ms] の分布。
 export interface LabDistribution {
@@ -107,6 +108,9 @@ export class LabView {
   private currentName: CaseName | null = null;
   // 画面全体の見せ方。ゲーム本体と違い保存はせず、起動のたびに写実から始める。
   private style: RenderStyle = 'realistic';
+  // 比較環境の既定は本番経路と同じ。変更はこのLabViewだけへ閉じる。
+  private cloudBlueNoiseEnabled = true;
+  private cloudLodMode: CloudLodMode = 'explicit';
   private lastRenderCpuMs = 0;
   // カメラが周回する点。ケースの注視点を視線上へ落としたもの。
   private readonly pivot = new THREE.Vector3();
@@ -189,6 +193,7 @@ export class LabView {
     // **カメラの既定を引く前に一度押し込む** — 環はここで姿勢が決まるので、押し込む前に
     // 物体を包む箱を測ると注視点が原点へ寄る。
     built.applyGraphics?.(this.graphicsData);
+    this.applyCloudSampling();
   }
 
   // 描画品質設定を差し替える。受け取った値をパイプラインへ配り、その場で描き直す。
@@ -206,6 +211,20 @@ export class LabView {
   public setAmbientFraction(fraction: number): void {
     this.pipeline.ambient.setFraction(fraction);
     this.render();
+  }
+
+  // 雲のA/B設定を明示的な依存として各表現へ配る。固定LODは実在する最低段(0)を使う。
+  public setCloudSampling(blueNoiseEnabled: boolean, lodMode: CloudLodMode): void {
+    this.cloudBlueNoiseEnabled = blueNoiseEnabled;
+    this.cloudLodMode = lodMode;
+    this.applyCloudSampling();
+    this.render();
+  }
+
+  private applyCloudSampling(): void {
+    this.pipeline.setCloudBlueNoiseEnabled(this.cloudBlueNoiseEnabled);
+    this.pipeline.setCloudLodSampling(this.cloudLodMode, 0);
+    this.current?.setCloudLodSampling?.(this.cloudLodMode, 0);
   }
 
   // 画面へ出す中間バッファを選び、その場で描き直す。
@@ -286,6 +305,7 @@ export class LabView {
   public render(): void {
     if (this.current === null) return;
     // ケースの部品が読む設定は、この1フレームを組む前に押し込む。
+    this.applyCloudSampling();
     this.current.applyGraphics?.(this.graphicsData);
     const sunDirection = directionFromAngles(
       this.angles.sunAzimuthDeg, this.angles.sunElevationDeg, SUN_DIRECTION,

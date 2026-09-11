@@ -32,9 +32,20 @@ export function keplerPeriod(a: number, mu: number): number {
   return 2 * Math.PI * Math.sqrt((a * a * a) / mu);
 }
 
+// 長半径 a の楕円軌道の平均運動 [rad/s]。a は正の半長軸を渡す。
+// 双曲線の時間計算では、負の a を絶対値に直してからこの関数へ渡す。
+export function meanMotionFromSemiMajor(a: number, mu: number): number {
+  return Math.sqrt(mu / (a * a * a));
+}
+
+// 平均運動 n [rad/s] の楕円軌道の長半径 [m]。
+export function semiMajorFromMeanMotion(meanMotion: number, mu: number): number {
+  return Math.cbrt(mu / (meanMotion * meanMotion));
+}
+
 // keplerPeriod の逆関数: 公転周期 T から長半径を求める唯一の変換点。
 export function semiMajorFromPeriod(period: number, mu: number): number {
-  return Math.cbrt((mu * period * period) / (4 * Math.PI * Math.PI));
+  return semiMajorFromMeanMotion((2 * Math.PI) / period, mu);
 }
 
 // center 相対の状態から古典軌道要素を求める。半径・角運動量が縮退している場合は null。
@@ -90,10 +101,15 @@ export function apsisAltitudes(el: OrbitalElements): { pe: number; ap: number } 
   };
 }
 
+// 高離心率では M≈0 付近で E=M の初期値が遠回りになるため、±π の初期値へ切り替える境界。
+// この値は e=0.8 を境に初期値の収束経路を変えるだけで、解の精度の境界ではない。e=0.98 までの
+// 周回全域を回帰テストで覆う。
+const HIGH_ECCENTRICITY_THRESHOLD = 0.8;
+
 // 平均近点角 M → 離心近点角 E(ケプラー方程式 M = E − e sin E をニュートン法で解く。楕円のみ)。
 export function eccentricAnomalyFromMean(m: number, e: number): number {
   const M = Math.atan2(Math.sin(m), Math.cos(m)); // [-π, π] へ畳んで初期値 E=M の収束を安定させる
-  let E = e > 0.8 ? Math.PI * Math.sign(M || 1) : M; // 高離心率では M≈0 付近で E=M 初期値だと Newton 法が収束しない/振動するため、M と同じ側の ±π から始める
+  let E = e > HIGH_ECCENTRICITY_THRESHOLD ? Math.PI * Math.sign(M || 1) : M;
 
   for (let i = 0; i < 50; i++) {
     const dE = (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
@@ -134,7 +150,7 @@ export function timeSincePeriapsis(el: OrbitalElements, nu: number): number {
   if (el.e < 1) {
     const E = 2 * Math.atan2(Math.sqrt(1 - el.e) * Math.sin(nu / 2), Math.sqrt(1 + el.e) * Math.cos(nu / 2));
     const M = E - el.e * Math.sin(E);
-    return M / Math.sqrt(el.center.def.mu / (el.a * el.a * el.a));
+    return M / meanMotionFromSemiMajor(el.a, el.center.def.mu);
   }
 
   // 双曲線離心近点角 H = 2 * atanh( sqrt((e-1)/(e+1)) * tan(nu/2) )
@@ -142,7 +158,7 @@ export function timeSincePeriapsis(el: OrbitalElements, nu: number): number {
   if (Math.abs(x) >= 1) return NaN; // 漸近線を超えており、その nu には到達しない
   const H = 2 * Math.atanh(x);
   const M = el.e * Math.sinh(H) - H; // 双曲線ケプラー方程式
-  return M / Math.sqrt(el.center.def.mu / (-el.a * -el.a * -el.a)); // a < 0 なので -a > 0
+  return M / meanMotionFromSemiMajor(-el.a, el.center.def.mu); // a < 0 なので -a > 0
 }
 
 // 真近点角 nu0 → nu1 への飛行時間 [s]。

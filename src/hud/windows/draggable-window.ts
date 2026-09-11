@@ -10,16 +10,16 @@ import { onViewportChange } from '../viewport';
 import { isCompactViewport, MQ_COMPACT } from '../breakpoints';
 import { Button, CloseButton } from '../widgets';
 import { injectOnce } from '../inject-style';
+import { injectCommonUiStyle } from '../style/common-ui-style';
 import type { OverlayHandle, OverlayManager, OverlaySpec } from '../overlay-manager';
 import { CLICK_MOVE_THRESHOLD } from '../../input/input';
 
 const STYLE = `
 #hud .dg-window {
   position: fixed; display: block; min-width: 200px; max-width: 280px;
-  pointer-events: auto; background: var(--glass-focus); border: 0;
+  pointer-events: auto;
   border-radius: var(--radius-window); overflow: hidden; font-size: var(--font-m);
   font-family: var(--font-family); user-select: none;
-  box-shadow: 0 16px 48px var(--shade-1); backdrop-filter: blur(20px) saturate(82%);
   -webkit-user-select: none;
 }
 /* compact: ドラッグで動かす小窓ではなく、画面下 40% のボトムシートとして開く
@@ -54,12 +54,16 @@ const STYLE = `
 #hud .dg-window-header-extras { display: contents; }
 #hud .dg-window-btn {
   flex: none; width: 18px; height: 18px; line-height: 18px; text-align: center;
-  border: 0; border-radius: var(--radius-micro); background: var(--surface-2); color: var(--text);
+  border: 0; border-radius: 50%;
+  background: var(--glass-control); color: var(--text);
   cursor: pointer; font-size: var(--font-s); padding: 0;
 }
-#hud .dg-window-btn:hover { background: var(--surface-3); color: var(--color-primary-hover); }
+#hud .dg-window-btn:hover { background: var(--glass-control-hover); color: var(--color-primary-hover); }
 #hud .dg-window-btn.clipped { background: var(--color-primary-fill); color: var(--color-primary); }
-#hud .dg-window.tgt { background: color-mix(in srgb, var(--color-primary) 16%, var(--glass-focus)); }
+#hud .dg-window.tgt {
+  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%),
+    color-mix(in srgb, var(--color-primary) 16%, var(--glass-focus));
+}
 `;
 
 export interface DraggableWindowOptions {
@@ -115,9 +119,10 @@ export class DraggableWindow implements OverlayHandle {
   ) {
     this.overlayId = `dg-window-${DraggableWindow.nextId++}`;
     this._clipped = options.initiallyClipped ?? false;
+    injectCommonUiStyle();
     injectOnce('dg-window', STYLE);
     this.element = document.createElement('div');
-    this.element.className = 'dg-window';
+    this.element.className = 'dg-window ui-surface-focus';
     this.element.setAttribute('role', 'dialog');
 
     const header = document.createElement('div');

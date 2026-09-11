@@ -7,16 +7,20 @@ import { JUPITER } from './jupiter-system';
 import { mulberry32 } from '../../../math/random';
 import type { PointElements } from '../../../physics/point-orbit';
 import type { PointField } from '../../../render/celestial/point-field-view';
+import type { KeplerOrbit } from '../../../physics/kepler-orbit';
 
 // 軌道長半径の引き方。散乱円盤だけは近日点距離 q = a(1-e) に集中する分布なので、
 // a ではなく q から引いて a = q/(1-e) を逆算する。
 type SizeDistribution =
   | { readonly kind: 'semiMajor'; readonly aRangeAu: readonly [number, number] }
+  | { readonly kind: 'jupiterSemiMajor' }
   | { readonly kind: 'perihelion'; readonly qRangeAu: readonly [number, number] };
 
+export type PointFieldJupiterReference = Pick<KeplerOrbit, 'a' | 'l0' | 'lRate'>;
+
 // 木星との平均運動共鳴で経度方向に偏らせる群(トロヤ群・ヒルダ群)の分布。
-// 共鳴角 σ = p·λ_J − q·λ_H − (p−q)·ϖ_H (p:q = n_点群:n_木星)を、librationCenterDeg の
-// 周りに ±librationWidthDeg で散らす。a を共鳴比どおりに取れば dσ/dt = 0 になり、σ は保たれる。
+// 共鳴角 σ = p·λ_J − q·λ_H − (p−q)·ϖ_H を、librationCenterDeg の周りに
+// ±librationWidthDeg で散らす。n_H/n_J = p/q と取れば dσ/dt = 0 になり、σ は保たれる。
 // p=q(1:1, トロヤ群)のときは (p−q) 項が消えて ϖ_H が自由になる代わり、σ が直接 λ_H を決める。
 type ResonanceDistribution = {
   readonly meanMotionRatio: readonly [number, number]; // [p, q]
@@ -33,6 +37,7 @@ type PointFieldDef = {
   readonly gapsAu?: readonly number[]; // 共鳴間隙の中心 [AU](ガウス棄却で抜く。semiMajor のみ)
   readonly eRange: readonly [number, number];
   readonly incRange: readonly [number, number]; // [rad]
+  readonly incModes?: readonly [readonly [number, number], readonly [number, number]];
   readonly resonance?: ResonanceDistribution;
 };
 
@@ -46,8 +51,6 @@ const GAP_SIGMA_AU = 0.04;
 // 棄却法が病的な乱数列で止まらなくなるのを防ぐ上限。到達したらその標本をそのまま採る。
 const MAX_REJECTION_TRIES = 64;
 
-const JUPITER_A_AU = JUPITER.orbit.a / AU;
-
 const POINT_FIELD_DEFS: readonly PointFieldDef[] = [
   {
     id: 'main-belt',
@@ -55,7 +58,7 @@ const POINT_FIELD_DEFS: readonly PointFieldDef[] = [
     color: 0x777777,
     count: 4000,
     size: { kind: 'semiMajor', aRangeAu: [2.0, 3.4] },
-    // 木星との 4:1 / 3:1 / 7:3 / 5:2 / 2:1 平均運動共鳴によるカークウッドの空隙。
+    // 木星との 4:1 / 3:1 / 5:2 / 7:3 / 2:1 平均運動共鳴によるカークウッドの空隙。
     gapsAu: [2.06, 2.5, 2.82, 2.958, 3.28],
     eRange: [0, 0.25],
     incRange: [0, 20 * DEG],
@@ -65,7 +68,7 @@ const POINT_FIELD_DEFS: readonly PointFieldDef[] = [
     drawRadius: 3e7,
     color: 0x777777,
     count: 800,
-    size: { kind: 'semiMajor', aRangeAu: [JUPITER_A_AU, JUPITER_A_AU] },
+    size: { kind: 'jupiterSemiMajor' },
     eRange: [0, 0.15],
     incRange: [0, 25 * DEG],
     resonance: { meanMotionRatio: [1, 1], librationCenterDeg: -60, librationWidthDeg: 30 },
@@ -75,14 +78,14 @@ const POINT_FIELD_DEFS: readonly PointFieldDef[] = [
     drawRadius: 3e7,
     color: 0x777777,
     count: 800,
-    size: { kind: 'semiMajor', aRangeAu: [JUPITER_A_AU, JUPITER_A_AU] },
+    size: { kind: 'jupiterSemiMajor' },
     eRange: [0, 0.15],
     incRange: [0, 25 * DEG],
     resonance: { meanMotionRatio: [1, 1], librationCenterDeg: 60, librationWidthDeg: 30 },
   },
   {
-    // 木星と 3:2 の平均運動共鳴。σ は 0 のまわりの1つの秤動島に収まるが、そこから
-    // M = 3(λ_H − λ_J) + σ となるため遠日点が木星に対して 120° おきの3方向で繰り返し、
+    // 木星と 3:2 の平均運動共鳴(点群の平均運動は木星の2/3)。σ は 0 のまわりの1つの
+    // 秤動島に収まるが、そこから平均近点角を解くと遠日点が木星に対して120°おきの3方向で繰り返し、
     // 遠日点付近に長く留まる効果で群全体が三角形に見える(頂点は木星の L4/L3/L5)。
     id: 'hilda',
     drawRadius: 3e7,
@@ -91,7 +94,7 @@ const POINT_FIELD_DEFS: readonly PointFieldDef[] = [
     size: { kind: 'semiMajor', aRangeAu: [3.972, 3.972] },
     eRange: [0.1, 0.3],
     incRange: [0, 20 * DEG],
-    resonance: { meanMotionRatio: [3, 2], librationCenterDeg: 0, librationWidthDeg: 30 },
+    resonance: { meanMotionRatio: [2, 3], librationCenterDeg: 0, librationWidthDeg: 30 },
   },
   {
     id: 'kuiper-cold',
@@ -112,6 +115,8 @@ const POINT_FIELD_DEFS: readonly PointFieldDef[] = [
     size: { kind: 'semiMajor', aRangeAu: [39, 48] },
     eRange: [0, 0.3],
     incRange: [0, 30 * DEG],
+    // hot 群は低傾斜の散逸・衝突起源と高傾斜の散乱起源が混ざる二峰性を持つ。
+    incModes: [[0, 5 * DEG], [15 * DEG, 30 * DEG]],
   },
   {
     id: 'scattered-disk',
@@ -129,12 +134,21 @@ function uniform(rand: () => number, [min, max]: readonly [number, number]): num
   return min + rand() * (max - min);
 }
 
+function sampleInclination(
+  rand: () => number,
+  def: PointFieldDef,
+): number {
+  if (def.incModes === undefined) return uniform(rand, def.incRange);
+  return uniform(rand, rand() < 0.35 ? def.incModes[0] : def.incModes[1]);
+}
+
 // 木星の平均黄経 [rad]。トロヤ群・ヒルダ群の共鳴基準にしか使わないので、位置の3段合成では
 // なく平均黄経の一次式だけを引く。**simZeroEt はこの星系を組んだ元期でなければならない** —
 // 要素は J2000 元期のままなので、ここで畳む量が本体の畳み込み(planetDefForSimZero)と
 // 食い違うと、トロヤ群が木星から外れた位置に生成される。
-export function jupiterMeanLongitude(t: number, simZeroEt: number): number {
-  const orbit = JUPITER.orbit;
+export function jupiterMeanLongitude(
+  t: number, simZeroEt = 0, orbit: PointFieldJupiterReference = JUPITER.orbit,
+): number {
   return orbit.l0 + orbit.lRate * (t + simZeroEt);
 }
 
@@ -163,7 +177,6 @@ function sampleSemiMajorAu(
 // librationCenterDeg の周りに留まるよう決める。
 function resonantAngles(
   rand: () => number,
-  a: number,
   resonance: ResonanceDistribution,
   jupiterLambda0: number,
   jupiterLRate: number,
@@ -175,9 +188,15 @@ function resonantAngles(
     const l0 = jupiterLambda0 - sigma / p;
     return { lonPeri: rand() * TAU, l0, meanMotion: jupiterLRate * (p / q) };
   }
-  const l0 = rand() * TAU;
-  const lonPeri = (p * jupiterLambda0 - q * l0 - sigma) / (p - q);
-  return { lonPeri, l0, meanMotion: Math.sqrt(MU_SUN / (a * a * a)) };
+  // q 個の位相枝を明示的に混ぜる。特に Hilda の 3:2 共鳴では、同じ共鳴角を
+  // 保ったまま平均黄経が120°ずつ離れた3方向へ分かれるため、点群が三角形に見える。
+  // ϖ は木星の平均黄経近傍に置き、枝だけでこの3方向を作る。
+  const branch = Math.floor(rand() * q);
+  const lonPeri = jupiterLambda0;
+  const l0 = (p * jupiterLambda0 - (p - q) * lonPeri - sigma + branch * TAU) / q;
+  // p·n_J − q·n_H = 0 をそのまま満たす。木星の永年変化率と点群の a から
+  // 独立に平均運動を計算すると、長期的に共鳴角がドリフトする。
+  return { lonPeri, l0, meanMotion: jupiterLRate * (p / q) };
 }
 
 // 1群の分布定義から点を1つ引く。乱数の消費順は固定で、同じ seed からは同じ点列が出る。
@@ -186,36 +205,42 @@ function generatePoint(
   def: PointFieldDef,
   jupiterLambda0: number,
   jupiterLRate: number,
+  jupiterA: number,
 ): PointElements {
   // 近日点分布の群は a を e から逆算するので、e を先に引く。
   const e = uniform(rand, def.eRange);
-  const inc = uniform(rand, def.incRange);
+  const inc = sampleInclination(rand, def);
   const raan = rand() * TAU;
 
   let a: number;
   if (def.size.kind === 'perihelion') {
     const q = uniform(rand, def.size.qRangeAu) * AU;
     a = q / (1 - e);
+  } else if (def.size.kind === 'jupiterSemiMajor') {
+    a = jupiterA;
   } else {
     a = sampleSemiMajorAu(rand, def.size.aRangeAu, def.gapsAu) * AU;
   }
 
   const { lonPeri, l0, meanMotion } = def.resonance
-    ? resonantAngles(rand, a, def.resonance, jupiterLambda0, jupiterLRate)
+    ? resonantAngles(rand, def.resonance, jupiterLambda0, jupiterLRate)
     : { lonPeri: rand() * TAU, l0: rand() * TAU, meanMotion: Math.sqrt(MU_SUN / (a * a * a)) };
 
   return { a, e, inc, raan, lonPeri, l0, meanMotion };
 }
 
 // seed から点群全体を生成する。同じ seed と同じ元期からは必ず同じ結果になる。
-export function generatePointField(simZeroEt: number, seed: number = ASTEROID_SEED): PointField {
+export function generatePointField(
+  simZeroEt: number, seed: number = ASTEROID_SEED,
+  jupiter: PointFieldJupiterReference = JUPITER.orbit,
+): PointField {
   const rand = mulberry32(seed);
-  const jupiterLambda0 = jupiterMeanLongitude(0, simZeroEt);
-  const jupiterLRate = JUPITER.orbit.lRate;
+  const jupiterLambda0 = jupiterMeanLongitude(0, simZeroEt, jupiter);
+  const jupiterLRate = jupiter.lRate;
   return POINT_FIELD_DEFS.map((def) => ({
     id: def.id,
     drawRadius: def.drawRadius,
     color: def.color,
-    points: Array.from({ length: def.count }, () => generatePoint(rand, def, jupiterLambda0, jupiterLRate)),
+    points: Array.from({ length: def.count }, () => generatePoint(rand, def, jupiterLambda0, jupiterLRate, jupiter.a)),
   }));
 }

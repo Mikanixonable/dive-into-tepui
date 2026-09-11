@@ -65,7 +65,7 @@ export interface StageClass {
   readonly id: StageId;
   createCelestialSystem(
     phaseOffsets: PhaseOffsets, earthSpinPhase0: number, epoch: TdbJulianDate,
-    onProgress?: (ratio: number) => void,
+    onProgress?: (ratio: number) => void, renderer?: THREE.WebGPURenderer,
   ): Promise<CelestialSystem>;
   // simTime=0 に置く絶対時刻。**基底に既定値は無く、全ステージが自分で宣言する** —
   // 置くと宣言し忘れが型検査に落ちなくなり、元期が共有の定数へ静かに戻る。
@@ -103,13 +103,13 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 入らなければ CELESTIAL.md 2.2 のとおり解析暦だけで組む。
   public static async createCelestialSystem(
     phaseOffsets: PhaseOffsets, earthSpinPhase0: number, epoch: TdbJulianDate,
-    onProgress?: (ratio: number) => void,
+    onProgress?: (ratio: number) => void, renderer?: THREE.WebGPURenderer,
   ): Promise<CelestialSystem> {
     const profile = profileAtOrNull(epoch.value);
     const ephemerisPoints = profile === null ? null : await loadEphemerisPoints(
       profile.id, epoch, profile.validEndJdTdb, onProgress,
     );
-    return solarSystem('earth', phaseOffsets, earthSpinPhase0, ephemerisPoints, epoch);
+    return solarSystem('earth', phaseOffsets, earthSpinPhase0, ephemerisPoints, epoch, renderer);
   }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
   public static readonly selectLockedSub: string | undefined = undefined;

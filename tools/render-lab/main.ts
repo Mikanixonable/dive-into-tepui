@@ -18,10 +18,14 @@ import {
   type LabMeasurement, type LabViewAngles,
 } from './lab';
 import { AU } from '../../src/physics/astronomical-unit';
-import { CUMULUS_DITHER_KNOB } from '../../src/render/cloud/cumulus-shape';
-import { CLOUD_SHELL_KNOB, type CloudSpecies } from '../../src/render/pipeline/cloud-scattering';
+import { CUMULUS_COVERAGE_KNOB } from '../../src/render/cloud/cumulus-shape';
+import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
 import type { FloatUniform } from '../../src/render/tsl-types';
+import { createEarthSurfaceCaptureApi } from './earth-surface-capture';
+import type { EarthSurfaceCaptureInput } from './earth-surface-capture';
+import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
+import type { CloudLodMode } from '../../src/render/cloud/cloud-field-sampler';
 
 // 殻の高度のつまみが届く上限 [m]。対流圏界面(極 8 km、熱帯 18 km)の上まで取る。
 const MAX_SHELL_ALTITUDE = 20e3;
@@ -39,6 +43,7 @@ declare global {
   interface Window {
     // CDP から撮影と計測を駆動するための入口。
     renderLab?: {
+      earthSurfaceCapture: (input: EarthSurfaceCaptureInput) => EarthSurfaceCaptureDocument;
       cases: readonly CaseName[];
       shoot: (name: CaseName) => Promise<string>;
       capture: () => Promise<string>;
@@ -46,6 +51,7 @@ declare global {
       setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
+      setCloudSampling: (blueNoiseEnabled: boolean, lodMode: CloudLodMode) => void;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
     };
   }
@@ -53,6 +59,11 @@ declare global {
 
 // 画面を組み、最初のケースを描き、CDP の入口を window へ生やす。
 async function init(): Promise<void> {
+  // Earth surface の計測はproteinアセットに依存しない。先にAPIだけを公開することで、
+  // render-labの別ケースが404でも「データ未投入」を正しく返せる。
+  const earthSurfaceCapture = createEarthSurfaceCaptureApi();
+  window.renderLab = { earthSurfaceCapture } as Window['renderLab'];
+
   // ゲーム本体のウィジェットを組む前に、その CSS が読むトークンと規則を入れる。
   injectThemeVariables();
   injectOnce('widget-style', WIDGET_STYLE);
@@ -151,23 +162,23 @@ async function init(): Promise<void> {
   document.getElementById('ambient')!.appendChild(ambient.element);
   ambient.setSelected(view.ambientFraction);
 
-  // **仮設**: 積雲の飽和とディザの幅。被覆率が 中央値±半幅 に入る柱だけがディザに掛かるので、
-  // 半幅を広げるほど半透明として読める画素が増える。生成側の場へ差し替えたあとにもう一段の
-  // 追い込みが要るので、それまでは畳まない。
-  const dither = CUMULUS_DITHER_KNOB;
+  // **仮設**: 積雲の被覆率が不透明な雲頂へ渡る境目と幅。被覆率が中央値±半幅に入る柱だけが
+  // 連続な中間値になり、雲頂の高さと境界へ効く。生成側の場へ差し替えたあとにもう一段の追い込みが
+  // 要るので、それまでは畳まない。
+  const coverage = CUMULUS_COVERAGE_KNOB;
   const redraw = (knob: FloatUniform, value: number): void => { knob.value = value; view.render(); };
-  buildSlider('cumulus-dither', '中央値', 0, 1, 0.001,
-    () => dither.center.value.toFixed(3), (v) => redraw(dither.center, v))(dither.center.value);
-  buildSlider('cumulus-dither', '中間調 半幅', 0.001, 0.5, 0.001,
-    () => `±${dither.halfWidth.value.toFixed(3)}`,
-    (v) => redraw(dither.halfWidth, v))(dither.halfWidth.value);
+  buildSlider('cumulus-coverage', '中央値', 0, 1, 0.001,
+    () => coverage.center.value.toFixed(3), (v) => redraw(coverage.center, v))(coverage.center.value);
+  buildSlider('cumulus-coverage', '中間調 半幅', 0.001, 0.5, 0.001,
+    () => `±${coverage.halfWidth.value.toFixed(3)}`,
+    (v) => redraw(coverage.halfWidth, v))(coverage.halfWidth.value);
 
   // **仮設**: 半透明な殻の濃さ・立つ高さ・反射率。不透明な積雲との馴染みを目で追い込むための
   // つまみで、追い込みを終えるまでは畳まない。
   const kilometers = (value: number) => `${(value / 1000).toFixed(2)} km`;
   // 種類 1 つぶんのつまみを row へ並べ、つまみの位置を殻の現在値へ合わせる。
   const buildShellSliders = (rowId: string, species: CloudSpecies): void => {
-    const knob = CLOUD_SHELL_KNOB[species];
+    const knob = cloudShellKnobOf(species);
     // 濃さの2本は鉛直の光学的厚みの目盛りで、足切り・ゲインの順に掛かる。
     buildSlider(rowId, '足切り', 0, 1, 0.005,
       () => knob.cutoff.value.toFixed(3), (v) => redraw(knob.cutoff, v))(knob.cutoff.value);
@@ -191,6 +202,7 @@ async function init(): Promise<void> {
   syncAngles();
 
   window.renderLab = {
+    earthSurfaceCapture,
     cases: CASE_NAMES,
     shoot: async (name) => { const png = await view.shoot(name); syncAngles(); return png; },
     capture: () => view.capture(),
@@ -200,6 +212,7 @@ async function init(): Promise<void> {
     setGraphicsOption: (key, value) => {
       settings.graphics.set(withGraphicsOption(settings.graphics.current, key, value));
     },
+    setCloudSampling: (blueNoiseEnabled, lodMode) => view.setCloudSampling(blueNoiseEnabled, lodMode),
     measure: (name, angles) => view.measure(name, angles),
   };
 }

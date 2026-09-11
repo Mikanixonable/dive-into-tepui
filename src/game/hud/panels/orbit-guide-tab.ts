@@ -603,6 +603,7 @@ const ALL_SYSTEMS: readonly CatalogSystemId[] = [
 ];
 const SYSTEM_LABEL: Readonly<Record<CatalogSystemId, string>> = {
   'earth-moon': '地球-月系', 'sun-earth': '太陽-地球系', 'sun-mars': '太陽-火星系',
+  'sun-jupiter': '太陽-木星系', 'sun-saturn': '太陽-土星系',
   'jupiter-europa': '木星-エウロパ系', 'saturn-titan': '土星-タイタン系',
   'saturn-enceladus': '土星-エンケラドス系', 'mars-phobos': '火星-フォボス系',
 };

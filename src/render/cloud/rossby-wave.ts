@@ -43,10 +43,16 @@ export class RossbyWave {
     this.phase.value = wrapAngle(WAVE_PHASE_RATE * seconds);
   }
 
-  // 単位方向 direction におけるロスビー波の風摂動 [m/s]。東西成分と南北成分は、球面流線関数
-  // ψ = A·E(φ)·sin(kλ − kct) から求める。E とその緯度微分は同じ smoothstep 包絡から出す。
+  // 波の流線関数 ψ = A·E(φ)·sin(kλ − kct)。低気圧を生成せず、背景風の蛇行だけを表す。
   // surfaceRadius は波が走る天体の半径 [m]。
-  public windAt(direction: Vec3Node, surfaceRadius: number): Vec3Node {
+  public streamfunctionAt(direction: Vec3Node, surfaceRadius: number): FloatNode {
+    return this.envelopeAt(latitudeOf(direction)).mul(sin(this.phaseAt(direction)))
+      .mul(streamfunctionAmplitude(surfaceRadius));
+  }
+
+  // 流線関数を球面上で微分した風摂動 [m/s]。WeatherModel はこの診断値を局所的な気圧風へ
+  // 重ねるが、波のスカラー場と局所低気圧の圧力場は混ぜない。surfaceRadius は波が走る天体の半径 [m]。
+  public perturbationAt(direction: Vec3Node, surfaceRadius: number): Vec3Node {
     const latitude = latitudeOf(direction);
     const phase = this.phaseAt(direction);
     const envelope = this.envelopeAt(latitude);

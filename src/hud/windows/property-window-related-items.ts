@@ -2,6 +2,7 @@
 // 組み立て、ダブルクリック/右クリックが起きたら渡されたコールバックをそのまま呼ぶ。一覧が
 // 空のときは自分自身を DOM から外し、非空になれば内容を組み立て直す。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../widgets';
+import { bindActivation, expandHitTarget, stopDragPropagation } from '../widgets/widget-base';
 import type { DraggableWindow } from './draggable-window';
 import type { PropertyWindowRelatedItem } from './property-window-content';
 
@@ -9,6 +10,7 @@ export class PropertyWindowRelatedItems {
   public readonly element: HTMLDivElement;
   private listEl: HTMLDivElement | null = null;
   private titleEl: HTMLDivElement | null = null;
+  private titleLabelEl: HTMLSpanElement | null = null;
   private expanded = false;
   private items: readonly PropertyWindowRelatedItem[] = [];
   private title = '';
@@ -33,22 +35,22 @@ export class PropertyWindowRelatedItems {
       this.element.remove();
       this.listEl = null;
       this.titleEl = null;
+      this.titleLabelEl = null;
       return;
     }
 
     // 折りたたみ見出し。クリック/Enter/Space のいずれでも開閉を切り替える。
     const titleEl = document.createElement('div');
-    titleEl.className = 'prop-window-related-title';
+    titleEl.className = 'prop-window-related-title ui-selectable';
     titleEl.setAttribute('role', 'button');
     titleEl.tabIndex = 0;
     titleEl.setAttribute('aria-expanded', String(this.expanded));
-    titleEl.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.setExpanded(!this.expanded);
-    });
-    titleEl.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter' && e.key !== ' ') return;
-      e.preventDefault();
+    const titleLabel = document.createElement('span');
+    titleLabel.className = 'w-hit';
+    expandHitTarget(titleLabel);
+    titleEl.appendChild(titleLabel);
+    stopDragPropagation(titleEl);
+    bindActivation(titleEl, () => {
       this.setExpanded(!this.expanded);
     });
     this.element.appendChild(titleEl);
@@ -58,11 +60,16 @@ export class PropertyWindowRelatedItems {
     list.className = 'prop-window-related-list';
     for (const it of items) {
       const row = document.createElement('div');
-      row.className = 'prop-window-related-item';
+      row.className = 'prop-window-related-item ui-selectable';
       row.setAttribute('role', 'button');
       row.tabIndex = 0;
-      row.textContent = it.label;
+      const rowLabel = document.createElement('span');
+      rowLabel.className = 'w-hit';
+      rowLabel.textContent = it.label;
+      expandHitTarget(rowLabel);
+      row.appendChild(rowLabel);
       row.title = 'ダブルクリック: フォーカス · 右クリック: プロパティ';
+      stopDragPropagation(row);
       row.addEventListener('dblclick', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -83,14 +90,15 @@ export class PropertyWindowRelatedItems {
     this.element.appendChild(list);
     this.listEl = list;
     this.titleEl = titleEl;
+    this.titleLabelEl = titleLabel;
     this.syncToggleLabel();
     this.setExpanded(this.expanded, false);
   }
 
   // 折りたたみ見出しの文字列を、開閉状態と件数へ合わせて書き換える。
   private syncToggleLabel(): void {
-    if (!this.titleEl) return;
-    this.titleEl.textContent =
+    if (!this.titleEl || !this.titleLabelEl) return;
+    this.titleLabelEl.textContent =
       `${this.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH} ${this.title} (${this.items.length})`;
     this.titleEl.setAttribute('aria-expanded', String(this.expanded));
   }

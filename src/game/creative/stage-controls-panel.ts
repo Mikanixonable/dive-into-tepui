@@ -36,7 +36,7 @@ export class StageControlsPanel {
   onToggleResupply: ((on: boolean) => void) | null = null;
   onToggleFuelResupply: ((on: boolean) => void) | null = null;
   onToggleWaveAttack: ((on: boolean) => void) | null = null;
-  onRefillAmmo: (() => void) | null = null;
+  onAddMagazine: (() => void) | null = null;
   onRefillFuel: (() => void) | null = null;
   onSpawnDistanceChange: ((distanceM: number) => void) | null = null;
   onSpawnEnemy: ((shape: EnemySpawnShape, colorValue: string) => void) | null = null;
@@ -107,8 +107,8 @@ export class StageControlsPanel {
     const waveAttackToggle = new ToggleSwitch('敵の波状攻撃', (on) => this.onToggleWaveAttack?.(on));
     waveAttackToggle.setOn(waveAttackEnabled);
     body.appendChild(waveAttackToggle.element);
-    const refillAmmoButton = new Button('弾薬を満タンにする', () => this.onRefillAmmo?.());
-    body.appendChild(refillAmmoButton.element);
+    const addMagazineButton = new Button('チェーンにマガジンを1つ追加', () => this.onAddMagazine?.());
+    body.appendChild(addMagazineButton.element);
     const refillFuelButton = new Button('RCS燃料を満タンにする', () => this.onRefillFuel?.());
     body.appendChild(refillFuelButton.element);
 
