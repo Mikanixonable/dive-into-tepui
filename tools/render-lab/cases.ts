@@ -6,14 +6,14 @@ import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
 import { CloudPresentation } from '../../src/render/cloud/cloud-presentation';
 import type { CloudLodMode } from '../../src/render/cloud/cloud-field-sampler';
-import { ClimateMap } from '../../src/render/cloud/climate-map';
-import { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
+import { ObservedCloudField } from '../../src/render/cloud/observed-cloud-field';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
-import climateTextureUrl from '../../src/assets/earth-climate.png';
+import cloudFieldUrl from '../../src/assets/cloud-field.png';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
-import { R_EARTH, R_EARTH_EQ, R_SUN, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/constants';
-import { EARTH, EARTH_ATMOSPHERE_OPTICS } from '../../src/game/celestial/solar-system/earth-system';
+import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-system/constants';
+import { EARTH, EARTH_ATMOSPHERE_OPTICS, earthGeneratedCloudField } from '../../src/game/celestial/solar-system/earth-system';
 import { EARTH_TEXTURE } from '../../src/render/earth-surface-defaults';
+import { bootstrapEarthSurface } from '../../src/render/earth-surface-runtime';
 import { shapeAxes, shapeSpheroidRadii, type RingBandDef } from '../../src/physics/celestial-body-def';
 import { BodyGraticule } from '../../src/render/celestial/body-graticule';
 import { LineOverlay, type LatLonPolyline } from '../../src/render/celestial/line-overlay';
@@ -47,6 +47,7 @@ import type { FloatNode } from '../../src/render/tsl-types';
 import type { AtmosphereBody } from '../../src/render/atmosphere';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
+import type { GpuTimingSink } from '../../src/render/gpu-timings';
 import type { CelestialTexture } from '../../src/render/celestial-textures';
 import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -124,8 +125,8 @@ export interface LabCase {
   readonly rings?: { readonly center: THREE.Vector3; readonly axis: THREE.Vector3; readonly bands: readonly RingBand[] };
   // 影パスへ渡す積雲の殻。
   readonly cumulus?: ShadowCumulus;
-  // 動的な雲場を表示時刻へ焼く。
-  readonly bakeClouds?: (renderer: WebGPURenderer, displayTime: number) => void;
+  // 動的な雲場を表示時刻へ焼く。gpu を渡すと、焼いた GPU 時間をそこへ計上する。
+  readonly bakeClouds?: (renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink) => void;
   // 雲場のLOD比較設定を表面へ渡す。大気・影はRenderPipelineが同じ設定を受ける。
   readonly setCloudLodSampling?: (mode: CloudLodMode, fixedLevel?: number) => void;
   // 動的な雲場を解放する。
@@ -635,7 +636,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   readonly cumulus: ShadowCumulus;
   readonly shadowBody: ShadowBody;
   readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
-  readonly bakeClouds: (renderer: WebGPURenderer, displayTime: number) => void;
+  readonly bakeClouds: (renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink) => void;
   readonly setCloudLodSampling: (mode: CloudLodMode, fixedLevel?: number) => void;
   readonly disposeClouds: () => void;
 } {
@@ -645,8 +646,12 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   const axes = shapeAxes(R_EARTH_EQ, EARTH.shape);
   const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
-  const climate = ClimateMap.fromDeferredUrl(climateTextureUrl);
-  const cumulus = new CloudPresentation(GeneratedCloudField.global(climate, R_EARTH, SIDEREAL_DAY), R_EARTH_EQ);
+  // 雲場の表示時刻 0 の UTC [s]。気候の月は、ここから表示時刻ぶん進んだ暦で選ばれる。
+  const climateEpochUnixSec = 0;
+  const cumulus = new CloudPresentation(
+    earthGeneratedCloudField(climateEpochUnixSec, bootstrapEarthSurface()),
+    new ObservedCloudField(cloudFieldUrl), R_EARTH_EQ,
+  );
   const surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
   surface.addTo(group);
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
@@ -685,13 +690,14 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
     applyGraphics: (graphics) => {
       if (graphics.clouds) {
         cumulus.setCloudsVisible(true);
+        cumulus.setSource(graphics.cloudFieldSource);
         cumulus.setDetail(graphics.cumulusDetail);
         cumulus.syncLod(CLOSE_UP_DIAMETER_PX);
       } else {
         cumulus.setCloudsVisible(false);
       }
     },
-    bakeClouds: (renderer, displayTime) => cumulus.bake(renderer, displayTime),
+    bakeClouds: (renderer, displayTime, gpu) => cumulus.bake(renderer, displayTime, gpu),
     setCloudLodSampling: (mode, fixedLevel) => cumulus.setLodSampling(mode, fixedLevel),
     disposeClouds: () => cumulus.dispose(),
   };

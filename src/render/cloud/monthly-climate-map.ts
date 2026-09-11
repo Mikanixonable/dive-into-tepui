@@ -16,7 +16,7 @@ import {
   climateSlope,
   configureClimateTexture,
 } from './climate-map';
-import type { ClimateMapLike } from './climate-map';
+import type { ClimateMap } from './climate-map';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 
 // 単位方向を気候テクスチャの UV へ写す関数。
@@ -92,7 +92,7 @@ function deferredTexture(url: string): MonthlyClimateTexture {
   return deferred;
 }
 
-export class MonthlyClimateMap implements ClimateMapLike {
+export class MonthlyClimateMap implements ClimateMap {
   private readonly blendNode: FloatUniform = uniform(0);
   private readonly currentTextureNode: ReturnType<typeof texture>;
   private readonly nextTextureNode: ReturnType<typeof texture>;
