@@ -4,7 +4,7 @@
 // 真偽は独立した描画物を消すもの、選択肢は品質と負荷を刻む値か見え方を選ぶ値。
 
 import { ATMOSPHERE_QUALITY } from './atmosphere';
-import { CLOUD_FIELD_SOURCE, CUMULUS_DETAIL } from './cloud/cloud-presentation';
+import { CLOUD_FIELD_SOURCE_KIND, CUMULUS_DETAIL } from './cloud/cloud-presentation';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 
 export type QualityPreset = 'low' | 'medium' | 'high';
@@ -110,9 +110,11 @@ export const GRAPHICS_OPTIONS = {
   // 実写は焼かないぶん軽い。
   cloudFieldSource: {
     kind: 'choice', group: 'element', label: '雲の分布',
-    items: [[CLOUD_FIELD_SOURCE.observed, '実写'], [CLOUD_FIELD_SOURCE.generated, '生成']],
+    items: [[CLOUD_FIELD_SOURCE_KIND.observed, '実写'], [CLOUD_FIELD_SOURCE_KIND.generated, '生成']],
     presets: {
-      low: CLOUD_FIELD_SOURCE.observed, medium: CLOUD_FIELD_SOURCE.generated, high: CLOUD_FIELD_SOURCE.generated,
+      low: CLOUD_FIELD_SOURCE_KIND.observed,
+      medium: CLOUD_FIELD_SOURCE_KIND.generated,
+      high: CLOUD_FIELD_SOURCE_KIND.generated,
     },
   },
   // 圏界面付近に薄く張る巻雲の層。

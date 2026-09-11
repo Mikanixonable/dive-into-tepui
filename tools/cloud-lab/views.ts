@@ -4,7 +4,7 @@
 import { exp, float, length, texture, vec3 } from 'three/tsl';
 import { equirectUvFromDirection } from '../../src/render/cloud/field-projection';
 import type * as THREE from 'three/webgpu';
-import type { ClimateMapLike } from '../../src/render/cloud/climate-map';
+import type { ClimateMap } from '../../src/render/cloud/climate-map';
 import type { CloudFieldSampler } from '../../src/render/cloud/cloud-field-sampler';
 import type { WeatherModel } from '../../src/render/cloud/weather-model';
 import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
@@ -23,7 +23,7 @@ export type CloudLabView = {
   readonly id: CloudLabViewId;
   readonly label: string;
 } & (
-  | { readonly reads: 'weather'; readonly color: (d: Vec3Node, model: WeatherModel, climate: ClimateMapLike) => Vec3Node }
+  | { readonly reads: 'weather'; readonly color: (d: Vec3Node, model: WeatherModel, climate: ClimateMap) => Vec3Node }
   | { readonly reads: 'cloud'; readonly color: (d: Vec3Node, field: CloudFieldSampler) => Vec3Node }
   | { readonly reads: 'photo'; readonly color: (d: Vec3Node, photo: THREE.Texture) => Vec3Node }
 );

@@ -19,7 +19,7 @@ export const CLIMATE_LAND_MAX = 1;
 const SLOPE_STEP = 0.02;
 
 // 天体の気候を単位方向で答える入力。generation は画像が GPU へ公開されるたびに進む世代。
-export interface ClimateMapLike {
+export interface ClimateMap {
   readonly generation: number;
   temperatureK(direction: Vec3Node): FloatNode;
   meanCloudiness(direction: Vec3Node): FloatNode;
@@ -35,7 +35,7 @@ export interface ClimateMapLike {
 // 人工の斜面として代用する。surfaceRadius [m] はこの天体の半径で、勾配を角あたりから長さあたりへ
 // 直すのに要る。
 export function climateSlope(
-  climate: ClimateMapLike, direction: Vec3Node, landHeight: number, surfaceRadius: number,
+  climate: ClimateMap, direction: Vec3Node, landHeight: number, surfaceRadius: number,
 ): Vec2Node {
   const east = eastAt(direction).mul(SLOPE_STEP);
   const north = northAt(direction).mul(SLOPE_STEP);
