@@ -4,15 +4,23 @@ import * as THREE from 'three/webgpu';
 import { addScaled, lenSq, norm } from '../../../math/vec3';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import { Billboard } from '../../billboard';
-import {
-  REENTRY_CORE_BRIGHTNESS, REENTRY_CORE_COLOR, REENTRY_CORE_OFFSET, REENTRY_CORE_SIZE_RATIO,
-  REENTRY_OUTER_BRIGHTNESS, REENTRY_OUTER_COLOR, REENTRY_OUTER_OFFSET, REENTRY_OUTER_SIZE_RATIO,
-  REENTRY_SIZE_MIN, REENTRY_SIZE_SPAN,
-} from '../../vfx-style';
 import { FloatingOrigin } from '../../camera/floating-origin';
 
 const REENTRY_GLOW_MIN_Q = 200; // 燃焼エフェクトが出始める動圧 [Pa]
 const REENTRY_GLOW_FULL_Q = 2e4; // 燃焼エフェクトが最大強度になる動圧 [Pa]
+
+const REENTRY_CORE_COLOR = 0xfff2d9;
+const REENTRY_OUTER_COLOR = 0xff7a1f;
+// 強度 0..1 に対する基準サイズ [m] と、コア・アウターの倍率・機首前方へのずらし量 [m]。
+const REENTRY_SIZE_MIN = 1.5;
+const REENTRY_SIZE_SPAN = 3.5;
+const REENTRY_CORE_SIZE_RATIO = 1.4;
+const REENTRY_OUTER_SIZE_RATIO = 3.2;
+const REENTRY_CORE_OFFSET = 3.0;
+const REENTRY_OUTER_OFFSET = 5.5;
+// TODO: 明るさは 1 天文単位を基準にした目盛りへ手で置いた表示値。ボリュームレンダリングで放射量として組み直す。
+const REENTRY_CORE_BRIGHTNESS = 0.75;
+const REENTRY_OUTER_BRIGHTNESS = 0.35;
 
 export class ReentryEffects {
   private readonly core = new Billboard(REENTRY_CORE_COLOR);
