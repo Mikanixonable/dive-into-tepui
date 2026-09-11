@@ -17,7 +17,6 @@ import type { CameraFrame } from '../../render/camera/camera-frame';
 import { ObjectPickable } from '../pickable/object-pickable';
 import { DisplayDurationSource, PlanData } from './plan';
 import { PlanPath } from './plan-path';
-import { PlanPathView } from '../../render/plan/plan-path-view';
 import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
@@ -80,8 +79,7 @@ function screenDistSq(a: Projected, b: Projected): number {
 }
 
 export class PlanDisplay {
-  readonly path: PlanPath;
-  private readonly pathView: PlanPathView;
+  public readonly path: PlanPath;
 
   private readonly apsisPe = new ApsisMarker('pe');
   private readonly apsisAp = new ApsisMarker('ap');
@@ -89,36 +87,42 @@ export class PlanDisplay {
   // このフレームに描く計画の材料。描く計画が無ければ null。
   private displayedPlan: PlanData | null = null;
 
-  // 計画折れ線と、それを描く view を構築する。
-  constructor(
+  // scene に描く計画折れ線を構築する。
+  public constructor(
     scene: THREE.Scene,
     private readonly markers: MarkerSlots,
     private readonly celestialBodies: CelestialBodies,
     displayDuration: DisplayDurationSource,
     private readonly controlSelection: ControlSelection,
   ) {
-    this.pathView = new PlanPathView(scene);
-    this.path = new PlanPath(this.pathView, displayDuration);
+    this.path = new PlanPath(scene, celestialBodies, displayDuration);
   }
 
   // 計画折れ線を再積分し、アプシスアイコンを求め直す。
   // 折れ線は戦闘ビューでも描く — 計画どおりに機体を動かすのは戦闘ビューだから。
-  update(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource, view: ViewMode): void {
+  public update(displayWindow: DisplayWindow, frameAnchors: FrameAnchorSource, view: ViewMode): void {
     const ship = this.controlSelection.current;
     this.displayedPlan = this.planToDisplay(ship, view);
-    if (this.displayedPlan === null) this.clearDisplay();
-    else this.updateDisplay(this.displayedPlan, displayWindow, ship, frameAnchors);
+    const { frame, simTime, displayTime, duration } = displayWindow;
+    this.path.update(this.displayedPlan, ship, frame, simTime, displayTime, frameAnchors, duration);
+    // 描く計画が無ければ、近地点・遠地点アイコンを出す理由も無くなる。
+    if (this.displayedPlan === null) {
+      this.apsisPe.retire();
+      this.apsisAp.retire();
+    } else {
+      this.placeApsisMarkers(ship?.name ?? null);
+    }
   }
 
   // owner の計画折れ線がこのフレームに出ていれば、その座標系とサンプル列。出ていなければ null。
-  displayedPathOf(ownerId: string): DisplayedPath | null {
+  public displayedPathOf(ownerId: string): DisplayedPath | null {
     if (this.displayedPlan === null || this.controlSelection.current?.id !== ownerId) return null;
     const samples = this.path.displayedSamples();
     return samples.length === 0 ? null : { frame: this.path.displayFrame, samples };
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコン・目盛を、焼かれた折れ線から組んで置く。
-  sync(camera: CameraFrame, displayWindow: DisplayWindow): void {
+  public sync(camera: CameraFrame, displayWindow: DisplayWindow): void {
     // 描く弧が無いフレームも折れ線の同期は通す — 止めると、消えたはずの線がそのまま残る。
     this.path.sync(camera);
     if (this.displayedPlan === null) { this.hide(); return; }
@@ -134,18 +138,18 @@ export class PlanDisplay {
   }
 
   // このフレームに表示している計画区間の弧。表示している計画が無ければ空。
-  growableArcs(): readonly PredictedArc[] {
+  public growableArcs(): readonly PredictedArc[] {
     return this.displayedPlan === null ? [] : this.path.growableArcs();
   }
 
   // 直近のフレームで作り直した計画区間の本数。
-  perfCounts(): Pick<PerfCounts, 'planArcs'> {
+  public perfCounts(): Pick<PerfCounts, 'planArcs'> {
     return { planArcs: this.path.lastRebuiltArcs };
   }
 
   // 計画折れ線の描画資源を片付ける。
-  dispose(): void {
-    this.pathView.dispose();
+  public dispose(): void {
+    this.path.dispose();
   }
 
   // このフレームに出す折れ線の材料。出す価値のある折れ線が無ければ null — ノードの無い計画は
@@ -154,27 +158,6 @@ export class PlanDisplay {
     if (ship === null) return null;
     if (view !== 'map' && ship.plan.nodes.length === 0) return null;
     return ship.plan.displayData(ship.motion.state);
-  }
-
-  // 折れ線を再積分し、近地点・遠地点アイコンを求め直す。ship はノードの無い区間を
-  // 操作対象の予測列として引くために渡す。
-  private updateDisplay(
-    planData: PlanData, displayWindow: DisplayWindow, ship: Controllable | null,
-    frameAnchors: FrameAnchorSource,
-  ): void {
-    const { simTime, displayTime } = displayWindow;
-    this.path.update(
-      planData, ship, this.celestialBodies, displayWindow.frame, simTime, displayTime, frameAnchors,
-      displayWindow.duration,
-    );
-    this.placeApsisMarkers(ship?.name ?? null);
-  }
-
-  // 折れ線を畳み、近地点・遠地点アイコンを出す理由が無くなった状態にする。
-  private clearDisplay(): void {
-    this.path.clear();
-    this.apsisPe.retire();
-    this.apsisAp.retire();
   }
 
   // 計画に属するマーカーをすべて畳む。
@@ -188,7 +171,7 @@ export class PlanDisplay {
   }
 
   // 近地点・遠地点アイコンの右クリック候補(このフレームに求まったものだけ)。
-  get apsisMarkers(): readonly ObjectPickable[] {
+  public get apsisMarkers(): readonly ObjectPickable[] {
     return [this.apsisPe, this.apsisAp].filter((marker) => !marker.gone);
   }
 

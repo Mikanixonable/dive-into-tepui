@@ -30,7 +30,7 @@ export class RenderStyleGate {
 
   // 変化していれば true を返し、直近の適用値をこの style で更新する。呼び出し側は true が
   // 返ったときだけ見た目を差し替えればよい。
-  changed(style: RenderStyle): boolean {
+  public changed(style: RenderStyle): boolean {
     if (style === this.applied) return false;
     this.applied = style;
     return true;

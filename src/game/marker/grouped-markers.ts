@@ -73,17 +73,17 @@ export class GroupedMarkers {
   private prevHiddenByCelestialLabel = new Set<string>();
 
   // 直前の sync で天体ラベルへラベルを譲った項目。天体ラベル下のサブ行の候補になる。
-  getHiddenItems(): readonly GroupedMarkerItem[] {
+  public getHiddenItems(): readonly GroupedMarkerItem[] {
     return this.hiddenItemsList;
   }
 
-  constructor(private readonly markerManager: MarkerManager) { }
+  public constructor(private readonly markerManager: MarkerManager) { }
 
   // items が空なら前フレームのマーカーをすべて片付けるだけになる(非表示にしたいときは
   // 空配列を渡せばよく、専用の hide は要らない)。マップビュー中は対象そのものが
   // 画面内に見えているので、画面端の方位マーカーは出さず、代わりに vel から進行方向を
   // 求めてマーカー自体を回す(円軌道では静止画から回転方向が読めないための対策)。
-  sync(
+  public sync(
     items: readonly GroupedMarkerItem[],
     project: ProjectFn,
     view: ViewMode,

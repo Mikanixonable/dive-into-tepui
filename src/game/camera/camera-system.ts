@@ -41,14 +41,14 @@ const CAM_KEY_PAN_RATE = 600; // @/:/;/]での視点平行移動、中クリッ�
 // 同じ注視カメラ(FocusCamera)の戦闘用・マップ用の2インスタンスを、ビューに応じて切り替えて
 // 駆動する。戦闘ビューではガンサイトズーム([Z])と画角遷移をその上に重ねる。
 export class CameraSystem {
-  readonly combatCamera: FocusCamera;
-  readonly mapCamera: FocusCamera;
+  public readonly combatCamera: FocusCamera;
+  public readonly mapCamera: FocusCamera;
   private readonly gunsightCamera: GunsightCamera;
   private _zoomActive = false;
   // 戦闘ビューの表示視点。軌道視点とガンサイトの間で fovDeg だけを指数的に遷移させた後の値。
   private combatViewpoint: Viewpoint;
   // 現在のビュー。ビューの正本(ViewManager)から毎回読む。
-  get view(): ViewMode { return this.currentView(); }
+  public get view(): ViewMode { return this.currentView(); }
   // マップビューのインスタンスがアクティブか。
   private get mapActive(): boolean { return this.currentView() === 'map'; }
 
@@ -75,7 +75,7 @@ export class CameraSystem {
   // saved があれば両カメラをその視点から組む。currentView はビューの正本を引く関数 —
   // ViewManager より先に生成されるため、参照でなく遅延評価で受ける。
   // attitudeOf はフォーカス機体の姿勢追従に使う解決関数(FocusCameraConfig 参照)。
-  constructor(
+  public constructor(
     private readonly hud: HudLayers & Notifier,
     celestialBodies: CelestialBodies,
     private readonly currentView: () => ViewMode,
@@ -121,7 +121,7 @@ export class CameraSystem {
   }
 
   // 視点リセットボタンへの配線を解く。
-  dispose(): void {
+  public dispose(): void {
     this.viewResetBtn?.removeEventListener('pointerdown', this.handleViewReset);
   }
 
@@ -130,12 +130,12 @@ export class CameraSystem {
     return this.mapActive ? this.mapCamera : this.combatCamera;
   }
 
-  get activeViewpoint(): Viewpoint {
+  public get activeViewpoint(): Viewpoint {
     return this.mapActive ? this.mapCamera.viewpoint : this.combatViewpoint;
   }
 
   // アクティブカメラの位置(描画原点になる値)を返す。
-  get activeCameraPos(): Vec3 {
+  public get activeCameraPos(): Vec3 {
     return this.activeViewpoint.position;
   }
 
@@ -145,12 +145,12 @@ export class CameraSystem {
   }
 
   // 現在のビューのカメラが注視しているフォーカス対象。
-  get activeFocus(): FocusTarget {
+  public get activeFocus(): FocusTarget {
     return this.activeFocusCamera.focus;
   }
 
   // 戦闘ビューでズーム視点(照準ズーム)が有効かどうか。
-  get zoomActive(): boolean {
+  public get zoomActive(): boolean {
     return !this.mapActive && this._zoomActive;
   }
 
@@ -158,7 +158,7 @@ export class CameraSystem {
   // 駆動する。displayTime/frameAnchors は座標系変換に使う — 線・メッシュと同じ表示時刻でないと
   // 回転系選択時にカメラだけが現在時刻に取り残される。controlled は照準ズームの可否と
   // その視点を決める。
-  update(
+  public update(
     displayTime: number,
     input: Input,
     dt: number,
@@ -224,24 +224,24 @@ export class CameraSystem {
   }
 
   // 近遠クリップ面を決める軌道視点の垂直画角 [deg]。ガンサイトへ絞り込む前の値を答える。
-  get clipFovDeg(): number {
+  public get clipFovDeg(): number {
     return this.activeFocusCamera.fov;
   }
 
   // 近遠クリップ面を決める軌道視点の注視距離 [m]。
-  get clipDistance(): number {
+  public get clipDistance(): number {
     return this.activeFocusCamera.dist;
   }
 
   // アクティブカメラが注視している点の ECI 速度。カメラの並進はこの点が決める —
   // 注視点まわりの旋回・パン・ズームは含めない。
   // 速度を答えられない対象(点マーカー)を注視しているあいだは慣性系静止として扱う。
-  get focusVelocity(): Vec3 {
+  public get focusVelocity(): Vec3 {
     return this.activeFocusCamera.focusVelocity ?? v3();
   }
 
   // 両サブカメラの視点状態をセーブデータへ書き出す。どちらが表示中かは ViewManager の責務。
-  serialize(): Pick<CameraSaveData, 'chase' | 'overview'> {
+  public serialize(): Pick<CameraSaveData, 'chase' | 'overview'> {
     return { chase: this.combatCamera.serialize(), overview: this.mapCamera.serialize() };
   }
 }

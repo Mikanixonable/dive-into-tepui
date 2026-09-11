@@ -14,7 +14,7 @@ const KIND_LABEL: Record<LinePickable['kind'], string> = {
   'orbit-body': '公転軌道', 'orbit-ship': '船の軌道', 'orbit-guide': '軌道ガイド',
 };
 const CALC_METHOD_LABEL: Record<LinePickable['method'], string> = {
-  analytic: '解析軌道', predicted: '予測軌道', guide: '軌道ガイド',
+  analytic: '解析軌道', numeric: '予測軌道', guide: '軌道ガイド',
 };
 
 export class OrbitLineWindows {
@@ -22,7 +22,7 @@ export class OrbitLineWindows {
 
   // focusOwner / openOwnerWindow は「所属」欄から持ち主へ注視を移す・そのプロパティ
   // ウィンドウを開く手続き。
-  constructor(
+  public constructor(
     private readonly hud: HudLayers,
     private readonly linePickables: LinePickables,
     private readonly pickables: ObjectPickables,
@@ -31,7 +31,7 @@ export class OrbitLineWindows {
   ) {}
 
   // 軌道線のウィンドウを開く。既に開いていればクリック位置へ動かして最前面に出すだけにする。
-  open(clientX: number, clientY: number, orbit: LinePickable): void {
+  public open(clientX: number, clientY: number, orbit: LinePickable): void {
     const existing = this.windows.get(orbit.key);
     if (existing) {
       existing.moveTo(clientX, clientY);
@@ -46,7 +46,7 @@ export class OrbitLineWindows {
   }
 
   // 開いている各ウィンドウの所属欄を最新化する。線そのものが消えていれば閉じる。
-  sync(): void {
+  public sync(): void {
     for (const [key, win] of [...this.windows]) {
       const orbit = this.linePickables.pickables.find((candidate) => candidate.key === key);
       if (orbit === undefined) { win.close(); continue; }
@@ -55,7 +55,7 @@ export class OrbitLineWindows {
   }
 
   // 開いているウィンドウをすべて畳む。
-  close(): void {
+  public close(): void {
     for (const win of [...this.windows.values()]) win.close();
   }
 

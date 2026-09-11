@@ -311,7 +311,7 @@ export class PauseMenu implements OverlayHandle {
   }
 
   // ヘッダー上のボタン以外を掴んだときに、ドラッグ開始点とポインタキャプチャを確保する。
-  private handleHeaderPointerDown = (e: PointerEvent): void => {
+  private readonly handleHeaderPointerDown = (e: PointerEvent): void => {
     if (e.target instanceof Element && e.target.closest('button')) return;
     this.dragPointerId = e.pointerId;
     this.dragStartClient = { x: e.clientX, y: e.clientY };
@@ -320,7 +320,7 @@ export class PauseMenu implements OverlayHandle {
   };
 
   // しきい値(CLICK_MOVE_THRESHOLD)を超えて動いたら位置を持ち出し位置として確定させる。
-  private handleHeaderPointerMove = (e: PointerEvent): void => {
+  private readonly handleHeaderPointerMove = (e: PointerEvent): void => {
     if (this.dragPointerId !== e.pointerId || this.dragStartClient === null) return;
     const dx = e.clientX - this.dragStartClient.x;
     const dy = e.clientY - this.dragStartClient.y;
@@ -330,7 +330,7 @@ export class PauseMenu implements OverlayHandle {
   };
 
   // ポインタキャプチャを解放してドラッグ状態を終える。
-  private handleHeaderPointerUp = (e: PointerEvent): void => {
+  private readonly handleHeaderPointerUp = (e: PointerEvent): void => {
     if (this.dragPointerId !== e.pointerId) return;
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     this.dragPointerId = null;

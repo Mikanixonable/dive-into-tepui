@@ -19,14 +19,14 @@ function toThreeDirection(dir: Vec3): THREE.Vector3 {
 export class ScaleGridView {
   private readonly grid: ScaleGrid;
 
-  constructor(scene: THREE.Scene) {
+  public constructor(scene: THREE.Scene) {
     this.grid = new ScaleGrid(scene);
   }
 
   // 4面ぶんの表示状態を、この1フレームのトグル・フォーカス・月の姿勢へ同期する。マップビューで
   // だけ表示するので、戦闘ビューではトグルに関わらず4面とも隠す。月が星系に無いか自転軸が
   // 得られないなら、その面の向きは決められないので null を渡す。
-  sync(
+  public sync(
     displayTime: number, camera: CameraFrame, cameraSystem: CameraSystem, celestialBodies: CelestialBodies,
     gridVisibility: CelestialGridVisibility,
   ): void {
@@ -50,7 +50,7 @@ export class ScaleGridView {
     );
   }
 
-  dispose(): void {
+  public dispose(): void {
     this.grid.dispose();
   }
 }
