@@ -60,8 +60,8 @@ function readyFetch(): typeof fetch {
 export function register(): void {
   test('earth system: 地球はfallbackテクスチャを保ち、月の表面は変更しない', () => {
     const bodies = earthSystem(new StarMotion(SUN), {}, 0);
-    assert.equal(bodies.earth.surfaceTextureUrl, EARTH_TEXTURE.url);
-    assert.match(bodies.moon.surfaceTextureUrl ?? '', /8k_moon\.jpg$/);
+    assert.equal(bodies.earth.view.surfaceTextureUrl, EARTH_TEXTURE.url);
+    assert.match(bodies.moon.view.surfaceTextureUrl ?? '', /8k_moon\.jpg$/);
     assert.equal(EARTH_SURFACE_FIXTURE_SOURCE.climateMapUrls.length, 12);
   });
 
