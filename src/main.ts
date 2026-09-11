@@ -16,7 +16,6 @@ import { applyThemePalette } from './theme';
 import { Hud } from './game/hud/hud';
 import { HudShell } from './hud/hud-shell';
 import { PauseMenu } from './hud/windows/pause-menu';
-import { SettingsView } from './hud/windows/settings-view';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
 import { Launcher } from './launcher/launcher';
@@ -65,8 +64,9 @@ function startAnimationLoop(
     // リサイズしたフレームで画面上の当たり判定がずれる。
     const viewport = browserViewport();
     gs.syncViewport(viewport);
-    const game = launcher.current;
-    if (game === null) {
+    const game = launcher.currentGame;
+    const current = launcher.current;
+    if (game === null || current === null) {
       requestAnimationFrame(animate);
       return;
     }
@@ -76,15 +76,15 @@ function startAnimationLoop(
       game.update(dt, viewport);
       sections.endFrame();
       // Game が消費した入力エッジは、この時点で取り除かれている。
-      snapshotControls.handleInput(game.input, game);
+      snapshotControls.handleInput(game.input, current.snapshot);
       launcher.handleInput(game.input);
       // 入力の処理中に周回が畳まれたら(再出撃キーなど)、捨てた Game には触らずこのフレームを終える。
-      if (launcher.current !== game) {
+      if (launcher.currentGame !== game) {
         requestAnimationFrame(animate);
         return;
       }
       debugInfo.handleInput(game.input);
-      autoSave.update(game);
+      autoSave.update(current.snapshot);
       const t1 = debugInfo.on ? performance.now() : 0;
       game.sync(graphics.current, renderStyle.current, viewport);
       const t2 = debugInfo.on ? performance.now() : 0;
@@ -119,24 +119,24 @@ function startAnimationLoop(
 // 各部品は設定の現在値を構築時に受け取り、以後の変更は main が配線する。
 function initHud(settings: UserSettings): {
   shell: HudShell; hud: Hud; audioEngine: AudioEngine; bgm: Bgm;
-  pauseMenu: PauseMenu; settingsView: SettingsView;
+  pauseMenu: PauseMenu;
 } {
   const shell = new HudShell();
   const hud = new Hud(shell, settings.renderStyle.current);
   const audioEngine = new AudioEngine();
   const bgm = new Bgm(audioEngine, settings.bgmVolume.current);
-  const pauseMenu = new PauseMenu(shell.layers.system, shell.overlayManager, settings.bgmVolume.current);
-  const settingsView = new SettingsView(
+  const pauseMenu = new PauseMenu(
     shell.layers.system, shell.overlayManager, bgm, settings.graphics.current, settings.bgmVolume.current,
   );
-  return { shell, hud, audioEngine, bgm, pauseMenu, settingsView };
+  return { shell, hud, audioEngine, bgm, pauseMenu };
 }
 
 // 設定の変更を、その値を使う側へ配る。書き換えの入口はどれも設定へ戻し、表示はその通知から引き直す。
 function bindSettings(
   settings: UserSettings, gs: GameScene, hud: Hud, bgm: Bgm,
-  pauseMenu: PauseMenu, settingsView: SettingsView, debugInfo: DebugInfoWindow,
+  pauseMenu: PauseMenu, debugInfo: DebugInfoWindow,
 ): void {
+  const settingsView = pauseMenu.settingsView;
   settings.graphics.subscribe((graphics) => gs.applyGraphics(graphics));
   settingsView.onGraphicsChange = (graphics) => settings.graphics.set(graphics);
 
@@ -177,7 +177,7 @@ async function main() {
   const snapshotService = new SnapshotService(saveStore, slots);
   const settings = new UserSettings(browserSettingStorage);
   const gs = await initScene(settings.graphics.current);
-  const { shell, hud, audioEngine, bgm, pauseMenu, settingsView } = initHud(settings);
+  const { shell, hud, audioEngine, bgm, pauseMenu } = initHud(settings);
   const sections = new FrameSections();
   const host: GameHost = {
     scene: gs, hud, sections,
@@ -187,20 +187,12 @@ async function main() {
   };
 
   const launcher = new Launcher(
-    shell, host, audioEngine, bgm, pauseMenu, settingsView, unlockManager,
+    shell, host, audioEngine, bgm, pauseMenu, unlockManager,
     slots, snapshotService, settings.graphics, settings.renderStyle,
   );
 
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
-  pauseMenu.onOpenSettings = () => {
-    pauseMenu.toggle(false);
-    settingsView.toggle(true);
-  };
   pauseMenu.onPauseMenuOpenChange = (open) => {
-    if (open) launcher.current?.pause();
-    else launcher.current?.resume();
-  };
-  settingsView.onOpenChange = (open) => {
     if (open) launcher.current?.pause();
     else launcher.current?.resume();
   };
@@ -219,18 +211,16 @@ async function main() {
     shell.layers.window, gs.renderer, sections, gs.gpu, shell.overlayManager, gs.pipeline,
     settings.renderStyle.current,
   );
-  bindSettings(settings, gs, hud, bgm, pauseMenu, settingsView, debugInfo);
+  bindSettings(settings, gs, hud, bgm, pauseMenu, debugInfo);
   pauseMenu.onOpenDebugInfoWindow = () => {
     pauseMenu.toggle(false);
     debugInfo.open();
   };
 
   const snapshotControls = new SnapshotControls(hud, pauseMenu, saveBrowser, snapshotService);
-  pauseMenu.onSave = () => snapshotControls.captureManual(launcher.current);
+  pauseMenu.onSave = () => snapshotControls.captureManual(launcher.current?.snapshot ?? null);
 
   await launcher.start();
-  settingsView.restorePersistedOpenState();
-
   startAnimationLoop(
     launcher, gs, settings.graphics, settings.renderStyle, debugInfo, sections,
     new AutoSave(snapshotService), snapshotControls,

@@ -27,6 +27,7 @@ import { WorldSfx } from '../audio/sfx/world-sfx';
 import { UiSfx } from '../audio/sfx/ui-sfx';
 import type { AudioEngine } from '../audio/audio-engine';
 import type { RenderPipeline } from '../render/pipeline/render-pipeline';
+import type { GpuTimingSink } from '../render/gpu-timings';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
 import type { Viewport } from '../render/viewport';
@@ -59,6 +60,7 @@ export class Game {
   private readonly _scene: THREE.Scene;
   private readonly renderer: THREE.WebGPURenderer;
   private readonly pipeline: RenderPipeline;
+  private readonly gpu: GpuTimingSink;
   readonly input: Input;
   private readonly touchControls: TouchControls | null;
   private readonly _hud: Hud;
@@ -134,7 +136,7 @@ export class Game {
     // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
     const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
     const celestialSystem = await stageClass.createCelestialSystem(
-      initialSave?.phaseOffsets ?? {}, earthSpinPhase0, epoch, (ratio) => progress.within(ratio),
+      initialSave?.phaseOffsets ?? {}, earthSpinPhase0, epoch, (ratio) => progress.within(ratio), gs.renderer,
     );
     await progress.enter('bodies');
     celestialSystem.build(gs.scene, gs.pipeline);
@@ -190,6 +192,7 @@ export class Game {
     this._scene = host.scene.scene;
     this.renderer = host.scene.renderer;
     this.pipeline = host.scene.pipeline;
+    this.gpu = host.scene.gpu;
     this._celestialSystem = celestialSystem;
     this._hud = host.hud;
     this.mapDisplay = host.mapDisplay;
@@ -240,7 +243,8 @@ export class Game {
       navTargetState: (bodies, t) => this.navTarget.resolveState(this.dynamicSystem, celestialSystem, bodies, t)?.state ?? null,
     });
     this.frameControls = new FrameControls(
-      this._hud.mapRoot, this._hud.layers.popup, celestialSystem, this.cameraSystem.mapCamera,
+      this._hud.mapRoot, this._hud.combatRoot, this._hud.layers.popup,
+      celestialSystem, this.cameraSystem.mapCamera, this.cameraSystem.combatCamera,
       this.displayWindowManager, this._hud.overlayManager, this.frameAnchors,
     );
     this.targeter = new Targeter(
@@ -537,7 +541,7 @@ export class Game {
       displayTime, camera, this.cameraSystem,
       graphics, style, this.mapDisplay.current, visibilityPolicy, this.markerManager,
     );
-    this._celestialSystem.bakeClouds(this.renderer, displayTime);
+    this._celestialSystem.bakeClouds(this.renderer, displayTime, this.gpu);
 
     // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。
     const timeLabel = timeLabelSettingOf(displayWindow);

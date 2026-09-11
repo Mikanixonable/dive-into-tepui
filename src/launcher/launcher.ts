@@ -4,7 +4,6 @@ import { LoadingProgress } from '../game/loading-progress';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { PauseMenu } from '../hud/windows/pause-menu';
-import type { SettingsView } from '../hud/windows/settings-view';
 import { ResultScreen, type RunTransitions } from './result-screen';
 import type { CurrentGameSource } from './save-browser/save-browser';
 import type { HudShell } from '../hud/hud-shell';
@@ -15,6 +14,7 @@ import type { UnlockManager } from './unlock-manager';
 import type { SaveSlots } from './save/save-slots';
 import type { SnapshotService } from './save/snapshot-service';
 import type { GameSaveData } from '../game/save/save-data';
+import { runSummary } from '../game/run-summary';
 import type { AudioEngine } from '../audio/audio-engine';
 import type { Bgm } from '../audio/bgm/bgm';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
@@ -49,7 +49,25 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   // 遷移中に再入すると、組み立て中の Game が dispose されないまま取り残される。
   private transitioning = false;
 
-  get current(): Game | null { return this.game; }
+  get currentGame(): Game | null { return this.game; }
+
+  get current(): CurrentGameSource['current'] {
+    const game = this.game;
+    if (game === null) return null;
+    return {
+      stageId: game.activeStage.id,
+      get isPlaying(): boolean { return game.activeStage.isPlaying; },
+      nameOfBody: (id) => game.celestialSystem.nameOf(id),
+      snapshot: {
+        get isPaused(): boolean { return game.isPaused; },
+        get isPlaying(): boolean { return game.activeStage.isPlaying; },
+        runSummary: () => runSummary(game),
+        serialize: () => game.serialize(),
+      },
+      pause: () => game.pause(),
+      resume: () => game.resume(),
+    };
+  }
 
   // ラン跨ぎの持ち物と、ランを起こすときに読む設定の現在値を受け取り、結果画面を組む。
   constructor(
@@ -58,7 +76,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     private readonly audioEngine: AudioEngine,
     private readonly bgm: Bgm,
     private readonly pauseMenu: PauseMenu,
-    private readonly settingsView: SettingsView,
     private readonly unlockManager: UnlockManager,
     private readonly slots: SaveSlots,
     private readonly snapshotService: SnapshotService,
@@ -99,7 +116,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       this.unlockManager,
       () => { if (!this.shell.overlayManager.closeTopmostOnEscape()) this.pauseMenu.toggle(); },
       () => this.pauseMenu.toggle(false),
-      () => this.settingsView.toggle(true),
+      () => this.pauseMenu.openSettings(),
     );
   }
 

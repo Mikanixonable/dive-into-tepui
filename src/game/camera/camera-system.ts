@@ -103,11 +103,17 @@ export class CameraSystem {
         focus: { kind: 'object', id: frameRoleAnchorId('controlled') },
         follow: { kind: 'attitude' },
       },
+      eulerPole: 'attitude',
       attitudeOf,
     }, combatSaved, viewport);
     this.mapCamera = new FocusCamera(
       hud, celestialBodies,
-      { focusLossPolicy: 'fallToOrigin', initial: defaultMapViewInitial(celestialBodies), attitudeOf },
+      {
+        focusLossPolicy: 'fallToOrigin',
+        initial: defaultMapViewInitial(celestialBodies),
+        eulerPole: 'reference',
+        attitudeOf,
+      },
       saved?.overview, viewport,
     );
     this.viewResetBtn = hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;

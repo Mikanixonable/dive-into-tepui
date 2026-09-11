@@ -22,7 +22,7 @@ import { MaterialPass } from './material-pass';
 import { ShadowPass } from './shadow/shadow-pass';
 import { BodyShadow } from './shadow/body-shadow';
 import { RingShadow } from './shadow/ring-shadow';
-import { CumulusShadow } from './shadow/cumulus-shadow';
+import { CloudShadowRenderer } from './shadow/cloud-shadow-renderer';
 import { MeshShadow } from './shadow/mesh-shadow';
 import { OverlayPass } from './overlay-pass';
 import { AntialiasPass } from './antialias-pass';
@@ -36,13 +36,15 @@ import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../pr
 import { FilmLut } from './film-lut';
 import { compileInto, compileIntoOutput } from './compile-into';
 import { DeferredTexture } from '../deferred-texture';
+import { setCelestialSurfaceViewport } from '../celestial/celestial-surface';
+import type { CloudLodMode } from '../cloud/cloud-field-sampler';
 
 export class RenderPipeline implements DebugTargetHost {
   private readonly gbuffer: GBufferPass;
   private readonly shadowPass: ShadowPass;
   private readonly _bodyShadow: BodyShadow;
   private readonly _ringShadow: RingShadow;
-  private readonly _cumulusShadow: CumulusShadow;
+  private readonly _cumulusShadow: CloudShadowRenderer;
   private readonly meshShadow: MeshShadow;
   private readonly shadowMaps: ShadowMaps;
   private readonly lightPrepass: LightPrepass;
@@ -96,10 +98,19 @@ export class RenderPipeline implements DebugTargetHost {
   public get exposure(): Exposure { return this._exposure; }
   public get bodyShadow(): BodyShadow { return this._bodyShadow; }
   public get ringShadow(): RingShadow { return this._ringShadow; }
-  public get cumulusShadow(): CumulusShadow { return this._cumulusShadow; }
+  public get cumulusShadow(): CloudShadowRenderer { return this._cumulusShadow; }
   public get planetLight(): PlanetLightSource { return this._planetLight; }
   public get ambient(): AmbientSource { return this._ambient; }
   public get atmosphere(): AtmospherePass { return this.atmospherePass; }
+
+  public setCloudBlueNoiseEnabled(enabled: boolean): void {
+    this.atmospherePass.setCloudBlueNoiseEnabled(enabled);
+  }
+
+  public setCloudLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
+    this.atmospherePass.setCloudLodSampling(mode, fixedLevel);
+    this.shadowPass.setCloudLodSampling(mode, fixedLevel);
+  }
 
   // graphics は構築時点の描画品質設定。以後の変更は applyGraphics() で受ける。
   public constructor(
@@ -115,7 +126,7 @@ export class RenderPipeline implements DebugTargetHost {
     );
     this._bodyShadow = new BodyShadow(this._sunLight);
     this._ringShadow = new RingShadow(this._sunLight);
-    this._cumulusShadow = new CumulusShadow(this._sunLight);
+    this._cumulusShadow = new CloudShadowRenderer(this._sunLight);
     this.meshShadow = new MeshShadow(this._sunLight, this.shadowMaps);
     this.shadowPass = new ShadowPass(
       renderer, this.gbuffer,
@@ -220,6 +231,7 @@ export class RenderPipeline implements DebugTargetHost {
     this.schematicMaterial = this.buildCompositeMaterial(this.schematicComposite.colorNode);
 
     this.quad = new QuadMesh(this.compositeMaterials.off);
+    this.syncTargetSize();
   }
 
   // 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
@@ -284,6 +296,7 @@ export class RenderPipeline implements DebugTargetHost {
   private syncTargetSize(): THREE.Vector2 {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const { x: width, y: height } = this.drawingBufferSize;
+    setCelestialSurfaceViewport(width, height);
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
     if (this.displayTarget.width !== width || this.displayTarget.height !== height) {
       this.displayTarget.setSize(width, height);
