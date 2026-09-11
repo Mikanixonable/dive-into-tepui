@@ -6,13 +6,11 @@
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, scale, sameVec } from '../../math/vec3';
 import { HierarchicalSpatialGrid } from '../../math/hierarchical-spatial-grid';
-import type { EntityContactParticipant } from './dynamic-simulation-participant';
+import type { DynamicReactionServices, EntityContactParticipant } from './dynamic-simulation-participant';
 import type { EngagementZone } from './engagement-zone';
 import type { CollisionResponse } from '../../physics/collision-response';
 import { contactTime, isFiniteParticipant } from './contact-participant';
 import { entityContactResponse } from './entity-contact-response';
-import type { StageOutcome } from '../stages/stage-outcome';
-import type { EntityRegistry } from './entity-registry';
 
 // 1 substep のあいだに1つの交戦圏で解決する接触の上限。TOI(接触時刻)昇順で解決し、これを
 // 超えた分は次の substep でグリッドから列挙し直されて改めて候補になる。
@@ -74,14 +72,12 @@ export class EntityContactPhysics {
   // 独立した系なので、解決回数の上限も交戦圏ごとに掛かる。
   public resolveEntityContacts(
     simTime: number, entities: readonly EntityContactParticipant[],
-    zones: readonly EngagementZone<EntityContactParticipant>[], activeStage: StageOutcome,
-    registry: EntityRegistry,
+    zones: readonly EngagementZone<EntityContactParticipant>[], services: DynamicReactionServices,
   ): void {
     for (const zone of zones) {
       this.collectParticipants(entities, zone, this.participantScratch);
       this.participants += this.participantScratch.length;
-      this.resolveInOrder(
-        this.participantScratch, simTime, zone.referenceDisplacement, activeStage, registry);
+      this.resolveInOrder(this.participantScratch, simTime, zone.referenceDisplacement, services);
     }
   }
 
@@ -105,8 +101,7 @@ export class EntityContactPhysics {
     all: readonly EntityContactParticipant[],
     simTime: number,
     reference: Vec3,
-    activeStage: StageOutcome,
-    registry: EntityRegistry,
+    services: DynamicReactionServices,
   ): void {
     if (all.length === 0) return;
     const working = this.workingScratch;
@@ -125,7 +120,7 @@ export class EntityContactPhysics {
     for (let i = 0; i < CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP; i++) {
       const best = this.earliestContact(count, dirtyA, dirtyB, all, working);
       if (best === null) break;
-      this.applyCandidate(best, all, working, changed, activeStage, registry);
+      this.applyCandidate(best, all, working, changed, services);
       best.resolved = true;
       dirtyA = best.ai;
       dirtyB = best.bi;
@@ -213,8 +208,7 @@ export class EntityContactPhysics {
     all: readonly EntityContactParticipant[],
     working: KinematicState[],
     changed: number[],
-    activeStage: StageOutcome,
-    registry: EntityRegistry,
+    services: DynamicReactionServices,
   ): void {
     const { ai, bi } = candidate;
     const a = all[ai]!, b = all[bi]!;
@@ -234,9 +228,9 @@ export class EntityContactPhysics {
     const t = contactTime(a, response.toi);
     a.collideWithEntity(b, {
       t, point, normal: response.normal, selfState: aBefore, otherState: bBefore,
-    }, { activeStage, registry });
+    }, services);
     b.collideWithEntity(a, {
       t, point, normal: scale(response.normal, -1), selfState: bBefore, otherState: aBefore,
-    }, { activeStage, registry });
+    }, services);
   }
 }

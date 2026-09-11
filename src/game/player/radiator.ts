@@ -13,11 +13,8 @@ import {
 import type { Contact } from '../dynamic/dynamic-entity/contact';
 import type { RadiatorDisplay } from '../../render/dynamic/player/folding-panels-view';
 import type { RadiatorSaveData } from '../save/save-data';
-import {
-  DynamicMotion,
-  type DynamicMotionBehavior,
-  type DynamicReactionServices,
-} from '../dynamic/dynamic-motion';
+import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic/dynamic-motion';
+import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
 
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
@@ -64,7 +61,7 @@ class RadiatorFold extends DynamicMotion {
     const behavior: DynamicMotionBehavior = {
       contactKind: 'radiator-fold',
       contactsWith: (_self, other) => other !== owner && other.attachedTo !== owner,
-      onEntityContact: (_self, other, contact, context) => onContact(side, other, contact, context),
+      onEntityContact: (_self, other, contact, services) => onContact(side, other, contact, services),
     };
     super(state, { mass: 5, radius: RADIATOR_SEGMENT_LENGTH / 2, collides: true, behavior });
     this.attachedTo = owner;
@@ -76,7 +73,7 @@ interface RadiatorContactReaction {
     side: RadiatorSide,
     other: DynamicMotion,
     contact: Contact,
-    context: DynamicReactionServices,
+    services: DynamicReactionServices,
   ): void;
 }
 
