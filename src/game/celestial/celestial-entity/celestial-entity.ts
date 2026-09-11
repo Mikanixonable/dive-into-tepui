@@ -12,7 +12,9 @@ import { hitsSphere, type Ray } from '../../../math/ray';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { CelestialClass } from './celestial-entity-def';
 import type { Vec3 } from '../../../math/vec3';
-import type { CelestialView } from '../../../render/celestial/celestial-entity/celestial-view';
+import type {
+  CelestialIlluminationSource, CelestialView,
+} from '../../../render/celestial/celestial-entity/celestial-view';
 import type { CelestialBodies } from '../celestial-bodies';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { MenuItem } from '../../hud/windows/context-menu';
@@ -40,6 +42,12 @@ export class CelestialEntity implements ObjectPickable {
     public readonly view: CelestialView,
   ) {
     this.id = motion.id;
+  }
+
+  // この1フレームに、照明・影・大気の源として差し出す運動と表示の組。visible は分類トグルが
+  // 開いているか。
+  public illuminationSource(visible: boolean): CelestialIlluminationSource {
+    return { motion: this.motion, view: this.view, visible };
   }
 
   // 天体ラベルとしての振る舞い。
