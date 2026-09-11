@@ -7,7 +7,7 @@
 import { OrbitingMotion } from '../../../physics/celestial-motion';
 import { secondaryFrameOf } from '../../../physics/lagrange';
 import type { CelestialBodies } from '../celestial-bodies';
-import { Vec3 } from '../../../math/vec3';
+import { v3, type Vec3 } from '../../../math/vec3';
 import { guideSecondary, rotatingFrame } from '../../../physics/orbit-guide';
 import { zeroVelocityCurveSet, SectionPlane } from '../../../physics/zero-velocity';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
@@ -136,10 +136,10 @@ export class ZeroVelocityModel {
 
   public constructor(private readonly celestialBodies: CelestialBodies) {}
 
-  // このフレームに描くゼロ速度曲線の宣言を返す(マップビュー以外では空)。等高線の抽出
+  // 設定と表示時刻から、描くゼロ速度曲線の宣言を返す(マップビュー以外では空)。等高線の抽出
   // (格子走査)は断面やヤコビ定数が変わったときだけ、ECI への埋め込みは回転基底が目に見えて
   // 回ったときだけ走る。
-  public sync(
+  public displaysAt(
     settings: ZeroVelocitySettings, displayTime: number, viewMode: ViewMode,
   ): readonly ZeroVelocityDisplay[] {
     if (viewMode !== 'map') return NO_LINES;
@@ -220,11 +220,11 @@ export class ZeroVelocityModel {
       const { origin, xHat, yHat, zHat, unit } = frame;
       const points3d = points2d.map(([u, v]): Vec3 => {
         const second = plane === 'xy' ? yHat : zHat;
-        return {
-          x: origin.x + (u * xHat.x + v * second.x) * unit,
-          y: origin.y + (u * xHat.y + v * second.y) * unit,
-          z: origin.z + (u * xHat.z + v * second.z) * unit,
-        } as Vec3;
+        return v3(
+          origin.x + (u * xHat.x + v * second.x) * unit,
+          origin.y + (u * xHat.y + v * second.y) * unit,
+          origin.z + (u * xHat.z + v * second.z) * unit,
+        );
       });
       // 頂点を相対化する基準点は曲線上の1点でよいので、成分の先頭を採る。
       const base = points3d[0]!;
