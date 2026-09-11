@@ -9,8 +9,9 @@ import {
   type ValueField,
 } from './guide-value-field';
 import type {
-  CriticalInclinationSettings, DawnDuskSettings, DirectionMarkerMode, LocalTime, SunSyncSettings,
+  CriticalInclinationSettings, DawnDuskSettings, LocalTime, SunSyncSettings,
 } from '../../celestial/orbit-guide/orbit-guide-settings';
+import type { DirectionMarkerMode } from '../../../render/celestial/orbit-guide/direction-markers';
 
 interface AppearancePatch {
   readonly colorStart?: number;

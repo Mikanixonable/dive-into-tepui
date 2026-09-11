@@ -1,6 +1,6 @@
-// 一時エフェクト(閃光・ガスパフ)の表示資源。種別ごとの色・大きさ・明るさを持ち、その
-// フレームに生きているエフェクトの列を、カメラ正対のビルボード群として1本のインスタンス
-// メッシュへ積む。
+// 一時エフェクト(閃光・ガスパフ)の表示資源。どの見え方の閃光かという種別の語彙と1件ぶんの
+// 表示入力を定め、種別ごとの色・大きさ・明るさを持つ。そのフレームに生きているエフェクトの列を、
+// カメラ正対のビルボード群として1本のインスタンスメッシュへ積む。
 import * as THREE from 'three/webgpu';
 import { flashResources } from '../billboard';
 import { InstancedPool } from '../instanced-pool';
@@ -14,8 +14,31 @@ import {
   PROTEIN_CRITICAL_FLASH_COLOR, PROTEIN_DAMAGED_FLASH_COLOR, PROTEIN_DISSOCIATED_FLASH_COLOR,
   PROTEIN_STATE_FLASH_BRIGHTNESS, PROTEIN_STATE_FLASH_SIZE0, PROTEIN_STATE_FLASH_SIZE1,
 } from '../vfx-style';
-import type { FlashEffect, FlashKind } from '../../game/vfx/flash-effects';
 import type { CameraFrame } from '../camera/camera-frame';
+import type { KinematicState } from '../../physics/kinematic-state';
+
+// フラッシュの種別。どの出来事を示す閃光かを表し、見え方はこれで決まる。
+export type FlashKind =
+  | 'bulletImpact'
+  | 'plasmaImpact'
+  | 'muzzle'
+  | 'destroy1'
+  | 'destroy2'
+  | 'gasPuff1'
+  | 'gasPuff2'
+  | 'proteinCritical'
+  | 'proteinDissociated'
+  | 'proteinDamaged';
+
+// このフレームに描く一時エフェクト1件。
+export interface FlashEffect {
+  readonly kind: FlashKind;
+  // 発生位置・発生源速度と、その位置が表す時刻。
+  readonly state: KinematicState;
+  readonly age: number; // 発生からの経過 [s]
+  readonly duration: number; // 消えるまでの寿命 [s]
+  readonly sizeScale: number; // 見た目の大きさに掛かる倍率
+}
 
 const ZOOM_DIM_SCALE = 0.02; // ガンサイトズーム中に減光する種別の最大不透明度倍率(完全には消さない)
 
