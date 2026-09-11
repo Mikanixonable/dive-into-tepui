@@ -7,14 +7,18 @@ import { EarthSurfaceResidentCoordinator } from '../../src/render/earth-surface-
 import { EarthSurfaceGpuAdapter } from '../../src/render/earth-surface-gpu';
 import type { EarthSurfaceColorToRgba8 } from '../../src/render/earth-surface-resident';
 import type { EarthSurfaceGpuBackend, EarthSurfaceGpuCapabilities } from '../../src/render/earth-surface-gpu';
-import { EarthSurfaceTileRequestQueue, EarthSurfaceTileRequestSource } from '../../src/render/earth-surface-request';
-import type { EarthSurfaceTileIndexFile } from '../../src/render/earth-surface-request';
-import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from '../../src/render/earth-surface-decode';
+import { EarthSurfaceTileRequestQueue } from '../../src/render/earth-surface-tile-queue';
+import { EarthSurfaceTileRequestSource } from '../../src/render/earth-surface-tile-source';
+import type { EarthSurfaceTileIndexFile } from '../../src/render/earth-surface-tile-source';
+import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from '../../src/render/earth-surface-format';
 import {
-  EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EARTH_TILE_MIN_Z, EarthSurfaceTiles, earthPageAt,
-  earthTileChildren, earthTileId, earthTileKey,
-} from '../../src/render/earth-surface-tiles';
-import type { EarthTileKey, EarthTileProjection, EarthTileResident } from '../../src/render/earth-surface-tiles';
+  EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EARTH_TILE_MIN_Z, earthTileChildren, earthTileId, earthTileKey,
+} from '../../src/render/earth-surface-tile-key';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, earthPageAt } from '../../src/render/earth-surface-page-table';
+import { EarthSurfaceTiles } from '../../src/render/earth-surface-tiles';
+import type { EarthTileResident } from '../../src/render/earth-surface-tiles';
+import type { EarthTileKey } from '../../src/render/earth-surface-tile-key';
+import type { EarthTileProjection } from '../../src/render/earth-surface-tile-projection';
 
 const CAPABILITIES: EarthSurfaceGpuCapabilities = {
   texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS, colorSrgbLinear: true, terrainRgba8Linear: true,
