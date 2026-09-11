@@ -12,7 +12,7 @@ import { test } from '../harness';
 import bakedShape from '../../src/assets/models/baseCollision.json';
 import bakedModel from '../../src/assets/models/base.json';
 
-// 焼いた座標の刻み (tools/export-base-collision.mjs の COORDINATE_SCALE)。
+// 焼いた座標の刻み (tools/model-builder/export-base-collision.mjs の COORDINATE_SCALE)。
 const BAKED_COORDINATE_SCALE = 1e3;
 // 焼いた座標は mm 単位まで丸めてあるので、凸包の面が元の頂点より最大 √3/2 mm だけ内側へ寄る。
 // 覆いとめり込みの判定はその丸めより緩く取る。
