@@ -57,6 +57,7 @@ class StarSphereObject implements StarSphere {
     scene.add(this.mesh, this.point.mesh);
   }
 
+  // 実球体と点像の可視をまとめて切り替える。
   public setVisible(visible: boolean): void {
     this.mesh.visible = visible;
     this.point.mesh.visible = visible;
@@ -91,11 +92,13 @@ class StarSphereObject implements StarSphere {
     this.mesh.scale.setScalar(radius);
   }
 
+  // 実球体と点像をどちらも隠す。
   public hide(): void {
     this.mesh.visible = false;
     this.point.hide();
   }
 
+  // シーンから外し、実球体の geometry/material と点像を解放する。
   public dispose(): void {
     this.mesh.removeFromParent();
     this.mesh.geometry.dispose();
