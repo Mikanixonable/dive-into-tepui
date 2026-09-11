@@ -1,14 +1,26 @@
 import * as THREE from 'three/webgpu';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import type { Vec3 } from '../../../math/vec3';
-import { buildBaseModel } from '../ships';
+import { markLitOpaque, markShadowCaster } from '../../pipeline/lit-layer';
+import { memoParseShared } from '../baked-model';
 import { RcsEffects } from '../player/rcs-effects';
 import { ThrustEffects } from '../player/thrust-effects';
 import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
+import baseData from '../../../assets/models/base.json';
 import type { MarkerSlots } from '../../../game/marker/marker-slots';
 
 // 基地のプルームは自艦より大きく描く倍率。
 const BASE_PLUME_SCALE = 6;
+
+const parseBase = memoParseShared<THREE.Group>(baseData);
+
+// 基地のモデルを複製する。+Z が居住区側。geometry/material は全個体の共有物。
+function buildBaseModel(): THREE.Group {
+  const model = parseBase();
+  markLitOpaque(model);
+  markShadowCaster(model);
+  return model;
+}
 
 // 基地の表示入力。
 export interface BaseRenderSource extends DynamicRenderSource {

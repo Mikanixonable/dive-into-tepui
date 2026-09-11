@@ -1,8 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { LOCAL_RIGHT, Q_IDENTITY, qFromAxisAngle, qFromUnitVectors, qMul, qRotate, type Quat } from '../../../math/quat';
 import { len, scale, sub, type Vec3 } from '../../../math/vec3';
-import { buildMagazineMesh } from '../ships';
 import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../../physics/player-shape';
+import { memoParseIndependent } from '../baked-model';
+import magazineData from '../../../assets/models/magazine.json';
+
+// マガジンリンク1個分のモデル。
+const parseMagazine = memoParseIndependent<THREE.Group>(magazineData);
 
 // 給弾ベルトの節点配置(いずれも機体座標系)。
 export interface BeltNodes {
@@ -19,7 +23,7 @@ export class BeltView {
   public constructor(root: THREE.Object3D, linkCount: number) {
     const group = new THREE.Group();
     for (let i = 0; i < linkCount; i++) {
-      const link = buildMagazineMesh();
+      const link = parseMagazine();
       link.position.x = MAG_BELT_ANCHOR_X + (i + 0.5) * MAG_BELT_PITCH;
       group.add(link);
       this.links.push(link);
