@@ -19,22 +19,25 @@ export function buildBoosterStage(interstageCover: boolean): THREE.Group {
 }
 
 // 段間カバーの segment 番目のパネルを、原点に置いて複製する。
-export function buildBoosterInterstageCoverPanelMesh(segment: number): THREE.Mesh {
+export function buildBoosterInterstageCoverPanelMesh(segment: number): THREE.Group {
   return interstageCoverPart(`interstage-cover-panel-${segment}`);
 }
 
 // 段間カバーの segment 番目の爆砕ボルトを、原点に置いて複製する。
-export function buildBoosterExplosiveBoltMesh(segment: number): THREE.Mesh {
+export function buildBoosterExplosiveBoltMesh(segment: number): THREE.Group {
   return interstageCoverPart(`interstage-explosive-bolt-${segment}`);
 }
 
-// 段間カバーから name の部品を、段の中での取り付け位置を外して複製する。
-function interstageCoverPart(name: string): THREE.Mesh {
+// 段間カバーから name の部品を、段の中での取り付け位置を外して複製する。返す根は段と同じ向きの
+// 空のグループで、段の中での部品の向きは子が持つ。根の姿勢を段の姿勢で置き換えても部品の向きは保たれる。
+function interstageCoverPart(name: string): THREE.Group {
   const part = boosterInterstageCoverTemplate().getObjectByName(name)!.clone() as THREE.Mesh;
   part.position.set(0, 0, 0);
   part.userData.ownsGeometry = false;
   part.userData.ownsMaterial = false;
-  markLitOpaque(part);
-  markShadowCaster(part);
-  return part;
+  const root = new THREE.Group();
+  root.add(part);
+  markLitOpaque(root);
+  markShadowCaster(root);
+  return root;
 }
