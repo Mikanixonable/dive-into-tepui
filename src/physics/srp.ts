@@ -13,9 +13,10 @@ export const SOLAR_PRESSURE_1AU = SOLAR_CONSTANT / SPEED_OF_LIGHT;
 // C_R·A/m [m^2/kg] で、0 なら寄与ゼロ。sunlit は日照率 0..1(本影で 0)。
 export function srpAccel(
   r: Vec3, sun: CelestialBody, sunPivot: number, srpCoeff: number, sunlit: number,
+  t: number = sunPivot,
 ): Vec3 {
   if (srpCoeff === 0 || sunlit === 0) return v3();
-  const s = sun.positionAt(sunPivot);
+  const s = sun.positionAt(sunPivot, t);
   const dx = r.x - s.x;
   const dy = r.y - s.y;
   const dz = r.z - s.z;

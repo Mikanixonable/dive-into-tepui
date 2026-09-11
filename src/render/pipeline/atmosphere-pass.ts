@@ -11,9 +11,10 @@ import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { Fn, length, screenUV, sub, texture, uniform, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, cutoffAltitude } from '../atmosphere';
-import { AtmosphereLayer } from './atmosphere-layer';
+import { AtmosphereIntegrator } from './atmosphere-integrator';
 import { viewPositionAt, viewRayAt } from './view-ray';
-import type { CloudSpecies } from './cloud-scattering';
+import type { CloudSpecies } from './cloud-atmosphere-renderer';
+import type { CloudLodMode } from '../cloud/cloud-field-sampler';
 import type { Mat4Uniform, Vec3Node } from '../tsl-types';
 import type { GBufferPass } from './gbuffer';
 import type { BodyShadow } from './shadow/body-shadow';
@@ -33,7 +34,7 @@ export class AtmospherePass {
   private readonly quad: QuadMesh;
   private readonly material: THREE.MeshBasicNodeMaterial;
   // 板が解く層。描く直前に、その天体の光学パラメータを書き込む。
-  private readonly layer: AtmosphereLayer;
+  private readonly layer: AtmosphereIntegrator;
   // 板が読む下地。層ごとに、その層より奥まで重ね終えた絵をここへ写す。
   private readonly backdropTarget: THREE.RenderTarget;
   private readonly sharedCopyMaterial: THREE.MeshBasicNodeMaterial;
@@ -66,7 +67,7 @@ export class AtmospherePass {
     bodyShadow: BodyShadow,
     private readonly gpu: GpuTimings,
   ) {
-    this.layer = new AtmosphereLayer(sunLight, bodyShadow);
+    this.layer = new AtmosphereIntegrator(sunLight, bodyShadow);
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewToWorld = uniform(new THREE.Matrix4());
 
@@ -108,6 +109,14 @@ export class AtmospherePass {
   // 種類ごとに、雲の殻を描くかを置き直す。
   public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
     this.layer.setCloudShellEnabled(species, enabled);
+  }
+
+  public setCloudBlueNoiseEnabled(enabled: boolean): void {
+    this.layer.setCloudBlueNoiseEnabled(enabled);
+  }
+
+  public setCloudLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
+    this.layer.setCloudLodSampling(mode, fixedLevel);
   }
 
   // このフレームで大気を描く天体を、**視点に近い順**に、それぞれのサンプル点の数と一緒に渡す。
@@ -167,7 +176,10 @@ export class AtmospherePass {
       this.layer.write(body, steps, cutoffRadius);
       this.syncSize(this.backdropTarget);
       this.copyInto(this.backdropTarget, backdropSource);
-      this.drawLayer(destination);
+      // 雲を含む天体は、雲専用の計測行へ分ける。ただし積分器は大気散乱と雲散乱を同じ
+      // fullscreen materialで合成するため、ここでの時刻は「雲有効大気の合算」であり、
+      // 雲項だけをGPU上で分離した値ではない。
+      this.drawLayer(destination, body.clouds !== null);
     }
   }
 
@@ -178,12 +190,12 @@ export class AtmospherePass {
   }
 
   // いま書き込んである層 1 つを destination へ描く。
-  private drawLayer(destination: THREE.RenderTarget): void {
+  private drawLayer(destination: THREE.RenderTarget, includesClouds: boolean): void {
     // 色だけを上書きする — 共有ターゲットの深度はマテリアルパスが書いたものを後段も使う。
     this.renderer.setRenderTarget(destination);
     this.renderer.autoClear = false;
     // GPU 計測は、beginPass の直後の描画命令に付く。層ごとのぶんは計測側が足し合わせる。
-    this.gpu.beginPass(GPU_PASS.atmosphere);
+    this.gpu.beginPass(includesClouds ? GPU_PASS.cloudAtmosphere : GPU_PASS.atmosphere);
     this.quad.render(this.renderer);
     this.renderer.autoClear = true;
     this.renderer.setRenderTarget(null);

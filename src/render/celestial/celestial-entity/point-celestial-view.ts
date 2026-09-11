@@ -9,7 +9,11 @@ import { spinOrientation } from '../../../physics/body-orientation';
 import { lambertSphereIrradiance } from '../../../physics/lambert-sphere';
 import { STAR_SHELL_RADIUS } from '../../stars';
 import { Billboard, POINT_IMAGE_ANGULAR_SIZE } from '../../billboard';
-import { CelestialSurface } from '../celestial-surface';
+import {
+  createCelestialSurfaceFrame,
+  type CelestialSurfaceDiagnostics,
+  type CelestialSurfaceLike,
+} from '../celestial-surface';
 import { BodyGraticule } from '../body-graticule';
 import { showsPhysicalSphere } from '../screen-lod';
 import { writeBodyFromWorld } from '../body-frame';
@@ -19,17 +23,18 @@ import { DEFAULT_ALBEDO, rec709Luminance, type Albedo } from '../../celestial-al
 import { irradianceAtDistance, SUN_IRRADIANCE_1AU } from '../../pipeline/sun-light';
 import { norm, sub, v3, type Vec3 } from '../../../math/vec3';
 import type { CameraFrame } from '../../camera/camera-frame';
-import type { CumulusShell } from '../cumulus-shell';
+import type { CloudPresentation } from '../../cloud/cloud-presentation';
 import type { Aurora } from '../aurora';
 import type { GeostationaryOverlay } from './geostationary-overlay';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 import type { LineOverlay } from '../line-overlay';
 import type { MarkerSlots } from '../../../game/marker/marker-slots';
-import type { ShadowCumulus } from '../../pipeline/shadow/cumulus-shadow';
+import type { ShadowCumulus } from '../../pipeline/shadow/cloud-shadow-renderer';
 import type { RenderStyle } from '../../render-style';
 import type { AtmosphereClouds, AtmosphereOptics } from '../../atmosphere';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import { CelestialView, type DefinedCelestialBody, type StellarLightSource } from './celestial-view';
+import type { GpuTimingSink } from '../../gpu-timings';
 
 // 輝点スプライトの一辺 [m]。星殻上へ置くので、点像の角の広がりへ星殻半径を掛けたもの。
 const POINT_SPRITE_SIZE = POINT_IMAGE_ANGULAR_SIZE * STAR_SHELL_RADIUS;
@@ -74,6 +79,7 @@ export class PointCelestialView extends CelestialView {
   private readonly graticule = new BodyGraticule();
   // 描画座標のベクトルを天体固定の向きへ戻す回転。影パスへ渡すあいだだけ生きていればよい。
   private readonly bodyFromWorld = new THREE.Matrix4();
+  private surfaceFrame = 0;
   // 自転姿勢が乗る前のローカル半軸 [m]。物理定義から build 時に作る描画用キャッシュ。
   private readonly axes = new THREE.Vector3();
 
@@ -81,12 +87,12 @@ export class PointCelestialView extends CelestialView {
   // ライン、auroras は極を囲むカーテン(層ごとに1枚)、mapOverlay はマップ専用の同期軌道リング、
   // cumulus は地表の上に浮く不透明な積雲の殻。持たない天体では null / 空。
   public constructor(
-    private readonly surface: CelestialSurface,
+    private readonly surface: CelestialSurfaceLike,
     private readonly optics: AtmosphereOptics | null = null,
     private readonly surfaceMarkings: LineOverlay | null = null,
     private readonly auroras: readonly Aurora[] = [],
     private readonly mapOverlay: GeostationaryOverlay | null = null,
-    private readonly cumulus: CumulusShell | null = null,
+    private readonly cumulus: CloudPresentation | null = null,
   ) { super(); }
 
   public override get atmosphereOptics(): AtmosphereOptics | null { return this.optics; }
@@ -94,6 +100,10 @@ export class PointCelestialView extends CelestialView {
   public get lightSourceAlbedo(): Albedo | null { return this.surface.photometry?.lightSourceAlbedo ?? null; }
 
   public get surfaceTextureUrl(): string | null { return this.surface.textureUrl; }
+
+  public override get surfaceDiagnostics(): CelestialSurfaceDiagnostics | null {
+    return this.surface.diagnostics;
+  }
 
   public override rings(motion: DefinedCelestialBody): RingSystemDef | null { return ringsOf(motion); }
 
@@ -170,6 +180,15 @@ export class PointCelestialView extends CelestialView {
     this.group.position.copy(camera.floatingOrigin.RtoThreeV3(pos));
     this.shapeGroup.scale.copy(this.axes);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
+    this.surface.syncFrame(createCelestialSurfaceFrame(
+      camera.camera,
+      this.group.position,
+      this.group.quaternion,
+      this.axes,
+      this.surfaceFrame++,
+      performance.now(),
+      style,
+    ));
     this.billboard.hide();
     this.ring?.sync(
       this.group.position, orientation === null ? null : orientation.axis, pos,
@@ -209,9 +228,9 @@ export class PointCelestialView extends CelestialView {
   }
 
   // 物理球として厚い雲か薄い雲を描くフレームの場だけを、表示時刻へ焼く。
-  public override bakeClouds(renderer: WebGPURenderer, displayTime: number): void {
+  public override bakeClouds(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
     if (!this.group.visible || !this.cumulus?.cloudsVisible) return;
-    this.cumulus.bake(renderer, displayTime);
+    this.cumulus.bake(renderer, displayTime, gpu);
   }
 
   // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期する。
