@@ -1,8 +1,6 @@
 // 基地の造形。主トラスを挟んで、居住区(+Z)とカウンターウェイトの貨物区(-Z)が向かい合う。
 import * as THREE from 'three';
-import { importTsDataModule } from '../compile-source.mjs';
-
-const { F0_STEEL } = await importTsDataModule('src/render/dynamic/metal-f0.ts');
+import { F0_STEEL } from './materials.mjs';
 
 // 基地ローカル座標での各部の位置 [m]。モデル全体は最後に 3 倍へ拡大される。
 const TRUSS_Z_MIN = -101; // 貨物部トップ境界
