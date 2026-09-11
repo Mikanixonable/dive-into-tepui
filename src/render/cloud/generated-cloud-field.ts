@@ -8,7 +8,7 @@ import type { WebGPURenderer } from 'three/webgpu';
 import type { ClimateMapLike } from './climate-map';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from './field-projection';
-import type { CloudFieldSampler, CloudUvAt } from './cloud-field-sampler';
+import type { CloudFieldSampler } from './cloud-field-sampler';
 import type { CloudFieldSource } from './cloud-presentation';
 
 // 全球の雲場の高さ [texel]。cloud-lab と同じ全球正距円筒の解像度を使う。
@@ -28,9 +28,9 @@ export class GeneratedCloudField implements CloudFieldSource {
   // climateEpochUnixSec は表示時刻 0 の UTC [s](null なら気候の月を表示時刻へ合わせない)。
   public static global(
     climate: ClimateMapLike, surfaceRadius: number, rotationPeriod: number, climateEpochUnixSec: number | null,
-    uvAt?: CloudUvAt, projection: FieldProjection = new EquirectProjection(GLOBAL_FIELD_HEIGHT),
+    projection: FieldProjection = new EquirectProjection(GLOBAL_FIELD_HEIGHT),
   ): GeneratedCloudField {
-    return new GeneratedCloudField(climate, projection, surfaceRadius, rotationPeriod, climateEpochUnixSec, uvAt);
+    return new GeneratedCloudField(climate, projection, surfaceRadius, rotationPeriod, climateEpochUnixSec);
   }
 
   // climate と、その中間場・出力場が共有する投影法を受け取る。surfaceRadius は雲を載せる天体の
@@ -39,10 +39,10 @@ export class GeneratedCloudField implements CloudFieldSource {
   public constructor(
     private readonly climate: ClimateMapLike, projection: FieldProjection,
     surfaceRadius: number, rotationPeriod: number,
-    private readonly climateEpochUnixSec: number | null, uvAt?: CloudUvAt,
+    private readonly climateEpochUnixSec: number | null,
   ) {
     this.model = new WeatherModel(climate, projection, surfaceRadius, rotationPeriod);
-    this.field = new CloudField(this.model, projection, uvAt);
+    this.field = new CloudField(this.model, projection);
   }
 
   // 雲場のテクスチャ。出力場の所有権はこのクラスに残す。
