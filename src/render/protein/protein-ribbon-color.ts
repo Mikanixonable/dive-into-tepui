@@ -1,7 +1,7 @@
 // タンパク質 Ribbon の二次構造分類と頂点色を決定する。
 import * as THREE from 'three/webgpu';
-import type { ProteinRibbonColorMode } from '../game/protein/protein-display';
-import type { ProteinRenderSource } from './protein-ribbon';
+import type { ProteinRibbonColorMode } from './protein-display';
+import type { ProteinRenderSource } from './protein-render-definition';
 
 export type ProteinSecondaryKind = 'coil' | 'helix' | 'sheet';
 

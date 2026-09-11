@@ -20,7 +20,7 @@ import { MetalEnemy } from '../../dynamic/dynamic-entity/metal-enemy';
 import { ProteinEnemy } from '../../dynamic/dynamic-entity/protein-enemy';
 import type { FormationRole } from '../../dynamic/dynamic-entity/entity-kind';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
-import type { ProteinDisplaySettings } from '../../protein/protein-display';
+import type { ProteinDisplaySettings } from '../../../render/protein/protein-display';
 
 // 自機軌道(base)を dAlong だけ進めた位置の軌道状態(プリセット配置の共通基盤)。
 function phasedState(base: KinematicState, dAlong: number): KinematicState {

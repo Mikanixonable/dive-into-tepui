@@ -7,13 +7,18 @@ import { collisionDamageFraction } from './contact-damage';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
 import { ProteinCombatState } from '../../protein/protein-combat-state';
 import { ProteinSphereCollisionGeometry } from '../../protein/protein-sphere-collision';
-import { proteinLocalImpactPoint, proteinSiteWorldPosition } from '../../protein/protein-anchors';
-import { DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings } from '../../protein/protein-display';
+import { proteinLocalImpactPoint, proteinSiteWorldPosition } from '../../../render/protein/protein-anchors';
+import { DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings } from '../../../render/protein/protein-display';
 import { ENEMY_MODEL_SCALE, Enemy, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore } from './enemy';
-import { proteinAssetGate, type ProteinAssetId } from '../../protein/protein-asset-loader';
+import {
+  proteinAssetGate, proteinRenderDefinitionFor, type ProteinAssetId,
+} from '../../protein/protein-asset-loader';
 import type { SpawnGate } from '../entity-registry';
-import type { ProteinDisplaySettings } from '../../protein/protein-display';
+import type {
+  ProteinDisplaySettings, ProteinMotionDisplay, ProteinMotionLod,
+} from '../../../render/protein/protein-display';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
+import type { ProteinRenderDefinition } from '../../../render/protein/protein-render-definition';
 import type { ProteinHudSnapshot } from '../../protein/protein-schema';
 import type { EnemySaveData, ProteinEnemySaveData } from '../../save/save-data';
 import type { FormationRole } from './entity-kind';
@@ -22,7 +27,6 @@ import type { EnemyCollisionShape } from './enemy-motion';
 import { apparentSizePx } from '../../../math/projection';
 import {
   ProteinMotionController, proteinMotionLodForProjectedSize,
-  type ProteinMotionDisplay, type ProteinMotionLod,
 } from '../../protein/protein-motion-controller';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
 import type { ProteinVisualSource } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
@@ -59,6 +63,13 @@ export function isFormationEnergyAvailable(
 function definitionFor(assetId: ProteinAssetId): ProteinEnemyDefinition {
   const definition = proteinEnemyDefinitionFor(assetId);
   if (!definition) throw new Error(`No protein enemy definition registered for ${assetId}`);
+  return definition;
+}
+
+// 表示ツリーの組み立て手順。判定形状と同じく、アセットが揃っていなければ実体化できない。
+function renderDefinitionFor(assetId: ProteinAssetId): ProteinRenderDefinition {
+  const definition = proteinRenderDefinitionFor(assetId);
+  if (!definition) throw new Error(`No protein render definition registered for ${assetId}`);
   return definition;
 }
 
@@ -102,7 +113,7 @@ export class ProteinEnemy extends Enemy {
       definition.asset,
       'saved' in init ? (init.saved as ProteinEnemySaveData).protein : undefined,
     );
-    const proteinView = new ProteinEnemyView(definition, display, ENEMY_MODEL_SCALE, scene);
+    const proteinView = new ProteinEnemyView(renderDefinitionFor(assetId), display, ENEMY_MODEL_SCALE, scene);
     // 表示が原子模型へ切り替わっても、判定形状は常に同じ球列に固定する。
     const collision = new ProteinSphereCollisionGeometry(
       definition.collisionSpheres, ENEMY_MODEL_SCALE,

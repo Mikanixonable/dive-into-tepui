@@ -16,6 +16,7 @@ import { DisplayWindowManager, timeLabelSettingOf } from './display-window-manag
 import { SimSpeedManager } from './dynamic/sim-speed-manager';
 import { DynamicSystem } from './dynamic/dynamic-system';
 import { FlashEffects } from './vfx/flash-effects';
+import { FlashEffectsView } from '../render/vfx/flash-effects-view';
 import { EntityLineManager } from './lines/entity-line-manager';
 import { Predictor } from './dynamic/predictor';
 import { Input } from '../input/input';
@@ -101,6 +102,7 @@ export class Game {
   readonly dynamicSystem: DynamicSystem;
   // 閃光・ガスパフなど、寿命だけで消えていく一過性の見た目。
   private readonly flashEffects: FlashEffects;
+  private readonly flashEffectsView: FlashEffectsView;
   private readonly entityLines: EntityLineManager;
   private readonly equatorNodes: EquatorNodeManager;
   private readonly predictor: Predictor;
@@ -197,7 +199,8 @@ export class Game {
 
     this.markerManager = new MarkerManager(this._hud.layers.marker, this._hud.svgOverlay);
 
-    this.flashEffects = new FlashEffects(this._scene);
+    this.flashEffects = new FlashEffects();
+    this.flashEffectsView = new FlashEffectsView(this._scene);
     this.dynamicSystem = new DynamicSystem(
       this._scene, this._hud, this._worldSfx, this.flashEffects, this.markerManager, celestialSystem,
       this.sections, initialSave?.simTime ?? 0, initialSave);
@@ -353,7 +356,7 @@ export class Game {
     this.displayWindowManager.dispose();
     this.equatorNodes.dispose();
     this.dynamicSystem.dispose();
-    this.flashEffects.dispose();
+    this.flashEffectsView.dispose();
     this.markerManager.dispose();
   }
 
@@ -516,7 +519,6 @@ export class Game {
     this.cameraFrame = camera;
     // マップビューのときだけ表示設定パネルを出す。
     this.viewOptions.setVisible(this.viewManager.current === 'map');
-    const fo = camera.floatingOrigin;
     // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
     this.viewManager.activeView.syncLabels(displayWindow, camera);
 
@@ -553,7 +555,7 @@ export class Game {
     );
     syncControlledLoopSfx(this._worldSfx, controlled, displayTime, visibilityPolicy);
     // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraView.sync より後に通す。
-    this.flashEffects.sync(fo, camera.camera, camera.zoomed);
+    this.flashEffectsView.sync(this.flashEffects.live, camera);
 
     this.targeter.sync(
       controlled, camera, displayTime, simTime, visibilityPolicy, this.celestialMarkers.activeLabels);

@@ -1,22 +1,17 @@
+// 個体1体ぶんの残基変形を進める。投影サイズから LOD を選び、OU 過程を標本化して、その
+// フレームのモード係数を確定させる。
 import {
   mix32,
   ProteinBrownianSampler,
   proteinBrownianSeedFor,
   UINT32_SCALE,
 } from './protein-brownian-motion';
-import type { ProteinMotionAsset, ProteinPhase } from './protein-schema';
+import { projectProteinResidues } from '../../render/protein/protein-motion-modes';
+import { LODS_FINE_TO_COARSE } from '../../render/protein/protein-display';
+import type { ProteinMotionAsset } from './protein-schema';
+import type { ProteinMotionLod, ProteinPhase } from '../../render/protein/protein-display';
 
 type ProteinMotionBand = ProteinMotionAsset['modes'][number]['band'];
-
-export type ProteinMotionLod = 'near' | 'medium' | 'far' | 'marker';
-
-export interface ProteinMotionDisplay {
-  readonly active: boolean;
-  readonly lod: ProteinMotionLod;
-  readonly sampleTime: number;
-  readonly phase: ProteinPhase;
-  readonly coefficients: Float32Array;
-}
 
 export const PROTEIN_MOTION_LOD_MODE_COUNTS: Readonly<Record<ProteinMotionLod, number>> = {
   near: 24,
@@ -33,9 +28,7 @@ export const PROTEIN_MOTION_PHASE_GAINS: Readonly<Record<ProteinPhase, number>> 
   critical: 1.5,
 };
 
-// LOD ごとの最小投影直径 [px]。並びは細かい方から粗い方(near→marker)。
-// 細かい方から粗い方への並び。LOD の切り替えも計測の集計もこの並びで走る。
-export const LODS_FINE_TO_COARSE: readonly ProteinMotionLod[] = ['near', 'medium', 'far', 'marker'];
+// LOD ごとの最小投影直径 [px]。
 const LOD_MIN_PROJECTED_PX: Readonly<Record<ProteinMotionLod, number>> = {
   near: 160, medium: 40, far: 8, marker: 0,
 };
@@ -90,31 +83,6 @@ function finiteNonNegative(value: number | undefined, fallback: number): number 
 export function proteinMotionUpdatePhaseFor(enemyId: string): number {
   const seed = proteinBrownianSeedFor(enemyId);
   return mix32(seed ^ 0xa511e9b3) / UINT32_SCALE;
-}
-
-// 外部で確定済みのモード係数を、指定された残基の変位へ投影する。
-export function projectProteinResidues(
-  asset: ProteinMotionAsset, coefficients: Float32Array,
-  residues: readonly number[], target: Float32Array,
-): void {
-  // 対象残基ごとに、全モードの線形結合を同じ係数バッファから再現する。
-  for (const residue of residues) {
-    if (!Number.isInteger(residue) || residue < 0 || residue >= asset.residueCount) continue;
-    const sourceOffset = residue * 3;
-    const outputOffset = residue * 4;
-    let x = 0; let y = 0; let z = 0;
-    for (let modeIndex = 0; modeIndex < asset.modes.length; modeIndex += 1) {
-      const coefficient = coefficients[modeIndex] ?? 0;
-      if (coefficient === 0) continue;
-      const displacements = asset.modes[modeIndex]!.displacements;
-      x += coefficient * (displacements[sourceOffset] ?? 0);
-      y += coefficient * (displacements[sourceOffset + 1] ?? 0);
-      z += coefficient * (displacements[sourceOffset + 2] ?? 0);
-    }
-    target[outputOffset] = x;
-    target[outputOffset + 1] = y;
-    target[outputOffset + 2] = z;
-  }
 }
 
 function safeDisplayTime(time: number): number {
