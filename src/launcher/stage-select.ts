@@ -11,10 +11,11 @@ import { KEY_MAPPING as K } from '../input/key-mapping';
 import { MQ_COMPACT, MQ_SHORT } from '../hud/breakpoints';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 import {
-  ACCENT, ACCENT_SOFT, ACTIVE_THEME, BG, SIGNAL, SURFACE_0 as THEME_SURFACE_0,
-  SURFACE_1, SURFACE_2, SURFACE_3, TEXT, TEXT_DIM, TEXT_MUTED, TEXT_FAINT, Z_STAGE_SELECT,
+  ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, ACTIVE_THEME, BG, SURFACE_0 as THEME_SURFACE_0,
+  SURFACE_2, TEXT, TEXT_DIM, TEXT_MUTED, TEXT_FAINT, Z_STAGE_SELECT,
 } from '../theme';
 import { TITLE_SCENE_PATTERNS, createTitleScene, type TitleScene } from '../render/title-scene';
+import { injectCommonUiStyle } from '../hud/style/common-ui-style';
 
 const PAGE = BG;
 const SURFACE_0 = THEME_SURFACE_0;
@@ -23,7 +24,7 @@ const BODY_INK = TEXT_MUTED;
 const MUTED_INK = TEXT_DIM;
 const FAINT_INK = TEXT_FAINT;
 const NEAR_ACCENT = ACCENT_SOFT;
-const SECONDARY_ACCENT = SIGNAL;
+const SECONDARY_ACCENT = ACCENT_SECONDARY;
 
 // V6 §3 の voice 別書体。Web font が使えない環境でも role ごとのフォールバックを保つ。
 const FONT_SANS = '"Arimo","Zen Kaku Gothic Antique","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif';
@@ -104,8 +105,9 @@ const STYLE = `
 }
 #stage-select .ss-3d-window {
   position: relative; width: 100%; height: 100%; min-height: 0;
-  overflow: hidden; isolation: isolate; border-radius: ${RADIUS_WINDOW}; background: ${SURFACE_0};
-  box-shadow: 0 24px 70px rgb(0 0 0 / 38%);
+  overflow: hidden; isolation: isolate; border: 0;
+  border-radius: ${RADIUS_WINDOW}; background: ${SURFACE_0};
+  box-shadow: var(--glass-shadow);
 }
 #stage-select .ss-scene {
   position: absolute; inset: 0; z-index: 0; background: ${SURFACE_0};
@@ -169,8 +171,7 @@ const STYLE = `
 }
 #stage-select .ss-status {
   min-width: 190px; padding: 11px 13px; border-radius: ${RADIUS_PANEL};
-  color: ${BODY_INK}; background: color-mix(in srgb, ${PAGE} 58%, transparent);
-  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  color: ${BODY_INK};
   font: 10px/1.55 ${FONT_MONO};
 }
 #stage-select .ss-status b { color: ${SECONDARY_ACCENT}; font-weight: 500; }
@@ -179,10 +180,7 @@ const STYLE = `
   min-height: 0; height: 100%; box-sizing: border-box;
   display: flex; flex-direction: column; gap: 14px;
   padding: 18px;
-  background: color-mix(in srgb, ${SURFACE_1} 68%, transparent); border-radius: ${RADIUS_WINDOW};
-  box-shadow: 0 18px 48px rgb(0 0 0 / 0.28);
-  backdrop-filter: blur(26px) saturate(120%);
-  -webkit-backdrop-filter: blur(26px) saturate(120%);
+  border-radius: ${RADIUS_WINDOW};
   overflow: hidden;
 }
 #stage-select .ss-stage-qr {
@@ -198,22 +196,24 @@ const STYLE = `
   margin: 0 0 2px 8px; color: ${MUTED_INK};
   font-size: 15px; font-weight: 600; letter-spacing: 0.04em;
 }
-#stage-select .w-tabs { gap: 6px; }
+#stage-select .w-tabs {
+  gap: var(--space-1); padding: var(--space-1); border: 0;
+  border-radius: var(--radius-panel);
+}
 #stage-select .w-tabs .w-btn {
-  position: relative; flex: 1; min-height: 44px; padding: 8px 12px;
+  position: relative; flex: 1; min-height: 44px; padding: var(--space-3) var(--space-4);
   display: inline-flex; align-items: center; justify-content: center; text-align: center;
-  border: 0; border-radius: ${RADIUS_CONTROL} ${RADIUS_CONTROL} 0 0;
+  border: 0; border-radius: var(--radius-control);
   background: transparent; color: ${MUTED_INK};
   font-family: ${FONT_SANS}; font-size: 13px; font-weight: 600; letter-spacing: 0.04em;
 }
-#stage-select .w-tabs { border-bottom: 1px solid color-mix(in srgb, ${TITLE_INK} 12%, transparent); }
 #stage-select .w-tabs .w-btn::after {
-  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
-  background: ${ACCENT}; opacity: 0; transition: opacity 0.15s ease;
+  display: none;
 }
-#stage-select .w-tabs .w-btn:hover { background: rgb(255 255 255 / 6%); color: ${TITLE_INK}; }
-#stage-select .w-tabs .w-btn.on { background: color-mix(in srgb, ${ACCENT} 10%, transparent); color: ${ACCENT}; }
-#stage-select .w-tabs .w-btn.on::after { opacity: 1; }
+#stage-select .w-tabs .w-btn:hover { background: var(--glass-control-hover); color: ${TITLE_INK}; }
+#stage-select .w-tabs .w-btn.on {
+  background: var(--color-primary-fill); color: ${ACCENT};
+}
 #stage-select .ss-list {
   min-height: 0; flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 10px;
   padding: 2px 0;
@@ -221,10 +221,10 @@ const STYLE = `
 #stage-select .ss-stage {
   box-sizing: border-box; min-height: 44px; padding: 14px 20px;
   border-radius: ${RADIUS_CONTROL};
-  background: color-mix(in srgb, ${SURFACE_2} 82%, transparent); cursor: pointer; text-align: left;
-  transition: background 0.15s ease;
+  background: var(--glass-control); border: 0; cursor: pointer; text-align: left;
+  transition: background var(--transition-fast);
 }
-#stage-select .ss-stage:hover { background: color-mix(in srgb, ${SURFACE_3} 78%, transparent); }
+#stage-select .ss-stage:hover { background: var(--glass-control-hover); }
 #stage-select .ss-stage.locked { opacity: 0.45; cursor: default; }
 #stage-select .ss-stage.locked:hover { background: color-mix(in srgb, ${SURFACE_2} 62%, transparent); }
 #stage-select .ss-stage-label {
@@ -241,11 +241,11 @@ const STYLE = `
 }
 #stage-select .ss-settings {
   align-self: flex-end; flex: 0 0 auto; margin-top: 2px;
-  padding: 8px 12px; border: 1px solid color-mix(in srgb, ${TITLE_INK} 18%, transparent);
-  border-radius: ${RADIUS_CONTROL}; color: ${MUTED_INK}; background: transparent;
+  padding: var(--space-3) var(--space-4); border: 0;
+  border-radius: ${RADIUS_CONTROL}; color: ${MUTED_INK}; background: var(--glass-control);
   font: 12px ${FONT_SANS}; cursor: pointer;
 }
-#stage-select .ss-settings:hover { color: ${TITLE_INK}; border-color: ${ACCENT}; background: color-mix(in srgb, ${ACCENT} 8%, transparent); }
+#stage-select .ss-settings:hover { color: ${TITLE_INK}; background: var(--glass-control-hover); }
 #stage-select .hidden { display: none !important; }
 #stage-select .ss-datetime { display: flex; flex-direction: column; gap: 14px; }
 #stage-select .ss-datetime-fields { display: flex; flex-wrap: wrap; gap: 12px; }
@@ -280,6 +280,7 @@ const STYLE = `
 // 画面固有の CSS を一度だけ注入する。
 function ensureStyle(): void {
   if (document.getElementById('stage-select-style')) return;
+  injectCommonUiStyle();
   const style = document.createElement('style');
   style.id = 'stage-select-style';
   style.textContent = STYLE;
@@ -329,10 +330,10 @@ export function selectStage(
       '<p class="ss-script" data-flavor-script></p>' +
       '<p class="ss-flavor-note" data-flavor-note></p>' +
       '</div>' +
-      '</div><div class="ss-status"><b>∗ Link stable</b><br>h = 420.2 km · i = 51.6°<br>Epoch 06:14:28.03</div></div>' +
+      '</div><div class="ss-status ui-surface-quiet"><b>∗ Link stable</b><br>h = 420.2 km · i = 51.6°<br>Epoch 06:14:28.03</div></div>' +
       '</div>' +
       '</section>' +
-      '<section class="ss-window" aria-label="Stage and creative modes"></section>' +
+      '<section class="ss-window ui-surface-focus" aria-label="Stage and creative modes"></section>' +
       '</div></div>';
 
     const flavor = pickRandom(TITLE_FLAVORS);
@@ -367,6 +368,7 @@ export function selectStage(
 
     // タブ切替: 選んだタブに応じて下のリスト表示を入れ替える。
     const tabBar = new TabBar<string>(groups.map((g) => [g, g] as const), (group) => setActiveTab(group));
+    tabBar.element.classList.add('ui-surface-inset');
     windowDiv.appendChild(tabBar.element);
     windowDiv.appendChild(listDiv);
 
@@ -381,7 +383,7 @@ export function selectStage(
         const sub = enabled ? stageClass.selectSub : stageClass.selectLockedSub ?? stageClass.selectSub;
         const key = stageClass.selectKeys[0] ? `[${stageClass.selectKeys[0].replace('Digit', '').replace('Key', '')}]` : '';
         const row = document.createElement('div');
-        row.className = `ss-stage${enabled ? '' : ' locked'}`;
+        row.className = `ss-stage ui-selectable${enabled ? '' : ' locked'}`;
         row.innerHTML =
           `<div class="ss-stage-label"><span>${stageClass.selectLabel}</span><span class="ss-stage-key">${key}</span></div>` +
           `<div class="ss-stage-sub">${sub}</div>`;
