@@ -224,11 +224,11 @@ class BakeTests(unittest.TestCase):
         self.assertEqual(left_roughness[259], right_roughness[0])
         self.assertEqual(left_class[259], right_class[0])
 
-    # 全球z0..z7のキー数と経度連続性を固定する。
+    # 全球z4..z7のキー数と経度連続性を固定する。
     def test_global_tile_coverage(self):
         keys = bake.global_tile_keys()
-        self.assertEqual(len(keys), 43690)
-        self.assertEqual(keys[0], (0, 0, 0))
+        self.assertEqual(len(keys), 43520)
+        self.assertEqual(keys[0], (4, 0, 0))
         self.assertEqual(keys[-1], (7, 255, 127))
         self.assertEqual(len(set(keys)), len(keys))
         self.assertEqual(bake.tile_grid(7, 0, 0).width, 260)
@@ -264,11 +264,14 @@ class BakeTests(unittest.TestCase):
                        progressive=False, subsampling=0)
             return output.getvalue()
 
-        west = jpeg((3, 4, 5), (210, 30, 40))
-        east = jpeg((6, 7, 8), (40, 170, 80))
-        base = bake.encode_base_color([west, east])
+        tiles = []
+        for index in range(bake.BASE_COLOR_ROOT_COUNT):
+            x = index % 32
+            tiles.append(jpeg((3, 4, 5) if x < 16 else (6, 7, 8),
+                              (210, 30, 40) if x < 16 else (40, 170, 80)))
+        base = bake.encode_base_color(tiles)
         with Image.open(io.BytesIO(base)) as image:
-            self.assertEqual((image.size, image.mode, image.format), ((512, 256), "RGB", "JPEG"))
+            self.assertEqual((image.size, image.mode, image.format), ((8192, 4096), "RGB", "JPEG"))
             pixels = image.load()
             def distance(actual, expected):
                 return sum(abs(channel - target) for channel, target in zip(actual, expected))
@@ -277,22 +280,22 @@ class BakeTests(unittest.TestCase):
             west_gutter, east_gutter = (3, 4, 5), (6, 7, 8)
             for point, expected, gutter in (((0, 0), west_interior, west_gutter),
                                             ((255, 0), west_interior, west_gutter),
-                                            ((0, 255), west_interior, west_gutter),
-                                            ((255, 255), west_interior, west_gutter),
-                                            ((256, 0), east_interior, east_gutter),
-                                            ((511, 255), east_interior, east_gutter)):
+                                            ((0, 4095), west_interior, west_gutter),
+                                            ((4095, 4095), west_interior, west_gutter),
+                                            ((4096, 0), east_interior, east_gutter),
+                                            ((8191, 4095), east_interior, east_gutter)):
                 self.assertLess(distance(pixels[point], expected), distance(pixels[point], gutter))
-            self.assertLess(distance(pixels[255, 0], west_interior),
-                            distance(pixels[255, 0], east_interior))
-            self.assertLess(distance(pixels[256, 0], east_interior),
-                            distance(pixels[256, 0], west_interior))
+            self.assertLess(distance(pixels[4095, 0], west_interior),
+                            distance(pixels[4095, 0], east_interior))
+            self.assertLess(distance(pixels[4096, 0], east_interior),
+                            distance(pixels[4096, 0], west_interior))
 
     @unittest.skipUnless(importlib.util.find_spec("PIL") is not None, "Pillow unavailable")
     def test_base_color_input_contract(self):
         from PIL import Image
 
         output = io.BytesIO()
-        Image.new("RGB", (512, 256), (12, 34, 56)).save(output, format="JPEG")
+        Image.new("RGB", (8192, 4096), (12, 34, 56)).save(output, format="JPEG")
         base = output.getvalue()
         self.assertEqual(bake.encode_base_color([], base), base)
         with self.assertRaises(ValueError):
@@ -304,7 +307,7 @@ class BakeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             bake.encode_base_color([], wrong_size.getvalue())
         grayscale = io.BytesIO()
-        Image.new("L", (512, 256), 12).save(grayscale, format="JPEG")
+        Image.new("L", (8192, 4096), 12).save(grayscale, format="JPEG")
         with self.assertRaises(ValueError):
             bake.encode_base_color([], grayscale.getvalue())
 
@@ -336,11 +339,24 @@ class BakeTests(unittest.TestCase):
             output = Path(directory) / "bundle"
             source_manifest_path = Path(directory) / "sources.json"
             source_manifest_path.write_text(json.dumps(self.manifest))
+            terrain_z4 = bytearray(render((4, 0, 0))[1])
+            terrain_z0 = bytearray(bake.encode_terrain_tile([(0., 0., 1.)] * 67600, [.8] * 67600, 0, 0, 0))
+            def terrain_for(key):
+                source = terrain_z0 if key[0] == 0 else terrain_z4
+                payload = bytearray(source)
+                payload[12] = key[0]
+                payload[14:18] = key[1].to_bytes(4, "little")
+                payload[18:22] = key[2].to_bytes(4, "little")
+                return bytes(payload)
+
+            base_output = io.BytesIO()
+            Image.new("RGB", (8192, 4096), (1, 2, 3)).save(base_output, format="JPEG")
             result = bake.write_global_bundle(self.manifest, source_manifest_path, raw_root, output,
-                                              lambda key: (color, render(key)[1]),
-                                              [b"\x89PNG\r\n\x1a\nfixture"] * 12, max_zoom=0)
+                                              lambda key: (color, terrain_for(key)),
+                                              [b"\x89PNG\r\n\x1a\nfixture"] * 12,
+                                              base_color=base_output.getvalue(), max_zoom=4)
             self.assertEqual(result["coverage"]["kind"], "sparse")
-            self.assertEqual(json.loads((output / "tile-index.json").read_text())["entries"].__len__(), 2)
+            self.assertEqual(json.loads((output / "tile-index.json").read_text())["entries"].__len__(), 512)
             self.assertTrue((output / "base/earth.bin.gz").is_file())
             self.assertTrue((output / "earth-surface.json").is_file())
 
