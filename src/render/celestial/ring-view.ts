@@ -1,5 +1,5 @@
-// RingSystemDefの物理データを、マップビューと戦闘ビューで共通のRingVisualへ同期する。
-// 環の姿勢は極軸だけで決まり、非軸対称アークは本体の自転位相には追従させない。
+// 環系の物理データ(RingSystemDef)から帯ごとの表示物を組み、本体の位置と極軸から決まる姿勢・
+// 見かけ幅へ毎フレーム同期する。
 import * as THREE from 'three/webgpu';
 import type { RenderStyle } from '../render-style';
 import { spinOrientation } from '../../physics/body-orientation';
@@ -19,6 +19,7 @@ import { ringPixelCoverage } from './screen-lod';
 import type { GraphicsSettingsData } from '../graphics-settings';
 import type { ScaleFn } from '../../math/projection';
 
+// 厚み 0 の帯。見かけ幅で面と線を切り替える。widthMeters は帯の実幅 [m]。
 interface CoverageBand {
   readonly widthMeters: number;
   readonly annulus: RingVisual;
@@ -33,9 +34,8 @@ export class RingView {
   private readonly outlineInner: OutlineCircle = createOutlineCircle();
   private readonly outlineOuter: OutlineCircle = createOutlineCircle();
 
-  // rings は物理データ(半径は [m])、bodyRadius は本体メッシュと同じ「半径 1」単位への換算元、
-  // renderOrder は半透明の環を本体より後に描くための値。THREE の描画順は Object3D ごとに独立
-  // していて親から子へ伝播しないので、グループではなく帯のメッシュ1つ1つへ書く。
+  // rings は物理データ(半径 [m])、bodyRadius は「本体半径 = 1」単位への換算元、renderOrder は
+  // 帯のメッシュへ付ける描画順(本体より後に描く値を渡す)。
   public constructor(
     rings: RingSystemDef,
     private readonly bodyRadius: number,
@@ -45,7 +45,7 @@ export class RingView {
     for (const band of rings.bands) {
       this.buildBand(band, bodyRadius, renderOrder, materials);
     }
-    // 模式図で出す輪郭円は帯ごとではなく環全体の最内・最外の2本だけとする。
+    // 模式図の輪郭円は環全体の最内・最外の2本。
     const innerRadius = Math.min(...rings.bands.map((band) => band.innerRadius)) / bodyRadius;
     const outerRadius = Math.max(...rings.bands.map((band) => band.outerRadius)) / bodyRadius;
     // 輪郭円は環メッシュと同じ回転で環面へ寝かせる — 単位円は XY 平面に組まれている。
@@ -58,18 +58,18 @@ export class RingView {
     this.group.add(this.outlineInner.line, this.outlineOuter.line);
   }
 
-  // 帯1本ぶんの RingVisual を組み、group・visuals へ登録する。半径は「本体半径 = 1」単位へ
-  // 換算して渡す。厚みのある帯は拡散した雲なので扁平トーラス1つ。厚み0の帯は annulus と line
-  // の両方を組んでおき、sync() が見かけ幅(1px判定)でどちらを見せるか毎フレーム選び直す。
+  // 帯1本ぶんの RingVisual を「本体半径 = 1」単位で組み、group・visuals へ登録する。
   private buildBand(
     band: RingBandDef, bodyRadius: number, renderOrder: number, materials: RingMaterials,
   ): void {
     const inner = band.innerRadius / bodyRadius;
     const outer = band.outerRadius / bodyRadius;
+    // 厚みのある帯は拡散環の角柱1つ。
     if (band.thickness > 0) {
       this.addVisual(createTorusRing(band.optics, inner, outer, band.thickness / bodyRadius, materials), renderOrder);
       return;
     }
+    // 厚み 0 の帯は面と線の両方を組み、sync が見かけ幅で片方を見せる。
     const annulus = createAnnulusRing(band.optics, inner, outer, materials, band.arcs);
     const line = createRingLine(band.optics, (inner + outer) / 2, materials, band.arcs);
     this.addVisual(annulus, renderOrder);
@@ -79,18 +79,19 @@ export class RingView {
 
   // renderOrder を子オブジェクトすべてへ設定し、group・visuals へ登録する。
   private addVisual(visual: RingVisual, renderOrder: number): void {
+    // 描画順は親から子へ伝播しないので、子の1つ1つへ書く。
     visual.object.traverse((o) => { o.renderOrder = renderOrder; });
     this.group.add(visual.object);
     this.visuals.push(visual);
   }
 
-  // 環全体を隠す。見せ直すのは sync が受け取る表示設定の役目。
+  // 環全体を隠す。次の sync が表示設定に従って見せ直す。
   public hide(): void {
     this.group.visible = false;
   }
 
-  // pos/axis は本体メッシュと揃える。bodyPos/metersPerPixelAt は帯の被覆率減光に使う。
-  // graphics の設定に従って環の表示を切り替え、見せるときは姿勢と見かけ幅も合わせる。
+  // graphics.rings に従って環を見せ、位置・姿勢・見かけ幅を合わせる。pos は本体と同じ描画座標、
+  // axis は極軸(null なら姿勢を据え置く)、bodyPos は見かけ幅を測る ECI 位置 [m]。
   public sync(
     pos: THREE.Vector3,
     axis: Vec3 | null,
@@ -108,14 +109,14 @@ export class RingView {
     for (const visual of this.visuals) visual.object.visible = !schematic;
     this.group.position.copy(pos);
     this.group.scale.setScalar(this.bodyRadius);
-    // 環軸は group の姿勢が運ぶ — 帯のグラフはモデル行列から引き直す。
+    // 環軸は group の姿勢で運ぶ(帯のマテリアルはモデル行列から環軸を引く)。
     if (axis !== null) {
       const q = spinOrientation(axis, 0);
       if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
     }
     if (this.coverageBands.length === 0) return;
     const mpp = metersPerPixelAt(bodyPos);
-    // 見かけの幅(px、1を超えてもクランプしない生の値)が1を割った帯だけ line へ切り替える。
+    // 見かけ幅が 1px を割った帯は線で描く。
     for (const band of this.coverageBands) {
       const showAnnulus = band.widthMeters / mpp >= 1;
       band.annulus.object.visible = showAnnulus && !schematic;

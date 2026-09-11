@@ -20,6 +20,7 @@ export class AttachedBoostersView {
   private readonly models: THREE.Group[] = [];
   private stageIds: readonly string[] = [];
 
+  // 噴射炎は scene へ、段のモデルは root(自機の表示ツリーの根)の子として載せる。
   public constructor(scene: THREE.Scene, private readonly root: THREE.Object3D) {
     this.plumes = new BoosterPlumeSet(scene);
   }
@@ -37,9 +38,9 @@ export class AttachedBoostersView {
     this.stageIds = stageIds;
   }
 
-  // 段の並びを機体へ同期し、最下段のノズルへ噴射炎を置く。position は機体を置く表示時刻の
-  // ECI 位置で、引けないフレームは null。噴射炎が出るのは、推力があって表示時刻が実時刻に
-  // 一致しているときだけ(予測位置のゴーストからは吹かせない)。
+  // 段の並びを機体へ同期し、最後尾段のノズルへ噴射炎を置く。position は機体を置く表示時刻の
+  // ECI 位置で、引けないフレームは null。噴射炎は推力があり、表示時刻が実時刻に一致する
+  // フレームに出す(予測位置のゴーストからは吹かない)。
   public sync(
     floatingOrigin: FloatingOrigin,
     position: Vec3 | null,
@@ -66,6 +67,7 @@ export class AttachedBoostersView {
       this.plumes.sync([], cameraQuat, style);
       return;
     }
+    // 最後尾段のノズル出口から、機体の後方へ炎を伸ばす。
     const nozzleZ = BOOSTER_MOUNT_Z
       - activeIndex * BOOSTER_STAGE_DIMENSIONS.length
       + BOOSTER_STAGE_DIMENSIONS.nozzleExitZ;

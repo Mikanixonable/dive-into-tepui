@@ -1,5 +1,5 @@
 // 軌道ガイド線の描画資源。1フレームぶんの宣言の列を、線1本ごとの曲線と進行方向マーカーへ
-// 反映する。描かれている点列を、宣言が添えた識別情報とともに当たり判定へ渡す口も持つ。
+// 反映する。描かれている点列を、宣言が添えた識別情報とともに返す。
 import * as THREE from 'three/webgpu';
 import { GuideCurve, GuideCurveDisplay } from './guide-curve';
 import { DirectionMarkers } from './direction-markers';
@@ -13,9 +13,8 @@ import type { DirectionMarkerMode } from './direction-markers';
 // マーカーの InstancedPool 容量。これを超えた個数のマーカーは溢れて描かれない。
 const MARKER_POOL_CAPACITY = 3000;
 
-// このフレームに描くガイド線1本。曲線と見た目に加えて、当たり判定へそのまま渡す識別情報と、
-// 進行方向マーカーの出し方を持つ。曲線の形が変わらないフレームでは同じオブジェクトを渡すこと
-// (線ごとの描画資源と点列を引き継ぐ鍵になる)。
+// このフレームに描くガイド線1本。曲線と見た目に加えて、識別情報と進行方向マーカーの出し方を
+// 持つ。曲線の形が変わらないフレームでは同じオブジェクトを渡すこと(点列を引き継ぐ鍵になる)。
 export interface GuideLineDisplay extends GuideCurveDisplay {
   // 線を一意に指す鍵。
   readonly key: string;
@@ -32,7 +31,7 @@ export interface GuideLineDisplay extends GuideCurveDisplay {
   readonly maxVertices?: number;
 }
 
-// 当たり判定向けに、表示中の1本のガイド線をその識別情報・ECI 点列とともに表す。
+// 表示中のガイド線1本の識別情報と、描かれている ECI 点列。
 export interface VisibleGuideLine {
   readonly key: string;
   readonly familyId: string;
@@ -95,13 +94,12 @@ export class OrbitGuideView {
     this.markers.endFrame();
   }
 
-  // 表示中のガイド線を、当たり判定向けの識別情報付きで返す(1本も描いていない間は空)。
-  // sampleCount は1本を何分割して点列に落とすか — クリック位置を拾う細かさを決めるだけで、
-  // 描かれる線の細かさとは無関係。
+  // 表示中のガイド線を識別情報付きで返す(1本も描いていない間は空)。sampleCount は1本を点列へ
+  // 落とす分割数で、描かれる線の細かさとは独立。
   public visibleLines(sampleCount: number): readonly VisibleGuideLine[] {
     const visible: VisibleGuideLine[] = [];
     for (const display of this.displays) {
-      // 折れ線として引けなかった線(頂点2点未満)は候補に出さない。
+      // 折れ線として引けない2点未満の線は除く。
       const points = this.curves.get(display.key)?.samplePoints(sampleCount) ?? [];
       if (points.length < 2) continue;
       visible.push({

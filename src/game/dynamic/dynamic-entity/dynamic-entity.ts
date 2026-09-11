@@ -13,7 +13,7 @@ import type {
 
 export type DynamicMotionFactory = (owner: DynamicEntity) => DynamicMotion;
 
-// 1体ぶんの Motion と View を結び、両者に共通するゲーム上の識別と判断だけを持つ。
+// 1体ぶんの Motion と View を結び、両者に共通するゲーム上の識別と判断を持つ。
 export class DynamicEntity {
   private static readonly idAllocator = new EntityIdAllocator('entity-');
 
@@ -27,7 +27,7 @@ export class DynamicEntity {
   public readonly pickable: boolean = false;
   public readonly reclaimedByOwner: boolean = false;
   public readonly showsEquatorNodesAlways: boolean = false;
-  // マップで予測軌跡を表示するか。表示設定の正本は描画資源を持つ View の外へ置く。
+  // マップで予測軌跡を表示するか。
   public trajectoryLineVisible = false;
 
   private nameValue: string;
@@ -53,12 +53,12 @@ export class DynamicEntity {
     return this.mapKind === null ? MARKER_VISIBILITY : policy.entity(this.mapKind, this.id === viewer?.id);
   }
 
-  // View の形状ではなく Motion の判定形状へ ray を問い合わせる。
+  // pos に置いたこの個体の判定形状へ ray が当たるか。
   public hitBodyByRay(ray: Ray, pos: Vec3): boolean {
     return this.motion.intersectsRay(ray, pos);
   }
 
-  // 永続化しない基底 Entity は null を返す。
+  // セーブデータへ変換する。永続化しない種別は null。
   public serialize(): EntitySaveDataUnion | null {
     return null;
   }
@@ -78,7 +78,7 @@ export class DynamicEntity {
       alive: motion.alive,
       stateAt: (t) => motion.stateAt(t),
       attitude: motion.att.q,
-      // 比熱を持たない個体は熱を溜めないので、発光の表示入力そのものを持たせない。
+      // 比熱 0 の個体は熱を溜めないので、発光の表示入力は null。
       thermal: motion.specificHeat > 0
         ? {
           temperature: motion.temperature,

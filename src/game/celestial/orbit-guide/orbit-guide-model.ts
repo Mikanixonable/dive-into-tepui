@@ -1,6 +1,5 @@
-// マップビューのガイドとして描く、CR3BP 周期軌道族(ハロー・リヤプノフ・DRO 等)とリサジュー
-// 軌道の宣言を組む(表示パネルの軌道ガイドタブ、静止軌道を除く)。設定の kinds(族 id → 表示
-// 設定)を1つの経路で回し、族ごとに独立した種類関数を呼ぶ形は取らない。
+// マップビューのガイドとして描く、CR3BP 周期軌道族(ハロー・リヤプノフ・DRO 等)・リサジュー
+// 軌道・地球専用の参照軌道の宣言を、軌道ガイド設定と表示時刻から組む。
 import { OrbitingMotion } from '../../../physics/celestial-motion';
 import { CollinearPoint, SecondaryFrame, secondaryFrameOf } from '../../../physics/lagrange';
 import type { CelestialBodies } from '../celestial-bodies';
@@ -28,34 +27,30 @@ import type { DirectionMarkerMode } from '../../../render/celestial/orbit-guide/
 // リサジューの頂点数の打ち切り。周回数ぶんだけ経路が伸びるので、1周ぶんの曲線と違って
 // 適応分割は収束しない。最大周回数(30)でも1周あたり数十頂点は残る水準を採る。
 const LISSAJOUS_VERTEX_BUDGET = 2048;
-// 点列を引き直す表示時刻の間隔 [s]。火星-フォボスのような短周期系も含むため、特定の系だけを
-// 最速と仮定せず、表示負荷と回転基底の更新頻度のバランスで固定する。
+// 点列を引き直す表示時刻の間隔 [s]。全系で共通の値を、表示負荷と回転基底の更新頻度の釣り合いで採る。
 const RECOMPUTE_INTERVAL = 300;
-// 安定性指数(1 が中立の下限、離れるほど不安定)がこの値以下なら「安定」として太く見せる。
-// 実測データでの境界確定は物理側の担当だが、族の大半が1.0〜数十まで広く分布する中で、
-// 中立に近い区間だけを拾う値として1.5を採る。
+// 安定性指数(1 が中立の下限、離れるほど不安定)がこの値以下なら「安定」として濃く見せる。
+// 族の大半は 1.0〜数十に広く分布するので、中立に近い区間だけを拾う値。
 const STABILITY_NEUTRAL_THRESHOLD = 1.5;
-// three.js の LineBasicMaterial.linewidth は多くの環境(特に WebGPU バックエンド)で効かない
-// ため、安定な軌道は太さの代わりに不透明度を上げて見分けをつける。
+// 安定な軌道の不透明度の倍率。WebGPU では線幅が効かないので、太さの代わりに濃さで見分ける。
 const STABLE_OPACITY_BOOST = 1.8;
 // 線の中で始点から終点までに振る明度の幅。族ごとの色分けを潰さない範囲で、1本の線の中にも
 // 向きの手がかりを与える値。
 const LINE_LIGHTNESS_SWING = 0.08;
 
+// ガイドを描ける CR3BP の系。
 const ALL_SYSTEMS: readonly CatalogSystemId[] = [
   'earth-moon', 'sun-earth', 'sun-mars', 'jupiter-europa', 'saturn-titan', 'saturn-enceladus', 'mars-phobos',
 ];
 
-// 「基本」群の地球専用参照軌道(静止軌道は天体側のマップ付随表示なのでここには含まない)。
-// 族を持たない単一軌道で、CR3BP の系トグルの対象外。
+// 「基本」群の地球専用参照軌道。族を持たない単一軌道で、CR3BP の系選択に依らず描く。
 type ReferenceOrbitKind = 'sunSync' | 'dawnDusk' | 'molniya' | 'tundra';
 const REFERENCE_ORBIT_KINDS: readonly ReferenceOrbitKind[] = ['sunSync', 'dawnDusk', 'molniya', 'tundra'];
 
 // マップビュー以外のフレームで返す空の列。
 const NO_LINES: readonly GuideLineDisplay[] = [];
 
-// 表示時刻から引き直した曲線1本ぶん。形が変わらない限り同じオブジェクトを保つ — 描画側は
-// この同一性で点列の引き直しを省く。
+// 表示時刻から引き直した曲線1本ぶん。形が変わらない限り同じオブジェクトを保つ。
 interface GuideLineGeometry {
   readonly loop: GuideLoop;
   readonly origin: GuideLineDisplay['origin'];
@@ -95,8 +90,7 @@ type GuideLineEntry = GuideLineFamily & {
   geometry: GuideLineGeometry | null;
 };
 
-// 本数・族範囲・両端の色・進行方向・安定度の見せ方など、1本の折れ線をいまどう描くべきかを
-// まとめた値。styleFor が現在の設定から組む(重い計算は含まない)。
+// 1本の折れ線をいまどう描くか(色・不透明度・進行方向・安定度の見せ方)。設定から毎回組む。
 interface LineVisual {
   readonly style: LineStyle;
   readonly direction: DirectionMarkerMode;
@@ -122,9 +116,8 @@ function lineEntry(
   };
 }
 
-// ガイド線の曲線を、描画側が受ける形へ落とす。頂点を相対化する基準点は曲線上の1点でよいので、
-// パラメータ 0 の位置を採る。解析曲線の初期区間は「1区間が半周を超えない」下限で、周回数から
-// 決まる(細かさは描画側が決める)。
+// ガイド線の曲線を、基準点(パラメータ 0 の位置)相対の描画用の形へ落とす。解析曲線の初期区間数は
+// 「1区間が半周を超えない」下限。
 function loopGeometry(loop: GuideLoop): GuideLineGeometry {
   const shape = loop.shape;
   // 解析曲線は、基準点を差し引くぶんだけ包んで渡す。
@@ -152,18 +145,18 @@ function loopGeometry(loop: GuideLoop): GuideLineGeometry {
   return { loop, origin, shape: { kind: 'hermite', knots: { ts: shape.us, positions, tangents } } };
 }
 
+// 族 id の属する群。解釈できない id なら null。
 function groupOf(familyId: string): GuideGroupId | null {
   return parseGuideKindId(familyId)?.group ?? null;
 }
 
+// 族 id が指す平衡点。点を持たない族・解釈できない id なら null。
 function pointOf(familyId: string): string | null {
   return parseGuideKindId(familyId)?.point ?? null;
 }
 
-// 族 id の表示設定を1つに解決する。小題(combinedKey)に属する族は on を
-// combinedCandidateIds(押されている軸値から実際に表示される族id集合を組む関数、軸の自動補完も
-// ここに1本化されている)への所属で決め、他のフィールドは小題の共有設定を使う。属さない族
-// (蝶形・トンボ形・共鳴・DRO)は settings.kinds をそのまま使う。
+// 族 id の表示設定を1つに解決する。小題に属する族は、押されている軸値から組める候補に入るかで
+// on を決め、他の欄は小題の共有設定を使う。小題に属さない族は settings.kinds のまま。
 function effectiveKind(settings: OrbitGuideSettings, familyId: string): GuideKindSettings | undefined {
   const parsed = parseGuideKindId(familyId);
   if (parsed === null || parsed.combinedKey === null) return settings.kinds[familyId];
@@ -174,7 +167,7 @@ function effectiveKind(settings: OrbitGuideSettings, familyId: string): GuideKin
 }
 
 // 表示設定を持ちうる族 id の全体(kinds のキー全部+小題ごとに押されている軸値から組める候補id)。
-// effectiveKind と組み合わせて、蝶形/共鳴等の standalone 族と小題の族を同じループで扱える。
+// 各 id の設定は effectiveKind で引く。
 function activeFamilyIds(settings: OrbitGuideSettings): readonly string[] {
   const ids = new Set<string>(Object.keys(settings.kinds));
   for (const [key, combined] of Object.entries(settings.combinedKinds)) {
@@ -183,24 +176,27 @@ function activeFamilyIds(settings: OrbitGuideSettings): readonly string[] {
   return [...ids];
 }
 
+// 設定で選ばれている CR3BP の系。
 function activeSystems(settings: OrbitGuideSettings): readonly CatalogSystemId[] {
   return ALL_SYSTEMS.filter((id) => settings.systems[id] === true);
 }
 
+// 族の count 本のうち index 番目の線の族位置 s。族範囲を両端込みで等分し、1本なら rangeMin。
 function sValueFor(kind: GuideKindSettings, index: number, count: number): number {
   if (count <= 1) return kind.rangeMin;
   return kind.rangeMin + ((kind.rangeMax - kind.rangeMin) * index) / (count - 1);
 }
 
-// 点列の形を決める設定だけを並べた識別子。色・不透明度・進行方向・安定度は含めないので、
-// スライダーを掴んでいる間じゅう全線を焼き直すことがない。
+// 点列の形を決める設定だけを並べた識別子。色・不透明度などの見た目の設定では変わらない。
 function geometrySignature(settings: OrbitGuideSettings): string {
   const parts: string[] = [];
+  // CR3BP 族は本数と族範囲で形が決まる。
   for (const id of activeFamilyIds(settings)) {
     const kind = effectiveKind(settings, id);
     if (!kind?.on) continue;
     parts.push(`${id}:${kind.count}:${kind.rangeMin}:${kind.rangeMax}`);
   }
+  // リサジューと参照軌道は、それぞれの形の設定欄で決まる。
   const l = settings.lissajous;
   if (l.on) {
     parts.push(`lissajous:${l.inPlane}:${l.outOfPlane}:${l.inPlanePhase}:${l.outOfPlanePhase}:${l.cycles}:${l.l1}${l.l2}${l.l3}`);
@@ -217,9 +213,9 @@ function geometrySignature(settings: OrbitGuideSettings): string {
   return parts.sort().join('|');
 }
 
-// 本数・族範囲・系選択の直積が変わったとき(rebuildLines を要するとき)だけ変わる識別子。
-// 色・透明度・進行方向・安定度・振幅など、点列や本数を変えない設定は含めない。
+// 線の顔ぶれ(種類ごとの on・本数と系選択の直積)を決める設定だけを並べた識別子。
 function structuralKey(settings: OrbitGuideSettings): string {
+  // 族ごとの on と本数、選ばれた系、リサジューの点、参照軌道の on をつなぐ。
   const kindsKey = [...activeFamilyIds(settings)].sort()
     .map((id) => {
       const k = effectiveKind(settings, id);
@@ -236,6 +232,7 @@ export class OrbitGuideModel {
   private lines: GuideLineEntry[] = [];
   private readonly catalog = new OrbitGuideCatalog();
 
+  // 直近に線の顔ぶれ・点列を組んだときの識別子と、そのときの表示時刻・カタログ世代。
   private structureKey = '';
   private geometryKey = '';
   private lastComputedTime: number | null = null;
@@ -305,8 +302,7 @@ export class OrbitGuideModel {
       );
     }
     if (entry.source === 'reference') return this.referenceLoop(entry.familyId, t, settings);
-    // 焼き込みカタログの族。族の位置設定(0〜1)は焼き込み側で幾何的に等間隔へ間引いてあるため、
-    // そのまま catalogLoop が使うメンバー添字基準の s として渡せる。
+    // 焼き込みカタログの族。族位置 s(0〜1)はそのままメンバー添字基準の位置として渡す。
     const kind = effectiveKind(settings, entry.familyId);
     if (!kind) return null;
     const system = this.catalog.systemFor(entry.system);
@@ -364,8 +360,8 @@ export class OrbitGuideModel {
     return this.celestialBodies.findMotion('earth');
   }
 
-  // 引けている曲線を持つ線を、いまの見た目とともに宣言へ組む。曲線と基準点はそのまま渡すので、
-  // 形が変わらない限り描画側は点列を引き継ぐ。
+  // 引けている曲線を持つ線を、いまの見た目とともに宣言へ組む。曲線と基準点は、形が変わらない限り
+  // 同じ参照のまま渡す。
   private buildDisplays(settings: OrbitGuideSettings, style: RenderStyle): readonly GuideLineDisplay[] {
     const displays: GuideLineDisplay[] = [];
     for (const entry of this.lines) {
@@ -429,14 +425,12 @@ export class OrbitGuideModel {
       style: lineStyle(0xffffff, opacity),
       direction: kind.direction, animate: kind.animate,
       markerColor: familyGradientColor(kind.colorStart, kind.colorEnd, gradientT),
-      // 族位置(gradientT)で線ごとの色を決めたうえで、線の中でも始点→終点でわずかに明度を
-      // 振り、頂点カラー機構を実際に使ったグラデーションにする。
+      // 線の中でも始点→終点でわずかに明度を振り、向きの手がかりにする。
       colorAt: familyGradientColorAt(kind.colorStart, kind.colorEnd, gradientT, LINE_LIGHTNESS_SWING),
     };
   }
 
-  // 種類ごとの on と系選択から線の顔ぶれを組み直す。本数が変わるとき(structuralKey が
-  // 変わったとき)だけ呼ぶ — 色・範囲・透明度だけの変更では呼ばない。
+  // 種類ごとの on と系選択から線の顔ぶれを組み直す。組み直した線はまだ曲線を持たない(geometry が null)。
   private rebuildLines(settings: OrbitGuideSettings): void {
     this.lines = [];
 
@@ -447,8 +441,7 @@ export class OrbitGuideModel {
       if (group === null) continue; // 未知の族 id(壊れた保存データ)は無視
       const point = pointOf(familyId);
       for (const system of activeSystems(settings)) {
-        // その系に存在しない族は線を作らない。作っても何も描かれないうえ、線数の警告だけが
-        // 膨らんでしまう(どの系にどの族があるかは焼き込みの索引が持つ)。
+        // その系に無い族の線は、何も描かれないのに線数の警告だけを膨らませる。
         if (!this.catalog.hasFamily(system, familyId)) continue;
         for (let i = 0; i < kind.count; i++) {
           this.lines.push(lineEntry({ source: 'catalog', familyId, system, point }, i, kind.count, undefined));
