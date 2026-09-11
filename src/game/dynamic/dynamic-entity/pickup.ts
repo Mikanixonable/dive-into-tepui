@@ -11,7 +11,7 @@ import {
 } from '../../save/save-data';
 import { DynamicEntity } from './dynamic-entity';
 import { EntityIdAllocator } from './entity-id';
-import { PickupMotion } from './pickup-motion';
+import { PickupMotion, type PickupKind } from './pickup-motion';
 import type * as THREE from 'three/webgpu';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import type { Attitude } from '../../../physics/attitude';
@@ -74,7 +74,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
     view: DynamicView,
     idAllocator: EntityIdAllocator,
     defaultName: string,
-    kind: ConstructorParameters<typeof PickupMotion>[2],
+    kind: PickupKind,
   ) {
     // 復元と新規配置を同じ形へ均してから基底へ渡す。
     const { state, att, id } = 'saved' in init

@@ -17,9 +17,8 @@ import {
 import { orbitalElementsOf } from '../../physics/elements';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { DISPLAY_DURATION_MAX } from '../display-window-duration';
-import type { StageOutcome } from '../stages/stage-outcome';
 import type { Contact } from './dynamic-entity/contact';
-import type { EntityRegistry } from './entity-registry';
+import type { DynamicReactionServices } from './dynamic-simulation-participant';
 import { PredictedArc, trajectorySampleInterval } from './predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from './time-step';
 
@@ -37,13 +36,13 @@ export const SMALL_DEBRIS_SPECIFIC_HEAT = 900;
 export const SMALL_DEBRIS_RADIATING_AREA_PER_MASS = 0.01455;
 export const SMALL_DEBRIS_MAX_TEMP = 933;
 
-export interface DynamicReactionServices {
-  readonly activeStage: StageOutcome;
-  readonly registry: EntityRegistry;
-}
+// 接触した相手を見分ける種別。
+export type ContactKind =
+  | 'generic' | 'player' | 'radiator-fold' | 'belt-section' | 'bullet' | 'base' | 'debris'
+  | 'booster' | 'enemy' | 'ammo' | 'rcs-fuel';
 
 export interface DynamicMotionBehavior {
-  readonly contactKind?: string;
+  readonly contactKind?: ContactKind;
   contactMass?(self: DynamicMotion): number;
   updateCommands?(self: DynamicMotion, simDt: number): void;
   contactsWith?(self: DynamicMotion, other: DynamicMotion, simTime: number): boolean;
@@ -58,12 +57,12 @@ export interface DynamicMotionBehavior {
   contactProxies?(self: DynamicMotion, simTime: number, dt: number): readonly DynamicMotion[];
   applyContactProxies?(self: DynamicMotion, dt: number): void;
   onEntityContact?(
-    self: DynamicMotion, other: DynamicMotion, contact: Contact, context: DynamicReactionServices,
+    self: DynamicMotion, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void;
   onSurfaceContact?(
-    self: DynamicMotion, body: CelestialBody, contact: Contact, context: DynamicReactionServices,
+    self: DynamicMotion, body: CelestialBody, contact: Contact, services: DynamicReactionServices,
   ): void;
-  onBurnUp?(self: DynamicMotion, context: DynamicReactionServices): void;
+  onBurnUp?(self: DynamicMotion, services: DynamicReactionServices): void;
   stepEnvironment?(
     self: DynamicMotion, dt: number, atmosphereBody: CelestialBody | null,
     atmospherePivot: number, sunlit: number, sunDir: Vec3,
@@ -72,7 +71,7 @@ export interface DynamicMotionBehavior {
   solarAbsorbAreaPerMass?(self: DynamicMotion, sunDir: Vec3): number;
   nextSimulationEventTime?(self: DynamicMotion, simTime: number): number | null;
   checkLoss?(
-    self: DynamicMotion, dt: number, simTime: number, context: DynamicReactionServices,
+    self: DynamicMotion, dt: number, simTime: number, services: DynamicReactionServices,
     viewerPos: Vec3, atmosphereBodies: readonly CelestialBody[],
   ): void;
 }
@@ -194,7 +193,7 @@ export class DynamicMotion {
   public get predicted(): DynamicTrajectory | null { return this.predictedArc?.trajectory ?? null; }
   public get arc(): PredictedArc | null { return this.predictedArc; }
   public get predictionTruncated(): boolean { return this.predictedArc?.truncated ?? false; }
-  public get contactKind(): string { return this.behavior.contactKind ?? 'generic'; }
+  public get contactKind(): ContactKind { return this.behavior.contactKind ?? 'generic'; }
   public get contactMass(): number { return this.behavior.contactMass?.(this) ?? this.mass; }
   public get thrust(): Vec3 | null { return this._thrust; }
   public set thrust(thrust: Vec3 | null) {
@@ -269,7 +268,7 @@ export class DynamicMotion {
   public stepSimulation(
     dt: number, celestialBodies: readonly CelestialBody[], occluders: readonly CelestialBody[],
     atmosphereBody: CelestialBody | null, star: CelestialBody | null, pivot: number,
-    context: DynamicReactionServices,
+    services: DynamicReactionServices,
   ): boolean {
     const interval = this.historySampleInterval(celestialBodies, pivot);
     const integrated = !this.followPredicted(this.state.t + dt, interval);
@@ -288,7 +287,7 @@ export class DynamicMotion {
 
     const environment = weightedEnvironment(environmentSamples);
     this.behavior.stepEnvironment?.(this, dt, atmosphereBody, this.state.t, environment.sunlit, environment.sunDir);
-    this.stepThermal(dt, environmentSamples, context);
+    this.stepThermal(dt, environmentSamples, services);
     return integrated;
   }
 
@@ -328,16 +327,16 @@ export class DynamicMotion {
   }
 
   public collideWithEntity(
-    other: DynamicMotion, contact: Contact, context: DynamicReactionServices,
+    other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void {
-    this.behavior.onEntityContact?.(this, other, contact, context);
+    this.behavior.onEntityContact?.(this, other, contact, services);
   }
 
   public collideWithCelestialBody(
-    body: CelestialBody, contact: Contact, context: DynamicReactionServices,
+    body: CelestialBody, contact: Contact, services: DynamicReactionServices,
   ): void {
     if (this.behavior.onSurfaceContact !== undefined) {
-      this.behavior.onSurfaceContact(this, body, contact, context);
+      this.behavior.onSurfaceContact(this, body, contact, services);
       return;
     }
     this.alive = false;
@@ -348,10 +347,10 @@ export class DynamicMotion {
   }
 
   public checkLoss(
-    dt: number, simTime: number, context: DynamicReactionServices, viewerPos: Vec3,
+    dt: number, simTime: number, services: DynamicReactionServices, viewerPos: Vec3,
     atmosphereBodies: readonly CelestialBody[],
   ): void {
-    this.behavior.checkLoss?.(this, dt, simTime, context, viewerPos, atmosphereBodies);
+    this.behavior.checkLoss?.(this, dt, simTime, services, viewerPos, atmosphereBodies);
   }
 
   public updateCommands(simDt: number): void {
@@ -386,7 +385,7 @@ export class DynamicMotion {
   }
 
   private stepThermal(
-    dt: number, samples: readonly DynamicsEnvironmentSample[], context: DynamicReactionServices,
+    dt: number, samples: readonly DynamicsEnvironmentSample[], services: DynamicReactionServices,
   ): void {
     if (this.specificHeat <= 0) return;
     let heating = 0;
@@ -416,7 +415,7 @@ export class DynamicMotion {
     this.thermalDeviation = stepThermalDeviation(
       this.thermalDeviation, this.temperature, this.emissivity, area, this.specificHeat, dt);
     if (this.temperature <= this.maxTemperature) return;
-    if (this.behavior.onBurnUp !== undefined) this.behavior.onBurnUp(this, context);
+    if (this.behavior.onBurnUp !== undefined) this.behavior.onBurnUp(this, services);
     else this.alive = false;
   }
 }
