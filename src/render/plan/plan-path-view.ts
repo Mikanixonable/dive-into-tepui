@@ -1,5 +1,4 @@
-// 計画軌道の折れ線を、そのフレームに宣言された弧のぶんだけ描く。折れ線は宣言の index ごとに
-// 使い回すプールとして持ち、宣言から外れた index の線は頂点を持たない状態へ戻す。
+// 計画軌道の折れ線を、そのフレームに宣言された弧の数だけ描く。
 import * as THREE from 'three/webgpu';
 import { TrajectoryLine } from '../lines/trajectory-line';
 import type { CameraFrame } from '../camera/camera-frame';
@@ -23,8 +22,7 @@ export interface PlanArcLine {
 export class PlanPathView {
   private readonly group = new THREE.Group();
   private readonly lines: TrajectoryLine[] = [];
-  // 直近の sync で描いた宣言。宣言から外れた index の線を同じ座標系・見た目のまま空にするのと、
-  // 点列の読み出しに使う。
+  // 直近の sync で描いた宣言。次の sync で外れた index の線は、この座標系・見た目のまま空にする。
   private arcs: readonly PlanArcLine[] = [];
 
   // 折れ線を載せる group をシーンへ登録する。
@@ -32,7 +30,7 @@ export class PlanPathView {
     scene.add(this.group);
   }
 
-  // 宣言された弧をそれぞれの折れ線へ焼く。displayTime は un-bake に使う表示時刻。
+  // 宣言された弧をそれぞれの折れ線へ焼き、前のフレームより減った index の線を空にする。
   public sync(
     arcs: readonly PlanArcLine[], displayTime: number, celestialBodies: CelestialFrameSource,
     frameAnchors: FrameAnchorSource, camera: CameraFrame,

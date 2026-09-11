@@ -1,6 +1,5 @@
-// オーロラカーテン: 磁気(≒地理)極を囲む波打つリング帯。途切れ・色の揺らぎはノイズ的な
-// 周期関数で表現する(閉ループを保つため周期関数のみを使う)。1つで1層ぶんなので、同じ極に
-// 複数重ねて厚みを出す。天体半径・オーバル緯度・発光高度・色は呼び出し側が与える。
+// オーロラカーテン1層: 磁極を囲む波打つリング帯のメッシュ。同じ極に複数重ねて厚みを出す。
+// 天体半径・オーバル緯度・発光高度・色は AuroraOptics で受ける。
 import * as THREE from 'three/webgpu';
 import { AuroraField } from '../aurora-field';
 
@@ -8,14 +7,13 @@ const SEG = 160;
 const V_SEG = 3; // 鉛直方向4頂点: 0=下端フェード, 1=核(緑), 2=中間(赤), 3=上端フェード
 const INTENSITY_SCALE = 0.15; // 発光全体の強さ倍率
 
-// カーテンを載せる天体の、オーロラの見えを決める量。発光高度は大気の組成と降り込む粒子の
-// エネルギーで、色は励起される原子の輝線で決まるので、どちらも天体ごとの静的事実。
+// カーテンを載せる天体ごとの、オーロラの見えを決める静的な量。
 export interface AuroraOptics {
   readonly bodyRadius: number; // カーテンの基準になる天体半径 [m]
   readonly ovalLatitudeDeg: number; // オーロラオーバルの中心緯度 [deg]
   readonly magneticPoleLatitudeDeg?: number; // 簡易双極子の磁極緯度 [deg]
   readonly magneticPoleLongitudeDeg?: number; // 北磁極の経度 [deg]
-  // 鉛直4頂点の高度 [m]。上端2つはカーテンの伸び topAltitude に対する比で与える。
+  // 下端・核の高度とカーテンの伸び [m]。上端2頂点の高度は伸びから決まる。
   readonly baseAltitude: number;
   readonly coreAltitude: number;
   readonly topAltitude: number;
@@ -55,7 +53,7 @@ export class Aurora {
     });
     this.writeVertices(0);
 
-    // 周方向 SEG × 鉛直 V_SEG の格子を四角形ごとに2枚の三角形へ割る。
+    // 周方向 SEG × 鉛直 V_SEG の格子の三角形。
     const indices: number[] = [];
     for (let i = 0; i < SEG; i++) {
       for (let j = 0; j < V_SEG; j++) {

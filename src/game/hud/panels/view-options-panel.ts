@@ -63,8 +63,8 @@ function buildTabBody(tab: ViewOptionsTab): HTMLElement {
   return el;
 }
 
-// クラス別トグルの1行分。orbitKey が null のクラス(衛星・ラグランジュ点)は軌道線ボタンを持たない
-// ——衛星の参照軌道線はフォーカス中の系かどうかで別途決まり、ラグランジュ点はそもそも軌道を持たない。
+// クラス別トグルの1行分。orbitKey が null のクラス(ラグランジュ点)は軌道を持たず、ラベルと
+// 非表示だけを循環する。
 interface BodyClassRow {
   readonly label: string;
   readonly categoryKey: keyof MapDisplayToggles;
@@ -72,6 +72,7 @@ interface BodyClassRow {
   readonly orbitKey: keyof MapDisplayToggles | null;
 }
 
+// 天体のクラス別トグル。
 const BODY_CLASS_ROWS: readonly BodyClassRow[] = [
   { label: '惑星', categoryKey: 'planetVisible', nameKey: 'planetName', orbitKey: 'planetOrbit' },
   { label: '衛星', categoryKey: 'satelliteVisible', nameKey: 'satelliteName', orbitKey: 'satelliteOrbit' },
@@ -87,6 +88,7 @@ const VIEW_OPTIONS_COLLAPSE_LABELS: CollapseToggleLabels = {
   collapsedTitle: '表示を開く',
 };
 
+// 機体と設備のクラス別トグル。
 const ENTITY_ROWS: readonly BodyClassRow[] = [
   { label: '自艦', categoryKey: 'playerVisible', nameKey: 'playerName', orbitKey: 'playerOrbit' },
   { label: '敵', categoryKey: 'enemyVisible', nameKey: 'enemyName', orbitKey: 'enemyOrbit' },
@@ -103,6 +105,7 @@ const BODY_CLASS_DISPLAY_ICONS: Readonly<Record<MapDisplayMode, string>> = {
   orbit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><ellipse cx="12" cy="12" rx="9" ry="4.5" transform="rotate(-28 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="4.5" transform="rotate(28 12 12)"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/></svg>',
 };
 
+// 表示モード mode を示すアイコンの SVG マークアップ。
 function bodyClassDisplayIcon(mode: MapDisplayMode): string {
   return BODY_CLASS_DISPLAY_ICONS[mode];
 }
@@ -147,8 +150,7 @@ function appendSectionDivider(parent: HTMLElement, title: string): void {
   parent.appendChild(divider);
 }
 
-// トグルのグリフと意味を並記する列見出し(天球グリッドの面/極/網/縮尺)。タブ名と重複する
-// 節タイトルは持たず、凡例だけを出す。
+// トグルのグリフと意味を並記する列見出し(天球グリッドの面/極/網/縮尺の凡例)。
 function appendColumnLegend(parent: HTMLElement, columns: readonly ViewOptionColumn[]): void {
   const heading = document.createElement('div');
   heading.className = 'view-options-section-heading';
@@ -182,8 +184,7 @@ export class ViewOptionsPanel {
   private readonly zeroVelocitySection: ZeroVelocitySection;
 
   private readonly bodyClassModeButtons: readonly (readonly [BodyClassRow, Button, HTMLElement])[];
-  // 各ボタンの現在状態の鏡映し。正本は setBodyClassToggles が受け取る boolean 組にあり、
-  // ここはクリック時に次の3状態を決めるためだけに保つ。
+  // 各ボタンの現在の表示モードの鏡映し。クリック時に次の状態を決めるのに使う。
   private readonly bodyClassModes = new Map<keyof MapDisplayToggles, MapDisplayMode>();
 
   private readonly gridButtons: readonly (readonly [keyof CelestialGridVisibility, Button])[];
@@ -249,8 +250,6 @@ export class ViewOptionsPanel {
   }
 
   // 対象タブ: マップに出す対象クラスごとに、ラベル+軌道 / ラベル / 非表示を1ボタンで循環する。
-  // 恒星・惑星と、フォーカス中の系の親子は常に出るので、ここで足すのは「その外まで見たい」
-  // という明示の意思表示にあたる。
   private buildTargetTab(
     body: HTMLElement,
   ): { readonly element: HTMLElement; readonly buttons: readonly (readonly [BodyClassRow, Button, HTMLElement])[] } {
@@ -470,7 +469,7 @@ export class ViewOptionsPanel {
     this.zeroVelocitySection.setSettings(settings.zeroVelocity);
   }
 
-  // 描いている軌道ガイド線の総数を軌道ガイドタブへ中継する(300本目安の警告に使う)。
+  // 描いている軌道ガイド線の総数を軌道ガイドタブへ中継する。毎フレーム渡してよい。
   public setOrbitGuideLineCount(total: number): void {
     this.orbitGuideTab.setLineCount(total);
   }

@@ -22,11 +22,7 @@ interface BoosterPlumeSample {
   readonly visible?: boolean;
 }
 
-/**
- * 一段分の発光プルーム。音源を持たないため、共有 WorldSfx の主推力ループを
- * 複数段が奪い合わない。sound は外側の gameplay/controller が必要な段だけ
- * 選んで制御する。
- */
+/** ブースター一段分の発光プルーム。 */
 export class BoosterPlume {
   private readonly core = new THREE.Object3D();
   private readonly outer = new THREE.Object3D();
@@ -102,7 +98,7 @@ export class BoosterPlume {
   }
 }
 
-/** 複数ブースターのプルームを一回の同期で更新する小さな描画専用管理クラス。 */
+/** 複数段のプルームを、渡された段の数に揃えて一括で同期する。 */
 export class BoosterPlumeSet {
   private readonly plumes: BoosterPlume[] = [];
   private disposed = false;

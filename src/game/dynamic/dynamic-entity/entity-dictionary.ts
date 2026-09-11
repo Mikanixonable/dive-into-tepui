@@ -40,6 +40,7 @@ export function restorationFor(
       };
     case 'metal-enemy':
     case 'protein-enemy': {
+      // 敵は具象クラスの示す関門を通ってから組む。
       const enemyClass = findEnemyClass(data.kind);
       if (enemyClass === null) return null;
       return {

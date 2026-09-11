@@ -1,6 +1,6 @@
 // THREE で曲線を折れ線で近似して描く。閉じた式で書ける曲線は setAnalyticCurve、離散サンプル
-// としてしか手に入らない曲線は setHermiteCurve で渡す。頂点を t のどこに何個置くかは、
-// 画面上のサジッタと折れ角を見て毎フレーム決め直す。
+// としてしか手に入らない曲線は setHermiteCurve で渡す。近似の細かさは渡したときのカメラで
+// 決まるので、カメラが動いたら渡し直す。
 
 import * as THREE from 'three/webgpu';
 import { MaxHeap } from '../math/max-heap';
@@ -25,8 +25,7 @@ const MAX_SAGITTA_PX = 0.5;
 // 大きさに依らず効くため、遠ズームでの粗さを決める。
 const MAX_EDGE_TURN = (5 * Math.PI) / 180;
 
-// initialSegments を省いたときの初期分割数。閉曲線を1区間のまま評価すると t=0/1 が同一点で
-// 弦が縮退するため、最低限これだけ分けてから適応分割に入る。
+// 初期分割数の下限。閉曲線を1区間のままにすると、t=0/1 が同一点で弦が縮退する。
 const INITIAL_SEGMENTS = 8;
 
 // 頂点予算のうち初期頂点へ回してよい割合。残りを適応分割が逸脱の大きい区間へ配るので、
@@ -90,32 +89,28 @@ export class Curve {
   // 直近にマテリアルと線へ反映済みの見た目。
   private appliedStyle: LineStyle;
 
-  // 適応分割で焼いた頂点(sample の座標系のまま)。GPU へ渡す positions(f32)は常にこの配列
-  // から localCam を差し引いて書くので、差し引く前の精度を落とさないよう倍精度で持つ。
+  // 適応分割で焼いた頂点(sample の座標系)。localCam を差し引く前の値なので倍精度で持つ。
   private readonly bakedLocal: Float64Array;
   // 頂点ごとの色。位置と同じ生成順。
   private readonly bakedColor: Float32Array;
   // 各頂点の曲線上の位置 t。位置と同じ生成順。
   private readonly ts: Float64Array;
-  // 焼いた頂点を t 昇順に繋ぐ連結リスト(終端は -1)。頂点は生成順に置いたまま動かさないので、
-  // 描画順はこれを辿って書くインデックスバッファが担う。
+  // 焼いた頂点を t 昇順に繋ぐ連結リスト(終端は -1)。頂点そのものは生成順に並ぶ。
   private readonly nextVertex: Int32Array;
   private bakedCount = 0;
   // 直近に渡された曲線。
   private sampler: CurveSampler | null = null;
-  // 直近に setHermiteCurve が受け取った節点列と、そこから組んだ曲線。節点列が同じ間は
-  // 組み直さない。
+  // 直近に setHermiteCurve が受け取った節点列と、そこから組んだ曲線。同じ節点列(参照が同じ)
+  // の間は使い回す。
   private hermiteKnots: CurveKnots | null = null;
   private hermite: HermiteCurve | null = null;
 
-  // sample の座標系で見たカメラ位置。頂点バッファ(f32)へ書く直前に bakedLocal の全頂点から
-  // これを差し引く — f32 の量子化ノイズは差し引いた点からの距離に比例するので、その点を
-  // カメラから離した距離が、そのまま画面上のずれとして出る。区間の逸脱を画面上の大きさへ
-  // 直す尺度も、同じこの点から測る。
+  // sample の座標系で見たカメラ位置。頂点バッファ(f32)へはこれを差し引いて書き、f32 の
+  // 量子化誤差をカメラの近くで小さく保つ。
   private readonly localCam = new THREE.Vector3();
 
-  // setTransform が要求した sample→ワールドの変換。line.position/quaternion へはこれに
-  // localCam 分を補って書き込むので、sample の座標系を扱う計算はこちらを読む。
+  // setTransform が要求した sample→ワールドの変換。line の変換は localCam のぶんずれているので、
+  // sample の座標系の計算はこちらを使う。
   private readonly reqPosition = new THREE.Vector3();
   private readonly reqQuaternion = new THREE.Quaternion();
 
@@ -136,8 +131,8 @@ export class Curve {
   // 初期頂点に置ける頂点数の上限。
   private readonly maxInitialVertices: number;
 
-  // 頂点バッファは maxVertices ぶんを生成時に1回だけ確保する。maxVertices は、適応分割が
-  // 収束しない曲線に対する最悪描画コストの打ち切り。style.dash があれば破線になる。
+  // maxVertices は頂点数の上限で、適応分割が収束しない曲線の描画コストを抑える。style.dash が
+  // あれば破線になる。
   public constructor(style: LineStyle, maxVertices: number = DEFAULT_MAX_VERTICES) {
     const { color, opacity, renderOrder, dash } = style;
     this.maxVertices = maxVertices;
@@ -152,8 +147,7 @@ export class Curve {
     this.indices = new Uint32Array(this.maxSegments * 2);
     this.geom = new THREE.BufferGeometry();
     this.geom.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
-    // 色属性は使う前から束縛しておく。後から属性を足すと、束縛済みのジオメトリに対する
-    // 差し替えになって新しいバッファが描画へ反映されない。
+    // 色属性は最初から束縛する。束縛済みのジオメトリへ後から足した属性は描画へ反映されない。
     this.geom.setAttribute('color', new THREE.BufferAttribute(this.bakedColor, 3));
     this.geom.setIndex(new THREE.BufferAttribute(this.indices, 1));
     this.geom.setDrawRange(0, 0);
@@ -165,8 +159,7 @@ export class Curve {
       this.lineDistances = null;
     }
 
-    // 頂点カラーは常に有効。実行中に切り替えるとマテリアルのキャッシュ鍵が変わり、そこで
-    // シェーダが組み直される。色を渡されない曲線には白を焼くので、乗算は恒等になる。
+    // 頂点カラーは常に有効にする(切り替えるとシェーダが組み直される)。色の無い曲線は白を焼く。
     this.mat = dash
       ? new THREE.LineDashedMaterial({
         color, transparent: true, opacity, depthWrite: false, vertexColors: true,
@@ -177,12 +170,11 @@ export class Curve {
       });
 
     this.line = new THREE.LineSegments(this.geom, this.mat);
-    // 折れ線は表示値であって物理的な明るさを持たないので、3D UI パスへ置く。
+    // 折れ線は表示値なので 3D UI パスへ置く。
     markOverlay(this.line);
     this.line.renderOrder = renderOrder;
     this.line.visible = false;
-    // 頂点はバッファへ書き込むだけで外接球を更新しないので、既定のフラスタム判定は
-    // 初期値(全頂点ゼロ)の外接球で切ってしまう。
+    // 外接球は初期値(全頂点ゼロ)のまま更新されないので、フラスタム判定を切る。
     this.line.frustumCulled = false;
     this.object = this.line;
     this.appliedStyle = style;

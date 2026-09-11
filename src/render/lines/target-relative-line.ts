@@ -1,5 +1,4 @@
-// 2つの位置を結ぶ直線を描画する。頂点は対象(targetPos)相対座標のまま保持し、フローティング
-// オリジンによる Object3D 平行移動でその ECI 位置へ置く。
+// 自分と対象の2つの位置を結ぶ直線を1本描く。
 import * as THREE from 'three/webgpu';
 import { add, sub, v3, Vec3 } from '../../math/vec3';
 import type { CameraFrame } from '../camera/camera-frame';
@@ -9,7 +8,7 @@ import { LineStyle } from '../line-style';
 export class TargetRelativeLine {
   private readonly curve: Curve;
   public readonly line: THREE.Object3D;
-  // 直近に描いた線分の基準点(ECI)。samplePoints の絶対座標化に使う。
+  // 直近に描いた線分の基準点(対象の ECI 位置)。一度も sync していない間は null。
   private origin: Vec3 | null = null;
 
   // 線を1本組む。style は最初のフレームの見た目で、以後は sync が渡す値で上書きされる。
@@ -33,8 +32,8 @@ export class TargetRelativeLine {
     this.curve.setHermiteCurve(knots, camera.camera, camera.viewport.height);
   }
 
-  // 直近に描いた線分上のサンプル点列を ECI 絶対座標で返す(右クリックの当たり判定向け)。
-  // 一度も sync していない間は空配列。
+  // 直近に描いた線分を count 等分した count+1 点を ECI 絶対座標で返す。一度も sync していない
+  // 間は空配列。
   public samplePoints(count: number): readonly Vec3[] {
     const origin = this.origin;
     if (origin === null) return [];
