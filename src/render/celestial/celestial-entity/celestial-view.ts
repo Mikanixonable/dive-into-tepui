@@ -136,14 +136,14 @@ export abstract class CelestialView {
 
   // 表示時刻の接触軌道要素と、カメラからの距離で決まる濃さへ参照軌道線を同期する。
   public syncReferenceLine(
-    motion: CelestialMotion, scene: THREE.Scene, simTime: number, camera: CameraFrame, visible: boolean,
+    motion: CelestialMotion, scene: THREE.Scene, displayTime: number, camera: CameraFrame, visible: boolean,
   ): void {
     // false は資源を残す非表示ではなく、参照線そのものが不要という宣言として扱う。
     if (!visible) {
       this.disposeReferenceLine();
       return;
     }
-    const style = this.referenceLineStyle(motion, camera.position, simTime);
+    const style = this.referenceLineStyle(motion, camera.position, displayTime);
     if (this.referenceLineValue === null) {
       this.referenceLineValue = new EllipseLine(style);
       scene.add(this.referenceLineValue.line);
@@ -151,16 +151,16 @@ export abstract class CelestialView {
     // 資源を揃えた後、表示時刻の接触要素と距離フェードを毎フレーム反映する。
     const centerMotion = motion.primary;
     const elements = centerMotion === null
-      ? null : orbitalElementsOf(motion.stateAt(simTime), centerMotion, simTime);
+      ? null : orbitalElementsOf(motion.stateAt(displayTime), centerMotion, displayTime);
     this.referenceLineValue.sync(elements, style, camera);
   }
 
   // 参照線の見た目。色は天体の種別、不透明度はカメラからの距離フェードが決める。
-  private referenceLineStyle(motion: CelestialMotion, cameraPos: Vec3, simTime: number): LineStyle {
+  private referenceLineStyle(motion: CelestialMotion, cameraPos: Vec3, displayTime: number): LineStyle {
     return {
       color: motion.kind === 'satellite'
         ? SATELLITE_REFERENCE_LINE_COLOR : PLANET_REFERENCE_LINE_COLOR,
-      opacity: this.referenceLineOpacityFrom(motion, cameraPos, simTime),
+      opacity: this.referenceLineOpacityFrom(motion, cameraPos, displayTime),
       renderOrder: LINE_RENDER_ORDER.reference,
     };
   }
@@ -187,13 +187,13 @@ export abstract class CelestialView {
   protected abstract disposeContents(): void;
 
   // 天体種別ごとの距離帯を使い、参照線の不透明度を連続的に求める。
-  private referenceLineOpacityFrom(motion: CelestialMotion, cameraPos: Vec3, simTime: number): number {
+  private referenceLineOpacityFrom(motion: CelestialMotion, cameraPos: Vec3, displayTime: number): number {
     const isSatellite = motion.kind === 'satellite';
     const nearDist = isSatellite
       ? SATELLITE_ORBIT_LINE_FADE_NEAR_DIST : PLANET_ORBIT_LINE_FADE_NEAR_DIST;
     const farDist = isSatellite
       ? SATELLITE_ORBIT_LINE_FADE_FAR_DIST : PLANET_ORBIT_LINE_FADE_FAR_DIST;
-    const distance = len(sub(motion.stateAt(simTime).r, cameraPos));
+    const distance = len(sub(motion.stateAt(displayTime).r, cameraPos));
     return Math.min(1, Math.max(0, (distance - nearDist) / (farDist - nearDist)))
       * REFERENCE_LINE_OPACITY;
   }
