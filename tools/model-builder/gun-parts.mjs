@@ -1,15 +1,14 @@
 // 機関砲の弾薬と消耗部品のモデル — 実弾入りのマガジン、薬莢、放出される砲身。
 import * as THREE from 'three';
-import { loadSourceModules } from '../compile-source.mjs';
+import { importTsDataModule, loadSourceModules } from '../compile-source.mjs';
 import { F0_ALUMINIUM, F0_BRASS, F0_BURNT_STEEL, F0_STEEL, std } from './materials.mjs';
 
+const { MAG_THICKNESS, MAG_WIDTH } = await importTsDataModule('src/physics/player-shape.ts');
 const thermalSource = loadSourceModules(['render/thermal-emissive']);
 const { THERMAL_SHAPE_ATTRIBUTE } = thermalSource.thermalEmissive;
 thermalSource.dispose();
 
 // ------------------------------------------------------------- マガジン
-export const MAG_THICKNESS = 1.0;
-const MAG_WIDTH = MAG_THICKNESS * 4 * (2 / 3);
 const MAG_DEPTH = MAG_THICKNESS * 3 * (2 / 3);
 const MAG_ROWS = 4;
 const MAG_COLS = 8;
