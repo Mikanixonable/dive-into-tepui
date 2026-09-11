@@ -2,7 +2,7 @@ import type { Bgm } from '../../audio/bgm/bgm';
 import { BGM_TRACKS } from '../../audio/bgm/tracks/tracks';
 import { Button, Slider } from '../widgets';
 
-const SEEK_REFRESH_MS = 100;
+const SEEK_REFRESH_MS = 100; // 試聴の再生位置をシークバーへ写す間隔
 
 // シークバー横の経過時間表示を「分:秒」の書式にする。
 function formatSeekTime(sec: number): string {
@@ -11,8 +11,8 @@ function formatSeekTime(sec: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-// 設定ビューの「BGM」タブ。ゲーム中BGMの音量調整と、曲の試聴(選曲・再生位置のシーク・停止)を
-// 扱う。音量はスライダーの操作を onVolumeChange で外へ返し、試聴の音声経路は Bgm が持つ。
+// BGM の設定面。ゲーム中BGMの音量調整と、曲の試聴(選曲・再生位置のシーク・停止)を扱う。
+// 音量の操作は onVolumeChange で外へ返す。
 export class BgmSettingsPanel {
   public readonly element: HTMLElement;
 
@@ -52,9 +52,7 @@ export class BgmSettingsPanel {
     volumeRow.appendChild(this.volumeValue);
     this.element.appendChild(volumeRow);
 
-    // 再生位置: 試聴中の曲だけ操作できる。ドラッグ中は自動追従(refreshSeekPosition)で値を
-    // 上書きしない。ポインタが要素の外へ出ても離した瞬間を取りこぼさないよう、pointer capture
-    // で握ったまま追う。
+    // 再生位置: 試聴中の曲だけ操作できる。要素の外で離しても取りこぼさないよう pointer capture で追う。
     const seekRow = document.createElement('div');
     seekRow.className = 'sv-volume-row';
     const seekLabel = document.createElement('span');
@@ -69,7 +67,7 @@ export class BgmSettingsPanel {
       this.seeking = true;
       this.seekSlider.element.setPointerCapture(e.pointerId);
     });
-    // pointerup/pointercancel のどちらでもドラッグを終える。
+    // ドラッグを終え、再生位置の自動追従へ戻す。
     const endSeeking = (e: PointerEvent): void => {
       this.seeking = false;
       this.seekSlider.element.releasePointerCapture(e.pointerId);
@@ -108,6 +106,7 @@ export class BgmSettingsPanel {
     }
     this.element.appendChild(trackList);
 
+    // 停止: 試聴を止め、選曲・再生位置の表示を未選択へ戻す。
     const trackActions = document.createElement('div');
     trackActions.className = 'sv-track-actions';
     this.stopButton = new Button('試聴を停止', () => {
@@ -134,8 +133,7 @@ export class BgmSettingsPanel {
     this.volumeValue.textContent = `${Math.round(volume * 100)}%`;
   }
 
-  // 設定ビューが閉じるときに呼ぶ。試聴の音声経路を畳んでゲーム中BGMへ戻し、選曲・シークの
-  // 表示状態を初期化へ戻す。
+  // 試聴の期間を終える。試聴を畳んでゲーム中BGMを戻し、選曲・シークの表示を未選択へ戻す。
   public stopAudition(): void {
     this.bgm.endAudition();
     this.activeTrack = null;

@@ -11,6 +11,8 @@ import type { StageClass } from '../game/stages/stage';
 import type { TdbJulianDate } from '../physics/time';
 import type { UnlockManager } from './unlock-manager';
 
+// タイトルの添え書き1組。primary は副題、script はその下に添える異文字(lang の言語で
+// scriptKind の書体)、note は脇の注。
 interface TitleFlavor {
   readonly primary: string;
   readonly script: string;
@@ -238,8 +240,7 @@ class StageSelectScreen {
       this.onEscape?.();
       return;
     }
-    // 設定/一時停止などのシステム窓や開始日時の入力欄が開いている間は、背後のステージ選択
-    // ショートカットを起動しない。ESC だけは上の分岐で現在の最前面窓へ配送する。
+    // 手前にシステム窓か開始日時の入力欄が開いている間は、ステージのショートカットを止める。
     if (document.body.classList.contains('hud-overlay-modal-open') || this.startEpochForm.isOpen) return;
     const stageClass = STAGE_CLASSES.find((candidate) =>
       this.unlockedStages.has(candidate) && candidate.selectKeys.includes(e.code));

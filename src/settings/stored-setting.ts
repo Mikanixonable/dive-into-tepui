@@ -1,6 +1,5 @@
 // ラン跨ぎで残るユーザー設定1つぶんの器と、その保存先。設定の現在値を持ち、書き換えを保存先へ
-// 流して購読者へ配る。値と保存文字列の変換は設定ごとの parse / format が受け持ち、保存先が
-// 使えるかどうかの見極めは保存先の実装が受け持つ。
+// 流して購読者へ配る。
 
 // 設定の保存先。読み書きの失敗はここで吸収する。
 export interface SettingStorage {
@@ -10,10 +9,9 @@ export interface SettingStorage {
   write(key: string, text: string): void;
 }
 
-// ブラウザの localStorage を保存先にする。private browsing 等で localStorage が使えないときは、
-// 読みが未保存として答え、書きは諦める。
+// ブラウザの localStorage を保存先にする。
 export const browserSettingStorage: SettingStorage = {
-  // localStorage が使えない環境では、未保存として答える。
+  // localStorage が使えない環境(private browsing など)では、未保存として答える。
   read(key: string): string | null {
     if (typeof window === 'undefined') return null;
     try {

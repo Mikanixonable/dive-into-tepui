@@ -7,7 +7,7 @@ import { TabBar } from '../widgets';
 
 type SettingsTab = 'theme' | 'graphics' | 'bgm';
 
-// ESCメニューへ埋め込む、描画・BGM・配色の詳細設定面。
+// 描画・BGM・配色の詳細設定面。内側タブで3面を切り替え、各面の変更を onXxx で外へ返す。
 export class SettingsView {
   public readonly element: HTMLElement;
   private readonly bgm: Bgm;
@@ -48,17 +48,17 @@ export class SettingsView {
     tabs.element.classList.add('sv-tabs', 'ui-surface-inset');
     this.element.appendChild(tabs.element);
 
-    // 見出し付きの節を1つ作る。タブ切り替え時に対応する節だけを取り出せるよう登録しておく。
+    // 見出し付きのタブ面を1つ作り、タブ切り替えで引けるよう tabPanels へ登録する。
     const addTabPanel = (tab: SettingsTab, title: string): HTMLElement => {
       const section = document.createElement('section');
       section.className = 'sv-section sv-tab-panel ui-surface-inset';
       section.setAttribute('role', 'tabpanel');
       section.setAttribute('aria-label', title);
+      // タブで選ばれるまで隠しておく。
       section.hidden = true;
       const sectionTitle = document.createElement('h3');
       sectionTitle.textContent = title;
       section.appendChild(sectionTitle);
-      // タブ切り替え時に対応する節だけを表示するため、ここで登録しておく。
       tabPanels.set(tab, section);
       return section;
     };
@@ -97,6 +97,7 @@ export class SettingsView {
     heading.id = 'hud-settings-title';
     heading.textContent = '設定';
     headingGroup.appendChild(heading);
+    // 見出しに添える英字の小見出し。
     const eyebrow = document.createElement('span');
     eyebrow.className = 'sv-eyebrow';
     eyebrow.textContent = 'SYSTEM / SETTINGS';
@@ -110,7 +111,7 @@ export class SettingsView {
     this.bgmPanel.syncVolume(volume);
   }
 
-  // 設定外側タブの選択状態に合わせて試聴の音声経路を切り替える。
+  // active の間を試聴の期間とし、切り替わったときに試聴を始める・終える。
   public setActive(active: boolean): void {
     if (active === this.active) return;
     this.active = active;

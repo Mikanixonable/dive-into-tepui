@@ -1,5 +1,5 @@
-// 初期化中・実行中を問わず、継続不能な例外は画面内で明示する。
-// 壊れた Game/renderer を同一ページ内で再利用せず、復旧はページ全体の再読込だけにする。
+// 初期化中・実行中を問わず、継続不能な例外を画面全体のオーバーレイで示す。
+// 壊れた Game/renderer を同じページで使い回さないよう、復旧の手段はページの再読み込みとする。
 import {
   ACCENT, SURFACE_OPAQUE, BG, TEXT, TEXT_DIM, FONT_FAMILY, FONT_M, FONT_XL, RADIUS_MICRO, RADIUS_CONTROL,
   Z_FATAL_ERROR,

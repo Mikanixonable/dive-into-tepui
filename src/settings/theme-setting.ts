@@ -1,4 +1,4 @@
-// 配色の選択 id のラン跨ぎ正本。id が何色を指すか、どれを既定にするかは theme.ts が決める。
+// 配色の選択 id のラン跨ぎ正本。
 
 import { StoredSetting, browserSettingStorage } from './stored-setting';
 

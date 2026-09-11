@@ -1,6 +1,5 @@
-// 設定メニューの「描画」面。品質プリセットと、描画品質設定の全項目を群ごとに並べる。
-// 並びも見出しも GRAPHICS_GROUPS・GRAPHICS_OPTIONS の表からそのまま組む。
-// 表示中の設定値一式を持ち、操作のたびに新しい一式を組み立てて onChange で外へ返す。
+// 描画品質の設定面。品質プリセットと、描画品質設定の各項目を GRAPHICS_GROUPS・GRAPHICS_OPTIONS
+// の表どおりに群ごとに並べる。表示中の設定値一式を持ち、操作のたびに新しい一式を onChange で外へ返す。
 import {
   GRAPHICS_GROUPS, GRAPHICS_OPTIONS, QUALITY_PRESETS, graphicsOptionKeys, matchingGraphicsPreset, withGraphicsOption,
   type ChoiceValue, type GraphicsOptionKey, type GraphicsSettingsData, type QualityPreset,
@@ -42,7 +41,7 @@ const NO_HIDDEN_KEYS: ReadonlySet<GraphicsOptionKey> = new Set();
 // プルダウンで選ぶ項目の列。描画設定の項目はどれも1列しか持たない。
 type SelectColumns = readonly [PulldownColumn<ChoiceValue>];
 
-// 項目1つぶんのコントロール。現在値から点灯を引き直す口だけを持つ。
+// 項目1つぶんのコントロール。show に現在値を渡すと点灯を引き直す。
 interface OptionControl {
   readonly key: GraphicsOptionKey;
   readonly show: (value: boolean | ChoiceValue) => void;
@@ -72,7 +71,7 @@ export class GraphicsPanel {
     });
     this.element.appendChild(this.preset.element);
 
-    // 空の群は見出しごと出さない。
+    // 群ごとに見出しと項目を並べる。伏せた結果空になった群は見出しごと省く。
     const controls: OptionControl[] = [];
     for (const [group, title] of GRAPHICS_GROUPS) {
       const keys = graphicsOptionKeys(group).filter((key) => !hidden.has(key));
@@ -100,8 +99,7 @@ export class GraphicsPanel {
     for (const control of this.controls) control.show(graphics[control.key]);
   }
 
-  // 項目1つぶんのコントロールを組んで節へ並べる。真偽はトグルスイッチ — 2値の ON/OFF に
-  // セグメントコントロールを使わない。選択肢の並べ方は表の kind が決める。
+  // 項目1つぶんのコントロールを、表の kind に応じた部品で組んで節へ並べる。
   private addControl(section: HTMLElement, key: GraphicsOptionKey): OptionControl {
     const option = GRAPHICS_OPTIONS[key];
     if (option.kind === 'toggle') {
@@ -109,7 +107,7 @@ export class GraphicsPanel {
       section.appendChild(widget.element);
       return { key, show: (value) => widget.setOn(value === true) };
     }
-    // 反映ボタンは添えない — 見比べながら選ぶものなので、選び直した時点で画面へ出す。
+    // 見比べながら選ぶものなので、反映ボタンを添えず選び直した時点で反映する。
     if (option.kind === 'select') {
       const columns: SelectColumns = [{ items: option.items }];
       const widget = new Pulldown(option.label, columns, null, ([value]) => this.write(key, value));
