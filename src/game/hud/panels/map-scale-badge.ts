@@ -18,13 +18,12 @@ export class MapScaleBadge {
   // 深度における meters-per-pixel から求める。パンしてもフォーカス対象を基準にするため、
   // 同じ天体を見続ける限り、表示値はスクロールズームだけに対応して変化する。
   // focus はその基準になるフォーカス対象の ECI 位置。
-  public sync(isMapView: boolean, screenScale: ScaleFn, focus: Vec3): void {
+  public sync(screenScale: ScaleFn, focus: Vec3): void {
     const panel = this.els.get('map-scale');
     if (!panel) return;
     // 基底の CSS 規則(#hud-map-scale)は display:none で固定されているため、'' へ戻すだけでは
-    // 表示に復帰しない。表示側は常に明示の display 値を書く。
-    panel.style.display = isMapView ? 'block' : 'none';
-    if (!isMapView) return;
+    // 表示に復帰しない。常に明示の display 値を書く。
+    panel.style.display = 'block';
 
     const metersPerPixel = screenScale(focus);
     const scale = mapScaleFor(metersPerPixel);

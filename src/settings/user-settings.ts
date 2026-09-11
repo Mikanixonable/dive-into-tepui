@@ -1,12 +1,12 @@
 // ラン跨ぎのユーザー設定の正本。設定ごとの現在値を1つずつ起こし、保存先のどの鍵へ載せるかを決める。
 // 値の型・選択肢・保存文字列との変換は、それぞれの設定を所有するモジュールが持つ。
 
-import { parseBgmVolume } from '../audio/bgm/bgm';
+import { formatBgmVolume, parseBgmVolume } from '../audio/bgm/bgm';
 import { formatOrbitGuideSettings, parseOrbitGuideSettings } from '../game/celestial/orbit-guide/orbit-guide-settings';
 import { formatMapDisplayToggles, parseMapDisplayToggles } from '../game/map/display-toggles';
 import { formatGridVisibility, parseGridVisibility } from '../render/celestial-grid';
 import { formatGraphics, parseGraphics } from '../render/graphics-settings';
-import { parseRenderStyle } from '../render/render-style';
+import { formatRenderStyle, parseRenderStyle } from '../render/render-style';
 import { StoredSetting } from './stored-setting';
 import type { OrbitGuideSettings } from '../game/celestial/orbit-guide/orbit-guide-settings';
 import type { MapDisplayToggles } from '../game/map/display-toggles';
@@ -34,8 +34,8 @@ export class UserSettings {
   public constructor(storage: SettingStorage) {
     // 画面全体に効く設定。設定ビューと一時停止メニューが書き換える。
     this.graphics = new StoredSetting(storage, 'tepui.settings.graphics', parseGraphics, formatGraphics);
-    this.renderStyle = new StoredSetting(storage, 'tepui.settings.renderStyle', parseRenderStyle, (style) => style);
-    this.bgmVolume = new StoredSetting(storage, 'tepui.settings.bgm_vol', parseBgmVolume, (vol) => String(vol));
+    this.renderStyle = new StoredSetting(storage, 'tepui.settings.renderStyle', parseRenderStyle, formatRenderStyle);
+    this.bgmVolume = new StoredSetting(storage, 'tepui.settings.bgm_vol', parseBgmVolume, formatBgmVolume);
     // マップの表示パネルが書き換える設定。ランの中から編集され、ランを跨いで残る。
     this.mapDisplayToggles = new StoredSetting(
       storage, 'tepui.mapDisplayToggles', parseMapDisplayToggles, formatMapDisplayToggles,
