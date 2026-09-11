@@ -16,7 +16,7 @@
 // 平行移動の順で正しい。
 import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { FrameAnchorSource, framePoint, ReferenceFrame, toFrameState, toInertialPoint } from '../../physics/frame';
+import { FrameAnchorSource, FrameTransform, framePoint, ReferenceFrame, toFrameState, toInertialPoint } from '../../physics/frame';
 import { DynamicTrajectory, ExtrapolationCenter } from '../../physics/dynamic-trajectory';
 import { extrapolatedRelativeStates } from '../../physics/kepler-extrapolation';
 import { StateQueue } from '../../physics/state-queue';
@@ -24,7 +24,7 @@ import { add, Vec3 } from '../../math/vec3';
 import type { CameraFrame } from '../camera/camera-frame';
 import { Curve, CurveKnots } from '../curve';
 import { LineStyle } from '../line-style';
-import type { CelestialFrameSource, FrameTransformSource } from './celestial-frame-source';
+import type { CelestialFrameSource } from './celestial-frame-source';
 
 // 頂点数の打ち切り。数周ぶんの軌跡なら数百頂点で収束するが、28日表示のように数百周が
 // 重なる区間は何頂点あっても収束しないので、どこで頭打ちにするかをここで決める。
@@ -85,6 +85,8 @@ export class TrajectoryLine {
   private startTime: number | null = null;
   // 描画区間の上限(bake 済み区間の末尾へクランプ済み)。null は上限なし。
   private endTime: number | null = null;
+  // 直近の sync で描いた線を慣性系へ戻す un-bake 変換。線が消えているあいだは null。
+  private unbakeTransform: FrameTransform | null = null;
 
   // 単色の折れ線を構築する。style は最初のフレームの見た目で、以後は sync が渡す値で
   // 上書きされる(破線になるかどうかだけは、ここで渡した style の dash が決める)。
@@ -107,12 +109,14 @@ export class TrajectoryLine {
     const end = this.endTime;
     const knots = this.knots;
     if (this.baked.size < 2 || start === null || end === null || start >= end || knots === null) {
+      this.unbakeTransform = null;
       this.curve.clear();
       return;
     }
     // 剛体 un-bake(回転)とフローティングオリジン補正(平行移動 = 座標系原点)は、頂点を焼く
     // 前に渡す — 適応分割はこの変換を通した画面上の大きさで区間の粗さを測る。
     const tf = celestialBodies.frames.transformAt(frame, displayTime, frameAnchors);
+    this.unbakeTransform = tf;
     this.unbakeQuat.set(tf.q.x, tf.q.y, tf.q.z, tf.q.w);
     this.curve.setTransform(camera.floatingOrigin.RtoThreeV3(tf.origin), this.unbakeQuat);
     this.curve.setHermiteCurve(knots, camera.camera, camera.viewport.height);
@@ -189,16 +193,11 @@ export class TrajectoryLine {
     return { ts, positions, tangents };
   }
 
-  // 直近に bake した描画区間から、当たり判定向けの ECI 絶対座標のサンプル点列を返す。
-  // 座標系相対 → 慣性系の変換は表示時刻の剛体運動(sync の un-bake と同じ変換)で行う。
-  public samplePoints(
-    count: number, frame: ReferenceFrame, displayTime: number, frames: FrameTransformSource,
-    frameAnchors: FrameAnchorSource,
-  ): readonly Vec3[] {
-    const start = this.startTime;
-    const end = this.endTime;
-    if (this.baked.size < 2 || start === null || end === null || start >= end) return [];
-    const tf = frames.transformAt(frame, displayTime, frameAnchors);
+  // 直近の sync で描いた線上の、当たり判定向けの ECI 絶対座標のサンプル点列を返す。
+  // 線が消えているあいだは空配列。
+  public samplePoints(count: number): readonly Vec3[] {
+    const tf = this.unbakeTransform;
+    if (tf === null) return [];
     const points: Vec3[] = [];
     const scratch = new THREE.Vector3();
     for (let i = 0; i <= count; i++) {
