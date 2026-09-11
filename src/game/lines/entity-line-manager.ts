@@ -56,10 +56,10 @@ function orbitDisplay(
 }
 
 export class EntityLineManager {
-  constructor(private readonly roster: EntityRoster) {}
+  public constructor(private readonly roster: EntityRoster) {}
 
   // 次回の予測更新が必要な個体を update フェーズで確定する。
-  updatePredictionReaders(
+  public updatePredictionReaders(
     active: Controllable | null, primaryTarget: CombatTarget | null,
     view: ViewMode, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
@@ -70,7 +70,7 @@ export class EntityLineManager {
   }
 
   // 各個体の線表示をこのフレームの確定状態から宣言し、View に一括同期させる。
-  sync(
+  public sync(
     active: Controllable | null, primaryTarget: CombatTarget | null,
     view: ViewMode, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
     orbitRef: OrbitReference | undefined, camera: CameraFrame,

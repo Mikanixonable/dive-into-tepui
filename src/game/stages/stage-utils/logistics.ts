@@ -34,12 +34,12 @@ export class Logistics {
   private resupplyCheckAt: number;
 
   // 補給の自動投入を行うかどうか。既に軌道上にある補給の回収・デスポーンには影響しない。
-  resupplyEnabled: boolean;
+  public resupplyEnabled: boolean;
   // RCS燃料の自動投入を行うかどうか。弾薬のトグルとは独立している。
-  rcsFuelResupplyEnabled: boolean;
+  public rcsFuelResupplyEnabled: boolean;
 
   // saved があればその状態(次回投入判定時刻・自動投入の有効/無効)から始める。
-  constructor(
+  public constructor(
     private readonly _notifier: Notifier,
     private readonly _worldSfx: WorldSfx,
     private readonly _uiSfx: UiSfx,
@@ -53,7 +53,7 @@ export class Logistics {
   }
 
   // 自機の軌道上、minDist〜maxDist 先の位相に補給を1個投入する。
-  spawnForPlayer(
+  public spawnForPlayer(
     player: Player,
     minDist = LOGISTICS_MIN_DIST,
     maxDist = LOGISTICS_MAX_DIST,
@@ -86,7 +86,7 @@ export class Logistics {
   }
 
   // 自機の軌道上、minDist〜maxDist 先の位相に RCS 燃料補給を1個投入する。
-  spawnRcsFuelForPlayer(
+  public spawnRcsFuelForPlayer(
     player: Player,
     minDist = LOGISTICS_MIN_DIST,
     maxDist = LOGISTICS_MAX_DIST,
@@ -117,7 +117,7 @@ export class Logistics {
 
   // 近傍の補給を回収し、遠方のものをデスポーンし、残弾が少なければ定期的に新規投入する。
   // 回収とデスポーンは投入の可否によらず常に走る(既に軌道上にある補給の始末は別の話)。
-  updateLogistics(
+  public updateLogistics(
     simTime: number, player: Player, simSpeed: SimSpeedManager, respawnOnDespawn = false,
   ): void {
     this.absorbNearbyAmmoPickups(player);
@@ -140,7 +140,7 @@ export class Logistics {
     }
   }
 
-  serialize(): LogisticsSaveData {
+  public serialize(): LogisticsSaveData {
     return {
       resupplyCheckAt: this.resupplyCheckAt,
       resupplyEnabled: this.resupplyEnabled,

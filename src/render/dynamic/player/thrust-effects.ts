@@ -32,7 +32,7 @@ export class ThrustEffects {
 
   // core/outer ビルボードと模式図用コーンを scene に登録する。ownerId は明滅の種に混ぜる
   // 個体の識別。
-  constructor(
+  public constructor(
     scene: THREE.Scene,
     private readonly ownerId: string,
   ) {
@@ -44,7 +44,7 @@ export class ThrustEffects {
   // (プルームの大きさ)を求めるための全開加速度。displayTime は明滅の位相を決める表示時刻で、
   // 同じ時刻に何度呼んでも同じ絵になる。style が模式図なら、ビルボードの代わりに輪郭抽出へ
   // 拾われるコーンを出す。
-  sync(
+  public sync(
     fo: FloatingOrigin, position: Vec3 | null, thrust: Vec3 | null, maxAccel: number,
     visible: boolean, cameraQuat: THREE.Quaternion, zoomActive: boolean,
     style: RenderStyle, displayTime: number, plumeScale = 1.0,
@@ -82,7 +82,7 @@ export class ThrustEffects {
   }
 
   // core/outer ビルボードと模式図用コーンを scene から取り除き解放する。
-  dispose(scene: THREE.Scene): void {
+  public dispose(scene: THREE.Scene): void {
     scene.remove(this.core.mesh, this.outer.mesh, this.schematicCone.mesh);
     this.core.dispose();
     this.outer.dispose();

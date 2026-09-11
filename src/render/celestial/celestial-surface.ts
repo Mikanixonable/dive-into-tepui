@@ -41,10 +41,10 @@ export function unitSphereGeometry(level: SphereLodLevel): THREE.BufferGeometry 
 
 // 表面の測光値。bondAlbedo は輝点の明るさを引くスカラ、lightSourceAlbedo はこの天体を
 // 光源として扱うときの色つきアルベド(Rec.709 輝度がボンドアルベドに一致する線形 RGB)。
-export type SurfacePhotometry = {
+export interface SurfacePhotometry {
   readonly bondAlbedo: number;
   readonly lightSourceAlbedo: Albedo;
-};
+}
 
 export type CelestialSurfaceStatus = 'loading' | 'ready' | 'error' | 'fallback';
 
