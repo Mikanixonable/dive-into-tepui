@@ -24,13 +24,15 @@ import type { ControlSelection } from '../control-selection';
 import type { DisplayWindow, DisplayWindowManager } from '../display-window-manager';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { FrameAnchors } from '../frame-anchors';
-import type { FloatingOrigin } from '../camera/floating-origin';
+import type { MapDisplayToggles } from '../map/display-toggles';
+import type { RunSetting } from '../run-setting';
+import type { Viewport } from '../../render/viewport';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ViewFrame } from './view-frame';
 import type { PerfCounts } from '../perf-counts';
 
 export class MapView implements ViewFrame {
   private readonly picking: MapPicking;
-  // マップでしか使わないものはここが持つ。計画の編集、被選択物の候補列、軌道線の候補列。
   public readonly planEditor: PlanEditor;
   private readonly objectPickables: ObjectPickables;
   private readonly linePickables: LinePickables;
@@ -47,7 +49,7 @@ export class MapView implements ViewFrame {
     private readonly markerManager: MarkerManager,
     private readonly displayWindowManager: DisplayWindowManager,
     private readonly frameControls: FrameControls,
-    private readonly frameAnchors: FrameAnchors,
+    frameAnchors: FrameAnchors,
     private readonly controlSelection: ControlSelection,
     simSpeedManager: SimSpeedManager,
     planDisplay: PlanDisplay,
@@ -55,6 +57,7 @@ export class MapView implements ViewFrame {
     hud: HudLayers & Notifier,
     uiSfx: UiSfx,
     navTarget: NavTarget,
+    private readonly mapDisplay: RunSetting<MapDisplayToggles>,
   ) {
     // 編集・物体候補・線候補を組み、最後に同じ候補群を読む入力処理へ渡す。
     this.planEditor = new PlanEditor(
@@ -112,49 +115,48 @@ export class MapView implements ViewFrame {
   }
 
   // クリック・右クリックを、ノード編集と被選択物・軌道線・空域のメニューへ先着順で配る。
-  public handlePointer(simTime: number): void {
-    this.picking.handleRightClick(this.input, simTime);
-    this.picking.handleLeftClick(this.input);
-    this.picking.handleDoubleClick(this.input);
+  public handlePointer(simTime: number, viewport: Viewport): void {
+    this.picking.handleRightClick(this.input, simTime, viewport);
+    this.picking.handleLeftClick(this.input, viewport);
+    this.picking.handleDoubleClick(this.input, viewport);
     this.planEditor.handleMapPointer(this.input);
-    this.picking.handleLineRightClick(this.input);
+    this.picking.handleLineRightClick(this.input, viewport);
     this.picking.handleEmptySpaceRightClick(this.input, simTime);
   }
 
   // 選択候補と可視性ポリシーを組み、時刻に追従する操作パネルを更新する。
   public update(displayWindow: DisplayWindow): void {
-    this.objectPickables.refresh(displayWindow);
+    this.objectPickables.refresh(displayWindow, this.mapDisplay.current);
     this.frameControls.update(displayWindow.displayTime);
     this.planEditor.update(displayWindow.simTime);
   }
 
   // 天体ラベルの間引きと表示。
-  public syncLabels(displayWindow: DisplayWindow): void {
+  public syncLabels(displayWindow: DisplayWindow, camera: CameraFrame): void {
     const visibilityPolicy = this.visibilityPolicy;
     if (visibilityPolicy === null) { this.celestialMarkers.hideLabels(); return; }
     this.celestialMarkers.syncLabels(
-      this.cameraSystem.activeCameraProjection, this.cameraSystem.activeCameraPos,
-      displayWindow.displayTime, visibilityPolicy,
+      camera.project, camera.position, displayWindow.displayTime, visibilityPolicy,
     );
   }
 
   // マップ専用の編集 UI と常設パネル(未来表示・座標系・軌道物体一覧)・天体ラベルのサブ行・
   // 軌道線の右クリック候補。
-  public syncPanels(displayWindow: DisplayWindow, fo: FloatingOrigin): void {
+  public syncPanels(displayWindow: DisplayWindow, camera: CameraFrame): void {
     // 編集 UI と常設パネル
-    this.planEditor.sync(this.cameraSystem.mapCamera.dist, fo);
+    this.planEditor.sync(this.cameraSystem.mapCamera.dist, camera.floatingOrigin);
     this.displayWindowManager.sync(this.controlSelection.current);
     this.picking.sync(displayWindow.displayTime, this.controlSelection.current);
     this.frameControls.sync(
-      this.objectPickables.pickables, this.cameraSystem.activeCameraPos,
+      this.objectPickables.pickables, camera.position,
       displayWindow.simTime, displayWindow.displayTime,
     );
     // 天体ラベルのサブ行と、軌道線の右クリック候補
     this.celestialMarkers.syncSubLabels(
       this.markerManager.combatMarkers, this.celestialSystem.celestialMotions, displayWindow.displayTime,
-      this.cameraSystem.activeCameraProjection, this.cameraSystem.activeCameraPos,
+      camera.project, camera.position,
     );
-    this.linePickables.refresh(displayWindow, this.frameAnchors);
+    this.linePickables.refresh();
   }
 
   // 編集 UI とクリックの当て先を片付ける。

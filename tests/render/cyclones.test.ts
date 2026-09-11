@@ -6,7 +6,9 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from '../../src/render/cloud/cyclone-tracks';
 import { eyeStrengthOf } from '../../src/render/cloud/cyclones';
-import { SAMPLE_STEP, completeLives, sampled } from './cyclone-samples';
+import {
+  EARTH_ROTATION_PERIOD, EARTH_SURFACE_RADIUS, SAMPLE_STEP, completeLives, sampled,
+} from './cyclone-samples';
 import type { CyclonePlacement } from '../../src/render/cloud/cyclone-tracks';
 
 const DAY = 24 * 3600; // [s]
@@ -16,7 +18,8 @@ const EXTRATROPICAL_LIFE = 0.9;
 
 // 配置の眼の濃さ 0..1。
 function eyeStrengthAt(placement: CyclonePlacement): number {
-  return eyeStrengthOf(placement.depth, placement.radius, placement.latitude);
+  return eyeStrengthOf(
+    placement.depth, placement.radius, placement.latitude, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD);
 }
 
 // この層の回帰テストを登録する。
@@ -25,7 +28,7 @@ export function register(): void {
     // 3 年ぶん。生まれる緯度も深さも半径も低気圧ごとに違うので、世代を重ねて幅の端まで踏む。
     for (let seconds = 0; seconds <= 3 * 365 * DAY; seconds += SAMPLE_STEP) {
       for (let index = 0; index < LOW_COUNT; index++) {
-        const placement = lowPlacementAt(index, seconds);
+        const placement = lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS);
         if (placement === null) continue;
         const strength = eyeStrengthAt(placement);
         assert.equal(strength, 0, `${seconds / DAY} 日目に低気圧 ${index} の眼が ${strength}`);

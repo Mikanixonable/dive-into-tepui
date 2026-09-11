@@ -1,9 +1,10 @@
 // ゲーム画面の HUD のシェル。常設パネル群と描画先(root / svgOverlay)を持ち、
 // 毎フレーム game の状態へ同期して、トースト・ヘルプを出す。
-import type { RenderStyleSetting } from '../../render/render-style';
+import type { RenderStyle } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
 import type { HudLayers } from './hud-layers';
-import type { View } from '../view/view';
+import type { ViewMode } from '../../render/view-mode';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import { VesselPanel } from './panels/vessel-panel';
 import { OrbitPanel } from './orbit/orbit-panel';
 import { TargetPanel } from './panels/target-panel';
@@ -46,9 +47,9 @@ export class Hud implements HudLayers, Notifier {
   // 表示中のトーストの期限 [ms, performance.now() 基準]。
   private toastUntil: number | null = null;
 
-  // 画面の器の上に、ゲームの HUD の DOM を組む。
+  // 画面の器の上に、ゲームの HUD の DOM を組む。renderStyle は組み立て時の見せ方。
   public constructor(
-    private readonly shell: HudShell, public readonly renderStyle: RenderStyleSetting,
+    private readonly shell: HudShell, renderStyle: RenderStyle,
   ) {
     const { combatRoot, mapRoot, svgOverlay, helpPanel, els } = buildHudDom(shell, renderStyle);
     this.combatRoot = combatRoot.element;
@@ -91,7 +92,8 @@ export class Hud implements HudLayers, Notifier {
   }
 
   // view で表に出ている常設パネルと、控えられたトーストを game の現在状態へ合わせる。
-  public syncPanels(view: View, game: Game): void {
+  // camera はこのフレームの表示カメラで、縮尺表示が読む。
+  public syncPanels(view: ViewMode, game: Game, camera: CameraFrame): void {
     const map = view === 'map';
     // 両ビュー共通のパネル。
     this.burnManagementPanel.sync(game.activeControllable?.boosters?.managementViewModel() ?? null);
@@ -99,7 +101,7 @@ export class Hud implements HudLayers, Notifier {
     this.orbitPanel.sync(game);
     // ビュー固有のパネル。
     if (map) {
-      this.mapScaleBadge.sync(map, game.cameraSystem);
+      this.mapScaleBadge.sync(camera.scale, game.cameraSystem.mapCamera.resolvedFocus);
     } else {
       this.vesselPanel.sync(game.activeControllable, game.activeStage, game.cameraSystem, map);
       this.targetPanel.sync(game.activeControllable, game.celestialSystem, game.targeter);
@@ -111,7 +113,7 @@ export class Hud implements HudLayers, Notifier {
   }
 
   // 表に出す HUD ルートを戦闘/マップで切り替える。
-  public setView(view: View): void {
+  public setView(view: ViewMode): void {
     const map = view === 'map';
     this.helpPanel.setView(view);
     const orbit = this.root.querySelector<HTMLElement>('#hud-orbit');
@@ -132,6 +134,15 @@ export class Hud implements HudLayers, Notifier {
     this.combatRoot.classList.toggle('active', !map);
     this.mapRoot.classList.toggle('active', map);
     this.root.classList.toggle('map-ui-active', map);
+  }
+
+  // 見せ方の切り替えが要求されたときに呼ばれる。
+  public onRenderStyleChange: ((style: RenderStyle) => void) | null = null;
+
+  // 見せ方を切り替える。HUD の DOM へ反映し、切り替え要求を外へ返す。
+  public setRenderStyle(style: RenderStyle): void {
+    this.root.dataset['renderStyle'] = style;
+    this.onRenderStyleChange?.(style);
   }
 
   // 本文だけのトーストを durationMs 表示する。
@@ -159,6 +170,7 @@ export class Hud implements HudLayers, Notifier {
     const toast = document.getElementById('hud-toast');
     if (!toast) return;
     const now = performance.now();
+    // 控えがあれば差し替えて期限を張り直し、無ければ期限切れのものを消す。
     if (this.pendingToast) {
       toast.innerHTML = this.pendingToast.html;
       toast.style.opacity = '1';

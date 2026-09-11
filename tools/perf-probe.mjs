@@ -504,7 +504,7 @@ function defaultMatrix() {
     // この長さでは伸び切らず、予算を飽和させたまま推移する。
     { label: 'stage1-map-warp1-dur28d', stage: '1', warp: 1, view: 'map', placeNode: false, duration: '28日', ...common, settleMs: 8000 },
 
-    // (e) 外挿タイルの焼き直し(TrajectoryLine.syncGeometry)。焼き直しは
+    // (e) 外挿タイルの焼き直し(TrajectoryLine.sync)。焼き直しは
     // 「|to - 前回の to| >= 予測列の間引き間隔」で起きるので、simDt が間引き間隔を超える
     // ワープ段では毎フレームになる。1回で最大 MAX_EXTRAPOLATED_SAMPLES = 2048 サンプルぶんの
     // ephemeris.stateOf(すべて別時刻 = リングキャッシュ全ミス)+ frameTransformAt を払う。

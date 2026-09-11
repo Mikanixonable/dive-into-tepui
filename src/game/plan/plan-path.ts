@@ -1,22 +1,17 @@
-// 多ノードの計画軌道を arc 単位で描く。Plan の corners を区間へ分解し、区間ごとに区間ソース
-// (SegmentSource: 統一 PredictedArc への参照と、そこから読む [from, to])と TrajectoryLine(折れ線)を
-// index で対応付けて持つ。ノードを1つも持たない唯一の区間は操作対象自身の予測弧を借用し(owned=false)、
-// それ以外は起点・重力源が既存の弧と変われば作り直し、終端だけが動いた区間は requiredEnd の
-// 書き換えだけで済ませる — どちらの場合も折れ線はその区間の TrajectoryLine プールを使い回す。
-// 画面判定も同じ表示変換を通すため描画とずれない。
-import * as THREE from 'three/webgpu';
+// 多ノードの計画軌道を区間ごとの予測弧として解く。計画を区間へ分解し、各区間の到達状態・
+// アプシス・衝突点と、画面上の最寄り点を答える。折れ線は PlanPathView へ宣言して描く。
+import type * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { KinematicState } from '../../physics/kinematic-state';
-import { bodyAnchorSource } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
-import { Vec3, v3 } from '../../math/vec3';
+import { Vec3 } from '../../math/vec3';
 import { FrameAnchorSource, FrameTransform, ReferenceFrame, toFrameDir, toFramePoint, toInertialDir, toInertialPoint } from '../../physics/frame';
 
 import { Projected } from '../../math/projection';
 import { isOccluded } from '../../physics/occlusion';
-import { FloatingOrigin } from '../camera/floating-origin';
-import { TrajectoryLine } from '../lines/trajectory-line';
-import { LINE_RENDER_ORDER } from '../../render/line-style';
+import type { CameraFrame } from '../../render/camera/camera-frame';
+import { PlanPathView, type PlanArcLine } from '../../render/plan/plan-path-view';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import type { ProjectFn, ScaleFn } from '../../math/projection';
 import { DisplayDurationSource, PlanData, TimeRange, segmentDurationFrom } from './plan';
 import { BodyImpact, PredictedArc } from '../dynamic/predicted-arc';
@@ -30,15 +25,23 @@ import { PLAYER_HULL_RADIUS } from '../player/player';
 // 許容差以内の候補のうち最も早い時刻のものを選ぶ [px]
 const NEAREST_SAMPLE_TIE_PX = 3;
 
-// 計画軌道の折れ線を破線で描くときの、破線1本・間隔の画面上の長さ [px] と不透明度。
-// 実距離ではなく画面ピクセルで持つのは、マップの倍率が数桁変わるため実距離で固定すると
-// 拡大時は数本の線分に、縮小時はサブピクセルになって実線と区別できなくなるため。
+// 計画軌道の破線1本・間隔の画面上の長さ [px] と不透明度。マップの倍率は数桁変わるので、
+// 実距離で固定すると拡大時は数本の線分に、縮小時はサブピクセルになって実線と区別できない。
 const PLAN_ARC_DASH_PX = 8;
 const PLAN_ARC_GAP_PX = 6;
 const PLAN_ARC_OPACITY = 0.85;
 
+// 区間 index ごとの折れ線の色。末尾の色を以降の区間で使い回す。
 const SEGMENT_COLORS = [0xffb36b, 0xff8a26, 0xff6a00];
 const arcColor = (i: number): number => SEGMENT_COLORS[Math.min(i, SEGMENT_COLORS.length - 1)]!;
+
+// i 番目の区間の折れ線の見た目。mpp [m/px] は破線の画面ピクセル指定を実距離へ直す尺度。
+function lineStyle(i: number, mpp: number): LineStyle {
+  return {
+    color: arcColor(i), opacity: PLAN_ARC_OPACITY, renderOrder: LINE_RENDER_ORDER.plan,
+    dash: { dashSize: PLAN_ARC_DASH_PX * mpp, gapSize: PLAN_ARC_GAP_PX * mpp },
+  };
+}
 
 const OFFSCREEN: Projected = { x: 0, y: 0, front: false };
 const NO_SAMPLES: readonly KinematicState[] = [];
@@ -49,17 +52,16 @@ const TIME_TIE_SEC = 1e-6;
 // nearestSample が最寄りサンプルの左右区間を補間曲線上で細分するときの黄金分割探索の反復回数。
 const NEAREST_SAMPLE_REFINE_ITERATIONS = 20;
 
-type Segment = { state0: KinematicState; end: number };
+// 起点状態 state0 から時刻 end [s] までの1区間。
+interface Segment { state0: KinematicState; end: number }
 
-// 1区間ぶんの積分ソース。owned が真なら PlanPath がこの弧の生成・requiredEnd/retainFrom の
-// 書き込みまで持つ(伸ばすのは Predictor の予算パス — growableArcs 参照)。偽ならノードを1つも
-// 持たない唯一の区間で、arc は操作艦自身の予測弧をそのまま借りたもの(艦の予測がまだ無い
-// フレームは null)。
-type SegmentSource = { arc: PredictedArc | null; from: number; to: number; owned: boolean };
+// 1区間ぶんの積分ソース。弧の [from, to] を読む。owned が偽なら、ノードを1つも持たない唯一の
+// 区間が操作艦自身の予測弧を借りたもの(艦の予測がまだ無いフレームは arc が null)。
+interface SegmentSource { arc: PredictedArc | null; from: number; to: number; owned: boolean }
 
 // 最後のバーン後(これから乗る軌道)の区間で見つかったアプシス。
 // periapsis/apoapsis は、区間が地表到達等で打ち切られてその極値へ届かなければ null。
-// apsisCenter はその極値を検出した弧自身が答える中心天体。
+// *Center はその極値を検出した弧が答える中心天体。
 interface FinalSegment {
   readonly periapsis: KinematicState | null;
   readonly apoapsis: KinematicState | null;
@@ -67,75 +69,77 @@ interface FinalSegment {
   readonly apoapsisCenter: CelestialBody | null;
 }
 
+// 計画軌道上の1点と、それが属する区間の index。
 interface PlanPathSample {
   readonly state: KinematicState;
   readonly arcIdx: number;
 }
 
+// update() が確定させた表示変換。サンプルは自身の時刻の frame で bake し、displayTime の unbake で
+// 表示座標(ECI)へ戻す。frameAnchors は登録天体でない基準の解決役。
+interface DisplayTransform {
+  readonly frame: ReferenceFrame;
+  readonly displayTime: number;
+  readonly frameAnchors: FrameAnchorSource;
+  readonly unbake: FrameTransform;
+}
+
 export class PlanPath {
-  readonly group = new THREE.Group();
   // 先頭 activeCount 本がこのフレームの区間に対応する(区間が減れば末尾を捨てる)。
-  private sources: SegmentSource[] = [];
-  // 折れ線は index ごとのプールとして持ち、区間数が減っても捨てない(色は index で決まるので
-  // 使い回す)。
-  private lines: TrajectoryLine[] = [];
+  private readonly sources: SegmentSource[] = [];
   private activeCount = 0;
   // 先頭 _nodeCount 本がノードで終わる区間(= 各ノードの到達状態を持つ)。
   private _nodeCount = 0;
-  // update() で実際のレジストリの慣性系に置き換わるまでの暫定値。
-  private frame: ReferenceFrame = { center: 'earth', rotatingWith: null };
-  // 折れ線が載っている座標系。
-  get displayFrame(): ReferenceFrame { return this.frame; }
-  private celestialBodies: CelestialBodies | null = null;
-  private unbakeTime = 0;
-  // un-bake は update() が受け取った displayTime に固定される。同じフレーム中に ghost/impact/apsis/tick と
-  // 折れ線同期・ポインタ判定が何度も参照するため、update 単位で1回だけ組み立てる。天体を引く
-  // 時刻はフレームごとに動くので、時刻だけでなく update() ごとに無効化する。
-  private unbakeTransform: FrameTransform | null = null;
-  // 直近の update が受け取った FrameAnchorSource。toDisplay/toDisplayDir/nearestSample は
-  // ポインタイベント起点でフレーム外から呼ばれうるため、update と同じ値をここから読む。
-  private frameAnchors: FrameAnchorSource = bodyAnchorSource([], 0);
+  // このフレームに宣言した弧を描く折れ線の view。
+  private readonly view: PlanPathView;
+  // 直近の update() が確定させた表示変換。update() を一度も通していなければ null。
+  private displayTransform: DisplayTransform | null = null;
+  // 折れ線が載っている座標系。update() を通した後に読む。
+  public get displayFrame(): ReferenceFrame { return this.requireDisplayTransform().frame; }
   private project: ProjectFn | null = null;
-  // sync が最後に受け取ったカメラ位置。nearestSample の遮蔽判定に使う(呼び出しは DOM
-  // ポインタイベント起点でフレーム外なので、直近の sync から引き継ぐ)。
+  // sync が最後に受け取ったカメラ位置。nearestSample の遮蔽判定に使う。
   private cameraPos: Vec3 | null = null;
   private final: FinalSegment | null = null;
-  // 計画を積分して保持する範囲とは別に、画面へ描く時間窓を持つ。ノードが複数あると
-  // 計画全体は表示期間より長くなり得るため、折れ線と目盛が同じ窓を読むようにする。
+  // 画面へ描く時間窓 [s]。ノードが複数あると計画全体は表示期間より長くなり得るので、
+  // 積分範囲とは別に持つ。
   private displayFrom = 0;
   private displayTo = 0;
   // clipSamplesTo が実際に切り詰めた(= 新規配列を作った)結果を区間の index ごとに
-  // (元配列, to) でメモ化する。TrajectoryLine.syncGeometry の再 bake 抑制やクリック候補の
-  // 走査が同一フレーム内で何度も同じ配列参照を要求するため。
+  // (元配列, to) でメモ化したもの。
   private readonly samplesCache: ({ source: readonly KinematicState[]; to: number; result: readonly KinematicState[] } | null)[] = [];
   // 直近の update() で作り直した区間の本数。
-  lastRebuiltArcs = 0;
+  public lastRebuiltArcs = 0;
 
-  // group をシーンへ登録する(初期状態は非表示)。
-  constructor(scene: THREE.Scene, private readonly displayDuration: DisplayDurationSource) {
-    this.group.visible = false;
-    scene.add(this.group);
+  // 折れ線の view を scene へ登録する。displayDuration は末尾区間の長さを決める表示期間。
+  public constructor(
+    scene: THREE.Scene,
+    private readonly celestialBodies: CelestialBodies,
+    private readonly displayDuration: DisplayDurationSource,
+  ) {
+    this.view = new PlanPathView(scene);
   }
 
-  // 起点とノード列から区間列を組み直す。ノードを1つも持たない唯一の区間は ship 自身の予測弧を
-  // 借用し、それ以外の区間は起点・重力源が既存の弧と一致すれば requiredEnd/retainFrom の
-  // 書き換えだけで済ませ、一致しなければ作り直す(伸ばすのは呼び出し側の予算パス — growableArcs
-  // 参照)。表示変換の文脈(座標系・un-bake 時刻)もこのフレームのものに更新する。
-  update(
-    planData: PlanData, ship: Controllable | null,
-    celestialBodies: CelestialBodies, frame: ReferenceFrame, simTime: number, displayTime: number,
-    frameAnchors: FrameAnchorSource, displayDurationSec: number,
+  // このフレームの表示変換(座標系・un-bake 時刻)を確定させ、起点とノード列から区間列を組み直す。
+  // planData が null なら表示変換だけを確定させて区間を空にする。組み直した弧は growableArcs() が
+  // 返すので、呼び出し側がそれを requiredEnd まで伸ばす。
+  public update(
+    planData: PlanData | null, ship: Controllable | null, frame: ReferenceFrame,
+    simTime: number, displayTime: number, frameAnchors: FrameAnchorSource, displayDurationSec: number,
   ): void {
-    this.frame = frame;
-    this.celestialBodies = celestialBodies;
-    this.unbakeTime = displayTime;
+    this.displayTransform = {
+      frame, displayTime, frameAnchors,
+      unbake: this.celestialBodies.frames.transformAt(frame, displayTime, frameAnchors),
+    };
+    if (planData === null) {
+      this.activeCount = 0;
+      this.final = null;
+      return;
+    }
     this.displayFrom = simTime;
     this.displayTo = simTime + Math.max(0, displayDurationSec);
-    this.frameAnchors = frameAnchors;
-    this.unbakeTransform = celestialBodies.frames.transformAt(frame, displayTime, frameAnchors);
     this.lastRebuiltArcs = 0;
     // 起点→node…→末尾区間に分解する
-    const segments = buildSegments(planData, celestialBodies, this.displayDuration);
+    const segments = buildSegments(planData, this.celestialBodies, this.displayDuration);
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
       const isFinal = i === segments.length - 1;
@@ -150,11 +154,10 @@ export class PlanPath {
       const prev = this.sources[i];
       let arc = prev?.owned ? prev.arc : null;
       if (!arc || !arc.represents(seg.state0, seg.end)) {
-        // 惑星への周回計画のみが対象なので、自機自身の諸元(PLAYER_HULL_RADIUS/SHIP_BCINV/
-        // SHIP_SRP_COEFF)で積分する。外挿の尾は持たない(keplerTail=false) — 尾の上にノードを
-        // 置くと、実際に積分し直した次のノードと繋がらなくなるため。
+        // 惑星への周回計画のみが対象なので自機の諸元で積分する。外挿の尾を付けると、尾の上に
+        // 置いたノードが積分し直した次のノードと繋がらなくなる。
         arc = new PredictedArc(
-          seg.state0, celestialBodies.celestialMotions, PLAYER_HULL_RADIUS, SHIP_BCINV, SHIP_SRP_COEFF,
+          seg.state0, this.celestialBodies.celestialMotions, PLAYER_HULL_RADIUS, SHIP_BCINV, SHIP_SRP_COEFF,
           /* keplerTail */ false, /* consumable */ false,
         );
         this.lastRebuiltArcs++;
@@ -176,17 +179,12 @@ export class PlanPath {
     };
   }
 
-  // 表示する区間を空にする。
-  clear(): void {
-    this.activeCount = 0;
-    this.final = null;
-  }
-
   // いま描いている折れ線そのもの(表示窓で切った区間ごとのサンプル列、時刻昇順)。線の上に
   // 乗せる点(交点など)を探す対象になる。
-  displayedSamples(): readonly (readonly KinematicState[])[] {
+  public displayedSamples(): readonly (readonly KinematicState[])[] {
     const out: (readonly KinematicState[])[] = [];
     for (let i = 0; i < this.activeCount; i++) {
+      // 区間の範囲と表示窓の重なりを描いている部分とし、2点に満たなければ線にならない。
       const source = this.sources[i]!;
       const from = Math.max(this.displayFrom, source.from);
       const to = Math.min(this.displayTo, source.to);
@@ -198,8 +196,8 @@ export class PlanPath {
     return out;
   }
 
-  // このフレーム owned な弧を区間順(= 時刻順)で返す。Predictor の予算パスが実際に伸ばす対象。
-  growableArcs(): readonly PredictedArc[] {
+  // このフレーム owned な弧を区間順(= 時刻順)で返す。どれも requiredEnd まで伸ばす対象。
+  public growableArcs(): readonly PredictedArc[] {
     const out: PredictedArc[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       const source = this.sources[i]!;
@@ -208,59 +206,56 @@ export class PlanPath {
     return out;
   }
 
-  // 最後のバーン後の区間。update() を一度も通していなければ null。
-  finalSegment(): FinalSegment | null {
+  // 最後のバーン後の区間。直近の update() が描く計画を受け取っていなければ null。
+  public finalSegment(): FinalSegment | null {
     return this.final;
   }
 
-  // 各区間の折れ線メッシュを最新のサンプル列へ同期し、区間数が減った分の線を隠す。ノードを
-  // 1つも持たない区間(借用のみ)は操作対象自身の predictedLine が描くので、ここでは折れ線を
-  // 隠すだけにする。画面判定が使う視点(project)もここで受け取り、毎フレーム上書きする。
-  // 破線のドット/隙間は各区間のサンプル列中央の代表点で scale(m/px)を引き、ピクセル指定を
-  // 実距離に直してから渡す — ズームによらず画面上の間隔を一定に保つため。camera は各区間の
-  // 折れ線の解像度を決める画面上のサジッタを実距離へ換算するための描画カメラ。
-  sync(fo: FloatingOrigin, project: ProjectFn, scale: ScaleFn, cameraPos: Vec3, camera: THREE.Camera): void {
-    this.project = project;
-    this.cameraPos = cameraPos;
-    // ノードの無い計画は操作対象の現在軌道そのものなので、折れ線は出さない。それでも
-    // project の更新までは通す — 止めると、クリック当たり判定が古い視点のまま残る。
-    this.setVisible(this._nodeCount > 0);
-    if (this.celestialBodies === null) return;
+  // このフレームに描く弧を view へ宣言し、画面判定が使う視点を更新する。毎フレーム呼ぶ —
+  // 止めると、クリック当たり判定が古い視点のまま残る。
+  public sync(camera: CameraFrame): void {
+    this.project = camera.project;
+    this.cameraPos = camera.position;
+    const transform = this.displayTransform;
+    if (transform === null) return;
+    this.view.sync(
+      this.arcLines(camera.scale, transform.frame), transform.displayTime, this.celestialBodies,
+      transform.frameAnchors, camera,
+    );
+  }
+
+  // 折れ線の描画資源を片付ける。
+  public dispose(): void {
+    this.view.dispose();
+  }
+
+  // frame に載せて描く owned な区間の弧。ノードの無い計画は操作対象の予測線と同じ軌道なので空。
+  private arcLines(scale: ScaleFn, frame: ReferenceFrame): readonly PlanArcLine[] {
+    if (this._nodeCount === 0) return [];
+    const lines: PlanArcLine[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       const source = this.sources[i]!;
-      const line = this.lineAt(i);
-      if (!source.owned || !source.arc) {
-        line.setVisible(false);
-        continue;
-      }
-      line.setVisible(true);
+      if (!source.owned || !source.arc) continue;
+      // 破線の尺度は区間のサンプル列中央の代表点で引く。代表点が無ければ画面ピクセル指定を
+      // そのまま実距離として渡す。
       const samples = this.samplesOf(i, source);
-      let dashSize = PLAN_ARC_DASH_PX;
-      let gapSize = PLAN_ARC_GAP_PX;
-      if (samples.length > 0) {
-        const mid = samples[Math.floor(samples.length / 2)]!;
-        const mpp = scale(this.toDisplay(mid.r, mid.t));
-        dashSize = PLAN_ARC_DASH_PX * mpp;
-        gapSize = PLAN_ARC_GAP_PX * mpp;
-      }
-      line.setDash(dashSize, gapSize);
+      const mid = samples.length > 0 ? samples[Math.floor(samples.length / 2)]! : null;
+      const mpp = mid === null ? 1 : scale(this.toDisplay(mid.r, mid.t));
       // 計画全体が表示期間より長くても、折れ線は表示窓内だけを描く。
-      line.syncGeometry(
-        source.arc.trajectory,
-        Math.max(this.displayFrom, source.from),
-        Math.min(this.displayTo, source.to),
-        this.frame, this.celestialBodies, this.frameAnchors,
-      );
-      line.syncTransform(this.frame, this.unbakeTime, this.celestialBodies, fo, this.frameAnchors);
-      line.sync(camera);
+      lines.push({
+        trajectory: source.arc.trajectory,
+        from: Math.max(this.displayFrom, source.from),
+        to: Math.min(this.displayTo, source.to),
+        frame,
+        style: lineStyle(i, mpp),
+      });
     }
-    // 線プールは区間数が減っても捨てずに残すので、隠す範囲は sources でなく lines の本数まで見る。
-    for (let i = this.activeCount; i < this.lines.length; i++) this.lines[i]!.setVisible(false);
+    return lines;
   }
 
   // 天体衝突が検出された地点と、その相手の天体(区間ごとに高々1つ)。今フレーム表示中の
   // 区間だけを対象にする。
-  impactPoints(): readonly { readonly state: KinematicState; readonly body: CelestialBody; readonly arcIdx: number }[] {
+  public impactPoints(): readonly { readonly state: KinematicState; readonly body: CelestialBody; readonly arcIdx: number }[] {
     const out: { state: KinematicState; body: CelestialBody; arcIdx: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       const impact = this.impactOf(this.sources[i]!);
@@ -270,10 +265,11 @@ export class PlanPath {
   }
 
   // 表示中の区間が覆う simTime の範囲。どの区間にもサンプルが無ければ null。
-  timeRange(): { readonly min: number; readonly max: number } | null {
+  public timeRange(): { readonly min: number; readonly max: number } | null {
     let minT = Infinity;
     let maxT = -Infinity;
     for (let i = 0; i < this.activeCount; i++) {
+      // 区間のサンプル範囲を表示窓で切り、全区間の端を集める。
       const samples = this.samplesOf(i, this.sources[i]!);
       if (samples.length === 0) continue;
       const from = Math.max(samples[0]!.t, this.displayFrom);
@@ -287,12 +283,12 @@ export class PlanPath {
   }
 
   // この折れ線が経由するノードの数。
-  get nodeCount(): number {
+  public get nodeCount(): number {
     return this._nodeCount;
   }
 
   // 各ノードの到達時点(噴射直前)の状態。到達前に打ち切られた区間は null。
-  arrivalStates(): (KinematicState | null)[] {
+  public arrivalStates(): (KinematicState | null)[] {
     const out: (KinematicState | null)[] = [];
     for (let i = 0; i < this._nodeCount; i++) {
       const source = this.sources[i];
@@ -302,14 +298,13 @@ export class PlanPath {
   }
 
   // 時刻 t を保持区間に含む最初の arc から補間した状態を返す。どの arc の外でも null。
-  sampleAt(t: number): KinematicState | null {
+  public sampleAt(t: number): KinematicState | null {
     return this.sampleAtWithArc(t)?.state ?? null;
   }
 
-  // 時刻 t の補間状態と、それが属する区間の index を返す。ノードを別区間へ移すときは、
-  // その区間までに適用済みの Δv を差し引いてから新しい到着状態を組み立てる必要があるため、
-  // PlanEditor は sampleAt() ではなくこちらを使う。
-  sampleAtWithArc(t: number): PlanPathSample | null {
+  // 時刻 t の補間状態と、それが属する区間の index を返す。区間ごとに適用済みの Δv が違うので、
+  // ノードを区間を跨いで動かすときはこちらで区間を知る。
+  public sampleAtWithArc(t: number): PlanPathSample | null {
     for (let i = 0; i < this.activeCount; i++) {
       const s = this.stateAtSource(this.sources[i]!, t);
       if (s) return { state: s, arcIdx: i };
@@ -318,58 +313,50 @@ export class PlanPath {
   }
 
   // 時刻 t のサンプル位置 r を、現在の表示座標(ECI)へ変換する。座標系の原点・姿勢はサンプル
-  // 時刻 t で bake し、表示時刻 unbakeTime で un-bake する(点なので FrameTransform を2つ引く)。
-  toDisplay(r: Vec3, t: number): Vec3 {
-    if (!this.celestialBodies) return v3(r.x, r.y, r.z);
-    const bakeTf = this.celestialBodies.frames.transformAt(this.frame, t, this.frameAnchors);
-    const unbakeTf = this.currentUnbakeTransform()!;
-    return toInertialPoint(unbakeTf, toFramePoint(bakeTf, r));
+  // 時刻 t で bake し、表示時刻で un-bake する。update() を通した後に呼ぶ。
+  public toDisplay(r: Vec3, t: number): Vec3 {
+    const { frame, frameAnchors, unbake } = this.requireDisplayTransform();
+    const bakeTf = this.celestialBodies.frames.transformAt(frame, t, frameAnchors);
+    return toInertialPoint(unbake, toFramePoint(bakeTf, r));
   }
 
-  // 時刻 t の方向ベクトル dir を、現在の表示座標(ECI)へ変換する。方向なので原点移動は掛からず、
-  // サンプル時刻 t の bake 姿勢と表示時刻 unbakeTime の un-bake 姿勢の回転だけを受ける。
-  toDisplayDir(dir: Vec3, t: number): Vec3 {
-    if (!this.celestialBodies) return v3(dir.x, dir.y, dir.z);
-    const bakeTf = this.celestialBodies.frames.transformAt(this.frame, t, this.frameAnchors);
-    const unbakeTf = this.currentUnbakeTransform()!;
-    return toInertialDir(unbakeTf, toFrameDir(bakeTf, dir));
+  // 時刻 t の方向ベクトル dir を、現在の表示座標(ECI)へ回転する。update() を通した後に呼ぶ。
+  public toDisplayDir(dir: Vec3, t: number): Vec3 {
+    const { frame, frameAnchors, unbake } = this.requireDisplayTransform();
+    const bakeTf = this.celestialBodies.frames.transformAt(frame, t, frameAnchors);
+    return toInertialDir(unbake, toFrameDir(bakeTf, dir));
   }
 
   // 時刻 t のサンプル位置 r をスクリーン座標へ投影する。
-  projectPoint(r: Vec3, t: number): Projected {
+  public projectPoint(r: Vec3, t: number): Projected {
     if (!this.project) return OFFSCREEN;
     return this.project(this.toDisplay(r, t));
   }
 
-  // 画面座標に最も近い計画軌道上の点(maxPx 以内)。なければ null。range を渡すと、
-  // その時刻範囲に入るサンプルだけを候補にする。まず画面距離だけで最寄りの arc を選び
-  // (バーン前後で arc をまたぐと t の大小関係が逆転するため、複数 arc を通して時刻を
-  // 比べると誤った arc を選びかねない)、その arc の中で画面最短距離から NEAREST_SAMPLE_TIE_PX
-  // 以内の候補に絞ってから referenceT に最も近い時刻を選ぶ — 新規配置は範囲の下端(= 最も
-  // 早く到達する時刻)を、既存ノードのドラッグはそのノードの現在時刻を渡すことで、
-  // 「表示期間が延びて折れ線が自分自身に重なる区間」の曖昧さを呼び出しの意図どおりに解く。
-  // こうして選んだ1点の左右の隣接サンプルまでを区間とし、区間内では画面距離が単峰であると
-  // みなして黄金分割探索を掛け、補間曲線上の最寄り点まで追い込む。
-  nearestSample(mx: number, my: number, maxPx: number, referenceT: number, range?: TimeRange): { state: KinematicState, arcIdx: number } | null {
+  // 画面座標に最も近い計画軌道上の点(maxPx 以内)。なければ null。range を渡すとその時刻範囲に
+  // 限る。折れ線が自分自身に重なる所では referenceT に最も近い時刻を選ぶので、新規配置は範囲の
+  // 下端を、既存ノードのドラッグはそのノードの現在時刻を渡す。
+  public nearestSample(
+    mx: number,
+    my: number,
+    maxPx: number,
+    referenceT: number,
+    range?: TimeRange,
+  ): { state: KinematicState, arcIdx: number } | null {
     const maxDSq = maxPx * maxPx;
+    const transform = this.displayTransform;
+    if (transform === null) return null;
     const cameraPos = this.cameraPos;
-    const bodies = this.celestialBodies;
-    const motions = cameraPos && bodies ? bodies.celestialMotions : null;
-    // 表示座標への変換をサンプルごとに1回だけ行い、遮蔽判定と投影で共有する。un-bake 側の
-    // 変換は時刻が固定なのでループの外で1回だけ引く。
-    const unbakeTf = bodies ? this.currentUnbakeTransform() : null;
+    const motions = this.celestialBodies.celestialMotions;
     const candidates: { state: KinematicState; arcIdx: number; sampleIdx: number; dSq: number }[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       const samples = this.samplesOf(i, this.sources[i]!);
       for (let j = 0; j < samples.length; j++) {
         const s = samples[j]!;
         if (range && (s.t < range.min || s.t > range.max)) continue;
-        const pos = bodies && unbakeTf
-          ? toInertialPoint(unbakeTf, toFramePoint(bodies.frames.transformAt(this.frame, s.t, this.frameAnchors), s.r))
-          : v3(s.r.x, s.r.y, s.r.z);
+        const pos = this.toDisplay(s.r, s.t);
         // 天体に遮蔽されて画面上見えていない点は候補から除く。
-        if (cameraPos && motions
-          && isOccluded(cameraPos, pos, motions, this.frameAnchors.bodiesPivot)) continue;
+        if (cameraPos && isOccluded(cameraPos, pos, motions, transform.frameAnchors.bodiesPivot)) continue;
         const p = this.project ? this.project(pos) : OFFSCREEN;
         if (!p.front) continue;
         const dSq = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
@@ -378,7 +365,7 @@ export class PlanPath {
     }
     if (candidates.length === 0) return null;
 
-    // 画面最短距離の候補が属する arc だけを tie-break の対象にする。
+    // 区間は画面距離だけで選ぶ — バーン前後で区間を跨ぐと t の大小が逆転し、時刻で比べると誤る。
     let nearest = candidates[0]!;
     for (const c of candidates) if (c.dSq < nearest.dSq) nearest = c;
     const toleranceDSq = (Math.sqrt(nearest.dSq) + NEAREST_SAMPLE_TIE_PX) ** 2;
@@ -394,6 +381,7 @@ export class PlanPath {
     }
     if (!best) return null;
 
+    // 選んだ点の左右の隣接サンプルの間で画面距離を単峰とみなし、補間曲線上の最寄り点へ追い込む。
     const source = this.sources[best.arcIdx]!;
     const samples = this.samplesOf(best.arcIdx, source);
     let lo = best.sampleIdx > 0 ? samples[best.sampleIdx - 1]!.t : best.state.t;
@@ -417,22 +405,13 @@ export class PlanPath {
     return { state: refined ?? best.state, arcIdx: best.arcIdx };
   }
 
-  // un-bake の座標系変換。無効化されていれば unbakeTime で組み直し、以後は同じものを返す。
-  // 星系がまだ渡されていなければ null。
-  private currentUnbakeTransform(): FrameTransform | null {
-    if (!this.celestialBodies) return null;
-    if (this.unbakeTransform === null) {
-      this.unbakeTransform = this.celestialBodies.frames.transformAt(
-        this.frame, this.unbakeTime, this.frameAnchors,
-      );
-    }
-    return this.unbakeTransform;
+  // 直近の update() が確定させた表示変換。update() を通す前に引くのは呼び出し順の誤りなので投げる。
+  private requireDisplayTransform(): DisplayTransform {
+    if (this.displayTransform === null) throw new Error('PlanPath: update() より前に表示変換を引いた');
+    return this.displayTransform;
   }
 
-  // source を to でクリップしたサンプル列。source.arc が無ければ空配列。end で実際に切り詰めが
-  // 要ったとき(source.arc.trajectory 自身は end を越えて伸び続ける)だけ index ごとに
-  // (元配列, to) でメモ化する — 同じフレーム内の複数の読者(sync/timeRange/nearestSample)へ
-  // 同じ配列参照を返し続けないと、TrajectoryLine の再 bake 抑制が毎回働かなくなる。
+  // source を to でクリップしたサンプル列(arc が無ければ空)。元配列と to が同じ間は同じ配列参照を返す。
   private samplesOf(i: number, source: SegmentSource): readonly KinematicState[] {
     if (!source.arc) return NO_SAMPLES;
     const raw = source.arc.trajectory.samplesOldestFirst();
@@ -465,31 +444,6 @@ export class PlanPath {
   private apoapsisOf(source: SegmentSource): KinematicState | null {
     const first = source.arc?.apsides?.apoapsis ?? null;
     return first && withinEnd(first.t, source.to) ? first : null;
-  }
-
-  // group 全体の表示/非表示を切り替える。
-  setVisible(v: boolean): void {
-    this.group.visible = v;
-  }
-
-  // group をシーンから外し、プールした折れ線を解放する。
-  dispose(): void {
-    this.group.removeFromParent();
-    for (const line of this.lines) line.dispose();
-  }
-
-  // i 番目の折れ線を返す(なければ生成して group へ追加する)。区間の色は index で決まる。
-  private lineAt(i: number): TrajectoryLine {
-    while (this.lines.length <= i) {
-      const idx = this.lines.length;
-      const line = new TrajectoryLine({
-        color: arcColor(idx), opacity: PLAN_ARC_OPACITY, renderOrder: LINE_RENDER_ORDER.plan,
-        dash: { dashSize: PLAN_ARC_DASH_PX, gapSize: PLAN_ARC_GAP_PX },
-      });
-      this.lines.push(line);
-      this.group.add(line.line);
-    }
-    return this.lines[i]!;
   }
 }
 

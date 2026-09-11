@@ -1,10 +1,23 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
+import rawAsset from '../../src/assets/models/pdb5i4rProtein.json';
+import rawBackbone from '../../src/assets/models/pdb5i4rBackbone.json';
+import rawStructure from '../../src/assets/models/pdb5i4rStructure.json';
+import rawMyoglobinAsset from '../../src/assets/models/myoglobin1mbnProtein.json';
+import rawMyoglobinBackbone from '../../src/assets/models/myoglobin1mbnBackbone.json';
+import rawMyoglobinStructure from '../../src/assets/models/myoglobin1mbnStructure.json';
+import rawMotion from '../../src/assets/models/pdb5i4rMotion.json';
 import type { ProteinAssetDefinition, ProteinMotionAsset } from '../../src/game/protein/protein-schema';
-import type { ProteinRenderSource } from '../../src/render/protein-enemy-ship';
-import { buildProteinEnemyShip } from '../../src/render/protein-enemy-ship';
-import { proteinMotionModeDisplacements } from '../../src/game/protein/protein-motion-modes';
+import type { ProteinBackboneAsset, ProteinRenderSource } from '../../src/render/protein/protein-render-definition';
+import type { ProteinDisplayAsset } from '../../src/render/protein/protein-display-asset';
+import { buildProteinEnemyShip, buildProteinRibbonShip } from '../../src/render/protein/protein-enemy-ship';
+import { proteinMotionModeDisplacements } from '../../src/render/protein/protein-motion-modes';
+import { proteinSecondaryKind } from '../../src/render/protein/protein-ribbon-color';
+import { LIT_OPAQUE_LAYER, SHADOW_CASTER_LAYER } from '../../src/render/pipeline/lit-layer';
+import {
+  DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, isProteinDisplaySettings, proteinColorModesFor,
+} from '../../src/render/protein/protein-display';
 import { testProteinAssetBundles } from '../protein-test-assets';
 import {
   PROTEIN_RESIDUE_A_ATTRIBUTE,
@@ -14,7 +27,7 @@ import {
   disposeProteinMotionBinding,
   registerProteinMotionRenderer,
   type ProteinMotionBinding,
-} from '../../src/render/protein-motion-material';
+} from '../../src/render/protein/protein-motion-material';
 
 const TEST_MODE_COUNT = 2;
 
@@ -104,9 +117,30 @@ const source: ProteinRenderSource = {
         chain: ['A', 'A', 'A'],
       },
     },
-    generator: { name: 'test' },
+    generator: { name: 'test', contentHash: 'test' },
   },
 };
+
+const asset = rawAsset as unknown as ProteinAssetDefinition;
+const myoglobinAsset = rawMyoglobinAsset as unknown as ProteinAssetDefinition;
+
+/** 焼き込み済みの JSON をそのまま束ねて、1体ぶんの描画 source にする。 */
+const sourceFor = (
+  definition: ProteinAssetDefinition,
+  backbone: unknown,
+  structure: unknown,
+  motionAsset: ProteinMotionAsset = rawMotion as unknown as ProteinMotionAsset,
+): ProteinRenderSource => ({
+  semantic: definition,
+  motion: motionAsset,
+  backbone: backbone as ProteinBackboneAsset,
+  structure: structure as ProteinDisplayAsset,
+});
+
+/** 主鎖に含まれる二次構造の種類を返す。 */
+function ribbonKinds(renderSource: ProteinRenderSource): Set<string> {
+  return new Set(renderSource.backbone.backboneSecondary.map(proteinSecondaryKind));
+}
 
 function disposeObject(root: THREE.Object3D): void {
   root.traverse((object) => {
@@ -146,11 +180,14 @@ export function register(): void {
     assert.throws(() => buildProteinEnemyShip(source, { representation: 'molecular', colorMode: 'element' }, bad), /residueCount/);
     disposeProteinMotionBinding(bad);
     for (const bundle of testProteinAssetBundles()) {
-      const modeDisplacements = proteinMotionModeDisplacements(bundle.motion);
-      const binding = createProteinMotionBinding(bundle.motion.residueCount, modeDisplacements, bundle.motion.modes.length);
+      const renderSource = bundle.render;
+      const modeDisplacements = proteinMotionModeDisplacements(renderSource.motion);
+      const binding = createProteinMotionBinding(
+        renderSource.motion.residueCount, modeDisplacements, renderSource.motion.modes.length,
+      );
       assert.ok(binding);
-      const root = buildProteinEnemyShip(bundle, { representation: 'ribbon', colorMode: 'chain' }, binding);
-      assert.equal(root.children[0]?.scale.x, bundle.semantic.coordinateScale);
+      const root = buildProteinEnemyShip(renderSource, { representation: 'ribbon', colorMode: 'chain' }, binding);
+      assert.equal(root.children[0]?.scale.x, renderSource.semantic.coordinateScale);
       disposeObject(root);
       disposeProteinMotionBinding(binding);
     }
@@ -242,6 +279,95 @@ export function register(): void {
     assert.equal(deleteCount, 1);
     assert.equal(binding.modeDisplacements.attribute.array.length, 0);
     unregister();
+  });
+
+  test('myoglobin: ribbon render includes the heme ligand and visible iron', () => {
+    const object = buildProteinEnemyShip(sourceFor(
+      myoglobinAsset, rawMyoglobinBackbone, rawMyoglobinStructure,
+    ), { representation: 'ribbon', colorMode: 'chain' });
+    let ligandFound = false;
+    let ironFound = false;
+    object.traverse((child) => {
+      ligandFound ||= child.userData.proteinLigand === true;
+      ironFound ||= child.userData.proteinLigand === true && child.userData.proteinElement === 'FE';
+    });
+    assert.equal(ligandFound, true);
+    assert.equal(ironFound, true);
+  });
+
+  test('protein ribbon: secondary-structure coloring gives each secondary kind of the asset its own color', () => {
+    for (const bundle of testProteinAssetBundles()) {
+      const root = buildProteinRibbonShip(bundle.render, 'secondary-structure');
+      const colors = new Set<string>();
+      root.traverse((child) => {
+        if (!child.userData.proteinRibbon) return;
+        const vertexColors = (child as THREE.Mesh).geometry.getAttribute('color');
+        for (let index = 0; index < vertexColors.count; index++) {
+          colors.add(`${vertexColors.getX(index)},${vertexColors.getY(index)},${vertexColors.getZ(index)}`);
+        }
+      });
+      assert.equal(colors.size, ribbonKinds(bundle.render).size, bundle.semantic.asset.id);
+      disposeObject(root);
+    }
+  });
+
+  test('protein silhouette: internal ribbon is white while the ligand remains visible', () => {
+    const object = buildProteinEnemyShip(sourceFor(
+      myoglobinAsset, rawMyoglobinBackbone, rawMyoglobinStructure,
+    ), { representation: 'silhouette', colorMode: 'surface-charge' });
+    let ribbons = 0;
+    let ligandFound = false;
+    let shellFound = false;
+    object.traverse((child) => {
+      ligandFound ||= child.userData.proteinLigand === true;
+      if (child.userData.proteinTranslucentShell === true) {
+        shellFound = true;
+        assert.equal(child.layers.isEnabled(0), true);
+        assert.equal(child.layers.isEnabled(LIT_OPAQUE_LAYER), false);
+        assert.equal(child.layers.isEnabled(SHADOW_CASTER_LAYER), false);
+      }
+      if (!child.userData.proteinRibbon) return;
+      ribbons += 1;
+      assert.equal(child.layers.isEnabled(LIT_OPAQUE_LAYER), true);
+      const mesh = child as THREE.Mesh;
+      const colors = mesh.geometry.getAttribute('color');
+      assert.ok(colors, 'silhouette ribbon should expose vertex colors');
+      for (let index = 0; index < colors.count; index++) {
+        assert.equal(colors.getX(index), 1);
+        assert.equal(colors.getY(index), 1);
+        assert.equal(colors.getZ(index), 1);
+      }
+    });
+    assert.ok(ribbons > 0);
+    assert.equal(shellFound, true);
+    assert.equal(ligandFound, true);
+  });
+
+  test('protein silhouette: multi-component shell follows the same component motion as its ribbon', () => {
+    const object = buildProteinEnemyShip(
+      sourceFor(asset, rawBackbone, rawStructure),
+      { representation: 'silhouette', colorMode: 'hydrophobicity' },
+    );
+    const shellComponents = new Set<string>();
+    object.traverse((child) => {
+      if (child.userData.proteinTranslucentShell === true) {
+        shellComponents.add(String(child.userData.proteinComponent));
+      }
+    });
+    assert.deepEqual(shellComponents, new Set(asset.components.flatMap((component) => component.chains)));
+  });
+
+  test('protein display: each representation exposes only compatible color modes', () => {
+    assert.deepEqual(proteinColorModesFor('molecular'), ['element']);
+    assert.deepEqual(proteinColorModesFor('silhouette'), ['surface-charge', 'hydrophobicity']);
+    assert.deepEqual(proteinColorModesFor('ribbon'), [
+      'chain', 'b-factor', 'rainbow', 'secondary-structure', 'component',
+    ]);
+    assert.ok(isProteinDisplaySettings(DEFAULT_PROTEIN_DISPLAY));
+    assert.deepEqual(DEFAULT_PROTEIN_DISPLAY, { representation: 'ribbon', colorMode: 'chain' });
+    assert.ok(isProteinDisplaySettings(defaultProteinDisplayFor('molecular')));
+    assert.deepEqual(defaultProteinDisplayFor('ribbon'), { representation: 'ribbon', colorMode: 'chain' });
+    assert.ok(!isProteinDisplaySettings({ representation: 'molecular', colorMode: 'chain' }));
   });
 
 }

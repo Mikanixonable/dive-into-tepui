@@ -2,10 +2,9 @@
 // 敵の具象は enemy-dictionary.ts 越しにしか触らない(直接 import すると
 // enemy.ts → 具象 → enemy.ts の実行時循環に落ちる)。
 import * as THREE from 'three/webgpu';
-import { AmmoPickup } from './ammo-pickup';
 import { Base } from './base';
 import { DetachedBooster } from './detached-booster';
-import { RcsFuelPickup } from './rcs-fuel-pickup';
+import { AmmoPickup, RcsFuelPickup } from './pickup';
 import { findEnemyClass } from './enemy-dictionary';
 import { Player } from '../../player/player';
 import type { DynamicEntity } from './dynamic-entity';
@@ -41,6 +40,7 @@ export function restorationFor(
       };
     case 'metal-enemy':
     case 'protein-enemy': {
+      // 敵は具象クラスの示す関門を通ってから組む。
       const enemyClass = findEnemyClass(data.kind);
       if (enemyClass === null) return null;
       return {

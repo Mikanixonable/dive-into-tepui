@@ -1,18 +1,14 @@
-// 物体どうしの剛体接触の列挙・解決。交戦圏ごとに、その内側で collides を立てた Motion
-// どうしを参加者とし、反発が起きた当事者へ collideWithEntity を呼ぶ。ダメージ・音・エフェクトは
-// Motion へ注入された反応が引き受ける。1 substep 内の接触は TOI(接触時刻)昇順で解決する —
-// 参加者は互いの状態を書き換えるので、天体との接触(surface-contact-physics.ts)と違って作業列と
-// 解決回数の上限が要る。
+// 物体どうしの剛体接触の列挙・解決。交戦圏ごとに、その内側で collides を立てた参加者どうしの
+// 接触を 1 substep ぶん TOI(接触時刻)昇順で解き、反発が起きた当事者へ collideWithEntity を呼ぶ。
+// 参加者は互いの状態を書き換えるので、1 substep に解く件数に上限を置く。
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, scale, sameVec } from '../../math/vec3';
 import { HierarchicalSpatialGrid } from '../../math/hierarchical-spatial-grid';
-import type { EntityContactParticipant } from './dynamic-simulation-participant';
+import type { DynamicReactionServices, EntityContactParticipant } from './dynamic-simulation-participant';
 import type { EngagementZone } from './engagement-zone';
 import type { CollisionResponse } from '../../physics/collision-response';
 import { contactTime, isFiniteParticipant } from './contact-participant';
 import { entityContactResponse } from './entity-contact-response';
-import type { StageOutcome } from '../stages/stage-outcome';
-import type { EntityRegistry } from './entity-registry';
 
 // 1 substep のあいだに1つの交戦圏で解決する接触の上限。TOI(接触時刻)昇順で解決し、これを
 // 超えた分は次の substep でグリッドから列挙し直されて改めて候補になる。
@@ -31,10 +27,9 @@ interface Candidate {
   resolved: boolean;
 }
 
-// 位置と速度がどちらも動いていない当事者は、working も changed も触らない。書き戻しは
-// 予測弧を捨てるので、質量 0 の相手に触れられただけの艦がそれで作り直しになるのを防ぐ。
-// changed へ重複を積まないのも同じ理由 — state セッタが prevState を進めるので、
-// 1つの当事者への書き戻しは substep 内で1回に限る。
+// 動いた当事者だけ working[i] を after へ差し替え、changed へ1度だけ積む。書き戻しは予測弧を
+// 捨て、state セッタは prevState を進めるので、動いていない当事者を書き戻したり、同じ当事者を
+// substep 内で2度書き戻したりしてはならない。
 function replaceIfMoved(
   i: number,
   after: { readonly r: Vec3; readonly v: Vec3 },
@@ -57,31 +52,28 @@ function contactReach(entity: EntityContactParticipant, working: KinematicState,
 }
 
 export class EntityContactPhysics {
-  // 接触解決は Simulator の substep ごとに同期的に完了するため、入力の抽出・作業集合を
-  // インスタンス単位で再利用できる。配列の詰め直しは元の配列走査順をそのまま保つ。
+  // 作業用の配列。解決は1回の呼び出しの内で完結するので使い回せる。詰め直しは元の走査順を保つ。
   private readonly participantScratch: EntityContactParticipant[] = [];
   private readonly workingScratch: KinematicState[] = [];
   private readonly changedScratch: number[] = [];
   private readonly pairScratch: number[] = [];
   private readonly gridScratch = new HierarchicalSpatialGrid<number>(CONTACT_GRID_MIN_CELL_SIZE);
   private readonly candidateScratch: Candidate[] = [];
-  // デバッグ情報ウィンドウが読む、列挙した延べ候補ペア数。フレーム頭で Simulator が 0 へ戻す。
+  // 列挙した延べ候補ペア数。解決のたびに積み増す。
   public candidatePairs = 0;
-  // デバッグ情報ウィンドウが読む、交戦圏ごとの参加者数の延べ数。フレーム頭で Simulator が 0 へ戻す。
+  // 交戦圏ごとの参加者数の延べ数。解決のたびに積み増す。
   public participants = 0;
 
   // 交戦圏ごとに、その内側にいる参加者どうしの 1 substep ぶんの接触を解く。交戦圏どうしは
   // 独立した系なので、解決回数の上限も交戦圏ごとに掛かる。
   public resolveEntityContacts(
     simTime: number, entities: readonly EntityContactParticipant[],
-    zones: readonly EngagementZone<EntityContactParticipant>[], activeStage: StageOutcome,
-    registry: EntityRegistry,
+    zones: readonly EngagementZone<EntityContactParticipant>[], services: DynamicReactionServices,
   ): void {
     for (const zone of zones) {
       this.collectParticipants(entities, zone, this.participantScratch);
       this.participants += this.participantScratch.length;
-      this.resolveInOrder(
-        this.participantScratch, simTime, zone.referenceDisplacement, activeStage, registry);
+      this.resolveInOrder(this.participantScratch, simTime, zone.referenceDisplacement, services);
     }
   }
 
@@ -99,14 +91,11 @@ export class EntityContactPhysics {
 
   // 参加者どうしの接触候補を1回だけ列挙し、TOI が最小のものから1件ずつ解決する。上限回数を
   // 超えた分は次の substep へ持ち越す。
-  // Motion.state への書き戻しは全解決が終わってから一括で行う — ループの途中で書き戻すと
-  // state セッタ自身が prevState を書き換えてしまい、以降の反復が区間の始点を失う。
   private resolveInOrder(
     all: readonly EntityContactParticipant[],
     simTime: number,
     reference: Vec3,
-    activeStage: StageOutcome,
-    registry: EntityRegistry,
+    services: DynamicReactionServices,
   ): void {
     if (all.length === 0) return;
     const working = this.workingScratch;
@@ -125,11 +114,12 @@ export class EntityContactPhysics {
     for (let i = 0; i < CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP; i++) {
       const best = this.earliestContact(count, dirtyA, dirtyB, all, working);
       if (best === null) break;
-      this.applyCandidate(best, all, working, changed, activeStage, registry);
+      this.applyCandidate(best, all, working, changed, services);
       best.resolved = true;
       dirtyA = best.ai;
       dirtyB = best.bi;
     }
+    // 書き戻しは全解決の後に一括で — 途中で書くと state セッタが prevState を進め、区間の始点を失う。
     for (const i of changed) all[i]!.state = working[i]!;
     // 使わなかった末尾を落とす — 候補は反発の計算結果を抱えるので、残すと使われない
     // CollisionResponse が候補列の中だけ生き続ける。
@@ -182,8 +172,7 @@ export class EntityContactPhysics {
     }
   }
 
-  // 未解決の候補のうち TOI が最小のものを返す(接触するものが無ければ null)。dirtyA/dirtyB を
-  // 当事者に含む候補は、走査のついでに現在の working 上の値で response を引き直す。
+  // 未解決の候補のうち TOI が最小のものを返す(接触するものが無ければ null)。
   private earliestContact(
     count: number,
     dirtyA: number,
@@ -195,6 +184,7 @@ export class EntityContactPhysics {
     for (let i = 0; i < count; i++) {
       const candidate = this.candidateScratch[i]!;
       if (candidate.resolved) continue;
+      // dirtyA/dirtyB を当事者に含む候補は、いまの working 上の値で response を引き直す。
       const { ai, bi } = candidate;
       if (ai === dirtyA || ai === dirtyB || bi === dirtyA || bi === dirtyB) {
         candidate.response = entityContactResponse(all[ai]!, working[ai]!, all[bi]!, working[bi]!);
@@ -213,8 +203,7 @@ export class EntityContactPhysics {
     all: readonly EntityContactParticipant[],
     working: KinematicState[],
     changed: number[],
-    activeStage: StageOutcome,
-    registry: EntityRegistry,
+    services: DynamicReactionServices,
   ): void {
     const { ai, bi } = candidate;
     const a = all[ai]!, b = all[bi]!;
@@ -234,9 +223,9 @@ export class EntityContactPhysics {
     const t = contactTime(a, response.toi);
     a.collideWithEntity(b, {
       t, point, normal: response.normal, selfState: aBefore, otherState: bBefore,
-    }, { activeStage, registry });
+    }, services);
     b.collideWithEntity(a, {
       t, point, normal: scale(response.normal, -1), selfState: bBefore, otherState: aBefore,
-    }, { activeStage, registry });
+    }, services);
   }
 }

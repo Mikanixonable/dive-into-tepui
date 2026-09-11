@@ -1,11 +1,10 @@
 // どのエンティティに、どんな見た目の軌道線・予測線・過去線を出すかを決め、View へ渡す。
-import * as THREE from 'three/webgpu';
-import type { View } from '../view/view';
+import type { ViewMode } from '../../render/view-mode';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
-import { FloatingOrigin } from '../camera/floating-origin';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
-import type { DynamicLineDisplay } from '../dynamic/dynamic-view';
+import type { DynamicLineDisplay } from '../../render/dynamic/dynamic-view';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { isBase } from '../dynamic/dynamic-entity/base';
 import { isPlayer } from '../player/player';
@@ -57,12 +56,12 @@ function orbitDisplay(
 }
 
 export class EntityLineManager {
-  constructor(private readonly roster: EntityRoster) {}
+  public constructor(private readonly roster: EntityRoster) {}
 
   // 次回の予測更新が必要な個体を update フェーズで確定する。
-  updatePredictionReaders(
+  public updatePredictionReaders(
     active: Controllable | null, primaryTarget: CombatTarget | null,
-    view: View, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
+    view: ViewMode, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     this.forEachDisplay(
       active, primaryTarget, view, displayWindow, visibilityPolicy, undefined,
@@ -71,11 +70,10 @@ export class EntityLineManager {
   }
 
   // 各個体の線表示をこのフレームの確定状態から宣言し、View に一括同期させる。
-  sync(
+  public sync(
     active: Controllable | null, primaryTarget: CombatTarget | null,
-    view: View, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
-    orbitRef: OrbitReference | undefined,
-    fo: FloatingOrigin, camera: THREE.Camera,
+    view: ViewMode, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
+    orbitRef: OrbitReference | undefined, camera: CameraFrame,
     frameAnchors: FrameAnchorSource, celestialBodies: CelestialBodies,
   ): void {
     const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
@@ -86,21 +84,21 @@ export class EntityLineManager {
         const predictedTo = entity.motion.predictionTruncated ? null : simTime + duration;
         entity.view.syncLines(
           display, entity.motion, frame, simTime, displayTime, pastDuration, predictedTo,
-          celestialBodies, fo, camera, frameAnchors,
+          celestialBodies, camera, frameAnchors,
         );
       },
     );
   }
 
-  // 1フレーム分の表示判断を各対象へ配る。View にはこの結果だけを渡し、設定の正本を置かない。
+  // 1フレーム分の表示判断を各対象へ配る。
   private forEachDisplay(
     active: Controllable | null, primaryTarget: CombatTarget | null,
-    view: View, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
+    view: ViewMode, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
     orbitRef: OrbitReference | undefined,
     accept: (entity: DynamicEntity, display: DynamicLineDisplay) => void,
   ): void {
     const { pastDuration } = displayWindow;
-    // マップビューは軌道情報パネルの固定設定に従わず、常に自動選択(最も強く引く天体)で描く。
+    // マップビューでは軌道基準を常に自動選択(最も強く引く天体)にする。
     const lineOrbitRef = view === 'map' ? undefined : orbitRef;
     const palette = currentThemePalette();
     const primaryStyle: LineStyle = {
@@ -144,7 +142,7 @@ export class EntityLineManager {
       });
     };
 
-    // 種別ごとの差は色と表示設定だけに留め、最終判断は同じ resolve を通す。
+    // 自艦・敵・基地の順に、種別ごとの色と表示設定で resolve を通す。
     for (const ship of this.roster.all().filter(isPlayer)) {
       const isActive = ship === active;
       const visibility = visibilityPolicy?.entity('player', isActive);

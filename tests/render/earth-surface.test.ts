@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import { EarthSurface, EarthSurfaceContext } from '../../src/render/earth-surface';
-import { CelestialSurface } from '../../src/render/celestial-surface';
+import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
 import { EarthSurfaceGpuThree } from '../../src/render/earth-surface-gpu-three';
 import { createEarthSurfaceMaterialBinding } from '../../src/render/earth-surface-material-binding';
 import type { EarthSurfaceGpuTextures } from '../../src/render/earth-surface-gpu';
@@ -14,7 +14,7 @@ import type {
   CelestialSurfaceFrame,
   CelestialSurfaceLike,
   SurfacePhotometry,
-} from '../../src/render/celestial-surface';
+} from '../../src/render/celestial/celestial-surface';
 
 const SOURCE = {
   datasetId: 'earth-test',
@@ -178,10 +178,10 @@ export function register(): void {
     surface.addTo(parent);
     const previousMaterial = (parent.children[0] as THREE.Mesh).material;
 
-    const binding = createEarthSurfaceMaterialBinding(gpu.textures!, {
-      baseColorUrl: SOURCE.baseColorUrl, baseTerrainUrl: SOURCE.baseTerrainUrl,
-      fetchImpl: async () => { throw new Error('base terrain fixture is intentionally unavailable'); },
-    });
+    const binding = createEarthSurfaceMaterialBinding(
+      gpu.textures!, SOURCE.baseColorUrl, SOURCE.baseTerrainUrl,
+      async () => { throw new Error('base terrain fixture is intentionally unavailable'); },
+    );
     assert.equal(binding.deferredTextures[0]?.texture.image, null);
     assert.equal(binding.deferredTextures[0]?.texture.version, 0);
     surface.attach(SOURCE, coordinator, 'ready', {
@@ -211,10 +211,10 @@ export function register(): void {
     surface.addTo(parent);
     const fallbackMaterial = (parent.children[0] as THREE.Mesh).material;
 
-    const binding = createEarthSurfaceMaterialBinding(gpu.textures!, {
-      baseColorUrl: SOURCE.baseColorUrl, baseTerrainUrl: SOURCE.baseTerrainUrl,
-      fetchImpl: async () => { throw new Error('base terrain fixture is intentionally unavailable'); },
-    });
+    const binding = createEarthSurfaceMaterialBinding(
+      gpu.textures!, SOURCE.baseColorUrl, SOURCE.baseTerrainUrl,
+      async () => { throw new Error('base terrain fixture is intentionally unavailable'); },
+    );
     surface.attach(SOURCE, coordinator, 'ready', {
       material: binding.material, deferred: binding.deferredTextures, textures: binding.textures,
       onDispose: binding.dispose, failureReason: binding.failureReason, syncFrame: binding.syncFrame,

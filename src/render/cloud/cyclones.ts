@@ -4,7 +4,6 @@
 // どうかは谷の芯で風が等圧線を横切る角で決まり、締まって深い熱帯低気圧が持つ。
 import * as THREE from 'three/webgpu';
 import { dot, exp, float, inverseSqrt, uniform } from 'three/tsl';
-import { R_EARTH } from '../../game/celestial/solar-system/constants';
 import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from './cyclone-tracks';
 import { coreCrossingAngle } from './wind-law';
 import type { CyclonePlacement } from './cyclone-tracks';
@@ -35,11 +34,15 @@ const ANVIL_FRACTION = 1.36;
 
 // 眼の濃さ 0..1。深さ depth [hPa]・短軸の半径 radius [m] の谷を緯度 latitude [rad] に置いたとき、
 // 芯で風が等圧線を横切る角が EYE_ANGLE_FULL より閉じていれば 1、EYE_ANGLE_NONE より開いていれば 0。
-export function eyeStrengthOf(depth: number, radius: number, latitude: number): number {
+// surfaceRadius は天体の半径 [m]、rotationPeriod は自転周期 [s]。
+export function eyeStrengthOf(
+  depth: number, radius: number, latitude: number, surfaceRadius: number, rotationPeriod: number,
+): number {
   // 芯(勾配の消える点)での等圧線方向の 2 階微分 [hPa/rad²]。pressureAt の形を短軸の向きに原点で
   // 開いたもの。長軸の向きの曲がりはこれより緩いので、眼の判定は閉じた側で行う。
-  const coreBend = depth * ((R_EARTH / radius) ** 2 + 2 * (R_EARTH / TROUGH_REACH) ** 2);
-  return 1 - THREE.MathUtils.smoothstep(coreCrossingAngle(coreBend, latitude), EYE_ANGLE_FULL, EYE_ANGLE_NONE);
+  const coreBend = depth * ((surfaceRadius / radius) ** 2 + 2 * (surfaceRadius / TROUGH_REACH) ** 2);
+  const crossing = coreCrossingAngle(coreBend, latitude, surfaceRadius, rotationPeriod);
+  return 1 - THREE.MathUtils.smoothstep(crossing, EYE_ANGLE_FULL, EYE_ANGLE_NONE);
 }
 
 // 谷 1 つ。配置を uniform に持ち、単位方向での気圧の落ち込み・眼・金床を答える。
@@ -48,12 +51,15 @@ class Trough {
   // 長軸の向きの単位接ベクトル。
   private readonly axis: Vec3Uniform = uniform(new THREE.Vector3());
   private readonly depth: FloatUniform = uniform(0);
-  // 弦の二乗を芯の尺で測る係数 (R_EARTH / 短軸の半径)²。
+  // 弦の二乗を芯の尺で測る係数 (天体の半径 / 短軸の半径)²。
   private readonly coreScale: FloatUniform = uniform(0);
   // 長軸に沿う成分を縮める係数 1 − 1 / (長軸/短軸の比)²。0 で円。
   private readonly axisShrink: FloatUniform = uniform(0);
   // 眼の濃さ 0..1。深さと広がりと緯度から出るので、同じ谷でも一生の中で現れて消える。
   private readonly eyeStrength: FloatUniform = uniform(0);
+
+  // surfaceRadius は谷を置く天体の半径 [m]、rotationPeriod はその自転周期 [s]。
+  public constructor(private readonly surfaceRadius: number, private readonly rotationPeriod: number) {}
 
   // 配置 placement を uniform へ写す。null(居ない)なら深さと眼の濃さを 0 にする。長軸は東と極側の
   // 北のあいだ — 北半球で南西–北東、南半球で北西–南東。
@@ -79,14 +85,13 @@ class Trough {
     ).normalize();
     // 深さ、芯の尺、長軸の縮み、眼。
     this.depth.value = depth;
-    this.coreScale.value = (R_EARTH / radius) ** 2;
+    this.coreScale.value = (this.surfaceRadius / radius) ** 2;
     this.axisShrink.value = 1 - 1 / elongation ** 2;
-    this.eyeStrength.value = eyeStrengthOf(depth, radius, latitude);
+    this.eyeStrength.value = eyeStrengthOf(depth, radius, latitude, this.surfaceRadius, this.rotationPeriod);
   }
 
-  // 中心からの弦の二乗。距離を弦で測るので、対蹠点に鏡像が出ない。弦は二乗のまま扱う — 長さを
-  // 取ってから二乗し直すと、平方根と累乗を 1 つずつ余計に踏む。長軸に沿う成分は axisShrink の分だけ
-  // 縮めて測るので、谷はその向きへ長軸/短軸の比の倍に広がる。
+  // 中心からの弦の二乗。距離を弦で測るので、対蹠点に鏡像が出ない。長軸に沿う成分は axisShrink の
+  // 分だけ縮めて測るので、谷はその向きへ長軸/短軸の比の倍に広がる。
   private chordSquared(direction: Vec3Node): FloatNode {
     const offset = direction.sub(this.center);
     const alongAxis = dot(offset, this.axis);
@@ -101,7 +106,7 @@ class Trough {
   public pressureAt(direction: Vec3Node): FloatNode {
     const chordSquared = this.chordSquared(direction);
     const core = inverseSqrt(chordSquared.mul(this.coreScale).add(1))
-      .mul(exp(chordSquared.mul(-((R_EARTH / TROUGH_REACH) ** 2))));
+      .mul(exp(chordSquared.mul(-((this.surfaceRadius / TROUGH_REACH) ** 2))));
     return core.mul(this.depth).negate();
   }
 
@@ -131,10 +136,11 @@ export class Cyclones {
   // 気圧も眼も種類を分けずに足す。熱帯低気圧も中緯度の低気圧も、同じ 1 つの規則で効く。
   private readonly troughs: readonly Trough[];
 
-  // 谷を組み、時刻 0 の配置で始める。
-  public constructor() {
-    this.tropical = new Trough();
-    this.lows = Array.from({ length: LOW_COUNT }, () => new Trough());
+  // 谷を組み、時刻 0 の配置で始める。surfaceRadius は谷を置く天体の半径 [m]、rotationPeriod は
+  // その自転周期 [s]。
+  public constructor(private readonly surfaceRadius: number, rotationPeriod: number) {
+    this.tropical = new Trough(surfaceRadius, rotationPeriod);
+    this.lows = Array.from({ length: LOW_COUNT }, () => new Trough(surfaceRadius, rotationPeriod));
     this.troughs = [this.tropical, ...this.lows];
     this.syncTime(0);
   }
@@ -143,7 +149,7 @@ export class Cyclones {
   public syncTime(seconds: number): void {
     this.tropical.place(tropicalPlacementAt(seconds));
     for (const [i, low] of this.lows.entries()) {
-      low.place(lowPlacementAt(i, seconds));
+      low.place(lowPlacementAt(i, seconds, this.surfaceRadius));
     }
   }
 

@@ -5,6 +5,7 @@ import type { EntityRoster } from '../dynamic/entity-roster';
 import { rayThroughScreen, type Viewpoint } from '../../math/projection';
 import { len, sub } from '../../math/vec3';
 import type { ProjectFn } from '../../math/projection';
+import type { Viewport } from '../../render/viewport';
 
 // 中心からこの半径 [px] 以内のクリックは、形を外していても当たったものとして扱う。
 // これが無いと、遠方で数ピクセルにしか写らない実体を掴めない。
@@ -13,8 +14,9 @@ const GRAB_RADIUS_PX = 12;
 // 画面上の座標 (clientX, clientY) に最も手前でヒットした生存中の実体を返す。当たらなければ null。
 export function pickCombatEntityAtPoint(
   roster: EntityRoster, view: Viewpoint, project: ProjectFn, clientX: number, clientY: number,
+  viewport: Viewport,
 ): CombatTarget | null {
-  const ray = rayThroughScreen(view, clientX, clientY, window.innerWidth, window.innerHeight);
+  const ray = rayThroughScreen(view, clientX, clientY, viewport.width, viewport.height);
 
   let bestEntity: CombatTarget | null = null;
   let minDepth = Infinity;

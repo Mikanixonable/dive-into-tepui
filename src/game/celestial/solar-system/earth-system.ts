@@ -3,6 +3,8 @@ import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import earthTextureUrl from '../../../assets/earth.jpg';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
+import coastlineData from '../../../assets/earth-coastline.json';
+import moonFeaturesData from '../../../assets/moon-features.json';
 import { AtmosphereDef } from '../../../physics/atmosphere';
 import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
 import { PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
@@ -10,11 +12,11 @@ import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { satelliteOrbit } from '../../../physics/satellite-orbit';
 import {
-  C22_MOON, J2_EARTH, J2_MOON, MOON_OBLIQUITY, MU_EARTH, MU_MOON, R_EARTH_EQ, R_MOON, R_MOON_GRAVITY,
-  SIDEREAL_DAY,
+  C22_MOON, J2_EARTH, J2_MOON, MOON_OBLIQUITY, MU_EARTH, MU_MOON, R_EARTH, R_EARTH_EQ, R_MOON,
+  R_MOON_GRAVITY, SIDEREAL_DAY,
 } from './constants';
-import { Aurora, type AuroraOptics } from '../../../render/aurora';
-import { CelestialSurface } from '../../../render/celestial-surface';
+import { Aurora, type AuroraOptics } from '../../../render/celestial/aurora';
+import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { EarthSurface, EarthSurfaceContext } from '../../../render/earth-surface';
 import type { EarthSurfaceMaterialAttachment, EarthSurfaceStatus } from '../../../render/earth-surface';
 import { EarthSurfaceResidentCoordinator } from '../../../render/earth-surface-resident';
@@ -35,11 +37,10 @@ import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field
 import { createDevelopmentClimateMap } from '../../../render/cloud/monthly-climate-fixture';
 import { EllipsoidEquirectProjection } from '../../../render/cloud/field-projection';
 import { earthSurfaceUvFromRadialNode } from '../../../render/earth-surface-coordinate';
-import { EarthCoastline } from '../../../render/earth-coastline';
-import { MoonSurfaceMarkings } from '../../../render/moon-surface-markings';
-import { GeostationaryOverlay } from '../celestial-entity/geostationary-overlay';
-import { PointCelestialView } from '../celestial-entity/point-celestial-view';
-import { SphereCelestialView } from '../celestial-entity/sphere-celestial-view';
+import { LineOverlay, type LatLonPolyline, type UnitSphereLoop } from '../../../render/celestial/line-overlay';
+import { GeostationaryOverlay } from '../../../render/celestial/celestial-entity/geostationary-overlay';
+import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
+import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
 import { MOON_DIST_TERMS, MOON_LAT_TERMS, MOON_LON_TERMS } from './moon-terms';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { CelestialTexture } from '../../../render/celestial-textures';
@@ -101,7 +102,6 @@ export const EARTH: PlanetDef = {
   shape: { kind: 'spheroid', equatorRadius: R_EARTH_EQ, polarRadius: 6.3567519e6 },
   // JPL 低精度惑星暦の "EM Bary"(地球-月重心)行、黄道基準・J2000 相当。
   orbit: planetOrbit({
-    // JPL 低精度惑星暦 Standish 表の EM Bary: 1.00000261 AU。
     a: 1.00000261 * AU,
     e: 0.01671123,
     incDeg: 0,
@@ -168,6 +168,15 @@ export const EARTH_TEXTURE: CelestialTexture = {
   averageHue: [0.9703, 0.9940, 1.1471],
 };
 
+// 地球へ貼る海岸線。tools/export-coastline.mjs が Natural Earth 110m coastline から焼き込んだ、
+// 緯度・経度 [deg] のペアを1本の折れ線として並べた配列の配列。形は焼き込み側が保証するので、
+// 型を持たない JSON にここで形を与える。
+const EARTH_COASTLINE = coastlineData as readonly LatLonPolyline[];
+
+// 月へ貼る主要な海・クレーターの輪郭。tools/export-moon-features.mjs が assets-src/moon-features.json
+// の中心緯度経度・直径から円として焼き込んだ、単位球面上の xyz を1ループとして並べた配列の配列。
+const MOON_SURFACE_MARKINGS = moonFeaturesData as readonly UnitSphereLoop[];
+
 // 地球のオーロラ。オーバル緯度は磁極の配置、発光高度は降り込む粒子が大気を励起する層、
 // 色は酸素の緑(557.7nm)と赤(630nm)の輝線による。
 const EARTH_AURORA_OPTICS: AuroraOptics = {
@@ -193,8 +202,7 @@ export const EARTH_SYSTEM_NAMES: Record<EarthSystemBodyId, string> = {
   moon: '月',
 };
 
-// 実配信物が未設定の開発環境で使う入力。manifestとGPUがそろわない場合はこのsourceを
-// fallbackへ使い、そろった場合だけmanifestのbase/tile材質へ切り替える。
+// 実配信物が未設定の開発環境で使う地表の入力。manifest・GPU がそろわないときの代わりになる。
 export const EARTH_SURFACE_FIXTURE_SOURCE = {
   datasetId: 'earth-development-fixture',
   sourceManifestSha256: '0'.repeat(64),
@@ -215,6 +223,7 @@ export const EARTH_SURFACE_FIXTURE_SOURCE = {
   ),
 } satisfies EarthSurfaceSource;
 
+// 気候図を貼る回転楕円体の半軸 [m]。
 const EARTH_CLIMATE_AXES = vec3(EARTH_ATMOSPHERE.equatorRadius, EARTH_ATMOSPHERE.polarRadius,
   EARTH_ATMOSPHERE.equatorRadius);
 
@@ -235,6 +244,7 @@ export interface EarthSurfaceRuntimeHandle {
   readonly ready: Promise<EarthSurfaceFactoryResult>;
 }
 
+// 開発用の入力と画像球だけで、status の状態の地表を組む。
 function fallbackSurface(status: EarthSurfaceStatus = 'loading'): EarthSurface {
   return new EarthSurface(
     new EarthSurfaceContext(EARTH_SURFACE_FIXTURE_SOURCE),
@@ -251,14 +261,14 @@ interface EarthSurfaceConnection {
   readonly reason: string | null;
 }
 
+// 詳細タイル用の材質を、GPU 常駐テクスチャと source の基底画像から組み、地表へ付ける形で返す。
 function detailedMaterialFor(
   source: EarthSurfaceSource, textures: EarthSurfaceGpuTextures, fetchImpl?: typeof fetch,
 ): EarthSurfaceMaterialAttachment {
-  const binding = createEarthSurfaceMaterialBinding(textures, {
-    baseColorUrl: source.baseColorUrl,
-    baseTerrainUrl: source.baseTerrainUrl,
-    fetchImpl,
-  });
+  const binding = createEarthSurfaceMaterialBinding(
+    textures, source.baseColorUrl, source.baseTerrainUrl, fetchImpl,
+  );
+  // 材質と、その解放・遅延テクスチャ・毎フレーム同期の口を束ねる。
   return {
     material: binding.material,
     deferred: binding.deferredTextures,
@@ -269,9 +279,12 @@ function detailedMaterialFor(
   };
 }
 
+// bootstrap の結果から、詳細タイルの要求キュー・GPU 常駐を束ねる coordinator と材質を組む。
+// 組めなければ coordinator を null にし、fallback/error の状態とその理由を返す。
 function coordinatorFor(
   bootstrap: EarthSurfaceBootstrapResult, options: EarthSurfaceFactoryOptions,
 ): EarthSurfaceConnection {
+  // manifest・renderer・タイル源のどれかが欠ければ組めない。
   if (bootstrap.state !== 'ready') {
     return {
       coordinator: null,
@@ -288,12 +301,12 @@ function coordinatorFor(
   if (bootstrap.tileSource === null) {
     return { coordinator: null, state: 'fallback', material: null, reason: 'tile source unavailable' };
   }
-  // Game.createはrendererを先に初期化するが、テストや別の起動経路ではbackendがまだ
-  // 生成されていないことがある。その場合は例外で起動を壊さず、baseへ固定する。
+  // backend がまだ生成されていない起動経路もあるので、例外で起動を壊さず base へ固定する。
   const backend = options.renderer.backend as unknown as EarthSurfaceGpuThreeBackendLike | null | undefined;
   if (backend === null || backend === undefined) {
     return { coordinator: null, state: 'fallback', material: null, reason: 'WebGPU backend unavailable' };
   }
+  // 要求キューと GPU 常駐を確保する。詳細描画に要る機能が無ければ解放して fallback。
   const queue = new EarthSurfaceTileRequestQueue(bootstrap.tileSource, {
     fetchImpl: options.fetchImpl,
     decodeImage: options.decodeImage,
@@ -338,8 +351,8 @@ function coordinatorFor(
   };
 }
 
-// 地球systemは同期APIのまま、base fallbackを即時にシーンへ渡す。manifest/GPUが
-// 準備できたときだけ同じEarthSurfaceへcoordinatorとsourceをattachする。
+// 画像球だけの地表を即座に返し、manifest・GPU が準備できたら同じ地表へ coordinator と入力を
+// 付ける。ready は付け終えた結果で解決し、準備に失敗しても error の状態として解決する。
 export function createEarthSurfaceRuntime(
   options: EarthSurfaceFactoryOptions = {},
 ): EarthSurfaceRuntimeHandle {
@@ -348,11 +361,13 @@ export function createEarthSurfaceRuntime(
     ...options,
     fallback: options.fallback ?? EARTH_SURFACE_FIXTURE_SOURCE,
   }).then((bootstrap) => {
+    // 準備できた入力で coordinator を組み、地表へ付ける。
     const source = bootstrap.source ?? EARTH_SURFACE_FIXTURE_SOURCE;
     const connection = coordinatorFor(bootstrap, options);
     surface.attach(source, connection.coordinator, connection.state, connection.material, connection.reason);
     return { surface, state: connection.state, bootstrap };
   }).catch((error: unknown) => {
+    // 失敗しても、地表は代わりの入力と error の状態で使い続ける。
     const fallback = options.fallback ?? EARTH_SURFACE_FIXTURE_SOURCE;
     const reason = error instanceof Error ? error.message : String(error);
     surface.attach(fallback, null, 'error', null, reason);
@@ -364,8 +379,7 @@ export function createEarthSurfaceRuntime(
   return { surface, ready };
 }
 
-// WebGPU/manifestがそろった場合だけ要求coordinatorとタイル材質を組み、その他は既存の画像球を
-// そのまま返す。実配信物が無い開発環境でもゲームの構築を待たせない境界である。
+// createEarthSurfaceRuntime の地表が準備を終えるのを待ち、その結果を返す。
 export async function createEarthSurface(
   options: EarthSurfaceFactoryOptions = {},
 ): Promise<EarthSurfaceFactoryResult> {
@@ -374,6 +388,8 @@ export async function createEarthSurface(
 
 let earthSurfaceColorCanvas: OffscreenCanvas | null = null;
 
+// タイルの色画像を RGBA8 のバイト列にする。Uint8Array はそのまま返し、ImageBitmap でないか
+// canvas が使えない環境では例外を投げる。
 async function defaultEarthSurfaceColorToRgba8(color: unknown): Promise<Uint8Array> {
   if (color instanceof Uint8Array) return color;
   if (typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') {
@@ -384,6 +400,7 @@ async function defaultEarthSurfaceColorToRgba8(color: unknown): Promise<Uint8Arr
   earthSurfaceColorCanvas = canvas;
   if (canvas.width !== color.width) canvas.width = color.width;
   if (canvas.height !== color.height) canvas.height = color.height;
+  // 2D canvas へ描いて画素を読み出す。
   const context = canvas.getContext('2d');
   if (context === null) throw new Error('Earth surface 2D canvas is unavailable');
   context.drawImage(color, 0, 0);
@@ -409,7 +426,7 @@ export function earthSystem(
   earthSpinPhase0 = 0, climateEpochUnixSec = 0, renderer?: WebGPURenderer,
 ): Record<EarthSystemBodyId, CelestialEntity> {
   const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
-  // 雲の場は殻が持ち、地表・影・大気の殻はその実体を借りて読む。
+  // 気候図。地表の実配信物が準備できたら、その月別気候図へ差し替える。
   const climateUvAt = (direction: Parameters<typeof earthSurfaceUvFromRadialNode>[0]) => (
     earthSurfaceUvFromRadialNode(direction, EARTH_CLIMATE_AXES)
   );
@@ -419,9 +436,10 @@ export function earthSystem(
     const source = result.bootstrap.source;
     if (result.bootstrap.state === 'ready' && source !== null) climate.replaceUrls(source.climateMapUrls);
   });
+  // 天気を解く半径は全球を一様な球とみなす平均半径、殻を載せる球の半径は本体メッシュと同じ赤道半径。
   const cumulus = new CloudPresentation(
     GeneratedCloudField.global(
-      climate, climateUvAt,
+      climate, R_EARTH, SIDEREAL_DAY, climateUvAt,
       new EllipsoidEquirectProjection(512, EARTH_CLIMATE_AXES),
     ), R_EARTH_EQ, climateEpochUnixSec,
   );
@@ -431,7 +449,9 @@ export function earthSystem(
     earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
       new PointCelestialView(
         earthSurface,
-        EARTH_ATMOSPHERE_OPTICS, new EarthCoastline(), earthAuroras(),
+        EARTH_ATMOSPHERE_OPTICS,
+        LineOverlay.of({ kind: 'latLonPolylines', polylines: EARTH_COASTLINE }),
+        earthAuroras(),
         GeostationaryOverlay.of(earth.body), cumulus,
       ),
     ),
@@ -443,7 +463,7 @@ export function earthSystem(
         CelestialSurface.textured({
           url: moonTextureUrl, albedoScale: 0.3459, bondAlbedo: 0.11, averageHue: [1.0458, 0.9880, 0.9844],
         }),
-        null, new MoonSurfaceMarkings(),
+        null, LineOverlay.of({ kind: 'unitSphereLoops', loops: MOON_SURFACE_MARKINGS }),
       ),
     ),
   };

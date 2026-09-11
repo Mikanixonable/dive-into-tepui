@@ -1,14 +1,13 @@
 // クリエイティブモードの「ステージ操作」パネル: 補給・波状攻撃のトグルと、手動スポーンの入力
-// (距離・敵の形状/色・タンパク質表示設定)の DOM とその場の UI 状態だけを持つ。実際の補給状態の
-// 変更・敵の生成・表示の反映は、確定した値をコールバックで受け取った呼び出し側(CreativeStage)の
-// 責務。
+// (距離・敵の形状/色・タンパク質表示設定)の DOM と UI 状態を持ち、確定した値を onXxx の
+// コールバックで知らせる。
 import { Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../../hud/widgets';
 import { PROTEIN_ASSET_IDS, requestProteinAsset, type ProteinAssetId } from '../protein/protein-asset-loader';
 import {
   DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, PROTEIN_COLOR_LABELS, PROTEIN_DISPLAY_LABELS,
   proteinColorModesFor, proteinDisplayWithColor, type ProteinColorMode, type ProteinDisplaySettings,
   type ProteinRepresentation,
-} from '../protein/protein-display';
+} from '../../render/protein/protein-display';
 
 type EnemyShapeDefinition =
   | { readonly id: 'drifting'; readonly family: 'conventional'; readonly kind: 'drifting' }
@@ -29,19 +28,19 @@ const STAGE_CONTROL_ENEMY_COLORS = [
 ] as const;
 
 export class StageControlsPanel {
-  readonly element: HTMLElement;
-  // sync() が操作艦の有無に応じて有効/無効を切り替える対象。
-  readonly spawnEnemyButtons: readonly Button[];
+  public readonly element: HTMLElement;
+  // setSpawnButtonsEnabled がまとめて有効/無効を切り替える対象。
+  private readonly spawnEnemyButtons: readonly Button[];
 
-  onToggleResupply: ((on: boolean) => void) | null = null;
-  onToggleFuelResupply: ((on: boolean) => void) | null = null;
-  onToggleWaveAttack: ((on: boolean) => void) | null = null;
-  onAddMagazine: (() => void) | null = null;
-  onRefillFuel: (() => void) | null = null;
-  onSpawnDistanceChange: ((distanceM: number) => void) | null = null;
-  onSpawnEnemy: ((shape: EnemySpawnShape, colorValue: string) => void) | null = null;
-  onSpawnFormation: (() => void) | null = null;
-  onProteinDisplayChange: ((display: ProteinDisplaySettings) => void) | null = null;
+  public onToggleResupply: ((on: boolean) => void) | null = null;
+  public onToggleFuelResupply: ((on: boolean) => void) | null = null;
+  public onToggleWaveAttack: ((on: boolean) => void) | null = null;
+  public onAddMagazine: (() => void) | null = null;
+  public onRefillFuel: (() => void) | null = null;
+  public onSpawnDistanceChange: ((distanceM: number) => void) | null = null;
+  public onSpawnEnemy: ((shape: EnemySpawnShape, colorValue: string) => void) | null = null;
+  public onSpawnFormation: (() => void) | null = null;
+  public onProteinDisplayChange: ((display: ProteinDisplaySettings) => void) | null = null;
 
   // 入力欄が無効値を弾いたときに直前の有効値へ戻すための保持値。
   private spawnDistance: number;
@@ -49,9 +48,8 @@ export class StageControlsPanel {
   private proteinDisplay: ProteinDisplaySettings;
   private readonly proteinDisplayByRepresentation: Map<ProteinRepresentation, ProteinDisplaySettings>;
 
-  // 各初期値は呼び出し側(CreativeStage)が持つ現在の状態を渡す。以後の変更は onXxx コールバックで
-  // 呼び出し側へ通知するので、このクラス自身は補給状態や実体の生成には触れない。
-  constructor(
+  // 各引数はパネルの初期値。以後の変更は onXxx コールバックで知らせる。
+  public constructor(
     resupplyEnabled: boolean, rcsFuelResupplyEnabled: boolean, waveAttackEnabled: boolean,
     initialSpawnDistance: number, initialProteinDisplay: ProteinDisplaySettings,
   ) {
@@ -90,7 +88,7 @@ export class StageControlsPanel {
   }
 
   // 操作艦の有無に応じて、敵スポーン系のボタンをまとめて有効/無効にする。
-  setSpawnButtonsEnabled(enabled: boolean): void {
+  public setSpawnButtonsEnabled(enabled: boolean): void {
     for (const button of this.spawnEnemyButtons) button.setEnabled(enabled);
   }
 
@@ -163,8 +161,7 @@ export class StageControlsPanel {
   }
 
   // タンパク質型の敵の形状・表示形態・着色選択と、単体/陣形スポーンボタンをまとめたセクションを
-  // 組み立てる。表示形態・着色の変更は onProteinDisplayChange で即座に呼び出し側へ通知する
-  // (既存の敵への反映は呼び出し側の責務)。
+  // 組み立てる。表示形態・着色の変更は onProteinDisplayChange で即座に知らせる。
   private buildProteinEnemySection(): {
     element: HTMLElement; spawnButton: Button; formationButton: Button; requestSelectedAsset: () => void;
   } {
@@ -287,7 +284,7 @@ export class StageControlsPanel {
   }
 }
 
-// ラベル付き <select> を組み立てて返す。敵の色選択にだけ使う。
+// ラベル付き <select> を組み立てて返す。
 function buildColorSelect<T extends number>(
   label: string, items: readonly (readonly [T, string])[],
 ): { readonly wrapper: HTMLElement; readonly select: HTMLSelectElement } {

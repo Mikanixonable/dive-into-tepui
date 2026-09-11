@@ -1,52 +1,37 @@
 import type { Attitude } from '../../../physics/attitude';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { KinematicState } from '../../../physics/kinematic-state';
-import {
-  DynamicMotion,
-  type DynamicMotionBehavior,
-  type DynamicReactionServices,
-} from '../dynamic-motion';
+import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic-motion';
+import type { DynamicReactionServices } from '../dynamic-simulation-participant';
 import type { Contact } from './contact';
 import { shipMotionOptions } from './ship';
 
+// 敵機は熱防御を持たないので、自機より低い温度で構造が保たなくなる。
 const ENEMY_MAX_TEMP = 500; // [K]
 const ENEMY_MASS = 10000; // [kg]
 
-// アセット座標を物理寸法へ直す倍率。描画も同じ値を読むが、物理形状の正本はこのモジュールに置く。
-export const ENEMY_MODEL_SCALE = 20;
-
-// 各金属機体モデルを ENEMY_MODEL_SCALE 倍したときの外接球半径 [m]。描画テストでアセットの
-// bounds と一致することを固定し、実行時の物理構築が THREE のモデル生成へ依存しないようにする。
-const DRIFTING_COLLISION_RADIUS = 67.1935257886386;
-const TYPED_COLLISION_RADII = [
-  93.8906797184146,
-  91.58602476518524,
-  86.22292463258124,
-] as const;
-
-export function metalEnemyCollisionRadius(typeIndex: number | null): number {
-  if (typeIndex === null) return DRIFTING_COLLISION_RADIUS;
-  return TYPED_COLLISION_RADII[typeIndex] ?? TYPED_COLLISION_RADII[0];
-}
-
+// 敵機の接触・焼失の結果を受け取る先。
 interface EnemyMotionReactions {
   receiveEntityContact(
-    other: DynamicMotion, contact: Contact, context: DynamicReactionServices,
+    other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void;
-  receiveSurfaceContact(contact: Contact, context: DynamicReactionServices): void;
-  receiveBurnUp(context: DynamicReactionServices): void;
+  receiveSurfaceContact(contact: Contact, services: DynamicReactionServices): void;
+  receiveBurnUp(services: DynamicReactionServices): void;
 }
 
+// 半径の球に代えて敵機に当てる判定形状。
 export type EnemyCollisionShape = Pick<
   DynamicMotionBehavior,
   'testSphereCollision' | 'testSweptSphereCollision'
 >;
 
+// 敵機の接触・焼失を reactions へ通知する振る舞い。
 class EnemyBehavior implements DynamicMotionBehavior {
   public readonly contactKind = 'enemy';
   public readonly testSphereCollision: DynamicMotionBehavior['testSphereCollision'];
   public readonly testSweptSphereCollision: DynamicMotionBehavior['testSweptSphereCollision'];
 
+  // shape を省くと、判定は Motion の半径の球になる。
   public constructor(
     private readonly reactions: EnemyMotionReactions,
     shape?: EnemyCollisionShape,
@@ -55,25 +40,29 @@ class EnemyBehavior implements DynamicMotionBehavior {
     this.testSweptSphereCollision = shape?.testSweptSphereCollision;
   }
 
+  // 他の個体との接触を reactions へ渡す。
   public onEntityContact(
-    _self: DynamicMotion, other: DynamicMotion, contact: Contact, context: DynamicReactionServices,
+    _self: DynamicMotion, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void {
-    this.reactions.receiveEntityContact(other, contact, context);
+    this.reactions.receiveEntityContact(other, contact, services);
   }
 
+  // 天体表面への接触を reactions へ渡す。
   public onSurfaceContact(
-    _self: DynamicMotion, _body: CelestialBody, contact: Contact, context: DynamicReactionServices,
+    _self: DynamicMotion, _body: CelestialBody, contact: Contact, services: DynamicReactionServices,
   ): void {
-    this.reactions.receiveSurfaceContact(contact, context);
+    this.reactions.receiveSurfaceContact(contact, services);
   }
 
-  public onBurnUp(_self: DynamicMotion, context: DynamicReactionServices): void {
-    this.reactions.receiveBurnUp(context);
+  // 温度上限を超えた焼失を reactions へ渡す。
+  public onBurnUp(_self: DynamicMotion, services: DynamicReactionServices): void {
+    this.reactions.receiveBurnUp(services);
   }
 }
 
-// 敵機の軌道・姿勢・物性・判定形状を所有し、ゲーム上の接触結果だけを注入先へ通知する。
+// 敵機の軌道・姿勢・物性・判定形状を所有し、ゲーム上の接触結果を注入先へ通知する。
 export class EnemyMotion extends DynamicMotion {
+  // shape を省くと、判定は半径 radius の球になる。
   public constructor(
     state: KinematicState,
     attitude: Attitude,

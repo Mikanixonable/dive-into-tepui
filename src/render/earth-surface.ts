@@ -1,4 +1,5 @@
-// 地球表面の寿命境界。実データの取得・GPU公開・気候入力が同じdatasetIdと世代を共有する。
+// 地球表面。EarthSurfaceContext は配信版と、地表要求の世代・キャンセル信号を配る。EarthSurface は
+// 天体表面の球へ、詳細な材質とタイルの常駐を接続する。
 import * as THREE from 'three/webgpu';
 import type { EarthSurfaceSource } from '../game/celestial/solar-system/earth-surface-source';
 import { EarthSurfaceView } from './earth-surface-tiles';
@@ -12,8 +13,9 @@ import type {
   CelestialSurfaceMaterialAttachment,
   CelestialSurfaceStatus,
   SurfacePhotometry,
-} from './celestial-surface';
+} from './celestial/celestial-surface';
 
+// 地表要求1件ぶんの世代とキャンセル信号。使い終えたら release する(信号は中断される)。
 export interface EarthSurfaceRequestLease {
   readonly generation: number;
   readonly signal: AbortSignal;
@@ -34,16 +36,19 @@ export interface EarthSurfaceResidentCoordinatorLike {
   dispose(): void;
 }
 
+// 天体表面の球へ差し込む詳細な材質。syncFrame はフレームごとに呼ぶ。
 export interface EarthSurfaceMaterialAttachment extends CelestialSurfaceMaterialAttachment {
   readonly syncFrame: (frame: CelestialSurfaceFrame) => void;
   readonly failureReason?: () => string | null;
 }
 
+// 材質を差し替えられる天体表面。fallback がこれを満たせば詳細な材質を差し込める。
 interface CelestialSurfaceMaterialHost {
   replaceMaterial(attachment: CelestialSurfaceMaterialAttachment): void;
   restoreFallbackMaterial?(): void;
 }
 
+// 差し込めなかった材質を、持ち物のテクスチャごと解放する。
 function disposeMaterialAttachment(attachment: EarthSurfaceMaterialAttachment): void {
   attachment.onDispose?.();
   attachment.material.dispose();
@@ -51,6 +56,8 @@ function disposeMaterialAttachment(attachment: EarthSurfaceMaterialAttachment): 
   for (const texture of attachment.textures ?? []) texture.dispose();
 }
 
+// 配信版(source)を持ち、地表要求へ世代とキャンセル信号を配る。世代を進めると、それまでに
+// 配った要求は中断される。
 export class EarthSurfaceContext {
   private nextGenerationValue = 1;
   private readonly requests = new Set<AbortController>();
@@ -62,12 +69,14 @@ export class EarthSurfaceContext {
 
   public get generation(): number { return this.nextGenerationValue; }
 
-  // 1つの地表要求へ世代とキャンセル信号を割り当てる。
+  // 1つの地表要求へ、現在の世代とキャンセル信号を割り当てる。dispose 後は例外を投げる。
   public requestLease(): EarthSurfaceRequestLease {
     if (this.disposed) throw new Error('Earth surface context is disposed');
+    // 世代を進めたときにまとめて中断できるよう、配った要求を控えておく。
     const controller = new AbortController();
     const generation = this.nextGenerationValue;
     this.requests.add(controller);
+    // release は何度呼んでもよく、最初の1回で控えから外して信号を中断する。
     let released = false;
     return {
       generation,
@@ -81,7 +90,7 @@ export class EarthSurfaceContext {
     };
   }
 
-  // 視点変更などで旧要求を無効化する。既に届いた結果もgeneration比較で公開側が拒否する。
+  // 世代を進め、配った要求をすべて中断する。返り値は新しい世代。
   public invalidateRequests(): number {
     if (this.disposed) return this.nextGenerationValue;
     this.nextGenerationValue++;
@@ -90,13 +99,14 @@ export class EarthSurfaceContext {
     return this.nextGenerationValue;
   }
 
-  // 配信版を切り替えると、旧版の要求と結果を同じ地表へ公開してはならない。
+  // 配信版を差し替え、旧版の要求を中断する(世代も進む)。dispose 後は例外を投げる。
   public replaceSource(source: EarthSurfaceSource): void {
     if (this.disposed) throw new Error('Earth surface context is disposed');
     this.invalidateRequests();
     this.sourceValue = source;
   }
 
+  // 配った要求をすべて中断する。以後 requestLease と replaceSource は例外を投げる。
   public dispose(): void {
     if (this.disposed) return;
     this.invalidateRequests();
@@ -104,7 +114,7 @@ export class EarthSurfaceContext {
   }
 }
 
-// 地球固有の寿命境界を共有しながら、天体表面の描画契約は既存の球面へ委譲する。
+// fallback の球面に、attach で詳細な材質とタイルの常駐を重ねる地球の天体表面。
 export class EarthSurface implements CelestialSurfaceLike {
   private requestLeaseValue: EarthSurfaceRequestLease | null = null;
   private coordinatorValue: EarthSurfaceResidentCoordinatorLike | null;
@@ -126,6 +136,8 @@ export class EarthSurface implements CelestialSurfaceLike {
   private reasonValue: string | null;
   private disposed = false;
 
+  // context と fallback の所有を引き継ぎ、dispose で一緒に解放する。status は省くと
+  // coordinator の有無から決まる。
   public constructor(
     private readonly context: EarthSurfaceContext,
     private readonly fallback: CelestialSurfaceLike,
@@ -142,6 +154,7 @@ export class EarthSurface implements CelestialSurfaceLike {
 
   public get usesDetailedMaterial(): boolean { return this.detailedMaterialValue; }
 
+  // 現在の状態。reason は明示の理由・常駐の失敗・材質の失敗のうち最初にあるもの。
   public get diagnostics(): CelestialSurfaceDiagnostics {
     return {
       status: this.statusValue,
@@ -160,20 +173,21 @@ export class EarthSurface implements CelestialSurfaceLike {
 
   public syncLod(apparentDiameterPx: number): void { this.fallback.syncLod(apparentDiameterPx); }
 
+  // フレームの値で球と材質を更新し、タイルの常駐を進める。dispose 後は何もしない。
   public syncFrame(frame: CelestialSurfaceFrame): void {
     if (this.disposed) return;
     this.fallback.syncFrame(frame);
     this.materialSyncValue?.(frame);
     if (this.coordinatorValue === null) return;
 
+    // 中断された要求は借り直す。
     const lease = this.requestLeaseValue?.signal.aborted
       ? this.context.requestLease()
       : this.requestLeaseValue ?? this.context.requestLease();
     this.requestLeaseValue = lease;
     if (!(frame.camera instanceof THREE.PerspectiveCamera)
       && !(frame.camera instanceof THREE.OrthographicCamera)) {
-      // EarthSurfaceViewは投影行列を持つ2種類のゲームカメラだけを受ける。
-      // 未知のカメラではfallbackを維持し、要求だけは直ちにキャンセルする。
+      // EarthSurfaceView が扱えないカメラでは、要求を中断して fallback のまま描く。
       lease.release();
       this.requestLeaseValue = null;
       return;
@@ -234,6 +248,7 @@ export class EarthSurface implements CelestialSurfaceLike {
     }
   }
 
+  // 要求を中断して常駐を捨て、球を隠す。
   public hide(): void {
     if (this.disposed) return;
     this.requestLeaseValue?.release();
@@ -244,7 +259,7 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.fallback.hide();
   }
 
-  // 実行中の配信版を破棄し、新しい版をbaseから再開できる状態へ戻す。
+  // 実行中の配信版を破棄し、新しい版を base から再開できる状態へ戻す。
   public replaceSource(source: EarthSurfaceSource): void {
     if (this.disposed) return;
     this.requestLeaseValue?.release();
@@ -254,7 +269,8 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.clearProjectionCache();
   }
 
-  // 非同期bootstrap完了後に新しいsource/coordinatorを同じEarthへ接続する。
+  // source・coordinator・材質を差し替えて接続する。渡したものの所有を引き継ぎ、dispose 後に
+  // 渡されたものはその場で解放する。
   public attach(
     source: EarthSurfaceSource,
     coordinator: EarthSurfaceResidentCoordinatorLike | null,
@@ -267,6 +283,7 @@ export class EarthSurface implements CelestialSurfaceLike {
       if (material !== null) disposeMaterialAttachment(material);
       return;
     }
+    // 前の要求・常駐・材質の状態を捨てて、渡されたものへ置き換える。
     this.requestLeaseValue?.release();
     this.requestLeaseValue = null;
     this.coordinatorValue?.dispose();
@@ -298,6 +315,7 @@ export class EarthSurface implements CelestialSurfaceLike {
     }
   }
 
+  // 要求を中断し、所有する coordinator・context・fallback ごと解放する。何度呼んでもよい。
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;

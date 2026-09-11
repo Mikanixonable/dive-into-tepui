@@ -1,6 +1,5 @@
 // 現実の太陽系。各系の構築関数を呼んで全天体の運動と見た目を組み、宣言順に並べた
-// CelestialSystem を返す。ECI の中心(originId)は呼び出し側の選択で、同じ太陽系を別の原点で
-// 組める。数値暦を渡すと、収録された天体はその有効期間で数値暦経路を通る。
+// CelestialSystem を返す。同じ太陽系を、ECI の中心(originId)を選んで組める。
 import { EphemerisPoints } from '../../../physics/ephemeris/point';
 import { OrbitingMotion, StarMotion } from '../../../physics/celestial-motion';
 import { PhaseOffsets } from '../../../physics/celestial-body-def';
@@ -9,8 +8,8 @@ import { CelestialSystem } from '../celestial-system';
 import { ephemerisSeconds, TdbJulianDate } from '../../../physics/time';
 import { epochUnixSeconds } from '../../../hud/utils';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { StarCelestialView } from '../celestial-entity/star-celestial-view';
-import { PointFieldView } from '../point-field-view';
+import { StarCelestialView } from '../../../render/celestial/celestial-entity/star-celestial-view';
+import { PointFieldView } from '../../../render/celestial/point-field-view';
 import { generatePointField } from './point-field';
 import { DwarfPlanetId, DWARF_PLANET_NAMES, dwarfPlanets } from './dwarf-planets';
 import { EarthSystemBodyId, EARTH_SYSTEM_NAMES, earthSystem } from './earth-system';
@@ -51,14 +50,14 @@ export function solarSystemBodyName(id: string): string {
 
 // 太陽系の CelestialSystem を組む。originId は ECI の中心天体(ステージの選択)、
 // earthSpinPhase0 は地球の自転初期位相 [rad]、epoch は simTime=0 が指す絶対時刻。
-// ephemerisPoints を渡すと、そこに載っている天体だけがその有効期間で数値暦経路を通る。
+// ephemerisPoints を渡すと、そこに載っている天体がその有効期間で数値暦経路を通る。
 export function solarSystem(
   originId: SolarSystemId, phases: PhaseOffsets, earthSpinPhase0: number,
   ephemerisPoints: EphemerisPoints | null, epoch: TdbJulianDate,
   renderer?: WebGPURenderer,
 ): CelestialSystem {
-  // 要素・極モデルの元期(J2000)から simTime=0 へ畳むための秒数。元期の唯一の表現である
-  // epoch からその場で導く — 別の値として持ち回ると、片方だけが古くなる。
+  // 要素・極モデルの元期(J2000)から simTime=0 までの秒数。epoch からその場で導く —
+  // 別の値として持ち回ると、片方だけが古くなる。
   const simZeroEt = ephemerisSeconds(epoch);
   const sunMotion = new StarMotion(SUN);
   // 太陽の放射強度は描画の放射照度の目盛りの基準そのもの。
