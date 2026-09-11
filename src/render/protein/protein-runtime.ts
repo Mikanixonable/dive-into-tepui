@@ -54,12 +54,14 @@ export class ProteinRuntime {
     motionBinding?: ProteinMotionBinding | null,
   ) {
     for (const site of asset.sites) this.siteDefinitions.set(site.id, site);
+    // 残基変形を解く共有バッファ上の借り位置。
     this.motionBinding = motionBinding ?? createProteinMotionBinding(
       motion.residueCount, proteinMotionModeDisplacements(motion), motion.modes.length,
     );
     if (this.motionBinding !== null && this.motionBinding.residueCount !== motion.residueCount) {
       throw new RangeError('Protein motion binding and asset residue counts must match');
     }
+    // アンカーの残基変位を CPU で投影する作業領域と、結合線。
     this.trackedResidueOffsets = new Float32Array(motion.residueCount * 4);
     this.bondMaterial = new THREE.LineBasicMaterial({ color: 0x60d9ff, transparent: true, opacity: 0.42 });
     this.rebuildVisuals();
@@ -173,6 +175,7 @@ export class ProteinRuntime {
 
   // 部位の変形済みアンカーを、個体の位置・姿勢でワールド座標へ写す。site が null なら origin。
   private siteWorldPosition(site: ProteinRenderSite | null, origin: Vec3, attitude: Quat): Vec3 {
+    // 残基の変位は、直前の syncVisual で投影したもの。
     return proteinSiteWorldPosition(
       site,
       site ? this.siteResidueGroups.get(site.id) ?? [] : [],
