@@ -36,6 +36,24 @@ export interface ClimateMapLike {
   dispose(): void;
 }
 
+// climate の標高と陸らしさから、斜面の勾配(東向き・北向き成分)[m/m] を中心差分で引く。
+// landHeight [m] は陸へ上乗せする高さで、海と陸の比熱の差で海岸へ吹き込む風が持ち上げられる分を、
+// 人工の斜面として代用する。surfaceRadius [m] はこの天体の半径で、勾配を角あたりから長さあたりへ
+// 直すのに要る。
+export function climateSlope(
+  climate: ClimateMapLike, direction: Vec3Node, landHeight: number, surfaceRadius: number,
+): Vec2Node {
+  const east = eastAt(direction).mul(SLOPE_STEP);
+  const north = northAt(direction).mul(SLOPE_STEP);
+  // 中心差分の刻みが地表で張る長さ [m]。
+  const stepMeters = SLOPE_STEP * 2 * surfaceRadius;
+  const height = (d: Vec3Node): FloatNode => climate.elevation(d).add(climate.landFraction(d).mul(landHeight));
+  return vec2(
+    height(direction.add(east)).sub(height(direction.sub(east))).div(stepMeters),
+    height(direction.add(north)).sub(height(direction.sub(north))).div(stepMeters),
+  );
+}
+
 // 気候入力はデータ値をそのまま線形補間するため、色変換と mipmap を持たせない。
 // MonthlyClimateMap もこの設定を使い、単月と月別でサンプルの境界を揃える。
 export function configureClimateTexture(map: THREE.Texture): THREE.Texture {
@@ -100,19 +118,10 @@ export class ClimateMap implements ClimateMapLike {
     return smoothstep(0, LAND_ELEVATION, this.elevation(direction));
   }
 
-  // 斜面の勾配(東向き・北向き成分)[m/m]。landHeight [m] は陸へ上乗せする高さで、海と陸の
-  // 比熱の差で海岸へ吹き込む風が持ち上げられる分を、人工の斜面として代用する。surfaceRadius [m] は
-  // この天体の半径で、勾配を角あたりから長さあたりへ直すのに要る。
+  // 斜面の勾配(東向き・北向き成分)[m/m]。landHeight [m] は陸へ上乗せする高さ、surfaceRadius [m] は
+  // この天体の半径。
   public slope(direction: Vec3Node, landHeight: number, surfaceRadius: number): Vec2Node {
-    const east = eastAt(direction).mul(SLOPE_STEP);
-    const north = northAt(direction).mul(SLOPE_STEP);
-    // 中心差分の刻みが地表で張る長さ [m]。
-    const stepMeters = SLOPE_STEP * 2 * surfaceRadius;
-    const height = (d: Vec3Node): FloatNode => this.elevation(d).add(this.landFraction(d).mul(landHeight));
-    return vec2(
-      height(direction.add(east)).sub(height(direction.sub(east))).div(stepMeters),
-      height(direction.add(north)).sub(height(direction.sub(north))).div(stepMeters),
-    );
+    return climateSlope(this, direction, landHeight, surfaceRadius);
   }
 
   // 単位方向のテクセル(R 平均気温 / G 平年の雲量 / B 標高、それぞれ 0..1)。
