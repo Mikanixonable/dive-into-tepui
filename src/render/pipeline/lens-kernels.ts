@@ -3,13 +3,19 @@
 // 減らす)ようになってしまう。総和が 1 なら出力は入力の最大値(太陽面の 4.62e4)を超えないので、
 // 半精度浮動小数点の上限(65504)を跨ぐことも構造的に起きない。
 import * as THREE from 'three/webgpu';
-import { and, greaterThan, lessThan, screenSize, screenUV, select, texture, vec2, vec3 } from 'three/tsl';
+import { and, greaterThan, lessThan, mix, screenSize, screenUV, select, texture, vec2, vec3 } from 'three/tsl';
 import type { FloatNode, FloatUniform, Vec2Node, Vec2Uniform, Vec3Node } from '../tsl-types';
 
 // 条の 1 パスあたりのタップ数。**パスをまたぐ刻みをこの数と同じにする。**
 const STREAK_TAPS = 12;
-// 条の減衰長 [読み元のテクセル]。
-const STREAK_FALLOFF = 50;
+// 条の減衰長 [読み元のテクセル]。1/2 解像度で約 2 画面pxの細さを保ちつつ、画面上の長さを維持する。
+const STREAK_FALLOFF = 100;
+// 条の末端を尖らせ始める位置。末端側のタップだけをさらに絞り、丸い減衰終端を避ける。
+const STREAK_TIP_START = 0.7;
+// 末端の絞り込み具合。2 なら線形テーパより先端側が細くなる。
+const STREAK_TIP_POWER = 2;
+// 太陽の光芒へ残す色成分の割合。輝度は保ったまま、黄色い色かぶりを白へ寄せる。
+const STREAK_COLOR_SATURATION = 0.3;
 
 // scale と power を測る基準の半径 [画面の高さ]。半径写像はここで scale そのものになる。
 const GHOST_REFERENCE_RADIUS = 0.5;
@@ -67,20 +73,20 @@ type Ghost = {
 // 超える枚は同じ光を狭い面積へ集めるので、総和が 1 を超えると画素が入力の最大値を跨ぎ、半精度
 // 浮動小数点の余裕(太陽面 4.62e4 に対し上限 65504)を食い潰す。
 const GHOSTS: readonly Ghost[] = [
-  { scale: -0.30, power: 2.20, softness: 2, weight: 0.05, tint: [1.00, 0.74, 0.45], dispersion: 0.012 },
-  { scale: -0.42, power: 1.00, softness: 1, weight: 0.06, tint: [0.95, 0.68, 1.00], dispersion: 0.014 },
-  { scale: -0.52, power: 1.80, softness: 0, weight: 0.05, tint: [0.48, 0.84, 1.00], dispersion: 0.012 },
-  { scale: -0.62, power: 0.60, softness: 1, weight: 0.07, tint: [0.60, 1.00, 0.68], dispersion: 0.01 },
-  { scale: -0.72, power: 1.40, softness: 3, weight: 0.06, tint: [0.84, 0.56, 1.00], dispersion: 0.012 },
-  { scale: -0.85, power: 1.00, softness: 0, weight: 0.07, tint: [1.00, 0.88, 0.62], dispersion: 0.008 },
-  { scale: -1.05, power: 1.00, softness: 3, weight: 0.05, tint: [0.55, 0.74, 1.00], dispersion: 0.01 },
-  { scale: -1.35, power: 0.75, softness: 1, weight: 0.035, tint: [1.00, 0.95, 0.82], dispersion: 0.006 },
-  { scale: -1.80, power: 1.00, softness: 2, weight: 0.025, tint: [0.66, 1.00, 0.92], dispersion: 0.008 },
-  { scale: 0.45, power: 2.00, softness: 1, weight: 0.05, tint: [1.00, 0.62, 0.48], dispersion: 0.012 },
-  { scale: 0.65, power: 1.00, softness: 3, weight: 0.06, tint: [0.72, 0.88, 1.00], dispersion: 0.008 },
-  { scale: 0.80, power: 0.55, softness: 0, weight: 0.06, tint: [0.70, 1.00, 0.74], dispersion: 0.008 },
-  { scale: 1.15, power: 1.60, softness: 2, weight: 0.03, tint: [1.00, 0.72, 0.95], dispersion: 0.01 },
-  { scale: 1.60, power: 1.00, softness: 3, weight: 0.025, tint: [0.78, 0.62, 1.00], dispersion: 0.006 },
+  { scale: -0.30, power: 2.20, softness: 2, weight: 0.05, tint: [1.00, 0.90, 0.80], dispersion: 0.006 },
+  { scale: -0.42, power: 1.00, softness: 1, weight: 0.06, tint: [0.93, 0.86, 1.00], dispersion: 0.007 },
+  { scale: -0.52, power: 1.80, softness: 0, weight: 0.05, tint: [0.82, 0.94, 1.00], dispersion: 0.006 },
+  { scale: -0.62, power: 0.60, softness: 1, weight: 0.07, tint: [0.84, 1.00, 0.88], dispersion: 0.005 },
+  { scale: -0.72, power: 1.40, softness: 3, weight: 0.06, tint: [0.90, 0.82, 1.00], dispersion: 0.006 },
+  { scale: -0.85, power: 1.00, softness: 0, weight: 0.07, tint: [1.00, 0.94, 0.84], dispersion: 0.004 },
+  { scale: -1.05, power: 1.00, softness: 3, weight: 0.05, tint: [0.84, 0.91, 1.00], dispersion: 0.005 },
+  { scale: -1.35, power: 0.75, softness: 1, weight: 0.035, tint: [1.00, 0.97, 0.90], dispersion: 0.003 },
+  { scale: -1.80, power: 1.00, softness: 2, weight: 0.025, tint: [0.88, 1.00, 0.96], dispersion: 0.004 },
+  { scale: 0.45, power: 2.00, softness: 1, weight: 0.05, tint: [1.00, 0.88, 0.82], dispersion: 0.006 },
+  { scale: 0.65, power: 1.00, softness: 3, weight: 0.06, tint: [0.86, 0.94, 1.00], dispersion: 0.004 },
+  { scale: 0.80, power: 0.55, softness: 0, weight: 0.06, tint: [0.86, 1.00, 0.90], dispersion: 0.004 },
+  { scale: 1.15, power: 1.60, softness: 2, weight: 0.03, tint: [1.00, 0.90, 0.98], dispersion: 0.005 },
+  { scale: 1.60, power: 1.00, softness: 3, weight: 0.025, tint: [0.88, 0.84, 1.00], dispersion: 0.003 },
 ];
 
 // ノードの和。**平衡木で畳む** — 左畳みにすると括弧が項数ぶん深く入れ子になり、WGSL の
@@ -171,23 +177,30 @@ export function streakStride(pass: number): number {
 // **タップを片側だけにするのが要。** 両側にすると、距離 d に届く経路が複数でき(たとえば
 // 12 進んで 3 戻る)、そのどれもが「進んだ総量」ぶん減衰した重みを持つ。結果として核は
 // exp(-d/減衰長) から周期的に凹み、**刻みの周期で明暗の縞が見える。** 片側だけなら、タップ距離の
-// 組み合わせは d のタップ数進法の表現そのものになって一意に決まり、合成した核は距離に対する
-// 素直な指数になる。**向き 1 つにつき 1 本の鎖**が要る。
+// 組み合わせは d のタップ数進法の表現そのものになって一意に決まる。末端テーパは最後のパスだけ
+// に掛ける — 途中のパスまで尖らせると、次のパスへ渡す鎖の連続性が失われ、条が点々に見える。
+// **向き 1 つにつき 1 本の鎖**が要る。
 //
 // **鎖どうしを混ぜないこと。** 1 つのパスで複数の向きをまとめて処理すると、次のパスがその結果を
 // さらに別の向きへ広げて「星の星」になる。
 export function streakPass(
   source: THREE.Texture, texel: Vec2Uniform, direction: Vec2Uniform, stride: FloatUniform,
+  taperTip = false,
 ): Vec3Node {
   const taps: Vec3Node[] = [];
   const weights: FloatNode[] = [];
   for (let step = 0; step < STREAK_TAPS; step++) {
     const distance = stride.mul(step);
-    const weight = distance.div(-STREAK_FALLOFF).exp();
+    const normalizedStep = step / (STREAK_TAPS - 1);
+    const tipT = Math.max(0, (normalizedStep - STREAK_TIP_START) / (1 - STREAK_TIP_START));
+    const tipWeight = taperTip ? (1 - tipT) ** STREAK_TIP_POWER : 1;
+    const weight = distance.div(-STREAK_FALLOFF).exp().mul(tipWeight);
     taps.push(spreadBy(source, texel, direction.mul(distance)).mul(weight));
     weights.push(weight);
   }
-  return sumOf(taps).div(sumOf(weights));
+  const streak = sumOf(taps).div(sumOf(weights));
+  const luminance = streak.dot(vec3(0.2126, 0.7152, 0.0722));
+  return mix(vec3(luminance), streak, STREAK_COLOR_SATURATION);
 }
 
 // 1 枚ぶんの像。**読む位置への倍率を半径だけの関数にする**ので、写像は光軸まわりの回転と可換に
