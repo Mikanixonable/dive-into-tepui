@@ -1,10 +1,11 @@
-// KinematicState の時系列を Deque で保守するキュー。先頭(peekLeft)が最新、末尾(peekRight)が
-// 最古になるよう常に降順で保つ。push は「最新のサンプル」を積む操作で、時刻が逆行/重複した
-// push は先頭側の同時刻以降(その push によって計算し直された区間)を破棄してから積み直す)
+// KinematicState の時系列を保持し、保持範囲内の任意時刻をエルミート補間で引けるキュー。
+// push は最新のサンプルを積む操作で、時刻が逆行/重複した push はその時刻以降
+// (その push によって計算し直された区間)を破棄してから積み直す。
 import { hermiteInterpolate, KinematicState } from './kinematic-state';
 import { Deque } from '../math/deque';
 
 export class StateQueue {
+  // 先頭(添字 0)が最新、末尾が最古の降順。
   private readonly deque: Deque<KinematicState>;
 
   // capacity 件分の内部バッファを確保して空のキューを作る。
@@ -36,9 +37,8 @@ export class StateQueue {
     return next.t - oldest.t;
   }
 
-  // t 未満に落ちる最初のインデックスを二分探索で返す([0, size])。先頭から見て
-  // 「t 以上のもの」がちょうどこの件数だけ並んでいる、という契約だけで push の
-  // 重複区間削除・cleanup の寿命境界・at の補間区間探索のすべてを賄う。
+  // 時刻が t 未満になる最初の添字([0, size])。先頭からちょうどこの件数だけ、時刻が t 以上の
+  // サンプルが並ぶ。
   private bisect(t: number): number {
     let lo = 0;
     let hi = this.deque.size;
@@ -79,8 +79,7 @@ export class StateQueue {
     if (!this.deque.empty) this.deque.deleteLeftN(1);
   }
 
-  // 保持しているサンプルを古い順(= 内部の降順と逆順)の配列で返す。折れ線描画
-  // (render/lines/trajectory-line.ts の TrajectoryLine.sync)は時系列順の配列を要求するため。
+  // 保持しているサンプルを古い順に並べた新しい配列。
   public toArrayOldestFirst(): KinematicState[] {
     const out: KinematicState[] = new Array(this.deque.size);
     for (let i = 0; i < this.deque.size; i++) out[i] = this.deque.at(this.deque.size - 1 - i);
@@ -97,8 +96,7 @@ export class StateQueue {
     const idx = this.bisect(t);
     if (idx >= this.deque.size) return oldest; // t === oldest.t
 
-    // bisect の契約から deque.at(idx - 1) は「t 以上で最も古い」サンプル。時刻がちょうど
-    // 一致するならそれ自身が答えで、補間する必要がない。
+    // deque.at(idx - 1) は時刻が t 以上で最も古いサンプル。
     const newer = this.deque.at(idx - 1);
     if (newer.t === t) return newer;
     return hermiteInterpolate(newer, this.deque.at(idx), t);
