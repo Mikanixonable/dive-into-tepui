@@ -117,7 +117,7 @@ export function register(): void {
 
   test('dynamic view source: 本体は表示入力の時刻 query が返した状態へ置かれる', () => {
     const camera = cameraFrame();
-    const pools = new InstancedPools(new THREE.Scene(), 1, 1, 1);
+    const pools = new InstancedPools([]);
     const view = new DynamicView(new THREE.Object3D());
     const asked: number[] = [];
     const position = v3(7.0e6, 1.0e6, -2.0e6);
@@ -134,7 +134,7 @@ export function register(): void {
 
   test('dynamic view source: alive が false のフレームは本体を出さない', () => {
     const camera = cameraFrame();
-    const pools = new InstancedPools(new THREE.Scene(), 1, 1, 1);
+    const pools = new InstancedPools([]);
     const view = new DynamicView(new THREE.Object3D());
     const asked: number[] = [];
     const source = renderSource(false, true, stateSource(v3(7.0e6, 0, 0), asked));
@@ -147,7 +147,7 @@ export function register(): void {
 
   test('dynamic view source: visible が false のフレームは本体を出さない', () => {
     const camera = cameraFrame();
-    const pools = new InstancedPools(new THREE.Scene(), 1, 1, 1);
+    const pools = new InstancedPools([]);
     const view = new DynamicView(new THREE.Object3D());
     const source = renderSource(true, false, stateSource(v3(7.0e6, 0, 0), []));
 
@@ -158,7 +158,7 @@ export function register(): void {
 
   test('dynamic view source: 状態を引けないフレームは本体を出さない', () => {
     const camera = cameraFrame();
-    const pools = new InstancedPools(new THREE.Scene(), 1, 1, 1);
+    const pools = new InstancedPools([]);
     const view = new DynamicView(new THREE.Object3D());
 
     view.sync(renderSource(true, true, () => null), viewFrame(camera, pools));

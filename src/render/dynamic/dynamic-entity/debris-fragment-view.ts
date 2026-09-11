@@ -1,7 +1,8 @@
-// 撃破時に飛び散る破片1個の表示と、全個体が共有する描画資源。形は数種類のジオメトリ(単位スケール)を
-// 一度だけ焼いて全個体で共有し、個体は形をその中から抽選し、色を per-instance color で持つ。
+// 撃破時に飛び散る破片1個の表示と、全個体が共有する描画資源とプール。形は数種類のジオメトリ(単位
+// スケール)を一度だけ焼いて全個体で共有し、個体は形をその中から抽選し、色を per-instance color で持つ。
 import * as THREE from 'three/webgpu';
 import { mulberry32 } from '../../../math/random';
+import { InstancedPool } from '../../instanced-pool';
 import { attachThermalEmissive } from '../../thermal-emissive';
 import { SHIP_DARK_HULL_COLOR } from '../../vfx-style';
 import { memoTemplate } from '../baked-model';
@@ -9,6 +10,7 @@ import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '..
 import debrisChunkData from '../../../assets/models/debrisChunk.json';
 import debrisPanelData from '../../../assets/models/debrisPanel.json';
 import debrisRodData from '../../../assets/models/debrisRod.json';
+import type { InstancedPoolSet } from '../instanced-pools';
 import type { KinematicState } from '../../../physics/kinematic-state';
 
 // 飛散片ジオメトリのバリアント本数。バリアント1本につき InstancedPool が1本増え、G バッファと影パスの
@@ -74,7 +76,7 @@ let debrisFragmentGeometries: THREE.BufferGeometry[] | null = null;
 let debrisFragmentMaterial: THREE.MeshStandardNodeMaterial | null = null;
 
 // 飛散片の全個体が共有するジオメトリ群(バリアント)と単一マテリアルを返す。初回に一度だけ構築する。
-export function debrisFragmentResources(): { geometries: readonly THREE.BufferGeometry[]; material: THREE.Material } {
+function debrisFragmentResources(): { geometries: readonly THREE.BufferGeometry[]; material: THREE.Material } {
   if (!debrisFragmentGeometries) {
     const rand = mulberry32(DEBRIS_FRAGMENT_SEED);
     debrisFragmentGeometries = [];
@@ -88,6 +90,38 @@ export function debrisFragmentResources(): { geometries: readonly THREE.BufferGe
       'instance');
   }
   return { geometries: debrisFragmentGeometries, material: debrisFragmentMaterial! };
+}
+
+// 飛散片を、形のバリアントごとに1本の InstancedMesh へ積むプールの束。
+export class DebrisFragmentPools implements InstancedPoolSet {
+  private readonly pools: readonly InstancedPool[];
+
+  // 1フレームに積める飛散片の数 capacity だけ、バリアントごとのプールの枠を確保する。
+  public constructor(scene: THREE.Scene, capacity: number) {
+    const { geometries, material } = debrisFragmentResources();
+    this.pools = geometries.map(
+      (geo) => new InstancedPool(scene, geo, material, capacity, true, 0, true));
+  }
+
+  // このフレームぶんを全バリアントのプールへ積み始める。
+  public beginFrame(): void {
+    for (const pool of this.pools) pool.beginFrame();
+  }
+
+  // このフレームぶんを全バリアントのプールへ積み終える。
+  public endFrame(): void {
+    for (const pool of this.pools) pool.endFrame();
+  }
+
+  // 全バリアントのプールの InstancedMesh を解放する。
+  public dispose(): void {
+    for (const pool of this.pools) pool.dispose();
+  }
+
+  // variant はどのバリアントジオメトリで描くか、color は個体ごとの色。
+  public push(variant: number, fragment: THREE.Object3D, color: THREE.Color): void {
+    this.pools[variant]!.push(fragment, color);
+  }
 }
 
 // 飛散片1個。変換だけを持つ表示ルートを、バリアントごとの共有ジオメトリへ積む。
@@ -111,6 +145,6 @@ export class DebrisFragmentView extends DynamicView {
     _displayed: KinematicState | null,
     context: DynamicViewFrame,
   ): void {
-    context.pools.pushDebrisFragment(this.fragmentVariant, this.object, this.fragmentColor);
+    context.pools.get(DebrisFragmentPools).push(this.fragmentVariant, this.object, this.fragmentColor);
   }
 }

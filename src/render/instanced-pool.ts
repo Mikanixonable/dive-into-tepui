@@ -30,7 +30,8 @@ export class InstancedPool {
   private readonly scratchCenter = new THREE.Vector3();
   private readonly scratchCorner = new THREE.Vector3();
 
-  constructor(
+  // geometry/material は呼び出し側が所有する共有資源。capacity 体ぶんの枠を確保して scene へ登録する。
+  public constructor(
     scene: THREE.Scene,
     geometry: THREE.BufferGeometry,
     material: THREE.Material,
@@ -68,18 +69,19 @@ export class InstancedPool {
   }
 
   // 参照線と同じオーバーレイ層へ載せる。天体に遮られず、トーンマップも通さない見え方になる。
-  markAsOverlay(): void {
+  public markAsOverlay(): void {
     markOverlay(this.mesh);
   }
 
-  beginFrame(): void {
+  // このフレームぶんを積み始める。
+  public beginFrame(): void {
     this.count = 0;
     this.pending.makeEmpty();
   }
 
   // visible な renderObject を capacity まで受け付け、matrixWorld をインスタンスへ転写する。
   // シーン外の Object3D は事前に matrixWorld を同期して渡す。
-  push(renderObject: THREE.Object3D, color?: THREE.Color): void {
+  public push(renderObject: THREE.Object3D, color?: THREE.Color): void {
     if (!renderObject.visible || this.count >= this.capacity) return;
     renderObject.updateMatrixWorld();
     this.mesh.setMatrixAt(this.count, renderObject.matrixWorld);
@@ -88,6 +90,7 @@ export class InstancedPool {
       && writeThermalState(renderObject, this.thermal.array as Float32Array, this.count * 3)) {
       this.thermalChanged = true;
     }
+    // 個体の外接球をスケール倍し、今フレームの AABB へ積む。
     const reach = this.instanceRadius * renderObject.matrixWorld.getMaxScaleOnAxis();
     this.scratchCenter.setFromMatrixPosition(renderObject.matrixWorld);
     this.pending.expandByPoint(this.scratchCorner.copy(this.scratchCenter).addScalar(reach));
@@ -96,7 +99,7 @@ export class InstancedPool {
   }
 
   // このフレームぶんの転写を締める。余った枠を潰し、公開する広がりを今フレームの値へ入れ替える。
-  endFrame(): void {
+  public endFrame(): void {
     for (let i = this.count; i < this.lastCount; i++) this.mesh.setMatrixAt(i, PARKED);
     this.lastCount = this.count;
     this.mesh.instanceMatrix.needsUpdate = true;
@@ -110,7 +113,7 @@ export class InstancedPool {
 
   // InstancedMesh をシーンから外し、そのインスタンスバッファを解放する。geometry/material は
   // 呼び出し側から渡された共有資源なので、その所有者だけが破棄できる。
-  dispose(): void {
+  public dispose(): void {
     this.mesh.removeFromParent();
     this.mesh.dispose();
   }

@@ -14,6 +14,9 @@ import { isEnemy } from './dynamic-entity/enemy';
 import { isPlayer, Player } from '../player/player';
 import { restorationFor } from './dynamic-entity/entity-dictionary';
 import { InstancedPools } from '../../render/dynamic/instanced-pools';
+import { BulletPools } from '../../render/dynamic/dynamic-entity/bullet-view';
+import { CasingPool } from '../../render/dynamic/dynamic-entity/casing-view';
+import { DebrisFragmentPools } from '../../render/dynamic/dynamic-entity/debris-fragment-view';
 import { Simulator } from './simulator';
 import { NanWatchdog } from './nan-watchdog';
 import { FrameSections, SECTION } from '../frame-sections';
@@ -61,8 +64,11 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     initialSimTime: number,
     saved?: GameSaveData,
   ) {
-    this.instancedPools = new InstancedPools(
-      scene, ENTITY_CAP.bullet, ENTITY_CAP.casing, ENTITY_CAP.debris);
+    this.instancedPools = new InstancedPools([
+      new BulletPools(scene, ENTITY_CAP.bullet),
+      new CasingPool(scene, ENTITY_CAP.casing),
+      new DebrisFragmentPools(scene, ENTITY_CAP.debris),
+    ]);
     this.simulator = new Simulator(this, this, this, celestialBodies, sections, initialSimTime);
     this.nanWatchdog = new NanWatchdog(notifier);
     if (saved) this.restoreFromSave(saved, notifier, worldSfx, flash, scene, markers);
