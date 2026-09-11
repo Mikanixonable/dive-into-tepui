@@ -22,7 +22,7 @@ export const MAX_PLANET_LIGHT_SLOTS = 2;
 const MIN_VISIBLE_CAP_ANGLE = 1e-4;
 
 // スロット 1 本の値。中心・半径は描画座標、放射輝度は色つき(SUN_IRRADIANCE_1AU の目盛り)。
-interface PlanetLightValue {
+export interface PlanetLightValue {
   readonly center: THREE.Vector3;
   readonly radius: number;
   readonly radiance: Albedo;

@@ -1,29 +1,24 @@
 import * as THREE from 'three/webgpu';
-import type { Quat } from '../../math/quat';
-import type { Vec3 } from '../../math/vec3';
-import type {
-  ProteinAssetDefinition,
-  ProteinMotionAsset,
-  ProteinPhase,
-  ProteinSiteDefinition,
-} from './protein-schema';
 import {
   proteinAnchorOffset,
   proteinAnchorResidues,
   proteinSiteWorldPosition,
 } from './protein-anchors';
-import {
-  projectProteinResidues,
-  type ProteinMotionDisplay,
-  type ProteinMotionLod,
-} from './protein-motion-controller';
-import { proteinMotionModeDisplacements } from './protein-motion-modes';
+import { projectProteinResidues, proteinMotionModeDisplacements } from './protein-motion-modes';
 import {
   createProteinMotionBinding,
   disposeProteinMotionBinding,
   updateProteinMotionCoefficients,
   type ProteinMotionBinding,
-} from '../../render/protein-motion-material';
+} from './protein-motion-material';
+import type { Quat } from '../../math/quat';
+import type { Vec3 } from '../../math/vec3';
+import type { ProteinMotionDisplay, ProteinMotionLod, ProteinPhase } from './protein-display';
+import type {
+  ProteinRenderAsset,
+  ProteinRenderMotion,
+  ProteinRenderSite,
+} from './protein-render-definition';
 
 const RUNTIME_VISUAL = 'protein-runtime-visual';
 
@@ -35,11 +30,11 @@ interface ProteinBondVisual {
 
 // 外部で計算済みのタンパク質変形を反映する GPU 資源と、転送・アンカー計算キャッシュを保つ。
 export class ProteinRuntime {
-  private readonly motion: ProteinMotionAsset;
+  private readonly motion: ProteinRenderMotion;
   // 共有バッファのスロットが尽きていれば null。そのときは変形せず、静止した構造で描く。
   public readonly motionBinding: ProteinMotionBinding | null;
   private readonly root: THREE.Object3D;
-  private readonly siteDefinitions = new Map<string, ProteinSiteDefinition>();
+  private readonly siteDefinitions = new Map<string, ProteinRenderSite>();
   private readonly baseSitePositions = new Map<string, THREE.Vector3>();
   private readonly siteResidueGroups = new Map<string, readonly number[]>();
   private trackedResidues: readonly number[] = [];
@@ -55,8 +50,8 @@ export class ProteinRuntime {
   // root に binding と部位・結合線の表示資源を結び付ける。
   public constructor(
     root: THREE.Object3D,
-    private readonly asset: ProteinAssetDefinition,
-    motion: ProteinMotionAsset,
+    private readonly asset: ProteinRenderAsset,
+    motion: ProteinRenderMotion,
     motionBinding?: ProteinMotionBinding | null,
   ) {
     // 固定定義の索引と、外部係数を適用する binding を同じ runtime に束ねる。
@@ -178,7 +173,7 @@ export class ProteinRuntime {
   }
 
   // 変形済みローカルアンカーを、外部から渡された個体姿勢でワールド座標へ写す。
-  private siteWorldPosition(site: ProteinSiteDefinition | null, origin: Vec3, attitude: Quat): Vec3 {
+  private siteWorldPosition(site: ProteinRenderSite | null, origin: Vec3, attitude: Quat): Vec3 {
     // 部位が見つからない場合も共通変換へ null を渡し、origin 基準の安全な結果にする。
     return proteinSiteWorldPosition(
       site,
