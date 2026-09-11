@@ -1,5 +1,5 @@
-// 衛星写真から被覆率・雲頂高度・薄い雲の光学的厚みへ分けた、表示時刻によらない雲場。生成した雲場と
-// 同じ成分の並びで供給するので、表面・大気・影の読み手はどちらの場も同じ規則で読める。
+// 衛星写真から被覆率・雲頂高度・薄い雲の光学的厚みへ分けた、表示時刻によらない雲場。成分の並びは
+// 生成した雲場と同じ。
 import * as THREE from 'three/webgpu';
 import { DeferredTexture } from '../deferred-texture';
 import { CloudFieldSampler } from './cloud-field-sampler';

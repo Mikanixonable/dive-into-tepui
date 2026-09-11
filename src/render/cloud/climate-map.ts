@@ -18,7 +18,7 @@ export const CLIMATE_LAND_MAX = 1;
 // 標高の勾配を取る中心差分の刻み [rad]。テクスチャの texel(2π/512)より大きく、山脈の幅より小さい。
 const SLOPE_STEP = 0.02;
 
-// 天体の気候を単位方向で答える入力。generation は画像が GPU へ公開されるたびに進む世代。
+// 天体の気候を単位方向で答える入力。generation は入力(読む画像か、その選択)が変わるたびに進む世代。
 export interface ClimateMap {
   readonly generation: number;
   temperatureK(direction: Vec3Node): FloatNode;

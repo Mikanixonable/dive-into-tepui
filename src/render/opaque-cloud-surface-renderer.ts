@@ -108,8 +108,8 @@ export class OpaqueCloudSurfaceRenderer {
     this.fieldSampler.setLodSampling(mode, fixedLevel);
   }
 
-  // 読む雲場を差し替える。読み取りはマテリアルへ焼かれているので、変わったときだけ組み直す。
-  // 差し替えた先の LOD 規則は、setLodSampling を呼び直すまでその sampler のまま。
+  // 読む雲場を差し替え、変わったときはマテリアルを組み直す。差し替えた先の LOD 規則は、setLodSampling を
+  // 呼び直すまでその sampler のもの。
   public setFieldSampler(fieldSampler: CloudFieldSampler): void {
     if (fieldSampler === this.fieldSampler) return;
     this.fieldSampler = fieldSampler;
