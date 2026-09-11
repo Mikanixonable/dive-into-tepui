@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import ts from 'typescript';
+import { loadSourceModules } from './compile-source.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outDir = join(__dirname, '..', 'src', 'assets', 'models');
@@ -43,6 +44,9 @@ async function importTsDataModule(relSrcPath) {
 const { RCS_NOZZLES } = await importTsDataModule('src/render/rcs-nozzles.ts');
 const { RADIATOR_HINGE } = await importTsDataModule('src/physics/player-shape.ts');
 const { F0_ALUMINIUM, F0_BRASS, F0_BURNT_STEEL, F0_STEEL } = await importTsDataModule('src/render/dynamic/metal-f0.ts');
+const thermalSource = loadSourceModules(['render/thermal-emissive']);
+const { THERMAL_SHAPE_ATTRIBUTE } = thermalSource.thermalEmissive;
+thermalSource.dispose();
 
 // 標準マテリアルの既定。**金属度は「その面が金属かどうか」の 0 か 1 しか取らない** —
 // 塗装・セラミック・断熱材・ガラスは 0、剥き出しの金属は 1。既定は塗装面。
@@ -747,6 +751,95 @@ function buildPlasmaBullet() {
   return new THREE.Mesh(geo, mat);
 }
 
+// ------------------------------------------------------------- 砲身
+// リロード時に放出される砲身。砲身本体 + 後端フランジ + 放熱フィン + マズルブレーキ + ガスポート。
+
+// 薬室の位置 [m] と、そこから砲口へ向かって温度差が落ちる長さ [m]。発射ガスは銃身に沿って
+// 熱を置いていくので、薬室側がいちばん熱く、砲口へ向かって指数で下がる。
+const BARREL_BREECH_Z = -2.3;
+const BARREL_HEAT_FALLOFF = 1.2;
+
+// 砲身の各メッシュへ、平均温度からの温度差の分布(薬室側 1、砲口側 0)を焼く。
+function bakeBarrelThermalShape(root) {
+  const vertex = new THREE.Vector3();
+  root.traverse((child) => {
+    if (!child.isMesh) return;
+    child.updateMatrix();
+    // 形状パラメータを持つ型のままだと toJSON が足した属性を書き出さないので、素の BufferGeometry へ写す。
+    const geometry = new THREE.BufferGeometry().copy(child.geometry);
+    const position = geometry.getAttribute('position');
+    const shape = new Float32Array(position.count);
+    for (let i = 0; i < position.count; i++) {
+      vertex.fromBufferAttribute(position, i).applyMatrix4(child.matrix);
+      shape[i] = Math.min(1, Math.exp(-(vertex.z - BARREL_BREECH_Z) / BARREL_HEAT_FALLOFF));
+    }
+    geometry.setAttribute(THERMAL_SHAPE_ATTRIBUTE, new THREE.Float32BufferAttribute(shape, 1));
+    child.geometry = geometry;
+  });
+}
+
+function buildBarrelMesh() {
+  const g = new THREE.Group();
+  const S = 0.7; // 直径スケール係数
+
+  // --- 砲身チューブ本体(熱焼け黒鋼) ---
+  const tubeGeo = new THREE.CylinderGeometry(0.58 * S, 0.64 * S, 4.4, 12);
+  const tubeMat = new THREE.MeshStandardMaterial({ color: F0_BURNT_STEEL, roughness: 0.38, metalness: 1 });
+  const tube = new THREE.Mesh(tubeGeo, tubeMat);
+  tube.rotation.x = Math.PI / 2;
+  g.add(tube);
+
+  // --- 後端フランジ(薬室側・太めリング) ---
+  const flangeMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, roughness: 0.42, metalness: 1 });
+  const flange = new THREE.Mesh(new THREE.CylinderGeometry(0.88 * S, 0.85 * S, 0.32, 12), flangeMat);
+  flange.rotation.x = Math.PI / 2;
+  flange.position.z = -2.3;
+  g.add(flange);
+
+  // 後端中補強リング
+  const midRing = new THREE.Mesh(new THREE.CylinderGeometry(0.72 * S, 0.72 * S, 0.10, 12), flangeMat);
+  midRing.rotation.x = Math.PI / 2;
+  midRing.position.z = -0.8;
+  g.add(midRing);
+
+  // --- 放熱フィン(6枚、後部寄りに配置) ---
+  const finMat = new THREE.MeshStandardMaterial({ color: F0_BURNT_STEEL, roughness: 0.52, metalness: 1 });
+  const FIN_COUNT = 6;
+  for (let i = 0; i < FIN_COUNT; i++) {
+    const angle = (i / FIN_COUNT) * Math.PI * 2;
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.52 * S, 1.6), finMat);
+    fin.rotation.z = angle;
+    fin.position.set(Math.cos(angle) * 0.90 * S, Math.sin(angle) * 0.90 * S, -0.8);
+    g.add(fin);
+  }
+
+  // --- ガスポートリング(中間部) ---
+  const gasPortMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, roughness: 0.50, metalness: 1 });
+  const gasPort = new THREE.Mesh(new THREE.TorusGeometry(0.66 * S, 0.065, 6, 16), gasPortMat);
+  gasPort.rotation.x = Math.PI / 2;
+  gasPort.position.z = 0.4;
+  g.add(gasPort);
+
+  // --- マズルブレーキ(先端3連リング) ---
+  const brakeMat = new THREE.MeshStandardMaterial({ color: F0_STEEL, roughness: 0.30, metalness: 1 });
+  for (let ri = 0; ri < 3; ri++) {
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.76 * S, 0.70 * S, 0.11, 12), brakeMat);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.z = 1.55 + ri * 0.24;
+    g.add(ring);
+  }
+
+  // --- 砲口ボア(最前端・暗い穴) ---
+  // 発射煙のすすで覆われた内壁なので金属ではない。ベース色は拡散アルベドとして読まれる。
+  const boreMat = new THREE.MeshStandardMaterial({ color: 0x080b10, roughness: 0.80, metalness: 0 });
+  const bore = new THREE.Mesh(new THREE.CylinderGeometry(0.34 * S, 0.34 * S, 0.14, 10), boreMat);
+  bore.rotation.x = Math.PI / 2;
+  bore.position.z = 2.28;
+  g.add(bore);
+
+  bakeBarrelThermalShape(g);
+  return g;
+}
 
 // ------------------------------------------------------------- 静的子メッシュの統合
 // 実行時にはメッシュ数がそのまま draw call 数になるため、互いに相対運動しない
@@ -804,6 +897,7 @@ const models = {
   ammo:         buildAmmoPickup(),
   bullet:       buildBulletMesh(),
   plasma:       buildPlasmaBullet(),
+  barrel:       buildBarrelMesh(),
   casing:       buildCasingMesh(),
   debrisChunk:  buildDebrisChunk(),
   debrisPanel:  buildDebrisPanel(),
