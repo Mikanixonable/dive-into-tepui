@@ -48,25 +48,33 @@ export const PAUSE_MENU_STYLE = `
 #hud-pause-menu .pm-minimize:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
 #hud-pause-menu .pm-body.hidden { display: none; }
 #hud-pause-menu .pm-body { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
-#hud-pause-menu .pm-tabs {
+#hud-pause-menu .pm-tabs,
+#hud-pause-menu .pm-settings-view .sv-tabs {
   display: flex; flex: 0 0 auto; gap: var(--space-1); margin-top: var(--space-2);
   padding: var(--space-1); border: 0; border-radius: var(--radius-panel);
 }
-#hud-pause-menu .pm-tabs .w-btn {
+#hud-pause-menu .pm-settings-view .sv-tabs {
+  width: 100%; margin-top: var(--space-4);
+}
+#hud-pause-menu .pm-tabs .w-btn,
+#hud-pause-menu .pm-settings-view .sv-tabs .w-btn {
   display: flex; flex: 1 1 0; min-width: 0; min-height: var(--hit-target-min);
-  align-items: center; justify-content: center; padding: var(--space-2);
+  align-items: center; justify-content: center; padding: var(--space-2) var(--space-3);
   border: 0; border-radius: var(--radius-control); text-align: center;
-  font-size: var(--font-s); font-weight: 600; letter-spacing: 0.06em;
+  font-size: var(--font-m); font-weight: 600; letter-spacing: 0.06em;
   background: transparent; color: var(--text-dim); box-shadow: none;
 }
-#hud-pause-menu .pm-tabs .w-btn:hover {
+#hud-pause-menu .pm-tabs .w-btn:hover,
+#hud-pause-menu .pm-settings-view .sv-tabs .w-btn:hover {
   background: var(--glass-control); color: var(--color-primary-hover); transform: none;
 }
-#hud-pause-menu .pm-tabs .w-btn.on {
+#hud-pause-menu .pm-tabs .w-btn.on,
+#hud-pause-menu .pm-settings-view .sv-tabs .w-btn.on {
   background: var(--color-primary-fill); color: var(--color-primary);
 }
 #hud-pause-menu .pm-tab-content {
-  flex: 1 1 auto; min-height: 0; margin-top: var(--space-2); overflow-y: auto; overscroll-behavior: contain;
+  flex: 1 1 auto; min-width: 0; min-height: 0; margin-top: var(--space-2);
+  overflow-y: auto; overscroll-behavior: contain;
 }
 #hud-pause-menu .pm-tab-panel[hidden],
 #hud-pause-menu .pm-settings-view[hidden] { display: none; }
