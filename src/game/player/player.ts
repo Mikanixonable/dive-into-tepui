@@ -57,7 +57,8 @@ import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { MapListSection, ObjectPickerGenre } from '../pickable/pickable-listing';
 import { PlayerMotion, type PlayerMotionReactions } from './player-motion';
-import type { DynamicMotion, DynamicReactionServices } from '../dynamic/dynamic-motion';
+import type { DynamicMotion } from '../dynamic/dynamic-motion';
+import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
 
 export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]
 const HULL_START_TEMP = 273; // 初期機体温度 [K]
@@ -155,15 +156,15 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       updateAltitudeAlarm: (dt, position, body, pivot) => (
         owner.altitudeAlarm.update(dt, position, body, pivot)
       ),
-      receiveEntityContact: (other, contact, context) => (
-        owner.receiveEntityContact(other, contact, context)
+      receiveEntityContact: (other, contact, services) => (
+        owner.receiveEntityContact(other, contact, services)
       ),
-      receiveRadiatorContact: (side, other, contact, context) => (
-        owner.receiveRadiatorContact(side, other, contact, context)
+      receiveRadiatorContact: (side, other, contact, services) => (
+        owner.receiveRadiatorContact(side, other, contact, services)
       ),
-      receiveSurfaceContact: (contact, context) => owner.receiveSurfaceContact(contact, context),
-      receiveStructuralLoss: context => owner.receiveStructuralLoss(context),
-      receiveBurnUp: context => owner.receiveBurnUp(context),
+      receiveSurfaceContact: (contact, services) => owner.receiveSurfaceContact(contact, services),
+      receiveStructuralLoss: services => owner.receiveStructuralLoss(services),
+      receiveBurnUp: services => owner.receiveBurnUp(services),
     });
     super(
       name,
@@ -369,7 +370,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 弾は武装のダメージを、それ以外は接触の接近速度と相手の種別を根拠にする(ゲームバランスの量)。
   private receiveEntityContact(
-    other: DynamicMotion, contact: Contact, context: DynamicReactionServices,
+    other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void {
     if (!this.motion.alive) return;
 
@@ -377,29 +378,29 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     if (bullet !== null) {
       this.attackedByBullet(
         bullet.type, bullet.shooter, bullet.damage, contact.point,
-        context.activeStage, context.registry,
+        services.activeStage, services.registry,
       );
       return;
     }
 
     this.damagedByContact(
       contactDamageSpeed(other, contact), null, '高速接触により機体を喪失した',
-      context.activeStage, context.registry,
+      services.activeStage, services.registry,
     );
   }
 
   // 天体の固体表面への接触。相手の種別による重みが無いので接近速度がそのまま根拠になる。
-  private receiveSurfaceContact(contact: Contact, context: DynamicReactionServices): void {
+  private receiveSurfaceContact(contact: Contact, services: DynamicReactionServices): void {
     if (!this.motion.alive) return;
     this.damagedByContact(
       closingSpeed(contact), null, '天体の地表へ到達し機体は失われた',
-      context.activeStage, context.registry,
+      services.activeStage, services.registry,
     );
   }
 
   // 放熱板の接触代理(RadiatorFold)からの帰結。ダメージは side の放熱板パーツへ入る。
   private receiveRadiatorContact(
-    side: RadiatorSide, other: DynamicMotion, contact: Contact, context: DynamicReactionServices,
+    side: RadiatorSide, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void {
     if (!this.motion.alive) return;
 
@@ -407,14 +408,14 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     if (bullet !== null) {
       this.attackedByBullet(
         bullet.type, bullet.shooter, bullet.damage, contact.point,
-        context.activeStage, context.registry, side,
+        services.activeStage, services.registry, side,
       );
       return;
     }
 
     this.damagedByContact(
       contactDamageSpeed(other, contact), side, '高速接触により機体を喪失した',
-      context.activeStage, context.registry,
+      services.activeStage, services.registry,
     );
   }
 
@@ -439,21 +440,21 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   }
 
   // 動圧が構造限界を超えたことによる喪失。
-  private receiveStructuralLoss(context: DynamicReactionServices): void {
+  private receiveStructuralLoss(services: DynamicReactionServices): void {
     if (!this.motion.alive) return;
     this.lose(
       '動圧が構造限界を超え、機体は空力的に分解した',
-      context.activeStage, context.registry,
+      services.activeStage, services.registry,
     );
   }
 
   // 外殻の温度が上限を超えたときの喪失。理由は、そこで空力加熱が効いていたかで分ける。
-  private receiveBurnUp(context: DynamicReactionServices): void {
+  private receiveBurnUp(services: DynamicReactionServices): void {
     this.lose(
       this.motion.aero.heatingAerodynamically
         ? '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した'
         : '排熱が追いつかず、機体は熱で機能不全に陥った',
-      context.activeStage, context.registry,
+      services.activeStage, services.registry,
     );
   }
 
