@@ -149,33 +149,37 @@ export function register(): void {
     assert.equal(earthTileChildren(earthTileKey(7, 0, 0)).length, 0);
   });
 
-  test('earth tiles: stage00投影でz6/z7候補まで有限回に進みfrontierを保つ', () => {
-    const tiles = new EarthSurfaceTiles();
-    const projection = stage00EarthProjection();
-    const resident = new Map<string, EarthTileResident>();
-    const candidateStages = new Set<number>();
-    let nextLayer = 0;
-    for (let frame = 0; frame < 96 && !candidateStages.has(7); frame++) {
-      tiles.sync(projection, [...resident.values()], frame * 250);
-      const frontier = tiles.frontier.map((tile) => tile.key);
-      assertAdjacentBalanced(frontier);
-      const candidates = tiles.requestCandidates(projection).filter((key) => !resident.has(earthTileId(key)));
-      for (const key of candidates) candidateStages.add(key.z);
-      const groups = new Map<string, EarthTileKey[]>();
-      for (const key of candidates) {
-        const parent = earthTileParent(key);
-        const groupId = parent === null ? earthTileId(key) : earthTileId(parent);
-        const group = groups.get(groupId) ?? [];
-        group.push(key);
-        groups.set(groupId, group);
+  test('earth tiles: stage00投影で取得順が変わってもz6/z7候補へ進みfrontierを保つ', () => {
+    for (const reverseArrival of [false, true]) {
+      const tiles = new EarthSurfaceTiles();
+      const projection = stage00EarthProjection();
+      const resident = new Map<string, EarthTileResident>();
+      const candidateStages = new Set<number>();
+      let nextLayer = 0;
+      for (let frame = 0; frame < 120 && !candidateStages.has(7); frame++) {
+        tiles.sync(projection, [...resident.values()], frame * 250);
+        const frontier = tiles.frontier.map((tile) => tile.key);
+        assertAdjacentBalanced(frontier);
+        const candidates = tiles.requestCandidates(projection)
+          .filter((key) => !resident.has(earthTileId(key)));
+        const arrival = reverseArrival ? candidates.slice().reverse() : candidates;
+        for (const key of arrival) candidateStages.add(key.z);
+        const groups = new Map<string, EarthTileKey[]>();
+        for (const key of arrival) {
+          const parent = earthTileParent(key);
+          const groupId = parent === null ? earthTileId(key) : earthTileId(parent);
+          const group = groups.get(groupId) ?? [];
+          group.push(key);
+          groups.set(groupId, group);
+        }
+        const group = [...groups.values()].find((keys) => keys.length === 4) ?? arrival;
+        if (group.length === 0) continue;
+        nextLayer = admitResidentGroup(group, tiles, resident, nextLayer);
+        assert.ok(resident.size <= EARTH_TILE_FRONTIER_LAYERS);
       }
-      const group = [...groups.values()].find((keys) => keys.length === 4) ?? candidates;
-      if (group.length === 0) continue;
-      nextLayer = admitResidentGroup(group, tiles, resident, nextLayer);
-      assert.ok(resident.size <= EARTH_TILE_FRONTIER_LAYERS);
+      assert.ok(candidateStages.has(6));
+      assert.ok(candidateStages.has(7));
     }
-    assert.ok(candidateStages.has(6));
-    assert.ok(candidateStages.has(7));
   });
 
   test('earth tiles: 1回のsyncで開始するsplit groupを4つに制限する', () => {
@@ -289,6 +293,32 @@ export function register(): void {
     assert.deepEqual(earthPageAt(tiles.pageTable(), 0.1, 0.1), halfway);
     tiles.sync(projection, roots.concat(children), 1050);
     assert.deepEqual(earthPageAt(tiles.pageTable(), 0.1, 0.1), [0, EARTH_BASE_LAYER, 0, 255]);
+  });
+
+  test('earth tiles: 別keyへ再利用されたlayerをleafとfade親へ誤適用しない', () => {
+    const projection = new SyntheticProjection(3);
+    const roots: EarthTileResident[] = ROOTS.map((key, layer) => ({ key, layer }));
+    const children = earthTileChildren(ROOTS[0]!).map((key, index) => ({ key, layer: index + 2 }));
+
+    const leafReuse = new EarthSurfaceTiles();
+    leafReuse.sync(projection, roots, 0);
+    leafReuse.sync(projection, roots, 250);
+    leafReuse.sync(projection, roots.concat(children), 400);
+    const reusedLayer = { key: earthTileKey(1, 2, 0), layer: children[0]!.layer };
+    leafReuse.sync(projection, roots.concat(children.slice(1), reusedLayer), 700);
+    assert.deepEqual(earthPageAt(leafReuse.pageTable(), 0.1, 0.1), [EARTH_BASE_LAYER, EARTH_BASE_LAYER, EARTH_BASE_LAYER, 255]);
+
+    const parentReuse = new EarthSurfaceTiles();
+    parentReuse.sync(projection, roots, 0);
+    parentReuse.sync(projection, roots, 250);
+    parentReuse.sync(projection, roots.concat(children), 400);
+    const reusedParent = { key: earthTileKey(1, 2, 0), layer: roots[0]!.layer };
+    parentReuse.sync(projection, [roots[1]!, ...children, reusedParent], 450);
+    const page = earthPageAt(parentReuse.pageTable(), 0.1, 0.1);
+    assert.equal(page[0], children[0]!.layer);
+    assert.equal(page[1], EARTH_BASE_LAYER);
+    assert.equal(page[2], children[0]!.key.z);
+    assert.equal(page[3], 255);
   });
 
   test('earth tiles: 未取得根はbaseを指し索引境界で親子の標本位置が一致する', () => {
