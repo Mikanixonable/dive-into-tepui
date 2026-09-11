@@ -16,6 +16,10 @@ const ZERO_VELOCITY_SECTION_ROWS: readonly (readonly [keyof ZeroVelocitySettings
   ['earthMoonXZ', '地球と月を通る垂直な断面'],
   ['sunEarthXY', '地球公転面'],
   ['sunEarthXZ', '太陽と地球を通る垂直な断面'],
+  ['sunJupiterXY', '木星公転面'],
+  ['sunJupiterXZ', '太陽と木星を通る垂直な断面'],
+  ['sunSaturnXY', '土星公転面'],
+  ['sunSaturnXZ', '太陽と土星を通る垂直な断面'],
 ];
 
 const LAGRANGE_POINTS: readonly LagrangeLabel[] = ['L1', 'L2', 'L3', 'L4', 'L5'];
@@ -80,7 +84,7 @@ export class ZeroVelocitySection {
     this.sync();
   }
 
-  // 断面ゲート4種のトグル列を組む。
+  // 断面ゲート8種のトグル列を組む。
   private buildGateSwitches(parent: HTMLElement): readonly (readonly [keyof ZeroVelocitySettings, ToggleSwitch])[] {
     const switches: (readonly [keyof ZeroVelocitySettings, ToggleSwitch])[] = [];
     for (const [key, label] of ZERO_VELOCITY_SECTION_ROWS) {
@@ -129,12 +133,15 @@ export class ZeroVelocitySection {
     this.commit({ jacobiMin: Math.min(min, max), jacobiMax: Math.max(min, max) });
   }
 
-  // 断面が実際に開いている系(地球-月/太陽-地球)のラグランジュ点の値へヤコビ定数を合わせる。
-  // 両方または片方も開いていなければ地球-月を既定にする。
+  // 断面が実際に開いている系のラグランジュ点の値へヤコビ定数を合わせる。
+  // 複数系が開いていれば先頭、何も開いていなければ地球-月を使う。
   private snapToLagrange(point: LagrangeLabel): void {
     const s = this.current;
-    const sunEarthOnly = (s.sunEarthXY || s.sunEarthXZ) && !(s.earthMoonXY || s.earthMoonXZ);
-    this.commit({ jacobi: lagrangePointJacobi(sunEarthOnly ? 'sun-earth' : 'earth-moon', point) });
+    const system = s.earthMoonXY || s.earthMoonXZ ? 'earth-moon'
+      : s.sunEarthXY || s.sunEarthXZ ? 'sun-earth'
+        : s.sunJupiterXY || s.sunJupiterXZ ? 'sun-jupiter'
+          : s.sunSaturnXY || s.sunSaturnXZ ? 'sun-saturn' : 'earth-moon';
+    this.commit({ jacobi: lagrangePointJacobi(system, point) });
   }
 
   // 現在値を各ウィジェットへ映す。

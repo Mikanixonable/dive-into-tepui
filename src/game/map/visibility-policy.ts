@@ -167,7 +167,7 @@ export class MapVisibilityPolicy {
   }
 
   // その天体の軌道線を引くか。惑星・準惑星・小天体は分類のトグルだけで決まり、衛星はさらに
-  // 主惑星が地球か、注視中の系か、近傍のいずれかであることを要する(全惑星の衛星軌道が
+  // 主天体が注視中の系か、近傍のいずれかであることを要する(全惑星の衛星軌道が
   // 一度に出ると読めなくなるため)。
   private orbitForBody(id: string, cls: CelestialClass): boolean {
     switch (cls) {
@@ -178,7 +178,7 @@ export class MapVisibilityPolicy {
         const planetId = this.celestialBodies.motionOf(id).primary?.id ?? null;
         if (planetId === null) return false;
         return this.toggles.satelliteOrbit
-          && (planetId === 'earth' || focusSystemOf(this.celestialBodies, this.focusId) === planetId
+          && (id === 'moon' || focusSystemOf(this.celestialBodies, this.focusId) === planetId
             || this.nearby.has(id));
       }
       default: return false;
