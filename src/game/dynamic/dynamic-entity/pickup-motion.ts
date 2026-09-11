@@ -25,6 +25,7 @@ export class PickupMotion extends DynamicMotion {
       radius: PICKUP_PHYSICAL_RADIUS,
       collides: true,
       contactDamageWeight: 0,
+      // 空力・輻射圧・熱の物性は小さな金属片の値
       bcInv: SMALL_DEBRIS_BCINV,
       srpCoeff: SMALL_DEBRIS_SRP_COEFF,
       specificHeat: SMALL_DEBRIS_SPECIFIC_HEAT,

@@ -23,6 +23,7 @@ export class Belt {
     thrustAccelVec: Vec3,
   ): void {
     const targetFeed = 1 - roundsInMag / MAG_ROUNDS;
+    // 次のマガジンに替わって給弾進みが巻き戻ったら、リンクを1つ詰める
     if (targetFeed < this.feed - 0.5) {
       this.physics.shiftBeltNodes();
       this.feed = targetFeed;

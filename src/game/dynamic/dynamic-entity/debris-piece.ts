@@ -63,6 +63,7 @@ export class DebrisPiece extends DynamicEntity {
           effects,
         ),
         radius,
+        // 砲身の破片は、外れた時点の温度と温度差を引き継ぐ
         temperature: debrisKind.kind === 'barrel' ? debrisKind.bornTemperature : undefined,
         thermalDeviation: debrisKind.kind === 'barrel'
           ? debrisKind.bornThermalDeviation

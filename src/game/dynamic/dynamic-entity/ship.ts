@@ -47,8 +47,10 @@ export function shipMotionOptions(
     radius,
     bcInv: SHIP_BCINV,
     srpCoeff: SHIP_SRP_COEFF,
+    // 過去線を保持し、予測も引く
     historyDuration: DEFAULT_HISTORY_DURATION,
     predictedForGhost: true,
+    // 熱の物性
     specificHeat: SHIP_SPECIFIC_HEAT,
     bulkDensity: SHIP_BULK_DENSITY,
     radiatingAreaPerMass: SHIP_RADIATING_AREA_PER_MASS,

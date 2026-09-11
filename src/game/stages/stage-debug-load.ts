@@ -1,5 +1,4 @@
 // デバッグ用ステージ: 破片を多数配置し、積分するエンティティ数の高負荷を常時再現する。
-// タイトルの通常ボタン列には出ない。
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import {
@@ -26,11 +25,13 @@ export class StageDebugLoad extends Stage {
   public static readonly hiddenFromSelect = true;
   public static readonly selectKeys = ['KeyL'];
 
+  // saved があればそこから復元し、無ければ初期配置してステージを始める。
   public constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     this.begin();
   }
 
+  // ステージ開始時に出すブリーフィングの本文(HTML)。
   protected briefingHtml(): string {
     return `<b>高負荷デバッグステージ</b><br>破片 ${DEBRIS_COUNT} 個を配置`;
   }
@@ -38,6 +39,7 @@ export class StageDebugLoad extends Stage {
   // 自機を置き、破片を自機の周囲へ散らす。
   protected init(): void {
     const player = this.addPlayer({ ammo: { mags: 20, rounds: MAG_ROUNDS } });
+    // 固定の種で、毎回同じ配置にする。破片は自機と同じ速度で置く
     const rand = mulberry32(RNG_SEED);
     for (let i = 0; i < DEBRIS_COUNT; i++) {
       const offset = randomOffset(rand, DEBRIS_MAX_DIST);
@@ -63,7 +65,7 @@ export class StageDebugLoad extends Stage {
   }
 }
 
-// 自機からの距離が [DEBUG_LOAD_PLACEMENT_MIN_DIST, maxDist] に収まるランダムな相対位置を、
+// 自機からの距離が [PLACEMENT_MIN_DIST, maxDist] に収まるランダムな相対位置を、
 // その球殻内で密度が一様になるように返す。
 function randomOffset(rand: () => number, maxDist: number): Vec3 {
   const min3 = PLACEMENT_MIN_DIST ** 3;

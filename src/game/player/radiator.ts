@@ -67,6 +67,7 @@ class RadiatorFold extends DynamicMotion {
   }
 }
 
+// 折りへの接触を艦側のゲーム上の反応へ渡す口。side は当たった放熱板。
 interface RadiatorContactReaction {
   (
     side: RadiatorSide,
@@ -108,7 +109,7 @@ export class RadiatorSystem {
     p.deployTarget = p.deployTarget === 0 ? 1 : 0;
   }
 
-  // side の展開目標を明示的に設定する。HUD の「展開」「収納」ボタンから使う。
+  // side の展開目標を明示的に設定する。
   public setDeployed(side: RadiatorSide, deployed: boolean): void {
     const p = this.panels[side];
     const target: 0 | 1 = deployed ? 1 : 0;
@@ -141,8 +142,8 @@ export class RadiatorSystem {
     return { even: sign * psi, odd: -sign * psi };
   }
 
-  // side の有効な放熱面積 [m^2]。totalCoolingRate は放熱板部品の面積の総和で、展開度と
-  // 損耗度で目減りする。
+  // side の有効な放熱面積 [m^2]。totalCoolingRate は放熱板部品の面積の総和で、その半分に
+  // 展開度を掛ける。全損した側は 0。
   private panelArea(side: RadiatorSide, totalCoolingRate: number): number {
     if (this.wear[side] >= 1) return 0;
     return (totalCoolingRate / 2) * this.panels[side].deploy;

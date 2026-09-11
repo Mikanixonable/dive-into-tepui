@@ -2,7 +2,7 @@
 // 他モジュールを import してはならない — tools/model-builder/ がこのファイルを
 // TypeScript のまま transpile して読み込む。
 
-// 機関砲の銃口位置。発射、発光、薬莢排出はこの2点を交互に使う。
+// 機関砲の銃口位置(機体座標系 [m])。発射、発光、薬莢排出はこの2点を交互に使う。
 export const PLAYER_MUZZLE_OFFSETS: readonly { x: number; y: number; z: number }[] = [
   { x: 0, y: 0.55, z: 2.55 },
   { x: 0, y: -0.55, z: 2.55 },
@@ -20,7 +20,7 @@ export const RADIATOR_SEGMENT_LENGTH = (2.3 * 4) / RADIATOR_FOLD_COUNT;
 // 全開時に各折りが展開軸から残す傾き [rad]。
 export const RADIATOR_DEPLOY_TILT = 15 * Math.PI / 180;
 
-// 上側放熱板のヒンジ位置。下側は X の符号を反転する。
+// 上側放熱板のヒンジ位置(機体座標系 [m])。下側は X の符号を反転する。
 export const RADIATOR_HINGE = { x: 1.17, y: -0.20, z: -1.80 } as const;
 
 // マガジン1本の厚み [m]。積み上げ間隔とベルト方向の寸法がこれで決まる。

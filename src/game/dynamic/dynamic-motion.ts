@@ -180,6 +180,7 @@ export class DynamicMotion {
   // state から始まる軌道を組む。options で省いた物性は既定値になる。
   public constructor(state: KinematicState, options: DynamicMotionProperties = {}) {
     this.actual = new DynamicTrajectory(state);
+    // 姿勢・質量と接触
     this.att = options.attitude ?? identityAttitude();
     this.hasAttitude = options.hasAttitude ?? true;
     this.mass = options.mass ?? 1;
@@ -188,8 +189,10 @@ export class DynamicMotion {
     this.engagementAnchor = options.engagementAnchor ?? false;
     this.preciseReentry = options.preciseReentry ?? false;
     this.contactDamageWeight = options.contactDamageWeight ?? 1;
+    // 空力・輻射圧
     this.bcInv = options.bcInv ?? 0;
     this.srpCoeff = options.srpCoeff ?? 0;
+    // 熱
     this.temperature = options.temperature ?? ENV_TEMP;
     this.thermalDeviation = options.thermalDeviation ?? 0;
     this.specificHeat = options.specificHeat ?? 0;
@@ -197,6 +200,7 @@ export class DynamicMotion {
     this.fixedRadiatingAreaPerMass = options.radiatingAreaPerMass ?? 0;
     this.emissivity = options.emissivity ?? HULL_EMISS;
     this.maxTemperature = options.maxTemperature ?? Infinity;
+    // 過去線の保持・予測と、接触の振る舞い
     this.baseHistoryDuration = options.historyDuration ?? 0;
     this.predictedForGhost = options.predictedForGhost ?? false;
     this.behavior = options.behavior ?? PASSIVE_BEHAVIOR;

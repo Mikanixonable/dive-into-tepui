@@ -1,3 +1,4 @@
+// タンパク質アセット(意味論定義・モーション)の型とその検証、および保存形と戦闘の読み取り値の型。
 import type { ProteinPhase } from '../../render/protein/protein-display';
 
 type ProteinVec3 = readonly [number, number, number];
@@ -14,16 +15,16 @@ interface ProteinComponentDefinition {
 
 export interface ProteinSiteDefinition {
   readonly id: string;
-  /** Biological name (residue/domain-based), distinct from the internal id. Not shown in HUD/markers. */
+  /** 残基・ドメインに基づく生物学上の名前(内部 id とは別)。 */
   readonly label: string;
-  /** Unique English abbreviation (e.g. residue-based "His93") shown in HUD/markers instead of label. */
+  /** 残基に基づく一意な英略称(例 "His93")。HUD・マーカーにはこれを表示名として出す。 */
   readonly abbreviation: string;
   readonly componentId: string;
   readonly type: ProteinSiteType;
   readonly source: ProteinSource;
   readonly residues: readonly string[];
   readonly anchor: string;
-  /** Coordinates are in the source structure's Å coordinate system. */
+  /** 座標は原構造の座標系 [Å]。 */
   readonly position: ProteinVec3;
   readonly forward: ProteinVec3;
   readonly radius: number;
@@ -45,9 +46,9 @@ interface ProteinBondDefinition {
 interface ProteinLigandDefinition {
   readonly id: string;
   readonly label: string;
-  /** Three-letter residue name used by the structure asset (for example HEM). */
+  /** 構造アセットでの3文字の残基名(例 HEM)。 */
   readonly residue: string;
-  /** Functional site located at the ligand's reaction/metal center. */
+  /** リガンドの反応中心・金属中心にある機能部位の id。 */
   readonly centerSite: string;
   readonly metalElement?: string;
 }
@@ -58,7 +59,7 @@ export interface ProteinModificationDefinition {
   readonly label: string;
   readonly source: ProteinSource;
   readonly anchor: string;
-  /** Optional structure residue descriptors used to average a moving marker anchor. */
+  /** 動くマーカーの基準点を平均で求めるための、構造の残基の記述子(任意)。 */
   readonly residues?: readonly string[];
   readonly position: ProteinVec3;
   readonly states: readonly string[];
@@ -120,7 +121,7 @@ interface ProteinMotionExpectedCounts {
 export interface ProteinAssetDefinition {
   readonly schemaVersion: number;
   readonly id: string;
-  /** The protein's own name (e.g. "ルビスコ"), prefixed onto the enemy's display name. */
+  /** タンパク質そのものの名前(例 "ルビスコ")。敵の表示名の頭に付く。 */
   readonly displayName: string;
   readonly source: {
     readonly pdbId: string;
@@ -167,13 +168,16 @@ export interface ProteinCombatReadout {
   }[];
 }
 
+// asset の不整合を列挙する。空配列なら妥当。
 export function validateProteinAsset(asset: ProteinAssetDefinition): string[] {
   const issues: string[] = [];
+  // 基本項目
   if (asset.schemaVersion !== 1) issues.push(`unsupported schemaVersion: ${asset.schemaVersion}`);
   if (!asset.id) issues.push('id is empty');
   if (!asset.displayName) issues.push('displayName is empty');
   if (!Number.isFinite(asset.coordinateScale) || asset.coordinateScale <= 0) issues.push('coordinateScale must be positive');
   if (!Number.isFinite(asset.integrity.maxHp) || asset.integrity.maxHp <= 0) issues.push('integrity.maxHp must be positive');
+  // 構成要素・行動の id(部位から参照される)
   const componentIds = new Set<string>();
   for (const component of asset.components) {
     if (!component.id) issues.push('component id is empty');
@@ -186,6 +190,7 @@ export function validateProteinAsset(asset: ProteinAssetDefinition): string[] {
     if (actionIds.has(action.id)) issues.push(`duplicate action id: ${action.id}`);
     actionIds.add(action.id);
   }
+  // 機能部位
   const ids = new Set<string>();
   const abbreviations = new Set<string>();
   for (const site of asset.sites) {
@@ -203,6 +208,7 @@ export function validateProteinAsset(asset: ProteinAssetDefinition): string[] {
       if (!actionIds.has(action)) issues.push(`site ${site.id} references unknown action: ${action}`);
     }
   }
+  // 結合・リガンド・修飾スロットの参照先
   for (const bond of asset.bonds) {
     if (!ids.has(bond.from)) issues.push(`bond references unknown site: ${bond.from}`);
     if (!ids.has(bond.to)) issues.push(`bond references unknown site: ${bond.to}`);
@@ -226,8 +232,11 @@ export function validateProteinAsset(asset: ProteinAssetDefinition): string[] {
   return issues;
 }
 
+// motion アセットの不整合を列挙する。空配列なら妥当。expectedPdbId・expectedCounts を渡すと、
+// 原構造と各面の残基数との一致も確かめる。
 export function validateProteinMotionAsset(asset: ProteinMotionAsset, expectedPdbId?: string, expectedCounts?: ProteinMotionExpectedCounts): string[] {
   const issues: string[] = [];
+  // 基本項目と残基配列の長さ
   if (asset.schemaVersion !== 1) issues.push(`unsupported motion schemaVersion: ${asset.schemaVersion}`);
   if (asset.model !== 'c-alpha-anm-overdamped') issues.push(`unsupported motion asset model: ${asset.model}`);
   if (expectedPdbId && asset.source?.pdbId !== expectedPdbId) issues.push(`motion source pdbId must be ${expectedPdbId}`);
@@ -239,6 +248,7 @@ export function validateProteinMotionAsset(asset: ProteinMotionAsset, expectedPd
   ] as const) {
     if (!Array.isArray(asset.residues?.[name]) || asset.residues[name].length !== length) issues.push(`motion residues.${name} must have length ${length}`);
   }
+  // 各面の要素から残基への対応
   const bindings = asset.bindings;
   const bindingNames = ['atomResidues', 'backboneResidues', 'surfaceResidues', 'ribbonResidues', 'siteResidues', 'modificationResidues'] as const;
   for (const name of bindingNames) {
@@ -249,6 +259,7 @@ export function validateProteinMotionAsset(asset: ProteinMotionAsset, expectedPd
       for (const index of values) if (!Number.isInteger(index) || index < 0 || index >= residueCount) issues.push(`motion bindings.${name} index out of range: ${index}`);
     }
   }
+  // 固有モード: 先頭4本が集団運動、残りが局所運動で、固有値の昇順に並ぶ
   if (!Array.isArray(asset.modes) || asset.modes.length !== 24) issues.push('motion modes must contain 24 modes');
   const modeIds = new Set<string>();
   for (const [index, mode] of (asset.modes ?? []).entries()) {
@@ -265,6 +276,7 @@ export function validateProteinMotionAsset(asset: ProteinMotionAsset, expectedPd
     else if (mode.displacements.some((value) => !Number.isFinite(value))) issues.push(`motion mode ${mode.id} contains non-finite displacement`);
     if (index > 0 && mode.eigenvalue < asset.modes[index - 1]!.eigenvalue) issues.push('motion eigenvalues must be sorted');
   }
+  // 表示パラメータ
   if (!Number.isFinite(asset.display?.sampleHz) || asset.display.sampleHz <= 0) issues.push('motion display.sampleHz must be positive');
   if (!Number.isFinite(asset.display?.collectiveGain) || asset.display.collectiveGain <= 0 || asset.display.collectiveGain > 1) issues.push('motion display.collectiveGain must be in (0, 1]');
   if (!Number.isFinite(asset.display?.localGain) || asset.display.localGain <= 0 || asset.display.localGain > 1) issues.push('motion display.localGain must be in (0, 1]');
