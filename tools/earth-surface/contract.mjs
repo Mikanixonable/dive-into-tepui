@@ -7,6 +7,7 @@ import { dirname, resolve, sep } from 'node:path';
 
 export const EARTH_TILE_MIN_Z = 4;
 export const EARTH_TILE_MAX_Z = 7;
+export const EARTH_LEGACY_TILE_MIN_Z = 0;
 export const EARTH_TERRAIN_HEADER_BYTES = 32;
 export const EARTH_TERRAIN_WIDTH = 260;
 export const EARTH_TERRAIN_HEIGHT = 260;
@@ -24,6 +25,9 @@ export const EARTH_BASE_COLOR_WIDTH = 8192;
 export const EARTH_BASE_COLOR_HEIGHT = 4096;
 export const EARTH_BASE_COLOR_COMPONENTS = 3;
 export const EARTH_GLOBAL_TILE_COUNT = 43520;
+export const EARTH_LEGACY_BASE_COLOR_WIDTH = 512;
+export const EARTH_LEGACY_BASE_COLOR_HEIGHT = 256;
+export const EARTH_LEGACY_GLOBAL_TILE_COUNT = 43690;
 
 const DATASET = /^[a-z0-9-]+$/;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -98,7 +102,8 @@ function expectClimateEncoding(value) {
 
 export function validateManifest(value) {
   const manifest = expectObject(value, 'earth-surface manifest');
-  if (manifest.schemaVersion !== 2) fail('unsupported earth surface manifest schema');
+  if (manifest.schemaVersion !== 1 && manifest.schemaVersion !== 2) fail('unsupported earth surface manifest schema');
+  const legacy = manifest.schemaVersion === 1;
   if (typeof manifest.datasetId !== 'string' || !DATASET.test(manifest.datasetId)) fail('invalid earth surface datasetId');
   expectSha256(manifest.sourceManifestSha256, 'sourceManifestSha256');
   const provenance = expectObject(manifest.provenance, 'provenance');
@@ -117,15 +122,24 @@ export function validateManifest(value) {
   if (climateMap.width !== 1024 || climateMap.height !== 512 || climateMap.channels !== 4
     || climateMap.scalar !== 'UInt8') fail('climateMap must be 1024x512 RGBA8');
   const coverage = expectObject(manifest.coverage, 'coverage');
-  if (!['complete', 'sparse'].includes(coverage.kind) || coverage.minZoom !== EARTH_TILE_MIN_Z
-    || coverage.maxZoom !== EARTH_TILE_MAX_Z) {
-    fail('coverage must declare complete or sparse z4..z7 coverage');
+  if (!['complete', 'sparse'].includes(coverage.kind) || coverage.maxZoom !== EARTH_TILE_MAX_Z) {
+    fail(legacy ? 'legacy coverage must declare complete or sparse through z7' : 'coverage must declare complete or sparse z4..z7 coverage');
   }
-  if (coverage.kind === 'complete' && coverage.expectedTiles !== EARTH_GLOBAL_TILE_COUNT) {
-    fail('complete coverage must declare 43520 tiles');
-  }
-  if (coverage.kind === 'sparse' && coverage.expectedTiles !== null) {
-    fail('sparse coverage must declare null expectedTiles');
+  if (legacy) {
+    if (coverage.kind === 'complete' && coverage.expectedTiles !== EARTH_LEGACY_GLOBAL_TILE_COUNT) {
+      fail('legacy complete coverage must declare 43690 tiles');
+    }
+    if (coverage.kind === 'sparse' && coverage.expectedTiles !== null) {
+      fail('legacy sparse coverage must declare null expectedTiles');
+    }
+  } else {
+    if (coverage.minZoom !== EARTH_TILE_MIN_Z) fail('coverage must declare complete or sparse z4..z7 coverage');
+    if (coverage.kind === 'complete' && coverage.expectedTiles !== EARTH_GLOBAL_TILE_COUNT) {
+      fail('complete coverage must declare 43520 tiles');
+    }
+    if (coverage.kind === 'sparse' && coverage.expectedTiles !== null) {
+      fail('sparse coverage must declare null expectedTiles');
+    }
   }
   if (!Array.isArray(manifest.controlRegions) || manifest.controlRegions.length !== 16) {
     fail('exactly 16 controlRegions are required');
@@ -145,20 +159,20 @@ export function validateManifest(value) {
   return manifest;
 }
 
-function validateTileKey(z, x, y, label) {
-  if (![z, x, y].every(Number.isSafeInteger) || z < EARTH_TILE_MIN_Z || z > EARTH_TILE_MAX_Z) fail(`${label} has an invalid z`);
+function validateTileKey(z, x, y, label, minZoom = EARTH_TILE_MIN_Z) {
+  if (![z, x, y].every(Number.isSafeInteger) || z < minZoom || z > EARTH_TILE_MAX_Z) fail(`${label} has an invalid z`);
   if (x < 0 || x >= 2 ** (z + 1)) fail(`${label} has an invalid x`);
   if (y < 0 || y >= 2 ** z) fail(`${label} has an invalid y`);
   return { z, x, y };
 }
 
-function parseTileUrl(url, key, kind) {
+function parseTileUrl(url, key, kind, minZoom = EARTH_TILE_MIN_Z) {
   expectString(url, `${kind}.url`);
   if (url.startsWith('http:') || url.startsWith('https:')) fail(`${kind}.url must be relative`);
   if (url.includes('?') || url.includes('#')) fail(`${kind}.url must not contain a query or fragment`);
   const match = TILE_URL.exec(url);
   if (match === null) fail(`${kind}.url has an invalid path`);
-  const urlKey = validateTileKey(Number(match[1]), Number(match[2]), Number(match[3]), `${kind}.url`);
+  const urlKey = validateTileKey(Number(match[1]), Number(match[2]), Number(match[3]), `${kind}.url`, minZoom);
   if (urlKey.z !== key.z || urlKey.x !== key.x || urlKey.y !== key.y) fail(`${kind}.url key mismatch`);
   const extension = kind === 'color' ? 'jpg' : 'bin.gz';
   if (match[4] !== extension) fail(`${kind}.url extension mismatch`);
@@ -188,21 +202,22 @@ export function validateTileIndex(value, manifest) {
   if (index.schemaVersion !== 2) fail('unsupported tile-index schema');
   if (index.datasetId !== manifest.datasetId) fail('tile-index datasetId mismatch');
   if (!Array.isArray(index.entries) || index.entries.length === 0) fail('tile-index entries must be non-empty');
+  const minZoom = manifest.schemaVersion === 1 ? EARTH_LEGACY_TILE_MIN_Z : EARTH_TILE_MIN_Z;
   const keys = new Set();
   const entries = index.entries.map((entry, position) => {
     expectObject(entry, `tile-index.entries[${position}]`);
     const z = entry.z;
     const x = entry.x;
     const y = entry.y;
-    const key = validateTileKey(z, x, y, `tile-index.entries[${position}]`);
+    const key = validateTileKey(z, x, y, `tile-index.entries[${position}]`, minZoom);
     const expectedId = `${z}/${x}/${y}`;
     if (entry.key !== expectedId) fail(`tile-index.entries[${position}] key mismatch`);
     if (keys.has(expectedId)) fail(`duplicate tile-index key: ${expectedId}`);
     keys.add(expectedId);
     const color = entryFile(entry, 'color');
     const terrain = entryFile(entry, 'terrain');
-    parseTileUrl(color.url, key, 'color');
-    parseTileUrl(terrain.url, key, 'terrain');
+    parseTileUrl(color.url, key, 'color', minZoom);
+    parseTileUrl(terrain.url, key, 'terrain', minZoom);
     if (color.payloadBytes !== color.encodedBytes) fail(`color byte lengths must match: ${expectedId}`);
     if (terrain.payloadBytes !== EARTH_TERRAIN_PAYLOAD_BYTES) fail(`terrain payload length mismatch: ${expectedId}`);
     return { ...entry, key: expectedId, z, x, y, color, terrain };
@@ -328,7 +343,11 @@ function readJpegScanMarker(bytes, offset) {
   fail('baseColor JPEG scan is truncated');
 }
 
-export function readBaseColorJpeg(bytes) {
+export function readBaseColorJpeg(bytes, dimensions = {
+  width: EARTH_BASE_COLOR_WIDTH,
+  height: EARTH_BASE_COLOR_HEIGHT,
+  components: EARTH_BASE_COLOR_COMPONENTS,
+}) {
   if (!Buffer.isBuffer(bytes) || bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
     fail('baseColor JPEG must start with SOI');
   }
@@ -368,18 +387,22 @@ export function readBaseColorJpeg(bytes) {
     const width = bytes.readUInt16BE(segment.payload + 3);
     const components = bytes[segment.payload + 5];
     if (segment.length !== 8 + components * 3 || precision !== 8) fail('baseColor JPEG SOF is invalid');
-    if (width !== EARTH_BASE_COLOR_WIDTH || height !== EARTH_BASE_COLOR_HEIGHT
-      || components !== EARTH_BASE_COLOR_COMPONENTS) {
-      fail(`baseColor JPEG must be ${EARTH_BASE_COLOR_WIDTH}x${EARTH_BASE_COLOR_HEIGHT} with ${EARTH_BASE_COLOR_COMPONENTS} components`);
+    if (width !== dimensions.width || height !== dimensions.height || components !== dimensions.components) {
+      fail(`baseColor JPEG must be ${dimensions.width}x${dimensions.height} with ${dimensions.components} components`);
     }
     frame = { width, height, components };
   }
   fail('baseColor JPEG is missing EOI');
 }
 
-async function verifyBaseColor(root, asset) {
+async function verifyBaseColor(root, asset, manifest) {
   const actual = await requiredFile(root, asset.url, 'baseColor');
-  readBaseColorJpeg(await readFile(actual.absolutePath));
+  const dimensions = manifest.schemaVersion === 1 ? {
+    width: EARTH_LEGACY_BASE_COLOR_WIDTH,
+    height: EARTH_LEGACY_BASE_COLOR_HEIGHT,
+    components: EARTH_BASE_COLOR_COMPONENTS,
+  } : undefined;
+  readBaseColorJpeg(await readFile(actual.absolutePath), dimensions);
   return actual;
 }
 
@@ -428,7 +451,7 @@ export async function inspectEarthSurfaceBundle({ inputRoot, manifestName = 'ear
   try { manifest = JSON.parse(await readFile(manifestPath, 'utf8')); } catch (error) { throw new EarthSurfaceContractError(`cannot read manifest: ${manifestName}`, { cause: error }); }
   validateManifest(manifest);
   await verifySourceManifest(root, await defaultSourceManifestPath(root, manifest, sourceManifestPath), manifest.sourceManifestSha256);
-  const baseColor = await verifyBaseColor(root, { url: manifest.baseColor });
+  const baseColor = await verifyBaseColor(root, { url: manifest.baseColor }, manifest);
   const baseTerrain = await requiredFile(root, manifest.baseTerrain, 'baseTerrain');
   let baseTerrainPayload;
   try { baseTerrainPayload = gunzipSync(await readFile(baseTerrain.absolutePath)); } catch (error) { throw new EarthSurfaceContractError('baseTerrain gzip is invalid', { cause: error }); }
@@ -438,8 +461,9 @@ export async function inspectEarthSurfaceBundle({ inputRoot, manifestName = 'ear
   let tileIndex;
   try { tileIndex = JSON.parse(await readFile(tileIndexPath, 'utf8')); } catch (error) { throw new EarthSurfaceContractError(`cannot read tile-index: ${manifest.tileIndexUrl}`, { cause: error }); }
   const normalizedIndex = validateTileIndex(tileIndex, manifest);
-  if (manifest.coverage.kind === 'complete' && normalizedIndex.entries.length !== EARTH_GLOBAL_TILE_COUNT) {
-    fail(`complete tile-index must contain ${EARTH_GLOBAL_TILE_COUNT} entries`);
+  const expectedTiles = manifest.schemaVersion === 1 ? EARTH_LEGACY_GLOBAL_TILE_COUNT : EARTH_GLOBAL_TILE_COUNT;
+  if (manifest.coverage.kind === 'complete' && normalizedIndex.entries.length !== expectedTiles) {
+    fail(`complete tile-index must contain ${expectedTiles} entries`);
   }
   const tiles = [];
   for (const entry of normalizedIndex.entries) {
