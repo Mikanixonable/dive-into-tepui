@@ -8,7 +8,7 @@ export const PLAYER_MUZZLE_OFFSETS: readonly { x: number; y: number; z: number }
   { x: 0, y: -0.55, z: 2.55 },
 ];
 
-// 蛇腹1折りの一辺 [m]。tools/model-builder/export-models.mjs と一致させる。
+// 蛇腹1折りの一辺 [m]。
 export const RADIATOR_SEGMENT_LENGTH = (2.3 * 4) / 6;
 
 // 全開時に各折りが展開軸から残す傾き [rad]。
@@ -21,8 +21,8 @@ export const RADIATOR_HINGE = { x: 1.17, y: -0.20, z: -1.80 } as const;
 export const MAG_THICKNESS = 1.0;
 
 // マガジンのベルト方向寸法と継手間隔 [m]。
-const MAGAZINE_WIDTH = MAG_THICKNESS * 4 * (2 / 3);
-export const MAG_BELT_PITCH = MAGAZINE_WIDTH + 0.18;
+export const MAG_WIDTH = MAG_THICKNESS * 4 * (2 / 3);
+export const MAG_BELT_PITCH = MAG_WIDTH + 0.18;
 
 // ベルトが機体へ入る給弾口の機体座標系 X 位置 [m]。
 export const MAG_BELT_ANCHOR_X = -1.19;
