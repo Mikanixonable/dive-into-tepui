@@ -4,9 +4,10 @@
 PR #72 の前の main は `b9b6f9d8`、PR #72 のマージは `db090876`。
 
 **この計画は保留中。** 地表 LOD は別ブランチで動きがありそうなので、そちらの形が決まるまで着手
-しない。もとは fix_PR72.md の一部で、そこから地表 LOD にかかる手順だけを切り出した(旧手順
-0・1・5・6・12 が、この計画の手順 1〜5)。着手するときは、`origin/main` の現状で行番号と
-commit の並びを取り直し、別ブランチの成果と突き合わせてから判断をやり直す。
+しない。もとは PR #72 の後始末の計画の一部で、そこから地表 LOD にかかる手順だけを切り出した
+(旧手順 0・1・5・6・12 が、この計画の手順 1〜5)。**雲・大気にあたる残りは実施済みで main へ
+入っている**(「雲・大気の後始末(済み)との関係」)。着手するときは、`origin/main` の現状で
+行番号と commit の並びを取り直し、別ブランチの成果と突き合わせてから判断をやり直す。
 
 **保留のあいだ、main の公開は止まったままになる。** 「Build and deploy」は #72 以降一度も
 通っておらず、落ちているのは手順 2 が外す 2 ステップだけ(#74・#75 のマージは `npm run test` と
@@ -42,22 +43,40 @@ main に入っていて、次の3つが起きている。
 | 詳細 LOD 地表タイル | 292005d7、a53d3a52、13157b06、827d5dcd、7d04a3d8 ほか | 不採用(保護) | 撤去 | 3 |
 | 天体表面の汎用化 | 6abda4a4、d909e606、de50e55c | 不採用(保護) | 撤去 | 4 |
 | 地表タイルの eventLog の肥大・初期法線 | earth-surface-request.ts、-material-binding.ts | 要修正(保護ブランチ側) | 保護ブランチで直す | 5 |
-| 月別気候(sin 波の架空気候) | 5055f0e1、3f7245b7、893e6700、1991b243、6efe3b9e、#75 の c16347e0・0e4a1eb1 | 不採用(保護) | 撤去は fix_PR72.md 手順 3、保護はこの計画 | 5 |
+| 月別気候(sin 波の架空気候) | 5055f0e1、3f7245b7、893e6700、1991b243、6efe3b9e、#75 の c16347e0・0e4a1eb1 | 不採用(保護) | 撤去は 雲・大気の後始末 手順 3、保護はこの計画 | 5 |
 
 **触らないもの**: #72 の描画以外の変更(UI・入力・太陽系精度・物理)。雲・大気の後始末は
-fix_PR72.md が扱う。
+実施済みで、この計画では触らない。
 
-## fix_PR72.md との関係
+## 雲・大気の後始末(済み)との関係
 
-両計画は独立に進む。跨るのは次の3点だけで、いずれも **fix_PR72.md が先** になる。
+PR #72 の後始末のうち雲・大気にあたる部分は、別の計画として**実施済みで main へ入っている**。
+この計画が前提にするのはその成果なので、手順と commit をここへ残す(計画ファイル自体は役目を
+終えたので消した)。**この計画の中で「雲・大気の後始末 手順 N」と書いたら、下の表の N を指す。**
+
+| 手順 | 内容 | commit |
+| --- | --- | --- |
+| 1 | 本番の地球の海へサングリントを戻す(`fallbackSurface` が滑らかさマップを落としていた退行) | `66de1a2c` |
+| 2 | 雲場の楕円体の正距円筒(`EllipsoidEquirectProjection`)を外す | `ab1e7b93` |
+| 3 | **月別気候を撤去し、平年の気候画像へ戻す** | `102ed4cf` |
+| 4 | 雲殻の縁をディザへ戻し、雲頂の連続化を外す | `e2ce1b4c` |
+| 5 | オーロラの昼夜の変調を太陽の向きで決める | `5b41327a` |
+| 6 | エアグローを描画設定で切れるようにする | `c6c42cb0` |
+| 7 | 表面雲の GPU 時間を G バッファから分ける | `842cac1f` |
+| 8 | 雲場の LOD を潰し、視点中心の正射影の cap で焼く | `615e48b9`・`cc3a154c`・`44fa75db`・`d78af4ad` |
+
+**この計画の手順 5 が revert するのは `102ed4cf`**(月別気候の撤去)。忘れると保護ブランチから
+月別気候が消える。
+
+跨る点は次の3つで、いずれも上の手順が先に入っている。
 
 | 跨る点 | なぜ先か |
 | --- | --- |
-| サングリントの修正(fix_PR72.md 手順 1) | 撤去 commit に修正を混ぜないため(決めたこと 4)。先に入れておけば、この計画の手順 3 の撤去 commit を保護ブランチが revert しても、退行だけが戻ることはない |
-| 雲場の楕円体投影の撤去(fix_PR72.md 手順 2) | `src/render/cloud/field-projection.ts` が、手順 3 で消す `earth-surface-coordinate.ts` を import している。先に外さないと import が宙に浮く |
-| 月別気候の撤去(fix_PR72.md 手順 3) | 月別気候の実データは地表タイルの配信物(`EarthSurfaceSource.climateMapUrls`)に入っているので、保護先はこの計画のブランチ。手順 5 の revert 対象にその commit を含める |
+| サングリントの修正(手順 1・`66de1a2c`) | 撤去 commit に修正を混ぜないため(決めたこと 4)。先に入っているので、この計画の手順 3 の撤去 commit を保護ブランチが revert しても、退行だけが戻ることはない |
+| 雲場の楕円体投影の撤去(手順 2・`ab1e7b93`) | `src/render/cloud/field-projection.ts` が、手順 3 で消す `earth-surface-coordinate.ts` を import していた。外れているので import は宙に浮かない |
+| 月別気候の撤去(手順 3・`102ed4cf`) | 月別気候の実データは地表タイルの配信物(`EarthSurfaceSource.climateMapUrls`)に入っているので、保護先はこの計画のブランチ。手順 5 の revert 対象にこの commit を含める |
 
-fix_PR72.md 手順 3 のあと、`EarthSurfaceSource.climateMapUrls` は呼び手 0 のまま main に残る。
+月別気候の撤去のあと、`EarthSurfaceSource.climateMapUrls` は呼び手 0 のまま main に残っている。
 手順 3 で地表タイルごと消えるので、main 側で先に消さない。
 
 ## 決めたこと
@@ -80,7 +99,7 @@ fix_PR72.md 手順 3 のあと、`EarthSurfaceSource.climateMapUrls` は呼び�
 入っているので、地表タイルと同じ場所で育てる。楕円体投影・ディザ撤去・ミップ・ヒステリシス・
 診断つまみは保護しない。タグ `pr72-merged`(= `713755b1`)から参照できれば足りる。
 
-**覆されたら**(楕円体投影も保護する場合): 手順 5 の revert 対象に fix_PR72.md 手順 2 の commit を
+**覆されたら**(楕円体投影も保護する場合): 手順 5 の revert 対象に 雲・大気の後始末 手順 2 の commit を
 足す。
 
 ### 3. 天体表面の汎用化は地表タイルの足場なので、一緒に保護ブランチへ移す
@@ -92,7 +111,7 @@ fix_PR72.md 手順 3 のあと、`EarthSurfaceSource.climateMapUrls` は呼び�
 では、全天体が毎フレーム `createCelestialSurfaceFrame`(行列の compose と clone)と
 `performance.now()` を払うだけになる(point-celestial-view.ts:129-135)。
 
-`DeferredTexture` の世代番号(`generation`)は残す。#75 の `ObservedCloudField` と、fix_PR72.md
+`DeferredTexture` の世代番号(`generation`)は残す。#75 の `ObservedCloudField` と、雲・大気の後始末の
 手順 3 で戻す平年の気候が使う。失敗時の通知(`onError`)は呼び手が 0 件なので消す。
 
 **覆されたら**(汎用化を main に残す場合): 手順 4 を飛ばす。ただし毎フレームの割り当てとモジュール
@@ -101,7 +120,7 @@ fix_PR72.md 手順 3 のあと、`EarthSurfaceSource.climateMapUrls` は呼び�
 ### 4. サングリントの修正は地表タイルの撤去より前の、独立した commit にする
 
 撤去 commit に混ぜると、保護ブランチがそれを revert したときに退行も戻る。修正そのものは
-fix_PR72.md 手順 1。
+雲・大気の後始末 手順 1。
 
 ## 達成目標
 
@@ -116,7 +135,7 @@ fix_PR72.md 手順 1。
 5. デバッグ情報ウィンドウに「地表」グループが無い。
 6. **目視**: `npm run dev` でコンソールに地表 manifest の 404 が出ない。地球は実写テクスチャで
    描かれ、昼側の海にサングリントが残っている。
-7. `earth-surface-tiles` は「main + 手順 2・3・4 と fix_PR72.md 手順 3 の revert + 修正」の形で、
+7. `earth-surface-tiles` は「main + 手順 2・3・4 と 雲・大気の後始末 手順 3 の revert + 修正」の形で、
    `npm run typecheck`・`npm run test`・`npm run earth-surface:test` が通る。eventLog は上限を持ち、
    既定の地形法線は放射方向になっている。
 8. main で `npm run typecheck`・`npm run test`・`npm run build` が通る。
@@ -137,11 +156,11 @@ main へは `/send-pr` で送る。区切りは次の 2 つ。**マージは mer
 
 | 操作 | 何をするか |
 | --- | --- |
-| `git tag pr72-merged 713755b1` | 不採用にする実装(地表タイル・汎用化・月別気候、fix_PR72.md が外すディザ撤去・ミップ・楕円体投影)を後から読める参照点 |
+| `git tag pr72-merged 713755b1` | 不採用にする実装(地表タイル・汎用化・月別気候、雲・大気の後始末が外したディザ撤去・ミップ・楕円体投影)を後から読める参照点 |
 | `git branch earth-surface-tiles 713755b1` | 保護ブランチ。**手順 5 まで commit を積まない** |
 | `git push origin pr72-merged earth-surface-tiles` | リモートへ置く |
 
-どちらも固定 hash を指すので、fix_PR72.md が先に main へ入っていても作れる。
+どちらも固定 hash を指すので、雲・大気の後始末が先に main へ入っているいまでも作れる。
 
 **達成条件と検証**: `git ls-remote origin earth-surface-tiles pr72-merged` が 2 行とも `713755b1` を返す。
 
@@ -163,14 +182,14 @@ main へは `/send-pr` で送る。区切りは次の 2 つ。**マージは mer
 いる。本番では起動のたびに 404 になり、一度も有効にならない。保護ブランチは手順 5 でこの commit
 を revert する。
 
-**前提**: fix_PR72.md の手順 1(サングリント)と手順 2(楕円体投影)が main へ入っていること。
+**前提**: 雲・大気の後始末の手順 1(サングリント)と手順 2(楕円体投影)が main へ入っていること。
 
 | 操作 / ファイル | 何をするか |
 | --- | --- |
 | `git rm` | `src/render/earth-surface*.ts`(12 ファイル)、`src/game/celestial/solar-system/earth-surface-runtime.ts`・`earth-surface-source.ts`、`src/types/earth-surface-config.d.ts`、`tests/render/earth-surface*.test.ts`(12 ファイル)、`tests/render/tsl-node-evaluator.ts`(地表の2テストだけが使う)、`tools/earth-surface/`、`tools/render-lab-earth-surface.mjs`、`tools/render-lab/earth-surface-capture.ts`、`assets-src/earth-surface/`、`.earth-surface/` |
 | `git checkout b9b6f9d8 -- webpack.config.js tools/verify-release.mjs .gitignore` | 3 ファイルとも #72 の差分は地表タイルだけで、#72 以降は誰も触っていない。**実施時に `git log db090876..HEAD -- <file>` が空であることを確かめ直す** |
 | `package.json` | `earth-surface:*` の 15 スクリプトを消す。`verify:ui-style`・`test:settings`・model-builder のパスは別の変更なので残す |
-| `src/game/celestial/solar-system/earth-system.ts` | `EARTH_SURFACE_FIXTURE_SOURCE`・`EarthSurfaceFactoryOptions/Result`・`EarthSurfaceRuntimeHandle`・`fallbackSurface`・`EarthSurfaceConnection`・`detailedMaterialFor`・`coordinatorFor`・`createEarthSurfaceRuntime`・`createEarthSurface`・`defaultEarthSurfaceColorToRgba8` と、それらの import を消す。地球の表面は `CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl)` を直接渡す。`earthSystem` の `renderer` 引数を消す。雲場の工場へ渡していた `earthSurfaceRuntime.ready` は fix_PR72.md 手順 3 で既に消えている |
+| `src/game/celestial/solar-system/earth-system.ts` | `EARTH_SURFACE_FIXTURE_SOURCE`・`EarthSurfaceFactoryOptions/Result`・`EarthSurfaceRuntimeHandle`・`fallbackSurface`・`EarthSurfaceConnection`・`detailedMaterialFor`・`coordinatorFor`・`createEarthSurfaceRuntime`・`createEarthSurface`・`defaultEarthSurfaceColorToRgba8` と、それらの import を消す。地球の表面は `CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl)` を直接渡す。`earthSystem` の `renderer` 引数を消す。雲場の工場へ渡していた `earthSurfaceRuntime.ready` は 雲・大気の後始末 手順 3 で既に消えている |
 | `src/game/celestial/solar-system/solar-system.ts` と、その先で renderer を運んでいる箇所 | `earthSystem` へ renderer を渡す経路を消す(`git grep -n 'earthSystem(' -- src` から辿る) |
 | `tests/game/earth-system.test.ts` | 「earth runtime」「manifestなしのfactory」のテストを消す |
 | `tools/render-lab/cases.ts`、`main.ts`、`index.html` | 地表キャプチャの口を消す |
@@ -192,7 +211,7 @@ main へは `/send-pr` で送る。区切りは次の 2 つ。**マージは mer
 | ファイル | 何をするか |
 | --- | --- |
 | `src/render/celestial/celestial-surface.ts` | `CelestialSurfaceStatus`・`CelestialSurfaceDiagnostics`・`CelestialSurfaceFrame`・`surfaceViewport` と `setCelestialSurfaceViewport`/`celestialSurfaceViewport`(71-84)・`createCelestialSurfaceFrame`(86-107)・`CelestialSurfaceLike`・`CelestialSurfaceMaterialAttachment`・`replaceMaterial`・`restoreFallbackMaterial`・`fallback*` の3フィールドと `usingFallbackMaterial`・`materialOnDispose`・`diagnostics`・`syncFrame` を消し、`dispose` を1系統へ戻す |
-| `src/render/celestial/celestial-entity/point-celestial-view.ts:8, 129-136` | `syncFrame` の呼び出しと `performance.now()` を消す。表面の型を `CelestialSurface` にする。fix_PR72.md 手順 5(オーロラ)がこの関数を触っているので、行番号は取り直す |
+| `src/render/celestial/celestial-entity/point-celestial-view.ts:8, 129-136` | `syncFrame` の呼び出しと `performance.now()` を消す。表面の型を `CelestialSurface` にする。雲・大気の後始末 手順 5(オーロラ)がこの関数を触っているので、行番号は取り直す |
 | `src/render/celestial/celestial-entity/sphere-celestial-view.ts:14, 38, 49` ほか `CelestialSurfaceLike` を型に使う箇所 | `git grep -n CelestialSurfaceLike -- src` で列挙して `CelestialSurface` へ。`surfaceDiagnostics` を消す |
 | `src/render/pipeline/render-pipeline.ts:37, 299` | `setCelestialSurfaceViewport` の import と呼び出しを消す |
 | `src/render/deferred-texture.ts:24, 46` | 呼び手の無い `onError` を消す。`generation` は残す |
@@ -215,7 +234,7 @@ main へは `/send-pr` で送る。区切りは次の 2 つ。**マージは mer
 | 操作 / ファイル | 何をするか |
 | --- | --- |
 | `git switch earth-surface-tiles && git merge --ff-only origin/main` | 手順 1 から commit を積んでいないので早送りになる |
-| `git revert <手順4> <手順3> <fix_PR72.md 手順3> <手順2>` | 新しい順に revert する。fix_PR72.md 手順 2(楕円体投影)は revert しない(保護しない)。このとき main に fix_PR72.md の手順 4〜8 が入っていれば、それらが触った point-celestial-view.ts・opaque-cloud-surface-renderer.ts・cloud-field-sampler.ts・generated-cloud-field.ts・earth-system.ts(`earthGeneratedCloudField` と雲の工場)・tools/cloud-lab・tools/render-lab/cases.ts で衝突する。**fix_PR72.md 手順 4〜8 の形を保って解く** |
+| `git revert <手順4> <手順3> <雲・大気の後始末 手順3> <手順2>` | 新しい順に revert する。雲・大気の後始末 手順 2(楕円体投影)は revert しない(保護しない)。このとき main に 雲・大気の後始末の手順 4〜8 が入っていれば、それらが触った point-celestial-view.ts・opaque-cloud-surface-renderer.ts・cloud-field-sampler.ts・generated-cloud-field.ts・earth-system.ts(`earthGeneratedCloudField` と雲の工場)・tools/cloud-lab・tools/render-lab/cases.ts で衝突する。**雲・大気の後始末 手順 4〜8 の形を保って解く** |
 | `src/render/earth-surface-request.ts:303, 313-314, 473` | `eventLog` に上限を持たせる(直近 N 件の環状バッファ)。`metrics` は読むたびに `eventLog.slice()` と失敗の Map を写すので、失敗の問い合わせを写しなしで答える口に分ける |
 | `src/render/earth-surface-resident.ts:93, 231` | `failureReason` と失敗の判定を、上の写しなしの口で読む。`failureReason` は `EarthSurface.diagnostics.reason` 経由でデバッグ窓が読むたびに呼ばれている |
 | `src/render/earth-surface-material-binding.ts:29-36` | `defaultTerrainData` が全 texel の法線を天体固定の +Y 一定で埋めている。earth-surface-material-node.ts:146 は `terrain.xyz` を天体固定の法線として読むので、base terrain(正距円筒 `EARTH_BASE_TERRAIN_WIDTH × HEIGHT`)の各 texel の地理緯度・経度に立つ楕円体の法線で埋める |
@@ -232,7 +251,7 @@ main へは `/send-pr` で送る。区切りは次の 2 つ。**マージは mer
   描画先寸法をモジュールグローバルで共有している。
 - ページ表を毎フレーム GPU へ送り直している。約 117 MB のテクスチャ配列(144 層)を、地球へ
   近づかなくても有効化の時点で確保している。
-- 月別気候図は地理緯度の正距円筒なので、雲場の cap(fix_cloud_projection.md)とは別に、気候の
+- 月別気候図は地理緯度の正距円筒なので、雲場の cap(雲・大気の後始末 手順 8)とは別に、気候の
   読み取りだけが楕円体の uv を使う形にする。雲場の投影へ楕円体を持ち込まない。
 - 再上陸の条件は、配信物のデプロイと、必要な範囲だけを取りに行く通信の最適化が立つこと。
 
@@ -263,10 +282,10 @@ main へは `/send-pr` で送る。区切りは次の 2 つ。**マージは mer
 | 保護ブランチへ手順 5 より前に commit を積む | main の撤去を取り込むとき、変更した側と消した側がぶつかる。変更していないファイルは**黙って消える** | 手順 1、5 |
 | PR を squash でマージする | 撤去 commit が1つに潰れるか hash が変わり、手順 5 の revert が別の変更まで巻き戻す | 手順 5 |
 | 撤去 commit に修正を混ぜる(サングリント・CI 以外の変更) | 保護ブランチがその commit を revert したとき、修正も一緒に戻る | 手順 2、3 |
-| fix_PR72.md 手順 2(楕円体投影)を済ませずに手順 3 へ入る | `src/render/cloud/field-projection.ts` が消えた `earth-surface-coordinate.ts` を import したままになり、型検査で落ちる | 手順 3 |
-| 手順 5 の revert 対象に fix_PR72.md 手順 3 を含め忘れる | 保護ブランチから月別気候が消える。`pr72-merged` からは読めるが、追随した形では失われる | 手順 5 |
+| 雲・大気の後始末 手順 2(楕円体投影)を済ませずに手順 3 へ入る | `src/render/cloud/field-projection.ts` が消えた `earth-surface-coordinate.ts` を import したままになり、型検査で落ちる | 手順 3 |
+| 手順 5 の revert 対象に 雲・大気の後始末 手順 3 を含め忘れる | 保護ブランチから月別気候が消える。`pr72-merged` からは読めるが、追随した形では失われる | 手順 5 |
 | `webpack.config.js` / `verify-release.mjs` / `.gitignore` を `b9b6f9d8` から checkout する前に、#72 以降の変更の有無を確かめない | 後から入った別の変更を黙って巻き戻す(`origin/main` 時点では 3 ファイルとも変更なし) | 手順 3 |
 | `tools/png.mjs` の +5 行を呼び手を確かめずに戻す | cloud-lab の撮影など、ほかのツールの PNG 出力が壊れる | 手順 3 |
 | 手順 3 で `EarthSurface` を消し、手順 4 までデバッグ窓の「地表」グループが空のまま残る | 行が出ないだけで何も言わない。手順 4 を飛ばすと宙に浮く | 手順 3、4 |
-| 手順 5 の revert の衝突を、保護ブランチ側の形で解く | fix_PR72.md の手順 4〜8(ディザ・オーロラ・エアグロー・計測・cap)が保護ブランチでだけ巻き戻る | 手順 5 |
+| 手順 5 の revert の衝突を、保護ブランチ側の形で解く | 雲・大気の後始末の手順 4〜8(ディザ・オーロラ・エアグロー・計測・cap)が保護ブランチでだけ巻き戻る | 手順 5 |
 | #74 のテスト修正(`earth-surface-resident.test.ts`)が手順 3 で main から消える | 保護ブランチの revert で戻るので失われない。消えたことに驚いて手で戻さない | 手順 3、5 |
