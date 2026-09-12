@@ -166,8 +166,8 @@ export class OpaqueCloudSurfaceRenderer {
 
   // 殻の面へ届いた視線を雲頂の高さ場へ下ろし、交点の view 空間法線(xyz)と深度(w)を返す。
   //
-  // **標本化は分岐の外で済ませ、捨てるのは最後にする** — テクスチャのミップ段は隣接画素との
-  // 差から決まるので、条件分岐や discard のあとで読むと段が決まらない。
+  // **画面微分は分岐の外で取り、捨てるのは最後にする** — 粒の振幅が使う dFdx/dFdy は隣接画素との
+  // 差なので、条件分岐や discard のあとでは決まらない。
   private marchedSurface(): Vec4Node {
     return Fn(() => {
       const entry = positionLocal.toVar();
