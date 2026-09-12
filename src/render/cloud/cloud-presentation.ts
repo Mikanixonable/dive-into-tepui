@@ -4,19 +4,24 @@ import * as THREE from 'three/webgpu';
 import {
   CUMULUS_DETAIL, OpaqueCloudSurfaceRenderer, type CumulusDetail,
 } from '../opaque-cloud-surface-renderer';
+import { CLOUD_TOP_SPAN } from './cumulus-shape';
+import { capRadiusFor } from './cloud-cap';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
-import type { CloudFieldSampler } from './cloud-field-sampler';
+import type { CloudFieldBinding } from './cloud-field-sampler';
+import type { OrthographicCap } from './field-projection';
+
+// cap を置き直す前の向き。最初の syncResolved までしか使わないので、どの向きでもよい。
+const INITIAL_CAP_DIRECTION = new THREE.Vector3(0, 0, 1);
 
 // 雲場の出どころの種類。generated は気候から時々刻々焼く場、observed は衛星写真から分けた静止した場。
 // 値は保存された描画設定を読む鍵なので動かさない。
 export const CLOUD_FIELD_SOURCE_KIND = { observed: 'observed', generated: 'generated' } as const;
 export type CloudFieldSourceKind = (typeof CLOUD_FIELD_SOURCE_KIND)[keyof typeof CLOUD_FIELD_SOURCE_KIND];
 
-// 雲場の出どころ1つが供給するもの。texture と sampler は同じ場を指し、寿命は出どころが持つ。
+// 雲場の出どころ1つが供給するもの。texture は cap へ焼いた写しで、寿命は出どころが持つ。
 export interface CloudFieldSource {
   readonly texture: THREE.Texture;
-  readonly sampler: CloudFieldSampler;
   // 表示時刻 displayTime [s] の場を読める状態にする。GPU で焼くなら、その時間を gpu へ計上する。
   prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void;
   // 保持している GPU 資源を解放する。
@@ -33,26 +38,41 @@ export class CloudPresentation {
   private translucentCumulusVisible = true;
 
   // generated と observed は選べる雲場の出どころで、どちらの寿命もこのクラスが引き取る。はじめは
-  // generated を読む。bodyRadius は殻を載せる天体の基準半径 [m]。
-  public constructor(generated: CloudFieldSource, observed: CloudFieldSource, bodyRadius: number) {
+  // generated を読む。cap は両方が焼く先の置き方で、このクラスが毎フレーム置き直す。
+  // bodyRadius は殻を載せる天体の基準半径 [m]。
+  public constructor(
+    generated: CloudFieldSource, observed: CloudFieldSource,
+    private readonly cap: OrthographicCap, private readonly bodyRadius: number,
+  ) {
     this.sources = { generated, observed };
     this.source = generated;
-    this.surface = new OpaqueCloudSurfaceRenderer(generated.sampler, bodyRadius);
+    this.surface = new OpaqueCloudSurfaceRenderer(bodyRadius);
+    this.aim(INITIAL_CAP_DIRECTION, 1);
   }
 
-  public get field(): THREE.Texture { return this.source.texture; }
+  // 焼いた場と、それを焼いた cap の置き方の組。読み手はこれを自分の sampler へ写す。
+  public get binding(): CloudFieldBinding {
+    return { texture: this.source.texture, cap: this.cap.placement };
+  }
   public get visible(): boolean { return this.surface.visible; }
   public get cloudsVisible(): boolean { return this.cloudVisible; }
   public get topAltitude(): number { return this.surface.topAltitude; }
 
   public addTo(parent: THREE.Object3D): void { this.surface.addTo(parent); }
 
-  // 雲場の出どころを選ぶ。変わったときだけ、不透明表面が読む場を張り替える。
+  // 雲場の出どころを選ぶ。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
+  // **選び直したら結び直す** — 結び直さないと、不透明表面が前の出どころの写しを読み続ける。
   public setSource(kind: CloudFieldSourceKind): void {
-    const source = this.sources[kind];
-    if (source === this.source) return;
-    this.source = source;
-    this.surface.setFieldSampler(source.sampler);
+    this.source = this.sources[kind];
+    this.surface.bind(this.binding);
+  }
+
+  // cap を、天体固定・半軸で割った殻の空間で見た直下点 subpoint(単位方向)へ置き直す。
+  // rho は同じ空間で測ったカメラの中心距離(地表が 1)。置き直したぶんは不透明表面の読み取りへ
+  // すぐ写す — 写さないと、そのフレームだけ雲がテクスチャと 1 フレームずれる。
+  public aim(subpoint: THREE.Vector3, rho: number): void {
+    this.cap.aimAt(subpoint, capRadiusFor(rho, CLOUD_TOP_SPAN / this.bodyRadius));
+    this.surface.bind(this.binding);
   }
 
   public setDetail(detail: CumulusDetail): void { this.surface.setDetail(detail); }
