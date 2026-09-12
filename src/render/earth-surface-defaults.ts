@@ -22,7 +22,8 @@ export const EARTH_SURFACE_FIXTURE_SOURCE = {
   },
   baseUrl: 'https://example.test/earth-surface/',
   manifestUrl: 'https://example.test/earth-surface/earth-surface.json',
-  tileIndexUrl: 'https://example.test/earth-surface/tile-index.json',
+  colorTileTemplate: 'https://example.test/earth-surface/tiles/{z}/{x}/{y}.jpg',
+  terrainTileTemplate: 'https://example.test/earth-surface/tiles/{z}/{x}/{y}.bin.gz',
   baseColorUrl: 'https://example.test/earth-surface/base-color.jpg',
   baseTerrainUrl: 'https://example.test/earth-surface/base-terrain.bin.gz',
   climateMapUrls: Array.from(
