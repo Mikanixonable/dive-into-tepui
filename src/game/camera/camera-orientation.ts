@@ -57,8 +57,8 @@ export class CameraOrientation {
 
   public get followingAttitude(): boolean { return this.following; }
 
-  // 入力をオイラー角として積むか。姿勢追従中は極軸が座標系の幾何で定まらないので積まない。
-  public get usesEuler(): boolean { return this.mode === 'euler' && !this.following; }
+  // 入力をオイラー角として積むか。姿勢追従中は生の相対回転へ積み、実効回転で姿勢を合成する。
+  public get usesEuler(): boolean { return this.mode === 'euler'; }
 
   // 姿勢追従を掛けた、描画・入力に使う実効回転。
   public effective(): Quat {
@@ -88,8 +88,8 @@ export class CameraOrientation {
     this.rotation = rotationFromEuler(this.euler, polar);
   }
 
-  // オイラー角へ増分を積み、組み直した実効回転を返す。仰角は真上・真下の手前で止める。
-  // 姿勢追従中は極軸が定まらないので、この経路は通らない(usesEuler)。
+  // オイラー角へ増分を積み、組み直した生の回転を返す。仰角は真上・真下の手前で止める。
+  // 姿勢追従中はこの値が相対回転になるので、実効回転は effective() で読む。
   public turn(dYaw: number, dPitch: number, dRoll: number, polar: Vec3): Quat {
     this.euler.yaw += dYaw;
     this.euler.pitch = Math.max(-POLAR_PITCH_LIMIT, Math.min(POLAR_PITCH_LIMIT, this.euler.pitch + dPitch));
@@ -141,10 +141,13 @@ export class CameraOrientation {
   }
 
   // 合成に使う姿勢を最新へ。解決できないフレームは直前の姿勢を保つ(視点が跳ねない)。
-  public refreshAttitude(attitude: Quat | null): void {
+  public refreshAttitude(attitude: Quat | null, polar: Vec3): void {
     if (!this.following || attitude === null) return;
     // 絶対値で持っていた向き(ロード直後)を、初めて引けた姿勢からの相対値へ読み替える。
-    if (this.attitude === null) this.rotation = qNormalize(qMul(qInvert(attitude), this.rotation));
+    if (this.attitude === null) {
+      this.rotation = qNormalize(qMul(qInvert(attitude), this.rotation));
+      this.euler = eulerFromRotation(this.rotation, polar);
+    }
     this.attitude = attitude;
   }
 }

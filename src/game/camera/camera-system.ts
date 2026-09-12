@@ -1,62 +1,30 @@
-import * as THREE from 'three/webgpu';
-import { Hud } from '../hud/hud';
+import type { HudLayers } from '../hud/hud-layers';
+import type { Notifier } from '../../hud/notifier';
 import { GunsightCamera } from './gunsight-camera';
-import { defaultMapViewInitial, FocusCamera, FOCUS_CAMERA_MIN_DIST } from './focus-camera';
+import { defaultMapViewInitial, FocusCamera } from './focus-camera';
 import type { FocusTarget } from './focus-target';
-import { Player } from '../player/player';
 import { frameRoleAnchorId } from '../../physics/frame';
-import { ViewOptionsPanel } from '../hud/panels/view-options-panel';
-import { catalogFamilyIndex } from '../celestial/orbit-guide/orbit-guide-catalog';
-import { applyMapDisplayMode, MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES, normalizeMapDisplayToggles } from '../map/display-toggles';
 import type { FocusCandidate } from './focus-target';
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import { FloatingOrigin } from './floating-origin';
-import { Vec3, len, sub, v3 } from '../../math/vec3';
-import {
-  metersPerPixel, metersPerPixelAtDistance, ndcToScreen, Projected, projectToNdc, Viewpoint,
-} from '../../math/projection';
+import { Vec3, v3 } from '../../math/vec3';
+import { screenProjection, Viewpoint, type ProjectFn } from '../../math/projection';
 import type { FrameAnchorSource } from '../../physics/frame';
 import type { Quat } from '../../math/quat';
-import type { CelestialSystem } from '../celestial/celestial-system';
-import type { View } from '../view/view';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { ViewMode } from '../../render/view-mode';
+import type { Viewport } from '../../render/viewport';
 import { CameraSaveData } from '../save/save-data';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
-
-const BODY_CLASS_TOGGLES_STORAGE_KEY = 'tepui.mapDisplayToggles';
-
-// localStorage から天体クラス別トグルを読み込む。取得できなければ既定値を返す。
-function loadBodyClassToggles(): MapDisplayToggles {
-  try {
-    const raw = localStorage.getItem(BODY_CLASS_TOGGLES_STORAGE_KEY);
-    if (!raw) return DEFAULT_MAP_DISPLAY_TOGGLES;
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null) return DEFAULT_MAP_DISPLAY_TOGGLES;
-    return normalizeMapDisplayToggles({ ...DEFAULT_MAP_DISPLAY_TOGGLES, ...parsed });
-  } catch {
-    return DEFAULT_MAP_DISPLAY_TOGGLES;
-  }
-}
-
-// 天体クラス別トグルを localStorage へ保存する。
-function saveBodyClassToggles(v: MapDisplayToggles): void {
-  try {
-    localStorage.setItem(BODY_CLASS_TOGGLES_STORAGE_KEY, JSON.stringify(v));
-  } catch {
-    /* localStorage 不可なら保存しない(次回リロード時は既定値に戻る) */
-  }
-}
+import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 
 // 戦闘ビューの初期視点: 操作対象の後方やや上から見下ろす(役割フォーカス+姿勢追従)。
 const COMBAT_CAMERA_FOV = 55; // 通常時の垂直画角 [deg]
 const COMBAT_CAMERA_INIT_ANGLES = { yaw: -Math.PI / 2, pitch: 0.3 - (10 * Math.PI) / 180, roll: 0 };
-const COMBAT_CAMERA_INIT_DIST = 38;
+const COMBAT_CAMERA_INIT_DIST = 38; // [m]
 
 const ZOOM_LERP_RATE = 9; // ガンサイトとの画角遷移の追従速度 [1/s]
 
-// current から target へ、fovDeg だけを指数的に近づけた Viewpoint を返す(position/lookTarget/up/
-// aspect はアニメーションせず target の値をそのまま採用する — カメラの向き自体は毎フレーム
-// 追従してよく、揺れて見えるのは FOV だけで十分なため)。
+// current から target へ fovDeg を指数的に近づけた Viewpoint を返す。他の成分は target の値。
 function lerpViewpointFov(current: Viewpoint, target: Viewpoint, dt: number): Viewpoint {
   const k = 1 - Math.exp(-ZOOM_LERP_RATE * dt);
   return { ...target, fovDeg: current.fovDeg + (target.fovDeg - current.fovDeg) * k };
@@ -68,112 +36,19 @@ const CAM_KEY_PITCH_RATE = 1.0;
 const CAM_KEY_ROLL_RATE = 1.4; // テンキー0/1での視点ロール [rad/s]
 const CAM_KEY_PAN_RATE = 600; // @/:/;/]での視点平行移動、中クリックドラッグと同じ px/s 換算で加算
 
-export type ProjectFn = (worldPos: Vec3) => Projected;
-export type ScaleFn = (worldPos: Vec3) => number;
-
-// 論理カメラの状態(Viewpoint)を、描画原点 origin を差し引いて THREE カメラへ反映する。
-// near/far はサブカメラ自身の near/far getter(固定値、または FocusCamera のように dist に
-// 比例する値)から毎フレーム渡される。
-function syncCameraToViewpoint(
-  camera: THREE.Camera, view: Viewpoint, near: number, far: number, origin: Vec3,
-): void {
-  const position = sub(view.position, origin);
-  const lookTarget = sub(view.lookTarget, origin);
-  camera.position.set(position.x, position.y, position.z);
-  camera.up.set(view.up.x, view.up.y, view.up.z);
-  camera.lookAt(lookTarget.x, lookTarget.y, lookTarget.z);
-  // アスペクト比・FOV・near・far が変わったときだけ投影行列を再計算する
-  let projectionDirty = false;
-  if (camera instanceof THREE.PerspectiveCamera) {
-    if (Math.abs(camera.aspect - view.aspect) > 1e-6) {
-      camera.aspect = view.aspect;
-      projectionDirty = true;
-    }
-    if (Math.abs(camera.fov - view.fovDeg) > 1e-3) {
-      camera.fov = view.fovDeg;
-      projectionDirty = true;
-    }
-    if (Math.abs(camera.near - near) > near * 1e-6) {
-      camera.near = near;
-      projectionDirty = true;
-    }
-    if (Math.abs(camera.far - far) > far * 1e-6) {
-      camera.far = far;
-      projectionDirty = true;
-    }
-  } else if (camera instanceof THREE.OrthographicCamera) {
-    const halfHeight = Math.max(FOCUS_CAMERA_MIN_DIST * 1e-6, view.orthographicHalfHeight ?? 1);
-    const halfWidth = halfHeight * view.aspect;
-    if (Math.abs(camera.left + halfWidth) > halfWidth * 1e-6
-      || Math.abs(camera.right - halfWidth) > halfWidth * 1e-6
-      || Math.abs(camera.top - halfHeight) > halfHeight * 1e-6
-      || Math.abs(camera.bottom + halfHeight) > halfHeight * 1e-6) {
-      camera.left = -halfWidth;
-      camera.right = halfWidth;
-      camera.top = halfHeight;
-      camera.bottom = -halfHeight;
-      projectionDirty = true;
-    }
-    if (Math.abs(camera.near - near) > near * 1e-6) {
-      camera.near = near;
-      projectionDirty = true;
-    }
-    if (Math.abs(camera.far - far) > far * 1e-6) {
-      camera.far = far;
-      projectionDirty = true;
-    }
-  }
-  if (projectionDirty && (camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera)) {
-    camera.updateProjectionMatrix();
-  }
-  camera.updateMatrixWorld();
-}
-
-// THREE.js カメラ行列やフローティングオリジンに依存しないスクリーン投影関数を組む。
-function projectionFromViewpoint(view: Viewpoint): ProjectFn {
-  return (worldPos) => ndcToScreen(projectToNdc(view, worldPos), window.innerWidth, window.innerHeight);
-}
-
-// 画面上で1ピクセルに相当する実距離[m]を返す関数を組む。
-function scaleFromViewpoint(view: Viewpoint): ScaleFn {
-  return (worldPos) => metersPerPixel(view, worldPos, window.innerHeight);
-}
-
-// 同じ尺度を、視点からの直線距離で測って返す関数を組む。**画面に写らない位置にある物体の
-// 見かけの大きさを測るのはこちら** — 深度で測る側は視点の背後で床打ちされ、遠く後方にある
-// 物体が目の前にあるのと同じ尺度を返す。
-function radialScaleFromViewpoint(view: Viewpoint): ScaleFn {
-  return (worldPos) => metersPerPixelAtDistance(view, len(sub(worldPos, view.position)), window.innerHeight);
-}
-
 // 同じ注視カメラ(FocusCamera)の戦闘用・マップ用の2インスタンスを、ビューに応じて切り替えて
 // 駆動する。戦闘ビューではガンサイトズーム([Z])と画角遷移をその上に重ねる。
 export class CameraSystem {
-  readonly combatCamera: FocusCamera;
-  readonly mapCamera: FocusCamera;
-  private readonly gunsightCamera = new GunsightCamera();
+  public readonly combatCamera: FocusCamera;
+  public readonly mapCamera: FocusCamera;
+  private readonly gunsightCamera: GunsightCamera;
   private _zoomActive = false;
   // 戦闘ビューの表示視点。軌道視点とガンサイトの間で fovDeg だけを指数的に遷移させた後の値。
-  private combatViewpoint: Viewpoint = {
-    position: v3(),
-    up: v3(0, 1, 0),
-    lookTarget: v3(),
-    fovDeg: COMBAT_CAMERA_FOV,
-    aspect: window.innerWidth / window.innerHeight,
-  };
-  // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。天球グリッド・
-  // 軌道ガイド側の配線は Navball が行う。
-  readonly viewOptionsPanel: ViewOptionsPanel;
+  private combatViewpoint: Viewpoint;
   // 現在のビュー。ビューの正本(ViewManager)から毎回読む。
-  get view(): View { return this.currentView(); }
+  public get view(): ViewMode { return this.currentView(); }
   // マップビューのインスタンスがアクティブか。
   private get mapActive(): boolean { return this.currentView() === 'map'; }
-
-  // クラスごとの天体表示トグル。マップのラベル・軌道物体一覧・配置UIの基準天体が
-  // この1つの状態を共有する(map/visibility-policy.ts へ渡す)。フォーカスと
-  // 太陽系パネルを既に所有しているこのクラスが、同じ場所で持つ。
-  private _bodyClassToggles: MapDisplayToggles = loadBodyClassToggles();
-  get mapDisplayToggles(): MapDisplayToggles { return this._bodyClassToggles; }
 
   private readonly viewResetBtn: HTMLElement | null;
 
@@ -194,93 +69,100 @@ export class CameraSystem {
     this.hud.hint('視点をリセット');
   }
 
-  // 両カメラを構築し、常用ショートリストパネルの選択操作を配線する。
-  // saved があれば両カメラをその視点から組む。currentView はビューの正本を引く関数 —
-  // ViewManager より先に生成されるため、参照でなく遅延評価で受ける。
-  // attitudeOf はフォーカス機体の姿勢追従に使う解決関数(FocusCameraConfig 参照)。
-  constructor(
-    private readonly hud: Hud,
-    celestialSystem: CelestialSystem,
-    private readonly currentView: () => View,
+  // 両カメラを構築し、視点リセットボタンを配線する。saved があれば両カメラをその視点から組む。
+  // currentView は現在のビューを毎回引く関数、attitudeOf はフォーカス id の時刻 t の姿勢
+  // (引けなければ null)。
+  public constructor(
+    private readonly hud: HudLayers & Notifier,
+    celestialBodies: CelestialBodies,
+    private readonly currentView: () => ViewMode,
     attitudeOf: (id: string, t: number) => Quat | null,
-    saved?: Pick<CameraSaveData, 'chase' | 'overview'>,
+    saved: Pick<CameraSaveData, 'chase' | 'overview'> | undefined,
+    viewport: Viewport,
   ) {
+    this.combatViewpoint = {
+      position: v3(),
+      up: v3(0, 1, 0),
+      lookTarget: v3(),
+      fovDeg: COMBAT_CAMERA_FOV,
+      aspect: viewport.width / viewport.height,
+    };
+    this.gunsightCamera = new GunsightCamera(viewport);
     // ChaseSaveDataV1 形の戦闘視点は読み捨て、既定視点で組む。
     const savedChase = saved?.chase;
     const combatSaved = savedChase !== undefined && !('rot' in savedChase) ? savedChase : undefined;
-    this.combatCamera = new FocusCamera(hud, celestialSystem, {
+    this.combatCamera = new FocusCamera(hud, celestialBodies, {
       focusLossPolicy: 'hold',
       initial: {
         angles: COMBAT_CAMERA_INIT_ANGLES,
         dist: COMBAT_CAMERA_INIT_DIST,
         fovDeg: COMBAT_CAMERA_FOV,
-        focus: { kind: 'object', id: frameRoleAnchorId('activeShip') },
+        focus: { kind: 'object', id: frameRoleAnchorId('controlled') },
         follow: { kind: 'attitude' },
       },
+      eulerPole: 'attitude',
       attitudeOf,
-    }, combatSaved);
+    }, combatSaved, viewport);
     this.mapCamera = new FocusCamera(
-      hud, celestialSystem,
-      { focusLossPolicy: 'fallToOrigin', initial: defaultMapViewInitial(celestialSystem), attitudeOf },
-      saved?.overview,
+      hud, celestialBodies,
+      {
+        focusLossPolicy: 'fallToOrigin',
+        initial: defaultMapViewInitial(celestialBodies),
+        eulerPole: 'reference',
+        attitudeOf,
+      },
+      saved?.overview, viewport,
     );
-    // 表示パネルと天体クラス側操作のコールバック
-    this.viewOptionsPanel = new ViewOptionsPanel(hud.mapRoot, catalogFamilyIndex());
-    this.viewOptionsPanel.onBodyClassModeChange = (key, mode) => {
-      this._bodyClassToggles = applyMapDisplayMode(this._bodyClassToggles, key, mode);
-      saveBodyClassToggles(this._bodyClassToggles);
-      this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
-    };
-    this.viewOptionsPanel.setBodyClassToggles(this._bodyClassToggles);
-
     this.viewResetBtn = hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
     this.viewResetBtn?.addEventListener('pointerdown', this.handleViewReset);
   }
 
-  // 表示パネルを取り除き、視点リセットボタンへの配線を解く。
-  dispose(): void {
+  // 視点リセットボタンへの配線を解く。
+  public dispose(): void {
     this.viewResetBtn?.removeEventListener('pointerdown', this.handleViewReset);
-    this.viewOptionsPanel.dispose();
   }
 
-  // 駆動・描画に使うカメラ実体。ビューの切替で、どちらの実体を通すかだけが変わる。
+  // 現在のビューで駆動するカメラ実体。
   private get activeFocusCamera(): FocusCamera {
     return this.mapActive ? this.mapCamera : this.combatCamera;
   }
 
-  get activeCamera(): THREE.Camera {
-    return this.activeFocusCamera.camera;
-  }
-
-  get activeViewpoint(): Viewpoint {
+  // 現在のビューの視点。戦闘ビューはガンサイトとの画角遷移を掛けた後の値。
+  public get activeViewpoint(): Viewpoint {
     return this.mapActive ? this.mapCamera.viewpoint : this.combatViewpoint;
   }
 
   // アクティブカメラの位置(描画原点になる値)を返す。
-  get activeCameraPos(): Vec3 {
+  public get activeCameraPos(): Vec3 {
     return this.activeViewpoint.position;
   }
 
+  // アクティブカメラの視点から viewport の画面座標への射影を返す。
+  public activeProjection(viewport: Viewport): ProjectFn {
+    return screenProjection(this.activeViewpoint, viewport.width, viewport.height);
+  }
+
   // 現在のビューのカメラが注視しているフォーカス対象。
-  get activeFocus(): FocusTarget {
+  public get activeFocus(): FocusTarget {
     return this.activeFocusCamera.focus;
   }
 
   // 戦闘ビューでズーム視点(照準ズーム)が有効かどうか。
-  get zoomActive(): boolean {
+  public get zoomActive(): boolean {
     return !this.mapActive && this._zoomActive;
   }
 
-  // 入力からカメラの向き・ズームを更新する。ビューに応じてどちらか一方のインスタンスだけを
-  // 駆動する。displayTime/frameAnchors は座標系変換に使う — 線・メッシュと同じ表示時刻でないと
-  // 回転系選択時にカメラだけが現在時刻に取り残される。
-  update(
-    player: DynamicEntity | null,
+  // 入力から現在のビューのカメラの向き・ズームを更新する。displayTime は線・メッシュと同じ表示
+  // 時刻を渡す — ずれると回転系選択時にカメラだけが取り残される。controlled は照準ズームの可否と
+  // その視点を決める。
+  public update(
     displayTime: number,
     input: Input,
     dt: number,
     focusCandidates: readonly FocusCandidate[],
     frameAnchors: FrameAnchorSource,
+    controlled: Controllable | null,
+    viewport: Viewport,
   ): void {
     // 中クリックで視点リセット
     input.takeMiddleClicks(() => {
@@ -318,65 +200,43 @@ export class CameraSystem {
     mouse.roll += keyRoll * CAM_KEY_ROLL_RATE * dt;
 
     if (this.mapActive) {
-      this.mapCamera.update(mouse, keyYawRad, keyPitchRad, displayTime, focusCandidates, frameAnchors);
+      this.mapCamera.update(mouse, keyYawRad, keyPitchRad, displayTime, focusCandidates, frameAnchors, viewport);
       return;
     }
     this._zoomActive = input.down(K.gunsightZoom);
-    // 操作対象艦がいなければ照準先が無いので、ズーム要求は無視して軌道視点のままにする。
-    const useGunsight = this._zoomActive && player instanceof Player;
+    // 照準ズームは機関砲の照準器なので、砲を積む操作対象にだけ効く。
+    const useGunsight = this._zoomActive && controlled?.fire != null;
     // ガンサイト中の視点操作は、覗いていない軌道視点へ届かせない(解除時に視点が跳ぶ)。
     const stillMouse = { ...mouse, dx: 0, dy: 0, wheel: 0, panDx: 0, panDy: 0, roll: 0 };
     this.combatCamera.update(
       useGunsight ? stillMouse : mouse,
       useGunsight ? 0 : keyYawRad,
       useGunsight ? 0 : keyPitchRad,
-      displayTime, focusCandidates, frameAnchors,
+      displayTime, focusCandidates, frameAnchors, viewport,
     );
-    if (useGunsight) this.gunsightCamera.update(player);
+    if (useGunsight) this.gunsightCamera.update(controlled, viewport);
     const target = useGunsight ? this.gunsightCamera.viewpoint : this.combatCamera.viewpoint;
     this.combatViewpoint = lerpViewpointFov(this.combatViewpoint, target, dt);
   }
 
-  // 視点状態をこのフレームの描画原点で補正し、アクティブカメラへ反映する。
-  sync(): void {
-    const active = this.activeFocusCamera;
-    syncCameraToViewpoint(active.camera, this.activeViewpoint, active.near, active.far, this.activeCameraPos);
-    // マップビューのときだけ表示設定パネルを出す。
-    this.viewOptionsPanel.setVisible(this.mapActive);
+  // 近遠クリップ面を決める軌道視点の垂直画角 [deg]。ガンサイトへ絞り込む前の値を答える。
+  public get clipFovDeg(): number {
+    return this.activeFocusCamera.fov;
   }
 
-  // このフレームの描画原点を組み立てて返す。原点(位置)はアクティブカメラの ECI 位置 —
-  // カメラ自身の位置成分をほぼ0にしておかないと、遠方の描画対象が f32 の桁落ちでカメラの
-  // 動きに合わせて振動する。速度基準は注視点の速度で、原点とは別 concern。
-  getFloatingOrigin(): FloatingOrigin {
-    return new FloatingOrigin(this.activeCameraPos, this.activeFocusVelocity);
+  // 近遠クリップ面を決める軌道視点の注視距離 [m]。
+  public get clipDistance(): number {
+    return this.activeFocusCamera.dist;
   }
 
-  // アクティブカメラが注視している点の ECI 速度。カメラの並進はこの点が決めるので、
-  // 残像の速度基準はこれを使う — 注視点まわりの旋回・パン・ズームは含めない。
-  // 速度を答えられない対象(点マーカー)を注視しているあいだは慣性系静止として扱う。
-  private get activeFocusVelocity(): Vec3 {
+  // アクティブカメラが注視している点の ECI 速度(カメラの並進速度。旋回・パン・ズームぶんは
+  // 含めない)。速度を答えられない対象を注視しているあいだはゼロ。
+  public get focusVelocity(): Vec3 {
     return this.activeFocusCamera.focusVelocity ?? v3();
   }
 
-  // アクティブカメラの画面投影関数を返す。
-  get activeCameraProjection(): ProjectFn {
-    return projectionFromViewpoint(this.activeViewpoint);
-  }
-
-  // アクティブカメラの画面尺度関数を返す。
-  get activeCameraScale(): ScaleFn {
-    return scaleFromViewpoint(this.activeViewpoint);
-  }
-
-  // アクティブカメラの画面尺度関数を、視点からの直線距離で測って返す。画面の外や視点の背後に
-  // ある物体の見かけの大きさは、これでなければ測れない。
-  get activeCameraRadialScale(): ScaleFn {
-    return radialScaleFromViewpoint(this.activeViewpoint);
-  }
-
-  // 両サブカメラの視点状態をセーブデータへ書き出す。どちらが表示中かは ViewManager の責務。
-  serialize(): Pick<CameraSaveData, 'chase' | 'overview'> {
+  // 両サブカメラの視点状態をセーブデータへ書き出す。chase が戦闘ビュー、overview がマップビュー。
+  public serialize(): Pick<CameraSaveData, 'chase' | 'overview'> {
     return { chase: this.combatCamera.serialize(), overview: this.mapCamera.serialize() };
   }
 }

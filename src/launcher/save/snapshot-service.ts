@@ -1,25 +1,36 @@
-import { Game } from '../../game/game';
 import { SAVE_VERSION } from '../../game/save/save-data';
 import type { RunSummary } from '../../game/run-summary';
 import { fmtDist, fmtTime } from '../../hud/utils';
 import { SaveStore } from './save-store';
 import { SaveSlots } from './save-slots';
 import { isEphemerisContextRestorable } from '../../physics/ephemeris/ephemeris-context';
-import type { AmmoPickupSaveData, GameSaveData, RcsFuelPickupSaveData } from '../../game/save/save-data';
+import type { GameSaveData } from '../../game/save/save-data';
 import type { SnapshotKind, SnapshotMeta } from './slot-data';
 
+export interface SnapshotCaptureSource {
+  readonly isPaused: boolean;
+  readonly isPlaying: boolean;
+  runSummary(): RunSummary;
+  serialize(): GameSaveData;
+}
+
 // スナップショットの出し入れを担う。撮るときは索引のメタを組んでスロットへ収め、読むときは
-// 保存形式を検証して正規化する。
+// 保存形式を検証する。
 export class SnapshotService {
   constructor(private readonly store: SaveStore, private readonly slots: SaveSlots) {}
 
-  // 現在の game 状態を1件のスナップショットとして永続化し、そのメタを返す。
+  // 要約と保存本体を1件のスナップショットとして永続化し、そのメタを返す。
   // アクティブスロットが無い、またはストア書き込みに失敗した場合は null。
-  capture(game: Game, kind: SnapshotKind, name: string | null, pinned: boolean): SnapshotMeta | null {
+  capture(
+    summary: RunSummary,
+    save: GameSaveData,
+    kind: SnapshotKind,
+    name: string | null,
+    pinned: boolean,
+  ): SnapshotMeta | null {
     const slotId = this.slots.activeSlotId;
     if (slotId === null) return null;
 
-    const summary = game.runSummary();
     const meta: SnapshotMeta = {
       id: generateSnapshotId(),
       kind,
@@ -39,7 +50,6 @@ export class SnapshotService {
       phase: summary.phase,
     };
 
-    const save = game.serialize();
     return this.slots.addSnapshot(slotId, save.stageId, meta, save) ? meta : null;
   }
 
@@ -49,36 +59,14 @@ export class SnapshotService {
     const data = this.store.readSnapshot(snapshotId);
     if (data === null) return null;
     if (data.version !== SAVE_VERSION) return null;
-    const normalizedData = normalizePickupKeys(data);
-    if (normalizedData === null) return null;
-    if (expectedStageId !== normalizedData.stageId) return null;
+    if (expectedStageId !== data.stageId) return null;
     // 暦情報が無いスナップショットは互換復元で読む。元期は継承するので照合しないが、
     // その元期が選ぶ暦データがいま手元にあるものと違うなら、絶対天体状態が曖昧になるので拒否する。
     if (!isEphemerisContextRestorable(
-      (normalizedData as { ephemerisContext?: unknown }).ephemerisContext,
+      (data as { ephemerisContext?: unknown }).ephemerisContext,
     )) return null;
-    return normalizedData;
+    return data;
   }
-}
-
-// 旧形式の補給キーと、RCS燃料追加前の欠落フィールドを読み込み境界で正規化する。
-function normalizePickupKeys(data: GameSaveData): GameSaveData | null {
-  const storedData = data as Omit<GameSaveData, 'ammoPickups'> & {
-    ammoPickups?: AmmoPickupSaveData[];
-    ammos?: AmmoPickupSaveData[];
-    rcsFuelPickups?: RcsFuelPickupSaveData[];
-  };
-  const ammoPickups = storedData.ammoPickups ?? storedData.ammos;
-  if (!Array.isArray(ammoPickups)) return null;
-
-  const normalizedData = {
-    ...storedData,
-    ammoPickups,
-    rcsFuelPickups: storedData.rcsFuelPickups ?? [],
-    detachedBoosters: storedData.detachedBoosters ?? [],
-  };
-  delete normalizedData.ammos;
-  return normalizedData;
 }
 
 // 名前を付けずに撮ったスナップショットの表示名。自機が居ない周回では経過時間だけを出す。

@@ -35,15 +35,15 @@ export const SMALL = body('small', G * (4 / 3) * Math.PI * SMALL_RADIUS ** 3 * 2
 export type Advance = (s: KinematicState, dt: number) => KinematicState;
 
 export function freeFall(central: CelestialMotion): Advance {
-  return (s, dt) => stepDynamics(s, dt, [central], 0, [], 0, null, 0, 0, null);
+  return (s, dt) => stepDynamics(s, dt, [central], [], null, 0, 0, 0, null);
 }
 
 export function withDrag(central: CelestialMotion, bcInv: number): Advance {
-  return (s, dt) => stepDynamics(s, dt, [central], 0, [], 0, central, bcInv, 0, null);
+  return (s, dt) => stepDynamics(s, dt, [central], [], central, 0, bcInv, 0, null);
 }
 
 export function withThrust(central: CelestialMotion, thrust: Vec3): Advance {
-  return (s, dt) => stepDynamics(s, dt, [central], 0, [], 0, null, 0, 0, thrust);
+  return (s, dt) => stepDynamics(s, dt, [central], [], null, 0, 0, 0, thrust);
 }
 
 export const still: Advance = (s, dt) => kinematicState<'eci'>(s.t + dt, s.r, s.v);

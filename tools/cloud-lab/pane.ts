@@ -1,45 +1,27 @@
-// 雲の実験環境の 1 面。投影法を 1 つ決め、その持ち方で天気と雲の写しを焼き、選んだ量の色を組む。
-// 表示にも写しにも同じ投影法を使うので、面を並べればそのまま図法どうしの比較になる。
-import { WebGPURenderer } from 'three/webgpu';
-import { CloudField } from '../../src/render/cloud/cloud-field';
-import { WeatherModel } from '../../src/render/cloud/weather-model';
+// 雲の実験環境の 1 面。地球の生成雲場を 1 つ持ち、その場の投影で面を張って、選んだ量の色を組む。
+// 表示にも写しにも場の投影を使うので、面を並べればそのまま図法どうしの比較になる。
 import type * as THREE from 'three/webgpu';
-import type { ClimateMap } from '../../src/render/cloud/climate-map';
-import type { FieldProjection } from '../../src/render/cloud/field-projection';
+import type { WebGPURenderer } from 'three/webgpu';
+import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
 import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
 import type { CloudLabView } from './views';
 
 export class CloudLabPane {
-  private readonly model: WeatherModel;
-  private readonly cloud: CloudField;
+  // field はこの面が焼いて見せる雲場。photo は面どうしで共有してよい(読むだけのテクスチャ)。
+  public constructor(private readonly field: GeneratedCloudField, private readonly photo: THREE.Texture) {}
 
-  // projection はこの面の持ち方。climate と photo は面どうしで共有してよい(読むだけのテクスチャ)。
-  public constructor(
-    private readonly projection: FieldProjection, private readonly climate: ClimateMap,
-    private readonly photo: THREE.Texture,
-  ) {
-    this.model = new WeatherModel(climate, projection);
-    this.cloud = new CloudField(this.model, projection);
-  }
-
-  // 時刻 [s] をこの面のモデルへ写す。
-  public syncTime(seconds: number): void {
-    this.model.syncTime(seconds);
-  }
-
-  // いまの時刻の写しを焼く。雲の写しは、それを読むビューのときだけ焼く(気圧と移流前の湿度は
-  // どのビューも読むので必ず焼く)。
-  public bake(renderer: WebGPURenderer, view: CloudLabView): void {
-    this.model.bake(renderer);
-    if (view.reads === 'cloud') this.cloud.render(renderer);
+  // 表示時刻 seconds [s] の場を焼く。
+  public bake(renderer: WebGPURenderer, seconds: number): void {
+    this.field.prepare(renderer, seconds);
   }
 
   // この面の uv(0..1)に出す表示値 0..1 の色。投影が値を持たない範囲は黒。
   public colorAt(view: CloudLabView, uv: Vec2Node): Vec3Node {
-    const direction = this.projection.directionAt(uv);
-    const color = view.reads === 'cloud' ? view.color(direction, this.cloud)
+    const projection = this.field.fieldProjection;
+    const direction = projection.directionAt(uv);
+    const color = view.reads === 'cloud' ? view.color(direction, this.field.sampler)
       : view.reads === 'photo' ? view.color(direction, this.photo)
-      : view.color(direction, this.model, this.climate);
-    return color.mul(this.projection.insideAt(uv));
+      : view.color(direction, this.field.weatherModel, this.field.climateMap);
+    return color.mul(projection.insideAt(uv));
   }
 }

@@ -1,6 +1,6 @@
 import { type GameSaveData, SAVE_VERSION } from '../../game/save/save-data';
 import type { SaveSlotMeta, SnapshotMeta } from './slot-data';
-import { SaveSlots } from './save-slots';
+import type { SaveSlots } from './save-slots';
 
 // 単一スロット時代の固定キー(tepui.save)に残っているセーブを、スロット/スナップショット
 // 構造へ1回だけ引き取る。
@@ -28,6 +28,7 @@ export function migrateLegacySave(slots: SaveSlots): SaveSlotMeta | null {
   return slot;
 }
 
+// 旧キーに残っているセーブ。無い・localStorage が使えない・現行の版で読めないときは null。
 function readLegacy(): GameSaveData | null {
   let raw: string | null;
   try {
@@ -36,6 +37,7 @@ function readLegacy(): GameSaveData | null {
     return null;
   }
   if (raw === null) return null;
+  // 現行の版で書かれたものを取り込む。
   try {
     const data = JSON.parse(raw) as GameSaveData;
     return data.version === SAVE_VERSION ? data : null;
@@ -44,11 +46,7 @@ function readLegacy(): GameSaveData | null {
   }
 }
 
-// 旧セーブには一覧用のメタが無いので、本体から読める範囲だけで組み立てる。位置・速度は
-// 導出に Game 実行状態が要るため 0 のままにし、消えないようクリップ済みで取り込む。
-// centerBodyId は 'earth' 固定 — この移行はレジストリ導入前(常に現実の太陽系・地球原点)の
-// セーブ形式だけを対象にしており、起動中の CelestialSystem をまだ持てない(main.ts の起動処理の中で
-// Game 構築より前に走る)ため、動的なレジストリの原点を引く経路が無い。
+// 旧セーブの本体から一覧用のメタを起こす。自動剪定で消えないよう、クリップ済みで取り込む。
 function metaFromSaveData(data: GameSaveData): SnapshotMeta {
   return {
     id: `legacy-${Date.now().toString(36)}`,
@@ -57,15 +55,19 @@ function metaFromSaveData(data: GameSaveData): SnapshotMeta {
     name: '移行前のセーブ',
     createdAtReal: Date.now(),
     simTime: data.simTime,
+    // 旧形式のセーブは常に現実の太陽系・地球原点。
     centerBodyId: 'earth',
+    // 導くのに Game の実行状態が要る値は 0。
     altitude: 0,
     speed: 0,
     hpRatio: 0,
     maxHp: 0,
     magazines: 0,
-    money: data.bases.reduce((sum, b) => sum + b.money, 0),
-    playerCount: data.players.length,
-    enemyAliveCount: data.enemies.filter((e) => e.alive).length,
+    // 本体の実体一覧から数えられる値。
+    money: data.entities.reduce((sum, e) => sum + (e.kind === 'base' ? e.money : 0), 0),
+    playerCount: data.entities.filter((e) => e.kind === 'player').length,
+    enemyAliveCount: data.entities.filter(
+      (e) => (e.kind === 'metal-enemy' || e.kind === 'protein-enemy') && e.alive).length,
     phase: data.stage.phase,
   };
 }
