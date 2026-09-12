@@ -87,8 +87,12 @@ export class Input {
   private longPressFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
   private longPressPointerId: number | null = null;
   private longPressFired = false;
-  // タッチの長押しに対する視覚フィードバック。point で表示位置を渡し、null で非表示にする。
-  onLongPressFeedback: ((point: PointerPoint | null) => void) | null = null;
+  // 長押しの判定中であることを示す位置。押し始めから一定時間が経つまでと、右クリックを
+  // 合成した後は null。
+  private longPressFeedback: PointerPoint | null = null;
+
+  // 長押しの判定中であることを示す画面上の位置。判定中でなければ null。
+  public get longPressPoint(): PointerPoint | null { return this.longPressFeedback; }
   // 直近に成立したタップ(ダブルタップ合成用)。タッチ由来でなければ null のまま。
   private lastTap: { x: number; y: number; time: number } | null = null;
   // 直近に成立したクリックがタッチ由来だったか。真なら、二重計上を避けるため
@@ -318,26 +322,26 @@ export class Input {
   }
 
   // pointerId の長押しタイマーを開始する。TOUCH_LONG_PRESS_FEEDBACK_MS 後に
-  // onLongPressFeedback を、TOUCH_LONG_PRESS_MS 後に右クリックを合成する。
+  // longPressPoint を立て、TOUCH_LONG_PRESS_MS 後に右クリックを合成する。
   private startLongPress(pointerId: number, point: PointerPoint): void {
     this.cancelLongPress();
     this.longPressPointerId = pointerId;
     this.longPressFired = false;
-    this.longPressFeedbackTimer = setTimeout(() => this.onLongPressFeedback?.(point), TOUCH_LONG_PRESS_FEEDBACK_MS);
+    this.longPressFeedbackTimer = setTimeout(() => { this.longPressFeedback = point; }, TOUCH_LONG_PRESS_FEEDBACK_MS);
     this.longPressTimer = setTimeout(() => {
       this.longPressFired = true;
-      this.onLongPressFeedback?.(null);
+      this.longPressFeedback = null;
       this.pendingRightClicks.push(point);
     }, TOUCH_LONG_PRESS_MS);
   }
 
-  // 進行中の長押し判定を打ち切り、表示中の視覚フィードバックがあれば消す。
+  // 進行中の長押し判定を打ち切る。
   private cancelLongPress(): void {
     if (this.longPressTimer !== null) clearTimeout(this.longPressTimer);
     if (this.longPressFeedbackTimer !== null) clearTimeout(this.longPressFeedbackTimer);
     this.longPressTimer = null;
     this.longPressFeedbackTimer = null;
-    if (this.longPressPointerId !== null) this.onLongPressFeedback?.(null);
+    this.longPressFeedback = null;
     this.longPressPointerId = null;
   }
 
