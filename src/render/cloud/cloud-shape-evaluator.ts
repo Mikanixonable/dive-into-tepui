@@ -5,7 +5,7 @@ import { clamp, min, smoothstep } from 'three/tsl';
 import { gradientNoise } from './gradient-noise';
 import { columnOpticalDepthFromCoverageNode } from './cloud-optics-node';
 import {
-  CUMULUS_COVERAGE_KNOB, CUMULUS_GRAIN_SIZE, CLOUD_TOP_SPAN,
+  CUMULUS_DITHER_KNOB, CUMULUS_GRAIN_SIZE, CLOUD_TOP_SPAN,
 } from './cumulus-shape';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
@@ -22,10 +22,10 @@ export class CloudShapeEvaluator {
     return gradientNoise(direction.mul(this.grainFrequency)).mul(amplitude);
   }
 
-  // 粒を足してから coverage の連続帯へ通す。空の柱に粒だけで雲を生やさない共有規則である。
+  // 粒を足してからディザの帯へ通す。空の柱に粒だけで雲を生やさない共有規則である。
   public opaqueFraction(coverage: FloatNode, grain: FloatNode): FloatNode {
-    const band = CUMULUS_COVERAGE_KNOB.halfWidth.mul(2);
-    const center = CUMULUS_COVERAGE_KNOB.center;
+    const band = CUMULUS_DITHER_KNOB.halfWidth.mul(2);
+    const center = CUMULUS_DITHER_KNOB.center;
     const clampedBand = min(band, center.mul(2));
     const covered = coverage.add(grain.mul(GRAIN_COVERAGE_DEPTH));
     return clamp(covered.sub(center.sub(clampedBand.mul(0.5))).div(clampedBand), 0, 1);

@@ -11,7 +11,8 @@ import {
 import type {
   EarthSurfaceLayerSample, EarthSurfaceMaterialLayerReader,
 } from '../../src/render/earth-surface-material';
-import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, earthTileKey } from '../../src/render/earth-surface-tiles';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from '../../src/render/earth-surface-page-table';
+import { earthTileKey } from '../../src/render/earth-surface-tile-key';
 
 function layer(colorSrgb: { readonly r: number; readonly g: number; readonly b: number }, roughness: number,
   bodyNormal = new THREE.Vector3(0, 1, 0)): EarthSurfaceLayerSample {
@@ -54,19 +55,22 @@ export function register(): void {
     const set = (x: number, y: number, value: readonly [number, number, number, number]): void => {
       table.set(value, (y * EARTH_PAGE_WIDTH + x) * 4);
     };
-    set(0, 0, [3, 2, 1, 128]);
-    set(0, EARTH_PAGE_HEIGHT - 1, [4, 1, 2, 255]);
-    set(EARTH_PAGE_WIDTH - 1, EARTH_PAGE_HEIGHT - 1, [4, 1, 2, 255]);
-    assert.deepEqual(earthSurfacePageCell(table, 0, 0), { layer: 3, parentLayer: 2, z: 1, fade: 128 / 255 });
-    assert.deepEqual(earthSurfacePageCell(table, -1 / EARTH_PAGE_WIDTH / 2, 1), { layer: 4, parentLayer: 1, z: 2, fade: 1 });
-    assert.deepEqual(earthSurfacePageCell(table, 0, 1), { layer: 4, parentLayer: 1, z: 2, fade: 1 });
+    set(0, 0, [3, 2, 5, 128]);
+    set(0, EARTH_PAGE_HEIGHT - 1, [4, 1, 5, 255]);
+    set(EARTH_PAGE_WIDTH - 1, EARTH_PAGE_HEIGHT - 1, [4, 1, 5, 255]);
+    assert.deepEqual(earthSurfacePageCell(table, 0, 0), { layer: 3, parentLayer: 2, z: 5, fade: 128 / 255 });
+    assert.deepEqual(earthSurfacePageCell(table, -1 / EARTH_PAGE_WIDTH / 2, 1), { layer: 4, parentLayer: 1, z: 5, fade: 1 });
+    assert.deepEqual(earthSurfacePageCell(table, 0, 1), { layer: 4, parentLayer: 1, z: 5, fade: 1 });
+    const invalid = new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(255);
+    invalid.set([3, 2, 3, 255]);
+    assert.throws(() => earthSurfacePageCell(invalid, 0, 0), /Invalid Earth page level/);
   });
 
   test('earth material: タイルUVは経度wrap、極clamp、2texel gutterを共有する', () => {
-    const key = earthTileKey(2, 0, 0);
+    const key = earthTileKey(5, 0, 0);
     const wrapped = earthSurfaceTileLocalUv(-0.001, 0, key).uv;
     const north = earthSurfaceTileLocalUv(0.01, -10, key).uv;
-    const south = earthSurfaceTileLocalUv(0.01, 10, earthTileKey(2, 0, 3)).uv;
+    const south = earthSurfaceTileLocalUv(0.01, 10, earthTileKey(5, 0, 31)).uv;
     assert.ok(wrapped.x > 0 && wrapped.x < 1);
     assert.equal(north.y, (2 + 0.5) / 260);
     assert.equal(south.y, (2 + 0.5 + 256) / 260);
@@ -96,7 +100,7 @@ export function register(): void {
         [2, layer({ r: 1, g: 1, b: 1 }, EARTH_LAND_ROUGHNESS)],
       ]),
     );
-    const faded = sampleEarthSurfacePage(reader, { layer: 2, parentLayer: 1, z: 1, fade: 0.5 }, 1.2, -0.1);
+    const faded = sampleEarthSurfacePage(reader, { layer: 2, parentLayer: 1, z: 6, fade: 0.5 }, 1.2, -0.1);
     assert.deepEqual(faded.colorLinear, { r: 0.5, g: 0.5, b: 0.5 });
     assert.ok(Math.abs(faded.roughness - (EARTH_WATER_ROUGHNESS + EARTH_LAND_ROUGHNESS) / 2) < 1e-12);
     assert.equal(reader.detailUvs.length, 2);
