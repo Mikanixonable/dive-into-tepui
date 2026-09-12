@@ -12,7 +12,6 @@ import { irradianceAtDistance, SUN_IRRADIANCE_1AU } from '../../pipeline/sun-lig
 import { norm, sub, v3, type Vec3 } from '../../../math/vec3';
 import { SphereCelestialView } from './sphere-celestial-view';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
-import type { CelestialBody } from '../../../physics/celestial-body';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { CameraFrame } from '../../camera/camera-frame';
 import type { CloudPresentation } from '../../cloud/cloud-presentation';
@@ -20,7 +19,7 @@ import type { Aurora } from '../aurora';
 import type { GeostationaryOverlay } from './geostationary-overlay';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 import type { LineOverlay } from '../line-overlay';
-import type { MarkerSlots } from '../../../game/marker/marker-slots';
+import type { MapOverlayLabel } from './celestial-view';
 import type { ShadowCumulus } from '../../pipeline/shadow/cloud-shadow-renderer';
 import type { RenderStyle } from '../../render-style';
 import type { RingMaterials } from '../ring';
@@ -111,7 +110,8 @@ export class PointCelestialView extends SphereCelestialView {
 
   // 実体を描くフレームは、積雲の殻・オーロラ・表面のフレーム値を同期して輝点を隠す。
   protected override syncResolved(
-    motion: CelestialMotion, apparentDiameterPx: number, displayTime: number, camera: CameraFrame,
+    motion: CelestialMotion, apparentDiameterPx: number, displayTime: number, nowMs: number,
+    camera: CameraFrame,
     star: StellarLightSource | null, graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
     // 雲。
@@ -136,7 +136,7 @@ export class PointCelestialView extends SphereCelestialView {
       this.group.quaternion,
       this.axes,
       this.surfaceFrame++,
-      performance.now(),
+      nowMs,
       style,
     ));
     this.billboard.hide();
@@ -178,12 +178,11 @@ export class PointCelestialView extends SphereCelestialView {
     this.cumulus.bake(renderer, displayTime, gpu);
   }
 
-  // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期する。
+  // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期し、高度ラベルを返す。
   public override syncMapOverlay(
-    motion: CelestialMotion, displayTime: number, camera: CameraFrame,
-    markers: MarkerSlots, celestialBodies: readonly CelestialBody[], visible: boolean,
-  ): void {
-    this.mapOverlay?.sync(motion, displayTime, camera, markers, celestialBodies, visible);
+    motion: CelestialMotion, displayTime: number, camera: CameraFrame, visible: boolean,
+  ): MapOverlayLabel | null {
+    return this.mapOverlay?.sync(motion, displayTime, camera, visible) ?? null;
   }
 
   // オーロラの波打ち・明滅を表示時刻へ進め、昼夜の変調を太陽の向きへ合わせる。
