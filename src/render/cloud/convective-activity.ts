@@ -5,7 +5,7 @@
 import * as THREE from 'three/webgpu';
 import { clamp, vec4 } from 'three/tsl';
 import { BakedField } from './baked-field';
-import { CirculatingNoise, coarsenessFor } from './circulating-noise';
+import { CirculatingNoise } from './circulating-noise';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { NoiseOctave } from './circulating-noise';
@@ -45,10 +45,9 @@ export class ConvectiveActivity {
 
   // circulation は気団を運ぶ流れ、projection は写しの持ち方。
   public constructor(circulation: Circulation, projection: FieldProjection) {
-    const coarseness = coarsenessFor(projection, INSTABILITY_NOISE);
-    const noise = new CirculatingNoise(circulation, INSTABILITY_NOISE, projection.texelAngle.mul(coarseness));
+    const noise = new CirculatingNoise(circulation, INSTABILITY_NOISE, projection.texelAngle);
     this.instability = new BakedField(
-      'instability', THREE.RedFormat, projection, coarseness,
+      'instability', THREE.RedFormat, projection,
       (direction) => vec4(noise.at(direction).mul(INSTABILITY_AMPLITUDE), 0, 0, 1));
   }
 

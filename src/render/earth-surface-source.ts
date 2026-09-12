@@ -72,6 +72,7 @@ export interface EarthSurfaceTerrainEncoding {
   readonly scalar: 'UInt8';
 }
 
+// 配信base配下の安全な相対アセットURLを作る。
 function relativeAsset(baseUrl: string, path: string): string {
   if (path.length === 0 || path.startsWith('/') || path.includes('\\')
     || path.split('/').some((part) => part === '..' || part === '.') || path.includes('?') || path.includes('#')) {
@@ -80,11 +81,13 @@ function relativeAsset(baseUrl: string, path: string): string {
   return new URL(path, baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`).toString();
 }
 
+// タイル変数を保ったまま配信baseへ解決する。
 function relativeTileTemplate(baseUrl: string, template: string): string {
   const path = template.replace('{z}', 'LOD_Z').replace('{x}', 'TILE_X').replace('{y}', 'TILE_Y');
   return relativeAsset(baseUrl, path).replace('LOD_Z', '{z}').replace('TILE_X', '{x}').replace('TILE_Y', '{y}');
 }
 
+// datasetIdをURLと契約で扱える文字列へ制限する。
 function requireDatasetId(datasetId: string): void {
   if (!/^[a-z0-9-]+$/.test(datasetId)) throw new Error('Invalid Earth surface datasetId');
 }
