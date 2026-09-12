@@ -1,8 +1,7 @@
 // 単位方向とテクスチャの uv の対応を図法ごとに持つ。雲の場を焼く側と読む側は、この契約を通して
 // 同じ図法を共有する。
 import * as THREE from 'three/webgpu';
-import { asin, atan, clamp, cos, dot, float, max, normalize, sin, sqrt, step, uniform, vec2, vec3 } from 'three/tsl';
-import { earthSurfaceUvFromRadialNode } from '../earth-surface-coordinate';
+import { asin, atan, clamp, cos, dot, float, max, sin, sqrt, step, uniform, vec2, vec3 } from 'three/tsl';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 
 export type FieldProjection = {
@@ -66,45 +65,6 @@ export class EquirectProjection implements FieldProjection {
   // 単位方向の経度・緯度の uv。u は 0..1 に畳む。
   public uvAt(direction: Vec3Node): Vec2Node {
     return equirectUvFromDirection(direction);
-  }
-
-  // 全球を覆うので、どの uv も値を持つ。
-  public insideAt(): FloatNode {
-    return float(1);
-  }
-}
-
-// 全球を、半軸 axes の回転楕円体の地理緯度・経度の正距円筒で持つ。u は地理経度、v は地理緯度
-// (0 が北極)で、中心からの放射方向と対応させる。
-export class EllipsoidEquirectProjection implements FieldProjection {
-  public readonly width: number;
-  public readonly wrapS: THREE.Wrapping = THREE.RepeatWrapping;
-  public readonly wrapT: THREE.Wrapping = THREE.ClampToEdgeWrapping;
-  public readonly texelAngle: FloatNode;
-  public readonly texelAngleValue: number;
-  // 全球を覆う置き方は構築時に決まるので、版は 0 のまま。
-  public readonly revision = 0;
-
-  // height は緯度 180° を割る texel 数(幅はその 2 倍)、axes は回転楕円体の半軸。
-  public constructor(public readonly height: number, private readonly axes: Vec3Node) {
-    this.width = height * 2;
-    this.texelAngleValue = Math.PI / height;
-    this.texelAngle = float(this.texelAngleValue);
-  }
-
-  // uv の地理緯度・経度に法線が立つ楕円体上の点の、中心からの単位方向。
-  public directionAt(uv: Vec2Node): Vec3Node {
-    const longitude = uv.x.sub(0.5).mul(2 * Math.PI);
-    const latitude = uv.y.sub(0.5).negate().mul(Math.PI);
-    const geographicNormal = vec3(
-      cos(latitude).mul(sin(longitude)), sin(latitude), cos(latitude).mul(cos(longitude)),
-    );
-    return normalize(geographicNormal.mul(this.axes).mul(this.axes));
-  }
-
-  // 中心からの単位方向が指す楕円体上の点の、地理緯度・経度の uv。
-  public uvAt(direction: Vec3Node): Vec2Node {
-    return earthSurfaceUvFromRadialNode(direction, this.axes);
   }
 
   // 全球を覆うので、どの uv も値を持つ。
