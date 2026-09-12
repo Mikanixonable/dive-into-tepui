@@ -23,8 +23,6 @@ export interface MarkerRecord {
   clustered: boolean;
   // 遮蔽で畳み始めた実時刻 [ms]。畳んでいる途中でなければ null。
   fadeStartMs: number | null;
-  // 遮蔽で畳み終えたか。
-  fadedOut: boolean;
   // 直前フレームで優先度間引きによりラベルが隠れていたか(ヒステリシス用)。
   prevLabelHidden: boolean;
 }
@@ -48,8 +46,7 @@ export class MarkerGroup implements MarkerSink {
     private readonly onDispose: (group: MarkerGroup) => void,
   ) {}
 
-  // このフレームに出すマーカーを宣言し直す。列から外れた宣言の要素は片付ける。
-  // nowMs はフレームの実時刻 [ms]。空配列を渡せばこの群のマーカーは残らず消える。
+  // 列から外れた宣言の要素は、この呼び出しで DOM ごと消える。
   public sync(items: readonly MarkerDeclaration[], nowMs: number): void {
     const declared = this.declaredScratch;
     declared.clear();
@@ -64,16 +61,16 @@ export class MarkerGroup implements MarkerSink {
     }
   }
 
-  // その id のマーカーをこのフレームに画面へ出しているか。遮蔽で薄れている途中も出していない扱い。
+  // この群が id のマーカーを出しているか。
   public shows(id: string): boolean {
     const m = this.records.get(id);
-    return m !== undefined && !m.hidden && !m.fadedOut && m.fadeStartMs === null;
+    return m !== undefined && !m.hidden && m.fadeStartMs === null;
   }
 
   // 画面に出ているマーカーを out へ積む。
   public collectActive(out: MarkerRecord[]): void {
     for (const m of this.records.values()) {
-      if (m.hidden || m.fadedOut || m.fadeStartMs !== null) continue;
+      if (m.hidden || m.fadeStartMs !== null) continue;
       out.push(m);
     }
   }
@@ -95,7 +92,6 @@ export class MarkerGroup implements MarkerSink {
     }
     const m = known ?? this.create(item);
     m.fadeStartMs = null;
-    m.fadedOut = false;
     m.fixedLabel = item.fixedLabel === true;
     m.hidden = !item.front;
     m.x = item.x;
@@ -139,12 +135,11 @@ export class MarkerGroup implements MarkerSink {
     if (m.fadeStartMs !== null) {
       if (nowMs - m.fadeStartMs < OCCLUSION_FADE_MS) return;
       m.fadeStartMs = null;
-      m.fadedOut = true;
       m.hidden = true;
       m.root.style.display = 'none';
       return;
     }
-    if (m.fadedOut || m.hidden) return;
+    if (m.hidden) return;
     m.root.style.display = 'block';
     m.root.style.opacity = '0';
     m.fadeStartMs = nowMs;
@@ -167,7 +162,6 @@ export class MarkerGroup implements MarkerSink {
       iconHidable: true,
       clustered: false,
       fadeStartMs: null,
-      fadedOut: false,
       prevLabelHidden: false,
     };
     this.records.set(item.id, m);

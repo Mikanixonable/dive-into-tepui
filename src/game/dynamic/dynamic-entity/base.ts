@@ -213,7 +213,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       name: this.name,
       bearing: {
         cls: 'mk-dir mk-ally-dir', sym: ENTITY_GLYPH.base, color: COLOR_MARKER_ALLY,
-        visible: false, priority: MARKER_PRIORITY.NONE, clustered: true,
+        visible: false, priority: MARKER_PRIORITY.PLAYER, clustered: true,
       },
       color: COLOR_MARKER_ALLY,
       symMarkup: true,
