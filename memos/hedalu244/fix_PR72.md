@@ -190,28 +190,6 @@ main へは `/send-pr` で送る。区切りは次の 3 つ。**マージは mer
 - PR-B(小さな修正と計測): 手順 4〜7
 - PR-C(雲場の作り直し): 手順 8
 
-### 手順 4. 雲殻の縁をディザへ戻し、雲頂の連続化を外す
-
-**目的**: 被覆率の中間を青色ノイズの点描で描く方式を、線形補間 + 0.5 で捨てる方式に置き換えた変更を
-戻す。薄い柱で雲頂を地表側へ下げる処理も外す。雲頂の高さは生成側の責務で、描画側で混ぜない。
-
-撤去の対象は `git diff b4215af6^ bcc70bee -- src/render/cumulus-shell.ts src/render/cloud/cumulus-shape.ts src/render/pipeline/cloud-scattering.ts`
-(248 行)の差分。3-way の逆適用は3ファイルとも衝突するので、`b4215af6^` の
-`src/render/cumulus-shell.ts` を手本に手で戻す。
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/opaque-cloud-surface-renderer.ts:216-258` | 雲頂の締め込みを青色ノイズのディザ判定へ戻し、`clearanceAt` の被覆率による雲頂の引き下げを外す。3d1f43bf が戻した構造(cloud-optics・cloud-shape-evaluator)と、#75 の出どころの張り替え(`setSource`)は残す |
-| `src/render/cloud/cumulus-shape.ts` | bcc70bee が変えた雲頂の連続化(被覆に応じて雲頂を下げる部分)を戻す |
-| `src/render/pipeline/cloud-atmosphere-renderer.ts` | bcc70bee が cloud-scattering.ts へ入れた 1 行ぶんの対応を戻す |
-| `tools/render-lab/index.html`、`tools/render-lab/main.ts` | 「被覆率」のつまみを「ディザ」のつまみへ戻す |
-
-**達成条件と検証**:
-
-- `npm run typecheck`、`npm run test:render`。
-- `b9b6f9d8` の worktree で `npm run render-lab:shot` を撮り、同じ視点の今の撮影と並べる。雲殻の縁が
-  同じ粒度の点描になり、薄い雲の縁で雲頂が段状に落ちない。
-
 ### 手順 5. オーロラの昼夜を太陽で決める
 
 **目的**: `aurora.sync(phase)`(point-celestial-view.ts:190)が太陽の子午線を渡していない。昼夜の変調
