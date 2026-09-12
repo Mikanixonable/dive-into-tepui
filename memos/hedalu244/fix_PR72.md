@@ -190,25 +190,6 @@ main へは `/send-pr` で送る。区切りは次の 3 つ。**マージは mer
 - PR-B(小さな修正と計測): 手順 4〜7
 - PR-C(雲場の作り直し): 手順 8
 
-### 手順 2. 雲場の楕円体投影を外す
-
-**目的**: 雲場の契約を回転楕円体の地理座標にすると、描画側が方向ベクトルの `dot` で読む正射影と
-噛み合わない。球の正距円筒(`EquirectProjection`)へ戻す。この着地点は仮で、手順 8 で視点中心の
-cap に替わる。fix_surface_lod.md 手順 3 で消える `earth-surface-coordinate.ts` を
-field-projection.ts が import しているので、そちらより先に行う。
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/cloud/field-projection.ts` | `EllipsoidEquirectProjection` と `earthSurfaceUvFromRadialNode` の import、`normalize` の import を消す。`revision`(781043e0)は `OrthographicCap` が使うので残す |
-| `src/game/celestial/solar-system/earth-system.ts:425-433` | `earthGeneratedCloudField` の既定の投影を `new EquirectProjection(EARTH_CLOUD_FIELD_HEIGHT)` にし、コメント「気候図と同じ楕円体の正距円筒」を直す。`EARTH_CLIMATE_AXES`(229 行)は呼び手が手順 3 と合わせて 0 になるので消す |
-| `tests/render/cloud-field-sampler.test.ts:20` | 楕円体投影のテストを消す |
-
-**達成条件と検証**:
-
-- `npm run typecheck`、`npm run test:render`。
-- `git grep -n EllipsoidEquirectProjection -- src tools tests` が 0 件。
-- `npm run cloud-lab:shot` で、全球の雲場に経度 ±180° の継ぎ目が出ない。
-
 ### 手順 3. 雲の気候を平年の気候画像へ戻す(月別気候の撤去)
 
 **目的**: 月別気候は、配信物が ready のときだけ実データへ差し替わり、それ以外は sin 波の架空大陸で
@@ -224,7 +205,7 @@ revert する。
 | `src/render/cloud/generated-cloud-field.ts:25-28, 46-49` | 気候を `MonthlyClimateMap` から契約 `ClimateMap` へ戻す。`climateEpochUnixSec` と `monthlyClimateClockAt`・`setMonth` を消す。世代による焼き直しと投影の版は残す |
 | `src/render/cloud/monthly-climate-map.ts`、`monthly-climate-fixture.ts` | 削除 |
 | `tests/render/monthly-climate-map.test.ts` | 削除 |
-| `src/game/celestial/solar-system/earth-system.ts:419-434, 445-448` | `earthGeneratedCloudField` は `bootstrap` を受けず、`AnnualClimateMap.fromDeferredUrl(climateTextureUrl)`(`../../../assets/earth-climate.png`)で気候を組む。`createDevelopmentClimateMap` を消す。`earthSystem` の `climateEpochUnixSec` 引数を消す。`bootstrapEarthSurface` は地表タイル側に残るので消さない |
+| `src/game/celestial/solar-system/earth-system.ts:419-434, 445-448` | `EARTH_CLIMATE_AXES` と `earthSurfaceUvFromRadialNode` の import を消す(手順 2 では `createDevelopmentClimateMap` がまだ呼ぶので残した)。`earthGeneratedCloudField` は `bootstrap` を受けず、`AnnualClimateMap.fromDeferredUrl(climateTextureUrl)`(`../../../assets/earth-climate.png`)で気候を組む。`createDevelopmentClimateMap` を消す。`earthSystem` の `climateEpochUnixSec` 引数を消す。`bootstrapEarthSurface` は地表タイル側に残るので消さない |
 | `src/game/celestial/solar-system/solar-system.ts:71` | `earthSystem` へ渡す気候の元期を消す(893e6700 で足されたもの) |
 | `src/render/cloud/weather-model.ts`、`cloud-presentation.ts`、`tools/cloud-lab/views.ts` | 型の参照を `ClimateMap` 契約へ合わせる(0e4a1eb1 が触った箇所) |
 | `tools/cloud-lab/lab.ts:8-9, 63, 86-87` | `bootstrapEarthSurface` の import と `CLIMATE_EPOCH_UNIX_SEC` を消し、`earthGeneratedCloudField()` / `earthGeneratedCloudField(this.capProjection)` で組む |
