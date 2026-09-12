@@ -18,7 +18,7 @@ import {
   type LabMeasurement, type LabViewAngles,
 } from './lab';
 import { AU } from '../../src/physics/astronomical-unit';
-import { CUMULUS_COVERAGE_KNOB } from '../../src/render/cloud/cumulus-shape';
+import { CUMULUS_DITHER_KNOB } from '../../src/render/cloud/cumulus-shape';
 import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
 import type { FloatUniform } from '../../src/render/tsl-types';
@@ -162,16 +162,16 @@ async function init(): Promise<void> {
   document.getElementById('ambient')!.appendChild(ambient.element);
   ambient.setSelected(view.ambientFraction);
 
-  // **仮設**: 積雲の被覆率が不透明な雲頂へ渡る境目と幅。被覆率が中央値±半幅に入る柱だけが
-  // 連続な中間値になり、雲頂の高さと境界へ効く。生成側の場へ差し替えたあとにもう一段の追い込みが
-  // 要るので、それまでは畳まない。
-  const coverage = CUMULUS_COVERAGE_KNOB;
+  // **仮設**: 積雲の飽和とディザの幅。被覆率が 中央値±半幅 に入る柱だけがディザに掛かるので、
+  // 半幅を広げるほど半透明として読める画素が増える。生成側の場へ差し替えたあとにもう一段の
+  // 追い込みが要るので、それまでは畳まない。
+  const dither = CUMULUS_DITHER_KNOB;
   const redraw = (knob: FloatUniform, value: number): void => { knob.value = value; view.render(); };
-  buildSlider('cumulus-coverage', '中央値', 0, 1, 0.001,
-    () => coverage.center.value.toFixed(3), (v) => redraw(coverage.center, v))(coverage.center.value);
-  buildSlider('cumulus-coverage', '中間調 半幅', 0.001, 0.5, 0.001,
-    () => `±${coverage.halfWidth.value.toFixed(3)}`,
-    (v) => redraw(coverage.halfWidth, v))(coverage.halfWidth.value);
+  buildSlider('cumulus-dither', '中央値', 0, 1, 0.001,
+    () => dither.center.value.toFixed(3), (v) => redraw(dither.center, v))(dither.center.value);
+  buildSlider('cumulus-dither', '中間調 半幅', 0.001, 0.5, 0.001,
+    () => `±${dither.halfWidth.value.toFixed(3)}`,
+    (v) => redraw(dither.halfWidth, v))(dither.halfWidth.value);
 
   // **仮設**: 半透明な殻の濃さ・立つ高さ・反射率。不透明な積雲との馴染みを目で追い込むための
   // つまみで、追い込みを終えるまでは畳まない。
