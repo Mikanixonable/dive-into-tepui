@@ -1,6 +1,6 @@
 // フレームの描画パスの構成 — 何段で、どのターゲットへ描き、どう合成してキャンバスへ出すか — を持つ。
-// composite パスは通常表示(inspected==='off')では HDR ターゲットをトーンマッピングして合成し、
-// デバッグ表示を選ぶと中間ターゲットの中身を画面いっぱいに映す。
+// composite パスは通常表示では HDR ターゲットをトーンマッピングして合成し、デバッグ表示を
+// 選ぶと中間ターゲットの中身を画面いっぱいに映す。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { float, int, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
@@ -85,8 +85,8 @@ export class RenderPipeline {
   private readonly drawingBufferSize = new THREE.Vector2();
   private readonly unregisterProteinMotionRenderer: () => void;
 
-  // 通常表示に代えて画面いっぱいに映す中間ターゲットの選択。syncDebugTarget が毎フレーム書く。
-  private inspected: DebugTargetId = 'off';
+  // 通常表示に代えて画面いっぱいに映す中間ターゲットの選択。
+  private debugTarget: DebugTargetId = 'off';
 
   // 以下は、毎フレームの値(恒星の位置・順応の基準点・影を落とすもの・光源になる天体・環境光の割合・
   // 大気を持つ天体)の書き込み先。
@@ -303,7 +303,7 @@ export class RenderPipeline {
 
   // このフレームに画面いっぱいへ映す中間ターゲット。'off' なら通常表示。
   public syncDebugTarget(target: DebugTargetId): void {
-    this.inspected = target;
+    this.debugTarget = target;
   }
 
   // 描画品質設定を各パスへ配り、影マップなどの GPU 資源を組み直す。設定が前回と別の値に
@@ -410,9 +410,9 @@ export class RenderPipeline {
 
       // 大気パス。デバッグ表示が選ばれている間は、そこへ映す1枚も大気パスに描かせる
       // (「マテリアル」は重ねる前の下地なので、大気を描く前に控える)。
-      if (this.inspected === 'material') this.atmospherePass.inspectBackdrop();
+      if (this.debugTarget === 'material') this.atmospherePass.inspectBackdrop();
       this.atmospherePass.render(camera);
-      if (this.inspected === 'atmosphere') this.atmospherePass.inspectScattered(camera);
+      if (this.debugTarget === 'atmosphere') this.atmospherePass.inspectScattered(camera);
 
       // world パス。LIT_OPAQUE_LAYER・雲殻の層・背景専用レイヤーはチャンネル0から外れているので、既定の
       // カメラマスクで描く限り重複しない。autoClear を落としてマテリアルパスの描画(色・深度とも)
@@ -430,9 +430,9 @@ export class RenderPipeline {
       if (this.lensEnabled) this.lensPass.render(width, height);
       else this.lensPass.clear(width, height);
 
-      this.quad.material = this.inspected === 'off' && this.lensEnabled
+      this.quad.material = this.debugTarget === 'off' && this.lensEnabled
         ? this.lensCompositeMaterial
-        : this.compositeMaterials[this.inspected];
+        : this.compositeMaterials[this.debugTarget];
     }
 
     // composite パス。

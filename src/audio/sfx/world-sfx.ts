@@ -1,7 +1,7 @@
 // ゲーム世界内の物体・出来事(発砲・被弾・接触・爆発・噴射など)が発する合成効果音
 // (アセット不要)。AudioEngine が共有する素材(ノイズバッファ・基本ボイス)と、ここで組む
 // 専用のオシレータ/フィルタで、単発音とループ音を鳴らす。
-// AudioContext が unlock されるまでは、どのメソッドも無音のまま何もしない。
+// AudioContext が開くまでは、どのメソッドも無音のまま何もしない。
 import { AudioEngine } from '../audio-engine';
 
 // 被弾点がこの距離まで自機中心から離れると、遠い被弾として音量・音高を下限にする [m]。
@@ -12,10 +12,10 @@ const RCS_LOOP_GAIN = 0.015; // メインエンジンより高く軽いシュー
 
 // そのフレームに鳴らすべき連続音の全体。装置の語彙なので、どの艦が何をどれだけ噴いているかは
 // 持たず、鳴らすか鳴らさないかだけを受ける。
-export type LoopSfx = {
+export interface LoopSfx {
   readonly thrust: boolean;
   readonly rcs: boolean;
-};
+}
 
 export class WorldSfx {
   // 連続音のチャンネル。AudioContext が開くまで組めないので、最初に鳴らす機会に組む。

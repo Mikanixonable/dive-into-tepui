@@ -308,7 +308,8 @@ export class Game {
     const mapView = new MapView(
       this.input, this.cameraSystem, this.objectWindows,
       this.dynamicSystem, this.equatorNodes, celestialSystem,
-      this.celestialMarkers, this.markers, this.targeter, this.displayWindowManager, this.frameControls,
+      this.celestialMarkers, this.markers, this.targeter.combatMarkers,
+      this.displayWindowManager, this.frameControls,
       this.frameAnchors, this.controlSelection, this.simSpeedManager, this.planDisplay,
       this._scene, this._hud, uiSfx, this.navTarget, this.mapDisplay,
     );
@@ -340,9 +341,9 @@ export class Game {
 
   public resume(): void { this._isPaused = false; }
 
-  // このゲームが scene・Hud・window/document/canvas へ足したものを残らず取り除く。呼んだ後の
-  // このインスタンスは使えない。構築の逆順で辿る — 後から組んだものほど先に組んだものを参照する。
-  // マーカープールは最後 — 各表示物が自分の dispose で自分のキーを外していくため。
+  // このゲームが scene・Hud・マーカー装置・window/document/canvas へ足したものを残らず
+  // 取り除く。呼んだ後のこのインスタンスは使えない。構築の逆順で辿る — 後から組んだものほど
+  // 先に組んだものを参照する。
   public dispose(): void {
     this.viewBadge.dispose();
     this.viewManager.dispose();

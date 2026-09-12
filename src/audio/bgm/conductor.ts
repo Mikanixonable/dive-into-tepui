@@ -18,7 +18,7 @@ export class Conductor {
   private trackIdx = 0;
   private trackStartTime = 0;
 
-  // destination は持ち主のマスターゲイン。ctx は unlock 済みのものを受け取る。
+  // destination は持ち主のマスターゲイン。ctx は開いているものを受け取る。
   // rotates は線ごとの方針で、あとから変わらない — ゲーム中の線は送り、試聴の線は送らない。
   // この線ぶんのゲインをここで組む。曲ごとのフェードとは別の層で、線そのものを伏せるのに使う。
   constructor(

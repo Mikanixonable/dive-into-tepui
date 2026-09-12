@@ -4,7 +4,7 @@ import { LabelDeclutter } from './label-declutter';
 import { LabelLayout } from './label-layout';
 import { MarkerGroup, type MarkerRecord } from './marker-group';
 import type { MarkerSink } from './marker-sink';
-import { injectMarkerStructureStyle } from './marker-style';
+import { injectMarkerStructureStyle } from './marker-structure-style';
 import type { MarkerVisibility } from './marker-visibility';
 
 // ラベルの引き出し線を描く SVG を root に重ねて返す。
@@ -42,7 +42,7 @@ export class MarkerDevice implements MarkerVisibility {
     return group;
   }
 
-  // その id のマーカーを直前のフレームで画面へ出したか。遮蔽で薄れている途中も出していない扱い。
+  // どれかの群が id のマーカーを出しているか。
   public shows(id: string): boolean {
     return this.groups.some((group) => group.shows(id));
   }

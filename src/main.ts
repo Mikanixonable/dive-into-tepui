@@ -15,7 +15,7 @@ import { applyThemePalette } from './theme';
 import { Hud } from './game/hud/hud';
 import { HudShell } from './hud/hud-shell';
 import { MarkerDevice } from './marker/marker-device';
-import { injectMarkerIdentityStyle } from './game/marker/marker-style';
+import { injectMarkerIdentityStyle } from './game/marker/marker-identity-style';
 import { PauseMenu } from './hud/windows/pause-menu';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
@@ -135,8 +135,7 @@ function initHud(settings: UserSettings): {
   return { shell, hud, markers, audioEngine, bgm, pauseMenu };
 }
 
-// 設定の変更を、その値を使う側へ配る。書き換えの入口はどれも設定へ戻し、表示はその通知から引き直す。
-// 描画品質はフレームの先頭で現在値を読む(GameScene.syncFrame)ので、ここでは書き戻すだけでよい。
+// 設定の変更を、通知から引き直す側へ配る。書き換えの入口はどれも設定へ戻す。
 function bindSettings(
   settings: UserSettings, hud: Hud, bgm: Bgm,
   pauseMenu: PauseMenu, debugInfo: DebugInfoWindow,

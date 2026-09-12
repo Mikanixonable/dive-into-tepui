@@ -105,9 +105,9 @@ export class EquatorNodeMarkerPair {
     return [this.ascending, this.descending].filter((marker) => !marker.gone);
   }
 
-  // 求まっている交点の △▽ マーカーの宣言。celestialBodies は遮蔽判定に使う天体で、
-  // celestialBodiesPivot はその位置を引く時刻。
-  declarations(
+  // 求まっている交点の △▽ マーカーの宣言を out へ積む。celestialBodies は遮蔽判定に使う
+  // 天体で、celestialBodiesPivot はその位置を引く時刻。
+  pushDeclarations(
     out: MarkerDeclaration[], project: ProjectFn, cameraPos: Vec3,
     celestialBodies: readonly CelestialBody[],
     celestialBodiesPivot: number, occludeByBodies: boolean, timeLabel: TimeLabelSetting,

@@ -123,6 +123,7 @@ export class CombatView implements ViewFrame {
     this.planGuide.sync(controlled, displayWindow.simTime, camera, this.planPath, nowMs);
   }
 
+  // ノード実行ガイドのマーカー群を取り除く。
   public dispose(): void {
     this.planGuide.dispose();
   }

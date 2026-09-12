@@ -9,8 +9,24 @@ const COLOR_MARKER_BOARDPASS = '#ffffff';
 const COLOR_MARKER_SELF = '#dfe3e8';
 const COLOR_MARKER_PLANNED = '#8fd0ff';
 
+// マーカー要素はどれも #hud の下に出る。装置が書く骨格を打ち消す枝は、無印クラスでは
+// 詳細度が並んで注入順に左右されるため、#hud を冠して確実に勝たせる。
 const MARKER_IDENTITY_STYLE = `
-/* 種別ごとの重なり順 */
+/* 種別ごとの重なり順と、種別ごとに変える記号の大きさ。 */
+.mk {
+  --z-mk-base: 0;
+  --z-mk-node: 1;
+  --z-mk-ammo: 2;
+  --z-mk-enemy: 3;
+  --z-mk-self: 4;
+  --z-mk-longpress: 5;
+
+  --mk-scale-vessel: 0.6667;
+  --mk-scale-element: 0.5;
+  --mk-scale-poi: 0.8;
+  --mk-scale-lagrange: 1.5;
+}
+
 #hud .mk { z-index: var(--z-mk-base); }
 #hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-bearing-triangle, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight, #hud .mk-protein-site { z-index: var(--z-mk-node); }
 #hud .mk-ammo { z-index: var(--z-mk-ammo); }
@@ -19,7 +35,7 @@ const MARKER_IDENTITY_STYLE = `
 #hud .mk-self { z-index: var(--z-mk-self); }
 #hud .mk-longpress { z-index: var(--z-mk-longpress); }
 
-/* シンボルとラベルの詰め幅。種別ごとの指定は #hud を冠した枝で上書きする。 */
+/* ラベルの詰め幅。種別ごとに変える枝(.mk-poi)が同じ冠で上書きする。 */
 #hud .mk .lbl { margin-top: var(--space-1); }
 
 /* インライン SVG 寸法（目盛ドット等）を優先保持するクラス */

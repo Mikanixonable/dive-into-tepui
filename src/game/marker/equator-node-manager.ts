@@ -63,7 +63,7 @@ export class EquatorNodeManager {
     const declarations = this.declarations;
     declarations.length = 0;
     for (const pair of this.pairs.values()) {
-      pair.declarations(
+      pair.pushDeclarations(
         declarations, project, cameraPos, celestialBodies, celestialBodiesPivot,
         occludeByBodies, timeLabel,
       );

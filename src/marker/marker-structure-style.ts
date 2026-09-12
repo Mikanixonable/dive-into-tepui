@@ -1,23 +1,10 @@
-// マーカーの骨格の CSS。枠・シンボル・ラベルの置き方、間引きで伏せる指定、引き出し線の太さ、
-// そして種別ごとの見た目が読む重なり順・大きさのトークンを持つ。
-// 種別ごとの色と字送りは意味なので、宣言を組む側が別に注入する。
+// マーカーの骨格の CSS。枠・シンボル・ラベルの置き方と、間引きで伏せる指定を持つ。
+// 種別ごとの重なり順・色・字送りは意味なので、宣言を組む側が別に注入する。
 
 const STYLE_ID = 'marker-structure-style';
 
 const MARKER_STRUCTURE_STYLE = `
 .mk {
-  --z-mk-base: 0;
-  --z-mk-node: 1;
-  --z-mk-ammo: 2;
-  --z-mk-enemy: 3;
-  --z-mk-self: 4;
-  --z-mk-longpress: 5;
-
-  --mk-scale-vessel: 0.6667;
-  --mk-scale-element: 0.5;
-  --mk-scale-poi: 0.8;
-  --mk-scale-lagrange: 1.5;
-
   position: absolute; transform: translate(-50%, -50%);
   text-align: center; white-space: nowrap; text-shadow: 0 0 4px var(--bg), 0 0 2px var(--bg);
   width: 24px; height: 24px; transition: opacity var(--transition-slow) ease;
