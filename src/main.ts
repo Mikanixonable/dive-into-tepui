@@ -60,7 +60,7 @@ function startAnimationLoop(
     // 描画先の寸法はフレームの先頭で1度だけ読む。投影・尺度・ポインタ座標が同じ矩形を見ないと、
     // リサイズしたフレームで画面上の当たり判定がずれる。
     const viewport = browserViewport();
-    gs.syncViewport(viewport);
+    gs.syncFrame(viewport, graphics.current, debugInfo.debugTarget);
     const game = launcher.currentGame;
     const current = launcher.current;
     // 周回の切り替え中は Game が無いので、次フレームを予約して抜ける。
@@ -84,7 +84,7 @@ function startAnimationLoop(
       debugInfo.handleInput(game.input);
       autoSave.update(current.snapshot);
       const t1 = debugInfo.on ? performance.now() : 0;
-      game.sync(graphics.current, renderStyle.current, viewport);
+      game.sync(graphics.current, renderStyle.current, viewport, now);
       const t2 = debugInfo.on ? performance.now() : 0;
       game.render(renderStyle.current);
       const t3 = debugInfo.on ? performance.now() : 0;
@@ -130,12 +130,12 @@ function initHud(settings: UserSettings): {
 }
 
 // 設定の変更を、その値を使う側へ配る。書き換えの入口はどれも設定へ戻し、表示はその通知から引き直す。
+// 描画品質はフレームの先頭で現在値を読む(GameScene.syncFrame)ので、ここでは書き戻すだけでよい。
 function bindSettings(
-  settings: UserSettings, gs: GameScene, hud: Hud, bgm: Bgm,
+  settings: UserSettings, hud: Hud, bgm: Bgm,
   pauseMenu: PauseMenu, debugInfo: DebugInfoWindow,
 ): void {
   const settingsView = pauseMenu.settingsView;
-  settings.graphics.subscribe((graphics) => gs.applyGraphics(graphics));
   settingsView.onGraphicsChange = (graphics) => settings.graphics.set(graphics);
 
   settings.renderStyle.subscribe((style) => debugInfo.syncRenderStyle(style));
@@ -197,10 +197,10 @@ async function main() {
 
   // デバッグ情報ウィンドウと、設定の配線。
   const debugInfo = new DebugInfoWindow(
-    shell.layers.window, gs.renderer, sections, gs.gpu, shell.overlayManager, gs.pipeline,
+    shell.layers.window, gs.renderer, sections, gs.gpu, shell.overlayManager,
     settings.renderStyle.current, debugInfoOpenAtStart(),
   );
-  bindSettings(settings, gs, hud, bgm, pauseMenu, debugInfo);
+  bindSettings(settings, hud, bgm, pauseMenu, debugInfo);
   pauseMenu.onOpenDebugInfoWindow = () => {
     pauseMenu.toggle(false);
     debugInfo.open();
