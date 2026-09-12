@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  abs, clamp, exp2, float, floor, Fn, greaterThanEqual, If, int, max, min, mix, normalize, select, texture, vec2, vec3, vec4,
+  exp2, float, floor, Fn, greaterThanEqual, If, int, max, min, mix, normalize, select, texture, vec2, vec4,
 } from 'three/tsl';
 import type { BoolNode, FloatNode, Mat3Node, Vec2Node, Vec3Node, Vec4Node } from './tsl-types';
 import { earthSurfaceUvFromRadialNode } from './earth-surface-coordinate';
@@ -95,14 +95,9 @@ function sampleLodTexture(
   })() as Vec4Node;
 }
 
-// 正規化八面体RGを天体固定の単位法線へ戻す。
-export function decodeEarthSurfaceOctNormalNode(encoded: Vec2Node): Vec3Node {
-  const folded = encoded.mul(2).sub(1);
-  const z = float(1).sub(abs(folded.x)).sub(abs(folded.y));
-  const correction = clamp(z.negate(), 0, 1);
-  const x = folded.x.add(select(folded.x.greaterThanEqual(0), correction.negate(), correction));
-  const y = folded.y.add(select(folded.y.greaterThanEqual(0), correction.negate(), correction));
-  return normalize(vec3(x, y, z));
+// 線形補間されたRGBを天体固定の単位法線へ戻す。
+export function decodeEarthSurfaceNormalNode(encoded: Vec3Node): Vec3Node {
+  return normalize(encoded.mul(2).sub(1));
 }
 
 // 地球固定法線→共通地理UV→ページ表→現在/親層→色・法線・roughnessを一つのTSLグラフへ組む。
@@ -129,11 +124,11 @@ export function earthSurfaceMaterialNodes(
   const terrain = sampleLodTexture(
     textures.terrain, textures.baseTerrain, uv, z, layer, parentLayer, fade,
   );
-  const normalBody = decodeEarthSurfaceOctNormalNode(terrain.rg);
+  const normalBody = decodeEarthSurfaceNormalNode(terrain.rgb);
   const normalView = normalize(inputs.bodyToView.mul(normalBody));
   const normalNode = select(inputs.schematic, inputs.geometricNormalView, normalView);
 
-  return { colorNode, roughnessNode: terrain.b, normalNode };
+  return { colorNode, roughnessNode: terrain.a, normalNode };
 }
 
 // 共通のMeshStandardNodeMaterialへ接続する入口。base-only時は呼び手が既存のCelestialSurfaceを使う。

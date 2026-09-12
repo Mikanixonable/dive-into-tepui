@@ -18,6 +18,8 @@ export interface EarthSurfaceMaterialBinding {
   readonly textures: readonly THREE.Texture[];
   // base 画像の取得に失敗した最初の理由。失敗していなければ null。
   readonly failureReason: () => string | null;
+  readonly ready: () => boolean;
+  prepare(): void;
   syncFrame(frame: CelestialSurfaceFrame): void;
   // base 画像の取得を止める。material・deferredTextures・textures の解放は受け取った側が行う。
   dispose(): void;
@@ -25,11 +27,17 @@ export interface EarthSurfaceMaterialBinding {
 
 function defaultTerrainData(): Uint8Array {
   const data = new Uint8Array(EARTH_BASE_TERRAIN_WIDTH * EARTH_BASE_TERRAIN_HEIGHT * 4);
-  for (let offset = 0; offset < data.length; offset += 4) {
-    data[offset] = 128;
-    data[offset + 1] = 128;
-    data[offset + 2] = 255;
-    data[offset + 3] = 255;
+  for (let y = 0; y < EARTH_BASE_TERRAIN_HEIGHT; y++) {
+    const latitude = Math.PI * (0.5 - (y + 0.5) / EARTH_BASE_TERRAIN_HEIGHT);
+    const horizontal = Math.cos(latitude);
+    for (let x = 0; x < EARTH_BASE_TERRAIN_WIDTH; x++) {
+      const longitude = 2 * Math.PI * ((x + 0.5) / EARTH_BASE_TERRAIN_WIDTH - 0.5);
+      const offset = (y * EARTH_BASE_TERRAIN_WIDTH + x) * 4;
+      data[offset] = Math.round((Math.sin(longitude) * horizontal * 0.5 + 0.5) * 255);
+      data[offset + 1] = Math.round((Math.sin(latitude) * 0.5 + 0.5) * 255);
+      data[offset + 2] = Math.round((Math.cos(longitude) * horizontal * 0.5 + 0.5) * 255);
+      data[offset + 3] = 255;
+    }
   }
   return data;
 }
@@ -45,11 +53,11 @@ function createBaseTerrainTexture(): { readonly texture: THREE.DataTexture; read
   return { texture, data };
 }
 
-// タイルの textures と base 画像(baseColorUrl・baseTerrainUrl)を束ねた材質を組む。fetchImpl は
-// baseTerrain の取得に使う(省けば fetch)。base 画像が届かない間も、平面法線・粗さ 1 の初期
-// データで描ける。
+// タイルとbase画像を束ねた材質を組む。sharedBaseColorを渡すと既存の全球画像を借り、所有しない。
+// baseTerrainが届くまでは、同じ地理座標の楕円体法線と粗さ1で描く。
 export function createEarthSurfaceMaterialBinding(
   textures: EarthSurfaceGpuTextures, baseColorUrl: string, baseTerrainUrl: string, fetchImpl?: typeof fetch,
+  sharedBaseColor?: THREE.Texture,
 ): EarthSurfaceMaterialBinding {
   let disposed = false;
   let baseFailureReason: string | null = null;
@@ -60,10 +68,10 @@ export function createEarthSurfaceMaterialBinding(
     baseFailureReason = `${label}: ${detail}`;
   };
   // base画像のテクスチャと、フレームごとに書き換える天体の形・姿勢のuniform。
-  const baseColor = new DeferredTexture(
-    baseColorUrl, THREE.SRGBColorSpace,
-    (error) => recordBaseFailure('Earth base color unavailable', error),
-  );
+  const ownedBaseColor = sharedBaseColor === undefined ? new DeferredTexture(
+    baseColorUrl, THREE.SRGBColorSpace, (error) => recordBaseFailure('Earth base color unavailable', error),
+  ) : null;
+  const baseColor = sharedBaseColor ?? ownedBaseColor!.texture;
   const baseTerrain = createBaseTerrainTexture();
   const abortController = new AbortController();
   const axes: Vec3Uniform = uniform(new THREE.Vector3(1, 1, 1));
@@ -74,7 +82,7 @@ export function createEarthSurfaceMaterialBinding(
   let material: THREE.MeshStandardNodeMaterial;
   try {
     material = createEarthSurfaceNodeMaterial(
-      { ...textures, baseColor: baseColor.texture, baseTerrain: baseTerrain.texture },
+      { ...textures, baseColor, baseTerrain: baseTerrain.texture },
       {
         bodyDirection,
         axes,
@@ -85,7 +93,7 @@ export function createEarthSurfaceMaterialBinding(
     );
   } catch (error) {
     abortController.abort();
-    baseColor.dispose();
+    ownedBaseColor?.dispose();
     baseTerrain.texture.dispose();
     throw error;
   }
@@ -100,9 +108,11 @@ export function createEarthSurfaceMaterialBinding(
 
   return {
     material,
-    deferredTextures: [baseColor],
+    deferredTextures: ownedBaseColor === null ? [] : [ownedBaseColor],
     textures: [baseTerrain.texture],
     failureReason: () => baseFailureReason,
+    ready: () => ownedBaseColor === null || ownedBaseColor.generation > 0,
+    prepare: () => ownedBaseColor?.request(),
     syncFrame: (frame) => {
       if (disposed) return;
       axes.value.copy(frame.axes);

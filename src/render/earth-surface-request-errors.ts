@@ -1,4 +1,4 @@
-// tile-indexとHTTP要求の境界で共有するエラー型。
+// タイルURL解決とHTTP要求の境界で共有するエラー型。
 export class EarthSurfaceRequestError extends Error {
   public constructor(message: string, options?: ErrorOptions) {
     super(message, options);

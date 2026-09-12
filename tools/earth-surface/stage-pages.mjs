@@ -55,15 +55,14 @@ function fixtureSource() {
 
 function fixtureManifest(sourceManifestSha256) {
   return {
-    schemaVersion: 2, datasetId: DEFAULT_DATASET, sourceManifestSha256,
+    schemaVersion: 3, datasetId: DEFAULT_DATASET, sourceManifestSha256,
     sourceManifest: 'sources.json', provenance: { generator: 'pages-fixture/1' },
     terrainEncoding: { formatVersion: EARTH_TERRAIN_FORMAT_VERSION, layout: EARTH_TERRAIN_LAYOUT,
-      width: 260, height: 260, channels: EARTH_TERRAIN_CHANNELS, scalar: 'UInt8',
-      materialClasses: { water: 0, land: 1, ice: 2, unknown: 255 } },
+      width: 260, height: 260, channels: EARTH_TERRAIN_CHANNELS, scalar: 'UInt8', normalFrame: 'body_fixed' },
     climateMap: { width: 1024, height: 512, channels: 4, scalar: 'UInt8' },
     controlRegions: Array.from({ length: 16 }, (_, index) => ({ id: `region-${index}`, west: -180, south: -80, east: 180, north: 80 })),
-    coverage: { kind: 'sparse', minZoom: 4, maxZoom: 7, expectedTiles: null }, baseColor: 'base/earth.jpg',
-    baseTerrain: 'base/earth.bin.gz', tileIndexUrl: 'tile-index.json',
+    coverage: { kind: 'sparse', minZoom: 5, maxZoom: 7, expectedTiles: null }, baseColor: 'base/earth.jpg',
+    baseTerrain: 'base/earth.bin.gz', tileTemplates: { color: 'tiles/{z}/{x}/{y}.jpg', terrain: 'tiles/{z}/{x}/{y}.bin.gz' },
     climateMaps: Array.from({ length: 12 }, (_, index) => `climate/${String(index + 1).padStart(2, '0')}.png`),
     climateEncoding: {
       temperatureK: { min: 180, max: 330 }, cloudFraction: { min: 0, max: 1 },
@@ -78,22 +77,18 @@ async function createFixtureBundle(root) {
   const source = fixtureSource();
   const sourceHash = canonicalSha256(source);
   const manifest = fixtureManifest(sourceHash);
-  const terrain = terrainPayload(4, 0, 0);
+  const terrain = terrainPayload(5, 0, 0);
   const color = jpegFixture(260, 260);
   const baseColor = jpegFixture(8192, 4096);
-  const entry = { key: '4/0/0', z: 4, x: 0, y: 0,
-    color: { url: 'tiles/4/0/0.jpg', sha256: createHash('sha256').update(color).digest('hex'), encodedBytes: color.length, payloadBytes: color.length },
-    terrain: { url: 'tiles/4/0/0.bin.gz', sha256: createHash('sha256').update(terrain).digest('hex'), encodedBytes: gzipSync(terrain, { mtime: 0 }).length, payloadBytes: terrain.length } };
   await mkdir(join(root, 'base'), { recursive: true });
   await mkdir(join(root, 'climate'), { recursive: true });
-  await mkdir(join(root, 'tiles/4/0'), { recursive: true });
+  await mkdir(join(root, 'tiles/5/0'), { recursive: true });
   await writeFile(join(root, 'sources.json'), `${JSON.stringify(source)}\n`);
   await writeFile(join(root, 'earth-surface.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-  await writeFile(join(root, 'tile-index.json'), `${JSON.stringify({ schemaVersion: 2, datasetId: DEFAULT_DATASET, entries: [entry] }, null, 2)}\n`);
   await writeFile(join(root, 'base/earth.jpg'), baseColor);
   await writeFile(join(root, 'base/earth.bin.gz'), gzipSync(baseTerrain(), { mtime: 0 }));
-  await writeFile(join(root, 'tiles/4/0/0.jpg'), color);
-  await writeFile(join(root, 'tiles/4/0/0.bin.gz'), gzipSync(terrain, { mtime: 0 }));
+  await writeFile(join(root, 'tiles/5/0/0.jpg'), color);
+  await writeFile(join(root, 'tiles/5/0/0.bin.gz'), gzipSync(terrain, { mtime: 0 }));
   for (const [index, path] of manifest.climateMaps.entries()) {
     await writeFile(join(root, path), fixtureClimatePng(index));
   }
@@ -101,7 +96,7 @@ async function createFixtureBundle(root) {
 }
 
 export function cacheControlForPages(path) {
-  return path === 'earth-surface.json' || path === 'tile-index.json' || path === 'receipt.json'
+  return path === 'earth-surface.json' || path === 'receipt.json'
     ? 'public, max-age=60, must-revalidate' : 'public, max-age=31536000, immutable';
 }
 
@@ -155,13 +150,13 @@ async function pagesShape(root) {
   }
 
   let entries = [];
-  if (typeof manifest.tileIndexUrl === 'string') {
-    try {
-      const index = JSON.parse(await readFile(resolve(root, manifest.tileIndexUrl), 'utf8'));
-      if (Array.isArray(index.entries)) entries = index.entries;
-    } catch (error) {
-      if (error.code !== 'ENOENT' && error.name !== 'SyntaxError') throw error;
-    }
+  try {
+    const files = await filesUnder(resolve(root, 'tiles'));
+    entries = files.filter((path) => path.endsWith('.jpg')).map((path) => ({
+      z: Number(relative(root, path).split('/')[1]),
+    }));
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
   }
   const lods = entries.map((entry) => entry?.z).filter((z) => Number.isSafeInteger(z));
   return { manifest, entries, maxLod: lods.length === 0 ? null : Math.max(...lods), missingManifest };
@@ -189,7 +184,7 @@ function rejectPartialProduction(shape, report, allowFixture) {
   if (allowFixture) return;
   const coverage = shape.manifest?.coverage;
   if (coverage?.kind !== 'complete') {
-    throw new Error(`Pages package is partial production coverage: max LOD ${report.maxLod ?? 'none'}, ${report.tileCount} tiles, expected complete z4-z7 coverage`);
+    throw new Error(`Pages package is partial production coverage: max LOD ${report.maxLod ?? 'none'}, ${report.tileCount} tiles, expected complete z5-z7 coverage`);
   }
   if (report.tileCount !== coverage.expectedTiles) {
     throw new Error(`Pages package is partial production coverage: max LOD ${report.maxLod ?? 'none'}, ${report.tileCount} tiles, expected ${coverage.expectedTiles}`);
@@ -220,12 +215,14 @@ export async function checkPagesLayout(root, datasetId, options = {}) {
   const receipt = JSON.parse(await readFile(join(bundle, 'receipt.json'), 'utf8'));
   const expected = await receiptFor(bundle, checked.manifest);
   if (JSON.stringify(receipt) !== JSON.stringify(expected)) throw new Error('Pages receipt does not match bundle');
-  if ([checked.manifest.baseColor, checked.manifest.baseTerrain, checked.manifest.tileIndexUrl, ...checked.manifest.climateMaps]
+  if ([checked.manifest.baseColor, checked.manifest.baseTerrain,
+    checked.manifest.tileTemplates.color, checked.manifest.tileTemplates.terrain,
+    ...checked.manifest.climateMaps]
     .some((path) => path.startsWith('/') || path.includes('..'))) throw new Error('Pages asset URL is not relative');
   const report = pagesReport({
     manifest: checked.manifest,
-    entries: checked.tileIndex.entries,
-    maxLod: checked.tileIndex.entries.length === 0 ? null : Math.max(...checked.tileIndex.entries.map((entry) => entry.z)),
+    entries: checked.tiles,
+    maxLod: checked.tiles.length === 0 ? null : Math.max(...checked.tiles.map((entry) => entry.z)),
     missingManifest: [],
   }, receipt.totalBytes + (await readFile(join(bundle, 'receipt.json'))).byteLength, maxBytes);
   if (!report.capacity.withinBudget) {

@@ -190,7 +190,7 @@ class BakeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             bake.validate_terrain_tile(payload[:-1], (7, 3, 4), digest)
 
-    # octahedral RG8の法線角度誤差とroughness R8の量子化誤差を測定する。
+    # XYZ RGB8の法線角度誤差とroughness R8の量子化誤差を測定する。
     def test_lightweight_quantization_error(self):
         golden_angle = math.pi * (3 - math.sqrt(5))
         directions = []
@@ -203,32 +203,29 @@ class BakeTests(unittest.TestCase):
                            (0., 0., 1.), (0., 0., -1.), bake.normalize((1., 1., 0.)),
                            bake.normalize((-1., 1., 0.)), bake.normalize((1., -1., 0.)),
                            bake.normalize((-1., -1., 0.))))
-        encoded = [bake.encode_octahedral_normal(direction) for direction in directions]
-        decoded = [bake.decode_octahedral_normal(value) for value in encoded]
+        encoded = [bake.encode_xyz_normal(direction) for direction in directions]
+        decoded = [bake.decode_xyz_normal(value) for value in encoded]
         angles = [math.degrees(math.acos(max(-1, min(1, sum(a * b for a, b in zip(original, restored))))))
                   for original, restored in zip(directions, decoded)]
         self.assertLessEqual(max(angles), 1.)
         values = [index / 100 for index in range(101)]
         self.assertLessEqual(max(abs(round(value * 255) / 255 - value) for value in values), 0.5 / 255 + 1e-12)
 
-    # 隣接タイルの共有境界で同じ法線・materialを復号すると完全に一致する。
+    # 隣接タイルの共有境界で同じ法線・roughnessを復号すると完全に一致する。
     def test_tile_boundary_decode_consistency(self):
         normal = bake.normalize((-.35, .42, .835))
-        left = bake.encode_terrain_tile([normal] * 67600, [.23] * 67600, 7, 0, 0,
-                                        [bake.MATERIAL_CLASS_LAND] * 67600)
-        right = bake.encode_terrain_tile([normal] * 67600, [.23] * 67600, 7, 1, 0,
-                                          [bake.MATERIAL_CLASS_LAND] * 67600)
-        left_normal, left_roughness, left_class = bake.decode_terrain_tile(left)
-        right_normal, right_roughness, right_class = bake.decode_terrain_tile(right)
+        left = bake.encode_terrain_tile([normal] * 67600, [.23] * 67600, 7, 0, 0)
+        right = bake.encode_terrain_tile([normal] * 67600, [.23] * 67600, 7, 1, 0)
+        left_normal, left_roughness = bake.decode_terrain_tile(left)
+        right_normal, right_roughness = bake.decode_terrain_tile(right)
         self.assertEqual(left_normal[259], right_normal[0])
         self.assertEqual(left_roughness[259], right_roughness[0])
-        self.assertEqual(left_class[259], right_class[0])
 
-    # 全球z4..z7のキー数と経度連続性を固定する。
+    # 全球z5..z7のキー数と経度連続性を固定する。
     def test_global_tile_coverage(self):
         keys = bake.global_tile_keys()
-        self.assertEqual(len(keys), 43520)
-        self.assertEqual(keys[0], (4, 0, 0))
+        self.assertEqual(len(keys), 43008)
+        self.assertEqual(keys[0], (5, 0, 0))
         self.assertEqual(keys[-1], (7, 255, 127))
         self.assertEqual(len(set(keys)), len(keys))
         self.assertEqual(bake.tile_grid(7, 0, 0).width, 260)
@@ -318,7 +315,7 @@ class BakeTests(unittest.TestCase):
                 bake.require_global_inputs(self.manifest, directory)
             self.assertIn("全球bundleの入力が不足しています", str(error.exception))
 
-    # 小さいmax_zoomで、同じストリームwriterがmanifest/index/ESTBを書ける。
+    # 小さいmax_zoomで、同じストリームwriterがmanifest/ESTBを書ける。
     @unittest.skipUnless(importlib.util.find_spec("PIL") is not None, "Pillow unavailable")
     def test_global_writer_stream_fixture(self):
         from PIL import Image
@@ -329,20 +326,20 @@ class BakeTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b"fixture input")
 
-            def render(key):
-                return b"fixture-jpeg", bake.encode_terrain_tile([(0., 0., 1.)] * 67600, [.8] * 67600, *key)
-
             color_output = io.BytesIO()
             Image.new("RGB", (260, 260), (1, 2, 3)).save(color_output, format="JPEG")
             color = color_output.getvalue()
 
+            def render(key):
+                return color, bake.encode_terrain_tile([(0., 0., 1.)] * 67600, [.8] * 67600, *key)
+
             output = Path(directory) / "bundle"
             source_manifest_path = Path(directory) / "sources.json"
             source_manifest_path.write_text(json.dumps(self.manifest))
-            terrain_z4 = bytearray(render((4, 0, 0))[1])
+            terrain_z5 = bytearray(render((5, 0, 0))[1])
             terrain_z0 = bytearray(bake.encode_terrain_tile([(0., 0., 1.)] * 67600, [.8] * 67600, 0, 0, 0))
             def terrain_for(key):
-                source = terrain_z0 if key[0] == 0 else terrain_z4
+                source = terrain_z0 if key[0] == 0 else terrain_z5
                 payload = bytearray(source)
                 payload[12] = key[0]
                 payload[14:18] = key[1].to_bytes(4, "little")
@@ -356,7 +353,6 @@ class BakeTests(unittest.TestCase):
                                               [b"\x89PNG\r\n\x1a\nfixture"] * 12,
                                               base_color=base_output.getvalue(), max_zoom=4)
             self.assertEqual(result["coverage"]["kind"], "sparse")
-            self.assertEqual(json.loads((output / "tile-index.json").read_text())["entries"].__len__(), 512)
             self.assertTrue((output / "base/earth.bin.gz").is_file())
             self.assertTrue((output / "earth-surface.json").is_file())
 

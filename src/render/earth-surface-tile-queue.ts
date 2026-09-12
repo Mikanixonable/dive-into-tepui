@@ -1,10 +1,10 @@
 // タイル要求の重複排除、HTTP/decode/展開済み待機の上限、再試行を管理する。
-import { decodeEarthSurfaceTile } from './earth-surface-tile-decode';
+import { decodeEarthSurfaceTileBytes, downloadEarthSurfaceTile } from './earth-surface-tile-decode';
 import type { EarthSurfaceTilePayload } from './earth-surface-tile-decode';
 import { decodeEarthTerrainOffThread } from './earth-surface-terrain-worker-client';
 import { earthTileId } from './earth-surface-tile-key';
 import type { EarthTileKey } from './earth-surface-tile-key';
-import { EarthSurfaceTileRequestSource } from './earth-surface-tile-source';
+import { EarthSurfaceTileSource } from './earth-surface-tile-source';
 import type { EarthSurfaceTileDescriptor } from './earth-surface-tile-source';
 import { EarthSurfaceHttpError, EarthSurfaceRequestError } from './earth-surface-request-errors';
 
@@ -42,6 +42,7 @@ interface PermitWaiter {
   readonly resolve: (release: () => void) => void;
   readonly reject: (error: unknown) => void;
   readonly signal?: AbortSignal;
+  readonly abort: () => void;
 }
 
 class PermitPool {
@@ -53,8 +54,15 @@ class PermitPool {
   public acquire(signal?: AbortSignal): Promise<() => void> {
     if (signal?.aborted) return Promise.reject(new DOMException('Request was aborted', 'AbortError'));
     return new Promise((resolve, reject) => {
-      const waiter: PermitWaiter = { resolve, reject, signal };
+      const abort = (): void => {
+        const index = this.waiting.indexOf(waiter);
+        if (index === -1) return;
+        this.waiting.splice(index, 1);
+        reject(new DOMException('Request was aborted', 'AbortError'));
+      };
+      const waiter: PermitWaiter = { resolve, reject, signal, abort };
       this.waiting.push(waiter);
+      signal?.addEventListener('abort', abort, { once: true });
       this.pump();
     });
   }
@@ -62,6 +70,7 @@ class PermitPool {
   private pump(): void {
     while (this.active < this.capacity && this.waiting.length > 0) {
       const waiter = this.waiting.shift()!;
+      waiter.signal?.removeEventListener('abort', waiter.abort);
       if (waiter.signal?.aborted) {
         waiter.reject(new DOMException('Request was aborted', 'AbortError'));
         continue;
@@ -110,7 +119,6 @@ export class EarthSurfaceTileRequestQueue {
   private readonly items = new Map<string, QueueItem>();
   private readonly permanentFailures = new Map<string, Error>();
   private readonly eventLog: EarthSurfaceTileRequestMetricEvent[] = [];
-  private readonly sourceReady: Promise<void>;
   private disposed = false;
   private counters = {
     httpReserved: 0, httpStarted: 0, httpReleased: 0,
@@ -119,11 +127,10 @@ export class EarthSurfaceTileRequestQueue {
   };
 
   public constructor(
-    private readonly source: EarthSurfaceTileRequestSource,
+    private readonly source: EarthSurfaceTileSource,
     private readonly options: EarthSurfaceTileRequestQueueOptions = {},
   ) {
     this.fetchImpl = options.fetchImpl ?? fetch;
-    this.sourceReady = source.ready();
   }
 
   public get metrics(): EarthSurfaceTileRequestMetrics {
@@ -133,7 +140,7 @@ export class EarthSurfaceTileRequestQueue {
   public request(key: EarthTileKey, generation: number, signal?: AbortSignal): Promise<EarthSurfaceTilePayload> {
     if (this.disposed) return Promise.reject(new DOMException('Earth surface queue is disposed', 'AbortError'));
     if (!Number.isSafeInteger(generation) || generation < 0) return Promise.reject(new RangeError('Invalid Earth tile generation'));
-    return this.sourceReady.then(() => this.requestLoaded(key, generation, signal));
+    return this.requestLoaded(key, generation, signal);
   }
 
   private requestLoaded(key: EarthTileKey, generation: number, signal?: AbortSignal): Promise<EarthSurfaceTilePayload> {
@@ -150,7 +157,7 @@ export class EarthSurfaceTileRequestQueue {
     }
     const descriptor = this.source.descriptorFor(key);
     if (descriptor === null) {
-      const error = new EarthSurfaceRequestError(`No tile-index entry for ${id}`);
+      const error = new EarthSurfaceRequestError(`Earth surface tile is outside coverage: ${id}`);
       this.permanentFailures.set(id, error);
       return Promise.reject(error);
     }
@@ -174,8 +181,12 @@ export class EarthSurfaceTileRequestQueue {
   }
 
   public abort(key: EarthTileKey | string): void {
-    const item = this.items.get(typeof key === 'string' ? key : earthTileId(key));
-    item?.controller.abort();
+    const id = typeof key === 'string' ? key : earthTileId(key);
+    const item = this.items.get(id);
+    if (item === undefined) return;
+    item.controller.abort();
+    this.releaseWaiting(item);
+    this.items.delete(id);
   }
 
   public dispose(): void {
@@ -192,7 +203,37 @@ export class EarthSurfaceTileRequestQueue {
     const retries = this.options.maxRetries ?? 2;
     for (let attempt = 0; ; attempt++) {
       try {
-        const permit = await this.decode.acquire(item.controller.signal);
+        const attemptController = new AbortController();
+        const abortAttempt = (): void => attemptController.abort();
+        item.controller.signal.addEventListener('abort', abortAttempt, { once: true });
+        if (item.controller.signal.aborted) attemptController.abort();
+        const timeout = this.options.timeoutMs === undefined ? null : setTimeout(() => {
+          item.timedOut = true;
+          attemptController.abort();
+        }, this.options.timeoutMs);
+        const request = {
+          key: item.key, colorUrl: descriptor.colorUrl, terrainUrl: descriptor.terrainUrl,
+          generation: item.generation, signal: attemptController.signal,
+          fetchImpl: this.limitedFetch(item.generation),
+          decodeImage: this.options.decodeImage, decodeTerrain: decodeEarthTerrainOffThread,
+        };
+        let bytes;
+        try {
+          bytes = await downloadEarthSurfaceTile(request);
+        } catch (error) {
+          attemptController.abort();
+          if (timeout !== null) clearTimeout(timeout);
+          item.controller.signal.removeEventListener('abort', abortAttempt);
+          throw error;
+        }
+        let permit: () => void;
+        try {
+          permit = await this.decode.acquire(item.controller.signal);
+        } catch (error) {
+          if (timeout !== null) clearTimeout(timeout);
+          item.controller.signal.removeEventListener('abort', abortAttempt);
+          throw error;
+        }
         this.counters.decodeReserved++;
         this.emit({ type: 'reserve', resource: 'decode', id: item.id, generation: item.generation });
         let decodeReleased = false;
@@ -206,25 +247,9 @@ export class EarthSurfaceTileRequestQueue {
         try {
           this.counters.decodeStarted++;
           this.emit({ type: 'start', resource: 'decode', id: item.id, generation: item.generation });
-          const attemptController = new AbortController();
-          const abortAttempt = (): void => attemptController.abort();
-          item.controller.signal.addEventListener('abort', abortAttempt, { once: true });
-          if (item.controller.signal.aborted) attemptController.abort();
-          const timeout = this.options.timeoutMs === undefined ? null : setTimeout(() => {
-            item.timedOut = true;
-            attemptController.abort();
-          }, this.options.timeoutMs);
           let payload: EarthSurfaceTilePayload;
           try {
-            payload = await decodeEarthSurfaceTile({
-              key: item.key, colorUrl: descriptor.colorUrl, terrainUrl: descriptor.terrainUrl,
-              generation: item.generation, signal: attemptController.signal,
-              fetchImpl: this.limitedFetch(item.generation),
-              decodeImage: this.options.decodeImage, decodeTerrain: decodeEarthTerrainOffThread,
-              expectedColorSha256: descriptor.colorSha256,
-              expectedTerrainSha256: descriptor.terrainSha256, expectedColorBytes: descriptor.colorEncodedBytes,
-              expectedTerrainEncodedBytes: descriptor.terrainEncodedBytes,
-            });
+            payload = await decodeEarthSurfaceTileBytes(request, bytes);
           } finally {
             if (timeout !== null) clearTimeout(timeout);
             item.controller.signal.removeEventListener('abort', abortAttempt);
@@ -241,7 +266,7 @@ export class EarthSurfaceTileRequestQueue {
           throw error;
         }
       } catch (error) {
-        if (this.disposed || isAbort(error) && !item.timedOut) {
+        if (this.disposed || item.controller.signal.aborted || isAbort(error) && !item.timedOut) {
           this.emit({ type: 'failure', resource: 'tile', id: item.id, generation: item.generation, reason: 'abort' });
           throw error;
         }

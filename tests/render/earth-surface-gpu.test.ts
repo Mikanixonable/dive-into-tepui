@@ -56,7 +56,7 @@ class FakeBackend implements EarthSurfaceGpuBackend {
   public dispose(): void { this.disposals++; }
 }
 
-// 指定したz4以上のタイルを1層へ写すページ表。引数省略時は全球ベース。
+// 指定したz5以上のタイルを1層へ写すページ表。引数省略時は全球ベース。
 function page(layer = 255, key = earthTileKey(EARTH_TILE_MIN_Z, 0, 0)): Uint8Array {
   const table = new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(255);
   if (layer === 255) return table;
@@ -166,6 +166,7 @@ export function register(): void {
     backend.color.resolve();
     backend.terrain.resolve();
     await Promise.all([parentUpload, childUpload]);
+    assert.throws(() => adapter.stagePageTable(page(0, earthTileKey(4, 0, 0))), /wrong tile level/);
     const table = page(0, parent);
     const size = 2 ** (7 - child.z);
     for (let y = child.y * size; y < (child.y + 1) * size; y++) {

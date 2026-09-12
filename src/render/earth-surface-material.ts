@@ -94,7 +94,7 @@ export interface EarthSurfaceColor {
 export interface EarthSurfaceTerrainSample {
   // ESTN RGBのbody-fixed外向き単位法線。半軸の逆転置をここで再適用しない。
   readonly bodyNormal: THREE.Vector3;
-  // ESTN alpha。NoColorSpaceの線形値で、水・陸・氷の固定値を表す。
+  // ESTN alpha。NoColorSpaceの線形値で地表分類から導いた値を表す。
   readonly roughness: number;
 }
 
