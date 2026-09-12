@@ -23,6 +23,7 @@ interface DisplayedTile extends EarthTileResident {
 }
 
 // 暗黙の全球基底と同じz4区画から可視性を絞り、z5全数の評価を避ける。
+// 詳細選択の起点となるz4相当の全球区画を列挙する。
 function selectionRoots(): readonly EarthTileKey[] {
   const z = EARTH_TILE_MIN_Z - 1;
   const rows = 2 ** z;
@@ -31,6 +32,7 @@ function selectionRoots(): readonly EarthTileKey[] {
   )).flat();
 }
 
+// 投影優先度、LOD、IDの順に候補を安定ソートする。
 function ordered(
   keys: Iterable<EarthTileKey>, metrics: ReadonlyMap<string, EarthTileMetric>,
 ): readonly EarthTileKey[] {
@@ -57,6 +59,7 @@ export class EarthSurfaceTiles {
   public prefetchCandidates(
     projection: EarthTileProjection, visible = this.requestCandidates(projection),
   ): readonly EarthTileKey[] {
+    // 可視候補に隣接する同LODタイルを先読み対象へ集める。
     const visibleIds = new Set(visible.map(earthTileId));
     const neighbors = new Map<string, EarthTileKey>();
     for (const key of visible) {
@@ -99,6 +102,7 @@ export class EarthSurfaceTiles {
   ): void {
     if (!Number.isFinite(timeMs)) throw new RangeError('Invalid Earth drawing time');
     this.drawingTimeMs = timeMs;
+    // 到着済み候補だけを表示し、新着タイルには短いフェードを付ける。
     const visibleIds = new Set(visible.map(earthTileId));
     const available = new Map(residents.map((tile) => [earthTileId(tile.key), tile]));
     const previousIds = new Set(this.displayed.map((tile) => earthTileId(tile.key)));
@@ -125,6 +129,7 @@ export class EarthSurfaceTiles {
 
   // 現在の表示をz7セルへ展開する。細かいタイルほど後から同じ領域を上書きする。
   public pageTable(): Uint8Array {
+    // z7セルへ展開し、細かい候補が親の値を上書きする。
     const table = new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(EARTH_BASE_LAYER);
     for (const tile of this.displayed) {
       const size = 2 ** (EARTH_TILE_MAX_Z - tile.key.z);
@@ -142,10 +147,13 @@ export class EarthSurfaceTiles {
     return table;
   }
 
+  // 可視性と投影誤差から詳細候補を再帰選択する。
   private visibleCandidates(
     projection: EarthTileProjection,
   ): { readonly keys: readonly EarthTileKey[]; readonly metrics: ReadonlyMap<string, EarthTileMetric> } {
+    // 投影評価をキャッシュし、可視性と分割誤差で再帰選択する。
     const metrics = new Map<string, EarthTileMetric>();
+    // 同じキーの投影評価を一度だけ計算する。
     const evaluate = (key: EarthTileKey): EarthTileMetric => {
       const id = earthTileId(key);
       const cached = metrics.get(id);
@@ -155,6 +163,7 @@ export class EarthSurfaceTiles {
       return metric;
     };
     const candidates: EarthTileKey[] = [];
+    // 可視ノードを辿り、誤差が閾値を超えた領域だけ分割する。
     const visit = (key: EarthTileKey): void => {
       const metric = evaluate(key);
       if (!metric.visible) return;
@@ -170,6 +179,7 @@ export class EarthSurfaceTiles {
     return { keys: candidates, metrics };
   }
 
+  // 親が到着済みならそのGPU層を、なければ全球base sentinelを返す。
   private parentLayer(key: EarthTileKey, available: ReadonlyMap<string, EarthTileResident>): number {
     const parent = earthTileParent(key);
     if (parent === null || parent.z < EARTH_TILE_MIN_Z) return EARTH_BASE_LAYER;

@@ -1,9 +1,29 @@
 // 単位方向とテクスチャの uv の対応を図法ごとに持つ。雲の場を焼く側と読む側は、この契約を通して
 // 同じ図法を共有する。
 import * as THREE from 'three/webgpu';
-import { asin, atan, clamp, cos, dot, float, max, normalize, sin, sqrt, step, uniform, vec2, vec3 } from 'three/tsl';
-import { earthSurfaceUvFromRadialNode } from '../earth-surface-coordinate';
+import { asin, atan, clamp, cos, dot, float, max, sin, sqrt, step, uniform, vec2, vec3 } from 'three/tsl';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
+
+// cap の置き方。中心・東・北の単位方向と、円板の角半径の sin / cos。読み手はこの組を自分の
+// uniform へ写して、焼いた側と同じ uv で読む。**ベクトルは使い回しの実体**で、aim のたびに
+// 書き換わるので、掴んだまま持ち越さない。
+export interface CapPlacement {
+  readonly center: THREE.Vector3;
+  readonly east: THREE.Vector3;
+  readonly north: THREE.Vector3;
+  readonly sinRadius: number;
+  readonly cosRadius: number;
+}
+
+// cap の置き方から、単位方向を投影面の uv(0..1)へ写す。**式はここ 1 つ**で、焼く側
+// (OrthographicCap)と読む側(CloudFieldSampler)が共有する — 2 か所に書くと、片方だけ
+// 直したときに雲と影がずれる。
+export function orthographicCapUv(
+  direction: Vec3Node, east: Vec3Node, north: Vec3Node, sinRadius: FloatNode,
+): Vec2Node {
+  const plane = vec2(dot(direction, east), dot(direction, north)).div(sinRadius);
+  return vec2(plane.x, plane.y.negate()).mul(0.5).add(0.5);
+}
 
 export type FieldProjection = {
   // 写しの大きさ [texel]。図法が持つ縦横比はここに出る。
@@ -74,45 +94,6 @@ export class EquirectProjection implements FieldProjection {
   }
 }
 
-// 全球を、半軸 axes の回転楕円体の地理緯度・経度の正距円筒で持つ。u は地理経度、v は地理緯度
-// (0 が北極)で、中心からの放射方向と対応させる。
-export class EllipsoidEquirectProjection implements FieldProjection {
-  public readonly width: number;
-  public readonly wrapS: THREE.Wrapping = THREE.RepeatWrapping;
-  public readonly wrapT: THREE.Wrapping = THREE.ClampToEdgeWrapping;
-  public readonly texelAngle: FloatNode;
-  public readonly texelAngleValue: number;
-  // 全球を覆う置き方は構築時に決まるので、版は 0 のまま。
-  public readonly revision = 0;
-
-  // height は緯度 180° を割る texel 数(幅はその 2 倍)、axes は回転楕円体の半軸。
-  public constructor(public readonly height: number, private readonly axes: Vec3Node) {
-    this.width = height * 2;
-    this.texelAngleValue = Math.PI / height;
-    this.texelAngle = float(this.texelAngleValue);
-  }
-
-  // uv の地理緯度・経度に法線が立つ楕円体上の点の、中心からの単位方向。
-  public directionAt(uv: Vec2Node): Vec3Node {
-    const longitude = uv.x.sub(0.5).mul(2 * Math.PI);
-    const latitude = uv.y.sub(0.5).negate().mul(Math.PI);
-    const geographicNormal = vec3(
-      cos(latitude).mul(sin(longitude)), sin(latitude), cos(latitude).mul(cos(longitude)),
-    );
-    return normalize(geographicNormal.mul(this.axes).mul(this.axes));
-  }
-
-  // 中心からの単位方向が指す楕円体上の点の、地理緯度・経度の uv。
-  public uvAt(direction: Vec3Node): Vec2Node {
-    return earthSurfaceUvFromRadialNode(direction, this.axes);
-  }
-
-  // 全球を覆うので、どの uv も値を持つ。
-  public insideAt(): FloatNode {
-    return float(1);
-  }
-}
-
 // 中心のまわりの円板だけを正方形の写しで持つ正射影 — 中心からの球面上距離 θ を、投影面上の
 // 半径 sin θ へ写す。遠方から球を見た画面そのものの写像なので、texel と画素の比が円板の全域で
 // ほぼ一定になる。円板の外側(四隅)は値を持たない。
@@ -126,6 +107,11 @@ export class OrthographicCap implements FieldProjection {
   private readonly east: Vec3Uniform = uniform(new THREE.Vector3());
   private readonly north: Vec3Uniform = uniform(new THREE.Vector3());
   private readonly sinRadius: FloatUniform = uniform(0);
+  private cosRadiusValue = 1;
+  // 最後に置いた中心と半径。同じ置き方で呼ばれたら版を進めない。NaN で必ず 1 回目を通す。
+  private aimedLatitude = Number.NaN;
+  private aimedLongitude = Number.NaN;
+  private aimedRadius = Number.NaN;
   private revisionValue = 0;
   // 投影面は円板の直径を size texel で割るので、中心での 1 texel は 2 sin(半径) / size [rad]。
   // 外周へ向かって texel は角度としては粗くなるが、それは球の傾きぶんで、画面上では一定に見える。
@@ -141,7 +127,14 @@ export class OrthographicCap implements FieldProjection {
 
   // 中心の緯度・経度 [rad] と円板の半径 [rad](0 < radius ≤ π/2)を置き直す。枠は経度から直に
   // 組むので、中心が極にあっても退化しない。
+  //
+  // **同じ置き方なら版を進めない** — 進めると、カメラが止まっていても焼き手が毎フレーム焼き直す。
   public aim(latitude: number, longitude: number, radius: number): void {
+    if (latitude === this.aimedLatitude && longitude === this.aimedLongitude
+      && radius === this.aimedRadius) return;
+    this.aimedLatitude = latitude;
+    this.aimedLongitude = longitude;
+    this.aimedRadius = radius;
     const cosLatitude = Math.cos(latitude);
     const sinLatitude = Math.sin(latitude);
     const cosLongitude = Math.cos(longitude);
@@ -150,7 +143,26 @@ export class OrthographicCap implements FieldProjection {
     this.east.value.set(cosLongitude, 0, -sinLongitude);
     this.north.value.set(-sinLatitude * sinLongitude, cosLatitude, -sinLatitude * cosLongitude);
     this.sinRadius.value = Math.sin(radius);
+    this.cosRadiusValue = Math.cos(radius);
     this.revisionValue += 1;
+  }
+
+  // 単位方向 direction を中心に置き直す。**緯度・経度へ直してから aim を呼ぶ** — 方向から
+  // 直に枠を組むと、中心が極に来たとき東向きが退化する。
+  public aimAt(direction: THREE.Vector3, radius: number): void {
+    const latitude = Math.asin(Math.max(-1, Math.min(1, direction.y)));
+    this.aim(latitude, Math.atan2(direction.x, direction.z), radius);
+  }
+
+  // いまの置き方。読み手が自分の uniform へ写すために読む。
+  public get placement(): CapPlacement {
+    return {
+      center: this.center.value,
+      east: this.east.value,
+      north: this.north.value,
+      sinRadius: this.sinRadius.value,
+      cosRadius: this.cosRadiusValue,
+    };
   }
 
   // 中心での 1 texel の角 [rad]。aim() で半径を置き直すと変わる。
@@ -158,7 +170,7 @@ export class OrthographicCap implements FieldProjection {
     return (this.sinRadius.value * 2) / this.width;
   }
 
-  // 置き方の版。aim() のたびに進む。
+  // 置き方の版。置き方が実際に変わったときだけ進む。
   public get revision(): number { return this.revisionValue; }
 
   // 投影面上の uv から球面へ戻した単位方向。
@@ -171,8 +183,7 @@ export class OrthographicCap implements FieldProjection {
 
   // 単位方向を中心の接平面へ正射影した uv。裏側の半球も表側と同じ uv へ写る。
   public uvAt(direction: Vec3Node): Vec2Node {
-    const plane = vec2(dot(direction, this.east), dot(direction, this.north)).div(this.sinRadius);
-    return vec2(plane.x, plane.y.negate()).mul(0.5).add(0.5);
+    return orthographicCapUv(direction, this.east, this.north, this.sinRadius);
   }
 
   // uv が円板の内側なら 1、四隅なら 0。

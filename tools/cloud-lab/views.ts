@@ -5,7 +5,7 @@ import { exp, float, length, texture, vec3 } from 'three/tsl';
 import { equirectUvFromDirection } from '../../src/render/cloud/field-projection';
 import type * as THREE from 'three/webgpu';
 import type { ClimateMap } from '../../src/render/cloud/climate-map';
-import type { CloudFieldSampler } from '../../src/render/cloud/cloud-field-sampler';
+import type { CloudSample } from '../../src/render/cloud/cloud-field-sample';
 import type { WeatherModel } from '../../src/render/cloud/weather-model';
 import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
 
@@ -19,12 +19,15 @@ export type CloudLabViewId =
 // reads が 'weather' のビューは天気のモデルと気候の事前分布から直に、'cloud' のビューは焼いた雲の
 // 写しを描画と同じ読み取りで読んで色を組む。'photo' のビューは実写の雲テクスチャを読むだけで、生成の系には
 // 触れない — 生成と同じ図法・同じ解像度で実写を出し、他のビューと切り替えて見比べるためにある。
+// 雲場を単位方向で読む口。面は自分の投影の uv で直に読む。
+export type CloudAt = (direction: Vec3Node) => CloudSample;
+
 export type CloudLabView = {
   readonly id: CloudLabViewId;
   readonly label: string;
 } & (
   | { readonly reads: 'weather'; readonly color: (d: Vec3Node, model: WeatherModel, climate: ClimateMap) => Vec3Node }
-  | { readonly reads: 'cloud'; readonly color: (d: Vec3Node, field: CloudFieldSampler) => Vec3Node }
+  | { readonly reads: 'cloud'; readonly color: (d: Vec3Node, cloudAt: CloudAt) => Vec3Node }
   | { readonly reads: 'photo'; readonly color: (d: Vec3Node, photo: THREE.Texture) => Vec3Node }
 );
 
@@ -94,16 +97,16 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
       return vec3(weather.convection.y.mul(weather.convectiveActivity).div(CONVECTIVE_DEPTH_SPAN));
     } },
   { id: 'coverage', label: '被覆率', reads: 'cloud',
-    color: (d, field) => vec3(field.sampleCloud(d).coverage) },
+    color: (d, cloudAt) => vec3(cloudAt(d).coverage) },
   { id: 'cloudTop', label: '雲頂高度', reads: 'cloud',
-    color: (d, field) => vec3(field.sampleCloud(d).cloudTop.div(CLOUD_TOP_SPAN)) },
+    color: (d, cloudAt) => vec3(cloudAt(d).cloudTop.div(CLOUD_TOP_SPAN)) },
   { id: 'translucent', label: '薄い雲', reads: 'cloud',
-    color: (d, field) => vec3(field.sampleCloud(d).translucent.div(TRANSLUCENT_SPAN)) },
+    color: (d, cloudAt) => vec3(cloudAt(d).translucent.div(TRANSLUCENT_SPAN)) },
   // 被覆率と薄い雲を 1 枚に重ねた見え。晴れた空が透ける割合 (1 − 被覆率)·e^(−τ) の補で、
   // 加算と違って飽和しない。実写と見比べるための面で、描画側の合成の仕様ではない。
   { id: 'composite', label: '合成', reads: 'cloud',
-    color: (d, field) => {
-      const cover = field.sampleCloud(d);
+    color: (d, cloudAt) => {
+      const cover = cloudAt(d);
       return vec3(float(1).sub(float(1).sub(cover.coverage).mul(exp(cover.translucent.negate()))));
     } },
   { id: 'photo', label: '実写', reads: 'photo',
