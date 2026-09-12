@@ -1,5 +1,5 @@
-// 雲場と積雲表現が共有する定数・空field契約。coverage、雲頂、粒、光学的厚みのGPU式は
-// CloudShapeEvaluatorへ、UVとLODを含むテクスチャ読みはCloudFieldSamplerへ置く。
+// 雲場と積雲表現が共有する定数と、場を持たない天体へ結ぶ空の写し。被覆率・雲頂・粒・光学的厚みの
+// GPU 式は CloudShapeEvaluator へ、cap の uv でのテクスチャ読みは CloudFieldSampler へ置く。
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import type { FloatUniform } from '../tsl-types';
