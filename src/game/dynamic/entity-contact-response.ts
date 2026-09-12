@@ -31,6 +31,34 @@ function customContactGeometry(
   });
 
   if (sweptValid) {
+    const sweptEntityA = a.testCustomSweptEntityCollision(
+      b, a.prevState, aWork, b.prevState, bWork,
+    );
+    if (sweptEntityA !== null) return sweptEntityA;
+    const sweptEntityB = b.testCustomSweptEntityCollision(
+      a, b.prevState, bWork, a.prevState, aWork,
+    );
+    if (sweptEntityB !== null) {
+      return {
+        ...sweptEntityB,
+        normal: scale(sweptEntityB.normal, -1),
+      };
+    }
+  }
+
+  const hitA = a.testCustomEntityCollision(b, aWork, bWork);
+  if (hitA !== null) return hitA;
+
+  const hitB = b.testCustomEntityCollision(a, bWork, aWork);
+  if (hitB !== null) return {
+    ...hitB,
+    normal: scale(hitB.normal, -1),
+  };
+
+  // 両者が固有形状を持つ組は、外接球を使った近似へ戻すと形状の外側で接触する。
+  if (a.usesCustomEntityCollision() && b.usesCustomEntityCollision()) return null;
+
+  if (sweptValid) {
     const sweptA = a.testCustomSweptSphereCollision(
       b.prevState.r, bWork.r, b.radius, a.prevState, aWork,
     );
@@ -42,14 +70,14 @@ function customContactGeometry(
     if (sweptB !== null) return makeSweptGeometry(sweptB, scale(sweptB.hit.normal, -1));
   }
 
-  const hitA = a.testCustomSphereCollision(bWork.r, b.radius, aWork);
-  if (hitA !== null) {
-    return { normal: hitA.normal, toi: 1, pushOut: hitA.depth, contactPoint: hitA.point };
+  const sphereHitA = a.testCustomSphereCollision(bWork.r, b.radius, aWork);
+  if (sphereHitA !== null) {
+    return { normal: sphereHitA.normal, toi: 1, pushOut: sphereHitA.depth, contactPoint: sphereHitA.point };
   }
 
-  const hitB = b.testCustomSphereCollision(aWork.r, a.radius, bWork);
-  if (hitB !== null) {
-    return { normal: scale(hitB.normal, -1), toi: 1, pushOut: hitB.depth, contactPoint: hitB.point };
+  const sphereHitB = b.testCustomSphereCollision(aWork.r, a.radius, bWork);
+  if (sphereHitB !== null) {
+    return { normal: scale(sphereHitB.normal, -1), toi: 1, pushOut: sphereHitB.depth, contactPoint: sphereHitB.point };
   }
   return null;
 }
@@ -68,7 +96,8 @@ export function entityContactResponse(
     // |simTime| が大きい構成では実質 === に締まるだけで、緩む方向には効かない。
     && Math.abs(a.prevState.t - b.prevState.t) <= 1e-6 && Math.abs(a.state.t - b.state.t) <= 1e-6;
 
-  if (a.usesCustomSphereCollision() || b.usesCustomSphereCollision()) {
+  if (a.usesCustomSphereCollision() || b.usesCustomSphereCollision()
+    || a.usesCustomEntityCollision() || b.usesCustomEntityCollision()) {
     const custom = customContactGeometry(a, aWork, b, bWork, sweptValid);
     return custom === null
       ? null : distributeSphereContact(bodyA, bodyB, CONTACT_RESTITUTION, custom);

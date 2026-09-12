@@ -1,6 +1,7 @@
 import { Q_IDENTITY } from '../../math/quat';
 import { hitsSphere, type Ray } from '../../math/ray';
 import type { SphereHit } from '../../math/triangle-mesh';
+import type { ContactGeometry } from '../../physics/collision-response';
 import { sub, type Vec3, v3 } from '../../math/vec3';
 import { type Attitude, stepAttitude } from '../../physics/attitude';
 import { airflow } from '../../physics/atmosphere';
@@ -45,7 +46,7 @@ export const SMALL_DEBRIS_MAX_TEMP = 933; // [K]
 
 // 接触した相手を見分ける種別。
 export type ContactKind =
-  | 'generic' | 'player' | 'radiator-fold' | 'belt-section' | 'bullet' | 'base' | 'debris'
+  | 'generic' | 'player' | 'radiator-fold' | 'belt-section' | 'bullet' | 'base' | 'debris' | 'casing'
   | 'booster' | 'enemy' | 'ammo' | 'rcs-fuel';
 
 // 種別ごとに差し込む反応。省いたメソッドは DynamicMotion の既定の振る舞いになる。
@@ -61,6 +62,15 @@ export interface DynamicMotionBehavior {
     self: DynamicMotion, previousSphereCenter: Vec3, sphereCenter: Vec3, sphereRadius: number,
     previousSelfState: KinematicState, selfState: KinematicState,
   ): { readonly hit: SphereHit; readonly toi: number } | null;
+  testEntityCollision?(
+    self: DynamicMotion, other: DynamicMotion,
+    selfState: KinematicState, otherState: KinematicState,
+  ): ContactGeometry | null;
+  testSweptEntityCollision?(
+    self: DynamicMotion, other: DynamicMotion,
+    previousSelf: KinematicState, selfState: KinematicState,
+    previousOther: KinematicState, otherState: KinematicState,
+  ): ContactGeometry | null;
   hitBodyByRay?(self: DynamicMotion, ray: Ray, pos: Vec3): boolean;
   contactProxies?(self: DynamicMotion, simTime: number, dt: number): readonly DynamicMotion[];
   applyContactProxies?(self: DynamicMotion, dt: number): void;
@@ -339,6 +349,11 @@ export class DynamicMotion {
     return this.behavior.testSphereCollision !== undefined;
   }
 
+  // 固有形状どうしの接触を持つか。
+  public usesCustomEntityCollision(): boolean {
+    return this.behavior.testEntityCollision !== undefined;
+  }
+
   // 固有の判定形状と球の接触。触れていないか固有の形状を持たなければ null。
   public testCustomSphereCollision(
     sphereCenter: Vec3, sphereRadius: number, selfState: KinematicState,
@@ -354,6 +369,24 @@ export class DynamicMotion {
   ): { readonly hit: SphereHit; readonly toi: number } | null {
     return this.behavior.testSweptSphereCollision?.(
       this, previousSphereCenter, sphereCenter, sphereRadius, previousSelfState, selfState,
+    ) ?? null;
+  }
+
+  // 固有形状どうしの接触。形状を持たない個体との接触は null を返し、球対形状の経路へ戻す。
+  public testCustomEntityCollision(
+    other: DynamicMotion, selfState: KinematicState, otherState: KinematicState,
+  ): ContactGeometry | null {
+    return this.behavior.testEntityCollision?.(this, other, selfState, otherState) ?? null;
+  }
+
+  // 固有形状どうしの掃引接触。形状を持たない個体との接触は null を返す。
+  public testCustomSweptEntityCollision(
+    other: DynamicMotion,
+    previousSelf: KinematicState, selfState: KinematicState,
+    previousOther: KinematicState, otherState: KinematicState,
+  ): ContactGeometry | null {
+    return this.behavior.testSweptEntityCollision?.(
+      this, other, previousSelf, selfState, previousOther, otherState,
     ) ?? null;
   }
 

@@ -26,9 +26,8 @@ import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import {
   BARREL_RADIATING_AREA_PER_MASS, BARREL_SPECIFIC_HEAT,
 } from '../dynamic/dynamic-entity/debris-motion';
+import { CASING_COLLISION_BOUND_RADIUS } from '../dynamic/dynamic-entity/casing-collision';
 
-// 排出物の剛体接触半径 [m]。薬莢は実物同様に軽く小さい。
-const CASING_PHYS_RADIUS = 0.2;
 const BARREL_PHYS_RADIUS = 0.8;
 const EJECTED_MAG_PHYS_RADIUS = 1.4;
 
@@ -351,7 +350,7 @@ export class FireControl {
         w: v3(randSym(6.0), randSym(6.0), randSym(6.0)),
         inertia: v3(0.85, 0.3, 1.15), // 円筒: 長軸(y)が最小。x/z も非対称にしジャニベコフ効果を起こす
       },
-      this._worldSfx, this._fx, CASING_PHYS_RADIUS, this._scene,
+      this._worldSfx, this._fx, CASING_COLLISION_BOUND_RADIUS, this._scene,
     ));
   }
 
