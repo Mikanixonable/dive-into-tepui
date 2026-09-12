@@ -186,37 +186,9 @@ cap に替わる。それでも手順 2 は要る — cap の投影は球の契�
 main へは `/send-pr` で送る。区切りは次の 3 つ。**マージは merge commit で行い、squash しない**
 (fix_surface_lod.md の手順 5 が手順 3 の commit の hash を revert するため)。
 
-- PR-A(退行と気候): 手順 1〜3
+- PR-A(退行と気候): 手順 1〜3(実施済み。月別気候の撤去は `102ed4cf`)
 - PR-B(小さな修正と計測): 手順 4〜7
 - PR-C(雲場の作り直し): 手順 8
-
-### 手順 3. 雲の気候を平年の気候画像へ戻す(月別気候の撤去)
-
-**目的**: 月別気候は、配信物が ready のときだけ実データへ差し替わり、それ以外は sin 波の架空大陸で
-焼かれる。本番は常に後者で、極と日付変更線で破綻する。実データの入手の目途が立つまでは、
-`earth-climate.png` だけを読む形へ戻す。保護ブランチは fix_surface_lod.md 手順 5 でこの commit を
-revert する。
-
-| 操作 / ファイル | 何をするか |
-| --- | --- |
-| `git revert --no-commit c16347e0` | 単月の `ClimateMap` class を climate-map.ts へ戻す(クリーンに当たる) |
-| `git revert --no-commit 3f7245b7` | `monthly-climate-clock.ts` とそのテストを消す(クリーンに当たる) |
-| `src/render/cloud/climate-map.ts` | 戻った class を `AnnualClimateMap implements ClimateMap` へ改名する(決めたこと 5)。月別の値域定数 `CLIMATE_*`(9-16 行)に呼び手が残らなければ消す |
-| `src/render/cloud/generated-cloud-field.ts:25-28, 46-49` | 気候を `MonthlyClimateMap` から契約 `ClimateMap` へ戻す。`climateEpochUnixSec` と `monthlyClimateClockAt`・`setMonth` を消す。世代による焼き直しと投影の版は残す |
-| `src/render/cloud/monthly-climate-map.ts`、`monthly-climate-fixture.ts` | 削除 |
-| `tests/render/monthly-climate-map.test.ts` | 削除 |
-| `src/game/celestial/solar-system/earth-system.ts:419-434, 445-448` | `EARTH_CLIMATE_AXES` と `earthSurfaceUvFromRadialNode` の import を消す(手順 2 では `createDevelopmentClimateMap` がまだ呼ぶので残した)。`earthGeneratedCloudField` は `bootstrap` を受けず、`AnnualClimateMap.fromDeferredUrl(climateTextureUrl)`(`../../../assets/earth-climate.png`)で気候を組む。`createDevelopmentClimateMap` を消す。`earthSystem` の `climateEpochUnixSec` 引数を消す。`bootstrapEarthSurface` は地表タイル側に残るので消さない |
-| `src/game/celestial/solar-system/solar-system.ts:71` | `earthSystem` へ渡す気候の元期を消す(893e6700 で足されたもの) |
-| `src/render/cloud/weather-model.ts`、`cloud-presentation.ts`、`tools/cloud-lab/views.ts` | 型の参照を `ClimateMap` 契約へ合わせる(0e4a1eb1 が触った箇所) |
-| `tools/cloud-lab/lab.ts:8-9, 63, 86-87` | `bootstrapEarthSurface` の import と `CLIMATE_EPOCH_UNIX_SEC` を消し、`earthGeneratedCloudField()` / `earthGeneratedCloudField(this.capProjection)` で組む |
-| `tools/render-lab/cases.ts:15-17, 653` | 同上 |
-
-**達成条件と検証**:
-
-- `npm run typecheck`、`npm run test:render`、`npm run test:game`。
-- 達成目標 1 の検索が 0 件。
-- `npm run cloud-lab:shot` の全球ビューで、極の放射状の筋と経度 ±180° の継ぎ目が消え、大陸の形が
-  実際の地球になる(サハラ・アマゾン・インド洋の雲の粗密が読める)。
 
 ### 手順 4. 雲殻の縁をディザへ戻し、雲頂の連続化を外す
 
