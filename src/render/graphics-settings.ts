@@ -101,6 +101,12 @@ export const GRAPHICS_OPTIONS = {
     ],
     presets: { low: ATMOSPHERE_QUALITY.low, medium: ATMOSPHERE_QUALITY.medium, high: ATMOSPHERE_QUALITY.high },
   },
+  // 夜側の縁に淡く光る大気発光。**負荷を下げる設定ではない** — 積分の範囲も刻みも変わらず、
+  // 消えるのは発光の項だけで、大気の他の項と切り分けるためにある。
+  airglow: {
+    kind: 'toggle', group: 'element', label: 'エアグロー',
+    presets: { low: true, medium: true, high: true },
+  },
   // 地表へ合成する雲と、雲が地表へ落とす影。
   clouds: {
     kind: 'toggle', group: 'element', label: '雲',
