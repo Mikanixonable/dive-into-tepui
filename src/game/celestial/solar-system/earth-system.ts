@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import earthTextureUrl from '../../../assets/earth.jpg';
+import earthSmoothnessUrl from '../../../assets/earth-smoothness.png';
 import cloudFieldUrl from '../../../assets/cloud-field.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import coastlineData from '../../../assets/earth-coastline.json';
@@ -250,7 +251,7 @@ export interface EarthSurfaceRuntimeHandle {
 function fallbackSurface(status: EarthSurfaceStatus = 'loading'): EarthSurface {
   return new EarthSurface(
     new EarthSurfaceContext(EARTH_SURFACE_FIXTURE_SOURCE),
-    CelestialSurface.textured(EARTH_TEXTURE),
+    CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl),
     null,
     status,
   );
