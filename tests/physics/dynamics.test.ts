@@ -6,7 +6,7 @@ import { KinematicState, kinematicState } from '../../src/physics/kinematic-stat
 import { MU_EARTH, R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/constants';
 import { OrbitalElements, keplerPeriod, stateFromOrbitalElements } from '../../src/physics/elements';
 import { C22_MOON, J2_EARTH, J2_MOON, MU_MOON, MU_SUN, R_MOON, R_MOON_GRAVITY, R_SUN } from '../../src/game/celestial/solar-system/constants';
-import { Degree2Gravity } from '../../src/physics/celestial-body-def';
+import { Degree2Gravity } from '../../src/physics/celestial-body';
 import { CelestialMotion } from '../../src/physics/celestial-motion';
 import { orbitalElementsOf } from '../../src/physics/elements';
 import { degree2Accel, stepDynamics, stepRK4 } from '../../src/physics/dynamics';

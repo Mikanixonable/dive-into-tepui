@@ -1,15 +1,17 @@
-// マップビューの「カメラ」パネル。カメラの注視対象・回転追従・平行/透視投影・画角・基準面設定を担当する。
+// マップビューの詳細な「カメラ」パネル。カメラの注視対象・回転追従・平行/透視投影・画角・
+// 基準面設定を担当する。
 import { frameRoleOf } from '../../../physics/frame';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import { CameraReferencePlane, CameraReferenceView, FocusCamera, FOCUS_CAMERA_FOV_MIN, FOCUS_CAMERA_FOV_MAX } from '../../camera/focus-camera';
 import { focusTargetId } from '../../camera/focus-target';
 import { AnchorZone } from './anchor-zone';
 import { CameraRotationZone } from './rotation-zone';
 import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from '../../../hud/widgets';
+import { CameraRotationModeControl } from './camera-rotation-mode-control';
 import { frameRoleName, rotationFollowLabel } from './frame-labels';
-import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { OverlayManager } from '../../../hud/overlay-manager';
-import { buildPanel } from './frame-controls';
+import { buildPanel } from './frame-panel';
+import type { ListedObject } from '../../pickable/listed-object';
 
 const FOCUS_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻み [deg]
 
@@ -22,7 +24,7 @@ export class CameraFramePanel {
   private readonly panel: HTMLElement;
   private readonly cameraCenterZone: AnchorZone;
   private readonly cameraRotationZone: CameraRotationZone;
-  private readonly cameraRotationModeToggle: ToggleSwitch;
+  private readonly cameraRotationModeControl: CameraRotationModeControl;
   private readonly projectionToggle: ToggleSwitch;
   private readonly fovSlider: Slider;
   private readonly fovInput: ValueInput;
@@ -36,26 +38,24 @@ export class CameraFramePanel {
   public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialBodies: CelestialBodies,
     private readonly mapCamera: FocusCamera,
     overlayManager: OverlayManager,
   ) {
     this.panel = buildPanel(panelRoot, 'hud-camera-controls', 'カメラ');
 
-    this.cameraCenterZone = new AnchorZone(popupRoot, '基準', celestialSystem, '固定を解除', overlayManager);
+    this.cameraCenterZone = new AnchorZone(popupRoot, '基準', celestialBodies, '固定を解除', overlayManager);
     this.cameraCenterZone.element.classList.add('hud-frame-origin-zone');
     this.cameraCenterZone.onSelect = (id) => this.onSelectCenter?.(id);
     this.panel.appendChild(this.cameraCenterZone.element);
 
-    this.cameraRotationZone = new CameraRotationZone('回転追従', celestialSystem);
+    this.cameraRotationZone = new CameraRotationZone('回転追従', celestialBodies);
     this.cameraRotationZone.element.classList.add('hud-frame-rotation-zone');
     this.cameraRotationZone.onSelect = (follow) => mapCamera.setRotationFollow(follow);
     this.panel.appendChild(this.cameraRotationZone.element);
 
-    this.cameraRotationModeToggle = new ToggleSwitch('クオータニオン操作', (on) => {
-      mapCamera.setCameraRotationMode(on ? 'quaternion' : 'euler');
-    });
-    this.panel.appendChild(this.cameraRotationModeToggle.element);
+    this.cameraRotationModeControl = new CameraRotationModeControl(mapCamera);
+    this.panel.appendChild(this.cameraRotationModeControl.element);
 
     this.projectionToggle = new ToggleSwitch('平行投影', (on) => {
       mapCamera.setProjectionMode(on ? 'orthographic' : 'perspective');
@@ -108,16 +108,16 @@ export class CameraFramePanel {
     const camId = focusTargetId(this.mapCamera.focus);
     const camRole = camId === undefined ? null : frameRoleOf(camId);
     const camCenter = camId === undefined ? '固定なし'
-      : camRole !== null ? frameRoleName(camRole) : this.celestialSystem.nameOf(camId);
+      : camRole !== null ? frameRoleName(camRole) : this.celestialBodies.nameOf(camId);
     const modeText = this.mapCamera.cameraRotationMode === 'euler' ? 'オイラー' : 'クォータニオン';
     const projectionText = this.mapCamera.projection === 'orthographic' ? '平行' : '透視';
-    const rotationText = rotationFollowLabel(this.celestialSystem, this.mapCamera.rotationFollow);
+    const rotationText = rotationFollowLabel(this.celestialBodies, this.mapCamera.rotationFollow);
     return `基準: ${camCenter}・${rotationText} / ${modeText}・${projectionText}・画角 ${this.mapCamera.fov.toFixed(0)}°`;
   }
 
   // 各ウィジェットの選択・有効状態を、渡された時刻・カメラ状態へ合わせる。
   public sync(
-    pickables: readonly ObjectPickable[], members: readonly string[], displayTime: number,
+    pickables: readonly ListedObject[], members: readonly string[], displayTime: number,
   ): void {
     // カメラ基準は表示設定に左右されず、登録済みの全天体を選択できるようにする。
     this.cameraCenterZone.setItems(pickables, true);
@@ -127,7 +127,7 @@ export class CameraFramePanel {
     // 回転追従の選択肢と、クオータニオン/オイラーの操作モード表示を合わせる。
     this.cameraRotationZone.setChoices(this.mapCamera.availableRotationFollows(displayTime));
     this.cameraRotationZone.setSelected(this.mapCamera.rotationFollow);
-    this.cameraRotationModeToggle.setOn(this.mapCamera.cameraRotationMode === 'quaternion');
+    this.cameraRotationModeControl.sync();
 
     // 平行投影は画角という概念自体を欠くため、画角の操作系一式を無効化して案内を出す。
     const isOrthographic = this.mapCamera.projection === 'orthographic';

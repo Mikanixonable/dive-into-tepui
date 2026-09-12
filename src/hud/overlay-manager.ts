@@ -16,6 +16,8 @@ export interface OverlaySpec {
   // true の間、この一枚が開いているだけで背景(3D世界・タッチパッド)への入力を完全に遮る。
   // 一時停止メニューのように背後を覗き見させたいモーダルは false にする。
   readonly gatesInput: boolean;
+  // モーダル表示中に背景を暗くするか。省略時はモーダルなら暗くし、背景を見せるモーダルだけ false にする。
+  readonly dimsBackground?: boolean;
   // 同じ名前を持つオーバーレイは同時に1つしか開かない — 開けば同グループの他方を閉じる。
   readonly exclusiveGroup?: string;
 }
@@ -143,10 +145,14 @@ export class OverlayManager {
   // 台帳の内容から入力ゲート・タッチ解放イベントの発火可否を導出し、DOM へ反映する。
   private sync(): void {
     const modalOpen = this.stack.some((e) => e.spec.kind === 'modal');
+    const dimBackground = this.stack.some(
+      (e) => e.spec.kind === 'modal' && e.spec.dimsBackground !== false,
+    );
     const gateInput = this.isInputGated();
     this.shield.style.pointerEvents = gateInput ? 'auto' : 'none';
     this.gateLayer.classList.toggle('hud-overlay-gate', gateInput);
     document.body.classList.toggle('hud-overlay-modal-open', modalOpen);
+    document.body.classList.toggle('hud-overlay-dim-background', dimBackground);
     // 「開いている限り毎回」ではなく、モーダルが無→有に変わった瞬間だけ発火する — 2枚開いた
     // 状態から1枚閉じただけで押しっぱなしの仮想キーを全解放してしまうのを防ぐ。
     if (modalOpen && !this.wasModalOpen) window.dispatchEvent(new Event('tepui-release-touch-inputs'));

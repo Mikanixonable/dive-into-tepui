@@ -1,6 +1,6 @@
 // チャート canvas 2D の下回り。devicePixelRatio 対応の backing store 調整、折れ線描画、
 // 現在地点/ターゲット点の丸マーク、16:9 表示とパン/ズームのカーソル制御の CSS を持つ。
-import { ACCENT, ACCENT_SOFT, TEXT_STRONG } from '../../../theme';
+import { currentThemePalette } from '../../../theme';
 
 export interface BackingStoreState {
   cssWidth: number;
@@ -9,9 +9,9 @@ export interface BackingStoreState {
 }
 
 const CHART_ASPECT_RATIO = '16 / 9';
-export const CHART_LINE_WIDTH = 1.5;
-export const CHART_MARK_RADIUS = 3;
-export const CHART_MARK_RING_WIDTH = 1;
+const LINE_WIDTH = 1.5;
+const MARK_RADIUS = 3;
+const MARK_RING_WIDTH = 1;
 
 // 16:9 いっぱいに広がる canvas の表示寸法と、'panzoom' クラスが付いているときのカーソル形状
 // (待機時は grab、ドラッグ中は grabbing)を定める CSS。className はその canvas 自身の
@@ -50,10 +50,9 @@ export function drawPolylineWithGaps<T>(
   points: readonly (T | null)[],
   toPx: (point: T) => { x: number; y: number },
   strokeStyle: string,
-  lineWidth: number,
 ): void {
   ctx.strokeStyle = strokeStyle;
-  ctx.lineWidth = lineWidth;
+  ctx.lineWidth = LINE_WIDTH;
   ctx.beginPath();
   let penDown = false;
   // null に当たったらペンを上げ(penDown=false)、次の点から新しい線分として置き直す。
@@ -73,18 +72,19 @@ export function drawPolylineWithGaps<T>(
 // 現在地点/ターゲット位置を示す丸マーク。filled なら塗り丸(自艦などの現在地点)、
 // そうでなければ縁だけの丸(ターゲット位置)。
 export function drawPointMarker(
-  ctx: CanvasRenderingContext2D, x: number, y: number, filled: boolean, radius: number, ringWidth: number,
+  ctx: CanvasRenderingContext2D, x: number, y: number, filled: boolean,
 ): void {
+  const palette = currentThemePalette();
   ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.arc(x, y, MARK_RADIUS, 0, Math.PI * 2);
   // filled は内部をアクセント色で塗って縁取り、そうでなければ縁だけを描く。
   if (filled) {
-    ctx.fillStyle = ACCENT_SOFT;
+    ctx.fillStyle = palette.accentNear;
     ctx.fill();
-    ctx.strokeStyle = ACCENT;
+    ctx.strokeStyle = palette.accent;
   } else {
-    ctx.strokeStyle = TEXT_STRONG;
+    ctx.strokeStyle = palette.bright;
   }
-  ctx.lineWidth = ringWidth;
+  ctx.lineWidth = MARK_RING_WIDTH;
   ctx.stroke();
 }

@@ -3,7 +3,7 @@
 // イアペトゥス・フェーベの黄道傾斜が公表値と合うこと。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { SatelliteDef } from '../../src/physics/celestial-motion';
+import { SatelliteDef } from '../../src/physics/celestial-body-def';
 import { ECL_POLE_ECI, raDecToEci } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';

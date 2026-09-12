@@ -1,8 +1,10 @@
-// DOM オーバーレイの HUD のシェル。トースト・ヘルプの表示と、
-// root/svgOverlay の公開・常設パネル群の所有と毎フレームの同期を担う。
-import type { RenderStyleSetting } from '../../render/render-style';
+// ゲーム画面の HUD のシェル。常設パネル群と描画先(root / svgOverlay)を持ち、
+// 毎フレーム game の状態へ同期して、トースト・ヘルプを出す。
+import type { RenderStyle } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
-import type { View } from '../view/view';
+import type { HudLayers } from './hud-layers';
+import type { ViewMode } from '../../render/view-mode';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import { VesselPanel } from './panels/vessel-panel';
 import { OrbitPanel } from './orbit/orbit-panel';
 import { TargetPanel } from './panels/target-panel';
@@ -17,42 +19,45 @@ import type { OverlayLayers } from '../../hud/overlay-layer';
 import type { HudShell } from '../../hud/hud-shell';
 import { TEMP_WINDOW_GROUP, type OverlayManager } from '../../hud/overlay-manager';
 import type { HelpPanel } from './windows/help-panel';
+import type { Notifier } from '../../hud/notifier';
 
-// 軌道分析パネルを開く既定位置。ドラッグ可能ウィンドウなのでビューポート内へクランプされる。
+// 軌道分析ウィンドウを開く既定位置 [px]。
 const ANALYSIS_WINDOW_OPEN_X = 320;
 const ANALYSIS_WINDOW_OPEN_Y = 100;
 
-export class Hud {
+export class Hud implements HudLayers, Notifier {
   public get root(): HTMLElement { return this.shell.root; }
   public get layers(): OverlayLayers { return this.shell.layers; }
   public get overlayManager(): OverlayManager { return this.shell.overlayManager; }
   public readonly combatRoot: HTMLElement;
   public readonly mapRoot: HTMLElement;
   public readonly svgOverlay: SVGSVGElement;
-  public readonly helpPanel: HelpPanel;
-  public readonly topBar: TopBar;
+  private readonly helpPanel: HelpPanel;
+  private readonly topBar: TopBar;
   public readonly viewBadgeRow: HTMLElement;
-  public readonly mapScaleBadge: MapScaleBadge;
+  private readonly mapScaleBadge: MapScaleBadge;
   public readonly vesselPanel: VesselPanel;
-  public readonly orbitPanel: OrbitPanel;
+  private readonly orbitPanel: OrbitPanel;
   public readonly targetPanel: TargetPanel;
   public readonly enemiesPanel: EnemiesPanel;
   public readonly burnManagementPanel: BurnManagementPanel;
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
-  private toastUntil = 0;
+  // 次の tick() で表示するトースト。
+  private pendingToast: { readonly html: string; readonly durationMs: number } | null = null;
+  // 表示中のトーストの期限 [ms, performance.now() 基準]。
+  private toastUntil: number | null = null;
 
-  // 画面の器の上に、ゲームの HUD の DOM を組む。
+  // 画面の器の上に、ゲームの HUD の DOM を組む。renderStyle は組み立て時の見せ方。
   public constructor(
-    private readonly shell: HudShell, public readonly renderStyle: RenderStyleSetting,
+    private readonly shell: HudShell, renderStyle: RenderStyle,
   ) {
     const { combatRoot, mapRoot, svgOverlay, helpPanel, els } = buildHudDom(shell, renderStyle);
-    // 構築済みの DOM 参照を受け取る。
     this.combatRoot = combatRoot.element;
     this.mapRoot = mapRoot.element;
     this.svgOverlay = svgOverlay;
     this.helpPanel = helpPanel;
 
-    // data-id で引ける要素だけを各パネルへ渡し、DOM の組み立て方を持ち込ませない。
+    // 常設パネルを、data-id で引ける要素の一覧から組む。
     this.topBar = new TopBar(els);
     this.viewBadgeRow = els.get('gs-viewrow')!;
     this.mapScaleBadge = new MapScaleBadge(els);
@@ -68,7 +73,7 @@ export class Hud {
     this.setView('combat');
   }
 
-  // 軌道分析パネルを開く。既に開いていれば最前面へ持ち上げるだけで、2枚目は開かない。
+  // 軌道分析ウィンドウを開く。既に開いていれば、その1枚を最前面へ持ち上げる。
   private openOrbitAnalysis(): void {
     if (this.orbitAnalysisWindow) {
       this.orbitAnalysisWindow.bringToFront();
@@ -81,25 +86,34 @@ export class Hud {
     this.orbitAnalysisWindow = win;
   }
 
-  // アクティブなビューの常設パネル一式を game の現在状態へ合わせる。DOM ルートの表示切替は
-  // setView が持ち、ここでは表に出ているパネルだけを毎フレーム更新する。
-  public syncPanels(view: View, game: Game): void {
-    const map = view === 'map';
-    this.burnManagementPanel.sync(game.player?.boosters.managementViewModel() ?? null);
-    this.topBar.sync(game);
-    this.orbitPanel.sync(game);
-    if (map) {
-      this.mapScaleBadge.sync(game);
-    } else {
-      this.vesselPanel.sync(game);
-      this.targetPanel.sync(game);
-      this.enemiesPanel.sync(game);
-    }
-    this.orbitAnalysisWindow?.sync(game);
+  // 軌道分析ウィンドウが見ている個体を、このフレームの操作対象・ターゲットへ合わせる。
+  public updateAnalysisReaders(game: Game): void {
+    this.orbitAnalysisWindow?.update(game);
   }
 
-  // 戦闘/マップ固有の HUD ルートを切り替える。表示状態は ViewManager が正本として通知する。
-  public setView(view: View): void {
+  // view で表に出ている常設パネルと、控えられたトーストを game の現在状態へ合わせる。
+  // camera はこのフレームの表示カメラで、縮尺表示が読む。
+  public syncPanels(view: ViewMode, game: Game, camera: CameraFrame): void {
+    const map = view === 'map';
+    // 両ビュー共通のパネル。
+    this.burnManagementPanel.sync(game.activeControllable?.boosters?.managementViewModel() ?? null);
+    this.topBar.sync(game.displayWindowManager, game.simSpeedManager, game.simTime, game.isPaused);
+    this.orbitPanel.sync(game);
+    // ビュー固有のパネル。
+    if (map) {
+      this.mapScaleBadge.sync(camera.scale, game.cameraSystem.mapCamera.resolvedFocus);
+    } else {
+      this.vesselPanel.sync(game.activeControllable, game.activeStage, game.cameraSystem, map);
+      this.targetPanel.sync(game.activeControllable, game.celestialSystem, game.targeter);
+      this.enemiesPanel.sync(
+        game.activeControllable, game.activeStage, game.dynamicSystem, game.targeter, map);
+    }
+    this.orbitAnalysisWindow?.sync(game);
+    this.tick();
+  }
+
+  // 表に出す HUD ルートを戦闘/マップで切り替える。
+  public setView(view: ViewMode): void {
     const map = view === 'map';
     this.helpPanel.setView(view);
     const orbit = this.root.querySelector<HTMLElement>('#hud-orbit');
@@ -119,28 +133,31 @@ export class Hud {
     }
     this.combatRoot.classList.toggle('active', !map);
     this.mapRoot.classList.toggle('active', map);
-    // 既存のビュー別スタイルが残る間も、共有 HUD の状態を同期しておく。
-    this.root.classList.toggle('map-mode', map);
     this.root.classList.toggle('map-ui-active', map);
   }
 
-  // 見出しを持たないメッセージのみ型トーストを durationMs だけ表示する。
+  // 見せ方の切り替えが要求されたときに呼ばれる。
+  public onRenderStyleChange: ((style: RenderStyle) => void) | null = null;
+
+  // 見せ方を切り替える。HUD の DOM へ反映し、切り替え要求を外へ返す。
+  public setRenderStyle(style: RenderStyle): void {
+    this.root.dataset['renderStyle'] = style;
+    this.onRenderStyleChange?.(style);
+  }
+
+  // 本文だけのトーストを durationMs 表示する。
   public hint(text: string, durationMs = 1800): void {
-    this.showToast(text, durationMs);
+    this.requestToast(text, durationMs);
   }
 
-  // 見出し+本文を持つタイトル-説明型トースト(HTML)を durationMs だけ表示する。
+  // 見出しと本文を持つ HTML のトーストを durationMs 表示する。
   public toast(html: string, durationMs = 8000): void {
-    this.showToast(html, durationMs);
+    this.requestToast(html, durationMs);
   }
 
-  // トースト DOM の内容と表示期限を差し替える(hint/toast 共通の下請け)。
-  private showToast(html: string, durationMs: number): void {
-    const e = document.getElementById('hud-toast');
-    if (!e) return;
-    e.innerHTML = html;
-    e.style.opacity = '1';
-    this.toastUntil = performance.now() + durationMs;
+  // 表示したい文言と表示時間を控える。同じフレームに複数控えられたら最後のものが表示される。
+  private requestToast(html: string, durationMs: number): void {
+    this.pendingToast = { html, durationMs };
   }
 
   // ヘルプ表示キーの押下エッジを受け取る。
@@ -148,13 +165,20 @@ export class Hud {
     this.helpPanel.handleInput(input);
   }
 
-  // 表示期限を過ぎたトーストをフェードアウトさせる。
-  public tick(): void {
-    const now = performance.now();
+  // 控えられたトーストを表示し、表示期限を過ぎたトーストをフェードアウトさせる。
+  private tick(): void {
     const toast = document.getElementById('hud-toast');
-    if (toast && this.toastUntil && now > this.toastUntil) {
+    if (!toast) return;
+    const now = performance.now();
+    // 控えがあれば差し替えて期限を張り直し、無ければ期限切れのものを消す。
+    if (this.pendingToast) {
+      toast.innerHTML = this.pendingToast.html;
+      toast.style.opacity = '1';
+      this.toastUntil = now + this.pendingToast.durationMs;
+      this.pendingToast = null;
+    } else if (this.toastUntil !== null && now > this.toastUntil) {
       toast.style.opacity = '0';
-      this.toastUntil = 0;
+      this.toastUntil = null;
     }
   }
 }
