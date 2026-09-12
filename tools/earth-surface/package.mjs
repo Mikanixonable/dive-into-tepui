@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 検査済みの地表マニフェスト・索引・実体を、stagingを経由して一つの版付き配信先へ配備する。
+// 検査済みの地表マニフェストと実体を、stagingを経由して一つの版付き配信先へ配備する。
 import { copyFile, mkdir, rename, rm, writeFile, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
@@ -11,8 +11,11 @@ async function copyAsset(outputRoot, asset) {
   await copyFile(asset.absolutePath, destination);
 }
 
-async function copyTile(root, outputRoot, file) {
-  await copyAsset(outputRoot, { absolutePath: assetPath(root, file.url), path: file.url });
+async function copyTile(root, outputRoot, key) {
+  for (const extension of ['jpg', 'bin.gz']) {
+    const path = `tiles/${key.z}/${key.x}/${key.y}.${extension}`;
+    await copyAsset(outputRoot, { absolutePath: assetPath(root, path), path });
+  }
 }
 
 // 入力全体を先に読み取り検査してから staging へコピーし、途中状態を配信先へ公開しない。
@@ -31,15 +34,10 @@ export async function packageEarthSurface({
     for (const climateMap of checked.climateMaps) await copyAsset(staging, climateMap);
     await mkdir(dirname(assetPath(staging, manifestName)), { recursive: true });
     await copyFile(checked.manifestPath, assetPath(staging, manifestName));
-    await mkdir(dirname(assetPath(staging, checked.manifest.tileIndexUrl)), { recursive: true });
-    await copyFile(checked.tileIndexPath, assetPath(staging, checked.manifest.tileIndexUrl));
     await writeFile(assetPath(staging, 'attribution.json'), `${JSON.stringify({
       datasetId: checked.manifest.datasetId, attribution: checked.manifest.attribution,
     }, null, 2)}\n`);
-    for (const entry of checked.tileIndex.entries) {
-      await copyTile(checked.root, staging, entry.color);
-      await copyTile(checked.root, staging, entry.terrain);
-    }
+    for (const key of checked.tiles) await copyTile(checked.root, staging, key);
     const manifestBytes = await readFile(assetPath(staging, manifestName));
     const receipt = {
       schemaVersion: 1,
