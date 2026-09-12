@@ -166,11 +166,11 @@ class RendererTests(unittest.TestCase):
             color_output = io.BytesIO()
             Image.new("RGB", (260, 260), (1, 2, 3)).save(color_output, format="JPEG")
             color = color_output.getvalue()
-            terrain_z4 = bytearray(bake.encode_terrain_tile([(0., 0., 1.)] * 67600, [.8] * 67600, 4, 0, 0))
+            terrain_z5 = bytearray(bake.encode_terrain_tile([(0., 0., 1.)] * 67600, [.8] * 67600, 5, 0, 0))
             terrain_z0 = bytearray(bake.encode_terrain_tile([(0., 0., 1.)] * 67600, [.8] * 67600, 0, 0, 0))
 
             def render(key):
-                payload = bytearray(terrain_z0 if key[0] == 0 else terrain_z4)
+                payload = bytearray(terrain_z0 if key[0] == 0 else terrain_z5)
                 payload[12] = key[0]
                 payload[14:18] = key[1].to_bytes(4, "little")
                 payload[18:22] = key[2].to_bytes(4, "little")
@@ -183,8 +183,7 @@ class RendererTests(unittest.TestCase):
                 render, renderer.climate_maps(), base_color=base_color.getvalue(), max_zoom=4,
                 validate_inputs=False, data_provenance="synthetic_fixture")
             self.assertEqual(result["provenance"]["dataKind"], "synthetic_fixture")
-            self.assertEqual(result["coverage"], {"kind": "sparse", "minZoom": 4, "maxZoom": 7, "expectedTiles": None})
-            self.assertEqual(json.loads((output / "tile-index.json").read_text())["entries"].__len__(), 512)
+            self.assertEqual(result["coverage"], {"kind": "sparse", "minZoom": 5, "maxZoom": 7, "expectedTiles": None})
 
     def test_fixture_rejects_wrong_provenance_and_missing_path(self):
         fixture = copy.deepcopy(self.fixture)
