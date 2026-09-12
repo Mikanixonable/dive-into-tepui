@@ -7,7 +7,6 @@ import { RcsEffects } from '../player/rcs-effects';
 import { ThrustEffects } from '../player/thrust-effects';
 import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
 import baseData from '../../../assets/models/base.json';
-import type { MarkerSlots } from '../../../game/marker/marker-slots';
 
 // 基地のプルームは自艦より大きく描く倍率。
 const BASE_PLUME_SCALE = 6;
@@ -37,11 +36,10 @@ export class BaseView extends DynamicView<BaseRenderSource> {
   private readonly thrustEffects: ThrustEffects;
   private readonly rcsEffects: RcsEffects;
 
-  // 基地モデルと噴射用 THREE 資源を組み立てる。markers からは破棄時にこの基地のマーカーを外す。
+  // 基地モデルと噴射用 THREE 資源を組み立てる。
   public constructor(
     protected override readonly scene: THREE.Scene,
-    private readonly ownerId: string,
-    private readonly markers: MarkerSlots,
+    ownerId: string,
   ) {
     super(buildBaseModel(), scene);
     this.thrustEffects = new ThrustEffects(scene, ownerId);
@@ -84,10 +82,8 @@ export class BaseView extends DynamicView<BaseRenderSource> {
     );
   }
 
-  // 基地固有の DOM・噴射資源を片付けてから共通 View 資源を破棄する。
+  // 基地固有の噴射資源を片付けてから共通 View 資源を破棄する。
   public override dispose(): void {
-    this.markers.remove(`base-${this.ownerId}`);
-    this.markers.remove(`base-${this.ownerId}-bearing`);
     this.thrustEffects.dispose(this.scene);
     this.rcsEffects.dispose(this.scene);
     super.dispose();

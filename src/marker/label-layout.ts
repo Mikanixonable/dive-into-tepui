@@ -9,7 +9,7 @@ const COLLISION_PADDING = 4;
 
 // 押し出しの対象になるラベル1件。
 export interface LayoutTarget {
-  readonly key: string;
+  readonly id: string;
   readonly x: number;
   readonly y: number;
   // ラベル位置を固定する対象は押し出さない。
@@ -45,7 +45,7 @@ export class LabelLayout {
   // svgOverlay: ラベル引き出し線を描く SVG。
   public constructor(private readonly svgOverlay: SVGSVGElement) {}
 
-  // targets のラベルを重ならない位置へ置き直す。hiddenLabels に載るキーと、ラベルを持たない
+  // targets のラベルを重ならない位置へ置き直す。hiddenLabels に載る id と、ラベルを持たない
   // 対象は既定位置へ戻す。全マーカーが出揃った後に一度だけ呼ぶこと。
   public sync(targets: readonly LayoutTarget[], hiddenLabels: ReadonlySet<string>): void {
     this.collectLabelRects(targets, hiddenLabels);
@@ -66,7 +66,7 @@ export class LabelLayout {
     this.activeCount = 0;
 
     for (const m of targets) {
-      if (hiddenLabels.has(m.key) || !m.lbl.textContent || m.fixedLabel) {
+      if (hiddenLabels.has(m.id) || !m.lbl.textContent || m.fixedLabel) {
         m.lbl.style.transform = 'translateX(-50%)';
         continue;
       }
