@@ -10,6 +10,7 @@ import { mulberry32 } from '../../math/random';
 import { add, v3, Vec3 } from '../../math/vec3';
 import type { StageSaveData } from '../save/save-data';
 import { MAG_ROUNDS } from '../player/ammo-spec';
+import { FREE_PLAY_STAGE_RULES } from './stage-rules';
 
 // 破片は衛星の破壊直後の雲を想定し、自機の周囲に留める。
 const DEBRIS_COUNT = 500;
@@ -18,6 +19,7 @@ const PLACEMENT_MIN_DIST = 5000; // 自機からの配置距離下限 [m]
 const RNG_SEED = 20260810;
 
 export class StageDebugLoad extends Stage {
+  public static readonly stageRules = FREE_PLAY_STAGE_RULES;
   public static readonly id = 'debug-load' as const;
   public static readonly epoch = STORY_EPOCH;
   public static readonly selectLabel = 'DEBUG(高負荷)';

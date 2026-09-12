@@ -27,6 +27,7 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import type { PhaseOffsets } from '../../physics/celestial-body-def';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { EntityRegistry, SpawnGate } from '../dynamic/entity-registry';
+import { CAMPAIGN_STAGE_RULES, type StageRules } from './stage-rules';
 
 // 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。各ステージが
 // 自分の epoch としてこれを宣言する。ステージの宣言以外から読まない(元期は共有の定数ではなく、
@@ -62,6 +63,7 @@ export type StageDeps = [
 // ステージクラスの静的側。起動時の設定はここから読む。
 export interface StageClass {
   readonly id: StageId;
+  readonly stageRules: StageRules;
   createCelestialSystem(
     phaseOffsets: PhaseOffsets, earthSpinPhase0: number, epoch: TdbJulianDate,
     onProgress?: (ratio: number) => void, renderer?: THREE.WebGPURenderer,
@@ -96,6 +98,7 @@ export interface StageResult {
 }
 
 export abstract class Stage implements StageOutcome, StageSimulationEvents {
+  public static readonly stageRules = CAMPAIGN_STAGE_RULES;
   // 起動時に1度だけ組む星系。既定は現実の太陽系で、元期(simTime=0 が指す絶対時刻)が
   // 近未来/遠未来いずれかの数値暦の期間に入っていれば暦パックを読み込み、どちらにも
   // 入らなければ CELESTIAL.md 2.2 のとおり解析暦だけで組む。
@@ -128,6 +131,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     return this.constructor as unknown as StageClass;
   }
   public get id(): StageId { return this.stageClass.id; }
+  public get stageRules(): StageRules { return this.stageClass.stageRules; }
 
   // 艦の軌道計画を自動実行させるか。既定では実行しない。
   public readonly executesPlans: boolean = false;
@@ -184,7 +188,9 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
     this._phase = saved?.phase ?? 'playing';
     this.restored = saved !== undefined;
-    this.logistics = new Logistics(hud, worldSfx, uiSfx, scene, dynamicSystem, saved?.logistics);
+    this.logistics = new Logistics(
+      hud, worldSfx, uiSfx, scene, dynamicSystem, saved?.logistics, this.stageRules.automaticResupply,
+    );
     this.statusPanel = new StatusPanel(hud.combatRoot);
   }
 
