@@ -169,7 +169,8 @@ cap に替わる。それでも手順 2 は要る — cap の投影は球の契�
 
 1. main で次が **0 件**。
    `git grep -nE 'MonthlyClimateMap|monthly-climate|createDevelopmentClimateMap|climateEpochUnixSec|replaceUrls|EllipsoidEquirectProjection' -- src tools tests`
-2. `earthGeneratedCloudField` が引数なしで組め、雲の気候が `earth-climate.png` から読まれる。
+2. 雲の気候が `earth-climate.png` から読まれ、地球の雲場は `earthCloudPresentation` から組める。
+   (`earthGeneratedCloudField` は手順 8 で投影を必須の引数にしたので、引数なしでは組まない。)
 3. fix_cloud_projection.md の達成目標がすべて満たされている(雲場の LOD が 0 件、雲場が視点中心の
    cap で焼かれる)。
 4. **目視**: `npm run dev` で地球の昼側を見ると、太陽直下点のまわりの海にサングリントが出る。
