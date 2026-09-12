@@ -43,6 +43,7 @@ export class PauseMenu implements OverlayHandle {
   public onOpenDebugInfoWindow: (() => void) | null = null;
 
   private readonly overlayManager: OverlayManager;
+  private readonly resizeObserver: ResizeObserver;
   private readonly bgmSlider: Slider;
   private readonly bgmMute: Button;
   // 消音から復帰するときに戻す音量。消音中かどうかは bgmSlider の値が 0 かで読む。
@@ -67,14 +68,12 @@ export class PauseMenu implements OverlayHandle {
     this.panel.id = 'hud-pause-menu';
     this.panel.className = 'panel ui-surface-focus';
 
-    this.panel.appendChild(this.buildBrand());
-
-    // ヘッダー: 見出し・最小化トグル・✕ ボタンと、ドラッグ移動の配線。
+    // ヘッダー: ロゴ・見出し・最小化トグル・✕ ボタンと、ドラッグ移動の配線。
     const header = document.createElement('div');
     header.className = 'pm-header';
-    const heading = document.createElement('h3');
-    heading.textContent = '一時停止 / 設定';
-    header.appendChild(heading);
+    const headerTop = document.createElement('div');
+    headerTop.className = 'pm-header-top';
+    headerTop.appendChild(this.buildBrand());
     this.minimizeToggle = document.createElement('button');
     this.minimizeToggle.type = 'button';
     this.minimizeToggle.className = 'pm-minimize';
@@ -85,7 +84,11 @@ export class PauseMenu implements OverlayHandle {
     headerActions.className = 'pm-header-actions';
     headerActions.appendChild(this.minimizeToggle);
     headerActions.appendChild(closeBtn.element);
-    header.appendChild(headerActions);
+    headerTop.appendChild(headerActions);
+    header.appendChild(headerTop);
+    const heading = document.createElement('h3');
+    heading.textContent = '一時停止 / 設定';
+    header.appendChild(heading);
     header.addEventListener('pointerdown', this.handleHeaderPointerDown);
     header.addEventListener('pointermove', this.handleHeaderPointerMove);
     header.addEventListener('pointerup', this.handleHeaderPointerUp);
@@ -129,8 +132,10 @@ export class PauseMenu implements OverlayHandle {
 
     root.appendChild(this.panel);
     this.setActiveTab('pause');
-    // ビューポート変化のたびに現在位置を収め直す。
+    // ビューポート変化と内容サイズの変化のたびに現在位置を収め直す。
     onViewportChange(() => this.reclamp());
+    this.resizeObserver = new ResizeObserver(() => this.reclamp());
+    this.resizeObserver.observe(this.panel);
   }
 
   // ロゴ・タイトル・バージョンを ESC メニュー上部へ積む。

@@ -61,8 +61,7 @@ const STYLE = `
 #hud .dg-window-btn:hover { background: var(--glass-control-hover); color: var(--color-primary-hover); }
 #hud .dg-window-btn.clipped { background: var(--color-primary-fill); color: var(--color-primary); }
 #hud .dg-window.tgt {
-  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%),
-    color-mix(in srgb, var(--color-primary) 16%, var(--glass-focus));
+  background: color-mix(in srgb, var(--color-primary) 16%, var(--glass-focus));
 }
 `;
 

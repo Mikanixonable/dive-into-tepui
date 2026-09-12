@@ -7,6 +7,16 @@ import { STAR_SHELL_RADIUS } from '../stars';
 
 // 点像を星殻上へ置くための書き込み先。
 const POINT_POSITION = new THREE.Vector3();
+// 可視域の太陽型恒星に対する線形周縁減光係数(Van Hamme 1993, AJ 106, 2096)。
+const STELLAR_LIMB_DARKENING = 0.6;
+// 投影円盤上の平均 μ は2/3なので、線形則の円盤平均は 1 - u/3。
+const STELLAR_LIMB_MEAN = 1 - STELLAR_LIMB_DARKENING / 3;
+
+// 視線と面法線の余弦 μ に対する、円盤平均で正規化した恒星面の相対輝度。
+export function stellarLimbIntensity(mu: number): number {
+  const boundedMu = Math.max(0, Math.min(1, mu));
+  return (1 - STELLAR_LIMB_DARKENING * (1 - boundedMu)) / STELLAR_LIMB_MEAN;
+}
 
 export interface StarSphere {
   // 実球体と点像をシーンへ一度だけ登録する。
@@ -22,7 +32,7 @@ export interface StarSphere {
     cameraQuaternion: THREE.Quaternion,
   ): void;
   // 見かけの大きさによらず実球体で描く。
-  syncSphere(position: THREE.Vector3, radius: number): void;
+  syncSphere(position: THREE.Vector3, radius: number, cameraQuaternion: THREE.Quaternion): void;
   // 実球体と点像をどちらも隠す。
   hide(): void;
   // シーンから外し、GPU 資源を解放する。
@@ -71,7 +81,7 @@ class StarSphereObject implements StarSphere {
     cameraQuaternion: THREE.Quaternion,
   ): void {
     if (showsPhysicalSphere(apparentDiameterPx)) {
-      this.syncSphere(position, radius);
+      this.syncSphere(position, radius, cameraQuaternion);
       return;
     }
     // 点像は星殻上へ、向きだけを保って置く。
@@ -85,11 +95,15 @@ class StarSphereObject implements StarSphere {
   }
 
   // 点像を隠し、実球体を実位置・実半径へ置く。
-  public syncSphere(position: THREE.Vector3, radius: number): void {
+  public syncSphere(
+    position: THREE.Vector3, radius: number, cameraQuaternion: THREE.Quaternion,
+  ): void {
     this.point.hide();
     this.mesh.visible = true;
     this.mesh.position.copy(position);
     this.mesh.scale.setScalar(radius);
+    // 頂点色の +Z 側を観測者へ向け、球を回しても周縁減光が常に円盤中心を基準にする。
+    this.mesh.quaternion.copy(cameraQuaternion);
   }
 
   // 実球体と点像をどちらも隠す。
@@ -116,11 +130,22 @@ class StarSphereObject implements StarSphere {
   }
 }
 
-// 単位球(半径 1)の恒星本体。面を自発光の色 color × surfaceRadiance で塗る。
+// 単位球(半径1)の恒星本体。平均輝度をsurfaceRadianceに保ち、円盤中心から縁へ連続的に暗くする。
 function createStarMesh(color: string | number, surfaceRadiance: number): THREE.Mesh {
   const geo = new THREE.SphereGeometry(1, 48, 24);
+  const normals = geo.getAttribute('normal');
+  const intensities = new Float32Array(normals.count * 3);
+  // 正対する半球の法線余弦を、円盤平均を保つ無彩色の頂点輝度へ焼き込む。
+  for (let index = 0; index < normals.count; index++) {
+    const intensity = stellarLimbIntensity(normals.getZ(index));
+    intensities[index * 3] = intensity;
+    intensities[index * 3 + 1] = intensity;
+    intensities[index * 3 + 2] = intensity;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(intensities, 3));
   const mat = new THREE.MeshBasicMaterial({
     color: new THREE.Color(color).multiplyScalar(surfaceRadiance),
+    vertexColors: true,
   });
   return new THREE.Mesh(geo, mat);
 }

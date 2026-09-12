@@ -5,10 +5,11 @@
 // 座標系を値と純粋関数で固定する。
 import * as THREE from 'three/webgpu';
 import {
-  EARTH_BASE_LAYER, EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER,
-  EARTH_TILE_TEXELS, earthPageAt, earthTileKey,
-} from './earth-surface-tiles';
-import type { EarthTileKey } from './earth-surface-tiles';
+  EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER, EARTH_TILE_MAX_Z, EARTH_TILE_TEXELS, EARTH_TILE_MIN_Z,
+  earthTileKey,
+} from './earth-surface-tile-key';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, earthPageAt } from './earth-surface-page-table';
+import type { EarthTileKey } from './earth-surface-tile-key';
 import { earthSurfaceNormal, earthSurfaceUv, validateEarthAxes } from './earth-surface-coordinate';
 
 export type EarthSurfaceColorSpace = 'srgb';
@@ -43,6 +44,7 @@ export interface EarthSurfacePageCell {
 // ページ表はテクスチャ補間を使わず、地理UVが属するz=7セルをfloorで最近傍読取りする。
 // uは周期、vは極でクランプし、v=1だけは最終行へ置く。
 export function earthSurfacePageCell(table: Uint8Array, u: number, v: number): EarthSurfacePageCell {
+  // ページ表の寸法・UV・base sentinelを検証して1セルへ復号する。
   if (table.length !== EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4) throw new RangeError('Invalid Earth page table');
   finiteUnit(u, 'Earth page longitude UV');
   finiteUnit(v, 'Earth page latitude UV');
@@ -54,7 +56,7 @@ export function earthSurfacePageCell(table: Uint8Array, u: number, v: number): E
   if (layer === EARTH_BASE_LAYER && (parentLayer !== EARTH_BASE_LAYER || z !== EARTH_BASE_LAYER)) {
     throw new Error('Invalid Earth base page cell');
   }
-  if (layer !== EARTH_BASE_LAYER && z > 7) throw new Error('Invalid Earth page level');
+  if (layer !== EARTH_BASE_LAYER && (z < EARTH_TILE_MIN_Z || z > EARTH_TILE_MAX_Z)) throw new Error('Invalid Earth page level');
   return { layer, parentLayer, z, fade: fadeByte / 255 };
 }
 
@@ -63,7 +65,9 @@ export interface EarthSurfaceTileLocalUv {
   readonly uv: THREE.Vector2;
 }
 
+// 0..1の単位区間へ渡す有限値を検証する。
 function finiteUnit(value: number, label: string): number {
+  // UV値が有限であることを確認する。
   if (!Number.isFinite(value)) throw new RangeError(`${label} must be finite`);
   return value;
 }
@@ -71,8 +75,10 @@ function finiteUnit(value: number, label: string): number {
 // 全球UVを指定タイルの260x260画像へ写す。色・地形とも同じ座標を使う。
 // 経度は周期、緯度は極でクランプし、内側256画素の外側へ2画素のgutterを確保する。
 export function earthSurfaceTileLocalUv(u: number, v: number, key: EarthTileKey): EarthSurfaceTileLocalUv {
+  // 全球UVをタイル格子へ移し、経度周期と緯度端点を適用する。
   finiteUnit(u, 'Earth longitude UV');
   finiteUnit(v, 'Earth latitude UV');
+  // gutterを含むタイル内の標本位置へ変換する。
   const columns = 2 ** (key.z + 1);
   const rows = 2 ** key.z;
   const globalX = THREE.MathUtils.euclideanModulo(u, 1) * columns;
@@ -114,7 +120,9 @@ export interface EarthSurfaceMaterialSample {
   readonly roughness: number;
 }
 
+// 色・fade・粗さで共有する単位区間を検証する。
 function checkUnitChannel(value: number, label: string): number {
+  // 色・fade・粗さに共通する単位区間を検証する。
   if (!Number.isFinite(value) || value < 0 || value > 1) throw new RangeError(`${label} must be in [0, 1]`);
   return value;
 }
@@ -125,14 +133,17 @@ export function srgbChannelToLinear(value: number): number {
   return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
 }
 
+// sRGBの3チャンネルを補間可能な線形RGBへ変換する。
 export function srgbColorToLinear(color: EarthSurfaceColor): EarthSurfaceLinearColor {
   return { r: srgbChannelToLinear(color.r), g: srgbChannelToLinear(color.g), b: srgbChannelToLinear(color.b) };
 }
 
+// 粗さを単位区間の値として検証する。
 function checkedRoughness(value: number): number {
   return checkUnitChannel(value, 'Earth roughness');
 }
 
+// 法線が有限で非ゼロであることを検証し、単位化したコピーを返す。
 function checkedNormal(normal: THREE.Vector3): THREE.Vector3 {
   if (![normal.x, normal.y, normal.z].every(Number.isFinite) || normal.lengthSq() === 0) {
     throw new RangeError('Earth material normal must be finite and nonzero');
@@ -140,16 +151,19 @@ function checkedNormal(normal: THREE.Vector3): THREE.Vector3 {
   return normal.clone().normalize();
 }
 
+// 2つのスカラー材質値をfade量で線形補間する。
 function mixNumber(from: number, to: number, amount: number): number {
   return from + (to - from) * amount;
 }
 
+// 2つの線形RGB材質値をfade量で補間する。
 function mixColor(from: EarthSurfaceLinearColor, to: EarthSurfaceLinearColor, amount: number): EarthSurfaceLinearColor {
   return {
     r: mixNumber(from.r, to.r, amount), g: mixNumber(from.g, to.g, amount), b: mixNumber(from.b, to.b, amount),
   };
 }
 
+// 入力層の色・法線・粗さを計算用の材質サンプルへそろえる。
 function materialSample(sample: EarthSurfaceLayerSample): EarthSurfaceMaterialSample {
   const colorLinear = srgbColorToLinear(sample.colorSrgb);
   return {
@@ -211,13 +225,15 @@ export interface EarthSurfaceMaterialLayerReader {
   sampleBase(uv: THREE.Vector2): EarthSurfaceLayerSample;
 }
 
+// ページ表セルの層番号とUVから、baseまたは詳細タイルを読む。
 function samplePageLayer(
   reader: EarthSurfaceMaterialLayerReader, layer: number, z: number, u: number, v: number,
 ): EarthSurfaceLayerSample {
+  // ページ表の層番号とUVから、baseまたは詳細タイルのサンプルを読む。
   finiteUnit(u, 'Earth material longitude UV');
   finiteUnit(v, 'Earth material latitude UV');
   if (layer === EARTH_BASE_LAYER) return reader.sampleBase(new THREE.Vector2(THREE.MathUtils.euclideanModulo(u, 1), THREE.MathUtils.clamp(v, 0, 1)));
-  if (!Number.isInteger(z) || z < 0 || z > 7) throw new RangeError('Invalid Earth material page level');
+  if (!Number.isInteger(z) || z < EARTH_TILE_MIN_Z || z > EARTH_TILE_MAX_Z) throw new RangeError('Invalid Earth material page level');
   const rows = 2 ** z;
   const columns = 2 * rows;
   const key = earthTileKey(z, Math.floor(THREE.MathUtils.euclideanModulo(u, 1) * columns), Math.min(rows - 1, Math.floor(THREE.MathUtils.clamp(v, 0, 1) * rows)));

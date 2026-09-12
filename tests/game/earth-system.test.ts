@@ -5,16 +5,21 @@ import { test } from '../harness';
 import { StarMotion } from '../../src/physics/celestial-motion';
 import { TEST_EPOCH } from '../physics/test-helpers';
 import { CelestialSystem } from '../../src/game/celestial/celestial-system';
-import { EARTH_TILE_LAYERS } from '../../src/render/earth-surface-tiles';
-import {
-  createEarthSurfaceRuntime, EARTH_SURFACE_FIXTURE_SOURCE, EARTH_TEXTURE, earthSystem,
-} from '../../src/game/celestial/solar-system/earth-system';
+import { EARTH_TILE_LAYERS } from '../../src/render/earth-surface-tile-key';
+import { earthSystem } from '../../src/game/celestial/solar-system/earth-system';
+import { createEarthSurfaceRuntime } from '../../src/render/earth-surface-factory';
+import { EARTH_SURFACE_FIXTURE_SOURCE, EARTH_TEXTURE } from '../../src/render/earth-surface-defaults';
 import { SUN } from '../../src/game/celestial/solar-system/sun';
 
 const READY_MANIFEST = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   datasetId: 'earth-test-2026',
   sourceManifestSha256: '0'.repeat(64),
+  terrainEncoding: {
+    formatVersion: 2, layout: 'octahedral-rg8-roughness-r8-material-class-a8',
+    width: 260, height: 260, channels: 4, scalar: 'UInt8',
+    materialClasses: { water: 0, land: 1, ice: 2, unknown: 255 },
+  },
   baseColor: 'base.jpg',
   baseTerrain: 'base.bin.gz',
   tileIndexUrl: 'tile-index.json',
@@ -24,16 +29,17 @@ const READY_MANIFEST = {
     orthometricElevation: { min: -1000, max: 9000 }, landFraction: { min: 0, max: 1 },
     waterOrthometricElevationM: 0,
   },
+  coverage: { kind: 'sparse', minZoom: 4, maxZoom: 7, expectedTiles: null },
   attribution: ['test'],
 };
 
 const READY_INDEX = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   datasetId: READY_MANIFEST.datasetId,
   entries: [{
-    key: '0/0/0', z: 0, x: 0, y: 0,
-    color: { url: '0-0-0.jpg', sha256: '0'.repeat(64), encodedBytes: 1, payloadBytes: 1 },
-    terrain: { url: '0-0-0.bin.gz', sha256: '0'.repeat(64), encodedBytes: 1, payloadBytes: 1 },
+    key: '4/0/0', z: 4, x: 0, y: 0,
+    color: { url: '4-0-0.jpg', sha256: '0'.repeat(64), encodedBytes: 1, payloadBytes: 1 },
+    terrain: { url: '4-0-0.bin.gz', sha256: '0'.repeat(64), encodedBytes: 1, payloadBytes: 1 },
   }],
 };
 

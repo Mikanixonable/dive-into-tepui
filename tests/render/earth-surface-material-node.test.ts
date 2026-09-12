@@ -2,12 +2,12 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import {
-  configureEarthSurfaceTexture,
   earthSurfaceDetailLodNode,
   earthSurfaceTileUvNode,
   earthSurfaceMaterialNodes,
   earthSurfaceMaterialCapabilities,
 } from '../../src/render/earth-surface-material-node';
+import { configureEarthSurfaceTexture } from '../../src/render/earth-surface-texture';
 import { float, uniform, vec2, vec3 } from 'three/tsl';
 import { containsShaderNode, evaluateShaderNode } from './tsl-node-evaluator';
 
@@ -33,14 +33,17 @@ export function register(): void {
     assert.equal(pageTable.magFilter, THREE.NearestFilter);
     assert.equal(pageTable.colorSpace, THREE.NoColorSpace);
     assert.equal(pageTable.generateMipmaps, false);
+    assert.equal(pageTable.flipY, false);
     assert.equal(color.minFilter, THREE.LinearFilter);
     assert.equal(color.magFilter, THREE.LinearFilter);
     assert.equal(color.colorSpace, THREE.SRGBColorSpace);
     assert.equal(color.generateMipmaps, false);
+    assert.equal(color.flipY, false);
     assert.equal(terrain.minFilter, THREE.LinearFilter);
     assert.equal(terrain.magFilter, THREE.LinearFilter);
     assert.equal(terrain.colorSpace, THREE.NoColorSpace);
     assert.equal(terrain.generateMipmaps, false);
+    assert.equal(terrain.flipY, false);
     assert.equal(pageTable.image, null);
     assert.equal(pageTable.version, 0);
     const data = new THREE.DataTexture(new Uint8Array(4), 1, 1);
@@ -55,7 +58,7 @@ export function register(): void {
   });
 
   test('earth surface material: tile Vは各LOD行を走査し、全球南端を最終画素へ置く', () => {
-    for (const z of [1, 2, 7]) {
+    for (const z of [4, 5, 7]) {
       const rows = 2 ** z;
       const toTextureUv = (local: number): number => (2 + 0.5 + 256 * local) / 260;
       const expected = (v: number): number => toTextureUv(v === 1 ? 1 : v * rows - Math.floor(v * rows));
@@ -75,7 +78,7 @@ export function register(): void {
 
   test('earth surface material: array/page table nodeはbase層とbody固定法線を持つ', () => {
     const color = new THREE.DataArrayTexture(new Uint8Array(4), 1, 1, 1);
-    const terrain = new THREE.DataArrayTexture(new Uint16Array(4), 1, 1, 1);
+    const terrain = new THREE.DataArrayTexture(new Uint8Array(4), 1, 1, 1);
     const pageTable = new THREE.DataTexture(new Uint8Array(4), 1, 1);
     const baseColor = new THREE.Texture();
     const baseTerrain = new THREE.Texture();
@@ -92,9 +95,6 @@ export function register(): void {
     assert.equal(nodes.colorNode.isNode, true);
     assert.equal(nodes.roughnessNode.isNode, true);
     assert.equal(nodes.normalNode.isNode, true);
-    assert.ok(containsShaderNode(nodes.colorNode, (node) => node.type === 'TextureNode'));
-    assert.ok(containsShaderNode(nodes.colorNode, (node) => node.type === 'MathNode' && node.method === 'exp2'));
-    assert.ok(containsShaderNode(nodes.colorNode, (node) => node.type === 'MathNode' && node.method === 'fract'));
-    assert.ok(containsShaderNode(nodes.colorNode, (node) => node.type === 'OperatorNode' && node.op === '=='));
+    assert.ok(containsShaderNode(nodes.normalNode, (node) => node.type === 'MathNode' && node.method === 'normalize'));
   });
 }

@@ -391,7 +391,7 @@ CODING-RULE 1.5 の決め手(「共通化した側が変更されたとき参照
 `hud-physical-object-list`(id)と呼ばれている。`DEVELOP/SPEC/MAP.md` §10 の見出しは
 「軌道物体一覧パネル」。
 
-`memos/mikanixonable/プラスチックワード命名調査・改善案_2026-08-14.md` の系統の指摘。
+`memos/mikanixonable/suspended/プラスチックワード命名調査・改善案_2026-08-14.md` の系統の指摘。
 **日本語表示名を1つに決める**(SPEC に合わせるなら「軌道物体一覧」)。
 
 ### 2.11 [確認] 使われていないクラス名と、意味の違う共有クラス名
