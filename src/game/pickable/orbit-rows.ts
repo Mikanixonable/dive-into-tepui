@@ -1,21 +1,22 @@
 // 軌道上の実体に共通する軌道要素の行(基準天体・高度・速度・AP/PE/INC/PRD)。
 // 「軌道」グループにまとめ、プロパティウィンドウ先頭の折り畳みセクションへ描かれる。
 import { fmtDist, fmtSpeed, fmtTime } from '../../hud/utils';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { orbitInfo } from '../orbit-info';
 import { autoOrbitReference } from '../orbit-reference';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../hud/orbit/orbit-labels';
-import type { PropertyRow } from '../../hud/windows/property-window';
-import type { CelestialSystem } from '../celestial/celestial-system';
+import type { PropertyRow } from '../../hud/windows/property-window-content';
+
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
 // simTime は天体位置を厳密に引く時刻。
 export function orbitRows(
-  entity: DynamicEntity, celestialSystem: CelestialSystem, simTime: number,
+  entity: DynamicEntity, celestialBodies: CelestialBodies, simTime: number,
 ): PropertyRow[] {
-  const celestialBodies = celestialSystem.celestialMotions;
+  const motions = celestialBodies.celestialMotions;
   const oi = orbitInfo(
-    entity, autoOrbitReference(entity.state.r, celestialBodies, simTime), simTime,
-    (id: string) => celestialSystem.nameOf(id));
+    entity, autoOrbitReference(entity.motion.state.r, motions, simTime), simTime,
+    (id: string) => celestialBodies.nameOf(id));
   const apSpec = getApsisLabelSpec('ap', oi.centerId);
   const peSpec = getApsisLabelSpec('pe', oi.centerId);
   const group = '軌道';

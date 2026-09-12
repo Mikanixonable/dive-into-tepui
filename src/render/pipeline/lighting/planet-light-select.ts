@@ -6,20 +6,20 @@ import { dot, len, sub } from '../../../math/vec3';
 import { rec709Luminance } from '../../celestial-albedo';
 import { MAX_PLANET_LIGHT_SLOTS, planetRadiance } from './planet-light-source';
 import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from '../sun-light';
-import type { CelestialMotion } from '../../../physics/celestial-motion';
+import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Vec3 } from '../../../math/vec3';
 import type { Albedo } from '../../celestial-albedo';
 
 // 光源になりうる天体 1 体。**恒星や半径 0 の天体を含む星系の全天体を渡すこと** — 天体自身の
 // 食(sunlitFactor)が、光源にならない天体にも遮られるため。albedo は色つきのボンドアルベド。
-interface PlanetLightCandidate {
-  readonly celestialBody: CelestialMotion;
+interface PlanetLightCandidate<T extends CelestialBody> {
+  readonly celestialBody: T;
   readonly albedo: Albedo;
 }
 
 // 光源として選ばれた天体 1 体。位置・半径は celestialBody(ECI)から読む。
-interface PlanetLight {
-  readonly celestialBody: CelestialMotion;
+interface PlanetLight<T extends CelestialBody> {
+  readonly celestialBody: T;
   // 一様球としての放射輝度(色つき)。天体の食(sunlitFactor)は掛けてあり、満ち欠けは
   // 受け手ごとに決まるので受け手が掛ける。
   readonly radiance: Albedo;
@@ -27,13 +27,13 @@ interface PlanetLight {
 
 // 基準点 reference(ECI)へ強く届く順に天体光源を MAX_PLANET_LIGHT_SLOTS 体まで返す。
 // starIntensity は主星の放射強度で、主星を持たない星系では null。
-export function selectPlanetLights(
-  candidates: readonly PlanetLightCandidate[], pivot: number, starIntensity: number | null,
+export function selectPlanetLights<T extends CelestialBody>(
+  candidates: readonly PlanetLightCandidate<T>[], pivot: number, starIntensity: number | null,
   reference: Vec3,
-): readonly PlanetLight[] {
+): readonly PlanetLight<T>[] {
   const bodies = candidates.map(({ celestialBody }) => celestialBody);
   const star = bodies.find((body) => body.kind === 'star') ?? null;
-  const scored: { readonly light: PlanetLight; readonly irradiance: number }[] = [];
+  const scored: { readonly light: PlanetLight<T>; readonly irradiance: number }[] = [];
   for (const { celestialBody, albedo } of candidates) {
     if (celestialBody.kind === 'star' || celestialBody.def.radius <= 0) continue;
     const pos = celestialBody.positionAt(pivot);
