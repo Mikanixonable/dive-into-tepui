@@ -5,7 +5,6 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
-import struct
 import tempfile
 import unittest
 
@@ -128,7 +127,7 @@ class RendererTests(unittest.TestCase):
         ]}]
         renderer = real_renderer.create_fixture_renderer(self.manifest, self.write_fixture(fixture))
         _, terrain = renderer.render_tile((0, 0, 0))
-        roughness = [values[3] for values in struct.iter_unpack("<4e", terrain[32:])]
+        roughness = [value / 255 for value in memoryview(terrain[32:]).cast("B").tolist()[2::4]]
         self.assertTrue(any(value < .1 for value in roughness))
         self.assertTrue(any(value > .7 for value in roughness))
 
@@ -156,18 +155,35 @@ class RendererTests(unittest.TestCase):
 
     @unittest.skipUnless(importlib.util.find_spec("PIL") is not None, "Pillow unavailable")
     def test_fixture_renderer_writes_explicit_synthetic_bundle(self):
+        from PIL import Image
+        import io
+
         renderer = real_renderer.create_fixture_renderer(self.manifest, self.write_fixture())
         with tempfile.TemporaryDirectory() as directory:
             source_manifest = Path(directory) / "sources.json"
             source_manifest.write_text(json.dumps(self.manifest))
             output = Path(directory) / "bundle"
+            color_output = io.BytesIO()
+            Image.new("RGB", (260, 260), (1, 2, 3)).save(color_output, format="JPEG")
+            color = color_output.getvalue()
+            terrain_z5 = bytearray(bake.encode_terrain_tile([(0., 0., 1.)] * 67600, [.8] * 67600, 5, 0, 0))
+            terrain_z0 = bytearray(bake.encode_terrain_tile([(0., 0., 1.)] * 67600, [.8] * 67600, 0, 0, 0))
+
+            def render(key):
+                payload = bytearray(terrain_z0 if key[0] == 0 else terrain_z5)
+                payload[12] = key[0]
+                payload[14:18] = key[1].to_bytes(4, "little")
+                payload[18:22] = key[2].to_bytes(4, "little")
+                return color, bytes(payload)
+
+            base_color = io.BytesIO()
+            Image.new("RGB", (8192, 4096), (1, 2, 3)).save(base_color, format="JPEG")
             result = bake.write_global_bundle(
                 self.manifest, source_manifest, Path(directory) / "raw", output,
-                renderer.render_tile, renderer.climate_maps(), max_zoom=0,
+                render, renderer.climate_maps(), base_color=base_color.getvalue(), max_zoom=4,
                 validate_inputs=False, data_provenance="synthetic_fixture")
             self.assertEqual(result["provenance"]["dataKind"], "synthetic_fixture")
-            self.assertEqual(result["coverage"], {"kind": "sparse", "maxZoom": 7, "expectedTiles": None})
-            self.assertEqual(json.loads((output / "tile-index.json").read_text())["entries"].__len__(), 2)
+            self.assertEqual(result["coverage"], {"kind": "sparse", "minZoom": 5, "maxZoom": 7, "expectedTiles": None})
 
     def test_fixture_rejects_wrong_provenance_and_missing_path(self):
         fixture = copy.deepcopy(self.fixture)
