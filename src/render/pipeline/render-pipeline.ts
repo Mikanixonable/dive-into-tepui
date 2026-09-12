@@ -1,13 +1,11 @@
-// フレームの描画パス構成を制御する。render/** 配下の個々の描画物モジュールとは別に、
-// 「何段で、どのターゲットへ描き、どう合成してキャンバスへ出すか」をここへ集約する。段の並びは
-// render() が持つ。composite パスは通常表示(debugTarget==='off')では HDR ターゲットを
-// トーンマッピングして合成し、それ以外を選ぶと代わりに中間ターゲットの中身を画面いっぱいに映す
-// (debug-target.ts)。
+// フレームの描画パスの構成 — 何段で、どのターゲットへ描き、どう合成してキャンバスへ出すか — を持つ。
+// composite パスは通常表示(debugTarget==='off')では HDR ターゲットをトーンマッピングして合成し、
+// デバッグ表示を選ぶと中間ターゲットの中身を画面いっぱいに映す。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { float, int, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
-import type { GraphicsSettingsData, GraphicsTarget } from '../graphics-settings';
+import type { GraphicsSettingsData } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 import type { DebugTargetHost, DebugTargetId } from './debug-target';
@@ -22,7 +20,7 @@ import { MaterialPass } from './material-pass';
 import { ShadowPass } from './shadow/shadow-pass';
 import { BodyShadow } from './shadow/body-shadow';
 import { RingShadow } from './shadow/ring-shadow';
-import { CumulusShadow } from './shadow/cumulus-shadow';
+import { CloudShadowRenderer } from './shadow/cloud-shadow-renderer';
 import { MeshShadow } from './shadow/mesh-shadow';
 import { OverlayPass } from './overlay-pass';
 import { AntialiasPass } from './antialias-pass';
@@ -32,17 +30,19 @@ import { Exposure } from './exposure';
 import { SunLight } from './sun-light';
 import { ShadowMaps } from './shadow/shadow-maps';
 import { viewPositionAt } from './view-ray';
-import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein-motion-material';
+import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein/protein-motion-material';
 import { FilmLut } from './film-lut';
 import { compileInto, compileIntoOutput } from './compile-into';
 import { DeferredTexture } from '../deferred-texture';
+import { setCelestialSurfaceViewport } from '../celestial/celestial-surface';
+import type { CloudLodMode } from '../cloud/cloud-field-sampler';
 
-export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
+export class RenderPipeline implements DebugTargetHost {
   private readonly gbuffer: GBufferPass;
   private readonly shadowPass: ShadowPass;
   private readonly _bodyShadow: BodyShadow;
   private readonly _ringShadow: RingShadow;
-  private readonly _cumulusShadow: CumulusShadow;
+  private readonly _cumulusShadow: CloudShadowRenderer;
   private readonly meshShadow: MeshShadow;
   private readonly shadowMaps: ShadowMaps;
   private readonly lightPrepass: LightPrepass;
@@ -64,7 +64,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly displayTarget: THREE.RenderTarget;
   private readonly quad: QuadMesh;
   // 合成段の色へ当てるフィルムのルック。通常表示の2枚(compositeMaterials.off と
-  // lensCompositeMaterial)だけがこのノードを組み込む。
+  // lensCompositeMaterial)が組み込む。
   private readonly filmLut = new FilmLut();
   private readonly compositeMaterials: Readonly<Record<DebugTargetId, THREE.MeshBasicNodeMaterial>>;
   // レンズ効果を掛けた通常表示。**compositeMaterials とは別に持つ** — デバッグ表示の選択肢
@@ -86,20 +86,31 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private readonly drawingBufferSize = new THREE.Vector2();
   private readonly unregisterProteinMotionRenderer: () => void;
 
-  // 通常表示に代えて画面いっぱいに映す中間ターゲットの選択。ページ再読み込みでは必ず 'off'
-  // に戻るセッション限定の状態で、永続化しない。
+  // 通常表示に代えて画面いっぱいに映す中間ターゲットの選択。セッション限定で、ページを読み直すと
+  // 'off' に戻る。
   public debugTarget: DebugTargetId = 'off';
 
-  // 以下は、シーン側が毎フレームの値(恒星の位置・順応の基準点・影を落とすもの・光源になる天体・
-  // 環境光の割合・大気を持つ天体)を書き込む先。
+  // 以下は、毎フレームの値(恒星の位置・順応の基準点・影を落とすもの・光源になる天体・環境光の割合・
+  // 大気を持つ天体)の書き込み先。
   public get sunLight(): SunLight { return this._sunLight; }
   public get exposure(): Exposure { return this._exposure; }
   public get bodyShadow(): BodyShadow { return this._bodyShadow; }
   public get ringShadow(): RingShadow { return this._ringShadow; }
-  public get cumulusShadow(): CumulusShadow { return this._cumulusShadow; }
+  public get cumulusShadow(): CloudShadowRenderer { return this._cumulusShadow; }
   public get planetLight(): PlanetLightSource { return this._planetLight; }
   public get ambient(): AmbientSource { return this._ambient; }
   public get atmosphere(): AtmospherePass { return this.atmospherePass; }
+
+  // 雲の積分の刻みを、画素ごとにブルーノイズでずらすかを切り替える。
+  public setCloudBlueNoiseEnabled(enabled: boolean): void {
+    this.atmospherePass.setCloudBlueNoiseEnabled(enabled);
+  }
+
+  // 雲場の mip 段の選び方(診断用)を、大気と影の両パスへ配る。fixedLevel は 'fixed' のときに読む段。
+  public setCloudLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
+    this.atmospherePass.setCloudLodSampling(mode, fixedLevel);
+    this.shadowPass.setCloudLodSampling(mode, fixedLevel);
+  }
 
   // graphics は構築時点の描画品質設定。以後の変更は applyGraphics() で受ける。
   public constructor(
@@ -115,7 +126,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     );
     this._bodyShadow = new BodyShadow(this._sunLight);
     this._ringShadow = new RingShadow(this._sunLight);
-    this._cumulusShadow = new CumulusShadow(this._sunLight);
+    this._cumulusShadow = new CloudShadowRenderer(this._sunLight);
     this.meshShadow = new MeshShadow(this._sunLight, this.shadowMaps);
     this.shadowPass = new ShadowPass(
       renderer, this.gbuffer,
@@ -220,6 +231,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.schematicMaterial = this.buildCompositeMaterial(this.schematicComposite.colorNode);
 
     this.quad = new QuadMesh(this.compositeMaterials.off);
+    this.syncTargetSize();
   }
 
   // 1 を超える HDR 値を切り落とさず白へ寄せる。Khronos PBR Neutral を選ぶのは、圧縮開始点より
@@ -284,6 +296,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
   private syncTargetSize(): THREE.Vector2 {
     this.renderer.getDrawingBufferSize(this.drawingBufferSize);
     const { x: width, y: height } = this.drawingBufferSize;
+    setCelestialSurfaceViewport(width, height);
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
     if (this.displayTarget.width !== width || this.displayTarget.height !== height) {
       this.displayTarget.setSize(width, height);
@@ -301,13 +314,15 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     }
   }
 
-  // 描画品質設定のうち、GPU 資源の確保を伴うものを各パスへ配る。値が変わった時点で1回呼ばれる。
+  // 構築後に変わった描画品質設定を各パスへ配る。
   public applyGraphics(graphics: GraphicsSettingsData): void {
+    // 描く段と影マップの品質。
     this.lensEnabled = graphics.lens;
     this.shadowMaps.setQuality(
       graphics.meshShadow,
       graphics.shadowSlotCount, graphics.shadowSlotSize, graphics.shadowTexelsPerPixel,
     );
+    // 露出と光源、仕上げの見た目。
     this._exposure.setCompensation(graphics.exposureCompensation);
     this.sunSource.setModel(graphics.sunLightModel);
     this._planetLight.setCount(graphics.planetLightCount);
@@ -381,13 +396,13 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     // 太陽光の影マップパス。G バッファを必要としないので、その前に置く。
     this.shadowMaps.render(scene, camera, height, this._sunLight);
 
-    // G バッファパス。camera.layers の一時的な絞り込みと GPU 計測の申告は自身の中で行う。
+    // G バッファパス。
     this.gbuffer.render(scene, camera, width, height);
 
-    // 影パス。G バッファ深度だけを読むので scene は渡さない。
+    // 影パス。G バッファの深度を読む。
     this.shadowPass.render(camera, width, height);
 
-    // ライティングパス。G バッファと影の透過率だけを読むので scene は渡さない。
+    // ライティングパス。G バッファと影の透過率を読む。
     this.lightPrepass.render(camera, width, height);
 
     // 模式図は G バッファの深度・法線だけから輪郭を出すため、マテリアルパス・大気パス・world
@@ -417,9 +432,8 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
       this.renderer.autoClear = true;
       this.renderer.setRenderTarget(null);
 
-      // レンズ効果パス。world パスまでの絵だけを読むので scene も camera も渡さない。設定で
-      // 切られているフレームは回さず、切り替わった最初の 1 フレームだけ出力を空へ戻す
-      // — 「レンズ」デバッグ表示にも、そのフレームが実際に何も作っていないことがそのまま出る。
+      // レンズ効果パス。world パスまでの絵を読む。設定で切られているフレームは出力を空にする
+      // — 「レンズ」デバッグ表示に、そのフレームが実際に何も作っていないことがそのまま出る。
       if (this.lensEnabled) this.lensPass.render(width, height);
       else this.lensPass.clear(width, height);
 
@@ -441,7 +455,7 @@ export class RenderPipeline implements DebugTargetHost, GraphicsTarget {
     this.overlayPass.render(scene, camera, style);
     this.renderer.setOutputRenderTarget(outputTarget);
 
-    // アンチエイリアスパス。表示用ターゲットの絵だけを読むので scene も camera も渡さない。
+    // アンチエイリアスパス。表示用ターゲットの絵を読む。
     this.antialiasPass.render();
   }
 

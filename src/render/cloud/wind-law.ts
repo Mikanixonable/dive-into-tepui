@@ -3,7 +3,6 @@
 // 地衡風の枝へ、谷が狭く深い所では遠心力が受け持って緯度に依らない枝へ落ちるので、**中緯度の
 // 低気圧も熱帯の台風も同じ式から出る。** 赤道でも高気圧側でも有限に留まる。
 import { abs, cos, cross, length, max, min, sin, sqrt, tanh } from 'three/tsl';
-import { R_EARTH, SIDEREAL_DAY } from '../../game/celestial/solar-system/constants';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
 // 摩擦の減衰率 [1/s]。1/k は風が摩擦で衰える時間で、4.7 h(海上の 8〜20 h と陸上の 3〜6 h のあいだ)。
@@ -12,12 +11,24 @@ export const FRICTION_RATE = 5.9e-5;
 
 // 空気の密度 [kg/m³]。気圧 [hPa] を力へ直すのに要る(100 は hPa → Pa の換算)。
 const AIR_DENSITY = 1.2;
-// 気圧の勾配 [hPa/rad] を加速度 [m/s²] へ、等圧線方向の 2 階微分 [hPa/rad²] を角速度の二乗 [1/s²] へ
-// 直す係数。どちらも密度と天体の半径からの換算で、調整値ではない。
-const GRADIENT_TO_ACCELERATION = 100 / (AIR_DENSITY * R_EARTH);
-const BEND_TO_SPIN_SQUARED = 100 / (AIR_DENSITY * R_EARTH ** 2);
-// コリオリ因子 f = CORIOLIS_RATE sin φ [1/s] の係数(= 2Ω)。
-const CORIOLIS_RATE = (4 * Math.PI) / SIDEREAL_DAY;
+
+// 気圧の勾配 [hPa/rad] を加速度 [m/s²] へ直す係数。半径 surfaceRadius [m] の天体の地表で。
+// 密度と半径からの換算で、調整値ではない。
+function gradientToAcceleration(surfaceRadius: number): number {
+  return 100 / (AIR_DENSITY * surfaceRadius);
+}
+
+// 等圧線方向の 2 階微分 [hPa/rad²] を角速度の二乗 [1/s²] へ直す係数。半径 surfaceRadius [m] の
+// 天体の地表で。密度と半径からの換算で、調整値ではない。
+function bendToSpinSquared(surfaceRadius: number): number {
+  return 100 / (AIR_DENSITY * surfaceRadius ** 2);
+}
+
+// コリオリ因子 f = coriolisRate sin φ [1/s] の係数(= 2Ω)。rotationPeriod は自転周期 [s]。
+function coriolisRate(rotationPeriod: number): number {
+  return (4 * Math.PI) / rotationPeriod;
+}
+
 // 渦の回る向きが決まらなくなる、赤道を挟む幅(sin 緯度で測る)。向きは周りの自転が渦へ渡すので、
 // コリオリ力の消える赤道では決まらない — 符号で切り替えると、そこで風が跳ぶ。熱帯低気圧の
 // 生まれない緯度(5°)に取る。外側ではほぼ ±1 で、15° の台風の巻きは 1% も鈍らない。
@@ -30,26 +41,33 @@ export function isobarAt(direction: Vec3Node, gradient: Vec3Node): Vec3Node {
 
 // 釣り合った風。velocity は [m/s]、turn は流れが向きを変える角速度 [rad/s](天頂まわりに右ねじ正で、
 // 北半球の低気圧で正)。曲率半径は |velocity| / turn。
-export type BalancedWind = {
+export interface BalancedWind {
   readonly velocity: Vec3Node;
   readonly turn: FloatNode;
-};
+}
+
+// 局所の気圧から出た風 local へ、全球の背景流 background [m/s] を足す。流れが向きを変える角速度は
+// local のものを保つ。
+export function composeWind(local: BalancedWind, background: Vec3Node): BalancedWind {
+  return { velocity: local.velocity.add(background), turn: local.turn };
+}
 
 // gradient は気圧の勾配 [hPa/rad] の接ベクトル、isobar は isobarAt() の向き、bend は等圧線に沿う
 // 向きの 2 階微分 [hPa/rad²](= |∇p| ÷ 等圧線の曲率半径。低気圧で正)、friction は摩擦の減衰率
 // [1/s]。摩擦を強く取るほど風は遅く、等圧線を深く横切る。maxCrossing は等圧線を横切る角の上限 [rad]
-// で、赤道から離れた所で向きだけを抑え、渦の向きが決まらない赤道へ向かって開く。
+// で、赤道から離れた所で向きだけを抑え、渦の向きが決まらない赤道へ向かって開く。surfaceRadius は
+// 天体の半径 [m]、rotationPeriod は自転周期 [s]。
 export function balancedWind(
   gradient: Vec3Node, isobar: Vec3Node, bend: FloatNode, latitude: FloatNode, friction: number,
-  maxCrossing: number,
+  maxCrossing: number, surfaceRadius: number, rotationPeriod: number,
 ): BalancedWind {
   const sinLatitude = sin(latitude);
-  const coriolis = sinLatitude.mul(CORIOLIS_RATE);
+  const coriolis = sinLatitude.mul(coriolisRate(rotationPeriod));
   const damped = sqrt(coriolis.mul(coriolis).add(friction ** 2));
-  const spinSquared = bend.mul(BEND_TO_SPIN_SQUARED);
+  const spinSquared = bend.mul(bendToSpinSquared(surfaceRadius));
   // 判別式の床を 0 に取ると、高気圧側(bend < 0)が厳密な釣り合いから 70% 外れる。
   const denominator = damped.add(sqrt(max(damped.mul(damped).add(spinSquared.mul(4)), friction ** 2)));
-  const speed = length(gradient).mul(2 * GRADIENT_TO_ACCELERATION).div(denominator);
+  const speed = length(gradient).mul(2 * gradientToAcceleration(surfaceRadius)).div(denominator);
   // 流れが渦の中心のまわりを回る角速度 [rad/s]。等圧線に沿う成分はコリオリとこれの和が受け持ち、
   // 受け持ち切れない残りを摩擦が受けて、等圧線を横切る流入になる。赤道で決まらなくなるのは向きだけ
   // なので、落とすのはここだけ — 速さを決める denominator は spinSquared を持ったままにする。
@@ -83,12 +101,15 @@ export function windStep(wind: BalancedWind, direction: Vec3Node, seconds: Float
 }
 
 // balancedWind と同じ釣り合いを、等圧線方向の 2 階微分が bend [hPa/rad²] で勾配の消える谷の芯に
-// ついて解いた、風が等圧線を横切る角 [rad]。**渦が小さく速いほど閉じる。**
-export function coreCrossingAngle(bend: number, latitude: number): number {
+// ついて解いた、風が等圧線を横切る角 [rad]。**渦が小さく速いほど閉じる。** surfaceRadius は
+// 天体の半径 [m]、rotationPeriod は自転周期 [s]。
+export function coreCrossingAngle(
+  bend: number, latitude: number, surfaceRadius: number, rotationPeriod: number,
+): number {
   const sinLatitude = Math.abs(Math.sin(latitude));
-  const coriolis = CORIOLIS_RATE * sinLatitude;
+  const coriolis = coriolisRate(rotationPeriod) * sinLatitude;
   const damped = Math.hypot(coriolis, FRICTION_RATE);
-  const spinSquared = BEND_TO_SPIN_SQUARED * bend;
+  const spinSquared = bendToSpinSquared(surfaceRadius) * bend;
   const spin = 2 * spinSquared
     / (damped + Math.sqrt(Math.max(damped * damped + 4 * spinSquared, FRICTION_RATE ** 2)));
   return Math.atan2(FRICTION_RATE, coriolis + spin * Math.tanh(sinLatitude / SPIN_SENSE_WIDTH));

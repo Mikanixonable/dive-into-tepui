@@ -4,7 +4,7 @@
 // 値の差分更新にとどめる。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../widgets';
 import type { DraggableWindow } from './draggable-window';
-import type { PropertyRow } from './property-window';
+import type { PropertyRow } from './property-window-content';
 
 // 行グループ見出しの文字列を組む。
 function groupToggleLabel(name: string, rowCount: number, expanded: boolean): string {

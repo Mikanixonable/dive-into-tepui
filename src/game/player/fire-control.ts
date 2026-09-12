@@ -1,0 +1,439 @@
+// プレイヤーの射撃・弾薬(マガジン/リロード)状態。発砲・排莢・バレル交換の演出もここで組み立てる。
+import * as THREE from 'three/webgpu';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
+import { LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, qRotate, randomQuat } from '../../math/quat';
+import { kinematicState } from '../../physics/kinematic-state';
+import { R_EARTH_EQ } from '../celestial/solar-system/constants';
+import { randSym } from '../../math/random';
+import { radiativeCooling, stepTemperature, stepThermalDeviation } from '../../physics/thermal';
+import { add, addScaled, dot, lenSq, norm, randPerp, randVec, scale, v3, Vec3 } from '../../math/vec3';
+
+import { Input } from '../../input/input';
+import { KEY_MAPPING as K } from '../../input/key-mapping';
+import type { Notifier } from '../../hud/notifier';
+import { MAG_ROUNDS } from './ammo-spec';
+import { WorldSfx } from '../../audio/sfx/world-sfx';
+import { Ship, PLAYER_MASS } from '../dynamic/dynamic-entity/ship';
+import { Bullet } from '../dynamic/dynamic-entity/bullet';
+import type { EntityRegistry } from '../dynamic/entity-registry';
+import { PLAYER_MUZZLE_OFFSETS } from '../../physics/player-shape';
+import { FlashEffects } from '../vfx/flash-effects';
+import type { StageOutcome } from '../stages/stage-outcome';
+import { Player } from './player';
+import type { FireSaveData } from '../save/save-data';
+import { HULL_EMISS, ENV_TEMP } from '../dynamic/dynamic-motion';
+import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
+import {
+  BARREL_RADIATING_AREA_PER_MASS, BARREL_SPECIFIC_HEAT,
+} from '../dynamic/dynamic-entity/debris-motion';
+
+// 排出物の剛体接触半径 [m]。薬莢は実物同様に軽く小さい。
+const CASING_PHYS_RADIUS = 0.2;
+const BARREL_PHYS_RADIUS = 0.8;
+const EJECTED_MAG_PHYS_RADIUS = 1.4;
+
+const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりに外殻へ入る熱量 [J]
+
+// 1発あたりに砲身へ入る熱量 [J]。発射ガスの熱の大半は砲身の側が受け取る。
+const GUN_BARREL_HEAT_PER_ROUND = 1.0e6;
+
+const BARREL_MASS = 300; // [kg]
+
+const INITIAL_MAGS = 3; // ゲーム開始時に連結されているマガジン数
+const SPINUP_TIME = 0.15; // 発射開始から実際に撃ち始めるまでの起動遅延 [s]
+const BULLET_SPREAD = 0.002; // 散布界 [rad]
+
+const BULLET_LIFETIME = 240; // 保険としての寿命 [sim s]
+const RECOIL_DV = 0.04; // 反動 [m/s]
+
+const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクールダウン [s]
+const MAGS_PER_BARREL = 3; // バレル交換までに消費できるマガジン数
+
+type ConsumeResult = 'empty' | 'normal' | 'mag-reload' | 'barrel-reload';
+
+// 艦の初期積載(予備マガジン数・装填済み残弾数)。
+export type AmmoLoad = { readonly mags: number; readonly rounds: number };
+
+// スナップショットからの復元か、新規配置の初期積載か。どちらも省略すればフィールド初期化子の
+// 既定積載で始まる。
+type FireInit =
+  | { readonly saved: FireSaveData }
+  | { readonly ammo?: AmmoLoad };
+
+// 太陽グレアによる散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが甘くなり、
+// 順光では締まる。難易度調整のための経験則であって物理計算ではない。
+// pos が地球の影(簡易円柱モデル)に入っていれば太陽光が届かないので倍率は 1。
+function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
+  const along = dot(pos, sunDir);
+  if (along < 0 && lenSq(addScaled(pos, sunDir, -along)) < R_EARTH_EQ * R_EARTH_EQ) return 1;
+
+  const angle = (Math.acos(Math.max(-1, Math.min(1, dot(aimDir, sunDir)))) * 180) / Math.PI;
+  if (angle <= 5) return 2;
+  if (angle <= 30) return 1 + (30 - angle) / 25;
+  if (angle >= 160) return 0.5;
+  if (angle >= 130) return 1 - ((angle - 130) / 30) * 0.5;
+  return 1;
+}
+
+export class FireControl {
+  rounds = MAG_ROUNDS;
+  mags = INITIAL_MAGS - 1;
+  barrel = MAGS_PER_BARREL;
+
+  // 装着している砲身の平均温度 [K] と、薬室側が平均より高い温度差 [K]。交換で切り離すときに
+  // そのまま排出されるデブリへ移る。
+  private barrelTemperature = ENV_TEMP;
+  private barrelDeviation = 0;
+  // 刻みに依らない砲身への投入熱 [J]。次の熱計算で一度だけ温度へ変換する。
+  private pendingBarrelJoules = 0;
+
+  cooldown = 0;
+  wasFiring = false;
+  wasEmptyClick = false;
+  muzzleIdx = 0; // 縦二連砲口の交互発射用
+
+  // 復元するスナップショットか、新規配置の初期積載を受け取る。どちらも省略すれば既定積載。
+  constructor(
+    private readonly player: Player,
+    private readonly _notifier: Notifier,
+    private readonly _worldSfx: WorldSfx,
+    private readonly _scene: THREE.Scene,
+    private readonly _fx: FlashEffects,
+    init: FireInit = {},
+  ) {
+    if ('saved' in init) {
+      this.mags = init.saved.mags;
+      this.rounds = init.saved.rounds;
+      this.barrel = init.saved.barrel;
+      this.barrelTemperature = init.saved.barrelTemperature ?? ENV_TEMP;
+      this.barrelDeviation = init.saved.barrelDeviation ?? 0;
+      this.cooldown = init.saved.cooldown;
+      this.muzzleIdx = init.saved.muzzleIdx;
+    } else if (init.ammo) {
+      this.mags = init.ammo.mags;
+      this.rounds = init.ammo.rounds;
+    }
+  }
+
+  get isFiring(): boolean { return this.wasFiring; }
+
+  get left(): boolean { return this.rounds > 0 || this.mags > 0; }
+
+  // 弾薬・砲身の状態をスナップショットへ落とす。
+  serialize(): FireSaveData {
+    return {
+      mags: this.mags,
+      rounds: this.rounds,
+      barrel: this.barrel,
+      barrelTemperature: this.barrelTemperature,
+      barrelDeviation: this.barrelDeviation,
+      cooldown: this.cooldown,
+      muzzleIdx: this.muzzleIdx,
+    };
+  }
+
+  // 拾ったマガジン数を加算する。弾切れ中なら即座に1マガジンを装填する。
+  onPickup(mags: number): void {
+    this.mags += mags;
+    if (this.rounds <= 0) { // 弾切れ状態だったならすぐにリロードする
+      this.mags--;
+      this.rounds = MAG_ROUNDS;
+    }
+  }
+
+  // 発射状態を強制的に解除する。
+  stopFiring(): void {
+    this.wasFiring = false;
+  }
+
+  // 発射入力を1フレーム分処理する。トリガーが引かれ、ワープ速度・弾薬が許せば発射する。
+  updateFireState(
+    dt: number,
+    input: Input,
+    activeStage: StageOutcome,
+    registry: EntityRegistry,
+    celestialBodies: CelestialBodies,
+  ): void {
+    this.tickReloadTimer(dt);
+
+    const keyHeld = input.down(K.fire);
+    if (!keyHeld) {
+      // トリガーを離した時点で連射状態を畳む: wasFiring を立てたままにすると
+      // fineAttitude(微調整出力)が恒久的に有効なままになり、次にトリガーを
+      // 引いたときもスピンアップ演出(justStartedFiring)が起きなくなる。
+      this.wasFiring = false;
+      return;
+    }
+
+    if (this.player.totalFireRate <= 0) {
+      if (!this.wasEmptyClick) {
+        this._worldSfx.emptyClick();
+        this._notifier.hint('武装が損傷しており発射できない', 3000);
+        this.wasEmptyClick = true;
+      }
+      return;
+    }
+
+    if (!this.left) {
+      if (!this.wasEmptyClick) {
+        this._worldSfx.emptyClick();
+        this._notifier.hint('弾薬切れ — 軌道上の補給 ▣ を回収せよ', 3000);
+        this.wasEmptyClick = true;
+      }
+      return;
+    }
+
+    this.fireCycle(activeStage, registry, celestialBodies);
+  }
+
+  // クールダウンタイマーを dt だけ減らす。
+  private tickReloadTimer(dt: number): void {
+    if (0 < this.cooldown)
+      this.cooldown -= dt;
+  }
+
+  // クールダウン込みの発射サイクルを1回進める。スピンアップ中・クールダウン中は発射しない。
+  private fireCycle(
+    activeStage: StageOutcome,
+    registry: EntityRegistry,
+    celestialBodies: CelestialBodies,
+  ): void {
+    const justStartedFiring = !this.wasFiring;
+    this.wasFiring = true;
+    this.wasEmptyClick = false;
+
+    // 起動時のタイムラグ
+    if (justStartedFiring) {
+      this._worldSfx.spinUp();
+      this.cooldown = SPINUP_TIME;
+      return;
+    }
+
+    // 起動時及びクールダウン中は発射しない
+    if (0 < this.cooldown) {
+      return;
+    }
+
+    const result = this.consume();
+
+    this.fireGun(activeStage, registry, celestialBodies);
+    switch (result) {
+      case 'empty':
+      case 'normal':
+        this.cooldown = 1 / this.player.totalFireRate;
+        return;
+      case 'mag-reload':
+        this.spawnEjectedMagazineFrame(this.player, registry);
+        this._worldSfx.magFeed();
+        this.cooldown = 1 / this.player.totalFireRate;
+        return;
+      case 'barrel-reload':
+        this.spawnEjectedMagazineFrame(this.player, registry);
+        this.cooldown = RELOAD_TIME;
+        this.dropBarrel(this.player, registry);
+        this._worldSfx.playReload();
+        return;
+    }
+  }
+
+  // 1発の消費を試みる。マガジンを撃ち尽くしたら次のマガジンへ(mag-reload)、
+  // バレル内の全マガジンを撃ち尽くしたらバレル交換(barrel-reload)を報告する。
+  consume(): ConsumeResult {
+    if (!this.left) return 'empty';
+
+    // マガジンに弾が残っていれば1発消費するだけ
+    this.rounds--;
+    if (this.rounds > 0) return 'normal';
+    if (this.mags <= 0) return 'normal'; // 最後の1発を撃ち切った(次回から empty)
+
+    // マガジンを撃ち尽くしたので次のマガジンへ
+    this.mags--;
+    this.rounds = MAG_ROUNDS;
+    this.barrel--;
+    if (this.barrel > 0) return 'mag-reload';
+
+    this.barrel = MAGS_PER_BARREL;
+    return 'barrel-reload';
+  }
+
+  // 手動リロードを試みる。開始できたら true。
+  manualReload(registry: EntityRegistry): boolean {
+    if (this.cooldown > 0) return false;
+
+    // 予備マガジンがあり、かつ装填中のマガジンに実際に補充の余地があるときだけリロードする
+    const canReload = this.mags > 0 && this.rounds < MAG_ROUNDS;
+    if (!canReload) return false;
+    this.mags--;
+    this.rounds = MAG_ROUNDS;
+    this.barrel = MAGS_PER_BARREL;
+    this.cooldown = RELOAD_TIME;
+    this._worldSfx.playReload();
+    this.dropBarrel(this.player, registry);
+    return true;
+  }
+
+  // ---------------------------------------------------------------- entity管理
+
+  // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、発射数を記録する。
+  private fireGun(
+    activeStage: StageOutcome,
+    registry: EntityRegistry,
+    celestialBodies: CelestialBodies,
+  ): void {
+    const fwd = qRotate(this.player.motion.att.q, LOCAL_FORWARD);
+
+    // 縦二連の砲口から交互に発射する
+    const mo = PLAYER_MUZZLE_OFFSETS[this.muzzleIdx]!;
+    this.muzzleIdx = (this.muzzleIdx + 1) % PLAYER_MUZZLE_OFFSETS.length;
+    const muzzle = add(
+      this.player.motion.state.r,
+      qRotate(this.player.motion.att.q, v3(mo.x, mo.y, mo.z)),
+    );
+
+    this.spawnBullet(this.player, muzzle, fwd, registry, celestialBodies);
+    // 反動(運動量保存の風味): 発射方向と逆に微小 Δv(瞬間的な速度変更なので時刻は据え置き)
+    this.player.motion.state = kinematicState<'eci'>(
+      this.player.motion.state.t,
+      this.player.motion.state.r,
+      addScaled(this.player.motion.state.v, fwd, -RECOIL_DV),
+    );
+    this.dropCasing(this.player, muzzle, registry);
+    this.spawnMuzzleFlash(this.player, muzzle, fwd);
+
+    activeStage.scoreCounter.recordShot();
+    this.player.motion.absorbHeat(GUN_HEAT_PER_ROUND / PLAYER_MASS);
+    this.pendingBarrelJoules += GUN_BARREL_HEAT_PER_ROUND;
+    this._worldSfx.fire();
+  }
+
+  // 弾丸: 機首方向 + 散布界
+  private spawnBullet(
+    ship: Ship, muzzle: Vec3, fwd: Vec3, registry: EntityRegistry, celestialBodies: CelestialBodies,
+  ): void {
+    const sunDir = celestialBodies.sunDirFrom(ship.motion.state.r, ship.motion.state.t);
+    const spreadScale = sunGlareSpreadScale(muzzle, fwd, sunDir);
+    // 機首方向に散布角を加えた発射方向
+    const spread = Math.abs(randSym(BULLET_SPREAD)) * spreadScale;
+    const dir = norm(addScaled(fwd, randPerp(fwd), spread));
+    const bullet = new Bullet(
+      kinematicState<'eci'>(
+        ship.motion.state.t,
+        addScaled(muzzle, fwd, 1.5),
+        addScaled(ship.motion.state.v, dir, ship.averageMuzzleVelocity),
+      ),
+      BULLET_LIFETIME,
+      'player',
+      'normal',
+      ship.weaponDamage,
+      this._worldSfx,
+    );
+    registry.add(bullet);
+  }
+
+  // 薬莢: -X 側へ排出(+X 側はマガジンベルトの給弾があるため)。
+  // 初速は抑えてゆっくり漂わせる一方、回転速度は個体ごとに大きくばらつかせる。
+  private dropCasing(ship: Ship, muzzle: Vec3, registry: EntityRegistry): void {
+    // 機体姿勢基準の左右・上方向
+    const right = qRotate(ship.motion.att.q, LOCAL_RIGHT);
+    const up = qRotate(ship.motion.att.q, LOCAL_UP);
+    registry.add(new DebrisPiece(
+      kinematicState<'eci'>(
+        ship.motion.state.t,
+        add(muzzle, scale(right, -1.4)),
+        add(
+          ship.motion.state.v,
+          add(scale(right, -(0.5 + Math.random() * 0.3)), add(scale(up, randSym(0.2)), randVec(0.1))),
+        ),
+      ),
+      { kind: 'casing', bornSim: ship.motion.state.t },
+      {
+        q: randomQuat(),
+        w: v3(randSym(6.0), randSym(6.0), randSym(6.0)),
+        inertia: v3(0.85, 0.3, 1.15), // 円筒: 長軸(y)が最小。x/z も非対称にしジャニベコフ効果を起こす
+      },
+      this._worldSfx, this._fx, CASING_PHYS_RADIUS, this._scene,
+    ));
+  }
+
+  // マズルフラッシュ: 発射した側の砲口の少し先に出す。
+  private spawnMuzzleFlash(ship: Ship, muzzle: Vec3, fwd: Vec3): void {
+    this._fx.spawnMuzzleFlash(kinematicState<'eci'>(
+      ship.motion.state.t, addScaled(muzzle, fwd, 1.2), ship.motion.state.v,
+    ));
+  }
+
+  // 装着している砲身の温度を dt だけ進める。発砲で入った熱は刻みの分け方に依らず一度だけ
+  // 温度へ変わり、薬室側には平均の 2 倍の温度上昇として乗る(SPEC/FLIGHT.md「熱管理」)。
+  stepBarrelThermal(dt: number): void {
+    // 放射で冷え、温度差は薄まる。
+    const cooling = radiativeCooling(
+      this.barrelTemperature, ENV_TEMP, HULL_EMISS, BARREL_RADIATING_AREA_PER_MASS,
+      BARREL_SPECIFIC_HEAT, dt);
+    this.barrelTemperature = stepTemperature(
+      this.barrelTemperature, -cooling, BARREL_SPECIFIC_HEAT, dt);
+    this.barrelDeviation = stepThermalDeviation(
+      this.barrelDeviation, this.barrelTemperature, HULL_EMISS,
+      BARREL_RADIATING_AREA_PER_MASS, BARREL_SPECIFIC_HEAT, dt);
+    // 溜まっていた発射ガスの熱を、この区間で一度だけ温度へ変える。
+    if (this.pendingBarrelJoules === 0) return;
+    const rise = this.pendingBarrelJoules / (BARREL_MASS * BARREL_SPECIFIC_HEAT);
+    this.barrelTemperature += rise;
+    this.barrelDeviation += rise;
+    this.pendingBarrelJoules = 0;
+  }
+
+  // バレル交換時に円柱アイテムをデブリとして放出する。装着していた砲身の温度は、そのまま
+  // 排出されたデブリへ移る。
+  dropBarrel(ship: Ship, registry: EntityRegistry): void {
+    // 下方に少し勢いをつけて放出
+    const down = qRotate(ship.motion.att.q, v3(0, -1, 0));
+    registry.add(new DebrisPiece(
+      kinematicState<'eci'>(
+        ship.motion.state.t,
+        add(ship.motion.state.r, qRotate(ship.motion.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
+        add(ship.motion.state.v, add(scale(down, 3.0), randVec(0.5))),
+      ),
+      {
+        kind: 'barrel',
+        bornTemperature: this.barrelTemperature,
+        bornThermalDeviation: this.barrelDeviation,
+      },
+      {
+        q: ship.motion.att.q,
+        w: v3(randSym(2), randSym(2), randSym(2)),
+        inertia: v3(1, 0.2, 1), // 円柱
+      },
+      this._worldSfx, this._fx, BARREL_PHYS_RADIUS, this._scene,
+    ));
+    this.barrelTemperature = ENV_TEMP;
+    this.barrelDeviation = 0;
+    this.pendingBarrelJoules = 0;
+  }
+
+  // マガジン1個を撃ち尽くした瞬間、-X 側(薬莢と同じ側)の位置から
+  // 空になったマガジンの外枠(弾なし)をデブリとして放出する。
+  private spawnEjectedMagazineFrame(ship: Ship, registry: EntityRegistry): void {
+    // 排出ポートの位置と初速
+    const right = qRotate(ship.motion.att.q, LOCAL_RIGHT);
+    const portWorld = add(
+      ship.motion.state.r, qRotate(ship.motion.att.q, v3(-0.9, 0, 0)),
+    );
+    registry.add(new DebrisPiece(
+      kinematicState<'eci'>(
+        ship.motion.state.t,
+        portWorld,
+        add(
+          ship.motion.state.v,
+          add(scale(right, -(0.5 + Math.random() * 0.3)), randVec(0.15)),
+        ),
+      ),
+      { kind: 'magazineFrame' },
+      {
+        q: ship.motion.att.q,
+        w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
+        inertia: v3(1, 1.2, 1.4),
+      },
+      this._worldSfx, this._fx, EJECTED_MAG_PHYS_RADIUS, this._scene,
+    ));
+  }
+}

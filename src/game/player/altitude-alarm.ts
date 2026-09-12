@@ -1,9 +1,9 @@
 // 自機の高度低下の監視と警告。離心率による短周期の高度振動で誤反応しないよう、高度も変化率も
 // 指数移動平均で平滑化する。**熱ではない** — 温度も動圧も見ない。
-import { CelestialMotion } from '../../physics/celestial-motion';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { ellipsoidAltitude } from '../../physics/atmosphere';
 import { Vec3, sub } from '../../math/vec3';
-import { Hud } from '../hud/hud';
+import type { Notifier } from '../../hud/notifier';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 
 // 高度低下警告のしきい値(降順)。EMA 高度がこれを下回るたびに一度だけ警告する [m]
@@ -25,14 +25,14 @@ export class AltitudeAlarm {
   private readonly warnedThresholds = new Set<number>();
 
   constructor(
-    private readonly _hud: Hud,
+    private readonly _notifier: Notifier,
     private readonly _worldSfx: WorldSfx,
   ) {}
 
   // 位置 r の高度を atmosphereBody の基準楕円体から測り、平滑化して警告を出す。大気天体が
   // いなければ「大気の底」が無いので何もしない。
   update(
-    dt: number, r: Vec3, atmosphereBody: CelestialMotion | null, atmospherePivot: number,
+    dt: number, r: Vec3, atmosphereBody: CelestialBody | null, atmospherePivot: number,
   ): void {
     if (atmosphereBody === null) return;
     const atm = atmosphereBody.atmosphereAt(atmospherePivot);
@@ -57,7 +57,7 @@ export class AltitudeAlarm {
       if (this.altEma < threshold) {
         if (this.warnedThresholds.has(threshold)) continue;
         this.warnedThresholds.add(threshold);
-        this._hud.hint(`警告: 高度が${Math.round(threshold / 1000)}km以下です`, 3000);
+        this._notifier.hint(`警告: 高度が${Math.round(threshold / 1000)}km以下です`, 3000);
         this._worldSfx.altAlarm();
       } else if (this.altEma > threshold + ALT_WARN_HYSTERESIS) {
         this.warnedThresholds.delete(threshold);

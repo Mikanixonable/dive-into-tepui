@@ -54,7 +54,7 @@ export function register(): void {
     const stack = new BoosterStack([stage('inner'), stage('outer')]);
     assert.equal(stack.toggleIgnition(), true);
     const result = stack.step(1);
-    assert.equal(result.thrust, 1_000);
+    assert.equal(result.averageThrust, 1_000);
     assert.equal(stack.stages[0]?.fuel, 10, '内側段は燃えない');
     assert.equal(stack.stages[1]?.fuel, 8);
   });
@@ -66,7 +66,6 @@ export function register(): void {
     assert.equal(result.fuelConsumed, 2);
     assert.equal(result.burnRatio, 0.5);
     assert.equal(result.averageThrust, 500);
-    assert.equal(result.thrust, 500);
     assert.equal(stack.stages[0]?.fuel, 0);
     assert.equal(stack.stages[0]?.ignited, false);
   });
@@ -74,9 +73,7 @@ export function register(): void {
   test('booster stack: 空スタック/空燃料段は点火せず、detach は null', () => {
     const empty = new BoosterStack();
     assert.equal(empty.toggleIgnition(), false);
-    assert.deepEqual(empty.step(1), {
-      thrust: 0, averageThrust: 0, burnRatio: 0, fuelConsumed: 0, burning: false,
-    });
+    assert.deepEqual(empty.step(1), { averageThrust: 0, burnRatio: 0, fuelConsumed: 0 });
     assert.equal(empty.detachOutermost(), null);
 
     const dry = new BoosterStack([stage('dry', 0)]);

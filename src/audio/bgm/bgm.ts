@@ -1,52 +1,45 @@
-// BGM の公開窓口。ユーザー音量をマスターゲインとして持ち、音楽の線(Conductor)を束ねて、
-// 唯一の先読みタイマーでそれらを進める。どの曲をいつ鳴らすかは線それぞれの責務。
-// 線は2本ある: ゲーム中の BGM と、設定画面での試聴。互いのノード鎖は独立していて、
-// 試聴はゲーム側の状態に触れない — 設定画面を開いている間ゲーム側は伏せておき、
-// 閉じたら試聴の線を畳んでゲーム側を戻す。
-// ゲインは3層: マスター(ユーザー音量)、線ごと(その線を伏せる)、曲ごと(その曲のフェード)。
-// 1つのノードに兼ねさせると、書き手の違う操作が同じ AudioParam を奪い合い、後の呼び出しが
-// 前の形を打ち消すので、層を分けて持つ。
+// BGM の公開窓口。ユーザー音量をマスターゲインとして持ち、音楽の線(Conductor)を束ねて
+// 1つの先読みタイマーで進める。線はゲーム中の BGM と試聴の2本で、互いのノード鎖は独立している。
+// 試聴の期間(beginAudition〜endAudition)はゲーム中の BGM を伏せる。
 import { BGM_TRACKS } from './tracks/tracks';
 import { Conductor } from './conductor';
 import { AudioEngine } from '../audio-engine';
 import { trackCycleDurationSec } from './track-cycle';
 
-const BGM_VOL_KEY = 'tepui.settings.bgm_vol'; // localStorage キー
 const PUMP_INTERVAL_MS = 120; // スケジューラを回す間隔
-const LOOKAHEAD_SEC = 0.6; // この先ぶんまでまとめてスケジュールし、タイマー精度に依存しないようにする
+const LOOKAHEAD_SEC = 0.6; // まとめてスケジュールする先読みの幅。タイマーの揺れをこの幅で吸収する
 const AUDITION_FADE_SEC = 0.15; // 試聴を切り替える・止めるときのフェード
+
+// 保存が無いときのユーザー音量。
+export const DEFAULT_BGM_VOLUME = 1;
+
+// 保存された文字列をユーザー音量へ読み直す。数として読めない値は既定へ落とし、読めた値は 0〜1 へ収める。
+export function parseBgmVolume(text: string | null): number {
+  if (text === null) return DEFAULT_BGM_VOLUME;
+  const vol = Number.parseFloat(text);
+  if (Number.isNaN(vol)) return DEFAULT_BGM_VOLUME;
+  return Math.min(1, Math.max(0, vol));
+}
+
+// ユーザー音量を保存文字列へ書き出す。
+export function formatBgmVolume(vol: number): string {
+  return String(vol);
+}
 
 export class Bgm {
   private masterGain: GainNode | null = null;
   private ambient: Conductor | null = null;
   private audition: Conductor | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
-  private volume = 1;
 
-  // 保存済みの音量設定を読み込む。
-  constructor(private readonly engine: AudioEngine) {
-    try {
-      const saved = localStorage.getItem(BGM_VOL_KEY);
-      if (saved !== null) this.volume = parseFloat(saved);
-    } catch {
-      /* localStorage 不可の環境では既定値(ON)のまま */
-    }
-  }
+  // volume は鳴らし始めるときのユーザー音量 [0〜1]。
+  public constructor(private readonly engine: AudioEngine, private volume: number) {}
 
   // === 共通 (conductor によらない操作) ===
 
-  getVolume(): number {
-    return this.volume;
-  }
-
-  // 設定画面からの音量変更。再生中なら即反映し、停止中に正の音量へ上げたら再生を始める。
-  setVolume(vol: number): void {
+  // ユーザー音量を差し替える。再生中なら即反映し、停止中に正の音量へ上げたら再生を始める。
+  public setVolume(vol: number): void {
     this.volume = vol;
-    try {
-      localStorage.setItem(BGM_VOL_KEY, vol.toString());
-    } catch {
-      /* 保存できなくても再生自体は反映する */
-    }
     const ctx = this.engine.ctx;
     if (!ctx) return;
     if (this.masterGain) {
@@ -55,7 +48,8 @@ export class Bgm {
     if (vol > 0) this.start();
   }
 
-  // ユーザー音量を表すマスターゲイン。線を跨いで生き続ける唯一のノード。
+  // ユーザー音量を表すマスターゲイン。線を跨いで生き続ける。線を伏せるゲイン・曲のフェードとは
+  // 別のノードに持つ — 1つに兼ねると、書き手の違う操作が同じ AudioParam の形を打ち消し合う。
   private ensureMasterGain(ctx: AudioContext): GainNode {
     if (this.masterGain) return this.masterGain;
     const g = ctx.createGain();
@@ -65,7 +59,7 @@ export class Bgm {
     return g;
   }
 
-  // どれかの線が鳴っている間だけ刻みを回す。
+  // どれかの線が鳴っていれば刻みを回し、どれも鳴っていなければ止める。
   private syncPump(): void {
     const sounding = (this.ambient?.isSounding ?? false) || (this.audition?.isSounding ?? false);
     if (sounding && !this.timer) {
@@ -103,17 +97,16 @@ export class Bgm {
     this.syncPump();
   }
 
-  // 最初のユーザー操作から呼ばれ、ゲーム内 BGM を一度だけ始める。この操作はキー入力・
-  // ポインタ入力のたびに飛ぶので、二度目以降は何もしない — 決着で止めた BGM が、次の
-  // キー入力で蘇らないため。
-  ensureStarted(): void {
+  // ゲーム内 BGM を、このインスタンスで一度だけ始める。二度目以降の呼び出しは何もしないので
+  // 入力のたびに呼んでよく、決着で止めた BGM もこれでは蘇らない。
+  public ensureStarted(): void {
     if (this.autoStartUsed || !this.engine.ctx) return;
     this.autoStartUsed = true;
     if (this.volume > 0) this.start();
   }
 
   // ゲーム内 BGM を再開する。直前に鳴らしていた曲から始める。
-  resume(): void {
+  public resume(): void {
     const ctx = this.engine.ctx;
     if (this.volume <= 0 || !ctx) return;
     this.start(this.ensureAmbient(ctx).currentTrackIndex);
@@ -129,25 +122,24 @@ export class Bgm {
   }
 
   // ゲーム中の BGM を fadeSec 秒かけてフェードアウトする。
-  stop(fadeSec = 2.5): void {
+  public stop(fadeSec = 2.5): void {
     this.ambient?.stop(fadeSec);
     this.syncPump();
   }
 
   // === 試聴用 BGM (audition conductor) ===
-  // begin/end は設定画面の開閉そのもので、試聴の線とゲーム内 BGM の両方に効く。
+  // beginAudition〜endAudition が試聴の期間で、その間ゲーム内 BGM を伏せる。
 
-  // 設定画面が開いた。ゲーム内 BGM を伏せ、試聴だけが聞こえる状態にする。
-  // まだ線が無ければ、組まれたときに伏せた状態から始める。
-  beginAudition(): void {
+  // 試聴の期間を始め、ゲーム内 BGM を伏せる。まだ線が無ければ、組まれたときから伏せておく。
+  public beginAudition(): void {
     this.paused = true;
     this.ambient?.pause();
   }
 
 
-  // 指定した曲を先頭から試聴する。AudioContext の unlock も最初のクリックで行う。
-  // 試聴の線は曲送りしないので、選んだ曲がそのまま鳴り続ける。
-  playAudition(index: number): void {
+  // 指定した曲を先頭から試聴し、曲送りせずに鳴らし続ける。AudioContext を unlock するので、
+  // ユーザー操作のハンドラから呼ぶ。
+  public playAudition(index: number): void {
     this.engine.unlock();
     const ctx = this.engine.ctx;
     if (!ctx || BGM_TRACKS.length === 0) return;
@@ -157,31 +149,30 @@ export class Bgm {
     this.syncPump();
   }
 
-  // 試聴を止める。設定画面は開いたままなので、ゲーム中の BGM は伏せたまま。
-  stopAudition(): void {
+  // 試聴を止める。試聴の期間は続くので、ゲーム中の BGM は伏せたまま。
+  public stopAudition(): void {
     this.disposeAudition();
     this.syncPump();
   }
 
   // 試聴中の曲を、一巡の中の timeSec 秒の位置へ飛ばす。試聴していなければ何もしない。
-  seekAudition(timeSec: number): void {
+  public seekAudition(timeSec: number): void {
     this.audition?.seek(timeSec);
   }
 
   // 試聴中の曲の、一巡の中での経過秒数。試聴していなければ 0。
-  auditionElapsedSec(): number {
+  public auditionElapsedSec(): number {
     return this.audition?.elapsedSec ?? 0;
   }
 
   // 指定した曲が一巡する長さ(秒)。一巡という概念を持たない曲では 0。
-  auditionDurationSec(index: number): number {
+  public auditionDurationSec(index: number): number {
     const track = BGM_TRACKS[index];
     return track ? trackCycleDurationSec(track) : 0;
   }
 
-  // 設定画面が閉じた。試聴の線を畳み、ゲーム中の BGM を元へ戻す。
-  // 開いた時点で鳴っていなかった場合は伏せて戻すだけなので、無音のままになる。
-  endAudition(): void {
+  // 試聴の期間を終える。試聴の線を畳み、ゲーム中の BGM の伏せを解く(伏せる前に鳴っていなければ無音のまま)。
+  public endAudition(): void {
     this.paused = false;
     this.disposeAudition();
     this.ambient?.resume();

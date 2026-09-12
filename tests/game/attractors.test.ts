@@ -10,7 +10,7 @@ import { add, addScaled, len, sub, v3 } from '../../src/math/vec3';
 import {
   attractorsNearInto, classifyAttractors, GRAVITY_NEGLIGIBLE_ACCEL,
 } from '../../src/game/dynamic/attractors';
-import type { CelestialMotion } from '../../src/physics/celestial-motion';
+import type { CelestialBody } from '../../src/physics/celestial-body';
 import type { Vec3 } from '../../src/math/vec3';
 
 // 現実の太陽系・地球原点の既定の登録天体。
@@ -39,16 +39,18 @@ const SITES: readonly Site[] = [
   { name: '低月周回軌道', positionAt: (t) => aboveSurface('moon', 100e3, t) },
   { name: '地球から 1.5e9 m', positionAt: () => v3(1.5e9, 0, 0) },
   { name: 'ガニメデ近傍', positionAt: (t) => aboveSurface('ganymede', 1000e3, t) },
+  // 到達量が km の桁しかない小天体。フレームのあいだに天体自身が到達量の何桁も先へ動く。
+  { name: 'ベンヌ近傍', positionAt: (t) => aboveSurface('bennu', 1000, t) },
 ];
 
 // 天体一式が位置 r へ及ぼす ECI 加速度の和。
-function gravitySum(bodies: readonly CelestialMotion[], r: Vec3, t: number): Vec3 {
+function gravitySum(bodies: readonly CelestialBody[], r: Vec3, t: number): Vec3 {
   return bodies.reduce((sum, body) => add(sum, attractorAccel(r, body, t)), v3());
 }
 
 // 時刻 t に位置 pos へ効くと絞り込まれた重力源。
-function attractorsNear(pos: Vec3, t: number): readonly CelestialMotion[] {
-  return attractorsNearInto(pos, classifyAttractors(SYSTEM.gravityMotions, t), []);
+function attractorsNear(pos: Vec3, t: number): readonly CelestialBody[] {
+  return attractorsNearInto(pos, classifyAttractors(SYSTEM.gravityMotions, t, t, t), []);
 }
 
 export function register(): void {
@@ -66,6 +68,27 @@ export function register(): void {
       }
     });
   }
+
+  // 分類はフレームに1組だけ組んで全サブステップで使い回すので、**区間内のどの時刻の分類も
+  // 覆っていなければならない。** 判定距離へ足す「区間のあいだに動きうる距離」を落とすと、
+  // 区間の途中で到達量の内側へ入ってくる天体を取りこぼす。区間は最高段の時間加速で 60 fps の
+  // 1フレームが進む時間送り(×33554432 / 60 ≈ 5.6e5 s)。
+  test('attractors: フレームに1組だけ組んだ分類は、区間内のどの時刻の分類も覆う', () => {
+    const FRAME = 33554432 / 60;
+    for (const site of SITES) {
+      for (const t0 of SAMPLE_TIMES) {
+        const frame = classifyAttractors(SYSTEM.gravityMotions, t0 + FRAME / 2, t0, t0 + FRAME);
+        for (let i = 0; i <= 8; i++) {
+          const t = t0 + (i / 8) * FRAME;
+          const pos = site.positionAt(t);
+          const covered = new Set(attractorsNearInto(pos, frame, []));
+          for (const body of attractorsNear(pos, t)) {
+            assert.ok(covered.has(body), `${site.name} t=${t}: フレームの分類が ${body.id} を落とした`);
+          }
+        }
+      }
+    }
+  });
 
   test('attractors: ガニメデ近傍でも月は絞り込みを通る — ECI 原点補正項は問い合わせ位置に依らない', () => {
     for (const t of SAMPLE_TIMES) {
