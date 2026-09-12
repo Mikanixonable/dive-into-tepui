@@ -5,14 +5,14 @@ import { WIDGET_STYLE } from '../widgets/widget-style';
 
 const SURFACE_STYLE = `
 .ui-surface-quiet, #hud .panel {
-  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-quiet);
+  background: var(--glass-quiet);
   border-radius: var(--radius-panel);
   box-shadow: var(--glass-shadow);
   backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
   -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
 }
 #hud .ui-surface-focus, .ui-surface-focus {
-  background: linear-gradient(145deg, var(--glass-highlight), transparent 42%), var(--glass-focus);
+  background: var(--glass-focus);
   border-radius: var(--radius-panel);
   box-shadow: var(--glass-shadow);
   backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));

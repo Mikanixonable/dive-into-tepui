@@ -3,7 +3,7 @@
   "kind": "earth-surface-global-fixture",
   "provenance": "synthetic_fixture",
   "datasetId": "earth-2026-09-09-a",
-  "sourceManifestSha256": "6fa02302552ea033b1d5e8969a9064c0a71f2fadf97f6f8098063ffc26624fbb",
+  "sourceManifestSha256": "81f60fb807765586a05a90fe3d0ebd67eefeeeb1a88a58f4294d6fa0fc1d5265",
   "surfaceSourceId": "etopo-2022-v1-ice-surface",
   "geoidSourceId": "etopo-2022-v1-geoid",
   "gshhgPolygons": [

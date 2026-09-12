@@ -2,7 +2,6 @@
 // Stage A の配信契約を、小さく固定した決定的な実体で検査する。
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -16,7 +15,13 @@ import {
   EARTH_BASE_COLOR_HEIGHT,
   EARTH_BASE_COLOR_WIDTH,
   EARTH_TERRAIN_BYTES,
+  EARTH_TERRAIN_CHANNELS,
+  EARTH_TERRAIN_FORMAT_VERSION,
+  EARTH_TERRAIN_LAYOUT,
   EARTH_TERRAIN_PAYLOAD_BYTES,
+  EARTH_TERRAIN_SCALAR_UINT8,
+  readBaseColorJpeg,
+  validateManifest,
 } from './contract.mjs';
 import { fixtureClimatePng } from './fixture-climate.mjs';
 
@@ -25,11 +30,11 @@ const execFileAsync = promisify(execFile);
 function terrainPayload({ z = 0, x = 0, y = 0 } = {}) {
   const payload = Buffer.alloc(EARTH_TERRAIN_PAYLOAD_BYTES);
   payload.write('ESTN', 0, 'ascii');
-  payload.writeUInt16LE(1, 4); payload.writeUInt16LE(32, 6);
+  payload.writeUInt16LE(EARTH_TERRAIN_FORMAT_VERSION, 4); payload.writeUInt16LE(32, 6);
   payload.writeUInt16LE(260, 8); payload.writeUInt16LE(260, 10);
   payload.writeUInt8(z, 12); payload.writeUInt8(0, 13);
   payload.writeUInt32LE(x, 14); payload.writeUInt32LE(y, 18);
-  payload.writeUInt8(4, 22); payload.writeUInt8(1, 23);
+  payload.writeUInt8(EARTH_TERRAIN_CHANNELS, 22); payload.writeUInt8(EARTH_TERRAIN_SCALAR_UINT8, 23);
   payload.writeUInt32LE(EARTH_TERRAIN_BYTES, 24); payload.writeUInt32LE(0, 28);
   return payload;
 }
@@ -38,11 +43,11 @@ function baseTerrainPayload() {
   const body = Buffer.concat([terrainPayload({ x: 0 }), terrainPayload({ x: 1 })]);
   const payload = Buffer.alloc(32 + body.length);
   payload.write('ESTB', 0, 'ascii');
-  payload.writeUInt16LE(1, 4); payload.writeUInt16LE(32, 6);
+  payload.writeUInt16LE(EARTH_TERRAIN_FORMAT_VERSION, 4); payload.writeUInt16LE(32, 6);
   payload.writeUInt16LE(260, 8); payload.writeUInt16LE(260, 10);
   payload.writeUInt8(0, 12); payload.writeUInt8(0, 13);
   payload.writeUInt32LE(2, 14); payload.writeUInt32LE(1, 18);
-  payload.writeUInt8(4, 22); payload.writeUInt8(1, 23);
+  payload.writeUInt8(EARTH_TERRAIN_CHANNELS, 22); payload.writeUInt8(EARTH_TERRAIN_SCALAR_UINT8, 23);
   payload.writeUInt32LE(body.length, 24); payload.writeUInt32LE(0, 28);
   body.copy(payload, 32);
   return payload;
@@ -77,12 +82,15 @@ function jpegFixture({ width = EARTH_BASE_COLOR_WIDTH, height = EARTH_BASE_COLOR
 
 function manifest(sourceManifestSha256, datasetId = 'earth-fixture-a') {
   return {
-    schemaVersion: 1, datasetId, sourceManifestSha256,
+    schemaVersion: 3, datasetId, sourceManifestSha256,
     provenance: { generator: 'fixture/1' },
+    terrainEncoding: { formatVersion: EARTH_TERRAIN_FORMAT_VERSION, layout: EARTH_TERRAIN_LAYOUT,
+      width: 260, height: 260, channels: EARTH_TERRAIN_CHANNELS, scalar: 'UInt8', normalFrame: 'body_fixed' },
     climateMap: { width: 1024, height: 512, channels: 4, scalar: 'UInt8' },
     controlRegions: Array.from({ length: 16 }, (_, index) => ({ id: `region-${index}`, west: -180, south: -80, east: 180, north: 80 })),
-    coverage: { kind: 'sparse', maxZoom: 7 },
-    baseColor: 'base/earth.jpg', baseTerrain: 'base/earth.bin.gz', tileIndexUrl: 'tile-index.json',
+    coverage: { kind: 'sparse', minZoom: 5, maxZoom: 7, expectedTiles: null },
+    baseColor: 'base/earth.jpg', baseTerrain: 'base/earth.bin.gz',
+    tileTemplates: { color: 'tiles/{z}/{x}/{y}.jpg', terrain: 'tiles/{z}/{x}/{y}.bin.gz' },
     climateMaps: Array.from({ length: 12 }, (_, index) => `climate/${String(index + 1).padStart(2, '0')}.png`),
     climateEncoding: {
       temperatureK: { min: 180, max: 330 }, cloudFraction: { min: 0, max: 1 },
@@ -97,31 +105,23 @@ async function createBundle() {
   const root = await mkdtemp(join(tmpdir(), 'earth-surface-contract-'));
   const source = { schemaVersion: 1, datasetId: 'earth-fixture-a', sources: [{ id: 'fixture', inputSha256: [] }] };
   const sourceHash = canonicalSha256(source);
-  const color = jpegFixture();
-  const terrain = terrainPayload();
+  const color = jpegFixture({ width: 260, height: 260 });
+  const baseColor = jpegFixture();
+  const terrain = terrainPayload({ z: 5 });
   const compressedTerrain = gzipSync(terrain, { mtime: 0 });
   const manifestValue = manifest(sourceHash);
-  const tile = {
-    schemaVersion: 1, datasetId: manifestValue.datasetId,
-    entries: [{
-      key: '0/0/0', z: 0, x: 0, y: 0,
-      color: { url: 'tiles/0/0/0.jpg', sha256: createHash('sha256').update(color).digest('hex'), encodedBytes: color.length, payloadBytes: color.length },
-      terrain: { url: 'tiles/0/0/0.bin.gz', sha256: createHash('sha256').update(terrain).digest('hex'), encodedBytes: compressedTerrain.length, payloadBytes: terrain.length },
-    }],
-  };
   await writeFile(join(root, 'sources.json'), `${JSON.stringify(source)}\n`);
   await writeFile(join(root, 'earth-surface.json'), `${JSON.stringify(manifestValue, null, 2)}\n`);
-  await writeFile(join(root, 'tile-index.json'), `${JSON.stringify(tile, null, 2)}\n`);
   await mkdir(join(root, 'base'), { recursive: true });
-  await writeFile(join(root, 'base/earth.jpg'), color); await writeFile(join(root, 'base/earth.bin.gz'), gzipSync(baseTerrainPayload(), { mtime: 0 }));
+  await writeFile(join(root, 'base/earth.jpg'), baseColor); await writeFile(join(root, 'base/earth.bin.gz'), gzipSync(baseTerrainPayload(), { mtime: 0 }));
   await mkdir(join(root, 'climate'), { recursive: true });
   for (const [index, path] of manifestValue.climateMaps.entries()) {
     await writeFile(join(root, path), fixtureClimatePng(index));
   }
-  await mkdir(join(root, 'tiles/0/0'), { recursive: true });
-  await writeFile(join(root, 'tiles/0/0/0.jpg'), color);
-  await writeFile(join(root, 'tiles/0/0/0.bin.gz'), compressedTerrain);
-  return { root, source, manifest: manifestValue, tile, color, terrain };
+  await mkdir(join(root, 'tiles/5/0'), { recursive: true });
+  await writeFile(join(root, 'tiles/5/0/0.jpg'), color);
+  await writeFile(join(root, 'tiles/5/0/0.bin.gz'), compressedTerrain);
+  return { root, source, manifest: manifestValue, color, baseColor, terrain };
 }
 
 async function expectFailure(action, pattern) {
@@ -133,6 +133,8 @@ async function run() {
   const output = await mkdtemp(join(tmpdir(), 'earth-surface-distribution-'));
   const before = await readFile(join(fixture.root, 'earth-surface.json'));
   try {
+    assert.throws(() => validateManifest({ ...fixture.manifest, schemaVersion: 2 }), /unsupported earth surface manifest schema/);
+
     await packageEarthSurface({ inputRoot: fixture.root, outputRoot: output, sourceManifestPath: 'sources.json' });
     const packaged = join(output, 'earth', fixture.manifest.datasetId);
     const result = await checkEarthSurface({ inputRoot: packaged });
@@ -140,16 +142,16 @@ async function run() {
     const cli = await execFileAsync('npm', ['run', 'earth-surface:check', '--', '--input', packaged], { cwd: process.cwd() });
     assert.match(cli.stdout, /earth-surface:check: earth-fixture-a/);
     for (const path of [
-      'earth-surface.json', 'tile-index.json', 'attribution.json', fixture.manifest.baseColor, fixture.manifest.baseTerrain,
-      ...fixture.manifest.climateMaps, 'tiles/0/0/0.jpg', 'tiles/0/0/0.bin.gz',
+      'earth-surface.json', 'attribution.json', fixture.manifest.baseColor, fixture.manifest.baseTerrain,
+      ...fixture.manifest.climateMaps, 'tiles/5/0/0.jpg', 'tiles/5/0/0.bin.gz',
       'receipt.json',
     ]) await readFile(join(packaged, path));
     assert.deepEqual(await readFile(join(fixture.root, 'earth-surface.json')), before);
 
     const baseColorPath = join(packaged, fixture.manifest.baseColor);
     for (const [replacement, pattern] of [
-      [jpegFixture({ width: 260, height: 260 }), /baseColor JPEG must be 512x256 with 3 components/],
-      [jpegFixture({ components: 1 }), /baseColor JPEG must be 512x256 with 3 components/],
+      [jpegFixture({ width: 260, height: 260 }), /baseColor JPEG must be 8192x4096 with 3 components/],
+      [jpegFixture({ components: 1 }), /baseColor JPEG must be 8192x4096 with 3 components/],
       [Buffer.from('not-a-jpeg'), /baseColor JPEG must start with SOI/],
       [jpegFixture().subarray(0, -2), /baseColor JPEG scan is truncated/],
       [(() => { const malformed = jpegFixture(); malformed[4] = 0; malformed[5] = 1; return malformed; })(), /baseColor JPEG marker length is invalid/],
@@ -157,12 +159,12 @@ async function run() {
       await writeFile(baseColorPath, replacement);
       await expectFailure(() => checkEarthSurface({ inputRoot: packaged }), pattern);
     }
-    await writeFile(baseColorPath, fixture.color);
+    await writeFile(baseColorPath, fixture.baseColor);
 
-    const changedColor = await readFile(join(packaged, 'tiles/0/0/0.jpg'));
-    changedColor[0] ^= 1; await writeFile(join(packaged, 'tiles/0/0/0.jpg'), changedColor);
-    await expectFailure(() => checkEarthSurface({ inputRoot: packaged }), /color .*hash mismatch/);
-    await writeFile(join(packaged, 'tiles/0/0/0.jpg'), fixture.color);
+    const changedColor = await readFile(join(packaged, 'tiles/5/0/0.jpg'));
+    changedColor[0] ^= 1; await writeFile(join(packaged, 'tiles/5/0/0.jpg'), changedColor);
+    await expectFailure(() => checkEarthSurface({ inputRoot: packaged }), /baseColor JPEG/);
+    await writeFile(join(packaged, 'tiles/5/0/0.jpg'), fixture.color);
 
     const sourcePath = join(fixture.root, 'sources.json');
     const sourceChanged = { ...fixture.source, datasetId: 'earth-other' };
@@ -170,31 +172,17 @@ async function run() {
     await expectFailure(() => packageEarthSurface({ inputRoot: fixture.root, outputRoot: output }), /sourceManifestSha256 mismatch/);
     await writeFile(sourcePath, `${JSON.stringify(fixture.source)}\n`);
 
-    const indexPath = join(fixture.root, 'tile-index.json');
-    const index = JSON.parse(await readFile(indexPath, 'utf8'));
-    index.datasetId = 'earth-other'; await writeFile(indexPath, JSON.stringify(index));
-    await expectFailure(() => packageEarthSurface({ inputRoot: fixture.root, outputRoot: output, sourceManifestPath: 'sources.json' }), /datasetId mismatch/);
-    index.datasetId = fixture.manifest.datasetId; await writeFile(indexPath, JSON.stringify(index));
-
-    index.entries[0].color.url = 'tiles/../0/0/0.jpg'; await writeFile(indexPath, JSON.stringify(index));
-    await expectFailure(() => checkEarthSurface({ inputRoot: fixture.root }), /invalid path/);
-    index.entries[0].color.url = 'tiles/0/0/0.jpg'; await writeFile(indexPath, JSON.stringify(index));
-
-    const terrainPath = join(fixture.root, 'tiles/0/0/0.bin.gz');
+    const terrainPath = join(fixture.root, 'tiles/5/0/0.bin.gz');
     const mismatch = terrainPayload({ x: 1 });
     const mismatchCompressed = gzipSync(mismatch, { mtime: 0 });
-    index.entries[0].terrain.encodedBytes = mismatchCompressed.length;
-    index.entries[0].terrain.sha256 = createHash('sha256').update(mismatch).digest('hex');
-    await writeFile(indexPath, JSON.stringify(index));
     await writeFile(terrainPath, mismatchCompressed);
     await expectFailure(() => packageEarthSurface({ inputRoot: fixture.root, outputRoot: output, sourceManifestPath: 'sources.json' }), /ESTN header key or format mismatch/);
-    index.entries[0].terrain.encodedBytes = gzipSync(fixture.terrain, { mtime: 0 }).length;
-    index.entries[0].terrain.sha256 = createHash('sha256').update(fixture.terrain).digest('hex');
     await writeFile(terrainPath, gzipSync(fixture.terrain, { mtime: 0 }));
 
-    index.entries.push({ ...index.entries[0], key: '0/0/0', color: index.entries[0].color, terrain: index.entries[0].terrain });
-    await writeFile(indexPath, JSON.stringify(index));
-    await expectFailure(() => checkEarthSurface({ inputRoot: fixture.root, sourceManifestPath: 'sources.json' }), /duplicate tile-index key/);
+    const oldFormat = Buffer.from(fixture.terrain);
+    oldFormat.writeUInt16LE(2, 4);
+    await writeFile(terrainPath, gzipSync(oldFormat, { mtime: 0 }));
+    await expectFailure(() => checkEarthSurface({ inputRoot: fixture.root }), /ESTN header key or format mismatch/);
     console.log('earth-surface contract fixtures: ok');
   } finally {
     await rm(fixture.root, { recursive: true, force: true });

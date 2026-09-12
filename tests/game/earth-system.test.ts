@@ -5,36 +5,31 @@ import { test } from '../harness';
 import { StarMotion } from '../../src/physics/celestial-motion';
 import { TEST_EPOCH } from '../physics/test-helpers';
 import { CelestialSystem } from '../../src/game/celestial/celestial-system';
-import { EARTH_TILE_LAYERS } from '../../src/render/earth-surface-tiles';
-import {
-  createEarthSurfaceRuntime, EARTH_SURFACE_FIXTURE_SOURCE, EARTH_TEXTURE, earthSystem,
-} from '../../src/game/celestial/solar-system/earth-system';
+import { EARTH_TILE_LAYERS } from '../../src/render/earth-surface-tile-key';
+import { earthSystem } from '../../src/game/celestial/solar-system/earth-system';
+import { createEarthSurfaceRuntime } from '../../src/render/earth-surface-factory';
+import { EARTH_SURFACE_FIXTURE_SOURCE, EARTH_TEXTURE } from '../../src/render/earth-surface-defaults';
 import { SUN } from '../../src/game/celestial/solar-system/sun';
 
 const READY_MANIFEST = {
-  schemaVersion: 1,
+  schemaVersion: 3,
   datasetId: 'earth-test-2026',
   sourceManifestSha256: '0'.repeat(64),
+  terrainEncoding: {
+    formatVersion: 3, layout: 'normal-xyz-rgb8-roughness-a8',
+    width: 260, height: 260, channels: 4, scalar: 'UInt8',
+  },
   baseColor: 'base.jpg',
   baseTerrain: 'base.bin.gz',
-  tileIndexUrl: 'tile-index.json',
+  tileTemplates: { color: 'tiles/{z}/{x}/{y}.jpg', terrain: 'tiles/{z}/{x}/{y}.bin.gz' },
   climateMaps: Array.from({ length: 12 }, (_, index) => `climate-${index + 1}.png`),
   climateEncoding: {
     temperatureK: { min: 180, max: 330 }, cloudFraction: { min: 0, max: 1 },
     orthometricElevation: { min: -1000, max: 9000 }, landFraction: { min: 0, max: 1 },
     waterOrthometricElevationM: 0,
   },
+  coverage: { kind: 'complete', minZoom: 5, maxZoom: 7, expectedTiles: 43_008 },
   attribution: ['test'],
-};
-
-const READY_INDEX = {
-  schemaVersion: 1,
-  datasetId: READY_MANIFEST.datasetId,
-  entries: [{
-    key: '0/0/0', z: 0, x: 0, y: 0,
-    color: { url: '0-0-0.jpg', sha256: '0'.repeat(64), encodedBytes: 1, payloadBytes: 1 },
-    terrain: { url: '0-0-0.bin.gz', sha256: '0'.repeat(64), encodedBytes: 1, payloadBytes: 1 },
-  }],
 };
 
 function fakeRenderer(isWebGPUBackend: boolean): WebGPURenderer {
@@ -47,7 +42,6 @@ function readyFetch(): typeof fetch {
   return async (input) => {
     const url = String(input);
     if (url.endsWith('earth-surface.json')) return new Response(JSON.stringify(READY_MANIFEST));
-    if (url.endsWith('tile-index.json')) return new Response(JSON.stringify(READY_INDEX));
     return new Response('missing', { status: 404 });
   };
 }

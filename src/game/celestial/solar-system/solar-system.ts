@@ -6,7 +6,6 @@ import { PhaseOffsets } from '../../../physics/celestial-body-def';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-light';
 import { CelestialSystem } from '../celestial-system';
 import { ephemerisSeconds, TdbJulianDate } from '../../../physics/time';
-import { epochUnixSeconds } from '../../../hud/utils';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
 import { StarCelestialView } from '../../../render/celestial/celestial-entity/star-celestial-view';
 import { PointFieldView } from '../../../render/celestial/point-field-view';
@@ -68,9 +67,7 @@ export function solarSystem(
     }),
   );
 
-  const earthEntities = earthSystem(
-    sunMotion, phases, simZeroEt, earthSpinPhase0, epochUnixSeconds(epoch), renderer,
-  );
+  const earthEntities = earthSystem(sunMotion, phases, simZeroEt, earthSpinPhase0, renderer);
   const jupiterEntities = jupiterSystem(sunMotion, phases, simZeroEt);
   const jupiterMotion = jupiterEntities.jupiter.motion;
   if (!(jupiterMotion instanceof OrbitingMotion)) throw new Error('solarSystem: 木星の運動が公転運動ではない');

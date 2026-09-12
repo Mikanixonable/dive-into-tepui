@@ -12,6 +12,14 @@
 GPUグラフは、気象・雲場生成経路として残す。分離対象は「どの気候入力を受け、どの雲場を生成し、どの描画表現が
 それを読むか」という契約と所有権である。
 
+## 現行コードでの進捗（2026-09-12）
+
+月次気候fallback、source切替、current/next世代管理、`GeneratedCloudField`による一部のGPU資源所有は
+実装済み。一方、CPU-onlyの気候契約、共通`CloudRenderInput`、表面・大気・影のSampler共有、
+cloud-labとrendererの境界整理は未実装であり、この計画は継続する。
+
+残タスクの優先順位は[残タスク一覧](./remaining-tasks_2026-09-12.md)を参照する。
+
 ## 決めたこと
 
 - `src/render/cloud/`内のコードは、GPU/TSLへ変換された雲生成・サンプリング・光学処理と、気候入力のGPU adapterを置く場所にする。

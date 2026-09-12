@@ -1,7 +1,7 @@
 // 地球系(地球・月)。静的事実・運動・見た目を1体につき1箇所で組む。
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
-import earthTextureUrl from '../../../assets/earth.jpg';
+import climateTextureUrl from '../../../assets/earth-climate.png';
 import cloudFieldUrl from '../../../assets/cloud-field.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import coastlineData from '../../../assets/earth-coastline.json';
@@ -18,37 +18,20 @@ import {
 } from './constants';
 import { Aurora, type AuroraOptics } from '../../../render/celestial/aurora';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
-import { EarthSurface, EarthSurfaceContext } from '../../../render/earth-surface';
-import type { EarthSurfaceMaterialAttachment, EarthSurfaceStatus } from '../../../render/earth-surface';
-import { EarthSurfaceResidentCoordinator } from '../../../render/earth-surface-resident';
-import type { EarthSurfaceColorToRgba8 } from '../../../render/earth-surface-resident';
-import { EarthSurfaceTileRequestQueue } from '../../../render/earth-surface-request';
-import { EarthSurfaceTiles } from '../../../render/earth-surface-tiles';
-import { EarthSurfaceGpuAdapter } from '../../../render/earth-surface-gpu';
-import type { EarthSurfaceGpuTextures } from '../../../render/earth-surface-gpu';
-import { createEarthSurfaceGpuThree, type EarthSurfaceGpuThreeBackendLike } from '../../../render/earth-surface-gpu-three';
-import { createEarthSurfaceMaterialBinding } from '../../../render/earth-surface-material-binding';
-import {
-  bootstrapEarthSurface,
-  type EarthSurfaceBootstrapOptions,
-  type EarthSurfaceBootstrapResult,
-} from './earth-surface-runtime';
+import { createEarthSurfaceRuntime } from '../../../render/earth-surface-factory';
 import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
 import { ObservedCloudField } from '../../../render/cloud/observed-cloud-field';
-import { createDevelopmentClimateMap } from '../../../render/cloud/monthly-climate-fixture';
-import { EllipsoidEquirectProjection, type FieldProjection } from '../../../render/cloud/field-projection';
-import { earthSurfaceUvFromRadialNode } from '../../../render/earth-surface-coordinate';
+import { AnnualClimateMap } from '../../../render/cloud/climate-map';
+import { OrthographicCap, type FieldProjection } from '../../../render/cloud/field-projection';
+import { CLOUD_CAP_SIZE, CLOUD_CAP_MARGIN } from '../../../render/cloud/cloud-cap';
 import { LineOverlay, type LatLonPolyline, type UnitSphereLoop } from '../../../render/celestial/line-overlay';
 import { GeostationaryOverlay } from '../../../render/celestial/celestial-entity/geostationary-overlay';
 import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
 import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
 import { MOON_DIST_TERMS, MOON_LAT_TERMS, MOON_LON_TERMS } from './moon-terms';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
-import type { CelestialTexture } from '../../../render/celestial-textures';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
-import type { EarthSurfaceSource } from './earth-surface-source';
-import { vec3 } from 'three/tsl';
 import { AU } from '../../../physics/astronomical-unit';
 
 // 地球系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
@@ -158,18 +141,6 @@ export const EARTH_ATMOSPHERE_OPTICS: AtmosphereOptics = {
   airglow: { color: [0.12, 0.78, 0.36], strength: 1.2e-8, altitude: 95e3, scaleHeight: 8e3 },
 };
 
-// 地表・雲の殻を合わせたアルベドの測光。倍率は、雲(不透明な積雲の殻・巻雲の殻・積雲の中間調の
-// 殻)がアルベド 0.8 で覆う 0.2912 ぶんを A_B=0.306 から引いた残りを、雲に覆われずに残る地表の
-// 平均輝度 0.08027 へ割り当てる値。averageHue はその合成の色み。平均はどれもテクスチャ上を
-// 緯度余弦で重み付けて測る(不透明な積雲 0.1361・巻雲 0.1056・中間調 0.0494 の順に覆う)。
-// TODO: 半透明な殻はアルベドと立つ高さを目で追い込む途中なので、追い込みを終えてから測り直す。
-export const EARTH_TEXTURE: CelestialTexture = {
-  url: earthTextureUrl,
-  albedoScale: 0.9102,
-  bondAlbedo: 0.306,
-  averageHue: [0.9703, 0.9940, 1.1471],
-};
-
 // 地球へ貼る海岸線。tools/export-coastline.mjs が Natural Earth 110m coastline から焼き込んだ、
 // 緯度・経度 [deg] のペアを1本の折れ線として並べた配列の配列。形は焼き込み側が保証するので、
 // 型を持たない JSON にここで形を与える。
@@ -204,205 +175,6 @@ export const EARTH_SYSTEM_NAMES: Record<EarthSystemBodyId, string> = {
   moon: '月',
 };
 
-// 実配信物が未設定の開発環境で使う地表の入力。manifest・GPU がそろわないときの代わりになる。
-export const EARTH_SURFACE_FIXTURE_SOURCE = {
-  datasetId: 'earth-development-fixture',
-  sourceManifestSha256: '0'.repeat(64),
-  climateEncoding: {
-    temperatureK: { min: 180, max: 330 },
-    cloudFraction: { min: 0, max: 1 },
-    orthometricElevation: { min: -1000, max: 9000 },
-    landFraction: { min: 0, max: 1 },
-    waterOrthometricElevationM: 0,
-  },
-  baseUrl: 'https://example.test/earth-surface/',
-  manifestUrl: 'https://example.test/earth-surface/earth-surface.json',
-  tileIndexUrl: 'https://example.test/earth-surface/tile-index.json',
-  baseColorUrl: 'https://example.test/earth-surface/base-color.jpg',
-  baseTerrainUrl: 'https://example.test/earth-surface/base-terrain.bin.gz',
-  climateMapUrls: Array.from(
-    { length: 12 }, (_, month) => `https://example.test/earth-surface/climate-${month + 1}.png`,
-  ),
-} satisfies EarthSurfaceSource;
-
-// 気候図を貼る回転楕円体の半軸 [m]。
-const EARTH_CLIMATE_AXES = vec3(EARTH_ATMOSPHERE.equatorRadius, EARTH_ATMOSPHERE.polarRadius,
-  EARTH_ATMOSPHERE.equatorRadius);
-
-export interface EarthSurfaceFactoryOptions extends EarthSurfaceBootstrapOptions {
-  readonly renderer?: WebGPURenderer | null;
-  readonly colorToRgba8?: EarthSurfaceColorToRgba8;
-  readonly decodeImage?: (bytes: Uint8Array, signal?: AbortSignal) => Promise<unknown>;
-}
-
-export interface EarthSurfaceFactoryResult {
-  readonly surface: EarthSurface;
-  readonly state: EarthSurfaceStatus;
-  readonly bootstrap: EarthSurfaceBootstrapResult;
-}
-
-export interface EarthSurfaceRuntimeHandle {
-  readonly surface: EarthSurface;
-  readonly ready: Promise<EarthSurfaceFactoryResult>;
-}
-
-// 開発用の入力と画像球だけで、status の状態の地表を組む。
-function fallbackSurface(status: EarthSurfaceStatus = 'loading'): EarthSurface {
-  return new EarthSurface(
-    new EarthSurfaceContext(EARTH_SURFACE_FIXTURE_SOURCE),
-    CelestialSurface.textured(EARTH_TEXTURE),
-    null,
-    status,
-  );
-}
-
-interface EarthSurfaceConnection {
-  readonly coordinator: EarthSurfaceResidentCoordinator | null;
-  readonly state: EarthSurfaceStatus;
-  readonly material: EarthSurfaceMaterialAttachment | null;
-  readonly reason: string | null;
-}
-
-// 詳細タイル用の材質を、GPU 常駐テクスチャと source の基底画像から組み、地表へ付ける形で返す。
-function detailedMaterialFor(
-  source: EarthSurfaceSource, textures: EarthSurfaceGpuTextures, fetchImpl?: typeof fetch,
-): EarthSurfaceMaterialAttachment {
-  const binding = createEarthSurfaceMaterialBinding(
-    textures, source.baseColorUrl, source.baseTerrainUrl, fetchImpl,
-  );
-  // 材質と、その解放・遅延テクスチャ・毎フレーム同期の口を束ねる。
-  return {
-    material: binding.material,
-    deferred: binding.deferredTextures,
-    textures: binding.textures,
-    onDispose: binding.dispose,
-    failureReason: binding.failureReason,
-    syncFrame: binding.syncFrame,
-  };
-}
-
-// bootstrap の結果から、詳細タイルの要求キュー・GPU 常駐を束ねる coordinator と材質を組む。
-// 組めなければ coordinator を null にし、fallback/error の状態とその理由を返す。
-function coordinatorFor(
-  bootstrap: EarthSurfaceBootstrapResult, options: EarthSurfaceFactoryOptions,
-): EarthSurfaceConnection {
-  // manifest・renderer・タイル源のどれかが欠ければ組めない。
-  if (bootstrap.state !== 'ready') {
-    return {
-      coordinator: null,
-      state: bootstrap.state,
-      material: null,
-      reason: bootstrap.state === 'error'
-        ? bootstrap.error?.message ?? 'earth surface bootstrap failed'
-        : 'earth surface manifest unavailable',
-    };
-  }
-  if (options.renderer === null || options.renderer === undefined) {
-    return { coordinator: null, state: 'fallback', material: null, reason: 'renderer unavailable' };
-  }
-  if (bootstrap.tileSource === null) {
-    return { coordinator: null, state: 'fallback', material: null, reason: 'tile source unavailable' };
-  }
-  // backend がまだ生成されていない起動経路もあるので、例外で起動を壊さず base へ固定する。
-  const backend = options.renderer.backend as unknown as EarthSurfaceGpuThreeBackendLike | null | undefined;
-  if (backend === null || backend === undefined) {
-    return { coordinator: null, state: 'fallback', material: null, reason: 'WebGPU backend unavailable' };
-  }
-  // 要求キューと GPU 常駐を確保する。詳細描画に要る機能が無ければ解放して fallback。
-  const queue = new EarthSurfaceTileRequestQueue(bootstrap.tileSource, {
-    fetchImpl: options.fetchImpl,
-    decodeImage: options.decodeImage,
-  });
-  const gpu = new EarthSurfaceGpuAdapter(createEarthSurfaceGpuThree(
-    backend,
-  ));
-  if (gpu.mode === 'base') {
-    queue.dispose();
-    gpu.dispose();
-    return { coordinator: null, state: 'fallback', material: null, reason: 'WebGPU detail features unavailable' };
-  }
-  const textures = gpu.textures;
-  if (textures === null) {
-    queue.dispose();
-    gpu.dispose();
-    return { coordinator: null, state: 'fallback', material: null, reason: 'detail textures unavailable' };
-  }
-  // 材質の構築に失敗した場合も、先に確保したqueue/GPUを孤児にしない。
-  let material: EarthSurfaceMaterialAttachment;
-  try {
-    material = detailedMaterialFor(bootstrap.source!, textures, options.fetchImpl);
-  } catch (error: unknown) {
-    queue.dispose();
-    gpu.dispose();
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      coordinator: null, state: 'fallback', material: null,
-      reason: `detail material unavailable: ${message}`,
-    };
-  }
-  return {
-    coordinator: new EarthSurfaceResidentCoordinator({
-      tiles: new EarthSurfaceTiles(),
-      queue,
-      gpu,
-      colorToRgba8: options.colorToRgba8 ?? defaultEarthSurfaceColorToRgba8,
-    }),
-    state: 'ready',
-    material,
-    reason: null,
-  };
-}
-
-// 画像球だけの地表を即座に返し、manifest・GPU が準備できたら同じ地表へ coordinator と入力を
-// 付ける。ready は付け終えた結果で解決し、準備に失敗しても error の状態として解決する。
-export function createEarthSurfaceRuntime(
-  options: EarthSurfaceFactoryOptions = {},
-): EarthSurfaceRuntimeHandle {
-  const surface = fallbackSurface();
-  const ready = bootstrapEarthSurface({
-    ...options,
-    fallback: options.fallback ?? EARTH_SURFACE_FIXTURE_SOURCE,
-  }).then((bootstrap) => {
-    // 準備できた入力で coordinator を組み、地表へ付ける。
-    const source = bootstrap.source ?? EARTH_SURFACE_FIXTURE_SOURCE;
-    const connection = coordinatorFor(bootstrap, options);
-    surface.attach(source, connection.coordinator, connection.state, connection.material, connection.reason);
-    return { surface, state: connection.state, bootstrap };
-  }).catch((error: unknown) => {
-    // 失敗しても、地表は代わりの入力と error の状態で使い続ける。
-    const fallback = options.fallback ?? EARTH_SURFACE_FIXTURE_SOURCE;
-    const reason = error instanceof Error ? error.message : String(error);
-    surface.attach(fallback, null, 'error', null, reason);
-    return {
-      surface, state: 'error' as const,
-      bootstrap: { state: 'error' as const, source: fallback, tileSource: null, error: error instanceof Error ? error : new Error(reason) },
-    };
-  });
-  return { surface, ready };
-}
-
-// createEarthSurfaceRuntime の地表が準備を終えるのを待ち、その結果を返す。
-export async function createEarthSurface(
-  options: EarthSurfaceFactoryOptions = {},
-): Promise<EarthSurfaceFactoryResult> {
-  return createEarthSurfaceRuntime(options).ready;
-}
-
-// タイルの色画像を RGBA8 のバイト列にする。Uint8Array はそのまま返し、ImageBitmap でないか
-// canvas が使えない環境では例外を投げる。
-async function defaultEarthSurfaceColorToRgba8(color: unknown): Promise<Uint8Array> {
-  if (color instanceof Uint8Array) return color;
-  if (typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') {
-    throw new Error('Earth surface color conversion is unavailable');
-  }
-  if (!(color instanceof ImageBitmap)) throw new Error('Earth surface color is not an ImageBitmap');
-  // 2D canvas へ描いて画素を読み出す。
-  const canvas = new OffscreenCanvas(color.width, color.height);
-  const context = canvas.getContext('2d');
-  if (context === null) throw new Error('Earth surface 2D canvas is unavailable');
-  context.drawImage(color, 0, 0);
-  return new Uint8Array(context.getImageData(0, 0, color.width, color.height).data);
-}
 
 // 両極それぞれ2層のカーテン。同じ極の層は geomSeed を揃えて平行にし、半径・緯度・明滅を
 // ずらして厚みを出す。
@@ -416,37 +188,33 @@ function earthAuroras(): readonly Aurora[] {
   ];
 }
 
-// 地球の生成雲場の高さ [texel]。
-const EARTH_CLOUD_FIELD_HEIGHT = 512;
-
-// 地球の気候から焼く雲場を組む。climateEpochUnixSec は表示時刻 0 の UTC [s]、bootstrap は地表の
-// 配信物の準備の結果で、ready なら気候をその月別気候図へ差し替える。projection は場の持ち方で、
-// 既定は気候図と同じ楕円体の正距円筒。返した場の寿命は受け取った側が持つ。
-export function earthGeneratedCloudField(
-  climateEpochUnixSec: number, bootstrap: Promise<EarthSurfaceBootstrapResult>,
-  projection: FieldProjection = new EllipsoidEquirectProjection(EARTH_CLOUD_FIELD_HEIGHT, EARTH_CLIMATE_AXES),
-): GeneratedCloudField {
-  const climate = createDevelopmentClimateMap((direction) => earthSurfaceUvFromRadialNode(direction, EARTH_CLIMATE_AXES));
-  void bootstrap.then((result) => {
-    if (result.state === 'ready' && result.source !== null) climate.replaceUrls(result.source.climateMapUrls);
-  });
+// 地球の平年の気候から焼く雲場を組む。projection は場の持ち方。返した場の寿命は受け取った側が持つ。
+// **実験環境も本番もこの工場から組む** — 別の組み立てを書くと、実験環境が本番を映さなくなる。
+export function earthGeneratedCloudField(projection: FieldProjection): GeneratedCloudField {
   // 天気を解く半径は、全球を一様な球とみなす平均半径。
-  return new GeneratedCloudField(climate, projection, R_EARTH, SIDEREAL_DAY, climateEpochUnixSec);
+  return new GeneratedCloudField(
+    AnnualClimateMap.fromDeferredUrl(climateTextureUrl), projection, R_EARTH, SIDEREAL_DAY,
+  );
+}
+
+// 地球の雲場ぜんぶを組む。生成と実写を同じ 1 つの cap へ焼き、CloudPresentation がその cap を
+// 視点へ置き直す。
+export function earthCloudPresentation(): CloudPresentation {
+  const cap = new OrthographicCap(CLOUD_CAP_SIZE, 0, 0, CLOUD_CAP_MARGIN);
+  return new CloudPresentation(
+    earthGeneratedCloudField(cap), new ObservedCloudField(cloudFieldUrl, cap), cap, R_EARTH_EQ,
+  );
 }
 
 // 地球系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 // earthSpinPhase0 は地球の自転初期位相 [rad]。
 export function earthSystem(
   sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
-  earthSpinPhase0 = 0, climateEpochUnixSec = 0, renderer?: WebGPURenderer,
+  earthSpinPhase0 = 0, renderer?: WebGPURenderer,
 ): Record<EarthSystemBodyId, CelestialEntity> {
   const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
   const earthSurfaceRuntime = createEarthSurfaceRuntime({ renderer });
-  // 殻を載せる球の半径は、本体メッシュと同じ赤道半径。
-  const cumulus = new CloudPresentation(
-    earthGeneratedCloudField(climateEpochUnixSec, earthSurfaceRuntime.ready.then((result) => result.bootstrap)),
-    new ObservedCloudField(cloudFieldUrl), R_EARTH_EQ,
-  );
+  const cumulus = earthCloudPresentation();
   const earthSurface = earthSurfaceRuntime.surface;
   return {
     earth: new CelestialEntity(

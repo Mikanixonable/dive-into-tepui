@@ -7,7 +7,7 @@ import {
   texture, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
-import { LIT_OPAQUE_LAYER } from './lit-layer';
+import { LIT_CLOUD_SHELL_LAYER, LIT_OPAQUE_LAYER } from './lit-layer';
 import { compileInto } from './compile-into';
 import type { BoolNode, Vec2Node, Vec3Node } from '../tsl-types';
 
@@ -95,32 +95,43 @@ export class GBufferPass {
     return texture(this.depthTexture, uv).r.greaterThan(0);
   }
 
-  // lit-opaque 層のオブジェクトだけを G バッファへ描く。camera はこのあと world パスでも
-  // 使う同一インスタンスなので、layers.mask は呼び出し前の値へ必ず戻す。
+  // lit-opaque 層と雲殻の層を、同じ G バッファへ 2 回に分けて描く。分けるのは雲殻だけの GPU
+  // 時間を読むためで、書き出す素材はどちらも同じ。camera はこのあと world パスでも使う同一
+  // インスタンスなので、layers.mask は呼び出し前の値へ必ず戻す。
   public render(scene: THREE.Scene, camera: THREE.Camera, width: number, height: number): void {
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
 
     const savedMask = camera.layers.mask;
-    camera.layers.set(LIT_OPAQUE_LAYER);
+    const savedAutoClear = this.renderer.autoClear;
 
     this.renderer.setMRT(this.mrtNode);
     this.renderer.setRenderTarget(this.target);
+    camera.layers.set(LIT_OPAQUE_LAYER);
     this.gpu.beginPass(GPU_PASS.gbuffer);
     this.renderer.render(scene, camera);
+    // **2 回目はクリアせずに重ねる** — クリアすると 1 回目に描いた地表・艦艇が消え、雲だけが残る。
+    camera.layers.set(LIT_CLOUD_SHELL_LAYER);
+    this.renderer.autoClear = false;
+    this.gpu.beginPass(GPU_PASS.cloudSurface);
+    this.renderer.render(scene, camera);
+    this.renderer.autoClear = savedAutoClear;
     this.renderer.setRenderTarget(null);
     this.renderer.setMRT(null);
 
     camera.layers.mask = savedMask;
   }
 
-  // lit-opaque 層を G バッファの添付形式で事前コンパイルする。
+  // 両方の層を G バッファの添付形式で事前コンパイルする。**雲殻の層も含める** — 抜かすと、
+  // 初めて雲が出たフレームでシェーダのコンパイルが走って止まる。
   public async compile(scene: THREE.Scene, camera: THREE.Camera, width: number, height: number): Promise<void> {
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
     const savedMask = camera.layers.mask;
-    camera.layers.set(LIT_OPAQUE_LAYER);
     this.renderer.setMRT(this.mrtNode);
     try {
-      await compileInto(this.renderer, this.target, scene, camera);
+      for (const layer of [LIT_OPAQUE_LAYER, LIT_CLOUD_SHELL_LAYER]) {
+        camera.layers.set(layer);
+        await compileInto(this.renderer, this.target, scene, camera);
+      }
     } finally {
       this.renderer.setMRT(null);
       camera.layers.mask = savedMask;

@@ -101,13 +101,19 @@ export const GRAPHICS_OPTIONS = {
     ],
     presets: { low: ATMOSPHERE_QUALITY.low, medium: ATMOSPHERE_QUALITY.medium, high: ATMOSPHERE_QUALITY.high },
   },
+  // 夜側の縁に淡く光る大気発光。**負荷を下げる設定ではない** — 積分の範囲も刻みも変わらず、
+  // 消えるのは発光の項だけで、大気の他の項と切り分けるためにある。
+  airglow: {
+    kind: 'toggle', group: 'element', label: 'エアグロー',
+    presets: { low: true, medium: true, high: true },
+  },
   // 地表へ合成する雲と、雲が地表へ落とす影。
   clouds: {
     kind: 'toggle', group: 'element', label: '雲',
     presets: { low: false, medium: true, high: true },
   },
-  // 雲の分布の出どころ。生成は気候から時々刻々焼く雲、実写は衛星写真から取った止まった雲で、
-  // 実写は焼かないぶん軽い。
+  // 雲の分布の出どころ。生成は気候から時々刻々焼く雲、実写は衛星写真から取った止まった雲。
+  // どちらも同じ cap へ焼くが、実写は画像を 1 回読むだけなので天気の式より桁で軽い。
   cloudFieldSource: {
     kind: 'choice', group: 'element', label: '雲の分布',
     items: [[CLOUD_FIELD_SOURCE_KIND.observed, '実写'], [CLOUD_FIELD_SOURCE_KIND.generated, '生成']],

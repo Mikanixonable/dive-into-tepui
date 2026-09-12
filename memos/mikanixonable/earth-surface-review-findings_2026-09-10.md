@@ -16,9 +16,17 @@
 
 以下はレビューで見つけたが、今回の接続修正には含めていない残件である。
 
+## 現行コードでの再判定（2026-09-12）
+
+- BUG-1（GPU側の緯度UV反転）は、CPU/GPU共有UVの回帰テスト追加後に解消済み。
+- BUG-2（南端の`fract()` wrap）は、南端を最終texelへ保持する実装とテストで解消済み。
+- BUG-3〜BUG-5、RISK-1〜RISK-2は未完了。実データbundleと実WebGPU表示確認も未完了である。
+- 未完了項目は[残タスク一覧](./remaining-tasks_2026-09-12.md)へ集約した。この文書はレビューの根拠と
+  詳細な修正案を保持するため、直下に残す。
+
 ## 修正優先度が高いもの
 
-### [BUG-1] GPU側の緯度UVがCPU側の契約と南北反転している
+### [解消済み BUG-1] GPU側の緯度UVがCPU側の契約と南北反転している
 
 対象: `src/render/earth-surface-coordinate.ts:64-70`
 
@@ -33,7 +41,7 @@ CPU実装`earthSurfaceUv`は北極を`v=0`、南極を`v=1`へ写す。一方、
 - `north-pole`、`equator`、`south-pole`でCPU/GPUの対応を固定するテストを追加する。
 - 気候map、地表タイル、雲の共有UVにも同じ3点を使い、層ごとの独自補正を作らない。
 
-### [BUG-2] タイルV座標の南端が`fract()`で北端へwrapする
+### [解消済み BUG-2] タイルV座標の南端が`fract()`で北端へwrapする
 
 対象: `src/render/earth-surface-material-node.ts:82-90`
 
