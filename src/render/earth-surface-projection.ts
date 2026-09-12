@@ -18,7 +18,9 @@ export class EarthSurfaceProjectionCache {
   private coordinateSystemValue: number | null = null;
   private reversedDepthValue: boolean | null = null;
 
+  // フレームのカメラ・姿勢・viewportから、再利用可能な地表投影を取得する。
   public get(frame: CelestialSurfaceFrame): EarthSurfaceView {
+    // 対応するカメラ種別と投影入力の変更を比較する。
     if (!(frame.camera instanceof THREE.PerspectiveCamera)
       && !(frame.camera instanceof THREE.OrthographicCamera)) {
       throw new Error('Earth surface projection requires a perspective or orthographic camera');
@@ -46,6 +48,7 @@ export class EarthSurfaceProjectionCache {
     const rebuild = this.projectionValue === null
       || timeRewound || (projectionChanged && rebuildWindowElapsed);
     if (rebuild) {
+      // 投影を作り直し、次の比較用に入力のスナップショットを保存する。
       const bodyToWorld = frame.camera.matrixWorld.clone().multiply(frame.bodyToView);
       this.projectionValue = new EarthSurfaceView(
         frame.camera, bodyToWorld, frame.axes, frame.viewport.width, frame.viewport.height,
@@ -65,7 +68,9 @@ export class EarthSurfaceProjectionCache {
     return this.projectionValue;
   }
 
+  // 保持中の投影と比較用スナップショットを破棄する。
   public reset(): void {
+    // 次のframeでカメラから投影を再構築できる状態へ戻す。
     this.projectionValue = null;
     this.builtTimeMs = null;
     this.cameraWorldValue = null;

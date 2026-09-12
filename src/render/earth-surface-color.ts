@@ -1,12 +1,14 @@
 // デコード済みの地表色画像を常駐用RGBA8へ変換する。
 let earthSurfaceColorCanvas: OffscreenCanvas | null = null;
 
+// ImageBitmap またはRGBA8の入力を、地表GPUテクスチャへ渡せるRGBA8へそろえる。
 export async function earthSurfaceColorToRgba8(color: unknown): Promise<Uint8Array> {
   if (color instanceof Uint8Array) return color;
   if (typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') {
     throw new Error('Earth surface color conversion is unavailable');
   }
   if (!(color instanceof ImageBitmap)) throw new Error('Earth surface color is not an ImageBitmap');
+  // 共有canvasを入力画像の寸法へ合わせ、画素を読み出す。
   const canvas = earthSurfaceColorCanvas ?? new OffscreenCanvas(color.width, color.height);
   earthSurfaceColorCanvas = canvas;
   if (canvas.width !== color.width) canvas.width = color.width;

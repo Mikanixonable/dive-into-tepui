@@ -23,6 +23,7 @@ export interface EarthSurfaceMaterialBinding {
   dispose(): void;
 }
 
+// 未取得のbase地形を平面法線・最大粗さで埋めるRGBA8データを作る。
 function defaultTerrainData(): Uint8Array {
   const data = new Uint8Array(EARTH_BASE_TERRAIN_WIDTH * EARTH_BASE_TERRAIN_HEIGHT * 4);
   for (let offset = 0; offset < data.length; offset += 4) {
@@ -34,6 +35,7 @@ function defaultTerrainData(): Uint8Array {
   return data;
 }
 
+// fallback地形を読むための線形RGBA8テクスチャを組む。
 function createBaseTerrainTexture(): { readonly texture: THREE.DataTexture; readonly data: Uint8Array } {
   const data = defaultTerrainData();
   const texture = new THREE.DataTexture(

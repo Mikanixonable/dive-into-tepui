@@ -32,7 +32,9 @@ export interface EarthSurfaceTilePayload {
 const DEFAULT_COLOR_LIMIT = 16 * 1024 * 1024;
 const DEFAULT_TERRAIN_LIMIT = EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES;
 
+// JPEGをImageBitmapへ変換し、キャンセル後に生成された画像を閉じる。
 async function defaultDecodeImage(bytes: Uint8Array, signal?: AbortSignal): Promise<unknown> {
+  // ブラウザのImageBitmapへJPEGを渡し、キャンセル後に生成された画像を閉じる。
   ensureEarthSurfaceNotAborted(signal);
   if (typeof createImageBitmap !== 'function') throw new EarthSurfaceDecodeError('ImageBitmap decoding is unavailable');
   const imageBytes = new ArrayBuffer(bytes.byteLength);
@@ -54,7 +56,9 @@ export function closeEarthSurfaceImage(image: unknown): void {
   if (typeof candidate.close === 'function') candidate.close();
 }
 
+// 色と地形を同時取得し、検証済みpayloadへ束ねる。
 export async function decodeEarthSurfaceTile(request: EarthSurfaceTileRequest): Promise<EarthSurfaceTilePayload> {
+  // 色と地形を同時取得し、サイズ・ハッシュ・世代を確認して一つのpayloadに束ねる。
   if (!Number.isInteger(request.generation) || request.generation < 0) throw new RangeError('Invalid Earth tile generation');
   const fetchImpl = request.fetchImpl ?? fetch;
   const colorLimit = request.maxColorBytes ?? DEFAULT_COLOR_LIMIT;

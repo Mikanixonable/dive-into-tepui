@@ -74,6 +74,7 @@ export interface EarthSurfaceTerrainEncoding {
   };
 }
 
+// 配信物の相対パスを検査し、manifestの親から絶対URLへ解決する。
 function relativeAsset(baseUrl: string, path: string): string {
   if (path.length === 0 || path.startsWith('/') || path.includes('\\')
     || path.split('/').some((part) => part === '..' || part === '.') || path.includes('?') || path.includes('#')) {
@@ -82,6 +83,7 @@ function relativeAsset(baseUrl: string, path: string): string {
   return new URL(path, baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`).toString();
 }
 
+// URLやファイル名へ使えるdatasetIdだけを受け入れる。
 function requireDatasetId(datasetId: string): void {
   if (!/^[a-z0-9-]+$/.test(datasetId)) throw new Error('Invalid Earth surface datasetId');
 }
