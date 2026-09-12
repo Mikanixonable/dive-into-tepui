@@ -38,7 +38,7 @@ import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
 import { ObservedCloudField } from '../../../render/cloud/observed-cloud-field';
 import { createDevelopmentClimateMap } from '../../../render/cloud/monthly-climate-fixture';
-import { EllipsoidEquirectProjection, type FieldProjection } from '../../../render/cloud/field-projection';
+import { EquirectProjection, type FieldProjection } from '../../../render/cloud/field-projection';
 import { earthSurfaceUvFromRadialNode } from '../../../render/earth-surface-coordinate';
 import { LineOverlay, type LatLonPolyline, type UnitSphereLoop } from '../../../render/celestial/line-overlay';
 import { GeostationaryOverlay } from '../../../render/celestial/celestial-entity/geostationary-overlay';
@@ -422,10 +422,10 @@ const EARTH_CLOUD_FIELD_HEIGHT = 512;
 
 // 地球の気候から焼く雲場を組む。climateEpochUnixSec は表示時刻 0 の UTC [s]、bootstrap は地表の
 // 配信物の準備の結果で、ready なら気候をその月別気候図へ差し替える。projection は場の持ち方で、
-// 既定は気候図と同じ楕円体の正距円筒。返した場の寿命は受け取った側が持つ。
+// 既定は全球の正距円筒。返した場の寿命は受け取った側が持つ。
 export function earthGeneratedCloudField(
   climateEpochUnixSec: number, bootstrap: Promise<EarthSurfaceBootstrapResult>,
-  projection: FieldProjection = new EllipsoidEquirectProjection(EARTH_CLOUD_FIELD_HEIGHT, EARTH_CLIMATE_AXES),
+  projection: FieldProjection = new EquirectProjection(EARTH_CLOUD_FIELD_HEIGHT),
 ): GeneratedCloudField {
   const climate = createDevelopmentClimateMap((direction) => earthSurfaceUvFromRadialNode(direction, EARTH_CLIMATE_AXES));
   void bootstrap.then((result) => {
