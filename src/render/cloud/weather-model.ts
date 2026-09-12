@@ -182,9 +182,8 @@ export class WeatherModel {
     this.pressureNoise = new CirculatingNoise(this.surfaceCirculation, PRESSURE_NOISE, texel);
     this.transport = new WeatherTransport(
       this.surfaceCirculation, this.upperCirculation, projection, surfaceRadius);
-    // 気圧の写しだけは段ではなく、読む側の中心差分の刻み(GRADIENT_STEP)が細かさを決める。
     this.pressure = new BakedField(
-      'pressure', THREE.RedFormat, projection, 1, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1));
+      'pressure', THREE.RedFormat, projection, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1));
     this.convectiveActivity = new ConvectiveActivity(this.surfaceCirculation, projection);
     this.airMass = new AirMass(projection, (direction) => this.traceFlowAt(direction), surfaceRadius);
     this.syncTime(0);
