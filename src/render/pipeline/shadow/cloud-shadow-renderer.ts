@@ -94,7 +94,7 @@ export class CloudShadowRenderer {
         const shellRadius = float(1).add(this.topAltitude.div(bodyRadius));
         const along = dot(offset, rayDir);
         // 光路が殻を出るまでの距離。殻より上の受け手では負になり、影は落ちない。長さは殻の空間の
-        // 半径 1 を基準半径として測る(真の実寸との差は扁平率ぶんで、mip 段と上限にしか効かない)。
+        // 半径 1 を基準半径として測る(真の実寸との差は扁平率ぶんで、粒の振幅と光路の上限にしか効かない)。
         const exit = sqrt(max(shellRadius.mul(shellRadius).sub(dot(offset, offset)).add(along.mul(along)), 0))
           .sub(along).mul(bodyRadius);
         const stepLength = clamp(exit, 0, MAX_LIGHT_PATH).div(SHADOW_TAPS);
