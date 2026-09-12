@@ -182,46 +182,6 @@ cloud-field-sampler.ts が分岐する。
 
 ## 手順
 
-### 手順 2. 雲場まわりの LOD を潰す
-
-**目的**: 決めたこと 3 の「潰す」をすべて外し、素朴な実装にする。図法はまだ全球の正距円筒のまま。
-遠方で雲場を 0 段で読むため、遠くの雲が細かく揺らぐ(エイリアス)可能性がある。特に実写の 8k 画像は、
-手順 3 で cap へ焼き直すまでエイリアスが出る。
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/cloud/baked-field.ts:10-25, 35-64` | `maxMipLevelOf`・`maxAvailableMipLevelOf` を消す。描画先を `generateMipmaps: false`・`LinearFilter` にする。`coarseness` 引数を消し、写しは常に投影と同じ大きさにする。`GPU_PASS.cloudBake`(73 行)は残す |
-| `src/render/cloud/cloud-field-sampler.ts` | `fieldWidth`・`maxMipLevel`・`fixedLodMode`・`fixedLod`・`setLodSampling`・`CloudLodMode`・`lodForWidth`・`fieldTexelWidth` と、`sample`/`sampleCloud` の `lod` 引数を消す |
-| `src/render/cloud/circulating-noise.ts:29-32` | `coarsenessFor` を消す |
-| `src/render/cloud/weather-transport.ts:78-94` | 粗焼きをやめ、ノイズの texel 角は `projection.texelAngle` をそのまま渡す |
-| `src/render/cloud/convective-activity.ts:47-51` | 同上 |
-| `src/render/cloud/weather-model.ts:186-187`、`air-mass.ts:55-56`、`cloud-field.ts:21` | `BakedField` の `coarseness` 引数を消したのに合わせる |
-| `src/render/cloud/cumulus-shape.ts:14-18` | `EMPTY_CLOUD_FIELD` の `minFilter` を `LinearFilter` にする。グラフは差し込んだテクスチャのフィルタで組まれるので、本物とフィルタを揃える |
-| `src/render/cloud/observed-cloud-field.ts:26-32` | `prepare` の「読める mip 段を寸法から引き直す」をやめる。世代の追跡が `setTexture` の張り替えにまだ要るかを確かめ、要らなければ消す |
-| `src/render/cloud/cloud-presentation.ts:9, 60-63` | `setLodSampling` を消す |
-| `src/render/opaque-cloud-surface-renderer.ts:12, 17-19, 106-109, 111-112, 135-142` | `setLodSampling` を消し、`sphereLodLevel` で段を選ぶ |
-| `src/render/celestial/screen-lod.ts:70-` | `sphereLodLevelWithHysteresis` を消す |
-| `src/render/pipeline/cloud-atmosphere-renderer.ts:11, 142-144, 182-190` | `setLodSampling` を消し、`fieldAt` は段を渡さずに読む。`footprint` がほかで使われていなければ、`scatteredAt` とその呼び手(atmosphere-cloud-layers.ts)から外す |
-| `src/render/pipeline/atmosphere-cloud-layers.ts:7, 63-64` | `setLodSampling` を消す |
-| `src/render/pipeline/atmosphere-integrator.ts:17, 168-175`、`atmosphere-pass.ts:17, 114-119` | `setCloudBlueNoiseEnabled`・`setCloudLodSampling` と、それが立てる uniform を消す |
-| `src/render/pipeline/shadow/shadow-pass.ts:18, 122-123` | `setCloudLodSampling` を消す |
-| `src/render/pipeline/shadow/cloud-shadow-renderer.ts:8, 74-76, 105-110, 118, 147-157, 162-165` | `setLodSampling`・`fieldLod` を消し、`fieldAt`・`receiverFloorAltitude` から `lod` を外す。`sampleWidth` は粒の振幅にだけ使う |
-| `src/render/pipeline/render-pipeline.ts:105-112` | 2 つの口を消す |
-| `tools/render-lab/lab.ts:225-227`、`cases.ts:132, 641, 702, 737, 756, 785, 869`、`main.ts` | 同上の口とつまみを消す |
-| `tools/render-lab-cloud-sampling-compare.mjs` | 削除 |
-| `package.json` | `render-lab:cloud-sampling` を消す |
-| `tests/render/cloud-mip-contract.test.ts` | 削除(GPU 計測のテストは fix_PR72.md 手順 7 で `gpu-timings.test.ts` へ移してある) |
-| `tests/render/cloud-lod-comparison.test.ts` | 削除 |
-| `tests/render/screen-lod.test.ts:19-90` | ヒステリシスのテストを消す。11・91 行のテストはヒステリシス API を使っていれば直す |
-
-**達成条件と検証**:
-
-- `npm run typecheck`、`npm run test:render`、`npm run test:game`。
-- 達成目標 2 の検索が 0 件。
-- 着手前に render-lab の地球で `measure()` を取り、「雲の生成」「表面雲」「大気(雲あり)」「雲影」を
-  控える(手順 3 との比較の基準)。
-- `npm run render-lab:shot` の地球で雲殻・雲影・大気の雲が出る。
-
 ### 手順 3. 本番の雲場を視点中心の cap にする
 
 **目的**: 図法・読み手の契約・実写の焼き直しを一度に切り替える。途中の状態が成り立たないため
@@ -318,20 +278,20 @@ cap を 1024² にするかを、ここで決める。
 **雲の生成の GPU 時間**(焼く費用 ∝ texel 数 × 1 texel の式の重さ。1 texel の式の重さは図法によらない
 と仮定):
 
-- 今: render-lab の地球(既定=高、Intel iGPU)で 9.4〜14.4 ms。1024×512 = 524,288 texel。
+- 手順 2 のあと(render-lab の地球、既定=高、Intel iGPU、3 巡の平均): 雲の生成 9.64 ms、
+  表面雲 4.14 ms、大気(雲あり) 7.32 ms、雲影 1.07 ms。1024×512 = 524,288 texel。
 - cap 512²: 262,144 texel なので 0.5 倍の 4.7〜7.2 ms。ただし次の 2 つで増える。
   - 中間場の粗焼きをやめる分は、今の 1024×512 では 0。湿度(最細 64)・対流(266)・不安定度(25)の
     どれも `coarsenessFor` の式(`max(1, 2^floor(log2(0.25 / (最細 × π/512))))`)で 1 になる。
     粗焼きが効き始めるのは、cap が縮んで texel 角が小さくなってから。
   - 実写の焼き直し。1 texel あたり画像を 1 回読むだけで、天気の式に比べて桁で軽い。
-- 手順 3 で実測に置き換える。
+- 手順 3 で実測に置き換える。**比較の基準は手順 2 のあとの値**(上)。
 
 **編集の量**(ファイル数は「変更が必要な箇所」の表から):
 
 | 手順 | 編集 | 削除 | 新規 |
 | --- | --- | --- | --- |
 | 1 | 1 | — | — |
-| 2 | 約 22 | 3(ツール 1・テスト 2) | — |
 | 3 | 約 18 | — | 2(cloud-cap.ts・テスト) |
 | 4 | — | — | —(scratchpad のスクリプト) |
 | 5 | 約 6 | — | — |
