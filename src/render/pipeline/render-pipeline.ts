@@ -421,7 +421,7 @@ export class RenderPipeline implements DebugTargetHost {
       this.atmospherePass.render(camera);
       if (this.debugTarget === 'atmosphere') this.atmospherePass.inspectScattered(camera);
 
-      // world パス。LIT_OPAQUE_LAYER と背景専用レイヤーはチャンネル0から外れているので、既定の
+      // world パス。LIT_OPAQUE_LAYER・雲殻の層・背景専用レイヤーはチャンネル0から外れているので、既定の
       // カメラマスクで描く限り重複しない。autoClear を落としてマテリアルパスの描画(色・深度とも)
       // を残したまま重ね描きする — world パスは透明物(オービットライン・プルーム・ビルボード)を
       // 描画順の最後に描くため、不透明な自艦の深度が先に無いと、自艦の手前の透明物が上書きされる。

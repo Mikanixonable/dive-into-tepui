@@ -14,7 +14,7 @@ import type { CloudFieldSampler, CloudLodMode } from './cloud/cloud-field-sample
 import { unitSphereGeometry } from './celestial/celestial-surface';
 import { CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from './cloud/cumulus-shape';
 import { eastAt, northAt } from './cloud/sphere-frame';
-import { markLitOpaque } from './pipeline/lit-layer';
+import { markLitCloudShell } from './pipeline/lit-layer';
 import {
   sphereLodLevelWithHysteresis, SPHERE_LOD_LADDER, SphereLodLevel,
 } from './celestial/screen-lod';
@@ -87,7 +87,7 @@ export class OpaqueCloudSurfaceRenderer {
       const mesh = new THREE.Mesh(unitSphereGeometry(level), this.material);
       mesh.scale.setScalar(shellScale);
       mesh.visible = false;
-      markLitOpaque(mesh);
+      markLitCloudShell(mesh);
       meshes.set(level, mesh);
     }
     this.meshes = meshes;
