@@ -76,6 +76,63 @@ export function createPart<TType extends PartType>(
 
 // セーブされた AnyPart の生データを createPart 経由で組み立てる。id も引き継ぐので、
 // セーブ前後でパーツの同一性(id)が保たれる。
-export function partFromSaveData(data: AnyPart): AnyPart {
-  return createPart(data.type, data);
+const PART_TYPES: readonly PartType[] = [
+  'hull', 'cockpit', 'armor', 'thruster', 'rcs_tank', 'radiator', 'solar_panel', 'weapon',
+];
+
+function nonNegative(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+export function partFromSaveData(data: AnyPart): AnyPart | null {
+  if (data === null || typeof data !== 'object'
+    || !PART_TYPES.includes(data.type as PartType)) return null;
+  const maxHp = typeof data.maxHp === 'number' && Number.isFinite(data.maxHp) && data.maxHp > 0
+    ? data.maxHp : 1;
+  const hp = typeof data.hp === 'number' && Number.isFinite(data.hp)
+    ? Math.max(0, Math.min(maxHp, data.hp)) : 0;
+  const common = {
+    id: typeof data.id === 'string' && data.id.length > 0 ? data.id : Math.random().toString(36).slice(2),
+    name: typeof data.name === 'string' ? data.name : 'Unknown Part',
+    weight: nonNegative(data.weight),
+    maxHp,
+    hp,
+  };
+  switch (data.type) {
+    case 'armor':
+      return createPart('armor', {
+        ...common,
+        damageReduction: typeof data.damageReduction === 'number' && Number.isFinite(data.damageReduction)
+          ? Math.max(0, Math.min(1, data.damageReduction)) : 0,
+      });
+    case 'thruster':
+      return createPart('thruster', {
+        ...common,
+        torque: nonNegative(data.torque),
+        thrust: nonNegative(data.thrust),
+        fuelConsumptionRate: nonNegative(data.fuelConsumptionRate),
+      });
+    case 'rcs_tank': {
+      const maxFuel = nonNegative(data.maxFuel);
+      return createPart('rcs_tank', { ...common, maxFuel, fuel: Math.min(maxFuel, nonNegative(data.fuel)) });
+    }
+    case 'radiator':
+      return createPart('radiator', { ...common, coolingRate: nonNegative(data.coolingRate) });
+    case 'solar_panel':
+      return createPart('solar_panel', { ...common, powerGeneration: nonNegative(data.powerGeneration) });
+    case 'weapon':
+      return createPart('weapon', {
+        ...common,
+        weaponType: data.weaponType === 'cannon' || data.weaponType === 'missile' ? data.weaponType : 'gatling',
+        fireRate: nonNegative(data.fireRate),
+        damage: nonNegative(data.damage),
+        muzzleVelocity: nonNegative(data.muzzleVelocity),
+      });
+    case 'hull':
+      return createPart('hull', common);
+    case 'cockpit':
+      return createPart('cockpit', common);
+    default:
+      return null;
+  }
 }

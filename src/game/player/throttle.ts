@@ -72,9 +72,11 @@ export class Throttle {
 
   constructor(private readonly _notifier: Notifier, saved?: ThrottleSaveData) {
     if (saved) {
-      this.throttleIdx = saved.throttleIdx;
-      this.rcsDamp = saved.rcsDamp ?? true;
-      this.progradeHold = saved.progradeHold ?? true;
+      this.throttleIdx = Number.isInteger(saved.throttleIdx)
+        && saved.throttleIdx >= 0 && saved.throttleIdx < THROTTLE_LEVELS.length
+        ? saved.throttleIdx : THROTTLE_DEFAULT_IDX;
+      this.rcsDamp = typeof saved.rcsDamp === 'boolean' ? saved.rcsDamp : true;
+      this.progradeHold = typeof saved.progradeHold === 'boolean' ? saved.progradeHold : true;
     }
   }
 
@@ -98,6 +100,7 @@ export class Throttle {
 
   // 並進出力のプリセットを idx 段階目へ切り替える。
   setThrottlePreset(idx: number): void {
+    if (!Number.isInteger(idx) || idx < 0 || idx >= THROTTLE_LEVELS.length) return;
     this.throttleIdx = idx;
     this._notifier.hint(`並進出力: ${THROTTLE_LABELS[idx]!} (${THROTTLE_LEVELS[idx]!.toFixed(1)} m/s²)`);
   }

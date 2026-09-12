@@ -1,5 +1,6 @@
 import { Attitude } from '../../../physics/attitude';
 import { DynamicEntity, type DynamicMotionFactory } from './dynamic-entity';
+import { EntityIdAllocator } from './entity-id';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotionProperties } from '../dynamic-motion';
 import { Part, PartType, createPart } from './parts';
@@ -16,6 +17,8 @@ import type {
 } from './parts';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
 import { THROTTLE_LEVELS, MAX_ANG_ACCEL } from '../../player/throttle';
+
+const hpMarkerClipIdAllocator = new EntityIdAllocator('ship-hp-');
 
 // 艦の材質・空力。大気抵抗は弾道係数の逆数 Cd·A/m [m^2/kg]、太陽輻射圧は輻射圧係数 ×
 // 断面積質量比 C_R·A/m [m^2/kg] で表す。
@@ -65,6 +68,8 @@ const ENEMY_BULLET_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメ�
 // パーツ式の被弾モデルを持つ艦(自機・敵機)。HP と性能はパーツの合計から求める。
 export abstract class Ship extends DynamicEntity {
   public override readonly combatTarget = true;
+  // SVG の clipPath は名前変更や同名艦の追加でも衝突しないよう、個体寿命の ID を使う。
+  private readonly hpMarkerClipId = hpMarkerClipIdAllocator.next();
 
   private _hp!: number;
   private _maxHp!: number;
@@ -285,7 +290,7 @@ export abstract class Ship extends DynamicEntity {
     const apexY = 1.5;
     const baseY = 21;
     const fillTopY = (baseY - ratio * (baseY - apexY)).toFixed(2);
-    const clipId = `hpfill-${this.name}`;
+    const clipId = this.hpMarkerClipId;
     const pts = SHIP_ARROWHEAD_POINTS;
     if (isEnemy) {
       return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="HP ${Math.max(0, this.hp)} / ${this.maxHp}">` +

@@ -97,8 +97,12 @@ export class RadiatorSystem {
   ) {
     if (saved) {
       for (const side of ['up', 'down'] as const) {
-        this.panels[side].deployTarget = saved[side].deployTarget;
-        this.panels[side].deploy = saved[side].deploy;
+        const savedPanel = saved[side];
+        if (!savedPanel) continue;
+        this.panels[side].deployTarget = savedPanel.deployTarget === 1 ? 1 : 0;
+        this.panels[side].deploy = typeof savedPanel.deploy === 'number'
+          && Number.isFinite(savedPanel.deploy)
+          ? Math.max(0, Math.min(1, savedPanel.deploy)) : 0;
       }
     }
   }

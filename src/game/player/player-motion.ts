@@ -10,7 +10,9 @@ import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-part
 import {
   MAX_HULL_TEMP,
   PLAYER_MASS,
+  SHIP_BCINV,
   SHIP_RADIATING_AREA_PER_MASS,
+  SHIP_SRP_COEFF,
   shipMotionOptions,
 } from '../dynamic/dynamic-entity/ship';
 import { AeroLoad } from './aero-load';
@@ -48,6 +50,16 @@ class PlayerBehavior implements DynamicMotionBehavior {
   private readonly contactProxyScratch: DynamicMotion[] = [];
 
   public constructor(private readonly reactions: PlayerMotionReactions) {}
+
+  // 艦体の断面積が同じなら、ブースター込みの質量に反比例して弾道係数を変える。
+  public bcInv(self: DynamicMotion): number {
+    return self.mass > 0 ? SHIP_BCINV * PLAYER_MASS / self.mass : 0;
+  }
+
+  // 艦体の反射面積が同じなら、ブースター込みの質量に反比例して輻射圧を変える。
+  public srpCoeff(self: DynamicMotion): number {
+    return self.mass > 0 ? SHIP_SRP_COEFF * PLAYER_MASS / self.mass : 0;
+  }
 
   // 機体に付随する物理系を、同じ環境入力で1区間進める。
   public stepEnvironment(
@@ -95,8 +107,9 @@ class PlayerBehavior implements DynamicMotionBehavior {
   // 艦体の放射面積に、展開中の放熱板の面積を足した質量あたりの値 [m^2/kg]。
   public radiatingAreaPerMass(self: DynamicMotion): number {
     const motion = self as PlayerMotion;
-    return SHIP_RADIATING_AREA_PER_MASS
-      + motion.radiator.radiatingArea(this.reactions.totalCoolingRate()) / PLAYER_MASS;
+    if (motion.mass <= 0) return 0;
+    return SHIP_RADIATING_AREA_PER_MASS * PLAYER_MASS / motion.mass
+      + motion.radiator.radiatingArea(this.reactions.totalCoolingRate()) / motion.mass;
   }
 
   // 艦体と放熱板が sunDir からの日射を吸収する、質量あたりの面積 [m^2/kg]。
@@ -105,7 +118,7 @@ class PlayerBehavior implements DynamicMotionBehavior {
     const hullArea = (motion.emissivity * motion.bcInv) / 2.2;
     return hullArea + motion.radiator.solarAbsorbArea(
       sunDir, motion.att, this.reactions.totalCoolingRate(),
-    ) / PLAYER_MASS;
+    ) / Math.max(motion.mass, 1e-9);
   }
 
   // 他の個体との接触を reactions へ渡す。

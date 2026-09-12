@@ -85,6 +85,9 @@ export interface DynamicMotionBehavior {
     self: DynamicMotion, dt: number, atmosphereBody: CelestialBody | null,
     atmospherePivot: number, sunlit: number, sunDir: Vec3,
   ): void;
+  // 質量などの状態に応じて変化する物性。省略時は生成時の固定値を使う。
+  bcInv?(self: DynamicMotion): number;
+  srpCoeff?(self: DynamicMotion): number;
   radiatingAreaPerMass?(self: DynamicMotion): number;
   solarAbsorbAreaPerMass?(self: DynamicMotion, sunDir: Vec3): number;
   nextSimulationEventTime?(self: DynamicMotion, simTime: number): number | null;
@@ -166,8 +169,8 @@ export class DynamicMotion {
   // 本体に取り付けた付属物なら、その本体。
   public attachedTo: DynamicMotion | null = null;
   public torque: Vec3 = v3();
-  public readonly bcInv: number;
-  public readonly srpCoeff: number;
+  private readonly fixedBcInv: number;
+  private readonly fixedSrpCoeff: number;
   public temperature: number;
   public thermalDeviation: number;
   public readonly specificHeat: number;
@@ -200,8 +203,8 @@ export class DynamicMotion {
     this.preciseReentry = options.preciseReentry ?? false;
     this.contactDamageWeight = options.contactDamageWeight ?? 1;
     // 空力・輻射圧
-    this.bcInv = options.bcInv ?? 0;
-    this.srpCoeff = options.srpCoeff ?? 0;
+    this.fixedBcInv = options.bcInv ?? 0;
+    this.fixedSrpCoeff = options.srpCoeff ?? 0;
     // 熱
     this.temperature = options.temperature ?? ENV_TEMP;
     this.thermalDeviation = options.thermalDeviation ?? 0;
@@ -218,6 +221,10 @@ export class DynamicMotion {
 
   public get state(): KinematicState { return this.actual.state; }
   public set state(state: KinematicState) { this.reset(state); }
+  // 現在の質量・姿勢などから求めた弾道係数の逆数 [m²/kg]。
+  public get bcInv(): number { return this.behavior.bcInv?.(this) ?? this.fixedBcInv; }
+  // 現在の質量・姿勢などから求めた輻射圧係数と断面積質量比の積 [m²/kg]。
+  public get srpCoeff(): number { return this.behavior.srpCoeff?.(this) ?? this.fixedSrpCoeff; }
   public get prevState(): KinematicState { return this.actual.prevState; }
   public get predicted(): DynamicTrajectory | null { return this.predictedArc?.trajectory ?? null; }
   public get arc(): PredictedArc | null { return this.predictedArc; }
