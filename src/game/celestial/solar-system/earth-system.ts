@@ -1,6 +1,7 @@
 // 地球系(地球・月)。静的事実・運動・見た目を1体につき1箇所で組む。
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
+import climateTextureUrl from '../../../assets/earth-climate.png';
 import cloudFieldUrl from '../../../assets/cloud-field.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import coastlineData from '../../../assets/earth-coastline.json';
@@ -18,13 +19,12 @@ import {
 import { Aurora, type AuroraOptics } from '../../../render/celestial/aurora';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { createEarthSurfaceRuntime } from '../../../render/earth-surface-factory';
-import type { EarthSurfaceBootstrapResult } from '../../../render/earth-surface-runtime';
 import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
 import { ObservedCloudField } from '../../../render/cloud/observed-cloud-field';
-import { createDevelopmentClimateMap } from '../../../render/cloud/monthly-climate-fixture';
-import { EllipsoidEquirectProjection, type FieldProjection } from '../../../render/cloud/field-projection';
-import { earthSurfaceUvFromRadialNode } from '../../../render/earth-surface-coordinate';
+import { AnnualClimateMap } from '../../../render/cloud/climate-map';
+import { OrthographicCap, type FieldProjection } from '../../../render/cloud/field-projection';
+import { CLOUD_CAP_SIZE, CLOUD_CAP_MARGIN } from '../../../render/cloud/cloud-cap';
 import { LineOverlay, type LatLonPolyline, type UnitSphereLoop } from '../../../render/celestial/line-overlay';
 import { GeostationaryOverlay } from '../../../render/celestial/celestial-entity/geostationary-overlay';
 import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
@@ -32,7 +32,6 @@ import { SphereCelestialView } from '../../../render/celestial/celestial-entity/
 import { MOON_DIST_TERMS, MOON_LAT_TERMS, MOON_LON_TERMS } from './moon-terms';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { vec3 } from 'three/tsl';
 import { AU } from '../../../physics/astronomical-unit';
 
 // 地球系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
@@ -176,9 +175,6 @@ export const EARTH_SYSTEM_NAMES: Record<EarthSystemBodyId, string> = {
   moon: '月',
 };
 
-// 気候図を貼る回転楕円体の半軸 [m]。
-const EARTH_CLIMATE_AXES = vec3(EARTH_ATMOSPHERE.equatorRadius, EARTH_ATMOSPHERE.polarRadius,
-  EARTH_ATMOSPHERE.equatorRadius);
 
 // 両極それぞれ2層のカーテン。同じ極の層は geomSeed を揃えて平行にし、半径・緯度・明滅を
 // ずらして厚みを出す。
@@ -192,37 +188,33 @@ function earthAuroras(): readonly Aurora[] {
   ];
 }
 
-// 地球の生成雲場の高さ [texel]。
-const EARTH_CLOUD_FIELD_HEIGHT = 512;
-
-// 地球の気候から焼く雲場を組む。climateEpochUnixSec は表示時刻 0 の UTC [s]、bootstrap は地表の
-// 配信物の準備の結果で、ready なら気候をその月別気候図へ差し替える。projection は場の持ち方で、
-// 既定は気候図と同じ楕円体の正距円筒。返した場の寿命は受け取った側が持つ。
-export function earthGeneratedCloudField(
-  climateEpochUnixSec: number, bootstrap: Promise<EarthSurfaceBootstrapResult>,
-  projection: FieldProjection = new EllipsoidEquirectProjection(EARTH_CLOUD_FIELD_HEIGHT, EARTH_CLIMATE_AXES),
-): GeneratedCloudField {
-  const climate = createDevelopmentClimateMap((direction) => earthSurfaceUvFromRadialNode(direction, EARTH_CLIMATE_AXES));
-  void bootstrap.then((result) => {
-    if (result.state === 'ready' && result.source !== null) climate.replaceUrls(result.source.climateMapUrls);
-  });
+// 地球の平年の気候から焼く雲場を組む。projection は場の持ち方。返した場の寿命は受け取った側が持つ。
+// **実験環境も本番もこの工場から組む** — 別の組み立てを書くと、実験環境が本番を映さなくなる。
+export function earthGeneratedCloudField(projection: FieldProjection): GeneratedCloudField {
   // 天気を解く半径は、全球を一様な球とみなす平均半径。
-  return new GeneratedCloudField(climate, projection, R_EARTH, SIDEREAL_DAY, climateEpochUnixSec);
+  return new GeneratedCloudField(
+    AnnualClimateMap.fromDeferredUrl(climateTextureUrl), projection, R_EARTH, SIDEREAL_DAY,
+  );
+}
+
+// 地球の雲場ぜんぶを組む。生成と実写を同じ 1 つの cap へ焼き、CloudPresentation がその cap を
+// 視点へ置き直す。
+export function earthCloudPresentation(): CloudPresentation {
+  const cap = new OrthographicCap(CLOUD_CAP_SIZE, 0, 0, CLOUD_CAP_MARGIN);
+  return new CloudPresentation(
+    earthGeneratedCloudField(cap), new ObservedCloudField(cloudFieldUrl, cap), cap, R_EARTH_EQ,
+  );
 }
 
 // 地球系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 // earthSpinPhase0 は地球の自転初期位相 [rad]。
 export function earthSystem(
   sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
-  earthSpinPhase0 = 0, climateEpochUnixSec = 0, renderer?: WebGPURenderer,
+  earthSpinPhase0 = 0, renderer?: WebGPURenderer,
 ): Record<EarthSystemBodyId, CelestialEntity> {
   const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
   const earthSurfaceRuntime = createEarthSurfaceRuntime({ renderer });
-  // 殻を載せる球の半径は、本体メッシュと同じ赤道半径。
-  const cumulus = new CloudPresentation(
-    earthGeneratedCloudField(climateEpochUnixSec, earthSurfaceRuntime.ready.then((result) => result.bootstrap)),
-    new ObservedCloudField(cloudFieldUrl), R_EARTH_EQ,
-  );
+  const cumulus = earthCloudPresentation();
   const earthSurface = earthSurfaceRuntime.surface;
   return {
     earth: new CelestialEntity(

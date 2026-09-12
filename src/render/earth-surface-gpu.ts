@@ -188,6 +188,7 @@ export class EarthSurfaceGpuAdapter {
   // 公開ページをbaseへ戻し、完了済みの詳細層を再利用可能にする。upload中の層だけは
   // backendの書込み完了まで保持し、同じ層へ早すぎる再利用をしない。
   public reset(): void {
+    // 予約世代と公開層をそろえてから、baseページ表をGPUへ反映する。
     if (this.disposed) return;
     this.resetEpoch++;
     this.staged = null;
