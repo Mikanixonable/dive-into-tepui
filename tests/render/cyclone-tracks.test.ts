@@ -4,9 +4,8 @@
 // 隣どうしの分離)を書く。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { R_EARTH } from '../../src/game/celestial/solar-system/constants';
 import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from '../../src/render/cloud/cyclone-tracks';
-import { SAMPLE_STEP, completeLives, sampled } from './cyclone-samples';
+import { EARTH_SURFACE_RADIUS, SAMPLE_STEP, completeLives, sampled } from './cyclone-samples';
 import type { CyclonePlacement } from '../../src/render/cloud/cyclone-tracks';
 import type { Placements } from './cyclone-samples';
 
@@ -26,7 +25,7 @@ const PRESENT_DEPTH = 5;
 const SERIES: readonly { readonly name: string; readonly at: Placements }[] = [
   ...Array.from({ length: LOW_COUNT }, (_, index) => ({
     name: `低気圧 ${index}`,
-    at: (seconds: number) => lowPlacementAt(index, seconds),
+    at: (seconds: number) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS),
   })),
   { name: '熱帯低気圧', at: tropicalPlacementAt },
 ];
@@ -35,7 +34,7 @@ const SERIES: readonly { readonly name: string; readonly at: Placements }[] = [
 function greatCircleDistance(a: CyclonePlacement, b: CyclonePlacement): number {
   const cosAngle = Math.sin(a.latitude) * Math.sin(b.latitude)
     + Math.cos(a.latitude) * Math.cos(b.latitude) * Math.cos(a.longitude - b.longitude);
-  return R_EARTH * Math.acos(Math.min(Math.max(cosAngle, -1), 1));
+  return EARTH_SURFACE_RADIUS * Math.acos(Math.min(Math.max(cosAngle, -1), 1));
 }
 
 // 一生の最初の標本と最後の標本。
@@ -75,7 +74,7 @@ export function register(): void {
 
   test('cyclone-tracks: 低気圧は一生のあいだ極側へ進み続ける', () => {
     for (let index = 0; index < LOW_COUNT; index++) {
-      for (const life of completeLives(sampled((seconds) => lowPlacementAt(index, seconds), 60))) {
+      for (const life of completeLives(sampled((seconds) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS), 60))) {
         for (let i = 1; i < life.length; i++) {
           const previous = life[i - 1];
           const sample = life[i];
@@ -90,7 +89,7 @@ export function register(): void {
   test('cyclone-tracks: 低気圧は亜熱帯の縁に生まれ、暴風帯の極側で消える', () => {
     let counted = 0;
     for (let index = 0; index < LOW_COUNT; index++) {
-      for (const life of completeLives(sampled((seconds) => lowPlacementAt(index, seconds), 60))) {
+      for (const life of completeLives(sampled((seconds) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS), 60))) {
         const [born, dying] = endpoints(life);
         const bornLatitude = Math.abs(born.latitude) / DEGREE;
         const dyingLatitude = Math.abs(dying.latitude) / DEGREE;
@@ -120,7 +119,8 @@ export function register(): void {
   test('cyclone-tracks: 同じ半球の低気圧は互いに溶けない', () => {
     // 3 年ぶん。偶数番が北、奇数番が南なので、同じ半球の組は番号の偶奇が揃う。
     for (let seconds = 0; seconds <= 3 * 365 * DAY; seconds += SAMPLE_STEP) {
-      const placements = Array.from({ length: LOW_COUNT }, (_, index) => lowPlacementAt(index, seconds));
+      const placements = Array.from(
+        { length: LOW_COUNT }, (_, index) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS));
       for (let a = 0; a < LOW_COUNT; a++) {
         for (let b = a + 2; b < LOW_COUNT; b += 2) {
           const p = placements[a] ?? null;

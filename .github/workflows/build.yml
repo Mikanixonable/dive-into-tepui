@@ -27,9 +27,22 @@ jobs:
           cache: npm
 
       - run: npm ci
+      - run: npm run verify:ui-style
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
+
+      # 実データ未取得の間は決定的なfixtureをPagesへ配置する。実bundleを用意したときは
+      # EARTH_SURFACE_PAGES_INPUTを設定し、同じ入口で全bundleを検査してから公開する。
+      - name: Stage Earth surface bundle for Pages
+        env:
+          EARTH_SURFACE_PAGES_INPUT: ${{ vars.EARTH_SURFACE_PAGES_INPUT }}
+          EARTH_SURFACE_PAGES_MAX_BYTES: ${{ vars.EARTH_SURFACE_PAGES_MAX_BYTES || '134217728' }}
+        run: npm run earth-surface:pages-stage
+      - name: Verify Earth surface Pages layout
+        env:
+          EARTH_SURFACE_PAGES_DATASET_ID: ${{ vars.EARTH_SURFACE_PAGES_DATASET_ID || 'earth-pages-fixture' }}
+        run: npm run earth-surface:pages-check -- --root docs --dataset-id "$EARTH_SURFACE_PAGES_DATASET_ID"
 
       # webpack の出力先は docs/(GitHub Pages の公開元)。
       # release ブランチを作成し、そこにビルド結果を含めて強制 push する。

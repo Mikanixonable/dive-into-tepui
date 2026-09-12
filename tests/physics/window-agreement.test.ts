@@ -9,10 +9,10 @@ import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, MU_MOON, MU_SUN, R_EARTH, R_MOON } from '../../src/game/celestial/solar-system/constants';
 import { add, addScaled, cross, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
-import { ArcCelestialBodies, type FutureCelestialBodyProvider } from '../../src/game/dynamic/arc-celestial-bodies';
+import { ArcCelestialBodies } from '../../src/game/dynamic/arc-celestial-bodies';
 import { attractorsNearInto, classifyAttractors, GRAVITY_NEGLIGIBLE_ACCEL } from '../../src/game/dynamic/attractors';
 import { SurfaceCandidates, type SurfaceParticipant } from '../../src/game/dynamic/surface-candidates';
-import { CelestialMotion } from '../../src/physics/celestial-motion';
+import type { CelestialBody } from '../../src/physics/celestial-body';
 import type { KinematicState } from '../../src/physics/kinematic-state';
 import type { Vec3 } from '../../src/math/vec3';
 import { SUBSTEP_MAX_DT } from '../../src/game/dynamic/time-step';
@@ -28,7 +28,7 @@ const PARTS = solarSystemParts();
 const WINDOWS = PARTS.system;
 
 // 弧が候補として引く天体一式。実シミュレーション側の窓と同じ運動から組む。
-const ARC_SOURCES: FutureCelestialBodyProvider = { celestialMotions: PARTS.system.celestialMotions };
+const ARC_SOURCES = PARTS.system.celestialMotions;
 
 const DAY = 86400;
 // 天体の配置そのものが入れ替わるよう、数か月の間を置いた時刻でも見る。
@@ -91,12 +91,12 @@ const SITES: readonly Site[] = [
 
 // 天体一式が位置 r へ及ぼす ECI 加速度の和。素の引力ではなく、運動方程式に実際に現れる寄与で
 // 比べるために attractorAccel を使う。
-function gravitySum(bodies: readonly CelestialMotion[], r: Vec3, t: number): Vec3 {
+function gravitySum(bodies: readonly CelestialBody[], r: Vec3, t: number): Vec3 {
   return bodies.reduce((sum, body) => add(sum, attractorAccel(r, body, 0, t)), v3());
 }
 
 // bodies にあって others に無い天体を、その1体ぶんの寄与の大きさとともに並べた文字列。
-function onlyIn(bodies: readonly CelestialMotion[], others: readonly CelestialMotion[], r: Vec3, t: number): string {
+function onlyIn(bodies: readonly CelestialBody[], others: readonly CelestialBody[], r: Vec3, t: number): string {
   const known = new Set(others.map((b) => b.id));
   const missing = bodies.filter((b) => !known.has(b.id))
     .map((b) => `${b.id}(${len(attractorAccel(r, b, 0, t)).toExponential(2)})`);
@@ -147,7 +147,7 @@ export function register(): void {
     test(`gravity-window: ${site.name}で弧と実シミュレーションの重力和は GRAVITY_NEGLIGIBLE_ACCEL 以内で一致する`, () => {
       for (const t of SAMPLE_TIMES) {
         const from = site.stateAt(t);
-        const sim = attractorsNearInto(from.r, classifyAttractors(WINDOWS.gravityMotions, 0), []);
+        const sim = attractorsNearInto(from.r, classifyAttractors(WINDOWS.gravityMotions, 0, 0, 0), []);
         // 成員は最初の解決で確定するので、場所ごと・時刻ごとに弧を組み直す。
         const arc = new ArcCelestialBodies(ARC_SOURCES).resolve(t, from, 0).gravity;
         const diff = len(sub(gravitySum(sim, from.r, t), gravitySum(arc, from.r, t)));

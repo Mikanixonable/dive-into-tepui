@@ -1,7 +1,7 @@
-import * as THREE from 'three/webgpu';
 import { Attitude } from '../../../physics/attitude';
-import { KinematicState } from '../../../physics/kinematic-state';
-import { DynamicEntity } from './dynamic-entity';
+import { DynamicEntity, type DynamicMotionFactory } from './dynamic-entity';
+import type { DynamicView } from '../../../render/dynamic/dynamic-view';
+import type { DynamicMotionProperties } from '../dynamic-motion';
 import { Part, PartType, createPart } from './parts';
 import { collisionDamageFraction } from './contact-damage';
 import { SHIP_ARROWHEAD_POINTS, triangleHpMarkerSvg } from '../../marker/marker-shapes';
@@ -15,7 +15,7 @@ import type {
   WeaponPart,
 } from './parts';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
-import { THROTTLE_LEVELS, MAX_ANG_ACCEL } from '../../player/player-throttle';
+import { THROTTLE_LEVELS, MAX_ANG_ACCEL } from '../../player/throttle';
 
 // 艦の材質・空力。大気抵抗は弾道係数の逆数 Cd·A/m [m^2/kg]、太陽輻射圧は輻射圧係数 ×
 // 断面積質量比 C_R·A/m [m^2/kg] で表す。
@@ -38,18 +38,33 @@ export const PLAYER_INERTIA_PITCH = 1.0; // ピッチ軸(X)。3軸中の中間�
 export const PLAYER_INERTIA_YAW = 1.6; // ヨー軸(Y)
 export const PLAYER_INERTIA_ROLL = 0.5; // ロール軸(Z、機体前後)。細長い形状に見合って最小
 
-export const MUZZLE_SPEED = 1000; // 機関砲初速 [m/s]
-export const FIRE_INTERVAL = 0.06; // 発射間隔 [s]
-export const ENEMY_BULLET_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメージ [HP]。武器部品の damage の初期値
+// 艦の物性を既定にした Motion の設定。overrides の項目で上書きする。
+export function shipMotionOptions(
+  attitude: Attitude, radius: number, overrides: DynamicMotionProperties = {},
+): DynamicMotionProperties {
+  return {
+    attitude,
+    radius,
+    bcInv: SHIP_BCINV,
+    srpCoeff: SHIP_SRP_COEFF,
+    // 過去線を保持し、予測も引く
+    historyDuration: DEFAULT_HISTORY_DURATION,
+    predictedForGhost: true,
+    // 熱の物性
+    specificHeat: SHIP_SPECIFIC_HEAT,
+    bulkDensity: SHIP_BULK_DENSITY,
+    radiatingAreaPerMass: SHIP_RADIATING_AREA_PER_MASS,
+    ...overrides,
+  };
+}
 
+export const MUZZLE_SPEED = 1000; // 機関砲初速 [m/s]
+const FIRE_INTERVAL = 0.06; // 発射間隔 [s]
+const ENEMY_BULLET_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメージ [HP]。武器部品の damage の初期値
+
+// パーツ式の被弾モデルを持つ艦(自機・敵機)。HP と性能はパーツの合計から求める。
 export abstract class Ship extends DynamicEntity {
-  public override readonly bcInv = SHIP_BCINV;
-  protected readonly srpCoeff = SHIP_SRP_COEFF;
-  protected readonly baseHistoryDuration = DEFAULT_HISTORY_DURATION;
-  protected readonly predictedForGhost = true;
-  protected readonly specificHeat = SHIP_SPECIFIC_HEAT;
-  protected readonly bulkDensity = SHIP_BULK_DENSITY;
-  protected override get radiatingAreaPerMass(): number { return SHIP_RADIATING_AREA_PER_MASS; }
+  public override readonly combatTarget = true;
 
   private _hp!: number;
   private _maxHp!: number;
@@ -60,8 +75,8 @@ export abstract class Ship extends DynamicEntity {
   public get maxHp(): number { return this._maxHp; }
   public set maxHp(value: number) { this._maxHp = value; }
 
-  // パーツ配列の type 走査は性能取得 getter から毎回行わず、換装・復元時だけ組み直す。
-  // HP/fuel はパーツ本体で変化するため、これらはパーツ参照の固定配列であり、値のキャッシュではない。
+  // type 別のパーツ参照。parts を入れ替えたら組み直す。値ではなく参照を持つので、パーツの
+  // HP・燃料の変化はそのまま読める。
   private readonly thrusterPartRefs: ThrusterPart[] = [];
   private readonly rcsTankPartRefs: RcsTankPart[] = [];
   private readonly radiatorPartRefs: [RadiatorPart | undefined, RadiatorPart | undefined] = [undefined, undefined];
@@ -71,20 +86,16 @@ export abstract class Ship extends DynamicEntity {
   private hullPart: Part | undefined;
   private cockpitPart: CockpitPart | undefined;
 
-  // 名前・剛体接触半径・HP を初期化し、基底の状態/メッシュ/姿勢を構築する。
+  // 基底の識別・Motion・View を組み、名前と HP を初期化して既定パーツを積む。
   public constructor(
     name: string,
-    state: KinematicState,
-    renderObject: THREE.Object3D,
-    att: Attitude,
-    radius: number,
     hp: number,
-    scene?: THREE.Scene,
+    motionFactory: DynamicMotionFactory,
+    view: DynamicView,
     id?: string,
   ) {
-    super(state, renderObject, scene, att, id);
-    this.name = name;
-    this.radius = radius;
+    super(motionFactory, view, id);
+    this.setName(name);
     this.hp = hp;
     this.maxHp = hp;
     this.initDefaultParts();
@@ -138,8 +149,7 @@ export abstract class Ship extends DynamicEntity {
     this.updateOverallHp();
   }
 
-  // パーツの換装・セーブ復元後にだけ呼ぶ type 別参照を再構築する。parts 配列は
-  // BasePanel/Player の換装経路で splice され、その直後に refreshFromParts が呼ばれる。
+  // parts から type 別のパーツ参照を組み直す。parts を入れ替えたあとに呼ぶ。
   private rebuildPartReferences(): void {
     this.thrusterPartRefs.length = 0;
     this.rcsTankPartRefs.length = 0;
@@ -154,6 +164,7 @@ export abstract class Ship extends DynamicEntity {
     this.hullPart = undefined;
     this.cockpitPart = undefined;
 
+    // 船体とコックピットは最初の1つ、放熱板と太陽電池パドルは左右の2枚までを取る。
     for (const part of this.parts) {
       switch (part.type) {
         case 'hull': if (!this.hullPart) this.hullPart = part; break;
@@ -234,11 +245,10 @@ export abstract class Ship extends DynamicEntity {
     this.updateOverallHp();
   }
 
-  // 自然回復の対象外にする部品種別。外装パネルは機上で直せず、基地ドックの修理を要する。
+  // 自然回復の対象外にする部品種別。外装パネルは機上で直せず、いまは直す手段がない。
   private static readonly SELF_REPAIR_EXCLUDED: readonly PartType[] = ['radiator', 'solar_panel'];
 
-  // amount [HP] を自然回復できる損傷部品へ均等に配る。全損した部品は対象外で、
-  // 復旧にはドックでの修理が要る。
+  // amount [HP] を自然回復できる損傷部品へ均等に配る。全損した部品は対象外で、復旧しない。
   protected selfRepair(amount: number): void {
     const targets = this.parts.filter(
       p => p.hp > 0 && p.hp < p.maxHp && !Ship.SELF_REPAIR_EXCLUDED.includes(p.type));
@@ -262,6 +272,7 @@ export abstract class Ship extends DynamicEntity {
     this.hp = hp;
   }
 
+  // 残 HP 比を塗りで示す三角の HP マーカーの SVG。
   public hpMarkerSvg(): string {
     return triangleHpMarkerSvg(this.hp, this.maxHp);
   }
@@ -269,6 +280,7 @@ export abstract class Ship extends DynamicEntity {
   // 進行方向へ回転させても崩れない HP 表現。後部が凹んだ鋭角矢尻の外形と、底辺からの塗り高さで
   // 残HP比を示す。味方・自機は単色塗りつぶし(fill-opacity: 1)、敵機は中抜きスタイル。
   public headingHpMarkerSvg(isEnemy = false): string {
+    // 塗りの上端は、底辺から矢尻の頂点までを残 HP 比で内分した高さ。
     const ratio = this.maxHp > 0 ? Math.max(0, Math.min(1, this.hp / this.maxHp)) : 0;
     const apexY = 1.5;
     const baseY = 21;
@@ -294,24 +306,28 @@ export abstract class Ship extends DynamicEntity {
     return total;
   }
 
+  // 健全なスラスターの推力の合計 [N]。
   public get totalThrust(): number {
     let total = 0;
     for (const p of this.thrusterPartRefs) if (p.hp > 0) total += p.thrust;
     return total;
   }
-  
+
+  // 健全なスラスターの燃料消費率の合計。
   public get totalFuelConsumptionRate(): number {
     let total = 0;
     for (const p of this.thrusterPartRefs) if (p.hp > 0) total += p.fuelConsumptionRate;
     return total;
   }
 
+  // 健全なタンクの燃料の合計 [kg]。
   public get totalFuel(): number {
     let total = 0;
     for (const p of this.rcsTankPartRefs) if (p.hp > 0) total += p.fuel;
     return total;
   }
 
+  // 健全なタンクの容量の合計 [kg]。
   public get totalMaxFuel(): number {
     let total = 0;
     for (const p of this.rcsTankPartRefs) if (p.hp > 0) total += p.maxFuel;
@@ -321,7 +337,8 @@ export abstract class Ship extends DynamicEntity {
   // 燃料を消費し、実際に消費できた割合（0.0〜1.0）を返す
   public consumeFuel(amount: number): number {
     if (amount <= 0) return 1.0;
-    
+
+    // 健全なタンクから並び順に汲む。
     let remainingToConsume = amount;
     let actualConsumed = 0;
     
@@ -343,6 +360,7 @@ export abstract class Ship extends DynamicEntity {
   public refuelFuel(amount: number): number {
     if (amount <= 0) return 0;
 
+    // 健全なタンクの空きを並び順に埋める。
     let remainingToAdd = amount;
     let actualAdded = 0;
     for (const tank of this.rcsTankPartRefs) {
@@ -365,16 +383,19 @@ export abstract class Ship extends DynamicEntity {
     return this.radiatorPartRefs;
   }
 
+  // 左右2枚の太陽電池パドルに対応するパーツ。並びは radiatorParts と同じく side 順。
   public get solarParts(): readonly (SolarPanelPart | undefined)[] {
     return this.solarPanelPartRefs;
   }
 
+  // 健全な放熱板の冷却率の合計。
   public get totalCoolingRate(): number {
     let total = 0;
     for (const p of this.radiatorPartRefs) if (p && p.hp > 0) total += p.coolingRate;
     return total;
   }
 
+  // 健全な太陽電池パドルの発電量の合計。
   public get totalPowerGeneration(): number {
     let total = 0;
     for (const p of this.solarPanelPartRefs) if (p && p.hp > 0) total += p.powerGeneration;
@@ -393,13 +414,14 @@ export abstract class Ship extends DynamicEntity {
     return damage;
   }
 
+  // 健全な武装の発射レートの合計 [発/s]。
   public get totalFireRate(): number {
     let total = 0;
     for (const p of this.weaponPartRefs) if (p.hp > 0) total += p.fireRate;
     return total;
   }
 
-  // 生存武装の初速平均。武装が全損している場合は 0(呼び出し側は totalFireRate <= 0 で発射不能を判定する)。
+  // 生存武装の初速平均 [m/s]。武装が全損している場合は 0。
   public get averageMuzzleVelocity(): number {
     let total = 0;
     let count = 0;

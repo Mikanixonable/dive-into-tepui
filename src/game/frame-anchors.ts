@@ -1,47 +1,46 @@
 // 天体レジストリに載らない参照フレームの基準・回転対象 — 生存中の重力天体・機体・役割トークン
-// (@activeShip / @navTarget)— を ECI 状態と主天体へ解決する FrameAnchorSource。
+// (@controlled / @navTarget)— を ECI 状態と主天体へ解決する FrameAnchorSource。
 // 役割トークンは毎フレームその時点の対象へ解決されるので、操作対象の乗り換えやターゲットの
 // 付け替えをまたいでも同じ基準を指し続ける(DEVELOP/SPEC/CELESTIAL.md 8節)。
 import { orbitingAttractorOf } from '../physics/attractor';
-import { CelestialMotion } from '../physics/celestial-motion';
 import { FrameAnchorSource, FrameRole, frameRoleOf } from '../physics/frame';
 import { KinematicState } from '../physics/kinematic-state';
-import type { CelestialSystem } from './celestial/celestial-system';
+import type { CelestialBodies } from './celestial/celestial-bodies';
+import type { CelestialBody } from '../physics/celestial-body';
 
-// 解決に要る問い合わせをまとめた受け口。ゲーム側の型ではなく状態だけを受け取ることで、
-// 参照フレームの解決がエンティティ管理や航法ターゲットの都合から独立する。
+// 解決に要る問い合わせをまとめた受け口。いずれも ECI 状態を答える。
 interface AnchorTargets {
   // 生存中のエンティティ id の時刻 t における状態。見つからなければ null。
   entityState(id: string, t: number): KinematicState | null;
-  // 操作対象の船の時刻 t における状態。乗り換え中などで定まらなければ null。
-  activeShipState(t: number): KinematicState | null;
+  // 操作対象の時刻 t における状態。乗り換え中などで定まらなければ null。
+  controlledState(t: number): KinematicState | null;
   // 航法ターゲットの時刻 t における状態。設定されていない・消滅していれば null。
-  navTargetState(bodies: readonly CelestialMotion[], t: number): KinematicState | null;
+  navTargetState(bodies: readonly CelestialBody[], t: number): KinematicState | null;
 }
 
-// 役割トークンが一時的に解決できないあいだ直前の状態を保つ枠。misses は連続ミスの数、
-// missFrame はそれを最後に数えたフレーム — 猶予を呼び出し回数で数えると、同じフレームで
-// 重ねて問われただけで使い切ってしまう。
+// 役割トークンが一時的に解決できないあいだ直前の状態を保つ枠。連続ミスはフレームで数える —
+// 呼び出し回数で数えると、同じフレームに重ねて問われただけで猶予を使い切る。
 type RoleHold = { state: KinematicState | null; misses: number; missFrame: number };
 
 export class FrameAnchors implements FrameAnchorSource {
-  // bodies の位置を厳密に引く時刻。update が表示時刻で置く。
+  // bodies の位置を厳密に引く時刻 [s]。
   bodiesPivot = 0;
 
   private readonly roleHolds = new Map<FrameRole, RoleHold>();
-  // update() ごとに進む通し番号。役割トークンの猶予とキャッシュの有効範囲をフレームで区切る。
+  // フレームごとに進む通し番号。役割トークンの猶予とキャッシュの有効範囲をフレームで区切る。
   private frameIndex = 0;
   private attractorCacheKey: string | null = null;
   private attractorCacheValue: string | null = null;
 
   constructor(
-    private readonly celestialSystem: CelestialSystem,
+    private readonly celestialBodies: CelestialBodies,
     private readonly targets: AnchorTargets,
   ) {}
 
-  get bodies(): readonly CelestialMotion[] { return this.celestialSystem.celestialMotions; }
+  get bodies(): readonly CelestialBody[] { return this.celestialBodies.celestialMotions; }
 
-  // 天体の位置を厳密に引く表示時刻を差し込む。update / sync それぞれの先頭で1度呼ぶ。
+  // このフレームが天体の位置を厳密に引く表示時刻を差し込む。フレームの先頭で1度だけ呼ぶ —
+  // 役割トークンの猶予とキャッシュの区切りがこの呼び出し回数で決まる。
   update(bodiesPivot: number): void {
     this.bodiesPivot = bodiesPivot;
     this.frameIndex++;
@@ -52,7 +51,7 @@ export class FrameAnchors implements FrameAnchorSource {
     const role = frameRoleOf(id);
     if (role !== null) return this.heldRoleState(role, this.resolveRoleState(role, t));
     return this.targets.entityState(id, t)
-      ?? this.celestialSystem.find(id)?.motion.stateAt(this.bodiesPivot) ?? null;
+      ?? this.celestialBodies.findMotion(id)?.stateAt(this.bodiesPivot) ?? null;
   }
 
   // 基準 id が公転している主天体。離心率1未満の周回軌道にないなら null。
@@ -67,16 +66,16 @@ export class FrameAnchors implements FrameAnchorSource {
     return result;
   }
 
-  // attractorOf のキャッシュを介さない本体。
+  // 主天体を実際に探索する。
   private computeAttractorOf(id: string, t: number): string | null {
     const state = this.stateOf(id, t);
     return state !== null
       ? orbitingAttractorOf(state, this.bodies, this.bodiesPivot)?.id ?? null : null;
   }
 
-  // 役割そのものの解決。猶予は掛かっていない生の結果を返す。
+  // 役割トークンをその時点の対象へ解決した、猶予を掛ける前の結果。
   private resolveRoleState(role: FrameRole, t: number): KinematicState | null {
-    if (role === 'activeShip') return this.targets.activeShipState(t);
+    if (role === 'controlled') return this.targets.controlledState(t);
     return this.targets.navTargetState(this.bodies, t);
   }
 

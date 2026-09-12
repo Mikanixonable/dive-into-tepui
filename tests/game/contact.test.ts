@@ -14,6 +14,8 @@ import {
 } from '../../src/physics/collision-response';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { Vec3, scale, v3 } from '../../src/math/vec3';
+import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
+import type { DynamicReactionServices } from '../../src/game/dynamic/dynamic-simulation-participant';
 
 // closingSpeed が読むのは速度と法線だけなので、時刻と接触点は退化させてよい。
 function contact(selfV: Vec3, otherV: Vec3, normal: Vec3): Contact {
@@ -30,6 +32,25 @@ function received(selfState: KinematicState, otherState: KinematicState, normal:
 }
 
 export function register(): void {
+  test('contact: DynamicMotion は注入された反応へ接触を渡す', () => {
+    const state = kinematicState<'eci'>(0, v3(), v3());
+    const other = new DynamicMotion(state);
+    const event = contact(v3(1, 0, 0), v3(), v3(1, 0, 0));
+    const services = {} as DynamicReactionServices;
+    let received: readonly unknown[] | null = null;
+    const self = new DynamicMotion(state, {
+      behavior: {
+        contactKind: 'debris',
+        onEntityContact: (...args) => { received = args; },
+      },
+    });
+
+    self.collideWithEntity(other, event, services);
+
+    assert.equal(self.contactKind, 'debris');
+    assert.deepEqual(received, [self, other, event, services]);
+  });
+
   test('contact: closingSpeed は接触法線方向の相対速度で、近づいているときに正になる', () => {
     const toOther = v3(1, 0, 0);
     assert.equal(closingSpeed(contact(v3(3, 0, 0), v3(), toOther)), 3, '相手へ 3 m/s で近づく');

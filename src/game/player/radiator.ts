@@ -1,23 +1,20 @@
 // 自機の展開式ラジエーター: 上下2枚それぞれの展開度・損耗度を持ち、
-// 今フレームの放熱面積と太陽入射を答える。機体温度そのものは知らない
-// (温度の4乗則を持つのは DynamicEntity の熱収支のみ)。
-import * as THREE from 'three/webgpu';
+// 今フレームの放熱面積と太陽入射を答える。
 import { Attitude } from '../../physics/attitude';
 import { LOCAL_FORWARD, LOCAL_UP, qFromAxisAngle, qRotate } from '../../math/quat';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { add, cross, dot, rotateAxis, v3, Vec3 } from '../../math/vec3';
 import {
   RADIATOR_DEPLOY_TILT,
+  RADIATOR_FOLD_COUNT,
   RADIATOR_HINGE,
   RADIATOR_SEGMENT_LENGTH,
-} from '../../render/ships';
-import { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+} from '../../physics/player-shape';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
-import type { Stage } from '../stages/stage';
-import type { Player } from './player';
 import type { RadiatorSaveData } from '../save/save-data';
+import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic/dynamic-motion';
+import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
 
-const RADIATOR_FOLD_COUNT = 6; // 蛇腹の折り数(1枚あたり)
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
 
@@ -25,8 +22,8 @@ const RADIATOR_CONTACT_DEPLOY = 0.15; // これ以上展開していると被弾
 
 export type RadiatorSide = 'up' | 'down';
 
-// 収納時(deploy=0)の折り角。展開軸から ±90° で交互に折ると、隣り合う折り目の
-// 方向ベクトルが完全に打ち消し合い、4折りが同一の 2.3×2.3 の正方形へ重なる。
+// 収納時(deploy=0)の折り角。展開軸から ±90° で交互に折ると隣り合う折り目の変位が
+// 打ち消し合い、蛇腹全体が1セグメントぶんの位置へ畳まれる。
 const STOW_TILT = Math.PI / 2;
 
 // side の展開方向の符号。up は +X、down は -X へ伸びる。
@@ -40,7 +37,7 @@ function yRotatedOffset(theta: number, x: number): Vec3 {
 }
 
 // side の fold 番目の折りの中心位置(機体座標系)。RADIATOR_HINGE から蛇腹を辿り、
-// 各折りの根本から半セグメント先(export-models.mjs の panel.position と同じ位置)を返す。
+// 各折りの根本から半セグメント先(tools/model-builder/player-ship.mjs の panel.position と同じ位置)を返す。
 function foldLocalPosition(side: RadiatorSide, fold: number, even: number, odd: number): Vec3 {
   const sign = sideSign(side);
   let origin = v3(sign * RADIATOR_HINGE.x, RADIATOR_HINGE.y, RADIATOR_HINGE.z);
@@ -51,53 +48,53 @@ function foldLocalPosition(side: RadiatorSide, fold: number, even: number, odd: 
 }
 
 // 蛇腹1折りぶんの接触代理。艦の姿勢と展開度から一意に決まる剛体の取り付け。
-class RadiatorFold extends DynamicEntity {
+class RadiatorFold extends DynamicMotion {
   // state は生成時点の実際の world 状態 — 仮の状態で始めると、最初に置き直した substep の
   // prevState がその仮位置になり、そこからの偽の区間を掃引してしまう。
-  constructor(readonly side: RadiatorSide, private readonly owner: Player, state: KinematicState) {
-    super(state, new THREE.Object3D());
-    this.mass = 5;
-    this.radius = RADIATOR_SEGMENT_LENGTH / 2;
-    this.collides = true;
+  public constructor(
+    side: RadiatorSide,
+    owner: DynamicMotion,
+    state: KinematicState,
+    onContact: RadiatorContactReaction,
+  ) {
+    const behavior: DynamicMotionBehavior = {
+      contactKind: 'radiator-fold',
+      contactsWith: (_self, other) => other !== owner && other.attachedTo !== owner,
+      onEntityContact: (_self, other, contact, services) => onContact(side, other, contact, services),
+    };
+    super(state, { mass: 5, radius: RADIATOR_SEGMENT_LENGTH / 2, collides: true, behavior });
     this.attachedTo = owner;
-  }
-
-  // 吊り元の艦、およびそれに取り付いた他の実体(放熱板の他の折り・ベルトの節点)とは接触しない。
-  contactsWith(other: DynamicEntity): boolean {
-    if (other === this.owner) return false;
-    return other.attachedTo !== this.owner;
-  }
-
-  // 帰結は owner の collideAtRadiatorWithEntity に委ねる。
-  collideWithEntity(other: DynamicEntity, contact: Contact, activeStage: Stage): void {
-    this.owner.collideAtRadiatorWithEntity(this.side, other, contact, activeStage);
   }
 }
 
+// 折りへの接触を艦側のゲーム上の反応へ渡す口。side は当たった放熱板。
+interface RadiatorContactReaction {
+  (
+    side: RadiatorSide,
+    other: DynamicMotion,
+    contact: Contact,
+    services: DynamicReactionServices,
+  ): void;
+}
+
 class Panel {
-  deployTarget: 0 | 1 = 0;
-  deploy = 0;
+  public deployTarget: 0 | 1 = 0;
+  public deploy = 0;
 }
 
 export class RadiatorSystem {
   private readonly panels: Record<RadiatorSide, Panel> = { up: new Panel(), down: new Panel() };
-  // side ごとの損耗率(0=無傷, 1=全損)。放熱板パーツの残 HP から update() で受け取る。
+  // side ごとの損耗率(0=無傷, 1=全損)。
   private wear: Record<RadiatorSide, number> = { up: 0, down: 0 };
-  private readonly folds: Record<RadiatorSide, THREE.Object3D[]>;
   // side ごとの接触代理。折り数まで遅延生成し、以後は使い回す。
   private readonly foldProxies: Record<RadiatorSide, RadiatorFold[]> = { up: [], down: [] };
 
-  // renderObject の上下それぞれのヒンジ Group から、折り目 Group を
-  // RADIATOR_FOLD_COUNT 個解決して保持する。owner は接触代理が帰結を委ねる先の艦。
-  public constructor(renderObject: THREE.Object3D, private readonly owner: Player, saved?: RadiatorSaveData) {
-    const collect = (side: RadiatorSide, baseName: string): THREE.Object3D[] => {
-      const namePrefix = baseName + (side === 'up' ? 'Up' : 'Down');
-      const found = Array.from({ length: RADIATOR_FOLD_COUNT }, (_, i) =>
-        renderObject.getObjectByName(`${namePrefix}Fold${i}`));
-      if (found.some((f) => !f)) throw new Error(`${baseName} fold objects not found in ship model`);
-      return found as THREE.Object3D[];
-    };
-    this.folds = { up: collect('up', 'radiator'), down: collect('down', 'radiator') };
+  // 艦本体へ接触代理を結び、接触後のゲーム上の反応を受け取る。saved があれば展開状態を復元する。
+  public constructor(
+    private readonly owner: DynamicMotion,
+    private readonly onContact: RadiatorContactReaction,
+    saved?: RadiatorSaveData,
+  ) {
     if (saved) {
       for (const side of ['up', 'down'] as const) {
         this.panels[side].deployTarget = saved[side].deployTarget;
@@ -107,21 +104,21 @@ export class RadiatorSystem {
   }
 
   // side の展開/収納を切り替える。
-  toggle(side: RadiatorSide): void {
+  public toggle(side: RadiatorSide): void {
     const p = this.panels[side];
     p.deployTarget = p.deployTarget === 0 ? 1 : 0;
   }
 
-  // side の展開目標を明示的に設定する。HUD の「展開」「収納」ボタンから使う。
-  setDeployed(side: RadiatorSide, deployed: boolean): void {
+  // side の展開目標を明示的に設定する。
+  public setDeployed(side: RadiatorSide, deployed: boolean): void {
     const p = this.panels[side];
     const target: 0 | 1 = deployed ? 1 : 0;
     if (p.deployTarget !== target) p.deployTarget = target;
   }
 
-  // 展開度を指示値へ RADIATOR_DEPLOY_TIME 秒かけて近づける。数値のみを動かす(THREE には触れない)。
-  // wear は放熱板パーツの残 HP 由来の損耗率で、修理はドックでしか行えない。
-  update(dt: number, wear: Record<RadiatorSide, number>): void {
+  // 展開度を指示値へ RADIATOR_DEPLOY_TIME 秒かけて近づける。wear は放熱板パーツの残 HP から
+  // 求めた side ごとの損耗率。
+  public update(dt: number, wear: Record<RadiatorSide, number>): void {
     this.wear = wear;
     const step = dt / RADIATOR_DEPLOY_TIME;
     for (const side of ['up', 'down'] as const) {
@@ -137,44 +134,23 @@ export class RadiatorSystem {
     return STOW_TILT + (RADIATOR_DEPLOY_TILT - STOW_TILT) * deploy;
   }
 
-  // 偶数折り目/奇数折り目それぞれの、ヒンジ基準での累積回転角。sync がメッシュへ書く
-  // 相対回転と solarAbsorbArea が法線計算に使う絶対角を同一の psi から導く共有点。
-  // 展開方向(モデル側の折り目オフセット)は side ごとに符号が付くので、回転角自体は
-  // side に依らず ±psi で揃えられる。
-  private foldThetas(side: RadiatorSide): { even: number; odd: number } {
+  // 偶数折り目/奇数折り目それぞれの、ヒンジ基準での累積回転角 [rad]。展開方向は side ごとに
+  // 符号が付くので、回転角自体は side に依らず ±psi で揃う。
+  public foldThetas(side: RadiatorSide): { even: number; odd: number } {
     const sign = sideSign(side);
     const psi = this.tilt(this.panels[side].deploy);
     return { even: sign * psi, odd: -sign * psi };
   }
 
-  // 各折り目 Group の rotation.y(親からの相対回転)を展開角へ同期し、全損したパネルの
-  // 蛇腹を非表示にする。
-  sync(): void {
-    for (const side of ['up', 'down'] as const) {
-      const { even, odd } = this.foldThetas(side);
-      const folds = this.folds[side];
-      const broken = this.wear[side] >= 1;
-      for (let i = 0; i < folds.length; i++) {
-        const fold = folds[i];
-        const rotY = i === 0 ? even : (i % 2 === 1 ? odd - even : even - odd);
-
-        if (fold) {
-          fold.rotation.y = rotY;
-          fold.visible = !broken;
-        }
-      }
-    }
-  }
-
-  // side の有効な放熱面積 [m^2]。totalCoolingRate は放熱板部品の面積の総和で、展開度と
-  // 損耗度で目減りする。
+  // side の有効な放熱面積 [m^2]。totalCoolingRate は放熱板部品の面積の総和で、その半分に
+  // 展開度を掛ける。全損した側は 0。
   private panelArea(side: RadiatorSide, totalCoolingRate: number): number {
     if (this.wear[side] >= 1) return 0;
     return (totalCoolingRate / 2) * this.panels[side].deploy;
   }
 
   // 放熱に使える面積 [m^2]。
-  radiatingArea(totalCoolingRate: number): number {
+  public radiatingArea(totalCoolingRate: number): number {
     return this.panelArea('up', totalCoolingRate) + this.panelArea('down', totalCoolingRate);
   }
 
@@ -186,9 +162,8 @@ export class RadiatorSystem {
   }
 
   // 日照面が太陽光を受ける実効面積 [m^2](日照面の吸収率を織り込む)。sunDir は太陽方向の
-  // 単位ベクトル(world)。蛇腹は偶数/奇数折りで法線が異なるため、面積を半分ずつ割り当てて
-  // 2方向ぶんを合算する。
-  solarAbsorbArea(sunDir: Vec3, att: Attitude, totalCoolingRate: number): number {
+  // 単位ベクトル(world)。
+  public solarAbsorbArea(sunDir: Vec3, att: Attitude, totalCoolingRate: number): number {
     return (['up', 'down'] as const).reduce((sum, side) => {
       const halfArea = this.panelArea(side, totalCoolingRate) / 2;
       const { even, odd } = this.foldThetas(side);
@@ -200,21 +175,20 @@ export class RadiatorSystem {
 
   // RADIATOR_CONTACT_DEPLOY 以上展開し、全損していない side の折りごとに接触代理を返す。
   // t は接触代理の KinematicState.t に使う現在時刻(swept 判定の区間を成す)。
-  contactFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): RadiatorFold[] {
+  public contactFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): RadiatorFold[] {
     const result: RadiatorFold[] = [];
     for (const side of ['up', 'down'] as const) {
       if (this.panels[side].deploy < RADIATOR_CONTACT_DEPLOY || this.wear[side] >= 1) continue;
       const proxies = this.foldProxies[side];
       const { even, odd } = this.foldThetas(side);
-      // 各折りの機体座標系オフセットを、艦の位置・姿勢・角速度(回転による接線速度込み)で
-      // world 座標へ変換する。
+      // 折りの速度には、艦の角速度による接線速度も乗せる。
       for (let i = 0; i < RADIATOR_FOLD_COUNT; i++) {
         const bodyOffset = foldLocalPosition(side, i, even, odd);
         const worldPos = add(shipR, qRotate(att.q, bodyOffset));
         const worldVel = add(shipV, qRotate(att.q, cross(att.w, bodyOffset)));
         const world = kinematicState<'eci'>(t, worldPos, worldVel);
         const known = proxies[i];
-        const fold = known ?? new RadiatorFold(side, this.owner, world);
+        const fold = known ?? new RadiatorFold(side, this.owner, world, this.onContact);
         if (known === undefined) proxies.push(fold);
         else fold.state = world;
         result.push(fold);
@@ -223,22 +197,17 @@ export class RadiatorSystem {
     return result;
   }
 
-  // side の蛇腹の先端付近の world 座標を shipR 基準の Vec3 で返す。sync() 後の状態を前提にする。
-  tipWorldPosition(side: RadiatorSide, shipR: Vec3, _att: Attitude): Vec3 {
-    const fold = this.folds[side][this.folds[side].length - 1];
-    if (!fold) return shipR;
-    fold.updateWorldMatrix(true, false);
-    const worldPos = new THREE.Vector3();
-    fold.getWorldPosition(worldPos);
-    return v3(shipR.x + worldPos.x, shipR.y + worldPos.y, shipR.z + worldPos.z);
+  // side の蛇腹の一番先の折りの位置(world、shipR と同じ絶対座標系)。
+  public tipWorldPosition(side: RadiatorSide, shipR: Vec3, att: Attitude): Vec3 {
+    const { even, odd } = this.foldThetas(side);
+    return add(shipR, qRotate(att.q, foldLocalPosition(side, RADIATOR_FOLD_COUNT - 1, even, odd)));
   }
 
-  // HUD 表示用。
-  deployOf(side: RadiatorSide): number { return this.panels[side].deploy; }
-  wearOf(side: RadiatorSide): number { return this.wear[side]; }
+  public deployOf(side: RadiatorSide): number { return this.panels[side].deploy; }
+  public wearOf(side: RadiatorSide): number { return this.wear[side]; }
 
-  // 損耗度(wear)は放熱板パーツの残 HP から導出される値なので含まない。
-  serialize(): RadiatorSaveData {
+  // 保存するのは side ごとの展開目標と展開度。
+  public serialize(): RadiatorSaveData {
     return {
       up: { deployTarget: this.panels.up.deployTarget, deploy: this.panels.up.deploy },
       down: { deployTarget: this.panels.down.deployTarget, deploy: this.panels.down.deploy },

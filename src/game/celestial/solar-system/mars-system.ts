@@ -2,19 +2,18 @@
 import * as THREE from 'three/webgpu';
 import marsTextureUrl from '../../../assets/2k_mars.jpg';
 import phobosTextureUrl from '../../../assets/2k_phobos.jpg';
-import {
-  PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero, SatelliteMotion, StarMotion,
-} from '../../../physics/celestial-motion';
+import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
+import { PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
 import { MU_MARS } from './constants';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { CelestialTexture } from '../../../render/celestial-textures';
-import { CelestialSurface } from '../../../render/celestial-surface';
-import type { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { PointEntity } from '../celestial-entity/point-entity';
-import { SphereEntity } from '../celestial-entity/sphere-entity';
+import { CelestialSurface } from '../../../render/celestial/celestial-surface';
+import { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
+import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
 import { MARS_POLE } from './poles';
 import { equatorialSatelliteOrbit } from './satellite-orbit-builders';
 
@@ -62,8 +61,8 @@ const DEIMOS: SatelliteDef = {
 };
 
 // 地球の 1/166 の柱密度へ CO2 の散乱断面積を掛けた分子散乱と、光学的厚み 0.3 の浮遊塵。
-// **塵が分子散乱を2桁上回る**ので、空の色は青ではなく塵の色になる。塵は地球のエーロゾルと
-// 違って大気全体へ混ざるため、スケールハイトが分子と同じになる。
+// 塵が分子散乱を2桁上回るので、空は塵の色になる。塵は大気全体へ混ざるため、スケールハイトは
+// 分子と同じ。
 export const MARS_ATMOSPHERE_OPTICS: AtmosphereOptics = {
   rayleigh: new THREE.Vector3(8.6e-8, 2.0e-7, 4.9e-7),
   rayleighScaleHeight: 11.1e3,
@@ -72,7 +71,7 @@ export const MARS_ATMOSPHERE_OPTICS: AtmosphereOptics = {
   mieAnisotropy: 0.65,
 };
 
-// 平均輝度 0.1830(A_B は公表ボンド)。render-lab の火星ケースも同じテクスチャ・測光を読む。
+// 平均輝度 0.1830(A_B は公表ボンド)。
 export const MARS_TEXTURE: CelestialTexture = {
   url: marsTextureUrl, albedoScale: 1.3663, bondAlbedo: 0.25, averageHue: [2.6054, 0.5946, 0.2888],
 };
@@ -90,20 +89,25 @@ export function marsSystem(
 ): Record<MarsSystemBodyId, CelestialEntity> {
   const mars = planetSystem(planetDefForSimZero(MARS, phases, simZeroEt), sun);
   return {
-    mars: new PointEntity(
-      mars.body, MARS_SYSTEM_NAMES.mars, 'planet', CelestialSurface.textured(MARS_TEXTURE), MARS_ATMOSPHERE_OPTICS,
+    mars: new CelestialEntity(
+      mars.body, MARS_SYSTEM_NAMES.mars, 'planet',
+      new PointCelestialView(CelestialSurface.textured(MARS_TEXTURE), MARS_ATMOSPHERE_OPTICS),
     ),
-    phobos: new SphereEntity(
+    phobos: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(PHOBOS, phases, simZeroEt), mars),
       MARS_SYSTEM_NAMES.phobos, 'satellite',
-      // 平均輝度 0.2774(A_B は幾何 0.071 x q=0.393)
-      CelestialSurface.textured({ url: phobosTextureUrl, albedoScale: 0.1009, bondAlbedo: 0.028, averageHue: [1, 1, 1] }),
+      new SphereCelestialView(
+        // 平均輝度 0.2774(A_B は幾何 0.071 x q=0.393)
+        CelestialSurface.textured({ url: phobosTextureUrl, albedoScale: 0.1009, bondAlbedo: 0.028, averageHue: [1, 1, 1] }),
+      ),
     ),
-    deimos: new SphereEntity(
+    deimos: new CelestialEntity(
       new SatelliteMotion(satelliteDefForSimZero(DEIMOS, phases, simZeroEt), mars),
       MARS_SYSTEM_NAMES.deimos, 'satellite',
-      // A_B=0.027(幾何 0.068 x q=0.393)
-      CelestialSurface.solid([0.0330, 0.0259, 0.0199]),
+      new SphereCelestialView(
+        // A_B=0.027(幾何 0.068 x q=0.393)
+        CelestialSurface.solid([0.0330, 0.0259, 0.0199]),
+      ),
     ),
   };
 }

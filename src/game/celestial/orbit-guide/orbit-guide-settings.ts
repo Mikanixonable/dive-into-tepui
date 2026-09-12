@@ -1,15 +1,12 @@
 // 軌道ガイド(表示パネルの軌道ガイドタブ)の設定値。参照として描く軌道の種類ごとに、表示の
-// 可否・本数・族の範囲・色・進行方向マーカー・安定度の見せ方を持ち、localStorage へ永続化する。
-// どの系にどの種類があるかは焼き込みカタログが持ち、ここは選択だけを持つ。
+// 可否・本数・族の範囲・色・進行方向マーカー・安定度の見せ方と、保存文字列との変換を持つ。
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
+import type { DirectionMarkerMode } from '../../../render/celestial/orbit-guide/direction-markers';
 
 // 軌道の種類をまとめる群。系のトグルは群ごとに1組持つ。
 export type GuideGroupId = 'collinear' | 'triangular' | 'secondary' | 'resonant';
 
 export const GUIDE_GROUPS: readonly GuideGroupId[] = ['collinear', 'triangular', 'secondary', 'resonant'];
-
-// 進行方向マーカーの出し方。
-export type DirectionMarkerMode = 'none' | 'single' | 'many';
 
 // 1種類あたりに描ける線の本数の上限。
 export const MAX_LINES_PER_KIND = 40;
@@ -42,15 +39,14 @@ export interface GuideKindSettings extends GuideKindSharedSettings {
 }
 
 // 点/南北/東西/区間の軸を持つ小題1つぶんの表示設定(共線点のリヤプノフ・垂直・軸方向・ハロー、
-// 三角点の短周期・長周期・垂直・軸方向、副天体周回の DPO・LPO)。表示ON/OFFは軸値の組み合わせ
-// (axisValues。例 {L1:true, N:true} なら「点L1」かつ「北」を満たす族だけを表示)で決まり、
-// 他のフィールドは選んだ組み合わせすべてに共有して適用される(リサジュー軌道の L1/L2/L3ボタン+
-// 共有設定と同じ方式)。存在しない組み合わせ(例 L2×区間2)は静かに無視される。
+// 三角点の短周期・長周期・垂直・軸方向、副天体周回の DPO・LPO)。axisValues で選んだ軸値の組み合わせ
+// (例 {L1:true, N:true} なら「点L1」かつ「北」)の族を表示し、他のフィールドはそのすべてに共有する。
+// 存在しない組み合わせ(例 L2×区間2)は無視される。
 export interface CombinedKindSettings extends GuideKindSharedSettings {
   readonly axisValues: Readonly<Record<string, boolean>>;
 }
 
-// リサジュー軌道だけは連続な族として焼き込まないので、振幅と位相を直に指定する。
+// リサジュー軌道の表示設定。族を持たないので、振幅と位相を直に指定する。
 export interface LissajousSettings {
   readonly on: boolean;
   readonly inPlane: number; // 無次元(L点局所γ単位に対する比)
@@ -67,8 +63,7 @@ export interface LissajousSettings {
   readonly animate: boolean;
 }
 
-// 太陽同期準回帰軌道・ドーンダスク軌道の表示設定。族を持たない単一軌道なので、
-// GuideKindSettings とは別の形を持つ(リサジューと同じ扱い)。
+// 太陽同期準回帰軌道・ドーンダスク軌道の表示設定。族を持たない単一軌道。
 export interface SunSyncSettings {
   readonly on: boolean;
   readonly repeatDays: number; // 回帰日数
@@ -86,8 +81,8 @@ export interface DawnDuskSettings extends SunSyncSettings {
   readonly localTime: LocalTime;
 }
 
-// モルニヤ軌道・ツンドラ軌道の表示設定。傾斜角・近点引数・周期は理論値に固定するため
-// 持たず、近地点高度・昇交点赤経だけを持つ。
+// モルニヤ軌道・ツンドラ軌道の表示設定。傾斜角・近点引数・周期は理論値に固定し、近地点高度・
+// 昇交点赤経を選ぶ。
 export interface CriticalInclinationSettings {
   readonly on: boolean;
   readonly perigeeAltitude: number; // [m]
@@ -104,6 +99,10 @@ export interface ZeroVelocitySettings {
   readonly earthMoonXZ: boolean;
   readonly sunEarthXY: boolean;
   readonly sunEarthXZ: boolean;
+  readonly sunJupiterXY: boolean;
+  readonly sunJupiterXZ: boolean;
+  readonly sunSaturnXY: boolean;
+  readonly sunSaturnXZ: boolean;
   // 1本だけ描くか、範囲を等分して多数描くか。
   readonly multiple: boolean;
   readonly jacobi: number;
@@ -115,7 +114,7 @@ export interface ZeroVelocitySettings {
 
 export interface OrbitGuideSettings {
   readonly geostationary: boolean;
-  // 系トグル。全群に共通で効く。焼き込みカタログに無い系は UI に出さない。
+  // 系トグル。全群に共通で効く。
   readonly systems: Readonly<Partial<Record<CatalogSystemId, boolean>>>;
   // 焼き込みカタログの族 id → その種類の表示設定。カタログに無い族の設定は無視される。
   readonly kinds: Readonly<Record<string, GuideKindSettings>>;
@@ -131,6 +130,7 @@ export interface OrbitGuideSettings {
 
 // 種類ごとの設定の既定値。色は群ごとの色相を呼び出し側が与える。
 export function defaultKindSettings(colorStart: number, colorEnd: number): GuideKindSettings {
+  // 非表示・1本・族の途中の範囲から始める。
   return {
     on: false,
     count: 1,
@@ -148,6 +148,7 @@ export function defaultKindSettings(colorStart: number, colorEnd: number): Guide
 
 // 小題の設定の既定値。全軸とも未選択(=何も表示しない)から始まる。
 export function defaultCombinedKindSettings(colorStart: number, colorEnd: number): CombinedKindSettings {
+  // 軸以外は defaultKindSettings と同じ既定値。
   return {
     axisValues: {},
     count: 1,
@@ -218,7 +219,7 @@ export const DEFAULT_ORBIT_GUIDE_SETTINGS: OrbitGuideSettings = {
   },
   tundra: {
     on: false,
-    perigeeAltitude: 600e3,
+    perigeeAltitude: 24_000e3,
     raan: 0,
     colorStart: 0x8b96c9,
     opacity: 0.4,
@@ -230,6 +231,10 @@ export const DEFAULT_ORBIT_GUIDE_SETTINGS: OrbitGuideSettings = {
     earthMoonXZ: false,
     sunEarthXY: false,
     sunEarthXZ: false,
+    sunJupiterXY: false,
+    sunJupiterXZ: false,
+    sunSaturnXY: false,
+    sunSaturnXZ: false,
     multiple: false,
     jacobi: 3.18,
     jacobiMin: 3.0,
@@ -239,14 +244,14 @@ export const DEFAULT_ORBIT_GUIDE_SETTINGS: OrbitGuideSettings = {
   },
 };
 
-const STORAGE_KEY = 'tepui.orbitGuide';
-
+// value を [lo, hi] へ切り詰める。有限でなければ lo。
 function clamp(value: number, lo: number, hi: number): number {
   return Number.isFinite(value) ? Math.min(hi, Math.max(lo, value)) : lo;
 }
 
 // 保存データ・外部入力を安全な形に整える。範囲の上下が入れ替わっていれば直し、本数は正の整数へ丸める。
 export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): OrbitGuideSettings {
+  // 族・小題: 範囲の上下を揃え、本数と不透明度を丸める。
   const kinds: Record<string, GuideKindSettings> = {};
   for (const [id, kind] of Object.entries(settings.kinds)) {
     const lo = clamp(kind.rangeMin, 0, 1);
@@ -271,6 +276,7 @@ export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): Orbit
       opacity: clamp(combined.opacity, 0, 1),
     };
   }
+  // 単一軌道・リサジュー・ゼロ速度曲線の値を丸める。
   const zv = settings.zeroVelocity;
   const clampSunSync = <T extends SunSyncSettings>(s: T): T => ({
     ...s,
@@ -285,8 +291,7 @@ export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): Orbit
     lissajous: {
       ...settings.lissajous,
       cycles: Math.max(1, Math.round(settings.lissajous.cycles)),
-      // Richardson近似の妥当域(目安 0〜0.3)へクランプする。旧保存データはメートル単位
-      // だったため、無次元比として読み直すとこの範囲を大きく外れて安全に丸められる。
+      // Richardson近似の妥当域(目安 0〜0.3)へクランプする。
       inPlane: clamp(settings.lissajous.inPlane, 0.01, 0.3),
       outOfPlane: clamp(settings.lissajous.outOfPlane, 0.01, 0.3),
     },
@@ -303,13 +308,13 @@ export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): Orbit
   };
 }
 
-// localStorage から設定を読み込む。壊れていれば既定値に戻る。
-export function loadOrbitGuideSettings(): OrbitGuideSettings {
+// 保存された文字列を設定へ読み直す。壊れていれば既定値に戻る。
+export function parseOrbitGuideSettings(text: string | null): OrbitGuideSettings {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw === null) return DEFAULT_ORBIT_GUIDE_SETTINGS;
-    const parsed: unknown = JSON.parse(raw);
+    if (text === null) return DEFAULT_ORBIT_GUIDE_SETTINGS;
+    const parsed: unknown = JSON.parse(text);
     if (typeof parsed !== 'object' || parsed === null) return DEFAULT_ORBIT_GUIDE_SETTINGS;
+    // 保存に欠けた項目を既定値で埋めてから丸める。
     const stored = parsed as Partial<OrbitGuideSettings>;
     return normalizeOrbitGuideSettings({
       ...DEFAULT_ORBIT_GUIDE_SETTINGS,
@@ -329,11 +334,7 @@ export function loadOrbitGuideSettings(): OrbitGuideSettings {
   }
 }
 
-// 設定を localStorage へ保存する。保存できない環境では黙って諦める(次回は既定値)。
-export function saveOrbitGuideSettings(settings: OrbitGuideSettings): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  } catch {
-    /* localStorage 不可なら保存しない */
-  }
+// 設定を保存へ載せる文字列にする。
+export function formatOrbitGuideSettings(settings: OrbitGuideSettings): string {
+  return JSON.stringify(settings);
 }

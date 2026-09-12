@@ -1,181 +1,146 @@
-// エンティティの保持・追加・上限管理・寿命回収・描画同期。
+// エンティティの保持・追加・上限管理・寿命回収と、1フレームぶんの前進(指令決定と積分)・描画同期。
 import * as THREE from 'three/webgpu';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { Vec3 } from '../../math/vec3';
-import type { Viewpoint } from '../../math/projection';
-import { CelestialMotion } from '../../physics/celestial-motion';
-import type { FrameAnchorSource } from '../../physics/frame';
-import { FloatingOrigin } from '../camera/floating-origin';
+import type { CelestialBody } from '../../physics/celestial-body';
+import type { CameraFrame } from '../../render/camera/camera-frame';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import type { CapKind } from './dynamic-entity/entity-kind';
-import { AmmoPickup } from './dynamic-entity/ammo-pickup';
-import { RcsFuelPickup } from './dynamic-entity/rcs-fuel-pickup';
-import { DebrisPiece } from './dynamic-entity/debris-piece';
-import { Enemy } from './dynamic-entity/enemy';
-import { findEnemyClass } from './dynamic-entity/enemy-dictionary';
-import { ProteinEnemy } from './dynamic-entity/protein-enemy';
-import { isProteinAssetReady, requestProteinAsset, type ProteinAssetId } from '../protein/protein-asset-loader';
-import { Bullet } from './dynamic-entity/bullet';
-import { Base } from './dynamic-entity/base';
-import { DetachedBooster } from './dynamic-entity/detached-booster';
-import { InstancedPool } from '../../render/instanced-pool';
-import { bulletBodyResources, bulletHaloResources, plasmaBodyResources, casingBodyResources, debrisFragmentResources } from '../../render/ships';
-import { Player } from '../player/player';
-import type { Stage } from '../stages/stage';
+import type { DynamicMotion } from './dynamic-motion';
+import type { EntityRoster } from './entity-roster';
+import type { EntityRegistry, SpawnGate } from './entity-registry';
+import { ENTITY_CAP, type CapKind, type EntityCountKind } from './dynamic-entity/entity-kind';
+import { isControllable, type Controllable } from './dynamic-entity/controllable';
+import { isEnemy } from './dynamic-entity/enemy';
+import { isPlayer, Player } from '../player/player';
+import { restorationFor } from './dynamic-entity/entity-dictionary';
+import { InstancedPools } from '../../render/dynamic/instanced-pools';
+import { BulletPools } from '../../render/dynamic/dynamic-entity/bullet-view';
+import { CasingPool } from '../../render/dynamic/dynamic-entity/casing-view';
+import { DebrisFragmentPools } from '../../render/dynamic/dynamic-entity/debris-fragment-view';
+import { Simulator } from './simulator';
+import { NanWatchdog } from './nan-watchdog';
+import { FrameSections, SECTION } from '../frame-sections';
+import type { StageOutcome } from '../stages/stage-outcome';
+import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 import type { Input } from '../../input/input';
-import type { CombatTarget } from '../targeter';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
-import type { CameraSystem } from '../camera/camera-system';
+import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import type { RenderStyle } from '../../render/render-style';
-import type { CelestialSystem } from '../celestial/celestial-system';
-import { DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
-import type { GameSaveData } from '../save/save-data';
-import type { Hud } from '../hud/hud';
+
+import type { EntitySaveDataUnion, GameSaveData } from '../save/save-data';
+import type { Notifier } from '../../hud/notifier';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
-import { EffectsSystem } from '../vfx/effects-system';
-import type { MarkerManager } from '../marker/marker-manager';
+import type { FlashEffects } from '../vfx/flash-effects';
+import type { MarkerSlots } from '../marker/marker-slots';
 import type { PerfCounts } from '../perf-counts';
 import type { OrbitReference } from '../orbit-reference';
-import type { ProteinMotionFrameSample } from '../protein/protein-motion-metrics';
-import type { ProteinMotionLod } from '../protein/protein-motion-controller';
 
-// 枠ごとに同時に存在してよい個体数。超えた分はその枠の古いものから落ちる。
-const CAP: Record<CapKind, number> = {
-  bullet: 1200,
-  casing: 260,
-  debris: 600,
-  booster: 64,
-};
-
-export class DynamicSystem {
+export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 保持する全エンティティを追加順に並べた、顔ぶれの正本。枠ごとの上限はこの並びから導く。
   private readonly entities: DynamicEntity[] = [];
 
-  // 型別の絞り込み。呼ぶたびに数え直すので、フレームに何度も読む側は受けた配列を持ち回る。
+  // 操作されうる個体。呼ぶたびに顔ぶれから数え直すので、フレームに何度も読むなら受けた配列を
+  // 持ち回る。
+  public get controllables(): readonly Controllable[] { return this.entities.filter(isControllable); }
 
-  // 自機。操作対象(Game.player)も他の艦と対等に、積分・衝突・寿命判定・予測を通る。
-  // ステージモードでは1隻だけが入る。
-  public get players(): readonly Player[] { return this.entities.filter((e): e is Player => e instanceof Player); }
-  public get enemies(): readonly Enemy[] { return this.entities.filter((e): e is Enemy => e instanceof Enemy); }
-  public get bases(): readonly Base[] { return this.entities.filter((e): e is Base => e instanceof Base); }
-  public get bullets(): readonly Bullet[] { return this.entities.filter((e): e is Bullet => e instanceof Bullet); }
-  public get ammoPickups(): readonly AmmoPickup[] { return this.entities.filter((e): e is AmmoPickup => e instanceof AmmoPickup); }
-  public get rcsFuelPickups(): readonly RcsFuelPickup[] { return this.entities.filter((e): e is RcsFuelPickup => e instanceof RcsFuelPickup); }
-  public get detachedBoosters(): readonly DetachedBooster[] { return this.entities.filter((e): e is DetachedBooster => e instanceof DetachedBooster); }
+  // プールで描く種別の描画資源。
+  private readonly instancedPools: InstancedPools;
 
-  // 弾本体・弾ハロー・プラズマ弾・薬莢は geometry/material を全個体で共有するため、
-  // 個別の scene 追加ではなく InstancedMesh 1本ずつのプールで描画する(sync が push する)。
-  private readonly bulletBodyPool: InstancedPool;
-  private readonly bulletHaloPool: InstancedPool;
-  private readonly plasmaPool: InstancedPool;
-  private readonly casingPool: InstancedPool;
-  // 破片(fragment)はバリアントごとに geometry が異なるため、バリアント数だけプールを持つ。
-  // DebrisPiece.fragmentVariant が添字。
-  private readonly debrisFragmentPools: InstancedPool[];
+  // 顔ぶれを1フレームずつ進める積分機構。simTime の正本はここが持つ。
+  private readonly simulator: Simulator;
 
-  // フラッシュ・破片の生成窓口。破片は entity なので、その配列を持つこちらが所有する。
-  readonly effects: EffectsSystem;
+  // 個体の状態が非有限値に汚染された瞬間を捕まえる見張り。
+  private readonly nanWatchdog: NanWatchdog;
 
-  // 描画資源のプールを組み、演出窓口を作ってから、saved があればその顔ぶれを復元する。
-  constructor(
+  // 描画資源のプールと前進の機構を組んでから、saved があればその顔ぶれを復元する。
+  public constructor(
     scene: THREE.Scene,
-    hud: Hud,
+    notifier: Notifier,
     worldSfx: WorldSfx,
-    markerManager: MarkerManager,
+    flash: FlashEffects,
+    markers: MarkerSlots,
+    private readonly celestialBodies: CelestialBodies,
+    private readonly sections: FrameSections,
+    initialSimTime: number,
     saved?: GameSaveData,
   ) {
-    const bulletBody = bulletBodyResources();
-    const bulletHalo = bulletHaloResources();
-    const plasmaBody = plasmaBodyResources();
-    const casingBody = casingBodyResources();
-    const debrisFragment = debrisFragmentResources();
-    this.bulletBodyPool = new InstancedPool(scene, bulletBody.geometry, bulletBody.material, CAP.bullet);
-    this.bulletHaloPool = new InstancedPool(scene, bulletHalo.geometry, bulletHalo.material, CAP.bullet);
-    this.plasmaPool = new InstancedPool(scene, plasmaBody.geometry, plasmaBody.material, CAP.bullet);
-    this.casingPool = new InstancedPool(
-      scene, casingBody.geometry, casingBody.material, CAP.casing, false, 0, true);
-    this.debrisFragmentPools = debrisFragment.geometries.map(
-      (geo) => new InstancedPool(scene, geo, debrisFragment.material, CAP.debris, true, 0, true));
-    this.effects = new EffectsSystem(scene, this, worldSfx);
-    if (saved) this.restoreFromSave(saved, hud, worldSfx, scene, markerManager);
+    this.instancedPools = new InstancedPools([
+      new BulletPools(scene, ENTITY_CAP.bullet),
+      new CasingPool(scene, ENTITY_CAP.casing),
+      new DebrisFragmentPools(scene, ENTITY_CAP.debris),
+    ]);
+    this.simulator = new Simulator(this, this, this, celestialBodies, sections, initialSimTime);
+    this.nanWatchdog = new NanWatchdog(notifier);
+    if (saved) this.restoreFromSave(saved, notifier, worldSfx, flash, scene, markers);
   }
 
-  // スナップショットから自機・敵・弾薬・RCS燃料・基地を復元する。
+  // スナップショットの顔ぶれを復元する。知らない種別は読み飛ばす。
   private restoreFromSave(
-    save: GameSaveData, hud: Hud, worldSfx: WorldSfx, scene: THREE.Scene, markerManager: MarkerManager,
+    save: GameSaveData, notifier: Notifier, worldSfx: WorldSfx, flash: FlashEffects, scene: THREE.Scene,
+    markers: MarkerSlots,
   ): void {
-    const simTime = save.simTime;
-    for (const data of save.players) {
-      this.add(new Player(hud, worldSfx, scene, this.effects, markerManager, { saved: data, simTime }));
+    for (const data of save.entities) {
+      const restoration = restorationFor(
+        data, save.simTime, scene, notifier, worldSfx, markers, flash);
+      if (restoration === null) continue;
+      this.spawnWhenReady(restoration.gate, () => restoration.build());
     }
-    for (const data of save.enemies) {
-      // 種別タグから具象クラスを引き、知らない種別の敵は読み飛ばす。
-      const enemyClass = findEnemyClass(data.kind);
-      if (enemyClass === null) continue;
-      this.spawnEnemyWhenReady(
-        enemyClass.pendingAssetId(data),
-        () => new enemyClass({ saved: data, simTime }, worldSfx, this.effects, scene),
-      );
-    }
-    for (const data of save.ammoPickups) {
-      this.add(new AmmoPickup({ saved: data, simTime }, scene));
-    }
-    for (const data of save.rcsFuelPickups ?? []) {
-      this.add(new RcsFuelPickup({ saved: data, simTime }, scene));
-    }
-    for (const data of save.detachedBoosters ?? []) {
-      this.add(new DetachedBooster({ saved: data, simTime }, scene));
-    }
-    for (const data of save.bases) {
-      this.add(new Base({ saved: data, simTime }, scene, hud, worldSfx, this.effects, markerManager));
-    }
+  }
+
+  // 顔ぶれを保存形へ畳む。保存へ載らない種別は落ちる。
+  public serialize(): EntitySaveDataUnion[] {
+    return this.entities
+      .map((e) => e.serialize())
+      .filter((data): data is EntitySaveDataUnion => data !== null);
   }
 
   private _collectionRevision = 0;
-  private combatTargetsRevision = -1;
 
   // 保持するエンティティの顔ぶれの世代。追加・除去・prune のいずれでも増える。
-  get collectionRevision(): number {
+  public get collectionRevision(): number {
     return this._collectionRevision;
   }
-
-  private readonly cachedCombatTargets: CombatTarget[] = [];
-  private readonly cachedCombatTargetsByExcludedPlayer = new Map<Player, CombatTarget[]>();
 
   // エンティティを登録する。上限を持つ枠の超過分は、次の cleanup で古いものから落ちる。
   public add(entity: DynamicEntity): void {
     this.entities.push(entity);
     if (entity.capKind !== null) this.capsUncheckedSinceAdd = true;
-    this.invalidateCaches();
+    this.bumpCollectionRevision();
   }
 
-  // 生成に fetch 未完了のタンパク質アセットが要る敵は、準備が整うまで実体化(Enemy の
-  // 生成そのもの)を遅らせる。SPEC/PROTEIN.md「出現」節: 準備中はentities.enemies は
-  // もちろん保有しない。通常スポーン・セーブ復元の双方がここを通る。
-  private readonly pendingEnemySpawns: { readonly assetId: ProteinAssetId; readonly build: () => Enemy; readonly onSpawned?: () => void }[] = [];
+  // 実体化に外部資源の取得が要る個体の待ち行列。生成そのものを gate が通るまで遅らせるので、
+  // その間その個体は顔ぶれのどこにも現れない。
+  private readonly pendingSpawns: {
+    readonly gate: SpawnGate;
+    readonly build: () => DynamicEntity;
+    readonly onSpawned?: () => void;
+  }[] = [];
 
-  spawnEnemyWhenReady(assetId: ProteinAssetId | null, build: () => Enemy, onSpawned?: () => void): void {
-    if (assetId === null || isProteinAssetReady(assetId)) {
+  // 個体を1体足す。gate がまだ通らなければ、通るまで待ち行列へ回す。onSpawned は実体化した
+  // 直後に1度だけ呼ぶ。待つものが無ければ gate は null。
+  public spawnWhenReady(gate: SpawnGate | null, build: () => DynamicEntity, onSpawned?: () => void): void {
+    if (gate === null || gate()) {
       this.add(build());
       onSpawned?.();
       return;
     }
-    // 積むだけでは誰も取りに行かないので、待ちに入れるのと同時に取得を起こす。
-    void requestProteinAsset(assetId);
-    this.pendingEnemySpawns.push({ assetId, build, onSpawned });
+    this.pendingSpawns.push({ gate, build, onSpawned });
   }
 
-  private processPendingEnemySpawns(): void {
-    if (this.pendingEnemySpawns.length === 0) return;
+  // 待ち行列のうち、gate が通ったものを実体化して顔ぶれへ足す。
+  private processPendingSpawns(): void {
+    if (this.pendingSpawns.length === 0) return;
     let w = 0;
-    for (const pending of this.pendingEnemySpawns) {
-      if (isProteinAssetReady(pending.assetId)) {
+    // 通らなかったものは前へ詰めて待ち行列に残す。
+    for (const pending of this.pendingSpawns) {
+      if (pending.gate()) {
         this.add(pending.build());
         pending.onSpawned?.();
       } else {
-        this.pendingEnemySpawns[w++] = pending;
+        this.pendingSpawns[w++] = pending;
       }
     }
-    this.pendingEnemySpawns.length = w;
+    this.pendingSpawns.length = w;
   }
 
   // エンティティを取り除き、メッシュを破棄する。
@@ -184,64 +149,13 @@ export class DynamicSystem {
     entity.dispose();
   }
 
-  // 艦を取り除くが破棄はしない(基地への収容など、後で add で復帰させる場合)。
-  // 顔ぶれから外れると毎フレームの同期が届かなくなるので、マーカーはここで畳む。
-  public park(entity: DynamicEntity): void {
-    if (!this.detach(entity)) return;
-    entity.equatorNodes?.dispose();
-    entity.equatorNodes = null;
-  }
-
   // 顔ぶれから外す。保持していなければ false。
   private detach(entity: DynamicEntity): boolean {
     const i = this.entities.indexOf(entity);
     if (i < 0) return false;
     this.entities.splice(i, 1);
-    this.invalidateCaches();
+    this.bumpCollectionRevision();
     return true;
-  }
-
-  // ターゲットとなり得るエンティティの一覧を取得する。
-  getCombatTargets(excludePlayer: Player | null): CombatTarget[] {
-    this.rebuildCombatTargetsIfNeeded();
-    if (excludePlayer === null) return this.cachedCombatTargets;
-
-    let targets = this.cachedCombatTargetsByExcludedPlayer.get(excludePlayer);
-    if (targets) return targets;
-    targets = [];
-    for (const enemy of this.enemies) targets.push(enemy);
-    for (const player of this.players) if (player !== excludePlayer) targets.push(player);
-    for (const base of this.bases) targets.push(base);
-    this.cachedCombatTargetsByExcludedPlayer.set(excludePlayer, targets);
-    return targets;
-  }
-
-  private rebuildCombatTargetsIfNeeded(): void {
-    if (this.combatTargetsRevision === this._collectionRevision) return;
-    this.cachedCombatTargets.length = 0;
-    this.cachedCombatTargets.push(...this.enemies, ...this.players, ...this.bases);
-    this.cachedCombatTargetsByExcludedPlayer.clear();
-    this.combatTargetsRevision = this._collectionRevision;
-  }
-
-  // id で名指しされた自機を返す。見つからなければ null。
-  findPlayer(id: string): Player | null {
-    return this.players.find((p) => p.id === id) ?? null;
-  }
-
-  // id で名指しされた敵を返す。見つからなければ null。
-  findEnemy(id: string): Enemy | null {
-    return this.enemies.find((e) => e.id === id) ?? null;
-  }
-
-  // id で名指しされた、生存中の戦闘対象(敵・自機・基地)を返す。天体・ラグランジュ点は
-  // 実体を持たないため対象外。
-  findAliveCombatTarget(id: string): CombatTarget | null {
-    const enemy = this.findEnemy(id);
-    return (enemy?.alive ? enemy : null)
-      ?? this.findPlayer(id)
-      ?? this.bases.find((b) => b.id === id && b.alive)
-      ?? null;
   }
 
   // 上限付きの個体が追加されてから、まだ上限を確かめていないか。枠が増えるのは追加のときだけ
@@ -250,23 +164,24 @@ export class DynamicSystem {
 
   // 上限を超えた個体を、枠ごとに古いものから落とす。配列は追加順なので、末尾から数えて上限を
   // 超えたところがその枠の最古になる。
-  // ここで演出を起こすと、1体落とすたびに新しい個体が生まれて上限が発振する。
   private enforceCaps(): void {
     if (!this.capsUncheckedSinceAdd) return;
     this.capsUncheckedSinceAdd = false;
+    // 落とすのは alive を下ろすところまで — ここで演出を起こすと、破片が生まれて上限が発振する。
     const live: Record<CapKind, number> = { bullet: 0, casing: 0, debris: 0, booster: 0 };
     const entities = this.all();
     for (let i = entities.length - 1; i >= 0; i--) {
       const entity = entities[i]!;
       const cap = entity.capKind;
-      if (cap === null || !entity.alive) continue;
+      if (cap === null || !entity.motion.alive) continue;
       const rank = live[cap] + 1;
       live[cap] = rank;
-      if (rank > CAP[cap]) entity.alive = false;
+      if (rank > ENTITY_CAP[cap]) entity.motion.alive = false;
     }
   }
 
-  private invalidateCaches(): void {
+  // 顔ぶれが変わったことを世代へ記録する。
+  private bumpCollectionRevision(): void {
     this._collectionRevision++;
   }
 
@@ -275,252 +190,174 @@ export class DynamicSystem {
     return this.entities;
   }
 
+  // 全エンティティの Motion を追加順に並べた新しい配列。
+  public allMotions(): readonly DynamicMotion[] {
+    return this.entities.map(entity => entity.motion);
+  }
+
   // 全エンティティの寿命判定と上限判定を行い、死亡したものを破棄・除去する。
   public cleanup(
-    dt: number, simTime: number, activeStage: Stage, playerPos: Vec3,
-    atmosphereBodies: readonly CelestialMotion[],
+    dt: number, simTime: number, activeStage: StageOutcome, viewerPos: Vec3,
+    atmosphereBodies: readonly CelestialBody[],
   ): void {
-    this.processPendingEnemySpawns();
+    this.processPendingSpawns();
     // 判定は開始時の顔ぶれに対して行う。死の演出が破片を足すので、生配列を反復すると
     // 生まれたばかりの個体まで同じパスで判定してしまい、生成が連鎖すれば終わらなくなる。
     for (let i = 0, n = this.entities.length; i < n; i++) {
-      this.entities[i]!.checkLoss(dt, simTime, activeStage, playerPos, atmosphereBodies);
+      this.entities[i]!.motion.checkLoss(
+        dt, simTime, { activeStage, registry: this }, viewerPos, atmosphereBodies);
     }
     this.enforceCaps();
     this.prune();
   }
 
-  // 死亡した個体を破棄して取り除く。生存分は追加順のまま前へ詰める。所有者が回収する種別は
-  // 死亡していても残す。
+  // 死亡した個体を破棄して取り除く。生存分は追加順のまま前へ詰める。
   private prune(): void {
     let w = 0;
     let changed = false;
+    // 所有者が回収する種別は、死亡していても残す。
     for (const x of this.entities) {
-      if (!x.alive && !x.reclaimedByOwner) {
+      if (!x.motion.alive && !x.reclaimedByOwner) {
         x.dispose();
         changed = true;
       }
-      else this.entities[w++] = x;
+      else {
+        this.entities[w] = x;
+        w++;
+      }
     }
     this.entities.length = w;
-    if (changed) this.invalidateCaches();
+    if (changed) this.bumpCollectionRevision();
   }
 
   // 過去表示に要る履歴の保持時間 [s] を全エンティティへ要求する。履歴を持たない種別は無視する。
-  requestHistoryDuration(sec: number): void {
-    for (const e of this.all()) e.requestHistoryDuration(sec);
+  public requestHistoryDuration(sec: number): void {
+    for (const entity of this.entities) entity.motion.requestHistoryDuration(sec);
   }
 
-  // 毎フレーム、全ての自機へ updatePlayerControls を1度ずつ通す。操作できるのは操作対象艦だけで、
-  // 操作できないワープ倍率ではどの艦も操作できない — その2つは同じ「操作できない」状態なので、
-  // input を渡すかどうかの1つの判断にまとめる。
-  updatePlayers(
-    activePlayer: Player | null, input: Input | null, operable: boolean,
-    dt: number, simDt: number, activeStage: Stage, celestialSystem: CelestialSystem,
+  // 顔ぶれをどこまで進めたか。積分の先端時刻と、直前のフレームで進めた長さ [sim s]。
+  public get simTime(): number { return this.simulator.simTime; }
+  public get lastSimDt(): number { return this.simulator.lastSimDt; }
+
+  // 時間が止まったことを記録し、次のフレームへ持ち越してはならない連続指令を畳む。
+  public pause(): void {
+    this.simulator.lastSimDt = 0;
+    for (const controllable of this.controllables) controllable.clearTransientCommands();
+  }
+
+  // 顔ぶれを1フレーム進める。自律の推力、操作・敵の指令を決めてから積分する。各段の境界で
+  // 操作対象の非有限値を検査し、どの境界で落ちたかで汚染した段を特定する。
+  public update(
+    active: Controllable | null, input: Input, operable: boolean,
+    dt: number, simDt: number, canEngage: boolean, activeStage: StageOutcome & StageSimulationEvents,
   ): void {
-    for (const booster of this.detachedBoosters) if (booster.alive) booster.updateBurn(simDt);
-    for (const ship of this.players) {
-      ship.updatePlayerControls(
-        ship === activePlayer && operable ? input : null,
+    this.nanWatchdog.checkControlled(
+      'update(入口)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
+    );
+    this.sections.enter(SECTION.command);
+    this.updateThrusts(simDt);
+    this.updateControllables(active, input, operable, dt, simDt, activeStage);
+    this.behaveAll(active, operable);
+    this.sections.exit(SECTION.command);
+    this.nanWatchdog.checkControlled(
+      'update(指令決定)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
+    );
+
+    this.sections.enter(SECTION.integrate);
+    this.simulator.advance(
+      dt, simDt, active?.motion ?? null, activeStage, canEngage, this.nanWatchdog,
+    );
+    this.sections.exit(SECTION.integrate);
+    // 薬莢や破片が先に壊れて接触経由で自機へ伝播することがあるので、ここは全個体を見る。
+    this.nanWatchdog.checkAll(
+      'update(積分)', active?.motion ?? null, this.allMotions(), this.simTime, dt, simDt,
+    );
+  }
+
+  // 自分で決まる推力を持つ個体を1フレーム進める。
+  private updateThrusts(simDt: number): void {
+    for (const entity of this.entities) {
+      if (entity.motion.alive) entity.motion.updateCommands(simDt);
+    }
+  }
+
+  // 生存中の操作されうる全個体へ updateControls を1度ずつ通す。
+  private updateControllables(
+    active: Controllable | null, input: Input, operable: boolean,
+    dt: number, simDt: number, activeStage: StageOutcome,
+  ): void {
+    for (const controllable of this.controllables) {
+      if (!controllable.motion.alive) continue;
+      // 「操作対象でない」と「操作できないワープ倍率」は同じ状態として input なしで進める。
+      controllable.updateControls(
+        controllable === active && operable ? input : null,
         dt,
         simDt,
         this,
         activeStage,
-        celestialSystem,
+        this.celestialBodies,
       );
     }
   }
 
-  // 毎フレーム、操作対象の基地へ updateBaseControls を1度ずつ通す。
-  // 操作対象でない基地は clearTransientCommands で慣性飛行に戻る。
-  updateBases(
-    controlledBase: Base | null, input: Input, operable: boolean, dt: number, simDt: number,
+  // 生存中の敵全てに AI 行動を1フレーム分実行させる。追跡先の艦が1隻も無ければ何もしない。
+  // 同一集団の判定に使う母集団は、このフレームの顔ぶれを1度だけ取って全機で共有する。
+  private behaveAll(active: Controllable | null, operable: boolean): void {
+    const player = this.trackedShip(active);
+    if (player === null) return;
+    const enemies = this.entities.filter(isEnemy);
+    for (const e of enemies) {
+      if (e.motion.alive) {
+        e.behave(this.simTime, player, this, enemies, operable, this.celestialBodies);
+      }
+    }
+  }
+
+  // 敵が追う自艦。操作対象が基地でも敵は止まらないので、そのときは生存中の先頭の艦を使う。
+  private trackedShip(active: Controllable | null): Player | null {
+    if (active instanceof Player) return active;
+    return this.entities.filter(isPlayer).find((p) => p.motion.alive) ?? null;
+  }
+
+  // このフレームの表示物を、顔ぶれを1度辿って同期する。
+  public sync(
+    displayTime: number, active: Controllable | null,
+    visibilityPolicy: MapVisibilityPolicy | null, camera: CameraFrame, style: RenderStyle,
+    visual: EntityVisualSettings, orbitRef: OrbitReference | undefined,
   ): void {
-    for (const base of this.bases) {
-      if (!base.alive) continue;
-      base.updateBaseControls(
-        base === controlledBase && operable ? input : null,
-        dt,
-        simDt,
-      );
-    }
-  }
-
-  // 操作できない間、全自機・操作中基地の連続指令(推力・トルク・射撃・噴射ラッチ)を畳む。
-  clearTransientCommands(): void {
-    for (const ship of this.players) ship.clearTransientCommands();
-    for (const base of this.bases) base.clearTransientCommands();
-  }
-
-  // 全自機のメッシュ・エフェクト・マーカーを同期する。方向マーカーや照準ズームは操作艦だけの
-  // ものなので、どれが操作対象かを各艦へ渡す。
-  syncPlayers(
-    activePlayer: Player | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
-    displayTime: number, style: RenderStyle, visibilityPolicy: MapVisibilityPolicy | null, orbitRef?: OrbitReference,
-  ): void {
-    for (const ship of this.players) {
-      ship.syncPlayer(
-        fo, cameraSystem, displayTime, ship === activePlayer, style,
-        visibilityPolicy?.entity('player', ship === activePlayer) ?? null, orbitRef,
-      );
-    }
-  }
-
-  // 分離済みブースターは通常メッシュに加えて個別ノズル位置のプルームも同期する。
-  syncDetachedBoosters(
-    fo: FloatingOrigin, cameraSystem: CameraSystem, displayTime: number, style: RenderStyle,
-    visibilityPolicy: MapVisibilityPolicy | null,
-  ): void {
-    const categoryVisible = visibilityPolicy?.entity('enemy').category ?? true;
-    for (const booster of this.detachedBoosters) {
-      booster.syncBooster(fo, displayTime, cameraSystem, categoryVisible, style);
-    }
-  }
-
-  // 全基地のメッシュ・エフェクト(推力プルーム・RCS音・パフ)を同期する。
-  syncBases(
-    controlledBase: Base | null, fo: FloatingOrigin, cameraSystem: CameraSystem,
-    displayTime: number, style: RenderStyle, visibilityPolicy: MapVisibilityPolicy | null,
-  ): void {
-    for (const base of this.bases) {
-      if (!base.alive) continue;
-      base.syncBase(
-        fo, cameraSystem, displayTime, base === controlledBase, style,
-        visibilityPolicy?.entity('base') ?? null,
-      );
-    }
-  }
-
-  // 天体クラス別トグルに応じて自機・敵・弾薬・基地のメッシュ表示を揃える。visibilityPolicy が
-  // null(戦闘ビュー)のときは非表示扱いを一切かけない。
-  applyVisibility(visibilityPolicy: MapVisibilityPolicy | null, activePlayer: Player | null): void {
-    if (!visibilityPolicy) return;
-    for (const ship of this.players) if (!visibilityPolicy.entity('player', ship === activePlayer).category) ship.renderObject.visible = false;
-    for (const enemy of this.enemies) if (!visibilityPolicy.entity('enemy').category) enemy.renderObject.visible = false;
-    for (const ammoPickup of this.ammoPickups) {
-      if (!visibilityPolicy.entity('ammo').category) ammoPickup.renderObject.visible = false;
-    }
-    for (const pickup of this.rcsFuelPickups) {
-      if (!visibilityPolicy.entity('fuel').category) pickup.renderObject.visible = false;
-    }
-    // TODO: 分離ブースターは自機由来なのに敵トグルへ従っている。妥当なトグルを決めて直す。
-    for (const booster of this.detachedBoosters) {
-      if (!visibilityPolicy.entity('enemy').category) booster.renderObject.visible = false;
-    }
-    for (const base of this.bases) if (!visibilityPolicy.entity('base').category) base.renderObject.visible = false;
-  }
-
-  // 全基地の赤道交点マーカーを求め直す。基地は常設の軌道構造物で、接近・ドッキングは
-  // 軌道面合わせそのものなので、選択の有無に関わらず出す。
-  updateBaseEquatorNodes(
-    displayWindow: DisplayWindow, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
-  ): void {
-    const timeLabel = timeLabelSettingOf(displayWindow);
-    for (const base of this.bases) {
-      if (base.alive) base.equatorNodes?.updateOnEllipse(displayWindow.displayTime, celestialSystem, frameAnchors, timeLabel);
-    }
-  }
-
-  // このフレームに求まった赤道交点マーカーを置く。求め直されなかったものは自動的に隠れる。
-  syncEquatorNodes(cameraSystem: CameraSystem): void {
-    const project = cameraSystem.activeCameraProjection;
-    const cameraPos = cameraSystem.activeCameraPos;
-    for (const e of this.all()) e.equatorNodes?.sync(project, cameraPos);
-  }
-
-  // 自機以外のメッシュを displayTime 時点の状態に同期する。自機はエフェクト・ベルト・
-  // 軌道線まで持つので Player.syncPlayer が担当する。弾本体・弾ハロー・プラズマ弾・薬莢・
-  // 破片(fragment)の変換は各エンティティの renderObject に同期された後、InstancedPool へ push する。
-  sync(fo: FloatingOrigin, displayTime: number, viewer?: Viewpoint, proteinVibrationEnabled = true): void {
-    this.bulletBodyPool.beginFrame();
-    this.bulletHaloPool.beginFrame();
-    this.plasmaPool.beginFrame();
-    this.casingPool.beginFrame();
-    for (const pool of this.debrisFragmentPools) pool.beginFrame();
-
-    // 自機と分離ブースターは専用の同期パス(syncPlayers / syncDetachedBoosters)を持つ。
+    // 全個体が同じ1つのフレーム入力を読むよう、走査の前に組んでおく。
+    const viewFrame = { displayTime, camera, style, visual, pools: this.instancedPools };
+    // instance pool の受付期間で全 Entity を挟む。
+    this.instancedPools.beginFrame();
     for (const e of this.entities) {
-      if (e instanceof Player || e instanceof DetachedBooster) continue;
-      e.sync(fo, displayTime, viewer, proteinVibrationEnabled);
-      if (e instanceof Bullet) this.pushBullet(e);
-      else if (e instanceof DebrisPiece) this.pushDebrisPiece(e);
+      // 種別ごとの表示可否はここで解決し、View へは結果だけを渡す。
+      const visible = visibilityPolicy === null || e.mapVisibility(visibilityPolicy, active).category;
+      e.sync(viewFrame, visible, e === active, orbitRef);
     }
-
-    this.bulletBodyPool.endFrame();
-    this.bulletHaloPool.endFrame();
-    this.plasmaPool.endFrame();
-    this.casingPool.endFrame();
-    for (const pool of this.debrisFragmentPools) pool.endFrame();
+    this.instancedPools.endFrame();
   }
 
-  // 弾種に対応するプールへ、同期済みの変換を積む。
-  private pushBullet(bullet: Bullet): void {
-    if (!bullet.renderObject.visible) return;
-    if (bullet.type === 'plasma') {
-      this.plasmaPool.push(bullet.renderObject);
-      return;
-    }
-    // 本体+ハローの Group。シーン外なので matrixWorld は自前で更新する必要があり、
-    // 親で1回呼べば子(本体・ハロー)まで連鎖して更新される。
-    bullet.renderObject.updateMatrixWorld();
-    this.bulletBodyPool.push(bullet.renderObject.children[0]!);
-    this.bulletHaloPool.push(bullet.renderObject.children[1]!);
-  }
-
-  // 薬莢と破片(fragment)を、対応するプールへ積む。他の破片は個別に scene へ載っている。
-  private pushDebrisPiece(piece: DebrisPiece): void {
-    if (piece.kind === 'casing') this.casingPool.push(piece.renderObject);
-    else if (piece.kind === 'fragment') {
-      this.debrisFragmentPools[piece.fragmentVariant]!.push(piece.renderObject, piece.fragmentColor!);
-    }
-  }
-
-  // 保持する全エンティティと描画資源プールを破棄する。cleanup/prune は死亡した
-  // エンティティしか片付けないため、生存中のまま呼ばれるケースをここで担う。
-  dispose(): void {
+  // 保持する全エンティティと描画資源プールを、生死によらず破棄する。
+  public dispose(): void {
     for (const e of this.entities) e.dispose();
     this.entities.length = 0;
+    // 待ち行列の build は scene などを掴んだままなので、実体化されないまま残さない。
+    this.pendingSpawns.length = 0;
 
-    this.bulletBodyPool.dispose();
-    this.bulletHaloPool.dispose();
-    this.plasmaPool.dispose();
-    this.casingPool.dispose();
-    for (const pool of this.debrisFragmentPools) pool.dispose();
+    this.instancedPools.dispose();
 
-    this.effects.dispose();
-    this.invalidateCaches();
+    this.bumpCollectionRevision();
   }
 
-  // 負荷確認ウィンドウが読む、種別ごとの現在の個体数。
-  perfCounts(): Pick<PerfCounts, 'players' | 'enemies' | 'bullets' | 'casings' | 'debris' | 'ammoPickups' | 'rcsFuelPickups' | 'bases'> {
-    const counts = {
-      players: 0, enemies: 0, bullets: 0, casings: 0,
-      debris: 0, ammoPickups: 0, rcsFuelPickups: 0, bases: 0,
-    };
+  // 枠ごとの現在の個体数。枠を持つ個体は枠で数える — 切り離したブースターのように、表示トグルは
+  // 自機だが数は別に見たい種別があるため。
+  public perfCounts(): Pick<PerfCounts, 'entities'> & ReturnType<Simulator['perfCounts']> {
+    const entities: Partial<Record<EntityCountKind, number>> = {};
     for (const e of this.entities) {
-      if (e instanceof Player) counts.players++;
-      else if (e instanceof Enemy) counts.enemies++;
-      else if (e instanceof Bullet) counts.bullets++;
-      else if (e instanceof DebrisPiece) (e.kind === 'casing' ? counts.casings++ : counts.debris++);
-      else if (e instanceof AmmoPickup) counts.ammoPickups++;
-      else if (e instanceof RcsFuelPickup) counts.rcsFuelPickups++;
-      else if (e instanceof Base) counts.bases++;
+      const kind = e.capKind ?? e.mapKind;
+      if (kind === null) continue;
+      entities[kind] = (entities[kind] ?? 0) + 1;
     }
-    return counts;
-  }
-
-  // 負荷確認ウィンドウが読む、直近 sync() 時点のタンパク質敵モーションの集計値。
-  proteinMotionFrameSample(): ProteinMotionFrameSample {
-    let cpuMs = 0;
-    let uploadBytes = 0;
-    const lodCounts: Partial<Record<ProteinMotionLod, number>> = {};
-    for (const enemy of this.enemies) {
-      if (!(enemy instanceof ProteinEnemy)) continue;
-      const metrics = enemy.motionMetrics;
-      cpuMs += metrics.cpuMs;
-      uploadBytes += metrics.uploadBytes;
-      lodCounts[metrics.lod] = (lodCounts[metrics.lod] ?? 0) + 1;
-    }
-    return { cpuMs, uploadBytes, lodCounts };
+    return { entities, ...this.simulator.perfCounts() };
   }
 }

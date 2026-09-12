@@ -1,8 +1,6 @@
 // マップのガイドとして描く軌道の曲線(ECI [m])。焼き込みカタログ(orbit-catalog.ts)の
 // 無次元形状を、その瞬間の実際の天体位置・公転面から組んだ回転座標系へ載せて返す。
 // リサジュー軌道だけは連続な族として焼き込まないので、Richardson の解析近似から直に組む。
-import type { CelestialMotion } from './celestial-motion';
-
 import { Vec3Tuple } from './cr3bp';
 import { CollinearFrame, collinearFrame, richardsonCoefficients, richardsonState } from './halo';
 import type { CollinearPoint, SecondaryFrame } from './lagrange';
@@ -14,6 +12,7 @@ import {
 } from './earth-reference-orbits';
 import { OrbitalElements, positionOnOrbit, trueAnomalyFromMean } from './elements';
 import { Vec3, add, cross, len, norm, scale, sub } from '../math/vec3';
+import type { CelestialBody } from './celestial-body';
 
 // ガイド線の曲線の渡し方。閉じた式で書けるものは関数、焼き込みの離散サンプルしか無いものは
 // 節点列で渡す。どちらもパラメータ u は「周期に対する経過時刻の割合」で、進行方向マーカーが
@@ -42,6 +41,8 @@ const SYSTEM_BODIES: Readonly<Record<CatalogSystemId, readonly [string, string]>
   'earth-moon': ['earth', 'moon'],
   'sun-earth': ['sun', 'earth'],
   'sun-mars': ['sun', 'mars'],
+  'sun-jupiter': ['sun', 'jupiter'],
+  'sun-saturn': ['sun', 'saturn'],
   'jupiter-europa': ['jupiter', 'europa'],
   'saturn-titan': ['saturn', 'titan'],
   'saturn-enceladus': ['saturn', 'enceladus'],
@@ -233,7 +234,7 @@ function elementsLoop(elements: OrbitalElements | null, centerEci: Vec3): GuideL
 
 // 太陽同期準回帰軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
 export function sunSyncRepeatGroundTrackLoop(
-  earth: CelestialMotion, earthPivot: number, repeatDays: number, revsPerRepeat: number,
+  earth: CelestialBody, earthPivot: number, repeatDays: number, revsPerRepeat: number,
 ): GuideLoop | null {
   return elementsLoop(
     sunSyncRepeatGroundTrackElements(repeatDays, revsPerRepeat, earth, earthPivot),
@@ -243,7 +244,7 @@ export function sunSyncRepeatGroundTrackLoop(
 // 太陽方向の昇交点赤経(elements.ts の orbitPlaneBasis の規約: raan=0 で昇交点は +X 方向、
 // raan を Y 軸まわりに正転すると昇交点は -Z 側へ回る)を、その瞬間の太陽方向から逆算する。
 export function dawnDuskGuideLoop(
-  earth: CelestialMotion, earthPivot: number, sunDirFrom: (r: Vec3, t: number) => Vec3,
+  earth: CelestialBody, earthPivot: number, sunDirFrom: (r: Vec3, t: number) => Vec3,
   repeatDays: number, revsPerRepeat: number, localTime: LocalTime,
 ): GuideLoop | null {
   const earthPos = earth.positionAt(earthPivot);
@@ -256,8 +257,8 @@ export function dawnDuskGuideLoop(
 // 自転周期に共鳴する参照軌道(モルニヤ・ツンドラ)の共通部。自転モデルを持たない天体では
 // 共鳴の基準が無いので線を引かない。
 function spinResonantLoop(
-  earth: CelestialMotion, earthPivot: number, spinRate: number | null,
-  elementsOf: (planet: CelestialMotion, spinPeriod: number) => OrbitalElements,
+  earth: CelestialBody, earthPivot: number, spinRate: number | null,
+  elementsOf: (planet: CelestialBody, spinPeriod: number) => OrbitalElements,
 ): GuideLoop | null {
   if (spinRate === null || spinRate === 0) return null;
   return elementsLoop(
@@ -266,7 +267,7 @@ function spinResonantLoop(
 
 // モルニヤ軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
 export function molniyaGuideLoop(
-  earth: CelestialMotion, earthPivot: number, spinRate: number | null, perigeeAltitude: number, raanDeg: number,
+  earth: CelestialBody, earthPivot: number, spinRate: number | null, perigeeAltitude: number, raanDeg: number,
 ): GuideLoop | null {
   return spinResonantLoop(
     earth, earthPivot, spinRate,
@@ -275,7 +276,7 @@ export function molniyaGuideLoop(
 
 // ツンドラ軌道のガイド線。earth は地球の運動(星系に居るかの判定は呼び出し側)。
 export function tundraGuideLoop(
-  earth: CelestialMotion, earthPivot: number, spinRate: number | null, perigeeAltitude: number, raanDeg: number,
+  earth: CelestialBody, earthPivot: number, spinRate: number | null, perigeeAltitude: number, raanDeg: number,
 ): GuideLoop | null {
   return spinResonantLoop(
     earth, earthPivot, spinRate,

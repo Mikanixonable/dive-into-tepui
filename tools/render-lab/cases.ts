@@ -3,20 +3,27 @@
 // スタイルで組んだ姿を返す。
 import * as THREE from 'three/webgpu';
 import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
-import { CelestialSurface } from '../../src/render/celestial-surface';
-import { CumulusShell } from '../../src/render/cumulus-shell';
+import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
+import { CloudPresentation } from '../../src/render/cloud/cloud-presentation';
+import type { CloudLodMode } from '../../src/render/cloud/cloud-field-sampler';
+import { ObservedCloudField } from '../../src/render/cloud/observed-cloud-field';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
 import cloudFieldUrl from '../../src/assets/cloud-field.png';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
 import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-system/constants';
-import { EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE } from '../../src/game/celestial/solar-system/earth-system';
+import {
+  EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE, earthGeneratedCloudField,
+} from '../../src/game/celestial/solar-system/earth-system';
+import { bootstrapEarthSurface } from '../../src/game/celestial/solar-system/earth-surface-runtime';
 import { shapeAxes, shapeSpheroidRadii, type RingBandDef } from '../../src/physics/celestial-body-def';
-import { BodyGraticule } from '../../src/render/body-graticule';
-import { EarthCoastline } from '../../src/render/earth-coastline';
+import { BodyGraticule } from '../../src/render/celestial/body-graticule';
+import { LineOverlay, type LatLonPolyline } from '../../src/render/celestial/line-overlay';
+import coastlineData from '../../src/assets/earth-coastline.json';
 import { Curve } from '../../src/render/curve';
-import { createAnnulusRing, RingMaterials } from '../../src/render/ring';
-import { buildBarrelMesh, buildPlayerShip } from '../../src/render/ships';
-import { createStarSphere, type StarSphere } from '../../src/render/star-sphere';
+import { createAnnulusRing, RingMaterials } from '../../src/render/celestial/ring';
+import { buildBarrelMesh } from '../../src/render/dynamic/dynamic-entity/ejected-gun-part-view';
+import { buildPlayerShip } from '../../src/render/dynamic/player/player-view';
+import { createStarSphere, type StarSphere } from '../../src/render/celestial/star-sphere';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../src/render/pipeline/sun-light';
 import { SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { InstancedPool } from '../../src/render/instanced-pool';
@@ -26,9 +33,9 @@ import {
 } from '../../src/render/thermal-emissive';
 import { sphereShadowBody, type ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
-import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cumulus-shadow';
+import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
-import { RingView } from '../../src/game/celestial/celestial-entity/ring-view';
+import { RingView } from '../../src/render/celestial/ring-view';
 import { AU } from '../../src/physics/astronomical-unit';
 import { MARS, MARS_ATMOSPHERE_OPTICS, MARS_TEXTURE } from '../../src/game/celestial/solar-system/mars-system';
 import { SATURN, SATURN_TEXTURE } from '../../src/game/celestial/solar-system/saturn-system';
@@ -36,13 +43,15 @@ import { apparentSizePx, metersPerPixelAtDepth } from '../../src/math/projection
 import { v3 } from '../../src/math/vec3';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
 import { PROTEIN_CASES, type ProteinLabCaseMetadata } from './protein-cases';
-import { HULL_EMISS } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
+import { HULL_EMISS } from '../../src/game/dynamic/dynamic-motion';
 import type { FloatNode } from '../../src/render/tsl-types';
 import type { AtmosphereBody } from '../../src/render/atmosphere';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
+import type { GpuTimingSink } from '../../src/render/gpu-timings';
 import type { CelestialTexture } from '../../src/render/celestial-textures';
 import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';
+import type { WebGPURenderer } from 'three/webgpu';
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
 export const VIEW_WIDTH = 960;
@@ -52,6 +61,10 @@ const FOV_DEG = 50;
 // カメラの距離を、ケース既定の距離の何桁ぶんまで伸縮できるか(倍率の常用対数の絶対値の上限)。
 // **寄り切った先へ物体を置くケースは、この値から距離を逆算する。**
 export const MAX_CAMERA_DISTANCE_LOG = 2;
+
+// 地球ケースが貼る海岸線。tools/export-coastline.mjs が Natural Earth 110m coastline から
+// 焼き込んだ、緯度・経度 [deg] のペアを1本の折れ線として並べた配列の配列。
+const EARTH_COASTLINE = coastlineData as readonly LatLonPolyline[];
 
 // 土星ケースが使う実データの環。
 const SATURN_RINGS = (() => {
@@ -113,6 +126,12 @@ export interface LabCase {
   readonly rings?: { readonly center: THREE.Vector3; readonly axis: THREE.Vector3; readonly bands: readonly RingBand[] };
   // 影パスへ渡す積雲の殻。
   readonly cumulus?: ShadowCumulus;
+  // 動的な雲場を表示時刻へ焼く。gpu を渡すと、焼いた GPU 時間をそこへ計上する。
+  readonly bakeClouds?: (renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink) => void;
+  // 雲場のLOD比較設定を表面へ渡す。大気・影はRenderPipelineが同じ設定を受ける。
+  readonly setCloudLodSampling?: (mode: CloudLodMode, fixedLevel?: number) => void;
+  // 動的な雲場を解放する。
+  readonly disposeClouds?: () => void;
   // 描画品質設定のうち、ケースの部品が読む項目を押し込む口。毎フレーム呼ばれるので、
   // 同値なら何もしないこと。
   readonly applyGraphics?: (graphics: GraphicsSettingsData) => void;
@@ -174,7 +193,7 @@ function circle(
     out.copy(center)
       .addScaledVector(u, radius * Math.cos(theta))
       .addScaledVector(v, radius * Math.sin(theta));
-  }, camera);
+  }, camera, VIEW_HEIGHT);
   return curve.object;
 }
 
@@ -618,6 +637,9 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   readonly cumulus: ShadowCumulus;
   readonly shadowBody: ShadowBody;
   readonly applyGraphics: (graphics: GraphicsSettingsData) => void;
+  readonly bakeClouds: (renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink) => void;
+  readonly setCloudLodSampling: (mode: CloudLodMode, fixedLevel?: number) => void;
+  readonly disposeClouds: () => void;
 } {
   const group = new THREE.Group();
   group.position.copy(center);
@@ -625,7 +647,12 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   const axes = shapeAxes(R_EARTH_EQ, EARTH.shape);
   const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
-  const cumulus = new CumulusShell(cloudFieldUrl, R_EARTH_EQ);
+  // 雲場の表示時刻 0 の UTC [s]。気候の月は、ここから表示時刻ぶん進んだ暦で選ばれる。
+  const climateEpochUnixSec = 0;
+  const cumulus = new CloudPresentation(
+    earthGeneratedCloudField(climateEpochUnixSec, bootstrapEarthSurface()),
+    new ObservedCloudField(cloudFieldUrl), R_EARTH_EQ,
+  );
   const surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
   surface.addTo(group);
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
@@ -634,7 +661,7 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   const graticule = new BodyGraticule();
   graticule.addTo(group);
   graticule.setVisible(style === 'schematic');
-  const coastline = new EarthCoastline();
+  const coastline = LineOverlay.of({ kind: 'latLonPolylines', polylines: EARTH_COASTLINE });
   coastline.addTo(group);
   coastline.setVisible(style === 'schematic');
   return {
@@ -663,12 +690,17 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
     // 絵の比較は最も細かい段で行う)。
     applyGraphics: (graphics) => {
       if (graphics.clouds) {
+        cumulus.setCloudsVisible(true);
+        cumulus.setSource(graphics.cloudFieldSource);
         cumulus.setDetail(graphics.cumulusDetail);
         cumulus.syncLod(CLOSE_UP_DIAMETER_PX);
       } else {
-        cumulus.hide();
+        cumulus.setCloudsVisible(false);
       }
     },
+    bakeClouds: (renderer, displayTime, gpu) => cumulus.bake(renderer, displayTime, gpu),
+    setCloudLodSampling: (mode, fixedLevel) => cumulus.setLodSampling(mode, fixedLevel),
+    disposeClouds: () => cumulus.dispose(),
   };
 }
 
@@ -701,6 +733,9 @@ function earth(style: RenderStyle): LabCase {
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
+    bakeClouds: earthSphere.bakeClouds,
+    setCloudLodSampling: earthSphere.setCloudLodSampling,
+    disposeClouds: earthSphere.disposeClouds,
   };
 }
 
@@ -717,6 +752,9 @@ function earthOblique(style: RenderStyle): LabCase {
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
+    bakeClouds: earthSphere.bakeClouds,
+    setCloudLodSampling: earthSphere.setCloudLodSampling,
+    disposeClouds: earthSphere.disposeClouds,
   };
 }
 
@@ -743,6 +781,9 @@ function earthPolar(style: RenderStyle): LabCase {
     shadowBodies: [earthSphere.shadowBody],
     cumulus: earthSphere.cumulus,
     applyGraphics: earthSphere.applyGraphics,
+    bakeClouds: earthSphere.bakeClouds,
+    setCloudLodSampling: earthSphere.setCloudLodSampling,
+    disposeClouds: earthSphere.disposeClouds,
   };
 }
 
@@ -824,6 +865,9 @@ function earthMars(style: RenderStyle): LabCase {
       },
     ],
     applyGraphics: earthSphere.applyGraphics,
+    bakeClouds: earthSphere.bakeClouds,
+    setCloudLodSampling: earthSphere.setCloudLodSampling,
+    disposeClouds: earthSphere.disposeClouds,
   };
 }
 

@@ -1,10 +1,10 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { isFormationEnergyAvailable } from '../../src/game/dynamic/dynamic-entity/protein-enemy';
-import type { FormationRole } from '../../src/game/dynamic/dynamic-entity/enemy';
+import type { FormationRole } from '../../src/game/dynamic/dynamic-entity/entity-kind';
 
 type FormationMember = {
-  readonly alive: boolean;
+  readonly motion: { readonly alive: boolean };
   readonly formationId?: string;
   readonly formationRole?: FormationRole;
 };
@@ -12,9 +12,9 @@ type FormationMember = {
 export function register(): void {
   test('protein formation: an attacker needs a living energy member in the same formation', () => {
     const members: readonly FormationMember[] = [
-      { alive: true, formationId: 'formation-1', formationRole: 'attacker' },
-      { alive: true, formationId: 'formation-2', formationRole: 'energy' },
-      { alive: false, formationId: 'formation-1', formationRole: 'energy' },
+      { motion: { alive: true }, formationId: 'formation-1', formationRole: 'attacker' },
+      { motion: { alive: true }, formationId: 'formation-2', formationRole: 'energy' },
+      { motion: { alive: false }, formationId: 'formation-1', formationRole: 'energy' },
     ];
     assert.equal(isFormationEnergyAvailable('attacker', 'formation-1', members), false);
     assert.equal(isFormationEnergyAvailable('attacker', 'formation-2', members), true);
@@ -30,8 +30,8 @@ export function register(): void {
 
   test('protein formation: a living energy member from another formation cannot supply an attacker', () => {
     const members: readonly FormationMember[] = [
-      { alive: true, formationId: 'formation-2', formationRole: 'energy' },
-      { alive: true, formationId: 'formation-1', formationRole: 'shield' },
+      { motion: { alive: true }, formationId: 'formation-2', formationRole: 'energy' },
+      { motion: { alive: true }, formationId: 'formation-1', formationRole: 'shield' },
     ];
     assert.equal(isFormationEnergyAvailable('attacker', 'formation-1', members), false);
   });

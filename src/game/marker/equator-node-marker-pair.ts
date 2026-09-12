@@ -1,116 +1,128 @@
 // 1つのオブジェクトの軌道が中心天体の赤道面を横切る2点(EqAN/EqDN)の算出と、△▽ マーカー
 // としての表示・被選択物としての公開。
 import { strongestAttractor } from '../../physics/attractor';
-import { CelestialMotion } from '../../physics/celestial-motion';
 import { FrameAnchorSource, ReferenceFrame, unbakeToDisplayPoint } from '../../physics/frame';
-import type { CelestialSystem } from '../celestial/celestial-system';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { Vec3 } from '../../math/vec3';
 import { solveEquatorCrossings } from '../../physics/orbit-solvers';
 import { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarker } from './equator-node-marker';
-import type { MarkerManager } from './marker-manager';
-import type { ProjectFn } from '../camera/camera-system';
+import type { MarkerSlots } from './marker-slots';
 import { ObjectPickable } from '../pickable/object-pickable';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicMotion } from '../dynamic/dynamic-motion';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { CelestialBody } from '../../physics/celestial-body';
+import type { ProjectFn } from '../../math/projection';
+
+// 画面に出ている折れ線と、それが載っている座標系。
+export interface DisplayedPath {
+  readonly frame: ReferenceFrame;
+  // 区間ごとのサンプル列、時刻昇順。
+  readonly samples: readonly (readonly KinematicState[])[];
+}
+
+// ある個体について、いま画面に折れ線が出ているかを答える口。null は折れ線が出ていない
+// ことを意味し、その個体には解析軌道楕円が出ている。
+interface DisplayedPathSource {
+  displayedPathOf(ownerId: string): DisplayedPath | null;
+}
+
+// 赤道交点を解くのに要る、そのフレームの材料。個体によって変わらないものだけを持ち、
+// 個体ごとの違いは paths が答える。
+export interface EquatorNodeInputs {
+  readonly displayTime: number;
+  readonly celestialBodies: CelestialBodies;
+  readonly frameAnchors: FrameAnchorSource;
+  readonly paths: DisplayedPathSource;
+}
 
 export class EquatorNodeMarkerPair {
   private readonly ascending: EquatorNodeMarker;
   private readonly descending: EquatorNodeMarker;
-  // update が求めた時点の CelestialMotion[]。sync でのマップビュー遮蔽判定に使う。
-  private celestialBodies: readonly CelestialMotion[] = [];
-  // celestialBodies の位置を厳密に引く時刻。
-  private celestialBodiesPivot = 0;
-  // 通過時刻ラベルの設定。update ごとに渡され、sync のラベル組み立てで読む。
-  private timeLabel: TimeLabelSetting = {
-    mode: 'absolute', show: false, nowSimTime: 0, epochUnixSec: 0,
-  };
-  // 直前の sync 以降に update が交点を書き込んだか。求め直されなかったフレームで交点を
-  // 捨てるために持つ。
-  private solvedSinceSync = false;
 
-  // owner は交点を求める対象の軌道の持ち主。昇交点・降交点のマーカーを1つずつ持ち続ける。
-  constructor(private readonly owner: DynamicEntity, private readonly markerManager: MarkerManager) {
-    this.ascending = new EquatorNodeMarker(owner.id, 'ascending');
-    this.descending = new EquatorNodeMarker(owner.id, 'descending');
+  // 所有個体に一意な昇交点・降交点マーカーを1つずつ作る。
+  constructor(private readonly ownerId: string, private readonly markers: MarkerSlots) {
+    this.ascending = new EquatorNodeMarker(ownerId, 'ascending');
+    this.descending = new EquatorNodeMarker(ownerId, 'descending');
   }
 
-  // 解析軌道楕円の上に交点を置く。楕円は中心天体に固定して描かれるので、交点もその天体の
-  // 慣性系で表示時刻へ写す。
-  updateOnEllipse(
-    displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
-    timeLabel: TimeLabelSetting,
-  ): void {
-    this.updateOnPath(
-      null, displayTime, celestialSystem, frameAnchors,
-      this.owner.stateAt(displayTime, celestialSystem), [], timeLabel,
-    );
+  // 交点を、この個体について画面に出ている線の上で求め直す。折れ線が出ていれば表示中の
+  // 全区間が対象で、出ていなければ解析軌道楕円 — 楕円は中心天体に固定して描かれるので、
+  // 交点もその天体の慣性系で表示時刻へ写す。
+  update(motion: DynamicMotion, ownerName: string, inputs: EquatorNodeInputs): void {
+    const path = inputs.paths.displayedPathOf(this.ownerId);
+    if (path !== null) this.solve(inputs, ownerName, path.frame, motion.state, path.samples);
+    else this.solve(inputs, ownerName, null, motion.stateAt(inputs.displayTime, inputs.celestialBodies), []);
   }
 
-  // 表示中の折れ線の上に交点を置く。paths(区間ごとのサンプル列、時刻昇順)が空なら state の
-  // 軌道要素から求める。frame は交点位置を表示時刻へ写す座標系で、null なら中心天体の慣性系
-  // (= 解析軌道楕円の置き方)。
-  updateOnPath(
-    frame: ReferenceFrame | null, displayTime: number, celestialSystem: CelestialSystem, frameAnchors: FrameAnchorSource,
+  // paths(区間ごとのサンプル列、時刻昇順)が空なら state の軌道要素から求める。frame は
+  // 交点位置を表示時刻へ写す座標系で、null なら中心天体の慣性系。
+  private solve(
+    inputs: EquatorNodeInputs, ownerName: string, frame: ReferenceFrame | null,
     state: KinematicState | null, paths: readonly (readonly KinematicState[])[],
-    timeLabel: TimeLabelSetting,
   ): void {
+    const { displayTime, celestialBodies, frameAnchors } = inputs;
     this.clearCrossings();
-    this.celestialBodies = frameAnchors.bodies;
-    this.celestialBodiesPivot = frameAnchors.bodiesPivot;
-    this.timeLabel = timeLabel;
     if (state === null) return;
-    // 中心天体は state 自身の時刻の天体位置で選ぶ — 解析楕円は displayTime、折れ線は
-    // simTime の状態ベクトルから作るので、時刻を揃えないと中心の選定だけが別の瞬間になる。
+    // 中心天体は state 自身の時刻で選ぶ — 解析楕円は displayTime、折れ線は simTime の
+    // 状態ベクトルから作るので、揃えないと中心の選定だけが別の瞬間のものになる。
     const centerPivot = state.t;
-    const center = strongestAttractor(state.r, celestialSystem.celestialMotions, centerPivot);
+    const center = strongestAttractor(state.r, celestialBodies.celestialMotions, centerPivot);
     const eqNormal = center.degree2At(centerPivot)?.pole;
     if (!eqNormal) return;
 
-    const displayFrame = frame ?? celestialSystem.frames.frameFor(center.id);
-    const unbakeTf = celestialSystem.frames.transformAt(displayFrame, displayTime, frameAnchors);
+    const displayFrame = frame ?? celestialBodies.frames.frameFor(center.id);
+    const unbakeTf = celestialBodies.frames.transformAt(displayFrame, displayTime, frameAnchors);
     const crossings = solveEquatorCrossings(
       state, center, centerPivot, eqNormal, paths,
-      (t) => celestialSystem.stateAt(center.id, t).r);
+      (t) => celestialBodies.stateAt(center.id, t).r);
     if (!crossings) return;
 
-    const centerName = celestialSystem.nameOf(center.id);
+    const centerName = celestialBodies.nameOf(center.id);
     const toDisplay = (r: Vec3, t: number): Vec3 =>
-      unbakeToDisplayPoint(unbakeTf, celestialSystem.frames.transformAt(displayFrame, t, frameAnchors), r);
+      unbakeToDisplayPoint(unbakeTf, celestialBodies.frames.transformAt(displayFrame, t, frameAnchors), r);
 
     this.ascending.place(
-      toDisplay(crossings.asc.r, crossings.asc.t), crossings.asc.t, this.owner.name, centerName);
+      toDisplay(crossings.asc.r, crossings.asc.t), crossings.asc.t, ownerName, centerName);
     this.descending.place(
-      toDisplay(crossings.desc.r, crossings.desc.t), crossings.desc.t, this.owner.name, centerName);
-    this.solvedSinceSync = true;
+      toDisplay(crossings.desc.r, crossings.desc.t), crossings.desc.t, ownerName, centerName);
   }
 
-  // 交点を、このフレームは求まらなかった状態にする。
+  // 交点を出す理由が無くなったことを記録する。
+  retire(): void {
+    this.ascending.retire();
+    this.descending.retire();
+  }
+
+  // 交点を、求まらなかった状態にする。
   private clearCrossings(): void {
     this.ascending.place(null, null, null, null);
     this.descending.place(null, null, null, null);
   }
 
-  // 右クリック対象として公開する EqAN/EqDN アイコン(交点が求まっていなければ空)。
+  // 右クリック対象として公開する EqAN/EqDN アイコン。出す理由が残っているぶんを返す。
   pickables(): readonly ObjectPickable[] {
     return [this.ascending, this.descending].filter((marker) => !marker.gone);
   }
 
-  // △▽ マーカーを update が求めた位置に置く。求め直されなかったフレームは交点を捨てて隠す。
-  sync(project: ProjectFn, cameraPos: Vec3): void {
-    if (!this.solvedSinceSync) this.clearCrossings();
-    this.solvedSinceSync = false;
+  // 求まっている交点へ △▽ マーカーを置き、求まっていない交点は隠す。celestialBodies は
+  // 遮蔽判定に使う天体で、celestialBodiesPivot はその位置を引く時刻。
+  sync(
+    project: ProjectFn, cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
+    celestialBodiesPivot: number, occludeByBodies: boolean, timeLabel: TimeLabelSetting,
+  ): void {
     for (const marker of [this.ascending, this.descending]) {
       marker.sync(
-        this.markerManager, project, cameraPos, this.celestialBodies, this.celestialBodiesPivot,
-        true, this.timeLabel,
+        this.markers, project, cameraPos, celestialBodies, celestialBodiesPivot,
+        occludeByBodies, timeLabel,
       );
     }
   }
 
   // マーカー要素ごと取り除く。
   dispose(): void {
-    this.markerManager.remove(this.ascending.id);
-    this.markerManager.remove(this.descending.id);
+    this.retire();
+    this.markers.remove(this.ascending.id);
+    this.markers.remove(this.descending.id);
   }
 }

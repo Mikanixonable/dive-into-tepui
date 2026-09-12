@@ -1,0 +1,47 @@
+{
+  "datasetId": "earth-2026-09-09-a",
+  "era5": {
+    "bytes": 1072030912,
+    "coordinateOrder": {
+      "latitude": "90..-90 by -0.25",
+      "longitude": "0..359.75 by +0.25"
+    },
+    "dimensions": {
+      "latitude": 721,
+      "longitude": 1440,
+      "time": 360
+    },
+    "path": ".earth-surface/raw-v3/era5-monthly-1991-2020/global.nc",
+    "sha256": "0615710390a0cdc5d17dd418adf0ccdecc3b1b520be6714e7365d6d4492e23e8",
+    "time": {
+      "calendar": "gregorian",
+      "end": "2020-12",
+      "records": 360,
+      "start": "1991-01",
+      "units": "hours since 1900-01-01 00:00:00"
+    },
+    "variables": {
+      "2m_temperature": {
+        "name": "t2m",
+        "shape": [
+          360,
+          721,
+          1440
+        ],
+        "units": "K"
+      },
+      "total_cloud_cover": {
+        "name": "tcc",
+        "shape": [
+          360,
+          721,
+          1440
+        ],
+        "units": "1"
+      }
+    }
+  },
+  "kind": "earth-surface-local-validation",
+  "schemaVersion": 1,
+  "sourceManifestSha256": "6fa02302552ea033b1d5e8969a9064c0a71f2fadf97f6f8098063ffc26624fbb"
+}

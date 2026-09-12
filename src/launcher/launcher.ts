@@ -1,11 +1,11 @@
 import { Game } from '../game/game';
+import type { GameHost } from '../game/game-host';
 import { LoadingProgress } from '../game/loading-progress';
 import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
-import type { PauseMenu, SettingsView } from '../hud/windows';
+import type { PauseMenu } from '../hud/windows/pause-menu';
 import { ResultScreen, type RunTransitions } from './result-screen';
 import type { CurrentGameSource } from './save-browser/save-browser';
-import type { Hud } from '../game/hud/hud';
 import type { HudShell } from '../hud/hud-shell';
 import type { GamePhase, Stage, StageClass, StageResult } from '../game/stages/stage';
 import { findStageClass } from '../game/stages/stage-dictionary';
@@ -14,14 +14,20 @@ import type { UnlockManager } from './unlock-manager';
 import type { SaveSlots } from './save/save-slots';
 import type { SnapshotService } from './save/snapshot-service';
 import type { GameSaveData } from '../game/save/save-data';
+import { runSummary } from '../game/run-summary';
 import type { AudioEngine } from '../audio/audio-engine';
 import type { Bgm } from '../audio/bgm/bgm';
-import type { GameScene } from '../render/scene';
-import type { GraphicsSettings } from '../render/graphics-settings';
-import type { FrameSections } from '../game/frame-sections';
+import type { GraphicsSettingsData } from '../render/graphics-settings';
+import type { RenderStyle } from '../render/render-style';
+import type { SettingValue } from '../settings/stored-setting';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
 import type { TdbJulianDate } from '../physics/time';
+
+// URL に ?perf=1 が付いているか。付いていればデバッグ情報ウィンドウを起動直後から開く。
+export function debugInfoOpenAtStart(): boolean {
+  return new URLSearchParams(location.search).get('perf') === '1';
+}
 
 // アクティブスロットの直近起動が今も選択可能(ロック解除済み・選択画面から隠されていない)なら、
 // そのステージクラスを返す。再開できる情報が無ければ null。
@@ -39,8 +45,8 @@ function fallbackResult(phase: GamePhase): StageResult {
   return { win: phase !== 'lost', title: null, detailHtml: '結果の記録がありません' };
 }
 
-// 再出撃・タイトル復帰・スナップショットのロード・スロット切替 — 「Game インスタンスを
-// 捨てて次の周回へ移る」判断を1箇所へ集約する。今動いている周回の Game 自体もここが保持する。
+// 周回の遷移(起動・再出撃・タイトル復帰・スナップショットのロード・スロット切替)を担う。
+// 今動いている周回の Game を保持し、遷移のたびに捨てて作り直す。
 export class Launcher implements RunTransitions, CurrentGameSource {
   private readonly resultScreen: ResultScreen;
   private game: Game | null = null;
@@ -48,27 +54,47 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   // 遷移中に再入すると、組み立て中の Game が dispose されないまま取り残される。
   private transitioning = false;
 
-  get current(): Game | null { return this.game; }
+  public get currentGame(): Game | null { return this.game; }
 
-  constructor(
+  // CurrentGameSource 実装。今動いている周回の読み口と一時停止の口。周回が無ければ null。
+  // 状態を表す値は、読むたびにその周回の Game から引く。
+  public get current(): CurrentGameSource['current'] {
+    const game = this.game;
+    if (game === null) return null;
+    return {
+      stageId: game.activeStage.id,
+      get isPlaying(): boolean { return game.activeStage.isPlaying; },
+      nameOfBody: (id) => game.celestialSystem.nameOf(id),
+      // スナップショットの撮影に要る読み口。
+      snapshot: {
+        get isPaused(): boolean { return game.isPaused; },
+        get isPlaying(): boolean { return game.activeStage.isPlaying; },
+        runSummary: () => runSummary(game),
+        serialize: () => game.serialize(),
+      },
+      pause: () => game.pause(),
+      resume: () => game.resume(),
+    };
+  }
+
+  // ラン跨ぎの持ち物と、ランを起こすときに読む設定の現在値を受け取り、結果画面を組む。
+  public constructor(
     private readonly shell: HudShell,
-    private readonly hud: Hud,
-    private readonly gs: GameScene,
+    private readonly host: GameHost,
     private readonly audioEngine: AudioEngine,
     private readonly bgm: Bgm,
     private readonly pauseMenu: PauseMenu,
-    private readonly settingsView: SettingsView,
     private readonly unlockManager: UnlockManager,
-    private readonly sections: FrameSections,
     private readonly slots: SaveSlots,
     private readonly snapshotService: SnapshotService,
-    private readonly graphics: GraphicsSettings,
+    private readonly graphics: SettingValue<GraphicsSettingsData>,
+    private readonly renderStyle: SettingValue<RenderStyle>,
   ) {
     this.resultScreen = new ResultScreen(shell, this);
   }
 
   // タイトル解決から Game の起動までを行う。
-  async start(): Promise<void> {
+  public async start(): Promise<void> {
     if (this.transitioning) return;
     this.transitioning = true;
     try {
@@ -98,7 +124,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       this.unlockManager,
       () => { if (!this.shell.overlayManager.closeTopmostOnEscape()) this.pauseMenu.toggle(); },
       () => this.pauseMenu.toggle(false),
-      () => this.settingsView.toggle(true),
+      () => this.pauseMenu.openSettings(),
     );
   }
 
@@ -118,24 +144,23 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     showLoading();
     try {
       this.game = await Game.create(
-        this.gs, stageClass, this.hud, this.audioEngine, this.pauseMenu,
-        this.sections, initialSave, startEpoch, this.graphics.current,
+        this.host, stageClass, this.audioEngine, this.pauseMenu,
+        initialSave, startEpoch, this.graphics.current, this.renderStyle.current,
         new LoadingProgress(setLoadingProgress),
       );
     } finally {
       hideLoading();
     }
-    // AudioContext は実際のユーザー操作でしか作れないため、unlock は入力エッジの発火点へ配線する。
-    // Input は周回ごとに作り直されるので、配線もそのたびに張り直す。
+    // AudioContext はユーザー操作の中でしか作れないので、周回ごとの Input の入力エッジへ unlock を張る。
     this.game.input.onUserGesture = () => {
       this.audioEngine.unlock();
       this.bgm.ensureStarted();
     };
     const stage = this.game.activeStage;
     stage.onDecided = () => {
-      // クリア回数はラン跨ぎの記録なので、決着した瞬間にランの外側が書く。決着済みのセーブを
-      // 読んだときはここを通らない — 読むたびに回数が増えないようにするため、これでよい。
-      if (stage.phase === 'won') this.unlockManager.reportClear(stage.id, this.hud);
+      // クリア回数は決着した瞬間に数える。決着済みのセーブから始めたランはここを通らないので、
+      // 読むたびには増えない。
+      if (stage.phase === 'won') this.unlockManager.reportClear(stage.id, this.host.hud);
       this.showResult(stage);
     };
     this.noteLaunched(stageClass);
@@ -152,13 +177,9 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     this.resultScreen.show(stage.result ?? fallbackResult(stage.phase));
   }
 
-  // snapshotId を最優先で使う。無ければ、起動するステージがアクティブスロットの直前起動と
-  // 同じ場合(=そのスロットで進行中だった周回の再開)に限り、そのステージの最新スナップショット
-  // を自動で復元する。startEpoch が明示されている(開始日時の指定画面で選んだ)場合は、その
-  // 日時を新規開始の元期として使うべきなので自動復元の対象から外す — 外さないと直前セッションの
-  // スナップショットの元期が指定日時を上書きしてしまう。
-  // noteLaunched は Game 構築後に呼ばれるため、この時点の lastStageId は今回の起動より前の
-  // 値を指している。復元できないスナップショットを指したときは undefined を返す。
+  // 周回の初期セーブ。snapshotId があればそれを、無ければ進行中だった周回の再開(直前起動と同じ
+  // ステージ、かつ開始日時の指定なし)に限り最新スナップショットを復元する。直前起動を読むので
+  // noteLaunched より前に呼ぶ。復元できなければ undefined。
   private initialSaveFor(stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate): GameSaveData | undefined {
     const activeSlotId = this.slots.activeSlotId;
     const resumesLastLaunchedStage = startEpoch === undefined
@@ -180,15 +201,14 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     if (activeSlotId !== null) this.slots.noteLaunch(activeSlotId, stageClass.id);
   }
 
-  // [R] は決着後だけ再出撃キーとして働く。この呼び出し時点で game.update が消費しなかった
-  // エッジだけを見る。
-  handleInput(input: Input): void {
+  // 決着後の再出撃キーを拾う。game.update が入力エッジを消費した後に呼ぶ。
+  public handleInput(input: Input): void {
     if (this.game === null || this.game.activeStage.isPlaying) return;
     if (input.takeKey(K.restart)) this.restart();
   }
 
   // 現在の起動ステージへ作り直す。まだ何も起動していなければ何もしない。
-  restart(): void {
+  public restart(): void {
     if (this.launchedStage === null) return;
     if (this.transitioning) return;
     this.transitioning = true;
@@ -197,9 +217,9 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       .finally(() => { this.transitioning = false; });
   }
 
-  // 選択画面を出し直し、選ばれたステージで作り直す。noteRunEnded で「直前に遊んでいたステージ」を
-  // クリアし、リロード時の復元(resolveStage)がタイトル画面へフォールバックできるようにする。
-  returnToTitle(): void {
+  // 選択画面を出し直し、選ばれたステージで作り直す。直前起動の記録を消すので、この後に
+  // 再読み込みしても選択画面から始まる。
+  public returnToTitle(): void {
     if (this.transitioning) return;
     this.transitioning = true;
     this.endRun();
@@ -213,7 +233,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // 現在の起動ステージを、指定したスナップショットの状態から作り直す。
   // まだ何も起動していなければ何もしない。
-  loadSnapshot(snapshotId: string): void {
+  public loadSnapshot(snapshotId: string): void {
     if (this.launchedStage === null) return;
     if (this.transitioning) return;
     this.transitioning = true;
@@ -224,10 +244,11 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // アクティブスロットが切り替わった後に呼ぶ。再開できる起動先があればそれで、
   // 無ければ選択画面で決めたステージで作り直す。
-  switchSlot(): void {
+  public switchSlot(): void {
     if (this.transitioning) return;
     this.transitioning = true;
     this.endRun();
+    // 切り替え先のスロットで再開できるステージが無ければ、選択画面で決める。
     const resumed = resumableStageClass(this.unlockManager, this.slots);
     const resolved: Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> =
       resumed !== null ? Promise.resolve({ stageClass: resumed }) : this.selectStageScreen();
@@ -237,8 +258,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       .finally(() => { this.transitioning = false; });
   }
 
-  // 次の周回への遷移そのものが失敗すると current が null のまま何も進まなくなるため、
-  // 拾って明示する。
+  // 周回の遷移の失敗を画面に出す。遷移が失敗すると current が null のまま進まなくなる。
   private fail(err: unknown): void {
     console.error(err);
     showFatalError(

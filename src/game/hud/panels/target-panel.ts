@@ -1,12 +1,14 @@
 // 常設 TARGET パネル(#hud-target)の同期。ロック中ターゲットの名前・装甲・距離・
-// 接近速度・相対速度を、ターゲットが固定されている間だけ表示する。
+// 接近速度・相対速度を、ターゲットの固定中に表示する。
 import { fmtDist, fmtSpeed, setElementText } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
 import { relativeInfo } from '../../orbit-info';
 import { ProteinEnemy } from '../../dynamic/dynamic-entity/protein-enemy';
 import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
-import type { Game } from '../../game';
-import type { ProteinHudSnapshot } from '../../protein/protein-schema';
+import type { ProteinCombatReadout } from '../../protein/protein-schema';
+import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
+import type { Targeter } from '../../targeter';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -18,7 +20,7 @@ interface TargetPanelData {
   // 装甲を持たない対象(基地)では null。
   readonly hp: number | null;
   readonly maxHp: number | null;
-  readonly protein: ProteinHudSnapshot | null;
+  readonly protein: ProteinCombatReadout | null;
 }
 
 export class TargetPanel {
@@ -36,20 +38,20 @@ export class TargetPanel {
   }
 
   // 固定対象の有無を毎フレーム反映し、値の更新は間引く。
-  public sync(game: Game): void {
-    const celestialBodies = game.celestialSystem.celestialMotions;
-    const player = game.player;
-    const target = player ? game.targeter.aliveTarget : null;
+  public sync(viewer: Controllable | null, celestialBodies: CelestialBodies, targeter: Targeter): void {
+    const target = viewer ? targeter.aliveTarget : null;
     // 表示/非表示はターゲット固定の有無に直結するので、更新間隔とは別に毎フレーム反映する。
     this.els.get('hud-target')?.classList.toggle('hidden', target === null);
 
     if (!this.throttle.due()) return;
 
-    if (!player || !target) {
+    if (!viewer || !target) {
       this.syncTarget(null);
       return;
     }
-    const relative = relativeInfo(player, target, celestialBodies, player.state.t);
+    const relative = relativeInfo(
+      viewer, target, celestialBodies.celestialMotions, viewer.motion.state.t,
+    );
     this.syncTarget({
       name: target.name,
       distanceM: relative.dist,
@@ -57,11 +59,11 @@ export class TargetPanel {
       relativeSpeedMps: relative.relSpeed,
       hp: target.hp,
       maxHp: target.maxHp,
-      protein: target instanceof ProteinEnemy ? target.hudSnapshot : null,
+      protein: target instanceof ProteinEnemy ? target.combatReadout : null,
     });
   }
 
-  // 安定した DOM へ値だけを同期し、高速更新でも読み上げ対象の要素を作り直さない。
+  // 値を既存の DOM へ書き込む。target が null なら名前を空欄にし、タンパク質欄を畳む。
   private syncTarget(target: TargetPanelData | null): void {
     if (!target) {
       setElementText(this.els, 'tgtname', '—');

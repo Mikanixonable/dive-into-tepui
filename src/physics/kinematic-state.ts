@@ -13,11 +13,14 @@ import { Vec3, add, cross, norm, sub, v3 } from '../math/vec3';
 //
 // - `eci` — ECI 原点天体(ステージが選ぶ中心天体)中心。無標の既定。
 // - `analytic` — 解析暦が答える位置。原点は太陽系重心で、恒星もその重心のまわりを動く。
+// - `starRel` — 解析暦が答える位置を主星中心で測ったもの。供給源は解析に固定される。
+//   **解析経路の ECI 化はこちらどうしの差で組む** — 恒星の重心相対位置は差で厳密に相殺するので、
+//   ECI の答えに効かないまま全惑星系のケプラー解を要求する。
 // - `numeric` — 数値暦が答える位置。原点は太陽系重心。
 // - `primaryRel` — 何かを中心に測った相対量。**中心が誰かは型に現れない**ので、
 //   足し先を取り違えても型検査は通る。組む側が中心を知っている必要がある。
 // - `icrf` — 太陽系重心中心・ICRF 軸。暦パックの生の座標。
-type FrameTag = 'eci' | 'analytic' | 'primaryRel' | 'numeric' | 'icrf';
+type FrameTag = 'eci' | 'analytic' | 'starRel' | 'primaryRel' | 'numeric' | 'icrf';
 
 // 原点(と供給源)の札を付けた位置ベクトル。**`Vec3` の部分型**なので既存のベクトル演算へ
 // そのまま渡せる。演算の結果は素の `Vec3` に戻る(位置 − 位置は変位であって位置ではない)ので、
@@ -56,6 +59,14 @@ export function toEci<F extends FrameTag>(
   t: number, body: KinematicState<F>, origin: KinematicState<F>,
 ): KinematicState {
   return kinematicState<'eci'>(t, sub(body.r, origin.r), sub(body.v, origin.v));
+}
+
+// 主星中心の量を、その主星の状態へ足し戻したもの。返る原点は主星側のものを引き継ぐ。
+// **足す相手が主星本人であることは呼ぶ側が知っている必要がある。**
+export function fromStarRelative<F extends FrameTag>(
+  star: KinematicState<F>, rel: KinematicState<'starRel'>,
+): KinematicState<F> {
+  return kinematicState<F>(star.t, add(star.r, rel.r), add(star.v, rel.v));
 }
 
 // 主天体相対を、その主天体の状態へ足し戻したもの。**主天体をどの原点で測っていても

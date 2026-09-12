@@ -5,7 +5,7 @@ import { KinematicState, kinematicState, orbitAxes } from '../../../physics/kine
 import { randSym } from '../../../math/random';
 import { add, len, norm, scale } from '../../../math/vec3';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
-import type { EffectsSystem } from '../../vfx/effects-system';
+import type { FlashEffects } from '../../vfx/flash-effects';
 import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { generateDriftingEnemy } from './enemy-generator';
 import { COLOR_ENEMY_ORBIT_LINE } from '../../lines/entity-line-manager';
@@ -32,7 +32,7 @@ const STAGE0_JITTER_RADIAL = 350; // 各機の動径方向ばらつき [m]
 export function generateCluster(
   base: KinematicState,
   worldSfx: WorldSfx,
-  fx: EffectsSystem,
+  fx: FlashEffects,
   scene: THREE.Scene,
   groupCount: number = COLOR_STAGE0_GROUP_ACCENTS.length,
   perGroup: number = STAGE0_PER_GROUP,

@@ -8,9 +8,11 @@ import {
   orbitalElementsFromClassical,
   eccentricAnomalyFromMean,
   keplerPeriod,
+  meanMotionFromSemiMajor,
   nodeAnomalies,
   positionOnOrbit,
   semiMajorFromPeriod,
+  semiMajorFromMeanMotion,
   stateOnOrbitAt,
   stateFromOrbitalElements,
   timeSincePeriapsis,
@@ -76,6 +78,13 @@ export function register(): void {
     const period = keplerPeriod(a, MU_MOON);
     const a2 = semiMajorFromPeriod(period, MU_MOON);
     assert.ok(Math.abs(a2 - a) / a < 1e-9, `a round trip: ${a2} vs ${a}`);
+  });
+
+  test('elements: meanMotionFromSemiMajor <-> semiMajorFromMeanMotion round trip', () => {
+    const a = R_EARTH + 800e3;
+    const meanMotion = meanMotionFromSemiMajor(a, MU_EARTH);
+    const a2 = semiMajorFromMeanMotion(meanMotion, MU_EARTH);
+    assert.ok(Math.abs(a2 - a) / a < 1e-12, `a round trip: ${a2} vs ${a}`);
   });
 
   test('elements: trueAnomalyAt / positionOnOrbit / velocityOnOrbit round trip', () => {
@@ -229,6 +238,17 @@ export function register(): void {
       const mBack = E - e * Math.sin(E);
       const err = Math.atan2(Math.sin(mBack - m), Math.cos(mBack - m));
       assert.ok(Math.abs(err) < 1e-10, `round trip near periapsis at m=${m}: err=${err}`);
+    }
+  });
+
+  test('elements: eccentricAnomalyFromMean converges through the starter threshold up to e=0.98', () => {
+    for (const e of [0.79, 0.8, 0.81, 0.9, 0.98]) {
+      for (const m of [0, 1e-10, -1e-10, 1e-6, -1e-6, 1e-2, -1e-2, 1, -1, Math.PI]) {
+        const E = eccentricAnomalyFromMean(m, e);
+        assert.ok(Number.isFinite(E), `E should be finite at e=${e}, M=${m}`);
+        const residual = E - e * Math.sin(E) - m;
+        assert.ok(Math.abs(residual) < 1e-12, `Kepler residual at e=${e}, M=${m}: ${residual}`);
+      }
     }
   });
 }

@@ -2,21 +2,18 @@ import { hudRail } from '../hud-root';
 import {
   Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, SegmentedControl, type CollapseToggleLabels,
 } from '../../../hud/widgets';
-import { expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
-import { injectOnce } from '../../../hud/widgets/inject-style';
+import { bindActivation, expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
+import { injectOnce } from '../../../hud/inject-style';
 import { loadPanelCollapsed, savePanelCollapsed, wirePanelCollapse } from '../panel-shell';
 import { MQ_COARSE } from '../../../hud/breakpoints';
-import { PhysicalObjectListTree } from './physical-object-list-tree';
+import { PhysicalObjectListRowTree as PhysicalObjectListTree } from './physical-object-list-row-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
-import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { DynamicEntityKind } from '../../dynamic/dynamic-entity/entity-kind';
-import type { Player } from '../../player/player';
-import type { RowNode } from './physical-object-list-tree';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
+import type { RowNode } from './physical-object-list-row-tree';
 import type { PhysicalObjectListFilter, PhysicalObjectListSort, SectionOrder } from './physical-object-list-order';
-
-// 軌道物体一覧の区画。天体はクラスをまたいで1区画にまとめ、人工物は種別ごとに分ける。
-export type MapListSection = 'body' | DynamicEntityKind;
+import type { MapListSection } from '../../pickable/pickable-listing';
+import type { ListedObject } from '../../pickable/listed-object';
+import type { OrbitingObject } from '../../dynamic/dynamic-entity/orbiting-object';
 
 const SECTIONS: readonly { section: MapListSection; label: string }[] = [
   { section: 'body', label: '天体' },
@@ -70,7 +67,7 @@ const STYLE = `
 }
 #hud-physical-object-list .physical-object-list-title { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 #hud-physical-object-list .physical-object-list-body.collapsed { display: none !important; }
-#hud-physical-object-list .physical-object-list-breadcrumb { padding: var(--space-1) var(--space-3); font-size: var(--font-xxs); color:var(--text-dim); border-bottom:1px solid var(--edge); }
+#hud-physical-object-list .physical-object-list-breadcrumb { padding: var(--space-1) var(--space-3); font-size: var(--font-xxs); color:var(--text-dim); }
 /* 全展開して数百行をスクロールしても今どの区画かを見失わないよう、見出しを内側スクロール
    領域の先頭へ貼り付ける。背景の不透明化は map-view-style.ts 側(見た目のトークン)が持つ。 */
 #hud-physical-object-list .physical-object-list-section-header {
@@ -119,7 +116,7 @@ export class PhysicalObjectListPanel {
   // sync() は毎フレーム呼ばれるが、これらは同期中だけ使う scratch であり、呼び出し元へ
   // 参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
   private readonly namesScratch = new Map<string, string>();
-  private readonly itemsByIdScratch = new Map<string, ObjectPickable>();
+  private readonly itemsByIdScratch = new Map<string, ListedObject>();
   private readonly crumbsScratch: string[] = [];
   private readonly focusAncestorsScratch = new Set<string>();
   private readonly matchAncestorsScratch = new Set<string>();
@@ -133,10 +130,10 @@ export class PhysicalObjectListPanel {
   private readonly emptyState: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
 
-  public constructor(root: HTMLElement, celestialSystem: CelestialSystem) {
+  public constructor(root: HTMLElement, celestialBodies: CelestialBodies) {
     injectOnce('physical-object-list-panel', STYLE);
-    this.order = new PhysicalObjectListOrder(celestialSystem);
-    this.rowTree = new PhysicalObjectListTree(celestialSystem, this.order, this.itemsByIdScratch, {
+    this.order = new PhysicalObjectListOrder(celestialBodies);
+    this.rowTree = new PhysicalObjectListTree(celestialBodies, this.order, this.itemsByIdScratch, {
       onFocus: (id) => this.onFocus?.(id),
       onNavTarget: (id) => this.onNavTarget?.(id),
       onSelectRight: (id, clientX, clientY) => this.onSelectRight?.(id, clientX, clientY),
@@ -217,10 +214,12 @@ export class PhysicalObjectListPanel {
     for (const { section: sectionKey } of SECTIONS) {
       const sectionId = `hud-physical-object-list-section-${sectionKey}`;
       const header = document.createElement('div');
-      header.className = 'physical-object-list-section-header';
+      header.className = 'physical-object-list-section-header ui-selectable';
       header.tabIndex = 0;
       header.setAttribute('role', 'button');
       header.setAttribute('aria-controls', sectionId);
+      stopDragPropagation(header);
+      expandHitTarget(header);
       const labelEl = document.createElement('span');
       labelEl.className = 'physical-object-list-section-header-label';
       const glyphEl = document.createElement('span');
@@ -245,12 +244,7 @@ export class PhysicalObjectListPanel {
         this.applyExpanded(section);
         savePanelCollapsed(sectionId, !section.expanded);
       };
-      header.addEventListener('click', toggleSection);
-      header.addEventListener('keydown', (event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        event.preventDefault();
-        toggleSection();
-      });
+      bindActivation(header, toggleSection);
       this.sections.set(sectionKey, section);
       body.appendChild(header);
       // 入れ子を持つのは天体区画だけなので、一括開閉ボタンもここにだけ添える。区画本体の中
@@ -286,10 +280,10 @@ export class PhysicalObjectListPanel {
   // parentOf は id → 親 id(天体の親子関係のみ、他種別は載らない)。focusId が undefined
   // (フォーカス中の天体が無い)なら、どの行も強調しない。
   public sync(
-    items: readonly ObjectPickable[],
+    items: readonly ListedObject[],
     focusId: string | undefined,
     parentOf: ReadonlyMap<string, string>,
-    activePlayer: Player | null,
+    viewer: OrbitingObject | null,
     displayTime: number,
   ): void {
     // 本体が畳まれている間は完全に不可視(CSS が display:none)なので、行ツリーの差分同期を
@@ -310,8 +304,8 @@ export class PhysicalObjectListPanel {
     this.breadcrumb.textContent = crumbs.length ? crumbs.reverse().join(' › ') : 'フォーカス: なし';
     const focusChanged = focusId !== this.lastFocusId;
     this.lastFocusId = focusId;
-    const inputsChanged = this.order.refreshInputs(items, parentOf, activePlayer, displayTime, focusId);
-    this.rowTree.setFrame(activePlayer, displayTime);
+    const inputsChanged = this.order.refreshInputs(items, parentOf, viewer, displayTime, focusId);
+    this.rowTree.setFrame(viewer, displayTime);
 
     // フォーカスが切り替わった瞬間だけ、そこへ至る枝を自動展開する対象として渡す
     // (毎フレーム渡すとユーザーが畳んだ直後に開き直ってしまう)。
@@ -357,7 +351,7 @@ export class PhysicalObjectListPanel {
         section.expanded = true;
         this.applyExpanded(section);
       }
-      this.syncHeader(section, sectionKey, label, activePlayer, displayTime);
+      this.syncHeader(section, sectionKey, label, viewer, displayTime);
       totalMatched += section.order.ids.length;
 
       // 行は区画ごとの平坦な台帳が持つ。根から辿って今フレーム現れた id を集め、最後に
@@ -392,7 +386,7 @@ export class PhysicalObjectListPanel {
   // (区画本体もあわせて隠す — 天体区画の一括開閉ボタンなど、見出し以外の常設要素が
   // 見出しだけ消えた場所に浮いて残らないようにする)。
   private syncHeader(
-    section: Section, sectionKey: MapListSection, label: string, activePlayer: Player | null,
+    section: Section, sectionKey: MapListSection, label: string, viewer: OrbitingObject | null,
     displayTime: number,
   ): void {
     const ids = section.order.ids;
@@ -403,7 +397,7 @@ export class PhysicalObjectListPanel {
     let state = '';
     if (summaryLabel !== undefined) {
       let count = 0;
-      for (const id of ids) if (this.itemsByIdScratch.get(id)?.listCounted(activePlayer, displayTime)) count++;
+      for (const id of ids) if (this.itemsByIdScratch.get(id)?.listCounted(viewer, displayTime)) count++;
       state = ` · ${summaryLabel} ${count}`;
     }
     // 行側と同じく、変わっていなければ書き換えない(毎フレームの再代入はレイアウト再計算の元)。

@@ -1,7 +1,7 @@
 node_modules
 *.log
 tests/dist/
-tests/perf/dist/
+tests/dist-perf/
 docs/
 .DS_Store
 .claude/worktrees/
@@ -12,3 +12,12 @@ docs/
 __pycache__/
 .cloud-lab/
 assets-src/climate/
+.earth-surface/raw/
+.earth-surface/raw-*/
+.earth-surface/intermediate/
+.earth-surface/bundle/
+.earth-surface/distribution/
+.earth-surface/mamba/
+.earth-surface/verification/capture/
+.earth-surface/verification/fetch-tasks.txt
+.earth-surface/verification/preflight-micromamba.json

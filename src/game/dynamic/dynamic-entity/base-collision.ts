@@ -1,6 +1,5 @@
-// 基地の当たり形状。表示モデルの部品ごとの凸包を焼いたローポリメッシュ
-// (tools/export-base-collision.mjs が src/assets/models/baseCollision.json へ書く)を
-// BVH へ載せ、基地ローカル座標のレイと球を判定する。
+// 基地の当たり形状。表示モデルの部品ごとの凸包を焼いたローポリメッシュで、
+// 基地ローカル座標のレイと球を判定する。
 import { Vec3, v3, sub, cross, norm } from '../../../math/vec3';
 import {
   RayHit, SphereHit, Triangle, TriangleBVH,

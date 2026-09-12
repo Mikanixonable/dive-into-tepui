@@ -1,17 +1,16 @@
 // 軌道分析パネルの接近タブ: ターゲットを原点として、操作対象との水平距離(位相差の弧長換算)と
 // 相対高度を折れ線で描き、相対傾斜角を1行併記する。縦横とも実距離なので、ドラッグは平行移動、
 // ホイール/ピンチは縦横同倍率のズームになる。
-import { injectOnce } from '../../../hud/widgets';
-import { PointerPanZoom } from '../../../hud/widgets/pointer-pan-zoom';
+import { injectOnce } from '../../../hud/inject-style';
+import { PointerPanZoom } from '../../../hud/pointer-pan-zoom';
 import { approachSeries, sharedAttractor } from './orbit-analysis-data';
 import { ScaleField, buildTabControls, clampScaleKm, sampleCountFor } from './orbit-analysis-tab';
 import { OrbitChart } from './orbit-chart';
 import { distanceAxis } from './orbit-chart-axes';
-import type { Game } from '../../game';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
 import type { OrbitReference } from '../../orbit-reference';
 import type { ApproachTargetSource } from './orbit-analysis-data';
-import type { AnalysisTab } from './orbit-analysis-tab';
+import type { AnalysisChartSource, AnalysisTab } from './orbit-analysis-tab';
 import type { ChartMark, ChartPoint } from './orbit-chart';
 
 const DEFAULT_SCALE_Y_KM = 1000;
@@ -78,12 +77,12 @@ export class ApproachTab implements AnalysisTab {
 
   // 位相差を測れるのは同じ主天体を周回している相手だけなので、それが接近タブの成立条件になる。
   public available(
-    game: Game, entity: DynamicEntity, _reference: OrbitReference, target: ApproachTargetSource | null,
+    source: AnalysisChartSource, entity: DynamicEntity, _reference: OrbitReference, target: ApproachTargetSource | null,
   ): boolean {
     if (target === null) return false;
-    const { celestialSystem } = game;
+    const { celestialSystem } = source;
     return sharedAttractor(
-      entity, target, celestialSystem.celestialMotions, celestialSystem, entity.state.t,
+      entity, target, celestialSystem.celestialMotions, celestialSystem, entity.motion.state.t,
     ) !== null;
   }
 
@@ -102,11 +101,11 @@ export class ApproachTab implements AnalysisTab {
 
   // ターゲットとの相対位置の点列を引き、原点(ターゲット)と操作対象の現在位置の丸マークを添える。
   public draw(
-    game: Game, entity: DynamicEntity, _reference: OrbitReference, target: ApproachTargetSource | null,
+    source: AnalysisChartSource, entity: DynamicEntity, _reference: OrbitReference, target: ApproachTargetSource | null,
   ): void {
-    const { celestialSystem } = game;
+    const { celestialSystem } = source;
     const series = target === null ? null : approachSeries(
-      entity, target, celestialSystem.celestialMotions, celestialSystem, entity.state.t,
+      entity, target, celestialSystem.celestialMotions, celestialSystem, entity.motion.state.t,
       SAMPLE_SPAN_SEC, sampleCountFor(this.chart.element) * SAMPLE_MULTIPLIER,
     );
     // 同じ主天体を周回していても、相手の周期が求まらない(双曲線軌道)なら位相差は測れない。

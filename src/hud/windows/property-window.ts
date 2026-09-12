@@ -4,24 +4,23 @@
 // どう導出するかは呼び出し側の責務。複数存続できる想定のため ContextMenu と異なり呼び出し
 // ごとに個別のインスタンスを持つ。#hud の子として window レイヤへ置くため、
 // `#hud, #hud *` の margin/padding リセットに勝てるよう全セレクタを `#hud` で始める。
-import { injectOnce } from '../widgets/inject-style';
+import { injectOnce } from '../inject-style';
 import type { OverlayManager } from '../overlay-manager';
 import { DraggableWindow } from './draggable-window';
 import { PropertyWindowRows } from './property-window-rows';
 import { PropertyWindowItems } from './property-window-items';
 import { PropertyWindowRelatedItems } from './property-window-related-items';
 import { PropertyWindowRename } from './property-window-rename';
+import type {
+  PropertyRow, PropertyWindowContent, PropertyWindowItem, PropertyWindowRelatedItem,
+} from './property-window-content';
 
 const STYLE = `
 #hud .prop-window-title-input {
-  width: 100%; background: var(--surface-2); border: 1px solid transparent; border-radius: var(--radius-control);
+  width: 100%; background: var(--glass-control); border: 0; border-radius: var(--radius-control);
   color: var(--text); font: inherit; font-weight: bold; padding: var(--space-1) var(--space-2); box-sizing: border-box;
 }
-#hud .dg-window.property-window { width: 560px; max-width: 560px; }
-#hud .dg-window.property-window.has-expanded-panel {
-  width: min(1120px, calc(100vw - 32px)); max-width: min(1120px, calc(100vw - 32px));
-  max-height: calc(100dvh - 32px); overflow-y: auto;
-}
+#hud .property-window { width: 560px; max-width: 560px; }
 #hud .prop-window-rows { padding: var(--space-2) 0; }
 #hud .prop-window-row {
   display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) var(--space-5); color: var(--text);
@@ -38,18 +37,18 @@ const STYLE = `
 #hud .prop-window-row-group-toggle:hover { opacity: 1; color: var(--color-primary-hover); }
 #hud .prop-window-controls {
   padding: var(--space-4) var(--space-5);
-  background: color-mix(in srgb, var(--surface-0) 28%, transparent);
+  background: var(--glass-inset);
 }
 /* .w-btn の padding は #hud 修飾を持たないため、#hud 側のリセットに詳細度で負ける。
    詰まったボタンにならないよう、#hud 修飾つきで既定の余白へ戻す。 */
 #hud .prop-window-controls .w-btn { padding: var(--space-4) var(--space-5); }
 #hud .prop-window-items {
   padding: var(--space-2);
-  background: color-mix(in srgb, var(--surface-0) 28%, transparent);
+  background: var(--glass-inset);
 }
 #hud .prop-window-related {
   padding: var(--space-2);
-  background: color-mix(in srgb, var(--surface-0) 28%, transparent);
+  background: var(--glass-inset);
 }
 #hud .prop-window-related-title {
   padding: var(--space-2) var(--space-5);
@@ -62,75 +61,25 @@ const STYLE = `
 }
 #hud .prop-window-related-item {
   padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
-  border: 0; border-radius: var(--radius-micro);
+  border: 0; border-radius: var(--radius-control);
 }
 #hud .prop-window-related-item:hover, #hud .prop-window-related-item:active {
-  background: var(--surface-2); color: var(--color-primary-hover);
+  background: var(--glass-control-hover); color: var(--color-primary-hover);
 }
 #hud .prop-window-related-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .prop-window-item {
   padding: var(--space-4) var(--space-5); color: var(--body); cursor: pointer;
-  border: 0; border-radius: var(--radius-micro);
+  border: 0; border-radius: var(--radius-control);
 }
 #hud .prop-window-item:hover, #hud .prop-window-item:active {
-  background: var(--surface-2); color: var(--color-primary-hover);
+  background: var(--glass-control-hover); color: var(--color-primary-hover);
 }
 #hud .prop-window-item.on {
   color: var(--color-primary); background: var(--color-primary-fill);
 }
 #hud .prop-window-item.on::before { content: '▪ '; }
 #hud .prop-window-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
-#hud .prop-window-expanded-panel {
-  display: none; padding: var(--space-2); border-top: 1px solid var(--surface-2);
-  background: color-mix(in srgb, var(--surface-0) 28%, transparent);
-}
-#hud .prop-window-expanded-panel.open { display: block; }
-@media (max-width: 720px) {
-  #hud .dg-window.property-window.has-expanded-panel {
-    width: 100%; max-width: 100%; max-height: 85dvh;
-  }
-}
 `;
-
-export interface PropertyRow {
-  readonly key: string;
-  readonly label: string;
-  readonly value: string;
-  // 立てると「詳細」トグルの下に畳まれ、既定では隠れる。
-  readonly collapsible?: boolean;
-  // 指定すると同名の行同士がグループ見出しの下にまとめられ、既定では畳まれる。
-  // 描画順は rows 中でその名前が最初に現れた順。
-  readonly group?: string;
-}
-
-export interface PropertyWindowItem<A extends string = string> {
-  readonly label: string;
-  readonly act: A;
-  readonly shortcut?: string;
-  readonly selected?: boolean;
-  readonly keepOpen?: boolean;
-}
-
-export interface PropertyWindowRelatedItem {
-  readonly id: string;
-  readonly label: string;
-  readonly onFocus: () => void;
-  readonly onContextMenu: (clientX: number, clientY: number) => void;
-}
-
-export interface PropertyWindowContent<A extends string = string> {
-  readonly title: string;
-  readonly subtitle?: string;
-  // タイトル前に添える対象種別のグリフ。省略すると添えない。
-  readonly icon?: string;
-  readonly rows: readonly PropertyRow[];
-  readonly items: readonly PropertyWindowItem<A>[];
-  // 対象に関連する物体を本文上部へ表示する。ダブルクリック/右クリックの動作は呼び出し側が持つ。
-  readonly relatedItems?: readonly PropertyWindowRelatedItem[];
-  readonly relatedTitle?: string;
-  // 指定すると、タイトル横に改名ボタンが現れる。確定した新しい名前を受け取る。
-  readonly onRename?: (name: string) => void;
-}
 
 export class PropertyWindow<A extends string = string> {
   private readonly win: DraggableWindow;
@@ -139,7 +88,6 @@ export class PropertyWindow<A extends string = string> {
   private readonly relatedItems: PropertyWindowRelatedItems;
   private readonly rename: PropertyWindowRename;
   private readonly controlsEl: HTMLDivElement;
-  private readonly expandedPanelEl: HTMLDivElement;
 
   // 閉じられた(dispose 済み)ことを知らせる。ESC・外側クリック・✕ ボタンのどの経路で
   // 閉じても等しく発火する。
@@ -171,15 +119,12 @@ export class PropertyWindow<A extends string = string> {
     this.rename = new PropertyWindowRename(this.win, content.title, content.onRename ?? null);
 
     // 関連物体一覧は非空になった時点で自分の sync 経由で本文へ差し込まれるため、
-    // ここでは行・操作項目・展開パネルだけを固定の順で本文へ組み込む。
+    // ここでは行と操作項目だけを固定の順で本文へ組み込む。
     this.controlsEl = document.createElement('div');
     this.controlsEl.className = 'prop-window-controls';
-    this.expandedPanelEl = document.createElement('div');
-    this.expandedPanelEl.className = 'prop-window-expanded-panel';
     this.win.element.classList.add('property-window');
     this.win.body.appendChild(this.rows.element);
     this.win.body.appendChild(this.items.element);
-    this.win.body.appendChild(this.expandedPanelEl);
 
     this.syncRelatedItems(content.relatedItems ?? [], content.relatedTitle);
     this.syncRows(content.rows);
@@ -244,17 +189,6 @@ export class PropertyWindow<A extends string = string> {
       this.controlsEl.appendChild(controls);
       if (!this.controlsEl.parentElement) this.win.body.insertBefore(this.controlsEl, this.win.body.firstChild);
     }
-    this.reclamp();
-  }
-
-  // プロパティウィンドウの操作項目から展開する補助パネルを本文末尾へ接続する。
-  // パネル本体の所有権は呼び出し側に残し、null で元の非展開サイズへ戻す。
-  public setExpandedPanel(panel: HTMLElement | null): void {
-    this.expandedPanelEl.replaceChildren();
-    if (panel) this.expandedPanelEl.appendChild(panel);
-    const open = panel !== null;
-    this.expandedPanelEl.classList.toggle('open', open);
-    this.win.element.classList.toggle('has-expanded-panel', open);
     this.reclamp();
   }
 

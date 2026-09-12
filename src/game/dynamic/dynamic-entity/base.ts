@@ -1,100 +1,50 @@
-// 軌道上の拠点。艦艇のドッキングと格納、部品と資金の保有、そこからの発艦を持つ。
-import * as THREE from 'three/webgpu';
-import type { View } from '../../view/view';
+// 軌道上の拠点。自艦と同じく操作でき、資金を持つ。
+import type * as THREE from 'three/webgpu';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
+import type { OrbitingObject } from './orbiting-object';
 import { DynamicEntity } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
 import { EntityIdAllocator } from './entity-id';
-import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
+import type { KinematicState } from '../../../physics/kinematic-state';
 import { Attitude } from '../../../physics/attitude';
-import { qInvert, qRotate } from '../../../math/quat';
-import { add, len, sub, v3, Vec3 } from '../../../math/vec3';
-import type { Ray } from '../../../math/ray';
-import type { AnyPart, Part } from './parts';
-import { partFromSaveData } from './parts';
-import { Player } from '../../player/player';
-import { buildBaseModel } from '../../../render/base-station-model';
-import type { Hud } from '../../hud/hud';
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
-import type { EffectsSystem } from '../../vfx/effects-system';
-import type { MarkerManager } from '../../marker/marker-manager';
-import { EquatorNodeMarkerPair } from '../../marker/equator-node-marker-pair';
-import type { BaseSaveData } from '../../save/save-data';
-import { Plan } from '../../plan/plan';
-import type { PlanExecutionMode } from '../../player/player';
+import { len, sub, v3, Vec3 } from '../../../math/vec3';
+import type { Notifier } from '../../../hud/notifier';
+import type { MarkerSlots } from '../../marker/marker-slots';
+import type { MarkerVisibility } from '../../marker/marker-visibility';
+import { savedAttitude, savedKinematicState, type BaseSaveData } from '../../save/save-data';
+import { Plan, type PlanExecutionMode } from '../../plan/plan';
 import { generateRandomName } from '../../random-name';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
-import type { MarkerRole } from '../../targeter';
-import { fmtDist, fmtMarkerDist } from '../../../hud/utils';
+import { fmtDist } from '../../../hud/utils';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
-import type { SphereHit } from '../../../math/triangle-mesh';
-import { BASE_COLLISION_RADIUS, baseRaycast, baseSphereCollide } from './base-collision';
-import { PlayerThrottle } from '../../player/player-throttle';
+import { Throttle } from '../../player/throttle';
 import type { Controllable } from './controllable';
+import type { EntityRegistry } from '../entity-registry';
+import type { StageOutcome } from '../../stages/stage-outcome';
 import type { Input } from '../../../input/input';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
-import { ThrustEffects } from '../../player/thrust-effects';
-import { RcsEffects } from '../../player/rcs-effects';
-import type { CameraSystem } from '../../camera/camera-system';
-import type { FloatingOrigin } from '../../camera/floating-origin';
-import type { RenderStyle } from '../../../render/render-style';
-import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
-import { currentThemePalette } from '../../../theme';
-import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
+import { BaseView, type BaseRenderSource } from '../../../render/dynamic/dynamic-entity/base-view';
+import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
+import type { OrbitReference } from '../../orbit-reference';
 import { MARKER_PRIORITY } from '../../marker/crowding';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { orbitRows } from '../../pickable/orbit-rows';
-import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { ObjectCommands } from '../../pickable/object-commands';
-import type { MenuItem } from '../../hud/windows/context-menu';
-import type { PropertyRow } from '../../../hud/windows/property-window';
-import type { MapListSection } from '../../hud/panels/physical-object-list-panel';
-import type { ObjectPickerGenre } from '../../hud/object-groups';
 
-export const BASE_MAX_VESSELS = 4; // 基地が保有・格納できる艦艇の最大数
-const BASE_THRUST = 4e8;        // 基地の総推力 [N]（1e6 kg で 400 m/s² — 船の全開加速度と同等）
+import type { ObjectPickable } from '../../pickable/object-pickable';
+import type { ControlSelection } from '../../control-selection';
+import type { ObjectAuthoring } from '../../pickable/inspected-object';
+import type { MenuItem } from '../../hud/windows/context-menu';
+import type { PropertyRow } from '../../../hud/windows/property-window-content';
+import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
+import { BASE_THRUST, BaseMotion } from './base-motion';
+
 const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）
 const BASE_FUEL_RATE = 0.5;     // 基地の燃料消費レート
-const BASE_MAX_FUEL = 50000;    // 基地の最大燃料
 const BASE_INERTIA_X = 1e8;     // 基地の慣性モーメント（ほぼ対称の大質量構造物）
 const BASE_INERTIA_Y = 1e8;
 const BASE_INERTIA_Z = 1.2e8;   // 長軸方向はやや大きい
-
-// 基地のドッキングハッチのローカル位置および外向き法線ベクトル (中腹ドッキングパレット上部, 3倍スケール対応)
-const BASE_HATCH_LOCAL_POS: Vec3 = v3(0, 21.0, 0);
-const BASE_HATCH_LOCAL_NORMAL: Vec3 = v3(0, 1, 0);
-
-interface BaseDockSlot {
-  readonly id: number;
-  readonly localPos: Vec3;
-  readonly localNormal: Vec3;
-}
-
-const BASE_DOCK_SLOTS: readonly BaseDockSlot[] = [
-  { id: 0, localPos: v3(-16.5, 21.0, -16.5), localNormal: v3(0, 1, 0) },
-  { id: 1, localPos: v3( 16.5, 21.0, -16.5), localNormal: v3(0, 1, 0) },
-  { id: 2, localPos: v3(-16.5, 21.0,  16.5), localNormal: v3(0, 1, 0) },
-  { id: 3, localPos: v3( 16.5, 21.0,  16.5), localNormal: v3(0, 1, 0) },
-];
-
-// 収容中の艦のエントリ。parts は player.parts と同一参照(修理は艦へ直接反映される)。
-// hp/maxHp は艦一覧タブ表示用の集計値で、修理のたびに書き戻す。
-export interface DockedVesselEntry {
-  readonly id: string;
-  readonly name: string;
-  hp: number;
-  maxHp: number;
-  readonly parts: Part[];
-  readonly player: Player;
-  slotIndex: number;
-}
-
-interface BaseState {
-  money: number;
-  inventory: AnyPart[];
-  dockedVessels: DockedVesselEntry[];
-}
+const BASE_INITIAL_MONEY = 100000; // 新規配置の基地の所持金 [Cr]
 
 const idAllocator = new EntityIdAllocator('base-');
 
@@ -105,220 +55,134 @@ type BaseInit =
   | { readonly saved: BaseSaveData; readonly simTime: number };
 
 export class Base extends DynamicEntity implements Controllable, ObjectPickable {
-  public readonly mapKind: DynamicEntityKind = 'base';
+  public override readonly mapKind: DynamicEntityKind = 'base';
+  public override readonly combatTarget = true;
+  public override readonly controllable = true;
+  public override readonly pickable = true;
 
-  protected readonly predictedForGhost = true;
-  protected readonly baseHistoryDuration = DEFAULT_HISTORY_DURATION;
-  readonly plan = new Plan();
-  planExecution: PlanExecutionMode = 'off';
-  fineAttitude = false;
-  // 基地は常に赤道交点マーカーを出すので、コンストラクタで必ず組む。
-  declare equatorNodes: EquatorNodeMarkerPair;
-  public baseState: BaseState = {
-    money: 100000,
-    inventory: [],
-    dockedVessels: []
-  };
+  public readonly plan = new Plan();
+  public planExecution: PlanExecutionMode = 'off';
+  public fineAttitude = false;
+  // 除去の前に注視・操作対象の参照を引き継ぐ必要があるので、所有者側に回収させる。
+  public override readonly reclaimedByOwner = true;
+  public readonly releaseHint = '基地の操作を解除しました';
+  // 基地は自機と操作キーの並びが違うので、選んだ時点で案内を出す。
+  public get controlHint(): string {
+    return `基地「${this.name}」の操作モードに入りました (WASDQE: 噴射 / IJKLUO: 姿勢制御 / T: RCS減衰 / C: プログレード)`;
+  }
+  // 基地は常設の軌道構造物なので、選択の有無に関わらず赤道交点マーカーを出す。
+  public override readonly showsEquatorNodesAlways = true;
+  // 所持金 [Cr]。
+  private readonly _money: number;
+  public get money(): number { return this._money; }
+
+  public declare readonly motion: BaseMotion;
 
   // --- Controllable 実装 ---
-  readonly throttle: PlayerThrottle;
-  readonly thrustEffects: ThrustEffects;
-  readonly rcsEffects: RcsEffects;
-  private baseFuel: number;
-  get totalThrust(): number { return BASE_THRUST; }
-  get totalTorque(): number { return BASE_TORQUE; }
-  get totalFuelConsumptionRate(): number { return BASE_FUEL_RATE; }
-  get totalFuel(): number { return this.baseFuel; }
-  get totalMaxFuel(): number { return BASE_MAX_FUEL; }
-  // 基地は装甲を持たない。撃たれても削れる耐久値そのものが無い。
-  readonly hp = null;
-  readonly maxHp = null;
+  public readonly throttle: Throttle;
+  public get totalThrust(): number { return BASE_THRUST; }
+  public get totalTorque(): number { return BASE_TORQUE; }
+  public get totalFuelConsumptionRate(): number { return BASE_FUEL_RATE; }
+  public get totalFuel(): number { return this.motion.fuel; }
+  public get totalMaxFuel(): number { return this.motion.maxFuel; }
+  public readonly hp = null;
+  public readonly maxHp = null;
 
-  // 基地は機関砲・太陽電池パドル・放熱板を持たず、大気も受けない。
-  readonly fire = null;
-  readonly power = null;
-  readonly radiator = null;
-  readonly aero = null;
-  readonly altitudeAlarm = null;
+  public readonly fire = null;
+  public readonly boosters = null;
+  public readonly altitudeAlarm = null;
 
-  consumeFuel(amount: number): number {
+  // 燃料を amount だけ使い、要求に対して実際に賄えた割合 [0, 1] を返す。
+  public consumeFuel(amount: number): number {
     if (amount <= 0) return 1.0;
-    const actual = Math.min(this.baseFuel, amount);
-    this.baseFuel -= actual;
-    return actual / amount;
+    return this.motion.consumeFuel(amount);
   }
 
-  // 基地は外接球の中が大きく空いているので、メッシュへ当たったかまで見る。
-  override hitBodyByRay(ray: Ray, pos: Vec3): boolean {
-    const toLocal = qInvert(this.att.q);
-    const reach = len(sub(pos, ray.origin)) + this.radius;
-    return baseRaycast(qRotate(toLocal, sub(ray.origin, pos)), qRotate(toLocal, ray.dir), reach) !== null;
-  }
-
-  // 球が基地の当たり形状へ触れているか。中心はワールド ECI で受け、点と法線も ECI で返す。
-  // 触れていなければ null。
-  testSphereCollision(sphereCenter: Vec3, sphereRadius: number): SphereHit | null {
-    const toLocal = qInvert(this.att.q);
-    const hit = baseSphereCollide(qRotate(toLocal, sub(sphereCenter, this.state.r)), sphereRadius);
-    return hit === null ? null : {
-      point: add(this.state.r, qRotate(this.att.q, hit.point)),
-      normal: qRotate(this.att.q, hit.normal),
-      depth: hit.depth,
-    };
-  }
-
-  // 基地は接触で押されない。mass は推力加速度の分母を兼ねるので、そちらとは別に持つ。
-  override get contactMass(): number { return Infinity; }
-
-  // hud/worldSfx/fx/markerManager は格納艦(Player)の組み立てに要る。格納艦は entities.players へ
-  // 入らない — それが「格納中」の定義であり、艦自身の状態としては何も倒さない。
-  constructor(
+  // 基地を組む。復元時は操作状態・所持金・軌道線の表示も戻す。
+  public constructor(
     init: BaseInit,
     scene: THREE.Scene,
-    hud: Hud,
-    worldSfx: WorldSfx,
-    fx: EffectsSystem,
-    private readonly markerManager: MarkerManager,
+    notifier: Notifier,
+    markers: MarkerSlots,
   ) {
+    // 復元と新規配置を同じ形へ均してから基底へ渡す。
     const { state, name, att, id } = 'saved' in init
       ? {
-        state: kinematicState<'eci'>(init.simTime, v3(init.saved.r.x, init.saved.r.y, init.saved.r.z), v3(init.saved.v.x, init.saved.v.y, init.saved.v.z)),
+        state: savedKinematicState(init.saved, init.simTime),
         name: init.saved.name || '基地',
         att: undefined,
         id: init.saved.id,
       }
       : { state: init.state, name: init.name ?? generateRandomName('base'), att: init.att, id: init.id };
-    const savedAtt: Attitude | undefined = 'saved' in init && init.saved.q
-      ? {
-        q: { ...init.saved.q },
-        w: init.saved.w ? v3(init.saved.w.x, init.saved.w.y, init.saved.w.z) : v3(),
-        inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z),
-      }
+    const savedAtt: Attitude | undefined = 'saved' in init
+      ? savedAttitude(init.saved, v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z))
       : undefined;
-    super(state, buildBaseModel(), scene, savedAtt ?? att, idAllocator.next(id));
-    // 姿勢に慣性モーメントを設定（既定の identityAttitude は inertia=(1,1,1) なので上書きが必要）
-    if (!savedAtt && !att) {
-      this.att = { ...this.att, inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z) };
-    } else if (att && !att.inertia) {
-      this.att = { ...this.att, inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z) };
-    }
-    this.mass = 3e6;
-    this.radius = BASE_COLLISION_RADIUS;
-    this.collides = true;
-    this.engagementAnchor = true;
-    this.name = name;
-    this.baseFuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : BASE_MAX_FUEL;
-    this.throttle = new PlayerThrottle(hud, 'saved' in init ? init.saved.throttle : undefined);
-    this.thrustEffects = new ThrustEffects(scene, worldSfx);
-    this.rcsEffects = new RcsEffects(scene, worldSfx);
-    this.equatorNodes = new EquatorNodeMarkerPair(this, markerManager);
+    const attitude = savedAtt ?? att ?? {
+      q: { x: 0, y: 0, z: 0, w: 1 },
+      w: v3(),
+      inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z),
+    };
+    const fuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : undefined;
+    const entityId = idAllocator.next(id);
+    super(
+      () => new BaseMotion(state, attitude, fuel),
+      new BaseView(scene, entityId, markers),
+      entityId,
+    );
+    this.setName(name);
+    this.throttle = new Throttle(notifier, 'saved' in init ? init.saved.throttle : undefined);
+    this._money = 'saved' in init ? init.saved.money : BASE_INITIAL_MONEY;
 
     if ('saved' in init) {
-      this.showTrajectoryLine = init.saved.showTrajectoryLine ?? false;
-      this.baseState.money = init.saved.money;
-      this.baseState.inventory = (init.saved.inventory ?? []).map(partFromSaveData);
-      const savedVessels = init.saved.dockedVessels ?? init.saved.dockedShips ?? [];
-      this.baseState.dockedVessels = savedVessels.map((shipData, idx) => {
-        const player = new Player(hud, worldSfx, scene, fx, markerManager, { saved: shipData, simTime: init.simTime });
-        const slotIndex = idx < BASE_MAX_VESSELS ? idx : 0;
-        this.attachDockedVesselMesh(player, slotIndex);
-        return {
-          id: player.id,
-          name: player.name,
-          hp: player.hp,
-          maxHp: player.maxHp,
-          parts: player.parts,
-          player,
-          slotIndex,
-        };
-      });
+      this.trajectoryLineVisible = init.saved.showTrajectoryLine ?? false;
     }
   }
 
-  // 基地のドッキングハッチのワールド座標を取得する
-  getHatchWorldPos(): Vec3 {
-    return add(this.state.r, qRotate(this.att.q, BASE_HATCH_LOCAL_POS));
-  }
-
-  // 基地のドッキングハッチのワールド正面法線ベクトルを取得する
-  getHatchWorldNormal(): Vec3 {
-    return qRotate(this.att.q, BASE_HATCH_LOCAL_NORMAL);
-  }
-
-  // 指定スロットのワールド位置を取得する
-  getSlotWorldPos(slotIndex: number): Vec3 {
-    const slot = BASE_DOCK_SLOTS[slotIndex] ?? BASE_DOCK_SLOTS[0]!;
-    return add(this.state.r, qRotate(this.att.q, slot.localPos));
-  }
-
-  // 指定スロットの外向き法線ベクトルを取得する
-  getSlotWorldNormal(slotIndex: number): Vec3 {
-    const slot = BASE_DOCK_SLOTS[slotIndex] ?? BASE_DOCK_SLOTS[0]!;
-    return qRotate(this.att.q, slot.localNormal);
-  }
-
-  // 利用可能な空きスロット番号(0..3)を返す。満杯なら null。
-  getAvailableSlotIndex(): number | null {
-    const occupied = new Set(this.baseState.dockedVessels.map((s) => s.slotIndex));
-    for (let i = 0; i < BASE_MAX_VESSELS; i++) {
-      if (!occupied.has(i)) return i;
-    }
-    return null;
-  }
-
-  // 格納艦の 3D メッシュを基地ドックスロットへアタッチ表示する
-  attachDockedVesselMesh(ship: Player, slotIndex: number): void {
-    const slot = BASE_DOCK_SLOTS[slotIndex] ?? BASE_DOCK_SLOTS[0]!;
-    const shipObj = ship.renderObject;
-    shipObj.visible = true;
-    shipObj.position.set(slot.localPos.x, slot.localPos.y, slot.localPos.z);
-
-    const dir = new THREE.Vector3(slot.localNormal.x, slot.localNormal.y, slot.localNormal.z);
-    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
-    shipObj.quaternion.copy(q);
-
-    if (shipObj.parent !== this.renderObject) {
-      this.renderObject.add(shipObj);
-    }
-  }
-
-  // 発進時、格納艦の 3D メッシュを基地ドックスロットから分離し、ワールド Scene へ復帰させる
-  detachDockedVesselMesh(ship: Player): void {
-    const shipObj = ship.renderObject;
-    if (shipObj.parent === this.renderObject) {
-      this.renderObject.remove(shipObj);
-    }
-    if (this.scene && shipObj.parent !== this.scene) {
-      this.scene.add(shipObj);
-    }
-    shipObj.visible = true;
+  // 噴射表現に要る推力・トルクを、共通の表示入力へ足す。
+  protected override renderSource(
+    viewFrame: DynamicViewFrame, visible: boolean, active: boolean,
+    orbitReference: OrbitReference | undefined,
+  ): BaseRenderSource {
+    const motion = this.motion;
+    return {
+      ...super.renderSource(viewFrame, visible, active, orbitReference),
+      thrust: motion.thrust,
+      maximumAcceleration: motion.maximumAcceleration,
+      torque: motion.torque,
+    };
   }
 
   // --- 操作制御 ---
 
-  // 毎フレーム、操作対象の基地に対して1度だけ呼ぶ。input が null なら操作されない。
-  updateBaseControls(input: Input | null, dt: number, simDt: number): void {
+  // 毎フレーム、全ての基地に対して1度だけ呼ぶ。input が null なら操作されない。
+  public updateControls(
+    input: Input | null, dt: number, simDt: number,
+    _registry: EntityRegistry, _activeStage: StageOutcome, _celestialBodies: CelestialBodies,
+  ): void {
     if (input === null) {
       this.clearTransientCommands();
       return;
     }
+    // RCS 減衰・プログレードの切り替えがトルクの計算へ効くので、エッジ入力を先に消費する。
     this.handleEdgeInput(input);
-    this.torque = this.throttle.updateTorque(
-      this.att, this.state.r, this.state.v, input, false, dt, simDt, this,
+    this.motion.torque = this.throttle.updateTorque(
+      this.motion.att, this.motion.state.r, this.motion.state.v, input, false, dt, simDt, this,
       () => {},  // 基地はプログレードホールド解除のヒントを出さない
     );
     this.throttle.updateThrustLatches(input);
-    this.thrust = this.throttle.updateThrustState(input, this.att, simDt, this);
+    this.motion.thrust = this.throttle.updateThrustState(input, this.motion.att, simDt, this);
   }
 
-  clearTransientCommands(): void {
-    this.thrust = null;
-    this.torque = v3();
+  // 推力・トルクの指令とスロットルの一時状態を解く。
+  public clearTransientCommands(): void {
+    this.motion.thrust = null;
+    this.motion.torque = v3();
     this.throttle.clearTransientState();
   }
 
   // 基地側のキー（RCS減衰・プログレード・スロットル等）を1フレーム分消費する。
   private handleEdgeInput(input: Input): void {
+    // 姿勢保持とスロットル段のキーを受け付ける
     input.takeKeys((code) => {
       switch (code) {
         case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return true;
@@ -333,90 +197,53 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     });
   }
 
-  // 基地のメッシュ・推力プルーム・RCS パフ・音・軌道線を同期する。
-  syncBase(
-    fo: FloatingOrigin,
-    camera: CameraSystem,
-    displayTime: number,
-    isControlled: boolean,
-    style: RenderStyle,
-    visibility: MapVisibility | null = null,
-  ): void {
-    const displayState = this.stateAt(displayTime);
-    const mapEntityVisible = camera.view !== 'map' || visibility === null || visibility.category;
-    this.renderObject.visible = displayState !== null && mapEntityVisible;
-    if (displayState !== null) {
-      this.renderObject.position.copy(fo.RtoThreeV3(displayState.r));
-      this.renderObject.quaternion.set(this.att.q.x, this.att.q.y, this.att.q.z, this.att.q.w);
-    }
-
-    const effectState = displayState ?? this.state;
-    const effectVisible = displayState !== null && mapEntityVisible;
-    const maxAccel = this.mass > 0 ? this.totalThrust / this.mass : 0;
-    this.thrustEffects.sync(fo, effectState.r, this.thrust, maxAccel, effectVisible, isControlled, camera, style, 6.0);
-    this.rcsEffects.sync(fo, effectState.r, this.torque, this.att, effectVisible, camera, isControlled, 6.0);
-  }
-
   // 画面マーカーと被選択判定が同じ個体を指すためのキー。
   private get markerKey(): string { return `base-${this.id}`; }
 
   // 基地のマーカー表示項目。pos/vel には構造メッシュと同じ表示時刻の状態を渡すこと。
-  markerItem(role: MarkerRole, viewerPos: Vec3, pos: Vec3, vel: Vec3, view: View): GroupedMarkerItem {
+  public markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3): GroupedMarkerItem {
+    // 代表選出の優先度は、近い個体ほど高くする
     const dist = len(sub(pos, viewerPos));
-    const priority = role === 'primary' ? MARKER_PRIORITY.PRIMARY_TARGET : MARKER_PRIORITY.BASE - dist / 1e9;
     return {
       key: this.markerKey,
       kind: this.mapKind,
-      cls: role === 'primary' ? 'mk-base mk-target' : 'mk-base',
+      cls: 'mk-base',
       sym: baseMarkerSvg(),
       pos,
       vel,
-      priority,
+      priority: MARKER_PRIORITY.BASE - dist / 1e9,
       name: this.name,
-      detail: view === 'map' ? '' : fmtMarkerDist(dist),
-      bearingColor: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ALLY,
+      bearingColor: COLOR_MARKER_ALLY,
       bearingSym: ENTITY_GLYPH.base,
       bearingClass: 'mk-dir mk-ally-dir',
       bearingVisible: false,
-      color: role === 'primary' ? currentThemePalette().signal : COLOR_MARKER_ALLY,
+      color: COLOR_MARKER_ALLY,
       symMarkup: true,
     };
   }
 
-  dispose(): void {
-    super.dispose();
-    if (this.scene) {
-      this.thrustEffects.dispose(this.scene);
-      this.rcsEffects.dispose(this.scene);
-    }
-    this.markerManager.remove(this.markerKey);
-    this.markerManager.remove(`${this.markerKey}-bearing`);
-    // 格納艦は entities.players から外れているため、ここでしか回収できない。
-    for (const entry of this.baseState.dockedVessels) entry.player.dispose();
-    this.baseState.dockedVessels = [];
-  }
-
-  // セーブデータへ変換する。格納艦は player.serialize() に委ねる。
-  serialize(): BaseSaveData {
+  // セーブデータへ変換する。
+  public override serialize(): BaseSaveData {
     return {
       id: this.id,
+      kind: 'base',
       name: this.name,
-      r: { ...this.state.r },
-      v: { ...this.state.v },
-      q: { ...this.att.q },
-      w: { ...this.att.w },
-      money: this.baseState.money,
-      fuel: this.baseFuel,
-      inventory: this.baseState.inventory.map(p => ({ ...p })),
-      dockedVessels: this.baseState.dockedVessels.map(entry => entry.player.serialize()),
+      // 運動状態
+      r: { ...this.motion.state.r },
+      v: { ...this.motion.state.v },
+      q: { ...this.motion.att.q },
+      w: { ...this.motion.att.w },
+      // 基地の資源と、操作・表示の設定
+      money: this._money,
+      fuel: this.motion.fuel,
       throttle: this.throttle.serialize(),
-      showTrajectoryLine: this.showTrajectoryLine,
+      showTrajectoryLine: this.trajectoryLineVisible,
     };
   }
 
   // 被選択物(ObjectPickable)としての振る舞い。
-  public get gone(): boolean { return !this.alive; }
-  public get orbitState(): KinematicState { return this.state; }
+  public get gone(): boolean { return !this.motion.alive; }
+  public get orbitState(): KinematicState { return this.motion.state; }
   public readonly glyph = ENTITY_GLYPH.base;
   public get glyphSvg(): string { return baseMarkerSvg(); }
   public readonly listSection: MapListSection = 'base';
@@ -428,110 +255,94 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // 表示時刻の ECI 位置。予測が届かない時刻では null。
   public posAt(displayTime: number): Vec3 | null {
-    return this.stateAt(displayTime)?.r ?? null;
+    return this.motion.stateAt(displayTime)?.r ?? null;
   }
 
-  // 基地カテゴリの表示トグルによる可否。
-  public mapVisibility(policy: MapVisibilityPolicy): MapVisibility {
-    return policy.entity(this.mapKind);
-  }
+  public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(this.markerKey); }
 
-  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.markerKey); }
-
-  // 自艦がいれば自艦からの距離、いなければ格納中の艦艇数。
+  // 自艦からの距離。自艦がいなければ空文字。
   public listDetail(
-    _celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+    _celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number,
   ): string {
-    if (activePlayer === null) return `格納 ${this.baseState.dockedVessels.length} 艇`;
-    return fmtDist(len(sub(this.posAt(displayTime) ?? this.state.r, activePlayer.state.r)));
+    if (viewer === null) return '';
+    return fmtDist(len(sub(this.posAt(displayTime) ?? this.motion.state.r, viewer.motion.state.r)));
   }
 
   // 検索が照合する文字列。行の補助表示と同じ。
   public listSearchText(
-    celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+    celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number,
   ): string {
-    return this.listDetail(celestialSystem, activePlayer, displayTime);
+    return this.listDetail(celestialBodies, viewer, displayTime);
   }
 
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。
   public menuItems(
-    commands: ObjectCommands, _celestialSystem: CelestialSystem, simTime: number,
+    _celestialBodies: CelestialBodies, viewer: OrbitingObject | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
-    const { money, dockedVessels } = this.baseState;
-    const subLabel = `基地 / 所持金: ${money.toLocaleString()} Cr / 格納艦艇: ${dockedVessels.length}隻`;
-    const controlItem: MenuItem<MenuAction> = commands.controlledBase === this
+    const subLabel = `基地 / 所持金: ${this._money.toLocaleString()} Cr`;
+    const controlItem: MenuItem<MenuAction> = viewer === this
       ? { label: '操作対象を解除', act: 'deactivate' }
       : { label: '操作対象にする', act: 'activate' };
-    const dockItems: readonly MenuItem<MenuAction>[] =
-      commands.dockState(this) === 'dockable' ? [MenuCommon.dock()] : [];
 
+    // 見出しに所持金を添え、共通の操作項目を並べる
     return [
       { type: 'header', label: this.name, subLabel },
-      ...MenuCommon.targetItems(commands, this.id, simTime),
+      MenuCommon.target(navTargetId === this.id),
       controlItem,
-      ...dockItems,
-      {
-        label: commands.isBasePanelExpanded(this) ? '基地パネルを収納' : '基地パネルを展開',
-        act: 'toggleBasePanel', keepOpen: true,
-      },
       MenuCommon.focus(),
-      MenuCommon.trajectoryLine(this.showTrajectoryLine),
-      ...MenuCommon.duplicateItems(commands),
+      MenuCommon.trajectoryLine(this.trajectoryLineVisible),
+      MenuCommon.duplicate(),
       { label: '削除', act: 'delete' },
       MenuCommon.cancel(),
     ];
   }
 
-  // menuItems が出した操作を実行する。軌道線の表示だけ自分の状態を書き換え、残りは commands を通す。
-  public runMenu(act: MenuAction, commands: ObjectCommands): void {
+  // menuItems が出した操作 act を実行する。
+  public runMenu(
+    act: MenuAction, controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
+  ): void {
+    // 軌道線の表示は自分の状態を書き換え、それ以外は controlSelection / authoring へ依頼する
     if (act === 'activate') {
-      commands.setControlledBase(this);
+      controlSelection.select(this);
     } else if (act === 'deactivate') {
-      if (commands.controlledBase === this) commands.setControlledBase(null);
+      controlSelection.release(this);
     } else if (act === 'toggleTrajectoryLine') {
-      this.showTrajectoryLine = !this.showTrajectoryLine;
-    } else if (act === 'toggleBasePanel') {
-      commands.toggleBasePanel(this);
-    } else if (act === 'dock') {
-      commands.dock(this);
+      this.trajectoryLineVisible = !this.trajectoryLineVisible;
     } else if (act === 'delete') {
-      commands.removeBase(this);
+      controlSelection.remove(this);
     } else if (act === 'duplicate') {
-      commands.duplicate(this.mapKind, this.state);
-    } else if (act === 'focus') {
-      commands.focus(this.id, this.name);
-    } else if (act === 'target') {
-      commands.toggleNavTarget(this.id, this.name);
+      authoring?.openObjectPlacerForDuplicate(this.mapKind, this.motion.state);
     }
   }
 
-  // プロパティウィンドウに出す行。所持金・格納艦艇数・自艦からの距離を主要行とし、操作対象かは
-  // 詳細トグル、軌道要素は「軌道」グループの下に畳む。自艦がいなければ距離の行は落ちる。
+  // プロパティウィンドウに出す行。自艦がいなければ距離の行を省く。
   public propertyRows(
-    commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
+    celestialBodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
-    const viewer = commands.activePlayer;
+    // 詳細トグルで畳む行と、所持金
     const rows: PropertyRow[] = [
       {
         key: 'operated', label: '操作対象か',
-        value: commands.controlledBase === this ? 'はい' : 'いいえ', collapsible: true,
+        value: viewer === this ? 'はい' : 'いいえ', collapsible: true,
       },
-      { key: 'money', label: '所持金', value: `${this.baseState.money.toLocaleString()} Cr` },
-      { key: 'vessels', label: '格納艦艇数', value: `${this.baseState.dockedVessels.length}` },
+      { key: 'money', label: '所持金', value: `${this._money.toLocaleString()} Cr` },
     ];
-    if (viewer) rows.push({ key: 'dist', label: '距離', value: fmtDist(len(sub(this.state.r, viewer.state.r))) });
-    rows.push(...orbitRows(this, celestialSystem, simTime));
+    // 自艦からの距離と軌道要素
+    if (viewer) rows.push({
+      key: 'dist', label: '距離',
+      value: fmtDist(len(sub(this.motion.state.r, viewer.motion.state.r))),
+    });
+    rows.push(...orbitRows(this, celestialBodies, simTime));
     return rows;
   }
 
-  public readonly rename = (name: string): void => { this.name = name; };
+  public readonly rename = (name: string): void => { this.setName(name); };
 
-  // 単クリックは選択までに留め、基地パネルは展開しない。
-  public readonly onMapSelect = (commands: ObjectCommands): void => {
-    commands.selectBase(this);
-    commands.hint(`${this.name} を選択`);
-  };
-
-  // 注視されても操作対象にはならない。
+  public readonly onMapSelect = null;
   public readonly onMapFocus = null;
+}
+
+// entity を基地へ絞り込む型ガード。
+export function isBase(entity: DynamicEntity): entity is Base {
+  return entity instanceof Base;
 }

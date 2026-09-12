@@ -4,40 +4,40 @@ import { TouchControls } from '../hud/touch-controls';
 import type { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { DisplayWindowManager } from '../display-window-manager';
-import type { ActiveControllableController } from '../active-controllable-controller';
+import type { ControlSelection } from '../control-selection';
 import { setPanelCollapsedView } from '../hud/panel-shell';
-import type { View, ViewFrame } from './view';
+import type { ViewMode } from '../../render/view-mode';
+import type { ViewFrame } from './view-frame';
 
 export class ViewManager {
-  private view: View;
+  private view: ViewMode;
 
-  public get current(): View { return this.view; }
+  public get current(): ViewMode { return this.view; }
 
   public get isMapView(): boolean { return this.view === 'map'; }
 
   // 現在のビューの実装。ビューによるフレーム処理の分岐はこの1箇所に閉じる。
   public get activeView(): ViewFrame { return this.views[this.view]; }
 
+  // requestedView のビューで始める。入れないビューならマップで始める。
   public constructor(
     private readonly hud: Hud,
     private readonly touchControls: TouchControls | null,
     private readonly displayWindow: DisplayWindowManager,
-    private readonly activePlayers: ActiveControllableController,
-    private readonly views: Record<View, ViewFrame>,
-    requestedView?: View,
+    private readonly controlSelection: ControlSelection,
+    private readonly views: Record<ViewMode, ViewFrame>,
+    requestedView?: ViewMode,
   ) {
-    // セーブ由来の値は検証されていないため、ビュー id として読めるものだけを受ける。
-    // 入れないビューが要求されたら、遷移と同じ規則でマップへ落とす。
-    const requested: View = requestedView === 'map' ? 'map' : 'combat';
+    // セーブ由来の未検証の値を、ビュー id へ丸める。
+    const requested: ViewMode = requestedView === 'map' ? 'map' : 'combat';
     this.view = this.views[requested].canEnter() ? requested : 'map';
     this.views[this.view].onEnter();
     this.applyChrome();
   }
 
   // ビュー遷移の唯一の入口。next にいる状態で終われたかを返し、入れないビューなら何もしない。
-  // 既に next にいる場合でも applyChrome() は必ず走らせ、「この呼び出しの後、HUD・タッチ・
-  // 未来表示の各フラグは現在のビューに揃っている」という保証を遷移の有無に依らず成り立たせる。
-  public setView(next: View): boolean {
+  // 呼んだ後は遷移の有無に依らず、HUD・タッチ・未来表示の各フラグが現在のビューに揃う。
+  public setView(next: ViewMode): boolean {
     if (next === this.current) { this.applyChrome(); return true; }
     if (!this.views[next].canEnter()) return false;
 
@@ -54,9 +54,9 @@ export class ViewManager {
     for (const view of Object.values(this.views)) view.dispose();
   }
 
-  // ビュー選択 UI に並べる遷移先。現在のビュー自身と、いま入れないビューは含まない。
-  public selectableViews(): readonly View[] {
-    return (Object.keys(this.views) as View[])
+  // ビュー選択 UI に並べる遷移先 — 現在のビュー以外で、いま入れるもの。
+  public selectableViews(): readonly ViewMode[] {
+    return (Object.keys(this.views) as ViewMode[])
       .filter((v) => v !== this.view && this.views[v].canEnter());
   }
 
@@ -72,18 +72,20 @@ export class ViewManager {
   public handleInput(input: Input): void {
     if (!input.takeKey(K.toggleMapMode)) return;
 
+    // マップから戦闘へ。入れなければその旨を、計画があれば確定したことを知らせる。
     if (this.current === 'map') {
       if (!this.setView('combat')) {
         this.hud.hint('操作できる艦または基地がいません');
         return;
       }
-      const nodeCount = this.activePlayers.currentControllable?.plan.nodes.length ?? 0;
+      const nodeCount = this.controlSelection.current?.plan.nodes.length ?? 0;
       if (nodeCount > 0) {
         this.hud.hint(`マニューバ計画 ${nodeCount} 件確定 — [${K.autoWarpToNode.label}] で直近ノードへ自動ワープ`, 4500);
       }
       return;
     }
 
+    // 戦闘からマップへ。軌道計画の手引きを出す。
     if (this.setView('map')) {
       this.hud.hint(
         `軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [${K.toggleMapMode.label}] で確定`,

@@ -3,13 +3,15 @@
 // 個々の軌道モデルの精度は kepler-orbit.test.ts / satellite-orbit.test.ts が担う。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { PlanetDef, PlanetMotion, SatelliteDef } from '../../src/physics/celestial-motion';
+import { PlanetMotion } from '../../src/physics/celestial-motion';
+import { PlanetDef, SatelliteDef } from '../../src/physics/celestial-body-def';
 import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import {
   MU_EARTH, MU_MOON, MU_SUN as MU_SUN_LOCAL, SIDEREAL_DAY,
 } from '../../src/game/celestial/solar-system/constants';
 import { EPS } from '../../src/physics/ecliptic';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
+import { NEGLIGIBLE_BODY_OFFSET } from '../../src/physics/planet-system';
 import {
   JULIAN_CENTURY, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitNormal, keplerOrbitState,
 } from '../../src/physics/kepler-orbit';
@@ -105,12 +107,24 @@ export function register(): void {
 
   // 上のテストは衛星が1体の系しか見ないので、Σ の重み μ_k/μ_sys を μ_k/(μ_p+μ_k) と
   // 取り違えても値が一致してしまう。**系重心は対ごとではなく全員で1点**なので、衛星を複数
-  // 持つ系まで含めて押さえる。許容は f64 の丸め(実測の最大はエリスの 2.0e-3 m)に対して5倍。
+  // 持つ系まで含めて押さえる。
+  //
+  // 許容の導出: 惑星本体は重心補正へ全衛星を入れず、落とす変位の合計を
+  // NEGLIGIBLE_BODY_OFFSET に収めている(planet-system.ts)。このとき Σμ_i·R_i は重心から
+  // ちょうど落とした変位ぶんだけ外れるので、位置の上限はその定数そのもの。速度側は
+  // 落とした衛星の位置寄与に平均運動を掛けた量が上限で、ケプラー楕円では
+  // v_max = n·r_max/√(1−e²) ≤ 2n·r_max(e ≤ 0.87)なので、系の最大平均運動 n_max を使って
+  // 2·n_max·定数。重みの取り違えは位置で 1e3〜1e6 m ずれるので、この緩めでも判別力は落ちない。
   test('celestial-motion: 系の重心不変条件(衛星を複数持つ系でも Σμ_i·R_i = μ_sys·R_b)', () => {
     for (const planet of systemsWithSatellites(parts)) {
       const moons = planet.system.satellites;
       let muSys = planet.def.mu;
-      for (const moon of moons) muSys += moon.def.mu;
+      let maxMeanMotion = 0;
+      for (const moon of moons) {
+        muSys += moon.def.mu;
+        maxMeanMotion = Math.max(maxMeanMotion, Math.abs(moon.def.orbit.kepler.lRate));
+      }
+      const vLimit = 2 * maxMeanMotion * NEGLIGIBLE_BODY_OFFSET;
       for (const t of BARYCENTER_TIMES) {
         const body = planet.analyticStateAt(t);
         let r: Vec3 = scale(body.r, planet.def.mu / muSys);
@@ -121,9 +135,41 @@ export function register(): void {
           v = addScaled(v, moonState.v, moon.def.mu / muSys);
         }
         const bary = planet.system.analyticStateAt(t);
-        assert.ok(len(sub(r, bary.r)) < 1e-2, `${planet.id} の重心位置 (t=${t}): ${len(sub(r, bary.r))} m`);
-        assert.ok(len(sub(v, bary.v)) < 1e-9, `${planet.id} の重心速度 (t=${t}): ${len(sub(v, bary.v))} m/s`);
+        assert.ok(len(sub(r, bary.r)) < NEGLIGIBLE_BODY_OFFSET,
+          `${planet.id} の重心位置 (t=${t}): ${len(sub(r, bary.r))} m`);
+        assert.ok(len(sub(v, bary.v)) < vLimit,
+          `${planet.id} の重心速度 (t=${t}): ${len(sub(v, bary.v))} m/s`);
       }
+    }
+  });
+
+  // pivot からの2次外挿の誤差は、加速度が位置モデルの2階微分と一致していれば躍度項だけになり、
+  // 幅 s の**3乗**で伸びる(幅を4倍すると 64 倍)。一致していなければその差が s² で効き、伸びは
+  // 2乗(16 倍)へ落ちる。**メティスとフォボスは周期補正項を持たない純ケプラー軌道**なので
+  // 判別がはっきり出る — 二体加速度に天体定義の μ を使うと軌道の n²a³ との差(メティスでは
+  // 木星 J2 の平均効果ぶん 0.7%)が丸ごと残り、伸びが 2乗になる。
+  // 大きさの上限は躍度 n³·r_max の 3 次項 s³/6 で、円軌道に近い衛星ではこれが実際の値になる。
+  test('celestial-motion: 天体の外挿誤差は幅の3乗で伸びる(加速度が位置モデルの2階微分と一致する)', () => {
+    const worstError = (id: string, s: number): number => {
+      const motion = motionOf(parts, id);
+      let worst = 0;
+      for (let i = 0; i < 12; i++) {
+        const pivot = i * 37 * DAY;
+        worst = Math.max(worst, len(sub(motion.positionAt(pivot, pivot + s), motion.positionAt(pivot + s))));
+      }
+      return worst;
+    };
+    for (const id of ['metis', 'phobos']) {
+      const kepler = satelliteOrbitOf(id).kepler;
+      const rMax = kepler.a * (1 + kepler.e);
+      const jerk = Math.abs(kepler.lRate) ** 3 * rMax;
+      for (const s of [20, 80]) {
+        const e = worstError(id, s);
+        const bound = (jerk * s * s * s) / 6;
+        assert.ok(e < 2 * bound, `${id} の e(${s}) が躍度項の上限を超える: ${e} m > ${2 * bound} m`);
+      }
+      const ratio = worstError(id, 80) / worstError(id, 20);
+      assert.ok(ratio > 48 && ratio < 80, `${id} の伸びが3乗でない(幅4倍で ${ratio} 倍)`);
     }
   });
 
@@ -213,7 +259,8 @@ export function register(): void {
         assert.ok(moonState !== null, `${moon.id} の数値暦経路が引けない (t=${t})`);
         r = addScaled(r, moonState.r, moon.def.mu / muSys);
       }
-      assert.ok(len(sub(r, bary.r)) < 1e-2, `木星系の重心位置 (t=${t}): ${len(sub(r, bary.r))} m`);
+      assert.ok(len(sub(r, bary.r)) < NEGLIGIBLE_BODY_OFFSET,
+        `木星系の重心位置 (t=${t}): ${len(sub(r, bary.r))} m`);
     }
   });
 

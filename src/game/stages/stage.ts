@@ -2,47 +2,41 @@
 // 必要なステージだけ override する。
 import * as THREE from 'three/webgpu';
 import { Enemy } from '../dynamic/dynamic-entity/enemy';
-import type { ProteinAssetId } from '../protein/protein-asset-loader';
-import { Player, type PlayerInit } from '../player/player';
+import { isPlayer, Player, type PlayerInit } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
-import { EffectsSystem } from '../vfx/effects-system';
-import { Hud } from '../hud/hud';
+import { FlashEffects } from '../vfx/flash-effects';
+import type { HudLayers } from '../hud/hud-layers';
+import type { Notifier } from '../../hud/notifier';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import type { CameraSystem } from '../camera/camera-system';
-import type { FloatingOrigin } from '../camera/floating-origin';
-import type { MarkerManager } from '../marker/marker-manager';
-import type { Simulator } from '../dynamic/simulator';
+import type { CameraFrame } from '../../render/camera/camera-frame';
+import type { MarkerSlots } from '../marker/marker-slots';
 import type { StageSaveData } from '../save/save-data';
-import type { MapVisibilityPolicy } from '../map/visibility-policy';
-import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
-import type { KinematicState } from '../../physics/kinematic-state';
-import type { ActivePlayerController } from '../active-controllable-controller';
+import type { ObjectAuthoring } from '../pickable/inspected-object';
+import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
+import type { StageSimulationEvents } from './stage-simulation-events';
+import type { ControlSelection } from '../control-selection';
 import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
 import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
-
-// 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。各ステージが
-// 自分の epoch としてこれを宣言する — ステージに別の日時を与えるのはその1行を変えるだけ。
-// **この定数を stage.ts の外から import しない**(元期は共有の定数ではなく、ステージの宣言)。
-export const STORY_EPOCH: TdbJulianDate =
-  calendarDateToJulianDate(parseCalendarDate('20115-05-14T06:00:00', 'TDB'));
 import { solarSystem } from '../celestial/solar-system/solar-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { PhaseOffsets } from '../../physics/celestial-motion';
+import type { PhaseOffsets } from '../../physics/celestial-body-def';
+import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRegistry, SpawnGate } from '../dynamic/entity-registry';
+
+// 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。各ステージが
+// 自分の epoch としてこれを宣言する。ステージの宣言以外から読まない(元期は共有の定数ではなく、
+// ステージの宣言)。
+export const STORY_EPOCH: TdbJulianDate =
+  calendarDateToJulianDate(parseCalendarDate('20115-05-14T06:00:00', 'TDB'));
 
 export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
 
-// 敵が失われた理由。'killed' 以外は自然損耗で、撃破数ではなく喪失数へ数える。
-// 焼失(大気)と衝突(固体表面)は別の現象なので分けて持つ。
-export type EnemyDeathCause = 'killed' | 'burnup' | 'collision' | 'despawn';
-
-// 自然損耗の理由ごとのヒント文。Record にすることで、cause を足したときに文言の
-// 追加漏れが型検査で落ちる(三項演算子では黙って既定の文言に落ちていた)。
+// 自然損耗の理由ごとのヒント文。cause を足すと文言の追加漏れが型検査で落ちる。
 const ENEMY_LOSS_HINT: Record<Exclude<EnemyDeathCause, 'killed'>, string> = {
   burnup: '大気圏で焼失',
   collision: '天体へ衝突',
@@ -54,16 +48,15 @@ const BRIEFING_TOAST_MS = 12000;
 // 全ステージ共通の生成引数(セーブデータを除く)。具象ステージは自分のコンストラクタで
 // これをそのまま基底へ渡す。
 export type StageDeps = [
-  hud: Hud,
+  hud: HudLayers & Notifier,
   worldSfx: WorldSfx,
   uiSfx: UiSfx,
   scene: THREE.Scene,
-  entities: DynamicSystem,
-  fx: EffectsSystem,
-  markerManager: MarkerManager,
+  dynamicSystem: EntityRegistry & EntityRoster,
+  fx: FlashEffects,
+  markers: MarkerSlots,
   celestialSystem: CelestialSystem,
-  simulator: Simulator,
-  activePlayers: ActivePlayerController,
+  controlSelection: ControlSelection,
 ];
 
 // ステージクラスの静的側。起動時の設定はここから読む。
@@ -71,7 +64,7 @@ export interface StageClass {
   readonly id: StageId;
   createCelestialSystem(
     phaseOffsets: PhaseOffsets, earthSpinPhase0: number, epoch: TdbJulianDate,
-    onProgress?: (ratio: number) => void,
+    onProgress?: (ratio: number) => void, renderer?: THREE.WebGPURenderer,
   ): Promise<CelestialSystem>;
   // simTime=0 に置く絶対時刻。**基底に既定値は無く、全ステージが自分で宣言する** —
   // 置くと宣言し忘れが型検査に落ちなくなり、元期が共有の定数へ静かに戻る。
@@ -89,40 +82,32 @@ export interface StageClass {
   new (saved: StageSaveData | undefined, ...deps: StageDeps): Stage;
 }
 
-// 軌道上へオブジェクトを配置・複製する編集機能。これを持つステージだけがマップの
-// 「配置」「複製」項目を出す。focusId はマップの現在フォーカスで、基準天体の初期選択に使う。
-export interface ObjectAuthoring {
-  openObjectPlacer(focusId?: string): void;
-  openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void;
-}
-
-// ステージ ID → クリア回数。将来の拡張(周回数によるアンロック等)を見越して、
-// 「クリアしたか否か」ではなく回数を記録する。
+// ステージ ID → クリア回数(周回数によるアンロックに備えて、クリアの有無でなく回数で持つ)。
 export type ClearCounts = Readonly<Record<string, number>>;
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
 
 // 決着した周回の結果画面に出す内容。
-export type StageResult = {
+export interface StageResult {
   readonly win: boolean;
-  // 勝敗から決まる既定の見出しに収まらないときだけ差し替える。
+  // 結果画面の見出し。null なら勝敗から決まる既定の見出し。
   readonly title: string | null;
   readonly detailHtml: string;
-};
+}
 
-export abstract class Stage {
+export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 起動時に1度だけ組む星系。既定は現実の太陽系で、元期(simTime=0 が指す絶対時刻)が
   // 近未来/遠未来いずれかの数値暦の期間に入っていれば暦パックを読み込み、どちらにも
   // 入らなければ CELESTIAL.md 2.2 のとおり解析暦だけで組む。
   public static async createCelestialSystem(
     phaseOffsets: PhaseOffsets, earthSpinPhase0: number, epoch: TdbJulianDate,
-    onProgress?: (ratio: number) => void,
+    onProgress?: (ratio: number) => void, renderer?: THREE.WebGPURenderer,
   ): Promise<CelestialSystem> {
     const profile = profileAtOrNull(epoch.value);
     const ephemerisPoints = profile === null ? null : await loadEphemerisPoints(
       profile.id, epoch, profile.validEndJdTdb, onProgress,
     );
-    return solarSystem('earth', phaseOffsets, earthSpinPhase0, ephemerisPoints, epoch);
+    return solarSystem('earth', phaseOffsets, earthSpinPhase0, ephemerisPoints, epoch, renderer);
   }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
   public static readonly selectLockedSub: string | undefined = undefined;
@@ -130,7 +115,7 @@ export abstract class Stage {
   public static readonly hiddenFromSelect: boolean = false;
   // 開始前に開始日時の指定画面を挟まない。挟むステージだけが true を宣言する。
   public static readonly picksStartEpoch: boolean = false;
-  // 選択画面でこのステージを並べるタブの名前。表示のまとまりだけを決め、挙動には影響しない。
+  // 選択画面でこのステージを並べるタブの名前。
   public static readonly selectGroup: string = 'ステージモード';
 
   // このステージが解放済みかどうかをクリア回数から判定する。既定では常に解放。
@@ -144,8 +129,6 @@ export abstract class Stage {
   }
   public get id(): StageId { return this.stageClass.id; }
 
-  // ドックでの購入・修理・燃料補給を無償にするか。既定では通貨を消費する。
-  public readonly freeProcurement: boolean = false;
   // 艦の軌道計画を自動実行させるか。既定では実行しない。
   public readonly executesPlans: boolean = false;
   // オブジェクトの配置・複製に対応するステージは自身の編集口を返す。既定では非対応。
@@ -155,16 +138,15 @@ export abstract class Stage {
   protected readonly logistics: Logistics;
   private readonly statusPanel: StatusPanel;
 
-  protected readonly _hud: Hud;
+  protected readonly _hud: HudLayers & Notifier;
   protected readonly _worldSfx: WorldSfx;
   protected readonly _uiSfx: UiSfx;
   protected readonly _scene: THREE.Scene;
-  protected readonly _fx: EffectsSystem;
-  protected readonly _entities: DynamicSystem;
-  protected readonly _markerManager: MarkerManager;
+  protected readonly _fx: FlashEffects;
+  protected readonly _dynamicSystem: EntityRegistry & EntityRoster;
+  protected readonly _markers: MarkerSlots;
   protected readonly _celestialSystem: CelestialSystem;
-  protected readonly _simulator: Simulator;
-  protected readonly _activePlayers: ActivePlayerController;
+  protected readonly _controlSelection: ControlSelection;
 
   private _phase: GamePhase;
   public get phase(): GamePhase { return this._phase; }
@@ -188,21 +170,21 @@ export abstract class Stage {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, worldSfx, uiSfx, scene, entities, fx, markerManager, celestialSystem, simulator, activePlayers] = deps;
+    const [hud, worldSfx, uiSfx, scene, dynamicSystem, fx, markers, celestialSystem, controlSelection] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
     this._scene = scene;
     this._fx = fx;
-    this._entities = entities;
-    this._markerManager = markerManager;
+    this._dynamicSystem = dynamicSystem;
+    this._markers = markers;
     this._celestialSystem = celestialSystem;
-    this._simulator = simulator;
-    this._activePlayers = activePlayers;
+    this._controlSelection = controlSelection;
+    // 進行状態は saved から復元し、無ければ新規開始の既定値で始める。
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
     this._phase = saved?.phase ?? 'playing';
     this.restored = saved !== undefined;
-    this.logistics = new Logistics(hud, worldSfx, uiSfx, scene, entities, saved?.logistics);
+    this.logistics = new Logistics(hud, worldSfx, uiSfx, scene, dynamicSystem, saved?.logistics);
     this.statusPanel = new StatusPanel(hud.combatRoot);
   }
 
@@ -210,7 +192,7 @@ export abstract class Stage {
   // 末尾で必ずこれを呼ぶ — 初期配置は具象側のフィールドが揃ってからでないと走らせられない。
   protected begin(): void {
     if (this.restored) return;
-    this.init(this._entities);
+    this.init();
     this._hud.toast(this.briefingHtml(), BRIEFING_TOAST_MS);
   }
 
@@ -219,59 +201,57 @@ export abstract class Stage {
     this.statusPanel.appendLeftWidget(el);
   }
 
-  // ステータスパネルを同期する。fo・displayTime・visibilityPolicy は配置プレビューなど
-  // ステージ固有の描画物を持つサブクラスが使う。
+  // ステータスパネルを同期する。camera・displayTime は配置プレビューなどステージ固有の
+  // 描画物を持つサブクラスが使う。
   public sync(
-    player: Player | null, _fo: FloatingOrigin, cameraSystem: CameraSystem, _displayTime: number,
-    _visibilityPolicy: MapVisibilityPolicy | null,
+    camera: CameraFrame, _displayTime: number,
   ): void {
-    this.syncStatusPanel(player, cameraSystem.view === 'map');
+    this.syncStatusPanel(camera.mode === 'map');
   }
 
   // hudSubStatus() が null のとき、またはマップビューのときはパネルを畳む。
-  private syncStatusPanel(player: Player | null, mapView: boolean): void {
+  private syncStatusPanel(mapView: boolean): void {
     const message = this.hudSubStatus();
     const show = message !== null && !mapView;
-    this.statusPanel.sync(show ? player : null, message ?? '', this.scoreCounter.kills);
+    this.statusPanel.sync(show ? this.ship : null, message ?? '', this.scoreCounter.kills);
+  }
+
+  // 台本が相手にする自艦。補給の投入先・敵の追跡先・ステータスパネルの表示対象はどれもこれ。
+  // 操作対象が基地でも台本は止まらないので、そのときは生存中の先頭の艦を使う。
+  protected get ship(): Player | null {
+    const controlled = this._controlSelection.current;
+    if (controlled instanceof Player) return controlled;
+    return this._dynamicSystem.all().filter(isPlayer).find((p) => p.motion.alive) ?? null;
   }
 
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、
   // 何隻をどこへ置くかはステージ自身の宣言。
   protected addPlayer(init?: PlayerInit): Player {
-    const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, this._markerManager, init);
-    this._entities.add(ship);
-    this._activePlayers.claimIfNone(ship);
+    const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, this._markers, init);
+    this._dynamicSystem.add(ship);
+    this._controlSelection.claimIfNone(ship);
     return ship;
   }
 
-  // 敵を entities へ登録し、出撃数をスコアへ記録する。
-  protected addEnemy(enemy: Enemy, entities: DynamicSystem): void {
-    entities.add(enemy);
+  // 敵を登録し、出撃数をスコアへ記録する。
+  protected addEnemy(enemy: Enemy): void {
+    this._dynamicSystem.add(enemy);
     this.scoreCounter.recordSpawnEnemy();
   }
 
-  // タンパク質アセットの fetch 待ちで実体化を遅らせうる敵を登録する。準備が整い次第
-  // entities へ登録され、そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
-  protected spawnEnemyWhenReady(assetId: ProteinAssetId | null, build: () => Enemy, entities: DynamicSystem): void {
-    entities.spawnEnemyWhenReady(assetId, build, () => this.scoreCounter.recordSpawnEnemy());
-  }
-
-  // 生存中の敵全てに AI 行動を1フレーム分実行させる。同一集団の判定に使う母集団は、
-  // このフレームの顔ぶれを1度だけ取って全機で共有する。
-  protected behaveAllEnemies(player: Player, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
-    const enemies = entities.enemies;
-    for (const e of enemies) {
-      if (e.alive) e.behave(simTime, player, entities, enemies, simSpeed, this._celestialSystem);
-    }
+  // 外部資源の取得待ちで実体化を遅らせうる敵を登録する。gate が通り次第登録され、
+  // そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
+  protected spawnEnemyWhenReady(gate: SpawnGate | null, build: () => Enemy): void {
+    this._dynamicSystem.spawnWhenReady(gate, build, () => this.scoreCounter.recordSpawnEnemy());
   }
 
   protected abstract briefingHtml(): string;
   // 初期配置。既定では何も置かない。
-  protected init(_entities: DynamicSystem): void { }
-  // 毎フレーム呼ぶ。艦が1隻も無い間は player が null になる。
-  public abstract update(dt: number, player: Player | null, entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void;
+  protected init(): void { }
+  // 毎フレーム呼ぶ。台本が相手にする自艦は this.ship から引く。
+  public abstract update(dt: number, simTime: number, simSpeed: SimSpeedManager): void;
 
-  // Simulator がsubstepをイベント直前で切るためのhook。通常ステージには時刻固定イベントがない。
+  // 時刻固定イベントを持つステージだけが override する。
   public nextSimulationEventTime(_simTime: number): number | null { return null; }
   public applySimulationEvents(_simTime: number): void { }
 

@@ -5,11 +5,11 @@
 // 畳み込まれるので、そこの押し縮まりは溶かして 1 へ戻す。
 import * as THREE from 'three/webgpu';
 import { abs, float, length, normalize, smoothstep, vec2, vec4 } from 'three/tsl';
-import { R_EARTH } from '../../game/celestial/solar-system/constants';
 import { BakedField } from './baked-field';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { windStep } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
+import type { GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from './field-projection';
 import type { BalancedWind } from './wind-law';
 import type { FloatNode, Vec3Node } from '../tsl-types';
@@ -35,17 +35,23 @@ const WINDY_SPEED = 7;
 // 単位方向における気団。compression は気団の境目の押し縮まり(何も起きていない所と、追跡の風が
 // 淀んで境目を信じられない所で 1)、warmth はいまの緯度と出身の緯度の差 [rad](正で暖気の流入、
 // 負で寒気の流入)。
-export type AirMassSample = {
+export interface AirMassSample {
   readonly compression: FloatNode;
   readonly warmth: FloatNode;
-};
+}
 
 export class AirMass {
   // 追跡の写し。R が出身の緯度のいまの緯度からの隔たり [rad]、G が追跡の風の速さ [m/s]。
+  // **出身の緯度そのものではなく隔たりを持つ** — 半精度の写しで絶対の緯度を持つと、量子化の刻み
+  // (|緯度| 1 rad で 1e-3)が中心差分の分母(2 × GRADIENT_STEP)に対して大きく、圧縮が数 % 揺らぐ。
   private readonly trace: BakedField;
 
-  // projection は写しの持ち方、windAt は単位方向における追跡の風。
-  public constructor(projection: FieldProjection, windAt: (direction: Vec3Node) => BalancedWind) {
+  // projection は写しの持ち方、windAt は単位方向における追跡の風、surfaceRadius は気団が流れる
+  // 天体の半径 [m]。
+  public constructor(
+    projection: FieldProjection, windAt: (direction: Vec3Node) => BalancedWind,
+    private readonly surfaceRadius: number,
+  ) {
     this.trace = new BakedField(
       'airMassTrace', THREE.RGFormat, projection, 1,
       (direction) => {
@@ -55,17 +61,11 @@ export class AirMass {
   }
 
   // いまの時刻の気団を写しへ焼く。at() のグラフを描く前に、気圧を焼いたあとで呼ぶ。
-  public bake(renderer: WebGPURenderer): void {
-    this.trace.render(renderer);
+  public bake(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
+    this.trace.render(renderer, gpu);
   }
 
-  // 単位方向 direction(緯度 latitude [rad])における気団。写しを中心と東西南北の 5 点読み、中心から
-  // 隔たりと風の速さを、東西南北から隔たりの勾配を取る。
-  //
-  // **写しが持つのは出身の緯度そのものではなく、いまの緯度からの隔たり。** 半精度の写しで
-  // 絶対の緯度を持つと、量子化の刻み(|緯度| 1 rad で 1e-3)が中心差分の分母(0.02)に対して
-  // 大きく、圧縮が数 % 揺らぐ。隔たりは 0 のまわりに集まるので、同じ写しで桁が細かくなる。
-  // 出身の緯度の勾配は、隔たりの勾配へ緯度そのものの勾配(北向きの単位ベクトル)を足したもの。
+  // 単位方向 direction(緯度 latitude [rad])における気団。
   public at(direction: Vec3Node, latitude: FloatNode): AirMassSample {
     const east = eastAt(direction).mul(GRADIENT_STEP);
     const north = northAt(direction).mul(GRADIENT_STEP);
@@ -76,6 +76,7 @@ export class AirMass {
     const alongNorth = driftAt(direction.add(north)).sub(driftAt(direction.sub(north))).div(2 * GRADIENT_STEP);
     // 淀んだ所の押し縮まりは信じない。
     const trusted = smoothstep(CALM_SPEED, WINDY_SPEED, center.g);
+    // 出身の緯度の勾配は、隔たりの勾配へ緯度そのものの勾配(北向きの単位ベクトル)を足したもの。
     return {
       compression: length(vec2(alongEast, alongNorth.add(1))).sub(1).mul(trusted).add(1),
       warmth: abs(latitude).sub(abs(latitude.add(center.r))),
@@ -89,7 +90,8 @@ export class AirMass {
 
   // 単位方向 direction から風 wind で TRACE_SECONDS だけ風上へ遡った先の緯度と、いまの緯度の差 [rad]。
   private driftAt(direction: Vec3Node, wind: BalancedWind): FloatNode {
-    const origin = normalize(direction.add(windStep(wind, direction, float(-TRACE_SECONDS)).div(R_EARTH)));
+    const origin = normalize(
+      direction.add(windStep(wind, direction, float(-TRACE_SECONDS)).div(this.surfaceRadius)));
     return latitudeOf(origin).sub(latitudeOf(direction));
   }
 }

@@ -3,12 +3,13 @@
 // 押しっぱなし系(並進・回転・射撃・ズーム)とエッジトリガ系(トグル類)を同じ仕組みで扱える。
 // 常設で構築し、表示そのものは setPointerKind が渡す直近の入力種別に従う。
 import { Input, PointerKind } from '../../input/input';
-import type { View } from '../view/view';
+import type { ViewMode } from '../../render/view-mode';
 import { KEY_MAPPING as K, KeyBinding } from '../../input/key-mapping';
 import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from '../../hud/breakpoints';
 import {
-  FONT_FAMILY, FONT_XXS, FONT_XL, RADIUS_L, SPACE_1, TRANSITION_SLOW, Z_TOUCH_UI,
+  FONT_FAMILY, FONT_XXS, FONT_XL, SPACE_1, TRANSITION_SLOW, Z_TOUCH_UI,
 } from '../../theme';
+import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
 
 const STYLE = `
 /* システムウィンドウ(ESC メニュー・終了画面・ヘルプ)より下に置く。
@@ -25,16 +26,15 @@ const STYLE = `
 #touch-ui .tbtn {
   pointer-events: none; touch-action: none;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: var(--surface); border: 1px solid var(--edge); border-radius: ${RADIUS_L};
   color: var(--text-muted); line-height: 1.1;
 }
 #touch-ui.shown .tbtn { pointer-events: auto; }
 #touch-ui .tbtn .g { font-size: ${FONT_XL}; }
 #touch-ui .tbtn .l { font-size: ${FONT_XXS}; color: var(--text-dim); margin-top: ${SPACE_1}; }
-#touch-ui .tbtn.pressed { background: var(--color-primary-fill-strong); border-color: var(--color-primary); color: var(--text-strong); }
+#touch-ui .tbtn.pressed { background: var(--color-primary-fill-strong); color: var(--text-strong); }
 /* .on: 押下中かどうかに関わらず、モードが実際に ON の間ずっと点灯させる
    (制動・微動・ホールド・推力ラッチなどの向け。.pressed と見た目は同じでよい) */
-#touch-ui .tbtn.on { background: var(--color-primary-fill-strong); border-color: var(--color-primary); color: var(--text-strong); }
+#touch-ui .tbtn.on { background: var(--color-primary-fill-strong); color: var(--text-strong); }
 #touch-ui .mini-col {
   position: absolute; display: grid; gap: 6px; grid-template-rows: repeat(2, 52px);
 }
@@ -49,7 +49,7 @@ const STYLE = `
 #touch-fire {
   position: absolute; right: calc(22px + var(--safe-r)); bottom: calc(138px + var(--safe-b));
   width: 74px; height: 74px; border-radius: 50% !important;
-  border-color: var(--color-primary-edge) !important; color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
 }
 #touch-zoom {
   position: absolute; right: calc(112px + var(--safe-r)); bottom: calc(148px + var(--safe-b));
@@ -125,13 +125,12 @@ export class TouchControls {
   // 並進6方向ボタン: ラッチ中かどうかを syncModeButtons が .on で反映する。
   private readonly thrustButtons = new Map<KeyBinding, HTMLElement>();
   private readonly releaseCallbacks: (() => void)[] = [];
-  // 一度でも .shown になったら真のまま保つ — 以後のマウス操作は .faded で半透明化するだけで、
-  // 再び隠しはしない(触ったことがある端末である事実は変わらないため)。
+  // 一度タッチされたら真のまま保つ。以後のマウス操作では半透明にする。
   private shown = false;
 
   // 直近の入力種別に応じて表示を切り替える。タッチなら表示して起こし、マウス/キーボードなら
-  // (既に表示済みであれば)半透明化する。Input.onPointerKindChange から呼ばれる想定。
-  setPointerKind(kind: PointerKind): void {
+  // (既に表示済みであれば)半透明化する。
+  public setPointerKind(kind: PointerKind): void {
     if (kind === 'touch') {
       this.shown = true;
       this.root.classList.remove('faded');
@@ -143,7 +142,7 @@ export class TouchControls {
   }
 
   // トグル系ボタン・推力ラッチの点灯を実際の状態へ合わせる。毎フレーム呼ぶ。
-  syncModeButtons(
+  public syncModeButtons(
     rcsDamp: boolean, fineAttitude: boolean, progradeHold: boolean,
     isThrustLatched: (key: KeyBinding) => boolean,
   ): void {
@@ -159,7 +158,7 @@ export class TouchControls {
   }
 
   // マップビュー中は並進・回転・射撃・ズーム・制動/微動のパッドを隠す。
-  setView(view: View): void {
+  public setView(view: ViewMode): void {
     const active = view === 'map';
     this.root.classList.toggle('map-mode', active);
     for (const id of ['touch-pad-rot', 'touch-pad-move', 'touch-fire', 'touch-zoom', 'touch-mode-col']) {
@@ -169,7 +168,8 @@ export class TouchControls {
   }
 
   // 仮想パッド一式の DOM を組み立てる。
-  constructor(private readonly input: Input) {
+  public constructor(private readonly input: Input) {
+    injectCommonUiStyle();
     const built = this.buildRoot();
     this.root = built.root;
     this.styleEl = built.style;
@@ -185,6 +185,7 @@ export class TouchControls {
 
   private readonly handleReleaseTouchInputs = (): void => this.releaseAllInputs();
 
+  // 押下中の仮想キーをすべて離す。
   private releaseAllInputs(): void {
     for (const release of this.releaseCallbacks) release();
   }
@@ -202,7 +203,7 @@ export class TouchControls {
   }
 
   // window に張ったリスナーを外し、追加したスタイルシート・仮想パッド一式の DOM を取り除く。
-  dispose(): void {
+  public dispose(): void {
     window.removeEventListener('tepui-release-touch-inputs', this.handleReleaseTouchInputs);
     this.root.remove();
     this.styleEl.remove();
@@ -212,7 +213,7 @@ export class TouchControls {
   // そこへ b.key で登録し、syncModeButtons が点灯対象として読む(トグル・推力ラッチ共通)。
   private makeButton(parent: HTMLElement, b: Btn, id = '', registry?: Map<KeyBinding, HTMLElement>): HTMLElement {
     const e = document.createElement('div');
-    e.className = 'tbtn';
+    e.className = 'tbtn ui-surface-quiet';
     if (id) e.id = id;
     e.innerHTML = `<span class="g">${b.glyph}</span>${b.label ? `<span class="l">${b.label}</span>` : ''}`;
     // 押下中は仮想キーを ON にし続ける
@@ -280,11 +281,11 @@ export class TouchControls {
     this.makeButton(modeCol, { key: K.fineAttitudeToggle, glyph: K.fineAttitudeToggle.label, label: '微動' }, '', this.toggleButtons);
   }
 
-  // ズームは長押しでなく ON/OFF トグル(タップのたびに切り替え、指を離しても保持)
+  // ズームの ON/OFF トグルを組む。タップのたびに切り替わり、指を離しても保持する。
   private buildZoomToggle(root: HTMLElement): void {
     const zoomBtn = document.createElement('div');
     zoomBtn.id = 'touch-zoom';
-    zoomBtn.className = 'tbtn';
+    zoomBtn.className = 'tbtn ui-surface-quiet';
     zoomBtn.innerHTML = `<span class="g">ZOOM</span>`;
     let zoomOn = false;
     // タップのたびに ON/OFF を反転させる
@@ -294,6 +295,7 @@ export class TouchControls {
       zoomBtn.classList.toggle('pressed', zoomOn);
       this.input.setVirtualKey(K.gunsightZoom, zoomOn);
     });
+    // ズームを OFF へ戻す。
     const releaseZoom = (): void => {
       zoomOn = false;
       zoomBtn.classList.remove('pressed');

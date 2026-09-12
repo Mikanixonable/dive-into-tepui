@@ -12,7 +12,8 @@ import { Quat, qFromAxisAngle, qMul, qRotate } from '../math/quat';
 import { Q_ECL_TO_ECI } from './ecliptic';
 import { eccentricAnomalyFromMean, positionFromOrbitalElements } from './elements';
 import { KinematicState, kinematicState } from './kinematic-state';
-import { Vec3, addScaled, cross, norm, scale, v3 } from '../math/vec3';
+import { Vec3, addScaled, cross, lenSq, norm, scale, v3 } from '../math/vec3';
+import type { FrameRotation } from './celestial-body';
 
 export const JULIAN_CENTURY = 100 * 365.25 * 86400; // [s]
 
@@ -42,10 +43,6 @@ export type KeplerOrbit = {
   readonly l0: number; // t=0 の平均黄経 L [rad]
   readonly lRate: number; // 平均黄経の変化率 [rad/s](= 2π/公転周期)
 };
-
-// 天体に固定した回転基準系の、ECI に対する姿勢 q と角速度 omega [rad/s](ECI 成分)。
-// 回転軸が一定とは限らないので、軸と回転角の対ではなくこの対で扱う。
-export type FrameRotation = { readonly q: Quat; readonly omega: Vec3 };
 
 type OrbitAngles = {
   readonly a: number;
@@ -178,6 +175,18 @@ export function keplerOrbitState(orbit: KeplerOrbit, t: number): KinematicState<
   const { omega } = rotationFromAngles(orbit, a);
   const v = addScaled(cross(omega, r), norm(r), a.rDot);
   return kinematicState<'primaryRel'>(t, r, v);
+}
+
+// この軌道の位置モデルの 2 階微分 −(n²a³)·rel/|rel|³。rel は中心天体からの相対位置。
+// **重力定数は天体定義の μ ではなく軌道の n²a³ から取る** — 位置は要素と平均運動 n が決めて
+// おり、独立に測られた μ と n²a³ は一致しないので(木星-イオで 0.83%、内側衛星ほど大きい)、
+// μ を使うと加速度がその軌道の実際の運動と食い違う。距離ゼロの近傍は発散を避けて 0 を返す。
+export function keplerOrbitAccel(orbit: KeplerOrbit, t: number, rel: Vec3): Vec3 {
+  const d2 = lenSq(rel);
+  if (d2 < 1) return v3();
+  const a = orbit.a + orbit.aRate * t;
+  const mu = orbit.lRate * orbit.lRate * a * a * a;
+  return scale(rel, -mu / (d2 * Math.sqrt(d2)));
 }
 
 // この軌道に固定した回転基準系の t 時点の姿勢・角速度。

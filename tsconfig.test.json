@@ -26,16 +26,20 @@
     "src/game/protein/protein-schema.ts",
     "src/game/protein/protein-combat-state.ts",
     "src/game/dynamic/dynamic-entity/contact-damage.ts",
-    "src/game/protein/protein-runtime.ts",
+    "src/render/protein/protein-runtime.ts",
     "src/physics/sphere-contact.ts",
     "src/game/creative/placement-validation.ts",
     "src/game/celestial/solar-system/point-field.ts",
+    "src/physics/point-orbit.ts",
+    "src/render/celestial/point-field-view.ts",
     "src/game/camera/focus-target.ts",
     "src/physics/ephemeris/ephemeris-context.ts",
+    "src/settings",
     "tests/*.ts",
     "tests/physics/**/*.ts",
     "tests/math/**/*.ts",
     "tests/game/**/*.ts",
-    "tests/render/**/*.ts"
+    "tests/render/**/*.ts",
+    "tests/settings/**/*.ts"
   ]
 }

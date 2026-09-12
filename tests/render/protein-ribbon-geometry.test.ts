@@ -1,9 +1,11 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
-import { buildProteinRibbon, type ProteinRenderSource } from '../../src/render/protein-ribbon';
-import { proteinRibbonColor, type ProteinSecondaryKind } from '../../src/render/protein-ribbon-color';
+import { buildProteinRibbon } from '../../src/render/protein/protein-ribbon';
+import { proteinRibbonColor, type ProteinSecondaryKind } from '../../src/render/protein/protein-ribbon-color';
 import { test } from '../harness';
 import { testProteinAssetBundleFor } from '../protein-test-assets';
+import type { ProteinAssetId } from '../../src/game/protein/protein-asset-loader';
+import type { ProteinRenderSource } from '../../src/render/protein/protein-render-definition';
 
 /** THREE.Mesh へ型を絞り込む。 */
 function isMesh(object: THREE.Object3D): object is THREE.Mesh {
@@ -11,8 +13,8 @@ function isMesh(object: THREE.Object3D): object is THREE.Mesh {
 }
 
 /** 生成済み asset を描画 source として返す。 */
-function sourceFor(id: 'pdb-5i4r' | 'pdb-1mbn-myoglobin'): ProteinRenderSource {
-  return testProteinAssetBundleFor(id);
+function sourceFor(id: ProteinAssetId): ProteinRenderSource {
+  return testProteinAssetBundleFor(id).render;
 }
 
 /** 色計算だけを対象にした合成 source を作る。ribbon mesh には触れない。 */
@@ -172,10 +174,10 @@ export function register(): void {
     }
   });
 
-  test('protein ribbon geometry: component colors stay distinct beyond the old 6-color palette', () => {
-    const source = testProteinAssetBundleFor('pdb-6n2y-atp-synthase');
+  test('protein ribbon geometry: component colors stay distinct across more than 6 roles', () => {
+    const source = sourceFor('pdb-6n2y-atp-synthase');
     const roleCount = new Set(source.semantic.components.map((component) => component.role)).size;
-    assert.ok(roleCount > 6, 'fixture should exercise more roles than the retired fixed palette held');
+    assert.ok(roleCount > 6, 'fixture should exercise more than 6 roles');
 
     const colorsByRole = new Map<string, THREE.Color>();
     for (const component of source.semantic.components) {
