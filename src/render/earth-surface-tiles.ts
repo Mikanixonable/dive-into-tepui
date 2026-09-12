@@ -60,6 +60,7 @@ export class EarthSurfaceTiles {
   // 子を先行取得できるように候補だけを計算する。
   public requestCandidates(projection: EarthTileProjection): readonly EarthTileKey[] {
     const metrics = new Map<string, EarthTileMetric>();
+    // 同一候補の投影評価をフレーム内で共有する。
     const evaluate = (key: EarthTileKey): EarthTileMetric => {
       const id = earthTileId(key);
       const value = metrics.get(id) ?? projection.evaluate(key);
@@ -231,10 +232,13 @@ export class EarthSurfaceTiles {
   private planSplitGroups(
     leaves: readonly TileLeaf[], evaluate: (key: EarthTileKey) => EarthTileMetric,
   ): readonly SplitPlanGroup[] {
+    // 高誤差の分割と、2:1制約に必要な依存分割をまとめる。
     const groups = new Map<string, SplitPlanGroup>();
     const frontier = leaves.map((leaf) => leaf.key);
     const byId = new Map(leaves.map((leaf) => [earthTileId(leaf.key), leaf]));
+    // 親ごとの分割groupを作り、必要な依存groupを再帰的に登録する。
     const add = (key: EarthTileKey): SplitPlanGroup => {
+      // 既存groupは再利用し、初出の親だけ依存関係を展開する。
       const parentId = earthTileId(key);
       const existing = groups.get(parentId);
       if (existing !== undefined) return existing;
@@ -275,6 +279,7 @@ export class EarthSurfaceTiles {
 
   // 依存groupを必ず先に置き、同じ段ではpriorityと親IDで順序を固定する。
   private orderSplitPlan(groups: readonly SplitPlanGroup[]): readonly SplitPlanGroup[] {
+    // 依存を満たしたgroupから優先度順に安定して並べる。
     const ordered: SplitPlanGroup[] = [];
     const emitted = new Set<string>();
     while (ordered.length < groups.length) {
@@ -289,6 +294,7 @@ export class EarthSurfaceTiles {
     return ordered;
   }
 
+  // 可視葉とfade中の親子が占有する層を返す。
   private pinnedLeafLayers(): Set<number> {
     const visible = new Set(this.visibleLeaves.map((leaf) => earthTileId(leaf.key)));
     const layers = new Set<number>();

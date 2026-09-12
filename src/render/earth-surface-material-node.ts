@@ -56,6 +56,7 @@ export function earthSurfaceDetailLodNode(z: FloatNode): FloatNode {
   return min(max(z, EARTH_TILE_MIN_Z), EARTH_TILE_MAX_Z);
 }
 
+// 詳細配列の指定層から、地理UVに対応するタイル値を読む。
 function sampleArray(textureValue: THREE.Texture, uv: Vec2Node, z: FloatNode, layer: FloatNode): Vec4Node {
   // DataArrayTextureの層はdepthへ渡す。base層(255)は後段でbase画像へ切り替えるため、
   // 配列の範囲内へクランプした値だけを実際のサンプラへ渡す。
@@ -64,6 +65,7 @@ function sampleArray(textureValue: THREE.Texture, uv: Vec2Node, z: FloatNode, la
   return texture(textureValue, earthSurfaceTileUvNode(uv, safeZ)).depth(int(safeLayer)).level(float(0));
 }
 
+// base画像から色または地形の値を直接読む。
 function sampleBase(textureValue: THREE.Texture, uv: Vec2Node): Vec4Node {
   return texture(textureValue, uv).level(float(0));
 }
@@ -73,6 +75,7 @@ function sampleLodTexture(
   detailTexture: THREE.Texture, baseTexture: THREE.Texture, uv: Vec2Node, z: FloatNode,
   layer: FloatNode, parentLayer: FloatNode, fade: FloatNode,
 ): Vec4Node {
+  // 現在層を読み、ページ表がbaseを指す場合はbase画像へ切り替える。
   const currentBase = greaterThanEqual(layer, EARTH_BASE_LAYER);
   const parentBase = greaterThanEqual(parentLayer, EARTH_BASE_LAYER);
   return Fn(() => {
@@ -80,6 +83,7 @@ function sampleLodTexture(
     If(currentBase, () => {
       value.assign(sampleBase(baseTexture, uv));
     }).Else(() => {
+      // 詳細層が親から遷移中なら、親の値と現在層をfadeで混ぜる。
       value.assign(sampleArray(detailTexture, uv, z, layer));
       If(fade.lessThan(1), () => {
         const previous = vec4(0).toVar();
@@ -111,12 +115,14 @@ export function earthSurfaceMaterialNodes(
   textures: EarthSurfaceMaterialNodeTextures,
   inputs: EarthSurfaceMaterialNodeInputs,
 ): EarthSurfaceMaterialNodes {
+  // 各入力テクスチャの読み取り規則を固定する。
   configureEarthSurfaceTexture(textures.pageTable, 'pageTable');
   configureEarthSurfaceTexture(textures.color, 'color');
   configureEarthSurfaceTexture(textures.terrain, 'terrain');
   configureEarthSurfaceTexture(textures.baseColor, 'color');
   configureEarthSurfaceTexture(textures.baseTerrain, 'terrain');
 
+  // 共通の地理UVからページ表と色・地形の層を読む。
   const uv = earthSurfaceUvFromRadialNode(inputs.bodyDirection, inputs.axes);
   const page = texture(textures.pageTable, uv);
   const layer = floor(page.r.mul(255).add(0.5));
@@ -130,6 +136,7 @@ export function earthSurfaceMaterialNodes(
     textures.terrain, textures.baseTerrain, uv, z, layer, parentLayer, fade,
   );
   const normalBody = decodeEarthSurfaceOctNormalNode(terrain.rg);
+  // 地形法線をviewへ変換し、模式図では幾何法線へ切り替える。
   const normalView = normalize(inputs.bodyToView.mul(normalBody));
   const normalNode = select(inputs.schematic, inputs.geometricNormalView, normalView);
 
@@ -149,6 +156,7 @@ export function createEarthSurfaceNodeMaterial(
   return material;
 }
 
+// 詳細テクスチャを使う地球表面の材質能力を返す。
 export function earthSurfaceMaterialCapabilities(unsupported: boolean): EarthSurfaceMaterialCapabilities {
   return { useBaseFallback: unsupported };
 }
