@@ -4,6 +4,10 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
 const { version } = require('./package.json');
 
+const DEFAULT_EARTH_SURFACE_DATASET_ID = 'earth-2026-09-09-a';
+const EARTH_SURFACE_DEV_PUBLIC_PATH = `/earth/${DEFAULT_EARTH_SURFACE_DATASET_ID}/`;
+const DEFAULT_EARTH_SURFACE_MANIFEST_URL = `${EARTH_SURFACE_DEV_PUBLIC_PATH.slice(1)}earth-surface.json`;
+
 module.exports = {
   entry: './src/main.ts',
   resolve: {
@@ -21,6 +25,12 @@ module.exports = {
       },
       {
         test: /\.(png|jpe?g|svg|epk)$/,
+        type: 'asset/resource',
+      },
+      {
+        // 配信 bundle のバイナリは圧縮済みの実体をそのまま URL 化する。
+        // .bin.gz を HTTP の Content-Encoding として扱う設定はここには置かない。
+        test: /\.bin(?:\.gz)?$/,
         type: 'asset/resource',
       },
       {
@@ -75,10 +85,26 @@ module.exports = {
     }),
     new webpack.DefinePlugin({
       __APP_VERSION__: JSON.stringify(version),
+      __EARTH_SURFACE_BASE_URL__: JSON.stringify(process.env.EARTH_SURFACE_BASE_URL ?? ''),
+      // GitHub Pagesのrepository subpathとnpm run devのdocs配下から解決できる相対manifest URL。
+      // 生成済みの実データ版を既定にし、未配置時は実行時fallbackへ戻す。
+      __EARTH_SURFACE_MANIFEST_URL__: JSON.stringify(
+        process.env.EARTH_SURFACE_MANIFEST_URL ?? DEFAULT_EARTH_SURFACE_MANIFEST_URL,
+      ),
     }),
   ],
   devServer: {
-    static: './docs',
+    static: [
+      {
+        directory: path.resolve(__dirname, 'docs'),
+        publicPath: '/',
+      },
+      {
+        directory: path.resolve(__dirname, '.earth-surface/bundle'),
+        publicPath: EARTH_SURFACE_DEV_PUBLIC_PATH,
+        watch: false,
+      },
+    ],
     port: 'auto',
     liveReload: false,
     hot: false,

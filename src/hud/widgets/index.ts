@@ -1,6 +1,6 @@
 // hud/widgets/ の公開 API をまとめて再 export するバレル。
 export { buildGroupTitle, buildLabeledRow } from './widget-base';
-export { Button } from './button';
+export { Button, type ButtonVariant } from './button';
 export { ToggleSwitch } from './toggle-switch';
 export { SegmentedControl } from './segmented-control';
 export { Pulldown, type PulldownColumn } from './pulldown';
@@ -19,4 +19,3 @@ export {
   PREDICT_TOGGLE_LABELS,
 } from './collapse-toggle';
 export { WIDGET_STYLE } from './widget-style';
-export { injectOnce } from './inject-style';

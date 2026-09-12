@@ -1,8 +1,5 @@
 // 描画パスごとの GPU 実行時間 [ms] を溜める。パスは数値インデックスで指す(`GPU_PASS` の各値)。
-//
-// `frame-sections.ts` の update 側と同型だが、値が非同期に届く点だけが違う。GPU の時刻印は
-// フレーム N のぶんがフレーム N+k に返るので、`enter`/`exit` がその場で確定する `FrameSections`
-// とは器を分ける。表示は 500ms 窓の平均なので、この遅れは読みに出ない。
+// GPU の時刻印はフレーム N のぶんがフレーム N+k に返るので、値は数フレーム遅れて非同期に届く。
 import { InspectorBase, TimestampQuery, type WebGPURenderer } from 'three/webgpu';
 
 // パスの識別子。並びは描画フェーズでの実行順。
@@ -18,14 +15,35 @@ export const GPU_PASS = {
   composite: 8,
   overlay: 9,
   antialias: 10,
+  cloudBake: 11,
+  cloudAtmosphere: 12,
+  cloudShadow: 13,
 } as const;
 
 export type GpuPassId = (typeof GPU_PASS)[keyof typeof GPU_PASS];
 
+export interface GpuTimingSink {
+  beginPass(id: GpuPassId): void;
+}
+
 // 表示名。並びは GPU_PASS の値の順。
-export const GPU_PASS_LABELS: readonly string[] = ['影マップ', 'Gバッファ', '影', 'ライティング', 'マテリアル', '大気', 'ワールド', 'レンズ', '合成', '3D UI', 'アンチエイリアス'];
+export const GPU_PASS_LABELS: readonly string[] = [
+  '影マップ', 'Gバッファ', '影', 'ライティング', 'マテリアル', '大気', 'ワールド', 'レンズ', '合成',
+  '3D UI', 'アンチエイリアス', '雲の生成', '雲大気', '雲影',
+];
 
 export const GPU_PASS_COUNT = GPU_PASS_LABELS.length;
+
+// 雲の計測対象と、単独のGPU時刻として読める範囲。表面雲は通常の不透明物と同じGバッファ
+// render() 呼び出しへ含まれるため、個別の時刻印へ分離しない。デバッグ表示ではGバッファの値を
+// 表面雲を含む合算値として読む。WebGPUのtimestamp-queryが無い場合は、既存のGpuTimingsが
+// すべて「未対応」へフォールバックする。
+export const CLOUD_GPU_MEASUREMENTS = {
+  bake: { pass: GPU_PASS.cloudBake, scope: 'exact' },
+  atmosphere: { pass: GPU_PASS.cloudAtmosphere, scope: 'cloud-enabled composite' },
+  shadow: { pass: GPU_PASS.cloudShadow, scope: 'exact' },
+  surface: { pass: GPU_PASS.gbuffer, scope: 'gbuffer aggregate' },
+} as const;
 
 interface GpuTimingSnapshot {
   readonly supported: boolean;
@@ -44,10 +62,11 @@ interface RenderTimestampPool {
 const PENDING_UID_CAP = GPU_PASS_COUNT * 8;
 
 // renderer.render() 呼び出しの uid を、直前の GpuTimings.beginPass が宣言したパスへ結び付ける
-// だけの Inspector。GpuTimings 自身に InspectorBase を継承させず別クラスへ切り出すのは、
-// InspectorBase が持つ広いメソッド一式(beginCompute など)を GpuTimings の公開面へ持ち込まないため。
+// Inspector。InspectorBase の広いメソッド一式(beginCompute など)を GpuTimings の公開面へ持ち込まない
+// よう、GpuTimings とは別のクラスにする。
 class PassInspector extends InspectorBase {
-  constructor(
+  // onBegin は render() の呼び出しごとにその uid を、onFinish はその終わりを受け取る。
+  public constructor(
     private readonly onBegin: (uid: string) => void,
     private readonly onFinish: () => void,
   ) {
@@ -55,19 +74,19 @@ class PassInspector extends InspectorBase {
   }
 
   // レンダラーが render() を呼ぶたびに、その呼び出しの uid を添えて呼ばれる。
-  beginRender(uid: string): void {
+  public beginRender(uid: string): void {
     this.onBegin(uid);
   }
 
   // その render() が終わるたびに呼ばれる。入れ子の呼び出しでは内側が先に閉じる。
-  finishRender(): void {
+  public finishRender(): void {
     this.onFinish();
   }
 }
 
 export class GpuTimings {
   // 集計の可否。偽の間は届いた値を捨てる。
-  enabled = false;
+  public enabled = false;
   private readonly elapsedMs = new Float64Array(GPU_PASS_COUNT);
   // 解決は非同期なので、前回の解決が返る前に次を積まない。
   private resolving = false;
@@ -84,7 +103,7 @@ export class GpuTimings {
 
   // 自分専用の Inspector をレンダラーへ据え、以後の render() 呼び出しの uid を
   // beginPass が宣言したパスへ結び付けられるようにする。
-  constructor(private readonly renderer: WebGPURenderer) {
+  public constructor(private readonly renderer: WebGPURenderer) {
     renderer.inspector = new PassInspector(
       (uid) => this.onBeginRender(uid),
       () => this.onFinishRender(),
@@ -92,14 +111,11 @@ export class GpuTimings {
   }
 
   // 時刻印が実際に取れているか。デバイスが timestamp-query を持たない環境では偽のままになる。
-  get supported(): boolean { return this.available; }
+  public get supported(): boolean { return this.available; }
 
-  // このあと最初に来る renderer.render() 呼び出しが id の描画パスであることを宣言する。
-  // パイプラインはそのパスを発行する直前に毎回呼ぶ。
-  //
-  // 窓が閉じている間は「測定は何もしない」という enabled の規則どおり、フレームごとの
-  // 記帳自体を省く。
-  beginPass(id: GpuPassId): void {
+  // このあと最初に来る renderer.render() 呼び出しが id の描画パスであることを宣言する。パスを
+  // 発行する直前に毎回呼ぶ。enabled が偽の間は宣言を捨てる。
+  public beginPass(id: GpuPassId): void {
     if (!this.enabled) return;
     this.pendingPass = id;
   }
@@ -114,9 +130,9 @@ export class GpuTimings {
     if (this.enabled && this.outerPass !== null) this.passByUid.set(uid, this.outerPass);
   }
 
-  // 深さの記帳は enabled によらず行う。窓の開閉が描画の途中に挟まっても、深さが
-  // 釣り合わないまま取り残されないようにする。
+  // render() の終わりで入れ子の深さを戻し、いちばん外側が閉じたらパスの帰属を解く。
   private onFinishRender(): void {
+    // 深さは enabled によらず戻す — 窓の開閉が描画の途中に挟まると、深さが釣り合わなくなる。
     if (this.renderDepth > 0) this.renderDepth--;
     if (this.renderDepth === 0) this.outerPass = null;
   }
@@ -125,7 +141,7 @@ export class GpuTimings {
   //
   // 呼ばない期間があるとレンダラ側の時刻印クエリが溜まって上限に当たるため、`enabled` に
   // かかわらず毎フレーム呼ぶこと。ゲート下にあるのは集計だけで、要求そのものではない。
-  resolve(): void {
+  public resolve(): void {
     if (this.resolving) return;
     this.resolving = true;
     this.resolvePromise = this.renderer.resolveTimestampsAsync(TimestampQuery.RENDER)
@@ -164,13 +180,13 @@ export class GpuTimings {
   }
 
   // 直近の resolve() が届くまで待つ。非同期の結果を決まった時点で読みたい計測用の口。
-  async waitForResolve(): Promise<void> {
+  public async waitForResolve(): Promise<void> {
     await this.resolvePromise;
   }
 
   // 溜めた読みを捨てて数え直す。**先に waitForResolve() を待つこと** —
   // 待たずに呼ぶと、遅れて届いた前の窓の値が捨てたはずの器へ入る。
-  reset(): void {
+  public reset(): void {
     this.elapsedMs.fill(0);
     this.available = false;
     this.pendingPass = null;
@@ -178,12 +194,12 @@ export class GpuTimings {
   }
 
   // 全パスの直近の所要時間 [ms] を、パス id の並びのまま写して返す。
-  snapshot(): GpuTimingSnapshot {
+  public snapshot(): GpuTimingSnapshot {
     return { supported: this.available, elapsedMs: Array.from(this.elapsedMs) };
   }
 
   // パス id の直近の所要時間 [ms]。
-  msOf(id: GpuPassId): number { return this.elapsedMs[id]!; }
+  public msOf(id: GpuPassId): number { return this.elapsedMs[id]!; }
 
   // render 用の timestampQueryPool を返す。公開型に無い内部プロパティを読む唯一のキャスト箇所。
   private renderTimestampPool(): RenderTimestampPool | undefined {

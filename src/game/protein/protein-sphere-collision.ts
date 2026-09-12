@@ -5,7 +5,7 @@ import { qInvert, qRotate, type Quat } from '../../math/quat';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { linearSphereContact } from '../../physics/sphere-contact';
 import type { SphereHit } from '../../math/triangle-mesh';
-import type { ProteinBackboneAsset } from '../../render/protein-enemy-ship';
+import type { ProteinBackboneAsset } from '../../render/protein/protein-render-definition';
 
 // 主鎖の折れ線を覆うのに要る余裕 [Å]。表示リボンの断面(半幅 1.0・半厚 0.16)の半対角で、
 // coil の管の半径 0.38 より大きいのでこれで両方を覆う。
@@ -88,7 +88,7 @@ export function buildProteinCollisionSpheres(
 
 /** 球列を敵の位置・姿勢へ当てて接触を返す。個体ごとに作ってよい(球列は共有する)。 */
 export class ProteinSphereCollisionGeometry {
-  /** 全球を覆うワールド外接半径 [m]。ProteinEnemy の radius はこれを使う。 */
+  /** 全球を覆うワールド外接半径 [m]。 */
   public readonly outerRadius: number;
 
   // 敵ローカルの向きのまま [m] へ直した球列。姿勢を掛けるだけでワールドと比べられる。
@@ -102,6 +102,7 @@ export class ProteinSphereCollisionGeometry {
       cz: sphere.cz * rootScale,
       radius: sphere.radius * rootScale,
     }));
+    // 原点から最も遠い球面までの距離を外接半径にする
     let outerRadius = 0;
     for (const sphere of this.spheres) {
       outerRadius = Math.max(outerRadius, Math.hypot(sphere.cx, sphere.cy, sphere.cz) + sphere.radius);
@@ -109,7 +110,7 @@ export class ProteinSphereCollisionGeometry {
     this.outerRadius = outerRadius;
   }
 
-  /** ECI 上の球と現在姿勢の球列の最深接触を返す。 */
+  /** ECI 上の球と、center・att に置いた球列の最深接触を返す。触れていなければ null。 */
   public testSphereCollision(
     sphereCenter: Vec3, sphereRadius: number, center: Vec3, att: Quat,
   ): SphereHit | null {
@@ -145,7 +146,10 @@ export class ProteinSphereCollisionGeometry {
     };
   }
 
-  /** 移動する球が球列を最初に横切る時刻を、球ごとの二次方程式から返す。 */
+  /**
+   * 移動する球が球列を最初に横切る接触と、区間内の割合 toi を返す。始点で既に重なっていれば
+   * toi は 0、区間内で横切らなければ null。
+   */
   public testSweptSphereCollision(
     previousSphereCenter: Vec3, sphereCenter: Vec3, sphereRadius: number,
     previousSelfState: KinematicState, selfState: KinematicState, att: Quat,
@@ -197,6 +201,7 @@ function boxSphereRadius(width: number, height: number, depth: number): number {
 
 // 全残基からモデル原点までの最大距離 [Å]。
 function backboneOuterRadius(backbone: ProteinBackboneAsset): number {
+  // 座標は残基ごとに xyz の3つ組で並ぶ
   const coordinates = backbone.backboneCoordinates;
   let outerRadius = 0;
   for (let index = 0; index < backbone.backboneCount; index++) {
@@ -243,6 +248,7 @@ function segmentSphereDistanceSq(start: Vec3, end: Vec3, sphere: ProteinCollisio
   const px = sphere.cx - start.x;
   const py = sphere.cy - start.y;
   const pz = sphere.cz - start.z;
+  // 球の中心に最も近い線分上の点を、媒介変数 t ∈ [0, 1] で取る
   const lengthSq = dx * dx + dy * dy + dz * dz;
   const t = lengthSq > 0 ? Math.min(1, Math.max(0, (px * dx + py * dy + pz * dz) / lengthSq)) : 0;
   const qx = px - dx * t;

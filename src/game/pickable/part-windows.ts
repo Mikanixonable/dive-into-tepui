@@ -1,9 +1,10 @@
 // 自艦の搭載部品のプロパティウィンドウ。部品1つにつき高々1枚を保ち、展開できる部品の
 // 展開/収納を実行する。排他グループを持たせず、被選択物のウィンドウと共存させる。
-import { PropertyWindow, type PropertyWindowContent, type PropertyWindowItem } from '../../hud/windows/property-window';
+import { PropertyWindow } from '../../hud/windows/property-window';
+import type { PropertyWindowContent, PropertyWindowItem } from '../../hud/windows/property-window-content';
 import type { MenuAction } from '../hud/windows/menu-actions';
-import type { ActivePlayerController } from '../active-controllable-controller';
-import type { Hud } from '../hud/hud';
+import type { ControlSelection } from '../control-selection';
+import type { HudLayers } from '../hud/hud-layers';
 import type { Part } from '../dynamic/dynamic-entity/parts';
 import type { Player } from '../player/player';
 
@@ -32,16 +33,16 @@ function deploymentItems(part: Part): PropertyWindowItem<MenuAction>[] {
 function setDeployment(ship: Player, part: Part, deployed: boolean): void {
   const sameType = ship.parts.filter((candidate) => candidate.type === part.type);
   const side = sameType.indexOf(part) === 0 ? 'up' : 'down';
-  if (part.type === 'radiator') ship.radiator.setDeployed(side, deployed);
-  if (part.type === 'solar_panel') ship.power.setDeployed(side, deployed);
+  if (part.type === 'radiator') ship.motion.radiator.setDeployed(side, deployed);
+  if (part.type === 'solar_panel') ship.motion.power.setDeployed(side, deployed);
 }
 
 export class PartWindows {
   private readonly windows = new Map<string, PartWindowEntry>();
 
   constructor(
-    private readonly hud: Hud,
-    private readonly activePlayers: ActivePlayerController,
+    private readonly hud: HudLayers,
+    private readonly controlSelection: ControlSelection,
   ) {}
 
   // 部品のウィンドウを開く。既に開いていればクリック位置へ動かして最前面に出すだけにする。
@@ -74,7 +75,9 @@ export class PartWindows {
   sync(): void {
     for (const entry of [...this.windows.values()]) {
       const { ship, part } = entry;
-      if (!ship.alive || ship !== this.activePlayers.current || !ship.parts.includes(part)) {
+      if (!ship.motion.alive
+        || ship !== this.controlSelection.current
+        || !ship.parts.includes(part)) {
         entry.win.close();
         continue;
       }

@@ -1,13 +1,11 @@
-// THREE で曲線を折れ線で最適に近似して描く。
-//
-// setAnalyticCurve: 曲線の解析的な式を直接受け取り、曲線として描く。
-// setHermiteCurve: 節点列を受け取り、節点間を3次エルミートで埋めた滑らかな曲線として描く。
-//
-// 頂点を t のどこに何個置くかは、画面上のサジッタと折れ角を見て毎フレーム決め直す。
+// THREE で曲線を折れ線で近似して描く。閉じた式で書ける曲線は setAnalyticCurve、離散サンプル
+// としてしか手に入らない曲線は setHermiteCurve で渡す。近似の細かさは渡したときのカメラで
+// 決まるので、カメラが動いたら渡し直す。
 
 import * as THREE from 'three/webgpu';
 import { MaxHeap } from '../math/max-heap';
 import { CameraScale } from './camera-scale';
+import { buildHermiteCurve, type HermiteCurve } from './hermite-curve';
 import type { LineStyle } from './line-style';
 import { markOverlay } from './pipeline/lit-layer';
 
@@ -21,14 +19,13 @@ export type CurveColorSampler = (t: number, out: THREE.Color) => void;
 
 // 適応分割が目標にする、弦に対する曲線の膨らみ(サジッタ)の上限 [px]。1px を下回っていれば、
 // 隣り合う画素の間に収まる。
-export const MAX_SAGITTA_PX = 0.5;
+const MAX_SAGITTA_PX = 0.5;
 
 // 1辺あたりに許す折れ角の上限 [rad]。サジッタと並ぶもう一つの分割基準で、こちらは画面上の
 // 大きさに依らず効くため、遠ズームでの粗さを決める。
 const MAX_EDGE_TURN = (5 * Math.PI) / 180;
 
-// initialSegments を省いたときの初期分割数。閉曲線を1区間のまま評価すると t=0/1 が同一点で
-// 弦が縮退するため、最低限これだけ分けてから適応分割に入る。
+// 初期分割数の下限。閉曲線を1区間のままにすると、t=0/1 が同一点で弦が縮退する。
 const INITIAL_SEGMENTS = 8;
 
 // 頂点予算のうち初期頂点へ回してよい割合。残りを適応分割が逸脱の大きい区間へ配るので、
@@ -57,78 +54,30 @@ const MIN_T_SPAN = 2 ** -24;
 // 離散サンプルとしてしか手に入らない曲線の節点列。ts は節点の曲線パラメータ(昇順、先頭 0・
 // 末尾 1)、positions と tangents は各節点の位置と d(位置)/d(パラメータ) を [x, y, z] の順に
 // 並べた長さ ts.length * 3 の列。
-export type CurveKnots = {
+export interface CurveKnots {
   readonly ts: readonly number[];
   readonly positions: readonly number[];
   readonly tangents: readonly number[];
-};
-
-// 節点列から組んだ曲線。ts は節点自身のパラメータ列で、そのまま初期頂点の位置になる。
-type HermiteCurve = { readonly sample: CurveSampler; readonly ts: ArrayLike<number> };
-
-// 節点間を3次エルミート(両端の位置を通り、両端の接線を持つ)で埋めた曲線を組む。節点が
-// maxCount 個を超えるぶんは元の並びの上で等間隔に間引く(両端は残すので定義域は縮まない)。
-function buildHermiteCurve(knots: CurveKnots, maxCount: number): HermiteCurve {
-  const source = knots.ts;
-  if (source.length < 2) throw new Error(`Curve: 節点が ${source.length} 個では曲線にならない`);
-  const last = source.length - 1;
-  const count = Math.min(source.length, maxCount);
-  const ts = new Float64Array(count);
-  const positions = new Float64Array(count * 3);
-  const tangents = new Float64Array(count * 3);
-  for (let i = 0; i < count; i++) {
-    const j = count === source.length ? i : Math.round((i * last) / (count - 1));
-    ts[i] = source[j]!;
-    if (i > 0 && ts[i]! <= ts[i - 1]!) throw new Error(`Curve: 節点のパラメータが昇順でない (i=${j})`);
-    for (let k = 0; k < 3; k++) {
-      positions[i * 3 + k] = knots.positions[j * 3 + k]!;
-      tangents[i * 3 + k] = knots.tangents[j * 3 + k]!;
-    }
-  }
-
-  const sample: CurveSampler = (t, out) => {
-    // t を含む区間 [i, i+1] を二分探索で引く。両端の外は端の区間へ寄せる。
-    let lo = 0, hi = count - 2;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (ts[mid]! <= t) lo = mid; else hi = mid - 1;
-    }
-    const h = ts[lo + 1]! - ts[lo]!;
-    const s = Math.max(0, Math.min(1, (t - ts[lo]!) / h));
-    const s2 = s * s, s3 = s2 * s;
-    const w0 = 2 * s3 - 3 * s2 + 1, w1 = (s3 - 2 * s2 + s) * h;
-    const w2 = -2 * s3 + 3 * s2, w3 = (s3 - s2) * h;
-    const a = lo * 3, b = a + 3;
-    out.set(
-      w0 * positions[a]! + w1 * tangents[a]! + w2 * positions[b]! + w3 * tangents[b]!,
-      w0 * positions[a + 1]! + w1 * tangents[a + 1]! + w2 * positions[b + 1]! + w3 * tangents[b + 1]!,
-      w0 * positions[a + 2]! + w1 * tangents[a + 2]! + w2 * positions[b + 2]! + w3 * tangents[b + 2]!,
-    );
-  };
-  return { sample, ts };
 }
 
-// 点 p から線分 ab への最短距離の2乗。
-function distanceSqPointToSegment(
+// 点 p を線分 ab へ射影した点(線分の外へ出るぶんは端点へ丸める)を out へ書く。
+function projectToSegment(
   px: number, py: number, pz: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number,
-): number {
+  out: THREE.Vector3,
+): THREE.Vector3 {
   const dx = bx - ax, dy = by - ay, dz = bz - az;
   const lenSq = dx * dx + dy * dy + dz * dz;
-  if (lenSq <= 0) {
-    const ex = px - ax, ey = py - ay, ez = pz - az;
-    return ex * ex + ey * ey + ez * ez;
-  }
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / lenSq));
-  const cx = ax + dx * t, cy = ay + dy * t, cz = az + dz * t;
-  const ex = px - cx, ey = py - cy, ez = pz - cz;
-  return ex * ex + ey * ey + ez * ez;
+  const t = lenSq > 0
+    ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / lenSq))
+    : 0;
+  return out.set(ax + dx * t, ay + dy * t, az + dz * t);
 }
 
 export class Curve {
-  readonly object: THREE.Object3D;
+  public readonly object: THREE.Object3D;
   private readonly line: THREE.LineSegments;
   private readonly geom: THREE.BufferGeometry;
-  private readonly mat: THREE.Material;
+  private readonly mat: THREE.LineBasicMaterial;
   private readonly positions: Float32Array;
   private readonly indices: Uint32Array;
   private readonly maxVertices: number;
@@ -137,35 +86,31 @@ export class Curve {
   private vertexCount = 0;
   private wantVisible = true;
 
-  // 直近に setStyle で反映済みの見た目。個別 setter を経由すると null に戻し、
-  // 次の setStyle が確実に書き直すようにする。
-  private appliedStyle: LineStyle | null = null;
+  // 直近にマテリアルと線へ反映済みの見た目。
+  private appliedStyle: LineStyle;
 
-  // 適応分割で焼いた頂点(sample の座標系のまま)。GPU へ渡す positions(f32)は常にこの配列
-  // から pivot を差し引いて書くので、pivot 自体の精度を落とさないよう倍精度で持つ。
+  // 適応分割で焼いた頂点(sample の座標系)。localCam を差し引く前の値なので倍精度で持つ。
   private readonly bakedLocal: Float64Array;
   // 頂点ごとの色。位置と同じ生成順。
   private readonly bakedColor: Float32Array;
   // 各頂点の曲線上の位置 t。位置と同じ生成順。
   private readonly ts: Float64Array;
-  // 焼いた頂点を t 昇順に繋ぐ連結リスト(終端は -1)。頂点は生成順に置いたまま動かさないので、
-  // 描画順はこれを辿って書くインデックスバッファが担う。
+  // 焼いた頂点を t 昇順に繋ぐ連結リスト(終端は -1)。頂点そのものは生成順に並ぶ。
   private readonly nextVertex: Int32Array;
   private bakedCount = 0;
-  // 直近に渡された曲線。sampleAt が読む。
+  // 直近に渡された曲線。
   private sampler: CurveSampler | null = null;
-  // 直近に setHermiteCurve が受け取った節点列と、そこから組んだ曲線。節点列が同じ間は
-  // 組み直さない。
+  // 直近に setHermiteCurve が受け取った節点列と、そこから組んだ曲線。同じ節点列(参照が同じ)
+  // の間は使い回す。
   private hermiteKnots: CurveKnots | null = null;
   private hermite: HermiteCurve | null = null;
 
-  // 頂点バッファ(f32)へ書く直前に bakedLocal の全頂点から差し引く基準点。sample の座標系の
-  // まま、カメラの現在位置に置く。f32 の量子化ノイズは基準点からの距離に比例するので、
-  // 基準点をカメラから離した距離が、そのまま画面上のずれとして出る。
-  private readonly pivot = new THREE.Vector3();
+  // sample の座標系で見たカメラ位置。頂点バッファ(f32)へはこれを差し引いて書き、f32 の
+  // 量子化誤差をカメラの近くで小さく保つ。
+  private readonly localCam = new THREE.Vector3();
 
-  // setTransform が要求した sample→ワールドの変換。line.position/quaternion へはこれに pivot
-  // 分を補って書き込むので、sample の座標系を扱う計算はこちらを読む。
+  // setTransform が要求した sample→ワールドの変換。line の変換は localCam のぶんずれているので、
+  // sample の座標系の計算はこちらを使う。
   private readonly reqPosition = new THREE.Vector3();
   private readonly reqQuaternion = new THREE.Quaternion();
 
@@ -174,9 +119,10 @@ export class Curve {
   private readonly scratchColor = new THREE.Color();
   private readonly scratchStyleColor = new THREE.Color();
   private readonly scratchWorld = new THREE.Vector3();
-  private readonly scratchLocalCam = new THREE.Vector3();
+  private readonly scratchFoot = new THREE.Vector3();
+  private readonly scratchNearest = new THREE.Vector3();
   private readonly scratchInvQuat = new THREE.Quaternion();
-  private readonly scratchPivotWorld = new THREE.Vector3();
+  private readonly scratchCamWorld = new THREE.Vector3();
 
   // 未分割の区間を逸脱の大きい順に取り出す待ち行列。区間はその左端の頂点番号で表し、
   // 右端は nextVertex から辿る。
@@ -185,9 +131,9 @@ export class Curve {
   // 初期頂点に置ける頂点数の上限。
   private readonly maxInitialVertices: number;
 
-  // 頂点バッファは maxVertices ぶんを生成時に1回だけ確保する。maxVertices は、適応分割が
-  // 収束しない曲線に対する最悪描画コストの打ち切り。style.dash があれば破線になる。
-  constructor(style: LineStyle, maxVertices: number = DEFAULT_MAX_VERTICES) {
+  // maxVertices は頂点数の上限で、適応分割が収束しない曲線の描画コストを抑える。style.dash が
+  // あれば破線になる。
+  public constructor(style: LineStyle, maxVertices: number = DEFAULT_MAX_VERTICES) {
     const { color, opacity, renderOrder, dash } = style;
     this.maxVertices = maxVertices;
     this.maxInitialVertices = Math.max(INITIAL_SEGMENTS + 1, Math.floor(maxVertices * MAX_INITIAL_VERTEX_RATIO));
@@ -201,8 +147,7 @@ export class Curve {
     this.indices = new Uint32Array(this.maxSegments * 2);
     this.geom = new THREE.BufferGeometry();
     this.geom.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
-    // 色属性は使う前から束縛しておく。後から属性を足すと、束縛済みのジオメトリに対する
-    // 差し替えになって新しいバッファが描画へ反映されない。
+    // 色属性は最初から束縛する。束縛済みのジオメトリへ後から足した属性は描画へ反映されない。
     this.geom.setAttribute('color', new THREE.BufferAttribute(this.bakedColor, 3));
     this.geom.setIndex(new THREE.BufferAttribute(this.indices, 1));
     this.geom.setDrawRange(0, 0);
@@ -214,8 +159,7 @@ export class Curve {
       this.lineDistances = null;
     }
 
-    // 頂点カラーは常に有効。実行中に切り替えるとマテリアルのキャッシュ鍵が変わり、そこで
-    // シェーダが組み直される。色を渡されない曲線には白を焼くので、乗算は恒等になる。
+    // 頂点カラーは常に有効にする(切り替えるとシェーダが組み直される)。色の無い曲線は白を焼く。
     this.mat = dash
       ? new THREE.LineDashedMaterial({
         color, transparent: true, opacity, depthWrite: false, vertexColors: true,
@@ -226,35 +170,34 @@ export class Curve {
       });
 
     this.line = new THREE.LineSegments(this.geom, this.mat);
-    // 折れ線は表示値であって物理的な明るさを持たないので、3D UI パスへ置く。
+    // 折れ線は表示値なので 3D UI パスへ置く。
     markOverlay(this.line);
     this.line.renderOrder = renderOrder;
     this.line.visible = false;
-    // 頂点はバッファへ書き込むだけで外接球を更新しないので、既定のフラスタム判定は
-    // 初期値(全頂点ゼロ)の外接球で切ってしまう。
+    // 外接球は初期値(全頂点ゼロ)のまま更新されないので、フラスタム判定を切る。
     this.line.frustumCulled = false;
     this.object = this.line;
     this.appliedStyle = style;
   }
 
-  // sample の座標系の点における m/px。要求された変換でワールドへ写してから換算する — pivot は
-  // カメラの動きに追従するだけの GPU バッファ上の便宜なので、ここでは読まない。
+  // sample の座標系の点における m/px。要求された変換でワールドへ写してから換算する。
   private scaleAtLocal(cam: CameraScale, lx: number, ly: number, lz: number): number {
     this.scratchWorld.set(lx, ly, lz).applyQuaternion(this.reqQuaternion).add(this.reqPosition);
     return cam.at(this.scratchWorld.x, this.scratchWorld.y, this.scratchWorld.z);
   }
 
-  // カメラのワールド位置を sample の座標系へ戻す。
-  private localCameraPos(cam: CameraScale, out: THREE.Vector3): THREE.Vector3 {
+  // カメラのワールド位置を sample の座標系へ戻して localCam へ書く。
+  private updateLocalCam(cam: CameraScale): void {
     this.scratchInvQuat.copy(this.reqQuaternion).invert();
-    return out.copy(cam.position).sub(this.reqPosition).applyQuaternion(this.scratchInvQuat);
+    this.localCam.copy(cam.position).sub(this.reqPosition).applyQuaternion(this.scratchInvQuat);
   }
 
-  // 要求された変換と現在の pivot から、line の実際の position/quaternion を書き直す。
+  // 要求された変換に、頂点から差し引いた localCam を戻して、line の実際の
+  // position/quaternion を書き直す。
   private applyTransform(): void {
     this.line.quaternion.copy(this.reqQuaternion);
-    this.scratchPivotWorld.copy(this.pivot).applyQuaternion(this.reqQuaternion);
-    this.line.position.copy(this.reqPosition).add(this.scratchPivotWorld);
+    this.scratchCamWorld.copy(this.localCam).applyQuaternion(this.reqQuaternion);
+    this.line.position.copy(this.reqPosition).add(this.scratchCamWorld);
   }
 
   // 位置 t の頂点を積み、その番号を返す。連結リストへの接続は呼び出し側が行う。
@@ -292,9 +235,15 @@ export class Curve {
     sample((t0 + t1) / 2, this.scratchM);
     const mx = this.scratchM.x, my = this.scratchM.y, mz = this.scratchM.z;
 
-    const sagSq = distanceSqPointToSegment(mx, my, mz, x0, y0, z0, x1, y1, z1);
-    const mpp = this.scaleAtLocal(cam, mx, my, mz);
-    const sagittaPx = mpp > 0 ? Math.sqrt(sagSq) / mpp : 0;
+    const foot = projectToSegment(mx, my, mz, x0, y0, z0, x1, y1, z1, this.scratchFoot);
+    const sagitta = Math.hypot(mx - foot.x, my - foot.y, mz - foot.z);
+    // サジッタを画面上の大きさへ直す尺度は、弦のうちカメラに最も近い点で測る。1区間は軌道の
+    // 何分の一もの長さを持つので、中点で測ると、カメラの至近を通る弦のずれを何十倍も小さく
+    // 見積もって分割が止まり、線が対象から離れたまま残る。
+    const nearest = projectToSegment(
+      this.localCam.x, this.localCam.y, this.localCam.z, x0, y0, z0, x1, y1, z1, this.scratchNearest);
+    const mpp = this.scaleAtLocal(cam, nearest.x, nearest.y, nearest.z);
+    const sagittaPx = mpp > 0 ? sagitta / mpp : 0;
 
     const ax = mx - x0, ay = my - y0, az = mz - z0;
     const bx = x1 - mx, by = y1 - my, bz = z1 - mz;
@@ -309,6 +258,7 @@ export class Curve {
   // 初期頂点列から始めて、逸脱が最大の区間から順に二分していく。予算が尽きて打ち切っても残りの
   // 区間の逸脱は最後に分割した区間以下なので、劣化は曲線全体が一様に粗くなる方向へ向かう。
   private rebake(sample: CurveSampler, ts: ArrayLike<number>, cam: CameraScale, colorAt?: CurveColorSampler): void {
+    // 初期頂点を ts の位置に置き、隣どうしを連結リストで繋いで待ち行列へ積む。
     this.bakedCount = 0;
     this.pending.clear();
     const segmentCount = ts.length - 1;
@@ -320,6 +270,7 @@ export class Curve {
     }
     for (let i = 0; i < segmentCount; i++) this.pending.push(this.segmentError(i, sample, cam), i);
 
+    // 逸脱が目標を超える区間を、頂点予算が尽きるまで中点で二分し続ける。
     while (this.pending.topScore > 1 && this.bakedCount < this.maxVertices) {
       const left = this.pending.pop();
       const right = this.nextVertex[left]!;
@@ -333,58 +284,64 @@ export class Curve {
     }
   }
 
-  // 閉じた式で書ける曲線を描く。sample は t∈[0,1] で曲線上の点を返す滑らかな関数、camera は
-  // 画面上の目標を実距離へ換算するための現在の描画カメラ。initialSegments は適応分割を始める
-  // 区間数 — 適応分割は弦の中点しか見ないので、1区間に何周ぶんも入る曲線では中点がたまたま
-  // 曲線上に乗り、区間まるごとが直線に化ける。「1区間が曲線の半周を超えない」下限を渡して
-  // それを防ぐ。colorAt は線の中で色が変わるときだけ渡す。
-  setAnalyticCurve(
-    sample: CurveSampler, camera: THREE.Camera, initialSegments?: number, colorAt?: CurveColorSampler,
+  // 閉じた式で書ける曲線を描く。sample は t∈[0,1] で曲線上の点を返す滑らかな関数、camera と
+  // viewportHeight [CSS px] は画面上の目標を実距離へ換算するための現在の描画カメラと描画先の
+  // 高さ。initialSegments は適応分割を始める区間数 — 適応分割は弦の中点しか見ないので、1区間に
+  // 何周ぶんも入る曲線では中点がたまたま曲線上に乗り、区間まるごとが直線に化ける。「1区間が
+  // 曲線の半周を超えない」下限を渡してそれを防ぐ。colorAt は線の中で色が変わるときだけ渡す。
+  public setAnalyticCurve(
+    sample: CurveSampler, camera: THREE.Camera, viewportHeight: number,
+    initialSegments?: number, colorAt?: CurveColorSampler,
   ): void {
     const requested = Math.max(INITIAL_SEGMENTS, initialSegments ?? 0);
-    this.setCurve(sample, uniformTs(Math.min(requested, this.maxInitialVertices - 1)), camera, colorAt);
+    this.setCurve(
+      sample, uniformTs(Math.min(requested, this.maxInitialVertices - 1)), camera, viewportHeight, colorAt);
   }
 
   // 離散サンプルとしてしか手に入らない曲線を、節点間を3次エルミートで埋めて描く。節点は
-  // そのまま初期頂点になる。camera と colorAt の意味は setAnalyticCurve と同じ。
-  setHermiteCurve(knots: CurveKnots, camera: THREE.Camera, colorAt?: CurveColorSampler): void {
+  // そのまま初期頂点になる。camera・viewportHeight・colorAt の意味は setAnalyticCurve と同じ。
+  public setHermiteCurve(
+    knots: CurveKnots, camera: THREE.Camera, viewportHeight: number, colorAt?: CurveColorSampler,
+  ): void {
     let hermite = this.hermite;
     if (hermite === null || knots !== this.hermiteKnots) {
       hermite = buildHermiteCurve(knots, this.maxInitialVertices);
       this.hermite = hermite;
       this.hermiteKnots = knots;
     }
-    this.setCurve(hermite.sample, hermite.ts, camera, colorAt);
+    this.setCurve(hermite.sample, hermite.ts, camera, viewportHeight, colorAt);
   }
 
   // いま描いている曲線を t∈[0,1] で評価する。曲線をまだ渡されていなければ原点を返す。
-  sampleAt(t: number, out: THREE.Vector3): void {
+  public sampleAt(t: number, out: THREE.Vector3): void {
     if (this.sampler) this.sampler(t, out);
     else out.set(0, 0, 0);
   }
 
-  // 渡された曲線を焼き、GPU バッファへ反映する。頂点の配り方も pivot もカメラに依存するので、
-  // 呼ぶたびに焼き直す。
+  // 渡された曲線を焼き、GPU バッファへ反映する。頂点の配り方も差し引く基準点もカメラに
+  // 依存するので、呼ぶたびに焼き直す。
   private setCurve(
-    sample: CurveSampler, ts: ArrayLike<number>, camera: THREE.Camera, colorAt?: CurveColorSampler,
+    sample: CurveSampler, ts: ArrayLike<number>, camera: THREE.Camera, viewportHeight: number,
+    colorAt?: CurveColorSampler,
   ): void {
     this.sampler = sample;
-    const cam = new CameraScale(camera);
+    const cam = new CameraScale(camera, viewportHeight);
+    this.updateLocalCam(cam);
     this.rebake(sample, ts, cam, colorAt);
-    this.pivot.copy(this.localCameraPos(cam, this.scratchLocalCam));
     this.applyTransform();
     this.writePositions();
   }
 
-  // 焼いた頂点(pivot 差し引き後)と描画範囲を GPU へ反映する。
+  // 焼いた頂点(localCam 差し引き後)と描画範囲を GPU へ反映する。
   private writePositions(): void {
     const n = this.bakedCount;
-    const { x: px, y: py, z: pz } = this.pivot;
+    const { x: px, y: py, z: pz } = this.localCam;
     for (let i = 0; i < n; i++) {
       this.positions[i * 3] = this.bakedLocal[i * 3]! - px;
       this.positions[i * 3 + 1] = this.bakedLocal[i * 3 + 1]! - py;
       this.positions[i * 3 + 2] = this.bakedLocal[i * 3 + 2]! - pz;
     }
+    // 頂点を上げてから、線分の並びと描画範囲を書き直す。
     this.vertexCount = n;
     (this.geom.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     (this.geom.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
@@ -397,6 +354,7 @@ export class Curve {
   // 連結リストを辿って線分のインデックス対を書き、その本数を返す(破線なら始点からの累積距離も
   // 同じ走査で書く)。
   private writeSegments(): number {
+    // 頂点 0 は t=0 の初期頂点なので、連結リストの先頭でもある。
     let count = 0;
     let dist = 0;
     for (let v = 0; ;) {
@@ -423,7 +381,7 @@ export class Curve {
   }
 
   // 曲線を持たない状態へ戻す。表示要求に関わらず何も描かれなくなる。
-  clear(): void {
+  public clear(): void {
     this.bakedCount = 0;
     this.sampler = null;
     this.hermiteKnots = null;
@@ -433,56 +391,34 @@ export class Curve {
     this.applyVisible();
   }
 
-  // 破線パターンを書き換える。破線でないマテリアルでは何もしない。
-  setDash(dashSize: number, gapSize: number): void {
-    if (this.mat instanceof THREE.LineDashedMaterial) {
-      this.mat.dashSize = dashSize;
-      this.mat.gapSize = gapSize;
-    }
-    this.appliedStyle = null;
-  }
-
-  // マテリアルの不透明度を書き換える。
-  setOpacity(opacity: number): void {
-    this.mat.opacity = opacity;
-    this.appliedStyle = null;
-  }
-
-  // マテリアルを作り直さず色だけ更新する。既に同じ色なら何もしない。
-  setColor(color: THREE.ColorRepresentation): void {
-    const material = this.mat as THREE.LineBasicMaterial | THREE.LineDashedMaterial;
-    this.scratchStyleColor.set(color);
-    if (material.color.equals(this.scratchStyleColor)) return;
-    material.color.copy(this.scratchStyleColor);
-    material.needsUpdate = true;
-    this.appliedStyle = null;
-  }
-
-  setRenderOrder(renderOrder: number): void {
-    this.line.renderOrder = renderOrder;
-    this.appliedStyle = null;
-  }
-
-  // 見た目をまとめて書き換える。適用済みの値と一致するなら何もしない。
-  setStyle(style: LineStyle): void {
+  // 見た目をまとめて書き換える。適用済みの値と一致するなら何もしない。破線パターンは、破線として
+  // 組んだ線にだけ効く。
+  public setStyle(style: LineStyle): void {
     const applied = this.appliedStyle;
-    if (applied
-      && applied.color === style.color
+    if (applied.color === style.color
       && applied.opacity === style.opacity
       && applied.renderOrder === style.renderOrder
       && applied.dash?.dashSize === style.dash?.dashSize
       && applied.dash?.gapSize === style.dash?.gapSize) {
       return;
     }
-    this.setColor(style.color);
-    this.setOpacity(style.opacity);
-    this.setRenderOrder(style.renderOrder);
-    if (style.dash) this.setDash(style.dash.dashSize, style.dash.gapSize);
+    // 色はマテリアルを作り直さずに書き換え、同じ色ならシェーダの更新を立てない。
+    this.scratchStyleColor.set(style.color);
+    if (!this.mat.color.equals(this.scratchStyleColor)) {
+      this.mat.color.copy(this.scratchStyleColor);
+      this.mat.needsUpdate = true;
+    }
+    this.mat.opacity = style.opacity;
+    this.line.renderOrder = style.renderOrder;
+    if (style.dash && this.mat instanceof THREE.LineDashedMaterial) {
+      this.mat.dashSize = style.dash.dashSize;
+      this.mat.gapSize = style.dash.gapSize;
+    }
     this.appliedStyle = style;
   }
 
   // sample の座標系をワールドへ写す変換を渡す。
-  setTransform(position: THREE.Vector3, quaternion?: THREE.Quaternion): void {
+  public setTransform(position: THREE.Vector3, quaternion?: THREE.Quaternion): void {
     this.reqPosition.copy(position);
     if (quaternion) this.reqQuaternion.copy(quaternion);
     else this.reqQuaternion.identity();
@@ -490,7 +426,7 @@ export class Curve {
   }
 
   // 表示を要求する。頂点数が2未満の間は隠れたままになる。
-  setVisible(v: boolean): void {
+  public setVisible(v: boolean): void {
     this.wantVisible = v;
     this.applyVisible();
   }
@@ -500,7 +436,8 @@ export class Curve {
     this.line.visible = this.wantVisible && this.vertexCount >= 2;
   }
 
-  dispose(): void {
+  // ジオメトリとマテリアルを解放する。以後この曲線は描けない。
+  public dispose(): void {
     this.geom.dispose();
     this.mat.dispose();
   }

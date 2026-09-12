@@ -2,7 +2,7 @@
 // 歳差なし(satelliteOrbit の 0 変換)、およびネレイド(高離心率)のケプラー往復精度。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { SatelliteDef } from '../../src/physics/celestial-motion';
+import { SatelliteDef } from '../../src/physics/celestial-body-def';
 import { ECL_POLE_ECI } from '../../src/physics/ecliptic';
 import { keplerOrbitState } from '../../src/physics/kepler-orbit';
 import { SatelliteOrbit } from '../../src/physics/satellite-orbit';

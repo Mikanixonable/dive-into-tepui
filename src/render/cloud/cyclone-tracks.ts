@@ -3,31 +3,30 @@
 // 流されてから転向し、温帯低気圧へ変わって消える。進路と一生は世代ごとの乱数で決まり、どの時刻へ
 // 飛んでも同じ配置になる。
 import * as THREE from 'three/webgpu';
-import { R_EARTH } from '../../game/celestial/solar-system/constants';
 import { mulberry32, randSym } from '../../math/random';
 
 // 谷 1 つの配置。緯度・経度 [rad](緯度は南半球で負。経度は畳まない)、深さ [hPa](0 以上)、
 // 短軸の半径 [m]、長軸/短軸の比。
-export type CyclonePlacement = {
+export interface CyclonePlacement {
   readonly latitude: number;
   readonly longitude: number;
   readonly depth: number;
   readonly radius: number;
   readonly elongation: number;
-};
+}
 
 // 進路の上の点 [°]。経度は連続な数で持ち、180° をまたぐ進路は 180 を超える値で書く。
-type Waypoint = {
+interface Waypoint {
   readonly latitude: number;
   readonly longitude: number;
-};
+}
 
 // 進路。生まれる点 origin から消える点 terminus へ、道のりの半ば(s = 0.5)で turn を通る弧。
-type Course = {
+interface Course {
   readonly origin: Waypoint;
   readonly turn: Waypoint;
   readonly terminus: Waypoint;
-};
+}
 
 // 一様乱数を引く幅 [min, max]。
 type Range = readonly [min: number, max: number];
@@ -150,7 +149,7 @@ function courseAt(course: Course, s: number): Waypoint {
 // 中緯度の低気圧 1 つの一生。周期の頭から生まれるまでの時間 onset [s]、寿命 lifetime [s]、進路
 // course(緯度は半球の符号を含む)、減速の指数 brake、最深 peakDepth [hPa]、生まれる半径
 // birthRadius [m]、消えるまでに半径が増える割合 growth。
-type LowTrack = {
+interface LowTrack {
   readonly onset: number;
   readonly lifetime: number;
   readonly course: Course;
@@ -158,10 +157,11 @@ type LowTrack = {
   readonly peakDepth: number;
   readonly birthRadius: number;
   readonly growth: number;
-};
+}
 
 // 枡 index に世代 generation で生まれる低気圧。乱数は世代ごとに 1 列で、引く順が一生を決める。
-function lowTrackOf(index: number, generation: number): LowTrack {
+// surfaceRadius [m] は天体の半径で、走る速さ [m/s] を経度の進み [°] へ直すのに要る。
+function lowTrackOf(index: number, generation: number, surfaceRadius: number): LowTrack {
   const rand = mulberry32(generation * LOW_COUNT + index);
   const lifetime = uniformIn(LOW_LIFETIME, rand);
   const onset = LOW_REBIRTH_GAP / 2 + rand() * (LOW_PERIOD - lifetime - LOW_REBIRTH_GAP);
@@ -177,7 +177,7 @@ function lowTrackOf(index: number, generation: number): LowTrack {
   // 東への進み [°]: 平均の速さで寿命のあいだ走った道のりを、進路の中ほどの緯度の緯線で測る。
   const poleward = endLatitude - birthLatitude;
   const midLatitude = (birthLatitude + endLatitude) / 2;
-  const eastward = (speed * lifetime) / (R_EARTH * Math.cos(midLatitude * DEGREE)) / DEGREE;
+  const eastward = (speed * lifetime) / (surfaceRadius * Math.cos(midLatitude * DEGREE)) / DEGREE;
   // 偶数番が北、奇数番が南。先に東へ走り、あとで極側へ折れる。
   const hemisphere = index % 2 === 0 ? 1 : -1;
   const course = {
@@ -191,13 +191,15 @@ function lowTrackOf(index: number, generation: number): LowTrack {
   return { onset, lifetime, course, brake, peakDepth, birthRadius, growth };
 }
 
-// 中緯度の低気圧 index(0..LOW_COUNT − 1)の、時刻 seconds [s] における配置。生まれる前と消えた
-// あとは null。
-export function lowPlacementAt(index: number, seconds: number): CyclonePlacement | null {
+// 中緯度の低気圧 index(0..LOW_COUNT − 1)の、時刻 seconds [s] における配置。surfaceRadius [m] は
+// 天体の半径。生まれる前と消えたあとは null。
+export function lowPlacementAt(
+  index: number, seconds: number, surfaceRadius: number,
+): CyclonePlacement | null {
   // 枡ごとに周期の位相をずらし、同じ半球の枡が揃って生まれ直さないようにする。
   const age = seconds / LOW_PERIOD + index / LOW_COUNT;
   const generation = Math.floor(age);
-  const track = lowTrackOf(index, generation);
+  const track = lowTrackOf(index, generation, surfaceRadius);
   const life = ((age - generation) * LOW_PERIOD - track.onset) / track.lifetime;
   if (life < 0 || life > 1) return null;
   const point = courseAt(track.course, 1 - (1 - life) ** track.brake);
@@ -212,14 +214,14 @@ export function lowPlacementAt(index: number, seconds: number): CyclonePlacement
 
 // 熱帯低気圧 1 つの一生。寿命 lifetime [s]、進路 course、最深 peakDepth [hPa]、生まれる半径
 // birthRadius [m]、温帯化で半径が増える割合 growth と行き着く長軸/短軸の比 finalElongation。
-type TropicalTrack = {
+interface TropicalTrack {
   readonly lifetime: number;
   readonly course: Course;
   readonly peakDepth: number;
   readonly birthRadius: number;
   readonly growth: number;
   readonly finalElongation: number;
-};
+}
 
 // 世代 generation の熱帯低気圧。乱数は世代ごとに 1 列で、引く順が一生を決める。海域は世代の順に巡る。
 function tropicalTrackOf(generation: number): TropicalTrack {

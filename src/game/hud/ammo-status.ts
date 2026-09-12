@@ -1,4 +1,4 @@
-import { MAG_ROUNDS } from '../player/player-fire';
+import { MAG_ROUNDS } from '../player/ammo-spec';
 
 // 弾薬状態の表記(例: "RELOADING..." / "弾切れ" / "18/32 +2連")。バレル交換中は
 // 装弾数によらずリロード表示を優先する。

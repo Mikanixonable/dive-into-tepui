@@ -10,17 +10,18 @@ import { SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
 import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
-import { GraphicsSettings, type GraphicsSettingsData, type GraphicsTarget } from '../../src/render/graphics-settings';
 import { castsCumulusShadow } from '../../src/render/pipeline/shadow/shadow-select';
 import { atmosphereDraws } from '../../src/render/atmosphere';
-import { RingMaterials } from '../../src/render/ring';
+import { RingMaterials } from '../../src/render/celestial/ring';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { AU } from '../../src/physics/astronomical-unit';
 import { R_SUN } from '../../src/game/celestial/solar-system/constants';
 import { CASES, sunDiameterPx, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
 import { pixelsToPngDataUrl } from '../lab-png';
+import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { RenderStyle } from '../../src/render/render-style';
+import type { CloudLodMode } from '../../src/render/cloud/cloud-field-sampler';
 
 // 所要時間 [ms] の分布。
 export interface LabDistribution {
@@ -93,7 +94,7 @@ function anglesFromDirection(v: THREE.Vector3): { azimuthDeg: number; elevationD
   };
 }
 
-export class LabView implements GraphicsTarget {
+export class LabView {
   private readonly scene = new THREE.Scene();
   // 撮影先。合成パスは sRGB へ変換済みの値を書くので素の RGBA8 で受ける(-srgb にすると二重変換で
   // 白っぽくなる)。深度は 3D UI パスの線が深度テストに使うので持たせる(無いと線が不透明物を貫通する)。
@@ -107,6 +108,9 @@ export class LabView implements GraphicsTarget {
   private currentName: CaseName | null = null;
   // 画面全体の見せ方。ゲーム本体と違い保存はせず、起動のたびに写実から始める。
   private style: RenderStyle = 'realistic';
+  // 比較環境の既定は本番経路と同じ。変更はこのLabViewだけへ閉じる。
+  private cloudBlueNoiseEnabled = true;
+  private cloudLodMode: CloudLodMode = 'explicit';
   private lastRenderCpuMs = 0;
   // カメラが周回する点。ケースの注視点を視線上へ落としたもの。
   private readonly pivot = new THREE.Vector3();
@@ -125,8 +129,7 @@ export class LabView implements GraphicsTarget {
   // 全ケースの環の帯が共有するマテリアル。ゲーム本体の CelestialSystem と同じく 1 つだけ持つ。
   private readonly ringMaterials: RingMaterials;
 
-  // graphicsData はこのフレームを描くのに使う描画品質設定。正本は呼び出し側の GraphicsSettings で、
-  // 押し出しを受けてここへ写す。
+  // graphicsData はこのフレームを描くのに使う描画品質設定。applyGraphics で差し替わる。
   private constructor(
     private readonly renderer: WebGPURenderer,
     private readonly pipeline: RenderPipeline,
@@ -139,8 +142,8 @@ export class LabView implements GraphicsTarget {
     this.ringMaterials = new RingMaterials(pipeline.bodyShadow, pipeline.sunLight);
   }
 
-  // graphics は描画品質設定の正本。押し出し先としての bind は呼び出し側が行う。
-  public static async create(canvas: HTMLCanvasElement, graphics: GraphicsSettings): Promise<LabView> {
+  // graphics は最初のフレームを描く描画品質設定。
+  public static async create(canvas: HTMLCanvasElement, graphics: GraphicsSettingsData): Promise<LabView> {
     // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、測りたい深度の
     // 分解能そのものが本番と別物になる。
     const renderer = new WebGPURenderer({
@@ -152,9 +155,9 @@ export class LabView implements GraphicsTarget {
     await renderer.init();
     const gpu = new GpuTimings(renderer);
     gpu.enabled = true;
-    const pipeline = new RenderPipeline(renderer, graphics.current, gpu);
+    const pipeline = new RenderPipeline(renderer, graphics, gpu);
     pipeline.ambient.setFraction(AMBIENT_WEAK);
-    return new LabView(renderer, pipeline, gpu, graphics.current);
+    return new LabView(renderer, pipeline, gpu, graphics);
   }
 
   // ケースを差し替え、観察の向きをそのケースの既定へ戻して描く。
@@ -179,6 +182,7 @@ export class LabView implements GraphicsTarget {
     if (this.current !== null) {
       this.scene.remove(...this.current.objects);
       this.current.star?.dispose();
+      this.current.disposeClouds?.();
       disposeCaseObjects(this.current);
     }
     const built = CASES[name](this.style, this.ringMaterials);
@@ -189,9 +193,10 @@ export class LabView implements GraphicsTarget {
     // **カメラの既定を引く前に一度押し込む** — 環はここで姿勢が決まるので、押し込む前に
     // 物体を包む箱を測ると注視点が原点へ寄る。
     built.applyGraphics?.(this.graphicsData);
+    this.applyCloudSampling();
   }
 
-  // 描画品質設定の押し出し先。受け取った値をパイプラインへ配り、その場で描き直す。
+  // 描画品質設定を差し替える。受け取った値をパイプラインへ配り、その場で描き直す。
   public applyGraphics(graphics: GraphicsSettingsData): void {
     this.graphicsData = graphics;
     this.pipeline.applyGraphics(graphics);
@@ -206,6 +211,20 @@ export class LabView implements GraphicsTarget {
   public setAmbientFraction(fraction: number): void {
     this.pipeline.ambient.setFraction(fraction);
     this.render();
+  }
+
+  // 雲のA/B設定を明示的な依存として各表現へ配る。固定LODは実在する最低段(0)を使う。
+  public setCloudSampling(blueNoiseEnabled: boolean, lodMode: CloudLodMode): void {
+    this.cloudBlueNoiseEnabled = blueNoiseEnabled;
+    this.cloudLodMode = lodMode;
+    this.applyCloudSampling();
+    this.render();
+  }
+
+  private applyCloudSampling(): void {
+    this.pipeline.setCloudBlueNoiseEnabled(this.cloudBlueNoiseEnabled);
+    this.pipeline.setCloudLodSampling(this.cloudLodMode, 0);
+    this.current?.setCloudLodSampling?.(this.cloudLodMode, 0);
   }
 
   // 画面へ出す中間バッファを選び、その場で描き直す。
@@ -282,10 +301,11 @@ export class LabView implements GraphicsTarget {
     return this.scratchBox.getCenter(this.caseCenterVector);
   }
 
-  // いまのケースを、観察の向きと描画品質設定の現在値で 1 フレーム描く。
-  public render(): void {
+  // いまのケースを、観察の向きと描画品質設定の現在値で、表示時刻 displayTime [s] の 1 フレームとして描く。
+  public render(displayTime = 0): void {
     if (this.current === null) return;
     // ケースの部品が読む設定は、この1フレームを組む前に押し込む。
+    this.applyCloudSampling();
     this.current.applyGraphics?.(this.graphicsData);
     const sunDirection = directionFromAngles(
       this.angles.sunAzimuthDeg, this.angles.sunElevationDeg, SUN_DIRECTION,
@@ -323,6 +343,7 @@ export class LabView implements GraphicsTarget {
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
     this.pipeline.cumulusShadow.set(
       castsCumulusShadow(this.graphicsData) ? this.current.cumulus ?? null : null);
+    this.current.bakeClouds?.(this.renderer, displayTime, this.gpu);
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     // 雲を切る設定では、大気へ立てる殻もゲーム本体と同じように外す。
     this.pipeline.atmosphere.setDraws(atmosphereDraws(
@@ -352,9 +373,11 @@ export class LabView implements GraphicsTarget {
     this.gpu.reset();
 
     // 暖機。計測に入れないフレームを回して、シェーダのコンパイルや初回の転送を済ませる。
+    // 表示時刻は 60fps で進める — 雲場は表示時刻が変わったフレームにだけ焼くので、止めると生成を測れない。
     for (let frame = 0; frame < warmupFrames; frame++) {
-      this.current?.updateProteinMotion?.((frame + 1) / 60);
-      this.render();
+      const displayTime = (frame + 1) / 60;
+      this.current?.updateProteinMotion?.(displayTime);
+      this.render(displayTime);
       await this.gpu.waitForResolve();
     }
     this.gpu.reset();
@@ -364,8 +387,9 @@ export class LabView implements GraphicsTarget {
     const gpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => [] as number[]);
     const motion = new ProteinMotionMetricsRecorder();
     for (let frame = 0; frame < sampleFrames; frame++) {
-      const motionSample = this.current?.updateProteinMotion?.((warmupFrames + frame + 1) / 60);
-      this.render();
+      const displayTime = (warmupFrames + frame + 1) / 60;
+      const motionSample = this.current?.updateProteinMotion?.(displayTime);
+      this.render(displayTime);
       cpuSamples.push(this.lastRenderCpuMs);
       await this.gpu.waitForResolve();
       const snapshot = this.gpu.snapshot();
