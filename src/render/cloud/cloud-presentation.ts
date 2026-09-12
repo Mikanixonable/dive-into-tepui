@@ -6,7 +6,7 @@ import {
 } from '../opaque-cloud-surface-renderer';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
-import type { CloudFieldSampler, CloudLodMode } from './cloud-field-sampler';
+import type { CloudFieldSampler } from './cloud-field-sampler';
 
 // 雲場の出どころの種類。generated は気候から時々刻々焼く場、observed は衛星写真から分けた静止した場。
 // 値は保存された描画設定を読む鍵なので動かさない。
@@ -56,11 +56,6 @@ export class CloudPresentation {
   }
 
   public setDetail(detail: CumulusDetail): void { this.surface.setDetail(detail); }
-
-  // 雲場の mip 段の選び方を切り替える(診断用)。いま読んでいる場の読み取りに効く。
-  public setLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
-    this.surface.setLodSampling(mode, fixedLevel);
-  }
 
   // 雲全体を描くかを置き直す。偽なら不透明表面も隠す。
   public setCloudsVisible(visible: boolean): void {

@@ -35,7 +35,6 @@ import { FilmLut } from './film-lut';
 import { compileInto, compileIntoOutput } from './compile-into';
 import { DeferredTexture } from '../deferred-texture';
 import { setCelestialSurfaceViewport } from '../celestial/celestial-surface';
-import type { CloudLodMode } from '../cloud/cloud-field-sampler';
 
 export class RenderPipeline implements DebugTargetHost {
   private readonly gbuffer: GBufferPass;
@@ -100,17 +99,6 @@ export class RenderPipeline implements DebugTargetHost {
   public get planetLight(): PlanetLightSource { return this._planetLight; }
   public get ambient(): AmbientSource { return this._ambient; }
   public get atmosphere(): AtmospherePass { return this.atmospherePass; }
-
-  // 雲の積分の刻みを、画素ごとにブルーノイズでずらすかを切り替える。
-  public setCloudBlueNoiseEnabled(enabled: boolean): void {
-    this.atmospherePass.setCloudBlueNoiseEnabled(enabled);
-  }
-
-  // 雲場の mip 段の選び方(診断用)を、大気と影の両パスへ配る。fixedLevel は 'fixed' のときに読む段。
-  public setCloudLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
-    this.atmospherePass.setCloudLodSampling(mode, fixedLevel);
-    this.shadowPass.setCloudLodSampling(mode, fixedLevel);
-  }
 
   // graphics は構築時点の描画品質設定。以後の変更は applyGraphics() で受ける。
   public constructor(
