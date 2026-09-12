@@ -1,6 +1,7 @@
 // 地球表面のfallback、配信bootstrap、GPU常駐、詳細材質を組み合わせる描画側composition root。
 import type { WebGPURenderer } from 'three/webgpu';
 import { CelestialSurface } from './celestial/celestial-surface';
+import earthSmoothnessUrl from '../assets/earth-smoothness.png';
 import { EarthSurface, EarthSurfaceContext } from './earth-surface';
 import type { EarthSurfaceMaterialAttachment, EarthSurfaceStatus } from './earth-surface';
 import { EarthSurfaceResidentCoordinator } from './earth-surface-resident';
@@ -38,7 +39,7 @@ export interface EarthSurfaceRuntimeHandle {
 function fallbackSurface(status: EarthSurfaceStatus = 'loading'): EarthSurface {
   return new EarthSurface(
     new EarthSurfaceContext(EARTH_SURFACE_FIXTURE_SOURCE),
-    CelestialSurface.textured(EARTH_TEXTURE),
+    CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl),
     null,
     status,
   );

@@ -1,7 +1,7 @@
 // 天体表面のメッシュ。分割段ラダーの各段ぶんの球を1枚のマテリアルで束ね、見かけ直径に応じて
 // 1段を見せる。ライトプリパスの受け手として描かれる。テクスチャ画像は最初の syncLod で取りに行く。
 import * as THREE from 'three/webgpu';
-import { texture as textureNode, asin, atan, clamp, uv, vec2 } from 'three/tsl';
+import { texture as textureNode, uv } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
 import { markLitOpaque } from '../pipeline/lit-layer';
 import { rec709Luminance, scaledToBondAlbedo, type Albedo } from '../celestial-albedo';
@@ -11,22 +11,11 @@ import {
   type CelestialSurfaceMaterialAttachment,
 } from './celestial-surface-material';
 import type { CelestialTexture } from '../celestial-textures';
-import type { Vec2Node, Vec3Node } from '../tsl-types';
 import type { RenderStyle } from '../render-style';
 
 // 球の開始方位 [rad]。正距円筒図法のテクスチャは経度 0 を u=0.5 へ置くので、その経線が
 // モデルの本初子午線(+Z)へ来る向きから分割を始める。
 const PRIME_MERIDIAN_PHI = -Math.PI / 2;
-
-// 天体固定の単位方向を、球メッシュが持つ uv へ写す(分割の逆写像)。u は 0..1 の外へ出うるので、
-// この uv でテクスチャを読む側は経度方向を巻いておく。
-export function sphereMeshUv(direction: Vec3Node): Vec2Node {
-  const longitude = atan(direction.z, direction.x.negate());
-  return vec2(
-    longitude.sub(PRIME_MERIDIAN_PHI).div(2 * Math.PI),
-    asin(clamp(direction.y, -1, 1)).div(Math.PI).add(0.5),
-  );
-}
 
 // 分割段ごとの単位球ジオメトリを、その段を使う全天体で共有する。
 const sharedLodGeometries = new Map<SphereLodLevel, THREE.BufferGeometry>();

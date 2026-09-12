@@ -1,91 +1,44 @@
-// 雲場テクスチャを、天体固定の単位方向から読む。読み取りの TSL ノードと、UV・mip 段の選び方を
-// 持つ。差し込まれたテクスチャは借り物で、解放は差し込んだ側が行う。
+// 雲場テクスチャを、天体固定の単位方向から読む。焼いた側と同じ cap の置き方を写し取り、同じ uv
+// で読む。差し込まれたテクスチャは借り物で、解放は差し込んだ側が行う。
 import * as THREE from 'three/webgpu';
-import { float, fract, greaterThan, int, log2, max, min, select, texture, uniform, vec2 } from 'three/tsl';
-import { sphereMeshUv } from '../celestial/celestial-surface';
+import { dot, step, texture, uniform } from 'three/tsl';
 import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
-import { maxAvailableMipLevelOf } from './baked-field';
+import { orthographicCapUv, type CapPlacement } from './field-projection';
 import { cloudSampleFromTexel, type CloudSample } from './cloud-field-sample';
-import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
+import type { FloatUniform, Vec3Node, Vec3Uniform, Vec4Node } from '../tsl-types';
 
-// 天体固定の単位方向を雲場の UV へ写す関数。
-export type CloudUvAt = (direction: Vec3Node) => Vec2Node;
-// mip 段の選び方。'explicit' は読み手の指定(指定が無ければ画面微分)、'fixed' は全読みを固定段で
-// 読む診断用。
-export type CloudLodMode = 'explicit' | 'fixed';
+// 焼いた雲場と、それを焼いた cap の置き方の組。場を出す側が毎フレーム公開し、読み手が写し取る。
+export interface CloudFieldBinding {
+  readonly texture: THREE.Texture;
+  readonly cap: CapPlacement;
+}
 
 export class CloudFieldSampler {
-  // 読む雲場のテクスチャノード。場が差し込まれるまでは EMPTY_CLOUD_FIELD を読み、setTexture は
-  // 同じノードの値を差し替える。
+  // 読む雲場のテクスチャノード。場が結ばれるまでは EMPTY_CLOUD_FIELD を読み、bind は同じノードの
+  // 値を差し替える。
   private readonly field = texture(EMPTY_CLOUD_FIELD);
+  // 焼いた側の cap の置き方。グラフは一度組めば済み、値だけが毎フレーム入れ替わる。
+  private readonly center: Vec3Uniform = uniform(new THREE.Vector3(0, 0, 1));
+  private readonly east: Vec3Uniform = uniform(new THREE.Vector3(1, 0, 0));
+  private readonly north: Vec3Uniform = uniform(new THREE.Vector3(0, 1, 0));
+  private readonly sinRadius: FloatUniform = uniform(1);
+  private readonly cosRadius: FloatUniform = uniform(-1);
 
-  // 場の幅 [texel]。差し込むテクスチャで変わるので、テクスチャから読むノードにする。
-  private readonly fieldWidth = (this.field.size(int(0)) as THREE.Node<'uvec2'>).x;
-  // 読める最大の mip 段。texture.mipmaps.length は GPU が自動生成した段を数えないので、テクスチャの
-  // 設定と寸法から求める — 生成されていない段を明示 LOD で読まないため。
-  private readonly maxMipLevel = uniform(0);
-  // 1 なら全読みを fixedLod の段で読む(診断用)。0 なら読み手の指定に従う。
-  private readonly fixedLodMode = uniform(0);
-  private readonly fixedLod = uniform(0);
-
-  // field を渡せば、はじめからその場を読む。uvAt は方向から雲場 UV への写しで、既定は球メッシュの uv。
-  public constructor(
-    field?: THREE.Texture,
-    private readonly uvAt: CloudUvAt = sphereMeshUv,
-  ) {
-    if (field !== undefined) this.setTexture(field);
+  // 焼いた場と、それを焼いた cap の置き方を写し取る。テクスチャの所有権は移らない。
+  public bind(binding: CloudFieldBinding): void {
+    this.field.value = binding.texture;
+    this.center.value.copy(binding.cap.center);
+    this.east.value.copy(binding.cap.east);
+    this.north.value.copy(binding.cap.north);
+    this.sinRadius.value = binding.cap.sinRadius;
+    this.cosRadius.value = binding.cap.cosRadius;
   }
 
-  public get texture(): THREE.Texture { return this.field.value as THREE.Texture; }
-
-  // 読む雲場を差し替え、読める最大の mip 段を引き直す。テクスチャの所有権は移らない。
-  public setTexture(field: THREE.Texture): void {
-    this.field.value = field;
-    const image = field.image as { readonly width?: number; readonly height?: number } | undefined;
-    this.maxMipLevel.value = maxAvailableMipLevelOf(
-      image?.width ?? 1, image?.height ?? 1, field.generateMipmaps, field.mipmaps.length,
-    );
-  }
-
-  // mip 段の選び方を切り替える(診断用)。fixedLevel は 'fixed' のときに読む段で、実在する段へ
-  // 切り詰めて読む。
-  public setLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
-    this.fixedLodMode.value = mode === 'fixed' ? 1 : 0;
-    this.fixedLod.value = fixedLevel;
-  }
-
-  // 単位方向 direction の雲場の texel。lod を渡せばその mip 段で読み、渡さなければ画面微分で
-  // 段を選ぶ。
-  private sample(direction: Vec3Node, lod?: FloatNode): Vec4Node {
-    // uv の経度は 0..1 の外へ出うるので、周回させて読む。
-    const uv = this.uvAt(direction);
-    const sample = this.field.sample(vec2(fract(uv.x), uv.y));
-    // 読み手の指定した段は、実在する段へ切り詰める。
-    const selected = lod === undefined
-      ? sample
-      : sample.level(min(max(lod, 0), this.maxMipLevel));
-    // 診断の固定段が立っていれば、読み手の指定より優先する。
-    return select(
-      greaterThan(this.fixedLodMode, 0.5),
-      sample.level(min(max(this.fixedLod, 0), this.maxMipLevel)),
-      selected,
-    );
-  }
-
-  // 単位方向 direction の雲標本を、生成時と同じ単位で読む。lod を渡せばその mip 段で読む。
-  public sampleCloud(direction: Vec3Node, lod?: FloatNode): CloudSample {
-    return cloudSampleFromTexel(this.sample(direction, lod));
-  }
-
-  // 幅 width [m] を 1 texel で覆う mip 段。半径 radius [m] の球面で測る。画面の隣接画素と連続しない
-  // 標本(光路上など)の lod に渡す。
-  public lodForWidth(width: FloatNode, radius: FloatNode): FloatNode {
-    const texelWidth = this.fieldTexelWidth(radius);
-    return min(max(log2(width.div(max(texelWidth, 1))), float(0)), this.maxMipLevel);
-  }
-
-  // この半径の球面上で、fieldの経度1 texelが張る物理幅 [m]。
-  public fieldTexelWidth(radius: FloatNode): FloatNode {
-    return radius.mul(2 * Math.PI).div(float(this.fieldWidth));
+  // 単位方向 direction の雲標本を、生成時と同じ単位で読む。**cap の外は「雲なし」を返す** —
+  // 返さないと縁の値が外へ伸び、裏側の半球では表側の雲を鏡映しに読む。
+  public sampleCloud(direction: Vec3Node): CloudSample {
+    const inside = step(this.cosRadius, dot(direction, this.center));
+    const uv = orthographicCapUv(direction, this.east, this.north, this.sinRadius);
+    return cloudSampleFromTexel(this.field.sample(uv).mul(inside) as Vec4Node);
   }
 }
