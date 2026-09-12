@@ -69,6 +69,14 @@ export function cutoffAltitude(optics: AtmosphereOptics, surfaceRadius: number):
   );
 }
 
+// エアグローを切った光学。**打ち切り高度は動かさない** — cutoffAltitude が見るのは発光層の
+// 高度とスケールハイトだけなので、強さを 0 にすれば積分の範囲もサンプル点の配分もオンのままで、
+// 絵から消えるのは発光の項だけになる。そこが切り分けの条件である。
+export function withAirglowEnabled(optics: AtmosphereOptics, enabled: boolean): AtmosphereOptics {
+  if (enabled || optics.airglow === undefined) return optics;
+  return { ...optics, airglow: { ...optics.airglow, strength: 0 } };
+}
+
 // 大気を天頂方向へ通り抜ける光学的厚み。**濃さを1つの数で表すためだけの量**なので、波長ごとに
 // 違うレイリー散乱は3成分の平均で潰す。
 function verticalOpticalDepth(optics: AtmosphereOptics): number {
