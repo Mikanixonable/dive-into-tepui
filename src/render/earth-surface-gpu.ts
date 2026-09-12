@@ -1,9 +1,11 @@
 // 地球タイルのGPU機能検査、非公開層への色・地形の書込みとフレーム境界での公開を担う。
 import {
-  EARTH_BASE_LAYER, EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EARTH_TILE_MAX_Z,
+  EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z,
   earthTileId, earthTileParent,
-} from './earth-surface-tiles';
-import type { EarthTileKey, EarthTileResident } from './earth-surface-tiles';
+} from './earth-surface-tile-key';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from './earth-surface-page-table';
+import type { EarthTileKey } from './earth-surface-tile-key';
+import type { EarthTileResident } from './earth-surface-tiles';
 import type { DataArrayTexture, DataTexture } from 'three/webgpu';
 
 // Three.js側の実テクスチャ。GPU固有の書込みはearth-surface-gpu-three.tsへ閉じ込める。
@@ -17,7 +19,7 @@ export interface EarthSurfaceGpuCapabilities {
   readonly texture2dArray: boolean;
   readonly maxTextureArrayLayers: number;
   readonly colorSrgbLinear: boolean;
-  readonly terrainFloat16Linear: boolean;
+  readonly terrainRgba8Linear: boolean;
 }
 
 export interface EarthSurfaceGpuBackend {
@@ -25,7 +27,7 @@ export interface EarthSurfaceGpuBackend {
   readonly textures?: EarthSurfaceGpuTextures | null;
   // 解決時点で、後続の描画が書込みを読む順序を保証する。
   writeColor(layer: number, pixels: Uint8Array): Promise<void>;
-  writeTerrain(layer: number, pixels: Uint16Array): Promise<void>;
+  writeTerrain(layer: number, pixels: Uint8Array): Promise<void>;
   // フレーム境界で同期的に交換する。例外時は直前のページ表を維持する。
   swapPageTable(pixels: Uint8Array): void;
   dispose(): void;
@@ -43,7 +45,7 @@ interface LayerSlot {
 // 必須の線形標本化と配列層数がそろう場合に詳細タイルを利用できる。
 export function supportsEarthSurfaceTiles(capabilities: EarthSurfaceGpuCapabilities): boolean {
   return capabilities.texture2dArray && capabilities.maxTextureArrayLayers >= EARTH_TILE_LAYERS
-    && capabilities.colorSrgbLinear && capabilities.terrainFloat16Linear;
+    && capabilities.colorSrgbLinear && capabilities.terrainRgba8Linear;
 }
 
 export class EarthSurfaceGpuAdapter {
@@ -81,9 +83,9 @@ export class EarthSurfaceGpuAdapter {
     return this.slots.get(layer)?.reservation ?? null;
   }
 
-  // 色RGBA8/sRGBと地形RGBA16Fの同じ層への書込みがそろったとき、その予約を公開可能にする。
+  // 色RGBA8/sRGBと地形RGBA8の同じ層への書込みがそろったとき、その予約を公開可能にする。
   public async uploadLayer(
-    color: Uint8Array, terrain: Uint16Array, reservation: EarthLayerReservation,
+    color: Uint8Array, terrain: Uint8Array, reservation: EarthLayerReservation,
   ): Promise<void> {
     this.requireActive();
     const slot = this.requireReservation(reservation);
@@ -139,7 +141,7 @@ export class EarthSurfaceGpuAdapter {
         continue;
       }
       const tile = this.requireUploaded(layer);
-      if (tile.key.z !== z) throw new Error('Earth page has the wrong tile level');
+      if (z < EARTH_TILE_MIN_Z || tile.key.z !== z) throw new Error('Earth page has the wrong tile level');
       const cell = offset / 4;
       const size = 2 ** (EARTH_TILE_MAX_Z - z);
       const cellX = cell % EARTH_PAGE_WIDTH;
@@ -186,6 +188,7 @@ export class EarthSurfaceGpuAdapter {
   // 公開ページをbaseへ戻し、完了済みの詳細層を再利用可能にする。upload中の層だけは
   // backendの書込み完了まで保持し、同じ層へ早すぎる再利用をしない。
   public reset(): void {
+    // 予約世代と公開層をそろえてから、baseページ表をGPUへ反映する。
     if (this.disposed) return;
     this.resetEpoch++;
     this.staged = null;

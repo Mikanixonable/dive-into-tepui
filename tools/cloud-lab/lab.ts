@@ -6,12 +6,12 @@ import { Fn, If, screenUV, vec2, vec3 } from 'three/tsl';
 // 実写の雲(ゲーム本体が地表へ貼っているもの)。「実写」ビューが比較のためだけに読む。
 import cloudsPhotoUrl from '../../src/assets/8k_clouds.jpg';
 import { earthGeneratedCloudField } from '../../src/game/celestial/solar-system/earth-system';
-import { bootstrapEarthSurface } from '../../src/game/celestial/solar-system/earth-surface-runtime';
+import { bootstrapEarthSurface } from '../../src/render/earth-surface-runtime';
 import { OrthographicCap } from '../../src/render/cloud/field-projection';
 import { pixelsToPngDataUrl } from '../lab-png';
 import { CloudLabPane } from './pane';
 import { CLOUD_LAB_VIEWS, DEFAULT_CLOUD_LAB_VIEW, type CloudLabView, type CloudLabViewId } from './views';
-import type { EarthSurfaceBootstrapResult } from '../../src/game/celestial/solar-system/earth-surface-runtime';
+import type { EarthSurfaceBootstrapResult } from '../../src/render/earth-surface-runtime';
 import type { Vec3Node } from '../../src/render/tsl-types';
 
 // 面の大きさ [px]。全球の面は正距円筒なので 2:1、cap の面は正方形。cap の写しは表示と同じ大きさに
