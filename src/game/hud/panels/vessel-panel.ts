@@ -10,14 +10,14 @@ import { setElementText } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
 import type { Input } from '../../../input/input';
 import type { KeyBinding } from '../../../input/key-mapping';
-import type { RadiatorSide, RadiatorSystem } from '../../player/radiator';
-import type { SolarSide, PowerSystem } from '../../player/power';
+import type { RadiatorSide } from '../../player/radiator';
+import type { SolarSide } from '../../player/power';
 import { THROTTLE_LEVELS, THROTTLE_LABELS } from '../../player/throttle';
 import { MAX_DYN_PRESSURE } from '../../player/aero-load';
 import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
 import type { Stage } from '../../stages/stage';
 import type { CameraSystem } from '../../camera/camera-system';
-import { isPlayerMotion } from '../../player/player-motion';
+import type { PlayerStatusSnapshot } from '../../player/player-status-snapshot';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -54,8 +54,9 @@ interface DeployButtonDom {
 export class VesselPanel {
   private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
   private input: Input | null = null;
-  private power: PowerSystem | null = null;
-  private radiator: RadiatorSystem | null = null;
+  private status: PlayerStatusSnapshot | null = null;
+  private toggleSolarPanel: ((side: SolarSide) => void) | null = null;
+  private toggleRadiator: ((side: RadiatorSide) => void) | null = null;
   private followButton: Button | null = null;
   private readonly throttleControl: SegmentedControl<number> | null;
   private readonly throttleMeter: VesselMeterDom | null;
@@ -148,8 +149,8 @@ export class VesselPanel {
   private buildSolarButtons(container: HTMLElement | undefined): Record<SolarSide, DeployButtonDom> | null {
     if (!container) return null;
     return {
-      up: this.buildDeployButton(container, () => this.power?.toggle('up')),
-      down: this.buildDeployButton(container, () => this.power?.toggle('down')),
+      up: this.buildDeployButton(container, () => this.toggleSolarPanel?.('up')),
+      down: this.buildDeployButton(container, () => this.toggleSolarPanel?.('down')),
     };
   }
 
@@ -157,8 +158,8 @@ export class VesselPanel {
   private buildRadiatorButtons(container: HTMLElement | undefined): Record<RadiatorSide, DeployButtonDom> | null {
     if (!container) return null;
     return {
-      up: this.buildDeployButton(container, () => this.radiator?.toggle('up')),
-      down: this.buildDeployButton(container, () => this.radiator?.toggle('down')),
+      up: this.buildDeployButton(container, () => this.toggleRadiator?.('up')),
+      down: this.buildDeployButton(container, () => this.toggleRadiator?.('down')),
     };
   }
 
@@ -183,10 +184,9 @@ export class VesselPanel {
   public sync(
     target: Controllable | null, activeStage: Stage, cameraSystem: CameraSystem, isMapView: boolean,
   ): void {
-    this.power = target !== null && isPlayerMotion(target.motion) ? target.motion.power : null;
-    this.radiator = target !== null && isPlayerMotion(target.motion)
-      ? target.motion.radiator
-      : null;
+    this.status = target?.statusSnapshot() ?? null;
+    this.toggleSolarPanel = target?.toggleSolarPanel?.bind(target) ?? null;
+    this.toggleRadiator = target?.toggleRadiator?.bind(target) ?? null;
     if (!target) {
       this.els.get('hud-vessel-status')?.classList.add('hidden');
       return;
@@ -202,8 +202,10 @@ export class VesselPanel {
 
     this.syncDeployButtons();
 
-    this.syncState('rcs', target.throttle.rcsDamp, 'near');
-    const throttleIdx = target.throttle.throttleIdx;
+    const status = this.status!;
+
+    this.syncState('rcs', status.rcsDamp, 'near');
+    const throttleIdx = status.throttleIdx;
     this.syncMeter(
       this.throttleMeter,
       (throttleIdx + 1) / THROTTLE_LEVELS.length,
@@ -215,7 +217,7 @@ export class VesselPanel {
     this.throttleControl?.setSelected(throttleIdx);
 
     // 動圧の行は、大気を受ける操作対象のときだけ出す。
-    const aero = isPlayerMotion(target.motion) ? target.motion.aero : null;
+    const aero = status.aero;
     this.els.get('qdyn-row')?.classList.toggle('hidden', aero === null);
     if (aero) {
       const qdyn = aero.qdyn;
@@ -231,14 +233,14 @@ export class VesselPanel {
     }
 
     // 微調整・視点追従・進行方向ホールドの状態語。
-    this.syncState('fine', target.fineAttitude, 'near');
+    this.syncState('fine', status.fineAttitude, 'near');
     const cameraFollowsAttitude = cameraSystem.combatCamera.rotationFollow?.kind === 'attitude';
     this.syncState('camfollow', cameraFollowsAttitude, 'signal');
     this.followButton?.setOn(cameraFollowsAttitude);
-    this.syncState('prohold', target.throttle.progradeHold, 'near');
+    this.syncState('prohold', status.progradeHold, 'near');
 
-    const maxFuel = target.totalMaxFuel;
-    const clampedFuel = Math.max(0, Math.min(maxFuel, target.totalFuel));
+    const maxFuel = status.totalMaxFuel;
+    const clampedFuel = Math.max(0, Math.min(maxFuel, status.totalFuel));
     const fuelPercent = maxFuel > 0 ? (clampedFuel / maxFuel) * 100 : 0;
     const fuelValueText = `${Math.round(clampedFuel)} / ${Math.round(maxFuel)}`;
 
@@ -257,13 +259,13 @@ export class VesselPanel {
 
     // 機関砲を持たない操作対象では、同じ行に燃料の読み値を出す。
     const ammo = this.els.get('ammo');
-    const fire = target.fire;
+    const fire = status.fire;
     if (ammo && fire) {
       ammo.textContent = fmtAmmoStatus(fire.rounds, fire.mags, fire.cooldown);
       ammo.classList.toggle('warn-hot', fire.cooldown > 0 || fire.mags < 4);
     } else if (ammo) {
-      ammo.textContent = `Fuel: ${Math.round(target.totalFuel)} / ${maxFuel}`;
-      ammo.classList.toggle('warn-hot', target.totalFuel < maxFuel * 0.2);
+      ammo.textContent = `Fuel: ${Math.round(status.totalFuel)} / ${maxFuel}`;
+      ammo.classList.toggle('warn-hot', status.totalFuel < maxFuel * 0.2);
     }
   }
 
@@ -316,18 +318,18 @@ export class VesselPanel {
   }
 
   private syncDeployButtons(): void {
-    const { power, radiator } = this;
+    const status = this.status;
     const container = this.els.get('vessel-deploy-controls');
-    container?.classList.toggle('hidden', power === null || radiator === null);
-    if (!power || !radiator || !this.solarButtons || !this.radiatorButtons) return;
+    container?.classList.toggle('hidden', status?.power === null || status?.radiator === null);
+    if (!status?.power || !status.radiator || !this.solarButtons || !this.radiatorButtons) return;
 
-    this.syncDeployButton(this.solarButtons.up, power.deployOf('up'), 0, 'パドル', SOLAR_UI.up);
-    this.syncDeployButton(this.solarButtons.down, power.deployOf('down'), 0, 'パドル', SOLAR_UI.down);
+    this.syncDeployButton(this.solarButtons.up, status.power.deploy.up, 0, 'パドル', SOLAR_UI.up);
+    this.syncDeployButton(this.solarButtons.down, status.power.deploy.down, 0, 'パドル', SOLAR_UI.down);
     this.syncDeployButton(
-      this.radiatorButtons.up, radiator.deployOf('up'), radiator.wearOf('up'), '放熱板', RADIATOR_UI.up,
+      this.radiatorButtons.up, status.radiator.up.deploy, status.radiator.up.wear, '放熱板', RADIATOR_UI.up,
     );
     this.syncDeployButton(
-      this.radiatorButtons.down, radiator.deployOf('down'), radiator.wearOf('down'), '放熱板', RADIATOR_UI.down,
+      this.radiatorButtons.down, status.radiator.down.deploy, status.radiator.down.wear, '放熱板', RADIATOR_UI.down,
     );
   }
 

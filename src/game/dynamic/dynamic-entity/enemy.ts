@@ -7,7 +7,7 @@ import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import { closingSpeed, type Contact } from './contact';
 import { contactDamageSpeed } from './contact-damage';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
-import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../../math/vec3';
+import { add, len, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../../math/vec3';
 import { solveLeadTime } from '../../../physics/intercept';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import { enemyDestroyFragments } from './debris-piece';
@@ -15,32 +15,23 @@ import type { Player } from '../../player/player';
 import { Bullet } from './bullet';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { R_EARTH_EQ } from '../../celestial/solar-system/constants';
-import { fmtDist, fmtSpeed } from '../../../hud/utils';
-import { relativeInfo } from '../../orbit-info';
-import { orbitRows } from '../../pickable/orbit-rows';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
-import { shipMarkerSvg } from '../../marker/marker-shapes';
 import type { Quat } from '../../../math/quat';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { EnemyDeathCause, StageOutcome } from '../../stages/stage-outcome';
 import { savedKinematicState, type EnemySaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/crowding';
-import type { MarkerVisibility } from '../../marker/marker-visibility';
-import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import type { CombatTarget } from './combat-target';
-import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { ControlSelection } from '../../control-selection';
-import type { ObjectAuthoring } from '../../pickable/inspected-object';
-import type { MenuItem } from '../../hud/windows/context-menu';
-import type { PropertyRow } from '../../../hud/windows/property-window-content';
-import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
-import type { OrbitingObject } from './orbiting-object';
 import type { DynamicEntityKind, FormationRole } from './entity-kind';
 import type { EntityRegistry, SpawnGate } from '../entity-registry';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotion } from '../dynamic-motion';
 import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
+import { sunGlareSpreadScale } from '../../combat/sun-glare-spread';
+import { EnemyInspection } from '../../pickable/enemy-inspection';
+import { createShipDefaultParts } from './ship-default-parts';
+import type { Part } from './parts';
 
 // 敵機アセットの座標を物理寸法へ直す倍率。機体モデル・撃破時の破片・爆発の大きさは、
 // 全ての敵がこの1つの倍率を共有する。
@@ -61,8 +52,6 @@ const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の候補
 const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
 
 // 軌道物体一覧で接近中として扱う、自艦との距離 [m]。
-const ENEMY_APPROACH_DIST = 2e5;
-
 // スナップショットからの再開。復元の腕は全具象で共通でなければならない。
 export interface EnemyRestore { readonly saved: EnemySaveData; readonly simTime: number }
 
@@ -89,26 +78,13 @@ export interface EnemyClass {
   new (init: EnemyRestore, worldSfx: WorldSfx, fx: FlashEffects, scene?: THREE.Scene): Enemy;
 }
 
-// 太陽グレアによるプラズマ弾の散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが甘くなり、
-// 順光では締まる。難易度調整のための経験則であって物理計算ではない。
-// pos が地球の影(簡易円柱モデル)に入っていれば太陽光が届かないので倍率は 1。
-function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
-  const along = dot(pos, sunDir);
-  if (along < 0 && lenSq(addScaled(pos, sunDir, -along)) < R_EARTH_EQ * R_EARTH_EQ) return 1;
-
-  const angle = (Math.acos(Math.max(-1, Math.min(1, dot(aimDir, sunDir)))) * 180) / Math.PI;
-  if (angle <= 5) return 2;
-  if (angle <= 30) return 1 + (30 - angle) / 25;
-  if (angle >= 160) return 0.5;
-  if (angle >= 130) return 1 - ((angle - 130) / 30) * 0.5;
-  return 1;
-}
-
 // 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、交戦圏
 // 離脱・焼失・衝突の記録。機体が何でできているか(メッシュ・被弾モデル・判定形状)は具象が持つ。
-export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable {
+export abstract class Enemy extends Ship implements CombatTarget {
   public override readonly mapKind: DynamicEntityKind = 'enemy';
   public override readonly pickable = true;
+  public readonly inspection = new EnemyInspection(this);
+  public readonly objectPickable = this.inspection;
 
   public readonly accent: string | number; // マーカー色。同じ色の敵を1つの集団とみなす
   public readonly orbitLineColor: string | number;
@@ -134,6 +110,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     protected readonly _worldSfx: WorldSfx,
     protected readonly _fx: FlashEffects,
     shape?: EnemyCollisionShape,
+    parts: readonly Part[] = createShipDefaultParts(ENEMY_MAX_HP),
   ) {
     // 復元と新規配置を同じ形へ均してから基底へ渡す。
     const placed: EnemyPlacement = 'saved' in init
@@ -169,6 +146,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
       }, shape),
       view,
       placed.id,
+      parts,
     );
     this.accent = placed.accent;
     this.orbitLineColor = placed.orbitLineColor;
@@ -409,7 +387,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     const aimDir = norm(predictedRelPos);
 
     const sunDir = celestialBodies.sunDirFrom(r, simTime);
-    const spreadScale = sunGlareSpreadScale(r, aimDir, sunDir);
+    const spreadScale = sunGlareSpreadScale(r, aimDir, sunDir, R_EARTH_EQ);
 
     // 散布界をスケール適用
     const perp = randPerp(aimDir);
@@ -452,103 +430,6 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     };
   }
 
-  // 被選択物(ObjectPickable)としての振る舞い。
-  public get gone(): boolean { return !this.motion.alive; }
-  public get orbitState(): KinematicState { return this.motion.state; }
-  public readonly glyph = ENTITY_GLYPH.enemyShip;
-  public get glyphSvg(): string { return shipMarkerSvg(false); }
-  public readonly listSection: MapListSection = 'enemy';
-  public readonly pickerGenre: ObjectPickerGenre = '敵';
-  public readonly hiddenBehindBodies = true;
-  public readonly onlyInFocusedSystem = false;
-  public listPriority(): number { return 0; }
-
-  // 表示時刻の ECI 位置。予測が届かない時刻では null。
-  public posAt(displayTime: number): Vec3 | null {
-    return this.motion.stateAt(displayTime)?.r ?? null;
-  }
-
-  public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(this.markerKey); }
-
-  // 自艦から見た距離と相対速度。自艦がいなければ空。
-  public listDetail(
-    _celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number,
-  ): string {
-    if (viewer === null) return '';
-    const viewerState = viewer.motion.state;
-    const d = len(sub(this.posAt(displayTime) ?? this.motion.state.r, viewerState.r));
-    const label = this.listCounted(viewer, displayTime) ? '接近' : '距離';
-    return `${label} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.motion.state.v, viewerState.v)))}`;
-  }
-
-  // 検索が照合する文字列。行の補助表示と同じ。
-  public listSearchText(
-    celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number,
-  ): string {
-    return this.listDetail(celestialBodies, viewer, displayTime);
-  }
-
-  // 自艦へ接近中と扱う距離まで寄っているか。
-  public listCounted(viewer: OrbitingObject | null, displayTime: number): boolean {
-    if (viewer === null) return false;
-    const d = len(sub(this.posAt(displayTime) ?? this.motion.state.r, viewer.motion.state.r));
-    return d < ENEMY_APPROACH_DIST;
-  }
-
-  // 右クリックメニュー・プロパティウィンドウに出す操作項目。
-  public menuItems(
-    _celestialBodies: CelestialBodies, _viewer: OrbitingObject | null, navTargetId: string | null,
-  ): readonly MenuItem<MenuAction>[] {
-    return [
-      MenuCommon.target(navTargetId === this.id),
-      MenuCommon.focus(),
-      MenuCommon.trajectoryLine(this.trajectoryLineVisible),
-      MenuCommon.duplicate(),
-      { label: '削除', act: 'delete' },
-      MenuCommon.cancel(),
-    ];
-  }
-
-  // menuItems が出した操作 act を実行する。
-  public runMenu(
-    act: MenuAction, _controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
-  ): void {
-    if (act === 'delete') this.motion.alive = false;
-    else if (act === 'toggleTrajectoryLine') {
-      this.trajectoryLineVisible = !this.trajectoryLineVisible;
-    } else if (act === 'duplicate') {
-      authoring?.openObjectPlacerForDuplicate(this.mapKind, this.motion.state);
-    }
-  }
-
-  // プロパティウィンドウに出す行。viewer が null なら相対量の行を省く。
-  public propertyRows(
-    celestialBodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
-  ): readonly PropertyRow[] {
-    const rel = viewer ? relativeInfo(viewer, this, celestialBodies.celestialMotions, simTime) : null;
-    const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(this.hp)} / ${this.maxHp}` }];
-    // 自艦との相対量。
-    if (rel) {
-      rows.push(
-        { key: 'dist', label: '距離', value: fmtDist(rel.dist) },
-        { key: 'closing', label: '接近速度', value: fmtSpeed(rel.closing) },
-        { key: 'relspeed', label: '相対速度', value: fmtSpeed(rel.relSpeed), collapsible: true },
-      );
-    }
-    rows.push(...orbitRows(this, celestialBodies, simTime));
-    // 相対傾斜角は自艦の軌道面が基準なので、軌道要素と同じグループへ並べる。
-    if (rel) {
-      rows.push({
-        key: 'relinc', label: '相対傾斜 [AN/DN]',
-        value: isFinite(rel.relIncDeg) ? `${rel.relIncDeg.toFixed(2)}°` : '---', group: '軌道',
-      });
-    }
-    return rows;
-  }
-
-  public readonly rename = null;
-  public readonly onMapSelect = null;
-  public readonly onMapFocus = null;
 }
 
 // entity を敵へ絞り込む型ガード。

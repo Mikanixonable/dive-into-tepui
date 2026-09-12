@@ -7,6 +7,7 @@ import {
 } from './enemy';
 import type { MetalEnemySaveData } from '../../save/save-data';
 import { MetalEnemyView, Stage0MetalEnemyView } from '../../../render/dynamic/dynamic-entity/metal-enemy-view';
+import type { PartDamageTarget } from './damage-capabilities';
 
 // 各金属機体モデルを ENEMY_MODEL_SCALE 倍したときの外接球半径 [m]。描画テストでアセットの
 // bounds と一致することを固定し、実行時の物理構築が THREE のモデル生成へ依存しないようにする。
@@ -34,11 +35,12 @@ const TYPED_INERTIA = v3(1, 1, 1);
 type MetalEnemyPlacement = EnemyPlacement & { readonly typeIndex: number | null };
 
 // 金属機体の敵。艦と同じパーツ式の被弾モデルを持つ。
-export class MetalEnemy extends Enemy {
+export class MetalEnemy extends Enemy implements PartDamageTarget {
   public static readonly kind = 'metal-enemy';
   public static spawnGate(): null { return null; }
 
   private readonly typeIndex: number | null;
+  public override get parts() { return super.parts; }
 
   // View の機体テンプレートと、それに対応する Motion の接触半径を同じ typeIndex で選ぶ。
   public constructor(
