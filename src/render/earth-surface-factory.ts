@@ -1,5 +1,5 @@
 // 地球表面のfallback、配信bootstrap、GPU常駐、詳細材質を組み合わせる描画側composition root。
-import type { WebGPURenderer } from 'three/webgpu';
+import type { Texture, WebGPURenderer } from 'three/webgpu';
 import { CelestialSurface } from './celestial/celestial-surface';
 import { EarthSurface, EarthSurfaceContext } from './earth-surface';
 import type { EarthSurfaceMaterialAttachment, EarthSurfaceStatus } from './earth-surface';
@@ -34,13 +34,17 @@ export interface EarthSurfaceRuntimeHandle {
   readonly ready: Promise<EarthSurfaceFactoryResult>;
 }
 
-function fallbackSurface(status: EarthSurfaceStatus = 'loading'): EarthSurface {
-  return new EarthSurface(
+// 起動直後の8K全球画像と、その画像を詳細材質でも共有するための参照を返す。
+function fallbackSurface(status: EarthSurfaceStatus = 'loading'): {
+  readonly surface: EarthSurface; readonly baseColorTexture: Texture;
+} {
+  const fallback = CelestialSurface.textured(EARTH_TEXTURE);
+  return { surface: new EarthSurface(
     new EarthSurfaceContext(EARTH_SURFACE_FIXTURE_SOURCE),
-    CelestialSurface.textured(EARTH_TEXTURE),
+    fallback,
     null,
     status,
-  );
+  ), baseColorTexture: fallback.baseColorTexture! };
 }
 
 interface EarthSurfaceConnection {
@@ -52,20 +56,26 @@ interface EarthSurfaceConnection {
 
 function detailedMaterialFor(
   source: EarthSurfaceSource, textures: EarthSurfaceGpuTextures, fetchImpl?: typeof fetch,
+  sharedBaseColor?: Texture,
 ): EarthSurfaceMaterialAttachment {
-  const binding = createEarthSurfaceMaterialBinding(textures, source.baseColorUrl, source.baseTerrainUrl, fetchImpl);
+  const binding = createEarthSurfaceMaterialBinding(
+    textures, source.baseColorUrl, source.baseTerrainUrl, fetchImpl, sharedBaseColor,
+  );
   return {
     material: binding.material,
     deferred: binding.deferredTextures,
     textures: binding.textures,
     onDispose: binding.dispose,
     failureReason: binding.failureReason,
+    ready: binding.ready,
+    prepare: binding.prepare,
     syncFrame: binding.syncFrame,
   };
 }
 
+// bootstrap済み契約を、GPU能力に応じて詳細接続または全球表示へ落とす。
 function coordinatorFor(
-  bootstrap: EarthSurfaceBootstrapResult, options: EarthSurfaceFactoryOptions,
+  bootstrap: EarthSurfaceBootstrapResult, options: EarthSurfaceFactoryOptions, sharedBaseColor?: Texture,
 ): EarthSurfaceConnection {
   if (bootstrap.state !== 'ready') {
     return {
@@ -105,7 +115,7 @@ function coordinatorFor(
   }
   let material: EarthSurfaceMaterialAttachment;
   try {
-    material = detailedMaterialFor(bootstrap.source!, textures, options.fetchImpl);
+    material = detailedMaterialFor(bootstrap.source!, textures, options.fetchImpl, sharedBaseColor);
   } catch (error: unknown) {
     queue.dispose();
     gpu.dispose();
@@ -127,13 +137,14 @@ function coordinatorFor(
 
 // 画像球を即座に返し、manifest・GPUが準備できたら同じ地表へ詳細材質を付ける。
 export function createEarthSurfaceRuntime(options: EarthSurfaceFactoryOptions = {}): EarthSurfaceRuntimeHandle {
-  const surface = fallbackSurface();
+  const fallback = fallbackSurface();
+  const surface = fallback.surface;
   const ready = bootstrapEarthSurface({
     ...options,
     fallback: options.fallback ?? EARTH_SURFACE_FIXTURE_SOURCE,
   }).then((bootstrap) => {
     const source = bootstrap.source ?? EARTH_SURFACE_FIXTURE_SOURCE;
-    const connection = coordinatorFor(bootstrap, options);
+    const connection = coordinatorFor(bootstrap, options, fallback.baseColorTexture);
     surface.attach(source, connection.coordinator, connection.state, connection.material, connection.reason);
     return { surface, state: connection.state, bootstrap };
   }).catch((error: unknown) => {

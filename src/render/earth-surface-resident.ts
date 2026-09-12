@@ -39,6 +39,7 @@ export interface EarthSurfaceResidentFrameResult {
 interface PendingTile {
   readonly key: EarthTileKey;
   readonly generation: number;
+  readonly kind: 'visible' | 'prefetch';
   promise: Promise<void>;
 }
 
@@ -50,6 +51,7 @@ interface ResidentTile {
 }
 
 const MAX_PENDING_TILES = 8;
+const MAX_PREFETCH_PENDING_TILES = 2;
 
 function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
@@ -133,8 +135,10 @@ export class EarthSurfaceResidentCoordinator {
       return { frontier: this.lastResult.frontier, requested: [], published: false };
     }
 
+    const visible = this.dependencies.tiles.requestCandidates(input.projection);
+    const prefetch = this.dependencies.tiles.prefetchCandidates(input.projection, visible);
     const residents = this.dependencies.gpu.mode === 'tiles' ? this.dependencies.gpu.uploadedTiles() : [];
-    this.dependencies.tiles.sync(input.projection, residents, input.timeMs);
+    this.dependencies.tiles.sync(input.projection, residents, input.timeMs, visible);
     this.lastProjection = input.projection;
     this.lastGeneration = input.generation;
     this.lastTimeMs = input.timeMs;
@@ -151,7 +155,7 @@ export class EarthSurfaceResidentCoordinator {
     this.dependencies.gpu.stagePageTable(page);
     const published = this.dependencies.gpu.publishFrame(frame);
 
-    const requested = this.requestCandidates(input);
+    const requested = this.requestCandidates(input, visible, prefetch);
     this.lastResult = {
       frontier: this.dependencies.tiles.frontier.slice(), requested, published,
     };
@@ -171,14 +175,19 @@ export class EarthSurfaceResidentCoordinator {
     this.dependencies.gpu.dispose();
   }
 
-  // 非表示または配信版切り替え時に、要求・公開ページ・常駐層をbaseへ戻す。
-  // queueとGPU backend自体は再表示で再利用するため、disposeとは分ける。
-  public reset(): void {
+  // 進行中の取得だけを中断する。アップロード済みの層とページ選択は再表示へ保持する。
+  public cancelPending(): void {
     for (const pending of this.pending.values()) {
       this.dependencies.queue.abort(pending.key);
       this.dependencies.queue.release(pending.key, pending.generation);
     }
     this.pending.clear();
+  }
+
+  // 非表示または配信版切り替え時に、要求・公開ページ・常駐層をbaseへ戻す。
+  // queueとGPU backend自体は再表示で再利用するため、disposeとは分ける。
+  public reset(): void {
+    this.cancelPending();
     this.residents.clear();
     this.dependencies.tiles.reset();
     this.dependencies.gpu.reset();
@@ -203,27 +212,49 @@ export class EarthSurfaceResidentCoordinator {
     }
   }
 
-  private requestCandidates(input: EarthSurfaceResidentFrame): readonly EarthTileKey[] {
-    const available = this.dependencies.tiles.requestCandidates(input.projection);
+  private requestCandidates(
+    input: EarthSurfaceResidentFrame, visible: readonly EarthTileKey[], prefetch: readonly EarthTileKey[],
+  ): readonly EarthTileKey[] {
+    const wanted = new Set([...visible, ...prefetch].map((key) => earthTileId(key)));
+    this.cancelObsoleteRequests(wanted);
     const known = new Set<string>([
       ...this.residents.keys(), ...this.pending.keys(),
     ]);
-    this.evictForCandidates(available, known);
+    this.evictForCandidates(visible, known);
     const freeLayers = this.freeLayerCount();
     const maxNewRequests = Math.min(freeLayers, Math.max(0, MAX_PENDING_TILES - this.pending.size));
     const requested: EarthTileKey[] = [];
-    for (const key of available) {
-      if (known.has(earthTileId(key)) || requested.length >= maxNewRequests) continue;
+    const prefetchPending = [...this.pending.values()].filter((pending) => pending.kind === 'prefetch').length;
+    const maxNewPrefetch = Math.max(0, MAX_PREFETCH_PENDING_TILES - prefetchPending);
+    const admit = (key: EarthTileKey, kind: PendingTile['kind']): void => {
+      if (known.has(earthTileId(key)) || requested.length >= maxNewRequests) return;
       const id = earthTileId(key);
       requested.push(key);
       known.add(id);
-      const pending: PendingTile = { key, generation: input.generation, promise: Promise.resolve() };
+      const pending: PendingTile = { key, generation: input.generation, kind, promise: Promise.resolve() };
       pending.promise = this.startRequest(pending, input.signal);
       this.pending.set(id, pending);
       this.tasks.add(pending.promise);
       void pending.promise.finally(() => this.tasks.delete(pending.promise));
+    };
+    for (const key of visible) admit(key, 'visible');
+    let admittedPrefetch = 0;
+    for (const key of prefetch) {
+      if (admittedPrefetch >= maxNewPrefetch || requested.length >= maxNewRequests) break;
+      const before = requested.length;
+      admit(key, 'prefetch');
+      if (requested.length > before) admittedPrefetch++;
     }
     return requested;
+  }
+
+  private cancelObsoleteRequests(wanted: ReadonlySet<string>): void {
+    for (const [id, pending] of this.pending) {
+      if (wanted.has(id)) continue;
+      this.dependencies.queue.abort(pending.key);
+      this.dependencies.queue.release(pending.key, pending.generation);
+      if (this.pending.get(id) === pending) this.pending.delete(id);
+    }
   }
 
   private startRequest(pending: PendingTile, signal?: AbortSignal): Promise<void> {
