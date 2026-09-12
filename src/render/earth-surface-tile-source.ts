@@ -47,7 +47,9 @@ export interface EarthSurfaceTileRequestSourceInit {
 
 function validSha256(value: string): boolean { return /^[0-9a-f]{64}$/.test(value); }
 
+// 1件の配信ファイルについて、相対URL・ハッシュ・サイズを検証する。
 function file(value: unknown, name: string): EarthSurfaceTileFile {
+  // URL形式、SHA-256、エンコード前後のサイズをまとめて検証する。
   if (value === null || typeof value !== 'object') throw new EarthSurfaceRequestError(`${name} is not an object`);
   const candidate = value as Partial<EarthSurfaceTileFile>;
   if (typeof candidate.url !== 'string' || candidate.url.length === 0
@@ -68,9 +70,11 @@ function file(value: unknown, name: string): EarthSurfaceTileFile {
   return { url: candidate.url, sha256: candidate.sha256, encodedBytes, payloadBytes };
 }
 
+// 生のtile-indexを検証し、現行要求で使うエントリへ正規化する。
 function normalizeIndex(
   value: unknown, expectedDatasetId?: string, allowLegacyLowZoom = false,
 ): EarthSurfaceTileIndexFile {
+  // schema・dataset・キー・ファイル記述を順に確認する。
   if (value === null || typeof value !== 'object') throw new EarthSurfaceRequestError('tile-index is not an object');
   const index = value as Partial<EarthSurfaceTileIndexFile>;
   if (index.schemaVersion !== EARTH_SURFACE_TILE_INDEX_SCHEMA_VERSION
@@ -115,6 +119,7 @@ function normalizeIndex(
   return { schemaVersion: EARTH_SURFACE_TILE_INDEX_SCHEMA_VERSION, datasetId: index.datasetId, entries };
 }
 
+// 配信物の相対パスをtile-indexのbase URLへ解決する。
 function assetUrl(baseUrl: string, path: string): string {
   if (baseUrl.length === 0) return path;
   return new URL(path, baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`).toString();
@@ -131,7 +136,9 @@ export class EarthSurfaceTileRequestSource {
   private loadPromise: Promise<void> | null = null;
   private loaded = false;
 
+  // 既読indexまたは遅延読み込み設定を受けてsourceを初期化する。
   public constructor(indexOrInit: EarthSurfaceTileIndexFile | EarthSurfaceTileRequestSourceInit, baseUrl?: string) {
+    // 既読データは直ちに登録し、設定形式はreadyまでI/Oを遅延する。
     if ('entries' in indexOrInit) {
       const index = normalizeIndex(indexOrInit);
       this.fetchImpl = fetch;
@@ -150,34 +157,41 @@ export class EarthSurfaceTileRequestSource {
     }
   }
 
+  // indexを読み終えたsourceを返す。
   public static async load(init: EarthSurfaceTileRequestSourceInit): Promise<EarthSurfaceTileRequestSource> {
     const source = new EarthSurfaceTileRequestSource(init);
     await source.ready();
     return source;
   }
 
+  // 未読ならindex読込を一度だけ開始し、その完了を待つ。
   public async ready(): Promise<void> {
     if (this.loaded) return;
     if (this.loadPromise === null) this.loadPromise = this.loadIndex();
     await this.loadPromise;
   }
 
+  // キーに対応する色・地形URLを返す。
   public urlFor(key: EarthTileKey): { readonly color: string; readonly terrain: string } | null {
     const descriptor = this.descriptorFor(key);
     return descriptor === null ? null : { color: descriptor.colorUrl, terrain: descriptor.terrainUrl };
   }
 
+  // キーに対応する色・地形ハッシュを返す。
   public hashFor(key: EarthTileKey): { readonly color: string; readonly terrain: string } | null {
     const descriptor = this.descriptorFor(key);
     return descriptor === null ? null : { color: descriptor.colorSha256, terrain: descriptor.terrainSha256 };
   }
 
+  // 読み込み済みindexから要求用descriptorを返す。
   public descriptorFor(key: EarthTileKey): EarthSurfaceTileDescriptor | null {
     if (!this.loaded) throw new Error('Earth surface tile-index is not loaded');
     return this.entries.get(earthTileId(key)) ?? null;
   }
 
+  // index JSONを取得・検証し、URL解決済みdescriptorを登録する。
   private async loadIndex(): Promise<void> {
+    // 同じPromiseを共有するready経由の読み込みだけを行う。
     if (this.indexUrl === null) return;
     const fetchImpl = this.fetchImpl;
     const response = await fetchImpl(this.indexUrl);
@@ -190,7 +204,9 @@ export class EarthSurfaceTileRequestSource {
     this.loaded = true;
   }
 
+  // 正規化済みindexの各ファイルURLをdescriptor mapへ登録する。
   private install(index: EarthSurfaceTileIndexFile): void {
+    // 要求時にURLを再計算しないよう、ここで解決して保持する。
     for (const entry of index.entries) {
       const key = earthTileKey(entry.z, entry.x, entry.y);
       this.entries.set(entry.key, {

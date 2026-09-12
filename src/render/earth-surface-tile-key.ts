@@ -65,7 +65,9 @@ export function earthTileNeighbors(key: EarthTileKey): readonly EarthTileKey[] {
   ];
 }
 
+// 段差を縮尺へ直し、キーが祖先区画に含まれるかを判定する。
 function contains(ancestor: EarthTileKey, key: EarthTileKey): boolean {
+  // 段差を縮尺へ直し、周期正規化済みの区画が祖先内にあるかを判定する。
   const scale = 2 ** (key.z - ancestor.z);
   return scale >= 1 && Math.floor(key.x / scale) === ancestor.x && Math.floor(key.y / scale) === ancestor.y;
 }
