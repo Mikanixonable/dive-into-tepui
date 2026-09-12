@@ -7,7 +7,7 @@ import { Vec3 } from '../../math/vec3';
 import { solveEquatorCrossings } from '../../physics/orbit-solvers';
 import { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarker } from './equator-node-marker';
-import type { MarkerSlots } from './marker-slots';
+import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import { ObjectPickable } from '../pickable/object-pickable';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
@@ -41,7 +41,7 @@ export class EquatorNodeMarkerPair {
   private readonly descending: EquatorNodeMarker;
 
   // 所有個体に一意な昇交点・降交点マーカーを1つずつ作る。
-  constructor(private readonly ownerId: string, private readonly markers: MarkerSlots) {
+  constructor(private readonly ownerId: string) {
     this.ascending = new EquatorNodeMarker(ownerId, 'ascending');
     this.descending = new EquatorNodeMarker(ownerId, 'descending');
   }
@@ -105,24 +105,17 @@ export class EquatorNodeMarkerPair {
     return [this.ascending, this.descending].filter((marker) => !marker.gone);
   }
 
-  // 求まっている交点へ △▽ マーカーを置き、求まっていない交点は隠す。celestialBodies は
-  // 遮蔽判定に使う天体で、celestialBodiesPivot はその位置を引く時刻。
-  sync(
-    project: ProjectFn, cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
+  // 求まっている交点の △▽ マーカーの宣言。celestialBodies は遮蔽判定に使う天体で、
+  // celestialBodiesPivot はその位置を引く時刻。
+  declarations(
+    out: MarkerDeclaration[], project: ProjectFn, cameraPos: Vec3,
+    celestialBodies: readonly CelestialBody[],
     celestialBodiesPivot: number, occludeByBodies: boolean, timeLabel: TimeLabelSetting,
   ): void {
     for (const marker of [this.ascending, this.descending]) {
-      marker.sync(
-        this.markers, project, cameraPos, celestialBodies, celestialBodiesPivot,
-        occludeByBodies, timeLabel,
-      );
+      out.push(marker.declaration(
+        project, cameraPos, celestialBodies, celestialBodiesPivot, occludeByBodies, timeLabel,
+      ));
     }
-  }
-
-  // マーカー要素ごと取り除く。
-  dispose(): void {
-    this.retire();
-    this.markers.remove(this.ascending.id);
-    this.markers.remove(this.descending.id);
   }
 }

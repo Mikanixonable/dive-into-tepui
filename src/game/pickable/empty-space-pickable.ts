@@ -5,7 +5,7 @@ import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import type { ObjectPickable } from './object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
-import type { MarkerVisibility } from '../marker/marker-visibility';
+import type { MarkerVisibility } from '../../marker/marker-visibility';
 
 const ORIGIN = v3(0, 0, 0); // ECI [m]
 

@@ -4,6 +4,7 @@ import { getApsisLabelSpec, type OrbitLabelSpec } from '../hud/orbit/orbit-label
 import { fmtDist } from '../../hud/utils';
 import { len, sub, type Vec3 } from '../../math/vec3';
 import { ORBIT_POINT_GLYPH } from './marker-identity';
+import { MARKER_PRIORITY } from './marker-priority';
 import { OrbitPointMarker } from './orbit-point-marker';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
@@ -12,6 +13,7 @@ import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 export class ApsisMarker extends OrbitPointMarker {
   public readonly glyph = ORBIT_POINT_GLYPH.apsis;
   protected readonly markerClass = 'mk-apsis';
+  protected readonly markerPriority = MARKER_PRIORITY.NONE;
 
   private centerId: string | null = null;
 
