@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import earthTextureUrl from '../../../assets/earth.jpg';
+import climateTextureUrl from '../../../assets/earth-climate.png';
 import earthSmoothnessUrl from '../../../assets/earth-smoothness.png';
 import cloudFieldUrl from '../../../assets/cloud-field.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
@@ -37,9 +38,8 @@ import {
 import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
 import { ObservedCloudField } from '../../../render/cloud/observed-cloud-field';
-import { createDevelopmentClimateMap } from '../../../render/cloud/monthly-climate-fixture';
+import { AnnualClimateMap } from '../../../render/cloud/climate-map';
 import { EquirectProjection, type FieldProjection } from '../../../render/cloud/field-projection';
-import { earthSurfaceUvFromRadialNode } from '../../../render/earth-surface-coordinate';
 import { LineOverlay, type LatLonPolyline, type UnitSphereLoop } from '../../../render/celestial/line-overlay';
 import { GeostationaryOverlay } from '../../../render/celestial/celestial-entity/geostationary-overlay';
 import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
@@ -49,7 +49,6 @@ import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { CelestialTexture } from '../../../render/celestial-textures';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
 import type { EarthSurfaceSource } from './earth-surface-source';
-import { vec3 } from 'three/tsl';
 import { AU } from '../../../physics/astronomical-unit';
 
 // 地球系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
@@ -225,10 +224,6 @@ export const EARTH_SURFACE_FIXTURE_SOURCE = {
     { length: 12 }, (_, month) => `https://example.test/earth-surface/climate-${month + 1}.png`,
   ),
 } satisfies EarthSurfaceSource;
-
-// 気候図を貼る回転楕円体の半軸 [m]。
-const EARTH_CLIMATE_AXES = vec3(EARTH_ATMOSPHERE.equatorRadius, EARTH_ATMOSPHERE.polarRadius,
-  EARTH_ATMOSPHERE.equatorRadius);
 
 export interface EarthSurfaceFactoryOptions extends EarthSurfaceBootstrapOptions {
   readonly renderer?: WebGPURenderer | null;
@@ -420,33 +415,28 @@ function earthAuroras(): readonly Aurora[] {
 // 地球の生成雲場の高さ [texel]。
 const EARTH_CLOUD_FIELD_HEIGHT = 512;
 
-// 地球の気候から焼く雲場を組む。climateEpochUnixSec は表示時刻 0 の UTC [s]、bootstrap は地表の
-// 配信物の準備の結果で、ready なら気候をその月別気候図へ差し替える。projection は場の持ち方で、
-// 既定は全球の正距円筒。返した場の寿命は受け取った側が持つ。
+// 地球の平年の気候から焼く雲場を組む。projection は場の持ち方で、既定は全球の正距円筒。
+// 返した場の寿命は受け取った側が持つ。
 export function earthGeneratedCloudField(
-  climateEpochUnixSec: number, bootstrap: Promise<EarthSurfaceBootstrapResult>,
   projection: FieldProjection = new EquirectProjection(EARTH_CLOUD_FIELD_HEIGHT),
 ): GeneratedCloudField {
-  const climate = createDevelopmentClimateMap((direction) => earthSurfaceUvFromRadialNode(direction, EARTH_CLIMATE_AXES));
-  void bootstrap.then((result) => {
-    if (result.state === 'ready' && result.source !== null) climate.replaceUrls(result.source.climateMapUrls);
-  });
   // 天気を解く半径は、全球を一様な球とみなす平均半径。
-  return new GeneratedCloudField(climate, projection, R_EARTH, SIDEREAL_DAY, climateEpochUnixSec);
+  return new GeneratedCloudField(
+    AnnualClimateMap.fromDeferredUrl(climateTextureUrl), projection, R_EARTH, SIDEREAL_DAY,
+  );
 }
 
 // 地球系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 // earthSpinPhase0 は地球の自転初期位相 [rad]。
 export function earthSystem(
   sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
-  earthSpinPhase0 = 0, climateEpochUnixSec = 0, renderer?: WebGPURenderer,
+  earthSpinPhase0 = 0, renderer?: WebGPURenderer,
 ): Record<EarthSystemBodyId, CelestialEntity> {
   const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
   const earthSurfaceRuntime = createEarthSurfaceRuntime({ renderer });
   // 殻を載せる球の半径は、本体メッシュと同じ赤道半径。
   const cumulus = new CloudPresentation(
-    earthGeneratedCloudField(climateEpochUnixSec, earthSurfaceRuntime.ready.then((result) => result.bootstrap)),
-    new ObservedCloudField(cloudFieldUrl), R_EARTH_EQ,
+    earthGeneratedCloudField(), new ObservedCloudField(cloudFieldUrl), R_EARTH_EQ,
   );
   const earthSurface = earthSurfaceRuntime.surface;
   return {
