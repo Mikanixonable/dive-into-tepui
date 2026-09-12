@@ -1,73 +1,61 @@
-// 天体の気候の事前テクスチャ(正距円筒 RGB8: R 平均気温 / G 平年の雲量 / B 標高)を読み、単位方向で
-// 標本化する。雲より桁で低周波な、その天体固有の分布だけを持つ。
+// 天体の気候入力の契約。気候を単位方向で答える面と、その値域、斜面の勾配、気候テクスチャの読み方を持つ。
+// 気候は雲より桁で低周波な、その天体固有の分布である。
 import * as THREE from 'three/webgpu';
-import { smoothstep, texture, vec2 } from 'three/tsl';
-import { R_EARTH } from '../../game/celestial/solar-system/constants';
-import { equirectUvFromDirection } from './field-projection';
+import { vec2 } from 'three/tsl';
 import { eastAt, northAt } from './sphere-frame';
-import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
+import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 
-// テクスチャの目盛り。B は 0..8000 m を 0..1 で持つ。
-const ELEVATION_SPAN = 8000;
-// 陸らしさが 1 に届く標高 [m]。**標高は海で 0、ぼかしの幅で海岸から立ち上がる**ので、低い値で
-// 切れば陸と、その近くの海が読める。海抜の低い平野が海の側へ寄るが、板と粒を分けるのに要る
-// のは大陸と大洋の区別なので足りる。
-const LAND_ELEVATION = 100;
+// 月別の気候入力の RGBA 各チャンネル 0..1 が写す値域。気温 [K]、雲量、標高 [m]、陸地被覆率。
+export const CLIMATE_TEMPERATURE_MIN_K = 180;
+export const CLIMATE_TEMPERATURE_MAX_K = 330;
+export const CLIMATE_CLOUD_MIN = 0;
+export const CLIMATE_CLOUD_MAX = 1;
+export const CLIMATE_ELEVATION_MIN_M = -1000;
+export const CLIMATE_ELEVATION_MAX_M = 9000;
+export const CLIMATE_LAND_MIN = 0;
+export const CLIMATE_LAND_MAX = 1;
+
 // 標高の勾配を取る中心差分の刻み [rad]。テクスチャの texel(2π/512)より大きく、山脈の幅より小さい。
 const SLOPE_STEP = 0.02;
-// その刻みが地表で張る長さ [m]。勾配を角あたりから長さあたりへ直すのに要る。
-const SLOPE_STEP_METERS = SLOPE_STEP * 2 * R_EARTH;
 
-export class ClimateMap {
-  // url の PNG を読み終えてから器を返す。
-  public static async load(url: string): Promise<ClimateMap> {
-    const map = await new THREE.TextureLoader().loadAsync(url);
-    map.wrapS = THREE.RepeatWrapping;
-    map.wrapT = THREE.ClampToEdgeWrapping;
-    map.flipY = false;
-    map.generateMipmaps = false;
-    map.minFilter = THREE.LinearFilter;
-    map.magFilter = THREE.LinearFilter;
-    map.colorSpace = THREE.NoColorSpace;
-    return new ClimateMap(map);
-  }
+// 天体の気候を単位方向で答える入力。generation は入力(読む画像か、その選択)が変わるたびに進む世代。
+export interface ClimateMap {
+  readonly generation: number;
+  temperatureK(direction: Vec3Node): FloatNode;
+  meanCloudiness(direction: Vec3Node): FloatNode;
+  elevation(direction: Vec3Node): FloatNode;
+  landFraction(direction: Vec3Node): FloatNode;
+  slope(direction: Vec3Node, landHeight: number, surfaceRadius: number): Vec2Node;
+  request(): void;
+  dispose(): void;
+}
 
-  private constructor(private readonly map: THREE.Texture) {}
+// climate の標高と陸らしさから、斜面の勾配(東向き・北向き成分)[m/m] を中心差分で引く。
+// landHeight [m] は陸へ上乗せする高さで、海と陸の比熱の差で海岸へ吹き込む風が持ち上げられる分を、
+// 人工の斜面として代用する。surfaceRadius [m] はこの天体の半径で、勾配を角あたりから長さあたりへ
+// 直すのに要る。
+export function climateSlope(
+  climate: ClimateMap, direction: Vec3Node, landHeight: number, surfaceRadius: number,
+): Vec2Node {
+  const east = eastAt(direction).mul(SLOPE_STEP);
+  const north = northAt(direction).mul(SLOPE_STEP);
+  // 中心差分の刻みが地表で張る長さ [m]。
+  const stepMeters = SLOPE_STEP * 2 * surfaceRadius;
+  const height = (d: Vec3Node): FloatNode => climate.elevation(d).add(climate.landFraction(d).mul(landHeight));
+  return vec2(
+    height(direction.add(east)).sub(height(direction.sub(east))).div(stepMeters),
+    height(direction.add(north)).sub(height(direction.sub(north))).div(stepMeters),
+  );
+}
 
-  // 平年の雲量 0..1。
-  public meanCloudiness(direction: Vec3Node): FloatNode {
-    return this.sample(direction).g;
-  }
-
-  // 標高 [m]。
-  public elevation(direction: Vec3Node): FloatNode {
-    return this.sample(direction).b.mul(ELEVATION_SPAN);
-  }
-
-  // 陸らしさ 0..1(大洋で 0、大陸の内側で 1、海岸で渡る)。
-  public landFraction(direction: Vec3Node): FloatNode {
-    return smoothstep(0, LAND_ELEVATION, this.elevation(direction));
-  }
-
-  // 斜面の勾配(東向き・北向き成分)[m/m]。landHeight [m] は陸へ上乗せする高さで、海と陸の
-  // 比熱の差で海岸へ吹き込む風が持ち上げられる分を、人工の斜面として代用する。
-  public slope(direction: Vec3Node, landHeight: number): Vec2Node {
-    const east = eastAt(direction).mul(SLOPE_STEP);
-    const north = northAt(direction).mul(SLOPE_STEP);
-    const height = (d: Vec3Node): FloatNode => this.elevation(d).add(this.landFraction(d).mul(landHeight));
-    return vec2(
-      height(direction.add(east)).sub(height(direction.sub(east))).div(SLOPE_STEP_METERS),
-      height(direction.add(north)).sub(height(direction.sub(north))).div(SLOPE_STEP_METERS),
-    );
-  }
-
-  // 単位方向のテクセル(R 平均気温 / G 平年の雲量 / B 標高、それぞれ 0..1)。
-  private sample(direction: Vec3Node): Vec4Node {
-    return texture(this.map, equirectUvFromDirection(direction));
-  }
-
-  // 保持しているテクスチャを解放する。
-  public dispose(): void {
-    this.map.dispose();
-  }
+// 気候テクスチャを、データ値のまま線形補間で読める設定にして返す。
+export function configureClimateTexture(map: THREE.Texture): THREE.Texture {
+  map.wrapS = THREE.RepeatWrapping;
+  map.wrapT = THREE.ClampToEdgeWrapping;
+  map.flipY = false;
+  map.generateMipmaps = false;
+  map.minFilter = THREE.LinearFilter;
+  map.magFilter = THREE.LinearFilter;
+  map.colorSpace = THREE.NoColorSpace;
+  return map;
 }

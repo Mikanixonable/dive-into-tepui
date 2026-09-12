@@ -7,14 +7,11 @@ import { KinematicState } from '../../src/physics/kinematic-state';
 import {
   LagrangePoints, SecondaryFrame, lagrangePointsOf, secondaryFrameOf,
 } from '../../src/physics/lagrange';
-import {
-  BodyOrientation, CelestialBodyDef, CelestialKind, CelestialMotion, OrbitingMotion, PhaseOffsets,
-  StarDef,
-} from '../../src/physics/celestial-motion';
+import { CelestialMotion, OrbitingMotion } from '../../src/physics/celestial-motion';
+import { CelestialBodyDef, PhaseOffsets, StarDef } from '../../src/physics/celestial-body-def';
+import { BodyOrientation, CelestialKind, FrameRotation, type Degree2Gravity } from '../../src/physics/celestial-body';
 import { EciTransform } from '../../src/physics/eci-transform';
 import type { Atmosphere } from '../../src/physics/atmosphere';
-import type { Degree2Gravity } from '../../src/physics/celestial-body-def';
-import { FrameRotation } from '../../src/physics/kepler-orbit';
 import type { ReferenceFrames } from '../../src/game/celestial/reference-frames';
 // 回帰テストが simTime = 0 に置く瞬間の、J2000 からの秒数。地球から見て太陽が +X 方向
 // (昼側)にある — すなわち地球の日心黄経が π になる — 瞬間へ合わせてある。
@@ -160,6 +157,12 @@ class FixedMotion extends CelestialMotion {
       addScaled(addScaled(this.anchor.r, this.anchor.v, s), this.accel, 0.5 * s * s),
       addScaled(this.anchor.v, this.accel, s),
     );
+  }
+
+  // 主星を置かない道具なので、主星相対と太陽系重心相対は同じ値。
+  analyticStarRelStateAt(t: number): KinematicState<'starRel'> {
+    const state = this.analyticStateAt(t);
+    return kinematicState<'starRel'>(t, state.r, state.v);
   }
 
   analyticAccelAt(): Vec3 { return this.accel; }

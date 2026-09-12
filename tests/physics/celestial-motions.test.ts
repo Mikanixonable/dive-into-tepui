@@ -1,5 +1,5 @@
-// CelestialMotions(役割ごとの天体一覧)の回帰テスト: 一覧が宣言順を守り、
-// 天体1体が pivot ごとに引き直した値と一致すること。
+// 役割ごとの天体一覧の回帰テスト: 一覧が宣言順を守り、天体1体が pivot ごとに
+// 引き直した値と一致すること。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { R_EARTH_EQ } from '../../src/game/celestial/solar-system/constants';

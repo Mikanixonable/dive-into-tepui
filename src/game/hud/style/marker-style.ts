@@ -1,5 +1,5 @@
 // HUD 3D スクリーン投影マーカー CSS (.mk, 各種マーカーシンボル, ラベル, 重なり順).
-import { FILL_4, LIGHT_PALETTE } from '../../../theme';
+import { LIGHT_PALETTE } from '../../../theme';
 import { COLOR_MARKER_ALLY, COLOR_MARKER_NODE, COLOR_MARKER_FUEL, COLOR_BASE } from '../../marker/marker-identity';
 
 const COLOR_MARKER_TGTDIR = '#ff7ab0';
@@ -148,7 +148,7 @@ export const MARKER_STYLE = `
 [data-render-style="schematic"] .mk-base { color: ${LIGHT_PALETTE.title}; }
 
 /* ラベルの引き出し線。色をここへ置くことで、模式図の白背景でも読める値へ差し替えられる。 */
-.mk-lead { stroke: ${FILL_4}; }
+.mk-lead { stroke: var(--fill-4); }
 [data-render-style="schematic"] .mk-lead { stroke: ${LIGHT_PALETTE.muted}; }
 
 /* 天体ラベルの札。模式図では白背景の上に文字だけで読ませるため、地を落とす。

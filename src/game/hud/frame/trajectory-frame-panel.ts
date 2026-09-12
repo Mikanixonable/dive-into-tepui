@@ -4,11 +4,11 @@ import { AnchorZone } from './anchor-zone';
 import { RotationZone } from './rotation-zone';
 import { ToggleSwitch } from '../../../hud/widgets';
 import { frameRoleName, rotationSourceLabel } from './frame-labels';
-import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { DisplayWindowManager } from '../../display-window-manager';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
+import type { DisplayFrameSelection } from '../../display-frame-selection';
 import type { OverlayManager } from '../../../hud/overlay-manager';
-import { buildPanel } from './frame-controls';
+import { buildPanel } from './frame-panel';
+import type { ListedObject } from '../../pickable/listed-object';
 
 export class TrajectoryFramePanel {
   private readonly panel: HTMLElement;
@@ -23,26 +23,26 @@ export class TrajectoryFramePanel {
   public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
-    private readonly celestialSystem: CelestialSystem,
-    private readonly displayWindow: DisplayWindowManager,
+    private readonly celestialBodies: CelestialBodies,
+    private readonly displayFrame: DisplayFrameSelection,
     overlayManager: OverlayManager,
   ) {
     this.panel = buildPanel(panelRoot, 'hud-trajectory-frame', '軌道フレーム');
 
     // 描く線は必ずどこかの座標系に焼き込まれるので「どこにも固定しない」状態が無く、
     // 太陽系空間への固定はプルダウンの恒星そのものにあたる。
-    this.planCenterZone = new AnchorZone(popupRoot, '基準', celestialSystem, null, overlayManager);
+    this.planCenterZone = new AnchorZone(popupRoot, '基準', celestialBodies, null, overlayManager);
     this.planCenterZone.element.classList.add('hud-frame-origin-zone');
     this.planCenterZone.onSelect = (id) => {
       if (id === null) return;
-      this.displayWindow.frame = celestialSystem.frames.frameOf(id, this.displayWindow.frame.rotatingWith);
+      this.displayFrame.frame = celestialBodies.frames.frameOf(id, this.displayFrame.frame.rotatingWith);
     };
     this.panel.appendChild(this.planCenterZone.element);
 
-    this.planRotationZone = new RotationZone('回転フレーム', celestialSystem);
+    this.planRotationZone = new RotationZone('回転フレーム', celestialBodies);
     this.planRotationZone.element.classList.add('hud-frame-rotation-zone');
     this.planRotationZone.onSelect = (rotatingWith) => {
-      this.displayWindow.frame = celestialSystem.frames.frameOf(this.displayWindow.frame.center, rotatingWith);
+      this.displayFrame.frame = celestialBodies.frames.frameOf(this.displayFrame.frame.center, rotatingWith);
     };
     this.panel.appendChild(this.planRotationZone.element);
 
@@ -57,23 +57,23 @@ export class TrajectoryFramePanel {
 
   // パネル下部に表示するサマリ行の文字列を組み立てる。
   private orbitSummaryText(): string {
-    const centerId = this.displayWindow.frame.center;
+    const centerId = this.displayFrame.frame.center;
     const centerRole = frameRoleOf(centerId);
-    const planCenter = centerRole !== null ? frameRoleName(centerRole) : this.celestialSystem.nameOf(centerId);
-    const planRot = this.displayWindow.frame.rotatingWith;
-    return `基準: ${planCenter}・${rotationSourceLabel(this.celestialSystem, planRot)}`;
+    const planCenter = centerRole !== null ? frameRoleName(centerRole) : this.celestialBodies.nameOf(centerId);
+    const planRot = this.displayFrame.frame.rotatingWith;
+    return `基準: ${planCenter}・${rotationSourceLabel(this.celestialBodies, planRot)}`;
   }
 
   // 各ウィジェットの選択状態を、渡された時刻・軌道フレーム状態へ合わせる。
   public sync(
-    pickables: readonly ObjectPickable[], members: readonly string[], displayTime: number,
+    pickables: readonly ListedObject[], members: readonly string[], displayTime: number,
     validRoles: readonly FrameRole[],
   ): void {
     this.planCenterZone.setItems(pickables);
     this.planCenterZone.setNearby(members, pickables);
-    this.planCenterZone.setSelected(this.displayWindow.frame.center);
+    this.planCenterZone.setSelected(this.displayFrame.frame.center);
     this.planRotationZone.setNearby(members, displayTime, validRoles);
-    this.planRotationZone.setSelected(this.displayWindow.frame.rotatingWith);
+    this.planRotationZone.setSelected(this.displayFrame.frame.rotatingWith);
 
     this.followToggle.setOn(this.followCamera);
     this.orbitSummary.textContent = this.orbitSummaryText();

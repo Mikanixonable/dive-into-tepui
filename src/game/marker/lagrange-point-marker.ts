@@ -8,15 +8,13 @@ import { fmtDist } from '../../hud/utils';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { ENTITY_GLYPH } from './marker-identity';
 import { MARKER_PRIORITY } from './crowding';
-import type { CelestialSystem } from '../celestial/celestial-system';
-import type { MapListSection } from '../hud/panels/physical-object-list-panel';
-import type { ObjectPickerGenre } from '../hud/object-groups';
-import type { ObjectCommands } from '../pickable/object-commands';
+import type { MapListSection, ObjectPickerGenre } from '../pickable/pickable-listing';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
-import type { Player } from '../player/player';
-import type { PropertyRow } from '../../hud/windows/property-window';
-import type { MarkerManager } from './marker-manager';
+import type { PropertyRow } from '../../hud/windows/property-window-content';
+import type { MarkerVisibility } from './marker-visibility';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 
 export class LagrangePointMarker implements ObjectPickable {
   public readonly id: string;
@@ -53,7 +51,8 @@ export class LagrangePointMarker implements ObjectPickable {
     this.pos = pos;
   }
 
-  public get gone(): boolean { return this.pos === null; }
+  // ラグランジュ点は2天体が在る限り在る。回転系が組めず座標を失うフレームは消滅ではない。
+  public readonly gone = false;
 
   // 生成元が解いた時刻の位置。
   public posAt(): Vec3 | null { return this.pos; }
@@ -62,40 +61,37 @@ export class LagrangePointMarker implements ObjectPickable {
 
   // ラグランジュ点は天体と別の表示トグルを持つ。
   public mapVisibility(policy: MapVisibilityPolicy): MapVisibility { return policy.body(this.id); }
-  public shownOnMap(markers: MarkerManager): boolean { return markers.shows(this.id); }
+  public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(this.id); }
 
   // メニューに出す操作項目。ヘッダーの副題には、この地点を定める2天体の対を出す。
   public menuItems(
-    commands: ObjectCommands, celestialSystem: CelestialSystem, simTime: number,
+    celestialBodies: CelestialBodies, _viewer: OrbitingObject | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
-    const primaryId = celestialSystem.bodyParentId(this.parentId);
+    const primaryId = celestialBodies.bodyParentId(this.parentId);
     const subLabel = primaryId === undefined || primaryId === null
       ? 'ラグランジュ点'
-      : `${celestialSystem.nameOf(primaryId)}-${celestialSystem.nameOf(this.parentId)} ラグランジュ点`;
+      : `${celestialBodies.nameOf(primaryId)}-${celestialBodies.nameOf(this.parentId)} ラグランジュ点`;
     return [
       { type: 'header', label: this.name, subLabel },
       MenuCommon.focus(),
-      ...MenuCommon.targetItems(commands, this.id, simTime),
+      MenuCommon.target(navTargetId === this.id),
       MenuCommon.cancel(),
     ];
   }
 
-  // 選ばれた操作を実行する。フォーカスの移動と航法ターゲットの設定・解除を持つ。
-  public runMenu(act: MenuAction, commands: ObjectCommands): void {
-    if (act === 'focus') {
-      commands.focus(this.id, this.name);
-    } else if (act === 'target') {
-      commands.toggleNavTarget(this.id, this.name);
-    }
-  }
+  public readonly runMenu = null;
 
   // 自艦からの距離と種別。自艦がいない、あるいは位置が解けていないフレームは距離が落ちる。
-  public propertyRows(commands: ObjectCommands): readonly PropertyRow[] {
-    const viewer = commands.activePlayer;
+  public propertyRows(
+    _celestialBodies: CelestialBodies, viewer: OrbitingObject | null,
+  ): readonly PropertyRow[] {
     const pos = this.posAt();
     const rows: PropertyRow[] = [];
     if (viewer && pos) {
-      rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(len(sub(pos, viewer.state.r))) });
+      rows.push({
+        key: 'dist', label: '自艦からの距離',
+        value: fmtDist(len(sub(pos, viewer.motion.state.r))),
+      });
     }
     rows.push({ key: 'kind', label: '種別', value: 'ラグランジュ点' });
     return rows;
@@ -109,9 +105,9 @@ export class LagrangePointMarker implements ObjectPickable {
 
   // 一覧の検索が照合する、自艦からの距離と中心天体の名前。
   public listSearchText(
-    celestialSystem: CelestialSystem, activePlayer: Player | null, displayTime: number,
+    celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number,
   ): string {
-    return this.pos === null ? '' : bodySearchText(celestialSystem, this.pos, activePlayer, displayTime);
+    return this.pos === null ? '' : bodySearchText(celestialBodies, this.pos, viewer, displayTime);
   }
 
   public listCounted(): boolean { return false; }
