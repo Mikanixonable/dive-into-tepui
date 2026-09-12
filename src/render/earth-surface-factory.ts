@@ -34,6 +34,7 @@ export interface EarthSurfaceRuntimeHandle {
   readonly ready: Promise<EarthSurfaceFactoryResult>;
 }
 
+// 開発用のfallback入力から、詳細材質を持たない地表を組む。
 function fallbackSurface(status: EarthSurfaceStatus = 'loading'): EarthSurface {
   return new EarthSurface(
     new EarthSurfaceContext(EARTH_SURFACE_FIXTURE_SOURCE),
@@ -50,9 +51,11 @@ interface EarthSurfaceConnection {
   readonly reason: string | null;
 }
 
+// GPUテクスチャと配信物のbase画像を詳細材質へ束ねる。
 function detailedMaterialFor(
   source: EarthSurfaceSource, textures: EarthSurfaceGpuTextures, fetchImpl?: typeof fetch,
 ): EarthSurfaceMaterialAttachment {
+  // GPU常駐テクスチャと配信物のbase画像を1つの材質へ束ねる。
   const binding = createEarthSurfaceMaterialBinding(textures, source.baseColorUrl, source.baseTerrainUrl, fetchImpl);
   return {
     material: binding.material,
@@ -64,9 +67,11 @@ function detailedMaterialFor(
   };
 }
 
+// bootstrap結果とGPU能力から、詳細地表を使える接続を選ぶ。
 function coordinatorFor(
   bootstrap: EarthSurfaceBootstrapResult, options: EarthSurfaceFactoryOptions,
 ): EarthSurfaceConnection {
+  // 配信結果とGPU能力から、詳細地表へ接続できる資源一式を選ぶ。
   if (bootstrap.state !== 'ready') {
     return {
       coordinator: null,
@@ -83,6 +88,7 @@ function coordinatorFor(
   if (bootstrap.tileSource === null) {
     return { coordinator: null, state: 'fallback', material: null, reason: 'tile source unavailable' };
   }
+  // WebGPUの配列テクスチャを確保し、対応できない環境はfallbackへ戻す。
   const backend = options.renderer.backend as unknown as EarthSurfaceGpuThreeBackendLike | null | undefined;
   if (backend === null || backend === undefined) {
     return { coordinator: null, state: 'fallback', material: null, reason: 'WebGPU backend unavailable' };
@@ -105,6 +111,7 @@ function coordinatorFor(
   }
   let material: EarthSurfaceMaterialAttachment;
   try {
+    // 材質の構築に失敗したときは、先に確保したGPU資源も同時に解放する。
     material = detailedMaterialFor(bootstrap.source!, textures, options.fetchImpl);
   } catch (error: unknown) {
     queue.dispose();
@@ -127,16 +134,19 @@ function coordinatorFor(
 
 // 画像球を即座に返し、manifest・GPUが準備できたら同じ地表へ詳細材質を付ける。
 export function createEarthSurfaceRuntime(options: EarthSurfaceFactoryOptions = {}): EarthSurfaceRuntimeHandle {
+  // まず画像球を公開し、非同期の配信結果を同じ地表へ接続する。
   const surface = fallbackSurface();
   const ready = bootstrapEarthSurface({
     ...options,
     fallback: options.fallback ?? EARTH_SURFACE_FIXTURE_SOURCE,
   }).then((bootstrap) => {
+    // 配信結果に応じて詳細coordinatorまたはfallback状態を接続する。
     const source = bootstrap.source ?? EARTH_SURFACE_FIXTURE_SOURCE;
     const connection = coordinatorFor(bootstrap, options);
     surface.attach(source, connection.coordinator, connection.state, connection.material, connection.reason);
     return { surface, state: connection.state, bootstrap };
   }).catch((error: unknown) => {
+    // 非同期失敗時も表示可能なfallbackと診断状態を返す。
     const fallback = options.fallback ?? EARTH_SURFACE_FIXTURE_SOURCE;
     const reason = error instanceof Error ? error.message : String(error);
     surface.attach(fallback, null, 'error', null, reason);
@@ -152,6 +162,7 @@ export function createEarthSurfaceRuntime(options: EarthSurfaceFactoryOptions = 
   return { surface, ready };
 }
 
+// 地表ランタイムの非同期準備が完了するまで待って結果を返す。
 export async function createEarthSurface(options: EarthSurfaceFactoryOptions = {}): Promise<EarthSurfaceFactoryResult> {
   return createEarthSurfaceRuntime(options).ready;
 }
