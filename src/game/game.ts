@@ -457,7 +457,7 @@ export class Game {
     this.activeStage.update(dt, this.dynamicSystem.simTime, this.simSpeedManager);
     this.sections.exit(SECTION.stage);
     this.dynamicSystem.update(
-      controlled, this.input, canShipAct, dt, simDt, canEngage, this.activeStage);
+      controlled, this.input, canShipAct, dt, simDt, canEngage, this.activeStage, this.activeStage.stageRules);
 
     this.targeter.updateBoardMarks(dt, controlled);
     this.controlSelection.reclaimDead();

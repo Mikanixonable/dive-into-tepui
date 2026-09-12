@@ -12,6 +12,7 @@ import type { EntityRegistry } from '../entity-registry';
 import type { CombatTarget } from './combat-target';
 import type { DynamicEntity } from './dynamic-entity';
 import type { PlayerStatusSnapshot } from '../../player/player-status-snapshot';
+import type { StageRules } from '../../stages/stage-rules';
 
 export interface ThrottlePort {
   readonly throttleIdx: number;
@@ -44,6 +45,7 @@ export interface PilotCommandFrame {
   readonly simDt: number;
   readonly registry: EntityRegistry;
   readonly activeStage: StageOutcome;
+  readonly stageRules: StageRules;
   readonly celestialBodies: CelestialBodies;
 }
 

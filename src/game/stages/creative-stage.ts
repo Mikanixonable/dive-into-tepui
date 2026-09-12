@@ -14,9 +14,11 @@ import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
+import { FREE_PLAY_STAGE_RULES } from './stage-rules';
 
 export class CreativeStage extends Stage {
   public static readonly id = 'creative' as const;
+  public static readonly stageRules = FREE_PLAY_STAGE_RULES;
   public static readonly epoch = STORY_EPOCH;
   // 開始日時の指定画面を挟む(SPEC GAME.md 9.0)。epoch はその欄の既定値になる。
   public static readonly picksStartEpoch = true;

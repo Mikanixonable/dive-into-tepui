@@ -8,9 +8,11 @@ import type { StageSaveData } from '../save/save-data';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { MAG_ROUNDS } from '../player/ammo-spec';
 import { STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST } from './stage-utils/logistics';
+import { FREE_PLAY_STAGE_RULES } from './stage-rules';
 
 export class StageDebug extends Stage {
   static readonly id = 'debug' as const;
+  static readonly stageRules = FREE_PLAY_STAGE_RULES;
   static readonly epoch = STORY_EPOCH;
   static readonly selectLabel = 'DEBUG';
   static readonly selectSub = '【デバッグ】敵集団1つ・撃破しても終了しない・敵の射撃を実行中に切替可能';
