@@ -111,7 +111,8 @@ export class PointCelestialView extends SphereCelestialView {
 
   // 実体を描くフレームは、積雲の殻・オーロラ・表面のフレーム値を同期して輝点を隠す。
   protected override syncResolved(
-    motion: CelestialMotion, apparentDiameterPx: number, displayTime: number, camera: CameraFrame,
+    motion: CelestialMotion, apparentDiameterPx: number, displayTime: number, nowMs: number,
+    camera: CameraFrame,
     star: StellarLightSource | null, graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
     // 雲。
@@ -136,7 +137,7 @@ export class PointCelestialView extends SphereCelestialView {
       this.group.quaternion,
       this.axes,
       this.surfaceFrame++,
-      performance.now(),
+      nowMs,
       style,
     ));
     this.billboard.hide();
