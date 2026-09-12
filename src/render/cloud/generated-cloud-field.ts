@@ -2,30 +2,28 @@
 import * as THREE from 'three/webgpu';
 import { CloudField } from './cloud-field';
 import { WeatherModel } from './weather-model';
-import { monthlyClimateClockAt } from './monthly-climate-clock';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { ClimateMap } from './climate-map';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from './field-projection';
 import type { CloudFieldSampler } from './cloud-field-sampler';
 import type { CloudFieldSource } from './cloud-presentation';
-import type { MonthlyClimateMap } from './monthly-climate-map';
 
 export class GeneratedCloudField implements CloudFieldSource {
   private readonly model: WeatherModel;
   private readonly field: CloudField;
   // 最後に焼いた表示時刻。表示時刻が同じ間は生成済みの場を使う。
   private lastBakedDisplayTime: number | null = null;
-  // 最後に焼いたときの気候の世代。月の選択か画像の公開が変われば、同じ表示時刻でも焼き直す。
+  // 最後に焼いたときの気候の世代。読む画像が変われば、同じ表示時刻でも焼き直す。
   private lastBakedClimateGeneration: number | null = null;
   // 最後に焼いたときの投影の版。置き方が変われば、同じ表示時刻でも焼き直す。
   private lastBakedProjectionRevision: number | null = null;
 
   // climate と、その中間場・出力場が共有する投影法を受け取る。surfaceRadius は雲を載せる天体の
-  // 半径 [m]、rotationPeriod はその自転周期 [s]、climateEpochUnixSec は表示時刻 0 の UTC [s]。
+  // 半径 [m]、rotationPeriod はその自転周期 [s]。
   public constructor(
-    private readonly climate: MonthlyClimateMap, private readonly projection: FieldProjection,
-    surfaceRadius: number, rotationPeriod: number, private readonly climateEpochUnixSec: number,
+    private readonly climate: ClimateMap, private readonly projection: FieldProjection,
+    surfaceRadius: number, rotationPeriod: number,
   ) {
     this.model = new WeatherModel(climate, projection, surfaceRadius, rotationPeriod);
     this.field = new CloudField(this.model, projection);
@@ -42,11 +40,9 @@ export class GeneratedCloudField implements CloudFieldSource {
   public get climateMap(): ClimateMap { return this.climate; }
   public get fieldProjection(): FieldProjection { return this.projection; }
 
-  // 表示時刻の雲場を、気候の月を合わせてから天気の中間場から順に焼く。
+  // 表示時刻の雲場を、天気の中間場から順に焼く。
   public prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
-    // 気候の月を表示時刻の暦へ合わせ、気候画像の取得を始める。
-    const clock = monthlyClimateClockAt(this.climateEpochUnixSec + displayTime);
-    this.climate.setMonth(clock.monthIndex, clock.blend);
+    // 気候画像の取得を始める。
     this.climate.request();
     // 表示時刻・気候の入力・投影の置き方が前回と同じなら、焼いた場をそのまま使う。
     const climateGeneration = this.climate.generation;
