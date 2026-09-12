@@ -1,7 +1,10 @@
-// 天体1体の静的な記述を組み立てる部品: 自転極モデル・2次重力場・形状・環系。
-import { JULIAN_CENTURY } from './kepler-orbit';
+// 天体1体の静的な記述。恒星・惑星・衛星それぞれの宣言と、その部品(自転極モデル・
+// 2次重力場・形状・環系)、および宣言を simTime 基準へ畳む変換。
+import { JULIAN_CENTURY, KeplerOrbit, keplerOrbitForSimZero } from './kepler-orbit';
+import { SatelliteOrbit, satelliteOrbitForSimZero } from './satellite-orbit';
 import { SECONDS_PER_DAY } from './time';
 import { Vec3, v3 } from '../math/vec3';
+import type { AtmosphereDef } from './atmosphere';
 
 // 自転軸と自転位相の決め方。'eciPole' は ECI の極軸そのもの(この座標系を定義している天体)で、
 // 自転角速度 spinRate [rad/s] をその天体が与える。'cassini' は同期回転する衛星のカッシーニ状態で、
@@ -25,7 +28,7 @@ export type PoleModel =
 // IAU モデルの元期を simZeroEt ぶん進めた自転モデル。基準方向・本初子午線の位相はどちらも
 // 時刻の一次式なので係数へ畳める。極方向を持たないモデル(cassini/eciPole)は時刻の原点を
 // 持たないのでそのまま。
-export function poleModelForSimZero(pole: PoleModel | undefined, simZeroEt: number): PoleModel | undefined {
+function poleModelForSimZero(pole: PoleModel | undefined, simZeroEt: number): PoleModel | undefined {
   if (pole === undefined || pole.kind !== 'iau') return pole;
   const centuries = simZeroEt / JULIAN_CENTURY;
   const days = simZeroEt / SECONDS_PER_DAY;
@@ -48,22 +51,6 @@ export interface Degree2GravityDef {
   readonly j2: number;
   readonly c22: number; // 0 なら軸対称
   readonly refRadius: number; // 係数が定義された基準半径 [m]
-}
-
-// 2次重力場の非軸対称成分(赤道断面の楕円性)を、ある時刻の姿勢へ解決した形。主軸座標系で
-// 表すため S22 は恒等的に 0 になり、長軸の向きだけで姿勢が決まる。
-interface TesseralGravity {
-  readonly c22: number;
-  readonly longAxis: Vec3; // 主軸座標系の長軸(単位ベクトル、ECI)
-}
-
-// 天体の2次(degree 2)の重力場を、ある時刻の姿勢へ解決した形。係数は非正規化。refRadius は
-// 係数が定義された基準半径で、地形としての表面半径とは別の量。
-export interface Degree2Gravity {
-  readonly j2: number; // 極方向の扁平(= −C20)
-  readonly refRadius: number; // [m]
-  readonly pole: Vec3; // 自転軸(単位ベクトル、ECI)
-  readonly tesseral: TesseralGravity | null; // null なら軸対称
 }
 
 // 天体の形状(歪み)。省略時は `radius` による真球。'spheroid' は回転楕円体(赤道半径=極半径
@@ -122,4 +109,70 @@ export function shapeSpheroidRadii(
 ): { readonly equatorRadius: number; readonly polarRadius: number } {
   const axes = shapeAxes(radius, shape);
   return { equatorRadius: Math.min(axes.x, axes.z), polarRadius: axes.y };
+}
+
+// 天体ごとの平均黄経の初期位相 [rad]。未指定の天体は 0 として扱う。
+export type PhaseOffsets = Partial<Record<string, number>>;
+
+export interface StarDef {
+  readonly id: string;
+  readonly mu: number;
+  readonly radius: number;
+}
+export interface PlanetDef {
+  readonly id: string;
+  readonly mu: number;
+  readonly radius: number;
+  readonly orbit: KeplerOrbit; // 中心は必ず恒星で、乗っているのは惑星本体ではなく惑星-衛星系の重心
+  readonly pole?: PoleModel; // 省略時は自転軸を持たない
+  readonly degree2?: Degree2GravityDef; // 省略時は質点として扱う
+  readonly shape?: ShapeDef; // 省略時は radius による真球
+  readonly atmosphere?: AtmosphereDef; // 省略時は大気を持たない(抗力・焼失ともに起きない)
+  readonly rings?: RingSystemDef; // 省略時は環を持たない
+  // ラグランジュ点をフォーカス対象のラベルとして出すかどうか(省略時 = 出さない)。全公転天体で
+  // 出すと 5 点 × 天体数のラベルが画面を埋めるので、実際に軌道設計の目標になる系だけを立てる。
+  readonly lagrangeLabels?: boolean;
+}
+// 中心は必ず惑星で、その関係は SatelliteMotion が持つ参照が表す。
+export type SatelliteDef = Omit<PlanetDef, 'orbit'> & { readonly orbit: SatelliteOrbit };
+export type CelestialBodyDef = StarDef | PlanetDef | SatelliteDef;
+
+// 天体の形(歪み)。恒星は形を持たず、`radius` による真球として扱う。
+export function shapeOf(def: CelestialBodyDef): ShapeDef | undefined {
+  return 'shape' in def ? def.shape : undefined;
+}
+
+// pole 定義から自転角速度 [rad/s] を取り出す。自転モデルを持たない天体は null。符号は自転の
+// 向きを表し、逆行自転する天体では負になる。同期回転の衛星は本初子午線が公転の平均黄経を追うので、
+// 自転角速度は公転の平均運動と一致する。歳差は自転の 10⁻⁷ 倍未満なので織り込まない。
+export function spinRateOf(def: CelestialBodyDef): number | null {
+  if (!('pole' in def)) return null;
+  const pole = def.pole;
+  if (pole === undefined) return null;
+  if (pole.kind === 'eciPole') return pole.spinRate;
+  if (pole.kind === 'iau') return (pole.wRateDegPerDay * Math.PI) / 180 / 86400;
+  // カッシーニ状態の同期回転は衛星だけが持つ。
+  return 'kepler' in def.orbit ? def.orbit.kepler.lRate : null;
+}
+
+// 天体の宣言を、平均黄経の初期位相と元期オフセットを畳み込んだ宣言へ写す。これを通した宣言
+// だけが CelestialMotion へ渡ってよい — 軌道も自転モデルも simTime そのものを引数に取る形に
+// なり、評価のたびに巨大な定数を足し直さずに済む。
+export function planetDefForSimZero(def: PlanetDef, phases: PhaseOffsets, simZeroEt: number): PlanetDef {
+  return {
+    ...def,
+    orbit: keplerOrbitForSimZero(def.orbit, phases[def.id] ?? 0, simZeroEt),
+    pole: poleModelForSimZero(def.pole, simZeroEt),
+  };
+}
+
+// 衛星の宣言を、同じ規約で simTime 基準の宣言へ写す。
+export function satelliteDefForSimZero(
+  def: SatelliteDef, phases: PhaseOffsets, simZeroEt: number,
+): SatelliteDef {
+  return {
+    ...def,
+    orbit: satelliteOrbitForSimZero(def.orbit, phases[def.id] ?? 0, simZeroEt),
+    pole: poleModelForSimZero(def.pole, simZeroEt),
+  };
 }

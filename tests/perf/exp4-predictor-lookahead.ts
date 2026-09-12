@@ -1,6 +1,7 @@
 // 実験4: 予測がどこまで先回りできるか。
 // 予測の先端は1フレームあたり budget(ステップ数) × dt(1ステップの sim-秒)だけ進み、
 // simTime は1フレームあたり warp/60 秒進む。この2つの競争をワープ倍率ごとに判定する。
+import { createRequire } from 'node:module';
 import { keplerPeriod } from '../../src/physics/elements';
 import {
   MU_EARTH, R_EARTH, INITIAL_ALT,
@@ -78,4 +79,5 @@ export function run(): void {
   analyzeOrbit(`地球周回・月距離相当(半径384,400km, 周期${periodHigh.toFixed(0)}s ≈ ${(periodHigh / 86400).toFixed(2)}日)`, periodHigh);
 }
 
-if (require.main === module) run();
+// webpack 用に `require` がグローバル宣言されているので、node の require はここで作る。
+if (createRequire(__filename).main === module) run();

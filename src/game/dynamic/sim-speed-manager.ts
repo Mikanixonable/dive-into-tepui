@@ -2,7 +2,7 @@
 // 「マニューバノードの実行時刻まで自動的に加速する」機能を担う。
 // マップビューの計画データそのものには依存しない — [N] キーの受け口と
 // どのノード時刻へ自動ワープするかは呼び出し側が決めて渡す。
-import { Hud } from '../hud/hud';
+import type { Notifier } from '../../hud/notifier';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { KinematicState } from '../../physics/kinematic-state';
 import type { Input } from '../../input/input';
@@ -22,7 +22,7 @@ export class SimSpeedManager {
   private autoWarpUntil: number | null = null;
 
   constructor(
-    private readonly _hud: Hud,
+    private readonly _notifier: Notifier,
     private readonly _uiSfx: UiSfx,
   ) { }
 
@@ -78,7 +78,7 @@ export class SimSpeedManager {
     this.levelIdx = next;
     this._uiSfx.warp();
     const gated = this.canShipAct ? '' : `(自機の操作はワープ ×${MAX_PHYS_SIM_SPEED} 以下でのみ可能)`;
-    this._hud.hint(`時間加速 ×${this.simSpeed}${gated}`);
+    this._notifier.hint(`時間加速 ×${this.simSpeed}${gated}`);
   }
 
   // 未来の指定時刻まで自動ワープする。既に到達窓へ入った時刻は受け付けない。
@@ -104,17 +104,17 @@ export class SimSpeedManager {
   toggleAutoWarpToFirstNode(firstNode: KinematicState | undefined, simTime: number): void {
     // ノードがなければ計画を促す通知だけ出す
     if (!firstNode) {
-      this._hud.hint(`マニューバノードがありません ([${K.toggleMapMode.label}] で計画)`);
+      this._notifier.hint(`マニューバノードがありません ([${K.toggleMapMode.label}] で計画)`);
       return;
     }
     // 自動ワープ中なら解除、そうでなければノードの時刻まで開始する
     if (this.isAutoWarping) {
       this.cancelAutoWarp();
-      this._hud.hint('自動ワープ解除');
+      this._notifier.hint('自動ワープ解除');
     } else {
       if (this.startAutoWarpTo(firstNode.t, simTime)) {
-        this._hud.hint('ノードへ自動ワープ開始');
-      } else this._hud.hint('ノード時刻を通過しています');
+        this._notifier.hint('ノードへ自動ワープ開始');
+      } else this._notifier.hint('ノード時刻を通過しています');
     }
   }
 

@@ -1,15 +1,15 @@
 // セーブデータブラウザ: 複数のセーブデータ(スロット)とそのスナップショット履歴を
 // 一覧・切替・クリップ・書き出し/取り込みするフルスクリーン UI。
 // 一発モーダルで、操作のたびに DOM を組み直す(毎フレーム sync は無い)。
-import type { Game } from '../../game/game';
 import { solarSystemBodyName } from '../../game/celestial/solar-system/solar-system';
 import { SaveSlots } from '../save/save-slots';
-import { SnapshotService } from '../save/snapshot-service';
+import { SnapshotService, type SnapshotCaptureSource } from '../save/snapshot-service';
 import { exportSlotToFile, pickAndImportSlot } from '../save/save-transfer';
 import type { SaveSlotMeta } from '../save/slot-data';
 import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
 import { CloseButton, TabBar } from '../../hud/widgets';
-import { injectOnce } from '../../hud/widgets/inject-style';
+import { injectOnce } from '../../hud/inject-style';
+import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
 import { MQ_COMPACT } from '../../hud/breakpoints';
 import { buildSlotsPane } from './slot-pane';
 import { buildSnapshotPane } from './snapshot-pane';
@@ -24,22 +24,22 @@ const STYLE = `
 #save-browser .sb-panel {
   width: min(1100px, 94vw); height: min(760px, 88vh); height: min(760px, 88dvh);
   display: flex; flex-direction: column; overflow: hidden;
-  background: var(--bg); border: 1px solid var(--edge); border-radius: var(--radius-l);
+  border-radius: var(--radius-window);
 }
 #save-browser .sb-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: var(--space-5) var(--space-6); border-bottom: 1px solid var(--edge); flex: 0 0 auto;
+  padding: var(--space-5) var(--space-6); flex: 0 0 auto;
 }
 #save-browser .sb-title { font-size: var(--font-l); font-weight: 700; letter-spacing: 0.12em; color: var(--text); }
-#save-browser .sb-body { flex: 1 1 0; min-height: 0; display: flex; gap: 1px; background: var(--edge); }
+#save-browser .sb-body { flex: 1 1 0; min-height: 0; display: flex; gap: var(--space-1); background: var(--glass-inset); }
 #save-browser .sb-pane {
   flex: 1 1 0; min-width: 0; overflow-y: auto; padding: var(--space-5) var(--space-5);
-  display: flex; flex-direction: column; gap: var(--space-3); background: var(--bg);
+  display: flex; flex-direction: column; gap: var(--space-3); background: var(--glass-inset);
   scrollbar-width: thin;
 }
 #save-browser .sb-pane-title { font-size: var(--font-xs); letter-spacing: 1.5px; color: var(--text-dim); }
 #save-browser .sb-empty { color: var(--text-dim); padding: var(--space-5); text-align: center; line-height: 1.7; font-size: var(--font-s); }
-#save-browser .sb-status { min-height: 20px; padding: var(--space-2) var(--space-5); font-size: var(--font-xs); color: var(--text-dim); border-top: 1px solid var(--edge); }
+#save-browser .sb-status { min-height: 20px; padding: var(--space-2) var(--space-5); font-size: var(--font-xs); color: var(--text-dim); }
 #save-browser .sb-status.error { color: var(--color-error); }
 /* compact: 左右ペインを並べず、sb-mobile-tabs で切り替えた片方だけを表示する。 */
 #save-browser .sb-mobile-tabs { display: none; padding: var(--space-3) var(--space-5) 0; }
@@ -51,9 +51,15 @@ const STYLE = `
 }
 `;
 
-// 今どの周回の Game が動いているか。Game より長生きする側(Launcher)が満たす。
 export interface CurrentGameSource {
-  readonly current: Game | null;
+  readonly current: {
+    readonly stageId: string;
+    readonly isPlaying: boolean;
+    readonly nameOfBody: (id: string) => string;
+    readonly snapshot: SnapshotCaptureSource;
+    pause(): void;
+    resume(): void;
+  } | null;
 }
 
 export class SaveBrowser implements OverlayHandle {
@@ -82,6 +88,7 @@ export class SaveBrowser implements OverlayHandle {
     private readonly gameSource: CurrentGameSource,
     private readonly overlayManager: OverlayManager,
   ) {
+    injectCommonUiStyle();
     injectOnce('save-browser', STYLE);
     this.el = document.createElement('div');
     this.el.id = 'save-browser';
@@ -94,7 +101,7 @@ export class SaveBrowser implements OverlayHandle {
   public open(): void {
     // 表示対象を既定値(アクティブスロット・現在のステージ)へ戻す。
     this.viewedSlotId = this.slots.activeSlotId;
-    this.viewedStageId = this.gameSource.current?.activeStage.id ?? null;
+    this.viewedStageId = this.gameSource.current?.stageId ?? null;
     this.statusLine = '';
     this.statusIsError = false;
     this.rebuild();
@@ -126,10 +133,10 @@ export class SaveBrowser implements OverlayHandle {
   }
 
   // 決着後(won/lost/timeup)の状態は復元しても操作不能なので撮らせない([F5] と同条件)。
-  // 動いている Game が無い(周回の切り替え中)ときも撮れない。
+  // 動いている周回が無い(周回の切り替え中)ときも撮れない。
   private canCaptureNow(): boolean {
     const game = this.gameSource.current;
-    return game !== null && this.viewedSlotId === this.slots.activeSlotId && game.activeStage.isPlaying;
+    return game !== null && this.viewedSlotId === this.slots.activeSlotId && game.isPlaying;
   }
 
   private viewedSlot(): SaveSlotMeta | null {
@@ -140,7 +147,7 @@ export class SaveBrowser implements OverlayHandle {
   private rebuild(): void {
     this.el.innerHTML = '';
     const panel = document.createElement('div');
-    panel.className = 'sb-panel';
+    panel.className = 'sb-panel ui-surface-focus';
 
     const header = document.createElement('div');
     header.className = 'sb-header';
@@ -181,7 +188,7 @@ export class SaveBrowser implements OverlayHandle {
     snapPane.classList.toggle('sb-pane-mobile-active', this.mobilePane === 'snapshots');
     const game = this.gameSource.current;
     snapPane.appendChild(buildSnapshotPane(
-      this.viewedSlot(), this.viewedStageId, this.slots.activeSlotId, game?.activeStage.id ?? null, this.canCaptureNow(), {
+      this.viewedSlot(), this.viewedStageId, this.slots.activeSlotId, game?.stageId ?? null, this.canCaptureNow(), {
         onCaptureNow: () => this.handleCaptureNow(),
         onSelectStage: (id) => { this.viewedStageId = id; this.rebuild(); },
         onLoadSnapshot: (id, loadable) => this.handleLoadSnapshot(id, loadable),
@@ -190,7 +197,7 @@ export class SaveBrowser implements OverlayHandle {
         onDeleteSnapshot: (id) => this.handleDeleteSnapshot(id),
         onBranch: (slotId, snapId) => this.handleBranch(slotId, snapId),
         // 周回が1つも動いていない状態でも一覧の中心天体名を出せるよう、静的な表へ落とす。
-        nameOf: (id) => game?.celestialSystem.nameOf(id) ?? solarSystemBodyName(id),
+        nameOf: (id) => game?.nameOfBody(id) ?? solarSystemBodyName(id),
       },
     ));
     body.appendChild(snapPane);
@@ -280,7 +287,9 @@ export class SaveBrowser implements OverlayHandle {
     const game = this.gameSource.current;
     if (game === null || !this.canCaptureNow()) return;
     const name = prompt('スナップショットの名前', '');
-    const snap = this.service.capture(game, 'manual', name || null, true);
+    const snap = this.service.capture(
+      game.snapshot.runSummary(), game.snapshot.serialize(), 'manual', name || null, true,
+    );
     this.setStatus(snap ? 'クリップしました。' : 'クリップに失敗しました。', !snap);
     this.rebuild();
   }

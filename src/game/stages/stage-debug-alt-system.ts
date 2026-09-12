@@ -1,34 +1,30 @@
 // デバッグ用ステージ: 現実の太陽系とは無関係な架空のレジストリ・原点で進行する。恒星1体・
-// 惑星1体・衛星1体だけの最小構成で、輻射源・日照率・点群などの経路が太陽系のレジストリに
-// 依存していないことを実演する。タイトルの通常ボタン列には出ない。
+// 惑星1体・衛星1体の最小構成で、輻射源・日照率・点群などの経路が任意のレジストリで動くことを
+// 確かめる。
 import * as THREE from 'three/webgpu';
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
-import type { Player } from '../player/player';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import {
-  CelestialMotion, OrbitingMotion, PhaseOffsets, PlanetDef, SatelliteDef, StarDef,
-  planetDefForSimZero, satelliteDefForSimZero, SatelliteMotion, StarMotion,
-} from '../../physics/celestial-motion';
+import { OrbitingMotion, SatelliteMotion, StarMotion } from '../../physics/celestial-motion';
+import { PhaseOffsets, PlanetDef, SatelliteDef, StarDef, planetDefForSimZero, satelliteDefForSimZero } from '../../physics/celestial-body-def';
 import { planetSystem } from '../../physics/planet-system';
-import { planetOrbit } from '../../physics/kepler-orbit';
+import { planetOrbit, JULIAN_CENTURY } from '../../physics/kepler-orbit';
 import { AU } from '../../physics/astronomical-unit';
-import { JULIAN_CENTURY } from '../../physics/kepler-orbit';
 import { satelliteOrbit } from '../../physics/satellite-orbit';
 import { keplerPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { kinematicState } from '../../physics/kinematic-state';
 import { add } from '../../math/vec3';
 import type { StageSaveData } from '../save/save-data';
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
-import { CelestialSurface } from '../../render/celestial-surface';
+import { CelestialSurface } from '../../render/celestial/celestial-surface';
 import { celestialClassOfKind } from '../celestial/celestial-entity/celestial-entity-def';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { CelestialSystem } from '../celestial/celestial-system';
 import type { TdbJulianDate } from '../../physics/time';
-import { SphereEntity } from '../celestial/celestial-entity/sphere-entity';
-import { StarEntity } from '../celestial/celestial-entity/star-entity';
+import { SphereCelestialView } from '../../render/celestial/celestial-entity/sphere-celestial-view';
+import { StarCelestialView } from '../../render/celestial/celestial-entity/star-celestial-view';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../render/pipeline/sun-light';
-import { MAG_ROUNDS } from '../player/player-fire';
+import { MAG_ROUNDS } from '../player/ammo-spec';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 const STAR_ID = 'aeolus';
 const PRIMARY_ID = 'zephyrus';
@@ -69,7 +65,7 @@ const ZEPHYRUS_I: SatelliteDef = {
 };
 
 // 架空星系の運動を組む。
-function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialMotion[] {
+function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialBody[] {
   const aeolus = new StarMotion(AEOLUS);
   const zephyrus = planetSystem(planetDefForSimZero(ZEPHYRUS, phases, 0), aeolus);
   const zephyrusI = new SatelliteMotion(satelliteDefForSimZero(ZEPHYRUS_I, phases, 0), zephyrus);
@@ -77,43 +73,52 @@ function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialMotion[]
 }
 
 // 架空天体の見た目: 恒星なら太陽の見た目、それ以外は単色球。表示名は id をそのまま使う。
-function fallbackEntity(motion: CelestialMotion): CelestialEntity {
+function fallbackEntity(motion: CelestialBody): CelestialEntity {
   // 色の手がかりを持たない架空の恒星なので、無彩色で目盛りの基準どおりの明るさにする。
   if (motion instanceof StarMotion) {
-    return new StarEntity(
-      motion, motion.id, new THREE.Color(1, 1, 1), REFERENCE_STAR_RADIANT_INTENSITY, 0xffffff);
+    return new CelestialEntity(
+      motion, motion.id, 'star', new StarCelestialView(0xffffff, {
+        color: new THREE.Color(0xffffff), radiantIntensity: REFERENCE_STAR_RADIANT_INTENSITY,
+      }),
+    );
   }
   if (!(motion instanceof OrbitingMotion)) throw new Error(`${motion.id} の運動が OrbitingMotion ではない`);
-  return new SphereEntity(motion, motion.id, celestialClassOfKind(motion.kind), CelestialSurface.solid(DEFAULT_ALBEDO));
+  return new CelestialEntity(
+    motion, motion.id, celestialClassOfKind(motion.kind), new SphereCelestialView(CelestialSurface.solid(DEFAULT_ALBEDO)),
+  );
 }
 
 export class StageDebugAltSystem extends Stage {
-  static readonly id = 'debug-alt-system' as const;
-  static readonly epoch = STORY_EPOCH;
-  static async createCelestialSystem(
+  public static readonly id = 'debug-alt-system' as const;
+  public static readonly epoch = STORY_EPOCH;
+  // 架空の3体を並べ、惑星 zephyrus を原点とする天体系を組む。
+  public static async createCelestialSystem(
     phaseOffsets: PhaseOffsets, _earthSpinPhase0: number, epoch: TdbJulianDate,
+    _onProgress?: (ratio: number) => void, _renderer?: THREE.WebGPURenderer,
   ): Promise<CelestialSystem> {
     const bodies = zephyrusSystemMotions(phaseOffsets).map(fallbackEntity);
     const origin = bodies.find((b) => b.id === PRIMARY_ID)!;
     return new CelestialSystem(bodies, origin, phaseOffsets, epoch);
   }
-  static readonly selectLabel = 'DEBUG(架空星系)';
-  static readonly selectSub = '【デバッグ】架空天体3体だけのレジストリで起動する';
-  static readonly hiddenFromSelect = true;
-  static readonly selectKeys = ['KeyE'];
+  public static readonly selectLabel = 'DEBUG(架空星系)';
+  public static readonly selectSub = '【デバッグ】架空天体3体だけのレジストリで起動する';
+  public static readonly hiddenFromSelect = true;
+  public static readonly selectKeys = ['KeyE'];
 
-  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+  // saved があればそこから復元し、無ければ初期配置してステージを始める。
+  public constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     this.begin();
   }
 
-  briefingHtml(): string {
+  // ステージ開始時に出すブリーフィングの本文(HTML)。
+  protected briefingHtml(): string {
     return `<b>架空星系デバッグステージ</b><br>${STAR_ID} 系の ${PRIMARY_ID} で起動`;
   }
 
   // 自機を zephyrus の低軌道へ置く(このレジストリでは既定の地球 LEO に意味が無い)。
   protected init(): void {
-    const t = this._simulator.simTime;
+    const t = this._dynamicSystem.simTime;
     const primary = this._celestialSystem.motionOf(PRIMARY_ID);
     const primaryState = primary.stateAt(t);
     const rel = stateFromOrbitalElements(t, PRIMARY_RADIUS + 5e5, 0, 0, 0, 0, 0, primary.def.mu);
@@ -123,13 +128,15 @@ export class StageDebugAltSystem extends Stage {
     });
   }
 
-  update(_dt: number, player: Player | null, _entities: DynamicSystem, simTime: number, simSpeed: SimSpeedManager): void {
+  // 補給を1フレーム分進める。自艦がいなければ何もしない。
+  public update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
+    const player = this.ship;
     if (!player) return;
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }
 
   // 検証を継続できるよう、勝敗を発生させない(クリア回数にも入らない)。
-  checkWin(): boolean {
+  protected checkWin(): boolean {
     return false;
   }
 }

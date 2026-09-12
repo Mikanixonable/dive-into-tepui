@@ -3,12 +3,12 @@
 // ぶら下げるかは対象を最も強く引く天体から辿り、そのラベルが出ていなければ親天体へ繰り上げる。
 import { len, sub, type Vec3 } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
-import type { CelestialMotion } from '../../physics/celestial-motion';
-import type { CelestialSystem } from '../celestial/celestial-system';
-import type { ProjectFn } from '../camera/camera-system';
+import type { CelestialBody } from '../../physics/celestial-body';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { ProjectFn } from '../../math/projection';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { GroupedMarkerItem, GroupedMarkers } from './grouped-markers';
-import type { MarkerManager } from './marker-manager';
+import type { MarkerSlots } from './marker-slots';
 
 // これより天体が遠ければ、サブ行を記号と個数だけの1行へ畳む [m]。
 const STAGE2_DIST = 5e9;
@@ -48,8 +48,8 @@ export class CelestialSubLabels {
   private readonly entriesByBody = new Map<string, SubLabelEntry[]>();
 
   constructor(
-    private readonly markerManager: MarkerManager,
-    private readonly celestialSystem: CelestialSystem,
+    private readonly markers: MarkerSlots,
+    private readonly celestialBodies: CelestialBodies,
   ) {}
 
   // 隠れた項目を天体ラベルへ振り分け、集約先のラベルをサブ行付きへ描き直す。
@@ -57,7 +57,7 @@ export class CelestialSubLabels {
   sync(
     groupedMarkers: GroupedMarkers,
     labelStateOf: (id: string) => CelestialLabelState | null,
-    celestialBodies: readonly CelestialMotion[],
+    attractors: readonly CelestialBody[],
     pivot: number,
     project: ProjectFn,
     cameraPos: Vec3,
@@ -68,7 +68,7 @@ export class CelestialSubLabels {
     // まず隠れた項目を集約先の天体ごとに束ねる。
     this.entriesByBody.clear();
     for (const item of hiddenItems) {
-      this.route(item, strongestAttractor(item.pos, celestialBodies, pivot).id, labelStateOf, cameraPos);
+      this.route(item, strongestAttractor(item.pos, attractors, pivot).id, labelStateOf, cameraPos);
     }
 
     // 束ねた先のラベルを、サブ行を足した表記で置き直す。
@@ -78,7 +78,7 @@ export class CelestialSubLabels {
       const stage2 = len(sub(label.pos, cameraPos)) >= STAGE2_DIST;
       const subDivs = stage2 ? countLine(entries) : listedLines(entries);
       if (!label.drawable) continue;
-      this.markerManager.setPosition(
+      this.markers.setPosition(
         bodyId, label.markerClass, label.glyph, label.pos, project,
         `<span class="lbl-main">${label.markerLabel}</span>${subDivs.join('')}`,
         label.opacity, undefined, undefined, false, false, label.priority, cameraPos,
@@ -95,7 +95,7 @@ export class CelestialSubLabels {
     const centerLabel = labelStateOf(centerId);
     const centerShown = centerLabel !== null && centerLabel.shown;
     const distToCenter = centerLabel === null ? Infinity : len(sub(centerLabel.pos, cameraPos));
-    const primaryId = this.celestialSystem.entityOf(centerId).motion.primary?.id ?? null;
+    const primaryId = this.celestialBodies.motionOf(centerId).primary?.id ?? null;
     const primaryShown = primaryId !== null && (labelStateOf(primaryId)?.shown ?? false);
 
     // 遠い系ではプレフィックスを付けず主親天体へまとめ、近い系では直近の天体へ付ける。
@@ -106,7 +106,7 @@ export class CelestialSubLabels {
     }
     if (centerShown) this.append(centerId, '', item);
     else if (primaryShown && primaryId !== null) {
-      this.append(primaryId, `${this.celestialSystem.nameOf(centerId)}: `, item);
+      this.append(primaryId, `${this.celestialBodies.nameOf(centerId)}: `, item);
     }
   }
 

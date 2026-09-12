@@ -7,7 +7,7 @@ import { KinematicState, kinematicState } from '../../src/physics/kinematic-stat
 import { v3 } from '../../src/math/vec3';
 
 export function register(): void {
-  // このテストが見るのは役割トークン(@activeShip)の解決と猶予だけなので、天体レジストリの
+  // このテストが見るのは役割トークン(@controlled)の解決と猶予だけなので、天体レジストリの
   // 中身は結果に関わらない。
   const parts = solarSystemParts();
   const shipState = kinematicState<'eci'>(0, v3(7e6, 0, 0), v3(0, 7500, 0));
@@ -19,7 +19,7 @@ export function register(): void {
     let ship: ((t: number) => KinematicState) | null = shipStateAt;
     const anchors = new FrameAnchors(parts.system, {
       entityState: () => null,
-      activeShipState: (t) => ship?.(t) ?? null,
+      controlledState: (t) => ship?.(t) ?? null,
       navTargetState: () => null,
     });
     anchors.update(0);
@@ -28,45 +28,45 @@ export function register(): void {
 
   test('frame-anchors: 役割トークンは解決できる間はその状態を返す', () => {
     const { anchors } = anchorsWithShip();
-    assert.equal(anchors.stateOf('@activeShip', 0), shipState);
+    assert.equal(anchors.stateOf('@controlled', 0), shipState);
   });
 
   test('frame-anchors: stateOf(id, t) は渡された t の状態を返す', () => {
     const { anchors } = anchorsWithShip();
-    assert.deepEqual(anchors.stateOf('@activeShip', 500), shipStateAt(500));
-    assert.deepEqual(anchors.stateOf('@activeShip', 1000), shipStateAt(1000));
+    assert.deepEqual(anchors.stateOf('@controlled', 500), shipStateAt(500));
+    assert.deepEqual(anchors.stateOf('@controlled', 1000), shipStateAt(1000));
   });
 
   // 猶予は「フレーム」で数える。呼び出し回数で数えると、1フレームのうちにカメラ・軌道フレーム・
   // attractorOf が重ねて問うだけで猶予を使い切り、乗り換えの瞬間に原点が ECI へ飛ぶ。
   test('frame-anchors: 同じフレーム内で何度問われても猶予を使い切らない', () => {
     const { anchors, setShip } = anchorsWithShip();
-    anchors.stateOf('@activeShip', 0);
+    anchors.stateOf('@controlled', 0);
     setShip(null);
     for (let i = 0; i < 5; i++) {
-      assert.equal(anchors.stateOf('@activeShip', 0), shipState, `${i} 回目で直前の状態を失った`);
+      assert.equal(anchors.stateOf('@controlled', 0), shipState, `${i} 回目で直前の状態を失った`);
     }
   });
 
   test('frame-anchors: 2フレーム連続で解決できなければ null になる', () => {
     const { anchors, setShip } = anchorsWithShip();
-    anchors.stateOf('@activeShip', 0);
+    anchors.stateOf('@controlled', 0);
     setShip(null);
-    assert.equal(anchors.stateOf('@activeShip', 0), shipState);
+    assert.equal(anchors.stateOf('@controlled', 0), shipState);
     anchors.update(0);
-    assert.equal(anchors.stateOf('@activeShip', 0), null);
+    assert.equal(anchors.stateOf('@controlled', 0), null);
   });
 
   test('frame-anchors: 解決が戻れば猶予も戻る', () => {
     const { anchors, setShip } = anchorsWithShip();
-    anchors.stateOf('@activeShip', 0);
+    anchors.stateOf('@controlled', 0);
     setShip(null);
-    anchors.stateOf('@activeShip', 0);
+    anchors.stateOf('@controlled', 0);
     anchors.update(0);
     setShip(shipState);
-    assert.equal(anchors.stateOf('@activeShip', 0), shipState);
+    assert.equal(anchors.stateOf('@controlled', 0), shipState);
     setShip(null);
     anchors.update(0);
-    assert.equal(anchors.stateOf('@activeShip', 0), shipState, '猶予が戻っていない');
+    assert.equal(anchors.stateOf('@controlled', 0), shipState, '猶予が戻っていない');
   });
 }

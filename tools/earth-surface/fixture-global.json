@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "kind": "earth-surface-global-fixture",
+  "provenance": "synthetic_fixture",
+  "datasetId": "earth-2026-09-09-a",
+  "sourceManifestSha256": "6fa02302552ea033b1d5e8969a9064c0a71f2fadf97f6f8098063ffc26624fbb",
+  "surfaceSourceId": "etopo-2022-v1-ice-surface",
+  "geoidSourceId": "etopo-2022-v1-geoid",
+  "gshhgPolygons": [
+    {"level": 1, "coordinates": [[-180, -90], [0, -90], [0, 90], [-180, 90], [-180, -90]]}
+  ],
+  "tiles": [
+    {"key": [0, 0, 0], "colorSrgb": [42, 92, 156], "iceSurfaceM": 100, "geoidM": 20},
+    {"key": [0, 1, 0], "colorSrgb": [16, 54, 118], "iceSurfaceM": -420, "geoidM": 20}
+  ],
+  "climate": {
+    "default": {
+      "temperatureK": 280,
+      "cloudFraction": 0.5,
+      "orthometricElevationM": 0,
+      "landFraction": 0.5
+    }
+  }
+}

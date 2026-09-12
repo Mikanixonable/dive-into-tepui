@@ -5,42 +5,33 @@ import { AUTO_SNAPSHOT_LIMIT, PINNED_SNAPSHOT_LIMIT } from '../save/save-slots';
 import type { SaveSlotMeta, SnapshotMeta } from '../save/slot-data';
 import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud/utils';
 import { Button, Meter, TabBar } from '../../hud/widgets';
-import { injectOnce } from '../../hud/widgets/inject-style';
+import { injectOnce } from '../../hud/inject-style';
 import { smallBtn, stageLabel } from './shared';
 
 const STYLE = `
-/* このパネルで唯一の「押すと今の状態が増える」操作 — 注目させるためオレンジを残す。 */
-#save-browser span#sb-capture-now {
-  background: var(--color-primary-fill-weak); color: var(--color-primary); border-color: var(--color-primary-edge);
-}
-#save-browser span#sb-capture-now:hover { background: var(--color-primary-fill); }
 #save-browser .sb-stage-tabs { display: flex; gap: var(--space-2); }
 #save-browser .sb-snapshot-groups { display: flex; flex-direction: column; gap: var(--space-2); }
 #save-browser .sb-snapshot-group-title { font-size: var(--font-xs); color: var(--text-dim); margin-top: var(--space-2); }
 #save-browser .sb-snapshot-list { display: flex; flex-direction: column; gap: var(--space-2); }
 #save-browser .sb-snap-card {
   display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--edge); border-radius: var(--radius-m);
+  border: 0; border-radius: var(--radius-m);
 }
 #save-browser .sb-snap-loadable { cursor: pointer; }
-#save-browser .sb-snap-loadable:hover { border-color: var(--text-dim); background: var(--fill-1); }
+#save-browser .sb-snap-loadable:hover { background: var(--fill-1); }
 #save-browser .sb-snap-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 #save-browser .sb-snap-name { font-size: var(--font-s); }
 #save-browser .sb-snap-badge {
   font-size: var(--font-xxs); letter-spacing: .5px; padding: 1px var(--space-3); border-radius: var(--radius-l);
-  border: 1px solid var(--edge); color: var(--text-dim);
+  border: 0; color: var(--text-dim); background: var(--fill-1);
 }
-#save-browser .sb-snap-badge-checkpoint { color: var(--text); border-color: var(--text-dim); }
+#save-browser .sb-snap-badge-checkpoint { color: var(--text); }
 #save-browser .sb-snap-row { font-size: var(--font-xs); color: var(--text-dim); }
 /* HP バーは細く、満タンでもオレンジで塗らない — このパネルの主役はセーブ操作であって
    HP 表示ではないため、他の注目要素と競合しないモノトーンに留める(danger 色も使わない)。 */
 #save-browser .sb-snap-hp-meter .w-meter-track { height: 3px; border-radius: var(--radius-s); }
 #save-browser .sb-snap-hp-meter .w-meter-fill { background: var(--text-dim); }
 #save-browser .sb-snap-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-/* クリップ済み(pin)状態だけは注目対象として残す — この行の意味は「消えずに残る」なので. */
-#save-browser span.sb-btn-pin.on {
-  background: var(--color-primary-fill-weak); color: var(--color-primary); border-color: var(--color-primary-edge);
-}
 `;
 
 // 数値であるはずのメタ項目。取り込んだファイルでは欠けていることがあり、そのまま
@@ -89,7 +80,7 @@ export function buildSnapshotPane(
   title.textContent = 'スナップショット';
   wrap.appendChild(title);
 
-  const captureBtn = new Button('今の状態をクリップして残す', callbacks.onCaptureNow);
+  const captureBtn = new Button('今の状態をクリップして残す', callbacks.onCaptureNow, undefined, 'primary');
   captureBtn.element.id = 'sb-capture-now';
   captureBtn.element.classList.add('sb-btn');
   captureBtn.setEnabled(canCaptureNow);
@@ -161,6 +152,7 @@ function buildSnapshotCard(
 
   const card = document.createElement('div');
   card.className = 'sb-snap-card';
+  card.classList.toggle('ui-selectable', loadable);
   card.classList.toggle('sb-snap-loadable', loadable);
   card.title = loadTitle;
   // ボタンの click は自身で止まるが dblclick は素通りするので、カード自身の判定で弾く。
@@ -203,8 +195,11 @@ function buildSnapshotCard(
 
   const actions = document.createElement('div');
   actions.className = 'sb-snap-actions';
-  const pinBtn = new Button(s.pinned ? '📌 解除' : '📌 クリップ', () => callbacks.onTogglePin(s.id, s.pinned));
-  pinBtn.element.classList.add('sb-btn', 'sb-btn-sm', 'sb-btn-pin');
+  const pinBtn = new Button(
+    s.pinned ? '📌 解除' : '📌 クリップ', () => callbacks.onTogglePin(s.id, s.pinned), undefined,
+    ['secondary', 'dense'],
+  );
+  pinBtn.element.classList.add('sb-btn', 'sb-btn-pin');
   pinBtn.setOn(s.pinned);
   actions.appendChild(pinBtn.element);
   actions.appendChild(smallBtn('✎', '名前変更', () => callbacks.onRenameSnapshot(s.id)));

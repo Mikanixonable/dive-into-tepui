@@ -16,10 +16,8 @@
 // 「最初に壊れた対象」をその場で記録することが、原因特定の唯一の近道になる。
 //
 // 一度検出したら以後は何もしない(ログの洪水と、汚染後の無意味な検査を避ける)。
-import { Hud } from '../hud/hud';
-import { Player } from '../player/player';
-import { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import { DynamicSystem } from './dynamic-system';
+import type { Notifier } from '../../hud/notifier';
+import type { SimulationControlled, SimulationState } from './dynamic-simulation-participant';
 import { Vec3 } from '../../math/vec3';
 
 // 全成分が有限値かどうかを返す。
@@ -28,7 +26,7 @@ function finiteVec(v: Vec3): boolean {
 }
 
 // エンティティの位置・速度を報告文言用の文字列にする。
-function describe(entity: DynamicEntity): string {
+function describe(entity: SimulationState): string {
   const { r, v } = entity.state;
   return `r=(${r.x},${r.y},${r.z}) v=(${v.x},${v.y},${v.z})`;
 }
@@ -36,31 +34,35 @@ function describe(entity: DynamicEntity): string {
 export class NanWatchdog {
   private tripped = false;
 
-  constructor(private readonly _hud: Hud) { }
+  constructor(private readonly _notifier: Notifier) { }
 
-  get hasTripped(): boolean { return this.tripped; }
-
-  // 自機と simTime だけを見る軽い検査。update の各フェーズ境界で呼ぶ。
-  // phase には「直前に何が走ったか」を渡す(そこが発生源だと分かる)。艦がいなければ何もしない。
-  checkPlayer(phase: string, player: Player | null, simTime: number, dt: number, simDt: number): void {
-    if (this.tripped || !player) return;
-    const { q, w } = player.att;
-    const ok = finiteVec(player.state.r) && finiteVec(player.state.v)
+  // 操作対象と simTime だけを見る軽い検査。update の各フェーズ境界で呼ぶ。
+  // phase には「直前に何が走ったか」を渡す(そこが発生源だと分かる)。操作対象がいなければ何もしない。
+  checkControlled(
+    phase: string, controlled: SimulationControlled | null, simTime: number, dt: number, simDt: number,
+  ): void {
+    if (this.tripped || !controlled) return;
+    const { q, w } = controlled.att;
+    const ok = finiteVec(controlled.state.r) && finiteVec(controlled.state.v)
       && Number.isFinite(q.x) && Number.isFinite(q.y) && Number.isFinite(q.z) && Number.isFinite(q.w)
       && finiteVec(w)
       && Number.isFinite(simTime);
     if (ok) return;
-    this.trip(phase, `player ${describe(player)} q=(${q.x},${q.y},${q.z},${q.w}) w=(${w.x},${w.y},${w.z}) simTime=${simTime}`, dt, simDt);
+    const attitude = `q=(${q.x},${q.y},${q.z},${q.w}) w=(${w.x},${w.y},${w.z})`;
+    this.trip(phase, `controlled ${describe(controlled)} ${attitude} simTime=${simTime}`, dt, simDt);
   }
 
-  // 全エンティティを走査する重い検査。自機より先に汚染されるのは他のエンティティ
-  // (薬莢・破片・弾)であることが多く、それが接触を通じて自機へ伝播する。
+  // 全エンティティを走査する重い検査。操作対象より先に汚染されるのは他のエンティティ
+  // (薬莢・破片・弾)であることが多く、それが接触を通じて操作対象へ伝播する。
   // フレームにつき一度だけ呼ぶこと。
-  checkAll(phase: string, player: Player | null, entities: DynamicSystem, simTime: number, dt: number, simDt: number): void {
+  checkAll(
+    phase: string, controlled: SimulationControlled | null, entities: readonly SimulationState[],
+    simTime: number, dt: number, simDt: number,
+  ): void {
     if (this.tripped) return;
-    this.checkPlayer(phase, player, simTime, dt, simDt);
+    this.checkControlled(phase, controlled, simTime, dt, simDt);
     if (this.tripped) return;
-    for (const e of entities.all()) {
+    for (const e of entities) {
       if (finiteVec(e.state.r) && finiteVec(e.state.v)) continue;
       this.trip(phase, `${e.constructor.name} ${describe(e)}`, dt, simDt);
       return;
@@ -72,6 +74,6 @@ export class NanWatchdog {
     this.tripped = true;
     const message = `シミュレーション状態が壊れました(NaN/Infinity)。phase=${phase} dt=${dt} simDt=${simDt} — ${detail}`;
     console.error('[NanWatchdog]', message);
-    this._hud.toast(`<b>内部エラー: ${message}</b>`, 60000);
+    this._notifier.toast(`<b>内部エラー: ${message}</b>`, 60000);
   }
 }
