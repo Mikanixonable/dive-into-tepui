@@ -135,6 +135,6 @@
   ],
   "outputGrid": {"rootColumns": 2, "rootRows": 1, "maxZoom": 7, "tileInterior": 256, "gutter": 2, "origin": [-180, 90], "sampleLocation": "cell_center", "coverage": "complete-global"},
   "climateMap": {"width": 1024, "height": 512, "channels": 4, "scalar": "UInt8", "encoding": "R=temperatureK,G=cloudFraction,B=orthometricElevationM,A=landFraction", "waterOrthometricElevationM": 0},
-  "normalMaterial": {"formatVersion": 2, "headerBytes": 32, "layout": "octahedral-rg8-roughness-r8-material-class-a8", "channels": 4, "scalar": "UInt8", "normalFrame": "body_fixed", "heightExaggeration": 1, "materialClasses": {"water": 0, "land": 1, "ice": 2, "unknown": 255}},
+  "normalMaterial": {"formatVersion": 3, "headerBytes": 32, "layout": "normal-xyz-rgb8-roughness-a8", "channels": 4, "scalar": "UInt8", "normalFrame": "body_fixed", "heightExaggeration": 1},
   "roughness": {"water": 0.05, "land": 0.8, "ice": 0.35}
 }
