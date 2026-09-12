@@ -46,10 +46,11 @@ export class Logistics {
     private readonly _scene: THREE.Scene,
     private readonly dynamicSystem: EntityRegistry & EntityRoster,
     saved?: LogisticsSaveData,
+    automaticResupply = true,
   ) {
     this.resupplyCheckAt = saved?.resupplyCheckAt ?? 0;
-    this.resupplyEnabled = saved?.resupplyEnabled ?? true;
-    this.rcsFuelResupplyEnabled = saved?.rcsFuelResupplyEnabled ?? true;
+    this.resupplyEnabled = automaticResupply && (saved?.resupplyEnabled ?? true);
+    this.rcsFuelResupplyEnabled = automaticResupply && (saved?.rcsFuelResupplyEnabled ?? true);
   }
 
   // 自機の軌道上、minDist〜maxDist 先の位相に補給を1個投入する。
