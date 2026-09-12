@@ -35,7 +35,6 @@ import { FilmLut } from './film-lut';
 import { compileInto, compileIntoOutput } from './compile-into';
 import { DeferredTexture } from '../deferred-texture';
 import { setCelestialSurfaceViewport } from '../celestial/celestial-surface';
-import type { CloudLodMode } from '../cloud/cloud-field-sampler';
 
 export class RenderPipeline implements DebugTargetHost {
   private readonly gbuffer: GBufferPass;
@@ -100,17 +99,6 @@ export class RenderPipeline implements DebugTargetHost {
   public get planetLight(): PlanetLightSource { return this._planetLight; }
   public get ambient(): AmbientSource { return this._ambient; }
   public get atmosphere(): AtmospherePass { return this.atmospherePass; }
-
-  // 雲の積分の刻みを、画素ごとにブルーノイズでずらすかを切り替える。
-  public setCloudBlueNoiseEnabled(enabled: boolean): void {
-    this.atmospherePass.setCloudBlueNoiseEnabled(enabled);
-  }
-
-  // 雲場の mip 段の選び方(診断用)を、大気と影の両パスへ配る。fixedLevel は 'fixed' のときに読む段。
-  public setCloudLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
-    this.atmospherePass.setCloudLodSampling(mode, fixedLevel);
-    this.shadowPass.setCloudLodSampling(mode, fixedLevel);
-  }
 
   // graphics は構築時点の描画品質設定。以後の変更は applyGraphics() で受ける。
   public constructor(
@@ -421,7 +409,7 @@ export class RenderPipeline implements DebugTargetHost {
       this.atmospherePass.render(camera);
       if (this.debugTarget === 'atmosphere') this.atmospherePass.inspectScattered(camera);
 
-      // world パス。LIT_OPAQUE_LAYER と背景専用レイヤーはチャンネル0から外れているので、既定の
+      // world パス。LIT_OPAQUE_LAYER・雲殻の層・背景専用レイヤーはチャンネル0から外れているので、既定の
       // カメラマスクで描く限り重複しない。autoClear を落としてマテリアルパスの描画(色・深度とも)
       // を残したまま重ね描きする — world パスは透明物(オービットライン・プルーム・ビルボード)を
       // 描画順の最後に描くため、不透明な自艦の深度が先に無いと、自艦の手前の透明物が上書きされる。
