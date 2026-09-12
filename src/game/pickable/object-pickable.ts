@@ -11,9 +11,20 @@ import type { PickCandidate } from './pick-candidate';
 
 export interface ObjectPickable extends ListedObject, InspectedObject, MapPickable {}
 
+export interface ObjectPickableProvider {
+  readonly objectPickable: ObjectPickable;
+}
+
 // この個体が被選択物として公開されるか。顔ぶれから被選択物だけを絞るときに使う。
 export function isObjectPickable(entity: DynamicEntity): entity is DynamicEntity & ObjectPickable {
   return entity.pickable;
+}
+
+// Entity 本体と表示・検査面を分けた個体は adapter を優先する。既存の組み込み対象は
+// これまでどおり自身を返すので、段階的に移行できる。
+export function objectPickableOf(entity: DynamicEntity): ObjectPickable | null {
+  const provider = entity as DynamicEntity & Partial<ObjectPickableProvider>;
+  return provider.objectPickable ?? (isObjectPickable(entity) ? entity : null);
 }
 
 // items を screenPosOf で画面へ射影し、(x, y) から半径 radiusPxSq [px^2] 以内で最も近いものを
