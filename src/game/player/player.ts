@@ -270,8 +270,8 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   // 毎フレーム、全ての自機に対して1度だけ呼ぶ。input が null の艦は、このフレーム操作されない
   // 艦として畳む。
   public updateControls(frame: PilotCommandFrame): void {
-    const { input, dt, simDt, registry, activeStage, celestialBodies } = frame;
-    this.hpRegen(dt);
+    const { input, dt, simDt, registry, activeStage, stageRules, celestialBodies } = frame;
+    if (stageRules.selfRepair) this.hpRegen(dt);
     if (input !== null) this.handleEdgeInput(input, registry);
     // ブースターの燃焼は操作の可否によらず進むので、指令を畳んだあとに進める。
     if (input === null) {
