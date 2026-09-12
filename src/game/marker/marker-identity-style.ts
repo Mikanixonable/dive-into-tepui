@@ -1,15 +1,19 @@
-// HUD 3D スクリーン投影マーカー CSS (.mk, 各種マーカーシンボル, ラベル, 重なり順).
-import { LIGHT_PALETTE } from '../../../theme';
-import { COLOR_MARKER_ALLY, COLOR_MARKER_NODE, COLOR_MARKER_FUEL, COLOR_BASE } from '../../marker/marker-identity';
+// マーカーの種別ごとの見た目 — 重なり順・識別色・字送り・字の大きさ。骨格(枠・シンボル・
+// ラベルの置き方)はマーカー装置が持ち、ここはその上に種別の意味を重ねる。
+import { injectOnce } from '../../hud/inject-style';
+import { LIGHT_PALETTE } from '../../theme';
+import { COLOR_MARKER_ALLY, COLOR_MARKER_NODE, COLOR_MARKER_FUEL, COLOR_BASE } from './marker-identity';
 
 const COLOR_MARKER_TGTDIR = '#ff7ab0';
 const COLOR_MARKER_BOARDPASS = '#ffffff';
 const COLOR_MARKER_SELF = '#dfe3e8';
 const COLOR_MARKER_PLANNED = '#8fd0ff';
 
-export const MARKER_STYLE = `
-/* マーカー層 Z-Index トークン定義 */
-#hud {
+// マーカー要素はどれも #hud の下に出る。装置が書く骨格を打ち消す枝は、無印クラスでは
+// 詳細度が並んで注入順に左右されるため、#hud を冠して確実に勝たせる。
+const MARKER_IDENTITY_STYLE = `
+/* 種別ごとの重なり順と、種別ごとに変える記号の大きさ。 */
+.mk {
   --z-mk-base: 0;
   --z-mk-node: 1;
   --z-mk-ammo: 2;
@@ -31,27 +35,11 @@ export const MARKER_STYLE = `
 #hud .mk-self { z-index: var(--z-mk-self); }
 #hud .mk-longpress { z-index: var(--z-mk-longpress); }
 
-/* マーカーコンテナ共通構造 */
-.mk {
-  position: absolute; transform: translate(-50%, -50%);
-  text-align: center; white-space: nowrap; text-shadow: 0 0 4px var(--bg), 0 0 2px var(--bg);
-  width: 24px; height: 24px; transition: opacity var(--transition-slow) ease;
-}
-.mk .sym {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-size: var(--glyph-base); line-height: 1; transition: opacity var(--transition-slow) ease; transform-origin: 50% 50%;
-}
-.mk .sym svg { display: block; width: 100%; height: 100%; }
+/* ラベルの詰め幅。種別ごとに変える枝(.mk-poi)が同じ冠で上書きする。 */
+#hud .mk .lbl { margin-top: var(--space-1); }
 
 /* インライン SVG 寸法（目盛ドット等）を優先保持するクラス */
 .mk-raw-svg .sym svg, .mk-plantick .sym svg { display: block; width: auto !important; height: auto !important; }
-
-.mk .lbl {
-  position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
-  font-size: var(--font-xs); letter-spacing: 1px; transition: opacity var(--transition-slow) ease;
-}
-.mk .sym.priority-hidden, .mk .lbl.priority-hidden { opacity: 0; pointer-events: none; }
-#hud .mk .lbl { margin-top: var(--space-1); }
 
 /* 各種エンティティ・要素別スタイル */
 .mk-enemy .lbl, .mk-target .lbl, .mk-ally .lbl, .mk-self .lbl { font-size: var(--font-xxs); line-height: 1.2; white-space: pre; }
@@ -158,3 +146,8 @@ export const MARKER_STYLE = `
 [data-render-style="schematic"] .mk-poi:not(.mk-lagrange) .lbl .lbl-main,
 [data-render-style="schematic"] .mk-poi:not(.mk-lagrange) .lbl .lbl-sub { color: ${LIGHT_PALETTE.title}; }
 `;
+
+// 種別ごとの見た目を document へ注入する。二度目以降の呼び出しは何もしない。
+export function injectMarkerIdentityStyle(): void {
+  injectOnce('marker-identity-style', MARKER_IDENTITY_STYLE);
+}

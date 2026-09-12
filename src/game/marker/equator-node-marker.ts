@@ -2,6 +2,7 @@
 // 被選択物。持ち主と中心天体を冠した呼称を答える。
 import { ORBIT_ELEMENT_LABELS, type OrbitLabelSpec } from '../hud/orbit/orbit-labels';
 import { ORBIT_POINT_GLYPH } from './marker-identity';
+import { MARKER_PRIORITY } from './marker-priority';
 import { OrbitPointMarker } from './orbit-point-marker';
 import type { Vec3 } from '../../math/vec3';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
@@ -17,6 +18,7 @@ const EQUATOR_NODE_LABELS = {
 export class EquatorNodeMarker extends OrbitPointMarker {
   public readonly glyph: string;
   protected readonly markerClass = 'mk-node';
+  protected readonly markerPriority = MARKER_PRIORITY.ORBITAL_NODE;
   public readonly markerLabel: string;
 
   private readonly spec: OrbitLabelSpec;

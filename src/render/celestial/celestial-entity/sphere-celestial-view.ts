@@ -77,7 +77,7 @@ export class SphereCelestialView extends CelestialView {
 
   // displayTime 時点の位置へ同期する。見かけ直径が閾値未満なら球と環を隠す。
   public sync(
-    motion: CelestialMotion, displayTime: number, camera: CameraFrame,
+    motion: CelestialMotion, displayTime: number, nowMs: number, camera: CameraFrame,
     star: StellarLightSource | null,
     graphics: GraphicsSettingsData, style: RenderStyle, visible: boolean,
   ): void {
@@ -107,7 +107,7 @@ export class SphereCelestialView extends CelestialView {
     this.group.position.copy(camera.floatingOrigin.RtoThreeV3(pos));
     this.shapeGroup.scale.copy(this.axes);
     if (q !== null) this.group.quaternion.set(q.x, q.y, q.z, q.w);
-    this.syncResolved(motion, apparentDiameterPx, displayTime, camera, star, graphics, style);
+    this.syncResolved(motion, apparentDiameterPx, displayTime, nowMs, camera, star, graphics, style);
     // 環へ本体と同じ位置と見た目を渡す。
     this.ring?.sync(
       this.group.position,
@@ -132,7 +132,8 @@ export class SphereCelestialView extends CelestialView {
   // 実体を描くフレームに、派生が足した表示物を同期する。group の位置・自転姿勢と shapeGroup の
   // 扁平は、呼ばれた時点でこのフレームの値に揃っている。
   protected syncResolved(
-    _motion: CelestialMotion, _apparentDiameterPx: number, _displayTime: number, _camera: CameraFrame,
+    _motion: CelestialMotion, _apparentDiameterPx: number, _displayTime: number, _nowMs: number,
+    _camera: CameraFrame,
     _star: StellarLightSource | null, _graphics: GraphicsSettingsData, _style: RenderStyle,
   ): void {}
 

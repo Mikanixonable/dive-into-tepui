@@ -29,13 +29,15 @@ import type { Notifier } from '../../hud/notifier';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { CameraFrame } from '../../render/camera/camera-frame';
-import type { ObjectPlacementPreviewMarker } from '../../render/creative/object-placement-preview-view';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { HudLayers } from '../hud/hud-layers';
-import type { MarkerSlots } from '../marker/marker-slots';
+import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import { MARKER_PRIORITY } from '../marker/marker-priority';
+import { pointPlacement } from '../marker/marker-placement';
+import { COLOR_MARKER_ALLY, ENTITY_GLYPH } from '../marker/marker-identity';
 import type { FlashEffects } from '../vfx/flash-effects';
 
 // 軌道上へ配置できる自機の上限隻数。
@@ -48,6 +50,9 @@ const PREVIEW_LINE_STYLE: LineStyle = {
 
 const DEG = Math.PI / 180;
 
+// 配置プレビューの ▷ マーカーの id。
+const PREVIEW_MARKER_ID = 'creative-preview';
+
 // 置くと決まった物体。自機は実体ではなく生成引数で表す。name は与えた名前で、
 // 実体が名前を持たない種類(弾薬)でも告知できるよう別に持つ。
 export type PlacedObject =
@@ -57,6 +62,8 @@ export type PlacedObject =
 export class ObjectPlacement {
   private readonly panel: ObjectPlacerPanel;
   private readonly previewView: ObjectPlacementPreviewView;
+  // このフレームのプレビュー ▷ マーカーの宣言。
+  private readonly declarations: MarkerDeclaration[] = [];
   private readonly playerIdAllocator = new EntityIdAllocator('creative-player-');
   private readonly ammoPickupIdAllocator = new EntityIdAllocator('creative-ammo-');
   private readonly rcsFuelPickupIdAllocator = new EntityIdAllocator('creative-rcs-fuel-');
@@ -70,7 +77,6 @@ export class ObjectPlacement {
     private readonly scene: THREE.Scene,
     private readonly dynamicSystem: EntityRoster,
     private readonly celestialSystem: CelestialSystem,
-    private readonly markers: MarkerSlots,
     private readonly worldSfx: WorldSfx,
     private readonly fx: FlashEffects,
   ) {
@@ -80,7 +86,7 @@ export class ObjectPlacement {
     for (const ammoPickup of entities.filter(isAmmoPickup)) this.ammoPickupIdAllocator.next(ammoPickup.id);
     for (const pickup of entities.filter(isRcsFuelPickup)) this.rcsFuelPickupIdAllocator.next(pickup.id);
 
-    this.previewView = new ObjectPlacementPreviewView(scene, markers, PREVIEW_LINE_STYLE);
+    this.previewView = new ObjectPlacementPreviewView(scene, PREVIEW_LINE_STYLE);
 
     this.panel = new ObjectPlacerPanel(hud.mapRoot, hud.layers.popup, celestialSystem, hud.overlayManager);
     this.panel.onConfirm = (name, form) => this.place(name, form);
@@ -110,12 +116,14 @@ export class ObjectPlacement {
   public sync(camera: CameraFrame, displayTime: number): void {
     const form = this.panel.isOpen ? this.panel.getForm() : null;
     const preview = form ? this.computePreview(form) : null;
-    this.previewView.sync(
-      preview?.elements ?? null, this.previewMarker(preview?.pos ?? null, camera, displayTime),
-      PREVIEW_LINE_STYLE, camera,
-    );
+    this.previewView.sync(preview?.elements ?? null, PREVIEW_LINE_STYLE, camera);
+    this.declarations.length = 0;
+    this.declarations.push(this.previewMarker(preview?.pos ?? null, camera, displayTime));
     this.panel.setIssues(form ? this.computeFieldIssues(form) : []);
   }
+
+  // 直近の sync が組んだ、このフレームのマーカーの宣言。
+  public get markerDeclarations(): readonly MarkerDeclaration[] { return this.declarations; }
 
   // このモジュールが持つ表示物とパネルを片付ける。
   public dispose(): void {
@@ -137,17 +145,25 @@ export class ObjectPlacement {
     }
   }
 
-  // プレビューの ▷ マーカーをどう出すかを決める。pos はプレビューの ECI 位置で、プレビューを
-  // 出せないフレームでは null。マップ視点で天体に遮られているあいだは位置を示さない。
+  // プレビューの ▷ マーカーの宣言。pos はプレビューの ECI 位置で、プレビューを出せない
+  // フレームでは null。マップ視点で天体に遮られているあいだは位置を示さない。
   private previewMarker(
     pos: Vec3 | null, camera: CameraFrame, displayTime: number,
-  ): ObjectPlacementPreviewMarker {
-    if (pos === null) return { kind: 'fadedOut' };
+  ): MarkerDeclaration {
+    const base = {
+      id: PREVIEW_MARKER_ID, cls: 'mk-self', sym: ENTITY_GLYPH.preview,
+      priority: MARKER_PRIORITY.PLAYER,
+    };
+    if (pos === null) return { ...base, x: 0, y: 0, front: false, occluded: true };
     if (camera.mode === 'map'
       && isOccluded(camera.position, pos, this.celestialSystem.celestialMotions, displayTime)) {
-      return { kind: 'hidden' };
+      return { ...base, x: 0, y: 0, front: false };
     }
-    return { kind: 'shown', pos };
+    return {
+      ...base,
+      ...pointPlacement(pos, camera.project, camera.position),
+      label: 'PREVIEW', color: COLOR_MARKER_ALLY, rotationDeg: 0,
+    };
   }
 
   // フォームの値を検証して初期状態を組み、置く物体を onPlace へ渡す。
@@ -197,7 +213,7 @@ export class ObjectPlacement {
       }
       case 'base': {
         const finalName = name.trim() || generateRandomName('base');
-        const base = new Base({ state, name: finalName }, this.scene, this.hud, this.markers);
+        const base = new Base({ state, name: finalName }, this.scene, this.hud);
         return { kind: 'entity', entity: base, name: base.name };
       }
     }

@@ -1,26 +1,34 @@
 // ゲーム世界内の物体・出来事(発砲・被弾・接触・爆発・噴射など)が発する合成効果音
 // (アセット不要)。AudioEngine が共有する素材(ノイズバッファ・基本ボイス)と、ここで組む
 // 専用のオシレータ/フィルタで、単発音とループ音を鳴らす。
-// AudioContext が unlock されるまでは、どのメソッドも無音のまま何もしない。
+// AudioContext が開くまでは、どのメソッドも無音のまま何もしない。
 import { AudioEngine } from '../audio-engine';
 
 // 被弾点がこの距離まで自機中心から離れると、遠い被弾として音量・音高を下限にする [m]。
 const HIT_SOUND_DISTANCE_MAX = 10;
 
+const THRUST_LOOP_GAIN = 0.1;
+const RCS_LOOP_GAIN = 0.015; // メインエンジンより高く軽いシュー音なので、控えめに混ぜる
+
+// そのフレームに鳴らすべき連続音の全体。装置の語彙なので、どの艦が何をどれだけ噴いているかは
+// 持たず、鳴らすか鳴らさないかだけを受ける。
+export interface LoopSfx {
+  readonly thrust: boolean;
+  readonly rcs: boolean;
+}
+
 export class WorldSfx {
-  private thrustGain: GainNode | null = null;
-  private rcsGain: GainNode | null = null;
+  // 連続音のチャンネル。AudioContext が開くまで組めないので、最初に鳴らす機会に組む。
+  private loops: { thrust: GainNode; rcs: GainNode } | null = null;
+  // 畳んだ後か。組み直しを禁じるためだけに持つ。
+  private disposed = false;
   // 組んだループ音の音源。止めて切り離すのは dispose だけ。
   private readonly loopSources: AudioBufferSourceNode[] = [];
 
   constructor(private readonly engine: AudioEngine) { }
 
-  // 常時再生のループ音チャンネル(通常は無音)を組む。ctx が未生成のうちは null を返し、
-  // 呼び出し側は次の機会にまた組み直しを試みる。
-  private loopChannel(freq: number, q: number): GainNode | null {
-    const ctx = this.engine.ctx;
-    const noise = this.engine.noiseBuf;
-    if (!ctx || !noise) return null;
+  // 常時再生のループ音チャンネル(通常は無音)を組む。
+  private loopChannel(ctx: AudioContext, noise: AudioBuffer, freq: number, q: number): GainNode {
     const src = ctx.createBufferSource();
     src.buffer = noise;
     src.loop = true;
@@ -38,15 +46,15 @@ export class WorldSfx {
 
   // 鳴らしているループ音を止めて切り離す。以後このインスタンスは音を出さない。
   dispose(): void {
+    this.disposed = true;
     for (const src of this.loopSources) {
       src.stop();
       src.disconnect();
     }
     this.loopSources.length = 0;
-    this.thrustGain?.disconnect();
-    this.rcsGain?.disconnect();
-    this.thrustGain = null;
-    this.rcsGain = null;
+    this.loops?.thrust.disconnect();
+    this.loops?.rcs.disconnect();
+    this.loops = null;
   }
 
   // 艦砲 CIWS 風の砲声: 低く重い胴鳴り + 鋭いクラック。
@@ -279,19 +287,26 @@ export class WorldSfx {
     this.engine.tone(415.3, 0.16, 0.07, 'square'); // わずかに不協和にして警報らしいうなりを出す
   }
 
-  // メインエンジンのループ音量をなめらかに on/off する。
-  setThrust(on: boolean): void {
-    this.thrustGain ??= this.loopChannel(320, 0.8);
+  // そのフレームに鳴らすべき連続音の全体を受け、各チャンネルの音量をなめらかに追わせる。
+  syncLoops(loops: LoopSfx): void {
     const ctx = this.engine.ctx;
-    if (!ctx || !this.thrustGain) return;
-    this.thrustGain.gain.setTargetAtTime(on ? 0.1 : 0, ctx.currentTime, 0.04);
+    const channels = this.ensureLoops();
+    if (!ctx || channels === null) return;
+    channels.thrust.gain.setTargetAtTime(loops.thrust ? THRUST_LOOP_GAIN : 0, ctx.currentTime, 0.04);
+    channels.rcs.gain.setTargetAtTime(loops.rcs ? RCS_LOOP_GAIN : 0, ctx.currentTime, 0.03);
   }
 
-  // RCS スラスタのループ音量をなめらかに on/off する(メインエンジンより高く軽いシュー音)。
-  setRcs(on: boolean): void {
-    this.rcsGain ??= this.loopChannel(1600, 1.1);
+  // 連続音のチャンネルを組む。ctx が開くまでは組めないので null を返し、次の機会に試す。
+  // 畳んだ後は二度と組み直さない。
+  private ensureLoops(): { thrust: GainNode; rcs: GainNode } | null {
+    if (this.loops !== null || this.disposed) return this.loops;
     const ctx = this.engine.ctx;
-    if (!ctx || !this.rcsGain) return;
-    this.rcsGain.gain.setTargetAtTime(on ? 0.015 : 0, ctx.currentTime, 0.03);
+    const noise = this.engine.noiseBuf;
+    if (!ctx || !noise) return null;
+    this.loops = {
+      thrust: this.loopChannel(ctx, noise, 320, 0.8),
+      rcs: this.loopChannel(ctx, noise, 1600, 1.1),
+    };
+    return this.loops;
   }
 }

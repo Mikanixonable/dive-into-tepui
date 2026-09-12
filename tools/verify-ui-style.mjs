@@ -16,7 +16,7 @@ function filesUnder(relativeRoot) {
     const relative = path.join(relativeRoot, entry.name);
     if (entry.isDirectory()) return filesUnder(relative);
     if (!/\.(?:ts|tsx)$/.test(entry.name)) return [];
-    if (relative.endsWith('/marker-style.ts') || relative.endsWith('/node-gizmo.ts')) return [];
+    if (relative.endsWith('/node-gizmo.ts')) return [];
     return [relative];
   });
 }

@@ -194,7 +194,7 @@ export class LabView {
   // 描画品質設定を差し替える。受け取った値をパイプラインへ配り、その場で描き直す。
   public applyGraphics(graphics: GraphicsSettingsData): void {
     this.graphicsData = graphics;
-    this.pipeline.applyGraphics(graphics);
+    this.pipeline.rebuildForGraphics(graphics);
     this.render();
   }
 
@@ -210,7 +210,7 @@ export class LabView {
 
   // 画面へ出す中間バッファを選び、その場で描き直す。
   public showDebugTarget(target: DebugTargetId): void {
-    this.pipeline.debugTarget = target;
+    this.pipeline.syncDebugTarget(target);
     this.render();
   }
 
