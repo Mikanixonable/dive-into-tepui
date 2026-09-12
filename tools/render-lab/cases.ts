@@ -14,7 +14,6 @@ import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-syste
 import {
   EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE, earthGeneratedCloudField,
 } from '../../src/game/celestial/solar-system/earth-system';
-import { bootstrapEarthSurface } from '../../src/game/celestial/solar-system/earth-surface-runtime';
 import { shapeAxes, shapeSpheroidRadii, type RingBandDef } from '../../src/physics/celestial-body-def';
 import { BodyGraticule } from '../../src/render/celestial/body-graticule';
 import { LineOverlay, type LatLonPolyline } from '../../src/render/celestial/line-overlay';
@@ -647,11 +646,8 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   const axes = shapeAxes(R_EARTH_EQ, EARTH.shape);
   const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
-  // 雲場の表示時刻 0 の UTC [s]。気候の月は、ここから表示時刻ぶん進んだ暦で選ばれる。
-  const climateEpochUnixSec = 0;
   const cumulus = new CloudPresentation(
-    earthGeneratedCloudField(climateEpochUnixSec, bootstrapEarthSurface()),
-    new ObservedCloudField(cloudFieldUrl), R_EARTH_EQ,
+    earthGeneratedCloudField(), new ObservedCloudField(cloudFieldUrl), R_EARTH_EQ,
   );
   const surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
   surface.addTo(group);
