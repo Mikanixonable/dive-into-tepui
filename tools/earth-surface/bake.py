@@ -22,24 +22,20 @@ _spec = importlib.util.spec_from_file_location("earth_surface_fetch", Path(__fil
 _fetch = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_fetch)
 
-# ESTN/ESTB v2は八面体法線RG8、roughness R8、地表分類A8を持つ。
-# 形式の混在を防ぐため、生成と検査はRGBA16Fのv1を受け付けない。
-EARTH_TILE_MIN_Z = 4
+# ESTN/ESTB v3は天体固定XYZ法線RGB8とroughness A8を持つ。
+EARTH_BASE_COLOR_Z = 4
+EARTH_TILE_MIN_Z = 5
 EARTH_TILE_MAX_Z = 7
-TERRAIN_FORMAT_VERSION = 2
+TERRAIN_FORMAT_VERSION = 3
 UINT8_SCALAR = 2
 TERRAIN_WIDTH = 260
 TERRAIN_HEIGHT = 260
 TERRAIN_CHANNELS = 4
 TERRAIN_TEXELS = TERRAIN_WIDTH * TERRAIN_HEIGHT
 TERRAIN_BYTES = TERRAIN_TEXELS * TERRAIN_CHANNELS
-MATERIAL_CLASS_WATER = 0
-MATERIAL_CLASS_LAND = 1
-MATERIAL_CLASS_ICE = 2
-MATERIAL_CLASS_UNKNOWN = 255
 TERRAIN_HEADER = struct.Struct("<4sHHHHBBIIBBII")
 BASE_HEADER = struct.Struct("<4sHHHHBBIIBBII")
-BASE_COLOR_Z = EARTH_TILE_MIN_Z
+BASE_COLOR_Z = EARTH_BASE_COLOR_Z
 BASE_COLOR_ROOT_COUNT = 2 ** (BASE_COLOR_Z + 1) * 2 ** BASE_COLOR_Z
 BASE_COLOR_TILE_TEXELS = 256
 BASE_COLOR_GUTTER_TEXELS = 2
@@ -50,10 +46,22 @@ BASE_COLOR_HEIGHT = 2 ** BASE_COLOR_Z * BASE_COLOR_TILE_TEXELS
 
 # 全球の正規化されたWeb Mercatorではなく、計画書の経緯度四分木キーを列挙する。
 def global_tile_keys(max_zoom=EARTH_TILE_MAX_Z):
-    if type(max_zoom) is not int or not EARTH_TILE_MIN_Z <= max_zoom <= EARTH_TILE_MAX_Z:
+    if type(max_zoom) is not int or not EARTH_BASE_COLOR_Z <= max_zoom <= EARTH_TILE_MAX_Z:
         raise ValueError("max_zoomは4..7の整数が必要です")
     return [(z, x, y) for z in range(EARTH_TILE_MIN_Z, max_zoom + 1)
             for y in range(2 ** z) for x in range(2 ** (z + 1))]
+
+
+def base_color_tile_keys():
+    """8K base colorを組み立てるz4の一時タイルキーを返す。"""
+    return [(BASE_COLOR_Z, x, y) for y in range(2 ** BASE_COLOR_Z)
+            for x in range(2 ** (BASE_COLOR_Z + 1))]
+
+
+def tile_urls(key):
+    """タイルキーに対応する色と地形の相対URLを返す。"""
+    z, x, y = key
+    return f"tiles/{z}/{x}/{y}.jpg", f"tiles/{z}/{x}/{y}.bin.gz"
 
 
 def global_tile_count(max_zoom=EARTH_TILE_MAX_Z):
@@ -451,19 +459,13 @@ def bake_region(value, manifest):
     classes = manifest["roughness"]
     roughness = [classes["water"] * (1 - dry) + classes["land"] * (dry - frozen) + classes["ice"] * frozen
                  for dry, frozen in zip(land, ice)]
-    material_class = []
-    for dry, frozen in zip(land, ice):
-        candidates = ((1.0 - dry, MATERIAL_CLASS_WATER),
-                      (dry - frozen, MATERIAL_CLASS_LAND),
-                      (frozen, MATERIAL_CLASS_ICE))
-        material_class.append(max(candidates, key=lambda item: (item[0], item[1]))[1])
     result = {"schemaVersion": 1, "datasetId": manifest["datasetId"], "kind": "earth-surface-region-intermediate",
               "provenance": "synthetic_fixture" if value["kind"] == "earth-surface-region-fixture" else "source_window",
               "sourceManifestSha256": value["sourceManifestSha256"],
               "grid": value["grid"], "axesM": axes, "colorSrgb": colors, "ellipsoidHeightM": heights,
               "orthometricHeightM": orthometric, "landFraction": land, "iceFraction": ice,
               "iceUnknownFraction": [max(0.0, dry - frozen) for dry, frozen in zip(land, ice)],
-              "normals": normals, "roughness": roughness, "materialClass": material_class}
+              "normals": normals, "roughness": roughness}
     if "era5" in value:
         climate = value["era5"]
         source = next(item for item in manifest["sources"] if item["id"] == climate["sourceId"])
@@ -474,55 +476,39 @@ def bake_region(value, manifest):
     return result
 
 
-def encode_octahedral_normal(normal):
-    """単位法線を正規化八面体座標のRG8へ量子化する。"""
+def encode_xyz_normal(normal):
+    """単位法線を天体固定XYZのRGB8へ量子化する。"""
     if (len(normal) != 3 or any(not math.isfinite(component) for component in normal)
             or not math.isclose(sum(component ** 2 for component in normal), 1, abs_tol=1e-6)):
         raise ValueError("地形タイルに非単位法線があります")
-    length = abs(normal[0]) + abs(normal[1]) + abs(normal[2])
-    u, v, w = (component / length for component in normal)
-    if w < 0:
-        u, v = ((1 - abs(v)) * (-1 if u < 0 else 1),
-                (1 - abs(u)) * (-1 if v < 0 else 1))
-    return (max(0, min(255, int(round((u * 0.5 + 0.5) * 255)))),
-            max(0, min(255, int(round((v * 0.5 + 0.5) * 255)))))
+    return tuple(max(0, min(255, int(round((component * 0.5 + 0.5) * 255))))
+                 for component in normal)
 
 
-def decode_octahedral_normal(encoded):
-    """正規化八面体RG8を単位法線へ復号する。"""
-    if len(encoded) != 2 or any(type(value) is not int or not 0 <= value <= 255 for value in encoded):
-        raise ValueError("octahedral法線はRG8が必要です")
-    u, v = (2 * value / 255 - 1 for value in encoded)
-    w = 1 - abs(u) - abs(v)
-    if w < 0:
-        u, v = ((1 - abs(v)) * (-1 if u < 0 else 1),
-                (1 - abs(u)) * (-1 if v < 0 else 1))
-    return normalize((u, v, w))
+def decode_xyz_normal(encoded):
+    """天体固定XYZのRGB8を単位法線へ復号する。"""
+    if len(encoded) != 3 or any(type(value) is not int or not 0 <= value <= 255 for value in encoded):
+        raise ValueError("XYZ法線はRGB8が必要です")
+    return normalize(tuple(2 * value / 255 - 1 for value in encoded))
 
 
 # 有効なタイル座標と4 byte/texelから、32bytes固定ヘッダーを含む本文を作る。
-def encode_terrain_tile(normals, roughness, z, x, y, material_class=None):
+def encode_terrain_tile(normals, roughness, z, x, y):
     if any(type(value) is not int for value in (z, x, y)) or not (0 <= z <= 7 and 0 <= x < 2 ** (z + 1) and 0 <= y < 2 ** z):
         raise ValueError("タイル座標が不正です")
     if len(normals) != TERRAIN_TEXELS or len(roughness) != len(normals):
         raise ValueError("地形タイルはガター込み260×260が必要です")
-    if material_class is None:
-        material_class = [MATERIAL_CLASS_UNKNOWN] * len(normals)
-    if len(material_class) != len(normals):
-        raise ValueError("materialClassは地形タイルと同じセル数が必要です")
     body = bytearray()
-    for normal, material, classification in zip(normals, roughness, material_class):
-        oct_u, oct_v = encode_octahedral_normal(normal)
+    for normal, material in zip(normals, roughness):
+        red, green, blue = encode_xyz_normal(normal)
         if not math.isfinite(material) or not 0 <= material <= 1:
             raise ValueError("roughnessは0..1が必要です")
-        if type(classification) is not int or not 0 <= classification <= 255:
-            raise ValueError("materialClassは0..255の整数が必要です")
-        body.extend((oct_u, oct_v, max(0, min(255, int(round(material * 255)))), classification))
+        body.extend((red, green, blue, max(0, min(255, int(round(material * 255))))))
     return TERRAIN_HEADER.pack(b"ESTN", TERRAIN_FORMAT_VERSION, 32, TERRAIN_WIDTH, TERRAIN_HEIGHT,
                                z, 0, x, y, TERRAIN_CHANNELS, UINT8_SCALAR, len(body), 0) + body
 
 
-# 形式・座標・長さ・hashを確かめ、octahedral法線と量子化値を検査する。
+# 形式・座標・長さ・hashを確かめ、法線と量子化値を検査する。
 def validate_terrain_tile(payload, key, expected_sha):
     if len(payload) < 32 or hashlib.sha256(payload).hexdigest() != expected_sha:
         raise ValueError("地形本文の長さまたはhashが不一致です")
@@ -533,25 +519,21 @@ def validate_terrain_tile(payload, key, expected_sha):
         raise ValueError("地形ヘッダーのキーが不一致です")
     if data_bytes != TERRAIN_BYTES or len(payload) != 32 + data_bytes:
         raise ValueError("地形本文のバイト数が不一致です")
-    for oct_u, oct_v, material, classification in struct.iter_unpack("<4B", payload[32:]):
-        normal = decode_octahedral_normal((oct_u, oct_v))
+    for red, green, blue, material in struct.iter_unpack("<4B", payload[32:]):
+        normal = decode_xyz_normal((red, green, blue))
         if not all(math.isfinite(component) for component in normal) or not 0 <= material <= 255:
             raise ValueError("地形本文に無効な法線またはroughnessがあります")
-        if classification not in (MATERIAL_CLASS_WATER, MATERIAL_CLASS_LAND, MATERIAL_CLASS_ICE,
-                                  MATERIAL_CLASS_UNKNOWN):
-            raise ValueError("地形本文に未知のmaterialClassがあります")
 
 
 def decode_terrain_tile(payload):
     """検証済みESTN本文を復号し、テストと小規模producer検査へ返す。"""
     header = TERRAIN_HEADER.unpack_from(payload)
     validate_terrain_tile(payload, (header[5], header[7], header[8]), hashlib.sha256(payload).hexdigest())
-    normals, roughness, material_class = [], [], []
-    for oct_u, oct_v, material, classification in struct.iter_unpack("<4B", payload[32:]):
-        normals.append(decode_octahedral_normal((oct_u, oct_v)))
+    normals, roughness = [], []
+    for red, green, blue, material in struct.iter_unpack("<4B", payload[32:]):
+        normals.append(decode_xyz_normal((red, green, blue)))
         roughness.append(material / 255)
-        material_class.append(classification)
-    return normals, roughness, material_class
+    return normals, roughness
 
 
 def encode_base_terrain(terrain_payloads, root_columns=2, root_rows=1):
@@ -709,27 +691,24 @@ def global_manifest(manifest, source_manifest_path, source_manifest_hash, climat
     for source in manifest["sources"]:
         attribution.extend(source["attribution"])
     return {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "datasetId": manifest["datasetId"],
         "sourceManifestSha256": source_manifest_hash,
         "sourceManifest": source_manifest_path,
-        "provenance": {"generator": "earth-surface-bundle/2", "sourceManifestHash": source_manifest_hash,
+        "provenance": {"generator": "earth-surface-bundle/3", "sourceManifestHash": source_manifest_hash,
                         "dataKind": data_provenance},
         "terrainEncoding": {"formatVersion": TERRAIN_FORMAT_VERSION,
-                             "layout": "octahedral-rg8-roughness-r8-material-class-a8",
+                             "layout": "normal-xyz-rgb8-roughness-a8",
                              "width": TERRAIN_WIDTH, "height": TERRAIN_HEIGHT,
                              "channels": TERRAIN_CHANNELS, "scalar": "UInt8",
-                             "materialClasses": {"water": MATERIAL_CLASS_WATER,
-                                                  "land": MATERIAL_CLASS_LAND,
-                                                  "ice": MATERIAL_CLASS_ICE,
-                                                  "unknown": MATERIAL_CLASS_UNKNOWN}},
+                             "normalFrame": "body_fixed"},
         "climateMap": manifest["climateMap"],
         "controlRegions": manifest["controlRegions"],
-        "coverage": {"kind": coverage_kind, "minZoom": EARTH_TILE_MIN_Z, "maxZoom": max_zoom,
-                      "expectedTiles": global_tile_count(max_zoom) if coverage_kind == "complete" else None},
+        "coverage": {"kind": coverage_kind, "minZoom": EARTH_TILE_MIN_Z, "maxZoom": EARTH_TILE_MAX_Z,
+                      "expectedTiles": global_tile_count(EARTH_TILE_MAX_Z) if coverage_kind == "complete" else None},
         "baseColor": "base/earth.jpg",
         "baseTerrain": "base/earth.bin.gz",
-        "tileIndexUrl": "tile-index.json",
+        "tileTemplates": {"color": "tiles/{z}/{x}/{y}.jpg", "terrain": "tiles/{z}/{x}/{y}.bin.gz"},
         "climateMaps": climate_paths,
         "climateEncoding": {"temperatureK": {"min": 180, "max": 330}, "cloudFraction": {"min": 0, "max": 1},
                              "orthometricElevation": {"min": -1000, "max": 9000}, "landFraction": {"min": 0, "max": 1},
@@ -744,7 +723,7 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
     """各タイルを一枚ずつ生成し、stagingへ書き込む全球bundle writer。"""
     if validate_inputs:
         require_global_inputs(manifest, raw_root)
-    if type(max_zoom) is not int or not EARTH_TILE_MIN_Z <= max_zoom <= EARTH_TILE_MAX_Z:
+    if type(max_zoom) is not int or not EARTH_BASE_COLOR_Z <= max_zoom <= EARTH_TILE_MAX_Z:
         raise ValueError("max_zoomは4..7の整数が必要です")
     output = Path(output_root)
     staging = output.with_name(f"{output.name}.staging-{os.getpid()}")
@@ -757,8 +736,6 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
     if not source_manifest_file.is_file():
         raise GlobalInputError(f"source manifestがありません: {source_manifest_path}")
     coverage_kind = "complete" if max_zoom == EARTH_TILE_MAX_Z else "sparse"
-    # sparse fixture output may contain only a z4 prefix, but the runtime
-    # contract always describes the z4..z7 address space it can index.
     result_manifest = global_manifest(manifest, "sources.json", source_hash, climate_paths,
                                       coverage_kind, EARTH_TILE_MAX_Z, data_provenance)
     try:
@@ -772,41 +749,26 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
             destination.write_bytes(data)
         (staging / "sources.json").write_bytes(source_manifest_file.read_bytes())
 
-        tile_index = staging / "tile-index.json"
-        tile_index.parent.mkdir(parents=True, exist_ok=True)
-        entries = tile_index.open("w", encoding="utf-8")
-        entries.write(json.dumps({"schemaVersion": 2, "datasetId": manifest["datasetId"]}, ensure_ascii=False)[:-1])
-        entries.write(', "entries": [')
-        first = True
         base_color_tiles = []
+        for key in base_color_tile_keys():
+            color, _ = render_tile(key)
+            if (not isinstance(color, (bytes, bytearray)) or len(color) < 4
+                    or bytes(color[:2]) != b"\xff\xd8" or bytes(color[-2:]) != b"\xff\xd9"):
+                raise ValueError(f"base color rendererがJPEGを返しませんでした: {key}")
+            base_color_tiles.append(bytes(color))
         for key in global_tile_keys(max_zoom):
             color, terrain = render_tile(key)
             if (not isinstance(color, (bytes, bytearray)) or len(color) < 4
                     or bytes(color[:2]) != b"\xff\xd8" or bytes(color[-2:]) != b"\xff\xd9"):
                 raise ValueError(f"color rendererがJPEGを返しませんでした: {key}")
             validate_terrain_tile(terrain, key, hashlib.sha256(terrain).hexdigest())
-            z, x, y = key
-            color_url = f"tiles/{z}/{x}/{y}.jpg"
-            terrain_url = f"tiles/{z}/{x}/{y}.bin.gz"
+            color_url, terrain_url = tile_urls(key)
             color_path = staging / color_url
             terrain_path = staging / terrain_url
             color_path.parent.mkdir(parents=True, exist_ok=True)
             color_path.write_bytes(color)
             encoded = gzip.compress(terrain, mtime=0)
             terrain_path.write_bytes(encoded)
-            if z == EARTH_TILE_MIN_Z:
-                base_color_tiles.append(bytes(color))
-            entry = {"key": f"{z}/{x}/{y}", "z": z, "x": x, "y": y,
-                     "color": {"url": color_url, "sha256": hashlib.sha256(color).hexdigest(),
-                               "encodedBytes": len(color), "payloadBytes": len(color)},
-                     "terrain": {"url": terrain_url, "sha256": hashlib.sha256(terrain).hexdigest(),
-                                 "encodedBytes": len(encoded), "payloadBytes": len(terrain)}}
-            if not first:
-                entries.write(",")
-            entries.write(json.dumps(entry, ensure_ascii=False, separators=(",", ":")))
-            first = False
-        entries.write("]}\n")
-        entries.close()
         if len(base_color_tiles) != BASE_COLOR_ROOT_COUNT:
             raise ValueError("base colorにはz4の512枚が必要です")
         base = staging / "base"
@@ -824,7 +786,6 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
             shutil.rmtree(output)
         staging.rename(output)
     except Exception:
-        entries.close() if 'entries' in locals() and not entries.closed else None
         shutil.rmtree(staging, ignore_errors=True)
         raise
     return result_manifest
@@ -837,7 +798,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input")
     parser.add_argument("--global", action="store_true", dest="global_bundle",
-                        help="z4..z7の全43520タイルbundle生成入口。入力不足は生成前に失敗する")
+                        help="z5..z7の全43008タイルbundle生成入口。入力不足は生成前に失敗する")
     parser.add_argument("--fixture-global", metavar="PATH",
                         help="明示したsynthetic fixtureから小さなbundleを生成するテスト入口")
     parser.add_argument("--raw-root", default=".earth-surface/raw")
