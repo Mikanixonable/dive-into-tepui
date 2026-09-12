@@ -31,7 +31,7 @@ export const CUMULUS_DITHER_KNOB: {
   readonly halfWidth: FloatUniform;
 } = { center: uniform(0.34), halfWidth: uniform(0.12) };
 
-// 積雲の粒の一辺 [m]。場の texel(赤道 9.8 km)より細かく、かつ低軌道から見下ろして解像できる
-// 大きさ(高度 900km 以下で全振幅)に取る。これより細かくすると、実際の積雲の塊には近づく代わりに
-// 軌道上のどの構図でも 1 画素を切って消える。
+// 積雲の粒の一辺 [m]。場の texel(視点中心の cap なので視点の高さで変わり、低軌道で約 12 km)より
+// 細かく、かつ低軌道から見下ろして解像できる大きさ(高度 900km 以下で全振幅)に取る。これより
+// 細かくすると、実際の積雲の塊には近づく代わりに軌道上のどの構図でも 1 画素を切って消える。
 export const CUMULUS_GRAIN_SIZE = 6000;

@@ -11,7 +11,7 @@ import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudFieldBinding } from './cloud-field-sampler';
 import type { OrthographicCap } from './field-projection';
 
-// cap を置き直す前の向き。最初の syncResolved までしか使わないので、どの向きでもよい。
+// cap を置き直す前の仮の向き。aim() が最初に上書きするまでしか効かないので、どの向きでもよい。
 const INITIAL_CAP_DIRECTION = new THREE.Vector3(0, 0, 1);
 
 // 雲場の出どころの種類。generated は気候から時々刻々焼く場、observed は衛星写真から分けた静止した場。
