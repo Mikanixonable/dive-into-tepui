@@ -1,6 +1,6 @@
 # T6-1: GitHub Pagesプレビュー配信
 
-親計画: [earth-surface-tiles-plan_2026-09-09.md](../earth-surface-tiles-plan_2026-09-09.md)
+親計画: [earth-surface-tiles-plan_2026-09-09-superseded.md](../suspended/earth-surface-tiles-plan_2026-09-09-superseded.md)
 
 ## 目的
 
