@@ -190,31 +190,6 @@ main へは `/send-pr` で送る。区切りは次の 3 つ。**マージは mer
 - PR-B(小さな修正と計測): 手順 4〜7
 - PR-C(雲場の作り直し): 手順 8
 
-### 手順 7. 表面雲の GPU 時間を G バッファから分ける
-
-**目的**: 表面雲も雲影と同じくレイマーチで、G バッファの値に混ざっていると重さを読めない。手順 8 で
-LOD を潰す前後と cap へ移す前後の費用を比べる物差しにもなる。仕様が先行するので `/modify-feature`
-から入る。
-
-SPEC の直し(RENDERING.md:246 の GPU パスの列挙): 「雲の生成/雲大気/雲影」を
-「雲の生成/表面雲/大気(雲あり)/雲影」にする。
-
-| ファイル | 何をするか |
-| --- | --- |
-| `DEVELOP/SPEC/RENDERING.md:246` | 上の直し |
-| `src/render/gpu-timings.ts:6-46` | `GPU_PASS.cloudSurface` と表示名「表面雲」を足す。「雲大気」を「大気(雲あり)」へ改める。`CLOUD_GPU_MEASUREMENTS.surface` を `{ pass: GPU_PASS.cloudSurface, scope: 'exact' }` にし、その上のコメントを直す |
-| `src/render/pipeline/lit-layer.ts` | 雲殻用のレイヤー定数と、そこへ置く関数を足す。`LIT_OPAQUE_LAYER` と同じくチャンネル 0 から外す |
-| `src/render/opaque-cloud-surface-renderer.ts:83` | `markLitOpaque` を雲殻用のものへ替える |
-| `src/render/pipeline/gbuffer.ts:100-125` | `render()` を2回に分ける — `LIT_OPAQUE_LAYER` を `GPU_PASS.gbuffer` で描き、雲殻のレイヤーを**クリアせずに**同じ描画先へ `GPU_PASS.cloudSurface` で描く。`compile()` も両方のレイヤーを事前コンパイルする |
-| `tests/render/cloud-mip-contract.test.ts:24-` | GPU 計測のテストを `tests/render/gpu-timings.test.ts`(新規)へ移し、表面雲の計測範囲を `exact` へ直す。ミップのテスト(10 行)はこのファイルに残し、手順 8 でファイルごと消す |
-
-**達成条件と検証**:
-
-- `npm run typecheck`、`npm run test:render`。
-- `git grep -n "gbuffer aggregate" -- src tests` が 0 件。
-- render-lab の地球で `measure()` を取り、変更前と比べて「Gバッファ」が減り、「表面雲」が 0 でなく、
-  2 つの和が変更前の「Gバッファ」とほぼ等しい。`render-lab:shot` の絵が変更前と変わらない。
-
 ### 手順 8. 雲場の LOD を潰し、雲場を視点中心の正射影で焼く
 
 **目的**: 雲場の LOD をすべて潰して素朴な実装にし、雲場を視点中心の正射影の cap へ移す。全球の正距円筒
