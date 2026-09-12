@@ -13,16 +13,19 @@ const EARTH_BASE_TERRAIN_TILE_COUNT = 2;
 const EARTH_BASE_TERRAIN_DATA_BYTES = EARTH_BASE_TERRAIN_TILE_COUNT * (EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES);
 const EARTH_BASE_TERRAIN_PAYLOAD_BYTES = EARTH_TERRAIN_HEADER_BYTES + EARTH_BASE_TERRAIN_DATA_BYTES;
 
+// バイナリヘッダーが要求されたタイルの本文かを検査する。
 function assertKey(key: EarthTileKey, z: number, x: number, y: number): void {
   if (key.z !== z || key.x !== x || key.y !== y) throw new EarthSurfaceDecodeError('Terrain tile key does not match its header');
 }
 
+// 固定長ヘッダーのmagicをASCIIとして読む。
 function readAscii(bytes: Uint8Array, start: number, end: number): string {
   return String.fromCharCode(...bytes.slice(start, end));
 }
 
 // 32bytesのESTNヘッダーを検査し、本文のRGBA8配列を切り出す。
 export function decodeEarthTerrainPayload(payload: Uint8Array, key: EarthTileKey): Uint8Array {
+  // 長さ・固定値・タイルキーを順に確認してから本文を返す。
   if (payload.byteLength !== EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES) {
     throw new EarthSurfaceDecodeError('Invalid ESTN payload length');
   }
@@ -51,6 +54,7 @@ export function decodeEarthTerrainPayload(payload: Uint8Array, key: EarthTileKey
 
 // 2枚のz=0 ESTNをまとめたESTBを、経度方向へ連結したbase用RGBA8へ展開する。
 export function decodeEarthBaseTerrainPayload(payload: Uint8Array): Uint8Array {
+  // ESTB内の2枚を検証し、gutterを除いた経度方向の連結配列へ変換する。
   if (payload.byteLength !== EARTH_BASE_TERRAIN_PAYLOAD_BYTES) throw new EarthSurfaceDecodeError('Invalid ESTB payload length');
   if (readAscii(payload, 0, 4) !== 'ESTB') throw new EarthSurfaceDecodeError('Invalid ESTB magic');
   const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
@@ -90,7 +94,9 @@ export function decodeEarthBaseTerrainPayload(payload: Uint8Array): Uint8Array {
   return output;
 }
 
+// gzip本文を上限付きで展開し、応答読込と同じ中断規約を適用する。
 async function inflateTerrain(bytes: Uint8Array, limit: number, signal?: AbortSignal): Promise<Uint8Array> {
+  // DecompressionStreamへ渡す前に独立したArrayBufferへコピーする。
   if (typeof DecompressionStream !== 'function') throw new EarthSurfaceDecodeError('gzip decompression is unavailable');
   const compressed = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(compressed).set(bytes);
@@ -98,16 +104,20 @@ async function inflateTerrain(bytes: Uint8Array, limit: number, signal?: AbortSi
   return readEarthSurfaceResponse(new Response(stream), limit, signal);
 }
 
+// gzip展開後のハッシュとESTNヘッダーを確認して本文を返す。
 export async function decodeEarthTerrainBytes(
   compressed: Uint8Array, key: EarthTileKey, limit: number, expectedSha256?: string, signal?: AbortSignal,
 ): Promise<Uint8Array> {
+  // gzip展開後にハッシュとヘッダーを検証し、GPU向け本文だけを返す。
   const terrainBytes = await inflateTerrain(compressed, limit, signal);
   const terrainHash = await earthSurfaceSha256(terrainBytes);
   if (expectedSha256 !== undefined && terrainHash !== expectedSha256) throw new EarthSurfaceDecodeError('ESTN payload hash mismatch');
   return decodeEarthTerrainPayload(terrainBytes, key);
 }
 
+// base terrainを取得し、上限を守りながらESTBとして展開する。
 export async function loadEarthBaseTerrain(url: string, fetchImpl: typeof fetch = fetch, signal?: AbortSignal): Promise<Uint8Array> {
+  // fetch応答を上限付きで読み、展開後のbase本文を返す。
   const response = await fetchImpl(url, { signal });
   const compressed = await readEarthSurfaceResponse(response, EARTH_BASE_TERRAIN_PAYLOAD_BYTES, signal);
   const payload = await inflateTerrain(compressed, EARTH_BASE_TERRAIN_PAYLOAD_BYTES, signal);

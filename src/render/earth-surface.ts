@@ -44,6 +44,7 @@ export interface EarthSurfaceMaterialAttachment extends CelestialSurfaceMaterial
   readonly failureReason?: () => string | null;
 }
 
+// 材質差し替えを受けられる天体表面かを判定する。
 function isMaterialHost(
   surface: CelestialSurfaceLike,
 ): surface is CelestialSurfaceLike & CelestialSurfaceMaterialHost {
