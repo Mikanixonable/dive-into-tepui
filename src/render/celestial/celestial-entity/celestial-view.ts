@@ -83,9 +83,10 @@ export abstract class CelestialView {
   public abstract build(
     motion: CelestialMotion, scene: THREE.Scene, ringMaterials: RingMaterials,
   ): void;
-  // displayTime 時点の運動と表示設定へ同期する。visible が false のフレームは全体を隠す。
+  // displayTime 時点の運動と表示設定へ同期する。nowMs はこのフレームの実時刻 [ms]。
+  // visible が false のフレームは全体を隠す。
   public abstract sync(
-    motion: CelestialMotion, displayTime: number, camera: CameraFrame,
+    motion: CelestialMotion, displayTime: number, nowMs: number, camera: CameraFrame,
     star: StellarLightSource | null,
     graphics: GraphicsSettingsData, style: RenderStyle, visible: boolean,
   ): void;

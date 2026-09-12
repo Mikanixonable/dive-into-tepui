@@ -156,7 +156,7 @@ export class CelestialSystem implements CelestialBodies {
     // 天体に付随する線・星野・グリッド。
     this.orbitGuideView = new OrbitGuideView(scene);
     this.zeroVelocityView = new ZeroVelocityView(scene);
-    this.stars = createStars();
+    this.stars = createStars(this.illumination);
     scene.add(this.stars.mesh);
     this.celestialGrid = new CelestialGrid(scene);
     this.scaleGrid = new ScaleGridView(scene);
@@ -369,10 +369,13 @@ export class CelestialSystem implements CelestialBodies {
   }
 
   // 天体ビュー・星・照明・影・参照線・天球グリッドを、この1フレームの表示状態に同期する。
-  // mapDisplay・grid・orbitGuide はこのフレームの表示設定。visibilityPolicy は戦闘ビューでは null で、
-  // 選べる対象と同じ判定になるよう、同じフレームの update 位相で確定させたものを渡す。
+  // nowMs はこのフレームの実時刻 [ms] で、表示時刻では進まないアニメーション(進行方向マーカー・
+  // 地表タイルのフェード)がこれを読む。mapDisplay・grid・orbitGuide はこのフレームの表示設定。
+  // visibilityPolicy は戦闘ビューでは null で、選べる対象と同じ判定になるよう、同じフレームの
+  // update 位相で確定させたものを渡す。
   public sync(
     displayTime: number,
+    nowMs: number,
     camera: CameraFrame,
     cameraSystem: CameraSystem,
     graphics: GraphicsSettingsData,
@@ -387,7 +390,7 @@ export class CelestialSystem implements CelestialBodies {
     const star = this.stellarLightSource;
     for (const body of this.entities) {
       body.view.sync(
-        body.motion, displayTime, camera, star, graphics, style,
+        body.motion, displayTime, nowMs, camera, star, graphics, style,
         categoryVisible(visibilityPolicy, body.id),
       );
     }
@@ -401,14 +404,14 @@ export class CelestialSystem implements CelestialBodies {
         (body) => body.illuminationSource(categoryVisible(visibilityPolicy, body.id))),
       displayTime, camera, graphics, focusPosition, this.sunDirFrom(floatingOrigin.r, displayTime));
 
-    // 露出に順応しない星殻と点群は、露出の基準が確定した後の係数を受け取る。
+    // 露出に順応しない点群は、露出の基準が確定した後の係数を受け取る(星殻は照明から直に引く)。
     const fixedBrightnessScale = this.illumination.fixedBrightnessScale;
     const starPos = star === null ? null : star.motion.stateAt(displayTime).r;
     const pointFieldVisible = camera.mode === 'map' && graphics.pointField
       && mapDisplay.smallBodyVisible;
     this.pointFieldView?.sync(
       pointFieldVisible, floatingOrigin, displayTime, starPos, fixedBrightnessScale);
-    this.syncStars(fixedBrightnessScale, grid.stars);
+    this.stars.sync(grid.stars);
     this.syncReferenceLines(displayTime, camera, visibilityPolicy);
     // 地球の静止軌道リングなど、天体固有のマップ付随表示。
     for (const body of this.entities) {
@@ -418,7 +421,7 @@ export class CelestialSystem implements CelestialBodies {
           && categoryVisible(visibilityPolicy, body.id));
     }
     this.orbitGuideView.sync(
-      this.orbitGuideModel.displaysAt(orbitGuide, displayTime, style, camera.mode), camera);
+      this.orbitGuideModel.displaysAt(orbitGuide, displayTime, style, camera.mode), camera, nowMs);
     this.zeroVelocityView.sync(
       this.zeroVelocityModel.displaysAt(orbitGuide.zeroVelocity, displayTime, camera.mode), camera);
     this.celestialGrid.sync(style, grid, camera.camera, CELESTIAL_SHELL_SCALE, camera.viewport);
@@ -428,14 +431,6 @@ export class CelestialSystem implements CelestialBodies {
   // このフレームに積雲殻を描く天体の雲場を焼く。
   public bakeClouds(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
     for (const body of this.entities) body.view.bakeClouds(renderer, displayTime, gpu);
-  }
-
-  // 星球は描画原点(= カメラ)に固定した半径の殻。
-  private syncStars(fixedBrightnessScale: number, visible: boolean): void {
-    this.stars.mesh.position.set(0, 0, 0);
-    this.stars.mesh.scale.setScalar(CELESTIAL_SHELL_SCALE);
-    this.stars.mesh.visible = visible;
-    this.stars.setFixedBrightnessScale(fixedBrightnessScale);
   }
 
   // 参照軌道線を出すかを表示ポリシーから決め、毎フレームの enabled 値として個体へ渡す。

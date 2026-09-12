@@ -31,11 +31,6 @@ export class Conductor {
     this.gain.connect(destination);
   }
 
-  // いま鳴らしている曲。停止したあと同じ曲から再開するために読む。
-  get currentTrackIndex(): number {
-    return this.trackIdx;
-  }
-
   // 曲を鳴らしている最中か。持ち主が刻みを回す必要があるかの判断に使う。
   get isSounding(): boolean {
     return this.playback !== null;
