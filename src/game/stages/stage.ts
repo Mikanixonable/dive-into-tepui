@@ -155,13 +155,10 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   public get result(): StageResult | null { return this._result; }
   // decide() が決着を確定させた瞬間に一度だけ呼ぶ。
   public onDecided: (() => void) | null = null;
-  // 勝敗と結果画面の内容を同時に確定させ、鳴らし続けている継続音を畳む。
+  // 勝敗と結果画面の内容を同時に確定させる。
   protected decide(phase: Exclude<GamePhase, 'playing'>, result: StageResult): void {
     this._phase = phase;
     this._result = result;
-    // 決着後は積分が止まるため、ここで畳まないと噴射音・RCS 音が鳴り続ける。
-    this._worldSfx.setThrust(false);
-    this._worldSfx.setRcs(false);
     this.onDecided?.();
   }
   private readonly restored: boolean;
