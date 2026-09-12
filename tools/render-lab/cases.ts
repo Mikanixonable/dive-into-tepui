@@ -4,14 +4,11 @@
 import * as THREE from 'three/webgpu';
 import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
-import { CloudPresentation } from '../../src/render/cloud/cloud-presentation';
-import { ObservedCloudField } from '../../src/render/cloud/observed-cloud-field';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
-import cloudFieldUrl from '../../src/assets/cloud-field.png';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
 import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-system/constants';
 import {
-  EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE, earthGeneratedCloudField,
+  EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE, earthCloudPresentation,
 } from '../../src/game/celestial/solar-system/earth-system';
 import { shapeAxes, shapeSpheroidRadii, type RingBandDef } from '../../src/physics/celestial-body-def';
 import { BodyGraticule } from '../../src/render/celestial/body-graticule';
@@ -642,9 +639,13 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
   const axes = shapeAxes(R_EARTH_EQ, EARTH.shape);
   const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
   group.scale.set(axes.x, axes.y, axes.z);
-  const cumulus = new CloudPresentation(
-    earthGeneratedCloudField(), new ObservedCloudField(cloudFieldUrl), R_EARTH_EQ,
-  );
+  const cumulus = earthCloudPresentation();
+  // 雲場の cap は、ケースのカメラ(原点)から見た直下点へ置く。**置き忘れると**、cap が既定の
+  // 向きに残ってケースに雲が出ない。
+  const shellAxes = new THREE.Vector3(axes.x, axes.y, axes.z);
+  const toCamera = center.clone().negate().applyQuaternion(spin.clone().invert()).divide(shellAxes);
+  const rho = Math.max(toCamera.length(), 1);
+  cumulus.aim(toCamera.divideScalar(rho), rho);
   const surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
   surface.addTo(group);
   surface.syncLod(CLOSE_UP_DIAMETER_PX);
@@ -666,18 +667,19 @@ function earthAt(center: THREE.Vector3, style: RenderStyle, spin = new THREE.Qua
       polarAxis: new THREE.Vector3(0, 1, 0).applyQuaternion(spin),
       polarRatio: radii.polarRadius / radii.equatorRadius,
       optics: EARTH_ATMOSPHERE_OPTICS,
-      clouds: { field: cumulus.field, bodyFromWorld },
+      // **組は毎フレーム取り直す** — 雲の分布を切り替えると写しが別のテクスチャになる。
+      clouds: { get field() { return cumulus.binding; }, bodyFromWorld },
     },
     cumulus: {
       center,
       surfaceRadius: R_EARTH_EQ,
-      axes: new THREE.Vector3(axes.x, axes.y, axes.z),
+      axes: shellAxes,
       topAltitude: cumulus.topAltitude,
       bodyFromWorld,
-      field: cumulus.field,
+      get field() { return cumulus.binding; },
     },
     // 天体自身が落とす影。地表・雲頂・低い高度の大気が直射を失う境界はこれが決める。
-    shadowBody: { center, axes: new THREE.Vector3(axes.x, axes.y, axes.z), bodyFromWorld },
+    shadowBody: { center, axes: shellAxes.clone(), bodyFromWorld },
     // 殻の分割段は寄り切った 1 段に固定(ケースのカメラ距離は観察のつまみで動くが、
     // 絵の比較は最も細かい段で行う)。
     applyGraphics: (graphics) => {

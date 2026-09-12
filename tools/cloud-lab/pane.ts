@@ -23,7 +23,7 @@ export class CloudLabPane {
   public colorAt(view: CloudLabView, uv: Vec2Node): Vec3Node {
     const projection = this.field.fieldProjection;
     const direction = projection.directionAt(uv);
-    const color = view.reads === 'cloud' ? view.color(direction, this.field.sampler)
+    const color = view.reads === 'cloud' ? view.color(direction, (d) => this.field.at(d))
       : view.reads === 'photo' ? view.color(direction, this.photo)
       : view.color(direction, this.field.weatherModel, this.field.climateMap);
     return color.mul(projection.insideAt(uv));

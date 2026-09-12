@@ -5,7 +5,7 @@ import {
   Fn, If, Loop, clamp, dot, exp, float, greaterThan, length, max, normalize, select,
   sqrt, uniform, vec4,
 } from 'three/tsl';
-import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
+import { CloudFieldSampler, type CloudFieldBinding } from '../../cloud/cloud-field-sampler';
 import type { CloudSample } from '../../cloud/cloud-field-sample';
 import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
 import { CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from '../../cloud/cumulus-shape';
@@ -14,14 +14,14 @@ import type { SunLight } from '../sun-light';
 
 // 影を落とす積雲の殻 1 体ぶん。center は描画座標の天体中心、surfaceRadius は雲の高度の基準
 // 半径 [m]、axes は天体固定の半軸 [m]、topAltitude は殻の高さ [m]、bodyFromWorld は描画座標の
-// ベクトルを天体固定の向きへ回す行列、field は雲場(R = 被覆率、G = 雲頂高度 / topAltitude)。
+// ベクトルを天体固定の向きへ回す行列、field は焼いた雲場と、それを焼いた cap の置き方の組。
 export interface ShadowCumulus {
   readonly center: THREE.Vector3;
   readonly surfaceRadius: number;
   readonly axes: THREE.Vector3;
   readonly topAltitude: number;
   readonly bodyFromWorld: THREE.Matrix4;
-  readonly field: THREE.Texture;
+  readonly field: CloudFieldBinding;
 }
 
 // 光路のタップ数。
@@ -65,7 +65,7 @@ export class CloudShadowRenderer {
     this.axes.value.copy(cumulus.axes);
     this.topAltitude.value = cumulus.topAltitude;
     this.bodyFromWorld.value.copy(cumulus.bodyFromWorld);
-    this.fieldSampler.setTexture(cumulus.field);
+    this.fieldSampler.bind(cumulus.field);
   }
 
   // このフレームに積雲の殻の影があるか。

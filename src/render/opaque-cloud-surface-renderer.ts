@@ -10,7 +10,7 @@ import {
 import { BlueNoise } from './blue-noise';
 import { CloudShapeEvaluator } from './cloud/cloud-shape-evaluator';
 import type { CloudSample } from './cloud/cloud-field-sample';
-import type { CloudFieldSampler } from './cloud/cloud-field-sampler';
+import { CloudFieldSampler, type CloudFieldBinding } from './cloud/cloud-field-sampler';
 import { unitSphereGeometry } from './celestial/celestial-surface';
 import { CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from './cloud/cumulus-shape';
 import { eastAt, northAt } from './cloud/sphere-frame';
@@ -56,6 +56,8 @@ export class OpaqueCloudSurfaceRenderer {
   private sampling: CumulusSampling = SAMPLING_OF_DETAIL[CUMULUS_DETAIL.standard];
   private material: THREE.Material;
   private readonly blueNoise = new BlueNoise();
+  // 読む雲場。出どころが焼いた写しと cap の置き方を bind で写し取る。
+  private readonly fieldSampler = new CloudFieldSampler();
   // 殻を半径 1 とする物体空間での地表の半径。天体ごとの値は uniform で渡す — 定数で焼くと
   // 殻を持つ天体の数だけシェーダが増える。
   private readonly groundRadius: FloatUniform;
@@ -67,9 +69,9 @@ export class OpaqueCloudSurfaceRenderer {
   private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
   private activeLevel: SphereLodLevel | null = null;
 
-  // fieldSampler ははじめに読む雲場、bodyRadius は殻を載せる天体の基準半径 [m]。親は半径 bodyRadius の
-  // 球へ合わせたスケールを与えればよく、雲頂ぶんの膨らみはこの renderer が持つ。
-  public constructor(private fieldSampler: CloudFieldSampler, bodyRadius: number) {
+  // bodyRadius は殻を載せる天体の基準半径 [m]。親は半径 bodyRadius の球へ合わせたスケールを
+  // 与えればよく、雲頂ぶんの膨らみはこの renderer が持つ。
+  public constructor(bodyRadius: number) {
     // 雲頂を含む殻の尺度と雲粒の周波数を組む。
     const shellScale = 1 + CLOUD_TOP_SPAN / bodyRadius;
     const grainFrequency = bodyRadius / CUMULUS_GRAIN_SIZE;
@@ -108,11 +110,9 @@ export class OpaqueCloudSurfaceRenderer {
     if (detail === CUMULUS_DETAIL.off) this.hide();
   }
 
-  // 読む雲場を差し替え、変わったときはマテリアルを組み直す。
-  public setFieldSampler(fieldSampler: CloudFieldSampler): void {
-    if (fieldSampler === this.fieldSampler) return;
-    this.fieldSampler = fieldSampler;
-    this.rebuildMaterial();
+  // 読む雲場と cap の置き方を写し取る。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
+  public bind(binding: CloudFieldBinding): void {
+    this.fieldSampler.bind(binding);
   }
 
   // 標本の配り方を置き直す。回数はシェーダへ展開されるので、変わればマテリアルを組み直す。
@@ -144,7 +144,7 @@ export class OpaqueCloudSurfaceRenderer {
     for (const mesh of this.meshes.values()) mesh.visible = false;
   }
 
-  // 全段のメッシュを親から外し、マテリアルを解放する。fieldSampler は持ち主が解放する。
+  // 全段のメッシュを親から外し、マテリアルを解放する。雲場のテクスチャは出どころが解放する。
   public dispose(): void {
     this.hide();
     for (const mesh of this.meshes.values()) mesh.removeFromParent();
