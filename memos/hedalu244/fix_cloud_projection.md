@@ -136,8 +136,9 @@ cap の外(`dot(方向, 中心) < cos θ`)は「雲なし」の標本を返す�
 ### 6. cap は毎フレーム置き直し、格子へ吸着させない
 
 素朴な実装を先に置く。中心が動くたびに texel の格子が動き、texel 程度の細かさが這うように揺らぐ
-可能性がある(低軌道 7.7 km/s で 1 フレーム 128 m、texel 12 km の約 1%)。手順 4 で見て、吸着は
-「調整の todo」へ回す。
+可能性がある(低軌道 7.7 km/s で 1 フレーム 128 m、texel 12 km の約 1%)。吸着は「調整の todo」へ
+回した。**揺らぎが実際に見えるかは未確認** — `npm run dev` を人が見て判じる項目で、ヘッドレスの
+撮影では判らない。
 
 ### 7. 全球の正距円筒は cloud-lab にだけ残し、本番に切り替えの設定は置かない
 
@@ -148,7 +149,7 @@ rendering-workflow の方針(置き換える前の簡易実装を描画設定で
 **覆されたら**: 描画設定に「雲場の図法」を足す。読み手は 2 通りの uv を持つことになり、手順 3 の
 cloud-field-sampler.ts が分岐する。
 
-### 8. 外周の余白は M = 5° で入れ、手順 4 で測って決める
+### 8. 外周の余白は M = 5°(実測で確定)
 
 外周が崩れる原因は、風上へ遡って中間場を読む処理が cap の外へ出ること。遡る距離の見積りは次のとおり
 (距離 = 風速 × 時間 / R)。
@@ -159,8 +160,8 @@ cloud-field-sampler.ts が分岐する。
 | 上層の湿度の移流(`weather-transport.ts:48, 52`、重み 1 の半周期) | 10 h × 1.6 | 上層 40 m/s | 2,300 km ≈ 21° |
 | 対流の移流(`weather-transport.ts:50`) | 10 h × 1.3 | 20 m/s | 940 km ≈ 8.5° |
 
-余白 5° では、崩れが縁だけでなく円板の内側まで届く可能性がある。手順 4 で崩れの届く角を測る。
-余白で覆えないときは、中間場だけを広い cap で焼く(手順 5)。
+**実測では崩れの届く角は最大 3°**(「見積り」の「外周の崩れの実測」)。余白 5° に収まるので、
+`CLOUD_CAP_MARGIN` は 5° のままとし、中間場だけを広い cap で焼く手順は行わない。
 
 ## 達成目標
 
@@ -182,82 +183,6 @@ cloud-field-sampler.ts が分岐する。
 
 ## 手順
 
-### 手順 3. 本番の雲場を視点中心の cap にする
-
-**目的**: 図法・読み手の契約・実写の焼き直しを一度に切り替える。途中の状態が成り立たないため
-(置き方を知らない読み手は cap を読めず、全球の画像は cap の読み手が読めない)。
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/cloud/field-projection.ts`(`OrthographicCap`) | 置き方(中心・東・北の値と sin 半径・cos 半径)を読み手向けに公開する。単位方向で置く口を足す(緯度・経度へ直して既存の `aim` を呼ぶ — 極で東向きが退化しないため)。uv の式(`uvAt`)を、読み手と共有できる関数へ出す |
-| `src/render/cloud/cloud-cap.ts`(新規) | 決めたこと 1 の半径の式を純関数で持つ(`capRadiusFor(ρ, h/R, M)`)。`CLOUD_CAP_SIZE = 512` と `CLOUD_CAP_MARGIN = 5°` |
-| `src/render/cloud/cloud-field-sampler.ts` | cap の読み手にする。uniform に中心・東・北・sin 半径・cos 半径とテクスチャを持ち、`bind(binding)` で写す。uv は field-projection.ts と共有する式で引き、cap の外では「雲なし」を返す。`uvAt` の注入と `sphereMeshUv` の既定を消す |
-| `src/render/cloud/cloud-presentation.ts` | `OrthographicCap(CLOUD_CAP_SIZE)` を1つ持ち、両方の出どころへ渡す。`aim(直下点の向き, ρ)` で半径を決めて置き直す。テクスチャと置き方の組(`CloudFieldBinding`)を公開する。`CloudFieldSource` から `sampler` を外す |
-| `src/render/cloud/generated-cloud-field.ts` | 投影を受け取る形は変えない。置き方の版が変わると焼き直す(既存の `revision`) |
-| `src/render/cloud/cloud-field.ts` | `at(direction)` は自分の投影の `uvAt` でテクスチャを直に読む(cloud-lab 用)。パイプラインの読み手は使わない |
-| `src/render/cloud/observed-cloud-field.ts` | 画像を同じ cap の `BakedField` へ焼き直す(決めたこと 4)。画像の世代か cap の版が変わったときだけ焼き、`GPU_PASS.cloudBake` へ計上する |
-| `src/render/opaque-cloud-surface-renderer.ts:65-67, 111-117, 288-291` | 自前の `CloudFieldSampler` を持ち、presentation の組を毎フレーム `bind` する。`setFieldSampler` を消す |
-| `src/render/atmosphere.ts:88-94` | `AtmosphereClouds.field: THREE.Texture` を `CloudFieldBinding` にする |
-| `src/render/pipeline/cloud-atmosphere-renderer.ts:130-135` | `bind` で写す |
-| `src/render/pipeline/shadow/cloud-shadow-renderer.ts:15-25, 60-69` | `ShadowCumulus.field` を `CloudFieldBinding` にし、`bind` で写す |
-| `src/render/celestial/celestial-entity/point-celestial-view.ts:110-139, 143-169` | `syncResolved` で、カメラの位置から天体中心を引いて天体固定へ回し(`group.quaternion` の逆)、半軸で割って直下点の向きと ρ を求め、`cumulus.aim` へ渡す。`cumulusShadowAt`・`atmosphereCloudsAt` は組を返す |
-| `src/game/celestial/solar-system/earth-system.ts`(`earthGeneratedCloudField` と `earthSystem`) | `earthGeneratedCloudField(projection)` は投影を必須にする(実験環境と本番が同じ工場で組む口として残す)。地球の `CloudPresentation` は、cap を1つ作って生成と実写の両方へ渡す工場で組む |
-| `tools/render-lab/cases.ts:634-700`(`earthAt`) | 同じ工場で組み、ケースのカメラ(原点)から見た直下点の向き(`-center` を `spin` の逆で回したもの)で `aim` する。`clouds`・`cumulus` は組を渡す |
-| `tools/cloud-lab/lab.ts:82-88`、`pane.ts`、`views.ts` | 左の面は `earthGeneratedCloudField(new EquirectProjection(VIEW_HEIGHT))`、右は `earthGeneratedCloudField(this.capProjection)` で組む。面は `sampler` ではなく `CloudField.at` で読む |
-| `src/render/graphics-settings.ts:80-83` | 「実写は焼かないぶん軽い」のコメントを直す(実写も cap へ焼き直す) |
-| `tests/render/cloud-field-sampler.test.ts` | 注入のテストと楕円体のテストを消す |
-| `tests/render/cloud-cap.test.ts`(新規) | 半径の式を固定する。高度 400 km で 19.8° + 3.9° + M、遠方で π/2 に止まる、ρ = 1 でも正 |
-
-**達成条件と検証**:
-
-- `npm run typecheck`、`npm run test:render`、`npm run test:game`。
-- 達成目標 1・3・4・5 の検索。
-- `npm run cloud-lab:shot` で左右の面の見え方が手順 2 のあとと変わらない。
-- `npm run render-lab:shot` の地球の俯瞰・斜視の両ケースで、雲殻の真下に雲影が落ち、大気の中の雲が
-  雲殻と重なる。「雲の分布: 実写」でも同じ。
-- `npm run dev` で達成目標 6 を確かめる。
-- render-lab の `measure()` を取り、手順 2 で控えた値と並べて「見積り」を実測で置き換える。
-
-### 手順 4. 外周の崩れと置き直しの揺れを測り、余白を決める
-
-**目的**: 決めたこと 8 の余白 M を実測で決め、中間場を広げる要があるか(手順 5)を判定する。
-コードは変えない(撮影と集計は scratchpad の自前スクリプトで行い、リポジトリへ入れない)。
-
-| 対象 | 何をするか |
-| --- | --- |
-| cloud-lab(`aimCap` を CDP から叩く自前スクリプト) | 高度 400 km の半径で cap を置き、同じ表示時刻で左の全球の面と右の cap の面を撮る。同じ方向の被覆率の差を、cap の縁からの角距離ごとに平均する。差が円板の中心付近の値まで落ちる角を「崩れの届く角」とする。表示時刻を 0・6・12・18 h の 4 通りで取る |
-| `npm run dev` | 高度 400 km・時間加速 1 倍で直下点付近の雲を 10 秒見て、texel 程度の這う揺らぎが見えるかを記録する。マップビューの遠方から、地球の縁に崩れが見えるかを記録する |
-
-**判定**:
-
-- 崩れの届く角 ≤ 5° → `CLOUD_CAP_MARGIN` をその角の切り上げにして終わる。手順 5 は飛ばす。
-- 崩れの届く角 > 5° → 手順 5 を行う。
-
-**達成条件と検証**: 4 通りの時刻の崩れの届く角と、揺らぎ・縁の観察結果が、この計画の「見積り」の
-欄に書き込まれている。
-
-### 手順 5. (手順 4 で要ると判定したときだけ)中間場を広い cap で焼く
-
-**目的**: 風上へ遡って読まれる中間場だけを、見えている cap より広い cap で焼き、外周の崩れを
-円板の外へ追い出す。最終の雲場は見えている cap のまま。
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/cloud/weather-model.ts:176-191` | 中間場の投影と、雲場の投影を別に受け取る |
-| `src/render/cloud/weather-transport.ts`、`air-mass.ts`、`convective-activity.ts` | 中間場の投影で焼く |
-| `src/render/cloud/cloud-presentation.ts`、`cloud-cap.ts` | 広い cap(半径 `min(π/2, θ + 遡る距離)`)を持ち、同じ直下点へ同時に置く |
-| `tests/render/cloud-cap.test.ts` | 広い cap の半径の式を足す |
-
-**トレードオフ**: 広い cap は texel が粗い。半径 45° で 512² なら 2 sin45° / 512 = 2.8e-3 rad ≈ 18 km で、
-対流の最細の段(24 km、`weather-transport.ts:29`)は Nyquist(36 km)より細かく、フェードで消える。
-対流の源は遡る距離が短い(≈ 8.5°)ので、見えている cap に残して余白を 8.5° 以上に取るか、中間場の
-cap を 1024² にするかを、ここで決める。
-
-**達成条件と検証**:
-
-- `npm run typecheck`、`npm run test:render`。
-- 手順 4 の測定をやり直し、崩れの届く角が `CLOUD_CAP_MARGIN` 以下になる。
-
 ### 手順 6. 規約とコメントを点検する
 
 **目的**: 雲場の契約が変わり、LOD の説明が残るコメントが多い。規約からの逸脱と焼け残ったコメントを
@@ -275,36 +200,45 @@ cap を 1024² にするかを、ここで決める。
 
 ## 見積り
 
-**雲の生成の GPU 時間**(焼く費用 ∝ texel 数 × 1 texel の式の重さ。1 texel の式の重さは図法によらない
-と仮定):
+**雲の GPU 時間**(render-lab の地球、既定=高、Intel iGPU、3 巡の平均):
 
-- 手順 2 のあと(render-lab の地球、既定=高、Intel iGPU、3 巡の平均): 雲の生成 9.64 ms、
-  表面雲 4.14 ms、大気(雲あり) 7.32 ms、雲影 1.07 ms。1024×512 = 524,288 texel。
-- cap 512²: 262,144 texel なので 0.5 倍の 4.7〜7.2 ms。ただし次の 2 つで増える。
-  - 中間場の粗焼きをやめる分は、今の 1024×512 では 0。湿度(最細 64)・対流(266)・不安定度(25)の
-    どれも `coarsenessFor` の式(`max(1, 2^floor(log2(0.25 / (最細 × π/512))))`)で 1 になる。
-    粗焼きが効き始めるのは、cap が縮んで texel 角が小さくなってから。
-  - 実写の焼き直し。1 texel あたり画像を 1 回読むだけで、天気の式に比べて桁で軽い。
-- 手順 3 で実測に置き換える。**比較の基準は手順 2 のあとの値**(上)。
+| | 手順 2 のあと(全球の正距円筒 1024x512) | 手順 3 のあと(cap 512x512) |
+| --- | --- | --- |
+| 雲の生成 | 9.64 ms | 5.57 ms |
+| 表面雲 | 4.14 ms | 3.91 ms |
+| 大気(雲あり) | 7.32 ms | 7.28 ms |
+| 雲影 | 1.07 ms | 0.96 ms |
+
+焼く texel は 524,288 → 262,144 の 0.5 倍で、雲の生成は 0.58 倍。中間場の粗焼きをやめた分と
+実写の焼き直しが乗るので、0.5 倍ちょうどにはならない。
 
 **編集の量**(ファイル数は「変更が必要な箇所」の表から):
 
 | 手順 | 編集 | 削除 | 新規 |
 | --- | --- | --- | --- |
 | 1 | 1 | — | — |
-| 3 | 約 18 | — | 2(cloud-cap.ts・テスト) |
-| 4 | — | — | —(scratchpad のスクリプト) |
-| 5 | 約 6 | — | — |
-| 6 | 手順 2〜5 で触ったもの | — | — |
+| 6 | 手順 2〜3 で触ったもの | — | — |
 
-**手順 4 の実測**(実施時に書き込む):
+**外周の崩れの実測**(cloud-lab、cap は 19N/136E・半径 28.68 度(高度 400 km)、全球の面と cap の
+面で同じ方向の被覆率を比べ、cap の縁からの角距離 1 度ごとに |差| を平均):
 
-| 表示時刻 | 崩れの届く角 | 直下点の揺らぎ | 遠方の縁 |
+| 表示時刻 | 円板の内側の |差| | 縁(最外 1 度) | 縁の超過が内側の 1.15 倍を切る角 |
 | --- | --- | --- | --- |
-| 0 h | | | |
-| 6 h | | | |
-| 12 h | | | |
-| 18 h | | | |
+| 0 h | 0.066 | 0.079 (1.20 倍) | 1 度 |
+| 6 h | 0.044 | 0.060 (1.37 倍) | 1 度 |
+| 12 h | 0.047 | 0.069 (1.47 倍) | 1 度 |
+| 18 h | 0.044 | 0.070 (1.59 倍) | 3 度 |
+
+**判定: 崩れの届く角は最大 3 度で、余白 5 度に収まる。`CLOUD_CAP_MARGIN` は 5 度のまま、
+中間場を広い cap で焼く手順は要らない**(その手順は削除した)。
+
+円板の内側にも 0.04〜0.07 の差が一様に残るが、これは崩れではなく **2 つの面の texel の細かさの
+違い**(全球の面は赤道で 39 km、cap の面は中心で 12 km)。崩れなら縁に寄るはずで、実際に寄るのは
+最外の 1〜3 度だけである。
+
+**測っていないもの**: 直下点の texel 程度の這う揺らぎと、マップビューの遠方から見た地球の縁の
+崩れ。どちらも `npm run dev` を人が見て判じる項目で、ヘッドレスの撮影では判らない。揺らぎの
+対策(格子への吸着)は「調整の todo」にある。
 
 ## 調整の todo
 
