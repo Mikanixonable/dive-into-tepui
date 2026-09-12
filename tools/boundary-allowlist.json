@@ -23,24 +23,8 @@
     ]
   },
   "命令 API の禁止": {
-    "src/audio/bgm/bgm.ts": [
-      ".unlock(",
-      "ensureStarted"
-    ],
-    "src/audio/sfx/world-sfx.ts": [
-      "setRcs",
-      "setThrust"
-    ],
     "src/game/celestial/celestial-system.ts": [
-      "MarkerSlots",
-      "setFixedBrightnessScale"
-    ],
-    "src/game/control-selection.ts": [
-      "setRcs"
-    ],
-    "src/game/controlled-loop-sfx.ts": [
-      "setRcs",
-      "setThrust"
+      "MarkerSlots"
     ],
     "src/game/creative/object-placement.ts": [
       "MarkerSlots"
@@ -53,10 +37,6 @@
     ],
     "src/game/dynamic/dynamic-system.ts": [
       "MarkerSlots"
-    ],
-    "src/game/game.ts": [
-      "setRcs",
-      "setThrust"
     ],
     "src/game/marker/celestial-markers.ts": [
       "MarkerSlots"
@@ -101,19 +81,10 @@
       "MarkerSlots"
     ],
     "src/game/stages/stage.ts": [
-      "MarkerSlots",
-      "setRcs",
-      "setThrust"
+      "MarkerSlots"
     ],
     "src/game/view/combat-view.ts": [
       "MarkerSlots"
-    ],
-    "src/launcher/launcher.ts": [
-      ".unlock(",
-      "ensureStarted"
-    ],
-    "src/main.ts": [
-      "applyGraphics"
     ],
     "src/render/celestial/celestial-entity/celestial-view.ts": [
       "MarkerSlots"
@@ -132,23 +103,6 @@
     ],
     "src/render/dynamic/player/player-view.ts": [
       "MarkerSlots"
-    ],
-    "src/render/pipeline/render-pipeline.ts": [
-      "applyGraphics"
-    ],
-    "src/render/scene.ts": [
-      "applyGraphics"
-    ],
-    "src/render/stars.ts": [
-      "setFixedBrightnessScale"
-    ]
-  },
-  "装置の壁時計の禁止": {
-    "src/render/celestial/celestial-entity/point-celestial-view.ts": [
-      "performance.now"
-    ],
-    "src/render/celestial/orbit-guide/direction-markers.ts": [
-      "performance.now"
     ]
   }
 }

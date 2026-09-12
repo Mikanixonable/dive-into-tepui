@@ -81,9 +81,6 @@ export class Input {
   // 直近に検知した入力種別が変わるたびに通知する(タッチ⇄マウス/キーボードの切替を含む)。
   onPointerKindChange: ((kind: PointerKind) => void) | null = null;
   private lastPointerKind: PointerKind | null = null;
-  // keydown・pointerdown・仮想キー押下(setVirtualKey の down=true)でのみ発火する
-  // (pointermove では発火しない)。
-  onUserGesture: (() => void) | null = null;
   // タッチの長押し(右クリック合成)。1本指のジェスチャにしか存在しないので
   // pointers のような Map ではなく単一の状態で持つ。
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
@@ -123,10 +120,7 @@ export class Input {
     if (e.code === FOCUS_GUARD_CODE || SCROLL_GUARD_KEYS.some((k) => matchesCode(k, e.code))) {
       e.preventDefault();
     }
-    if (!e.repeat) {
-      this.pendingPresses.push(e.code);
-      this.onUserGesture?.();
-    }
+    if (!e.repeat) this.pendingPresses.push(e.code);
     this.keys.add(e.code);
     this.notePointerKind('mouse');
   };
@@ -180,7 +174,6 @@ export class Input {
   // 左ボタン・右ボタンはともにドラッグ/ピンチ開始(右クリックは閾値未満ならコンテキストメニュー用のクリックとして扱う)、中ボタンはパン開始として扱う。
   private readonly handlePointerDown = (e: PointerEvent): void => {
     this.notePointerKind(e.pointerType === 'touch' ? 'touch' : 'mouse');
-    this.onUserGesture?.();
     const isRight = e.button === 2 || (e.button === 0 && e.ctrlKey);
     const isLeft = e.button === 0 && !e.ctrlKey;
     if (isLeft) {
@@ -416,7 +409,6 @@ export class Input {
     if (down) {
       if (!this.keys.has(key.code)) this.pendingPresses.push(key.code);
       this.keys.add(key.code);
-      this.onUserGesture?.();
     } else {
       this.keys.delete(key.code);
     }

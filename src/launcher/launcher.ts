@@ -120,6 +120,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // 選択画面を出し、選ばれたステージクラス(クリエイティブなら開始日時も)で解決される Promise を返す。
   private selectStageScreen(): Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> {
+    this.bgm.syncRun(false);
     return selectStage(
       this.unlockManager,
       () => { if (!this.shell.overlayManager.closeTopmostOnEscape()) this.pauseMenu.toggle(); },
@@ -151,11 +152,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     } finally {
       hideLoading();
     }
-    // AudioContext はユーザー操作の中でしか作れないので、周回ごとの Input の入力エッジへ unlock を張る。
-    this.game.input.onUserGesture = () => {
-      this.audioEngine.unlock();
-      this.bgm.ensureStarted();
-    };
     const stage = this.game.activeStage;
     stage.onDecided = () => {
       // クリア回数は決着した瞬間に数える。決着済みのセーブから始めたランはここを通らないので、
@@ -164,14 +160,14 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       this.showResult(stage);
     };
     this.noteLaunched(stageClass);
-    this.bgm.resume();
+    this.bgm.syncRun(stage.isPlaying);
     // 決着済みのスナップショットから始まったランは decide() を通らないため、ここで締める。
     if (!stage.isPlaying) this.showResult(stage);
   }
 
   // 決着したランを締め、結果画面を出す。
   private showResult(stage: Stage): void {
-    this.bgm.stop();
+    this.bgm.syncRun(false);
     const activeSlotId = this.slots.activeSlotId;
     if (activeSlotId !== null) this.slots.noteRunEnded(activeSlotId);
     this.resultScreen.show(stage.result ?? fallbackResult(stage.phase));
@@ -260,6 +256,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // 周回の遷移の失敗を画面に出す。遷移が失敗すると current が null のまま進まなくなる。
   private fail(err: unknown): void {
+    this.bgm.syncRun(false);
     console.error(err);
     showFatalError(
       '次の周回の開始に失敗しました。',

@@ -1,10 +1,9 @@
 // 操作対象(自機船 0..n 隻と基地のうち、ちょうど1つ)の選択と、それに伴う各所有者への伝播
-// (航法ターゲット・SFX、および remove() でのカメラのフォーカス解除)を1箇所へ集める。
+// (航法ターゲット、および remove() でのカメラのフォーカス解除)を1箇所へ集める。
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import type { CameraSystem } from './camera/camera-system';
 import type { NavTarget } from './nav-target';
-import type { WorldSfx } from '../audio/sfx/world-sfx';
 import type { Notifier } from '../hud/notifier';
 
 export class ControlSelection {
@@ -17,7 +16,6 @@ export class ControlSelection {
     private readonly dynamicSystem: DynamicSystem,
     private readonly cameraSystem: CameraSystem,
     private readonly navTarget: NavTarget,
-    private readonly worldSfx: WorldSfx,
     private readonly notifier?: Notifier,
   ) {
     const candidates = dynamicSystem.controllables;
@@ -42,7 +40,6 @@ export class ControlSelection {
     if (this._current === null) return;
     this._current.clearTransientCommands();
     this._current = null;
-    this.worldSfx.setRcs(false);
   }
 
   // 操作対象を手で外す。外れたときだけ案内を出す(全滅による喪失とは別の経路)。
