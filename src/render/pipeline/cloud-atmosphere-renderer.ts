@@ -97,7 +97,7 @@ export interface CloudShellSample {
 //
 // **不透明な積雲として立てたぶんを引かない。** 不透明な殻は G バッファへ深度を書くので、その
 // 手前で終わる視線では殻の交点が区間の外へ落ちて寄与が消える — 引き算は同じ遮蔽を二重に効かせ、
-// 塔の周りに殻の抜けを作る。むしろ塔の側に残る被覆境界の濃淡差を、この殻が跨いで埋める。
+// 塔の周りに殻の抜けを作る。むしろ塔の側に残るディザの濃淡差を、この殻が跨いで埋める。
 function columnOpticalDepthOf(species: CloudSpecies, field: CloudSample): FloatNode {
   return shellDefinitionOf(species).columnOpticalDepth(field);
 }
