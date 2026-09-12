@@ -20,13 +20,13 @@ EMPTY_CLOUD_FIELD.needsUpdate = true;
 // 場の G(雲頂高度)を実寸へ戻す上限 [m]。場の G 自体は 0..1 で持つ。
 export const CLOUD_TOP_SPAN = 15000;
 
-// 被覆率を不透明な雲頂へ渡す境目(center)と、その前後で連続に渡す半幅(halfWidth)。被覆率が
-// center±halfWidth に入る柱だけが 0..1 の中間値になり、外は 0 か 1 へ飽和する。どちらも目で
-// 追い込んだ値で、場を差し替えたら追い込み直す。
+// 被覆率を二値化する境目(center)と、その前後でディザへ渡す半幅(halfWidth)。被覆率が
+// center±halfWidth に入る柱だけがディザに掛かり、外は 0 か 1 へ飽和する。どちらも目で追い込んだ
+// 値で、場を差し替えたら追い込み直す。
 //
 // **仮設**: render-lab のつまみ(tools/render-lab/main.ts)から動かせるよう uniform にしてある。
 // 生成側の場へ差し替えたあとにもう一段の追い込みが要るので、それまでは畳まない。
-export const CUMULUS_COVERAGE_KNOB: {
+export const CUMULUS_DITHER_KNOB: {
   readonly center: FloatUniform;
   readonly halfWidth: FloatUniform;
 } = { center: uniform(0.34), halfWidth: uniform(0.12) };
