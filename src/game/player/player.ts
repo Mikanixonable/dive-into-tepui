@@ -538,7 +538,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       // 画面外の方位マーカーは ALLY_BEARING_MAX_DISTANCE 以内の艦にだけ出す
       bearing: {
         cls: 'mk-dir mk-ally-dir', sym: DIRECTION_GLYPH.allyBearing, color: COLOR_MARKER_ALLY,
-        visible: dist <= ALLY_BEARING_MAX_DISTANCE, priority: MARKER_PRIORITY.NONE, clustered: true,
+        visible: dist <= ALLY_BEARING_MAX_DISTANCE, priority: MARKER_PRIORITY.PLAYER, clustered: true,
       },
       color: isActive ? 'var(--color-primary)' : COLOR_MARKER_ALLY,
       symMarkup: true,

@@ -116,15 +116,14 @@ export class DebugInfoWindow {
   private readonly tabBar: TabBar<DebugInfoTab>;
   private readonly controls: HTMLElement;
   private activeTab: DebugInfoTab = 'metrics';
-  // 選択欄で選ばれている中間ターゲット。窓の開閉をまたいで残る。
-  private selectedTarget: DebugTargetId = 'off';
+  private _debugTarget: DebugTargetId = 'off';
   private readonly proteinMotion = new ProteinMotionMetricsRecorder();
 
   // 計測が走っているか。窓が開いている間だけ真になる。
   public get on(): boolean { return this.win !== null; }
 
-  // 画面いっぱいに映す中間ターゲットの選択。毎フレームの描画の入力になる。
-  public get debugTarget(): DebugTargetId { return this.selectedTarget; }
+  // 画面いっぱいに映す中間ターゲットの選択。窓を閉じても残り、ページを読み直すと 'off' に戻る。
+  public get debugTarget(): DebugTargetId { return this._debugTarget; }
 
   // 計測対象と表示先を受け取り、デバッグ表示の操作部品を組み立てる。renderStyle は組み立て時の
   // 見せ方。openAtStart が真なら組み立てた直後に窓を開く。
@@ -140,11 +139,11 @@ export class DebugInfoWindow {
     // 描画タブの選択欄とタブ切り替えを組む。
     injectOnce('debug-info-window', STYLE);
     this.renderTarget = new SegmentedControl('デバッグ表示', DEBUG_TARGETS, (id) => {
-      this.selectedTarget = id;
+      this._debugTarget = id;
       this.renderTarget.setSelected(id);
     });
     // 選択欄はこの窓と同じ寿命なので、初期の選択をここで一度点灯させれば開閉をまたいで残る。
-    this.renderTarget.setSelected(this.selectedTarget);
+    this.renderTarget.setSelected(this._debugTarget);
     this.tabBar = new TabBar(DEBUG_INFO_TABS, (tab) => this.selectTab(tab));
     this.controls = document.createElement('div');
     this.controls.className = 'debug-info-controls';

@@ -13,7 +13,7 @@ import type { ObjectWindows } from '../pickable/object-windows';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialMarkers } from '../marker/celestial-markers';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
-import type { Targeter } from '../targeter';
+import type { GroupedMarkers } from '../marker/grouped-markers';
 import type { EquatorNodeManager } from '../marker/equator-node-manager';
 import type { NavTarget } from '../nav-target';
 import { PlanEditor } from '../plan/plan-editor';
@@ -48,7 +48,7 @@ export class MapView implements ViewFrame {
     private readonly celestialSystem: CelestialSystem,
     private readonly celestialMarkers: CelestialMarkers,
     markers: MarkerVisibility,
-    private readonly targeter: Targeter,
+    private readonly combatMarkers: GroupedMarkers,
     private readonly displayWindowManager: DisplayWindowManager,
     private readonly frameControls: FrameControls,
     frameAnchors: FrameAnchors,
@@ -155,7 +155,7 @@ export class MapView implements ViewFrame {
     );
     // 天体ラベルのサブ行と、軌道線の右クリック候補
     this.celestialMarkers.syncSubLabels(
-      this.targeter.combatMarkers, this.celestialSystem.celestialMotions, displayWindow.displayTime,
+      this.combatMarkers, this.celestialSystem.celestialMotions, displayWindow.displayTime,
       camera.project, camera.position, nowMs,
     );
     this.linePickables.refresh();

@@ -87,7 +87,6 @@ function orderedEntitiesOf(
 }
 
 export class CelestialSystem implements CelestialBodies {
-  // 天体固有のマップ付随表示が、このフレームに出すマーカーの宣言。
   private readonly overlayDeclarations: MarkerDeclaration[] = [];
   private scene!: THREE.Scene;
   private stars!: Stars;
@@ -418,7 +417,8 @@ export class CelestialSystem implements CelestialBodies {
       pointFieldVisible, floatingOrigin, displayTime, starPos, fixedBrightnessScale);
     this.stars.sync(grid.stars);
     this.syncReferenceLines(displayTime, camera, visibilityPolicy);
-    // 地球の静止軌道リングなど、天体固有のマップ付随表示。
+    // 地球の静止軌道リングなど、天体固有のマップ付随表示。ラベルは全天体で同じ id の
+    // マーカー1枠を共有するので、最後に返した天体のものだけが残る。
     let overlayLabel: MapOverlayLabel | null = null;
     for (const body of this.entities) {
       overlayLabel = body.view.syncMapOverlay(

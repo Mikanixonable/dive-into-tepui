@@ -65,6 +65,7 @@ export class Targeter {
   // ターゲット相対のオフセットで持つ。
   private boardMarks: { off: Vec3; age: number; }[] = [];
 
+  // 照準・戦闘対象・見越し点の3つの群を装置から確保する。畳むのは dispose。
   public constructor(
     markers: MarkerDevice,
     private readonly navTarget: NavTarget, private readonly roster: EntityRoster,
