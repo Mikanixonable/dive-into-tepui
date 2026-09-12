@@ -14,6 +14,7 @@ import type { Contact } from '../dynamic/dynamic-entity/contact';
 import type { RadiatorSaveData } from '../save/save-data';
 import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
+import { DeployablePanelState } from './deployable-panel-state';
 
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
@@ -77,13 +78,10 @@ interface RadiatorContactReaction {
   ): void;
 }
 
-class Panel {
-  public deployTarget: 0 | 1 = 0;
-  public deploy = 0;
-}
-
 export class RadiatorSystem {
-  private readonly panels: Record<RadiatorSide, Panel> = { up: new Panel(), down: new Panel() };
+  private readonly panels: Record<RadiatorSide, DeployablePanelState> = {
+    up: new DeployablePanelState(0, 0), down: new DeployablePanelState(0, 0),
+  };
   // side ごとの損耗率(0=無傷, 1=全損)。
   private wear: Record<RadiatorSide, number> = { up: 0, down: 0 };
   // side ごとの接触代理。折り数まで遅延生成し、以後は使い回す。
@@ -99,10 +97,9 @@ export class RadiatorSystem {
       for (const side of ['up', 'down'] as const) {
         const savedPanel = saved[side];
         if (!savedPanel) continue;
-        this.panels[side].deployTarget = savedPanel.deployTarget === 1 ? 1 : 0;
-        this.panels[side].deploy = typeof savedPanel.deploy === 'number'
-          && Number.isFinite(savedPanel.deploy)
-          ? Math.max(0, Math.min(1, savedPanel.deploy)) : 0;
+        this.panels[side].target = savedPanel.deployTarget === 1 ? 1 : 0;
+        this.panels[side].value = typeof savedPanel.deploy === 'number'
+          && Number.isFinite(savedPanel.deploy) ? Math.max(0, Math.min(1, savedPanel.deploy)) : 0;
       }
     }
   }
@@ -110,25 +107,21 @@ export class RadiatorSystem {
   // side の展開/収納を切り替える。
   public toggle(side: RadiatorSide): void {
     const p = this.panels[side];
-    p.deployTarget = p.deployTarget === 0 ? 1 : 0;
+    p.toggle();
   }
 
   // side の展開目標を明示的に設定する。
   public setDeployed(side: RadiatorSide, deployed: boolean): void {
     const p = this.panels[side];
-    const target: 0 | 1 = deployed ? 1 : 0;
-    if (p.deployTarget !== target) p.deployTarget = target;
+    p.setTarget(deployed);
   }
 
   // 展開度を指示値へ RADIATOR_DEPLOY_TIME 秒かけて近づける。wear は放熱板パーツの残 HP から
   // 求めた side ごとの損耗率。
   public update(dt: number, wear: Record<RadiatorSide, number>): void {
     this.wear = wear;
-    const step = dt / RADIATOR_DEPLOY_TIME;
     for (const side of ['up', 'down'] as const) {
-      const p = this.panels[side];
-      if (p.deploy < p.deployTarget) p.deploy = Math.min(p.deployTarget, p.deploy + step);
-      else if (p.deploy > p.deployTarget) p.deploy = Math.max(p.deployTarget, p.deploy - step);
+      this.panels[side].update(dt, RADIATOR_DEPLOY_TIME);
     }
   }
 
@@ -142,7 +135,7 @@ export class RadiatorSystem {
   // 符号が付くので、回転角自体は side に依らず ±psi で揃う。
   public foldThetas(side: RadiatorSide): { even: number; odd: number } {
     const sign = sideSign(side);
-    const psi = this.tilt(this.panels[side].deploy);
+    const psi = this.tilt(this.panels[side].value);
     return { even: sign * psi, odd: -sign * psi };
   }
 
@@ -150,7 +143,7 @@ export class RadiatorSystem {
   // 展開度を掛ける。全損した側は 0。
   private panelArea(side: RadiatorSide, totalCoolingRate: number): number {
     if (this.wear[side] >= 1) return 0;
-    return (totalCoolingRate / 2) * this.panels[side].deploy;
+    return (totalCoolingRate / 2) * this.panels[side].value;
   }
 
   // 放熱に使える面積 [m^2]。
@@ -182,7 +175,7 @@ export class RadiatorSystem {
   public contactFolds(shipR: Vec3, shipV: Vec3, att: Attitude, t: number): RadiatorFold[] {
     const result: RadiatorFold[] = [];
     for (const side of ['up', 'down'] as const) {
-      if (this.panels[side].deploy < RADIATOR_CONTACT_DEPLOY || this.wear[side] >= 1) continue;
+      if (this.panels[side].value < RADIATOR_CONTACT_DEPLOY || this.wear[side] >= 1) continue;
       const proxies = this.foldProxies[side];
       const { even, odd } = this.foldThetas(side);
       // 折りの速度には、艦の角速度による接線速度も乗せる。
@@ -207,14 +200,14 @@ export class RadiatorSystem {
     return add(shipR, qRotate(att.q, foldLocalPosition(side, RADIATOR_FOLD_COUNT - 1, even, odd)));
   }
 
-  public deployOf(side: RadiatorSide): number { return this.panels[side].deploy; }
+  public deployOf(side: RadiatorSide): number { return this.panels[side].value; }
   public wearOf(side: RadiatorSide): number { return this.wear[side]; }
 
   // 保存するのは side ごとの展開目標と展開度。
   public serialize(): RadiatorSaveData {
     return {
-      up: { deployTarget: this.panels.up.deployTarget, deploy: this.panels.up.deploy },
-      down: { deployTarget: this.panels.down.deployTarget, deploy: this.panels.down.deploy },
+      up: { deployTarget: this.panels.up.target, deploy: this.panels.up.value },
+      down: { deployTarget: this.panels.down.target, deploy: this.panels.down.value },
     };
   }
 }

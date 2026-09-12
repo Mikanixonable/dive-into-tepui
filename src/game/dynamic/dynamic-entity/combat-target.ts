@@ -2,11 +2,10 @@
 import type { Vec3 } from '../../../math/vec3';
 import type { ViewMode } from '../../../render/view-mode';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
-import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { DynamicEntityKind } from './entity-kind';
 import type { DynamicEntity } from './dynamic-entity';
 
-export interface CombatTarget extends DynamicEntity, ObjectPickable {
+export interface CombatTarget extends DynamicEntity {
   // 戦闘対象は必ずマップの表示トグルを持つ種別に属する。
   readonly mapKind: DynamicEntityKind;
   // 削れる耐久値を持たない種別は null。

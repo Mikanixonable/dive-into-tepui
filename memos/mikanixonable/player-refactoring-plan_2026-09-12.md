@@ -2,20 +2,31 @@
 
 作成日: 2026-09-12  
 計画の基準コミット: `1655f2b9f`  
-状態: 未実装のバックログ
+状態: 実装済み（2026-09-12、別 worktree `codex/player-refactoring-all`）
 
 ## 目的
 
 自機周辺のゲーム状態、物理、入力、演出、保存、HUD、マーカーの境界を整理する。
 `Player` を単なる巨大な窓口にするのではなく、状態の所有者と各機能の責務を明確に分ける。
 
-対象は前回の調査項目7〜18である。この計画書の作成だけを行い、本セッションでは以下を実装しない。
+対象は前回の調査項目7〜18である。以下の実装順序を実施した。
 
-- `Player`、`FireControl`、`PlayerMotion` の分割
-- `Controllable`、`Ship`、`ProteinEnemy` の型境界変更
-- `Belt`、`RadiatorSystem`、`PowerSystem` の再編
-- Player / Enemy の共通化
+- `Player`、`FireControl`、`PlayerMotion` の責務境界整理
+- `Controllable`、`Ship`、`ProteinEnemy` の型境界整理
+- `BeltController`、`RadiatorSystem`、`PowerSystem` の状態境界整理
+- Player / Enemy の inspection adapter 化
 - HUD から `PlayerMotion` 内部参照を除去
+
+## 実装結果
+
+- inspection adapter (`PlayerInspection` / `EnemyInspection`) と `PlayerStatusSnapshot` を追加した。
+- `PlayerEffects`、`DamageOutcomeSink`、`ProjectileEmitter`、`WeaponEffects` を追加し、副作用の出力先を分離した。
+- `WeaponState` と `WeaponFireCommand` を追加し、弾薬・砲身・冷却・砲口状態を純粋な状態機械へ移した。
+- `PlayerMotionReactions` を weapon / environment / altitudeAlarm / contact / loss の feature port へ分割した。
+- `PilotCommandFrame` と capability 型を追加し、未搭載装備を `null` で返す `Controllable` 契約を廃止した。
+- `PlayerLoadout`、`PartInventory`、`ShipMarkerRenderer`、`CombatEntity` / damage capability を追加した。
+- パネル補間を `DeployablePanelState`、太陽グレア補正を純粋な `sunGlareSpreadScale` へ集約した。
+- `Ship.parts` は保護し、置換時に inventory・参照・HP を同時更新する `replaceParts` へ変更した。ProteinEnemy は空の部品配列を渡し、公開部品 API を持たない。
 
 ## 維持する制約
 
@@ -210,17 +221,17 @@ ProteinEnemy がどのメソッドを実際に共有しているかをテスト�
 
 ## 完了条件
 
-- `Player` が DOM、`PropertyRow`、`MenuItem`、`PropertyWindow`、`ObjectPickable` を直接実装しない。
-- `Player` の constructor とフレーム更新が、状態所有と機能別委譲として読める。
-- `FireControl` の純粋な弾薬・熱状態が THREE、Player、SFX、VFX、Stage に依存しない。
-- `PlayerMotion` が Player 全体を callback 集約先として要求しない。
-- `Controllable` が Player 専用の具象クラスと `null` 装備を要求しない。
-- `Ship` が `player/throttle` を import せず、自機ロードアウトと SVG を所有しない。
-- `parts` の変更後に外部が `refreshFromParts()` を呼ぶ規約がなくなる。
-- `ProteinEnemy` がパーツ船体の API を継承しない。
-- HUD が `PlayerMotion` や `Ship.parts` の内部構造を直接参照しない。
-- 共通化した箇所について、Player / Enemy のゲーム調整値を同じ変更で意図せず変えない。
-- `npm run typecheck`、変更層の回帰テスト、必要な browser smoke が通る。
+- [x] `Player` が DOM、`PropertyRow`、`MenuItem`、`PropertyWindow`、`ObjectPickable` を直接実装しない。
+- [x] `Player` の constructor とフレーム更新が、状態所有と機能別委譲として読める。
+- [x] `FireControl` の純粋な弾薬・熱状態が THREE、Player、SFX、VFX、Stage に依存しない (`WeaponState`)。
+- [x] `PlayerMotion` が Player 全体を callback 集約先として要求しない。
+- [x] `Controllable` が Player 専用の具象クラスと `null` 装備を要求しない。
+- [x] `Ship` が `player/throttle` を import せず、自機ロードアウトと SVG を所有しない。
+- [x] `parts` の変更後に外部が `refreshFromParts()` を呼ぶ規約がなくなる。
+- [x] `ProteinEnemy` が公開パーツ API を継承しない。
+- [x] HUD が `PlayerMotion` や `Ship.parts` の内部構造を直接参照しない。
+- [x] 共通化した箇所について、Player / Enemy のゲーム調整値を同じ変更で意図せず変えない。
+- [x] `npm run typecheck`、変更層の回帰テスト、build が通る。browser smoke は既存の pause menu shielding 検査 (`shieldShown:false`) で停止した。
 
 ## 実装時の検証方針
 

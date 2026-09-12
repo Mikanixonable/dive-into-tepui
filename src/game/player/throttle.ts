@@ -6,7 +6,7 @@ import { Input } from '../../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../../input/key-mapping';
 import type { Notifier } from '../../hud/notifier';
 import type { ThrottleSaveData } from '../save/save-data';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { FuelConsumer } from '../dynamic/dynamic-entity/controllable';
 
 // 並進推力(WSADQE の全 6 方向で共通)の出力 4 段階 [m/s^2]。[1]/[2]/[3]/[4] キーで切替、
 // 方向キーが押されている間だけ選択中の段の加速度がその方向へ出る。4段目は3段目の4倍。
@@ -123,7 +123,7 @@ export class Throttle {
 
   // 入力から機体座標系の推力加速度を組み立てて返す。入力が無ければ null。
   // ベルト物理が使う推力加速度の表示用状態も併せて更新する。
-  updateThrustState(input: Input, att: Attitude, simDt: number, ship: Controllable): Vec3 | null {
+  updateThrustState(input: Input, att: Attitude, simDt: number, ship: FuelConsumer): Vec3 | null {
     const thrust = this.buildThrust(input, att.q, ship, simDt);
     if (!thrust) {
       this.stopThrust();
@@ -172,7 +172,7 @@ export class Throttle {
   }
 
   // 6方向の並進入力から機体座標系の推力加速度ベクトルを求める。入力が無ければ null。
-  private buildThrust(input: Input, q: Attitude['q'], ship: Controllable, simDt: number): Vec3 | null {
+  private buildThrust(input: Input, q: Attitude['q'], ship: FuelConsumer, simDt: number): Vec3 | null {
     if (isThrustKillSwitchActive(input)) return null;
     const axX = (this.isThrustHeld(input, K.thrustLeft) ? 1 : 0) + (this.isThrustHeld(input, K.thrustRight) ? -1 : 0);
     const axY = (this.isThrustHeld(input, K.thrustUp) ? 1 : 0) + (this.isThrustHeld(input, K.thrustDown) ? -1 : 0);
@@ -215,7 +215,7 @@ export class Throttle {
     fineAttitude: boolean,
     dt: number,
     simDt: number,
-    ship: Controllable,
+    ship: FuelConsumer,
     onProgradeHoldReleased: () => void,
   ): Vec3 {
     const inertia = att.inertia;

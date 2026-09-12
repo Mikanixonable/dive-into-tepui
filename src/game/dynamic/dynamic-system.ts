@@ -289,14 +289,14 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     for (const controllable of this.controllables) {
       if (!controllable.motion.alive) continue;
       // 「操作対象でない」と「操作できないワープ倍率」は同じ状態として input なしで進める。
-      controllable.updateControls(
-        controllable === active && operable ? input : null,
+      controllable.updateControls({
+        input: controllable === active && operable ? input : null,
         dt,
         simDt,
-        this,
+        registry: this,
         activeStage,
-        this.celestialBodies,
-      );
+        celestialBodies: this.celestialBodies,
+      });
     }
   }
 

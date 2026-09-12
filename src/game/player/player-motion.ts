@@ -9,29 +9,38 @@ import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic/dynamic-mo
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
 import {
   MAX_HULL_TEMP,
-  PLAYER_MASS,
   SHIP_BCINV,
   SHIP_RADIATING_AREA_PER_MASS,
   SHIP_SRP_COEFF,
   shipMotionOptions,
 } from '../dynamic/dynamic-entity/ship';
+import { PLAYER_MASS } from './player-loadout';
 import { AeroLoad } from './aero-load';
 import { AttachedBoosterMotion } from './attached-booster-motion';
-import { Belt } from './belt';
+import { BeltController } from './belt';
 import { PowerSystem } from './power';
 import { RadiatorSystem, type RadiatorSide } from './radiator';
 
 // 自機の Motion が Entity 側から読む値と、接触・喪失を通知する先。
-export interface PlayerMotionReactions {
+export interface PlayerMotionWeaponPort {
   roundsInMagazine(): number;
+  stepBarrelThermal(dt: number): void;
+}
+
+export interface PlayerMotionEnvironmentPort {
   thrustAcceleration(): Vec3;
   radiatorWear(): Record<RadiatorSide, number>;
   totalCoolingRate(): number;
   totalPowerGeneration(): number;
-  stepBarrelThermal(dt: number): void;
+}
+
+export interface AltitudeAlarmPort {
   updateAltitudeAlarm(
     dt: number, position: Vec3, atmosphereBody: CelestialBody | null, atmospherePivot: number,
   ): void;
+}
+
+export interface PlayerMotionContactPort {
   receiveEntityContact(
     other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void;
@@ -39,8 +48,19 @@ export interface PlayerMotionReactions {
     side: RadiatorSide, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void;
   receiveSurfaceContact(contact: Contact, services: DynamicReactionServices): void;
+}
+
+export interface PlayerMotionLossPort {
   receiveStructuralLoss(services: DynamicReactionServices): void;
   receiveBurnUp(services: DynamicReactionServices): void;
+}
+
+export interface PlayerMotionReactions {
+  readonly weapon: PlayerMotionWeaponPort;
+  readonly environment: PlayerMotionEnvironmentPort;
+  readonly altitudeAlarm: AltitudeAlarmPort;
+  readonly contact: PlayerMotionContactPort;
+  readonly loss: PlayerMotionLossPort;
 }
 
 // 自機に付随する物理系を進め、接触・喪失を reactions へ通知する振る舞い。
@@ -70,24 +90,24 @@ class PlayerBehavior implements DynamicMotionBehavior {
     sunlit: number,
     sunDir: Vec3,
   ): void {
-    const motion = self as PlayerMotion;
+    const motion = playerMotionOf(self);
     // 撃破された機体の付随物理系は凍結する。
     if (!motion.alive) return;
     motion.belt.update(
-      dt, this.reactions.roundsInMagazine(), motion.att, this.reactions.thrustAcceleration(),
+      dt, this.reactions.weapon.roundsInMagazine(), motion.att, this.reactions.environment.thrustAcceleration(),
     );
-    motion.radiator.update(dt, this.reactions.radiatorWear());
-    this.reactions.stepBarrelThermal(dt);
+    motion.radiator.update(dt, this.reactions.environment.radiatorWear());
+    this.reactions.weapon.stepBarrelThermal(dt);
     motion.aero.update(motion.state.r, motion.state.v, atmosphereBody, atmospherePivot);
-    this.reactions.updateAltitudeAlarm(dt, motion.state.r, atmosphereBody, atmospherePivot);
+    this.reactions.altitudeAlarm.updateAltitudeAlarm(dt, motion.state.r, atmosphereBody, atmospherePivot);
     motion.power.update(
-      dt, sunlit, sunDir, motion.att, this.reactions.totalPowerGeneration(),
+      dt, sunlit, sunDir, motion.att, this.reactions.environment.totalPowerGeneration(),
     );
   }
 
   // 艦体と、展開中の放熱板・ベルト節点を接触形状として返す。
   public contactProxies(self: DynamicMotion, simTime: number, dt: number): readonly DynamicMotion[] {
-    const motion = self as PlayerMotion;
+    const motion = playerMotionOf(self);
     this.contactProxyScratch.length = 0;
     this.contactProxyScratch.push(...motion.radiator.contactFolds(
       motion.state.r, motion.state.v, motion.att, simTime,
@@ -100,24 +120,24 @@ class PlayerBehavior implements DynamicMotionBehavior {
 
   // 接触解決後のベルト節点を、機体座標系の鎖へ書き戻す。
   public applyContactProxies(self: DynamicMotion, dt: number): void {
-    const motion = self as PlayerMotion;
+    const motion = playerMotionOf(self);
     motion.belt.applyContactSections(dt, motion.state.r, motion.state.v, motion.att);
   }
 
   // 艦体の放射面積に、展開中の放熱板の面積を足した質量あたりの値 [m^2/kg]。
   public radiatingAreaPerMass(self: DynamicMotion): number {
-    const motion = self as PlayerMotion;
+    const motion = playerMotionOf(self);
     if (motion.mass <= 0) return 0;
     return SHIP_RADIATING_AREA_PER_MASS * PLAYER_MASS / motion.mass
-      + motion.radiator.radiatingArea(this.reactions.totalCoolingRate()) / motion.mass;
+      + motion.radiator.radiatingArea(this.reactions.environment.totalCoolingRate()) / motion.mass;
   }
 
   // 艦体と放熱板が sunDir からの日射を吸収する、質量あたりの面積 [m^2/kg]。
   public solarAbsorbAreaPerMass(self: DynamicMotion, sunDir: Vec3): number {
-    const motion = self as PlayerMotion;
+    const motion = playerMotionOf(self);
     const hullArea = (motion.emissivity * motion.bcInv) / 2.2;
     return hullArea + motion.radiator.solarAbsorbArea(
-      sunDir, motion.att, this.reactions.totalCoolingRate(),
+      sunDir, motion.att, this.reactions.environment.totalCoolingRate(),
     ) / Math.max(motion.mass, 1e-9);
   }
 
@@ -125,7 +145,7 @@ class PlayerBehavior implements DynamicMotionBehavior {
   public onEntityContact(
     _self: DynamicMotion, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void {
-    this.reactions.receiveEntityContact(other, contact, services);
+    this.reactions.contact.receiveEntityContact(other, contact, services);
   }
 
   // 天体表面への接触を reactions へ渡す。
@@ -135,12 +155,12 @@ class PlayerBehavior implements DynamicMotionBehavior {
     contact: Contact,
     services: DynamicReactionServices,
   ): void {
-    this.reactions.receiveSurfaceContact(contact, services);
+    this.reactions.contact.receiveSurfaceContact(contact, services);
   }
 
   // 温度上限を超えた焼失を reactions へ渡す。
   public onBurnUp(_self: DynamicMotion, services: DynamicReactionServices): void {
-    this.reactions.receiveBurnUp(services);
+    this.reactions.loss.receiveBurnUp(services);
   }
 
   // 空力荷重が構造限界を超えていれば、構造喪失を reactions へ渡す。
@@ -150,15 +170,15 @@ class PlayerBehavior implements DynamicMotionBehavior {
     _simTime: number,
     services: DynamicReactionServices,
   ): void {
-    if ((self as PlayerMotion).aero.overStructuralLimit) {
-      this.reactions.receiveStructuralLoss(services);
+    if (playerMotionOf(self).aero.overStructuralLimit) {
+      this.reactions.loss.receiveStructuralLoss(services);
     }
   }
 }
 
 // 自機の軌道・姿勢・物性と、機体に付随する物理系を一体として管理する。
 export class PlayerMotion extends DynamicMotion {
-  public readonly belt: Belt;
+  public readonly belt: BeltController;
   public readonly aero = new AeroLoad();
   public readonly radiator: RadiatorSystem;
   public readonly power: PowerSystem;
@@ -186,17 +206,22 @@ export class PlayerMotion extends DynamicMotion {
       behavior: new PlayerBehavior(reactions),
     }));
     // 付随物理系は、この Motion を本体として組む。保存があればその状態から戻す。
-    this.belt = new Belt(this, beltLinkCount);
+    this.belt = new BeltController(this, beltLinkCount);
     this.radiator = new RadiatorSystem(
       this,
       (side, other, contact, services) => (
-        reactions.receiveRadiatorContact(side, other, contact, services)
+        reactions.contact.receiveRadiatorContact(side, other, contact, services)
       ),
       radiatorSave,
     );
     this.power = new PowerSystem(powerSave);
     this.attachedBoosters = new AttachedBoosterMotion(this, boosterSave);
   }
+}
+
+function playerMotionOf(motion: DynamicMotion): PlayerMotion {
+  if (!(motion instanceof PlayerMotion)) throw new Error('PlayerBehavior received a non-player motion');
+  return motion;
 }
 
 // motion を自機の Motion へ絞り込む型ガード。

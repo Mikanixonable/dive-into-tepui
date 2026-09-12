@@ -5,7 +5,7 @@ import { BeltPhysics, BeltSection } from './belt-physics';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import { MAG_ROUNDS } from './ammo-spec';
 
-export class Belt {
+export class BeltController {
   private readonly physics: BeltPhysics;
   private feed = 0;
 
@@ -49,3 +49,6 @@ export class Belt {
     this.physics.applyContactSections(dt, baseR, baseV, att);
   }
 }
+
+// 既存の Motion 名称からの移行用。新規コードでは BeltController を使う。
+export { BeltController as Belt };

@@ -10,7 +10,6 @@ import { Button, SegmentedControl } from '../../../hud/widgets';
 import { getApsisLabelSpec } from './orbit-labels';
 import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/ship';
 import { MAX_DYN_PRESSURE } from '../../player/aero-load';
-import { isPlayerMotion } from '../../player/player-motion';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -90,7 +89,7 @@ export class OrbitPanel {
     setElementText(this.els, 'prd', fmtTime(oi.period));
     // 動圧・機体温度は閾値超過で警告表示にする。動圧は大気を受ける操作対象だけが持つ。
     const qEl = this.els.get('qdyn');
-    const aero = isPlayerMotion(entity.motion) ? entity.motion.aero : null;
+    const aero = entity.statusSnapshot().aero;
     if (qEl) {
       if (aero) {
         qEl.textContent = aero.qdyn >= 10 ? `${(aero.qdyn / 1000).toFixed(2)} kPa` : '0.00 kPa';

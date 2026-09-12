@@ -10,6 +10,8 @@ import { Ship, SHIP_BCINV, SHIP_SRP_COEFF } from '../../src/game/dynamic/dynamic
 import { partFromSaveData } from '../../src/game/dynamic/dynamic-entity/parts';
 import { DynamicView } from '../../src/render/dynamic/dynamic-view';
 import { FireControl } from '../../src/game/player/fire-control';
+import { WeaponState } from '../../src/game/player/weapon-state';
+import { DeployablePanelState } from '../../src/game/player/deployable-panel-state';
 import { PlayerMotion, type PlayerMotionReactions } from '../../src/game/player/player-motion';
 import { PowerSystem, POWER_CAPACITY } from '../../src/game/player/power';
 import { RadiatorSystem } from '../../src/game/player/radiator';
@@ -27,8 +29,6 @@ class TestShip extends Ship {
     super(name, 100, () => new DynamicMotion(state, { mass: 1_000 }), new NullView());
   }
 
-  protected override initDefaultParts(): void {}
-
   public rename(name: string): void { this.setName(name); }
 }
 
@@ -40,18 +40,20 @@ class NullView extends DynamicView {
 
 function reactions(): PlayerMotionReactions {
   return {
-    roundsInMagazine: () => 0,
-    thrustAcceleration: () => v3(),
-    radiatorWear: () => ({ up: 0, down: 0 }),
-    totalCoolingRate: () => 84,
-    totalPowerGeneration: () => 0,
-    stepBarrelThermal: () => {},
-    updateAltitudeAlarm: () => {},
-    receiveEntityContact: () => {},
-    receiveRadiatorContact: () => {},
-    receiveSurfaceContact: () => {},
-    receiveStructuralLoss: () => {},
-    receiveBurnUp: () => {},
+    weapon: { roundsInMagazine: () => 0, stepBarrelThermal: () => {} },
+    environment: {
+      thrustAcceleration: () => v3(),
+      radiatorWear: () => ({ up: 0, down: 0 }),
+      totalCoolingRate: () => 84,
+      totalPowerGeneration: () => 0,
+    },
+    altitudeAlarm: { updateAltitudeAlarm: () => {} },
+    contact: {
+      receiveEntityContact: () => {},
+      receiveRadiatorContact: () => {},
+      receiveSurfaceContact: () => {},
+    },
+    loss: { receiveStructuralLoss: () => {}, receiveBurnUp: () => {} },
   };
 }
 
@@ -138,5 +140,25 @@ export function register(): void {
     fire.onPickup(0);
     fire.onPickup(-1);
     assert.equal(fire.mags, before);
+  });
+
+  test('weapon state: 弾薬遷移と砲口交互状態は副作用なしに再現できる', () => {
+    const weapon = new WeaponState(undefined, { mags: 1, rounds: 1 });
+    const first = weapon.beginShot(2);
+    assert.deepEqual(first, { consumption: 'mag-reload', muzzleIndex: 0 });
+    const second = weapon.beginShot(2);
+    assert.deepEqual(second, { consumption: 'normal', muzzleIndex: 1 });
+    assert.equal(weapon.muzzleIdx, 0);
+  });
+
+  test('deployable panel: 展開目標と補間値は電力・放熱の性能から独立して進む', () => {
+    const panel = new DeployablePanelState(0, 0);
+    panel.toggle();
+    panel.update(0.5, 1);
+    assert.equal(panel.target, 1);
+    assert.equal(panel.value, 0.5);
+    panel.setTarget(false);
+    panel.update(1, 1);
+    assert.equal(panel.value, 0);
   });
 }
