@@ -108,6 +108,10 @@ export class OrthographicCap implements FieldProjection {
   private readonly north: Vec3Uniform = uniform(new THREE.Vector3());
   private readonly sinRadius: FloatUniform = uniform(0);
   private cosRadiusValue = 1;
+  // 最後に置いた中心と半径。同じ置き方で呼ばれたら版を進めない。NaN で必ず 1 回目を通す。
+  private aimedLatitude = Number.NaN;
+  private aimedLongitude = Number.NaN;
+  private aimedRadius = Number.NaN;
   private revisionValue = 0;
   // 投影面は円板の直径を size texel で割るので、中心での 1 texel は 2 sin(半径) / size [rad]。
   // 外周へ向かって texel は角度としては粗くなるが、それは球の傾きぶんで、画面上では一定に見える。
@@ -123,7 +127,14 @@ export class OrthographicCap implements FieldProjection {
 
   // 中心の緯度・経度 [rad] と円板の半径 [rad](0 < radius ≤ π/2)を置き直す。枠は経度から直に
   // 組むので、中心が極にあっても退化しない。
+  //
+  // **同じ置き方なら版を進めない** — 進めると、カメラが止まっていても焼き手が毎フレーム焼き直す。
   public aim(latitude: number, longitude: number, radius: number): void {
+    if (latitude === this.aimedLatitude && longitude === this.aimedLongitude
+      && radius === this.aimedRadius) return;
+    this.aimedLatitude = latitude;
+    this.aimedLongitude = longitude;
+    this.aimedRadius = radius;
     const cosLatitude = Math.cos(latitude);
     const sinLatitude = Math.sin(latitude);
     const cosLongitude = Math.cos(longitude);
@@ -159,7 +170,7 @@ export class OrthographicCap implements FieldProjection {
     return (this.sinRadius.value * 2) / this.width;
   }
 
-  // 置き方の版。aim() のたびに進む。
+  // 置き方の版。置き方が実際に変わったときだけ進む。
   public get revision(): number { return this.revisionValue; }
 
   // 投影面上の uv から球面へ戻した単位方向。
