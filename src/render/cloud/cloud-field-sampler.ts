@@ -1,8 +1,7 @@
 // 雲場テクスチャを、天体固定の単位方向から読む。焼いた側と同じ cap の置き方を写し取り、同じ uv
 // で読む。差し込まれたテクスチャは借り物で、解放は差し込んだ側が行う。
 import * as THREE from 'three/webgpu';
-import { dot, step, uniform } from 'three/tsl';
-import { texture } from 'three/tsl';
+import { dot, step, texture, uniform } from 'three/tsl';
 import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
 import { orthographicCapUv, type CapPlacement } from './field-projection';
 import { cloudSampleFromTexel, type CloudSample } from './cloud-field-sample';
