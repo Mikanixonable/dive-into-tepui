@@ -21,6 +21,7 @@ import type { DisplayWindow } from '../display-window-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ViewFrame } from './view-frame';
 import type { ObjectPickable } from '../pickable/object-pickable';
+import { objectPickableOf } from '../pickable/object-pickable';
 import type { PerfCounts } from '../perf-counts';
 import type { CelestialLabelHiding } from '../marker/celestial-label-hiding';
 
@@ -93,7 +94,8 @@ export class CombatView implements ViewFrame {
     this.input.takeRightClicks((p) => {
       const hit = pickCombatEntityAtPoint(
         this.roster, this.cameraSystem.activeViewpoint, project, p.x, p.y, viewport);
-      if (hit) this.objectWindows.open(p.x, p.y, hit, simTime);
+      const inspected = hit ? objectPickableOf(hit) : null;
+      if (inspected) this.objectWindows.open(p.x, p.y, inspected, simTime);
       else this.objectWindows.openEmptySpaceMenu(p.x, p.y, simTime);
       return true;
     });
