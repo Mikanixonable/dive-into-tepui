@@ -2,6 +2,7 @@
 // 天体半径・オーバル緯度・発光高度・色は AuroraOptics で受ける。
 import * as THREE from 'three/webgpu';
 import { AuroraField } from '../aurora-field';
+import type { Vec3 } from '../../math/vec3';
 
 const SEG = 160;
 const V_SEG = 3; // 鉛直方向4頂点: 0=下端フェード, 1=核(緑), 2=中間(赤), 3=上端フェード
@@ -79,9 +80,10 @@ export class Aurora {
     this.mesh.renderOrder = 3;
   }
 
-  // 波打ちと明滅を phase の時点へ合わせる。
-  public sync(phase: number, solarMeridianRad = 0): void {
-    this.writeVertices(phase, solarMeridianRad);
+  // 波打ちと明滅を phase の時点へ合わせる。sunDirection は天体固定で見た太陽の単位方向で、
+  // 昼夜の変調をその向きに対して止める。渡さなければ経度 0 の向きを昼とみなす。
+  public sync(phase: number, sunDirection: Vec3 | null = null): void {
+    this.writeVertices(phase, sunDirection === null ? 0 : this.field.solarMeridianFor(sunDirection));
     this.geo.attributes.position!.needsUpdate = true;
     this.geo.attributes.color!.needsUpdate = true;
   }
