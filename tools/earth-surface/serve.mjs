@@ -11,7 +11,7 @@ const MIME = {
 };
 
 function cacheControl(relative) {
-  return relative.endsWith('earth-surface.json') || relative.endsWith('receipt.json') || relative.endsWith('tile-index.json')
+  return relative.endsWith('earth-surface.json') || relative.endsWith('receipt.json')
     ? 'public, max-age=60, must-revalidate'
     : 'public, max-age=31536000, immutable';
 }

@@ -1,22 +1,21 @@
 #!/usr/bin/env node
-// 地表マニフェストとタイル索引の配信契約を検査する共有実装。
+// 地表マニフェストと決定パス上のタイル実体を検査する共有実装。
 import { createHash } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
-import { access, readFile, stat } from 'node:fs/promises';
+import { access, readFile, readdir, stat } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
 
-export const EARTH_TILE_MIN_Z = 4;
+export const EARTH_BASE_COLOR_Z = 4;
+export const EARTH_TILE_MIN_Z = 5;
 export const EARTH_TILE_MAX_Z = 7;
-export const EARTH_LEGACY_TILE_MIN_Z = 0;
 export const EARTH_TERRAIN_HEADER_BYTES = 32;
 export const EARTH_TERRAIN_WIDTH = 260;
 export const EARTH_TERRAIN_HEIGHT = 260;
 export const EARTH_TERRAIN_CHANNELS = 4;
-export const EARTH_TERRAIN_FORMAT_VERSION = 2;
+export const EARTH_TERRAIN_FORMAT_VERSION = 3;
 export const EARTH_TERRAIN_SCALAR_UINT8 = 2;
 export const EARTH_TERRAIN_BYTES = EARTH_TERRAIN_WIDTH * EARTH_TERRAIN_HEIGHT * EARTH_TERRAIN_CHANNELS;
-export const EARTH_TERRAIN_LAYOUT = 'octahedral-rg8-roughness-r8-material-class-a8';
-export const EARTH_MATERIAL_CLASS = Object.freeze({ water: 0, land: 1, ice: 2, unknown: 255 });
+export const EARTH_TERRAIN_LAYOUT = 'normal-xyz-rgb8-roughness-a8';
 export const EARTH_TERRAIN_PAYLOAD_BYTES = EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES;
 export const EARTH_BASE_MAGIC = 'ESTB';
 export const EARTH_BASE_ROOT_COLUMNS = 2;
@@ -24,14 +23,12 @@ export const EARTH_BASE_ROOT_ROWS = 1;
 export const EARTH_BASE_COLOR_WIDTH = 8192;
 export const EARTH_BASE_COLOR_HEIGHT = 4096;
 export const EARTH_BASE_COLOR_COMPONENTS = 3;
-export const EARTH_GLOBAL_TILE_COUNT = 43520;
-export const EARTH_LEGACY_BASE_COLOR_WIDTH = 512;
-export const EARTH_LEGACY_BASE_COLOR_HEIGHT = 256;
-export const EARTH_LEGACY_GLOBAL_TILE_COUNT = 43690;
+export const EARTH_GLOBAL_TILE_COUNT = 43008;
 
 const DATASET = /^[a-z0-9-]+$/;
 const SHA256 = /^[0-9a-f]{64}$/;
-const TILE_URL = /^tiles\/(\d+)\/(\d+)\/(\d+)\.(jpg|bin\.gz)$/;
+const COLOR_TILE_TEMPLATE = 'tiles/{z}/{x}/{y}.jpg';
+const TERRAIN_TILE_TEMPLATE = 'tiles/{z}/{x}/{y}.bin.gz';
 
 export class EarthSurfaceContractError extends Error {
   constructor(message, options) {
@@ -72,11 +69,6 @@ function expectSha256(value, name) {
   return value;
 }
 
-function expectPositiveInteger(value, name) {
-  if (!Number.isSafeInteger(value) || value <= 0) fail(`${name} must be a positive integer`);
-  return value;
-}
-
 function expectRange(value, name, min, max) {
   const range = expectObject(value, name);
   if (range.min !== min || range.max !== max) fail(`${name} must be ${min}..${max}`);
@@ -102,8 +94,7 @@ function expectClimateEncoding(value) {
 
 export function validateManifest(value) {
   const manifest = expectObject(value, 'earth-surface manifest');
-  if (manifest.schemaVersion !== 1 && manifest.schemaVersion !== 2) fail('unsupported earth surface manifest schema');
-  const legacy = manifest.schemaVersion === 1;
+  if (manifest.schemaVersion !== 3) fail('unsupported earth surface manifest schema');
   if (typeof manifest.datasetId !== 'string' || !DATASET.test(manifest.datasetId)) fail('invalid earth surface datasetId');
   expectSha256(manifest.sourceManifestSha256, 'sourceManifestSha256');
   const provenance = expectObject(manifest.provenance, 'provenance');
@@ -113,40 +104,31 @@ export function validateManifest(value) {
     || terrainEncoding.layout !== EARTH_TERRAIN_LAYOUT || terrainEncoding.width !== EARTH_TERRAIN_WIDTH
     || terrainEncoding.height !== EARTH_TERRAIN_HEIGHT || terrainEncoding.channels !== EARTH_TERRAIN_CHANNELS
     || terrainEncoding.scalar !== 'UInt8') fail('unsupported terrainEncoding');
-  const materialClasses = expectObject(terrainEncoding.materialClasses, 'terrainEncoding.materialClasses');
-  if (materialClasses.water !== EARTH_MATERIAL_CLASS.water || materialClasses.land !== EARTH_MATERIAL_CLASS.land
-    || materialClasses.ice !== EARTH_MATERIAL_CLASS.ice || materialClasses.unknown !== EARTH_MATERIAL_CLASS.unknown) {
-    fail('unsupported terrain material classes');
-  }
+  if (terrainEncoding.normalFrame !== 'body_fixed') fail('terrainEncoding.normalFrame must be body_fixed');
   const climateMap = expectObject(manifest.climateMap, 'climateMap');
   if (climateMap.width !== 1024 || climateMap.height !== 512 || climateMap.channels !== 4
     || climateMap.scalar !== 'UInt8') fail('climateMap must be 1024x512 RGBA8');
   const coverage = expectObject(manifest.coverage, 'coverage');
-  if (!['complete', 'sparse'].includes(coverage.kind) || coverage.maxZoom !== EARTH_TILE_MAX_Z) {
-    fail(legacy ? 'legacy coverage must declare complete or sparse through z7' : 'coverage must declare complete or sparse z4..z7 coverage');
+  if (!['complete', 'sparse'].includes(coverage.kind)
+    || coverage.minZoom !== EARTH_TILE_MIN_Z || coverage.maxZoom !== EARTH_TILE_MAX_Z) {
+    fail('coverage must declare complete or sparse z5..z7 coverage');
   }
-  if (legacy) {
-    if (coverage.kind === 'complete' && coverage.expectedTiles !== EARTH_LEGACY_GLOBAL_TILE_COUNT) {
-      fail('legacy complete coverage must declare 43690 tiles');
-    }
-    if (coverage.kind === 'sparse' && coverage.expectedTiles !== null) {
-      fail('legacy sparse coverage must declare null expectedTiles');
-    }
-  } else {
-    if (coverage.minZoom !== EARTH_TILE_MIN_Z) fail('coverage must declare complete or sparse z4..z7 coverage');
-    if (coverage.kind === 'complete' && coverage.expectedTiles !== EARTH_GLOBAL_TILE_COUNT) {
-      fail('complete coverage must declare 43520 tiles');
-    }
-    if (coverage.kind === 'sparse' && coverage.expectedTiles !== null) {
-      fail('sparse coverage must declare null expectedTiles');
-    }
+  if (coverage.kind === 'complete' && coverage.expectedTiles !== EARTH_GLOBAL_TILE_COUNT) {
+    fail('complete coverage must declare 43008 tiles');
+  }
+  if (coverage.kind === 'sparse' && coverage.expectedTiles !== null) {
+    fail('sparse coverage must declare null expectedTiles');
   }
   if (!Array.isArray(manifest.controlRegions) || manifest.controlRegions.length !== 16) {
     fail('exactly 16 controlRegions are required');
   }
-  for (const name of ['baseColor', 'baseTerrain', 'tileIndexUrl']) {
+  for (const name of ['baseColor', 'baseTerrain']) {
     expectString(manifest[name], name);
     if (manifest[name].startsWith('http:') || manifest[name].startsWith('https:')) fail(`${name} must be a relative URL`);
+  }
+  const tileTemplates = expectObject(manifest.tileTemplates, 'tileTemplates');
+  if (tileTemplates.color !== COLOR_TILE_TEMPLATE || tileTemplates.terrain !== TERRAIN_TILE_TEMPLATE) {
+    fail('tileTemplates must use the canonical Earth tile paths');
   }
   if (!Array.isArray(manifest.climateMaps) || manifest.climateMaps.length !== 12) fail('exactly 12 climate maps are required');
   manifest.climateMaps.forEach((path, index) => {
@@ -159,71 +141,26 @@ export function validateManifest(value) {
   return manifest;
 }
 
-function validateTileKey(z, x, y, label, minZoom = EARTH_TILE_MIN_Z) {
-  if (![z, x, y].every(Number.isSafeInteger) || z < minZoom || z > EARTH_TILE_MAX_Z) fail(`${label} has an invalid z`);
+export function tileKeys(maxZoom = EARTH_TILE_MAX_Z) {
+  if (!Number.isSafeInteger(maxZoom) || maxZoom < EARTH_BASE_COLOR_Z || maxZoom > EARTH_TILE_MAX_Z) {
+    fail('maxZoom must be 4..7');
+  }
+  const keys = [];
+  for (let z = EARTH_TILE_MIN_Z; z <= maxZoom; z += 1) {
+    for (let y = 0; y < 2 ** z; y += 1) {
+      for (let x = 0; x < 2 ** (z + 1); x += 1) keys.push({ id: `${z}/${x}/${y}`, z, x, y });
+    }
+  }
+  return keys;
+}
+
+function validateTileKey(z, x, y, label) {
+  if (![z, x, y].every(Number.isSafeInteger) || z < EARTH_TILE_MIN_Z || z > EARTH_TILE_MAX_Z) fail(`${label} has an invalid z`);
   if (x < 0 || x >= 2 ** (z + 1)) fail(`${label} has an invalid x`);
   if (y < 0 || y >= 2 ** z) fail(`${label} has an invalid y`);
   return { z, x, y };
 }
 
-function parseTileUrl(url, key, kind, minZoom = EARTH_TILE_MIN_Z) {
-  expectString(url, `${kind}.url`);
-  if (url.startsWith('http:') || url.startsWith('https:')) fail(`${kind}.url must be relative`);
-  if (url.includes('?') || url.includes('#')) fail(`${kind}.url must not contain a query or fragment`);
-  const match = TILE_URL.exec(url);
-  if (match === null) fail(`${kind}.url has an invalid path`);
-  const urlKey = validateTileKey(Number(match[1]), Number(match[2]), Number(match[3]), `${kind}.url`, minZoom);
-  if (urlKey.z !== key.z || urlKey.x !== key.x || urlKey.y !== key.y) fail(`${kind}.url key mismatch`);
-  const extension = kind === 'color' ? 'jpg' : 'bin.gz';
-  if (match[4] !== extension) fail(`${kind}.url extension mismatch`);
-}
-
-function normalizeFile(value, name) {
-  const file = expectObject(value, name);
-  expectString(file.url, `${name}.url`);
-  expectSha256(file.sha256, `${name}.sha256`);
-  expectPositiveInteger(file.encodedBytes, `${name}.encodedBytes`);
-  expectPositiveInteger(file.payloadBytes, `${name}.payloadBytes`);
-  return file;
-}
-
-function entryFile(entry, kind) {
-  const nested = entry[kind];
-  if (nested !== undefined) return normalizeFile(nested, `entry.${kind}`);
-  const prefix = kind === 'color' ? 'color' : 'terrain';
-  return normalizeFile({
-    url: entry[`${prefix}Url`], sha256: entry[`${prefix}Sha256`],
-    encodedBytes: entry[`${prefix}EncodedBytes`], payloadBytes: entry[`${prefix}PayloadBytes`],
-  }, `entry.${kind}`);
-}
-
-export function validateTileIndex(value, manifest) {
-  const index = expectObject(value, 'tile-index');
-  if (index.schemaVersion !== 2) fail('unsupported tile-index schema');
-  if (index.datasetId !== manifest.datasetId) fail('tile-index datasetId mismatch');
-  if (!Array.isArray(index.entries) || index.entries.length === 0) fail('tile-index entries must be non-empty');
-  const minZoom = manifest.schemaVersion === 1 ? EARTH_LEGACY_TILE_MIN_Z : EARTH_TILE_MIN_Z;
-  const keys = new Set();
-  const entries = index.entries.map((entry, position) => {
-    expectObject(entry, `tile-index.entries[${position}]`);
-    const z = entry.z;
-    const x = entry.x;
-    const y = entry.y;
-    const key = validateTileKey(z, x, y, `tile-index.entries[${position}]`, minZoom);
-    const expectedId = `${z}/${x}/${y}`;
-    if (entry.key !== expectedId) fail(`tile-index.entries[${position}] key mismatch`);
-    if (keys.has(expectedId)) fail(`duplicate tile-index key: ${expectedId}`);
-    keys.add(expectedId);
-    const color = entryFile(entry, 'color');
-    const terrain = entryFile(entry, 'terrain');
-    parseTileUrl(color.url, key, 'color', minZoom);
-    parseTileUrl(terrain.url, key, 'terrain', minZoom);
-    if (color.payloadBytes !== color.encodedBytes) fail(`color byte lengths must match: ${expectedId}`);
-    if (terrain.payloadBytes !== EARTH_TERRAIN_PAYLOAD_BYTES) fail(`terrain payload length mismatch: ${expectedId}`);
-    return { ...entry, key: expectedId, z, x, y, color, terrain };
-  });
-  return { ...index, entries };
-}
 
 function stableJson(value) {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
@@ -268,24 +205,21 @@ function readEstnHeader(payload, key) {
     || z !== key.z || x !== key.x || y !== key.y) fail(`ESTN header key or format mismatch: ${key.id}`);
 }
 
-async function verifyAsset(root, asset, name) {
-  const actual = await requiredFile(root, asset.url, name);
-  if (actual.bytes !== asset.encodedBytes) fail(`${name} encoded length mismatch: ${asset.url}`);
-  if (actual.sha256 !== asset.sha256) fail(`${name} hash mismatch: ${asset.url}`);
-  return actual;
+async function verifyColor(root, key) {
+  const url = `tiles/${key.z}/${key.x}/${key.y}.jpg`;
+  const actual = await requiredFile(root, url, `color ${key.id}`);
+  readBaseColorJpeg(await readFile(actual.absolutePath), { width: 260, height: 260, components: 3 });
+  return { url, ...actual };
 }
 
-async function verifyTerrain(root, asset, key) {
-  const actual = await requiredFile(root, asset.url, `terrain ${key.id}`);
-  if (actual.bytes !== asset.encodedBytes) fail(`terrain encoded length mismatch: ${asset.url}`);
+async function verifyTerrain(root, key) {
+  const url = `tiles/${key.z}/${key.x}/${key.y}.bin.gz`;
+  const actual = await requiredFile(root, url, `terrain ${key.id}`);
   const compressed = await readFile(actual.absolutePath);
   let payload;
-  try { payload = gunzipSync(compressed); } catch (error) { throw new EarthSurfaceContractError(`terrain gzip is invalid: ${asset.url}`, { cause: error }); }
-  if (payload.byteLength !== asset.payloadBytes) fail(`terrain payload length mismatch: ${asset.url}`);
-  const digest = createHash('sha256').update(payload).digest('hex');
-  if (digest !== asset.sha256) fail(`terrain ESTN hash mismatch: ${asset.url}`);
+  try { payload = gunzipSync(compressed); } catch (error) { throw new EarthSurfaceContractError(`terrain gzip is invalid: ${url}`, { cause: error }); }
   readEstnHeader(payload, key);
-  return payload;
+  return { url, ...actual, payloadBytes: payload.byteLength };
 }
 
 async function verifyClimateMap(root, path, index) {
@@ -395,14 +329,9 @@ export function readBaseColorJpeg(bytes, dimensions = {
   fail('baseColor JPEG is missing EOI');
 }
 
-async function verifyBaseColor(root, asset, manifest) {
+async function verifyBaseColor(root, asset) {
   const actual = await requiredFile(root, asset.url, 'baseColor');
-  const dimensions = manifest.schemaVersion === 1 ? {
-    width: EARTH_LEGACY_BASE_COLOR_WIDTH,
-    height: EARTH_LEGACY_BASE_COLOR_HEIGHT,
-    components: EARTH_BASE_COLOR_COMPONENTS,
-  } : undefined;
-  readBaseColorJpeg(await readFile(actual.absolutePath), dimensions);
+  readBaseColorJpeg(await readFile(actual.absolutePath));
   return actual;
 }
 
@@ -443,6 +372,29 @@ async function defaultSourceManifestPath(root, manifest, sourceManifestPath) {
   try { await access(assetPath(root, 'sources.json')); return 'sources.json'; } catch { return undefined; }
 }
 
+async function sparseTileKeys(root) {
+  const keys = [];
+  const tilesRoot = assetPath(root, 'tiles');
+  async function visit(directory, depth, parts) {
+    let entries;
+    try { entries = await readdir(directory, { withFileTypes: true }); } catch (error) {
+      if (error.code === 'ENOENT') return;
+      throw error;
+    }
+    for (const entry of entries) {
+      if (depth < 2 && entry.isDirectory()) await visit(resolve(directory, entry.name), depth + 1, [...parts, entry.name]);
+      if (depth === 2 && entry.isFile() && entry.name.endsWith('.jpg')) {
+        const match = /^([0-9]+)\.jpg$/.exec(entry.name);
+        if (match === null || parts.length !== 2) fail(`invalid tile path: tiles/${[...parts, entry.name].join('/')}`);
+        const key = validateTileKey(Number(parts[0]), Number(parts[1]), Number(match[1]), `tiles/${[...parts, entry.name].join('/')}`);
+        keys.push({ id: `${key.z}/${key.x}/${key.y}`, ...key });
+      }
+    }
+  }
+  await visit(tilesRoot, 0, []);
+  return keys.sort((left, right) => left.z - right.z || left.y - right.y || left.x - right.x);
+}
+
 export async function inspectEarthSurfaceBundle({ inputRoot, manifestName = 'earth-surface.json', sourceManifestPath } = {}) {
   if (typeof inputRoot !== 'string' || inputRoot.length === 0) throw new TypeError('inputRoot is required');
   const root = resolve(inputRoot);
@@ -451,28 +403,21 @@ export async function inspectEarthSurfaceBundle({ inputRoot, manifestName = 'ear
   try { manifest = JSON.parse(await readFile(manifestPath, 'utf8')); } catch (error) { throw new EarthSurfaceContractError(`cannot read manifest: ${manifestName}`, { cause: error }); }
   validateManifest(manifest);
   await verifySourceManifest(root, await defaultSourceManifestPath(root, manifest, sourceManifestPath), manifest.sourceManifestSha256);
-  const baseColor = await verifyBaseColor(root, { url: manifest.baseColor }, manifest);
+  const baseColor = await verifyBaseColor(root, { url: manifest.baseColor });
   const baseTerrain = await requiredFile(root, manifest.baseTerrain, 'baseTerrain');
   let baseTerrainPayload;
   try { baseTerrainPayload = gunzipSync(await readFile(baseTerrain.absolutePath)); } catch (error) { throw new EarthSurfaceContractError('baseTerrain gzip is invalid', { cause: error }); }
   readEstbHeader(baseTerrainPayload);
   const climateMaps = await Promise.all(manifest.climateMaps.map((path, index) => verifyClimateMap(root, path, index)));
-  const tileIndexPath = assetPath(root, manifest.tileIndexUrl);
-  let tileIndex;
-  try { tileIndex = JSON.parse(await readFile(tileIndexPath, 'utf8')); } catch (error) { throw new EarthSurfaceContractError(`cannot read tile-index: ${manifest.tileIndexUrl}`, { cause: error }); }
-  const normalizedIndex = validateTileIndex(tileIndex, manifest);
-  const expectedTiles = manifest.schemaVersion === 1 ? EARTH_LEGACY_GLOBAL_TILE_COUNT : EARTH_GLOBAL_TILE_COUNT;
-  if (manifest.coverage.kind === 'complete' && normalizedIndex.entries.length !== expectedTiles) {
-    fail(`complete tile-index must contain ${expectedTiles} entries`);
+  const tiles = manifest.coverage.kind === 'complete' ? tileKeys() : await sparseTileKeys(root);
+  if (manifest.coverage.kind === 'complete' && tiles.length !== EARTH_GLOBAL_TILE_COUNT) {
+    fail(`complete bundle must contain ${EARTH_GLOBAL_TILE_COUNT} tiles`);
   }
-  const tiles = [];
-  for (const entry of normalizedIndex.entries) {
-    const key = { id: entry.key, z: entry.z, x: entry.x, y: entry.y };
-    await verifyAsset(root, entry.color, `color ${entry.key}`);
-    await verifyTerrain(root, entry.terrain, key);
-    tiles.push(entry);
+  for (const key of tiles) {
+    await verifyColor(root, key);
+    await verifyTerrain(root, key);
   }
-  return { root, manifest, manifestPath, baseColor, baseTerrain, climateMaps, tileIndex: normalizedIndex, tileIndexPath, tiles };
+  return { root, manifest, manifestPath, baseColor, baseTerrain, climateMaps, tiles };
 }
 
 export function destinationPath(outputRoot, relativePath) {

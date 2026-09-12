@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-  abs, clamp, exp2, float, floor, Fn, greaterThanEqual, If, int, max, min, mix, normalize, select, texture, vec2, vec3, vec4,
+  exp2, float, floor, Fn, greaterThanEqual, If, int, max, min, mix, normalize, select, texture, vec2, vec4,
 } from 'three/tsl';
 import type { BoolNode, FloatNode, Mat3Node, Vec2Node, Vec3Node, Vec4Node } from './tsl-types';
 import { earthSurfaceUvFromRadialNode } from './earth-surface-coordinate';
@@ -56,7 +56,7 @@ export function earthSurfaceDetailLodNode(z: FloatNode): FloatNode {
   return min(max(z, EARTH_TILE_MIN_Z), EARTH_TILE_MAX_Z);
 }
 
-// 詳細配列の指定層から、地理UVに対応するタイル値を読む。
+// 詳細配列の指定層をクランプして標本する。
 function sampleArray(textureValue: THREE.Texture, uv: Vec2Node, z: FloatNode, layer: FloatNode): Vec4Node {
   // DataArrayTextureの層はdepthへ渡す。base層(255)は後段でbase画像へ切り替えるため、
   // 配列の範囲内へクランプした値だけを実際のサンプラへ渡す。
@@ -65,8 +65,9 @@ function sampleArray(textureValue: THREE.Texture, uv: Vec2Node, z: FloatNode, la
   return texture(textureValue, earthSurfaceTileUvNode(uv, safeZ)).depth(int(safeLayer)).level(float(0));
 }
 
-// base画像から色または地形の値を直接読む。
+// 全球base画像を地理UVで標本する。
 function sampleBase(textureValue: THREE.Texture, uv: Vec2Node): Vec4Node {
+  // 全球base画像を地理UVで標本する。
   return texture(textureValue, uv).level(float(0));
 }
 
@@ -75,7 +76,7 @@ function sampleLodTexture(
   detailTexture: THREE.Texture, baseTexture: THREE.Texture, uv: Vec2Node, z: FloatNode,
   layer: FloatNode, parentLayer: FloatNode, fade: FloatNode,
 ): Vec4Node {
-  // 現在層を読み、ページ表がbaseを指す場合はbase画像へ切り替える。
+  // ページ表の層を読み、必要なときだけ親層とのフェードを適用する。
   const currentBase = greaterThanEqual(layer, EARTH_BASE_LAYER);
   const parentBase = greaterThanEqual(parentLayer, EARTH_BASE_LAYER);
   return Fn(() => {
@@ -83,7 +84,6 @@ function sampleLodTexture(
     If(currentBase, () => {
       value.assign(sampleBase(baseTexture, uv));
     }).Else(() => {
-      // 詳細層が親から遷移中なら、親の値と現在層をfadeで混ぜる。
       value.assign(sampleArray(detailTexture, uv, z, layer));
       If(fade.lessThan(1), () => {
         const previous = vec4(0).toVar();
@@ -99,14 +99,9 @@ function sampleLodTexture(
   })() as Vec4Node;
 }
 
-// 正規化八面体RGを天体固定の単位法線へ戻す。
-export function decodeEarthSurfaceOctNormalNode(encoded: Vec2Node): Vec3Node {
-  const folded = encoded.mul(2).sub(1);
-  const z = float(1).sub(abs(folded.x)).sub(abs(folded.y));
-  const correction = clamp(z.negate(), 0, 1);
-  const x = folded.x.add(select(folded.x.greaterThanEqual(0), correction.negate(), correction));
-  const y = folded.y.add(select(folded.y.greaterThanEqual(0), correction.negate(), correction));
-  return normalize(vec3(x, y, z));
+// 線形補間されたRGBを天体固定の単位法線へ戻す。
+export function decodeEarthSurfaceNormalNode(encoded: Vec3Node): Vec3Node {
+  return normalize(encoded.mul(2).sub(1));
 }
 
 // 地球固定法線→共通地理UV→ページ表→現在/親層→色・法線・roughnessを一つのTSLグラフへ組む。
@@ -115,14 +110,13 @@ export function earthSurfaceMaterialNodes(
   textures: EarthSurfaceMaterialNodeTextures,
   inputs: EarthSurfaceMaterialNodeInputs,
 ): EarthSurfaceMaterialNodes {
-  // 各入力テクスチャの読み取り規則を固定する。
+  // 色・roughness・法線を同じページ表解決から生成する。
   configureEarthSurfaceTexture(textures.pageTable, 'pageTable');
   configureEarthSurfaceTexture(textures.color, 'color');
   configureEarthSurfaceTexture(textures.terrain, 'terrain');
   configureEarthSurfaceTexture(textures.baseColor, 'color');
   configureEarthSurfaceTexture(textures.baseTerrain, 'terrain');
 
-  // 共通の地理UVからページ表と色・地形の層を読む。
   const uv = earthSurfaceUvFromRadialNode(inputs.bodyDirection, inputs.axes);
   const page = texture(textures.pageTable, uv);
   const layer = floor(page.r.mul(255).add(0.5));
@@ -135,12 +129,11 @@ export function earthSurfaceMaterialNodes(
   const terrain = sampleLodTexture(
     textures.terrain, textures.baseTerrain, uv, z, layer, parentLayer, fade,
   );
-  const normalBody = decodeEarthSurfaceOctNormalNode(terrain.rg);
-  // 地形法線をviewへ変換し、模式図では幾何法線へ切り替える。
+  const normalBody = decodeEarthSurfaceNormalNode(terrain.rgb);
   const normalView = normalize(inputs.bodyToView.mul(normalBody));
   const normalNode = select(inputs.schematic, inputs.geometricNormalView, normalView);
 
-  return { colorNode, roughnessNode: terrain.b, normalNode };
+  return { colorNode, roughnessNode: terrain.a, normalNode };
 }
 
 // 共通のMeshStandardNodeMaterialへ接続する入口。base-only時は呼び手が既存のCelestialSurfaceを使う。
@@ -156,7 +149,8 @@ export function createEarthSurfaceNodeMaterial(
   return material;
 }
 
-// 詳細テクスチャを使う地球表面の材質能力を返す。
+// 詳細材質を使えるかどうかをbaseフォールバック契約へ変換する。
 export function earthSurfaceMaterialCapabilities(unsupported: boolean): EarthSurfaceMaterialCapabilities {
+  // 詳細材質を使えるかどうかをbaseフォールバック契約へ変換する。
   return { useBaseFallback: unsupported };
 }

@@ -1,7 +1,7 @@
 // 天体の ECI 位置・速度を固定値で押さえる回帰テスト。**物理的な正しさは主張しない** —
 // それは celestial-motion.test.ts / kepler-orbit.test.ts ほかが担う。ここが測るのは「層の切り方を
-// 変えても値がビット単位で変わらないこと」だけで、暦・軌道まわりの構造を組み替えるときの
-// 物差しとして置いてある。
+// 変えても値が数ULPを越えて変わらないこと」だけで、暦・軌道まわりの構造を組み替えるときの
+// 物差しとして置いてある。Math関数の実装がOS・CPUで異なるため、ビット単位の一致は要求しない。
 //
 // **期待値を書き換えて通すことはしない。** 動いたなら挙動が変わったということで、書き換えて
 // よいのは意図してモデルを変えたときだけ(そのときは変えた理由をコミットに書く)。
@@ -19,6 +19,31 @@ const TIMES = [0, 8.64e4, 3.156e7, -3.156e7];
 
 // TIMES と同じ並びの [rx, ry, rz, vx, vy, vz]。単位は m と m/s。
 type Baseline = readonly (readonly number[])[];
+
+// 実行環境差の実測最大3 ULPに、1 ULPの余裕を加えた許容値。
+const MAX_BASELINE_ULPS = 4;
+
+// IEEE-754の符号付きビット列を、値の大小と同じ順序の整数へ写す。
+function orderedFloat64(value: number): bigint {
+  const buffer = new ArrayBuffer(8);
+  const view = new DataView(buffer);
+  view.setFloat64(0, value);
+  const bits = view.getBigUint64(0);
+  const sign = 1n << 63n;
+  return (bits & sign) === 0n ? sign + bits : ~bits + 1n;
+}
+
+// 数値計算経路の基準値を、実行環境差の数ULPだけ許容して検証する。
+function assertWithinUlps(actual: number, expected: number, label: string): void {
+  if (!Number.isFinite(actual) || !Number.isFinite(expected)) {
+    assert.equal(actual, expected, label);
+    return;
+  }
+  const actualBits = orderedFloat64(actual);
+  const expectedBits = orderedFloat64(expected);
+  const distance = actualBits >= expectedBits ? actualBits - expectedBits : expectedBits - actualBits;
+  assert.ok(distance <= BigInt(MAX_BASELINE_ULPS), `${label}: ${actual} vs ${expected} (${distance} ULP)`);
+}
 
 // 数値暦経路を通すためだけの供給源。位置は時刻の一次式で、物理的な意味は無い — 検査したいのは
 // 「どの天体がどちらの経路を通り、原点がどちらから引かれるか」の配線だけ。**月と木星をわざと
@@ -179,7 +204,11 @@ export function register(): void {
   ): void => {
     TIMES.forEach((t, i) => {
       const s = stateOf(parts, id, t);
-      assert.deepEqual([s.r.x, s.r.y, s.r.z, s.v.x, s.v.y, s.v.z], rows[i], `${id} t=${t}`);
+      const actual = [s.r.x, s.r.y, s.r.z, s.v.x, s.v.y, s.v.z];
+      const expected = rows[i]!;
+      actual.forEach((value, component) => {
+        assertWithinUlps(value, expected[component]!, `${id} t=${t} component=${component}`);
+      });
     });
   };
 
