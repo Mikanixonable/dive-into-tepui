@@ -190,23 +190,6 @@ main へは `/send-pr` で送る。区切りは次の 3 つ。**マージは mer
 - PR-B(小さな修正と計測): 手順 4〜7
 - PR-C(雲場の作り直し): 手順 8
 
-### 手順 5. オーロラの昼夜を太陽で決める
-
-**目的**: `aurora.sync(phase)`(point-celestial-view.ts:190)が太陽の子午線を渡していない。昼夜の変調
-(aurora-field.ts:42-43)が天体固定の経度 0 を基準にしており、仕様の「磁気地方時」
-(RENDERING.md:322)が効いていない。
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/celestial/celestial-entity/point-celestial-view.ts:128, 186-191` | `syncAuroras` へ `motion` と `star` を渡す。太陽の方向を天体固定へ写し、aurora-field.ts:27 の `frameAt` が `solarMeridianRad` に期待する基準(磁気経度か地理経度か、0 がどちら向きか)へ直してから `aurora.sync(phase, solarMeridianRad)` へ渡す |
-| `tests/render/aurora-field.test.ts` | 太陽の子午線を回すと、昼側で弱まる区間が同じだけ回るテストを足す |
-
-**達成条件と検証**:
-
-- `npm run typecheck`、`npm run test:render`。
-- `npm run dev` で地球の北極を見下ろし、時刻を早送りすると、オーロラの濃淡が地球と一緒に回らず、
-  太陽に対して止まって見える。
-
 ### 手順 6. エアグローを描画設定で切れるようにする
 
 **目的**: エアグローは採用する。ただし見え方を大きく変える描画は描画設定で切れるようにする方針
