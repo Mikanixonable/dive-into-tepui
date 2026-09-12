@@ -9,8 +9,7 @@ import type { KinematicState } from '../../../physics/kinematic-state';
 import { Attitude } from '../../../physics/attitude';
 import { len, sub, v3, Vec3 } from '../../../math/vec3';
 import type { Notifier } from '../../../hud/notifier';
-import type { MarkerSlots } from '../../marker/marker-slots';
-import type { MarkerVisibility } from '../../marker/marker-visibility';
+import type { MarkerVisibility } from '../../../marker/marker-visibility';
 import { savedAttitude, savedKinematicState, type BaseSaveData } from '../../save/save-data';
 import { Plan, type PlanExecutionMode } from '../../plan/plan';
 import { generateRandomName } from '../../random-name';
@@ -27,7 +26,7 @@ import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { BaseView, type BaseRenderSource } from '../../../render/dynamic/dynamic-entity/base-view';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../../orbit-reference';
-import { MARKER_PRIORITY } from '../../marker/crowding';
+import { MARKER_PRIORITY } from '../../marker/marker-priority';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { orbitRows } from '../../pickable/orbit-rows';
 
@@ -103,7 +102,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     init: BaseInit,
     scene: THREE.Scene,
     notifier: Notifier,
-    markers: MarkerSlots,
   ) {
     // 復元と新規配置を同じ形へ均してから基底へ渡す。
     const { state, name, att, id } = 'saved' in init
@@ -126,7 +124,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     const entityId = idAllocator.next(id);
     super(
       () => new BaseMotion(state, attitude, fuel),
-      new BaseView(scene, entityId, markers),
+      new BaseView(scene, entityId),
       entityId,
     );
     this.setName(name);
@@ -213,10 +211,10 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       vel,
       priority: MARKER_PRIORITY.BASE - dist / 1e9,
       name: this.name,
-      bearingColor: COLOR_MARKER_ALLY,
-      bearingSym: ENTITY_GLYPH.base,
-      bearingClass: 'mk-dir mk-ally-dir',
-      bearingVisible: false,
+      bearing: {
+        cls: 'mk-dir mk-ally-dir', sym: ENTITY_GLYPH.base, color: COLOR_MARKER_ALLY,
+        visible: false, priority: MARKER_PRIORITY.NONE, clustered: true,
+      },
       color: COLOR_MARKER_ALLY,
       symMarkup: true,
     };

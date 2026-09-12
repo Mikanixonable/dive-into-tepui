@@ -8,14 +8,16 @@ import { fmtTime } from '../../hud/utils';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { ProjectFn } from '../../math/projection';
+import { isOccluded } from '../../physics/occlusion';
+import { pointPlacement } from './marker-placement';
 import type { ControlSelection } from '../control-selection';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { PlanEditor } from '../plan/plan-editor';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
-import type { MarkerSlots } from './marker-slots';
-import type { MarkerVisibility } from './marker-visibility';
+import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 
@@ -36,6 +38,8 @@ export abstract class OrbitPointMarker implements ObjectPickable {
   protected abstract readonly markerClass: string;
   // マーカーへ添える略称。
   public abstract readonly markerLabel: string;
+  // マーカーが重なったときに残す度合い。
+  protected abstract readonly markerPriority: number;
   // この点の呼称。解が無いフレームでも名乗れる文字列を返す。
   public abstract readonly name: string;
   // メニュー先頭の見出しに出す表題と副題。
@@ -77,17 +81,25 @@ export abstract class OrbitPointMarker implements ObjectPickable {
   public mapVisibility(): MapVisibility { return MARKER_VISIBILITY; }
   public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(this.id); }
 
-  // マーカーを解いた位置へ置く。解けていないフレームと、天体に遮られたフレームは隠す。
-  public sync(
-    markers: MarkerSlots, project: ProjectFn, cameraPos: Vec3,
-    celestialBodies: readonly CelestialBody[], pivot: number, occludeByBodies: boolean,
+  // 解いた位置へ置くマーカーの宣言。解けていないフレームは伏せ、天体に遮られたフレームは畳む。
+  // occluders は遮蔽判定に使う天体で、occludersPivot はその位置を引く時刻。
+  public declaration(
+    project: ProjectFn, cameraPos: Vec3,
+    occluders: readonly CelestialBody[], occludersPivot: number, occludeByBodies: boolean,
     timeLabel: TimeLabelSetting,
-  ): void {
-    if (this.pos === null) { markers.hide(this.id); return; }
-    markers.setNodePosition(
-      this.id, this.markerClass, this.glyph, this.pos, project, cameraPos, celestialBodies, pivot,
-      occludeByBodies, orbitPointLabel(this.markerLabel, this.time, timeLabel),
-    );
+  ): MarkerDeclaration {
+    const base = {
+      id: this.id, cls: this.markerClass, sym: this.glyph, priority: this.markerPriority,
+    };
+    if (this.pos === null) return { ...base, x: 0, y: 0, front: false };
+    if (occludeByBodies && isOccluded(cameraPos, this.pos, occluders, occludersPivot)) {
+      return { ...base, x: 0, y: 0, front: false, occluded: true };
+    }
+    const { x, y, front, dist } = pointPlacement(this.pos, project, cameraPos);
+    return {
+      ...base, x, y, front, dist,
+      label: orbitPointLabel(this.markerLabel, this.time, timeLabel),
+    };
   }
 
   // メニューに出す操作項目。

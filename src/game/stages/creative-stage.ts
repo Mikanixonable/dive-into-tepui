@@ -14,6 +14,7 @@ import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
+import type { MarkerDeclaration } from '../../marker/marker-declaration';
 
 export class CreativeStage extends Stage {
   public static readonly id = 'creative' as const;
@@ -53,7 +54,7 @@ export class CreativeStage extends Stage {
     );
 
     this.objectPlacement = new ObjectPlacement(
-      this._hud, this._scene, this._dynamicSystem, this._celestialSystem, this._markers, this._worldSfx, this._fx,
+      this._hud, this._scene, this._dynamicSystem, this._celestialSystem, this._worldSfx, this._fx,
     );
     this.objectPlacement.onPlace = (placed) => this.addPlacedObject(placed);
     this.authoring = this.objectPlacement;
@@ -160,6 +161,10 @@ export class CreativeStage extends Stage {
     this.mountStageControlsPanel(camera.mode === 'map');
     this.objectPlacement.sync(camera, displayTime);
     this.stageControlsPanel.element.classList.remove('hidden');
+  }
+
+  public override get markerDeclarations(): readonly MarkerDeclaration[] {
+    return this.objectPlacement.markerDeclarations;
   }
 
   // 補給の投入と波状攻撃を進める。波状攻撃のトグルが決めるのは新しいウェーブが出るかどうかで、

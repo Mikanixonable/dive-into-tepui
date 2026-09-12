@@ -27,7 +27,11 @@ import { OrbitGuideView, type VisibleGuideLine } from '../../render/celestial/or
 import { ZeroVelocityView } from '../../render/celestial/orbit-guide/zero-velocity-view';
 import type { OrbitGuideSettings } from './orbit-guide/orbit-guide-settings';
 import type { TdbJulianDate } from '../../physics/time';
-import type { MarkerSlots } from '../marker/marker-slots';
+import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { MapOverlayLabel } from '../../render/celestial/celestial-entity/celestial-view';
+import { MARKER_PRIORITY } from '../marker/marker-priority';
+import { pointPlacement } from '../marker/marker-placement';
+import { isOccluded } from '../../physics/occlusion';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { PointFieldView } from '../../render/celestial/point-field-view';
@@ -83,6 +87,8 @@ function orderedEntitiesOf(
 }
 
 export class CelestialSystem implements CelestialBodies {
+  // 天体固有のマップ付随表示が、このフレームに出すマーカーの宣言。
+  private readonly overlayDeclarations: MarkerDeclaration[] = [];
   private scene!: THREE.Scene;
   private stars!: Stars;
   private celestialGrid!: CelestialGrid;
@@ -384,7 +390,6 @@ export class CelestialSystem implements CelestialBodies {
     grid: CelestialGridVisibility,
     orbitGuide: OrbitGuideSettings,
     visibilityPolicy: MapVisibilityPolicy | null,
-    markers: MarkerSlots,
   ): void {
     const floatingOrigin = camera.floatingOrigin;
     const star = this.stellarLightSource;
@@ -414,18 +419,38 @@ export class CelestialSystem implements CelestialBodies {
     this.stars.sync(grid.stars);
     this.syncReferenceLines(displayTime, camera, visibilityPolicy);
     // 地球の静止軌道リングなど、天体固有のマップ付随表示。
+    let overlayLabel: MapOverlayLabel | null = null;
     for (const body of this.entities) {
-      body.view.syncMapOverlay(
-        body.motion, displayTime, camera, markers, this.celestialMotions,
+      overlayLabel = body.view.syncMapOverlay(
+        body.motion, displayTime, camera,
         camera.mode === 'map' && orbitGuide.geostationary
-          && categoryVisible(visibilityPolicy, body.id));
+          && categoryVisible(visibilityPolicy, body.id)) ?? overlayLabel;
     }
+    this.overlayDeclarations.length = 0;
+    const overlay = this.overlayDeclarationOf(overlayLabel, camera, displayTime);
+    if (overlay !== null) this.overlayDeclarations.push(overlay);
     this.orbitGuideView.sync(
       this.orbitGuideModel.displaysAt(orbitGuide, displayTime, style, camera.mode), camera, nowMs);
     this.zeroVelocityView.sync(
       this.zeroVelocityModel.displaysAt(orbitGuide.zeroVelocity, displayTime, camera.mode), camera);
     this.celestialGrid.sync(style, grid, camera.camera, CELESTIAL_SHELL_SCALE, camera.viewport);
     this.scaleGrid.sync(displayTime, camera, cameraSystem, this, grid);
+  }
+
+  // 天体固有のマップ付随表示が、このフレームに出す文字マーカーの宣言。
+  public get markerDeclarations(): readonly MarkerDeclaration[] { return this.overlayDeclarations; }
+
+  // 付随表示のラベルを、投影と遮蔽の判定を通してマーカーの宣言へ組む。出さないフレームは null。
+  private overlayDeclarationOf(
+    label: MapOverlayLabel | null, camera: CameraFrame, displayTime: number,
+  ): MarkerDeclaration | null {
+    if (label === null) return null;
+    const { x, y, front, dist } = pointPlacement(label.pos, camera.project, camera.position);
+    if (!front || isOccluded(camera.position, label.pos, this.celestialMotions, displayTime)) return null;
+    return {
+      id: 'geolabel', cls: 'mk-geolabel', sym: label.text, x, y, front, dist,
+      opacity: label.opacity, fixedLabel: true, priority: MARKER_PRIORITY.ORBITAL_NODE,
+    };
   }
 
   // このフレームに積雲殻を描く天体の雲場を焼く。

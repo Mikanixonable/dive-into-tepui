@@ -16,7 +16,7 @@ import { pickRadiusSq } from '../../input/pointer-precision';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { CelestialMarkers } from '../marker/celestial-markers';
-import type { MarkerSlots } from '../marker/marker-slots';
+import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { NavTarget } from '../nav-target';
 import type { CameraSystem } from '../camera/camera-system';
 import type { Viewport } from '../../render/viewport';
@@ -43,7 +43,7 @@ export class MapPicking {
     private readonly roster: EntityRoster,
     private readonly celestialBodies: CelestialBodies,
     private readonly celestialMarkers: CelestialMarkers,
-    private readonly markers: MarkerSlots,
+    private readonly markers: MarkerVisibility,
     private readonly navTarget: NavTarget,
     private readonly focusSink: FocusSink,
     private readonly pickables: ObjectPickables,

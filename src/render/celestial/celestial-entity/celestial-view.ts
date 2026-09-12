@@ -16,7 +16,6 @@ import type { CelestialSurfaceDiagnostics } from '../celestial-surface';
 import { withAirglowEnabled } from '../../atmosphere';
 import type { AtmosphereClouds, AtmosphereOptics, AtmosphereCandidate } from '../../atmosphere';
 import type { ShadowCumulus } from '../../pipeline/shadow/cloud-shadow-renderer';
-import type { MarkerSlots } from '../../../game/marker/marker-slots';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import { EllipseLine } from '../../lines/ellipse-line';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../line-style';
@@ -29,6 +28,13 @@ const PLANET_ORBIT_LINE_FADE_FAR_DIST = 1e10;
 const SATELLITE_ORBIT_LINE_FADE_NEAR_DIST = 5e8;
 const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9;
 const REFERENCE_LINE_OPACITY = 0.3;
+
+// マップ専用の重ね書きが、このフレームに添える文字ラベル。
+export interface MapOverlayLabel {
+  readonly text: string;
+  readonly pos: Vec3; // ECI
+  readonly opacity: number;
+}
 
 // 恒星が距離の二乗に反比例する光源として持つ値。
 export interface StellarLight {
@@ -134,12 +140,10 @@ export abstract class CelestialView {
     _motion: DefinedCelestialBody, _floatingOrigin: FloatingOrigin, _displayTime: number,
   ): ShadowCumulus | null { return null; }
 
-  // マップ専用の重ね書きを、このフレームの表示状態へ同期する。
+  // マップ専用の重ね書きを、このフレームの表示状態へ同期し、添える文字ラベルを返す。
   public syncMapOverlay(
-    _motion: CelestialMotion, _displayTime: number, _camera: CameraFrame,
-    _markers: MarkerSlots,
-    _celestialBodies: readonly CelestialBody[], _visible: boolean,
-  ): void {}
+    _motion: CelestialMotion, _displayTime: number, _camera: CameraFrame, _visible: boolean,
+  ): MapOverlayLabel | null { return null; }
 
   // 表示時刻の接触軌道要素と、カメラからの距離で決まる濃さへ参照軌道線を同期する。
   // visible が false のフレームは線の資源ごと解放する。

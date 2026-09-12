@@ -7,7 +7,6 @@ import { HelpPanel } from './windows/help-panel';
 import { PanelShell, wirePanelCollapse } from './panel-shell';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
 import { SKELETON_STYLE } from './style/skeleton-style';
-import { MARKER_STYLE } from './style/marker-style';
 import { COMBAT_PANEL_ROWS_STYLE } from './style/combat-panel-rows-style';
 import { MAP_PANEL_STYLE } from './style/map-panel-style';
 import { STAGE_STATUS_STYLE } from './style/stage-status-style';
@@ -20,9 +19,9 @@ import type { RenderStyle } from '../../render/render-style';
 import type { ViewMode } from '../../render/view-mode';
 import type { CollapseToggleLabels } from '../../hud/widgets';
 
-// トークン→骨格→マーカー→パネル群→ビュー→ウィジェット共通の順に結合する。
+// トークン→骨格→パネル群→ビュー→ウィジェット共通の順に結合する。
 const STYLE =
-  LAYOUT_TOKENS_STYLE + SKELETON_STYLE + MARKER_STYLE
+  LAYOUT_TOKENS_STYLE + SKELETON_STYLE
   + COMBAT_PANEL_ROWS_STYLE + MAP_PANEL_STYLE + STAGE_STATUS_STYLE
   + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE;
 
@@ -30,7 +29,6 @@ const STYLE =
 interface HudDomRefs {
   readonly combatRoot: HudViewRoot;
   readonly mapRoot: HudViewRoot;
-  readonly svgOverlay: SVGSVGElement;
   readonly helpPanel: HelpPanel;
   readonly els: Map<string, HTMLElement>;
 }
@@ -118,22 +116,6 @@ function injectStyle(): void {
   const style = document.createElement('style');
   style.textContent = STYLE;
   document.head.appendChild(style);
-}
-
-// マーカーのリード線を描く SVG オーバーレイを作る。
-function buildSvgOverlay(root: HTMLElement): SVGSVGElement {
-  // 画面全体に重ねる透過 SVG 要素を用意する。
-  const svgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svgOverlay.setAttribute('aria-hidden', 'true');
-  svgOverlay.style.position = 'absolute';
-  svgOverlay.style.inset = '0';
-  svgOverlay.style.width = '100%';
-  svgOverlay.style.height = '100%';
-  svgOverlay.style.pointerEvents = 'none';
-  svgOverlay.style.zIndex = '0';
-  // 呼び出し元のレイヤへ組み込む。
-  root.appendChild(svgOverlay);
-  return svgOverlay;
 }
 
 // 常設 VESSEL パネルを右レールへ組む。
@@ -381,7 +363,7 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
   return els;
 }
 
-// HUD のスタイル・レイヤ・各パネル・SVG オーバーレイを構築し、DOM 参照をまとめて返す。
+// HUD のスタイル・レイヤ・各パネルを構築し、DOM 参照をまとめて返す。
 export function buildHudDom(shell: HudShell, renderStyle: RenderStyle): HudDomRefs {
   injectThemeVariables();
   injectStyle();
@@ -390,7 +372,6 @@ export function buildHudDom(shell: HudShell, renderStyle: RenderStyle): HudDomRe
   // 模式図では白背景になるため、マーカー配色をそれに合わせて切り替える手掛かりとして
   // 現在のスタイルをルート要素の属性で公開する。
   root.dataset['renderStyle'] = renderStyle;
-  const svgOverlay = buildSvgOverlay(layers.marker);
   const combatRoot = buildViewRoot(layers.panel, 'hud-combat-root', 'combat');
   const mapRoot = buildViewRoot(layers.panel, 'hud-map-root', 'map');
 
@@ -405,5 +386,5 @@ export function buildHudDom(shell: HudShell, renderStyle: RenderStyle): HudDomRe
   buildHelpBadge(layers.panel, helpPanel);
 
   const els = collectDataIdElements(root);
-  return { combatRoot, mapRoot, svgOverlay, helpPanel, els };
+  return { combatRoot, mapRoot, helpPanel, els };
 }
