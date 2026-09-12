@@ -25,6 +25,7 @@ import type { EnemyCollisionShape } from './enemy-motion';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
 import type { ProteinVisualSource } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
 import type { OrbitReference } from '../../orbit-reference';
+import type { ProteinCombatTarget } from './damage-capabilities';
 
 // タンパク質の構造は揺らぐが、判定形状は常に静止した1つに固定するので、慣性も1つでよい。
 // 漂流機体と同じく非対称にして、ジャニベコフ効果(中間軸不安定性)で無秩序に回らせる。
@@ -75,7 +76,7 @@ function displayOf(init: ProteinEnemyPlacement | EnemyRestore): ProteinDisplaySe
 
 // タンパク質の敵。機能部位ごとに破壊できる被弾モデル(ProteinCombatState)が HP の正本で、
 // 判定形状は表示形態によらず、アセットが持つ球列に固定する。
-export class ProteinEnemy extends Enemy {
+export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   public static readonly kind = 'protein-enemy';
   public declare readonly view: ProteinEnemyView;
   // その体のアセットの取得を起こし、実体化してよいかを答える関門を返す。
@@ -125,14 +126,12 @@ export class ProteinEnemy extends Enemy {
     super(
       'saved' in init ? init : { ...init, name: `${definition.asset.displayName} ${init.name}` },
       proteinView, PROTEIN_INERTIA, collision.outerRadius, worldSfx, fx, shape,
+      [],
     );
     this.assetId = assetId;
     this.displaySettings = display;
     this.combat = combat;
   }
-
-  // HP の正本は combat 側なので、艦の既定パーツは積まない。
-  protected override initDefaultParts(): void {}
 
   public override get hp(): number { return this.combat.integrityHp; }
   public override set hp(_value: number) {}
