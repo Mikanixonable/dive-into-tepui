@@ -5,7 +5,7 @@ import {
   Fn, If, Loop, clamp, dot, exp, float, greaterThan, length, max, normalize, select,
   sqrt, uniform, vec4,
 } from 'three/tsl';
-import { CloudFieldSampler, type CloudLodMode } from '../../cloud/cloud-field-sampler';
+import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
 import type { CloudSample } from '../../cloud/cloud-field-sample';
 import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
 import { CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from '../../cloud/cumulus-shape';
@@ -71,10 +71,6 @@ export class CloudShadowRenderer {
   // このフレームに積雲の殻の影があるか。
   casts(): boolean { return this.active.value > 0; }
 
-  public setLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
-    this.fieldSampler.setLodSampling(mode, fixedLevel);
-  }
-
   // 受け手から恒星へ向かう光路を、雲の層(地表から殻の上端まで)を抜けるまで殻の空間
   // (toShellSpace)でたどり、柱の雲頂より下を通る割合ぶんの消散を積む。
   //
@@ -82,7 +78,7 @@ export class CloudShadowRenderer {
   // 影は殻のシルエットの下へ落ちる。厚みは光路長ではなく稼いだ高度で配るので、柱を 1 本抜ける
   // 合計はどれだけ斜めでも τ に一致する。
   // 受け手が自分の柱の雲頂の高さにいるときは、その柱で自分を陰らせない(receiverFloorAltitude)。
-  // footprint は受け手の位置で画面 1 px が張る実寸 [m] で、場を引く mip 段と粒の振幅を決める。
+  // footprint は受け手の位置で画面 1 px が張る実寸 [m] で、粒の振幅を決める。
   transmittance(worldPos: Vec3Node, footprint: FloatNode): FloatNode {
     const sunDir = this.sunLight.directionFrom(worldPos);
     return Fn(() => {
@@ -103,11 +99,10 @@ export class CloudShadowRenderer {
           .sub(along).mul(bodyRadius);
         const stepLength = clamp(exit, 0, MAX_LIGHT_PATH).div(SHADOW_TAPS);
         // タップ 1 回が代表する実寸。**歩がまたいだ柱は 1 タップが代表する**ので、画面 1 px の
-        // 実寸と光路 1 歩の長さのうち粗いほうを取る。場の mip 段も粒の振幅もこの幅が決める。
+        // 実寸と光路 1 歩の長さのうち粗いほうを取る。粒の振幅はこの幅が決める。
         const sampleWidth = max(footprint, stepLength.mul(STEP_BLUR));
-        const lod = this.fieldLod(sampleWidth);
         const grainAmplitude = this.shape.grainAmplitudeForWidth(sampleWidth).toVar();
-        const floorAltitude = this.receiverFloorAltitude(offset, lod, bodyRadius);
+        const floorAltitude = this.receiverFloorAltitude(offset, bodyRadius);
         const stepRadius = stepLength.div(bodyRadius);
         const opticalDepth = float(0).toVar();
         Loop({ start: 0, end: SHADOW_TAPS, type: 'int', condition: '<' }, ({ i }) => {
@@ -115,7 +110,7 @@ export class CloudShadowRenderer {
           const sampleRadius = max(length(sampleOffset), 1e-6);
           const up = sampleOffset.div(sampleRadius);
           const altitude = max(sampleRadius.sub(1).mul(bodyRadius), floorAltitude);
-          const cloud = this.fieldAt(up, lod);
+          const cloud = this.fieldAt(up);
           // 粒は引けるときだけ引く。タップの数だけノイズを引くので、振幅が 0 になる遠さでは分岐ごと
           // 飛ばして費用を戻す(select では両辺が評価されて飛ばない)。
           const grain = float(0).toVar();
@@ -144,25 +139,19 @@ export class CloudShadowRenderer {
     return this.bodyFromWorld.mul(vec4(worldVec, 0)).xyz.div(this.axes);
   }
 
-  // タップ 1 回が代表する実寸 sampleWidth [m] から場を引く mip 段。
-  private fieldLod(sampleWidth: FloatNode) {
-    return this.fieldSampler.lodForWidth(sampleWidth, this.surfaceRadius);
-  }
-
-  // 殻の空間の単位方向 up における場を、mip 段を指定して引く。段を明示で渡すのは、光路のタップの
-  // uv が画面の隣の画素と続いておらず、画面微分から選ばれる段が当てにならないため。uv は殻が読むのと
-  // 共有samplerの球メッシュUVで引く — 別の規則で読むと、影が雲のシルエットから外れる。
-  private fieldAt(up: Vec3Node, lod: FloatNode): CloudSample {
-    return this.fieldSampler.sampleCloud(up, lod);
+  // 殻の空間の単位方向 up における場。uv は殻が読むのと共有 sampler の規則で引く — 別の規則で
+  // 読むと、影が雲のシルエットから外れる。
+  private fieldAt(up: Vec3Node): CloudSample {
+    return this.fieldSampler.sampleCloud(up);
   }
 
   // 光路のタップの高度に張る床 [m]。受け手が自分の柱の雲頂の高さにあるなら、その雲頂の高さ。
   // offset は天体中心から受け手へのベクトル(殻の空間)、bodyRadius は殻の空間の半径 1 が
   // 張る高度の目盛り [m]。
-  private receiverFloorAltitude(offset: Vec3Node, lod: FloatNode, bodyRadius: FloatNode): FloatNode {
+  private receiverFloorAltitude(offset: Vec3Node, bodyRadius: FloatNode): FloatNode {
     const radius = max(length(offset), 1e-6);
     const altitude = max(radius.sub(1), 0).mul(bodyRadius);
-    const top = this.fieldAt(offset.div(radius), lod).cloudTop.div(CLOUD_TOP_SPAN).mul(this.topAltitude);
+    const top = this.fieldAt(offset.div(radius)).cloudTop.div(CLOUD_TOP_SPAN).mul(this.topAltitude);
     const uncertainty = this.topAltitude.mul(CloudShapeEvaluator.cloudTopUncertainty);
     return select(greaterThan(altitude, top.sub(uncertainty)), top, float(0));
   }

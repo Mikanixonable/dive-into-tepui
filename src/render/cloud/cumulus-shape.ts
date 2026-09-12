@@ -12,7 +12,7 @@ export const CLOUD_ALBEDO = 0.8;
 // シェーダグラフはここに結んだテクスチャのフィルタと巻きから組まれるので、既定の Nearest の
 // ままだと補間の無い texel フェッチが焼き込まれ、あとで本物へ差し替えても格子が出たままになる。
 export const EMPTY_CLOUD_FIELD = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
-EMPTY_CLOUD_FIELD.minFilter = THREE.LinearMipmapLinearFilter;
+EMPTY_CLOUD_FIELD.minFilter = THREE.LinearFilter;
 EMPTY_CLOUD_FIELD.magFilter = THREE.LinearFilter;
 EMPTY_CLOUD_FIELD.wrapS = THREE.RepeatWrapping;
 EMPTY_CLOUD_FIELD.needsUpdate = true;

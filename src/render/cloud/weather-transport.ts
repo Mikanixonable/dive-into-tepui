@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { abs, float, fract, inverseSqrt, mix, normalize, uniform, vec2, vec4 } from 'three/tsl';
 import { BakedField } from './baked-field';
-import { CirculatingNoise, coarsenessFor } from './circulating-noise';
+import { CirculatingNoise } from './circulating-noise';
 import { Circulation } from './circulation';
 import { windStep } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -75,22 +75,15 @@ export class WeatherTransport {
     surfaceCirculation: Circulation, upperCirculation: Circulation, projection: FieldProjection,
     private readonly surfaceRadius: number,
   ) {
-    // 湿度は雲塊の配置しか持たないので投影より粗くて足りることがあり、同じ細かさを要る対流とは
-    // 写しを分ける。
-    const humidityCoarseness = coarsenessFor(projection, SURFACE_HUMIDITY_NOISE, UPPER_HUMIDITY_NOISE);
-    const convectionCoarseness = coarsenessFor(projection, CONVECTION_NOISE);
-    const humidityTexel = projection.texelAngle.mul(humidityCoarseness);
-    const convectionTexel = projection.texelAngle.mul(convectionCoarseness);
-    this.surfaceHumidityNoise = new CirculatingNoise(
-      surfaceCirculation, SURFACE_HUMIDITY_NOISE, humidityTexel);
-    this.convectionNoise = new CirculatingNoise(surfaceCirculation, CONVECTION_NOISE, convectionTexel);
-    this.upperHumidityNoise = new CirculatingNoise(
-      upperCirculation, UPPER_HUMIDITY_NOISE, humidityTexel);
+    const texel = projection.texelAngle;
+    this.surfaceHumidityNoise = new CirculatingNoise(surfaceCirculation, SURFACE_HUMIDITY_NOISE, texel);
+    this.convectionNoise = new CirculatingNoise(surfaceCirculation, CONVECTION_NOISE, texel);
+    this.upperHumidityNoise = new CirculatingNoise(upperCirculation, UPPER_HUMIDITY_NOISE, texel);
     this.humiditySource = new BakedField(
-      'humiditySource', THREE.RGFormat, projection, humidityCoarseness,
+      'humiditySource', THREE.RGFormat, projection,
       (direction) => vec4(this.humiditySourceAt(direction), 0, 1));
     this.convectionSource = new BakedField(
-      'convectionSource', THREE.RGFormat, projection, convectionCoarseness,
+      'convectionSource', THREE.RGFormat, projection,
       (direction) => vec4(this.convectionSourceAt(direction), 0, 1));
   }
 

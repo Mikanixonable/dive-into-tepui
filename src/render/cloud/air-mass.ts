@@ -53,7 +53,7 @@ export class AirMass {
     private readonly surfaceRadius: number,
   ) {
     this.trace = new BakedField(
-      'airMassTrace', THREE.RGFormat, projection, 1,
+      'airMassTrace', THREE.RGFormat, projection,
       (direction) => {
         const wind = windAt(direction);
         return vec4(this.driftAt(direction, wind), length(wind.velocity), 0, 1);

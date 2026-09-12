@@ -4,7 +4,6 @@ import { If, and, float, greaterThan, lessThan, mix, normalize, step, vec3 } fro
 import {
   CLOUD_SHELL_SPECIES, CloudAtmosphereRenderer, type CloudShellSample, type CloudSpecies,
 } from './cloud-atmosphere-renderer';
-import type { CloudLodMode } from '../cloud/cloud-field-sampler';
 import type { BoolNode, FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 
 export interface AtmosphereCloudRay {
@@ -60,10 +59,6 @@ export class AtmosphereCloudLayers {
     this.clouds.setShellEnabled(species, enabled);
   }
 
-  public setLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
-    this.clouds.setLodSampling(mode, fixedLevel);
-  }
-
   public transmittanceAt(events: readonly CloudShellEvent[], distance: FloatNode): FloatNode {
     const product = float(1).toVar();
     for (const event of events) {
@@ -93,8 +88,7 @@ export class AtmosphereCloudLayers {
 
   public build(
     ray: AtmosphereCloudRay, segment: AtmosphereCloudSegment,
-    rayOrigin: Vec3Node, rayDir: Vec3Node, pixelAngle: FloatNode,
-    geometry: AtmosphereCloudGeometry,
+    rayOrigin: Vec3Node, rayDir: Vec3Node, geometry: AtmosphereCloudGeometry,
   ): readonly CloudShellEvent[] {
     const shells = CLOUD_SHELL_SPECIES.map((species) => {
       const radius = geometry.shellRadiusOf(species);
@@ -119,8 +113,7 @@ export class AtmosphereCloudLayers {
         const offset = geometry.offsetAt(ray, distance);
         const sunDir = normalize(geometry.sunDirectionAt(point));
         const sample: CloudShellSample = this.clouds.scatteredAt(
-          shell.species, shell.radius, offset, ray.unitDir, sunDir,
-          geometry.sunRadianceAt(point), pixelAngle.mul(distance),
+          shell.species, shell.radius, offset, ray.unitDir, sunDir, geometry.sunRadianceAt(point),
         );
         cloudTransmittance.assign(sample.transmittance);
         localRadiance.assign(sample.radiance);

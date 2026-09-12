@@ -8,8 +8,6 @@ import type { CloudFieldSource } from './cloud-presentation';
 export class ObservedCloudField implements CloudFieldSource {
   private readonly map: DeferredTexture;
   private readonly fieldSampler: CloudFieldSampler;
-  // sampler へ最後に差し込んだときの画像の世代。
-  private sampledGeneration: number;
 
   // url は地表と同じ正距円筒の雲場画像(R = 被覆率、G = 雲頂高度、B = 薄い雲の光学的厚み)。
   public constructor(url: string) {
@@ -17,18 +15,14 @@ export class ObservedCloudField implements CloudFieldSource {
     // 正距円筒の経度は周期的なので、場は経度方向へ巻く。
     this.map.texture.wrapS = THREE.RepeatWrapping;
     this.fieldSampler = new CloudFieldSampler(this.map.texture);
-    this.sampledGeneration = this.map.generation;
   }
 
   public get texture(): THREE.Texture { return this.map.texture; }
   public get sampler(): CloudFieldSampler { return this.fieldSampler; }
 
-  // 画像の取得を始め、届いていれば読める mip 段を画像の寸法から引き直す。
+  // 画像の取得を始める。テクスチャの実体は生成時から同じものなので、届いても差し替えはいらない。
   public prepare(): void {
     this.map.request();
-    if (this.map.generation === this.sampledGeneration) return;
-    this.sampledGeneration = this.map.generation;
-    this.fieldSampler.setTexture(this.map.texture);
   }
 
   // 画像のテクスチャを解放する。

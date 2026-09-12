@@ -18,7 +18,7 @@ export class CloudField {
 
   // model がいま指している時刻の雲を、projection の持ち方で焼く写し。読むときも projection の uv で読む。
   public constructor(model: WeatherModel, projection: FieldProjection) {
-    this.field = new BakedField('cloud', THREE.RGBAFormat, projection, 1, (direction) => {
+    this.field = new BakedField('cloud', THREE.RGBAFormat, projection, (direction) => {
       const cloud = condense(model.weatherAt(direction));
       return cloudFieldTexelFromSample(cloud);
     });

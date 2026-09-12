@@ -10,14 +10,12 @@ import {
 import { BlueNoise } from './blue-noise';
 import { CloudShapeEvaluator } from './cloud/cloud-shape-evaluator';
 import type { CloudSample } from './cloud/cloud-field-sample';
-import type { CloudFieldSampler, CloudLodMode } from './cloud/cloud-field-sampler';
+import type { CloudFieldSampler } from './cloud/cloud-field-sampler';
 import { unitSphereGeometry } from './celestial/celestial-surface';
 import { CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from './cloud/cumulus-shape';
 import { eastAt, northAt } from './cloud/sphere-frame';
 import { markLitCloudShell } from './pipeline/lit-layer';
-import {
-  sphereLodLevelWithHysteresis, SPHERE_LOD_LADDER, SphereLodLevel,
-} from './celestial/screen-lod';
+import { sphereLodLevel, SPHERE_LOD_LADDER, SphereLodLevel } from './celestial/screen-lod';
 import type { FloatNode, FloatUniform, Vec3Node, Vec4Node } from './tsl-types';
 
 // 雲の粗さ。雲は拡散する面なので、粗さは最大になる。
@@ -110,13 +108,7 @@ export class OpaqueCloudSurfaceRenderer {
     if (detail === CUMULUS_DETAIL.off) this.hide();
   }
 
-  // 雲場の比較用の LOD 規則を置き直す。雲場は共有なので、同じ場を読むほかの描画にも効く。
-  public setLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
-    this.fieldSampler.setLodSampling(mode, fixedLevel);
-  }
-
-  // 読む雲場を差し替え、変わったときはマテリアルを組み直す。差し替えた先の LOD 規則は、setLodSampling を
-  // 呼び直すまでその sampler のもの。
+  // 読む雲場を差し替え、変わったときはマテリアルを組み直す。
   public setFieldSampler(fieldSampler: CloudFieldSampler): void {
     if (fieldSampler === this.fieldSampler) return;
     this.fieldSampler = fieldSampler;
@@ -140,9 +132,7 @@ export class OpaqueCloudSurfaceRenderer {
 
   // 見かけ直径 [px] から分割段を選び、その段のメッシュを見せる。精細さがオフなら全段を隠す。
   public syncLod(apparentDiameterPx: number): void {
-    const level = sphereLodLevelWithHysteresis(
-      apparentDiameterPx, this.activeLevel, this.sampling.march !== 0,
-    );
+    const level = this.sampling.march === 0 ? null : sphereLodLevel(apparentDiameterPx);
     if (level === this.activeLevel) return;
     this.activeLevel = level;
     for (const [meshLevel, mesh] of this.meshes) mesh.visible = meshLevel === level;
