@@ -13,21 +13,26 @@ import { injectOnce } from '../inject-style';
 const STYLE = `
 .gp-body, #hud .gp-body {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-4) var(--space-5); margin-top: var(--space-4); min-width: 0;
+  gap: var(--space-4) var(--space-5); min-width: 0;
 }
 .gp-body > .w-group { grid-column: 1 / -1; min-width: 0; }
 .gp-group, #hud .gp-group {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: var(--space-3); row-gap: var(--space-3);
-  align-items: start; min-width: 0; padding-top: var(--space-4);
+  align-items: start; min-width: 0;
 }
 .gp-group-title { grid-column: 1 / -1;
   margin: 0; color: var(--color-primary); font-size: var(--font-xxs); letter-spacing: 0.12em;
 }
-.gp-group > .w-group, .gp-group > .w-toggle { min-width: 0; }
+.gp-group > .w-group, .gp-group > .w-toggle { min-width: 0; width: 100%; }
+.gp-group > .w-toggle { justify-content: space-between; }
+.gp-group > .w-group .w-group-title { flex: 1 1 0; min-width: 0; }
+.gp-group > .w-group .w-select { min-width: 0; max-width: 100%; }
+.gp-group > .w-group .w-btn { min-width: 0; }
 @media ${MQ_COMPACT} {
   .gp-body, #hud .gp-body { grid-template-columns: 1fr; }
   .gp-group, #hud .gp-group { grid-template-columns: 1fr; }
+  .gp-group > .w-group .w-group-title { flex: 0 0 100%; }
 }
 `;
 

@@ -7,7 +7,7 @@ export async function checkEarthSurface({ inputRoot, manifestName = 'earth-surfa
   const checked = await inspectEarthSurfaceBundle({ inputRoot, manifestName, sourceManifestPath });
   return {
     datasetId: checked.manifest.datasetId,
-    tiles: checked.tileIndex.entries.length,
+    tiles: checked.tiles.length,
     climateMaps: checked.climateMaps.length,
   };
 }
