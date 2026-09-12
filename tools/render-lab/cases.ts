@@ -11,10 +11,9 @@ import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albe
 import cloudFieldUrl from '../../src/assets/cloud-field.png';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
 import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-system/constants';
-import {
-  EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_TEXTURE, earthGeneratedCloudField,
-} from '../../src/game/celestial/solar-system/earth-system';
-import { bootstrapEarthSurface } from '../../src/game/celestial/solar-system/earth-surface-runtime';
+import { EARTH, EARTH_ATMOSPHERE_OPTICS, earthGeneratedCloudField } from '../../src/game/celestial/solar-system/earth-system';
+import { EARTH_TEXTURE } from '../../src/render/earth-surface-defaults';
+import { bootstrapEarthSurface } from '../../src/render/earth-surface-runtime';
 import { shapeAxes, shapeSpheroidRadii, type RingBandDef } from '../../src/physics/celestial-body-def';
 import { BodyGraticule } from '../../src/render/celestial/body-graticule';
 import { LineOverlay, type LatLonPolyline } from '../../src/render/celestial/line-overlay';
