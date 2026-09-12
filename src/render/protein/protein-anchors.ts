@@ -1,5 +1,4 @@
-// 部位のアンカーを引く残基群と、その残基たちの変位の平均。ここで出した変位を、physics の
-// proteinSiteWorldPosition が静止座標へ足してワールド座標にする。
+// 部位のアンカーを引く残基群と、その残基たちの変位の平均。模型座標のままの変位を返す。
 import type { ProteinRenderMotion, ProteinRenderSite } from './protein-render-definition';
 
 /** 部位の残基記述子を motion の残基インデックスへ解決する。1つも引けなければ fallbackValues[index](無ければ空)。 */
