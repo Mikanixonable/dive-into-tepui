@@ -9,7 +9,7 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
 import { Vec3, add, v3, len, sub } from '../../math/vec3';
 import { fmtDist, fmtEnergy } from '../../hud/utils';
-import { Ship, PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from '../dynamic/dynamic-entity/ship';
+import { Ship, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from '../dynamic/dynamic-entity/ship';
 import { bulletReactionOf, type BulletType, type Shooter } from '../dynamic/dynamic-entity/bullet-reaction';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
@@ -192,8 +192,14 @@ export class Player extends Ship implements Controllable, ObjectPickable {
         : (saved.followPlan ? 'instant' : 'off');
       this.fineAttitude = saved.fineAttitude ?? false;
       this.trajectoryLineVisible = saved.showTrajectoryLine ?? false;
-      this.parts.splice(0, this.parts.length, ...saved.parts.map(partFromSaveData));
-      this.refreshFromParts();
+      if (Array.isArray(saved.parts)) {
+        const restoredParts = saved.parts.map(partFromSaveData).filter((part) => part !== null);
+        // 部品が壊れているスナップショットは、初期部品を残して船体を空にしない。
+        if (restoredParts.length > 0) {
+          this.parts.splice(0, this.parts.length, ...restoredParts);
+          this.refreshFromParts();
+        }
+      }
 
       if (saved.plan) {
         // 計画を保存時の起点から組み直す。起点より前のノードは復元できない。
@@ -343,7 +349,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     side: RadiatorSide | null = null,
   ): void {
     // 熱とダメージを入れ、放熱板パーツが壊れたらその場で破片を出す
-    this.motion.absorbHeat(BULLET_IMPACT_HEAT / PLAYER_MASS);
+    this.motion.absorbHeat(BULLET_IMPACT_HEAT / Math.max(this.motion.mass, 1e-9));
     const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
     this.applyDamageToParts(side === null ? damage : RADIATOR_BULLET_DAMAGE, damagedPart);
     if (side !== null && damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side, registry);
