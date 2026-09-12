@@ -190,38 +190,6 @@ main へは `/send-pr` で送る。区切りは次の 3 つ。**マージは mer
 - PR-B(小さな修正と計測): 手順 4〜7
 - PR-C(雲場の作り直し): 手順 8
 
-### 手順 6. エアグローを描画設定で切れるようにする
-
-**目的**: エアグローは採用する。ただし見え方を大きく変える描画は描画設定で切れるようにする方針
-なので、問題の切り分けのためにオフできるようにする。**切り替わるのは発光の項だけ**(決めたこと 7)。
-仕様が先行するので `/modify-feature` から入る。
-
-**これは負荷を下げる設定ではない。** 積分区間も刻みも、発光の項の計算そのものも、オフのまま残る。
-オフで消えるのは絵だけで、そこが切り分けに要る性質でもある。
-
-SPEC に足す文面(RENDERING.md「描画品質設定」節、「大気」の項の後):
-
-> - **エアグロー**: 夜側の地球の縁に淡く光る大気発光を描くかどうか。オフでも大気の積分の範囲と
->   刻みは変わらず、発光の項だけが消える。
-
-| ファイル | 何をするか |
-| --- | --- |
-| `DEVELOP/SPEC/RENDERING.md:155-` | 上の文面を足す |
-| `src/render/graphics-settings.ts` | `airglow` を足す(`kind: 'toggle'`、`group: 'element'`、ラベル「エアグロー」、プリセットは低・中・高すべて true — 今の見え方を既定に保つ) |
-| `src/render/atmosphere.ts` | `withAirglowEnabled(optics, enabled)` を足す。オンか `optics.airglow === undefined` なら optics をそのまま返し、オフなら `airglow.strength` だけを 0 にした光学を返す。**`altitude` と `scaleHeight` は残す** — `cutoffAltitude` がそれだけを見るので、打ち切り高度がオンのときと一致する |
-| `src/render/celestial/celestial-entity/celestial-view.ts:114` | `optics` を `withAirglowEnabled(optics, graphics.airglow)` にする。1 行下の `clouds: graphics.clouds ? … : null` と同じ、候補を組む時点での描画設定の適用 |
-| `tests/render/atmosphere.test.ts` | オフの光学の打ち切り高度がオンのときと一致し、かつ `airglow.strength` が 0 になるテストを足す。既存の 2 本(16-28 行)は光学の契約を見ているので残す |
-
-`atmosphere-integrator.ts:192-202` と `celestial-illumination.ts:190` は触らない。強さ 0 は既存の
-`else` の枝をそのまま通り、`atmosphereDraws` の入力(打ち切り高度・天頂光学的厚み)はどちらも
-エアグローで変わらないので、サンプル点の配分も同じになる。
-
-**達成条件と検証**:
-
-- `npm run typecheck`、`npm run test:render`。
-- `npm run dev` で夜側の地球の縁を見て、描画設定の「エアグロー」を切ると緑の帯が消え、入れると戻る。
-  **帯以外は変わらない** — 縁の外側の大気の裾の切れる位置も、昼側の空の色も動かない。
-
 ### 手順 7. 表面雲の GPU 時間を G バッファから分ける
 
 **目的**: 表面雲も雲影と同じくレイマーチで、G バッファの値に混ざっていると重さを読めない。手順 8 で
