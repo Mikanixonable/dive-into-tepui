@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 3,
+  "datasetId": "earth-pages-fixture",
+  "sourceManifestSha256": "9faebdbacffd9e67aa58d54addb96a9493a5eaf0a93e9ef10a25131728e4cb52",
+  "sourceManifest": "sources.json",
+  "provenance": {
+    "generator": "pages-fixture/1"
+  },
+  "terrainEncoding": {
+    "formatVersion": 3,
+    "layout": "normal-xyz-rgb8-roughness-a8",
+    "width": 260,
+    "height": 260,
+    "channels": 4,
+    "scalar": "UInt8",
+    "normalFrame": "body_fixed"
+  },
+  "climateMap": {
+    "width": 1024,
+    "height": 512,
+    "channels": 4,
+    "scalar": "UInt8"
+  },
+  "controlRegions": [
+    {
+      "id": "region-0",
+      "west": -180,
+      "south": -80,
+      "east": 180,
+      "north": 80
+    },
+    {
+      "id": "region-1",
+      "west": -180,
+      "south": -80,
+      "east": 180,
+      "north": 80
+    },
+    {
+      "id": "region-2",
+      "west": -180,
+      "south": -80,
+      "east": 180,
+      "north": 80
+    },
+    {
+      "id": "region-3",
+      "west": -180,
+      "south": -80,
+      "east": 180,
+      "north": 80
+    },
+    {
+      "id": "region-4",
+      "west": -180,
+      "south": -80,
+      "east": 180,
+      "north": 80
+    },
+    {
+      "id": "region-5",
+      "west": -180,
+      "south": -80,
+      "east": 180,
+      "north": 80
+    },
+    {
+      "id": "region-6",
+      "west": -180,
+      "south": -80,
+      "east": 180,
+      "north": 80
+    },
+    {
+      "id": "region-7",
+      "west": -180,
+      "south": -80,
+      "east": 180,
+      "north": 80
+    },
+    {
+      "id": "region-8",
+      "west": -180,
+      "south": -80,
+      "east": 180,
+      "north": 80
+    },
+    {
+      "id": "region-9",
+      "west": -180,
+      "south": -80,
+      "east": 180,
+      "north": 80
+    },
+    {
+      "id": "region-10",
+      "west": -180,
+      "south": -80,
+      "east": 180,
+      "north": 80
+    },
+    {
+      "id": "region-11",
+      "west": -180,
+      "south": -80,
+      "east": 180,
+      "north": 80
+    },
+    {
+      "id": "region-12",
+      "west": -180,
+      "south": -80,
+      "east": 180,
+      "north": 80
+    },
+    {
+      "id": "region-13",
+      "west": -180,
+      "south": -80,
+      "east": 180,
+      "north": 80
+    },
+    {
+      "id": "region-14",
+      "west": -180,
+      "south": -80,
+      "east": 180,
+      "north": 80
+    },
+    {
+      "id": "region-15",
+      "west": -180,
+      "south": -80,
+      "east": 180,
+      "north": 80
+    }
+  ],
+  "coverage": {
+    "kind": "sparse",
+    "minZoom": 5,
+    "maxZoom": 7,
+    "expectedTiles": null
+  },
+  "baseColor": "base/earth.jpg",
+  "baseTerrain": "base/earth.bin.gz",
+  "tileTemplates": {
+    "color": "tiles/{z}/{x}/{y}.jpg",
+    "terrain": "tiles/{z}/{x}/{y}.bin.gz"
+  },
+  "climateMaps": [
+    "climate/01.png",
+    "climate/02.png",
+    "climate/03.png",
+    "climate/04.png",
+    "climate/05.png",
+    "climate/06.png",
+    "climate/07.png",
+    "climate/08.png",
+    "climate/09.png",
+    "climate/10.png",
+    "climate/11.png",
+    "climate/12.png"
+  ],
+  "climateEncoding": {
+    "temperatureK": {
+      "min": 180,
+      "max": 330
+    },
+    "cloudFraction": {
+      "min": 0,
+      "max": 1
+    },
+    "orthometricElevation": {
+      "min": -1000,
+      "max": 9000
+    },
+    "landFraction": {
+      "min": 0,
+      "max": 1
+    },
+    "waterOrthometricElevationM": 0
+  },
+  "attribution": [
+    "deterministic Pages fixture"
+  ]
+}
