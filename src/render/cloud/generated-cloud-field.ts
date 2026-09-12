@@ -33,7 +33,7 @@ export class GeneratedCloudField implements CloudFieldSource {
   // 雲場のテクスチャ。出力場の所有権はこのクラスに残す。
   public get texture(): THREE.Texture { return this.field.texture; }
 
-  // 単位方向 direction での雲を、投影自身の uv で直に読む(実験環境が場の全域を出すための口)。
+  // 単位方向 direction での雲を、投影自身の uv で直に読む(cap の窓ぎめを通さない読み方)。
   public at(direction: Vec3Node): CloudSample { return this.field.at(direction); }
 
   // この場を焼く天気のモデル・気候・投影。prepare で焼いた中間場を読むときに使い、寿命はこのクラスが持つ。
