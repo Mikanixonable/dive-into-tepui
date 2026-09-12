@@ -4,7 +4,7 @@
 // **扁平な天体は、自転軸方向へ引き伸ばして真球にした空間で解く**(toSphereSpace)。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, PI, abs, and, clamp, dFdx, dFdy, dot, exp, float, greaterThan, greaterThanEqual, length,
+  Fn, If, PI, abs, and, clamp, dot, exp, float, greaterThan, greaterThanEqual, length,
   lessThan, max, min, mix, normalize, not, or, select, smoothstep, sqrt, sub, uniform, vec2,
   vec3,
 } from 'three/tsl';
@@ -14,7 +14,6 @@ import { airglowEmission } from '../airglow';
 import {
   AtmosphereCloudLayers, type CloudShellEvent, type AtmosphereCloudGeometry,
 } from './atmosphere-cloud-layers';
-import type { CloudLodMode } from '../cloud/cloud-field-sampler';
 import { shellAltitudeOf, type CloudSpecies } from './cloud-atmosphere-renderer';
 import type { AtmosphereBody } from '../atmosphere';
 import type { BoolNode, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
@@ -130,7 +129,6 @@ export class AtmosphereIntegrator {
   private readonly slot: BodySlot;
   // 積分の刻みを画素ごとにずらす種。
   private readonly blueNoise = new BlueNoise();
-  private readonly blueNoiseEnabled = uniform(1);
   // いま解く層の雲。
   private readonly cloudLayers: AtmosphereCloudLayers;
 
@@ -163,14 +161,6 @@ export class AtmosphereIntegrator {
   // 種類ごとに、雲の殻を描くかを置き直す。
   public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
     this.cloudLayers.setShellEnabled(species, enabled);
-  }
-
-  public setCloudBlueNoiseEnabled(enabled: boolean): void {
-    this.blueNoiseEnabled.value = enabled ? 1 : 0;
-  }
-
-  public setCloudLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
-    this.cloudLayers.setLodSampling(mode, fixedLevel);
   }
 
   // この層が解く天体 1 体ぶんの光学パラメータと雲を書き込む。cutoffRadius は大気の裾を
@@ -211,17 +201,12 @@ export class AtmosphereIntegrator {
   public contribution(
     rayOrigin: Vec3Node, rayDir: Vec3Node, opaqueDist: FloatNode,
   ): LayerContribution {
-    // 場を引く細かさを決める、画面 1 px が張る角。**分岐の外で取る** — 画面微分は
-    // 条件分岐の中では決まらない。
-    const pixelAngle = max(length(dFdx(rayDir)), length(dFdy(rayDir))).toVar();
     const ray = this.sphereSpaceRay(rayOrigin, rayDir);
     const segment = this.raySegment(ray, opaqueDist);
     const transmittance = vec3(1, 1, 1).toVar();
     const inscatter = vec3(0, 0, 0).toVar();
     If(segment.hitsAtmosphere, () => {
-      const shells = this.cloudLayers.build(
-        ray, segment, rayOrigin, rayDir, pixelAngle, this.cloudGeometry(),
-      );
+      const shells = this.cloudLayers.build(ray, segment, rayOrigin, rayDir, this.cloudGeometry());
       const layer = this.integrated(ray, segment, rayOrigin, rayDir, shells);
       transmittance.assign(layer.transmittance);
       inscatter.assign(layer.inscatter);
@@ -338,11 +323,7 @@ export class AtmosphereIntegrator {
       this.slot.steps, distanceAt,
       (distance) => this.mediumAt(
         rayOrigin.add(rayDir.mul(distance)), rayDir, this.cloudLayers.transmittanceAt(shells, distance)),
-      select(
-        greaterThan(this.blueNoiseEnabled, 0.5),
-        this.blueNoise.atScreenPixel(),
-        float(0),
-      ),
+      this.blueNoise.atScreenPixel(),
     );
     // 殻は区間を刻まず、雲層 renderer が合成した結果を大気積分へ適用する。
     return this.cloudLayers.compose(march.transmittance, march.radiance, shells);
