@@ -15,8 +15,17 @@ import {
   EARTH_BASE_COLOR_COMPONENTS,
   EARTH_BASE_COLOR_HEIGHT,
   EARTH_BASE_COLOR_WIDTH,
+  EARTH_LEGACY_BASE_COLOR_HEIGHT,
+  EARTH_LEGACY_BASE_COLOR_WIDTH,
   EARTH_TERRAIN_BYTES,
+  EARTH_TERRAIN_CHANNELS,
+  EARTH_TERRAIN_FORMAT_VERSION,
+  EARTH_TERRAIN_LAYOUT,
   EARTH_TERRAIN_PAYLOAD_BYTES,
+  EARTH_TERRAIN_SCALAR_UINT8,
+  readBaseColorJpeg,
+  validateManifest,
+  validateTileIndex,
 } from './contract.mjs';
 import { fixtureClimatePng } from './fixture-climate.mjs';
 
@@ -25,11 +34,11 @@ const execFileAsync = promisify(execFile);
 function terrainPayload({ z = 0, x = 0, y = 0 } = {}) {
   const payload = Buffer.alloc(EARTH_TERRAIN_PAYLOAD_BYTES);
   payload.write('ESTN', 0, 'ascii');
-  payload.writeUInt16LE(1, 4); payload.writeUInt16LE(32, 6);
+  payload.writeUInt16LE(EARTH_TERRAIN_FORMAT_VERSION, 4); payload.writeUInt16LE(32, 6);
   payload.writeUInt16LE(260, 8); payload.writeUInt16LE(260, 10);
   payload.writeUInt8(z, 12); payload.writeUInt8(0, 13);
   payload.writeUInt32LE(x, 14); payload.writeUInt32LE(y, 18);
-  payload.writeUInt8(4, 22); payload.writeUInt8(1, 23);
+  payload.writeUInt8(EARTH_TERRAIN_CHANNELS, 22); payload.writeUInt8(EARTH_TERRAIN_SCALAR_UINT8, 23);
   payload.writeUInt32LE(EARTH_TERRAIN_BYTES, 24); payload.writeUInt32LE(0, 28);
   return payload;
 }
@@ -38,11 +47,11 @@ function baseTerrainPayload() {
   const body = Buffer.concat([terrainPayload({ x: 0 }), terrainPayload({ x: 1 })]);
   const payload = Buffer.alloc(32 + body.length);
   payload.write('ESTB', 0, 'ascii');
-  payload.writeUInt16LE(1, 4); payload.writeUInt16LE(32, 6);
+  payload.writeUInt16LE(EARTH_TERRAIN_FORMAT_VERSION, 4); payload.writeUInt16LE(32, 6);
   payload.writeUInt16LE(260, 8); payload.writeUInt16LE(260, 10);
   payload.writeUInt8(0, 12); payload.writeUInt8(0, 13);
   payload.writeUInt32LE(2, 14); payload.writeUInt32LE(1, 18);
-  payload.writeUInt8(4, 22); payload.writeUInt8(1, 23);
+  payload.writeUInt8(EARTH_TERRAIN_CHANNELS, 22); payload.writeUInt8(EARTH_TERRAIN_SCALAR_UINT8, 23);
   payload.writeUInt32LE(body.length, 24); payload.writeUInt32LE(0, 28);
   body.copy(payload, 32);
   return payload;
@@ -77,11 +86,14 @@ function jpegFixture({ width = EARTH_BASE_COLOR_WIDTH, height = EARTH_BASE_COLOR
 
 function manifest(sourceManifestSha256, datasetId = 'earth-fixture-a') {
   return {
-    schemaVersion: 1, datasetId, sourceManifestSha256,
+    schemaVersion: 2, datasetId, sourceManifestSha256,
     provenance: { generator: 'fixture/1' },
+    terrainEncoding: { formatVersion: EARTH_TERRAIN_FORMAT_VERSION, layout: EARTH_TERRAIN_LAYOUT,
+      width: 260, height: 260, channels: EARTH_TERRAIN_CHANNELS, scalar: 'UInt8',
+      materialClasses: { water: 0, land: 1, ice: 2, unknown: 255 } },
     climateMap: { width: 1024, height: 512, channels: 4, scalar: 'UInt8' },
     controlRegions: Array.from({ length: 16 }, (_, index) => ({ id: `region-${index}`, west: -180, south: -80, east: 180, north: 80 })),
-    coverage: { kind: 'sparse', maxZoom: 7 },
+    coverage: { kind: 'sparse', minZoom: 4, maxZoom: 7, expectedTiles: null },
     baseColor: 'base/earth.jpg', baseTerrain: 'base/earth.bin.gz', tileIndexUrl: 'tile-index.json',
     climateMaps: Array.from({ length: 12 }, (_, index) => `climate/${String(index + 1).padStart(2, '0')}.png`),
     climateEncoding: {
@@ -98,15 +110,15 @@ async function createBundle() {
   const source = { schemaVersion: 1, datasetId: 'earth-fixture-a', sources: [{ id: 'fixture', inputSha256: [] }] };
   const sourceHash = canonicalSha256(source);
   const color = jpegFixture();
-  const terrain = terrainPayload();
+  const terrain = terrainPayload({ z: 4 });
   const compressedTerrain = gzipSync(terrain, { mtime: 0 });
   const manifestValue = manifest(sourceHash);
   const tile = {
-    schemaVersion: 1, datasetId: manifestValue.datasetId,
+    schemaVersion: 2, datasetId: manifestValue.datasetId,
     entries: [{
-      key: '0/0/0', z: 0, x: 0, y: 0,
-      color: { url: 'tiles/0/0/0.jpg', sha256: createHash('sha256').update(color).digest('hex'), encodedBytes: color.length, payloadBytes: color.length },
-      terrain: { url: 'tiles/0/0/0.bin.gz', sha256: createHash('sha256').update(terrain).digest('hex'), encodedBytes: compressedTerrain.length, payloadBytes: terrain.length },
+      key: '4/0/0', z: 4, x: 0, y: 0,
+      color: { url: 'tiles/4/0/0.jpg', sha256: createHash('sha256').update(color).digest('hex'), encodedBytes: color.length, payloadBytes: color.length },
+      terrain: { url: 'tiles/4/0/0.bin.gz', sha256: createHash('sha256').update(terrain).digest('hex'), encodedBytes: compressedTerrain.length, payloadBytes: terrain.length },
     }],
   };
   await writeFile(join(root, 'sources.json'), `${JSON.stringify(source)}\n`);
@@ -118,9 +130,9 @@ async function createBundle() {
   for (const [index, path] of manifestValue.climateMaps.entries()) {
     await writeFile(join(root, path), fixtureClimatePng(index));
   }
-  await mkdir(join(root, 'tiles/0/0'), { recursive: true });
-  await writeFile(join(root, 'tiles/0/0/0.jpg'), color);
-  await writeFile(join(root, 'tiles/0/0/0.bin.gz'), compressedTerrain);
+  await mkdir(join(root, 'tiles/4/0'), { recursive: true });
+  await writeFile(join(root, 'tiles/4/0/0.jpg'), color);
+  await writeFile(join(root, 'tiles/4/0/0.bin.gz'), compressedTerrain);
   return { root, source, manifest: manifestValue, tile, color, terrain };
 }
 
@@ -133,6 +145,26 @@ async function run() {
   const output = await mkdtemp(join(tmpdir(), 'earth-surface-distribution-'));
   const before = await readFile(join(fixture.root, 'earth-surface.json'));
   try {
+    const legacyManifest = {
+      ...fixture.manifest,
+      schemaVersion: 1,
+      coverage: { kind: 'sparse', maxZoom: 7, expectedTiles: null },
+    };
+    assert.doesNotThrow(() => validateManifest(legacyManifest));
+    assert.doesNotThrow(() => readBaseColorJpeg(jpegFixture({
+      width: EARTH_LEGACY_BASE_COLOR_WIDTH, height: EARTH_LEGACY_BASE_COLOR_HEIGHT,
+    }), {
+      width: EARTH_LEGACY_BASE_COLOR_WIDTH, height: EARTH_LEGACY_BASE_COLOR_HEIGHT,
+      components: EARTH_BASE_COLOR_COMPONENTS,
+    }));
+    const legacyLowEntry = {
+      ...fixture.tile.entries[0], key: '0/0/0', z: 0, x: 0, y: 0,
+      color: { ...fixture.tile.entries[0].color, url: 'tiles/0/0/0.jpg' },
+      terrain: { ...fixture.tile.entries[0].terrain, url: 'tiles/0/0/0.bin.gz' },
+    };
+    assert.equal(validateTileIndex({ ...fixture.tile, entries: [legacyLowEntry, fixture.tile.entries[0]] }, legacyManifest).entries.length, 2);
+    assert.throws(() => validateTileIndex({ ...fixture.tile, entries: [legacyLowEntry, fixture.tile.entries[0]] }, fixture.manifest), /invalid z/);
+
     await packageEarthSurface({ inputRoot: fixture.root, outputRoot: output, sourceManifestPath: 'sources.json' });
     const packaged = join(output, 'earth', fixture.manifest.datasetId);
     const result = await checkEarthSurface({ inputRoot: packaged });
@@ -141,15 +173,15 @@ async function run() {
     assert.match(cli.stdout, /earth-surface:check: earth-fixture-a/);
     for (const path of [
       'earth-surface.json', 'tile-index.json', 'attribution.json', fixture.manifest.baseColor, fixture.manifest.baseTerrain,
-      ...fixture.manifest.climateMaps, 'tiles/0/0/0.jpg', 'tiles/0/0/0.bin.gz',
+      ...fixture.manifest.climateMaps, 'tiles/4/0/0.jpg', 'tiles/4/0/0.bin.gz',
       'receipt.json',
     ]) await readFile(join(packaged, path));
     assert.deepEqual(await readFile(join(fixture.root, 'earth-surface.json')), before);
 
     const baseColorPath = join(packaged, fixture.manifest.baseColor);
     for (const [replacement, pattern] of [
-      [jpegFixture({ width: 260, height: 260 }), /baseColor JPEG must be 512x256 with 3 components/],
-      [jpegFixture({ components: 1 }), /baseColor JPEG must be 512x256 with 3 components/],
+      [jpegFixture({ width: 260, height: 260 }), /baseColor JPEG must be 8192x4096 with 3 components/],
+      [jpegFixture({ components: 1 }), /baseColor JPEG must be 8192x4096 with 3 components/],
       [Buffer.from('not-a-jpeg'), /baseColor JPEG must start with SOI/],
       [jpegFixture().subarray(0, -2), /baseColor JPEG scan is truncated/],
       [(() => { const malformed = jpegFixture(); malformed[4] = 0; malformed[5] = 1; return malformed; })(), /baseColor JPEG marker length is invalid/],
@@ -159,10 +191,10 @@ async function run() {
     }
     await writeFile(baseColorPath, fixture.color);
 
-    const changedColor = await readFile(join(packaged, 'tiles/0/0/0.jpg'));
-    changedColor[0] ^= 1; await writeFile(join(packaged, 'tiles/0/0/0.jpg'), changedColor);
+    const changedColor = await readFile(join(packaged, 'tiles/4/0/0.jpg'));
+    changedColor[0] ^= 1; await writeFile(join(packaged, 'tiles/4/0/0.jpg'), changedColor);
     await expectFailure(() => checkEarthSurface({ inputRoot: packaged }), /color .*hash mismatch/);
-    await writeFile(join(packaged, 'tiles/0/0/0.jpg'), fixture.color);
+    await writeFile(join(packaged, 'tiles/4/0/0.jpg'), fixture.color);
 
     const sourcePath = join(fixture.root, 'sources.json');
     const sourceChanged = { ...fixture.source, datasetId: 'earth-other' };
@@ -176,11 +208,11 @@ async function run() {
     await expectFailure(() => packageEarthSurface({ inputRoot: fixture.root, outputRoot: output, sourceManifestPath: 'sources.json' }), /datasetId mismatch/);
     index.datasetId = fixture.manifest.datasetId; await writeFile(indexPath, JSON.stringify(index));
 
-    index.entries[0].color.url = 'tiles/../0/0/0.jpg'; await writeFile(indexPath, JSON.stringify(index));
+    index.entries[0].color.url = 'tiles/../4/0/0.jpg'; await writeFile(indexPath, JSON.stringify(index));
     await expectFailure(() => checkEarthSurface({ inputRoot: fixture.root }), /invalid path/);
-    index.entries[0].color.url = 'tiles/0/0/0.jpg'; await writeFile(indexPath, JSON.stringify(index));
+    index.entries[0].color.url = 'tiles/4/0/0.jpg'; await writeFile(indexPath, JSON.stringify(index));
 
-    const terrainPath = join(fixture.root, 'tiles/0/0/0.bin.gz');
+    const terrainPath = join(fixture.root, 'tiles/4/0/0.bin.gz');
     const mismatch = terrainPayload({ x: 1 });
     const mismatchCompressed = gzipSync(mismatch, { mtime: 0 });
     index.entries[0].terrain.encodedBytes = mismatchCompressed.length;
@@ -192,7 +224,20 @@ async function run() {
     index.entries[0].terrain.sha256 = createHash('sha256').update(fixture.terrain).digest('hex');
     await writeFile(terrainPath, gzipSync(fixture.terrain, { mtime: 0 }));
 
-    index.entries.push({ ...index.entries[0], key: '0/0/0', color: index.entries[0].color, terrain: index.entries[0].terrain });
+    const legacy = Buffer.from(fixture.terrain);
+    legacy.writeUInt16LE(1, 4);
+    const legacyCompressed = gzipSync(legacy, { mtime: 0 });
+    index.entries[0].terrain.encodedBytes = legacyCompressed.length;
+    index.entries[0].terrain.sha256 = createHash('sha256').update(legacy).digest('hex');
+    await writeFile(indexPath, JSON.stringify(index));
+    await writeFile(terrainPath, legacyCompressed);
+    await expectFailure(() => checkEarthSurface({ inputRoot: fixture.root }), /ESTN header key or format mismatch/);
+    index.entries[0].terrain.encodedBytes = gzipSync(fixture.terrain, { mtime: 0 }).length;
+    index.entries[0].terrain.sha256 = createHash('sha256').update(fixture.terrain).digest('hex');
+    await writeFile(indexPath, JSON.stringify(index));
+    await writeFile(terrainPath, gzipSync(fixture.terrain, { mtime: 0 }));
+
+    index.entries.push({ ...index.entries[0], key: '4/0/0', color: index.entries[0].color, terrain: index.entries[0].terrain });
     await writeFile(indexPath, JSON.stringify(index));
     await expectFailure(() => checkEarthSurface({ inputRoot: fixture.root, sourceManifestPath: 'sources.json' }), /duplicate tile-index key/);
     console.log('earth-surface contract fixtures: ok');
