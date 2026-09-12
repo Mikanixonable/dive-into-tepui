@@ -90,6 +90,8 @@ export class Game {
   // ポーズ中か。時間倍率とは独立に時間を止める。
   private _isPaused = false;
   public get isPaused(): boolean { return this._isPaused; }
+  // 積分が進んでいるか。一時停止中と決着後は止まる。
+  private get simulating(): boolean { return !this._isPaused && this.activeStage.isPlaying; }
 
   private readonly _celestialSystem: CelestialSystem;
   public get celestialSystem(): CelestialSystem { return this._celestialSystem; }
@@ -149,7 +151,7 @@ export class Game {
     // シェーダを組む前に、最初に描かれるフレームと同じ表示状態を時間の進まない1フレームで作る —
     // 天体表面の分割段のように update/sync が決めるまで現れない表示物が、事前コンパイルから漏れる。
     game.update(0, gs.viewport);
-    game.sync(graphics, renderStyle, gs.viewport);
+    game.sync(graphics, renderStyle, gs.viewport, 0);
     await progress.enter('shaders');
     // カメラは直前の sync が確定させたものを使う — 捨てる1フレームと同じ行列で組ませる。
     await gs.pipeline.compile(
@@ -257,7 +259,7 @@ export class Game {
       this.markerManager, this.navTarget, this.dynamicSystem, celestialSystem.celestialMotions,
     );
     this.controlSelection = new ControlSelection(
-      initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._worldSfx, this._hud,
+      initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._hud,
     );
     this._hud.burnManagementPanel.setHandlers({
       onAttach: () => { this.activeControllable?.boosters?.attach(); },
@@ -325,8 +327,6 @@ export class Game {
 
   // 時間を止め、連続指令を畳む。
   public pause(): void {
-    this._worldSfx.setThrust(false);
-    this._worldSfx.setRcs(false);
     this.dynamicSystem.pause();
     this._isPaused = true;
   }
@@ -375,7 +375,7 @@ export class Game {
     this.handleInput(dt);
     this.sections.exit(SECTION.input);
 
-    if (!this._isPaused && this.activeStage.isPlaying) this.advanceSimulation(dt);
+    if (this.simulating) this.advanceSimulation(dt);
     // ここから先はポーズ中も決着後も通す。決着は積分を止めないので、飛ばすと描画原点になる
     // カメラ位置だけが絶対 ECI に取り残され、追従対象が軌道速度で流れて即フレームアウトする。
     const activeControllable = this.activeControllable;
@@ -500,7 +500,10 @@ export class Game {
   // ------------------------------------------------------------------ sync
 
   // 1フレームぶんの sync フェーズ。update が確定させた表示窓とカメラを表示物へ写す。
-  public sync(graphics: GraphicsSettingsData, style: RenderStyle, viewport: Viewport): void {
+  // nowMs はフレームの先頭で1度だけ読んだ実時刻 [ms]。
+  public sync(
+    graphics: GraphicsSettingsData, style: RenderStyle, viewport: Viewport, nowMs: number,
+  ): void {
     const controlled = this.activeControllable;
     // update() が確定させた、このフレームの表示窓。
     const displayWindow = this.displayWindowManager.current;
@@ -536,7 +539,7 @@ export class Game {
       : undefined;
 
     this._celestialSystem.sync(
-      displayTime, camera, this.cameraSystem, graphics, style,
+      displayTime, nowMs, camera, this.cameraSystem, graphics, style,
       this.mapDisplay.current, this.grid.current, this.orbitGuide.current, visibilityPolicy, this.markerManager,
     );
     // 本数の警告は、天体系がこのフレームに組んだ軌道ガイド線から出す。
@@ -557,7 +560,7 @@ export class Game {
       camera.mode === 'map',
       timeLabel,
     );
-    syncControlledLoopSfx(this._worldSfx, controlled, displayTime, visibilityPolicy);
+    syncControlledLoopSfx(this._worldSfx, controlled, displayTime, visibilityPolicy, this.simulating);
     // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraView.sync より後に通す。
     this.flashEffectsView.sync(this.flashEffects.live, camera);
 

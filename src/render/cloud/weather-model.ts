@@ -162,8 +162,8 @@ const MEAN_CLOUDINESS_WET = 0.85;
 export class WeatherModel {
   // 大循環の平均風。地表付近と上層の背景風をここから引く。
   private readonly atmosphericWind = new AtmosphericWindField();
-  private readonly surfaceCirculation = new Circulation(SURFACE_BANDS);
-  private readonly upperCirculation = new Circulation(UPPER_BANDS);
+  private readonly surfaceCirculation: Circulation;
+  private readonly upperCirculation: Circulation;
   private readonly rossbyWave = new RossbyWave();
   private readonly cyclones: Cyclones;
   private readonly pressureNoise: CirculatingNoise;
@@ -179,6 +179,8 @@ export class WeatherModel {
     private readonly surfaceRadius: number, private readonly rotationPeriod: number,
   ) {
     const texel = projection.texelAngle;
+    this.surfaceCirculation = new Circulation(SURFACE_BANDS, surfaceRadius);
+    this.upperCirculation = new Circulation(UPPER_BANDS, surfaceRadius);
     this.cyclones = new Cyclones(surfaceRadius, rotationPeriod);
     this.pressureNoise = new CirculatingNoise(this.surfaceCirculation, PRESSURE_NOISE, texel);
     this.transport = new WeatherTransport(
