@@ -8,7 +8,7 @@
 // AtmosphereCloudLayersが所有し、ここでは二重に適用しない。
 import * as THREE from 'three/webgpu';
 import { dot, greaterThan, max, min, uniform, vec4 } from 'three/tsl';
-import { CloudFieldSampler, type CloudLodMode } from '../cloud/cloud-field-sampler';
+import { CloudFieldSampler } from '../cloud/cloud-field-sampler';
 import { shellAirmassNode, transmittanceFromColumnOpticalDepthNode } from '../cloud/cloud-optics-node';
 import { CloudShapeEvaluator } from '../cloud/cloud-shape-evaluator';
 import type { AtmosphereClouds } from '../atmosphere';
@@ -139,10 +139,6 @@ export class CloudAtmosphereRenderer {
     this.enabled[species].value = enabled ? 1 : 0;
   }
 
-  public setLodSampling(mode: CloudLodMode, fixedLevel = 0): void {
-    this.fieldSampler.setLodSampling(mode, fixedLevel);
-  }
-
   // その種類の殻が立っているか。
   public present(species: CloudSpecies): BoolNode {
     return greaterThan(this.shellPresence(species), 0);
@@ -150,15 +146,14 @@ export class CloudAtmosphereRenderer {
 
   // 殻と交わる 1 点が視線へ与える減衰と放射輝度。offset は天体中心から交点へのベクトル、
   // rayDir は視線の向き、sunDir は交点から恒星への向き(いずれも天体を真球にした空間で、
-  // 向きは単位長)。sunRadiance はその交点へ届く恒星の輝度、footprint はその交点で画面 1 px
-  // が張る実寸 [m]。
+  // 向きは単位長)。sunRadiance はその交点へ届く恒星の輝度。
   public scatteredAt(
     species: CloudSpecies, shellRadius: FloatNode, offset: Vec3Node, rayDir: Vec3Node,
-    sunDir: Vec3Node, sunRadiance: Vec3Node, footprint: FloatNode,
+    sunDir: Vec3Node, sunRadiance: Vec3Node,
   ): CloudShellSample {
     const knob = cloudShellKnobOf(species);
     const up = offset.div(shellRadius);
-    const field = this.fieldAt(up, footprint, shellRadius);
+    const field = this.fieldAt(up);
     const columnOpticalDepth = opticalDepthOf(species, field).mul(this.shellPresence(species));
     // 視線が層を斜めに抜けるぶんの倍率。**水平では発散する**ので、層の厚みぶんの弦 √(2RΔh) を
     // 通る視線を上限に取る(地球の 1 km 厚なら光路 226 km、天頂の 113 倍)。
@@ -179,13 +174,8 @@ export class CloudAtmosphereRenderer {
     return this.active.mul(this.enabled[species]);
   }
 
-  // 天体を真球にした空間の単位方向 up における場。UVは共有samplerが積雲の殻と同じ規則で読む。
-  // **mip 段は明示で渡す** — 交点の uv は天体の縁と不透明面の際で
-  // 画面の隣の画素と続かず、画面微分から選ばれる段が当てにならない。
-  private fieldAt(up: Vec3Node, footprint: FloatNode, shellRadius: FloatNode): CloudSample {
-    return this.fieldSampler.sampleCloud(
-      this.bodyFromWorld.mul(vec4(up, 0)).xyz,
-      this.fieldSampler.lodForWidth(footprint, shellRadius),
-    );
+  // 天体を真球にした空間の単位方向 up における場。UV は共有 sampler が積雲の殻と同じ規則で読む。
+  private fieldAt(up: Vec3Node): CloudSample {
+    return this.fieldSampler.sampleCloud(this.bodyFromWorld.mul(vec4(up, 0)).xyz);
   }
 }
