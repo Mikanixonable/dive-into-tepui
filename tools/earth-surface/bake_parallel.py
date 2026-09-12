@@ -51,7 +51,6 @@ def _write_parallel(manifest, manifest_path, raw_root, output_root, workers, max
     coverage_kind = "complete" if max_zoom == 7 else "sparse"
     result_manifest = bake.global_manifest(manifest, "sources.json", source_hash,
                                            climate_paths, coverage_kind, 7, "source")
-    entries = None
     try:
         renderer = create_real_renderer(manifest, raw_root)
         climate_values = renderer.climate_maps()
@@ -63,13 +62,13 @@ def _write_parallel(manifest, manifest_path, raw_root, output_root, workers, max
             destination.write_bytes(data)
         (staging / "sources.json").write_bytes(source_file.read_bytes())
 
-        tile_index = staging / "tile-index.json"
-        entries = tile_index.open("w", encoding="utf-8")
-        entries.write(json.dumps({"schemaVersion": 2, "datasetId": manifest["datasetId"]},
-                                 ensure_ascii=False)[:-1])
-        entries.write(', "entries": [')
-        first = True
         base_color_tiles = []
+        for key in bake.base_color_tile_keys():
+            color, _ = renderer.render_tile(key)
+            if (not isinstance(color, (bytes, bytearray)) or len(color) < 4
+                    or bytes(color[:2]) != b"\xff\xd8" or bytes(color[-2:]) != b"\xff\xd9"):
+                raise ValueError(f"base color rendererがJPEGを返しませんでした: {key}")
+            base_color_tiles.append(bytes(color))
         keys = bake.global_tile_keys(max_zoom)
         context = multiprocessing.get_context("spawn")
         with ProcessPoolExecutor(max_workers=workers, mp_context=context,
@@ -80,30 +79,15 @@ def _write_parallel(manifest, manifest_path, raw_root, output_root, workers, max
                         or bytes(color[:2]) != b"\xff\xd8" or bytes(color[-2:]) != b"\xff\xd9"):
                     raise ValueError(f"color rendererがJPEGを返しませんでした: {key}")
                 bake.validate_terrain_tile(terrain, key, hashlib.sha256(terrain).hexdigest())
-                z, x, y = key
-                color_url = f"tiles/{z}/{x}/{y}.jpg"
-                terrain_url = f"tiles/{z}/{x}/{y}.bin.gz"
+                color_url, terrain_url = bake.tile_urls(key)
                 color_path = staging / color_url
                 terrain_path = staging / terrain_url
                 color_path.parent.mkdir(parents=True, exist_ok=True)
                 color_path.write_bytes(color)
                 encoded = gzip.compress(terrain, mtime=0)
                 terrain_path.write_bytes(encoded)
-                if z == bake.EARTH_TILE_MIN_Z:
-                    base_color_tiles.append(bytes(color))
-                entry = {"key": f"{z}/{x}/{y}", "z": z, "x": x, "y": y,
-                         "color": {"url": color_url, "sha256": hashlib.sha256(color).hexdigest(),
-                                   "encodedBytes": len(color), "payloadBytes": len(color)},
-                         "terrain": {"url": terrain_url, "sha256": hashlib.sha256(terrain).hexdigest(),
-                                     "encodedBytes": len(encoded), "payloadBytes": len(terrain)}}
-                if not first:
-                    entries.write(",")
-                entries.write(json.dumps(entry, ensure_ascii=False, separators=(",", ":")))
-                first = False
                 if count == 1 or count % 100 == 0:
                     print(f"earth-surface: {count}/{len(keys)} tiles", file=sys.stderr, flush=True)
-        entries.write("]}\n")
-        entries.close()
         if len(base_color_tiles) != bake.BASE_COLOR_ROOT_COUNT:
             raise ValueError("base colorにはz4の512枚が必要です")
         base = staging / "base"
@@ -123,8 +107,6 @@ def _write_parallel(manifest, manifest_path, raw_root, output_root, workers, max
             shutil.rmtree(output)
         staging.rename(output)
     except Exception:
-        if entries is not None and not entries.closed:
-            entries.close()
         shutil.rmtree(staging, ignore_errors=True)
         raise
 
@@ -141,7 +123,7 @@ def main():
     args = parser.parse_args()
     if type(args.workers) is not int or args.workers < 1:
         parser.error("--workersは1以上の整数が必要です")
-    if type(args.max_zoom) is not int or not bake.EARTH_TILE_MIN_Z <= args.max_zoom <= bake.EARTH_TILE_MAX_Z:
+    if type(args.max_zoom) is not int or not bake.EARTH_BASE_COLOR_Z <= args.max_zoom <= bake.EARTH_TILE_MAX_Z:
         parser.error("--max-zoomは4..7の整数が必要です")
     manifest = bake._fetch.load_manifest(args.manifest)
     _write_parallel(manifest, args.manifest, args.raw_root, args.output, args.workers,
