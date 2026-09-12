@@ -25,7 +25,10 @@ export interface EarthSurfaceMaterialBinding {
   dispose(): void;
 }
 
+// 未取得のbase地形を平面法線・最大粗さで埋めるRGBA8データを作る。
+// 全球fallback用の楕円体法線と最大粗さをRGBA8へ焼く。
 function defaultTerrainData(): Uint8Array {
+  // 各画素を地理座標へ対応させ、楕円体の放射法線を符号化する。
   const data = new Uint8Array(EARTH_BASE_TERRAIN_WIDTH * EARTH_BASE_TERRAIN_HEIGHT * 4);
   for (let y = 0; y < EARTH_BASE_TERRAIN_HEIGHT; y++) {
     const latitude = Math.PI * (0.5 - (y + 0.5) / EARTH_BASE_TERRAIN_HEIGHT);
@@ -42,6 +45,7 @@ function defaultTerrainData(): Uint8Array {
   return data;
 }
 
+// fallback地形を読むための線形RGBA8テクスチャを組む。
 function createBaseTerrainTexture(): { readonly texture: THREE.DataTexture; readonly data: Uint8Array } {
   const data = defaultTerrainData();
   const texture = new THREE.DataTexture(

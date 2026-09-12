@@ -13,6 +13,9 @@ const OVERLAY_LAYER = 3;
 // 太陽光の影を落とす不透明メッシュ(艦艇・基地・デブリなど)の層。**天体の球はここへ入れない** —
 // 天体の影は解析式で厳密に解いており、影マップにも入れると半影の途中で二重に効く。
 export const SHADOW_CASTER_LAYER = 4;
+// 不透明な雲頂の殻のチャンネル。書き出す素材は LIT_OPAQUE_LAYER と同じだが、G バッファを
+// 2 回の render() に分けて雲殻だけの GPU 時間を読むために別のチャンネルへ置く。
+export const LIT_CLOUD_SHELL_LAYER = 5;
 
 // 3D UI パスが見るチャンネル。呼び出し側は camera.layers.mask を呼び出し前の値へ戻す責任を持つ。
 export function setOverlayPassLayers(camera: THREE.Camera): void {
@@ -46,6 +49,14 @@ function isStandardMesh(obj: THREE.Object3D): boolean {
 export function markLitOpaque(root: THREE.Object3D): void {
   root.traverse((obj) => {
     if (isStandardMesh(obj)) obj.layers.set(LIT_OPAQUE_LAYER);
+  });
+}
+
+// root 以下を走査し、標準マテリアルを持つ Mesh を雲殻のチャンネルだけへ置く。印の付け方は
+// markLitOpaque と同じで、置き先のチャンネルだけが違う。
+export function markLitCloudShell(root: THREE.Object3D): void {
+  root.traverse((obj) => {
+    if (isStandardMesh(obj)) obj.layers.set(LIT_CLOUD_SHELL_LAYER);
   });
 }
 

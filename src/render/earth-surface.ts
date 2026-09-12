@@ -47,6 +47,7 @@ export interface EarthSurfaceMaterialAttachment extends CelestialSurfaceMaterial
   readonly prepare?: () => void;
 }
 
+// 材質差し替えを受けられる天体表面かを判定する。
 function isMaterialHost(
   surface: CelestialSurfaceLike,
 ): surface is CelestialSurfaceLike & CelestialSurfaceMaterialHost {
@@ -266,7 +267,9 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.projectionCache.reset();
   }
 
+  // 準備済み詳細材質をfallbackへ接続し、以後のフレーム同期を切り替える。
   private activatePendingMaterial(): void {
+    // 準備済み材質を検証し、表示中のfallbackへ差し替える。
     const material = this.pendingMaterialValue;
     if (material === null) return;
     this.pendingMaterialValue = null;
