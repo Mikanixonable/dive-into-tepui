@@ -56,6 +56,7 @@ export function earthSurfaceDetailLodNode(z: FloatNode): FloatNode {
   return min(max(z, EARTH_TILE_MIN_Z), EARTH_TILE_MAX_Z);
 }
 
+// 詳細配列の指定層をクランプして標本する。
 function sampleArray(textureValue: THREE.Texture, uv: Vec2Node, z: FloatNode, layer: FloatNode): Vec4Node {
   // DataArrayTextureの層はdepthへ渡す。base層(255)は後段でbase画像へ切り替えるため、
   // 配列の範囲内へクランプした値だけを実際のサンプラへ渡す。
@@ -64,7 +65,9 @@ function sampleArray(textureValue: THREE.Texture, uv: Vec2Node, z: FloatNode, la
   return texture(textureValue, earthSurfaceTileUvNode(uv, safeZ)).depth(int(safeLayer)).level(float(0));
 }
 
+// 全球base画像を地理UVで標本する。
 function sampleBase(textureValue: THREE.Texture, uv: Vec2Node): Vec4Node {
+  // 全球base画像を地理UVで標本する。
   return texture(textureValue, uv).level(float(0));
 }
 
@@ -73,6 +76,7 @@ function sampleLodTexture(
   detailTexture: THREE.Texture, baseTexture: THREE.Texture, uv: Vec2Node, z: FloatNode,
   layer: FloatNode, parentLayer: FloatNode, fade: FloatNode,
 ): Vec4Node {
+  // ページ表の層を読み、必要なときだけ親層とのフェードを適用する。
   const currentBase = greaterThanEqual(layer, EARTH_BASE_LAYER);
   const parentBase = greaterThanEqual(parentLayer, EARTH_BASE_LAYER);
   return Fn(() => {
@@ -106,6 +110,7 @@ export function earthSurfaceMaterialNodes(
   textures: EarthSurfaceMaterialNodeTextures,
   inputs: EarthSurfaceMaterialNodeInputs,
 ): EarthSurfaceMaterialNodes {
+  // 色・roughness・法線を同じページ表解決から生成する。
   configureEarthSurfaceTexture(textures.pageTable, 'pageTable');
   configureEarthSurfaceTexture(textures.color, 'color');
   configureEarthSurfaceTexture(textures.terrain, 'terrain');
@@ -144,6 +149,8 @@ export function createEarthSurfaceNodeMaterial(
   return material;
 }
 
+// 詳細材質を使えるかどうかをbaseフォールバック契約へ変換する。
 export function earthSurfaceMaterialCapabilities(unsupported: boolean): EarthSurfaceMaterialCapabilities {
+  // 詳細材質を使えるかどうかをbaseフォールバック契約へ変換する。
   return { useBaseFallback: unsupported };
 }

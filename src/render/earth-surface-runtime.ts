@@ -23,14 +23,17 @@ export interface EarthSurfaceBootstrapOptions {
   readonly fallback?: EarthSurfaceSource | null;
 }
 
+// ビルド時の配信先を読む。未定義の開発環境では空文字を返す。
 function configuredBaseUrl(): string {
   return typeof __EARTH_SURFACE_BASE_URL__ === 'string' ? __EARTH_SURFACE_BASE_URL__ : '';
 }
 
+// ビルド時に個別指定されたmanifest URLを読む。
 function configuredManifestUrl(): string {
   return typeof __EARTH_SURFACE_MANIFEST_URL__ === 'string' ? __EARTH_SURFACE_MANIFEST_URL__ : '';
 }
 
+// 本番設定へ渡すURLが絶対URLかを検査する。
 function parseAbsoluteUrl(value: string): URL {
   try {
     return new URL(value);
@@ -39,6 +42,7 @@ function parseAbsoluteUrl(value: string): URL {
   }
 }
 
+// 開発用ホスト名を本番配信先から除外する。
 function isLocalHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase().replace(/\.$/, '');
   return normalized === 'localhost'
@@ -68,6 +72,7 @@ export function earthSurfaceManifestUrl(
   return new URL('earth-surface/earth-surface.json', documentBase).toString();
 }
 
+// fetchやJSONの失敗をBootstrapResultで扱えるErrorへ正規化する。
 function errorOf(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
@@ -84,6 +89,7 @@ export async function bootstrapEarthSurface(
   }
   const fetchImpl = options.fetchImpl ?? fetch;
   try {
+    // manifestを先に確定し、datasetIdとwire形式の検査まで成功した版だけをreadyにする。
     const response = await fetchImpl(manifestUrl);
     if (!response.ok) throw new Error('Earth surface manifest HTTP ' + response.status);
     const value = await response.json() as EarthSurfaceAssetManifest;

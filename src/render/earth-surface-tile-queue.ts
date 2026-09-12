@@ -51,9 +51,12 @@ class PermitPool {
 
   public constructor(private readonly capacity: number) {}
 
+  // 空き枠を待ち、返却関数を一度だけ発行する。
   public acquire(signal?: AbortSignal): Promise<() => void> {
+    // 中断可能な待機者を登録し、pumpで枠を受け取る。
     if (signal?.aborted) return Promise.reject(new DOMException('Request was aborted', 'AbortError'));
     return new Promise((resolve, reject) => {
+      // 待機列から自身を取り除いて失敗させる。
       const abort = (): void => {
         const index = this.waiting.indexOf(waiter);
         if (index === -1) return;
@@ -67,7 +70,9 @@ class PermitPool {
     });
   }
 
+  // 待機列から中断されていない要求へ枠を配る。
   private pump(): void {
+    // 利用可能な枠を待機者へ順番に渡す。
     while (this.active < this.capacity && this.waiting.length > 0) {
       const waiter = this.waiting.shift()!;
       waiter.signal?.removeEventListener('abort', waiter.abort);
@@ -98,12 +103,15 @@ interface QueueItem {
   timedOut: boolean;
 }
 
+// 失敗を診断表示用の文字列へ正規化する。
 function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+// AbortErrorを再試行対象から分離する。
 function isAbort(error: unknown): boolean { return error instanceof DOMException && error.name === 'AbortError'; }
 
+// ネットワーク一時失敗だけを再試行対象にする。
 function isRetryable(error: unknown, timedOut: boolean): boolean {
   if (timedOut || error instanceof TypeError) return true;
   if (error instanceof EarthSurfaceHttpError) return error.status === 408 || error.status === 429 || error.status >= 500;
@@ -126,6 +134,7 @@ export class EarthSurfaceTileRequestQueue {
     waitingReserved: 0, waitingReleased: 0, retries: 0,
   };
 
+  // 配信源と段ごとの同時実行設定を保持する。
   public constructor(
     private readonly source: EarthSurfaceTileSource,
     private readonly options: EarthSurfaceTileRequestQueueOptions = {},
@@ -133,17 +142,21 @@ export class EarthSurfaceTileRequestQueue {
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
+  // 現在の枠使用量、失敗、イベント履歴をスナップショットで返す。
   public get metrics(): EarthSurfaceTileRequestMetrics {
     return { ...this.counters, failures: new Map(this.permanentFailuresEntries()), events: this.eventLog.slice() };
   }
 
+  // 世代付きタイル要求を重複排除して開始する。
   public request(key: EarthTileKey, generation: number, signal?: AbortSignal): Promise<EarthSurfaceTilePayload> {
     if (this.disposed) return Promise.reject(new DOMException('Earth surface queue is disposed', 'AbortError'));
     if (!Number.isSafeInteger(generation) || generation < 0) return Promise.reject(new RangeError('Invalid Earth tile generation'));
     return this.requestLoaded(key, generation, signal);
   }
 
+  // 同一タイルの要求を共有し、世代が変われば旧要求を置き換える。
   private requestLoaded(key: EarthTileKey, generation: number, signal?: AbortSignal): Promise<EarthSurfaceTilePayload> {
+    // 既存要求を共有し、世代交代時は旧項目を置き換える。
     if (this.disposed) return Promise.reject(new DOMException('Earth surface queue is disposed', 'AbortError'));
     const id = earthTileId(key);
     const permanent = this.permanentFailures.get(id);
@@ -173,6 +186,7 @@ export class EarthSurfaceTileRequestQueue {
     return item.promise;
   }
 
+  // 呼び出し側の参照を解放し、完了済み項目を索引から外す。
   public release(key: EarthTileKey, generation?: number): void {
     const item = this.items.get(earthTileId(key));
     if (item === undefined || (generation !== undefined && item.generation !== generation)) return;
@@ -180,6 +194,7 @@ export class EarthSurfaceTileRequestQueue {
     if (item.done) this.items.delete(item.id);
   }
 
+  // 指定タイルの取得と待機枠を中断する。
   public abort(key: EarthTileKey | string): void {
     const id = typeof key === 'string' ? key : earthTileId(key);
     const item = this.items.get(id);
@@ -189,6 +204,7 @@ export class EarthSurfaceTileRequestQueue {
     this.items.delete(id);
   }
 
+  // キュー全体を停止し、保持中の取得を中断する。
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -199,10 +215,12 @@ export class EarthSurfaceTileRequestQueue {
     this.items.clear();
   }
 
+  // HTTP、decode、展開済み待機の各枠を順に通過させる。
   private async run(item: QueueItem, descriptor: EarthSurfaceTileDescriptor): Promise<EarthSurfaceTilePayload> {
     const retries = this.options.maxRetries ?? 2;
     for (let attempt = 0; ; attempt++) {
       try {
+        // 取得段は短時間で解放し、decode段の同時実行数を独立に制御する。
         const attemptController = new AbortController();
         const abortAttempt = (): void => attemptController.abort();
         item.controller.signal.addEventListener('abort', abortAttempt, { once: true });
@@ -237,6 +255,7 @@ export class EarthSurfaceTileRequestQueue {
         this.counters.decodeReserved++;
         this.emit({ type: 'reserve', resource: 'decode', id: item.id, generation: item.generation });
         let decodeReleased = false;
+        // decode枠を二重解放せずに返却する。
         const releaseDecode = (): void => {
           if (decodeReleased) return;
           decodeReleased = true;
@@ -284,7 +303,9 @@ export class EarthSurfaceTileRequestQueue {
     }
   }
 
+  // HTTP枠を計測しながらfetch実装へ委譲する。
   private limitedFetch(generation: number): typeof fetch {
+    // HTTP枠の計測と返却をfetchの前後へ付加する。
     return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const id = String(input);
       const permit = await this.http.acquire(init?.signal ?? undefined);
@@ -302,6 +323,7 @@ export class EarthSurfaceTileRequestQueue {
     };
   }
 
+  // 展開済み待機枠を解放する。
   private releaseWaiting(item: QueueItem): void {
     if (item.waitingRelease === null) return;
     item.waitingRelease();
@@ -310,10 +332,12 @@ export class EarthSurfaceTileRequestQueue {
     this.emit({ type: 'release', resource: 'waiting', id: item.id, generation: item.generation });
   }
 
+  // 恒久失敗を公開用の文字列へ変換する。
   private *permanentFailuresEntries(): IterableIterator<[string, string]> {
     for (const [id, error] of this.permanentFailures) yield [id, reasonOf(error)];
   }
 
+  // 計測イベントを履歴へ保存し、任意の監視へ通知する。
   private emit(event: EarthSurfaceTileRequestMetricEvent): void {
     this.eventLog.push(event);
     this.options.onMetric?.(event);

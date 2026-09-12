@@ -8,6 +8,7 @@ export interface EarthSurfaceTileDescriptor {
   readonly terrainUrl: string;
 }
 
+// URLテンプレートの3変数を正規化済みキーで置換する。
 function resolveTemplate(template: string, key: EarthTileKey): string {
   return template
     .replace('{z}', String(key.z))
@@ -31,6 +32,7 @@ export class EarthSurfaceTileSource {
     };
   }
 
+  // 範囲内タイルの色・地形URLを同時に返す。
   public urlFor(key: EarthTileKey): { readonly color: string; readonly terrain: string } | null {
     const descriptor = this.descriptorFor(key);
     return descriptor === null ? null : { color: descriptor.colorUrl, terrain: descriptor.terrainUrl };

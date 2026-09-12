@@ -45,6 +45,9 @@ const AURORA_PHASE_RATE = 0.02;
 
 const tmpPos = new THREE.Vector3();
 const tmpToObserver = new THREE.Vector3();
+const tmpSunDirection = new THREE.Vector3();
+const tmpCapDirection = new THREE.Vector3();
+const tmpBodySpin = new THREE.Quaternion();
 
 // 恒星から pos が受ける放射照度。恒星のない星系では、1AU の太陽光を使う。
 function sunIrradianceAt(star: StellarLightSource | null, pos: Vec3, displayTime: number): number {
@@ -108,8 +111,8 @@ export class PointCelestialView extends SphereCelestialView {
 
   // 実体を描くフレームは、積雲の殻・オーロラ・表面のフレーム値を同期して輝点を隠す。
   protected override syncResolved(
-    apparentDiameterPx: number, displayTime: number, camera: CameraFrame,
-    graphics: GraphicsSettingsData, style: RenderStyle,
+    motion: CelestialMotion, apparentDiameterPx: number, displayTime: number, camera: CameraFrame,
+    star: StellarLightSource | null, graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
     // 雲。
     if (graphics.clouds) {
@@ -117,6 +120,7 @@ export class PointCelestialView extends SphereCelestialView {
       this.cumulus?.setSource(graphics.cloudFieldSource);
       this.cumulus?.setDetail(graphics.cumulusDetail);
       this.cumulus?.syncLod(apparentDiameterPx);
+      this.aimCloudCap();
     } else {
       this.cumulus?.setCloudsVisible(false);
     }
@@ -125,7 +129,7 @@ export class PointCelestialView extends SphereCelestialView {
       graphics.clouds && graphics.translucentCumulus,
     );
     // オーロラと表面のフレーム値。
-    this.syncAuroras(displayTime, graphics.aurora);
+    this.syncAuroras(motion, displayTime, star, graphics.aurora);
     this.surface.syncFrame(createCelestialSurfaceFrame(
       camera.camera,
       this.group.position,
@@ -152,7 +156,7 @@ export class PointCelestialView extends SphereCelestialView {
       axes: this.axes,
       topAltitude: this.cumulus.topAltitude,
       bodyFromWorld: this.bodyFromWorld,
-      field: this.cumulus.field,
+      field: this.cumulus.binding,
     };
   }
 
@@ -163,7 +167,7 @@ export class PointCelestialView extends SphereCelestialView {
   ): AtmosphereClouds | null {
     if (this.cumulus === null || !this.group.visible || !this.cumulus.cloudsVisible) return null;
     return {
-      field: this.cumulus.field,
+      field: this.cumulus.binding,
       bodyFromWorld: writeBodyFromWorld(new THREE.Matrix4(), motion, displayTime),
     };
   }
@@ -182,13 +186,43 @@ export class PointCelestialView extends SphereCelestialView {
     this.mapOverlay?.sync(motion, displayTime, camera, markers, celestialBodies, visible);
   }
 
-  // オーロラの波打ち・明滅を表示時刻へ進める。
-  private syncAuroras(displayTime: number, visible: boolean): void {
+  // オーロラの波打ち・明滅を表示時刻へ進め、昼夜の変調を太陽の向きへ合わせる。
+  private syncAuroras(
+    motion: CelestialMotion, displayTime: number, star: StellarLightSource | null, visible: boolean,
+  ): void {
     const phase = displayTime * AURORA_PHASE_RATE;
+    const sunDirection = this.bodyFixedSunDirection(motion, star, displayTime);
     for (const aurora of this.auroras) {
       aurora.mesh.visible = visible;
-      if (visible) aurora.sync(phase);
+      if (visible) aurora.sync(phase, sunDirection);
     }
+  }
+
+  // 雲場の cap を、いまのカメラから見た直下点へ置き直す。**殻の空間で測る** — 天体固定のまま
+  // 取ると、扁平のぶん(地球で最大 0.19 度)中心が読み手の空間と食い違う。
+  private aimCloudCap(): void {
+    if (this.cumulus === null) return;
+    // カメラは描画原点に立つので、天体中心からカメラへのベクトルは group の位置の逆向き。
+    tmpCapDirection.copy(this.group.position).negate()
+      .applyQuaternion(tmpBodySpin.copy(this.group.quaternion).invert())
+      .divide(this.axes);
+    const rho = tmpCapDirection.length();
+    if (!(rho > 0)) return;
+    this.cumulus.aim(tmpCapDirection.divideScalar(rho), rho);
+  }
+
+  // 天体固定で見た太陽の単位方向。**group の姿勢の逆で回す** — オーロラのメッシュは group の
+  // 子なので、同じ系で測らないと昼夜の境が自転と一緒に回る。恒星の無い星系では null。
+  private bodyFixedSunDirection(
+    motion: CelestialMotion, star: StellarLightSource | null, displayTime: number,
+  ): Vec3 | null {
+    if (star === null) return null;
+    const pos = motion.stateAt(displayTime).r;
+    const starPos = star.motion.stateAt(displayTime).r;
+    tmpSunDirection.set(starPos.x - pos.x, starPos.y - pos.y, starPos.z - pos.z);
+    if (tmpSunDirection.lengthSq() === 0) return null;
+    tmpSunDirection.normalize().applyQuaternion(tmpBodySpin.copy(this.group.quaternion).invert());
+    return v3(tmpSunDirection.x, tmpSunDirection.y, tmpSunDirection.z);
   }
 
   // 星殻上に、描画座標 p の方向だけを反映した輝点を置く。明るさは「いま観測者へ届く光の量」

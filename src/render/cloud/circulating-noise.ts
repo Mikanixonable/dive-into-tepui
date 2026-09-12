@@ -4,7 +4,6 @@
 import { If, abs, clamp, float, greaterThan, log2, vec2 } from 'three/tsl';
 import { gradientNoise } from './gradient-noise';
 import type { Circulation } from './circulation';
-import type { FieldProjection } from './field-projection';
 import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 
 // 段が振幅 1 に達する、1 波長あたりの texel 数の逆数(0.25 = 4 texel)。ここから周波数 2 倍
@@ -24,12 +23,6 @@ export type NoiseOctave = {
 // — どちらの形も段ごとに平均 0・同じ標準偏差なので、写しが粗くて段が落ちても場の平均も強さも動かない。
 const CELL_ABSOLUTE_MEAN = 0.2164;
 const CELL_TO_NOISE_SCALE = 1.728;
-
-// 段の表がどれも振幅 1 で乗る範囲で、projection の何分の一の細かさまで粗く焼いてよいか。2 の冪で返す。
-export function coarsenessFor(projection: FieldProjection, ...tables: readonly (readonly NoiseOctave[])[]): number {
-  const finest = Math.max(...tables.flat().map((octave) => octave.frequency));
-  return Math.max(1, 2 ** Math.floor(Math.log2(OCTAVE_FADE_START / (finest * projection.texelAngleValue))));
-}
 
 export class CirculatingNoise {
   // 段ごとの振幅(表の取り分 × 写しの細かさで決まるフェード)。texelAngle から出るだけで標本化する

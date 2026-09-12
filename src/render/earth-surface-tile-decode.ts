@@ -35,7 +35,9 @@ export interface EarthSurfaceTileBytes {
 const DEFAULT_COLOR_LIMIT = 16 * 1024 * 1024;
 const DEFAULT_TERRAIN_LIMIT = EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES;
 
+// JPEG bytesをImageBitmapへ変換し、中断時は生成物を閉じる。
 async function defaultDecodeImage(bytes: Uint8Array, signal?: AbortSignal): Promise<unknown> {
+  // ImageBitmap生成前後で中断を検査する。
   ensureEarthSurfaceNotAborted(signal);
   if (typeof createImageBitmap !== 'function') throw new EarthSurfaceDecodeError('ImageBitmap decoding is unavailable');
   const imageBytes = new ArrayBuffer(bytes.byteLength);
@@ -64,6 +66,7 @@ export async function downloadEarthSurfaceTile(request: EarthSurfaceTileRequest)
   const colorLimit = request.maxColorBytes ?? DEFAULT_COLOR_LIMIT;
   const terrainLimit = request.maxTerrainBytes ?? DEFAULT_TERRAIN_LIMIT;
   ensureEarthSurfaceNotAborted(request.signal);
+  // 色と地形を並列取得し、各本文を上限付きで読み込む。
   const [colorResponse, terrainResponse] = await Promise.all([
     fetchImpl(request.colorUrl, { signal: request.signal }), fetchImpl(request.terrainUrl, { signal: request.signal }),
   ]);
@@ -78,6 +81,7 @@ export async function decodeEarthSurfaceTileBytes(
 ): Promise<EarthSurfaceTilePayload> {
   ensureEarthSurfaceNotAborted(request.signal);
   const terrainLimit = request.maxTerrainBytes ?? DEFAULT_TERRAIN_LIMIT;
+  // GPU投入前に地形と画像を復号し、不要なHTTP接続を残さない。
   const terrain = await (request.decodeTerrain ?? decodeEarthTerrainBytes)(
     bytes.terrain, request.key, terrainLimit, undefined, request.signal,
   );

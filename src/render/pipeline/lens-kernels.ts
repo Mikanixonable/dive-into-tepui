@@ -47,21 +47,9 @@ type Ghost = {
   readonly dispersion: number;
 };
 
-// 絞りの反射像。1 行が 1 枚で、絵としては次のように読む。半径はどれも画面の高さを 1 として測る。
-//
-// - **scale と power が、像の位置と大きさを決める。** 中心から rp にある光点の像は、
-//   `R × (rp / (R × scale))^(1/power)`(R は GHOST_REFERENCE_RADIUS)に出る。**scale の絶対値が
-//   小さいほど遠く、大きく写り**、power を上げるほど像は R へ引き寄せられる — **scale だけで
-//   位置が決まるのは power が 1 のときだけ。**
-// - **power が、像の形を決める。** 放射方向の伸びが周方向の 1/power になるので、1 より大きい枚は
-//   軸を横切る弧に、小さい枚は軸に沿う筋になる。
-// - **softness が、ぼけ具合を決める。** scale と独立に選べるので、光軸の近くに大きく薄い像を、
-//   遠くに締まった像を置ける。
-// - **weight を総和で正規化する**ので、枚数を増やせば 1 枚あたりは薄くなる。
-//
-// **写像が光を集める度合い(ヤコビアン)の weight つき総和を 1 以下に保つ。** scale の絶対値が 1 を
-// 超える枚は同じ光を狭い面積へ集めるので、総和が 1 を超えると画素が入力の最大値を跨ぎ、半精度
-// 浮動小数点の余裕(太陽面 4.62e4 に対し上限 65504)を食い潰す。
+// scale と power が像の位置・形、softness がぼけ具合、weight が光量の配分を決める。
+// 像の倍率は半径だけの関数なので、光点と画面中心を結ぶ直線上へ配置される。
+// ヤコビアンを含む重みの総和を1以下に保ち、入力の光量を過度に集めない。
 const GHOSTS: readonly Ghost[] = [
   { scale: -0.30, power: 2.20, softness: 2, weight: 0.05, tint: [1.00, 0.90, 0.80], dispersion: 0.006 },
   { scale: -0.42, power: 1.00, softness: 1, weight: 0.06, tint: [0.93, 0.86, 1.00], dispersion: 0.007 },
@@ -83,6 +71,7 @@ const GHOSTS: readonly Ghost[] = [
 // パーサが再帰の上限に当たってシェーダの生成ごと落ちる(例外ではなく検証エラーとして出る)。
 function sumOf(terms: readonly Vec3Node[]): Vec3Node;
 function sumOf(terms: readonly FloatNode[]): FloatNode;
+// 項を平衡に足し合わせ、シェーダ式の深さを抑える。
 function sumOf(terms: readonly (FloatNode | Vec3Node)[]): FloatNode | Vec3Node {
   let level = terms;
   while (level.length > 1) {
@@ -150,23 +139,8 @@ export function tentUpsample(source: THREE.Texture, texel: Vec2Uniform): Vec3Nod
   return sumOf([corners, edges.mul(2), tap(0, 0).mul(4)]).mul(1 / 16);
 }
 
-// 回折PSFの主ローブ1段。direction の向きへタップを**片側だけ**積む。**向きは光源
-// ではなく画面が決める** — カメラを回しても条は光源に貼り付いて回らない。
-//
-// **1 つのパスの中では刻みを空けない。** 空けるとタップ 1 つ 1 つが光源の複製として点々に見え、
-// 条にならない。代わりに**パスをまたいで刻みをタップ数倍する** — 前のパスの出力が既にタップ数
-// ぶんの幅を持っているので、次のパスが同じ数だけ刻みを空けても間がちょうど埋まる。
-// **これで条の長さと太さの結合が切れる**: 長さはパス数に対して指数で伸び、太さは読み元の段だけが
-// 決める。
-//
-// **タップを片側だけにするのが要。** 両側にすると、距離 d に届く経路が複数でき(たとえば
-// 12 進んで 3 戻る)、そのどれもが「進んだ総量」ぶん減衰した重みを持つ。結果として核は
-// exp(-d/減衰長) から周期的に凹み、**刻みの周期で明暗の縞が見える。** 片側だけなら、タップ距離の
-// 組み合わせは d のタップ数進法の表現そのものになって一意に決まり、各段の指数係数の積も距離 d の
-// 指数分布になる。**向き 1 つにつき 1 本の鎖**が要る。
-//
-// **鎖どうしを混ぜないこと。** 1 つのパスで複数の向きをまとめて処理すると、次のパスがその結果を
-// さらに別の向きへ広げて「星の星」になる。
+// 回折PSFの主ローブを1段分広げる。directionごとに片側のタップを使い、段をまたいで間隔を広げる。
+// これにより条の太さは読み元の段、長さはパス数で決まり、方向ごとの鎖が互いに混ざらない。
 export function diffractionPass(
   source: THREE.Texture, texel: Vec2Uniform, direction: Vec2Uniform,
   psfTaps: readonly AperturePsfTap[],
@@ -192,6 +166,7 @@ function ghostSheet(
   const source = sources[ghost.softness];
   const reach = GHOST_TAP_RADIUS * GHOST_SOURCE_TEXELS[ghost.softness];
   const spread = vec2(reach, reach).div(screenSize);
+  // チャンネルごとの色収差を適用して像を作る。
   const channel = (index: 0 | 1 | 2): Vec3Node => {
     // 中央のチャンネルが表の scale そのもので、両端がその前後へずれる。
     const scale = ghost.scale * (1 + (index - 1) * ghost.dispersion);

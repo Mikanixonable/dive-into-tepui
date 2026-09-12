@@ -13,6 +13,7 @@ import type { RenderStyle } from '../../render-style';
 import type { RingMaterials } from '../ring';
 import type { Albedo } from '../../celestial-albedo';
 import type { CelestialSurfaceDiagnostics } from '../celestial-surface';
+import { withAirglowEnabled } from '../../atmosphere';
 import type { AtmosphereClouds, AtmosphereOptics, AtmosphereCandidate } from '../../atmosphere';
 import type { ShadowCumulus } from '../../pipeline/shadow/cloud-shadow-renderer';
 import type { MarkerSlots } from '../../../game/marker/marker-slots';
@@ -111,7 +112,7 @@ export abstract class CelestialView {
           ? new THREE.Vector3(0, 1, 0)
           : new THREE.Vector3(axis.x, axis.y, axis.z).normalize(),
         polarRatio: radii.polarRadius / radii.equatorRadius,
-        optics,
+        optics: withAirglowEnabled(optics, graphics.airglow),
         clouds: graphics.clouds ? this.atmosphereCloudsAt(motion, displayTime) : null,
       },
       distance: len(sub(cameraPos, center)),

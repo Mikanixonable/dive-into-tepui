@@ -15,6 +15,7 @@ import { bootstrapEarthSurface } from './earth-surface-runtime';
 import type { EarthSurfaceBootstrapOptions, EarthSurfaceBootstrapResult } from './earth-surface-runtime';
 import type { EarthSurfaceSource } from './earth-surface-source';
 import { EARTH_SURFACE_FIXTURE_SOURCE, EARTH_TEXTURE } from './earth-surface-defaults';
+import earthSmoothnessUrl from '../assets/earth-smoothness.png';
 import { earthSurfaceColorToRgba8 } from './earth-surface-color';
 
 export interface EarthSurfaceFactoryOptions extends EarthSurfaceBootstrapOptions {
@@ -38,7 +39,7 @@ export interface EarthSurfaceRuntimeHandle {
 function fallbackSurface(status: EarthSurfaceStatus = 'loading'): {
   readonly surface: EarthSurface; readonly baseColorTexture: Texture;
 } {
-  const fallback = CelestialSurface.textured(EARTH_TEXTURE);
+  const fallback = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
   return { surface: new EarthSurface(
     new EarthSurfaceContext(EARTH_SURFACE_FIXTURE_SOURCE),
     fallback,
@@ -54,10 +55,12 @@ interface EarthSurfaceConnection {
   readonly reason: string | null;
 }
 
+// GPUテクスチャと共有base画像から、地表材質の寿命管理をまとめて返す。
 function detailedMaterialFor(
   source: EarthSurfaceSource, textures: EarthSurfaceGpuTextures, fetchImpl?: typeof fetch,
   sharedBaseColor?: Texture,
 ): EarthSurfaceMaterialAttachment {
+  // 材質bindingの公開契約をruntime attachmentへ写す。
   const binding = createEarthSurfaceMaterialBinding(
     textures, source.baseColorUrl, source.baseTerrainUrl, fetchImpl, sharedBaseColor,
   );
@@ -77,6 +80,7 @@ function detailedMaterialFor(
 function coordinatorFor(
   bootstrap: EarthSurfaceBootstrapResult, options: EarthSurfaceFactoryOptions, sharedBaseColor?: Texture,
 ): EarthSurfaceConnection {
+  // 起動結果とGPU能力を接続し、利用できない場合は全球表示へ戻す。
   if (bootstrap.state !== 'ready') {
     return {
       coordinator: null,
@@ -143,6 +147,7 @@ export function createEarthSurfaceRuntime(options: EarthSurfaceFactoryOptions = 
     ...options,
     fallback: options.fallback ?? EARTH_SURFACE_FIXTURE_SOURCE,
   }).then((bootstrap) => {
+    // 起動結果をsurfaceへ反映し、詳細接続の待機を終える。
     const source = bootstrap.source ?? EARTH_SURFACE_FIXTURE_SOURCE;
     const connection = coordinatorFor(bootstrap, options, fallback.baseColorTexture);
     surface.attach(source, connection.coordinator, connection.state, connection.material, connection.reason);
@@ -163,6 +168,8 @@ export function createEarthSurfaceRuntime(options: EarthSurfaceFactoryOptions = 
   return { surface, ready };
 }
 
+// runtimeのready完了まで待ち、surfaceと最終状態を返す。
 export async function createEarthSurface(options: EarthSurfaceFactoryOptions = {}): Promise<EarthSurfaceFactoryResult> {
+  // 起動時の全球表示を返し、詳細接続の完了を待って最終状態を返す。
   return createEarthSurfaceRuntime(options).ready;
 }
