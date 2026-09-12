@@ -1,44 +1,45 @@
-// 雲場テクスチャを、天体固定の単位方向から読む。読み取りの TSL ノードと UV の引き方を持つ。
-// 差し込まれたテクスチャは借り物で、解放は差し込んだ側が行う。
+// 雲場テクスチャを、天体固定の単位方向から読む。焼いた側と同じ cap の置き方を写し取り、同じ uv
+// で読む。差し込まれたテクスチャは借り物で、解放は差し込んだ側が行う。
 import * as THREE from 'three/webgpu';
-import { fract, texture, vec2 } from 'three/tsl';
-import { sphereMeshUv } from '../celestial/celestial-surface';
+import { dot, step, uniform } from 'three/tsl';
+import { texture } from 'three/tsl';
 import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
+import { orthographicCapUv, type CapPlacement } from './field-projection';
 import { cloudSampleFromTexel, type CloudSample } from './cloud-field-sample';
-import type { Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
+import type { FloatUniform, Vec3Node, Vec3Uniform, Vec4Node } from '../tsl-types';
 
-// 天体固定の単位方向を雲場の UV へ写す関数。
-export type CloudUvAt = (direction: Vec3Node) => Vec2Node;
+// 焼いた雲場と、それを焼いた cap の置き方の組。場を出す側が毎フレーム公開し、読み手が写し取る。
+export interface CloudFieldBinding {
+  readonly texture: THREE.Texture;
+  readonly cap: CapPlacement;
+}
 
 export class CloudFieldSampler {
-  // 読む雲場のテクスチャノード。場が差し込まれるまでは EMPTY_CLOUD_FIELD を読み、setTexture は
-  // 同じノードの値を差し替える。
+  // 読む雲場のテクスチャノード。場が結ばれるまでは EMPTY_CLOUD_FIELD を読み、bind は同じノードの
+  // 値を差し替える。
   private readonly field = texture(EMPTY_CLOUD_FIELD);
+  // 焼いた側の cap の置き方。グラフは一度組めば済み、値だけが毎フレーム入れ替わる。
+  private readonly center: Vec3Uniform = uniform(new THREE.Vector3(0, 0, 1));
+  private readonly east: Vec3Uniform = uniform(new THREE.Vector3(1, 0, 0));
+  private readonly north: Vec3Uniform = uniform(new THREE.Vector3(0, 1, 0));
+  private readonly sinRadius: FloatUniform = uniform(1);
+  private readonly cosRadius: FloatUniform = uniform(-1);
 
-  // field を渡せば、はじめからその場を読む。uvAt は方向から雲場 UV への写しで、既定は球メッシュの uv。
-  public constructor(
-    field?: THREE.Texture,
-    private readonly uvAt: CloudUvAt = sphereMeshUv,
-  ) {
-    if (field !== undefined) this.setTexture(field);
+  // 焼いた場と、それを焼いた cap の置き方を写し取る。テクスチャの所有権は移らない。
+  public bind(binding: CloudFieldBinding): void {
+    this.field.value = binding.texture;
+    this.center.value.copy(binding.cap.center);
+    this.east.value.copy(binding.cap.east);
+    this.north.value.copy(binding.cap.north);
+    this.sinRadius.value = binding.cap.sinRadius;
+    this.cosRadius.value = binding.cap.cosRadius;
   }
 
-  public get texture(): THREE.Texture { return this.field.value as THREE.Texture; }
-
-  // 読む雲場を差し替える。テクスチャの所有権は移らない。
-  public setTexture(field: THREE.Texture): void {
-    this.field.value = field;
-  }
-
-  // 単位方向 direction の雲場の texel。
-  private sample(direction: Vec3Node): Vec4Node {
-    // uv の経度は 0..1 の外へ出うるので、周回させて読む。
-    const uv = this.uvAt(direction);
-    return this.field.sample(vec2(fract(uv.x), uv.y));
-  }
-
-  // 単位方向 direction の雲標本を、生成時と同じ単位で読む。
+  // 単位方向 direction の雲標本を、生成時と同じ単位で読む。**cap の外は「雲なし」を返す** —
+  // 返さないと縁の値が外へ伸び、裏側の半球では表側の雲を鏡映しに読む。
   public sampleCloud(direction: Vec3Node): CloudSample {
-    return cloudSampleFromTexel(this.sample(direction));
+    const inside = step(this.cosRadius, dot(direction, this.center));
+    const uv = orthographicCapUv(direction, this.east, this.north, this.sinRadius);
+    return cloudSampleFromTexel(this.field.sample(uv).mul(inside) as Vec4Node);
   }
 }

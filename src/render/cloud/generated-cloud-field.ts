@@ -6,8 +6,9 @@ import type { WebGPURenderer } from 'three/webgpu';
 import type { ClimateMap } from './climate-map';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from './field-projection';
-import type { CloudFieldSampler } from './cloud-field-sampler';
+import type { CloudSample } from './cloud-field-sample';
 import type { CloudFieldSource } from './cloud-presentation';
+import type { Vec3Node } from '../tsl-types';
 
 export class GeneratedCloudField implements CloudFieldSource {
   private readonly model: WeatherModel;
@@ -32,8 +33,8 @@ export class GeneratedCloudField implements CloudFieldSource {
   // 雲場のテクスチャ。出力場の所有権はこのクラスに残す。
   public get texture(): THREE.Texture { return this.field.texture; }
 
-  // 雲場の所有者が公開する共有読み取り契約。sampler の破棄は不要で、texture の寿命はこのクラスが持つ。
-  public get sampler(): CloudFieldSampler { return this.field.fieldSampler; }
+  // 単位方向 direction での雲を、投影自身の uv で直に読む(実験環境が場の全域を出すための口)。
+  public at(direction: Vec3Node): CloudSample { return this.field.at(direction); }
 
   // この場を焼く天気のモデル・気候・投影。prepare で焼いた中間場を読むときに使い、寿命はこのクラスが持つ。
   public get weatherModel(): WeatherModel { return this.model; }
