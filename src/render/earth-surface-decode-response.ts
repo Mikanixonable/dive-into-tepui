@@ -2,13 +2,16 @@
 import { EarthSurfaceDecodeError } from './earth-surface-decode-errors';
 import { EarthSurfaceHttpError } from './earth-surface-request-errors';
 
+// 中断済みの信号を検出して、共通のAbortErrorへ変換する。
 export function ensureEarthSurfaceNotAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException('Earth surface request was aborted', 'AbortError');
 }
 
+// HTTP本文を上限付きで読み、途中のキャンセルも検査する。
 export async function readEarthSurfaceResponse(
   response: Response, limit: number, signal?: AbortSignal,
 ): Promise<Uint8Array> {
+  // HTTP応答を上限まで読み、本文の取得中も中断を検査する。
   if (!response.ok) throw new EarthSurfaceHttpError(response.status);
   if (!Number.isSafeInteger(limit) || limit <= 0) throw new RangeError('Invalid Earth surface byte limit');
   ensureEarthSurfaceNotAborted(signal);
@@ -44,6 +47,7 @@ export async function readEarthSurfaceResponse(
   return bytes;
 }
 
+// 地表配信物のハッシュ検証に使うSHA-256を16進文字列で返す。
 export async function earthSurfaceSha256(bytes: Uint8Array): Promise<string> {
   if (globalThis.crypto?.subtle === undefined) throw new EarthSurfaceDecodeError('Web Crypto is required for tile verification');
   const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes.slice());

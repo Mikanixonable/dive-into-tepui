@@ -6,12 +6,11 @@ import { Fn, If, screenUV, vec2, vec3 } from 'three/tsl';
 // 実写の雲(ゲーム本体が地表へ貼っているもの)。「実写」ビューが比較のためだけに読む。
 import cloudsPhotoUrl from '../../src/assets/8k_clouds.jpg';
 import { earthGeneratedCloudField } from '../../src/game/celestial/solar-system/earth-system';
-import { bootstrapEarthSurface } from '../../src/render/earth-surface-runtime';
-import { OrthographicCap } from '../../src/render/cloud/field-projection';
+import { DeferredTexture } from '../../src/render/deferred-texture';
+import { EquirectProjection, OrthographicCap } from '../../src/render/cloud/field-projection';
 import { pixelsToPngDataUrl } from '../lab-png';
 import { CloudLabPane } from './pane';
 import { CLOUD_LAB_VIEWS, DEFAULT_CLOUD_LAB_VIEW, type CloudLabView, type CloudLabViewId } from './views';
-import type { EarthSurfaceBootstrapResult } from '../../src/render/earth-surface-runtime';
 import type { Vec3Node } from '../../src/render/tsl-types';
 
 // 面の大きさ [px]。全球の面は正距円筒なので 2:1、cap の面は正方形。cap の写しは表示と同じ大きさに
@@ -26,8 +25,8 @@ const VIEW_WIDTH = GLOBE_WIDTH + CAP_SIZE;
 // 全球の面と cap の面の境目(キャンバスの幅に対する比)。
 const SPLIT_U = GLOBE_WIDTH / VIEW_WIDTH;
 
-// 時刻 0 の UTC [s]。気候の月は、ここから表示時刻ぶん進んだ暦で選ばれる。
-const CLIMATE_EPOCH_UNIX_SEC = 0;
+// 気候画像が届くのを待つ上限 [フレーム]。越えたら画像が取れていないので、器を組まずに投げる。
+const CLIMATE_WAIT_FRAMES = 600;
 
 // cap の既定 [°]。時刻 0 の熱帯低気圧の最盛期の位置(19°N・136°E)を中心に、LEO(高度 400 km)の
 // 地平線 19.8° に近い半径で開く。
@@ -52,16 +51,14 @@ export class CloudLabCanvas {
   private capLongitude = DEFAULT_CAP_LONGITUDE;
   private capRadius = DEFAULT_CAP_RADIUS;
 
-  // レンダラを起こし、地表の配信物の有無と実写の雲を確かめてから器を組む — 撮影が気候の選択を
-  // 待たずに走っても、本体と違う気候の面を写さないため。
+  // レンダラを起こし、実写の雲と気候の画像を読み終えてから器を返す — 撮影は画像の到着を待たずに
+  // 走るので、ここで待たないと最初の何枚かが空のテクスチャで焼かれる。
   public static async create(canvas: HTMLCanvasElement): Promise<CloudLabCanvas> {
     const renderer = new WebGPURenderer({ canvas });
     renderer.setSize(VIEW_WIDTH, VIEW_HEIGHT, false);
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     await renderer.init();
-    const bootstrap = bootstrapEarthSurface();
-    await bootstrap;
     const photo = await new THREE.TextureLoader().loadAsync(cloudsPhotoUrl);
     // 気候テクスチャと同じ向き(v = 0 が北極)・同じ生の値。表示は 8k を 1024×512 へ潰すので、
     // ミップを切るとエイリアスがそのまま出る — ここだけはミップ付きで読む。
@@ -72,19 +69,31 @@ export class CloudLabCanvas {
     photo.minFilter = THREE.LinearMipmapLinearFilter;
     photo.magFilter = THREE.LinearFilter;
     photo.colorSpace = THREE.NoColorSpace;
-    return new CloudLabCanvas(renderer, bootstrap, photo);
+    const lab = new CloudLabCanvas(renderer, photo);
+    await lab.awaitClimate();
+    return lab;
   }
 
-  // 2 面と、起動時に出す量のマテリアルを組む。bootstrap は地表の配信物の準備の結果。
-  private constructor(
-    private readonly renderer: WebGPURenderer, bootstrap: Promise<EarthSurfaceBootstrapResult>, photo: THREE.Texture,
-  ) {
+  // 両面の気候画像の取得を始め、GPU へ載るまで待つ。投入は本体と同じ待ち行列を通すので、
+  // 1 フレームに 1 枚ずつ進める。
+  private async awaitClimate(): Promise<void> {
+    for (const pane of this.panes) pane.climate.request();
+    for (let frame = 0; frame < CLIMATE_WAIT_FRAMES; frame += 1) {
+      if (this.panes.every((pane) => pane.climate.generation > 0)) return;
+      await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
+      DeferredTexture.publishOne(this.renderer);
+    }
+    throw new Error('cloud lab: 気候画像が届かない');
+  }
+
+  // 2 面と、起動時に出す量のマテリアルを組む。
+  private constructor(private readonly renderer: WebGPURenderer, photo: THREE.Texture) {
     this.capProjection = new OrthographicCap(
       CAP_SIZE, THREE.MathUtils.degToRad(this.capLatitude), THREE.MathUtils.degToRad(this.capLongitude),
       THREE.MathUtils.degToRad(this.capRadius));
     this.panes = [
-      new CloudLabPane(earthGeneratedCloudField(CLIMATE_EPOCH_UNIX_SEC, bootstrap), photo),
-      new CloudLabPane(earthGeneratedCloudField(CLIMATE_EPOCH_UNIX_SEC, bootstrap, this.capProjection), photo),
+      new CloudLabPane(earthGeneratedCloudField(new EquirectProjection(VIEW_HEIGHT)), photo),
+      new CloudLabPane(earthGeneratedCloudField(this.capProjection), photo),
     ];
     this.quad = new QuadMesh(this.materialFor(this.view));
   }
@@ -130,6 +139,7 @@ export class CloudLabCanvas {
 
   // いまの時刻の場を両面で焼き、選んだ量をキャンバスへ出す。
   public render(): void {
+    DeferredTexture.publishOne(this.renderer);
     for (const pane of this.panes) pane.bake(this.renderer, this.seconds);
     this.quad.render(this.renderer);
   }
