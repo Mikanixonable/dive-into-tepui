@@ -6,9 +6,10 @@ import type { CelestialSurfaceFrame } from './celestial/celestial-surface';
 import { DeferredTexture } from './deferred-texture';
 import {
   EARTH_BASE_TERRAIN_HEIGHT, EARTH_BASE_TERRAIN_WIDTH, loadEarthBaseTerrain,
-} from './earth-surface-decode';
+} from './earth-surface-terrain-codec';
 import type { EarthSurfaceGpuTextures } from './earth-surface-gpu';
 import { createEarthSurfaceNodeMaterial } from './earth-surface-material-node';
+import { configureEarthSurfaceTexture } from './earth-surface-texture';
 import type { Mat3Uniform, Vec3Node, Vec3Uniform, BoolUniform } from './tsl-types';
 
 export interface EarthSurfaceMaterialBinding {
@@ -17,48 +18,50 @@ export interface EarthSurfaceMaterialBinding {
   readonly textures: readonly THREE.Texture[];
   // base 画像の取得に失敗した最初の理由。失敗していなければ null。
   readonly failureReason: () => string | null;
+  readonly ready: () => boolean;
+  prepare(): void;
   syncFrame(frame: CelestialSurfaceFrame): void;
   // base 画像の取得を止める。material・deferredTextures・textures の解放は受け取った側が行う。
   dispose(): void;
 }
 
-// half float の 1.0 のビット列。
-const FLOAT16_ONE = 0x3c00;
-
-// 取得が届くまでの base terrain。全 texel を平面法線・粗さ 1 を表す値で埋める。
-function defaultTerrainData(): Uint16Array {
-  const data = new Uint16Array(EARTH_BASE_TERRAIN_WIDTH * EARTH_BASE_TERRAIN_HEIGHT * 4);
-  for (let offset = 0; offset < data.length; offset += 4) {
-    data[offset + 1] = FLOAT16_ONE;
-    data[offset + 3] = FLOAT16_ONE;
+// 未取得のbase地形を平面法線・最大粗さで埋めるRGBA8データを作る。
+// 全球fallback用の楕円体法線と最大粗さをRGBA8へ焼く。
+function defaultTerrainData(): Uint8Array {
+  // 各画素を地理座標へ対応させ、楕円体の放射法線を符号化する。
+  const data = new Uint8Array(EARTH_BASE_TERRAIN_WIDTH * EARTH_BASE_TERRAIN_HEIGHT * 4);
+  for (let y = 0; y < EARTH_BASE_TERRAIN_HEIGHT; y++) {
+    const latitude = Math.PI * (0.5 - (y + 0.5) / EARTH_BASE_TERRAIN_HEIGHT);
+    const horizontal = Math.cos(latitude);
+    for (let x = 0; x < EARTH_BASE_TERRAIN_WIDTH; x++) {
+      const longitude = 2 * Math.PI * ((x + 0.5) / EARTH_BASE_TERRAIN_WIDTH - 0.5);
+      const offset = (y * EARTH_BASE_TERRAIN_WIDTH + x) * 4;
+      data[offset] = Math.round((Math.sin(longitude) * horizontal * 0.5 + 0.5) * 255);
+      data[offset + 1] = Math.round((Math.sin(latitude) * 0.5 + 0.5) * 255);
+      data[offset + 2] = Math.round((Math.cos(longitude) * horizontal * 0.5 + 0.5) * 255);
+      data[offset + 3] = 255;
+    }
   }
   return data;
 }
 
-// base terrain を受ける half float のテクスチャと、その裏の配列。配列を書き換えて
-// needsUpdate を立てると描画へ反映される。
-function createBaseTerrainTexture(): { readonly texture: THREE.DataTexture; readonly data: Uint16Array } {
+// fallback地形を読むための線形RGBA8テクスチャを組む。
+function createBaseTerrainTexture(): { readonly texture: THREE.DataTexture; readonly data: Uint8Array } {
   const data = defaultTerrainData();
   const texture = new THREE.DataTexture(
     data, EARTH_BASE_TERRAIN_WIDTH, EARTH_BASE_TERRAIN_HEIGHT,
-    THREE.RGBAFormat, THREE.HalfFloatType,
+    THREE.RGBAFormat, THREE.UnsignedByteType,
   );
-  // 色ではなく数値として、ミップを持たずに線形補間で読む。
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  texture.colorSpace = THREE.NoColorSpace;
-  texture.generateMipmaps = false;
-  texture.flipY = false;
-  texture.unpackAlignment = 1;
+  configureEarthSurfaceTexture(texture, 'terrain');
   texture.needsUpdate = true;
   return { texture, data };
 }
 
-// タイルの textures と base 画像(baseColorUrl・baseTerrainUrl)を束ねた材質を組む。fetchImpl は
-// baseTerrain の取得に使う(省けば fetch)。base 画像が届かない間も、平面法線・粗さ 1 の初期
-// データで描ける。
+// タイルとbase画像を束ねた材質を組む。sharedBaseColorを渡すと既存の全球画像を借り、所有しない。
+// baseTerrainが届くまでは、同じ地理座標の楕円体法線と粗さ1で描く。
 export function createEarthSurfaceMaterialBinding(
   textures: EarthSurfaceGpuTextures, baseColorUrl: string, baseTerrainUrl: string, fetchImpl?: typeof fetch,
+  sharedBaseColor?: THREE.Texture,
 ): EarthSurfaceMaterialBinding {
   let disposed = false;
   let baseFailureReason: string | null = null;
@@ -69,10 +72,10 @@ export function createEarthSurfaceMaterialBinding(
     baseFailureReason = `${label}: ${detail}`;
   };
   // base画像のテクスチャと、フレームごとに書き換える天体の形・姿勢のuniform。
-  const baseColor = new DeferredTexture(
-    baseColorUrl, THREE.SRGBColorSpace,
-    (error) => recordBaseFailure('Earth base color unavailable', error),
-  );
+  const ownedBaseColor = sharedBaseColor === undefined ? new DeferredTexture(
+    baseColorUrl, THREE.SRGBColorSpace, (error) => recordBaseFailure('Earth base color unavailable', error),
+  ) : null;
+  const baseColor = sharedBaseColor ?? ownedBaseColor!.texture;
   const baseTerrain = createBaseTerrainTexture();
   const abortController = new AbortController();
   const axes: Vec3Uniform = uniform(new THREE.Vector3(1, 1, 1));
@@ -83,7 +86,7 @@ export function createEarthSurfaceMaterialBinding(
   let material: THREE.MeshStandardNodeMaterial;
   try {
     material = createEarthSurfaceNodeMaterial(
-      { ...textures, baseColor: baseColor.texture, baseTerrain: baseTerrain.texture },
+      { ...textures, baseColor, baseTerrain: baseTerrain.texture },
       {
         bodyDirection,
         axes,
@@ -94,7 +97,7 @@ export function createEarthSurfaceMaterialBinding(
     );
   } catch (error) {
     abortController.abort();
-    baseColor.dispose();
+    ownedBaseColor?.dispose();
     baseTerrain.texture.dispose();
     throw error;
   }
@@ -109,9 +112,11 @@ export function createEarthSurfaceMaterialBinding(
 
   return {
     material,
-    deferredTextures: [baseColor],
+    deferredTextures: ownedBaseColor === null ? [] : [ownedBaseColor],
     textures: [baseTerrain.texture],
     failureReason: () => baseFailureReason,
+    ready: () => ownedBaseColor === null || ownedBaseColor.generation > 0,
+    prepare: () => ownedBaseColor?.request(),
     syncFrame: (frame) => {
       if (disposed) return;
       axes.value.copy(frame.axes);

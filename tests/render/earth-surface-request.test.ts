@@ -1,44 +1,26 @@
 // 地表要求キューの独立した同時実行数、再試行、永久失敗、世代と破棄境界を検査する。
 import * as assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { test } from '../harness';
 import {
-  EarthSurfaceTileRequestQueue, EarthSurfaceTileRequestSource,
-} from '../../src/render/earth-surface-request';
-import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from '../../src/render/earth-surface-decode';
-import { earthTileKey } from '../../src/render/earth-surface-tiles';
-import type { EarthSurfaceTileIndexFile } from '../../src/render/earth-surface-request';
+  EarthSurfaceTileRequestQueue,
+} from '../../src/render/earth-surface-tile-queue';
+import { EarthSurfaceTileSource } from '../../src/render/earth-surface-tile-source';
+import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from '../../src/render/earth-surface-format';
+import { earthTileKey } from '../../src/render/earth-surface-tile-key';
 
 const COLOR = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
-const COLOR_HASH = createHash('sha256').update(COLOR).digest('hex');
 const PAYLOAD_BYTES = EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES;
 
 function terrain(key: ReturnType<typeof earthTileKey>): Uint8Array {
   const bytes = new Uint8Array(PAYLOAD_BYTES);
   bytes.set(new TextEncoder().encode('ESTN'));
   const view = new DataView(bytes.buffer);
-  view.setUint16(4, 1, true); view.setUint16(6, 32, true);
+  view.setUint16(4, 3, true); view.setUint16(6, 32, true);
   view.setUint16(8, 260, true); view.setUint16(10, 260, true);
   view.setUint8(12, key.z); view.setUint32(14, key.x, true); view.setUint32(18, key.y, true);
-  view.setUint8(22, 4); view.setUint8(23, 1); view.setUint32(24, EARTH_TERRAIN_BYTES, true);
+  view.setUint8(22, 4); view.setUint8(23, 2); view.setUint32(24, EARTH_TERRAIN_BYTES, true);
   return bytes;
-}
-
-function indexFor(keys: readonly ReturnType<typeof earthTileKey>[], wrongHash = false): EarthSurfaceTileIndexFile {
-  return {
-    schemaVersion: 1, datasetId: 'fixture',
-    entries: keys.map((key) => {
-      const payload = terrain(key);
-      const compressed = gzipSync(payload);
-      const id = `${key.z}/${key.x}/${key.y}`;
-      return {
-        key: id, z: key.z, x: key.x, y: key.y,
-        color: { url: `tiles/${id}.jpg`, sha256: wrongHash ? '0'.repeat(64) : COLOR_HASH, encodedBytes: COLOR.length, payloadBytes: COLOR.length },
-        terrain: { url: `tiles/${id}.bin.gz`, sha256: createHash('sha256').update(payload).digest('hex'), encodedBytes: compressed.length, payloadBytes: payload.length },
-      };
-    }),
-  };
 }
 
 function response(bytes: Uint8Array, status = 200): Response {
@@ -52,42 +34,52 @@ function deferred(): { readonly promise: Promise<void>; readonly resolve: () => 
 }
 
 export function register(): void {
-  test('earth requests: fetchImplをreceiverなしでindexと色・地形へ使う', async () => {
-    const key = earthTileKey(1, 0, 0);
-    const index = indexFor([key]);
+  test('earth requests: 決定URLはz5から解決し、z4以下はbaseへ戻す', () => {
+    const source = new EarthSurfaceTileSource(
+      'https://example.test/earth/tiles/{z}/{x}/{y}.jpg',
+      'https://example.test/earth/tiles/{z}/{x}/{y}.bin.gz',
+    );
+    assert.equal(source.descriptorFor(earthTileKey(4, 0, 0)), null);
+    assert.deepEqual(source.urlFor(earthTileKey(5, 3, 7)), {
+      color: 'https://example.test/earth/tiles/5/3/7.jpg',
+      terrain: 'https://example.test/earth/tiles/5/3/7.bin.gz',
+    });
+  });
+
+  test('earth requests: fetchImplをreceiverなしで決定URLの色・地形へ使う', async () => {
+    const key = earthTileKey(5, 0, 0);
     const calls: string[] = [];
     const fetchImpl: typeof fetch = async function (this: unknown, input, _init) {
       if (this !== undefined) throw new Error('fetch receiver must be undefined');
       const url = String(input);
       calls.push(url);
-      if (url.endsWith('tile-index.json')) return new Response(JSON.stringify(index));
       return url.endsWith('.jpg') ? response(COLOR) : response(gzipSync(terrain(key)));
     };
-    const source = new EarthSurfaceTileRequestSource({
-      tileIndexUrl: 'https://example.test/earth/tile-index.json',
-      baseUrl: 'https://example.test/earth/', fetchImpl,
-    });
+    const source = new EarthSurfaceTileSource(
+      'https://example.test/earth/tiles/{z}/{x}/{y}.jpg',
+      'https://example.test/earth/tiles/{z}/{x}/{y}.bin.gz',
+    );
     const queue = new EarthSurfaceTileRequestQueue(source, { fetchImpl, decodeImage: async (bytes) => bytes });
 
-    await source.ready();
     const payload = await queue.request(key, 4);
     assert.equal(payload.key.z, key.z);
-    assert.equal(calls[0], 'https://example.test/earth/tile-index.json');
-    assert.equal(calls.length, 3);
-    assert.ok(calls.some((url) => url.endsWith('.jpg')));
-    assert.ok(calls.some((url) => url.endsWith('.bin.gz')));
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls.sort(), [
+      'https://example.test/earth/tiles/5/0/0.bin.gz',
+      'https://example.test/earth/tiles/5/0/0.jpg',
+    ]);
     queue.release(key, 4);
   });
 
-  test('earth requests: tile-indexを一度だけ解決し、HTTP6とdecode2を別に数える', async () => {
-    const keys = [earthTileKey(1, 0, 0), earthTileKey(1, 1, 0), earthTileKey(1, 2, 0)];
-    const index = indexFor(keys);
-    let indexFetches = 0;
+  test('earth requests: HTTPとdecodeのメトリクスは決定URLごとに記録する', async () => {
+    const keys = [earthTileKey(5, 0, 0), earthTileKey(5, 1, 0), earthTileKey(5, 2, 0)];
     let activeHttp = 0;
     let maxHttp = 0;
     let activeDecode = 0;
     let maxDecode = 0;
-    const source = new EarthSurfaceTileRequestSource(index);
+    const source = new EarthSurfaceTileSource(
+      'https://example.test/tiles/{z}/{x}/{y}.jpg', 'https://example.test/tiles/{z}/{x}/{y}.bin.gz',
+    );
     const queue = new EarthSurfaceTileRequestQueue(source, {
       fetchImpl: async (input) => {
         activeHttp++; maxHttp = Math.max(maxHttp, activeHttp);
@@ -102,12 +94,6 @@ export function register(): void {
         activeDecode--; return bytes;
       },
     });
-    const sourceWithIndexFetch = new EarthSurfaceTileRequestSource({ tileIndexUrl: 'https://example.test/tile-index.json', fetchImpl: async () => {
-      indexFetches++; return new Response(JSON.stringify(index));
-    }, baseUrl: 'https://example.test/' });
-    await sourceWithIndexFetch.ready();
-    await sourceWithIndexFetch.ready();
-    assert.equal(indexFetches, 1);
     const results = await Promise.all(keys.map((key) => queue.request(key, 3)));
     assert.equal(results.length, 3);
     assert.ok(maxHttp <= 6);
@@ -120,8 +106,10 @@ export function register(): void {
   });
 
   test('earth requests: 408/429/5xxとnetworkだけを最大2回再試行する', async () => {
-    const key = earthTileKey(1, 0, 0);
-    const source = new EarthSurfaceTileRequestSource(indexFor([key]));
+    const key = earthTileKey(5, 0, 0);
+    const source = new EarthSurfaceTileSource(
+      'https://example.test/tiles/{z}/{x}/{y}.jpg', 'https://example.test/tiles/{z}/{x}/{y}.bin.gz',
+    );
     let colorAttempts = 0;
     const queue = new EarthSurfaceTileRequestQueue(source, {
       fetchImpl: async (input) => {
@@ -135,9 +123,11 @@ export function register(): void {
     queue.release(key, 11);
   });
 
-  test('earth requests: 404とhash不一致は再試行せず版内永久失敗にする', async () => {
-    const notFound = earthTileKey(1, 0, 0);
-    const notFoundSource = new EarthSurfaceTileRequestSource(indexFor([notFound]));
+  test('earth requests: 404は再試行せず版内永久失敗にする', async () => {
+    const notFound = earthTileKey(5, 0, 0);
+    const notFoundSource = new EarthSurfaceTileSource(
+      'https://example.test/tiles/{z}/{x}/{y}.jpg', 'https://example.test/tiles/{z}/{x}/{y}.bin.gz',
+    );
     let notFoundCalls = 0;
     const notFoundQueue = new EarthSurfaceTileRequestQueue(notFoundSource, {
       fetchImpl: async () => { notFoundCalls++; return response(new Uint8Array(), 404); }, decodeImage: async () => null,
@@ -146,33 +136,13 @@ export function register(): void {
     await assert.rejects(notFoundQueue.request(notFound, 0), /HTTP 404/);
     assert.equal(notFoundCalls, 2);
     assert.equal(notFoundQueue.metrics.retries, 0);
-
-    const invalid = earthTileKey(1, 1, 0);
-    const invalidQueue = new EarthSurfaceTileRequestQueue(new EarthSurfaceTileRequestSource(indexFor([invalid], true)), {
-      fetchImpl: async (input) => String(input).endsWith('.jpg') ? response(COLOR) : response(gzipSync(terrain(invalid))),
-      decodeImage: async (bytes) => bytes,
-    });
-    await assert.rejects(invalidQueue.request(invalid, 1), /color hash mismatch/);
-    assert.equal(invalidQueue.metrics.retries, 0);
-
-    const mismatchSource = new EarthSurfaceTileRequestSource({
-      tileIndexUrl: 'https://example.test/tile-index.json', expectedDatasetId: 'other',
-      fetchImpl: async () => new Response(JSON.stringify(indexFor([invalid]))),
-    });
-    await assert.rejects(mismatchSource.ready(), /datasetId mismatch/);
-    const validUrlIndex = indexFor([invalid]);
-    const invalidUrlIndex = {
-      ...validUrlIndex,
-      entries: validUrlIndex.entries.map((entry) => ({
-        ...entry, color: { ...entry.color, url: 'https://evil.test/tile.jpg' },
-      })),
-    };
-    assert.throws(() => new EarthSurfaceTileRequestSource(invalidUrlIndex), /invalid URL/);
   });
 
   test('earth requests: generationのabortとdisposeは待機中の本文を公開しない', async () => {
-    const key = earthTileKey(1, 0, 0);
-    const source = new EarthSurfaceTileRequestSource(indexFor([key]));
+    const key = earthTileKey(5, 0, 0);
+    const source = new EarthSurfaceTileSource(
+      'https://example.test/tiles/{z}/{x}/{y}.jpg', 'https://example.test/tiles/{z}/{x}/{y}.bin.gz',
+    );
     const started = deferred();
     const gate = deferred();
     let aborted = false;
@@ -192,5 +162,33 @@ export function register(): void {
     assert.equal(queue.metrics.waitingReserved, 0);
     assert.equal(queue.metrics.waitingReleased, 0);
     await assert.rejects(queue.request(key, 9), /disposed/i);
+  });
+
+  test('earth requests: 外部abortはtimeout再試行として扱わない', async () => {
+    const key = earthTileKey(5, 0, 0);
+    const source = new EarthSurfaceTileSource(
+      'https://example.test/tiles/{z}/{x}/{y}.jpg', 'https://example.test/tiles/{z}/{x}/{y}.bin.gz',
+    );
+    const started = deferred();
+    let calls = 0;
+    const queue = new EarthSurfaceTileRequestQueue(source, {
+      timeoutMs: 1,
+      fetchImpl: async (_input, init) => {
+        calls++;
+        started.resolve();
+        await new Promise<void>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+        });
+        throw new Error('unreachable');
+      },
+      decodeImage: async () => null,
+    });
+    const controller = new AbortController();
+    const promise = queue.request(key, 1, controller.signal);
+    await started.promise;
+    controller.abort();
+    await assert.rejects(promise, /aborted/i);
+    assert.equal(queue.metrics.retries, 0);
+    assert.equal(calls, 2);
   });
 }
