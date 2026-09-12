@@ -1,0 +1,154 @@
+{
+  "装置の出ていく import": {
+    "src/render/celestial/celestial-entity/celestial-view.ts": [
+      "src/game/marker/marker-slots.ts"
+    ],
+    "src/render/celestial/celestial-entity/geostationary-overlay.ts": [
+      "src/game/marker/crowding.ts",
+      "src/game/marker/marker-slots.ts"
+    ],
+    "src/render/celestial/celestial-entity/point-celestial-view.ts": [
+      "src/game/marker/marker-slots.ts"
+    ],
+    "src/render/creative/object-placement-preview-view.ts": [
+      "src/game/marker/marker-identity.ts",
+      "src/game/marker/marker-slots.ts"
+    ],
+    "src/render/dynamic/dynamic-entity/base-view.ts": [
+      "src/game/marker/marker-slots.ts"
+    ],
+    "src/render/dynamic/player/player-view.ts": [
+      "src/game/marker/marker-slots.ts",
+      "src/game/marker/player-markers.ts"
+    ]
+  },
+  "命令 API の禁止": {
+    "src/audio/bgm/bgm.ts": [
+      ".unlock(",
+      "ensureStarted"
+    ],
+    "src/audio/sfx/world-sfx.ts": [
+      "setRcs",
+      "setThrust"
+    ],
+    "src/game/celestial/celestial-system.ts": [
+      "MarkerSlots",
+      "setFixedBrightnessScale"
+    ],
+    "src/game/control-selection.ts": [
+      "setRcs"
+    ],
+    "src/game/controlled-loop-sfx.ts": [
+      "setRcs",
+      "setThrust"
+    ],
+    "src/game/creative/object-placement.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/dynamic/dynamic-entity/base.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/dynamic/dynamic-entity/entity-dictionary.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/dynamic/dynamic-system.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/game.ts": [
+      "setRcs",
+      "setThrust"
+    ],
+    "src/game/marker/celestial-markers.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/marker/celestial-sub-labels.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/marker/equator-node-manager.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/marker/equator-node-marker-pair.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/marker/lead-markers.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/marker/marker-manager.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/marker/marker-slots.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/marker/orbit-point-marker.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/marker/player-markers.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/nav-target.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/pickable/map-picking.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/plan/plan-display.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/plan/plan-guide.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/player/player.ts": [
+      "MarkerSlots"
+    ],
+    "src/game/stages/stage.ts": [
+      "MarkerSlots",
+      "setRcs",
+      "setThrust"
+    ],
+    "src/game/view/combat-view.ts": [
+      "MarkerSlots"
+    ],
+    "src/launcher/launcher.ts": [
+      ".unlock(",
+      "ensureStarted"
+    ],
+    "src/main.ts": [
+      "applyGraphics"
+    ],
+    "src/render/celestial/celestial-entity/celestial-view.ts": [
+      "MarkerSlots"
+    ],
+    "src/render/celestial/celestial-entity/geostationary-overlay.ts": [
+      "MarkerSlots"
+    ],
+    "src/render/celestial/celestial-entity/point-celestial-view.ts": [
+      "MarkerSlots"
+    ],
+    "src/render/creative/object-placement-preview-view.ts": [
+      "MarkerSlots"
+    ],
+    "src/render/dynamic/dynamic-entity/base-view.ts": [
+      "MarkerSlots"
+    ],
+    "src/render/dynamic/player/player-view.ts": [
+      "MarkerSlots"
+    ],
+    "src/render/pipeline/render-pipeline.ts": [
+      "applyGraphics"
+    ],
+    "src/render/scene.ts": [
+      "applyGraphics"
+    ],
+    "src/render/stars.ts": [
+      "setFixedBrightnessScale"
+    ]
+  },
+  "装置の壁時計の禁止": {
+    "src/render/celestial/celestial-entity/point-celestial-view.ts": [
+      "performance.now"
+    ],
+    "src/render/celestial/orbit-guide/direction-markers.ts": [
+      "performance.now"
+    ]
+  }
+}
