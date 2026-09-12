@@ -1,6 +1,6 @@
 # T6-3: runtime接続の扱い
 
-親計画: [earth-surface-tiles-plan_2026-09-09.md](../earth-surface-tiles-plan_2026-09-09.md)
+親計画: [earth-surface-tiles-plan_2026-09-09-superseded.md](../suspended/earth-surface-tiles-plan_2026-09-09-superseded.md)
 
 runtime bootstrap、Pages subpath、manifest URL、dataset検証はT3へ統合する。
 このファイルは旧T6-3の重複手順を残さず、実装者が参照を間違えないための移行記録だけを持つ。
