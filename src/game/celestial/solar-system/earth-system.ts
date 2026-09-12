@@ -39,7 +39,8 @@ import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
 import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
 import { ObservedCloudField } from '../../../render/cloud/observed-cloud-field';
 import { AnnualClimateMap } from '../../../render/cloud/climate-map';
-import { EquirectProjection, type FieldProjection } from '../../../render/cloud/field-projection';
+import { OrthographicCap, type FieldProjection } from '../../../render/cloud/field-projection';
+import { CLOUD_CAP_SIZE, CLOUD_CAP_MARGIN } from '../../../render/cloud/cloud-cap';
 import { LineOverlay, type LatLonPolyline, type UnitSphereLoop } from '../../../render/celestial/line-overlay';
 import { GeostationaryOverlay } from '../../../render/celestial/celestial-entity/geostationary-overlay';
 import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
@@ -412,17 +413,21 @@ function earthAuroras(): readonly Aurora[] {
   ];
 }
 
-// 地球の生成雲場の高さ [texel]。
-const EARTH_CLOUD_FIELD_HEIGHT = 512;
-
-// 地球の平年の気候から焼く雲場を組む。projection は場の持ち方で、既定は全球の正距円筒。
-// 返した場の寿命は受け取った側が持つ。
-export function earthGeneratedCloudField(
-  projection: FieldProjection = new EquirectProjection(EARTH_CLOUD_FIELD_HEIGHT),
-): GeneratedCloudField {
+// 地球の平年の気候から焼く雲場を組む。projection は場の持ち方。返した場の寿命は受け取った側が持つ。
+// **実験環境も本番もこの工場から組む** — 別の組み立てを書くと、実験環境が本番を映さなくなる。
+export function earthGeneratedCloudField(projection: FieldProjection): GeneratedCloudField {
   // 天気を解く半径は、全球を一様な球とみなす平均半径。
   return new GeneratedCloudField(
     AnnualClimateMap.fromDeferredUrl(climateTextureUrl), projection, R_EARTH, SIDEREAL_DAY,
+  );
+}
+
+// 地球の雲場ぜんぶを組む。生成と実写を同じ 1 つの cap へ焼き、CloudPresentation がその cap を
+// 視点へ置き直す。
+export function earthCloudPresentation(): CloudPresentation {
+  const cap = new OrthographicCap(CLOUD_CAP_SIZE, 0, 0, CLOUD_CAP_MARGIN);
+  return new CloudPresentation(
+    earthGeneratedCloudField(cap), new ObservedCloudField(cloudFieldUrl, cap), cap, R_EARTH_EQ,
   );
 }
 
@@ -434,10 +439,7 @@ export function earthSystem(
 ): Record<EarthSystemBodyId, CelestialEntity> {
   const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
   const earthSurfaceRuntime = createEarthSurfaceRuntime({ renderer });
-  // 殻を載せる球の半径は、本体メッシュと同じ赤道半径。
-  const cumulus = new CloudPresentation(
-    earthGeneratedCloudField(), new ObservedCloudField(cloudFieldUrl), R_EARTH_EQ,
-  );
+  const cumulus = earthCloudPresentation();
   const earthSurface = earthSurfaceRuntime.surface;
   return {
     earth: new CelestialEntity(
