@@ -183,21 +183,6 @@ cloud-field-sampler.ts が分岐する。
 
 ## 手順
 
-### 手順 6. 規約とコメントを点検する
-
-**目的**: 雲場の契約が変わり、LOD の説明が残るコメントが多い。規約からの逸脱と焼け残ったコメントを
-消す。**この時点で挙動は変えない。**
-
-| 対象 | 何をするか |
-| --- | --- |
-| 手順 2〜5 で触ったファイル | `/refactor` と `/comment-cleanup` を通す。特に「mip 段」「lod」「画面微分で段を選ぶ」を説明するコメント(cloud-field-sampler.ts:1-2・57-58、cloud-shadow-renderer.ts:85・147-154、cloud-atmosphere-renderer.ts:182-184、opaque-cloud-surface-renderer.ts:171-172、cumulus-shape.ts:2) |
-
-**達成条件と検証**:
-
-- `npm run typecheck`、`npm run test:render`。
-- `git grep -nE 'mip 段|ミップ段|lod を|明示 LOD' -- src/render/cloud src/render/pipeline src/render/opaque-cloud-surface-renderer.ts`
-  が 0 件。
-
 ## 見積り
 
 **雲の GPU 時間**(render-lab の地球、既定=高、Intel iGPU、3 巡の平均):
@@ -217,7 +202,6 @@ cloud-field-sampler.ts が分岐する。
 | 手順 | 編集 | 削除 | 新規 |
 | --- | --- | --- | --- |
 | 1 | 1 | — | — |
-| 6 | 手順 2〜3 で触ったもの | — | — |
 
 **外周の崩れの実測**(cloud-lab、cap は 19N/136E・半径 28.68 度(高度 400 km)、全球の面と cap の
 面で同じ方向の被覆率を比べ、cap の縁からの角距離 1 度ごとに |差| を平均):
