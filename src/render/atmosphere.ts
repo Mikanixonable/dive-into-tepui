@@ -6,6 +6,7 @@
 import * as THREE from 'three/webgpu';
 import { apparentSizePx } from '../math/projection';
 import { airglowCutoffAltitude, type AirglowOptics } from './airglow';
+import type { CloudFieldBinding } from './cloud/cloud-field-sampler';
 
 // 大気の描き方の段。上げるほど、大気ぜんぶへ配れる精細さの合計が増える。
 export const ATMOSPHERE_QUALITY = { off: 0, low: 1, medium: 2, high: 3 } as const;
@@ -69,6 +70,14 @@ export function cutoffAltitude(optics: AtmosphereOptics, surfaceRadius: number):
   );
 }
 
+// エアグローを切った光学。**打ち切り高度は動かさない** — cutoffAltitude が見るのは発光層の
+// 高度とスケールハイトだけなので、強さを 0 にすれば積分の範囲もサンプル点の配分もオンのままで、
+// 絵から消えるのは発光の項だけになる。そこが切り分けの条件である。
+export function withAirglowEnabled(optics: AtmosphereOptics, enabled: boolean): AtmosphereOptics {
+  if (enabled || optics.airglow === undefined) return optics;
+  return { ...optics, airglow: { ...optics.airglow, strength: 0 } };
+}
+
 // 大気を天頂方向へ通り抜ける光学的厚み。**濃さを1つの数で表すためだけの量**なので、波長ごとに
 // 違うレイリー散乱は3成分の平均で潰す。
 function verticalOpticalDepth(optics: AtmosphereOptics): number {
@@ -86,10 +95,10 @@ function screenImpact(optics: AtmosphereOptics, surfaceRadius: number, metersPer
   return Math.PI * radiusPx * radiusPx * -Math.expm1(-verticalOpticalDepth(optics));
 }
 
-// 大気の中へ散乱の殻として立てる雲。field は雲の場(成分の並びは render/cloud/cloud-field.ts)、
+// 大気の中へ散乱の殻として立てる雲。field は焼いた雲場と、それを焼いた cap の置き方の組、
 // bodyFromWorld は描画座標のベクトルを天体固定の向きへ回す行列。
 export interface AtmosphereClouds {
-  readonly field: THREE.Texture;
+  readonly field: CloudFieldBinding;
   readonly bodyFromWorld: THREE.Matrix4;
 }
 

@@ -31,10 +31,12 @@ const TEXTURE_SETTINGS: Record<EarthSurfaceTextureKind, EarthSurfaceTextureSetti
   },
 };
 
+// 配列用途ごとの補間・色空間をテクスチャへ適用する。
 export function configureEarthSurfaceTexture<T extends THREE.Texture>(
   texture: T,
   kind: EarthSurfaceTextureKind,
 ): T {
+  // 配列用途ごとの補間・色空間を統一し、CPU画像の上下反転を無効にする。
   const settings = TEXTURE_SETTINGS[kind];
   texture.minFilter = settings.minFilter;
   texture.magFilter = settings.magFilter;

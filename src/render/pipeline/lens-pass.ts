@@ -1,14 +1,6 @@
-// レンズ効果。画面の絵を、明るい点ほど広く見える淡い像として画面の中で配り直す。
-//
-// **配り直しであって加算ではない。** 核の総和を 1 に保つので、滲みが受け取ったぶんだけ元の
-// 光点が暗くなり、画面全体の光量は変わらない。
-//
-// **閾値(ニー)を持たない。** 明るい画素だけを抜き出してから広げると、入力を「太陽ぶん」と
-// 「それ以外」に分けて計算した結果が、分けずに計算した結果と一致しなくなる。線形のままなら
-// 一致するので、将来この段の入力から太陽を抜いて解析式で足し直しても、他の画素の絵は
-// 1 ビットも変わらない。**この段が線形であることだけが、その拡張性を担保している。**
-//
-// **広がりは画面上の角度で決まり、光源までの距離では変わらない。**
+// レンズ効果。画面の絵を、明るい点ほど広く見える淡い像として配り直す。
+// 核の総和を1に保つ線形処理なので、画面全体の光量と後段の分離可能性を保つ。
+// 広がりは画面上の角度で決まり、光源までの距離には依存しない。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { mix, screenUV, texture, uniform, vec4 } from 'three/tsl';
@@ -55,6 +47,7 @@ type Stage = Filter & { readonly target: THREE.RenderTarget };
 // 足すので、そこだけで本文が食い違って条の鎖が 2 本のシェーダへ割れる。書き込みは NoBlending で
 // 置き換えのままにするので、絵は変わらない(加算合成は透過を立てないと効かない)。
 function createFilter(colorOf: (sourceTexel: Vec2Uniform) => Vec3Node, additive = false): Filter {
+  // 透過を有効にした全画面フィルタを作り、必要なら加算合成にする。
   const sourceTexel: Vec2Uniform = uniform(new THREE.Vector2());
   const material = new THREE.MeshBasicNodeMaterial({
     depthTest: false, depthWrite: false, transparent: true,
@@ -206,6 +199,7 @@ export class LensPass {
   // だけ**、読まれる 3 枚を空へ戻す — 残しておくと「レンズ」デバッグ表示に切る直前の像が凍った
   // まま出る。中間の縮小段・条の作業用は誰も読まないので触らない。
   clear(width: number, height: number): void {
+    // 前フレームの出力を一度だけ消去し、無効中の残像を残さない。
     if (!this.drawn) return;
     this.resize(width, height);
     const savedColor = this.renderer.getClearColor(this.clearColor).clone();

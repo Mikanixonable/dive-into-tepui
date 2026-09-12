@@ -7,48 +7,28 @@ import { GPU_PASS, type GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from './field-projection';
 import type { Vec3Node, Vec4Node } from '../tsl-types';
 
-// Three.js/WebGPUが generateMipmaps=true のRenderTargetへ確保するレベル数。mipmaps配列は
-// CPU入力用の手動mipだけを表し、GPU側で自動生成されたレベルはそこへ現れないため、寸法から
-// 契約上の最大LODを求める。
-export function maxMipLevelOf(width: number, height: number): number {
-  return Math.floor(Math.log2(Math.max(1, width, height)));
-}
-
-// 自動生成を使わないテクスチャでは、手動で渡された mip の数だけを実在レベルとして返す。
-// mipmaps が空なら level 0 だけを読める。自動生成時はGPUが寸法に応じた全レベルを確保する。
-export function maxAvailableMipLevelOf(
-  width: number, height: number, generateMipmaps: boolean, mipmapCount: number,
-): number {
-  const dimensionMax = maxMipLevelOf(width, height);
-  if (generateMipmaps) return dimensionMax;
-  return Math.min(dimensionMax, Math.max(0, Math.floor(mipmapCount) - 1));
-}
-
 export class BakedField {
   private readonly target: THREE.RenderTarget;
   private readonly material: THREE.MeshBasicNodeMaterial;
   private readonly quad: QuadMesh;
 
   // name は写しの名前、format は使う成分(THREE.RedFormat / THREE.RGFormat)、projection は写しの
-  // 持ち方、coarseness は投影の細かさを何分の一に落として焼くか(焼く場が要求する細かさは場ごとに
-  // 違う)、source は単位方向から焼く値を組むグラフ。source は写しを組むときに一度だけ展開される。
+  // 持ち方、source は単位方向から焼く値を組むグラフ。source は写しを組むときに一度だけ展開される。
+  // 写しの大きさは常に投影と同じで、読み手は段を選ばない。
   public constructor(
     name: string,
     format: THREE.PixelFormat,
     private readonly projection: FieldProjection,
-    coarseness: number,
     source: (direction: Vec3Node) => Vec4Node,
   ) {
-    const width = Math.max(1, Math.floor(projection.width / coarseness));
-    const height = Math.max(1, Math.floor(projection.height / coarseness));
     this.target = new THREE.RenderTarget(
-      width, height,
+      projection.width, projection.height,
       {
         count: 1,
         depthBuffer: false,
         samples: 0,
-        generateMipmaps: true,
-        minFilter: THREE.LinearMipmapLinearFilter,
+        generateMipmaps: false,
+        minFilter: THREE.LinearFilter,
       });
     const map = this.target.textures[0]!;
     map.name = name;
@@ -57,10 +37,9 @@ export class BakedField {
     map.type = THREE.HalfFloatType;
     map.wrapS = projection.wrapS;
     map.wrapT = projection.wrapT;
-    // RenderTargetの生成契約を、後からテクスチャ設定を変更するコードにも見える形で保持する。
-    // WebGPUではrender contextの送信後に全レベルが生成される。
-    map.generateMipmaps = true;
-    map.minFilter = THREE.LinearMipmapLinearFilter;
+    // RenderTarget の生成契約を、後からテクスチャ設定を変更するコードにも見える形で保持する。
+    map.generateMipmaps = false;
+    map.minFilter = THREE.LinearFilter;
     map.magFilter = THREE.LinearFilter;
     this.material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
     this.material.mrtNode = mrt({ [name]: source(projection.directionAt(screenUV)) });
