@@ -193,8 +193,6 @@ main へは `/send-pr` で送る。区切りは次の 3 つ。**マージは mer
 
 ## 見積り
 
-行数はすべて PR #72 の差分(`git diff --stat b9b6f9d8 04963d5d`)と、`origin/main` の実測から。
-
 **全手順を実施済み**(`origin/main` からの差分は 64 ファイル、+1554 / −1554 行)。
 
 雲の GPU 時間の実測(render-lab の地球、Intel iGPU、3 巡の平均):
