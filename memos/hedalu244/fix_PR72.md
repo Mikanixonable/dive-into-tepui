@@ -190,24 +190,6 @@ main へは `/send-pr` で送る。区切りは次の 3 つ。**マージは mer
 - PR-B(小さな修正と計測): 手順 4〜7
 - PR-C(雲場の作り直し): 手順 8
 
-### 手順 1. 本番の地球のサングリントを戻す
-
-**目的**: 詳細タイルが使えないときの地球(`fallbackSurface`)が滑らかさマップを落とし、全面が粗さ 1
-になっている。地表タイルがある間にも正しい修正なので、fix_surface_lod.md の撤去より前に独立して
-入れる。
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/celestial/solar-system/earth-system.ts` | `earthSmoothnessUrl`(`../../../assets/earth-smoothness.png`)の import を戻し、`fallbackSurface()` の `CelestialSurface.textured(EARTH_TEXTURE)` へ第2引数として渡す |
-| `tests/game/earth-system.test.ts:56` | 「地球はfallbackテクスチャを保ち」が滑らかさマップの有無を見ていれば合わせる |
-
-**達成条件と検証**:
-
-- `npm run typecheck`、`npm run test:game`。
-- **目視は本番経路で行う**: `npm run dev` で地球の昼側の海を見て、太陽直下点のまわりに鏡面の光が
-  出る。render-lab は自前の地球で滑らかさマップを使い続けている(tools/render-lab/cases.ts:656)
-  ので、比べても退行に気付けない。
-
 ### 手順 2. 雲場の楕円体投影を外す
 
 **目的**: 雲場の契約を回転楕円体の地理座標にすると、描画側が方向ベクトルの `dot` で読む正射影と
