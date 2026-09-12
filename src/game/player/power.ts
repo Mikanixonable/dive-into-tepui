@@ -24,7 +24,9 @@ export class PowerSystem {
 
   // saved があれば蓄電量を復元する。
   public constructor(saved?: PowerSaveData) {
-    if (saved) this.charge = saved.charge;
+    if (saved && typeof saved.charge === 'number' && Number.isFinite(saved.charge)) {
+      this.charge = Math.max(0, Math.min(POWER_CAPACITY, saved.charge));
+    }
   }
 
   // side のパネルの展開/収納目標を反転する。
@@ -41,9 +43,9 @@ export class PowerSystem {
   }
 
   // 毎フレーム呼ぶ。sunlit は sunlitFactor(0..1)、sunDir は太陽方向の単位ベクトル(world)。
-  // installedGeneration は装備の発電量 [W] で、0 以下なら既定のパネル性能で発電する。
+  // installedGeneration は装備の発電量 [W]。省略時だけ既定のパネル性能を使い、0 は全損として扱う。
   public update(
-    dt: number, sunlit: number, sunDir: Vec3, att: Attitude, installedGeneration: number,
+    dt: number, sunlit: number, sunDir: Vec3, att: Attitude, installedGeneration?: number,
   ): void {
     // 展開度の更新
     const step = dt / RADIATOR_DEPLOY_TIME; // 放熱板と同じ展開速度
@@ -59,9 +61,10 @@ export class PowerSystem {
     // 裏面(法線が太陽と反対を向く)では発電しないため負値を0に切り詰める
     const cosIncidence = Math.max(0, dot(normal, sunDir));
     // 展開度 deployMult を掛けて、収納時は発電しないようにする
-    const basePower = installedGeneration > 0
-      ? installedGeneration
-      : SOLAR_CONSTANT * SOLAR_PANEL_EFFICIENCY * SOLAR_PANEL_AREA;
+    const basePower = installedGeneration === undefined
+      ? SOLAR_CONSTANT * SOLAR_PANEL_EFFICIENCY * SOLAR_PANEL_AREA
+      : typeof installedGeneration === 'number' && Number.isFinite(installedGeneration)
+        ? Math.max(0, installedGeneration) : 0;
     const power = basePower * cosIncidence * sunlit * deployMult;
     this.charge = Math.min(POWER_CAPACITY, this.charge + power * dt);
   }

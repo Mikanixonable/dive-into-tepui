@@ -13,7 +13,7 @@ import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { Notifier } from '../../hud/notifier';
 import { MAG_ROUNDS } from './ammo-spec';
 import { WorldSfx } from '../../audio/sfx/world-sfx';
-import { Ship, PLAYER_MASS } from '../dynamic/dynamic-entity/ship';
+import { Ship } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import { PLAYER_MUZZLE_OFFSETS } from '../../physics/player-shape';
@@ -49,6 +49,25 @@ const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクー�
 const MAGS_PER_BARREL = 3; // バレル交換までに消費できるマガジン数
 
 type ConsumeResult = 'empty' | 'normal' | 'mag-reload' | 'barrel-reload';
+
+function finiteNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function nonNegativeNumber(value: unknown, fallback: number): number {
+  const number = finiteNumber(value, fallback);
+  return number >= 0 ? number : fallback;
+}
+
+function nonNegativeInteger(value: unknown, fallback: number): number {
+  const number = nonNegativeNumber(value, fallback);
+  return Number.isInteger(number) ? number : fallback;
+}
+
+function boundedInteger(value: unknown, min: number, max: number, fallback: number): number {
+  const number = nonNegativeInteger(value, fallback);
+  return number >= min && number <= max ? number : fallback;
+}
 
 // 艦の初期積載(予備マガジン数・装填済み残弾数)。
 export type AmmoLoad = { readonly mags: number; readonly rounds: number };
@@ -100,17 +119,17 @@ export class FireControl {
     private readonly _fx: FlashEffects,
     init: FireInit = {},
   ) {
-    if ('saved' in init) {
-      this.mags = init.saved.mags;
-      this.rounds = init.saved.rounds;
-      this.barrel = init.saved.barrel;
-      this.barrelTemperature = init.saved.barrelTemperature ?? ENV_TEMP;
-      this.barrelDeviation = init.saved.barrelDeviation ?? 0;
-      this.cooldown = init.saved.cooldown;
-      this.muzzleIdx = init.saved.muzzleIdx;
-    } else if (init.ammo) {
-      this.mags = init.ammo.mags;
-      this.rounds = init.ammo.rounds;
+    if ('saved' in init && init.saved) {
+      this.mags = nonNegativeInteger(init.saved.mags, this.mags);
+      this.rounds = boundedInteger(init.saved.rounds, 0, MAG_ROUNDS, this.rounds);
+      this.barrel = boundedInteger(init.saved.barrel, 0, MAGS_PER_BARREL, this.barrel);
+      this.barrelTemperature = finiteNumber(init.saved.barrelTemperature, ENV_TEMP);
+      this.barrelDeviation = finiteNumber(init.saved.barrelDeviation, 0);
+      this.cooldown = nonNegativeNumber(init.saved.cooldown, 0);
+      this.muzzleIdx = boundedInteger(init.saved.muzzleIdx, 0, 1, 0);
+    } else if ('ammo' in init && init.ammo) {
+      this.mags = nonNegativeInteger(init.ammo.mags, this.mags);
+      this.rounds = boundedInteger(init.ammo.rounds, 0, MAG_ROUNDS, this.rounds);
     }
   }
 
@@ -133,6 +152,7 @@ export class FireControl {
 
   // 拾ったマガジン数を加算する。弾切れ中なら即座に1マガジンを装填する。
   onPickup(mags: number): void {
+    if (!Number.isFinite(mags) || mags <= 0) return;
     this.mags += mags;
     if (this.rounds <= 0) { // 弾切れ状態だったならすぐにリロードする
       this.mags--;
@@ -300,7 +320,7 @@ export class FireControl {
     this.spawnMuzzleFlash(this.player, muzzle, fwd);
 
     activeStage.scoreCounter.recordShot();
-    this.player.motion.absorbHeat(GUN_HEAT_PER_ROUND / PLAYER_MASS);
+    this.player.motion.absorbHeat(GUN_HEAT_PER_ROUND / Math.max(this.player.motion.mass, 1e-9));
     this.pendingBarrelJoules += GUN_BARREL_HEAT_PER_ROUND;
     this._worldSfx.fire();
   }
