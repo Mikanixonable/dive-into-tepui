@@ -5,7 +5,7 @@ import {
   type EarthSurfaceAssetManifest,
   type EarthSurfaceSource,
 } from './earth-surface-source';
-import { EarthSurfaceTileRequestSource } from '../../../render/earth-surface-request';
+import { EarthSurfaceTileSource } from './earth-surface-tile-source';
 
 const DATASET_ID = /^[a-z0-9-]+$/;
 export type EarthSurfaceBootstrapState = 'loading' | 'ready' | 'error' | 'fallback';
@@ -13,7 +13,7 @@ export type EarthSurfaceBootstrapState = 'loading' | 'ready' | 'error' | 'fallba
 export interface EarthSurfaceBootstrapResult {
   readonly state: Exclude<EarthSurfaceBootstrapState, 'loading'>;
   readonly source: EarthSurfaceSource | null;
-  readonly tileSource: EarthSurfaceTileRequestSource | null;
+  readonly tileSource: EarthSurfaceTileSource | null;
   readonly error: Error | null;
 }
 
@@ -23,14 +23,17 @@ export interface EarthSurfaceBootstrapOptions {
   readonly fallback?: EarthSurfaceSource | null;
 }
 
+// ビルド時の配信先を読む。未定義の開発環境では空文字を返す。
 function configuredBaseUrl(): string {
   return typeof __EARTH_SURFACE_BASE_URL__ === 'string' ? __EARTH_SURFACE_BASE_URL__ : '';
 }
 
+// ビルド時に個別指定されたmanifest URLを読む。
 function configuredManifestUrl(): string {
   return typeof __EARTH_SURFACE_MANIFEST_URL__ === 'string' ? __EARTH_SURFACE_MANIFEST_URL__ : '';
 }
 
+// 本番設定へ渡すURLが絶対URLかを検査する。
 function parseAbsoluteUrl(value: string): URL {
   try {
     return new URL(value);
@@ -39,6 +42,7 @@ function parseAbsoluteUrl(value: string): URL {
   }
 }
 
+// 開発用ホスト名を本番配信先から除外する。
 function isLocalHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase().replace(/\.$/, '');
   return normalized === 'localhost'
@@ -68,11 +72,12 @@ export function earthSurfaceManifestUrl(
   return new URL('earth-surface/earth-surface.json', documentBase).toString();
 }
 
+// fetchやJSONの失敗をBootstrapResultで扱えるErrorへ正規化する。
 function errorOf(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-// manifestとtile-indexの整合性だけを起動時に検査する。画像のdecode/GPU機能検査は
+// manifestの整合性だけを起動時に検査する。画像のdecode/GPU機能検査は
 // EarthSurfaceが表示される時点まで遅らせ、失敗時は呼び手が既存baseへ留まれる。
 export async function bootstrapEarthSurface(
   options: EarthSurfaceBootstrapOptions = {},
@@ -84,17 +89,13 @@ export async function bootstrapEarthSurface(
   }
   const fetchImpl = options.fetchImpl ?? fetch;
   try {
+    // manifestを先に確定し、datasetIdとwire形式の検査まで成功した版だけをreadyにする。
     const response = await fetchImpl(manifestUrl);
     if (!response.ok) throw new Error('Earth surface manifest HTTP ' + response.status);
     const value = await response.json() as EarthSurfaceAssetManifest;
     const manifestBaseUrl = new URL('.', manifestUrl).toString();
     const source = earthSurfaceSourceFromManifest(manifestBaseUrl, manifestUrl, value);
-    const tileSource = await EarthSurfaceTileRequestSource.load({
-      tileIndexUrl: source.tileIndexUrl,
-      baseUrl: source.baseUrl,
-      expectedDatasetId: source.datasetId,
-      fetchImpl,
-    });
+    const tileSource = new EarthSurfaceTileSource(source.colorTileTemplate, source.terrainTileTemplate);
     return { state: 'ready', source, tileSource, error: null };
   } catch (error) {
     return { state: 'error', source: options.fallback ?? null, tileSource: null, error: errorOf(error) };

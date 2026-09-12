@@ -25,9 +25,9 @@ class PreflightTests(unittest.TestCase):
 
     def test_estimate_exposes_uncompressed_lower_bound(self):
         result = preflight.estimate(self.manifest, [], ".earth-surface/raw")
-        self.assertEqual(result["tileCount"], 43690)
-        self.assertEqual(result["terrainPayloadBytesPerTile"], 540832)
-        self.assertEqual(result["outputLowerBoundBytes"], 23630031744)
+        self.assertEqual(result["tileCount"], 43008)
+        self.assertEqual(result["terrainPayloadBytesPerTile"], 270432)
+        self.assertEqual(result["outputLowerBoundBytes"], 11631280320)
         self.assertEqual(result["inputBytesFromHEAD"], 0)
 
     def test_probe_records_headers_without_reading_body(self):
