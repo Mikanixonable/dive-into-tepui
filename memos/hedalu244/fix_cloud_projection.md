@@ -182,42 +182,6 @@ cloud-field-sampler.ts が分岐する。
 
 ## 手順
 
-### 手順 3. 本番の雲場を視点中心の cap にする
-
-**目的**: 図法・読み手の契約・実写の焼き直しを一度に切り替える。途中の状態が成り立たないため
-(置き方を知らない読み手は cap を読めず、全球の画像は cap の読み手が読めない)。
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/render/cloud/field-projection.ts`(`OrthographicCap`) | 置き方(中心・東・北の値と sin 半径・cos 半径)を読み手向けに公開する。単位方向で置く口を足す(緯度・経度へ直して既存の `aim` を呼ぶ — 極で東向きが退化しないため)。uv の式(`uvAt`)を、読み手と共有できる関数へ出す |
-| `src/render/cloud/cloud-cap.ts`(新規) | 決めたこと 1 の半径の式を純関数で持つ(`capRadiusFor(ρ, h/R, M)`)。`CLOUD_CAP_SIZE = 512` と `CLOUD_CAP_MARGIN = 5°` |
-| `src/render/cloud/cloud-field-sampler.ts` | cap の読み手にする。uniform に中心・東・北・sin 半径・cos 半径とテクスチャを持ち、`bind(binding)` で写す。uv は field-projection.ts と共有する式で引き、cap の外では「雲なし」を返す。`uvAt` の注入と `sphereMeshUv` の既定を消す |
-| `src/render/cloud/cloud-presentation.ts` | `OrthographicCap(CLOUD_CAP_SIZE)` を1つ持ち、両方の出どころへ渡す。`aim(直下点の向き, ρ)` で半径を決めて置き直す。テクスチャと置き方の組(`CloudFieldBinding`)を公開する。`CloudFieldSource` から `sampler` を外す |
-| `src/render/cloud/generated-cloud-field.ts` | 投影を受け取る形は変えない。置き方の版が変わると焼き直す(既存の `revision`) |
-| `src/render/cloud/cloud-field.ts` | `at(direction)` は自分の投影の `uvAt` でテクスチャを直に読む(cloud-lab 用)。パイプラインの読み手は使わない |
-| `src/render/cloud/observed-cloud-field.ts` | 画像を同じ cap の `BakedField` へ焼き直す(決めたこと 4)。画像の世代か cap の版が変わったときだけ焼き、`GPU_PASS.cloudBake` へ計上する |
-| `src/render/opaque-cloud-surface-renderer.ts:65-67, 111-117, 288-291` | 自前の `CloudFieldSampler` を持ち、presentation の組を毎フレーム `bind` する。`setFieldSampler` を消す |
-| `src/render/atmosphere.ts:88-94` | `AtmosphereClouds.field: THREE.Texture` を `CloudFieldBinding` にする |
-| `src/render/pipeline/cloud-atmosphere-renderer.ts:130-135` | `bind` で写す |
-| `src/render/pipeline/shadow/cloud-shadow-renderer.ts:15-25, 60-69` | `ShadowCumulus.field` を `CloudFieldBinding` にし、`bind` で写す |
-| `src/render/celestial/celestial-entity/point-celestial-view.ts:110-139, 143-169` | `syncResolved` で、カメラの位置から天体中心を引いて天体固定へ回し(`group.quaternion` の逆)、半軸で割って直下点の向きと ρ を求め、`cumulus.aim` へ渡す。`cumulusShadowAt`・`atmosphereCloudsAt` は組を返す |
-| `src/game/celestial/solar-system/earth-system.ts`(`earthGeneratedCloudField` と `earthSystem`) | `earthGeneratedCloudField(projection)` は投影を必須にする(実験環境と本番が同じ工場で組む口として残す)。地球の `CloudPresentation` は、cap を1つ作って生成と実写の両方へ渡す工場で組む |
-| `tools/render-lab/cases.ts:634-700`(`earthAt`) | 同じ工場で組み、ケースのカメラ(原点)から見た直下点の向き(`-center` を `spin` の逆で回したもの)で `aim` する。`clouds`・`cumulus` は組を渡す |
-| `tools/cloud-lab/lab.ts:82-88`、`pane.ts`、`views.ts` | 左の面は `earthGeneratedCloudField(new EquirectProjection(VIEW_HEIGHT))`、右は `earthGeneratedCloudField(this.capProjection)` で組む。面は `sampler` ではなく `CloudField.at` で読む |
-| `src/render/graphics-settings.ts:80-83` | 「実写は焼かないぶん軽い」のコメントを直す(実写も cap へ焼き直す) |
-| `tests/render/cloud-field-sampler.test.ts` | 注入のテストと楕円体のテストを消す |
-| `tests/render/cloud-cap.test.ts`(新規) | 半径の式を固定する。高度 400 km で 19.8° + 3.9° + M、遠方で π/2 に止まる、ρ = 1 でも正 |
-
-**達成条件と検証**:
-
-- `npm run typecheck`、`npm run test:render`、`npm run test:game`。
-- 達成目標 1・3・4・5 の検索。
-- `npm run cloud-lab:shot` で左右の面の見え方が手順 2 のあとと変わらない。
-- `npm run render-lab:shot` の地球の俯瞰・斜視の両ケースで、雲殻の真下に雲影が落ち、大気の中の雲が
-  雲殻と重なる。「雲の分布: 実写」でも同じ。
-- `npm run dev` で達成目標 6 を確かめる。
-- render-lab の `measure()` を取り、手順 2 で控えた値と並べて「見積り」を実測で置き換える。
-
 ### 手順 4. 外周の崩れと置き直しの揺れを測り、余白を決める
 
 **目的**: 決めたこと 8 の余白 M を実測で決め、中間場を広げる要があるか(手順 5)を判定する。
@@ -275,24 +239,23 @@ cap を 1024² にするかを、ここで決める。
 
 ## 見積り
 
-**雲の生成の GPU 時間**(焼く費用 ∝ texel 数 × 1 texel の式の重さ。1 texel の式の重さは図法によらない
-と仮定):
+**雲の GPU 時間**(render-lab の地球、既定=高、Intel iGPU、3 巡の平均):
 
-- 手順 2 のあと(render-lab の地球、既定=高、Intel iGPU、3 巡の平均): 雲の生成 9.64 ms、
-  表面雲 4.14 ms、大気(雲あり) 7.32 ms、雲影 1.07 ms。1024×512 = 524,288 texel。
-- cap 512²: 262,144 texel なので 0.5 倍の 4.7〜7.2 ms。ただし次の 2 つで増える。
-  - 中間場の粗焼きをやめる分は、今の 1024×512 では 0。湿度(最細 64)・対流(266)・不安定度(25)の
-    どれも `coarsenessFor` の式(`max(1, 2^floor(log2(0.25 / (最細 × π/512))))`)で 1 になる。
-    粗焼きが効き始めるのは、cap が縮んで texel 角が小さくなってから。
-  - 実写の焼き直し。1 texel あたり画像を 1 回読むだけで、天気の式に比べて桁で軽い。
-- 手順 3 で実測に置き換える。**比較の基準は手順 2 のあとの値**(上)。
+| | 手順 2 のあと(全球の正距円筒 1024x512) | 手順 3 のあと(cap 512x512) |
+| --- | --- | --- |
+| 雲の生成 | 9.64 ms | 5.57 ms |
+| 表面雲 | 4.14 ms | 3.91 ms |
+| 大気(雲あり) | 7.32 ms | 7.28 ms |
+| 雲影 | 1.07 ms | 0.96 ms |
+
+焼く texel は 524,288 → 262,144 の 0.5 倍で、雲の生成は 0.58 倍。中間場の粗焼きをやめた分と
+実写の焼き直しが乗るので、0.5 倍ちょうどにはならない。
 
 **編集の量**(ファイル数は「変更が必要な箇所」の表から):
 
 | 手順 | 編集 | 削除 | 新規 |
 | --- | --- | --- | --- |
 | 1 | 1 | — | — |
-| 3 | 約 18 | — | 2(cloud-cap.ts・テスト) |
 | 4 | — | — | —(scratchpad のスクリプト) |
 | 5 | 約 6 | — | — |
 | 6 | 手順 2〜5 で触ったもの | — | — |
