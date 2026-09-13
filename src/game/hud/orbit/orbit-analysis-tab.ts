@@ -94,6 +94,7 @@ export class ScaleField {
     this.setValue(current());
   }
 
+  // 入力欄の表示を value へ合わせる。確定の通知は起きない。
   public setValue(value: number): void {
     this.input.setValue(String(value));
   }

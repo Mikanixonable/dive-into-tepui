@@ -47,13 +47,6 @@ const PLAN_TICK_HOUR_FAMILY_MAX_COUNT = 1200;
 // 目盛点の半径 [px]。表示中の最細目盛からの相対階層(0/1/2以上)で引く。
 const PLAN_TICK_RADIUS_PX = [1.5, 2.5, 3.5] as const;
 
-// ✕ 衝突マーカー(区間ごとに高々1つ)
-interface ImpactIcon {
-  readonly key: string;
-  readonly pos: Vec3;
-  readonly label: string;
-}
-
 // ルーラー目盛マーカー。
 interface PlanTickIcon {
   readonly key: string;
@@ -61,9 +54,6 @@ interface PlanTickIcon {
   readonly rank: TickRank;
   readonly label: string;
 }
-
-// 衝突マーカーのキー(区間ごとに1つ)。
-const IMPACT_MARKER_KEYS = ['planImpact0', 'planImpact1', 'planImpact2'] as const;
 
 // 半径 radius [px] の点目盛の SVG。投影点を中心に置く前提。
 function tickSvg(radius: number): string {
@@ -268,16 +258,6 @@ export class PlanDisplay {
     this.placeApsisMarker(this.apsisAp, null, null, null);
   }
 
-  // 天体衝突が検出された地点(区間ごとに高々1つ)。衝突天体は判定を返した積分弧のものを
-  // そのまま使う — ここで引き直すと、判定に使った天体と食い違う名前が出かねない。
-  private impactIconsOf(): readonly ImpactIcon[] {
-    return this.path.impactPoints().flatMap(({ state, body, arcIdx }) => {
-      const key = IMPACT_MARKER_KEYS[arcIdx];
-      if (key === undefined) return [];
-      return [{ key, pos: this.path.toDisplay(state.r, state.t), label: `衝突 ${this.celestialBodies.nameOf(body.id)}` }];
-    });
-  }
-
   // 表示中の折れ線が暦の区切り(時・日・月・年)を跨ぐ地点の目盛候補。ラベルは timeLabel の
   // mode に応じて UTC カレンダーか経過時間で書き、置く位置はどちらでも暦の区切りのまま。
   private tickIconsOf(timeLabel: TimeLabelSetting): readonly PlanTickIcon[] {
@@ -317,26 +297,25 @@ export class PlanDisplay {
     }
   }
 
-  // ✕ 衝突マーカーの宣言を、折れ線が返した衝突地点から積む。
+  // ✕ 衝突マーカーの宣言を、折れ線が返した区間ごとの衝突地点(区間ごとに高々1つ)から積む。
+  // 衝突天体は判定を返した積分弧のものをそのまま使う — ここで引き直すと、判定に使った天体と
+  // 食い違う名前が出かねない。
   private pushImpactDeclarations(
     out: MarkerDeclaration[], project: ProjectFn, view: ViewMode, cameraPos: Vec3, displayTime: number,
   ): void {
-    const impactIcons = this.impactIconsOf();
-    for (const key of IMPACT_MARKER_KEYS) {
+    for (const { state, body, arcIdx } of this.path.impactPoints()) {
+      const pos = this.path.toDisplay(state.r, state.t);
       const base = {
-        id: key, cls: 'mk-impact', sym: ORBIT_POINT_GLYPH.impact,
+        id: `planImpact:${arcIdx}`, cls: 'mk-impact', sym: ORBIT_POINT_GLYPH.impact,
         priority: MARKER_PRIORITY.IMPACT, iconHidable: false,
       };
-      // 衝突の無い区間は伏せ、マップビューで天体の陰に入ったものは薄れて消える。
-      const icon = impactIcons.find((m) => m.key === key);
-      if (!icon) {
-        out.push({ ...base, x: 0, y: 0, front: false });
-      } else if (view === 'map' && this.occludedByCelestialBody(cameraPos, icon.pos, displayTime)) {
+      // マップビューで天体の陰に入ったものは薄れて消える。
+      if (view === 'map' && this.occludedByCelestialBody(cameraPos, pos, displayTime)) {
         out.push({ ...base, x: 0, y: 0, front: false, occluded: true });
-      } else {
-        const { x, y, front, dist } = pointPlacement(icon.pos, project, cameraPos);
-        out.push({ ...base, x, y, front, dist, label: icon.label });
+        continue;
       }
+      const { x, y, front, dist } = pointPlacement(pos, project, cameraPos);
+      out.push({ ...base, x, y, front, dist, label: `衝突 ${this.celestialBodies.nameOf(body.id)}` });
     }
   }
 
