@@ -3,6 +3,7 @@
 import type { RenderStyle } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
 import type { HudLayers } from './hud-layers';
+import type { PanelCollapse } from './panel-shell';
 import type { ViewMode } from '../../render/view-mode';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { VesselPanel } from './panels/vessel-panel';
@@ -15,6 +16,7 @@ import { MapScaleBadge } from './panels/map-scale-badge';
 import { OrbitAnalysisWindow } from './orbit/orbit-analysis-window';
 import type { Input } from '../../input/input';
 import type { Game } from '../game';
+import type { ThemePalette } from '../../theme';
 import type { OverlayLayers } from '../../hud/overlay-layer';
 import type { HudShell } from '../../hud/hud-shell';
 import { TEMP_WINDOW_GROUP, type OverlayManager } from '../../hud/overlay-manager';
@@ -41,16 +43,19 @@ export class Hud implements HudLayers, Notifier {
   public readonly enemiesPanel: EnemiesPanel;
   public readonly burnManagementPanel: BurnManagementPanel;
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
+  // 直近に見た目を合わせたビュー。DOM を組み替える差分の鍵。
+  private chromeView: ViewMode | null = null;
   // 次の tick() で表示するトースト。
   private pendingToast: { readonly html: string; readonly durationMs: number } | null = null;
   // 表示中のトーストの期限 [ms, performance.now() 基準]。
   private toastUntil: number | null = null;
 
-  // 画面の器の上に、ゲームの HUD の DOM を組む。renderStyle は組み立て時の見せ方。
+  // 画面の器の上に、ゲームの HUD の DOM を組む。renderStyle は組み立て時の見せ方で、
+  // panelCollapse は各パネルの折りたたみトグルの配線役。
   public constructor(
-    private readonly shell: HudShell, renderStyle: RenderStyle,
+    private readonly shell: HudShell, public readonly panelCollapse: PanelCollapse, renderStyle: RenderStyle,
   ) {
-    const { combatRoot, mapRoot, helpPanel, els } = buildHudDom(shell, renderStyle);
+    const { combatRoot, mapRoot, helpPanel, els } = buildHudDom(shell, panelCollapse, renderStyle);
     this.combatRoot = combatRoot.element;
     this.mapRoot = mapRoot.element;
     this.helpPanel = helpPanel;
@@ -60,15 +65,14 @@ export class Hud implements HudLayers, Notifier {
     this.viewBadgeRow = els.get('gs-viewrow')!;
     this.mapScaleBadge = new MapScaleBadge(els);
     this.vesselPanel = new VesselPanel(els);
-    this.orbitPanel = new OrbitPanel(els);
+    this.orbitPanel = new OrbitPanel(els, () => this.openOrbitAnalysis());
     this.targetPanel = new TargetPanel(els);
     this.enemiesPanel = new EnemiesPanel(els);
     this.burnManagementPanel = new BurnManagementPanel(els);
 
-    // 初期表示の配線。
-    this.burnManagementPanel.sync(null);
-    this.orbitPanel.setOpenAnalysisHandler(() => this.openOrbitAnalysis());
-    this.setView('combat');
+    // ランがまだ無い状態の見た目で組み上げる。
+    this.burnManagementPanel.sync(null, {});
+    this.applyView('combat');
   }
 
   // 軌道分析ウィンドウを開く。既に開いていれば、その1枚を最前面へ持ち上げる。
@@ -90,28 +94,34 @@ export class Hud implements HudLayers, Notifier {
   }
 
   // view で表に出ている常設パネルと、控えられたトーストを game の現在状態へ合わせる。
-  // camera はこのフレームの表示カメラで、縮尺表示が読む。
-  public syncPanels(view: ViewMode, game: Game, camera: CameraFrame): void {
+  // camera はこのフレームの表示カメラで、縮尺表示が読む。palette は canvas へ直に描く色。
+  public syncPanels(view: ViewMode, game: Game, camera: CameraFrame, palette: ThemePalette): void {
     const map = view === 'map';
+    this.panelCollapse.sync(view);
+    this.applyView(view);
     // 両ビュー共通のパネル。
-    this.burnManagementPanel.sync(game.activeControllable?.boosters?.managementViewModel() ?? null);
+    this.burnManagementPanel.sync(
+      game.activeControllable?.boosters?.managementViewModel() ?? null, game.boosterHandlers,
+    );
     this.topBar.sync(game.displayWindowManager, game.simSpeedManager, game.simTime, game.isPaused);
     this.orbitPanel.sync(game);
     // ビュー固有のパネル。
     if (map) {
       this.mapScaleBadge.sync(camera.scale, game.cameraSystem.mapCamera.resolvedFocus);
     } else {
-      this.vesselPanel.sync(game.activeControllable, game.activeStage, game.cameraSystem, map);
+      this.vesselPanel.sync(game.activeControllable, game.activeStage, game.cameraSystem, map, game.input);
       this.targetPanel.sync(game.activeControllable, game.celestialSystem, game.targeter);
       this.enemiesPanel.sync(
         game.activeControllable, game.activeStage, game.dynamicSystem, game.targeter, map);
     }
-    this.orbitAnalysisWindow?.sync(game);
+    this.orbitAnalysisWindow?.sync(game, palette);
     this.tick();
   }
 
-  // 表に出す HUD ルートを戦闘/マップで切り替える。
-  public setView(view: ViewMode): void {
+  // 表に出す HUD ルートと、両ビューで1つを使い回すパネルの置き場を view へ揃える。
+  private applyView(view: ViewMode): void {
+    if (this.chromeView === view) return;
+    this.chromeView = view;
     const map = view === 'map';
     this.helpPanel.setView(view);
     const orbit = this.root.querySelector<HTMLElement>('#hud-orbit');
