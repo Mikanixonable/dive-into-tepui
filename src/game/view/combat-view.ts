@@ -11,7 +11,7 @@ import type { CameraSystem } from '../camera/camera-system';
 import type { Viewport } from '../../render/viewport';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { ObjectWindows } from '../pickable/object-windows';
-import type { MarkerSlots } from '../marker/marker-slots';
+import type { MarkerSink } from '../../marker/marker-sink';
 import type { Targeter } from '../targeter';
 import type { ControlSelection } from '../control-selection';
 import type { PlanPath } from '../plan/plan-path';
@@ -22,7 +22,7 @@ import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ViewFrame } from './view-frame';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { PerfCounts } from '../perf-counts';
-import type { CelestialLabelHiding } from '../marker/celestial-label-hiding';
+import type { CelestialMarkers } from '../marker/celestial-markers';
 
 export class CombatView implements ViewFrame {
   private readonly planGuide: PlanGuide;
@@ -34,7 +34,7 @@ export class CombatView implements ViewFrame {
     private readonly targeter: Targeter,
     private readonly objectWindows: ObjectWindows,
     private readonly roster: EntityRoster,
-    private readonly celestialLabels: CelestialLabelHiding,
+    private readonly celestialMarkers: CelestialMarkers,
     private readonly touchControls: TouchControls | null,
     private readonly controlSelection: ControlSelection,
     private readonly planPath: PlanPath,
@@ -42,9 +42,9 @@ export class CombatView implements ViewFrame {
     private readonly simSpeedManager: SimSpeedManager,
     private readonly notifier: Notifier,
     uiSfx: UiSfx,
-    markers: MarkerSlots,
+    planGuideMarkers: MarkerSink,
   ) {
-    this.planGuide = new PlanGuide(notifier, uiSfx, markers);
+    this.planGuide = new PlanGuide(notifier, uiSfx, planGuideMarkers);
   }
 
   public readonly pickables: readonly ObjectPickable[] = [];
@@ -107,12 +107,12 @@ export class CombatView implements ViewFrame {
   }
 
   // 天体ラベルはマップ専用の表示なので、戦闘ビューの間は畳んでおく。
-  public syncLabels(): void {
-    this.celestialLabels.hideLabels();
+  public syncLabels(_displayWindow: DisplayWindow, _camera: CameraFrame, nowMs: number): void {
+    this.celestialMarkers.hideLabels(nowMs);
   }
 
   // 戦闘ビュー専用の常設表示(タッチのモードボタン・ノード実行ガイド)。
-  public syncPanels(displayWindow: DisplayWindow, camera: CameraFrame): void {
+  public syncPanels(displayWindow: DisplayWindow, camera: CameraFrame, nowMs: number): void {
     const controlled = this.controlSelection.current;
     if (controlled) {
       this.touchControls?.syncModeButtons(
@@ -120,8 +120,11 @@ export class CombatView implements ViewFrame {
         (key) => controlled.throttle.isThrustLatched(key),
       );
     }
-    this.planGuide.sync(controlled, displayWindow.simTime, camera.project, this.planPath);
+    this.planGuide.sync(controlled, displayWindow.simTime, camera, this.planPath, nowMs);
   }
 
-  public dispose(): void {}
+  // ノード実行ガイドのマーカー群を取り除く。
+  public dispose(): void {
+    this.planGuide.dispose();
+  }
 }

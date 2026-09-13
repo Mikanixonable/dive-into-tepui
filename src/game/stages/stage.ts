@@ -13,7 +13,7 @@ import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
-import type { MarkerSlots } from '../marker/marker-slots';
+import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { StageSaveData } from '../save/save-data';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
@@ -54,7 +54,6 @@ export type StageDeps = [
   scene: THREE.Scene,
   dynamicSystem: EntityRegistry & EntityRoster,
   fx: FlashEffects,
-  markers: MarkerSlots,
   celestialSystem: CelestialSystem,
   controlSelection: ControlSelection,
 ];
@@ -144,7 +143,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   protected readonly _scene: THREE.Scene;
   protected readonly _fx: FlashEffects;
   protected readonly _dynamicSystem: EntityRegistry & EntityRoster;
-  protected readonly _markers: MarkerSlots;
   protected readonly _celestialSystem: CelestialSystem;
   protected readonly _controlSelection: ControlSelection;
 
@@ -155,13 +153,10 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   public get result(): StageResult | null { return this._result; }
   // decide() が決着を確定させた瞬間に一度だけ呼ぶ。
   public onDecided: (() => void) | null = null;
-  // 勝敗と結果画面の内容を同時に確定させ、鳴らし続けている継続音を畳む。
+  // 勝敗と結果画面の内容を同時に確定させる。
   protected decide(phase: Exclude<GamePhase, 'playing'>, result: StageResult): void {
     this._phase = phase;
     this._result = result;
-    // 決着後は積分が止まるため、ここで畳まないと噴射音・RCS 音が鳴り続ける。
-    this._worldSfx.setThrust(false);
-    this._worldSfx.setRcs(false);
     this.onDecided?.();
   }
   private readonly restored: boolean;
@@ -170,14 +165,13 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, worldSfx, uiSfx, scene, dynamicSystem, fx, markers, celestialSystem, controlSelection] = deps;
+    const [hud, worldSfx, uiSfx, scene, dynamicSystem, fx, celestialSystem, controlSelection] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
     this._scene = scene;
     this._fx = fx;
     this._dynamicSystem = dynamicSystem;
-    this._markers = markers;
     this._celestialSystem = celestialSystem;
     this._controlSelection = controlSelection;
     // 進行状態は saved から復元し、無ければ新規開始の既定値で始める。
@@ -209,6 +203,9 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.syncStatusPanel(camera.mode === 'map');
   }
 
+  // 直近の sync が組んだ、このステージ固有のマーカーの宣言。
+  public get markerDeclarations(): readonly MarkerDeclaration[] { return []; }
+
   // hudSubStatus() が null のとき、またはマップビューのときはパネルを畳む。
   private syncStatusPanel(mapView: boolean): void {
     const message = this.hudSubStatus();
@@ -227,7 +224,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、
   // 何隻をどこへ置くかはステージ自身の宣言。
   protected addPlayer(init?: PlayerInit): Player {
-    const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, this._markers, init);
+    const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, init);
     this._dynamicSystem.add(ship);
     this._controlSelection.claimIfNone(ship);
     return ship;
