@@ -1,5 +1,4 @@
-// HUD の描画先。窓・ポップアップ・パネルを置く側は、置き場所だけをここから受け取り、
-// HUD が何を持っているかは知らない。
+// 窓・ポップアップ・パネルを置く側が HUD から受け取る面 — 置き場所と、折りたたみトグルの配線役。
 import type { PanelCollapse } from './panel-shell';
 import type { OverlayLayers } from '../../hud/overlay-layer';
 import type { OverlayManager } from '../../hud/overlay-manager';
