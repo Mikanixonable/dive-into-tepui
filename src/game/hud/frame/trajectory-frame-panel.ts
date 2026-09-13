@@ -17,8 +17,6 @@ export class TrajectoryFramePanel {
   private readonly followToggle: ToggleSwitch;
   private readonly orbitSummary: HTMLElement;
 
-  public followCamera = true;
-
   // panelRoot はパネル自身の設置先、popupRoot は AnchorZone のポップアップの親。
   public constructor(
     panelRoot: HTMLElement,
@@ -46,8 +44,8 @@ export class TrajectoryFramePanel {
     };
     this.panel.appendChild(this.planRotationZone.element);
 
-    this.followToggle = new ToggleSwitch('カメラの基準に追随', (on: boolean) => { this.followCamera = on; });
-    this.followToggle.setOn(this.followCamera);
+    this.followToggle = new ToggleSwitch('カメラの基準に追随', (on: boolean) => displayFrame.setFollowCamera(on));
+    this.followToggle.setOn(displayFrame.followCamera);
     this.panel.appendChild(this.followToggle.element);
 
     this.orbitSummary = document.createElement('div');
@@ -75,7 +73,7 @@ export class TrajectoryFramePanel {
     this.planRotationZone.setNearby(members, displayTime, validRoles);
     this.planRotationZone.setSelected(this.displayFrame.frame.rotatingWith);
 
-    this.followToggle.setOn(this.followCamera);
+    this.followToggle.setOn(this.displayFrame.followCamera);
     this.orbitSummary.textContent = this.orbitSummaryText();
   }
 

@@ -2,7 +2,7 @@
 import {
   buildLabeledRow, Button, PREDICT_TOGGLE_LABELS, SegmentedControl, Slider, ToggleSwitch, ValueInput,
 } from '../../../hud/widgets';
-import { wirePanelCollapse } from '../panel-shell';
+import type { PanelCollapse } from '../panel-shell';
 import { fmtDateTime, fmtDuration } from '../../../hud/utils';
 import type { TickLabelMode } from '../orbit/calendar-ticks';
 import type { DisplayTick } from '../orbit/tick-scale';
@@ -274,8 +274,8 @@ export class PredictPanel {
   private currentDuration = APERIODIC_ARC_DURATION;
   private lastTrackRatio = 1;
 
-  // PREDICT パネルの DOM を組み立て、root へ追加する。
-  public constructor(root: HTMLElement) {
+  // PREDICT パネルの DOM を組み立て、root へ追加する。collapse は折りたたみトグルの配線役。
+  public constructor(root: HTMLElement, collapse: PanelCollapse) {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-predict';
     this.panel.className = 'panel';
@@ -307,7 +307,7 @@ export class PredictPanel {
     this.wrap = document.createElement('div');
     this.wrap.id = 'hud-predict-wrap';
     this.wrap.appendChild(this.panel);
-    this.unsubscribeCollapsedView = wirePanelCollapse({
+    this.unsubscribeCollapsedView = collapse.wire({
       toggleRoot: this.wrap,
       toggleId: 'hud-predict-toggle',
       toggleClassName: '',

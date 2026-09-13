@@ -53,6 +53,7 @@ interface DeployButtonDom {
 
 export class VesselPanel {
   private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
+  // このフレームに受けた操作の受け口。ボタンが押されたときに引く。
   private input: Input | null = null;
   private power: PowerSystem | null = null;
   private radiator: RadiatorSystem | null = null;
@@ -91,12 +92,6 @@ export class VesselPanel {
     readout.appendChild(meter);
     readout.appendChild(value);
     return { meter, fill, value };
-  }
-
-  // 操作の受け口となる Input を差し込む。ボタン構築時にはまだ存在しないための late injection で、
-  // null は「今は受け口が無い」— このパネルは Game より長生きするので、その状態が実在する。
-  public setInput(input: Input | null): void {
-    this.input = input;
   }
 
   // R/F/G/T の代替操作ボタンを組み立てて status-actions プレースホルダへ足す。
@@ -180,9 +175,12 @@ export class VesselPanel {
   }
 
   // 操作対象の状態を VESSEL パネルへ反映する。操作対象が無ければパネルごと隠す。
+  // input はこのフレームの操作の受け口で、null なら操作ボタンは何もしない。
   public sync(
     target: Controllable | null, activeStage: Stage, cameraSystem: CameraSystem, isMapView: boolean,
+    input: Input | null,
   ): void {
+    this.input = input;
     this.power = target !== null && isPlayerMotion(target.motion) ? target.motion.power : null;
     this.radiator = target !== null && isPlayerMotion(target.motion)
       ? target.motion.radiator

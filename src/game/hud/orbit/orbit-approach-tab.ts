@@ -11,6 +11,7 @@ import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity'
 import type { OrbitReference } from '../../orbit-reference';
 import type { ApproachTargetSource } from './orbit-analysis-data';
 import type { AnalysisChartSource, AnalysisTab } from './orbit-analysis-tab';
+import type { ThemePalette } from '../../../theme';
 import type { ChartMark, ChartPoint } from './orbit-chart';
 
 const DEFAULT_SCALE_Y_KM = 1000;
@@ -111,7 +112,7 @@ export class ApproachTab implements AnalysisTab {
     // 同じ主天体を周回していても、相手の周期が求まらない(双曲線軌道)なら位相差は測れない。
     if (series === null) {
       this.relIncValue.textContent = '---';
-      this.drawOnAxes([], []);
+      this.drawOnAxes(source.palette, [], []);
       return;
     }
     this.relIncValue.textContent = isFinite(series.relIncDeg) ? `${series.relIncDeg.toFixed(2)}°` : '---';
@@ -119,17 +120,19 @@ export class ApproachTab implements AnalysisTab {
     const current = points.find((p): p is ChartPoint => p !== null) ?? null;
     const marks: ChartMark[] = [{ point: { x: 0, y: 0 }, style: 'target' }];
     if (current) marks.push({ point: current, style: 'current' });
-    this.drawOnAxes(points, marks);
+    this.drawOnAxes(source.palette, points, marks);
   }
 
   // 縦横とも平行移動量を中心とした距離軸。
-  private drawOnAxes(points: readonly (ChartPoint | null)[], marks: readonly ChartMark[]): void {
+  private drawOnAxes(
+    palette: ThemePalette, points: readonly (ChartPoint | null)[], marks: readonly ChartMark[],
+  ): void {
     this.chart.draw({
       points,
       x: distanceAxis(this.panX, this.scaleXKm * 1000, '水平距離'),
       y: distanceAxis(this.panY, this.scaleYKm * 1000, '相対高度'),
       marks,
-    });
+    }, palette);
   }
 
   // ドラッグ移動量 [px] を縦横それぞれのスケールで m へ換算し、平行移動量へ加える。プロット寸法が

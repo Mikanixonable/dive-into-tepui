@@ -1,6 +1,6 @@
 // チャート canvas 2D の下回り。devicePixelRatio 対応の backing store 調整、折れ線描画、
 // 現在地点/ターゲット点の丸マーク、16:9 表示とパン/ズームのカーソル制御の CSS を持つ。
-import { currentThemePalette } from '../../../theme';
+import type { ThemePalette } from '../../../theme';
 
 export interface BackingStoreState {
   cssWidth: number;
@@ -72,9 +72,8 @@ export function drawPolylineWithGaps<T>(
 // 現在地点/ターゲット位置を示す丸マーク。filled なら塗り丸(自艦などの現在地点)、
 // そうでなければ縁だけの丸(ターゲット位置)。
 export function drawPointMarker(
-  ctx: CanvasRenderingContext2D, x: number, y: number, filled: boolean,
+  ctx: CanvasRenderingContext2D, x: number, y: number, filled: boolean, palette: ThemePalette,
 ): void {
-  const palette = currentThemePalette();
   ctx.beginPath();
   ctx.arc(x, y, MARK_RADIUS, 0, Math.PI * 2);
   // filled は内部をアクセント色で塗って縁取り、そうでなければ縁だけを描く。

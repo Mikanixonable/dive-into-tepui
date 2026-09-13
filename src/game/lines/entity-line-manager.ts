@@ -9,7 +9,7 @@ import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { isBase } from '../dynamic/dynamic-entity/base';
 import { isPlayer } from '../player/player';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import { currentThemePalette } from '../../theme';
+import type { ThemePalette } from '../../theme';
 import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { DisplayWindow } from '../display-window-manager';
@@ -62,9 +62,10 @@ export class EntityLineManager {
   public updatePredictionReaders(
     active: Controllable | null, primaryTarget: CombatTarget | null,
     view: ViewMode, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
+    palette: ThemePalette,
   ): void {
     this.forEachDisplay(
-      active, primaryTarget, view, displayWindow, visibilityPolicy, undefined,
+      active, primaryTarget, view, displayWindow, visibilityPolicy, undefined, palette,
       (entity, display) => { entity.motion.trajectoryReader = display.predicted !== null; },
     );
   }
@@ -74,11 +75,11 @@ export class EntityLineManager {
     active: Controllable | null, primaryTarget: CombatTarget | null,
     view: ViewMode, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
     orbitRef: OrbitReference | undefined, camera: CameraFrame,
-    frameAnchors: FrameAnchorSource, celestialBodies: CelestialBodies,
+    frameAnchors: FrameAnchorSource, celestialBodies: CelestialBodies, palette: ThemePalette,
   ): void {
     const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
     this.forEachDisplay(
-      active, primaryTarget, view, displayWindow, visibilityPolicy, orbitRef,
+      active, primaryTarget, view, displayWindow, visibilityPolicy, orbitRef, palette,
       (entity, display) => {
         // 予測が伸びきっていないフレームでは終端時刻を渡さず、届いたところまでで描かせる。
         const predictedTo = entity.motion.predictionTruncated ? null : simTime + duration;
@@ -94,13 +95,12 @@ export class EntityLineManager {
   private forEachDisplay(
     active: Controllable | null, primaryTarget: CombatTarget | null,
     view: ViewMode, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
-    orbitRef: OrbitReference | undefined,
+    orbitRef: OrbitReference | undefined, palette: ThemePalette,
     accept: (entity: DynamicEntity, display: DynamicLineDisplay) => void,
   ): void {
     const { pastDuration } = displayWindow;
     // マップビューでは軌道基準を常に自動選択(最も強く引く天体)にする。
     const lineOrbitRef = view === 'map' ? undefined : orbitRef;
-    const palette = currentThemePalette();
     const primaryStyle: LineStyle = {
       color: palette.signal, opacity: TARGET_LINE_OPACITY, renderOrder: LINE_RENDER_ORDER.target,
     };
