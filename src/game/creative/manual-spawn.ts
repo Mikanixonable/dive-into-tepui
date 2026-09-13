@@ -3,6 +3,8 @@
 import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import { addScaled } from '../../math/vec3';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
+import { isEnemy, type Enemy } from '../dynamic/dynamic-entity/enemy';
+import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
 import { proteinAssetGate } from '../protein/protein-asset-loader';
 import {
   generateApproachingEnemy, generateDriftingEnemy, generateProteinEnemy, proteinFormationSpawns,
@@ -10,8 +12,8 @@ import {
 import { STAGE_CONTROL_ENEMY_SHAPES, type EnemySpawnShape } from './stage-controls-panel';
 import type * as THREE from 'three/webgpu';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
-import type { Enemy } from '../dynamic/dynamic-entity/enemy';
 import type { SpawnGate } from '../dynamic/entity-registry';
+import type { EntityRoster } from '../dynamic/entity-roster';
 import type { Player } from '../player/player';
 import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
 import type { FlashEffects } from '../vfx/flash-effects';
@@ -28,22 +30,29 @@ const DEFAULT_SPAWN_DISTANCE = 2000;
 export class ManualSpawn {
   // 自機前方の、敵を出す距離 [m]。
   public spawnDistance = DEFAULT_SPAWN_DISTANCE;
-  private enemyCount = 0;
-  private formationCount = 0;
+  private readonly enemyNameAllocator = new EntityIdAllocator('MANUAL-');
+  private readonly formationIdAllocator = new EntityIdAllocator('FORMATION-');
 
+  // 以後の手動スポーンが既存個体と衝突しないよう、復元済みの敵の名前と陣形 id を予約する。
   public constructor(
     private readonly worldSfx: WorldSfx,
     private readonly fx: FlashEffects,
     private readonly scene: THREE.Scene,
+    roster: EntityRoster,
     // 出すタンパク質の表示設定。アセットを待っている個体は、実体化した時点の値で出る。
     public display: ProteinDisplaySettings,
-  ) {}
+  ) {
+    for (const enemy of roster.all().filter(isEnemy)) {
+      this.enemyNameAllocator.next(enemy.name);
+      if (enemy.formationId !== undefined) this.formationIdAllocator.next(enemy.formationId);
+    }
+  }
 
   // shape で選んだ形の敵を1体、自機の前方へ出す生成を返す。知らない形なら null。
   public enemy(player: Player, shape: EnemySpawnShape, colorValue: string): EnemySpawn | null {
     const color = Number(colorValue);
     const state = this.frontOf(player);
-    const name = `MANUAL-${++this.enemyCount}`;
+    const name = this.enemyNameAllocator.next();
     // 形ごとに生成器が違い、タンパク質はアセットが揃うのを待ってから出す。
     const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
     if (shapeDefinition === undefined) return null;
@@ -72,9 +81,10 @@ export class ManualSpawn {
   // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機の前方へ出す生成を返す。
   public proteinFormation(player: Player): readonly EnemySpawn[] {
     const state = this.frontOf(player);
-    const name = `FORMATION-${++this.formationCount}`;
+    const formationId = this.formationIdAllocator.next();
     const spawns = proteinFormationSpawns(
-      name, state, player.motion.state.r, this.display, name, this.worldSfx, this.fx, this.scene,
+      formationId, state, player.motion.state.r, this.display, formationId,
+      this.worldSfx, this.fx, this.scene,
     );
     return spawns.map(({ assetId, build }) => ({ gate: proteinAssetGate(assetId), build }));
   }
