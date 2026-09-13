@@ -308,7 +308,7 @@ export class FireControl {
 
   // 弾丸: 機首方向 + 散布界
   private spawnBullet(
-    ship: Ship, muzzle: Vec3, fwd: Vec3, registry: EntityRegistry, celestialBodies: CelestialBodies,
+    ship: Player, muzzle: Vec3, fwd: Vec3, registry: EntityRegistry, celestialBodies: CelestialBodies,
   ): void {
     const sunDir = celestialBodies.sunDirFrom(ship.motion.state.r, ship.motion.state.t);
     const spreadScale = sunGlareSpreadScale(muzzle, fwd, sunDir);
