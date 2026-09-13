@@ -7,13 +7,13 @@ import { Vec3, v3 } from '../math/vec3';
 import type { AtmosphereDef } from './atmosphere';
 
 // 自転軸と自転位相の決め方。'eciPole' は ECI の極軸そのもの(この座標系を定義している天体)で、
-// 自転角速度 spinRate [rad/s] をその天体が与える。'cassini' は同期回転する衛星のカッシーニ状態で、
-// 黄道に対する赤道の傾き obliquity [rad] と軌道面法線から軸が、親を向き続ける平均黄経方向から
-// 位相が決まる。'iau' は極の赤経・赤緯と自転位相 W をそれぞれ時刻の一次式で与える(周期項・
-// 高次項は扱わない)。'iau' の係数はいずれも NAIF pck00011.tpc(WGCCRE 2015 準拠)の
-// BODY_POLE_RA / BODY_POLE_DEC / BODY_PM。
+// 自転角速度 spinRate [rad/s] と元期での自転位相 w0Deg [deg] をその天体が与える。'cassini' は
+// 同期回転する衛星のカッシーニ状態で、黄道に対する赤道の傾き obliquity [rad] と軌道面法線から
+// 軸が、親を向き続ける平均黄経方向から位相が決まる。'iau' は極の赤経・赤緯と自転位相 W を
+// それぞれ時刻の一次式で与える(周期項・高次項は扱わない)。'iau' の係数はいずれも
+// NAIF pck00011.tpc(WGCCRE 2015 準拠)の BODY_POLE_RA / BODY_POLE_DEC / BODY_PM。
 export type PoleModel =
-  | { readonly kind: 'eciPole'; readonly spinRate: number }
+  | { readonly kind: 'eciPole'; readonly spinRate: number; readonly w0Deg: number }
   | { readonly kind: 'cassini'; readonly obliquity: number }
   | {
       readonly kind: 'iau';
@@ -25,18 +25,20 @@ export type PoleModel =
       readonly wRateDegPerDay: number;
     };
 
-// IAU モデルの元期を simZeroEt ぶん進めた自転モデル。基準方向・本初子午線の位相はどちらも
-// 時刻の一次式なので係数へ畳める。極方向を持たないモデル(cassini/eciPole)は時刻の原点を
-// 持たないのでそのまま。
+// 自転モデルの元期を simZeroEt ぶん進めたもの。基準方向・本初子午線の位相はどちらも時刻の
+// 一次式なので係数へ畳める。cassini は位相の原点を軌道が与えるので、そのまま返す。
+// **本初子午線は必ず畳む** — 1日1周規模で進むので、畳まないと 1e7 deg まで積み上がる。
 function poleModelForSimZero(pole: PoleModel | undefined, simZeroEt: number): PoleModel | undefined {
-  if (pole === undefined || pole.kind !== 'iau') return pole;
+  if (pole === undefined || pole.kind === 'cassini') return pole;
+  if (pole.kind === 'eciPole') {
+    return { ...pole, w0Deg: wrapDegrees(pole.w0Deg + pole.spinRate * simZeroEt * (180 / Math.PI)) };
+  }
   const centuries = simZeroEt / JULIAN_CENTURY;
   const days = simZeroEt / SECONDS_PER_DAY;
   return {
     ...pole,
     ra0Deg: pole.ra0Deg + pole.ra1DegPerCentury * centuries,
     dec0Deg: pole.dec0Deg + pole.dec1DegPerCentury * centuries,
-    // 本初子午線は1日1周規模で進むので、畳まないと 1e7 deg まで積み上がる。
     w0Deg: wrapDegrees(pole.w0Deg + pole.wRateDegPerDay * days),
   };
 }
@@ -111,9 +113,6 @@ export function shapeSpheroidRadii(
   return { equatorRadius: Math.min(axes.x, axes.z), polarRadius: axes.y };
 }
 
-// 天体ごとの平均黄経の初期位相 [rad]。未指定の天体は 0 として扱う。
-export type PhaseOffsets = Partial<Record<string, number>>;
-
 export interface StarDef {
   readonly id: string;
   readonly mu: number;
@@ -155,24 +154,22 @@ export function spinRateOf(def: CelestialBodyDef): number | null {
   return 'kepler' in def.orbit ? def.orbit.kepler.lRate : null;
 }
 
-// 天体の宣言を、平均黄経の初期位相と元期オフセットを畳み込んだ宣言へ写す。これを通した宣言
-// だけが CelestialMotion へ渡ってよい — 軌道も自転モデルも simTime そのものを引数に取る形に
-// なり、評価のたびに巨大な定数を足し直さずに済む。
-export function planetDefForSimZero(def: PlanetDef, phases: PhaseOffsets, simZeroEt: number): PlanetDef {
+// 天体の宣言を、元期オフセットを畳み込んだ宣言へ写す。これを通した宣言だけが CelestialMotion
+// へ渡ってよい — 軌道も自転モデルも simTime そのものを引数に取る形になり、評価のたびに巨大な
+// 定数を足し直さずに済む。
+export function planetDefForSimZero(def: PlanetDef, simZeroEt: number): PlanetDef {
   return {
     ...def,
-    orbit: keplerOrbitForSimZero(def.orbit, phases[def.id] ?? 0, simZeroEt),
+    orbit: keplerOrbitForSimZero(def.orbit, simZeroEt),
     pole: poleModelForSimZero(def.pole, simZeroEt),
   };
 }
 
 // 衛星の宣言を、同じ規約で simTime 基準の宣言へ写す。
-export function satelliteDefForSimZero(
-  def: SatelliteDef, phases: PhaseOffsets, simZeroEt: number,
-): SatelliteDef {
+export function satelliteDefForSimZero(def: SatelliteDef, simZeroEt: number): SatelliteDef {
   return {
     ...def,
-    orbit: satelliteOrbitForSimZero(def.orbit, phases[def.id] ?? 0, simZeroEt),
+    orbit: satelliteOrbitForSimZero(def.orbit, simZeroEt),
     pole: poleModelForSimZero(def.pole, simZeroEt),
   };
 }
