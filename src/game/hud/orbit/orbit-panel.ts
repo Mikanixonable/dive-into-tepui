@@ -25,7 +25,6 @@ export interface OrbitPanelViewModel {
   readonly centerId: string;
   readonly centerName: string;
   readonly altitudeM: number;
-  // 降下の警告を出しているか。
   readonly descendWarned: boolean;
   readonly speedMps: number;
   readonly apAltitudeM: number;

@@ -59,12 +59,14 @@ const SOLAR_UI: Record<SolarSide, { label: string; key: string }> = {
   down: { label: '右', key: K.solarDeployRight.label },
 };
 
+// バー1本ぶんの表示要素(トラック・塗り・右寄せの数値)。
 interface VesselMeterDom {
   readonly meter: HTMLElement;
   readonly fill: HTMLElement;
   readonly value: HTMLElement;
 }
 
+// 展開ボタン1つぶんの表示要素。last* は、変わったときだけ書き直すための直近の表示値。
 interface DeployButtonDom {
   readonly button: Button;
   readonly fill: HTMLElement;
@@ -85,6 +87,7 @@ export class VesselPanel {
   private readonly solarButtons: Record<SolarSide, DeployButtonDom> | null;
   private readonly radiatorButtons: Record<RadiatorSide, DeployButtonDom> | null;
 
+  // els が指す DOM の中へ、計器のバー・代替操作ボタン・展開ボタンを組み込む。
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {
     this.throttleMeter = this.buildMeter('throttle-readout', '並進出力');
     this.qdynMeter = this.buildMeter('qdyn-readout', '動圧');
@@ -119,6 +122,7 @@ export class VesselPanel {
   private buildActionButtons(): void {
     const container = this.els.get('status-actions');
     if (!container) return;
+    // ラベルとキーを結んだボタンを1つ足す。isPrimary は目立たせたい操作に付ける。
     const addAction = (label: string, title: string, key: KeyBinding, isPrimary = false): Button => {
       const variants = isPrimary ? (['dense', 'primary'] as const) : (['dense', 'secondary'] as const);
       const button = new Button(label, () => this.view?.tapKey(key), undefined, variants);
@@ -300,6 +304,7 @@ export class VesselPanel {
 
     dom.button.setOn(deployed);
 
+    // 損耗は残りの幅で示し、大きくなったときだけ色でも警告する。
     const fillWidth = `${100 - wearPct}%`;
     const fillColor = highWear ? 'var(--color-error)' : 'transparent';
     if (dom.lastFillWidth !== fillWidth) {

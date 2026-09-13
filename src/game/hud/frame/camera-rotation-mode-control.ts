@@ -3,7 +3,7 @@
 import { ToggleSwitch } from '../../../hud/widgets';
 import type { CameraRotationMode } from '../../camera/camera-orientation';
 
-// 回転モードのトグルが返す操作。カメラの正本が公開する命令。
+// 回転モードの切り替えを受ける口。
 export interface CameraRotationModeCommands {
   setCameraRotationMode(mode: CameraRotationMode): void;
 }

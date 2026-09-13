@@ -10,8 +10,10 @@ import type { PanelCollapsedState } from './hud-selection';
 import type { SettingValue } from '../../settings/setting-value';
 import type { ViewMode } from '../../render/view-mode';
 
+// 一度も操作されていないときの畳み状態。ビューや画面幅で変えるなら関数で渡す。
 type PanelDefaultCollapsed = boolean | ((view: ViewMode) => boolean);
 
+// 折りたたみトグル1つぶんの配線内容。
 interface PanelCollapseWiring {
   readonly toggleRoot: HTMLElement;
   readonly toggleId: string;
@@ -24,7 +26,7 @@ interface PanelCollapseWiring {
 }
 
 // 折りたたみトグルの配線役。畳み状態はビューごとに分かれるので、いま表に出ているビューを
-// sync で受け、切り替わったフレームで配線済みのトグルへ保存値を当て直す。
+// sync で受ける。
 export class PanelCollapse {
   // 配線済みトグルの当て直し。
   private readonly appliers = new Set<() => void>();

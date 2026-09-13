@@ -1,6 +1,6 @@
 // 表示パネル(マップモード左レール): 「マップに何を出すか」という1つの問いに答える —
 // 対象・ガイド・軌道ガイドの3タブに分かれ、対象はラベル+軌道/ラベル/非表示を1ボタンで循環、
-// ガイドは天球グリッド(赤道・黄道・月軌道面・月赤道面)と星空のトグルを持つ。
+// ガイドは天球グリッド(赤道・黄道・月軌道面・月赤道面)・星空のトグルとゼロ速度曲線節を持つ。
 import { DIRECTION_GLYPH } from '../../marker/marker-identity';
 import { hudRail } from '../hud-root';
 import {
@@ -183,7 +183,7 @@ export class ViewOptionsPanel {
     collapse: PanelCollapse,
     availableFamilies: ReadonlyMap<CatalogSystemId, readonly string[]> = new Map(),
   ) {
-    // パネル本体とタイトル
+    // パネル本体とタイトル。
     this.panel = document.createElement('div');
     this.panel.id = 'hud-view-options';
     this.panel.className = 'panel hidden';

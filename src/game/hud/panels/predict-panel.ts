@@ -1,4 +1,5 @@
-// 未来表示の操作パネル(期間ピル・スクラバー・目盛り)。3行構成: 期間選択 / スクラブバー+T+読み値 / 目盛り。
+// 未来表示の操作パネル。未来/過去の期間ピル、目盛り表記の切り替え、表示時刻のスクラバーと
+// 目盛り列を持つ。
 import {
   buildLabeledRow, Button, PREDICT_TOGGLE_LABELS, SegmentedControl, Slider, ToggleSwitch, ValueInput,
 } from '../../../hud/widgets';
@@ -117,6 +118,7 @@ class DurationValueInput {
     this.onCommit(sec);
   }
 
+  // 編集中の値を確定させる。レンジへ収めたうえで onCommit が1回だけ呼ばれる。
   public commit(): void {
     this.value.commit();
   }
@@ -147,6 +149,8 @@ class ToggleValueEdit {
   private readonly input: DurationValueInput;
   private editingValue = false;
 
+  // displayEl と editEl を入れ替える組を作る。確定した秒数を onCommit へ渡し、確定・取り消しの
+  // どちらでも表示用要素へ戻る。
   public constructor(
     private readonly displayEl: HTMLElement,
     private readonly editEl: HTMLElement,
@@ -160,10 +164,12 @@ class ToggleValueEdit {
     );
   }
 
+  // 数値入力へ差し替わっている間だけ真。
   public get editing(): boolean {
     return this.editingValue;
   }
 
+  // 数値入力の要素。editEl の中へ置く。
   public get inputEl(): HTMLElement {
     return this.input.element;
   }
@@ -183,10 +189,12 @@ class ToggleValueEdit {
     this.displayEl.classList.remove('hidden');
   }
 
+  // 開いている数値入力を確定させて閉じる。
   public commit(): void {
     this.input.commit();
   }
 
+  // 開いている数値入力を破棄して閉じる。
   public cancel(): void {
     this.input.cancel();
   }
@@ -200,6 +208,7 @@ class DurationPillRow<K extends string, Kd extends K | 'custom'> {
   private readonly buttons = new Map<K, Button>();
   private readonly input: DurationValueInput;
 
+  // title を見出しにした1行を組む。ピルの押下は onSelect、数値入力の確定は onCustomConfirm。
   public constructor(
     title: string,
     entries: readonly (readonly [K, string])[],
@@ -208,6 +217,7 @@ class DurationPillRow<K extends string, Kd extends K | 'custom'> {
   ) {
     this.element = buildLabeledRow(title, 'predict-row1');
 
+    // 固定期間のピルを並べ、末尾に手動レンジの入力欄を置く。
     const pillsEl = document.createElement('span');
     pillsEl.className = 'predict-pills';
     for (const [key, text] of entries) {
@@ -229,6 +239,7 @@ class DurationPillRow<K extends string, Kd extends K | 'custom'> {
   }
 }
 
+// 未来表示パネルが1フレームに映す値。
 interface PredictPanelState {
   readonly visible: boolean;
   readonly durationKey: DisplayDurationKey;
@@ -298,7 +309,7 @@ export class PredictPanel {
     this.elapsedLabel = scrubberRow.elapsedLabel;
     this.jumpToggle = scrubberRow.jumpToggle;
 
-    // 行3: 目盛り。スクラバーの直下に置く。
+    // 目盛り。スクラバーの直下に置く。
     this.ticks = document.createElement('div');
     this.ticks.className = 'slider-ticks';
     this.panel.appendChild(this.ticks);
@@ -318,7 +329,7 @@ export class PredictPanel {
     root.appendChild(this.wrap);
   }
 
-  // 行1: 未来/過去それぞれの期間ピル(FIXED_DURATIONS・FIXED_PAST_DURATIONS、過去はさらに なし)。
+  // 未来と過去、それぞれの期間ピル行を組む。過去は「なし」も選べる。
   private buildDurationRows(): {
     readonly durationRow: DurationPillRow<FixedDurationKey, DisplayDurationKey>;
     readonly pastDurationRow: DurationPillRow<FixedPastDurationKey, DisplayPastDurationKey>;
@@ -330,7 +341,7 @@ export class PredictPanel {
       (sec) => this.onCustomDurationConfirm?.(sec),
     );
     this.panel.appendChild(durationRow.element);
-    // 過去の期間(なし、を選べる点だけ未来と違う)。
+    // 過去の期間。
     const pastDurationRow = new DurationPillRow<FixedPastDurationKey, DisplayPastDurationKey>(
       '過去', FIXED_PAST_DURATIONS,
       (key) => this.onPastDurationSelect?.(key),
@@ -341,8 +352,8 @@ export class PredictPanel {
     return { durationRow, pastDurationRow };
   }
 
-  // 期間の2行に続けて、目盛りラベルの表記(UTC カレンダー / 現在からの経過時間)と
-  // 目盛り行そのものの表示有無を選ぶ行。
+  // 目盛りラベルの表記(UTC カレンダー / 現在からの経過時間)、目盛り行そのものの表示有無、
+  // 軌道要素の時刻の表示有無を選ぶ行。
   private buildModeRow(): {
     readonly tickLabelModeSwitch: ToggleSwitch;
     readonly showElementTimesSwitch: ToggleSwitch;
@@ -370,7 +381,7 @@ export class PredictPanel {
     return { tickLabelModeSwitch, showElementTimesSwitch };
   }
 
-  // 行2: 現在に戻すボタン + スクラバー + T+読み値(クリックで直接ジャンプ入力に変わる)。
+  // 現在に戻すボタン + スクラバー + T+読み値(クリックで直接ジャンプ入力に変わる)の行。
   private buildScrubberRow(): {
     readonly slider: Slider;
     readonly absoluteLabel: HTMLElement;
@@ -424,6 +435,7 @@ export class PredictPanel {
   public render(state: PredictPanelState): void {
     this.setVisible(state.visible);
     if (!state.visible) return;
+    // 期間はジャンプ入力の上限にもなるので控えておく。
     this.currentDuration = state.duration;
     this.durationRow.render(state.durationKey, state.duration);
     this.pastDurationRow.render(state.pastDurationKey, state.pastDuration);
@@ -435,6 +447,7 @@ export class PredictPanel {
     this.renderTicks(state.ticks);
   }
 
+  // パネル本体を出し入れする。折りたたみトグルは外側に残る。
   private setVisible(visible: boolean): void {
     this.panel.classList.toggle('hidden', !visible);
   }

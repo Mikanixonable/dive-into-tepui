@@ -61,7 +61,6 @@ export class MapView implements ViewFrame {
     navTarget: NavTarget,
     private readonly mapDisplay: SettingValue<MapDisplayToggles>,
   ) {
-    // 編集・物体候補・線候補を組み、最後に同じ候補群を読む入力処理へ渡す。
     this.planEditor = new PlanEditor(
       hud, uiSfx, simSpeedManager, celestialSystem, scene, controlSelection,
       displayWindowManager, frameControls, planDisplay.path,
@@ -142,8 +141,7 @@ export class MapView implements ViewFrame {
     );
   }
 
-  // マップ専用の編集 UI と常設パネル(未来表示・座標系・軌道物体一覧)・天体ラベルのサブ行・
-  // 軌道線の右クリック候補。
+  // マップ専用の表示物を、このフレームの表示窓とカメラへ揃える。
   public syncPanels(displayWindow: DisplayWindow, camera: CameraFrame, nowMs: number): void {
     // 編集 UI と常設パネル
     this.planEditor.sync(this.cameraSystem.mapCamera.dist, camera.floatingOrigin);

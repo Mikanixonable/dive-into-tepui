@@ -108,7 +108,7 @@ export class Game {
   public readonly simSpeedManager: SimSpeedManager;
 
   private readonly planDisplay: PlanDisplay;
-  // このフレームの表示座標系・表示時刻窓と、表示側の重力源窓。update で確定させ、sync が読む。
+  // このフレームの表示座標系と表示時刻窓。update で確定させ、sync が読む。
   public readonly displayWindowManager: DisplayWindowManager;
   private readonly viewManager: ViewManager;
   private readonly objectWindows: ObjectWindows;
@@ -124,11 +124,11 @@ export class Game {
   public get celestialSystem(): CelestialSystem { return this._celestialSystem; }
   // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。
   private readonly viewOptions: ViewOptionsControl;
-  // 表示パネルが読み書きするマップ・天球・軌道ガイドの設定。
+  // マップ・天球・軌道ガイドの表示設定。
   private readonly viewOptionSettings: ViewOptionsSettings;
-  // 3D 描画と canvas へ渡す色の出どころ。
+  // 選ばれている配色。
   private readonly themePalette: SettingValue<ThemePalette>;
-  // 燃焼管理パネルのボタンが引く操作の口。
+  // ブースターの取り付け・点火・切り離しの口。
   private readonly boosterHandlers: BurnManagementPanelHandlers;
 
   public readonly targeter: Targeter;
@@ -195,7 +195,6 @@ export class Game {
   // このランを1件ぶんのセーブ本体へ畳む。
   public serialize(): GameSaveData {
     const { phaseOffsets, earthSpinPhase0 } = this._celestialSystem.serialize();
-    // 元期・星系の位相と、実体・操作対象・ステージ・カメラ・航法ターゲット。
     return {
       version: SAVE_VERSION,
       stageId: this.activeStage.id,
@@ -463,7 +462,7 @@ export class Game {
     this.sections.enter(SECTION.pointer);
     this.handlePointerInput(viewport);
     this.sections.exit(SECTION.pointer);
-    // View の描画同期ではなく update フェーズで、次回予測の読者を確定する。
+    // 次回の予測を伸ばす対象は、この update フェーズで確定させる。
     this.entityLines.updatePredictionReaders(
       this.activeControllable,
       this.targeter.aliveTarget,
@@ -510,8 +509,7 @@ export class Game {
   // --------------------------------------------------------------- input
 
   // 入力エッジを担当モジュールへ先着順で配る。決めるのは優先順位 = 呼ぶ順序だけで、
-  // どのキー/クリックが何をするかは各モジュールが持つ。ここで配るのは、決着後・ポーズ中も
-  // 効くべき操作(設定・ヘルプ・再出撃・ワープ・マップ開閉・計画破棄・計画のΔv編集)。
+  // どのキー/クリックが何をするかは各モジュールが持つ。
   private handleInput(dt: number): void {
     // ESC: 開いているオーバーレイがあれば最前面を閉じ、何も無ければ一時停止メニューを開く。
     if (this.input.takeKey(K.pauseMenu)) {
@@ -519,7 +517,6 @@ export class Game {
     }
     // オーバーレイの項目ショートカット([F]等)も同じ優先度で最前面へ配送する。
     this.input.takeKeys((code) => this._hud.overlayManager.dispatchShortcut(code));
-    // 上から下へ優先順位順に呼ぶ。
     this._hud.handleInput(this.input);
     // ヘルプや設定など、背景入力をゲートするモーダルが開いた後は、同じフレームの
     // ワープ/ビュー切り替え/計画編集へキーを漏らさない。
@@ -561,7 +558,6 @@ export class Game {
       cs.activeViewpoint, cs.clipFovDeg, cs.clipDistance, viewport, cs.view, cs.zoomActive, cs.focusVelocity,
     );
     this.cameraFrame = camera;
-    // マップビューのときだけ表示設定パネルを出す。
     this.viewOptions.setVisible(this.viewManager.current === 'map');
     // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
     this.viewManager.activeView.syncLabels(displayWindow, camera, nowMs);
@@ -655,8 +651,8 @@ export class Game {
   // ------------------------------------------------------- HUD へ渡す値
   // 値を束ねる場所は、ここが持ち物を全部知っている間の暫定(暫定 — 段 7 で Game を分解する)。
 
-  // 常設パネルの値をこのランの状態から束ねる。パネルごとの型はそのパネルが持つ。
-  // view は表に出ているビュー — 出ていないパネルの値は組まない。
+  // 常設パネルの値をこのランの状態から束ねる。view は表に出ているビューで、
+  // そこに出るパネルのぶんだけを組む。
   private hudPanelViewModels(
     view: ViewMode, orbitRef: OrbitReference | undefined, palette: ThemePalette,
   ): HudPanelViewModels {
@@ -783,7 +779,6 @@ export class Game {
   private enemyContacts(controlled: Controllable): readonly EnemyContact[] {
     const viewerPos = controlled.motion.state.r;
     const primaryTarget = this.targeter.aliveTarget;
-    // 固定の有無は参照の同一性で見る。
     return this.dynamicSystem.all()
       .filter(isEnemy)
       .filter((enemy) => enemy.motion.alive)

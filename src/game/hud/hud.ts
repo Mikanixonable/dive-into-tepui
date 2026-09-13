@@ -31,7 +31,7 @@ import type { Notifier } from '../../hud/notifier';
 const ANALYSIS_WINDOW_OPEN_X = 320;
 const ANALYSIS_WINDOW_OPEN_Y = 100;
 
-// ランがこのフレームに常設パネルへ差し出す値。パネルごとの型をそのまま並べる。
+// ランがこのフレームに常設パネルへ差し出す値。
 export interface HudPanelViewModels {
   readonly topBar: TopBarViewModel;
   readonly vessel: VesselPanelViewModel | null;
@@ -40,7 +40,7 @@ export interface HudPanelViewModels {
   readonly enemies: EnemiesPanelViewModel | null;
   readonly burnManagement: BurnManagementViewModel | null;
   readonly burnHandlers: BurnManagementPanelHandlers;
-  // 縮尺バーが読む、マップカメラの注視点の ECI 位置。
+  // マップカメラの注視点の ECI 位置。
   readonly mapFocus: Vec3;
   readonly analysisSource: AnalysisChartSource;
   readonly analysisSubject: OrbitAnalysisSubject | null;

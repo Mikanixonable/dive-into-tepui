@@ -19,13 +19,14 @@ import type { ViewMode } from '../../render/view-mode';
 import type { CollapseToggleLabels } from '../../hud/widgets';
 import type { PanelCollapse } from './panel-shell';
 
-// トークン→骨格→パネル群→ビュー→ウィジェット共通の順に結合する。
+// 後に置いた規則が勝つので、トークン→骨格→パネル群→ビューの順に重ねる。
 const STYLE =
   LAYOUT_TOKENS_STYLE + SKELETON_STYLE
   + COMBAT_PANEL_ROWS_STYLE + MAP_PANEL_STYLE + STAGE_STATUS_STYLE
   + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE;
 
 
+// 組み上がった HUD の DOM への参照一式。
 interface HudDomRefs {
   readonly combatRoot: HudViewRoot;
   readonly mapRoot: HudViewRoot;
@@ -72,18 +73,16 @@ function buildRailToggle(
   });
 }
 
-// 戦闘/マップ一方ぶんの HUD ルートと、その左右レール・収納トグルを組む。
+// 戦闘/マップ一方ぶんの HUD ルートを組む。
 function buildViewRoot(parent: HTMLElement, collapse: PanelCollapse, id: string, view: ViewMode): HudViewRoot {
-  // ビューのルート要素を作る。
   const element = createHudElement('div', id, parent, `hud-view-root hud-${view}-root`);
-  // 左右のレールを子として組む。
+  // パネルの置き場は左右のレールで、それぞれ収納トグルを持つ。
   const leftRail = createHudElement(
     'div', `${id}-rail-left`, element, 'hud-rail hud-rail-left',
   );
   const rightRail = createHudElement(
     'div', `${id}-rail-right`, element, 'hud-rail hud-rail-right',
   );
-  // 各レールの収納トグルを配線する。
   buildRailToggle(element, leftRail, collapse, 'left', view);
   buildRailToggle(element, rightRail, collapse, 'right', view);
   return { element, leftRail, rightRail };
@@ -91,7 +90,6 @@ function buildViewRoot(parent: HTMLElement, collapse: PanelCollapse, id: string,
 
 // PanelShell が組んだ見出し・本文・開閉ボタンを、アクセシブルな一領域として関連付ける。
 function configureCombatPanel(panel: PanelShell): void {
-  // 見出しと本文を id で結び、region として関連付ける。
   const titleId = `${panel.el.id}-title`;
   const bodyId = `${panel.el.id}-body`;
   panel.el.classList.add('combat-panel');
@@ -287,13 +285,12 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement, collapse
   buildEnemiesPanel(rightRail, collapse);
 }
 
-// マップビューの縮尺バー(数値と目盛りルーラー)を組む。
+// マップビューの縮尺バーを組む。
 function buildMapScale(root: HTMLElement): void {
-  // 縮尺表示の要素を作る。
   const mapScale = createHudElement('div', 'hud-map-scale', root, 'ui-surface-quiet');
   mapScale.dataset.id = 'map-scale';
   mapScale.setAttribute('aria-label', 'マップ縮尺');
-  // 数値表示と目盛りルーラーを組む。
+  // 数値表示と、その下の目盛りルーラー。
   mapScale.innerHTML = `
     <div><span class="map-scale-value" data-id="map-scale-value"></span></div>
     <div class="map-scale-ruler" data-id="map-scale-ruler">
@@ -303,13 +300,11 @@ function buildMapScale(root: HTMLElement): void {
     </div>`;
 }
 
-// 画面全体のトップバーを組む。1行目はビュー切替と現在の対象バッジの置き場、2行目は MET・
-// 時間加速・NODE WARP。
+// 画面全体のトップバーを組む。
 function buildTopBar(root: HTMLElement): void {
-  // トップバー本体の section 要素を作る。
   const bar = createHudElement('section', 'hud-topbar', root, 'ui-surface-quiet');
   bar.setAttribute('aria-label', 'Mission status');
-  // ビュー切替行と、MET・時間加速・NODE WARP の行を組み立てる。
+  // 1行目はビュー切替と現在の対象バッジの置き場、2行目は MET・時間加速・NODE WARP。
   bar.innerHTML = `
     <div class="gs-row" id="hud-viewbadge" data-id="gs-viewrow"></div>
     <div class="gs-row">
@@ -323,7 +318,6 @@ function buildTopBar(root: HTMLElement): void {
 
 // 視点リセットボタンを組む。id の chase は「動く実体を追っている視点」の意味。
 function buildChaseReset(root: HTMLElement): void {
-  // リセットボタン本体を作る。
   const chaseReset = createHudElement('button', 'hud-chase-reset', root, 'ui-surface-quiet');
   chaseReset.setAttribute('type', 'button');
   chaseReset.setAttribute('aria-label', '視点をリセット');
@@ -368,8 +362,7 @@ export function buildHudDom(shell: HudShell, collapse: PanelCollapse, renderStyl
   injectStyle();
   startViewportTracking();
   const { root, layers } = shell;
-  // 模式図では白背景になるため、マーカー配色をそれに合わせて切り替える手掛かりとして
-  // 現在のスタイルをルート要素の属性で公開する。
+  // 模式図では白背景になるので、配色を切り替えられるよう現在のスタイルを属性で公開する。
   root.dataset['renderStyle'] = renderStyle;
   const combatRoot = buildViewRoot(layers.panel, collapse, 'hud-combat-root', 'combat');
   const mapRoot = buildViewRoot(layers.panel, collapse, 'hud-map-root', 'map');

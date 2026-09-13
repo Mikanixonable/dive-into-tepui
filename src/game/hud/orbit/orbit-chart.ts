@@ -79,16 +79,15 @@ export class OrbitChart {
   public dispose(): void {
   }
 
-  // 直近の draw() が描いたプロット領域のピクセル寸法。まだ描いていない/寸法0なら null
-  // ——呼び出し側がドラッグ移動量を軸の値へ換算する変換係数として使う。
+  // 直近の draw() が描いたプロット領域のピクセル寸法。まだ描いていない/寸法0なら null。
   public plotPixelSize(): { width: number; height: number } | null {
     const width = this.backing.cssWidth - PADDING_LEFT - PADDING_RIGHT;
     const height = this.backing.cssHeight - PADDING_TOP - PADDING_BOTTOM;
     return width > 0 && height > 0 ? { width, height } : null;
   }
 
-  // spec の軸・マーク・点列を、この順(グリッド→外枠→キャプション→線→マーク)で palette の色で
-  // 描き直す。点が1つも無ければ折れ線の代わりに emptyMessage を出す。
+  // spec の軸・マーク・点列を palette の色で描き直す。点が1つも無ければ折れ線の代わりに
+  // emptyMessage を出す。
   public draw(spec: ChartSpec, palette: ThemePalette): void {
     resizeCanvasBackingStore(this.element, this.ctx, this.backing);
     const ctx = this.ctx;
@@ -113,13 +112,13 @@ export class OrbitChart {
     this.drawFrame(palette, plotLeft, plotTop, plotWidth, plotHeight);
     this.drawCaptions(spec, palette, plotLeft, plotRight, cssHeight);
 
-    // 折れ線・マークはプロット領域内にクリップする——値がプロット範囲外に出ても
-    // 軸ラベルの上へはみ出さない。
     if (!spec.points.some((point) => point !== null)) {
       this.drawEmptyMessage(spec.emptyMessage ?? '', palette, plotLeft, plotTop, plotWidth, plotHeight);
       return;
     }
 
+    // 折れ線・マークはプロット領域内にクリップする——値がプロット範囲外に出ても
+    // 軸ラベルの上へはみ出さない。
     ctx.save();
     ctx.beginPath();
     ctx.rect(plotLeft, plotTop, plotWidth, plotHeight);

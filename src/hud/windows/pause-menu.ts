@@ -255,12 +255,12 @@ export class PauseMenu implements OverlayHandle {
     this.minimizeToggle.title = this.minimized ? '展開する' : '最小化する';
   }
 
-  // OverlayHandle 実装。target がパネル要素の内部かどうかを返す。
+  // target がパネル要素の内部かどうかを返す。
   public contains(target: Node): boolean {
     return this.panel.contains(target);
   }
 
-  // OverlayHandle 実装。toggle(false) と同じく閉じる。
+  // パネルを閉じる。
   public close(): void {
     this.toggle(false);
   }

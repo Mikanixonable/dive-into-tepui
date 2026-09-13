@@ -1,9 +1,9 @@
 // マップビューの「未来表示」がどこを・いつを指すかの管理と、その操作パネル。
 //
 // ここでいう window は「どの座標系で(frame)・いつを(displayTime)見るか」を1フレーム分に
-// 束ねたもので、時間の窓だけを指す語ではない。どちらも画面全体で1つに揃っていなければ
-// ならない — 座標系が消費者ごとに違えば同じ画面に並べた線が比較できず、表示時刻が違えば
-// メッシュとマーカーが別の瞬間を指す。
+// 束ねたもので、時間の窓だけを指す語ではない。画面全体で1つに揃っていなければならない —
+// 座標系が消費者ごとに違えば同じ画面に並べた線が比較できず、表示時刻が違えばメッシュと
+// マーカーが別の瞬間を指す。
 import { PredictPanel } from './hud/panels/predict-panel';
 import type { PanelCollapse } from './hud/panel-shell';
 import { buildTicks } from './hud/orbit/tick-scale';
@@ -25,8 +25,7 @@ const DISPLAY_DUR_TEN_DAY = 10 * 86400; // 10日
 const DISPLAY_DUR_MONTH = 30 * 86400; // 1ヶ月
 const DISPLAY_DUR_THREE_MONTH = 90 * 86400; // 3ヶ月
 
-// 1フレーム分の「どこを・いつを表示しているか」。simTime/referencePeriod から派生する
-// duration/displayTime を呼び出し側ごとに計算し直させないための束。
+// 1フレーム分の「どこを・いつを表示しているか」。
 export interface DisplayWindow {
   readonly frame: ReferenceFrame;
   readonly simTime: number;
@@ -60,7 +59,7 @@ export function timeLabelSettingOf(window: DisplayWindow): TimeLabelSetting {
 // パネル幅に収まる目盛りの上限本数。
 const TICK_MAX_COUNT = 6;
 
-// 固定長プリセットの秒数。キーを増やすと網羅漏れが型エラーになる。
+// 固定長プリセットの秒数。
 const FIXED_DURATION_SEC: Record<'day' | 'tenDay' | 'month' | 'threeMonth', number> = {
   day: DISPLAY_DUR_DAY,
   tenDay: DISPLAY_DUR_TEN_DAY,
@@ -68,8 +67,7 @@ const FIXED_DURATION_SEC: Record<'day' | 'tenDay' | 'month' | 'threeMonth', numb
   threeMonth: DISPLAY_DUR_THREE_MONTH,
 };
 
-// スライダーの段階数 [下限, 上限]。期間が長いほど 1 段階あたりの時間が粗くなるので、
-// TARGET_STEP_SEC 相当の段階数まで増やす(ただし上限は DOM/イベント負荷を抑えるための天井)。
+// スライダーの段階数 [下限, 上限] と、1 段階あたりの目安の粗さ [s]。上限は DOM/イベント負荷の天井。
 const SLIDER_MIN_STEPS = 200;
 const SLIDER_MAX_STEPS = 4000;
 const SLIDER_TARGET_STEP_SEC = 10;
@@ -84,7 +82,7 @@ export class DisplayWindowManager {
   private _tickLabelMode: TickLabelMode = 'absolute';
   private _showElementTimes = false;
   private _frame: ReferenceFrame;
-  // このランの元期の unix 秒相当。構築時に1度だけ導く。
+  // このランの元期の unix 秒相当。
   private readonly epochUnixSec: number;
 
   private readonly panel: PredictPanel;
@@ -141,14 +139,12 @@ export class DisplayWindowManager {
     };
   }
 
-  // 未来の軌道・マーカーを描く座標系。カメラが固定される座標系(FocusCamera.cameraFrame)
-  // とは独立にプレイヤーが選ぶ。
+  // 未来の軌道・マーカーを描く座標系。カメラを固定する座標系とは独立にプレイヤーが選ぶ。
   get frame(): ReferenceFrame {
     return this._frame;
   }
 
   set frame(value: ReferenceFrame) {
-    if (this._frame === value) return;
     this._frame = value;
   }
 
@@ -158,7 +154,6 @@ export class DisplayWindowManager {
   }
 
   set tickLabelMode(value: TickLabelMode) {
-    if (this._tickLabelMode === value) return;
     this._tickLabelMode = value;
   }
 
@@ -168,7 +163,6 @@ export class DisplayWindowManager {
   }
 
   set showElementTimes(value: boolean) {
-    if (this._showElementTimes === value) return;
     this._showElementTimes = value;
   }
 
@@ -202,10 +196,9 @@ export class DisplayWindowManager {
     return this._current;
   }
 
-  // 選んだ期間の秒数を返す。'orbit' では referencePeriod をそのまま返す — どの軌道の周期を
-  // 参照するかは呼び出し側の文脈(計画区間の遷移後軌道、自機の現在軌道など)で決まるため、
-  // このクラス自身は軌道周期を持たない。referencePeriod が有限な正数でなければ
-  // APERIODIC_ARC_DURATION にフォールバックする。
+  // 選んだ期間の秒数を返す。'orbit' では referencePeriod をそのまま返し、それが有限な正数で
+  // なければ APERIODIC_ARC_DURATION へ落とす。どの軌道の周期を参照するかは呼び出し側の文脈で
+  // 決まるので、このクラス自身は軌道周期を持たない。
   durationSec(referencePeriod: number): number {
     if (this.durationKey === 'orbit') {
       return isFinite(referencePeriod) && referencePeriod > 0 ? referencePeriod : APERIODIC_ARC_DURATION;
@@ -224,10 +217,7 @@ export class DisplayWindowManager {
     return FIXED_DURATION_SEC[this.pastDurationKey];
   }
 
-  // このフレームの表示窓を確定させて返す。表示窓の各値は現在の時刻・操作対象・設定から
-  // 軽量に導けるため、直前の結果を条件付きで再利用せず、呼ぶたびに組み直す。_current は
-  // update と sync の間、および DOM イベントから直近の窓を読むためのフレームスナップショット
-  // であり、導出値のキャッシュではない。表示時刻はスライダーが立っている間だけ未来を指し、
+  // このフレームの表示窓を確定させて返す。表示時刻はスライダーが立っている間だけ未来を指し、
   // forceCurrent または原点では simTime そのもの。forceCurrent の間はスクラバーの位置も原点に戻す。
   resolve(simTime: number, controlled: DynamicEntity | null, forceCurrent: boolean): DisplayWindow {
     const referencePeriod = this.currentOrbitPeriod(controlled, simTime);

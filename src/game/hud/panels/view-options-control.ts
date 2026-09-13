@@ -12,7 +12,7 @@ import type { PanelCollapse } from '../panel-shell';
 import type { CelestialGridVisibility } from '../../../render/celestial-grid';
 import type { SettingValue } from '../../../settings/setting-value';
 
-// 表示パネルが読み書きするラン跨ぎ設定。読むのは現在値だけで、書き換えは onXxxChange が担う。
+// 表示パネルが読み書きするラン跨ぎ設定。現在値を読み、書き換えは onXxxChange へ返す。
 export interface ViewOptionsSettings {
   readonly mapDisplay: SettingValue<MapDisplayToggles>;
   readonly grid: SettingValue<CelestialGridVisibility>;

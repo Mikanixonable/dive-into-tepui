@@ -1,3 +1,5 @@
+// トップバー1行目のバッジ: ゲームタイトル・現在のモード・現在のビュー(クリックで遷移メニュー)・
+// 画面全体の見せ方(写実/模式図)を切り替えるトグル・注視/操作/ターゲットの対象名。
 import type { ViewMode } from '../../render/view-mode';
 import { ContextMenu, MenuItem } from './windows/context-menu';
 import type { OverlayManager } from '../../hud/overlay-manager';
@@ -54,13 +56,11 @@ export interface ViewBadgeViewModel {
   readonly renderStyle: RenderStyle;
 }
 
-// ビューバッジが返す操作。ビューの正本が公開する命令。
+// ビューの切り替えを受ける口。
 export interface ViewBadgeCommands {
   setView(view: ViewMode): void;
 }
 
-// トップバー1行目のバッジ: ゲームタイトル・現在のモード・現在のビュー(クリックで遷移メニュー)・
-// 画面全体の見せ方(写実/模式図)を切り替えるトグル・注視/操作/ターゲットの対象名。
 export class ViewBadge {
   private readonly el: HTMLElement;
   private readonly modeEl: HTMLElement;

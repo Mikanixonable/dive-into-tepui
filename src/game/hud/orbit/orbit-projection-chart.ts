@@ -10,6 +10,7 @@ import {
 
 interface ProjectionPoint { readonly lonDeg: number; readonly latDeg: number }
 
+// 1系統ぶんの軌跡の指定。points の null は「ここで線が切れる」印。
 export interface ProjectionSeriesSpec {
   readonly points: readonly (ProjectionPoint | null)[];
   readonly current: ProjectionPoint;
@@ -24,6 +25,7 @@ export interface ProjectionChartSpec {
   readonly emptyMessage?: string;
 }
 
+// プロットへ映している経緯度の範囲 [deg]。
 interface Window { lonMin: number; lonMax: number; latMin: number; latMax: number }
 
 const PADDING_LEFT = 30;
@@ -70,12 +72,6 @@ export class OrbitProjectionChart {
   public dispose(): void {
   }
 
-  // 直近の draw() が描いたプロット領域のピクセル寸法。まだ描いていない/寸法0なら null
-  // ——呼び出し側がドラッグ移動量を表示範囲の度数へ換算する変換係数として使う。
-  public plotPixelSize(): { width: number; height: number } | null {
-    return this.lastPlotWidth > 0 && this.lastPlotHeight > 0
-      ? { width: this.lastPlotWidth, height: this.lastPlotHeight } : null;
-  }
 
   // 表示範囲を全球・最大縮小(中心経度0・緯度0)へ戻す。
   public resetView(): void {
@@ -124,8 +120,8 @@ export class OrbitProjectionChart {
     };
   }
 
-  // 背景(テクスチャ or 空メッセージ)→グリッド→各系列の折れ線・現在位置マークの順に、
-  // palette の色で描く。
+  // 背景(テクスチャ or 空メッセージ)・経緯度グリッド・各系列の軌跡と現在位置を palette の
+  // 色で描き直す。
   public draw(spec: ProjectionChartSpec, palette: ThemePalette): void {
     resizeCanvasBackingStore(this.element, this.ctx, this.backing);
     const ctx = this.ctx;

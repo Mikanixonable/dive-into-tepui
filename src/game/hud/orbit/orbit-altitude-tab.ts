@@ -30,6 +30,7 @@ export class AltitudeTab implements AnalysisTab {
 
   // チャートと、縦軸・横軸のスケール入力欄・リセットボタンの行を積む。
   public constructor() {
+    // 横軸は入力欄でしか動かないので、ドラッグもホイールも縦軸だけへ渡す。
     this.chart.element.classList.add('panzoom');
     new PointerPanZoom(this.chart.element, (_dxPx, dyPx) => this.pan(dyPx), (wd) => this.zoom(wd));
     this.yField = new ScaleField('縦軸', 'km', () => this.scaleYKm, (km) => {
@@ -42,10 +43,12 @@ export class AltitudeTab implements AnalysisTab {
     this.element.appendChild(buildTabControls([this.yField, xField], () => this.resetView()));
   }
 
+  // 基準さえあれば高度は描けるので、いつでも選べる。
   public available(): boolean {
     return true;
   }
 
+  // チャートの資源を片付ける。
   public dispose(): void {
     this.chart.dispose();
   }
@@ -100,6 +103,7 @@ export class AltitudeTab implements AnalysisTab {
     this.centerM = (this.centerM ?? 0) + (dyPx / size.height) * this.scaleYKm * 1000;
   }
 
+  // ホイール量を倍率へ写し、縦軸のスケールだけを拡大縮小する。
   private zoom(wheelDelta: number): void {
     this.scaleYKm = clampScaleKm(this.scaleYKm * Math.exp(wheelDelta));
     this.yField.setValue(this.scaleYKm);

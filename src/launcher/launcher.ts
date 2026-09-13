@@ -23,7 +23,7 @@ import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay'
 import { showFatalError } from './fatal-error';
 import type { TdbJulianDate } from '../physics/time';
 
-// URL に ?perf=1 が付いているか。付いていればデバッグ情報ウィンドウを起動直後から開く。
+// URL に ?perf=1 が付いているか。
 export function debugInfoOpenAtStart(): boolean {
   return new URLSearchParams(location.search).get('perf') === '1';
 }
@@ -39,7 +39,7 @@ function resumableStageClass(unlockManager: UnlockManager, slots: SaveSlots): St
 }
 
 // StageResult はセーブに含まれないので、決着済みの phase を持つセーブを読んだときは
-// 見出しだけを phase から復元する。内訳は残っていない。
+// 見出しだけを phase から復元する。
 function fallbackResult(phase: GamePhase): StageResult {
   return { win: phase !== 'lost', title: null, detailHtml: '結果の記録がありません' };
 }
@@ -55,7 +55,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   public get currentGame(): Game | null { return this.game; }
 
-  // CurrentGameSource 実装。今動いている周回の読み口と一時停止の口。周回が無ければ null。
+  // 今動いている周回の読み口と一時停止の口。周回が無ければ null。
   // 状態を表す値は、読むたびにその周回の Game から引く。
   public get current(): CurrentGameSource['current'] {
     const game = this.game;
@@ -190,7 +190,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     return initialSave;
   }
 
-  // 実際に遊び始めたステージをスロットへ記録し、restart()/loadSnapshot() のために覚えておく。
+  // 実際に遊び始めたステージをスロットへ記録し、作り直しのために覚えておく。
   private noteLaunched(stageClass: StageClass): void {
     this.launchedStage = stageClass;
     const activeSlotId = this.slots.activeSlotId;
@@ -244,7 +244,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     if (this.transitioning) return;
     this.transitioning = true;
     this.endRun();
-    // 切り替え先のスロットで再開できるステージが無ければ、選択画面で決める。
     const resumed = resumableStageClass(this.unlockManager, this.slots);
     const resolved: Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> =
       resumed !== null ? Promise.resolve({ stageClass: resumed }) : this.selectStageScreen();

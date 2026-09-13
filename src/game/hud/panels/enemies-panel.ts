@@ -22,6 +22,7 @@ export interface EnemiesPanelViewModel {
   onSelectRight(id: string, clientX: number, clientY: number): void;
 }
 
+// 一覧に出す1行。同じ波の敵は1行へ畳み、波に属さない敵はそれぞれ1行になる。
 type EnemyRow =
   | {
     readonly kind: 'single';

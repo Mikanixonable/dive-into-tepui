@@ -36,7 +36,7 @@ export class MapPicking {
   private readonly listPanel: PhysicalObjectListPanel;
   private readonly orbitLineWindows: OrbitLineWindows;
 
-  // 候補列と、当たった対象の落とし先(ObjectWindows)を参照として受け取る。
+  // 一覧パネルと軌道線ウィンドウを組み、一覧の行操作を注視・ターゲット・ウィンドウへ繋ぐ。
   public constructor(
     private readonly hud: HudLayers & Notifier,
     private readonly cameraSystem: CameraSystem,

@@ -1,4 +1,4 @@
-// 窓・ポップアップ・パネルを置く側が HUD から受け取る面 — 置き場所と、折りたたみトグルの配線役。
+// 窓・ポップアップ・パネルの置き場所と、折りたたみトグルの配線役をまとめた面。
 import type { PanelCollapse } from './panel-shell';
 import type { OverlayLayers } from '../../hud/overlay-layer';
 import type { OverlayManager } from '../../hud/overlay-manager';
@@ -10,7 +10,7 @@ export interface HudLayers {
   readonly layers: OverlayLayers;
   // 開いている窓の重なりと入力の取り合いを裁く役。
   readonly overlayManager: OverlayManager;
-  // 戦闘ビュー専用の根。ビューを切り替えると active クラスが移る。
+  // 戦闘ビュー専用の根。
   readonly combatRoot: HTMLElement;
   // マップビュー専用の根。
   readonly mapRoot: HTMLElement;
