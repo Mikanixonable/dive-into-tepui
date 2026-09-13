@@ -7,12 +7,12 @@ import { bodySearchText } from '../pickable/body-search-text';
 import { fmtDist } from '../../hud/utils';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { ENTITY_GLYPH } from './marker-identity';
-import { MARKER_PRIORITY } from './crowding';
+import { MARKER_PRIORITY } from './marker-priority';
 import type { MapListSection, ObjectPickerGenre } from '../pickable/pickable-listing';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
-import type { MarkerVisibility } from './marker-visibility';
+import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 

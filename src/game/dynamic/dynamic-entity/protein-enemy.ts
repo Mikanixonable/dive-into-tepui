@@ -7,7 +7,7 @@ import { collisionDamageFraction } from './contact-damage';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
 import { ProteinCombatState } from '../../protein/protein-combat-state';
 import { ProteinSphereCollisionGeometry } from '../../protein/protein-sphere-collision';
-import { proteinLocalImpactPoint, proteinSiteWorldPosition } from '../../../render/protein/protein-anchors';
+import { proteinLocalImpactPoint, proteinSiteWorldPosition } from '../../../physics/protein-site-geometry';
 import { DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings } from '../../../render/protein/protein-display';
 import { ENEMY_MODEL_SCALE, Enemy, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore } from './enemy';
 import {
@@ -29,6 +29,9 @@ import type { OrbitReference } from '../../orbit-reference';
 // タンパク質の構造は揺らぐが、判定形状は常に静止した1つに固定するので、慣性も1つでよい。
 // 漂流機体と同じく非対称にして、ジャニベコフ効果(中間軸不安定性)で無秩序に回らせる。
 const PROTEIN_INERTIA = v3(1, 1.1, 1.05);
+
+// 揺らぎを乗せない残基変位。規則が読む部位の位置は、表示の変形に追随させない。
+const STILL_RESIDUE_OFFSET = [0, 0, 0] as const;
 
 // 新規配置。表示形態と着色は生成時に決め、以後は Entity の設定として切り替える。
 type ProteinEnemyPlacement = EnemyPlacement & {
@@ -168,10 +171,11 @@ export class ProteinEnemy extends Enemy {
     return energyAvailable && this.combat.isActionEnabled(attackAction.id);
   }
 
-  // 次に撃つ機能部位の ECI 位置。呼ぶたびに撃つ部位を順繰りに進める。
+  // 次に撃つ機能部位の ECI 位置。呼ぶたびに撃つ部位を順繰りに進める。銃口は静止座標で取り、
+  // 表示の揺らぎ(残基変位)は乗せない。
   protected override muzzlePosition(): Vec3 {
     return proteinSiteWorldPosition(
-      this.combat.nextAttackSite(), [], [], 0,
+      this.combat.nextAttackSite()?.position ?? null, STILL_RESIDUE_OFFSET,
       this.combat.asset.coordinateScale, ENEMY_MODEL_SCALE,
       this.motion.state.r, this.motion.att.q,
     );
