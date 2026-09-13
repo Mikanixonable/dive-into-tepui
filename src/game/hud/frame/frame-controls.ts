@@ -29,15 +29,17 @@ export class FrameControls {
     popupRoot: HTMLElement,
     private readonly celestialBodies: CelestialBodies,
     private readonly mapCamera: FocusCamera,
-    combatCamera: FocusCamera,
+    private readonly combatCamera: FocusCamera,
     private readonly displayFrame: DisplayFrameSelection,
     overlayManager: OverlayManager,
     private readonly frameAnchors: FrameAnchorSource,
   ) {
     this.cameraPanel = new CameraFramePanel(
-      mapPanelRoot, popupRoot, celestialBodies, mapCamera, overlayManager,
+      mapPanelRoot, popupRoot, celestialBodies, mapCamera, overlayManager, mapCamera.cameraRotationMode,
     );
-    this.combatCameraPanel = new CombatCameraPanel(combatPanelRoot, combatCamera);
+    this.combatCameraPanel = new CombatCameraPanel(
+      combatPanelRoot, combatCamera, combatCamera.cameraRotationMode,
+    );
     this.trajectoryPanel = new TrajectoryFramePanel(
       mapPanelRoot, popupRoot, celestialBodies, displayFrame, overlayManager,
     );
@@ -79,8 +81,18 @@ export class FrameControls {
   ): void {
     this.lastTime = simTime;
     const members = this.celestialBodies.systemMembersAt(cameraPos, displayTime);
-    this.cameraPanel.sync(pickables, members, displayTime);
-    this.combatCameraPanel.sync();
+    const camera = this.mapCamera;
+    // マップカメラの現在値を写してから、3つのパネルを同じ候補列で揃える。
+    this.cameraPanel.sync(pickables, members, {
+      focusId: focusTargetId(camera.focus) ?? null,
+      rotationFollow: camera.rotationFollow,
+      availableRotationFollows: camera.availableRotationFollows(displayTime),
+      cameraRotationMode: camera.cameraRotationMode,
+      projection: camera.projection,
+      fovDeg: camera.fov,
+      referencePlane: camera.referencePlane,
+    });
+    this.combatCameraPanel.sync(this.combatCamera.cameraRotationMode);
     this.trajectoryPanel.sync(pickables, members, displayTime, this.validRevolutionRoles(displayTime));
   }
 
