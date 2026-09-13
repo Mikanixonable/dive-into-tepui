@@ -21,6 +21,9 @@ export interface BearingMarker {
   readonly color: string;
   // 画面外へ出たときに出すか。
   readonly visible: boolean;
+  // 重なったときに残す度合い。いまの値は cls に 'mk-ally' / 'mk-ammo' が含まれるかという偶然で
+  // 味方 600・弾薬 300・敵 0 に分かれている。
+  // TODO: 方位マーカーの度合いを、種別の意味から決め直す。
   readonly priority: number;
   // 近接まとめでアイコンの扱いが既に決まっている種別か。
   readonly clustered: boolean;
@@ -92,8 +95,8 @@ export class GroupedMarkers {
   // 回転方向が読めないため)。
   public sync(
     items: readonly GroupedMarkerItem[], camera: CameraFrame, nowMs: number,
-    celestialLabels: readonly ActiveCelestialLabel[] = [],
-    celestialBodies: readonly CelestialBody[] = [],
+    celestialLabels: readonly ActiveCelestialLabel[],
+    celestialBodies: readonly CelestialBody[],
   ): void {
     const project = camera.project;
     const mapView = camera.mode === 'map';

@@ -29,7 +29,7 @@ const LAYER_TABLE = [
   ['src/hackgen-400.css', DEFINITION], // 書体
   ['src/physics/', TIME],
   ['src/render/', DEVICE],
-  ['src/marker/', DEVICE], // 手順 1-4 で新設される。まだ無くてよい
+  ['src/marker/', DEVICE],
   ['src/audio/', DEVICE],
   ['src/input/', DEVICE],
   ['src/hud/', '表示の導出'],
