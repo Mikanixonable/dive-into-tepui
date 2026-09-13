@@ -66,10 +66,10 @@ export class ViewBadge {
   public onRenderStyleChange: ((style: RenderStyle) => void) | null = null;
 
   // container(トップバー1行目の行)へバッジの中身を、遷移メニューを popupLayer へ組み立てて配線する。
-  // roster と celestialBodies は注視対象の表示名を引くために持つ。
+  // roster と celestialBodies は注視対象の表示名を引くために持つ。見せ方のトグルは sync で合わせる。
   public constructor(
     container: HTMLElement, popupLayer: HTMLElement, private readonly viewManager: ViewManager,
-    overlayManager: OverlayManager, renderStyle: RenderStyle,
+    overlayManager: OverlayManager,
     private readonly roster: EntityRoster, private readonly celestialBodies: CelestialBodies,
   ) {
     this.menu = new ContextMenu<true, ViewMode>(popupLayer, overlayManager);
@@ -92,7 +92,6 @@ export class ViewBadge {
     this.styleToggle = new ToggleSwitch(
       '模式図', (on) => this.onRenderStyleChange?.(on ? 'schematic' : 'realistic'),
     );
-    this.styleToggle.setOn(renderStyle === 'schematic');
     this.styleToggle.element.classList.add('vb-style-toggle');
 
     container.append(title, this.modeEl, this.viewButton.element, this.styleToggle.element);
@@ -112,10 +111,12 @@ export class ViewBadge {
     this.el.replaceChildren();
   }
 
-  // モード名・ビューボタンと、注視対象・操作対象・ターゲットの名前を反映する。
+  // モード名・ビューボタン・見せ方のトグルと、注視対象・操作対象・ターゲットの名前を反映する。
   public sync(
     modeLabel: string, focus: FocusTarget, control: Controllable | null, targetName: string | null,
+    renderStyle: RenderStyle,
   ): void {
+    this.styleToggle.setOn(renderStyle === 'schematic');
     this.modeEl.textContent = `Mode: ${titleCase(modeLabel)}`;
     this.viewButton.setLabel(`View: ${VIEW_LABELS[this.viewManager.current]} ▾`);
     setFieldValue(this.focusEl, this.focusName(focus));

@@ -57,11 +57,11 @@ import { ViewBadge } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
 import { syncControlledLoopSfx } from './controlled-loop-sfx';
 import { ViewOptionsControl } from './hud/panels/view-options-control';
-import type { MapDisplayToggles } from './map/display-toggles';
 import { MapVisibilityPolicy } from './map/visibility-policy';
-import type { RunSetting } from './run-setting';
-import type { OrbitGuideSettings } from './celestial/orbit-guide/orbit-guide-settings';
-import type { CelestialGridVisibility } from '../render/celestial-grid';
+import type { ViewOptionsSettings } from './hud/panels/view-options-control';
+import type { BurnManagementPanelHandlers } from './hud/panels/burn-management-panel';
+import type { SettingValue } from '../settings/setting-value';
+import type { ThemePalette } from '../theme';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -106,12 +106,12 @@ export class Game {
   public get celestialSystem(): CelestialSystem { return this._celestialSystem; }
   // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。
   private readonly viewOptions: ViewOptionsControl;
-  // マップの表示トグル。
-  private readonly mapDisplay: RunSetting<MapDisplayToggles>;
-  // 天球グリッドの表示。
-  private readonly grid: RunSetting<CelestialGridVisibility>;
-  // 軌道ガイドの設定。
-  private readonly orbitGuide: RunSetting<OrbitGuideSettings>;
+  // 表示パネルが読み書きするマップ・天球・軌道ガイドの設定。
+  private readonly viewOptionSettings: ViewOptionsSettings;
+  // 3D 描画と canvas へ渡す色の出どころ。
+  private readonly themePalette: SettingValue<ThemePalette>;
+  // 燃焼管理パネルのボタンが引く操作の口。
+  public readonly boosterHandlers: BurnManagementPanelHandlers;
 
   public readonly targeter: Targeter;
   public readonly navTarget: NavTarget;
@@ -156,7 +156,7 @@ export class Game {
     await progress.enter('bodies');
     celestialSystem.build(gs.scene, gs.pipeline);
     await progress.enter('run');
-    const game = new Game(host, stageClass, audioEngine, pauseMenu, celestialSystem, renderStyle, initialSave);
+    const game = new Game(host, stageClass, audioEngine, pauseMenu, celestialSystem, initialSave);
     // シェーダを組む前に、最初に描かれるフレームと同じ表示状態を時間の進まない1フレームで作る —
     // 天体表面の分割段のように update/sync が決めるまで現れない表示物が、事前コンパイルから漏れる。
     game.update(0, gs.viewport);
@@ -200,7 +200,6 @@ export class Game {
     audioEngine: AudioEngine,
     pauseMenu: PauseMenu,
     celestialSystem: CelestialSystem,
-    renderStyle: RenderStyle,
     initialSave?: GameSaveData,
   ) {
     this.sections = host.sections;
@@ -210,9 +209,8 @@ export class Game {
     this.gpu = host.scene.gpu;
     this._celestialSystem = celestialSystem;
     this._hud = host.hud;
-    this.mapDisplay = host.mapDisplay;
-    this.grid = host.grid;
-    this.orbitGuide = host.orbitGuide;
+    this.viewOptionSettings = host.viewOptions;
+    this.themePalette = host.themePalette;
     this._worldSfx = new WorldSfx(audioEngine);
     const uiSfx = new UiSfx(audioEngine);
     this.pauseMenu = pauseMenu;
@@ -228,11 +226,13 @@ export class Game {
       this.sections, initialSave?.simTime ?? 0, initialSave);
     this.entityLines = new EntityLineManager(this.dynamicSystem);
     this.equatorNodes = new EquatorNodeManager(this.dynamicSystem, this.markers.createGroup());
-    this.displayWindowManager = new DisplayWindowManager(this._hud.mapRoot, celestialSystem);
+    this.displayWindowManager = new DisplayWindowManager(
+      this._hud.mapRoot, this._hud.panelCollapse, celestialSystem,
+    );
 
     // 表示パネル。左レールの並びはパネルを足した順で決まるので、同じレールへ足す座標系パネル
     // (FrameControls)より先に組む。
-    this.viewOptions = new ViewOptionsControl(this._hud.mapRoot, host.mapDisplay, host.grid, host.orbitGuide);
+    this.viewOptions = new ViewOptionsControl(this._hud.mapRoot, this._hud.panelCollapse, host.viewOptions);
 
     // ビューの正本(ViewManager)はカメラより後に組み上がるため、遅延評価で渡す。
     // 姿勢は現在値しか持たないため、解決はフォーカス id → 生存エンティティの現在姿勢。
@@ -272,18 +272,17 @@ export class Game {
     this.controlSelection = new ControlSelection(
       initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._hud,
     );
-    this._hud.burnManagementPanel.setHandlers({
+    this.boosterHandlers = {
       onAttach: () => { this.activeControllable?.boosters?.attach(); },
       onToggleIgnition: () => { this.activeControllable?.boosters?.toggleIgnition(); },
       onDecouple: () => { this.activeControllable?.boosters?.decouple(this.dynamicSystem); },
-    });
+    };
     this.planDisplay = new PlanDisplay(
       this._scene, this.markers.createGroup(), celestialSystem, this.displayWindowManager, this.controlSelection,
     );
     this.input = new Input(host.scene.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
     this.input.onPointerKindChange = (kind) => this.touchControls?.setPointerKind(kind);
-    this._hud.vesselPanel.setInput(this.input);
 
     this.predictor = new Predictor(this.dynamicSystem, celestialSystem);
 
@@ -311,19 +310,19 @@ export class Game {
       this.celestialMarkers, this.markers, this.targeter.combatMarkers,
       this.displayWindowManager, this.frameControls,
       this.frameAnchors, this.controlSelection, this.simSpeedManager, this.planDisplay,
-      this._scene, this._hud, uiSfx, this.navTarget, this.mapDisplay,
+      this._scene, this._hud, uiSfx, this.navTarget, this.viewOptionSettings.mapDisplay,
     );
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
     // 置かれるので、戦闘ビューへ入れるかどうかはその後でなければ判定できない。
     this.viewManager = new ViewManager(
-      this._hud, this.touchControls, this.displayWindowManager, this.controlSelection,
+      this._hud, this.touchControls, this.controlSelection,
       { combat: combatView, map: mapView },
       initialSave?.camera?.view,
     );
 
     this.viewBadge = new ViewBadge(
       this._hud.viewBadgeRow, this._hud.layers.notify, this.viewManager, this._hud.overlayManager,
-      renderStyle, this.dynamicSystem, celestialSystem,
+      this.dynamicSystem, celestialSystem,
     );
     this.viewBadge.onRenderStyleChange = (style) => this._hud.setRenderStyle(style);
 
@@ -345,15 +344,15 @@ export class Game {
   // 取り除く。呼んだ後のこのインスタンスは使えない。構築の逆順で辿る — 後から組んだものほど
   // 先に組んだものを参照する。
   public dispose(): void {
+    // Hud はこのゲームより長生きするので、書き換えたクラスを戻し、操作対象も操作の受け口も
+    // 無い状態を1度宣言してから畳む。
+    this._hud.root.classList.remove('creative-mode');
+    this._hud.vesselPanel.sync(null, this.activeStage, this.cameraSystem, false, null);
+    this._hud.burnManagementPanel.sync(null, {});
     this.viewBadge.dispose();
     this.viewManager.dispose();
     this.objectWindows.dispose();
     this.activeStage.dispose();
-    // Hud はこのゲームより長生きするので、書き換えたクラスと差し込んだ参照を元へ戻す。
-    this._hud.root.classList.remove('creative-mode');
-    this._hud.vesselPanel.setInput(null);
-    this._hud.burnManagementPanel.setHandlers({});
-    this._hud.burnManagementPanel.sync(null);
     this._worldSfx.dispose();
     this.touchControls?.dispose();
     this.input.dispose();
@@ -391,12 +390,14 @@ export class Game {
     // ここから先はポーズ中も決着後も通す。決着は積分を止めないので、飛ばすと描画原点になる
     // カメラ位置だけが絶対 ECI に取り残され、追従対象が軌道速度で流れて即フレームアウトする。
     const activeControllable = this.activeControllable;
-    const displayWindow = this.displayWindowManager.resolve(this.dynamicSystem.simTime, activeControllable);
+    const view = this.viewManager.current;
+    const displayWindow = this.displayWindowManager.resolve(
+      this.dynamicSystem.simTime, activeControllable, view !== 'map',
+    );
     // 過去表示に要る履歴の長さを要求する。次の積分がサンプルを積むまでに立っていればよいので、
     // 窓が確定したこの場で渡す。
     this.dynamicSystem.requestHistoryDuration(displayWindow.pastDuration);
-    const view = this.viewManager.current;
-    const canDisplayFuture = !this.displayWindowManager.forceCurrent;
+    const canDisplayFuture = !displayWindow.forceCurrent;
     // このフレームが天体を引く表示時刻を差し込む: 以降の frameTransformAt 呼び出しは
     // すべてこの frameAnchors を通す。
     this.frameAnchors.update(displayWindow.displayTime);
@@ -419,7 +420,7 @@ export class Game {
     this.sections.enter(SECTION.plan);
     const equatorVisibility = this.cameraSystem.view === 'map'
       ? new MapVisibilityPolicy(
-        this._celestialSystem, this.mapDisplay.current,
+        this._celestialSystem, this.viewOptionSettings.mapDisplay.current,
       )
       : null;
     this.equatorNodes.update({
@@ -450,6 +451,7 @@ export class Game {
       this.viewManager.current,
       displayWindow,
       this.viewManager.activeView.visibilityPolicy,
+      this.themePalette.current,
     );
   }
 
@@ -517,11 +519,12 @@ export class Game {
     graphics: GraphicsSettingsData, style: RenderStyle, viewport: Viewport, nowMs: number,
   ): void {
     const controlled = this.activeControllable;
+    const palette = this.themePalette.current;
     // update() が確定させた、このフレームの表示窓。
     const displayWindow = this.displayWindowManager.current;
     this.viewBadge.sync(
       this.activeStage.stageClass.selectLabel, this.cameraSystem.activeFocus,
-      controlled, this.navTarget.name,
+      controlled, this.navTarget.name, style,
     );
 
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
@@ -552,7 +555,8 @@ export class Game {
 
     this._celestialSystem.sync(
       displayTime, nowMs, camera, this.cameraSystem, graphics, style,
-      this.mapDisplay.current, this.grid.current, this.orbitGuide.current, visibilityPolicy,
+      this.viewOptionSettings.mapDisplay.current, this.viewOptionSettings.grid.current,
+      this.viewOptionSettings.orbitGuide.current, visibilityPolicy,
     );
     // 本数の警告は、天体系がこのフレームに組んだ軌道ガイド線から出す。
     this.viewOptions.setOrbitGuideLineCount(this._celestialSystem.orbitGuide.lineCount);
@@ -583,7 +587,7 @@ export class Game {
     this.flashEffectsView.sync(this.flashEffects.live, camera);
 
     this.targeter.sync(
-      controlled, camera, displayTime, visibilityPolicy, this.celestialMarkers.activeLabels, nowMs);
+      controlled, camera, displayTime, visibilityPolicy, this.celestialMarkers.activeLabels, nowMs, palette);
     this.navTarget.sync(
       camera, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, timeLabel, nowMs);
 
@@ -594,14 +598,14 @@ export class Game {
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     this.entityLines.sync(
       controlled, this.targeter.aliveTarget, this.viewManager.current, displayWindow, visibilityPolicy, orbitRef,
-      camera, this.frameAnchors, this._celestialSystem);
+      camera, this.frameAnchors, this._celestialSystem, palette);
     // ビュー専用のパネル・表示物と軌道線の右クリック候補。軌道線が今フレーム焼いたサンプルを
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
     this.viewManager.activeView.syncPanels(displayWindow, camera, nowMs);
 
     this.activeStage.sync(camera, displayTime);
 
-    this._hud.syncPanels(this.viewManager.current, this, camera);
+    this._hud.syncPanels(this.viewManager.current, this, camera, palette);
 
     this.syncFrameMarkers(nowMs);
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。

@@ -4,7 +4,7 @@ import {
 } from '../../../hud/widgets';
 import { bindActivation, expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
 import { injectOnce } from '../../../hud/inject-style';
-import { loadPanelCollapsed, savePanelCollapsed, wirePanelCollapse } from '../panel-shell';
+import type { PanelCollapse } from '../panel-shell';
 import { MQ_COARSE } from '../../../hud/breakpoints';
 import { PhysicalObjectListRowTree as PhysicalObjectListTree } from './physical-object-list-row-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
@@ -130,7 +130,7 @@ export class PhysicalObjectListPanel {
   private readonly emptyState: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
 
-  public constructor(root: HTMLElement, celestialBodies: CelestialBodies) {
+  public constructor(root: HTMLElement, collapse: PanelCollapse, celestialBodies: CelestialBodies) {
     injectOnce('physical-object-list-panel', STYLE);
     this.order = new PhysicalObjectListOrder(celestialBodies);
     this.rowTree = new PhysicalObjectListTree(celestialBodies, this.order, this.itemsByIdScratch, {
@@ -198,7 +198,7 @@ export class PhysicalObjectListPanel {
     body.className = 'physical-object-list-body';
     this.body = body;
     this.panel.appendChild(body);
-    this.unsubscribeCollapsedView = wirePanelCollapse({
+    this.unsubscribeCollapsedView = collapse.wire({
       toggleRoot: titleRow,
       toggleId: 'hud-physical-object-list-toggle',
       toggleClassName: 'physical-object-list-collapse',
@@ -233,7 +233,7 @@ export class PhysicalObjectListPanel {
       sectionBody.className = 'physical-object-list-section-body';
       const order: SectionOrder = { ids: [], rootIds: [], childIds: new Map() };
       // 開閉状態はビューごとに引き継ぐ(未操作なら既定で開く)。
-      const expanded = !(loadPanelCollapsed(sectionId) ?? false);
+      const expanded = !(collapse.collapsed(sectionId) ?? false);
       const section: Section = {
         header, labelEl, glyphEl, body: sectionBody, rows: new Map(), order, expanded, savedExpanded: null,
       };
@@ -242,7 +242,7 @@ export class PhysicalObjectListPanel {
       const toggleSection = (): void => {
         section.expanded = !section.expanded;
         this.applyExpanded(section);
-        savePanelCollapsed(sectionId, !section.expanded);
+        collapse.setCollapsed(sectionId, !section.expanded);
       };
       bindActivation(header, toggleSection);
       this.sections.set(sectionKey, section);

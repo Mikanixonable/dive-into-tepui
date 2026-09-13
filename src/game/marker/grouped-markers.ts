@@ -10,7 +10,7 @@ import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from '../../marker/crowding';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { MarkerSink } from '../../marker/marker-sink';
-import { currentThemePalette } from '../../theme';
+import type { ThemePalette } from '../../theme';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { CelestialBody } from '../../physics/celestial-body';
 
@@ -46,9 +46,9 @@ export interface GroupedMarkerItem {
   occluded?: boolean; // 惑星遮蔽中は表示位置を維持したままフェードアウトする
 }
 
-// ターゲットに指定された対象のマーカーへ、代表選出の優先度と強調色を被せる。
-export function withTargetRole(item: GroupedMarkerItem): GroupedMarkerItem {
-  const signal = currentThemePalette().signal;
+// ターゲットに指定された対象のマーカーへ、代表選出の優先度と palette の強調色を被せる。
+export function withTargetRole(item: GroupedMarkerItem, palette: ThemePalette): GroupedMarkerItem {
+  const signal = palette.signal;
   return {
     ...item,
     cls: `${item.cls} mk-target`,

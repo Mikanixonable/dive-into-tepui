@@ -9,6 +9,7 @@ import { StartEpochForm } from './start-epoch-form';
 import { TITLE_SCENE_PATTERNS, TitleScene } from './title-scene';
 import type { StageClass } from '../game/stages/stage';
 import type { TdbJulianDate } from '../physics/time';
+import type { ThemePalette } from '../theme';
 import type { UnlockManager } from './unlock-manager';
 
 // タイトルの添え書き1組。primary は副題、script はその下に添える異文字(lang の言語で
@@ -136,8 +137,10 @@ class StageSelectScreen {
   private closed = false;
 
   // onEscape は ESC キーで、onClose は選択が済んで画面を畳むときに、onSettings は設定ボタンで呼ばれる。
+  // palette は3D場面の材質と光の色。
   public constructor(
     unlockManager: UnlockManager,
+    palette: ThemePalette,
     private readonly onEscape: (() => void) | undefined,
     private readonly onClose: (() => void) | undefined,
     onSettings: (() => void) | undefined,
@@ -181,6 +184,7 @@ class StageSelectScreen {
       this.root.querySelector<HTMLElement>('.ss-3d-window')!,
       pickRandom(TITLE_SCENE_PATTERNS),
       randomUint32(),
+      palette,
     )
       .then((scene) => {
         if (this.closed) scene.dispose();
@@ -263,11 +267,12 @@ class StageSelectScreen {
 // なら指定した開始日時の元期も併せて)で解決される Promise を返す。
 export function selectStage(
   unlockManager: UnlockManager,
+  palette: ThemePalette,
   onEscape?: () => void,
   onClose?: () => void,
   onSettings?: () => void,
 ): Promise<StageSelection> {
   return new Promise((resolve) => {
-    new StageSelectScreen(unlockManager, onEscape, onClose, onSettings, resolve);
+    new StageSelectScreen(unlockManager, palette, onEscape, onClose, onSettings, resolve);
   });
 }
