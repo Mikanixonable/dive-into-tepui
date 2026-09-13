@@ -13,6 +13,7 @@ import type { Game } from '../../game';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
 import { aliveCombatTarget } from '../../dynamic/dynamic-entity/combat-target';
 import type { OverlayManager } from '../../../hud/overlay-manager';
+import type { ThemePalette } from '../../../theme';
 import type { ApproachTargetSource } from './orbit-analysis-data';
 import type { AnalysisChartSource, AnalysisTab } from './orbit-analysis-tab';
 
@@ -106,8 +107,8 @@ export class OrbitAnalysisWindow {
     );
   }
 
-  // 選べるタブを出し直してから、選択中のタブへ描画を委ねる。
-  public sync(game: Game): void {
+  // 選べるタブを出し直してから、選択中のタブへ描画を委ねる。palette は canvas へ直に描く色。
+  public sync(game: Game, palette: ThemePalette): void {
     if (!this.throttle.due()) return;
     const entity = game.activeControllable;
     // 別の対象を見ることになるので、各タブの表示範囲を開き直す。
@@ -117,7 +118,7 @@ export class OrbitAnalysisWindow {
     this.drawnEntity = entity;
     if (!entity) {
       this.offerTabs([this.altitudeTab]);
-      this.altitudeTab.drawMessage('操作対象がありません');
+      this.altitudeTab.drawMessage('操作対象がありません', palette);
       return;
     }
 
@@ -129,6 +130,7 @@ export class OrbitAnalysisWindow {
     const source: AnalysisChartSource = {
       celestialSystem: game.celestialSystem,
       windowDurationSec: game.displayWindowManager.current.duration,
+      palette,
     };
     this.offerTabs(this.tabs.filter((tab) => tab.available(source, entity, reference, target)));
     this.selected.draw(source, entity, reference, target);

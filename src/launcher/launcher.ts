@@ -19,7 +19,7 @@ import type { AudioEngine } from '../audio/audio-engine';
 import type { Bgm } from '../audio/bgm/bgm';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
-import type { SettingValue } from '../settings/stored-setting';
+import type { SettingValue } from '../settings/setting-value';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
 import type { TdbJulianDate } from '../physics/time';
@@ -123,6 +123,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     this.bgm.syncRun(false);
     return selectStage(
       this.unlockManager,
+      this.host.themePalette.current,
       () => { if (!this.shell.overlayManager.closeTopmostOnEscape()) this.pauseMenu.toggle(); },
       () => this.pauseMenu.toggle(false),
       () => this.pauseMenu.openSettings(),

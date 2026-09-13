@@ -1,10 +1,9 @@
 // HUD の静的 DOM/スタイル構築。
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import { injectThemeVariables } from '../../theme';
 import type { HudShell } from '../../hud/hud-shell';
 import { createHudElement } from '../../hud/hud-element';
 import { HelpPanel } from './windows/help-panel';
-import { PanelShell, wirePanelCollapse } from './panel-shell';
+import { PanelShell } from './panel-shell';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
 import { SKELETON_STYLE } from './style/skeleton-style';
 import { COMBAT_PANEL_ROWS_STYLE } from './style/combat-panel-rows-style';
@@ -18,6 +17,7 @@ import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
 import type { RenderStyle } from '../../render/render-style';
 import type { ViewMode } from '../../render/view-mode';
 import type { CollapseToggleLabels } from '../../hud/widgets';
+import type { PanelCollapse } from './panel-shell';
 
 // トークン→骨格→パネル群→ビュー→ウィジェット共通の順に結合する。
 const STYLE =
@@ -59,9 +59,9 @@ function railToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
 // レールの収納トグルを配線する。折りたたみ状態はビュー別に保存し、一度も操作されていなければ
 // compact 幅のとき畳んで始める。
 function buildRailToggle(
-  root: HTMLElement, rail: HTMLElement, side: 'left' | 'right', view: ViewMode,
+  root: HTMLElement, rail: HTMLElement, collapse: PanelCollapse, side: 'left' | 'right', view: ViewMode,
 ): void {
-  wirePanelCollapse({
+  collapse.wire({
     toggleRoot: root,
     toggleId: `hud-${view}-rail-toggle-${side}`,
     toggleClassName: `rail-toggle rail-toggle-${side}`,
@@ -73,7 +73,7 @@ function buildRailToggle(
 }
 
 // 戦闘/マップ一方ぶんの HUD ルートと、その左右レール・収納トグルを組む。
-function buildViewRoot(parent: HTMLElement, id: string, view: ViewMode): HudViewRoot {
+function buildViewRoot(parent: HTMLElement, collapse: PanelCollapse, id: string, view: ViewMode): HudViewRoot {
   // ビューのルート要素を作る。
   const element = createHudElement('div', id, parent, `hud-view-root hud-${view}-root`);
   // 左右のレールを子として組む。
@@ -84,8 +84,8 @@ function buildViewRoot(parent: HTMLElement, id: string, view: ViewMode): HudView
     'div', `${id}-rail-right`, element, 'hud-rail hud-rail-right',
   );
   // 各レールの収納トグルを配線する。
-  buildRailToggle(element, leftRail, 'left', view);
-  buildRailToggle(element, rightRail, 'right', view);
+  buildRailToggle(element, leftRail, collapse, 'left', view);
+  buildRailToggle(element, rightRail, collapse, 'right', view);
   return { element, leftRail, rightRail };
 }
 
@@ -119,8 +119,8 @@ function injectStyle(): void {
 }
 
 // 常設 VESSEL パネルを右レールへ組む。
-function buildVesselStatusPanel(rightRail: HTMLElement): void {
-  const status = new PanelShell(rightRail, 'hud-vessel-status', 'Vessel');
+function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
+  const status = new PanelShell(rightRail, collapse, 'hud-vessel-status', 'Vessel');
   configureCombatPanel(status);
   // 計器の行(燃料・RCS・出力・動圧・各モード・弾薬)と、展開・スロットル・主要操作の置き場。
   status.body.innerHTML = `
@@ -167,9 +167,9 @@ function buildVesselStatusPanel(rightRail: HTMLElement): void {
 }
 
 // 常設 ORBIT パネルを左レールへ組む。マップビューと compact 幅では畳んで始める。
-function buildOrbitInfoPanel(leftRail: HTMLElement): void {
+function buildOrbitInfoPanel(leftRail: HTMLElement, collapse: PanelCollapse): void {
   const orbit = new PanelShell(
-    leftRail, 'hud-orbit', 'Orbit', (view) => view === 'map' || isCompactViewport(),
+    leftRail, collapse, 'hud-orbit', 'Orbit', (view) => view === 'map' || isCompactViewport(),
   );
   configureCombatPanel(orbit);
   // 基準天体・高度・速度・軌道要素・動圧・機体温度の行と、軌道の操作の置き場。
@@ -194,9 +194,9 @@ function buildOrbitInfoPanel(leftRail: HTMLElement): void {
 }
 
 // ブースター燃焼管理パネルを左レールへ組む。
-function buildBurnManagementPanel(leftRail: HTMLElement): void {
+function buildBurnManagementPanel(leftRail: HTMLElement, collapse: PanelCollapse): void {
   const burnManagement = new PanelShell(
-    leftRail, 'burn-management-panel', '燃焼管理',
+    leftRail, collapse, 'burn-management-panel', '燃焼管理',
   );
   configureCombatPanel(burnManagement);
   // 段数・総質量・最後尾燃料・燃焼状態の行と、ブースター操作の置き場。
@@ -226,8 +226,8 @@ function buildBurnManagementPanel(leftRail: HTMLElement): void {
 }
 
 // 常設 TARGET パネルを右レールへ組む。ロック対象が無い間は隠す。
-function buildTargetPanel(rightRail: HTMLElement): void {
-  const target = new PanelShell(rightRail, 'hud-target', 'Target');
+function buildTargetPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
+  const target = new PanelShell(rightRail, collapse, 'hud-target', 'Target');
   configureCombatPanel(target);
   target.setHidden(true);
   // 名前・距離・速度・装甲の行と、タンパク質標的の詳細欄。
@@ -267,8 +267,8 @@ function buildTargetPanel(rightRail: HTMLElement): void {
 }
 
 // 常設 ENEMIES パネルを右レールへ組む。件数バッジを見出しへ添える。
-function buildEnemiesPanel(rightRail: HTMLElement): void {
-  const enemies = new PanelShell(rightRail, 'hud-enemies', 'Enemies', isCompactViewport());
+function buildEnemiesPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
+  const enemies = new PanelShell(rightRail, collapse, 'hud-enemies', 'Enemies', isCompactViewport());
   configureCombatPanel(enemies);
   const count = document.createElement('span');
   count.className = 'panel-count';
@@ -279,12 +279,12 @@ function buildEnemiesPanel(rightRail: HTMLElement): void {
 }
 
 // 常設の情報パネル群を左右のドックへ組む。
-function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
-  buildVesselStatusPanel(rightRail);
-  buildOrbitInfoPanel(leftRail);
-  buildBurnManagementPanel(leftRail);
-  buildTargetPanel(rightRail);
-  buildEnemiesPanel(rightRail);
+function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement, collapse: PanelCollapse): void {
+  buildVesselStatusPanel(rightRail, collapse);
+  buildOrbitInfoPanel(leftRail, collapse);
+  buildBurnManagementPanel(leftRail, collapse);
+  buildTargetPanel(rightRail, collapse);
+  buildEnemiesPanel(rightRail, collapse);
 }
 
 // マップビューの縮尺バー(数値と目盛りルーラー)を組む。
@@ -364,19 +364,18 @@ function collectDataIdElements(root: HTMLElement): Map<string, HTMLElement> {
 }
 
 // HUD のスタイル・レイヤ・各パネルを構築し、DOM 参照をまとめて返す。
-export function buildHudDom(shell: HudShell, renderStyle: RenderStyle): HudDomRefs {
-  injectThemeVariables();
+export function buildHudDom(shell: HudShell, collapse: PanelCollapse, renderStyle: RenderStyle): HudDomRefs {
   injectStyle();
   startViewportTracking();
   const { root, layers } = shell;
   // 模式図では白背景になるため、マーカー配色をそれに合わせて切り替える手掛かりとして
   // 現在のスタイルをルート要素の属性で公開する。
   root.dataset['renderStyle'] = renderStyle;
-  const combatRoot = buildViewRoot(layers.panel, 'hud-combat-root', 'combat');
-  const mapRoot = buildViewRoot(layers.panel, 'hud-map-root', 'map');
+  const combatRoot = buildViewRoot(layers.panel, collapse, 'hud-combat-root', 'combat');
+  const mapRoot = buildViewRoot(layers.panel, collapse, 'hud-map-root', 'map');
 
   // 常設パネル群を組む。
-  buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail);
+  buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail, collapse);
   buildTopBar(layers.panel);
   buildChaseReset(layers.panel);
   buildMapScale(mapRoot.element);
