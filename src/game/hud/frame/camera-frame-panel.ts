@@ -29,7 +29,6 @@ export interface CameraFrameViewModel {
   // 注視している対象の天体 id。どこにも固定していなければ null。
   readonly focusId: string | null;
   readonly rotationFollow: CameraRotationFollow | null;
-  // いま選べる回転追従。
   readonly availableRotationFollows: readonly CameraRotationFollow[];
   readonly cameraRotationMode: CameraRotationMode;
   readonly projection: ProjectionMode;
@@ -37,7 +36,7 @@ export interface CameraFrameViewModel {
   readonly referencePlane: CameraReferencePlane;
 }
 
-// カメラパネルが返す操作。カメラの正本が公開する命令。
+// カメラパネルの操作を受ける口。
 export interface CameraFrameCommands extends CameraRotationModeCommands {
   setRotationFollow(follow: CameraRotationFollow | null): void;
   setProjectionMode(mode: ProjectionMode): void;
@@ -153,7 +152,7 @@ export class CameraFramePanel {
     this.cameraCenterZone.setNearby(members, pickables);
     this.cameraCenterZone.setSelected(view.focusId);
 
-    // 回転追従の選択肢と、クオータニオン/オイラーの操作モード表示を合わせる。
+    // 回転追従の選択肢と、クォータニオン/オイラーの操作モード表示を合わせる。
     this.cameraRotationZone.setChoices(view.availableRotationFollows);
     this.cameraRotationZone.setSelected(view.rotationFollow);
     this.cameraRotationModeControl.sync(view.cameraRotationMode);
