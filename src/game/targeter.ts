@@ -13,6 +13,7 @@ import { Input } from '../input/input';
 import type { CameraFrame } from '../render/camera/camera-frame';
 import type { Viewport } from '../render/viewport';
 import { GroupedMarkers, withTargetRole, type GroupedMarkerItem } from './marker/grouped-markers';
+import type { ThemePalette } from '../theme';
 import { LeadMarkers } from './marker/lead-markers';
 import type { ActiveCelestialLabel } from './marker/celestial-markers';
 import { MARKER_PRIORITY } from './marker/marker-priority';
@@ -58,7 +59,7 @@ export class Targeter {
 
   // 画面上で近接するものをまとめる戦闘対象のマーカー集合。
   public readonly combatMarkers: GroupedMarkers;
-  // 自機と敵の両方から解く見越し点のマーカー。
+  // ターゲットへの見越し点のマーカー。
   private readonly leadMarkers: LeadMarkers;
 
   // 標的面(自機の方を向いた仮想の的)を弾が通過した点。的に貼り付いて見えるよう、
@@ -136,13 +137,13 @@ export class Targeter {
   public sync(
     viewer: OrbitingObject | null, camera: CameraFrame, displayTime: number,
     visibilityPolicy: MapVisibilityPolicy | null, celestialLabels: readonly ActiveCelestialLabel[],
-    nowMs: number,
+    nowMs: number, palette: ThemePalette,
   ): void {
     const project = camera.project;
     this.declarations.length = 0;
     this.pushBoardMarkers(project);
     this.pushTargetDirMarkers(viewer, camera.mode === 'map', project);
-    this.syncTargetMarkers(viewer, displayTime, camera, visibilityPolicy, celestialLabels, nowMs);
+    this.syncTargetMarkers(viewer, displayTime, camera, visibilityPolicy, celestialLabels, nowMs, palette);
     this.aimGroup.sync(this.declarations, nowMs);
   }
 
@@ -151,7 +152,7 @@ export class Targeter {
   private syncTargetMarkers(
     viewer: OrbitingObject | null, displayTime: number, camera: CameraFrame,
     visibilityPolicy: MapVisibilityPolicy | null, celestialLabels: readonly ActiveCelestialLabel[],
-    nowMs: number,
+    nowMs: number, palette: ThemePalette,
   ): void {
     // 戦闘対象(マップでは操作対象自身を含む)のマーカー。
     const targets = this.roster.all().filter(isCombatTarget);
@@ -180,7 +181,7 @@ export class Targeter {
           ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, this.celestialBodies, displayTime))
           : 1;
       this.pushMarkerItem(
-        tgt === this.aliveTarget ? withTargetRole(item) : item,
+        tgt === this.aliveTarget ? withTargetRole(item, palette) : item,
         viewerPos, mapView, visibility, mapOpacity, mapOccluded);
     }
     // 部位マーカーは死んだ個体まで辿る — 生存個体だけだと撃破直後の部位マーカーが残る。
@@ -218,8 +219,10 @@ export class Targeter {
       this.markerItemScratch, camera, nowMs, celestialLabels, this.celestialBodies,
     );
     // 見越し点は弾速から解くので、砲を積んでいる艦を操作している間だけ出る。
-    this.leadMarkers.sync(
-      viewer instanceof Player ? viewer : null, this.aliveScratch, this.aliveTarget, view, project, nowMs);
+    const shooter = viewer instanceof Player
+      ? { state: viewer.motion.state, muzzleVelocity: viewer.averageMuzzleVelocity }
+      : null;
+    this.leadMarkers.sync(shooter, this.aliveScratch, this.aliveTarget, view, project, nowMs);
   }
 
   // markerItemScratch へ、自機からの距離ラベル・可視性設定(アイコン/名前の個別トグル)・
@@ -244,7 +247,6 @@ export class Targeter {
   private pushProteinSiteMarkers(
     enemy: ProteinEnemy, displayPos: Vec3 | null, viewerPos: Vec3, mapView: boolean, project: ProjectFn, cameraPos: Vec3,
   ): void {
-    // 部位の HP は Entity の読み取り値、変形済みアンカーは View から同じ呼び出しで合成する。
     const inRange = !mapView && displayPos !== null && len(sub(displayPos, viewerPos)) <= PROTEIN_SITE_MARKER_RANGE;
     const sites = enemy.view.siteMarkers(
       displayPos ?? enemy.motion.state.r, enemy.motion.att.q, enemy.combatReadout.sites,
@@ -268,6 +270,7 @@ export class Targeter {
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として宣言する。
   private pushBoardMarkers(project: ProjectFn): void {
     const target = this.aliveTarget;
+    // 記録の無いスロットも宣言し、前フレームのマークを伏せる。
     for (let i = 0; i < MAX_BOARD_MARKS; i++) {
       const base = {
         id: `bh${i}`, cls: 'mk-boardpass', sym: '✦',
@@ -278,7 +281,6 @@ export class Targeter {
         this.declarations.push({ ...base, x: 0, y: 0, front: false });
         continue;
       }
-      // 寿命の残りをそのまま濃さにする。
       const fade = 1 - m.age / BOARD_MARK_LIFETIME;
       this.declarations.push({
         ...base,
@@ -295,7 +297,7 @@ export class Targeter {
       { id: 'tgtdir', sym: DIRECTION_GLYPH.target, sign: 1 },
       { id: 'atgdir', sym: DIRECTION_GLYPH.antiTarget, sign: -1 },
     ] as const;
-    // ターゲット方向と、その反対方向の2本。
+    // ターゲットが居ないフレームでも2本とも宣言し、前フレームの向きを伏せる。
     const tgtDir = mapView || !tgt || !viewer
       ? null : norm(sub(tgt.motion.state.r, viewer.motion.state.r));
     for (const dir of dirs) {
