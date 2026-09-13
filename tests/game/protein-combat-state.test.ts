@@ -15,7 +15,7 @@ import { PROTEIN_ASSET_IDS, proteinAssetFor } from '../../src/game/protein/prote
 import { createProteinEnemyDefinition } from '../../src/game/protein/protein-enemy-registry';
 import { testProteinAssetBundleFor } from '../protein-test-assets';
 import { v3 } from '../../src/math/vec3';
-import { proteinLocalImpactPoint } from '../../src/render/protein/protein-anchors';
+import { proteinLocalImpactPoint } from '../../src/physics/protein-site-geometry';
 
 const asset = rawAsset as unknown as ProteinAssetDefinition;
 const motion = rawMotion as unknown as ProteinMotionAsset;
