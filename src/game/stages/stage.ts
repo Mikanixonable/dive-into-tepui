@@ -72,7 +72,8 @@ export interface StageClass {
   readonly selectLabel: string;
   readonly selectSub: string;
   readonly selectLockedSub: string | undefined;
-  readonly selectKeys: readonly string[];
+  // 行に出し、押されたら選ぶキー。持たないステージは null(SPEC GAME.md 1)。
+  readonly selectKey: string | null;
   readonly selectGroup: string;
   readonly hiddenFromSelect: boolean;
   isUnlocked(clearCounts: ClearCounts): boolean;
@@ -109,6 +110,8 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   public static readonly selectLockedSub: string | undefined = undefined;
   // タイトルのステージ選択ボタン列に並べない。
   public static readonly hiddenFromSelect: boolean = false;
+  // ショートカットキーを持たない。持つステージだけが宣言する。
+  public static readonly selectKey: string | null = null;
   // 開始前に開始日時の指定画面を挟まない。挟むステージだけが true を宣言する。
   public static readonly picksStartEpoch: boolean = false;
   // 選択画面でこのステージを並べるタブの名前。

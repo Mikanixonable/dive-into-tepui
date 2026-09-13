@@ -12,7 +12,7 @@ export class Stage00 extends Stage {
   static readonly epoch = STORY_EPOCH;
   static readonly selectLabel = 'stage 00';
   static readonly selectSub = '【無限耐久サバイバル】 常時選択可。弾薬を拾ってから始まる無限の波状攻撃。自機が破壊されるまで続く';
-  static readonly selectKeys = ['Digit0'];
+  static readonly selectKey = 'Digit0';
 
   private readonly waveAttack: WaveAttack;
 

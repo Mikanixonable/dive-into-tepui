@@ -16,7 +16,7 @@ export class Stage1 extends Stage {
   static readonly epoch = STORY_EPOCH;
   static readonly selectLabel = 'stage 1';
   static readonly selectSub = '【第一ステージ: LEO戦域】 高度420kmの低軌道。敵5機はすべて近傍軌道に分布';
-  static readonly selectKeys = ['Digit1', 'Enter'];
+  static readonly selectKey = 'Digit1';
 
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
