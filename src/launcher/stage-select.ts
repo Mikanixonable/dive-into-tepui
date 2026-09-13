@@ -164,7 +164,7 @@ class StageSelectScreen {
 
     // 隅の控えめなリンクからデバッグステージへ移動できる。
     this.debugLink.className = 'ss-debug';
-    this.debugLink.textContent = 'debug stage [d]';
+    this.debugLink.textContent = 'debug stage';
     this.debugLink.addEventListener('click', () => this.select(StageDebug));
     this.settingsButton.type = 'button';
     this.settingsButton.className = 'ss-settings';
@@ -207,7 +207,7 @@ class StageSelectScreen {
     // 見出し・ショートカットキー・説明。説明は未解放なら解放条件に差し替わる。
     const unlocked = this.unlockedStages.has(stageClass);
     const sub = unlocked ? stageClass.selectSub : stageClass.selectLockedSub ?? stageClass.selectSub;
-    const key = stageClass.selectKeys[0] ? `[${stageClass.selectKeys[0].replace('Digit', '').replace('Key', '')}]` : '';
+    const key = stageClass.selectKey === null ? '' : `[${stageClass.selectKey.replace('Digit', '').replace('Key', '')}]`;
     const row = document.createElement('div');
     row.className = `ss-stage ui-selectable${unlocked ? '' : ' locked'}`;
     row.innerHTML =
@@ -247,7 +247,7 @@ class StageSelectScreen {
     // 手前にシステム窓か開始日時の入力欄が開いている間は、ステージのショートカットを止める。
     if (document.body.classList.contains('hud-overlay-modal-open') || this.startEpochForm.isOpen) return;
     const stageClass = STAGE_CLASSES.find((candidate) =>
-      this.unlockedStages.has(candidate) && candidate.selectKeys.includes(e.code));
+      this.unlockedStages.has(candidate) && candidate.selectKey === e.code);
     if (stageClass !== undefined) this.select(stageClass);
   };
 
