@@ -1,13 +1,1 @@
-{
-  "HUD のモデル丸受けの禁止": {
-    "src/game/hud/hud.ts": [
-      "import type { Game"
-    ],
-    "src/game/hud/orbit/orbit-analysis-window.ts": [
-      "import type { Game"
-    ],
-    "src/game/hud/orbit/orbit-panel.ts": [
-      "import type { Game"
-    ]
-  }
-}
+{}

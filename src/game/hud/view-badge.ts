@@ -1,15 +1,8 @@
-import type { ViewManager } from '../view/view-manager';
 import type { ViewMode } from '../../render/view-mode';
 import { ContextMenu, MenuItem } from './windows/context-menu';
 import type { OverlayManager } from '../../hud/overlay-manager';
 import { Button, ToggleSwitch } from '../../hud/widgets';
 import type { RenderStyle } from '../../render/render-style';
-import { frameRoleOf } from '../../physics/frame';
-import { frameRoleName } from './frame/frame-labels';
-import { focusTargetId, type FocusTarget } from '../camera/focus-target';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import type { EntityRoster } from '../dynamic/entity-roster';
-import type { CelestialBodies } from '../celestial/celestial-bodies';
 
 const GAME_TITLE = 'Dive into Tepui';
 const GAME_VERSION = `v${__APP_VERSION__}`;
@@ -49,6 +42,23 @@ function setFieldValue(el: HTMLElement, value: string | null): void {
   if (el.textContent !== text) el.textContent = text;
 }
 
+// ビューバッジが1フレームに映す値。名前の欄は、対象が定まっていなければ null。
+export interface ViewBadgeViewModel {
+  readonly modeLabel: string;
+  readonly view: ViewMode;
+  // 遷移メニューに並べるビュー。いま入れるものだけが入る。
+  readonly selectableViews: readonly ViewMode[];
+  readonly focusName: string | null;
+  readonly controlName: string | null;
+  readonly targetName: string | null;
+  readonly renderStyle: RenderStyle;
+}
+
+// ビューバッジが返す操作。ビューの正本が公開する命令。
+export interface ViewBadgeCommands {
+  setView(view: ViewMode): void;
+}
+
 // トップバー1行目のバッジ: ゲームタイトル・現在のモード・現在のビュー(クリックで遷移メニュー)・
 // 画面全体の見せ方(写実/模式図)を切り替えるトグル・注視/操作/ターゲットの対象名。
 export class ViewBadge {
@@ -62,15 +72,16 @@ export class ViewBadge {
   // ビュー遷移メニューは特定の対象を持たないので、target には固定で true を使う。
   private readonly menu: ContextMenu<true, ViewMode>;
   private readonly stopPointerDown = (e: Event): void => e.stopPropagation();
+  // 直近の sync が受けた値。遷移メニューはフレームの外で開くので、遷移先をここから引く。
+  private view: ViewBadgeViewModel | null = null;
   // 模式図トグルが操作されたときに、選ばれた見せ方で呼ばれる。
   public onRenderStyleChange: ((style: RenderStyle) => void) | null = null;
 
   // container(トップバー1行目の行)へバッジの中身を、遷移メニューを popupLayer へ組み立てて配線する。
-  // roster と celestialBodies は注視対象の表示名を引くために持つ。見せ方のトグルは sync で合わせる。
+  // 遷移メニューの選択は commands へ返す。見せ方のトグルは sync で合わせる。
   public constructor(
-    container: HTMLElement, popupLayer: HTMLElement, private readonly viewManager: ViewManager,
-    overlayManager: OverlayManager,
-    private readonly roster: EntityRoster, private readonly celestialBodies: CelestialBodies,
+    container: HTMLElement, popupLayer: HTMLElement, overlayManager: OverlayManager,
+    private readonly commands: ViewBadgeCommands,
   ) {
     this.menu = new ContextMenu<true, ViewMode>(popupLayer, overlayManager);
     // タイトル・モード名・ビュー切替ボタンと、現在の対象の欄を横に並べる。
@@ -100,7 +111,7 @@ export class ViewBadge {
     this.targetEl = appendField(container, 'Target');
     this.el = container;
 
-    this.menu.onSelect = (act) => { this.viewManager.setView(act); };
+    this.menu.onSelect = (act) => { this.commands.setView(act); };
     this.menu.onClose = () => this.viewButton.element.setAttribute('aria-expanded', 'false');
   }
 
@@ -112,35 +123,19 @@ export class ViewBadge {
   }
 
   // モード名・ビューボタン・見せ方のトグルと、注視対象・操作対象・ターゲットの名前を反映する。
-  public sync(
-    modeLabel: string, focus: FocusTarget, control: Controllable | null, targetName: string | null,
-    renderStyle: RenderStyle,
-  ): void {
-    this.styleToggle.setOn(renderStyle === 'schematic');
-    this.modeEl.textContent = `Mode: ${titleCase(modeLabel)}`;
-    this.viewButton.setLabel(`View: ${VIEW_LABELS[this.viewManager.current]} ▾`);
-    setFieldValue(this.focusEl, this.focusName(focus));
-    setFieldValue(this.controlEl, control?.name ?? null);
-    setFieldValue(this.targetEl, targetName);
-  }
-
-  // 注視対象の表示名。アプシス/交点などの一時マーカーも指しうるので、座標系の役割・被選択物
-  // 候補・実体・天体名(未登録なら id)の順に引く。
-  private focusName(focus: FocusTarget): string {
-    const id = focusTargetId(focus);
-    if (id === undefined) return '固定点';
-    const role = frameRoleOf(id);
-    if (role !== null) return frameRoleName(role);
-    const pickable = this.viewManager.activeView.pickables.find((item) => item.id === id);
-    if (pickable) return pickable.name;
-    const entity = this.roster.all().find((item) => item.id === id);
-    if (entity) return entity.name;
-    return this.celestialBodies.nameOf(id);
+  public sync(view: ViewBadgeViewModel): void {
+    this.view = view;
+    this.styleToggle.setOn(view.renderStyle === 'schematic');
+    this.modeEl.textContent = `Mode: ${titleCase(view.modeLabel)}`;
+    this.viewButton.setLabel(`View: ${VIEW_LABELS[view.view]} ▾`);
+    setFieldValue(this.focusEl, view.focusName);
+    setFieldValue(this.controlEl, view.controlName);
+    setFieldValue(this.targetEl, view.targetName);
   }
 
   // ビュー遷移メニューをボタンの下に開く。遷移できるビューが無ければ開かない。
   private openMenu(): void {
-    const items: MenuItem<ViewMode>[] = this.viewManager.selectableViews()
+    const items: MenuItem<ViewMode>[] = (this.view?.selectableViews ?? [])
       .map((v) => ({ label: VIEW_LABELS[v], act: v }));
     if (items.length === 0) return;
     const rect = this.viewButton.element.getBoundingClientRect();

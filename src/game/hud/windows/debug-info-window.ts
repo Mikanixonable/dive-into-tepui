@@ -105,7 +105,8 @@ export class DebugInfoWindow {
   // 個数系の統計。RATE_COUNTS と添字で対応する。
   private readonly rateStats = Array.from({ length: RATE_COUNTS.length }, newPhaseStats);
   private frames = 0;
-  private lastFlush = performance.now();
+  // 集計期間の起点 [ms]。壁時計を読まないので、窓を開いた後の最初のフレームで据える。
+  private lastFlush: number | null = null;
   // 前回フラッシュ時点の暦キャッシュ累計。表示する集計期間分の差分を取るために持つ。
   private lastTimeHits = 0;
   private lastTimeMisses = 0;
@@ -179,7 +180,7 @@ export class DebugInfoWindow {
     this.sections.enabled = true;
     this.gpu.enabled = true;
     this.frames = 0;
-    this.lastFlush = performance.now();
+    this.lastFlush = null;
     this.win = new PropertyWindow(this.root, DEFAULT_X, DEFAULT_Y, {
       title: 'デバッグ',
       rows: this.rows,
@@ -273,7 +274,10 @@ export class DebugInfoWindow {
 
   // 500ms ごとに蓄積した計測値から表示行を組み、窓へ反映する。
   private flush(counts: PerfCounts, now: number): void {
-    if (!this.win || now - this.lastFlush < 500) return;
+    if (!this.win) return;
+    // 起点がまだ無いフレームは、集計期間を測れないので据えるだけにする。
+    if (this.lastFlush === null) { this.lastFlush = now; return; }
+    if (now - this.lastFlush < 500) return;
     const n = Math.max(1, this.frames);
     this.rows = this.buildRows(counts, n, now - this.lastFlush);
     if (this.activeTab === 'metrics') this.win.syncRows(this.rows);

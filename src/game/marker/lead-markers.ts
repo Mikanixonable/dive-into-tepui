@@ -7,11 +7,17 @@ import type { MarkerSink } from '../../marker/marker-sink';
 import { MARKER_PRIORITY } from './marker-priority';
 import { pointPlacement } from './marker-placement';
 import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
-import { Player } from '../player/player';
 import { COLOR_MARKER_ALLY } from './marker-identity';
+import type { KinematicState } from '../../physics/kinematic-state';
 import type { ProjectFn } from '../../math/projection';
 
 const LEAD_MAX_TIME = 25; // 表示する見越し解の、命中までの最長時間 [s]
+
+// 見越し解を解く射手。いまの運動状態と、撃ち出す弾の初速 [m/s]。
+export interface LeadShooter {
+  readonly state: KinematicState;
+  readonly muzzleVelocity: number;
+}
 
 const markerKey = (target: CombatTarget): string => `lead-${target.id}`;
 
@@ -24,8 +30,9 @@ export class LeadMarkers {
   public dispose(): void { this.group.dispose(); }
 
   // target の LEAD マーカーを置き、それ以外を片付ける。マップビューでは全て片付ける。
+  // shooter が null(砲を積んだ艦を操作していない)なら何も置かない。
   public sync(
-    player: Player | null,
+    shooter: LeadShooter | null,
     targetsArray: readonly CombatTarget[],
     target: CombatTarget | null,
     view: ViewMode,
@@ -35,9 +42,9 @@ export class LeadMarkers {
     const declarations = this.declarations;
     declarations.length = 0;
     // 現在のターゲットだけリード点を求める。ターゲットから外れた敵の宣言はこのフレームで消える。
-    if (player !== null && view !== 'map' && target !== null && targetsArray.includes(target)) {
+    if (shooter !== null && view !== 'map' && target !== null && targetsArray.includes(target)) {
       const lead = leadPoint(
-        target.motion.state, player.motion.state, player.averageMuzzleVelocity, LEAD_MAX_TIME,
+        target.motion.state, shooter.state, shooter.muzzleVelocity, LEAD_MAX_TIME,
       );
       if (lead !== null) declarations.push(this.declaration(target, lead, project));
     }

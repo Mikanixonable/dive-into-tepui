@@ -60,10 +60,10 @@ const FORBIDDEN = [
     exempt: [],
   },
   {
-    // R5 の「実時刻はフレームの先頭で1度だけ読み、入力として配る」を装置へ当てたもの。
-    name: '装置の壁時計の禁止',
+    // R5 の「実時刻はフレームの先頭で1度だけ読み、入力として配る」を導出層へ当てたもの。
+    name: '導出層の壁時計の禁止',
     pattern: /performance\.now|Date\.now/g,
-    targets: ['src/render/', 'src/marker/'],
+    targets: ['src/render/', 'src/marker/', 'src/hud/', 'src/game/hud/'],
     // 自分の処理にかかった時間を測るための壁時計は、表示する時刻ではないので恒久の例外にする。
     exempt: [
       'src/render/protein/protein-runtime.ts',

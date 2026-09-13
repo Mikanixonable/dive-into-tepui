@@ -21,6 +21,7 @@ import type { ProteinCombatReadout } from '../../protein/protein-schema';
 import type { EnemySaveData, ProteinEnemySaveData } from '../../save/save-data';
 import type { FormationRole } from './entity-kind';
 import { ProteinEnemyView } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
+import type { DynamicEntity } from './dynamic-entity';
 import type { EnemyCollisionShape } from './enemy-motion';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
 import type { ProteinVisualSource } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
@@ -224,4 +225,9 @@ export class ProteinEnemy extends Enemy {
       protein: this.combat.serialize(),
     };
   }
+}
+
+// この個体がタンパク質構造を持つ敵か。戦闘の読み値を引く前の絞り込みに使う。
+export function isProteinEnemy(entity: DynamicEntity): entity is ProteinEnemy {
+  return entity instanceof ProteinEnemy;
 }

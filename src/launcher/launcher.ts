@@ -14,7 +14,6 @@ import type { UnlockManager } from './unlock-manager';
 import type { SaveSlots } from './save/save-slots';
 import type { SnapshotService } from './save/snapshot-service';
 import type { GameSaveData } from '../game/save/save-data';
-import { runSummary } from '../game/run-summary';
 import type { AudioEngine } from '../audio/audio-engine';
 import type { Bgm } from '../audio/bgm/bgm';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
@@ -69,7 +68,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       snapshot: {
         get isPaused(): boolean { return game.isPaused; },
         get isPlaying(): boolean { return game.activeStage.isPlaying; },
-        runSummary: () => runSummary(game),
+        runSummary: () => game.runSummary(),
         serialize: () => game.serialize(),
       },
       pause: () => game.pause(),
