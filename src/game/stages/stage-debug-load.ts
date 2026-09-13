@@ -23,7 +23,6 @@ export class StageDebugLoad extends Stage {
   public static readonly selectLabel = 'DEBUG(高負荷)';
   public static readonly selectSub = '【デバッグ】破片を多数配置し積分を高負荷にする・撃破しても終了しない';
   public static readonly hiddenFromSelect = true;
-  public static readonly selectKeys = ['KeyL'];
 
   // saved があればそこから復元し、無ければ初期配置してステージを始める。
   public constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {

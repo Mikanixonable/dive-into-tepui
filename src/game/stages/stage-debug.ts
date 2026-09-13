@@ -15,7 +15,6 @@ export class StageDebug extends Stage {
   static readonly selectLabel = 'DEBUG';
   static readonly selectSub = '【デバッグ】敵集団1つ・撃破しても終了しない・敵の射撃を実行中に切替可能';
   static readonly hiddenFromSelect = true;
-  static readonly selectKeys = ['KeyD'];
 
   private enemyFireEnabled = false;
   private fireToggle!: ToggleSwitch;

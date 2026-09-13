@@ -25,7 +25,7 @@ export class Stage0 extends Stage {
     `【近接戦闘訓練】 常時選択可。${STAGE0_MAX_RANGE / 1000}km以内に色分けされた敵集団 ` +
     `約${STAGE0_PER_GROUP * COLOR_STAGE0_GROUP_ACCENTS.length}機、` +
     `制限時間${stage0TimeLimitMinutes()}分の撃墜数スコアアタック`;
-  static readonly selectKeys = ['KeyT'];
+  static readonly selectKey = 'KeyT';
 
   private readonly timer: ScoreAttackTimer;
 
