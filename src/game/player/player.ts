@@ -9,20 +9,22 @@ import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
 import { Vec3, add, v3, len, sub } from '../../math/vec3';
 import { fmtDist, fmtEnergy } from '../../hud/utils';
-import { Ship, PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from '../dynamic/dynamic-entity/ship';
+import {
+  Ship, MUZZLE_SPEED, PLAYER_MASS, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL,
+} from '../dynamic/dynamic-entity/ship';
 import { bulletReactionOf, type BulletType, type Shooter } from '../dynamic/dynamic-entity/bullet-reaction';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
-import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
+import { collisionDamageFraction, contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { Notifier } from '../../hud/notifier';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import { generateRandomName } from '../random-name';
 import type { StageOutcome } from '../stages/stage-outcome';
-import { Throttle } from './throttle';
+import { Throttle, MAX_ANG_ACCEL, THROTTLE_LEVELS } from './throttle';
 import { FireControl, type AmmoLoad } from './fire-control';
 import { AltitudeAlarm } from './altitude-alarm';
 import type { FlashEffects } from '../vfx/flash-effects';
@@ -38,7 +40,11 @@ import type { RadiatorSide } from './radiator';
 
 import { Plan, type PlanExecutionMode } from '../plan/plan';
 import { savedAttitude, savedKinematicState, type PlayerSaveData, type PlanSaveData } from '../save/save-data';
-import { partFromSaveData, type AnyPart } from '../dynamic/dynamic-entity/parts';
+import {
+  createPart, partFromSaveData, type AnyPart, type ArmorPart, type CockpitPart, type Part,
+  type PartType, type RadiatorPart, type RcsTankPart, type SolarPanelPart, type ThrusterPart,
+  type WeaponPart,
+} from '../dynamic/dynamic-entity/parts';
 import { DIRECTION_GLYPH, ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import { shipMarkerSvg } from '../marker/marker-shapes';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
@@ -76,6 +82,49 @@ const ALLY_BEARING_MAX_DISTANCE = 20e3; // 味方機の画面外方位マーカ�
 
 const PLAYER_MAX_HP = 1000;
 const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
+
+const GATLING_FIRE_INTERVAL = 0.06; // 既定の機関砲の発射間隔 [s]
+const GATLING_BULLET_DAMAGE = 1; // 既定の機関砲が 1 発で与えるダメージ [HP]
+
+// 自然回復の対象外にする部品種別。外装パネルは機上で直せず、いまは直す手段がない。
+const SELF_REPAIR_EXCLUDED: readonly PartType[] = ['radiator', 'solar_panel'];
+
+// 既定パーツへの HP 配分比。合計 1 になるよう保つ(艦の装甲値をこの比で割り振る)。
+// 放熱板・太陽電池パドルは機体の左右2枚ぶんなので、パーツも side ごとに1枚ずつ持つ。
+const DEFAULT_PART_HP_RATIO = {
+  hull: 0.40, cockpit: 0.10, thruster: 0.08, rcsTank: 0.08,
+  radiator: 0.05, solarPanel: 0.03, weapon: 0.08, armor: 0.10,
+} as const;
+
+// maxHp を DEFAULT_PART_HP_RATIO で割り振った既定パーツ一式。配分は 1 HP で下げ止まり、
+// 端数の丸めのぶん合計は maxHp からわずかにずれる。
+function defaultParts(maxHp: number): AnyPart[] {
+  const R = DEFAULT_PART_HP_RATIO;
+  const share = (ratio: number): number => Math.max(1, Math.round(maxHp * ratio));
+  const mk = <T extends PartType>(type: T, ratio: number, props: object) =>
+    createPart(type, { maxHp: share(ratio), hp: share(ratio), ...props } as never);
+  return [
+    mk('hull', R.hull, { name: 'Basic Hull' }),
+    mk('cockpit', R.cockpit, { name: 'Cockpit' }),
+    mk('thruster', R.thruster, {
+      name: 'Standard RCS',
+      torque: MAX_ANG_ACCEL * Math.max(PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL),
+      // 既定パーツだけを積んだ自機が、全開で THROTTLE_LEVELS の最大値の加速度になる推力。
+      thrust: PLAYER_MASS * THROTTLE_LEVELS[THROTTLE_LEVELS.length - 1]!,
+      fuelConsumptionRate: 1,
+    }),
+    mk('rcs_tank', R.rcsTank, { name: 'Main RCS Tank', maxFuel: 1000, fuel: 1000 }),
+    mk('radiator', R.radiator, { name: 'Heat Radiator L', coolingRate: 42 }),
+    mk('radiator', R.radiator, { name: 'Heat Radiator R', coolingRate: 42 }),
+    mk('solar_panel', R.solarPanel, { name: 'Solar Array L', powerGeneration: 50 }),
+    mk('solar_panel', R.solarPanel, { name: 'Solar Array R', powerGeneration: 50 }),
+    mk('weapon', R.weapon, {
+      name: 'Gatling Gun', weaponType: 'gatling',
+      fireRate: 1 / GATLING_FIRE_INTERVAL, damage: GATLING_BULLET_DAMAGE, muzzleVelocity: MUZZLE_SPEED,
+    }),
+    mk('armor', R.armor, { name: 'Light Armor', damageReduction: 0.2 }),
+  ];
+}
 
 // 給弾ベルトの節点数。たわみ物理の鎖の長さと、表示するリンクメッシュの本数を揃える。
 const BELT_MAX_VISIBLE = 18;
@@ -182,6 +231,9 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     this.boosters = new AttachedBoosters(
       this.motion, this.motion.attachedBoosters, notifier, worldSfx, scene, fx,
     );
+    // 装甲値の正本はパーツ側なので、積み終えたところで艦の hp/maxHp を組み直す。
+    this.parts = saved ? saved.parts.map(partFromSaveData) : defaultParts(PLAYER_MAX_HP);
+    this.refreshFromParts();
 
     if (saved) {
       // 現行のモードでない planExecution は、保存形の followPlan(boolean)から読み替える。
@@ -190,8 +242,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
         : (saved.followPlan ? 'instant' : 'off');
       this.fineAttitude = saved.fineAttitude ?? false;
       this.trajectoryLineVisible = saved.showTrajectoryLine ?? false;
-      this.parts.splice(0, this.parts.length, ...saved.parts.map(partFromSaveData));
-      this.refreshFromParts();
 
       if (saved.plan) {
         // 計画を保存時の起点から組み直す。起点より前のノードは復元できない。
@@ -235,6 +285,270 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   private hpRegen(dt: number): void {
     if (this.hp <= 0 || this.hp >= this.maxHp) return;
     this.selfRepair(dt * HP_REGEN_RATE);
+  }
+
+  // -------------------------------------------------------- 搭載部品
+  // 艦に積んでいる部品。残 HP の合計が艦の装甲値の正本になる。
+  public readonly parts: Part[];
+
+  // type 別のパーツ参照。parts を入れ替えたら組み直す。値ではなく参照を持つので、パーツの
+  // HP・燃料の変化はそのまま読める。
+  private readonly thrusterPartRefs: ThrusterPart[] = [];
+  private readonly rcsTankPartRefs: RcsTankPart[] = [];
+  private readonly radiatorPartRefs: [RadiatorPart | undefined, RadiatorPart | undefined] = [undefined, undefined];
+  private readonly solarPanelPartRefs: [SolarPanelPart | undefined, SolarPanelPart | undefined] = [undefined, undefined];
+  private readonly weaponPartRefs: WeaponPart[] = [];
+  private readonly armorPartRefs: ArmorPart[] = [];
+  private hullPart: Part | undefined;
+  private cockpitPart: CockpitPart | undefined;
+
+  // 部品構成が変わったとき(換装など)に、艦の maxHp と hp を部品側から求め直す。
+  private refreshFromParts(): void {
+    this.rebuildPartReferences();
+    let maxHp = 0;
+    for (const p of this.parts) maxHp += p.maxHp;
+    this.maxHp = maxHp;
+    this.updateOverallHp();
+  }
+
+  // parts から type 別のパーツ参照を組み直す。parts を入れ替えたあとに呼ぶ。
+  private rebuildPartReferences(): void {
+    this.thrusterPartRefs.length = 0;
+    this.rcsTankPartRefs.length = 0;
+    this.weaponPartRefs.length = 0;
+    this.armorPartRefs.length = 0;
+    let radiatorIndex = 0;
+    let solarPanelIndex = 0;
+    this.radiatorPartRefs[0] = undefined;
+    this.radiatorPartRefs[1] = undefined;
+    this.solarPanelPartRefs[0] = undefined;
+    this.solarPanelPartRefs[1] = undefined;
+    this.hullPart = undefined;
+    this.cockpitPart = undefined;
+
+    // 船体とコックピットは最初の1つ、放熱板と太陽電池パドルは左右の2枚までを取る。
+    for (const part of this.parts) {
+      switch (part.type) {
+        case 'hull': if (!this.hullPart) this.hullPart = part; break;
+        case 'cockpit': if (!this.cockpitPart) this.cockpitPart = part as CockpitPart; break;
+        case 'armor': this.armorPartRefs.push(part as ArmorPart); break;
+        case 'thruster': this.thrusterPartRefs.push(part as ThrusterPart); break;
+        case 'rcs_tank': this.rcsTankPartRefs.push(part as RcsTankPart); break;
+        case 'radiator':
+          if (radiatorIndex < this.radiatorPartRefs.length) this.radiatorPartRefs[radiatorIndex] = part as RadiatorPart;
+          radiatorIndex++;
+          break;
+        case 'solar_panel':
+          if (solarPanelIndex < this.solarPanelPartRefs.length) this.solarPanelPartRefs[solarPanelIndex] = part as SolarPanelPart;
+          solarPanelIndex++;
+          break;
+        case 'weapon': this.weaponPartRefs.push(part as WeaponPart); break;
+      }
+    }
+  }
+
+  // 受けたダメージを健全なパーツ1つへ無作為に割り振る。装甲があれば最も高い軽減率で
+  // 減衰させる。part を指定すると割り振り先をそのパーツに固定する(被弾位置から
+  // 当たったパーツが判っている場合)。
+  protected override applyDamage(amount: number, part?: Part): void {
+    // 装甲は複数積んでも最も高い軽減率のものだけが効く。
+    let reduction = 0;
+    let hasArmor = false;
+    for (const armor of this.armorPartRefs) {
+      if (armor.hp <= 0) continue;
+      if (!hasArmor || armor.damageReduction > reduction) reduction = armor.damageReduction;
+      hasArmor = true;
+    }
+    const effectiveDamage = amount * (1 - reduction);
+
+    let aliveCount = 0;
+    for (const p of this.parts) if (p.hp > 0) aliveCount++;
+    let target = part;
+    if (!target) {
+      const targetIndex = Math.floor(Math.random() * (aliveCount > 0 ? aliveCount : this.parts.length));
+      if (aliveCount > 0) {
+        let aliveIndex = 0;
+        for (const p of this.parts) {
+          if (p.hp <= 0) continue;
+          if (aliveIndex++ === targetIndex) {
+            target = p;
+            break;
+          }
+        }
+      } else {
+        target = this.parts[targetIndex];
+      }
+    }
+
+    if (target) target.hp = Math.max(0, target.hp - effectiveDamage);
+    this.updateOverallHp();
+  }
+
+  // 接触の重み付き接近速度に応じたダメージをパーツへ適用し、ダメージが発生したかを返す。
+  // part を指定すると割り振り先をそのパーツに固定する。
+  private applyCollisionDamage(damageSpeed: number, part?: Part): boolean {
+    const damageFraction = collisionDamageFraction(damageSpeed);
+    if (damageFraction <= 0) return false;
+
+    this.applyDamage(this.maxHp * damageFraction, part);
+    return true;
+  }
+
+  // amount [HP] を自然回復できる損傷部品へ均等に配る。全損した部品は対象外で、復旧しない。
+  private selfRepair(amount: number): void {
+    const targets = this.parts.filter(
+      p => p.hp > 0 && p.hp < p.maxHp && !SELF_REPAIR_EXCLUDED.includes(p.type));
+    if (targets.length === 0) return;
+    const share = amount / targets.length;
+    for (const p of targets) p.hp = Math.min(p.maxHp, p.hp + share);
+    this.updateOverallHp();
+  }
+
+  // 全パーツの残 HP 合計を機体の hp に反映する。船体かコックピットを失った時点で
+  // 他が無事でも行動不能とみなし 0 にする。
+  private updateOverallHp(): void {
+    const vital = (this.hullPart && this.hullPart.hp <= 0) || (this.cockpitPart && this.cockpitPart.hp <= 0);
+    if (vital) {
+      this.hp = 0;
+      return;
+    }
+    let hp = 0;
+    for (const p of this.parts) hp += p.hp;
+    this.hp = hp;
+  }
+
+  // 健全なスラスターのトルクの合計 [N·m]。
+  public get totalTorque(): number {
+    let total = 0;
+    for (const p of this.thrusterPartRefs) if (p.hp > 0) total += p.torque;
+    return total;
+  }
+
+  // 健全なスラスターの推力の合計 [N]。
+  public get totalThrust(): number {
+    let total = 0;
+    for (const p of this.thrusterPartRefs) if (p.hp > 0) total += p.thrust;
+    return total;
+  }
+
+  // 健全なスラスターの燃料消費率の合計。
+  public get totalFuelConsumptionRate(): number {
+    let total = 0;
+    for (const p of this.thrusterPartRefs) if (p.hp > 0) total += p.fuelConsumptionRate;
+    return total;
+  }
+
+  // 健全なタンクの燃料の合計 [kg]。
+  public get totalFuel(): number {
+    let total = 0;
+    for (const p of this.rcsTankPartRefs) if (p.hp > 0) total += p.fuel;
+    return total;
+  }
+
+  // 健全なタンクの容量の合計 [kg]。
+  public get totalMaxFuel(): number {
+    let total = 0;
+    for (const p of this.rcsTankPartRefs) if (p.hp > 0) total += p.maxFuel;
+    return total;
+  }
+
+  // 燃料を消費し、実際に消費できた割合（0.0〜1.0）を返す
+  public consumeFuel(amount: number): number {
+    if (amount <= 0) return 1.0;
+
+    // 健全なタンクから並び順に汲む。
+    let remainingToConsume = amount;
+    let actualConsumed = 0;
+
+    for (const tank of this.rcsTankPartRefs) {
+      if (tank.hp <= 0) continue;
+      if (tank.fuel > 0) {
+        const consumeFromTank = Math.min(tank.fuel, remainingToConsume);
+        tank.fuel -= consumeFromTank;
+        remainingToConsume -= consumeFromTank;
+        actualConsumed += consumeFromTank;
+      }
+      if (remainingToConsume <= 0) break;
+    }
+
+    return actualConsumed / amount;
+  }
+
+  // 燃料を補給し、実際に追加できた量 [kg] を返す。破損タンクと容量超過は対象外。
+  public refuelFuel(amount: number): number {
+    if (amount <= 0) return 0;
+
+    // 健全なタンクの空きを並び順に埋める。
+    let remainingToAdd = amount;
+    let actualAdded = 0;
+    for (const tank of this.rcsTankPartRefs) {
+      if (tank.hp <= 0) continue;
+      const space = Math.max(0, tank.maxFuel - tank.fuel);
+      if (space > 0) {
+        const addToTank = Math.min(space, remainingToAdd);
+        tank.fuel += addToTank;
+        remainingToAdd -= addToTank;
+        actualAdded += addToTank;
+      }
+      if (remainingToAdd <= 0) break;
+    }
+    return actualAdded;
+  }
+
+  // 機体左右2枚の放熱板・太陽電池パドルに対応するパーツ。並び順が side に対応し、
+  // 先頭が 'up'(左)、次が 'down'(右)。枚数が足りなければ undefined になる。
+  public get radiatorParts(): readonly (RadiatorPart | undefined)[] {
+    return this.radiatorPartRefs;
+  }
+
+  // 左右2枚の太陽電池パドルに対応するパーツ。並びは radiatorParts と同じく side 順。
+  public get solarParts(): readonly (SolarPanelPart | undefined)[] {
+    return this.solarPanelPartRefs;
+  }
+
+  // 健全な放熱板の冷却率の合計。
+  public get totalCoolingRate(): number {
+    let total = 0;
+    for (const p of this.radiatorPartRefs) if (p && p.hp > 0) total += p.coolingRate;
+    return total;
+  }
+
+  // 健全な太陽電池パドルの発電量の合計。
+  public get totalPowerGeneration(): number {
+    let total = 0;
+    for (const p of this.solarPanelPartRefs) if (p && p.hp > 0) total += p.powerGeneration;
+    return total;
+  }
+
+  // 1発あたりのダメージ。複数積んでいる場合は最も強い武装のものを使う。
+  public get weaponDamage(): number {
+    let damage = 0;
+    let hasWeapon = false;
+    for (const p of this.weaponPartRefs) {
+      if (p.hp <= 0) continue;
+      if (!hasWeapon || p.damage > damage) damage = p.damage;
+      hasWeapon = true;
+    }
+    return damage;
+  }
+
+  // 健全な武装の発射レートの合計 [発/s]。
+  public get totalFireRate(): number {
+    let total = 0;
+    for (const p of this.weaponPartRefs) if (p.hp > 0) total += p.fireRate;
+    return total;
+  }
+
+  // 生存武装の初速平均 [m/s]。武装が全損している場合は 0。
+  public get averageMuzzleVelocity(): number {
+    let total = 0;
+    let count = 0;
+    for (const p of this.weaponPartRefs) {
+      if (p.hp <= 0) continue;
+      total += p.muzzleVelocity;
+      count++;
+    }
+    return count === 0 ? 0 : total / count;
   }
 
   // -------------------------------------------------------- 移動/射撃 状態
@@ -343,7 +657,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     // 熱とダメージを入れ、放熱板パーツが壊れたらその場で破片を出す
     this.motion.absorbHeat(BULLET_IMPACT_HEAT / PLAYER_MASS);
     const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
-    this.applyDamageToParts(side === null ? damage : RADIATOR_BULLET_DAMAGE, damagedPart);
+    this.applyDamage(side === null ? damage : RADIATOR_BULLET_DAMAGE, damagedPart);
     if (side !== null && damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side, registry);
     if (this.hp > 0) {
       this.impactEffect(bulletType, impactPoint);
