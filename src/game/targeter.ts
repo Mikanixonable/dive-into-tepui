@@ -219,8 +219,10 @@ export class Targeter {
       this.markerItemScratch, camera, nowMs, celestialLabels, this.celestialBodies,
     );
     // 見越し点は弾速から解くので、砲を積んでいる艦を操作している間だけ出る。
-    this.leadMarkers.sync(
-      viewer instanceof Player ? viewer : null, this.aliveScratch, this.aliveTarget, view, project, nowMs);
+    const shooter = viewer instanceof Player
+      ? { state: viewer.motion.state, muzzleVelocity: viewer.averageMuzzleVelocity }
+      : null;
+    this.leadMarkers.sync(shooter, this.aliveScratch, this.aliveTarget, view, project, nowMs);
   }
 
   // markerItemScratch へ、自機からの距離ラベル・可視性設定(アイコン/名前の個別トグル)・
