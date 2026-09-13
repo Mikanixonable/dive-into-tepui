@@ -13,6 +13,7 @@ import { Input } from '../input/input';
 import type { CameraFrame } from '../render/camera/camera-frame';
 import type { Viewport } from '../render/viewport';
 import { GroupedMarkers, withTargetRole, type GroupedMarkerItem } from './marker/grouped-markers';
+import type { ThemePalette } from '../theme';
 import { LeadMarkers } from './marker/lead-markers';
 import type { ActiveCelestialLabel } from './marker/celestial-markers';
 import { MARKER_PRIORITY } from './marker/marker-priority';
@@ -136,13 +137,13 @@ export class Targeter {
   public sync(
     viewer: OrbitingObject | null, camera: CameraFrame, displayTime: number,
     visibilityPolicy: MapVisibilityPolicy | null, celestialLabels: readonly ActiveCelestialLabel[],
-    nowMs: number,
+    nowMs: number, palette: ThemePalette,
   ): void {
     const project = camera.project;
     this.declarations.length = 0;
     this.pushBoardMarkers(project);
     this.pushTargetDirMarkers(viewer, camera.mode === 'map', project);
-    this.syncTargetMarkers(viewer, displayTime, camera, visibilityPolicy, celestialLabels, nowMs);
+    this.syncTargetMarkers(viewer, displayTime, camera, visibilityPolicy, celestialLabels, nowMs, palette);
     this.aimGroup.sync(this.declarations, nowMs);
   }
 
@@ -151,7 +152,7 @@ export class Targeter {
   private syncTargetMarkers(
     viewer: OrbitingObject | null, displayTime: number, camera: CameraFrame,
     visibilityPolicy: MapVisibilityPolicy | null, celestialLabels: readonly ActiveCelestialLabel[],
-    nowMs: number,
+    nowMs: number, palette: ThemePalette,
   ): void {
     // 戦闘対象(マップでは操作対象自身を含む)のマーカー。
     const targets = this.roster.all().filter(isCombatTarget);
@@ -180,7 +181,7 @@ export class Targeter {
           ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, this.celestialBodies, displayTime))
           : 1;
       this.pushMarkerItem(
-        tgt === this.aliveTarget ? withTargetRole(item) : item,
+        tgt === this.aliveTarget ? withTargetRole(item, palette) : item,
         viewerPos, mapView, visibility, mapOpacity, mapOccluded);
     }
     // 部位マーカーは死んだ個体まで辿る — 生存個体だけだと撃破直後の部位マーカーが残る。
