@@ -3,52 +3,73 @@
 import { SyncThrottle } from '../sync-throttle';
 import { fmtDateTime, fmtElapsedUnits, setElementText, fmtTime } from '../../../hud/utils';
 import { SIM_SPEED_LEVELS } from '../../dynamic/sim-speed-manager';
-import type { DisplayWindowManager } from '../../display-window-manager';
-import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
 
 const SYNC_INTERVAL_MS = 100;
 
+// トップバーが1フレームに映す値と、時間加速セレクトが返す操作の口。
+export interface TopBarViewModel {
+  // ランの元期の unix 秒。simTime を足すと表示用の日時になる。
+  readonly epochUnixSec: number;
+  readonly simTime: number;
+  readonly simSpeed: number;
+  readonly isPaused: boolean;
+  // ノード自動ワープが終わるまでの実時間 [s]。自動ワープしていなければ null。
+  readonly autoWarpRealRemainSec: number | null;
+  // 同じくシミュレーション時間 [s]。
+  readonly autoWarpSimRemainSec: number | null;
+  setSimSpeed(speed: number): void;
+}
+
 export class TopBar {
   private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
+  private readonly simSpeedEl: HTMLSelectElement | null;
+  // 直近の sync が受けた値。セレクトの操作はフレームの外で起きるので、その時点の口をここから引く。
+  private view: TopBarViewModel | null = null;
 
-  public constructor(private readonly els: Map<string, HTMLElement>) {}
+  // 時間加速セレクトへ選択肢を並べ、選択の変更を直近の値が持つ口へ返す。
+  public constructor(private readonly els: Map<string, HTMLElement>) {
+    const el = this.els.get('sim-speed');
+    const select = el instanceof HTMLSelectElement ? el : null;
+    this.simSpeedEl = select;
+    if (!select) return;
+    // 選択肢はランを跨いで変わらないので、ここで一度だけ並べる。
+    for (const speed of SIM_SPEED_LEVELS) {
+      const option = document.createElement('option');
+      option.value = String(speed);
+      option.textContent = `×${speed}`;
+      select.appendChild(option);
+    }
+    select.addEventListener('change', () => this.view?.setSimSpeed(Number(select.value)));
+  }
 
   // MET を毎フレーム、時間加速と NODE WARP の残りを間引いて反映する。
-  public sync(
-    displayWindowManager: DisplayWindowManager, simSpeedManager: SimSpeedManager,
-    simTime: number, isPaused: boolean,
-  ): void {
-    const epochUnixSec = displayWindowManager.current.epochUnixSec;
-    setElementText(this.els, 'met', `${fmtDateTime(epochUnixSec + simTime)} / T+ ${fmtElapsedUnits(simTime)}`);
+  // view が null(ランが無い)なら、掴んでいる口を落として何も書かない。
+  public sync(view: TopBarViewModel | null, nowMs: number): void {
+    this.view = view;
+    if (!view) return;
+    const { simTime } = view;
+    setElementText(
+      this.els, 'met', `${fmtDateTime(view.epochUnixSec + simTime)} / T+ ${fmtElapsedUnits(simTime)}`,
+    );
 
-    if (!this.throttle.due()) return;
+    if (!this.throttle.due(nowMs)) return;
 
-    // 時間加速セレクトを初回だけ選択肢で満たし、以後は選択値と表示を現在の速度へ合わせる。
-    const simSpeedLabel = `×${simSpeedManager.simSpeed}`;
-    const autoWarpRealRemain = simSpeedManager.estimatedRealSecondsToWarpEnd(simTime);
-    const simSpeedEl = this.els.get('sim-speed');
-    if (simSpeedEl instanceof HTMLSelectElement) {
-      if (simSpeedEl.dataset['speedOptions'] !== 'ready') {
-        for (const speed of SIM_SPEED_LEVELS) {
-          const option = document.createElement('option');
-          option.value = String(speed);
-          option.textContent = `×${speed}`;
-          simSpeedEl.appendChild(option);
-        }
-        simSpeedEl.dataset['speedOptions'] = 'ready';
-        simSpeedEl.addEventListener('change', () => simSpeedManager.setSpeed(Number(simSpeedEl.value)));
-      }
-      simSpeedEl.value = String(simSpeedManager.simSpeed);
-      const warpRemain = autoWarpRealRemain !== null ? ` (残り ${fmtTime(autoWarpRealRemain)})` : '';
-      simSpeedEl.title = isPaused ? '一時停止中' : `時間加速 ${simSpeedLabel}${warpRemain}`;
-      simSpeedEl.classList.toggle('sim-speed-hot', simSpeedLabel !== '×1' || isPaused);
+    // 時間加速セレクトの選択値と表示を、現在の速度へ合わせる。
+    const simSpeedLabel = `×${view.simSpeed}`;
+    if (this.simSpeedEl) {
+      this.simSpeedEl.value = String(view.simSpeed);
+      const warpRemain = view.autoWarpRealRemainSec !== null
+        ? ` (残り ${fmtTime(view.autoWarpRealRemainSec)})`
+        : '';
+      this.simSpeedEl.title = view.isPaused ? '一時停止中' : `時間加速 ${simSpeedLabel}${warpRemain}`;
+      this.simSpeedEl.classList.toggle('sim-speed-hot', simSpeedLabel !== '×1' || view.isPaused);
     }
     // NODE WARP の残り時間表示。
-    const autoWarpSimRemain = simSpeedManager.remainingSimulationSeconds(simTime);
     const nodeWarpEl = this.els.get('node-warp-remain');
     if (nodeWarpEl) {
-      nodeWarpEl.textContent = autoWarpSimRemain === null ? '—' : fmtTime(autoWarpSimRemain);
-      nodeWarpEl.classList.toggle('sim-speed-hot', autoWarpSimRemain !== null);
+      const remain = view.autoWarpSimRemainSec;
+      nodeWarpEl.textContent = remain === null ? '—' : fmtTime(remain);
+      nodeWarpEl.classList.toggle('sim-speed-hot', remain !== null);
     }
   }
 }

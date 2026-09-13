@@ -1,7 +1,6 @@
 // 低軌道シューティング: エントリポイント。WebGPU シーン初期化・ステージ選択・
 // rAF ループ(Game.update → sync → render の駆動)を統括する。
-// HUD の書体(ラテン字形の JetBrains Mono、日本語を含む残りの HackGen)を太さ 400 で読み込む。
-// bold 指定はブラウザの合成に任せる。
+// HUD の書体は太さ 400 だけを読み、bold はブラウザの合成に任せる。
 import '@fontsource/jetbrains-mono/latin-400.css';
 import './hackgen-400.css';
 import { createGameScene, GameScene } from './render/scene';
@@ -10,9 +9,10 @@ import { DebugInfoWindow } from './game/hud/windows/debug-info-window';
 import { FrameSections } from './game/frame-sections';
 import { UserSettings } from './settings/user-settings';
 import { browserSettingStorage } from './settings/stored-setting';
-import { themeIdSetting } from './settings/theme-setting';
-import { applyThemePalette } from './theme';
+import { themePresetOf } from './theme';
+import { applyThemeVariables } from './hud/style/theme-variables';
 import { Hud } from './game/hud/hud';
+import { PanelCollapse } from './game/hud/panel-shell';
 import { HudShell } from './hud/hud-shell';
 import { MarkerDevice } from './marker/marker-device';
 import { injectMarkerIdentityStyle } from './game/marker/marker-identity-style';
@@ -30,9 +30,10 @@ import { AutoSave } from './launcher/save/autosave';
 import { showLoading, hideLoading } from './launcher/loading-overlay';
 import { showFatalError } from './launcher/fatal-error';
 import type { GameHost } from './game/game-host';
+import type { ViewOptionsSettings } from './game/hud/panels/view-options-control';
 import type { GraphicsSettingsData } from './render/graphics-settings';
 import type { RenderStyle } from './render/render-style';
-import type { SettingValue } from './settings/stored-setting';
+import type { SettingValue } from './settings/setting-value';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
 async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
@@ -122,7 +123,10 @@ function initHud(settings: UserSettings): {
   pauseMenu: PauseMenu;
 } {
   const shell = new HudShell();
-  const hud = new Hud(shell, settings.renderStyle.current);
+  const panelCollapse = new PanelCollapse(
+    settings.panelCollapsed, (state) => settings.panelCollapsed.set(state),
+  );
+  const hud = new Hud(shell, panelCollapse, settings.renderStyle.current);
   // マーカーの骨格は装置が、種別ごとの見た目は表示の導出が注入する。骨格を先に置き、
   // 同じ詳細度なら種別ごとの指定が勝つ順序にする。
   const markers = new MarkerDevice(shell.layers.marker);
@@ -130,7 +134,8 @@ function initHud(settings: UserSettings): {
   const audioEngine = new AudioEngine();
   const bgm = new Bgm(audioEngine, settings.bgmVolume.current);
   const pauseMenu = new PauseMenu(
-    shell.layers.system, shell.overlayManager, bgm, settings.graphics.current, settings.bgmVolume.current,
+    shell.layers.system, shell.overlayManager, bgm,
+    settings.graphics.current, settings.bgmVolume.current, settings.themePalette.current.id,
   );
   return { shell, hud, markers, audioEngine, bgm, pauseMenu };
 }
@@ -155,28 +160,49 @@ function bindSettings(
   pauseMenu.onBgmVolumeChange = (volume) => settings.bgmVolume.set(volume);
   settingsView.onBgmVolumeChange = (volume) => settings.bgmVolume.set(volume);
 
-  // 配色は DOM へ適用できたものだけを選択として残す。
+  // 配色はプリセットに在るものだけを選択として残す。
   settingsView.onThemeIdChange = (id) => {
-    if (applyThemePalette(id)) themeIdSetting.set(id);
+    const palette = themePresetOf(id);
+    if (palette !== null) settings.themePalette.set(palette);
+  };
+}
+
+// 表示パネルが読み書きする設定を、読み取り専用の面と書き換えの口に分けて束ねる。
+function viewOptionSettings(settings: UserSettings): ViewOptionsSettings {
+  return {
+    // 読み取り専用の面。
+    mapDisplay: settings.mapDisplayToggles,
+    grid: settings.gridVisibility,
+    orbitGuide: settings.orbitGuide,
+    tab: settings.viewOptionsTab,
+    orbitGuideGroupTab: settings.orbitGuideGroupTab,
+    // 書き換えの口。設定の正本へ戻す。
+    onMapDisplayChange: (value) => settings.mapDisplayToggles.set(value),
+    onGridChange: (value) => settings.gridVisibility.set(value),
+    onOrbitGuideChange: (value) => settings.orbitGuide.set(value),
+    onTabChange: (value) => settings.viewOptionsTab.set(value),
+    onOrbitGuideGroupTabChange: (value) => settings.orbitGuideGroupTab.set(value),
   };
 }
 
 // 起動時に一度だけ走る、全システムの生成と配線。
 async function main() {
-  // セーブと設定を読み、シーンと HUD を組む。
+  // 設定を読み、選ばれている配色を :root へ当ててからでなければ、ローディング表示も
+  // ステージ選択画面も色を引けない。
+  const settings = new UserSettings(browserSettingStorage);
+  settings.themePalette.subscribe((palette) => applyThemeVariables(palette));
+  // セーブを読み、シーンと HUD を組む。
   const unlockManager = new UnlockManager();
   const saveStore = new LocalStorageSaveStore();
   const slots = SaveSlots.load(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
-  const settings = new UserSettings(browserSettingStorage);
   const gs = await initScene(settings.graphics.current);
   const { shell, hud, markers, audioEngine, bgm, pauseMenu } = initHud(settings);
   const sections = new FrameSections();
   const host: GameHost = {
     scene: gs, hud, markers, sections,
-    mapDisplay: settings.mapDisplayToggles,
-    grid: settings.gridVisibility,
-    orbitGuide: settings.orbitGuide,
+    viewOptions: viewOptionSettings(settings),
+    themePalette: settings.themePalette,
   };
 
   // 周回の遷移と、一時停止メニューからの導線。

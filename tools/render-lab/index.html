@@ -6,7 +6,7 @@
 <style>
   /* 色・余白・文字寸法はゲーム本体のトークン(src/theme.ts)を使う。設定パネルと
      ウィジェットをそのまま借りるので、器の側だけ別の色体系を持つ意味がない。トークンは
-     起動時に injectThemeVariables() が :root へ書き込むまで空なので、フォールバックを併記する。 */
+     起動時に applyThemeVariables() が :root へ書き込むまで空なので、フォールバックを併記する。 */
   * { box-sizing: border-box; }
   body {
     margin: 0; padding: var(--space-5, 12px);

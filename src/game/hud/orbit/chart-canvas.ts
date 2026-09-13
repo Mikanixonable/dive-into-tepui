@@ -1,7 +1,8 @@
 // チャート canvas 2D の下回り。devicePixelRatio 対応の backing store 調整、折れ線描画、
 // 現在地点/ターゲット点の丸マーク、16:9 表示とパン/ズームのカーソル制御の CSS を持つ。
-import { currentThemePalette } from '../../../theme';
+import type { ThemePalette } from '../../../theme';
 
+// backing store を合わせた時点の CSS 表示寸法と devicePixelRatio。
 export interface BackingStoreState {
   cssWidth: number;
   cssHeight: number;
@@ -32,12 +33,11 @@ export function resizeCanvasBackingStore(
   const dpr = window.devicePixelRatio || 1;
   const cssWidth = canvas.clientWidth;
   const cssHeight = canvas.clientHeight;
-  // 前回から変化がなければ何もしない。
   if (cssWidth === state.cssWidth && cssHeight === state.cssHeight && dpr === state.dpr) return;
   state.cssWidth = cssWidth;
   state.cssHeight = cssHeight;
   state.dpr = dpr;
-  // backing store の実ピクセル数を dpr 倍にし、以後は CSS ピクセル単位で描画できるよう座標変換を設定する。
+  // 以後は CSS ピクセル単位で描けるよう、実ピクセル数を dpr 倍にして座標変換を掛ける。
   canvas.width = Math.max(1, Math.round(cssWidth * dpr));
   canvas.height = Math.max(1, Math.round(cssHeight * dpr));
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -55,7 +55,6 @@ export function drawPolylineWithGaps<T>(
   ctx.lineWidth = LINE_WIDTH;
   ctx.beginPath();
   let penDown = false;
-  // null に当たったらペンを上げ(penDown=false)、次の点から新しい線分として置き直す。
   for (const point of points) {
     if (point === null) {
       penDown = false;
@@ -72,12 +71,10 @@ export function drawPolylineWithGaps<T>(
 // 現在地点/ターゲット位置を示す丸マーク。filled なら塗り丸(自艦などの現在地点)、
 // そうでなければ縁だけの丸(ターゲット位置)。
 export function drawPointMarker(
-  ctx: CanvasRenderingContext2D, x: number, y: number, filled: boolean,
+  ctx: CanvasRenderingContext2D, x: number, y: number, filled: boolean, palette: ThemePalette,
 ): void {
-  const palette = currentThemePalette();
   ctx.beginPath();
   ctx.arc(x, y, MARK_RADIUS, 0, Math.PI * 2);
-  // filled は内部をアクセント色で塗って縁取り、そうでなければ縁だけを描く。
   if (filled) {
     ctx.fillStyle = palette.accentNear;
     ctx.fill();

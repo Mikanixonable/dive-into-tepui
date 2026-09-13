@@ -6,7 +6,7 @@ import ts from 'typescript';
 
 const require = createRequire(import.meta.url);
 
-const source = fs.readFileSync(new URL('../src/game/theme.ts', import.meta.url), 'utf8');
+const source = fs.readFileSync(new URL('../src/theme.ts', import.meta.url), 'utf8');
 const output = ts.transpileModule(source, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText;

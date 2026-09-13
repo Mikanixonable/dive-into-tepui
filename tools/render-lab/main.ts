@@ -11,13 +11,14 @@ import { UserSettings } from '../../src/settings/user-settings';
 import { GraphicsPanel } from '../../src/hud/panels/graphics-panel';
 import { SegmentedControl, WIDGET_STYLE } from '../../src/hud/widgets';
 import { injectOnce } from '../../src/hud/inject-style';
-import { injectThemeVariables } from '../../src/theme';
+import { applyThemeVariables } from '../../src/hud/style/theme-variables';
 import { CASE_NAMES, MAX_CAMERA_DISTANCE_LOG, sunDiameterPx, type CaseName } from './cases';
 import {
   LabView, MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ZOOM_LOG, MAX_SUN_DISTANCE_LOG_AU, MIN_SUN_DISTANCE_LOG_AU,
   type LabMeasurement, type LabViewAngles,
 } from './lab';
 import { AU } from '../../src/physics/astronomical-unit';
+import { parseThemePalette } from '../../src/theme';
 import { CUMULUS_DITHER_KNOB } from '../../src/render/cloud/cumulus-shape';
 import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
@@ -63,7 +64,7 @@ async function init(): Promise<void> {
   window.renderLab = { earthSurfaceCapture } as Window['renderLab'];
 
   // ゲーム本体のウィジェットを組む前に、その CSS が読むトークンと規則を入れる。
-  injectThemeVariables();
+  applyThemeVariables(parseThemePalette(null));
   injectOnce('widget-style', WIDGET_STYLE);
 
   // タンパク質のケースは fetch で来る構造・motion を同期的に読むので、器を組む前に待つ。

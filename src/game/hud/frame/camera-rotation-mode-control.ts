@@ -1,22 +1,28 @@
 // カメラの回転モードを切り替える共通トグル。マップの詳細パネルと戦闘の簡易パネルで
 // 共有する。
 import { ToggleSwitch } from '../../../hud/widgets';
-import type { FocusCamera } from '../../camera/focus-camera';
+import type { CameraRotationMode } from '../../camera/camera-orientation';
+
+// 回転モードの切り替えを受ける口。
+export interface CameraRotationModeCommands {
+  setCameraRotationMode(mode: CameraRotationMode): void;
+}
 
 export class CameraRotationModeControl {
   public readonly element: HTMLElement;
   private readonly toggle: ToggleSwitch;
 
-  public constructor(private readonly camera: FocusCamera) {
+  // 初期の操作モードを点灯させ、以後の切り替えを commands へ返す。
+  public constructor(commands: CameraRotationModeCommands, initialMode: CameraRotationMode) {
     this.toggle = new ToggleSwitch('クォータニオン操作', (on) => {
-      this.camera.setCameraRotationMode(on ? 'quaternion' : 'euler');
+      commands.setCameraRotationMode(on ? 'quaternion' : 'euler');
     });
     this.element = this.toggle.element;
-    this.sync();
+    this.sync(initialMode);
   }
 
-  // 保存値を含むカメラの現在の操作モードをトグルへ反映する。
-  public sync(): void {
-    this.toggle.setOn(this.camera.cameraRotationMode === 'quaternion');
+  // 現在の操作モードをトグルへ反映する。
+  public sync(mode: CameraRotationMode): void {
+    this.toggle.setOn(mode === 'quaternion');
   }
 }

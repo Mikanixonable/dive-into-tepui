@@ -53,17 +53,17 @@ export class PauseMenu implements OverlayHandle {
   private dragStartClient: Point2 | null = null;
   private dragStartWindowPos: Point2 = { x: 0, y: 0 };
 
-  // パネル DOM を組み立てて root へ追加する。graphics と bgmVolume は組み立て時の設定値。
+  // パネル DOM を組み立てて root へ追加する。graphics・bgmVolume・themeId は組み立て時の設定値。
   // 各操作のコールバックは onXxx フィールドへ後から代入する。
   public constructor(
     root: HTMLElement, overlayManager: OverlayManager, bgm: Bgm,
-    graphics: GraphicsSettingsData, bgmVolume: number,
+    graphics: GraphicsSettingsData, bgmVolume: number, themeId: string,
   ) {
     injectCommonUiStyle();
     injectOnce('pause-menu', PAUSE_MENU_STYLE);
     injectOnce('settings-view', SETTINGS_VIEW_STYLE);
     this.overlayManager = overlayManager;
-    this._settingsView = new SettingsView(bgm, graphics, bgmVolume);
+    this._settingsView = new SettingsView(bgm, graphics, bgmVolume, themeId);
     this.panel = document.createElement('div');
     this.panel.id = 'hud-pause-menu';
     this.panel.className = 'panel ui-surface-focus';
@@ -255,12 +255,12 @@ export class PauseMenu implements OverlayHandle {
     this.minimizeToggle.title = this.minimized ? '展開する' : '最小化する';
   }
 
-  // OverlayHandle 実装。target がパネル要素の内部かどうかを返す。
+  // target がパネル要素の内部かどうかを返す。
   public contains(target: Node): boolean {
     return this.panel.contains(target);
   }
 
-  // OverlayHandle 実装。toggle(false) と同じく閉じる。
+  // パネルを閉じる。
   public close(): void {
     this.toggle(false);
   }
