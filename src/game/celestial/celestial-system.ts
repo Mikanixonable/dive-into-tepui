@@ -2,7 +2,6 @@
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import { CelestialMotion, OrbitingMotion, PlanetMotion } from '../../physics/celestial-motion';
-import { PhaseOffsets } from '../../physics/celestial-body-def';
 import { attractorAccel, strongestAttractor } from '../../physics/attractor';
 import { EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
 import { EciTransform } from '../../physics/eci-transform';
@@ -121,13 +120,12 @@ export class CelestialSystem implements CelestialBodies {
   private readonly zeroVelocityModel: ZeroVelocityModel;
   private zeroVelocityView!: ZeroVelocityView;
 
-  // entities はこの星系の全天体(宣言順)、origin はその中の ECI 中心天体。phaseOffsets は motion を
-  // 組んだ初期位相(セーブでそのまま返す)。epoch は simTime=0 が指す絶対時刻。pointFieldView は
-  // 小天体の点群(持たない星系では null)、ephemerisPoints は数値暦が収録している点の一覧。
+  // entities はこの星系の全天体(宣言順)、origin はその中の ECI 中心天体。epoch は simTime=0 が
+  // 指す絶対時刻。pointFieldView は小天体の点群(持たない星系では null)、ephemerisPoints は
+  // 数値暦が収録している点の一覧。
   public constructor(
     public readonly entities: readonly CelestialEntity[],
     public readonly origin: CelestialEntity,
-    private readonly phaseOffsets: PhaseOffsets,
     public readonly epoch: TdbJulianDate,
     private readonly pointFieldView: PointFieldView | null = null,
     ephemerisPoints: EphemerisPoints | null = null,
@@ -328,12 +326,6 @@ export class CelestialSystem implements CelestialBodies {
     return star === null ? v3(1, 0, 0) : norm(sub(this.stateAt(star.id, t).r, r));
   }
 
-  // 星系の再構築に要る値のスナップショット(セーブ用)。phaseOffsets は構築時に受け取った
-  // record をそのまま返す(明示 0 のキーを落とさない)。
-  public serialize(): { readonly phaseOffsets: PhaseOffsets; readonly earthSpinPhase0: number | undefined } {
-    return { phaseOffsets: { ...this.phaseOffsets }, earthSpinPhase0: this.earthSpinPhase0() };
-  }
-
   // 天体と地表が答える、デバッグ表示用の狭い計測値をまとめる。
   public perfCounts(): Pick<PerfCounts, 'surfaces'> & { timeCacheHits: number; timeCacheMisses: number } {
     let time = this.eciTransform.cacheStats;
@@ -362,15 +354,6 @@ export class CelestialSystem implements CelestialBodies {
   // 表示中の軌道ガイド線を、当たり判定用の識別情報付き ECI 点列として列挙する。
   public orbitGuideSamples(count: number): readonly VisibleGuideLine[] {
     return this.orbitGuideView.visibleLines(count);
-  }
-
-  // ECI の極軸を自転軸とする天体(この座標系を定義している天体)の自転初期位相(セーブ用)。
-  // その天体が星系に無ければ undefined。
-  private earthSpinPhase0(): number | undefined {
-    const pole = this.entities.find(({ motion }) => (
-      'pole' in motion.def && motion.def.pole?.kind === 'eciPole'
-    ));
-    return pole?.motion.spinPhase0;
   }
 
   // 天体ビュー・星・照明・影・参照線・天球グリッドを、この1フレームの表示状態に同期する。

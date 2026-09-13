@@ -170,10 +170,8 @@ export class Game {
     // はセーブの元期からの経過秒なので、別の元期で組むと全天体がずれる。
     const savedJdTdb = initialSave?.ephemerisContext?.epochJdTdb;
     const epoch = savedJdTdb !== undefined ? createJulianDate('TDB', savedJdTdb) : startEpoch ?? stageClass.epoch;
-    // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
-    const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
     const celestialSystem = await stageClass.createCelestialSystem(
-      initialSave?.phaseOffsets ?? {}, earthSpinPhase0, epoch, (ratio) => progress.within(ratio), gs.renderer,
+      epoch, (ratio) => progress.within(ratio), gs.renderer,
     );
     await progress.enter('bodies');
     celestialSystem.build(gs.scene, gs.pipeline);
@@ -198,14 +196,11 @@ export class Game {
 
   // このランを1件ぶんのセーブ本体へ畳む。
   public serialize(): GameSaveData {
-    const { phaseOffsets, earthSpinPhase0 } = this._celestialSystem.serialize();
     return {
       version: SAVE_VERSION,
       stageId: this.activeStage.id,
       simTime: this.simTime,
       ephemerisContext: { ...ephemerisContextFor(this._celestialSystem.epoch) },
-      phaseOffsets,
-      earthSpinPhase0,
       entities: this.dynamicSystem.serialize(),
       activeControlledId: this.activeControllable?.id ?? null,
       stage: this.activeStage.serialize(),

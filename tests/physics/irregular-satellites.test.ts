@@ -32,7 +32,7 @@ const CASES: readonly [string, number, boolean][] = [
 ];
 
 export function register(): void {
-  const parts = solarSystemParts({});
+  const parts = solarSystemParts();
 
   test('irregular-satellites: 公転周期(lRate)が JPL の公開周期(日)と一致する', () => {
     for (const [id, periodDays] of CASES) {
