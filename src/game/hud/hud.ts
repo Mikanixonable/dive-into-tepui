@@ -1,4 +1,4 @@
-// ゲーム画面の HUD のシェル。常設パネル群と描画先(root / svgOverlay)を持ち、
+// ゲーム画面の HUD のシェル。常設パネル群と描画先(root)を持ち、
 // 毎フレーム game の状態へ同期して、トースト・ヘルプを出す。
 import type { RenderStyle } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
@@ -31,7 +31,6 @@ export class Hud implements HudLayers, Notifier {
   public get overlayManager(): OverlayManager { return this.shell.overlayManager; }
   public readonly combatRoot: HTMLElement;
   public readonly mapRoot: HTMLElement;
-  public readonly svgOverlay: SVGSVGElement;
   private readonly helpPanel: HelpPanel;
   private readonly topBar: TopBar;
   public readonly viewBadgeRow: HTMLElement;
@@ -51,10 +50,9 @@ export class Hud implements HudLayers, Notifier {
   public constructor(
     private readonly shell: HudShell, renderStyle: RenderStyle,
   ) {
-    const { combatRoot, mapRoot, svgOverlay, helpPanel, els } = buildHudDom(shell, renderStyle);
+    const { combatRoot, mapRoot, helpPanel, els } = buildHudDom(shell, renderStyle);
     this.combatRoot = combatRoot.element;
     this.mapRoot = mapRoot.element;
-    this.svgOverlay = svgOverlay;
     this.helpPanel = helpPanel;
 
     // 常設パネルを、data-id で引ける要素の一覧から組む。
