@@ -1,6 +1,5 @@
 // 多数の対象のマーカーを、投影後のスクリーン座標だけを見て破綻なく並べる表示器。画面上で
 // 近接するものを1つの代表にまとめ、画面外へ出たものは画面端の方位マーカーに置き換える。
-// 対象ごとの見た目とラベル内容(GroupedMarkerItem)は対象自身が用意する。
 import { Vec3, len, sub } from '../../math/vec3';
 import { Projected } from '../../math/projection';
 import type { ActiveCelestialLabel } from './celestial-markers';
@@ -10,7 +9,7 @@ import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from '../../marker/crowding';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { MarkerSink } from '../../marker/marker-sink';
-import { currentThemePalette } from '../../theme';
+import type { ThemePalette } from '../../theme';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { CelestialBody } from '../../physics/celestial-body';
 
@@ -21,34 +20,33 @@ export interface BearingMarker {
   readonly color: string;
   // 画面外へ出たときに出すか。
   readonly visible: boolean;
-  // 重なったときに残す度合い。いまの値は cls に 'mk-ally' / 'mk-ammo' が含まれるかという偶然で
-  // 味方 600・弾薬 300・敵 0 に分かれている。
-  // TODO: 方位マーカーの度合いを、種別の意味から決め直す。
+  // 重なったときに残す度合い。
+  // TODO: いまの値は CSS クラス名から偶然決まっている。種別の意味から決め直す。
   readonly priority: number;
   // 近接まとめでアイコンの扱いが既に決まっている種別か。
   readonly clustered: boolean;
 }
 
 export interface GroupedMarkerItem {
-  key: string; // 対象を一意に識別するマーカーキー
-  readonly kind: DynamicEntityKind; // 天体ラベル下のサブ行が内訳を数えるための種別
+  key: string;
+  readonly kind: DynamicEntityKind;
   cls: string; // 画面内マーカーの CSS クラス
   sym: string; // 画面内マーカーの記号
   pos: Vec3; // ワールド位置 (ECI)
-  vel: Vec3; // ECI 速度。マップビューでの進行方向表示に使う
+  vel: Vec3; // ECI 速度
   priority: number; // 代表選出の優先度(大きいものが代表になる)
   name: string; // ラベルの主題。まとめられた代表には "xN" が付く
   detail?: string; // ラベル末尾の付随情報(距離など)
-  bearing: BearingMarker; // 画面外方位マーカー
+  bearing: BearingMarker;
   color?: string; // 画面内マーカー自体の色。省略時は cls の CSS 色に従う
   symMarkup?: boolean; // sym をマークアップ(SVG など)として扱うか
   opacity?: number; // 画面内マーカーの不透明度。0 以下なら非表示
   occluded?: boolean; // 惑星遮蔽中は表示位置を維持したままフェードアウトする
 }
 
-// ターゲットに指定された対象のマーカーへ、代表選出の優先度と強調色を被せる。
-export function withTargetRole(item: GroupedMarkerItem): GroupedMarkerItem {
-  const signal = currentThemePalette().signal;
+// ターゲットに指定された対象のマーカーへ、代表選出の優先度と palette の強調色を被せる。
+export function withTargetRole(item: GroupedMarkerItem, palette: ThemePalette): GroupedMarkerItem {
+  const signal = palette.signal;
   return {
     ...item,
     cls: `${item.cls} mk-target`,
@@ -80,7 +78,7 @@ export class GroupedMarkers {
   private prevHiddenByCelestialLabel = new Set<string>();
   private readonly declarations: MarkerDeclaration[] = [];
 
-  // 直前の sync で天体ラベルへラベルを譲った項目。天体ラベル下のサブ行の候補になる。
+  // 直前の sync で天体ラベルへラベルを譲った項目。
   public getHiddenItems(): readonly GroupedMarkerItem[] {
     return this.hiddenItemsList;
   }
@@ -100,6 +98,7 @@ export class GroupedMarkers {
   ): void {
     const project = camera.project;
     const mapView = camera.mode === 'map';
+    // 画面座標とカメラからの距離を求めてから、近接するものをまとめる。
     const placed: PlacedItem[] = items.map(
       (item) => ({
         item, p: project(item.pos), dist: len(sub(item.pos, camera.position)), count: 1, labeled: true,
@@ -107,6 +106,7 @@ export class GroupedMarkers {
     );
     this.groupNearby(placed, celestialLabels);
 
+    // 対象1件につき、画面内マーカーと方位マーカーを1つずつ宣言する。
     const declarations = this.declarations;
     declarations.length = 0;
     for (const m of placed) {

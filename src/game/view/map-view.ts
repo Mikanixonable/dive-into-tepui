@@ -26,7 +26,7 @@ import type { DisplayWindow, DisplayWindowManager } from '../display-window-mana
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { FrameAnchors } from '../frame-anchors';
 import type { MapDisplayToggles } from '../map/display-toggles';
-import type { RunSetting } from '../run-setting';
+import type { SettingValue } from '../../settings/setting-value';
 import type { Viewport } from '../../render/viewport';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ViewFrame } from './view-frame';
@@ -51,7 +51,7 @@ export class MapView implements ViewFrame {
     private readonly combatMarkers: GroupedMarkers,
     private readonly displayWindowManager: DisplayWindowManager,
     private readonly frameControls: FrameControls,
-    frameAnchors: FrameAnchors,
+    private readonly frameAnchors: FrameAnchors,
     private readonly controlSelection: ControlSelection,
     simSpeedManager: SimSpeedManager,
     planDisplay: PlanDisplay,
@@ -59,9 +59,8 @@ export class MapView implements ViewFrame {
     hud: HudLayers & Notifier,
     uiSfx: UiSfx,
     navTarget: NavTarget,
-    private readonly mapDisplay: RunSetting<MapDisplayToggles>,
+    private readonly mapDisplay: SettingValue<MapDisplayToggles>,
   ) {
-    // 編集・物体候補・線候補を組み、最後に同じ候補群を読む入力処理へ渡す。
     this.planEditor = new PlanEditor(
       hud, uiSfx, simSpeedManager, celestialSystem, scene, controlSelection,
       displayWindowManager, frameControls, planDisplay.path,
@@ -129,7 +128,7 @@ export class MapView implements ViewFrame {
   // 選択候補と可視性ポリシーを組み、時刻に追従する操作パネルを更新する。
   public update(displayWindow: DisplayWindow): void {
     this.objectPickables.refresh(displayWindow, this.mapDisplay.current);
-    this.frameControls.update(displayWindow.displayTime);
+    this.displayWindowManager.dropStaleRotatingFrame(displayWindow.displayTime, this.frameAnchors);
     this.planEditor.update(displayWindow.simTime);
   }
 
@@ -142,8 +141,7 @@ export class MapView implements ViewFrame {
     );
   }
 
-  // マップ専用の編集 UI と常設パネル(未来表示・座標系・軌道物体一覧)・天体ラベルのサブ行・
-  // 軌道線の右クリック候補。
+  // マップ専用の表示物を、このフレームの表示窓とカメラへ揃える。
   public syncPanels(displayWindow: DisplayWindow, camera: CameraFrame, nowMs: number): void {
     // 編集 UI と常設パネル
     this.planEditor.sync(this.cameraSystem.mapCamera.dist, camera.floatingOrigin);

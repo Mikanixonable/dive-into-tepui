@@ -3,7 +3,6 @@
 // このタブはスケール入力欄を持たない。
 import { strongestAttractor } from '../../../physics/attractor';
 import { PointerPanZoom } from '../../../hud/pointer-pan-zoom';
-import { currentThemePalette } from '../../../theme';
 import { projectionSeries, resolveTarget } from './orbit-analysis-data';
 import { buildTabControls, sampleCountFor } from './orbit-analysis-tab';
 import { OrbitProjectionChart } from './orbit-projection-chart';
@@ -57,16 +56,19 @@ export class ProjectionTab implements AnalysisTab {
     return center !== null && projectionTextureUrl(source.celestialSystem, center.id) !== null;
   }
 
+  // チャートの資源を片付ける。
   public dispose(): void {
     this.chart.dispose();
   }
 
+  // 表示範囲を全球へ戻す。
   public resetView(): void {
     this.chart.resetView();
   }
 
-  // 中心天体の反対側(遠地点付近)を通る軌道でも見失わないよう高度タブと同じサンプル数を使い、
-  // 描く未来の期間はマップの未来表示(軌道予測パネル)が指す期間をそのまま使う。
+  // 中心天体の地図に、操作対象とターゲットの経緯度の軌跡を重ねて描く。中心天体の反対側
+  // (遠地点付近)を通る軌道でも見失わないよう高度タブと同じサンプル数を使い、描く未来の期間は
+  // マップの未来表示(軌道予測パネル)が指す期間をそのまま使う。
   public draw(
     source: AnalysisChartSource, entity: DynamicEntity, reference: OrbitReference, target: ApproachTargetSource | null,
   ): void {
@@ -89,13 +91,13 @@ export class ProjectionTab implements AnalysisTab {
       ? projectionSeries((t) => resolvedTarget.stateAt(t), centerEntity, now, spanSec, sampleCount)
       : null;
     const series: ProjectionSeriesSpec[] = [];
-    const palette = currentThemePalette();
+    const { palette } = source;
     if (ship) series.push(seriesSpecOf(ship, palette.accent, 'filled'));
     if (targetTrack) series.push(seriesSpecOf(targetTrack, palette.signal, 'ring'));
 
     // テクスチャが読み込み済みならそれを背景に、まだなら読み込み中の案内文を出す。
     const image = this.loadedTextureImage(textureUrl);
-    this.chart.draw({ textureImage: image, series, emptyMessage: image ? undefined : '読み込み中…' });
+    this.chart.draw({ textureImage: image, series, emptyMessage: image ? undefined : '読み込み中…' }, palette);
   }
 
   // url のテクスチャ画像を読み込み済みなら返す。未読み込みなら読み込みを開始して次回以降の
