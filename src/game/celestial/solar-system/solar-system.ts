@@ -2,7 +2,6 @@
 // CelestialSystem を返す。同じ太陽系を、ECI の中心(originId)を選んで組める。
 import { EphemerisPoints } from '../../../physics/ephemeris/point';
 import { OrbitingMotion, StarMotion } from '../../../physics/celestial-motion';
-import { PhaseOffsets } from '../../../physics/celestial-body-def';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-light';
 import { CelestialSystem } from '../celestial-system';
 import { ephemerisSeconds, TdbJulianDate } from '../../../physics/time';
@@ -47,12 +46,11 @@ export function solarSystemBodyName(id: string): string {
   return SOLAR_SYSTEM_BODY_NAMES[id as SolarSystemId] ?? id;
 }
 
-// 太陽系の CelestialSystem を組む。originId は ECI の中心天体(ステージの選択)、
-// earthSpinPhase0 は地球の自転初期位相 [rad]、epoch は simTime=0 が指す絶対時刻。
+// 太陽系の CelestialSystem を組む。originId は ECI の中心天体(ステージの選択)、epoch は
+// simTime=0 が指す絶対時刻。
 // ephemerisPoints を渡すと、そこに載っている天体がその有効期間で数値暦経路を通る。
 export function solarSystem(
-  originId: SolarSystemId, phases: PhaseOffsets, earthSpinPhase0: number,
-  ephemerisPoints: EphemerisPoints | null, epoch: TdbJulianDate,
+  originId: SolarSystemId, ephemerisPoints: EphemerisPoints | null, epoch: TdbJulianDate,
   renderer?: WebGPURenderer,
 ): CelestialSystem {
   // 要素・極モデルの元期(J2000)から simTime=0 までの秒数。epoch からその場で導く —
@@ -67,22 +65,22 @@ export function solarSystem(
     }),
   );
 
-  const earthEntities = earthSystem(sunMotion, phases, simZeroEt, earthSpinPhase0, renderer);
-  const jupiterEntities = jupiterSystem(sunMotion, phases, simZeroEt);
+  const earthEntities = earthSystem(sunMotion, simZeroEt, renderer);
+  const jupiterEntities = jupiterSystem(sunMotion, simZeroEt);
   const jupiterMotion = jupiterEntities.jupiter.motion;
   if (!(jupiterMotion instanceof OrbitingMotion)) throw new Error('solarSystem: 木星の運動が公転運動ではない');
 
   // 全天体を系ごとの宣言順に並べたもの。重力源配列・天体一覧の順序はこれで決まる。
   const entities: readonly CelestialEntity[] = [
     ...Object.values(earthEntities),
-    ...Object.values(innerPlanets(sunMotion, phases, simZeroEt)),
-    ...Object.values(marsSystem(sunMotion, phases, simZeroEt)),
+    ...Object.values(innerPlanets(sunMotion, simZeroEt)),
+    ...Object.values(marsSystem(sunMotion, simZeroEt)),
     ...Object.values(jupiterEntities),
-    ...Object.values(saturnSystem(sunMotion, phases, simZeroEt)),
-    ...Object.values(uranusSystem(sunMotion, phases, simZeroEt)),
-    ...Object.values(neptuneSystem(sunMotion, phases, simZeroEt)),
-    ...Object.values(dwarfPlanets(sunMotion, phases, simZeroEt)),
-    ...Object.values(smallBodies(sunMotion, phases, simZeroEt)),
+    ...Object.values(saturnSystem(sunMotion, simZeroEt)),
+    ...Object.values(uranusSystem(sunMotion, simZeroEt)),
+    ...Object.values(neptuneSystem(sunMotion, simZeroEt)),
+    ...Object.values(dwarfPlanets(sunMotion, simZeroEt)),
+    ...Object.values(smallBodies(sunMotion, simZeroEt)),
     sun,
   ];
 
@@ -90,7 +88,7 @@ export function solarSystem(
   if (originEntity === undefined) throw new Error(`solarSystem: 太陽系に無い原点 id: ${originId}`);
 
   return new CelestialSystem(
-    entities, originEntity, phases, epoch,
+    entities, originEntity, epoch,
     new PointFieldView(generatePointField(0, undefined, jupiterMotion.keplerOrbit)),
     ephemerisPoints);
 }

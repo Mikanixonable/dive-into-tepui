@@ -67,12 +67,6 @@ export abstract class CelestialMotion implements CelestialBody, EphemerisBody {
 
   private readonly eciCache = new TimeRing<EciValues>();
 
-  protected constructor(
-    // 自転の初期位相 [rad]。eciPole の自転モデルの位相原点をこれだけ進める(iau は w0 が、
-    // 同期回転は軌道が位相を持つ)。
-    public readonly spinPhase0: number = 0,
-  ) {}
-
   // 自分の暦を結ぶ。結ぶまでの間と、null を結んだ後は、解析暦が位置を答える。
   bindEphemeris(ephemeris: PointEphemeris | null): void {
     this.bodyEphemeris = ephemeris;
@@ -318,12 +312,10 @@ export abstract class OrbitingMotion extends CelestialMotion implements Orbiting
   orientationAt(t: number): BodyOrientation | null {
     const model = this.def.pole;
     if (model === undefined) return null;
-    // 'eciPole' は ECI の極軸そのもの。位相の原点は春分点方向に取り、初期位相 spinPhase0 から
-    // 自転ぶんだけ時刻とともに進める。軸は ECI に固定されているため、ここを固定位相にすると
-    // spinRotationAt() の omega だけが進み、フレーム姿勢 q が時間変化しなくなる。
+    // 'eciPole' は ECI の極軸そのもの。軸が ECI に固定されているため、ここを時刻に依らない
+    // 位相にすると spinRotationAt() の omega だけが進み、フレーム姿勢 q が時間変化しなくなる。
     if (model.kind === 'eciPole') {
-      const rate = this.spinRate;
-      return { axis: ECI_POLE, spinAngle: this.spinPhase0 + (rate === null ? 0 : rate * t) };
+      return { axis: ECI_POLE, spinAngle: model.w0Deg * (Math.PI / 180) + model.spinRate * t };
     }
     if (model.kind === 'iau') {
       const cy = t / JULIAN_CENTURY;
@@ -404,14 +396,12 @@ export abstract class OrbitingMotion extends CelestialMotion implements Orbiting
 export class PlanetMotion extends OrbitingMotion {
   readonly kind: CelestialKind = 'planet';
 
-  // star は主星。system は自分が属する惑星-衛星系で、軌道と衛星の一覧はそちらが持つ。spinPhase0 は
-  // 自転の初期位相 [rad](eciPole の自転モデルを持つ惑星だけが意味を持つ)。**組むときは
-  // planet-system.ts の planetSystem() を使う** — 系と本体を結び忘れずに作れる唯一の入口。
+  // star は主星。system は自分が属する惑星-衛星系で、軌道と衛星の一覧はそちらが持つ。
+  // **組むときは planet-system.ts の planetSystem() を使う** — 系と本体を結び忘れずに作れる唯一の入口。
   constructor(
     public readonly def: PlanetDef, public readonly star: StarMotion, public readonly system: PlanetSystem,
-    spinPhase0 = 0,
   ) {
-    super(spinPhase0);
+    super();
   }
 
   get primary(): CelestialMotion { return this.star; }

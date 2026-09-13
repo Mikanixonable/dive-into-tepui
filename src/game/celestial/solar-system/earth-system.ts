@@ -8,7 +8,7 @@ import coastlineData from '../../../assets/earth-coastline.json';
 import moonFeaturesData from '../../../assets/moon-features.json';
 import { AtmosphereDef } from '../../../physics/atmosphere';
 import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
-import { PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
+import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { satelliteOrbit } from '../../../physics/satellite-orbit';
@@ -77,6 +77,11 @@ export const EARTH_ATMOSPHERE: AtmosphereDef = {
   ],
 };
 
+// 元期での地球の自転位相 [deg]。IAU の自転角 W(出典: pck00011.tpc BODY399_PM の定数項 190.147)は
+// 天体赤道と ICRF 赤道の昇交点(赤経 α₀+90°)から測るが、自転軸が ECI の極と重なる地球では交線が
+// 定まらず、位相の原点は春分点(赤経 0)になるので 90° ぶん進んだ角になる。
+const EARTH_W0_DEG = 190.147 + 90;
+
 export const EARTH: PlanetDef = {
   id: 'earth',
   mu: MU_EARTH,
@@ -100,7 +105,7 @@ export const EARTH: PlanetDef = {
     eRatePerCentury: -0.00004392,
     aRatePerCenturyAu: 0.00000562,
   }),
-  pole: { kind: 'eciPole', spinRate: (2 * Math.PI) / SIDEREAL_DAY },
+  pole: { kind: 'eciPole', spinRate: (2 * Math.PI) / SIDEREAL_DAY, w0Deg: EARTH_W0_DEG },
   // 赤道断面の楕円性 C22 は J2 の約 1/690 しかないため軸対称として扱う。
   degree2: { j2: J2_EARTH, c22: 0, refRadius: R_EARTH_EQ },
   atmosphere: EARTH_ATMOSPHERE,
@@ -207,12 +212,10 @@ export function earthCloudPresentation(): CloudPresentation {
 }
 
 // 地球系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
-// earthSpinPhase0 は地球の自転初期位相 [rad]。
 export function earthSystem(
-  sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
-  earthSpinPhase0 = 0, renderer?: WebGPURenderer,
+  sun: StarMotion, simZeroEt: number, renderer?: WebGPURenderer,
 ): Record<EarthSystemBodyId, CelestialEntity> {
-  const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
+  const earth = planetSystem(planetDefForSimZero(EARTH, simZeroEt), sun);
   const earthSurfaceRuntime = createEarthSurfaceRuntime({ renderer });
   const cumulus = earthCloudPresentation();
   const earthSurface = earthSurfaceRuntime.surface;
@@ -228,7 +231,7 @@ export function earthSystem(
       ),
     ),
     moon: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(MOON, phases, simZeroEt), earth),
+      new SatelliteMotion(satelliteDefForSimZero(MOON, simZeroEt), earth),
       EARTH_SYSTEM_NAMES.moon, 'satellite',
       new SphereCelestialView(
         // 倍率はテクスチャの平均輝度 0.3180 を公表のボンドアルベドへ合わせる値。

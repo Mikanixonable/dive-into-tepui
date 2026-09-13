@@ -288,9 +288,6 @@ export interface GameSaveData {
    * 暦データの識別。
    */
   readonly ephemerisContext?: EphemerisContext;
-  readonly phaseOffsets: Partial<Record<string, number>>;
-  /** 無ければ地球の自転初期位相は復元されない。 */
-  readonly earthSpinPhase0?: number;
   // 顔ぶれ。種別は各要素の kind が持つ。
   readonly entities: EntitySaveDataUnion[];
   readonly activeControlledId: string | null;

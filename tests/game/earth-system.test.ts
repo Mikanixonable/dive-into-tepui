@@ -48,7 +48,7 @@ function readyFetch(): typeof fetch {
 
 export function register(): void {
   test('earth system: 地球はfallbackテクスチャを保ち、月の表面は変更しない', () => {
-    const bodies = earthSystem(new StarMotion(SUN), {}, 0);
+    const bodies = earthSystem(new StarMotion(SUN), 0);
     assert.equal(bodies.earth.view.surfaceTextureUrl, EARTH_TEXTURE.url);
     assert.match(bodies.moon.view.surfaceTextureUrl ?? '', /8k_moon\.jpg$/);
     assert.equal(EARTH_SURFACE_FIXTURE_SOURCE.climateMapUrls.length, 12);
@@ -143,8 +143,8 @@ export function register(): void {
   });
 
   test('earth system: PerfCountsは詳細地表を持つ天体だけ列挙する', () => {
-    const bodies = earthSystem(new StarMotion(SUN), {}, 0);
-    const system = new CelestialSystem([bodies.earth, bodies.moon], bodies.earth, {}, TEST_EPOCH);
+    const bodies = earthSystem(new StarMotion(SUN), 0);
+    const system = new CelestialSystem([bodies.earth, bodies.moon], bodies.earth, TEST_EPOCH);
     const surfaces = system.perfCounts().surfaces;
     assert.equal(surfaces.length, 1);
     assert.equal(surfaces[0]?.id, 'earth');

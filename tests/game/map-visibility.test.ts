@@ -255,7 +255,7 @@ export function register(): void {
   });
 
   test('systemChainAt: 天体が1体も無ければ空配列', () => {
-    const empty = new CelestialSystem([], SYSTEM.entityOf('sun'), {}, TEST_EPOCH);
+    const empty = new CelestialSystem([], SYSTEM.entityOf('sun'), TEST_EPOCH);
     assert.deepEqual(empty.systemChainAt(v3(), 0), []);
   });
 

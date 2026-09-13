@@ -4,10 +4,10 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { R_EARTH_EQ } from '../../src/game/celestial/solar-system/constants';
 import { len, sub } from '../../src/math/vec3';
-import { positionOf, solarSystemParts } from './test-helpers';
+import { positionOf, solarSystemParts, type SolarSystemParts } from './test-helpers';
 
 export function register(): void {
-  const system = solarSystemParts({ earth: 0.3, moon: 0.4 }).system;
+  const system = solarSystemParts().system;
 
   test('celestialMotions: celestialMotions は太陽系の宣言順で、地球は静止・半径は赤道半径 R_EARTH_EQ', () => {
     const celestialBodies = system.celestialMotions;
@@ -16,7 +16,7 @@ export function register(): void {
   });
 
   test('celestialMotions: 同一 t の celestialMotions は同一配列参照を返す', () => {
-    const w = solarSystemParts({ earth: 0.3, moon: 0.4 }).system;
+    const w = solarSystemParts().system;
     assert.equal(w.celestialMotions, w.celestialMotions);
   });
 
@@ -42,7 +42,7 @@ export function register(): void {
   });
 
   test('celestialMotions: 異なる pivot では引き直され、値が変わる', () => {
-    const w = solarSystemParts({ earth: 0.3, moon: 0.4 }).system;
+    const w = solarSystemParts().system;
     const moon = w.celestialMotions.find((x) => x.id === 'moon')!;
     const moonA = moon.stateAt(0).r;
     const moonB = moon.stateAt(3 * 86400).r;
@@ -51,12 +51,14 @@ export function register(): void {
     assert.deepEqual(moon.stateAt(0).r, moonA);
   });
 
-  test('celestialMotions: 位相オフセットが違えば同じ時刻でも別の位置になる', () => {
-    const a = solarSystemParts({ earth: 0.3, moon: 0.4 });
-    const b = solarSystemParts({ earth: 0.3, moon: 2.1 });
-    const moonA = a.system.celestialMotions.find((x) => x.id === 'moon')!.stateAt(5000).r;
+  test('celestialMotions: 同じ元期で組み直せば、同じ時刻の位置も地球の自転位相も一致する', () => {
+    const a = solarSystemParts();
+    const b = solarSystemParts();
     const moonB = b.system.celestialMotions.find((x) => x.id === 'moon')!.stateAt(5000).r;
-    assert.ok(len(sub(moonA, moonB)) > 1e6, `位相オフセットが反映されていない: ${len(sub(moonA, moonB))}`);
+    assert.deepEqual(a.system.celestialMotions.find((x) => x.id === 'moon')!.stateAt(5000).r, moonB);
+    const earthSpin = (parts: SolarSystemParts) =>
+      parts.system.celestialMotions.find((x) => x.id === 'earth')!.orientationAt(5000)!.spinAngle;
+    assert.equal(earthSpin(a), earthSpin(b));
     // 窓の時刻キャッシュを経由しても、個体の運動から引いた位置と同じ値を返す。
     assert.deepEqual(moonB, positionOf(b, 'moon', 5000));
   });

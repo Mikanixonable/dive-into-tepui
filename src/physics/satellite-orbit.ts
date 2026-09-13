@@ -115,12 +115,10 @@ function sumPeriodicTerms(
 // 平均軌道面のまわりを揺れる(月で最大 0.81°)。二体部分だけで組んでいた頃は x̂ から最大 2.5°
 // ずれていた。公表値と突き合わせる量(カッシーニ状態の傾斜・昇交点歳差の掃き)は平均軌道面に
 // 対して定義されているので、そちらは keplerOrbitNormal で測る。
-// 二体部分の元期を simZeroEt ぶん進め、平均黄経へ初期位相 phase を足した軌道。周期項の
-// 引数はすべて二体部分の角から組むので、畳むのは kepler だけでよい。
-export function satelliteOrbitForSimZero(
-  orbit: SatelliteOrbit, phase: number, simZeroEt: number,
-): SatelliteOrbit {
-  return { ...orbit, kepler: keplerOrbitForSimZero(orbit.kepler, phase, simZeroEt) };
+// 二体部分の元期を simZeroEt ぶん進めた軌道。周期項の引数はすべて二体部分の角から組むので、
+// 畳むのは kepler だけでよい。
+export function satelliteOrbitForSimZero(orbit: SatelliteOrbit, simZeroEt: number): SatelliteOrbit {
+  return { ...orbit, kepler: keplerOrbitForSimZero(orbit.kepler, simZeroEt) };
 }
 
 export function satelliteState(
