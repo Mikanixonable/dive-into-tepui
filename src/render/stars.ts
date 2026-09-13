@@ -14,16 +14,21 @@ export const CELESTIAL_SHELL_RADIUS = 1.35e10;
 // 殻の拡大率はそこから独立させる。
 export const CELESTIAL_SHELL_SCALE = CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS;
 
+// 露出に順応しない表示物へ掛ける明るさ係数の供給元。照明がこのフレームの露出を確定させた後に
+// 読むと、そのフレームの値になる。
+export interface FixedBrightness {
+  readonly fixedBrightnessScale: number;
+}
+
 export interface Stars {
   readonly mesh: THREE.Mesh;
-  // 順応ぶんを打ち消す倍率を材質色へ掛ける。星殻は実写写真をそのまま貼ったもので物理的な
-  // 輝度の目盛りに載っていないため、どこから見ても同じ明るさで写らなければならない。
-  setFixedBrightnessScale(scale: number): void;
+  // このフレームの星野へ合わせる。同じフレームの照明の sync を済ませてから呼ぶ。
+  sync(visible: boolean): void;
   dispose(): void;
 }
 
-// 星空の球殻メッシュを構築する。
-export function createStars(): Stars {
+// 星空の球殻メッシュを構築する。brightness はこの殻へ掛ける明るさ係数の供給元。
+export function createStars(brightness: FixedBrightness): Stars {
   const geo = new THREE.SphereGeometry(STAR_SHELL_RADIUS, 64, 64);
   const texture = new DeferredTexture(starsTextureUrl, THREE.SRGBColorSpace);
   texture.request();
@@ -41,10 +46,15 @@ export function createStars(): Stars {
   // 視点中心に置かれる殻なので、外接球によるフラスタム判定は常に「視界内」を返し意味を持たない。
   mesh.frustumCulled = false;
   mesh.layers.set(WORLD_BACKGROUND_LAYER);
+  // 描画原点(= カメラ)に固定した殻なので、位置と倍率はフレームによらない。
+  mesh.scale.setScalar(CELESTIAL_SHELL_SCALE);
   return {
     mesh,
-    setFixedBrightnessScale(scale: number): void {
-      mat.color.setScalar(scale);
+    sync(visible: boolean): void {
+      mesh.visible = visible;
+      // 順応ぶんを打ち消す倍率を材質色へ掛ける。星殻は実写写真をそのまま貼ったもので物理的な
+      // 輝度の目盛りに載っていないため、どこから見ても同じ明るさで写らなければならない。
+      mat.color.setScalar(brightness.fixedBrightnessScale);
     },
     // ジオメトリ・マテリアル・テクスチャを解放する。mesh をシーンから外すのは呼び出し側。
     dispose(): void {
