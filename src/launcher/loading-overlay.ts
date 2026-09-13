@@ -1,6 +1,5 @@
 // WebGPU 初期化や天体暦の構築など、しばらく無反応になり得る処理の間に表示するローディング画面。
 // showLoading/hideLoading の対で開閉し、表示中かどうかはこのモジュール自身が持つ。
-// 円形ゲージは実進捗(0..1)だけを表示する——取得できないフェーズは 0% のまま完了直前まで待つ。
 import { FONT_FAMILY, FONT_2XL, FONT_M, Z_LOADING_OVERLAY } from '../theme';
 
 const GAUGE_SIZE = 72;
@@ -11,6 +10,7 @@ let gauge: HTMLElement | null = null;
 let percentText: HTMLElement | null = null;
 let noteText: HTMLElement | null = null;
 
+// 進捗 ratio(0..1)ぶんを扇形に塗った円の background 指定。
 function gaugeBackground(ratio: number): string {
   const deg = Math.max(0, Math.min(1, ratio)) * 360;
   return `conic-gradient(var(--color-primary) ${deg}deg, var(--surface-opaque) 0)`;
@@ -32,6 +32,7 @@ export function showLoading(): void {
     `</div>` +
     `<div style="font-size:${FONT_M};color:var(--text-dim)">初期化中(WebGPU)…</div>`;
   document.body.appendChild(div);
+  // 進捗で書き換える要素を控える。
   overlay = div;
   gauge = div.children[1] as HTMLElement;
   percentText = gauge.firstElementChild as HTMLElement;

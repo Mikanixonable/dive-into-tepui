@@ -70,11 +70,11 @@ export class ZeroVelocitySection {
 
     // 断面ゲートと表示方式。
     this.switches = this.buildGateSwitches(this.element);
-    this.multipleSwitch = new ToggleSwitch('多数の曲線を表示', (multiple) => this.commit({ multiple }));
+    this.multipleSwitch = new ToggleSwitch('多数の曲線を表示', (multiple) => this.onChange?.({ multiple }));
     this.element.appendChild(this.multipleSwitch.element);
 
     // ヤコビ定数とラグランジュ点スナップ。
-    this.jacobiField = buildValueField('ヤコビ定数', JACOBI_MAPPING, (jacobi) => this.commit({ jacobi }));
+    this.jacobiField = buildValueField('ヤコビ定数', JACOBI_MAPPING, (jacobi) => this.onChange?.({ jacobi }));
     this.element.appendChild(this.jacobiField.row);
     this.buildLagrangeRow(this.element);
 
@@ -86,7 +86,7 @@ export class ZeroVelocitySection {
     this.countField = range.countField;
     this.countRow = range.countField.row;
 
-    this.opacityField = buildValueField('透明度', OPACITY_MAPPING, (opacity) => this.commit({ opacity }));
+    this.opacityField = buildValueField('透明度', OPACITY_MAPPING, (opacity) => this.onChange?.({ opacity }));
     this.element.appendChild(this.opacityField.row);
 
     this.sync(initial);
@@ -96,7 +96,7 @@ export class ZeroVelocitySection {
   private buildGateSwitches(parent: HTMLElement): readonly (readonly [keyof ZeroVelocitySettings, ToggleSwitch])[] {
     const switches: (readonly [keyof ZeroVelocitySettings, ToggleSwitch])[] = [];
     for (const [key, label] of ZERO_VELOCITY_SECTION_ROWS) {
-      const sw = new ToggleSwitch(label, (on) => this.commit({ [key]: on }));
+      const sw = new ToggleSwitch(label, (on) => this.onChange?.({ [key]: on }));
       parent.appendChild(sw.element);
       switches.push([key, sw]);
     }
@@ -119,19 +119,14 @@ export class ZeroVelocitySection {
     const row = document.createElement('div');
     row.className = 'orbit-guide-zero-velocity-range';
     // 下限・上限は互いに独立して動かせる。大小関係の整えは設定を組み直す側が行う。
-    const minField = buildValueField('ヤコビ定数(下限)', JACOBI_MAPPING, (v) => this.commit({ jacobiMin: v }));
-    const maxField = buildValueField('ヤコビ定数(上限)', JACOBI_MAPPING, (v) => this.commit({ jacobiMax: v }));
-    const countField = buildValueField('本数', ZERO_VELOCITY_COUNT_MAPPING, (count) => this.commit({ count: Math.round(count) }));
+    const minField = buildValueField('ヤコビ定数(下限)', JACOBI_MAPPING, (v) => this.onChange?.({ jacobiMin: v }));
+    const maxField = buildValueField('ヤコビ定数(上限)', JACOBI_MAPPING, (v) => this.onChange?.({ jacobiMax: v }));
+    const countField = buildValueField('本数', ZERO_VELOCITY_COUNT_MAPPING, (count) => this.onChange?.({ count: Math.round(count) }));
     row.appendChild(minField.row);
     row.appendChild(maxField.row);
     row.appendChild(countField.row);
     parent.appendChild(row);
     return { row, minField, maxField, countField };
-  }
-
-  // 書き換わった項目を呼び出し側へ通知する。
-  private commit(change: Partial<ZeroVelocitySettings>): void {
-    this.onChange?.(change);
   }
 
   // 各ウィジェットの表示を s へ合わせる。
