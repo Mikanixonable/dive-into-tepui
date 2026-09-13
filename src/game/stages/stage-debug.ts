@@ -7,7 +7,7 @@ import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { StageSaveData } from '../save/save-data';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { MAG_ROUNDS } from '../player/ammo-spec';
-import { STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST } from './stage-utils/logistics';
+import { LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST } from './stage-utils/logistics';
 
 export class StageDebug extends Stage {
   static readonly id = 'debug' as const;
@@ -57,13 +57,13 @@ export class StageDebug extends Stage {
 
     // 弾薬をスポーンするボタン
     const spawnAmmoBtn = new Button('弾薬をスポーン', () => {
-      this.logistics.spawnForPlayer(player, STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST);
+      this.logistics.spawnForPlayer(player, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST);
     });
     this.addStatusPanelWidget(spawnAmmoBtn.element);
 
     // RCS燃料をスポーンするボタン
     const spawnFuelBtn = new Button('RCS燃料をスポーン', () => {
-      this.logistics.spawnRcsFuelForPlayer(player, STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST);
+      this.logistics.spawnRcsFuelForPlayer(player, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST);
     });
     this.addStatusPanelWidget(spawnFuelBtn.element);
   }
