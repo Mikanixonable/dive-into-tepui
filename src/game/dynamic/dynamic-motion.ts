@@ -104,7 +104,7 @@ export interface DynamicMotionProperties {
   readonly emissivity?: number;
   readonly maxTemperature?: number;
   readonly historyDuration?: number;
-  readonly predictedForGhost?: boolean;
+  readonly predictsFuture?: boolean;
   readonly behavior?: DynamicMotionBehavior;
 }
 
@@ -164,14 +164,11 @@ export class DynamicMotion {
   public readonly bulkDensity: number;
   public readonly emissivity: number;
   public readonly maxTemperature: number;
-  // 予測弧を読む者の登録。どれかが立っている間は未来を予測し続ける。
-  public analysisPanelReader = false;
-  public navTargetReader = false;
-  public trajectoryReader = false;
+  // 現在の状態から先の未来を予測し続ける個体か。
+  public readonly predictsFuture: boolean;
 
   private readonly fixedRadiatingAreaPerMass: number;
   private readonly baseHistoryDuration: number;
-  private readonly predictedForGhost: boolean;
   private predictedArc: PredictedArc | null = null;
   private requestedHistoryDuration = 0;
   private pendingSpecificHeat = 0;
@@ -202,7 +199,7 @@ export class DynamicMotion {
     this.maxTemperature = options.maxTemperature ?? Infinity;
     // 過去線の保持・予測と、接触の振る舞い
     this.baseHistoryDuration = options.historyDuration ?? 0;
-    this.predictedForGhost = options.predictedForGhost ?? false;
+    this.predictsFuture = options.predictsFuture ?? false;
     this.behavior = options.behavior ?? PASSIVE_BEHAVIOR;
   }
 
@@ -238,15 +235,7 @@ export class DynamicMotion {
     this.requestedHistoryDuration = Math.max(0, Math.min(DISPLAY_DURATION_MAX, sec));
   }
 
-  // 予測弧を読む者がいるか。canDisplayFuture が偽なら、未来のゴースト表示は数えない。
-  public hasFutureReader(canDisplayFuture: boolean): boolean {
-    return (this.predictedForGhost && canDisplayFuture)
-      || this.trajectoryReader || this.analysisPanelReader || this.navTargetReader;
-  }
-
-  public get predictsFuture(): boolean { return this.hasFutureReader(true); }
-
-  // 予測弧を読む者がいれば、現在の状態から sources を引く弧を用意して返す。いなければ null。
+  // 未来を予測する個体なら、現在の状態から sources を引く弧を用意して返す。でなければ null。
   public ensurePredictedArc(sources: readonly CelestialBody[]): PredictedArc | null {
     if (!this.predictsFuture) return null;
     this.predictedArc ??= new PredictedArc(

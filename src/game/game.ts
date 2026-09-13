@@ -412,7 +412,6 @@ export class Game {
     // 過去表示に要る履歴の長さを要求する。次の積分がサンプルを積むまでに立っていればよいので、
     // 窓が確定したこの場で渡す。
     this.dynamicSystem.requestHistoryDuration(displayWindow.pastDuration);
-    const canDisplayFuture = !displayWindow.forceCurrent;
     // このフレームが天体を引く表示時刻を差し込む: 以降の frameTransformAt 呼び出しは
     // すべてこの frameAnchors を通す。
     this.frameAnchors.update(displayWindow.displayTime);
@@ -420,17 +419,11 @@ export class Game {
     this.sections.enter(SECTION.plan);
     this.planDisplay.update(displayWindow, this.frameAnchors, view);
     this.sections.exit(SECTION.plan);
-    // 予測の伸長対象は軌道分析ウィンドウが見ている個体を含むので、予測より先に確定させる。
-    const approachTarget = this.approachTarget();
-    this._hud.updateAnalysisReaders(
-      activeControllable, approachTarget?.kind === 'entity' ? approachTarget.entity : null,
-    );
     // ポーズ中・決着後も呼ぶ。simTime が止まっていれば予測は伸び切ったところで止まる。
     this.sections.enter(SECTION.predict);
     this.predictor.update(
       this.dynamicSystem.simTime, this.dynamicSystem.lastSimDt,
-      activeControllable?.motion ?? null, displayWindow.duration,
-      canDisplayFuture, this.planDisplay.growableArcs(),
+      activeControllable?.motion ?? null, displayWindow.duration, this.planDisplay.growableArcs(),
     );
     this.sections.exit(SECTION.predict);
     // 交点を置く先は計画折れ線か解析軌道楕円のどちらかなので、折れ線を組み終えた計画表示と、
@@ -446,7 +439,7 @@ export class Game {
       celestialBodies: this._celestialSystem,
       frameAnchors: this.frameAnchors,
       paths: this.planDisplay,
-    }, activeControllable, equatorVisibility);
+    }, activeControllable, this.navTarget.id, equatorVisibility);
     this.sections.exit(SECTION.plan);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
@@ -462,15 +455,6 @@ export class Game {
     this.sections.enter(SECTION.pointer);
     this.handlePointerInput(viewport);
     this.sections.exit(SECTION.pointer);
-    // 次回の予測を伸ばす対象は、この update フェーズで確定させる。
-    this.entityLines.updatePredictionReaders(
-      this.activeControllable,
-      this.targeter.aliveTarget,
-      this.viewManager.current,
-      displayWindow,
-      this.viewManager.activeView.visibilityPolicy,
-      this.themePalette.current,
-    );
   }
 
   // ステージ → 指令決定 → 積分 → エフェクトの順に1フレーム進める

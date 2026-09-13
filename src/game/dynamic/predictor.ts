@@ -1,6 +1,6 @@
 // DynamicMotion.predicted と、計画軌道の各区間の弧を、共有のフレーム予算内で伸ばす。1歩ぶんの
 // 積分(刻み幅・窓解決・到達判定)は PredictedArc が持ち、ここは予算の配分を持つ。伸長対象は
-// 「その個体の未来を読む消費者がいるか」(DynamicMotion.hasFutureReader)で決まる。
+// 「その個体が未来を予測するか」(PredictableMotion.predictsFuture)で決まる。
 // 弧は1本ずつ別の先端時刻で伸び、1フレームの歩数は予算で切られる — 追い越された弧は読まれなく
 // なり、その個体は実シミュレーションの積分へ落ちる。弧どうしの剛体接触と刻みの決まり方を除けば、
 // 個体1つと解析天体の関係(引く天体・表面到達・大気での焼失・刻みの上限)は実シミュレーション
@@ -43,10 +43,10 @@ export class Predictor {
 
   // このフレームぶんの積分予算を、操作対象の弧・計画の弧・その他の個体へ配って伸ばす。ポーズ中・
   // 決着後も呼んでよい。simDt はこのフレームの時間送りで、消費される弧の刻み上限を実シミュレー
-  // ションと揃えるのに使う。horizon は simTime から先へ予測する長さ [s]、canDisplayFuture は
-  // 表示時刻が現在より先へ動けるか。planArcs は時刻順に並べた計画の弧。
+  // ションと揃えるのに使う。horizon は simTime から先へ予測する長さ [s]。planArcs は時刻順に
+  // 並べた計画の弧。
   update(
-    simTime: number, simDt: number, controlled: PredictableMotion | null, horizon: number, canDisplayFuture: boolean,
+    simTime: number, simDt: number, controlled: PredictableMotion | null, horizon: number,
     planArcs: readonly PredictedArc[],
   ): void {
     this.lastSteps = 0;
@@ -54,10 +54,8 @@ export class Predictor {
     this.lastBodies = 0;
     this.lastRevisits = 0;
     const maxStep = simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT);
-    // 伸ばすのは未来を読む消費者がいる個体だけ。線の有無は前フレームの状態を読むことになるが、
-    // 弧は何フレームもかけて伸びるので、伸ばし始めが1フレーム遅れても描かれる線は変わらない。
-    const targets = this.roster.allMotions().filter((e) => e.hasFutureReader(canDisplayFuture));
-    const interactive = controlled !== null && controlled.hasFutureReader(canDisplayFuture) ? controlled : null;
+    const targets = this.roster.allMotions().filter((e) => e.predictsFuture);
+    const interactive = controlled !== null && controlled.predictsFuture ? controlled : null;
 
     // interactive 枠: 操作対象の弧 → 計画の弧(時刻順)。他に伸ばす対象がいなければ全額を渡す。
     const others = targets.some((e) => e !== interactive);

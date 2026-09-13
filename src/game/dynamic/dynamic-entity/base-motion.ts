@@ -59,7 +59,7 @@ export class BaseMotion extends DynamicMotion {
       collides: true,
       engagementAnchor: true,
       historyDuration: DEFAULT_HISTORY_DURATION,
-      predictedForGhost: true,
+      predictsFuture: true,
       behavior: new BaseCollisionBehavior(),
     });
     this.fuelValue = fuel;

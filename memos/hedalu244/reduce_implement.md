@@ -35,20 +35,6 @@
 
 仕様に反している、または誰も要求していない副作用が出ているもの。
 
-### R1. 見ているビューがシミュレーションの積分経路を選んでいる
-- 症状: `view !== 'map'` のとき `forceCurrent` が立って予測弧が伸びず、マップでは艦の実位置が予測弧のエルミート補間から読まれ、戦闘ビューでは RK4 で積分される。どちらを見ていたかで近地点や焼失時刻がずれる。
-- 場所: `src/game/game.ts:409-415`、`src/game/dynamic/predictor.ts:59`、`src/game/dynamic/dynamic-motion.ts:299-325,419-425`
-- 疑う理由: 弧の「なぞり」は積分を省く最適化だが、弧が在るかを決めるのが純粋な表示状態(ビュー・表示期間・軌道線トグル・ナビターゲット・解析窓)になっている。
-- 仕様: INVARIANTS.md §3「表示のオンオフは、そのどれを選んでも、物体が実際に辿る軌道と、画面に出る数値を動かさない」/ PLAN.md §9「この予測はマップモードの機能ではなく常時裏で進んで」— **実装が仕様に反している**
-- 減るもの: `canDisplayFuture` 引数と、後付けの3フラグ(R2)がまとめて落ちる。/ 確度: 高 / 確認: 自分で確認 / 計画: 段 3(手順 3-5、R4 の検査)
-
-### R2. 表示側がモデル層のフラグを直接書いており、降ろし忘れが残る
-- 症状: `trajectoryReader` / `analysisPanelReader` / `navTargetReader` を HUD・軌道線・ナビターゲットが直接書く。軌道分析ウィンドウは ✕/ESC で閉じても `dispose()` を通らないので、フラグが立ったまま永久に残り、窓が無いのに予測が回り続ける。
-- 場所: `src/game/dynamic/dynamic-motion.ts:168-170,241-244`、`src/game/hud/orbit/orbit-analysis-window.ts:38-39,87`、`src/game/lines/entity-line-manager.ts:69`、`src/game/nav-target.ts:107-108`
-- 疑う理由: `OrbitAnalysisWindow.dispose()` の呼び出し元がリポジトリに1件も無い(`src/game/hud/hud.ts:103` が `new` するだけ)。3フラグ自体が R1 の穴を塞ぐ後付け。
-- 仕様: PLAN.md §13「パネルを開いている間は、戦闘ビューであっても未来の軌道計算が止まらない」— 閉じた後の記述なし
-- 減るもの: R1 を直せばフラグ3種が消える。直すまでの暫定でも `onClose` で `dispose()` を呼ぶだけで残留が止まる。/ 確度: 高 / 確認: 自分で確認 / 計画: 段 3 の達成目標
-
 ### R3. 「決着後も世界は動き続ける」が実装されておらず、コメントが逆を主張している
 - 症状: 勝敗が確定すると `advanceSimulation` ごと飛ぶので、結果画面の裏で弾・敵・補給タイマーが完全に凍る。
 - 場所: `src/game/game.ts:121`(`simulating = !_isPaused && activeStage.isPlaying`、コメント「一時停止中と決着後は止まる」)、`src/game/game.ts:404-406`(コメント「決着は積分を止めないので」)

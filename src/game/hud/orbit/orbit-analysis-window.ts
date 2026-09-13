@@ -1,6 +1,5 @@
 // 軌道分析のドラッグ可能ウィンドウ。高度・接近・投影の3タブのうち、いま選べるものをタブバーへ
-// 出し、選択中のタブへ描画を委ねる。見ている個体(操作対象と接近タブのターゲット)へ
-// analysisPanelReader を立て、戦闘ビューでもその軌道が伸び続けるようにするのもここが持つ。
+// 出し、選択中のタブへ描画を委ねる。
 import { SyncThrottle } from '../sync-throttle';
 import { DraggableWindow } from '../../../hud/windows/draggable-window';
 import { MQ_COMPACT } from '../../../hud/breakpoints';
@@ -32,14 +31,6 @@ const STYLE = `
 }
 `;
 
-// analysisPanelReader を prev から降ろして next へ立て、いま立てている側(next)を返す。
-function applyReader(prev: DynamicEntity | null, next: DynamicEntity | null): DynamicEntity | null {
-  if (prev === next) return prev;
-  if (prev) prev.motion.analysisPanelReader = false;
-  if (next) next.motion.analysisPanelReader = true;
-  return next;
-}
-
 export class OrbitAnalysisWindow {
   private readonly win: DraggableWindow;
   private readonly tabBar: TabBar<AnalysisTab>;
@@ -48,9 +39,6 @@ export class OrbitAnalysisWindow {
   private readonly tabs: readonly AnalysisTab[];
   private selected: AnalysisTab = this.altitudeTab;
   private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
-  // analysisPanelReader を立てている個体(操作対象・接近/投影タブのターゲット)。
-  private readerEntity: DynamicEntity | null = null;
-  private readerTargetEntity: DynamicEntity | null = null;
   // 直前に描いた操作対象。切り替わったフレームでタブの表示範囲を開き直す。
   private drawnEntity: DynamicEntity | null = null;
 
@@ -83,19 +71,10 @@ export class OrbitAnalysisWindow {
     this.win.bringToFront();
   }
 
-  // ウィンドウを閉じ、立てていた analysisPanelReader フラグをすべて降ろす。
+  // ウィンドウと各タブの資源を取り除く。以後このインスタンスは使えない。
   public dispose(): void {
-    this.readerEntity = applyReader(this.readerEntity, null);
-    this.readerTargetEntity = applyReader(this.readerTargetEntity, null);
     this.win.dispose();
     for (const tab of this.tabs) tab.dispose();
-  }
-
-  // 見ている個体へ analysisPanelReader を立て、外れた個体から降ろす。予測の伸長対象は
-  // このフラグで決まるので、予測を進める前に呼ぶ。
-  public update(entity: DynamicEntity | null, targetEntity: DynamicEntity | null): void {
-    this.readerEntity = applyReader(this.readerEntity, entity);
-    this.readerTargetEntity = applyReader(this.readerTargetEntity, entity === null ? null : targetEntity);
   }
 
   // 選べるタブを出し直してから、選択中のタブへ描画を委ねる。

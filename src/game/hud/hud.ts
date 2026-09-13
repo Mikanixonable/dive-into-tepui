@@ -20,7 +20,6 @@ import { OrbitAnalysisWindow, type OrbitAnalysisSubject } from './orbit/orbit-an
 import type { AnalysisChartSource } from './orbit/orbit-analysis-tab';
 import type { Input } from '../../input/input';
 import type { Vec3 } from '../../math/vec3';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { OverlayLayers } from '../../hud/overlay-layer';
 import type { HudShell } from '../../hud/hud-shell';
 import { TEMP_WINDOW_GROUP, type OverlayManager } from '../../hud/overlay-manager';
@@ -105,11 +104,6 @@ export class Hud implements HudLayers, Notifier {
     );
     win.onClose = () => { this.orbitAnalysisWindow = null; };
     this.orbitAnalysisWindow = win;
-  }
-
-  // 軌道分析ウィンドウが見ている個体を、このフレームの操作対象・ターゲットへ合わせる。
-  public updateAnalysisReaders(entity: DynamicEntity | null, targetEntity: DynamicEntity | null): void {
-    this.orbitAnalysisWindow?.update(entity, targetEntity);
   }
 
   // ランが畳まれたときに、パネルが掴んでいるランの値と操作の口を落とす。
