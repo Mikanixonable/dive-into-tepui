@@ -39,8 +39,8 @@ function parseBucketText(text: string | null): PanelCollapsedBucket | null {
   }
 }
 
-// ビュー別の折りたたみ状態を読み直す。text が読めないときは、ビューを分けていなかった頃の
-// 保存 legacy を両ビューへ移す。
+// ビュー別の折りたたみ状態を読み直す。text が読めないときは、ビュー別でない保存値 legacy を
+// 両ビューへ移す。
 export function parsePanelCollapsed(text: string | null, legacy: string | null): PanelCollapsedState {
   if (text !== null && text !== '') {
     try {

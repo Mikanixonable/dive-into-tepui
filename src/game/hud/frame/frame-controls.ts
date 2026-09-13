@@ -44,6 +44,7 @@ export class FrameControls {
       mapPanelRoot, popupRoot, celestialBodies, displayFrame, overlayManager,
     );
 
+    // 注視対象の選択だけは、描画基準の追随も伴うので自分で受ける。
     this.cameraPanel.onSelectCenter = (id) => this.selectCameraCenter(id);
   }
 

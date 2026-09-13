@@ -10,10 +10,10 @@ import type { ThemePalette } from '../theme';
 export interface GameHost {
   readonly scene: GameScene;
   readonly hud: Hud;
-  // 画面へ重ねるマーカーの装置。周回をまたいで使い回す。
+  // 画面へ重ねるマーカーの装置。
   readonly markers: MarkerDevice;
   readonly sections: FrameSections;
-  // 表示パネルが読み書きする、マップ・天球・軌道ガイドの設定。
+  // マップ・天球・軌道ガイドの表示設定。
   readonly viewOptions: ViewOptionsSettings;
   // 選ばれている配色。3D 描画と canvas へ渡す色の出どころ。
   readonly themePalette: SettingValue<ThemePalette>;
