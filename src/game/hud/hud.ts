@@ -1,22 +1,26 @@
 // ゲーム画面の HUD のシェル。常設パネル群と描画先(root)を持ち、
-// 毎フレーム game の状態へ同期して、トースト・ヘルプを出す。
+// 毎フレーム渡された値へ同期して、トースト・ヘルプを出す。
 import type { RenderStyle } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
 import type { HudLayers } from './hud-layers';
 import type { PanelCollapse } from './panel-shell';
 import type { ViewMode } from '../../render/view-mode';
 import type { CameraFrame } from '../../render/camera/camera-frame';
-import { VesselPanel } from './panels/vessel-panel';
-import { OrbitPanel } from './orbit/orbit-panel';
-import { TargetPanel } from './panels/target-panel';
-import { EnemiesPanel } from './panels/enemies-panel';
-import { BurnManagementPanel } from './panels/burn-management-panel';
-import { TopBar } from './panels/top-bar';
+import { VesselPanel, type VesselPanelViewModel } from './panels/vessel-panel';
+import { OrbitPanel, type OrbitPanelViewModel } from './orbit/orbit-panel';
+import { TargetPanel, type TargetPanelViewModel } from './panels/target-panel';
+import { EnemiesPanel, type EnemiesPanelViewModel } from './panels/enemies-panel';
+import {
+  BurnManagementPanel,
+  type BurnManagementPanelHandlers, type BurnManagementViewModel,
+} from './panels/burn-management-panel';
+import { TopBar, type TopBarViewModel } from './panels/top-bar';
 import { MapScaleBadge } from './panels/map-scale-badge';
-import { OrbitAnalysisWindow } from './orbit/orbit-analysis-window';
+import { OrbitAnalysisWindow, type OrbitAnalysisSubject } from './orbit/orbit-analysis-window';
+import type { AnalysisChartSource } from './orbit/orbit-analysis-tab';
 import type { Input } from '../../input/input';
-import type { Game } from '../game';
-import type { ThemePalette } from '../../theme';
+import type { Vec3 } from '../../math/vec3';
+import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { OverlayLayers } from '../../hud/overlay-layer';
 import type { HudShell } from '../../hud/hud-shell';
 import { TEMP_WINDOW_GROUP, type OverlayManager } from '../../hud/overlay-manager';
@@ -26,6 +30,21 @@ import type { Notifier } from '../../hud/notifier';
 // 軌道分析ウィンドウを開く既定位置 [px]。
 const ANALYSIS_WINDOW_OPEN_X = 320;
 const ANALYSIS_WINDOW_OPEN_Y = 100;
+
+// ランがこのフレームに常設パネルへ差し出す値。パネルごとの型をそのまま並べる。
+export interface HudPanelViewModels {
+  readonly topBar: TopBarViewModel;
+  readonly vessel: VesselPanelViewModel | null;
+  readonly orbit: OrbitPanelViewModel | null;
+  readonly target: TargetPanelViewModel | null;
+  readonly enemies: EnemiesPanelViewModel | null;
+  readonly burnManagement: BurnManagementViewModel | null;
+  readonly burnHandlers: BurnManagementPanelHandlers;
+  // 縮尺バーが読む、マップカメラの注視点の ECI 位置。
+  readonly mapFocus: Vec3;
+  readonly analysisSource: AnalysisChartSource;
+  readonly analysisSubject: OrbitAnalysisSubject | null;
+}
 
 export class Hud implements HudLayers, Notifier {
   public get root(): HTMLElement { return this.shell.root; }
@@ -37,17 +56,17 @@ export class Hud implements HudLayers, Notifier {
   private readonly topBar: TopBar;
   public readonly viewBadgeRow: HTMLElement;
   private readonly mapScaleBadge: MapScaleBadge;
-  public readonly vesselPanel: VesselPanel;
+  private readonly vesselPanel: VesselPanel;
   private readonly orbitPanel: OrbitPanel;
-  public readonly targetPanel: TargetPanel;
-  public readonly enemiesPanel: EnemiesPanel;
-  public readonly burnManagementPanel: BurnManagementPanel;
+  private readonly targetPanel: TargetPanel;
+  private readonly enemiesPanel: EnemiesPanel;
+  private readonly burnManagementPanel: BurnManagementPanel;
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
   // 直近に見た目を合わせたビュー。DOM を組み替える差分の鍵。
   private chromeView: ViewMode | null = null;
   // 次の tick() で表示するトースト。
   private pendingToast: { readonly html: string; readonly durationMs: number } | null = null;
-  // 表示中のトーストの期限 [ms, performance.now() 基準]。
+  // 表示中のトーストの期限 [ms, フレームの実時刻と同じ基準]。
   private toastUntil: number | null = null;
 
   // 画面の器の上に、ゲームの HUD の DOM を組む。renderStyle は組み立て時の見せ方で、
@@ -89,33 +108,42 @@ export class Hud implements HudLayers, Notifier {
   }
 
   // 軌道分析ウィンドウが見ている個体を、このフレームの操作対象・ターゲットへ合わせる。
-  public updateAnalysisReaders(game: Game): void {
-    this.orbitAnalysisWindow?.update(game);
+  public updateAnalysisReaders(entity: DynamicEntity | null, targetEntity: DynamicEntity | null): void {
+    this.orbitAnalysisWindow?.update(entity, targetEntity);
   }
 
-  // view で表に出ている常設パネルと、控えられたトーストを game の現在状態へ合わせる。
-  // camera はこのフレームの表示カメラで、縮尺表示が読む。palette は canvas へ直に描く色。
-  public syncPanels(view: ViewMode, game: Game, camera: CameraFrame, palette: ThemePalette): void {
+  // ランが畳まれたときに、パネルが掴んでいるランの値と操作の口を落とす。
+  public clearRunPanels(): void {
+    this.topBar.sync(null, 0);
+    this.vesselPanel.sync(null, 0);
+    this.orbitPanel.sync(null, 0);
+    this.targetPanel.sync(null, 0);
+    this.enemiesPanel.sync(null, 0);
+    this.burnManagementPanel.sync(null, {});
+  }
+
+  // view で表に出ている常設パネルと、控えられたトーストを panels の値へ合わせる。
+  // camera はこのフレームの表示カメラで、縮尺表示が読む。nowMs はフレームの実時刻 [ms]。
+  public syncPanels(
+    view: ViewMode, panels: HudPanelViewModels, camera: CameraFrame, nowMs: number,
+  ): void {
     const map = view === 'map';
     this.panelCollapse.sync(view);
     this.applyView(view);
     // 両ビュー共通のパネル。
-    this.burnManagementPanel.sync(
-      game.activeControllable?.boosters?.managementViewModel() ?? null, game.boosterHandlers,
-    );
-    this.topBar.sync(game.displayWindowManager, game.simSpeedManager, game.simTime, game.isPaused);
-    this.orbitPanel.sync(game);
+    this.burnManagementPanel.sync(panels.burnManagement, panels.burnHandlers);
+    this.topBar.sync(panels.topBar, nowMs);
+    this.orbitPanel.sync(panels.orbit, nowMs);
     // ビュー固有のパネル。
     if (map) {
-      this.mapScaleBadge.sync(camera.scale, game.cameraSystem.mapCamera.resolvedFocus);
+      this.mapScaleBadge.sync(camera.scale, panels.mapFocus);
     } else {
-      this.vesselPanel.sync(game.activeControllable, game.activeStage, game.cameraSystem, map, game.input);
-      this.targetPanel.sync(game.activeControllable, game.celestialSystem, game.targeter);
-      this.enemiesPanel.sync(
-        game.activeControllable, game.activeStage, game.dynamicSystem, game.targeter, map);
+      this.vesselPanel.sync(panels.vessel, nowMs);
+      this.targetPanel.sync(panels.target, nowMs);
+      this.enemiesPanel.sync(panels.enemies, nowMs);
     }
-    this.orbitAnalysisWindow?.sync(game, palette);
-    this.tick();
+    this.orbitAnalysisWindow?.sync(panels.analysisSource, panels.analysisSubject, nowMs);
+    this.tick(nowMs);
   }
 
   // 表に出す HUD ルートと、両ビューで1つを使い回すパネルの置き場を view へ揃える。
@@ -173,18 +201,17 @@ export class Hud implements HudLayers, Notifier {
     this.helpPanel.handleInput(input);
   }
 
-  // 控えられたトーストを表示し、表示期限を過ぎたトーストをフェードアウトさせる。
-  private tick(): void {
+  // 控えられたトーストを表示し、nowMs が表示期限を過ぎたトーストをフェードアウトさせる。
+  private tick(nowMs: number): void {
     const toast = document.getElementById('hud-toast');
     if (!toast) return;
-    const now = performance.now();
     // 控えがあれば差し替えて期限を張り直し、無ければ期限切れのものを消す。
     if (this.pendingToast) {
       toast.innerHTML = this.pendingToast.html;
       toast.style.opacity = '1';
-      this.toastUntil = now + this.pendingToast.durationMs;
+      this.toastUntil = nowMs + this.pendingToast.durationMs;
       this.pendingToast = null;
-    } else if (this.toastUntil !== null && now > this.toastUntil) {
+    } else if (this.toastUntil !== null && nowMs > this.toastUntil) {
       toast.style.opacity = '0';
       this.toastUntil = null;
     }
