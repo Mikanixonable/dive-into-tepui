@@ -129,7 +129,7 @@ export class Game {
   // 3D 描画と canvas へ渡す色の出どころ。
   private readonly themePalette: SettingValue<ThemePalette>;
   // 燃焼管理パネルのボタンが引く操作の口。
-  public readonly boosterHandlers: BurnManagementPanelHandlers;
+  private readonly boosterHandlers: BurnManagementPanelHandlers;
 
   public readonly targeter: Targeter;
   public readonly navTarget: NavTarget;
