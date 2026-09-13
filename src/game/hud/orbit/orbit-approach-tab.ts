@@ -87,6 +87,7 @@ export class ApproachTab implements AnalysisTab {
     ) !== null;
   }
 
+  // チャートの資源を片付ける。
   public dispose(): void {
     this.chart.dispose();
   }

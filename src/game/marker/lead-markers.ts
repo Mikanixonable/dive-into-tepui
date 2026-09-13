@@ -30,7 +30,7 @@ export class LeadMarkers {
   public dispose(): void { this.group.dispose(); }
 
   // target の LEAD マーカーを置き、それ以外を片付ける。マップビューでは全て片付ける。
-  // shooter が null(砲を積んだ艦を操作していない)なら何も置かない。
+  // shooter が null なら何も置かない。
   public sync(
     shooter: LeadShooter | null,
     targetsArray: readonly CombatTarget[],

@@ -56,16 +56,19 @@ export class ProjectionTab implements AnalysisTab {
     return center !== null && projectionTextureUrl(source.celestialSystem, center.id) !== null;
   }
 
+  // チャートの資源を片付ける。
   public dispose(): void {
     this.chart.dispose();
   }
 
+  // 表示範囲を全球へ戻す。
   public resetView(): void {
     this.chart.resetView();
   }
 
-  // 中心天体の反対側(遠地点付近)を通る軌道でも見失わないよう高度タブと同じサンプル数を使い、
-  // 描く未来の期間はマップの未来表示(軌道予測パネル)が指す期間をそのまま使う。
+  // 中心天体の地図に、操作対象とターゲットの経緯度の軌跡を重ねて描く。中心天体の反対側
+  // (遠地点付近)を通る軌道でも見失わないよう高度タブと同じサンプル数を使い、描く未来の期間は
+  // マップの未来表示(軌道予測パネル)が指す期間をそのまま使う。
   public draw(
     source: AnalysisChartSource, entity: DynamicEntity, reference: OrbitReference, target: ApproachTargetSource | null,
   ): void {
