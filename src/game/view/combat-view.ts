@@ -1,8 +1,7 @@
 // 戦闘ビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import type { CelestialBody } from '../../physics/celestial-body';
 import { pickCombatEntityAtPoint } from '../pickable/combat-pick';
-import { PlanGuide } from '../plan/plan-guide';
+import type { PlanGuide } from '../plan/plan-guide';
 import type { Input } from '../../input/input';
 import type { Notifier } from '../../hud/notifier';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
@@ -11,11 +10,9 @@ import type { CameraSystem } from '../camera/camera-system';
 import type { Viewport } from '../../render/viewport';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { ObjectWindows } from '../pickable/object-windows';
-import type { MarkerSink } from '../../marker/marker-sink';
 import type { Targeter } from '../targeter';
 import type { ControlSelection } from '../control-selection';
 import type { PlanPath } from '../plan/plan-path';
-import type { UiSfx } from '../../audio/sfx/ui-sfx';
 
 import type { DisplayWindow } from '../display-window-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
@@ -25,9 +22,6 @@ import type { PerfCounts } from '../perf-counts';
 import type { CelestialMarkers } from '../marker/celestial-markers';
 
 export class CombatView implements ViewFrame {
-  private readonly planGuide: PlanGuide;
-
-  // 直近ノードの実行ガイドを、受け取った材料から組んで持つ。
   public constructor(
     private readonly input: Input,
     private readonly cameraSystem: CameraSystem,
@@ -38,14 +32,10 @@ export class CombatView implements ViewFrame {
     private readonly touchControls: TouchControls | null,
     private readonly controlSelection: ControlSelection,
     private readonly planPath: PlanPath,
-    private readonly celestialBodies: readonly CelestialBody[],
     private readonly simSpeedManager: SimSpeedManager,
     private readonly notifier: Notifier,
-    uiSfx: UiSfx,
-    planGuideMarkers: MarkerSink,
-  ) {
-    this.planGuide = new PlanGuide(notifier, uiSfx, planGuideMarkers);
-  }
+    private readonly planGuide: PlanGuide,
+  ) {}
 
   public readonly pickables: readonly ObjectPickable[] = [];
   public readonly visibilityPolicy = null;
@@ -99,12 +89,7 @@ export class CombatView implements ViewFrame {
     });
   }
 
-  // 直近ノードの消化・接近通知を進める。
-  public update(displayWindow: DisplayWindow): void {
-    this.planGuide.update(
-      this.controlSelection.current, displayWindow.simTime, this.celestialBodies,
-    );
-  }
+  public update(): void {}
 
   // 天体ラベルはマップ専用の表示なので、戦闘ビューの間は畳んでおく。
   public syncLabels(_displayWindow: DisplayWindow, _camera: CameraFrame, nowMs: number): void {
@@ -123,8 +108,5 @@ export class CombatView implements ViewFrame {
     this.planGuide.sync(controlled, displayWindow.simTime, camera, this.planPath, nowMs);
   }
 
-  // ノード実行ガイドのマーカー群を取り除く。
-  public dispose(): void {
-    this.planGuide.dispose();
-  }
+  public dispose(): void {}
 }

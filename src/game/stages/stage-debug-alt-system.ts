@@ -5,7 +5,7 @@ import * as THREE from 'three/webgpu';
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { OrbitingMotion, SatelliteMotion, StarMotion } from '../../physics/celestial-motion';
-import { PhaseOffsets, PlanetDef, SatelliteDef, StarDef, planetDefForSimZero, satelliteDefForSimZero } from '../../physics/celestial-body-def';
+import { PlanetDef, SatelliteDef, StarDef, planetDefForSimZero, satelliteDefForSimZero } from '../../physics/celestial-body-def';
 import { planetSystem } from '../../physics/planet-system';
 import { planetOrbit, JULIAN_CENTURY } from '../../physics/kepler-orbit';
 import { AU } from '../../physics/astronomical-unit';
@@ -65,10 +65,10 @@ const ZEPHYRUS_I: SatelliteDef = {
 };
 
 // 架空星系の運動を組む。
-function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialBody[] {
+function zephyrusSystemMotions(): readonly CelestialBody[] {
   const aeolus = new StarMotion(AEOLUS);
-  const zephyrus = planetSystem(planetDefForSimZero(ZEPHYRUS, phases, 0), aeolus);
-  const zephyrusI = new SatelliteMotion(satelliteDefForSimZero(ZEPHYRUS_I, phases, 0), zephyrus);
+  const zephyrus = planetSystem(planetDefForSimZero(ZEPHYRUS, 0), aeolus);
+  const zephyrusI = new SatelliteMotion(satelliteDefForSimZero(ZEPHYRUS_I, 0), zephyrus);
   return [aeolus, zephyrus.body, zephyrusI];
 }
 
@@ -93,12 +93,11 @@ export class StageDebugAltSystem extends Stage {
   public static readonly epoch = STORY_EPOCH;
   // 架空の3体を並べ、惑星 zephyrus を原点とする天体系を組む。
   public static async createCelestialSystem(
-    phaseOffsets: PhaseOffsets, _earthSpinPhase0: number, epoch: TdbJulianDate,
-    _onProgress?: (ratio: number) => void, _renderer?: THREE.WebGPURenderer,
+    epoch: TdbJulianDate, _onProgress?: (ratio: number) => void, _renderer?: THREE.WebGPURenderer,
   ): Promise<CelestialSystem> {
-    const bodies = zephyrusSystemMotions(phaseOffsets).map(fallbackEntity);
+    const bodies = zephyrusSystemMotions().map(fallbackEntity);
     const origin = bodies.find((b) => b.id === PRIMARY_ID)!;
-    return new CelestialSystem(bodies, origin, phaseOffsets, epoch);
+    return new CelestialSystem(bodies, origin, epoch);
   }
   public static readonly selectLabel = 'DEBUG(架空星系)';
   public static readonly selectSub = '【デバッグ】架空天体3体だけのレジストリで起動する';

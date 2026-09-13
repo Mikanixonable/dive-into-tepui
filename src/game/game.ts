@@ -17,6 +17,7 @@ import { EquatorNodeManager } from './marker/equator-node-manager';
 import { ControlSelection } from './control-selection';
 import { Targeter } from './targeter';
 import { PlanDisplay } from './plan/plan-display';
+import { PlanGuide } from './plan/plan-guide';
 import { DisplayWindowManager, timeLabelSettingOf } from './display-window-manager';
 import { SimSpeedManager } from './dynamic/sim-speed-manager';
 import { DynamicSystem } from './dynamic/dynamic-system';
@@ -108,6 +109,8 @@ export class Game {
   public readonly simSpeedManager: SimSpeedManager;
 
   private readonly planDisplay: PlanDisplay;
+  // 直近ノードの消化・達成通知と、その実行ガイドのマーカー。
+  private readonly planGuide: PlanGuide;
   // このフレームの表示座標系と表示時刻窓。update で確定させ、sync が読む。
   public readonly displayWindowManager: DisplayWindowManager;
   private readonly viewManager: ViewManager;
@@ -117,8 +120,9 @@ export class Game {
   // ポーズ中か。時間倍率とは独立に時間を止める。
   private _isPaused = false;
   public get isPaused(): boolean { return this._isPaused; }
-  // 積分が進んでいるか。一時停止中と決着後は止まる。
-  private get simulating(): boolean { return !this._isPaused && this.activeStage.isPlaying; }
+  // 積分が進んでいるか。止まるのは一時停止中だけで、決着は止めない — 結果画面の裏でも
+  // 弾・敵・補給タイマーは通常どおり進む(GAME.md §2.1)。勝敗の再確定は Stage が拒む。
+  private get simulating(): boolean { return !this._isPaused; }
 
   private readonly _celestialSystem: CelestialSystem;
   public get celestialSystem(): CelestialSystem { return this._celestialSystem; }
@@ -166,10 +170,8 @@ export class Game {
     // はセーブの元期からの経過秒なので、別の元期で組むと全天体がずれる。
     const savedJdTdb = initialSave?.ephemerisContext?.epochJdTdb;
     const epoch = savedJdTdb !== undefined ? createJulianDate('TDB', savedJdTdb) : startEpoch ?? stageClass.epoch;
-    // 地球の自転初期位相。起動ごとに無作為だが、下位を決定的に保つため乱数はここでだけ引く。
-    const earthSpinPhase0 = initialSave?.earthSpinPhase0 ?? Math.random() * 2 * Math.PI;
     const celestialSystem = await stageClass.createCelestialSystem(
-      initialSave?.phaseOffsets ?? {}, earthSpinPhase0, epoch, (ratio) => progress.within(ratio), gs.renderer,
+      epoch, (ratio) => progress.within(ratio), gs.renderer,
     );
     await progress.enter('bodies');
     celestialSystem.build(gs.scene, gs.pipeline);
@@ -194,14 +196,11 @@ export class Game {
 
   // このランを1件ぶんのセーブ本体へ畳む。
   public serialize(): GameSaveData {
-    const { phaseOffsets, earthSpinPhase0 } = this._celestialSystem.serialize();
     return {
       version: SAVE_VERSION,
       stageId: this.activeStage.id,
       simTime: this.simTime,
       ephemerisContext: { ...ephemerisContextFor(this._celestialSystem.epoch) },
-      phaseOffsets,
-      earthSpinPhase0,
       entities: this.dynamicSystem.serialize(),
       activeControlledId: this.activeControllable?.id ?? null,
       stage: this.activeStage.serialize(),
@@ -297,6 +296,7 @@ export class Game {
     this.planDisplay = new PlanDisplay(
       this._scene, this.markers.createGroup(), celestialSystem, this.displayWindowManager, this.controlSelection,
     );
+    this.planGuide = new PlanGuide(this._hud, uiSfx, this.markers.createGroup());
     this.input = new Input(host.scene.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
     this.input.onPointerKindChange = (kind) => this.touchControls?.setPointerKind(kind);
@@ -318,8 +318,8 @@ export class Game {
     const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.objectWindows, this.dynamicSystem,
       this.celestialMarkers, this.touchControls,
-      this.controlSelection, this.planDisplay.path, celestialSystem.celestialMotions,
-      this.simSpeedManager, this._hud, uiSfx, this.markers.createGroup(),
+      this.controlSelection, this.planDisplay.path,
+      this.simSpeedManager, this._hud, this.planGuide,
     );
     const mapView = new MapView(
       this.input, this.cameraSystem, this.objectWindows,
@@ -372,6 +372,7 @@ export class Game {
     this.touchControls?.dispose();
     this.input.dispose();
     this.planDisplay.dispose();
+    this.planGuide.dispose();
     this._celestialSystem.dispose();
     this.frameControls.dispose();
     this.cameraSystem.dispose();
@@ -391,7 +392,7 @@ export class Game {
 
   // ------------------------------------------------------------ update
 
-  // 1フレームぶんの update フェーズ。dtRaw [s] は実時間の経過。ポーズ中・決着後もシミュレーション
+  // 1フレームぶんの update フェーズ。dtRaw [s] は実時間の経過。ポーズ中もシミュレーション
   // 以外の更新は通す。
   public update(dtRaw: number, viewport: Viewport): void {
     this.sections.enter(SECTION.input);
@@ -412,7 +413,6 @@ export class Game {
     // 過去表示に要る履歴の長さを要求する。次の積分がサンプルを積むまでに立っていればよいので、
     // 窓が確定したこの場で渡す。
     this.dynamicSystem.requestHistoryDuration(displayWindow.pastDuration);
-    const canDisplayFuture = !displayWindow.forceCurrent;
     // このフレームが天体を引く表示時刻を差し込む: 以降の frameTransformAt 呼び出しは
     // すべてこの frameAnchors を通す。
     this.frameAnchors.update(displayWindow.displayTime);
@@ -420,17 +420,11 @@ export class Game {
     this.sections.enter(SECTION.plan);
     this.planDisplay.update(displayWindow, this.frameAnchors, view);
     this.sections.exit(SECTION.plan);
-    // 予測の伸長対象は軌道分析ウィンドウが見ている個体を含むので、予測より先に確定させる。
-    const approachTarget = this.approachTarget();
-    this._hud.updateAnalysisReaders(
-      activeControllable, approachTarget?.kind === 'entity' ? approachTarget.entity : null,
-    );
     // ポーズ中・決着後も呼ぶ。simTime が止まっていれば予測は伸び切ったところで止まる。
     this.sections.enter(SECTION.predict);
     this.predictor.update(
       this.dynamicSystem.simTime, this.dynamicSystem.lastSimDt,
-      activeControllable?.motion ?? null, displayWindow.duration,
-      canDisplayFuture, this.planDisplay.growableArcs(),
+      activeControllable?.motion ?? null, displayWindow.duration, this.planDisplay.growableArcs(),
     );
     this.sections.exit(SECTION.predict);
     // 交点を置く先は計画折れ線か解析軌道楕円のどちらかなので、折れ線を組み終えた計画表示と、
@@ -446,7 +440,11 @@ export class Game {
       celestialBodies: this._celestialSystem,
       frameAnchors: this.frameAnchors,
       paths: this.planDisplay,
-    }, activeControllable, equatorVisibility);
+    }, activeControllable, this.navTarget.id, equatorVisibility);
+    // ノードの期限切れ・達成はビューに依らない計画そのものの規則なので、折れ線を組み終えた
+    // 後に毎フレーム通す。
+    this.planGuide.update(
+      activeControllable, this.dynamicSystem.simTime, this._celestialSystem.celestialMotions);
     this.sections.exit(SECTION.plan);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
@@ -462,15 +460,6 @@ export class Game {
     this.sections.enter(SECTION.pointer);
     this.handlePointerInput(viewport);
     this.sections.exit(SECTION.pointer);
-    // 次回の予測を伸ばす対象は、この update フェーズで確定させる。
-    this.entityLines.updatePredictionReaders(
-      this.activeControllable,
-      this.targeter.aliveTarget,
-      this.viewManager.current,
-      displayWindow,
-      this.viewManager.activeView.visibilityPolicy,
-      this.themePalette.current,
-    );
   }
 
   // ステージ → 指令決定 → 積分 → エフェクトの順に1フレーム進める
@@ -602,7 +591,8 @@ export class Game {
       timeLabel,
       nowMs,
     );
-    syncControlledLoopSfx(this._worldSfx, controlled, displayTime, visibilityPolicy, this.simulating);
+    syncControlledLoopSfx(
+      this._worldSfx, controlled, displayTime, this.simulating && this.activeStage.isPlaying);
     // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraView.sync より後に通す。
     this.flashEffectsView.sync(this.flashEffects.live, camera);
 

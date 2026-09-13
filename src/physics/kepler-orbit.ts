@@ -146,13 +146,13 @@ function wrapAngle(x: number): number {
   return x - TWO_PI * Math.floor(x / TWO_PI);
 }
 
-// 要素の元期を simZeroEt ぶん進め、平均黄経へ初期位相 phase を足した軌道。永年変化は
-// すべて時刻の一次式なので、各要素へ「変化率 × オフセット」を加えるだけで移せる。
+// 要素の元期を simZeroEt ぶん進めた軌道。永年変化はすべて時刻の一次式なので、各要素へ
+// 「変化率 × オフセット」を加えるだけで移せる。
 //
 // **角は必ず畳む。** オフセットは 18,000 年規模になりうる — 畳まないと平均黄経が 1e5 rad まで
 // 積み上がり、そこでの ulp(1.5e-11 rad)が以降すべての評価の丸めを支配して、地球軌道上で
 // メートル規模の誤差になる。畳めば中間値が 100 rad 規模に収まり、丸めは 3 桁小さくなる。
-export function keplerOrbitForSimZero(orbit: KeplerOrbit, phase: number, simZeroEt: number): KeplerOrbit {
+export function keplerOrbitForSimZero(orbit: KeplerOrbit, simZeroEt: number): KeplerOrbit {
   const s = simZeroEt;
   return {
     ...orbit,
@@ -161,7 +161,7 @@ export function keplerOrbitForSimZero(orbit: KeplerOrbit, phase: number, simZero
     inc: orbit.inc + orbit.incRate * s,
     raan0: wrapAngle(orbit.raan0 + orbit.raanRate * s),
     lonPeri0: wrapAngle(orbit.lonPeri0 + orbit.lonPeriRate * s),
-    l0: wrapAngle(orbit.l0 + phase + orbit.lRate * s),
+    l0: wrapAngle(orbit.l0 + orbit.lRate * s),
   };
 }
 
