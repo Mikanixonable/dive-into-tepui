@@ -9,7 +9,7 @@ import {
 import { AnchorZone } from './anchor-zone';
 import { CameraRotationZone } from './rotation-zone';
 import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from '../../../hud/widgets';
-import { CameraRotationModeControl, type CameraRotationModeCommand } from './camera-rotation-mode-control';
+import { CameraRotationModeControl, type CameraRotationModeCommands } from './camera-rotation-mode-control';
 import { frameRoleName, rotationFollowLabel } from './frame-labels';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { buildPanel } from './frame-panel';
@@ -38,7 +38,7 @@ export interface CameraFrameViewModel {
 }
 
 // カメラパネルが返す操作。カメラの正本が公開する命令。
-export interface CameraFrameCommands extends CameraRotationModeCommand {
+export interface CameraFrameCommands extends CameraRotationModeCommands {
   setRotationFollow(follow: CameraRotationFollow | null): void;
   setProjectionMode(mode: ProjectionMode): void;
   setFovDeg(fovDeg: number): void;

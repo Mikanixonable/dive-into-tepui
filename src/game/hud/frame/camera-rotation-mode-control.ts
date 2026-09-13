@@ -4,7 +4,7 @@ import { ToggleSwitch } from '../../../hud/widgets';
 import type { CameraRotationMode } from '../../camera/camera-orientation';
 
 // 回転モードのトグルが返す操作。カメラの正本が公開する命令。
-export interface CameraRotationModeCommand {
+export interface CameraRotationModeCommands {
   setCameraRotationMode(mode: CameraRotationMode): void;
 }
 
@@ -12,10 +12,10 @@ export class CameraRotationModeControl {
   public readonly element: HTMLElement;
   private readonly toggle: ToggleSwitch;
 
-  // 初期の操作モードを点灯させ、以後の切り替えを command へ返す。
-  public constructor(command: CameraRotationModeCommand, initialMode: CameraRotationMode) {
+  // 初期の操作モードを点灯させ、以後の切り替えを commands へ返す。
+  public constructor(commands: CameraRotationModeCommands, initialMode: CameraRotationMode) {
     this.toggle = new ToggleSwitch('クォータニオン操作', (on) => {
-      command.setCameraRotationMode(on ? 'quaternion' : 'euler');
+      commands.setCameraRotationMode(on ? 'quaternion' : 'euler');
     });
     this.element = this.toggle.element;
     this.sync(initialMode);
