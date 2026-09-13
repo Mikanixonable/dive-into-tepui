@@ -13,6 +13,7 @@ import { selectStage } from './stage-select';
 import type { UnlockManager } from './unlock-manager';
 import type { SaveSlots } from './save/save-slots';
 import type { SnapshotService } from './save/snapshot-service';
+import type { AutoSave } from './save/autosave';
 import type { GameSaveData } from '../game/save/save-data';
 import type { AudioEngine } from '../audio/audio-engine';
 import type { Bgm } from '../audio/bgm/bgm';
@@ -86,6 +87,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     private readonly unlockManager: UnlockManager,
     private readonly slots: SaveSlots,
     private readonly snapshotService: SnapshotService,
+    private readonly autoSave: AutoSave,
     private readonly graphics: SettingValue<GraphicsSettingsData>,
     private readonly renderStyle: SettingValue<RenderStyle>,
   ) {
@@ -119,7 +121,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // 選択画面を出し、選ばれたステージクラス(クリエイティブなら開始日時も)で解決される Promise を返す。
   private selectStageScreen(): Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> {
-    this.bgm.syncRun(false);
     return selectStage(
       this.unlockManager,
       this.host.themePalette.current,
@@ -129,13 +130,14 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     );
   }
 
-  // 現在の周回を畳む。Game を破棄し、結果画面と一時停止メニューを閉じる。
+  // 現在の周回を畳む。Game を破棄し、結果画面と一時停止メニューを閉じ、BGM を止める。
   // 何も動いていない状態で呼んでも安全。
   private endRun(): void {
     this.game?.dispose();
     this.game = null;
     this.resultScreen.close();
     this.pauseMenu.toggle(false);
+    this.bgm.syncRun(false);
   }
 
   // 現在の周回を畳んだ上で、天体暦の構築から Game の生成までを行い、起動をスロットへ記録する。
@@ -161,6 +163,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     };
     this.noteLaunched(stageClass);
     this.bgm.syncRun(stage.isPlaying);
+    this.autoSave.beginRun();
     // 決着済みのスナップショットから始まったランは decide() を通らないため、ここで締める。
     if (!stage.isPlaying) this.showResult(stage);
   }
@@ -255,7 +258,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // 周回の遷移の失敗を画面に出す。遷移が失敗すると current が null のまま進まなくなる。
   private fail(err: unknown): void {
-    this.bgm.syncRun(false);
     console.error(err);
     showFatalError(
       '次の周回の開始に失敗しました。',
