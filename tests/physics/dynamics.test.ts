@@ -133,7 +133,7 @@ export function register(): void {
   test('dynamics: stepDynamics adds thrust on top of gravity', () => {
     const s0 = circularState();
     const dt = 10;
-    const attractors = solarSystemParts({ moon: 0 }).system.celestialMotions;
+    const attractors = solarSystemParts().system.celestialMotions;
     const thrust = v3(0, 0, 5); // 大きめの加速度で差が明確に出るようにする
 
     const withThrust = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, 0, thrust);
@@ -145,7 +145,7 @@ export function register(): void {
   test('dynamics: stepDynamics with bcInv>0 decelerates more than bcInv=0 at LEO altitude', () => {
     const s0 = circularState();
     const dt = 10;
-    const attractors = solarSystemParts({ moon: 0 }).system.celestialMotions;
+    const attractors = solarSystemParts().system.celestialMotions;
     const earth = attractors.find((a) => a.id === 'earth')!;
     assert.ok(earth.atmosphereAt(0) !== null, '前提: 既定レジストリの地球は大気を持つ');
 
@@ -158,7 +158,7 @@ export function register(): void {
   test('dynamics: 大気天体を渡さなければ、同じ位置・同じ bcInv でも抗力は恒等的にゼロ', () => {
     const s0 = circularState();
     const dt = 10;
-    const attractors = solarSystemParts({ moon: 0 }).system.celestialMotions;
+    const attractors = solarSystemParts().system.celestialMotions;
 
     const noAtmosphere = stepDynamics(s0, dt, attractors, attractors, null, 0, 0.01, 0, null);
     const noDrag = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, 0, null);
@@ -167,7 +167,7 @@ export function register(): void {
   });
 
   test('dynamics: a circular lunar orbit (surface +100km) returns to about the same moon-relative position after one revolution (measured, pinned)', () => {
-    const parts = solarSystemParts({ moon: 0 });
+    const parts = solarSystemParts();
     const windows = parts.system;
     const attractors0 = windows.celestialMotions;
     const moon0 = attractors0.find((b) => b.id === 'moon')!;
@@ -396,7 +396,7 @@ export function register(): void {
   });
 
   test('dynamics: the moon carries a degree-2 field and the sun does not', () => {
-    const attractors = solarSystemParts({ moon: 0.3 }).system.celestialMotions;
+    const attractors = solarSystemParts().system.celestialMotions;
     const moon = attractors.find((b) => b.id === 'moon')!;
     const sun = attractors.find((b) => b.id === 'sun')!;
     assert.ok(moon.degree2At(0) !== null, 'the moon should resolve a degree-2 field');

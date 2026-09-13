@@ -70,7 +70,7 @@ export function register(): void {
       ['遠未来', createJulianDate('TDB', 9068045.75)],
     ];
     for (const [label, epoch] of cases) {
-      const parts = solarSystemParts({}, epoch);
+      const parts = solarSystemParts(epoch);
       const simZeroEt = ephemerisSeconds(epoch);
       for (const t of [0, 3.156e7, -3.156e7]) {
         const actual = eclipticLongitude(motionOf(parts, 'jupiter').analyticStateAt(t).r);
@@ -95,7 +95,7 @@ export function register(): void {
   });
 
   test('point-field: trojans use the supplied Jupiter reference', () => {
-    const reference = orbitingMotionOf(solarSystemParts({}, TEST_EPOCH), 'jupiter').keplerOrbit;
+    const reference = orbitingMotionOf(solarSystemParts(TEST_EPOCH), 'jupiter').keplerOrbit;
     const custom = { ...reference, a: reference.a * 1.01, l0: reference.l0 + 0.4 };
     const field = generatePointField(0, 123, custom);
     const expectedLongitude = jupiterMeanLongitude(0, 0, custom);
@@ -108,7 +108,7 @@ export function register(): void {
   });
 
   test('point-field: Hilda mean motion is exactly the 3:2 resonance with Jupiter', () => {
-    const jupiterRate = orbitingMotionOf(solarSystemParts({}, TEST_EPOCH), 'jupiter').keplerOrbit.lRate;
+    const jupiterRate = orbitingMotionOf(solarSystemParts(TEST_EPOCH), 'jupiter').keplerOrbit.lRate;
     for (const point of groupOf(generatePointField(TEST_SIM_ZERO_ET), 'hilda').points) {
       assert.ok(Math.abs(point.meanMotion - (2 / 3) * jupiterRate) / jupiterRate < 1e-14);
     }

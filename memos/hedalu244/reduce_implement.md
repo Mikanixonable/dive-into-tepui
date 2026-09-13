@@ -63,13 +63,6 @@
 - 仕様: CONTROLS.md「N … マップビュー、ノードがある場合」「X 選択中のノードを削除(未選択なら計画全体を破棄) マップビュー」
 - 減るもの: `CombatView.handleInput` と `clearPlan` が消え、計画キーの窓口が `PlanEditor` 1つになる。/ 確度: 高 / 確認: 報告のみ
 
-### R16. 自転初期位相だけが乱数で、時刻決定性から外れている(地球を名指し)
-- 症状: 同じ元期で始めても起動ごとに地球の経度が変わり、地表・海岸線・オーロラ・自転座標系の位置がランごとにずれる。雲と公転は時刻決定的。
-- 場所: `src/game/game.ts:170`、`src/physics/celestial-motion.ts:324-327`(`eciPole`)、`src/game/celestial/solar-system/earth-system.ts:103`、`src/game/save/save-data.ts:293`
-- 疑う理由: 他7惑星は `iau` 極モデルの `w0Deg + wRate·t` で時刻決定的に解けており、地球だけが1天体専用の極モデルを持ち、その位相原点を乱数で埋めている。IAU の地球自転角(W₀=190.147°)を定数で置けば乱数も位相の配線も要らない。
-- 仕様: CELESTIAL.md §3「**地球の自転初期位相だけはゲーム起動のたびにランダムに決まる**」/ SAVE.md「地球の自転の位相…ゲーム開始時に一度だけランダムに決まる値」→ **第4群(仕様ごと消す)**
-- 減るもの: `Math.random()` 1箇所・セーブ項目1つ・`spinPhase0` 引数(game→stage→solarSystem→earthSystem→planetSystem→PlanetMotion)・`eciPole` 専用分岐。暦から再現可能なランになる。/ 確度: 高 / 確認: `game.ts:170` は自分で確認、極モデルは報告のみ / 計画: K2(時刻層の構築値)、手順 6-4
-
 ### R17. 地球・月の名指しが一般の仕組みの隣に残っている(8箇所)
 - 症状: 天体を一般に扱う仕組みがあるのに、地球・月・太陽を文字列で名指しする分岐が並んでいる。
   1. 軌道要素の基準が `'auto'|'earth'|'moon'|'target'` の固定2択。架空星系でもボタンが出て、押すと無言で自動選択のまま(`src/game/orbit-reference.ts:12,70-77`、`src/game/hud/orbit/orbit-panel.ts:14-19`)
@@ -166,13 +159,6 @@
 
 # 第3群 — 死んだコード・到達不能な分岐(挙動不変、消すだけ)
 
-### R32. `phaseOffsets` は値を入れる箇所が無く、常に空のまま全構築経路へ配線されている
-- 症状: 天体ごとの平均黄経オフセットを受け渡す口が10以上のモジュールとセーブ形式にあるが、値は常に `{}`。
-- 場所: `src/game/game.ts:172,197,203`、`src/physics/celestial-body-def.ts:115,161-176`、`src/game/celestial/celestial-system.ts:130,333`、`src/game/save/save-data.ts:291`、9系の構築関数
-- 疑う理由: 唯一の生産者が `initialSave?.phaseOffsets ?? {}` で、セーブはそれをそのまま往復させるだけ。乱数も UI も書かない。全天体を暦から置く現在の方針では、平均黄経を散らす機能自体が成り立たない。
-- 仕様: SAVE.md「天体暦の初期位相 — …ゲーム開始時に一度だけランダムに決まる値」だが CELESTIAL.md §2 は全天体を JPL 要素・暦パックで置くと定める → **第4群**
-- 減るもの: `PhaseOffsets` 型、`planetDefForSimZero`/`satelliteDefForSimZero`/`keplerOrbitForSimZero` の phase 引数、9系の構築関数の引数、セーブ項目、`serialize()`。挙動不変。/ 確度: 高 / 確認: 自分で確認(全参照を走査。生産者は1箇所のみ)
-
 ### R33. 旧セーブ移行 `migrateLegacySave` は構造的に成立せず、毎起動走っている
 - 症状: 起動ごとに `tepui.save` を読みに行くが、取り込みは絶対に成功せず `null` を返す。
 - 場所: `src/launcher/save/legacy-save.ts:7,11,43`、`src/launcher/save/save-slots.ts:42`
@@ -241,8 +227,6 @@
 
 | # | 挙動 | 仕様の位置 | 提案 |
 | --- | --- | --- | --- |
-| R16 | 地球の自転初期位相が乱数 | CELESTIAL.md §3、SAVE.md「保存される内容」 | IAU の地球自転角で時刻決定的にし、仕様の2文と保存項目を削る |
-| R32 | 天体暦の初期位相をランダムに決める | SAVE.md「保存される内容」 | 実装が最初から満たしていない。仕様の文を削る |
 | R17-1 | 軌道基準を地球・月・ターゲットに固定できる | ORBIT.md | 登録天体から候補を引く形へ。ORBIT.md「未確定の案」の「基準天体とマップの参照フレームの統合」と合わせて進める |
 | R17-3 | 月だけ衛星軌道線を常時表示 | MAP.md「ただし地球の月だけは常時例外的に表示される」 | 例外を消し、全衛星で同じ規則にする |
 | R17-6 | 参照軌道は地球専用 | MAP.md「いずれも地球専用の軌道なので系の軸を持たない」 | 物理側は既に一般。仕様を実装の一般性へ進める |
