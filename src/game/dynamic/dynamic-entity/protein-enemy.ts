@@ -135,9 +135,6 @@ export class ProteinEnemy extends Enemy {
     this.combat = combat;
   }
 
-  // HP の正本は combat 側なので、艦の既定パーツは積まない。
-  protected override initDefaultParts(): void {}
-
   public override get hp(): number { return this.combat.integrityHp; }
   public override set hp(_value: number) {}
   public override get maxHp(): number { return this.combat.integrityMaxHp; }

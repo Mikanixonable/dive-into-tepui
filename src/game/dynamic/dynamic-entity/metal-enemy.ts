@@ -2,6 +2,7 @@ import type * as THREE from 'three/webgpu';
 import { v3, type Vec3 } from '../../../math/vec3';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../../vfx/flash-effects';
+import { collisionDamageFraction } from './contact-damage';
 import {
   ENEMY_MODEL_SCALE, Enemy, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore,
 } from './enemy';
@@ -33,7 +34,7 @@ const TYPED_INERTIA = v3(1, 1, 1);
 // 機体テンプレート番号。
 type MetalEnemyPlacement = EnemyPlacement & { readonly typeIndex: number | null };
 
-// 金属機体の敵。艦と同じパーツ式の被弾モデルを持つ。
+// 金属機体の敵。機体テンプレートが外形と接触半径を決め、被弾は機体全体の装甲値へ入る。
 export class MetalEnemy extends Enemy {
   public static readonly kind = 'metal-enemy';
   public static spawnGate(): null { return null; }
@@ -57,8 +58,8 @@ export class MetalEnemy extends Enemy {
       metalEnemyCollisionRadius(typeIndex), worldSfx, fx,
     );
     this.typeIndex = typeIndex;
-    // 部品単位の HP までは保存していないので、既定パーツ構成のまま総 HP を按分して戻す。
-    if ('saved' in init) this.setOverallHp(init.saved.health);
+    // 復元のときは、保存した時点まで削れていた装甲値へ戻す。
+    if ('saved' in init) this.hp = init.saved.health;
   }
 
   // 金属機体はいつでも撃てる。
@@ -76,14 +77,17 @@ export class MetalEnemy extends Enemy {
     return PLASMA_BULLET_DAMAGE;
   }
 
-  // 被弾位置によらず、健全な部品へ無作為に割り振る。
+  // 被弾位置によらず、武装のダメージ量をそのまま装甲値へ当てる。
   protected override applyBulletDamage(damage: number): void {
-    this.applyDamageToParts(damage);
+    this.applyDamage(damage);
   }
 
-  // 接近速度に応じたダメージを、健全な部品へ無作為に割り振る。
+  // 接近速度に応じたダメージを装甲値へ当て、ダメージが出たかを返す。
   protected override applyImpactDamage(damageSpeed: number): boolean {
-    return this.applyCollisionDamage(damageSpeed);
+    const damageFraction = collisionDamageFraction(damageSpeed);
+    if (damageFraction <= 0) return false;
+    this.applyDamage(this.maxHp * damageFraction);
+    return true;
   }
 
   // 敵に共通する保存項目へ型番を足す。
