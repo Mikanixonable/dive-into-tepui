@@ -47,6 +47,7 @@ const RULES = {
   deviceOut: '装置の出ていく import',
   deviceToDevice: '装置どうしの相互 import',
   timeOut: '時刻層の出ていく import',
+  definitionOut: '定義層の出ていく import',
   hudOut: 'src/hud/ の出ていく import',
 };
 
@@ -59,6 +60,7 @@ const FORBIDDEN = [
     exempt: [],
   },
   {
+    // R5 の「実時刻はフレームの先頭で1度だけ読み、入力として配る」を装置へ当てたもの。
     name: '装置の壁時計の禁止',
     pattern: /performance\.now|Date\.now/g,
     targets: ['src/render/', 'src/marker/'],
@@ -67,6 +69,38 @@ const FORBIDDEN = [
       'src/render/protein/protein-runtime.ts',
       'src/render/dynamic/dynamic-entity/protein-enemy-view.ts',
     ],
+  },
+  {
+    name: '保存先を直に触る禁止',
+    pattern: /localStorage/g,
+    targets: ['src/game/', 'src/theme.ts'],
+    exempt: [],
+  },
+  {
+    name: '書き換えられる設定の受け渡しの禁止',
+    pattern: /RunSetting/g,
+    targets: ['src/'],
+    exempt: [],
+  },
+  {
+    name: 'HUD のモデル丸受けの禁止',
+    pattern: /import .*\bGame\b/g,
+    targets: ['src/game/hud/'],
+    exempt: [],
+  },
+  {
+    // モジュール直下の可変値は、定義層では R1 に、導出層では R5 に反する。判定を src/game/
+    // 全体へ広げると段 3 以降で直すぶんまで許可リストへ載るので、段 2 で消す2つだけを当てる。
+    name: 'モジュール直下の可変値の禁止',
+    pattern: /^let |^export let /gm,
+    targets: ['src/theme.ts', 'src/game/hud/panel-shell.ts'],
+    exempt: [],
+  },
+  {
+    name: '二段初期化の禁止',
+    pattern: /setInput\(|setHandlers\(|setOpenAnalysisHandler\(/g,
+    targets: ['src/'],
+    exempt: [],
   },
 ];
 
@@ -155,6 +189,9 @@ function findImportViolations({ edges, layerOf }) {
     }
     if (from === TIME && to !== DEFINITION && to !== TIME) {
       found.push({ rule: RULES.timeOut, file: e.from, id: e.to, line: e.line });
+    }
+    if (from === DEFINITION && to !== DEFINITION) {
+      found.push({ rule: RULES.definitionOut, file: e.from, id: e.to, line: e.line });
     }
     if (e.from.startsWith('src/hud/') && HUD_FORBIDDEN_ROOTS.some((r) => e.to.startsWith(r))) {
       found.push({ rule: RULES.hudOut, file: e.from, id: e.to, line: e.line });

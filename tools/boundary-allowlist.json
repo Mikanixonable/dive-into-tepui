@@ -1,1 +1,72 @@
-{}
+{
+  "定義層の出ていく import": {
+    "src/theme.ts": [
+      "src/settings/theme-setting.ts"
+    ]
+  },
+  "保存先を直に触る禁止": {
+    "src/game/hud/panel-shell.ts": [
+      "localStorage"
+    ],
+    "src/game/hud/panels/orbit-guide-tab.ts": [
+      "localStorage"
+    ],
+    "src/game/hud/panels/view-options-panel.ts": [
+      "localStorage"
+    ]
+  },
+  "書き換えられる設定の受け渡しの禁止": {
+    "src/game/game-host.ts": [
+      "RunSetting"
+    ],
+    "src/game/game.ts": [
+      "RunSetting"
+    ],
+    "src/game/hud/panels/view-options-control.ts": [
+      "RunSetting"
+    ],
+    "src/game/run-setting.ts": [
+      "RunSetting"
+    ],
+    "src/game/view/map-view.ts": [
+      "RunSetting"
+    ]
+  },
+  "HUD のモデル丸受けの禁止": {
+    "src/game/hud/hud.ts": [
+      "import type { Game"
+    ],
+    "src/game/hud/orbit/orbit-analysis-window.ts": [
+      "import type { Game"
+    ],
+    "src/game/hud/orbit/orbit-panel.ts": [
+      "import type { Game"
+    ]
+  },
+  "モジュール直下の可変値の禁止": {
+    "src/game/hud/panel-shell.ts": [
+      "let "
+    ],
+    "src/theme.ts": [
+      "let "
+    ]
+  },
+  "二段初期化の禁止": {
+    "src/game/game.ts": [
+      "setHandlers(",
+      "setInput("
+    ],
+    "src/game/hud/hud.ts": [
+      "setOpenAnalysisHandler("
+    ],
+    "src/game/hud/orbit/orbit-panel.ts": [
+      "setOpenAnalysisHandler("
+    ],
+    "src/game/hud/panels/burn-management-panel.ts": [
+      "setHandlers("
+    ],
+    "src/game/hud/panels/vessel-panel.ts": [
+      "setInput("
+    ]
+  }
+}
