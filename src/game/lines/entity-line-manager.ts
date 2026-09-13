@@ -58,19 +58,7 @@ function orbitDisplay(
 export class EntityLineManager {
   public constructor(private readonly roster: EntityRoster) {}
 
-  // 次回の予測更新が必要な個体を update フェーズで確定する。
-  public updatePredictionReaders(
-    active: Controllable | null, primaryTarget: CombatTarget | null,
-    view: ViewMode, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
-    palette: ThemePalette,
-  ): void {
-    this.forEachDisplay(
-      active, primaryTarget, view, displayWindow, visibilityPolicy, undefined, palette,
-      (entity, display) => { entity.motion.trajectoryReader = display.predicted !== null; },
-    );
-  }
-
-  // 各個体の線表示をこのフレームの確定状態から宣言し、View に一括同期させる。
+  // 各個体の線表示をこのフレームの確定状態から宣言し、View へ同期させる。
   public sync(
     active: Controllable | null, primaryTarget: CombatTarget | null,
     view: ViewMode, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
@@ -78,27 +66,6 @@ export class EntityLineManager {
     frameAnchors: FrameAnchorSource, celestialBodies: CelestialBodies, palette: ThemePalette,
   ): void {
     const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
-    this.forEachDisplay(
-      active, primaryTarget, view, displayWindow, visibilityPolicy, orbitRef, palette,
-      (entity, display) => {
-        // 予測が伸びきっていないフレームでは終端時刻を渡さず、届いたところまでで描かせる。
-        const predictedTo = entity.motion.predictionTruncated ? null : simTime + duration;
-        entity.view.syncLines(
-          display, entity.motion, frame, simTime, displayTime, pastDuration, predictedTo,
-          celestialBodies, camera, frameAnchors,
-        );
-      },
-    );
-  }
-
-  // 1フレーム分の表示判断を各対象へ配る。
-  private forEachDisplay(
-    active: Controllable | null, primaryTarget: CombatTarget | null,
-    view: ViewMode, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
-    orbitRef: OrbitReference | undefined, palette: ThemePalette,
-    accept: (entity: DynamicEntity, display: DynamicLineDisplay) => void,
-  ): void {
-    const { pastDuration } = displayWindow;
     // マップビューでは軌道基準を常に自動選択(最も強く引く天体)にする。
     const lineOrbitRef = view === 'map' ? undefined : orbitRef;
     const primaryStyle: LineStyle = {
@@ -122,7 +89,7 @@ export class EntityLineManager {
       opacity: 0.3,
       renderOrder: LINE_RENDER_ORDER.predicted,
     });
-    // 1個体の判定材料を、View へ渡す完全な線表示宣言へ変換する。
+    // 1個体の判定材料を線表示の宣言へ畳み、その個体の View へ同期させる。
     const resolve = (
       entity: DynamicEntity, asTarget: LineStyle | null, lineVisible: boolean,
       trajectoryEligible: boolean, styles: TrajectoryStyles,
@@ -135,11 +102,17 @@ export class EntityLineManager {
       const orbitStyle = asTarget !== null && available
         ? asTarget
         : (ownEllipse || fallbackEllipse ? styles.ellipse : null);
-      accept(entity, {
-        orbit: orbitDisplay(entity, orbitStyle, lineOrbitRef),
-        predicted: showTrajectories && !ownEllipse ? styles.predicted : null,
-        actual: showTrajectories && pastDuration > 0 ? styles.actual : null,
-      });
+      // 予測が伸びきっていないフレームでは終端時刻を渡さず、届いたところまでで描かせる。
+      const predictedTo = entity.motion.predictionTruncated ? null : simTime + duration;
+      entity.view.syncLines(
+        {
+          orbit: orbitDisplay(entity, orbitStyle, lineOrbitRef),
+          predicted: showTrajectories && !ownEllipse ? styles.predicted : null,
+          actual: showTrajectories && pastDuration > 0 ? styles.actual : null,
+        },
+        entity.motion, frame, simTime, displayTime, pastDuration, predictedTo,
+        celestialBodies, camera, frameAnchors,
+      );
     };
 
     // 自艦・敵・基地の順に、種別ごとの色と表示設定で resolve を通す。
