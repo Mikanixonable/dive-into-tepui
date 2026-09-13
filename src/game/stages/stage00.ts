@@ -5,7 +5,7 @@ import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { WaveAttack } from './stage-utils/wave-attack';
 import type { Stage00SaveData, StageSaveData } from '../save/save-data';
-import { MAX_ACTIVE_AMMO_PICKUPS, STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST } from './stage-utils/logistics';
+import { MAX_ACTIVE_AMMO_PICKUPS, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST } from './stage-utils/logistics';
 
 export class Stage00 extends Stage {
   static readonly id = '00' as const;
@@ -40,7 +40,7 @@ export class Stage00 extends Stage {
   protected init(): void {
     const player = this.addPlayer();
     for (let i = 0; i < MAX_ACTIVE_AMMO_PICKUPS; i++) {
-      this.logistics.spawnForPlayer(player, STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST);
+      this.logistics.spawnForPlayer(player, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST);
     }
     // 初期状態でもランダムに敵を配置する
     this.waveAttack.spawnWave(player, (enemy) => this.addEnemy(enemy), 'random');
