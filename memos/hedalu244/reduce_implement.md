@@ -49,13 +49,6 @@
 - 仕様: COMBAT.md「弾は自機から交戦圏の半径以上離れると消える」
 - 減るもの: `viewerPos` 引数が `checkLoss` の4階層から消え、操作対象の切替で弾が消える挙動も無くなる。/ 確度: 高 / 確認: 自分で確認
 
-### R8. ステージ選択画面で Enter を押すとステージ1 が始まり、隠しデバッグステージがキーで素通りする
-- 症状: `stage1.selectKeys = ['Digit1', 'Enter']` なので、何を選んでいても Enter でステージ1 が起動する。`[E]`/`[L]` で一覧に無い DEBUG(架空星系)/DEBUG(高負荷)が起動する。
-- 場所: `src/game/stages/stage1.ts:19`、`src/launcher/stage-select.ts:248-251`、`src/game/stages/stage-debug-alt-system.ts:105-106`、`src/game/stages/stage-debug-load.ts:25-26`
-- 疑う理由: キー照合が `hiddenFromSelect` を見ていない(一覧と `resumableStageClass` は見ている)。`Enter` は確定キーなので誤爆しやすく、行ラベルにも出ない(`selectKeys[0]` しか表示しない)。
-- 仕様: GAME.md「各ステージは…専用のショートカットキーでも選べる(例: ステージ1が `[1]`)」「いずれもタイトル画面のステージモードタブには出ず(画面隅の専用リンクからのみ到達できる)」
-- 減るもの: `'Enter'` を外し、キー照合に `hiddenFromSelect` を足すだけ。隠し経路が1本化する。/ 確度: 高 / 確認: 自分で確認
-
 ### R12. [N] 自動ワープと [X] 計画全体破棄が、仕様と逆のビューに置かれている
 - 症状: [N] と「未選択の [X] で計画全体を破棄」は戦闘ビューでしか効かず、マップビューの [X] は選択ノードが無いと何も起きない。
 - 場所: `src/game/view/combat-view.ts:69-84`、`src/game/plan/plan-editor.ts:178`、`src/game/view/map-view.ts:114-116`
