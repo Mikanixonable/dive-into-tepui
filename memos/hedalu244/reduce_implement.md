@@ -288,12 +288,6 @@
 - 仕様: MAP.md「各行の見出しは、ラベル・軌道線をまとめてクラスごと表示/非表示にする**クラス全体トグル**を兼ねる」— UI の操作として定義され、独立した状態としては書かれていない
 - 減るもの: 保存される boolean 12個、normalize 2関数、カテゴリ表2本、冗長 AND 5箇所。/ 確度: 中 / 確認: `display-toggles.ts` の構造は自分で確認
 
-### R40. 使われない被選択物・読まれない派生状態
-- 症状: `EmptySpacePickable` は空域メニューの落ち先にしか使われないが、マップ候補としての全メソッドを持つ(`shownOnMap` は存在しない `'empty'` 宣言を問うので恒偽)。タンパク質の `selectedSiteId` は被弾のたびに書き直されるが読む者が居ない(資産の `fireRateMultiplier: 1.25` も未参照)。
-- 場所: `src/game/pickable/empty-space-pickable.ts:12,19-30,50-53`、`src/game/protein/protein-combat-state.ts:33,101-103,223-226`、`src/assets/models/pdb5i4rProtein.json:223`
-- 仕様: MAP.md は空域を「何にも当たらなかった右クリック」と定め、候補としての空域を要求していない。PROTEIN.md に部位の「選択」の記述なし
-- 減るもの: 約40行、フィールド1つ、公開メソッド1つ、被弾ごとの再選択1回。/ 確度: 中 / 確認: 報告のみ
-
 ---
 
 # 第4群 — 仕様ごと消す/直す候補

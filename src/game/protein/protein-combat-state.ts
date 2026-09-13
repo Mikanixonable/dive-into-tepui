@@ -30,7 +30,6 @@ export class ProteinCombatState {
   private _phase: ProteinPhase;
   private readonly siteStates: SiteState[];
   private readonly modifications = new Map<string, string>();
-  private selectedSiteId: string | null = null;
   private attackSiteCursor = 0;
 
   // asset の定義から戦闘状態を組む。saved があれば、その HP・フェーズ・部位・修飾の状態から戻す。
@@ -46,7 +45,6 @@ export class ProteinCombatState {
     for (const slot of asset.modificationSlots) {
       this.modifications.set(slot.id, saved?.modifications[slot.id] ?? slot.defaultState);
     }
-    this.reselectSite();
   }
 
   public get integrityHp(): number { return this._integrityHp; }
@@ -97,11 +95,6 @@ export class ProteinCombatState {
     return true;
   }
 
-  // 選択中の部位を id にする。定義に無い id なら選択を外す。
-  public setSelectedSite(id: string | null): void {
-    this.selectedSiteId = this.siteStates.some((site) => site.definition.id === id) ? id : null;
-  }
-
   // action を持つ部位が1つでも機能していれば true。
   public isActionEnabled(action: string): boolean {
     return this.siteStates.some((site) => !site.disabled && site.definition.actions.includes(action));
@@ -143,7 +136,6 @@ export class ProteinCombatState {
       this._integrityHp = Math.max(0, this._integrityHp - damage);
     }
     this.updateStructuralState();
-    this.reselectSite();
     return {
       target: candidate ? 'site' : 'integrity', siteId, damage, siteDisabled,
       phaseChanged: previousPhase !== this._phase, previousPhase, phase: this._phase, defeated: this.defeated,
@@ -180,7 +172,6 @@ export class ProteinCombatState {
       phase: this._phase,
       integrityHp: this._integrityHp,
       integrityMaxHp: this.integrityMaxHp,
-      selectedSiteId: this.selectedSiteId,
       sites: this.siteStates.map((site) => {
         // 攻撃可否は部位が攻撃 action を持つかで決まり、機能停止とは独立に答える。
         const attackActionId = this.attackAction?.id;
@@ -217,12 +208,6 @@ export class ProteinCombatState {
       }
     }
     return closest;
-  }
-
-  // 選択中の部位が機能停止していれば、先頭の攻撃部位か、機能している最初の部位へ移す。
-  private reselectSite(): void {
-    if (this.selectedSiteId && this.siteStates.some((site) => site.definition.id === this.selectedSiteId && !site.disabled)) return;
-    this.selectedSiteId = this.activeSite?.id ?? this.siteStates.find((site) => !site.disabled)?.definition.id ?? null;
   }
 
   // integrity の減りに応じて修飾を外し、フェーズを更新する。
