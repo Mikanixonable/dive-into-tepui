@@ -117,8 +117,9 @@ export class Game {
   // ポーズ中か。時間倍率とは独立に時間を止める。
   private _isPaused = false;
   public get isPaused(): boolean { return this._isPaused; }
-  // 積分が進んでいるか。一時停止中と決着後は止まる。
-  private get simulating(): boolean { return !this._isPaused && this.activeStage.isPlaying; }
+  // 積分が進んでいるか。止まるのは一時停止中だけで、決着は止めない — 結果画面の裏でも
+  // 弾・敵・補給タイマーは通常どおり進む(GAME.md §2.1)。勝敗の再確定は Stage が拒む。
+  private get simulating(): boolean { return !this._isPaused; }
 
   private readonly _celestialSystem: CelestialSystem;
   public get celestialSystem(): CelestialSystem { return this._celestialSystem; }
@@ -391,7 +392,7 @@ export class Game {
 
   // ------------------------------------------------------------ update
 
-  // 1フレームぶんの update フェーズ。dtRaw [s] は実時間の経過。ポーズ中・決着後もシミュレーション
+  // 1フレームぶんの update フェーズ。dtRaw [s] は実時間の経過。ポーズ中もシミュレーション
   // 以外の更新は通す。
   public update(dtRaw: number, viewport: Viewport): void {
     this.sections.enter(SECTION.input);
@@ -586,7 +587,8 @@ export class Game {
       timeLabel,
       nowMs,
     );
-    syncControlledLoopSfx(this._worldSfx, controlled, displayTime, visibilityPolicy, this.simulating);
+    syncControlledLoopSfx(
+      this._worldSfx, controlled, displayTime, this.simulating && this.activeStage.isPlaying);
     // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraView.sync より後に通す。
     this.flashEffectsView.sync(this.flashEffects.live, camera);
 
