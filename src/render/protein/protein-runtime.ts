@@ -1,9 +1,6 @@
 import * as THREE from 'three/webgpu';
-import {
-  proteinAnchorOffset,
-  proteinAnchorResidues,
-  proteinSiteWorldPosition,
-} from './protein-anchors';
+import { proteinAnchorOffset, proteinAnchorResidues } from './protein-anchors';
+import { proteinSiteWorldPosition } from '../../physics/protein-site-geometry';
 import { projectProteinResidues, proteinMotionModeDisplacements } from './protein-motion-modes';
 import {
   createProteinMotionBinding,
@@ -175,16 +172,13 @@ export class ProteinRuntime {
 
   // 部位の変形済みアンカーを、個体の位置・姿勢でワールド座標へ写す。site が null なら origin。
   private siteWorldPosition(site: ProteinRenderSite | null, origin: Vec3, attitude: Quat): Vec3 {
+    if (site === null) return origin;
     // 残基の変位は、直前の syncVisual で投影したもの。
+    const offset = proteinAnchorOffset(
+      this.siteResidueGroups.get(site.id) ?? [], this.trackedResidueOffsets, this.motion.residueCount,
+    );
     return proteinSiteWorldPosition(
-      site,
-      site ? this.siteResidueGroups.get(site.id) ?? [] : [],
-      this.trackedResidueOffsets,
-      this.motion.residueCount,
-      this.asset.coordinateScale,
-      this.root.scale.x,
-      origin,
-      attitude,
+      site.position, offset, this.asset.coordinateScale, this.root.scale.x, origin, attitude,
     );
   }
 

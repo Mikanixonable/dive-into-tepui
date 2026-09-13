@@ -2,6 +2,9 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { AtmosphericWindField, CloudPatternTransport } from '../../src/render/cloud/atmospheric-wind';
 
+// 模様を載せる天体の半径 [m]。角位相は半径で割って出るので、値そのものは判定に効かない。
+const SURFACE_RADIUS = 6.371e6;
+
 export function register(): void {
   test('atmospheric wind: vertical shear is continuous and altitude dependent', () => {
     const field = new AtmosphericWindField();
@@ -14,13 +17,13 @@ export function register(): void {
 
   test('cloud pattern transport: phase is deterministic and does not alter physical wind', () => {
     const field = new AtmosphericWindField();
-    const transport = new CloudPatternTransport(field);
+    const transport = new CloudPatternTransport(SURFACE_RADIUS, field);
     assert.equal(transport.phaseAt(0.4, 1_000, 3600), transport.phaseAt(0.4, 1_000, 3600));
     assert.deepEqual(field.sample(0.4, 1_000), field.sample(0.4, 1_000));
   });
 
   test('cloud pattern transport: m/s phase conversion scales with elapsed time', () => {
-    const transport = new CloudPatternTransport();
+    const transport = new CloudPatternTransport(SURFACE_RADIUS);
     const oneDay = transport.angularPhase(10, 0, 0, 86400).east;
     const twoDays = transport.angularPhase(10, 0, 0, 2 * 86400).east;
     assert.ok(oneDay > 0);

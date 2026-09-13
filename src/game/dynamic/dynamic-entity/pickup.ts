@@ -3,7 +3,7 @@ import { fmtDist } from '../../../hud/utils';
 import { len, sub, v3, type Vec3 } from '../../../math/vec3';
 import { AmmoPickupView, RcsFuelPickupView } from '../../../render/dynamic/dynamic-entity/pickup-view';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
-import { MARKER_PRIORITY } from '../../marker/crowding';
+import { MARKER_PRIORITY } from '../../marker/marker-priority';
 import { COLOR_MARKER_FUEL, DIRECTION_GLYPH, ENTITY_GLYPH } from '../../marker/marker-identity';
 import { orbitRows } from '../../pickable/orbit-rows';
 import {
@@ -21,7 +21,7 @@ import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { ControlSelection } from '../../control-selection';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
-import type { MarkerVisibility } from '../../marker/marker-visibility';
+import type { MarkerVisibility } from '../../../marker/marker-visibility';
 import type { ObjectAuthoring } from '../../pickable/inspected-object';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
@@ -111,9 +111,10 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
       priority: MARKER_PRIORITY.AMMO,
       name: this.name,
       // 画面外では種別の色の三角で方位を指す。
-      bearingColor: this.bearingColor,
-      bearingSym: DIRECTION_GLYPH.bearing,
-      bearingClass: `${this.markerClass} mk-bearing-triangle`,
+      bearing: {
+        cls: `${this.markerClass} mk-bearing-triangle`, sym: DIRECTION_GLYPH.bearing,
+        color: this.bearingColor, visible: true, priority: MARKER_PRIORITY.AMMO, clustered: true,
+      },
       symMarkup: false,
     };
   }

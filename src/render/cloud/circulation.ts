@@ -55,7 +55,7 @@ type WeightedBand = {
 };
 
 export class Circulation {
-  private readonly patternTransport = new CloudPatternTransport();
+  private readonly patternTransport: CloudPatternTransport;
   // 帯ごとの (cos 自転角, sin 自転角, cos 公転位相, sin 公転位相)。書き換えるのはこちらで、
   // uniform 配列は描画のたびにここから詰め直される。
   private readonly flows: THREE.Vector4[];
@@ -63,8 +63,9 @@ export class Circulation {
   // 呼吸の位相(赤道での半径の伸び)。
   private readonly breath: FloatUniform = uniform(0);
 
-  // bands はこの層の物理風。
-  public constructor(private readonly bands: readonly CirculationBand[]) {
+  // bands はこの層の物理風、surfaceRadius は模様を載せる天体の半径 [m]。
+  public constructor(private readonly bands: readonly CirculationBand[], surfaceRadius: number) {
+    this.patternTransport = new CloudPatternTransport(surfaceRadius);
     this.flows = bands.map(() => new THREE.Vector4(1, 0, 1, 0));
     this.flowArray = uniformArray(this.flows, 'vec4');
     this.syncTime(0);

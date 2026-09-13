@@ -8,7 +8,7 @@ import { occlusionOpacity } from '../../physics/occlusion';
 import { LAGRANGE_MIN_CLEARANCE_RATIO } from '../celestial/lagrange-id';
 import { LagrangePointMarker } from './lagrange-point-marker';
 import { CelestialSubLabels, type CelestialLabelState } from './celestial-sub-labels';
-import { CrowdingGrid, DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, type ProjectedLabel } from './crowding';
+import { CrowdingGrid, DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, type ProjectedLabel } from '../../marker/crowding';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapDisplayToggles } from '../map/display-toggles';
@@ -16,7 +16,9 @@ import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { ProjectFn } from '../../math/projection';
 import type { GroupedMarkers } from './grouped-markers';
-import type { MarkerSlots } from './marker-slots';
+import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { MarkerSink } from '../../marker/marker-sink';
+import { pointPlacement } from './marker-placement';
 
 // 名前の混雑判定の半径 [px]。これより近い名前どうしは、優先度の低いほうを隠す。
 const LABEL_CROWDING_PX = 40;
@@ -83,8 +85,8 @@ export class CelestialMarkers {
   private readonly labelsById = new Map<string, CelestialLabel>();
   // このフレームで表示する対象に絞ったラベル。
   private shownLabels: readonly CelestialLabel[] = [];
-  // 直前のフレームに表示していたラベル id(集合から外れたものを隠すため)。
-  private prevShownIds: readonly string[] = [];
+  // このフレームに出すラベルの宣言。サブ行を足すときに同じ列を書き換えて置き直す。
+  private readonly declarations: MarkerDeclaration[] = [];
 
   // このフレームの選択候補に出す天体とラグランジュ点マーカー(表示ポリシーを通ったもの)。
   private readonly bodyPickableItems: ObjectPickable[] = [];
@@ -94,8 +96,6 @@ export class CelestialMarkers {
   private readonly projectedForIcon: ProjectedLabel[] = [];
   private readonly labelCrowding = new CrowdingGrid(LABEL_CROWDING_PX, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO);
   private readonly iconCrowding = new CrowdingGrid(ICON_CROWDING_PX, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO);
-  private shownIdsScratch: string[] = [];
-  private readonly nowShownScratch = new Set<string>();
   private readonly activeCelestialLabels: ActiveCelestialLabel[] = [];
   private readonly subLabels: CelestialSubLabels;
 
@@ -106,8 +106,8 @@ export class CelestialMarkers {
 
   // 星系の全天体とラグランジュ点からラベルの全集合を組む。ラグランジュ点は、共線点・三角点
   // それぞれの成立条件を満たす点だけを持つ。
-  constructor(private readonly markers: MarkerSlots, private readonly celestialSystem: CelestialSystem) {
-    this.subLabels = new CelestialSubLabels(markers, celestialSystem);
+  constructor(private readonly group: MarkerSink, private readonly celestialSystem: CelestialSystem) {
+    this.subLabels = new CelestialSubLabels(celestialSystem);
     this.lagrangeSources = celestialSystem.entities.flatMap((body) => {
       const motion = body.motion;
       // 全公転天体で出すと点の数が天体数の数倍になり、ラベルが画面を埋める。
@@ -169,6 +169,7 @@ export class CelestialMarkers {
   // 同程度の距離なら優先度の低い方を隠す。
   syncLabels(
     project: ProjectFn, cameraPos: Vec3, displayTime: number, visibilityPolicy: MapVisibilityPolicy,
+    nowMs: number,
   ): void {
     this.refreshShownLabels(displayTime, visibilityPolicy);
     this.projectLabels(project, cameraPos, displayTime);
@@ -176,15 +177,13 @@ export class CelestialMarkers {
     const hiddenLabels = this.labelCrowding.compute(this.projectedForLabel);
     const hiddenIcons = this.iconCrowding.compute(this.projectedForIcon);
 
-    // 判定に従って1件ずつ置き、集合から外れたものを畳む。
-    const shownIds = this.shownIdsScratch;
-    shownIds.length = 0;
+    // 判定に従って1件ずつ宣言へ組み、集合から外れたものはこのフレームの列から落ちる。
     this.activeCelestialLabels.length = 0;
+    this.declarations.length = 0;
     for (const label of this.shownLabels) {
-      shownIds.push(label.item.id);
-      this.placeLabel(label, hiddenLabels, hiddenIcons, project, cameraPos);
+      this.declarations.push(this.labelDeclaration(label, hiddenLabels, hiddenIcons, project, cameraPos));
     }
-    this.hideLabelsLeftBehind(shownIds);
+    this.group.sync(this.declarations, nowMs);
   }
 
   // 選択候補に残った対象の表示座標と表示可否を書き、このフレームに描くラベルを絞り込む。
@@ -229,26 +228,26 @@ export class CelestialMarkers {
     }
   }
 
-  // ラベル1件を、間引きの結果に従ってマーカーへ置く(消えた対象は隠して掴めなくする)。
-  private placeLabel(
+  // ラベル1件の宣言を、間引きの結果に従って組む(消えた対象は伏せて掴めなくする)。
+  private labelDeclaration(
     label: CelestialLabel, hiddenLabels: ReadonlySet<string>, hiddenIcons: ReadonlySet<string>,
     project: ProjectFn, cameraPos: Vec3,
-  ): void {
+  ): MarkerDeclaration {
     const id = label.item.id;
+    const base = {
+      id, cls: label.item.markerClass, sym: label.item.glyph, priority: label.item.labelPriority,
+    };
     const projected = this.frameScratch.get(id);
     if (projected === undefined || projected.occluded) {
       label.pickable = false;
-      if (projected?.occluded) this.markers.fadeOut(id);
-      else this.markers.hide(id);
-      return;
+      return { ...base, x: 0, y: 0, front: false, occluded: projected?.occluded === true };
     }
     // 名前とアイコンのどちらも残らなければ、マーカーごと畳む。
     const labelVisible = label.showLabel && !hiddenLabels.has(id);
     const iconVisible = label.showIcon && !hiddenIcons.has(id);
     if (!labelVisible && !iconVisible) {
       label.pickable = false;
-      this.markers.hide(id);
-      return;
+      return { ...base, x: 0, y: 0, front: false };
     }
     label.pickable = true;
     if (projected.front) {
@@ -257,32 +256,27 @@ export class CelestialMarkers {
         dist: this.distScratch.get(id)!, iconVisible, labelVisible,
       });
     }
-    this.markers.setPosition(
-      id, label.item.markerClass, iconVisible ? label.item.glyph : '', label.pos, project,
-      labelVisible ? label.item.markerLabel : '',
-      projected.opacity, undefined, undefined, false, false, label.item.labelPriority, cameraPos,
-    );
-  }
-
-  // 前のフレームまで出していて、今フレームは表示対象から外れたラベルを畳む。
-  private hideLabelsLeftBehind(shownIds: string[]): void {
-    const nowShown = this.nowShownScratch;
-    nowShown.clear();
-    for (const id of shownIds) nowShown.add(id);
-    for (const id of this.prevShownIds) if (!nowShown.has(id)) this.markers.hide(id);
-    const previous = this.prevShownIds as string[];
-    this.prevShownIds = shownIds;
-    this.shownIdsScratch = previous;
-    this.shownIdsScratch.length = 0;
+    const { x, y, front, dist } = pointPlacement(label.pos, project, cameraPos);
+    return {
+      ...base, sym: iconVisible ? label.item.glyph : '', x, y, front, dist,
+      label: labelVisible ? label.item.markerLabel : '', opacity: projected.opacity,
+    };
   }
 
   // 混雑で画面から消えた船・敵機・基地を、天体ラベルの下のサブ行として描き足す。
+  // syncLabels が組んだ宣言のうち、集約先になった天体のぶんだけを差し替えて置き直す。
   syncSubLabels(
     groupedMarkers: GroupedMarkers, celestialBodies: readonly CelestialBody[], pivot: number,
-    project: ProjectFn, cameraPos: Vec3,
+    project: ProjectFn, cameraPos: Vec3, nowMs: number,
   ): void {
-    this.subLabels.sync(
+    const replacements = this.subLabels.declarations(
       groupedMarkers, (id) => this.labelStateOf(id), celestialBodies, pivot, project, cameraPos);
+    if (replacements.length === 0) return;
+    for (const replacement of replacements) {
+      const index = this.declarations.findIndex((d) => d.id === replacement.id);
+      if (index >= 0) this.declarations[index] = replacement;
+    }
+    this.group.sync(this.declarations, nowMs);
   }
 
   // サブ行を足すために要る、今フレームの1件ぶんの表示状態。ラベルを持たない id には null。
@@ -304,8 +298,14 @@ export class CelestialMarkers {
   }
 
   // 出している天体ラベルをすべて畳む。
-  hideLabels(): void {
+  hideLabels(nowMs: number): void {
     this.activeCelestialLabels.length = 0;
-    for (const label of this.labels) this.markers.hide(label.item.id);
+    this.declarations.length = 0;
+    this.group.sync(this.declarations, nowMs);
+  }
+
+  // 所有するラベルのマーカーを取り除く。
+  dispose(): void {
+    this.group.dispose();
   }
 }

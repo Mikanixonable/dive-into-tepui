@@ -30,10 +30,10 @@ export interface ViewFrame {
   handlePointer(simTime: number, viewport: Viewport): void;
   // update フェーズ: カメラ更新の後。選択候補と可視性ポリシーの確定。
   update(displayWindow: DisplayWindow): void;
-  // sync フェーズ前半: 天体ラベル。マーカー同期より先に呼ばれる。
-  syncLabels(displayWindow: DisplayWindow, camera: CameraFrame): void;
+  // sync フェーズ前半: 天体ラベル。マーカー同期より先に呼ばれる。nowMs はフレームの実時刻 [ms]。
+  syncLabels(displayWindow: DisplayWindow, camera: CameraFrame, nowMs: number): void;
   // sync フェーズ後半: ビュー専用の常設パネル・表示物。軌道線の同期より後に呼ばれる。
-  syncPanels(displayWindow: DisplayWindow, camera: CameraFrame): void;
+  syncPanels(displayWindow: DisplayWindow, camera: CameraFrame, nowMs: number): void;
   // このビューが保持する表示物・DOM を片付ける。
   dispose(): void;
 }

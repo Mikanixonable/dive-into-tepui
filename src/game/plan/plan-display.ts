@@ -11,7 +11,10 @@ import { fmtMarkerDist } from '../../hud/utils';
 import { TickRank, TimeLabelSetting, calendarBoundaries, tickLabel } from '../hud/orbit/calendar-ticks';
 import { ApsisMarker } from '../marker/apsis-marker';
 import type { DisplayedPath } from '../marker/equator-node-marker-pair';
-import { MarkerSlots } from '../marker/marker-slots';
+import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { MarkerSink } from '../../marker/marker-sink';
+import { MARKER_PRIORITY } from '../marker/marker-priority';
+import { pointPlacement } from '../marker/marker-placement';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-identity';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { ObjectPickable } from '../pickable/object-pickable';
@@ -81,15 +84,14 @@ export class PlanDisplay {
 
   private readonly apsisPe = new ApsisMarker('pe');
   private readonly apsisAp = new ApsisMarker('ap');
-  // 直前のフレームに置いた目盛のキー。
-  private lastTickKeys: readonly string[] = [];
   // このフレームに描く計画の材料。描く計画が無ければ null。
   private displayedPlan: PlanData | null = null;
+  private readonly declarations: MarkerDeclaration[] = [];
 
   // scene に描く計画折れ線を構築する。
   public constructor(
     scene: THREE.Scene,
-    private readonly markers: MarkerSlots,
+    private readonly group: MarkerSink,
     private readonly celestialBodies: CelestialBodies,
     displayDuration: DisplayDurationSource,
     private readonly controlSelection: ControlSelection,
@@ -121,19 +123,24 @@ export class PlanDisplay {
   }
 
   // 計画折れ線・ゴーストマーカー・アプシスアイコン・目盛を、焼かれた折れ線から組んで置く。
-  public sync(camera: CameraFrame, displayWindow: DisplayWindow): void {
+  // nowMs はフレームの実時刻 [ms]。
+  public sync(camera: CameraFrame, displayWindow: DisplayWindow, nowMs: number): void {
     // 描く弧が無いフレームも折れ線の同期は通す — 止めると、消えたはずの線がそのまま残る。
     this.path.sync(camera);
-    if (this.displayedPlan === null) { this.hide(); return; }
-    const project = camera.project;
-    const view = camera.mode;
-    const cameraPos = camera.position;
-    const { simTime, displayTime } = displayWindow;
-    const timeLabel = timeLabelSettingOf(displayWindow);
-    this.syncGhost(project, view, cameraPos, displayTime, simTime);
-    this.syncApsisMarkers(project, view, cameraPos, displayTime, timeLabel);
-    this.syncImpactMarkers(project, view, cameraPos, displayTime);
-    this.syncTickMarkers(project, view, cameraPos, displayTime, timeLabel);
+    const declarations = this.declarations;
+    declarations.length = 0;
+    if (this.displayedPlan !== null) {
+      const project = camera.project;
+      const view = camera.mode;
+      const cameraPos = camera.position;
+      const { simTime, displayTime } = displayWindow;
+      const timeLabel = timeLabelSettingOf(displayWindow);
+      declarations.push(this.ghostDeclaration(project, view, cameraPos, displayTime, simTime));
+      this.pushApsisDeclarations(declarations, project, view, cameraPos, displayTime, timeLabel);
+      this.pushImpactDeclarations(declarations, project, view, cameraPos, displayTime);
+      this.pushTickDeclarations(declarations, project, view, cameraPos, displayTime, timeLabel);
+    }
+    this.group.sync(declarations, nowMs);
   }
 
   // このフレームに表示している計画区間の弧。表示している計画が無ければ空。
@@ -146,9 +153,10 @@ export class PlanDisplay {
     return { planArcs: this.path.lastRebuiltArcs };
   }
 
-  // 計画折れ線の描画資源を片付ける。
+  // 計画折れ線の描画資源とマーカー群を片付ける。
   public dispose(): void {
     this.path.dispose();
+    this.group.dispose();
   }
 
   // このフレームに出す折れ線の材料。出す価値のある折れ線が無ければ null — ノードの無い計画は
@@ -157,16 +165,6 @@ export class PlanDisplay {
     if (ship === null) return null;
     if (view !== 'map' && ship.plan.nodes.length === 0) return null;
     return ship.plan.displayData(ship.motion.state);
-  }
-
-  // 計画に属するマーカーをすべて畳む。
-  private hide(): void {
-    this.markers.hide('plannedPlayer');
-    this.markers.hide(this.apsisPe.id);
-    this.markers.hide(this.apsisAp.id);
-    for (const key of IMPACT_MARKER_KEYS) this.markers.hide(key);
-    for (const key of this.lastTickKeys) this.markers.remove(key);
-    this.lastTickKeys = [];
   }
 
   // 近地点・遠地点アイコンの右クリック候補(このフレームに求まったものだけ)。
@@ -187,24 +185,22 @@ export class PlanDisplay {
     };
   }
 
-  // ⬢ ゴーストマーカーを計画位置に置く。計画がそこまで届いていなければ隠す。
-  private syncGhost(
+  // ⬢ ゴーストマーカーの宣言。計画がそこまで届いていなければ伏せ、マップビューで天体の陰に
+  // 入ったら薄れて消える。
+  private ghostDeclaration(
     project: ProjectFn, view: ViewMode, cameraPos: Vec3, displayTime: number, simTime: number,
-  ): void {
+  ): MarkerDeclaration {
+    const base = {
+      id: 'plannedPlayer', cls: 'mk-planned', sym: ENTITY_GLYPH.ghost,
+      priority: MARKER_PRIORITY.NONE,
+    };
     const ghost = this.ghostAt(displayTime, simTime);
-    if (!ghost) {
-      this.markers.hide('plannedPlayer');
-      return;
-    }
-    // マップビューでは天体の陰に入ったら薄れて消える。
+    if (!ghost) return { ...base, x: 0, y: 0, front: false };
     if (view === 'map' && this.occludedByCelestialBody(cameraPos, ghost.pos, displayTime)) {
-      this.markers.fadeOut('plannedPlayer');
-      return;
+      return { ...base, x: 0, y: 0, front: false, occluded: true };
     }
-    this.markers.setPosition(
-      'plannedPlayer', 'mk-planned', ENTITY_GLYPH.ghost, ghost.pos, project, ghost.label,
-      1, undefined, undefined, false, false, undefined, cameraPos,
-    );
+    const { x, y, front, dist } = pointPlacement(ghost.pos, project, cameraPos);
+    return { ...base, x, y, front, dist, label: ghost.label };
   }
 
   // pos が displayTime 時点の天体に隠れているか。
@@ -308,35 +304,38 @@ export class PlanDisplay {
     return icons;
   }
 
-  // 近地点・遠地点のマーカーを、それぞれが解いた位置へ置く。
-  private syncApsisMarkers(
-    project: ProjectFn, view: ViewMode, cameraPos: Vec3, displayTime: number, timeLabel: TimeLabelSetting,
+  // 近地点・遠地点のマーカーの宣言を、それぞれが解いた位置から積む。
+  private pushApsisDeclarations(
+    out: MarkerDeclaration[], project: ProjectFn, view: ViewMode, cameraPos: Vec3,
+    displayTime: number, timeLabel: TimeLabelSetting,
   ): void {
     const celestialBodies = this.celestialBodies.celestialMotions;
     for (const marker of [this.apsisPe, this.apsisAp]) {
-      marker.sync(
-        this.markers, project, cameraPos, celestialBodies, displayTime, view === 'map', timeLabel,
-      );
+      out.push(marker.declaration(
+        project, cameraPos, celestialBodies, displayTime, view === 'map', timeLabel,
+      ));
     }
   }
 
-  // ✕ 衝突マーカーを、折れ線が返した衝突地点に置き、出ていないものを隠す。
-  private syncImpactMarkers(
-    project: ProjectFn, view: ViewMode, cameraPos: Vec3, displayTime: number,
+  // ✕ 衝突マーカーの宣言を、折れ線が返した衝突地点から積む。
+  private pushImpactDeclarations(
+    out: MarkerDeclaration[], project: ProjectFn, view: ViewMode, cameraPos: Vec3, displayTime: number,
   ): void {
     const impactIcons = this.impactIconsOf();
     for (const key of IMPACT_MARKER_KEYS) {
-      // 衝突の無い区間は隠し、マップビューで天体の陰に入ったものは薄れて消える。
+      const base = {
+        id: key, cls: 'mk-impact', sym: ORBIT_POINT_GLYPH.impact,
+        priority: MARKER_PRIORITY.IMPACT, iconHidable: false,
+      };
+      // 衝突の無い区間は伏せ、マップビューで天体の陰に入ったものは薄れて消える。
       const icon = impactIcons.find((m) => m.key === key);
       if (!icon) {
-        this.markers.hide(key);
+        out.push({ ...base, x: 0, y: 0, front: false });
       } else if (view === 'map' && this.occludedByCelestialBody(cameraPos, icon.pos, displayTime)) {
-        this.markers.fadeOut(key);
+        out.push({ ...base, x: 0, y: 0, front: false, occluded: true });
       } else {
-        this.markers.setPosition(
-          key, 'mk-impact', ORBIT_POINT_GLYPH.impact, icon.pos, project, icon.label,
-          1, undefined, undefined, false, false, undefined, cameraPos,
-        );
+        const { x, y, front, dist } = pointPlacement(icon.pos, project, cameraPos);
+        out.push({ ...base, x, y, front, dist, label: icon.label });
       }
     }
   }
@@ -344,8 +343,9 @@ export class PlanDisplay {
   // 暦の区切りの目盛候補を画面距離で間引いて置く。粗い階数(月・年)から順に採否を決め、
   // 採用済みの目盛から PLAN_TICK_MIN_PX 未満しか離れない候補は捨てる — 離心軌道では候補の
   // 画面間隔が場所で桁違いになるので、区間全体で単位を揃えずこの局所判定に任せる。
-  private syncTickMarkers(
-    project: ProjectFn, view: ViewMode, cameraPos: Vec3, displayTime: number, timeLabel: TimeLabelSetting,
+  private pushTickDeclarations(
+    out: MarkerDeclaration[], project: ProjectFn, view: ViewMode, cameraPos: Vec3,
+    displayTime: number, timeLabel: TimeLabelSetting,
   ): void {
     const icons = this.tickIconsOf(timeLabel);
     const n = icons.length;
@@ -374,23 +374,21 @@ export class PlanDisplay {
     for (let i = 0; i < n; i++) {
       const icon = icons[i]!;
       const occluded = view === 'map' && this.occludedByCelestialBody(cameraPos, icon.pos, displayTime);
-      if (!shown[i] || occluded) {
-        if (occluded) this.markers.fadeOut(icon.key);
-        else this.markers.hide(icon.key);
-        continue;
-      }
       const p = projected[i]!;
       const depth = finestShown === null ? 0 : Math.min(Math.max(icon.rank - finestShown, 0), maxDepth);
-      const label = this.isFarFromShown(projected, shown, i, labelMinPxSq) ? icon.label : '';
-      this.markers.set(
-        icon.key, 'mk-plantick', tickSvg(PLAN_TICK_RADIUS_PX[depth]!), p.x, p.y, true,
-        label, 1, undefined, undefined, true,
-      );
+      const base = {
+        id: icon.key, cls: 'mk-plantick', sym: tickSvg(PLAN_TICK_RADIUS_PX[depth]!), markup: true,
+        priority: MARKER_PRIORITY.NONE,
+      };
+      if (!shown[i] || occluded) {
+        out.push({ ...base, x: p.x, y: p.y, front: false, occluded });
+        continue;
+      }
+      out.push({
+        ...base, x: p.x, y: p.y, front: true,
+        label: this.isFarFromShown(projected, shown, i, labelMinPxSq) ? icon.label : '',
+      });
     }
-    // 候補の暦区切り自体が入れ替わった分は、二度と使わないキーなので remove で消す。
-    const keys = icons.map((icon) => icon.key);
-    for (const key of this.lastTickKeys) if (!keys.includes(key)) this.markers.remove(key);
-    this.lastTickKeys = keys;
   }
 
   // 軌道順で i の前後にある「採用済み(shown)」の目盛それぞれとの画面距離の2乗が、

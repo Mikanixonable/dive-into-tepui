@@ -33,8 +33,7 @@ import {
 import { PlayerView, type PlayerRenderSource } from '../../render/dynamic/player/player-view';
 import type { DynamicViewFrame } from '../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../orbit-reference';
-import type { MarkerSlots } from '../marker/marker-slots';
-import type { MarkerVisibility } from '../marker/marker-visibility';
+import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { RadiatorSide } from './radiator';
 
 import { Plan, type PlanExecutionMode } from '../plan/plan';
@@ -44,7 +43,7 @@ import { DIRECTION_GLYPH, ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../marker/mark
 import { shipMarkerSvg } from '../marker/marker-shapes';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { AttachedBoosters } from './attached-boosters';
-import { MARKER_PRIORITY } from '../marker/crowding';
+import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { strongestAttractor } from '../../physics/attractor';
 import { apsisAltitudes } from '../../physics/elements';
 import { fmtAmmoStatus } from '../hud/ammo-status';
@@ -128,7 +127,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     private readonly worldSfx: WorldSfx,
     scene: THREE.Scene,
     private readonly fx: FlashEffects,
-    markers: MarkerSlots,
     init: PlayerInit = {},
   ) {
     const saved = 'saved' in init ? init.saved : undefined;
@@ -175,7 +173,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
         saved?.power,
         saved?.boosters,
       ),
-      new PlayerView(scene, id, markers, BELT_MAX_VISIBLE),
+      new PlayerView(scene, id, BELT_MAX_VISIBLE),
       id,
     );
     this.throttle = new Throttle(notifier, saved?.throttle);
@@ -538,10 +536,10 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       priority: MARKER_PRIORITY.PLAYER,
       name: this.name,
       // 画面外の方位マーカーは ALLY_BEARING_MAX_DISTANCE 以内の艦にだけ出す
-      bearingColor: COLOR_MARKER_ALLY,
-      bearingSym: DIRECTION_GLYPH.allyBearing,
-      bearingClass: 'mk-dir mk-ally-dir',
-      bearingVisible: dist <= ALLY_BEARING_MAX_DISTANCE,
+      bearing: {
+        cls: 'mk-dir mk-ally-dir', sym: DIRECTION_GLYPH.allyBearing, color: COLOR_MARKER_ALLY,
+        visible: dist <= ALLY_BEARING_MAX_DISTANCE, priority: MARKER_PRIORITY.PLAYER, clustered: true,
+      },
       color: isActive ? 'var(--color-primary)' : COLOR_MARKER_ALLY,
       symMarkup: true,
     };
@@ -573,11 +571,8 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       },
       belt: { anchor: belt.anchor, positions: belt.positions, twists: belt.twists },
       magsLeft: this.magsLeft,
-      roundsInMag: this.roundsInMag,
-      averageMuzzleVelocity: this.averageMuzzleVelocity,
       solar: { up: power.deployOf('up'), down: power.deployOf('down') },
       radiator: { up: radiatorPanel('up'), down: radiatorPanel('down') },
-      orbitAxesReference: orbitReference?.state ?? null,
     };
   }
 

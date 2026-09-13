@@ -1,5 +1,5 @@
 // ゲーム世界の外の操作・通知の合成効果音(アセット不要)。音源の位置という概念を持たず、
-// どこでも一定音量で鳴る。AudioContext が unlock されるまでは無音のまま何もしない。
+// どこでも一定音量で鳴る。AudioContext が開くまでは無音のまま何もしない。
 import { AudioEngine } from '../audio-engine';
 
 export class UiSfx {

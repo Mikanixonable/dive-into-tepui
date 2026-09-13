@@ -38,7 +38,7 @@ export class StarCelestialView extends CelestialView {
 
   // displayTime 時点の実位置へ恒星を置く。模式図では輪郭円、それ以外は実球体か点像で描く。
   public sync(
-    motion: CelestialMotion, displayTime: number, camera: CameraFrame,
+    motion: CelestialMotion, displayTime: number, _nowMs: number, camera: CameraFrame,
     _star: StellarLightSource | null,
     graphics: GraphicsSettingsData, style: RenderStyle, visible: boolean,
   ): void {

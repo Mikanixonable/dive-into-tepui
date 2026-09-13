@@ -108,7 +108,7 @@ function findViolations(posix, src) {
 
   if (/(^|\/)src\/physics\//.test(posix)) {
     for (const [re, msg] of PHYSICS_FORBIDDEN) {
-      if (re.test(src)) out.push({ strict: true, text: `${msg}(CODING-RULE 1.3 フォルダの境界)` });
+      if (re.test(src)) out.push({ strict: true, text: `${msg}(CODING-RULE 1.3 層と境界)` });
     }
   }
 

@@ -8,14 +8,16 @@ import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarkerPair, type EquatorNodeInputs } from './equator-node-marker-pair';
-import type { MarkerSlots } from './marker-slots';
+import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { MarkerSink } from '../../marker/marker-sink';
 
 export class EquatorNodeManager {
   private readonly pairs = new Map<string, EquatorNodeMarkerPair>();
+  private readonly declarations: MarkerDeclaration[] = [];
 
   public constructor(
     private readonly roster: EntityRoster,
-    private readonly markers: MarkerSlots,
+    private readonly group: MarkerSink,
   ) {}
 
   // このフレームで必要な個体だけを解き、消滅・非表示になった個体の解を失効させる。
@@ -37,15 +39,13 @@ export class EquatorNodeManager {
         current?.retire();
         continue;
       }
-      const pair = current ?? new EquatorNodeMarkerPair(entity.id, this.markers);
+      const pair = current ?? new EquatorNodeMarkerPair(entity.id);
       if (current === undefined) this.pairs.set(entity.id, pair);
       pair.update(entity.motion, entity.name, inputs);
     }
-    // 非表示個体は再利用のため残すが、roster から消えた個体は要素ごと破棄する。
-    for (const [id, pair] of this.pairs) {
-      if (retainedIds.has(id)) continue;
-      pair.dispose();
-      this.pairs.delete(id);
+    // 非表示個体は再利用のため残すが、roster から消えた個体は捨てる。
+    for (const id of this.pairs.keys()) {
+      if (!retainedIds.has(id)) this.pairs.delete(id);
     }
   }
 
@@ -58,17 +58,22 @@ export class EquatorNodeManager {
   public sync(
     project: ProjectFn, cameraPos: Vec3, celestialBodies: readonly CelestialBody[],
     celestialBodiesPivot: number, occludeByBodies: boolean, timeLabel: TimeLabelSetting,
+    nowMs: number,
   ): void {
+    const declarations = this.declarations;
+    declarations.length = 0;
     for (const pair of this.pairs.values()) {
-      pair.sync(
-        project, cameraPos, celestialBodies, celestialBodiesPivot, occludeByBodies, timeLabel,
+      pair.pushDeclarations(
+        declarations, project, cameraPos, celestialBodies, celestialBodiesPivot,
+        occludeByBodies, timeLabel,
       );
     }
+    this.group.sync(declarations, nowMs);
   }
 
-  // 所有する交点マーカーを DOM ごと取り除く。
+  // 所有する交点マーカーを取り除く。
   public dispose(): void {
-    for (const pair of this.pairs.values()) pair.dispose();
     this.pairs.clear();
+    this.group.dispose();
   }
 }

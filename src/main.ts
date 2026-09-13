@@ -14,6 +14,8 @@ import { themeIdSetting } from './settings/theme-setting';
 import { applyThemePalette } from './theme';
 import { Hud } from './game/hud/hud';
 import { HudShell } from './hud/hud-shell';
+import { MarkerDevice } from './marker/marker-device';
+import { injectMarkerIdentityStyle } from './game/marker/marker-identity-style';
 import { PauseMenu } from './hud/windows/pause-menu';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
@@ -60,7 +62,7 @@ function startAnimationLoop(
     // 描画先の寸法はフレームの先頭で1度だけ読む。投影・尺度・ポインタ座標が同じ矩形を見ないと、
     // リサイズしたフレームで画面上の当たり判定がずれる。
     const viewport = browserViewport();
-    gs.syncViewport(viewport);
+    gs.syncFrame(viewport, graphics.current, debugInfo.debugTarget);
     const game = launcher.currentGame;
     const current = launcher.current;
     // 周回の切り替え中は Game が無いので、次フレームを予約して抜ける。
@@ -84,7 +86,7 @@ function startAnimationLoop(
       debugInfo.handleInput(game.input);
       autoSave.update(current.snapshot);
       const t1 = debugInfo.on ? performance.now() : 0;
-      game.sync(graphics.current, renderStyle.current, viewport);
+      game.sync(graphics.current, renderStyle.current, viewport, now);
       const t2 = debugInfo.on ? performance.now() : 0;
       game.render(renderStyle.current);
       const t3 = debugInfo.on ? performance.now() : 0;
@@ -116,26 +118,29 @@ function startAnimationLoop(
 // タイトル(ステージ選択)画面の時点から使えるべき画面と音声を、Game より先に組む。
 // 各部品は設定の現在値を構築時に受け取り、以後の変更は main が配線する。
 function initHud(settings: UserSettings): {
-  shell: HudShell; hud: Hud; audioEngine: AudioEngine; bgm: Bgm;
+  shell: HudShell; hud: Hud; markers: MarkerDevice; audioEngine: AudioEngine; bgm: Bgm;
   pauseMenu: PauseMenu;
 } {
   const shell = new HudShell();
   const hud = new Hud(shell, settings.renderStyle.current);
+  // マーカーの骨格は装置が、種別ごとの見た目は表示の導出が注入する。骨格を先に置き、
+  // 同じ詳細度なら種別ごとの指定が勝つ順序にする。
+  const markers = new MarkerDevice(shell.layers.marker);
+  injectMarkerIdentityStyle();
   const audioEngine = new AudioEngine();
   const bgm = new Bgm(audioEngine, settings.bgmVolume.current);
   const pauseMenu = new PauseMenu(
     shell.layers.system, shell.overlayManager, bgm, settings.graphics.current, settings.bgmVolume.current,
   );
-  return { shell, hud, audioEngine, bgm, pauseMenu };
+  return { shell, hud, markers, audioEngine, bgm, pauseMenu };
 }
 
-// 設定の変更を、その値を使う側へ配る。書き換えの入口はどれも設定へ戻し、表示はその通知から引き直す。
+// 設定の変更を、通知から引き直す側へ配る。書き換えの入口はどれも設定へ戻す。
 function bindSettings(
-  settings: UserSettings, gs: GameScene, hud: Hud, bgm: Bgm,
+  settings: UserSettings, hud: Hud, bgm: Bgm,
   pauseMenu: PauseMenu, debugInfo: DebugInfoWindow,
 ): void {
   const settingsView = pauseMenu.settingsView;
-  settings.graphics.subscribe((graphics) => gs.applyGraphics(graphics));
   settingsView.onGraphicsChange = (graphics) => settings.graphics.set(graphics);
 
   settings.renderStyle.subscribe((style) => debugInfo.syncRenderStyle(style));
@@ -165,10 +170,10 @@ async function main() {
   const snapshotService = new SnapshotService(saveStore, slots);
   const settings = new UserSettings(browserSettingStorage);
   const gs = await initScene(settings.graphics.current);
-  const { shell, hud, audioEngine, bgm, pauseMenu } = initHud(settings);
+  const { shell, hud, markers, audioEngine, bgm, pauseMenu } = initHud(settings);
   const sections = new FrameSections();
   const host: GameHost = {
-    scene: gs, hud, sections,
+    scene: gs, hud, markers, sections,
     mapDisplay: settings.mapDisplayToggles,
     grid: settings.gridVisibility,
     orbitGuide: settings.orbitGuide,
@@ -197,10 +202,10 @@ async function main() {
 
   // デバッグ情報ウィンドウと、設定の配線。
   const debugInfo = new DebugInfoWindow(
-    shell.layers.window, gs.renderer, sections, gs.gpu, shell.overlayManager, gs.pipeline,
+    shell.layers.window, gs.renderer, sections, gs.gpu, shell.overlayManager,
     settings.renderStyle.current, debugInfoOpenAtStart(),
   );
-  bindSettings(settings, gs, hud, bgm, pauseMenu, debugInfo);
+  bindSettings(settings, hud, bgm, pauseMenu, debugInfo);
   pauseMenu.onOpenDebugInfoWindow = () => {
     pauseMenu.toggle(false);
     debugInfo.open();

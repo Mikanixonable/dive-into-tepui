@@ -24,8 +24,8 @@ import type { Quat } from '../../../math/quat';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { EnemyDeathCause, StageOutcome } from '../../stages/stage-outcome';
 import { savedKinematicState, type EnemySaveData } from '../../save/save-data';
-import { MARKER_PRIORITY } from '../../marker/crowding';
-import type { MarkerVisibility } from '../../marker/marker-visibility';
+import { MARKER_PRIORITY } from '../../marker/marker-priority';
+import type { MarkerVisibility } from '../../../marker/marker-visibility';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import type { CombatTarget } from './combat-target';
 import type { ObjectPickable } from '../../pickable/object-pickable';
@@ -223,9 +223,10 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
       priority: MARKER_PRIORITY.ENEMY - dist / 1e9,
       name: this.name,
       // 敵本体と画面外方位マーカーは同じ色で統一する。
-      bearingColor: COLOR_MARKER_ENEMY,
-      bearingSym: ENTITY_GLYPH.enemyShip,
-      bearingClass: 'mk-dir mk-bearing-triangle',
+      bearing: {
+        cls: 'mk-dir mk-bearing-triangle', sym: ENTITY_GLYPH.enemyShip, color: COLOR_MARKER_ENEMY,
+        visible: true, priority: MARKER_PRIORITY.NONE, clustered: false,
+      },
       color: COLOR_MARKER_ENEMY,
       symMarkup: true,
     };

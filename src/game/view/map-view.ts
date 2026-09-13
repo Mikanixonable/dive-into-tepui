@@ -12,7 +12,8 @@ import { LinePickables } from '../pickable/line-pickables';
 import type { ObjectWindows } from '../pickable/object-windows';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialMarkers } from '../marker/celestial-markers';
-import type { MarkerManager } from '../marker/marker-manager';
+import type { MarkerVisibility } from '../../marker/marker-visibility';
+import type { GroupedMarkers } from '../marker/grouped-markers';
 import type { EquatorNodeManager } from '../marker/equator-node-manager';
 import type { NavTarget } from '../nav-target';
 import { PlanEditor } from '../plan/plan-editor';
@@ -46,7 +47,8 @@ export class MapView implements ViewFrame {
     equatorNodes: EquatorNodeManager,
     private readonly celestialSystem: CelestialSystem,
     private readonly celestialMarkers: CelestialMarkers,
-    private readonly markerManager: MarkerManager,
+    markers: MarkerVisibility,
+    private readonly combatMarkers: GroupedMarkers,
     private readonly displayWindowManager: DisplayWindowManager,
     private readonly frameControls: FrameControls,
     frameAnchors: FrameAnchors,
@@ -70,7 +72,7 @@ export class MapView implements ViewFrame {
     );
     this.linePickables = new LinePickables(roster, celestialSystem);
     this.picking = new MapPicking(
-      hud, cameraSystem, roster, celestialSystem, celestialMarkers, markerManager,
+      hud, cameraSystem, roster, celestialSystem, celestialMarkers, markers,
       navTarget, frameControls, this.objectPickables, this.linePickables, objectWindows,
       controlSelection,
     );
@@ -132,17 +134,17 @@ export class MapView implements ViewFrame {
   }
 
   // 天体ラベルの間引きと表示。
-  public syncLabels(displayWindow: DisplayWindow, camera: CameraFrame): void {
+  public syncLabels(displayWindow: DisplayWindow, camera: CameraFrame, nowMs: number): void {
     const visibilityPolicy = this.visibilityPolicy;
-    if (visibilityPolicy === null) { this.celestialMarkers.hideLabels(); return; }
+    if (visibilityPolicy === null) { this.celestialMarkers.hideLabels(nowMs); return; }
     this.celestialMarkers.syncLabels(
-      camera.project, camera.position, displayWindow.displayTime, visibilityPolicy,
+      camera.project, camera.position, displayWindow.displayTime, visibilityPolicy, nowMs,
     );
   }
 
   // マップ専用の編集 UI と常設パネル(未来表示・座標系・軌道物体一覧)・天体ラベルのサブ行・
   // 軌道線の右クリック候補。
-  public syncPanels(displayWindow: DisplayWindow, camera: CameraFrame): void {
+  public syncPanels(displayWindow: DisplayWindow, camera: CameraFrame, nowMs: number): void {
     // 編集 UI と常設パネル
     this.planEditor.sync(this.cameraSystem.mapCamera.dist, camera.floatingOrigin);
     this.displayWindowManager.sync(this.controlSelection.current);
@@ -153,8 +155,8 @@ export class MapView implements ViewFrame {
     );
     // 天体ラベルのサブ行と、軌道線の右クリック候補
     this.celestialMarkers.syncSubLabels(
-      this.markerManager.combatMarkers, this.celestialSystem.celestialMotions, displayWindow.displayTime,
-      camera.project, camera.position,
+      this.combatMarkers, this.celestialSystem.celestialMotions, displayWindow.displayTime,
+      camera.project, camera.position, nowMs,
     );
     this.linePickables.refresh();
   }

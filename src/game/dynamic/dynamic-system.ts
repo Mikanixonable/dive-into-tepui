@@ -31,7 +31,6 @@ import type { EntitySaveDataUnion, GameSaveData } from '../save/save-data';
 import type { Notifier } from '../../hud/notifier';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../vfx/flash-effects';
-import type { MarkerSlots } from '../marker/marker-slots';
 import type { PerfCounts } from '../perf-counts';
 import type { OrbitReference } from '../orbit-reference';
 
@@ -58,7 +57,6 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     notifier: Notifier,
     worldSfx: WorldSfx,
     flash: FlashEffects,
-    markers: MarkerSlots,
     private readonly celestialBodies: CelestialBodies,
     private readonly sections: FrameSections,
     initialSimTime: number,
@@ -71,17 +69,16 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     ]);
     this.simulator = new Simulator(this, this, this, celestialBodies, sections, initialSimTime);
     this.nanWatchdog = new NanWatchdog(notifier);
-    if (saved) this.restoreFromSave(saved, notifier, worldSfx, flash, scene, markers);
+    if (saved) this.restoreFromSave(saved, notifier, worldSfx, flash, scene);
   }
 
   // スナップショットの顔ぶれを復元する。知らない種別は読み飛ばす。
   private restoreFromSave(
     save: GameSaveData, notifier: Notifier, worldSfx: WorldSfx, flash: FlashEffects, scene: THREE.Scene,
-    markers: MarkerSlots,
   ): void {
     for (const data of save.entities) {
       const restoration = restorationFor(
-        data, save.simTime, scene, notifier, worldSfx, markers, flash);
+        data, save.simTime, scene, notifier, worldSfx, flash);
       if (restoration === null) continue;
       this.spawnWhenReady(restoration.gate, () => restoration.build());
     }

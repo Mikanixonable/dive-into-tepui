@@ -15,7 +15,8 @@ import type { EntityRoster } from './dynamic/entity-roster';
 import { aliveCombatTarget, combatTargetById, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import type { Notifier } from '../hud/notifier';
 import { TimeLabelSetting } from './hud/orbit/calendar-ticks';
-import { MarkerSlots } from './marker/marker-slots';
+import type { MarkerDeclaration } from '../marker/marker-declaration';
+import type { MarkerSink } from '../marker/marker-sink';
 import { RelativeNodeMarker } from './marker/relative-node-marker';
 import type { CameraFrame } from '../render/camera/camera-frame';
 import { ObjectPickable } from './pickable/object-pickable';
@@ -75,7 +76,12 @@ export class NavTarget {
   // 戦闘ビューでもターゲットの未来の軌道計算を止めないため navTargetReader を立てている個体。
   private readerEntity: DynamicEntity | null = null;
 
-  public constructor(private readonly _notifier: Notifier, private readonly markers: MarkerSlots) {}
+  private readonly declarations: MarkerDeclaration[] = [];
+
+  public constructor(private readonly _notifier: Notifier, private readonly group: MarkerSink) {}
+
+  // 所有するマーカー群を取り除く。
+  public dispose(): void { this.group.dispose(); }
 
   // 現在のターゲットの id。未設定なら null。
   public get id(): string | null {
@@ -284,13 +290,16 @@ export class NavTarget {
   // occluders は遮蔽判定に使う天体で、occludersPivot はその位置を引く時刻。
   public sync(
     camera: CameraFrame, occluders: readonly CelestialBody[],
-    occludersPivot: number, timeLabel: TimeLabelSetting,
+    occludersPivot: number, timeLabel: TimeLabelSetting, nowMs: number,
   ): void {
+    const declarations = this.declarations;
+    declarations.length = 0;
     for (const marker of this.nodeMarkers) {
-      marker.sync(
-        this.markers, camera.project, camera.position,
+      declarations.push(marker.declaration(
+        camera.project, camera.position,
         occluders, occludersPivot, camera.mode === 'map', timeLabel,
-      );
+      ));
     }
+    this.group.sync(declarations, nowMs);
   }
 }
