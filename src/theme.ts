@@ -155,7 +155,7 @@ export const FONT_XXS = '11px';
 export const FONT_XS = '12px';
 const FONT_S = '13px';
 export const FONT_M = '14px';
-export const FONT_L = '15px';
+const FONT_L = '15px';
 export const FONT_XL = '18px';
 export const FONT_2XL = '24px';
 const FONT_3XL = '34px';
@@ -168,7 +168,7 @@ const GLYPH_BORESIGHT = '36px'; // .mk-boresight
 // 角丸。役割ごとの4段。
 export const RADIUS_MICRO = '8px';
 export const RADIUS_CONTROL = '11px';
-export const RADIUS_PANEL = '16px';
+const RADIUS_PANEL = '16px';
 export const RADIUS_WINDOW = '22px';
 const RADIUS_PILL = '999px'; // トラックなど、完全な角丸ピル
 
@@ -178,7 +178,7 @@ export const SPACE_2 = '4px';
 export const SPACE_3 = '6px';
 export const SPACE_4 = '8px';
 const SPACE_5 = '12px';
-export const SPACE_6 = '18px';
+const SPACE_6 = '18px';
 
 // トランジション。操作への即応(FAST)と、フェード・バーの伸縮など見せる変化(SLOW)の2段。
 const TRANSITION_FAST = '0.15s';
