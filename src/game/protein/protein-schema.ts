@@ -157,7 +157,6 @@ export interface ProteinCombatReadout {
   readonly phase: ProteinPhase;
   readonly integrityHp: number;
   readonly integrityMaxHp: number;
-  readonly selectedSiteId: string | null;
   readonly sites: readonly {
     readonly id: string;
     readonly abbreviation: string;
