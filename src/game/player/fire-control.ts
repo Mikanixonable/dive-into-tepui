@@ -3,10 +3,10 @@ import * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, qRotate, randomQuat } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
-import { R_EARTH_EQ } from '../celestial/solar-system/constants';
+import { sunlitFactor } from '../../physics/shadow';
 import { randSym } from '../../math/random';
 import { radiativeCooling, stepTemperature, stepThermalDeviation } from '../../physics/thermal';
-import { add, addScaled, dot, lenSq, norm, randPerp, randVec, scale, v3, Vec3 } from '../../math/vec3';
+import { add, addScaled, dot, norm, randPerp, randVec, scale, v3, Vec3 } from '../../math/vec3';
 
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
@@ -60,19 +60,28 @@ type FireInit =
   | { readonly saved: FireSaveData }
   | { readonly ammo?: AmmoLoad };
 
-// 太陽グレアによる散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが甘くなり、
-// 順光では締まる。難易度調整のための経験則であって物理計算ではない。
-// pos が地球の影(簡易円柱モデル)に入っていれば太陽光が届かないので倍率は 1。
-function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
-  const along = dot(pos, sunDir);
-  if (along < 0 && lenSq(addScaled(pos, sunDir, -along)) < R_EARTH_EQ * R_EARTH_EQ) return 1;
+// pos で撃つときの、太陽グレアによる散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが
+// 甘くなり、順光では締まる。難易度調整のための経験則であって物理計算ではない。
+function sunGlareSpreadScale(
+  pos: Vec3, aimDir: Vec3, celestialBodies: CelestialBodies, t: number,
+): number {
+  const starId = celestialBodies.starId;
+  if (starId === null) return 1;
 
+  const sunDir = celestialBodies.sunDirFrom(pos, t);
   const angle = (Math.acos(Math.max(-1, Math.min(1, dot(aimDir, sunDir)))) * 180) / Math.PI;
-  if (angle <= 5) return 2;
-  if (angle <= 30) return 1 + (30 - angle) / 25;
-  if (angle >= 160) return 0.5;
-  if (angle >= 130) return 1 - ((angle - 130) / 30) * 0.5;
-  return 1;
+  const litScale = angle <= 5 ? 2
+    : angle <= 30 ? 1 + (30 - angle) / 25
+    : angle >= 160 ? 0.5
+    : angle >= 130 ? 1 - ((angle - 130) / 30) * 0.5
+    : 1;
+
+  // 日照率で内挿し、影の中では倍率 1 へ寄せる(SPEC/COMBAT.md「発射」)。しきい値で畳むと
+  // 半影を横切るたびに散布界が跳ぶ。
+  const sunlit = sunlitFactor(
+    pos, celestialBodies.motionOf(starId), celestialBodies.celestialMotions, t,
+  );
+  return 1 + (litScale - 1) * sunlit;
 }
 
 export class FireControl {
@@ -310,8 +319,7 @@ export class FireControl {
   private spawnBullet(
     ship: Player, muzzle: Vec3, fwd: Vec3, registry: EntityRegistry, celestialBodies: CelestialBodies,
   ): void {
-    const sunDir = celestialBodies.sunDirFrom(ship.motion.state.r, ship.motion.state.t);
-    const spreadScale = sunGlareSpreadScale(muzzle, fwd, sunDir);
+    const spreadScale = sunGlareSpreadScale(muzzle, fwd, celestialBodies, ship.motion.state.t);
     // 機首方向に散布角を加えた発射方向
     const spread = Math.abs(randSym(BULLET_SPREAD)) * spreadScale;
     const dir = norm(addScaled(fwd, randPerp(fwd), spread));
