@@ -1,7 +1,6 @@
 // 低軌道シューティング: エントリポイント。WebGPU シーン初期化・ステージ選択・
 // rAF ループ(Game.update → sync → render の駆動)を統括する。
-// HUD の書体(ラテン字形の JetBrains Mono、日本語を含む残りの HackGen)を太さ 400 で読み込む。
-// bold 指定はブラウザの合成に任せる。
+// HUD の書体は太さ 400 だけを読み、bold はブラウザの合成に任せる。
 import '@fontsource/jetbrains-mono/latin-400.css';
 import './hackgen-400.css';
 import { createGameScene, GameScene } from './render/scene';
