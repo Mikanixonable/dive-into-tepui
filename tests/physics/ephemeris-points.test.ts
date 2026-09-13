@@ -19,7 +19,7 @@ export function register(): void {
       mars: (t) => ({ r: v3(-2.2e11 + t, 3e6, 4e10), v: v3(1, 0, 0) }),
     });
     assert.equal(withoutStar.has('sun'), false);
-    const parts = solarSystemParts({}, TEST_EPOCH, withoutStar);
+    const parts = solarSystemParts(TEST_EPOCH, withoutStar);
     // 地球(ECI 原点)と火星はどちらもパック由来なので、その差が素の重心座標の差になる。
     assert.deepEqual(stateOf(parts, 'mars', 0).r, icrfToGameEci(v3(-2.2e11 - 1.5e11, 1e6, 4e10 + 3e6)));
     // 恒星は暦を持たないので解析経路へ落ちる。例外にならないことが要点。
@@ -34,8 +34,8 @@ export function register(): void {
     const earthOnly = testEphemerisPoints(-1e9, 1e9, {
       earth: (t) => ({ r: v3(1.5e11 + t, 2e6, -3e6), v: v3(1, 0, 0) }),
     });
-    const numeric = solarSystemParts({}, TEST_EPOCH, earthOnly);
-    const analytic = solarSystemParts({});
+    const numeric = solarSystemParts(TEST_EPOCH, earthOnly);
+    const analytic = solarSystemParts();
     for (const t of [0, 8.64e4, 3.156e6]) {
       assert.deepEqual(
         orbitingMotionOf(numeric, 'moon').orbitNormalAt(t),
@@ -50,7 +50,7 @@ export function register(): void {
       earth: (t) => ({ r: v3(t, 2 * t, 3 * t), v: v3(1, 2, 3) }),
       moon: (t) => ({ r: v3(t + 10, 2 * t + 20, 3 * t + 30), v: v3(4, 6, 8) }),
     });
-    const parts = solarSystemParts({}, TEST_EPOCH, source);
+    const parts = solarSystemParts(TEST_EPOCH, source);
     const moonMotion = orbitingMotionOf(parts, 'moon');
     const moon = stateOf(parts, 'moon', 3600);
     assert.deepEqual(moon.r, v3(10, 30, -20));

@@ -32,8 +32,7 @@ function findFrame(frames: readonly ReferenceFrame[], center: string, rotatingWi
 const NO_ANCHORS: FrameAnchorSource = { bodies: [], bodiesPivot: 0, stateOf: () => null, attractorOf: () => null };
 
 export function register(): void {
-  // 太陽・月とも初期位相を固定して決定的にする。
-  const parts = solarSystemParts({ moon: 0.4 });
+  const parts = solarSystemParts();
   const windows = parts.system;
   const referenceFrames = parts.referenceFrames;
   const EARTH_INERTIAL = findFrame(referenceFrames.frames, 'earth', null);

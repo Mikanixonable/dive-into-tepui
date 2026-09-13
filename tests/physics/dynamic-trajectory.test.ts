@@ -13,7 +13,7 @@ import { DynamicTrajectory } from '../../src/physics/dynamic-trajectory';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { add, len, sub, v3 } from '../../src/math/vec3';
 
-const WINDOWS = solarSystemParts({ moon: 0 }).system; // 初期位相を固定して決定的にする
+const WINDOWS = solarSystemParts().system;
 // step() が要求する重力源。一覧は時刻に依らず、位置の解決は pivot が決める。
 const ATTRACTORS = WINDOWS.celestialMotions;
 const EARTH: CelestialMotion = fixedMotion({ id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(), v3()), accel: v3(), degree2: null, atmosphere: null });

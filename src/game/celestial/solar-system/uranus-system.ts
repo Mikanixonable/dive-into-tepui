@@ -1,7 +1,7 @@
 // 天王星系(天王星と6個の衛星)。静的事実・運動・見た目を1体につき1箇所で組む。
 import uranusTextureUrl from '../../../assets/2k_uranus.jpg';
 import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
-import { PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
+import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
@@ -100,9 +100,9 @@ export const URANUS_SYSTEM_NAMES: Record<UranusSystemBodyId, string> = {
 
 // 天王星系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function uranusSystem(
-  sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
+  sun: StarMotion, simZeroEt: number,
 ): Record<UranusSystemBodyId, CelestialEntity> {
-  const uranus = planetSystem(planetDefForSimZero(URANUS, phases, simZeroEt), sun);
+  const uranus = planetSystem(planetDefForSimZero(URANUS, simZeroEt), sun);
   return {
     uranus: new CelestialEntity(
       uranus.body, URANUS_SYSTEM_NAMES.uranus, 'planet',
@@ -112,7 +112,7 @@ export function uranusSystem(
       ),
     ),
     puck: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(PUCK, phases, simZeroEt), uranus),
+      new SatelliteMotion(satelliteDefForSimZero(PUCK, simZeroEt), uranus),
       URANUS_SYSTEM_NAMES.puck, 'satellite',
       new SphereCelestialView(
         // A_B=0.051(幾何 0.11 x q=0.461)
@@ -120,7 +120,7 @@ export function uranusSystem(
       ),
     ),
     miranda: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(MIRANDA, phases, simZeroEt), uranus),
+      new SatelliteMotion(satelliteDefForSimZero(MIRANDA, simZeroEt), uranus),
       URANUS_SYSTEM_NAMES.miranda, 'satellite',
       new SphereCelestialView(
         // A_B=0.18(幾何 0.32 x q=0.564)
@@ -128,7 +128,7 @@ export function uranusSystem(
       ),
     ),
     ariel: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(ARIEL, phases, simZeroEt), uranus),
+      new SatelliteMotion(satelliteDefForSimZero(ARIEL, simZeroEt), uranus),
       URANUS_SYSTEM_NAMES.ariel, 'satellite',
       new SphereCelestialView(
         // A_B=0.3(幾何 0.53 x q=0.564)
@@ -136,7 +136,7 @@ export function uranusSystem(
       ),
     ),
     umbriel: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(UMBRIEL, phases, simZeroEt), uranus),
+      new SatelliteMotion(satelliteDefForSimZero(UMBRIEL, simZeroEt), uranus),
       URANUS_SYSTEM_NAMES.umbriel, 'satellite',
       new SphereCelestialView(
         // A_B=0.15(幾何 0.26 x q=0.564)
@@ -144,7 +144,7 @@ export function uranusSystem(
       ),
     ),
     titania: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(TITANIA, phases, simZeroEt), uranus),
+      new SatelliteMotion(satelliteDefForSimZero(TITANIA, simZeroEt), uranus),
       URANUS_SYSTEM_NAMES.titania, 'satellite',
       new SphereCelestialView(
         // A_B=0.2(幾何 0.35 x q=0.564)
@@ -152,7 +152,7 @@ export function uranusSystem(
       ),
     ),
     oberon: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(OBERON, phases, simZeroEt), uranus),
+      new SatelliteMotion(satelliteDefForSimZero(OBERON, simZeroEt), uranus),
       URANUS_SYSTEM_NAMES.oberon, 'satellite',
       new SphereCelestialView(
         // A_B=0.17(幾何 0.31 x q=0.564)
