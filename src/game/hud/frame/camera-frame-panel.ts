@@ -2,16 +2,20 @@
 // 基準面設定を担当する。
 import { frameRoleOf } from '../../../physics/frame';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
-import { CameraReferencePlane, CameraReferenceView, FocusCamera, FOCUS_CAMERA_FOV_MIN, FOCUS_CAMERA_FOV_MAX } from '../../camera/focus-camera';
-import { focusTargetId } from '../../camera/focus-target';
+import {
+  CameraReferencePlane, CameraReferenceView, FOCUS_CAMERA_FOV_MIN, FOCUS_CAMERA_FOV_MAX,
+  type CameraRotationFollow,
+} from '../../camera/focus-camera';
 import { AnchorZone } from './anchor-zone';
 import { CameraRotationZone } from './rotation-zone';
 import { Button, Pulldown, type PulldownColumn, Slider, ToggleSwitch, ValueInput } from '../../../hud/widgets';
-import { CameraRotationModeControl } from './camera-rotation-mode-control';
+import { CameraRotationModeControl, type CameraRotationModeCommand } from './camera-rotation-mode-control';
 import { frameRoleName, rotationFollowLabel } from './frame-labels';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { buildPanel } from './frame-panel';
 import type { ListedObject } from '../../pickable/listed-object';
+import type { CameraRotationMode } from '../../camera/camera-orientation';
+import type { ProjectionMode } from '../../../math/projection';
 
 const FOCUS_CAMERA_FOV_STEP = 1; // HUD から入力する画角の刻み [deg]
 
@@ -19,6 +23,29 @@ const ANGLE_COLUMNS = [
   { description: '面', items: [['ecliptic', '黄道面'], ['equator', '赤道面'], ['moonOrbit', '月軌道面']] },
   { description: '視点', items: [['above', '真上'], ['side', '真横']] },
 ] as const satisfies readonly [PulldownColumn<CameraReferencePlane>, PulldownColumn<CameraReferenceView>];
+
+// カメラパネルが1フレームに映すカメラの状態。
+export interface CameraFrameViewModel {
+  // 注視している対象の天体 id。どこにも固定していなければ null。
+  readonly focusId: string | null;
+  readonly rotationFollow: CameraRotationFollow | null;
+  // いま選べる回転追従。
+  readonly availableRotationFollows: readonly CameraRotationFollow[];
+  readonly cameraRotationMode: CameraRotationMode;
+  readonly projection: ProjectionMode;
+  readonly fovDeg: number;
+  readonly referencePlane: CameraReferencePlane;
+}
+
+// カメラパネルが返す操作。カメラの正本が公開する命令。
+export interface CameraFrameCommands extends CameraRotationModeCommand {
+  setRotationFollow(follow: CameraRotationFollow | null): void;
+  setProjectionMode(mode: ProjectionMode): void;
+  setFovDeg(fovDeg: number): void;
+  resetFov(): void;
+  setReferencePlane(plane: CameraReferencePlane): void;
+  setReferenceView(view: CameraReferenceView): void;
+}
 
 export class CameraFramePanel {
   private readonly panel: HTMLElement;
@@ -35,12 +62,14 @@ export class CameraFramePanel {
   public onSelectCenter: ((id: string | null) => void) | null = null;
 
   // panelRoot はパネル自身の設置先、popupRoot は AnchorZone のポップアップの親。
+  // 操作は commands へ返し、初期の回転モードだけトグルの点灯に使う。
   public constructor(
     panelRoot: HTMLElement,
     popupRoot: HTMLElement,
     private readonly celestialBodies: CelestialBodies,
-    private readonly mapCamera: FocusCamera,
+    commands: CameraFrameCommands,
     overlayManager: OverlayManager,
+    initialRotationMode: CameraRotationMode,
   ) {
     this.panel = buildPanel(panelRoot, 'hud-camera-controls', 'カメラ');
 
@@ -51,14 +80,14 @@ export class CameraFramePanel {
 
     this.cameraRotationZone = new CameraRotationZone('回転追従', celestialBodies);
     this.cameraRotationZone.element.classList.add('hud-frame-rotation-zone');
-    this.cameraRotationZone.onSelect = (follow) => mapCamera.setRotationFollow(follow);
+    this.cameraRotationZone.onSelect = (follow) => commands.setRotationFollow(follow);
     this.panel.appendChild(this.cameraRotationZone.element);
 
-    this.cameraRotationModeControl = new CameraRotationModeControl(mapCamera);
+    this.cameraRotationModeControl = new CameraRotationModeControl(commands, initialRotationMode);
     this.panel.appendChild(this.cameraRotationModeControl.element);
 
     this.projectionToggle = new ToggleSwitch('平行投影', (on) => {
-      mapCamera.setProjectionMode(on ? 'orthographic' : 'perspective');
+      commands.setProjectionMode(on ? 'orthographic' : 'perspective');
     });
     this.panel.appendChild(this.projectionToggle.element);
 
@@ -72,28 +101,28 @@ export class CameraFramePanel {
       min: FOCUS_CAMERA_FOV_MIN,
       max: FOCUS_CAMERA_FOV_MAX,
       step: FOCUS_CAMERA_FOV_STEP,
-    }, (value) => mapCamera.setFovDeg(value));
+    }, (value) => commands.setFovDeg(value));
     fovGroup.appendChild(this.fovSlider.element);
     this.fovInput = new ValueInput({
       type: 'number',
       min: FOCUS_CAMERA_FOV_MIN,
       max: FOCUS_CAMERA_FOV_MAX,
       step: FOCUS_CAMERA_FOV_STEP,
-    }, (text) => mapCamera.setFovDeg(Number(text)));
+    }, (text) => commands.setFovDeg(Number(text)));
     fovGroup.appendChild(this.fovInput.element);
     const fovUnit = document.createElement('span');
     fovUnit.className = 'camera-control-unit';
     fovUnit.textContent = '°';
     fovGroup.appendChild(fovUnit);
-    this.fovResetButton = new Button('リセット', () => mapCamera.resetFov());
+    this.fovResetButton = new Button('リセット', () => commands.resetFov());
     this.fovResetButton.element.title = '画角をデフォルトに戻す';
     fovGroup.appendChild(this.fovResetButton.element);
     this.panel.appendChild(fovGroup);
 
     // 面を確定させてから視点をジャンプさせる——真上/真横は現在の基準面からの相対視点のため。
     this.angleControl = new Pulldown('角度', ANGLE_COLUMNS, 'セット', ([plane, view]) => {
-      mapCamera.setReferencePlane(plane);
-      mapCamera.setReferenceView(view);
+      commands.setReferencePlane(plane);
+      commands.setReferenceView(view);
     });
     this.angleControl.element.classList.add('camera-angle-group');
     this.panel.appendChild(this.angleControl.element);
@@ -104,47 +133,47 @@ export class CameraFramePanel {
   }
 
   // パネル下部に表示するサマリ行の文字列を組み立てる。
-  private cameraSummaryText(): string {
-    const camId = focusTargetId(this.mapCamera.focus);
-    const camRole = camId === undefined ? null : frameRoleOf(camId);
-    const camCenter = camId === undefined ? '固定なし'
+  private cameraSummaryText(view: CameraFrameViewModel): string {
+    const camId = view.focusId;
+    const camRole = camId === null ? null : frameRoleOf(camId);
+    const camCenter = camId === null ? '固定なし'
       : camRole !== null ? frameRoleName(camRole) : this.celestialBodies.nameOf(camId);
-    const modeText = this.mapCamera.cameraRotationMode === 'euler' ? 'オイラー' : 'クォータニオン';
-    const projectionText = this.mapCamera.projection === 'orthographic' ? '平行' : '透視';
-    const rotationText = rotationFollowLabel(this.celestialBodies, this.mapCamera.rotationFollow);
-    return `基準: ${camCenter}・${rotationText} / ${modeText}・${projectionText}・画角 ${this.mapCamera.fov.toFixed(0)}°`;
+    const modeText = view.cameraRotationMode === 'euler' ? 'オイラー' : 'クォータニオン';
+    const projectionText = view.projection === 'orthographic' ? '平行' : '透視';
+    const rotationText = rotationFollowLabel(this.celestialBodies, view.rotationFollow);
+    return `基準: ${camCenter}・${rotationText} / ${modeText}・${projectionText}・画角 ${view.fovDeg.toFixed(0)}°`;
   }
 
-  // 各ウィジェットの選択・有効状態を、渡された時刻・カメラ状態へ合わせる。
+  // 各ウィジェットの選択・有効状態を、渡された候補列とカメラの状態へ合わせる。
   public sync(
-    pickables: readonly ListedObject[], members: readonly string[], displayTime: number,
+    pickables: readonly ListedObject[], members: readonly string[], view: CameraFrameViewModel,
   ): void {
     // カメラ基準は表示設定に左右されず、登録済みの全天体を選択できるようにする。
     this.cameraCenterZone.setItems(pickables, true);
     this.cameraCenterZone.setNearby(members, pickables);
-    this.cameraCenterZone.setSelected(focusTargetId(this.mapCamera.focus) ?? null);
+    this.cameraCenterZone.setSelected(view.focusId);
 
     // 回転追従の選択肢と、クオータニオン/オイラーの操作モード表示を合わせる。
-    this.cameraRotationZone.setChoices(this.mapCamera.availableRotationFollows(displayTime));
-    this.cameraRotationZone.setSelected(this.mapCamera.rotationFollow);
-    this.cameraRotationModeControl.sync();
+    this.cameraRotationZone.setChoices(view.availableRotationFollows);
+    this.cameraRotationZone.setSelected(view.rotationFollow);
+    this.cameraRotationModeControl.sync(view.cameraRotationMode);
 
     // 平行投影は画角という概念自体を欠くため、画角の操作系一式を無効化して案内を出す。
-    const isOrthographic = this.mapCamera.projection === 'orthographic';
+    const isOrthographic = view.projection === 'orthographic';
     this.projectionToggle.setOn(isOrthographic);
     this.fovSlider.element.disabled = isOrthographic;
     this.fovInput.element.disabled = isOrthographic;
     this.fovResetButton.setEnabled(!isOrthographic);
     this.fovSlider.element.title = isOrthographic ? '平行投影では画角は使用しません' : '画角';
     this.fovInput.element.title = isOrthographic ? '平行投影では画角は使用しません' : '画角';
-    this.fovSlider.setValue(this.mapCamera.fov);
+    this.fovSlider.setValue(view.fovDeg);
     if (document.activeElement !== this.fovInput.element) {
-      this.fovInput.setValue(this.mapCamera.fov.toFixed(0));
+      this.fovInput.setValue(view.fovDeg.toFixed(0));
     }
 
     // 角度プルダウンの選択表示とサマリ行を最後に合わせる。
-    this.angleControl.setSelected(0, this.mapCamera.referencePlane);
-    this.cameraSummary.textContent = this.cameraSummaryText();
+    this.angleControl.setSelected(0, view.referencePlane);
+    this.cameraSummary.textContent = this.cameraSummaryText(view);
   }
 
   // 保持しているゾーンとパネル要素を片付ける。
