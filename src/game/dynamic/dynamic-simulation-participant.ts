@@ -17,7 +17,6 @@ export interface DynamicReactionServices {
 }
 
 export interface PredictableMotion {
-  hasFutureReader(canDisplayFuture: boolean): boolean;
   readonly predictsFuture: boolean;
   readonly predicted: DynamicTrajectory | null;
   readonly predictionTruncated: boolean;
