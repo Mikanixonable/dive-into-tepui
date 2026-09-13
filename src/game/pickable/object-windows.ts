@@ -70,14 +70,18 @@ export class ObjectWindows implements PropertyWindowOpener {
     this.menu = new ContextMenu<InspectedObject, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => this.runAct(target, act);
     this.partWindows = new PartWindows(hud, controlSelection);
-    this.hud.enemiesPanel.onSelectRight = (id, clientX, clientY) => {
-      const enemy = this.roster.all().filter(isEnemy).find((e) => e.id === id);
-      if (enemy) this.open(clientX, clientY, enemy, this.simTime);
-    };
-    this.hud.targetPanel.onSelectRight = (clientX, clientY) => {
-      const target = this.targeter.aliveTarget;
-      if (target) this.open(clientX, clientY, target, this.simTime);
-    };
+  }
+
+  // 敵一覧の行から、id で名指しされた敵のプロパティウィンドウを開く。既に消えていれば開かない。
+  public openEnemy(id: string, clientX: number, clientY: number): void {
+    const enemy = this.roster.all().filter(isEnemy).find((e) => e.id === id);
+    if (enemy) this.open(clientX, clientY, enemy, this.simTime);
+  }
+
+  // いま固定しているターゲットのプロパティウィンドウを開く。固定していなければ開かない。
+  public openTarget(clientX: number, clientY: number): void {
+    const target = this.targeter.aliveTarget;
+    if (target) this.open(clientX, clientY, target, this.simTime);
   }
 
   // 対象1つにつきウィンドウは高々1枚: 既存があればクリック位置へ動かして最前面に出すだけで
