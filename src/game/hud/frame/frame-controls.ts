@@ -1,7 +1,7 @@
 // マップビューの「カメラ」「軌道フレーム」パネルと、戦闘ビューのカメラパネルを所有し、カメラの
-// 視点と未来表示の描画基準を選ばせる。カメラのフォーカス変更への軌道フレームの追随もここが持つ。
+// 視点と未来表示の描画基準を選ばせる。
 import { bodyAnchorSource } from '../../../physics/attractor';
-import { FRAME_ROLES, FrameRole, FrameRotationSource, frameRoleOf } from '../../../physics/frame';
+import { FRAME_ROLES, FrameRole } from '../../../physics/frame';
 import type { FrameAnchorSource } from '../../../physics/frame';
 import { Vec3 } from '../../../math/vec3';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
@@ -29,32 +29,28 @@ export class FrameControls {
     popupRoot: HTMLElement,
     private readonly celestialBodies: CelestialBodies,
     private readonly mapCamera: FocusCamera,
-    combatCamera: FocusCamera,
+    private readonly combatCamera: FocusCamera,
     private readonly displayFrame: DisplayFrameSelection,
     overlayManager: OverlayManager,
     private readonly frameAnchors: FrameAnchorSource,
   ) {
     this.cameraPanel = new CameraFramePanel(
-      mapPanelRoot, popupRoot, celestialBodies, mapCamera, overlayManager,
+      mapPanelRoot, popupRoot, celestialBodies, mapCamera, overlayManager, mapCamera.cameraRotationMode,
     );
-    this.combatCameraPanel = new CombatCameraPanel(combatPanelRoot, combatCamera);
+    this.combatCameraPanel = new CombatCameraPanel(
+      combatPanelRoot, combatCamera, combatCamera.cameraRotationMode,
+    );
     this.trajectoryPanel = new TrajectoryFramePanel(
       mapPanelRoot, popupRoot, celestialBodies, displayFrame, overlayManager,
     );
 
+    // 注視対象の選択だけは、描画基準の追随も伴うので自分で受ける。
     this.cameraPanel.onSelectCenter = (id) => this.selectCameraCenter(id);
   }
 
   // 時刻 t に周回軌道を描いている役割を、回転の基準の選択肢として返す。
   private validRevolutionRoles(t: number): readonly FrameRole[] {
     return FRAME_ROLES.filter((role) => this.frameAnchors.attractorOf(`@${role}`, t) !== null);
-  }
-
-  // いま選ばれている回転が、もう周回していない役割の公転を指しているか。
-  private isStaleRole(rotatingWith: FrameRotationSource | null, validRoles: readonly FrameRole[]): boolean {
-    if (rotatingWith === null || rotatingWith.kind !== 'revolution') return false;
-    const role = frameRoleOf(rotatingWith.id);
-    return role !== null && !validRoles.includes(role);
   }
 
   // カメラの基準を選び直す。id が null なら、いま見ている位置を恒星中心の慣性系へ
@@ -73,22 +69,10 @@ export class FrameControls {
     ));
   }
 
-  // マップカメラのフォーカスを target へ移す。追随が有効で target が登録天体を指しているときは
-  // 計画折れ線の中心も同じ天体へ合わせる(回転側は現状を保つ)。
+  // マップカメラのフォーカスを target へ移し、移った先を描画基準の所有者へ伝える。
   public setFocus(target: FocusTarget): void {
     this.mapCamera.setFocusTarget(target);
-    if (!this.trajectoryPanel.followCamera) return;
-    const id = focusTargetId(target);
-    if (id !== undefined && this.celestialBodies.has(id)) {
-      this.displayFrame.frame = this.celestialBodies.frames.frameOf(id, this.displayFrame.frame.rotatingWith);
-    }
-  }
-
-  // 軌道フレームが選んでいる役割の公転が成立しなくなったら、慣性系へ落とす。
-  public update(displayTime: number): void {
-    if (this.isStaleRole(this.displayFrame.frame.rotatingWith, this.validRevolutionRoles(displayTime))) {
-      this.displayFrame.frame = this.celestialBodies.frames.frameOf(this.displayFrame.frame.center, null);
-    }
+    this.displayFrame.followCameraFocus(focusTargetId(target));
   }
 
   // 両パネルの選択肢と選択表示を、いまの天体系とカメラ位置へ合わせる。
@@ -98,8 +82,18 @@ export class FrameControls {
   ): void {
     this.lastTime = simTime;
     const members = this.celestialBodies.systemMembersAt(cameraPos, displayTime);
-    this.cameraPanel.sync(pickables, members, displayTime);
-    this.combatCameraPanel.sync();
+    const camera = this.mapCamera;
+    // マップカメラの現在値を写してから、3つのパネルを同じ候補列で揃える。
+    this.cameraPanel.sync(pickables, members, {
+      focusId: focusTargetId(camera.focus) ?? null,
+      rotationFollow: camera.rotationFollow,
+      availableRotationFollows: camera.availableRotationFollows(displayTime),
+      cameraRotationMode: camera.cameraRotationMode,
+      projection: camera.projection,
+      fovDeg: camera.fov,
+      referencePlane: camera.referencePlane,
+    });
+    this.combatCameraPanel.sync(this.combatCamera.cameraRotationMode);
     this.trajectoryPanel.sync(pickables, members, displayTime, this.validRevolutionRoles(displayTime));
   }
 

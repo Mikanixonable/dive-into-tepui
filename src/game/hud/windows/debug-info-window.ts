@@ -50,6 +50,7 @@ const RATE_COUNTS: readonly { key: string; label: string; group: string; read: (
   { key: 'contact-participants', label: '参加者', group: '衝突', read: (c) => c.contactParticipants },
 ];
 
+// 1つの計測対象について、集計期間ぶん積んだ値。
 interface PhaseStats {
   sum: number;
   max: number;
@@ -105,7 +106,8 @@ export class DebugInfoWindow {
   // 個数系の統計。RATE_COUNTS と添字で対応する。
   private readonly rateStats = Array.from({ length: RATE_COUNTS.length }, newPhaseStats);
   private frames = 0;
-  private lastFlush = performance.now();
+  // 集計期間の起点 [ms]。壁時計を読まないので、窓を開いた後の最初のフレームで据える。
+  private lastFlush: number | null = null;
   // 前回フラッシュ時点の暦キャッシュ累計。表示する集計期間分の差分を取るために持つ。
   private lastTimeHits = 0;
   private lastTimeMisses = 0;
@@ -147,7 +149,6 @@ export class DebugInfoWindow {
     this.tabBar = new TabBar(DEBUG_INFO_TABS, (tab) => this.selectTab(tab));
     this.controls = document.createElement('div');
     this.controls.className = 'debug-info-controls';
-    // 窓へ載せる操作部品をまとめる。
     this.controls.appendChild(this.tabBar.element);
     this.controls.appendChild(this.renderTarget.element);
     this.syncRenderStyle(renderStyle);
@@ -179,7 +180,7 @@ export class DebugInfoWindow {
     this.sections.enabled = true;
     this.gpu.enabled = true;
     this.frames = 0;
-    this.lastFlush = performance.now();
+    this.lastFlush = null;
     this.win = new PropertyWindow(this.root, DEFAULT_X, DEFAULT_Y, {
       title: 'デバッグ',
       rows: this.rows,
@@ -208,7 +209,7 @@ export class DebugInfoWindow {
     else this.open();
   }
 
-  // [F3] を消費して開閉を反転する。
+  // デバッグ情報ウィンドウの開閉キーを消費して、開閉を反転する。
   public handleInput(input: Input): void {
     if (input.takeKey(K.toggleDebugInfoWindow)) this.toggle();
   }
@@ -273,11 +274,14 @@ export class DebugInfoWindow {
 
   // 500ms ごとに蓄積した計測値から表示行を組み、窓へ反映する。
   private flush(counts: PerfCounts, now: number): void {
-    if (!this.win || now - this.lastFlush < 500) return;
+    if (!this.win) return;
+    // 起点がまだ無いフレームは、集計期間を測れないので据えるだけにする。
+    if (this.lastFlush === null) { this.lastFlush = now; return; }
+    if (now - this.lastFlush < 500) return;
     const n = Math.max(1, this.frames);
     this.rows = this.buildRows(counts, n, now - this.lastFlush);
     if (this.activeTab === 'metrics') this.win.syncRows(this.rows);
-    // 次の集計期間へ向けてリセットする
+    // 次の集計期間へ向けてリセットする。
     this.resetStats(this.updateStats);
     this.resetStats(this.syncStats);
     this.resetStats(this.renderStats);
@@ -317,7 +321,7 @@ export class DebugInfoWindow {
     );
     const totalAvg = totals.reduce((a, b) => a + b, 0) / frames;
     const totalSorted = [...totals].sort((a, b) => a - b);
-    // 暦キャッシュは累計値なので、この集計期間に増えた分だけを見せる
+    // 暦キャッシュは累計値なので、この集計期間に増えた分を見せる。
     const timeHits = c.timeCacheHits - this.lastTimeHits;
     const timeMisses = c.timeCacheMisses - this.lastTimeMisses;
     this.lastTimeHits = c.timeCacheHits;

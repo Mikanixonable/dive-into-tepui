@@ -36,7 +36,7 @@ export class MapPicking {
   private readonly listPanel: PhysicalObjectListPanel;
   private readonly orbitLineWindows: OrbitLineWindows;
 
-  // 候補列と、当たった対象の落とし先(ObjectWindows)を参照として受け取る。
+  // 一覧パネルと軌道線ウィンドウを組み、一覧の行操作を注視・ターゲット・ウィンドウへ繋ぐ。
   public constructor(
     private readonly hud: HudLayers & Notifier,
     private readonly cameraSystem: CameraSystem,
@@ -51,7 +51,7 @@ export class MapPicking {
     private readonly objectWindows: ObjectWindows,
     private readonly controlSelection: ControlSelection,
   ) {
-    this.listPanel = new PhysicalObjectListPanel(hud.mapRoot, celestialBodies);
+    this.listPanel = new PhysicalObjectListPanel(hud.mapRoot, hud.panelCollapse, celestialBodies);
     this.orbitLineWindows = new OrbitLineWindows(
       hud, linePickables, pickables, (id, name) => this.focusOwner(id, name),
       (clientX, clientY, target) => this.objectWindows.open(

@@ -21,6 +21,7 @@ import type { ProteinCombatReadout } from '../../protein/protein-schema';
 import type { EnemySaveData, ProteinEnemySaveData } from '../../save/save-data';
 import type { FormationRole } from './entity-kind';
 import { ProteinEnemyView } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
+import type { DynamicEntity } from './dynamic-entity';
 import type { EnemyCollisionShape } from './enemy-motion';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
 import type { ProteinVisualSource } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
@@ -30,7 +31,7 @@ import type { OrbitReference } from '../../orbit-reference';
 // 漂流機体と同じく非対称にして、ジャニベコフ効果(中間軸不安定性)で無秩序に回らせる。
 const PROTEIN_INERTIA = v3(1, 1.1, 1.05);
 
-// 揺らぎを乗せない残基変位。規則が読む部位の位置は、表示の変形に追随させない。
+// 表示の揺らぎを乗せない残基変位。
 const STILL_RESIDUE_OFFSET = [0, 0, 0] as const;
 
 // 新規配置。表示形態と着色は生成時に決め、以後は Entity の設定として切り替える。
@@ -224,4 +225,9 @@ export class ProteinEnemy extends Enemy {
       protein: this.combat.serialize(),
     };
   }
+}
+
+// この個体がタンパク質構造を持つ敵か。
+export function isProteinEnemy(entity: DynamicEntity): entity is ProteinEnemy {
+  return entity instanceof ProteinEnemy;
 }
