@@ -16,7 +16,7 @@ export class Stage2 extends Stage {
   static readonly selectLabel = 'stage 2';
   static readonly selectSub = '【第二ステージ: モルニヤ戦域】 敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モードでの遷移が必須';
   static readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';
-  static readonly selectKeys = ['Digit2'];
+  static readonly selectKey = 'Digit2';
 
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
