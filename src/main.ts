@@ -196,6 +196,7 @@ async function main() {
   const saveStore = new LocalStorageSaveStore();
   const slots = SaveSlots.load(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
+  const autoSave = new AutoSave(snapshotService);
   const gs = await initScene(settings.graphics.current);
   const { shell, hud, markers, audioEngine, bgm, pauseMenu } = initHud(settings);
   const sections = new FrameSections();
@@ -208,7 +209,7 @@ async function main() {
   // 周回の遷移と、一時停止メニューからの導線。
   const launcher = new Launcher(
     shell, host, audioEngine, bgm, pauseMenu, unlockManager,
-    slots, snapshotService, settings.graphics, settings.renderStyle,
+    slots, snapshotService, autoSave, settings.graphics, settings.renderStyle,
   );
 
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
@@ -244,7 +245,7 @@ async function main() {
   await launcher.start();
   startAnimationLoop(
     launcher, gs, settings.graphics, settings.renderStyle, debugInfo, sections,
-    new AutoSave(snapshotService), snapshotControls,
+    autoSave, snapshotControls,
   );
 }
 

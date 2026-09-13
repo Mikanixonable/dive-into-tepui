@@ -5,19 +5,24 @@ import { SnapshotService, type SnapshotCaptureSource } from './snapshot-service'
 const AUTOSAVE_INTERVAL_REAL_SEC = 60;
 
 export class AutoSave {
-  private lastCaptureReal = performance.now();
+  private intervalOriginReal = performance.now();
 
-  constructor(private readonly service: SnapshotService) {}
+  public constructor(private readonly service: SnapshotService) {}
 
-  // 毎フレーム呼ぶ。前回の撮影から AUTOSAVE_INTERVAL_REAL_SEC 秒(実時間)経っていれば1件撮る。
-  update(source: SnapshotCaptureSource): void {
+  // ランが始まったときに呼ぶ。次の撮影までの間隔を、この時点から数え直す。
+  public beginRun(): void {
+    this.intervalOriginReal = performance.now();
+  }
+
+  // 毎フレーム呼ぶ。ラン開始か前回の撮影から AUTOSAVE_INTERVAL_REAL_SEC 秒(実時間)経っていれば1件撮る。
+  public update(source: SnapshotCaptureSource): void {
     const now = performance.now();
-    if ((now - this.lastCaptureReal) / 1000 < AUTOSAVE_INTERVAL_REAL_SEC) return;
+    if ((now - this.intervalOriginReal) / 1000 < AUTOSAVE_INTERVAL_REAL_SEC) return;
     this.capture(source, now);
   }
 
   private capture(source: SnapshotCaptureSource, now: number): void {
-    this.lastCaptureReal = now;
+    this.intervalOriginReal = now;
     // 停止中は状態が動かないうえ、一覧を開いたまま剪定が走ると見ている行が消える。
     if (source.isPaused || !source.isPlaying) return;
     this.service.capture(source.runSummary(), source.serialize(), 'auto', null, false);
