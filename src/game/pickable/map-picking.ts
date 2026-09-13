@@ -51,7 +51,7 @@ export class MapPicking {
     private readonly objectWindows: ObjectWindows,
     private readonly controlSelection: ControlSelection,
   ) {
-    this.listPanel = new PhysicalObjectListPanel(hud.mapRoot, celestialBodies);
+    this.listPanel = new PhysicalObjectListPanel(hud.mapRoot, hud.panelCollapse, celestialBodies);
     this.orbitLineWindows = new OrbitLineWindows(
       hud, linePickables, pickables, (id, name) => this.focusOwner(id, name),
       (clientX, clientY, target) => this.objectWindows.open(

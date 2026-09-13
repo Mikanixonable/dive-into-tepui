@@ -5,11 +5,13 @@
 // ならない — 座標系が消費者ごとに違えば同じ画面に並べた線が比較できず、表示時刻が違えば
 // メッシュとマーカーが別の瞬間を指す。
 import { PredictPanel } from './hud/panels/predict-panel';
+import type { PanelCollapse } from './hud/panel-shell';
 import { buildTicks } from './hud/orbit/tick-scale';
 import { epochUnixSeconds } from '../hud/utils';
 import type { TickLabelMode, TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import { strongestAttractor } from '../physics/attractor';
-import { ReferenceFrame } from '../physics/frame';
+import { frameRoleOf, ReferenceFrame } from '../physics/frame';
+import type { FrameAnchorSource } from '../physics/frame';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import {
@@ -34,6 +36,8 @@ export interface DisplayWindow {
   // [simTime - pastDuration, simTime + duration]。
   readonly pastDuration: number;
   readonly displayTime: number;
+  // 未来表示を禁止しているか。禁止中は displayTime が simTime に固定される。
+  readonly forceCurrent: boolean;
   // 時刻ラベルを UTC カレンダーで書くか、simTime からの経過時間で書くか。
   readonly tickLabelMode: TickLabelMode;
   // 軌道要素マーカー(近地点/遠地点・昇交点/降交点・再接近点など)へ通過時刻を併記するか。
@@ -71,7 +75,7 @@ const SLIDER_MAX_STEPS = 4000;
 const SLIDER_TARGET_STEP_SEC = 10;
 
 export class DisplayWindowManager {
-  private _forceCurrent = true;
+  private _followCamera = true;
   private durationKey: DisplayDurationKey = 'orbit';
   private pastDurationKey: DisplayPastDurationKey = 'none';
   private sliderT = 0;
@@ -90,17 +94,18 @@ export class DisplayWindowManager {
   // 操作パネルを構築し、期間選択・スライダー・任意期間入力・T+ジャンプ入力の反映先を自身にする。
   constructor(
     hudRoot: HTMLElement,
+    collapse: PanelCollapse,
     private readonly celestialBodies: CelestialBodies,
   ) {
     this._frame = celestialBodies.frames.inertialFrame;
     this.epochUnixSec = epochUnixSeconds(celestialBodies.epoch);
     this._current = {
       frame: this._frame, simTime: 0, referencePeriod: NaN,
-      duration: APERIODIC_ARC_DURATION, pastDuration: 0, displayTime: 0,
+      duration: APERIODIC_ARC_DURATION, pastDuration: 0, displayTime: 0, forceCurrent: true,
       tickLabelMode: this._tickLabelMode, showElementTimes: this._showElementTimes,
       epochUnixSec: this.epochUnixSec,
     };
-    this.panel = new PredictPanel(hudRoot);
+    this.panel = new PredictPanel(hudRoot, collapse);
     // 期間はスライダーの尺度そのものなので、尺度を変えたら位置も原点へ戻す。
     this.panel.onDurationSelect = (key) => {
       this.durationKey = key;
@@ -167,15 +172,29 @@ export class DisplayWindowManager {
     this._showElementTimes = value;
   }
 
-  // 未来表示を禁止するフラグ。true にすると未来ゴーストスライダーの位置も原点へ戻す。
-  get forceCurrent(): boolean {
-    return this._forceCurrent;
+  // カメラの基準が移ったとき、描画基準も同じ天体へ合わせるか。
+  get followCamera(): boolean {
+    return this._followCamera;
   }
 
-  set forceCurrent(value: boolean) {
-    if (this._forceCurrent === value) return;
-    this._forceCurrent = value;
-    if (value) this.sliderT = 0;
+  setFollowCamera(on: boolean): void {
+    this._followCamera = on;
+  }
+
+  // カメラの基準が id へ移ったことを受け、追随が有効で id が登録天体なら描画基準もそこへ移す
+  // (回転側は現状を保つ)。
+  followCameraFocus(id: string | undefined): void {
+    if (!this._followCamera || id === undefined || !this.celestialBodies.has(id)) return;
+    this._frame = this.celestialBodies.frames.frameOf(id, this._frame.rotatingWith);
+  }
+
+  // 軌道フレームが選んでいる役割の公転が成立しなくなったら、慣性系へ落とす。
+  dropStaleRotatingFrame(displayTime: number, frameAnchors: FrameAnchorSource): void {
+    const rotatingWith = this._frame.rotatingWith;
+    if (rotatingWith === null || rotatingWith.kind !== 'revolution') return;
+    const role = frameRoleOf(rotatingWith.id);
+    if (role === null || frameAnchors.attractorOf(`@${role}`, displayTime) !== null) return;
+    this._frame = this.celestialBodies.frames.frameOf(this._frame.center, null);
   }
 
   // 直近の resolve() が確定させた表示窓。
@@ -209,17 +228,19 @@ export class DisplayWindowManager {
   // 軽量に導けるため、直前の結果を条件付きで再利用せず、呼ぶたびに組み直す。_current は
   // update と sync の間、および DOM イベントから直近の窓を読むためのフレームスナップショット
   // であり、導出値のキャッシュではない。表示時刻はスライダーが立っている間だけ未来を指し、
-  // forceCurrent または原点では simTime そのもの。
-  resolve(simTime: number, controlled: DynamicEntity | null): DisplayWindow {
+  // forceCurrent または原点では simTime そのもの。forceCurrent の間はスクラバーの位置も原点に戻す。
+  resolve(simTime: number, controlled: DynamicEntity | null, forceCurrent: boolean): DisplayWindow {
     const referencePeriod = this.currentOrbitPeriod(controlled, simTime);
     const duration = this.durationSec(referencePeriod);
+    if (forceCurrent) this.sliderT = 0;
     this._current = {
       frame: this._frame,
       simTime,
       referencePeriod,
       duration,
       pastDuration: this.pastDurationSec(referencePeriod),
-      displayTime: this._forceCurrent || this.sliderT <= 0 ? simTime : simTime + this.sliderT * duration,
+      displayTime: forceCurrent || this.sliderT <= 0 ? simTime : simTime + this.sliderT * duration,
+      forceCurrent,
       tickLabelMode: this._tickLabelMode,
       showElementTimes: this._showElementTimes,
       epochUnixSec: this.epochUnixSec,
@@ -230,7 +251,7 @@ export class DisplayWindowManager {
   // 毎フレーム呼ぶ。操作パネル(期間・スクラバー・目盛り)の表示/非表示と内容を押し出す。
   sync(controlled: DynamicEntity | null): void {
     this.panel.render({
-      visible: !this._forceCurrent,
+      visible: !this._current.forceCurrent,
       durationKey: this.durationKey,
       pastDurationKey: this.pastDurationKey,
       pastDuration: this._current.pastDuration,

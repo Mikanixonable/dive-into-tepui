@@ -1,16 +1,26 @@
 // 常設 CONTACTS パネル(#hud-enemies)の同期: コンタクト中の敵を距離順で示す。戦闘ビュー専用。
-import { len, sub } from '../../../math/vec3';
 import { fmtDist } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
-import type { Vec3 } from '../../../math/vec3';
-import { isEnemy, type Enemy } from '../../dynamic/dynamic-entity/enemy';
-import type { CombatTarget } from '../../dynamic/dynamic-entity/combat-target';
-import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
-import type { StageOutcome } from '../../stages/stage-outcome';
-import type { EntityRoster } from '../../dynamic/entity-roster';
-import type { Targeter } from '../../targeter';
 
 const SYNC_INTERVAL_MS = 250;
+
+// 生存している敵1機ぶんの、一覧に出す値。同じ波に属する敵は1行へ畳まれる。
+export interface EnemyContact {
+  readonly id: string;
+  readonly name: string;
+  readonly distanceM: number;
+  // 波に属さない敵では undefined。
+  readonly waveId: number | undefined;
+  readonly targeted: boolean;
+}
+
+// CONTACTS パネルが1フレームに映す値と、単独行の右クリックを返す口。
+export interface EnemiesPanelViewModel {
+  readonly remainingCount: number;
+  readonly totalCount: number;
+  readonly contacts: readonly EnemyContact[];
+  onSelectRight(id: string, clientX: number, clientY: number): void;
+}
 
 type EnemyRow =
   | {
@@ -31,68 +41,51 @@ type EnemyRow =
 export class EnemiesPanel {
   private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
   private hasContacts = false;
-
-  // 単独表示の行(波に集約されていない敵)の右クリック。波の集約行は特定の1機を指さないため呼ばれない。
-  public onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
+  // 直近の sync が受けた値。右クリックはフレームの外で起きるので、その時点の口をここから引く。
+  private view: EnemiesPanelViewModel | null = null;
 
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {}
 
-  // 残存数の見出しと、距離順の敵一覧を同期する。操作対象が無ければパネルごと隠す。
-  public sync(
-    viewer: Controllable | null, activeStage: StageOutcome, roster: EntityRoster,
-    targeter: Targeter, isMapView: boolean,
-  ): void {
+  // 残存数の見出しと、距離順の敵一覧を同期する。view が null(操作対象が無い)ならパネルごと隠す。
+  public sync(view: EnemiesPanelViewModel | null, nowMs: number): void {
+    this.view = view;
     const panel = this.els.get('hud-enemies');
-    if (!viewer) {
+    if (!view) {
       this.hasContacts = false;
       panel?.classList.add('hidden');
       return;
     }
 
     // 間引き周期でのみ一覧を組み直す。
-    if (this.throttle.due()) {
-
-      const { kills, totalEnemiesSpawned } = activeStage.scoreCounter;
-      const remainingCount = totalEnemiesSpawned - kills;
+    if (this.throttle.due(nowMs)) {
       const count = this.els.get('count');
       if (count) {
-        count.textContent = `${remainingCount} / ${totalEnemiesSpawned}`;
-        count.setAttribute('aria-label', `残存 ${remainingCount}、合計 ${totalEnemiesSpawned}`);
+        count.textContent = `${view.remainingCount} / ${view.totalCount}`;
+        count.setAttribute('aria-label', `残存 ${view.remainingCount}、合計 ${view.totalCount}`);
       }
-      const primaryTarget = targeter.aliveTarget;
-      const rows = this.buildEnemyRows(
-        roster.all().filter(isEnemy).filter((enemy) => enemy.motion.alive),
-        viewer.motion.state.r,
-        primaryTarget,
-      );
+      const rows = this.buildEnemyRows(view.contacts);
       this.hasContacts = rows.length > 0;
       this.syncEnemyList(rows);
     }
 
-    // 更新間隔中も直前の敵有無を維持する。ここで戦闘ビュー判定だけを行うと、
+    // 更新間隔中も直前の敵有無を維持する。毎フレーム敵の有無を見ると、
     // 敵0件で隠したパネルを次のフレームに再表示してしまう。
-    panel?.classList.toggle('hidden', isMapView || !this.hasContacts);
+    panel?.classList.toggle('hidden', !this.hasContacts);
   }
 
   // waveId を持つ敵ごとに「第N波」1行へ集約して組み立てる。
   // waveId 不在の敵は個別の行になる。ターゲットが波のメンバーなら、その波の行を強調する側に倒す。
-  private buildEnemyRows(
-    enemies: readonly Enemy[],
-    viewerPositionEci: Vec3,
-    primaryTarget: CombatTarget | null,
-  ): EnemyRow[] {
+  private buildEnemyRows(contacts: readonly EnemyContact[]): EnemyRow[] {
     const singles: EnemyRow[] = [];
     const waves = new Map<number, { count: number; nearestDistanceM: number; targeted: boolean }>();
-    for (const enemy of enemies) {
-      const distanceM = len(sub(enemy.motion.state.r, viewerPositionEci));
-      const targeted = enemy === primaryTarget;
-      if (enemy.waveId === undefined) {
-        singles.push({ kind: 'single', id: enemy.id, name: enemy.name, distanceM, targeted });
+    for (const { id, name, distanceM, waveId, targeted } of contacts) {
+      if (waveId === undefined) {
+        singles.push({ kind: 'single', id, name, distanceM, targeted });
         continue;
       }
-      const waveSummary = waves.get(enemy.waveId);
+      const waveSummary = waves.get(waveId);
       if (!waveSummary) {
-        waves.set(enemy.waveId, { count: 1, nearestDistanceM: distanceM, targeted });
+        waves.set(waveId, { count: 1, nearestDistanceM: distanceM, targeted });
       } else {
         // 波の代表距離は最も近い個体を使い、波内にターゲットがいれば強調する。
         waveSummary.count += 1;
@@ -142,7 +135,7 @@ export class EnemiesPanel {
       if (row.kind === 'single') {
         item.addEventListener('contextmenu', (e) => {
           e.preventDefault();
-          this.onSelectRight?.(row.id, e.clientX, e.clientY);
+          this.view?.onSelectRight(row.id, e.clientX, e.clientY);
         });
       }
 

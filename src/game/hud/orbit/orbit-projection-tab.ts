@@ -3,7 +3,6 @@
 // このタブはスケール入力欄を持たない。
 import { strongestAttractor } from '../../../physics/attractor';
 import { PointerPanZoom } from '../../../hud/pointer-pan-zoom';
-import { currentThemePalette } from '../../../theme';
 import { projectionSeries, resolveTarget } from './orbit-analysis-data';
 import { buildTabControls, sampleCountFor } from './orbit-analysis-tab';
 import { OrbitProjectionChart } from './orbit-projection-chart';
@@ -89,13 +88,13 @@ export class ProjectionTab implements AnalysisTab {
       ? projectionSeries((t) => resolvedTarget.stateAt(t), centerEntity, now, spanSec, sampleCount)
       : null;
     const series: ProjectionSeriesSpec[] = [];
-    const palette = currentThemePalette();
+    const { palette } = source;
     if (ship) series.push(seriesSpecOf(ship, palette.accent, 'filled'));
     if (targetTrack) series.push(seriesSpecOf(targetTrack, palette.signal, 'ring'));
 
     // テクスチャが読み込み済みならそれを背景に、まだなら読み込み中の案内文を出す。
     const image = this.loadedTextureImage(textureUrl);
-    this.chart.draw({ textureImage: image, series, emptyMessage: image ? undefined : '読み込み中…' });
+    this.chart.draw({ textureImage: image, series, emptyMessage: image ? undefined : '読み込み中…' }, palette);
   }
 
   // url のテクスチャ画像を読み込み済みなら返す。未読み込みなら読み込みを開始して次回以降の

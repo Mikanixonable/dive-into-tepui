@@ -1,11 +1,9 @@
-// UI のデザイントークン(配色・文字・角丸・余白・重なり順)と、それを :root の CSS 変数へ
-// 注入・差し替える口。配色はプリセットから選び、Primitive(色の値)と Semantic(UI 上の意味)を
+// UI のデザイントークン(配色・文字・角丸・余白・重なり順)の表と、それを :root の CSS 変数へ
+// 当てるための名前と値。配色はプリセットから選び、Primitive(色の値)と Semantic(UI 上の意味)を
 // 同じパレットで公開する。
 
-import { themeIdSetting } from './settings/theme-setting';
-
 // 配色プリセット1つ。
-interface ThemePalette {
+export interface ThemePalette {
   readonly id: string;
   readonly name: string;
   readonly description: string;
@@ -106,24 +104,19 @@ export const LIGHT_PALETTE: ThemePalette = THEME_PRESETS.find((palette) => palet
 // 未保存・プリセットに無い id のときの配色。
 const DEFAULT_THEME_ID = 'fluorescent-red-blue';
 
-// id が指すパレット。プリセットに無い id は既定の配色へ落ちる。
-function findThemePalette(id: string): ThemePalette {
-  return THEME_PRESETS.find((palette) => palette.id === id) ?? THEME_PRESETS.find((palette) => palette.id === DEFAULT_THEME_ID)!;
+// id が指すプリセット。プリセットに無い id では null。
+export function themePresetOf(id: string): ThemePalette | null {
+  return THEME_PRESETS.find((palette) => palette.id === id) ?? null;
 }
 
-// 起動時に選ばれていた配色。これから導く定数(ACCENT・TEXT など)は applyThemePalette で変わらない。
-export const ACTIVE_THEME = findThemePalette(themeIdSetting.current);
-
-let activePalette: ThemePalette = ACTIVE_THEME;
-
-// 現在適用されているパレット。applyThemePalette で差し替わる。
-export function currentThemePalette(): ThemePalette {
-  return activePalette;
+// 保存された配色 id をパレットへ読み直す。未保存・読めない id では既定の配色に戻る。
+export function parseThemePalette(text: string | null): ThemePalette {
+  return themePresetOf(text ?? '') ?? themePresetOf(DEFAULT_THEME_ID)!;
 }
 
-// id が指すプリセット。無ければ undefined。
-function getThemePalette(id: string): ThemePalette | undefined {
-  return THEME_PRESETS.find((palette) => palette.id === id);
+// 配色を保存へ載せる文字列にする。
+export function formatThemePalette(palette: ThemePalette): string {
+  return palette.id;
 }
 
 // '#rrggbb' の色に alpha を添えた CSS の rgba() 文字列。
@@ -135,116 +128,10 @@ function rgba(hex: string, alpha: number): string {
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
-// palette で差し替わる CSS 変数の名前と値。
-function themeCssVariables(palette: ThemePalette): Readonly<Record<string, string>> {
-  return {
-    // 主役色。
-    '--color-primary': palette.accent,
-    '--color-primary-hover': palette.accentNear,
-    '--color-signal': palette.signal,
-    '--color-primary-fill-weak': rgba(palette.accent, 0.08),
-    '--color-primary-fill': rgba(palette.accent, 0.16),
-    '--color-primary-fill-strong': rgba(palette.accent, 0.24),
-    // 状態色。
-    '--color-success': palette.success,
-    '--color-success-fill': rgba(palette.success, 0.12),
-    '--color-success-edge': rgba(palette.success, 0.42),
-    '--color-warning': palette.warning,
-    '--color-warning-fill': rgba(palette.warning, 0.12),
-    '--color-warning-edge': rgba(palette.warning, 0.42),
-    '--color-error': palette.error,
-    '--color-error-fill': rgba(palette.error, 0.12),
-    '--color-error-edge': rgba(palette.error, 0.42),
-    '--color-info': palette.info,
-    '--color-info-fill': rgba(palette.info, 0.12),
-    '--color-info-edge': rgba(palette.info, 0.42),
-    '--color-focus': palette.focus,
-    '--color-focus-contrast': palette.focusContrast,
-    // 宇宙空間のラベルは星空の上に載るので、配色によらない固定色を使う。
-    '--space-label-background': '#0b0d11',
-    '--space-label-text': '#f5f7ff',
-    '--space-label-subtext': '#b8c1d1',
-    '--bg': palette.page,
-    '--theme-tone': palette.tone,
-    '--surface-0': palette.surface0,
-    '--surface-1': palette.surface1,
-    '--surface-2': palette.surface2,
-    '--surface-3': palette.surface3,
-    '--surface-weak': rgba(palette.surface0, 0.52),
-    '--surface': rgba(palette.surface1, 0.64),
-    '--surface-opaque': rgba(palette.surface1, 0.96),
-    '--glass-quiet': rgba(palette.surface1, 0.64),
-    '--glass-focus': rgba(palette.surface1, 0.76),
-    '--glass-inset': rgba(palette.surface0, 0.28),
-    '--glass-control': rgba(palette.surface2, 0.68),
-    '--glass-control-hover': rgba(palette.surface3, 0.72),
-    '--glass-shadow': GLASS_SHADOW,
-    '--glass-blur-quiet': GLASS_BLUR_QUIET,
-    '--glass-blur-focus': GLASS_BLUR_FOCUS,
-    '--glass-saturation': GLASS_SATURATION,
-    '--edge': rgba(palette.title, 0.16),
-    '--text-strong': palette.bright,
-    '--text': palette.title,
-    '--text-muted': palette.body,
-    '--text-dim': palette.muted,
-    '--text-faint': palette.faint,
-    '--title': palette.title,
-    '--body': palette.body,
-    '--muted': palette.muted,
-    '--fill-1': rgba(palette.title, 0.04),
-    '--fill-2': rgba(palette.title, 0.09),
-    '--fill-3': rgba(palette.title, 0.16),
-    '--fill-4': rgba(palette.title, 0.32),
-    '--bar-bg': palette.surface3,
-  };
-}
-
-export const ACCENT = ACTIVE_THEME.accent;
-export const ACCENT_SOFT = ACTIVE_THEME.accentNear;
-export const SIGNAL = ACTIVE_THEME.signal;
-const SUCCESS = ACTIVE_THEME.success;
-const WARNING = ACTIVE_THEME.warning;
-const DANGER = ACTIVE_THEME.error;
-const INFO = ACTIVE_THEME.info;
-const FOCUS = ACTIVE_THEME.focus;
-const FOCUS_CONTRAST = ACTIVE_THEME.focusContrast;
-const SUCCESS_FILL = rgba(SUCCESS, 0.12);
-const WARNING_FILL = rgba(WARNING, 0.12);
-const DANGER_FILL = rgba(DANGER, 0.12);
-const INFO_FILL = rgba(INFO, 0.12);
-
-export const BG = ACTIVE_THEME.page;
-export const SURFACE_0 = ACTIVE_THEME.surface0;
-export const SURFACE_1 = ACTIVE_THEME.surface1;
-export const SURFACE_2 = ACTIVE_THEME.surface2;
-export const SURFACE_3 = ACTIVE_THEME.surface3;
-const SURFACE_WEAK = rgba(SURFACE_0, 0.52); // 背後を強く透かすラベル地
-const SURFACE = rgba(SURFACE_1, 0.64); // Quiet Glass
-export const SURFACE_OPAQUE = rgba(SURFACE_1, 0.96); // Solid に近い全画面表示用
-const GLASS_QUIET = rgba(SURFACE_1, 0.64);
-const GLASS_FOCUS = rgba(SURFACE_1, 0.76);
-export const EDGE = rgba(ACTIVE_THEME.title, 0.16);
 // 面と地の境目。選択中の配色の文字色から導く。
-export function currentEdgeColor(): string {
-  return rgba(currentThemePalette().title, 0.16);
+export function edgeColor(palette: ThemePalette): string {
+  return rgba(palette.title, 0.16);
 }
-
-const TEXT_STRONG = ACTIVE_THEME.bright;
-// UI の基準の文字色。
-export const TEXT = ACTIVE_THEME.title;
-export const TEXT_MUTED = ACTIVE_THEME.body;
-export const TEXT_DIM = ACTIVE_THEME.muted;
-export const TEXT_FAINT = ACTIVE_THEME.faint;
-
-// アクセントの薄膜。値が大きいほど強く主張する。
-const ACCENT_FILL_WEAK = rgba(ACCENT, 0.08); // 選択されていない行の背景など、ごく控えめな地色
-const ACCENT_FILL = rgba(ACCENT, 0.16); // 選択中・ホバー中の地色
-const ACCENT_FILL_STRONG = rgba(ACCENT, 0.24); // 押下中・強調表示の地色
-// 中立の薄膜。値が大きいほど強く主張する。EDGE と同じく文字色から導く。
-const FILL_1 = rgba(TEXT, 0.04);
-const FILL_2 = rgba(TEXT, 0.09);
-const FILL_3 = rgba(TEXT, 0.16);
-const FILL_4 = rgba(TEXT, 0.32);
 
 const SHADE_1 = 'rgba(0, 0, 0, 0.18)'; // 弱い落とし影
 const GLASS_SHADOW = '0 16px 48px rgba(0, 0, 0, 0.24)';
@@ -252,7 +139,6 @@ const GLASS_BLUR_QUIET = '16px';
 const GLASS_BLUR_FOCUS = '24px';
 const GLASS_SATURATION = '110%';
 const SCRIM = 'rgba(6, 7, 9, 0.82)'; // 全画面表示の背後を覆う膜
-const BAR_BG = ACTIVE_THEME.surface3; // ゲージ類の不透明な地(背後を透かさない)
 
 // グロー(text-shadow)を任意の色から作るための混合率。
 // `color-mix(in srgb, <色> ${GLOW_STRONG}, transparent)` の形で使う。
@@ -269,7 +155,7 @@ export const FONT_XXS = '11px';
 export const FONT_XS = '12px';
 const FONT_S = '13px';
 export const FONT_M = '14px';
-export const FONT_L = '15px';
+const FONT_L = '15px';
 export const FONT_XL = '18px';
 export const FONT_2XL = '24px';
 const FONT_3XL = '34px';
@@ -282,7 +168,7 @@ const GLYPH_BORESIGHT = '36px'; // .mk-boresight
 // 角丸。役割ごとの4段。
 export const RADIUS_MICRO = '8px';
 export const RADIUS_CONTROL = '11px';
-export const RADIUS_PANEL = '16px';
+const RADIUS_PANEL = '16px';
 export const RADIUS_WINDOW = '22px';
 const RADIUS_PILL = '999px'; // トラックなど、完全な角丸ピル
 
@@ -292,7 +178,7 @@ export const SPACE_2 = '4px';
 export const SPACE_3 = '6px';
 export const SPACE_4 = '8px';
 const SPACE_5 = '12px';
-export const SPACE_6 = '18px';
+const SPACE_6 = '18px';
 
 // トランジション。操作への即応(FAST)と、フェード・バーの伸縮など見せる変化(SLOW)の2段。
 const TRANSITION_FAST = '0.15s';
@@ -322,66 +208,19 @@ export const SAFE_AREA_LEFT = 'env(safe-area-inset-left, 0px)';
 export const FONT_FAMILY =
   "'JetBrains Mono', 'HackGen', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace";
 
-// --token-name のケバブケースで :root にカスタムプロパティとして注入するトークンの一覧。
-// calc() を要するトークンは、計算済みの値ではなく派生関係そのものを注入する。
-const CSS_VARIABLES: Readonly<Record<string, string>> = {
-  '--color-primary': ACCENT,
-  '--color-primary-hover': ACCENT_SOFT,
-  '--color-signal': SIGNAL,
-  '--color-primary-fill-weak': ACCENT_FILL_WEAK,
-  '--color-primary-fill': ACCENT_FILL,
-  '--color-primary-fill-strong': ACCENT_FILL_STRONG,
-  '--color-success': SUCCESS,
-  '--color-success-fill': SUCCESS_FILL,
-  '--color-success-edge': rgba(SUCCESS, 0.42),
-  '--color-warning': WARNING,
-  '--color-warning-fill': WARNING_FILL,
-  '--color-warning-edge': rgba(WARNING, 0.42),
-  '--color-error': DANGER,
-  '--color-error-fill': DANGER_FILL,
-  '--color-error-edge': rgba(DANGER, 0.42),
-  '--color-info': INFO,
-  '--color-info-fill': INFO_FILL,
-  '--color-info-edge': rgba(INFO, 0.42),
-  '--color-focus': FOCUS,
-  '--color-focus-contrast': FOCUS_CONTRAST,
+// 配色によらないトークン。--token-name のケバブケースで :root に置く。
+// calc() を要するトークンは、計算済みの値ではなく派生関係そのものを値にする。
+const FIXED_CSS_VARIABLES: Readonly<Record<string, string>> = {
+  // 宇宙空間のラベルは星空の上に載るので、配色によらない固定色を使う。
   '--space-label-background': '#0b0d11',
   '--space-label-text': '#f5f7ff',
   '--space-label-subtext': '#b8c1d1',
-  '--bg': BG,
-  '--theme-tone': ACTIVE_THEME.tone,
-  '--surface-0': SURFACE_0,
-  '--surface-1': SURFACE_1,
-  '--surface-2': SURFACE_2,
-  '--surface-3': SURFACE_3,
-  '--surface-weak': SURFACE_WEAK,
-  '--surface': SURFACE,
-  '--surface-opaque': SURFACE_OPAQUE,
-  '--glass-quiet': GLASS_QUIET,
-  '--glass-focus': GLASS_FOCUS,
-  '--glass-inset': rgba(SURFACE_0, 0.28),
-  '--glass-control': rgba(SURFACE_2, 0.68),
-  '--glass-control-hover': rgba(SURFACE_3, 0.72),
   '--glass-shadow': GLASS_SHADOW,
   '--glass-blur-quiet': GLASS_BLUR_QUIET,
   '--glass-blur-focus': GLASS_BLUR_FOCUS,
   '--glass-saturation': GLASS_SATURATION,
-  '--edge': currentEdgeColor(),
-  '--title': TEXT,
-  '--body': TEXT_MUTED,
-  '--muted': TEXT_DIM,
-  '--text-strong': TEXT_STRONG,
-  '--text': TEXT,
-  '--text-muted': TEXT_MUTED,
-  '--text-dim': TEXT_DIM,
-  '--text-faint': TEXT_FAINT,
-  '--fill-1': FILL_1,
-  '--fill-2': FILL_2,
-  '--fill-3': FILL_3,
-  '--fill-4': FILL_4,
   '--shade-1': SHADE_1,
   '--scrim': SCRIM,
-  '--bar-bg': BAR_BG,
   '--glow-strong': GLOW_STRONG,
   '--glow-weak': GLOW_WEAK,
   '--axis-prograde': AXIS_PROGRADE,
@@ -426,6 +265,65 @@ const CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--safe-l': SAFE_AREA_LEFT,
   '--font-family': FONT_FAMILY,
 };
+
+// palette を当てたときの CSS 変数の名前と値、すべて。
+export function themeCssVariables(palette: ThemePalette): Readonly<Record<string, string>> {
+  return {
+    ...FIXED_CSS_VARIABLES,
+    // 主役色。
+    '--color-primary': palette.accent,
+    '--color-primary-hover': palette.accentNear,
+    '--color-signal': palette.signal,
+    '--color-primary-fill-weak': rgba(palette.accent, 0.08), // 選択されていない行の背景など、ごく控えめな地色
+    '--color-primary-fill': rgba(palette.accent, 0.16), // 選択中・ホバー中の地色
+    '--color-primary-fill-strong': rgba(palette.accent, 0.24), // 押下中・強調表示の地色
+    // 状態色。
+    '--color-success': palette.success,
+    '--color-success-fill': rgba(palette.success, 0.12),
+    '--color-success-edge': rgba(palette.success, 0.42),
+    '--color-warning': palette.warning,
+    '--color-warning-fill': rgba(palette.warning, 0.12),
+    '--color-warning-edge': rgba(palette.warning, 0.42),
+    '--color-error': palette.error,
+    '--color-error-fill': rgba(palette.error, 0.12),
+    '--color-error-edge': rgba(palette.error, 0.42),
+    '--color-info': palette.info,
+    '--color-info-fill': rgba(palette.info, 0.12),
+    '--color-info-edge': rgba(palette.info, 0.42),
+    '--color-focus': palette.focus,
+    '--color-focus-contrast': palette.focusContrast,
+    // 地と面。
+    '--bg': palette.page,
+    '--theme-tone': palette.tone,
+    '--surface-0': palette.surface0,
+    '--surface-1': palette.surface1,
+    '--surface-2': palette.surface2,
+    '--surface-3': palette.surface3,
+    '--surface-weak': rgba(palette.surface0, 0.52), // 背後を強く透かすラベル地
+    '--surface': rgba(palette.surface1, 0.64), // Quiet Glass
+    '--surface-opaque': rgba(palette.surface1, 0.96), // Solid に近い全画面表示用
+    '--glass-quiet': rgba(palette.surface1, 0.64),
+    '--glass-focus': rgba(palette.surface1, 0.76),
+    '--glass-inset': rgba(palette.surface0, 0.28),
+    '--glass-control': rgba(palette.surface2, 0.68),
+    '--glass-control-hover': rgba(palette.surface3, 0.72),
+    '--edge': edgeColor(palette),
+    '--bar-bg': palette.surface3, // ゲージ類の不透明な地(背後を透かさない)
+    // 文字と、文字色から導く中立の薄膜。値が大きいほど強く主張する。
+    '--text-strong': palette.bright,
+    '--text': palette.title,
+    '--text-muted': palette.body,
+    '--text-dim': palette.muted,
+    '--text-faint': palette.faint,
+    '--title': palette.title,
+    '--body': palette.body,
+    '--muted': palette.muted,
+    '--fill-1': rgba(palette.title, 0.04),
+    '--fill-2': rgba(palette.title, 0.09),
+    '--fill-3': rgba(palette.title, 0.16),
+    '--fill-4': rgba(palette.title, 0.32),
+  };
+}
 
 // '#rrggbb' の色の WCAG 相対輝度 [0〜1]。
 function relativeLuminance(hex: string): number {
@@ -479,35 +377,4 @@ function themeContrastIssues(palette: ThemePalette): readonly ThemeContrastIssue
 // src/ に参照が無くても消さない。
 export function allThemeContrastIssues(): readonly ThemeContrastIssue[] {
   return THEME_PRESETS.flatMap(themeContrastIssues);
-}
-
-let injected = false;
-
-// 全トークンを :root の CSS 変数として注入する。#hud の外の要素からも見えるよう :root に置く。
-// 何度呼んでもよい。
-export function injectThemeVariables(): void {
-  if (injected) return;
-  injected = true;
-  const root = document.documentElement;
-  for (const [name, value] of Object.entries(CSS_VARIABLES)) {
-    root.style.setProperty(name, value);
-  }
-}
-
-// id が指す配色を、再起動せずに現在のDOMへ反映する。CSSのカスタムプロパティを一括で差し替え、
-// currentThemePalette が返す現在のパレットも更新する。プリセットに無い id では false を返す。
-export function applyThemePalette(id: string): boolean {
-  const palette = getThemePalette(id);
-  if (!palette) return false;
-  activePalette = palette;
-  // DOM のある環境では、注入済みのカスタムプロパティを新しいパレットの値で上書きする。
-  if (typeof document !== 'undefined') {
-    const root = document.documentElement;
-    for (const [name, value] of Object.entries(themeCssVariables(palette))) {
-      root.style.setProperty(name, value);
-    }
-    root.style.colorScheme = palette.tone;
-    root.dataset['theme'] = palette.id;
-  }
-  return true;
 }

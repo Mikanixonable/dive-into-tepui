@@ -1,5 +1,5 @@
 // ブースターの段構成・燃焼状態を表示する常設パネル。ゲーム側で作った表示用の
-// スナップショットを sync し、操作は setHandlers で注入されたコールバックへ渡す。
+// スナップショットと操作の口を毎フレーム sync で受け、ボタンの操作をその口へ渡す。
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { Button } from '../../../hud/widgets';
 
@@ -27,7 +27,7 @@ export interface BurnManagementViewModel {
   readonly burnStateDescription?: string;
 }
 
-interface BurnManagementPanelHandlers {
+export interface BurnManagementPanelHandlers {
   readonly onAttach?: () => void;
   readonly onToggleIgnition?: () => void;
   readonly onDecouple?: () => void;
@@ -80,6 +80,7 @@ export class BurnManagementPanel {
   private readonly attachButton: Button;
   private readonly ignitionButton: Button;
   private readonly decoupleButton: Button;
+  // このフレームに受けた操作の口。ボタンが押されたときに引く。
   private handlers: BurnManagementPanelHandlers = {};
   private model: BurnManagementViewModel | null = null;
 
@@ -127,12 +128,9 @@ export class BurnManagementPanel {
     return button;
   }
 
-  public setHandlers(handlers: BurnManagementPanelHandlers): void {
-    this.handlers = { ...handlers };
-  }
-
-  /** 表示モデルを同期する。null はブースターのない機体としてパネルを隠す。 */
-  public sync(view: BurnManagementViewModel | null): void {
+  /** 表示モデルと操作の口を同期する。view が null ならブースターのない機体としてパネルを隠す。 */
+  public sync(view: BurnManagementViewModel | null, handlers: BurnManagementPanelHandlers): void {
+    this.handlers = handlers;
     this.model = view;
     const panel = this.els.get('burn-management-panel');
     if (!panel) return;

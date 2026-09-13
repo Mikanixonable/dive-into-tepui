@@ -1,6 +1,7 @@
 // 投影タブの描き手。円筒図法テクスチャを背景に、経緯度グリッド・複数系統の軌跡・現在位置を
 // canvas 2D へ描く。表示範囲(中心経緯度・ズーム)を自分で持ち、pan/zoom/resetView で操作する。
-import { currentEdgeColor, currentThemePalette, FONT_FAMILY, FONT_XXS } from '../../../theme';
+import { edgeColor, FONT_FAMILY, FONT_XXS } from '../../../theme';
+import type { ThemePalette } from '../../../theme';
 import { injectOnce } from '../../../hud/inject-style';
 import {
   chartCanvasStyle, drawPointMarker, drawPolylineWithGaps, resizeCanvasBackingStore,
@@ -123,8 +124,9 @@ export class OrbitProjectionChart {
     };
   }
 
-  // 背景(テクスチャ or 空メッセージ)→グリッド→各系列の折れ線・現在位置マークの順に描く。
-  public draw(spec: ProjectionChartSpec): void {
+  // 背景(テクスチャ or 空メッセージ)→グリッド→各系列の折れ線・現在位置マークの順に、
+  // palette の色で描く。
+  public draw(spec: ProjectionChartSpec, palette: ThemePalette): void {
     resizeCanvasBackingStore(this.element, this.ctx, this.backing);
     const ctx = this.ctx;
     const cssWidth = this.backing.cssWidth;
@@ -152,17 +154,17 @@ export class OrbitProjectionChart {
     ctx.clip();
     if (spec.textureImage) this.drawTexture(spec.textureImage, win, plotLeft, plotTop, plotWidth, plotHeight);
     else {
-      ctx.fillStyle = currentThemePalette().muted;
+      ctx.fillStyle = palette.muted;
       ctx.textAlign = 'center';
       ctx.fillText(spec.emptyMessage ?? '', plotLeft + plotWidth / 2, plotTop + plotHeight / 2);
     }
-    this.drawGridLines(win, plotLeft, plotTop, plotWidth, plotHeight);
-    for (const series of spec.series) this.drawSeries(series, win, plotLeft, plotTop, plotWidth, plotHeight);
+    this.drawGridLines(win, palette, plotLeft, plotTop, plotWidth, plotHeight);
+    for (const series of spec.series) this.drawSeries(series, palette, win, plotLeft, plotTop, plotWidth, plotHeight);
     ctx.restore();
 
     // グリッドのラベルと外枠はクリップの外(プロット領域の余白)に描く。
-    this.drawGridLabels(win, plotLeft, plotTop, plotWidth, plotHeight);
-    ctx.strokeStyle = currentEdgeColor();
+    this.drawGridLabels(win, palette, plotLeft, plotTop, plotWidth, plotHeight);
+    ctx.strokeStyle = edgeColor(palette);
     ctx.lineWidth = 1;
     ctx.strokeRect(plotLeft, plotTop, plotWidth, plotHeight);
   }
@@ -191,9 +193,12 @@ export class OrbitProjectionChart {
   }
 
   // 表示範囲 win に入る経度・緯度 30 度おきの縦横グリッド線を描く。
-  private drawGridLines(win: Window, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
+  private drawGridLines(
+    win: Window, palette: ThemePalette,
+    plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,
+  ): void {
     const ctx = this.ctx;
-    ctx.strokeStyle = currentEdgeColor();
+    ctx.strokeStyle = edgeColor(palette);
     ctx.lineWidth = 1;
     // 経度線(縦線)。
     for (let lon = -180; lon <= 180; lon += GRID_STEP_DEG) {
@@ -216,9 +221,12 @@ export class OrbitProjectionChart {
   }
 
   // drawGridLines の各線に添える経度・緯度のラベル。
-  private drawGridLabels(win: Window, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
+  private drawGridLabels(
+    win: Window, palette: ThemePalette,
+    plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,
+  ): void {
     const ctx = this.ctx;
-    ctx.fillStyle = currentThemePalette().muted;
+    ctx.fillStyle = palette.muted;
     // 経度ラベルはプロット下端に沿って並べる。
     ctx.textAlign = 'center';
     for (let lon = -180; lon <= 180; lon += GRID_STEP_DEG) {
@@ -237,13 +245,14 @@ export class OrbitProjectionChart {
 
   // 1系列ぶんの軌跡(折れ線)と現在位置の丸マークを描く。
   private drawSeries(
-    series: ProjectionSeriesSpec, win: Window, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,
+    series: ProjectionSeriesSpec, palette: ThemePalette, win: Window,
+    plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,
   ): void {
     const toPx = (point: ProjectionPoint): { x: number; y: number } =>
       this.toPx(point.lonDeg, point.latDeg, win, plotLeft, plotTop, plotWidth, plotHeight);
     drawPolylineWithGaps(this.ctx, series.points, toPx, series.color);
 
     const { x, y } = toPx(series.current);
-    drawPointMarker(this.ctx, x, y, series.currentStyle === 'filled');
+    drawPointMarker(this.ctx, x, y, series.currentStyle === 'filled', palette);
   }
 }

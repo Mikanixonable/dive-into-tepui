@@ -7,11 +7,10 @@ export class SyncThrottle {
   // intervalMs 間隔で更新を通す締切を作る。
   public constructor(private readonly intervalMs: number) {}
 
-  // 締切に達していれば true を返し、次の締切まで進める。達していなければ false を返す。
-  public due(): boolean {
-    const now = performance.now();
-    if (now < this.nextAt) return false;
-    this.nextAt = now + this.intervalMs;
+  // nowMs [ms] が締切に達していれば true を返し、次の締切まで進める。達していなければ false。
+  public due(nowMs: number): boolean {
+    if (nowMs < this.nextAt) return false;
+    this.nextAt = nowMs + this.intervalMs;
     return true;
   }
 }
