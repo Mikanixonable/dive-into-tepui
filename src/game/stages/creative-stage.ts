@@ -50,7 +50,8 @@ export class CreativeStage extends Stage {
     // 復元済みのタンパク質の敵がいれば、その表示設定を以後のスポーンにも引き継ぐ。
     const restoredProtein = this._dynamicSystem.all().find((entity) => entity instanceof ProteinEnemy);
     this.manualSpawn = new ManualSpawn(
-      this._worldSfx, this._fx, this._scene, restoredProtein?.display ?? DEFAULT_PROTEIN_DISPLAY,
+      this._worldSfx, this._fx, this._scene, this._dynamicSystem,
+      restoredProtein?.display ?? DEFAULT_PROTEIN_DISPLAY,
     );
 
     this.objectPlacement = new ObjectPlacement(
