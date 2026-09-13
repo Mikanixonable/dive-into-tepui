@@ -17,6 +17,7 @@ import { EquatorNodeManager } from './marker/equator-node-manager';
 import { ControlSelection } from './control-selection';
 import { Targeter } from './targeter';
 import { PlanDisplay } from './plan/plan-display';
+import { PlanGuide } from './plan/plan-guide';
 import { DisplayWindowManager, timeLabelSettingOf } from './display-window-manager';
 import { SimSpeedManager } from './dynamic/sim-speed-manager';
 import { DynamicSystem } from './dynamic/dynamic-system';
@@ -108,6 +109,8 @@ export class Game {
   public readonly simSpeedManager: SimSpeedManager;
 
   private readonly planDisplay: PlanDisplay;
+  // 直近ノードの消化・達成通知と、その実行ガイドのマーカー。
+  private readonly planGuide: PlanGuide;
   // このフレームの表示座標系と表示時刻窓。update で確定させ、sync が読む。
   public readonly displayWindowManager: DisplayWindowManager;
   private readonly viewManager: ViewManager;
@@ -298,6 +301,7 @@ export class Game {
     this.planDisplay = new PlanDisplay(
       this._scene, this.markers.createGroup(), celestialSystem, this.displayWindowManager, this.controlSelection,
     );
+    this.planGuide = new PlanGuide(this._hud, uiSfx, this.markers.createGroup());
     this.input = new Input(host.scene.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
     this.input.onPointerKindChange = (kind) => this.touchControls?.setPointerKind(kind);
@@ -319,8 +323,8 @@ export class Game {
     const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.objectWindows, this.dynamicSystem,
       this.celestialMarkers, this.touchControls,
-      this.controlSelection, this.planDisplay.path, celestialSystem.celestialMotions,
-      this.simSpeedManager, this._hud, uiSfx, this.markers.createGroup(),
+      this.controlSelection, this.planDisplay.path,
+      this.simSpeedManager, this._hud, this.planGuide,
     );
     const mapView = new MapView(
       this.input, this.cameraSystem, this.objectWindows,
@@ -373,6 +377,7 @@ export class Game {
     this.touchControls?.dispose();
     this.input.dispose();
     this.planDisplay.dispose();
+    this.planGuide.dispose();
     this._celestialSystem.dispose();
     this.frameControls.dispose();
     this.cameraSystem.dispose();
@@ -441,6 +446,10 @@ export class Game {
       frameAnchors: this.frameAnchors,
       paths: this.planDisplay,
     }, activeControllable, this.navTarget.id, equatorVisibility);
+    // ノードの期限切れ・達成はビューに依らない計画そのものの規則なので、折れ線を組み終えた
+    // 後に毎フレーム通す。
+    this.planGuide.update(
+      activeControllable, this.dynamicSystem.simTime, this._celestialSystem.celestialMotions);
     this.sections.exit(SECTION.plan);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
