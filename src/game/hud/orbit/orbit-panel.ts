@@ -24,12 +24,12 @@ const REFERENCE_ITEMS: readonly (readonly [OrbitReferenceMode, string])[] = [
 export class OrbitPanel {
   private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
   private readonly referenceControl: SegmentedControl<OrbitReferenceMode>;
-  // 軌道分析パネルの開閉は Hud が持つため、ここでは押されたことだけを伝える。ボタン構築時には
-  // まだ配線されていないので、VesselPanel.setInput と同じ late injection にする。
-  private openAnalysis: (() => void) | null = null;
-
   // 基準切替のセグメントコントロールと軌道分析ボタンを els が指す DOM へ組み込む。
-  public constructor(private readonly els: Map<string, HTMLElement>) {
+  // openAnalysis は軌道分析ボタンが押されたときに呼ぶ口。
+  public constructor(
+    private readonly els: Map<string, HTMLElement>,
+    private readonly openAnalysis: () => void,
+  ) {
     this.referenceControl = new SegmentedControl('基準', REFERENCE_ITEMS, (mode) => {
       this.game?.orbitReference.setMode(mode);
     });
@@ -37,16 +37,11 @@ export class OrbitPanel {
     this.buildActionButtons();
   }
 
-  // Hud から軌道分析パネルの開閉ハンドラを受け取る。
-  public setOpenAnalysisHandler(handler: () => void): void {
-    this.openAnalysis = handler;
-  }
-
   // 軌道分析パネルを開くボタンを els が指す DOM へ組み込む。
   private buildActionButtons(): void {
     const container = this.els.get('orbit-actions');
     if (!container) return;
-    const button = new Button('軌道分析', () => this.openAnalysis?.());
+    const button = new Button('軌道分析', () => this.openAnalysis());
     container.appendChild(button.element);
   }
 
