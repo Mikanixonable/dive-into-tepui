@@ -5,7 +5,7 @@ import { test } from '../harness';
 import { CelestialMotion } from '../../src/physics/celestial-motion';
 import { SOLAR_PRESSURE_1AU, srpAccel } from '../../src/physics/srp';
 import { AU } from '../../src/physics/astronomical-unit';
-import { MU_SUN, R_SUN } from '../../src/game/celestial/solar-system/constants';
+import { MU_SUN, R_SUN } from '../../src/game/celestial/solar-system/sun';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { cross, dot, len, norm, sub, v3 } from '../../src/math/vec3';
 
