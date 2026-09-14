@@ -259,3 +259,229 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
       [ "$(grep -rlwF "$n" src tests tools --include=*.ts --include=*.tsx | grep -v "^$f$" | wc -l)" -eq 0 ] \
         && echo "$l"; done
 ```
+
+---
+
+# 第6群 — 横断検査(R6 / R18 / R39 / R50 の類例)
+
+調査時点: `restructure-architecture` @ `af997ae0`。R6・R18・R39・R50 の4件について、
+**代表例を捕まえられる機械検査**を組んでから全量を絞り、1件ずつ現地で判断した。
+
+## 検査の方法と、代表例の再現
+
+| 類 | 検査 | 代表例が捕まるか | 全量 |
+| --- | --- | --- | --- |
+| R6(ECI 原点を物理の基準に使う) | ゼロベクトルのフォールバック(`?? v3()` / `?? V3_ZERO`)と、`len`/`lenSq`/`norm`/`dot`/`cross` が**絶対 ECI 位置を `sub()` 抜きで**食う行 | R6 = `simulator.ts:110,158`、R22 の旧実装 `dot(pos, sunDir)` の両方が出る | 前者5件・後者14件 |
+| R18(見た目で物理を決める) | 描画層以外からの `.view.` 読み / 表示属性で実体を選ぶ `find`・`filter` / `game`・`physics` から `render/` への import | R18 = `celestial-system.ts:145` が出る | `.view.` 77件、実体選択は R18 の1件のみ |
+| R39(派生値をステートに持つ) | `normalize`/`refresh`/`recompute`/`derive` が保存済みフィールドを他フィールドから上書きする形 + 全ミュータブルフィールドの分野別走査(サブエージェント4体) | R39 = `display-toggles.ts:125` と `celestial-grid.ts:73` が出る | 候補48件 → 下記へ集約 |
+| R50(実時刻タイマー) | `performance.now()` / `Date.now()` / `setTimeout` / `setInterval` の全量を層別に | R50 = `conductor.ts:72,111`、R48 = `throttle.ts:145` の両方が出る | 16ファイル |
+
+**判定の軸**は代表例に合わせず、規約から取った。
+
+- R6 類 = **CODING-RULE 1.8**「天体の位置を自分で引き算して座標系を作らない」。原点を物理の基準に
+  据えている箇所を疑う。ECI 原点はステージが選ぶ天体で、`debug-alt-system` は地球ではない。
+- R18 類 = 同じ問いに正本が2つあるか。**物理量の正本が描画層にあるもの**も含めた(R18 の裏返し)。
+- R39 類 = **CODING-RULE 1.6 / R5**。導出層が持ってよい mutable は5種だけなので、それに当たらない
+  保存を疑う。モデル層は「軽微な計算で求まるものをステートにしない」で見る。
+- R50 類 = **R5**「導出層のアニメーションは dt で積まず、開始時刻とそのフレームの実時刻から計算する。
+  実時刻はフレームの先頭で1度だけ読み、入力として配る」。**時計の取り違え**(音声時刻で測った待ちを
+  実時刻で待つ)と、**自分で時計を読むこと**の2つを見る。
+
+## 検査で潰れたもの(擬陽性と確認した分)
+
+- **R48 は擬陽性で確定。** 実時刻の全16ファイルのうち、時計の取り違えは R50 だけだった。入力
+  (`input.ts`)・プロファイル(`frame-sections.ts`)・保存時刻(`save/*`)・読み込みのフレーム譲り
+  (`loading-progress.ts`)・通信タイムアウト(`earth-surface-tile-queue.ts`)・BGM のポンプ
+  (`bgm.ts`。タブを隠すと `AudioContext` ごと suspend されるので先読み 0.6 秒は枯れない)は、
+  どれも実時刻が正しい。連打判定も同じ — ただし `throttle.ts` が**自分で** `performance.now()` を
+  読んでいる点だけは R5 に反しており、そこは計画の K2 が扱う。
+- **`arc-celestial-bodies.ts:51` の `len(state.r)` は正しい。** ECI 化で入る原点補正項は天体の
+  原点距離だけで決まるので、原点からの距離を見るのが正。コメントもそう書いてある。
+- **描画層の幾何を物理が読んでいる箇所は無い。** 当たり判定の半径・大気・アルベドはすべて
+  `def`/`motion` 側から引いている。`targeter` の `siteMarkers`、`protein-motion-metrics` の
+  `motionMetrics`、`line-pickables` の `lineSamples` は表示・ピック・性能計測なので対象外。
+- **`camera-system.ts:235` の `focusVelocity ?? v3()` は位置ではなく速度**で、答えられない対象を
+  注視している間の既定として明記されている。R6 と同型ではない。
+
+---
+
+### R56. 「操作対象が居なければ ECI 原点」のフォールバックが、マーカーの距離表示にもある
+- 症状: R6 と同じ `?? v3()` がマーカー側にもあり、操作艦が居ない瞬間(creative で解除・全滅)は
+  全マーカーの距離表示・弾薬/燃料のフェード・タンパク質部位マーカーの表示範囲が、地球中心からの
+  距離で決まる。
+- 場所: `src/game/targeter.ts:164`(使用は 176・185・191・203・215・234・250)
+- 疑う理由: R6 とフォールバックの形も原因も同じ。表示側なので実害は数字の間違いだけだが、直すなら
+  同じ判断(視点が居ないフレームをどう扱うか)を1箇所で決めるべきで、別々に決める理由がない。
+- 減るもの: R6 と合わせて `?? v3()` が消え、「視点が居ない」の扱いが1つになる。/ 確度: 中 / 確認: 自分で確認
+
+### R57. ステージの配置ユーティリティが「ECI 原点＝重力の中心＝地球」を前提にした幾何を持つ
+- 症状: 敵の初期配置が、絶対 ECI 位置の `len()` を軌道半径、`norm()` を局所鉛直、`MU_EARTH` を
+  重力定数として扱う。ECI 原点が地球でないステージ(`debug-alt-system` は zephyrus 原点)や、
+  自機が月圏に居る状態で呼ぶと、共楕円軌道は共楕円にならず、大気圏クランプは地球中心の球面へ効く。
+- 場所: `src/game/stages/spawner/enemy-generator.ts:25,98,101,112,129-130`、
+  `src/game/stages/spawner/enemy-spawner.ts:41`、
+  `src/game/stages/stage-utils/wave-attack.ts:176,278-284`、`src/game/player/player.ts:265`
+- 疑う理由: 引数が `base: KinematicState` と一般の形をしているのに、中身は地球専用。いまは呼び手
+  (stage1/stage2/stage00)が地球周回なので露見していないだけで、型は何も止めない。
+- 仕様: CELESTIAL.md は ECI 原点をステージの選択として定める。地球であるとは書かれていない
+- 減るもの: `MU_EARTH`/`R_EARTH` 依存が配置ユーティリティから落ち、`strongestAttractor` から引く
+  1本になる。/ 確度: 中(いま壊れてはいない) / 確認: 自分で確認
+
+### R58. 恒星の明るさの正本が描画層にあり、物理は別の固定値を使っている
+- 症状: 「その恒星がどれだけ明るいか」に正本が2つある。描画は天体宣言が持つ
+  `stellarLight.radiantIntensity`、物理(日射加熱・輻射圧)は `SOLAR_CONSTANT = 1361` の固定値。
+  架空恒星の星系でも熱と輻射圧だけは太陽の値で計算される。
+- 場所: `src/render/pipeline/sun-light.ts:15-19`、
+  `src/game/celestial/solar-system/solar-system.ts:5,64`、`src/game/stages/stage-debug-alt-system.ts:25,81`、
+  `src/physics/srp.ts:9-11`、`src/game/dynamic/dynamic-motion.ts:438`
+- 疑う理由: R18 の裏返し。R18 は「物理の問いを描画から引いている」で、これは「物理量の正本が
+  描画層にある」— 天体を宣言する `game/celestial/` が放射強度を `render/pipeline/` から import
+  している。恒星の明るさは物理量なので、置き場が逆を向いている。
+- 仕様: CELESTIAL.md §1 は恒星を登録天体として定める。明るさの正本がどちらかは書かれていない
+- 減るもの: 放射強度の宣言が1つになり、`game/` → `render/` の import が1本落ちる。描画の
+  露出目盛り(`SUN_IRRADIANCE_1AU = π`)は描画層に残る。/ 確度: 高 / 確認: 自分で確認
+
+### R59. HUD が自前の `setInterval` で試聴のシーク位置を追う
+- 症状: BGM 設定パネルが 100 ms 周期のタイマーを自分で回してシークバーを更新する。フレームの
+  同期とは無関係に動くので、曲を替えるたびにタイマーを畳んで張り直す後始末が要る。
+- 場所: `src/hud/panels/bgm-settings-panel.ts:30,170-177,181-186`
+- 疑う理由: R5「実時刻はフレームの先頭で1度だけ読み、入力として配る」。HUD は既に毎フレーム
+  `nowMs` を受け取っており(`game.ts:522`)、追加の時計を持つ理由がない。R50 と同じ「装置でない層が
+  自分で時計を読む」形。
+- 減るもの: タイマーのフィールドと張り直し・畳みの分岐が消え、更新がフレームの同期1本になる。
+  / 確度: 中 / 確認: 自分で確認
+
+### R60. 自機の装甲値と最大装甲値が、パーツ側の正本と二重になっている
+- 症状: `hp` はパーツ hp の総和(ただし船体かコクピットが 0 なら 0)、`maxHp` はパーツ maxHp の
+  総和。被弾・自己修復・換装のたびに `updateOverallHp()` / `refreshFromParts()` が書き戻している。
+- 場所: `src/game/player/player.ts:305-312,384,404-418`、`src/game/dynamic/dynamic-entity/ship.ts:55-58`
+- 疑う理由: コメント自身が「装甲値の正本はパーツ側」と書いている。`ProteinEnemy` は同じ問いを
+  `get hp()` の委譲で解いており、自機だけが写しを持つ。パーツ配列は生きて残っている。
+- 減るもの: フィールド2本と書き戻し3箇所が消える。`Ship.hp` を getter にして `Player` が
+  override する形になる。/ 確度: 高 / 確認: 自分で確認
+
+### R61. タンパク質の部位の `disabled` が `hp <= 0` と同値で、セーブにも別項目で載る
+- 症状: `disabled` の代入は `candidate.disabled = candidate.hp <= 0` の1箇所だけで、hp > 0 で
+  disabled になる経路が無い。それでも `serialize()` が hp と disabled を別項目で書くので、
+  セーブを手で触ると「hp が残っているのに無効」という状態が作れる。`_phase` も部位の型・disabled と
+  構造 hp から毎回同じ答えが出る。
+- 場所: `src/game/protein/protein-combat-state.ts:24,131,159,222`
+- 疑う理由: R39 と同じ形が、表示ではなくモデル層とセーブデータに出ている。
+- 減るもの: 保存項目1つと、復元時の食い違いの余地。`_phase` は遷移検出のために呼び出し前の値だけ
+  要る。/ 確度: 高(`disabled`)・中(`_phase`) / 確認: `disabled` は自分で確認、`_phase` は報告のみ
+
+### R62. 計画経路の `_nodeCount` が導出値で、計画が空のフレームだけ前フレームの値が残る
+- 症状: `_nodeCount` は常に `activeCount - 1`(区間はノード数 + 1本)。ところが計画が無いフレームの
+  早期 return は `activeCount = 0` と `final = null` だけを戻し、`_nodeCount` と `sources` は
+  前フレームのまま残る。この状態で `arrivalStates()` を読むと、既に無効な区間の到達状態が返る。
+- 場所: `src/game/plan/plan-path.ts:92,102,128-137,169-172,234,287-296`
+- 疑う理由: 派生値を別に持ったことで、リセット漏れが「起こりうる」形になっている。導出値にすれば
+  `activeCount = 0` の1行で両方が畳まれる。`final` も `sources[activeCount - 1]` から毎回組める。
+- 減るもの: フィールド2本と、リセットの整合を取り続ける責務。/ 確度: 高 / 確認: 自分で確認
+
+### R63. カメラの姿勢が四元数・オイラー角・上方向ベクトルの3重で持たれている
+- 症状: `up_r` は `qRotate(orientation, LOCAL_UP)` の往復、`offset_r` の向き成分は同じく
+  `LOCAL_FORWARD` の往復で、独立なのは距離だけ。`CameraOrientation.euler` も毎フレーム末尾の
+  `rebase()` が四元数から書き戻すので、`turn()` が積んだ値はフレームを跨がない。
+- 場所: `src/game/camera/focus-camera.ts:110,112,626-657`、`src/game/camera/camera-orientation.ts:39`
+- 疑う理由: 同じ姿勢が3つの表現で並び、毎フレーム一致させている。正本を四元数1本+距離のスカラーに
+  寄せれば整合の維持が要らなくなる。
+- 減るもの: フィールド3本と毎フレームの書き戻し。/ 確度: 中(オイラー角は ±π の折り返しの扱いが
+  変わりうる) / 確認: 報告のみ
+
+### R64. マーカーと表示ポリシーが、同じフレームの軽い計算をわざわざ溜めている
+- 症状: `distScratch` に入れる `len(sub(label.pos, cameraPos))` は、同じメソッドの数行下で
+  `pointPlacement(label.pos, project, cameraPos)` が `dist` として再計算している。`frameScratch` の
+  `x/y/front` も同じ点の再投影と重複し、`occluded` は同じ構造体の `opacity <= 0` と同値。
+  `showIcon`/`showLabel` は表示ポリシーの答えの写しで、そのポリシー自身も判定結果を Map に
+  メモ化している(器ごと毎フレーム2回作り直されるので、寿命は1フレーム)。
+- 場所: `src/game/marker/celestial-markers.ts:60-61,84,92-93,200-202,214-222,253-262`、
+  `src/game/map/visibility-policy.ts:93,98-99,109`
+- 疑う理由: R5-1 が許すのは「結果に効く入力をすべてキーにしたキャッシュ」で、これは同じフレームの
+  同じスコープで2度計算しているだけ。導出元(`label.pos`・`cameraPos`・`policy`)はその場に揃っている。
+- 減るもの: Map 4本と、二重投影1回ぶん。/ 確度: 中 / 確認: `celestial-markers` は自分で確認、
+  `visibility-policy` は報告のみ
+
+### R65. 軌道ガイドが、`familyId` と設定から決まる値を複製している
+- 症状: `GuideLineEntry.point` は `parseGuideKindId(familyId).point` そのもの、`count` は
+  `effectiveKind(settings, familyId).count` の写しで、読む側はどちらも直前に同じ `kind` を引いた
+  直後にこの写しのほうを読んでいる。`displays` は `displayedSettings`/`displayedStyle` という
+  「前回それを組んだときの引数」と突き合わせて持つ。
+- 場所: `src/game/celestial/orbit-guide/orbit-guide-model.ts:67-79,86,109-117,242-244,310,365-381,413-447`、
+  `src/game/celestial/orbit-guide/zero-velocity-model.ts:123-124,152-156`
+- 疑う理由: 点列 `geometry` の保持には理由があるが、そこから宣言を組む部分は軽い。差分比較のための
+  引数の写しは、宣言型の装置(R7「装置は内部で前回との差分を取る」)には要らない。
+- 減るもの: エントリのフィールド2本と、比較用の写し3本。/ 確度: 中 / 確認: 報告のみ
+
+### R66. HUD パネルが、設定の現在値を鏡映しで持っている
+- 症状: 表示オプションのクラス別モード・天球グリッド・軌道ガイド設定を、パネルが Map と
+  フィールドで持ち直している。同じ値が設定の正本・パネルの写し・ボタンの点灯/`dataset` と
+  三重に並ぶ。コメント自身が「軌道ガイド設定の鏡映し」と書いている箇所がある。
+- 場所: `src/game/hud/panels/view-options-panel.ts:163,169,174,389,434-451`、
+  `src/game/hud/panels/orbit-guide-tab.ts:94`
+- 疑う理由: 写しが要るのは「トグルの次の値を決めるのに現在値が要る」からで、押し込み一方向の
+  配線がそれを許していないだけ。R5 のどの種類にも当たらない。
+- 減るもの: Map 2本とフィールド2本。ただしパネルへ設定の読み口を渡す配線が要る(**依存は悪化する**)
+  ので、置き場の判断が先。/ 確度: 中 / 確認: 報告のみ
+
+### R67. DOM の状態と JS の boolean を二重に持っている
+- 症状: ウィジェットの `on` / `enabled` / `minimized` / 一覧の `expanded` が、それぞれ
+  `aria-checked` / `aria-disabled` / `.hidden` / `.collapsed` と同じ事実を二重に持つ。書き手は
+  必ず両方を同時に書いており、読み手は同じクラスの中に居る。
+- 場所: `src/hud/widgets/toggle-switch.ts:7,37-41`、`src/hud/widgets/button.ts:11,42,48,64-68`、
+  `src/hud/windows/pause-menu.ts:34,224-229,252-256`、`src/hud/windows/draggable-window.ts:91`、
+  `src/game/hud/panels/physical-object-list-panel.ts:39,420-423`、
+  `src/game/hud/panels/physical-object-list-row-tree.ts:31,137-143,224-231`
+- 疑う理由: R5-2 が許すのは DOM 資源そのもので、その状態の写しではない。`restoreSavedExpanded` は
+  boolean だけ書き換えて DOM を後続の同期に任せるので、その間だけ両者がずれる。
+- 減るもの: フィールド6本。/ 確度: 中(`toggle-switch`・`button` は高) / 確認: 前2件は自分で確認、
+  他は報告のみ
+
+### R68. `x !== null` と恒等な boolean を別に持っている
+- 症状: `synchronized` を true にする行は `lastProjection = input.projection`(非 null)と同じ
+  ブロック、false に戻す行は `lastProjection = null` と同じブロック。`detailedMaterialValue` と
+  `materialSyncValue` も同型。
+- 場所: `src/render/earth-surface-resident.ts:85,131,149,204-207`、`src/render/earth-surface.ts:123,238-240,287`
+- 疑う理由: 2つのフィールドが同じ事実を指し、片方だけ書く経路が増えれば静かに壊れる。
+- 減るもの: boolean 2本。/ 確度: 中 / 確認: 報告のみ
+
+### R69. id と表示名を両方持っている
+- 症状: 対象の id を持ちながら表示名も保存している。名前は id から引ける(`nameOf` / roster)。
+- 場所: `src/game/nav-target.ts:69`、`src/game/marker/equator-node-marker.ts:25`、
+  `src/game/marker/orbit-point-marker.ts:51`
+- 疑う理由: 非正規化。`ApsisMarker` は既に `centerId` だけを持つ形になっていて、同じ族の中で
+  持ち方が割れている。
+- 減るもの: フィールド3本。ただし `nav-target` は「撃破された対象の名前」だけ導出元が消えるので、
+  そこは挙動が変わる。/ 確度: 中 / 確認: 報告のみ
+
+### R70. 導出層が、同じフレームに引数で来る値を写して持っている
+- 症状: いま何ビューか・いまの表示時刻はどちらも毎フレーム引数で来るのに、受け取り側がフィールドへ
+  写している。`chromeView` は `mapRoot.classList.contains('active')` とも二重。
+- 場所: `src/game/hud/hud.ts:65,164-166`、`src/game/hud/panel-shell.ts:34`、
+  `src/game/pickable/object-pickables.ts:22-23`、`src/game/pickable/object-windows.ts:47,136-148`
+- 疑う理由: R5-5(前フレームの記憶)に見えるが、安定化のためではなく単に引数を置いているだけ。
+  `object-windows.lastFocusId` だけは「マップを離れている間は据え置く」効果があるので、消すなら
+  その挙動を決める必要がある。
+- 減るもの: フィールド5本。フレーム外のハンドラから読むものは、読み口を渡す配線が要る。
+  / 確度: 中 / 確認: 報告のみ
+
+### R71. 段の質量・慣性と放熱板の摩耗が、正本からの毎フレームの写し
+- 症状: `mass`/`att.inertia` は段スタックの合計から、`RadiatorSystem.wear` は放熱板パーツの
+  `1 - hp/maxHp` から、毎フレーム上書きされている。
+- 場所: `src/game/player/attached-booster-motion.ts:88`、
+  `src/game/dynamic/dynamic-entity/detached-booster-motion.ts:36`、`src/game/player/radiator.ts:88,122`
+- 疑う理由: 計算自体は軽微(段は最大4本、放熱板は2枚)で、導出元は生きている。
+- 減るもの: 書き戻し2系統。ただし読み手が広く(`throttle` / `contactMass` / `base-motion` / 描画)、
+  `DynamicMotion` も `RadiatorSystem` もパーツを知らないので、**供給フックを1本足す形になる**
+  (依存は中程度に悪化)。置き場の判断が先。/ 確度: 低 / 確認: 報告のみ
+
+## 単独では挙げないもの(軽微、または理由が書かれているもの)
+
+- `src/render/cloud/field-projection.ts:110` `cosRadiusValue`(= `Math.cos(aimedRadius)`)、
+  `src/render/curve.ts:90` `appliedStyle`、`src/game/celestial/orbit-guide/orbit-guide-catalog.ts:74` の
+  `'loaded'`(= `systems[id] !== undefined`)、`src/launcher/save/slot-data.ts:36` の
+  `lastPlayedAtReal`(= `snapshots[0].createdAtReal`)。どれも1フィールド。
+- `src/physics/planet-system.ts:53` `offsetting` — 衛星と μ から組み直せるが、時刻キャッシュのミス
+  ごとに読まれる。**性能上の理由がコメントに書かれていない**ので、書くか eager にするかの判断だけ要る。
+- `src/game/dynamic/next-event-time.ts:8`、`src/physics/dynamic-trajectory.ts:25`、
+  `src/launcher/save/slot-data.ts:13-30`(セーブ索引)は、いずれも理由が明記された意図的な保持。
