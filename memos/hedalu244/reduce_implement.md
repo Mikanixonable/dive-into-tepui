@@ -56,19 +56,18 @@
 - 仕様: CONTROLS.md「N … マップビュー、ノードがある場合」「X 選択中のノードを削除(未選択なら計画全体を破棄) マップビュー」
 - 減るもの: `CombatView.handleInput` と `clearPlan` が消え、計画キーの窓口が `PlanEditor` 1つになる。/ 確度: 高 / 確認: 報告のみ
 
-### R17. 地球・月の名指しが一般の仕組みの隣に残っている(8箇所)
+### R17. 地球・月の名指しが一般の仕組みの隣に残っている(7箇所)
 - 症状: 天体を一般に扱う仕組みがあるのに、地球・月・太陽を文字列で名指しする分岐が並んでいる。
   1. 軌道要素の基準が `'auto'|'earth'|'moon'|'target'` の固定2択。架空星系でもボタンが出て、押すと無言で自動選択のまま(`src/game/orbit-reference.ts:12,70-77`、`src/game/hud/orbit/orbit-panel.ts:14-19`)
   2. カメラの基準面が `findMotion('earth')`/`findMotion('moon')`。月が無い星系で「月軌道面」を選ぶと無言で黄道面に落ちる。赤道面は `?? motionOf(originId)` を併記していて二重決定(`src/game/camera/focus-camera.ts:271-284`)
-  3. 衛星の軌道線で月だけ「系にいなくても出す」例外。土星系にいても月の楕円が出続ける(`src/game/map/visibility-policy.ts:178-183`)
-  4. 近点/遠点の和名が `'earth'/'moon'/'sun'` の if 連鎖。火星・木星では一般名「近点」に落ちる(`src/game/hud/orbit/orbit-labels.ts:12-14`、`src/game/creative/placement-validation.ts:27-28` は `?? 'earth'` まで名指し)
-  5. 天体メニューの副題が月だけ「衛星 (月)」で、タイタンやエウロパは「天体・ラグランジュ点」(`src/game/celestial/celestial-entity/celestial-entity.ts:103-107`)
-  6. 「地球専用」参照軌道(静止・太陽同期・モルニヤ・ツンドラ)。物理側 `src/physics/earth-reference-orbits.ts:28-55` は mu・J2・自転周期を `CelestialBody` から読む完全に一般の実装(`src/game/celestial/orbit-guide/orbit-guide-model.ts:330-360`、`src/game/pickable/line-pickables.ts:55`)
-  7. CR3BP の系→天体の固定表。系 id が「主-副」そのままで、表の `[0]`(主天体)は誰も読まない(`src/physics/orbit-guide.ts:40-55`)
-  8. スケールグリッドが `findMotion('moon')`(`src/game/celestial/scale-grid-view.ts:41`)
+  3. 近点/遠点の和名が `'earth'/'moon'/'sun'` の if 連鎖。火星・木星では一般名「近点」に落ちる(`src/game/hud/orbit/orbit-labels.ts:12-14`、`src/game/creative/placement-validation.ts:27-28` は `?? 'earth'` まで名指し)
+  4. 天体メニューの副題が月だけ「衛星 (月)」で、タイタンやエウロパは「天体・ラグランジュ点」(`src/game/celestial/celestial-entity/celestial-entity.ts:103-107`)
+  5. 「地球専用」参照軌道(静止・太陽同期・モルニヤ・ツンドラ)。物理側 `src/physics/earth-reference-orbits.ts:28-55` は mu・J2・自転周期を `CelestialBody` から読む完全に一般の実装(`src/game/celestial/orbit-guide/orbit-guide-model.ts:330-360`、`src/game/pickable/line-pickables.ts:55`)
+  6. CR3BP の系→天体の固定表。系 id が「主-副」そのままで、表の `[0]`(主天体)は誰も読まない(`src/physics/orbit-guide.ts:40-55`)
+  7. スケールグリッドが `findMotion('moon')`(`src/game/celestial/scale-grid-view.ts:41`)
 - 疑う理由: どれも「地球-月しか無かった時期」の名残。一般の判定(`CelestialClass`・親子関係・`motion.primary.id`)が同じファイルの隣にある。
-- 仕様: 1 は ORBIT.md に、3 は MAP.md に、6 は MAP.md に書かれている → **第4群**。4・5・7・8 は記述なし
-- 減るもの: 名指し分岐8箇所と、無言で落ちる選択肢が消える。天体を増やしたときに HUD・カメラを触らなくて済む。/ 確度: 高(4・5・7・8)/ 中(1・2・3・6)/ 確認: 名指しの存在は自分で確認、一般化可能性は報告のみ
+- 仕様: 1 は ORBIT.md に、5 は MAP.md に書かれている → **第4群**。3・4・6・7 は記述なし
+- 減るもの: 名指し分岐7箇所と、無言で落ちる選択肢が消える。天体を増やしたときに HUD・カメラを触らなくて済む。/ 確度: 高(3・4・6・7)/ 中(1・2・5)/ 確認: 名指しの存在は自分で確認、一般化可能性は報告のみ
 
 ### R18. 主星の決定を描画 View の `stellarLight` から引き、弾の散布界まで届いている
 - 症状: 「どれが恒星か」を見た目で決め、その結果が自機・敵の太陽グレア散布界に入る。
@@ -145,25 +144,8 @@
 
 # 第3群 — 死んだコード・到達不能な分岐(挙動不変、消すだけ)
 
-### R33. 旧セーブ移行 `migrateLegacySave` は構造的に成立せず、毎起動走っている
-- 症状: 起動ごとに `tepui.save` を読みに行くが、取り込みは絶対に成功せず `null` を返す。
-- 場所: `src/launcher/save/legacy-save.ts:7,11,43`、`src/launcher/save/save-slots.ts:42`
-- 疑う理由: **git で確認** — `tepui.save` を書いていた `save-manager.ts` の `SAVE_VERSION = 2`(`f6979d67^`)。現行の `readLegacy()` は `data.version === SAVE_VERSION`(=3)を要求するので必ず弾かれる。
-- 仕様: SAVE.md に旧形式(単一スロット)の取り込みの記述なし
-- 減るもの: モジュール1つ、`SaveSlots.load` の分岐1つ、出どころ不明の「移行データ」スロットが生まれる経路。UX 変化なし。/ 確度: 高 / 確認: 自分で確認(git archeology)
-
-### R34. 版ゲートのせいで、セーブの optional フィールドと `??` 既定が全部到達不能
-- 症状: 読み込み側が欠損に備えて既定値を持つが、`SnapshotService.load` が `version !== 3` を弾くので、欠損した形は一切入ってこない。
-- 場所: `src/game/save/save-data.ts:66-67,93-94,112,114,116,131-134,199,299,301`、`src/game/player/fire-control.ts:108-109`、`src/game/player/throttle.ts:76-77`、`src/game/stages/stage-utils/logistics.ts:51-52`、`src/launcher/save/snapshot-service.ts:61`
-- 疑う理由: `barrelTemperature`/`barrelDeviation`/`rcsDamp`/`progradeHold`/`fineAttitude`/`showTrajectoryLine`/`boosters`/`fuel`/`throttle`/`camera`/`navTarget`/`rcsFuelResupplyEnabled` はすべて serialize が無条件に書く。
-- 仕様: SAVE.md「壊れている、または対応しない形式のスナップショットも読み込めない」— 部分欠損からの復元は書かれていない
-- 減るもの: `?` と `??` が 12 組。「欠けているときは環境温度」のような二重既定が1箇所に戻る。/ 確度: 高 / 確認: 版ゲートは自分で確認、12組の網羅は報告のみ
-
-### R35. 廃止モード・旧形式の読み替え・到達不能な分岐が型に残っている
+### R35. 到達不能な分岐と、使われない選択肢が型に残っている
 - 症状: 以下がすべて生成・到達されないまま型と分岐に残っている。
-  - `planExecution: 'powered'` と読み替え元 `followPlan`(`PlanExecutionMode` は `'off'|'instant'` のみ。`followPlan` を書き出すコードは無い)— `src/game/save/save-data.ts:106-112`、`src/game/player/player.ts:187-190`
-  - 旧カメラセーブ形式 `ChaseSaveDataV1`(認識して捨てるためだけの型)と `rotatingWith: … | string` — `src/game/camera/camera-system.ts:91-93`、`src/game/camera/focus-camera.ts:78-82`、`src/game/save/save-data.ts:228-230`
-  - ephemeris の `'legacy'` 状態と `isEphemerisContextCompatible`(v3 は必ず `ephemerisContext` を書く)— `src/physics/ephemeris/ephemeris-context.ts:31-38,62-83`
   - `SnapshotKind` の `'checkpoint'`(ラベル「決着」。`capture()` は `'auto'`/`'manual'` の2箇所だけ)— `src/launcher/save/slot-data.ts:9`
   - `LEGACY_PANEL_COLLAPSED_KEY` のビュー別移行(`f43e1973` の1回限り)— `src/settings/user-settings.ts:25,68-72`、`src/game/hud/hud-selection.ts:44-58`
   - `generateCluster` の `groupCount`/`perGroup`、`generateWave` の `forcedPattern`、`BoosterStack.step` の `fuelRate === 0` 無限燃焼、`WeaponPart.weaponType` の `'cannon'|'missile'`、`generatePointField` の既定引数2つ(片方は元期を畳む前の生の要素という誤った値)— `src/game/stages/spawner/enemy-spawner.ts:37-38`、`src/game/stages/stage-utils/wave-attack.ts:78`、`src/game/player/booster-stack.ts:189-192`、`src/game/celestial/solar-system/point-field.ts:231-234`
@@ -171,8 +153,8 @@
   - 敵弾の弾種の二重判定(敵は `'plasma'` しか撃たない)— `src/game/dynamic/dynamic-entity/bullet-reaction.ts:61`
   - ラグランジュのヤコビ定数の二重既定値と、3つ目の質量比の正本 — `src/game/celestial/orbit-guide/orbit-guide-catalog.ts:38-45`
   - `crypto` 不在のフォールバック(WebGPU 必須=secure context なので到達しない)— `src/launcher/stage-select.ts:59-67`
-- 仕様: いずれも該当の記述なし(`'powered'` は PLAN.md が「2段階の実行モード」と明言、無限燃焼は FLIGHT.md が「燃料が尽きるまで燃える」と明言)
-- 減るもの: 省略可能引数6つ以上、分岐10本以上、セーブ型のフィールド4つ。挙動は変わらない。/ 確度: 高 / 確認: `SAVE_VERSION` 周りは自分で確認、個別の到達不能性は報告のみ
+- 仕様: いずれも該当の記述なし(無限燃焼は FLIGHT.md が「燃料が尽きるまで燃える」と明言)
+- 減るもの: 省略可能引数6つ以上、分岐10本以上。挙動は変わらない。/ 確度: 高 / 確認: 報告のみ
 
 ### R36. 未配線の足場が4モジュールある
 - 症状: 定義だけがあり、どこからも import されていない。
@@ -214,8 +196,7 @@
 | # | 挙動 | 仕様の位置 | 提案 |
 | --- | --- | --- | --- |
 | R17-1 | 軌道基準を地球・月・ターゲットに固定できる | ORBIT.md | 登録天体から候補を引く形へ。ORBIT.md「未確定の案」の「基準天体とマップの参照フレームの統合」と合わせて進める |
-| R17-3 | 月だけ衛星軌道線を常時表示 | MAP.md「ただし地球の月だけは常時例外的に表示される」 | 例外を消し、全衛星で同じ規則にする |
-| R17-6 | 参照軌道は地球専用 | MAP.md「いずれも地球専用の軌道なので系の軸を持たない」 | 物理側は既に一般。仕様を実装の一般性へ進める |
+| R17-5 | 参照軌道は地球専用 | MAP.md「いずれも地球専用の軌道なので系の軸を持たない」 | 物理側は既に一般。仕様を実装の一般性へ進める |
 | — | 一巡という長さを持たない曲ではシークできない | AUDIO.md | antipode も厳密な周期曲で、`kind==='antipode'` の case を書いていないだけ(`src/audio/bgm/track-cycle.ts:29,38`)。実装の穴を追認した文なので、仕様ごと消して全曲シーク可にする |
 | — | 決着済みセーブから結果を組み立て直す | SAVE.md が自己矛盾(「決着後は保存できない」と「保存された勝敗から組み立て直す」) | 片側を落とせば `fallbackResult` と「結果の記録がありません」画面が消える(`src/launcher/launcher.ts:41-45,164-165`)/ 確度: 低 |
 | — | T: RCS 回転制動の ON/OFF | CONTROLS.md の表 | 実キーは `P`。仕様と実装の両方が食い違っている(`src/input/key-mapping.ts:29`)/ 確度: 中 |
