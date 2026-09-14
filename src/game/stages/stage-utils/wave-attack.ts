@@ -25,6 +25,7 @@ const STAGE00_FORMATION_SPACING = 200; // 編隊の機体間隔 [m]
 const STAGE00_ALT_OFFSET_MIN = -1000; // 自機よりどれくらい低くするか [m]
 const STAGE00_ALT_OFFSET_MAX = -200;
 const STAGE00_SPAWN_INTERVAL = 30.0; // 波状攻撃の間隔 [s]
+const STAGE00_CLEARED_SPAWN_INTERVAL = 2.0; // 交戦中の集団が 0 になったときの波状攻撃の間隔 [s]
 const STAGE00_SPAWN_DIST_MIN = 10000; // 敵集団のスポーン距離
 const STAGE00_SPAWN_DIST_MAX = 14000;
 const STAGE00_FLYBY_SPEED = 200.0; // フライパスの相対速度 [m/s]
@@ -118,12 +119,12 @@ export class WaveAttack {
   ): void {
     despawnOutOfRangeEnemies(enemies, player, ENGAGEMENT_RANGE, simTime, activeStage);
     const activeGroups = countActiveWaveGroups(enemies);
-    const limits = resolveWaveSpawnLimits(this._waveCount, activeGroups);
     if (activeGroups === 0) {
-      // 全滅または画面外へ離脱した場合でも、瞬時に次が湧き続ける無限ループを防ぐため最低2秒は待つ
-      this.spawnTimer = Math.min(this.spawnTimer, 2.0);
+      // 短縮先を 0 にすると、湧いた波が同じフレームで離脱しきる時間加速下で毎フレーム湧き、
+      // 波数と機数が際限なく上がる正のフィードバックになる。
+      this.spawnTimer = Math.min(this.spawnTimer, STAGE00_CLEARED_SPAWN_INTERVAL);
     }
-    if (activeGroups >= limits.maxGroups || this._waveCount >= limits.allowedMaxWaveCount) return;
+    if (activeGroups >= maxWaveGroups(this._waveCount)) return;
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
     this.spawnWave(player, addEnemy);
@@ -156,13 +157,11 @@ function countActiveWaveGroups(enemies: readonly Enemy[]): number {
   return activeWaves.size;
 }
 
-// ウェーブ数が進むほど同時展開数の上限を引き上げていく。
-function resolveWaveSpawnLimits(waveCount: number, activeGroups: number): { maxGroups: number; allowedMaxWaveCount: number; } {
-  if (waveCount <= 1) return { maxGroups: 1, allowedMaxWaveCount: 2 };
-  if (waveCount === 2) return activeGroups > 0 ? { maxGroups: 1, allowedMaxWaveCount: 2 } : { maxGroups: 2, allowedMaxWaveCount: 4 };
-  if (waveCount === 3) return { maxGroups: 2, allowedMaxWaveCount: 4 };
-  if (waveCount === 4) return activeGroups > 0 ? { maxGroups: 2, allowedMaxWaveCount: 4 } : { maxGroups: 3, allowedMaxWaveCount: Infinity };
-  return { maxGroups: 3, allowedMaxWaveCount: Infinity };
+// そこまでに湧いた波数に対する、同時に交戦してよいウェーブ数の上限。
+function maxWaveGroups(waveCount: number): number {
+  if (waveCount <= 1) return 1;
+  if (waveCount <= 3) return 2;
+  return 3;
 }
 
 // ウェーブ出現位置: 自機と同じ高度の水平方向(全方位)にランダムな距離で配置
