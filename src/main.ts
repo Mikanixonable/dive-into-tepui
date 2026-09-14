@@ -50,7 +50,7 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
 function startAnimationLoop(
   launcher: Launcher, gs: GameScene,
   graphics: SettingValue<GraphicsSettingsData>, renderStyle: SettingValue<RenderStyle>,
-  debugInfo: DebugInfoWindow, sections: FrameSections,
+  debugInfo: DebugInfoWindow, pauseMenu: PauseMenu, sections: FrameSections,
   autoSave: AutoSave,
   snapshotControls: SnapshotControls,
 ): void {
@@ -64,6 +64,8 @@ function startAnimationLoop(
     // リサイズしたフレームで画面上の当たり判定がずれる。
     const viewport = browserViewport();
     gs.syncFrame(viewport, graphics.current, debugInfo.debugTarget);
+    // 設定面はタイトル画面でも開けるので、周回の有無を見る前に引き直す。
+    pauseMenu.sync();
     const game = launcher.currentGame;
     const current = launcher.current;
     // 周回の切り替え中は Game が無いので、次フレームを予約して抜ける。
@@ -240,7 +242,7 @@ async function main() {
   // 最初の周回を起こしてから、フレームを回し始める。
   await launcher.start();
   startAnimationLoop(
-    launcher, gs, settings.graphics, settings.renderStyle, debugInfo, sections,
+    launcher, gs, settings.graphics, settings.renderStyle, debugInfo, pauseMenu, sections,
     autoSave, snapshotControls,
   );
 }
