@@ -44,7 +44,9 @@ export interface SaveSlotMeta {
   name: string;
   createdAtReal: number;
   lastPlayedAtReal: number;
-  lastStageId: string;
+  // 直近に遊んだ周回。一度も遊んでいないスロットでは null。ended は決着したか、
+  // タイトルへ戻ったかで、どちらもその周回はもう再開しない。
+  lastRun: { readonly stageId: string; readonly ended: boolean } | null;
   stages: StageHistoryMeta[];
 }
 
@@ -59,7 +61,7 @@ export interface SaveIndex {
 // 書き出しファイルの識別子と形式バージョン。組み立てる側(SaveSlots)と検証する側
 // (save-transfer)の両方が参照するので、どちらでもない型定義の場所に置く。
 export const SLOT_EXPORT_FORMAT = 'tepui.slot';
-export const SLOT_EXPORT_VERSION = 1;
+export const SLOT_EXPORT_VERSION = 2;
 
 // スロット1件を書き出したファイルの中身。format は無関係な JSON を読ませたときに
 // 「壊れたセーブ」ではなく「セーブファイルではない」と判定するための識別子。

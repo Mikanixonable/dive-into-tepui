@@ -124,9 +124,8 @@ function checkSlotExportShape(parsed: unknown): { ok: false; reason: string } | 
     return { ok: false, reason: 'これは Dive into Tepui のセーブファイルではありません' };
   }
 
-  const formatVersion = obj.formatVersion;
-  if (typeof formatVersion !== 'number' || formatVersion < 1 || formatVersion > SLOT_EXPORT_VERSION) {
-    return { ok: false, reason: `対応していない形式のバージョンです (v${String(formatVersion)})` };
+  if (obj.formatVersion !== SLOT_EXPORT_VERSION) {
+    return { ok: false, reason: `対応していない形式のバージョンです (v${String(obj.formatVersion)})` };
   }
 
   const slot = obj.slot;
@@ -165,7 +164,7 @@ function checkSlotExportShape(parsed: unknown): { ok: false; reason: string } | 
 
   const exp: SlotExport = {
     format: SLOT_EXPORT_FORMAT,
-    formatVersion,
+    formatVersion: SLOT_EXPORT_VERSION,
     exportedAtReal: typeof obj.exportedAtReal === 'number' ? obj.exportedAtReal : Date.now(),
     slot: { ...(slot as SaveSlotMeta), stages: filteredStages },
     snapshots: filteredSnapshots as SlotExport['snapshots'],
