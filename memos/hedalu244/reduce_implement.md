@@ -212,7 +212,6 @@
 - **R45. マーカーのサブ行の字形表が `ENTITY_GLYPH` を手で写し直している。** 敵 △ が `ascendingNode`、基地 ⬡ が `burnPoint` と衝突。MARKERS.md は中空の字形を「軌道上の点」の族と明記。`src/game/marker/celestial-sub-labels.ts:21-23`。/ 確度: 中
 - **R48. 入力の連打判定が実時刻ラッチ。** `performance.now()/1000` がモデル層にあり、時間加速と噛み合わない。`src/game/player/throttle.ts:145`。計画の K2 は「導出の入力解釈」へ移す予定。/ 確度: 低
 - **R49. 被弾音が非操作の自艦の被弾でも鳴る。** 減衰が単艦前提の尺度。AUDIO.md の明文の対象は連続音だけ。`src/game/player/player.ts:466,494`。/ 確度: 低
-- **R50. BGM の再生の退役が実時刻タイマー。** 待ち時間は音声時刻で計算しているのに `setTimeout` で待つので、タブを隠すと尾が切れる。`src/audio/bgm/conductor.ts:72,111`。/ 確度: 低
 
 ---
 
