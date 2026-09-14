@@ -213,10 +213,6 @@ async function main() {
   );
 
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
-  pauseMenu.onPauseMenuOpenChange = (open) => {
-    if (open) launcher.current?.pause();
-    else launcher.current?.resume();
-  };
 
   const saveBrowser = new SaveBrowser(shell.layers.system, slots, snapshotService, launcher, shell.overlayManager);
   saveBrowser.onSlotSwitched = () => launcher.switchSlot();
