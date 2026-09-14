@@ -2,7 +2,7 @@
 // 生成する。天体名・分布・描画半径・色はここが決める。各群は PointFieldDef 1つのデータで
 // 駆動し、群を増やすには POINT_FIELD_DEFS に要素を足す。
 import { AU } from '../../../physics/astronomical-unit';
-import { MU_SUN } from './constants';
+import { MU_SUN } from './sun';
 import { JUPITER } from './jupiter-system';
 import { mulberry32 } from '../../../math/random';
 import type { PointElements } from '../../../physics/point-orbit';

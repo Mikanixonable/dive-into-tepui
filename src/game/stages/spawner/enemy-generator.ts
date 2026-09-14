@@ -6,7 +6,7 @@
 import * as THREE from 'three/webgpu';
 import { qFromForwardUp, randomQuat, type Quat } from '../../../math/quat';
 import { KinematicState, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../../celestial/solar-system/constants';
+import { MU_EARTH, R_EARTH } from '../../celestial/solar-system/earth-system';
 import { stateFromOrbitalElements } from '../../../physics/elements';
 import { randSym } from '../../../math/random';
 import { addScaled, len, norm, rotateAxis, scale, sub, v3, type Vec3 } from '../../../math/vec3';

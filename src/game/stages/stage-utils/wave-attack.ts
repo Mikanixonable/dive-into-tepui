@@ -13,7 +13,7 @@ import type { FlashEffects } from '../../vfx/flash-effects';
 
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { apsisAltitudes, orbitalElementsOf } from '../../../physics/elements';
-import { R_EARTH } from '../../celestial/solar-system/constants';
+import { R_EARTH } from '../../celestial/solar-system/earth-system';
 import { strongestAttractor } from '../../../physics/attractor';
 import { add, addScaled, len, norm, randPerp, randVec, scale, sub, Vec3 } from '../../../math/vec3';
 import { generateApproachingEnemy } from '../spawner/enemy-generator';
