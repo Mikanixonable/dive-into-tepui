@@ -3,12 +3,13 @@ import { fixedMotion, positionOf, solarSystemParts } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/constants';
-import { OrbitalElements, keplerPeriod, stateFromOrbitalElements } from '../../src/physics/elements';
-import { C22_MOON, J2_EARTH, J2_MOON, MU_MOON, MU_SUN, R_MOON, R_MOON_GRAVITY, R_SUN } from '../../src/game/celestial/solar-system/constants';
+import {
+  C22_MOON, J2_EARTH, J2_MOON, MU_EARTH, MU_MOON, R_EARTH, R_EARTH_EQ, R_MOON, R_MOON_GRAVITY,
+} from '../../src/game/celestial/solar-system/earth-system';
+import { OrbitalElements, keplerPeriod, orbitalElementsOf, stateFromOrbitalElements } from '../../src/physics/elements';
+import { MU_SUN, R_SUN } from '../../src/game/celestial/solar-system/sun';
 import { Degree2Gravity } from '../../src/physics/celestial-body';
 import { CelestialMotion } from '../../src/physics/celestial-motion';
-import { orbitalElementsOf } from '../../src/physics/elements';
 import { degree2Accel, stepDynamics, stepRK4 } from '../../src/physics/dynamics';
 import { Vec3, add, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { qFromAxisAngle, qRotate } from '../../src/math/quat';
