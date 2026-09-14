@@ -221,9 +221,9 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 敵のマーカー表示項目を組み立てる。pos/vel には機体メッシュと同じ表示時刻の状態
   // (stateAt 経由)を渡すこと。
-  public markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode): GroupedMarkerItem {
-    // 代表選出の優先度は、近い個体ほど高くする
-    const dist = len(sub(pos, viewerPos));
+  public markerItem(viewerPos: Vec3 | null, pos: Vec3, vel: Vec3, view: ViewMode): GroupedMarkerItem {
+    // 代表選出の優先度は、同じ種別の中では視点に近い個体ほど高くする
+    const priority = viewerPos ? MARKER_PRIORITY.ENEMY - len(sub(pos, viewerPos)) / 1e9 : MARKER_PRIORITY.ENEMY;
     return {
       key: this.markerKey,
       kind: this.mapKind,
@@ -231,7 +231,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
       sym: view === 'map' ? this.headingHpMarkerSvg(true) : this.hpMarkerSvg(),
       pos,
       vel,
-      priority: MARKER_PRIORITY.ENEMY - dist / 1e9,
+      priority,
       name: this.name,
       // 敵本体と画面外方位マーカーは同じ色で統一する。
       bearing: {
