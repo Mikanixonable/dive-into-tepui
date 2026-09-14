@@ -145,25 +145,8 @@
 
 # 第3群 — 死んだコード・到達不能な分岐(挙動不変、消すだけ)
 
-### R33. 旧セーブ移行 `migrateLegacySave` は構造的に成立せず、毎起動走っている
-- 症状: 起動ごとに `tepui.save` を読みに行くが、取り込みは絶対に成功せず `null` を返す。
-- 場所: `src/launcher/save/legacy-save.ts:7,11,43`、`src/launcher/save/save-slots.ts:42`
-- 疑う理由: **git で確認** — `tepui.save` を書いていた `save-manager.ts` の `SAVE_VERSION = 2`(`f6979d67^`)。現行の `readLegacy()` は `data.version === SAVE_VERSION`(=3)を要求するので必ず弾かれる。
-- 仕様: SAVE.md に旧形式(単一スロット)の取り込みの記述なし
-- 減るもの: モジュール1つ、`SaveSlots.load` の分岐1つ、出どころ不明の「移行データ」スロットが生まれる経路。UX 変化なし。/ 確度: 高 / 確認: 自分で確認(git archeology)
-
-### R34. 版ゲートのせいで、セーブの optional フィールドと `??` 既定が全部到達不能
-- 症状: 読み込み側が欠損に備えて既定値を持つが、`SnapshotService.load` が `version !== 3` を弾くので、欠損した形は一切入ってこない。
-- 場所: `src/game/save/save-data.ts:66-67,93-94,112,114,116,131-134,199,299,301`、`src/game/player/fire-control.ts:108-109`、`src/game/player/throttle.ts:76-77`、`src/game/stages/stage-utils/logistics.ts:51-52`、`src/launcher/save/snapshot-service.ts:61`
-- 疑う理由: `barrelTemperature`/`barrelDeviation`/`rcsDamp`/`progradeHold`/`fineAttitude`/`showTrajectoryLine`/`boosters`/`fuel`/`throttle`/`camera`/`navTarget`/`rcsFuelResupplyEnabled` はすべて serialize が無条件に書く。
-- 仕様: SAVE.md「壊れている、または対応しない形式のスナップショットも読み込めない」— 部分欠損からの復元は書かれていない
-- 減るもの: `?` と `??` が 12 組。「欠けているときは環境温度」のような二重既定が1箇所に戻る。/ 確度: 高 / 確認: 版ゲートは自分で確認、12組の網羅は報告のみ
-
-### R35. 廃止モード・旧形式の読み替え・到達不能な分岐が型に残っている
+### R35. 到達不能な分岐と、使われない選択肢が型に残っている
 - 症状: 以下がすべて生成・到達されないまま型と分岐に残っている。
-  - `planExecution: 'powered'` と読み替え元 `followPlan`(`PlanExecutionMode` は `'off'|'instant'` のみ。`followPlan` を書き出すコードは無い)— `src/game/save/save-data.ts:106-112`、`src/game/player/player.ts:187-190`
-  - 旧カメラセーブ形式 `ChaseSaveDataV1`(認識して捨てるためだけの型)と `rotatingWith: … | string` — `src/game/camera/camera-system.ts:91-93`、`src/game/camera/focus-camera.ts:78-82`、`src/game/save/save-data.ts:228-230`
-  - ephemeris の `'legacy'` 状態と `isEphemerisContextCompatible`(v3 は必ず `ephemerisContext` を書く)— `src/physics/ephemeris/ephemeris-context.ts:31-38,62-83`
   - `SnapshotKind` の `'checkpoint'`(ラベル「決着」。`capture()` は `'auto'`/`'manual'` の2箇所だけ)— `src/launcher/save/slot-data.ts:9`
   - `LEGACY_PANEL_COLLAPSED_KEY` のビュー別移行(`f43e1973` の1回限り)— `src/settings/user-settings.ts:25,68-72`、`src/game/hud/hud-selection.ts:44-58`
   - `generateCluster` の `groupCount`/`perGroup`、`generateWave` の `forcedPattern`、`BoosterStack.step` の `fuelRate === 0` 無限燃焼、`WeaponPart.weaponType` の `'cannon'|'missile'`、`generatePointField` の既定引数2つ(片方は元期を畳む前の生の要素という誤った値)— `src/game/stages/spawner/enemy-spawner.ts:37-38`、`src/game/stages/stage-utils/wave-attack.ts:78`、`src/game/player/booster-stack.ts:189-192`、`src/game/celestial/solar-system/point-field.ts:231-234`
@@ -171,8 +154,8 @@
   - 敵弾の弾種の二重判定(敵は `'plasma'` しか撃たない)— `src/game/dynamic/dynamic-entity/bullet-reaction.ts:61`
   - ラグランジュのヤコビ定数の二重既定値と、3つ目の質量比の正本 — `src/game/celestial/orbit-guide/orbit-guide-catalog.ts:38-45`
   - `crypto` 不在のフォールバック(WebGPU 必須=secure context なので到達しない)— `src/launcher/stage-select.ts:59-67`
-- 仕様: いずれも該当の記述なし(`'powered'` は PLAN.md が「2段階の実行モード」と明言、無限燃焼は FLIGHT.md が「燃料が尽きるまで燃える」と明言)
-- 減るもの: 省略可能引数6つ以上、分岐10本以上、セーブ型のフィールド4つ。挙動は変わらない。/ 確度: 高 / 確認: `SAVE_VERSION` 周りは自分で確認、個別の到達不能性は報告のみ
+- 仕様: いずれも該当の記述なし(無限燃焼は FLIGHT.md が「燃料が尽きるまで燃える」と明言)
+- 減るもの: 省略可能引数6つ以上、分岐10本以上。挙動は変わらない。/ 確度: 高 / 確認: 報告のみ
 
 ### R36. 未配線の足場が4モジュールある
 - 症状: 定義だけがあり、どこからも import されていない。
