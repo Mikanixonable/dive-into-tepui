@@ -409,14 +409,6 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
 - 減るもの: フィールド6本。/ 確度: 中(`toggle-switch`・`button` は高) / 確認: 前2件は自分で確認、
   他は報告のみ
 
-### R68. `x !== null` と恒等な boolean を別に持っている
-- 症状: `synchronized` を true にする行は `lastProjection = input.projection`(非 null)と同じ
-  ブロック、false に戻す行は `lastProjection = null` と同じブロック。`detailedMaterialValue` と
-  `materialSyncValue` も同型。
-- 場所: `src/render/earth-surface-resident.ts:85,131,149,204-207`、`src/render/earth-surface.ts:123,238-240,287`
-- 疑う理由: 2つのフィールドが同じ事実を指し、片方だけ書く経路が増えれば静かに壊れる。
-- 減るもの: boolean 2本。/ 確度: 中 / 確認: 報告のみ
-
 ### R69. id と表示名を両方持っている
 - 症状: 対象の id を持ちながら表示名も保存している。名前は id から引ける(`nameOf` / roster)。
 - 場所: `src/game/nav-target.ts:69`、`src/game/marker/equator-node-marker.ts:25`、
