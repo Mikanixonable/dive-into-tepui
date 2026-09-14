@@ -158,7 +158,7 @@ const MOON_SURFACE_MARKINGS = moonFeaturesData as readonly UnitSphereLoop[];
 // 地球のオーロラ。オーバル緯度は磁極の配置、発光高度は降り込む粒子が大気を励起する層、
 // 色は酸素の緑(557.7nm)と赤(630nm)の輝線による。
 const EARTH_AURORA_OPTICS: AuroraOptics = {
-  bodyRadius: 6.371e6,
+  bodyRadius: R_EARTH,
   ovalLatitudeDeg: 66,
   magneticPoleLatitudeDeg: 80.65,
   magneticPoleLongitudeDeg: -72.68,
