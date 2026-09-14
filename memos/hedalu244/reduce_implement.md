@@ -226,15 +226,12 @@
 
 確度が低い、または「無駄な複雑さ」ではなく別の種類の問題。一応挙げる。
 
-- **R41. `lastStageId` が「直前のステージ」と「周回が進行中か」を兼ねている。** 空文字センチネル1つに2つの問いが載っていて、決着後のセーブ行が12件のスナップショットを抱えたまま「未プレイ」と表示される。`src/launcher/save/save-slots.ts:88-104`、`src/launcher/save-browser/slot-pane.ts:104`。/ 確度: 中
-- **R42. CREATIVE で選んだ開始日時がスロットに残らない。** 最初の自動保存より前に再読み込みすると既定エポックへ戻る。`src/launcher/launcher.ts:109-118,179-191`。/ 確度: 中
 - **R43. 基地が使えない `plan`/`planExecution`/`fineAttitude` を持つ。** `fineAttitude` は `[V]` を拾わないので常に false、`planExecution` は基地のメニューに項目が無いので `'off'` 固定。それでも軌道計画パネルは基地の `plan` を編集させる。`src/game/dynamic/dynamic-entity/base.ts:62-71,167`。/ 確度: 中
 - **R44. タイトル画面で配色を変えても 3D 背景だけ追随しない。** `TitleScene` は `palette` を構築時に焼き込んで購読しない。ラン中の 3D は毎フレーム読む。UI-DESIGN.md「選択は画面へ即座に反映される」に反する。`src/launcher/title-scene.ts:333-349`。/ 確度: 中
 - **R45. マーカーのサブ行の字形表が `ENTITY_GLYPH` を手で写し直している。** 敵 △ が `ascendingNode`、基地 ⬡ が `burnPoint` と衝突。MARKERS.md は中空の字形を「軌道上の点」の族と明記。`src/game/marker/celestial-sub-labels.ts:21-23`。/ 確度: 中
 - **R48. 入力の連打判定が実時刻ラッチ。** `performance.now()/1000` がモデル層にあり、時間加速と噛み合わない。`src/game/player/throttle.ts:145`。計画の K2 は「導出の入力解釈」へ移す予定。/ 確度: 低
 - **R49. 被弾音が非操作の自艦の被弾でも鳴る。** 減衰が単艦前提の尺度。AUDIO.md の明文の対象は連続音だけ。`src/game/player/player.ts:466,494`。/ 確度: 低
 - **R50. BGM の再生の退役が実時刻タイマー。** 待ち時間は音声時刻で計算しているのに `setTimeout` で待つので、タブを隠すと尾が切れる。`src/audio/bgm/conductor.ts:72,111`。/ 確度: 低
-- **R51. 最初の周回の失敗だけ別の文言になる。** `start()` だけ `.catch(fail)` を通らない。`src/launcher/launcher.ts:96-105,207-214`。/ 確度: 低
 - **R53. モジュール寿命の採番器がランを跨いで残る。** `base.ts:48`、`pickup.ts:41-42`、`dynamic-entity.ts:18`(static)。id は増え続けるだけなので挙動は無害だが、ランの寿命の状態ではない。計画の手順 6-5 が移す予定。/ 確度: 低
 
 ---
