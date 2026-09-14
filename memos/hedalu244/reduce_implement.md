@@ -235,7 +235,6 @@
 - **R49. 被弾音が非操作の自艦の被弾でも鳴る。** 減衰が単艦前提の尺度。AUDIO.md の明文の対象は連続音だけ。`src/game/player/player.ts:466,494`。/ 確度: 低
 - **R50. BGM の再生の退役が実時刻タイマー。** 待ち時間は音声時刻で計算しているのに `setTimeout` で待つので、タブを隠すと尾が切れる。`src/audio/bgm/conductor.ts:72,111`。/ 確度: 低
 - **R51. 最初の周回の失敗だけ別の文言になる。** `start()` だけ `.catch(fail)` を通らない。`src/launcher/launcher.ts:96-105,207-214`。/ 確度: 低
-- **R52. bgm-lab が `TrackPlayback` を二重実装している。** 「一致は検証で押さえてある」とコメントにあるが、`tests/` に Composer/TrackPlayback のテストは無い。`tools/bgm-lab/lab-player.ts:6,108`。/ 確度: 低
 - **R53. モジュール寿命の採番器がランを跨いで残る。** `base.ts:48`、`pickup.ts:41-42`、`dynamic-entity.ts:18`(static)。id は増え続けるだけなので挙動は無害だが、ランの寿命の状態ではない。計画の手順 6-5 が移す予定。/ 確度: 低
 
 ---

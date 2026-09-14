@@ -41,6 +41,11 @@ export class TrackPlayback {
     return this.nextTime;
   }
 
+  // 次に刻むステップの番号。刻みは先読みで進むので、いま鳴っているステップより先にある。
+  public get nextStep(): number {
+    return this.step;
+  }
+
   // 鳴らしたまま任意のステップへ飛ぶ。すでに予約済みの音は取り消せないので、直前の音と
   // 短く重なることがある。
   seek(step: number, atTime: number): void {
