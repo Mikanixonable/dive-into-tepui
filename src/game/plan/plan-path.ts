@@ -88,8 +88,6 @@ export class PlanPath {
   // 先頭 activeCount 本がこのフレームの区間に対応する(区間が減れば末尾を捨てる)。
   private readonly sources: SegmentSource[] = [];
   private activeCount = 0;
-  // 先頭 _nodeCount 本がノードで終わる区間(= 各ノードの到達状態を持つ)。
-  private _nodeCount = 0;
   // このフレームに宣言した弧を描く折れ線の view。
   private readonly view: PlanPathView;
   // 直近の update() が確定させた表示変換。update() を一度も通していなければ null。
@@ -99,7 +97,6 @@ export class PlanPath {
   private project: ProjectFn | null = null;
   // sync が最後に受け取ったカメラ位置。nearestSample の遮蔽判定に使う。
   private cameraPos: Vec3 | null = null;
-  private final: FinalSegment | null = null;
   // 画面へ描く時間窓 [s]。ノードが複数あると計画全体は表示期間より長くなり得るので、
   // 積分範囲とは別に持つ。
   private displayFrom = 0;
@@ -132,7 +129,6 @@ export class PlanPath {
     };
     if (planData === null) {
       this.activeCount = 0;
-      this.final = null;
       return;
     }
     this.displayFrom = simTime;
@@ -169,14 +165,6 @@ export class PlanPath {
     this.sources.length = segments.length;
     this.samplesCache.length = segments.length;
     this.activeCount = segments.length;
-    this._nodeCount = planData.nodes.length;
-    const finalSource = this.sources[segments.length - 1]!;
-    this.final = {
-      periapsis: this.periapsisOf(finalSource),
-      apoapsis: this.apoapsisOf(finalSource),
-      periapsisCenter: finalSource.arc?.apsides?.periapsisCenter ?? null,
-      apoapsisCenter: finalSource.arc?.apsides?.apoapsisCenter ?? null,
-    };
   }
 
   // いま描いている折れ線そのもの(表示窓で切った区間ごとのサンプル列、時刻昇順)。線の上に
@@ -208,7 +196,14 @@ export class PlanPath {
 
   // 最後のバーン後の区間。直近の update() が描く計画を受け取っていなければ null。
   public finalSegment(): FinalSegment | null {
-    return this.final;
+    const source = this.sources[this.activeCount - 1];
+    if (!source) return null;
+    return {
+      periapsis: this.periapsisOf(source),
+      apoapsis: this.apoapsisOf(source),
+      periapsisCenter: source.arc?.apsides?.periapsisCenter ?? null,
+      apoapsisCenter: source.arc?.apsides?.apoapsisCenter ?? null,
+    };
   }
 
   // このフレームに描く弧を view へ宣言し、画面判定が使う視点を更新する。毎フレーム呼ぶ —
@@ -231,7 +226,7 @@ export class PlanPath {
 
   // frame に載せて描く owned な区間の弧。ノードの無い計画は操作対象の予測線と同じ軌道なので空。
   private arcLines(scale: ScaleFn, frame: ReferenceFrame): readonly PlanArcLine[] {
-    if (this._nodeCount === 0) return [];
+    if (this.nodeCount === 0) return [];
     const lines: PlanArcLine[] = [];
     for (let i = 0; i < this.activeCount; i++) {
       const source = this.sources[i]!;
@@ -282,15 +277,15 @@ export class PlanPath {
     return { min: minT, max: maxT };
   }
 
-  // この折れ線が経由するノードの数。
+  // この折れ線が経由するノードの数(区間はノードの数 + 1 本)。
   public get nodeCount(): number {
-    return this._nodeCount;
+    return Math.max(0, this.activeCount - 1);
   }
 
   // 各ノードの到達時点(噴射直前)の状態。到達前に打ち切られた区間は null。
   public arrivalStates(): (KinematicState | null)[] {
     const out: (KinematicState | null)[] = [];
-    for (let i = 0; i < this._nodeCount; i++) {
+    for (let i = 0; i < this.nodeCount; i++) {
       const source = this.sources[i];
       out.push(source ? this.stateAtSource(source, source.to) : null);
     }

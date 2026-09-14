@@ -351,15 +351,6 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
 - 減るもの: 保存項目1つと、復元時の食い違いの余地。`_phase` は遷移検出のために呼び出し前の値だけ
   要る。/ 確度: 高(`disabled`)・中(`_phase`) / 確認: `disabled` は自分で確認、`_phase` は報告のみ
 
-### R62. 計画経路の `_nodeCount` が導出値で、計画が空のフレームだけ前フレームの値が残る
-- 症状: `_nodeCount` は常に `activeCount - 1`(区間はノード数 + 1本)。ところが計画が無いフレームの
-  早期 return は `activeCount = 0` と `final = null` だけを戻し、`_nodeCount` と `sources` は
-  前フレームのまま残る。この状態で `arrivalStates()` を読むと、既に無効な区間の到達状態が返る。
-- 場所: `src/game/plan/plan-path.ts:92,102,128-137,169-172,234,287-296`
-- 疑う理由: 派生値を別に持ったことで、リセット漏れが「起こりうる」形になっている。導出値にすれば
-  `activeCount = 0` の1行で両方が畳まれる。`final` も `sources[activeCount - 1]` から毎回組める。
-- 減るもの: フィールド2本と、リセットの整合を取り続ける責務。/ 確度: 高 / 確認: 自分で確認
-
 ### R63. カメラの姿勢が四元数・オイラー角・上方向ベクトルの3重で持たれている
 - 症状: `up_r` は `qRotate(orientation, LOCAL_UP)` の往復、`offset_r` の向き成分は同じく
   `LOCAL_FORWARD` の往復で、独立なのは距離だけ。`CameraOrientation.euler` も毎フレーム末尾の
