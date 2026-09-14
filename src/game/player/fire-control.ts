@@ -334,6 +334,7 @@ export class FireControl {
       'normal',
       ship.weaponDamage,
       this._worldSfx,
+      registry.idAllocators,
     );
     registry.add(bullet);
   }
@@ -359,7 +360,7 @@ export class FireControl {
         w: v3(randSym(6.0), randSym(6.0), randSym(6.0)),
         inertia: v3(0.85, 0.3, 1.15), // 円筒: 長軸(y)が最小。x/z も非対称にしジャニベコフ効果を起こす
       },
-      this._worldSfx, this._fx, CASING_PHYS_RADIUS, this._scene,
+      this._worldSfx, this._fx, registry.idAllocators, CASING_PHYS_RADIUS, this._scene,
     ));
   }
 
@@ -411,7 +412,7 @@ export class FireControl {
         w: v3(randSym(2), randSym(2), randSym(2)),
         inertia: v3(1, 0.2, 1), // 円柱
       },
-      this._worldSfx, this._fx, BARREL_PHYS_RADIUS, this._scene,
+      this._worldSfx, this._fx, registry.idAllocators, BARREL_PHYS_RADIUS, this._scene,
     ));
     this.barrelTemperature = ENV_TEMP;
     this.barrelDeviation = 0;
@@ -441,7 +442,7 @@ export class FireControl {
         w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
         inertia: v3(1, 1.2, 1.4),
       },
-      this._worldSfx, this._fx, EJECTED_MAG_PHYS_RADIUS, this._scene,
+      this._worldSfx, this._fx, registry.idAllocators, EJECTED_MAG_PHYS_RADIUS, this._scene,
     ));
   }
 }

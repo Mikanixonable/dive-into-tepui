@@ -8,6 +8,7 @@ import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { generateDriftingEnemy } from './enemy-generator';
+import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
 import { COLOR_ENEMY_ORBIT_LINE } from '../../lines/entity-line-manager';
 
 export const STAGE0_PER_GROUP = 10; // グループあたりの機数
@@ -34,6 +35,7 @@ export function generateCluster(
   worldSfx: WorldSfx,
   fx: FlashEffects,
   scene: THREE.Scene,
+  idAllocators: EntityIdAllocators,
   groupCount: number = COLOR_STAGE0_GROUP_ACCENTS.length,
   perGroup: number = STAGE0_PER_GROUP,
 ): readonly Enemy[] {
@@ -64,7 +66,7 @@ export function generateCluster(
       if (offLen > safeRange) off = scale(off, safeRange / offLen);
 
       const state: KinematicState = kinematicState<'eci'>(base.t, add(base.r, off), base.v);
-      enemies.push(generateDriftingEnemy(`${label}-${i + 1}`, state, accent, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
+      enemies.push(generateDriftingEnemy(`${label}-${i + 1}`, state, accent, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene, idAllocators));
     }
   }
   return enemies;
