@@ -60,11 +60,9 @@ export class SnapshotService {
     if (data === null) return null;
     if (data.version !== SAVE_VERSION) return null;
     if (expectedStageId !== data.stageId) return null;
-    // 暦情報が無いスナップショットは互換復元で読む。元期は継承するので照合しないが、
-    // その元期が選ぶ暦データがいま手元にあるものと違うなら、絶対天体状態が曖昧になるので拒否する。
-    if (!isEphemerisContextRestorable(
-      (data as { ephemerisContext?: unknown }).ephemerisContext,
-    )) return null;
+    // 元期は継承するので照合しないが、その元期が選ぶ暦データがいま手元にあるものと違うなら、
+    // 絶対天体状態が曖昧になるので拒否する。
+    if (!isEphemerisContextRestorable(data.ephemerisContext)) return null;
     return data;
   }
 }

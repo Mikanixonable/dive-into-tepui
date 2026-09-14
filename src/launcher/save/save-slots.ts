@@ -9,7 +9,6 @@ import {
   SLOT_EXPORT_VERSION,
 } from './slot-data';
 import { SaveStore, SAVE_INDEX_VERSION } from './save-store';
-import { migrateLegacySave } from './legacy-save';
 
 // 履歴ごとに残す pinned:false の件数の上限。超えた分は古い順に消える。
 export const AUTO_SNAPSHOT_LIMIT = 12;
@@ -34,14 +33,12 @@ export class SaveSlots {
     this.index = store.readIndex() ?? { version: SAVE_INDEX_VERSION, slots: [], activeSlotId: null };
   }
 
-  // store から索引を開く。参照されない本体を掃除し、旧セーブを取り込み、遊ぶ先のスロットが
-  // 必ず1つある状態で返す。
+  // store から索引を開く。参照されない本体を掃除し、遊ぶ先のスロットが必ず1つある状態で返す。
   public static load(store: SaveStore): SaveSlots {
     const slots = new SaveSlots(store);
     slots.pruneOrphans();
-    const migrated = migrateLegacySave(slots);
     if (slots.activeSlotId === null) {
-      slots.setActiveSlot((migrated ?? slots.slots[0] ?? slots.createSlot('セーブデータ 1')).id);
+      slots.setActiveSlot((slots.slots[0] ?? slots.createSlot('セーブデータ 1')).id);
     }
     return slots;
   }
