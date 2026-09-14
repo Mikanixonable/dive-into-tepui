@@ -3,7 +3,9 @@
 // になる。
 import * as THREE from 'three/webgpu';
 import { StarDef } from '../../../physics/celestial-body-def';
-import { MU_SUN, R_SUN } from './constants';
+
+export const MU_SUN = 1.32712440018e20; // 太陽重力定数 [m^3/s^2]
+export const R_SUN = 6.957e8; // [m]
 
 export const SUN: StarDef = { id: 'sun', mu: MU_SUN, radius: R_SUN };
 

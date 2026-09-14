@@ -5,7 +5,8 @@ import { planetSystem } from '../../../physics/planet-system';
 import { keplerPeriod } from '../../../physics/elements';
 import { JULIAN_CENTURY, KeplerOrbit, planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
-import { GRAVITATIONAL_CONSTANT, MU_SUN } from './constants';
+import { GRAVITATIONAL_CONSTANT } from './gravitational-constant';
+import { MU_SUN } from './sun';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
 import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
@@ -211,11 +212,10 @@ const SALACIA: PlanetDef = {
 
 const VARUNA: PlanetDef = {
   id: 'varuna',
-  // 質量は自転による扁平から求めた密度 992 kg/m^3(Lacerda & Jewitt 2007)に、掩蔽で得た
-  // 直径 654 km を掛けたもの。TODO: この半径は古い直径 900 km 由来で質量と整合しない —
-  // 掩蔽由来の半径 327 km へ揃えると、表面重力も外形も現在の観測に合う。
+  // 半径は掩蔽で得た直径 654 km(Sicardy et al. 2010)。質量はそこへ、自転による扁平から
+  // 求めた密度 992 kg/m^3(Lacerda & Jewitt 2007)を掛けたもの。
   mu: GRAVITATIONAL_CONSTANT * 1.45e20,
-  radius: 450000.0,
+  radius: 327000.0,
   orbit: sbdbOrbit({ aAu: 43.2, e: 0.051615, incDeg: 17.1405, raanDeg: 97.2158, lonPeriDeg: 370.5748, l0Deg: 486.2427 }),
 };
 

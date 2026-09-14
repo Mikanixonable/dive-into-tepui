@@ -23,8 +23,7 @@ import {
 import { CelestialMotion } from '../../src/physics/celestial-motion';
 import { orbitalElementsOf } from '../../src/physics/elements';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
-import { MU_MOON } from '../../src/game/celestial/solar-system/constants';
+import { MU_EARTH, MU_MOON, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { dot, len, norm, sub, v3 } from '../../src/math/vec3';
 
 const EARTH: CelestialMotion = fixedMotion({ id: 'earth', mu: MU_EARTH, radius: R_EARTH, state: kinematicState<'eci'>(0, v3(0, 0, 0), v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null });
