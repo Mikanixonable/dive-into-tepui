@@ -231,7 +231,6 @@
 - **R43. 基地が使えない `plan`/`planExecution`/`fineAttitude` を持つ。** `fineAttitude` は `[V]` を拾わないので常に false、`planExecution` は基地のメニューに項目が無いので `'off'` 固定。それでも軌道計画パネルは基地の `plan` を編集させる。`src/game/dynamic/dynamic-entity/base.ts:62-71,167`。/ 確度: 中
 - **R44. タイトル画面で配色を変えても 3D 背景だけ追随しない。** `TitleScene` は `palette` を構築時に焼き込んで購読しない。ラン中の 3D は毎フレーム読む。UI-DESIGN.md「選択は画面へ即座に反映される」に反する。`src/launcher/title-scene.ts:333-349`。/ 確度: 中
 - **R45. マーカーのサブ行の字形表が `ENTITY_GLYPH` を手で写し直している。** 敵 △ が `ascendingNode`、基地 ⬡ が `burnPoint` と衝突。MARKERS.md は中空の字形を「軌道上の点」の族と明記。`src/game/marker/celestial-sub-labels.ts:21-23`。/ 確度: 中
-- **R46. マーカーの優先度の値が CSS クラス名から偶然決まっている**(コード自身の TODO)。`src/game/marker/grouped-markers.ts:24`。/ 確度: 中
 - **R47. 一時停止が入れ子にならない真偽値で、2つのシステム窓が別々に書いている。** 衝突回避が「開くとき相手を閉じる」という呼び出し側の手作業だけ。`src/game/game.ts:118-119,352-357`。/ 確度: 低
 - **R48. 入力の連打判定が実時刻ラッチ。** `performance.now()/1000` がモデル層にあり、時間加速と噛み合わない。`src/game/player/throttle.ts:145`。計画の K2 は「導出の入力解釈」へ移す予定。/ 確度: 低
 - **R49. 被弾音が非操作の自艦の被弾でも鳴る。** 減衰が単艦前提の尺度。AUDIO.md の明文の対象は連続音だけ。`src/game/player/player.ts:466,494`。/ 確度: 低
