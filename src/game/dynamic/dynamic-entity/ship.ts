@@ -48,35 +48,23 @@ export function shipMotionOptions(
 
 export const MUZZLE_SPEED = 1000; // 機関砲初速 [m/s]
 
-// 艦(自機・敵機)に共通するもの — 名前、装甲値と被弾による減少、残量を示す HP マーカー。
+// 艦(自機・敵機)に共通するもの — 名前、装甲値、残量を示す HP マーカー。
 export abstract class Ship extends DynamicEntity {
   public override readonly combatTarget = true;
 
-  private _hp: number;
-  private _maxHp: number;
+  // 残りの装甲値と満タンの装甲値 [HP]。正本は具象が持つ。
+  public abstract readonly hp: number;
+  public abstract readonly maxHp: number;
 
-  public get hp(): number { return this._hp; }
-  public set hp(value: number) { this._hp = value; }
-  public get maxHp(): number { return this._maxHp; }
-  public set maxHp(value: number) { this._maxHp = value; }
-
-  // 基底の識別・Motion・View を組み、名前と満タンの装甲値 hp で初期化する。
+  // 基底の識別・Motion・View を組み、名前で初期化する。
   public constructor(
     name: string,
-    hp: number,
     motionFactory: DynamicMotionFactory,
     view: DynamicView,
     id: string,
   ) {
     super(motionFactory, view, id);
     this.setName(name);
-    this._hp = hp;
-    this._maxHp = hp;
-  }
-
-  // 受けたダメージを装甲値へ当てる。装甲値は 0 で下げ止まる。
-  protected applyDamage(amount: number): void {
-    this.hp = Math.max(0, this.hp - amount);
   }
 
   // 残 HP 比を塗りで示す三角の HP マーカーの SVG。
