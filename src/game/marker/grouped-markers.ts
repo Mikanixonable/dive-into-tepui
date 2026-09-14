@@ -20,9 +20,6 @@ export interface BearingMarker {
   readonly color: string;
   // 画面外へ出たときに出すか。
   readonly visible: boolean;
-  // 重なったときに残す度合い。
-  // TODO: いまの値は CSS クラス名から偶然決まっている。種別の意味から決め直す。
-  readonly priority: number;
   // 近接まとめでアイコンの扱いが既に決まっている種別か。
   readonly clustered: boolean;
 }
@@ -178,7 +175,7 @@ export class GroupedMarkers {
       front: placement !== null,
       color: bearing.color,
       rotationDeg: placement?.rotationDeg,
-      priority: bearing.priority,
+      priority: m.item.priority,
       clustered: bearing.clustered,
     };
   }
