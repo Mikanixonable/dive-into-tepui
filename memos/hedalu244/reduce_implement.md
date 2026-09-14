@@ -282,6 +282,10 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   `motionMetrics`、`line-pickables` の `lineSamples` は表示・ピック・性能計測なので対象外。
 - **`camera-system.ts:235` の `focusVelocity ?? v3()` は位置ではなく速度**で、答えられない対象を
   注視している間の既定として明記されている。R6 と同型ではない。
+- **R65 の `point` と差分ゲートは消せない。** `source === 'lissajous'` では `familyId` が常に `'lissajous'` で、
+  `L1|L2|L3` は設定から線ごとに決まるので `point` は `familyId` から復元できない。`displayedSettings`/
+  `displayedStyle` は導出値ではなくメモ鍵で、外すと `buildDisplays`・`styleFor`・`THREE.Color` の生成と
+  描画側の `retainOnly` が毎フレーム走る。写しだった `count` だけを消した。
 
 ---
 
@@ -352,17 +356,6 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   同じスコープで2度計算しているだけ。導出元(`label.pos`・`cameraPos`・`policy`)はその場に揃っている。
 - 減るもの: Map 4本と、二重投影1回ぶん。/ 確度: 中 / 確認: `celestial-markers` は自分で確認、
   `visibility-policy` は報告のみ
-
-### R65. 軌道ガイドが、`familyId` と設定から決まる値を複製している
-- 症状: `GuideLineEntry.point` は `parseGuideKindId(familyId).point` そのもの、`count` は
-  `effectiveKind(settings, familyId).count` の写しで、読む側はどちらも直前に同じ `kind` を引いた
-  直後にこの写しのほうを読んでいる。`displays` は `displayedSettings`/`displayedStyle` という
-  「前回それを組んだときの引数」と突き合わせて持つ。
-- 場所: `src/game/celestial/orbit-guide/orbit-guide-model.ts:67-79,86,109-117,242-244,310,365-381,413-447`、
-  `src/game/celestial/orbit-guide/zero-velocity-model.ts:123-124,152-156`
-- 疑う理由: 点列 `geometry` の保持には理由があるが、そこから宣言を組む部分は軽い。差分比較のための
-  引数の写しは、宣言型の装置(R7「装置は内部で前回との差分を取る」)には要らない。
-- 減るもの: エントリのフィールド2本と、比較用の写し3本。/ 確度: 中 / 確認: 報告のみ
 
 ### R66. HUD パネルが、設定の現在値を鏡映しで持っている
 - 症状: 表示オプションのクラス別モード・天球グリッド・軌道ガイド設定を、パネルが Map と
