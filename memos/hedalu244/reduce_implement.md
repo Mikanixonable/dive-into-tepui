@@ -315,16 +315,6 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
 - 減るもの: 放射強度の宣言が1つになり、`game/` → `render/` の import が1本落ちる。描画の
   露出目盛り(`SUN_IRRADIANCE_1AU = π`)は描画層に残る。/ 確度: 高 / 確認: 自分で確認
 
-### R63. カメラの姿勢が四元数・オイラー角・上方向ベクトルの3重で持たれている
-- 症状: `up_r` は `qRotate(orientation, LOCAL_UP)` の往復、`offset_r` の向き成分は同じく
-  `LOCAL_FORWARD` の往復で、独立なのは距離だけ。`CameraOrientation.euler` も毎フレーム末尾の
-  `rebase()` が四元数から書き戻すので、`turn()` が積んだ値はフレームを跨がない。
-- 場所: `src/game/camera/focus-camera.ts:110,112,626-657`、`src/game/camera/camera-orientation.ts:39`
-- 疑う理由: 同じ姿勢が3つの表現で並び、毎フレーム一致させている。正本を四元数1本+距離のスカラーに
-  寄せれば整合の維持が要らなくなる。
-- 減るもの: フィールド3本と毎フレームの書き戻し。/ 確度: 中(オイラー角は ±π の折り返しの扱いが
-  変わりうる) / 確認: 報告のみ
-
 ### R66. HUD パネルが、設定の現在値を鏡映しで持っている
 - 症状: 表示オプションのクラス別モード・天球グリッド・軌道ガイド設定を、パネルが Map と
   フィールドで持ち直している。同じ値が設定の正本・パネルの写し・ボタンの点灯/`dataset` と
