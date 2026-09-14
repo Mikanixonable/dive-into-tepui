@@ -212,7 +212,6 @@
 - **R45. マーカーのサブ行の字形表が `ENTITY_GLYPH` を手で写し直している。** 敵 △ が `ascendingNode`、基地 ⬡ が `burnPoint` と衝突。MARKERS.md は中空の字形を「軌道上の点」の族と明記。`src/game/marker/celestial-sub-labels.ts:21-23`。/ 確度: 中
 - **R48. 入力の連打判定が実時刻ラッチ。** `performance.now()/1000` がモデル層にあり、時間加速と噛み合わない。`src/game/player/throttle.ts:145`。計画の K2 は「導出の入力解釈」へ移す予定。/ 確度: 低
 - **R49. 被弾音が非操作の自艦の被弾でも鳴る。** 減衰が単艦前提の尺度。AUDIO.md の明文の対象は連続音だけ。`src/game/player/player.ts:466,494`。/ 確度: 低
-- **R50. BGM の再生の退役が実時刻タイマー。** 待ち時間は音声時刻で計算しているのに `setTimeout` で待つので、タブを隠すと尾が切れる。`src/audio/bgm/conductor.ts:72,111`。/ 確度: 低
 
 ---
 
@@ -283,6 +282,10 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   `motionMetrics`、`line-pickables` の `lineSamples` は表示・ピック・性能計測なので対象外。
 - **`camera-system.ts:235` の `focusVelocity ?? v3()` は位置ではなく速度**で、答えられない対象を
   注視している間の既定として明記されている。R6 と同型ではない。
+- **R65 の `point` と差分ゲートは消せない。** `source === 'lissajous'` では `familyId` が常に `'lissajous'` で、
+  `L1|L2|L3` は設定から線ごとに決まるので `point` は `familyId` から復元できない。`displayedSettings`/
+  `displayedStyle` は導出値ではなくメモ鍵で、外すと `buildDisplays`・`styleFor`・`THREE.Color` の生成と
+  描画側の `retainOnly` が毎フレーム走る。写しだった `count` だけを消した。
 
 ---
 
@@ -322,16 +325,6 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
 - 減るもの: 放射強度の宣言が1つになり、`game/` → `render/` の import が1本落ちる。描画の
   露出目盛り(`SUN_IRRADIANCE_1AU = π`)は描画層に残る。/ 確度: 高 / 確認: 自分で確認
 
-### R59. HUD が自前の `setInterval` で試聴のシーク位置を追う
-- 症状: BGM 設定パネルが 100 ms 周期のタイマーを自分で回してシークバーを更新する。フレームの
-  同期とは無関係に動くので、曲を替えるたびにタイマーを畳んで張り直す後始末が要る。
-- 場所: `src/hud/panels/bgm-settings-panel.ts:30,170-177,181-186`
-- 疑う理由: R5「実時刻はフレームの先頭で1度だけ読み、入力として配る」。HUD は既に毎フレーム
-  `nowMs` を受け取っており(`game.ts:522`)、追加の時計を持つ理由がない。R50 と同じ「装置でない層が
-  自分で時計を読む」形。
-- 減るもの: タイマーのフィールドと張り直し・畳みの分岐が消え、更新がフレームの同期1本になる。
-  / 確度: 中 / 確認: 自分で確認
-
 ### R60. 自機の装甲値と最大装甲値が、パーツ側の正本と二重になっている
 - 症状: `hp` はパーツ hp の総和(ただし船体かコクピットが 0 なら 0)、`maxHp` はパーツ maxHp の
   総和。被弾・自己修復・換装のたびに `updateOverallHp()` / `refreshFromParts()` が書き戻している。
@@ -340,25 +333,6 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   `get hp()` の委譲で解いており、自機だけが写しを持つ。パーツ配列は生きて残っている。
 - 減るもの: フィールド2本と書き戻し3箇所が消える。`Ship.hp` を getter にして `Player` が
   override する形になる。/ 確度: 高 / 確認: 自分で確認
-
-### R61. タンパク質の部位の `disabled` が `hp <= 0` と同値で、セーブにも別項目で載る
-- 症状: `disabled` の代入は `candidate.disabled = candidate.hp <= 0` の1箇所だけで、hp > 0 で
-  disabled になる経路が無い。それでも `serialize()` が hp と disabled を別項目で書くので、
-  セーブを手で触ると「hp が残っているのに無効」という状態が作れる。`_phase` も部位の型・disabled と
-  構造 hp から毎回同じ答えが出る。
-- 場所: `src/game/protein/protein-combat-state.ts:24,131,159,222`
-- 疑う理由: R39 と同じ形が、表示ではなくモデル層とセーブデータに出ている。
-- 減るもの: 保存項目1つと、復元時の食い違いの余地。`_phase` は遷移検出のために呼び出し前の値だけ
-  要る。/ 確度: 高(`disabled`)・中(`_phase`) / 確認: `disabled` は自分で確認、`_phase` は報告のみ
-
-### R62. 計画経路の `_nodeCount` が導出値で、計画が空のフレームだけ前フレームの値が残る
-- 症状: `_nodeCount` は常に `activeCount - 1`(区間はノード数 + 1本)。ところが計画が無いフレームの
-  早期 return は `activeCount = 0` と `final = null` だけを戻し、`_nodeCount` と `sources` は
-  前フレームのまま残る。この状態で `arrivalStates()` を読むと、既に無効な区間の到達状態が返る。
-- 場所: `src/game/plan/plan-path.ts:92,102,128-137,169-172,234,287-296`
-- 疑う理由: 派生値を別に持ったことで、リセット漏れが「起こりうる」形になっている。導出値にすれば
-  `activeCount = 0` の1行で両方が畳まれる。`final` も `sources[activeCount - 1]` から毎回組める。
-- 減るもの: フィールド2本と、リセットの整合を取り続ける責務。/ 確度: 高 / 確認: 自分で確認
 
 ### R63. カメラの姿勢が四元数・オイラー角・上方向ベクトルの3重で持たれている
 - 症状: `up_r` は `qRotate(orientation, LOCAL_UP)` の往復、`offset_r` の向き成分は同じく
@@ -383,17 +357,6 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
 - 減るもの: Map 4本と、二重投影1回ぶん。/ 確度: 中 / 確認: `celestial-markers` は自分で確認、
   `visibility-policy` は報告のみ
 
-### R65. 軌道ガイドが、`familyId` と設定から決まる値を複製している
-- 症状: `GuideLineEntry.point` は `parseGuideKindId(familyId).point` そのもの、`count` は
-  `effectiveKind(settings, familyId).count` の写しで、読む側はどちらも直前に同じ `kind` を引いた
-  直後にこの写しのほうを読んでいる。`displays` は `displayedSettings`/`displayedStyle` という
-  「前回それを組んだときの引数」と突き合わせて持つ。
-- 場所: `src/game/celestial/orbit-guide/orbit-guide-model.ts:67-79,86,109-117,242-244,310,365-381,413-447`、
-  `src/game/celestial/orbit-guide/zero-velocity-model.ts:123-124,152-156`
-- 疑う理由: 点列 `geometry` の保持には理由があるが、そこから宣言を組む部分は軽い。差分比較のための
-  引数の写しは、宣言型の装置(R7「装置は内部で前回との差分を取る」)には要らない。
-- 減るもの: エントリのフィールド2本と、比較用の写し3本。/ 確度: 中 / 確認: 報告のみ
-
 ### R66. HUD パネルが、設定の現在値を鏡映しで持っている
 - 症状: 表示オプションのクラス別モード・天球グリッド・軌道ガイド設定を、パネルが Map と
   フィールドで持ち直している。同じ値が設定の正本・パネルの写し・ボタンの点灯/`dataset` と
@@ -417,14 +380,6 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   boolean だけ書き換えて DOM を後続の同期に任せるので、その間だけ両者がずれる。
 - 減るもの: フィールド6本。/ 確度: 中(`toggle-switch`・`button` は高) / 確認: 前2件は自分で確認、
   他は報告のみ
-
-### R68. `x !== null` と恒等な boolean を別に持っている
-- 症状: `synchronized` を true にする行は `lastProjection = input.projection`(非 null)と同じ
-  ブロック、false に戻す行は `lastProjection = null` と同じブロック。`detailedMaterialValue` と
-  `materialSyncValue` も同型。
-- 場所: `src/render/earth-surface-resident.ts:85,131,149,204-207`、`src/render/earth-surface.ts:123,238-240,287`
-- 疑う理由: 2つのフィールドが同じ事実を指し、片方だけ書く経路が増えれば静かに壊れる。
-- 減るもの: boolean 2本。/ 確度: 中 / 確認: 報告のみ
 
 ### R69. id と表示名を両方持っている
 - 症状: 対象の id を持ちながら表示名も保存している。名前は id から引ける(`nameOf` / roster)。
