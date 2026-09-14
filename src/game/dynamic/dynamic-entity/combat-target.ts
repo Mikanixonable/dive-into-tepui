@@ -14,8 +14,10 @@ export interface CombatTarget extends DynamicEntity, ObjectPickable {
   readonly maxHp: number | null;
 
   // 画面マーカー・一覧に出す項目。pos/vel にはメッシュと同じ表示時刻の状態を渡すこと。
+  // viewerPos は視点の位置で、視点が居なければ null — そのときはどの個体も視点から等しく遠く、
+  // 距離で決まる範囲の外にあるものとして組む。
   // isActive はこの個体が操作対象かどうか。
-  markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode, isActive: boolean): GroupedMarkerItem;
+  markerItem(viewerPos: Vec3 | null, pos: Vec3, vel: Vec3, view: ViewMode, isActive: boolean): GroupedMarkerItem;
 }
 
 // entity を戦闘対象へ絞り込む型ガード。

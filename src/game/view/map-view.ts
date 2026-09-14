@@ -73,7 +73,7 @@ export class MapView implements ViewFrame {
     this.picking = new MapPicking(
       hud, cameraSystem, roster, celestialSystem, celestialMarkers, markers,
       navTarget, frameControls, this.objectPickables, this.linePickables, objectWindows,
-      controlSelection,
+      controlSelection, displayWindowManager,
     );
   }
 
