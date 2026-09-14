@@ -5,7 +5,7 @@ import { planetSystem } from '../../../physics/planet-system';
 import { keplerPeriod } from '../../../physics/elements';
 import { JULIAN_CENTURY, KeplerOrbit, planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
-import { GRAVITATIONAL_CONSTANT } from './gravitational-constant';
+import { GRAVITATIONAL_CONSTANT } from '../gravitational-constant';
 import { MU_SUN } from './sun';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
