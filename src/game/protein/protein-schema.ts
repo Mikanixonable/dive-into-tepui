@@ -141,13 +141,11 @@ export interface ProteinAssetDefinition {
 interface ProteinSiteSaveData {
   id: string;
   hp: number;
-  disabled: boolean;
 }
 
 export interface ProteinSaveData {
   schemaVersion: number;
   integrityHp: number;
-  phase: ProteinPhase;
   sites: ProteinSiteSaveData[];
   modifications: Record<string, string>;
 }

@@ -341,16 +341,6 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
 - 減るもの: フィールド2本と書き戻し3箇所が消える。`Ship.hp` を getter にして `Player` が
   override する形になる。/ 確度: 高 / 確認: 自分で確認
 
-### R61. タンパク質の部位の `disabled` が `hp <= 0` と同値で、セーブにも別項目で載る
-- 症状: `disabled` の代入は `candidate.disabled = candidate.hp <= 0` の1箇所だけで、hp > 0 で
-  disabled になる経路が無い。それでも `serialize()` が hp と disabled を別項目で書くので、
-  セーブを手で触ると「hp が残っているのに無効」という状態が作れる。`_phase` も部位の型・disabled と
-  構造 hp から毎回同じ答えが出る。
-- 場所: `src/game/protein/protein-combat-state.ts:24,131,159,222`
-- 疑う理由: R39 と同じ形が、表示ではなくモデル層とセーブデータに出ている。
-- 減るもの: 保存項目1つと、復元時の食い違いの余地。`_phase` は遷移検出のために呼び出し前の値だけ
-  要る。/ 確度: 高(`disabled`)・中(`_phase`) / 確認: `disabled` は自分で確認、`_phase` は報告のみ
-
 ### R63. カメラの姿勢が四元数・オイラー角・上方向ベクトルの3重で持たれている
 - 症状: `up_r` は `qRotate(orientation, LOCAL_UP)` の往復、`offset_r` の向き成分は同じく
   `LOCAL_FORWARD` の往復で、独立なのは距離だけ。`CameraOrientation.euler` も毎フレーム末尾の
