@@ -117,12 +117,9 @@ export class Game {
   private readonly objectWindows: ObjectWindows;
 
   public readonly activeStage: Stage;
-  // ポーズ中か。時間倍率とは独立に時間を止める。
-  private _isPaused = false;
-  public get isPaused(): boolean { return this._isPaused; }
-  // 積分が進んでいるか。止まるのは一時停止中だけで、決着は止めない — 結果画面の裏でも
-  // 弾・敵・補給タイマーは通常どおり進む(GAME.md §2.1)。勝敗の再確定は Stage が拒む。
-  private get simulating(): boolean { return !this._isPaused; }
+  // ポーズ中か。時間倍率とは独立に時間を止める。決着は止めない — 結果画面の裏でも
+  // 弾・敵・補給タイマーは通常どおり進む(GAME.md §2.1)。
+  public get isPaused(): boolean { return this._hud.overlayManager.isGamePaused(); }
 
   private readonly _celestialSystem: CelestialSystem;
   public get celestialSystem(): CelestialSystem { return this._celestialSystem; }
@@ -348,14 +345,6 @@ export class Game {
 
   // ------------------------------------------------------------------ lifecycle
 
-  // 時間を止め、連続指令を畳む。
-  public pause(): void {
-    this.dynamicSystem.pause();
-    this._isPaused = true;
-  }
-
-  public resume(): void { this._isPaused = false; }
-
   // このゲームが scene・Hud・マーカー装置・window/document/canvas へ足したものを残らず
   // 取り除く。呼んだ後のこのインスタンスは使えない。構築の逆順で辿る — 後から組んだものほど
   // 先に組んだものを参照する。
@@ -402,7 +391,10 @@ export class Game {
     this.handleInput(dt);
     this.sections.exit(SECTION.input);
 
-    if (this.simulating) this.advanceSimulation(dt);
+    // ポーズは開いているオーバーレイからの導出値で「止まった瞬間」が無いので、止まっている
+    // 間は毎フレーム連続指令を畳む。
+    if (this.isPaused) this.dynamicSystem.pause();
+    else this.advanceSimulation(dt);
     // ここから先はポーズ中も決着後も通す。決着は積分を止めないので、飛ばすと描画原点になる
     // カメラ位置だけが絶対 ECI に取り残され、追従対象が軌道速度で流れて即フレームアウトする。
     const activeControllable = this.activeControllable;
@@ -491,7 +483,7 @@ export class Game {
   // ポインタ入力を現在のビューへ配る。このフレームの cameraSystem.update が終わって初めて投影が
   // このフレームの値になるので、update の末尾に置く。ポーズ中と入力ゲート中はそのまま戻る。
   private handlePointerInput(viewport: Viewport): void {
-    if (this._isPaused || this._hud.overlayManager.isInputGated()) return;
+    if (this.isPaused || this._hud.overlayManager.isInputGated()) return;
     this.viewManager.activeView.handlePointer(this.dynamicSystem.simTime, viewport);
   }
 
@@ -592,7 +584,7 @@ export class Game {
       nowMs,
     );
     syncControlledLoopSfx(
-      this._worldSfx, controlled, displayTime, this.simulating && this.activeStage.isPlaying);
+      this._worldSfx, controlled, displayTime, !this.isPaused && this.activeStage.isPlaying);
     // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraView.sync より後に通す。
     this.flashEffectsView.sync(this.flashEffects.live, camera);
 
@@ -658,7 +650,7 @@ export class Game {
         epochUnixSec: displayWindow.epochUnixSec,
         simTime,
         simSpeed: this.simSpeedManager.simSpeed,
-        isPaused: this._isPaused,
+        isPaused: this.isPaused,
         autoWarpRealRemainSec: this.simSpeedManager.estimatedRealSecondsToWarpEnd(simTime),
         autoWarpSimRemainSec: this.simSpeedManager.remainingSimulationSeconds(simTime),
         setSimSpeed: (speed) => this.simSpeedManager.setSpeed(speed),

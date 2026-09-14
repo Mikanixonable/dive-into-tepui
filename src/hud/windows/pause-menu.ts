@@ -35,7 +35,6 @@ export class PauseMenu implements OverlayHandle {
   private hasCustomPosition = false;
   private activeTab: PauseMenuTab = 'pause';
 
-  public onPauseMenuOpenChange: ((open: boolean) => void) | null = null;
   public onQuitToTitle: (() => void) | null = null;
   public onBgmVolumeChange: ((vol: number) => void) | null = null;
   public onSave: (() => void) | null = null;
@@ -239,12 +238,12 @@ export class PauseMenu implements OverlayHandle {
     this.reclamp();
   }
 
-  // タブに応じた ESC メニューの入力遮断設定を返す。
+  // ESC メニューのオーバーレイ宣言を返す。設定タブの間は背景入力も遮る。
   private overlaySpec(): OverlaySpec {
     return {
       kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false,
       gatesInput: this.activeTab === 'settings', dimsBackground: false,
-      exclusiveGroup: 'system-modal',
+      pausesGame: true, exclusiveGroup: 'system-modal',
     };
   }
 
@@ -289,7 +288,6 @@ export class PauseMenu implements OverlayHandle {
     } else {
       this.overlayManager.close('pause-menu');
     }
-    this.onPauseMenuOpenChange?.(show);
   }
 
   // 画面中央へ配置する。

@@ -57,8 +57,6 @@ export interface CurrentGameSource {
     readonly isPlaying: boolean;
     readonly nameOfBody: (id: string) => string;
     readonly snapshot: SnapshotCaptureSource;
-    pause(): void;
-    resume(): void;
   } | null;
 }
 
@@ -107,18 +105,16 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
     this.el.style.display = 'flex';
     this._visible = true;
-    // 開いている間は裏のゲームを止め、オーバーレイとして入力を占有する。
-    this.gameSource.current?.pause();
     this.overlayManager.open('save-browser', this, {
-      kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true, exclusiveGroup: 'system-modal',
+      kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true,
+      pausesGame: true, exclusiveGroup: 'system-modal',
     });
   }
 
-  // パネルを閉じ、裏のゲームを再開する。
+  // パネルを閉じる。
   public close(): void {
     this.el.style.display = 'none';
     this._visible = false;
-    this.gameSource.current?.resume();
     this.overlayManager.close('save-browser');
   }
 
