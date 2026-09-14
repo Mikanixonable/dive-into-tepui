@@ -113,7 +113,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
       // 画面外では種別の色の三角で方位を指す。
       bearing: {
         cls: `${this.markerClass} mk-bearing-triangle`, sym: DIRECTION_GLYPH.bearing,
-        color: this.bearingColor, visible: true, priority: MARKER_PRIORITY.AMMO, clustered: true,
+        color: this.bearingColor, visible: true, clustered: true,
       },
       symMarkup: false,
     };
