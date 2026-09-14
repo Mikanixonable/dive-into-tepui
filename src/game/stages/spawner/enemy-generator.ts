@@ -1,30 +1,33 @@
 // 個々の敵機を、座標・色・機種などのパラメータから直接生成する。無秩序に漂う姿勢と
 // プログレードへ向けた姿勢の2方針を並べて置く。
-// **軌道は地球中心の ECI・平均半径の真球を前提にした、ゲームバランスのための簡易な置き方。**
-// 高度は ECI 原点からの距離、周回速度は MU_EARTH から出す(緯度による基準面のずれ 赤道 +7km /
-// 極 -14km は出現高度の余裕に埋もれる)。地球以外を主星とするなら、この前提ごと組み直す。
+// **軌道は、置く位置で最も強く引く天体を中心とする二体の幾何で置く、ゲームバランスのための簡易な置き方。**
+// 高度はその天体の表面半径の球面から測る(扁平な天体の基準楕円体とのずれ — 地球の極で 21km — は
+// 出現高度の余裕に埋もれる)。
 import * as THREE from 'three/webgpu';
 import { qFromForwardUp, randomQuat, type Quat } from '../../../math/quat';
-import { KinematicState, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../../celestial/solar-system/earth-system';
+import { addPrimaryRelative, KinematicState, kinematicState } from '../../../physics/kinematic-state';
+import { strongestAttractor } from '../../../physics/attractor';
+import { frameOfCelestialBody, toFrameState } from '../../../physics/frame';
 import { stateFromOrbitalElements } from '../../../physics/elements';
 import { randSym } from '../../../math/random';
-import { addScaled, len, norm, rotateAxis, scale, sub, v3, type Vec3 } from '../../../math/vec3';
+import { addScaled, cross, len, norm, rotateAxis, scale, sub, v3, type Vec3 } from '../../../math/vec3';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { MetalEnemy } from '../../dynamic/dynamic-entity/metal-enemy';
 import { ProteinEnemy } from '../../dynamic/dynamic-entity/protein-enemy';
+import type { CelestialBody } from '../../../physics/celestial-body';
 import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
 import type { FormationRole } from '../../dynamic/dynamic-entity/entity-kind';
 import type { ProteinAssetId } from '../../protein/protein-asset-loader';
 import type { ProteinDisplaySettings } from '../../../render/protein/protein-display';
 
-// 自機軌道(base)を、軌道面内で弧長 dAlong [m] だけ進めた位置の軌道状態。
-function phasedState(base: KinematicState, dAlong: number): KinematicState {
-  const hHat = orbitAxes(base).nrm;
-  const ang = dAlong / len(base.r);
-  return kinematicState<'eci'>(base.t, rotateAxis(base.r, hHat, ang), rotateAxis(base.v, hHat, ang));
+// 自機軌道(base)を、中心天体 center まわりの軌道面内で弧長 dAlong [m] だけ進めた、center 相対の状態。
+function phasedState(base: KinematicState, center: CelestialBody, dAlong: number): KinematicState<'primaryRel'> {
+  const rel = toFrameState(frameOfCelestialBody(center, base.t), base);
+  const hHat = norm(cross(rel.r, rel.v));
+  const ang = dAlong / len(rel.r);
+  return kinematicState<'primaryRel'>(base.t, rotateAxis(rel.r, hHat, ang), rotateAxis(rel.v, hHat, ang));
 }
 
 // 自由回転で漂う敵に共通の初期姿勢: ランダムな姿勢・角速度を与える。
@@ -87,64 +90,89 @@ export function proteinFormationSpawns(
 }
 
 // base から dAlong だけ進んだ位置に漂う敵を生成する。
-export function generatePhasedEnemy(name: string, base: KinematicState, dAlong: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators): Enemy {
-  return generateDriftingEnemy(name, phasedState(base, dAlong), accent, orbitLineColor, worldSfx, fx, scene, idAllocators);
+export function generatePhasedEnemy(
+  name: string, base: KinematicState, attractors: readonly CelestialBody[], dAlong: number,
+  accent: string | number, orbitLineColor: string | number,
+  worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
+): Enemy {
+  const center = strongestAttractor(base.r, attractors, base.t);
+  const state = addPrimaryRelative(center.stateAt(base.t), phasedState(base, center, dAlong));
+  return generateDriftingEnemy(name, state, accent, orbitLineColor, worldSfx, fx, scene, idAllocators);
 }
 
 // base から dAlong だけ進め、高度を altitudeOffset ぶんずらした円軌道上に敵を生成する。
 export function generateCoellipticEnemy(
-  name: string, base: KinematicState, dAlong: number, altitudeOffset: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
+  name: string, base: KinematicState, attractors: readonly CelestialBody[], dAlong: number, altitudeOffset: number,
+  accent: string | number, orbitLineColor: string | number,
+  worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
 ): Enemy {
-  const phased = phasedState(base, dAlong);
-  const altitude = len(base.r) + altitudeOffset;
-  const state: KinematicState = kinematicState<'eci'>(
-    phased.t,
-    scale(norm(phased.r), altitude),
-    scale(norm(phased.v), Math.sqrt(MU_EARTH / altitude)),
+  const center = strongestAttractor(base.r, attractors, base.t);
+  const phased = phasedState(base, center, dAlong);
+  const radius = len(phased.r) + altitudeOffset;
+  const rel = kinematicState<'primaryRel'>(
+    base.t,
+    scale(norm(phased.r), radius),
+    scale(norm(phased.v), Math.sqrt(center.def.mu / radius)),
   );
-  return generateDriftingEnemy(name, state, accent, orbitLineColor, worldSfx, fx, scene, idAllocators);
+  return generateDriftingEnemy(name, addPrimaryRelative(center.stateAt(base.t), rel), accent, orbitLineColor, worldSfx, fx, scene, idAllocators);
 }
 
 // base から dAlong だけ進め、軌道面をわずかに傾けた交差軌道上に敵を生成する。
 export function generateCrossingEnemy(
-  name: string, base: KinematicState, dAlong: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
+  name: string, base: KinematicState, attractors: readonly CelestialBody[], dAlong: number,
+  accent: string | number, orbitLineColor: string | number,
+  worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
 ): Enemy {
-  const phased = phasedState(base, dAlong);
-  const state: KinematicState = kinematicState<'eci'>(phased.t, phased.r, rotateAxis(phased.v, norm(phased.r), (0.4 * Math.PI) / 180));
-  return generateDriftingEnemy(name, state, accent, orbitLineColor, worldSfx, fx, scene, idAllocators);
+  const center = strongestAttractor(base.r, attractors, base.t);
+  const phased = phasedState(base, center, dAlong);
+  const rel = kinematicState<'primaryRel'>(base.t, phased.r, rotateAxis(phased.v, norm(phased.r), (0.4 * Math.PI) / 180));
+  return generateDriftingEnemy(name, addPrimaryRelative(center.stateAt(base.t), rel), accent, orbitLineColor, worldSfx, fx, scene, idAllocators);
 }
 
 // base から dAlong だけ進め、速度を増して離心軌道上に敵を生成する。
 export function generateEllipticEnemy(
-  name: string, base: KinematicState, dAlong: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
+  name: string, base: KinematicState, attractors: readonly CelestialBody[], dAlong: number,
+  accent: string | number, orbitLineColor: string | number,
+  worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
 ): Enemy {
-  const phased = phasedState(base, dAlong);
-  const state: KinematicState = kinematicState<'eci'>(phased.t, phased.r, scale(phased.v, 1.006));
-  return generateDriftingEnemy(name, state, accent, orbitLineColor, worldSfx, fx, scene, idAllocators);
+  const center = strongestAttractor(base.r, attractors, base.t);
+  const phased = phasedState(base, center, dAlong);
+  const rel = kinematicState<'primaryRel'>(base.t, phased.r, scale(phased.v, 1.006));
+  return generateDriftingEnemy(name, addPrimaryRelative(center.stateAt(base.t), rel), accent, orbitLineColor, worldSfx, fx, scene, idAllocators);
 }
 
-// 自機と無関係な軌道要素から作るモルニヤ軌道の敵。t は生成時刻(state のエポック)。
+// base の位置で最も強く引く天体を回る、base と無関係な軌道要素から作るモルニヤ軌道の敵。
+// 生成時刻(state のエポック)は base.t。
 export function generateMolniyaEnemy(
-  name: string, t: number, raan: number, nu: number, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
+  name: string, base: KinematicState, attractors: readonly CelestialBody[], raan: number, nu: number,
+  accent: string | number, orbitLineColor: string | number,
+  worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
 ): Enemy {
-  const rp = R_EARTH + 1200e3;
-  const ra = R_EARTH + 39400e3;
+  const center = strongestAttractor(base.r, attractors, base.t);
+  const rp = center.def.radius + 1200e3;
+  const ra = center.def.radius + 39400e3;
   const a = (rp + ra) / 2;
   const e = (ra - rp) / (ra + rp);
-  const state = stateFromOrbitalElements(t, a, e, (63.4 * Math.PI) / 180, raan, -Math.PI / 2, nu, MU_EARTH);
-  return generateDriftingEnemy(name, state, accent, orbitLineColor, worldSfx, fx, scene, idAllocators);
+  const orbit = stateFromOrbitalElements(base.t, a, e, (63.4 * Math.PI) / 180, raan, -Math.PI / 2, nu, center.def.mu);
+  const rel = kinematicState<'primaryRel'>(base.t, orbit.r, orbit.v);
+  return generateDriftingEnemy(name, addPrimaryRelative(center.stateAt(base.t), rel), accent, orbitLineColor, worldSfx, fx, scene, idAllocators);
 }
 
-// 機首をプログレードへ向け、回転していない金属の敵を state に生成する。
+// 機首を中心天体(state の位置で最も強く引く天体)に対するプログレードへ向け、回転していない
+// 金属の敵を state に生成する。
 export function generateApproachingEnemy(
-  name: string, state: KinematicState, accent: number, orbitLineColor: number, typeIndex: number, waveId: number | undefined, worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
+  name: string, state: KinematicState, attractors: readonly CelestialBody[], accent: number, orbitLineColor: number,
+  typeIndex: number, waveId: number | undefined,
+  worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
 ): Enemy {
+  const center = strongestAttractor(state.r, attractors, state.t);
+  const rel = toFrameState(frameOfCelestialBody(center, state.t), state);
   return new MetalEnemy(
     {
       name,
       state,
-      // 機首をプログレードへ向ける
-      q: qFromForwardUp(state.v, state.r) ?? randomQuat(),
+      // 機首を中心天体に対するプログレードへ、上を中心天体の反対側へ向ける
+      q: qFromForwardUp(rel.v, rel.r) ?? randomQuat(),
       w: v3(0, 0, 0),
       accent,
       orbitLineColor,

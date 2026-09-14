@@ -2,6 +2,8 @@
 // (DynamicSystem への登録は呼び出し側の Stage0 が Stage.addEnemy 経由で行う)。
 import * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
+import { strongestAttractor } from '../../../physics/attractor';
+import { frameOfCelestialBody, toFrameState } from '../../../physics/frame';
 import { randSym } from '../../../math/random';
 import { add, len, norm, scale } from '../../../math/vec3';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
@@ -10,6 +12,7 @@ import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { generateDriftingEnemy } from './enemy-generator';
 import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
 import { COLOR_ENEMY_ORBIT_LINE } from '../../lines/entity-line-manager';
+import type { CelestialBody } from '../../../physics/celestial-body';
 
 export const STAGE0_PER_GROUP = 10; // グループあたりの機数
 export const STAGE0_MAX_RANGE = 5000; // 自機からの配置半径の上限 [m]
@@ -29,9 +32,11 @@ const STAGE0_JITTER_NORMAL = 500; // 各機の軌道面法線方向ばらつき 
 const STAGE0_JITTER_RADIAL = 350; // 各機の動径方向ばらつき [m]
 
 // 色分けされたグループ(既定 5 グループ×各10機)を base 周囲5km以内に配置して直接生成する(訓練クラスタ)。
+// 散らす向きは、base の位置で最も強く引く天体に対する軌道基底と鉛直で取る。
 // groupCount/perGroup でグループ数・1グループあたりの機数を変更できる。
 export function generateCluster(
   base: KinematicState,
+  attractors: readonly CelestialBody[],
   worldSfx: WorldSfx,
   fx: FlashEffects,
   scene: THREE.Scene,
@@ -39,8 +44,10 @@ export function generateCluster(
   groupCount: number = COLOR_STAGE0_GROUP_ACCENTS.length,
   perGroup: number = STAGE0_PER_GROUP,
 ): readonly Enemy[] {
-  const { pro, nrm } = orbitAxes(base);
-  const rHat = norm(base.r);
+  const center = strongestAttractor(base.r, attractors, base.t);
+  const rel = toFrameState(frameOfCelestialBody(center, base.t), base);
+  const { pro, nrm } = orbitAxes(kinematicState<'primaryRel'>(base.t, rel.r, rel.v));
+  const rHat = norm(rel.r);
   const safeRange = STAGE0_MAX_RANGE * STAGE0_SAFE_RANGE_FACTOR; // マージンを残して確実に5km以内に収める
   const enemies: Enemy[] = [];
 
