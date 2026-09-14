@@ -6,7 +6,7 @@ import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } 
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
-import { GRAVITATIONAL_CONSTANT, MU_SATURN } from './constants';
+import { GRAVITATIONAL_CONSTANT } from './gravitational-constant';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import type { CelestialTexture } from '../../../render/celestial-textures';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
@@ -23,7 +23,7 @@ export type SaturnSystemBodyId =
 
 export const SATURN: PlanetDef = {
   id: 'saturn',
-  mu: MU_SATURN,
+  mu: 3.7931187e16,
   radius: 6.0268e7, // 赤道半径(外接球)。出典: pck00011.tpc BODY_RADII
   shape: { kind: 'spheroid', equatorRadius: 6.0268e7, polarRadius: 5.4364e7 },
   lagrangeLabels: true,
