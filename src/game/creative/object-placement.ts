@@ -10,7 +10,7 @@ import { isOccluded } from '../../physics/occlusion';
 import { ObjectPlacementPreviewView } from '../../render/creative/object-placement-preview-view';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import { Base } from '../dynamic/dynamic-entity/base';
-import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
+import { EntityIdAllocator, type EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
 import { AmmoPickup, isAmmoPickup, isRcsFuelPickup, RcsFuelPickup } from '../dynamic/dynamic-entity/pickup';
 import { isPlayer, type PlayerInit } from '../player/player';
 import { generateRandomName } from '../random-name';
@@ -76,6 +76,7 @@ export class ObjectPlacement {
     private readonly hud: HudLayers & Notifier,
     private readonly scene: THREE.Scene,
     private readonly dynamicSystem: EntityRoster,
+    private readonly idAllocators: EntityIdAllocators,
     private readonly celestialSystem: CelestialSystem,
     private readonly worldSfx: WorldSfx,
     private readonly fx: FlashEffects,
@@ -195,25 +196,31 @@ export class ObjectPlacement {
       }
       case 'enemy': {
         const finalName = name.trim() || generateRandomName('enemy');
-        const enemy = generateDriftingEnemy(finalName, state, '#ff6a00', '#ff6a00', this.worldSfx, this.fx, this.scene);
+        const enemy = generateDriftingEnemy(
+          finalName, state, '#ff6a00', '#ff6a00', this.worldSfx, this.fx, this.scene, this.idAllocators,
+        );
         return { kind: 'entity', entity: enemy, name: enemy.name };
       }
       case 'ammo': {
         const id = this.ammoPickupIdAllocator.next();
         return {
           kind: 'entity',
-          entity: new AmmoPickup({ state, id }, this.scene),
+          entity: new AmmoPickup({ state, id }, this.scene, this.idAllocators),
           name: name.trim() || generateRandomName('ammo'),
         };
       }
       case 'fuel': {
         const id = this.rcsFuelPickupIdAllocator.next();
         const finalName = name.trim() || generateRandomName('fuel');
-        return { kind: 'entity', entity: new RcsFuelPickup({ state, id, name: finalName }, this.scene), name: finalName };
+        return {
+          kind: 'entity',
+          entity: new RcsFuelPickup({ state, id, name: finalName }, this.scene, this.idAllocators),
+          name: finalName,
+        };
       }
       case 'base': {
         const finalName = name.trim() || generateRandomName('base');
-        const base = new Base({ state, name: finalName }, this.scene, this.hud);
+        const base = new Base({ state, name: finalName }, this.scene, this.hud, this.idAllocators);
         return { kind: 'entity', entity: base, name: base.name };
       }
     }

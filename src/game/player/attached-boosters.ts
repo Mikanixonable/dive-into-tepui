@@ -22,9 +22,9 @@ import {
 } from '../../physics/booster-stage-shape';
 import {
   boosterSeparationVelocities,
-  nextBoosterId,
   type BoosterStage,
 } from './booster-stack';
+import type { EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import type { AttachedBoosterMotion } from './attached-booster-motion';
 
@@ -40,14 +40,18 @@ const SEPARATION_SPEED = 8; // 爆砕ボルトによる相対分離速度 [m/s]
 const COLLISION_GRACE = 0.5; // 分離直後に接続面同士が再衝突しない猶予 [s]
 
 export class AttachedBoosters {
+  // 段の id を採る。復元済みの段の id を先に予約し、以後の追加がそれを追い越すようにする。
   public constructor(
     private readonly motion: DynamicMotion,
     private readonly boosterMotion: AttachedBoosterMotion,
+    private readonly idAllocators: EntityIdAllocators,
     private readonly _notifier: Notifier,
     private readonly _worldSfx: WorldSfx,
     private readonly _scene: THREE.Scene,
     private readonly _fx: FlashEffects,
-  ) {}
+  ) {
+    for (const id of boosterMotion.stageIds) idAllocators.booster.next(id);
+  }
 
   // 燃焼管理パネルから標準ブースターを最後尾へ追加する。
   attach(): void {
@@ -56,7 +60,7 @@ export class AttachedBoosters {
       return;
     }
     this.boosterMotion.attach({
-      id: nextBoosterId(),
+      id: this.idAllocators.booster.next(),
       dryMass: DEFAULT_DRY_MASS,
       fuel: DEFAULT_MAX_FUEL,
       maxFuel: DEFAULT_MAX_FUEL,
@@ -118,7 +122,7 @@ export class AttachedBoosters {
         inertia: v3(1, 1, 0.4),
       },
       collisionEnableAt: t + COLLISION_GRACE,
-    }, this._scene));
+    }, this._scene, this.idAllocators));
 
     this._fx.spawnGasPuff(kinematicState<'eci'>(t, jointR, player.state.v));
     this._worldSfx.decouple();
@@ -162,7 +166,7 @@ export class AttachedBoosters {
         kinematicState<'eci'>(t, coverPosition, coverVelocity),
         { kind: 'boosterCover', segment: i, bornSim: t },
         { q: att.q, w: v3(randSym(0.8), randSym(1.8), randSym(0.8)), inertia: v3(1, 1.7, 2.4) },
-        this._worldSfx, this._fx, undefined, this._scene,
+        this._worldSfx, this._fx, this.idAllocators, undefined, this._scene,
       ));
 
       // 爆砕ボルトは両段の平均速度を基準に、カバーより速く径方向と機軸方向へ。
@@ -184,7 +188,7 @@ export class AttachedBoosters {
         kinematicState<'eci'>(t, boltPosition, boltVelocity),
         { kind: 'boosterBolt', segment: i, bornSim: t },
         { q: att.q, w: v3(randSym(2.5), randSym(2.5), randSym(2.5)), inertia: v3(0.4, 0.5, 0.7) },
-        this._worldSfx, this._fx, undefined, this._scene,
+        this._worldSfx, this._fx, this.idAllocators, undefined, this._scene,
       ));
     }
   }
