@@ -24,6 +24,7 @@ import type { ControlSelection } from '../control-selection';
 import { rayThroughScreen } from '../../math/projection';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { FocusSink } from '../camera/focus-target';
+import type { DisplayWindowManager } from '../display-window-manager';
 
 const OBJECT_PICK_PX_SQ = 600; // 被選択物(ObjectPickable)の右クリック判定半径の2乗 [px^2]
 const ORBIT_LINE_PICK_PX_SQ = 600; // 軌道線(公転軌道・船の軌道・軌道ガイド)の右クリック判定半径の2乗 [px^2]
@@ -50,12 +51,13 @@ export class MapPicking {
     private readonly linePickables: LinePickables,
     private readonly objectWindows: ObjectWindows,
     private readonly controlSelection: ControlSelection,
+    private readonly displayWindowManager: Pick<DisplayWindowManager, 'current'>,
   ) {
     this.listPanel = new PhysicalObjectListPanel(hud.mapRoot, hud.panelCollapse, celestialBodies);
     this.orbitLineWindows = new OrbitLineWindows(
       hud, linePickables, pickables, (id, name) => this.focusOwner(id, name),
       (clientX, clientY, target) => this.objectWindows.open(
-        clientX, clientY, target, this.pickables.lastSimTime),
+        clientX, clientY, target, this.displayWindowManager.current.simTime),
     );
     // 一覧の行は、マップ上で隠れている対象でも id で操作できる(SPEC/MAP.md §10)。
     this.listPanel.onFocus = (id) => {
@@ -63,13 +65,14 @@ export class MapPicking {
     };
     this.listPanel.onNavTarget = (id) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
-      if (target && this.navTarget.canTarget(id, this.roster, this.celestialBodies, this.pickables.lastSimTime)) {
+      if (target && this.navTarget.canTarget(
+        id, this.roster, this.celestialBodies, this.displayWindowManager.current.simTime)) {
         this.navTarget.toggleTarget(id, target.name);
       }
     };
     this.listPanel.onSelectRight = (id, clientX, clientY) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
-      if (target) this.objectWindows.open(clientX, clientY, target, this.pickables.lastSimTime);
+      if (target) this.objectWindows.open(clientX, clientY, target, this.displayWindowManager.current.simTime);
     };
   }
 
@@ -79,7 +82,7 @@ export class MapPicking {
     candidates: readonly T[], x: number, y: number, viewport: Viewport,
   ): T | null {
     const project = this.cameraSystem.activeProjection(viewport);
-    const displayTime = this.pickables.lastDisplayTime;
+    const displayTime = this.displayWindowManager.current.displayTime;
     // マーカー段: 表示中のマーカーへ一定のピクセル半径で当てる。
     const marker = pickNearest(
       candidates.filter((item) => item.shownOnMap(this.markers)),
@@ -115,7 +118,7 @@ export class MapPicking {
         this.cameraSystem.activeProjection(viewport),
         pickRadiusSq(ORBIT_LINE_PICK_PX_SQ, ORBIT_LINE_PICK_PX_SQ_COARSE),
         this.cameraSystem.activeCameraPos, this.celestialBodies.celestialMotions,
-        this.pickables.lastDisplayTime,
+        this.displayWindowManager.current.displayTime,
       );
       if (!orbit) return false;
       this.orbitLineWindows.open(p.x, p.y, orbit);
