@@ -78,6 +78,7 @@ export class Logistics {
         },
       },
       this._scene,
+      this.dynamicSystem.idAllocators,
     );
     // 投入して演出とヒントを出す
     this.dynamicSystem.add(ammoPickup);
@@ -111,6 +112,7 @@ export class Logistics {
         },
       },
       this._scene,
+      this.dynamicSystem.idAllocators,
     );
     // 投入して演出とヒントを出す
     this.dynamicSystem.add(fuelPickup);

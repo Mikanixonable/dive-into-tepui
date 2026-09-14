@@ -16,6 +16,7 @@ import { bulletReactionOf, type BulletType, type Shooter } from '../dynamic/dyna
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { EntityRegistry } from '../dynamic/entity-registry';
+import type { EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
 import { collisionDamageFraction, contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
 import { Input } from '../../input/input';
@@ -176,6 +177,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     private readonly worldSfx: WorldSfx,
     scene: THREE.Scene,
     private readonly fx: FlashEffects,
+    idAllocators: EntityIdAllocators,
     init: PlayerInit = {},
   ) {
     const saved = 'saved' in init ? init.saved : undefined;
@@ -183,7 +185,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     const state = 'saved' in init
       ? savedKinematicState(init.saved, init.simTime)
       : (init.state ?? Player.makeInitialState());
-    const id = 'saved' in init ? init.saved.id : (init.id ?? name);
+    const id = idAllocators.entity.next('saved' in init ? init.saved.id : (init.id ?? name));
     const att: Attitude = 'saved' in init
       ? savedAttitude(init.saved, Player.INERTIA)
       : Player.progradeAttitude(state);
@@ -229,7 +231,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     this.fire = new FireControl(this, notifier, worldSfx, scene, fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
     this.altitudeAlarm = new AltitudeAlarm(notifier, worldSfx);
     this.boosters = new AttachedBoosters(
-      this.motion, this.motion.attachedBoosters, notifier, worldSfx, scene, fx,
+      this.motion, this.motion.attachedBoosters, idAllocators, notifier, worldSfx, scene, fx,
     );
     // 装甲値の正本はパーツ側なので、積み終えたところで艦の hp/maxHp を組み直す。
     this.parts = saved ? saved.parts.map(partFromSaveData) : defaultParts(PLAYER_MAX_HP);
@@ -797,7 +799,9 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   private destroyEffect(registry: EntityRegistry): void {
     this.worldSfx.explosion();
     this.fx.spawnPlayerDestroyFlash(this.motion.state);
-    for (const piece of playerDestroyFragments(this.motion.state, this.worldSfx, this.fx)) {
+    for (const piece of playerDestroyFragments(
+      this.motion.state, this.worldSfx, this.fx, registry.idAllocators,
+    )) {
       registry.add(piece);
     }
   }
@@ -809,7 +813,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     for (const piece of buildDestroyFragments(
       this.motion.state.t, tipR, this.motion.state.v, 4, PLAYER_DESTROY_FRAG_COLOR,
       DESTROY_FRAG_SIZE_MIN, DESTROY_FRAG_SIZE_MAX, 8.0,
-      this.worldSfx, this.fx,
+      this.worldSfx, this.fx, registry.idAllocators,
     )) registry.add(piece);
   }
 

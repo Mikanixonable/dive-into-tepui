@@ -35,7 +35,7 @@ export class StageDebug extends Stage {
     const player = this.addPlayer({ ammo: { mags: 20, rounds: MAG_ROUNDS } });
     const enemies = generateWave(
       player.motion.state, this.waveCount++, this._celestialSystem.celestialMotions,
-      this._worldSfx, this._fx, this._scene, 'random',
+      this._worldSfx, this._fx, this._scene, this._dynamicSystem.idAllocators, 'random',
     );
     for (const enemy of enemies) this.addEnemy(enemy);
 
@@ -48,7 +48,7 @@ export class StageDebug extends Stage {
     const spawnEnemyBtn = new Button('敵集団をスポーン', () => {
       const newEnemies = generateWave(
         player.motion.state, this.waveCount++, this._celestialSystem.celestialMotions,
-        this._worldSfx, this._fx, this._scene, 'random',
+        this._worldSfx, this._fx, this._scene, this._dynamicSystem.idAllocators, 'random',
       );
       for (const enemy of newEnemies) this.addEnemy(enemy);
     });

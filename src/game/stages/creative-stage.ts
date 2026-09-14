@@ -49,17 +49,21 @@ export class CreativeStage extends Stage {
     // 復元済みのタンパク質の敵がいれば、その表示設定を以後のスポーンにも引き継ぐ。
     const restoredProtein = this._dynamicSystem.all().find((entity) => entity instanceof ProteinEnemy);
     this.manualSpawn = new ManualSpawn(
-      this._worldSfx, this._fx, this._scene, this._dynamicSystem,
+      this._worldSfx, this._fx, this._scene, this._dynamicSystem, this._dynamicSystem.idAllocators,
       restoredProtein?.display ?? DEFAULT_PROTEIN_DISPLAY,
     );
 
     this.objectPlacement = new ObjectPlacement(
-      this._hud, this._scene, this._dynamicSystem, this._celestialSystem, this._worldSfx, this._fx,
+      this._hud, this._scene, this._dynamicSystem, this._dynamicSystem.idAllocators,
+      this._celestialSystem, this._worldSfx, this._fx,
     );
     this.objectPlacement.onPlace = (placed) => this.addPlacedObject(placed);
     this.authoring = this.objectPlacement;
 
-    this.waveAttack = new WaveAttack(this._hud, this._worldSfx, this._fx, this._scene, this._celestialSystem.celestialMotions, savedCreative?.waveAttack);
+    this.waveAttack = new WaveAttack(
+      this._hud, this._worldSfx, this._fx, this._scene, this._celestialSystem.celestialMotions,
+      this._dynamicSystem.idAllocators, savedCreative?.waveAttack,
+    );
     this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
     this.stageControlsPanel = new StageControlsPanel(
       this.logistics.resupplyEnabled, this.logistics.rcsFuelResupplyEnabled, this.waveAttackEnabled,

@@ -38,6 +38,7 @@ import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { OrbitingObject } from './orbiting-object';
 import type { DynamicEntityKind, FormationRole } from './entity-kind';
 import type { EntityRegistry, SpawnGate } from '../entity-registry';
+import type { EntityIdAllocators } from './entity-id';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotion } from '../dynamic-motion';
 import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
@@ -86,7 +87,10 @@ export interface EnemyClass {
   readonly kind: EnemySaveData['kind'];
   // 復元に外部資源の取得が要るなら、それが揃ったかを答える述語。要らなければ null。
   spawnGate(saved: EnemySaveData): SpawnGate | null;
-  new (init: EnemyRestore, worldSfx: WorldSfx, fx: FlashEffects, scene?: THREE.Scene): Enemy;
+  new (
+    init: EnemyRestore, worldSfx: WorldSfx, fx: FlashEffects, idAllocators: EntityIdAllocators,
+    scene?: THREE.Scene,
+  ): Enemy;
 }
 
 // pos で撃つときの、太陽グレアによるプラズマ弾の散布界の倍率。逆光(照準方向に太陽がある)ほど
@@ -142,6 +146,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     radius: number,
     protected readonly _worldSfx: WorldSfx,
     protected readonly _fx: FlashEffects,
+    idAllocators: EntityIdAllocators,
     shape?: EnemyCollisionShape,
   ) {
     // 復元と新規配置を同じ形へ均してから基底へ渡す。
@@ -177,7 +182,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
         ),
       }, shape),
       view,
-      placed.id,
+      idAllocators.entity.next(placed.id),
     );
     this.accent = placed.accent;
     this.orbitLineColor = placed.orbitLineColor;
@@ -264,7 +269,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     this._worldSfx.explosion();
     this._fx.spawnEnemyDestroyFlash(this.motion.state, ENEMY_MODEL_SCALE);
     for (const piece of enemyDestroyFragments(
-      this.motion.state, ENEMY_MODEL_SCALE, this._worldSfx, this._fx,
+      this.motion.state, ENEMY_MODEL_SCALE, this._worldSfx, this._fx, registry.idAllocators,
     )) registry.add(piece);
   }
 
@@ -439,7 +444,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
     const pb = new Bullet(
       kinematicState<'eci'>(simTime, r, bV), PLASMA_LIFETIME, 'enemy', 'plasma', this.plasmaDamage(),
-      this._worldSfx,
+      this._worldSfx, registry.idAllocators,
     );
     this.muzzleEffect(kinematicState<'eci'>(simTime, r, v));
 

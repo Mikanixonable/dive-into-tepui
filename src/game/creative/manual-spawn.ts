@@ -4,7 +4,7 @@ import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import { addScaled } from '../../math/vec3';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { isEnemy, type Enemy } from '../dynamic/dynamic-entity/enemy';
-import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
+import { EntityIdAllocator, type EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
 import { proteinAssetGate } from '../protein/protein-asset-loader';
 import {
   generateApproachingEnemy, generateDriftingEnemy, generateProteinEnemy, proteinFormationSpawns,
@@ -39,6 +39,7 @@ export class ManualSpawn {
     private readonly fx: FlashEffects,
     private readonly scene: THREE.Scene,
     roster: EntityRoster,
+    private readonly idAllocators: EntityIdAllocators,
     // 出すタンパク質の表示設定。アセットを待っている個体は、実体化した時点の値で出る。
     public display: ProteinDisplaySettings,
   ) {
@@ -59,7 +60,9 @@ export class ManualSpawn {
     if (shapeDefinition.kind === 'drifting') {
       return {
         gate: null,
-        build: () => generateDriftingEnemy(name, state, color, color, this.worldSfx, this.fx, this.scene),
+        build: () => generateDriftingEnemy(
+          name, state, color, color, this.worldSfx, this.fx, this.scene, this.idAllocators,
+        ),
       };
     }
     if (shapeDefinition.kind === 'protein') {
@@ -67,13 +70,15 @@ export class ManualSpawn {
         gate: proteinAssetGate(shapeDefinition.assetId),
         build: () => generateProteinEnemy(
           name, state, shapeDefinition.assetId, this.display, this.worldSfx, this.fx, this.scene,
+          this.idAllocators,
         ),
       };
     }
     return {
       gate: null,
       build: () => generateApproachingEnemy(
-        name, state, color, color, shapeDefinition.typeIndex, undefined, this.worldSfx, this.fx, this.scene,
+        name, state, color, color, shapeDefinition.typeIndex, undefined,
+        this.worldSfx, this.fx, this.scene, this.idAllocators,
       ),
     };
   }
@@ -84,7 +89,7 @@ export class ManualSpawn {
     const formationId = this.formationIdAllocator.next();
     const spawns = proteinFormationSpawns(
       formationId, state, player.motion.state.r, this.display, formationId,
-      this.worldSfx, this.fx, this.scene,
+      this.worldSfx, this.fx, this.scene, this.idAllocators,
     );
     return spawns.map(({ assetId, build }) => ({ gate: proteinAssetGate(assetId), build }));
   }

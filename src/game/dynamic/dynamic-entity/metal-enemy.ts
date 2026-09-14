@@ -6,6 +6,7 @@ import { collisionDamageFraction } from './contact-damage';
 import {
   ENEMY_MODEL_SCALE, Enemy, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore,
 } from './enemy';
+import type { EntityIdAllocators } from './entity-id';
 import type { MetalEnemySaveData } from '../../save/save-data';
 import { MetalEnemyView, Stage0MetalEnemyView } from '../../../render/dynamic/dynamic-entity/metal-enemy-view';
 
@@ -46,6 +47,7 @@ export class MetalEnemy extends Enemy {
     init: MetalEnemyPlacement | EnemyRestore,
     worldSfx: WorldSfx,
     fx: FlashEffects,
+    idAllocators: EntityIdAllocators,
     scene?: THREE.Scene,
   ) {
     const typeIndex = 'saved' in init ? (init.saved as MetalEnemySaveData).typeIndex : init.typeIndex;
@@ -55,7 +57,7 @@ export class MetalEnemy extends Enemy {
       : new Stage0MetalEnemyView(accent, typeIndex, ENEMY_MODEL_SCALE, scene);
     super(
       init, metalView, typeIndex === null ? DRIFTING_INERTIA : TYPED_INERTIA,
-      metalEnemyCollisionRadius(typeIndex), worldSfx, fx,
+      metalEnemyCollisionRadius(typeIndex), worldSfx, fx, idAllocators,
     );
     this.typeIndex = typeIndex;
     // 復元のときは、保存した時点まで削れていた装甲値へ戻す。

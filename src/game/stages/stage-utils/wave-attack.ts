@@ -17,6 +17,7 @@ import { R_EARTH } from '../../celestial/solar-system/earth-system';
 import { strongestAttractor } from '../../../physics/attractor';
 import { add, addScaled, len, norm, randPerp, randVec, scale, sub, Vec3 } from '../../../math/vec3';
 import { generateApproachingEnemy } from '../spawner/enemy-generator';
+import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
 
 const REENTRY_ALT = 80e3; // 敵の軌道の近地点余裕を測る基準高度 [m](wave-attack.ts)
 
@@ -68,6 +69,7 @@ export class WaveAttack {
     private readonly fx: FlashEffects,
     private readonly scene: THREE.Scene,
     private readonly attractors: readonly CelestialBody[],
+    private readonly idAllocators: EntityIdAllocators,
     saved?: WaveAttackSaveData,
   ) {
     this.waveState = saved?.waveState ?? 'waiting_for_ammo';
@@ -80,7 +82,7 @@ export class WaveAttack {
     const wave = ++this._waveCount;
     const enemies = generateWave(
       player.motion.state, wave, this.attractors,
-      this.worldSfx, this.fx, this.scene, forcedPattern,
+      this.worldSfx, this.fx, this.scene, this.idAllocators, forcedPattern,
     );
     for (const enemy of enemies) addEnemy(enemy);
   }
@@ -287,7 +289,7 @@ function waveShipPosition(pattern: 'linear' | 'random', i: number, shipCount: nu
 }
 
 // ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
-export function generateWave(player: KinematicState, waveNumber: number, attractors: readonly CelestialBody[], worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, forcedPattern?: 'linear' | 'random'): Enemy[] {
+export function generateWave(player: KinematicState, waveNumber: number, attractors: readonly CelestialBody[], worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators, forcedPattern?: 'linear' | 'random'): Enemy[] {
   const calculatedCount = STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * STAGE00_WAVE_SHIPS_PER_WAVE);
   const shipCount = Math.min(calculatedCount, STAGE00_WAVE_MAX_SHIPS);
   const centerR = pickWaveCenter(player, waveNumber);
@@ -303,7 +305,7 @@ export function generateWave(player: KinematicState, waveNumber: number, attract
     const accent = subGroups[i % subGroups.length]!;
     const position = waveShipPosition(pattern, i, shipCount, centerR, approachDir);
     const state: KinematicState = kinematicState<'eci'>(player.t, position, centerV);
-    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, accent, accent, typeIndex, waveNumber, worldSfx, fx, scene));
+    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, accent, accent, typeIndex, waveNumber, worldSfx, fx, scene, idAllocators));
   }
   return enemies;
 }

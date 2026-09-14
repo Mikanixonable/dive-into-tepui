@@ -10,7 +10,7 @@ import {
   savedAttitude, savedKinematicState, type AmmoPickupSaveData, type RcsFuelPickupSaveData,
 } from '../../save/save-data';
 import { DynamicEntity } from './dynamic-entity';
-import { EntityIdAllocator } from './entity-id';
+import type { EntityIdAllocator, EntityIdAllocators } from './entity-id';
 import { PickupMotion, type PickupKind } from './pickup-motion';
 import type * as THREE from 'three/webgpu';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
@@ -38,12 +38,9 @@ export const RCS_FUEL_PICKUP_AMOUNT = 1000;
 // RCS 燃料補給の既定の表示名。
 const RCS_FUEL_PICKUP_NAME = 'RCS燃料';
 
-const ammoPickupIdAllocator = new EntityIdAllocator('ammo-');
-const rcsFuelPickupIdAllocator = new EntityIdAllocator('rcs-fuel-');
-
 type PickupSaveData = AmmoPickupSaveData | RcsFuelPickupSaveData;
 
-// 新規配置の初期状態。state/att をそのまま使い、id を省略すると種別ごとに発番する。
+// 新規配置の初期状態。state/att をそのまま使い、id を省略すると種別の採番器が発番する。
 interface PickupPlacement {
   readonly state: KinematicState;
   readonly att?: Attitude;
@@ -67,7 +64,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
   private readonly markerKey: string;
 
   // 新規配置はそのまま、スナップショットからの再開は saved を simTime 付きの状態として展開し、
-  // 既定の表示名で名乗る。id 省略時は idAllocator で発番する。kind は接触の種別とマーカーキーの
+  // 既定の表示名で名乗る。id は idAllocator が採る。kind は接触の種別とマーカーキーの
   // 接頭辞を兼ねる。
   protected constructor(
     init: PickupPlacement | { readonly saved: PickupSaveData; readonly simTime: number },
@@ -214,12 +211,13 @@ export class AmmoPickup extends Pickup {
   protected override readonly bearingColor = 'var(--color-primary-hover)';
   protected override readonly pickupRadius = AMMO_PICKUP_RADIUS;
 
-  // 補給メッシュを組み立て、弾薬として名乗る。id 省略時はここで一意に発番する。
+  // 補給メッシュを組み立て、弾薬として名乗る。
   public constructor(
     init: PickupPlacement | { readonly saved: AmmoPickupSaveData; readonly simTime: number },
     scene: THREE.Scene,
+    idAllocators: EntityIdAllocators,
   ) {
-    super(init, new AmmoPickupView(scene), ammoPickupIdAllocator, '弾薬', 'ammo');
+    super(init, new AmmoPickupView(scene), idAllocators.ammoPickup, '弾薬', 'ammo');
   }
 
   // セーブデータへ変換する。
@@ -239,14 +237,15 @@ export class RcsFuelPickup extends Pickup {
   protected override readonly pickupRadius = RCS_FUEL_PICKUP_RADIUS;
 
   // 補給メッシュを組み立て、配置・保存で表示名を与えられていればそれで、なければ既定の名前で
-  // 名乗る。id 省略時はここで一意に発番する。
+  // 名乗る。
   public constructor(
     init:
       | (PickupPlacement & { readonly name?: string })
       | { readonly saved: RcsFuelPickupSaveData; readonly simTime: number },
     scene: THREE.Scene,
+    idAllocators: EntityIdAllocators,
   ) {
-    super(init, new RcsFuelPickupView(scene), rcsFuelPickupIdAllocator, RCS_FUEL_PICKUP_NAME, 'rcs-fuel');
+    super(init, new RcsFuelPickupView(scene), idAllocators.rcsFuelPickup, RCS_FUEL_PICKUP_NAME, 'rcs-fuel');
     const name = 'saved' in init ? init.saved.name || undefined : init.name;
     if (name !== undefined) this.setName(name);
   }

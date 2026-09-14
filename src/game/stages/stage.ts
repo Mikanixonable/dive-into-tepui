@@ -224,7 +224,9 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、
   // 何隻をどこへ置くかはステージ自身の宣言。
   protected addPlayer(init?: PlayerInit): Player {
-    const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, init);
+    const ship = new Player(
+      this._hud, this._worldSfx, this._scene, this._fx, this._dynamicSystem.idAllocators, init,
+    );
     this._dynamicSystem.add(ship);
     this._controlSelection.claimIfNone(ship);
     return ship;
