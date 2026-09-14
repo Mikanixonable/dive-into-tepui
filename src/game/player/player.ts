@@ -81,7 +81,7 @@ const BULLET_IMPACT_HEAT = 3.0e5; // 自機が被弾1発あたりに受ける熱
 
 const ALLY_BEARING_MAX_DISTANCE = 20e3; // 味方機の画面外方位マーカーを表示する上限距離 [m]
 
-const PLAYER_MAX_HP = 1000;
+const PLAYER_MAX_HP = 1000; // 既定パーツ一式へ割り振る装甲値の合計 [HP]
 const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 
 const GATLING_FIRE_INTERVAL = 0.06; // 既定の機関砲の発射間隔 [s]
@@ -212,7 +212,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     });
     super(
       name,
-      PLAYER_MAX_HP,
       owner => new PlayerMotion(
         state,
         att,
@@ -233,9 +232,8 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     this.boosters = new AttachedBoosters(
       this.motion, this.motion.attachedBoosters, idAllocators, notifier, worldSfx, scene, fx,
     );
-    // 装甲値の正本はパーツ側なので、積み終えたところで艦の hp/maxHp を組み直す。
     this.parts = saved ? saved.parts.map(partFromSaveData) : defaultParts(PLAYER_MAX_HP);
-    this.refreshFromParts();
+    this.rebuildPartReferences();
 
     if (saved) {
       this.planExecution = saved.planExecution ?? 'off';
@@ -301,15 +299,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   private hullPart: Part | undefined;
   private cockpitPart: CockpitPart | undefined;
 
-  // 部品構成が変わったとき(換装など)に、艦の maxHp と hp を部品側から求め直す。
-  private refreshFromParts(): void {
-    this.rebuildPartReferences();
-    let maxHp = 0;
-    for (const p of this.parts) maxHp += p.maxHp;
-    this.maxHp = maxHp;
-    this.updateOverallHp();
-  }
-
   // parts から type 別のパーツ参照を組み直す。parts を入れ替えたあとに呼ぶ。
   private rebuildPartReferences(): void {
     this.thrusterPartRefs.length = 0;
@@ -349,7 +338,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 受けたダメージを健全なパーツ1つへ無作為に割り振る。装甲があれば最も高い軽減率で
   // 減衰させる。part を指定すると割り振り先をそのパーツに固定する(被弾位置から
   // 当たったパーツが判っている場合)。
-  protected override applyDamage(amount: number, part?: Part): void {
+  private applyDamage(amount: number, part?: Part): void {
     // 装甲は複数積んでも最も高い軽減率のものだけが効く。
     let reduction = 0;
     let hasArmor = false;
@@ -380,7 +369,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     }
 
     if (target) target.hp = Math.max(0, target.hp - effectiveDamage);
-    this.updateOverallHp();
   }
 
   // 接触の重み付き接近速度に応じたダメージをパーツへ適用し、ダメージが発生したかを返す。
@@ -400,20 +388,22 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     if (targets.length === 0) return;
     const share = amount / targets.length;
     for (const p of targets) p.hp = Math.min(p.maxHp, p.hp + share);
-    this.updateOverallHp();
   }
 
-  // 全パーツの残 HP 合計を機体の hp に反映する。船体かコックピットを失った時点で
-  // 他が無事でも行動不能とみなし 0 にする。
-  private updateOverallHp(): void {
+  // 全パーツの残 HP 合計。船体かコックピットを失った時点で、他が無事でも行動不能とみなし 0 にする。
+  public override get hp(): number {
     const vital = (this.hullPart && this.hullPart.hp <= 0) || (this.cockpitPart && this.cockpitPart.hp <= 0);
-    if (vital) {
-      this.hp = 0;
-      return;
-    }
-    let hp = 0;
-    for (const p of this.parts) hp += p.hp;
-    this.hp = hp;
+    if (vital) return 0;
+    let total = 0;
+    for (const p of this.parts) total += p.hp;
+    return total;
+  }
+
+  // 全パーツの最大 HP 合計。
+  public override get maxHp(): number {
+    let total = 0;
+    for (const p of this.parts) total += p.maxHp;
+    return total;
   }
 
   // 健全なスラスターのトルクの合計 [N·m]。

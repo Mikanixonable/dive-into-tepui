@@ -318,15 +318,6 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
 - 減るもの: 放射強度の宣言が1つになり、`game/` → `render/` の import が1本落ちる。描画の
   露出目盛り(`SUN_IRRADIANCE_1AU = π`)は描画層に残る。/ 確度: 高 / 確認: 自分で確認
 
-### R60. 自機の装甲値と最大装甲値が、パーツ側の正本と二重になっている
-- 症状: `hp` はパーツ hp の総和(ただし船体かコクピットが 0 なら 0)、`maxHp` はパーツ maxHp の
-  総和。被弾・自己修復・換装のたびに `updateOverallHp()` / `refreshFromParts()` が書き戻している。
-- 場所: `src/game/player/player.ts:305-312,384,404-418`、`src/game/dynamic/dynamic-entity/ship.ts:55-58`
-- 疑う理由: コメント自身が「装甲値の正本はパーツ側」と書いている。`ProteinEnemy` は同じ問いを
-  `get hp()` の委譲で解いており、自機だけが写しを持つ。パーツ配列は生きて残っている。
-- 減るもの: フィールド2本と書き戻し3箇所が消える。`Ship.hp` を getter にして `Player` が
-  override する形になる。/ 確度: 高 / 確認: 自分で確認
-
 ### R63. カメラの姿勢が四元数・オイラー角・上方向ベクトルの3重で持たれている
 - 症状: `up_r` は `qRotate(orientation, LOCAL_UP)` の往復、`offset_r` の向き成分は同じく
   `LOCAL_FORWARD` の往復で、独立なのは距離だけ。`CameraOrientation.euler` も毎フレーム末尾の

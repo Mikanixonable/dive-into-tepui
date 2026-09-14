@@ -47,8 +47,6 @@ import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
 // 全ての敵がこの1つの倍率を共有する。
 export const ENEMY_MODEL_SCALE = 20;
 
-const ENEMY_MAX_HP = 6; // 敵機の総 HP
-
 export const PLASMA_BULLET_DAMAGE = 1.25; // 自機がプラズマ弾で被弾した際のダメージ [HP]
 
 const PLASMA_BULLET_SPEED = MUZZLE_SPEED * 2 / 3; // プラズマ弾の初速 [m/s]
@@ -167,7 +165,6 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     const attitude = { q: placed.q, w: placed.w, inertia };
     super(
       placed.name,
-      ENEMY_MAX_HP,
       owner => new EnemyMotion(placed.state, attitude, radius, {
         receiveEntityContact: (other, contact, services) => (
           (owner as Enemy).receiveEntityContact(
