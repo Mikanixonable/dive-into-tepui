@@ -25,6 +25,7 @@ import { StarCelestialView } from '../../render/celestial/celestial-entity/star-
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../render/pipeline/sun-light';
 import { MAG_ROUNDS } from '../player/ammo-spec';
 import type { CelestialBody } from '../../physics/celestial-body';
+import { FREE_PLAY_STAGE_RULES } from './stage-rules';
 
 const STAR_ID = 'aeolus';
 const PRIMARY_ID = 'zephyrus';
@@ -89,6 +90,7 @@ function fallbackEntity(motion: CelestialBody): CelestialEntity {
 }
 
 export class StageDebugAltSystem extends Stage {
+  public static readonly stageRules = FREE_PLAY_STAGE_RULES;
   public static readonly id = 'debug-alt-system' as const;
   public static readonly epoch = STORY_EPOCH;
   // 架空の3体を並べ、惑星 zephyrus を原点とする天体系を組む。
