@@ -66,7 +66,7 @@ export abstract class Ship extends DynamicEntity {
     hp: number,
     motionFactory: DynamicMotionFactory,
     view: DynamicView,
-    id?: string,
+    id: string,
   ) {
     super(motionFactory, view, id);
     this.setName(name);
