@@ -31,6 +31,8 @@ export function metalEnemyCollisionRadius(typeIndex: number | null): number {
 const DRIFTING_INERTIA = v3(1, 1.1, 1.05);
 const TYPED_INERTIA = v3(1, 1, 1);
 
+const METAL_ENEMY_MAX_HP = 6; // 金属機体の総 HP
+
 // 新規配置。typeIndex が null なら型番を持たない漂流機体、数値なら stage00 ウェーブ敵の
 // 機体テンプレート番号。
 type MetalEnemyPlacement = EnemyPlacement & { readonly typeIndex: number | null };
@@ -60,8 +62,18 @@ export class MetalEnemy extends Enemy {
       metalEnemyCollisionRadius(typeIndex), worldSfx, fx, idAllocators,
     );
     this.typeIndex = typeIndex;
-    // 復元のときは、保存した時点まで削れていた装甲値へ戻す。
-    if ('saved' in init) this.hp = init.saved.health;
+    // 復元のときは、保存した時点まで削れていた装甲値から始める。
+    this.hpValue = 'saved' in init ? init.saved.health : METAL_ENEMY_MAX_HP;
+  }
+
+  // 機体全体の装甲値 [HP]。
+  private hpValue: number;
+  public override readonly maxHp = METAL_ENEMY_MAX_HP;
+  public override get hp(): number { return this.hpValue; }
+
+  // 受けたダメージを装甲値へ当てる。装甲値は 0 で下げ止まる。
+  private applyDamage(amount: number): void {
+    this.hpValue = Math.max(0, this.hpValue - amount);
   }
 
   // 金属機体はいつでも撃てる。

@@ -138,9 +138,7 @@ export class ProteinEnemy extends Enemy {
   }
 
   public override get hp(): number { return this.combat.integrityHp; }
-  public override set hp(_value: number) {}
   public override get maxHp(): number { return this.combat.integrityMaxHp; }
-  public override set maxHp(_value: number) {}
 
   public get display(): ProteinDisplaySettings { return this.displaySettings; }
 
