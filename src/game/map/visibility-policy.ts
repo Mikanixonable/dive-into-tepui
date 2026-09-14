@@ -1,6 +1,9 @@
 // 天体とゲーム内 entity に共通するマップ表示ポリシー。
 // category/icon/label/orbit/pickable を各描画・選択系で個別に解釈しないための正本。
-import { celestialClassVisible, celestialNameVisible, type MapDisplayToggles } from './display-toggles';
+import {
+  celestialClassVisible, celestialNameVisible, mapDisplayCategoryVisible,
+  type MapDisplayCategory, type MapDisplayToggles,
+} from './display-toggles';
 import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { isLagrangeId, lagrangeParentId } from '../celestial/lagrange-id';
@@ -15,7 +18,7 @@ export type MapVisibility = {
 };
 
 const ENTITY_KEYS: Record<DynamicEntityKind, {
-  readonly category: keyof MapDisplayToggles;
+  readonly category: MapDisplayCategory;
   readonly name: keyof MapDisplayToggles;
   readonly orbit: keyof MapDisplayToggles;
 }> = {
@@ -120,13 +123,12 @@ export class MapVisibilityPolicy {
     return result;
   }
 
-  // body() の判定そのもの。ラグランジュ点は専用の2トグルだけで決まり、天体は分類トグルが
+  // body() の判定そのもの。ラグランジュ点は名前トグルだけで決まり、天体は分類トグルが
   // 開いていることを前提に、名前と軌道線をそれぞれの規則で決める。
   private computeBody(id: string): MapVisibility {
     if (isLagrangeId(id)) {
-      const category = this.toggles.lagrangeVisible;
-      const shown = category && this.toggles.lagrangeName;
-      return { category, icon: shown, label: shown, orbit: false, pickable: shown };
+      const shown = this.toggles.lagrangeName;
+      return { category: shown, icon: shown, label: shown, orbit: false, pickable: shown };
     }
     // 注視・近傍で格上げされた天体は、名前トグルが閉じていても名前とアイコンを出す。
     const cls = this.celestialBodies.bodyClassOf(id);
@@ -151,18 +153,18 @@ export class MapVisibilityPolicy {
     return result;
   }
 
-  // entity() の判定そのもの。種別ごとのトグル3本(カテゴリ・名前・軌道線)から決まる。
+  // entity() の判定そのもの。種別ごとの名前・軌道線トグルから決まる。
   private computeEntity(kind: DynamicEntityKind, isActivePlayer: boolean): MapVisibility {
     const keys = ENTITY_KEYS[kind];
-    const categoryToggle = this.toggles[keys.category];
+    const categoryToggle = mapDisplayCategoryVisible(this.toggles, keys.category);
     // 操作対象の自艦は、カテゴリを閉じても現在位置を失わないように残す。ただし
     // 艦名/軌道線は名前トグルに従うので、例外が表示設定を無効化しない。
     const category = categoryToggle || (kind === 'player' && isActivePlayer);
     if (!category) return noVisibility();
-    const nameToggle = Boolean(this.toggles[keys.name]);
+    const nameToggle = this.toggles[keys.name];
     const icon = kind === 'player' && isActivePlayer ? true : nameToggle;
     const label = nameToggle;
-    const orbit = Boolean(this.toggles[keys.orbit]) && category;
+    const orbit = this.toggles[keys.orbit];
     return { category, icon, label, orbit, pickable: icon || label };
   }
 

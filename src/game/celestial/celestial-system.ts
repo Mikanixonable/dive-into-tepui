@@ -34,7 +34,7 @@ import { isOccluded } from '../../physics/occlusion';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { PointFieldView } from '../../render/celestial/point-field-view';
-import type { MapDisplayToggles } from '../map/display-toggles';
+import { celestialClassVisible, type MapDisplayToggles } from '../map/display-toggles';
 import type { GpuTimingSink } from '../../render/gpu-timings';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialBodies } from './celestial-bodies';
@@ -395,7 +395,7 @@ export class CelestialSystem implements CelestialBodies {
     const fixedBrightnessScale = this.illumination.fixedBrightnessScale;
     const starPos = star === null ? null : star.motion.stateAt(displayTime).r;
     const pointFieldVisible = camera.mode === 'map' && graphics.pointField
-      && mapDisplay.smallBodyVisible;
+      && celestialClassVisible('smallBody', mapDisplay);
     this.pointFieldView?.sync(
       pointFieldVisible, floatingOrigin, displayTime, starPos, fixedBrightnessScale);
     this.stars.sync(grid.stars);

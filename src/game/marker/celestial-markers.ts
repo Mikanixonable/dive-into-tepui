@@ -65,7 +65,6 @@ interface CelestialLabel {
 
 // ラベル1件の投影結果(画面座標と遮蔽の具合)。
 interface LabelProjection {
-  readonly occluded: boolean;
   readonly opacity: number;
   readonly x: number;
   readonly y: number;
@@ -91,7 +90,6 @@ export class CelestialMarkers {
   // このフレームの選択候補に出す天体とラグランジュ点マーカー(表示ポリシーを通ったもの)。
   private readonly bodyPickableItems: ObjectPickable[] = [];
   private readonly frameScratch = new Map<string, LabelProjection>();
-  private readonly distScratch = new Map<string, number>();
   private readonly projectedForLabel: ProjectedLabel[] = [];
   private readonly projectedForIcon: ProjectedLabel[] = [];
   private readonly labelCrowding = new CrowdingGrid(LABEL_CROWDING_PX, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO);
@@ -149,7 +147,7 @@ export class CelestialMarkers {
       this.bodyPickableItems.push(body);
     }
     // ラグランジュ点。回転系が組めない期間は座標を失う。
-    if (toggles.lagrangeVisible && toggles.lagrangeName) {
+    if (toggles.lagrangeName) {
       for (const { motion, markers } of this.lagrangeSources) {
         if (!visibilityPolicy.body(markers[0]!.parentId).category) continue;
         const frame = secondaryFrameOf(celestialBodies, t, motion, t);
@@ -207,19 +205,16 @@ export class CelestialMarkers {
   // 全ラベルを投影し、遮蔽されず画面手前にあるものを混雑判定の対象として積む。
   private projectLabels(project: ProjectFn, cameraPos: Vec3, displayTime: number): void {
     this.frameScratch.clear();
-    this.distScratch.clear();
     this.projectedForLabel.length = 0;
     this.projectedForIcon.length = 0;
     for (const label of this.shownLabels) {
       const opacity = occlusionOpacity(
         cameraPos, label.pos, this.celestialSystem.celestialMotions, displayTime);
-      const occluded = opacity <= 0;
       const p = project(label.pos);
-      this.frameScratch.set(label.item.id, { occluded, opacity, x: p.x, y: p.y, front: p.front });
+      this.frameScratch.set(label.item.id, { opacity, x: p.x, y: p.y, front: p.front });
       // 混雑判定に加わるのは、遮蔽されず画面手前にあるものまで。
-      if (occluded || !p.front) continue;
+      if (opacity <= 0 || !p.front) continue;
       const dist = len(sub(label.pos, cameraPos));
-      this.distScratch.set(label.item.id, dist);
       const entry: ProjectedLabel = {
         id: label.item.id, priority: label.item.labelPriority, depth: label.depth, x: p.x, y: p.y, dist,
       };
@@ -238,9 +233,9 @@ export class CelestialMarkers {
       id, cls: label.item.markerClass, sym: label.item.glyph, priority: label.item.labelPriority,
     };
     const projected = this.frameScratch.get(id);
-    if (projected === undefined || projected.occluded) {
+    if (projected === undefined || projected.opacity <= 0) {
       label.pickable = false;
-      return { ...base, x: 0, y: 0, front: false, occluded: projected?.occluded === true };
+      return { ...base, x: 0, y: 0, front: false, occluded: projected !== undefined };
     }
     // 名前とアイコンのどちらも残らなければ、マーカーごと畳む。
     const labelVisible = label.showLabel && !hiddenLabels.has(id);
@@ -250,13 +245,13 @@ export class CelestialMarkers {
       return { ...base, x: 0, y: 0, front: false };
     }
     label.pickable = true;
+    const { x, y, front, dist } = pointPlacement(label.pos, project, cameraPos);
     if (projected.front) {
       this.activeCelestialLabels.push({
         id, x: projected.x, y: projected.y, priority: label.item.labelPriority,
-        dist: this.distScratch.get(id)!, iconVisible, labelVisible,
+        dist: dist!, iconVisible, labelVisible,
       });
     }
-    const { x, y, front, dist } = pointPlacement(label.pos, project, cameraPos);
     return {
       ...base, sym: iconVisible ? label.item.glyph : '', x, y, front, dist,
       label: labelVisible ? label.item.markerLabel : '', opacity: projected.opacity,
@@ -293,7 +288,7 @@ export class CelestialMarkers {
       glyph: label.showIcon ? label.item.glyph : '',
       priority: label.item.labelPriority,
       opacity: projected?.opacity ?? 1,
-      drawable: projected !== undefined && projected.front && !projected.occluded,
+      drawable: projected !== undefined && projected.front && projected.opacity > 0,
     };
   }
 

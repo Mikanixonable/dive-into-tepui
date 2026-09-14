@@ -13,10 +13,16 @@ import {
 import {
   mapDisplayModeOf,
   nextMapDisplayMode,
+  type MapDisplayCategory,
   type MapDisplayMode,
   type MapDisplayToggles,
 } from '../../map/display-toggles';
-import type { CelestialGridVisibility } from '../../../render/celestial-grid';
+import {
+  gridCategoryVisible,
+  type CelestialGridVisibility,
+  type GridCategory,
+  type GridToggleKey,
+} from '../../../render/celestial-grid';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import type { OrbitGuideSettings, ZeroVelocitySettings } from '../../celestial/orbit-guide/orbit-guide-settings';
 import { DEFAULT_ORBIT_GUIDE_SETTINGS } from '../../celestial/orbit-guide/orbit-guide-settings';
@@ -45,7 +51,7 @@ function buildTabBody(tab: ViewOptionsTab): HTMLElement {
 // 非表示だけを循環する。
 interface BodyClassRow {
   readonly label: string;
-  readonly categoryKey: keyof MapDisplayToggles;
+  readonly categoryKey: MapDisplayCategory;
   readonly nameKey: keyof MapDisplayToggles;
   readonly orbitKey: keyof MapDisplayToggles | null;
 }
@@ -93,7 +99,7 @@ function bodyClassDisplayIcon(mode: MapDisplayMode): string {
 // ゲートを持たず、行見出し自身が縮尺トグルを兼ねる。
 interface GridRow {
   readonly label: string;
-  readonly categoryKey: keyof CelestialGridVisibility | null;
+  readonly categoryKey: GridCategory | null;
   readonly planeKey: keyof CelestialGridVisibility | null;
   readonly poleKey: keyof CelestialGridVisibility | null;
   readonly gridKey: keyof CelestialGridVisibility | null;
@@ -147,8 +153,8 @@ function appendColumnLegend(parent: HTMLElement, columns: readonly ViewOptionCol
 }
 
 export class ViewOptionsPanel {
-  public onBodyClassModeChange: ((key: keyof MapDisplayToggles, mode: MapDisplayMode) => void) | null = null;
-  public onGridToggle: ((key: keyof CelestialGridVisibility, on: boolean) => void) | null = null;
+  public onBodyClassModeChange: ((key: MapDisplayCategory, mode: MapDisplayMode) => void) | null = null;
+  public onGridToggle: ((key: GridToggleKey, on: boolean) => void) | null = null;
   // 軌道ガイドタブかゼロ速度曲線節を編集するたびに、編集後の軌道ガイド設定全体で呼ばれる。
   public onOrbitGuideChange: ((settings: OrbitGuideSettings) => void) | null = null;
   // タブが選ばれたときに、選ばれたタブで呼ばれる。
@@ -166,12 +172,12 @@ export class ViewOptionsPanel {
 
   private readonly bodyClassModeButtons: readonly (readonly [BodyClassRow, Button, HTMLElement])[];
   // 各ボタンの現在の表示モードの鏡映し。クリック時に次の状態を決めるのに使う。
-  private readonly bodyClassModes = new Map<keyof MapDisplayToggles, MapDisplayMode>();
+  private readonly bodyClassModes = new Map<MapDisplayCategory, MapDisplayMode>();
 
   private readonly gridButtons: readonly (readonly [keyof CelestialGridVisibility, Button])[];
-  private readonly gridCategoryButtons: readonly (readonly [keyof CelestialGridVisibility, Button, HTMLElement])[];
+  private readonly gridCategoryButtons: readonly (readonly [GridCategory, Button, HTMLElement])[];
   private readonly starsButton: Button;
-  private readonly gridCurrent = new Map<keyof CelestialGridVisibility, boolean>();
+  private readonly gridCurrent = new Map<GridToggleKey, boolean>();
 
   private readonly panel: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
@@ -271,14 +277,14 @@ export class ViewOptionsPanel {
   private buildGuideTab(body: HTMLElement): {
     readonly element: HTMLElement;
     readonly gridButtons: readonly (readonly [keyof CelestialGridVisibility, Button])[];
-    readonly gridCategoryButtons: readonly (readonly [keyof CelestialGridVisibility, Button, HTMLElement])[];
+    readonly gridCategoryButtons: readonly (readonly [GridCategory, Button, HTMLElement])[];
     readonly starsButton: Button;
     readonly zeroVelocitySection: ZeroVelocitySection;
   } {
     const guideBody = buildTabBody('guide');
     body.appendChild(guideBody);
     const gridButtons: (readonly [keyof CelestialGridVisibility, Button])[] = [];
-    const gridCategories: (readonly [keyof CelestialGridVisibility, Button, HTMLElement])[] = [];
+    const gridCategories: (readonly [GridCategory, Button, HTMLElement])[] = [];
 
     // 天球グリッド各行: 見出し(面カテゴリまたは縮尺)+ 面/極/網/縮尺のアイコンボタン列。
     appendColumnLegend(guideBody, GRID_COLUMNS);
@@ -289,7 +295,7 @@ export class ViewOptionsPanel {
       const title = this.toggleButton(row.label, `${row.label}を表示`, titleKey, this.gridCurrent, (key, on) => this.onGridToggle?.(key, on));
       title.element.classList.add('body-class-title');
       rowEl.appendChild(title.element);
-      if (row.categoryKey === null) gridButtons.push([titleKey, title]);
+      if (row.categoryKey === null) gridButtons.push([row.scaleKey, title]);
       else gridCategories.push([row.categoryKey, title, rowEl]);
 
       const btnsEl = document.createElement('div');
@@ -443,7 +449,7 @@ export class ViewOptionsPanel {
     }
     // カテゴリ行の点灯と、全消灯時のグレーアウト。
     for (const [key, category, row] of this.gridCategoryButtons) {
-      const enabled = Boolean(visibility[key]);
+      const enabled = gridCategoryVisible(visibility, key);
       this.gridCurrent.set(key, enabled);
       category.setOn(enabled);
       row.classList.toggle('category-off', !enabled);
