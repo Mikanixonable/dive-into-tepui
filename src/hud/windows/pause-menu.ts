@@ -341,6 +341,12 @@ export class PauseMenu implements OverlayHandle {
     this.dragStartClient = null;
   };
 
+  // 開いている間の設定面の表示を引き直す。毎フレーム呼ぶ。
+  public sync(): void {
+    if (!this._isOpen) return;
+    this._settingsView.sync();
+  }
+
   // 外から音量が変わったときに、スライダーと消音ボタンの点灯を引き直す。
   public syncBgmVolume(vol: number): void {
     this.bgmSlider.setValue(vol);
