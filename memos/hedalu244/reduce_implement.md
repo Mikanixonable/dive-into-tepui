@@ -239,7 +239,6 @@
 - **R51. 最初の周回の失敗だけ別の文言になる。** `start()` だけ `.catch(fail)` を通らない。`src/launcher/launcher.ts:96-105,207-214`。/ 確度: 低
 - **R52. bgm-lab が `TrackPlayback` を二重実装している。** 「一致は検証で押さえてある」とコメントにあるが、`tests/` に Composer/TrackPlayback のテストは無い。`tools/bgm-lab/lab-player.ts:6,108`。/ 確度: 低
 - **R53. モジュール寿命の採番器がランを跨いで残る。** `base.ts:48`、`pickup.ts:41-42`、`dynamic-entity.ts:18`(static)。id は増え続けるだけなので挙動は無害だが、ランの寿命の状態ではない。計画の手順 6-5 が移す予定。/ 確度: 低
-- **R54(挙動の複雑さではない誤り). ヴァルナの半径が質量と整合しない。** 半径 450 km は旧直径 900 km 由来、質量は直径 654 km 由来。コード自身の TODO。衝突球・高度基準・描画サイズに直接効く。`src/game/celestial/solar-system/small-bodies.ts:211-219`。/ 確度: 中
 - **R55(同). `EARTH_AURORA_OPTICS.bodyRadius: 6.371e6` が `R_EARTH` の直書き重複。** `CelestialBodies` の doc 2箇所(`ancestorsOf`・`chainFrom`)が実装と逆のことを書いている。/ 確度: 低
 
 ---
