@@ -9,7 +9,7 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { type KinematicState } from '../../physics/kinematic-state';
 import { environmentSampleAt, type DynamicsEnvironmentSample } from '../../physics/dynamics';
-import { SOLAR_CONSTANT } from '../../physics/srp';
+import { isStar } from '../../physics/celestial-body-def';
 import {
   aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,
   stepThermalDeviation,
@@ -310,7 +310,7 @@ export class DynamicMotion {
     // 歩のあいだの環境の平均で、種別ごとの環境反応と熱を進める。
     const environment = weightedEnvironment(environmentSamples);
     this.behavior.stepEnvironment?.(this, dt, atmosphereBody, this.state.t, environment.sunlit, environment.sunDir);
-    this.stepThermal(dt, environmentSamples, services);
+    this.stepThermal(dt, environmentSamples, star, services);
     return integrated;
   }
 
@@ -425,19 +425,23 @@ export class DynamicMotion {
       ?? (this.emissivity * this.bcInv) / DRAG_COEFFICIENT;
   }
 
-  // 温度を dt 進め、上限を超えたら燃え尽きさせる。比熱 0 の個体は熱を持たない。
+  // 温度を dt 進め、上限を超えたら燃え尽きさせる。比熱 0 の個体は熱を持たない。star は日射の光源。
   private stepThermal(
-    dt: number, samples: readonly DynamicsEnvironmentSample[], services: DynamicReactionServices,
+    dt: number, samples: readonly DynamicsEnvironmentSample[], star: CelestialBody | null,
+    services: DynamicReactionServices,
   ): void {
     if (this.specificHeat <= 0) return;
+    const radiantIntensity = star !== null && isStar(star) ? star.def.radiantIntensity : null;
     // 標本ごとの日射と空力加熱を重み付きで平均する。
     let heating = 0;
     let weightTotal = 0;
     for (let i = 0; i < samples.length; i++) {
       const weight = samples.length === 4 ? RK4_WEIGHTS[i]! : 1;
       const sample = samples[i]!;
-      heating += weight * solarHeating(
-        SOLAR_CONSTANT, sample.sunDist, sample.sunlit, this.solarAbsorbAreaPerMass(sample.sunDir));
+      if (radiantIntensity !== null) {
+        heating += weight * solarHeating(
+          radiantIntensity, sample.sunDist, sample.sunlit, this.solarAbsorbAreaPerMass(sample.sunDir));
+      }
       if (sample.atmosphere !== null && sample.atmosphereState !== null && this.bcInv > 0) {
         const { density, speed } = airflow(
           sub(sample.r, sample.atmosphereState.r), sub(sample.v, sample.atmosphereState.v), sample.atmosphere);
