@@ -238,10 +238,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     this.refreshFromParts();
 
     if (saved) {
-      // 現行のモードでない planExecution は、保存形の followPlan(boolean)から読み替える。
-      this.planExecution = saved.planExecution === 'off' || saved.planExecution === 'instant'
-        ? saved.planExecution
-        : (saved.followPlan ? 'instant' : 'off');
+      this.planExecution = saved.planExecution ?? 'off';
       this.fineAttitude = saved.fineAttitude ?? false;
       this.trajectoryLineVisible = saved.showTrajectoryLine ?? false;
 
