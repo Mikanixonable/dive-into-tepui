@@ -12,6 +12,7 @@ import {
 import { STAGE_CONTROL_ENEMY_SHAPES, type EnemySpawnShape } from './stage-controls-panel';
 import type * as THREE from 'three/webgpu';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
+import type { CelestialBody } from '../../physics/celestial-body';
 import type { SpawnGate } from '../dynamic/entity-registry';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { Player } from '../player/player';
@@ -38,6 +39,7 @@ export class ManualSpawn {
     private readonly worldSfx: WorldSfx,
     private readonly fx: FlashEffects,
     private readonly scene: THREE.Scene,
+    private readonly attractors: readonly CelestialBody[],
     roster: EntityRoster,
     private readonly idAllocators: EntityIdAllocators,
     // 出すタンパク質の表示設定。アセットを待っている個体は、実体化した時点の値で出る。
@@ -77,7 +79,7 @@ export class ManualSpawn {
     return {
       gate: null,
       build: () => generateApproachingEnemy(
-        name, state, color, color, shapeDefinition.typeIndex, undefined,
+        name, state, this.attractors, color, color, shapeDefinition.typeIndex, undefined,
         this.worldSfx, this.fx, this.scene, this.idAllocators,
       ),
     };
