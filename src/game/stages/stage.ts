@@ -2,7 +2,7 @@
 // 必要なステージだけ override する。
 import * as THREE from 'three/webgpu';
 import { Enemy } from '../dynamic/dynamic-entity/enemy';
-import { isPlayer, Player, type PlayerInit } from '../player/player';
+import { isPlayer, Player, type PlayerInit, type PlayerPlacement } from '../player/player';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
@@ -22,6 +22,8 @@ import type { ControlSelection } from '../control-selection';
 import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
 import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
+import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
+import { v3 } from '../../math/vec3';
 import { solarSystem } from '../celestial/solar-system/solar-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { EntityRoster } from '../dynamic/entity-roster';
@@ -43,6 +45,11 @@ const ENEMY_LOSS_HINT: Record<Exclude<EnemyDeathCause, 'killed'>, string> = {
 };
 
 const BRIEFING_TOAST_MS = 12000;
+
+// 状態を指定せずに置く自機の既定の円軌道。高度は中心天体の表面半径から、傾斜角は中心天体の
+// 中心に置いた ECI 軸の Y から測る。
+const PLAYER_INITIAL_ALT = 420e3; // [m]
+const PLAYER_INITIAL_INC_DEG = 97.0; // [deg]
 
 // 全ステージ共通の生成引数(セーブデータを除く)。具象ステージは自分のコンストラクタで
 // これをそのまま基底へ渡す。
@@ -221,15 +228,31 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     return this._dynamicSystem.all().filter(isPlayer).find((p) => p.motion.alive) ?? null;
   }
 
-  // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、
-  // 何隻をどこへ置くかはステージ自身の宣言。
-  protected addPlayer(init?: PlayerInit): Player {
+  // 自機を1隻置き、操作対象が居なければそれを操作対象にする。state を省いた新規配置は
+  // 既定の円軌道(defaultPlayerState)に置く。艦の隻数は0..n隻が一般形で、何隻をどこへ置くかは
+  // ステージ自身の宣言。
+  protected addPlayer(init: PlayerInit | Partial<PlayerPlacement> = {}): Player {
     const ship = new Player(
-      this._hud, this._worldSfx, this._scene, this._fx, this._dynamicSystem.idAllocators, init,
+      this._hud, this._worldSfx, this._scene, this._fx, this._dynamicSystem.idAllocators,
+      'saved' in init ? init : { ...init, state: init.state ?? this.defaultPlayerState() },
     );
     this._dynamicSystem.add(ship);
     this._controlSelection.claimIfNone(ship);
     return ship;
+  }
+
+  // 状態を指定しない自機の、いまの simTime における既定の状態: ECI 原点の天体を回る、
+  // 高度 PLAYER_INITIAL_ALT・傾斜角 PLAYER_INITIAL_INC_DEG の円軌道上。
+  private defaultPlayerState(): KinematicState {
+    const t = this._dynamicSystem.simTime;
+    const center = this._celestialSystem.origin.motion;
+    const radius = center.def.radius + PLAYER_INITIAL_ALT;
+    const speed = Math.sqrt(center.def.mu / radius);
+    const inc = (PLAYER_INITIAL_INC_DEG * Math.PI) / 180;
+    const rel = kinematicState<'primaryRel'>(
+      t, v3(radius, 0, 0), v3(0, speed * Math.sin(inc), -speed * Math.cos(inc)),
+    );
+    return addPrimaryRelative(center.stateAt(t), rel);
   }
 
   // 敵を登録し、出撃数をスコアへ記録する。
