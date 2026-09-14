@@ -82,7 +82,6 @@ export class EarthSurfaceResidentCoordinator {
   private lastProjection: EarthTileProjection | null = null;
   private lastGeneration = -1;
   private lastTimeMs: number | null = null;
-  private synchronized = false;
   private lastResult: EarthSurfaceResidentFrameResult = { frontier: [], requested: [], published: false };
   private disposed = false;
 
@@ -128,8 +127,7 @@ export class EarthSurfaceResidentCoordinator {
     const fadeTimeChanged = this.lastTimeMs !== input.timeMs
       && (this.dependencies.tiles.hasActiveFades(input.timeMs)
         || (this.lastTimeMs !== null && this.dependencies.tiles.hasActiveFades(this.lastTimeMs)));
-    const dirty = !this.synchronized
-      || this.lastGeneration !== input.generation
+    const dirty = this.lastGeneration !== input.generation
       || this.lastProjection !== input.projection
       || this.lastResidentRevision !== this.residentRevision
       || fadeTimeChanged;
@@ -146,7 +144,6 @@ export class EarthSurfaceResidentCoordinator {
     this.lastGeneration = input.generation;
     this.lastTimeMs = input.timeMs;
     this.lastResidentRevision = this.residentRevision;
-    this.synchronized = true;
     if (this.dependencies.gpu.mode === 'base') {
       this.lastResult = {
         frontier: this.dependencies.tiles.frontier.slice(), requested: [], published: false,
@@ -204,7 +201,6 @@ export class EarthSurfaceResidentCoordinator {
     this.lastProjection = null;
     this.lastGeneration = -1;
     this.lastTimeMs = null;
-    this.synchronized = false;
     this.lastResult = { frontier: [], requested: [], published: false };
   }
 
