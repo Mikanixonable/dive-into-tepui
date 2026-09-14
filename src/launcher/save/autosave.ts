@@ -9,9 +9,9 @@ export class AutoSave {
 
   public constructor(private readonly service: SnapshotService) {}
 
-  // ランが始まったときに呼ぶ。次の撮影までの間隔を、この時点から数え直す。
-  public beginRun(): void {
-    this.intervalOriginReal = performance.now();
+  // ランが始まったときに呼ぶ。その場で1件撮り、次の撮影までの間隔をここから数え直す。
+  public beginRun(source: SnapshotCaptureSource): void {
+    this.capture(source, performance.now());
   }
 
   // 毎フレーム呼ぶ。ラン開始か前回の撮影から AUTOSAVE_INTERVAL_REAL_SEC 秒(実時間)経っていれば1件撮る。

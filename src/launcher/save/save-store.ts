@@ -4,7 +4,7 @@ import type { SaveIndex } from './slot-data';
 // セーブの永続化だけを担う。索引とスナップショット本体の読み書きを Game 非依存の
 // JSON I/O として提供する。
 
-export const SAVE_INDEX_VERSION = 1;
+export const SAVE_INDEX_VERSION = 2;
 
 const INDEX_KEY = 'tepui.saveIndex';
 const SNAPSHOT_KEY_PREFIX = 'tepui.snapshot.';
