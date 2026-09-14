@@ -165,7 +165,7 @@ export class Game {
     await progress.enter('system');
     // このランの元期。セーブの元期、開始日時の指定、ステージの宣言の順に採る — 保存された simTime
     // はセーブの元期からの経過秒なので、別の元期で組むと全天体がずれる。
-    const savedJdTdb = initialSave?.ephemerisContext?.epochJdTdb;
+    const savedJdTdb = initialSave?.ephemerisContext.epochJdTdb;
     const epoch = savedJdTdb !== undefined ? createJulianDate('TDB', savedJdTdb) : startEpoch ?? stageClass.epoch;
     const celestialSystem = await stageClass.createCelestialSystem(
       epoch, (ratio) => progress.within(ratio), gs.renderer,

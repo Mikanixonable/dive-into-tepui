@@ -73,17 +73,14 @@ export function defaultMapViewInitial(celestialBodies: CelestialBodies): FocusCa
   };
 }
 
-// セーブデータの rotatingWith を FrameRotationSource へ変換する。文字列は公転対象の id を
-// 直接持つ形式として、公転で受ける。
-function rotationSourceFromSaveData(saved: FrameRotationSourceSaveData | string | null): FrameRotationSource | null {
-  if (saved === null) return null;
-  if (typeof saved === 'string') return { kind: 'revolution', id: saved };
-  return { kind: saved.kind, id: saved.id };
+// セーブデータの rotatingWith を FrameRotationSource へ変換する。
+function rotationSourceFromSaveData(saved: FrameRotationSourceSaveData | null): FrameRotationSource | null {
+  return saved === null ? null : { kind: saved.kind, id: saved.id };
 }
 
 // セーブデータの rotatingWith を CameraRotationFollow へ変換する(姿勢追従も受ける)。
-function rotationFollowFromSaveData(saved: CameraRotationFollowSaveData | string | null): CameraRotationFollow | null {
-  if (saved !== null && typeof saved === 'object' && saved.kind === 'attitude') return { kind: 'attitude' };
+function rotationFollowFromSaveData(saved: CameraRotationFollowSaveData | null): CameraRotationFollow | null {
+  if (saved !== null && saved.kind === 'attitude') return { kind: 'attitude' };
   return rotationSourceFromSaveData(saved);
 }
 
