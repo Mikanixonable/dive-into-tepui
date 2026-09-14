@@ -8,7 +8,7 @@ import { Billboard, POINT_IMAGE_ANGULAR_SIZE } from '../../billboard';
 import { createCelestialSurfaceFrame, type CelestialSurfaceLike } from '../celestial-surface';
 import { writeBodyFromWorld } from '../body-frame';
 import { DEFAULT_ALBEDO, rec709Luminance } from '../../celestial-albedo';
-import { irradianceAtDistance, SUN_IRRADIANCE_1AU } from '../../pipeline/sun-light';
+import { irradianceAtDistance, scaledRadiantIntensity, SUN_IRRADIANCE_1AU } from '../../pipeline/sun-light';
 import { norm, sub, v3, type Vec3 } from '../../../math/vec3';
 import { SphereCelestialView } from './sphere-celestial-view';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
@@ -53,7 +53,9 @@ function sunIrradianceAt(star: StellarLightSource | null, pos: Vec3, displayTime
   if (star === null) return SUN_IRRADIANCE_1AU;
   const starPos = star.motion.stateAt(displayTime).r;
   const distance = Math.hypot(pos.x - starPos.x, pos.y - starPos.y, pos.z - starPos.z);
-  return distance <= 0 ? SUN_IRRADIANCE_1AU : irradianceAtDistance(star.stellarLight.radiantIntensity, distance);
+  return distance <= 0
+    ? SUN_IRRADIANCE_1AU
+    : irradianceAtDistance(scaledRadiantIntensity(star.motion.def.radiantIntensity), distance);
 }
 
 export class PointCelestialView extends SphereCelestialView {
