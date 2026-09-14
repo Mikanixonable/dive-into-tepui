@@ -1,11 +1,11 @@
 // エンティティの保持・追加・上限管理・寿命回収と、1フレームぶんの前進(指令決定と積分)・描画同期。
 import * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { DynamicMotion } from './dynamic-motion';
+import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import type { EntityRoster } from './entity-roster';
 import type { EntityRegistry, SpawnGate } from './entity-registry';
 import { EntityIdAllocators } from './dynamic-entity/entity-id';
@@ -201,15 +201,15 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
 
   // 全エンティティの寿命判定と上限判定を行い、死亡したものを破棄・除去する。
   public cleanup(
-    dt: number, simTime: number, activeStage: StageOutcome, viewerPos: Vec3,
-    atmosphereBodies: readonly CelestialBody[],
+    dt: number, simTime: number, activeStage: StageOutcome,
+    zones: readonly EngagementZone<EngagementParticipant>[], atmosphereBodies: readonly CelestialBody[],
   ): void {
     this.processPendingSpawns();
     // 判定は開始時の顔ぶれに対して行う。死の演出が破片を足すので、生配列を反復すると
     // 生まれたばかりの個体まで同じパスで判定してしまい、生成が連鎖すれば終わらなくなる。
     for (let i = 0, n = this.entities.length; i < n; i++) {
       this.entities[i]!.motion.checkLoss(
-        dt, simTime, { activeStage, registry: this }, viewerPos, atmosphereBodies);
+        dt, simTime, { activeStage, registry: this }, zones, atmosphereBodies);
     }
     this.enforceCaps();
     this.prune();
