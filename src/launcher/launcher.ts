@@ -56,7 +56,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   public get currentGame(): Game | null { return this.game; }
 
-  // 今動いている周回の読み口と一時停止の口。周回が無ければ null。
+  // 今動いている周回の読み口。周回が無ければ null。
   // 状態を表す値は、読むたびにその周回の Game から引く。
   public get current(): CurrentGameSource['current'] {
     const game = this.game;
@@ -72,8 +72,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
         runSummary: () => game.runSummary(),
         serialize: () => game.serialize(),
       },
-      pause: () => game.pause(),
-      resume: () => game.resume(),
     };
   }
 
