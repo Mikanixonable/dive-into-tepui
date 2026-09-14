@@ -75,8 +75,7 @@ export class SaveSlots {
       name,
       createdAtReal: now,
       lastPlayedAtReal: now,
-      // 遊ぶステージは、実際に開始したときに noteLaunch が埋める。
-      lastStageId: '',
+      lastRun: null,
       stages: [],
     };
     this.index.slots.push(slot);
@@ -84,21 +83,20 @@ export class SaveSlots {
     return slot;
   }
 
-  // 実際に遊び始めたステージをスロットへ記録する。ゲーム開始時に一度だけ呼ぶ。
-  public noteLaunch(slotId: string, stageId: string): void {
+  // 遊び始めたステージを直近の周回としてスロットへ記録する。ゲーム開始時に一度だけ呼ぶ。
+  public noteRunLaunched(slotId: string, stageId: string): void {
     const slot = this.index.slots.find((s) => s.id === slotId);
     if (!slot) return;
-    slot.lastStageId = stageId;
+    slot.lastRun = { stageId, ended: false };
     slot.lastPlayedAtReal = Date.now();
     this.persist();
   }
 
-  // 決着した周回を締める。lastStageId を空にし、同じステージの次回起動が
-  // このスロットの最新スナップショットを進行中の周回と誤認して自動復元しないようにする。
+  // 直近の周回を締め、以降そこから再開しないようにする。一度も遊んでいないスロットでは何もしない。
   public noteRunEnded(slotId: string): void {
     const slot = this.index.slots.find((s) => s.id === slotId);
-    if (!slot) return;
-    slot.lastStageId = '';
+    if (!slot || slot.lastRun === null) return;
+    slot.lastRun = { stageId: slot.lastRun.stageId, ended: true };
     slot.lastPlayedAtReal = Date.now();
     this.persist();
   }

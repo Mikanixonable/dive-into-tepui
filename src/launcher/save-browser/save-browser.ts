@@ -254,7 +254,7 @@ export class SaveBrowser implements OverlayHandle {
   }
 
   // モードとステージはまだ決まらない(タイトル画面で選ぶ)ので、空のスロットだけを作って
-  // アクティブにする。実際に何を遊んだかは開始時に SaveSlots.noteLaunch が書き込む。
+  // アクティブにする。実際に何を遊んだかは開始時に SaveSlots.noteRunLaunched が書き込む。
   private handleNewSlot(): void {
     const name = prompt('新しいセーブデータの名前', '新しいセーブデータ');
     if (!name) return;
