@@ -178,8 +178,7 @@ export class MapVisibilityPolicy {
         const planetId = this.celestialBodies.motionOf(id).primary?.id ?? null;
         if (planetId === null) return false;
         return this.toggles.satelliteOrbit
-          && (id === 'moon' || focusSystemOf(this.celestialBodies, this.focusId) === planetId
-            || this.nearby.has(id));
+          && (focusSystemOf(this.celestialBodies, this.focusId) === planetId || this.nearby.has(id));
       }
       default: return false;
     }
