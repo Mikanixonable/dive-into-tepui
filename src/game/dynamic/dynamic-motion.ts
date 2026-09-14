@@ -19,6 +19,7 @@ import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { DISPLAY_DURATION_MAX } from '../display-window-duration';
 import type { Contact } from './dynamic-entity/contact';
 import type { DynamicReactionServices } from './dynamic-simulation-participant';
+import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import { PredictedArc, trajectorySampleInterval } from './predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from './time-step';
 
@@ -80,7 +81,7 @@ export interface DynamicMotionBehavior {
   nextSimulationEventTime?(self: DynamicMotion, simTime: number): number | null;
   checkLoss?(
     self: DynamicMotion, dt: number, simTime: number, services: DynamicReactionServices,
-    viewerPos: Vec3, atmosphereBodies: readonly CelestialBody[],
+    zones: readonly EngagementZone<EngagementParticipant>[], atmosphereBodies: readonly CelestialBody[],
   ): void;
 }
 
@@ -381,10 +382,10 @@ export class DynamicMotion {
 
   // 範囲外・寿命などの消滅条件を反応に判定させる。
   public checkLoss(
-    dt: number, simTime: number, services: DynamicReactionServices, viewerPos: Vec3,
-    atmosphereBodies: readonly CelestialBody[],
+    dt: number, simTime: number, services: DynamicReactionServices,
+    zones: readonly EngagementZone<EngagementParticipant>[], atmosphereBodies: readonly CelestialBody[],
   ): void {
-    this.behavior.checkLoss?.(this, dt, simTime, services, viewerPos, atmosphereBodies);
+    this.behavior.checkLoss?.(this, dt, simTime, services, zones, atmosphereBodies);
   }
 
   // simDt ぶんの操作指令を反応に更新させる。
