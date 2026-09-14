@@ -19,8 +19,6 @@ import type { EquatorNodeManager } from '../marker/equator-node-manager';
 
 export class ObjectPickables {
   private readonly candidateItems: ObjectPickable[] = [];
-  private _lastSimTime = 0;
-  private _lastDisplayTime = 0;
   private _visibilityPolicy: MapVisibilityPolicy | null = null;
   private readonly nearbyTracker = new NearbySystemTracker();
 
@@ -29,12 +27,6 @@ export class ObjectPickables {
 
   // このフレームの表示・選択可否。refresh の前と clear の後は null。
   public get visibilityPolicy(): MapVisibilityPolicy | null { return this._visibilityPolicy; }
-
-  // 直近の refresh が受け取った simTime。時刻依存の項目(通過時刻等)はこの時刻で求め直す。
-  public get lastSimTime(): number { return this._lastSimTime; }
-
-  // 直近の refresh が候補の位置を求めた表示時刻。候補の位置を引き直すときはこの時刻を渡す。
-  public get lastDisplayTime(): number { return this._lastDisplayTime; }
 
   // 候補の供給元を参照として受け取る。
   public constructor(
@@ -59,9 +51,7 @@ export class ObjectPickables {
   // 候補は表示中の天体・ラグランジュ点・被選択物を名乗る個体・航法ターゲット・AN/DN・近点で、
   // 表示で隠した対象は外れる。物理積分の後に呼ぶ — 前だと同フレームのメッシュと1ステップずれる。
   public refresh(displayWindow: DisplayWindow, mapDisplay: MapDisplayToggles): void {
-    const { simTime, displayTime } = displayWindow;
-    this._lastSimTime = simTime;
-    this._lastDisplayTime = displayTime;
+    const { displayTime } = displayWindow;
     // この回の可視性ポリシーを組み、マーカーと航法ターゲットをその時刻へ進める。
     const focusId = focusTargetId(this.cameraSystem.mapCamera.focus);
     // 候補の位置は表示時刻のものなので、遮蔽・系の判定もその時刻の天体位置で行う。

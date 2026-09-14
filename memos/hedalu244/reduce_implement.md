@@ -375,16 +375,21 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   - 使い分けとは別の問いが1つ残る: `nav-target.ts` は撃破された対象の名前を持ち続け、`view-badge.ts:133` の
     Target 欄に消えた敵の名前が出続ける(`resolveCombatTarget` は null を返す)。意図かどうかは未判断。
 
-### R70. 導出層が、同じフレームに引数で来る値を写して持っている
-- 症状: いま何ビューか・いまの表示時刻はどちらも毎フレーム引数で来るのに、受け取り側がフィールドへ
-  写している。`chromeView` は `mapRoot.classList.contains('active')` とも二重。
-- 場所: `src/game/hud/hud.ts:65,164-166`、`src/game/hud/panel-shell.ts:34`、
-  `src/game/pickable/object-pickables.ts:22-23`、`src/game/pickable/object-windows.ts:47,136-148`
-- 疑う理由: R5-5(前フレームの記憶)に見えるが、安定化のためではなく単に引数を置いているだけ。
-  `object-windows.lastFocusId` だけは「マップを離れている間は据え置く」効果があるので、消すなら
-  その挙動を決める必要がある。
-- 減るもの: フィールド5本。フレーム外のハンドラから読むものは、読み口を渡す配線が要る。
-  / 確度: 中 / 確認: 報告のみ
+### R70. 導出層が、同じフレームに引数で来る値を写して持っている(一部を直し、残りは保留)
+- 直したもの: `object-pickables` の `_lastSimTime`/`_lastDisplayTime` と `object-windows` の `simTime`。
+  フレーム外のハンドラが読んでいたので、表示時刻の所有者 `DisplayWindowManager` を構築時に読み取り専用の面
+  (`Pick<DisplayWindowManager, 'current'>`)で渡し、そこから読む。
+- **判断(2026-09-15): 残りは直さない。**
+  - `hud.ts` の `chromeView` は写しではない。`applyView` はクラスの付け替えだけでなく、パネルを左レールへ
+    `insertBefore`/`appendChild` で移すので、毎フレーム行うとボタンのフォーカスやホバーが失われる。R5-5 の
+    「表示を安定させるための前フレームの記憶」に当たる。`mapRoot.classList.contains('active')` の読み手も無く、二重でもない。
+  - `panel-shell.ts` の `view` は、消すと main → Hud → PanelCollapse の3階層と後付けの遅延バインドが要る(依存が悪化する)。
+    段 2 の手順 2-3 は実施済みで、予定済みの作業ではなく残ったもの。
+  - `object-windows.ts` の `lastFocusId` は「マップを離れている間は最後のマップ注視を据え置く」が観測できる挙動で、
+    戦闘中に開いたウィンドウのバッジに出る。消すならその挙動を決めるのが先。
+- 類例(未着手): `frame-controls.ts:22` の `lastTime`、`plan-editor.ts:78` の `simTime`。また `ObjectWindows.sync` と
+  `MapPicking.handleRightClick`/`handleEmptySpaceRightClick` の `simTime` 引数は、上の修正で `current.simTime` と同じ値を
+  運ぶ2本目の経路になった(消すには `game.ts:487,597` と `view-frame.ts` に及ぶ)。
 
 ### R71. 段の質量・慣性と放熱板の摩耗が、正本からの毎フレームの写し
 - 症状: `mass`/`att.inertia` は段スタックの合計から、`RadiatorSystem.wear` は放熱板パーツの
