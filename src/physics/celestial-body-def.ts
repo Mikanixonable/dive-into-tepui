@@ -1,10 +1,11 @@
 // 天体1体の静的な記述。恒星・惑星・衛星それぞれの宣言と、その部品(自転極モデル・
-// 2次重力場・形状・環系)、および宣言を simTime 基準へ畳む変換。
+// 2次重力場・形状・環系)、恒星に分類される天体の絞り込み、および宣言を simTime 基準へ畳む変換。
 import { JULIAN_CENTURY, KeplerOrbit, keplerOrbitForSimZero } from './kepler-orbit';
 import { SatelliteOrbit, satelliteOrbitForSimZero } from './satellite-orbit';
 import { SECONDS_PER_DAY } from './time';
 import { Vec3, v3 } from '../math/vec3';
 import type { AtmosphereDef } from './atmosphere';
+import type { CelestialBody } from './celestial-body';
 
 // 自転軸と自転位相の決め方。'eciPole' は ECI の極軸そのもの(この座標系を定義している天体)で、
 // 自転角速度 spinRate [rad/s] と元期での自転位相 w0Deg [deg] をその天体が与える。'cassini' は
@@ -117,6 +118,7 @@ export interface StarDef {
   readonly id: string;
   readonly mu: number;
   readonly radius: number;
+  readonly radiantIntensity: number; // 全波長の放射強度 [W/sr]
 }
 export interface PlanetDef {
   readonly id: string;
@@ -135,6 +137,16 @@ export interface PlanetDef {
 // 中心は必ず惑星で、その関係は SatelliteMotion が持つ参照が表す。
 export type SatelliteDef = Omit<PlanetDef, 'orbit'> & { readonly orbit: SatelliteOrbit };
 export type CelestialBodyDef = StarDef | PlanetDef | SatelliteDef;
+
+// 分類が恒星の天体。恒星に分類する天体は、宣言に StarDef を持たせること。
+export interface StarCelestialBody extends CelestialBody {
+  readonly def: StarDef;
+}
+
+// 天体の分類が恒星か。
+export function isStar<T extends CelestialBody>(body: T): body is T & StarCelestialBody {
+  return body.kind === 'star';
+}
 
 // 天体の形(歪み)。恒星は形を持たず、`radius` による真球として扱う。
 export function shapeOf(def: CelestialBodyDef): ShapeDef | undefined {
