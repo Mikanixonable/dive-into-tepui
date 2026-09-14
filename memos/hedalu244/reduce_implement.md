@@ -282,6 +282,10 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   `motionMetrics`、`line-pickables` の `lineSamples` は表示・ピック・性能計測なので対象外。
 - **`camera-system.ts:235` の `focusVelocity ?? v3()` は位置ではなく速度**で、答えられない対象を
   注視している間の既定として明記されている。R6 と同型ではない。
+- **R65 の `point` と差分ゲートは消せない。** `source === 'lissajous'` では `familyId` が常に `'lissajous'` で、
+  `L1|L2|L3` は設定から線ごとに決まるので `point` は `familyId` から復元できない。`displayedSettings`/
+  `displayedStyle` は導出値ではなくメモ鍵で、外すと `buildDisplays`・`styleFor`・`THREE.Color` の生成と
+  描画側の `retainOnly` が毎フレーム走る。写しだった `count` だけを消した。
 
 ---
 
@@ -353,17 +357,6 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
 - 減るもの: Map 4本と、二重投影1回ぶん。/ 確度: 中 / 確認: `celestial-markers` は自分で確認、
   `visibility-policy` は報告のみ
 
-### R65. 軌道ガイドが、`familyId` と設定から決まる値を複製している
-- 症状: `GuideLineEntry.point` は `parseGuideKindId(familyId).point` そのもの、`count` は
-  `effectiveKind(settings, familyId).count` の写しで、読む側はどちらも直前に同じ `kind` を引いた
-  直後にこの写しのほうを読んでいる。`displays` は `displayedSettings`/`displayedStyle` という
-  「前回それを組んだときの引数」と突き合わせて持つ。
-- 場所: `src/game/celestial/orbit-guide/orbit-guide-model.ts:67-79,86,109-117,242-244,310,365-381,413-447`、
-  `src/game/celestial/orbit-guide/zero-velocity-model.ts:123-124,152-156`
-- 疑う理由: 点列 `geometry` の保持には理由があるが、そこから宣言を組む部分は軽い。差分比較のための
-  引数の写しは、宣言型の装置(R7「装置は内部で前回との差分を取る」)には要らない。
-- 減るもの: エントリのフィールド2本と、比較用の写し3本。/ 確度: 中 / 確認: 報告のみ
-
 ### R66. HUD パネルが、設定の現在値を鏡映しで持っている
 - 症状: 表示オプションのクラス別モード・天球グリッド・軌道ガイド設定を、パネルが Map と
   フィールドで持ち直している。同じ値が設定の正本・パネルの写し・ボタンの点灯/`dataset` と
@@ -374,6 +367,14 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   配線がそれを許していないだけ。R5 のどの種類にも当たらない。
 - 減るもの: Map 2本とフィールド2本。ただしパネルへ設定の読み口を渡す配線が要る(**依存は悪化する**)
   ので、置き場の判断が先。/ 確度: 中 / 確認: 報告のみ
+- **判断(2026-09-15): 保留。** ユーザー所見「依存の悪化は避けたい。要設計判断」。調査で分かったこと:
+  - 上の「依存は悪化する」は当たらない。パネルへ設定の読み口を渡しても、同じディレクトリの
+    `view-options-control.ts:13` が既に `settings/setting-value` を型 import しているので、新しい向きの辺は生まれない。
+  - ただし単純な削除にはならない。写しは次の値を決める(`view-options-panel.ts:253-257`)だけでなく、patch を
+    重ねる土台(`orbit-guide-tab.ts:327-329,404-414,463-485`)、兄弟値の参照(族範囲の下限・上限のクランプ `:233-241`)、
+    未設定 id の既定生成(`:315-324,386-391`)にも使われている。
+  - `restructure-architecture.md` の手順 2-3 の変更表はこの鏡映しをやめると書いているが、現在も残っている。
+  - R67 と表裏。`Button` は `setOn` で DOM に書くだけで現在値を持たないので、点灯トグルの現在値を呼び出し側が持たされている。
 
 ### R67. DOM の状態と JS の boolean を二重に持っている
 - 症状: ウィジェットの `on` / `enabled` / `minimized` / 一覧の `expanded` が、それぞれ
@@ -387,6 +388,16 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   boolean だけ書き換えて DOM を後続の同期に任せるので、その間だけ両者がずれる。
 - 減るもの: フィールド6本。/ 確度: 中(`toggle-switch`・`button` は高) / 確認: 前2件は自分で確認、
   他は報告のみ
+- **判断(2026-09-15): 保留。** ユーザー所見「JS から DOM への表示を極力一方向の流れにしたい(React 的発想)が、
+  要設計判断」。調査で分かったこと:
+  - `toggle-switch.ts` の `on` と `button.ts` の `enabled` は、読み手がクラスの中だけ(反転と、押下・クリックを
+    通すかの判定)で、外から読む getter は無い。
+  - `Button` は逆に `on` を持たず、点灯の現在値を呼び出し側に持たせている(R66 の直接の原因)。状態 → DOM の
+    一方向へ寄せるなら、R66 と一緒に「現在値の正本をどこに置き、ウィジェットはそれを描くだけにするか」を決めることになる。
+  - 一覧の行は `savedExpanded` を正本と明記し、`restoreSavedExpanded` は boolean だけ書いて DOM を後続の同期に
+    任せる(一方向の形)。同じクラスの `setAllRowsExpanded`(`physical-object-list-row-tree.ts:147-152`)は自分で
+    `applyRowExpanded` を呼んでおり、2つの流儀が併存している。
+  - CODING-RULE 1.13 は CSS の規則だけで、DOM と JS の状態の二重持ちについては定めていない。
 
 ### R69. id と表示名を両方持っている
 - 症状: 対象の id を持ちながら表示名も保存している。名前は id から引ける(`nameOf` / roster)。
@@ -396,6 +407,15 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   持ち方が割れている。
 - 減るもの: フィールド3本。ただし `nav-target` は「撃破された対象の名前」だけ導出元が消えるので、
   そこは挙動が変わる。/ 確度: 中 / 確認: 報告のみ
+- **判断(2026-09-15): 統合しない。** ユーザー所見「表示名は衝突を許し、id は衝突できない。表示は名前、検索は id と
+  使い分けを徹底し、混同しているところがあれば直す」。横断検査の結果:
+  - **表示名で同一性を判定している箇所は `src/` に無く、直すものは無かった。** 名前での比較は3箇所だけで、どれも
+    同一性の判定ではない — `pickup.ts:262`(既定名と一致するかでセーブに書くかを決める)、
+    `physical-object-list-order.ts:117`(並び替えの差分検出)、`:239-240`(利用者向けの検索文字列)。
+  - 上の3箇所はどれも名前を表示にだけ使っている。`nav-target.ts` の解決は常に id。`equator-node-marker.ts` と
+    `orbit-point-marker.ts` は中心の名前文字列だけを持つが、表示専用。
+  - 使い分けとは別の問いが1つ残る: `nav-target.ts` は撃破された対象の名前を持ち続け、`view-badge.ts:133` の
+    Target 欄に消えた敵の名前が出続ける(`resolveCombatTarget` は null を返す)。意図かどうかは未判断。
 
 ### R70. 導出層が、同じフレームに引数で来る値を写して持っている
 - 症状: いま何ビューか・いまの表示時刻はどちらも毎フレーム引数で来るのに、受け取り側がフィールドへ
@@ -417,6 +437,7 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
 - 減るもの: 書き戻し2系統。ただし読み手が広く(`throttle` / `contactMass` / `base-motion` / 描画)、
   `DynamicMotion` も `RadiatorSystem` もパーツを知らないので、**供給フックを1本足す形になる**
   (依存は中程度に悪化)。置き場の判断が先。/ 確度: 低 / 確認: 報告のみ
+- **判断(2026-09-15): 保留。** ユーザー所見「依存方向をどう整理するか決めかねる。要設計判断」。この回では調査していない。
 
 ## 単独では挙げないもの(軽微、または理由が書かれているもの)
 
