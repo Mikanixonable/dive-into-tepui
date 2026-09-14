@@ -27,6 +27,7 @@ import type { ViewFrame } from '../view/view-frame';
 import { PartWindows } from './part-windows';
 import type { InspectedObject, ObjectAuthoring } from './inspected-object';
 import type { PropertyWindowOpener } from './property-window-opener';
+import type { DisplayWindowManager } from '../display-window-manager';
 
 // 開いているプロパティウィンドウ本体と、その対象。
 interface WindowEntry {
@@ -45,9 +46,6 @@ export class ObjectWindows implements PropertyWindowOpener {
   // 直近のマップフォーカス — プロパティウィンドウのバッジ判定に使う。マップを離れている間は
   // 最後にマップ視点だった時点の値のまま据え置く。
   private lastFocusId: string | undefined = undefined;
-  // 直近の sync が受け取った simTime。クリック位置を持たない経路(一覧・パネル)から
-  // ウィンドウを開くときの時刻に使う。
-  private simTime = 0;
 
   // activeView はいまのビュー — 候補列と計画の編集口はビューによって変わるので、
   // 構築時ではなく毎回そこから引く。
@@ -63,6 +61,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     private readonly focusSink: FocusSink,
     private readonly activeStage: Stage,
     private readonly targeter: Targeter,
+    private readonly displayWindowManager: Pick<DisplayWindowManager, 'current'>,
   ) {
     this.menu = new ContextMenu<InspectedObject, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => this.runAct(target, act);
@@ -72,13 +71,13 @@ export class ObjectWindows implements PropertyWindowOpener {
   // 敵一覧の行から、id で名指しされた敵のプロパティウィンドウを開く。既に消えていれば開かない。
   public openEnemy(id: string, clientX: number, clientY: number): void {
     const enemy = this.roster.all().filter(isEnemy).find((e) => e.id === id);
-    if (enemy) this.open(clientX, clientY, enemy, this.simTime);
+    if (enemy) this.open(clientX, clientY, enemy, this.displayWindowManager.current.simTime);
   }
 
   // いま固定しているターゲットのプロパティウィンドウを開く。固定していなければ開かない。
   public openTarget(clientX: number, clientY: number): void {
     const target = this.targeter.aliveTarget;
-    if (target) this.open(clientX, clientY, target, this.simTime);
+    if (target) this.open(clientX, clientY, target, this.displayWindowManager.current.simTime);
   }
 
   // 対象1つにつきウィンドウは高々1枚: 既存があればクリック位置へ動かして最前面に出すだけで
@@ -132,7 +131,6 @@ export class ObjectWindows implements PropertyWindowOpener {
   // (撃破・回収・削除)閉じる — 未来ゴースト時刻で位置が求まらないだけのフレーム
   // (posAt が null)は候補列から外れるだけで消滅ではないので、生存判定は対象の gone で行う。
   sync(simTime: number, displayTime: number): void {
-    this.simTime = simTime;
     if (this.cameraSystem.view === 'map') {
       this.lastFocusId = focusTargetId(this.cameraSystem.mapCamera.focus);
     }
@@ -271,7 +269,7 @@ export class ObjectWindows implements PropertyWindowOpener {
       },
       onContextMenu: (clientX, clientY) => {
         const current = this.activeView().pickables.find((candidate) => candidate.id === item.id);
-        if (current) this.open(clientX, clientY, current, this.simTime);
+        if (current) this.open(clientX, clientY, current, this.displayWindowManager.current.simTime);
       },
     }));
   }
@@ -295,6 +293,6 @@ export class ObjectWindows implements PropertyWindowOpener {
 
   // target のプロパティウィンドウを開く。
   openProperties(target: InspectedObject, clientX: number, clientY: number): void {
-    this.open(clientX, clientY, target, this.simTime);
+    this.open(clientX, clientY, target, this.displayWindowManager.current.simTime);
   }
 }
