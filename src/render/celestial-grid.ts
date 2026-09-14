@@ -11,11 +11,9 @@ import type { Viewport } from './viewport';
 // 天球の目安表示(星・黄道/赤道・縮尺グリッド)ごとの表示可否。
 export interface CelestialGridVisibility {
   readonly stars: boolean;
-  readonly ecliptic: boolean;
   readonly eclipticPlane: boolean;
   readonly eclipticPole: boolean;
   readonly eclipticGrid: boolean;
-  readonly equator: boolean;
   readonly equatorPlane: boolean;
   readonly equatorPole: boolean;
   readonly equatorGrid: boolean;
@@ -25,12 +23,16 @@ export interface CelestialGridVisibility {
   readonly moonEquatorScaleGrid: boolean;
 }
 
+// 黄道・赤道それぞれの、面・極・網をまとめる行見出しトグル。
+export type GridCategory = 'ecliptic' | 'equator';
+
+// 表示パネルのトグル1つが指すもの。個別の表示可否か、行見出し。
+export type GridToggleKey = keyof CelestialGridVisibility | GridCategory;
+
 // 既定の表示可否。星を出し、他は隠す。
 export const DEFAULT_GRID_VISIBILITY: CelestialGridVisibility = {
   stars: true,
-  ecliptic: false,
   eclipticPlane: false, eclipticPole: false, eclipticGrid: false,
-  equator: false,
   equatorPlane: false, equatorPole: false, equatorGrid: false,
   eclipticScaleGrid: false,
   equatorScaleGrid: false,
@@ -38,44 +40,28 @@ export const DEFAULT_GRID_VISIBILITY: CelestialGridVisibility = {
   moonEquatorScaleGrid: false,
 };
 
-// 黄道・赤道それぞれのカテゴリトグルと、配下の面・極・グリッドの対応。子が1つでも ON なら
-// カテゴリは ON、全て OFF なら OFF になる。
-interface GridCategory {
-  readonly category: keyof CelestialGridVisibility;
-  readonly children: readonly (keyof CelestialGridVisibility)[];
+// 行見出しの配下にある面・極・網。
+const GRID_CATEGORY_CHILDREN: Readonly<Record<GridCategory, readonly (keyof CelestialGridVisibility)[]>> = {
+  ecliptic: ['eclipticPlane', 'eclipticPole', 'eclipticGrid'],
+  equator: ['equatorPlane', 'equatorPole', 'equatorGrid'],
+};
+
+// 行見出しトグルの状態。配下が1つでも on なら on、全て off なら off。
+export function gridCategoryVisible(visibility: CelestialGridVisibility, category: GridCategory): boolean {
+  return GRID_CATEGORY_CHILDREN[category].some((child) => visibility[child]);
 }
 
-const GRID_CATEGORIES: readonly GridCategory[] = [
-  { category: 'ecliptic', children: ['eclipticPlane', 'eclipticPole', 'eclipticGrid'] },
-  { category: 'equator', children: ['equatorPlane', 'equatorPole', 'equatorGrid'] },
-];
-
-// キー1つの切り替えを反映した新しい可視状態を返す。current は書き換えない。
+// トグル1つの切り替えを反映した新しい可視状態を返す。行見出しなら配下を全て同じ値へ揃える。
+// current は書き換えない。
 export function applyGridToggle(
-  current: CelestialGridVisibility, key: keyof CelestialGridVisibility, on: boolean,
+  current: CelestialGridVisibility, key: GridToggleKey, on: boolean,
 ): CelestialGridVisibility {
-  // カテゴリキーなら、配下の子を全て同じ値へ揃える。
-  const asCategory = GRID_CATEGORIES.find((c) => c.category === key);
-  if (asCategory !== undefined) {
-    const next = { ...current, [key]: on };
-    for (const child of asCategory.children) next[child] = on;
+  if (key === 'ecliptic' || key === 'equator') {
+    const next = { ...current };
+    for (const child of GRID_CATEGORY_CHILDREN[key]) next[child] = on;
     return next;
   }
-  // 子キーなら、カテゴリを子の状態から計算し直す。
-  const owner = GRID_CATEGORIES.find((c) => c.children.includes(key));
-  if (owner === undefined) return { ...current, [key]: on };
-  const next = { ...current, [key]: on };
-  next[owner.category] = owner.children.some((child) => next[child]);
-  return next;
-}
-
-// カテゴリトグルを子の状態から計算し直した可視状態を返す。外から読み込んだ値はこれを通す。
-export function normalizeGridVisibility(visibility: CelestialGridVisibility): CelestialGridVisibility {
-  const next = { ...visibility };
-  for (const { category, children } of GRID_CATEGORIES) {
-    next[category] = children.some((child) => next[child]);
-  }
-  return next;
+  return { ...current, [key]: on };
 }
 
 // 保存された文字列を可視状態へ読み直す。読めなければ既定値に戻る。
@@ -84,7 +70,7 @@ export function parseGridVisibility(text: string | null): CelestialGridVisibilit
     if (!text) return DEFAULT_GRID_VISIBILITY;
     const parsed: unknown = JSON.parse(text);
     if (typeof parsed !== 'object' || parsed === null) return DEFAULT_GRID_VISIBILITY;
-    return normalizeGridVisibility({ ...DEFAULT_GRID_VISIBILITY, ...parsed });
+    return { ...DEFAULT_GRID_VISIBILITY, ...parsed };
   } catch {
     return DEFAULT_GRID_VISIBILITY;
   }
@@ -375,11 +361,9 @@ export class CelestialGrid {
     viewport: Viewport,
   ): void {
     this.equator.sync(
-      style, visibility.equator && visibility.equatorPlane, visibility.equator && visibility.equatorPole,
-      visibility.equator && visibility.equatorGrid, scale, cam, viewport);
+      style, visibility.equatorPlane, visibility.equatorPole, visibility.equatorGrid, scale, cam, viewport);
     this.ecliptic.sync(
-      style, visibility.ecliptic && visibility.eclipticPlane, visibility.ecliptic && visibility.eclipticPole,
-      visibility.ecliptic && visibility.eclipticGrid, scale, cam, viewport);
+      style, visibility.eclipticPlane, visibility.eclipticPole, visibility.eclipticGrid, scale, cam, viewport);
   }
 
   // 2面ぶんの GridPlane を解放する。

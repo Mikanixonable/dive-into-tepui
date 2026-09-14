@@ -42,13 +42,6 @@
 - 仕様: FLIGHT.md「段は基地での船体組立で追加し、最大4段まで」— HUD から追加できるという記述はない
 - 減るもの: ボタンと `onAttach` 経路が落ち、段の入手口が基地1箇所になる。/ 確度: 高 / 確認: 自分で確認
 
-### R6. 弾の消滅中心が「操作対象」で、操作対象が居ないと ECI 原点になる
-- 症状: 交戦圏外判定の中心が `controlled?.state.r ?? v3()`。基地を操作中は基地基準になり、操作艦が居ない瞬間(creative で解除・全滅)は地球中心基準になって飛んでいる弾が一斉に消える。近接通過音も同じ中心。
-- 場所: `src/game/dynamic/dynamic-entity/bullet-reaction.ts:55,59,63`、`src/game/dynamic/simulator.ts:110,158`
-- 疑う理由: 交戦圏は `engagement-zone.ts` が「自機と基地の球の和」として正式に持っている。弾だけが視点1点という別表現を使い、引数名も `viewerPos`(表示の語彙)。
-- 仕様: COMBAT.md「弾は自機から交戦圏の半径以上離れると消える」
-- 減るもの: `viewerPos` 引数が `checkLoss` の4階層から消え、操作対象の切替で弾が消える挙動も無くなる。/ 確度: 高 / 確認: 自分で確認
-
 ### R12. [N] 自動ワープと [X] 計画全体破棄が、仕様と逆のビューに置かれている
 - 症状: [N] と「未選択の [X] で計画全体を破棄」は戦闘ビューでしか効かず、マップビューの [X] は選択ノードが無いと何も起きない。
 - 場所: `src/game/view/combat-view.ts:69-84`、`src/game/plan/plan-editor.ts:178`、`src/game/view/map-view.ts:114-116`
@@ -179,13 +172,6 @@
 - 仕様: GAME.md「クリア回数は保存され、新たにアンロックされたステージがあればトースト通知される」— どこに属するかは書かれていない
 - 減るもの: フィールド3つ。「解放は歴史線を跨ぐ」という現状の挙動が型からも読めるようになる。/ 確度: 高 / 確認: 報告のみ
 
-### R39. 派生値を状態として保存し、整合を取り続けている
-- 症状: マップ表示の「クラス全体トグル」10個と天球グリッドの `ecliptic`/`equator` は子トグルの OR として毎回計算し直されるのに、その結果も保存されている。保存値を手で壊すと UI に出せない中間状態が作れる。
-- 場所: `src/game/map/display-toggles.ts:7-31,125-131`、`src/render/celestial-grid.ts:14,18,29-39,73-79`、`src/game/map/visibility-policy.ts:127`
-- 疑う理由: `normalizeMapDisplayToggles`/`normalizeGridVisibility` が `children.some()` で親を上書きするので、親は常に導出値。結果 `visibility.equator && visibility.equatorPlane` のような冗長な AND が描画側に残る。
-- 仕様: MAP.md「各行の見出しは、ラベル・軌道線をまとめてクラスごと表示/非表示にする**クラス全体トグル**を兼ねる」— UI の操作として定義され、独立した状態としては書かれていない
-- 減るもの: 保存される boolean 12個、normalize 2関数、カテゴリ表2本、冗長 AND 5箇所。/ 確度: 中 / 確認: `display-toggles.ts` の構造は自分で確認
-
 ---
 
 # 第4群 — 仕様ごと消す/直す候補
@@ -286,6 +272,10 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   `L1|L2|L3` は設定から線ごとに決まるので `point` は `familyId` から復元できない。`displayedSettings`/
   `displayedStyle` は導出値ではなくメモ鍵で、外すと `buildDisplays`・`styleFor`・`THREE.Color` の生成と
   描画側の `retainOnly` が毎フレーム走る。写しだった `count` だけを消した。
+- **R64 の `frameScratch` は消せない。** `opacity` は全天体との遮蔽レイ判定の結果で再計算が安くなく、
+  `labelStateOf(id)` が後から任意の id を引くので、正当なフレームキャッシュ(R5-1)。`showIcon`/`showLabel` は
+  表示ポリシーの答えの写しだが、`syncSubLabels` が policy を引数に取らないので残した。同じ値を二重に
+  持っていた `occluded` と `distScratch` だけを消した。
 
 ---
 
@@ -325,38 +315,6 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
 - 減るもの: 放射強度の宣言が1つになり、`game/` → `render/` の import が1本落ちる。描画の
   露出目盛り(`SUN_IRRADIANCE_1AU = π`)は描画層に残る。/ 確度: 高 / 確認: 自分で確認
 
-### R60. 自機の装甲値と最大装甲値が、パーツ側の正本と二重になっている
-- 症状: `hp` はパーツ hp の総和(ただし船体かコクピットが 0 なら 0)、`maxHp` はパーツ maxHp の
-  総和。被弾・自己修復・換装のたびに `updateOverallHp()` / `refreshFromParts()` が書き戻している。
-- 場所: `src/game/player/player.ts:305-312,384,404-418`、`src/game/dynamic/dynamic-entity/ship.ts:55-58`
-- 疑う理由: コメント自身が「装甲値の正本はパーツ側」と書いている。`ProteinEnemy` は同じ問いを
-  `get hp()` の委譲で解いており、自機だけが写しを持つ。パーツ配列は生きて残っている。
-- 減るもの: フィールド2本と書き戻し3箇所が消える。`Ship.hp` を getter にして `Player` が
-  override する形になる。/ 確度: 高 / 確認: 自分で確認
-
-### R63. カメラの姿勢が四元数・オイラー角・上方向ベクトルの3重で持たれている
-- 症状: `up_r` は `qRotate(orientation, LOCAL_UP)` の往復、`offset_r` の向き成分は同じく
-  `LOCAL_FORWARD` の往復で、独立なのは距離だけ。`CameraOrientation.euler` も毎フレーム末尾の
-  `rebase()` が四元数から書き戻すので、`turn()` が積んだ値はフレームを跨がない。
-- 場所: `src/game/camera/focus-camera.ts:110,112,626-657`、`src/game/camera/camera-orientation.ts:39`
-- 疑う理由: 同じ姿勢が3つの表現で並び、毎フレーム一致させている。正本を四元数1本+距離のスカラーに
-  寄せれば整合の維持が要らなくなる。
-- 減るもの: フィールド3本と毎フレームの書き戻し。/ 確度: 中(オイラー角は ±π の折り返しの扱いが
-  変わりうる) / 確認: 報告のみ
-
-### R64. マーカーと表示ポリシーが、同じフレームの軽い計算をわざわざ溜めている
-- 症状: `distScratch` に入れる `len(sub(label.pos, cameraPos))` は、同じメソッドの数行下で
-  `pointPlacement(label.pos, project, cameraPos)` が `dist` として再計算している。`frameScratch` の
-  `x/y/front` も同じ点の再投影と重複し、`occluded` は同じ構造体の `opacity <= 0` と同値。
-  `showIcon`/`showLabel` は表示ポリシーの答えの写しで、そのポリシー自身も判定結果を Map に
-  メモ化している(器ごと毎フレーム2回作り直されるので、寿命は1フレーム)。
-- 場所: `src/game/marker/celestial-markers.ts:60-61,84,92-93,200-202,214-222,253-262`、
-  `src/game/map/visibility-policy.ts:93,98-99,109`
-- 疑う理由: R5-1 が許すのは「結果に効く入力をすべてキーにしたキャッシュ」で、これは同じフレームの
-  同じスコープで2度計算しているだけ。導出元(`label.pos`・`cameraPos`・`policy`)はその場に揃っている。
-- 減るもの: Map 4本と、二重投影1回ぶん。/ 確度: 中 / 確認: `celestial-markers` は自分で確認、
-  `visibility-policy` は報告のみ
-
 ### R66. HUD パネルが、設定の現在値を鏡映しで持っている
 - 症状: 表示オプションのクラス別モード・天球グリッド・軌道ガイド設定を、パネルが Map と
   フィールドで持ち直している。同じ値が設定の正本・パネルの写し・ボタンの点灯/`dataset` と
@@ -367,6 +325,14 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   配線がそれを許していないだけ。R5 のどの種類にも当たらない。
 - 減るもの: Map 2本とフィールド2本。ただしパネルへ設定の読み口を渡す配線が要る(**依存は悪化する**)
   ので、置き場の判断が先。/ 確度: 中 / 確認: 報告のみ
+- **判断(2026-09-15): 保留。** ユーザー所見「依存の悪化は避けたい。要設計判断」。調査で分かったこと:
+  - 上の「依存は悪化する」は当たらない。パネルへ設定の読み口を渡しても、同じディレクトリの
+    `view-options-control.ts:13` が既に `settings/setting-value` を型 import しているので、新しい向きの辺は生まれない。
+  - ただし単純な削除にはならない。写しは次の値を決める(`view-options-panel.ts:253-257`)だけでなく、patch を
+    重ねる土台(`orbit-guide-tab.ts:327-329,404-414,463-485`)、兄弟値の参照(族範囲の下限・上限のクランプ `:233-241`)、
+    未設定 id の既定生成(`:315-324,386-391`)にも使われている。
+  - `restructure-architecture.md` の手順 2-3 の変更表はこの鏡映しをやめると書いているが、現在も残っている。
+  - R67 と表裏。`Button` は `setOn` で DOM に書くだけで現在値を持たないので、点灯トグルの現在値を呼び出し側が持たされている。
 
 ### R67. DOM の状態と JS の boolean を二重に持っている
 - 症状: ウィジェットの `on` / `enabled` / `minimized` / 一覧の `expanded` が、それぞれ
@@ -380,6 +346,16 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   boolean だけ書き換えて DOM を後続の同期に任せるので、その間だけ両者がずれる。
 - 減るもの: フィールド6本。/ 確度: 中(`toggle-switch`・`button` は高) / 確認: 前2件は自分で確認、
   他は報告のみ
+- **判断(2026-09-15): 保留。** ユーザー所見「JS から DOM への表示を極力一方向の流れにしたい(React 的発想)が、
+  要設計判断」。調査で分かったこと:
+  - `toggle-switch.ts` の `on` と `button.ts` の `enabled` は、読み手がクラスの中だけ(反転と、押下・クリックを
+    通すかの判定)で、外から読む getter は無い。
+  - `Button` は逆に `on` を持たず、点灯の現在値を呼び出し側に持たせている(R66 の直接の原因)。状態 → DOM の
+    一方向へ寄せるなら、R66 と一緒に「現在値の正本をどこに置き、ウィジェットはそれを描くだけにするか」を決めることになる。
+  - 一覧の行は `savedExpanded` を正本と明記し、`restoreSavedExpanded` は boolean だけ書いて DOM を後続の同期に
+    任せる(一方向の形)。同じクラスの `setAllRowsExpanded`(`physical-object-list-row-tree.ts:147-152`)は自分で
+    `applyRowExpanded` を呼んでおり、2つの流儀が併存している。
+  - CODING-RULE 1.13 は CSS の規則だけで、DOM と JS の状態の二重持ちについては定めていない。
 
 ### R69. id と表示名を両方持っている
 - 症状: 対象の id を持ちながら表示名も保存している。名前は id から引ける(`nameOf` / roster)。
@@ -389,6 +365,15 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   持ち方が割れている。
 - 減るもの: フィールド3本。ただし `nav-target` は「撃破された対象の名前」だけ導出元が消えるので、
   そこは挙動が変わる。/ 確度: 中 / 確認: 報告のみ
+- **判断(2026-09-15): 統合しない。** ユーザー所見「表示名は衝突を許し、id は衝突できない。表示は名前、検索は id と
+  使い分けを徹底し、混同しているところがあれば直す」。横断検査の結果:
+  - **表示名で同一性を判定している箇所は `src/` に無く、直すものは無かった。** 名前での比較は3箇所だけで、どれも
+    同一性の判定ではない — `pickup.ts:262`(既定名と一致するかでセーブに書くかを決める)、
+    `physical-object-list-order.ts:117`(並び替えの差分検出)、`:239-240`(利用者向けの検索文字列)。
+  - 上の3箇所はどれも名前を表示にだけ使っている。`nav-target.ts` の解決は常に id。`equator-node-marker.ts` と
+    `orbit-point-marker.ts` は中心の名前文字列だけを持つが、表示専用。
+  - 使い分けとは別の問いが1つ残る: `nav-target.ts` は撃破された対象の名前を持ち続け、`view-badge.ts:133` の
+    Target 欄に消えた敵の名前が出続ける(`resolveCombatTarget` は null を返す)。意図かどうかは未判断。
 
 ### R70. 導出層が、同じフレームに引数で来る値を写して持っている
 - 症状: いま何ビューか・いまの表示時刻はどちらも毎フレーム引数で来るのに、受け取り側がフィールドへ
@@ -410,6 +395,7 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
 - 減るもの: 書き戻し2系統。ただし読み手が広く(`throttle` / `contactMass` / `base-motion` / 描画)、
   `DynamicMotion` も `RadiatorSystem` もパーツを知らないので、**供給フックを1本足す形になる**
   (依存は中程度に悪化)。置き場の判断が先。/ 確度: 低 / 確認: 報告のみ
+- **判断(2026-09-15): 保留。** ユーザー所見「依存方向をどう整理するか決めかねる。要設計判断」。この回では調査していない。
 
 ## 単独では挙げないもの(軽微、または理由が書かれているもの)
 
