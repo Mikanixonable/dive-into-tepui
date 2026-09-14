@@ -172,13 +172,6 @@
 - 仕様: GAME.md「クリア回数は保存され、新たにアンロックされたステージがあればトースト通知される」— どこに属するかは書かれていない
 - 減るもの: フィールド3つ。「解放は歴史線を跨ぐ」という現状の挙動が型からも読めるようになる。/ 確度: 高 / 確認: 報告のみ
 
-### R39. 派生値を状態として保存し、整合を取り続けている
-- 症状: マップ表示の「クラス全体トグル」10個と天球グリッドの `ecliptic`/`equator` は子トグルの OR として毎回計算し直されるのに、その結果も保存されている。保存値を手で壊すと UI に出せない中間状態が作れる。
-- 場所: `src/game/map/display-toggles.ts:7-31,125-131`、`src/render/celestial-grid.ts:14,18,29-39,73-79`、`src/game/map/visibility-policy.ts:127`
-- 疑う理由: `normalizeMapDisplayToggles`/`normalizeGridVisibility` が `children.some()` で親を上書きするので、親は常に導出値。結果 `visibility.equator && visibility.equatorPlane` のような冗長な AND が描画側に残る。
-- 仕様: MAP.md「各行の見出しは、ラベル・軌道線をまとめてクラスごと表示/非表示にする**クラス全体トグル**を兼ねる」— UI の操作として定義され、独立した状態としては書かれていない
-- 減るもの: 保存される boolean 12個、normalize 2関数、カテゴリ表2本、冗長 AND 5箇所。/ 確度: 中 / 確認: `display-toggles.ts` の構造は自分で確認
-
 ---
 
 # 第4群 — 仕様ごと消す/直す候補
@@ -279,6 +272,10 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   `L1|L2|L3` は設定から線ごとに決まるので `point` は `familyId` から復元できない。`displayedSettings`/
   `displayedStyle` は導出値ではなくメモ鍵で、外すと `buildDisplays`・`styleFor`・`THREE.Color` の生成と
   描画側の `retainOnly` が毎フレーム走る。写しだった `count` だけを消した。
+- **R64 の `frameScratch` は消せない。** `opacity` は全天体との遮蔽レイ判定の結果で再計算が安くなく、
+  `labelStateOf(id)` が後から任意の id を引くので、正当なフレームキャッシュ(R5-1)。`showIcon`/`showLabel` は
+  表示ポリシーの答えの写しだが、`syncSubLabels` が policy を引数に取らないので残した。同じ値を二重に
+  持っていた `occluded` と `distScratch` だけを消した。
 
 ---
 
@@ -327,19 +324,6 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   寄せれば整合の維持が要らなくなる。
 - 減るもの: フィールド3本と毎フレームの書き戻し。/ 確度: 中(オイラー角は ±π の折り返しの扱いが
   変わりうる) / 確認: 報告のみ
-
-### R64. マーカーと表示ポリシーが、同じフレームの軽い計算をわざわざ溜めている
-- 症状: `distScratch` に入れる `len(sub(label.pos, cameraPos))` は、同じメソッドの数行下で
-  `pointPlacement(label.pos, project, cameraPos)` が `dist` として再計算している。`frameScratch` の
-  `x/y/front` も同じ点の再投影と重複し、`occluded` は同じ構造体の `opacity <= 0` と同値。
-  `showIcon`/`showLabel` は表示ポリシーの答えの写しで、そのポリシー自身も判定結果を Map に
-  メモ化している(器ごと毎フレーム2回作り直されるので、寿命は1フレーム)。
-- 場所: `src/game/marker/celestial-markers.ts:60-61,84,92-93,200-202,214-222,253-262`、
-  `src/game/map/visibility-policy.ts:93,98-99,109`
-- 疑う理由: R5-1 が許すのは「結果に効く入力をすべてキーにしたキャッシュ」で、これは同じフレームの
-  同じスコープで2度計算しているだけ。導出元(`label.pos`・`cameraPos`・`policy`)はその場に揃っている。
-- 減るもの: Map 4本と、二重投影1回ぶん。/ 確度: 中 / 確認: `celestial-markers` は自分で確認、
-  `visibility-policy` は報告のみ
 
 ### R66. HUD パネルが、設定の現在値を鏡映しで持っている
 - 症状: 表示オプションのクラス別モード・天球グリッド・軌道ガイド設定を、パネルが Map と
