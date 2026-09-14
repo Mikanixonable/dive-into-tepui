@@ -5,7 +5,7 @@ import { solarSystemParts } from '../physics/test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { attractorAccel } from '../../src/physics/attractor';
-import { R_EARTH } from '../../src/game/celestial/solar-system/constants';
+import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { add, addScaled, len, sub, v3 } from '../../src/math/vec3';
 import {
   attractorsNearInto, classifyAttractors, GRAVITY_NEGLIGIBLE_ACCEL,
