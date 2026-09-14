@@ -6,7 +6,7 @@ import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gp
 import { ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary } from '../../src/game/protein/protein-motion-metrics';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { REFERENCE_STAR_RADIANT_INTENSITY, irradianceAtDistance } from '../../src/render/pipeline/sun-light';
-import { SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
+import { R_SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
 import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
@@ -15,7 +15,6 @@ import { atmosphereDraws } from '../../src/render/atmosphere';
 import { RingMaterials } from '../../src/render/celestial/ring';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { AU } from '../../src/physics/astronomical-unit';
-import { R_SUN } from '../../src/game/celestial/solar-system/constants';
 import { CASES, sunDiameterPx, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
 import { pixelsToPngDataUrl } from '../lab-png';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';

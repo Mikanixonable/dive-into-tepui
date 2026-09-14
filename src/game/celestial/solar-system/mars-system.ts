@@ -7,7 +7,6 @@ import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } 
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
-import { MU_MARS } from './constants';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { CelestialTexture } from '../../../render/celestial-textures';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
@@ -19,6 +18,9 @@ import { equatorialSatelliteOrbit } from './satellite-orbit-builders';
 
 // 火星系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type MarsSystemBodyId = 'mars' | 'phobos' | 'deimos';
+
+// 衛星の平均運動をケプラー第3法則で出すのに要るので、本体の定義と衛星の軌道が同じ値を読む。
+const MU_MARS = 4.282837e13; // [m^3/s^2]
 
 export const MARS: PlanetDef = {
   id: 'mars',

@@ -3,10 +3,9 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { spinRateOf } from '../../src/physics/celestial-body-def';
 import { CERES } from '../../src/game/celestial/solar-system/dwarf-planets';
-import { EARTH } from '../../src/game/celestial/solar-system/earth-system';
+import { EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
 import { VENUS } from '../../src/game/celestial/solar-system/inner-planets';
 import { URANUS } from '../../src/game/celestial/solar-system/uranus-system';
-import { SIDEREAL_DAY } from '../../src/game/celestial/solar-system/constants';
 
 export function register(): void {
   test('spinRateOf: 地球は 2π/恒星日', () => {

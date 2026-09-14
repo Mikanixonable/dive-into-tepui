@@ -6,7 +6,7 @@ import type { ViewMode } from '../../render/view-mode';
 import { Attitude } from '../../physics/attitude';
 import { qFromBasis } from '../../math/quat';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
+import { MU_EARTH, R_EARTH } from '../celestial/solar-system/earth-system';
 import { Vec3, add, v3, len, sub } from '../../math/vec3';
 import { fmtDist, fmtEnergy } from '../../hud/utils';
 import {

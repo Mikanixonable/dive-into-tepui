@@ -5,7 +5,7 @@ import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } 
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
-import { GRAVITATIONAL_CONSTANT } from './constants';
+import { GRAVITATIONAL_CONSTANT } from './gravitational-constant';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
 import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';

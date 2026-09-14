@@ -6,7 +6,7 @@ import type { FrameCelestialBodies } from '../../src/game/celestial/celestial-bo
 import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
-import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
+import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { ARC_STEP_BUDGET, ARC_INTERACTIVE_RATIO, ARC_MIN_ITEM_STEPS } from '../../src/game/dynamic/predictor';
 import { SHIP_BCINV } from '../../src/game/dynamic/dynamic-entity/ship';
 import { GRAVITY_NEGLIGIBLE_ACCEL } from '../../src/game/dynamic/attractors';

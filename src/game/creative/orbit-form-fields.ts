@@ -2,8 +2,7 @@ import { CelestialClass } from '../celestial/celestial-entity/celestial-entity-d
 import { ObjectPickerGroup } from '../hud/windows/object-picker';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { type CelestialBodyDef } from '../../physics/celestial-body-def';
-import { EARTH } from '../celestial/solar-system/earth-system';
-import { J2_EARTH, MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
+import { EARTH, J2_EARTH, MU_EARTH, R_EARTH } from '../celestial/solar-system/earth-system';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { LAGRANGE_MIN_CLEARANCE_RATIO } from '../celestial/lagrange-id';
 

@@ -5,7 +5,7 @@ import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } 
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
-import { GRAVITATIONAL_CONSTANT, MU_NEPTUNE } from './constants';
+import { GRAVITATIONAL_CONSTANT } from './gravitational-constant';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
 import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
@@ -16,6 +16,9 @@ import { equatorialSatelliteOrbit, jplSatelliteOrbit } from './satellite-orbit-b
 
 // 海王星系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type NeptuneSystemBodyId = 'neptune' | 'triton' | 'nereid';
+
+// 衛星の平均運動をケプラー第3法則で出すのに要るので、本体の定義と衛星の軌道が同じ値を読む。
+const MU_NEPTUNE = 6.836529e15; // [m^3/s^2]
 
 const NEPTUNE: PlanetDef = {
   id: 'neptune',

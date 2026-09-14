@@ -12,10 +12,6 @@ import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } 
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { satelliteOrbit } from '../../../physics/satellite-orbit';
-import {
-  C22_MOON, J2_EARTH, J2_MOON, MOON_OBLIQUITY, MU_EARTH, MU_MOON, R_EARTH, R_EARTH_EQ, R_MOON,
-  R_MOON_GRAVITY, SIDEREAL_DAY,
-} from './constants';
 import { Aurora, type AuroraOptics } from '../../../render/celestial/aurora';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { createEarthSurfaceRuntime } from '../../../render/earth-surface-factory';
@@ -36,6 +32,22 @@ import { AU } from '../../../physics/astronomical-unit';
 
 // 地球系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type EarthSystemBodyId = 'earth' | 'moon';
+
+export const MU_EARTH = 3.986004418e14; // 地球重力定数 [m^3/s^2]
+export const R_EARTH = 6.371e6; // 平均半径 [m]
+export const R_EARTH_EQ = 6.378137e6; // 赤道半径 [m]
+export const SIDEREAL_DAY = 86164.0905; // 恒星日 [s]
+// 2次の重力場係数(非正規化)。正規化係数を収録した外部データで更新する際は換算が要る。
+export const J2_EARTH = 1.08262668e-3;
+
+export const MU_MOON = 4.9048695e12; // [m^3/s^2]
+export const R_MOON = 1.7374e6; // [m]
+// GRAIL による測定値(非正規化)。基準半径 1738.0 km は月の表面半径 R_MOON とは別の量なので分けて持つ。
+export const J2_MOON = 203.3e-6;
+export const C22_MOON = 22.4e-6;
+export const R_MOON_GRAVITY = 1.7380e6; // [m]
+// 月の赤道が黄道に対して傾く角(カッシーニ第2法則)。
+export const MOON_OBLIQUITY = 1.543 * (Math.PI / 180); // [rad]
 
 // 地球の大気。基準楕円体は海面の回転楕円体(WGS84)で、衝突球の半径(radius)や 2 次重力場の
 // 基準半径(refRadius)とは別の理由で選ばれた別の量なので、値が一致していても別に宣言する。

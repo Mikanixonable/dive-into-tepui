@@ -8,7 +8,7 @@ import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
 import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
-import { GRAVITATIONAL_CONSTANT, MU_JUPITER } from './constants';
+import { GRAVITATIONAL_CONSTANT } from './gravitational-constant';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
 import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
@@ -24,7 +24,7 @@ export type JupiterSystemBodyId =
 
 export const JUPITER: PlanetDef = {
   id: 'jupiter',
-  mu: MU_JUPITER,
+  mu: 1.26686534e17,
   radius: 7.1492e7, // 赤道半径(外接球)。出典: pck00011.tpc BODY_RADII(1 bar 基準)
   shape: { kind: 'spheroid', equatorRadius: 7.1492e7, polarRadius: 6.6854e7 },
   lagrangeLabels: true,

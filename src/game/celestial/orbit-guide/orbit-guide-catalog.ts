@@ -6,7 +6,7 @@ import type { LagrangeLabel } from '../../../physics/lagrange';
 import type {
   CatalogSystem, CatalogSystemId, CatalogSystemScale, OrbitCatalog, OrbitCatalogIndex,
 } from '../../../physics/orbit-catalog';
-import { MU_JUPITER, MU_SATURN, MU_SUN } from '../solar-system/constants';
+import { MU_SUN } from '../solar-system/sun';
 import { JUPITER } from '../solar-system/jupiter-system';
 import { SATURN } from '../solar-system/saturn-system';
 import indexTable from '../../../assets/orbits/lagrange-orbits-index.json';
@@ -14,15 +14,15 @@ import indexTable from '../../../assets/orbits/lagrange-orbits-index.json';
 const CATALOG_INDEX = indexTable as unknown as OrbitCatalogIndex;
 
 const SUN_JUPITER_SCALE: CatalogSystemScale = {
-  mu: MU_JUPITER / (MU_SUN + MU_JUPITER),
+  mu: JUPITER.mu / (MU_SUN + JUPITER.mu),
   lunit: JUPITER.orbit.a / 1e3,
-  tunit: Math.sqrt(JUPITER.orbit.a ** 3 / (MU_SUN + MU_JUPITER)),
+  tunit: Math.sqrt(JUPITER.orbit.a ** 3 / (MU_SUN + JUPITER.mu)),
   secondaryRadius: JUPITER.radius / 1e3,
 };
 const SUN_SATURN_SCALE: CatalogSystemScale = {
-  mu: MU_SATURN / (MU_SUN + MU_SATURN),
+  mu: SATURN.mu / (MU_SUN + SATURN.mu),
   lunit: SATURN.orbit.a / 1e3,
-  tunit: Math.sqrt(SATURN.orbit.a ** 3 / (MU_SUN + MU_SATURN)),
+  tunit: Math.sqrt(SATURN.orbit.a ** 3 / (MU_SUN + SATURN.mu)),
   secondaryRadius: SATURN.radius / 1e3,
 };
 const DERIVED_SCALES: Readonly<Partial<Record<CatalogSystemId, CatalogSystemScale>>> = {

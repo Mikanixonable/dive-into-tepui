@@ -6,7 +6,8 @@ import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
-import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-system/constants';
+import { R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
+import { R_SUN, SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
 import {
   EARTH, EARTH_ATMOSPHERE_OPTICS, earthCloudPresentation,
 } from '../../src/game/celestial/solar-system/earth-system';
@@ -21,7 +22,6 @@ import { buildBarrelMesh } from '../../src/render/dynamic/dynamic-entity/ejected
 import { buildPlayerShip } from '../../src/render/dynamic/player/player-view';
 import { createStarSphere, type StarSphere } from '../../src/render/celestial/star-sphere';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../src/render/pipeline/sun-light';
-import { SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import {

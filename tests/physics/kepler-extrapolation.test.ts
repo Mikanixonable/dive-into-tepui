@@ -7,7 +7,7 @@ import { CelestialMotion } from '../../src/physics/celestial-motion';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { keplerPeriod, stateFromOrbitalElements } from '../../src/physics/elements';
 import { KinematicState, kinematicState, toPrimaryRelative } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
+import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { len, sub, v3 } from '../../src/math/vec3';
 
 const ZERO = v3(0, 0, 0);
