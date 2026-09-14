@@ -88,9 +88,6 @@ export class CameraSystem {
       aspect: viewport.width / viewport.height,
     };
     this.gunsightCamera = new GunsightCamera(viewport);
-    // ChaseSaveDataV1 形の戦闘視点は読み捨て、既定視点で組む。
-    const savedChase = saved?.chase;
-    const combatSaved = savedChase !== undefined && !('rot' in savedChase) ? savedChase : undefined;
     this.combatCamera = new FocusCamera(hud, celestialBodies, {
       focusLossPolicy: 'hold',
       initial: {
@@ -102,7 +99,7 @@ export class CameraSystem {
       },
       eulerPole: 'attitude',
       attitudeOf,
-    }, combatSaved, viewport);
+    }, saved?.chase, viewport);
     this.mapCamera = new FocusCamera(
       hud, celestialBodies,
       {
