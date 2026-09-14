@@ -279,19 +279,6 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
 
 ---
 
-### R57. ステージの配置ユーティリティが「ECI 原点＝重力の中心＝地球」を前提にした幾何を持つ
-- 症状: 敵の初期配置が、絶対 ECI 位置の `len()` を軌道半径、`norm()` を局所鉛直、`MU_EARTH` を
-  重力定数として扱う。ECI 原点が地球でないステージ(`debug-alt-system` は zephyrus 原点)や、
-  自機が月圏に居る状態で呼ぶと、共楕円軌道は共楕円にならず、大気圏クランプは地球中心の球面へ効く。
-- 場所: `src/game/stages/spawner/enemy-generator.ts:25,98,101,112,129-130`、
-  `src/game/stages/spawner/enemy-spawner.ts:41`、
-  `src/game/stages/stage-utils/wave-attack.ts:176,278-284`、`src/game/player/player.ts:265`
-- 疑う理由: 引数が `base: KinematicState` と一般の形をしているのに、中身は地球専用。いまは呼び手
-  (stage1/stage2/stage00)が地球周回なので露見していないだけで、型は何も止めない。
-- 仕様: CELESTIAL.md は ECI 原点をステージの選択として定める。地球であるとは書かれていない
-- 減るもの: `MU_EARTH`/`R_EARTH` 依存が配置ユーティリティから落ち、`strongestAttractor` から引く
-  1本になる。/ 確度: 中(いま壊れてはいない) / 確認: 自分で確認
-
 ### R58. 恒星の明るさの正本が描画層にあり、物理は別の固定値を使っている
 - 症状: 「その恒星がどれだけ明るいか」に正本が2つある。描画は天体宣言が持つ
   `stellarLight.radiantIntensity`、物理(日射加熱・輻射圧)は `SOLAR_CONSTANT = 1361` の固定値。
@@ -392,6 +379,17 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   `DynamicMotion` も `RadiatorSystem` もパーツを知らないので、**供給フックを1本足す形になる**
   (依存は中程度に悪化)。置き場の判断が先。/ 確度: 低 / 確認: 報告のみ
 - **判断(2026-09-15): 保留。** ユーザー所見「依存方向をどう整理するか決めかねる。要設計判断」。この回では調査していない。
+
+### R72. 渡された状態から組む自機の姿勢と、中心天体の状態の手足しが、ECI 原点を天体中心とみなす
+- 症状: 自機は渡された状態から機首プログレードの姿勢を組むが、`progradeAttitude` は絶対 ECI の r/v を使う。
+  原点天体以外を回る位置(月まわりなど)に置いた艦は、機首と上方向が原点天体を基準にずれる。(R57 で `Stage` へ移した
+  既定の円軌道は原点天体まわりに組むので、原点天体の ECI 位置が厳密に 0 であることから、この経路ではずれない。)
+  配置の側にも、中心天体の状態を手で足して ECI を組む箇所が残っている。
+- 場所: `src/game/player/player.ts` の `progradeAttitude`、`src/game/creative/object-placement.ts`(中心天体の状態の手足し)、
+  `src/game/stages/stage-debug-alt-system.ts`(同)
+- 疑う理由: R57 と同じ形。CODING-RULE 1.8「天体の位置を自分で引き算して座標系を作らない」。R57 で直した配置ユーティリティは
+  `frameOfCelestialBody` と `addPrimaryRelative` を通す形になっている。
+- 減るもの: 原点天体以外のまわりに置いた艦の姿勢のずれと、手足しの座標変換。/ 確度: 中 / 確認: R57 の実施中に見つけた。報告のみ
 
 ## 単独では挙げないもの(軽微、または理由が書かれているもの)
 

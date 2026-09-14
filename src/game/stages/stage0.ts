@@ -54,7 +54,8 @@ export class Stage0 extends Stage {
       this.logistics.spawnForPlayer(player, STAGE0_LOGISTICS_MIN_DIST, STAGE0_LOGISTICS_MAX_DIST);
     }
     const enemies = generateCluster(
-      player.motion.state, this._worldSfx, this._fx, this._scene, this._dynamicSystem.idAllocators,
+      player.motion.state, this._celestialSystem.celestialMotions,
+      this._worldSfx, this._fx, this._scene, this._dynamicSystem.idAllocators,
     );
     for (const enemy of enemies) this.addEnemy(enemy);
   }

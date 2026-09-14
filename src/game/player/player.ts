@@ -6,7 +6,6 @@ import type { ViewMode } from '../../render/view-mode';
 import { Attitude } from '../../physics/attitude';
 import { qFromBasis } from '../../math/quat';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../celestial/solar-system/earth-system';
 import { Vec3, add, v3, len, sub } from '../../math/vec3';
 import { fmtDist, fmtEnergy } from '../../hud/utils';
 import {
@@ -71,8 +70,6 @@ import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-part
 export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]
 const HULL_START_TEMP = 273; // 初期機体温度 [K]
 
-const INITIAL_ALT = 420e3; // 初期高度 [m]
-const INITIAL_INC_DEG = 97.0; // 初期軌道傾斜角 [deg]
 // 展開中の放熱板に当たった1発が放熱板パーツへ与えるダメージ [HP]。薄く大きい構造物なので
 // 船体への直撃(PLASMA_BULLET_DAMAGE)より軽い。
 const RADIATOR_BULLET_DAMAGE = 0.25;
@@ -140,12 +137,16 @@ function planExecutionLabel(mode: PlanExecutionMode): string {
   return PLAN_EXECUTION_LABELS[mode];
 }
 
-// 新規配置は name/state/id/ammo を任意指定し、省略時は高度 INITIAL_ALT・傾斜 INITIAL_INC_DEG の
-// 円軌道に機首プログレードで初期配置する。スナップショットからの再開は saved を simTime 付きの
-// 状態として展開する。
-export type PlayerInit =
-  | { readonly name?: string; readonly state?: KinematicState; readonly id?: string; readonly ammo?: AmmoLoad }
-  | { readonly saved: PlayerSaveData; readonly simTime: number };
+// 新規配置の艦。state に機首プログレードで置き、name/id/ammo は任意指定する。
+export type PlayerPlacement = {
+  readonly name?: string;
+  readonly state: KinematicState;
+  readonly id?: string;
+  readonly ammo?: AmmoLoad;
+};
+
+// 艦の生成引数。新規配置か、saved を simTime 付きの状態として展開するスナップショットからの再開。
+export type PlayerInit = PlayerPlacement | { readonly saved: PlayerSaveData; readonly simTime: number };
 
 // プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、被弾・接触の帰結、保存、
 // 一覧・メニューでの振る舞いを持つ。
@@ -170,7 +171,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   public readonly controlHint = null;
   public readonly releaseHint = null;
 
-  // init 省略時は無作為な名前と既定軌道の新規艦になる。id を省いたときは name がそのまま
+  // name を省いた新規艦は無作為な名前になる。id を省いたときは name がそのまま
   // 艦の識別子になるので、複数隻を並べるなら name も分ける。
   public constructor(
     private readonly notifier: Notifier,
@@ -178,13 +179,11 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     scene: THREE.Scene,
     private readonly fx: FlashEffects,
     idAllocators: EntityIdAllocators,
-    init: PlayerInit = {},
+    init: PlayerInit,
   ) {
     const saved = 'saved' in init ? init.saved : undefined;
     const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
-    const state = 'saved' in init
-      ? savedKinematicState(init.saved, init.simTime)
-      : (init.state ?? Player.makeInitialState());
+    const state = 'saved' in init ? savedKinematicState(init.saved, init.simTime) : init.state;
     const id = idAllocators.entity.next('saved' in init ? init.saved.id : (init.id ?? name));
     const att: Attitude = 'saved' in init
       ? savedAttitude(init.saved, Player.INERTIA)
@@ -255,14 +254,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
         if (rejected > 0) notifier.hint(`${this.name}: 起点より前のマニューバノード ${rejected} 件を復元できません`);
       }
     }
-  }
-
-  // 高度 INITIAL_ALT、傾斜角 INITIAL_INC_DEG の円軌道状態を返す。
-  private static makeInitialState(): KinematicState {
-    const r0 = R_EARTH + INITIAL_ALT;
-    const vCirc = Math.sqrt(MU_EARTH / r0);
-    const inc = (INITIAL_INC_DEG * Math.PI) / 180;
-    return kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
   }
 
   // 3軸を非対称にし、中間軸(ピッチ)周りの回転にジャニベコフ効果(中間軸不安定性)が
