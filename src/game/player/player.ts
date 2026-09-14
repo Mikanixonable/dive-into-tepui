@@ -829,8 +829,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 画面マーカー・一覧に出すこの艦の項目。isActive はマップ上で自艦と僚艦を塗り分ける
   // ための操作対象フラグ。
-  public markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode, isActive: boolean): GroupedMarkerItem {
-    const dist = len(sub(pos, viewerPos));
+  public markerItem(viewerPos: Vec3 | null, pos: Vec3, vel: Vec3, view: ViewMode, isActive: boolean): GroupedMarkerItem {
     return {
       key: this.markerKey,
       kind: this.mapKind,
@@ -840,10 +839,11 @@ export class Player extends Ship implements Controllable, ObjectPickable {
       vel,
       priority: MARKER_PRIORITY.PLAYER,
       name: this.name,
-      // 画面外の方位マーカーは ALLY_BEARING_MAX_DISTANCE 以内の艦にだけ出す
+      // 画面外の方位マーカーは、視点から ALLY_BEARING_MAX_DISTANCE 以内の艦にだけ出す
       bearing: {
         cls: 'mk-dir mk-ally-dir', sym: DIRECTION_GLYPH.allyBearing, color: COLOR_MARKER_ALLY,
-        visible: dist <= ALLY_BEARING_MAX_DISTANCE, clustered: true,
+        visible: viewerPos !== null && len(sub(pos, viewerPos)) <= ALLY_BEARING_MAX_DISTANCE,
+        clustered: true,
       },
       color: isActive ? 'var(--color-primary)' : COLOR_MARKER_ALLY,
       symMarkup: true,
