@@ -234,7 +234,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
       // 敵本体と画面外方位マーカーは同じ色で統一する。
       bearing: {
         cls: 'mk-dir mk-bearing-triangle', sym: ENTITY_GLYPH.enemyShip, color: COLOR_MARKER_ENEMY,
-        visible: true, priority: MARKER_PRIORITY.NONE, clustered: false,
+        visible: true, clustered: false,
       },
       color: COLOR_MARKER_ENEMY,
       symMarkup: true,
