@@ -21,7 +21,8 @@ export class Stage00 extends Stage {
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     this.waveAttack = new WaveAttack(
-      this._hud, this._worldSfx, this._fx, this._scene, this._celestialSystem.celestialMotions, saved as Stage00SaveData | undefined,
+      this._hud, this._worldSfx, this._fx, this._scene, this._celestialSystem.celestialMotions,
+      this._dynamicSystem.idAllocators, saved as Stage00SaveData | undefined,
     );
     this.begin();
   }
