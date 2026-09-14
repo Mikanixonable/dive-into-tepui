@@ -68,8 +68,7 @@ export class Conductor {
   dispose(fadeSec: number): void {
     const quietAt = this.playback?.soundingUntil ?? this.ctx.currentTime;
     this.stop(fadeSec);
-    const waitSec = Math.max(0, quietAt - this.ctx.currentTime);
-    setTimeout(() => this.gain.disconnect(), waitSec * 1000);
+    this.atAudioTime(quietAt, () => this.gain.disconnect());
   }
 
   // 鳴らしたまま、一巡の中の timeSec 秒の位置へ飛ぶ。
@@ -107,8 +106,7 @@ export class Conductor {
   // 役目を終えた再生を、鳴り終える時刻に切り離す。まだ鳴っているうちに切ると尾が途切れるので、
   // フェードの残りではなく、その再生がスケジュール済みの音が消える時刻まで待つ。
   private retire(playback: TrackPlayback): void {
-    const waitSec = Math.max(0, playback.soundingUntil - this.ctx.currentTime);
-    setTimeout(() => playback.dispose(), waitSec * 1000);
+    this.atAudioTime(playback.soundingUntil, () => playback.dispose());
   }
 
   // 指定した曲の再生を組み、startAt から刻み始める。前の曲が残っていれば退役させる。
@@ -127,5 +125,20 @@ export class Conductor {
     let next = Math.floor(Math.random() * (BGM_TRACKS.length - 1));
     if (next >= this.trackIdx) next++;
     return next;
+  }
+
+  // 音声時計の時刻 when に fire を呼ぶ。ctx が止まっているあいだは音と一緒に待ちも止まり、
+  // 動き出せば止まった位置から続く。
+  private atAudioTime(when: number, fire: () => void): void {
+    const timer = this.ctx.createConstantSource();
+    timer.offset.value = 0; // 出力は常に 0 の無音の信号。時刻を数える器として繋ぐ
+    // 未接続のノードは実装によって ended が発火しないことがあるので、destination まで繋ぐ
+    timer.connect(this.ctx.destination);
+    timer.onended = () => {
+      timer.disconnect();
+      fire();
+    };
+    timer.start();
+    timer.stop(when);
   }
 }
