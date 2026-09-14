@@ -6,6 +6,7 @@ import { KinematicState, kinematicState } from './kinematic-state';
 import { dragAccel } from './atmosphere';
 import { sunlitFactor } from './shadow';
 import { srpAccel } from './srp';
+import { isStar } from './celestial-body-def';
 import { Vec3, add, cross, dot, sub, v3 } from '../math/vec3';
 import type { CelestialBody, Degree2Gravity } from './celestial-body';
 
@@ -156,7 +157,7 @@ function totalAccel(
       ax += d2.x; ay += d2.y; az += d2.z;
     }
     // 恒星ぶんの輻射圧をすべて加算する(恒星0個なら寄与0)。
-    if (attractor.kind === 'star' && srpCoeff !== 0) {
+    if (isStar(attractor) && srpCoeff !== 0) {
       const srp = srpAccel(r, attractor, pivot, srpCoeff, environment.sunlit, t);
       ax += srp.x; ay += srp.y; az += srp.z;
     }

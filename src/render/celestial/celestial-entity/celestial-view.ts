@@ -3,7 +3,9 @@ import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../../../render/gpu-timings';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
-import { shapeSpheroidRadii, type CelestialBodyDef, type RingSystemDef } from '../../../physics/celestial-body-def';
+import {
+  shapeSpheroidRadii, type CelestialBodyDef, type RingSystemDef, type StarCelestialBody,
+} from '../../../physics/celestial-body-def';
 import { orbitalElementsOf } from '../../../physics/elements';
 import { len, sub, type Vec3 } from '../../../math/vec3';
 import type { FloatingOrigin } from '../../camera/floating-origin';
@@ -36,10 +38,9 @@ export interface MapOverlayLabel {
   readonly opacity: number;
 }
 
-// 恒星が距離の二乗に反比例する光源として持つ値。
+// 恒星が光源として放つ光の見た目。
 export interface StellarLight {
   readonly color: THREE.Color;
-  readonly radiantIntensity: number;
 }
 
 // 分類ごとの宣言(楕円体の半軸・環の帯・大気の光学)を def として読める天体1体の運動。
@@ -49,7 +50,7 @@ export interface DefinedCelestialBody extends CelestialBody {
 
 // 恒星1体の運動と、それが放つ光。
 export interface StellarLightSource {
-  readonly motion: DefinedCelestialBody;
+  readonly motion: StarCelestialBody;
   readonly stellarLight: StellarLight;
 }
 

@@ -5,8 +5,8 @@ import { shapeAxes, shapeInscribedRadius, shapeOf } from '../../physics/celestia
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { atmosphereDraws } from '../../render/atmosphere';
 import {
-  REFERENCE_STAR_RADIANT_INTENSITY, STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE,
-  STARLESS_SUN_RADIUS, SunLight,
+  STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE, STARLESS_SUN_INTENSITY, STARLESS_SUN_RADIUS, SunLight,
+  scaledRadiantIntensity,
 } from '../../render/pipeline/sun-light';
 import { ambientFraction } from '../../render/pipeline/lighting/ambient-source';
 import { selectPlanetLights } from '../../render/pipeline/lighting/planet-light-select';
@@ -79,7 +79,8 @@ export class CelestialIllumination {
       : fo.RtoThreeV3(starPos);
     // 露出と天体照の基準点は注視点 — カメラ位置だと、太陽系の外にいるマップビューで露出が発散する。
     const reference = fo.RtoThreeV3(camera.viewpoint.lookTarget);
-    const starIntensity = star?.stellarLight.radiantIntensity ?? REFERENCE_STAR_RADIANT_INTENSITY;
+    const starIntensity = star === null
+      ? STARLESS_SUN_INTENSITY : scaledRadiantIntensity(star.motion.def.radiantIntensity);
     this.targets.exposure.setReference(reference, sunPos, starIntensity);
     this.targets.sunLight.set(
       sunPos, star?.motion.def.radius ?? STARLESS_SUN_RADIUS,
@@ -100,9 +101,7 @@ export class CelestialIllumination {
       celestialBody: source.motion,
       albedo: source.view.lightSourceAlbedo ?? DEFAULT_ALBEDO,
     }));
-    const lights = selectPlanetLights(
-      candidates, displayTime, this.star?.stellarLight.radiantIntensity ?? null,
-      camera.viewpoint.lookTarget);
+    const lights = selectPlanetLights(candidates, displayTime, camera.viewpoint.lookTarget);
     // 選ばれた天体を描画座標へ移し、内接球の半径で渡す。
     this.targets.planetLight.set(lights.map((light) => ({
       center: camera.floatingOrigin.RtoThreeV3(light.celestialBody.positionAt(displayTime)),

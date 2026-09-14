@@ -7,7 +7,7 @@ import {
   C22_MOON, J2_EARTH, J2_MOON, MU_EARTH, MU_MOON, R_EARTH, R_EARTH_EQ, R_MOON, R_MOON_GRAVITY,
 } from '../../src/game/celestial/solar-system/earth-system';
 import { OrbitalElements, keplerPeriod, orbitalElementsOf, stateFromOrbitalElements } from '../../src/physics/elements';
-import { MU_SUN, R_SUN } from '../../src/game/celestial/solar-system/sun';
+import { MU_SUN, R_SUN, SUN } from '../../src/game/celestial/solar-system/sun';
 import { Degree2Gravity } from '../../src/physics/celestial-body';
 import { CelestialMotion } from '../../src/physics/celestial-motion';
 import { degree2Accel, stepDynamics, stepRK4 } from '../../src/physics/dynamics';
@@ -355,7 +355,7 @@ export function register(): void {
     const sunPos = v3(1.495978707e11, 0, 0);
     const attractors: readonly CelestialMotion[] = [
       EARTH,
-      fixedMotion({ id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState<'eci'>(0, sunPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, kind: 'star' }),
+      fixedMotion({ id: 'sun', mu: MU_SUN, radius: R_SUN, radiantIntensity: SUN.radiantIntensity, state: kinematicState<'eci'>(0, sunPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, kind: 'star' }),
     ];
     const dt = 100;
     const srpCoeff = 1e-2;
@@ -376,7 +376,7 @@ export function register(): void {
     // 重力を及ぼさない天体にも半径はある。遮蔽の可否が重力の有無に依らないことを、重力源と
     // 位置を固定したまま遮蔽体の窓だけを変えて確かめる。
     const sun: CelestialMotion = fixedMotion({
-      id: 'sun', mu: MU_SUN, radius: R_SUN,
+      id: 'sun', mu: MU_SUN, radius: R_SUN, radiantIntensity: SUN.radiantIntensity,
       state: kinematicState<'eci'>(0, v3(1.495978707e11, 0, 0), v3()), accel: v3(),
       degree2: null, atmosphere: null, kind: 'star',
     });

@@ -2,7 +2,6 @@
 // CelestialSystem を返す。同じ太陽系を、ECI の中心(originId)を選んで組める。
 import { EphemerisPoints } from '../../../physics/ephemeris/point';
 import { OrbitingMotion, StarMotion } from '../../../physics/celestial-motion';
-import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../../render/pipeline/sun-light';
 import { CelestialSystem } from '../celestial-system';
 import { ephemerisSeconds, TdbJulianDate } from '../../../physics/time';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
@@ -57,12 +56,9 @@ export function solarSystem(
   // 別の値として持ち回ると、片方だけが古くなる。
   const simZeroEt = ephemerisSeconds(epoch);
   const sunMotion = new StarMotion(SUN);
-  // 太陽の放射強度は描画の放射照度の目盛りの基準そのもの。
   const sun = new CelestialEntity(
     sunMotion, SOLAR_SYSTEM_BODY_NAMES.sun, 'star',
-    new StarCelestialView(SUN_SURFACE_COLOR, {
-      color: SUN_LIGHT_COLOR, radiantIntensity: REFERENCE_STAR_RADIANT_INTENSITY,
-    }),
+    new StarCelestialView(SUN_SURFACE_COLOR, { color: SUN_LIGHT_COLOR }),
   );
 
   const earthEntities = earthSystem(sunMotion, simZeroEt, renderer);

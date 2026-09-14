@@ -2,7 +2,7 @@
 import { Attitude } from '../../physics/attitude';
 import { LOCAL_UP, qRotate } from '../../math/quat';
 import { Vec3, dot } from '../../math/vec3';
-import { SOLAR_CONSTANT } from '../../physics/srp';
+import { SOLAR_CONSTANT } from '../../physics/astronomical-unit';
 import type { PowerSaveData } from '../save/save-data';
 import { RADIATOR_DEPLOY_TIME } from './radiator';
 

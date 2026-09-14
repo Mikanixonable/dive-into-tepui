@@ -8,7 +8,7 @@ import { OrbitingMotion, SatelliteMotion, StarMotion } from '../../physics/celes
 import { PlanetDef, SatelliteDef, StarDef, planetDefForSimZero, satelliteDefForSimZero } from '../../physics/celestial-body-def';
 import { planetSystem } from '../../physics/planet-system';
 import { planetOrbit, JULIAN_CENTURY } from '../../physics/kepler-orbit';
-import { AU } from '../../physics/astronomical-unit';
+import { AU, SOLAR_CONSTANT } from '../../physics/astronomical-unit';
 import { satelliteOrbit } from '../../physics/satellite-orbit';
 import { keplerPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { kinematicState } from '../../physics/kinematic-state';
@@ -22,7 +22,6 @@ import { CelestialSystem } from '../celestial/celestial-system';
 import type { TdbJulianDate } from '../../physics/time';
 import { SphereCelestialView } from '../../render/celestial/celestial-entity/sphere-celestial-view';
 import { StarCelestialView } from '../../render/celestial/celestial-entity/star-celestial-view';
-import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../render/pipeline/sun-light';
 import { MAG_ROUNDS } from '../player/ammo-spec';
 import type { CelestialBody } from '../../physics/celestial-body';
 
@@ -31,6 +30,7 @@ const PRIMARY_ID = 'zephyrus';
 const MOON_ID = 'zephyrus-i';
 const STAR_MU = 1.3e20; // [m^3/s^2] (太陽と同程度)
 const STAR_RADIUS = 7e8; // [m]
+const STAR_RADIANT_INTENSITY = SOLAR_CONSTANT * AU * AU; // [W/sr] (太陽と同じ)
 const PRIMARY_MU = 4e13; // [m^3/s^2] (火星と土星の中間程度)
 const PRIMARY_RADIUS = 3e6; // [m]
 
@@ -44,7 +44,9 @@ const ZEPHYRUS_ORBIT = planetOrbit({
 });
 
 // 架空の3体系: 恒星 aeolus + 惑星 zephyrus(原点・重力源)+ その衛星 zephyrus-i(重力源)。
-const AEOLUS: StarDef = { id: STAR_ID, mu: STAR_MU, radius: STAR_RADIUS };
+const AEOLUS: StarDef = {
+  id: STAR_ID, mu: STAR_MU, radius: STAR_RADIUS, radiantIntensity: STAR_RADIANT_INTENSITY,
+};
 const ZEPHYRUS: PlanetDef = {
   id: PRIMARY_ID,
   mu: PRIMARY_MU,
@@ -74,12 +76,10 @@ function zephyrusSystemMotions(): readonly CelestialBody[] {
 
 // 架空天体の見た目: 恒星なら太陽の見た目、それ以外は単色球。表示名は id をそのまま使う。
 function fallbackEntity(motion: CelestialBody): CelestialEntity {
-  // 色の手がかりを持たない架空の恒星なので、無彩色で目盛りの基準どおりの明るさにする。
+  // 色の手がかりを持たない架空の恒星なので、無彩色にする。
   if (motion instanceof StarMotion) {
     return new CelestialEntity(
-      motion, motion.id, 'star', new StarCelestialView(0xffffff, {
-        color: new THREE.Color(0xffffff), radiantIntensity: REFERENCE_STAR_RADIANT_INTENSITY,
-      }),
+      motion, motion.id, 'star', new StarCelestialView(0xffffff, { color: new THREE.Color(0xffffff) }),
     );
   }
   if (!(motion instanceof OrbitingMotion)) throw new Error(`${motion.id} の運動が OrbitingMotion ではない`);

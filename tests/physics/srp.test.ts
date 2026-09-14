@@ -2,18 +2,25 @@
 import { fixedMotion } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { CelestialMotion } from '../../src/physics/celestial-motion';
-import { SOLAR_PRESSURE_1AU, srpAccel } from '../../src/physics/srp';
-import { AU } from '../../src/physics/astronomical-unit';
-import { MU_SUN, R_SUN } from '../../src/game/celestial/solar-system/sun';
+import { isStar, type StarCelestialBody } from '../../src/physics/celestial-body-def';
+import { srpAccel } from '../../src/physics/srp';
+import { AU, SOLAR_CONSTANT } from '../../src/physics/astronomical-unit';
+import { MU_SUN, R_SUN, SUN } from '../../src/game/celestial/solar-system/sun';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { cross, dot, len, norm, sub, v3 } from '../../src/math/vec3';
 
 const ZERO = v3(0, 0, 0);
+const SPEED_OF_LIGHT = 299792458; // 真空中の光速 [m/s](SI 定義値)
 
-// 地心から見て +X 方向 1 AU に太陽を置く。
-function sunAt(distance: number): CelestialMotion {
-  return fixedMotion({ id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState<'eci'>(0, v3(distance, 0, 0), ZERO), accel: ZERO, degree2: null, atmosphere: null, kind: 'star' });
+// 地心から見て +X 方向 distance に太陽を置く。
+function sunAt(distance: number): StarCelestialBody {
+  const sun = fixedMotion({
+    id: 'sun', mu: MU_SUN, radius: R_SUN, radiantIntensity: SUN.radiantIntensity,
+    state: kinematicState<'eci'>(0, v3(distance, 0, 0), ZERO), accel: ZERO, degree2: null, atmosphere: null,
+    kind: 'star',
+  });
+  assert.ok(isStar(sun));
+  return sun;
 }
 
 export function register(): void {
@@ -35,10 +42,12 @@ export function register(): void {
   });
 
   test('srp: at 1 AU with a unit coefficient the magnitude equals the reference solar pressure', () => {
-    // 逆2乗則の基準点そのものの検証。ここがずれると全ての距離でずれる。
+    // 逆2乗則の基準点そのものの検証。ここがずれると全ての距離でずれる。完全吸収面の輻射圧は
+    // 太陽定数を光速で割ったもの。
     const sun = sunAt(0);
     const mag = len(srpAccel(v3(AU, 0, 0), sun, 0, 1, 1));
-    assert.ok(Math.abs(mag - SOLAR_PRESSURE_1AU) / SOLAR_PRESSURE_1AU < 1e-12, `magnitude at 1 AU: ${mag}`);
+    const expected = SOLAR_CONSTANT / SPEED_OF_LIGHT;
+    assert.ok(Math.abs(mag - expected) / expected < 1e-12, `magnitude at 1 AU: ${mag}`);
   });
 
   test('srp: doubling the sun distance quarters the acceleration', () => {

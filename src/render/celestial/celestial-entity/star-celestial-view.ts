@@ -2,6 +2,7 @@
 // 模式図で代わりに出す輪郭円。
 import * as THREE from 'three/webgpu';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
+import { isStar } from '../../../physics/celestial-body-def';
 import { createStarSphere, type StarSphere } from '../star-sphere';
 import { createOutlineCircle, OutlineCircle } from '../outline-circle';
 import type { CameraFrame } from '../../camera/camera-frame';
@@ -9,6 +10,7 @@ import { apparentSizePx } from '../../../math/projection';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 import type { RenderStyle } from '../../render-style';
 import type { RingMaterials } from '../ring';
+import { scaledRadiantIntensity } from '../../pipeline/sun-light';
 import { CelestialView, type StellarLight, type StellarLightSource } from './celestial-view';
 
 export class StarCelestialView extends CelestialView {
@@ -24,13 +26,14 @@ export class StarCelestialView extends CelestialView {
 
   public override get stellarLight(): StellarLight { return this.light; }
 
-  // 実球体・点像・輪郭円をシーンへ一度だけ登録する。
+  // 実球体・点像・輪郭円をシーンへ一度だけ登録する。motion は恒星でなければならない。
   public build(
     motion: CelestialMotion, scene: THREE.Scene, _ringMaterials: RingMaterials,
   ): void {
+    if (!isStar(motion)) throw new Error(`StarCelestialView: 恒星でない天体には付けられない: ${motion.id}`);
     this.star = createStarSphere(
       this.surfaceColor,
-      surfaceRadianceOf(this.light.radiantIntensity, motion.def.radius),
+      surfaceRadianceOf(scaledRadiantIntensity(motion.def.radiantIntensity), motion.def.radius),
     );
     this.star.addTo(scene);
     scene.add(this.outline.line);

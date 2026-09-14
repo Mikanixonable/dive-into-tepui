@@ -5,8 +5,8 @@ import { WebGPURenderer } from 'three/webgpu';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
 import { ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary } from '../../src/game/protein/protein-motion-metrics';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
-import { REFERENCE_STAR_RADIANT_INTENSITY, irradianceAtDistance } from '../../src/render/pipeline/sun-light';
-import { R_SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
+import { irradianceAtDistance, scaledRadiantIntensity } from '../../src/render/pipeline/sun-light';
+import { R_SUN, SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
 import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
@@ -291,18 +291,19 @@ export class LabView {
     );
     const sunDistance = this.sunDistance;
     SUN_POSITION.copy(sunDirection).multiplyScalar(sunDistance);
-    this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_LIGHT_COLOR, REFERENCE_STAR_RADIANT_INTENSITY);
+    const sunIntensity = scaledRadiantIntensity(SUN.radiantIntensity);
+    this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_LIGHT_COLOR, sunIntensity);
     // 天体照。ケースが置いた光源をスロットへ書く。放射輝度は恒星のつまみの距離に追随する。
     this.pipeline.planetLight.set((this.current.planetLights ?? []).map((light) => ({
       center: light.center,
       radius: light.radius,
       radiance: planetRadiance(
-        light.albedo, irradianceAtDistance(REFERENCE_STAR_RADIANT_INTENSITY, SUN_POSITION.distanceTo(light.center)),
+        light.albedo, irradianceAtDistance(sunIntensity, SUN_POSITION.distanceTo(light.center)),
       ),
     })));
     // 順応の基準点は描画原点。**ケースの sunDistance はここから恒星までの距離**なので、
     // 露出はその1つの数だけで決まり、ケースが物体をどこへ置いたかには引きずられない。
-    this.pipeline.exposure.setReference(ORIGIN, SUN_POSITION, REFERENCE_STAR_RADIANT_INTENSITY);
+    this.pipeline.exposure.setReference(ORIGIN, SUN_POSITION, sunIntensity);
     const camera = this.current.camera;
     directionFromAngles(this.angles.cameraAzimuthDeg, this.angles.cameraElevationDeg, CAMERA_OFFSET);
     camera.position.copy(this.pivot).addScaledVector(CAMERA_OFFSET, this.cameraDistance);

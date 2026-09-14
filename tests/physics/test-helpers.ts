@@ -174,17 +174,19 @@ class FixedMotion extends CelestialMotion {
 
 // ECI 原点に置く、太陽系重心に静止した基準。FixedMotion の ECI 化を恒等変換にする。
 const FIXED_ORIGIN = new FixedMotion(
-  { id: '@fixed-origin', mu: 0, radius: 0 },
+  { id: '@fixed-origin', mu: 0, radius: 0, radiantIntensity: 0 },
   kinematicState<'eci'>(0, v3(), v3()), v3(), 'star', null, null,
 );
 const FIXED_ECI = new EciTransform(FIXED_ORIGIN);
 
 // 宣言した瞬間値だけを答える天体を1体組む。state は anchor(その時刻で厳密)、accel は
-// そこから伸びる二次曲線の加速度。
+// そこから伸びる二次曲線の加速度、radiantIntensity は kind が 'star' のときに放つ放射強度
+// [W/sr](省略時 0)。
 export function fixedMotion(spec: {
   readonly id: string;
   readonly mu: number;
   readonly radius: number;
+  readonly radiantIntensity?: number;
   readonly state: KinematicState;
   readonly accel?: Vec3;
   readonly kind?: CelestialKind;
@@ -192,7 +194,7 @@ export function fixedMotion(spec: {
   readonly atmosphere?: Atmosphere | null;
 }): CelestialMotion {
   const motion = new FixedMotion(
-    { id: spec.id, mu: spec.mu, radius: spec.radius },
+    { id: spec.id, mu: spec.mu, radius: spec.radius, radiantIntensity: spec.radiantIntensity ?? 0 },
     spec.state, spec.accel ?? v3(), spec.kind ?? 'planet',
     spec.degree2 ?? null, spec.atmosphere ?? null,
   );
