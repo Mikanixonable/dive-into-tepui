@@ -49,26 +49,12 @@
 - 仕様: COMBAT.md「弾は自機から交戦圏の半径以上離れると消える」
 - 減るもの: `viewerPos` 引数が `checkLoss` の4階層から消え、操作対象の切替で弾が消える挙動も無くなる。/ 確度: 高 / 確認: 自分で確認
 
-### R8. ステージ選択画面で Enter を押すとステージ1 が始まり、隠しデバッグステージがキーで素通りする
-- 症状: `stage1.selectKeys = ['Digit1', 'Enter']` なので、何を選んでいても Enter でステージ1 が起動する。`[E]`/`[L]` で一覧に無い DEBUG(架空星系)/DEBUG(高負荷)が起動する。
-- 場所: `src/game/stages/stage1.ts:19`、`src/launcher/stage-select.ts:248-251`、`src/game/stages/stage-debug-alt-system.ts:105-106`、`src/game/stages/stage-debug-load.ts:25-26`
-- 疑う理由: キー照合が `hiddenFromSelect` を見ていない(一覧と `resumableStageClass` は見ている)。`Enter` は確定キーなので誤爆しやすく、行ラベルにも出ない(`selectKeys[0]` しか表示しない)。
-- 仕様: GAME.md「各ステージは…専用のショートカットキーでも選べる(例: ステージ1が `[1]`)」「いずれもタイトル画面のステージモードタブには出ず(画面隅の専用リンクからのみ到達できる)」
-- 減るもの: `'Enter'` を外し、キー照合に `hiddenFromSelect` を足すだけ。隠し経路が1本化する。/ 確度: 高 / 確認: 自分で確認
-
 ### R12. [N] 自動ワープと [X] 計画全体破棄が、仕様と逆のビューに置かれている
 - 症状: [N] と「未選択の [X] で計画全体を破棄」は戦闘ビューでしか効かず、マップビューの [X] は選択ノードが無いと何も起きない。
 - 場所: `src/game/view/combat-view.ts:69-84`、`src/game/plan/plan-editor.ts:178`、`src/game/view/map-view.ts:114-116`
 - 疑う理由: 同じ `K.deleteNode` を2つのビューが別の意味で消費している。
 - 仕様: CONTROLS.md「N … マップビュー、ノードがある場合」「X 選択中のノードを削除(未選択なら計画全体を破棄) マップビュー」
 - 減るもの: `CombatView.handleInput` と `clearPlan` が消え、計画キーの窓口が `PlanEditor` 1つになる。/ 確度: 高 / 確認: 報告のみ
-
-### R16. 自転初期位相だけが乱数で、時刻決定性から外れている(地球を名指し)
-- 症状: 同じ元期で始めても起動ごとに地球の経度が変わり、地表・海岸線・オーロラ・自転座標系の位置がランごとにずれる。雲と公転は時刻決定的。
-- 場所: `src/game/game.ts:170`、`src/physics/celestial-motion.ts:324-327`(`eciPole`)、`src/game/celestial/solar-system/earth-system.ts:103`、`src/game/save/save-data.ts:293`
-- 疑う理由: 他7惑星は `iau` 極モデルの `w0Deg + wRate·t` で時刻決定的に解けており、地球だけが1天体専用の極モデルを持ち、その位相原点を乱数で埋めている。IAU の地球自転角(W₀=190.147°)を定数で置けば乱数も位相の配線も要らない。
-- 仕様: CELESTIAL.md §3「**地球の自転初期位相だけはゲーム起動のたびにランダムに決まる**」/ SAVE.md「地球の自転の位相…ゲーム開始時に一度だけランダムに決まる値」→ **第4群(仕様ごと消す)**
-- 減るもの: `Math.random()` 1箇所・セーブ項目1つ・`spinPhase0` 引数(game→stage→solarSystem→earthSystem→planetSystem→PlanetMotion)・`eciPole` 専用分岐。暦から再現可能なランになる。/ 確度: 高 / 確認: `game.ts:170` は自分で確認、極モデルは報告のみ / 計画: K2(時刻層の構築値)、手順 6-4
 
 ### R17. 地球・月の名指しが一般の仕組みの隣に残っている(8箇所)
 - 症状: 天体を一般に扱う仕組みがあるのに、地球・月・太陽を文字列で名指しする分岐が並んでいる。
@@ -112,13 +98,6 @@
   - **ラン内の視点に見える: `viewOptionsTab` / `orbitGuideGroupTab`**(カメラ視点や選択中ビューはスナップショット側に入っているのに、タブだけ localStorage にある)
 - 仕様: MAP.md「タブは常にどれか1つが選ばれている」/ UI-DESIGN.md — どちらも persistence の記述なし
 - 減るもの: 保存鍵2つと parse/format 4関数。ランを始めると既定タブから始まる。/ 確度: 中 / 確認: 項目の全量は自分で確認、意味の判定は報告のみ
-
-### R24. 波の同時展開数に、仕様に無い第二の上限が重なっている
-- 症状: `allowedMaxWaveCount`(2→4→∞)が `maxGroups` とは別にあり、同じ波数でも `activeGroups` が 0 か否かで値が変わる。第4波で生存グループが1つでもあると新規の波が湧かず、全滅させるまで進行が止まる。
-- 場所: `src/game/stages/stage-utils/wave-attack.ts:121-131,160-166`
-- 疑う理由: 呼び出し側が既に `activeGroups >= maxGroups` で打ち切っている。2/4/∞ という値の出所も説明が無い。
-- 仕様: GAME.md §2.3「同時展開数: 波数が進むほど上限が上がる(1 → 2 → 3 グループ)」— 波数そのものの上限は記述なし
-- 減るもの: 分岐が5本から1本になり、「第4波で進行が止まる」停滞が消える。/ 確度: 中 / 確認: 報告のみ
 
 ### R26. 曲の選択が乱数で、時刻決定的でない
 - 症状: ランごとに最初の曲が無作為に決まり、5分ごとの曲送りも「直前以外から無作為」。
@@ -165,13 +144,6 @@
 ---
 
 # 第3群 — 死んだコード・到達不能な分岐(挙動不変、消すだけ)
-
-### R32. `phaseOffsets` は値を入れる箇所が無く、常に空のまま全構築経路へ配線されている
-- 症状: 天体ごとの平均黄経オフセットを受け渡す口が10以上のモジュールとセーブ形式にあるが、値は常に `{}`。
-- 場所: `src/game/game.ts:172,197,203`、`src/physics/celestial-body-def.ts:115,161-176`、`src/game/celestial/celestial-system.ts:130,333`、`src/game/save/save-data.ts:291`、9系の構築関数
-- 疑う理由: 唯一の生産者が `initialSave?.phaseOffsets ?? {}` で、セーブはそれをそのまま往復させるだけ。乱数も UI も書かない。全天体を暦から置く現在の方針では、平均黄経を散らす機能自体が成り立たない。
-- 仕様: SAVE.md「天体暦の初期位相 — …ゲーム開始時に一度だけランダムに決まる値」だが CELESTIAL.md §2 は全天体を JPL 要素・暦パックで置くと定める → **第4群**
-- 減るもの: `PhaseOffsets` 型、`planetDefForSimZero`/`satelliteDefForSimZero`/`keplerOrbitForSimZero` の phase 引数、9系の構築関数の引数、セーブ項目、`serialize()`。挙動不変。/ 確度: 高 / 確認: 自分で確認(全参照を走査。生産者は1箇所のみ)
 
 ### R33. 旧セーブ移行 `migrateLegacySave` は構造的に成立せず、毎起動走っている
 - 症状: 起動ごとに `tepui.save` を読みに行くが、取り込みは絶対に成功せず `null` を返す。
@@ -241,8 +213,6 @@
 
 | # | 挙動 | 仕様の位置 | 提案 |
 | --- | --- | --- | --- |
-| R16 | 地球の自転初期位相が乱数 | CELESTIAL.md §3、SAVE.md「保存される内容」 | IAU の地球自転角で時刻決定的にし、仕様の2文と保存項目を削る |
-| R32 | 天体暦の初期位相をランダムに決める | SAVE.md「保存される内容」 | 実装が最初から満たしていない。仕様の文を削る |
 | R17-1 | 軌道基準を地球・月・ターゲットに固定できる | ORBIT.md | 登録天体から候補を引く形へ。ORBIT.md「未確定の案」の「基準天体とマップの参照フレームの統合」と合わせて進める |
 | R17-3 | 月だけ衛星軌道線を常時表示 | MAP.md「ただし地球の月だけは常時例外的に表示される」 | 例外を消し、全衛星で同じ規則にする |
 | R17-6 | 参照軌道は地球専用 | MAP.md「いずれも地球専用の軌道なので系の軸を持たない」 | 物理側は既に一般。仕様を実装の一般性へ進める |
@@ -269,7 +239,6 @@
 - **R51. 最初の周回の失敗だけ別の文言になる。** `start()` だけ `.catch(fail)` を通らない。`src/launcher/launcher.ts:96-105,207-214`。/ 確度: 低
 - **R52. bgm-lab が `TrackPlayback` を二重実装している。** 「一致は検証で押さえてある」とコメントにあるが、`tests/` に Composer/TrackPlayback のテストは無い。`tools/bgm-lab/lab-player.ts:6,108`。/ 確度: 低
 - **R53. モジュール寿命の採番器がランを跨いで残る。** `base.ts:48`、`pickup.ts:41-42`、`dynamic-entity.ts:18`(static)。id は増え続けるだけなので挙動は無害だが、ランの寿命の状態ではない。計画の手順 6-5 が移す予定。/ 確度: 低
-- **R54(挙動の複雑さではない誤り). ヴァルナの半径が質量と整合しない。** 半径 450 km は旧直径 900 km 由来、質量は直径 654 km 由来。コード自身の TODO。衝突球・高度基準・描画サイズに直接効く。`src/game/celestial/solar-system/small-bodies.ts:211-219`。/ 確度: 中
 - **R55(同). `EARTH_AURORA_OPTICS.bodyRadius: 6.371e6` が `R_EARTH` の直書き重複。** `CelestialBodies` の doc 2箇所(`ancestorsOf`・`chainFrom`)が実装と逆のことを書いている。/ 確度: 低
 
 ---

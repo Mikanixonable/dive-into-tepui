@@ -24,7 +24,6 @@ import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
 import { solarSystem } from '../celestial/solar-system/solar-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { PhaseOffsets } from '../../physics/celestial-body-def';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { EntityRegistry, SpawnGate } from '../dynamic/entity-registry';
 
@@ -62,8 +61,7 @@ export type StageDeps = [
 export interface StageClass {
   readonly id: StageId;
   createCelestialSystem(
-    phaseOffsets: PhaseOffsets, earthSpinPhase0: number, epoch: TdbJulianDate,
-    onProgress?: (ratio: number) => void, renderer?: THREE.WebGPURenderer,
+    epoch: TdbJulianDate, onProgress?: (ratio: number) => void, renderer?: THREE.WebGPURenderer,
   ): Promise<CelestialSystem>;
   // simTime=0 に置く絶対時刻。**基底に既定値は無く、全ステージが自分で宣言する** —
   // 置くと宣言し忘れが型検査に落ちなくなり、元期が共有の定数へ静かに戻る。
@@ -74,7 +72,8 @@ export interface StageClass {
   readonly selectLabel: string;
   readonly selectSub: string;
   readonly selectLockedSub: string | undefined;
-  readonly selectKeys: readonly string[];
+  // 行に出し、押されたら選ぶキー。持たないステージは null(SPEC GAME.md 1)。
+  readonly selectKey: string | null;
   readonly selectGroup: string;
   readonly hiddenFromSelect: boolean;
   isUnlocked(clearCounts: ClearCounts): boolean;
@@ -99,19 +98,20 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 近未来/遠未来いずれかの数値暦の期間に入っていれば暦パックを読み込み、どちらにも
   // 入らなければ CELESTIAL.md 2.2 のとおり解析暦だけで組む。
   public static async createCelestialSystem(
-    phaseOffsets: PhaseOffsets, earthSpinPhase0: number, epoch: TdbJulianDate,
-    onProgress?: (ratio: number) => void, renderer?: THREE.WebGPURenderer,
+    epoch: TdbJulianDate, onProgress?: (ratio: number) => void, renderer?: THREE.WebGPURenderer,
   ): Promise<CelestialSystem> {
     const profile = profileAtOrNull(epoch.value);
     const ephemerisPoints = profile === null ? null : await loadEphemerisPoints(
       profile.id, epoch, profile.validEndJdTdb, onProgress,
     );
-    return solarSystem('earth', phaseOffsets, earthSpinPhase0, ephemerisPoints, epoch, renderer);
+    return solarSystem('earth', ephemerisPoints, epoch, renderer);
   }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
   public static readonly selectLockedSub: string | undefined = undefined;
   // タイトルのステージ選択ボタン列に並べない。
   public static readonly hiddenFromSelect: boolean = false;
+  // ショートカットキーを持たない。持つステージだけが宣言する。
+  public static readonly selectKey: string | null = null;
   // 開始前に開始日時の指定画面を挟まない。挟むステージだけが true を宣言する。
   public static readonly picksStartEpoch: boolean = false;
   // 選択画面でこのステージを並べるタブの名前。

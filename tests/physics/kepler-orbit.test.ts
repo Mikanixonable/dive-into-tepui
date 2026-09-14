@@ -58,10 +58,10 @@ const NODE_PRECESSING_ORBIT: KeplerOrbit = {
 
 // dt は軌道の公転周期に対して十分小さく取る(中心差分の打切り誤差は dt² で効く)。
 function checkVelocityMatchesCentralDiff(orbit: KeplerOrbit, t: number, dt: number): void {
-  const phased = keplerOrbitForSimZero(orbit, 0.3, 0);
-  const s = keplerOrbitState(phased, t);
-  const sPlus = keplerOrbitState(phased, t + dt);
-  const sMinus = keplerOrbitState(phased, t - dt);
+  const folded = keplerOrbitForSimZero(orbit, 0);
+  const s = keplerOrbitState(folded, t);
+  const sPlus = keplerOrbitState(folded, t + dt);
+  const sMinus = keplerOrbitState(folded, t - dt);
   const vFd = scale(sub(sPlus.r, sMinus.r), 1 / (2 * dt));
   const relErr = len(sub(vFd, s.v)) / len(s.v);
   assert.ok(relErr < 1e-6, `速度と位置の中心差分の不一致 (t=${t}): ${relErr}`);
@@ -101,20 +101,20 @@ export function register(): void {
 
   test('kepler-orbit: keplerOrbitRotation の角速度は基底の時間微分に一致する(有限差分)', () => {
     for (const t of [0, 1e6, 1e8]) {
-      assertOmegaMatchesBasis((s) => keplerOrbitRotation(keplerOrbitForSimZero(NODE_PRECESSING_ORBIT, 0.3, 0), s), t, 2);
+      assertOmegaMatchesBasis((s) => keplerOrbitRotation(keplerOrbitForSimZero(NODE_PRECESSING_ORBIT, 0), s), t, 2);
     }
   });
 
   test('kepler-orbit: keplerOrbitRotation の角速度は基底の時間微分に一致する(惑星規模の永年変化を含む)', () => {
     for (const t of [0, 1e8, 1e9]) {
-      assertOmegaMatchesBasis((s) => keplerOrbitRotation(keplerOrbitForSimZero(PLANET_LIKE_ORBIT, 0.3, 0), s), t, 600);
+      assertOmegaMatchesBasis((s) => keplerOrbitRotation(keplerOrbitForSimZero(PLANET_LIKE_ORBIT, 0), s), t, 600);
     }
   });
 
   test('kepler-orbit: keplerOrbitRotation の x̂ は keplerOrbitState の位置方向に一致する', () => {
     for (const t of [0, 1e6, 1e8]) {
-      const s = keplerOrbitState(keplerOrbitForSimZero(NODE_PRECESSING_ORBIT, 0.3, 0), t);
-      const { q } = keplerOrbitRotation(keplerOrbitForSimZero(NODE_PRECESSING_ORBIT, 0.3, 0), t);
+      const s = keplerOrbitState(keplerOrbitForSimZero(NODE_PRECESSING_ORBIT, 0), t);
+      const { q } = keplerOrbitRotation(keplerOrbitForSimZero(NODE_PRECESSING_ORBIT, 0), t);
       const xHat = qRotate(q, v3(1, 0, 0));
       const rHat = scale(s.r, 1 / len(s.r));
       assert.ok(len(sub(xHat, rHat)) < 1e-9, `x̂ の像が位置方向と一致しない (t=${t})`);
@@ -123,8 +123,8 @@ export function register(): void {
 
   test('kepler-orbit: keplerOrbitNormal は keplerOrbitState の位置ベクトルと直交する', () => {
     for (const t of [0, 1e6, 1e8]) {
-      const s = keplerOrbitState(keplerOrbitForSimZero(NODE_PRECESSING_ORBIT, 0.3, 0), t);
-      const normal = keplerOrbitNormal(keplerOrbitForSimZero(NODE_PRECESSING_ORBIT, 0.3, 0), t);
+      const s = keplerOrbitState(keplerOrbitForSimZero(NODE_PRECESSING_ORBIT, 0), t);
+      const normal = keplerOrbitNormal(keplerOrbitForSimZero(NODE_PRECESSING_ORBIT, 0), t);
       const c = dot(scale(s.r, 1 / len(s.r)), normal);
       assert.ok(Math.abs(c) < 1e-9, `位置ベクトルが軌道面法線と直交しない (t=${t}): ${c}`);
     }
