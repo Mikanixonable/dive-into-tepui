@@ -11,7 +11,7 @@ import { ObjectPlacementPreviewView } from '../../render/creative/object-placeme
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import { Base } from '../dynamic/dynamic-entity/base';
 import { EntityIdAllocator, type EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
-import { AmmoPickup, isAmmoPickup, isRcsFuelPickup, RcsFuelPickup } from '../dynamic/dynamic-entity/pickup';
+import { AmmoPickup, RcsFuelPickup } from '../dynamic/dynamic-entity/pickup';
 import { isPlayer, type PlayerInit } from '../player/player';
 import { generateRandomName } from '../random-name';
 import { generateDriftingEnemy } from '../stages/spawner/enemy-generator';
@@ -53,11 +53,10 @@ const DEG = Math.PI / 180;
 // 配置プレビューの ▷ マーカーの id。
 const PREVIEW_MARKER_ID = 'creative-preview';
 
-// 置くと決まった物体。自機は実体ではなく生成引数で表す。name は与えた名前で、
-// 実体が名前を持たない種類(弾薬)でも告知できるよう別に持つ。
+// 置くと決まった物体。自機は実体ではなく生成引数で表す。
 export type PlacedObject =
   | { readonly kind: 'player'; readonly init: PlayerInit }
-  | { readonly kind: 'entity'; readonly entity: DynamicEntity; readonly name: string };
+  | { readonly kind: 'entity'; readonly entity: DynamicEntity };
 
 export class ObjectPlacement {
   private readonly panel: ObjectPlacerPanel;
@@ -65,8 +64,6 @@ export class ObjectPlacement {
   // このフレームのプレビュー ▷ マーカーの宣言。
   private readonly declarations: MarkerDeclaration[] = [];
   private readonly playerIdAllocator = new EntityIdAllocator('creative-player-');
-  private readonly ammoPickupIdAllocator = new EntityIdAllocator('creative-ammo-');
-  private readonly rcsFuelPickupIdAllocator = new EntityIdAllocator('creative-rcs-fuel-');
 
   // 検証を通った物体の渡し先。
   public onPlace: ((placed: PlacedObject) => void) | null = null;
@@ -81,11 +78,8 @@ export class ObjectPlacement {
     private readonly worldSfx: WorldSfx,
     private readonly fx: FlashEffects,
   ) {
-    // 以後の新規配置が既存 id と衝突しないよう、復元済みの艦・補給の id を予約する。
-    const entities = dynamicSystem.all();
-    for (const p of entities.filter(isPlayer)) this.playerIdAllocator.next(p.id);
-    for (const ammoPickup of entities.filter(isAmmoPickup)) this.ammoPickupIdAllocator.next(ammoPickup.id);
-    for (const pickup of entities.filter(isRcsFuelPickup)) this.rcsFuelPickupIdAllocator.next(pickup.id);
+    // 以後の新規配置が既存 id と衝突しないよう、復元済みの艦の id を予約する。
+    for (const p of dynamicSystem.all().filter(isPlayer)) this.playerIdAllocator.next(p.id);
 
     this.previewView = new ObjectPlacementPreviewView(scene, PREVIEW_LINE_STYLE);
 
@@ -186,43 +180,35 @@ export class ObjectPlacement {
     }
   }
 
-  // 種類ごとに実体を作り、id を採番して、空欄の名前を種類ごとの既定名で埋める。
+  // 空欄の名前を種類ごとの既定名で埋め、種類ごとに実体を作る。
   private createObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): PlacedObject {
+    const finalName = name.trim() || generateRandomName(entityKind);
     // 自機は生成引数、それ以外は実体として返す。
     switch (entityKind) {
-      case 'player': {
-        const id = this.playerIdAllocator.next();
-        return { kind: 'player', init: { name: name.trim() || generateRandomName('player'), state, id } };
-      }
-      case 'enemy': {
-        const finalName = name.trim() || generateRandomName('enemy');
-        const enemy = generateDriftingEnemy(
-          finalName, state, '#ff6a00', '#ff6a00', this.worldSfx, this.fx, this.scene, this.idAllocators,
-        );
-        return { kind: 'entity', entity: enemy, name: enemy.name };
-      }
-      case 'ammo': {
-        const id = this.ammoPickupIdAllocator.next();
+      case 'player':
+        return { kind: 'player', init: { name: finalName, state, id: this.playerIdAllocator.next() } };
+      case 'enemy':
         return {
           kind: 'entity',
-          entity: new AmmoPickup({ state, id }, this.scene, this.idAllocators),
-          name: name.trim() || generateRandomName('ammo'),
+          entity: generateDriftingEnemy(
+            finalName, state, '#ff6a00', '#ff6a00', this.worldSfx, this.fx, this.scene, this.idAllocators,
+          ),
         };
-      }
-      case 'fuel': {
-        const id = this.rcsFuelPickupIdAllocator.next();
-        const finalName = name.trim() || generateRandomName('fuel');
+      case 'ammo':
         return {
           kind: 'entity',
-          entity: new RcsFuelPickup({ state, id, name: finalName }, this.scene, this.idAllocators),
-          name: finalName,
+          entity: new AmmoPickup({ state, name: finalName }, this.scene, this.idAllocators),
         };
-      }
-      case 'base': {
-        const finalName = name.trim() || generateRandomName('base');
-        const base = new Base({ state, name: finalName }, this.scene, this.hud, this.idAllocators);
-        return { kind: 'entity', entity: base, name: base.name };
-      }
+      case 'fuel':
+        return {
+          kind: 'entity',
+          entity: new RcsFuelPickup({ state, name: finalName }, this.scene, this.idAllocators),
+        };
+      case 'base':
+        return {
+          kind: 'entity',
+          entity: new Base({ state, name: finalName }, this.scene, this.hud, this.idAllocators),
+        };
     }
   }
 
