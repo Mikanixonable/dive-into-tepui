@@ -31,7 +31,6 @@ export const MAP_PANEL_STYLE = `
 @media ${MQ_COARSE} {
   #hud span.body-class-icon-btn { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
 }
-#hud .body-class-row.category-off .body-class-icon-btn.on { color: var(--text-dim); font-weight: 700; opacity: .65; }
 @media ${MQ_MEDIUM_DOWN} {
   #hud-plan { min-width: 0; max-width: none; }
 }
