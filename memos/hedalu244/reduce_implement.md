@@ -62,13 +62,6 @@
 - 仕様: 1 は ORBIT.md に、5 は MAP.md に書かれている → **第4群**。3・4・6・7 は記述なし
 - 減るもの: 名指し分岐7箇所と、無言で落ちる選択肢が消える。天体を増やしたときに HUD・カメラを触らなくて済む。/ 確度: 高(3・4・6・7)/ 中(1・2・5)/ 確認: 名指しの存在は自分で確認、一般化可能性は報告のみ
 
-### R18. 主星の決定を描画 View の `stellarLight` から引き、弾の散布界まで届いている
-- 症状: 「どれが恒星か」を見た目で決め、その結果が自機・敵の太陽グレア散布界に入る。
-- 場所: `src/game/celestial/celestial-system.ts:147-150`、`src/game/player/fire-control.ts:313`、`src/game/dynamic/dynamic-entity/enemy.ts:412`
-- 疑う理由: 同じ問いに正本が2つある — 積分側(輻射圧・日照)は `motion.kind === 'star'` で決め、表示・射撃側は View 由来。恒星の見た目を差し替えると命中精度が変わる。
-- 仕様: CELESTIAL.md §1 は恒星を登録天体として定めるだけ。見た目から主星を決めるとは書かれていない
-- 減るもの: 星の同定が1箇所になり、描画層への依存が1つ減る。/ 確度: 高 / 確認: 自分で確認
-
 ### R20. 接触代理の置き直しが履歴キューに毎サブステップ積み続ける
 - 症状: 放熱板の折り 12 個とベルト節点 18 個が毎サブステップ `proxy.state = world` で置き直され、setter が `DynamicTrajectory.reset()` → `StateQueue.push()` を通る。間引きも切り捨ても無いので 30 本のキューが無制限に伸びる。
 - 場所: `src/game/player/radiator.ts:193`、`src/game/player/belt-physics.ts:246`、`src/game/dynamic/dynamic-motion.ts:225-228`、`src/physics/state-queue.ts:55-62`
@@ -279,42 +272,6 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
 
 ---
 
-### R56. 「操作対象が居なければ ECI 原点」のフォールバックが、マーカーの距離表示にもある
-- 症状: R6 と同じ `?? v3()` がマーカー側にもあり、操作艦が居ない瞬間(creative で解除・全滅)は
-  全マーカーの距離表示・弾薬/燃料のフェード・タンパク質部位マーカーの表示範囲が、地球中心からの
-  距離で決まる。
-- 場所: `src/game/targeter.ts:164`(使用は 176・185・191・203・215・234・250)
-- 疑う理由: R6 とフォールバックの形も原因も同じ。表示側なので実害は数字の間違いだけだが、直すなら
-  同じ判断(視点が居ないフレームをどう扱うか)を1箇所で決めるべきで、別々に決める理由がない。
-- 減るもの: R6 と合わせて `?? v3()` が消え、「視点が居ない」の扱いが1つになる。/ 確度: 中 / 確認: 自分で確認
-
-### R57. ステージの配置ユーティリティが「ECI 原点＝重力の中心＝地球」を前提にした幾何を持つ
-- 症状: 敵の初期配置が、絶対 ECI 位置の `len()` を軌道半径、`norm()` を局所鉛直、`MU_EARTH` を
-  重力定数として扱う。ECI 原点が地球でないステージ(`debug-alt-system` は zephyrus 原点)や、
-  自機が月圏に居る状態で呼ぶと、共楕円軌道は共楕円にならず、大気圏クランプは地球中心の球面へ効く。
-- 場所: `src/game/stages/spawner/enemy-generator.ts:25,98,101,112,129-130`、
-  `src/game/stages/spawner/enemy-spawner.ts:41`、
-  `src/game/stages/stage-utils/wave-attack.ts:176,278-284`、`src/game/player/player.ts:265`
-- 疑う理由: 引数が `base: KinematicState` と一般の形をしているのに、中身は地球専用。いまは呼び手
-  (stage1/stage2/stage00)が地球周回なので露見していないだけで、型は何も止めない。
-- 仕様: CELESTIAL.md は ECI 原点をステージの選択として定める。地球であるとは書かれていない
-- 減るもの: `MU_EARTH`/`R_EARTH` 依存が配置ユーティリティから落ち、`strongestAttractor` から引く
-  1本になる。/ 確度: 中(いま壊れてはいない) / 確認: 自分で確認
-
-### R58. 恒星の明るさの正本が描画層にあり、物理は別の固定値を使っている
-- 症状: 「その恒星がどれだけ明るいか」に正本が2つある。描画は天体宣言が持つ
-  `stellarLight.radiantIntensity`、物理(日射加熱・輻射圧)は `SOLAR_CONSTANT = 1361` の固定値。
-  架空恒星の星系でも熱と輻射圧だけは太陽の値で計算される。
-- 場所: `src/render/pipeline/sun-light.ts:15-19`、
-  `src/game/celestial/solar-system/solar-system.ts:5,64`、`src/game/stages/stage-debug-alt-system.ts:25,81`、
-  `src/physics/srp.ts:9-11`、`src/game/dynamic/dynamic-motion.ts:438`
-- 疑う理由: R18 の裏返し。R18 は「物理の問いを描画から引いている」で、これは「物理量の正本が
-  描画層にある」— 天体を宣言する `game/celestial/` が放射強度を `render/pipeline/` から import
-  している。恒星の明るさは物理量なので、置き場が逆を向いている。
-- 仕様: CELESTIAL.md §1 は恒星を登録天体として定める。明るさの正本がどちらかは書かれていない
-- 減るもの: 放射強度の宣言が1つになり、`game/` → `render/` の import が1本落ちる。描画の
-  露出目盛り(`SUN_IRRADIANCE_1AU = π`)は描画層に残る。/ 確度: 高 / 確認: 自分で確認
-
 ### R66. HUD パネルが、設定の現在値を鏡映しで持っている
 - 症状: 表示オプションのクラス別モード・天球グリッド・軌道ガイド設定を、パネルが Map と
   フィールドで持ち直している。同じ値が設定の正本・パネルの写し・ボタンの点灯/`dataset` と
@@ -401,6 +358,25 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   `DynamicMotion` も `RadiatorSystem` もパーツを知らないので、**供給フックを1本足す形になる**
   (依存は中程度に悪化)。置き場の判断が先。/ 確度: 低 / 確認: 報告のみ
 - **判断(2026-09-15): 保留。** ユーザー所見「依存方向をどう整理するか決めかねる。要設計判断」。この回では調査していない。
+
+### R72. 渡された状態から組む自機の姿勢と、中心天体の状態の手足しが、ECI 原点を天体中心とみなす
+- 症状: 自機は渡された状態から機首プログレードの姿勢を組むが、`progradeAttitude` は絶対 ECI の r/v を使う。
+  原点天体以外を回る位置(月まわりなど)に置いた艦は、機首と上方向が原点天体を基準にずれる。(R57 で `Stage` へ移した
+  既定の円軌道は原点天体まわりに組むので、原点天体の ECI 位置が厳密に 0 であることから、この経路ではずれない。)
+  配置の側にも、中心天体の状態を手で足して ECI を組む箇所が残っている。
+- 場所: `src/game/player/player.ts` の `progradeAttitude`、`src/game/creative/object-placement.ts`(中心天体の状態の手足し)、
+  `src/game/stages/stage-debug-alt-system.ts`(同)
+- 疑う理由: R57 と同じ形。CODING-RULE 1.8「天体の位置を自分で引き算して座標系を作らない」。R57 で直した配置ユーティリティは
+  `frameOfCelestialBody` と `addPrimaryRelative` を通す形になっている。
+- 減るもの: 原点天体以外のまわりに置いた艦の姿勢のずれと、手足しの座標変換。/ 確度: 中 / 確認: R57 の実施中に見つけた。報告のみ
+
+### R73. 太陽電池の発電が、恒星の明るさにも距離にも依らない
+- 症状: 発電は `SOLAR_CONSTANT` を固定で掛けており、恒星までの距離でも恒星の放射強度でも変わらない。R58 で輻射圧と
+  日射加熱は恒星の `StarDef.radiantIntensity` と距離の逆二乗から求める形になったが、発電だけが 1 天文単位の太陽の値のまま残った。
+- 場所: `src/game/player/power.ts`(`SOLAR_CONSTANT * SOLAR_PANEL_EFFICIENCY * SOLAR_PANEL_AREA`)
+- 疑う理由: CELESTIAL.md「太陽輻射圧・太陽光による加熱・放熱板の受熱・太陽電池の発電は、いずれもこの日照率を共有する」は、
+  4つを同じ光源の受け方として並べている。ただし距離による減衰までは明記されていないので、仕様の読み方の判断が要る。
+- 減るもの: 恒星の明るさの読み口が1つにそろう。/ 確度: 中 / 確認: R58 の実施中に見つけた。報告のみ
 
 ## 単独では挙げないもの(軽微、または理由が書かれているもの)
 
