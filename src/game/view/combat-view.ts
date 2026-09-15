@@ -1,10 +1,7 @@
 // 戦闘ビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。
-import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { pickCombatEntityAtPoint } from '../pickable/combat-pick';
 import type { PlanGuide } from '../plan/plan-guide';
 import type { Input } from '../../input/input';
-import type { Notifier } from '../../hud/notifier';
-import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { TouchControls } from '../hud/touch-controls';
 import type { CameraSystem } from '../camera/camera-system';
 import type { Viewport } from '../../render/viewport';
@@ -32,8 +29,6 @@ export class CombatView implements ViewFrame {
     private readonly touchControls: TouchControls | null,
     private readonly controlSelection: ControlSelection,
     private readonly planPath: PlanPath,
-    private readonly simSpeedManager: SimSpeedManager,
-    private readonly notifier: Notifier,
     private readonly planGuide: PlanGuide,
   ) {}
 
@@ -55,23 +50,7 @@ export class CombatView implements ViewFrame {
 
   public onLeave(): void {}
 
-  // 計画キー: [Del] は計画全体の破棄、[N] は直近ノードへの自動ワープのトグル。
-  public handleInput(input: Input, _dt: number, simTime: number): void {
-    if (input.takeKey(K.deleteNode)) this.clearPlan();
-    if (input.takeKey(K.autoWarpToNode)) {
-      const plan = this.controlSelection.current?.plan;
-      this.simSpeedManager.toggleAutoWarpToFirstNode(plan?.firstNode(), simTime);
-    }
-  }
-
-  // 確定済みのマニューバ計画を破棄し、進行中の自動ワープも解く。
-  private clearPlan(): void {
-    const plan = this.controlSelection.current?.plan;
-    if (!plan || plan.nodes.length <= 0) return;
-    plan.clear();
-    this.simSpeedManager.cancelAutoWarp();
-    this.notifier.hint('マニューバ計画を破棄');
-  }
+  public handleInput(): void {}
 
   // 照準キーと右クリックを配る。操作対象がいなければ照準先が無いので何もしない。
   public handlePointer(simTime: number, viewport: Viewport): void {
