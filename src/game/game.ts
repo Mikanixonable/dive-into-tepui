@@ -59,7 +59,9 @@ import { FrameControls } from './hud/frame/frame-controls';
 import { syncControlledLoopSfx } from './controlled-loop-sfx';
 import { ViewOptionsControl } from './hud/panels/view-options-control';
 import { MapVisibilityPolicy } from './map/visibility-policy';
+import { savedOrbitGuideSettings } from './celestial/orbit-guide/orbit-guide-settings';
 import type { ViewOptionsSettings } from './hud/panels/view-options-control';
+import type { OrbitGuideSettings } from './celestial/orbit-guide/orbit-guide-settings';
 import type { BurnManagementPanelHandlers } from './hud/panels/burn-management-panel';
 import type { SettingValue } from '../settings/setting-value';
 import type { ThemePalette } from '../theme';
@@ -125,8 +127,10 @@ export class Game {
   public get celestialSystem(): CelestialSystem { return this._celestialSystem; }
   // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。
   private readonly viewOptions: ViewOptionsControl;
-  // マップ・天球・軌道ガイドの表示設定。
+  // マップ・天球の表示設定と、表示パネルのタブの選択。
   private readonly viewOptionSettings: ViewOptionsSettings;
+  // このランで選んでいる軌道ガイド。セーブへ残る選択の正本。
+  private orbitGuideSettings: OrbitGuideSettings;
   // 選ばれている配色。
   private readonly themePalette: SettingValue<ThemePalette>;
   // ブースターの取り付け・点火・切り離しの口。
@@ -201,8 +205,10 @@ export class Game {
       entities: this.dynamicSystem.serialize(),
       activeControlledId: this.activeControllable?.id ?? null,
       stage: this.activeStage.serialize(),
+      // 遊ぶ人の選択。
       camera: { view: this.viewManager.current, ...this.cameraSystem.serialize() },
       navTarget: this.navTarget.id !== null ? { id: this.navTarget.id, name: this.navTarget.name! } : null,
+      orbitGuide: this.orbitGuideSettings,
     };
   }
 
@@ -245,7 +251,11 @@ export class Game {
 
     // 表示パネル。左レールの並びはパネルを足した順で決まるので、同じレールへ足す座標系パネル
     // (FrameControls)より先に組む。
-    this.viewOptions = new ViewOptionsControl(this._hud.mapRoot, this._hud.panelCollapse, host.viewOptions);
+    this.orbitGuideSettings = savedOrbitGuideSettings(initialSave?.orbitGuide);
+    this.viewOptions = new ViewOptionsControl(
+      this._hud.mapRoot, this._hud.panelCollapse, host.viewOptions, this.orbitGuideSettings,
+      (next) => { this.orbitGuideSettings = next; },
+    );
 
     // ビューの正本(ViewManager)はカメラより後に組み上がるため、遅延評価で渡す。
     // 姿勢は現在値しか持たないため、解決はフォーカス id → 生存エンティティの現在姿勢。
@@ -556,7 +566,7 @@ export class Game {
     this._celestialSystem.sync(
       displayTime, nowMs, camera, this.cameraSystem, graphics, style,
       this.viewOptionSettings.mapDisplay.current, this.viewOptionSettings.grid.current,
-      this.viewOptionSettings.orbitGuide.current, visibilityPolicy,
+      this.orbitGuideSettings, visibilityPolicy,
     );
     // 本数の警告は、天体系がこのフレームに組んだ軌道ガイド線から出す。
     this.viewOptions.setOrbitGuideLineCount(this._celestialSystem.orbitGuide.lineCount);

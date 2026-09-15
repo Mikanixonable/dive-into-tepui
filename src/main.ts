@@ -175,13 +175,11 @@ function viewOptionSettings(settings: UserSettings): ViewOptionsSettings {
     // 読み取り専用の面。
     mapDisplay: settings.mapDisplayToggles,
     grid: settings.gridVisibility,
-    orbitGuide: settings.orbitGuide,
     tab: settings.viewOptionsTab,
     orbitGuideGroupTab: settings.orbitGuideGroupTab,
     // 書き換えの口。設定の正本へ戻す。
     onMapDisplayChange: (value) => settings.mapDisplayToggles.set(value),
     onGridChange: (value) => settings.gridVisibility.set(value),
-    onOrbitGuideChange: (value) => settings.orbitGuide.set(value),
     onTabChange: (value) => settings.viewOptionsTab.set(value),
     onOrbitGuideGroupTabChange: (value) => settings.orbitGuideGroupTab.set(value),
   };
