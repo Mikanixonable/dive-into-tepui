@@ -10,7 +10,6 @@ import { DEFAULT_RENDER_STYLE } from '../../src/render/render-style';
 import { DEFAULT_BGM_VOLUME } from '../../src/audio/bgm/bgm';
 import { DEFAULT_MAP_DISPLAY_TOGGLES } from '../../src/game/map/display-toggles';
 import { DEFAULT_GRID_VISIBILITY } from '../../src/render/celestial-grid';
-import { DEFAULT_ORBIT_GUIDE_SETTINGS } from '../../src/game/celestial/orbit-guide/orbit-guide-settings';
 
 // 保存の鍵。**利用者の localStorage に残っている文字列そのもの**なので、実装から導かずに直に書く。
 const GRAPHICS_KEY = 'tepui.settings.graphics';
@@ -18,7 +17,6 @@ const RENDER_STYLE_KEY = 'tepui.settings.renderStyle';
 const BGM_VOLUME_KEY = 'tepui.settings.bgm_vol';
 const MAP_DISPLAY_TOGGLES_KEY = 'tepui.mapDisplayToggles';
 const GRID_VISIBILITY_KEY = 'tepui.gridVisibility';
-const ORBIT_GUIDE_KEY = 'tepui.orbitGuide';
 
 // 保存済みの値を仕込んだ保存先を作る。
 function storageWith(entries: Readonly<Record<string, string>>): MemorySettingStorage {
@@ -35,7 +33,6 @@ export function register(): void {
       [BGM_VOLUME_KEY]: '0.5',
       [MAP_DISPLAY_TOGGLES_KEY]: '{"planetOrbit":false,"dwarfOrbit":true}',
       [GRID_VISIBILITY_KEY]: '{"stars":false,"eclipticPlane":true}',
-      [ORBIT_GUIDE_KEY]: '{"geostationary":false,"zeroVelocity":{"count":3}}',
     }));
     const graphics = settings.graphics.current;
     assert.equal(graphics.lodBias, 0.5);
@@ -50,11 +47,6 @@ export function register(): void {
     const grid = settings.gridVisibility.current;
     assert.equal(grid.stars, false);
     assert.equal(grid.eclipticPlane, true);
-    const orbitGuide = settings.orbitGuide.current;
-    assert.equal(orbitGuide.geostationary, false);
-    // 入れ子の設定も、保存に無い項目だけが既定で埋まる。
-    assert.equal(orbitGuide.zeroVelocity.count, 3);
-    assert.equal(orbitGuide.zeroVelocity.jacobi, DEFAULT_ORBIT_GUIDE_SETTINGS.zeroVelocity.jacobi);
   });
 
   test('user-settings: 読めない保存値は既定へ落ちる', () => {
@@ -64,26 +56,22 @@ export function register(): void {
       [BGM_VOLUME_KEY]: 'loud',
       [MAP_DISPLAY_TOGGLES_KEY]: '{"planetOrbit":false',
       [GRID_VISIBILITY_KEY]: '{"stars":',
-      [ORBIT_GUIDE_KEY]: '{"geostationary":',
     }));
     assert.deepEqual(settings.graphics.current, DEFAULT_GRAPHICS);
     assert.equal(settings.renderStyle.current, DEFAULT_RENDER_STYLE);
     assert.equal(settings.bgmVolume.current, DEFAULT_BGM_VOLUME);
     assert.deepEqual(settings.mapDisplayToggles.current, DEFAULT_MAP_DISPLAY_TOGGLES);
     assert.deepEqual(settings.gridVisibility.current, DEFAULT_GRID_VISIBILITY);
-    assert.deepEqual(settings.orbitGuide.current, DEFAULT_ORBIT_GUIDE_SETTINGS);
   });
 
-  // JSON として読めても値の形が違えば、重ねる先が無い。表の組を持つ3つの設定はここで既定へ戻る。
+  // JSON として読めても値の形が違えば、重ねる先が無い。表の組を持つ2つの設定はここで既定へ戻る。
   test('user-settings: オブジェクトでない保存値は既定へ落ちる', () => {
     const settings = new UserSettings(storageWith({
       [MAP_DISPLAY_TOGGLES_KEY]: '"planetOrbit"',
       [GRID_VISIBILITY_KEY]: '3',
-      [ORBIT_GUIDE_KEY]: 'true',
     }));
     assert.deepEqual(settings.mapDisplayToggles.current, DEFAULT_MAP_DISPLAY_TOGGLES);
     assert.deepEqual(settings.gridVisibility.current, DEFAULT_GRID_VISIBILITY);
-    assert.deepEqual(settings.orbitGuide.current, DEFAULT_ORBIT_GUIDE_SETTINGS);
   });
 
   test('user-settings: 知らない鍵は捨て、欠けた鍵と候補外の値だけを既定で埋める', () => {

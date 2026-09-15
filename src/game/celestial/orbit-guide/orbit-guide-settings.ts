@@ -1,5 +1,5 @@
 // 軌道ガイド(表示パネルの軌道ガイドタブ)の設定値。参照として描く軌道の種類ごとに、表示の
-// 可否・本数・族の範囲・色・進行方向マーカー・安定度の見せ方と、保存文字列との変換を持つ。
+// 可否・本数・族の範囲・色・進行方向マーカー・安定度の見せ方と、セーブからの読み直しを持つ。
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import type { DirectionMarkerMode } from '../../../render/celestial/orbit-guide/direction-markers';
 
@@ -308,33 +308,21 @@ export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): Orbit
   };
 }
 
-// 保存された文字列を設定へ読み直す。壊れていれば既定値に戻る。
-export function parseOrbitGuideSettings(text: string | null): OrbitGuideSettings {
-  try {
-    if (text === null) return DEFAULT_ORBIT_GUIDE_SETTINGS;
-    const parsed: unknown = JSON.parse(text);
-    if (typeof parsed !== 'object' || parsed === null) return DEFAULT_ORBIT_GUIDE_SETTINGS;
-    // 保存に欠けた項目を既定値で埋めてから丸める。
-    const stored = parsed as Partial<OrbitGuideSettings>;
-    return normalizeOrbitGuideSettings({
-      ...DEFAULT_ORBIT_GUIDE_SETTINGS,
-      ...stored,
-      systems: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.systems, ...stored.systems },
-      kinds: { ...stored.kinds },
-      combinedKinds: { ...stored.combinedKinds },
-      lissajous: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.lissajous, ...stored.lissajous },
-      sunSync: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.sunSync, ...stored.sunSync },
-      dawnDusk: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.dawnDusk, ...stored.dawnDusk },
-      molniya: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.molniya, ...stored.molniya },
-      tundra: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.tundra, ...stored.tundra },
-      zeroVelocity: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.zeroVelocity, ...stored.zeroVelocity },
-    });
-  } catch {
-    return DEFAULT_ORBIT_GUIDE_SETTINGS;
-  }
-}
-
-// 設定を保存へ載せる文字列にする。
-export function formatOrbitGuideSettings(settings: OrbitGuideSettings): string {
-  return JSON.stringify(settings);
+// セーブに残っていた設定を読み直す。無ければ既定値で、セーブに欠けた入れ子の項目は既定値で埋めてから丸める。
+export function savedOrbitGuideSettings(saved: Partial<OrbitGuideSettings> | undefined): OrbitGuideSettings {
+  if (saved === undefined) return DEFAULT_ORBIT_GUIDE_SETTINGS;
+  // 浅く重ねるだけでは入れ子の欠けが埋まらないので、入れ子ごとに既定値へ重ねる。
+  return normalizeOrbitGuideSettings({
+    ...DEFAULT_ORBIT_GUIDE_SETTINGS,
+    ...saved,
+    systems: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.systems, ...saved.systems },
+    kinds: { ...saved.kinds },
+    combinedKinds: { ...saved.combinedKinds },
+    lissajous: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.lissajous, ...saved.lissajous },
+    sunSync: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.sunSync, ...saved.sunSync },
+    dawnDusk: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.dawnDusk, ...saved.dawnDusk },
+    molniya: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.molniya, ...saved.molniya },
+    tundra: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.tundra, ...saved.tundra },
+    zeroVelocity: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.zeroVelocity, ...saved.zeroVelocity },
+  });
 }
