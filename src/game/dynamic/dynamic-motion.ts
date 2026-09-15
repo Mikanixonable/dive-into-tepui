@@ -12,7 +12,7 @@ import { environmentSampleAt, type DynamicsEnvironmentSample } from '../../physi
 import { isStar } from '../../physics/celestial-body-def';
 import {
   aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,
-  stepThermalDeviation,
+  stepThermalDeviation, sunlightIrradiance,
 } from '../../physics/thermal';
 import { orbitalElementsOf } from '../../physics/elements';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
@@ -74,7 +74,7 @@ export interface DynamicMotionBehavior {
   onBurnUp?(self: DynamicMotion, services: DynamicReactionServices): void;
   stepEnvironment?(
     self: DynamicMotion, dt: number, atmosphereBody: CelestialBody | null,
-    atmospherePivot: number, sunlit: number, sunDir: Vec3,
+    atmospherePivot: number, sunlight: number, sunDir: Vec3,
   ): void;
   radiatingAreaPerMass?(self: DynamicMotion): number;
   solarAbsorbAreaPerMass?(self: DynamicMotion, sunDir: Vec3): number;
@@ -111,19 +111,20 @@ export interface DynamicMotionProperties {
 
 const PASSIVE_BEHAVIOR: DynamicMotionBehavior = Object.freeze({ contactKind: 'generic' });
 
-// 1歩ぶんの環境標本を平均した日照率と太陽方向(単位ベクトル)。
-function weightedEnvironment(samples: readonly DynamicsEnvironmentSample[]): {
-  readonly sunlit: number;
+// 1歩ぶんの環境標本を平均した、日照率込みの太陽光の放射照度 [W/m²] と太陽方向(単位ベクトル)。
+// radiantIntensity は光源の放射強度 [W/sr]。
+function weightedEnvironment(samples: readonly DynamicsEnvironmentSample[], radiantIntensity: number): {
+  readonly sunlight: number;
   readonly sunDir: Vec3;
 } {
   let weightTotal = 0;
-  let sunlit = 0;
+  let sunlight = 0;
   let x = 0, y = 0, z = 0;
   for (let i = 0; i < samples.length; i++) {
     const weight = samples.length === 4 ? RK4_WEIGHTS[i]! : 1;
     const sample = samples[i]!;
     weightTotal += weight;
-    sunlit += weight * sample.sunlit;
+    sunlight += weight * sunlightIrradiance(radiantIntensity, sample.sunDist, sample.sunlit);
     x += weight * sample.sunDir.x;
     y += weight * sample.sunDir.y;
     z += weight * sample.sunDir.z;
@@ -131,7 +132,7 @@ function weightedEnvironment(samples: readonly DynamicsEnvironmentSample[]): {
   // 太陽方向は重み付きの和を正規化して平均とする。
   const directionLength = Math.hypot(x, y, z);
   return {
-    sunlit: weightTotal > 0 ? sunlit / weightTotal : 0,
+    sunlight: weightTotal > 0 ? sunlight / weightTotal : 0,
     sunDir: directionLength > 0 ? v3(x / directionLength, y / directionLength, z / directionLength) : v3(),
   };
 }
@@ -308,9 +309,11 @@ export class DynamicMotion {
     if (this.hasAttitude) this.att = stepAttitude(this.att, this.torque, dt);
 
     // 歩のあいだの環境の平均で、種別ごとの環境反応と熱を進める。
-    const environment = weightedEnvironment(environmentSamples);
-    this.behavior.stepEnvironment?.(this, dt, atmosphereBody, this.state.t, environment.sunlit, environment.sunDir);
-    this.stepThermal(dt, environmentSamples, star, services);
+    const radiantIntensity = star !== null && isStar(star) ? star.def.radiantIntensity : 0;
+    const environment = weightedEnvironment(environmentSamples, radiantIntensity);
+    this.behavior.stepEnvironment?.(
+      this, dt, atmosphereBody, this.state.t, environment.sunlight, environment.sunDir);
+    this.stepThermal(dt, environmentSamples, radiantIntensity, services);
     return integrated;
   }
 
@@ -425,23 +428,21 @@ export class DynamicMotion {
       ?? (this.emissivity * this.bcInv) / DRAG_COEFFICIENT;
   }
 
-  // 温度を dt 進め、上限を超えたら燃え尽きさせる。比熱 0 の個体は熱を持たない。star は日射の光源。
+  // 温度を dt 進め、上限を超えたら燃え尽きさせる。比熱 0 の個体は熱を持たない。radiantIntensity は
+  // 日射の光源の放射強度 [W/sr]。
   private stepThermal(
-    dt: number, samples: readonly DynamicsEnvironmentSample[], star: CelestialBody | null,
+    dt: number, samples: readonly DynamicsEnvironmentSample[], radiantIntensity: number,
     services: DynamicReactionServices,
   ): void {
     if (this.specificHeat <= 0) return;
-    const radiantIntensity = star !== null && isStar(star) ? star.def.radiantIntensity : null;
     // 標本ごとの日射と空力加熱を重み付きで平均する。
     let heating = 0;
     let weightTotal = 0;
     for (let i = 0; i < samples.length; i++) {
       const weight = samples.length === 4 ? RK4_WEIGHTS[i]! : 1;
       const sample = samples[i]!;
-      if (radiantIntensity !== null) {
-        heating += weight * solarHeating(
-          radiantIntensity, sample.sunDist, sample.sunlit, this.solarAbsorbAreaPerMass(sample.sunDir));
-      }
+      heating += weight * solarHeating(
+        radiantIntensity, sample.sunDist, sample.sunlit, this.solarAbsorbAreaPerMass(sample.sunDir));
       if (sample.atmosphere !== null && sample.atmosphereState !== null && this.bcInv > 0) {
         const { density, speed } = airflow(
           sub(sample.r, sample.atmosphereState.r), sub(sample.v, sample.atmosphereState.v), sample.atmosphere);
