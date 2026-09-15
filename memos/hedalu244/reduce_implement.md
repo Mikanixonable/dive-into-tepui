@@ -345,17 +345,6 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   (依存は中程度に悪化)。置き場の判断が先。/ 確度: 低 / 確認: 報告のみ
 - **判断(2026-09-15): 保留。** ユーザー所見「依存方向をどう整理するか決めかねる。要設計判断」。この回では調査していない。
 
-### R72. 渡された状態から組む自機の姿勢と、中心天体の状態の手足しが、ECI 原点を天体中心とみなす
-- 症状: 自機は渡された状態から機首プログレードの姿勢を組むが、`progradeAttitude` は絶対 ECI の r/v を使う。
-  原点天体以外を回る位置(月まわりなど)に置いた艦は、機首と上方向が原点天体を基準にずれる。(R57 で `Stage` へ移した
-  既定の円軌道は原点天体まわりに組むので、原点天体の ECI 位置が厳密に 0 であることから、この経路ではずれない。)
-  配置の側にも、中心天体の状態を手で足して ECI を組む箇所が残っている。
-- 場所: `src/game/player/player.ts` の `progradeAttitude`、`src/game/creative/object-placement.ts`(中心天体の状態の手足し)、
-  `src/game/stages/stage-debug-alt-system.ts`(同)
-- 疑う理由: R57 と同じ形。CODING-RULE 1.8「天体の位置を自分で引き算して座標系を作らない」。R57 で直した配置ユーティリティは
-  `frameOfCelestialBody` と `addPrimaryRelative` を通す形になっている。
-- 減るもの: 原点天体以外のまわりに置いた艦の姿勢のずれと、手足しの座標変換。/ 確度: 中 / 確認: R57 の実施中に見つけた。報告のみ
-
 ## 単独では挙げないもの(軽微、または理由が書かれているもの)
 
 - `src/render/cloud/field-projection.ts:110` `cosRadiusValue`(= `Math.cos(aimedRadius)`)、
