@@ -356,14 +356,6 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
   `frameOfCelestialBody` と `addPrimaryRelative` を通す形になっている。
 - 減るもの: 原点天体以外のまわりに置いた艦の姿勢のずれと、手足しの座標変換。/ 確度: 中 / 確認: R57 の実施中に見つけた。報告のみ
 
-### R73. 太陽電池の発電が、恒星の明るさにも距離にも依らない
-- 症状: 発電は `SOLAR_CONSTANT` を固定で掛けており、恒星までの距離でも恒星の放射強度でも変わらない。R58 で輻射圧と
-  日射加熱は恒星の `StarDef.radiantIntensity` と距離の逆二乗から求める形になったが、発電だけが 1 天文単位の太陽の値のまま残った。
-- 場所: `src/game/player/power.ts`(`SOLAR_CONSTANT * SOLAR_PANEL_EFFICIENCY * SOLAR_PANEL_AREA`)
-- 疑う理由: CELESTIAL.md「太陽輻射圧・太陽光による加熱・放熱板の受熱・太陽電池の発電は、いずれもこの日照率を共有する」は、
-  4つを同じ光源の受け方として並べている。ただし距離による減衰までは明記されていないので、仕様の読み方の判断が要る。
-- 減るもの: 恒星の明るさの読み口が1つにそろう。/ 確度: 中 / 確認: R58 の実施中に見つけた。報告のみ
-
 ## 単独では挙げないもの(軽微、または理由が書かれているもの)
 
 - `src/render/cloud/field-projection.ts:110` `cosRadiusValue`(= `Math.cos(aimedRadius)`)、

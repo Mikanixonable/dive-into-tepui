@@ -43,6 +43,13 @@ export function aeroHeating(
   return Math.min(flux * absorbAreaPerMass, dissipation);
 }
 
+// 太陽光が正対する面へ当たる放射照度 [W/m²]。radiantIntensity は恒星の放射強度 [W/sr]、sunDist は
+// 恒星までの距離 [m]、sunlit は日照率 0..1。
+export function sunlightIrradiance(radiantIntensity: number, sunDist: number, sunlit: number): number {
+  if (!(sunDist > 0) || sunlit <= 0) return 0;
+  return (radiantIntensity / (sunDist * sunDist)) * sunlit;
+}
+
 // 太陽光が物体へ入れる比パワー [W/kg]。radiantIntensity は恒星の放射強度 [W/sr]、sunDist は恒星
 // までの距離 [m]、sunlit は日照率 0..1、absorbAreaPerMass はそれを受ける面積の比 [m²/kg](吸収率を
 // 織り込んだ実効値)。
@@ -52,8 +59,7 @@ export function aeroHeating(
 export function solarHeating(
   radiantIntensity: number, sunDist: number, sunlit: number, absorbAreaPerMass: number,
 ): number {
-  if (!(sunDist > 0) || sunlit <= 0) return 0;
-  return (radiantIntensity / (sunDist * sunDist)) * sunlit * absorbAreaPerMass;
+  return sunlightIrradiance(radiantIntensity, sunDist, sunlit) * absorbAreaPerMass;
 }
 
 // 放射で捨てる比パワー [W/kg]。温度が環境温度 envTemp より高ければ正、低ければ負(暖まる)。
