@@ -143,7 +143,7 @@ export class CreativeStage extends Stage {
       return;
     }
     this._dynamicSystem.add(placed.entity);
-    this._hud.hint(`${placed.name} を配置`);
+    this._hud.hint(`${placed.entity.name} を配置`);
   }
 
   // ステージ操作パネルは、表示中のビューの右ドックへ追従させる。
