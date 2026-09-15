@@ -3,7 +3,6 @@
 import { catalogFamilyIndex } from '../../celestial/orbit-guide/orbit-guide-catalog';
 import { normalizeOrbitGuideSettings } from '../../celestial/orbit-guide/orbit-guide-settings';
 import { applyMapDisplayMode } from '../../map/display-toggles';
-import { applyGridToggle } from '../../../render/celestial-grid';
 import { ViewOptionsPanel } from './view-options-panel';
 import type { OrbitGuideSettings } from '../../celestial/orbit-guide/orbit-guide-settings';
 import type { OrbitGuideGroupTab, ViewOptionsTab } from '../hud-selection';
@@ -42,9 +41,9 @@ export class ViewOptionsControl {
     };
     this.panel.setBodyClassToggles(settings.mapDisplay.current);
 
-    // 天球グリッド。親子のトグルの整合を取ってから書き戻す。
+    // 天球グリッド。行見出しと面・極・網は、互いに独立したトグルとして書き戻す。
     this.panel.onGridToggle = (key, on) => {
-      const next = applyGridToggle(settings.grid.current, key, on);
+      const next = { ...settings.grid.current, [key]: on };
       settings.onGridChange(next);
       this.panel.setGridVisibility(next);
     };
