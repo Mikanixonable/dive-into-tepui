@@ -145,7 +145,6 @@ export class Hud implements HudLayers, Notifier {
     if (this.chromeView === view) return;
     this.chromeView = view;
     const map = view === 'map';
-    this.helpPanel.setView(view);
     const orbit = this.root.querySelector<HTMLElement>('#hud-orbit');
     const burnManagement = this.root.querySelector<HTMLElement>('#burn-management-panel');
     const leftRail = (map ? this.mapRoot : this.combatRoot)
