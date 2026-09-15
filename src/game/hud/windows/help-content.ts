@@ -160,7 +160,7 @@ export function helpEntries(): readonly HelpEntry[] {
     {
       id: 'auto-warp', category: 'time', label: 'ノードまで自動ワープ',
       description: '直近のマニューバノードまで時間を自動加速し、実行点の直前で解除する。',
-      keys: [K.autoWarpToNode], inputs: ['keyboard'], scope: 'both', behavior: 'toggle',
+      keys: [K.autoWarpToNode], inputs: ['keyboard'], scope: 'map', behavior: 'toggle',
     },
     {
       id: 'toggle-map', category: 'map', label: '軌道計画モード',
@@ -175,8 +175,8 @@ export function helpEntries(): readonly HelpEntry[] {
     },
     {
       id: 'delete-node', category: 'map', label: 'ノードを削除',
-      description: 'マップモードでは選択中のノードを削除する。戦闘ビューでは計画全体を破棄する。',
-      keys: [K.deleteNode], inputs: ['keyboard'], scope: 'both', behavior: 'press',
+      description: '選択中のノードを削除する。ノードを選択していなければ計画全体を破棄する。',
+      keys: [K.deleteNode], inputs: ['keyboard'], scope: 'map', behavior: 'press',
     },
     {
       id: 'node-place', category: 'map', label: 'ノードを配置',

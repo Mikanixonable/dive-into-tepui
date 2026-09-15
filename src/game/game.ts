@@ -315,8 +315,7 @@ export class Game {
     const combatView = new CombatView(
       this.input, this.cameraSystem, this.targeter, this.objectWindows, this.dynamicSystem,
       this.celestialMarkers, this.touchControls,
-      this.controlSelection, this.planDisplay.path,
-      this.simSpeedManager, this._hud, this.planGuide,
+      this.controlSelection, this.planDisplay.path, this.planGuide,
     );
     const mapView = new MapView(
       this.input, this.cameraSystem, this.objectWindows,
@@ -504,7 +503,7 @@ export class Game {
     if (this._hud.overlayManager.isInputGated()) return;
     this.simSpeedManager.handleInput(this.input);
     this.viewManager.handleInput(this.input);
-    // ビュー固有のキー(戦闘=計画破棄/自動ワープ、マップ=Δv 編集)は現在のビューが持つ。
+    // ビュー固有のキー(マップ=計画の編集)は現在のビューが持つ。
     this.viewManager.activeView.handleInput(this.input, dt, this.dynamicSystem.simTime);
   }
 
