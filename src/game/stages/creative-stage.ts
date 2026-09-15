@@ -138,7 +138,7 @@ export class CreativeStage extends Stage {
   // 置くと決まった物体を顔ぶれへ入れ、配置したことをトーストで知らせる。
   private addPlacedObject(placed: PlacedObject): void {
     if (placed.kind === 'player') {
-      const ship = this.addPlayer(placed.init);
+      const ship = this.addPlayer(placed.placement);
       this._hud.hint(`${ship.name} を配置`);
       return;
     }
