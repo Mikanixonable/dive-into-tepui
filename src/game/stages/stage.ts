@@ -2,7 +2,8 @@
 // 必要なステージだけ override する。
 import * as THREE from 'three/webgpu';
 import { Enemy } from '../dynamic/dynamic-entity/enemy';
-import { isPlayer, Player, type PlayerInit, type PlayerPlacement } from '../player/player';
+import { isPlayer, Player, type PlayerPlacement } from '../player/player';
+import { strongestAttractor } from '../../physics/attractor';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
@@ -229,12 +230,14 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   }
 
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。state を省いた新規配置は
-  // 既定の円軌道(defaultPlayerState)に置く。艦の隻数は0..n隻が一般形で、何隻をどこへ置くかは
-  // ステージ自身の宣言。
-  protected addPlayer(init: PlayerInit | Partial<PlayerPlacement> = {}): Player {
+  // 既定の円軌道(defaultPlayerState)に置き、機首と上面はその位置で最も強く引く天体を基準に向ける。
+  // 艦の隻数は0..n隻が一般形で、何隻をどこへ置くかはステージ自身の宣言。
+  protected addPlayer(placement: Partial<PlayerPlacement> = {}): Player {
+    const state = placement.state ?? this.defaultPlayerState();
+    const center = strongestAttractor(state.r, this._celestialSystem.celestialMotions, state.t);
     const ship = new Player(
       this._hud, this._worldSfx, this._scene, this._fx, this._dynamicSystem.idAllocators,
-      'saved' in init ? init : { ...init, state: init.state ?? this.defaultPlayerState() },
+      { ...placement, state, center },
     );
     this._dynamicSystem.add(ship);
     this._controlSelection.claimIfNone(ship);
