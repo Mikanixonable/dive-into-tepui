@@ -11,8 +11,7 @@ import { planetOrbit, JULIAN_CENTURY } from '../../physics/kepler-orbit';
 import { AU, SOLAR_CONSTANT } from '../../physics/astronomical-unit';
 import { satelliteOrbit } from '../../physics/satellite-orbit';
 import { keplerPeriod, stateFromOrbitalElements } from '../../physics/elements';
-import { kinematicState } from '../../physics/kinematic-state';
-import { add } from '../../math/vec3';
+import { addPrimaryRelative, kinematicState } from '../../physics/kinematic-state';
 import type { StageSaveData } from '../save/save-data';
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { CelestialSurface } from '../../render/celestial/celestial-surface';
@@ -121,7 +120,7 @@ export class StageDebugAltSystem extends Stage {
     const primaryState = primary.stateAt(t);
     const rel = stateFromOrbitalElements(t, PRIMARY_RADIUS + 5e5, 0, 0, 0, 0, 0, primary.def.mu);
     this.addPlayer({
-      state: kinematicState<'eci'>(t, add(primaryState.r, rel.r), add(primaryState.v, rel.v)),
+      state: addPrimaryRelative(primaryState, kinematicState<'primaryRel'>(t, rel.r, rel.v)),
       ammo: { mags: 20, rounds: MAG_ROUNDS },
     });
   }
