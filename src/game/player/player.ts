@@ -51,6 +51,8 @@ import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { AttachedBoosters } from './attached-boosters';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { strongestAttractor } from '../../physics/attractor';
+import { frameOfCelestialBody, toFrameState } from '../../physics/frame';
+import type { CelestialBody } from '../../physics/celestial-body';
 import { apsisAltitudes } from '../../physics/elements';
 import { fmtAmmoStatus } from '../hud/ammo-status';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
@@ -145,8 +147,11 @@ export type PlayerPlacement = {
   readonly ammo?: AmmoLoad;
 };
 
-// 艦の生成引数。新規配置か、saved を simTime 付きの状態として展開するスナップショットからの再開。
-export type PlayerInit = PlayerPlacement | { readonly saved: PlayerSaveData; readonly simTime: number };
+// 艦の生成引数。新規配置には、機首と上面の向きを測る中心天体 center を添える。saved は simTime 付きの
+// 状態として展開するスナップショットからの再開。
+type PlayerInit =
+  | (PlayerPlacement & { readonly center: CelestialBody })
+  | { readonly saved: PlayerSaveData; readonly simTime: number };
 
 // プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、被弾・接触の帰結、保存、
 // 一覧・メニューでの振る舞いを持つ。
@@ -187,7 +192,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     const id = idAllocators.entity.next('saved' in init ? init.saved.id : (init.id ?? name));
     const att: Attitude = 'saved' in init
       ? savedAttitude(init.saved, Player.INERTIA)
-      : Player.progradeAttitude(state);
+      : Player.progradeAttitude(state, init.center);
 
     const reactions = (owner: Player): PlayerMotionReactions => ({
       roundsInMagazine: () => owner.fire.rounds,
@@ -260,10 +265,11 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   // 起こるようにする。ロール軸(機体前後方向)は細長い形状に見合って最小にする。
   private static readonly INERTIA = v3(PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL);
 
-  // state の速度方向を機首、位置方向を上として姿勢を組む。
-  private static progradeAttitude(state: KinematicState): Attitude {
+  // 機首を center に対する速度の向きへ、上面を center から見た位置の向きへ向けた静止姿勢。
+  private static progradeAttitude(state: KinematicState, center: CelestialBody): Attitude {
+    const rel = toFrameState(frameOfCelestialBody(center, state.t), state);
     return {
-      q: qFromBasis(state.v, state.r),
+      q: qFromBasis(rel.v, rel.r),
       w: v3(),
       inertia: Player.INERTIA,
     };

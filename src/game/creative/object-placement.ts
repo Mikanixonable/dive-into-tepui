@@ -1,10 +1,9 @@
 // クリエイティブモードの物体配置。配置パネルを持ち、フォームの値を検証して初期状態を組み、
 // 置くと決まった物体を onPlace へ渡す。配置プレビューをどの値で出すかもここが決める。
-import { add } from '../../math/vec3';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { orbitalElementsOf, semiMajorFromPeriod, stateFromOrbitalElements, type OrbitalElements } from '../../physics/elements';
 import { haloState, lissajousState } from '../../physics/halo';
-import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
+import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { secondaryFrameOf } from '../../physics/lagrange';
 import { isOccluded } from '../../physics/occlusion';
 import { ObjectPlacementPreviewView } from '../../render/creative/object-placement-preview-view';
@@ -12,7 +11,7 @@ import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import { Base } from '../dynamic/dynamic-entity/base';
 import { EntityIdAllocator, type EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
 import { AmmoPickup, RcsFuelPickup } from '../dynamic/dynamic-entity/pickup';
-import { isPlayer, type PlayerInit } from '../player/player';
+import { isPlayer, type PlayerPlacement } from '../player/player';
 import { generateRandomName } from '../random-name';
 import { generateDriftingEnemy } from '../stages/spawner/enemy-generator';
 import { elementsFormFromState } from './duplicate-form';
@@ -53,9 +52,9 @@ const DEG = Math.PI / 180;
 // 配置プレビューの ▷ マーカーの id。
 const PREVIEW_MARKER_ID = 'creative-preview';
 
-// 置くと決まった物体。自機は実体ではなく生成引数で表す。
+// 置くと決まった物体。自機は実体ではなく配置の指定で表す。
 export type PlacedObject =
-  | { readonly kind: 'player'; readonly init: PlayerInit }
+  | { readonly kind: 'player'; readonly placement: PlayerPlacement }
   | { readonly kind: 'entity'; readonly entity: DynamicEntity };
 
 export class ObjectPlacement {
@@ -183,10 +182,10 @@ export class ObjectPlacement {
   // 空欄の名前を種類ごとの既定名で埋め、種類ごとに実体を作る。
   private createObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): PlacedObject {
     const finalName = name.trim() || generateRandomName(entityKind);
-    // 自機は生成引数、それ以外は実体として返す。
+    // 自機は配置の指定、それ以外は実体として返す。
     switch (entityKind) {
       case 'player':
-        return { kind: 'player', init: { name: finalName, state, id: this.playerIdAllocator.next() } };
+        return { kind: 'player', placement: { name: finalName, state, id: this.playerIdAllocator.next() } };
       case 'enemy':
         return {
           kind: 'entity',
@@ -267,8 +266,7 @@ export class ObjectPlacement {
       this.dynamicSystem.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG,
       form.nuDeg * DEG, center.def.mu,
     );
-    return kinematicState<'eci'>(
-      this.dynamicSystem.simTime, add(centerState.r, rel.r), add(centerState.v, rel.v));
+    return addPrimaryRelative(centerState, kinematicState<'primaryRel'>(rel.t, rel.r, rel.v));
   }
 
   // フォーム値をフィールド単位で検証する。assertValidForm と同じ検証を通し、
