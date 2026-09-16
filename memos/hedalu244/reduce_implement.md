@@ -14,6 +14,9 @@
   **第4群**には「仕様ごと消す/直す」ものを分けた。
 - **計画** — `memos/hedalu244/restructure-architecture.md` が既に手を付ける予定のものは段・手順を添えた。
   重複して着手しないための印で、そこに載っていること自体は「消してよい」の根拠にならない。
+- **範囲** — この文書は**挙動を変える候補だけ**を持つ。洗い出しで出た依存の向きと mutable の置き場の問題
+  (目視できる範囲で挙動が変わらないもの)は、2026-09-16 に `restructure-architecture.md` の **K6** と
+  各手順(2-3・3-1/3-3・4-3・5-4・7-6)へ移した。ここには残さない。
 
 ## 検出の方法と、例の再現
 
@@ -155,6 +158,11 @@
   基準面・画角が最長60秒ぶん戻る。INVARIANTS §6「ページを読み込み直しても直前の状態で開く」と SAVE.md の間隔が噛み合って
   いない。**何をスナップショットに入れるか(R23)とは直交する** — R23 で表示をセーブへ移すと戻る対象が増えるだけで、
   問題の形は変わらない。2026-09-16 に R23 から分けた。/ 確度: 中
+- **R74. 撃破された対象の名前が Target 欄に出続ける。** `NavTarget.sync` は対象が生存しなくても `targetId`/`targetName` を
+  消さず、マーカーを退役させるだけ(`src/game/nav-target.ts:161-163`)。`resolveCombatTarget` は null を返すのに、
+  `view-badge.ts:133` は保持中の名前を出す。消える経路は `toggleTarget` と `Controllable` の除去の2つだけ。
+  意図かどうかは未判断。2026-09-16 に R69 から分けた(R69 の「id と表示名を統合しない」という判断そのものは
+  `restructure-architecture.md` の K6 へ移した)。/ 確度: 中
 
 ---
 
@@ -182,155 +190,3 @@ grep -rnoE "^export (async )?(function|class|const|let|interface|type|enum) [A-Z
       [ "$(grep -rlwF "$n" src tests tools --include=*.ts --include=*.tsx | grep -v "^$f$" | wc -l)" -eq 0 ] \
         && echo "$l"; done
 ```
-
----
-
-# 第6群 — 横断検査(R6 / R18 / R39 / R50 の類例)
-
-調査時点: `restructure-architecture` @ `af997ae0`。R6・R18・R39・R50 の4件について、
-**代表例を捕まえられる機械検査**を組んでから全量を絞り、1件ずつ現地で判断した。
-
-## 検査の方法と、代表例の再現
-
-| 類 | 検査 | 代表例が捕まるか | 全量 |
-| --- | --- | --- | --- |
-| R6(ECI 原点を物理の基準に使う) | ゼロベクトルのフォールバック(`?? v3()` / `?? V3_ZERO`)と、`len`/`lenSq`/`norm`/`dot`/`cross` が**絶対 ECI 位置を `sub()` 抜きで**食う行 | R6 = `simulator.ts:110,158`、R22 の旧実装 `dot(pos, sunDir)` の両方が出る | 前者5件・後者14件 |
-| R18(見た目で物理を決める) | 描画層以外からの `.view.` 読み / 表示属性で実体を選ぶ `find`・`filter` / `game`・`physics` から `render/` への import | R18 = `celestial-system.ts:145` が出る | `.view.` 77件、実体選択は R18 の1件のみ |
-| R39(派生値をステートに持つ) | `normalize`/`refresh`/`recompute`/`derive` が保存済みフィールドを他フィールドから上書きする形 + 全ミュータブルフィールドの分野別走査(サブエージェント4体) | R39 = `display-toggles.ts:125` と `celestial-grid.ts:73` が出る | 候補48件 → 下記へ集約 |
-| R50(実時刻タイマー) | `performance.now()` / `Date.now()` / `setTimeout` / `setInterval` の全量を層別に | R50 = `conductor.ts:72,111` が出る | 16ファイル |
-
-**判定の軸**は代表例に合わせず、規約から取った。
-
-- R6 類 = **CODING-RULE 1.8**「天体の位置を自分で引き算して座標系を作らない」。原点を物理の基準に
-  据えている箇所を疑う。ECI 原点はステージが選ぶ天体で、`debug-alt-system` は地球ではない。
-- R18 類 = 同じ問いに正本が2つあるか。**物理量の正本が描画層にあるもの**も含めた(R18 の裏返し)。
-- R39 類 = **CODING-RULE 1.6 / R5**。導出層が持ってよい mutable は5種だけなので、それに当たらない
-  保存を疑う。モデル層は「軽微な計算で求まるものをステートにしない」で見る。
-- R50 類 = **R5**「導出層のアニメーションは dt で積まず、開始時刻とそのフレームの実時刻から計算する。
-  実時刻はフレームの先頭で1度だけ読み、入力として配る」。**時計の取り違え**(音声時刻で測った待ちを
-  実時刻で待つ)と、**自分で時計を読むこと**の2つを見る。
-
-## 検査で潰れたもの(擬陽性と確認した分)
-
-- **実時刻の全16ファイルのうち、時計の取り違えは R50 だけだった。** 入力
-  (`input.ts`)・プロファイル(`frame-sections.ts`)・保存時刻(`save/*`)・読み込みのフレーム譲り
-  (`loading-progress.ts`)・通信タイムアウト(`earth-surface-tile-queue.ts`)・BGM のポンプ
-  (`bgm.ts`。タブを隠すと `AudioContext` ごと suspend されるので先読み 0.6 秒は枯れない)は、
-  どれも実時刻が正しい。連打判定(`throttle.ts`)も同じで、時間加速で連打の判定が速まってはいけない。
-  ただし `throttle.ts` が**自分で** `performance.now()` を
-  読んでいる点だけは R5 に反しており、そこは計画の K2 が扱う。
-- **`arc-celestial-bodies.ts:51` の `len(state.r)` は正しい。** ECI 化で入る原点補正項は天体の
-  原点距離だけで決まるので、原点からの距離を見るのが正。コメントもそう書いてある。
-- **描画層の幾何を物理が読んでいる箇所は無い。** 当たり判定の半径・大気・アルベドはすべて
-  `def`/`motion` 側から引いている。`targeter` の `siteMarkers`、`protein-motion-metrics` の
-  `motionMetrics`、`line-pickables` の `lineSamples` は表示・ピック・性能計測なので対象外。
-- **`camera-system.ts:235` の `focusVelocity ?? v3()` は位置ではなく速度**で、答えられない対象を
-  注視している間の既定として明記されている。R6 と同型ではない。
-- **R65 の `point` と差分ゲートは消せない。** `source === 'lissajous'` では `familyId` が常に `'lissajous'` で、
-  `L1|L2|L3` は設定から線ごとに決まるので `point` は `familyId` から復元できない。`displayedSettings`/
-  `displayedStyle` は導出値ではなくメモ鍵で、外すと `buildDisplays`・`styleFor`・`THREE.Color` の生成と
-  描画側の `retainOnly` が毎フレーム走る。写しだった `count` だけを消した。
-- **R64 の `frameScratch` は消せない。** `opacity` は全天体との遮蔽レイ判定の結果で再計算が安くなく、
-  `labelStateOf(id)` が後から任意の id を引くので、正当なフレームキャッシュ(R5-1)。`showIcon`/`showLabel` は
-  表示ポリシーの答えの写しだが、`syncSubLabels` が policy を引数に取らないので残した。同じ値を二重に
-  持っていた `occluded` と `distScratch` だけを消した。
-
----
-
-### R66. HUD パネルが、設定の現在値を鏡映しで持っている
-- 症状: 表示オプションのクラス別モード・天球グリッド・軌道ガイド設定を、パネルが Map と
-  フィールドで持ち直している。同じ値が設定の正本・パネルの写し・ボタンの点灯/`dataset` と
-  三重に並ぶ。コメント自身が「軌道ガイド設定の鏡映し」と書いている箇所がある。
-- 場所: `src/game/hud/panels/view-options-panel.ts:163,169,174,389,434-451`、
-  `src/game/hud/panels/orbit-guide-tab.ts:94`
-- 疑う理由: 写しが要るのは「トグルの次の値を決めるのに現在値が要る」からで、押し込み一方向の
-  配線がそれを許していないだけ。R5 のどの種類にも当たらない。
-- 減るもの: Map 2本とフィールド2本。ただしパネルへ設定の読み口を渡す配線が要る(**依存は悪化する**)
-  ので、置き場の判断が先。/ 確度: 中 / 確認: 報告のみ
-- **判断(2026-09-15): 保留。** ユーザー所見「依存の悪化は避けたい。要設計判断」。調査で分かったこと:
-  - 上の「依存は悪化する」は当たらない。パネルへ設定の読み口を渡しても、同じディレクトリの
-    `view-options-control.ts:13` が既に `settings/setting-value` を型 import しているので、新しい向きの辺は生まれない。
-  - ただし単純な削除にはならない。写しは次の値を決める(`view-options-panel.ts:253-257`)だけでなく、patch を
-    重ねる土台(`orbit-guide-tab.ts:327-329,404-414,463-485`)、兄弟値の参照(族範囲の下限・上限のクランプ `:233-241`)、
-    未設定 id の既定生成(`:315-324,386-391`)にも使われている。
-  - `restructure-architecture.md` の手順 2-3 の変更表はこの鏡映しをやめると書いているが、現在も残っている。
-  - R67 と表裏。`Button` は `setOn` で DOM に書くだけで現在値を持たないので、点灯トグルの現在値を呼び出し側が持たされている。
-
-### R67. DOM の状態と JS の boolean を二重に持っている
-- 症状: ウィジェットの `on` / `enabled` / `minimized` / 一覧の `expanded` が、それぞれ
-  `aria-checked` / `aria-disabled` / `.hidden` / `.collapsed` と同じ事実を二重に持つ。書き手は
-  必ず両方を同時に書いており、読み手は同じクラスの中に居る。
-- 場所: `src/hud/widgets/toggle-switch.ts:7,37-41`、`src/hud/widgets/button.ts:11,42,48,64-68`、
-  `src/hud/windows/pause-menu.ts:34,224-229,252-256`、`src/hud/windows/draggable-window.ts:91`、
-  `src/game/hud/panels/physical-object-list-panel.ts:39,420-423`、
-  `src/game/hud/panels/physical-object-list-row-tree.ts:31,137-143,224-231`
-- 疑う理由: R5-2 が許すのは DOM 資源そのもので、その状態の写しではない。`restoreSavedExpanded` は
-  boolean だけ書き換えて DOM を後続の同期に任せるので、その間だけ両者がずれる。
-- 減るもの: フィールド6本。/ 確度: 中(`toggle-switch`・`button` は高) / 確認: 前2件は自分で確認、
-  他は報告のみ
-- **判断(2026-09-15): 保留。** ユーザー所見「JS から DOM への表示を極力一方向の流れにしたい(React 的発想)が、
-  要設計判断」。調査で分かったこと:
-  - `toggle-switch.ts` の `on` と `button.ts` の `enabled` は、読み手がクラスの中だけ(反転と、押下・クリックを
-    通すかの判定)で、外から読む getter は無い。
-  - `Button` は逆に `on` を持たず、点灯の現在値を呼び出し側に持たせている(R66 の直接の原因)。状態 → DOM の
-    一方向へ寄せるなら、R66 と一緒に「現在値の正本をどこに置き、ウィジェットはそれを描くだけにするか」を決めることになる。
-  - 一覧の行は `savedExpanded` を正本と明記し、`restoreSavedExpanded` は boolean だけ書いて DOM を後続の同期に
-    任せる(一方向の形)。同じクラスの `setAllRowsExpanded`(`physical-object-list-row-tree.ts:147-152`)は自分で
-    `applyRowExpanded` を呼んでおり、2つの流儀が併存している。
-  - CODING-RULE 1.13 は CSS の規則だけで、DOM と JS の状態の二重持ちについては定めていない。
-
-### R69. id と表示名を両方持っている
-- 症状: 対象の id を持ちながら表示名も保存している。名前は id から引ける(`nameOf` / roster)。
-- 場所: `src/game/nav-target.ts:69`、`src/game/marker/equator-node-marker.ts:25`、
-  `src/game/marker/orbit-point-marker.ts:51`
-- 疑う理由: 非正規化。`ApsisMarker` は既に `centerId` だけを持つ形になっていて、同じ族の中で
-  持ち方が割れている。
-- 減るもの: フィールド3本。ただし `nav-target` は「撃破された対象の名前」だけ導出元が消えるので、
-  そこは挙動が変わる。/ 確度: 中 / 確認: 報告のみ
-- **判断(2026-09-15): 統合しない。** ユーザー所見「表示名は衝突を許し、id は衝突できない。表示は名前、検索は id と
-  使い分けを徹底し、混同しているところがあれば直す」。横断検査の結果:
-  - **表示名で同一性を判定している箇所は `src/` に無く、直すものは無かった。** 名前での比較は3箇所だけで、どれも
-    同一性の判定ではない — `pickup.ts:262`(既定名と一致するかでセーブに書くかを決める)、
-    `physical-object-list-order.ts:117`(並び替えの差分検出)、`:239-240`(利用者向けの検索文字列)。
-  - 上の3箇所はどれも名前を表示にだけ使っている。`nav-target.ts` の解決は常に id。`equator-node-marker.ts` と
-    `orbit-point-marker.ts` は中心の名前文字列だけを持つが、表示専用。
-  - 使い分けとは別の問いが1つ残る: `nav-target.ts` は撃破された対象の名前を持ち続け、`view-badge.ts:133` の
-    Target 欄に消えた敵の名前が出続ける(`resolveCombatTarget` は null を返す)。意図かどうかは未判断。
-
-### R70. 導出層が、同じフレームに引数で来る値を写して持っている(一部を直し、残りは保留)
-- 直したもの: `object-pickables` の `_lastSimTime`/`_lastDisplayTime` と `object-windows` の `simTime`。
-  フレーム外のハンドラが読んでいたので、表示時刻の所有者 `DisplayWindowManager` を構築時に読み取り専用の面
-  (`Pick<DisplayWindowManager, 'current'>`)で渡し、そこから読む。
-- **判断(2026-09-15): 残りは直さない。**
-  - `hud.ts` の `chromeView` は写しではない。`applyView` はクラスの付け替えだけでなく、パネルを左レールへ
-    `insertBefore`/`appendChild` で移すので、毎フレーム行うとボタンのフォーカスやホバーが失われる。R5-5 の
-    「表示を安定させるための前フレームの記憶」に当たる。`mapRoot.classList.contains('active')` の読み手も無く、二重でもない。
-  - `panel-shell.ts` の `view` は、消すと main → Hud → PanelCollapse の3階層と後付けの遅延バインドが要る(依存が悪化する)。
-    段 2 の手順 2-3 は実施済みで、予定済みの作業ではなく残ったもの。
-  - `object-windows.ts` の `lastFocusId` は「マップを離れている間は最後のマップ注視を据え置く」が観測できる挙動で、
-    戦闘中に開いたウィンドウのバッジに出る。消すならその挙動を決めるのが先。
-- 類例(未着手): `frame-controls.ts:22` の `lastTime`、`plan-editor.ts:78` の `simTime`。また `ObjectWindows.sync` と
-  `MapPicking.handleRightClick`/`handleEmptySpaceRightClick` の `simTime` 引数は、上の修正で `current.simTime` と同じ値を
-  運ぶ2本目の経路になった(消すには `game.ts:487,597` と `view-frame.ts` に及ぶ)。
-
-### R71. 段の質量・慣性と放熱板の摩耗が、正本からの毎フレームの写し
-- 症状: `mass`/`att.inertia` は段スタックの合計から、`RadiatorSystem.wear` は放熱板パーツの
-  `1 - hp/maxHp` から、毎フレーム上書きされている。
-- 場所: `src/game/player/attached-booster-motion.ts:88`、
-  `src/game/dynamic/dynamic-entity/detached-booster-motion.ts:36`、`src/game/player/radiator.ts:88,122`
-- 疑う理由: 計算自体は軽微(段は最大4本、放熱板は2枚)で、導出元は生きている。
-- 減るもの: 書き戻し2系統。ただし読み手が広く(`throttle` / `contactMass` / `base-motion` / 描画)、
-  `DynamicMotion` も `RadiatorSystem` もパーツを知らないので、**供給フックを1本足す形になる**
-  (依存は中程度に悪化)。置き場の判断が先。/ 確度: 低 / 確認: 報告のみ
-- **判断(2026-09-15): 保留。** ユーザー所見「依存方向をどう整理するか決めかねる。要設計判断」。この回では調査していない。
-
-## 単独では挙げないもの(軽微、または理由が書かれているもの)
-
-- `src/render/cloud/field-projection.ts:110` `cosRadiusValue`(= `Math.cos(aimedRadius)`)、
-  `src/render/curve.ts:90` `appliedStyle`、`src/game/celestial/orbit-guide/orbit-guide-catalog.ts:74` の
-  `'loaded'`(= `systems[id] !== undefined`)、`src/launcher/save/slot-data.ts:36` の
-  `lastPlayedAtReal`(= `snapshots[0].createdAtReal`)。どれも1フィールド。
-- `src/physics/planet-system.ts:53` `offsetting` — 衛星と μ から組み直せるが、時刻キャッシュのミス
-  ごとに読まれる。**性能上の理由がコメントに書かれていない**ので、書くか eager にするかの判断だけ要る。
-- `src/game/dynamic/next-event-time.ts:8`、`src/physics/dynamic-trajectory.ts:25`、
-  `src/launcher/save/slot-data.ts:13-30`(セーブ索引)は、いずれも理由が明記された意図的な保持。
