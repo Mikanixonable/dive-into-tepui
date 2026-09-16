@@ -30,13 +30,6 @@ function deploymentItems(part: Part): PropertyWindowItem<MenuAction>[] {
 }
 
 // 同じ種別の中で何番目かで、上下どちらの側を動かすかが決まる。
-function setDeployment(ship: Player, part: Part, deployed: boolean): void {
-  const sameType = ship.parts.filter((candidate) => candidate.type === part.type);
-  const side = sameType.indexOf(part) === 0 ? 'up' : 'down';
-  if (part.type === 'radiator') ship.motion.radiator.setDeployed(side, deployed);
-  if (part.type === 'solar_panel') ship.motion.power.setDeployed(side, deployed);
-}
-
 export class PartWindows {
   private readonly windows = new Map<string, PartWindowEntry>();
 
@@ -59,7 +52,7 @@ export class PartWindows {
     );
     this.windows.set(key, { win, ship, part });
     win.onSelect = (act) => {
-      if (ship.parts.includes(part)) setDeployment(ship, part, act === 'deployPart');
+      if (ship.inspection.hasPart(part)) ship.inspection.setPartDeployment(part, act === 'deployPart');
     };
     win.onClose = () => { this.windows.delete(key); };
   }
@@ -77,7 +70,7 @@ export class PartWindows {
       const { ship, part } = entry;
       if (!ship.motion.alive
         || ship !== this.controlSelection.current
-        || !ship.parts.includes(part)) {
+        || !ship.hasPart(part)) {
         entry.win.close();
         continue;
       }

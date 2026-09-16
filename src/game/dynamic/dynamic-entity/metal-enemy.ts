@@ -2,10 +2,11 @@ import type * as THREE from 'three/webgpu';
 import { v3, type Vec3 } from '../../../math/vec3';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../../vfx/flash-effects';
-import { collisionDamageFraction } from './contact-damage';
 import {
-  ENEMY_MODEL_SCALE, Enemy, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore,
+  ENEMY_MAX_HP, ENEMY_MODEL_SCALE, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore,
 } from './enemy';
+import { PartBasedEnemy } from './part-based-enemy';
+import { createShipDefaultParts } from './ship-default-parts';
 import type { EntityIdAllocators } from './entity-id';
 import type { MetalEnemySaveData } from '../../save/save-data';
 import { MetalEnemyView, Stage0MetalEnemyView } from '../../../render/dynamic/dynamic-entity/metal-enemy-view';
@@ -31,14 +32,12 @@ export function metalEnemyCollisionRadius(typeIndex: number | null): number {
 const DRIFTING_INERTIA = v3(1, 1.1, 1.05);
 const TYPED_INERTIA = v3(1, 1, 1);
 
-const METAL_ENEMY_MAX_HP = 6; // 金属機体の総 HP
-
 // 新規配置。typeIndex が null なら型番を持たない漂流機体、数値なら stage00 ウェーブ敵の
 // 機体テンプレート番号。
 type MetalEnemyPlacement = EnemyPlacement & { readonly typeIndex: number | null };
 
-// 金属機体の敵。機体テンプレートが外形と接触半径を決め、被弾は機体全体の装甲値へ入る。
-export class MetalEnemy extends Enemy {
+// 金属機体の敵。機体テンプレートが外形と接触半径を決め、被弾は艦と同じパーツ式の被弾モデルへ入る。
+export class MetalEnemy extends PartBasedEnemy {
   public static readonly kind = 'metal-enemy';
   public static spawnGate(): null { return null; }
 
@@ -60,20 +59,11 @@ export class MetalEnemy extends Enemy {
     super(
       init, metalView, typeIndex === null ? DRIFTING_INERTIA : TYPED_INERTIA,
       metalEnemyCollisionRadius(typeIndex), worldSfx, fx, idAllocators,
+      createShipDefaultParts(ENEMY_MAX_HP),
     );
     this.typeIndex = typeIndex;
-    // 復元のときは、保存した時点まで削れていた装甲値から始める。
-    this.hpValue = 'saved' in init ? init.saved.health : METAL_ENEMY_MAX_HP;
-  }
-
-  // 機体全体の装甲値 [HP]。
-  private hpValue: number;
-  public override readonly maxHp = METAL_ENEMY_MAX_HP;
-  public override get hp(): number { return this.hpValue; }
-
-  // 受けたダメージを装甲値へ当てる。装甲値は 0 で下げ止まる。
-  private applyDamage(amount: number): void {
-    this.hpValue = Math.max(0, this.hpValue - amount);
+    // 部品単位の HP までは保存していないので、既定パーツ構成のまま総 HP を按分して戻す。
+    if ('saved' in init) this.setOverallHp(init.saved.health);
   }
 
   // 金属機体はいつでも撃てる。
@@ -91,17 +81,14 @@ export class MetalEnemy extends Enemy {
     return PLASMA_BULLET_DAMAGE;
   }
 
-  // 被弾位置によらず、武装のダメージ量をそのまま装甲値へ当てる。
+  // 被弾位置によらず、健全な部品へ無作為に割り振る。
   protected override applyBulletDamage(damage: number): void {
-    this.applyDamage(damage);
+    this.applyDamageToParts(damage);
   }
 
-  // 接近速度に応じたダメージを装甲値へ当て、ダメージが出たかを返す。
+  // 接近速度に応じたダメージを、健全な部品へ無作為に割り振る。
   protected override applyImpactDamage(damageSpeed: number): boolean {
-    const damageFraction = collisionDamageFraction(damageSpeed);
-    if (damageFraction <= 0) return false;
-    this.applyDamage(this.maxHp * damageFraction);
-    return true;
+    return this.applyCollisionDamage(damageSpeed);
   }
 
   // 敵に共通する保存項目へ型番を足す。

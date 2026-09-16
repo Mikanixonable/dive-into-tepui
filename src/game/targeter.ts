@@ -9,7 +9,6 @@ import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
 import type { EntityRoster } from './dynamic/entity-roster';
 import { Player } from './player/player';
 import { isCombatTarget, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
-import { Input } from '../input/input';
 import type { CameraFrame } from '../render/camera/camera-frame';
 import type { Viewport } from '../render/viewport';
 import { GroupedMarkers, withTargetRole, type GroupedMarkerItem } from './marker/grouped-markers';
@@ -24,7 +23,6 @@ import type { MarkerSink } from '../marker/marker-sink';
 import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
 import { pickNearest } from './pickable/object-pickable';
 import { fmtMarkerDist } from '../hud/utils';
-import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
 import { isOccluded } from '../physics/occlusion';
@@ -88,13 +86,21 @@ export class Targeter {
 
   // 航法ターゲットを生存中の敵・自艦・基地として解決したもの。戦闘対象になれない対象
   // (天体・ラグランジュ点)や撃破済みなら null。
+  private targetSelectRequested = false;
+
   public get aliveTarget(): CombatTarget | null {
     return this.navTarget.resolveCombatTarget(this.roster);
   }
 
-  // Tキーで、照準中心にもっとも近い対象をターゲットにする。操作中の艦自身は候補から外す。
-  public handleTargetSelectKey(input: Input, viewer: OrbitingObject, project: ProjectFn, viewport: Viewport): void {
-    if (!input.takeKey(K.targetSelect)) return;
+  // router から [T] の要求を受け取る。実際の選定はカメラ更新後に行う。
+  public requestTargetSelect(): void {
+    this.targetSelectRequested = true;
+  }
+
+  // 照準中心にもっとも近い対象をターゲットにする。操作中の艦自身は候補から外す。
+  public handleTargetSelect(viewer: OrbitingObject, project: ProjectFn, viewport: Viewport): void {
+    if (!this.targetSelectRequested) return;
+    this.targetSelectRequested = false;
     const targets = this.roster.all()
       .filter(isCombatTarget).filter((e) => e.motion.alive && e !== viewer);
     this.navTarget.setCombatTarget(pickNearest(

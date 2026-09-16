@@ -1,6 +1,7 @@
 import { Q_IDENTITY } from '../../math/quat';
 import { hitsSphere, type Ray } from '../../math/ray';
 import type { SphereHit } from '../../math/triangle-mesh';
+import type { ContactGeometry } from '../../physics/collision-response';
 import { sub, type Vec3, v3 } from '../../math/vec3';
 import { type Attitude, stepAttitude } from '../../physics/attitude';
 import { airflow } from '../../physics/atmosphere';
@@ -46,7 +47,7 @@ export const SMALL_DEBRIS_MAX_TEMP = 933; // [K]
 
 // 接触した相手を見分ける種別。
 export type ContactKind =
-  | 'generic' | 'player' | 'radiator-fold' | 'belt-section' | 'bullet' | 'base' | 'debris'
+  | 'generic' | 'player' | 'radiator-fold' | 'belt-section' | 'bullet' | 'base' | 'debris' | 'casing'
   | 'booster' | 'enemy' | 'ammo' | 'rcs-fuel';
 
 // 種別ごとに差し込む反応。省いたメソッドは DynamicMotion の既定の振る舞いになる。
@@ -56,12 +57,23 @@ export interface DynamicMotionBehavior {
   updateCommands?(self: DynamicMotion, simDt: number): void;
   contactsWith?(self: DynamicMotion, other: DynamicMotion, simTime: number): boolean;
   testSphereCollision?(
-    self: DynamicMotion, sphereCenter: Vec3, sphereRadius: number, selfState: KinematicState,
+    self: DynamicMotion, sphereCenter: Vec3, sphereRadius: number,
+    selfState: KinematicState, selfAttitude: Attitude,
   ): SphereHit | null;
   testSweptSphereCollision?(
     self: DynamicMotion, previousSphereCenter: Vec3, sphereCenter: Vec3, sphereRadius: number,
     previousSelfState: KinematicState, selfState: KinematicState,
+    previousSelfAttitude: Attitude, selfAttitude: Attitude,
   ): { readonly hit: SphereHit; readonly toi: number } | null;
+  testEntityCollision?(
+    self: DynamicMotion, other: DynamicMotion,
+    selfState: KinematicState, otherState: KinematicState,
+  ): ContactGeometry | null;
+  testSweptEntityCollision?(
+    self: DynamicMotion, other: DynamicMotion,
+    previousSelf: KinematicState, selfState: KinematicState,
+    previousOther: KinematicState, otherState: KinematicState,
+  ): ContactGeometry | null;
   hitBodyByRay?(self: DynamicMotion, ray: Ray, pos: Vec3): boolean;
   contactProxies?(self: DynamicMotion, simTime: number, dt: number): readonly DynamicMotion[];
   applyContactProxies?(self: DynamicMotion, dt: number): void;
@@ -76,6 +88,9 @@ export interface DynamicMotionBehavior {
     self: DynamicMotion, dt: number, atmosphereBody: CelestialBody | null,
     atmospherePivot: number, sunlight: number, sunDir: Vec3,
   ): void;
+  // 質量などの状態に応じて変化する物性。省略時は生成時の固定値を使う。
+  bcInv?(self: DynamicMotion): number;
+  srpCoeff?(self: DynamicMotion): number;
   radiatingAreaPerMass?(self: DynamicMotion): number;
   solarAbsorbAreaPerMass?(self: DynamicMotion, sunDir: Vec3): number;
   nextSimulationEventTime?(self: DynamicMotion, simTime: number): number | null;
@@ -148,6 +163,7 @@ export class DynamicMotion {
   public readonly hasAttitude: boolean;
   public readonly behavior: DynamicMotionBehavior;
   public att: Attitude;
+  public prevAtt: Attitude;
   public alive = true;
   public mass: number;
   public readonly radius: number;
@@ -158,8 +174,8 @@ export class DynamicMotion {
   // 本体に取り付けた付属物なら、その本体。
   public attachedTo: DynamicMotion | null = null;
   public torque: Vec3 = v3();
-  public readonly bcInv: number;
-  public readonly srpCoeff: number;
+  private readonly fixedBcInv: number;
+  private readonly fixedSrpCoeff: number;
   public temperature: number;
   public thermalDeviation: number;
   public readonly specificHeat: number;
@@ -181,6 +197,7 @@ export class DynamicMotion {
     this.actual = new DynamicTrajectory(state);
     // 姿勢・質量と接触
     this.att = options.attitude ?? identityAttitude();
+    this.prevAtt = this.att;
     this.hasAttitude = options.hasAttitude ?? true;
     this.mass = options.mass ?? 1;
     this.radius = options.radius ?? 0;
@@ -189,8 +206,8 @@ export class DynamicMotion {
     this.preciseReentry = options.preciseReentry ?? false;
     this.contactDamageWeight = options.contactDamageWeight ?? 1;
     // 空力・輻射圧
-    this.bcInv = options.bcInv ?? 0;
-    this.srpCoeff = options.srpCoeff ?? 0;
+    this.fixedBcInv = options.bcInv ?? 0;
+    this.fixedSrpCoeff = options.srpCoeff ?? 0;
     // 熱
     this.temperature = options.temperature ?? ENV_TEMP;
     this.thermalDeviation = options.thermalDeviation ?? 0;
@@ -207,6 +224,10 @@ export class DynamicMotion {
 
   public get state(): KinematicState { return this.actual.state; }
   public set state(state: KinematicState) { this.reset(state); }
+  // 現在の質量・姿勢などから求めた弾道係数の逆数 [m²/kg]。
+  public get bcInv(): number { return this.behavior.bcInv?.(this) ?? this.fixedBcInv; }
+  // 現在の質量・姿勢などから求めた輻射圧係数と断面積質量比の積 [m²/kg]。
+  public get srpCoeff(): number { return this.behavior.srpCoeff?.(this) ?? this.fixedSrpCoeff; }
   public get prevState(): KinematicState { return this.actual.prevState; }
   public get predicted(): DynamicTrajectory | null { return this.predictedArc?.trajectory ?? null; }
   public get arc(): PredictedArc | null { return this.predictedArc; }
@@ -306,6 +327,7 @@ export class DynamicMotion {
       environmentSamples = [environmentSampleAt(
         this.state.t, this.state.r, this.state.v, star, occluders, atmosphereBody, pivot)];
     }
+    this.prevAtt = this.att;
     if (this.hasAttitude) this.att = stepAttitude(this.att, this.torque, dt);
 
     // 歩のあいだの環境の平均で、種別ごとの環境反応と熱を進める。
@@ -332,11 +354,17 @@ export class DynamicMotion {
     return this.behavior.testSphereCollision !== undefined;
   }
 
+  // 固有形状どうしの接触を持つか。
+  public usesCustomEntityCollision(): boolean {
+    return this.behavior.testEntityCollision !== undefined;
+  }
+
   // 固有の判定形状と球の接触。触れていないか固有の形状を持たなければ null。
   public testCustomSphereCollision(
     sphereCenter: Vec3, sphereRadius: number, selfState: KinematicState,
+    selfAttitude: Attitude = this.att,
   ): SphereHit | null {
-    return this.behavior.testSphereCollision?.(this, sphereCenter, sphereRadius, selfState) ?? null;
+    return this.behavior.testSphereCollision?.(this, sphereCenter, sphereRadius, selfState, selfAttitude) ?? null;
   }
 
   // 前の歩から今の歩へ動く球と固有の判定形状の最初の接触と、その時刻の歩内での割合 toi。
@@ -344,9 +372,29 @@ export class DynamicMotion {
   public testCustomSweptSphereCollision(
     previousSphereCenter: Vec3, sphereCenter: Vec3, sphereRadius: number,
     previousSelfState: KinematicState, selfState: KinematicState,
+    previousSelfAttitude: Attitude = this.prevAtt, selfAttitude: Attitude = this.att,
   ): { readonly hit: SphereHit; readonly toi: number } | null {
     return this.behavior.testSweptSphereCollision?.(
       this, previousSphereCenter, sphereCenter, sphereRadius, previousSelfState, selfState,
+      previousSelfAttitude, selfAttitude,
+    ) ?? null;
+  }
+
+  // 固有形状どうしの接触。形状を持たない個体との接触は null を返し、球対形状の経路へ戻す。
+  public testCustomEntityCollision(
+    other: DynamicMotion, selfState: KinematicState, otherState: KinematicState,
+  ): ContactGeometry | null {
+    return this.behavior.testEntityCollision?.(this, other, selfState, otherState) ?? null;
+  }
+
+  // 固有形状どうしの掃引接触。形状を持たない個体との接触は null を返す。
+  public testCustomSweptEntityCollision(
+    other: DynamicMotion,
+    previousSelf: KinematicState, selfState: KinematicState,
+    previousOther: KinematicState, otherState: KinematicState,
+  ): ContactGeometry | null {
+    return this.behavior.testSweptEntityCollision?.(
+      this, other, previousSelf, selfState, previousOther, otherState,
     ) ?? null;
   }
 

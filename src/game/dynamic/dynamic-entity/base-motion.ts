@@ -30,18 +30,19 @@ class BaseCollisionBehavior implements DynamicMotionBehavior {
 
   // ワールド座標の球と基地の衝突メッシュとの接触を返す。
   public testSphereCollision(
-    self: DynamicMotion,
+    _self: DynamicMotion,
     sphereCenter: Vec3,
     sphereRadius: number,
     selfState: KinematicState,
+    selfAttitude: Attitude,
   ): SphereHit | null {
-    const toLocal = qInvert(self.att.q);
+    const toLocal = qInvert(selfAttitude.q);
     const hit = baseSphereCollide(
       qRotate(toLocal, sub(sphereCenter, selfState.r)), sphereRadius,
     );
     return hit === null ? null : {
-      point: add(selfState.r, qRotate(self.att.q, hit.point)),
-      normal: qRotate(self.att.q, hit.normal),
+      point: add(selfState.r, qRotate(selfAttitude.q, hit.point)),
+      normal: qRotate(selfAttitude.q, hit.normal),
       depth: hit.depth,
     };
   }

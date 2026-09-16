@@ -110,9 +110,14 @@ export class MapView implements ViewFrame {
     this.linePickables.clear();
   }
 
-  // 計画キーと Δv 編集キーを編集セッションへ配る。
-  public handleInput(input: Input, dt: number, simTime: number): void {
-    this.planEditor.handleInput(input, dt, simTime);
+  // router から計画キーと Δv 編集の単発キーを受け取る。
+  public handleCommand(commandId: string, simTime: number): void {
+    this.planEditor.handleCommand(commandId, simTime);
+  }
+
+  // Δv 編集の押下中操作を編集セッションへ配る。
+  public updateActions(input: Input, dt: number): void {
+    this.planEditor.updateActions(input, dt);
   }
 
   // クリック・右クリックを、ノード編集と被選択物・軌道線・空域のメニューへ先着順で配る。

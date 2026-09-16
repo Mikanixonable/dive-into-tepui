@@ -18,10 +18,8 @@ import { fmtDist } from '../../../hud/utils';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
 import { Throttle } from '../../player/throttle';
-import type { Controllable } from './controllable';
+import type { Controllable, PilotCommandFrame } from './controllable';
 import type { EntityRegistry } from '../entity-registry';
-import type { StageOutcome } from '../../stages/stage-outcome';
-import type { Input } from '../../../input/input';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { BaseView, type BaseRenderSource } from '../../../render/dynamic/dynamic-entity/base-view';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
@@ -85,10 +83,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public readonly hp = null;
   public readonly maxHp = null;
 
-  public readonly fire = null;
-  public readonly boosters = null;
-  public readonly altitudeAlarm = null;
-
   // 燃料を amount だけ使い、要求に対して実際に賄えた割合 [0, 1] を返す。
   public consumeFuel(amount: number): number {
     if (amount <= 0) return 1.0;
@@ -151,16 +145,12 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // --- 操作制御 ---
 
   // 毎フレーム、全ての基地に対して1度だけ呼ぶ。input が null なら操作されない。
-  public updateControls(
-    input: Input | null, dt: number, simDt: number,
-    _registry: EntityRegistry, _activeStage: StageOutcome, _celestialBodies: CelestialBodies,
-  ): void {
+  public updateControls(frame: PilotCommandFrame): void {
+    const { input, dt, simDt } = frame;
     if (input === null) {
       this.clearTransientCommands();
       return;
     }
-    // RCS 減衰・プログレードの切り替えがトルクの計算へ効くので、エッジ入力を先に消費する。
-    this.handleEdgeInput(input);
     this.motion.torque = this.throttle.updateTorque(
       this.motion.att, this.motion.state.r, this.motion.state.v, input, false, dt, simDt, this,
       () => {},  // 基地はプログレードホールド解除のヒントを出さない
@@ -176,21 +166,26 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     this.throttle.clearTransientState();
   }
 
-  // 基地側のキー（RCS減衰・プログレード・スロットル等）を1フレーム分消費する。
-  private handleEdgeInput(input: Input): void {
-    // 姿勢保持とスロットル段のキーを受け付ける
-    input.takeKeys((code) => {
-      switch (code) {
-        case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return true;
-        case K.progradeReset.code: this.throttle.enableProgradeReset(); return true;
-        case K.progradeHoldToggle.code: this.throttle.toggleProgradeHold(); return true;
-        case K.throttleLow.code: this.throttle.setThrottlePreset(0); return true;
-        case K.throttleMid.code: this.throttle.setThrottlePreset(1); return true;
-        case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return true;
-        case K.throttleMax.code: this.throttle.setThrottlePreset(3); return true;
-        default: return false;
-      }
-    });
+  // router から受け取った基地の単発入力をゲーム状態へ適用する。
+  public handleInputCommand(commandId: string, _registry: EntityRegistry): void {
+    void _registry;
+    switch (commandId) {
+      case K.thrustForward.code:
+      case K.thrustBackward.code:
+      case K.thrustLeft.code:
+      case K.thrustRight.code:
+      case K.thrustUp.code:
+      case K.thrustDown.code:
+        this.throttle.handleThrustPress(commandId);
+        return;
+      case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return;
+      case K.progradeReset.code: this.throttle.enableProgradeReset(); return;
+      case K.progradeHoldToggle.code: this.throttle.toggleProgradeHold(); return;
+      case K.throttleLow.code: this.throttle.setThrottlePreset(0); return;
+      case K.throttleMid.code: this.throttle.setThrottlePreset(1); return;
+      case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return;
+      case K.throttleMax.code: this.throttle.setThrottlePreset(3); return;
+    }
   }
 
   // 画面マーカーと被選択判定が同じ個体を指すためのキー。

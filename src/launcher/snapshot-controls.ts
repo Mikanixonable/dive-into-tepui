@@ -1,11 +1,10 @@
-import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { Notifier } from '../hud/notifier';
 import { PauseMenu } from '../hud/windows/pause-menu';
 import { SaveBrowser } from './save-browser/save-browser';
 import { SnapshotService, type SnapshotSource } from './save/snapshot-service';
 
-// F5(手動セーブ)/F9(一覧開閉)の入力を担う。handleInput は Game.update のあとに呼ぶ —
+// F5(手動セーブ)/F9(一覧開閉)の単発入力を担う。router へは Game.update のあとに足す —
 // その回で Game が消費しなかった入力エッジだけを見る。
 export class SnapshotControls {
   public constructor(
@@ -15,11 +14,11 @@ export class SnapshotControls {
     private readonly service: SnapshotService,
   ) {}
 
-  // 手動セーブのキーと一覧の開閉キーを拾う。source は記録を残すときに読む今の周回。
-  public handleInput(input: Input, source: SnapshotSource): void {
-    if (input.takeKey(K.manualSave)) this.saveManually(source);
+  // router から手動セーブのキーと一覧の開閉キーを受け取る。source は記録を残すときに読む今の周回。
+  public handleCommand(commandId: string, source: SnapshotSource): void {
+    if (commandId === K.manualSave.code) this.saveManually(source);
 
-    if (input.takeKey(K.openSaveBrowser)) {
+    if (commandId === K.openSaveBrowser.code) {
       if (this.browser.visible) {
         this.browser.close();
       } else {

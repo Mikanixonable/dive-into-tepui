@@ -5,6 +5,7 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { SphereHit } from '../../math/triangle-mesh';
+import type { ContactGeometry } from '../../physics/collision-response';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { Contact } from './dynamic-entity/contact';
 import type { EngagementParticipant, EngagementZone } from './engagement-zone';
@@ -36,17 +37,31 @@ export interface KinematicParticipant {
 
 export interface EntityContactParticipant extends KinematicParticipant {
   alive: boolean;
+  readonly att: Attitude;
+  readonly prevAtt: Attitude;
   readonly engagementAnchor: boolean;
   readonly collides: boolean;
   readonly attachedTo: EntityContactParticipant | null;
   readonly contactMass: number;
   contactsWith(other: EntityContactParticipant, simTime: number): boolean;
   usesCustomSphereCollision(): boolean;
-  testCustomSphereCollision(center: Vec3, radius: number, self: KinematicState): SphereHit | null;
+  usesCustomEntityCollision(): boolean;
+  testCustomSphereCollision(
+    center: Vec3, radius: number, self: KinematicState, selfAttitude: Attitude,
+  ): SphereHit | null;
   testCustomSweptSphereCollision(
     previousCenter: Vec3, center: Vec3, radius: number,
     previousSelf: KinematicState, self: KinematicState,
+    previousSelfAttitude: Attitude, selfAttitude: Attitude,
   ): { readonly hit: SphereHit; readonly toi: number } | null;
+  testCustomEntityCollision(
+    other: EntityContactParticipant, self: KinematicState, otherState: KinematicState,
+  ): ContactGeometry | null;
+  testCustomSweptEntityCollision(
+    other: EntityContactParticipant,
+    previousSelf: KinematicState, self: KinematicState,
+    previousOther: KinematicState, otherState: KinematicState,
+  ): ContactGeometry | null;
   absorbHeat(specificJoules: number): void;
   collideWithEntity(
     other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,

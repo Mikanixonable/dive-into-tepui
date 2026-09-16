@@ -26,6 +26,7 @@ import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 import type { Input } from '../../input/input';
 import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import type { RenderStyle } from '../../render/render-style';
+import type { StageRules } from '../stages/stage-rules';
 
 import type { EntitySaveDataUnion, GameSaveData } from '../save/save-data';
 import type { Notifier } from '../../hud/notifier';
@@ -253,13 +254,15 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   public update(
     active: Controllable | null, input: Input, operable: boolean,
     dt: number, simDt: number, canEngage: boolean, activeStage: StageOutcome & StageSimulationEvents,
+    stageRules: StageRules, beforeControllables: () => void = () => {},
   ): void {
     this.nanWatchdog.checkControlled(
       'update(入口)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
     );
     this.sections.enter(SECTION.command);
     this.updateThrusts(simDt);
-    this.updateControllables(active, input, operable, dt, simDt, activeStage);
+    beforeControllables();
+    this.updateControllables(active, input, operable, dt, simDt, activeStage, stageRules);
     this.behaveAll(active, operable);
     this.sections.exit(SECTION.command);
     this.nanWatchdog.checkControlled(
@@ -287,19 +290,20 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 生存中の操作されうる全個体へ updateControls を1度ずつ通す。
   private updateControllables(
     active: Controllable | null, input: Input, operable: boolean,
-    dt: number, simDt: number, activeStage: StageOutcome,
+    dt: number, simDt: number, activeStage: StageOutcome, stageRules: StageRules,
   ): void {
     for (const controllable of this.controllables) {
       if (!controllable.motion.alive) continue;
       // 「操作対象でない」と「操作できないワープ倍率」は同じ状態として input なしで進める。
-      controllable.updateControls(
-        controllable === active && operable ? input : null,
+      controllable.updateControls({
+        input: controllable === active && operable ? input : null,
         dt,
         simDt,
-        this,
+        registry: this,
         activeStage,
-        this.celestialBodies,
-      );
+        stageRules,
+        celestialBodies: this.celestialBodies,
+      });
     }
   }
 

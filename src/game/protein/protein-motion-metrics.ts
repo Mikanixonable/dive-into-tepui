@@ -2,10 +2,14 @@
 // 拾い、計測窓ぶんの分布へまとめる。
 
 import { LODS_FINE_TO_COARSE, type ProteinMotionLod } from '../../render/protein/protein-display';
-import { ProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
+import type { ProteinMotionMetrics } from '../../render/dynamic/dynamic-entity/protein-enemy-view';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 
 type ProteinMotionLodCounts = Readonly<Record<ProteinMotionLod, number>>;
+
+interface ProteinMotionMetricsProvider {
+  readonly proteinMotionMetrics?: ProteinMotionMetrics;
+}
 
 export interface ProteinMotionFrameSample {
   /** motion 更新そのものに費やした CPU 時間 [ms]。 */
@@ -25,8 +29,8 @@ export function proteinMotionFrameSample(
   const lodCounts: Partial<Record<ProteinMotionLod, number>> = {};
   // CPU 時間と転送量は総和、体数は LOD ごとに数える。
   for (const entity of entities) {
-    if (!(entity instanceof ProteinEnemy)) continue;
-    const metrics = entity.view.motionMetrics;
+    const metrics = (entity as DynamicEntity & ProteinMotionMetricsProvider).proteinMotionMetrics;
+    if (!metrics) continue;
     cpuMs += metrics.cpuMs;
     uploadBytes += metrics.uploadBytes;
     lodCounts[metrics.lod] = (lodCounts[metrics.lod] ?? 0) + 1;

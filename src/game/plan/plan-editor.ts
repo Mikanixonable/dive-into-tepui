@@ -180,13 +180,16 @@ export class PlanEditor {
     this.hud.hint('マニューバ計画を破棄');
   }
 
-  // 計画キー([X] 削除・[N] 直近ノードへの自動ワープ)と、WASDQE・長押しボタン・ラッチによる
-  // Δv 編集を進める。
-  public handleInput(input: Input, dt: number, simTime: number): void {
-    if (input.takeKey(K.deleteNode)) this.deleteSelectedNodeOrPlan();
-    if (input.takeKey(K.autoWarpToNode)) {
+  // router から計画キー([X] 削除・[N] 直近ノードへの自動ワープ)を受け取る。
+  public handleCommand(commandId: string, simTime: number): void {
+    if (commandId === K.deleteNode.code) this.deleteSelectedNodeOrPlan();
+    if (commandId === K.autoWarpToNode.code) {
       this.simSpeedManager.toggleAutoWarpToFirstNode(this.plan?.firstNode(), simTime);
     }
+  }
+
+  // WASDQE・長押しボタン・ラッチによる Δv 編集を進める。
+  public updateActions(input: Input, dt: number): void {
     this.updateEditing(input, dt);
   }
 
