@@ -7,7 +7,8 @@ import { Vec3 } from '../../../math/vec3';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import { FocusCamera } from '../../camera/focus-camera';
 import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-target';
-import type { DisplayFrameSelection } from '../../display-frame-selection';
+import type { PredictPanelSource } from '../../viewer/predict-panel-selection';
+import type { PredictPanelCommands } from '../../viewer/predict-panel-commands';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { CameraFramePanel } from './camera-frame-panel';
 import { CombatCameraPanel } from './combat-camera-panel';
@@ -30,7 +31,11 @@ export class FrameControls {
     private readonly celestialBodies: CelestialBodies,
     private readonly mapCamera: FocusCamera,
     private readonly combatCamera: FocusCamera,
-    private readonly displayFrame: DisplayFrameSelection,
+    predictPanel: Pick<PredictPanelSource, 'frame' | 'followCamera'>,
+    private readonly predictPanelCommands: Pick<
+      PredictPanelCommands,
+      'setFrameCenter' | 'setFrameRotation' | 'setFollowCamera' | 'followCameraFocus'
+    >,
     overlayManager: OverlayManager,
     private readonly frameAnchors: FrameAnchorSource,
   ) {
@@ -41,7 +46,7 @@ export class FrameControls {
       combatPanelRoot, combatCamera, combatCamera.cameraRotationMode,
     );
     this.trajectoryPanel = new TrajectoryFramePanel(
-      mapPanelRoot, popupRoot, celestialBodies, displayFrame, overlayManager,
+      mapPanelRoot, popupRoot, celestialBodies, predictPanel, predictPanelCommands, overlayManager,
     );
 
     // 注視対象の選択だけは、描画基準の追随も伴うので自分で受ける。
@@ -72,7 +77,7 @@ export class FrameControls {
   // マップカメラのフォーカスを target へ移し、移った先を描画基準の所有者へ伝える。
   public setFocus(target: FocusTarget): void {
     this.mapCamera.setFocusTarget(target);
-    this.displayFrame.followCameraFocus(focusTargetId(target));
+    this.predictPanelCommands.followCameraFocus(focusTargetId(target));
   }
 
   // 両パネルの選択肢と選択表示を、いまの天体系とカメラ位置へ合わせる。
