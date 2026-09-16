@@ -39,7 +39,7 @@ import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
 import type { DamageOutcomeSink } from './damage-outcome';
 import { PlayerInspection } from '../pickable/player-inspection';
-import { DefaultPlayerEffects, type PlayerEffects } from './player-effects';
+import { PlayerEffects } from './player-effects';
 import { createPlayerParts, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from './player-loadout';
 import type { PartDamageTarget } from '../dynamic/dynamic-entity/damage-capabilities';
 
@@ -109,7 +109,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     idAllocators: EntityIdAllocators,
     init: PlayerInit,
   ) {
-    const effects: PlayerEffects = new DefaultPlayerEffects(events);
+    const effects = new PlayerEffects(events);
     const saved = 'saved' in init ? init.saved : undefined;
     const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
     const state = 'saved' in init ? savedKinematicState(init.saved, init.simTime) : init.state;
@@ -319,7 +319,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.applyDamageToParts(side === null ? damage : RADIATOR_BULLET_DAMAGE, damagedPart);
     if (side !== null && damagedPart && damagedPart.hp <= 0) {
       const tip = this.motion.radiator.tipWorldPosition(side, this.motion.state.r, this.motion.att);
-      this.effects.radiatorBreak(side, this.motion.state, tip, registry);
+      this.effects.radiatorBreak(this.motion.state, tip, registry);
     }
     if (this.hp > 0) {
       this.effects.impact(bulletType, this.motion.state, impactPoint);
@@ -400,7 +400,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     if (!this.applyCollisionDamage(damageSpeed, damagedPart)) return;
     if (side !== null && damagedPart && damagedPart.hp <= 0) {
       const tip = this.motion.radiator.tipWorldPosition(side, this.motion.state.r, this.motion.att);
-      this.effects.radiatorBreak(side, this.motion.state, tip, registry);
+      this.effects.radiatorBreak(this.motion.state, tip, registry);
     }
     if (this.hp > 0) {
       this.effects.contact(this.motion.state);
@@ -456,7 +456,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       dt,
       simDt,
       this,
-      () => this.events.record({ kind: 'progradeHoldReleasedByInput' }),
+      this.events,
     );
   }
 
