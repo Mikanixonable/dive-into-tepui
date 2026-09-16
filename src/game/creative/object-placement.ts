@@ -86,15 +86,13 @@ export class ObjectPlacement {
     this.panel.onConfirm = (name, form) => this.place(name, form);
   }
 
-  // オブジェクト配置モーダルを開く。focusId はマップの現在フォーカスで、
-  // 基準天体になれる ID なら基準天体の初期選択に使う。
+  // オブジェクト配置モーダルを開く。focusId が基準天体になれる ID なら、基準天体の初期選択に使う。
   public openObjectPlacer(focusId?: string): void {
     this.panel.open(focusId !== undefined ? { kind: 'body', celestialBody: focusId as ReferenceCelestialBody } : undefined);
   }
 
-  // 右クリックメニューの「複製」。state を軌道要素へ逆算でき、基地の基準天体制約も満たす値が
-  // 求まったときは、その値をプリセットして開く。逆算できない軌道(双曲線など)や制約に反する
-  // 複製元では、値を引き継ぐと制約外の軌道が黙って配置できてしまうので、種類だけを引き継ぐ。
+  // 種類と軌道要素を引き継いで配置パネルを開く。引き継ぐのは state を軌道要素へ逆算でき、基地の
+  // 基準天体制約も満たすときだけ — それ以外は種類だけにして、制約外の軌道が黙って置かれるのを防ぐ。
   public openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void {
     const form = elementsFormFromState(
       state, this.celestialSystem, state.t, this.celestialSystem.origin.id);
@@ -131,7 +129,6 @@ export class ObjectPlacement {
     if (form.placementMode !== 'elements') return null;
     try {
       const state = this.buildInitialState(form);
-      // 楕円はフォームが選んだ基準天体中心で描く。
       const elements = orbitalElementsOf(state, this.referenceCelestialBody(form), state.t);
       return elements ? { elements, pos: state.r } : null;
     } catch {
@@ -140,7 +137,7 @@ export class ObjectPlacement {
   }
 
   // プレビューの ▷ マーカーの宣言。pos はプレビューの ECI 位置で、プレビューを出せない
-  // フレームでは null。マップ視点で天体に遮られているあいだは位置を示さない。
+  // フレームでは null。
   private previewMarker(
     pos: Vec3 | null, camera: CameraFrame, displayTime: number,
   ): MarkerDeclaration {
@@ -148,6 +145,7 @@ export class ObjectPlacement {
       id: PREVIEW_MARKER_ID, cls: 'mk-self', sym: ENTITY_GLYPH.preview,
       priority: MARKER_PRIORITY.PLAYER,
     };
+    // 位置が無いときと、マップ視点で天体に遮られているときは、画面上の位置を示さない。
     if (pos === null) return { ...base, x: 0, y: 0, front: false, occluded: true };
     if (camera.mode === 'map'
       && isOccluded(camera.position, pos, this.celestialSystem.celestialMotions, displayTime)) {
@@ -182,7 +180,7 @@ export class ObjectPlacement {
   // 空欄の名前を種類ごとの既定名で埋め、種類ごとに実体を作る。
   private createObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): PlacedObject {
     const finalName = name.trim() || generateRandomName(entityKind);
-    // 自機は配置の指定、それ以外は実体として返す。
+    // 自機だけは実体ではなく配置の指定で返す。
     switch (entityKind) {
       case 'player':
         return { kind: 'player', placement: { name: finalName, state, id: this.playerIdAllocator.next() } };
@@ -217,8 +215,7 @@ export class ObjectPlacement {
     return this.buildElementsState(form);
   }
 
-  // ラグランジュ点まわりのハロー/リサジュー軌道の初期状態を組む。ハローの面内振幅は
-  // 三次の振幅拘束で面外振幅から決まるので、フォームに面内振幅の欄がない。
+  // ラグランジュ点まわりのハロー/リサジュー軌道の初期状態を組む。
   private buildLagrangeState(form: LagrangeForm): KinematicState {
     const motion = this.celestialSystem.entityOf(form.lagrangeSecondary).motion;
     if (!(motion instanceof OrbitingMotion)) {
@@ -229,7 +226,6 @@ export class ObjectPlacement {
     if (system === null) {
       throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} の主天体が引けない`);
     }
-    // 面外振幅 az は両方の軌道種が使い、面内振幅 ax はリサジューだけが持つ。
     if (form.lagrangeOrbitKind === 'halo') {
       return haloState(system, { point: form.lagrangePoint, az: form.azKm * 1e3 });
     }
@@ -261,7 +257,7 @@ export class ObjectPlacement {
       e = form.eccentricity;
     }
 
-    // 基準天体中心の相対状態を組み、基準天体自身の位置・速度を足して ECI にする。
+    // 基準天体中心の相対状態を ECI へ直す。
     const rel = stateFromOrbitalElements(
       this.roster.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG,
       form.nuDeg * DEG, center.def.mu,
@@ -269,8 +265,7 @@ export class ObjectPlacement {
     return addPrimaryRelative(centerState, kinematicState<'primaryRel'>(rel.t, rel.r, rel.v));
   }
 
-  // フォーム値をフィールド単位で検証する。assertValidForm と同じ検証を通し、
-  // 入力中の表示と確定時の可否が食い違わないようにする。
+  // フォーム値をフィールド単位で検証する。
   private computeFieldIssues(form: ObjectPlacerForm): PlacementFieldIssue[] {
     // 配置方法によらず効く、種類ごとの基準天体の制約。
     const issues = [...validateBaseReferenceFields(

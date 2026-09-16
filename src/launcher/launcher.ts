@@ -39,8 +39,7 @@ function resumableStageClass(unlockManager: UnlockManager, slots: SaveSlots): St
   return stageClass;
 }
 
-// StageResult はセーブに含まれないので、決着済みの phase を持つセーブを読んだときは
-// 見出しだけを phase から復元する。
+// セーブに含まれない StageResult の代わりに、決着した phase から見出しだけを組む。
 function fallbackResult(phase: GamePhase): StageResult {
   return { win: phase !== 'lost', title: null, detailHtml: '結果の記録がありません' };
 }
@@ -133,8 +132,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     );
   }
 
-  // 現在の周回を畳む。Game を破棄し、結果画面と一時停止メニューを閉じ、BGM を止める。
-  // 何も動いていない状態で呼んでも安全。
+  // 現在の周回を畳む。何も動いていない状態で呼んでも安全。
   private endRun(): void {
     this.game?.dispose();
     this.game = null;
@@ -159,8 +157,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     }
     const stage = this.game.activeStage;
     stage.onDecided = () => {
-      // クリア回数は決着した瞬間に数える。決着済みのセーブから始めたランはここを通らないので、
-      // 読むたびには増えない。
+      // クリア回数は決着した瞬間に数える。
       if (stage.phase === 'won') this.unlockManager.reportClear(stage.id, this.host.hud);
       this.showResult(stage);
     };

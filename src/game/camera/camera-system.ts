@@ -45,21 +45,20 @@ export class CameraSystem {
   private _zoomActive = false;
   // 戦闘ビューの表示視点。軌道視点とガンサイトの間で fovDeg だけを指数的に遷移させた後の値。
   private combatViewpoint: Viewpoint;
-  // 現在のビュー。ビューの正本(ViewManager)から毎回読む。
+  // 現在のビュー。
   public get view(): ViewMode { return this.currentView(); }
   // マップビューのインスタンスがアクティブか。
   private get mapActive(): boolean { return this.currentView() === 'map'; }
 
   private readonly viewResetBtn: HTMLElement | null;
 
-  // 視点リセットボタン押下で、現在のビューに応じたカメラをリセットする。
+  // 視点リセットボタンの押下を受ける。
   private readonly handleViewReset = (e: PointerEvent): void => {
     e.stopPropagation();
     this.resetActiveCamera();
   };
 
-  // 現在のビューの視点をリセットする。戦闘は初期状態(操作対象へフォーカス・姿勢追従・
-  // 既定の後方見下ろし)へ、マップはロールとパンだけを戻す。
+  // 現在のビューの視点をリセットする。戦闘は初期視点へ、マップはロールとパンを戻す。
   private resetActiveCamera(): void {
     if (this.mapActive) {
       this.mapCamera.reset();
@@ -69,9 +68,8 @@ export class CameraSystem {
     this.hud.hint('視点をリセット');
   }
 
-  // 両カメラを構築し、視点リセットボタンを配線する。saved があれば両カメラをその視点から組む。
-  // currentView は現在のビューを毎回引く関数、attitudeOf はフォーカス id の時刻 t の姿勢
-  // (引けなければ null)。
+  // 両カメラを構築し、視点リセットボタンを配線する。currentView は現在のビューを毎回引く
+  // 関数、attitudeOf はフォーカス id の時刻 t の姿勢(引けなければ null)。
   public constructor(
     private readonly hud: HudLayers & Notifier,
     celestialBodies: CelestialBodies,
@@ -88,6 +86,7 @@ export class CameraSystem {
       aspect: viewport.width / viewport.height,
     };
     this.gunsightCamera = new GunsightCamera(viewport);
+    // 戦闘は操作対象の役割 id を注視する — 操作を別の機体へ移しても注視が付いていく。
     this.combatCamera = new FocusCamera(hud, celestialBodies, {
       focusLossPolicy: 'hold',
       initial: {
@@ -110,6 +109,7 @@ export class CameraSystem {
       },
       saved?.overview, viewport,
     );
+    // 視点リセットボタンは、HUD にあれば配線する。
     this.viewResetBtn = hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
     this.viewResetBtn?.addEventListener('pointerdown', this.handleViewReset);
   }
@@ -129,7 +129,7 @@ export class CameraSystem {
     return this.mapActive ? this.mapCamera.viewpoint : this.combatViewpoint;
   }
 
-  // アクティブカメラの位置(描画原点になる値)を返す。
+  // アクティブカメラの位置。
   public get activeCameraPos(): Vec3 {
     return this.activeViewpoint.position;
   }
@@ -184,7 +184,7 @@ export class CameraSystem {
     const keyRollLeft = input.down(K.cameraRollLeft);
     const keyRollRight = input.down(K.cameraRollRight);
 
-    // /_ の同時押し（ロール左右の同時入力）でマップカメラのロールをリセット
+    // /_ の同時押しでマップカメラのロールをリセット
     if (keyRollLeft && keyRollRight) {
       if (this.mapActive) this.mapCamera.reset();
     }
@@ -216,18 +216,18 @@ export class CameraSystem {
     this.combatViewpoint = lerpViewpointFov(this.combatViewpoint, target, dt);
   }
 
-  // 近遠クリップ面を決める軌道視点の垂直画角 [deg]。ガンサイトへ絞り込む前の値を答える。
+  // 軌道視点の垂直画角 [deg]。ガンサイトへ絞り込む前の値を答える。
   public get clipFovDeg(): number {
     return this.activeFocusCamera.fov;
   }
 
-  // 近遠クリップ面を決める軌道視点の注視距離 [m]。
+  // 軌道視点の注視距離 [m]。
   public get clipDistance(): number {
     return this.activeFocusCamera.dist;
   }
 
-  // アクティブカメラが注視している点の ECI 速度(カメラの並進速度。旋回・パン・ズームぶんは
-  // 含めない)。速度を答えられない対象を注視しているあいだはゼロ。
+  // アクティブカメラが注視している点の ECI 速度。速度を答えられない対象を注視している
+  // あいだはゼロ。
   public get focusVelocity(): Vec3 {
     return this.activeFocusCamera.focusVelocity ?? v3();
   }
