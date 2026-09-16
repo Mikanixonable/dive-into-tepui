@@ -109,9 +109,14 @@ export class MapView implements ViewFrame {
     this.linePickables.clear();
   }
 
-  // Δv 編集キー([Del]=選択ノード削除・WASDQE・ラッチ)を編集セッションへ配る。
-  public handleInput(input: Input, dt: number): void {
-    this.planEditor.handleInput(input, dt);
+  // router から Δv 編集の単発キーを受け取る。
+  public handleCommand(commandId: string): void {
+    this.planEditor.handleCommand(commandId);
+  }
+
+  // Δv 編集の押下中操作を編集セッションへ配る。
+  public updateActions(input: Input, dt: number): void {
+    this.planEditor.updateActions(input, dt);
   }
 
   // クリック・右クリックを、ノード編集と被選択物・軌道線・空域のメニューへ先着順で配る。

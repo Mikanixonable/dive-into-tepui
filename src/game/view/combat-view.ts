@@ -66,14 +66,16 @@ export class CombatView implements ViewFrame {
 
   public onLeave(): void {}
 
-  // 計画キー: [Del] は計画全体の破棄、[N] は直近ノードへの自動ワープのトグル。
-  public handleInput(input: Input, _dt: number, simTime: number): void {
-    if (input.takeKey(K.deleteNode)) this.clearPlan();
-    if (input.takeKey(K.autoWarpToNode)) {
+  // router から計画キーを受け取る: [Del] は計画全体の破棄、[N] は直近ノードへの自動ワープ。
+  public handleCommand(commandId: string, simTime: number): void {
+    if (commandId === K.deleteNode.code) this.clearPlan();
+    if (commandId === K.autoWarpToNode.code) {
       const plan = this.controlSelection.current?.plan;
       this.simSpeedManager.toggleAutoWarpToFirstNode(plan?.firstNode(), simTime);
     }
   }
+
+  public updateActions(): void {}
 
   // 確定済みのマニューバ計画を破棄し、進行中の自動ワープも解く。
   private clearPlan(): void {
@@ -89,7 +91,7 @@ export class CombatView implements ViewFrame {
     const controlled = this.controlSelection.current;
     if (!controlled) return;
     const project = this.cameraSystem.activeProjection(viewport);
-    this.targeter.handleTargetSelectKey(this.input, controlled, project, viewport);
+    this.targeter.handleTargetSelect(controlled, project, viewport);
     // 右クリックは実体に当たればそのプロパティウィンドウを、外れれば空域メニューを開く。
     this.input.takeRightClicks((p) => {
       const hit = pickCombatEntityAtPoint(
