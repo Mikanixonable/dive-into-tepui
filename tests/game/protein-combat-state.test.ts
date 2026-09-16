@@ -287,6 +287,16 @@ export function register(): void {
     syncVisual();
     // 変形が生きていれば、サイトのアンカーは変形前の位置から動く。
     assert.notDeepEqual(runtime.siteWorldPositionById(active.id, origin, IDENTITY_ATTITUDE), activeWorld);
+    const dynamicCombat = new ProteinCombatState(asset);
+    const dynamicLocal = runtime.siteModelPositionById(active.id);
+    const dynamicWorld = runtime.siteWorldPositionById(active.id, origin, IDENTITY_ATTITUDE);
+    const dynamicImpact = proteinLocalImpactPoint(
+      dynamicWorld, origin, IDENTITY_ATTITUDE, root.scale.x,
+    );
+    const dynamicHit = dynamicCombat.applyDamage(
+      active.maxHp, dynamicImpact, new Map([[active.id, dynamicLocal]]),
+    );
+    assert.equal(dynamicHit.siteId, active.id, 'a displayed anchor should select the same site on impact');
     assert.deepEqual(root.position, baseRootPosition);
     assert.ok(root.quaternion.equals(baseRootQuaternion));
     assert.deepEqual(root.scale, baseRootScale);

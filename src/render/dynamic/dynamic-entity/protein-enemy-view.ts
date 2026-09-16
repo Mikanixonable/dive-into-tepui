@@ -111,6 +111,16 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
     }));
   }
 
+  // 部位idの表示中アンカーを本体の位置・姿勢へ写す。
+  public siteWorldPositionById(id: string, origin: Vec3, attitude: Quat): Vec3 {
+    return this.runtime.siteWorldPositionById(id, origin, attitude);
+  }
+
+  // 部位 id の変形済みモデルローカル座標。rootの表示倍率と姿勢は含めない。
+  public siteModelPositionById(id: string): Vec3 {
+    return this.runtime.siteModelPositionById(id);
+  }
+
   // 表示設定を反映し、投影サイズから LOD を選んで表示時刻のモード係数を確定させ、変形資源へ渡す。
   // 本体を出さないフレームは LOD を保ったまま変形を止める。
   protected override syncModel(
