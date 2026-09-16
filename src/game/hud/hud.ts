@@ -10,6 +10,7 @@ import { OrbitPanel } from './orbit/orbit-panel';
 import { TargetPanel } from './panels/target-panel';
 import { EnemiesPanel } from './panels/enemies-panel';
 import { BurnManagementPanel } from './panels/burn-management-panel';
+import { ShipConstructionPanel } from './panels/ship-construction-panel';
 import { TopBar } from './panels/top-bar';
 import { MapScaleBadge } from './panels/map-scale-badge';
 import { OrbitAnalysisWindow } from './orbit/orbit-analysis-window';
@@ -41,6 +42,7 @@ export class Hud implements HudLayers, Notifier {
   public readonly targetPanel: TargetPanel;
   public readonly enemiesPanel: EnemiesPanel;
   public readonly burnManagementPanel: BurnManagementPanel;
+  public readonly shipConstructionPanel: ShipConstructionPanel;
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
   // 次の tick() で表示するトースト。
   private pendingToast: { readonly html: string; readonly durationMs: number } | null = null;
@@ -66,6 +68,7 @@ export class Hud implements HudLayers, Notifier {
     this.targetPanel = new TargetPanel(els);
     this.enemiesPanel = new EnemiesPanel(els);
     this.burnManagementPanel = new BurnManagementPanel(els);
+    this.shipConstructionPanel = new ShipConstructionPanel(els);
 
     // 初期表示の配線。
     this.burnManagementPanel.sync(null);
