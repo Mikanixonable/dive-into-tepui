@@ -28,6 +28,8 @@ jobs:
 
       - run: npm ci
       - run: npm run verify:ui-style
+      - run: npm run lint
+      - run: npm run check:architecture
       - run: npm run typecheck
       - run: npm run test
       - name: Build with external Earth surface bundle
