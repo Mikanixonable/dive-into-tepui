@@ -18,11 +18,6 @@ const STYLE = `
 #save-browser .sb-snap-loadable:hover { background: var(--fill-1); }
 #save-browser .sb-snap-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 #save-browser .sb-snap-name { font-size: var(--font-s); }
-#save-browser .sb-snap-badge {
-  font-size: var(--font-xxs); letter-spacing: .5px; padding: 1px var(--space-3); border-radius: var(--radius-l);
-  border: 0; color: var(--text-dim); background: var(--fill-1);
-}
-#save-browser .sb-snap-badge-checkpoint { color: var(--text); }
 #save-browser .sb-snap-row { font-size: var(--font-xs); color: var(--text-dim); }
 /* HP バーは細く、満タンでもオレンジで塗らない — このパネルの主役はセーブ操作であって
    HP 表示ではないため、他の注目要素と競合しないモノトーンに留める(danger 色も使わない)。 */
@@ -36,10 +31,6 @@ const STYLE = `
 function num(v: number): number {
   return Number.isFinite(v) ? v : 0;
 }
-
-const SNAPSHOT_KIND_LABEL: Record<SnapshotMeta['kind'], string> = {
-  auto: '自動', manual: '手動', checkpoint: '決着',
-};
 
 interface SnapshotPaneCallbacks {
   readonly onSaveNow: () => void;
@@ -121,17 +112,16 @@ function buildSnapshotList(
   return el;
 }
 
-// 1件のスナップショットカードを組み立てる。ダブルクリックでロードを、右側のボタンで
+// 1件の手動セーブのカードを組み立てる。ダブルクリックでロードを、右側のボタンで
 // クリップ切替・改名・削除・分岐を、それぞれコールバックへ委ねる。
 function buildSnapshotCard(
   s: SnapshotMeta, slot: SaveSlotMeta, loadable: boolean, callbacks: SnapshotPaneCallbacks,
 ): HTMLElement {
   // 取り込んだファイル由来のメタは欠けていたり別物だったりし得るので、表示前に必ず均す。
-  const kind = SNAPSHOT_KIND_LABEL[s.kind] ? s.kind : 'auto';
   const hpPct = Math.max(0, Math.min(100, num(s.hpRatio) * 100));
   const loadTitle = loadable
     ? 'ダブルクリックでロード'
-    : 'いま遊んでいるセーブデータ・ステージのスナップショットだけを復元できます';
+    : 'いま遊んでいるセーブデータ・ステージの手動セーブだけを復元できます';
 
   const card = document.createElement('div');
   card.className = 'sb-snap-card';
@@ -149,10 +139,7 @@ function buildSnapshotCard(
   const name = document.createElement('span');
   name.className = 'sb-snap-name';
   name.textContent = String(s.name ?? '');
-  const badge = document.createElement('span');
-  badge.className = `sb-snap-badge sb-snap-badge-${kind}`;
-  badge.textContent = SNAPSHOT_KIND_LABEL[kind];
-  head.append(name, badge);
+  head.appendChild(name);
   card.appendChild(head);
 
   const row1 = document.createElement('div');
