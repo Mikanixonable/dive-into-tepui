@@ -3,7 +3,7 @@
 作成日: 2026-09-14
 実装の現在基準コミット: d3e8291dd
 最終レビュー: 2026-09-16
-状態: 実装中。仕様更新を完了し、手順2から進める。
+状態: 実装中。手順5まで完了し、手順6から進める。
 
 ## 目的
 
@@ -305,51 +305,6 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 - 現行のランダム部位ダメージと敵挙動に回帰がない。
 
 ## 実装手順
-
-### 5. モジュールモデルと ModularShipView を作る
-
-#### 目的
-
-固定 Player/Base/booster モデルではなく、assembly と同じ transform で部品モデルを組み立て、
-武装・パネル・ノズルの semantic anchor も module 側へ移す。
-
-このステップの開始前に /rendering-workflow を起動し、モデル、G-buffer、outline、ghost の確認方法を
-固定する。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| tools/model-builder/ship-modules.mjs（新規） | 12 種の円筒 module と semantic anchor を生成する。 |
-| tools/model-builder/export-models.mjs | ship module asset を出力対象に加える。 |
-| src/assets/models/shipModules.json（生成） | module ごとの 3D model を保持する。 |
-| src/render/dynamic/ship/modular-ship-view.ts（新規） | assembly の module view を生成・同期・破棄する。 |
-| src/render/dynamic/ship/ship-module-view.ts（新規） | model id、local transform、損傷／展開状態、anchor を扱う。 |
-| src/render/dynamic/ship/ship-ghost-view.ts（新規） | 半透明 ghost と valid／invalid 色を描く。 |
-| src/render/dynamic/ship/dock-snap-guide-view.ts（新規） | world-space の円形 snap guide を描く。 |
-| src/render/dynamic/dynamic-view.ts、baked-model.ts | 可変 module 集合の render source と、module 単位の model group を扱えるようにする。 |
-| src/render/dynamic/player/player-view.ts | ModularShipView へ接続を移した後に削除する。 |
-| src/render/dynamic/player/folding-panels-view.ts | 固定モデル内の名前探索をやめ、radiator／solar module anchor を受ける。 |
-| src/render/dynamic/player/rcs-effects.ts | module nozzle anchor から噴射位置を得る。 |
-| src/render/dynamic/player/thrust-effects.ts | thruster／booster module anchor から噴射位置を得る。 |
-| src/render/dynamic/player/belt-view.ts | weapon module の belt anchor を受ける。 |
-| src/render/pipeline/overlay-pass.ts | ghost／guide の depth と outline を既存 3D overlay 規則へ接続する。 |
-| tests/render/ship-module-view.test.ts（新規） | module transform、anchor、再構築、dispose を検証する。 |
-| tests/render/dynamic-view-source.test.ts、game-entity-dispose.test.ts | 可変 module source と再建造／分離後の GPU・scene 資源解放を追加検証する。 |
-| tools/render-lab/ship-cases.ts（新規）、cases.ts | 既定船、基地、ghost、分離前後を単独確認できる case を追加する。 |
-
-#### 達成条件と検証
-
-- 同じ assembly から計算した model と collider の軸・長さ・位置が一致する。
-- 生成 asset は root scale を持たないメートル単位、module 長手軸 +Z に統一し、旧 Base の scale 3 と
-  local +Y の dock 面を引き継がない。
-- exporter の material merge 後も module 境界と semantic anchor が消えない。module は独立 Group
-  または独立 asset とし、統合 mesh の userData に識別を依存させない。
-- ghost は共有 material を変更せず専用 clone／material を所有し、別の船の色へ波及しない。
-- 追加・撤去・split 後に古い mesh、outline、shadow、marker が残らない。
-- ghost が不透明物と区別でき、奥行き関係を失わず、schematic 表示でも読める。
-- npm run export-assets 後、識別子だけ変わった無関係 asset 差分を戻す。
-- npm run typecheck と npm run test:render を通し、render-lab の画像で確認する。
 
 ### 6. Player を ModularShip へ移す
 
