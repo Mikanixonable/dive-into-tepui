@@ -9,23 +9,23 @@ import type { KinematicState } from '../../../physics/kinematic-state';
 import { Attitude } from '../../../physics/attitude';
 import { len, sub, v3, Vec3 } from '../../../math/vec3';
 import type { Notifier } from '../../../hud/notifier';
-import type { MarkerSlots } from '../../marker/marker-slots';
-import type { MarkerVisibility } from '../../marker/marker-visibility';
+import type { MarkerSlots } from '../../../render/marker/marker-slots';
+import type { MarkerVisibility } from '../../../render/marker/marker-visibility';
 import { savedAttitude, savedKinematicState, type BaseSaveData } from '../../save/save-data';
 import { Plan, type PlanExecutionMode } from '../../plan/plan';
 import { generateRandomName } from '../../random-name';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import { fmtDist } from '../../../hud/utils';
-import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
+import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../../render/marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
 import { Throttle } from '../../player/throttle';
 import type { Controllable, PilotCommandFrame } from './controllable';
-import type { Input } from '../../../input/input';
+import type { EntityRegistry } from '../entity-registry';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { BaseView, type BaseRenderSource } from '../../../render/dynamic/dynamic-entity/base-view';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../../orbit-reference';
-import { MARKER_PRIORITY } from '../../marker/crowding';
+import { MARKER_PRIORITY } from '../../../render/marker/crowding';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { orbitRows } from '../../pickable/orbit-rows';
 
@@ -171,8 +171,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       this.clearTransientCommands();
       return;
     }
-    // RCS 減衰・プログレードの切り替えがトルクの計算へ効くので、エッジ入力を先に消費する。
-    this.handleEdgeInput(input);
     this.motion.torque = this.throttle.updateTorque(
       this.motion.att, this.motion.state.r, this.motion.state.v, input, false, dt, simDt, this,
       () => {},  // 基地はプログレードホールド解除のヒントを出さない
@@ -188,21 +186,26 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     this.throttle.clearTransientState();
   }
 
-  // 基地側のキー（RCS減衰・プログレード・スロットル等）を1フレーム分消費する。
-  private handleEdgeInput(input: Input): void {
-    // 姿勢保持とスロットル段のキーを受け付ける
-    input.takeKeys((code) => {
-      switch (code) {
-        case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return true;
-        case K.progradeReset.code: this.throttle.enableProgradeReset(); return true;
-        case K.progradeHoldToggle.code: this.throttle.toggleProgradeHold(); return true;
-        case K.throttleLow.code: this.throttle.setThrottlePreset(0); return true;
-        case K.throttleMid.code: this.throttle.setThrottlePreset(1); return true;
-        case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return true;
-        case K.throttleMax.code: this.throttle.setThrottlePreset(3); return true;
-        default: return false;
-      }
-    });
+  // router から受け取った基地の単発入力をゲーム状態へ適用する。
+  public handleInputCommand(commandId: string, _registry: EntityRegistry): void {
+    void _registry;
+    switch (commandId) {
+      case K.thrustForward.code:
+      case K.thrustBackward.code:
+      case K.thrustLeft.code:
+      case K.thrustRight.code:
+      case K.thrustUp.code:
+      case K.thrustDown.code:
+        this.throttle.handleThrustPress(commandId);
+        return;
+      case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return;
+      case K.progradeReset.code: this.throttle.enableProgradeReset(); return;
+      case K.progradeHoldToggle.code: this.throttle.toggleProgradeHold(); return;
+      case K.throttleLow.code: this.throttle.setThrottlePreset(0); return;
+      case K.throttleMid.code: this.throttle.setThrottlePreset(1); return;
+      case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return;
+      case K.throttleMax.code: this.throttle.setThrottlePreset(3); return;
+    }
   }
 
   // 画面マーカーと被選択判定が同じ個体を指すためのキー。

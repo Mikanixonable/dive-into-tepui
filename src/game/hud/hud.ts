@@ -5,6 +5,7 @@ import { buildHudDom } from './hud-root';
 import type { HudLayers } from './hud-layers';
 import type { ViewMode } from '../../render/view-mode';
 import type { CameraFrame } from '../../render/camera/camera-frame';
+import type { Vec3 } from '../../math/vec3';
 import { VesselPanel } from './panels/vessel-panel';
 import { OrbitPanel } from './orbit/orbit-panel';
 import { TargetPanel } from './panels/target-panel';
@@ -13,8 +14,13 @@ import { BurnManagementPanel } from './panels/burn-management-panel';
 import { TopBar } from './panels/top-bar';
 import { MapScaleBadge } from './panels/map-scale-badge';
 import { OrbitAnalysisWindow } from './orbit/orbit-analysis-window';
-import type { Input } from '../../input/input';
-import type { Game } from '../game';
+import type { TopBarViewModel } from './panels/top-bar';
+import type { BurnManagementViewModel } from './panels/burn-management-panel';
+import type { EnemiesPanelViewModel } from './panels/enemies-panel';
+import type { VesselPanelViewModel } from './panels/vessel-panel';
+import type { TargetPanelViewModel } from './panels/target-panel';
+import type { OrbitPanelViewModel } from './orbit/orbit-panel';
+import type { OrbitAnalysisReaderView, OrbitAnalysisViewModel } from './orbit/orbit-analysis-window';
 import type { OverlayLayers } from '../../hud/overlay-layer';
 import type { HudShell } from '../../hud/hud-shell';
 import { TEMP_WINDOW_GROUP, type OverlayManager } from '../../hud/overlay-manager';
@@ -87,28 +93,43 @@ export class Hud implements HudLayers, Notifier {
   }
 
   // 軌道分析ウィンドウが見ている個体を、このフレームの操作対象・ターゲットへ合わせる。
-  public updateAnalysisReaders(game: Game): void {
-    this.orbitAnalysisWindow?.update(game);
+  public updateAnalysisReaders(view: OrbitAnalysisReaderView): void {
+    this.orbitAnalysisWindow?.update(view);
   }
 
-  // view で表に出ている常設パネルと、控えられたトーストを game の現在状態へ合わせる。
-  // camera はこのフレームの表示カメラで、縮尺表示が読む。
-  public syncPanels(view: ViewMode, game: Game, camera: CameraFrame): void {
-    const map = view === 'map';
-    // 両ビュー共通のパネル。
-    this.burnManagementPanel.sync(game.activeControllable?.boosters?.managementViewModel() ?? null);
-    this.topBar.sync(game.displayWindowManager, game.simSpeedManager, game.simTime, game.isPaused);
-    this.orbitPanel.sync(game);
-    // ビュー固有のパネル。
-    if (map) {
-      this.mapScaleBadge.sync(camera.scale, game.cameraSystem.mapCamera.resolvedFocus);
-    } else {
-      this.vesselPanel.sync(game.activeControllable, game.activeStage, game.cameraSystem, map);
-      this.targetPanel.sync(game.activeControllable, game.celestialSystem, game.targeter);
-      this.enemiesPanel.sync(
-        game.activeControllable, game.activeStage, game.dynamicSystem, game.targeter, map);
-    }
-    this.orbitAnalysisWindow?.sync(game);
+  public syncTopBar(view: TopBarViewModel): void {
+    this.topBar.sync(view);
+  }
+
+  public syncBurnManagement(view: BurnManagementViewModel | null): void {
+    this.burnManagementPanel.sync(view);
+  }
+
+  public syncOrbitPanel(view: OrbitPanelViewModel | null): void {
+    this.orbitPanel.sync(view);
+  }
+
+  public syncMapScale(scale: CameraFrame['scale'], focus: Vec3): void {
+    this.mapScaleBadge.sync(scale, focus);
+  }
+
+  public syncVesselPanel(view: VesselPanelViewModel | null): void {
+    this.vesselPanel.sync(view);
+  }
+
+  public syncTargetPanel(view: TargetPanelViewModel | null): void {
+    this.targetPanel.sync(view);
+  }
+
+  public syncEnemiesPanel(view: EnemiesPanelViewModel | null): void {
+    this.enemiesPanel.sync(view);
+  }
+
+  public syncOrbitAnalysis(view: OrbitAnalysisViewModel): void {
+    this.orbitAnalysisWindow?.sync(view);
+  }
+
+  public finishPanelSync(): void {
     this.tick();
   }
 
@@ -160,9 +181,9 @@ export class Hud implements HudLayers, Notifier {
     this.pendingToast = { html, durationMs };
   }
 
-  // ヘルプ表示キーの押下エッジを受け取る。
-  public handleInput(input: Input): void {
-    this.helpPanel.handleInput(input);
+  // router から HUD 固有の単発入力を受け取る。
+  public handleCommand(commandId: string): void {
+    this.helpPanel.handleCommand(commandId);
   }
 
   // 控えられたトーストを表示し、表示期限を過ぎたトーストをフェードアウトさせる。

@@ -7,8 +7,8 @@ import { add, len, scale, sub, type Vec3 } from '../../../math/vec3';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../line-style';
 import type { CameraFrame } from '../../camera/camera-frame';
 import { EllipseLine } from '../../lines/ellipse-line';
-import type { MarkerSlots } from '../../../game/marker/marker-slots';
-import { MARKER_PRIORITY } from '../../../game/marker/crowding';
+import type { MarkerSlots } from '../../marker/marker-slots';
+import { MARKER_PRIORITY } from '../../marker/crowding';
 import type { CelestialBody } from '../../../physics/celestial-body';
 
 // リングとラベルは中心天体から 240,000km で薄れ始め 720,000km で消える。

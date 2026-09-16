@@ -24,16 +24,16 @@ import type { FlashEffects } from '../vfx/flash-effects';
 import { PlayerView, type PlayerRenderSource } from '../../render/dynamic/player/player-view';
 import type { DynamicViewFrame } from '../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../orbit-reference';
-import type { MarkerSlots } from '../marker/marker-slots';
+import type { MarkerSlots } from '../../render/marker/marker-slots';
 import type { RadiatorSide } from './radiator';
 
 import { Plan, type PlanExecutionMode } from '../plan/plan';
 import { savedAttitude, savedKinematicState, type PlayerSaveData, type PlanSaveData } from '../save/save-data';
 import { partFromSaveData, type AnyPart, type Part } from '../dynamic/dynamic-entity/parts';
-import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
+import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../../render/marker/marker-identity';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { AttachedBoosters } from './attached-boosters';
-import { MARKER_PRIORITY } from '../marker/crowding';
+import { MARKER_PRIORITY } from '../../render/marker/crowding';
 import type { Controllable, PilotCommandFrame } from '../dynamic/dynamic-entity/controllable';
 import { PlayerMotion, type PlayerMotionReactions } from './player-motion';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
@@ -272,7 +272,6 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   public updateControls(frame: PilotCommandFrame): void {
     const { input, dt, simDt, registry, activeStage, stageRules, celestialBodies } = frame;
     if (stageRules.selfRepair) this.hpRegen(dt);
-    if (input !== null) this.handleEdgeInput(input, registry);
     // ブースターの燃焼は操作の可否によらず進むので、指令を畳んだあとに進める。
     if (input === null) {
       this.clearTransientCommands();
@@ -305,38 +304,39 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.fire.stopFiring();
   }
 
+  // router から受け取った自機の単発入力をゲーム状態へ適用する。
+  public handleInputCommand(commandId: string, registry: EntityRegistry): void {
+    switch (commandId) {
+      case K.thrustForward.code:
+      case K.thrustBackward.code:
+      case K.thrustLeft.code:
+      case K.thrustRight.code:
+      case K.thrustUp.code:
+      case K.thrustDown.code:
+        this.throttle.handleThrustPress(commandId);
+        return;
+      case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return;
+      case K.progradeReset.code: this.throttle.enableProgradeReset(); return;
+      case K.fineAttitudeToggle.code: this.toggleFineAttitude(); return;
+      case K.progradeHoldToggle.code: this.throttle.toggleProgradeHold(); return;
+      case K.throttleLow.code: this.throttle.setThrottlePreset(0); return;
+      case K.throttleMid.code: this.throttle.setThrottlePreset(1); return;
+      case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return;
+      case K.throttleMax.code: this.throttle.setThrottlePreset(3); return;
+      case K.boosterDecouple.code: this.boosters.decouple(registry); return;
+      case K.boosterIgnitionToggle.code: this.boosters.toggleIgnition(); return;
+      case K.radiatorDeployLeft.code: this.motion.radiator.toggle('up'); return;
+      case K.radiatorDeployRight.code: this.motion.radiator.toggle('down'); return;
+      case K.solarDeployLeft.code: this.motion.power.toggle('up'); return;
+      case K.solarDeployRight.code: this.motion.power.toggle('down'); return;
+      case K.reload.code: this.fire.manualReload(registry); return;
+    }
+  }
+
   // 姿勢微調整モードの ON/OFF を切り替える。
   private toggleFineAttitude(): void {
     this.fineAttitude = !this.fineAttitude;
     this.notifier.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
-  }
-
-  // 自機側のキー(RCS減衰・プログレード・スロットル等)を1フレーム分消費する。
-  private handleEdgeInput(input: Input, registry: EntityRegistry): void {
-    input.takeKeys((code) => this.handleEdgePress(code, registry));
-  }
-
-  // 自機側キー1個を処理する。処理したキーは true を返し input.takeKeys に消費させる。
-  private handleEdgePress(code: string, registry: EntityRegistry): boolean {
-    // キーごとに姿勢・スロットル・ブースター・放熱板・太陽電池・装填の各系へ振り分ける
-    switch (code) {
-      case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return true;
-      case K.progradeReset.code: this.throttle.enableProgradeReset(); return true;
-      case K.fineAttitudeToggle.code: this.toggleFineAttitude(); return true;
-      case K.progradeHoldToggle.code: this.throttle.toggleProgradeHold(); return true;
-      case K.throttleLow.code: this.throttle.setThrottlePreset(0); return true;
-      case K.throttleMid.code: this.throttle.setThrottlePreset(1); return true;
-      case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return true;
-      case K.throttleMax.code: this.throttle.setThrottlePreset(3); return true;
-      case K.boosterDecouple.code: this.boosters.decouple(registry); return true;
-      case K.boosterIgnitionToggle.code: this.boosters.toggleIgnition(); return true;
-      case K.radiatorDeployLeft.code: this.motion.radiator.toggle('up'); return true;
-      case K.radiatorDeployRight.code: this.motion.radiator.toggle('down'); return true;
-      case K.solarDeployLeft.code: this.motion.power.toggle('up'); return true;
-      case K.solarDeployRight.code: this.motion.power.toggle('down'); return true;
-      case K.reload.code: return this.fire.manualReload(registry);
-      default: return false;
-    }
   }
 
   // 放熱板パーツの残 HP から side ごとの損耗率を組む。パーツが欠けている側は全損扱い。
