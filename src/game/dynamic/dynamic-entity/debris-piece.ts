@@ -4,7 +4,6 @@ import { randSym } from '../../../math/random';
 import { add, randVec, type Vec3, v3 } from '../../../math/vec3';
 import type { Attitude } from '../../../physics/attitude';
 import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
-import type { FlashEffects } from '../../vfx/flash-effects';
 import type { CapKind } from './entity-kind';
 import {
   BoosterExplosiveBoltView, BoosterInterstageCoverPanelView,
@@ -48,7 +47,6 @@ export class DebrisPiece extends DynamicEntity {
     state: KinematicState,
     debrisKind: DebrisKind,
     attitude: Attitude,
-    effects: FlashEffects,
     idAllocators: EntityIdAllocators,
     radius?: number,
     scene?: THREE.Scene,
@@ -59,7 +57,6 @@ export class DebrisPiece extends DynamicEntity {
         behavior: new DebrisReaction(
           debrisKind.kind,
           'bornSim' in debrisKind ? debrisKind.bornSim : null,
-          effects,
         ),
         radius,
         // 砲身の破片は、外れた時点の温度と温度差を引き継ぐ
@@ -86,7 +83,6 @@ export function buildDestroyFragments(
   sizeMin: number,
   sizeMax: number,
   spread: number,
-  effects: FlashEffects,
   idAllocators: EntityIdAllocators,
 ): DebrisPiece[] {
   const pieces: DebrisPiece[] = [];
@@ -104,29 +100,28 @@ export function buildDestroyFragments(
       inertia: v3(1, 2.05, 3.0),
     };
     pieces.push(new DebrisPiece(
-      state, { kind: 'fragment', accent, size }, attitude, effects, idAllocators));
+      state, { kind: 'fragment', accent, size }, attitude, idAllocators));
   }
   return pieces;
 }
 
 // 自機の撃破で飛び散る破片。
 export function playerDestroyFragments(
-  state: KinematicState, effects: FlashEffects, idAllocators: EntityIdAllocators,
+  state: KinematicState, idAllocators: EntityIdAllocators,
 ): DebrisPiece[] {
   return buildDestroyFragments(
     state.t, state.r, state.v, 11, PLAYER_DESTROY_FRAG_COLOR,
-    DESTROY_FRAG_SIZE_MIN / 3, DESTROY_FRAG_SIZE_MAX / 3, 20.0, effects, idAllocators,
+    DESTROY_FRAG_SIZE_MIN / 3, DESTROY_FRAG_SIZE_MAX / 3, 20.0, idAllocators,
   );
 }
 
 // 敵機の撃破で飛び散る破片。機体メッシュのスケール meshScale へ見合った大きさにする。
 export function enemyDestroyFragments(
-  state: KinematicState, meshScale: number, effects: FlashEffects,
-  idAllocators: EntityIdAllocators,
+  state: KinematicState, meshScale: number, idAllocators: EntityIdAllocators,
 ): DebrisPiece[] {
   return buildDestroyFragments(
     state.t, state.r, state.v, 11, ENEMY_DESTROY_FRAG_COLOR,
     (DESTROY_FRAG_SIZE_MIN * meshScale) / 3, (DESTROY_FRAG_SIZE_MAX * meshScale) / 3, 20.0,
-    effects, idAllocators,
+    idAllocators,
   );
 }

@@ -7,7 +7,6 @@ import { ENGAGEMENT_RANGE } from '../../dynamic/engagement-zone';
 import { Player } from '../../player/player';
 import type { StageOutcome } from '../stage-outcome';
 import type { RunEventSink } from '../../run-events';
-import type { FlashEffects } from '../../vfx/flash-effects';
 
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { apsisAltitudes, orbitalElementsOf } from '../../../physics/elements';
@@ -63,7 +62,6 @@ export class WaveAttack {
   // saved があればその状態から始める。
   public constructor(
     private readonly events: RunEventSink,
-    private readonly fx: FlashEffects,
     private readonly scene: THREE.Scene,
     private readonly attractors: readonly CelestialBody[],
     private readonly idAllocators: EntityIdAllocators,
@@ -79,7 +77,7 @@ export class WaveAttack {
     const wave = ++this._waveCount;
     const enemies = generateWave(
       player.motion.state, wave, this.attractors,
-      this.fx, this.scene, this.idAllocators, forcedPattern,
+      this.scene, this.idAllocators, forcedPattern,
     );
     for (const enemy of enemies) addEnemy(enemy);
   }
@@ -288,7 +286,7 @@ function waveShipPosition(
 }
 
 // ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
-export function generateWave(player: KinematicState, waveNumber: number, attractors: readonly CelestialBody[], fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators, forcedPattern?: 'linear' | 'random'): Enemy[] {
+export function generateWave(player: KinematicState, waveNumber: number, attractors: readonly CelestialBody[], scene: THREE.Scene, idAllocators: EntityIdAllocators, forcedPattern?: 'linear' | 'random'): Enemy[] {
   const calculatedCount = STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * STAGE00_WAVE_SHIPS_PER_WAVE);
   const shipCount = Math.min(calculatedCount, STAGE00_WAVE_MAX_SHIPS);
   const centerR = pickWaveCenter(player, waveNumber, attractors);
@@ -304,7 +302,7 @@ export function generateWave(player: KinematicState, waveNumber: number, attract
     const accent = subGroups[i % subGroups.length]!;
     const position = waveShipPosition(pattern, i, shipCount, centerR, approachDir, attractors, player.t);
     const state: KinematicState = kinematicState<'eci'>(player.t, position, centerV);
-    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, attractors, accent, accent, typeIndex, waveNumber, fx, scene, idAllocators, `wave-${waveNumber}-group-${i % subGroups.length}`));
+    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, attractors, accent, accent, typeIndex, waveNumber, scene, idAllocators, `wave-${waveNumber}-group-${i % subGroups.length}`));
   }
   return enemies;
 }
