@@ -16,17 +16,16 @@ import {
   DEFAULT_ORBIT_GUIDE_SETTINGS,
   defaultCombinedKindSettings,
   defaultKindSettings,
-  GUIDE_GROUPS,
   type CombinedKindSettings,
   type CriticalInclinationSettings,
   type DawnDuskSettings,
-  type GuideGroupId,
   type GuideKindSettings,
   type GuideKindSharedSettings,
   type LissajousSettings,
   type OrbitGuideSettings,
   type SunSyncSettings,
-} from '../../celestial/orbit-guide/orbit-guide-settings';
+} from '../../viewer/orbit-guide-settings';
+import { GUIDE_GROUPS, type GuideGroupId } from '../../celestial/orbit-guide/orbit-guide-groups';
 import { ORBIT_GUIDE_GROUP_TABS } from '../hud-selection';
 import type { OrbitGuideGroupTab } from '../hud-selection';
 import type { DirectionMarkerMode } from '../../../render/celestial/orbit-guide/direction-markers';

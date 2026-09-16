@@ -58,6 +58,7 @@ import { resolveOrbitReference } from './orbit-reference';
 import { Viewer } from './viewer/viewer';
 import { navTargetCommands, type NavTargetCommands } from './viewer/nav-target-commands';
 import { orbitReferenceCommands, type OrbitReferenceCommands } from './viewer/orbit-reference-commands';
+import { orbitGuideCommands } from './viewer/orbit-guide-commands';
 import { recordTargetBoardPasses } from './dynamic/target-board-passes';
 import { ObjectWindows } from './pickable/object-windows';
 import { SAVE_VERSION, type GameSaveData } from './save/save-data';
@@ -72,9 +73,7 @@ import { FrameControls } from './hud/frame/frame-controls';
 import { syncControlledLoopSfx } from './controlled-loop-sfx';
 import { ViewOptionsControl } from './hud/panels/view-options-control';
 import { MapVisibilityPolicy } from './map/visibility-policy';
-import { savedOrbitGuideSettings } from './celestial/orbit-guide/orbit-guide-settings';
 import type { ViewOptionsSettings } from './hud/panels/view-options-control';
-import type { OrbitGuideSettings } from './celestial/orbit-guide/orbit-guide-settings';
 import type { BurnManagementPanelHandlers } from './hud/panels/burn-management-panel';
 import type { SettingValue } from '../settings/setting-value';
 import type { ThemePalette } from '../theme';
@@ -165,8 +164,6 @@ export class Game {
   private readonly viewOptions: ViewOptionsControl;
   // マップ・天球の表示設定と、表示パネルのタブの選択。
   private readonly viewOptionSettings: ViewOptionsSettings;
-  // このランで選んでいる軌道ガイド。セーブへ残る選択の正本。
-  private orbitGuideSettings: OrbitGuideSettings;
   // 選ばれている配色。
   private readonly themePalette: SettingValue<ThemePalette>;
   // ブースターの取り付け・点火・切り離しの口。
@@ -254,7 +251,6 @@ export class Game {
       // 遊ぶ人の選択。
       camera: { view: this.viewManager.current, ...this.cameraSystem.serialize() },
       ...this.viewer.serialize(),
-      orbitGuide: this.orbitGuideSettings,
     };
   }
 
@@ -295,14 +291,6 @@ export class Game {
       this._hud.mapRoot, this._hud.panelCollapse, celestialSystem,
     );
 
-    // 表示パネル。左レールの並びはパネルを足した順で決まるので、同じレールへ足す座標系パネル
-    // (FrameControls)より先に組む。
-    this.orbitGuideSettings = savedOrbitGuideSettings(initialSave?.orbitGuide);
-    this.viewOptions = new ViewOptionsControl(
-      this._hud.mapRoot, this._hud.panelCollapse, host.viewOptions, this.orbitGuideSettings,
-      (next) => { this.orbitGuideSettings = next; },
-    );
-
     // ビューの正本(ViewManager)はカメラより後に組み上がるため、遅延評価で渡す。
     this.cameraSystem = new CameraSystem(
       this._hud, celestialSystem, () => this.viewManager.current,
@@ -327,6 +315,12 @@ export class Game {
     this.navTargetCommands = navTargetCommands(this.commands, this.viewer.navTarget);
     this.orbitReferenceCommands = orbitReferenceCommands(this.commands, this.viewer.orbitReference);
     this.navTargetPresenter = new NavTargetPresenter(this.viewer.navTarget, this.markers.createGroup());
+    // 表示パネル。左レールの並びはパネルを足した順で決まるので、同じレールへ足す座標系パネル
+    // (FrameControls)より先に組む。
+    this.viewOptions = new ViewOptionsControl(
+      this._hud.mapRoot, this._hud.panelCollapse, host.viewOptions,
+      this.viewer.orbitGuide, orbitGuideCommands(this.commands, this.viewer.orbitGuide),
+    );
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。update()/sync() の
     // 先頭で毎フレーム表示時刻を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
     this.frameAnchors = new FrameAnchors(celestialSystem, {
@@ -741,7 +735,7 @@ export class Game {
 
     this._celestialSystem.sync(
       displayTime, nowMs, camera, this.cameraSystem, graphics, style,
-      this.viewOptionSettings.grid.current, this.orbitGuideSettings, visibilityPolicy,
+      this.viewOptionSettings.grid.current, this.viewer.orbitGuide.settings, visibilityPolicy,
     );
     // 本数の警告は、天体系がこのフレームに組んだ軌道ガイド線から出す。
     this.viewOptions.setOrbitGuideLineCount(this._celestialSystem.orbitGuide.lineCount);
