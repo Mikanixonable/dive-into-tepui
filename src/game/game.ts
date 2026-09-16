@@ -52,11 +52,24 @@ import { ViewBadge } from './hud/view-badge';
 import { FrameControls } from './hud/frame/frame-controls';
 import { syncControlledLoopSfx } from './controlled-loop-sfx';
 import { ViewOptionsControl } from './hud/panels/view-options-control';
+import { enemiesPanelView } from './hud/panels/enemies-panel-data';
+import type { TopBarViewModel } from './hud/panels/top-bar';
+import type { OrbitPanelViewModel } from './hud/orbit/orbit-panel';
+import type { VesselPanelViewModel } from './hud/panels/vessel-panel';
+import type { TargetPanelViewModel } from './hud/panels/target-panel';
+import type { OrbitAnalysisViewModel } from './hud/orbit/orbit-analysis-window';
+import type { ApproachTargetSource } from './hud/orbit/orbit-analysis-data';
 import type { MapDisplayToggles } from './map/display-toggles';
 import { MapVisibilityPolicy } from './map/visibility-policy';
 import type { RunSetting } from './run-setting';
 import type { OrbitGuideSettings } from './celestial/orbit-guide/orbit-guide-settings';
 import type { CelestialGridVisibility } from '../render/celestial-grid';
+import { orbitInfo, relativeInfo } from './orbit-info';
+import { aliveCombatTarget } from './dynamic/dynamic-entity/combat-target';
+import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
+import { MAX_DYN_PRESSURE } from './player/aero-load';
+import { MAX_HULL_TEMP } from './dynamic/dynamic-entity/ship';
+import { SIM_SPEED_LEVELS } from './dynamic/sim-speed-manager';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -393,7 +406,11 @@ export class Game {
     this.planDisplay.update(displayWindow, this.frameAnchors, view);
     this.sections.exit(SECTION.plan);
     // 予測の伸長対象は軌道分析ウィンドウが見ている個体を含むので、予測より先に確定させる。
-    this._hud.updateAnalysisReaders(this);
+    const analysisTarget = this.resolveOrbitAnalysisTarget();
+    this._hud.updateAnalysisReaders({
+      entity: activeControllable,
+      targetEntity: analysisTarget?.kind === 'entity' ? analysisTarget.entity : null,
+    });
     // ポーズ中・決着後も呼ぶ。simTime が止まっていれば予測は伸び切ったところで止まる。
     this.sections.enter(SECTION.predict);
     this.predictor.update(
@@ -580,10 +597,131 @@ export class Game {
 
     this.activeStage.sync(camera, displayTime);
 
-    this._hud.syncPanels(this.viewManager.current, this, camera);
+    this._hud.syncTopBar(this.topBarView());
+    this._hud.syncBurnManagement(controlled?.boosters?.managementViewModel() ?? null);
+    this._hud.syncOrbitPanel(this.orbitPanelView(controlled, orbitRef));
+    if (this.viewManager.current === 'map') {
+      this._hud.syncMapScale(camera.scale, this.cameraSystem.mapCamera.resolvedFocus);
+      if (this.activeStage.id === 'creative') {
+        this._hud.syncVesselPanel(this.vesselPanelView(controlled, true));
+      }
+      this._hud.syncTargetPanel(null);
+      this._hud.syncEnemiesPanel(enemiesPanelView(
+        controlled, this.activeStage, this.dynamicSystem, this.targeter, true,
+      ));
+    } else {
+      this._hud.syncVesselPanel(this.vesselPanelView(controlled, false));
+      this._hud.syncTargetPanel(this.targetPanelView(controlled));
+      this._hud.syncEnemiesPanel(enemiesPanelView(
+        controlled, this.activeStage, this.dynamicSystem, this.targeter, false,
+      ));
+    }
+    this._hud.syncOrbitAnalysis(this.orbitAnalysisView(controlled, orbitRef, displayWindow.duration));
+    this._hud.finishPanelSync();
 
     // このフレームのマーカーが出揃った後でなければならないので最後に置く。
     this.markerManager.resolveCollisions(this.viewManager.current);
+  }
+
+  // トップバーが読む値を、このフレームのゲーム状態から組み立てる。
+  private topBarView(): TopBarViewModel {
+    const displayWindow = this.displayWindowManager.current;
+    const simTime = this.dynamicSystem.simTime;
+    return {
+      epochUnixSec: displayWindow.epochUnixSec,
+      simTime,
+      simSpeed: this.simSpeedManager.simSpeed,
+      speedOptions: SIM_SPEED_LEVELS,
+      autoWarpRealRemain: this.simSpeedManager.estimatedRealSecondsToWarpEnd(simTime),
+      autoWarpSimRemain: this.simSpeedManager.remainingSimulationSeconds(simTime),
+      isPaused: this._isPaused,
+      onSpeedChange: (speed) => this.simSpeedManager.setSpeed(speed),
+    };
+  }
+
+  // ORBIT パネルが読む値を、軌道基準まで解決してから渡す。
+  private orbitPanelView(
+    entity: Controllable | null, reference: ReturnType<OrbitReferenceSelector['resolve']> | undefined,
+  ): OrbitPanelViewModel | null {
+    if (!entity || !reference) return null;
+    const info = orbitInfo(
+      entity, reference, entity.motion.state.t, (id: string) => this._celestialSystem.nameOf(id),
+    );
+    const centerName = !reference.attractor && this.navTarget.name ? this.navTarget.name : info.centerName;
+    const status = entity.statusSnapshot();
+    const dynamicPressure = status.aero?.qdyn ?? null;
+    return {
+      centerName,
+      centerId: info.centerId,
+      alt: info.alt,
+      spd: info.spd,
+      apAlt: info.apAlt,
+      peAlt: info.peAlt,
+      incDeg: info.incDeg,
+      period: info.period,
+      altitudeWarning: entity.altitudeAlarm?.descendWarned ?? false,
+      dynamicPressure,
+      dynamicPressureWarning: dynamicPressure !== null && dynamicPressure > 0.5 * MAX_DYN_PRESSURE,
+      temperatureK: entity.motion.temperature,
+      temperatureWarning: entity.motion.temperature > 0.7 * MAX_HULL_TEMP,
+      referenceMode: this.orbitReference.selectedMode,
+      onReferenceModeChange: (mode) => this.orbitReference.setMode(mode),
+    };
+  }
+
+  // VESSEL パネルには状態のスナップショットと、操作の狭い受け口だけを渡す。
+  private vesselPanelView(entity: Controllable | null, isMapView: boolean): VesselPanelViewModel | null {
+    if (!entity) return null;
+    return {
+      status: entity.statusSnapshot(),
+      isMapView,
+      isCreative: this.activeStage.id === 'creative',
+      cameraFollowsAttitude: this.cameraSystem.combatCamera.rotationFollow?.kind === 'attitude',
+      onToggleSolarPanel: entity.toggleSolarPanel ?? null,
+      onToggleRadiator: entity.toggleRadiator ?? null,
+    };
+  }
+
+  // TARGET パネルが読む相対値を、ゲーム側の対象解決と同じ時刻で計算する。
+  private targetPanelView(entity: Controllable | null): TargetPanelViewModel | null {
+    const target = entity ? this.targeter.aliveTarget : null;
+    if (!entity || !target) return null;
+    const relative = relativeInfo(
+      entity, target, this._celestialSystem.celestialMotions, entity.motion.state.t,
+    );
+    return {
+      name: target.name,
+      distanceM: relative.dist,
+      closingMps: relative.closing,
+      relativeSpeedMps: relative.relSpeed,
+      hp: target.hp,
+      maxHp: target.maxHp,
+      protein: target instanceof ProteinEnemy ? target.combatReadout : null,
+    };
+  }
+
+  // 軌道分析ウィンドウの航法ターゲットを、天体または動的エンティティへ解決する。
+  private resolveOrbitAnalysisTarget(): ApproachTargetSource | null {
+    const id = this.navTarget.id;
+    if (id === null) return null;
+    const body = this._celestialSystem.find(id)?.motion;
+    if (body !== undefined) return { kind: 'celestialBody', body };
+    const entity = aliveCombatTarget(this.dynamicSystem.all(), id);
+    return entity ? { kind: 'entity', entity } : null;
+  }
+
+  // 軌道分析が必要とする値を1フレームの表示値として束ねる。
+  private orbitAnalysisView(
+    entity: Controllable | null, reference: ReturnType<OrbitReferenceSelector['resolve']> | undefined,
+    windowDurationSec: number,
+  ): OrbitAnalysisViewModel {
+    return {
+      entity,
+      reference: reference ?? null,
+      target: this.resolveOrbitAnalysisTarget(),
+      celestialSystem: this._celestialSystem,
+      windowDurationSec,
+    };
   }
 
   // ------------------------------------------------------------------ render

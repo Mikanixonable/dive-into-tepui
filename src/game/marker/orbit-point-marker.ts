@@ -14,8 +14,8 @@ import type { PlanEditor } from '../plan/plan-editor';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
-import type { MarkerSlots } from './marker-slots';
-import type { MarkerVisibility } from './marker-visibility';
+import type { MarkerSlots } from '../../render/marker/marker-slots';
+import type { MarkerVisibility } from '../../render/marker/marker-visibility';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 

@@ -8,7 +8,7 @@ import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ProjectFn } from '../../math/projection';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { GroupedMarkerItem, GroupedMarkers } from './grouped-markers';
-import type { MarkerSlots } from './marker-slots';
+import type { MarkerSlots } from '../../render/marker/marker-slots';
 
 // これより天体が遠ければ、サブ行を記号と個数だけの1行へ畳む [m]。
 const STAGE2_DIST = 5e9;
