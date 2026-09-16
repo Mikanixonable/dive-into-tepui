@@ -46,6 +46,8 @@ export function casingSweptSphereCollision(
   _previousSelfAttitude = self.prevAtt,
   selfAttitude = self.att,
 ) {
+  // 薬莢は回転を持たない円柱近似なので、掃引中も終端姿勢だけを使う。
+  void _previousSelfAttitude;
   return sweptSphereCylinderContact(
     casingCylinder(self, selfState, selfAttitude), previousSphereCenter, sphereCenter, sphereRadius,
   );

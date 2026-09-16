@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { isFormationEnergyAvailable } from '../../src/game/dynamic/dynamic-entity/protein-enemy';
-import { countAttackingEnemiesInGroup } from '../../src/game/dynamic/dynamic-entity/enemy';
+import { countAttackingEnemiesInGroup } from '../../src/game/dynamic/dynamic-entity/enemy-attack-group';
 import type { FormationRole } from '../../src/game/dynamic/dynamic-entity/entity-kind';
 
 type FormationMember = {

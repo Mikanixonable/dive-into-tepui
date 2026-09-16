@@ -214,13 +214,12 @@ export class ProteinSphereCollisionGeometry {
         if (nearest !== null && globalToi >= nearest.toi) continue;
         const center = interpolate(previousSelfState.r, selfState.r, globalToi);
         const hitAttitude = qSlerp(previousAttitude, attitude, globalToi);
-        const worldNormal = qRotate(hitAttitude, qRotate(qInvert(hitAttitude), normal));
         // TOI では2球が接するだけなので、押し戻し量は 0 になる。接触点は
         // 相手の球ではなく、Protein側の球面上へ置く。
         nearest = {
           hit: {
-            point: addScaled(add(center, qRotate(hitAttitude, offset)), worldNormal, sphere.radius),
-            normal: worldNormal,
+            point: addScaled(add(center, qRotate(hitAttitude, offset)), normal, sphere.radius),
+            normal,
             depth: 0,
           },
           toi: globalToi,

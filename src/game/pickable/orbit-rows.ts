@@ -7,11 +7,11 @@ import { autoOrbitReference } from '../orbit-reference';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../hud/orbit/orbit-labels';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
 
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 
 // simTime は天体位置を厳密に引く時刻。
 export function orbitRows(
-  entity: DynamicEntity, celestialBodies: CelestialBodies, simTime: number,
+  entity: OrbitingObject, celestialBodies: CelestialBodies, simTime: number,
 ): PropertyRow[] {
   const motions = celestialBodies.celestialMotions;
   const oi = orbitInfo(
