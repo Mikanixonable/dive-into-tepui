@@ -1,5 +1,6 @@
 // 計画軌道のルーラー目盛りを、暦(時・日・月・年)の区切りに合わせて生成する。
 import { fmtDateTime, fmtDuration } from '../../../hud/utils';
+import type { TickLabelMode } from '../../viewer/predict-panel-selection';
 
 // 目盛階数。数が大きいほど粗い単位 — 0:1時間 1:3時間 2:6時間 3:12時間 4:1日 5:1月 6:1年。
 export type TickRank = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -157,9 +158,6 @@ export function calendarBoundaries(
   }
   return unixList.map((unix) => ({ unix, rank: highestRank(unix) }));
 }
-
-// 目盛りラベルの表記。'absolute' は UTC カレンダー、'relative' は基準時刻からの経過時間。
-export type TickLabelMode = 'absolute' | 'relative';
 
 // 通過時刻ラベルを書くのに要るものの束。**表示側がこれを1つ持ち回る** — 表記の種類・
 // 相対表記の基準時刻・絶対表記の元期は、どれか1つだけ差し替えると表記が食い違う。
