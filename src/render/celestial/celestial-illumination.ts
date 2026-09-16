@@ -181,7 +181,6 @@ export class CelestialIllumination {
   ): void {
     const scale = camera.radialScale;
     const candidates = sources.flatMap((source) => {
-      if (!source.visible) return [];
       const candidate = source.view.atmosphereCandidateAt(
         source.motion, camera.floatingOrigin, displayTime, camera.position, scale, graphics);
       return candidate === null ? [] : [candidate];
