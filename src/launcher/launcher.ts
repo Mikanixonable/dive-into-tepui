@@ -181,7 +181,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   }
 
   // 周回の初期セーブ。snapshotId があればそれを、無ければ終わっていない周回の再開(直近の周回と同じ
-  // ステージ、かつ開始日時の指定なし)に限り最新スナップショットを復元する。直近の周回を読むので
+  // ステージ、かつ開始日時の指定なし)に限り復帰点を復元する。直近の周回を読むので
   // noteLaunched より前に呼ぶ。復元できなければ undefined。
   private initialSaveFor(stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate): GameSaveData | undefined {
     const activeSlotId = this.slots.activeSlotId;
@@ -189,13 +189,10 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     const resumesRunInProgress = startEpoch === undefined && activeSlotId !== null
       && lastRun !== null && !lastRun.ended && lastRun.stageId === stageClass.id;
     const initialSnapshotId = snapshotId
-      ?? (resumesRunInProgress ? this.slots.latestSnapshot(activeSlotId, stageClass.id)?.id ?? null : null);
-    const initialSave = initialSnapshotId !== null
+      ?? (resumesRunInProgress ? this.slots.resumePointId(activeSlotId, stageClass.id) : null);
+    return initialSnapshotId !== null
       ? this.snapshotService.load(initialSnapshotId, stageClass.id) ?? undefined
       : undefined;
-    // ロードした時点より後の自動スナップショットは、もう起きなかった未来なので破棄する。
-    if (initialSave && initialSnapshotId !== null) this.slots.discardAfter(initialSnapshotId);
-    return initialSave;
   }
 
   // 実際に遊び始めたステージをスロットへ記録し、作り直しのために覚えておく。

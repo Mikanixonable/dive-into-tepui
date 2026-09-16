@@ -4,8 +4,9 @@ import { fmtDist, fmtTime } from '../../hud/utils';
 import { SaveStore } from './save-store';
 import { SaveSlots } from './save-slots';
 import { isEphemerisContextRestorable } from '../../physics/ephemeris/ephemeris-context';
+import { newSaveId } from './slot-data';
 import type { GameSaveData } from '../../game/save/save-data';
-import type { SnapshotKind, SnapshotMeta } from './slot-data';
+import type { SnapshotMeta } from './slot-data';
 
 export interface SnapshotCaptureSource {
   readonly isPaused: boolean;
@@ -14,27 +15,21 @@ export interface SnapshotCaptureSource {
   serialize(): GameSaveData;
 }
 
-// スナップショットの出し入れを担う。撮るときは索引のメタを組んでスロットへ収め、読むときは
-// 保存形式を検証する。
+// 記録の出し入れを担う。手動セーブは索引のメタを組んでスロットへ収め、復帰点は上書きし、
+// 読むときは保存形式を検証する。
 export class SnapshotService {
-  constructor(private readonly store: SaveStore, private readonly slots: SaveSlots) {}
+  public constructor(private readonly store: SaveStore, private readonly slots: SaveSlots) {}
 
-  // 要約と保存本体を1件のスナップショットとして永続化し、そのメタを返す。
+  // 要約と保存本体を1件の手動セーブとして残し、そのメタを返す。同じ瞬間で復帰点も更新する。
   // アクティブスロットが無い、またはストア書き込みに失敗した場合は null。
-  capture(
-    summary: RunSummary,
-    save: GameSaveData,
-    kind: SnapshotKind,
-    name: string | null,
-    pinned: boolean,
-  ): SnapshotMeta | null {
+  public addManualSave(summary: RunSummary, save: GameSaveData, name: string | null): SnapshotMeta | null {
     const slotId = this.slots.activeSlotId;
     if (slotId === null) return null;
 
     const meta: SnapshotMeta = {
-      id: generateSnapshotId(),
-      kind,
-      pinned,
+      id: newSaveId(),
+      kind: 'manual',
+      pinned: true,
       name: name && name.length > 0 ? name : autoName(summary),
       createdAtReal: Date.now(),
       simTime: summary.simTime,
@@ -50,12 +45,21 @@ export class SnapshotService {
       phase: summary.phase,
     };
 
-    return this.slots.addSnapshot(slotId, save.stageId, meta, save) ? meta : null;
+    if (!this.slots.addManualSave(slotId, save.stageId, meta, save)) return null;
+    this.slots.writeResumePoint(slotId, save.stageId, save);
+    return meta;
   }
 
-  // snapshotId のスナップショット本体を取得する。本体欠損・バージョン不一致・
+  // 復帰点をこの瞬間へ差し替える。アクティブスロットが無ければ何も残さない。
+  public writeResumePoint(save: GameSaveData): void {
+    const slotId = this.slots.activeSlotId;
+    if (slotId === null) return;
+    this.slots.writeResumePoint(slotId, save.stageId, save);
+  }
+
+  // snapshotId の本体を取得する。本体欠損・バージョン不一致・
   // 起動先ステージとの不一致のいずれかなら null。
-  load(snapshotId: string, expectedStageId: string): GameSaveData | null {
+  public load(snapshotId: string, expectedStageId: string): GameSaveData | null {
     const data = this.store.readSnapshot(snapshotId);
     if (data === null) return null;
     if (data.version !== SAVE_VERSION) return null;
@@ -67,15 +71,10 @@ export class SnapshotService {
   }
 }
 
-// 名前を付けずに撮ったスナップショットの表示名。自機が居ない周回では経過時間だけを出す。
+// 名前を付けずに残した手動セーブの表示名。自機が居ない周回では経過時間だけを出す。
 function autoName(summary: RunSummary): string {
   const timeLabel = `MET ${fmtTime(summary.simTime)}`;
   return summary.playerCount > 0
     ? `${timeLabel} ・ ${summary.centerBodyName} 高度 ${fmtDist(summary.altitude)}`
     : timeLabel;
-}
-
-// 同一ミリ秒の連続呼び出しでも衝突しないよう、時刻にランダムな尾部を付ける。
-function generateSnapshotId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
