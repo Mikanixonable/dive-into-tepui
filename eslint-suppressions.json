@@ -804,7 +804,7 @@
   },
   "src/game/plan/plan-guide.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 3
+      "count": 2
     },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 4
@@ -841,7 +841,7 @@
   },
   "src/game/player/altitude-alarm.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 2
+      "count": 1
     },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 3
@@ -849,7 +849,7 @@
   },
   "src/game/player/attached-boosters.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 3
+      "count": 2
     },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
@@ -870,7 +870,7 @@
   },
   "src/game/player/fire-control.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 7
+      "count": 6
     },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 7
@@ -904,7 +904,7 @@
       "count": 4
     },
     "@typescript-eslint/no-non-null-assertion": {
-      "count": 4
+      "count": 2
     }
   },
   "src/game/protein/protein-asset-loader.ts": {
@@ -944,12 +944,12 @@
   },
   "src/game/stages/spawner/enemy-generator.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 4
+      "count": 3
     }
   },
   "src/game/stages/spawner/enemy-spawner.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 4
+      "count": 3
     },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
@@ -986,7 +986,7 @@
   },
   "src/game/stages/stage-utils/logistics.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 4
+      "count": 2
     }
   },
   "src/game/stages/stage-utils/score-attack-timer.ts": {
@@ -1012,7 +1012,7 @@
   },
   "src/game/stages/stage.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 7
+      "count": 5
     },
     "@typescript-eslint/no-unused-vars": {
       "count": 4

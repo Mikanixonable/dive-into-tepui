@@ -105,6 +105,9 @@ const CONTROLLABLE_COMMANDS = [
   K.reload,
 ].map((binding) => gameCommand(binding.code, binding));
 
+// 新規開始のブリーフィングを出しておく時間 [ms]。
+const BRIEFING_TOAST_MS = 12000;
+
 export class Game {
   private readonly _scene: THREE.Scene;
   private readonly renderer: THREE.WebGPURenderer;
@@ -269,7 +272,7 @@ export class Game {
     this.themePalette = host.themePalette;
     this._worldSfx = new WorldSfx(audioEngine);
     const uiSfx = new UiSfx(audioEngine);
-    this.runEventPresenter = new RunEventPresenter(uiSfx, this._hud);
+    this.runEventPresenter = new RunEventPresenter(this._worldSfx, uiSfx, this._hud);
     this.pauseMenu = pauseMenu;
 
     this.markers = host.markers;
@@ -279,7 +282,7 @@ export class Game {
     this.flashEffects = new FlashEffects();
     this.flashEffectsView = new FlashEffectsView(this._scene);
     this.dynamicSystem = new DynamicSystem(
-      this._scene, this._hud, this._worldSfx, this.flashEffects, this.runEvents, celestialSystem,
+      this._scene, this.flashEffects, this.runEvents, celestialSystem,
       this.sections, initialSave?.simTime ?? 0, initialSave);
     this.entityLines = new EntityLineManager(this.dynamicSystem);
     this.equatorNodes = new EquatorNodeManager(this.dynamicSystem, this.markers.createGroup());
@@ -332,7 +335,7 @@ export class Game {
       this.markers, this.navTarget, this.dynamicSystem, celestialSystem.celestialMotions,
     );
     this.controlSelection = new ControlSelection(
-      initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._hud,
+      initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget,
     );
     this.controlSelectionCommands = controlSelectionCommands(this.commands, this.controlSelection);
     this.boosterCommands = boosterCommands(this.commands, this.dynamicSystem);
@@ -353,7 +356,7 @@ export class Game {
     this.planDisplay = new PlanDisplay(
       this._scene, this.markers.createGroup(), celestialSystem, this.displayWindowManager, this.controlSelection,
     );
-    this.planGuide = new PlanGuide(this._hud, uiSfx, this.markers.createGroup());
+    this.planGuide = new PlanGuide(this.runEvents, this.markers.createGroup());
     this.input = new Input(host.scene.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
     this.input.onPointerKindChange = (kind) => this.touchControls?.setPointerKind(kind);
@@ -361,7 +364,7 @@ export class Game {
     this.predictor = new Predictor(this.dynamicSystem, celestialSystem);
 
     this.activeStage = new stageClass(
-      initialSave?.stage, this._hud, this._worldSfx, uiSfx, this._scene, this.dynamicSystem,
+      initialSave?.stage, this._hud, this._scene, this.dynamicSystem,
       this.flashEffects, celestialSystem, this.controlSelection, this.commands,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
@@ -461,6 +464,12 @@ export class Game {
         ),
       },
     ]);
+
+    // 組み立ての間に積まれた出来事は、最初のフレームの進行が記録を空にすると消えるので、
+    // ここで写しておく。新規開始のブリーフィングもこの場で出す。
+    this.runEventPresenter.present(this.runEvents.recent);
+    const briefing = this.activeStage.briefing;
+    if (briefing !== null) this._hud.toast(briefing, BRIEFING_TOAST_MS);
   }
 
   // ------------------------------------------------------------------ lifecycle

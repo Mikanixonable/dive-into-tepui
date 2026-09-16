@@ -8,7 +8,6 @@ import type { EntityIdAllocators } from './entity-id';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import { Attitude } from '../../../physics/attitude';
 import { len, sub, v3, Vec3 } from '../../../math/vec3';
-import type { Notifier } from '../../../hud/notifier';
 import type { MarkerVisibility } from '../../../marker/marker-visibility';
 import { savedAttitude, savedKinematicState, type BaseSaveData } from '../../save/save-data';
 import { Plan, type PlanExecutionMode } from '../../plan/plan';
@@ -60,11 +59,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public fineAttitude = false;
   // 除去の前に注視・操作対象の参照を引き継ぐ必要があるので、所有者側に回収させる。
   public override readonly reclaimedByOwner = true;
-  public readonly releaseHint = '基地の操作を解除しました';
-  // 基地は自機と操作キーの並びが違うので、選んだ時点で案内を出す。
-  public get controlHint(): string {
-    return `基地「${this.name}」の操作モードに入りました (WASDQE: 噴射 / IJKLUO: 姿勢制御 / T: RCS減衰 / C: プログレード)`;
-  }
   // 基地は常設の軌道構造物なので、選択の有無に関わらず赤道交点マーカーを出す。
   public override readonly showsEquatorNodesAlways = true;
   // 所持金 [Cr]。
@@ -93,7 +87,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public constructor(
     init: BaseInit,
     scene: THREE.Scene,
-    notifier: Notifier,
     idAllocators: EntityIdAllocators,
   ) {
     // 復元と新規配置を同じ形へ均してから基底へ渡す。
@@ -121,7 +114,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       entityId,
     );
     this.setName(name);
-    this.throttle = new Throttle(notifier, 'saved' in init ? init.saved.throttle : undefined);
+    this.throttle = new Throttle('saved' in init ? init.saved.throttle : undefined);
     this._money = 'saved' in init ? init.saved.money : BASE_INITIAL_MONEY;
 
     if ('saved' in init) {
@@ -153,7 +146,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     }
     this.motion.torque = this.throttle.updateTorque(
       this.motion.att, this.motion.state.r, this.motion.state.v, input, false, dt, simDt, this,
-      () => {},  // 基地はプログレードホールド解除のヒントを出さない
+      () => {},  // 基地はプログレードホールドが外れたことを知らせない
     );
     this.throttle.updateThrustLatches(input);
     this.motion.thrust = this.throttle.updateThrustState(input, this.motion.att, simDt, this);
@@ -167,8 +160,8 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   }
 
   // router から受け取った基地の単発入力をゲーム状態へ適用する。
-  public handleInputCommand(commandId: string, _registry: EntityRegistry): void {
-    void _registry;
+  public handleInputCommand(commandId: string, registry: EntityRegistry): void {
+    const events = registry.events;
     switch (commandId) {
       case K.thrustForward.code:
       case K.thrustBackward.code:
@@ -178,13 +171,13 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       case K.thrustDown.code:
         this.throttle.handleThrustPress(commandId);
         return;
-      case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return;
-      case K.progradeReset.code: this.throttle.enableProgradeReset(); return;
-      case K.progradeHoldToggle.code: this.throttle.toggleProgradeHold(); return;
-      case K.throttleLow.code: this.throttle.setThrottlePreset(0); return;
-      case K.throttleMid.code: this.throttle.setThrottlePreset(1); return;
-      case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return;
-      case K.throttleMax.code: this.throttle.setThrottlePreset(3); return;
+      case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(events); return;
+      case K.progradeReset.code: this.throttle.enableProgradeReset(events); return;
+      case K.progradeHoldToggle.code: this.throttle.toggleProgradeHold(events); return;
+      case K.throttleLow.code: this.throttle.setThrottlePreset(0, events); return;
+      case K.throttleMid.code: this.throttle.setThrottlePreset(1, events); return;
+      case K.throttleHigh.code: this.throttle.setThrottlePreset(2, events); return;
+      case K.throttleMax.code: this.throttle.setThrottlePreset(3, events); return;
     }
   }
 

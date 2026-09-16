@@ -3,8 +3,7 @@
 import type { CelestialBody } from '../../physics/celestial-body';
 import { ellipsoidAltitude } from '../../physics/atmosphere';
 import { Vec3, sub } from '../../math/vec3';
-import type { Notifier } from '../../hud/notifier';
-import { WorldSfx } from '../../audio/sfx/world-sfx';
+import type { RunEventSink } from '../run-events';
 
 // 高度低下警告のしきい値(降順)。EMA 高度がこれを下回るたびに一度だけ警告する [m]
 const ALT_WARN_THRESHOLDS = [120e3, 100e3, 80e3];
@@ -24,10 +23,7 @@ export class AltitudeAlarm {
   // 同じしきい値で再警告できる。
   private readonly warnedThresholds = new Set<number>();
 
-  constructor(
-    private readonly _notifier: Notifier,
-    private readonly _worldSfx: WorldSfx,
-  ) {}
+  constructor(private readonly events: RunEventSink) {}
 
   // 位置 r の高度を atmosphereBody の基準楕円体から測り、平滑化して警告を出す。大気天体が
   // いなければ「大気の底」が無いので何もしない。
@@ -57,8 +53,7 @@ export class AltitudeAlarm {
       if (this.altEma < threshold) {
         if (this.warnedThresholds.has(threshold)) continue;
         this.warnedThresholds.add(threshold);
-        this._notifier.hint(`警告: 高度が${Math.round(threshold / 1000)}km以下です`, 3000);
-        this._worldSfx.altAlarm();
+        this.events.record({ kind: 'altitudeWarned', threshold });
       } else if (this.altEma > threshold + ALT_WARN_HYSTERESIS) {
         this.warnedThresholds.delete(threshold);
       }
