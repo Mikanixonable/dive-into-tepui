@@ -2,7 +2,6 @@ import { kinematicState, type KinematicState } from '../../../physics/kinematic-
 import type { Vec3 } from '../../../math/vec3';
 import type { ContactGeometry } from '../../../physics/collision-response';
 import type { SphereHit } from '../../../math/triangle-mesh';
-import type { FlashEffects } from '../../vfx/flash-effects';
 import type { DynamicMotion, DynamicMotionBehavior } from '../dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic-simulation-participant';
 import type { Contact } from './contact';
@@ -29,7 +28,6 @@ export class DebrisReaction implements DynamicMotionBehavior {
   public constructor(
     private readonly kind: DebrisKind['kind'],
     private readonly bornSim: number | null,
-    private readonly effects: FlashEffects,
   ) {
     if (kind !== 'casing') return;
     this.testSphereCollision = (
@@ -58,13 +56,15 @@ export class DebrisReaction implements DynamicMotionBehavior {
     );
   }
 
-  // 弾が当たればガスを噴き、薬莢が船体か他の薬莢へ当たれば金属音の出来事を記録する。
+  // 弾が当たったこと、薬莢が船体か他の薬莢へ当たったことを出来事として記録する。
   public onEntityContact(
     _self: DynamicMotion, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void {
     if (bulletReactionOf(other) !== null) {
-      this.effects.spawnGasPuff(
-        kinematicState<'eci'>(contact.selfState.t, contact.point, contact.selfState.v));
+      services.registry.events.record({
+        kind: 'debrisStruckByBullet',
+        state: kinematicState<'eci'>(contact.selfState.t, contact.point, contact.selfState.v),
+      });
       return;
     }
     if (this.kind !== 'casing') return;

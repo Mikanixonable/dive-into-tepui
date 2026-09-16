@@ -19,7 +19,6 @@ import { generateRandomName } from '../random-name';
 import { Throttle } from './throttle';
 import { FireControl, type AmmoLoad } from './fire-control';
 import { AltitudeAlarm } from './altitude-alarm';
-import type { FlashEffects } from '../vfx/flash-effects';
 import { PlayerView, type PlayerRenderSource } from '../../render/dynamic/player/player-view';
 import type { DynamicViewFrame } from '../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../orbit-reference';
@@ -108,11 +107,10 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   public constructor(
     private readonly events: RunEventSink,
     scene: THREE.Scene,
-    fx: FlashEffects,
     idAllocators: EntityIdAllocators,
     init: PlayerInit,
   ) {
-    const effects: PlayerEffects = new DefaultPlayerEffects(events, fx);
+    const effects: PlayerEffects = new DefaultPlayerEffects(events);
     const saved = 'saved' in init ? init.saved : undefined;
     const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
     const state = 'saved' in init ? savedKinematicState(init.saved, init.simTime) : init.state;
@@ -172,10 +170,10 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.throttle = new Throttle(saved?.throttle);
     this.effects = effects;
     this.fire = new FireControl(
-      this, events, scene, fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
+      this, events, scene, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
     this.altitudeAlarm = new AltitudeAlarm(events);
     this.boosters = new AttachedBoosters(
-      this.motion, this.motion.attachedBoosters, idAllocators, events, scene, fx,
+      this.motion, this.motion.attachedBoosters, idAllocators, events, scene,
     );
     if (saved) {
       this.planExecution = saved.planExecution ?? 'off';

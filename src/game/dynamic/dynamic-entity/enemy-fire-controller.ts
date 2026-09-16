@@ -4,6 +4,7 @@ import type { Player } from '../../player/player';
 import { Bullet } from './bullet';
 import type { Enemy } from './enemy';
 import type { EntityRegistry } from '../entity-registry';
+import type { RunEventSink } from '../../run-events';
 import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import { add, len, norm, randPerp, rotateAxis, scale, sub, type Vec3 } from '../../../math/vec3';
 import { solveLeadTime } from '../../../physics/intercept';
@@ -28,7 +29,7 @@ export interface EnemyFireControllerPort {
   canFire(enemies: readonly Enemy[]): boolean;
   muzzlePosition(): Vec3;
   plasmaDamage(): number;
-  muzzleEffect(muzzleState: KinematicState): void;
+  muzzleEffect(muzzleState: KinematicState, events: RunEventSink): void;
 }
 
 // 敵の射撃判断・バースト進行・弾生成をEnemy本体から分離する。
@@ -109,7 +110,7 @@ export class EnemyFireController {
       kinematicState<'eci'>(simTime, r, bV), PLASMA_LIFETIME, 'enemy', 'plasma',
       this.port.plasmaDamage(), registry.idAllocators,
     );
-    this.port.muzzleEffect(kinematicState<'eci'>(simTime, r, v));
+    this.port.muzzleEffect(kinematicState<'eci'>(simTime, r, v), registry.events);
     registry.add(bullet);
   }
 }
