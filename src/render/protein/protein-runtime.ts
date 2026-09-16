@@ -13,6 +13,7 @@ import {
 } from './protein-motion-material';
 import type { Quat } from '../../math/quat';
 import type { Vec3 } from '../../math/vec3';
+import { v3 } from '../../math/vec3';
 import type { ProteinMotionDisplay, ProteinMotionLod, ProteinPhase } from './protein-display';
 import type {
   ProteinRenderAsset,
@@ -171,6 +172,24 @@ export class ProteinRuntime {
   // 部位 id の変形済みアンカーを、個体の位置・姿勢でワールド座標へ写す。id が無ければ origin。
   public siteWorldPositionById(id: string, origin: Vec3, attitude: Quat): Vec3 {
     return this.siteWorldPosition(this.siteDefinitions.get(id) ?? null, origin, attitude);
+  }
+
+  // 表示中の変形を含む、root倍率をまだ掛けていないモデルローカル座標を返す。
+  // ゲーム側の命中部位判定と、表示側の発射・マーカーの共通入力にする。
+  public siteModelPositionById(id: string): Vec3 {
+    const site = this.siteDefinitions.get(id);
+    if (!site) return v3();
+    const [x, y, z] = site.position;
+    const offset = proteinAnchorOffset(
+      this.siteResidueGroups.get(site.id) ?? [],
+      this.trackedResidueOffsets,
+      this.motion.residueCount,
+    );
+    return v3(
+      (x + offset[0]) * this.asset.coordinateScale,
+      (y + offset[1]) * this.asset.coordinateScale,
+      (z + offset[2]) * this.asset.coordinateScale,
+    );
   }
 
   // 部位の変形済みアンカーを、個体の位置・姿勢でワールド座標へ写す。site が null なら origin。
