@@ -7,6 +7,9 @@ import type { ControlSelection } from '../control-selection';
 import type { HudLayers } from '../hud/hud-layers';
 import type { ModularShip } from '../ship/modular-ship';
 import type { ShipModuleInstance } from '../ship/ship-module-instance';
+import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRegistry } from '../dynamic/entity-registry';
+import type { Notifier } from '../../hud/notifier';
 
 interface ModuleWindowEntry {
   readonly win: PropertyWindow<MenuAction>;
@@ -20,20 +23,25 @@ function wearText(module: ShipModuleInstance, maxHp: number): string {
 }
 
 // 展開・収納を選べるモジュールにだけ操作項目を出す。
-function deploymentItems(module: ShipModuleInstance): PropertyWindowItem<MenuAction>[] {
-  if (module.kind !== 'radiator' && module.kind !== 'solar_panel') return [];
-  return [
+function moduleItems(module: ShipModuleInstance): PropertyWindowItem<MenuAction>[] {
+  if (module.kind === 'radiator' || module.kind === 'solar_panel') return [
     { label: '展開', act: 'deployModule', keepOpen: true },
     { label: '収納', act: 'stowModule', keepOpen: true },
   ];
+  if (module.kind === 'booster') return [{
+    label: module.ignited ? '燃焼停止' : '点火', act: 'toggleBoosterModule', keepOpen: true,
+  }];
+  if (module.kind === 'decoupler') return [{ label: 'この接続を分離', act: 'decoupleModule' }];
+  return [];
 }
 
 export class ModuleWindows {
   private readonly windows = new Map<string, ModuleWindowEntry>();
 
   constructor(
-    private readonly hud: HudLayers,
+    private readonly hud: HudLayers & Notifier,
     private readonly controlSelection: ControlSelection,
+    private readonly roster: EntityRoster & EntityRegistry,
   ) {}
 
   // モジュールのウィンドウを開く。既に開いていればクリック位置へ動かして最前面に出すだけにする。
@@ -52,8 +60,17 @@ export class ModuleWindows {
     );
     this.windows.set(key, { win, ship, moduleId });
     win.onSelect = (act) => {
-      if (ship.inspection.hasModule(moduleId)) {
+      if (!ship.inspection.hasModule(moduleId)) return;
+      if (act === 'deployModule' || act === 'stowModule') {
         ship.inspection.setModuleDeployment(moduleId, act === 'deployModule');
+      } else if (act === 'toggleBoosterModule') {
+        ship.toggleBoosterIgnition(moduleId);
+      } else if (act === 'decoupleModule') {
+        try {
+          ship.decouple(moduleId, this.roster);
+        } catch (error) {
+          this.hud.hint(error instanceof Error ? error.message : '分離できません');
+        }
       }
     };
     win.onClose = () => { this.windows.delete(key); };
@@ -80,7 +97,7 @@ export class ModuleWindows {
       const label = ship.assembly.definition(moduleId)?.name ?? module.definitionId;
       entry.win.syncHeader(label, `取り付け艦: ${ship.name}`);
       entry.win.syncRows(this.content(ship, module).rows);
-      entry.win.syncItems(deploymentItems(module));
+      entry.win.syncItems(moduleItems(module));
     }
   }
 
@@ -107,7 +124,7 @@ export class ModuleWindows {
         { key: 'temperature', label: '温度', value: `${module.temperature.toFixed(0)} K` },
         ...resource,
       ],
-      items: deploymentItems(module),
+      items: moduleItems(module),
     };
   }
 }

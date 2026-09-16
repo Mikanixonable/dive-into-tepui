@@ -38,8 +38,6 @@ export const COMBAT_PANEL_ROWS_STYLE = `
   min-width: 48px; color: var(--text); font-size: var(--font-xxs);
   text-align: right; white-space: nowrap;
 }
-#burn-management-panel .burn-actions { margin-top: var(--space-3); }
-#burn-management-panel .burn-actions .w-btn { min-width: 0; }
 #hud-vessel-status .vessel-deploy-controls {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -13,6 +13,7 @@ import { TEMP_WINDOW_GROUP } from '../../hud/overlay-manager';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import { focusTargetId, type FocusSink } from '../camera/focus-target';
 import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { NavTarget } from '../nav-target';
 import { CameraSystem } from '../camera/camera-system';
@@ -57,7 +58,7 @@ export class ObjectWindows implements PropertyWindowOpener {
   // 構築時ではなく毎回そこから引く。
   constructor(
     private readonly hud: Hud,
-    private readonly roster: EntityRoster,
+    private readonly roster: EntityRoster & EntityRegistry,
     private readonly celestialBodies: CelestialBodies,
     private readonly navTarget: NavTarget,
     private readonly cameraSystem: CameraSystem,
@@ -70,7 +71,7 @@ export class ObjectWindows implements PropertyWindowOpener {
   ) {
     this.menu = new ContextMenu<InspectedObject, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => this.runAct(target, act);
-    this.moduleWindows = new ModuleWindows(hud, controlSelection);
+    this.moduleWindows = new ModuleWindows(hud, controlSelection, roster);
     this.hud.enemiesPanel.onSelectRight = (id, clientX, clientY) => {
       const enemy = this.roster.all().filter(isEnemy).find((e) => e.id === id);
       const inspected = enemy ? objectPickableOf(enemy) : null;

@@ -1,14 +1,16 @@
 import type * as THREE from 'three/webgpu';
 import type { ViewMode } from '../../render/view-mode';
 import { Attitude } from '../../physics/attitude';
-import { LOCAL_FORWARD, qFromBasis, qRotate } from '../../math/quat';
+import { LOCAL_FORWARD, qFromBasis, qInvert, qMul, qRotate } from '../../math/quat';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
-import { Vec3, add, scale, v3, len, sub } from '../../math/vec3';
+import { Vec3, add, cross, scale, v3, len, sub } from '../../math/vec3';
+import { randSym } from '../../math/random';
 import { Ship } from '../dynamic/dynamic-entity/ship';
 import { bulletReactionOf, type BulletType, type Shooter } from '../dynamic/dynamic-entity/bullet-reaction';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
 import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
@@ -42,12 +44,16 @@ import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
 import type { PlayerStatusSnapshot } from '../player/player-status-snapshot';
 import type { DamageOutcomeSink } from '../player/damage-outcome';
+import type { BurnManagementViewModel } from '../hud/panels/burn-management-panel';
 import { ShipInspection } from '../pickable/ship-inspection';
 import { DefaultPlayerEffects, type PlayerEffects } from '../player/player-effects';
 import { createDefaultCombatPreset } from './ship-presets';
 import type { ShipAssembly } from './ship-assembly';
 import { ShipCapabilities } from './ship-capabilities';
 import { shipPhysicsShape } from './ship-physics-shape';
+import {
+  SHIP_DECOUPLING_COLLISION_GRACE, decoupledMasses, separationImpulseVelocities, splitAtDecoupler,
+} from './ship-decoupling';
 
 const HULL_START_TEMP = 273; // 初期機体温度 [K]
 
@@ -75,6 +81,7 @@ export type ModularShipInit =
     readonly id?: string;
     readonly ammo?: AmmoLoad;
     readonly assembly?: ShipAssembly;
+    readonly att?: Attitude;
   }
   | { readonly saved: PlayerSaveData; readonly simTime: number };
 
@@ -96,6 +103,10 @@ export class ModularShip extends Ship implements Controllable {
   public readonly fire: FireControl;
   public readonly altitudeAlarm: AltitudeAlarm;
   private readonly effects: PlayerEffects;
+  private readonly worldSfx: WorldSfx;
+  private readonly scene: THREE.Scene;
+  private readonly fx: FlashEffects;
+  private readonly markers: MarkerSlots;
   // この艦自身のマニューバ計画。
   public readonly plan = new Plan();
   public planExecution: PlanExecutionMode = 'instant';
@@ -166,12 +177,14 @@ export class ModularShip extends Ship implements Controllable {
     const id = 'saved' in init ? init.saved.id : (init.id ?? name);
     const att: Attitude = 'saved' in init
       ? savedAttitude(init.saved, physics.mass.inertia)
-      : ModularShip.progradeAttitude(state, physics.mass.inertia);
+      : (init.att === undefined
+        ? ModularShip.progradeAttitude(state, physics.mass.inertia)
+        : { ...init.att, inertia: physics.mass.inertia });
 
     const reactions = (owner: ModularShip): ModularShipMotionReactions => ({
       roundsInMagazine: () => owner.fire.rounds,
       stepBarrelThermal: dt => owner.fire.stepBarrelThermal(dt),
-      thrustAcceleration: () => owner.throttle.thrustAccelVec,
+      thrustAcceleration: () => owner.motion.thrust ?? v3(),
       radiatorWear: () => owner.radiatorWear(),
       totalCoolingRate: () => owner.totalCoolingRate,
       totalPowerGeneration: () => owner.totalPowerGeneration,
@@ -214,6 +227,10 @@ export class ModularShip extends Ship implements Controllable {
     this.maxHp = assembly.maxHp;
     this.throttle = new Throttle(notifier, saved?.throttle);
     this.effects = effects;
+    this.worldSfx = worldSfx;
+    this.scene = scene;
+    this.fx = fx;
+    this.markers = markers;
     this.fire = new FireControl(this, notifier, worldSfx, scene, fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
     this.altitudeAlarm = new AltitudeAlarm(notifier, worldSfx);
 
@@ -310,6 +327,125 @@ export class ModularShip extends Ship implements Controllable {
     return acceleration > 0
       ? scale(qRotate(this.motion.att.q, LOCAL_FORWARD), acceleration)
       : null;
+  }
+
+  public toggleBoosterIgnition(moduleId: string): boolean {
+    const booster = this.assembly.module(moduleId);
+    if (booster?.kind !== 'booster') throw new Error(`not a booster module: ${moduleId}`);
+    const ignited = !(booster.ignited && booster.fuel > 0 && booster.hp > 0);
+    this.assembly.setIgnited(moduleId, ignited);
+    this.motion.invalidatePrediction();
+    const updated = this.assembly.module(moduleId);
+    return updated?.kind === 'booster' && updated.ignited;
+  }
+
+  public decouple(decouplerId: string, registry: EntityRegistry): ModularShip {
+    const before = this.motion.physicsShape;
+    const split = splitAtDecoupler(this.assembly, decouplerId);
+    const masses = decoupledMasses(split);
+    const retainedShape = shipPhysicsShape(split.retained);
+    const detachedShape = shipPhysicsShape(split.detached);
+    if (retainedShape === null || detachedShape === null) throw new Error('decoupling produced an empty ship');
+
+    const q = { ...this.motion.att.q };
+    const w = { ...this.motion.att.w };
+    const rootPosition = sub(this.motion.state.r, qRotate(q, before.centerOffset));
+    const retainedPosition = add(rootPosition, qRotate(q, retainedShape.centerOffset));
+    const detachedQ = qMul(q, split.detachedRoot.rotation);
+    const detachedRootPosition = add(rootPosition, qRotate(q, split.detachedRoot.position));
+    const decouplerPosition = add(rootPosition, qRotate(q, split.decouplerTransform.position));
+    const detachedPosition = add(detachedRootPosition, qRotate(detachedQ, detachedShape.centerOffset));
+    const angularVelocityWorld = qRotate(q, w);
+    const retainedBaseVelocity = add(
+      this.motion.state.v, cross(angularVelocityWorld, sub(retainedPosition, this.motion.state.r)),
+    );
+    const detachedBaseVelocity = add(
+      this.motion.state.v, cross(angularVelocityWorld, sub(detachedPosition, this.motion.state.r)),
+    );
+    const separationAxisWorld = qRotate(q, split.separationAxis);
+    const velocities = separationImpulseVelocities(
+      retainedBaseVelocity, detachedBaseVelocity, separationAxisWorld, masses.retained, masses.detached,
+    );
+    const t = this.motion.state.t;
+
+    const detachedW = qRotate(qInvert(split.detachedRoot.rotation), w);
+    const detached = new ModularShip(
+      this.notifier, this.worldSfx, this.scene, this.fx, this.markers,
+      {
+        name: `${this.name} 分離体`,
+        id: `${this.id}-${decouplerId}`,
+        state: kinematicState<'eci'>(t, detachedPosition, velocities.detached),
+        att: { q: detachedQ, w: detachedW, inertia: detachedShape.mass.inertia },
+        assembly: split.detached,
+      },
+    );
+    // 新しい実体を組み立て終えてから live assembly を一度だけ差し替える。ここより前で
+    // 失敗しても元の船体は変更されない。
+    this.assembly.replaceWith(split.retained);
+    this.motion.synchronizeAssembly();
+    this.motion.att = { ...this.motion.att, q, w };
+    this.motion.prevAtt = this.motion.att;
+    this.motion.state = kinematicState<'eci'>(t, retainedPosition, velocities.retained);
+    this.hp = this.assembly.totalHp;
+    this.maxHp = this.assembly.maxHp;
+    this.capabilities.reconcileOperatingCockpit();
+    const collisionEnableAt = t + SHIP_DECOUPLING_COLLISION_GRACE;
+    this.motion.ignoreCollisionWith(detached.motion, collisionEnableAt);
+    detached.motion.ignoreCollisionWith(this.motion, collisionEnableAt);
+    registry.add(detached);
+    this.scatterDecouplerPanels(t, decouplerPosition, q, this.motion.state.v, registry);
+    this.worldSfx.decouple();
+    this.fx.spawnGasPuff(kinematicState<'eci'>(t, detachedRootPosition, this.motion.state.v));
+    this.notifier.hint(`${decouplerId} を分離`);
+    return detached;
+  }
+
+  // 消費したリングを周方向8枚の物理 debris として散らす。通常 snapshot には残さない。
+  private scatterDecouplerPanels(
+    t: number, center: Vec3, attitude: Attitude['q'], baseVelocity: Vec3, registry: EntityRegistry,
+  ): void {
+    const segments = 8;
+    for (let segment = 0; segment < segments; segment++) {
+      const angle = segment * Math.PI * 2 / segments;
+      const radial = qRotate(attitude, v3(Math.cos(angle), Math.sin(angle), 0));
+      registry.add(new DebrisPiece(
+        kinematicState<'eci'>(t, add(center, scale(radial, 3)), add(baseVelocity, scale(radial, 5))),
+        { kind: 'decouplerPanel', segment, bornSim: t },
+        {
+          q: attitude,
+          w: v3(randSym(1.4), randSym(1.4), randSym(1.4)),
+          inertia: v3(1, 1.7, 2.4),
+        },
+        this.worldSfx, this.fx, 0.8, this.scene,
+      ));
+    }
+  }
+
+  public burnManagementViewModel(): BurnManagementViewModel | null {
+    const boosters = this.capabilities.modules('booster');
+    const decouplers = this.capabilities.modules('decoupler');
+    if (boosters.length === 0 && decouplers.length === 0) return null;
+    const activeFuel = boosters.reduce((total, module) => total + module.fuel, 0);
+    const activeFuelMax = boosters.reduce(
+      (total, module) => total + (this.assembly.definition(module.id)?.abilities.fuelCapacity ?? 0), 0,
+    );
+    const anyIgnited = boosters.some(module => module.ignited && module.fuel > 0 && module.hp > 0);
+    return {
+      stageCount: boosters.length,
+      totalMass: this.motion.mass,
+      activeFuel,
+      activeFuelMax,
+      burnState: boosters.length === 0 ? 'idle'
+        : activeFuel <= 0 ? 'empty' : anyIgnited ? 'burning' : 'ready',
+      modules: [
+        ...decouplers.map(module => ({ id: module.id, kind: 'decoupler' as const, state: module.hp > 0 ? '接続中' : '全損' })),
+        ...boosters.map(module => ({
+          id: module.id,
+          kind: 'booster' as const,
+          state: module.fuel <= 0 ? '燃料切れ' : module.ignited ? '燃焼中' : '停止',
+        })),
+      ],
+    };
   }
 
   public statusSnapshot(): PlayerStatusSnapshot {
@@ -599,14 +735,16 @@ export class ModularShip extends Ship implements Controllable {
     const motion = this.motion;
     const { belt } = motion;
     // 指令の有無は加速度の大きさで決まるので、噴射していないフレームは null として渡す。
-    const thrustAcceleration = this.throttle.thrustAccelVec;
+    const thrustAcceleration = motion.thrust;
     return {
       ...super.renderSource(viewFrame, visible, active, orbitReference),
       assembly: this.assembly,
       centerOffset: motion.centerOffset,
       state: motion.state,
       active,
-      thrustAcceleration: len(thrustAcceleration) > 0 ? thrustAcceleration : null,
+      thrustAcceleration: thrustAcceleration !== null && len(thrustAcceleration) > 0
+        ? thrustAcceleration
+        : null,
       maximumAcceleration: motion.mass > 0 ? this.totalThrust / motion.mass : 0,
       torque: motion.torque,
       dynamicPressure: motion.aero.qdyn,

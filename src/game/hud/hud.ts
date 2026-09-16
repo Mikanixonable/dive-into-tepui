@@ -96,7 +96,7 @@ export class Hud implements HudLayers, Notifier {
   public syncPanels(view: ViewMode, game: Game, camera: CameraFrame): void {
     const map = view === 'map';
     // 両ビュー共通のパネル。
-    this.burnManagementPanel.sync(game.activeControllable?.boosters?.managementViewModel() ?? null);
+    this.burnManagementPanel.sync(game.activeControllable?.burnManagementViewModel?.() ?? null);
     this.topBar.sync(game.displayWindowManager, game.simSpeedManager, game.simTime, game.isPaused);
     this.orbitPanel.sync(game);
     // ビュー固有のパネル。

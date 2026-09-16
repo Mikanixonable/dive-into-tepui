@@ -25,7 +25,6 @@ const ENTITY_COUNT_ROWS: readonly { key: EntityCountKind; label: string }[] = [
   { key: 'bullet', label: 'bullets' },
   { key: 'casing', label: 'casings' },
   { key: 'debris', label: 'debris' },
-  { key: 'booster', label: 'boosters' },
   { key: 'ammo', label: 'ammoPickups' },
   { key: 'fuel', label: 'rcsFuelPickups' },
   { key: 'base', label: 'bases' },

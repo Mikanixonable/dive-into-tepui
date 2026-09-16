@@ -139,6 +139,14 @@ class ModularShipBehavior implements DynamicMotionBehavior {
     this.reactions.receiveEntityContact?.(other, contact, services);
   }
 
+  public contactsWith(self: DynamicMotion, other: DynamicMotion, simTime: number): boolean {
+    return modularShipMotionOf(self).contactsAllowedWith(other, simTime);
+  }
+
+  public nextSimulationEventTime(self: DynamicMotion, simTime: number): number | null {
+    return modularShipMotionOf(self).nextCollisionGraceBoundary(simTime);
+  }
+
   public onSurfaceContact(
     _self: DynamicMotion, body: CelestialBody, contact: Contact, services: DynamicReactionServices,
   ): void {
@@ -179,6 +187,7 @@ function componentwiseAngularMomentumVelocity(
 // 原点との差は centerOffset にだけ保持する。
 export class ModularShipMotion extends DynamicMotion {
   private physicsShapeValue: ShipPhysicsShape;
+  private readonly collisionGraceUntil = new Map<DynamicMotion, number>();
   public readonly belt: BeltController;
   public readonly aero = new AeroLoad();
   public readonly radiator: RadiatorSystem;
@@ -224,6 +233,31 @@ export class ModularShipMotion extends DynamicMotion {
 
   public get physicsShape(): ShipPhysicsShape { return this.physicsShapeValue; }
   public get centerOffset(): Vec3 { return this.physicsShapeValue.centerOffset; }
+
+  public ignoreCollisionWith(other: DynamicMotion, until: number): void {
+    if (!Number.isFinite(until) || until <= this.state.t) return;
+    this.collisionGraceUntil.set(other, until);
+    this.invalidatePrediction();
+  }
+
+  public contactsAllowedWith(other: DynamicMotion, simTime: number): boolean {
+    const until = this.collisionGraceUntil.get(other);
+    if (until === undefined) return true;
+    if (simTime > until) {
+      this.collisionGraceUntil.delete(other);
+      return true;
+    }
+    return false;
+  }
+
+  public nextCollisionGraceBoundary(simTime: number): number | null {
+    let earliest = Infinity;
+    for (const [other, until] of this.collisionGraceUntil) {
+      if (until > simTime) earliest = Math.min(earliest, until);
+      else this.collisionGraceUntil.delete(other);
+    }
+    return Number.isFinite(earliest) ? earliest : null;
+  }
 
   // assembly の変更後に shape と物性を同時更新する。COM の移動は assembly 原点の
   // world pose を保つ並進へ変換し、回転によるその点の速度と対角角運動量も連続にする。

@@ -10,7 +10,6 @@ import type { ProteinDisplaySettings } from '../../render/protein/protein-displa
 import type { GamePhase } from '../stages/stage';
 import type { WaveAttackSaveData } from '../stages/stage-utils/wave-attack';
 import type { ProteinSaveData } from '../protein/protein-schema';
-import type { BoosterStackData, BoosterStage } from '../player/booster-stack';
 
 interface Vec3SaveData {
   readonly x: number;
@@ -112,16 +111,6 @@ export interface PlayerSaveData extends EntitySaveData {
   readonly fineAttitude?: boolean;
   // プロパティウィンドウの軌道線表示トグル。無ければ false。
   readonly showTrajectoryLine?: boolean;
-  // 接続中のブースター。無ければ空スタック。
-  readonly boosters?: BoosterStackData;
-}
-
-// 分離後も独立して燃焼・慣性飛行するブースター。接続中の段は PlayerSaveData 側へ保存する。
-export interface DetachedBoosterSaveData extends EntitySaveData {
-  readonly kind: 'booster';
-  readonly stage: BoosterStage;
-  // 分離直後の親艦との再接触を避ける猶予の期限。無ければ即時に接触できる。
-  readonly collisionEnableAt?: number;
 }
 
 export interface BaseSaveData extends EntitySaveData {
@@ -181,7 +170,6 @@ export type EntitySaveDataUnion =
   | ProteinEnemySaveData
   | AmmoPickupSaveData
   | RcsFuelPickupSaveData
-  | DetachedBoosterSaveData
   | BaseSaveData;
 
 export interface ScoreCounterSaveData {

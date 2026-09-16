@@ -169,7 +169,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     if (!this.capsUncheckedSinceAdd) return;
     this.capsUncheckedSinceAdd = false;
     // 落とすのは alive を下ろすところまで — ここで演出を起こすと、破片が生まれて上限が発振する。
-    const live: Record<CapKind, number> = { bullet: 0, casing: 0, debris: 0, booster: 0 };
+    const live: Record<CapKind, number> = { bullet: 0, casing: 0, debris: 0 };
     const entities = this.all();
     for (let i = entities.length - 1; i >= 0; i--) {
       const entity = entities[i]!;
