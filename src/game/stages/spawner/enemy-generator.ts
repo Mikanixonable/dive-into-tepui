@@ -32,9 +32,9 @@ function driftingAttitude(): { q: Quat; w: Vec3 } {
 }
 
 // state に、無秩序に漂う金属の敵を生成する。
-export function generateDriftingEnemy(name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene): Enemy {
+export function generateDriftingEnemy(name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, attackGroupId?: string): Enemy {
   return new MetalEnemy(
-    { name, state, ...driftingAttitude(), accent, orbitLineColor, typeIndex: null },
+    { name, state, ...driftingAttitude(), accent, orbitLineColor, attackGroupId, typeIndex: null },
     worldSfx, fx, scene,
   );
 }
@@ -49,7 +49,7 @@ export function generateProteinEnemy(
   return new ProteinEnemy(
     {
       name, state, ...driftingAttitude(),
-      accent: 0xffffff, orbitLineColor: 0xffffff,
+      accent: 0xffffff, orbitLineColor: 0xffffff, attackGroupId: formationId,
       assetId, display, formationId, formationRole,
     },
     worldSfx, fx, scene,
@@ -136,7 +136,7 @@ export function generateMolniyaEnemy(
 
 // 機首をプログレードへ向け、回転していない金属の敵を state に生成する。
 export function generateApproachingEnemy(
-  name: string, state: KinematicState, accent: number, orbitLineColor: number, typeIndex: number, waveId: number | undefined, worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene,
+  name: string, state: KinematicState, accent: number, orbitLineColor: number, typeIndex: number, waveId: number | undefined, worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, attackGroupId?: string,
 ): Enemy {
   return new MetalEnemy(
     {
@@ -147,6 +147,7 @@ export function generateApproachingEnemy(
       w: v3(0, 0, 0),
       accent,
       orbitLineColor,
+      attackGroupId,
       waveId,
       typeIndex,
     },
