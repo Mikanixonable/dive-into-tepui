@@ -6,5 +6,4 @@ export type DebrisKind =
   | { kind: 'barrel'; bornTemperature: number; bornThermalDeviation: number; }
   | { kind: 'magazineFrame'; }
   | { kind: 'casing'; bornSim: number; }
-  | { kind: 'boosterCover'; segment: number; bornSim: number; }
-  | { kind: 'boosterBolt'; segment: number; bornSim: number; };
+  | { kind: 'decouplerPanel'; segment: number; bornSim: number; };

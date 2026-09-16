@@ -460,6 +460,21 @@ export class ShipAssembly {
 
   public split(connectionId: string): readonly [ShipAssembly, ShipAssembly] { return this.splitAt(connectionId); }
 
+  // Motion/View が保持する assembly オブジェクトの同一性を保ったまま、分割後の構成へ置換する。
+  // source の instance は排他的に移管し、呼び出し後の source は消費済みになる。
+  public replaceWith(source: ShipAssembly): void {
+    if (source === this) return;
+    if (source.catalog !== this.catalog) throw new Error('cannot replace assembly from a different catalog');
+    if (source.nodes.size === 0) throw new Error('cannot replace assembly with an empty assembly');
+    this.nodes.clear();
+    this.connections.length = 0;
+    for (const [id, node] of source.nodes) this.nodes.set(id, node);
+    this.connections.push(...source.connections.map(connectionCopy));
+    this.nextConnectionNumber = source.nextConnectionNumber;
+    source.nodes.clear();
+    source.connections.length = 0;
+  }
+
   private component(start: string, excludedEdge: string): Set<string> {
     const result = new Set<string>(), pending = [start];
     while (pending.length > 0) {

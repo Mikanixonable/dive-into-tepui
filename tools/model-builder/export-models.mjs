@@ -11,7 +11,6 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildBoosterInterstageCover, buildBoosterStage } from './booster.mjs';
 import { buildDebrisChunk, buildDebrisPanel, buildDebrisRod } from './debris-fragments.mjs';
 import { buildBarrelMesh, buildCasingMesh, buildMagazineMesh } from './gun-parts.mjs';
 import { buildEnemyShip, buildStage0EnemyA, buildStage0EnemyB, buildStage0EnemyC } from './metal-enemies.mjs';
@@ -80,8 +79,6 @@ const models = {
   debrisPanel:  buildDebrisPanel(),
   debrisRod:    buildDebrisRod(),
   rcsFuel:      buildRcsFuelPickup(),
-  boosterStage: buildBoosterStage(),
-  boosterInterstageCover: buildBoosterInterstageCover(),
   shipModules: buildShipModules(),
 };
 

@@ -17,7 +17,9 @@ export type MenuAction =
   | 'openObjectPlacer'
   | 'openSettings'
   | 'deployModule'
-  | 'stowModule';
+  | 'stowModule'
+  | 'toggleBoosterModule'
+  | 'decoupleModule';
 
 // shortcut には KeyboardEvent.code の表記を使う。
 export const MenuCommon = {
