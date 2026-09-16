@@ -102,10 +102,8 @@ export class CelestialMarkers {
   get shownLabelCount(): number { return this.shownLabels.length; }
   get activeLabels(): readonly ActiveCelestialLabel[] { return this.activeCelestialLabels; }
 
+  // 選択候補に出す対象。登録天体は円盤を持つので全件、ラグランジュ点は記号を出す点だけ。
   get bodyPickables(): readonly ObjectPickable[] { return this.bodyPickableItems; }
-
-  // 記号を出す対象か。表示トグルで記号を消した天体も bodyPickables には残る。
-  public labelled(id: string): boolean { return this.labelledIds.has(id); }
 
   // 星系の全天体とラグランジュ点からラベルの全集合を組む。ラグランジュ点は、共線点・三角点
   // それぞれの成立条件を満たす点だけを持つ。
@@ -140,7 +138,7 @@ export class CelestialMarkers {
     for (const label of labels) this.labelsById.set(label.item.id, label);
   }
 
-  // 表示時刻 t のラグランジュ点を解き直し、選択候補に出す天体とマーカーを絞り込む。
+  // 表示時刻 t のラグランジュ点を解き直し、選択候補と、そのうち記号を出す対象を決める。
   // visibilityPolicy には、同じフレームで確定した表示ポリシーを渡す。
   update(t: number, toggles: MapDisplayToggles, visibilityPolicy: MapVisibilityPolicy): void {
     const celestialBodies = this.celestialSystem.celestialMotions;
@@ -192,7 +190,7 @@ export class CelestialMarkers {
     this.group.sync(this.declarations, nowMs);
   }
 
-  // 選択候補に残った対象の表示座標と表示可否を書き、このフレームに描くラベルを絞り込む。
+  // 記号を出すと決めた対象の表示座標と表示可否を書き、このフレームに描くラベルを絞り込む。
   // 並びは階層順(親が先)を保つ — 混雑判定の同点は先に来たほうが残る。
   private refreshShownLabels(displayTime: number, visibilityPolicy: MapVisibilityPolicy): void {
     const shown: CelestialLabel[] = [];
