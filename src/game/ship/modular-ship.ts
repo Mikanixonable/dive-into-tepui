@@ -1,10 +1,10 @@
 import type * as THREE from 'three/webgpu';
 import type { ViewMode } from '../../render/view-mode';
-import { Attitude } from '../../physics/attitude';
+import type { Attitude } from '../../physics/attitude';
 import { LOCAL_FORWARD, qFromBasis, qInvert, qMul, qRotate } from '../../math/quat';
-import { KinematicState, kinematicState } from '../../physics/kinematic-state';
+import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
-import { Vec3, add, cross, scale, v3, len, sub } from '../../math/vec3';
+import { add, cross, scale, v3, len, sub, type Vec3 } from '../../math/vec3';
 import { randSym } from '../../math/random';
 import { Ship } from '../dynamic/dynamic-entity/ship';
 import { bulletReactionOf, type BulletType, type Shooter } from '../dynamic/dynamic-entity/bullet-reaction';
@@ -15,7 +15,7 @@ import type { EntityRegistry } from '../dynamic/entity-registry';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
 import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
 import { collisionDamageFraction } from '../dynamic/dynamic-entity/contact-damage';
-import { Input } from '../../input/input';
+import type { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { Notifier } from '../../hud/notifier';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
@@ -48,7 +48,7 @@ import type { BurnManagementViewModel } from '../hud/panels/burn-management-pane
 import { ShipInspection } from '../pickable/ship-inspection';
 import { DefaultPlayerEffects, type PlayerEffects } from '../player/player-effects';
 import { createDefaultCombatPreset } from './ship-presets';
-import type { ShipAssembly } from './ship-assembly';
+import type { ShipAssembly, ShipConnection } from './ship-assembly';
 import { ShipCapabilities } from './ship-capabilities';
 import { shipPhysicsShape } from './ship-physics-shape';
 import {
@@ -316,7 +316,8 @@ export class ModularShip extends Ship implements Controllable {
     let consumedAny = false;
     for (const booster of this.capabilities.modules('booster', true)) {
       if (!booster.ignited || booster.fuel <= 0) continue;
-      const definition = this.assembly.definition(booster.id)!;
+      const definition = this.assembly.definition(booster.id);
+      if (definition === null) continue;
       const rate = definition.abilities.fuelConsumptionRate ?? 0;
       const requested = rate * simDt;
       const consumed = rate > 0 ? this.assembly.consumeBoosterFuel(booster.id, requested) : 0;
@@ -380,6 +381,23 @@ export class ModularShip extends Ship implements Controllable {
       edge => edge.parentId === portId || edge.childId === portId,
     );
     if (connection === undefined) throw new Error(`docking module is not connected: ${portId}`);
+    return this.separateConnection(connection, registry);
+  }
+
+  public launchConstruction(connectionId: string, registry: EntityRegistry): ModularShip {
+    const connection = this.assembly.graph.find(edge => edge.id === connectionId);
+    if (connection === undefined || connection.kind === 'docking') {
+      throw new Error(`unknown construction connection: ${connectionId}`);
+    }
+    return this.separateConnection(
+      connection, registry, { name: `${this.name} 建造船` },
+    );
+  }
+
+  private separateConnection(
+    connection: ShipConnection, registry: EntityRegistry,
+    identity?: { readonly id?: string; readonly name: string },
+  ): ModularShip {
     const detachedRoot = this.assembly.worldTransformOf(connection.childId);
     if (detachedRoot === null) throw new Error('missing docked branch transform');
     const working = this.assembly.clone();
@@ -398,7 +416,7 @@ export class ModularShip extends Ship implements Controllable {
     const omegaWorld = qRotate(q, w);
     const retainedVelocity = add(this.motion.state.v, cross(omegaWorld, sub(retainedPosition, this.motion.state.r)));
     const detachedVelocity = add(this.motion.state.v, cross(omegaWorld, sub(detachedPosition, this.motion.state.r)));
-    const record = this.dockedVessels.get(connection.id);
+    const record = identity ?? this.dockedVessels.get(connection.id);
     const detached = new ModularShip(
       this.notifier, this.worldSfx, this.scene, this.fx, this.markers,
       {
@@ -437,6 +455,15 @@ export class ModularShip extends Ship implements Controllable {
     this.syncDerivedRole();
     this.notifier.hint(repaired > 0 ? `${repaired.toFixed(0)} HP 修理` : '修理箇所はありません');
     return repaired;
+  }
+
+  // assembly を直接編集する建造系の操作後に、質量特性・耐久値・能力・表示上の役割を一括更新する。
+  public synchronizeAssemblyState(): void {
+    this.motion.synchronizeAssembly();
+    this.hp = this.assembly.totalHp;
+    this.maxHp = this.assembly.maxHp;
+    this.capabilities.reconcileOperatingCockpit();
+    this.syncDerivedRole();
   }
 
   private syncDerivedRole(): void {
