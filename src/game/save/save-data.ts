@@ -11,6 +11,7 @@ import type { GamePhase } from '../stages/stage';
 import type { WaveAttackSaveData } from '../stages/stage-utils/wave-attack';
 import type { ProteinSaveData } from '../protein/protein-schema';
 import type { BoosterStackData, BoosterStage } from '../player/booster-stack';
+import type { OrbitGuideSettings } from '../celestial/orbit-guide/orbit-guide-settings';
 
 interface Vec3SaveData {
   readonly x: number;
@@ -285,4 +286,6 @@ export interface GameSaveData {
   readonly camera?: CameraSaveData;
   // 無ければターゲット未選択のまま始まる。
   readonly navTarget?: NavTargetSaveData | null;
+  // 無ければ既定の軌道ガイドで始まる。
+  readonly orbitGuide?: OrbitGuideSettings;
 }

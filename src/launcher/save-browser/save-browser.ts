@@ -128,9 +128,9 @@ export class SaveBrowser implements OverlayHandle {
     this.statusIsError = isError;
   }
 
-  // 決着後(won/lost/timeup)の状態は復元しても操作不能なので撮らせない([F5] と同条件)。
-  // 動いている周回が無い(周回の切り替え中)ときも撮れない。
-  private canCaptureNow(): boolean {
+  // 決着後(won/lost/timeup)の状態は復元しても操作不能なので残させない。
+  // 動いている周回が無い(周回の切り替え中)ときも残せない。
+  private canSaveNow(): boolean {
     const game = this.gameSource.current;
     return game !== null && this.viewedSlotId === this.slots.activeSlotId && game.isPlaying;
   }
@@ -158,7 +158,7 @@ export class SaveBrowser implements OverlayHandle {
     // compact 幅だけで見えるペイン切替タブ。表示条件そのものは CSS(#save-browser .sb-mobile-tabs)
     // が持ち、ここでは常に組んで選択状態だけ渡す。
     const mobileTabs = new TabBar<'slots' | 'snapshots'>(
-      [['slots', 'セーブデータ'], ['snapshots', 'スナップショット']],
+      [['slots', 'セーブデータ'], ['snapshots', '手動セーブ']],
       (pane) => { this.mobilePane = pane; this.rebuild(); },
     );
     mobileTabs.element.classList.add('sb-mobile-tabs');
@@ -184,8 +184,8 @@ export class SaveBrowser implements OverlayHandle {
     snapPane.classList.toggle('sb-pane-mobile-active', this.mobilePane === 'snapshots');
     const game = this.gameSource.current;
     snapPane.appendChild(buildSnapshotPane(
-      this.viewedSlot(), this.viewedStageId, this.slots.activeSlotId, game?.stageId ?? null, this.canCaptureNow(), {
-        onCaptureNow: () => this.handleCaptureNow(),
+      this.viewedSlot(), this.viewedStageId, this.slots.activeSlotId, game?.stageId ?? null, this.canSaveNow(), {
+        onSaveNow: () => this.handleSaveNow(),
         onSelectStage: (id) => { this.viewedStageId = id; this.rebuild(); },
         onLoadSnapshot: (id, loadable) => this.handleLoadSnapshot(id, loadable),
         onTogglePin: (id, pinned) => this.handleTogglePin(id, pinned),
@@ -277,16 +277,16 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
-  // 今の状態を手動スナップショットとして記録する。名前は prompt で尋ね、成否をステータス
-  // 行へ表示する。捕捉できない状態(canCaptureNow が false)なら何もしない。
-  private handleCaptureNow(): void {
+  // 今の状態を手動セーブとして残す。名前は prompt で尋ね、成否をステータス行へ表示する。
+  // 残せない状態(canSaveNow が false)なら何もしない。
+  private handleSaveNow(): void {
     const game = this.gameSource.current;
-    if (game === null || !this.canCaptureNow()) return;
-    const name = prompt('スナップショットの名前', '');
-    const snap = this.service.capture(
-      game.snapshot.runSummary(), game.snapshot.serialize(), 'manual', name || null, true,
+    if (game === null || !this.canSaveNow()) return;
+    const name = prompt('セーブの名前', '');
+    const snap = this.service.addManualSave(
+      game.snapshot.runSummary(), game.snapshot.serialize(), name || null,
     );
-    this.setStatus(snap ? 'クリップしました。' : 'クリップに失敗しました。', !snap);
+    this.setStatus(snap ? 'セーブしました。' : 'セーブに失敗しました。', !snap);
     this.rebuild();
   }
 
