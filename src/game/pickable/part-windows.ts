@@ -6,11 +6,11 @@ import type { MenuAction } from '../hud/windows/menu-actions';
 import type { ControlSelection } from '../control-selection';
 import type { HudLayers } from '../hud/hud-layers';
 import type { Part } from '../dynamic/dynamic-entity/parts';
-import type { Player } from '../player/player';
+import type { ModularShip } from '../ship/modular-ship';
 
 interface PartWindowEntry {
   readonly win: PropertyWindow<MenuAction>;
-  readonly ship: Player;
+  readonly ship: ModularShip;
   readonly part: Part;
 }
 
@@ -39,7 +39,7 @@ export class PartWindows {
   ) {}
 
   // 部品のウィンドウを開く。既に開いていればクリック位置へ動かして最前面に出すだけにする。
-  open(ship: Player, part: Part, clientX: number, clientY: number): void {
+  open(ship: ModularShip, part: Part, clientX: number, clientY: number): void {
     const key = `${ship.id}:${part.id}`;
     const existing = this.windows.get(key);
     if (existing) {
@@ -86,7 +86,7 @@ export class PartWindows {
   }
 
   // ウィンドウ1枚ぶんの見出し・行・操作項目。
-  private content(ship: Player, part: Part): PropertyWindowContent<MenuAction> {
+  private content(ship: ModularShip, part: Part): PropertyWindowContent<MenuAction> {
     return {
       title: part.name,
       subtitle: `取り付け艦: ${ship.name}`,

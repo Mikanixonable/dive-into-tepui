@@ -7,7 +7,7 @@ import { bulletReactionOf } from './dynamic/dynamic-entity/bullet-reaction';
 import { isAmmoPickup, isRcsFuelPickup } from './dynamic/dynamic-entity/pickup';
 import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
 import type { EntityRoster } from './dynamic/entity-roster';
-import { Player } from './player/player';
+import { ModularShip } from './ship/modular-ship';
 import { isCombatTarget, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import { Input } from '../input/input';
 import type { CameraFrame } from '../render/camera/camera-frame';
@@ -192,7 +192,7 @@ export class Targeter {
       camera.position,
     );
     // 見越し点は弾速から解くので、砲を積んでいる艦を操作している間だけ出る。
-    if (viewer instanceof Player) {
+    if (viewer instanceof ModularShip) {
       this.markerManager.leadMarkers.sync(viewer, this.aliveScratch, this.aliveTarget, simTime, view, project);
     }
   }
