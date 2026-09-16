@@ -16,9 +16,8 @@ import { SCHEMATIC_LINE } from '../../../render/schematic-style';
 import {
   familyGradientColor, familyGradientColorAt, type GuideLineDisplay,
 } from '../../../render/celestial/orbit-guide/orbit-guide-view';
-import {
-  GuideGroupId, GuideKindSettings, OrbitGuideSettings,
-} from './orbit-guide-settings';
+import type { GuideKindSettings, OrbitGuideSettings } from '../../viewer/orbit-guide-settings';
+import type { GuideGroupId } from './orbit-guide-groups';
 import { combinedCandidateIds, parseGuideKindId } from './orbit-guide-kind-ids';
 import { OrbitGuideCatalog } from './orbit-guide-catalog';
 import type { CelestialBody } from '../../../physics/celestial-body';
