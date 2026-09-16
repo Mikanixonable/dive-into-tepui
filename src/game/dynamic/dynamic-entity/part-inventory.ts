@@ -1,7 +1,8 @@
-import type { AnyPart, Part, PartType } from './parts';
+import type { AnyPart, Part, PartType, ShipPartCollection } from './parts';
 
-// 船体へ搭載されている部品の正本。外部へ可変配列を渡さず、構成の置換と所属判定だけを公開する。
-export class PartInventory {
+// 旧形式の敵船部品を所有する実装。replace はロードアウト復元用の浅い配列コピーで、
+// module の split には使わない。split の状態所有権は ShipAssembly が移管する。
+export class PartInventory implements ShipPartCollection {
   private items: AnyPart[] = [];
 
   public get parts(): readonly AnyPart[] { return this.items; }
