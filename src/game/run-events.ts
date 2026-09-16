@@ -1,10 +1,12 @@
 // 直近の進行で起きた一回きりの出来事の記録。進行の位相が起きたことを領域の言葉で積み、
 // 表示の導出が通し番号を鍵に読んで、音・通知・閃光の宣言へ写す(R7)。
 import type { CommandQueue } from './command-queue';
+import type { BulletType } from './dynamic/dynamic-entity/bullet-reaction';
 import type { DynamicEntityKind } from './dynamic/dynamic-entity/entity-kind';
 import type { EnemyDeathCause } from './stages/stage-outcome';
 import type { Attitude } from '../physics/attitude';
 import type { KinematicState } from '../physics/kinematic-state';
+import type { ProteinPhase } from '../render/protein/protein-display';
 import type { Vec3 } from '../math/vec3';
 
 // クリエイティブモードで、操作艦が要る操作。
@@ -42,8 +44,8 @@ export type RunEventBody =
   }
 
   // -------------------------------------------------------------------- 射撃
-  // 機関砲が1発撃った。
-  | { readonly kind: 'gunFired' }
+  // 機関砲が1発撃った。muzzleState は砲口の位置と、そのときの艦の速度・時刻。
+  | { readonly kind: 'gunFired'; readonly muzzleState: KinematicState }
   // 機関砲のモーターが立ち上がり、連射の起動遅延に入った。
   | { readonly kind: 'gunSpunUp' }
   // 撃てない状態でトリガーを引いた。
@@ -56,20 +58,47 @@ export type RunEventBody =
   | { readonly kind: 'gunDisabled' }
   // 弾薬を撃ち尽くした。
   | { readonly kind: 'gunOutOfAmmo' }
+  // 発射弾がターゲットの標的面を自機側から通過した。offset はターゲット位置から見た通過点、
+  // simTime は通過した時刻。
+  | { readonly kind: 'targetBoardPassed'; readonly offset: Vec3; readonly simTime: number }
 
   // ------------------------------------------------------------ 被弾・接触
   // 自機の一点に衝撃が入った。着弾点と艦の状態を値として持ち、音の距離減衰は読み手が出す。
-  | { readonly kind: 'shipStruck'; readonly impactPoint: Vec3; readonly shipState: KinematicState }
-  // 自機が接触で損傷した(喪失には至らない)。
-  | { readonly kind: 'shipDamagedByContact' }
-  // 敵機が被弾した(撃破には至らない)。
-  | { readonly kind: 'enemyStruckByBullet' }
-  // 敵機が接触で損傷した(撃破には至らない)。
-  | { readonly kind: 'enemyDamagedByContact' }
+  // bullet は衝撃を与えた弾の種類で、被弾以外の破断で入った衝撃では null。
+  | {
+    readonly kind: 'shipStruck';
+    readonly impactPoint: Vec3;
+    readonly shipState: KinematicState;
+    readonly bullet: BulletType | null;
+  }
+  // 自機が接触で損傷した(喪失には至らない)。state は損傷した艦の状態。
+  | { readonly kind: 'shipDamagedByContact'; readonly state: KinematicState }
+  // 敵機が被弾した(撃破には至らない)。state は着弾点と機体の速度。
+  | {
+    readonly kind: 'enemyStruckByBullet';
+    readonly bullet: BulletType;
+    readonly state: KinematicState;
+  }
+  // 敵機が接触で損傷した(撃破には至らない)。state は損傷した機体の状態。
+  | { readonly kind: 'enemyDamagedByContact'; readonly state: KinematicState }
+  // 破片へ弾が当たった。state は着弾点と破片の速度。
+  | { readonly kind: 'debrisStruckByBullet'; readonly state: KinematicState }
   // 薬莢が船体か他の薬莢へ接触した。
   | { readonly kind: 'casingContacted' }
-  // 艦が爆散した(自機・敵機とも)。
-  | { readonly kind: 'shipExploded' }
+  // 艦が爆散した(自機・敵機とも)。modelScale は機体模型の倍率で、爆散の大きさを決める。
+  | {
+    readonly kind: 'shipExploded';
+    readonly state: KinematicState;
+    readonly modelScale: number;
+  }
+  // 敵機がタンパク質の機能部位から1発撃った。muzzleState は砲口の位置と機体の速度。
+  | { readonly kind: 'proteinSiteFired'; readonly muzzleState: KinematicState }
+  // タンパク質敵の被弾で、機能部位が停止したか構造フェーズが遷移した。state は着弾点と機体の速度。
+  | {
+    readonly kind: 'proteinStateChanged';
+    readonly state: KinematicState;
+    readonly transition: ProteinPhase | 'site-disabled';
+  }
   // 敵のプラズマ弾が交戦圏の中心の近くを初めて通り過ぎた。
   | { readonly kind: 'plasmaPassedClose' }
   // 敵1体が失われた。cause は撃破か自然損耗の別。
@@ -104,8 +133,12 @@ export type RunEventBody =
   | { readonly kind: 'boosterIgnitionToggled'; readonly on: boolean; readonly fuelEmpty: boolean }
   // 分離できる段が1つも無かった。
   | { readonly kind: 'boosterDecoupleUnavailable' }
-  // 最後尾段を切り離した。stages は切り離したあとの残り段数。
-  | { readonly kind: 'boosterDecoupled'; readonly stages: number }
+  // 最後尾段を切り離した。stages は切り離したあとの残り段数、jointState は分離面の位置と艦の速度。
+  | {
+    readonly kind: 'boosterDecoupled';
+    readonly stages: number;
+    readonly jointState: KinematicState;
+  }
 
   // -------------------------------------------------------------------- 補給
   // 弾薬の補給が軌道上へ投入された。

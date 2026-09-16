@@ -30,7 +30,7 @@ import { SimSpeedManager } from './dynamic/sim-speed-manager';
 import { DynamicSystem } from './dynamic/dynamic-system';
 import { RunEventLog } from './run-events';
 import { RunEventPresenter } from './run-event-presenter';
-import { FlashEffects } from './vfx/flash-effects';
+import { FlashPresenter } from './flash-presenter';
 import { FlashEffectsView } from '../render/vfx/flash-effects-view';
 import { EntityLineManager } from './lines/entity-line-manager';
 import { Predictor } from './dynamic/predictor';
@@ -181,7 +181,7 @@ export class Game {
   public readonly orbitReference = new OrbitReferenceSelector();
   public readonly dynamicSystem: DynamicSystem;
   // 閃光・ガスパフなど、寿命だけで消えていく一過性の見た目。
-  private readonly flashEffects: FlashEffects;
+  private readonly flashPresenter = new FlashPresenter();
   private readonly flashEffectsView: FlashEffectsView;
   private readonly entityLines: EntityLineManager;
   private readonly equatorNodes: EquatorNodeManager;
@@ -279,10 +279,9 @@ export class Game {
     this.frameMarkers = this.markers.createGroup();
     this.playerMarkers = new PlayerMarkers(this.markers.createGroup());
 
-    this.flashEffects = new FlashEffects();
     this.flashEffectsView = new FlashEffectsView(this._scene);
     this.dynamicSystem = new DynamicSystem(
-      this._scene, this.flashEffects, this.runEvents, celestialSystem,
+      this._scene, this.runEvents, celestialSystem,
       this.sections, initialSave?.simTime ?? 0, initialSave);
     this.entityLines = new EntityLineManager(this.dynamicSystem);
     this.equatorNodes = new EquatorNodeManager(this.dynamicSystem, this.markers.createGroup());
@@ -365,7 +364,7 @@ export class Game {
 
     this.activeStage = new stageClass(
       initialSave?.stage, this._hud, this._scene, this.dynamicSystem,
-      this.flashEffects, celestialSystem, this.controlSelection, this.commands,
+      celestialSystem, this.controlSelection, this.commands,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage を読むのでその後に組む。ビューより先に組み上がるので、現在のビューは遅延評価で渡す。
@@ -541,6 +540,13 @@ export class Game {
     // このフレームが天体を引く表示時刻を差し込む: 以降の frameTransformAt 呼び出しは
     // すべてこの frameAnchors を通す。
     this.frameAnchors.update(displayWindow.displayTime);
+    // 一時エフェクトと的通過マークは、進行が記録した出来事から表示時刻で組み直す(R5)。
+    // 一時停止中は表示時刻が止まるので、そのまま止まって見える。
+    this.sections.enter(SECTION.effects);
+    this.flashPresenter.present(this.runEvents.recent, displayWindow.displayTime);
+    this.targeter.updateBoardMarks(
+      this.runEvents.recent, activeControllable, displayWindow.displayTime);
+    this.sections.exit(SECTION.effects);
     // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
     this.sections.enter(SECTION.plan);
     this.planDisplay.update(displayWindow, this.frameAnchors, view);
@@ -607,12 +613,8 @@ export class Game {
       () => this.routeControllableInput(),
     );
 
-    this.targeter.updateBoardMarks(dt, controlled);
+    this.targeter.recordBoardPasses(controlled, this.runEvents);
     this.controlSelection.reclaimDead();
-
-    this.sections.enter(SECTION.effects);
-    this.flashEffects.update(dt, this.dynamicSystem.simTime);
-    this.sections.exit(SECTION.effects);
   }
 
   // ポインタ入力を現在のビューへ配る。このフレームの cameraSystem.update が終わって初めて投影が
@@ -728,7 +730,7 @@ export class Game {
     syncControlledLoopSfx(
       this._worldSfx, controlled, displayTime, !this.isPaused && this.activeStage.isPlaying);
     // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraView.sync より後に通す。
-    this.flashEffectsView.sync(this.flashEffects.live, camera);
+    this.flashEffectsView.sync(this.flashPresenter.live, camera);
 
     this.targeter.sync(
       controlled, camera, displayTime, visibilityPolicy, this.celestialMarkers.activeLabels, nowMs, palette);

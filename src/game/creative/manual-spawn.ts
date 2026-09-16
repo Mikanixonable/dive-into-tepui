@@ -16,7 +16,6 @@ import type { SpawnGate } from '../dynamic/entity-registry';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { Player } from '../player/player';
 import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
-import type { FlashEffects } from '../vfx/flash-effects';
 
 // 敵1体の生成。gate が通ってから build を呼ぶ。待つものが無ければ gate は null。
 export interface EnemySpawn {
@@ -35,7 +34,6 @@ export class ManualSpawn {
 
   // 以後の手動スポーンが既存個体と衝突しないよう、復元済みの敵の名前と陣形 id を予約する。
   public constructor(
-    private readonly fx: FlashEffects,
     private readonly scene: THREE.Scene,
     private readonly attractors: readonly CelestialBody[],
     roster: EntityRoster,
@@ -61,7 +59,7 @@ export class ManualSpawn {
       return {
         gate: null,
         build: () => generateDriftingEnemy(
-          name, state, color, color, this.fx, this.scene, this.idAllocators,
+          name, state, color, color, this.scene, this.idAllocators,
         ),
       };
     }
@@ -69,7 +67,7 @@ export class ManualSpawn {
       return {
         gate: proteinAssetGate(shapeDefinition.assetId),
         build: () => generateProteinEnemy(
-          name, state, shapeDefinition.assetId, this.display, this.fx, this.scene, this.idAllocators,
+          name, state, shapeDefinition.assetId, this.display, this.scene, this.idAllocators,
         ),
       };
     }
@@ -77,7 +75,7 @@ export class ManualSpawn {
       gate: null,
       build: () => generateApproachingEnemy(
         name, state, this.attractors, color, color, shapeDefinition.typeIndex, undefined,
-        this.fx, this.scene, this.idAllocators,
+        this.scene, this.idAllocators,
       ),
     };
   }
@@ -88,7 +86,7 @@ export class ManualSpawn {
     const formationId = this.formationIdAllocator.next();
     const spawns = proteinFormationSpawns(
       formationId, state, player.motion.state.r, this.display, formationId,
-      this.fx, this.scene, this.idAllocators,
+      this.scene, this.idAllocators,
     );
     return spawns.map(({ assetId, build }) => ({ gate: proteinAssetGate(assetId), build }));
   }
