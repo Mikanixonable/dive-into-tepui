@@ -34,14 +34,17 @@ export class DebrisReaction implements DynamicMotionBehavior {
   ) {
     if (kind !== 'casing') return;
     this.testSphereCollision = (
-      self: DynamicMotion, sphereCenter: Vec3, sphereRadius: number, selfState: KinematicState,
-    ): SphereHit | null => casingSphereCollision(self, sphereCenter, sphereRadius, selfState);
+      self: DynamicMotion, sphereCenter: Vec3, sphereRadius: number, selfState: KinematicState, selfAttitude,
+    ): SphereHit | null => casingSphereCollision(self, sphereCenter, sphereRadius, selfState, selfAttitude);
     this.testSweptSphereCollision = (
       self: DynamicMotion,
       previousSphereCenter: Vec3, sphereCenter: Vec3, sphereRadius: number,
-      _previousSelfState: KinematicState, selfState: KinematicState,
+      previousSelfState: KinematicState, selfState: KinematicState, previousSelfAttitude, selfAttitude,
     ): { readonly hit: SphereHit; readonly toi: number } | null => (
-      casingSweptSphereCollision(self, previousSphereCenter, sphereCenter, sphereRadius, selfState)
+      casingSweptSphereCollision(
+        self, previousSphereCenter, sphereCenter, sphereRadius,
+        previousSelfState, selfState, previousSelfAttitude, selfAttitude,
+      )
     );
     this.testEntityCollision = (
       self: DynamicMotion, other: DynamicMotion,
