@@ -306,36 +306,6 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 
 ## 実装手順
 
-### 3. ShipAssembly とモジュールカタログを作る
-
-#### 目的
-
-描画、物理、保存、役割判定が読む唯一の船体状態を作り、PartInventory の浅いコピーを分離経路から
-排除する。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| src/game/ship/ship-module-definition.ts（新規） | 寸法、質量、HP、性能、model id、solid primitives、能力を immutable に定義する。 |
-| src/game/ship/ship-module-instance.ts（新規） | instance id、HP、燃料、点火、展開など可変状態の判別 union を定義する。 |
-| src/game/ship/ship-module-catalog.ts（新規） | MVP部品一覧と既定値を登録し、未登録 id を拒否する。 |
-| src/game/ship/ship-assembly.ts（新規） | module graph、接続transform、集計、役割、完成検証、直列追加、末尾撤去、接続分離による split を持つ。 |
-| src/game/ship/ship-presets.ts（新規） | 既定戦闘船と基地preset（cockpit、tank、solar_panel、radiator、側面dock 2個）の assembly を作る。 |
-| src/game/dynamic/dynamic-entity/ship.ts | PartInventory 固定所有を、敵用 PartInventory と ModularShip 用 ShipAssembly が満たす狭い部品集合契約へ変える。 |
-| src/game/dynamic/dynamic-entity/parts.ts | 既存性能値を module definition から参照できる部品契約へ整理する。 |
-| src/game/dynamic/dynamic-entity/part-inventory.ts | 敵用実装として残し、分離用の浅い replace を使わないことを明示する。 |
-| tests/game/ship-assembly.test.ts（新規） | スナップ座標、集計、役割、完成条件、split、instance 非共有を検証する。 |
-| tests/game/ship-random-damage.test.ts（新規） | seed 固定で統合船体全体の健全module一様抽選、ラジエーター例外、接続維持を検証する。 |
-
-#### 達成条件と検証
-
-- 接続グラフと各接続transformから全 module transform が決まり、接続端面に隙間・重なりがない。
-- 同じ module instance が split 後の両 assembly に存在しない。
-- 既定戦闘船の総 HP と各出力段の加速度が現行値に一致する。
-- cockpit、dock、booster の有無と健全性から船／基地／物資の表示分類が変化する。booster の搭載だけでは役割を導出しない。
-- npm run typecheck と npm run test:game を通す。
-
 ### 4. compound cylinder と質量特性を追加する
 
 #### 目的
