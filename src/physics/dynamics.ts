@@ -6,6 +6,7 @@ import { KinematicState, kinematicState } from './kinematic-state';
 import { dragAccel } from './atmosphere';
 import { sunlitFactor } from './shadow';
 import { srpAccel } from './srp';
+import { isStar } from './celestial-body-def';
 import { Vec3, add, cross, dot, sub, v3 } from '../math/vec3';
 import type { CelestialBody, Degree2Gravity } from './celestial-body';
 
@@ -132,6 +133,8 @@ export function environmentSampleAt(
   return { t, r, v, sunDist, sunlit, sunDir, atmosphere, atmosphereState };
 }
 
+// 時刻 t・位置 r・速度 v の質点にかかる加速度の合成。environment はその段の日照・大気で、
+// 呼び出し側が同じ (t, r, v) で解決したものを渡す。
 function totalAccel(
   t: number,
   r: Vec3,
@@ -156,7 +159,7 @@ function totalAccel(
       ax += d2.x; ay += d2.y; az += d2.z;
     }
     // 恒星ぶんの輻射圧をすべて加算する(恒星0個なら寄与0)。
-    if (attractor.kind === 'star' && srpCoeff !== 0) {
+    if (isStar(attractor) && srpCoeff !== 0) {
       const srp = srpAccel(r, attractor, pivot, srpCoeff, environment.sunlit, t);
       ax += srp.x; ay += srp.y; az += srp.z;
     }
@@ -172,10 +175,7 @@ function totalAccel(
   return v3(ax + drag.x, ay + drag.y, az + drag.z);
 }
 
-// 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力の RK4 1ステップ。attractors はこの
-// ステップぶん呼び出し側が確定させた重力源一覧、occluders は日照率だけに使う遮蔽体一覧
-// (重力の絞り込みとは別の関心事なので別の引数で受け取る)。atmosphereBody は抗力を及ぼす
-// **ただ1体**の大気天体で、null なら抗力は恒等的にゼロ。pivot は天体一式を厳密に引いた時刻。
+// 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力の RK4 1ステップ。
 export function stepDynamics(
   state: KinematicState,
   dt: number,
@@ -191,6 +191,10 @@ export function stepDynamics(
     state, dt, attractors, occluders, atmosphereBody, pivot, bcInv, srpCoeff, thrust).state;
 }
 
+// 同じ1ステップを、RK4 の各段で評価した環境ごと返す。attractors はこのステップぶん
+// 呼び出し側が確定させた重力源一覧、occluders は日照率だけに使う遮蔽体一覧(重力の絞り込みとは
+// 別の関心事なので別の引数で受け取る)。atmosphereBody は抗力を及ぼす**ただ1体**の大気天体で、
+// null なら抗力は恒等的にゼロ。pivot は天体一式を厳密に引いた時刻。
 export function stepDynamicsWithSamples(
   state: KinematicState,
   dt: number,
@@ -201,8 +205,9 @@ export function stepDynamicsWithSamples(
   bcInv: number,
   srpCoeff: number,
   thrust: Vec3 | null,
-  star: CelestialBody | null = attractors.find((body) => body.kind === 'star') ?? null,
 ): { readonly state: KinematicState; readonly samples: readonly DynamicsEnvironmentSample[] } {
+  // 日照・輻射圧が見る恒星は重力源一覧から拾う。恒星を含まない一覧では日照率が恒等的に 0。
+  const star = attractors.find(isStar) ?? null;
   const samples: DynamicsEnvironmentSample[] = [];
   const next = stepRK4(state, dt, (t, rx, ry, rz, vx, vy, vz) => {
     const r = v3(rx, ry, rz);

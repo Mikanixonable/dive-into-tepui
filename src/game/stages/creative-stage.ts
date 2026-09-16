@@ -15,6 +15,7 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
+import type { MarkerDeclaration } from '../../marker/marker-declaration';
 
 export class CreativeStage extends Stage {
   public static readonly id = 'creative' as const;
@@ -25,7 +26,6 @@ export class CreativeStage extends Stage {
   public static readonly selectLabel = 'CREATIVE';
   public static readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
   public static readonly selectGroup = 'クリエイティブモード';
-  public static readonly selectKeys: string[] = [];
   public readonly executesPlans = true;
   public readonly authoring: ObjectAuthoring;
 
@@ -43,7 +43,6 @@ export class CreativeStage extends Stage {
   }
 
   // 配置・手動スポーンとステージ操作パネルを組み、保存データがあればそこから状態を戻す。
-  // saved の型が StageSaveData なのは、復元の構築シグネチャを全ステージで揃えるため。
   public constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     const savedCreative = saved as CreativeStageSaveData | undefined;
@@ -56,16 +55,21 @@ export class CreativeStage extends Stage {
       ? DEFAULT_PROTEIN_DISPLAY
       : proteinDisplayControllerOf(restoredProtein)?.display ?? DEFAULT_PROTEIN_DISPLAY;
     this.manualSpawn = new ManualSpawn(
-      this._worldSfx, this._fx, this._scene, restoredDisplay,
+      this._worldSfx, this._fx, this._scene, this._celestialSystem.celestialMotions,
+      this._dynamicSystem, this._dynamicSystem.idAllocators, restoredDisplay,
     );
 
     this.objectPlacement = new ObjectPlacement(
-      this._hud, this._scene, this._dynamicSystem, this._celestialSystem, this._markers, this._worldSfx, this._fx,
+      this._hud, this._scene, this._dynamicSystem, this._dynamicSystem.idAllocators,
+      this._celestialSystem, this._worldSfx, this._fx,
     );
     this.objectPlacement.onPlace = (placed) => this.addPlacedObject(placed);
     this.authoring = this.objectPlacement;
 
-    this.waveAttack = new WaveAttack(this._hud, this._worldSfx, this._fx, this._scene, this._celestialSystem.celestialMotions, savedCreative?.waveAttack);
+    this.waveAttack = new WaveAttack(
+      this._hud, this._worldSfx, this._fx, this._scene, this._celestialSystem.celestialMotions,
+      this._dynamicSystem.idAllocators, savedCreative?.waveAttack,
+    );
     this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
     this.stageControlsPanel = new StageControlsPanel(
       this.logistics.resupplyEnabled, this.logistics.rcsFuelResupplyEnabled, this.waveAttackEnabled,
@@ -139,12 +143,12 @@ export class CreativeStage extends Stage {
   // 置くと決まった物体を顔ぶれへ入れ、配置したことをトーストで知らせる。
   private addPlacedObject(placed: PlacedObject): void {
     if (placed.kind === 'player') {
-      const ship = this.addPlayer(placed.init);
+      const ship = this.addPlayer(placed.placement);
       this._hud.hint(`${ship.name} を配置`);
       return;
     }
     this._dynamicSystem.add(placed.entity);
-    this._hud.hint(`${placed.name} を配置`);
+    this._hud.hint(`${placed.entity.name} を配置`);
   }
 
   // ステージ操作パネルは、表示中のビューの右ドックへ追従させる。
@@ -169,6 +173,10 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.element.classList.remove('hidden');
   }
 
+  public override get markerDeclarations(): readonly MarkerDeclaration[] {
+    return this.objectPlacement.markerDeclarations;
+  }
+
   // 補給の投入と波状攻撃を進める。波状攻撃のトグルが決めるのは新しいウェーブが出るかどうかで、
   // OFF にしても既に出ている敵は残る。
   public update(dt: number, simTime: number, simSpeed: SimSpeedManager): void {
@@ -183,8 +191,7 @@ export class CreativeStage extends Stage {
     }
   }
 
-  // 'instant' の艦が次に消化するノードの時刻。積分をその時刻ちょうどで切らせるために返す。
-  // 待っているノードが1つも無ければ null。
+  // 'instant' の艦が次に消化するノードの時刻。待っているノードが1つも無ければ null。
   public nextSimulationEventTime(simTime: number): number | null {
     let next: number | null = null;
     for (const ship of this._dynamicSystem.all().filter(isPlayer)) {

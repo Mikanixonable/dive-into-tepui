@@ -29,7 +29,8 @@ const SOURCE = {
   },
   baseUrl: 'https://example.test/earth/',
   manifestUrl: 'https://example.test/earth/manifest.json',
-  tileIndexUrl: 'https://example.test/earth/tile-index.json',
+  colorTileTemplate: 'https://example.test/earth/tiles/{z}/{x}/{y}.jpg',
+  terrainTileTemplate: 'https://example.test/earth/tiles/{z}/{x}/{y}.bin.gz',
   baseColorUrl: 'https://example.test/earth/base-color.jpg',
   baseTerrainUrl: 'https://example.test/earth/base-terrain.bin.gz',
   climateMapUrls: [],
@@ -197,6 +198,31 @@ export function register(): void {
     assert.match(surface.diagnostics.reason ?? '', /Earth base terrain unavailable/);
 
     surface.dispose();
+    gpu.dispose();
+  });
+
+  test('earth surface: 詳細材質は表示中の8K全球テクスチャを再利用して所有しない', () => {
+    const gpu = new EarthSurfaceGpuThree({
+      texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS,
+      colorSrgbLinear: true, terrainRgba8Linear: true,
+    });
+    const sharedBaseColor = new THREE.Texture();
+    let sharedDisposed = false;
+    sharedBaseColor.addEventListener('dispose', () => { sharedDisposed = true; });
+    const binding = createEarthSurfaceMaterialBinding(
+      gpu.textures!, SOURCE.baseColorUrl, SOURCE.baseTerrainUrl,
+      async () => { throw new Error('base terrain fixture is intentionally unavailable'); },
+      sharedBaseColor,
+    );
+
+    assert.equal(binding.deferredTextures.length, 0);
+    assert.equal(binding.ready(), true);
+    binding.prepare();
+    binding.dispose();
+    binding.material.dispose();
+    for (const texture of binding.textures) texture.dispose();
+    assert.equal(sharedDisposed, false);
+    sharedBaseColor.dispose();
     gpu.dispose();
   });
 

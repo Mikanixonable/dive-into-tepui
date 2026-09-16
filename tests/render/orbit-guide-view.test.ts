@@ -95,11 +95,11 @@ export function register(): void {
     const camera = cameraFrame();
     const view = new OrbitGuideView(new THREE.Scene());
     const displays = twoLines(7.0e6, STYLE);
-    view.sync(displays, camera);
+    view.sync(displays, camera, 0);
     const first = view.visibleLines(SAMPLES).map((line) => ({ key: line.key, points: [...line.points] }));
     assert.equal(first.length, displays.length, '宣言した本数ぶんの線が返らない');
     for (const line of first) assert.equal(line.points.length, SAMPLES + 1, '点数が分割数に対応しない');
-    view.sync(displays, camera);
+    view.sync(displays, camera, 0);
     const second = view.visibleLines(SAMPLES).map((line) => ({ key: line.key, points: [...line.points] }));
     assert.deepEqual(second, first, '同じ宣言で点列が変わる');
     view.dispose();
@@ -110,11 +110,11 @@ export function register(): void {
     const view = new OrbitGuideView(new THREE.Scene());
     const radius = 7.0e6;
     const displays = twoLines(radius, STYLE);
-    view.sync(displays, camera);
+    view.sync(displays, camera, 0);
     const first = view.visibleLines(SAMPLES);
 
     // 形は据え置いたまま見た目だけ差し替えたフレームでは、同じ点列の配列がそのまま返る。
-    view.sync(restyled(displays, { ...STYLE, opacity: 1 }), camera);
+    view.sync(restyled(displays, { ...STYLE, opacity: 1 }), camera, 0);
     const kept = view.visibleLines(SAMPLES);
     for (const [i, line] of kept.entries()) {
       assert.equal(line.points, first[i]!.points, `形が同じなのに点列を引き直している (${line.key})`);
@@ -122,7 +122,7 @@ export function register(): void {
 
     // 形が変われば引き直す。円の半径を変えたので、点も新しい円の上に載る。
     const grownRadius = radius * 2;
-    view.sync(twoLines(grownRadius, STYLE), camera);
+    view.sync(twoLines(grownRadius, STYLE), camera, 0);
     const grown = view.visibleLines(SAMPLES);
     assert.notEqual(grown[0]!.points, first[0]!.points, '形を変えても点列が引き直されない');
     for (const point of grown[0]!.points) {
@@ -134,9 +134,9 @@ export function register(): void {
   test('orbit-guide-view: 宣言が空なら表示中の線も空になる', () => {
     const camera = cameraFrame();
     const view = new OrbitGuideView(new THREE.Scene());
-    view.sync(twoLines(7.0e6, STYLE), camera);
+    view.sync(twoLines(7.0e6, STYLE), camera, 0);
     assert.ok(view.visibleLines(SAMPLES).length > 0, '宣言を渡しても線が返らない');
-    view.sync([], camera);
+    view.sync([], camera, 0);
     assert.deepEqual(view.visibleLines(SAMPLES), [], '宣言を空にしても線が残っている');
     view.dispose();
   });

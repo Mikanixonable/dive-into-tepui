@@ -10,16 +10,17 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { type KinematicState } from '../../physics/kinematic-state';
 import { environmentSampleAt, type DynamicsEnvironmentSample } from '../../physics/dynamics';
-import { SOLAR_CONSTANT } from '../../physics/srp';
+import { isStar } from '../../physics/celestial-body-def';
 import {
   aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,
-  stepThermalDeviation,
+  stepThermalDeviation, sunlightIrradiance,
 } from '../../physics/thermal';
 import { orbitalElementsOf } from '../../physics/elements';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { DISPLAY_DURATION_MAX } from '../display-window-duration';
 import type { Contact } from './dynamic-entity/contact';
 import type { DynamicReactionServices } from './dynamic-simulation-participant';
+import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import { PredictedArc, trajectorySampleInterval } from './predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from './time-step';
 
@@ -85,7 +86,7 @@ export interface DynamicMotionBehavior {
   onBurnUp?(self: DynamicMotion, services: DynamicReactionServices): void;
   stepEnvironment?(
     self: DynamicMotion, dt: number, atmosphereBody: CelestialBody | null,
-    atmospherePivot: number, sunlit: number, sunDir: Vec3,
+    atmospherePivot: number, sunlight: number, sunDir: Vec3,
   ): void;
   // 質量などの状態に応じて変化する物性。省略時は生成時の固定値を使う。
   bcInv?(self: DynamicMotion): number;
@@ -95,7 +96,7 @@ export interface DynamicMotionBehavior {
   nextSimulationEventTime?(self: DynamicMotion, simTime: number): number | null;
   checkLoss?(
     self: DynamicMotion, dt: number, simTime: number, services: DynamicReactionServices,
-    viewerPos: Vec3, atmosphereBodies: readonly CelestialBody[],
+    zones: readonly EngagementZone<EngagementParticipant>[], atmosphereBodies: readonly CelestialBody[],
   ): void;
 }
 
@@ -119,25 +120,26 @@ export interface DynamicMotionProperties {
   readonly emissivity?: number;
   readonly maxTemperature?: number;
   readonly historyDuration?: number;
-  readonly predictedForGhost?: boolean;
+  readonly predictsFuture?: boolean;
   readonly behavior?: DynamicMotionBehavior;
 }
 
 const PASSIVE_BEHAVIOR: DynamicMotionBehavior = Object.freeze({ contactKind: 'generic' });
 
-// 1歩ぶんの環境標本を平均した日照率と太陽方向(単位ベクトル)。
-function weightedEnvironment(samples: readonly DynamicsEnvironmentSample[]): {
-  readonly sunlit: number;
+// 1歩ぶんの環境標本を平均した、日照率込みの太陽光の放射照度 [W/m²] と太陽方向(単位ベクトル)。
+// radiantIntensity は光源の放射強度 [W/sr]。
+function weightedEnvironment(samples: readonly DynamicsEnvironmentSample[], radiantIntensity: number): {
+  readonly sunlight: number;
   readonly sunDir: Vec3;
 } {
   let weightTotal = 0;
-  let sunlit = 0;
+  let sunlight = 0;
   let x = 0, y = 0, z = 0;
   for (let i = 0; i < samples.length; i++) {
     const weight = samples.length === 4 ? RK4_WEIGHTS[i]! : 1;
     const sample = samples[i]!;
     weightTotal += weight;
-    sunlit += weight * sample.sunlit;
+    sunlight += weight * sunlightIrradiance(radiantIntensity, sample.sunDist, sample.sunlit);
     x += weight * sample.sunDir.x;
     y += weight * sample.sunDir.y;
     z += weight * sample.sunDir.z;
@@ -145,7 +147,7 @@ function weightedEnvironment(samples: readonly DynamicsEnvironmentSample[]): {
   // 太陽方向は重み付きの和を正規化して平均とする。
   const directionLength = Math.hypot(x, y, z);
   return {
-    sunlit: weightTotal > 0 ? sunlit / weightTotal : 0,
+    sunlight: weightTotal > 0 ? sunlight / weightTotal : 0,
     sunDir: directionLength > 0 ? v3(x / directionLength, y / directionLength, z / directionLength) : v3(),
   };
 }
@@ -180,14 +182,11 @@ export class DynamicMotion {
   public readonly bulkDensity: number;
   public readonly emissivity: number;
   public readonly maxTemperature: number;
-  // 予測弧を読む者の登録。どれかが立っている間は未来を予測し続ける。
-  public analysisPanelReader = false;
-  public navTargetReader = false;
-  public trajectoryReader = false;
+  // 現在の状態から先の未来を予測し続ける個体か。
+  public readonly predictsFuture: boolean;
 
   private readonly fixedRadiatingAreaPerMass: number;
   private readonly baseHistoryDuration: number;
-  private readonly predictedForGhost: boolean;
   private predictedArc: PredictedArc | null = null;
   private requestedHistoryDuration = 0;
   private pendingSpecificHeat = 0;
@@ -219,7 +218,7 @@ export class DynamicMotion {
     this.maxTemperature = options.maxTemperature ?? Infinity;
     // 過去線の保持・予測と、接触の振る舞い
     this.baseHistoryDuration = options.historyDuration ?? 0;
-    this.predictedForGhost = options.predictedForGhost ?? false;
+    this.predictsFuture = options.predictsFuture ?? false;
     this.behavior = options.behavior ?? PASSIVE_BEHAVIOR;
   }
 
@@ -259,15 +258,7 @@ export class DynamicMotion {
     this.requestedHistoryDuration = Math.max(0, Math.min(DISPLAY_DURATION_MAX, sec));
   }
 
-  // 予測弧を読む者がいるか。canDisplayFuture が偽なら、未来のゴースト表示は数えない。
-  public hasFutureReader(canDisplayFuture: boolean): boolean {
-    return (this.predictedForGhost && canDisplayFuture)
-      || this.trajectoryReader || this.analysisPanelReader || this.navTargetReader;
-  }
-
-  public get predictsFuture(): boolean { return this.hasFutureReader(true); }
-
-  // 予測弧を読む者がいれば、現在の状態から sources を引く弧を用意して返す。いなければ null。
+  // 未来を予測する個体なら、現在の状態から sources を引く弧を用意して返す。でなければ null。
   public ensurePredictedArc(sources: readonly CelestialBody[]): PredictedArc | null {
     if (!this.predictsFuture) return null;
     this.predictedArc ??= new PredictedArc(
@@ -340,9 +331,11 @@ export class DynamicMotion {
     if (this.hasAttitude) this.att = stepAttitude(this.att, this.torque, dt);
 
     // 歩のあいだの環境の平均で、種別ごとの環境反応と熱を進める。
-    const environment = weightedEnvironment(environmentSamples);
-    this.behavior.stepEnvironment?.(this, dt, atmosphereBody, this.state.t, environment.sunlit, environment.sunDir);
-    this.stepThermal(dt, environmentSamples, services);
+    const radiantIntensity = star !== null && isStar(star) ? star.def.radiantIntensity : 0;
+    const environment = weightedEnvironment(environmentSamples, radiantIntensity);
+    this.behavior.stepEnvironment?.(
+      this, dt, atmosphereBody, this.state.t, environment.sunlight, environment.sunDir);
+    this.stepThermal(dt, environmentSamples, radiantIntensity, services);
     return integrated;
   }
 
@@ -440,10 +433,10 @@ export class DynamicMotion {
 
   // 範囲外・寿命などの消滅条件を反応に判定させる。
   public checkLoss(
-    dt: number, simTime: number, services: DynamicReactionServices, viewerPos: Vec3,
-    atmosphereBodies: readonly CelestialBody[],
+    dt: number, simTime: number, services: DynamicReactionServices,
+    zones: readonly EngagementZone<EngagementParticipant>[], atmosphereBodies: readonly CelestialBody[],
   ): void {
-    this.behavior.checkLoss?.(this, dt, simTime, services, viewerPos, atmosphereBodies);
+    this.behavior.checkLoss?.(this, dt, simTime, services, zones, atmosphereBodies);
   }
 
   // simDt ぶんの操作指令を反応に更新させる。
@@ -483,9 +476,11 @@ export class DynamicMotion {
       ?? (this.emissivity * this.bcInv) / DRAG_COEFFICIENT;
   }
 
-  // 温度を dt 進め、上限を超えたら燃え尽きさせる。比熱 0 の個体は熱を持たない。
+  // 温度を dt 進め、上限を超えたら燃え尽きさせる。比熱 0 の個体は熱を持たない。radiantIntensity は
+  // 日射の光源の放射強度 [W/sr]。
   private stepThermal(
-    dt: number, samples: readonly DynamicsEnvironmentSample[], services: DynamicReactionServices,
+    dt: number, samples: readonly DynamicsEnvironmentSample[], radiantIntensity: number,
+    services: DynamicReactionServices,
   ): void {
     if (this.specificHeat <= 0) return;
     // 標本ごとの日射と空力加熱を重み付きで平均する。
@@ -495,7 +490,7 @@ export class DynamicMotion {
       const weight = samples.length === 4 ? RK4_WEIGHTS[i]! : 1;
       const sample = samples[i]!;
       heating += weight * solarHeating(
-        SOLAR_CONSTANT, sample.sunDist, sample.sunlit, this.solarAbsorbAreaPerMass(sample.sunDir));
+        radiantIntensity, sample.sunDist, sample.sunlit, this.solarAbsorbAreaPerMass(sample.sunDir));
       if (sample.atmosphere !== null && sample.atmosphereState !== null && this.bcInv > 0) {
         const { density, speed } = airflow(
           sub(sample.r, sample.atmosphereState.r), sub(sample.v, sample.atmosphereState.v), sample.atmosphere);

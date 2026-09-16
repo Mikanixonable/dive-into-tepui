@@ -3,7 +3,9 @@ import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../../../render/gpu-timings';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
-import { shapeSpheroidRadii, type CelestialBodyDef, type RingSystemDef } from '../../../physics/celestial-body-def';
+import {
+  shapeSpheroidRadii, type CelestialBodyDef, type RingSystemDef, type StarCelestialBody,
+} from '../../../physics/celestial-body-def';
 import { orbitalElementsOf } from '../../../physics/elements';
 import { len, sub, type Vec3 } from '../../../math/vec3';
 import type { FloatingOrigin } from '../../camera/floating-origin';
@@ -16,7 +18,6 @@ import type { CelestialSurfaceDiagnostics } from '../celestial-surface';
 import { withAirglowEnabled } from '../../atmosphere';
 import type { AtmosphereClouds, AtmosphereOptics, AtmosphereCandidate } from '../../atmosphere';
 import type { ShadowCumulus } from '../../pipeline/shadow/cloud-shadow-renderer';
-import type { MarkerSlots } from '../../marker/marker-slots';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import { EllipseLine } from '../../lines/ellipse-line';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../line-style';
@@ -30,10 +31,16 @@ const SATELLITE_ORBIT_LINE_FADE_NEAR_DIST = 5e8;
 const SATELLITE_ORBIT_LINE_FADE_FAR_DIST = 1e9;
 const REFERENCE_LINE_OPACITY = 0.3;
 
-// 恒星が距離の二乗に反比例する光源として持つ値。
+// マップ専用の重ね書きが、このフレームに添える文字ラベル。
+export interface MapOverlayLabel {
+  readonly text: string;
+  readonly pos: Vec3; // ECI
+  readonly opacity: number;
+}
+
+// 恒星が光源として放つ光の見た目。
 export interface StellarLight {
   readonly color: THREE.Color;
-  readonly radiantIntensity: number;
 }
 
 // 分類ごとの宣言(楕円体の半軸・環の帯・大気の光学)を def として読める天体1体の運動。
@@ -43,7 +50,7 @@ export interface DefinedCelestialBody extends CelestialBody {
 
 // 恒星1体の運動と、それが放つ光。
 export interface StellarLightSource {
-  readonly motion: DefinedCelestialBody;
+  readonly motion: StarCelestialBody;
   readonly stellarLight: StellarLight;
 }
 
@@ -61,12 +68,10 @@ export interface CelestialIlluminationView {
   ): AtmosphereCandidate | null;
 }
 
-// 天体1体が、この1フレームの照明・影・大気へ差し出す源。visible はそのフレームに大気を
-// 描いてよい天体か。
+// 天体1体が、この1フレームの照明・影・大気へ差し出す源。
 export interface CelestialIlluminationSource {
   readonly motion: DefinedCelestialBody;
   readonly view: CelestialIlluminationView;
-  readonly visible: boolean;
 }
 
 export abstract class CelestialView {
@@ -83,11 +88,11 @@ export abstract class CelestialView {
   public abstract build(
     motion: CelestialMotion, scene: THREE.Scene, ringMaterials: RingMaterials,
   ): void;
-  // displayTime 時点の運動と表示設定へ同期する。visible が false のフレームは全体を隠す。
+  // displayTime 時点の運動と表示設定へ同期する。nowMs はこのフレームの実時刻 [ms]。
   public abstract sync(
-    motion: CelestialMotion, displayTime: number, camera: CameraFrame,
+    motion: CelestialMotion, displayTime: number, nowMs: number, camera: CameraFrame,
     star: StellarLightSource | null,
-    graphics: GraphicsSettingsData, style: RenderStyle, visible: boolean,
+    graphics: GraphicsSettingsData, style: RenderStyle,
   ): void;
 
   // 大気の表示候補を、描画座標・画面密度・雲殻を含む renderer 入力へ変換する。
@@ -133,12 +138,10 @@ export abstract class CelestialView {
     _motion: DefinedCelestialBody, _floatingOrigin: FloatingOrigin, _displayTime: number,
   ): ShadowCumulus | null { return null; }
 
-  // マップ専用の重ね書きを、このフレームの表示状態へ同期する。
+  // マップ専用の重ね書きを、このフレームの表示状態へ同期し、添える文字ラベルを返す。
   public syncMapOverlay(
-    _motion: CelestialMotion, _displayTime: number, _camera: CameraFrame,
-    _markers: MarkerSlots,
-    _celestialBodies: readonly CelestialBody[], _visible: boolean,
-  ): void {}
+    _motion: CelestialMotion, _displayTime: number, _camera: CameraFrame, _visible: boolean,
+  ): MapOverlayLabel | null { return null; }
 
   // 表示時刻の接触軌道要素と、カメラからの距離で決まる濃さへ参照軌道線を同期する。
   // visible が false のフレームは線の資源ごと解放する。

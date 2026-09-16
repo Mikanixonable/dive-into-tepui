@@ -167,15 +167,25 @@ export class PlanEditor {
     this.hud.hint('ノードを削除');
   }
 
-  // 選択中のノードを削除する。
-  private deleteSelected(): void {
-    if (this.selectedNodeIdx === null) return;
-    this.deleteNode(this.selectedNodeIdx);
+  // 選択中のノードを削除する。未選択なら計画全体を破棄し、進行中の自動ワープも解く。
+  private deleteSelectedNodeOrPlan(): void {
+    if (this.selectedNodeIdx !== null) {
+      this.deleteNode(this.selectedNodeIdx);
+      return;
+    }
+    const plan = this.plan;
+    if (!plan || plan.nodes.length <= 0) return;
+    plan.clear();
+    this.simSpeedManager.cancelAutoWarp();
+    this.hud.hint('マニューバ計画を破棄');
   }
 
-  // router から選択ノードの削除キーを受け取る。
-  public handleCommand(commandId: string): void {
-    if (commandId === K.deleteNode.code) this.deleteSelected();
+  // router から計画キー([X] 削除・[N] 直近ノードへの自動ワープ)を受け取る。
+  public handleCommand(commandId: string, simTime: number): void {
+    if (commandId === K.deleteNode.code) this.deleteSelectedNodeOrPlan();
+    if (commandId === K.autoWarpToNode.code) {
+      this.simSpeedManager.toggleAutoWarpToFirstNode(this.plan?.firstNode(), simTime);
+    }
   }
 
   // WASDQE・長押しボタン・ラッチによる Δv 編集を進める。

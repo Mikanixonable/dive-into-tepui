@@ -16,7 +16,6 @@ import { engagementZones } from './engagement-zone';
 import { SurfaceContactPhysics } from './surface-contact-physics';
 import { SubstepCelestialBodies } from './substep-celestial-bodies';
 import { NextEventTime } from './next-event-time';
-import { v3 } from '../../math/vec3';
 import { simulationMaxStep, simulationStepDuration, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT } from './time-step';
 import type { NanWatchdog } from './nan-watchdog';
 import { FrameSections, SECTION } from '../frame-sections';
@@ -107,7 +106,8 @@ export class Simulator {
         }
         activeStage.applySimulationEvents(this.simTime);
         this.lifecycle.cleanup(
-          0, this.simTime, activeStage, controlled?.state.r ?? v3(), this.atmosphereBodies());
+          0, this.simTime, activeStage, engagementZones(this.roster.allMotions(), canEngage),
+          this.atmosphereBodies());
         continue;
       }
       this.consecutiveZeroSteps = 0;
@@ -154,8 +154,7 @@ export class Simulator {
       }
       activeStage.applySimulationEvents(this.simTime);
       // 期限切れ弾が同じsubstepの接触解決へ進まないよう、既知境界の直後に回収する。
-      this.lifecycle.cleanup(
-        subDt, this.simTime, activeStage, controlled?.state.r ?? v3(), this.atmosphereBodies());
+      this.lifecycle.cleanup(subDt, this.simTime, activeStage, zones, this.atmosphereBodies());
     }
 
     this.lastSimDt = simDt;

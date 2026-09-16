@@ -21,9 +21,9 @@ export class SettingsView {
   // BGM の音量が変わったときに呼ばれる。
   public onBgmVolumeChange: ((volume: number) => void) | null = null;
 
-  // 見出し・内側タブバーと、描画/BGM/配色の3面を組み立てる。graphics と bgmVolume は組み立て時の
-  // 設定値。
-  public constructor(bgm: Bgm, graphics: GraphicsSettingsData, bgmVolume: number) {
+  // 見出し・内側タブバーと、描画/BGM/配色の3面を組み立てる。graphics・bgmVolume・themeId は
+  // 組み立て時の設定値。
+  public constructor(bgm: Bgm, graphics: GraphicsSettingsData, bgmVolume: number, themeId: string) {
     this.bgm = bgm;
 
     this.element = document.createElement('section');
@@ -78,7 +78,7 @@ export class SettingsView {
     bgmSectionBody.appendChild(this.bgmPanel.element);
 
     const themeSectionBody = addTabPanel('theme', '配色');
-    const themePanel = new ThemePanel();
+    const themePanel = new ThemePanel(themeId);
     themePanel.onSelect = (id) => this.onThemeIdChange?.(id);
     themeSectionBody.appendChild(themePanel.element);
 
@@ -106,6 +106,12 @@ export class SettingsView {
     headingGroup.appendChild(eyebrow);
     header.appendChild(headingGroup);
     return header;
+  }
+
+  // 設定面の表示を、いま鳴っている試聴へ合わせる。毎フレーム呼ぶ。
+  public sync(): void {
+    if (!this.active) return;
+    this.bgmPanel.sync();
   }
 
   // 外から音量が変わったときに、BGM タブの表示を引き直す。

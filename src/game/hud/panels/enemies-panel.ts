@@ -4,7 +4,26 @@ import { SyncThrottle } from '../sync-throttle';
 
 const SYNC_INTERVAL_MS = 250;
 
-export type EnemyRow =
+// 生存している敵1機ぶんの、一覧に出す値。同じ波に属する敵は1行へ畳まれる。
+export interface EnemyContact {
+  readonly id: string;
+  readonly name: string;
+  readonly distanceM: number;
+  // 波に属さない敵では undefined。
+  readonly waveId: number | undefined;
+  readonly targeted: boolean;
+}
+
+// CONTACTS パネルが1フレームに映す値と、単独行の右クリックを返す口。
+export interface EnemiesPanelViewModel {
+  readonly remainingCount: number;
+  readonly totalCount: number;
+  readonly contacts: readonly EnemyContact[];
+  onSelectRight(id: string, clientX: number, clientY: number): void;
+}
+
+// 一覧に出す1行。同じ波の敵は1行へ畳み、波に属さない敵はそれぞれ1行になる。
+type EnemyRow =
   | {
     readonly kind: 'single';
     readonly id: string;
@@ -20,24 +39,17 @@ export type EnemyRow =
     readonly targeted: boolean;
   };
 
-export interface EnemiesPanelViewModel {
-  readonly remainingCount: number;
-  readonly totalEnemiesSpawned: number;
-  readonly rows: readonly EnemyRow[];
-  readonly isMapView: boolean;
-}
-
 export class EnemiesPanel {
   private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
   private hasContacts = false;
-
-  // 単独表示の行(波に集約されていない敵)の右クリック。波の集約行は特定の1機を指さないため呼ばれない。
-  public onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
+  // 直近の sync が受けた値。右クリックはフレームの外で起きるので、その時点の口をここから引く。
+  private view: EnemiesPanelViewModel | null = null;
 
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {}
 
-  // 残存数の見出しと、距離順の敵一覧を同期する。操作対象が無ければパネルごと隠す。
-  public sync(view: EnemiesPanelViewModel | null): void {
+  // 残存数の見出しと、距離順の敵一覧を同期する。view が null(操作対象が無い)ならパネルごと隠す。
+  public sync(view: EnemiesPanelViewModel | null, nowMs: number): void {
+    this.view = view;
     const panel = this.els.get('hud-enemies');
     if (!view) {
       this.hasContacts = false;
@@ -46,20 +58,50 @@ export class EnemiesPanel {
     }
 
     // 間引き周期でのみ一覧を組み直す。
-    if (this.throttle.due()) {
-
+    if (this.throttle.due(nowMs)) {
       const count = this.els.get('count');
       if (count) {
-        count.textContent = `${view.remainingCount} / ${view.totalEnemiesSpawned}`;
-        count.setAttribute('aria-label', `残存 ${view.remainingCount}、合計 ${view.totalEnemiesSpawned}`);
+        count.textContent = `${view.remainingCount} / ${view.totalCount}`;
+        count.setAttribute('aria-label', `残存 ${view.remainingCount}、合計 ${view.totalCount}`);
       }
-      this.hasContacts = view.rows.length > 0;
-      this.syncEnemyList(view.rows);
+      const rows = this.buildEnemyRows(view.contacts);
+      this.hasContacts = rows.length > 0;
+      this.syncEnemyList(rows);
     }
 
-    // 更新間隔中も直前の敵有無を維持する。ここで戦闘ビュー判定だけを行うと、
+    // 更新間隔中も直前の敵有無を維持する。毎フレーム敵の有無を見ると、
     // 敵0件で隠したパネルを次のフレームに再表示してしまう。
-    panel?.classList.toggle('hidden', view.isMapView || !this.hasContacts);
+    panel?.classList.toggle('hidden', !this.hasContacts);
+  }
+
+  // waveId を持つ敵ごとに「第N波」1行へ集約して組み立てる。
+  // waveId 不在の敵は個別の行になる。ターゲットが波のメンバーなら、その波の行を強調する側に倒す。
+  private buildEnemyRows(contacts: readonly EnemyContact[]): EnemyRow[] {
+    const singles: EnemyRow[] = [];
+    const waves = new Map<number, { count: number; nearestDistanceM: number; targeted: boolean }>();
+    for (const { id, name, distanceM, waveId, targeted } of contacts) {
+      if (waveId === undefined) {
+        singles.push({ kind: 'single', id, name, distanceM, targeted });
+        continue;
+      }
+      const waveSummary = waves.get(waveId);
+      if (!waveSummary) {
+        waves.set(waveId, { count: 1, nearestDistanceM: distanceM, targeted });
+      } else {
+        // 波の代表距離は最も近い個体を使い、波内にターゲットがいれば強調する。
+        waveSummary.count += 1;
+        waveSummary.nearestDistanceM = Math.min(waveSummary.nearestDistanceM, distanceM);
+        waveSummary.targeted = waveSummary.targeted || targeted;
+      }
+    }
+    const waveRows: EnemyRow[] = Array.from(waves.entries()).map(([waveId, waveSummary]) => ({
+      kind: 'wave',
+      waveId,
+      count: waveSummary.count,
+      distanceM: waveSummary.nearestDistanceM,
+      targeted: waveSummary.targeted,
+    }));
+    return [...singles, ...waveRows].sort((a, b) => a.distanceM - b.distanceM);
   }
 
   // 距離順のリストへ同期する。ターゲット・隣接は色と状態語で識別する。
@@ -94,7 +136,7 @@ export class EnemiesPanel {
       if (row.kind === 'single') {
         item.addEventListener('contextmenu', (e) => {
           e.preventDefault();
-          this.onSelectRight?.(row.id, e.clientX, e.clientY);
+          this.view?.onSelectRight(row.id, e.clientX, e.clientY);
         });
       }
 

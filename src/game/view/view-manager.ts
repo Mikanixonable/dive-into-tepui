@@ -2,10 +2,8 @@
 import { Hud } from '../hud/hud';
 import { TouchControls } from '../hud/touch-controls';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import { DisplayWindowManager } from '../display-window-manager';
 import type { ControlSelection } from '../control-selection';
-import { setPanelCollapsedView } from '../hud/panel-shell';
-import type { ViewMode } from '../../render/view-mode';
+import type { ViewMode } from './view-mode';
 import type { ViewFrame } from './view-frame';
 
 export class ViewManager {
@@ -22,7 +20,6 @@ export class ViewManager {
   public constructor(
     private readonly hud: Hud,
     private readonly touchControls: TouchControls | null,
-    private readonly displayWindow: DisplayWindowManager,
     private readonly controlSelection: ControlSelection,
     private readonly views: Record<ViewMode, ViewFrame>,
     requestedView?: ViewMode,
@@ -31,20 +28,20 @@ export class ViewManager {
     const requested: ViewMode = requestedView === 'map' ? 'map' : 'combat';
     this.view = this.views[requested].canEnter() ? requested : 'map';
     this.views[this.view].onEnter();
-    this.applyChrome();
+    this.touchControls?.setView(this.view);
   }
 
   // ビュー遷移の唯一の入口。next にいる状態で終われたかを返し、入れないビューなら何もしない。
-  // 呼んだ後は遷移の有無に依らず、HUD・タッチ・未来表示の各フラグが現在のビューに揃う。
+  // 呼んだ後は遷移の有無に依らず、タッチ操作パッドが現在のビューに揃う。
   public setView(next: ViewMode): boolean {
-    if (next === this.current) { this.applyChrome(); return true; }
+    if (next === this.current) { this.touchControls?.setView(next); return true; }
     if (!this.views[next].canEnter()) return false;
 
     const prev = this.view;
     this.view = next;
     this.views[prev].onLeave();
     this.views[next].onEnter();
-    this.applyChrome();
+    this.touchControls?.setView(next);
     return true;
   }
 
@@ -59,14 +56,6 @@ export class ViewManager {
       .filter((v) => v !== this.view && this.views[v].canEnter());
   }
 
-  // 現在のビューに合わせて HUD の見た目と、未来表示・収納状態の各フラグを揃える。
-  private applyChrome(): void {
-    setPanelCollapsedView(this.view);
-    this.hud.setView(this.view);
-    this.touchControls?.setView(this.view);
-    this.displayWindow.forceCurrent = this.view !== 'map';
-  }
-
   // router から [M] による戦闘⇔マップの切り替えを受ける。
   public handleCommand(commandId: string): void {
     if (commandId !== K.toggleMapMode.code) return;
@@ -79,7 +68,7 @@ export class ViewManager {
       }
       const nodeCount = this.controlSelection.current?.plan.nodes.length ?? 0;
       if (nodeCount > 0) {
-        this.hud.hint(`マニューバ計画 ${nodeCount} 件確定 — [${K.autoWarpToNode.label}] で直近ノードへ自動ワープ`, 4500);
+        this.hud.hint(`マニューバ計画 ${nodeCount} 件確定`, 4500);
       }
       return;
     }

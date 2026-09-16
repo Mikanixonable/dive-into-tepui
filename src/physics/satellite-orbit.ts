@@ -108,21 +108,17 @@ function sumPeriodicTerms(
   return [value, rate];
 }
 
-// 惑星中心・ECI 軸での状態。太陽の方向は planetAngles 経由で入る。二体部分の黄道座標
-// (黄経・黄緯・動径)を求め、その上に周期項の加算補正を重ねてから ECI 位置・速度へ戻す。
-// **回転基準系と軌道法線はこの実状態から組む**(celestial-motion.ts の orbitFrameRotationAt /
-// orbitNormalAt)ので、周期項もそのまま入る — 衛星は回転系の x̂ 軸上に厳密に乗り、接触軌道面は
-// 平均軌道面のまわりを揺れる(月で最大 0.81°)。二体部分だけで組んでいた頃は x̂ から最大 2.5°
-// ずれていた。公表値と突き合わせる量(カッシーニ状態の傾斜・昇交点歳差の掃き)は平均軌道面に
-// 対して定義されているので、そちらは keplerOrbitNormal で測る。
-// 二体部分の元期を simZeroEt ぶん進め、平均黄経へ初期位相 phase を足した軌道。周期項の
-// 引数はすべて二体部分の角から組むので、畳むのは kepler だけでよい。
-export function satelliteOrbitForSimZero(
-  orbit: SatelliteOrbit, phase: number, simZeroEt: number,
-): SatelliteOrbit {
-  return { ...orbit, kepler: keplerOrbitForSimZero(orbit.kepler, phase, simZeroEt) };
+// 二体部分の元期を simZeroEt ぶん進めた軌道。周期項の引数はすべて二体部分の角から組むので、
+// 畳むのは kepler だけでよい。
+export function satelliteOrbitForSimZero(orbit: SatelliteOrbit, simZeroEt: number): SatelliteOrbit {
+  return { ...orbit, kepler: keplerOrbitForSimZero(orbit.kepler, simZeroEt) };
 }
 
+// 惑星中心・ECI 軸での状態。太陽の方向は planetAngles 経由で入る。周期項を含む実状態なので、
+// 衛星は回転基準系(celestial-motion.ts の orbitFrameRotationAt)の x̂ 軸上に厳密に乗り、
+// 接触軌道面は平均軌道面のまわりを揺れる(月で最大 0.81°)。公表値と突き合わせる量
+// (カッシーニ状態の傾斜・昇交点歳差の掃き)は平均軌道面に対して定義されているので、
+// そちらは keplerOrbitNormal で測る。
 export function satelliteState(
   orbit: SatelliteOrbit,
   planetAngles: PlanetAngles,

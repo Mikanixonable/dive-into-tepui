@@ -1,13 +1,19 @@
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
-import { lenSq, sub, type Vec3 } from '../../../math/vec3';
-import { ENGAGEMENT_RANGE } from '../engagement-zone';
+import { distSq, type Vec3 } from '../../../math/vec3';
+import type { EngagementParticipant, EngagementZone } from '../engagement-zone';
 import type { DynamicMotion, DynamicMotionBehavior } from '../dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic-simulation-participant';
 
 // 自機の弾が自機に当たりはじめるまでの、発射からの猶予 [sim s]。
 const SELF_CONTACT_GRACE = 2.0;
-// 敵弾が視点の近くを通ったとみなす距離 [m]。
+// 敵弾が交戦圏の中心(自機・基地)の近くを通ったとみなす距離 [m]。
 const BULLET_CLOSE_PASS_DIST = 40;
+
+// 位置 r [m, ECI] が、いずれかの交戦圏の中心から BULLET_CLOSE_PASS_DIST 未満にあるか。
+function nearAnyAnchor(r: Vec3, zones: readonly EngagementZone<EngagementParticipant>[]): boolean {
+  const closeSq = BULLET_CLOSE_PASS_DIST * BULLET_CLOSE_PASS_DIST;
+  return zones.some((zone) => zone.anchors.some((anchor) => distSq(anchor.state.r, r) < closeSq));
+}
 
 export type Shooter = 'player' | 'enemy';
 export type BulletType = 'normal' | 'plasma';
@@ -45,23 +51,22 @@ export class BulletReaction implements DynamicMotionBehavior {
     return this.expiresAt >= simTime ? this.expiresAt : null;
   }
 
-  // 交戦範囲の外へ出たか寿命の尽きた弾を消す。敵のプラズマ弾が視点の近くを初めて通ると
-  // 磁気干渉音を鳴らす。
+  // 交戦圏 zones の外へ出たか寿命の尽きた弾を消す。zones が空なら寿命だけで消す。敵のプラズマ弾が
+  // 交戦圏の中心の近くを初めて通ると磁気干渉音を鳴らす。
   public checkLoss(
     self: DynamicMotion,
     _dt: number,
     simTime: number,
     _services: DynamicReactionServices,
-    viewerPos: Vec3,
+    zones: readonly EngagementZone<EngagementParticipant>[],
   ): void {
     if (!self.alive) return;
-    if (this.shooter === 'enemy' && !this.passedClose
-      && lenSq(sub(self.state.r, viewerPos)) < BULLET_CLOSE_PASS_DIST * BULLET_CLOSE_PASS_DIST) {
+    if (this.shooter === 'enemy' && !this.passedClose && nearAnyAnchor(self.state.r, zones)) {
       this.passedClose = true;
       if (this.type === 'plasma') this.worldSfx.magneticInterference();
     }
-    if (lenSq(sub(self.state.r, viewerPos)) > ENGAGEMENT_RANGE * ENGAGEMENT_RANGE
-      || simTime >= this.expiresAt) self.alive = false;
+    const outsideZones = zones.length > 0 && !zones.some((zone) => zone.contains(self.state.r));
+    if (outsideZones || simTime >= this.expiresAt) self.alive = false;
   }
 
   // 寿命の尽きる時刻 [sim s]。

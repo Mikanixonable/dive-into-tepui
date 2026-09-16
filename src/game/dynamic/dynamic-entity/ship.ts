@@ -22,7 +22,7 @@ export abstract class Ship extends Vessel {
     hp: number,
     motionFactory: DynamicMotionFactory,
     view: DynamicView,
-    id?: string,
+    id: string,
     initialParts?: readonly Part[],
   ) {
     super(name, hp, motionFactory, view, id);

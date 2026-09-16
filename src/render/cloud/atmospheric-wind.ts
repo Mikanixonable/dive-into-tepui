@@ -2,7 +2,6 @@
 // with latitude and altitude; rendering transports may derive their own phase
 // from this field without becoming another physical wind source.
 import { abs, float, sign, smoothstep as nodeSmoothstep, vec2 } from 'three/tsl';
-import { R_EARTH } from '../../game/celestial/solar-system/constants';
 import type { FloatNode, Vec2Node } from '../tsl-types';
 export type WindVector = { readonly east: number; readonly north: number };
 
@@ -47,14 +46,17 @@ export class AtmosphericWindField {
 }
 
 export class CloudPatternTransport {
-  public constructor(private readonly field = new AtmosphericWindField()) {}
+  // surfaceRadius は模様を載せる天体の半径 [m]。物理風 [m/s] を角位相へ直す尺度になる。
+  public constructor(
+    private readonly surfaceRadius: number, private readonly field = new AtmosphericWindField(),
+  ) {}
 
   // Pattern phase in radians. This is visual transport state, separate from
   // the physical vector returned by AtmosphericWindField.sample().
   public phaseAt(latitudeRad: number, heightM: number, seconds: number): number {
     const wind = this.field.sample(latitudeRad, heightM);
     const speed = Math.hypot(wind.east, wind.north);
-    return (seconds * speed) / R_EARTH;
+    return (seconds * speed) / this.surfaceRadius;
   }
 
   // Convert physical components to the angular displacement used by the
@@ -65,8 +67,8 @@ export class CloudPatternTransport {
     readonly north: number;
   } {
     return {
-      east: (eastMs * seconds) / (R_EARTH * Math.max(0.25, Math.cos(latitudeRad))),
-      north: (northMs * seconds) / R_EARTH,
+      east: (eastMs * seconds) / (this.surfaceRadius * Math.max(0.25, Math.cos(latitudeRad))),
+      north: (northMs * seconds) / this.surfaceRadius,
     };
   }
 }

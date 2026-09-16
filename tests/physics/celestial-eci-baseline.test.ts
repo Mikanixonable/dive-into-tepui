@@ -197,7 +197,7 @@ const BARY_OFFSET: Baseline = [
 
 export function register(): void {
   const analytic = solarSystemParts();
-  const numeric = solarSystemParts({}, TEST_EPOCH, SOURCE);
+  const numeric = solarSystemParts(TEST_EPOCH, SOURCE);
 
   const assertBaseline = (
     parts: ReturnType<typeof solarSystemParts>, id: string, rows: Baseline,
@@ -225,7 +225,7 @@ export function register(): void {
   }
 
   test('eci-baseline: 重心補正(太陽の地心位置と純ケプラー地球の差)が固定値と一致する', () => {
-    const orbit = keplerOrbitForSimZero(EARTH.orbit, 0, ephemerisSeconds(TEST_EPOCH));
+    const orbit = keplerOrbitForSimZero(EARTH.orbit, ephemerisSeconds(TEST_EPOCH));
     TIMES.slice(0, BARY_OFFSET.length).forEach((t, i) => {
       const d = sub(stateOf(analytic, 'sun', t).r, scale(keplerOrbitState(orbit, t).r, -1));
       assert.deepEqual([d.x, d.y, d.z], BARY_OFFSET[i], `bary t=${t}`);

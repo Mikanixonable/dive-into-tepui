@@ -4,19 +4,18 @@ import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { OrbitingObject } from './orbiting-object';
 import { DynamicEntity } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
-import { EntityIdAllocator } from './entity-id';
+import type { EntityIdAllocators } from './entity-id';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import { Attitude } from '../../../physics/attitude';
 import { len, sub, v3, Vec3 } from '../../../math/vec3';
 import type { Notifier } from '../../../hud/notifier';
-import type { MarkerSlots } from '../../../render/marker/marker-slots';
-import type { MarkerVisibility } from '../../../render/marker/marker-visibility';
+import type { MarkerVisibility } from '../../../marker/marker-visibility';
 import { savedAttitude, savedKinematicState, type BaseSaveData } from '../../save/save-data';
 import { Plan, type PlanExecutionMode } from '../../plan/plan';
 import { generateRandomName } from '../../random-name';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import { fmtDist } from '../../../hud/utils';
-import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../../render/marker/marker-identity';
+import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
 import { Throttle } from '../../player/throttle';
 import type { Controllable, PilotCommandFrame } from './controllable';
@@ -25,7 +24,7 @@ import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { BaseView, type BaseRenderSource } from '../../../render/dynamic/dynamic-entity/base-view';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../../orbit-reference';
-import { MARKER_PRIORITY } from '../../../render/marker/crowding';
+import { MARKER_PRIORITY } from '../../marker/marker-priority';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { orbitRows } from '../../pickable/orbit-rows';
 
@@ -44,8 +43,6 @@ const BASE_INERTIA_X = 1e8;     // 基地の慣性モーメント（ほぼ対称
 const BASE_INERTIA_Y = 1e8;
 const BASE_INERTIA_Z = 1.2e8;   // 長軸方向はやや大きい
 const BASE_INITIAL_MONEY = 100000; // 新規配置の基地の所持金 [Cr]
-
-const idAllocator = new EntityIdAllocator('base-');
 
 // 新規配置は state/name/att をそのまま使い、スナップショットからの再開は saved を
 // simTime 付きの状態として展開する。
@@ -113,7 +110,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     init: BaseInit,
     scene: THREE.Scene,
     notifier: Notifier,
-    markers: MarkerSlots,
+    idAllocators: EntityIdAllocators,
   ) {
     // 復元と新規配置を同じ形へ均してから基底へ渡す。
     const { state, name, att, id } = 'saved' in init
@@ -133,10 +130,10 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z),
     };
     const fuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : undefined;
-    const entityId = idAllocator.next(id);
+    const entityId = idAllocators.base.next(id);
     super(
       () => new BaseMotion(state, attitude, fuel),
-      new BaseView(scene, entityId, markers),
+      new BaseView(scene, entityId),
       entityId,
     );
     this.setName(name);
@@ -150,12 +147,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // 噴射表現に要る推力・トルクを、共通の表示入力へ足す。
   protected override renderSource(
-    viewFrame: DynamicViewFrame, visible: boolean, active: boolean,
-    orbitReference: OrbitReference | undefined,
+    viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | undefined,
   ): BaseRenderSource {
     const motion = this.motion;
     return {
-      ...super.renderSource(viewFrame, visible, active, orbitReference),
+      ...super.renderSource(viewFrame, active, orbitReference),
       thrust: motion.thrust,
       maximumAcceleration: motion.maximumAcceleration,
       torque: motion.torque,
@@ -212,9 +208,9 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   private get markerKey(): string { return `base-${this.id}`; }
 
   // 基地のマーカー表示項目。pos/vel には構造メッシュと同じ表示時刻の状態を渡すこと。
-  public markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3): GroupedMarkerItem {
-    // 代表選出の優先度は、近い個体ほど高くする
-    const dist = len(sub(pos, viewerPos));
+  public markerItem(viewerPos: Vec3 | null, pos: Vec3, vel: Vec3): GroupedMarkerItem {
+    // 代表選出の優先度は、同じ種別の中では視点に近い個体ほど高くする
+    const priority = viewerPos ? MARKER_PRIORITY.BASE - len(sub(pos, viewerPos)) / 1e9 : MARKER_PRIORITY.BASE;
     return {
       key: this.markerKey,
       kind: this.mapKind,
@@ -222,12 +218,12 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       sym: baseMarkerSvg(),
       pos,
       vel,
-      priority: MARKER_PRIORITY.BASE - dist / 1e9,
+      priority,
       name: this.name,
-      bearingColor: COLOR_MARKER_ALLY,
-      bearingSym: ENTITY_GLYPH.base,
-      bearingClass: 'mk-dir mk-ally-dir',
-      bearingVisible: false,
+      bearing: {
+        cls: 'mk-dir mk-ally-dir', sym: ENTITY_GLYPH.base, color: COLOR_MARKER_ALLY,
+        visible: true, clustered: true,
+      },
       color: COLOR_MARKER_ALLY,
       symMarkup: true,
     };

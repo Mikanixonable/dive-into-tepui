@@ -24,10 +24,10 @@ const TANGENT_PROBE_SPAN = 1e-3;
 // アニメーションが1周(パラメータ 0→1)にかける実時間 [s]。
 const ANIMATION_PERIOD_SEC = 20;
 
-// 実時刻から求めたアニメーションの位相 [0,1)。表示時刻で進めると、タイムワープ中にマーカーが
-// 飛び、一時停止中に止まる。
-function animationPhase(): number {
-  return (performance.now() / 1000 / ANIMATION_PERIOD_SEC) % 1;
+// フレームの実時刻 nowMs [ms] から求めたアニメーションの位相 [0,1)。表示時刻で進めると、
+// タイムワープ中にマーカーが飛び、一時停止中に止まる。
+function animationPhase(nowMs: number): number {
+  return (nowMs / 1000 / ANIMATION_PERIOD_SEC) % 1;
 }
 
 // マーカー1個ぶんの三角形ジオメトリ(単位サイズ、+Y が進行方向)。
@@ -103,13 +103,13 @@ export class DirectionMarkers {
   }
 
   // 1本の軌道ぶんのマーカーを積む。mode が 'none' なら何もしない。revolutions は曲線1本に
-  // 入る周回数で、'many' モードで並べる個数を決める。
+  // 入る周回数で、'many' モードで並べる個数を決める。nowMs はこのフレームの実時刻 [ms]。
   public addLoop(
-    curve: GuideCurve, revolutions: number, mode: DirectionMarkerMode, animate: boolean,
+    curve: GuideCurve, revolutions: number, mode: DirectionMarkerMode, animate: boolean, nowMs: number,
     colorHex: number, fo: FloatingOrigin,
   ): void {
     if (mode === 'none') return;
-    const offset = animate ? animationPhase() : 0;
+    const offset = animate ? animationPhase(nowMs) : 0;
     this.color.setHex(colorHex);
     const phases = mode === 'single' ? 1 : this.manyCount(revolutions);
     for (let i = 0; i < phases; i++) {

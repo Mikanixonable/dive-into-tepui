@@ -4,7 +4,7 @@ import type { WebGPURenderer } from 'three/webgpu';
 import { PropertyWindow } from '../../../hud/windows/property-window';
 import { SegmentedControl, TabBar } from '../../../hud/widgets';
 import { injectOnce } from '../../../hud/inject-style';
-import { DEBUG_TARGETS, type DebugTargetHost, type DebugTargetId } from '../../../render/pipeline/debug-target';
+import { DEBUG_TARGETS, type DebugTargetId } from '../../../render/pipeline/debug-target';
 import type { RenderStyle } from '../../../render/render-style';
 import { fmtDuration } from '../../../hud/utils';
 import { FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from '../../frame-sections';
@@ -49,6 +49,7 @@ const RATE_COUNTS: readonly { key: string; label: string; group: string; read: (
   { key: 'contact-participants', label: '参加者', group: '衝突', read: (c) => c.contactParticipants },
 ];
 
+// 1つの計測対象について、集計期間ぶん積んだ値。
 interface PhaseStats {
   sum: number;
   max: number;
@@ -104,7 +105,8 @@ export class DebugInfoWindow {
   // 個数系の統計。RATE_COUNTS と添字で対応する。
   private readonly rateStats = Array.from({ length: RATE_COUNTS.length }, newPhaseStats);
   private frames = 0;
-  private lastFlush = performance.now();
+  // 集計期間の起点 [ms]。壁時計を読まないので、窓を開いた後の最初のフレームで据える。
+  private lastFlush: number | null = null;
   // 前回フラッシュ時点の暦キャッシュ累計。表示する集計期間分の差分を取るために持つ。
   private lastTimeHits = 0;
   private lastTimeMisses = 0;
@@ -115,10 +117,14 @@ export class DebugInfoWindow {
   private readonly tabBar: TabBar<DebugInfoTab>;
   private readonly controls: HTMLElement;
   private activeTab: DebugInfoTab = 'metrics';
+  private _debugTarget: DebugTargetId = 'off';
   private readonly proteinMotion = new ProteinMotionMetricsRecorder();
 
   // 計測が走っているか。窓が開いている間だけ真になる。
   public get on(): boolean { return this.win !== null; }
+
+  // 画面いっぱいに映す中間ターゲットの選択。窓を閉じても残り、ページを読み直すと 'off' に戻る。
+  public get debugTarget(): DebugTargetId { return this._debugTarget; }
 
   // 計測対象と表示先を受け取り、デバッグ表示の操作部品を組み立てる。renderStyle は組み立て時の
   // 見せ方。openAtStart が真なら組み立てた直後に窓を開く。
@@ -128,20 +134,20 @@ export class DebugInfoWindow {
     private readonly sections: FrameSections,
     private readonly gpu: GpuTimings,
     private readonly overlayManager: OverlayManager,
-    private readonly debugTargetHost: DebugTargetHost,
     renderStyle: RenderStyle,
     openAtStart: boolean,
   ) {
     // 描画タブの選択欄とタブ切り替えを組む。
     injectOnce('debug-info-window', STYLE);
     this.renderTarget = new SegmentedControl('デバッグ表示', DEBUG_TARGETS, (id) => {
-      this.debugTargetHost.debugTarget = id;
+      this._debugTarget = id;
       this.renderTarget.setSelected(id);
     });
+    // 選択欄はこの窓と同じ寿命なので、初期の選択をここで一度点灯させれば開閉をまたいで残る。
+    this.renderTarget.setSelected(this._debugTarget);
     this.tabBar = new TabBar(DEBUG_INFO_TABS, (tab) => this.selectTab(tab));
     this.controls = document.createElement('div');
     this.controls.className = 'debug-info-controls';
-    // 窓へ載せる操作部品をまとめる。
     this.controls.appendChild(this.tabBar.element);
     this.controls.appendChild(this.renderTarget.element);
     this.syncRenderStyle(renderStyle);
@@ -173,7 +179,7 @@ export class DebugInfoWindow {
     this.sections.enabled = true;
     this.gpu.enabled = true;
     this.frames = 0;
-    this.lastFlush = performance.now();
+    this.lastFlush = null;
     this.win = new PropertyWindow(this.root, DEFAULT_X, DEFAULT_Y, {
       title: 'デバッグ',
       rows: this.rows,
@@ -184,8 +190,6 @@ export class DebugInfoWindow {
       this.sections.enabled = false;
       this.gpu.enabled = false;
     };
-    // 選択は窓を閉じている間も pipeline 側に残るので、開くたびにそちらから引き直す。
-    this.renderTarget.setSelected(this.debugTargetHost.debugTarget);
     this.win.setControls(this.controls);
     this.selectTab('metrics');
   }
@@ -269,11 +273,14 @@ export class DebugInfoWindow {
 
   // 500ms ごとに蓄積した計測値から表示行を組み、窓へ反映する。
   private flush(counts: PerfCounts, now: number): void {
-    if (!this.win || now - this.lastFlush < 500) return;
+    if (!this.win) return;
+    // 起点がまだ無いフレームは、集計期間を測れないので据えるだけにする。
+    if (this.lastFlush === null) { this.lastFlush = now; return; }
+    if (now - this.lastFlush < 500) return;
     const n = Math.max(1, this.frames);
     this.rows = this.buildRows(counts, n, now - this.lastFlush);
     if (this.activeTab === 'metrics') this.win.syncRows(this.rows);
-    // 次の集計期間へ向けてリセットする
+    // 次の集計期間へ向けてリセットする。
     this.resetStats(this.updateStats);
     this.resetStats(this.syncStats);
     this.resetStats(this.renderStats);
@@ -313,7 +320,7 @@ export class DebugInfoWindow {
     );
     const totalAvg = totals.reduce((a, b) => a + b, 0) / frames;
     const totalSorted = [...totals].sort((a, b) => a - b);
-    // 暦キャッシュは累計値なので、この集計期間に増えた分だけを見せる
+    // 暦キャッシュは累計値なので、この集計期間に増えた分を見せる。
     const timeHits = c.timeCacheHits - this.lastTimeHits;
     const timeMisses = c.timeCacheMisses - this.lastTimeMisses;
     this.lastTimeHits = c.timeCacheHits;

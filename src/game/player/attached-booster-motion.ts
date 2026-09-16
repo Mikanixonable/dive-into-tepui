@@ -10,7 +10,6 @@ import {
 import {
   BoosterStack,
   boosterAverageAcceleration,
-  nextBoosterId,
   type BoosterStackData,
   type BoosterStage,
 } from './booster-stack';
@@ -21,11 +20,9 @@ export class AttachedBoosterMotion {
   private thrustValue: Vec3 | null = null;
   private burnRatioValue = 0;
 
-  // ship の質量・慣性に段を反映して始める。saved があれば段スタックを復元し、その段の ID を
-  // 採番済みにする。
+  // ship の質量・慣性に段を反映して始める。saved があれば段スタックを復元する。
   public constructor(private readonly ship: DynamicMotion, saved?: BoosterStackData) {
     this.stack = saved ? BoosterStack.importData(saved) : new BoosterStack();
-    for (const stage of this.stack.stages) nextBoosterId(stage.id);
     this.refreshShipMassAndInertia();
   }
 

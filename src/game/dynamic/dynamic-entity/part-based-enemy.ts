@@ -5,6 +5,7 @@ import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { Part } from './parts';
 import { PartDamageModel } from './part-damage-model';
 import { Enemy, type EnemyPlacement, type EnemyRestore } from './enemy';
+import type { EntityIdAllocators } from './entity-id';
 import type { EnemyCollisionShape } from './enemy-motion';
 import type { PartDamageTarget } from './damage-capabilities';
 
@@ -20,10 +21,11 @@ export abstract class PartBasedEnemy extends Enemy implements PartDamageTarget {
     radius: number,
     worldSfx: WorldSfx,
     fx: FlashEffects,
+    idAllocators: EntityIdAllocators,
     initialParts: readonly Part[],
     shape?: EnemyCollisionShape,
   ) {
-    super(init, view, inertia, radius, worldSfx, fx, shape);
+    super(init, view, inertia, radius, worldSfx, fx, idAllocators, shape);
     this.partModel.replaceParts(initialParts);
     this.maxHp = this.partModel.maxHp;
     this.hp = this.partModel.overallHp();

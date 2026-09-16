@@ -3,12 +3,13 @@ import { fixedMotion, positionOf, solarSystemParts } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/constants';
-import { OrbitalElements, keplerPeriod, stateFromOrbitalElements } from '../../src/physics/elements';
-import { C22_MOON, J2_EARTH, J2_MOON, MU_MOON, MU_SUN, R_MOON, R_MOON_GRAVITY, R_SUN } from '../../src/game/celestial/solar-system/constants';
+import {
+  C22_MOON, J2_EARTH, J2_MOON, MU_EARTH, MU_MOON, R_EARTH, R_EARTH_EQ, R_MOON, R_MOON_GRAVITY,
+} from '../../src/game/celestial/solar-system/earth-system';
+import { OrbitalElements, keplerPeriod, orbitalElementsOf, stateFromOrbitalElements } from '../../src/physics/elements';
+import { MU_SUN, R_SUN, SUN } from '../../src/game/celestial/solar-system/sun';
 import { Degree2Gravity } from '../../src/physics/celestial-body';
 import { CelestialMotion } from '../../src/physics/celestial-motion';
-import { orbitalElementsOf } from '../../src/physics/elements';
 import { degree2Accel, stepDynamics, stepRK4 } from '../../src/physics/dynamics';
 import { Vec3, add, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { qFromAxisAngle, qRotate } from '../../src/math/quat';
@@ -133,7 +134,7 @@ export function register(): void {
   test('dynamics: stepDynamics adds thrust on top of gravity', () => {
     const s0 = circularState();
     const dt = 10;
-    const attractors = solarSystemParts({ moon: 0 }).system.celestialMotions;
+    const attractors = solarSystemParts().system.celestialMotions;
     const thrust = v3(0, 0, 5); // 大きめの加速度で差が明確に出るようにする
 
     const withThrust = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, 0, thrust);
@@ -145,7 +146,7 @@ export function register(): void {
   test('dynamics: stepDynamics with bcInv>0 decelerates more than bcInv=0 at LEO altitude', () => {
     const s0 = circularState();
     const dt = 10;
-    const attractors = solarSystemParts({ moon: 0 }).system.celestialMotions;
+    const attractors = solarSystemParts().system.celestialMotions;
     const earth = attractors.find((a) => a.id === 'earth')!;
     assert.ok(earth.atmosphereAt(0) !== null, '前提: 既定レジストリの地球は大気を持つ');
 
@@ -158,7 +159,7 @@ export function register(): void {
   test('dynamics: 大気天体を渡さなければ、同じ位置・同じ bcInv でも抗力は恒等的にゼロ', () => {
     const s0 = circularState();
     const dt = 10;
-    const attractors = solarSystemParts({ moon: 0 }).system.celestialMotions;
+    const attractors = solarSystemParts().system.celestialMotions;
 
     const noAtmosphere = stepDynamics(s0, dt, attractors, attractors, null, 0, 0.01, 0, null);
     const noDrag = stepDynamics(s0, dt, attractors, attractors, null, 0, 0, 0, null);
@@ -167,7 +168,7 @@ export function register(): void {
   });
 
   test('dynamics: a circular lunar orbit (surface +100km) returns to about the same moon-relative position after one revolution (measured, pinned)', () => {
-    const parts = solarSystemParts({ moon: 0 });
+    const parts = solarSystemParts();
     const windows = parts.system;
     const attractors0 = windows.celestialMotions;
     const moon0 = attractors0.find((b) => b.id === 'moon')!;
@@ -354,7 +355,7 @@ export function register(): void {
     const sunPos = v3(1.495978707e11, 0, 0);
     const attractors: readonly CelestialMotion[] = [
       EARTH,
-      fixedMotion({ id: 'sun', mu: MU_SUN, radius: R_SUN, state: kinematicState<'eci'>(0, sunPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, kind: 'star' }),
+      fixedMotion({ id: 'sun', mu: MU_SUN, radius: R_SUN, radiantIntensity: SUN.radiantIntensity, state: kinematicState<'eci'>(0, sunPos, v3(0, 0, 0)), accel: v3(), degree2: null, atmosphere: null, kind: 'star' }),
     ];
     const dt = 100;
     const srpCoeff = 1e-2;
@@ -375,7 +376,7 @@ export function register(): void {
     // 重力を及ぼさない天体にも半径はある。遮蔽の可否が重力の有無に依らないことを、重力源と
     // 位置を固定したまま遮蔽体の窓だけを変えて確かめる。
     const sun: CelestialMotion = fixedMotion({
-      id: 'sun', mu: MU_SUN, radius: R_SUN,
+      id: 'sun', mu: MU_SUN, radius: R_SUN, radiantIntensity: SUN.radiantIntensity,
       state: kinematicState<'eci'>(0, v3(1.495978707e11, 0, 0), v3()), accel: v3(),
       degree2: null, atmosphere: null, kind: 'star',
     });
@@ -396,7 +397,7 @@ export function register(): void {
   });
 
   test('dynamics: the moon carries a degree-2 field and the sun does not', () => {
-    const attractors = solarSystemParts({ moon: 0.3 }).system.celestialMotions;
+    const attractors = solarSystemParts().system.celestialMotions;
     const moon = attractors.find((b) => b.id === 'moon')!;
     const sun = attractors.find((b) => b.id === 'sun')!;
     assert.ok(moon.degree2At(0) !== null, 'the moon should resolve a degree-2 field');

@@ -282,8 +282,14 @@ export const MAP_VIEW_STYLE = `
   border-radius: 50%;
   background: var(--color-primary);
 }
-#hud .hud-map-root.active #hud-view-options .body-class-row.category-off { opacity: var(--toggle-off-opacity); }
-#hud .hud-map-root.active #hud-view-options .body-class-row.category-off .body-class-icon-btn.on::after { display: none; }
+/* 見出しを閉じた行を薄くする。天球グリッドの行で薄くするのは見出しと、行見出しのゲートの下にある
+   面・極・網のセル(最後の縮尺列より前)。縮尺列はゲートの外の独立トグル(MAP.md「ガイドタブ」)。 */
+#hud .hud-map-root.active #hud-view-options .target-class-row.category-off,
+#hud .hud-map-root.active #hud-view-options .grid-class-row.category-off > .body-class-title,
+#hud .hud-map-root.active #hud-view-options .grid-class-row.category-off .body-class-btns > :not(:last-child) {
+  opacity: var(--toggle-off-opacity);
+}
+#hud .hud-map-root.active #hud-view-options .grid-class-row.category-off .body-class-btns > :not(:last-child).on::after { display: none; }
 
 /* 対象は1行1ボタン。状態はボタンタイトル左のアイコンで表し、ラベル/軌道列を分けずに
    現在の表示状態を読み取れるようにする。 */
@@ -318,7 +324,7 @@ export const MAP_VIEW_STYLE = `
   background: transparent;
 }
 
-/* Predict: 未来は Accent、隣接する過去範囲は Near accent。Secondary は同期状態用に残す。 */
+/* Predict: 未来は Accent、隣接する過去範囲は Near accent。 */
 #hud .hud-map-root.active #hud-predict .w-btn,
 #hud .hud-map-root.active #hud-predict .w-input {
   border: 0;

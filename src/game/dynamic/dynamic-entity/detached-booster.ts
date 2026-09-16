@@ -3,7 +3,7 @@ import { v3 } from '../../../math/vec3';
 import type { Attitude } from '../../../physics/attitude';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import { savedAttitude, savedKinematicState, type DetachedBoosterSaveData } from '../../save/save-data';
-import { nextBoosterId, type BoosterStage } from '../../player/booster-stack';
+import type { BoosterStage } from '../../player/booster-stack';
 import { DetachedBoosterMotion } from './detached-booster-motion';
 import {
   DetachedBoosterView, type DetachedBoosterRenderSource,
@@ -11,6 +11,7 @@ import {
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
 import { DynamicEntity } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
+import type { EntityIdAllocators } from './entity-id';
 import type { OrbitReference } from '../../orbit-reference';
 
 // 表示時刻を「現在」とみなす許容差 [sim s]。
@@ -33,7 +34,7 @@ export class DetachedBooster extends DynamicEntity {
 
   // 新規の分離は切り離した段と分離時の状態から、再開は saved を simTime 付きの状態として展開して
   // 組む。id は段の id を引き継ぐ。
-  public constructor(init: DetachedBoosterInit, scene: THREE.Scene) {
+  public constructor(init: DetachedBoosterInit, scene: THREE.Scene, idAllocators: EntityIdAllocators) {
     // 復元と新規の分離を同じ形へ均してから基底へ渡す。
     const restored = 'saved' in init;
     const stage = restored ? { ...init.saved.stage, id: init.saved.id } : { ...init.stage };
@@ -45,22 +46,21 @@ export class DetachedBooster extends DynamicEntity {
     super(
       () => new DetachedBoosterMotion(state, attitude, stage, collisionEnableAt),
       new DetachedBoosterView(scene),
-      nextBoosterId(stage.id),
+      idAllocators.booster.next(stage.id),
     );
     this.setName('分離ブースター');
   }
 
   // 燃焼比を表示入力へ足す。噴射炎を描かないフレームでは null。
   protected override renderSource(
-    viewFrame: DynamicViewFrame, visible: boolean, active: boolean,
-    orbitReference: OrbitReference | undefined,
+    viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | undefined,
   ): DetachedBoosterRenderSource {
     const motion = this.motion;
     // 燃焼は積分の先端でしか決まっていないので、その時刻を映しているフレームだけ噴かせる。
     const burning = motion.thrust !== null
       && Math.abs(viewFrame.displayTime - motion.state.t) <= BURN_DISPLAY_EPS;
     return {
-      ...super.renderSource(viewFrame, visible, active, orbitReference),
+      ...super.renderSource(viewFrame, active, orbitReference),
       burnRatio: burning ? motion.burnRatio : null,
     };
   }

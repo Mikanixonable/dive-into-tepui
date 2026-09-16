@@ -5,17 +5,16 @@ import { WebGPURenderer } from 'three/webgpu';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
 import { ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary } from '../../src/game/protein/protein-motion-metrics';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
-import { REFERENCE_STAR_RADIANT_INTENSITY, irradianceAtDistance } from '../../src/render/pipeline/sun-light';
-import { SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
+import { irradianceAtDistance, scaledRadiantIntensity } from '../../src/render/pipeline/sun-light';
+import { R_SUN, SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
-import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
+import { ambientFraction } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { castsCumulusShadow } from '../../src/render/pipeline/shadow/shadow-select';
 import { atmosphereDraws } from '../../src/render/atmosphere';
 import { RingMaterials } from '../../src/render/celestial/ring';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { AU } from '../../src/physics/astronomical-unit';
-import { R_SUN } from '../../src/game/celestial/solar-system/constants';
 import { CASES, sunDiameterPx, type CaseName, type LabCase, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './cases';
 import { pixelsToPngDataUrl } from '../lab-png';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
@@ -152,7 +151,7 @@ export class LabView {
     const gpu = new GpuTimings(renderer);
     gpu.enabled = true;
     const pipeline = new RenderPipeline(renderer, graphics, gpu);
-    pipeline.ambient.setFraction(AMBIENT_WEAK);
+    pipeline.ambient.setFraction(ambientFraction(graphics));
     return new LabView(renderer, pipeline, gpu, graphics);
   }
 
@@ -194,23 +193,14 @@ export class LabView {
   // 描画品質設定を差し替える。受け取った値をパイプラインへ配り、その場で描き直す。
   public applyGraphics(graphics: GraphicsSettingsData): void {
     this.graphicsData = graphics;
-    this.pipeline.applyGraphics(graphics);
-    this.render();
-  }
-
-  // 一様な環境光の割合。ゲーム本体はビューの種別から強弱を決めるが、ここには種別が無いので
-  // 直に選ぶ。起動時は弱(戦闘ビュー)。
-  public get ambientFraction(): number { return this.pipeline.ambient.fraction; }
-
-  // 一様な環境光の割合を差し替え、その場で描き直す。
-  public setAmbientFraction(fraction: number): void {
-    this.pipeline.ambient.setFraction(fraction);
+    this.pipeline.ambient.setFraction(ambientFraction(graphics));
+    this.pipeline.rebuildForGraphics(graphics);
     this.render();
   }
 
   // 画面へ出す中間バッファを選び、その場で描き直す。
   public showDebugTarget(target: DebugTargetId): void {
-    this.pipeline.debugTarget = target;
+    this.pipeline.syncDebugTarget(target);
     this.render();
   }
 
@@ -292,18 +282,19 @@ export class LabView {
     );
     const sunDistance = this.sunDistance;
     SUN_POSITION.copy(sunDirection).multiplyScalar(sunDistance);
-    this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_LIGHT_COLOR, REFERENCE_STAR_RADIANT_INTENSITY);
+    const sunIntensity = scaledRadiantIntensity(SUN.radiantIntensity);
+    this.pipeline.sunLight.set(SUN_POSITION, R_SUN, SUN_LIGHT_COLOR, sunIntensity);
     // 天体照。ケースが置いた光源をスロットへ書く。放射輝度は恒星のつまみの距離に追随する。
     this.pipeline.planetLight.set((this.current.planetLights ?? []).map((light) => ({
       center: light.center,
       radius: light.radius,
       radiance: planetRadiance(
-        light.albedo, irradianceAtDistance(REFERENCE_STAR_RADIANT_INTENSITY, SUN_POSITION.distanceTo(light.center)),
+        light.albedo, irradianceAtDistance(sunIntensity, SUN_POSITION.distanceTo(light.center)),
       ),
     })));
     // 順応の基準点は描画原点。**ケースの sunDistance はここから恒星までの距離**なので、
     // 露出はその1つの数だけで決まり、ケースが物体をどこへ置いたかには引きずられない。
-    this.pipeline.exposure.setReference(ORIGIN, SUN_POSITION, REFERENCE_STAR_RADIANT_INTENSITY);
+    this.pipeline.exposure.setReference(ORIGIN, SUN_POSITION, sunIntensity);
     const camera = this.current.camera;
     directionFromAngles(this.angles.cameraAzimuthDeg, this.angles.cameraElevationDeg, CAMERA_OFFSET);
     camera.position.copy(this.pivot).addScaledVector(CAMERA_OFFSET, this.cameraDistance);

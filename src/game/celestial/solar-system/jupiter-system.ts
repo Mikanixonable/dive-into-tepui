@@ -5,10 +5,10 @@ import ganymedeTextureUrl from '../../../assets/2k_ganymede.jpg';
 import ioTextureUrl from '../../../assets/2k_io.jpg';
 import jupiterTextureUrl from '../../../assets/2k_jupiter.jpg';
 import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
-import { PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
+import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
-import { GRAVITATIONAL_CONSTANT, MU_JUPITER } from './constants';
+import { GRAVITATIONAL_CONSTANT } from '../gravitational-constant';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
 import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
@@ -24,7 +24,7 @@ export type JupiterSystemBodyId =
 
 export const JUPITER: PlanetDef = {
   id: 'jupiter',
-  mu: MU_JUPITER,
+  mu: 1.26686534e17,
   radius: 7.1492e7, // 赤道半径(外接球)。出典: pck00011.tpc BODY_RADII(1 bar 基準)
   shape: { kind: 'spheroid', equatorRadius: 7.1492e7, polarRadius: 6.6854e7 },
   lagrangeLabels: true,
@@ -175,9 +175,9 @@ export const JUPITER_SYSTEM_NAMES: Record<JupiterSystemBodyId, string> = {
 
 // 木星系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function jupiterSystem(
-  sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
+  sun: StarMotion, simZeroEt: number,
 ): Record<JupiterSystemBodyId, CelestialEntity> {
-  const jupiter = planetSystem(planetDefForSimZero(JUPITER, phases, simZeroEt), sun);
+  const jupiter = planetSystem(planetDefForSimZero(JUPITER, simZeroEt), sun);
   return {
     jupiter: new CelestialEntity(
       jupiter.body, JUPITER_SYSTEM_NAMES.jupiter, 'planet',
@@ -188,26 +188,26 @@ export function jupiterSystem(
     ),
     // メティス A_B=0.024(幾何 0.061 x q=0.393)
     metis: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(METIS, phases, simZeroEt), jupiter),
+      new SatelliteMotion(satelliteDefForSimZero(METIS, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.metis, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.0285, 0.0231, 0.0193])),
     ),
     // アドラステア A_B=0.039(幾何 0.10 x q=0.393)
     adrastea: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(ADRASTEA, phases, simZeroEt), jupiter),
+      new SatelliteMotion(satelliteDefForSimZero(ADRASTEA, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.adrastea, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.0463, 0.0376, 0.0314])),
     ),
     // アマルテア A_B=0.035(幾何 0.090 x q=0.393)
     amalthea: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(AMALTHEA, phases, simZeroEt), jupiter),
+      new SatelliteMotion(satelliteDefForSimZero(AMALTHEA, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.amalthea, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.0673, 0.0271, 0.0181])),
     ),
     // テーベ A_B=0.018(幾何 0.047 x q=0.393)
     thebe: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(THEBE, phases, simZeroEt), jupiter),
+      new SatelliteMotion(satelliteDefForSimZero(THEBE, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.thebe, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.0214, 0.0174, 0.0145])),
     ),
     io: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(IO, phases, simZeroEt), jupiter),
+      new SatelliteMotion(satelliteDefForSimZero(IO, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.io, 'satellite',
       new SphereCelestialView(
         // 平均輝度 0.2621(A_B は幾何 0.63 x q=0.564)
@@ -215,7 +215,7 @@ export function jupiterSystem(
       ),
     ),
     europa: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(EUROPA, phases, simZeroEt), jupiter),
+      new SatelliteMotion(satelliteDefForSimZero(EUROPA, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.europa, 'satellite',
       new SphereCelestialView(
         // 平均輝度 0.3127(A_B は幾何 0.67 x q=0.564)
@@ -223,7 +223,7 @@ export function jupiterSystem(
       ),
     ),
     ganymede: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(GANYMEDE, phases, simZeroEt), jupiter),
+      new SatelliteMotion(satelliteDefForSimZero(GANYMEDE, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.ganymede, 'satellite',
       new SphereCelestialView(
         // 平均輝度 0.1777(A_B は幾何 0.43 x q=0.564)
@@ -231,7 +231,7 @@ export function jupiterSystem(
       ),
     ),
     callisto: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(CALLISTO, phases, simZeroEt), jupiter),
+      new SatelliteMotion(satelliteDefForSimZero(CALLISTO, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.callisto, 'satellite',
       new SphereCelestialView(
         // 平均輝度 0.0491(A_B は公表ボンド)
@@ -240,32 +240,32 @@ export function jupiterSystem(
     ),
     // ヒマリア A_B=0.016(幾何 0.04 x q=0.393)
     himalia: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(HIMALIA, phases, simZeroEt), jupiter),
+      new SatelliteMotion(satelliteDefForSimZero(HIMALIA, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.himalia, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.0190, 0.0156, 0.0114])),
     ),
     // エララ A_B=0.016(分類既定 幾何 0.04 x q=0.393)
     elara: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(ELARA, phases, simZeroEt), jupiter),
+      new SatelliteMotion(satelliteDefForSimZero(ELARA, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.elara, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.0206, 0.0151, 0.0108])),
     ),
     // アナンケ A_B=0.016(分類既定 幾何 0.04 x q=0.393)
     ananke: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(ANANKE, phases, simZeroEt), jupiter),
+      new SatelliteMotion(satelliteDefForSimZero(ANANKE, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.ananke, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.0188, 0.0156, 0.0121])),
     ),
     // カルメ A_B=0.016(分類既定 幾何 0.04 x q=0.393)
     carme: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(CARME, phases, simZeroEt), jupiter),
+      new SatelliteMotion(satelliteDefForSimZero(CARME, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.carme, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.0190, 0.0154, 0.0129])),
     ),
     // パシファエ A_B=0.016(分類既定 幾何 0.04 x q=0.393)
     pasiphae: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(PASIPHAE, phases, simZeroEt), jupiter),
+      new SatelliteMotion(satelliteDefForSimZero(PASIPHAE, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.pasiphae, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.0197, 0.0153, 0.0116])),
     ),
     // シノーペ A_B=0.016(分類既定 幾何 0.04 x q=0.393)
     sinope: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(SINOPE, phases, simZeroEt), jupiter),
+      new SatelliteMotion(satelliteDefForSimZero(SINOPE, simZeroEt), jupiter),
       JUPITER_SYSTEM_NAMES.sinope, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.0203, 0.0152, 0.0112])),
     ),
   };

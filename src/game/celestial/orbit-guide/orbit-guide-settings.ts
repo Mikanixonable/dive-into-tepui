@@ -1,5 +1,5 @@
 // 軌道ガイド(表示パネルの軌道ガイドタブ)の設定値。参照として描く軌道の種類ごとに、表示の
-// 可否・本数・族の範囲・色・進行方向マーカー・安定度の見せ方と、保存文字列との変換を持つ。
+// 可否・本数・族の範囲・色・進行方向マーカー・安定度の見せ方と、セーブからの読み直しを持つ。
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import type { DirectionMarkerMode } from '../../../render/celestial/orbit-guide/direction-markers';
 
@@ -128,11 +128,10 @@ export interface OrbitGuideSettings {
   readonly zeroVelocity: ZeroVelocitySettings;
 }
 
-// 種類ごとの設定の既定値。色は群ごとの色相を呼び出し側が与える。
-export function defaultKindSettings(colorStart: number, colorEnd: number): GuideKindSettings {
-  // 非表示・1本・族の途中の範囲から始める。
+// 表示ON/OFFの持ち方を除く、種類と小題に共通の既定値。色は群ごとの色相を呼び出し側が与える。
+function defaultSharedKindSettings(colorStart: number, colorEnd: number): GuideKindSharedSettings {
+  // 族から1本だけを、範囲の途中から控えめな不透明度で描くところから始める。
   return {
-    on: false,
     count: 1,
     rangeMin: 0.15,
     rangeMax: 0.6,
@@ -146,22 +145,14 @@ export function defaultKindSettings(colorStart: number, colorEnd: number): Guide
   };
 }
 
+// 種類ごとの設定の既定値。非表示から始まる。
+export function defaultKindSettings(colorStart: number, colorEnd: number): GuideKindSettings {
+  return { on: false, ...defaultSharedKindSettings(colorStart, colorEnd) };
+}
+
 // 小題の設定の既定値。全軸とも未選択(=何も表示しない)から始まる。
 export function defaultCombinedKindSettings(colorStart: number, colorEnd: number): CombinedKindSettings {
-  // 軸以外は defaultKindSettings と同じ既定値。
-  return {
-    axisValues: {},
-    count: 1,
-    rangeMin: 0.15,
-    rangeMax: 0.6,
-    colorStart,
-    colorEnd,
-    reversed: false,
-    opacity: 0.4,
-    direction: 'none',
-    animate: false,
-    showStability: false,
-  };
+  return { axisValues: {}, ...defaultSharedKindSettings(colorStart, colorEnd) };
 }
 
 export const DEFAULT_ORBIT_GUIDE_SETTINGS: OrbitGuideSettings = {
@@ -284,6 +275,12 @@ export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): Orbit
     revsPerRepeat: Math.max(1, Math.round(s.revsPerRepeat)),
     opacity: clamp(s.opacity, 0, 1),
   });
+  const clampCriticalInclination = (s: CriticalInclinationSettings): CriticalInclinationSettings => ({
+    ...s,
+    perigeeAltitude: Math.max(0, s.perigeeAltitude),
+    raan: ((s.raan % 360) + 360) % 360,
+    opacity: clamp(s.opacity, 0, 1),
+  });
   return {
     ...settings,
     kinds,
@@ -297,8 +294,8 @@ export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): Orbit
     },
     sunSync: clampSunSync(settings.sunSync),
     dawnDusk: clampSunSync(settings.dawnDusk),
-    molniya: { ...settings.molniya, perigeeAltitude: Math.max(0, settings.molniya.perigeeAltitude), raan: ((settings.molniya.raan % 360) + 360) % 360, opacity: clamp(settings.molniya.opacity, 0, 1) },
-    tundra: { ...settings.tundra, perigeeAltitude: Math.max(0, settings.tundra.perigeeAltitude), raan: ((settings.tundra.raan % 360) + 360) % 360, opacity: clamp(settings.tundra.opacity, 0, 1) },
+    molniya: clampCriticalInclination(settings.molniya),
+    tundra: clampCriticalInclination(settings.tundra),
     zeroVelocity: {
       ...zv,
       jacobiMin: Math.min(zv.jacobiMin, zv.jacobiMax),
@@ -308,33 +305,21 @@ export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): Orbit
   };
 }
 
-// 保存された文字列を設定へ読み直す。壊れていれば既定値に戻る。
-export function parseOrbitGuideSettings(text: string | null): OrbitGuideSettings {
-  try {
-    if (text === null) return DEFAULT_ORBIT_GUIDE_SETTINGS;
-    const parsed: unknown = JSON.parse(text);
-    if (typeof parsed !== 'object' || parsed === null) return DEFAULT_ORBIT_GUIDE_SETTINGS;
-    // 保存に欠けた項目を既定値で埋めてから丸める。
-    const stored = parsed as Partial<OrbitGuideSettings>;
-    return normalizeOrbitGuideSettings({
-      ...DEFAULT_ORBIT_GUIDE_SETTINGS,
-      ...stored,
-      systems: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.systems, ...stored.systems },
-      kinds: { ...stored.kinds },
-      combinedKinds: { ...stored.combinedKinds },
-      lissajous: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.lissajous, ...stored.lissajous },
-      sunSync: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.sunSync, ...stored.sunSync },
-      dawnDusk: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.dawnDusk, ...stored.dawnDusk },
-      molniya: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.molniya, ...stored.molniya },
-      tundra: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.tundra, ...stored.tundra },
-      zeroVelocity: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.zeroVelocity, ...stored.zeroVelocity },
-    });
-  } catch {
-    return DEFAULT_ORBIT_GUIDE_SETTINGS;
-  }
-}
-
-// 設定を保存へ載せる文字列にする。
-export function formatOrbitGuideSettings(settings: OrbitGuideSettings): string {
-  return JSON.stringify(settings);
+// セーブに残っていた設定を読み直す。無ければ既定値で、セーブに欠けた入れ子の項目は既定値で埋めてから丸める。
+export function savedOrbitGuideSettings(saved: Partial<OrbitGuideSettings> | undefined): OrbitGuideSettings {
+  if (saved === undefined) return DEFAULT_ORBIT_GUIDE_SETTINGS;
+  // 浅く重ねるだけでは入れ子の欠けが埋まらないので、入れ子ごとに既定値へ重ねる。
+  return normalizeOrbitGuideSettings({
+    ...DEFAULT_ORBIT_GUIDE_SETTINGS,
+    ...saved,
+    systems: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.systems, ...saved.systems },
+    kinds: { ...saved.kinds },
+    combinedKinds: { ...saved.combinedKinds },
+    lissajous: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.lissajous, ...saved.lissajous },
+    sunSync: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.sunSync, ...saved.sunSync },
+    dawnDusk: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.dawnDusk, ...saved.dawnDusk },
+    molniya: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.molniya, ...saved.molniya },
+    tundra: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.tundra, ...saved.tundra },
+    zeroVelocity: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.zeroVelocity, ...saved.zeroVelocity },
+  });
 }

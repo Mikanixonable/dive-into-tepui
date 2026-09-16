@@ -24,10 +24,10 @@ const DEFS = solarSystemParts();
 // 本来どおり月まで組む — 原点天体の日心位置がずれると ECI 位置の比較にならない。
 function withoutSatellitePosition(primaryDef: PlanetDef, t: number): Vec3 {
   const sun = new StarMotion(SUN);
-  const earth = planetSystem(planetDefForSimZero(EARTH, {}, TEST_SIM_ZERO_ET), sun);
+  const earth = planetSystem(planetDefForSimZero(EARTH, TEST_SIM_ZERO_ET), sun);
   // 月は構築するだけで地球-月系の重心補正の対象として登録される。
-  new SatelliteMotion(satelliteDefForSimZero(MOON, {}, TEST_SIM_ZERO_ET), earth);
-  const bare = planetSystem(planetDefForSimZero(primaryDef, {}, TEST_SIM_ZERO_ET), sun);
+  new SatelliteMotion(satelliteDefForSimZero(MOON, TEST_SIM_ZERO_ET), earth);
+  const bare = planetSystem(planetDefForSimZero(primaryDef, TEST_SIM_ZERO_ET), sun);
   return new EciTransform(earth.body).stateAt(t, bare.body).r;
 }
 
@@ -67,7 +67,7 @@ function orbitNormal(parts: SolarSystemParts, id: string, planet: string, t: num
 }
 
 export function register(): void {
-  const parts = solarSystemParts({});
+  const parts = solarSystemParts();
 
   test('equatorial-satellites: 公転周期(lRate)が JPL の公開周期(日)と一致する', () => {
     for (const [id, periodDays] of CASES) {

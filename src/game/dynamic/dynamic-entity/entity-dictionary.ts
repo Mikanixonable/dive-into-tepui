@@ -10,9 +10,9 @@ import { Player } from '../../player/player';
 import type { DynamicEntity } from './dynamic-entity';
 import type { EntitySaveDataUnion } from '../../save/save-data';
 import type { SpawnGate } from '../entity-registry';
+import type { EntityIdAllocators } from './entity-id';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import type { Notifier } from '../../../hud/notifier';
-import type { MarkerSlots } from '../../../render/marker/marker-slots';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 
 // 1体ぶんの復元手順。実体化(build)は、要る外部資源が揃うまで遅らせてよい。
@@ -29,14 +29,14 @@ export function restorationFor(
   scene: THREE.Scene,
   notifier: Notifier,
   worldSfx: WorldSfx,
-  markers: MarkerSlots,
   effects: FlashEffects,
+  idAllocators: EntityIdAllocators,
 ): EntityRestoration | null {
   switch (data.kind) {
     case 'player':
       return {
         gate: null,
-        build: () => new Player(notifier, worldSfx, scene, effects, markers, { saved: data, simTime }),
+        build: () => new Player(notifier, worldSfx, scene, effects, idAllocators, { saved: data, simTime }),
       };
     case 'metal-enemy':
     case 'protein-enemy': {
@@ -45,19 +45,19 @@ export function restorationFor(
       if (enemyClass === null) return null;
       return {
         gate: enemyClass.spawnGate(data),
-        build: () => new enemyClass({ saved: data, simTime }, worldSfx, effects, scene),
+        build: () => new enemyClass({ saved: data, simTime }, worldSfx, effects, idAllocators, scene),
       };
     }
     case 'ammo':
-      return { gate: null, build: () => new AmmoPickup({ saved: data, simTime }, scene) };
+      return { gate: null, build: () => new AmmoPickup({ saved: data, simTime }, scene, idAllocators) };
     case 'rcs-fuel':
-      return { gate: null, build: () => new RcsFuelPickup({ saved: data, simTime }, scene) };
+      return { gate: null, build: () => new RcsFuelPickup({ saved: data, simTime }, scene, idAllocators) };
     case 'booster':
-      return { gate: null, build: () => new DetachedBooster({ saved: data, simTime }, scene) };
+      return { gate: null, build: () => new DetachedBooster({ saved: data, simTime }, scene, idAllocators) };
     case 'base':
       return {
         gate: null,
-        build: () => new Base({ saved: data, simTime }, scene, notifier, markers),
+        build: () => new Base({ saved: data, simTime }, scene, notifier, idAllocators),
       };
     default:
       return skipUnknownKind(data);

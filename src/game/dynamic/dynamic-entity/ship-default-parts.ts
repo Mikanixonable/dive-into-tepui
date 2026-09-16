@@ -1,6 +1,10 @@
 import { createPart, type Part } from './parts';
 
 // 敵の金属船体にも使える汎用的な初期ロードアウト。自機固有の入力・状態は含めない。
+
+// 既定パーツへの HP 配分比。放熱板・太陽電池パドルは左右2枚ぶんあるので、合計は
+// hull + cockpit + thruster + rcsTank + radiator×2 + solarPanel×2 + weapon + armor = 1 になる。
+// 総 HP をこの比でそのまま割り振るので、パーツ HP の合計は maxHp と一致する。
 const DEFAULT_PART_HP_RATIO = {
   hull: 0.40, cockpit: 0.10, thruster: 0.08, rcsTank: 0.08,
   radiator: 0.05, solarPanel: 0.03, weapon: 0.08, armor: 0.10,
@@ -12,7 +16,7 @@ const MUZZLE_SPEED = 1000;
 const FIRE_INTERVAL = 0.06;
 
 export function createShipDefaultParts(maxHp: number): Part[] {
-  const share = (ratio: number): number => Math.max(1, Math.round(maxHp * ratio));
+  const share = (ratio: number): number => maxHp * ratio;
   const mk = <T extends Parameters<typeof createPart>[0]>(type: T, ratio: number, props: object) =>
     createPart(type, { maxHp: share(ratio), hp: share(ratio), ...props } as never);
   const R = DEFAULT_PART_HP_RATIO;

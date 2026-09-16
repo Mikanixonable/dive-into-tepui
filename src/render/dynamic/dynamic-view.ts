@@ -30,8 +30,6 @@ export interface DynamicThermalSource {
 export interface DynamicRenderSource {
   readonly id: string;
   readonly name: string;
-  // このフレームに本体を出すか。
-  readonly visible: boolean;
   readonly alive: boolean;
   // 表示時刻の運動状態。引けないフレームは null。
   stateAt(t: number): KinematicState | null;
@@ -106,7 +104,7 @@ export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderS
   // 表示時刻の状態があれば、可視性・位置・姿勢・熱表現を THREE ルートへ適用する。
   protected place(source: DynamicRenderSource, viewFrame: DynamicViewFrame): KinematicState | null {
     const state = source.stateAt(viewFrame.displayTime);
-    this.object.visible = state !== null && source.visible;
+    this.object.visible = state !== null;
     if (state === null) return null;
     // 位置は表示時刻の状態から、姿勢は現在の値から置く。
     this.object.position.copy(viewFrame.camera.floatingOrigin.RtoThreeV3(state.r));

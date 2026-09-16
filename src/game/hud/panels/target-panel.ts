@@ -7,6 +7,7 @@ import type { ProteinCombatReadout } from '../../protein/protein-schema';
 
 const SYNC_INTERVAL_MS = 100;
 
+// ロック中ターゲットの1フレームぶんの値と、パネル本体の右クリックを返す口。
 export interface TargetPanelViewModel {
   readonly name: string;
   readonly distanceM: number;
@@ -15,30 +16,32 @@ export interface TargetPanelViewModel {
   // 装甲を持たない対象(基地)では null。
   readonly hp: number | null;
   readonly maxHp: number | null;
+  // タンパク質構造を持たない対象では null。
   readonly protein: ProteinCombatReadout | null;
+  onSelectRight(clientX: number, clientY: number): void;
 }
 
 export class TargetPanel {
   private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
+  // 直近の sync が受けた値。右クリックはフレームの外で起きるので、その時点の口をここから引く。
+  private view: TargetPanelViewModel | null = null;
 
-  // ロック中ターゲットの右クリック。ターゲットが無いときは呼ばれない。
-  public onSelectRight: ((clientX: number, clientY: number) => void) | null = null;
-
-  // els を保持し、パネル本体の右クリックを onSelectRight へ橋渡しする。
+  // els を保持し、パネル本体の右クリックを直近の値が持つ口へ橋渡しする。
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {
     this.els.get('tgtbody')?.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      this.onSelectRight?.(e.clientX, e.clientY);
+      this.view?.onSelectRight(e.clientX, e.clientY);
     });
   }
 
-  // 固定対象の有無を毎フレーム反映し、値の更新は間引く。
-  public sync(target: TargetPanelViewModel | null): void {
+  // 固定対象の有無を毎フレーム反映し、値の更新は間引く。view が null ならターゲットが無い。
+  public sync(view: TargetPanelViewModel | null, nowMs: number): void {
+    this.view = view;
     // 表示/非表示はターゲット固定の有無に直結するので、更新間隔とは別に毎フレーム反映する。
-    this.els.get('hud-target')?.classList.toggle('hidden', target === null);
+    this.els.get('hud-target')?.classList.toggle('hidden', view === null);
 
-    if (!this.throttle.due()) return;
-    this.syncTarget(target);
+    if (!this.throttle.due(nowMs)) return;
+    this.syncTarget(view);
   }
 
   // 値を既存の DOM へ書き込む。target が null なら名前を空欄にし、タンパク質欄を畳む。

@@ -19,7 +19,7 @@ function isFiniteVec(v: { x: number; y: number; z: number }): boolean {
 }
 
 export function register(): void {
-  const PARTS = solarSystemParts({ moon: 0.7 });
+  const PARTS = solarSystemParts();
   const t = 1e6;
 
   for (const secondaryId of SECONDARIES) {

@@ -2,7 +2,7 @@
 import * as assert from 'node:assert/strict';
 import { CLOUD_CAP_MARGIN, CLOUD_CAP_SIZE, capRadiusFor } from '../../src/render/cloud/cloud-cap';
 import { CLOUD_TOP_SPAN } from '../../src/render/cloud/cumulus-shape';
-import { R_EARTH_EQ } from '../../src/game/celestial/solar-system/constants';
+import { R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 import { test } from '../harness';
 
 const TOP_OVER_RADIUS = CLOUD_TOP_SPAN / R_EARTH_EQ;

@@ -3,16 +3,15 @@
 import type { GamePhase } from '../../game/stages/stage';
 import type { GameSaveData } from '../../game/save/save-data';
 
-// スナップショットの由来。撮られ方であって、保持されるかどうか(SnapshotMeta.pinned)とは
-// 別の軸。クリップは pinned を立てるだけで kind は書き換えない — 由来を塗り替えると
-// どのトリガで撮られたかが失われる。
-export type SnapshotKind = 'auto' | 'manual' | 'checkpoint';
+// 索引が指す id を1つ作る。同一ミリ秒内の連続生成でも衝突しないよう、時刻にランダム部を足す。
+export function newSaveId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
-// 一覧 UI がスナップショット本体を読まずに1件を描くための情報。すべて GameSaveData から
+// 一覧 UI が本体を読まずに手動セーブ1件を描くための情報。すべて GameSaveData から
 // 導出でき、正本ではなく索引。
 export interface SnapshotMeta {
   id: string;
-  kind: SnapshotKind;
   pinned: boolean;
   name: string;
   createdAtReal: number;
@@ -29,13 +28,15 @@ export interface SnapshotMeta {
   phase: GamePhase;
 }
 
-// 1ステージぶんのスナップショット集合とクリア記録。スロットは遊んだステージごとに1件持つ。
+// 1ステージぶんの記録とクリア記録。スロットは遊んだステージごとに1件持つ。
 export interface StageHistoryMeta {
   stageId: string;
   clearCount: number;
   lastPlayedAtReal: number;
-  // 新しい順。
+  // 手動セーブ。新しい順。
   snapshots: SnapshotMeta[];
+  // 自動セーブの本体を指す id。無ければ null。手動セーブとは別の置き場で、一覧には出ない。
+  autoSaveId: string | null;
 }
 
 // セーブデータ(歴史線)1件。
@@ -44,7 +45,9 @@ export interface SaveSlotMeta {
   name: string;
   createdAtReal: number;
   lastPlayedAtReal: number;
-  lastStageId: string;
+  // 直近に遊んだ周回。一度も遊んでいないスロットでは null。ended は決着したか、
+  // タイトルへ戻ったかで、どちらもその周回はもう再開しない。
+  lastRun: { readonly stageId: string; readonly ended: boolean } | null;
   stages: StageHistoryMeta[];
 }
 
@@ -59,7 +62,7 @@ export interface SaveIndex {
 // 書き出しファイルの識別子と形式バージョン。組み立てる側(SaveSlots)と検証する側
 // (save-transfer)の両方が参照するので、どちらでもない型定義の場所に置く。
 export const SLOT_EXPORT_FORMAT = 'tepui.slot';
-export const SLOT_EXPORT_VERSION = 1;
+export const SLOT_EXPORT_VERSION = 2;
 
 // スロット1件を書き出したファイルの中身。format は無関係な JSON を読ませたときに
 // 「壊れたセーブ」ではなく「セーブファイルではない」と判定するための識別子。

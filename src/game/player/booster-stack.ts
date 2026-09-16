@@ -1,15 +1,6 @@
-// 分離式ブースターの物理・状態モデル。船体側から最後尾へ並ぶ段の並びと、その採番・燃焼・
-// 分離の数値を持つ。燃焼は、刻みの途中で燃料が尽きても実際に燃焼していた時間の割合で推力を返す。
+// 分離式ブースターの物理・状態モデル。船体側から最後尾へ並ぶ段の並びと、その燃焼・分離の
+// 数値を持つ。燃焼は、刻みの途中で燃料が尽きても実際に燃焼していた時間の割合で推力を返す。
 import { addScaled, type Vec3 } from '../../math/vec3';
-import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
-
-const idAllocator = new EntityIdAllocator('booster-');
-
-// ブースターの ID を払い出す。restoredId を渡すとそれを採番済みにしてそのまま返す。
-// 接続中の段と分離後エンティティは同じ ID を引き継ぐ。
-export function nextBoosterId(restoredId?: string): string {
-  return idAllocator.next(restoredId);
-}
 
 /** 燃料を含む、スタック内の一段の可変状態。質量の単位は kg、推力は N。 */
 export interface BoosterStage {

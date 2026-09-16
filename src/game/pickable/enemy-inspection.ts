@@ -1,8 +1,8 @@
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ControlSelection } from '../control-selection';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
-import type { ViewMode } from '../../render/view-mode';
-import type { MarkerVisibility } from '../../render/marker/marker-visibility';
+import type { ViewMode } from '../view/view-mode';
+import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { ObjectAuthoring, InspectedObject } from './inspected-object';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
@@ -21,7 +21,7 @@ import { len, sub } from '../../math/vec3';
 import { fmtDist, fmtSpeed } from '../../hud/utils';
 import { relativeInfo } from '../orbit-info';
 import { orbitRows } from './orbit-rows';
-import { ENTITY_GLYPH } from '../../render/marker/marker-identity';
+import { ENTITY_GLYPH } from '../marker/marker-identity';
 import { shipMarkerSvg } from '../marker/marker-shapes';
 import { MenuCommon } from '../hud/windows/menu-actions';
 

@@ -41,7 +41,9 @@ export class DefaultPlayerEffects implements PlayerEffects {
   public destroy(state: KinematicState, registry: EntityRegistry): void {
     this.worldSfx.explosion();
     this.fx.spawnPlayerDestroyFlash(state);
-    for (const piece of playerDestroyFragments(state, this.worldSfx, this.fx)) registry.add(piece);
+    for (const piece of playerDestroyFragments(
+      state, this.worldSfx, this.fx, registry.idAllocators,
+    )) registry.add(piece);
   }
 
   public radiatorBreak(_side: RadiatorSide, state: KinematicState, tip: Vec3, registry: EntityRegistry): void {
@@ -49,7 +51,7 @@ export class DefaultPlayerEffects implements PlayerEffects {
     for (const piece of buildDestroyFragments(
       state.t, tip, state.v, 4, PLAYER_DESTROY_FRAG_COLOR,
       DESTROY_FRAG_SIZE_MIN, DESTROY_FRAG_SIZE_MAX, 8.0,
-      this.worldSfx, this.fx,
+      this.worldSfx, this.fx, registry.idAllocators,
     )) registry.add(piece);
   }
 }

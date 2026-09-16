@@ -229,12 +229,10 @@ export class PlanetSystem {
 }
 
 // 惑星本体と、その系の重心をまとめて組む。衛星を持つ系では、返った PlanetSystem をそのまま
-// 衛星へ渡す。star は主星、spinPhase0 は自転の初期位相 [rad]。
-export function planetSystem(
-  def: PlanetDef, star: StarMotion, spinPhase0 = 0,
-): PlanetSystem {
+// 衛星へ渡す。star は主星。
+export function planetSystem(def: PlanetDef, star: StarMotion): PlanetSystem {
   const system = new PlanetSystem(def.id, def.orbit);
-  system.setBody(new PlanetMotion(def, star, system, spinPhase0));
+  system.setBody(new PlanetMotion(def, star, system));
   // 主星の重心相対位置にはこの系ぶんの質量と位置が要るので、作った時点で登録する。
   star.addPlanetSystem(system);
   return system;

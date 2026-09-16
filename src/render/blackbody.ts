@@ -3,7 +3,7 @@
 // CPU 側の表引きと TSL 側の表引きが同じ 1 つの中身を読む。
 import * as THREE from 'three/webgpu';
 import { STEFAN_BOLTZMANN } from '../physics/thermal';
-import { SOLAR_CONSTANT } from '../physics/srp';
+import { SOLAR_CONSTANT } from '../physics/astronomical-unit';
 import type { FloatNode, Vec3Node } from './tsl-types';
 
 // 表が張る温度の範囲 [K] と段数。下端は可視域の放射が表示値 1e-6 に届かない温度、上端は

@@ -26,7 +26,7 @@ const quietNotifier: Notifier = { hint() {}, toast() {} };
 
 class TestShip extends Ship {
   public constructor(name: string) {
-    super(name, 100, () => new DynamicMotion(state, { mass: 1_000 }), new NullView());
+    super(name, 100, () => new DynamicMotion(state, { mass: 1_000 }), new NullView(), name);
   }
 
   public rename(name: string): void { this.setName(name); }

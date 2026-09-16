@@ -2,15 +2,18 @@
 import { Button, ValueInput } from '../../../hud/widgets';
 import { injectOnce } from '../../../hud/inject-style';
 import type { CelestialSystem } from '../../celestial/celestial-system';
+import type { ThemePalette } from '../../../theme';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
 import type { OrbitReference } from '../../orbit-reference';
 import type { ApproachTargetSource } from './orbit-analysis-data';
 
-// 軌道分析のタブが読む盤面 —— 天体がいつどこにあるかと、未来をどこまで描くか。
+// 軌道分析のタブが読む盤面 —— 天体がいつどこにあるかと、未来をどこまで描くか、どの色で描くか。
 export interface AnalysisChartSource {
   readonly celestialSystem: CelestialSystem;
   // 未来を描く期間 [s]。マップの未来表示が指す期間と揃える。
   readonly windowDurationSec: number;
+  // canvas へ直に描く色の出どころ。
+  readonly palette: ThemePalette;
 }
 
 export interface AnalysisTab {
@@ -91,6 +94,7 @@ export class ScaleField {
     this.setValue(current());
   }
 
+  // 入力欄の表示を value へ合わせる。確定の通知は起きない。
   public setValue(value: number): void {
     this.input.setValue(String(value));
   }

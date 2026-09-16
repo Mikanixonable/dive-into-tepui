@@ -4,20 +4,17 @@
 import * as THREE from 'three/webgpu';
 import { PI, dot, uniform, vec3 } from 'three/tsl';
 import type { FloatUniform, Vec3Node } from '../../tsl-types';
-import { REFERENCE_STAR_RADIANT_INTENSITY, type SunLight } from '../sun-light';
+import { REFERENCE_RADIANT_INTENSITY, type SunLight } from '../sun-light';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
 import type { ShadingSample } from './shading-sample';
 
-// 基準の恒星が届ける放射照度へ掛ける割合の 2 段。強いほうが読みやすさ優先(マップビュー)、
-// 弱いほうが物理に近い暗さ優先(戦闘ビュー)。
-export const AMBIENT_STRONG = 0.06;
-export const AMBIENT_WEAK = 0.03;
+// 1 天文単位で SUN_IRRADIANCE_1AU になる放射照度へ掛ける割合。
+const AMBIENT_FRACTION = 0.03;
 
-// ビューと描画設定から、この場面で使う割合を選ぶ。描画設定で切ったビューでは 0。
-export function ambientFraction(mapView: boolean, graphics: GraphicsSettingsData): number {
-  if (mapView) return graphics.overviewAmbient ? AMBIENT_STRONG : 0;
-  return graphics.combatAmbient ? AMBIENT_WEAK : 0;
+// 描画設定から、この場面で使う割合を選ぶ。切ってあれば 0。
+export function ambientFraction(graphics: GraphicsSettingsData): number {
+  return graphics.ambient ? AMBIENT_FRACTION : 0;
 }
 
 export class AmbientSource implements LightSource {
@@ -43,7 +40,7 @@ export class AmbientSource implements LightSource {
   // して映したもので、粗さによらず一定 — 拡散を持たない金属面が影の中で真っ黒に残らないための項。
   private contribution(sample: ShadingSample): LightContribution {
     const toSun = sample.viewPositionOf(this.sunLight.position).sub(sample.position);
-    const irradiance: Vec3Node = vec3(REFERENCE_STAR_RADIANT_INTENSITY)
+    const irradiance: Vec3Node = vec3(REFERENCE_RADIANT_INTENSITY)
       .div(dot(toSun, toSun)).mul(this.fractionUniform);
     return { diffuse: irradiance, specular: irradiance.div(PI) };
   }
