@@ -48,6 +48,8 @@ export interface FixedContactResponse {
   readonly bounced: boolean;
   readonly toi: number;
   readonly specificEnergyLoss: number;  // 動く側が失う力学エネルギー [J/kg]
+  readonly contactPoint: Vec3 | null;
+  readonly moduleIdA: string | null;
 }
 
 // 接触の幾何。掃引で解けたなら中心間を separation ちょうどへ揃え、区間終端の重なりを
@@ -191,7 +193,10 @@ export function distributeFixedContact(
 
   const vn = dot(sub(fixed.state.v, moving.state.v), normal);
   if (!(vn < 0)) {
-    return { r, v: moving.state.v, normal, bounced: false, toi, specificEnergyLoss: 0 };
+    return {
+      r, v: moving.state.v, normal, bounced: false, toi, specificEnergyLoss: 0,
+      contactPoint: geometry.contactPoint ?? null, moduleIdA: geometry.moduleIdA ?? null,
+    };
   }
   return {
     r,
@@ -199,5 +204,6 @@ export function distributeFixedContact(
     normal, bounced: true, toi,
     // 動く側が補正を全部受け持つので、受け持ちの割合は 1。残る半分は相手が持ち去る。
     specificEnergyLoss: specificEnergyLoss(vn, restitution, 1),
+    contactPoint: geometry.contactPoint ?? null, moduleIdA: geometry.moduleIdA ?? null,
   };
 }
