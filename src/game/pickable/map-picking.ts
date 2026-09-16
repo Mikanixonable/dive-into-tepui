@@ -2,7 +2,7 @@
 // パネルと軌道線のプロパティウィンドウも持つ。
 import type { HudLayers } from '../hud/hud-layers';
 import type { Notifier } from '../../hud/notifier';
-import { pickFrontmostBody, pickNearest, projectMarker } from './object-pickable';
+import { pickFrontmostBody, pickNearest, projectMarker, type ObjectPickable } from './object-pickable';
 import type { MapPickable } from './map-pickable';
 import { pickNearestLine } from './line-pickable';
 import type { LinePickables } from './line-pickables';
@@ -76,31 +76,32 @@ export class MapPicking {
     };
   }
 
-  // 画面上の (x, y) に当たった被選択物を、マーカー段・本体段の順に探す(SPEC/MAP.md §11)。
+  // 画面上の (x, y) に当たった被選択物を、マーカー段・本体段の順に探す(SPEC/MAP.md
+  // 「クリックとピック」)。accept は候補を絞る述語で、どちらの段にも同じく効く。
   // どちらにも当たらなければ null。
-  private pickAt<T extends MapPickable>(
-    candidates: readonly T[], x: number, y: number, viewport: Viewport,
-  ): T | null {
+  private pickAt(
+    accept: (item: ObjectPickable) => boolean, x: number, y: number, viewport: Viewport,
+  ): ObjectPickable | null {
     const project = this.cameraSystem.activeProjection(viewport);
     const displayTime = this.displayWindowManager.current.displayTime;
-    // マーカー段: 表示中のマーカーへ一定のピクセル半径で当てる。
+    // マーカー段: 画面に出ているマーカーへ一定のピクセル半径で当てる。
     const marker = pickNearest(
-      candidates.filter((item) => item.shownOnMap(this.markers)),
+      this.pickables.markerPickables.filter((item) => accept(item) && item.shownOnMap(this.markers)),
       (item) => projectMarker(item, displayTime, project),
       x, y, pickRadiusSq(OBJECT_PICK_PX_SQ, OBJECT_PICK_PX_SQ_COARSE),
     );
     if (marker !== null) return marker;
-    // 本体段: 描かれている本体へ視線を通す。
+    // 本体段: 描かれている本体へ視線を通す。記号を消した対象もここでは当たる。
     const ray = rayThroughScreen(
       this.cameraSystem.activeViewpoint, x, y, viewport.width, viewport.height);
-    return pickFrontmostBody(candidates, ray, displayTime);
+    return pickFrontmostBody(this.pickables.pickables.filter(accept), ray, displayTime);
   }
 
   // 右クリック位置の被選択物(天体・自艦・他艦・ノード等)のプロパティウィンドウを開く。
   // 当たらなければ消費せず、handleEmptySpaceRightClick へ読み進める。
   public handleRightClick(input: Input, simTime: number, viewport: Viewport): void {
     input.takeRightClicks((p) => {
-      const target = this.pickAt(this.pickables.pickables, p.x, p.y, viewport);
+      const target = this.pickAt(() => true, p.x, p.y, viewport);
       if (!target) return false;
       this.objectWindows.open(p.x, p.y, target, simTime);
       return true;
@@ -131,8 +132,7 @@ export class MapPicking {
   // PlanEditor.handleMapPointer より先に呼ぶ。
   public handleLeftClick(input: Input, viewport: Viewport): void {
     input.takeClicks((p) => {
-      const target = this.pickAt(
-        this.pickables.pickables.filter((i) => i.onMapSelect !== null), p.x, p.y, viewport);
+      const target = this.pickAt((i) => i.onMapSelect !== null, p.x, p.y, viewport);
       if (!target) return false;
       target.onMapSelect?.(this.objectWindows, p.x, p.y);
       return true;
@@ -143,7 +143,7 @@ export class MapPicking {
   // 種別を問わず候補列全体から探す。
   public handleDoubleClick(input: Input, viewport: Viewport): void {
     input.takeDoubleClicks((p) => {
-      const target = this.pickAt(this.pickables.pickables, p.x, p.y, viewport);
+      const target = this.pickAt(() => true, p.x, p.y, viewport);
       if (!target) return false;
       this.focusTarget(target.id, target);
       return true;
@@ -182,7 +182,7 @@ export class MapPicking {
     }
     this.listPanel.setVisible(true);
     this.listPanel.sync(
-      this.pickables.pickables, focusTargetId(this.cameraSystem.mapCamera.focus),
+      this.pickables.markerPickables, focusTargetId(this.cameraSystem.mapCamera.focus),
       parentOf, viewer, displayTime);
     this.orbitLineWindows.sync();
   }

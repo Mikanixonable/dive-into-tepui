@@ -89,6 +89,8 @@ export class CelestialMarkers {
 
   // このフレームの選択候補に出す天体とラグランジュ点マーカー(表示ポリシーを通ったもの)。
   private readonly bodyPickableItems: ObjectPickable[] = [];
+  // そのうち、このフレームに記号を出す対象の id。ラベルを組む対象はここから引く。
+  private readonly labelledIds = new Set<string>();
   private readonly frameScratch = new Map<string, LabelProjection>();
   private readonly projectedForLabel: ProjectedLabel[] = [];
   private readonly projectedForIcon: ProjectedLabel[] = [];
@@ -100,6 +102,7 @@ export class CelestialMarkers {
   get shownLabelCount(): number { return this.shownLabels.length; }
   get activeLabels(): readonly ActiveCelestialLabel[] { return this.activeCelestialLabels; }
 
+  // 選択候補に出す対象。登録天体は円盤を持つので全件、ラグランジュ点は記号を出す点だけ。
   get bodyPickables(): readonly ObjectPickable[] { return this.bodyPickableItems; }
 
   // 星系の全天体とラグランジュ点からラベルの全集合を組む。ラグランジュ点は、共線点・三角点
@@ -135,16 +138,17 @@ export class CelestialMarkers {
     for (const label of labels) this.labelsById.set(label.item.id, label);
   }
 
-  // 表示時刻 t のラグランジュ点を解き直し、選択候補に出す天体とマーカーを絞り込む。
+  // 表示時刻 t のラグランジュ点を解き直し、選択候補と、そのうち記号を出す対象を決める。
   // visibilityPolicy には、同じフレームで確定した表示ポリシーを渡す。
   update(t: number, toggles: MapDisplayToggles, visibilityPolicy: MapVisibilityPolicy): void {
     const celestialBodies = this.celestialSystem.celestialMotions;
     this.bodyPickableItems.length = 0;
+    this.labelledIds.clear();
 
-    // 登録天体。
+    // 登録天体。円盤は表示トグルによらず描かれるので全件を候補に残し、記号を出すかだけを分ける。
     for (const body of this.celestialSystem.entities) {
-      if (!visibilityPolicy.body(body.id).pickable) continue;
       this.bodyPickableItems.push(body);
+      if (visibilityPolicy.body(body.id).pickable) this.labelledIds.add(body.id);
     }
     // ラグランジュ点。回転系が組めない期間は座標を失う。
     if (toggles.lagrangeName) {
@@ -155,8 +159,10 @@ export class CelestialMarkers {
         const solved = lagrangePointsOf(frame);
         for (const marker of markers) {
           marker.place(solved[`L${marker.point}`]);
+          // ラグランジュ点は円盤を持たないので、記号を出す点だけが候補になる。
           if (!visibilityPolicy.body(marker.id).pickable) continue;
           this.bodyPickableItems.push(marker);
+          this.labelledIds.add(marker.id);
         }
       }
     }
@@ -184,13 +190,12 @@ export class CelestialMarkers {
     this.group.sync(this.declarations, nowMs);
   }
 
-  // 選択候補に残った対象の表示座標と表示可否を書き、このフレームに描くラベルを絞り込む。
+  // 記号を出すと決めた対象の表示座標と表示可否を書き、このフレームに描くラベルを絞り込む。
   // 並びは階層順(親が先)を保つ — 混雑判定の同点は先に来たほうが残る。
   private refreshShownLabels(displayTime: number, visibilityPolicy: MapVisibilityPolicy): void {
-    const pickableIds = new Set(this.bodyPickableItems.map((item) => item.id));
     const shown: CelestialLabel[] = [];
     for (const label of this.labels) {
-      if (!pickableIds.has(label.item.id)) continue;
+      if (!this.labelledIds.has(label.item.id)) continue;
       const pos = label.item.posAt(displayTime);
       if (pos === null) continue;
       const visibility = visibilityPolicy.body(label.item.id);

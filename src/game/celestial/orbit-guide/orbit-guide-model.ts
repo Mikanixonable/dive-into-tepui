@@ -11,7 +11,7 @@ import {
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import { LINE_RENDER_ORDER, LineStyle } from '../../../render/line-style';
 import type { RenderStyle } from '../../../render/render-style';
-import type { ViewMode } from '../../../render/view-mode';
+import type { ViewMode } from '../../view/view-mode';
 import { SCHEMATIC_LINE } from '../../../render/schematic-style';
 import {
   familyGradientColor, familyGradientColorAt, type GuideLineDisplay,
