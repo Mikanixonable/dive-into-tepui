@@ -7,6 +7,7 @@ import type { ControlSelection } from '../control-selection';
 import type { HudLayers } from '../hud/hud-layers';
 import type { Part } from '../dynamic/dynamic-entity/parts';
 import type { Player } from '../player/player';
+import type { ObjectMenuCommands } from './object-menu-commands';
 
 interface PartWindowEntry {
   readonly win: PropertyWindow<MenuAction>;
@@ -36,6 +37,7 @@ export class PartWindows {
   constructor(
     private readonly hud: HudLayers,
     private readonly controlSelection: ControlSelection,
+    private readonly commands: ObjectMenuCommands,
   ) {}
 
   // 部品のウィンドウを開く。既に開いていればクリック位置へ動かして最前面に出すだけにする。
@@ -52,7 +54,9 @@ export class PartWindows {
     );
     this.windows.set(key, { win, ship, part });
     win.onSelect = (act) => {
-      if (ship.inspection.hasPart(part)) ship.inspection.setPartDeployment(part, act === 'deployPart');
+      if (ship.inspection.hasPart(part)) {
+        this.commands.setPartDeployment(ship.inspection, part, act === 'deployPart');
+      }
     };
     win.onClose = () => { this.windows.delete(key); };
   }
