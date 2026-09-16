@@ -14,7 +14,6 @@ import { BurnManagementPanel } from './panels/burn-management-panel';
 import { TopBar } from './panels/top-bar';
 import { MapScaleBadge } from './panels/map-scale-badge';
 import { OrbitAnalysisWindow } from './orbit/orbit-analysis-window';
-import type { Input } from '../../input/input';
 import type { TopBarViewModel } from './panels/top-bar';
 import type { BurnManagementViewModel } from './panels/burn-management-panel';
 import type { EnemiesPanelViewModel } from './panels/enemies-panel';
@@ -182,9 +181,9 @@ export class Hud implements HudLayers, Notifier {
     this.pendingToast = { html, durationMs };
   }
 
-  // ヘルプ表示キーの押下エッジを受け取る。
-  public handleInput(input: Input): void {
-    this.helpPanel.handleInput(input);
+  // router から HUD 固有の単発入力を受け取る。
+  public handleCommand(commandId: string): void {
+    this.helpPanel.handleCommand(commandId);
   }
 
   // 控えられたトーストを表示し、表示期限を過ぎたトーストをフェードアウトさせる。
