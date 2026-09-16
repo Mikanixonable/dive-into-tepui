@@ -6,6 +6,7 @@ import { SECTION, type FrameSections } from './frame-sections';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import { CameraSystem } from './camera/camera-system';
 import type { Stage, StageClass } from './stages/stage';
+import { CommandQueue } from './command-queue';
 import type { MarkerDevice } from '../marker/marker-device';
 import type { MarkerSink } from '../marker/marker-sink';
 import type { MarkerDeclaration } from '../marker/marker-declaration';
@@ -129,6 +130,9 @@ export class Game {
   public readonly displayWindowManager: DisplayWindowManager;
   private readonly viewManager: ViewManager;
   private readonly objectWindows: ObjectWindows;
+
+  // モデル層の外から届いた書き換えを溜める列。進行の位相の先頭で適用する。
+  private readonly commands = new CommandQueue();
 
   public readonly activeStage: Stage;
   // ポーズ中か。時間倍率とは独立に時間を止める。決着は止めない — 結果画面の裏でも
@@ -324,7 +328,7 @@ export class Game {
 
     this.activeStage = new stageClass(
       initialSave?.stage, this._hud, this._worldSfx, uiSfx, this._scene, this.dynamicSystem,
-      this.flashEffects, celestialSystem, this.controlSelection,
+      this.flashEffects, celestialSystem, this.controlSelection, this.commands,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage を読むのでその後に組む。ビューより先に組み上がるので、現在のビューは遅延評価で渡す。
@@ -471,6 +475,8 @@ export class Game {
     this.handleInput(dt);
     this.sections.exit(SECTION.input);
 
+    // 一時停止中も命令は適用するので、ポーズ判定より前に置く(R8)。
+    this.commands.applyAll();
     // ポーズは開いているオーバーレイからの導出値で「止まった瞬間」が無いので、止まっている
     // 間は毎フレーム連続指令を畳む。
     if (this.isPaused) this.dynamicSystem.pause();
