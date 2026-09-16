@@ -35,6 +35,7 @@ import { savedAttitude, savedKinematicState, type PlayerSaveData, type PlanSaveD
 import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { MARKER_PRIORITY } from '../marker/crowding';
+import { baseMarkerSvg } from '../marker/marker-shapes';
 import type { Controllable, PilotCommandFrame } from '../dynamic/dynamic-entity/controllable';
 import { ModularShipMotion, type ModularShipMotionReactions } from './modular-ship-motion';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
@@ -68,12 +69,19 @@ const BELT_MAX_VISIBLE = 18;
 // 円軌道に機首プログレードで初期配置する。スナップショットからの再開は saved を simTime 付きの
 // 状態として展開する。
 export type ModularShipInit =
-  | { readonly name?: string; readonly state?: KinematicState; readonly id?: string; readonly ammo?: AmmoLoad }
+  | {
+    readonly name?: string;
+    readonly state?: KinematicState;
+    readonly id?: string;
+    readonly ammo?: AmmoLoad;
+    readonly assembly?: ShipAssembly;
+  }
   | { readonly saved: PlayerSaveData; readonly simTime: number };
 
 // プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、被弾・接触の帰結と保存を持つ。
 export class ModularShip extends Ship implements Controllable {
-  public override readonly mapKind: DynamicEntityKind = 'player';
+  public override readonly mapKind: DynamicEntityKind;
+  public override readonly showsEquatorNodesAlways: boolean;
   public override readonly controllable = true;
   public override readonly pickable = true;
   public readonly inspection = new ShipInspection(this);
@@ -147,7 +155,7 @@ export class ModularShip extends Ship implements Controllable {
     init: ModularShipInit = {},
   ) {
     const effects: PlayerEffects = new DefaultPlayerEffects(worldSfx, fx);
-    const assembly = createDefaultCombatPreset();
+    const assembly = 'saved' in init ? createDefaultCombatPreset() : (init.assembly ?? createDefaultCombatPreset());
     const physics = shipPhysicsShape(assembly);
     if (physics === null) throw new Error('default modular ship preset is empty');
     const saved = 'saved' in init ? init.saved : undefined;
@@ -200,6 +208,8 @@ export class ModularShip extends Ship implements Controllable {
     );
     this.assembly = assembly;
     this.capabilities = new ShipCapabilities(assembly);
+    this.mapKind = assembly.role === 'base' ? 'base' : 'player';
+    this.showsEquatorNodesAlways = assembly.role === 'base';
     this.hp = assembly.totalHp;
     this.maxHp = assembly.maxHp;
     this.throttle = new Throttle(notifier, saved?.throttle);
@@ -554,20 +564,21 @@ export class ModularShip extends Ship implements Controllable {
   private disposed: boolean = false;
 
   // 画面マーカーと被選択判定が同じ艦を指すためのキー。
-  private get markerKey(): string { return `player-${this.id}`; }
+  public get markerKey(): string { return `${this.mapKind}-${this.id}`; }
 
   // 画面マーカー・一覧に出すこの艦の項目。isActive はマップ上で自艦と僚艦を塗り分ける
   // ための操作対象フラグ。
   public markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode, isActive: boolean): GroupedMarkerItem {
     const dist = len(sub(pos, viewerPos));
+    const isBaseRole = this.capabilities.role === 'base';
     return {
       key: this.markerKey,
-      kind: this.mapKind,
-      cls: isActive ? 'mk-self' : 'mk-ally',
-      sym: view === 'map' ? this.headingHpMarkerSvg() : this.hpMarkerSvg(),
+      kind: isBaseRole ? 'base' : this.mapKind,
+      cls: isBaseRole ? 'mk-base' : (isActive ? 'mk-self' : 'mk-ally'),
+      sym: isBaseRole ? baseMarkerSvg() : (view === 'map' ? this.headingHpMarkerSvg() : this.hpMarkerSvg()),
       pos,
       vel,
-      priority: MARKER_PRIORITY.PLAYER,
+      priority: isBaseRole ? MARKER_PRIORITY.BASE - dist / 1e9 : MARKER_PRIORITY.PLAYER,
       name: this.name,
       // 画面外の方位マーカーは ALLY_BEARING_MAX_DISTANCE 以内の艦にだけ出す
       bearingColor: COLOR_MARKER_ALLY,
