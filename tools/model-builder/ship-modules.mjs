@@ -117,8 +117,9 @@ function addKindDetails(root, definition) {
       const panelMaterial = definition.kind === 'radiator' ? materials.radiator : materials.solar;
       const panel = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.08, Math.max(0.8, definition.length)), panelMaterial);
       panel.name = 'deployable-panel';
-      root.add(panel);
-      anchor(root, 'panel-hinge', -2.3, 0, 0);
+      const hinge = anchor(root, 'panel-hinge', -2.3, 0, 0);
+      panel.position.x = 2.3;
+      hinge.add(panel);
       break;
     }
     case 'docking_port':

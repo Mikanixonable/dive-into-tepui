@@ -101,6 +101,31 @@ export function register(): void {
     view.dispose();
   });
 
+  test('ship module view: panel-hinge は module state の展開度と全損状態へ同期する', () => {
+    const definition = SHIP_MODULE_CATALOG.require('radiator-standard');
+    const radiator = createShipModuleInstance(definition, 'radiator', { deployed: 0 });
+    const panelFactory = () => {
+      const root = new THREE.Group();
+      const hinge = new THREE.Object3D();
+      hinge.name = 'anchor:panel-hinge';
+      hinge.userData.semanticAnchor = 'panel-hinge';
+      root.add(hinge);
+      return root;
+    };
+    const view = new ShipModuleView(
+      radiator, definition, { position: v3(), rotation: Q_IDENTITY }, panelFactory,
+    );
+    const hinge = view.semanticAnchor('panel-hinge')!;
+    assert.ok(Math.abs(hinge.rotation.y - Math.PI / 2) < 1e-12);
+    const deployed = createShipModuleInstance(definition, 'radiator', { deployed: 1 });
+    view.sync(deployed, { position: v3(), rotation: Q_IDENTITY });
+    assert.ok(Math.abs(hinge.rotation.y) < 1e-12);
+    const destroyed = createShipModuleInstance(definition, 'radiator', { hp: 0, deployed: 1 });
+    view.sync(destroyed, { position: v3(), rotation: Q_IDENTITY });
+    assert.equal(hinge.visible, false);
+    view.dispose();
+  });
+
   test('modular ship view: dispose は保持した scene から root を外し二重呼び出しできる', () => {
     const scene = new THREE.Scene();
     const assembly = new ShipAssembly(SHIP_MODULE_CATALOG);
