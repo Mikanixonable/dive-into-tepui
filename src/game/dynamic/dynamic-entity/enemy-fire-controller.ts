@@ -9,7 +9,6 @@ import { add, len, norm, randPerp, rotateAxis, scale, sub, type Vec3 } from '../
 import { solveLeadTime } from '../../../physics/intercept';
 import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { DynamicMotion } from '../dynamic-motion';
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { MUZZLE_SPEED } from './vessel';
 import { countAttackingEnemiesInGroup } from './enemy-attack-group';
 
@@ -26,7 +25,6 @@ const PLASMA_SPREAD_DEG = 0.05;
 export interface EnemyFireControllerPort {
   readonly motion: DynamicMotion;
   readonly attackGroupId: string;
-  readonly worldSfx: WorldSfx;
   canFire(enemies: readonly Enemy[]): boolean;
   muzzlePosition(): Vec3;
   plasmaDamage(): number;
@@ -109,7 +107,7 @@ export class EnemyFireController {
     const bV = add(v, scale(actualAim, PLASMA_BULLET_SPEED));
     const bullet = new Bullet(
       kinematicState<'eci'>(simTime, r, bV), PLASMA_LIFETIME, 'enemy', 'plasma',
-      this.port.plasmaDamage(), this.port.worldSfx, registry.idAllocators,
+      this.port.plasmaDamage(), registry.idAllocators,
     );
     this.port.muzzleEffect(kinematicState<'eci'>(simTime, r, v));
     registry.add(bullet);

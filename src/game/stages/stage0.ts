@@ -53,7 +53,7 @@ export class Stage0 extends Stage {
     }
     const enemies = generateCluster(
       player.motion.state, this._celestialSystem.celestialMotions,
-      this._worldSfx, this._fx, this._scene, this._dynamicSystem.idAllocators,
+      this._fx, this._scene, this._dynamicSystem.idAllocators,
     );
     for (const enemy of enemies) this.addEnemy(enemy);
   }
