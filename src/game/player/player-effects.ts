@@ -25,6 +25,7 @@ export class DefaultPlayerEffects implements PlayerEffects {
     private readonly fx: FlashEffects,
   ) {}
 
+  // 撃破に至らない被弾の音・閃光・ガス。impactPoint は着弾点の ECI 位置。
   public impact(type: BulletType, state: KinematicState, impactPoint: Vec3): void {
     this.worldSfx.hit(len(sub(impactPoint, state.r)));
     const impact = { t: state.t, r: impactPoint, v: state.v } as KinematicState<'eci'>;
@@ -33,11 +34,13 @@ export class DefaultPlayerEffects implements PlayerEffects {
     this.fx.spawnGasPuff(impact);
   }
 
+  // 物体どうしがぶつかったときの金属音とガス。
   public contact(state: KinematicState): void {
     this.worldSfx.clank();
     this.fx.spawnGasPuff(state);
   }
 
+  // 機体喪失の爆発と破片。破片は registry へ足す。
   public destroy(state: KinematicState, registry: EntityRegistry): void {
     this.worldSfx.explosion();
     this.fx.spawnPlayerDestroyFlash(state);
@@ -46,6 +49,7 @@ export class DefaultPlayerEffects implements PlayerEffects {
     )) registry.add(piece);
   }
 
+  // 放熱板が全損した瞬間の破片を、そのパネル先端 tip から出す。
   public radiatorBreak(_side: RadiatorSide, state: KinematicState, tip: Vec3, registry: EntityRegistry): void {
     this.worldSfx.hit(len(sub(tip, state.r)));
     for (const piece of buildDestroyFragments(

@@ -25,8 +25,9 @@ const state = kinematicState<'eci'>(0, v3(), v3());
 const quietNotifier: Notifier = { hint() {}, toast() {} };
 
 class TestShip extends Ship {
-  public constructor(name: string) {
-    super(name, 100, () => new DynamicMotion(state, { mass: 1_000 }), new NullView(), name);
+  // 識別子は本番では採番器が配るので、テストでも名前とは別に与える。
+  public constructor(name: string, id: string) {
+    super(name, 100, () => new DynamicMotion(state, { mass: 1_000 }), new NullView(), id);
   }
 
   public rename(name: string): void { this.setName(name); }
@@ -81,8 +82,8 @@ export function register(): void {
   });
 
   test('ship marker: 同名艦でも clipPath ID が衝突せず、改名でも安定する', () => {
-    const first = new TestShip('same-name');
-    const second = new TestShip('same-name');
+    const first = new TestShip('same-name', 'entity-1');
+    const second = new TestShip('same-name', 'entity-2');
     const clipId = (svg: string): string => /<clipPath id="([^"]+)">/.exec(svg)?.[1] ?? '';
     const firstId = clipId(first.headingHpMarkerSvg());
     const secondId = clipId(second.headingHpMarkerSvg());

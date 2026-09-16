@@ -11,7 +11,6 @@ import type { StageOutcome } from '../../stages/stage-outcome';
 import type { EntityRegistry } from '../entity-registry';
 import type { CombatTarget } from './combat-target';
 import type { DynamicEntity } from './dynamic-entity';
-import type { PlayerStatusSnapshot } from '../../player/player-status-snapshot';
 import type { StageRules } from '../../stages/stage-rules';
 
 export interface ThrottlePort {
@@ -72,8 +71,6 @@ export interface Controllable extends CombatTarget, FuelConsumer, PilotCommandRe
   readonly controlHint: string | null;
   // 操作対象から手で外したときに出す案内。出すものが無ければ null。
   readonly releaseHint: string | null;
-  // HUD が読む同一フレームの表示値。Motion 内部の個別系を公開しない。
-  statusSnapshot(): PlayerStatusSnapshot;
   // 装備を持つ操作対象だけが実装する入力命令。未搭載はメソッド自体を持たない。
   readonly toggleSolarPanel?: (side: 'up' | 'down') => void;
   readonly toggleRadiator?: (side: 'up' | 'down') => void;
