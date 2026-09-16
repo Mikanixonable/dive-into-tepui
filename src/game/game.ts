@@ -10,6 +10,7 @@ import { CommandQueue } from './command-queue';
 import { controlSelectionCommands, type ControlSelectionCommands } from './control-selection-commands';
 import { simSpeedCommands, type SimSpeedCommands } from './dynamic/sim-speed-commands';
 import { deployableCommands, type DeployableCommands } from './player/deployable-commands';
+import { boosterCommands, type BoosterCommands } from './player/booster-commands';
 import { objectMenuCommands } from './pickable/object-menu-commands';
 import { planCommands } from './plan/plan-commands';
 import type { MarkerDevice } from '../marker/marker-device';
@@ -144,6 +145,8 @@ export class Game {
   private readonly simSpeedCommands: SimSpeedCommands;
   // 太陽電池・放熱板の展開/収納を列へ積む口。
   private readonly deployableCommands: DeployableCommands;
+  // ブースターの追加・点火・分離を列へ積む口。
+  private readonly boosterCommands: BoosterCommands;
 
   public readonly activeStage: Stage;
   // ポーズ中か。時間倍率とは独立に時間を止める。決着は止めない — 結果画面の裏でも
@@ -325,10 +328,20 @@ export class Game {
       initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._hud,
     );
     this.controlSelectionCommands = controlSelectionCommands(this.commands, this.controlSelection);
+    this.boosterCommands = boosterCommands(this.commands, this.dynamicSystem);
     this.boosterHandlers = {
-      onAttach: () => { this.activeControllable?.boosters?.attach(); },
-      onToggleIgnition: () => { this.activeControllable?.boosters?.toggleIgnition(); },
-      onDecouple: () => { this.activeControllable?.boosters?.decouple(this.dynamicSystem); },
+      onAttach: () => {
+        const boosters = this.activeControllable?.boosters;
+        if (boosters) this.boosterCommands.attach(boosters);
+      },
+      onToggleIgnition: () => {
+        const boosters = this.activeControllable?.boosters;
+        if (boosters) this.boosterCommands.toggleIgnition(boosters);
+      },
+      onDecouple: () => {
+        const boosters = this.activeControllable?.boosters;
+        if (boosters) this.boosterCommands.decouple(boosters);
+      },
     };
     this.planDisplay = new PlanDisplay(
       this._scene, this.markers.createGroup(), celestialSystem, this.displayWindowManager, this.controlSelection,
@@ -421,7 +434,7 @@ export class Game {
           gameCommand(K.warpSlower.code, K.warpSlower),
           gameCommand(K.warpFaster.code, K.warpFaster),
         ],
-        handleCommand: command => this.simSpeedManager.handleCommand(command.id),
+        handleCommand: command => this.simSpeedCommands.handleCommand(command.id),
       },
       {
         feature: 'view',
