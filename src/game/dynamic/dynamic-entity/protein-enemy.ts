@@ -7,7 +7,6 @@ import { collisionDamageFraction } from './contact-damage';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
 import { ProteinCombatState } from '../../protein/protein-combat-state';
 import { ProteinSphereCollisionGeometry } from '../../protein/protein-sphere-collision';
-import { proteinLocalImpactPoint } from '../../../render/protein/protein-anchors';
 import { DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings } from '../../../render/protein/protein-display';
 import { ENEMY_MODEL_SCALE, Enemy, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore } from './enemy';
 import {
@@ -26,6 +25,9 @@ import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
 import type { ProteinVisualSource } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
 import type { OrbitReference } from '../../orbit-reference';
 import type { ProteinCombatTarget } from './damage-capabilities';
+import type { EnemyProteinInspection } from '../../pickable/enemy-inspection';
+import type { ProteinMotionMetrics } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
+import type { ProteinDisplayController } from './enemy-display-capabilities';
 
 // タンパク質の構造は揺らぐが、判定形状は常に静止した1つに固定するので、慣性も1つでよい。
 // 漂流機体と同じく非対称にして、ジャニベコフ効果(中間軸不安定性)で無秩序に回らせる。
@@ -127,7 +129,6 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     super(
       'saved' in init ? init : { ...init, name: `${definition.asset.displayName} ${init.name}` },
       proteinView, PROTEIN_INERTIA, collision.outerRadius, worldSfx, fx, shape,
-      [],
     );
     this.assetId = assetId;
     this.displaySettings = display;
@@ -135,11 +136,16 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   }
 
   public override get hp(): number { return this.combat.integrityHp; }
-  public override set hp(_value: number) {}
   public override get maxHp(): number { return this.combat.integrityMaxHp; }
-  public override set maxHp(_value: number) {}
 
   public get display(): ProteinDisplaySettings { return this.displaySettings; }
+
+  public override get proteinDisplayController(): ProteinDisplayController {
+    return {
+      display: this.displaySettings,
+      setDisplay: display => this.setDisplay(display),
+    };
+  }
 
   // 表示形態・着色を切り替える。
   public setDisplay(display: ProteinDisplaySettings): void {
@@ -147,6 +153,16 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   }
 
   public get combatReadout(): ProteinCombatReadout { return this.combat.combatReadout(); }
+  public get proteinMotionMetrics(): ProteinMotionMetrics { return this.view.motionMetrics; }
+
+  public override get proteinInspection(): EnemyProteinInspection {
+    return {
+      combatReadout: () => this.combatReadout,
+      siteMarkers: (displayPos, attitude) => this.view.siteMarkers(
+        displayPos, attitude, this.combatReadout.sites,
+      ),
+    };
+  }
 
   // 表示設定と、被弾モデルの構造フェーズを共通の表示入力へ足す。
   protected override renderSource(
@@ -186,8 +202,8 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
 
   // 被弾位置に最も近い機能部位へダメージを割り振る。
   protected override applyBulletDamage(damage: number, impactPoint: Vec3): void {
-    const localPoint = proteinLocalImpactPoint(
-      impactPoint, this.motion.state.r, this.motion.att.q, ENEMY_MODEL_SCALE,
+    const localPoint = this.view.localImpactPoint(
+      impactPoint, this.motion.state.r, this.motion.att.q,
     );
     const sitePositions = new Map(
       this.combat.combatReadout().sites.map((site) => [site.id, this.view.siteModelPositionById(site.id)] as const),
