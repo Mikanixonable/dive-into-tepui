@@ -197,8 +197,7 @@ export class SaveSlots {
     const history = this.historyFor(slotId, stageId);
     if (!history) return false;
 
-    // 新しい本体を書いてから索引を差し替え、前の本体は最後に消す。逆順にすると、
-    // 書き込みに失敗した瞬間に自動セーブそのものが失われる。
+    // 前の本体を消すのは最後 — 逆順にすると、書き込みに失敗した瞬間に自動セーブが失われる。
     const id = newSaveId();
     try {
       this.store.writeSnapshot(id, data);
@@ -233,7 +232,7 @@ export class SaveSlots {
       return false;
     }
 
-    // 本体が置けてから索引へ載せ、遊んだ時刻を履歴とスロットの両方へ反映する。
+    // 本体が置けてから索引へ載せる。
     history.snapshots.unshift(meta);
     history.lastPlayedAtReal = meta.createdAtReal;
     const slot = this.index.slots.find((s) => s.id === slotId);
@@ -320,7 +319,7 @@ export class SaveSlots {
       stages: [],
     };
 
-    // 手動セーブも id を振り直して本体を書く。途中で失敗したら書いた本体を消して取りやめる。
+    // 手動セーブも id を振り直して本体を書く。
     const written: string[] = [];
     for (const history of exp.slot.stages) {
       const newHistory: StageHistoryMeta = { ...history, snapshots: [], autoSaveId: null };

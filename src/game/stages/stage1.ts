@@ -39,7 +39,6 @@ export class Stage1 extends Stage {
     const worldSfx = this._worldSfx;
     const fx = this._fx;
     const scene = this._scene;
-    // 各種軌道パターンの敵を配置する
     const idAllocators = this._dynamicSystem.idAllocators;
     const attractors = this._celestialSystem.celestialMotions;
     this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, attractors, 1400, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene, idAllocators));
