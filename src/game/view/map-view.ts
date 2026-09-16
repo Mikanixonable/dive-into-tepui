@@ -22,6 +22,7 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { UiSfx } from '../../audio/sfx/ui-sfx';
 import type * as THREE from 'three/webgpu';
 import type { ControlSelection } from '../control-selection';
+import type { ControlSelectionCommands } from '../control-selection-commands';
 import type { DisplayWindow, DisplayWindowManager } from '../display-window-manager';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { FrameAnchors } from '../frame-anchors';
@@ -53,6 +54,7 @@ export class MapView implements ViewFrame {
     private readonly frameControls: FrameControls,
     private readonly frameAnchors: FrameAnchors,
     private readonly controlSelection: ControlSelection,
+    controlSelectionCommands: ControlSelectionCommands,
     simSpeedManager: SimSpeedManager,
     planDisplay: PlanDisplay,
     scene: THREE.Scene,
@@ -73,7 +75,7 @@ export class MapView implements ViewFrame {
     this.picking = new MapPicking(
       hud, cameraSystem, roster, celestialSystem, celestialMarkers, markers,
       navTarget, frameControls, this.objectPickables, this.linePickables, objectWindows,
-      controlSelection, displayWindowManager,
+      controlSelectionCommands, displayWindowManager,
     );
   }
 
