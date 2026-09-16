@@ -47,17 +47,16 @@ function buildTabBody(tab: ViewOptionsTab): HTMLElement {
 interface BodyClassRow {
   readonly label: string;
   readonly categoryKey: MapDisplayCategory;
-  readonly nameKey: keyof MapDisplayToggles;
   readonly orbitKey: keyof MapDisplayToggles | null;
 }
 
 // 天体のクラス別トグル。
 const BODY_CLASS_ROWS: readonly BodyClassRow[] = [
-  { label: '惑星', categoryKey: 'planetVisible', nameKey: 'planetName', orbitKey: 'planetOrbit' },
-  { label: '衛星', categoryKey: 'satelliteVisible', nameKey: 'satelliteName', orbitKey: 'satelliteOrbit' },
-  { label: '準惑星', categoryKey: 'dwarfVisible', nameKey: 'dwarfName', orbitKey: 'dwarfOrbit' },
-  { label: '小天体', categoryKey: 'smallBodyVisible', nameKey: 'smallBodyName', orbitKey: 'smallBodyOrbit' },
-  { label: 'ラグランジュ点', categoryKey: 'lagrangeVisible', nameKey: 'lagrangeName', orbitKey: null },
+  { label: '惑星', categoryKey: 'planetVisible', orbitKey: 'planetOrbit' },
+  { label: '衛星', categoryKey: 'satelliteVisible', orbitKey: 'satelliteOrbit' },
+  { label: '準惑星', categoryKey: 'dwarfVisible', orbitKey: 'dwarfOrbit' },
+  { label: '小天体', categoryKey: 'smallBodyVisible', orbitKey: 'smallBodyOrbit' },
+  { label: 'ラグランジュ点', categoryKey: 'lagrangeVisible', orbitKey: null },
 ];
 // このパネル自身の折りたたみトグルの見た目。
 const VIEW_OPTIONS_COLLAPSE_LABELS: CollapseToggleLabels = {
@@ -69,11 +68,11 @@ const VIEW_OPTIONS_COLLAPSE_LABELS: CollapseToggleLabels = {
 
 // 機体と設備のクラス別トグル。
 const ENTITY_ROWS: readonly BodyClassRow[] = [
-  { label: '自艦', categoryKey: 'playerVisible', nameKey: 'playerName', orbitKey: 'playerOrbit' },
-  { label: '敵', categoryKey: 'enemyVisible', nameKey: 'enemyName', orbitKey: 'enemyOrbit' },
-  { label: '弾薬', categoryKey: 'ammoVisible', nameKey: 'ammoName', orbitKey: 'ammoOrbit' },
-  { label: 'RCS燃料', categoryKey: 'fuelVisible', nameKey: 'fuelName', orbitKey: 'fuelOrbit' },
-  { label: '基地', categoryKey: 'baseVisible', nameKey: 'baseName', orbitKey: 'baseOrbit' },
+  { label: '自艦', categoryKey: 'playerVisible', orbitKey: 'playerOrbit' },
+  { label: '敵', categoryKey: 'enemyVisible', orbitKey: 'enemyOrbit' },
+  { label: '弾薬', categoryKey: 'ammoVisible', orbitKey: 'ammoOrbit' },
+  { label: 'RCS燃料', categoryKey: 'fuelVisible', orbitKey: 'fuelOrbit' },
+  { label: '基地', categoryKey: 'baseVisible', orbitKey: 'baseOrbit' },
 ];
 
 // 対象クラスの表示状態を文字ではなく、ラベル・軌道・非表示を連想できる SVG で示す。

@@ -71,14 +71,14 @@ export class ObjectPlacement {
   public constructor(
     private readonly hud: HudLayers & Notifier,
     private readonly scene: THREE.Scene,
-    private readonly dynamicSystem: EntityRoster,
+    private readonly roster: EntityRoster,
     private readonly idAllocators: EntityIdAllocators,
     private readonly celestialSystem: CelestialSystem,
     private readonly worldSfx: WorldSfx,
     private readonly fx: FlashEffects,
   ) {
     // 以後の新規配置が既存 id と衝突しないよう、復元済みの艦の id を予約する。
-    for (const p of dynamicSystem.all().filter(isPlayer)) this.playerIdAllocator.next(p.id);
+    for (const p of roster.all().filter(isPlayer)) this.playerIdAllocator.next(p.id);
 
     this.previewView = new ObjectPlacementPreviewView(scene, PREVIEW_LINE_STYLE);
 
@@ -164,7 +164,7 @@ export class ObjectPlacement {
   // 検証に落ちるか状態を組めなければ、理由をトーストで知らせて何も渡さない。
   private place(name: string, form: ObjectPlacerForm): void {
     // 隻数の上限が掛かるのは自機だけ(SPEC GAME.md 9.1)。
-    if (form.entityKind === 'player' && this.dynamicSystem.all().filter(isPlayer).length >= MAX_PLACED_SHIPS) {
+    if (form.entityKind === 'player' && this.roster.all().filter(isPlayer).length >= MAX_PLACED_SHIPS) {
       this.hud.hint(`配置数が上限(${MAX_PLACED_SHIPS}隻)に達しています`);
       return;
     }
@@ -224,7 +224,7 @@ export class ObjectPlacement {
     if (!(motion instanceof OrbitingMotion)) {
       throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} は公転していないのでラグランジュ点を持たない`);
     }
-    const t = this.dynamicSystem.simTime;
+    const t = this.roster.simTime;
     const system = secondaryFrameOf(this.celestialSystem.celestialMotions, t, motion, t);
     if (system === null) {
       throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} の主天体が引けない`);
@@ -244,7 +244,7 @@ export class ObjectPlacement {
   // フォームのサイズ/形の指定から軌道要素を組み、基準天体中心の状態を ECI へ直して返す。
   private buildElementsState(form: ElementsForm): KinematicState {
     const center = this.referenceCelestialBody(form);
-    const centerState = center.stateAt(this.dynamicSystem.simTime);
+    const centerState = center.stateAt(this.roster.simTime);
     // サイズの指定方法ごとに長半径と離心率を出す。
     let a: number;
     let e: number;
@@ -263,7 +263,7 @@ export class ObjectPlacement {
 
     // 基準天体中心の相対状態を組み、基準天体自身の位置・速度を足して ECI にする。
     const rel = stateFromOrbitalElements(
-      this.dynamicSystem.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG,
+      this.roster.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG,
       form.nuDeg * DEG, center.def.mu,
     );
     return addPrimaryRelative(centerState, kinematicState<'primaryRel'>(rel.t, rel.r, rel.v));

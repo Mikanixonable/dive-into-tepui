@@ -155,7 +155,7 @@ function checkSlotExportShape(parsed: unknown): { ok: false; reason: string } | 
 
   const totalKept = filteredStages.reduce((sum, s) => sum + s.snapshots.length, 0);
   if (totalKept === 0) {
-    return { ok: false, reason: '復元できるスナップショットがありません' };
+    return { ok: false, reason: '復元できる手動セーブがありません' };
   }
 
   const keptIds = new Set(filteredStages.flatMap((s) => s.snapshots.map((m) => m.id)));

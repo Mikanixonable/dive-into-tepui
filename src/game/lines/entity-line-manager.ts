@@ -94,7 +94,7 @@ export class EntityLineManager {
       entity: DynamicEntity, asTarget: LineStyle | null, lineVisible: boolean,
       trajectoryEligible: boolean, styles: TrajectoryStyles,
     ): void => {
-      // 生存・カテゴリ可視性・表示設定・ターゲット強調を、3本の宣言へ畳み込む。
+      // 生存・軌道線トグル・個体ごとの表示方式・ターゲット強調を、3本の宣言へ畳み込む。
       const available = entity.motion.alive && lineVisible;
       const showTrajectories = trajectoryEligible && available && asTarget === null;
       const ownEllipse = showTrajectories && view !== 'map';
