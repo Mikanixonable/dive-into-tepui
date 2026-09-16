@@ -118,8 +118,7 @@ export class EntityLineManager {
     // 自艦・敵・基地の順に、種別ごとの色と表示設定で resolve を通す。
     for (const ship of this.roster.all().filter(isPlayer)) {
       const isActive = ship === active;
-      const visibility = visibilityPolicy?.entity('player', isActive);
-      const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
+      const lineVisible = visibilityPolicy?.entity('player', isActive).orbit ?? true;
       resolve(
         ship, targetStyleOf(ship), lineVisible,
         isActive || (view === 'map' && ship.trajectoryLineVisible),
@@ -131,8 +130,7 @@ export class EntityLineManager {
       );
     }
     for (const enemy of this.roster.all().filter(isEnemy)) {
-      const visibility = visibilityPolicy?.entity('enemy');
-      const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
+      const lineVisible = visibilityPolicy?.entity('enemy').orbit ?? true;
       const enemyLineStyle: LineStyle = { ...LINE_STYLE.enemyLine, color: enemy.orbitLineColor };
       resolve(
         enemy, targetStyleOf(enemy), lineVisible,
@@ -141,8 +139,7 @@ export class EntityLineManager {
       );
     }
     for (const base of this.roster.all().filter(isBase)) {
-      const visibility = visibilityPolicy?.entity('base');
-      const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
+      const lineVisible = visibilityPolicy?.entity('base').orbit ?? true;
       resolve(
         base, targetStyleOf(base), lineVisible,
         view === 'map' && base.trajectoryLineVisible,

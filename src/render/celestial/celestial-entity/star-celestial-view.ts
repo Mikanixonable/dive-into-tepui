@@ -43,13 +43,10 @@ export class StarCelestialView extends CelestialView {
   public sync(
     motion: CelestialMotion, displayTime: number, _nowMs: number, camera: CameraFrame,
     _star: StellarLightSource | null,
-    graphics: GraphicsSettingsData, style: RenderStyle, visible: boolean,
+    graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
     const star = this.star;
     if (star === null) return;
-    star.setVisible(visible);
-    this.outline.line.visible = visible;
-    if (!visible) return;
     const pos = motion.stateAt(displayTime).r;
     const p = camera.floatingOrigin.RtoThreeV3(pos);
     const radius = motion.def.radius;

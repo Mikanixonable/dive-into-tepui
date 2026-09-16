@@ -45,10 +45,9 @@ export class CelestialEntity implements ObjectPickable {
     this.id = motion.id;
   }
 
-  // この1フレームに、照明・影・大気の源として差し出す運動と表示の組。visible は分類トグルが
-  // 開いているか。
-  public illuminationSource(visible: boolean): CelestialIlluminationSource {
-    return { motion: this.motion, view: this.view, visible };
+  // この1フレームに、照明・影・大気の源として差し出す運動と表示の組。
+  public illuminationSource(): CelestialIlluminationSource {
+    return { motion: this.motion, view: this.view };
   }
 
   // 天体ラベルとしての振る舞い。

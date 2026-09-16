@@ -61,17 +61,15 @@ export class DynamicEntity {
   }
 
   // このフレームの表示入力。派生 Entity は自分の View が読む値を足したものを返す。
-  // visible はこのフレームに本体を出すか、active はこの個体が操作対象か、
-  // orbitReference は軌道の基準として選ばれている天体。
+  // active はこの個体が操作対象か、orbitReference は軌道の基準として選ばれている天体。
   protected renderSource(
-    _viewFrame: DynamicViewFrame, visible: boolean, _active: boolean,
+    _viewFrame: DynamicViewFrame, _active: boolean,
     _orbitReference: OrbitReference | undefined,
   ): DynamicRenderSource {
     const motion = this.motion;
     return {
       id: this.id,
       name: this.name,
-      visible,
       alive: motion.alive,
       stateAt: (t) => motion.stateAt(t),
       attitude: motion.att.q,
@@ -88,10 +86,9 @@ export class DynamicEntity {
 
   // このフレームの表示入力を組み立てて View へ渡す。
   public sync(
-    viewFrame: DynamicViewFrame, visible: boolean, active: boolean,
-    orbitReference: OrbitReference | undefined,
+    viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | undefined,
   ): void {
-    this.view.sync(this.renderSource(viewFrame, visible, active, orbitReference), viewFrame);
+    this.view.sync(this.renderSource(viewFrame, active, orbitReference), viewFrame);
   }
 
   // この個体が所有する View 資源を解放する。
