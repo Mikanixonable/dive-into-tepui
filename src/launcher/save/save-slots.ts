@@ -14,7 +14,7 @@ import { SaveStore, SAVE_INDEX_VERSION } from './save-store';
 // 履歴ごとに持てる手動セーブの件数の上限。
 export const MANUAL_SAVE_LIMIT = 30;
 
-// セーブ索引(SaveIndex)を持ち、スロット/手動セーブ/復帰点のメタを操作する。メタの追加・削除に
+// セーブ索引(SaveIndex)を持ち、スロット/手動セーブ/自動セーブのメタを操作する。メタの追加・削除に
 // 合わせて、store 上の本体も書き・消す。
 export class SaveSlots {
   private readonly index: SaveIndex;
@@ -105,7 +105,7 @@ export class SaveSlots {
     if (!slot) return;
     for (const history of slot.stages) {
       for (const meta of history.snapshots) this.store.deleteSnapshot(meta.id);
-      if (history.resumePointId) this.store.deleteSnapshot(history.resumePointId);
+      if (history.autoSaveId) this.store.deleteSnapshot(history.autoSaveId);
     }
     this.index.slots = this.index.slots.filter((s) => s.id !== id);
     if (this.index.activeSlotId === id) this.index.activeSlotId = this.index.slots[0]?.id ?? null;
@@ -113,7 +113,7 @@ export class SaveSlots {
   }
 
   // 元スロットの複製を新規スロットとして作る。upToSnapshotId を渡すとその時点(同時刻含む)
-  // までを残し、複製先はその時点から再開する。渡さなければ復帰点ごと丸ごと複製する。
+  // までを残し、複製先はその時点から再開する。渡さなければ自動セーブごと丸ごと複製する。
   // 無い id を指したとき・取り込みに失敗したときは null。
   public duplicateSlot(id: string, upToSnapshotId?: string): SaveSlotMeta | null {
     const source = this.index.slots.find((s) => s.id === id);
@@ -137,8 +137,8 @@ export class SaveSlots {
       slot: { ...source, name: `${source.name} のコピー`, stages: [] },
       snapshots: {},
     };
-    // 複製先の復帰点にする本体(ステージ履歴ごとに1つ)。分岐ならその時点、丸ごとなら複製元の復帰点。
-    const resumeSources = new Map<string, string>();
+    // 複製先の自動セーブにする本体(ステージ履歴ごとに1つ)。分岐ならその時点、丸ごとなら複製元の自動セーブ。
+    const autoSaveSources = new Map<string, string>();
     for (const history of source.stages) {
       const kept = history.snapshots.filter((m) => m.createdAtReal <= cutoff);
       const readable: SnapshotMeta[] = [];
@@ -148,21 +148,21 @@ export class SaveSlots {
         copied.snapshots[meta.id] = data;
         readable.push(meta);
       }
-      copied.slot.stages.push({ ...history, snapshots: readable, resumePointId: null });
-      const resumeSource = branch === null
-        ? history.resumePointId ?? null
+      copied.slot.stages.push({ ...history, snapshots: readable, autoSaveId: null });
+      const autoSaveSource = branch === null
+        ? history.autoSaveId ?? null
         : branch.stageId === history.stageId ? branch.snapshotId : null;
-      if (resumeSource !== null) resumeSources.set(history.stageId, resumeSource);
+      if (autoSaveSource !== null) autoSaveSources.set(history.stageId, autoSaveSource);
     }
 
     const copy = this.importSlot(copied);
     if (copy === null) return null;
-    // 取り込みは再開できる周回を持たないので、複製では復帰点と直近の周回をここで入れ直す。
+    // 取り込みは再開できる周回を持たないので、複製では自動セーブと直近の周回をここで入れ直す。
     // 分岐点の本体が読めなければ再開先が無いので、直近の周回は締めたままにする。
     let resumesBranch = false;
-    for (const [stageId, sourceId] of resumeSources) {
+    for (const [stageId, sourceId] of autoSaveSources) {
       const data = this.store.readSnapshot(sourceId);
-      if (data === null || !this.writeResumePoint(copy.id, stageId, data)) continue;
+      if (data === null || !this.writeAutoSave(copy.id, stageId, data)) continue;
       if (branch !== null && branch.stageId === stageId) resumesBranch = true;
     }
     copy.lastRun = branch !== null
@@ -178,36 +178,36 @@ export class SaveSlots {
     if (!slot) return null;
     let history = slot.stages.find((h) => h.stageId === stageId);
     if (!history) {
-      history = { stageId, clearCount: 0, lastPlayedAtReal: Date.now(), snapshots: [], resumePointId: null };
+      history = { stageId, clearCount: 0, lastPlayedAtReal: Date.now(), snapshots: [], autoSaveId: null };
       slot.stages.push(history);
       this.persist();
     }
     return history;
   }
 
-  // slotId/stageId の復帰点の本体 id。まだ撮っていなければ null。
-  public resumePointId(slotId: string, stageId: string): string | null {
+  // slotId/stageId の自動セーブの本体 id。まだ撮っていなければ null。
+  public autoSaveId(slotId: string, stageId: string): string | null {
     const slot = this.index.slots.find((s) => s.id === slotId);
     const history = slot?.stages.find((h) => h.stageId === stageId);
-    return history?.resumePointId ?? null;
+    return history?.autoSaveId ?? null;
   }
 
-  // 復帰点を差し替える。書き込みに失敗したら false を返し、前の復帰点をそのまま残す。
-  public writeResumePoint(slotId: string, stageId: string, data: GameSaveData): boolean {
+  // 自動セーブを差し替える。書き込みに失敗したら false を返し、前の自動セーブをそのまま残す。
+  public writeAutoSave(slotId: string, stageId: string, data: GameSaveData): boolean {
     const history = this.historyFor(slotId, stageId);
     if (!history) return false;
 
     // 新しい本体を書いてから索引を差し替え、前の本体は最後に消す。逆順にすると、
-    // 書き込みに失敗した瞬間に復帰点そのものが失われる。
+    // 書き込みに失敗した瞬間に自動セーブそのものが失われる。
     const id = newSaveId();
     try {
       this.store.writeSnapshot(id, data);
     } catch (e) {
-      console.error('SaveSlots.writeResumePoint: 復帰点を書き込めませんでした', e);
+      console.error('SaveSlots.writeAutoSave: 自動セーブを書き込めませんでした', e);
       return false;
     }
-    const previous = history.resumePointId ?? null;
-    history.resumePointId = id;
+    const previous = history.autoSaveId ?? null;
+    history.autoSaveId = id;
 
     const now = Date.now();
     history.lastPlayedAtReal = now;
@@ -295,7 +295,7 @@ export class SaveSlots {
         snapshots[meta.id] = data;
         keptMetas.push(meta);
       }
-      exportedSlot.stages.push({ ...history, snapshots: keptMetas, resumePointId: null });
+      exportedSlot.stages.push({ ...history, snapshots: keptMetas, autoSaveId: null });
     }
 
     return {
@@ -308,7 +308,7 @@ export class SaveSlots {
   }
 
   // 常に新規スロットとして追加する。id を振り直すのは、既に import 済みの同じファイルを
-  // もう一度読んだ時に既存スロットを壊さないため。取り込む形は復帰点を持たないので、直近の
+  // もう一度読んだ時に既存スロットを壊さないため。取り込む形は自動セーブを持たないので、直近の
   // 周回は締めた状態で足す。書き込み途中で失敗したら書いた分を消して null。
   public importSlot(exp: SlotExport): SaveSlotMeta | null {
     const newSlot: SaveSlotMeta = {
@@ -322,7 +322,7 @@ export class SaveSlots {
     // 手動セーブも id を振り直して本体を書く。途中で失敗したら書いた本体を消して取りやめる。
     const written: string[] = [];
     for (const history of exp.slot.stages) {
-      const newHistory: StageHistoryMeta = { ...history, snapshots: [], resumePointId: null };
+      const newHistory: StageHistoryMeta = { ...history, snapshots: [], autoSaveId: null };
       for (const meta of history.snapshots) {
         const data = exp.snapshots[meta.id];
         if (!data) continue;
@@ -348,12 +348,12 @@ export class SaveSlots {
 
   // 索引のどこからも参照されていない本体キーを消す。
   private pruneOrphans(): void {
-    // 索引が指す本体(手動セーブと復帰点)を集めてから、それ以外のキーを消す。
+    // 索引が指す本体(手動セーブと自動セーブ)を集めてから、それ以外のキーを消す。
     const referenced = new Set<string>();
     for (const slot of this.index.slots) {
       for (const history of slot.stages) {
         for (const meta of history.snapshots) referenced.add(meta.id);
-        if (history.resumePointId) referenced.add(history.resumePointId);
+        if (history.autoSaveId) referenced.add(history.autoSaveId);
       }
     }
     for (const id of this.store.snapshotIds()) {
