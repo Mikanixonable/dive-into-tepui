@@ -11,6 +11,7 @@ import { controlSelectionCommands, type ControlSelectionCommands } from './contr
 import { simSpeedCommands, type SimSpeedCommands } from './dynamic/sim-speed-commands';
 import { deployableCommands, type DeployableCommands } from './player/deployable-commands';
 import { objectMenuCommands } from './pickable/object-menu-commands';
+import { planCommands } from './plan/plan-commands';
 import type { MarkerDevice } from '../marker/marker-device';
 import type { MarkerSink } from '../marker/marker-sink';
 import type { MarkerDeclaration } from '../marker/marker-declaration';
@@ -363,7 +364,7 @@ export class Game {
       this.celestialMarkers, this.markers, this.targeter.combatMarkers,
       this.displayWindowManager, this.frameControls,
       this.frameAnchors, this.controlSelection, this.controlSelectionCommands,
-      this.simSpeedManager, this.planDisplay,
+      this.simSpeedManager, this.simSpeedCommands, this.planDisplay, planCommands(this.commands),
       this._scene, this._hud, uiSfx, this.navTarget, this.viewOptionSettings.mapDisplay,
     );
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
