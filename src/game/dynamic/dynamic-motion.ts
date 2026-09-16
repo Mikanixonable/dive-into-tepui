@@ -56,11 +56,13 @@ export interface DynamicMotionBehavior {
   updateCommands?(self: DynamicMotion, simDt: number): void;
   contactsWith?(self: DynamicMotion, other: DynamicMotion, simTime: number): boolean;
   testSphereCollision?(
-    self: DynamicMotion, sphereCenter: Vec3, sphereRadius: number, selfState: KinematicState,
+    self: DynamicMotion, sphereCenter: Vec3, sphereRadius: number,
+    selfState: KinematicState, selfAttitude: Attitude,
   ): SphereHit | null;
   testSweptSphereCollision?(
     self: DynamicMotion, previousSphereCenter: Vec3, sphereCenter: Vec3, sphereRadius: number,
     previousSelfState: KinematicState, selfState: KinematicState,
+    previousSelfAttitude: Attitude, selfAttitude: Attitude,
   ): { readonly hit: SphereHit; readonly toi: number } | null;
   testEntityCollision?(
     self: DynamicMotion, other: DynamicMotion,
@@ -159,6 +161,7 @@ export class DynamicMotion {
   public readonly hasAttitude: boolean;
   public readonly behavior: DynamicMotionBehavior;
   public att: Attitude;
+  public prevAtt: Attitude;
   public alive = true;
   public mass: number;
   public readonly radius: number;
@@ -195,6 +198,7 @@ export class DynamicMotion {
     this.actual = new DynamicTrajectory(state);
     // 姿勢・質量と接触
     this.att = options.attitude ?? identityAttitude();
+    this.prevAtt = this.att;
     this.hasAttitude = options.hasAttitude ?? true;
     this.mass = options.mass ?? 1;
     this.radius = options.radius ?? 0;
@@ -332,6 +336,7 @@ export class DynamicMotion {
       environmentSamples = [environmentSampleAt(
         this.state.t, this.state.r, this.state.v, star, occluders, atmosphereBody, pivot)];
     }
+    this.prevAtt = this.att;
     if (this.hasAttitude) this.att = stepAttitude(this.att, this.torque, dt);
 
     // 歩のあいだの環境の平均で、種別ごとの環境反応と熱を進める。
@@ -364,8 +369,9 @@ export class DynamicMotion {
   // 固有の判定形状と球の接触。触れていないか固有の形状を持たなければ null。
   public testCustomSphereCollision(
     sphereCenter: Vec3, sphereRadius: number, selfState: KinematicState,
+    selfAttitude: Attitude = this.att,
   ): SphereHit | null {
-    return this.behavior.testSphereCollision?.(this, sphereCenter, sphereRadius, selfState) ?? null;
+    return this.behavior.testSphereCollision?.(this, sphereCenter, sphereRadius, selfState, selfAttitude) ?? null;
   }
 
   // 前の歩から今の歩へ動く球と固有の判定形状の最初の接触と、その時刻の歩内での割合 toi。
@@ -373,9 +379,11 @@ export class DynamicMotion {
   public testCustomSweptSphereCollision(
     previousSphereCenter: Vec3, sphereCenter: Vec3, sphereRadius: number,
     previousSelfState: KinematicState, selfState: KinematicState,
+    previousSelfAttitude: Attitude = this.prevAtt, selfAttitude: Attitude = this.att,
   ): { readonly hit: SphereHit; readonly toi: number } | null {
     return this.behavior.testSweptSphereCollision?.(
       this, previousSphereCenter, sphereCenter, sphereRadius, previousSelfState, selfState,
+      previousSelfAttitude, selfAttitude,
     ) ?? null;
   }
 

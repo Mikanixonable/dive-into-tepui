@@ -4,6 +4,7 @@ import {
   type ProteinCollisionSphere,
 } from '../../src/game/protein/protein-sphere-collision';
 import { v3, type Vec3 } from '../../src/math/vec3';
+import { qFromAxisAngle } from '../../src/math/quat';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { testProteinAssetBundles } from '../protein-test-assets';
 import { test } from '../harness';
@@ -96,5 +97,31 @@ export function register(): void {
       v3(100, 0, 100), v3(100, 0, -100), bulletRadius, previous, current, IDENTITY,
     );
     assert.equal(missed, null, 'a sphere passing outside the collision sphere should miss');
+  });
+
+  test('protein sphere collision: a rotating shape is swept between attitudes', () => {
+    const geometry = new ProteinSphereCollisionGeometry(
+      [{ cx: 10, cy: 0, cz: 0, radius: 1 }], ROOT_SCALE,
+    );
+    const center = v3();
+    const previous = kinematicState<'eci'>(0, center, v3());
+    const current = kinematicState<'eci'>(1, center, v3());
+    const currentAttitude = qFromAxisAngle(v3(0, 0, 1), Math.PI);
+    const crossing = geometry.testSweptSphereCollision(
+      v3(0, 200, 0), v3(0, 200, 0), 20,
+      previous, current, IDENTITY, currentAttitude,
+    );
+    assert.ok(crossing, 'a rotating collision sphere should hit between frames');
+    assert.ok(crossing!.toi > 0 && crossing!.toi < 1, 'the rotating hit should report an interior toi');
+    assert.equal(
+      geometry.testSphereCollision(v3(0, 200, 0), 20, center, IDENTITY),
+      null,
+      'the initial attitude should miss',
+    );
+    assert.equal(
+      geometry.testSphereCollision(v3(0, 200, 0), 20, center, currentAttitude),
+      null,
+      'the final attitude should miss',
+    );
   });
 }

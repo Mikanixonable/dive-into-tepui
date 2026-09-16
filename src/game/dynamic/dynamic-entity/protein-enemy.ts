@@ -7,7 +7,7 @@ import { collisionDamageFraction } from './contact-damage';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
 import { ProteinCombatState } from '../../protein/protein-combat-state';
 import { ProteinSphereCollisionGeometry } from '../../protein/protein-sphere-collision';
-import { proteinLocalImpactPoint, proteinSiteWorldPosition } from '../../../render/protein/protein-anchors';
+import { proteinLocalImpactPoint } from '../../../render/protein/protein-anchors';
 import { DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings } from '../../../render/protein/protein-display';
 import { ENEMY_MODEL_SCALE, Enemy, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore } from './enemy';
 import {
@@ -112,14 +112,15 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
       renderDefinitionFor(assetId), display, ENEMY_MODEL_SCALE, collision.outerRadius, id, scene,
     );
     const shape: EnemyCollisionShape = {
-      testSphereCollision: (self, sphereCenter, sphereRadius, selfState) => (
-        collision.testSphereCollision(sphereCenter, sphereRadius, selfState.r, self.att.q)
+      testSphereCollision: (_self, sphereCenter, sphereRadius, selfState, selfAttitude) => (
+        collision.testSphereCollision(sphereCenter, sphereRadius, selfState.r, selfAttitude.q)
       ),
       testSweptSphereCollision: (
-        self, previousSphereCenter, sphereCenter, sphereRadius, previousSelfState, selfState,
+        _self, previousSphereCenter, sphereCenter, sphereRadius, previousSelfState, selfState,
+        previousSelfAttitude, selfAttitude,
       ) => collision.testSweptSphereCollision(
         previousSphereCenter, sphereCenter, sphereRadius,
-        previousSelfState, selfState, self.att.q,
+        previousSelfState, selfState, previousSelfAttitude.q, selfAttitude.q,
       ),
     };
     // 新規生成のときだけ、タンパク質固有の名称を陣形役割・識別番号などの既存識別子の前へ冠する。
@@ -169,11 +170,8 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
 
   // 次に撃つ機能部位の ECI 位置。呼ぶたびに撃つ部位を順繰りに進める。
   protected override muzzlePosition(): Vec3 {
-    return proteinSiteWorldPosition(
-      this.combat.nextAttackSite(), [], [], 0,
-      this.combat.asset.coordinateScale, ENEMY_MODEL_SCALE,
-      this.motion.state.r, this.motion.att.q,
-    );
+    const site = this.combat.nextAttackSite();
+    return this.view.siteWorldPositionById(site?.id ?? '', this.motion.state.r, this.motion.att.q);
   }
 
   // 修飾の倍率を掛けたプラズマ弾のダメージ。
@@ -191,7 +189,10 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     const localPoint = proteinLocalImpactPoint(
       impactPoint, this.motion.state.r, this.motion.att.q, ENEMY_MODEL_SCALE,
     );
-    const result = this.combat.applyDamage(damage, localPoint);
+    const sitePositions = new Map(
+      this.combat.combatReadout().sites.map((site) => [site.id, this.view.siteModelPositionById(site.id)] as const),
+    );
+    const result = this.combat.applyDamage(damage, localPoint, sitePositions);
     // 部位の機能停止・フェーズ遷移は閃光で示す。
     if (result.siteDisabled || result.phaseChanged) {
       this._fx.spawnProteinStateFlash(
