@@ -68,7 +68,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     this.partWindows = new PartWindows(hud, controlSelection);
   }
 
-  // 敵一覧の行から、id で名指しされた敵のプロパティウィンドウを開く。既に消えていれば開かない。
+  // id で名指しされた敵のプロパティウィンドウを開く。既に消えていれば開かない。
   public openEnemy(id: string, clientX: number, clientY: number): void {
     const enemy = this.roster.all().filter(isEnemy).find((e) => e.id === id);
     if (enemy) this.open(clientX, clientY, enemy, this.displayWindowManager.current.simTime);
@@ -109,7 +109,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     };
   }
 
-  // 何にも当たらなかった右クリックの落ち先。マップ・戦闘のどちらもここへ落ちる。
+  // 何にも当たらなかった右クリックの落ち先。
   openEmptySpaceMenu(clientX: number, clientY: number, simTime: number): void {
     const target = this.emptySpace;
     this.menu.open(clientX, clientY, target, this.offeredItems(target, simTime));
@@ -148,7 +148,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     this.partWindows.sync();
   }
 
-  // 開いたままのメニュー・ウィンドウを畳む。マップビューを離れるときに呼ぶ。
+  // 開いたままのメニュー・ウィンドウを畳む。
   close(): void {
     this.menu.close();
     for (const key of [...this.windows.keys()]) this.closeWindow(key);

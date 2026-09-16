@@ -1,6 +1,5 @@
 // マップの天体・ラグランジュ点のラベルを、集合として間引きながら HUD マーカーへ出す。
-// 画面上で近すぎるものをどれだけ残すかという、集合でしか決まらない判断を持つ。名前と
-// アイコンは別々の混雑半径で間引くので、名前だけが消えてアイコンが残る距離帯ができる。
+// 画面上で近すぎるものをどれだけ残すかという、集合でしか決まらない判断を持つ。
 import { Vec3, v3, sub, len } from '../../math/vec3';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { lagrangePointsOf, secondaryFrameOf } from '../../physics/lagrange';
@@ -89,7 +88,7 @@ export class CelestialMarkers {
 
   // このフレームの選択候補に出す天体とラグランジュ点マーカー。
   private readonly bodyPickableItems: ObjectPickable[] = [];
-  // そのうち、このフレームに記号を出す対象の id。ラベルを組む対象はここから引く。
+  // そのうち、このフレームに記号を出す対象の id。
   private readonly labelledIds = new Set<string>();
   private readonly frameScratch = new Map<string, LabelProjection>();
   private readonly projectedForLabel: ProjectedLabel[] = [];
@@ -181,7 +180,7 @@ export class CelestialMarkers {
     const hiddenLabels = this.labelCrowding.compute(this.projectedForLabel);
     const hiddenIcons = this.iconCrowding.compute(this.projectedForIcon);
 
-    // 判定に従って1件ずつ宣言へ組み、集合から外れたものはこのフレームの列から落ちる。
+    // 判定に従って1件ずつ宣言へ組む。
     this.activeCelestialLabels.length = 0;
     this.declarations.length = 0;
     for (const label of this.shownLabels) {
@@ -196,6 +195,7 @@ export class CelestialMarkers {
     const shown: CelestialLabel[] = [];
     for (const label of this.labels) {
       if (!this.labelledIds.has(label.item.id)) continue;
+      // 座標を失ったフレーム(回転系が組めないラグランジュ点など)は、この集合から落ちる。
       const pos = label.item.posAt(displayTime);
       if (pos === null) continue;
       const visibility = visibilityPolicy.body(label.item.id);

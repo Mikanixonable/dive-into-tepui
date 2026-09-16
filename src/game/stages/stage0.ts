@@ -7,14 +7,13 @@ import type { ScoreCounter } from './stage-utils/score-counter';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { Stage0SaveData, StageSaveData } from '../save/save-data';
 
-// 制限時間 [実秒]。選択画面の説明(stage0.ts の selectSub)とブリーフィングはこの値から
-// 生成されるので、変更すればどちらも自動的に追随する。
+// 制限時間 [実秒]。
 const STAGE0_TIME_LIMIT = 120;
 const STAGE0_LOGISTICS_INITIAL_AMMO = 4; // 開始時に浮かべておく補給の数
 const STAGE0_LOGISTICS_MIN_DIST = 75; // 補給の配置距離 [m](自機から)
 const STAGE0_LOGISTICS_MAX_DIST = 225;
 
-// 制限時間を分単位で表す(選択画面の説明文とブリーフィングの両方から参照する)
+// 制限時間を分単位で表す。
 const stage0TimeLimitMinutes = (): number => Math.floor(STAGE0_TIME_LIMIT / 60);
 
 export class Stage0 extends Stage {
@@ -29,8 +28,7 @@ export class Stage0 extends Stage {
 
   private readonly timer: ScoreAttackTimer;
 
-  // saved の型を StageSaveData に留めるのは stage.ts の StageClass 一覧に
-  // 収める都合(具象ごとの拡張型では構築シグネチャが揃わない)。
+  // 保存があれば残り時間を引き継いでタイマーを組む。
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     this.timer = new ScoreAttackTimer((saved as Stage0SaveData | undefined)?.timeLeft ?? STAGE0_TIME_LIMIT);
