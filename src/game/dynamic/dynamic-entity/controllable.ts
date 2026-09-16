@@ -7,6 +7,7 @@ import type { FireControl } from '../../player/fire-control';
 import type { AttachedBoosters } from '../../player/attached-boosters';
 import type { AltitudeAlarm } from '../../player/altitude-alarm';
 import type { PilotCommand, PilotControls, ThrustDirection } from './pilot-controls';
+import type { RunEventSink } from '../../run-events';
 import type { StageOutcome } from '../../stages/stage-outcome';
 import type { EntityRegistry } from '../entity-registry';
 import type { CombatTarget } from './combat-target';
@@ -20,7 +21,7 @@ export interface ThrottlePort {
   updateThrustState(controls: PilotControls, att: Attitude, simDt: number, ship: FuelConsumer): Vec3 | null;
   updateTorque(
     att: Attitude, r: Vec3, v: Vec3, controls: PilotControls, fineAttitude: boolean,
-    dt: number, simDt: number, ship: FuelConsumer, onProgradeHoldReleased: () => void,
+    dt: number, simDt: number, ship: FuelConsumer, events: RunEventSink | null,
   ): Vec3;
   updateThrustLatches(controls: PilotControls): void;
   toggleThrustLatch(direction: ThrustDirection): void;

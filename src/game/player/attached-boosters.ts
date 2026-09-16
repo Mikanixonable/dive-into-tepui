@@ -1,11 +1,12 @@
-// 接続中ブースターへの操作と、分離時の実体生成・演出を管理する。
+// 接続中ブースターの追加・点火・分離と、分離で生まれる実体と出来事を組み立てる。
 import type * as THREE from 'three/webgpu';
 import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import { randSym } from '../../math/random';
 import type { Attitude } from '../../physics/attitude';
 import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import { kinematicState } from '../../physics/kinematic-state';
-import { add, addScaled, scale, v3, Vec3 } from '../../math/vec3';
+import type { Vec3 } from '../../math/vec3';
+import { add, addScaled, scale, v3 } from '../../math/vec3';
 import type { RunEventSink } from '../run-events';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import { DetachedBooster } from '../dynamic/dynamic-entity/detached-booster';

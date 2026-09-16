@@ -1,6 +1,7 @@
 // 戦闘ターゲットの選定と、戦闘対象・弾薬・燃料の画面マーカーの同期。ターゲットに紐づく
 // 表示(方位マーカー・見越し点・的通過マーク)もここが受け持つ。
-import { add, addScaled, dot, len, lenSq, norm, scale, sub, Vec3 } from '../math/vec3';
+import type { Vec3 } from '../math/vec3';
+import { add, addScaled, dot, len, lenSq, norm, scale, sub } from '../math/vec3';
 import { Enemy } from './dynamic/dynamic-entity/enemy';
 import { isBullet } from './dynamic/dynamic-entity/bullet';
 import { bulletReactionOf } from './dynamic/dynamic-entity/bullet-reaction';
@@ -87,10 +88,11 @@ export class Targeter {
     this.leadMarkers.dispose();
   }
 
-  // 航法ターゲットを生存中の敵・自艦・基地として解決したもの。戦闘対象になれない対象
-  // (天体・ラグランジュ点)や撃破済みなら null。
+  // [T] の要求を受けてから、カメラ更新後の選定で消費するまでのあいだ立つ。
   private targetSelectRequested = false;
 
+  // 航法ターゲットを生存中の敵・自艦・基地として解決したもの。戦闘対象になれない対象
+  // (天体・ラグランジュ点)や撃破済みなら null。
   public get aliveTarget(): CombatTarget | null {
     return this.navTarget.resolveCombatTarget(this.roster);
   }
@@ -140,13 +142,13 @@ export class Targeter {
   public updateBoardMarks(
     events: readonly RunEvent[], viewer: OrbitingObject | null, displayTime: number,
   ): void {
-    // 溢れたぶんは古いほうから落とす — 新しい通過ほど照準の目安として価値がある。
     for (const event of events) {
       if (event.seq <= this.lastBoardSeq) continue;
       this.lastBoardSeq = event.seq;
       const { body } = event;
       if (body.kind !== 'targetBoardPassed') continue;
       this.boardMarks.push({ off: body.offset, simTime: body.simTime });
+      // 溢れたぶんは古いほうから落とす — 新しい通過ほど照準の目安として価値がある。
       if (this.boardMarks.length > MAX_BOARD_MARKS) this.boardMarks.shift();
     }
     if (viewer === null || this.aliveTarget === null) {

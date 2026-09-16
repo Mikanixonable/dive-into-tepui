@@ -1,7 +1,9 @@
 // 操作対象の並進スロットル・姿勢制御(RCS)・プログレードホールド。
-import { Attitude, attitudeAlignTorque } from '../../physics/attitude';
+import type { Attitude } from '../../physics/attitude';
+import { attitudeAlignTorque } from '../../physics/attitude';
 import { qRotate } from '../../math/quat';
-import { Vec3, add, norm, scale, v3 } from '../../math/vec3';
+import type { Vec3 } from '../../math/vec3';
+import { add, norm, scale, v3 } from '../../math/vec3';
 import {
   OPPOSITE_THRUST_DIRECTION, THRUST_DIRECTIONS, thrustKillSwitchActive,
 } from '../dynamic/dynamic-entity/pilot-controls';
@@ -15,7 +17,7 @@ import type { FuelConsumer } from '../dynamic/dynamic-entity/controllable';
 export const THROTTLE_LEVELS = [5.0, 20.0, 100.0, 400.0];
 export const THROTTLE_LABELS = ['弱', '中', '強', '最強'] as const;
 
-export const MAX_ANG_ACCEL = 1.4; // 姿勢制御の角加速度 [rad/s^2]
+const MAX_ANG_ACCEL = 1.4; // 操舵トルクを持たない個体に使う角加速度 [rad/s^2]
 const THROTTLE_DEFAULT_IDX = 1;
 
 const RCS_DAMP_RATE = 3.5; // RCS 回転制動の減衰係数 [1/s]
@@ -42,6 +44,7 @@ export class Throttle {
   // ラッチ中の並進方向。押しっぱなしと同じに扱う。
   private readonly latchedThrust = new Set<ThrustDirection>();
 
+  // saved を渡すとその段・制動・ホールドを復元する。壊れた値は既定へ落とす。
   public constructor(saved?: ThrottleSaveData) {
     if (saved) {
       this.throttleIdx = Number.isInteger(saved.throttleIdx)
@@ -88,6 +91,7 @@ export class Throttle {
     this.thrustAccelVec = v3();
   }
 
+  // 段・制動・ホールドをスナップショットへ落とす。
   public serialize(): ThrottleSaveData {
     return { throttleIdx: this.throttleIdx, rcsDamp: this.rcsDamp, progradeHold: this.progradeHold };
   }
@@ -162,6 +166,7 @@ export class Throttle {
   // r/v は軌道の位置・速度で、プログレードホールドの目標姿勢(進行方向)を組むのに使う。
   // 時計を2つ取る: 出力ランプは「何秒握り続けたか」という操作感の量なので実時間 dt、
   // 燃料消費はトルクが積分されるぶんに比例する物理量なのでシミュレーション時間 simDt。
+  // events が null なら、手動操作でホールドが外れたことを記録しない。
   public updateTorque(
     att: Attitude,
     r: Vec3,
@@ -171,7 +176,7 @@ export class Throttle {
     dt: number,
     simDt: number,
     ship: FuelConsumer,
-    onProgradeHoldReleased: () => void,
+    events: RunEventSink | null,
   ): Vec3 {
     const inertia = att.inertia;
     const rotation = controls.rotation;
@@ -184,7 +189,7 @@ export class Throttle {
     this.rotationHoldTime = isRotating ? this.rotationHoldTime + dt : 0;
     if (this.progradeHold && isRotating) {
       this.progradeHold = false;
-      onProgradeHoldReleased();
+      events?.record({ kind: 'progradeHoldReleasedByInput' });
     }
 
     // 保持時間に応じてRCS出力を増強しつつ手動トルクを組む

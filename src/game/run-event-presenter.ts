@@ -1,5 +1,5 @@
-// 直近の進行が記録した出来事を読み、そのフレームに鳴らす音と出す通知の宣言を作る。
-// 文面とキーのラベルはここで組む。これは表示の導出で、段 7 で presentation/ へ移る。
+// 直近の進行が記録した出来事を読み、そのフレームに鳴らす音と出す通知へ写す表示の導出。
+// 文面とキーのラベルはここで組む。
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { MAX_PHYS_SIM_SPEED } from './dynamic/sim-speed-manager';
 import { THROTTLE_LABELS, THROTTLE_LEVELS } from './player/throttle';
