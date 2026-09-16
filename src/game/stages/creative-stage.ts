@@ -1,7 +1,7 @@
 // クリエイティブモード: 勝敗判定を発生させず、物体配置と軌道計画を自由に試すためのステージ。
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { ManualSpawn } from '../creative/manual-spawn';
-import { ObjectPlacement, type PlacedObject } from '../creative/object-placement';
+import { MAX_PLACED_SHIPS, ObjectPlacement } from '../creative/object-placement';
 import { StageControlsPanel, type EnemySpawnShape } from '../creative/stage-controls-panel';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { proteinDisplayControllerOf } from '../dynamic/dynamic-entity/enemy-display-capabilities';
@@ -9,10 +9,12 @@ import { hudRail } from '../hud/hud-root';
 import { isPlayer } from '../player/player';
 import { DEFAULT_PROTEIN_DISPLAY, type ProteinDisplaySettings } from '../../render/protein/protein-display';
 import { WaveAttack } from './stage-utils/wave-attack';
+import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
+import { creativeStageCommands, type CreativeStageCommands } from './creative-stage-commands';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
@@ -36,6 +38,8 @@ export class CreativeStage extends Stage {
   private readonly waveAttack: WaveAttack;
   // 敵の波状攻撃を発生させるかどうか(既定 OFF)。
   private waveAttackEnabled: boolean;
+  // パネルの操作を積む先。
+  private readonly commands: CreativeStageCommands;
 
   // ステージ開始時に出すブリーフィングの本文(HTML)。
   protected briefingHtml(): string {
@@ -45,6 +49,7 @@ export class CreativeStage extends Stage {
   // 配置・手動スポーンとステージ操作パネルを組み、保存データがあればそこから状態を戻す。
   public constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
+    this.commands = creativeStageCommands(this._commandQueue, this);
     const savedCreative = saved as CreativeStageSaveData | undefined;
 
     // 復元済みのタンパク質の敵がいれば、その表示設定を以後のスポーンにも引き継ぐ。
@@ -63,7 +68,7 @@ export class CreativeStage extends Stage {
       this._hud, this._scene, this._dynamicSystem, this._dynamicSystem.idAllocators,
       this._celestialSystem, this._worldSfx, this._fx,
     );
-    this.objectPlacement.onPlace = (placed) => this.addPlacedObject(placed);
+    this.objectPlacement.onPlace = (name, entityKind, state) => this.commands.placeObject(name, entityKind, state);
     this.authoring = this.objectPlacement;
 
     this.waveAttack = new WaveAttack(
@@ -75,32 +80,50 @@ export class CreativeStage extends Stage {
       this.logistics.resupplyEnabled, this.logistics.rcsFuelResupplyEnabled, this.waveAttackEnabled,
       this.manualSpawn.spawnDistance, this.manualSpawn.display,
     );
-    this.stageControlsPanel.onToggleResupply = (on) => { this.logistics.resupplyEnabled = on; };
-    this.stageControlsPanel.onToggleFuelResupply = (on) => { this.logistics.rcsFuelResupplyEnabled = on; };
-    this.stageControlsPanel.onToggleWaveAttack = (on) => { this.waveAttackEnabled = on; };
-    this.stageControlsPanel.onAddMagazine = () => this.addMagazineToShip();
-    this.stageControlsPanel.onRefillFuel = () => this.refillShipRcsFuel();
-    this.stageControlsPanel.onSpawnDistanceChange = (distance) => { this.manualSpawn.spawnDistance = distance; };
-    this.stageControlsPanel.onSpawnEnemy = (shape, colorValue) => this.spawnManualEnemy(shape, colorValue);
-    this.stageControlsPanel.onSpawnFormation = () => this.spawnProteinFormation();
-    this.stageControlsPanel.onProteinDisplayChange = (display) => {
-      this.manualSpawn.display = display;
-      this.applyProteinDisplay(display);
-    };
+    this.stageControlsPanel.onToggleResupply = (on) => this.commands.setResupplyEnabled(on);
+    this.stageControlsPanel.onToggleFuelResupply = (on) => this.commands.setFuelResupplyEnabled(on);
+    this.stageControlsPanel.onToggleWaveAttack = (on) => this.commands.setWaveAttackEnabled(on);
+    this.stageControlsPanel.onAddMagazine = () => this.commands.addMagazineToShip();
+    this.stageControlsPanel.onRefillFuel = () => this.commands.refillShipRcsFuel();
+    this.stageControlsPanel.onSpawnDistanceChange = (distance) => this.commands.setSpawnDistance(distance);
+    this.stageControlsPanel.onSpawnEnemy = (shape, colorValue) => this.commands.spawnManualEnemy(shape, colorValue);
+    this.stageControlsPanel.onSpawnFormation = () => this.commands.spawnProteinFormation();
+    this.stageControlsPanel.onProteinDisplayChange = (display) => this.commands.setProteinDisplay(display);
     hudRail(this._hud.mapRoot, 'right').appendChild(this.stageControlsPanel.element);
 
     this.begin();
   }
 
-  // 出ているタンパク質の敵すべてへ、選ばれた表示設定を反映する。
-  private applyProteinDisplay(display: ProteinDisplaySettings): void {
+  // 弾薬の自動投入の可否を切り替える。
+  public setResupplyEnabled(on: boolean): void {
+    this.logistics.resupplyEnabled = on;
+  }
+
+  // RCS燃料の自動投入の可否を切り替える。
+  public setFuelResupplyEnabled(on: boolean): void {
+    this.logistics.rcsFuelResupplyEnabled = on;
+  }
+
+  // 敵の波状攻撃の可否を切り替える。
+  public setWaveAttackEnabled(on: boolean): void {
+    this.waveAttackEnabled = on;
+  }
+
+  // 手動スポーンが使う距離 [m] を差し替える。
+  public setSpawnDistance(distanceM: number): void {
+    this.manualSpawn.spawnDistance = distanceM;
+  }
+
+  // 以後のスポーンと、出ているタンパク質の敵すべてへ、選ばれた表示設定を渡す。
+  public setProteinDisplay(display: ProteinDisplaySettings): void {
+    this.manualSpawn.display = display;
     for (const entity of this._dynamicSystem.all()) {
       if (isEnemy(entity)) proteinDisplayControllerOf(entity)?.setDisplay(display);
     }
   }
 
   // 操作艦の弾薬チェーンへマガジンを1つ追加する。操作艦がいなければトーストで知らせる。
-  private addMagazineToShip(): void {
+  public addMagazineToShip(): void {
     const player = this.ship;
     if (player === null || !player.motion.alive) {
       this._hud.hint('操作艦がいないためマガジンを追加できません');
@@ -110,7 +133,7 @@ export class CreativeStage extends Stage {
   }
 
   // 操作艦の RCS 燃料を満タンにする。操作艦がいなければトーストで知らせる。
-  private refillShipRcsFuel(): void {
+  public refillShipRcsFuel(): void {
     const player = this.ship;
     if (player === null || !player.motion.alive) {
       this._hud.hint('操作艦がいないためRCS燃料を補充できません');
@@ -120,7 +143,7 @@ export class CreativeStage extends Stage {
   }
 
   // shape で選んだ形の敵を1体、自機の前方へ出す。操作艦がいなければトーストで知らせる。
-  private spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void {
+  public spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void {
     const player = this.ship;
     if (player === null || !player.motion.alive) {
       this._hud.hint('操作艦がいないため敵をスポーンできません');
@@ -131,7 +154,7 @@ export class CreativeStage extends Stage {
   }
 
   // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機前方に一括スポーンする。
-  private spawnProteinFormation(): void {
+  public spawnProteinFormation(): void {
     const player = this.ship;
     if (player === null || !player.motion.alive) {
       this._hud.hint('操作艦がいないため敵をスポーンできません');
@@ -140,8 +163,12 @@ export class CreativeStage extends Stage {
     for (const { gate, build } of this.manualSpawn.proteinFormation(player)) this.spawnEnemyWhenReady(gate, build);
   }
 
-  // 置くと決まった物体を顔ぶれへ入れ、配置したことをトーストで知らせる。
-  private addPlacedObject(placed: PlacedObject): void {
+  // 検証を通った配置の指定から物体を作り、顔ぶれへ入れて、配置したことをトーストで知らせる。
+  // 自機の隻数が上限に達していれば、作らずに返る(SPEC GAME.md 9.1)。
+  public placeObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): void {
+    if (entityKind === 'player'
+      && this._dynamicSystem.all().filter(isPlayer).length >= MAX_PLACED_SHIPS) return;
+    const placed = this.objectPlacement.createObject(name, entityKind, state);
     if (placed.kind === 'player') {
       const ship = this.addPlayer(placed.placement);
       this._hud.hint(`${ship.name} を配置`);

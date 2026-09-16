@@ -20,6 +20,7 @@ import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
 import type { StageSimulationEvents } from './stage-simulation-events';
 import type { ControlSelection } from '../control-selection';
+import type { CommandQueue } from '../command-queue';
 import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
 import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
@@ -64,6 +65,7 @@ export type StageDeps = [
   fx: FlashEffects,
   celestialSystem: CelestialSystem,
   controlSelection: ControlSelection,
+  commandQueue: CommandQueue,
 ];
 
 // ステージクラスの静的側。起動時の設定はここから読む。
@@ -157,6 +159,8 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   protected readonly _dynamicSystem: EntityRegistry & EntityRoster;
   protected readonly _celestialSystem: CelestialSystem;
   protected readonly _controlSelection: ControlSelection;
+  // モデル層の外から届いた書き換えを積む先。ステージ固有の命令の口はここへ積む。
+  protected readonly _commandQueue: CommandQueue;
 
   private _phase: GamePhase;
   public get phase(): GamePhase { return this._phase; }
@@ -177,7 +181,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, worldSfx, uiSfx, scene, dynamicSystem, fx, celestialSystem, controlSelection] = deps;
+    const [hud, worldSfx, uiSfx, scene, dynamicSystem, fx, celestialSystem, controlSelection, commandQueue] = deps;
     this._hud = hud;
     this._worldSfx = worldSfx;
     this._uiSfx = uiSfx;
@@ -186,6 +190,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this._dynamicSystem = dynamicSystem;
     this._celestialSystem = celestialSystem;
     this._controlSelection = controlSelection;
+    this._commandQueue = commandQueue;
     // 進行状態は saved から復元し、無ければ新規開始の既定値で始める。
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
     this._phase = saved?.phase ?? 'playing';
