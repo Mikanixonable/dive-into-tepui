@@ -24,8 +24,10 @@ export interface ViewFrame {
   onEnter(): void;
   // このビューから出るときの後始末。
   onLeave(): void;
-  // ビュー固有のキー入力の配分。ポーズ中・決着後も効くべき操作を持つ。
-  handleInput(input: Input, dt: number, simTime: number): void;
+  // router からビュー固有の単発入力を受け取る。
+  handleCommand(commandId: string, simTime: number): void;
+  // 押下中の連続操作をこのビューへ配る。
+  updateActions(input: Input, dt: number): void;
   // ポーズ・入力ゲートの判定後に呼ばれる。ポインタ入力の配分。
   handlePointer(simTime: number, viewport: Viewport): void;
   // update フェーズ: カメラ更新の後。選択候補と可視性ポリシーの確定。

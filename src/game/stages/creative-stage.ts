@@ -4,7 +4,7 @@ import { ManualSpawn } from '../creative/manual-spawn';
 import { ObjectPlacement, type PlacedObject } from '../creative/object-placement';
 import { StageControlsPanel, type EnemySpawnShape } from '../creative/stage-controls-panel';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
-import { ProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
+import { proteinDisplayControllerOf } from '../dynamic/dynamic-entity/enemy-display-capabilities';
 import { hudRail } from '../hud/hud-root';
 import { isPlayer } from '../player/player';
 import { DEFAULT_PROTEIN_DISPLAY, type ProteinDisplaySettings } from '../../render/protein/protein-display';
@@ -14,10 +14,12 @@ import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
+import { FREE_PLAY_STAGE_RULES } from './stage-rules';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 
 export class CreativeStage extends Stage {
   public static readonly id = 'creative' as const;
+  public static readonly stageRules = FREE_PLAY_STAGE_RULES;
   public static readonly epoch = STORY_EPOCH;
   // 開始日時の指定画面を挟む(SPEC GAME.md 9.0)。epoch はその欄の既定値になる。
   public static readonly picksStartEpoch = true;
@@ -46,11 +48,15 @@ export class CreativeStage extends Stage {
     const savedCreative = saved as CreativeStageSaveData | undefined;
 
     // 復元済みのタンパク質の敵がいれば、その表示設定を以後のスポーンにも引き継ぐ。
-    const restoredProtein = this._dynamicSystem.all().find((entity) => entity instanceof ProteinEnemy);
+    const restoredProtein = this._dynamicSystem.all().find((entity) => (
+      isEnemy(entity) && proteinDisplayControllerOf(entity) !== null
+    ));
+    const restoredDisplay = restoredProtein === undefined
+      ? DEFAULT_PROTEIN_DISPLAY
+      : proteinDisplayControllerOf(restoredProtein)?.display ?? DEFAULT_PROTEIN_DISPLAY;
     this.manualSpawn = new ManualSpawn(
       this._worldSfx, this._fx, this._scene, this._celestialSystem.celestialMotions,
-      this._dynamicSystem, this._dynamicSystem.idAllocators,
-      restoredProtein?.display ?? DEFAULT_PROTEIN_DISPLAY,
+      this._dynamicSystem, this._dynamicSystem.idAllocators, restoredDisplay,
     );
 
     this.objectPlacement = new ObjectPlacement(
@@ -89,7 +95,7 @@ export class CreativeStage extends Stage {
   // 出ているタンパク質の敵すべてへ、選ばれた表示設定を反映する。
   private applyProteinDisplay(display: ProteinDisplaySettings): void {
     for (const entity of this._dynamicSystem.all()) {
-      if (entity instanceof ProteinEnemy) entity.setDisplay(display);
+      if (isEnemy(entity)) proteinDisplayControllerOf(entity)?.setDisplay(display);
     }
   }
 

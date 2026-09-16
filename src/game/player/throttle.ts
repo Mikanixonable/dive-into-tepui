@@ -6,7 +6,7 @@ import { Input } from '../../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../../input/key-mapping';
 import type { Notifier } from '../../hud/notifier';
 import type { ThrottleSaveData } from '../save/save-data';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { FuelConsumer } from '../dynamic/dynamic-entity/controllable';
 
 // 並進推力(WSADQE の全 6 方向で共通)の出力 4 段階 [m/s^2]。[1]/[2]/[3]/[4] キーで切替、
 // 方向キーが押されている間だけ選択中の段の加速度がその方向へ出る。4段目は3段目の4倍。
@@ -60,67 +60,70 @@ function isThrustKillSwitchActive(input: Input): boolean {
 }
 
 export class Throttle {
-  rcsDamp = true;
-  throttleIdx = THROTTLE_DEFAULT_IDX;
-  progradeHold = true;
-  thrustAccelVec: Vec3 = v3();
+  public rcsDamp = true;
+  public throttleIdx = THROTTLE_DEFAULT_IDX;
+  public progradeHold = true;
+  public thrustAccelVec: Vec3 = v3();
 
   private rotationHoldTime = 0;
   // ラッチ中の並進キー(code 単位)。連打で追加/削除する。
   private readonly latchedThrustKeys = new Set<string>();
   private readonly lastThrustPressTime: Partial<Record<string, number>> = {};
 
-  constructor(private readonly _notifier: Notifier, saved?: ThrottleSaveData) {
+  public constructor(private readonly _notifier: Notifier, saved?: ThrottleSaveData) {
     if (saved) {
-      this.throttleIdx = saved.throttleIdx;
-      this.rcsDamp = saved.rcsDamp ?? true;
-      this.progradeHold = saved.progradeHold ?? true;
+      this.throttleIdx = Number.isInteger(saved.throttleIdx)
+        && saved.throttleIdx >= 0 && saved.throttleIdx < THROTTLE_LEVELS.length
+        ? saved.throttleIdx : THROTTLE_DEFAULT_IDX;
+      this.rcsDamp = typeof saved.rcsDamp === 'boolean' ? saved.rcsDamp : true;
+      this.progradeHold = typeof saved.progradeHold === 'boolean' ? saved.progradeHold : true;
     }
   }
 
   // RCS 回転制動の ON/OFF を切り替える。
-  toggleRcsDamp(): void {
+  public toggleRcsDamp(): void {
     this.rcsDamp = !this.rcsDamp;
     this._notifier.hint(`RCS 回転制動: ${this.rcsDamp ? 'ON' : 'OFF'}`);
   }
 
   // プログレードホールドを ON にする。
-  enableProgradeReset(): void {
+  public enableProgradeReset(): void {
     this.progradeHold = true;
     this._notifier.hint('プログレード姿勢リセット(機首を進行方向へ)');
   }
 
   // プログレードホールドの ON/OFF を切り替える。
-  toggleProgradeHold(): void {
+  public toggleProgradeHold(): void {
     this.progradeHold = !this.progradeHold;
     this._notifier.hint(`進行方向ホールド: ${this.progradeHold ? 'ON (機首をプログレードへ保持)' : 'OFF'}`);
   }
 
   // 並進出力のプリセットを idx 段階目へ切り替える。
-  setThrottlePreset(idx: number): void {
+  public setThrottlePreset(idx: number): void {
+    if (!Number.isInteger(idx) || idx < 0 || idx >= THROTTLE_LEVELS.length) return;
     this.throttleIdx = idx;
     this._notifier.hint(`並進出力: ${THROTTLE_LABELS[idx]!} (${THROTTLE_LEVELS[idx]!.toFixed(1)} m/s²)`);
   }
 
   // スラスト方向の表示用状態と噴射ラッチを初期化する。
-  clearTransientState(): void {
+  public clearTransientState(): void {
     this.stopThrust();
     this.latchedThrustKeys.clear();
     for (const key of Object.keys(this.lastThrustPressTime)) delete this.lastThrustPressTime[key];
   }
 
   // 推力ゼロの状態へ戻す。噴射が実際に無い、または許可されないときに通す。
-  stopThrust(): void {
+  public stopThrust(): void {
     this.thrustAccelVec = v3();
   }
 
-  serialize(): ThrottleSaveData {
+  public serialize(): ThrottleSaveData {
     return { throttleIdx: this.throttleIdx, rcsDamp: this.rcsDamp, progradeHold: this.progradeHold };
   }
 
   // 入力から機体座標系の推力加速度を組み立てて返す。入力が無ければ null。
   // ベルト物理が使う推力加速度の表示用状態も併せて更新する。
-  updateThrustState(input: Input, att: Attitude, simDt: number, ship: Controllable): Vec3 | null {
+  public updateThrustState(input: Input, att: Attitude, simDt: number, ship: FuelConsumer): Vec3 | null {
     const thrust = this.buildThrust(input, att.q, ship, simDt);
     if (!thrust) {
       this.stopThrust();
@@ -130,32 +133,32 @@ export class Throttle {
     return thrust;
   }
 
-  // 並進キーを短時間内に連打するとラッチ集合へ追加/削除する(押しっぱなし相当の維持/解除)。
   // 反対方向キーを物理的に押している間は、そのラッチを外し続ける(片方をラッチしたまま
   // 逆方向を押しっぱなしにしても axX/Y/Z の相殺で終わらせず、逆方向を離した瞬間に
-  // ラッチが復活するのを防ぐ)。連打の間隔は実時間で測るので、呼ばれないフレームを
-  // 挟んでも判定が狂わない。緊急停止(3軸いずれかの対キー同時押し)中は全ラッチを外し、
-  // 連打判定そのものを行わない。
-  updateThrustLatches(input: Input): void {
+  // ラッチが復活するのを防ぐ)。緊急停止(3軸いずれかの対キー同時押し)中は全ラッチを外す。
+  public updateThrustLatches(input: Input): void {
     if (isThrustKillSwitchActive(input)) {
       this.latchedThrustKeys.clear();
       for (const key of Object.keys(this.lastThrustPressTime)) delete this.lastThrustPressTime[key];
       return;
     }
-    const now = performance.now() / 1000;
     for (const key of THRUST_KEYS) {
       const opposite = OPPOSITE_THRUST_KEY.get(key.code);
       if (opposite && input.down(key)) this.latchedThrustKeys.delete(opposite.code);
-
-      // 押しっぱなしの keydown リピートを2打目と誤検出しないよう、エッジ(takeKey)だけを見る。
-      if (!input.takeKey(key)) continue;
-      const last = this.lastThrustPressTime[key.code];
-      this.lastThrustPressTime[key.code] = now;
-      if (last === undefined || now - last > THRUST_LATCH_DOUBLE_TAP_SEC) continue;
-      if (this.latchedThrustKeys.has(key.code)) this.latchedThrustKeys.delete(key.code);
-      else this.latchedThrustKeys.add(key.code);
-      delete this.lastThrustPressTime[key.code];
     }
+  }
+
+  // router が配った並進キーの押下エッジを受け、短時間の連打をラッチ状態へ反映する。
+  public handleThrustPress(code: string): void {
+    const key = THRUST_KEYS.find((candidate) => candidate.code === code);
+    if (!key) return;
+    const now = performance.now() / 1000;
+    const last = this.lastThrustPressTime[key.code];
+    this.lastThrustPressTime[key.code] = now;
+    if (last === undefined || now - last > THRUST_LATCH_DOUBLE_TAP_SEC) return;
+    if (this.latchedThrustKeys.has(key.code)) this.latchedThrustKeys.delete(key.code);
+    else this.latchedThrustKeys.add(key.code);
+    delete this.lastThrustPressTime[key.code];
   }
 
   // 物理的な押下、またはラッチ中であれば true。
@@ -164,12 +167,12 @@ export class Throttle {
   }
 
   // key に対応する並進キーがラッチ中かどうかを返す(タッチパッドの点灯表示用)。
-  isThrustLatched(key: KeyBinding): boolean {
+  public isThrustLatched(key: KeyBinding): boolean {
     return this.latchedThrustKeys.has(key.code);
   }
 
   // 6方向の並進入力から機体座標系の推力加速度ベクトルを求める。入力が無ければ null。
-  private buildThrust(input: Input, q: Attitude['q'], ship: Controllable, simDt: number): Vec3 | null {
+  private buildThrust(input: Input, q: Attitude['q'], ship: FuelConsumer, simDt: number): Vec3 | null {
     if (isThrustKillSwitchActive(input)) return null;
     const axX = (this.isThrustHeld(input, K.thrustLeft) ? 1 : 0) + (this.isThrustHeld(input, K.thrustRight) ? -1 : 0);
     const axY = (this.isThrustHeld(input, K.thrustUp) ? 1 : 0) + (this.isThrustHeld(input, K.thrustDown) ? -1 : 0);
@@ -194,7 +197,7 @@ export class Throttle {
   }
 
   // 手動回転キー(ピッチ/ヨー/ロール)がいずれか押されているか。
-  hasManualRotationInput(input: Input): boolean {
+  public hasManualRotationInput(input: Input): boolean {
     return input.down(K.pitchDown) || input.down(K.pitchUp)
       || input.down(K.yawLeft) || input.down(K.yawRight)
       || input.down(K.rollRight) || input.down(K.rollLeft);
@@ -204,7 +207,7 @@ export class Throttle {
   // r/v は軌道の位置・速度で、プログレードホールドの目標姿勢(進行方向)を組むのに使う。
   // 時計を2つ取る: 出力ランプは「キーを何秒握ったか」という操作感の量なので実時間 dt、
   // 燃料消費はトルクが積分されるぶんに比例する物理量なのでシミュレーション時間 simDt。
-  updateTorque(
+  public updateTorque(
     att: Attitude,
     r: Vec3,
     v: Vec3,
@@ -212,7 +215,7 @@ export class Throttle {
     fineAttitude: boolean,
     dt: number,
     simDt: number,
-    ship: Controllable,
+    ship: FuelConsumer,
     onProgradeHoldReleased: () => void,
   ): Vec3 {
     const inertia = att.inertia;
