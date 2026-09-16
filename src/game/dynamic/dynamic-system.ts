@@ -23,7 +23,7 @@ import { NanWatchdog } from './nan-watchdog';
 import { FrameSections, SECTION } from '../frame-sections';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { StageSimulationEvents } from '../stages/stage-simulation-events';
-import type { Input } from '../../input/input';
+import type { PilotControls } from './dynamic-entity/pilot-controls';
 import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { StageRules } from '../stages/stage-rules';
@@ -246,7 +246,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 顔ぶれを1フレーム進める。自律の推力、操作・敵の指令を決めてから積分する。各段の境界で
   // 操作対象の非有限値を検査し、どの境界で落ちたかで汚染した段を特定する。
   public update(
-    active: Controllable | null, input: Input, operable: boolean,
+    active: Controllable | null, controls: PilotControls, operable: boolean,
     dt: number, simDt: number, canEngage: boolean, activeStage: StageOutcome & StageSimulationEvents,
     stageRules: StageRules, beforeControllables: () => void = () => {},
   ): void {
@@ -256,7 +256,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     this.sections.enter(SECTION.command);
     this.updateThrusts(simDt);
     beforeControllables();
-    this.updateControllables(active, input, operable, dt, simDt, activeStage, stageRules);
+    this.updateControllables(active, controls, operable, dt, simDt, activeStage, stageRules);
     this.behaveAll(active, operable);
     this.sections.exit(SECTION.command);
     this.nanWatchdog.checkControlled(
@@ -283,14 +283,14 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
 
   // 生存中の操作されうる全個体へ updateControls を1度ずつ通す。
   private updateControllables(
-    active: Controllable | null, input: Input, operable: boolean,
+    active: Controllable | null, controls: PilotControls, operable: boolean,
     dt: number, simDt: number, activeStage: StageOutcome, stageRules: StageRules,
   ): void {
     for (const controllable of this.controllables) {
       if (!controllable.motion.alive) continue;
-      // 「操作対象でない」と「操作できないワープ倍率」は同じ状態として input なしで進める。
+      // 「操作対象でない」と「操作できないワープ倍率」は同じ状態として操作量なしで進める。
       controllable.updateControls({
-        input: controllable === active && operable ? input : null,
+        controls: controllable === active && operable ? controls : null,
         dt,
         simDt,
         registry: this,
