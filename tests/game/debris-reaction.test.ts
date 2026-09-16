@@ -4,7 +4,6 @@ import { kinematicState, type KinematicState } from '../../src/physics/kinematic
 import { DebrisReaction } from '../../src/game/dynamic/dynamic-entity/debris-reaction';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../../src/game/dynamic/dynamic-simulation-participant';
-import type { FlashEffects } from '../../src/game/vfx/flash-effects';
 import type { Contact } from '../../src/game/dynamic/dynamic-entity/contact';
 import type { RunEventBody } from '../../src/game/run-events';
 import { test } from '../harness';
@@ -47,9 +46,8 @@ function motion(stateValue: KinematicState<'eci'>, behavior: object): DynamicMot
 export function register(): void {
   test('debris-reaction: 薬莢同士の接触音は両側通知から1回だけ鳴る', () => {
     const services = new TestServices();
-    const effects = {} as FlashEffects;
-    const firstReaction = new DebrisReaction('casing', 0, effects);
-    const secondReaction = new DebrisReaction('casing', 0, effects);
+    const firstReaction = new DebrisReaction('casing', 0);
+    const secondReaction = new DebrisReaction('casing', 0);
     const first = motion(state(0), firstReaction);
     const second = motion(state(1), secondReaction);
 
@@ -61,7 +59,7 @@ export function register(): void {
 
   test('debris-reaction: 薬莢と自機の接触音は鳴り続ける', () => {
     const services = new TestServices();
-    const reaction = new DebrisReaction('casing', 0, {} as FlashEffects);
+    const reaction = new DebrisReaction('casing', 0);
     const casing = motion(state(0), reaction);
     const player = motion(state(1), { contactKind: 'player' });
 

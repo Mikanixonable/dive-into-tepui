@@ -61,7 +61,7 @@ export class CreativeStage extends Stage {
       ? DEFAULT_PROTEIN_DISPLAY
       : proteinDisplayControllerOf(restoredProtein)?.display ?? DEFAULT_PROTEIN_DISPLAY;
     this.manualSpawn = new ManualSpawn(
-      this._fx, this._scene, this._celestialSystem.celestialMotions,
+      this._scene, this._celestialSystem.celestialMotions,
       this._dynamicSystem, this._dynamicSystem.idAllocators, restoredDisplay,
     );
 
@@ -69,13 +69,13 @@ export class CreativeStage extends Stage {
     this.objectPlacement = new ObjectPlacement(
       this._hud, this._scene, this._dynamicSystem, this._dynamicSystem.idAllocators,
       queuedEventSink(this._commandQueue, this._dynamicSystem.events),
-      this._celestialSystem, this._fx,
+      this._celestialSystem,
     );
     this.objectPlacement.onPlace = (name, entityKind, state) => this.commands.placeObject(name, entityKind, state);
     this.authoring = this.objectPlacement;
 
     this.waveAttack = new WaveAttack(
-      this._dynamicSystem.events, this._fx, this._scene, this._celestialSystem.celestialMotions,
+      this._dynamicSystem.events, this._scene, this._celestialSystem.celestialMotions,
       this._dynamicSystem.idAllocators, savedCreative?.waveAttack,
     );
     this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;

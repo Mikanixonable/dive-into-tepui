@@ -1,7 +1,6 @@
 import type * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { v3, type Vec3 } from '../../../math/vec3';
-import type { FlashEffects } from '../../vfx/flash-effects';
 import { collisionDamageFraction } from './contact-damage';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
 import { ProteinCombatState } from '../../protein/protein-combat-state';
@@ -12,6 +11,7 @@ import {
   proteinAssetGate, proteinRenderDefinitionFor, type ProteinAssetId,
 } from '../../protein/protein-asset-loader';
 import type { SpawnGate } from '../entity-registry';
+import type { RunEventSink } from '../../run-events';
 import type { EntityIdAllocators } from './entity-id';
 import type { ProteinDisplaySettings } from '../../../render/protein/protein-display';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
@@ -95,7 +95,6 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   // EnemyClass.spawnGate で準備完了を待ってから構築すること。
   public constructor(
     init: ProteinEnemyPlacement | EnemyRestore,
-    fx: FlashEffects,
     idAllocators: EntityIdAllocators,
     scene?: THREE.Scene,
   ) {
@@ -129,7 +128,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     // 新規生成のときだけ、タンパク質固有の名称を陣形役割・識別番号などの既存識別子の前へ冠する。
     super(
       'saved' in init ? init : { ...init, name: `${definition.asset.displayName} ${init.name}` },
-      proteinView, PROTEIN_INERTIA, collision.outerRadius, fx, idAllocators, shape,
+      proteinView, PROTEIN_INERTIA, collision.outerRadius, idAllocators, shape,
     );
     this.assetId = assetId;
     this.displaySettings = display;
@@ -196,13 +195,15 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     return this.combat.projectileDamage(PLASMA_BULLET_DAMAGE);
   }
 
-  // 発砲位置にマズルフラッシュを出す。
-  protected override muzzleEffect(muzzleState: KinematicState): void {
-    this._fx.spawnMuzzleFlash(muzzleState);
+  // 機能部位から撃ったことを記録する。
+  protected override muzzleEffect(muzzleState: KinematicState, events: RunEventSink): void {
+    events.record({ kind: 'proteinSiteFired', muzzleState });
   }
 
   // 被弾位置に最も近い機能部位へダメージを割り振る。
-  protected override applyBulletDamage(damage: number, impactPoint: Vec3): void {
+  protected override applyBulletDamage(
+    damage: number, impactPoint: Vec3, events: RunEventSink,
+  ): void {
     const localPoint = this.view.localImpactPoint(
       impactPoint, this.motion.state.r, this.motion.att.q,
     );
@@ -210,12 +211,12 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
       this.combat.combatReadout().sites.map((site) => [site.id, this.view.siteModelPositionById(site.id)] as const),
     );
     const result = this.combat.applyDamage(damage, localPoint, sitePositions);
-    // 部位の機能停止・フェーズ遷移は閃光で示す。
     if (result.siteDisabled || result.phaseChanged) {
-      this._fx.spawnProteinStateFlash(
-        kinematicState<'eci'>(this.motion.state.t, impactPoint, this.motion.state.v),
-        result.phaseChanged ? result.phase : 'site-disabled',
-      );
+      events.record({
+        kind: 'proteinStateChanged',
+        state: kinematicState<'eci'>(this.motion.state.t, impactPoint, this.motion.state.v),
+        transition: result.phaseChanged ? result.phase : 'site-disabled',
+      });
     }
   }
 

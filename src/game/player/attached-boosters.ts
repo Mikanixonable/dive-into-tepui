@@ -6,7 +6,6 @@ import type { Attitude } from '../../physics/attitude';
 import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import { kinematicState } from '../../physics/kinematic-state';
 import { add, addScaled, scale, v3, Vec3 } from '../../math/vec3';
-import { FlashEffects } from '../vfx/flash-effects';
 import type { RunEventSink } from '../run-events';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import { DetachedBooster } from '../dynamic/dynamic-entity/detached-booster';
@@ -46,7 +45,6 @@ export class AttachedBoosters {
     private readonly idAllocators: EntityIdAllocators,
     private readonly events: RunEventSink,
     private readonly _scene: THREE.Scene,
-    private readonly _fx: FlashEffects,
   ) {
     for (const id of boosterMotion.stageIds) idAllocators.booster.reserve(id);
   }
@@ -120,9 +118,12 @@ export class AttachedBoosters {
       collisionEnableAt: t + COLLISION_GRACE,
     }, this._scene, this.idAllocators));
 
-    this._fx.spawnGasPuff(kinematicState<'eci'>(t, jointR, player.state.v));
     player.invalidatePrediction();
-    this.events.record({ kind: 'boosterDecoupled', stages: this.boosterMotion.stages.length });
+    this.events.record({
+      kind: 'boosterDecoupled',
+      stages: this.boosterMotion.stages.length,
+      jointState: kinematicState<'eci'>(t, jointR, player.state.v),
+    });
   }
 
   // 段間カバーと爆砕ボルトを接続点から切り離し、径方向へ散らす。joint は接続面の中心(ECI)。
@@ -161,7 +162,7 @@ export class AttachedBoosters {
         kinematicState<'eci'>(t, coverPosition, coverVelocity),
         { kind: 'boosterCover', segment: i, bornSim: t },
         { q: att.q, w: v3(randSym(0.8), randSym(1.8), randSym(0.8)), inertia: v3(1, 1.7, 2.4) },
-        this._fx, this.idAllocators, undefined, this._scene,
+        this.idAllocators, undefined, this._scene,
       ));
 
       // 爆砕ボルトは両段の平均速度を基準に、カバーより速く径方向と機軸方向へ。
@@ -183,7 +184,7 @@ export class AttachedBoosters {
         kinematicState<'eci'>(t, boltPosition, boltVelocity),
         { kind: 'boosterBolt', segment: i, bornSim: t },
         { q: att.q, w: v3(randSym(2.5), randSym(2.5), randSym(2.5)), inertia: v3(0.4, 0.5, 0.7) },
-        this._fx, this.idAllocators, undefined, this._scene,
+        this.idAllocators, undefined, this._scene,
       ));
     }
   }

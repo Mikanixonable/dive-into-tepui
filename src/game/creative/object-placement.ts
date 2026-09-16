@@ -36,7 +36,6 @@ import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { pointPlacement } from '../marker/marker-placement';
 import { COLOR_MARKER_ALLY, ENTITY_GLYPH } from '../marker/marker-identity';
-import type { FlashEffects } from '../vfx/flash-effects';
 
 // 軌道上へ配置できる自機の上限隻数(SPEC GAME.md 9.1)。
 export const MAX_PLACED_SHIPS = 50;
@@ -74,7 +73,6 @@ export class ObjectPlacement {
     private readonly idAllocators: EntityIdAllocators,
     private readonly events: RunEventSink,
     private readonly celestialSystem: CelestialSystem,
-    private readonly fx: FlashEffects,
   ) {
     // 以後の新規配置が既存 id と衝突しないよう、復元済みの艦の id を予約する。
     for (const p of roster.all().filter(isPlayer)) this.playerIdAllocator.next(p.id);
@@ -187,7 +185,7 @@ export class ObjectPlacement {
         return {
           kind: 'entity',
           entity: generateDriftingEnemy(
-            finalName, state, '#ff6a00', '#ff6a00', this.fx, this.scene, this.idAllocators,
+            finalName, state, '#ff6a00', '#ff6a00', this.scene, this.idAllocators,
           ),
         };
       case 'ammo':

@@ -128,7 +128,6 @@ export function register(): void {
       { motion: { mass: 1_000 } } as Player,
       quietEvents,
       {} as never,
-      {} as never,
       { saved: {
         mags: -2, rounds: 999, barrel: -1, cooldown: Number.NaN, muzzleIdx: 8,
       } as FireSaveData },

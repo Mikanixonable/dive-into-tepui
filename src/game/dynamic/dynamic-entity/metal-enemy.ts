@@ -1,6 +1,5 @@
 import type * as THREE from 'three/webgpu';
 import { v3, type Vec3 } from '../../../math/vec3';
-import type { FlashEffects } from '../../vfx/flash-effects';
 import {
   ENEMY_MAX_HP, ENEMY_MODEL_SCALE, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore,
 } from './enemy';
@@ -45,7 +44,6 @@ export class MetalEnemy extends PartBasedEnemy {
   // View の機体テンプレートと、それに対応する Motion の接触半径を同じ typeIndex で選ぶ。
   public constructor(
     init: MetalEnemyPlacement | EnemyRestore,
-    fx: FlashEffects,
     idAllocators: EntityIdAllocators,
     scene?: THREE.Scene,
   ) {
@@ -56,7 +54,7 @@ export class MetalEnemy extends PartBasedEnemy {
       : new Stage0MetalEnemyView(accent, typeIndex, ENEMY_MODEL_SCALE, scene);
     super(
       init, metalView, typeIndex === null ? DRIFTING_INERTIA : TYPED_INERTIA,
-      metalEnemyCollisionRadius(typeIndex), fx, idAllocators,
+      metalEnemyCollisionRadius(typeIndex), idAllocators,
       createShipDefaultParts(ENEMY_MAX_HP),
     );
     this.typeIndex = typeIndex;
@@ -78,6 +76,9 @@ export class MetalEnemy extends PartBasedEnemy {
   protected override plasmaDamage(): number {
     return PLASMA_BULLET_DAMAGE;
   }
+
+  // 金属機体の発砲は閃光を伴わないので、記録するものを持たない。
+  protected override muzzleEffect(): void {}
 
   // 被弾位置によらず、健全な部品へ無作為に割り振る。
   protected override applyBulletDamage(damage: number): void {
