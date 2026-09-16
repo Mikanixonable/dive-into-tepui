@@ -6,6 +6,7 @@ import type { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { SphereHit } from '../../math/triangle-mesh';
 import type { ContactGeometry } from '../../physics/collision-response';
+import type { CompoundCylinderShape } from '../../physics/compound-cylinder-contact';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { Contact } from './dynamic-entity/contact';
 import type { EntityRegistry } from './entity-registry';
@@ -33,10 +34,16 @@ export interface KinematicParticipant {
   state: KinematicState;
   readonly prevState: KinematicState;
   readonly radius: number;
+  // 接触側が姿勢と同じ世代の compound を読むための不変スナップショット。
+  readonly compoundShape: CompoundCylinderShape | null;
+  readonly shapeRevision: number;
 }
 
 export interface EntityContactParticipant extends KinematicParticipant {
   alive: boolean;
+  // compound を持つ剛体は姿勢も同じスナップショットとして接触側へ渡す。
+  // 球だけの既存参加者は未指定でも従来の球判定を使える。
+  readonly att?: Attitude;
   readonly engagementAnchor: boolean;
   readonly collides: boolean;
   readonly attachedTo: EntityContactParticipant | null;
