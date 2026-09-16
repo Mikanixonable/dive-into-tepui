@@ -32,7 +32,7 @@ export class PickupMotion extends DynamicMotion {
       bulkDensity: SMALL_DEBRIS_BULK_DENSITY,
       radiatingAreaPerMass: SMALL_DEBRIS_RADIATING_AREA_PER_MASS,
       maxTemperature: SMALL_DEBRIS_MAX_TEMP,
-      predictedForGhost: true,
+      predictsFuture: true,
       behavior: { contactKind: kind },
     });
   }

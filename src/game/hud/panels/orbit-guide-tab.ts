@@ -27,6 +27,8 @@ import {
   type OrbitGuideSettings,
   type SunSyncSettings,
 } from '../../celestial/orbit-guide/orbit-guide-settings';
+import { ORBIT_GUIDE_GROUP_TABS } from '../hud-selection';
+import type { OrbitGuideGroupTab } from '../hud-selection';
 import type { DirectionMarkerMode } from '../../../render/celestial/orbit-guide/direction-markers';
 
 // 線数がこれを超えたら警告を出す(指定は曲げない)。
@@ -85,31 +87,6 @@ function syncSharedKindFields(row: SharedKindFields, settings: GuideKindSharedSe
   row.reversedRow.classList.toggle('hidden', single);
 }
 
-// 軌道ガイドタブの群タブ。GuideGroupId(データ分類)に「基本」を加えた UI 専用の型。
-type GroupTab = 'basic' | GuideGroupId;
-const GROUP_TABS: readonly GroupTab[] = ['basic', ...GUIDE_GROUPS];
-const GROUP_TAB_STORAGE_KEY = 'tepui.orbitGuideGroupTab';
-
-// 直前に選んでいた群タブ。壊れた保存データ・localStorage 不可では 'basic' へ戻す。
-function loadGroupTab(): GroupTab {
-  try {
-    const raw = localStorage.getItem(GROUP_TAB_STORAGE_KEY);
-    if (raw !== null && (GROUP_TABS as readonly string[]).includes(raw)) return raw as GroupTab;
-  } catch {
-    /* localStorage 不可なら既定へ */
-  }
-  return 'basic';
-}
-
-// 選んだ群タブを保存する。localStorage 不可なら諦める。
-function saveGroupTab(tab: GroupTab): void {
-  try {
-    localStorage.setItem(GROUP_TAB_STORAGE_KEY, tab);
-  } catch {
-    /* localStorage 不可なら保存しない */
-  }
-}
-
 export class OrbitGuideTab {
   public readonly element: HTMLElement;
   public onSettingsChange: ((settings: OrbitGuideSettings) => void) | null = null;
@@ -139,10 +116,11 @@ export class OrbitGuideTab {
   private readonly dawnDuskRow: DawnDuskRow;
   private readonly molniyaRow: CriticalInclinationRow;
   private readonly tundraRow: CriticalInclinationRow;
-  private readonly groupTabBar: TabBar<GroupTab>;
-  private readonly groupTabBodies: ReadonlyMap<GroupTab, HTMLElement>;
-  private selectedGroupTab: GroupTab;
+  private readonly groupTabBar: TabBar<OrbitGuideGroupTab>;
+  private readonly groupTabBodies: ReadonlyMap<OrbitGuideGroupTab, HTMLElement>;
   private readonly lineCountEl: HTMLElement;
+  // 群タブが選ばれたときに、選ばれたタブで呼ばれる。
+  public onGroupTabChange: ((tab: OrbitGuideGroupTab) => void) | null = null;
 
   // availableFamilies から種類・小題の定義一覧を組み、群タブと各行の DOM を組み立てる。
   public constructor(availableFamilies: ReadonlyMap<CatalogSystemId, readonly string[]>) {
@@ -155,13 +133,14 @@ export class OrbitGuideTab {
 
     this.buildSystemRow(this.element);
 
-    this.groupTabBar = new TabBar<GroupTab>(
-      GROUP_TABS.map((tab) => [tab, GROUP_TAB_LABEL[tab]] as const), (tab) => this.selectGroupTab(tab),
+    this.groupTabBar = new TabBar<OrbitGuideGroupTab>(
+      ORBIT_GUIDE_GROUP_TABS.map((tab) => [tab, GROUP_TAB_LABEL[tab]] as const),
+      (tab) => this.onGroupTabChange?.(tab),
     );
     this.groupTabBar.element.setAttribute('aria-label', '軌道の種類の群');
     this.element.appendChild(this.groupTabBar.element);
 
-    const groupTabBodies = new Map<GroupTab, HTMLElement>();
+    const groupTabBodies = new Map<OrbitGuideGroupTab, HTMLElement>();
 
     // 基本群: 静止軌道と、地球専用の参照軌道4種。いずれも軸(系)を持たない。
     const basicBody = this.buildGroupTabBody('basic');
@@ -202,10 +181,7 @@ export class OrbitGuideTab {
     }
     this.groupTabBodies = groupTabBodies;
 
-    for (const tab of GROUP_TABS) this.groupTabBar.buttonFor(tab)?.setAttribute('aria-controls', `orbit-guide-group-${tab}`);
-    this.selectedGroupTab = loadGroupTab();
-    this.groupTabBar.setSelected(this.selectedGroupTab);
-    this.applyGroupTabVisibility();
+    for (const tab of ORBIT_GUIDE_GROUP_TABS) this.groupTabBar.buttonFor(tab)?.setAttribute('aria-controls', `orbit-guide-group-${tab}`);
 
     this.lineCountEl = document.createElement('p');
     this.lineCountEl.className = 'orbit-guide-line-count-warning hidden';
@@ -213,7 +189,7 @@ export class OrbitGuideTab {
   }
 
   // 群タブ1枚ぶんの本体。選択中の群だけが表示される。
-  private buildGroupTabBody(tab: GroupTab): HTMLElement {
+  private buildGroupTabBody(tab: OrbitGuideGroupTab): HTMLElement {
     const el = document.createElement('div');
     el.className = 'orbit-guide-group-body';
     el.id = `orbit-guide-group-${tab}`;
@@ -222,17 +198,10 @@ export class OrbitGuideTab {
     return el;
   }
 
-  // 群タブを切り替え、選択を保存して表示を引き直す。
-  private selectGroupTab(tab: GroupTab): void {
-    this.selectedGroupTab = tab;
-    saveGroupTab(tab);
+  // 群タブの選択表示を tab へ合わせ、その群の本体だけを見せる。
+  public setGroupTab(tab: OrbitGuideGroupTab): void {
     this.groupTabBar.setSelected(tab);
-    this.applyGroupTabVisibility();
-  }
-
-  // 選択中の群タブの本体だけを表示し、他は隠す。
-  private applyGroupTabVisibility(): void {
-    for (const [tab, el] of this.groupTabBodies) el.classList.toggle('hidden', tab !== this.selectedGroupTab);
+    for (const [candidate, el] of this.groupTabBodies) el.classList.toggle('hidden', candidate !== tab);
   }
 
   // タブ上部に置く系トグル。全群に共通で効く。
@@ -589,7 +558,7 @@ export class OrbitGuideTab {
   }
 }
 
-const GROUP_TAB_LABEL: Readonly<Record<GroupTab, string>> = {
+const GROUP_TAB_LABEL: Readonly<Record<OrbitGuideGroupTab, string>> = {
   basic: '基本', collinear: '共線点', triangular: '三角点', secondary: '副天体周回', resonant: '共鳴',
 };
 

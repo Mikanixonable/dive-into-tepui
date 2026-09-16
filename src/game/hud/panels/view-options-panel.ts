@@ -1,7 +1,7 @@
 // 表示パネル(マップモード左レール): 「マップに何を出すか」という1つの問いに答える —
 // 対象・ガイド・軌道ガイドの3タブに分かれ、対象はラベル+軌道/ラベル/非表示を1ボタンで循環、
-// ガイドは天球グリッド(赤道・黄道・月軌道面・月赤道面)と星空のトグルを持つ。
-import { DIRECTION_GLYPH } from '../../../render/marker/marker-identity';
+// ガイドは天球グリッド(赤道・黄道・月軌道面・月赤道面)・星空のトグルとゼロ速度曲線節を持つ。
+import { DIRECTION_GLYPH } from '../../marker/marker-identity';
 import { hudRail } from '../hud-root';
 import {
   Button,
@@ -13,45 +13,24 @@ import {
 import {
   mapDisplayModeOf,
   nextMapDisplayMode,
+  type MapDisplayCategory,
   type MapDisplayMode,
   type MapDisplayToggles,
 } from '../../map/display-toggles';
 import type { CelestialGridVisibility } from '../../../render/celestial-grid';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import type { OrbitGuideSettings } from '../../celestial/orbit-guide/orbit-guide-settings';
+import type { OrbitGuideSettings, ZeroVelocitySettings } from '../../celestial/orbit-guide/orbit-guide-settings';
 import { DEFAULT_ORBIT_GUIDE_SETTINGS } from '../../celestial/orbit-guide/orbit-guide-settings';
 import { OrbitGuideTab } from './orbit-guide-tab';
-import { ZeroVelocitySection } from './zero-velocity-section';
-import { wirePanelCollapse } from '../panel-shell';
-
-type ViewOptionsTab = 'target' | 'guide' | 'orbit';
+import { ZeroVelocitySection, zeroVelocityJacobiAt } from './zero-velocity-section';
+import type { PanelCollapse } from '../panel-shell';
+import type { OrbitGuideGroupTab, ViewOptionsTab } from '../hud-selection';
 
 const TAB_ITEMS: readonly (readonly [ViewOptionsTab, string])[] = [
   ['target', '対象'],
   ['guide', 'ガイド'],
   ['orbit', '軌道ガイド'],
 ];
-
-const TAB_STORAGE_KEY = 'tepui.viewOptionsTab';
-
-// localStorage から選択中タブを読み込む。壊れた値・未知の値は 'target' に落とす。
-function loadViewOptionsTab(): ViewOptionsTab {
-  try {
-    const raw = localStorage.getItem(TAB_STORAGE_KEY);
-    return raw === 'target' || raw === 'guide' || raw === 'orbit' ? raw : 'target';
-  } catch {
-    return 'target';
-  }
-}
-
-// 選択中タブを localStorage へ保存する。保存できない環境では何もしない。
-function saveViewOptionsTab(tab: ViewOptionsTab): void {
-  try {
-    localStorage.setItem(TAB_STORAGE_KEY, tab);
-  } catch {
-    /* localStorage 不可なら保存しない */
-  }
-}
 
 // タブ1枚ぶんの本体。選択中のタブ本体だけが表示され、対応するタブボタンから aria-controls で指される。
 function buildTabBody(tab: ViewOptionsTab): HTMLElement {
@@ -67,18 +46,17 @@ function buildTabBody(tab: ViewOptionsTab): HTMLElement {
 // 非表示だけを循環する。
 interface BodyClassRow {
   readonly label: string;
-  readonly categoryKey: keyof MapDisplayToggles;
-  readonly nameKey: keyof MapDisplayToggles;
+  readonly categoryKey: MapDisplayCategory;
   readonly orbitKey: keyof MapDisplayToggles | null;
 }
 
 // 天体のクラス別トグル。
 const BODY_CLASS_ROWS: readonly BodyClassRow[] = [
-  { label: '惑星', categoryKey: 'planetVisible', nameKey: 'planetName', orbitKey: 'planetOrbit' },
-  { label: '衛星', categoryKey: 'satelliteVisible', nameKey: 'satelliteName', orbitKey: 'satelliteOrbit' },
-  { label: '準惑星', categoryKey: 'dwarfVisible', nameKey: 'dwarfName', orbitKey: 'dwarfOrbit' },
-  { label: '小天体', categoryKey: 'smallBodyVisible', nameKey: 'smallBodyName', orbitKey: 'smallBodyOrbit' },
-  { label: 'ラグランジュ点', categoryKey: 'lagrangeVisible', nameKey: 'lagrangeName', orbitKey: null },
+  { label: '惑星', categoryKey: 'planetVisible', orbitKey: 'planetOrbit' },
+  { label: '衛星', categoryKey: 'satelliteVisible', orbitKey: 'satelliteOrbit' },
+  { label: '準惑星', categoryKey: 'dwarfVisible', orbitKey: 'dwarfOrbit' },
+  { label: '小天体', categoryKey: 'smallBodyVisible', orbitKey: 'smallBodyOrbit' },
+  { label: 'ラグランジュ点', categoryKey: 'lagrangeVisible', orbitKey: null },
 ];
 // このパネル自身の折りたたみトグルの見た目。
 const VIEW_OPTIONS_COLLAPSE_LABELS: CollapseToggleLabels = {
@@ -90,11 +68,11 @@ const VIEW_OPTIONS_COLLAPSE_LABELS: CollapseToggleLabels = {
 
 // 機体と設備のクラス別トグル。
 const ENTITY_ROWS: readonly BodyClassRow[] = [
-  { label: '自艦', categoryKey: 'playerVisible', nameKey: 'playerName', orbitKey: 'playerOrbit' },
-  { label: '敵', categoryKey: 'enemyVisible', nameKey: 'enemyName', orbitKey: 'enemyOrbit' },
-  { label: '弾薬', categoryKey: 'ammoVisible', nameKey: 'ammoName', orbitKey: 'ammoOrbit' },
-  { label: 'RCS燃料', categoryKey: 'fuelVisible', nameKey: 'fuelName', orbitKey: 'fuelOrbit' },
-  { label: '基地', categoryKey: 'baseVisible', nameKey: 'baseName', orbitKey: 'baseOrbit' },
+  { label: '自艦', categoryKey: 'playerVisible', orbitKey: 'playerOrbit' },
+  { label: '敵', categoryKey: 'enemyVisible', orbitKey: 'enemyOrbit' },
+  { label: '弾薬', categoryKey: 'ammoVisible', orbitKey: 'ammoOrbit' },
+  { label: 'RCS燃料', categoryKey: 'fuelVisible', orbitKey: 'fuelOrbit' },
+  { label: '基地', categoryKey: 'baseVisible', orbitKey: 'baseOrbit' },
 ];
 
 // 対象クラスの表示状態を文字ではなく、ラベル・軌道・非表示を連想できる SVG で示す。
@@ -169,14 +147,17 @@ function appendColumnLegend(parent: HTMLElement, columns: readonly ViewOptionCol
 }
 
 export class ViewOptionsPanel {
-  public onBodyClassModeChange: ((key: keyof MapDisplayToggles, mode: MapDisplayMode) => void) | null = null;
+  public onBodyClassModeChange: ((key: MapDisplayCategory, mode: MapDisplayMode) => void) | null = null;
   public onGridToggle: ((key: keyof CelestialGridVisibility, on: boolean) => void) | null = null;
   // 軌道ガイドタブかゼロ速度曲線節を編集するたびに、編集後の軌道ガイド設定全体で呼ばれる。
   public onOrbitGuideChange: ((settings: OrbitGuideSettings) => void) | null = null;
+  // タブが選ばれたときに、選ばれたタブで呼ばれる。
+  public onTabChange: ((tab: ViewOptionsTab) => void) | null = null;
+  // 軌道ガイドタブの群タブが選ばれたときに、選ばれたタブで呼ばれる。
+  public onOrbitGuideGroupTabChange: ((tab: OrbitGuideGroupTab) => void) | null = null;
 
   private readonly tabBar: TabBar<ViewOptionsTab>;
   private readonly tabBodies: ReadonlyMap<ViewOptionsTab, HTMLElement>;
-  private selectedTab: ViewOptionsTab;
   // 軌道ガイド設定の鏡映し。軌道ガイドタブとゼロ速度曲線節はどちらも setOrbitGuideSettings で
   // これと揃え、ゼロ速度曲線節の編集はこれへ重ねて設定全体に組み戻す。
   private orbitGuideSettings: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
@@ -185,7 +166,7 @@ export class ViewOptionsPanel {
 
   private readonly bodyClassModeButtons: readonly (readonly [BodyClassRow, Button, HTMLElement])[];
   // 各ボタンの現在の表示モードの鏡映し。クリック時に次の状態を決めるのに使う。
-  private readonly bodyClassModes = new Map<keyof MapDisplayToggles, MapDisplayMode>();
+  private readonly bodyClassModes = new Map<MapDisplayCategory, MapDisplayMode>();
 
   private readonly gridButtons: readonly (readonly [keyof CelestialGridVisibility, Button])[];
   private readonly gridCategoryButtons: readonly (readonly [keyof CelestialGridVisibility, Button, HTMLElement])[];
@@ -196,11 +177,13 @@ export class ViewOptionsPanel {
   private readonly unsubscribeCollapsedView: () => void;
 
   // availableFamilies は軌道ガイドタブへ渡し、焼き込みカタログに実在する族だけを選ばせる。
+  // collapse は折りたたみトグルの配線役。
   public constructor(
     root: HTMLElement,
+    collapse: PanelCollapse,
     availableFamilies: ReadonlyMap<CatalogSystemId, readonly string[]> = new Map(),
   ) {
-    // パネル本体とタイトル
+    // パネル本体とタイトル。
     this.panel = document.createElement('div');
     this.panel.id = 'hud-view-options';
     this.panel.className = 'panel hidden';
@@ -215,7 +198,7 @@ export class ViewOptionsPanel {
     const body = document.createElement('div');
     body.className = 'view-options-body';
     this.panel.appendChild(body);
-    this.unsubscribeCollapsedView = wirePanelCollapse({
+    this.unsubscribeCollapsedView = collapse.wire({
       toggleRoot: titleRow,
       toggleId: 'hud-view-options-toggle',
       toggleClassName: 'view-options-collapse',
@@ -226,7 +209,7 @@ export class ViewOptionsPanel {
       extraHitEls: [title],
     });
 
-    this.tabBar = new TabBar<ViewOptionsTab>(TAB_ITEMS, (tab) => this.selectTab(tab));
+    this.tabBar = new TabBar<ViewOptionsTab>(TAB_ITEMS, (tab) => this.onTabChange?.(tab));
     this.tabBar.element.setAttribute('aria-label', '表示するものの種類');
     body.appendChild(this.tabBar.element);
 
@@ -242,9 +225,6 @@ export class ViewOptionsPanel {
 
     this.tabBodies = new Map([['target', target.element], ['guide', guide.element], ['orbit', orbit.element]]);
     for (const [tab] of TAB_ITEMS) this.tabBar.buttonFor(tab)?.setAttribute('aria-controls', `hud-view-options-${tab}`);
-    this.selectedTab = loadViewOptionsTab();
-    this.tabBar.setSelected(this.selectedTab);
-    this.applyTabVisibility();
 
     hudRail(root, 'left').appendChild(this.panel);
   }
@@ -309,7 +289,7 @@ export class ViewOptionsPanel {
       const title = this.toggleButton(row.label, `${row.label}を表示`, titleKey, this.gridCurrent, (key, on) => this.onGridToggle?.(key, on));
       title.element.classList.add('body-class-title');
       rowEl.appendChild(title.element);
-      if (row.categoryKey === null) gridButtons.push([titleKey, title]);
+      if (row.categoryKey === null) gridButtons.push([row.scaleKey, title]);
       else gridCategories.push([row.categoryKey, title, rowEl]);
 
       const btnsEl = document.createElement('div');
@@ -349,7 +329,10 @@ export class ViewOptionsPanel {
     guideBody.appendChild(starsRow);
 
     const zeroVelocitySection = new ZeroVelocitySection(DEFAULT_ORBIT_GUIDE_SETTINGS.zeroVelocity);
-    zeroVelocitySection.onChange = (zeroVelocity) => this.commitOrbitGuide({ ...this.orbitGuideSettings, zeroVelocity });
+    zeroVelocitySection.onChange = (change) => this.commitZeroVelocity(change);
+    zeroVelocitySection.onSnapToLagrange = (point) => this.commitZeroVelocity({
+      jacobi: zeroVelocityJacobiAt(this.orbitGuideSettings.zeroVelocity, point),
+    });
     guideBody.appendChild(zeroVelocitySection.element);
 
     return { element: guideBody, gridButtons, gridCategoryButtons: gridCategories, starsButton, zeroVelocitySection };
@@ -363,6 +346,7 @@ export class ViewOptionsPanel {
     body.appendChild(orbitBody);
     const orbitGuideTab = new OrbitGuideTab(availableFamilies);
     orbitGuideTab.onSettingsChange = (settings) => this.commitOrbitGuide(settings);
+    orbitGuideTab.onGroupTabChange = (tab) => this.onOrbitGuideGroupTabChange?.(tab);
     orbitBody.appendChild(orbitGuideTab.element);
     return { element: orbitBody, tab: orbitGuideTab };
   }
@@ -373,17 +357,21 @@ export class ViewOptionsPanel {
     this.onOrbitGuideChange?.(next);
   }
 
-  // タブボタン押下で選択タブを切り替え、保存する。
-  private selectTab(tab: ViewOptionsTab): void {
-    this.selectedTab = tab;
-    saveViewOptionsTab(tab);
-    this.tabBar.setSelected(tab);
-    this.applyTabVisibility();
+  // ゼロ速度曲線の設定を change の項目だけ書き換え、軌道ガイド設定全体として通知する。
+  private commitZeroVelocity(change: Partial<ZeroVelocitySettings>): void {
+    const zeroVelocity = { ...this.orbitGuideSettings.zeroVelocity, ...change };
+    this.commitOrbitGuide({ ...this.orbitGuideSettings, zeroVelocity });
   }
 
-  // 選択中タブの本体だけを表示し、他は隠す。
-  private applyTabVisibility(): void {
-    for (const [tab, el] of this.tabBodies) el.classList.toggle('hidden', tab !== this.selectedTab);
+  // タブの選択表示を tab へ合わせ、そのタブの本体だけを見せる。
+  public setSelectedTab(tab: ViewOptionsTab): void {
+    this.tabBar.setSelected(tab);
+    for (const [candidate, el] of this.tabBodies) el.classList.toggle('hidden', candidate !== tab);
+  }
+
+  // 軌道ガイドタブの群タブの選択表示を tab へ合わせる。
+  public setOrbitGuideGroupTab(tab: OrbitGuideGroupTab): void {
+    this.orbitGuideTab.setGroupTab(tab);
   }
 
   // ボタンの点灯・アイコン・説明文を、現在のモードへ合わせる。説明文には次にクリックしたときの
@@ -453,12 +441,12 @@ export class ViewOptionsPanel {
       this.gridCurrent.set(key, on);
       btn.setOn(on);
     }
-    // カテゴリ行の点灯と、全消灯時のグレーアウト。
+    // 行見出しの点灯と、ゲートを閉じた行のグレーアウト。
     for (const [key, category, row] of this.gridCategoryButtons) {
-      const enabled = Boolean(visibility[key]);
-      this.gridCurrent.set(key, enabled);
-      category.setOn(enabled);
-      row.classList.toggle('category-off', !enabled);
+      const on = visibility[key];
+      this.gridCurrent.set(key, on);
+      category.setOn(on);
+      row.classList.toggle('category-off', !on);
     }
   }
 
@@ -466,7 +454,7 @@ export class ViewOptionsPanel {
   public setOrbitGuideSettings(settings: OrbitGuideSettings): void {
     this.orbitGuideSettings = settings;
     this.orbitGuideTab.setSettings(settings);
-    this.zeroVelocitySection.setSettings(settings.zeroVelocity);
+    this.zeroVelocitySection.sync(settings.zeroVelocity);
   }
 
   // 描いている軌道ガイド線の総数を軌道ガイドタブへ中継する。毎フレーム渡してよい。

@@ -1,38 +1,38 @@
-// ブースターの段構成・燃焼状態を表示する常設パネル。ゲーム側で作った表示用の
-// スナップショットを sync し、操作は setHandlers で注入されたコールバックへ渡す。
+// ブースターの段構成・燃焼状態を表示する常設パネル。映す値と操作の口を毎フレーム sync で
+// 受け、追加・点火/停止・分離のボタンの操作をその口へ返す。
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { Button } from '../../../hud/widgets';
 
-/** 燃焼管理パネルへ渡す、ゲーム状態から分離された表示モデル。 */
+// 燃焼管理パネルが1フレームに映す値。
 export interface BurnManagementViewModel {
-  /** 現在接続されているブースター段数。 */
   readonly stageCount: number;
-  /** 接続できる最大段数。未指定なら接続操作の判定をゲーム側へ委ねる。 */
+  // 接続できる最大段数。省略すると段数に上限を示さず、接続の可否も canAttach だけで決まる。
   readonly maxStages?: number;
-  /** 接続中の段を含めた総質量(kg)。 */
+  // 接続中の段を含めた総質量 [kg]。
   readonly totalMass: number;
-  /** 最後尾(active)段の現在燃料(kg)。 */
+  // 最後尾(active)段の現在燃料と最大燃料 [kg]。
   readonly activeFuel: number;
-  /** 最後尾(active)段の最大燃料(kg)。 */
   readonly activeFuelMax: number;
-  /** 燃焼状態。UIへそのまま表示できる日本語ラベルでもよい。 */
+  // 燃焼状態。既知の内部文字列は日本語へ写され、それ以外はそのまま出る。
   readonly burnState: string;
-  /** ゲーム側で判定済みの操作可否。省略時は安全な表示側の既定値を使う。 */
+  // 操作可否。省略時はそれぞれの既定値(追加は不可、点火と分離は可)。
   readonly canAttach?: boolean;
   readonly canToggleIgnition?: boolean;
   readonly canDecouple?: boolean;
-  /** 点火中なら true。点火ボタンの pressed 表示に使う。 */
+  // 点火ボタンの点灯。省略すると燃焼状態から決まる。
   readonly ignitionOn?: boolean;
-  /** 状態の aria-label に使う短い説明。 */
+  // 状態の aria-label に使う短い説明。
   readonly burnStateDescription?: string;
 }
 
-interface BurnManagementPanelHandlers {
+// 各ボタンの押下を受ける口。
+export interface BurnManagementPanelHandlers {
   readonly onAttach?: () => void;
   readonly onToggleIgnition?: () => void;
   readonly onDecouple?: () => void;
 }
 
+// 毎フレーム書き換える表示要素。
 interface BurnManagementDom {
   readonly stageCount: HTMLElement;
   readonly totalMass: HTMLElement;
@@ -74,14 +74,13 @@ function stateLabel(state: string): string {
   return labels[state] ?? state;
 }
 
-/** 左レールへ配置される燃焼管理パネルの DOM/controller。 */
 export class BurnManagementPanel {
   private readonly dom: BurnManagementDom;
   private readonly attachButton: Button;
   private readonly ignitionButton: Button;
   private readonly decoupleButton: Button;
+  // このフレームに受けた操作の口。ボタンが押されたときに引く。
   private handlers: BurnManagementPanelHandlers = {};
-  private model: BurnManagementViewModel | null = null;
 
   // 表示要素を els から取り出し、操作ボタン3種を組み立てる。
   public constructor(private readonly els: ReadonlyMap<string, HTMLElement>) {
@@ -93,6 +92,7 @@ export class BurnManagementPanel {
       fuelValue: this.required('burn-active-fuel-value'),
       burnState: this.required('burn-state'),
     };
+    // 追加・点火/停止・分離の3操作。押せるかどうかは sync が毎フレーム決める。
     this.attachButton = this.addButton(
       'ブースター追加', 'ブースター段を追加する', undefined, () => this.handlers.onAttach?.(),
     );
@@ -127,13 +127,9 @@ export class BurnManagementPanel {
     return button;
   }
 
-  public setHandlers(handlers: BurnManagementPanelHandlers): void {
-    this.handlers = { ...handlers };
-  }
-
-  /** 表示モデルを同期する。null はブースターのない機体としてパネルを隠す。 */
-  public sync(view: BurnManagementViewModel | null): void {
-    this.model = view;
+  // 映す値と操作の口を同期する。view が null ならブースターのない機体としてパネルを隠す。
+  public sync(view: BurnManagementViewModel | null, handlers: BurnManagementPanelHandlers): void {
+    this.handlers = handlers;
     const panel = this.els.get('burn-management-panel');
     if (!panel) return;
     panel.classList.toggle('hidden', view === null);
@@ -142,6 +138,7 @@ export class BurnManagementPanel {
       return;
     }
 
+    // 表示に使う値を整える。燃料が尽きていれば燃焼状態より燃料切れを優先して出す。
     const stageCount = Math.max(0, Math.floor(view.stageCount));
     const maxStages = view.maxStages === undefined ? null : Math.max(0, Math.floor(view.maxStages));
     const activeFuel = finiteNonNegative(view.activeFuel);
@@ -162,6 +159,7 @@ export class BurnManagementPanel {
     this.dom.burnState.textContent = stateLabel(state);
     this.dom.burnState.setAttribute('aria-label', view.burnStateDescription ?? stateLabel(state));
 
+    // 上限段数に届いている・燃料が尽きている・段が無いときは、その操作を押せなくする。
     const noFuel = activeFuelMax <= 0 || activeFuel <= 0;
     const atMax = maxStages !== null && stageCount >= maxStages;
     this.setButtonsEnabled(
@@ -179,7 +177,4 @@ export class BurnManagementPanel {
     this.decoupleButton.setEnabled(decouple);
   }
 
-  public get currentModel(): BurnManagementViewModel | null {
-    return this.model;
-  }
 }

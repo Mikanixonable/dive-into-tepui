@@ -3,7 +3,7 @@
 // 配置は二体問題の RK4 から作り、実シミュレーション側の刻みガードは通さない。
 import { createRequire } from 'node:module';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { R_EARTH_EQ } from '../../src/game/celestial/solar-system/constants';
+import { R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 import { add, v3 } from '../../src/math/vec3';
 import {
   EARTH, SOLVERS, Solver, Sweep, againstBody, circular, companion, freeFall, solve, still, sweepOf,

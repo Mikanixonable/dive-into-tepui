@@ -11,6 +11,7 @@ import type { GamePhase } from '../stages/stage';
 import type { WaveAttackSaveData } from '../stages/stage-utils/wave-attack';
 import type { ProteinSaveData } from '../protein/protein-schema';
 import type { BoosterStackData, BoosterStage } from '../player/booster-stack';
+import type { OrbitGuideSettings } from '../celestial/orbit-guide/orbit-guide-settings';
 
 interface Vec3SaveData {
   readonly x: number;
@@ -103,11 +104,8 @@ export interface PlayerSaveData extends EntitySaveData {
   readonly throttle: ThrottleSaveData;
   readonly parts: AnyPart[];
   readonly plan: PlanSaveData | null;
-  // 無いか現行のモードでなければ followPlan から読み替える。'powered' は読み込みのために
-  // 型へ残す廃止モード。
-  readonly planExecution?: 'off' | 'instant' | 'powered';
-  // planExecution の読み替え元。
-  readonly followPlan?: boolean;
+  // 無ければ実行しない。
+  readonly planExecution?: 'off' | 'instant';
   // 無ければ既定値(false)。
   readonly fineAttitude?: boolean;
   // プロパティウィンドウの軌道線表示トグル。無ければ false。
@@ -223,17 +221,10 @@ export interface CreativeStageSaveData extends StageSaveData {
   readonly waveAttack: WaveAttackSaveData;
 }
 
-// GameSaveData の形式バージョン。値が変わった時点で、それ以前に書かれたスナップショットは
-// 読めなくなる。
+// GameSaveData の形式バージョン。上げるのは構造が変わって互換を切るときで、上げた時点で
+// それ以前に書かれた記録は読めなくなる。項目を増やすだけなら版は据え置き、省略可能にして
+// 読み込み側で基底値を補う(SAVE.md「形式の版」)。
 export const SAVE_VERSION = 3;
-
-// chase にこの形が入っている保存データは読み捨て、戦闘視点を既定で組む。
-export interface ChaseSaveDataV1 {
-  readonly rot: QuatSaveData;
-  readonly dist: number;
-  readonly pan: Vec3SaveData;
-  readonly followAttitude: boolean;
-}
 
 // FrameRotationSource の保存形。
 export interface FrameRotationSourceSaveData {
@@ -246,17 +237,16 @@ export interface FrameRotationSourceSaveData {
 export type CameraRotationFollowSaveData = FrameRotationSourceSaveData | { kind: 'attitude' };
 
 // FocusCamera のフォーカス対象(FocusTarget の保存形)。'point' は焼き込み先の座標系
-// (center/rotatingWith)と、その座標系相対の点をそのまま持つ。rotatingWith は文字列
-// (公転対象の id)と null の形も受け付ける。
+// (center/rotatingWith)と、その座標系相対の点をそのまま持つ。
 type FocusTargetSaveData =
   | { kind: 'object'; id: string }
-  | { kind: 'point'; center: string; rotatingWith: FrameRotationSourceSaveData | string | null; point: Vec3SaveData };
+  | { kind: 'point'; center: string; rotatingWith: FrameRotationSourceSaveData | null; point: Vec3SaveData };
 
 export interface FocusCameraSaveData {
   readonly offset: Vec3SaveData;
   readonly pan: Vec3SaveData;
   readonly up: Vec3SaveData;
-  readonly rotatingWith: CameraRotationFollowSaveData | string | null;
+  readonly rotatingWith: CameraRotationFollowSaveData | null;
   readonly focus: FocusTargetSaveData;
   // 無ければ既定のオイラー操作。
   readonly rotationMode?: 'quaternion' | 'euler';
@@ -270,8 +260,8 @@ export interface FocusCameraSaveData {
 
 export interface CameraSaveData {
   readonly view: 'combat' | 'map';
-  // 戦闘ビューの視点。ChaseSaveDataV1 形なら読み捨てられる。
-  readonly chase: FocusCameraSaveData | ChaseSaveDataV1;
+  // 戦闘ビューの視点。
+  readonly chase: FocusCameraSaveData;
   // マップビューの視点。
   readonly overview: FocusCameraSaveData;
 }
@@ -289,10 +279,7 @@ export interface GameSaveData {
    * そのランの元期と、それが選ぶ暦データの識別。元期は読み込み側が継承する値で、照合するのは
    * 暦データの識別。
    */
-  readonly ephemerisContext?: EphemerisContext;
-  readonly phaseOffsets: Partial<Record<string, number>>;
-  /** 無ければ地球の自転初期位相は復元されない。 */
-  readonly earthSpinPhase0?: number;
+  readonly ephemerisContext: EphemerisContext;
   // 顔ぶれ。種別は各要素の kind が持つ。
   readonly entities: EntitySaveDataUnion[];
   readonly activeControlledId: string | null;
@@ -301,4 +288,6 @@ export interface GameSaveData {
   readonly camera?: CameraSaveData;
   // 無ければターゲット未選択のまま始まる。
   readonly navTarget?: NavTargetSaveData | null;
+  // 無ければ既定の軌道ガイドで始まる。
+  readonly orbitGuide?: OrbitGuideSettings;
 }
