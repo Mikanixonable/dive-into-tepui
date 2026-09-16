@@ -109,4 +109,21 @@ export function register(): void {
     assert.deepEqual(self.prevAtt.q, before);
     assert.notDeepEqual(self.att.q, before);
   });
+
+  test('dynamic motion: ray pick は外接球でなく最近傍 compound module を返す', () => {
+    const self = motion();
+    self.replaceCollisionProperties({
+      mass: 2, radius: 10, centerOfMass: v3(), inertia: v3(1, 1, 1),
+      compoundShape: {
+        primitives: [{
+          moduleId: 'tank', center: v3(), axis: v3(0, 0, 1), halfLength: 1, radius: 0.5,
+        }],
+      },
+    });
+    const miss = { origin: v3(-5, 3, 0), dir: v3(1, 0, 0) };
+    assert.equal(self.intersectsRay(miss, v3()), false, '外接球だけへ当たる ray は外す');
+    const hitRay = { origin: v3(-5, 0, 0), dir: v3(1, 0, 0) };
+    assert.equal(self.intersectsRay(hitRay, v3()), true);
+    assert.equal(self.raycastCompound(hitRay, v3())?.moduleId, 'tank');
+  });
 }
