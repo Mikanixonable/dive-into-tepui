@@ -15,7 +15,7 @@ import { isCompactViewport } from '../../hud/breakpoints';
 import { startViewportTracking } from '../../hud/viewport';
 import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
 import type { RenderStyle } from '../../render/render-style';
-import type { ViewMode } from '../../render/view-mode';
+import type { ViewMode } from '../view/view-mode';
 import type { CollapseToggleLabels } from '../../hud/widgets';
 import type { PanelCollapse } from './panel-shell';
 

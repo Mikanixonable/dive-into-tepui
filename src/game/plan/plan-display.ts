@@ -1,7 +1,7 @@
 // 操作対象の軌道計画の姿の表示(両ビュー常駐)。どの計画をいつ描くかを決め、計画折れ線
 // (PlanPath)を駆動して、表示時刻の計画上の自機位置ゴースト(⬢ plannedPlayer マーカー)を置く。
 import type * as THREE from 'three/webgpu';
-import type { ViewMode } from '../../render/view-mode';
+import type { ViewMode } from '../view/view-mode';
 import { Vec3, len, sub } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import type { FrameAnchorSource } from '../../physics/frame';
