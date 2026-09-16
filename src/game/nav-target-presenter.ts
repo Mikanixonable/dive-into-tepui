@@ -1,5 +1,5 @@
-// マップ上のターゲット(任意の ObjectPickable — 月・ラグランジュ点なども含む)の保持と、
-// 自機軌道との相対 AN/DN(昇交点・降交点)・再接近点の算出・マーカー表示・被選択物としての公開。
+// 航法ターゲット(任意の ObjectPickable — 月・ラグランジュ点なども含む)の、位置・速度と軌道面への
+// 解決と、自機軌道との相対 AN/DN(昇交点・降交点)・再接近点の算出・マーカー表示・被選択物としての公開。
 import { Vec3, add, len, sub } from '../math/vec3';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
 import { strongestAttractor } from '../physics/attractor';
@@ -12,8 +12,7 @@ import { goldenSectionMin } from '../math/optimize';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import { DisplayWindow } from './display-window-manager';
 import type { EntityRoster } from './dynamic/entity-roster';
-import { aliveCombatTarget, combatTargetById, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
-import type { Notifier } from '../hud/notifier';
+import { aliveCombatTarget } from './dynamic/dynamic-entity/combat-target';
 import { TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import type { MarkerDeclaration } from '../marker/marker-declaration';
 import type { MarkerSink } from '../marker/marker-sink';
@@ -24,6 +23,7 @@ import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import { lagrangePointOf } from './celestial/lagrange-id';
 import type { OrbitReference } from './orbit-reference';
+import type { NavTargetSource } from './viewer/nav-target-selection';
 
 // 再接近点探索: 自艦とターゲットの相対距離を今から何秒先まで走査するか。低軌道の
 // 数周ぶんに相当する1日。
@@ -64,9 +64,7 @@ function findClosestApproach(
   return null;
 }
 
-export class NavTarget {
-  private targetId: string | null = null;
-  private targetName: string | null = null;
+export class NavTargetPresenter {
   // 自機軌道上の相対 AN/DN。対象の軌道面が定まらなければどちらも解けない。
   private readonly ascendingNode = new RelativeNodeMarker('an');
   private readonly descendingNode = new RelativeNodeMarker('dn');
@@ -76,65 +74,11 @@ export class NavTarget {
 
   private readonly declarations: MarkerDeclaration[] = [];
 
-  public constructor(private readonly _notifier: Notifier, private readonly group: MarkerSink) {}
+  // navTarget から航法ターゲットを読み、マーカーを group へ宣言する。
+  public constructor(private readonly navTarget: NavTargetSource, private readonly group: MarkerSink) {}
 
   // 所有するマーカー群を取り除く。
   public dispose(): void { this.group.dispose(); }
-
-  // 現在のターゲットの id。未設定なら null。
-  public get id(): string | null {
-    return this.targetId;
-  }
-
-  // 現在のターゲットの表示名。未設定なら null。
-  public get name(): string | null {
-    return this.targetName;
-  }
-
-  // ターゲットの id と表示名を差し替える。
-  private setInternal(id: string | null, name: string | null): void {
-    this.targetId = id;
-    this.targetName = name;
-  }
-
-  // id と現在の設定が同じなら解除、そうでなければ id をターゲットにする。
-  public toggleTarget(id: string, name: string): void {
-    if (this.targetId === id) {
-      this.setInternal(null, null);
-      this._notifier.hint('ターゲット解除');
-    } else {
-      this.setInternal(id, name);
-      this._notifier.hint(`ターゲット: ${name}`);
-    }
-  }
-
-  // 敵・自艦・基地を(トグルでなく)ターゲットに設定する。null で解除。
-  public setCombatTarget(entity: CombatTarget | null): void {
-    this.setInternal(entity?.id ?? null, entity?.name ?? null);
-    this._notifier.hint(entity ? `ターゲット固定: ${entity.name}` : 'ターゲット固定解除');
-  }
-
-  // ターゲットを解除する。ヒントは出さない。
-  public clear(): void {
-    this.setInternal(null, null);
-  }
-
-  // セーブデータからの復元用。id が敵・自機・基地を指していた場合はそれが生存していないと
-  // 復元しない(撃墜・破壊されていれば未選択に戻す)。天体・ラグランジュ点など消滅しない対象は
-  // 常に復元する。ヒントは出さない。
-  public restore(data: { id: string; name: string } | null | undefined, roster: EntityRoster): void {
-    if (!data) return;
-    const wasTarget = combatTargetById(roster.all(), data.id);
-    if (wasTarget !== null && !wasTarget.motion.alive) return;
-    this.setInternal(data.id, data.name);
-  }
-
-  // 現在のターゲットを、生存中の戦闘対象(敵・自艦・基地)として解決する。天体・ラグランジュ点
-  // など戦闘対象になれない対象がターゲットの場合は null。
-  public resolveCombatTarget(roster: EntityRoster): CombatTarget | null {
-    if (this.targetId === null) return null;
-    return aliveCombatTarget(roster.all(), this.targetId);
-  }
 
   // AN・DN・再接近点のマーカー。
   private get nodeMarkers(): readonly RelativeNodeMarker[] {
@@ -154,13 +98,14 @@ export class NavTarget {
     frameAnchors: FrameAnchorSource,
   ): void {
     const { simTime, displayTime, frame } = displayWindow;
+    const { id: targetId, name: targetName } = this.navTarget;
     const ownerName = controlled?.name ?? null;
-    for (const marker of this.nodeMarkers) marker.place(null, null, ownerName, this.name);
+    for (const marker of this.nodeMarkers) marker.place(null, null, ownerName, targetName);
     // 相対交点はターゲットと操作対象の両方が揃って初めて定義できる。片方でも欠ければ
     // 出す理由そのものが無い。
-    if (!this.targetId) { this.retireNodeMarkers(); return; }
+    if (!targetId) { this.retireNodeMarkers(); return; }
     if (!controlled) { this.retireNodeMarkers(); return; }
-    const target = aliveCombatTarget(roster.all(), this.targetId);
+    const target = aliveCombatTarget(roster.all(), targetId);
     const stateCelestialBodies = celestialBodies.celestialMotions;
     const controlledCenter = strongestAttractor(
       controlled.motion.state.r, stateCelestialBodies, simTime,
@@ -176,13 +121,13 @@ export class NavTarget {
       target.motion.state.r, stateCelestialBodies, simTime,
     ).id === controlledCenter.id) {
       const found = findClosestApproach(controlled, target, celestialBodies, simTime);
-      if (found) this.closestApproach.place(toDisplay(found.pos, found.t), found.t, ownerName, this.name);
+      if (found) this.closestApproach.place(toDisplay(found.pos, found.t), found.t, ownerName, targetName);
     }
 
     const controlledEl = controlled.motion.orbitalElementsAround(controlledCenter, simTime);
     if (!controlledEl) return;
 
-    const targetHat = this.resolvePlaneNormal(this.targetId, roster, celestialBodies, simTime);
+    const targetHat = this.resolvePlaneNormal(targetId, roster, celestialBodies, simTime);
     if (!targetHat) return;
 
     const nodes = nodeAnomalies(controlledEl, targetHat);
@@ -196,13 +141,8 @@ export class NavTarget {
     // pivot からの外挿だと表示側の un-bake と基準がずれ、月周回では通過までの時間ぶん位置がずれる。
     const anEci = add(celestialBodies.stateAt(controlledCenter.id, anT).r, positionOnOrbit(controlledEl, nodes.asc));
     const dnEci = add(celestialBodies.stateAt(controlledCenter.id, dnT).r, positionOnOrbit(controlledEl, nodes.desc));
-    this.ascendingNode.place(toDisplay(anEci, anT), anT, ownerName, this.name);
-    this.descendingNode.place(toDisplay(dnEci, dnT), dnT, ownerName, this.name);
-  }
-
-  // id がいまのターゲットなら解除する。
-  public clearIfTargeting(id: string): void {
-    if (this.targetId === id) this.setInternal(null, null);
+    this.ascendingNode.place(toDisplay(anEci, anT), anT, ownerName, targetName);
+    this.descendingNode.place(toDisplay(dnEci, dnT), dnT, ownerName, targetName);
   }
 
   // 現在のターゲットの時刻 t における位置・速度。重力中心になれるのは登録天体だけで、
@@ -212,7 +152,7 @@ export class NavTarget {
     roster: EntityRoster, celestialBodies: CelestialBodies,
     attractors: readonly CelestialBody[], t: number,
   ): OrbitReference | null {
-    const id = this.targetId;
+    const id = this.navTarget.id;
     if (id === null) return null;
     // 登録天体なら、その運動から直接引く。
     const attractor = celestialBodies.findMotion(id);
