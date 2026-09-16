@@ -1,124 +1,64 @@
 {
   "モデル層が出来事の装置を持つ禁止": {
-    "src/game/control-selection.ts": [
-      "Notifier"
-    ],
     "src/game/creative/manual-spawn.ts": [
-      "FlashEffects",
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/creative/object-placement.ts": [
-      "FlashEffects",
-      "Notifier",
-      "WorldSfx"
-    ],
-    "src/game/dynamic/dynamic-entity/base.ts": [
-      "Notifier"
-    ],
-    "src/game/dynamic/dynamic-entity/bullet-reaction.ts": [
-      "WorldSfx"
-    ],
-    "src/game/dynamic/dynamic-entity/bullet.ts": [
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/dynamic/dynamic-entity/debris-piece.ts": [
-      "FlashEffects",
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/dynamic/dynamic-entity/debris-reaction.ts": [
-      "FlashEffects",
-      "WorldSfx"
-    ],
-    "src/game/dynamic/dynamic-entity/enemy-fire-controller.ts": [
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/dynamic/dynamic-entity/enemy-reactions.ts": [
-      "FlashEffects",
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/dynamic/dynamic-entity/enemy.ts": [
-      "FlashEffects",
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/dynamic/dynamic-entity/entity-dictionary.ts": [
-      "FlashEffects",
-      "Notifier",
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/dynamic/dynamic-entity/metal-enemy.ts": [
-      "FlashEffects",
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/dynamic/dynamic-entity/part-based-enemy.ts": [
-      "FlashEffects",
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/dynamic/dynamic-entity/protein-enemy.ts": [
-      "FlashEffects",
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/dynamic/dynamic-system.ts": [
-      "FlashEffects",
-      "Notifier",
-      "WorldSfx"
-    ],
-    "src/game/plan/plan-guide.ts": [
-      "Notifier",
-      "UiSfx"
-    ],
-    "src/game/player/altitude-alarm.ts": [
-      "Notifier",
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/player/attached-boosters.ts": [
-      "FlashEffects",
-      "Notifier",
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/player/fire-control.ts": [
-      "FlashEffects",
-      "Notifier",
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/player/player-effects.ts": [
-      "FlashEffects",
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/player/player.ts": [
-      "FlashEffects",
-      "Notifier",
-      "WorldSfx"
-    ],
-    "src/game/player/throttle.ts": [
-      "Notifier"
+      "FlashEffects"
     ],
     "src/game/player/weapon-effects.ts": [
-      "FlashEffects",
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/stages/spawner/enemy-generator.ts": [
-      "FlashEffects",
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/stages/spawner/enemy-spawner.ts": [
-      "FlashEffects",
-      "WorldSfx"
-    ],
-    "src/game/stages/stage-utils/logistics.ts": [
-      "Notifier",
-      "UiSfx",
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/stages/stage-utils/wave-attack.ts": [
-      "FlashEffects",
-      "Notifier",
-      "WorldSfx"
+      "FlashEffects"
     ],
     "src/game/stages/stage.ts": [
-      "FlashEffects",
-      "Notifier",
-      "UiSfx",
-      "WorldSfx"
+      "FlashEffects"
     ]
   },
   "モデル層が生の入力を読む禁止": {

@@ -29,8 +29,6 @@ import type { RenderStyle } from '../../render/render-style';
 import type { StageRules } from '../stages/stage-rules';
 
 import type { EntitySaveDataUnion, GameSaveData } from '../save/save-data';
-import type { Notifier } from '../../hud/notifier';
-import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../vfx/flash-effects';
 import type { PerfCounts } from '../perf-counts';
 import type { RunEventSink } from '../run-events';
@@ -60,10 +58,8 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 描画資源のプールと前進の機構を組んでから、saved があればその顔ぶれを復元する。
   public constructor(
     scene: THREE.Scene,
-    notifier: Notifier,
-    worldSfx: WorldSfx,
     flash: FlashEffects,
-    events: RunEventSink,
+    public readonly events: RunEventSink,
     private readonly celestialBodies: CelestialBodies,
     private readonly sections: FrameSections,
     initialSimTime: number,
@@ -76,18 +72,16 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     ]);
     this.simulator = new Simulator(this, this, this, celestialBodies, sections, initialSimTime);
     this.nanWatchdog = new NanWatchdog(events);
-    if (saved) this.restoreFromSave(saved, notifier, worldSfx, flash, scene);
+    if (saved) this.restoreFromSave(saved, flash, scene);
   }
 
   // スナップショットの顔ぶれを復元する。知らない種別は読み飛ばす。
-  private restoreFromSave(
-    save: GameSaveData, notifier: Notifier, worldSfx: WorldSfx, flash: FlashEffects, scene: THREE.Scene,
-  ): void {
+  private restoreFromSave(save: GameSaveData, flash: FlashEffects, scene: THREE.Scene): void {
     // 実体化がゲートで遅れる個体があるので、先に全部の id を押さえてから組み始める。
     for (const data of save.entities) this.idAllocators.reserve(data.id);
     for (const data of save.entities) {
       const restoration = restorationFor(
-        data, save.simTime, scene, notifier, worldSfx, flash, this.idAllocators);
+        data, save.simTime, scene, this.events, flash, this.idAllocators);
       if (restoration === null) continue;
       this.spawnWhenReady(restoration.gate, () => restoration.build());
     }

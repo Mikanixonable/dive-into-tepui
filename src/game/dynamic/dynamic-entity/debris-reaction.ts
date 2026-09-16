@@ -1,10 +1,10 @@
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { Vec3 } from '../../../math/vec3';
 import type { ContactGeometry } from '../../../physics/collision-response';
 import type { SphereHit } from '../../../math/triangle-mesh';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import type { DynamicMotion, DynamicMotionBehavior } from '../dynamic-motion';
+import type { DynamicReactionServices } from '../dynamic-simulation-participant';
 import type { Contact } from './contact';
 import type { DebrisKind } from './debris-kind';
 import { bulletReactionOf } from './bullet-reaction';
@@ -29,7 +29,6 @@ export class DebrisReaction implements DynamicMotionBehavior {
   public constructor(
     private readonly kind: DebrisKind['kind'],
     private readonly bornSim: number | null,
-    private readonly worldSfx: WorldSfx,
     private readonly effects: FlashEffects,
   ) {
     if (kind !== 'casing') return;
@@ -59,7 +58,10 @@ export class DebrisReaction implements DynamicMotionBehavior {
     );
   }
 
-  public onEntityContact(_self: DynamicMotion, other: DynamicMotion, contact: Contact): void {
+  // 弾が当たればガスを噴き、薬莢が船体か他の薬莢へ当たれば金属音の出来事を記録する。
+  public onEntityContact(
+    _self: DynamicMotion, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
+  ): void {
     if (bulletReactionOf(other) !== null) {
       this.effects.spawnGasPuff(
         kinematicState<'eci'>(contact.selfState.t, contact.point, contact.selfState.v));
@@ -67,10 +69,12 @@ export class DebrisReaction implements DynamicMotionBehavior {
     }
     if (this.kind !== 'casing') return;
     if (other.contactKind === 'player') {
-      this.worldSfx.clank();
+      services.registry.events.record({ kind: 'casingContacted' });
       return;
     }
-    if (other.contactKind === 'casing' && ownsCasingClank(contact)) this.worldSfx.clank();
+    if (other.contactKind === 'casing' && ownsCasingContact(contact)) {
+      services.registry.events.record({ kind: 'casingContacted' });
+    }
   }
 
   public nextSimulationEventTime(_self: DynamicMotion, simTime: number): number | null {
@@ -94,8 +98,8 @@ export class DebrisReaction implements DynamicMotionBehavior {
   }
 }
 
-// 同じ接触を両当事者が受け取るため、法線の向きで一方だけを音の所有者にする。
-function ownsCasingClank(contact: Contact): boolean {
+// 同じ接触を両当事者が受け取るため、法線の向きで一方だけを出来事の所有者にする。
+function ownsCasingContact(contact: Contact): boolean {
   const { normal } = contact;
   if (normal.x !== 0) return normal.x > 0;
   if (normal.y !== 0) return normal.y > 0;
