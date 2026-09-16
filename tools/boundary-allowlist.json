@@ -1,1 +1,169 @@
-{}
+{
+  "モデル層が出来事の装置を持つ禁止": {
+    "src/game/control-selection.ts": [
+      "Notifier"
+    ],
+    "src/game/creative/manual-spawn.ts": [
+      "FlashEffects",
+      "WorldSfx"
+    ],
+    "src/game/creative/object-placement.ts": [
+      "FlashEffects",
+      "Notifier",
+      "WorldSfx"
+    ],
+    "src/game/dynamic/dynamic-entity/base.ts": [
+      "Notifier"
+    ],
+    "src/game/dynamic/dynamic-entity/bullet-reaction.ts": [
+      "WorldSfx"
+    ],
+    "src/game/dynamic/dynamic-entity/bullet.ts": [
+      "WorldSfx"
+    ],
+    "src/game/dynamic/dynamic-entity/debris-piece.ts": [
+      "FlashEffects",
+      "WorldSfx"
+    ],
+    "src/game/dynamic/dynamic-entity/debris-reaction.ts": [
+      "FlashEffects",
+      "WorldSfx"
+    ],
+    "src/game/dynamic/dynamic-entity/enemy-fire-controller.ts": [
+      "WorldSfx"
+    ],
+    "src/game/dynamic/dynamic-entity/enemy-reactions.ts": [
+      "FlashEffects",
+      "WorldSfx"
+    ],
+    "src/game/dynamic/dynamic-entity/enemy.ts": [
+      "FlashEffects",
+      "WorldSfx"
+    ],
+    "src/game/dynamic/dynamic-entity/entity-dictionary.ts": [
+      "FlashEffects",
+      "Notifier",
+      "WorldSfx"
+    ],
+    "src/game/dynamic/dynamic-entity/metal-enemy.ts": [
+      "FlashEffects",
+      "WorldSfx"
+    ],
+    "src/game/dynamic/dynamic-entity/part-based-enemy.ts": [
+      "FlashEffects",
+      "WorldSfx"
+    ],
+    "src/game/dynamic/dynamic-entity/protein-enemy.ts": [
+      "FlashEffects",
+      "WorldSfx"
+    ],
+    "src/game/dynamic/dynamic-system.ts": [
+      "FlashEffects",
+      "Notifier",
+      "WorldSfx"
+    ],
+    "src/game/dynamic/nan-watchdog.ts": [
+      "Notifier"
+    ],
+    "src/game/dynamic/sim-speed-manager.ts": [
+      "Notifier",
+      "UiSfx"
+    ],
+    "src/game/plan/plan-guide.ts": [
+      "Notifier",
+      "UiSfx"
+    ],
+    "src/game/player/altitude-alarm.ts": [
+      "Notifier",
+      "WorldSfx"
+    ],
+    "src/game/player/attached-boosters.ts": [
+      "FlashEffects",
+      "Notifier",
+      "WorldSfx"
+    ],
+    "src/game/player/fire-control.ts": [
+      "FlashEffects",
+      "Notifier",
+      "WorldSfx"
+    ],
+    "src/game/player/player-effects.ts": [
+      "FlashEffects",
+      "WorldSfx"
+    ],
+    "src/game/player/player.ts": [
+      "FlashEffects",
+      "Notifier",
+      "WorldSfx"
+    ],
+    "src/game/player/throttle.ts": [
+      "Notifier"
+    ],
+    "src/game/player/weapon-effects.ts": [
+      "FlashEffects",
+      "WorldSfx"
+    ],
+    "src/game/stages/spawner/enemy-generator.ts": [
+      "FlashEffects",
+      "WorldSfx"
+    ],
+    "src/game/stages/spawner/enemy-spawner.ts": [
+      "FlashEffects",
+      "WorldSfx"
+    ],
+    "src/game/stages/stage-utils/logistics.ts": [
+      "Notifier",
+      "UiSfx",
+      "WorldSfx"
+    ],
+    "src/game/stages/stage-utils/wave-attack.ts": [
+      "FlashEffects",
+      "Notifier",
+      "WorldSfx"
+    ],
+    "src/game/stages/stage.ts": [
+      "FlashEffects",
+      "Notifier",
+      "UiSfx",
+      "WorldSfx"
+    ]
+  },
+  "モデル層が生の入力を読む禁止": {
+    "src/game/dynamic/dynamic-entity/controllable.ts": [
+      "from '../../../input/input'"
+    ],
+    "src/game/dynamic/dynamic-system.ts": [
+      "from '../../input/input'"
+    ],
+    "src/game/player/fire-control.ts": [
+      "from '../../input/input'"
+    ],
+    "src/game/player/player.ts": [
+      "from '../../input/input'"
+    ],
+    "src/game/player/throttle.ts": [
+      "from '../../input/input'"
+    ]
+  },
+  "表示の選択が進行へ漏れる禁止": {
+    "src/game/dynamic/dynamic-entity/base-motion.ts": [
+      "predictsFuture"
+    ],
+    "src/game/dynamic/dynamic-entity/pickup-motion.ts": [
+      "predictsFuture"
+    ],
+    "src/game/dynamic/dynamic-entity/vessel.ts": [
+      "predictsFuture"
+    ],
+    "src/game/dynamic/dynamic-motion.ts": [
+      "display-window-duration",
+      "predictsFuture"
+    ],
+    "src/game/dynamic/dynamic-simulation-participant.ts": [
+      "predictsFuture"
+    ],
+    "src/game/dynamic/predictor.ts": [
+      "predictsFuture"
+    ]
+  }
+}
