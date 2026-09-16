@@ -63,6 +63,7 @@ export interface EnemyPlacement {
   readonly w: Vec3;
   readonly accent: string | number;
   readonly orbitLineColor: string | number;
+  readonly attackGroupId?: string;
   readonly waveId?: number;
   readonly id?: string;
   readonly formationId?: string;
@@ -78,6 +79,25 @@ export interface EnemyClass {
   new (init: EnemyRestore, worldSfx: WorldSfx, fx: FlashEffects, scene?: THREE.Scene): Enemy;
 }
 
+export interface EnemyAttackGroupMember {
+  readonly motion: { readonly alive: boolean };
+  readonly attackGroupId: string;
+  readonly isBursting: boolean;
+}
+
+// 同じ攻撃グループに属する、現在バースト中の敵機数を数える。
+export function countAttackingEnemiesInGroup(
+  enemies: readonly EnemyAttackGroupMember[], groupId: string,
+): number {
+  let count = 0;
+  for (const enemy of enemies) {
+    if (enemy.motion.alive && enemy.attackGroupId === groupId && enemy.isBursting) {
+      count++;
+    }
+  }
+  return count;
+}
+
 // 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、交戦圏
 // 離脱・焼失・衝突の記録。機体が何でできているか(メッシュ・被弾モデル・判定形状)は具象が持つ。
 export abstract class Enemy extends Ship implements CombatTarget {
@@ -86,8 +106,9 @@ export abstract class Enemy extends Ship implements CombatTarget {
   public readonly inspection = new EnemyInspection(this);
   public readonly objectPickable = this.inspection;
 
-  public readonly accent: string | number; // マーカー色。同じ色の敵を1つの集団とみなす
+  public readonly accent: string | number; // マーカー色。攻撃グループとは独立
   public readonly orbitLineColor: string | number;
+  public readonly attackGroupId: string;
   public readonly waveId?: number; // 所属するウェーブの番号。ウェーブに属さない敵は undefined
   public readonly formationId?: string;
   public readonly formationRole?: FormationRole;
@@ -99,6 +120,8 @@ export abstract class Enemy extends Ship implements CombatTarget {
   private lastBehaviorSim?: number; // 前回 behave した時刻 [sim s]
   // 射撃を許すか。
   public fireEnabled = true;
+
+  public get isBursting(): boolean { return this.burstLeft !== undefined && this.burstLeft > 0; }
 
   // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径)を受けて、
   // 敵に共通する識別・色・陣形所属を初期化する。復元時は保存済みの生死・バースト状態も戻す。
@@ -121,6 +144,10 @@ export abstract class Enemy extends Ship implements CombatTarget {
         w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z),
         accent: init.saved.accent,
         orbitLineColor: init.saved.orbitLineColor,
+        attackGroupId: init.saved.attackGroupId
+          ?? init.saved.formationId
+          ?? init.saved.id
+          ?? init.saved.name,
         waveId: init.saved.waveId,
         id: init.saved.id || undefined,
         formationId: init.saved.formationId,
@@ -150,6 +177,7 @@ export abstract class Enemy extends Ship implements CombatTarget {
     );
     this.accent = placed.accent;
     this.orbitLineColor = placed.orbitLineColor;
+    this.attackGroupId = placed.attackGroupId ?? placed.formationId ?? this.id;
     this.waveId = placed.waveId;
     this.formationId = placed.formationId;
     this.formationRole = placed.formationRole;
@@ -348,21 +376,12 @@ export abstract class Enemy extends Ship implements CombatTarget {
     this.lastFireSim = simTime;
 
     // 新規バーストを始めるかどうかを抽選する
-    const countInGroup = this.attackingCountInGroup(enemies);
+    const countInGroup = countAttackingEnemiesInGroup(enemies, this.attackGroupId);
     if (countInGroup >= ENEMY_MAX_ATTACKERS_PER_GROUP || Math.random() >= ENEMY_ATTACK_CHANCE) return;
     const counts = ENEMY_BURST_COUNTS;
     this.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
     this.burstDelay = ENEMY_BURST_INTERVAL;
     this.firePlasma(simTime, player, registry, celestialBodies);
-  }
-
-  // enemies のうち、自分と同じ accent でバースト射撃中の個体数を数える。
-  private attackingCountInGroup(enemies: readonly Enemy[]): number {
-    let n = 0;
-    for (const e of enemies) {
-      if (e.motion.alive && e.accent === this.accent && e.burstLeft && e.burstLeft > 0) n++;
-    }
-    return n;
   }
 
   // 発砲の演出。既定は空。
@@ -420,6 +439,7 @@ export abstract class Enemy extends Ship implements CombatTarget {
       health: this.hp,
       accent: this.accent,
       orbitLineColor: this.orbitLineColor,
+      attackGroupId: this.attackGroupId,
       waveId: this.waveId,
       // 陣形所属は無所属の単体敵も多いため、値がある場合だけキーを持たせる。
       ...(this.formationId === undefined ? {} : { formationId: this.formationId }),
