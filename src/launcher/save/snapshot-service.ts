@@ -15,12 +15,12 @@ export interface SnapshotCaptureSource {
   serialize(): GameSaveData;
 }
 
-// 記録の出し入れを担う。手動セーブは索引のメタを組んでスロットへ収め、復帰点は上書きし、
+// 記録の出し入れを担う。手動セーブは索引のメタを組んでスロットへ収め、自動セーブは上書きし、
 // 読むときは保存形式を検証する。
 export class SnapshotService {
   public constructor(private readonly store: SaveStore, private readonly slots: SaveSlots) {}
 
-  // 要約と保存本体を1件の手動セーブとして残し、そのメタを返す。同じ瞬間で復帰点も更新する。
+  // 要約と保存本体を1件の手動セーブとして残し、そのメタを返す。同じ瞬間で自動セーブも更新する。
   // アクティブスロットが無い、またはストア書き込みに失敗した場合は null。
   public addManualSave(summary: RunSummary, save: GameSaveData, name: string | null): SnapshotMeta | null {
     const slotId = this.slots.activeSlotId;
@@ -46,15 +46,15 @@ export class SnapshotService {
     };
 
     if (!this.slots.addManualSave(slotId, save.stageId, meta, save)) return null;
-    this.slots.writeResumePoint(slotId, save.stageId, save);
+    this.slots.writeAutoSave(slotId, save.stageId, save);
     return meta;
   }
 
-  // 復帰点をこの瞬間へ差し替える。アクティブスロットが無ければ何も残さない。
-  public writeResumePoint(save: GameSaveData): void {
+  // 自動セーブをこの瞬間へ差し替える。アクティブスロットが無ければ何も残さない。
+  public writeAutoSave(save: GameSaveData): void {
     const slotId = this.slots.activeSlotId;
     if (slotId === null) return;
-    this.slots.writeResumePoint(slotId, save.stageId, save);
+    this.slots.writeAutoSave(slotId, save.stageId, save);
   }
 
   // snapshotId の本体を取得する。本体欠損・バージョン不一致・
