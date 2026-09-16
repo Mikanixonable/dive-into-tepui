@@ -173,7 +173,7 @@ export class ObjectWindows implements PropertyWindowOpener {
       title, subtitle, icon: target.glyphSvg ?? target.glyph, rows: [], items,
       relatedItems: this.relatedItemsFor(target, simTime),
       relatedTitle: this.relatedTitleFor(target),
-      onRename: target.rename ?? undefined,
+      onRename: target.rename === null ? undefined : (name) => this.commands.rename(target, name),
     };
   }
 

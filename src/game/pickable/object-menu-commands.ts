@@ -21,6 +21,8 @@ export interface ObjectMenuCommands {
   ): void;
   // ship の部品 part の展開目標を deployed へ設定する。
   setPartDeployment(ship: PartDeployer, part: Part, deployed: boolean): void;
+  // 改名を受け付ける target の名前を name へ書き換える。
+  rename(target: InspectedObject, name: string): void;
 }
 
 // 被選択物への命令を queue へ積むだけの口を組む。
@@ -32,5 +34,6 @@ export function objectMenuCommands(
       () => target.runMenu?.(act, selection, authoring, planEditor)),
     setPartDeployment: (ship, part, deployed) => queue.submit(
       () => ship.setPartDeployment(part, deployed)),
+    rename: (target, name) => queue.submit(() => target.rename?.(name)),
   };
 }
