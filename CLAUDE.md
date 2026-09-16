@@ -101,6 +101,8 @@
 CI が生成するので、**手で触らない。** 変更は main / release 以外のブランチで行い、PR で main へ
 入れる(小規模なら直マージ)。
 
+**`tools/boundary-allowlist.json` が空になってから main へ送る。**
+
 **main へ送るときの手順は `/send-pr` が正本。**
 
 ## コマンド
@@ -108,6 +110,7 @@ CI が生成するので、**手で触らない。** 変更は main / release �
 | コマンド | 用途 | いつ走らせるか |
 | --- | --- | --- |
 | `npm run typecheck` | 型検査 | **常に** |
+| `npm run check:boundaries` | 層と境界の検査 | `src/` の置き場を触ったとき |
 | `npm run test` | 全層の回帰テスト | **main へ送る前**(`/send-pr`) |
 | `npm run test:physics` | `src/physics/` の回帰テスト | `src/physics/` を触ったとき |
 | `npm run test:math` | `src/math/` の回帰テスト | `src/math/` を触ったとき |

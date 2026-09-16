@@ -1,7 +1,7 @@
 // マーカーの見分けを決める字形と識別色。読み手が最初に判断するのは「その記号は物を指すのか、
 // 向きを指すのか、軌道上の特異点を指すのか」なので、塗りつぶし=実体・矢=方向・中空=軌道上の点、と
 // 字形の族をその区別に対応させる。
-type CelestialClass = 'star' | 'planet' | 'dwarf' | 'satellite' | 'smallBody';
+import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 
 // 陣営・対象ごとの識別色。軌道3軸の色は Δv 編集の 3D ギズモと同じ軸を指すので、theme.ts の
 // AXIS_* を共有する。

@@ -1,6 +1,7 @@
 // 折れ線グラフの描き手。渡された点列・軸・マークだけを canvas 2D へ描く汎用エンジンで、
 // 単位系や意味づけは軸構築側(orbit-chart-axes.ts)と呼び出し側が持つ。
-import { currentEdgeColor, currentThemePalette, FONT_FAMILY, FONT_XXS } from '../../../theme';
+import { edgeColor, FONT_FAMILY, FONT_XXS } from '../../../theme';
+import type { ThemePalette } from '../../../theme';
 import { injectOnce } from '../../../hud/inject-style';
 import {
   chartCanvasStyle, drawPointMarker, drawPolylineWithGaps, resizeCanvasBackingStore,
@@ -78,17 +79,16 @@ export class OrbitChart {
   public dispose(): void {
   }
 
-  // 直近の draw() が描いたプロット領域のピクセル寸法。まだ描いていない/寸法0なら null
-  // ——呼び出し側がドラッグ移動量を軸の値へ換算する変換係数として使う。
+  // 直近の draw() が描いたプロット領域のピクセル寸法。まだ描いていない/寸法0なら null。
   public plotPixelSize(): { width: number; height: number } | null {
     const width = this.backing.cssWidth - PADDING_LEFT - PADDING_RIGHT;
     const height = this.backing.cssHeight - PADDING_TOP - PADDING_BOTTOM;
     return width > 0 && height > 0 ? { width, height } : null;
   }
 
-  // spec の軸・マーク・点列を、この順(グリッド→外枠→キャプション→線→マーク)で描き直す。
-  // 点が1つも無ければ折れ線の代わりに emptyMessage を出す。
-  public draw(spec: ChartSpec): void {
+  // spec の軸・マーク・点列を palette の色で描き直す。点が1つも無ければ折れ線の代わりに
+  // emptyMessage を出す。
+  public draw(spec: ChartSpec, palette: ThemePalette): void {
     resizeCanvasBackingStore(this.element, this.ctx, this.backing);
     const ctx = this.ctx;
     const cssWidth = this.backing.cssWidth;
@@ -108,34 +108,37 @@ export class OrbitChart {
     ctx.font = `${FONT_XXS} ${FONT_FAMILY}`;
     ctx.textBaseline = 'middle';
 
-    this.drawGrid(spec, plotLeft, plotTop, plotWidth, plotHeight);
-    this.drawFrame(plotLeft, plotTop, plotWidth, plotHeight);
-    this.drawCaptions(spec, plotLeft, plotRight, cssHeight);
+    this.drawGrid(spec, palette, plotLeft, plotTop, plotWidth, plotHeight);
+    this.drawFrame(palette, plotLeft, plotTop, plotWidth, plotHeight);
+    this.drawCaptions(spec, palette, plotLeft, plotRight, cssHeight);
 
-    // 折れ線・マークはプロット領域内にクリップする——値がプロット範囲外に出ても
-    // 軸ラベルの上へはみ出さない。
     if (!spec.points.some((point) => point !== null)) {
-      this.drawEmptyMessage(spec.emptyMessage ?? '', plotLeft, plotTop, plotWidth, plotHeight);
+      this.drawEmptyMessage(spec.emptyMessage ?? '', palette, plotLeft, plotTop, plotWidth, plotHeight);
       return;
     }
 
+    // 折れ線・マークはプロット領域内にクリップする——値がプロット範囲外に出ても
+    // 軸ラベルの上へはみ出さない。
     ctx.save();
     ctx.beginPath();
     ctx.rect(plotLeft, plotTop, plotWidth, plotHeight);
     ctx.clip();
-    this.drawLine(spec, plotLeft, plotTop, plotWidth, plotHeight);
-    for (const mark of spec.marks) this.drawMark(mark, spec, plotLeft, plotTop, plotWidth, plotHeight);
+    this.drawLine(spec, palette, plotLeft, plotTop, plotWidth, plotHeight);
+    for (const mark of spec.marks) this.drawMark(mark, spec, palette, plotLeft, plotTop, plotWidth, plotHeight);
     ctx.restore();
   }
 
   // x/y 軸それぞれの目盛り線とラベルを描く。
-  private drawGrid(spec: ChartSpec, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
+  private drawGrid(
+    spec: ChartSpec, palette: ThemePalette,
+    plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,
+  ): void {
     const ctx = this.ctx;
     const plotBottom = plotTop + plotHeight;
     const plotRight = plotLeft + plotWidth;
-    ctx.strokeStyle = currentEdgeColor();
+    ctx.strokeStyle = edgeColor(palette);
     ctx.lineWidth = GRID_LINE_WIDTH;
-    ctx.fillStyle = currentThemePalette().muted;
+    ctx.fillStyle = palette.muted;
 
     // x軸: 縦の目盛り線を下端のラベルとともに描く。
     ctx.textAlign = 'center';
@@ -161,17 +164,21 @@ export class OrbitChart {
   }
 
   // プロット領域の外枠。
-  private drawFrame(plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
+  private drawFrame(
+    palette: ThemePalette, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,
+  ): void {
     const ctx = this.ctx;
-    ctx.strokeStyle = currentEdgeColor();
+    ctx.strokeStyle = edgeColor(palette);
     ctx.lineWidth = AXIS_LINE_WIDTH;
     ctx.strokeRect(plotLeft, plotTop, plotWidth, plotHeight);
   }
 
   // x軸・y軸それぞれのキャプション文字列。
-  private drawCaptions(spec: ChartSpec, plotLeft: number, plotRight: number, cssHeight: number): void {
+  private drawCaptions(
+    spec: ChartSpec, palette: ThemePalette, plotLeft: number, plotRight: number, cssHeight: number,
+  ): void {
     const ctx = this.ctx;
-    ctx.fillStyle = currentThemePalette().body;
+    ctx.fillStyle = palette.body;
     ctx.textAlign = 'center';
     ctx.fillText(spec.x.caption, (plotLeft + plotRight) / 2, cssHeight - X_CAPTION_OFFSET / 2);
     ctx.textAlign = 'left';
@@ -179,26 +186,33 @@ export class OrbitChart {
   }
 
   // プロット領域の中央に表示する案内文。
-  private drawEmptyMessage(message: string, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
+  private drawEmptyMessage(
+    message: string, palette: ThemePalette,
+    plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,
+  ): void {
     const ctx = this.ctx;
-    ctx.fillStyle = currentThemePalette().muted;
+    ctx.fillStyle = palette.muted;
     ctx.textAlign = 'center';
     ctx.fillText(message, plotLeft + plotWidth / 2, plotTop + plotHeight / 2);
   }
 
   // spec.points を折れ線として描く。
-  private drawLine(spec: ChartSpec, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number): void {
+  private drawLine(
+    spec: ChartSpec, palette: ThemePalette,
+    plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,
+  ): void {
     const toPx = (point: ChartPoint): { x: number; y: number } => ({
       x: scaleValue(point.x, spec.x.min, spec.x.max, plotLeft, plotWidth, false),
       y: scaleValue(point.y, spec.y.min, spec.y.max, plotTop, plotHeight, true),
     });
-    drawPolylineWithGaps(this.ctx, spec.points, toPx, currentThemePalette().accent);
+    drawPolylineWithGaps(this.ctx, spec.points, toPx, palette.accent);
   }
 
   // mark.style に応じた丸マークを1点描く。
   private drawMark(
     mark: ChartMark,
     spec: ChartSpec,
+    palette: ThemePalette,
     plotLeft: number,
     plotTop: number,
     plotWidth: number,
@@ -206,6 +220,6 @@ export class OrbitChart {
   ): void {
     const px = scaleValue(mark.point.x, spec.x.min, spec.x.max, plotLeft, plotWidth, false);
     const py = scaleValue(mark.point.y, spec.y.min, spec.y.max, plotTop, plotHeight, true);
-    drawPointMarker(this.ctx, px, py, mark.style === 'current');
+    drawPointMarker(this.ctx, px, py, mark.style === 'current', palette);
   }
 }

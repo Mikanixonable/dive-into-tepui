@@ -58,7 +58,7 @@ export function register(): void {
   });
 
   test('earth surface material: tile Vは各LOD行を走査し、全球南端を最終画素へ置く', () => {
-    for (const z of [4, 5, 7]) {
+    for (const z of [5, 6, 7]) {
       const rows = 2 ** z;
       const toTextureUv = (local: number): number => (2 + 0.5 + 256 * local) / 260;
       const expected = (v: number): number => toTextureUv(v === 1 ? 1 : v * rows - Math.floor(v * rows));
@@ -76,7 +76,7 @@ export function register(): void {
       (node) => node.type === 'MathNode' && node.method === 'min'));
   });
 
-  test('earth surface material: array/page table nodeはbase層とbody固定法線を持つ', () => {
+  test('earth surface material: array/page table nodeはbase層とnormal XYZ body固定法線を持つ', () => {
     const color = new THREE.DataArrayTexture(new Uint8Array(4), 1, 1, 1);
     const terrain = new THREE.DataArrayTexture(new Uint8Array(4), 1, 1, 1);
     const pageTable = new THREE.DataTexture(new Uint8Array(4), 1, 1);

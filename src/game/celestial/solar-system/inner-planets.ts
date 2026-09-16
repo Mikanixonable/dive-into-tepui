@@ -2,7 +2,7 @@
 import mercuryTextureUrl from '../../../assets/2k_mercury.jpg';
 import venusTextureUrl from '../../../assets/2k_venus_atmosphere.jpg';
 import { StarMotion } from '../../../physics/celestial-motion';
-import { PhaseOffsets, PlanetDef, planetDefForSimZero } from '../../../physics/celestial-body-def';
+import { PlanetDef, planetDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
@@ -85,11 +85,11 @@ export const INNER_PLANET_NAMES: Record<InnerPlanetId, string> = {
 
 // 内惑星を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function innerPlanets(
-  sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
+  sun: StarMotion, simZeroEt: number,
 ): Record<InnerPlanetId, CelestialEntity> {
   return {
     mercury: new CelestialEntity(
-      planetSystem(planetDefForSimZero(MERCURY, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(MERCURY, simZeroEt), sun).body,
       INNER_PLANET_NAMES.mercury, 'planet',
       new PointCelestialView(
         // 平均輝度 0.2306(A_B は公表ボンド)
@@ -97,7 +97,7 @@ export function innerPlanets(
       ),
     ),
     venus: new CelestialEntity(
-      planetSystem(planetDefForSimZero(VENUS, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(VENUS, simZeroEt), sun).body,
       INNER_PLANET_NAMES.venus, 'planet',
       new PointCelestialView(
         // 平均輝度 0.5561(A_B は公表ボンド)
