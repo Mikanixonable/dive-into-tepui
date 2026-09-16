@@ -25,7 +25,7 @@ import type { Targeter } from '../targeter';
 import { EmptySpacePickable } from './empty-space-pickable';
 import { orbitingAttractorOf } from '../../physics/attractor';
 import type { ViewFrame } from '../view/view-frame';
-import { PartWindows } from './part-windows';
+import { ModuleWindows } from './module-windows';
 import type { InspectedObject, ObjectAuthoring } from './inspected-object';
 import type { PropertyWindowOpener } from './property-window-opener';
 import { objectPickableOf } from './object-pickable';
@@ -43,7 +43,7 @@ export class ObjectWindows implements PropertyWindowOpener {
   // 開いているプロパティウィンドウ。対象の id でオブジェクト1つにつき高々1枚に保つ
   // (一時ウィンドウの排他自体は OverlayManager が持つ — ここは対象との対応づけのみ)。
   private readonly windows = new Map<string, WindowEntry>();
-  private readonly partWindows: PartWindows;
+  private readonly moduleWindows: ModuleWindows;
   // どの被選択物にも当たらなかった右クリックの落ち先。位置を持たないので1つを使い回す。
   private readonly emptySpace: InspectedObject = new EmptySpacePickable();
   // 直近のマップフォーカス — プロパティウィンドウのバッジ判定に使う。マップを離れている間は
@@ -70,7 +70,7 @@ export class ObjectWindows implements PropertyWindowOpener {
   ) {
     this.menu = new ContextMenu<InspectedObject, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => this.runAct(target, act);
-    this.partWindows = new PartWindows(hud, controlSelection);
+    this.moduleWindows = new ModuleWindows(hud, controlSelection);
     this.hud.enemiesPanel.onSelectRight = (id, clientX, clientY) => {
       const enemy = this.roster.all().filter(isEnemy).find((e) => e.id === id);
       const inspected = enemy ? objectPickableOf(enemy) : null;
@@ -109,7 +109,7 @@ export class ObjectWindows implements PropertyWindowOpener {
       if (act === 'delete' || (!w.clipped && !keepOpen)) this.closeWindow(key);
     };
     w.onClose = () => {
-      this.partWindows.closeFor(entry.target.id);
+      this.moduleWindows.closeFor(entry.target.id);
       this.forgetWindow(key);
     };
   }
@@ -152,14 +152,14 @@ export class ObjectWindows implements PropertyWindowOpener {
       entry.win.syncItems(menuItems);
       entry.win.syncBadge(entry.target.id === this.lastFocusId);
     }
-    this.partWindows.sync();
+    this.moduleWindows.sync();
   }
 
   // 開いたままのメニュー・ウィンドウを畳む。マップビューを離れるときに呼ぶ。
   close(): void {
     this.menu.close();
     for (const key of [...this.windows.keys()]) this.closeWindow(key);
-    this.partWindows.close();
+    this.moduleWindows.close();
   }
 
   // 開いているメニュー・ウィンドウを畳んだうえで、自身のメニューを取り除く。
@@ -252,14 +252,17 @@ export class ObjectWindows implements PropertyWindowOpener {
   // 天体は静的な primaryOf、人工物は現在状態から orbitingAttractorOf で判定する。
   private relatedItemsFor(target: InspectedObject, pivot: number): readonly PropertyWindowRelatedItem[] {
     const controlled = this.controlSelection.current;
-    // 搭載部品を持つのは艦だけなので、操作中の基地では周回物体の一覧へ落ちる。
+    // 操作中のモジュール船は搭載一覧を出し、それ以外は周回物体の一覧へ落ちる。
     if (controlled instanceof ModularShip && target.id === controlled.id) {
-      return controlled.inspection.parts.map((part) => ({
-        id: part.id,
-        label: part.name,
-        onFocus: () => this.focus(controlled.id, `${part.name} を搭載する ${controlled.name}`),
-        onContextMenu: (clientX, clientY) => this.partWindows.open(controlled, part, clientX, clientY),
-      }));
+      return controlled.inspection.modules.map((module) => {
+        const label = controlled.assembly.definition(module.id)?.name ?? module.definitionId;
+        return {
+          id: module.id,
+          label,
+          onFocus: () => this.focus(controlled.id, `${label} を搭載する ${controlled.name}`),
+          onContextMenu: (clientX, clientY) => this.moduleWindows.open(controlled, module.id, clientX, clientY),
+        };
+      });
     }
     if (!(target instanceof CelestialEntity)) return [];
     const related: { item: InspectedObject; label: string }[] = [];
@@ -289,7 +292,7 @@ export class ObjectWindows implements PropertyWindowOpener {
 
   private relatedTitleFor(target: InspectedObject): string {
     const controlled = this.controlSelection.current;
-    return controlled instanceof ModularShip && target.id === controlled.id ? '搭載部品' : '周回物体';
+    return controlled instanceof ModularShip && target.id === controlled.id ? '搭載モジュール' : '周回物体';
   }
 
   // フォーカスをその対象へ移す。マップは座標系パネル連動(計画中心の追随)込みの経路、
