@@ -465,7 +465,7 @@
   },
   "src/game/dynamic/sim-speed-manager.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 2
+      "count": 1
     },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 15

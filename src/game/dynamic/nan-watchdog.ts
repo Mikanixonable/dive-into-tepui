@@ -1,4 +1,4 @@
-// シミュレーション状態が NaN / Infinity に汚染された瞬間を捕まえて報告する見張り。
+// シミュレーション状態が NaN / Infinity に汚染された瞬間を捕まえ、出来事として記録する見張り。
 //
 // なぜ必要か: 一度でも非有限値が混ざると、症状が「別のバグ」に化けて原因が追えなくなる。
 //  - 描画: FloatingOrigin は自機状態から毎フレーム作り直されるため、自機が汚染されると
@@ -15,9 +15,9 @@
 // つまり NaN は静かに広がってから、まったく別の顔で表面化する。発生した「フェーズ」と
 // 「最初に壊れた対象」をその場で記録することが、原因特定の唯一の近道になる。
 //
-// 一度検出したら以後は何もしない(ログの洪水と、汚染後の無意味な検査を避ける)。
-import type { Notifier } from '../../hud/notifier';
+// 一度検出したら以後は何もしない(告知の洪水と、汚染後の無意味な検査を避ける)。
 import type { SimulationControlled, SimulationState } from './dynamic-simulation-participant';
+import type { RunEventBody, RunEventSink } from '../run-events';
 import { Vec3 } from '../../math/vec3';
 
 // 全成分が有限値かどうかを返す。
@@ -25,16 +25,10 @@ function finiteVec(v: Vec3): boolean {
   return Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
 }
 
-// エンティティの位置・速度を報告文言用の文字列にする。
-function describe(entity: SimulationState): string {
-  const { r, v } = entity.state;
-  return `r=(${r.x},${r.y},${r.z}) v=(${v.x},${v.y},${v.z})`;
-}
-
 export class NanWatchdog {
   private tripped = false;
 
-  constructor(private readonly _notifier: Notifier) { }
+  constructor(private readonly events: RunEventSink) { }
 
   // 操作対象と simTime だけを見る軽い検査。update の各フェーズ境界で呼ぶ。
   // phase には「直前に何が走ったか」を渡す(そこが発生源だと分かる)。操作対象がいなければ何もしない。
@@ -48,8 +42,10 @@ export class NanWatchdog {
       && finiteVec(w)
       && Number.isFinite(simTime);
     if (ok) return;
-    const attitude = `q=(${q.x},${q.y},${q.z},${q.w}) w=(${w.x},${w.y},${w.z})`;
-    this.trip(phase, `controlled ${describe(controlled)} ${attitude} simTime=${simTime}`, dt, simDt);
+    this.report({
+      kind: 'controlledStateCorrupted',
+      phase, state: controlled.state, attitude: controlled.att, simTime, dt, simDt,
+    });
   }
 
   // 全エンティティを走査する重い検査。操作対象より先に汚染されるのは他のエンティティ
@@ -64,16 +60,18 @@ export class NanWatchdog {
     if (this.tripped) return;
     for (const e of entities) {
       if (finiteVec(e.state.r) && finiteVec(e.state.v)) continue;
-      this.trip(phase, `${e.constructor.name} ${describe(e)}`, dt, simDt);
+      this.report({
+        kind: 'entityStateCorrupted',
+        phase, subject: e.constructor.name, state: e.state, dt, simDt,
+      });
       return;
     }
   }
 
-  // 検出結果をコンソールと HUD トーストへ報告し、以後の検査を止める。
-  private trip(phase: string, detail: string, dt: number, simDt: number): void {
+  // 壊れた値を原因追跡のためのコンソールと出来事の記録へ流し、以後の検査を止める。
+  private report(body: RunEventBody): void {
     this.tripped = true;
-    const message = `シミュレーション状態が壊れました(NaN/Infinity)。phase=${phase} dt=${dt} simDt=${simDt} — ${detail}`;
-    console.error('[NanWatchdog]', message);
-    this._notifier.toast(`<b>内部エラー: ${message}</b>`, 60000);
+    console.error('[NanWatchdog]', body);
+    this.events.record(body);
   }
 }
