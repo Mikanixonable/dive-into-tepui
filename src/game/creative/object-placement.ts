@@ -12,7 +12,7 @@ import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import { Base } from '../dynamic/dynamic-entity/base';
 import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
 import { AmmoPickup, isAmmoPickup, isRcsFuelPickup, RcsFuelPickup } from '../dynamic/dynamic-entity/pickup';
-import { isPlayer, type PlayerInit } from '../player/player';
+import { isModularShip, type ModularShipInit } from '../ship/modular-ship';
 import { generateRandomName } from '../random-name';
 import { generateDriftingEnemy } from '../stages/spawner/enemy-generator';
 import { elementsFormFromState } from './duplicate-form';
@@ -51,7 +51,7 @@ const DEG = Math.PI / 180;
 // 置くと決まった物体。自機は実体ではなく生成引数で表す。name は与えた名前で、
 // 実体が名前を持たない種類(弾薬)でも告知できるよう別に持つ。
 export type PlacedObject =
-  | { readonly kind: 'player'; readonly init: PlayerInit }
+  | { readonly kind: 'player'; readonly init: ModularShipInit }
   | { readonly kind: 'entity'; readonly entity: DynamicEntity; readonly name: string };
 
 export class ObjectPlacement {
@@ -76,7 +76,7 @@ export class ObjectPlacement {
   ) {
     // 以後の新規配置が既存 id と衝突しないよう、復元済みの艦・補給の id を予約する。
     const entities = dynamicSystem.all();
-    for (const p of entities.filter(isPlayer)) this.playerIdAllocator.next(p.id);
+    for (const p of entities.filter(isModularShip)) this.playerIdAllocator.next(p.id);
     for (const ammoPickup of entities.filter(isAmmoPickup)) this.ammoPickupIdAllocator.next(ammoPickup.id);
     for (const pickup of entities.filter(isRcsFuelPickup)) this.rcsFuelPickupIdAllocator.next(pickup.id);
 
@@ -154,7 +154,7 @@ export class ObjectPlacement {
   // 検証に落ちるか状態を組めなければ、理由をトーストで知らせて何も渡さない。
   private place(name: string, form: ObjectPlacerForm): void {
     // 隻数の上限が掛かるのは自機だけ(SPEC GAME.md 9.1)。
-    if (form.entityKind === 'player' && this.dynamicSystem.all().filter(isPlayer).length >= MAX_PLACED_SHIPS) {
+    if (form.entityKind === 'player' && this.dynamicSystem.all().filter(isModularShip).length >= MAX_PLACED_SHIPS) {
       this.hud.hint(`配置数が上限(${MAX_PLACED_SHIPS}隻)に達しています`);
       return;
     }
