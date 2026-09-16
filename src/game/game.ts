@@ -25,7 +25,7 @@ import { ControlSelection } from './control-selection';
 import { Targeter } from './targeter';
 import { PlanDisplay } from './plan/plan-display';
 import { PlanGuide } from './plan/plan-guide';
-import { DisplayWindowManager, timeLabelSettingOf } from './display-window-manager';
+import { DisplayWindowManager, timeLabelSettingOf, trajectoryDemandOf } from './display-window-manager';
 import { SimSpeedManager } from './dynamic/sim-speed-manager';
 import { DynamicSystem } from './dynamic/dynamic-system';
 import { RunEventLog } from './run-events';
@@ -534,9 +534,6 @@ export class Game {
     const displayWindow = this.displayWindowManager.resolve(
       this.dynamicSystem.simTime, activeControllable, view !== 'map',
     );
-    // 過去表示に要る履歴の長さを要求する。次の積分がサンプルを積むまでに立っていればよいので、
-    // 窓が確定したこの場で渡す。
-    this.dynamicSystem.requestHistoryDuration(displayWindow.pastDuration);
     // このフレームが天体を引く表示時刻を差し込む: 以降の frameTransformAt 呼び出しは
     // すべてこの frameAnchors を通す。
     this.frameAnchors.update(displayWindow.displayTime);
@@ -551,11 +548,15 @@ export class Game {
     this.sections.enter(SECTION.plan);
     this.planDisplay.update(displayWindow, this.frameAnchors, view);
     this.sections.exit(SECTION.plan);
+    // 表示の選択が進行へ効いてよいのは需要だけ(R4)。どこまで計算してほしいかを1つにまとめ、
+    // 読む側より前に立てる。履歴の長さは、次の積分がサンプルを積むまでに立っていればよい。
+    const demand = trajectoryDemandOf(displayWindow, this.planDisplay.growableArcs());
+    this.dynamicSystem.requestHistoryDuration(demand.historyDuration);
     // ポーズ中・決着後も呼ぶ。simTime が止まっていれば予測は伸び切ったところで止まる。
     this.sections.enter(SECTION.predict);
     this.predictor.update(
       this.dynamicSystem.simTime, this.dynamicSystem.lastSimDt,
-      activeControllable?.motion ?? null, displayWindow.duration, this.planDisplay.growableArcs(),
+      activeControllable?.motion ?? null, demand,
     );
     this.sections.exit(SECTION.predict);
     // 交点を置く先は計画折れ線か解析軌道楕円のどちらかなので、折れ線を組み終えた計画表示と、
