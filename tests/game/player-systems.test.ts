@@ -13,12 +13,15 @@ import { DynamicView } from '../../src/render/dynamic/dynamic-view';
 import { FireControl } from '../../src/game/player/fire-control';
 import { WeaponState } from '../../src/game/player/weapon-state';
 import { DeployablePanelState } from '../../src/game/player/deployable-panel-state';
-import { PlayerMotion, type PlayerMotionReactions } from '../../src/game/player/player-motion';
 import { PowerSystem, POWER_CAPACITY } from '../../src/game/player/power';
 import { RadiatorSystem } from '../../src/game/player/radiator';
 import { Throttle, THROTTLE_LEVELS } from '../../src/game/player/throttle';
 import type { FireSaveData, ThrottleSaveData } from '../../src/game/save/save-data';
 import type { ModularShip } from '../../src/game/ship/modular-ship';
+import { ModularShipMotion } from '../../src/game/ship/modular-ship-motion';
+import { createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
+import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
+import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import type { Notifier } from '../../src/hud/notifier';
 
 const attitude = { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
@@ -40,25 +43,6 @@ class NullView extends DynamicView {
   public constructor() {
     super(new THREE.Object3D(), undefined, false);
   }
-}
-
-function reactions(): PlayerMotionReactions {
-  return {
-    weapon: { roundsInMagazine: () => 0, stepBarrelThermal: () => {} },
-    environment: {
-      thrustAcceleration: () => v3(),
-      radiatorWear: () => ({ up: 0, down: 0 }),
-      totalCoolingRate: () => 84,
-      totalPowerGeneration: () => 0,
-    },
-    altitudeAlarm: { updateAltitudeAlarm: () => {} },
-    contact: {
-      receiveEntityContact: () => {},
-      receiveRadiatorContact: () => {},
-      receiveSurfaceContact: () => {},
-    },
-    loss: { receiveStructuralLoss: () => {}, receiveBurnUp: () => {} },
-  };
 }
 
 export function register(): void {
@@ -91,12 +75,12 @@ export function register(): void {
     assert.ok(defaultPower.chargeJ > start);
   });
 
-  test('player motion: 接続ブースターの質量で空力・輻射圧の質量あたり値が下がる', () => {
-    const motion = new PlayerMotion(state, attitude, 2.6, 300, 0, reactions());
-    motion.attachedBoosters.attach({
-      id: 'test-booster', dryMass: 200, fuel: 800, maxFuel: 800,
-      thrust: 600_000, fuelRate: 80, ignited: false,
-    });
+  test('modular ship motion: booster module の質量で空力・輻射圧の質量あたり値が下がる', () => {
+    const assembly = createDefaultCombatPreset();
+    assembly.append(createShipModuleInstance(
+      SHIP_MODULE_CATALOG.require('booster-standard'), 'test-booster',
+    ));
+    const motion = new ModularShipMotion(assembly, state, attitude);
     assert.equal(motion.mass, 2_000);
     assert.equal(motion.bcInv, SHIP_BCINV / 2);
     assert.equal(motion.srpCoeff, SHIP_SRP_COEFF / 2);
