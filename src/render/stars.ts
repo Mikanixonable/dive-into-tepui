@@ -3,12 +3,17 @@
 import * as THREE from 'three/webgpu';
 import starsTextureUrl from '../assets/8k_stars.jpg';
 import { DeferredTexture } from './deferred-texture';
+import { POINT_IMAGE_ANGULAR_SIZE } from './billboard';
 import { WORLD_BACKGROUND_LAYER } from './pipeline/lit-layer';
 
 export const STAR_SHELL_RADIUS = 3.5e7; // [m] 自機中心に固定するので視差は出ない
 
-// 星野・天球グリッドを置く殻の半径 [m]。殻は視点中心なので、半径を拡げても見え方は変わらない。
+// 星野・天球グリッド・点像を置く殻の半径 [m]。殻は視点中心なので、半径を拡げても見え方は
+// 変わらない。カメラの近平面・遠平面は、どのズーム段でもこの殻を画面の四隅まで残す。
 export const CELESTIAL_SHELL_RADIUS = 1.35e10;
+
+// 殻の上へ置く点像の板の一辺 [m]。角の広がりへ殻の半径を掛けたもの。
+export const POINT_IMAGE_SIZE = POINT_IMAGE_ANGULAR_SIZE * CELESTIAL_SHELL_RADIUS;
 
 // 星殻・天球グリッドへ掛ける倍率。far は視距離に連動して毎フレーム変わるので、
 // 殻の拡大率はそこから独立させる。
