@@ -288,6 +288,52 @@
   - **作者へ伝えること。** この記録はいまも手順1〜3を `[x]` としたまま `suspended/` へ移されている。`memos/` は書き手が管理しているので、こちらからは直さない。
 - **雲。** 雲の描画(`src/render/cloud/`)は別の作業が進んでいる。この計画で雲に触れるのは、手順 1-3 の `R_EARTH` の注入(`atmospheric-wind.ts:5`)だけ。
 
+
+### K6. 横断検査で確定した構造の判断
+
+`reduce_implement.md` の洗い出しで出た指摘のうち、**挙動ではなく依存の向きと mutable の置き場の問題**をここへ移した。調査時点は `af997ae0`、現存と `path:line` は `d50fb08d` で確認した。R3・R5・R6 の類例を機械検査で全量へ絞り、1件ずつ現地で判断してある。
+
+**擬陽性と確定したものは、同じ場所を通る段で再調査しない。** 保留したものは、決める手順をここで指す。
+
+**使った検査(段の N-2 で禁止パターンへ足す候補)**
+
+| 類 | 検査 | 全量 |
+| --- | --- | --- |
+| ECI 原点を物理の基準に使う | ゼロベクトルのフォールバック(`?? v3()` / `?? V3_ZERO`)と、`len`/`lenSq`/`norm`/`dot`/`cross` が絶対 ECI 位置を `sub()` 抜きで食う行 | 5件 / 14件 |
+| 見た目で物理を決める | 描画層以外からの `.view.` 読み / 表示属性で実体を選ぶ `find`・`filter` / `game`・`physics` から `render/` への import | `.view.` 77件、実体選択は1件 |
+| 派生値をステートに持つ | `normalize`/`refresh`/`recompute`/`derive` が保存済みフィールドを他フィールドから上書きする形 + 全ミュータブルフィールドの分野別走査 | 候補48件 |
+| 実時刻タイマー | `performance.now()` / `Date.now()` / `setTimeout` / `setInterval` の層別 | 16ファイル |
+
+**擬陽性(再調査しない)**
+
+- **実時刻の16ファイルのうち、時計の取り違えは BGM の Conductor だけだった。** 入力・プロファイル・保存時刻・読み込みのフレーム譲り・通信タイムアウト・BGM のポンプは、どれも実時刻が正しい。連打判定も同じで、時間加速で連打が速まってはいけない。`throttle.ts` が**自分で**実時刻を読む点だけが R5 に反する(K2 のとおり、手順 3-6 で入力の解釈へ移す)。
+- **`arc-celestial-bodies.ts:51` の `len(state.r)` は正しい。** ECI 化で入る原点補正項は天体の原点距離だけで決まるので、原点からの距離を見るのが正。
+- **描画層の幾何を物理が読んでいる箇所は無い**(手順 6-3 の前提)。当たり判定の半径・大気・アルベドはすべて `def`/`motion` から引いている。`siteMarkers`・`motionMetrics`・`lineSamples` は表示・ピック・性能計測で、手順 5-3 が表示担当から読む形へ移す。
+- **`camera-system.ts:235` の `focusVelocity ?? v3()` は位置ではなく速度**で、答えられない対象を注視しているあいだの既定として明記されている。R6 と同型ではない。
+- **軌道ガイドの `point` と差分ゲートは消せない**(手順 6-3 の前提)。`source === 'lissajous'` では `familyId` が常に `'lissajous'` なので `point` を復元できない。`displayedSettings`/`displayedStyle` は導出値ではなくメモ鍵(R5-1)で、外すと `buildDisplays`・`styleFor`・`THREE.Color` の生成と `retainOnly` が毎フレーム走る。
+- **天体ラベルの `frameScratch` は正当なフレームキャッシュ(R5-1)**(手順 5-4・6-3 の前提)。`opacity` は全天体との遮蔽レイ判定の結果で再計算が安くなく、`labelStateOf(id)` が後から任意の id を引く。
+
+**保留した構造の問題と、決める手順**
+
+1. **設定値の鏡映しと、ウィジェットが現在値を持たないこと(手順 2-3。一覧の行は手順 5-4)。**
+   - 「パネルへ設定の読み口を渡すと依存が悪化する」は**当たらない**。同じディレクトリの `view-options-control.ts:13` が既に `settings/setting-value` を型 import しているので、新しい向きの辺は生まれない。
+   - ただし**単純な削除にはならない。** 写しは次の値を決める(`view-options-panel.ts:254-258`、`:402-407`)だけでなく、patch を重ねる土台(`orbit-guide-tab.ts:327-330,403-415,463-485`)、兄弟値のクランプ(族範囲の下限・上限、`orbit-guide-tab.ts:233-241`)、未設定 id の既定生成(`orbit-guide-tab.ts:315-324,386-391`)にも使われている。読み口はこの3つを満たす形で切る。
+   - **根は `Button` が点灯の現在値を持たないこと。** `button.ts:58-61` の `setOn` は class と `aria-pressed` を書くだけで `on` を保持しないので、現在値を呼び出し側が持たされている。ウィジェット側へ宣言を持たせれば、パネルの写しは要らなくなる。
+   - `toggle-switch.ts:7` の `on` と `button.ts:11` の `enabled` が DOM と二重なのは**違反ではない**。読み手はクラスの中だけで、R7 の「装置は内部で前回との差分を取る」に当たる。`pause-menu.ts:34` の `minimized`、`draggable-window.ts:91-93` の `lastTitle`/`lastSubtitle`/`_clipped` も同じで、段 7 で `hud/` を装置として判定するときに確定する。
+   - 一覧の行だけは**流儀が割れている**。`savedExpanded` を正本と明記した `restoreSavedExpanded`(boolean だけ書いて DOM を後続の sync に任せる、`physical-object-list-row-tree.ts:137-143`)と、自分で `applyRowExpanded` を呼ぶ `setAllRowsExpanded`(`:147-150`)が併存する。手順 5-4 で行を表示担当へ移すときに一方向へ揃える。
+2. **導出層が、同じフレームに引数で来る値を写して持っているもの(手順 2-3・4-3・7-6)。**
+   - `hud.ts:65` の `chromeView` は**消さない。** `applyView` はクラスの付け替えだけでなく、パネルを左レールへ `insertBefore`/`appendChild` で移すので、毎フレーム行うとボタンのフォーカスとホバーが失われる。R5-5(表示を安定させるための前フレームの記憶)に当たる。手順 2-3 の「ビューを sync の入力で受ける」は、**付け替えの実行条件を前フレームとの差にすること**であって、写しを消すことではない。
+   - `panel-shell.ts:34` の `view` も同じ理由で残す。消すと main → Hud → PanelCollapse の3階層と後付けの遅延バインドが要る。
+   - `object-windows.ts:48` の `lastFocusId` は**挙動を持つ**(マップを離れているあいだ最後のマップ注視を据え置き、戦闘中に開いたウィンドウのバッジに出る)。消すならその挙動を決めるのが先なので、視点を集める手順 4-3 で決める。
+   - 未着手の類例: `frame-controls.ts:22` の `lastTime`(手順 2-3 が同じファイルを触る)、`plan-editor.ts:78` の `simTime`。`ObjectWindows.sync`(`object-windows.ts:133` ← `game.ts:602`)と `MapPicking.handleRightClick`/`handleEmptySpaceRightClick`(`map-picking.ts:102,154` ← `map-view.ts:120,125`)が受ける `simTime` は、DOM 側の入口を表示時刻の所有者から読む形へ直した結果、いまは同じ値を運ぶ2本目の経路になっている。手順 7-6 で `game.ts` を分解するときに消す(`view-frame.ts:28,30` の宣言も一緒に落ちる)。
+3. **所有者以外が毎フレーム書いている値(手順 3-1・3-3)。**
+   段スタックの合計から `mass`/`att.inertia` が(`attached-booster-motion.ts:86,91-97`、`detached-booster-motion.ts:36`)、放熱板パーツの `1 - hp/maxHp` から `wear` が(`radiator.ts:122`)、毎フレーム上書きされている。計算自体は軽微(段は最大4本、放熱板は2枚)で導出元は生きているが、`DynamicMotion` も `RadiatorSystem` もパーツを知らないので、やめるには供給フックを1本足すことになる(依存は中程度に悪化する)。読み手は `throttle`・`contactMass`・`base-motion`・描画と広い。
+   **R3「モデル層の値を書くのは所有者だけ」をこの2件に当てるかは、手順 3-1 で R3 の文面を決めるときに判断する。** 当てるなら手順 3-3 で供給フックの向きを決め、当てないなら R3 に例外を書く。
+4. **id と表示名は統合しない(手順 4-3)。**
+   `nav-target.ts:68-69`・`equator-node-marker.ts:22,25`・`orbit-point-marker.ts:51` は id と表示名を両方持つ。**表示名は衝突を許し、id は衝突しない**ので、表示は名前・検索は id と使い分ける。横断検査では、表示名で同一性を判定している箇所は `src/` に無かった(名前での比較3箇所は、既定名との一致・並び替えの差分検出・利用者向けの検索文字列で、どれも同一性の判定ではない)。手順 4-3 でターゲットを視点へ移すときも、名前は表示専用の値として残す。
+
+**単独では扱わないもの。** `field-projection.ts:110` の `cosRadiusValue`、`curve.ts:90` の `appliedStyle`、`orbit-guide-catalog.ts:74` の `loadState`、`slot-data.ts:35,47` の `lastPlayedAtReal` は、どれも1フィールドの導出値。`planet-system.ts:53` の `offsetting` は時刻層のメモ化として R1 に適うが、**性能上の理由がコメントに書かれていない**(`:52` のコメントは何を保持するかだけを述べている) — 段 6 で天体を触るときに書く。`next-event-time.ts:8`・`dynamic-trajectory.ts:25`・セーブ索引(`slot-data.ts:13-30`)は、理由が明記された意図的な保持。
+
 ## 達成目標
 
 ### どの段でも、main へ送る前に満たすもの
@@ -549,10 +595,16 @@ render → `game/marker` の 9 本は手順 1-4 で扱う。
 | `src/game/hud/panel-shell.ts:25-27,87`、`src/game/view/view-manager.ts:65` | モジュール変数 `currentView` をやめ、ビューを sync の入力で受ける。折り畳み状態の localStorage を `settings/` の設定値に移す |
 | `src/game/hud/panels/orbit-guide-tab.ts:96,107`、`src/game/hud/panels/view-options-panel.ts:40,50,182,188,193`、`src/game/hud/panels/zero-velocity-section.ts:39`、`src/game/hud/view-badge.ts:95` | タブ選択の localStorage を `settings/` へ移す。鏡映し(設定値の写し)を持つのをやめ、sync で受けた値から描く |
 | `src/game/hud/panels/view-options-control.ts:26-47`、`src/game/game-host.ts:15-17`、`src/game/run-setting.ts`、`src/main.ts:172-174`、`src/game/view/map-view.ts:60` | 書き込める `RunSetting` を渡すのをやめる。読み取り専用の面と変更の callback で受け、callback が `settings/` へ書く。`run-setting.ts` は消す |
-| `src/game/hud/hud.ts:116-137`、`src/game/view/view-manager.ts:64-69` | ビュー切替のたびに DOM をレール間で動かす処理(`Hud.setView`)と、`applyChrome` での写しの押し込みをやめ、ビューを sync の入力にする。`forceCurrent` は `view !== 'map'` から導く |
+| `src/game/hud/hud.ts:116-137`、`src/game/view/view-manager.ts:64-69` | ビュー切替のたびに DOM をレール間で動かす処理(`Hud.setView`)と、`applyChrome` での写しの押し込みをやめ、ビューを sync の入力にする(**前フレームとの差で付け替える。下の前提を見る**)。`forceCurrent` は `view !== 'map'` から導く |
 | `src/theme.ts:117,486,504`、`src/settings/theme-setting.ts:6`、`src/main.ts:155` | `activePalette` のモジュール状態をやめる。選択中の配色 id を `settings/` の値として導出へ供給し、DOM へ CSS を反映するのは hud の装置が行う。3D 描画へ渡す色は、sync で配色から引く |
 | 二段初期化 | 構築時の引数にする: `hud.ts:98`(`vesselPanel.setInput`)、`game.ts:262-266`(`burnManagementPanel.setHandlers`)、`hud.ts:72`(`setOpenAnalysisHandler`)、`object-windows.ts:73,77`(`onSelectRight` への代入) |
 | `src/game/hud/panels/physical-object-list-head.ts` | どこからも import されていないので消す |
+
+**前提(K6 で調査済み)**: この手順の「写しをやめる」は、**一律の削除ではない。**
+
+- **鏡映しをやめる側**(`view-options-panel.ts`・`orbit-guide-tab.ts`): 写しは次の値を決めるだけでなく、patch を重ねる土台・兄弟値のクランプ・未設定 id の既定生成にも使われている。読み口はこの3つを満たす形で切る。原因はウィジェット側にあり、`button.ts` の `setOn` が点灯の現在値を保持しないので呼び出し側が持たされている — **ウィジェットへ宣言を持たせるのが先。**
+- **残す側**(`hud.ts` の `chromeView`、`panel-shell.ts` のインスタンスが覚えるビュー): ビューを sync の入力にするのは、**DOM の付け替えの実行条件を前フレームとの差にすること**であって、前フレームの記憶(R5-5)を消すことではない。毎フレーム `insertBefore` するとボタンのフォーカスとホバーが失われる。消すのはモジュール変数の方だけ。
+- ついでに `frame-controls.ts:22` の `lastTime`(同じフレームに引数で来る表示時刻の写し)も落とす。
 
 **達成条件と検証**
 
@@ -643,7 +695,7 @@ render → `game/marker` の 9 本は手順 1-4 で扱う。
 
 #### 手順 3-3. 命令の列を入れる
 
-**目的**: R3 のとおり、モデル層が変わる時点を進行の位相の先頭の1か所にする。対象は、DOM イベントの中で正本を直接書き換えている箇所。挙動は、UI 操作の結果が次のフレームの進行で反映される点だけが変わる(遅れは最大1フレーム)。
+**目的**: R3 のとおり、モデル層が変わる時点を進行の位相の先頭の1か所にし、正本を書くのを所有者だけにする。対象は、DOM イベントの中で正本を直接書き換えている箇所と、所有者以外が毎フレーム書いている導出値(K6 の保留 3)。挙動は、UI 操作の結果が次のフレームの進行で反映される点だけが変わる(遅れは最大1フレーム)。
 
 **変更が必要な箇所**
 
@@ -657,6 +709,7 @@ render → `game/marker` の 9 本は手順 1-4 で扱う。
 | `src/game/pickable/object-windows.ts:225-233` と `runMenu` を持つ実体(`player.ts:701-713`、`base.ts:306-312`、`enemy.ts:518`) | メニュー項目の実行を命令にする |
 | `src/game/plan/plan-editor.ts`(DOM から `Plan` を書く `:126,:312,:351,:397,:411`) | 計画の編集を命令にする |
 | `src/game/player/attached-boosters.ts:108,123-126`、`src/game/game.ts:262-266` | ブースターの操作を命令にする |
+| `src/game/player/attached-booster-motion.ts:86,91-97`、`src/game/dynamic/dynamic-entity/detached-booster-motion.ts:36`、`src/game/player/radiator.ts:122` | **手順 3-1 で R3 をこの2件へ当てると決めた場合だけ。** 所有者以外が毎フレーム書いている `mass`/`att.inertia`/`wear` を、所有者が導出元から供給を受ける形にする(K6 の保留 3)|
 
 **達成条件と検証**
 
@@ -806,9 +859,10 @@ render → `game/marker` の 9 本は手順 1-4 で扱う。
 | `src/game/camera/{camera-system,focus-camera,camera-orientation,focus-target,gunsight-camera}.ts` | 注視・offset/pan/up・FOV・投影・基準面・回転モード・追従の状態とセーブを `game/viewer/` へ移す。入力の解釈(ホイール・ドラッグの感度、キー → 回転量、`camera-system.ts:168-206`)、ズームの遷移(`combatViewpoint`)、ヒントと DOM ボタン(`camera-system.ts:69,116-117`、`focus-camera.ts:387,408`)は表示の導出へ移す。フォーカスを失ったときの戻し(`focus-camera.ts:437`)は視点の規則として残す。射影の入口の二重(`activeProjection` と `CameraFrame.project`)を1つにする |
 | `src/game/view/view-manager.ts` | 現在のビューを視点へ移す。`combat-view.ts` / `map-view.ts` / `view-frame.ts` は表示の導出にする |
 | `src/game/display-window-manager.ts:74-81,95,141-148,175-179` | 期間・スライダー・目盛り・表示座標系・`followCamera` を視点へ移す。`PredictPanel` の所有(`:103-136`、`:231`)は表示の導出へ移す |
-| `src/game/orbit-reference.ts`、`src/game/nav-target.ts:67-68,91-136` | 基準モードと、ターゲットの id と名前を視点へ移す。ターゲットの serialize を所有者に置く(いまは `game.ts:181` で Game が組み立てている)。相対交点の計算(`:158-208`)とマーカーは表示の導出にする |
+| `src/game/orbit-reference.ts`、`src/game/nav-target.ts:67-68,91-136` | 基準モードと、ターゲットの id と名前を視点へ移す。**名前は id から引き直さず、表示専用の値として持ったまま移す**(K6 の保留 4)。ターゲットの serialize を所有者に置く(いまは `game.ts:181` で Game が組み立てている)。相対交点の計算(`:158-208`)とマーカーは表示の導出にする |
 | `src/game/dynamic/dynamic-entity/{dynamic-entity.ts:31,player.ts:194,613,base.ts:137,240,enemy.ts:182,451,protein-enemy.ts:87,130,145-147,219}` | 軌道線の表示トグルとタンパク質の表示設定を、視点が roster との突き合わせで持つ記録へ移す(R6)。保存形式は、セーブを組み立てる境界で実体の記録へ合成して保つ |
 | `src/game/hud/hud.ts:44,77-87` | 軌道分析ウィンドウの開閉を視点へ移す |
+| `src/game/pickable/object-windows.ts:48,134-146` | `lastFocusId` は「マップを離れているあいだ最後のマップ注視を据え置く」という観測できる挙動を持つ。視点の注視から毎フレーム導ける形にするか、挙動ごと視点へ移すかをここで決める(K6 の保留 2)|
 | `src/game/game.ts:227,289` | カメラ → ビュー、窓 → ビューの遅延クロージャによる循環を、視点の読み取り面で解く |
 | `src/game/save/save-data.ts:269-280` | 形式は変えない。組み立てと分解を所有者ごとに分ける |
 
@@ -913,6 +967,7 @@ render → `game/marker` の 9 本は手順 1-4 で扱う。
 | `src/game/marker/{equator-node-manager.ts:14,equator-node-marker-pair.ts,equator-node-marker.ts}` | id → マーカー対の Map をやめ、表示担当のフィールドにする |
 | `src/game/dynamic/dynamic-entity/{combat-target.ts:18,ship.ts:276-300,base.ts,enemy.ts,pickup.ts}`、`src/game/player/player.ts` | `markerItem`・HP マーカーの SVG・`menuItems`・`propertyRows`・`glyph`・一覧の文言・`fmt*`・`MenuCommon`・`orbitRows`・`shows` を表示担当へ移す |
 | `src/game/pickable/{inspected-object,object-pickable,listed-object,pickable-listing}.ts` | これらの契約は表示担当が実装する |
+| `src/game/hud/panels/physical-object-list-row-tree.ts:137-150`、`physical-object-list-panel.ts:39,42,333-348` | 行の開閉を、`savedExpanded` を正本とする一方向(boolean を書いて DOM は後続の sync)へ揃える。いまは `setAllRowsExpanded` だけが自分で DOM を書く二流儀になっている(K6 の保留 1)|
 | `src/game/pickable/entity-inspection.ts`(未配線の足場) | K5 のとおり、ここで採否を決める |
 | `src/game/pickable/object-windows.ts:253,261` | `instanceof Player` / `instanceof CelestialEntity` の分岐をやめ、表示担当へ委ねる |
 
@@ -1200,6 +1255,7 @@ import を直す外側:
 | `src/main.ts:57-217` | 位相の順序(入力の解釈 → 進行 → セーブ → 導出と同期 → 描画)を組む。`Hud` の外枠はページの寿命で持ち、ランごとの表示の導出はランの寿命で持つ |
 | `src/launcher/launcher.ts:67,133-169,206`、`src/launcher/save/*`、`src/game/run-summary.ts` | 2つの根を起こし畳む。`game.input`・`activeStage.onDecided`・`phase`・`celestialSystem.nameOf` を、狭い面で受ける |
 | `src/game/frame-sections.ts`、`src/game/loading-progress.ts`、`src/game/perf-counts.ts`、`src/game/hud/windows/debug-info-window.ts` | 計測は組み立てへ、読み込みの進捗は launcher へ移す |
+| `src/game/pickable/object-windows.ts:133`、`src/game/pickable/map-picking.ts:102,154`、`src/game/view/view-frame.ts:28,30` | `simTime` を引数で配る経路を落とす。DOM 側の入口が表示時刻の所有者から直接読む形になったので、いまは同じ値を運ぶ2本目の経路になっている(K6 の保留 2)|
 | `tools/boundary-allowlist.json` | 空にする |
 
 **達成条件と検証**
@@ -1254,24 +1310,24 @@ import を直す外側:
 | | **段 2 計** | **1,160** |
 | 3 | 3-1 規則(R3・R7 の出来事・R8・R4 の需要) | 100 |
 | | 3-2 検査(禁止パターン4本) | 50 |
-| | 3-3 命令の列 | 420 |
+| | 3-3 命令の列(K6 の保留 3 を含む) | 480 |
 | | 3-4 出来事の記録 | 820 |
 | | 3-5 需要と計画ノード(検査1本を含む) | 320 |
 | | 3-6 入力の解釈 | 420 |
 | | 3-7 main へ送る | 120 |
-| | **段 3 計** | **2,250** |
+| | **段 3 計** | **2,310** |
 | 4 | 4-1 規則(R4 の全文・R11 の1・2) | 70 |
 | | 4-2 検査(viewer への片方向) | 40 |
-| | 4-3 視点を集める | 520 |
+| | 4-3 視点を集める | 540 |
 | | 4-4 main へ送る | 120 |
-| | **段 4 計** | **750** |
+| | **段 4 計** | **770** |
 | 5 | 5-1 規則(R6・R2 のモデル層) | 90 |
 | | 5-2 検査(対応表を game/ の中まで割る) | 90 |
 | | 5-3 3D の表示担当 | 720 |
-| | 5-4 マーカー・軌道線・UI | 620 |
+| | 5-4 マーカー・軌道線・UI | 660 |
 | | 5-5 ステージと creative | 460 |
 | | 5-6 main へ送る | 120 |
-| | **段 5 計** | **2,100** |
+| | **段 5 計** | **2,140** |
 | 6 | 6-1 規則(R6 の全域・R11 の3) | 60 |
 | | 6-2 検査(時刻層を天体へ当てる) | 40 |
 | | 6-3 天体の見た目と UI | 720 |
@@ -1284,10 +1340,10 @@ import を直す外側:
 | | 7-3 presentation へ | 490 |
 | | 7-4 celestial へ | 363 |
 | | 7-5 型の置き場(語彙モジュールの切り出しを含む) | 380 |
-| | 7-6 Game の分解 | 320 |
+| | 7-6 Game の分解 | 380 |
 | | 7-7 main へ送る | 120 |
-| | **段 7 計** | **1,853** |
-| | **合計** | **11,263 分 ≒ 188 時間** |
+| | **段 7 計** | **1,913** |
+| | **合計** | **11,443 分 ≒ 191 時間** |
 
 - commit は 35 本、PR は 7 本。段の中で並行してよいのは、手順 1-3・1-4・1-6 と、手順 2-3・2-4 だけ(同じファイルを触る組は並行しない)。
 - 手順 5-3〜6-3 は `src/game/dynamic/` と `stages/` を重ねて触るので、段を跨いでも直列にする。
@@ -1308,6 +1364,7 @@ import を直す外側:
 | 段の途中で main を取り込んだとき、他の作業が持ち込んだ違反が自分の段の残りに混ざる | 許可リストの差分が読めなくなる | 取り込み直後に `npm run check:boundaries` を走らせて切り分ける(各段の PR の手順) |
 | 境界検査が `export … from`・動的 import・`import type` を取りこぼす | 規則を守ったことにして違反が増える | 手順 1-2 の自己検証(3種類の違反を仮に足して落ちること) |
 | 「import を持たない語彙は定義層」を抜け道に使い、意味のある型を空の import のファイルへ逃がす | 装置がモデルの意味を知る | 手順 7-5 のレビュー(語彙モジュールを1本ずつ見る) |
+| 導出層が持つ写しを一律に消す | 毎フレームの DOM 付け替えでボタンのフォーカスとホバーが飛ぶ。兄弟値のクランプと未設定 id の既定生成が落ちる | 手順 2-3 の前提(K6 の保留 1・2。**残す写しと消す写しを先に分ける**)|
 | 命令を列に積むことで、UI の操作と表示が1フレームずれる | 押したボタンの点灯が遅れる。同じフレームに届いた命令の順序が変わる | 手順 3-3(受け付けた順に適用すること、一時停止中にも適用すること) |
 | 出来事の記録を、進行を進めないフレームに空にしない | 一時停止中に同じ効果音が毎フレーム鳴る | 手順 3-4 |
 | 出来事の通し番号をランを跨いで持つ・戻す | ラン開始直後に音が鳴らない、または前のランの音が鳴る | 手順 3-4、7-6 |
