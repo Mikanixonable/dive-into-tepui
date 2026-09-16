@@ -116,4 +116,32 @@ export function register(): void {
     plan.addNode(kinematicState<'eci'>(200, ship.r, ship.v), ship);
     assert.ok(plan.revision > revAfterAdd + 1);
   });
+
+  test('plan: nodeIndexFor は挿入位置を先に答え、起点以前なら -1 を返す', () => {
+    const ship = kinematicState<'eci'>(0, v3(R_EARTH + 400e3, 0, 0), v3(0, 0, 7670));
+    const plan = new Plan();
+
+    // ノードが1件も無い計画では、起点より後はどの時刻も先頭になる。
+    assert.equal(plan.nodeIndexFor(50, plan.anchorOr(ship)), 0);
+    assert.equal(plan.nodeIndexFor(0, plan.anchorOr(ship)), -1);
+    assert.equal(plan.nodeIndexFor(-10, plan.anchorOr(ship)), -1);
+
+    // 先に答えた位置と、実際に置いたときの位置は一致する。
+    const first = kinematicState<'eci'>(100, ship.r, ship.v);
+    const firstIdx = plan.nodeIndexFor(first.t, plan.anchorOr(ship));
+    assert.equal(plan.addNode(first, ship), firstIdx);
+
+    const second = kinematicState<'eci'>(300, ship.r, ship.v);
+    const secondIdx = plan.nodeIndexFor(second.t, plan.anchorOr(ship));
+    assert.equal(secondIdx, 1);
+    assert.equal(plan.addNode(second, ship), secondIdx);
+
+    // 既存ノードの間を指すと、その位置から後ろを置き換える番号になる。
+    assert.equal(plan.nodeIndexFor(200, plan.anchorOr(ship)), 1);
+    assert.equal(plan.nodeIndexFor(400, plan.anchorOr(ship)), 2);
+
+    // 判定に使う起点は引数で決まるので、これから効く起点を渡せばその起点で答える。
+    const laterAnchor = kinematicState<'eci'>(250, ship.r, ship.v);
+    assert.equal(plan.nodeIndexFor(200, laterAnchor), -1);
+  });
 }

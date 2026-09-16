@@ -17,11 +17,14 @@ import type { GroupedMarkers } from '../marker/grouped-markers';
 import type { EquatorNodeManager } from '../marker/equator-node-manager';
 import type { NavTarget } from '../nav-target';
 import { PlanEditor } from '../plan/plan-editor';
+import type { PlanCommands } from '../plan/plan-commands';
 import type { PlanDisplay } from '../plan/plan-display';
+import type { SimSpeedCommands } from '../dynamic/sim-speed-commands';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { UiSfx } from '../../audio/sfx/ui-sfx';
 import type * as THREE from 'three/webgpu';
 import type { ControlSelection } from '../control-selection';
+import type { ControlSelectionCommands } from '../control-selection-commands';
 import type { DisplayWindow, DisplayWindowManager } from '../display-window-manager';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { FrameAnchors } from '../frame-anchors';
@@ -53,8 +56,11 @@ export class MapView implements ViewFrame {
     private readonly frameControls: FrameControls,
     private readonly frameAnchors: FrameAnchors,
     private readonly controlSelection: ControlSelection,
+    controlSelectionCommands: ControlSelectionCommands,
     simSpeedManager: SimSpeedManager,
+    simSpeedCommands: SimSpeedCommands,
     planDisplay: PlanDisplay,
+    planCommands: PlanCommands,
     scene: THREE.Scene,
     hud: HudLayers & Notifier,
     uiSfx: UiSfx,
@@ -62,8 +68,8 @@ export class MapView implements ViewFrame {
     private readonly mapDisplay: SettingValue<MapDisplayToggles>,
   ) {
     this.planEditor = new PlanEditor(
-      hud, uiSfx, simSpeedManager, celestialSystem, scene, controlSelection,
-      displayWindowManager, frameControls, planDisplay.path,
+      hud, uiSfx, simSpeedManager, simSpeedCommands, celestialSystem, scene, controlSelection,
+      displayWindowManager, frameControls, planDisplay.path, planCommands,
     );
     this.objectPickables = new ObjectPickables(
       controlSelection, roster, celestialSystem, navTarget, cameraSystem,
@@ -73,7 +79,7 @@ export class MapView implements ViewFrame {
     this.picking = new MapPicking(
       hud, cameraSystem, roster, celestialSystem, celestialMarkers, markers,
       navTarget, frameControls, this.objectPickables, this.linePickables, objectWindows,
-      controlSelection, displayWindowManager,
+      controlSelectionCommands, displayWindowManager,
     );
   }
 

@@ -1,6 +1,7 @@
 // 戦闘ターゲットの選定と、戦闘対象・弾薬・燃料の画面マーカーの同期。ターゲットに紐づく
 // 表示(方位マーカー・見越し点・的通過マーク)もここが受け持つ。
-import { add, addScaled, dot, len, lenSq, norm, scale, sub, Vec3 } from '../math/vec3';
+import type { Vec3 } from '../math/vec3';
+import { add, addScaled, dot, len, lenSq, norm, scale, sub } from '../math/vec3';
 import { Enemy } from './dynamic/dynamic-entity/enemy';
 import { isBullet } from './dynamic/dynamic-entity/bullet';
 import { bulletReactionOf } from './dynamic/dynamic-entity/bullet-reaction';
@@ -30,6 +31,7 @@ import type { NavTarget } from './nav-target';
 import type { CelestialBody } from '../physics/celestial-body';
 import type { OrbitingObject } from './dynamic/dynamic-entity/orbiting-object';
 import type { ProjectFn } from '../math/projection';
+import type { RunEvent, RunEventSink } from './run-events';
 
 // ターゲット位置に自機側を向けて置いた仮想標的面(的)を弾が通過した点のマーカー。
 const BOARD_MARK_LIFETIME = 5.0; // 表示時間 [s]
@@ -63,8 +65,10 @@ export class Targeter {
   private readonly leadMarkers: LeadMarkers;
 
   // 標的面(自機の方を向いた仮想の的)を弾が通過した点。的に貼り付いて見えるよう、
-  // ターゲット相対のオフセットで持つ。
-  private boardMarks: { off: Vec3; age: number; }[] = [];
+  // ターゲット相対のオフセットで持つ。寿命は通過時刻と表示時刻の差で決まる(R5)。
+  private boardMarks: { off: Vec3; simTime: number }[] = [];
+  // 最後に読んだ出来事の通し番号。同じ通過を二度マークにしないために持つ。
+  private lastBoardSeq = -1;
 
   // 照準・戦闘対象・見越し点の3つの群を装置から確保する。畳むのは dispose。
   public constructor(
@@ -84,10 +88,11 @@ export class Targeter {
     this.leadMarkers.dispose();
   }
 
-  // 航法ターゲットを生存中の敵・自艦・基地として解決したもの。戦闘対象になれない対象
-  // (天体・ラグランジュ点)や撃破済みなら null。
+  // [T] の要求を受けてから、カメラ更新後の選定で消費するまでのあいだ立つ。
   private targetSelectRequested = false;
 
+  // 航法ターゲットを生存中の敵・自艦・基地として解決したもの。戦闘対象になれない対象
+  // (天体・ラグランジュ点)や撃破済みなら null。
   public get aliveTarget(): CombatTarget | null {
     return this.navTarget.resolveCombatTarget(this.roster);
   }
@@ -108,17 +113,11 @@ export class Targeter {
       viewport.width * 0.5, viewport.height * 0.5, Infinity));
   }
 
-  // 発射弾が標的面を自機側から通過した点をターゲット相対で記録し、既存の記録の寿命を進める。
-  public updateBoardMarks(dt: number, viewer: OrbitingObject | null): void {
+  // 発射弾が標的面を自機側から通過したことを出来事として記録する。的の半径から外れた通過は
+  // 記録しない。
+  public recordBoardPasses(viewer: OrbitingObject | null, events: RunEventSink): void {
     const target = this.aliveTarget;
-    if (!viewer || !target) {
-      this.boardMarks.length = 0;
-      return;
-    }
-    this.boardMarks = this.boardMarks.filter((m) => {
-      m.age += dt;
-      return m.age < BOARD_MARK_LIFETIME;
-    });
+    if (!viewer || !target) return;
     const n = norm(sub(target.motion.state.r, viewer.motion.state.r)); // 的の法線 = 視線方向
     if (lenSq(n) < 0.5) return;
 
@@ -134,9 +133,30 @@ export class Targeter {
       const pos = addScaled(prevR, sub(b.motion.state.r, prevR), t);
       const off = sub(pos, target.motion.state.r);
       if (lenSq(off) > BOARD_RADIUS * BOARD_RADIUS) continue; // 的から外れすぎ
-      this.boardMarks.push({ off, age: 0 });
+      events.record({ kind: 'targetBoardPassed', offset: off, simTime: b.motion.state.t });
+    }
+  }
+
+  // 記録された通過からマークの列を組み直す。表示時刻 displayTime で寿命の尽きたものは落とし、
+  // 的面が定まらない(視点かターゲットが居ない)フレームでは全部捨てる。
+  public updateBoardMarks(
+    events: readonly RunEvent[], viewer: OrbitingObject | null, displayTime: number,
+  ): void {
+    for (const event of events) {
+      if (event.seq <= this.lastBoardSeq) continue;
+      this.lastBoardSeq = event.seq;
+      const { body } = event;
+      if (body.kind !== 'targetBoardPassed') continue;
+      this.boardMarks.push({ off: body.offset, simTime: body.simTime });
+      // 溢れたぶんは古いほうから落とす — 新しい通過ほど照準の目安として価値がある。
       if (this.boardMarks.length > MAX_BOARD_MARKS) this.boardMarks.shift();
     }
+    if (viewer === null || this.aliveTarget === null) {
+      this.boardMarks.length = 0;
+      return;
+    }
+    this.boardMarks = this.boardMarks.filter(
+      (m) => displayTime - m.simTime < BOARD_MARK_LIFETIME);
   }
 
   // ターゲットに紐づく表示物(的通過マーク・方位マーカー)と、全戦闘対象のマーカー集合を
@@ -149,7 +169,7 @@ export class Targeter {
   ): void {
     const project = camera.project;
     this.declarations.length = 0;
-    this.pushBoardMarkers(project);
+    this.pushBoardMarkers(project, displayTime);
     this.pushTargetDirMarkers(viewer, camera.mode === 'map', project);
     this.syncTargetMarkers(viewer, displayTime, camera, visibilityPolicy, celestialLabels, nowMs, palette);
     this.aimGroup.sync(this.declarations, nowMs);
@@ -279,7 +299,7 @@ export class Targeter {
   }
 
   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として宣言する。
-  private pushBoardMarkers(project: ProjectFn): void {
+  private pushBoardMarkers(project: ProjectFn, displayTime: number): void {
     const target = this.aliveTarget;
     // 記録の無いスロットも宣言し、前フレームのマークを伏せる。
     for (let i = 0; i < MAX_BOARD_MARKS; i++) {
@@ -292,7 +312,7 @@ export class Targeter {
         this.declarations.push({ ...base, x: 0, y: 0, front: false });
         continue;
       }
-      const fade = 1 - m.age / BOARD_MARK_LIFETIME;
+      const fade = 1 - (displayTime - m.simTime) / BOARD_MARK_LIFETIME;
       this.declarations.push({
         ...base,
         ...pointPlacement(add(target.motion.state.r, m.off), project),
