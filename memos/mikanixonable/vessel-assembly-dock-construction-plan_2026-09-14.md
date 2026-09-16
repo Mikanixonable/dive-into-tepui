@@ -3,7 +3,7 @@
 作成日: 2026-09-14
 実装の現在基準コミット: d3e8291dd
 最終レビュー: 2026-09-16
-状態: 実装中。手順6まで完了し、手順7から進める。
+状態: 実装中。手順7まで完了し、手順8から進める。
 
 ## 目的
 
@@ -305,39 +305,6 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 - 現行のランダム部位ダメージと敵挙動に回帰がない。
 
 ## 実装手順
-
-### 7. Base を基地 preset へ置換する
-
-#### 目的
-
-Base 特例を削除し、cockpit、tank、solar_panel、radiator、船体側面のdockを持つModularShipのpresetとして基地機能を生じさせる。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| src/game/dynamic/dynamic-entity/base.ts | 生成、保存、inspection を置換後に削除する。 |
-| src/game/dynamic/dynamic-entity/base-motion.ts | ModularShipMotion へ置換後に削除する。 |
-| src/game/dynamic/dynamic-entity/base-collision.ts | compound shape へ置換後に削除する。 |
-| src/render/dynamic/dynamic-entity/base-view.ts | ModularShipView へ置換後に削除する。 |
-| tools/model-builder/base-station.mjs | ship module asset へ置換後に削除する。 |
-| tools/model-builder/export-base-collision.mjs | Base BVH と base-collision check を削除する。 |
-| src/game/creative/object-placement.ts | 「基地」を基地presetの生成へ読み替える。 |
-| src/game/creative/object-placer-panel.ts | kind と class ではなく ship preset を選ぶ入力へ変える。 |
-| src/game/creative/placement-validation.ts | Base 固有の月基準制約を「基地 preset」の配置制約として扱う。 |
-| src/game/dynamic/dynamic-entity/entity-dictionary.ts | base kind の復元を取り除き、基地 preset の ship 経路へ揃える。 |
-| src/game/run-summary.ts | isBase と Base.money 集計を除く。 |
-| src/launcher/save/slot-data.ts、snapshot-service.ts、save-browser/snapshot-pane.ts | money metadata と表示を除く。 |
-| tests/game/base-collision.test.ts | 削除し、compound cylinder と基地 preset の接触テストへ置換する。 |
-| tests/game/creative-placement-validation.test.ts | 「基地」preset の月基準制約と ModularShip 上限判定を検証する。 |
-| package.json | base-collision、base-collision:check と CI 呼び出しを削除する。 |
-
-#### 達成条件と検証
-
-- rg で Base、BaseMotion、BaseView、baseStation、base collision asset の実行時参照が 0 件になる。
-- CREATIVE の「基地」preset は有限質量、HP、燃料を持ち、通常船と同じ操作・接触・喪失経路を使う。
-- preset は健全な cockpitとdockを持つため、導出役割が「基地」になる。標準設備としてtank、solar_panel、radiatorを2個ずつ配置する。
-- npm run typecheck、npm run test:game、npm run test:render を通す。
 
 ### 8. AttachedBoosters と DetachedBooster をデカプラー分割へ置換する
 
