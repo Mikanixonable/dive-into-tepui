@@ -11,7 +11,7 @@ import { add, len, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../.
 import { solveLeadTime } from '../../../physics/intercept';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import { enemyDestroyFragments } from './debris-piece';
-import type { Player } from '../../player/player';
+import type { ModularShip } from '../../ship/modular-ship';
 import { Bullet } from './bullet';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { R_EARTH_EQ } from '../../celestial/solar-system/constants';
@@ -315,7 +315,7 @@ export abstract class Enemy extends Ship implements CombatTarget {
   // 行動関数。enemies は同一集団の同時攻撃数を数える母集団、registry は弾の追加先。
   // operable が偽の間は経過時刻だけを記録する。
   public behave(
-    simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
+    simTime: number, player: ModularShip, registry: EntityRegistry, enemies: readonly Enemy[],
     operable: boolean, celestialBodies: CelestialBodies,
   ): void {
     // 射撃間隔は simulation time で測る。wall dt を混ぜると、同じゲーム内時間でも
@@ -370,7 +370,7 @@ export abstract class Enemy extends Ship implements CombatTarget {
 
   // player へ向けた見越し射撃でプラズマ弾を1発生成し、registry へ足す。
   private firePlasma(
-    simTime: number, player: Player, registry: EntityRegistry, celestialBodies: CelestialBodies,
+    simTime: number, player: ModularShip, registry: EntityRegistry, celestialBodies: CelestialBodies,
   ): void {
     const r = this.muzzlePosition();
     const v = this.motion.state.v;

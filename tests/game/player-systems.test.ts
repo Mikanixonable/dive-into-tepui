@@ -18,7 +18,7 @@ import { PowerSystem, POWER_CAPACITY } from '../../src/game/player/power';
 import { RadiatorSystem } from '../../src/game/player/radiator';
 import { Throttle, THROTTLE_LEVELS } from '../../src/game/player/throttle';
 import type { FireSaveData, ThrottleSaveData } from '../../src/game/save/save-data';
-import type { Player } from '../../src/game/player/player';
+import type { ModularShip } from '../../src/game/ship/modular-ship';
 import type { Notifier } from '../../src/hud/notifier';
 
 const attitude = { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
@@ -146,7 +146,7 @@ export function register(): void {
 
   test('fire control: 非正数の補給と不正な保存値を安全な状態へ正規化する', () => {
     const fire = new FireControl(
-      { motion: { mass: 1_000 } } as Player,
+      { motion: { mass: 1_000 } } as ModularShip,
       quietNotifier,
       {} as never,
       {} as never,

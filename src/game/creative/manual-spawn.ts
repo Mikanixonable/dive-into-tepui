@@ -12,7 +12,7 @@ import type * as THREE from 'three/webgpu';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { Enemy } from '../dynamic/dynamic-entity/enemy';
 import type { SpawnGate } from '../dynamic/entity-registry';
-import type { Player } from '../player/player';
+import type { ModularShip } from '../ship/modular-ship';
 import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
 import type { FlashEffects } from '../vfx/flash-effects';
 
@@ -40,7 +40,7 @@ export class ManualSpawn {
   ) {}
 
   // shape で選んだ形の敵を1体、自機の前方へ出す生成を返す。知らない形なら null。
-  public enemy(player: Player, shape: EnemySpawnShape, colorValue: string): EnemySpawn | null {
+  public enemy(player: ModularShip, shape: EnemySpawnShape, colorValue: string): EnemySpawn | null {
     const color = Number(colorValue);
     const state = this.frontOf(player);
     const name = `MANUAL-${++this.enemyCount}`;
@@ -70,7 +70,7 @@ export class ManualSpawn {
   }
 
   // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機の前方へ出す生成を返す。
-  public proteinFormation(player: Player): readonly EnemySpawn[] {
+  public proteinFormation(player: ModularShip): readonly EnemySpawn[] {
     const state = this.frontOf(player);
     const name = `FORMATION-${++this.formationCount}`;
     const spawns = proteinFormationSpawns(
@@ -80,7 +80,7 @@ export class ManualSpawn {
   }
 
   // 自機の前方 spawnDistance [m]、自機と同じ速度の状態。
-  private frontOf(player: Player): KinematicState {
+  private frontOf(player: ModularShip): KinematicState {
     const forward = qRotate(player.motion.att.q, LOCAL_FORWARD);
     const position = addScaled(player.motion.state.r, forward, this.spawnDistance);
     return kinematicState<'eci'>(player.motion.state.t, position, player.motion.state.v);

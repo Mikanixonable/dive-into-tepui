@@ -6,7 +6,7 @@ import { StageControlsPanel, type EnemySpawnShape } from '../creative/stage-cont
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { ProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
 import { hudRail } from '../hud/hud-root';
-import { isPlayer } from '../player/player';
+import { isModularShip } from '../ship/modular-ship';
 import { DEFAULT_PROTEIN_DISPLAY, type ProteinDisplaySettings } from '../../render/protein/protein-display';
 import { WaveAttack } from './stage-utils/wave-attack';
 import type { KinematicState } from '../../physics/kinematic-state';
@@ -182,7 +182,7 @@ export class CreativeStage extends Stage {
   // 待っているノードが1つも無ければ null。
   public nextSimulationEventTime(simTime: number): number | null {
     let next: number | null = null;
-    for (const ship of this._dynamicSystem.all().filter(isPlayer)) {
+    for (const ship of this._dynamicSystem.all().filter(isModularShip)) {
       const t = ship.planExecution === 'instant' ? ship.plan.firstNode()?.t : undefined;
       if (t !== undefined && t >= simTime && (next === null || t < next)) next = t;
     }
@@ -191,7 +191,7 @@ export class CreativeStage extends Stage {
 
   // ノード時刻ちょうどでノードの絶対状態へ乗り移る。
   public applySimulationEvents(simTime: number): void {
-    for (const ship of this._dynamicSystem.all().filter(isPlayer)) {
+    for (const ship of this._dynamicSystem.all().filter(isModularShip)) {
       if (ship.planExecution !== 'instant') continue;
       const node = ship.plan.firstNode();
       if (!node || node.t > simTime + 1e-9) continue;
