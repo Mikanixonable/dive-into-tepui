@@ -20,10 +20,10 @@ export const CASING_COLLISION_BOUND_RADIUS = Math.hypot(
   CASING_CYLINDER_HALF_LENGTH + Math.abs(CASING_LOCAL_CENTER_Y), CASING_CYLINDER_RADIUS,
 );
 
-function casingCylinder(self: DynamicMotion, state: KinematicState): Cylinder {
+function casingCylinder(self: DynamicMotion, state: KinematicState, attitude = self.att): Cylinder {
   return {
-    center: add(state.r, qRotate(self.att.q, v3(0, CASING_LOCAL_CENTER_Y, 0))),
-    axis: qRotate(self.att.q, CASING_LOCAL_AXIS),
+    center: add(state.r, qRotate(attitude.q, v3(0, CASING_LOCAL_CENTER_Y, 0))),
+    axis: qRotate(attitude.q, CASING_LOCAL_AXIS),
     halfLength: CASING_CYLINDER_HALF_LENGTH,
     radius: CASING_CYLINDER_RADIUS,
   };
@@ -31,9 +31,9 @@ function casingCylinder(self: DynamicMotion, state: KinematicState): Cylinder {
 
 export function casingSphereCollision(
   self: DynamicMotion, sphereCenter: Vec3,
-  sphereRadius: number, selfState: KinematicState,
+  sphereRadius: number, selfState: KinematicState, selfAttitude = self.att,
 ) {
-  return cylinderSphereContact(casingCylinder(self, selfState), sphereCenter, sphereRadius);
+  return cylinderSphereContact(casingCylinder(self, selfState, selfAttitude), sphereCenter, sphereRadius);
 }
 
 export function casingSweptSphereCollision(
@@ -41,10 +41,13 @@ export function casingSweptSphereCollision(
   previousSphereCenter: Vec3,
   sphereCenter: Vec3,
   sphereRadius: number,
+  _previousSelfState: KinematicState,
   selfState: KinematicState,
+  _previousSelfAttitude = self.prevAtt,
+  selfAttitude = self.att,
 ) {
   return sweptSphereCylinderContact(
-    casingCylinder(self, selfState), previousSphereCenter, sphereCenter, sphereRadius,
+    casingCylinder(self, selfState, selfAttitude), previousSphereCenter, sphereCenter, sphereRadius,
   );
 }
 
