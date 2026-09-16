@@ -3,6 +3,11 @@
 import type { GamePhase } from '../../game/stages/stage';
 import type { GameSaveData } from '../../game/save/save-data';
 
+// 索引が指す id を1つ作る。同一ミリ秒内の連続生成でも衝突しないよう、時刻にランダム部を足す。
+export function newSaveId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 // スナップショットの由来。撮られ方であって、保持されるかどうか(SnapshotMeta.pinned)とは
 // 別の軸。クリップは pinned を立てるだけで kind は書き換えない — 由来を塗り替えると
 // どのトリガで撮られたかが失われる。
@@ -29,13 +34,15 @@ export interface SnapshotMeta {
   phase: GamePhase;
 }
 
-// 1ステージぶんのスナップショット集合とクリア記録。スロットは遊んだステージごとに1件持つ。
+// 1ステージぶんの記録とクリア記録。スロットは遊んだステージごとに1件持つ。
 export interface StageHistoryMeta {
   stageId: string;
   clearCount: number;
   lastPlayedAtReal: number;
-  // 新しい順。
+  // 手動セーブ。新しい順。
   snapshots: SnapshotMeta[];
+  // 復帰点の本体を指す id。無ければ null。手動セーブとは別の置き場で、一覧には出ない。
+  resumePointId: string | null;
 }
 
 // セーブデータ(歴史線)1件。

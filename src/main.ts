@@ -235,7 +235,7 @@ async function main() {
   };
 
   const snapshotControls = new SnapshotControls(hud, pauseMenu, saveBrowser, snapshotService);
-  pauseMenu.onSave = () => snapshotControls.captureManual(launcher.current?.snapshot ?? null);
+  pauseMenu.onSave = () => snapshotControls.saveManually(launcher.current?.snapshot ?? null);
 
   // 最初の周回を起こしてから、フレームを回し始める。
   await launcher.start();
