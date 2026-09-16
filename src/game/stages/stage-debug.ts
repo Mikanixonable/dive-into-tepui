@@ -1,5 +1,5 @@
 // デバッグ用ステージ: 敵集団1つのみを配置し、勝敗を発生させずに検証を続けられる。
-// 敵の射撃 ON/OFF をパネルから切り替えられる。タイトルの通常ボタン列には出ない。
+// 敵の射撃 ON/OFF をパネルから切り替えられる。
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { generateWave } from './stage-utils/wave-attack';
 import { Button, ToggleSwitch } from '../../hud/widgets';
@@ -29,7 +29,7 @@ export class StageDebug extends Stage {
     return `<b>デバッグステージ</b><br>敵集団 ${this.scoreCounter.totalEnemiesSpawned} 機。撃破しても終了しない。ステータスウィンドウ左部から敵の射撃を切替可能`;
   }
 
-  // 自機を置き、敵集団を1つだけ生成し、射撃切替トグルをステータスウィンドウ左部へ追加する。
+  // 自機と敵集団1つを置き、射撃切替トグルとスポーンボタン列をステータスウィンドウ左部へ追加する。
   protected init(): void {
     const player = this.addPlayer({ ammo: { mags: 20, rounds: MAG_ROUNDS } });
     const enemies = generateWave(
@@ -38,12 +38,11 @@ export class StageDebug extends Stage {
     );
     for (const enemy of enemies) this.addEnemy(enemy);
 
-    // 切替は enemyFireEnabled へ入るだけで、敵への反映は update が毎フレーム行う
     const fireToggle = new ToggleSwitch('敵射撃', (on) => { this.enemyFireEnabled = on; });
-    fireToggle.setOn(false); // デフォルトでオフ
+    fireToggle.setOn(false);
     this.addStatusPanelWidget(fireToggle.element);
 
-    // 敵集団をスポーンするボタン
+    // 以降は、検証を続けるための手動スポーン。
     const spawnEnemyBtn = new Button('敵集団をスポーン', () => {
       const newEnemies = generateWave(
         player.motion.state, this.waveCount++, this._celestialSystem.celestialMotions,
@@ -53,13 +52,11 @@ export class StageDebug extends Stage {
     });
     this.addStatusPanelWidget(spawnEnemyBtn.element);
 
-    // 弾薬をスポーンするボタン
     const spawnAmmoBtn = new Button('弾薬をスポーン', () => {
       this.logistics.spawnForPlayer(player, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST);
     });
     this.addStatusPanelWidget(spawnAmmoBtn.element);
 
-    // RCS燃料をスポーンするボタン
     const spawnFuelBtn = new Button('RCS燃料をスポーン', () => {
       this.logistics.spawnRcsFuelForPlayer(player, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST);
     });

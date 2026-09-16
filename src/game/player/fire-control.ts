@@ -54,8 +54,7 @@ type ConsumeResult = 'empty' | 'normal' | 'mag-reload' | 'barrel-reload';
 // 艦の初期積載(予備マガジン数・装填済み残弾数)。
 export type AmmoLoad = { readonly mags: number; readonly rounds: number };
 
-// スナップショットからの復元か、新規配置の初期積載か。どちらも省略すればフィールド初期化子の
-// 既定積載で始まる。
+// スナップショットからの復元か、新規配置の初期積載か。
 type FireInit =
   | { readonly saved: FireSaveData }
   | { readonly ammo?: AmmoLoad };
@@ -144,7 +143,7 @@ export class FireControl {
   // 拾ったマガジン数を加算する。弾切れ中なら即座に1マガジンを装填する。
   public onPickup(mags: number): void {
     this.mags += mags;
-    if (this.rounds <= 0) { // 弾切れ状態だったならすぐにリロードする
+    if (this.rounds <= 0) {
       this.mags--;
       this.rounds = MAG_ROUNDS;
     }
@@ -167,9 +166,8 @@ export class FireControl {
 
     const keyHeld = input.down(K.fire);
     if (!keyHeld) {
-      // トリガーを離した時点で連射状態を畳む: wasFiring を立てたままにすると
-      // fineAttitude(微調整出力)が恒久的に有効なままになり、次にトリガーを
-      // 引いたときもスピンアップ演出(justStartedFiring)が起きなくなる。
+      // トリガーを離した時点で連射状態を畳む: 立てたままにすると微調整出力が有効なまま
+      // になり、次にトリガーを引いたときのスピンアップも起きなくなる。
       this.wasFiring = false;
       return;
     }
@@ -218,7 +216,6 @@ export class FireControl {
       return;
     }
 
-    // 起動時及びクールダウン中は発射しない
     if (0 < this.cooldown) {
       return;
     }
@@ -269,7 +266,7 @@ export class FireControl {
   public manualReload(registry: EntityRegistry): boolean {
     if (this.cooldown > 0) return false;
 
-    // 予備マガジンがあり、かつ装填中のマガジンに実際に補充の余地があるときだけリロードする
+    // 満タンのまま押してもマガジンを1個捨てるだけなので、補充の余地があるときだけ受ける。
     const canReload = this.mags > 0 && this.rounds < MAG_ROUNDS;
     if (!canReload) return false;
     this.mags--;
@@ -386,7 +383,6 @@ export class FireControl {
     this.barrelDeviation = stepThermalDeviation(
       this.barrelDeviation, this.barrelTemperature, HULL_EMISS,
       BARREL_RADIATING_AREA_PER_MASS, BARREL_SPECIFIC_HEAT, dt);
-    // 溜まっていた発射ガスの熱を、この区間で一度だけ温度へ変える。
     if (this.pendingBarrelJoules === 0) return;
     const rise = this.pendingBarrelJoules / (BARREL_MASS * BARREL_SPECIFIC_HEAT);
     this.barrelTemperature += rise;
