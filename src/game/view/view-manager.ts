@@ -4,7 +4,7 @@ import { TouchControls } from '../hud/touch-controls';
 import type { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { ControlSelection } from '../control-selection';
-import type { ViewMode } from '../../render/view-mode';
+import type { ViewMode } from './view-mode';
 import type { ViewFrame } from './view-frame';
 
 export class ViewManager {
@@ -69,7 +69,7 @@ export class ViewManager {
       }
       const nodeCount = this.controlSelection.current?.plan.nodes.length ?? 0;
       if (nodeCount > 0) {
-        this.hud.hint(`マニューバ計画 ${nodeCount} 件確定 — [${K.autoWarpToNode.label}] で直近ノードへ自動ワープ`, 4500);
+        this.hud.hint(`マニューバ計画 ${nodeCount} 件確定`, 4500);
       }
       return;
     }

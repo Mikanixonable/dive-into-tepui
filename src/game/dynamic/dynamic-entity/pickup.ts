@@ -10,7 +10,7 @@ import {
   savedAttitude, savedKinematicState, type AmmoPickupSaveData, type RcsFuelPickupSaveData,
 } from '../../save/save-data';
 import { DynamicEntity } from './dynamic-entity';
-import { EntityIdAllocator } from './entity-id';
+import type { EntityIdAllocator, EntityIdAllocators } from './entity-id';
 import { PickupMotion, type PickupKind } from './pickup-motion';
 import type * as THREE from 'three/webgpu';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
@@ -35,23 +35,17 @@ export const RCS_FUEL_PICKUP_RADIUS = 100;
 // 1 個の取り込みで増える RCS 燃料 [kg]。
 export const RCS_FUEL_PICKUP_AMOUNT = 1000;
 
-// RCS 燃料補給の既定の表示名。
-const RCS_FUEL_PICKUP_NAME = 'RCS燃料';
-
-const ammoPickupIdAllocator = new EntityIdAllocator('ammo-');
-const rcsFuelPickupIdAllocator = new EntityIdAllocator('rcs-fuel-');
-
 type PickupSaveData = AmmoPickupSaveData | RcsFuelPickupSaveData;
 
-// 新規配置の初期状態。state/att をそのまま使い、id を省略すると種別ごとに発番する。
+// 新規配置の初期状態。state/att をそのまま使い、name を省略すると種別の既定名で名乗る。
 interface PickupPlacement {
   readonly state: KinematicState;
   readonly att?: Attitude;
-  readonly id?: string;
+  readonly name?: string;
 }
 
-// 軌道上の補給物に共通するもの — 配置と復元、画面マーカー、被選択物としての一覧・メニュー・
-// プロパティ。何を補給するか(種別の識別・見た目・字形・取り込み距離)は具象が与える。
+// 軌道上の補給物に共通するもの — 配置と復元、表示名、保存、画面マーカー、被選択物としての一覧・
+// メニュー・プロパティ。何を補給するか(種別の識別・既定名・見た目・字形・取り込み距離)は具象が与える。
 export abstract class Pickup extends DynamicEntity implements ObjectPickable {
   public abstract override readonly mapKind: DynamicEntityKind;
   public override readonly pickable = true;
@@ -63,41 +57,44 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
   // 自艦がこの補給物を取り込める距離 [m]。
   protected abstract readonly pickupRadius: number;
 
-  // 画面マーカーと被選択判定が同じ個体を指すためのキー。
-  private readonly markerKey: string;
-
-  // 新規配置はそのまま、スナップショットからの再開は saved を simTime 付きの状態として展開し、
-  // 既定の表示名で名乗る。id 省略時は idAllocator で発番する。kind は接触の種別とマーカーキーの
-  // 接頭辞を兼ねる。
+  // 新規配置はそのまま、スナップショットからの再開は saved を simTime 付きの状態として展開する。
+  // 表示名が与えられていなければ defaultName で名乗る。id は idAllocator が採る。pickupKind は
+  // 接触の種別・マーカーキーの接頭辞・保存形の種別タグを兼ねる。
   protected constructor(
     init: PickupPlacement | { readonly saved: PickupSaveData; readonly simTime: number },
     view: DynamicView,
     idAllocator: EntityIdAllocator,
     defaultName: string,
-    kind: PickupKind,
+    private readonly pickupKind: PickupKind,
   ) {
     // 復元と新規配置を同じ形へ均してから基底へ渡す。
-    const { state, att, id } = 'saved' in init
+    const { state, att, id, name } = 'saved' in init
       ? {
         state: savedKinematicState(init.saved, init.simTime),
         att: savedAttitude(init.saved, v3(1, 1, 1)),
         id: init.saved.id || undefined,
+        name: init.saved.name || defaultName,
       }
-      : init;
-    super(() => new PickupMotion(state, att, kind), view, idAllocator.next(id));
-    this.markerKey = `${kind}-${this.id}`;
-    this.setName(defaultName);
+      : { state: init.state, att: init.att, id: undefined, name: init.name ?? defaultName };
+    super(() => new PickupMotion(state, att, pickupKind), view, idAllocator.next(id));
+    this.setName(name);
   }
 
-  // 保存形のうち、補給物に共通する運動状態と姿勢。
-  protected serializedMotion(): Pick<PickupSaveData, 'r' | 'v' | 'q' | 'w'> {
+  // セーブデータへ変換する。
+  public override serialize(): PickupSaveData {
     return {
+      id: this.id,
+      name: this.name,
+      kind: this.pickupKind,
       r: { ...this.motion.state.r },
       v: { ...this.motion.state.v },
       q: { ...this.motion.att.q },
       w: { ...this.motion.att.w },
     };
   }
+
+  // 画面マーカーと被選択判定が同じ個体を指すためのキー。
+  private get markerKey(): string { return `${this.pickupKind}-${this.id}`; }
 
   // 画面マーカーに出すこの補給物の項目。ターゲットにならないので優先度は固定値。
   public markerItem(): GroupedMarkerItem {
@@ -113,7 +110,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
       // 画面外では種別の色の三角で方位を指す。
       bearing: {
         cls: `${this.markerClass} mk-bearing-triangle`, sym: DIRECTION_GLYPH.bearing,
-        color: this.bearingColor, visible: true, priority: MARKER_PRIORITY.AMMO, clustered: true,
+        color: this.bearingColor, visible: true, clustered: true,
       },
       symMarkup: false,
     };
@@ -214,17 +211,13 @@ export class AmmoPickup extends Pickup {
   protected override readonly bearingColor = 'var(--color-primary-hover)';
   protected override readonly pickupRadius = AMMO_PICKUP_RADIUS;
 
-  // 補給メッシュを組み立て、弾薬として名乗る。id 省略時はここで一意に発番する。
+  // 弾薬補給の見た目・採番器・既定名で組む。
   public constructor(
     init: PickupPlacement | { readonly saved: AmmoPickupSaveData; readonly simTime: number },
     scene: THREE.Scene,
+    idAllocators: EntityIdAllocators,
   ) {
-    super(init, new AmmoPickupView(scene), ammoPickupIdAllocator, '弾薬', 'ammo');
-  }
-
-  // セーブデータへ変換する。
-  public override serialize(): AmmoPickupSaveData {
-    return { id: this.id, kind: 'ammo', ...this.serializedMotion() };
+    super(init, new AmmoPickupView(scene), idAllocators.ammoPickup, '弾薬', 'ammo');
   }
 }
 
@@ -238,32 +231,18 @@ export class RcsFuelPickup extends Pickup {
   protected override readonly bearingColor = COLOR_MARKER_FUEL;
   protected override readonly pickupRadius = RCS_FUEL_PICKUP_RADIUS;
 
-  // 補給メッシュを組み立て、配置・保存で表示名を与えられていればそれで、なければ既定の名前で
-  // 名乗る。id 省略時はここで一意に発番する。
+  // RCS 燃料補給の見た目・採番器・既定名で組む。
   public constructor(
-    init:
-      | (PickupPlacement & { readonly name?: string })
-      | { readonly saved: RcsFuelPickupSaveData; readonly simTime: number },
+    init: PickupPlacement | { readonly saved: RcsFuelPickupSaveData; readonly simTime: number },
     scene: THREE.Scene,
+    idAllocators: EntityIdAllocators,
   ) {
-    super(init, new RcsFuelPickupView(scene), rcsFuelPickupIdAllocator, RCS_FUEL_PICKUP_NAME, 'rcs-fuel');
-    const name = 'saved' in init ? init.saved.name || undefined : init.name;
-    if (name !== undefined) this.setName(name);
+    super(init, new RcsFuelPickupView(scene), idAllocators.rcsFuelPickup, 'RCS燃料', 'rcs-fuel');
   }
 
   // 1 個の取り込みで増える燃料の量。
   protected override supplyRows(): readonly PropertyRow[] {
     return [{ key: 'amount', label: '補給量', value: `${RCS_FUEL_PICKUP_AMOUNT.toLocaleString()} kg` }];
-  }
-
-  // セーブデータへ変換する。表示名は既定と違うときに書く。
-  public override serialize(): RcsFuelPickupSaveData {
-    return {
-      id: this.id,
-      ...(this.name !== RCS_FUEL_PICKUP_NAME ? { name: this.name } : {}),
-      kind: 'rcs-fuel',
-      ...this.serializedMotion(),
-    };
   }
 }
 

@@ -8,7 +8,7 @@ import {
 } from '../../hud/widgets';
 import type { PanelCollapsedState } from './hud-selection';
 import type { SettingValue } from '../../settings/setting-value';
-import type { ViewMode } from '../../render/view-mode';
+import type { ViewMode } from '../view/view-mode';
 
 // 一度も操作されていないときの畳み状態。ビューや画面幅で変えるなら関数で渡す。
 type PanelDefaultCollapsed = boolean | ((view: ViewMode) => boolean);
@@ -65,7 +65,10 @@ export class PanelCollapse {
       toggleRoot, toggleId, toggleClassName, target, labels, storageId,
       defaultCollapsed = false, extraHitEls = [],
     } = params;
-    const toggle = buildCollapseToggle(toggleRoot, toggleId, toggleClassName, target, labels, extraHitEls);
+    const toggle = buildCollapseToggle(
+      toggleRoot, toggleId, toggleClassName, target, labels, extraHitEls,
+      (collapsed) => this.setCollapsed(storageId, collapsed),
+    );
     // 現在ビューの保存値、無ければ既定値を畳み状態として当て直す。
     const apply = (): void => {
       const fallback = typeof defaultCollapsed === 'function' ? defaultCollapsed(this.view) : defaultCollapsed;
@@ -74,7 +77,6 @@ export class PanelCollapse {
     };
     apply();
     this.appliers.add(apply);
-    toggle.addEventListener('click', () => this.setCollapsed(storageId, target.classList.contains('collapsed')));
     return () => this.appliers.delete(apply);
   }
 }
