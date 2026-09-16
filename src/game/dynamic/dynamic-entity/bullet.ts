@@ -1,5 +1,4 @@
 import type { KinematicState } from '../../../physics/kinematic-state';
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { DynamicEntity } from './dynamic-entity';
 import type { EntityIdAllocators } from './entity-id';
 import { NormalBulletView, PlasmaBulletView } from '../../../render/dynamic/dynamic-entity/bullet-view';
@@ -13,12 +12,12 @@ export class Bullet extends DynamicEntity {
   // damage は命中した相手へ与えるダメージ [HP]。
   public constructor(
     state: KinematicState, lifetime: number, shooter: Shooter, type: BulletType, damage: number,
-    worldSfx: WorldSfx, idAllocators: EntityIdAllocators,
+    idAllocators: EntityIdAllocators,
   ) {
     super(
       () => new BulletMotion(
         state,
-        new BulletReaction(state.t, lifetime, shooter, type, damage, worldSfx),
+        new BulletReaction(state.t, lifetime, shooter, type, damage),
       ),
       type === 'plasma' ? new PlasmaBulletView() : new NormalBulletView(),
       idAllocators.entity.next(),

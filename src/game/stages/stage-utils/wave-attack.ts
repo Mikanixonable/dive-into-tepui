@@ -6,9 +6,7 @@ import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { ENGAGEMENT_RANGE } from '../../dynamic/engagement-zone';
 import { Player } from '../../player/player';
 import type { StageOutcome } from '../stage-outcome';
-import type { Notifier } from '../../../hud/notifier';
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
-import type { FlashEffects } from '../../vfx/flash-effects';
+import type { RunEventSink } from '../../run-events';
 
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { apsisAltitudes, orbitalElementsOf } from '../../../physics/elements';
@@ -63,9 +61,7 @@ export class WaveAttack {
 
   // saved があればその状態から始める。
   public constructor(
-    private readonly notifier: Notifier,
-    private readonly worldSfx: WorldSfx,
-    private readonly fx: FlashEffects,
+    private readonly events: RunEventSink,
     private readonly scene: THREE.Scene,
     private readonly attractors: readonly CelestialBody[],
     private readonly idAllocators: EntityIdAllocators,
@@ -81,7 +77,7 @@ export class WaveAttack {
     const wave = ++this._waveCount;
     const enemies = generateWave(
       player.motion.state, wave, this.attractors,
-      this.worldSfx, this.fx, this.scene, this.idAllocators, forcedPattern,
+      this.scene, this.idAllocators, forcedPattern,
     );
     for (const enemy of enemies) addEnemy(enemy);
   }
@@ -101,7 +97,7 @@ export class WaveAttack {
     if (player.magsLeft <= 0 && player.roundsInMag <= 0) return;
     this.waveState = 'spawning_enemies';
     this.spawnTimer = STAGE00_SPAWN_DELAY;
-    this.notifier.toast('弾薬を確保した。敵部隊が接近中...', 3000);
+    this.events.record({ kind: 'waveAttackArmed' });
   }
 
   // 遅延タイマーが尽きたら最初のウェーブを湧かせ、active_combat フェーズへ進める。
@@ -130,7 +126,7 @@ export class WaveAttack {
     if (this.spawnTimer > 0) return;
     this.spawnWave(player, addEnemy);
     this.spawnTimer = STAGE00_SPAWN_INTERVAL;
-    this.notifier.toast(`波状攻撃 第${this._waveCount}波 接近中！`, 3000);
+    this.events.record({ kind: 'waveSpawned', wave: this._waveCount });
   }
 
   public serialize(): WaveAttackSaveData {
@@ -290,7 +286,7 @@ function waveShipPosition(
 }
 
 // ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
-export function generateWave(player: KinematicState, waveNumber: number, attractors: readonly CelestialBody[], worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators, forcedPattern?: 'linear' | 'random'): Enemy[] {
+export function generateWave(player: KinematicState, waveNumber: number, attractors: readonly CelestialBody[], scene: THREE.Scene, idAllocators: EntityIdAllocators, forcedPattern?: 'linear' | 'random'): Enemy[] {
   const calculatedCount = STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * STAGE00_WAVE_SHIPS_PER_WAVE);
   const shipCount = Math.min(calculatedCount, STAGE00_WAVE_MAX_SHIPS);
   const centerR = pickWaveCenter(player, waveNumber, attractors);
@@ -306,7 +302,7 @@ export function generateWave(player: KinematicState, waveNumber: number, attract
     const accent = subGroups[i % subGroups.length]!;
     const position = waveShipPosition(pattern, i, shipCount, centerR, approachDir, attractors, player.t);
     const state: KinematicState = kinematicState<'eci'>(player.t, position, centerV);
-    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, attractors, accent, accent, typeIndex, waveNumber, worldSfx, fx, scene, idAllocators, `wave-${waveNumber}-group-${i % subGroups.length}`));
+    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, attractors, accent, accent, typeIndex, waveNumber, scene, idAllocators, `wave-${waveNumber}-group-${i % subGroups.length}`));
   }
   return enemies;
 }

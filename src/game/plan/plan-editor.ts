@@ -1,28 +1,34 @@
 // 軌道計画の編集(ノードの配置・時刻移動・Δv 調整・選択・削除)と、ノードギズモ・3D 矢印・
 // 計画パネルへの反映。ノードの配置・移動先は、描かれている計画折れ線のサンプル列から選ぶ。
 import type * as THREE from 'three/webgpu';
-import { KinematicState, fromOrbitAxes, kinematicState, orbitAxes } from '../../physics/kinematic-state';
-import { OrbitalElements, orbitalElementsOf, positionOnOrbit } from '../../physics/elements';
+import type { KinematicState } from '../../physics/kinematic-state';
+import { fromOrbitAxes, kinematicState, orbitAxes } from '../../physics/kinematic-state';
+import type { OrbitalElements } from '../../physics/elements';
+import { orbitalElementsOf, positionOnOrbit } from '../../physics/elements';
 import { atmosphericDensity, ellipsoidAltitude } from '../../physics/atmosphere';
 import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';
 import { frameOfCelestialBody, toFrameState } from '../../physics/frame';
-import { Projected } from '../../math/projection';
-import { Vec3, add, dot, len, sub, v3 } from '../../math/vec3';
+import type { Projected } from '../../math/projection';
+import type { Vec3 } from '../../math/vec3';
+import { add, dot, len, sub, v3 } from '../../math/vec3';
 import { pickNearest } from '../pickable/object-pickable';
 import type { HudLayers } from '../hud/hud-layers';
 import type { Notifier } from '../../hud/notifier';
 import { ContextMenu } from '../hud/windows/context-menu';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
-import { UiSfx } from '../../audio/sfx/ui-sfx';
-import { Input } from '../../input/input';
+import type { UiSfx } from '../../audio/sfx/ui-sfx';
+import type { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { focusPoint } from '../camera/focus-target';
-import { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import { AxisHandleSpec, NodeGizmo, NodeHandleSpec } from './node-gizmo';
+import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
+import type { AxisHandleSpec, NodeHandleSpec } from './node-gizmo';
+import { NodeGizmo } from './node-gizmo';
 import { AxisDragGizmo } from './plan-axis-drag';
 import { PlanGizmo3D } from '../../render/plan/plan-gizmo-3d';
 import { PlanPanel } from './plan-panel';
-import { DisplayDurationSource, Plan } from './plan';
+import type { DisplayDurationSource, Plan } from './plan';
+import type { PlanCommands } from './plan-commands';
+import type { SimSpeedCommands } from '../dynamic/sim-speed-commands';
 import type { FloatingOrigin } from '../../render/camera/floating-origin';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ControlSelection } from '../control-selection';
@@ -77,18 +83,24 @@ export class PlanEditor {
   private readonly panel: PlanPanel;
   private simTime = 0; // 現在の simTime [s]
 
+  // このフレームに積み上がった Δv の、到着軌道基準(PRO/NRM/RAD)成分 [m/s]。加算が
+  // 一度も無ければ null。
+  private pendingDvLocal: Vec3 | null = null;
+
   // ノードギズモと計画パネルの DOM を組み立て、両者のコールバックを配線する。
   // path は描かれている計画折れ線 — ノードの配置・移動・画面座標はそのサンプル列から解く。
   public constructor(
     private readonly hud: HudLayers & Notifier,
     private readonly uiSfx: UiSfx,
     private readonly simSpeedManager: SimSpeedManager,
+    private readonly simSpeedCommands: SimSpeedCommands,
     private readonly celestialBodies: CelestialBodies,
     scene: THREE.Scene,
     private readonly controlSelection: ControlSelection,
     private readonly displayDuration: DisplayDurationSource,
     private readonly focusSink: FocusSink,
     private readonly path: PlanPath,
+    private readonly planCommands: PlanCommands,
   ) {
     // マップ上の操作物(ノードギズモ・軌道メニュー・3D 矢印・Δv アーム)
     this.nodeGizmo = new NodeGizmo(this.hud.layers.marker, this.hud.layers.popup, this.hud.overlayManager);
@@ -97,7 +109,7 @@ export class PlanEditor {
     this.axisDrag = new AxisDragGizmo(
       (state) => this.bodyState(state),
       (r, t) => this.path.projectPoint(r, t),
-      (axis, sign, amount) => this.applyDv(axis, sign, amount),
+      (axis, sign, amount) => this.addPendingDv(axis, sign, amount),
     );
 
     // 計画パネルと、その入力欄の反映先
@@ -114,8 +126,12 @@ export class PlanEditor {
 
   // 時刻 t まで自動ワープを始める。既に通過した時刻ならその旨を出すだけで何もしない。
   public warpTo(t: number): void {
-    if (this.simSpeedManager.startAutoWarpTo(t, this.simTime)) this.hud.hint('指定時刻まで自動ワープ開始');
-    else this.hud.hint('この時刻は既に通過しています');
+    if (!this.simSpeedManager.canAutoWarpTo(t, this.simTime)) {
+      this.hud.hint('この時刻は既に通過しています');
+      return;
+    }
+    this.simSpeedCommands.startAutoWarpTo(t, this.simTime);
+    this.hud.hint('指定時刻まで自動ワープ開始');
   }
 
   // NodeGizmo の各種コールバックを配線する。
@@ -161,9 +177,9 @@ export class PlanEditor {
   private deleteNode(idx: number): void {
     const plan = this.plan;
     if (!plan?.nodes[idx]) return;
-    plan.removeNode(idx);
+    this.planCommands.removeNode(plan, idx);
     this.closeMenu();
-    this.simSpeedManager.cancelAutoWarp();
+    this.simSpeedCommands.cancelAutoWarp();
     this.hud.hint('ノードを削除');
   }
 
@@ -175,8 +191,8 @@ export class PlanEditor {
     }
     const plan = this.plan;
     if (!plan || plan.nodes.length <= 0) return;
-    plan.clear();
-    this.simSpeedManager.cancelAutoWarp();
+    this.planCommands.clear(plan);
+    this.simSpeedCommands.cancelAutoWarp();
     this.hud.hint('マニューバ計画を破棄');
   }
 
@@ -184,7 +200,7 @@ export class PlanEditor {
   public handleCommand(commandId: string, simTime: number): void {
     if (commandId === K.deleteNode.code) this.deleteSelectedNodeOrPlan();
     if (commandId === K.autoWarpToNode.code) {
-      this.simSpeedManager.toggleAutoWarpToFirstNode(this.plan?.firstNode(), simTime);
+      this.simSpeedCommands.toggleAutoWarpToFirstNode(this.plan?.firstNode(), simTime);
     }
   }
 
@@ -225,9 +241,9 @@ export class PlanEditor {
     const bestNodeIdx = this.pickNodeAt(mx, my);
     // 選択が外れるクリックを編集の区切りとして、Δv を一度も加えていない空のノードを破棄する。
     // 毎フレーム削除すると、置いた直後にギズモを操作する前に消えてしまう。
-    if (this.selectedNodeIdx !== null && this.selectedNodeIdx !== bestNodeIdx) {
-      this.removeSelectedIfEmpty();
-    }
+    const dropped = this.selectedNodeIdx !== null && this.selectedNodeIdx !== bestNodeIdx
+      ? this.removeSelectedIfEmpty()
+      : null;
     if (bestNodeIdx !== null) {
       this.selectedNodeIdx = bestNodeIdx;
       this.uiSfx.warp();
@@ -238,7 +254,9 @@ export class PlanEditor {
     // その位置に最初に到達する時刻(= referenceT を -Infinity にして最早時刻)を選ぶ。
     const picked = this.path.nearestSample(mx, my, NODE_PICK_PX, -Infinity);
     if (picked) {
-      this.selectNewNode(ship.plan.addNode(picked.state, ship.motion.state));
+      // 先頭ノードを捨てた計画は起点ごと落ちるので、置けるかどうかもその後の起点で判定する。
+      const shipState = ship.motion.state;
+      this.placeNode(ship.plan, picked.state, dropped === 0 ? shipState : ship.plan.anchorOr(shipState));
       return;
     }
 
@@ -253,13 +271,15 @@ export class PlanEditor {
     return dv !== null && len(dv) < NODE_MIN_DV;
   }
 
-  // 選択中ノードが実質的に空なら削除する。
-  private removeSelectedIfEmpty(): void {
+  // 選択中ノードが実質的に空なら削除し、削除したノードの index を返す。削除しなければ null。
+  private removeSelectedIfEmpty(): number | null {
     const idx = this.selectedNodeIdx;
-    if (idx === null) return;
-    if (!this.isEmptyNode(idx, this.path.arrivalStates())) return;
-    this.plan?.removeNode(idx);
+    const plan = this.plan;
+    if (idx === null || plan === null) return null;
+    if (!this.isEmptyNode(idx, this.path.arrivalStates())) return null;
+    this.planCommands.removeNode(plan, idx);
     this.selectedNodeIdx = null;
+    return idx;
   }
 
   // 時刻 t の計画軌道上の状態にノードを追加し、選択する。その時刻の計画軌道が
@@ -272,16 +292,18 @@ export class PlanEditor {
       this.hud.hint('この時刻の計画軌道が求まりません');
       return;
     }
-    this.selectNewNode(ship.plan.addNode(sample, ship.motion.state));
+    this.placeNode(ship.plan, sample, ship.plan.anchorOr(ship.motion.state));
   }
 
-  // addNode の結果を選択する。計画の起点より前は置けないので、その場合は理由を伝える。
-  private selectNewNode(idx: number): void {
-    if (idx < 0) {
+  // 噴射直後の絶対状態 postState を plan へ置き、選択する。anchor は置いた後に効く計画の起点
+  // で、その時刻以前は計画の外なので理由を伝えて何もしない。
+  private placeNode(plan: Plan, postState: KinematicState, anchor: KinematicState): void {
+    if (plan.nodeIndexFor(postState.t, anchor) < 0) {
       this.hud.hint('計画の起点より前にはノードを置けません');
       return;
     }
-    this.selectedNodeIdx = idx;
+    this.selectedNode = postState;
+    this.planCommands.addNode(plan, postState, anchor);
     this.uiSfx.warp();
   }
 
@@ -323,9 +345,9 @@ export class PlanEditor {
     );
     // Δv を保ったまま移動先へ置き換える
     if (picked) {
-      this.selectedNode = ship.plan.replaceNode(
-        idx, this.rebuildDraggedNode(picked.state, picked.arcIdx, idx, arriving) ?? picked.state,
-      );
+      const moved = this.rebuildDraggedNode(picked.state, picked.arcIdx, idx, arriving) ?? picked.state;
+      this.selectedNode = moved;
+      this.planCommands.replaceNode(ship.plan, idx, moved);
     }
   }
 
@@ -361,10 +383,9 @@ export class PlanEditor {
 
     // Δv を保ったまま置き換え、後続ノードがあれば再設定を促す
     const arriving = this.path.arrivalStates();
-    const rebuilt = this.rebuildDraggedNode(picked.state, picked.arcIdx, idx, arriving);
-    const replacement = plan.replaceNode(idx, rebuilt ?? picked.state);
-    if (!replacement) return;
-    this.selectedNode = replacement;
+    const moved = this.rebuildDraggedNode(picked.state, picked.arcIdx, idx, arriving) ?? picked.state;
+    this.selectedNode = moved;
+    this.planCommands.replaceNode(plan, idx, moved);
     this.uiSfx.warp();
     if (hasDownstreamNodes) this.hud.hint('ノード位置を変更しました。後続ノードを再設定してください');
   }
@@ -397,18 +418,31 @@ export class PlanEditor {
     return kinematicState<'eci'>(sample.t, sample.r, add(baseV, newDvWorld));
   }
 
-  // 選択中ノードの axis 方向(sign 込み)へ amount [m/s] の Δv を加算する。
+  // 選択中ノードの axis 方向(sign 込み)へ amount [m/s] の Δv 加算を積む。
   // amount がゼロなら何もしない — 変化のない加算でも下流ノードは破棄されてしまう。
-  private applyDv(axis: 0 | 1 | 2, sign: 1 | -1, amount: number): void {
-    const idx = this.selectedNodeIdx;
-    const plan = this.plan;
-    if (idx === null || plan === null || amount === 0) return;
-    // 基底は到着(噴射前)状態で組む — 噴射後の基底ではパネル・3D 矢印・アームの基底と食い違う。
-    const arr = this.path.arrivalStates()[idx];
-    if (!arr) return;
+  private addPendingDv(axis: 0 | 1 | 2, sign: 1 | -1, amount: number): void {
+    if (amount === 0) return;
     const d = amount * sign;
     const local = v3(axis === 0 ? d : 0, axis === 1 ? d : 0, axis === 2 ? d : 0);
-    this.selectedNode = plan.applyNodeDv(idx, fromOrbitAxes(this.bodyState(arr), local));
+    this.pendingDvLocal = this.pendingDvLocal === null ? local : add(this.pendingDvLocal, local);
+  }
+
+  // 積み上がった Δv を、選択中ノードの1つの差し替えへまとめて列へ積む。1フレームの間に
+  // 何方向から何度加算しても命令は1つになるので、同じ加算が二重に効かない。
+  private submitPendingDv(): void {
+    const local = this.pendingDvLocal;
+    this.pendingDvLocal = null;
+    const idx = this.selectedNodeIdx;
+    const plan = this.plan;
+    if (local === null || idx === null || plan === null) return;
+    // 基底は到着(噴射前)状態で組む — 噴射後の基底ではパネル・3D 矢印・アームの基底と食い違う。
+    const arr = this.path.arrivalStates()[idx];
+    const node = plan.nodes[idx];
+    if (!arr || !node) return;
+    const dvWorld = fromOrbitAxes(this.bodyState(arr), local);
+    const burned = kinematicState<'eci'>(node.t, node.r, add(node.v, dvWorld));
+    this.selectedNode = burned;
+    this.planCommands.replaceNode(plan, idx, burned);
   }
 
   // 手動入力フォームから絶対的な Δv (PRO, NRM, RAD) を指定してノードの速度を上書きする。
@@ -422,7 +456,9 @@ export class PlanEditor {
 
     // 入力は「到着時の軌道基準枠」を基準とした絶対量とする。
     const dvWorld = fromOrbitAxes(this.bodyState(arr), v3(pro, nrm, rad));
-    this.selectedNode = plan.replaceNode(idx, kinematicState<'eci'>(node.t, node.r, add(arr.v, dvWorld)));
+    const burned = kinematicState<'eci'>(node.t, node.r, add(arr.v, dvWorld));
+    this.selectedNode = burned;
+    this.planCommands.replaceNode(plan, idx, burned);
     this.uiSfx.warp();
   }
 
@@ -514,6 +550,7 @@ export class PlanEditor {
   private updateEditing(input: Input, dt: number): void {
     if (this.selectedNodeIdx === null) {
       this.axisDrag.resetHold();
+      this.pendingDvLocal = null;
       return;
     }
     const fine = this.ship?.fineAttitude ?? false;
@@ -528,6 +565,8 @@ export class PlanEditor {
     // ラッチ中の Δv アームは、閾値超過量に比例したレートで dt 秒分を加算し続ける。
     const drag = this.nodeGizmo.axisHandleDrag;
     if (drag && drag.excessPx !== null) this.axisDrag.applyLatchDv(drag.axis, drag.sign, drag.excessPx, dt, fine);
+
+    this.submitPendingDv();
   }
 
   // 現在のノード列と選択中ノードから、計画パネルへ渡す表示値を組み立てて反映する。
@@ -585,10 +624,9 @@ export class PlanEditor {
     if (plan) {
       const arriving = this.path.arrivalStates();
       // 末尾から Δv が有意なノードに当たるまで削る。
-      for (let i = plan.nodes.length - 1; i >= 0; i--) {
-        if (!this.isEmptyNode(i, arriving)) break;
-        plan.removeNode(i);
-      }
+      let cut = plan.nodes.length;
+      while (cut > 0 && this.isEmptyNode(cut - 1, arriving)) cut--;
+      if (cut < plan.nodes.length) this.planCommands.removeNode(plan, cut);
     }
     this.selectedNodeIdx = null;
   }

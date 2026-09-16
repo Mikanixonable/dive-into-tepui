@@ -6,9 +6,7 @@ import { Logistics } from '../../src/game/stages/stage-utils/logistics';
 import type { EntityRegistry } from '../../src/game/dynamic/entity-registry';
 import type { EntityRoster } from '../../src/game/dynamic/entity-roster';
 import type { LogisticsSaveData } from '../../src/game/save/save-data';
-import type { Notifier } from '../../src/hud/notifier';
 
-const quietNotifier: Notifier = { hint() {}, toast() {} };
 const saved: LogisticsSaveData = {
   resupplyCheckAt: 0,
   resupplyEnabled: true,
@@ -17,9 +15,6 @@ const saved: LogisticsSaveData = {
 
 function logistics(automaticResupply: boolean): Logistics {
   return new Logistics(
-    quietNotifier,
-    {} as never,
-    {} as never,
     new THREE.Scene(),
     {} as EntityRegistry & EntityRoster,
     saved,

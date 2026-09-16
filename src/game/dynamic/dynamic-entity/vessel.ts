@@ -23,9 +23,9 @@ export function shipMotionOptions(
     radius,
     bcInv: SHIP_BCINV,
     srpCoeff: SHIP_SRP_COEFF,
-    // 過去線を保持し、予測も引く
+    // 履歴を残し、予測の弧をなぞる
     historyDuration: DEFAULT_HISTORY_DURATION,
-    predictsFuture: true,
+    followsPredictedArc: true,
     // 熱の物性
     specificHeat: SHIP_SPECIFIC_HEAT,
     bulkDensity: SHIP_BULK_DENSITY,

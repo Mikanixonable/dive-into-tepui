@@ -116,6 +116,42 @@ const FORBIDDEN = [
     targets: ['src/math/', 'src/physics/'],
     exempt: [],
   },
+  {
+    // 表示の選択が進行へ効いてよいのは需要だけ、という R4 を当てたもの。予測の有無と表示窓の
+    // 長さは「どこまで計算するか」ではなく「何を見るか」なので、進行が読めば違反になる。
+    // (暫定 — 段 5 で層の規則が覆うので、そのとき外す)
+    name: '表示の選択が進行へ漏れる禁止',
+    pattern: /predictsFuture|display-window-duration/g,
+    targets: ['src/game/dynamic/'],
+    exempt: [],
+  },
+  {
+    // 生の入力を読むのは入力の解釈の位相だけ、という R8 を当てたもの。進行へは操作量と命令で届く。
+    // (暫定 — 段 5 で層の規則が覆うので、そのとき外す)
+    name: 'モデル層が生の入力を読む禁止',
+    pattern: /from '.*input\/input'/g,
+    targets: ['src/game/dynamic/', 'src/game/player/', 'src/game/stages/'],
+    exempt: [],
+  },
+  {
+    // 一回きりの出来事は進行が記録し、表示の導出が読んで装置へ渡す(R7・R8)。進行が音・通知・
+    // 画面効果の装置を持てば、この経路を飛ばして直に鳴らせてしまう。
+    // (暫定 — 段 5 で層の規則が覆うので、そのとき外す)
+    name: 'モデル層が出来事の装置を持つ禁止',
+    pattern: /WorldSfx|UiSfx|Notifier|FlashEffects/g,
+    targets: [
+      'src/game/dynamic/',
+      'src/game/player/',
+      'src/game/stages/',
+      'src/game/save/',
+      'src/game/protein/',
+      'src/game/control-selection.ts',
+      'src/game/creative/manual-spawn.ts',
+      'src/game/creative/object-placement.ts',
+      'src/game/plan/plan-guide.ts',
+    ],
+    exempt: [],
+  },
 ];
 
 const IMPORT_RE = /(?:\bfrom\s*|\bimport\s*\(\s*|(?:^|\n)\s*import\s+)['"]([^'"]+)['"]/g;

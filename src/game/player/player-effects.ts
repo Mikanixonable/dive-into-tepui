@@ -1,61 +1,47 @@
-import type { WorldSfx } from '../../audio/sfx/world-sfx';
-import type { FlashEffects } from '../vfx/flash-effects';
+// 自機が被弾・接触・喪失したときに起きたことの記録と、そのとき出る破片を組み立てる。
+import type { RunEventSink } from '../run-events';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { Vec3 } from '../../math/vec3';
 import type { BulletType } from '../dynamic/dynamic-entity/bullet-reaction';
-import type { RadiatorSide } from './radiator';
 import {
   buildDestroyFragments, DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN,
   PLAYER_DESTROY_FRAG_COLOR, playerDestroyFragments,
 } from '../dynamic/dynamic-entity/debris-piece';
-import { len, sub } from '../../math/vec3';
 
-export interface PlayerEffects {
-  impact(type: BulletType, state: KinematicState, impactPoint: Vec3): void;
-  contact(state: KinematicState): void;
-  destroy(state: KinematicState, registry: EntityRegistry): void;
-  radiatorBreak(side: RadiatorSide, state: KinematicState, tip: Vec3, registry: EntityRegistry): void;
-}
+// 放熱板が全損したとき、その先端から出す破片の数。
+const RADIATOR_BREAK_FRAGMENTS = 4;
+// 放熱板の破片へ乗せる速度のばらつき [m/s]。
+const RADIATOR_BREAK_VELOCITY_SPREAD = 8.0;
 
-// 自機固有の音・閃光・破片をまとめる副作用 port の既定実装。
-export class DefaultPlayerEffects implements PlayerEffects {
-  public constructor(
-    private readonly worldSfx: WorldSfx,
-    private readonly fx: FlashEffects,
-  ) {}
+export class PlayerEffects {
+  public constructor(private readonly events: RunEventSink) {}
 
-  // 撃破に至らない被弾の音・閃光・ガス。impactPoint は着弾点の ECI 位置。
+  // 撃破に至らない被弾の出来事。impactPoint は着弾点の ECI 位置。
   public impact(type: BulletType, state: KinematicState, impactPoint: Vec3): void {
-    this.worldSfx.hit(len(sub(impactPoint, state.r)));
-    const impact = { t: state.t, r: impactPoint, v: state.v } as KinematicState<'eci'>;
-    if (type === 'plasma') this.fx.spawnPlasmaFlash(impact);
-    else this.fx.spawnBulletFlash(impact);
-    this.fx.spawnGasPuff(impact);
+    this.events.record({ kind: 'shipStruck', impactPoint, shipState: state, bullet: type });
   }
 
-  // 物体どうしがぶつかったときの金属音とガス。
+  // 物体どうしがぶつかったときの出来事。
   public contact(state: KinematicState): void {
-    this.worldSfx.clank();
-    this.fx.spawnGasPuff(state);
+    this.events.record({ kind: 'shipDamagedByContact', state });
   }
 
-  // 機体喪失の爆発と破片。破片は registry へ足す。
+  // 機体喪失の出来事と破片。破片は registry へ足す。
   public destroy(state: KinematicState, registry: EntityRegistry): void {
-    this.worldSfx.explosion();
-    this.fx.spawnPlayerDestroyFlash(state);
+    this.events.record({ kind: 'shipExploded', state, modelScale: 1 });
     for (const piece of playerDestroyFragments(
-      state, this.worldSfx, this.fx, registry.idAllocators,
+      state, registry.idAllocators,
     )) registry.add(piece);
   }
 
-  // 放熱板が全損した瞬間の破片を、そのパネル先端 tip から出す。
-  public radiatorBreak(_side: RadiatorSide, state: KinematicState, tip: Vec3, registry: EntityRegistry): void {
-    this.worldSfx.hit(len(sub(tip, state.r)));
+  // 放熱板が全損した瞬間の出来事と破片を、そのパネル先端 tip から出す。
+  public radiatorBreak(state: KinematicState, tip: Vec3, registry: EntityRegistry): void {
+    this.events.record({ kind: 'shipStruck', impactPoint: tip, shipState: state, bullet: null });
     for (const piece of buildDestroyFragments(
-      state.t, tip, state.v, 4, PLAYER_DESTROY_FRAG_COLOR,
-      DESTROY_FRAG_SIZE_MIN, DESTROY_FRAG_SIZE_MAX, 8.0,
-      this.worldSfx, this.fx, registry.idAllocators,
+      state.t, tip, state.v, RADIATOR_BREAK_FRAGMENTS, PLAYER_DESTROY_FRAG_COLOR,
+      DESTROY_FRAG_SIZE_MIN, DESTROY_FRAG_SIZE_MAX, RADIATOR_BREAK_VELOCITY_SPREAD,
+      registry.idAllocators,
     )) registry.add(piece);
   }
 }

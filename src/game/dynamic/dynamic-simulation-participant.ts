@@ -19,7 +19,7 @@ export interface DynamicReactionServices {
 }
 
 export interface PredictableMotion {
-  readonly predictsFuture: boolean;
+  readonly followsPredictedArc: boolean;
   readonly predicted: DynamicTrajectory | null;
   readonly predictionTruncated: boolean;
   ensurePredictedArc(sources: readonly CelestialBody[]): PredictedArc | null;

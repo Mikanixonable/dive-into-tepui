@@ -1,5 +1,6 @@
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ControlSelection } from '../control-selection';
+import type { ControlSelectionCommands } from '../control-selection-commands';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { ViewMode } from '../view/view-mode';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
@@ -47,7 +48,7 @@ export class PlayerInspection implements InspectedObject {
   public readonly onMapSelect = (windows: PropertyWindowOpener, x: number, y: number): void => {
     windows.openProperties(this, x, y);
   };
-  public readonly onMapFocus = (selection: ControlSelection): void => selection.select(this.player);
+  public readonly onMapFocus = (commands: ControlSelectionCommands): void => commands.select(this.player);
 
   public markerItem(viewerPos: Parameters<Player['markerItem']>[0], pos: Parameters<Player['markerItem']>[1],
     vel: Parameters<Player['markerItem']>[2], view: ViewMode, isActive: boolean): GroupedMarkerItem {

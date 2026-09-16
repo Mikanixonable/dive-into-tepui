@@ -23,16 +23,14 @@ import { NanWatchdog } from './nan-watchdog';
 import { FrameSections, SECTION } from '../frame-sections';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { StageSimulationEvents } from '../stages/stage-simulation-events';
-import type { Input } from '../../input/input';
+import type { PilotControls } from './dynamic-entity/pilot-controls';
 import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { StageRules } from '../stages/stage-rules';
 
 import type { EntitySaveDataUnion, GameSaveData } from '../save/save-data';
-import type { Notifier } from '../../hud/notifier';
-import type { WorldSfx } from '../../audio/sfx/world-sfx';
-import type { FlashEffects } from '../vfx/flash-effects';
 import type { PerfCounts } from '../perf-counts';
+import type { RunEventSink } from '../run-events';
 import type { OrbitReference } from '../orbit-reference';
 
 export class DynamicSystem implements EntityRegistry, EntityRoster {
@@ -59,9 +57,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 描画資源のプールと前進の機構を組んでから、saved があればその顔ぶれを復元する。
   public constructor(
     scene: THREE.Scene,
-    notifier: Notifier,
-    worldSfx: WorldSfx,
-    flash: FlashEffects,
+    public readonly events: RunEventSink,
     private readonly celestialBodies: CelestialBodies,
     private readonly sections: FrameSections,
     initialSimTime: number,
@@ -73,19 +69,17 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
       new DebrisFragmentPools(scene, ENTITY_CAP.debris),
     ]);
     this.simulator = new Simulator(this, this, this, celestialBodies, sections, initialSimTime);
-    this.nanWatchdog = new NanWatchdog(notifier);
-    if (saved) this.restoreFromSave(saved, notifier, worldSfx, flash, scene);
+    this.nanWatchdog = new NanWatchdog(events);
+    if (saved) this.restoreFromSave(saved, scene);
   }
 
   // スナップショットの顔ぶれを復元する。知らない種別は読み飛ばす。
-  private restoreFromSave(
-    save: GameSaveData, notifier: Notifier, worldSfx: WorldSfx, flash: FlashEffects, scene: THREE.Scene,
-  ): void {
+  private restoreFromSave(save: GameSaveData, scene: THREE.Scene): void {
     // 実体化がゲートで遅れる個体があるので、先に全部の id を押さえてから組み始める。
     for (const data of save.entities) this.idAllocators.reserve(data.id);
     for (const data of save.entities) {
       const restoration = restorationFor(
-        data, save.simTime, scene, notifier, worldSfx, flash, this.idAllocators);
+        data, save.simTime, scene, this.events, this.idAllocators);
       if (restoration === null) continue;
       this.spawnWhenReady(restoration.gate, () => restoration.build());
     }
@@ -234,7 +228,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     if (changed) this.bumpCollectionRevision();
   }
 
-  // 過去表示に要る履歴の保持時間 [s] を全エンティティへ要求する。履歴を持たない種別は無視する。
+  // 残す履歴の長さ sec [s] を全エンティティへ要求する。構築時の長さを持つ個体がそれを受ける。
   public requestHistoryDuration(sec: number): void {
     for (const entity of this.entities) entity.motion.requestHistoryDuration(sec);
   }
@@ -252,7 +246,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 顔ぶれを1フレーム進める。自律の推力、操作・敵の指令を決めてから積分する。各段の境界で
   // 操作対象の非有限値を検査し、どの境界で落ちたかで汚染した段を特定する。
   public update(
-    active: Controllable | null, input: Input, operable: boolean,
+    active: Controllable | null, controls: PilotControls, operable: boolean,
     dt: number, simDt: number, canEngage: boolean, activeStage: StageOutcome & StageSimulationEvents,
     stageRules: StageRules, beforeControllables: () => void = () => {},
   ): void {
@@ -262,7 +256,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     this.sections.enter(SECTION.command);
     this.updateThrusts(simDt);
     beforeControllables();
-    this.updateControllables(active, input, operable, dt, simDt, activeStage, stageRules);
+    this.updateControllables(active, controls, operable, dt, simDt, activeStage, stageRules);
     this.behaveAll(active, operable);
     this.sections.exit(SECTION.command);
     this.nanWatchdog.checkControlled(
@@ -289,14 +283,14 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
 
   // 生存中の操作されうる全個体へ updateControls を1度ずつ通す。
   private updateControllables(
-    active: Controllable | null, input: Input, operable: boolean,
+    active: Controllable | null, controls: PilotControls, operable: boolean,
     dt: number, simDt: number, activeStage: StageOutcome, stageRules: StageRules,
   ): void {
     for (const controllable of this.controllables) {
       if (!controllable.motion.alive) continue;
-      // 「操作対象でない」と「操作できないワープ倍率」は同じ状態として input なしで進める。
+      // 「操作対象でない」と「操作できないワープ倍率」は同じ状態として操作量なしで進める。
       controllable.updateControls({
-        input: controllable === active && operable ? input : null,
+        controls: controllable === active && operable ? controls : null,
         dt,
         simDt,
         registry: this,

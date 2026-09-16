@@ -1,5 +1,3 @@
-import type { FlashEffects } from '../../vfx/flash-effects';
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { Vec3 } from '../../../math/vec3';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { Part } from './parts';
@@ -20,13 +18,11 @@ export abstract class PartBasedEnemy extends Enemy implements PartDamageTarget {
     view: DynamicView,
     inertia: Vec3,
     radius: number,
-    worldSfx: WorldSfx,
-    fx: FlashEffects,
     idAllocators: EntityIdAllocators,
     initialParts: readonly Part[],
     shape?: EnemyCollisionShape,
   ) {
-    super(init, view, inertia, radius, worldSfx, fx, idAllocators, shape);
+    super(init, view, inertia, radius, idAllocators, shape);
     this.partModel.replaceParts(initialParts);
     this.maxHp = this.partModel.maxHp;
     this.hp = this.partModel.overallHp();

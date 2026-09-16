@@ -6,7 +6,8 @@ import type { ThrottleSaveData } from '../../save/save-data';
 import type { FireControl } from '../../player/fire-control';
 import type { AttachedBoosters } from '../../player/attached-boosters';
 import type { AltitudeAlarm } from '../../player/altitude-alarm';
-import type { Input } from '../../../input/input';
+import type { PilotCommand, PilotControls, ThrustDirection } from './pilot-controls';
+import type { RunEventSink } from '../../run-events';
 import type { StageOutcome } from '../../stages/stage-outcome';
 import type { EntityRegistry } from '../entity-registry';
 import type { CombatTarget } from './combat-target';
@@ -17,13 +18,14 @@ export interface ThrottlePort {
   readonly throttleIdx: number;
   readonly rcsDamp: boolean;
   readonly progradeHold: boolean;
-  updateThrustState(input: Input, att: Attitude, simDt: number, ship: FuelConsumer): Vec3 | null;
+  updateThrustState(controls: PilotControls, att: Attitude, simDt: number, ship: FuelConsumer): Vec3 | null;
   updateTorque(
-    att: Attitude, r: Vec3, v: Vec3, input: Input, fineAttitude: boolean,
-    dt: number, simDt: number, ship: FuelConsumer, onProgradeHoldReleased: () => void,
+    att: Attitude, r: Vec3, v: Vec3, controls: PilotControls, fineAttitude: boolean,
+    dt: number, simDt: number, ship: FuelConsumer, events: RunEventSink | null,
   ): Vec3;
-  updateThrustLatches(input: Input): void;
-  isThrustLatched(key: { readonly code: string }): boolean;
+  updateThrustLatches(controls: PilotControls): void;
+  toggleThrustLatch(direction: ThrustDirection): void;
+  isThrustLatched(direction: ThrustDirection): boolean;
   clearTransientState(): void;
   serialize(): ThrottleSaveData;
 }
@@ -39,7 +41,8 @@ export interface FuelConsumer {
 }
 
 export interface PilotCommandFrame {
-  readonly input: Input | null;
+  // このフレームの操作量。操作されない個体は null。
+  readonly controls: PilotControls | null;
   readonly dt: number;
   readonly simDt: number;
   readonly registry: EntityRegistry;
@@ -51,7 +54,7 @@ export interface PilotCommandFrame {
 export interface PilotCommandReceiver {
   updateControls(frame: PilotCommandFrame): void;
   clearTransientCommands(): void;
-  handleInputCommand(commandId: string, registry: EntityRegistry): void;
+  handleCommand(command: PilotCommand, registry: EntityRegistry): void;
 }
 
 export interface NavigationController {
@@ -67,10 +70,6 @@ export interface Controllable extends CombatTarget, FuelConsumer, PilotCommandRe
   readonly fire?: FireControl;
   readonly boosters?: AttachedBoosters;
   readonly altitudeAlarm?: AltitudeAlarm;
-  // 操作対象になったときに出す案内。出すものが無ければ null。
-  readonly controlHint: string | null;
-  // 操作対象から手で外したときに出す案内。出すものが無ければ null。
-  readonly releaseHint: string | null;
   // 装備を持つ操作対象だけが実装する入力命令。未搭載はメソッド自体を持たない。
   readonly toggleSolarPanel?: (side: 'up' | 'down') => void;
   readonly toggleRadiator?: (side: 'up' | 'down') => void;

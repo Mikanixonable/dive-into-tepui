@@ -8,9 +8,6 @@ import {
   isRcsFuelPickup, RcsFuelPickup, RCS_FUEL_PICKUP_RADIUS, RCS_FUEL_PICKUP_AMOUNT,
 } from '../../dynamic/dynamic-entity/pickup';
 import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';
-import type { Notifier } from '../../../hud/notifier';
-import { WorldSfx } from '../../../audio/sfx/world-sfx';
-import { UiSfx } from '../../../audio/sfx/ui-sfx';
 import { Player } from '../../player/player';
 import type { EntityRoster } from '../../dynamic/entity-roster';
 import type { EntityRegistry } from '../../dynamic/entity-registry';
@@ -40,9 +37,6 @@ export class Logistics {
 
   // saved があればその状態(次回投入判定時刻・自動投入の有効/無効)から始める。
   public constructor(
-    private readonly _notifier: Notifier,
-    private readonly _worldSfx: WorldSfx,
-    private readonly _uiSfx: UiSfx,
     private readonly _scene: THREE.Scene,
     private readonly dynamicSystem: EntityRegistry & EntityRoster,
     saved?: LogisticsSaveData,
@@ -81,10 +75,9 @@ export class Logistics {
       this._scene,
       this.dynamicSystem.idAllocators,
     );
-    // 投入して演出とヒントを出す
+    // 顔ぶれへ入れ、投入したことを記録する
     this.dynamicSystem.add(ammoPickup);
-    this._uiSfx.warp();
-    this._notifier.hint('付近の軌道に補給が投入された — ▣ 弾薬マーカーへ接近して回収', 5000);
+    this.dynamicSystem.events.record({ kind: 'ammoResupplyDeployed' });
   }
 
   // 自機の軌道上、minDist〜maxDist 先の位相に RCS 燃料補給を1個投入する。
@@ -115,10 +108,9 @@ export class Logistics {
       this._scene,
       this.dynamicSystem.idAllocators,
     );
-    // 投入して演出とヒントを出す
+    // 顔ぶれへ入れ、投入したことを記録する
     this.dynamicSystem.add(fuelPickup);
-    this._uiSfx.warp();
-    this._notifier.hint('付近の軌道に RCS 燃料補給が投入された — ◈ 燃料マーカーへ接近して回収', 5000);
+    this.dynamicSystem.events.record({ kind: 'rcsFuelResupplyDeployed' });
   }
 
   // 近傍の補給を回収し、遠方のものをデスポーンし、残弾・残燃料が少なければ定期的に新規投入する。
@@ -188,11 +180,10 @@ export class Logistics {
         lenSq(sub(ammoPickup.motion.state.r, player.motion.state.r))
         >= AMMO_PICKUP_RADIUS * AMMO_PICKUP_RADIUS
       ) continue;
-      // 取り込んで消し、演出とヒントを出す
+      // 取り込んで消し、取り込んだことを記録する
       ammoPickup.motion.alive = false;
       player.onPickup(AMMO_PICKUP_MAGS);
-      this._worldSfx.pickup();
-      this._notifier.hint(`補給取り込み — ベルト +${AMMO_PICKUP_MAGS} 連`, 3000);
+      this.dynamicSystem.events.record({ kind: 'ammoPickedUp', mags: AMMO_PICKUP_MAGS });
     }
   }
 
@@ -204,11 +195,10 @@ export class Logistics {
         lenSq(sub(pickup.motion.state.r, player.motion.state.r))
         >= RCS_FUEL_PICKUP_RADIUS * RCS_FUEL_PICKUP_RADIUS
       ) continue;
-      // 取り込んで消し、演出とヒントを出す
+      // 取り込んで消し、取り込んだことを記録する
       pickup.motion.alive = false;
       const added = player.refuelFuel(RCS_FUEL_PICKUP_AMOUNT);
-      this._worldSfx.pickup();
-      this._notifier.hint(`補給取り込み — RCS燃料 +${Math.round(added)} kg`, 3000);
+      this.dynamicSystem.events.record({ kind: 'rcsFuelPickedUp', fuel: added });
     }
   }
 

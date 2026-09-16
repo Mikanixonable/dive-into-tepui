@@ -7,11 +7,7 @@ import { strongestAttractor } from '../../physics/attractor';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
-import { FlashEffects } from '../vfx/flash-effects';
 import type { HudLayers } from '../hud/hud-layers';
-import type { Notifier } from '../../hud/notifier';
-import { WorldSfx } from '../../audio/sfx/world-sfx';
-import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
@@ -20,6 +16,7 @@ import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
 import type { StageSimulationEvents } from './stage-simulation-events';
 import type { ControlSelection } from '../control-selection';
+import type { CommandQueue } from '../command-queue';
 import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
 import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
@@ -39,15 +36,6 @@ export const STORY_EPOCH: TdbJulianDate =
 
 export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
 
-// 自然損耗の理由ごとのヒント文。cause を足すと文言の追加漏れが型検査で落ちる。
-const ENEMY_LOSS_HINT: Record<Exclude<EnemyDeathCause, 'killed'>, string> = {
-  burnup: '大気圏で焼失',
-  collision: '天体へ衝突',
-  despawn: '交戦圏を離脱',
-};
-
-const BRIEFING_TOAST_MS = 12000;
-
 // 状態を指定せずに置く自機の既定の円軌道。高度は中心天体の表面半径から、傾斜角は中心天体の
 // 中心に置いた ECI 軸の Y から測る。
 const PLAYER_INITIAL_ALT = 420e3; // [m]
@@ -56,14 +44,12 @@ const PLAYER_INITIAL_INC_DEG = 97.0; // [deg]
 // 全ステージ共通の生成引数(セーブデータを除く)。具象ステージは自分のコンストラクタで
 // これをそのまま基底へ渡す。
 export type StageDeps = [
-  hud: HudLayers & Notifier,
-  worldSfx: WorldSfx,
-  uiSfx: UiSfx,
+  hud: HudLayers,
   scene: THREE.Scene,
   dynamicSystem: EntityRegistry & EntityRoster,
-  fx: FlashEffects,
   celestialSystem: CelestialSystem,
   controlSelection: ControlSelection,
+  commandQueue: CommandQueue,
 ];
 
 // ステージクラスの静的側。起動時の設定はここから読む。
@@ -149,14 +135,13 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   protected readonly logistics: Logistics;
   private readonly statusPanel: StatusPanel;
 
-  protected readonly _hud: HudLayers & Notifier;
-  protected readonly _worldSfx: WorldSfx;
-  protected readonly _uiSfx: UiSfx;
+  protected readonly _hud: HudLayers;
   protected readonly _scene: THREE.Scene;
-  protected readonly _fx: FlashEffects;
   protected readonly _dynamicSystem: EntityRegistry & EntityRoster;
   protected readonly _celestialSystem: CelestialSystem;
   protected readonly _controlSelection: ControlSelection;
+  // モデル層の外から届いた書き換えを積む先。ステージ固有の命令の口はここへ積む。
+  protected readonly _commandQueue: CommandQueue;
 
   private _phase: GamePhase;
   public get phase(): GamePhase { return this._phase; }
@@ -177,31 +162,34 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, worldSfx, uiSfx, scene, dynamicSystem, fx, celestialSystem, controlSelection] = deps;
+    const [hud, scene, dynamicSystem, celestialSystem, controlSelection, commandQueue] = deps;
     this._hud = hud;
-    this._worldSfx = worldSfx;
-    this._uiSfx = uiSfx;
     this._scene = scene;
-    this._fx = fx;
     this._dynamicSystem = dynamicSystem;
     this._celestialSystem = celestialSystem;
     this._controlSelection = controlSelection;
+    this._commandQueue = commandQueue;
     // 進行状態は saved から復元し、無ければ新規開始の既定値で始める。
     this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
     this._phase = saved?.phase ?? 'playing';
     this.restored = saved !== undefined;
     this.logistics = new Logistics(
-      hud, worldSfx, uiSfx, scene, dynamicSystem, saved?.logistics, this.stageRules.automaticResupply,
+      scene, dynamicSystem, saved?.logistics, this.stageRules.automaticResupply,
     );
     this.statusPanel = new StatusPanel(hud.combatRoot);
   }
 
-  // 新規開始なら初期配置・ブリーフィングを行う。具象ステージは自分のコンストラクタの
+  private _briefing: string | null = null;
+
+  // 新規開始のランで1度だけ出すブリーフィングの本文(HTML)。再開したランでは null。
+  public get briefing(): string | null { return this._briefing; }
+
+  // 新規開始なら初期配置を行い、ブリーフィングの本文を組む。具象ステージは自分のコンストラクタの
   // 末尾で必ずこれを呼ぶ — 初期配置は具象側のフィールドが揃ってからでないと走らせられない。
   protected begin(): void {
     if (this.restored) return;
     this.init();
-    this._hud.toast(this.briefingHtml(), BRIEFING_TOAST_MS);
+    this._briefing = this.briefingHtml();
   }
 
   // ステージ固有の UI(トグル等)をステータスウィンドウ左部へ追加する。
@@ -242,7 +230,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     const state = placement.state ?? this.defaultPlayerState();
     const center = strongestAttractor(state.r, this._celestialSystem.celestialMotions, state.t);
     const ship = new Player(
-      this._hud, this._worldSfx, this._scene, this._fx, this._dynamicSystem.idAllocators,
+      this._dynamicSystem.events, this._scene, this._dynamicSystem.idAllocators,
       { ...placement, state, center },
     );
     this._dynamicSystem.add(ship);
@@ -276,6 +264,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this._dynamicSystem.spawnWhenReady(gate, build, () => this.scoreCounter.recordSpawnEnemy());
   }
 
+  // ステージごとのブリーフィングの本文(HTML)。init() を終えた状態から組む。
   protected abstract briefingHtml(): string;
   // 初期配置。既定では何も置かない。
   protected init(): void { }
@@ -306,13 +295,9 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
 
   // 原因によらず勝利判定を通す: 再突入・離脱でも残存数 0 なら決着させる。
   public recordEnemyDeath(enemy: Enemy, simTime: number, cause: EnemyDeathCause = 'killed'): void {
-    if (cause === 'killed') {
-      this.scoreCounter.recordKill();
-      this._hud.hint(`${enemy.name} 撃破`);
-    } else {
-      this.scoreCounter.recordEnemyLoss();
-      this._hud.hint(`${enemy.name} ${ENEMY_LOSS_HINT[cause]}`);
-    }
+    if (cause === 'killed') this.scoreCounter.recordKill();
+    else this.scoreCounter.recordEnemyLoss();
+    this._dynamicSystem.events.record({ kind: 'enemyDied', name: enemy.name, cause });
 
     // isPlaying ガード: 敗北後に残存敵が再突入で消えても勝利判定が上書きしないよう。
     if (this.isPlaying && this.checkWin()) this.onWin(simTime);

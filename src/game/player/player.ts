@@ -12,15 +12,11 @@ import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
-import { Input } from '../../input/input';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
-import type { Notifier } from '../../hud/notifier';
-import type { WorldSfx } from '../../audio/sfx/world-sfx';
+import type { RunEventSink } from '../run-events';
 import { generateRandomName } from '../random-name';
 import { Throttle } from './throttle';
 import { FireControl, type AmmoLoad } from './fire-control';
 import { AltitudeAlarm } from './altitude-alarm';
-import type { FlashEffects } from '../vfx/flash-effects';
 import { PlayerView, type PlayerRenderSource } from '../../render/dynamic/player/player-view';
 import type { DynamicViewFrame } from '../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../orbit-reference';
@@ -37,12 +33,13 @@ import { frameOfCelestialBody, toFrameState } from '../../physics/frame';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
 import type { Controllable, PilotCommandFrame } from '../dynamic/dynamic-entity/controllable';
+import type { PilotCommand, PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
 import { PlayerMotion, type PlayerMotionReactions } from './player-motion';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
 import type { DamageOutcomeSink } from './damage-outcome';
 import { PlayerInspection } from '../pickable/player-inspection';
-import { DefaultPlayerEffects, type PlayerEffects } from './player-effects';
+import { PlayerEffects } from './player-effects';
 import { createPlayerParts, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL } from './player-loadout';
 import type { PartDamageTarget } from '../dynamic/dynamic-entity/damage-capabilities';
 
@@ -101,23 +98,18 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   public planExecution: PlanExecutionMode = 'instant';
 
   public fineAttitude = false;
-  // 自機の操作方法は HUD とヘルプが常設で示しているので、選び直しても案内は出さない。
-  public readonly controlHint = null;
-  public readonly releaseHint = null;
   public readonly toggleSolarPanel = (side: 'up' | 'down'): void => this.motion.power.toggle(side);
   public readonly toggleRadiator = (side: 'up' | 'down'): void => this.motion.radiator.toggle(side);
 
   // name を省いた新規艦は無作為な名前になる。id を省いたときは name がそのまま
   // 艦の識別子になるので、複数隻を並べるなら name も分ける。
   public constructor(
-    private readonly notifier: Notifier,
-    worldSfx: WorldSfx,
+    private readonly events: RunEventSink,
     scene: THREE.Scene,
-    fx: FlashEffects,
     idAllocators: EntityIdAllocators,
     init: PlayerInit,
   ) {
-    const effects: PlayerEffects = new DefaultPlayerEffects(worldSfx, fx);
+    const effects = new PlayerEffects(events);
     const saved = 'saved' in init ? init.saved : undefined;
     const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
     const state = 'saved' in init ? savedKinematicState(init.saved, init.simTime) : init.state;
@@ -174,12 +166,13 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       id,
       createPlayerParts(PLAYER_MAX_HP),
     );
-    this.throttle = new Throttle(notifier, saved?.throttle);
+    this.throttle = new Throttle(saved?.throttle);
     this.effects = effects;
-    this.fire = new FireControl(this, notifier, worldSfx, scene, fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
-    this.altitudeAlarm = new AltitudeAlarm(notifier, worldSfx);
+    this.fire = new FireControl(
+      this, events, scene, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
+    this.altitudeAlarm = new AltitudeAlarm(events);
     this.boosters = new AttachedBoosters(
-      this.motion, this.motion.attachedBoosters, idAllocators, notifier, worldSfx, scene, fx,
+      this.motion, this.motion.attachedBoosters, idAllocators, events, scene,
     );
     if (saved) {
       this.planExecution = saved.planExecution ?? 'off';
@@ -205,7 +198,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
           const idx = this.plan.addNode(kinematicState<'eci'>(n.t, v3(n.r.x, n.r.y, n.r.z), v3(n.v.x, n.v.y, n.v.z)), anchor);
           if (idx < 0) rejected++;
         }
-        if (rejected > 0) notifier.hint(`${this.name}: 起点より前のマニューバノード ${rejected} 件を復元できません`);
+        if (rejected > 0) events.record({ kind: 'planNodesDropped', ship: this.name, count: rejected });
       }
     }
   }
@@ -240,25 +233,25 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.fire.onPickup(mags);
   }
 
-  // 毎フレーム、全ての自機に対して1度だけ呼ぶ。input が null の艦は、このフレーム操作されない
-  // 艦として畳む。
+  // 毎フレーム、全ての自機に対して1度だけ呼ぶ。controls が null の艦は、このフレーム
+  // 操作されない艦として畳む。
   public updateControls(frame: PilotCommandFrame): void {
-    const { input, dt, simDt, registry, activeStage, stageRules, celestialBodies } = frame;
+    const { controls, dt, simDt, registry, activeStage, stageRules, celestialBodies } = frame;
     if (stageRules.selfRepair) this.hpRegen(dt);
     // ブースターの燃焼は操作の可否によらず進むので、指令を畳んだあとに進める。
-    if (input === null) {
+    if (controls === null) {
       this.clearTransientCommands();
       this.motion.attachedBoosters.step(simDt);
       this.motion.thrust = this.motion.attachedBoosters.thrust;
       return;
     }
     this.motion.attachedBoosters.step(simDt);
-    this.updateTorque(input, dt, simDt);
+    this.updateTorque(controls, dt, simDt);
 
-    this.fire.updateFireState(dt, input, activeStage, registry, celestialBodies);
+    this.fire.updateFireState(dt, controls, activeStage, registry, celestialBodies);
 
-    this.throttle.updateThrustLatches(input);
-    const rcsThrust = this.throttle.updateThrustState(input, this.motion.att, simDt, this);
+    this.throttle.updateThrustLatches(controls);
+    const rcsThrust = this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
     const boosterThrust = this.motion.attachedBoosters.thrust;
     this.motion.thrust = rcsThrust && boosterThrust
       ? add(rcsThrust, boosterThrust)
@@ -277,39 +270,32 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.fire.stopFiring();
   }
 
-  // router から受け取った自機の単発入力をゲーム状態へ適用する。
-  public handleInputCommand(commandId: string, registry: EntityRegistry): void {
-    switch (commandId) {
-      case K.thrustForward.code:
-      case K.thrustBackward.code:
-      case K.thrustLeft.code:
-      case K.thrustRight.code:
-      case K.thrustUp.code:
-      case K.thrustDown.code:
-        this.throttle.handleThrustPress(commandId);
-        return;
-      case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return;
-      case K.progradeReset.code: this.throttle.enableProgradeReset(); return;
-      case K.fineAttitudeToggle.code: this.toggleFineAttitude(); return;
-      case K.progradeHoldToggle.code: this.throttle.toggleProgradeHold(); return;
-      case K.throttleLow.code: this.throttle.setThrottlePreset(0); return;
-      case K.throttleMid.code: this.throttle.setThrottlePreset(1); return;
-      case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return;
-      case K.throttleMax.code: this.throttle.setThrottlePreset(3); return;
-      case K.boosterDecouple.code: this.boosters.decouple(registry); return;
-      case K.boosterIgnitionToggle.code: this.boosters.toggleIgnition(); return;
-      case K.radiatorDeployLeft.code: this.motion.radiator.toggle('up'); return;
-      case K.radiatorDeployRight.code: this.motion.radiator.toggle('down'); return;
-      case K.solarDeployLeft.code: this.motion.power.toggle('up'); return;
-      case K.solarDeployRight.code: this.motion.power.toggle('down'); return;
-      case K.reload.code: this.fire.manualReload(registry); return;
+  // 受け付けた単発の命令を自機の状態へ適用する。
+  public handleCommand(command: PilotCommand, registry: EntityRegistry): void {
+    switch (command.kind) {
+      case 'thrustLatchToggle': this.throttle.toggleThrustLatch(command.direction); return;
+      case 'rcsDampToggle': this.throttle.toggleRcsDamp(registry.events); return;
+      case 'progradeReset': this.throttle.enableProgradeReset(registry.events); return;
+      case 'fineAttitudeToggle': this.toggleFineAttitude(registry.events); return;
+      case 'progradeHoldToggle': this.throttle.toggleProgradeHold(registry.events); return;
+      case 'throttleLow': this.throttle.setThrottlePreset(0, registry.events); return;
+      case 'throttleMid': this.throttle.setThrottlePreset(1, registry.events); return;
+      case 'throttleHigh': this.throttle.setThrottlePreset(2, registry.events); return;
+      case 'throttleMax': this.throttle.setThrottlePreset(3, registry.events); return;
+      case 'boosterDecouple': this.boosters.decouple(registry); return;
+      case 'boosterIgnitionToggle': this.boosters.toggleIgnition(); return;
+      case 'radiatorDeployLeft': this.motion.radiator.toggle('up'); return;
+      case 'radiatorDeployRight': this.motion.radiator.toggle('down'); return;
+      case 'solarDeployLeft': this.motion.power.toggle('up'); return;
+      case 'solarDeployRight': this.motion.power.toggle('down'); return;
+      case 'reload': this.fire.manualReload(registry); return;
     }
   }
 
   // 姿勢微調整モードの ON/OFF を切り替える。
-  private toggleFineAttitude(): void {
+  private toggleFineAttitude(events: RunEventSink): void {
     this.fineAttitude = !this.fineAttitude;
-    this.notifier.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
+    events.record({ kind: 'fineAttitudeToggled', on: this.fineAttitude });
   }
 
   // 放熱板パーツの残 HP から side ごとの損耗率を組む。パーツが欠けている側は全損扱い。
@@ -333,7 +319,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.applyDamageToParts(side === null ? damage : RADIATOR_BULLET_DAMAGE, damagedPart);
     if (side !== null && damagedPart && damagedPart.hp <= 0) {
       const tip = this.motion.radiator.tipWorldPosition(side, this.motion.state.r, this.motion.att);
-      this.effects.radiatorBreak(side, this.motion.state, tip, registry);
+      this.effects.radiatorBreak(this.motion.state, tip, registry);
     }
     if (this.hp > 0) {
       this.effects.impact(bulletType, this.motion.state, impactPoint);
@@ -414,7 +400,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     if (!this.applyCollisionDamage(damageSpeed, damagedPart)) return;
     if (side !== null && damagedPart && damagedPart.hp <= 0) {
       const tip = this.motion.radiator.tipWorldPosition(side, this.motion.state.r, this.motion.att);
-      this.effects.radiatorBreak(side, this.motion.state, tip, registry);
+      this.effects.radiatorBreak(this.motion.state, tip, registry);
     }
     if (this.hp > 0) {
       this.effects.contact(this.motion.state);
@@ -457,20 +443,20 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     return { playerLost: reason => services.activeStage.recordPlayerLost(reason) };
   }
 
-  // 入力から機体座標系トルクを求めて Motion へ反映し、角速度をクランプする。
-  private updateTorque(input: Input, dt: number, simDt: number): void {
+  // 操作量から機体座標系トルクを求めて Motion へ反映し、角速度をクランプする。
+  private updateTorque(controls: PilotControls, dt: number, simDt: number): void {
     // 発砲中は姿勢微調整と同じ操作精度になる
     const fine = this.fineAttitude || this.fire.isFiring;
     this.motion.torque = this.throttle.updateTorque(
       this.motion.att,
       this.motion.state.r,
       this.motion.state.v,
-      input,
+      controls,
       fine,
       dt,
       simDt,
       this,
-      () => this.notifier.hint('進行方向ホールド解除(手動操作)'),
+      this.events,
     );
   }
 

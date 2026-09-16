@@ -18,11 +18,11 @@ import { RadiatorSystem } from '../../src/game/player/radiator';
 import { Throttle, THROTTLE_LEVELS } from '../../src/game/player/throttle';
 import type { FireSaveData, ThrottleSaveData } from '../../src/game/save/save-data';
 import type { Player } from '../../src/game/player/player';
-import type { Notifier } from '../../src/hud/notifier';
+import type { RunEventSink } from '../../src/game/run-events';
 
 const attitude = { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
 const state = kinematicState<'eci'>(0, v3(), v3());
-const quietNotifier: Notifier = { hint() {}, toast() {} };
+const quietEvents: RunEventSink = { record() {} };
 
 class TestShip extends Ship {
   // 識別子は本番では採番器が配るので、テストでも名前とは別に与える。
@@ -104,15 +104,15 @@ export function register(): void {
     assert.equal(radiator.deployOf('up'), 0);
     assert.equal(radiator.deployOf('down'), 1);
 
-    const throttle = new Throttle(quietNotifier, {
+    const throttle = new Throttle({
       throttleIdx: 99,
       rcsDamp: 'bad' as unknown as boolean,
       progradeHold: null as unknown as boolean,
     } satisfies ThrottleSaveData);
     assert.equal(throttle.throttleIdx, 1);
-    throttle.setThrottlePreset(-1);
+    throttle.setThrottlePreset(-1, quietEvents);
     assert.equal(throttle.throttleIdx, 1);
-    throttle.setThrottlePreset(THROTTLE_LEVELS.length);
+    throttle.setThrottlePreset(THROTTLE_LEVELS.length, quietEvents);
     assert.equal(throttle.throttleIdx, 1);
 
     const part = partFromSaveData({
@@ -126,9 +126,7 @@ export function register(): void {
   test('fire control: 非正数の補給と不正な保存値を安全な状態へ正規化する', () => {
     const fire = new FireControl(
       { motion: { mass: 1_000 } } as Player,
-      quietNotifier,
-      {} as never,
-      {} as never,
+      quietEvents,
       {} as never,
       { saved: {
         mags: -2, rounds: 999, barrel: -1, cooldown: Number.NaN, muzzleIdx: 8,

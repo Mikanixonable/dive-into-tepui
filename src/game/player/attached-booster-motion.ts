@@ -1,29 +1,31 @@
 import { LOCAL_FORWARD, qRotate } from '../../math/quat';
-import { scale, v3, type Vec3 } from '../../math/vec3';
-import type { DynamicMotion } from '../dynamic/dynamic-motion';
-import {
-  PLAYER_INERTIA_PITCH,
-  PLAYER_INERTIA_ROLL,
-  PLAYER_INERTIA_YAW,
-  PLAYER_MASS,
-} from './player-loadout';
+import { scale, type Vec3 } from '../../math/vec3';
 import {
   BoosterStack,
   boosterAverageAcceleration,
   type BoosterStackData,
   type BoosterStage,
 } from './booster-stack';
+import type { Attitude } from '../../physics/attitude';
 
-// 接続中ブースターの段、燃料、推力と、段を含む機体の質量・慣性を管理する。
+// 接続中ブースターを積み、その寄与で質量と慣性を組み直す機体の面。
+export interface BoosterHostMotion {
+  readonly mass: number;
+  readonly att: Attitude;
+  rebuildMassAndInertia(boosterMass: number, boosterStageCount: number): void;
+  invalidatePrediction(): void;
+}
+
+// 接続中ブースターの段、燃料、推力を管理し、段の寄与を機体の質量・慣性へ反映させる。
 export class AttachedBoosterMotion {
   private readonly stack: BoosterStack;
   private thrustValue: Vec3 | null = null;
   private burnRatioValue = 0;
 
   // ship の質量・慣性に段を反映して始める。saved があれば段スタックを復元する。
-  public constructor(private readonly ship: DynamicMotion, saved?: BoosterStackData) {
+  public constructor(private readonly ship: BoosterHostMotion, saved?: BoosterStackData) {
     this.stack = saved ? BoosterStack.importData(saved) : new BoosterStack();
-    this.refreshShipMassAndInertia();
+    this.ship.rebuildMassAndInertia(this.stack.totalMass, this.stack.stages.length);
   }
 
   public get stages(): readonly BoosterStage[] { return this.stack.stages; }
@@ -37,7 +39,7 @@ export class AttachedBoosterMotion {
   // 段を最後尾へ接続する。
   public attach(stage: BoosterStage): void {
     this.stack.attach(stage);
-    this.refreshShipMassAndInertia();
+    this.ship.rebuildMassAndInertia(this.stack.totalMass, this.stack.stages.length);
     this.ship.invalidatePrediction();
   }
 
@@ -52,7 +54,7 @@ export class AttachedBoosterMotion {
   public detachOutermost(): BoosterStage | null {
     const stage = this.stack.detachOutermost();
     if (stage === null) return null;
-    this.refreshShipMassAndInertia();
+    this.ship.rebuildMassAndInertia(this.stack.totalMass, this.stack.stages.length);
     this.clearThrust();
     this.ship.invalidatePrediction();
     return stage;
@@ -60,9 +62,9 @@ export class AttachedBoosterMotion {
 
   // simDt 秒ぶん燃焼させ、区間平均の加速度を求める。
   public step(simDt: number): void {
-    const massBefore = PLAYER_MASS + this.stack.totalMass;
+    const massBefore = this.ship.mass;
     const burn = this.stack.step(simDt);
-    this.refreshShipMassAndInertia();
+    this.ship.rebuildMassAndInertia(this.stack.totalMass, this.stack.stages.length);
     this.burnRatioValue = burn.burnRatio;
     const acceleration = boosterAverageAcceleration(burn, massBefore, this.ship.mass);
     this.thrustValue = acceleration > 0
@@ -79,21 +81,5 @@ export class AttachedBoosterMotion {
   // 段スタックの保存形。
   public serialize(): BoosterStackData {
     return this.stack.exportData();
-  }
-
-  // 段の質量と長さを機体全体の質量・慣性へ反映する。
-  private refreshShipMassAndInertia(): void {
-    this.ship.mass = PLAYER_MASS + this.stack.totalMass;
-    // 慣性は質量比に比例し、ピッチ・ヨーだけは段の列が長いほど増える(ロールは機軸まわり)
-    const massRatio = this.ship.mass / PLAYER_MASS;
-    const lengthFactor = 1 + 0.35 * this.stack.stages.length ** 2;
-    this.ship.att = {
-      ...this.ship.att,
-      inertia: v3(
-        PLAYER_INERTIA_PITCH * massRatio * lengthFactor,
-        PLAYER_INERTIA_YAW * massRatio * lengthFactor,
-        PLAYER_INERTIA_ROLL * massRatio,
-      ),
-    };
   }
 }

@@ -36,16 +36,14 @@ export class Stage1 extends Stage {
   protected init(): void {
     const player = this.addPlayer();
     const base = player.motion.state;
-    const worldSfx = this._worldSfx;
-    const fx = this._fx;
     const scene = this._scene;
     const idAllocators = this._dynamicSystem.idAllocators;
     const attractors = this._celestialSystem.celestialMotions;
-    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, attractors, 1400, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene, idAllocators));
-    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, attractors, -2800, 2500, 0xff7a2d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene, idAllocators));
-    this.addEnemy(generateCrossingEnemy('HOSTILE-γ', base, attractors, 2200, 0xe0409f, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene, idAllocators));
-    this.addEnemy(generateEllipticEnemy('HOSTILE-δ', base, attractors, 5000, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene, idAllocators));
-    this.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, attractors, 60000, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene, idAllocators));
+    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, attractors, 1400, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, attractors, -2800, 2500, 0xff7a2d, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    this.addEnemy(generateCrossingEnemy('HOSTILE-γ', base, attractors, 2200, 0xe0409f, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    this.addEnemy(generateEllipticEnemy('HOSTILE-δ', base, attractors, 5000, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    this.addEnemy(generatePhasedEnemy('HOSTILE-ε', base, attractors, 60000, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
   }
   // 1フレーム分、補給ロジスティクスを進める。
   update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {

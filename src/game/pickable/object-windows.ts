@@ -26,6 +26,7 @@ import { orbitingAttractorOf } from '../../physics/attractor';
 import type { ViewFrame } from '../view/view-frame';
 import { PartWindows } from './part-windows';
 import type { InspectedObject, ObjectAuthoring } from './inspected-object';
+import type { ObjectMenuCommands } from './object-menu-commands';
 import type { PropertyWindowOpener } from './property-window-opener';
 import { objectPickableOf } from './object-pickable';
 import type { DisplayWindowManager } from '../display-window-manager';
@@ -63,10 +64,11 @@ export class ObjectWindows implements PropertyWindowOpener {
     private readonly activeStage: Stage,
     private readonly targeter: Targeter,
     private readonly displayWindowManager: Pick<DisplayWindowManager, 'current'>,
+    private readonly commands: ObjectMenuCommands,
   ) {
     this.menu = new ContextMenu<InspectedObject, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => this.runAct(target, act);
-    this.partWindows = new PartWindows(hud, controlSelection);
+    this.partWindows = new PartWindows(hud, controlSelection, commands);
   }
 
   // id で名指しされた敵のプロパティウィンドウを開く。既に消えていれば開かない。
@@ -171,7 +173,7 @@ export class ObjectWindows implements PropertyWindowOpener {
       title, subtitle, icon: target.glyphSvg ?? target.glyph, rows: [], items,
       relatedItems: this.relatedItemsFor(target, simTime),
       relatedTitle: this.relatedTitleFor(target),
-      onRename: target.rename ?? undefined,
+      onRename: target.rename === null ? undefined : (name) => this.commands.rename(target, name),
     };
   }
 
@@ -216,7 +218,8 @@ export class ObjectWindows implements PropertyWindowOpener {
     });
   }
 
-  // 選ばれた操作を実行する。対象によらない操作はここで済ませ、残りを対象へ渡す。
+  // 選ばれた操作を実行する。視点と画面だけで完結する操作はここで済ませ、対象固有の操作は
+  // そのフレームに差し出していた編集口とともに列へ積む。
   private runAct(target: InspectedObject, act: MenuAction): void {
     if (act === 'focus') this.focus(target.id, target.name);
     else if (act === 'target') this.navTarget.toggleTarget(target.id, target.name);
@@ -224,7 +227,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     else if (act === 'openObjectPlacer') {
       this.authoring?.openObjectPlacer(focusTargetId(this.cameraSystem.mapCamera.focus));
     } else {
-      target.runMenu?.(act, this.controlSelection, this.authoring, this.planEditor);
+      this.commands.runMenu(target, act, this.authoring, this.planEditor);
     }
   }
 

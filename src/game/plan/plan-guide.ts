@@ -1,12 +1,11 @@
-// 直近ノードの実行ガイド: 実行時刻を過ぎたノードの消化、接近・達成の通知、NODE/BURN マーカー。
+// 直近ノードの実行ガイド: 実行時刻を過ぎたノードの消化、接近・達成の記録、NODE/BURN マーカー。
 import { KinematicState } from '../../physics/kinematic-state';
 import { OrbitalElements, orbitalElementsOf } from '../../physics/elements';
 import { strongestAttractor } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { addScaled, dot, len, norm, sub } from '../../math/vec3';
-import type { Notifier } from '../../hud/notifier';
 import { fmtDist, fmtSpeed, fmtTime } from '../../hud/utils';
-import { UiSfx } from '../../audio/sfx/ui-sfx';
+import type { RunEventSink } from '../run-events';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { MarkerSink } from '../../marker/marker-sink';
@@ -27,16 +26,15 @@ const NODE_TOL_PLANE_DEG = 2.0 / 3; // 軌道面の角度差 [deg]
 const NODE_EXPIRE_GRACE = 60;
 
 export class PlanGuide {
-  // 通知済みのノード。ノードは編集のたびに別インスタンスへ置き換わるので、同一性の比較が
-  // そのまま「同じノードについて既に通知したか」の判定になる。
+  // 記録済みのノード。ノードは編集のたびに別インスタンスへ置き換わるので、同一性の比較が
+  // そのまま「同じノードについて既に記録したか」の判定になる。
   private approachNotified: KinematicState | null = null;
   private achievedNotified: KinematicState | null = null;
 
   private readonly declarations: MarkerDeclaration[] = [];
 
   constructor(
-    private readonly _notifier: Notifier,
-    private readonly _uiSfx: UiSfx,
+    private readonly events: RunEventSink,
     private readonly group: MarkerSink,
   ) {
   }
@@ -45,14 +43,14 @@ export class PlanGuide {
   dispose(): void { this.group.dispose(); }
 
   // 実行時刻を過ぎたノードを計画から落とし、直近ノードへの接近と計画軌道の達成を
-  // ノードごとに一度だけ通知する。操作対象がいなければ何もしない。
+  // ノードごとに一度だけ記録する。操作対象がいなければ何もしない。
   update(controlled: Controllable | null, simTime: number, celestialBodies: readonly CelestialBody[]): void {
     if (!controlled) return;
     const plan = controlled.plan;
     plan.consumeNodesUpTo(simTime - NODE_EXPIRE_GRACE, controlled.motion.state);
 
     const node = plan.firstNode();
-    // 実行の窓に入るまでは通知しない。窓の手前では操作対象はまだ噴射前の軌道にいるので、
+    // 実行の窓に入るまでは記録しない。窓の手前では操作対象はまだ噴射前の軌道にいるので、
     // 目標軌道との近さを見ても達成の判定にならない。
     if (node && simTime >= node.t - NODE_APPROACH_LEAD) {
       this.notifyApproach(node);
@@ -129,14 +127,14 @@ export class PlanGuide {
     }
   }
 
-  // 実行の窓に入ったことを通知する。
+  // 実行の窓に入ったことを記録する。
   private notifyApproach(node: KinematicState): void {
     if (this.approachNotified === node) return;
     this.approachNotified = node;
-    this._notifier.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000);
+    this.events.record({ kind: 'maneuverNodeApproaching' });
   }
 
-  // 操作対象の軌道が目標軌道に十分近づいていれば達成を通知する。ノードと操作対象で最も強く引く
+  // 操作対象の軌道が目標軌道に十分近づいていれば達成を記録する。ノードと操作対象で最も強く引く
   // 天体が違えば、要素同士の比較自体が意味を持たないので判定しない。
   private notifyAchieved(
     node: KinematicState, controlled: Controllable,
@@ -156,13 +154,7 @@ export class PlanGuide {
     // 計画軌道へ到達したノードは、その場で実行済みとして削除する。同時刻のノードが複数あれば
     // まとめて落ちるので、残り件数は落とした後の実数を読む。
     plan.consumeNodesUpTo(node.t, controlled.motion.state);
-    const remain = plan.nodes.length;
-    if (remain === 0) {
-      this._notifier.hint('✓ マニューバ達成 — 計画軌道に到達', 5000);
-    } else {
-      this._notifier.hint(`✓ ノード達成 — 残り ${remain} 件`, 4000);
-    }
-    this._uiSfx.warp();
+    this.events.record({ kind: 'maneuverNodeAchieved', remaining: plan.nodes.length });
   }
 }
 

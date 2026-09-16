@@ -23,8 +23,6 @@ import {
   type PlacementFieldIssue,
 } from './placement-validation';
 import type * as THREE from 'three/webgpu';
-import type { WorldSfx } from '../../audio/sfx/world-sfx';
-import type { Notifier } from '../../hud/notifier';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { CameraFrame } from '../../render/camera/camera-frame';
@@ -32,15 +30,15 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { EntityRoster } from '../dynamic/entity-roster';
+import type { RunEventSink } from '../run-events';
 import type { HudLayers } from '../hud/hud-layers';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { pointPlacement } from '../marker/marker-placement';
 import { COLOR_MARKER_ALLY, ENTITY_GLYPH } from '../marker/marker-identity';
-import type { FlashEffects } from '../vfx/flash-effects';
 
-// 軌道上へ配置できる自機の上限隻数。
-const MAX_PLACED_SHIPS = 50;
+// 軌道上へ配置できる自機の上限隻数(SPEC GAME.md 9.1)。
+export const MAX_PLACED_SHIPS = 50;
 
 // 配置プレビューの軌道線の見た目。
 const PREVIEW_LINE_STYLE: LineStyle = {
@@ -64,18 +62,17 @@ export class ObjectPlacement {
   private readonly declarations: MarkerDeclaration[] = [];
   private readonly playerIdAllocator = new EntityIdAllocator('creative-player-');
 
-  // 検証を通った物体の渡し先。
-  public onPlace: ((placed: PlacedObject) => void) | null = null;
+  // 検証を通った配置の指定の渡し先。実体を作るのは受け取った側。
+  public onPlace: ((name: string, entityKind: DynamicEntityKind, state: KinematicState) => void) | null = null;
 
   // 配置パネルとプレビューの表示資源を組む。
   public constructor(
-    private readonly hud: HudLayers & Notifier,
+    hud: HudLayers,
     private readonly scene: THREE.Scene,
     private readonly roster: EntityRoster,
     private readonly idAllocators: EntityIdAllocators,
+    private readonly events: RunEventSink,
     private readonly celestialSystem: CelestialSystem,
-    private readonly worldSfx: WorldSfx,
-    private readonly fx: FlashEffects,
   ) {
     // 以後の新規配置が既存 id と衝突しないよう、復元済みの艦の id を予約する。
     for (const p of roster.all().filter(isPlayer)) this.playerIdAllocator.next(p.id);
@@ -100,7 +97,7 @@ export class ObjectPlacement {
       this.panel.open({ kind: 'form', entityKind, form });
       return;
     }
-    this.hud.hint('この軌道は要素として複製できないため、種類だけを引き継いだ新規配置として開きます');
+    this.events.record({ kind: 'orbitNotDuplicable' });
     this.panel.open({ kind: 'entityKind', entityKind });
   }
 
@@ -158,27 +155,27 @@ export class ObjectPlacement {
     };
   }
 
-  // フォームの値を検証して初期状態を組み、置く物体を onPlace へ渡す。
-  // 検証に落ちるか状態を組めなければ、理由をトーストで知らせて何も渡さない。
+  // フォームの値を検証して初期状態を組み、置く物体の指定を onPlace へ渡す。
+  // 検証に落ちるか状態を組めなければ、落ちた理由を記録して何も渡さない。
   private place(name: string, form: ObjectPlacerForm): void {
-    // 隻数の上限が掛かるのは自機だけ(SPEC GAME.md 9.1)。
+    // 隻数の上限に掛かることを操作した場で知らせるための先読み。判定の正本は onPlace の受け手。
     if (form.entityKind === 'player' && this.roster.all().filter(isPlayer).length >= MAX_PLACED_SHIPS) {
-      this.hud.hint(`配置数が上限(${MAX_PLACED_SHIPS}隻)に達しています`);
+      this.events.record({ kind: 'shipPlacementLimitReached', limit: MAX_PLACED_SHIPS });
       return;
     }
     try {
       this.assertValidForm(form);
       const state = this.buildInitialState(form);
       this.assertFiniteEllipticState(state);
-      this.onPlace?.(this.createObject(name, form.entityKind, state));
+      this.onPlace?.(name, form.entityKind, state);
     } catch (error) {
       const message = error instanceof Error ? error.message : '入力を解釈できません';
-      this.hud.hint(`配置できません: ${message}`, 5000);
+      this.events.record({ kind: 'objectPlacementRejected', reason: message });
     }
   }
 
-  // 空欄の名前を種類ごとの既定名で埋め、種類ごとに実体を作る。
-  private createObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): PlacedObject {
+  // 空欄の名前を種類ごとの既定名で埋め、種類ごとに実体を作る。id の採番はここで走る。
+  public createObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): PlacedObject {
     const finalName = name.trim() || generateRandomName(entityKind);
     // 自機だけは実体ではなく配置の指定で返す。
     switch (entityKind) {
@@ -188,7 +185,7 @@ export class ObjectPlacement {
         return {
           kind: 'entity',
           entity: generateDriftingEnemy(
-            finalName, state, '#ff6a00', '#ff6a00', this.worldSfx, this.fx, this.scene, this.idAllocators,
+            finalName, state, '#ff6a00', '#ff6a00', this.scene, this.idAllocators,
           ),
         };
       case 'ammo':
@@ -204,7 +201,7 @@ export class ObjectPlacement {
       case 'base':
         return {
           kind: 'entity',
-          entity: new Base({ state, name: finalName }, this.scene, this.hud, this.idAllocators),
+          entity: new Base({ state, name: finalName }, this.scene, this.idAllocators),
         };
     }
   }

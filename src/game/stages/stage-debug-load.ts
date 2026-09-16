@@ -51,7 +51,7 @@ export class StageDebugLoad extends Stage {
       const att = { q: randomQuat(rand), w: v3(0, 0, 0), inertia: v3(1, 1, 1) };
       this._dynamicSystem.add(new DebrisPiece(
         state, { kind: 'fragment', accent: 0x888888, size }, att,
-        this._worldSfx, this._fx, this._dynamicSystem.idAllocators, undefined, this._scene,
+        this._dynamicSystem.idAllocators, undefined, this._scene,
       ));
     }
   }
