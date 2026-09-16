@@ -62,13 +62,6 @@
       "Notifier",
       "WorldSfx"
     ],
-    "src/game/dynamic/nan-watchdog.ts": [
-      "Notifier"
-    ],
-    "src/game/dynamic/sim-speed-manager.ts": [
-      "Notifier",
-      "UiSfx"
-    ],
     "src/game/plan/plan-guide.ts": [
       "Notifier",
       "UiSfx"

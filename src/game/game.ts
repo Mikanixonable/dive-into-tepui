@@ -10,6 +10,7 @@ import { CommandQueue } from './command-queue';
 import { controlSelectionCommands, type ControlSelectionCommands } from './control-selection-commands';
 import { simSpeedCommands, type SimSpeedCommands } from './dynamic/sim-speed-commands';
 import { deployableCommands, type DeployableCommands } from './player/deployable-commands';
+import { boosterCommands, type BoosterCommands } from './player/booster-commands';
 import { objectMenuCommands } from './pickable/object-menu-commands';
 import { planCommands } from './plan/plan-commands';
 import type { MarkerDevice } from '../marker/marker-device';
@@ -27,6 +28,8 @@ import { PlanGuide } from './plan/plan-guide';
 import { DisplayWindowManager, timeLabelSettingOf } from './display-window-manager';
 import { SimSpeedManager } from './dynamic/sim-speed-manager';
 import { DynamicSystem } from './dynamic/dynamic-system';
+import { RunEventLog } from './run-events';
+import { RunEventPresenter } from './run-event-presenter';
 import { FlashEffects } from './vfx/flash-effects';
 import { FlashEffectsView } from '../render/vfx/flash-effects-view';
 import { EntityLineManager } from './lines/entity-line-manager';
@@ -138,12 +141,18 @@ export class Game {
 
   // モデル層の外から届いた書き換えを溜める列。進行の位相の先頭で適用する。
   private readonly commands = new CommandQueue();
+
+  // 直近の進行で起きた一回きりの出来事の記録と、それを音・通知へ写す読み手。
+  private readonly runEvents = new RunEventLog();
+  private readonly runEventPresenter: RunEventPresenter;
   // 操作対象の差し替えを列へ積む口。
   private readonly controlSelectionCommands: ControlSelectionCommands;
   // 時間加速の段の差し替えを列へ積む口。
   private readonly simSpeedCommands: SimSpeedCommands;
   // 太陽電池・放熱板の展開/収納を列へ積む口。
   private readonly deployableCommands: DeployableCommands;
+  // ブースターの追加・点火・分離を列へ積む口。
+  private readonly boosterCommands: BoosterCommands;
 
   public readonly activeStage: Stage;
   // ポーズ中か。時間倍率とは独立に時間を止める。決着は止めない — 結果画面の裏でも
@@ -260,6 +269,7 @@ export class Game {
     this.themePalette = host.themePalette;
     this._worldSfx = new WorldSfx(audioEngine);
     const uiSfx = new UiSfx(audioEngine);
+    this.runEventPresenter = new RunEventPresenter(uiSfx, this._hud);
     this.pauseMenu = pauseMenu;
 
     this.markers = host.markers;
@@ -269,7 +279,7 @@ export class Game {
     this.flashEffects = new FlashEffects();
     this.flashEffectsView = new FlashEffectsView(this._scene);
     this.dynamicSystem = new DynamicSystem(
-      this._scene, this._hud, this._worldSfx, this.flashEffects, celestialSystem,
+      this._scene, this._hud, this._worldSfx, this.flashEffects, this.runEvents, celestialSystem,
       this.sections, initialSave?.simTime ?? 0, initialSave);
     this.entityLines = new EntityLineManager(this.dynamicSystem);
     this.equatorNodes = new EquatorNodeManager(this.dynamicSystem, this.markers.createGroup());
@@ -299,7 +309,7 @@ export class Game {
       initialSave?.camera, host.scene.viewport,
     );
     this.celestialMarkers = new CelestialMarkers(this.markers.createGroup(), celestialSystem);
-    this.simSpeedManager = new SimSpeedManager(this._hud, uiSfx);
+    this.simSpeedManager = new SimSpeedManager(this.runEvents);
     this.simSpeedCommands = simSpeedCommands(this.commands, this.simSpeedManager);
     this.deployableCommands = deployableCommands(this.commands);
     this.navTarget = new NavTarget(this._hud, this.markers.createGroup());
@@ -325,10 +335,20 @@ export class Game {
       initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._hud,
     );
     this.controlSelectionCommands = controlSelectionCommands(this.commands, this.controlSelection);
+    this.boosterCommands = boosterCommands(this.commands, this.dynamicSystem);
     this.boosterHandlers = {
-      onAttach: () => { this.activeControllable?.boosters?.attach(); },
-      onToggleIgnition: () => { this.activeControllable?.boosters?.toggleIgnition(); },
-      onDecouple: () => { this.activeControllable?.boosters?.decouple(this.dynamicSystem); },
+      onAttach: () => {
+        const boosters = this.activeControllable?.boosters;
+        if (boosters) this.boosterCommands.attach(boosters);
+      },
+      onToggleIgnition: () => {
+        const boosters = this.activeControllable?.boosters;
+        if (boosters) this.boosterCommands.toggleIgnition(boosters);
+      },
+      onDecouple: () => {
+        const boosters = this.activeControllable?.boosters;
+        if (boosters) this.boosterCommands.decouple(boosters);
+      },
     };
     this.planDisplay = new PlanDisplay(
       this._scene, this.markers.createGroup(), celestialSystem, this.displayWindowManager, this.controlSelection,
@@ -421,7 +441,7 @@ export class Game {
           gameCommand(K.warpSlower.code, K.warpSlower),
           gameCommand(K.warpFaster.code, K.warpFaster),
         ],
-        handleCommand: command => this.simSpeedManager.handleCommand(command.id),
+        handleCommand: command => this.simSpeedCommands.handleCommand(command.id),
       },
       {
         feature: 'view',
@@ -491,7 +511,9 @@ export class Game {
     this.handleInput(dt);
     this.sections.exit(SECTION.input);
 
-    // 一時停止中も命令は適用するので、ポーズ判定より前に置く(R8)。
+    // 一時停止中も命令は適用するので、ポーズ判定より前に置く(R8)。命令の適用そのものが
+    // 出来事を積むので、記録を空にするのはその前。
+    this.runEvents.beginStep();
     this.commands.applyAll();
     // ポーズは開いているオーバーレイからの導出値で「止まった瞬間」が無いので、止まっている
     // 間は毎フレーム連続指令を畳む。
@@ -692,6 +714,8 @@ export class Game {
       timeLabel,
       nowMs,
     );
+    // このフレームの進行が記録した出来事を、音と通知の宣言へ写す。
+    this.runEventPresenter.present(this.runEvents.recent);
     syncControlledLoopSfx(
       this._worldSfx, controlled, displayTime, !this.isPaused && this.activeStage.isPlaying);
     // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraView.sync より後に通す。
