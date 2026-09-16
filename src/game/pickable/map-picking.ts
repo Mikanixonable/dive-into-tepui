@@ -17,7 +17,8 @@ import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { CelestialMarkers } from '../marker/celestial-markers';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
-import type { NavTarget } from '../nav-target';
+import type { NavTargetPresenter } from '../nav-target-presenter';
+import type { NavTargetCommands } from '../viewer/nav-target-commands';
 import type { CameraSystem } from '../camera/camera-system';
 import type { Viewport } from '../../render/viewport';
 import type { ControlSelectionCommands } from '../control-selection-commands';
@@ -45,7 +46,8 @@ export class MapPicking {
     private readonly celestialBodies: CelestialBodies,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly markers: MarkerVisibility,
-    private readonly navTarget: NavTarget,
+    private readonly navTargetPresenter: NavTargetPresenter,
+    private readonly navTargetCommands: NavTargetCommands,
     private readonly focusSink: FocusSink,
     private readonly pickables: ObjectPickables,
     private readonly linePickables: LinePickables,
@@ -65,9 +67,9 @@ export class MapPicking {
     };
     this.listPanel.onNavTarget = (id) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
-      if (target && this.navTarget.canTarget(
+      if (target && this.navTargetPresenter.canTarget(
         id, this.roster, this.celestialBodies, this.displayWindowManager.current.simTime)) {
-        this.navTarget.toggleTarget(id, target.name);
+        this.navTargetCommands.toggle(id, target.name);
       }
     };
     this.listPanel.onSelectRight = (id, clientX, clientY) => {
