@@ -95,6 +95,12 @@ export class ShipModuleView {
     return this.anchors.get(name) ?? null;
   }
 
+  public semanticAnchors(prefix: string): readonly THREE.Object3D[] {
+    return [...this.anchors]
+      .filter(([name]) => name.startsWith(prefix))
+      .map(([, anchor]) => anchor);
+  }
+
   public anchor(name: string): THREE.Object3D | null { return this.semanticAnchor(name); }
 
   // 損傷・展開を既存資源へ反映する hook 用の狭い state 面。material を共有している可能性が
