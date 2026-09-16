@@ -15,26 +15,5 @@
     "src/game/player/throttle.ts": [
       "from '../../input/input'"
     ]
-  },
-  "表示の選択が進行へ漏れる禁止": {
-    "src/game/dynamic/dynamic-entity/base-motion.ts": [
-      "predictsFuture"
-    ],
-    "src/game/dynamic/dynamic-entity/pickup-motion.ts": [
-      "predictsFuture"
-    ],
-    "src/game/dynamic/dynamic-entity/vessel.ts": [
-      "predictsFuture"
-    ],
-    "src/game/dynamic/dynamic-motion.ts": [
-      "display-window-duration",
-      "predictsFuture"
-    ],
-    "src/game/dynamic/dynamic-simulation-participant.ts": [
-      "predictsFuture"
-    ],
-    "src/game/dynamic/predictor.ts": [
-      "predictsFuture"
-    ]
   }
 }

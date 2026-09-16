@@ -228,7 +228,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     if (changed) this.bumpCollectionRevision();
   }
 
-  // 過去表示に要る履歴の保持時間 [s] を全エンティティへ要求する。履歴を持たない種別は無視する。
+  // 残す履歴の長さ sec [s] を全エンティティへ要求する。構築時の長さを持つ個体がそれを受ける。
   public requestHistoryDuration(sec: number): void {
     for (const entity of this.entities) entity.motion.requestHistoryDuration(sec);
   }

@@ -1,6 +1,6 @@
 // DynamicMotion.predicted と、計画軌道の各区間の弧を、共有のフレーム予算内で伸ばす。1歩ぶんの
 // 積分(刻み幅・窓解決・到達判定)は PredictedArc が持ち、ここは予算の配分を持つ。伸長対象は
-// 「その個体が未来を予測するか」(PredictableMotion.predictsFuture)で決まる。
+// 「その個体が予測の弧をなぞるか」(PredictableMotion.followsPredictedArc)で決まる。
 // 弧は1本ずつ別の先端時刻で伸び、1フレームの歩数は予算で切られる — 追い越された弧は読まれなく
 // なり、その個体は実シミュレーションの積分へ落ちる。弧どうしの剛体接触と刻みの決まり方を除けば、
 // 個体1つと解析天体の関係(引く天体・表面到達・大気での焼失・刻みの上限)は実シミュレーション
@@ -8,6 +8,7 @@
 import type { PredictableMotion, PredictableMotionRoster } from './dynamic-simulation-participant';
 import { simulationMaxStep, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT } from './time-step';
 import { PredictedArc } from './predicted-arc';
+import type { TrajectoryDemand } from './trajectory-demand';
 import type { PerfCounts } from '../perf-counts';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 
@@ -43,19 +44,18 @@ export class Predictor {
 
   // このフレームぶんの積分予算を、操作対象の弧・計画の弧・その他の個体へ配って伸ばす。ポーズ中・
   // 決着後も呼んでよい。simDt はこのフレームの時間送りで、消費される弧の刻み上限を実シミュレー
-  // ションと揃えるのに使う。horizon は simTime から先へ予測する長さ [s]。planArcs は時刻順に
-  // 並べた計画の弧。
+  // ションと揃えるのに使う。demand は伸ばす長さと計画の弧を持つ、そのフレームの需要。
   public update(
-    simTime: number, simDt: number, controlled: PredictableMotion | null, horizon: number,
-    planArcs: readonly PredictedArc[],
+    simTime: number, simDt: number, controlled: PredictableMotion | null, demand: TrajectoryDemand,
   ): void {
     this.lastSteps = 0;
     this.lastPlanSteps = 0;
     this.lastBodies = 0;
     this.lastRevisits = 0;
+    const horizon = demand.horizon;
     const maxStep = simulationMaxStep(simDt, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT);
-    const targets = this.roster.allMotions().filter((e) => e.predictsFuture);
-    const interactive = controlled !== null && controlled.predictsFuture ? controlled : null;
+    const targets = this.roster.allMotions().filter((e) => e.followsPredictedArc);
+    const interactive = controlled !== null && controlled.followsPredictedArc ? controlled : null;
 
     // interactive 枠: 操作対象の弧 → 計画の弧(時刻順)。他に伸ばす対象がいなければ全額を渡す。
     const others = targets.some((e) => e !== interactive);
@@ -67,7 +67,7 @@ export class Predictor {
       budget -= consumed;
       interactiveBudget -= consumed;
     }
-    for (const arc of planArcs) {
+    for (const arc of demand.planArcs) {
       if (interactiveBudget <= 0) break;
       const consumed = this.grow(arc, interactiveBudget);
       this.lastPlanSteps += consumed;
@@ -126,7 +126,7 @@ export class Predictor {
     let tracked = 0;
     let finished = 0;
     for (const e of this.roster.allMotions()) {
-      if (!e.predictsFuture) continue;
+      if (!e.followsPredictedArc) continue;
       tracked++;
       const reachedHorizon = e.predicted !== null && e.predicted.state.t >= simTime + horizon;
       if (reachedHorizon || e.predictionTruncated) finished++;
