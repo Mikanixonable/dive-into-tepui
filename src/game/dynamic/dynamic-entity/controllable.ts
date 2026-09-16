@@ -6,7 +6,7 @@ import type { ThrottleSaveData } from '../../save/save-data';
 import type { FireControl } from '../../player/fire-control';
 import type { AttachedBoosters } from '../../player/attached-boosters';
 import type { AltitudeAlarm } from '../../player/altitude-alarm';
-import type { Input } from '../../../input/input';
+import type { PilotCommand, PilotControls, ThrustDirection } from './pilot-controls';
 import type { StageOutcome } from '../../stages/stage-outcome';
 import type { EntityRegistry } from '../entity-registry';
 import type { CombatTarget } from './combat-target';
@@ -17,13 +17,14 @@ export interface ThrottlePort {
   readonly throttleIdx: number;
   readonly rcsDamp: boolean;
   readonly progradeHold: boolean;
-  updateThrustState(input: Input, att: Attitude, simDt: number, ship: FuelConsumer): Vec3 | null;
+  updateThrustState(controls: PilotControls, att: Attitude, simDt: number, ship: FuelConsumer): Vec3 | null;
   updateTorque(
-    att: Attitude, r: Vec3, v: Vec3, input: Input, fineAttitude: boolean,
+    att: Attitude, r: Vec3, v: Vec3, controls: PilotControls, fineAttitude: boolean,
     dt: number, simDt: number, ship: FuelConsumer, onProgradeHoldReleased: () => void,
   ): Vec3;
-  updateThrustLatches(input: Input): void;
-  isThrustLatched(key: { readonly code: string }): boolean;
+  updateThrustLatches(controls: PilotControls): void;
+  toggleThrustLatch(direction: ThrustDirection): void;
+  isThrustLatched(direction: ThrustDirection): boolean;
   clearTransientState(): void;
   serialize(): ThrottleSaveData;
 }
@@ -39,7 +40,8 @@ export interface FuelConsumer {
 }
 
 export interface PilotCommandFrame {
-  readonly input: Input | null;
+  // このフレームの操作量。操作されない個体は null。
+  readonly controls: PilotControls | null;
   readonly dt: number;
   readonly simDt: number;
   readonly registry: EntityRegistry;
@@ -51,7 +53,7 @@ export interface PilotCommandFrame {
 export interface PilotCommandReceiver {
   updateControls(frame: PilotCommandFrame): void;
   clearTransientCommands(): void;
-  handleInputCommand(commandId: string, registry: EntityRegistry): void;
+  handleCommand(command: PilotCommand, registry: EntityRegistry): void;
 }
 
 export interface NavigationController {
