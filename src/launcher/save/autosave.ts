@@ -20,6 +20,7 @@ export class AutoSave {
     this.capture(source, now);
   }
 
+  // 間隔の起点を now へ進めたうえで、いま残せる状態なら復帰点を更新する。
   private capture(source: SnapshotCaptureSource, now: number): void {
     this.intervalOriginReal = now;
     // 停止中は状態が動かない。決着後を残さないのは SAVE.md の規定。
