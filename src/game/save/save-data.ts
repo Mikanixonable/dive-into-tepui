@@ -266,7 +266,7 @@ export interface CameraSaveData {
   readonly overview: FocusCameraSaveData;
 }
 
-interface NavTargetSaveData {
+export interface NavTargetSaveData {
   readonly id: string;
   readonly name: string;
 }
