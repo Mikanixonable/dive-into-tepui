@@ -189,6 +189,20 @@ export function register(): void {
     assert.ok(varied.size > 1, '表示時刻を変えても揺らぎが動かない');
   });
 
+  test('dynamic view source: module thrust anchor を噴射口の表示位置に使う', () => {
+    const scene = new THREE.Scene();
+    const effects = new ThrustEffects(scene, 'entity-anchor');
+    const anchor = new THREE.Object3D();
+    anchor.position.set(4, 5, 6);
+    anchor.updateWorldMatrix(true, false);
+    effects.syncFromAnchor(
+      anchor, v3(0, 0, 10), 20, true, new THREE.Quaternion(), false, 'realistic', DISPLAY_TIME,
+    );
+    const core = scene.children[0]!;
+    assert.deepEqual(core.position.toArray(), [4, 5, 2.6]);
+    effects.dispose(scene);
+  });
+
   test('dynamic view source: RCS パフの揺らぎは表示時刻だけで決まる', () => {
     const camera = cameraFrame();
     const scene = new THREE.Scene();
