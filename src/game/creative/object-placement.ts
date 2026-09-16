@@ -9,15 +9,16 @@ import { secondaryFrameOf } from '../../physics/lagrange';
 import { isOccluded } from '../../physics/occlusion';
 import { ObjectPlacementPreviewView } from '../../render/creative/object-placement-preview-view';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
-import { Base } from '../dynamic/dynamic-entity/base';
 import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
 import { AmmoPickup, isAmmoPickup, isRcsFuelPickup, RcsFuelPickup } from '../dynamic/dynamic-entity/pickup';
 import { isModularShip, type ModularShipInit } from '../ship/modular-ship';
+import { createBasePreset } from '../ship/ship-presets';
 import { generateRandomName } from '../random-name';
 import { generateDriftingEnemy } from '../stages/spawner/enemy-generator';
 import { elementsFormFromState } from './duplicate-form';
 import {
-  ObjectPlacerPanel, type ElementsForm, type LagrangeForm, type ObjectPlacerForm, type ReferenceCelestialBody,
+  ObjectPlacerPanel, type ElementsForm, type LagrangeForm, type ObjectPlacementSelection,
+  type ObjectPlacerForm, type ReferenceCelestialBody,
 } from './object-placer-panel';
 import {
   validateBaseReferenceFields, validateEllipticPlacementFields, validateLagrangePlacementFields,
@@ -39,7 +40,12 @@ import type { MarkerSlots } from '../marker/marker-slots';
 import type { FlashEffects } from '../vfx/flash-effects';
 
 // 軌道上へ配置できる自機の上限隻数。
-const MAX_PLACED_SHIPS = 50;
+export const MAX_PLACED_SHIPS = 50;
+
+export function reachesPlacedShipLimit(selection: ObjectPlacementSelection, currentShipCount: number): boolean {
+  return (selection === 'combat-ship' || selection === 'base-ship')
+    && currentShipCount >= MAX_PLACED_SHIPS;
+}
 
 // 配置プレビューの軌道線の見た目。
 const PREVIEW_LINE_STYLE: LineStyle = {
@@ -70,7 +76,7 @@ export class ObjectPlacement {
     private readonly scene: THREE.Scene,
     private readonly dynamicSystem: EntityRoster,
     private readonly celestialSystem: CelestialSystem,
-    private readonly markers: MarkerSlots,
+    markers: MarkerSlots,
     private readonly worldSfx: WorldSfx,
     private readonly fx: FlashEffects,
   ) {
@@ -96,14 +102,16 @@ export class ObjectPlacement {
   // 求まったときは、その値をプリセットして開く。逆算できない軌道(双曲線など)や制約に反する
   // 複製元では、値を引き継ぐと制約外の軌道が黙って配置できてしまうので、種類だけを引き継ぐ。
   public openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void {
+    const selection: ObjectPlacementSelection = entityKind === 'player' ? 'combat-ship'
+      : entityKind === 'base' ? 'base-ship' : entityKind;
     const form = elementsFormFromState(
       state, this.celestialSystem, state.t, this.celestialSystem.origin.id);
-    if (form && validateBaseReferenceFields(entityKind, 'elements', form.celestialBody).length === 0) {
-      this.panel.open({ kind: 'form', entityKind, form });
+    if (form && validateBaseReferenceFields(selection, 'elements', form.celestialBody).length === 0) {
+      this.panel.open({ kind: 'form', selection, form });
       return;
     }
     this.hud.hint('この軌道は要素として複製できないため、種類だけを引き継いだ新規配置として開きます');
-    this.panel.open({ kind: 'entityKind', entityKind });
+    this.panel.open({ kind: 'selection', selection });
   }
 
   // 開いているフォームの現在値から、配置プレビューと入力欄の検証表示を更新する。
@@ -153,8 +161,8 @@ export class ObjectPlacement {
   // フォームの値を検証して初期状態を組み、置く物体を onPlace へ渡す。
   // 検証に落ちるか状態を組めなければ、理由をトーストで知らせて何も渡さない。
   private place(name: string, form: ObjectPlacerForm): void {
-    // 隻数の上限が掛かるのは自機だけ(SPEC GAME.md 9.1)。
-    if (form.entityKind === 'player' && this.dynamicSystem.all().filter(isModularShip).length >= MAX_PLACED_SHIPS) {
+    // combat/base preset は同じ ModularShip 上限を共有する(SPEC GAME.md 9.1)。
+    if (reachesPlacedShipLimit(form.selection, this.dynamicSystem.all().filter(isModularShip).length)) {
       this.hud.hint(`配置数が上限(${MAX_PLACED_SHIPS}隻)に達しています`);
       return;
     }
@@ -162,7 +170,7 @@ export class ObjectPlacement {
       this.assertValidForm(form);
       const state = this.buildInitialState(form);
       this.assertFiniteEllipticState(state);
-      this.onPlace?.(this.createObject(name, form.entityKind, state));
+      this.onPlace?.(this.createObject(name, form.selection, state));
     } catch (error) {
       const message = error instanceof Error ? error.message : '入力を解釈できません';
       this.hud.hint(`配置できません: ${message}`, 5000);
@@ -170,10 +178,10 @@ export class ObjectPlacement {
   }
 
   // 種類ごとに実体を作り、id を採番して、空欄の名前を種類ごとの既定名で埋める。
-  private createObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): PlacedObject {
+  private createObject(name: string, selection: ObjectPlacementSelection, state: KinematicState): PlacedObject {
     // 自機は生成引数、それ以外は実体として返す。
-    switch (entityKind) {
-      case 'player': {
+    switch (selection) {
+      case 'combat-ship': {
         const id = this.playerIdAllocator.next();
         return { kind: 'player', init: { name: name.trim() || generateRandomName('player'), state, id } };
       }
@@ -195,10 +203,14 @@ export class ObjectPlacement {
         const finalName = name.trim() || generateRandomName('fuel');
         return { kind: 'entity', entity: new RcsFuelPickup({ state, id, name: finalName }, this.scene), name: finalName };
       }
-      case 'base': {
-        const finalName = name.trim() || generateRandomName('base');
-        const base = new Base({ state, name: finalName }, this.scene, this.hud, this.markers);
-        return { kind: 'entity', entity: base, name: base.name };
+      case 'base-ship': {
+        const id = this.playerIdAllocator.next();
+        return {
+          kind: 'player',
+          init: {
+            name: name.trim() || generateRandomName('base'), state, id, assembly: createBasePreset(),
+          },
+        };
       }
     }
   }
@@ -267,7 +279,7 @@ export class ObjectPlacement {
   private computeFieldIssues(form: ObjectPlacerForm): PlacementFieldIssue[] {
     // 配置方法によらず効く、種類ごとの基準天体の制約。
     const issues = [...validateBaseReferenceFields(
-      form.entityKind, form.placementMode, form.placementMode === 'elements' ? form.celestialBody : undefined,
+      form.selection, form.placementMode, form.placementMode === 'elements' ? form.celestialBody : undefined,
     )];
     // 配置方法ごとの制約。
     if (form.placementMode === 'elements') {
