@@ -1,7 +1,7 @@
 // マップ上で「何が選べるか」を1フレーム分組み立てる。被選択物(ObjectPickable)の候補集合と、
 // その回の表示可否(MapVisibilityPolicy)を答える。候補は2段のピック(SPEC/MAP.md
 // 「クリックとピック」)に対応して2本あり、記号を出していない対象は本体段だけに残る。
-import { isObjectPickable, ObjectPickable } from './object-pickable';
+import { objectPickableOf, ObjectPickable } from './object-pickable';
 import { focusTargetId } from '../camera/focus-target';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
@@ -92,7 +92,10 @@ export class ObjectPickables {
     this.candidateItems.length = 0;
     this.markerItems.length = 0;
     for (const body of this.celestialMarkers.bodyPickables) append(body);
-    for (const pickable of this.roster.all().filter(isObjectPickable)) append(pickable);
+    for (const entity of this.roster.all()) {
+      const pickable = objectPickableOf(entity);
+      if (pickable) append(pickable);
+    }
     for (const node of this.navTarget.pickables()) append(node);
     for (const apsis of this.planDisplay.apsisMarkers) append(apsis);
     for (const node of this.equatorNodes.pickables) append(node);

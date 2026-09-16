@@ -1,67 +1,42 @@
 import * as THREE from 'three/webgpu';
 import type { ViewMode } from '../../view/view-mode';
-import { Ship, MUZZLE_SPEED } from './ship';
+import { Vessel } from './vessel';
 import { DynamicEntity } from './dynamic-entity';
-import { bulletReactionOf, type BulletType } from './bullet-reaction';
-import { ENGAGEMENT_RANGE } from '../engagement-zone';
-import { closingSpeed, type Contact } from './contact';
-import { contactDamageSpeed } from './contact-damage';
-import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
-import { add, dot, len, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../../math/vec3';
-import { solveLeadTime } from '../../../physics/intercept';
-import { sunlitFactor } from '../../../physics/shadow';
+import type { Contact } from './contact';
+import type { KinematicState } from '../../../physics/kinematic-state';
+import { len, sub, Vec3, v3 } from '../../../math/vec3';
 import type { FlashEffects } from '../../vfx/flash-effects';
-import { enemyDestroyFragments } from './debris-piece';
 import type { Player } from '../../player/player';
-import { Bullet } from './bullet';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
-import { fmtDist, fmtSpeed } from '../../../hud/utils';
-import { relativeInfo } from '../../orbit-info';
-import { orbitRows } from '../../pickable/orbit-rows';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
-import { shipMarkerSvg } from '../../marker/marker-shapes';
 import type { Quat } from '../../../math/quat';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
-import type { EnemyDeathCause, StageOutcome } from '../../stages/stage-outcome';
+import type { StageOutcome } from '../../stages/stage-outcome';
 import { savedKinematicState, type EnemySaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/marker-priority';
-import type { MarkerVisibility } from '../../../marker/marker-visibility';
-import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import type { CombatTarget } from './combat-target';
-import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { ControlSelection } from '../../control-selection';
-import type { ObjectAuthoring } from '../../pickable/inspected-object';
-import type { MenuItem } from '../../hud/windows/context-menu';
-import type { PropertyRow } from '../../../hud/windows/property-window-content';
-import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
-import type { OrbitingObject } from './orbiting-object';
 import type { DynamicEntityKind, FormationRole } from './entity-kind';
 import type { EntityRegistry, SpawnGate } from '../entity-registry';
 import type { EntityIdAllocators } from './entity-id';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotion } from '../dynamic-motion';
 import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
+import { EnemyInspection } from '../../pickable/enemy-inspection';
+import type { EnemyProteinInspection } from '../../pickable/enemy-inspection';
+import { EnemyFireController } from './enemy-fire-controller';
+import { EnemyReactions } from './enemy-reactions';
+import type { ProteinDisplayController } from './enemy-display-capabilities';
 
 // 敵機アセットの座標を物理寸法へ直す倍率。機体モデル・撃破時の破片・爆発の大きさは、
 // 全ての敵がこの1つの倍率を共有する。
 export const ENEMY_MODEL_SCALE = 20;
 
+export const ENEMY_MAX_HP = 6; // 敵機の総 HP
+
 export const PLASMA_BULLET_DAMAGE = 1.25; // 自機がプラズマ弾で被弾した際のダメージ [HP]
 
-const PLASMA_BULLET_SPEED = MUZZLE_SPEED * 2 / 3; // プラズマ弾の初速 [m/s]
-const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
-const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]
-const ENEMY_BURST_INTERVAL = 0.08; // 敵のバースト射撃時の連射間隔 [s]
-const ENEMY_AI_MIN_RANGE = 50; // 射撃する最短距離 [m]
-const ENEMY_MAX_ATTACKERS_PER_GROUP = 3; // 同一集団内で同時に攻撃する最大機数
-const ENEMY_ATTACK_CHANCE = 0.6; // 各機が攻撃(バースト)を開始する確率
-const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト射撃弾数の候補
-const PLASMA_SPREAD_DEG = 0.05; // プラズマ弾の散布角 [deg]
-
 // 軌道物体一覧で接近中として扱う、自艦との距離 [m]。
-const ENEMY_APPROACH_DIST = 2e5;
-
 // スナップショットからの再開。復元の腕は全具象で共通でなければならない。
 export interface EnemyRestore { readonly saved: EnemySaveData; readonly simTime: number }
 
@@ -73,6 +48,7 @@ export interface EnemyPlacement {
   readonly w: Vec3;
   readonly accent: string | number;
   readonly orbitLineColor: string | number;
+  readonly attackGroupId?: string;
   readonly waveId?: number;
   readonly id?: string;
   readonly formationId?: string;
@@ -91,49 +67,29 @@ export interface EnemyClass {
   ): Enemy;
 }
 
-// pos で撃つときの、太陽グレアによるプラズマ弾の散布界の倍率。逆光(照準方向に太陽がある)ほど
-// 狙いが甘くなり、順光では締まる。難易度調整のための経験則であって物理計算ではない。
-function sunGlareSpreadScale(
-  pos: Vec3, aimDir: Vec3, celestialBodies: CelestialBodies, t: number,
-): number {
-  const starId = celestialBodies.starId;
-  if (starId === null) return 1;
-
-  const sunDir = celestialBodies.sunDirFrom(pos, t);
-  const angle = (Math.acos(Math.max(-1, Math.min(1, dot(aimDir, sunDir)))) * 180) / Math.PI;
-  const litScale = angle <= 5 ? 2
-    : angle <= 30 ? 1 + (30 - angle) / 25
-    : angle >= 160 ? 0.5
-    : angle >= 130 ? 1 - ((angle - 130) / 30) * 0.5
-    : 1;
-
-  // 日照率で内挿し、影の中では倍率 1 へ寄せる(SPEC/COMBAT.md「発射」)。しきい値で畳むと
-  // 半影を横切るたびに散布界が跳ぶ。
-  const sunlit = sunlitFactor(
-    pos, celestialBodies.motionOf(starId), celestialBodies.celestialMotions, t,
-  );
-  return 1 + (litScale - 1) * sunlit;
-}
-
 // 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、交戦圏
 // 離脱・焼失・衝突の記録。機体が何でできているか(メッシュ・被弾モデル・判定形状)は具象が持つ。
-export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable {
+export abstract class Enemy extends Vessel implements CombatTarget {
   public override readonly mapKind: DynamicEntityKind = 'enemy';
   public override readonly pickable = true;
+  public readonly inspection = new EnemyInspection(this);
+  public readonly objectPickable = this.inspection;
+  public get proteinInspection(): EnemyProteinInspection | null { return null; }
+  public get proteinDisplayController(): ProteinDisplayController | null { return null; }
 
-  public readonly accent: string | number; // マーカー色
+  public readonly accent: string | number; // マーカー色。攻撃グループとは独立
   public readonly orbitLineColor: string | number;
+  public readonly attackGroupId: string;
   public readonly waveId?: number; // 所属するウェーブの番号。ウェーブに属さない敵は undefined
   public readonly formationId?: string;
   public readonly formationRole?: FormationRole;
 
-  // 実行時状態(遅延初期化)。未設定 = まだその状態に入っていない
-  private lastFireSim?: number; // 最後に発砲判定した時刻。初回は発砲タイミングをずらすため遅延初期化
-  private burstLeft?: number; // バースト射撃の残弾
-  private burstDelay?: number; // 次のバースト弾までの残り時間 [sim s]
-  private lastBehaviorSim?: number; // 前回 behave した時刻 [sim s]
-  // 射撃を許すか。
-  public fireEnabled = true;
+  private readonly fireController: EnemyFireController;
+  private readonly reactions: EnemyReactions;
+
+  public get fireEnabled(): boolean { return this.fireController.enabled; }
+  public set fireEnabled(value: boolean) { this.fireController.enabled = value; }
+  public get isBursting(): boolean { return this.fireController.isBursting; }
 
   // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径)を受けて、
   // 敵に共通する識別・色・陣形所属を初期化する。復元時は保存済みの生死・バースト状態も戻す。
@@ -156,6 +112,10 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
         w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z),
         accent: init.saved.accent,
         orbitLineColor: init.saved.orbitLineColor,
+        attackGroupId: init.saved.attackGroupId
+          ?? init.saved.formationId
+          ?? init.saved.id
+          ?? init.saved.name,
         waveId: init.saved.waveId,
         id: init.saved.id || undefined,
         formationId: init.saved.formationId,
@@ -165,6 +125,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     const attitude = { q: placed.q, w: placed.w, inertia };
     super(
       placed.name,
+      ENEMY_MAX_HP,
       owner => new EnemyMotion(placed.state, attitude, radius, {
         receiveEntityContact: (other, contact, services) => (
           (owner as Enemy).receiveEntityContact(
@@ -183,12 +144,31 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     );
     this.accent = placed.accent;
     this.orbitLineColor = placed.orbitLineColor;
+    this.attackGroupId = placed.attackGroupId ?? placed.formationId ?? this.id;
     this.waveId = placed.waveId;
     this.formationId = placed.formationId;
     this.formationRole = placed.formationRole;
+    this.fireController = new EnemyFireController({
+      motion: this.motion,
+      attackGroupId: this.attackGroupId,
+      worldSfx: this._worldSfx,
+      canFire: enemies => this.canFire(enemies),
+      muzzlePosition: () => this.muzzlePosition(),
+      plasmaDamage: () => this.plasmaDamage(),
+      muzzleEffect: muzzleState => this.muzzleEffect(muzzleState),
+    });
+    this.reactions = new EnemyReactions({
+      motion: this.motion,
+      worldSfx: this._worldSfx,
+      effects: this._fx,
+      modelScale: ENEMY_MODEL_SCALE,
+      applyBulletDamage: (damage, impactPoint) => this.applyBulletDamage(damage, impactPoint),
+      applyImpactDamage: damageSpeed => this.applyImpactDamage(damageSpeed),
+      hasHealth: () => this.hp > 0,
+      recordDeath: (activeStage, simTime, cause) => activeStage.recordEnemyDeath(this, simTime, cause),
+    });
     if ('saved' in init) {
-      this.burstLeft = init.saved.burstLeft;
-      this.burstDelay = init.saved.burstDelay;
+      this.fireController.restore(init.saved.burstLeft, init.saved.burstDelay);
       this.motion.alive = init.saved.alive;
       this.trajectoryLineVisible = init.saved.showTrajectoryLine ?? false;
     }
@@ -243,213 +223,40 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     };
   }
 
-  // 撃破に至らない被弾の音・閃光・ガスの噴出。
-  private impactEffect(bulletType: BulletType, impactPoint: Vec3): void {
-    this._worldSfx.enemyHit();
-    // 閃光は弾種で分け、ガスは弾種によらず着弾点から噴く
-    if (bulletType === 'plasma') {
-      this._fx.spawnPlasmaFlash(kinematicState<'eci'>(
-        this.motion.state.t, impactPoint, this.motion.state.v,
-      ));
-    } else {
-      this._fx.spawnBulletFlash(kinematicState<'eci'>(
-        this.motion.state.t, impactPoint, this.motion.state.v,
-      ));
-    }
-    this._fx.spawnGasPuff(kinematicState<'eci'>(
-      this.motion.state.t, impactPoint, this.motion.state.v,
-    ));
-  }
-
-  // 撃破時の爆発音・エフェクトを発生させる。
-  private destroyEffect(registry: EntityRegistry): void {
-    this._worldSfx.explosion();
-    this._fx.spawnEnemyDestroyFlash(this.motion.state, ENEMY_MODEL_SCALE);
-    for (const piece of enemyDestroyFragments(
-      this.motion.state, ENEMY_MODEL_SCALE, this._worldSfx, this._fx, registry.idAllocators,
-    )) registry.add(piece);
-  }
-
-  // 被弾によるダメージ・致死判定。
-  private attackedByBullet(
-    bulletType: BulletType, damage: number, impactPoint: Vec3, simTime: number,
-    activeStage: StageOutcome, registry: EntityRegistry,
-  ): void {
-    activeStage.scoreCounter.recordHit();
-    this.applyBulletDamage(damage, impactPoint);
-    if (this.hp > 0) {
-      this.impactEffect(bulletType, impactPoint);
-      return;
-    }
-
-    // HP が尽きたので撃破処理へ
-    this.motion.alive = false;
-    activeStage.recordEnemyDeath(this, simTime, 'killed');
-    this.destroyEffect(registry);
-  }
-
-  // 他の実体との接触。ダメージはゲームバランスの量で、物理の質量からは導かない。
   private receiveEntityContact(
     other: DynamicMotion, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
-    if (!this.motion.alive) return;
-    const simTime = contact.selfState.t;
-
-    const bullet = bulletReactionOf(other);
-    if (bullet !== null) {
-      this.attackedByBullet(
-        bullet.type, bullet.damage, contact.point, simTime, activeStage, registry,
-      );
-      return;
-    }
-
-    // 他の実体との接触で沈めば、交戦の結果として記録する。
-    this.damagedByContact(contactDamageSpeed(other, contact), simTime, 'killed', activeStage, registry);
+    this.reactions.receiveEntityContact(other, contact, activeStage, registry);
   }
 
-  // 天体の固体表面への接触。沈めば自然損耗(collision)として記録する。
   private receiveSurfaceContact(
     contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
-    if (!this.motion.alive) return;
-    this.damagedByContact(closingSpeed(contact), contact.selfState.t, 'collision', activeStage, registry);
+    this.reactions.receiveSurfaceContact(contact, activeStage, registry);
   }
 
-  // 接触ダメージを当て、HP が残れば音とパフ、尽きたら cause の撃破として記録する。
-  private damagedByContact(
-    damageSpeed: number, simTime: number, cause: EnemyDeathCause, activeStage: StageOutcome,
-    registry: EntityRegistry,
-  ): void {
-    if (!this.applyImpactDamage(damageSpeed)) return;
-    if (this.hp > 0) {
-      this._worldSfx.clank();
-      this._fx.spawnGasPuff(this.motion.state);
-      return;
-    }
-
-    this.motion.alive = false;
-    activeStage.recordEnemyDeath(this, simTime, cause);
-    this.destroyEffect(registry);
-  }
-
-  // 交戦圏外への離脱によるデスポーン。
   public despawn(simTime: number, activeStage: StageOutcome): void {
-    if (!this.motion.alive) return;
-    this.motion.alive = false;
-    activeStage.recordEnemyDeath(this, simTime, 'despawn');
+    this.reactions.despawn(simTime, activeStage);
   }
 
-  // 大気での焼失による自然死。
   private receiveBurnUp(activeStage: StageOutcome, registry: EntityRegistry): void {
-    this.motion.alive = false;
-    this.destroyEffect(registry);
-    activeStage.recordEnemyDeath(this, this.motion.state.t, 'burnup');
+    this.reactions.receiveBurnUp(activeStage, registry);
   }
 
-  // 行動関数。enemies は同一集団の同時攻撃数を数える母集団、registry は弾の追加先。
-  // operable が偽の間は経過時刻だけを記録する。
+  // 行動関数。射撃の時系列は EnemyFireController が所有する。
   public behave(
     simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
     operable: boolean, celestialBodies: CelestialBodies,
   ): void {
-    // 射撃間隔は simulation time で測る。wall dt を混ぜると、同じゲーム内時間でも
-    // warp 段によって弾数が変わる。
-    const behaviorDt = this.lastBehaviorSim === undefined ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
-    this.lastBehaviorSim = simTime;
-    if (!operable) return;
-    if (!this.fireEnabled) return;
-    if (!this.canFire(enemies)) {
-      this.burstLeft = undefined;
-      this.burstDelay = undefined;
-      return;
-    }
-    const dist = len(sub(player.motion.state.r, this.motion.state.r));
-    if (!(dist < ENGAGEMENT_RANGE && dist > ENEMY_AI_MIN_RANGE)) return;
-
-    // バースト継続中なら次弾のタイミングだけ見る
-    if (this.burstLeft && this.burstLeft > 0) {
-      this.burstDelay = (this.burstDelay ?? 0) - behaviorDt;
-      if (this.burstDelay <= 0) {
-        this.firePlasma(simTime, player, registry, celestialBodies);
-        this.burstLeft--;
-        this.burstDelay = ENEMY_BURST_INTERVAL;
-      }
-      return;
-    }
-
-    if (this.lastFireSim === undefined) this.lastFireSim = simTime - Math.random() * ENEMY_FIRE_INTERVAL;
-    if (simTime - this.lastFireSim <= ENEMY_FIRE_INTERVAL) return;
-    this.lastFireSim = simTime;
-
-    // 新規バーストを始めるかどうかを抽選する
-    const countInGroup = this.attackingCountInGroup(enemies);
-    if (countInGroup >= ENEMY_MAX_ATTACKERS_PER_GROUP || Math.random() >= ENEMY_ATTACK_CHANCE) return;
-    const counts = ENEMY_BURST_COUNTS;
-    this.burstLeft = counts[Math.floor(Math.random() * counts.length)]! - 1;
-    this.burstDelay = ENEMY_BURST_INTERVAL;
-    this.firePlasma(simTime, player, registry, celestialBodies);
-  }
-
-  // other が自分と同じ集団か。陣形に属する敵ならその陣形、波状攻撃で湧いた敵ならその波、
-  // どちらにも属さない敵どうしは1つの集団(SPEC/COMBAT.md「AI と射撃」)。
-  private inSameGroup(other: Enemy): boolean {
-    if (this.formationId !== undefined || other.formationId !== undefined) {
-      return this.formationId === other.formationId;
-    }
-    return this.waveId === other.waveId;
-  }
-
-  // enemies のうち、自分と同じ集団でバースト射撃中の個体数を数える。
-  private attackingCountInGroup(enemies: readonly Enemy[]): number {
-    let n = 0;
-    for (const e of enemies) {
-      if (e.motion.alive && this.inSameGroup(e) && e.burstLeft && e.burstLeft > 0) n++;
-    }
-    return n;
+    this.fireController.behave(simTime, player, registry, enemies, operable, celestialBodies);
   }
 
   // 発砲の演出。既定は空。
   protected muzzleEffect(_muzzleState: KinematicState): void {}
 
-  // player へ向けた見越し射撃でプラズマ弾を1発生成し、registry へ足す。
-  private firePlasma(
-    simTime: number, player: Player, registry: EntityRegistry, celestialBodies: CelestialBodies,
-  ): void {
-    const r = this.muzzlePosition();
-    const v = this.motion.state.v;
-    const toPlayer = sub(player.motion.state.r, r);
-    const relV = sub(player.motion.state.v, v);
-
-    // 正確な見越し時間を計算
-    let leadTime = solveLeadTime(toPlayer, relV, PLASMA_BULLET_SPEED);
-    if (leadTime === null || leadTime < 0) {
-      leadTime = len(toPlayer) / PLASMA_BULLET_SPEED; // フォールバック
-    }
-
-    const predictedRelPos = add(toPlayer, scale(relV, leadTime));
-    const aimDir = norm(predictedRelPos);
-
-    const spreadScale = sunGlareSpreadScale(r, aimDir, celestialBodies, simTime);
-
-    // 散布界をスケール適用
-    const perp = randPerp(aimDir);
-    const spreadAng = (Math.random() * PLASMA_SPREAD_DEG * spreadScale * Math.PI) / 180;
-    const actualAim = rotateAxis(aimDir, perp, spreadAng);
-
-    const relativeBulletVelocity = scale(actualAim, PLASMA_BULLET_SPEED);
-    const bV = add(v, relativeBulletVelocity);
-
-    const pb = new Bullet(
-      kinematicState<'eci'>(simTime, r, bV), PLASMA_LIFETIME, 'enemy', 'plasma', this.plasmaDamage(),
-      this._worldSfx, registry.idAllocators,
-    );
-    this.muzzleEffect(kinematicState<'eci'>(simTime, r, v));
-
-    registry.add(pb);
-  }
-
   // 敵に共通する保存項目。具象の serialize() がこれへ自分の項目を足す。
   protected serializeEnemyFields(): EnemySaveData {
+    const fire = this.fireController.saveState;
     return {
       id: this.id,
       name: this.name,
@@ -462,113 +269,17 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
       health: this.hp,
       accent: this.accent,
       orbitLineColor: this.orbitLineColor,
+      attackGroupId: this.attackGroupId,
       waveId: this.waveId,
       // 陣形所属は無所属の単体敵も多いため、値がある場合だけキーを持たせる。
       ...(this.formationId === undefined ? {} : { formationId: this.formationId }),
       ...(this.formationRole === undefined ? {} : { formationRole: this.formationRole }),
-      burstLeft: this.burstLeft,
-      burstDelay: this.burstDelay,
+      burstLeft: fire.burstLeft,
+      burstDelay: fire.burstDelay,
       showTrajectoryLine: this.trajectoryLineVisible,
     };
   }
 
-  // 被選択物(ObjectPickable)としての振る舞い。
-  public get gone(): boolean { return !this.motion.alive; }
-  public get orbitState(): KinematicState { return this.motion.state; }
-  public readonly glyph = ENTITY_GLYPH.enemyShip;
-  public get glyphSvg(): string { return shipMarkerSvg(false); }
-  public readonly listSection: MapListSection = 'enemy';
-  public readonly pickerGenre: ObjectPickerGenre = '敵';
-  public readonly hiddenBehindBodies = true;
-  public readonly onlyInFocusedSystem = false;
-  public listPriority(): number { return 0; }
-
-  // 表示時刻の ECI 位置。予測が届かない時刻では null。
-  public posAt(displayTime: number): Vec3 | null {
-    return this.motion.stateAt(displayTime)?.r ?? null;
-  }
-
-  public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(this.markerKey); }
-
-  // 自艦から見た距離と相対速度。自艦がいなければ空。
-  public listDetail(
-    _celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number,
-  ): string {
-    if (viewer === null) return '';
-    const viewerState = viewer.motion.state;
-    const d = len(sub(this.posAt(displayTime) ?? this.motion.state.r, viewerState.r));
-    const label = this.listCounted(viewer, displayTime) ? '接近' : '距離';
-    return `${label} ${fmtDist(d)} · ${fmtSpeed(len(sub(this.motion.state.v, viewerState.v)))}`;
-  }
-
-  // 検索が照合する文字列。行の補助表示と同じ。
-  public listSearchText(
-    celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number,
-  ): string {
-    return this.listDetail(celestialBodies, viewer, displayTime);
-  }
-
-  // 自艦へ接近中と扱う距離まで寄っているか。
-  public listCounted(viewer: OrbitingObject | null, displayTime: number): boolean {
-    if (viewer === null) return false;
-    const d = len(sub(this.posAt(displayTime) ?? this.motion.state.r, viewer.motion.state.r));
-    return d < ENEMY_APPROACH_DIST;
-  }
-
-  // 右クリックメニュー・プロパティウィンドウに出す操作項目。
-  public menuItems(
-    _celestialBodies: CelestialBodies, _viewer: OrbitingObject | null, navTargetId: string | null,
-  ): readonly MenuItem<MenuAction>[] {
-    return [
-      MenuCommon.target(navTargetId === this.id),
-      MenuCommon.focus(),
-      MenuCommon.trajectoryLine(this.trajectoryLineVisible),
-      MenuCommon.duplicate(),
-      { label: '削除', act: 'delete' },
-      MenuCommon.cancel(),
-    ];
-  }
-
-  // menuItems が出した操作 act を実行する。
-  public runMenu(
-    act: MenuAction, _controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
-  ): void {
-    if (act === 'delete') this.motion.alive = false;
-    else if (act === 'toggleTrajectoryLine') {
-      this.trajectoryLineVisible = !this.trajectoryLineVisible;
-    } else if (act === 'duplicate') {
-      authoring?.openObjectPlacerForDuplicate(this.mapKind, this.motion.state);
-    }
-  }
-
-  // プロパティウィンドウに出す行。viewer が null なら相対量の行を省く。
-  public propertyRows(
-    celestialBodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
-  ): readonly PropertyRow[] {
-    const rel = viewer ? relativeInfo(viewer, this, celestialBodies.celestialMotions, simTime) : null;
-    const rows: PropertyRow[] = [{ key: 'hp', label: '装甲', value: `${Math.floor(this.hp)} / ${this.maxHp}` }];
-    // 自艦との相対量。
-    if (rel) {
-      rows.push(
-        { key: 'dist', label: '距離', value: fmtDist(rel.dist) },
-        { key: 'closing', label: '接近速度', value: fmtSpeed(rel.closing) },
-        { key: 'relspeed', label: '相対速度', value: fmtSpeed(rel.relSpeed), collapsible: true },
-      );
-    }
-    rows.push(...orbitRows(this, celestialBodies, simTime));
-    // 相対傾斜角は自艦の軌道面が基準なので、軌道要素と同じグループへ並べる。
-    if (rel) {
-      rows.push({
-        key: 'relinc', label: '相対傾斜 [AN/DN]',
-        value: isFinite(rel.relIncDeg) ? `${rel.relIncDeg.toFixed(2)}°` : '---', group: '軌道',
-      });
-    }
-    return rows;
-  }
-
-  public readonly rename = null;
-  public readonly onMapSelect = null;
-  public readonly onMapFocus = null;
 }
 
 // entity を敵へ絞り込む型ガード。

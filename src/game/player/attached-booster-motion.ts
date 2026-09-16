@@ -6,7 +6,7 @@ import {
   PLAYER_INERTIA_ROLL,
   PLAYER_INERTIA_YAW,
   PLAYER_MASS,
-} from '../dynamic/dynamic-entity/ship';
+} from './player-loadout';
 import {
   BoosterStack,
   boosterAverageAcceleration,
