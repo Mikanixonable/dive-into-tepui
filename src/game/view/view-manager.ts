@@ -1,7 +1,6 @@
 // どのビューを表示しているかの正本と、2ビューの実装の保持。遷移は必ず setView() を通る。
 import { Hud } from '../hud/hud';
 import { TouchControls } from '../hud/touch-controls';
-import type { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { DisplayWindowManager } from '../display-window-manager';
 import type { ControlSelection } from '../control-selection';
@@ -68,9 +67,9 @@ export class ViewManager {
     this.displayWindow.forceCurrent = this.view !== 'map';
   }
 
-  // [M] による戦闘⇔マップの切り替えを受ける。
-  public handleInput(input: Input): void {
-    if (!input.takeKey(K.toggleMapMode)) return;
+  // router から [M] による戦闘⇔マップの切り替えを受ける。
+  public handleCommand(commandId: string): void {
+    if (commandId !== K.toggleMapMode.code) return;
 
     // マップから戦闘へ。入れなければその旨を、計画があれば確定したことを知らせる。
     if (this.current === 'map') {
