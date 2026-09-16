@@ -33,6 +33,7 @@ import type { Notifier } from '../../hud/notifier';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../vfx/flash-effects';
 import type { PerfCounts } from '../perf-counts';
+import type { RunEventSink } from '../run-events';
 import type { OrbitReference } from '../orbit-reference';
 
 export class DynamicSystem implements EntityRegistry, EntityRoster {
@@ -62,6 +63,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     notifier: Notifier,
     worldSfx: WorldSfx,
     flash: FlashEffects,
+    events: RunEventSink,
     private readonly celestialBodies: CelestialBodies,
     private readonly sections: FrameSections,
     initialSimTime: number,
@@ -73,7 +75,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
       new DebrisFragmentPools(scene, ENTITY_CAP.debris),
     ]);
     this.simulator = new Simulator(this, this, this, celestialBodies, sections, initialSimTime);
-    this.nanWatchdog = new NanWatchdog(notifier);
+    this.nanWatchdog = new NanWatchdog(events);
     if (saved) this.restoreFromSave(saved, notifier, worldSfx, flash, scene);
   }
 
