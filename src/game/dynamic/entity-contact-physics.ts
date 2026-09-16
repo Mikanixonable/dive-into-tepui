@@ -223,9 +223,11 @@ export class EntityContactPhysics {
     const t = contactTime(a, response.toi);
     a.collideWithEntity(b, {
       t, point, normal: response.normal, selfState: aBefore, otherState: bBefore,
+      selfModuleId: response.moduleIdA, otherModuleId: response.moduleIdB,
     }, services);
     b.collideWithEntity(a, {
       t, point, normal: scale(response.normal, -1), selfState: bBefore, otherState: aBefore,
+      selfModuleId: response.moduleIdB, otherModuleId: response.moduleIdA,
     }, services);
   }
 }

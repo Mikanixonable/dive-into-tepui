@@ -11,6 +11,15 @@ import {
 // 剛体接触の反発係数。天体の表面でも物体どうしでも同じ値を使う。
 export const CONTACT_RESTITUTION = 0.4;
 
+function reverseContactGeometry(geometry: ContactGeometry): ContactGeometry {
+  return {
+    ...geometry,
+    normal: scale(geometry.normal, -1),
+    moduleIdA: geometry.moduleIdB ?? null,
+    moduleIdB: geometry.moduleIdA ?? null,
+  };
+}
+
 // タンパク質の球列など、球の外接半径ではなく種別固有の当たり形状を持つ側の狭域判定。
 // 接触解決器へ渡す法線は常に a → b に揃える。
 function customContactGeometry(
@@ -39,10 +48,7 @@ function customContactGeometry(
       a, b.prevState, bWork, a.prevState, aWork,
     );
     if (sweptEntityB !== null) {
-      return {
-        ...sweptEntityB,
-        normal: scale(sweptEntityB.normal, -1),
-      };
+      return reverseContactGeometry(sweptEntityB);
     }
   }
 
@@ -50,10 +56,7 @@ function customContactGeometry(
   if (hitA !== null) return hitA;
 
   const hitB = b.testCustomEntityCollision(a, bWork, aWork);
-  if (hitB !== null) return {
-    ...hitB,
-    normal: scale(hitB.normal, -1),
-  };
+  if (hitB !== null) return reverseContactGeometry(hitB);
 
   // 両者が固有形状を持つ組は、外接球を使った近似へ戻すと形状の外側で接触する。
   if (a.usesCustomEntityCollision() && b.usesCustomEntityCollision()) return null;
@@ -67,7 +70,7 @@ function customContactGeometry(
     const sweptB = b.testCustomSweptSphereCollision(
       a.prevState.r, aWork.r, a.radius, b.prevState, bWork,
     );
-    if (sweptB !== null) return makeSweptGeometry(sweptB, scale(sweptB.hit.normal, -1));
+    if (sweptB !== null) return reverseContactGeometry(makeSweptGeometry(sweptB, sweptB.hit.normal));
   }
 
   const sphereHitA = a.testCustomSphereCollision(bWork.r, b.radius, aWork);
@@ -77,7 +80,7 @@ function customContactGeometry(
 
   const sphereHitB = b.testCustomSphereCollision(aWork.r, a.radius, bWork);
   if (sphereHitB !== null) {
-    return { normal: scale(sphereHitB.normal, -1), toi: 1, pushOut: sphereHitB.depth, contactPoint: sphereHitB.point };
+    return reverseContactGeometry({ normal: sphereHitB.normal, toi: 1, pushOut: sphereHitB.depth, contactPoint: sphereHitB.point });
   }
   return null;
 }
