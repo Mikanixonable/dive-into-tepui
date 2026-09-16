@@ -61,11 +61,27 @@ function importsIn(source) {
   return [...imports.values()];
 }
 
+function sourceWithoutComments(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
+}
+
 const violations = [];
 for (const file of sourceFilesIn(srcRoot)) {
   const source = readFileSync(file, 'utf8');
   const sourceLayer = layerOf(file);
+  const relative = relativeSourcePath(file);
   const restricted = restrictedLayers[sourceLayer];
+
+  // raw edge の消費は game/input の adapter だけに閉じる。コメント中の例示は除いて検査する。
+  if ((sourceLayer === 'game' || sourceLayer === 'hud' || sourceLayer === 'launcher')
+    && relative !== 'game/input/raw-game-input-adapter.ts') {
+    const rawEdge = /\b(?:this\.)?input\.take(?:Key|Keys)\s*\(/;
+    if (rawEdge.test(sourceWithoutComments(source))) {
+      violations.push(`${path.relative(root, file)}: raw Input edge must be consumed by game/input/raw-game-input-adapter.ts`);
+    }
+  }
 
   for (const { specifier, index } of importsIn(source)) {
     if ((sourceLayer === 'math' || sourceLayer === 'physics') && (specifier === 'three' || specifier.startsWith('three/'))) {
