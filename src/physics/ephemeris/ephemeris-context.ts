@@ -27,8 +27,7 @@ export function ephemerisContextFor(epoch: TdbJulianDate): Readonly<EphemerisCon
 
 // スナップショットの暦情報が、いまのカタログで復元できるか。**元期は照合しない** —
 // 元期はそのランを定義する値で、読み込む側がそれを継ぐ(SAVE.md「読み込み」)。照合するのは
-// 「その元期が選ぶ暦データが、いま手元にあるものと同じか」だけ。暦情報を欠く・壊れている
-// スナップショットは、補える基底値が無いので復元できない。
+// 「その元期が選ぶ暦データが、いま手元にあるものと同じか」。
 export function isEphemerisContextRestorable(saved: unknown): boolean {
   if (!isValidContext(saved)) return false;
   const current = ephemerisContextFor(createJulianDate('TDB', saved.epochJdTdb));
