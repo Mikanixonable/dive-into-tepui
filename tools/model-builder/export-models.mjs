@@ -19,6 +19,7 @@ import { buildEnemyShip, buildStage0EnemyA, buildStage0EnemyB, buildStage0EnemyC
 import { buildAmmoPickup, buildRcsFuelPickup } from './pickups.mjs';
 import { buildPlayerShip } from './player-ship.mjs';
 import { buildBulletMesh, buildPlasmaBullet } from './projectiles.mjs';
+import { buildShipModules } from './ship-modules.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outDir = join(__dirname, '..', '..', 'src', 'assets', 'models');
@@ -83,6 +84,7 @@ const models = {
   rcsFuel:      buildRcsFuelPickup(),
   boosterStage: buildBoosterStage(),
   boosterInterstageCover: buildBoosterInterstageCover(),
+  shipModules: buildShipModules(),
 };
 
 // draw call の大半を占める player と magazine(ammo が束ねる分も)の静的な子メッシュを統合する。
