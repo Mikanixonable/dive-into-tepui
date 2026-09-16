@@ -1,12 +1,11 @@
-// シミュレーション速度(HUD ヒント・SFX 上は「ワープ」と呼ぶ)の段階管理と、
-// 「マニューバノードの実行時刻まで自動的に加速する」機能を担う。
+// シミュレーション速度(「ワープ」と呼ぶ)の段階管理と、「マニューバノードの実行時刻まで
+// 自動的に加速する」機能を担う。
 // マップビューの計画データそのものには依存しない — [N] キーの受け口と
 // どのノード時刻へ自動ワープするかは呼び出し側が決めて渡す。
-import type { Notifier } from '../../hud/notifier';
-import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { KinematicState } from '../../physics/kinematic-state';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { NODE_APPROACH_LEAD } from '../plan/plan';
+import type { RunEventSink } from '../run-events';
 
 // [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
 export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072, 524288, 2097152, 8388608, 33554432];
@@ -20,10 +19,7 @@ export class SimSpeedManager {
   private levelIdx = 0;
   private autoWarpUntil: number | null = null;
 
-  constructor(
-    private readonly _notifier: Notifier,
-    private readonly _uiSfx: UiSfx,
-  ) { }
+  constructor(private readonly events: RunEventSink) { }
 
   // 現在のワープ倍率。
   get simSpeed(): number {
@@ -61,8 +57,7 @@ export class SimSpeedManager {
     return this.simSpeed === 1;
   }
 
-  // ワープ段を step 分だけ変更する。上下限を超える変更は無視する。操作できない倍率へ
-  // 上げたときは、自機の操作が効かなくなったことをヒントに併記する。
+  // ワープ段を step 分だけ変更する。上下限を超える変更は無視する。
   shift(step: number): void {
     const next = this.levelIdx + step;
     if (next < 0 || next >= SIM_SPEED_LEVELS.length) return;
@@ -75,14 +70,17 @@ export class SimSpeedManager {
     if (next < 0 || next === this.levelIdx) return;
     this.cancelAutoWarp();
     this.levelIdx = next;
-    this._uiSfx.warp();
-    const gated = this.canShipAct ? '' : `(自機の操作はワープ ×${MAX_PHYS_SIM_SPEED} 以下でのみ可能)`;
-    this._notifier.hint(`時間加速 ×${this.simSpeed}${gated}`);
+    this.events.record({ kind: 'simSpeedChanged', speed: this.simSpeed, shipActs: this.canShipAct });
+  }
+
+  // simTime を現在時刻として、時刻 time が自動ワープで目指せる未来かどうか。
+  public canAutoWarpTo(time: number, simTime: number): boolean {
+    return isFinite(time) && time > simTime + NODE_APPROACH_LEAD;
   }
 
   // 未来の指定時刻まで自動ワープする。既に到達窓へ入った時刻は受け付けない。
   startAutoWarpTo(time: number, simTime: number): boolean {
-    if (!isFinite(time) || time <= simTime + NODE_APPROACH_LEAD) return false;
+    if (!this.canAutoWarpTo(time, simTime)) return false;
     this.autoWarpUntil = time;
     return true;
   }
@@ -100,19 +98,19 @@ export class SimSpeedManager {
 
   // 直近ノードの実行時刻までの自動ワープをトグルする。
   toggleAutoWarpToFirstNode(firstNode: KinematicState | undefined, simTime: number): void {
-    // ノードがなければ計画を促す通知だけ出す
+    // ノードがなければ、起こせなかったこととその理由だけを記録する
     if (!firstNode) {
-      this._notifier.hint(`マニューバノードがありません ([${K.toggleMapMode.label}] で計画)`);
+      this.events.record({ kind: 'autoWarpUnavailable', reason: 'noNode' });
       return;
     }
     // 自動ワープ中なら解除、そうでなければノードの時刻まで開始する
     if (this.isAutoWarping) {
       this.cancelAutoWarp();
-      this._notifier.hint('自動ワープ解除');
+      this.events.record({ kind: 'autoWarpCancelled' });
+    } else if (this.startAutoWarpTo(firstNode.t, simTime)) {
+      this.events.record({ kind: 'autoWarpStarted' });
     } else {
-      if (this.startAutoWarpTo(firstNode.t, simTime)) {
-        this._notifier.hint('ノードへ自動ワープ開始');
-      } else this._notifier.hint('ノード時刻を通過しています');
+      this.events.record({ kind: 'autoWarpUnavailable', reason: 'nodePassed' });
     }
   }
 

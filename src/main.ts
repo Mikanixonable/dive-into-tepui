@@ -78,7 +78,7 @@ function startAnimationLoop(
     const t0 = debugInfo.on ? performance.now() : 0;
     try {
       sections.beginFrame();
-      game.update(dt, viewport);
+      game.update(dt, now, viewport);
       sections.endFrame();
       // Game が消費した入力エッジの残りを、外部ライフサイクルの優先順へ配る。
       game.routeInput([

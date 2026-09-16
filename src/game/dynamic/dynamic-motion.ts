@@ -15,9 +15,8 @@ import {
   aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,
   stepThermalDeviation, sunlightIrradiance,
 } from '../../physics/thermal';
-import { orbitalElementsOf } from '../../physics/elements';
+import { orbitalElementsOf, type OrbitalElements } from '../../physics/elements';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import { DISPLAY_DURATION_MAX } from '../display-window-duration';
 import type { Contact } from './dynamic-entity/contact';
 import type { DynamicReactionServices } from './dynamic-simulation-participant';
 import type { EngagementParticipant, EngagementZone } from './engagement-zone';
@@ -120,7 +119,7 @@ export interface DynamicMotionProperties {
   readonly emissivity?: number;
   readonly maxTemperature?: number;
   readonly historyDuration?: number;
-  readonly predictsFuture?: boolean;
+  readonly followsPredictedArc?: boolean;
   readonly behavior?: DynamicMotionBehavior;
 }
 
@@ -182,8 +181,8 @@ export class DynamicMotion {
   public readonly bulkDensity: number;
   public readonly emissivity: number;
   public readonly maxTemperature: number;
-  // 現在の状態から先の未来を予測し続ける個体か。
-  public readonly predictsFuture: boolean;
+  // 予測の弧を保ち、実シミュレーションがその上をなぞって積分を省く個体か。
+  public readonly followsPredictedArc: boolean;
 
   private readonly fixedRadiatingAreaPerMass: number;
   private readonly baseHistoryDuration: number;
@@ -216,9 +215,9 @@ export class DynamicMotion {
     this.fixedRadiatingAreaPerMass = options.radiatingAreaPerMass ?? 0;
     this.emissivity = options.emissivity ?? HULL_EMISS;
     this.maxTemperature = options.maxTemperature ?? Infinity;
-    // 過去線の保持・予測と、接触の振る舞い
+    // 履歴の保持・予測の弧と、接触の振る舞い
     this.baseHistoryDuration = options.historyDuration ?? 0;
-    this.predictsFuture = options.predictsFuture ?? false;
+    this.followsPredictedArc = options.followsPredictedArc ?? false;
     this.behavior = options.behavior ?? PASSIVE_BEHAVIOR;
   }
 
@@ -252,15 +251,16 @@ export class DynamicMotion {
     return this.behavior.hitBodyByRay?.(this, ray, pos) ?? hitsSphere(ray, pos, this.radius);
   }
 
-  // 表示のために残す履歴の長さ sec [s] を要求する。既定で履歴を持たない個体では効かない。
+  // 残す履歴の長さ sec [s](0 以上の有限値)を要求する。構築時の長さを持つ個体が、構築時と
+  // 要求の長いほうを残す。
   public requestHistoryDuration(sec: number): void {
     if (this.baseHistoryDuration <= 0) return;
-    this.requestedHistoryDuration = Math.max(0, Math.min(DISPLAY_DURATION_MAX, sec));
+    this.requestedHistoryDuration = sec;
   }
 
-  // 未来を予測する個体なら、現在の状態から sources を引く弧を用意して返す。でなければ null。
+  // 予測の弧をなぞる個体なら、現在の状態から sources を引く弧を用意して返す。でなければ null。
   public ensurePredictedArc(sources: readonly CelestialBody[]): PredictedArc | null {
-    if (!this.predictsFuture) return null;
+    if (!this.followsPredictedArc) return null;
     this.predictedArc ??= new PredictedArc(
       this.state, sources, this.radius, this.bcInv, this.srpCoeff,
       /* keplerTail */ true, /* consumable */ true,
@@ -286,7 +286,7 @@ export class DynamicMotion {
   }
 
   // 時刻 centerPivot の center を中心とする、現在の状態の軌道要素。
-  public orbitalElementsAround(center: CelestialBody, centerPivot: number) {
+  public orbitalElementsAround(center: CelestialBody, centerPivot: number): OrbitalElements | null {
     return orbitalElementsOf(this.state, center, centerPivot);
   }
 

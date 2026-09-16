@@ -20,7 +20,7 @@ import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { NavTarget } from '../nav-target';
 import type { CameraSystem } from '../camera/camera-system';
 import type { Viewport } from '../../render/viewport';
-import type { ControlSelection } from '../control-selection';
+import type { ControlSelectionCommands } from '../control-selection-commands';
 import { rayThroughScreen } from '../../math/projection';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { FocusSink } from '../camera/focus-target';
@@ -50,7 +50,7 @@ export class MapPicking {
     private readonly pickables: ObjectPickables,
     private readonly linePickables: LinePickables,
     private readonly objectWindows: ObjectWindows,
-    private readonly controlSelection: ControlSelection,
+    private readonly controlCommands: ControlSelectionCommands,
     private readonly displayWindowManager: Pick<DisplayWindowManager, 'current'>,
   ) {
     this.listPanel = new PhysicalObjectListPanel(hud.mapRoot, hud.panelCollapse, celestialBodies);
@@ -169,7 +169,7 @@ export class MapPicking {
   private focusTarget(id: string, target: MapPickable | undefined): void {
     this.focusSink.setFocus({ kind: 'object', id });
     this.hud.hint(`${target?.name ?? id} にフォーカス`);
-    target?.onMapFocus?.(this.controlSelection);
+    target?.onMapFocus?.(this.controlCommands);
   }
 
   // 軌道物体一覧を、このフレームの候補列で組み直す。
