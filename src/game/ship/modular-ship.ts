@@ -54,6 +54,10 @@ import { shipPhysicsShape } from './ship-physics-shape';
 import {
   SHIP_DECOUPLING_COLLISION_GRACE, decoupledMasses, separationImpulseVelocities, splitAtDecoupler,
 } from './ship-decoupling';
+import { dockingEligibility } from './ship-docking';
+import { repairDockedAssembly } from './ship-repair';
+import type { ControlSelection } from '../control-selection';
+import { ShipDockState } from './ship-dock-state';
 
 const HULL_START_TEMP = 273; // 初期機体温度 [K]
 
@@ -87,8 +91,8 @@ export type ModularShipInit =
 
 // プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、被弾・接触の帰結と保存を持つ。
 export class ModularShip extends Ship implements Controllable {
-  public override readonly mapKind: DynamicEntityKind;
-  public override readonly showsEquatorNodesAlways: boolean;
+  public override mapKind: DynamicEntityKind;
+  public override showsEquatorNodesAlways: boolean;
   public override readonly controllable = true;
   public override readonly pickable = true;
   public readonly inspection = new ShipInspection(this);
@@ -99,6 +103,7 @@ export class ModularShip extends Ship implements Controllable {
   public declare readonly motion: ModularShipMotion;
   public readonly assembly: ShipAssembly;
   public readonly capabilities: ShipCapabilities;
+  public readonly docks = new ShipDockState();
   public readonly throttle: Throttle;
   public readonly fire: FireControl;
   public readonly altitudeAlarm: AltitudeAlarm;
@@ -107,6 +112,7 @@ export class ModularShip extends Ship implements Controllable {
   private readonly scene: THREE.Scene;
   private readonly fx: FlashEffects;
   private readonly markers: MarkerSlots;
+  private readonly dockedVessels = new Map<string, { readonly id: string; readonly name: string }>();
   // この艦自身のマニューバ計画。
   public readonly plan = new Plan();
   public planExecution: PlanExecutionMode = 'instant';
@@ -285,6 +291,7 @@ export class ModularShip extends Ship implements Controllable {
     this.hp = this.assembly.totalHp;
     this.maxHp = this.assembly.maxHp;
     this.capabilities.reconcileOperatingCockpit();
+    this.syncDerivedRole();
   }
 
   // 既存の左右2枚操作を、接続順で先頭2枚の module state へ写す。
@@ -339,6 +346,104 @@ export class ModularShip extends Ship implements Controllable {
     return updated?.kind === 'booster' && updated.ignited;
   }
 
+  public dock(
+    other: ModularShip, localPortId: string, otherPortId: string,
+    selection: ControlSelection,
+  ): string {
+    const eligibility = dockingEligibility(this, localPortId, other, otherPortId);
+    if (!eligibility.eligible) throw new Error(eligibility.reasons[0] ?? '接舷できません');
+    const merged = this.assembly.mergedAtDock(other.assembly, localPortId, otherPortId, other.id);
+    const shape = shipPhysicsShape(merged.assembly);
+    if (shape === null) throw new Error('docking produced an empty ship');
+    const rootPosition = sub(this.motion.state.r, qRotate(this.motion.att.q, this.motion.centerOffset));
+    const position = add(rootPosition, qRotate(this.motion.att.q, shape.centerOffset));
+    const totalMass = this.motion.mass + other.motion.mass;
+    const velocity = totalMass > 0
+      ? scale(add(scale(this.motion.state.v, this.motion.mass), scale(other.motion.state.v, other.motion.mass)), 1 / totalMass)
+      : this.motion.state.v;
+    const t = this.motion.state.t;
+    this.assembly.replaceWith(merged.assembly);
+    this.motion.synchronizeAssembly();
+    this.motion.state = kinematicState<'eci'>(t, position, velocity);
+    this.hp = this.assembly.totalHp;
+    this.maxHp = this.assembly.maxHp;
+    this.capabilities.reconcileOperatingCockpit();
+    this.syncDerivedRole();
+    this.dockedVessels.set(merged.connectionId, { id: other.id, name: other.name });
+    selection.remove(other);
+    this.notifier.hint(`${other.name} を接舷`);
+    return merged.connectionId;
+  }
+
+  public undock(portId: string, registry: EntityRegistry): ModularShip {
+    const connection = this.assembly.dockingConnections().find(
+      edge => edge.parentId === portId || edge.childId === portId,
+    );
+    if (connection === undefined) throw new Error(`docking module is not connected: ${portId}`);
+    const detachedRoot = this.assembly.worldTransformOf(connection.childId);
+    if (detachedRoot === null) throw new Error('missing docked branch transform');
+    const working = this.assembly.clone();
+    const [retainedAssembly, detachedAssembly] = working.splitAt(connection.id);
+    const retainedShape = shipPhysicsShape(retainedAssembly);
+    const detachedShape = shipPhysicsShape(detachedAssembly);
+    if (retainedShape === null || detachedShape === null) throw new Error('undocking produced an empty ship');
+    const q = this.motion.att.q;
+    const w = this.motion.att.w;
+    const t = this.motion.state.t;
+    const rootPosition = sub(this.motion.state.r, qRotate(q, this.motion.centerOffset));
+    const retainedPosition = add(rootPosition, qRotate(q, retainedShape.centerOffset));
+    const detachedQ = qMul(q, detachedRoot.rotation);
+    const detachedRootPosition = add(rootPosition, qRotate(q, detachedRoot.position));
+    const detachedPosition = add(detachedRootPosition, qRotate(detachedQ, detachedShape.centerOffset));
+    const omegaWorld = qRotate(q, w);
+    const retainedVelocity = add(this.motion.state.v, cross(omegaWorld, sub(retainedPosition, this.motion.state.r)));
+    const detachedVelocity = add(this.motion.state.v, cross(omegaWorld, sub(detachedPosition, this.motion.state.r)));
+    const record = this.dockedVessels.get(connection.id);
+    const detached = new ModularShip(
+      this.notifier, this.worldSfx, this.scene, this.fx, this.markers,
+      {
+        id: record?.id,
+        name: record?.name ?? `${this.name} 分離船`,
+        state: kinematicState<'eci'>(t, detachedPosition, detachedVelocity),
+        att: {
+          q: detachedQ,
+          w: qRotate(qInvert(detachedRoot.rotation), w),
+          inertia: detachedShape.mass.inertia,
+        },
+        assembly: detachedAssembly,
+      },
+    );
+    this.assembly.replaceWith(retainedAssembly);
+    this.motion.synchronizeAssembly();
+    this.motion.state = kinematicState<'eci'>(t, retainedPosition, retainedVelocity);
+    this.hp = this.assembly.totalHp;
+    this.maxHp = this.assembly.maxHp;
+    this.capabilities.reconcileOperatingCockpit();
+    this.syncDerivedRole();
+    this.dockedVessels.delete(connection.id);
+    const collisionEnableAt = t + SHIP_DECOUPLING_COLLISION_GRACE;
+    this.motion.ignoreCollisionWith(detached.motion, collisionEnableAt);
+    detached.motion.ignoreCollisionWith(this.motion, collisionEnableAt);
+    registry.add(detached);
+    this.notifier.hint(`${detached.name} を発進`);
+    return detached;
+  }
+
+  public repairAtDock(portId: string): number {
+    const repaired = repairDockedAssembly(this.assembly, portId);
+    this.hp = this.assembly.totalHp;
+    this.maxHp = this.assembly.maxHp;
+    this.capabilities.reconcileOperatingCockpit();
+    this.syncDerivedRole();
+    this.notifier.hint(repaired > 0 ? `${repaired.toFixed(0)} HP 修理` : '修理箇所はありません');
+    return repaired;
+  }
+
+  private syncDerivedRole(): void {
+    this.mapKind = this.capabilities.role === 'base' ? 'base' : 'player';
+    this.showsEquatorNodesAlways = this.capabilities.role === 'base';
+  }
+
   public decouple(decouplerId: string, registry: EntityRegistry): ModularShip {
     const before = this.motion.physicsShape;
     const split = splitAtDecoupler(this.assembly, decouplerId);
@@ -389,6 +494,7 @@ export class ModularShip extends Ship implements Controllable {
     this.hp = this.assembly.totalHp;
     this.maxHp = this.assembly.maxHp;
     this.capabilities.reconcileOperatingCockpit();
+    this.syncDerivedRole();
     const collisionEnableAt = t + SHIP_DECOUPLING_COLLISION_GRACE;
     this.motion.ignoreCollisionWith(detached.motion, collisionEnableAt);
     detached.motion.ignoreCollisionWith(this.motion, collisionEnableAt);
