@@ -13,9 +13,11 @@ import { strongestAttractor } from '../physics/attractor';
 import { frameRoleOf, ReferenceFrame } from '../physics/frame';
 import type { FrameAnchorSource } from '../physics/frame';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
+import type { PredictedArc } from './dynamic/predicted-arc';
+import type { TrajectoryDemand } from './dynamic/trajectory-demand';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import {
-  APERIODIC_ARC_DURATION,
+  APERIODIC_ARC_DURATION, DISPLAY_DURATION_MAX,
   type DisplayDurationKey, type DisplayPastDurationKey,
 } from './display-window-duration';
 
@@ -53,6 +55,18 @@ export function timeLabelSettingOf(window: DisplayWindow): TimeLabelSetting {
     show: window.showElementTimes,
     nowSimTime: window.simTime,
     epochUnixSec: window.epochUnixSec,
+  };
+}
+
+// 表示窓と、そのフレームに表示している計画の弧から、進行へ渡す需要を組む唯一の入口。
+// 履歴の長さは、手動レンジと同じ上限(DISPLAY_DURATION_MAX)へ収めて渡す。
+export function trajectoryDemandOf(
+  window: DisplayWindow, planArcs: readonly PredictedArc[],
+): TrajectoryDemand {
+  return {
+    horizon: window.duration,
+    historyDuration: Math.max(0, Math.min(DISPLAY_DURATION_MAX, window.pastDuration)),
+    planArcs,
   };
 }
 
