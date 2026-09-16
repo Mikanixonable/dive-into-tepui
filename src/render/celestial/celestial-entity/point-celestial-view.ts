@@ -1,10 +1,10 @@
-// 遠くでは輝点として見える惑星の見た目。見かけ直径が閾値未満なら実体を隠し、戦闘ビューでは
-// 星殻上の輝点スプライトへ切り替える。積雲の殻・オーロラ・同期軌道リングも持てる。
+// 遠くでは輝点として見える惑星の見た目。見かけ直径が閾値未満なら実体を隠し、天球殻上の
+// 輝点スプライトへ切り替える。積雲の殻・オーロラ・同期軌道リングも持てる。
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import { lambertSphereIrradiance } from '../../../physics/lambert-sphere';
-import { STAR_SHELL_RADIUS } from '../../stars';
-import { Billboard, POINT_IMAGE_ANGULAR_SIZE } from '../../billboard';
+import { CELESTIAL_SHELL_RADIUS, POINT_IMAGE_SIZE } from '../../stars';
+import { Billboard } from '../../billboard';
 import { createCelestialSurfaceFrame, type CelestialSurfaceLike } from '../celestial-surface';
 import { writeBodyFromWorld } from '../body-frame';
 import { DEFAULT_ALBEDO, rec709Luminance } from '../../celestial-albedo';
@@ -27,8 +27,6 @@ import type { AtmosphereClouds, AtmosphereOptics } from '../../atmosphere';
 import type { DefinedCelestialBody, StellarLightSource } from './celestial-view';
 import type { GpuTimingSink } from '../../gpu-timings';
 
-// 輝点スプライトの一辺 [m]。星殻上へ置くので、点像の角の広がりへ星殻半径を掛けたもの。
-const POINT_SPRITE_SIZE = POINT_IMAGE_ANGULAR_SIZE * STAR_SHELL_RADIUS;
 // 太陽の視等級。ここから任意の視等級の放射照度が引ける。
 const SUN_APPARENT_MAGNITUDE = -26.74;
 // 肉眼限界の視等級と、そのとき輝点へ与える表示値。
@@ -89,20 +87,16 @@ export class PointCelestialView extends SphereCelestialView {
     this.mapOverlay?.build(scene);
   }
 
-  // 実体を畳んだフレームは積雲の殻とオーロラも隠し、戦闘ビューなら輝点だけを置く。
+  // 実体を畳んだフレームは積雲の殻とオーロラも隠し、代わりに輝点だけを置く。
   protected override syncUnresolved(
     motion: CelestialMotion, pos: Vec3, displayTime: number, camera: CameraFrame,
     star: StellarLightSource | null,
   ): void {
     this.cumulus?.setCloudsVisible(false);
     for (const aurora of this.auroras) aurora.mesh.visible = false;
-    if (camera.mode === 'map') {
-      this.billboard.hide();
-    } else {
-      this.syncBillboard(
-        camera.floatingOrigin.RtoThreeV3(pos), pos, motion.def.radius, displayTime, star,
-        camera.camera.quaternion);
-    }
+    this.syncBillboard(
+      camera.floatingOrigin.RtoThreeV3(pos), pos, motion.def.radius, displayTime, star,
+      camera.camera.quaternion);
   }
 
   // 実体を描くフレームは、積雲の殻・オーロラ・表面のフレーム値を同期して輝点を隠す。
@@ -239,7 +233,7 @@ export class PointCelestialView extends SphereCelestialView {
       sunIrradianceAt(star, pos, displayTime), radius, observerDistance, Math.acos(cosPhase),
     );
     this.billboard.sync(
-      tmpPos.copy(p).setLength(STAR_SHELL_RADIUS), POINT_SPRITE_SIZE,
+      tmpPos.copy(p).setLength(CELESTIAL_SHELL_RADIUS), POINT_IMAGE_SIZE,
       irradiance * POINT_DISPLAY_GAIN, cameraQuaternion,
     );
   }
