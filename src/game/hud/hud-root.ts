@@ -217,7 +217,7 @@ function buildBurnManagementPanel(leftRail: HTMLElement): void {
     leftRail, 'burn-management-panel', '燃焼管理',
   );
   configureCombatPanel(burnManagement);
-  // 段数・総質量・最後尾燃料・燃焼状態の行と、ブースター操作の置き場。
+  // module 数・総質量・合計燃料・燃焼状態と、booster/decoupler の一覧。
   burnManagement.body.innerHTML = `
     <dl class="metric-list burn-management-metrics">
       <div class="row metric">
@@ -227,10 +227,10 @@ function buildBurnManagementPanel(leftRail: HTMLElement): void {
         <dt class="k">総質量</dt><dd class="v"><output data-id="burn-total-mass">—</output></dd>
       </div>
       <div class="row metric">
-        <dt class="k">最後尾燃料</dt>
+        <dt class="k">合計燃料</dt>
         <dd class="v burn-fuel-readout">
           <span class="burn-fuel-meter w-meter-track" data-id="burn-active-fuel-meter" role="progressbar"
-            aria-label="最後尾ブースター燃料" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+            aria-label="ブースター合計燃料" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
             <span class="w-meter-fill" data-id="burn-active-fuel-fill"></span>
           </span>
           <output class="burn-fuel-value" data-id="burn-active-fuel-value">—</output>
@@ -240,7 +240,7 @@ function buildBurnManagementPanel(leftRail: HTMLElement): void {
         <dt class="k">燃焼状態</dt><dd class="v"><output data-id="burn-state" aria-live="polite">—</output></dd>
       </div>
     </dl>
-    <div class="panel-actions burn-actions" data-id="burn-actions" role="group" aria-label="ブースター操作"></div>`;
+    <div class="metric-list burn-module-list" data-id="burn-module-list" aria-label="ブースターとデカプラー"></div>`;
 }
 
 // 常設 TARGET パネルを右レールへ組む。ロック対象が無い間は隠す。
