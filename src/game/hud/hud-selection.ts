@@ -1,7 +1,7 @@
 // ランを跨いで残る HUD の選択(パネルの折りたたみ、パネル内のタブ)の値と、保存文字列との変換。
 import { GUIDE_GROUPS } from '../celestial/orbit-guide/orbit-guide-settings';
 import type { GuideGroupId } from '../celestial/orbit-guide/orbit-guide-settings';
-import type { ViewMode } from '../../render/view-mode';
+import type { ViewMode } from '../view/view-mode';
 
 // 折りたたみトグルの id → 畳んでいるか。一度も操作されていない id は載らない。
 type PanelCollapsedBucket = Record<string, boolean>;
