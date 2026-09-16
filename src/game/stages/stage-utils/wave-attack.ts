@@ -306,7 +306,7 @@ export function generateWave(player: KinematicState, waveNumber: number, attract
     const accent = subGroups[i % subGroups.length]!;
     const position = waveShipPosition(pattern, i, shipCount, centerR, approachDir, attractors, player.t);
     const state: KinematicState = kinematicState<'eci'>(player.t, position, centerV);
-    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, attractors, accent, accent, typeIndex, waveNumber, worldSfx, fx, scene, idAllocators));
+    enemies.push(generateApproachingEnemy(`W${waveNumber}-${i + 1}`, state, attractors, accent, accent, typeIndex, waveNumber, worldSfx, fx, scene, idAllocators, `wave-${waveNumber}-group-${i % subGroups.length}`));
   }
   return enemies;
 }

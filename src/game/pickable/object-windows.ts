@@ -27,6 +27,7 @@ import type { ViewFrame } from '../view/view-frame';
 import { PartWindows } from './part-windows';
 import type { InspectedObject, ObjectAuthoring } from './inspected-object';
 import type { PropertyWindowOpener } from './property-window-opener';
+import { objectPickableOf } from './object-pickable';
 import type { DisplayWindowManager } from '../display-window-manager';
 
 // 開いているプロパティウィンドウ本体と、その対象。
@@ -71,13 +72,15 @@ export class ObjectWindows implements PropertyWindowOpener {
   // id で名指しされた敵のプロパティウィンドウを開く。既に消えていれば開かない。
   public openEnemy(id: string, clientX: number, clientY: number): void {
     const enemy = this.roster.all().filter(isEnemy).find((e) => e.id === id);
-    if (enemy) this.open(clientX, clientY, enemy, this.displayWindowManager.current.simTime);
+    const inspected = enemy ? objectPickableOf(enemy) : null;
+    if (inspected) this.open(clientX, clientY, inspected, this.displayWindowManager.current.simTime);
   }
 
   // いま固定しているターゲットのプロパティウィンドウを開く。固定していなければ開かない。
   public openTarget(clientX: number, clientY: number): void {
     const target = this.targeter.aliveTarget;
-    if (target) this.open(clientX, clientY, target, this.displayWindowManager.current.simTime);
+    const inspected = target ? objectPickableOf(target) : null;
+    if (inspected) this.open(clientX, clientY, inspected, this.displayWindowManager.current.simTime);
   }
 
   // 対象1つにつきウィンドウは高々1枚: 既存があればクリック位置へ動かして最前面に出すだけで
@@ -240,8 +243,8 @@ export class ObjectWindows implements PropertyWindowOpener {
   private relatedItemsFor(target: InspectedObject, pivot: number): readonly PropertyWindowRelatedItem[] {
     const controlled = this.controlSelection.current;
     // 搭載部品を持つのは艦だけなので、操作中の基地では周回物体の一覧へ落ちる。
-    if (controlled instanceof Player && target === controlled) {
-      return controlled.parts.map((part) => ({
+    if (controlled instanceof Player && target.id === controlled.id) {
+      return controlled.inspection.parts.map((part) => ({
         id: part.id,
         label: part.name,
         onFocus: () => this.focus(controlled.id, `${part.name} を搭載する ${controlled.name}`),
@@ -277,7 +280,7 @@ export class ObjectWindows implements PropertyWindowOpener {
   // 関連一覧の見出し。操作中の艦自身を見ているときだけ搭載部品で、それ以外は周回物体。
   private relatedTitleFor(target: InspectedObject): string {
     const controlled = this.controlSelection.current;
-    return controlled instanceof Player && target === controlled ? '搭載部品' : '周回物体';
+    return controlled instanceof Player && target.id === controlled.id ? '搭載部品' : '周回物体';
   }
 
   // フォーカスをその対象へ移す。マップは座標系パネル連動(計画中心の追随)込みの経路、
