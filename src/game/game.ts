@@ -70,6 +70,18 @@ import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
 import { MAX_DYN_PRESSURE } from './player/aero-load';
 import { MAX_HULL_TEMP } from './dynamic/dynamic-entity/ship';
 import { SIM_SPEED_LEVELS } from './dynamic/sim-speed-manager';
+import { GameInputRouter, type GameInputPort } from './input/game-input-router';
+import { gameCommand } from './input/game-commands';
+import { rawGameInputAdapter } from './input/raw-game-input-adapter';
+
+const CONTROLLABLE_COMMANDS = [
+  K.thrustForward, K.thrustBackward, K.thrustLeft, K.thrustRight, K.thrustUp, K.thrustDown,
+  K.rcsDampToggle, K.progradeReset, K.fineAttitudeToggle, K.progradeHoldToggle,
+  K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax,
+  K.boosterDecouple, K.boosterIgnitionToggle,
+  K.radiatorDeployLeft, K.radiatorDeployRight, K.solarDeployLeft, K.solarDeployRight,
+  K.reload,
+].map((binding) => gameCommand(binding.code, binding));
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -130,6 +142,7 @@ export class Game {
   private readonly frameControls: FrameControls;
   // 計測区間の境界を打つ先。
   private readonly sections: FrameSections;
+  private readonly inputRouter: GameInputRouter;
 
   // 星系を組んでから、このランを組み立てる。段の切れ目で描画を明け渡すので、
   // 組み立て中の Game は誰にも観測されないまま数フレームをまたぐ。
@@ -332,6 +345,65 @@ export class Game {
 
     // 復元した focus を、軌道表示の基準系へも通しておく。
     this.frameControls.setFocus(this.cameraSystem.mapCamera.focus);
+
+    this.inputRouter = new GameInputRouter(rawGameInputAdapter(this.input), [
+      {
+        feature: 'pause',
+        commands: [gameCommand(K.pauseMenu.code, K.pauseMenu)],
+        handleCommand: () => {
+          if (!this._hud.overlayManager.closeTopmostOnEscape()) this.pauseMenu.toggle(true);
+        },
+      },
+      {
+        feature: 'overlay-shortcut',
+        handlePressed: code => this._hud.overlayManager.dispatchShortcut(code),
+      },
+      {
+        feature: 'hud',
+        commands: [gameCommand(K.help.code, K.help)],
+        handleCommand: command => this._hud.handleCommand(command.id),
+      },
+      {
+        feature: 'camera-command',
+        commands: [gameCommand(K.followAttitudeToggle.code, K.followAttitudeToggle)],
+        handleCommand: command => this.cameraSystem.handleCommand(command.id),
+      },
+      {
+        feature: 'target-command',
+        isEnabled: () => !this._isPaused
+          && !this._hud.overlayManager.isInputGated()
+          && this.viewManager.current === 'combat'
+          && this.activeControllable !== null,
+        commands: [gameCommand(K.targetSelect.code, K.targetSelect)],
+        handleCommand: () => this.targeter.requestTargetSelect(),
+      },
+      {
+        feature: 'game-speed',
+        isEnabled: () => !this._hud.overlayManager.isInputGated(),
+        commands: [
+          gameCommand(K.warpSlower.code, K.warpSlower),
+          gameCommand(K.warpFaster.code, K.warpFaster),
+        ],
+        handleCommand: command => this.simSpeedManager.handleCommand(command.id),
+      },
+      {
+        feature: 'view',
+        isEnabled: () => !this._hud.overlayManager.isInputGated(),
+        commands: [gameCommand(K.toggleMapMode.code, K.toggleMapMode)],
+        handleCommand: command => this.viewManager.handleCommand(command.id),
+      },
+      {
+        feature: 'active-view',
+        isEnabled: () => !this._hud.overlayManager.isInputGated(),
+        commands: [
+          gameCommand(K.deleteNode.code, K.deleteNode),
+          gameCommand(K.autoWarpToNode.code, K.autoWarpToNode),
+        ],
+        handleCommand: command => this.viewManager.activeView.handleCommand(
+          command.id, this.dynamicSystem.simTime,
+        ),
+      },
+    ]);
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -474,7 +546,9 @@ export class Game {
     this.activeStage.update(dt, this.dynamicSystem.simTime, this.simSpeedManager);
     this.sections.exit(SECTION.stage);
     this.dynamicSystem.update(
-      controlled, this.input, canShipAct, dt, simDt, canEngage, this.activeStage, this.activeStage.stageRules);
+      controlled, this.input, canShipAct, dt, simDt, canEngage, this.activeStage, this.activeStage.stageRules,
+      () => this.routeControllableInput(),
+    );
 
     this.targeter.updateBoardMarks(dt, controlled);
     this.controlSelection.reclaimDead();
@@ -497,21 +571,29 @@ export class Game {
   // どのキー/クリックが何をするかは各モジュールが持つ。ここで配るのは、決着後・ポーズ中も
   // 効くべき操作(設定・ヘルプ・再出撃・ワープ・マップ開閉・計画破棄・計画のΔv編集)。
   private handleInput(dt: number): void {
-    // ESC: 開いているオーバーレイがあれば最前面を閉じ、何も無ければ一時停止メニューを開く。
-    if (this.input.takeKey(K.pauseMenu)) {
-      if (!this._hud.overlayManager.closeTopmostOnEscape()) this.pauseMenu.toggle(true);
-    }
-    // オーバーレイの項目ショートカット([F]等)も同じ優先度で最前面へ配送する。
-    this.input.takeKeys((code) => this._hud.overlayManager.dispatchShortcut(code));
-    // 上から下へ優先順位順に呼ぶ。
-    this._hud.handleInput(this.input);
+    this.inputRouter.beginFrame();
+    this.inputRouter.route();
     // ヘルプや設定など、背景入力をゲートするモーダルが開いた後は、同じフレームの
     // ワープ/ビュー切り替え/計画編集へキーを漏らさない。
     if (this._hud.overlayManager.isInputGated()) return;
-    this.simSpeedManager.handleInput(this.input);
-    this.viewManager.handleInput(this.input);
-    // ビュー固有のキー(戦闘=計画破棄/自動ワープ、マップ=Δv 編集)は現在のビューが持つ。
-    this.viewManager.activeView.handleInput(this.input, dt, this.dynamicSystem.simTime);
+    // マップの Δv 編集はプレイヤーの入力edgeより先に押下中キーを確保する。
+    this.viewManager.activeView.updateActions(this.input, dt);
+  }
+
+  // ステージ更新と自律推力の更新が終わった後、操作対象へ単発入力を配る。
+  private routeControllableInput(): void {
+    if (this._isPaused || !this.activeStage.isPlaying || !this.simSpeedManager.canShipAct) return;
+    if (this.activeControllable === null) return;
+    this.inputRouter.routeAdditional([{
+      feature: 'controllable',
+      commands: CONTROLLABLE_COMMANDS,
+      handleCommand: command => this.activeControllable?.handleInputCommand(command.id, this.dynamicSystem),
+    }]);
+  }
+
+  // Game 更新後、Launcher と snapshot の入力を同じ raw edge router へ追加する。
+  public routeInput(ports: readonly GameInputPort[]): void {
+    this.inputRouter.routeAdditional(ports);
   }
 
   // ------------------------------------------------------------------ sync

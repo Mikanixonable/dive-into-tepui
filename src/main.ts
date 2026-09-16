@@ -31,6 +31,8 @@ import type { GameHost } from './game/game-host';
 import type { GraphicsSettingsData } from './render/graphics-settings';
 import type { RenderStyle } from './render/render-style';
 import type { SettingValue } from './settings/stored-setting';
+import { gameCommand } from './game/input/game-commands';
+import { KEY_MAPPING as K } from './input/key-mapping';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
 async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
@@ -73,15 +75,33 @@ function startAnimationLoop(
       sections.beginFrame();
       game.update(dt, viewport);
       sections.endFrame();
-      // Game が消費した入力エッジは、この時点で取り除かれている。
-      snapshotControls.handleInput(game.input, current.snapshot);
-      launcher.handleInput(game.input);
+      // Game が消費した入力エッジの残りを、外部ライフサイクルの優先順へ配る。
+      game.routeInput([
+        {
+          feature: 'snapshot',
+          commands: [
+            gameCommand(K.clipSnapshot.code, K.clipSnapshot),
+            gameCommand(K.openSnapshots.code, K.openSnapshots),
+          ],
+          handleCommand: command => snapshotControls.handleCommand(command.id, current.snapshot),
+        },
+        {
+          feature: 'launcher',
+          isEnabled: () => !game.activeStage.isPlaying,
+          commands: [gameCommand(K.restart.code, K.restart)],
+          handleCommand: command => launcher.handleCommand(command.id),
+        },
+        {
+          feature: 'debug-info',
+          commands: [gameCommand(K.toggleDebugInfoWindow.code, K.toggleDebugInfoWindow)],
+          handleCommand: command => debugInfo.handleCommand(command.id),
+        },
+      ]);
       // 入力の処理中に周回が畳まれたら(再出撃キーなど)、捨てた Game には触らずこのフレームを終える。
       if (launcher.currentGame !== game) {
         requestAnimationFrame(animate);
         return;
       }
-      debugInfo.handleInput(game.input);
       autoSave.update(current.snapshot);
       const t1 = debugInfo.on ? performance.now() : 0;
       game.sync(graphics.current, renderStyle.current, viewport);

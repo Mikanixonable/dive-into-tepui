@@ -52,6 +52,7 @@ export interface PilotCommandFrame {
 export interface PilotCommandReceiver {
   updateControls(frame: PilotCommandFrame): void;
   clearTransientCommands(): void;
+  handleInputCommand(commandId: string, registry: EntityRegistry): void;
 }
 
 export interface NavigationController {

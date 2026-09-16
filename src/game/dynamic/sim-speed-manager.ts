@@ -5,7 +5,6 @@
 import type { Notifier } from '../../hud/notifier';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { KinematicState } from '../../physics/kinematic-state';
-import type { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { NODE_APPROACH_LEAD } from '../plan/plan';
 
@@ -93,11 +92,10 @@ export class SimSpeedManager {
     this.autoWarpUntil = null;
   }
 
-  // 担当キーの受け口: [,]/[.] でワープ段を上下する。ワープ操作は決着後・ポーズ中も効くべきなので、
-  // game はこれをそれらの early return より前に呼ぶ(自動ワープの段階調整そのものは update() が行う)。
-  handleInput(input: Input): void {
-    if (input.takeKey(K.warpSlower)) this.shift(-1);
-    if (input.takeKey(K.warpFaster)) this.shift(1);
+  // router から [,]/[.] の単発入力を受け取ってワープ段を上下する。
+  handleCommand(commandId: string): void {
+    if (commandId === K.warpSlower.code) this.shift(-1);
+    if (commandId === K.warpFaster.code) this.shift(1);
   }
 
   // 直近ノードの実行時刻までの自動ワープをトグルする。
