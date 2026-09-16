@@ -32,7 +32,6 @@ import type { RadiatorSide } from '../player/radiator';
 
 import { Plan, type PlanExecutionMode } from '../plan/plan';
 import { savedAttitude, savedKinematicState, type PlayerSaveData, type PlanSaveData } from '../save/save-data';
-import type { Part } from '../dynamic/dynamic-entity/parts';
 import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { MARKER_PRIORITY } from '../marker/crowding';
@@ -42,7 +41,7 @@ import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
 import type { PlayerStatusSnapshot } from '../player/player-status-snapshot';
 import type { DamageOutcomeSink } from '../player/damage-outcome';
-import { PlayerInspection } from '../pickable/player-inspection';
+import { ShipInspection } from '../pickable/ship-inspection';
 import { DefaultPlayerEffects, type PlayerEffects } from '../player/player-effects';
 import { createDefaultCombatPreset } from './ship-presets';
 import type { ShipAssembly } from './ship-assembly';
@@ -77,7 +76,7 @@ export class ModularShip extends Ship implements Controllable {
   public override readonly mapKind: DynamicEntityKind = 'player';
   public override readonly controllable = true;
   public override readonly pickable = true;
-  public readonly inspection = new PlayerInspection(this);
+  public readonly inspection = new ShipInspection(this);
   public readonly objectPickable = this.inspection;
   // 除去の前に注視・操作対象の参照を次の艦へ引き継ぐ必要があるので、所有者側に回収させる。
   public override readonly reclaimedByOwner = true;
@@ -89,7 +88,6 @@ export class ModularShip extends Ship implements Controllable {
   public readonly fire: FireControl;
   public readonly altitudeAlarm: AltitudeAlarm;
   private readonly effects: PlayerEffects;
-  public override get parts(): readonly Part[] { return super.parts; }
   // この艦自身のマニューバ計画。
   public readonly plan = new Plan();
   public planExecution: PlanExecutionMode = 'instant';
@@ -588,10 +586,9 @@ export class ModularShip extends Ship implements Controllable {
     orbitReference: OrbitReference | undefined,
   ): ModularShipRenderSource {
     const motion = this.motion;
-    const { belt, power, radiator } = motion;
+    const { belt } = motion;
     // 指令の有無は加速度の大きさで決まるので、噴射していないフレームは null として渡す。
     const thrustAcceleration = this.throttle.thrustAccelVec;
-    const radiatorPanel = (side: RadiatorSide) => ({ wear: radiator.wearOf(side), ...radiator.foldThetas(side) });
     return {
       ...super.renderSource(viewFrame, visible, active, orbitReference),
       assembly: this.assembly,
@@ -606,8 +603,6 @@ export class ModularShip extends Ship implements Controllable {
       magsLeft: this.magsLeft,
       roundsInMag: this.roundsInMag,
       averageMuzzleVelocity: this.averageMuzzleVelocity,
-      solar: { up: power.deployOf('up'), down: power.deployOf('down') },
-      radiator: { up: radiatorPanel('up'), down: radiatorPanel('down') },
       orbitAxesReference: orbitReference?.state ?? null,
     };
   }
