@@ -15,7 +15,7 @@ import {
   aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,
   stepThermalDeviation, sunlightIrradiance,
 } from '../../physics/thermal';
-import { orbitalElementsOf } from '../../physics/elements';
+import { orbitalElementsOf, type OrbitalElements } from '../../physics/elements';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { Contact } from './dynamic-entity/contact';
 import type { DynamicReactionServices } from './dynamic-simulation-participant';
@@ -286,7 +286,7 @@ export class DynamicMotion {
   }
 
   // 時刻 centerPivot の center を中心とする、現在の状態の軌道要素。
-  public orbitalElementsAround(center: CelestialBody, centerPivot: number) {
+  public orbitalElementsAround(center: CelestialBody, centerPivot: number): OrbitalElements | null {
     return orbitalElementsOf(this.state, center, centerPivot);
   }
 
