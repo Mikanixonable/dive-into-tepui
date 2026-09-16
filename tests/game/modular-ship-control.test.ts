@@ -6,6 +6,8 @@ import { FlashEffects } from '../../src/game/vfx/flash-effects';
 import type { MarkerSlots } from '../../src/game/marker/marker-slots';
 import type { Notifier } from '../../src/hud/notifier';
 import type { WorldSfx } from '../../src/audio/sfx/world-sfx';
+import { createBasePreset } from '../../src/game/ship/ship-presets';
+import type { ShipAssembly } from '../../src/game/ship/ship-assembly';
 
 function installCanvasStub(): void {
   const context = {
@@ -21,7 +23,7 @@ function installCanvasStub(): void {
   };
 }
 
-function ship(): ModularShip {
+function ship(assembly?: ShipAssembly): ModularShip {
   installCanvasStub();
   const notifier: Notifier = { hint() {}, toast() {} };
   const markers = {
@@ -35,11 +37,23 @@ function ship(): ModularShip {
     new THREE.Scene(),
     new FlashEffects(),
     markers,
-    { name: 'modular-test' },
+    { name: 'modular-test', assembly },
   );
 }
 
 export function register(): void {
+  test('modular ship control: base preset も共通 entity と有限物性を使う', () => {
+    const base = ship(createBasePreset());
+    assert.equal(base.capabilities.role, 'base');
+    assert.equal(base.mapKind, 'base');
+    assert.equal(base.inspection.listSection, 'base');
+    assert.ok(Number.isFinite(base.motion.mass) && base.motion.mass > 0);
+    assert.ok(Number.isFinite(base.hp) && base.hp > 0);
+    assert.ok(Number.isFinite(base.totalFuel) && base.totalFuel > 0);
+    assert.ok(base.motion.compoundShape !== null);
+    base.dispose();
+  });
+
   test('modular ship control: 既定 preset の戦闘能力と操作 cockpit を公開する', () => {
     const controlled = ship();
     assert.equal(controlled.capabilities.role, 'ship');
