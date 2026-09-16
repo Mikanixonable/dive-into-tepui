@@ -4,7 +4,7 @@
 import { orbitingMotionOf, positionOf, solarSystemParts, stateOf } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { MU_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/constants';
+import { MU_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 import { bodyAnchorSource } from '../../src/physics/attractor';
 import { FrameAnchors } from '../../src/game/frame-anchors';
 import { FrameAnchorSource, ReferenceFrame, toFrameDir, toFramePoint, toFrameState, toInertialPoint, toInertialState } from '../../src/physics/frame';
@@ -32,8 +32,7 @@ function findFrame(frames: readonly ReferenceFrame[], center: string, rotatingWi
 const NO_ANCHORS: FrameAnchorSource = { bodies: [], bodiesPivot: 0, stateOf: () => null, attractorOf: () => null };
 
 export function register(): void {
-  // 太陽・月とも初期位相を固定して決定的にする。
-  const parts = solarSystemParts({ moon: 0.4 });
+  const parts = solarSystemParts();
   const windows = parts.system;
   const referenceFrames = parts.referenceFrames;
   const EARTH_INERTIAL = findFrame(referenceFrames.frames, 'earth', null);

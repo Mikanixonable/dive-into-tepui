@@ -141,13 +141,11 @@ export interface ProteinAssetDefinition {
 interface ProteinSiteSaveData {
   id: string;
   hp: number;
-  disabled: boolean;
 }
 
 export interface ProteinSaveData {
   schemaVersion: number;
   integrityHp: number;
-  phase: ProteinPhase;
   sites: ProteinSiteSaveData[];
   modifications: Record<string, string>;
 }
@@ -157,7 +155,6 @@ export interface ProteinCombatReadout {
   readonly phase: ProteinPhase;
   readonly integrityHp: number;
   readonly integrityMaxHp: number;
-  readonly selectedSiteId: string | null;
   readonly sites: readonly {
     readonly id: string;
     readonly abbreviation: string;

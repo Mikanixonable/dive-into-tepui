@@ -12,7 +12,8 @@ import { LinePickables } from '../pickable/line-pickables';
 import type { ObjectWindows } from '../pickable/object-windows';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialMarkers } from '../marker/celestial-markers';
-import type { MarkerManager } from '../marker/marker-manager';
+import type { MarkerVisibility } from '../../marker/marker-visibility';
+import type { GroupedMarkers } from '../marker/grouped-markers';
 import type { EquatorNodeManager } from '../marker/equator-node-manager';
 import type { NavTarget } from '../nav-target';
 import { PlanEditor } from '../plan/plan-editor';
@@ -25,7 +26,7 @@ import type { DisplayWindow, DisplayWindowManager } from '../display-window-mana
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { FrameAnchors } from '../frame-anchors';
 import type { MapDisplayToggles } from '../map/display-toggles';
-import type { RunSetting } from '../run-setting';
+import type { SettingValue } from '../../settings/setting-value';
 import type { Viewport } from '../../render/viewport';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ViewFrame } from './view-frame';
@@ -46,10 +47,11 @@ export class MapView implements ViewFrame {
     equatorNodes: EquatorNodeManager,
     private readonly celestialSystem: CelestialSystem,
     private readonly celestialMarkers: CelestialMarkers,
-    private readonly markerManager: MarkerManager,
+    markers: MarkerVisibility,
+    private readonly combatMarkers: GroupedMarkers,
     private readonly displayWindowManager: DisplayWindowManager,
     private readonly frameControls: FrameControls,
-    frameAnchors: FrameAnchors,
+    private readonly frameAnchors: FrameAnchors,
     private readonly controlSelection: ControlSelection,
     simSpeedManager: SimSpeedManager,
     planDisplay: PlanDisplay,
@@ -57,9 +59,8 @@ export class MapView implements ViewFrame {
     hud: HudLayers & Notifier,
     uiSfx: UiSfx,
     navTarget: NavTarget,
-    private readonly mapDisplay: RunSetting<MapDisplayToggles>,
+    private readonly mapDisplay: SettingValue<MapDisplayToggles>,
   ) {
-    // 編集・物体候補・線候補を組み、最後に同じ候補群を読む入力処理へ渡す。
     this.planEditor = new PlanEditor(
       hud, uiSfx, simSpeedManager, celestialSystem, scene, controlSelection,
       displayWindowManager, frameControls, planDisplay.path,
@@ -70,9 +71,9 @@ export class MapView implements ViewFrame {
     );
     this.linePickables = new LinePickables(roster, celestialSystem);
     this.picking = new MapPicking(
-      hud, cameraSystem, roster, celestialSystem, celestialMarkers, markerManager,
+      hud, cameraSystem, roster, celestialSystem, celestialMarkers, markers,
       navTarget, frameControls, this.objectPickables, this.linePickables, objectWindows,
-      controlSelection,
+      controlSelection, displayWindowManager,
     );
   }
 
@@ -109,9 +110,9 @@ export class MapView implements ViewFrame {
     this.linePickables.clear();
   }
 
-  // router から Δv 編集の単発キーを受け取る。
-  public handleCommand(commandId: string): void {
-    this.planEditor.handleCommand(commandId);
+  // router から計画キーと Δv 編集の単発キーを受け取る。
+  public handleCommand(commandId: string, simTime: number): void {
+    this.planEditor.handleCommand(commandId, simTime);
   }
 
   // Δv 編集の押下中操作を編集セッションへ配る。
@@ -132,22 +133,21 @@ export class MapView implements ViewFrame {
   // 選択候補と可視性ポリシーを組み、時刻に追従する操作パネルを更新する。
   public update(displayWindow: DisplayWindow): void {
     this.objectPickables.refresh(displayWindow, this.mapDisplay.current);
-    this.frameControls.update(displayWindow.displayTime);
+    this.displayWindowManager.dropStaleRotatingFrame(displayWindow.displayTime, this.frameAnchors);
     this.planEditor.update(displayWindow.simTime);
   }
 
   // 天体ラベルの間引きと表示。
-  public syncLabels(displayWindow: DisplayWindow, camera: CameraFrame): void {
+  public syncLabels(displayWindow: DisplayWindow, camera: CameraFrame, nowMs: number): void {
     const visibilityPolicy = this.visibilityPolicy;
-    if (visibilityPolicy === null) { this.celestialMarkers.hideLabels(); return; }
+    if (visibilityPolicy === null) { this.celestialMarkers.hideLabels(nowMs); return; }
     this.celestialMarkers.syncLabels(
-      camera.project, camera.position, displayWindow.displayTime, visibilityPolicy,
+      camera.project, camera.position, displayWindow.displayTime, visibilityPolicy, nowMs,
     );
   }
 
-  // マップ専用の編集 UI と常設パネル(未来表示・座標系・軌道物体一覧)・天体ラベルのサブ行・
-  // 軌道線の右クリック候補。
-  public syncPanels(displayWindow: DisplayWindow, camera: CameraFrame): void {
+  // マップ専用の表示物を、このフレームの表示窓とカメラへ揃える。
+  public syncPanels(displayWindow: DisplayWindow, camera: CameraFrame, nowMs: number): void {
     // 編集 UI と常設パネル
     this.planEditor.sync(this.cameraSystem.mapCamera.dist, camera.floatingOrigin);
     this.displayWindowManager.sync(this.controlSelection.current);
@@ -158,8 +158,8 @@ export class MapView implements ViewFrame {
     );
     // 天体ラベルのサブ行と、軌道線の右クリック候補
     this.celestialMarkers.syncSubLabels(
-      this.markerManager.combatMarkers, this.celestialSystem.celestialMotions, displayWindow.displayTime,
-      camera.project, camera.position,
+      this.combatMarkers, this.celestialSystem.celestialMotions, displayWindow.displayTime,
+      camera.project, camera.position, nowMs,
     );
     this.linePickables.refresh();
   }

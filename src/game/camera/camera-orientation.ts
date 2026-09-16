@@ -1,11 +1,10 @@
-// カメラの向きを、クォータニオンと極軸まわりのオイラー角の二表現で保つ。どちらから書き換えても
-// 両方が同じ向きを指すこと、姿勢追従中の生の値が対象姿勢からの相対値であることは、この中だけで
-// 担保する。**極軸の選び方は持たない** — 天体から選ぶのはカメラの仕事なので、書き換えのたびに
-// 受け取る。
+// カメラの向きをクォータニオン1本で保ち、画面ドラッグと極軸まわりのオイラー操作をそこへ積む。
+// 姿勢追従中は生の値を対象姿勢からの相対値として持ち、実効回転で姿勢を合成する。**極軸の
+// 選び方は持たない** — 天体から選ぶのはカメラの仕事なので、オイラー操作のたびに受け取る。
 import {
   LOCAL_FORWARD, LOCAL_UP, Quat, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate,
 } from '../../math/quat';
-import { POLAR_PITCH_LIMIT, PolarEuler, eulerFromRotation, rotationFromEuler } from '../../math/polar-euler';
+import { POLAR_PITCH_LIMIT, eulerFromRotation, rotationFromEuler } from '../../math/polar-euler';
 import { addScaled, cross, norm, scale, type Vec3 } from '../../math/vec3';
 
 // 視点の回し方。オイラーは極軸を天頂とした方位・仰角で、クォータニオンは画面基準で回す。
@@ -36,22 +35,14 @@ function rotateByScreenDrag(
 }
 
 export class CameraOrientation {
-  private euler: PolarEuler;
-
   // rotation は追従中なら対象姿勢からの相対値。attitude が null の間は絶対値のまま扱い、
   // 初めて姿勢が引けたときに相対値へ読み替える(ロード直後がこの状態)。
   public constructor(
     private rotation: Quat,
-    polar: Vec3,
     private mode: CameraRotationMode,
     private following: boolean,
     private attitude: Quat | null,
-  ) {
-    this.euler = eulerFromRotation(rotation, polar);
-  }
-
-  // 保存と座標系変換が読む生の値。
-  public get stored(): Quat { return this.rotation; }
+  ) {}
 
   public get rotationMode(): CameraRotationMode { return this.mode; }
 
@@ -65,72 +56,52 @@ export class CameraOrientation {
     return this.following && this.attitude !== null ? qMul(this.attitude, this.rotation) : this.rotation;
   }
 
-  // 実効回転から生の値へ書き戻す(追従中は相対値へ読み替える)。オイラー角は揃えない —
-  // 極軸はカメラが動いた後の位置で決まるので、揃えるのは rebase() の役目。
-  public store(effective: Quat): void {
+  // 実効回転から生の値へ書き戻す(追従中は相対値へ読み替える)。
+  public setEffective(effective: Quat): void {
     this.rotation = this.following && this.attitude !== null
       ? qNormalize(qMul(qInvert(this.attitude), effective)) : qNormalize(effective);
   }
 
-  // 生の値を差し替える。
-  public set(rotation: Quat, polar: Vec3): void {
+  // 生の値を差し替える。追従中に渡した向きは、対象姿勢からの相対値として扱われる。
+  public setRaw(rotation: Quat): void {
     this.rotation = rotation;
-    this.euler = eulerFromRotation(rotation, polar);
   }
 
-  // 極軸が変わったぶん、オイラー角を引き直す。
-  public rebase(polar: Vec3): void {
-    this.euler = eulerFromRotation(this.rotation, polar);
+  // 極軸 polar を天頂とする方位・仰角・ロールへ増分を積む。仰角は真上・真下の手前で止める。
+  public turn(dYaw: number, dPitch: number, dRoll: number, polar: Vec3): void {
+    const euler = eulerFromRotation(this.rotation, polar);
+    this.rotation = rotationFromEuler({
+      yaw: euler.yaw + dYaw,
+      pitch: Math.max(-POLAR_PITCH_LIMIT, Math.min(POLAR_PITCH_LIMIT, euler.pitch + dPitch)),
+      roll: euler.roll + dRoll,
+    }, polar);
   }
 
-  // オイラー角から生の値を組み直す。極軸の変化を向きへ反映させる。
-  public restoreFromEuler(polar: Vec3): void {
-    this.rotation = rotationFromEuler(this.euler, polar);
-  }
-
-  // オイラー角へ増分を積み、組み直した生の回転を返す。仰角は真上・真下の手前で止める。
-  // 姿勢追従中はこの値が相対回転になるので、実効回転は effective() で読む。
-  public turn(dYaw: number, dPitch: number, dRoll: number, polar: Vec3): Quat {
-    this.euler.yaw += dYaw;
-    this.euler.pitch = Math.max(-POLAR_PITCH_LIMIT, Math.min(POLAR_PITCH_LIMIT, this.euler.pitch + dPitch));
-    this.euler.roll += dRoll;
-    this.rotation = rotationFromEuler(this.euler, polar);
-    return this.rotation;
-  }
-
-  // 画面ドラッグと回転キーで実効回転を回し、書き戻して返す。すべて [rad] で、感度の換算は
-  // 呼び出し側が済ませておく。オイラー角は揃えない(rebase() の役目)。
+  // 画面ドラッグと回転キーで実効回転を回す。すべて [rad] で、感度の換算は呼び出し側が済ませておく。
   public turnByDrag(
     dragRight: number, dragUp: number, roll: number, keyYaw: number, keyPitch: number,
-  ): Quat {
-    const turned = rotateByScreenDrag(this.effective(), dragRight, dragUp, roll, keyYaw, keyPitch);
-    this.store(turned);
-    return turned;
+  ): void {
+    this.setEffective(rotateByScreenDrag(this.effective(), dragRight, dragUp, roll, keyYaw, keyPitch));
   }
 
-  // 回し方を切り替える。切り替えた瞬間の向きは変えない。
-  public setMode(mode: CameraRotationMode, polar: Vec3): void {
-    if (mode === this.mode) return;
-    if (mode === 'euler') this.euler = eulerFromRotation(this.rotation, polar);
-    else this.rotation = rotationFromEuler(this.euler, polar);
+  // 回し方を切り替える。保持している向きはそのままで、次の入力からの積み方だけが変わる。
+  public setRotationMode(mode: CameraRotationMode): void {
     this.mode = mode;
   }
 
   // 姿勢追従を始める。保持していた絶対の向きを、対象姿勢からの相対値へ読み替える。
-  public beginAttitudeFollow(attitude: Quat, polar: Vec3): void {
+  public beginAttitudeFollow(attitude: Quat): void {
     this.rotation = qNormalize(qMul(qInvert(attitude), this.rotation));
     this.attitude = attitude;
     this.following = true;
-    this.euler = eulerFromRotation(this.rotation, polar);
   }
 
   // 姿勢追従を解き、生の値を絶対の向きへ読み替える(掛かっていなければ何もしない)。
-  public endAttitudeFollow(polar: Vec3): void {
+  public endAttitudeFollow(): void {
     if (!this.following) return;
     if (this.attitude !== null) this.rotation = qNormalize(qMul(this.attitude, this.rotation));
     this.following = false;
     this.attitude = null;
-    this.euler = eulerFromRotation(this.rotation, polar);
   }
 
   // 追従の選択だけを差し替える(向きは読み替えない)。初期状態へ戻すときに使い、
@@ -141,13 +112,10 @@ export class CameraOrientation {
   }
 
   // 合成に使う姿勢を最新へ。解決できないフレームは直前の姿勢を保つ(視点が跳ねない)。
-  public refreshAttitude(attitude: Quat | null, polar: Vec3): void {
+  public refreshAttitude(attitude: Quat | null): void {
     if (!this.following || attitude === null) return;
     // 絶対値で持っていた向き(ロード直後)を、初めて引けた姿勢からの相対値へ読み替える。
-    if (this.attitude === null) {
-      this.rotation = qNormalize(qMul(qInvert(attitude), this.rotation));
-      this.euler = eulerFromRotation(this.rotation, polar);
-    }
+    if (this.attitude === null) this.rotation = qNormalize(qMul(qInvert(attitude), this.rotation));
     this.attitude = attitude;
   }
 }

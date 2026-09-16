@@ -5,8 +5,8 @@ import { shapeAxes, shapeInscribedRadius, shapeOf } from '../../physics/celestia
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { atmosphereDraws } from '../../render/atmosphere';
 import {
-  REFERENCE_STAR_RADIANT_INTENSITY, STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE,
-  STARLESS_SUN_RADIUS, SunLight,
+  REFERENCE_RADIANT_INTENSITY, STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE, STARLESS_SUN_RADIUS, SunLight,
+  scaledRadiantIntensity,
 } from '../../render/pipeline/sun-light';
 import { ambientFraction } from '../../render/pipeline/lighting/ambient-source';
 import { selectPlanetLights } from '../../render/pipeline/lighting/planet-light-select';
@@ -64,7 +64,7 @@ export class CelestialIllumination {
   public get fixedBrightnessScale(): number { return this.targets.exposure.fixedBrightnessScale; }
 
   // 恒星・露出・環境光・天体照・影・大気を、この1フレームの表示状態に同期する。全天体の sync の
-  // 後に呼ぶ。sources は星系の全天体とその表示可否、focusPosition は注視中の天体の ECI 位置
+  // 後に呼ぶ。sources は星系の全天体、focusPosition は注視中の天体の ECI 位置
   // (天体以外を注視中は null)、sunDirection は恒星を持たない星系で光源を置く向き。
   public sync(
     sources: readonly CelestialIlluminationSource[], displayTime: number, camera: CameraFrame,
@@ -79,12 +79,13 @@ export class CelestialIllumination {
       : fo.RtoThreeV3(starPos);
     // 露出と天体照の基準点は注視点 — カメラ位置だと、太陽系の外にいるマップビューで露出が発散する。
     const reference = fo.RtoThreeV3(camera.viewpoint.lookTarget);
-    const starIntensity = star?.stellarLight.radiantIntensity ?? REFERENCE_STAR_RADIANT_INTENSITY;
+    const starIntensity = star === null
+      ? REFERENCE_RADIANT_INTENSITY : scaledRadiantIntensity(star.motion.def.radiantIntensity);
     this.targets.exposure.setReference(reference, sunPos, starIntensity);
     this.targets.sunLight.set(
       sunPos, star?.motion.def.radius ?? STARLESS_SUN_RADIUS,
       star?.stellarLight.color ?? STARLESS_SUN_COLOR, starIntensity);
-    this.targets.ambient.setFraction(ambientFraction(camera.mode === 'map', graphics));
+    this.targets.ambient.setFraction(ambientFraction(graphics));
     this.syncPlanetLights(sources, displayTime, camera);
     this.syncShadowSources(sources, fo, displayTime, focusPosition, graphics);
     this.syncAtmosphere(sources, displayTime, camera, graphics);
@@ -100,9 +101,7 @@ export class CelestialIllumination {
       celestialBody: source.motion,
       albedo: source.view.lightSourceAlbedo ?? DEFAULT_ALBEDO,
     }));
-    const lights = selectPlanetLights(
-      candidates, displayTime, this.star?.stellarLight.radiantIntensity ?? null,
-      camera.viewpoint.lookTarget);
+    const lights = selectPlanetLights(candidates, displayTime, camera.viewpoint.lookTarget);
     // 選ばれた天体を描画座標へ移し、内接球の半径で渡す。
     this.targets.planetLight.set(lights.map((light) => ({
       center: camera.floatingOrigin.RtoThreeV3(light.celestialBody.positionAt(displayTime)),
@@ -182,7 +181,6 @@ export class CelestialIllumination {
   ): void {
     const scale = camera.radialScale;
     const candidates = sources.flatMap((source) => {
-      if (!source.visible) return [];
       const candidate = source.view.atmosphereCandidateAt(
         source.motion, camera.floatingOrigin, displayTime, camera.position, scale, graphics);
       return candidate === null ? [] : [candidate];

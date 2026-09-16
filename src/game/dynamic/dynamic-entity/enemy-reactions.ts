@@ -99,6 +99,7 @@ export class EnemyReactions {
     this.port.effects.spawnEnemyDestroyFlash(this.port.motion.state, this.port.modelScale);
     for (const piece of enemyDestroyFragments(
       this.port.motion.state, this.port.modelScale, this.port.worldSfx, this.port.effects,
+      registry.idAllocators,
     )) registry.add(piece);
   }
 }

@@ -1,6 +1,4 @@
-// 部位のアンカーを、静止座標と残基変位から表示中の変形に合わせた座標へ写す。
-import { qInvert, qRotate, type Quat } from '../../math/quat';
-import { add, sub, type Vec3, v3 } from '../../math/vec3';
+// 部位のアンカーを引く残基群と、その残基たちの変位の平均。模型座標のままの変位を返す。
 import type { ProteinRenderMotion, ProteinRenderSite } from './protein-render-definition';
 
 /** 部位の残基記述子を motion の残基インデックスへ解決する。1つも引けなければ fallbackValues[index](無ければ空)。 */
@@ -47,29 +45,4 @@ export function proteinAnchorOffset(
     count += 1;
   }
   return count === 0 ? [0, 0, 0] : [x / count, y / count, z / count];
-}
-
-/** 部位の静止座標と残基変位から、ワールド座標を求める。部位が無いときは origin をそのまま返す。 */
-export function proteinSiteWorldPosition(
-  site: ProteinRenderSite | null,
-  group: readonly number[],
-  residueOffsets: ArrayLike<number>,
-  residueCount: number,
-  coordinateScale: number,
-  rootScale: number,
-  origin: Vec3,
-  attitude: Quat,
-): Vec3 {
-  if (!site) return origin;
-  const [x, y, z] = site.position;
-  const offset = proteinAnchorOffset(group, residueOffsets, residueCount);
-  const scale = coordinateScale * rootScale;
-  const local = v3((x + offset[0]) * scale, (y + offset[1]) * scale, (z + offset[2]) * scale);
-  return add(origin, qRotate(attitude, local));
-}
-
-/** ワールド座標の着弾点を、root の倍率を外した模型ローカル座標へ写す。 */
-export function proteinLocalImpactPoint(worldPoint: Vec3, origin: Vec3, attitude: Quat, rootScale: number): Vec3 {
-  const oriented = qRotate(qInvert(attitude), sub(worldPoint, origin));
-  return v3(oriented.x / rootScale, oriented.y / rootScale, oriented.z / rootScale);
 }

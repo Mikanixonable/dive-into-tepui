@@ -24,7 +24,7 @@ export function shipMotionOptions(
     bcInv: SHIP_BCINV,
     srpCoeff: SHIP_SRP_COEFF,
     historyDuration: DEFAULT_HISTORY_DURATION,
-    predictedForGhost: true,
+    predictsFuture: true,
     specificHeat: SHIP_SPECIFIC_HEAT,
     bulkDensity: SHIP_BULK_DENSITY,
     radiatingAreaPerMass: SHIP_RADIATING_AREA_PER_MASS,
@@ -47,7 +47,7 @@ export abstract class Vessel extends DynamicEntity {
     hp: number,
     motionFactory: DynamicMotionFactory,
     view: DynamicView,
-    id?: string,
+    id: string,
   ) {
     super(motionFactory, view, id);
     this.setName(name);
