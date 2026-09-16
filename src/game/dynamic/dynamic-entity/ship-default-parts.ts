@@ -1,4 +1,5 @@
 import { createPart, type Part } from './parts';
+import { SHIP_MODULE_CATALOG } from '../../ship/ship-module-catalog';
 
 // 敵の金属船体にも使える汎用的な初期ロードアウト。自機固有の入力・状態は含めない。
 const DEFAULT_PART_HP_RATIO = {
@@ -6,12 +7,15 @@ const DEFAULT_PART_HP_RATIO = {
   radiator: 0.05, solarPanel: 0.03, weapon: 0.08, armor: 0.10,
 } as const;
 const SHIP_MASS = 1000;
-const DEFAULT_TORQUE = 1.4 * 1.6;
 const THRUST_LEVEL_MAX = 400;
-const MUZZLE_SPEED = 1000;
-const FIRE_INTERVAL = 0.06;
 
 export function createShipDefaultParts(maxHp: number): Part[] {
+  const thruster = SHIP_MODULE_CATALOG.require('thruster-standard').abilities;
+  const tank = SHIP_MODULE_CATALOG.require('tank-combat-main').abilities;
+  const radiator = SHIP_MODULE_CATALOG.require('radiator-standard').abilities;
+  const solar = SHIP_MODULE_CATALOG.require('solar-panel-standard').abilities;
+  const weapon = SHIP_MODULE_CATALOG.require('weapon-gatling').abilities;
+  const armor = SHIP_MODULE_CATALOG.require('armor-standard').abilities;
   const share = (ratio: number): number => Math.max(1, Math.round(maxHp * ratio));
   const mk = <T extends Parameters<typeof createPart>[0]>(type: T, ratio: number, props: object) =>
     createPart(type, { maxHp: share(ratio), hp: share(ratio), ...props } as never);
@@ -20,18 +24,20 @@ export function createShipDefaultParts(maxHp: number): Part[] {
     mk('hull', R.hull, { name: 'Basic Hull' }),
     mk('cockpit', R.cockpit, { name: 'Cockpit' }),
     mk('thruster', R.thruster, {
-      name: 'Standard RCS', torque: DEFAULT_TORQUE,
+      name: 'Standard RCS', torque: thruster.torque ?? 0,
       thrust: SHIP_MASS * THRUST_LEVEL_MAX, fuelConsumptionRate: 1,
     }),
-    mk('rcs_tank', R.rcsTank, { name: 'Main RCS Tank', maxFuel: 1000, fuel: 1000 }),
-    mk('radiator', R.radiator, { name: 'Heat Radiator L', coolingRate: 42 }),
-    mk('radiator', R.radiator, { name: 'Heat Radiator R', coolingRate: 42 }),
-    mk('solar_panel', R.solarPanel, { name: 'Solar Array L', powerGeneration: 50 }),
-    mk('solar_panel', R.solarPanel, { name: 'Solar Array R', powerGeneration: 50 }),
-    mk('weapon', R.weapon, {
-      name: 'Gatling Gun', weaponType: 'gatling', fireRate: 1 / FIRE_INTERVAL,
-      damage: 1, muzzleVelocity: MUZZLE_SPEED,
+    mk('rcs_tank', R.rcsTank, {
+      name: 'Main RCS Tank', maxFuel: tank.fuelCapacity ?? 0, fuel: tank.fuelCapacity ?? 0,
     }),
-    mk('armor', R.armor, { name: 'Light Armor', damageReduction: 0.2 }),
+    mk('radiator', R.radiator, { name: 'Heat Radiator L', coolingRate: radiator.radiationArea ?? 0 }),
+    mk('radiator', R.radiator, { name: 'Heat Radiator R', coolingRate: radiator.radiationArea ?? 0 }),
+    mk('solar_panel', R.solarPanel, { name: 'Solar Array L', powerGeneration: solar.powerGeneration ?? 0 }),
+    mk('solar_panel', R.solarPanel, { name: 'Solar Array R', powerGeneration: solar.powerGeneration ?? 0 }),
+    mk('weapon', R.weapon, {
+      name: 'Gatling Gun', weaponType: 'gatling', fireRate: weapon.fireRate ?? 0,
+      damage: weapon.weaponDamage ?? 0, muzzleVelocity: weapon.muzzleVelocity ?? 0,
+    }),
+    mk('armor', R.armor, { name: 'Light Armor', damageReduction: armor.armorReduction ?? 0 }),
   ];
 }

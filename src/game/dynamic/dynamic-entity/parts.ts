@@ -58,6 +58,20 @@ export type AnyPart = HullPart | CockpitPart | ArmorPart | ThrusterPart | RcsTan
 
 type ExtractPart<TType extends PartType> = Extract<AnyPart, { type: TType }>;
 
+// 旧 Ship が必要とする最小の部品集合。敵は PartInventory、移行中の自機は
+// ShipAssembly 側の adapter を渡せるよう、Ship から具体コンテナの生成を切り離す。
+export interface ShipPartCollection {
+  readonly parts: readonly AnyPart[];
+  replace(parts: readonly Part[]): void;
+  has(part: Part): boolean;
+  ofType<T extends PartType>(type: T): readonly ExtractPart<T>[];
+  healthySum<T extends PartType>(type: T, valueOf: (part: ExtractPart<T>) => number): number;
+  totalFuel(): number;
+  totalMaxFuel(): number;
+  consumeFuel(amount: number): number;
+  refuelFuel(amount: number): number;
+}
+
 // type の既定値に overrides を重ねてパーツを作る。id は呼び出しごとにランダム発行される。
 export function createPart<TType extends PartType>(
   type: TType,
