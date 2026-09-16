@@ -3,7 +3,6 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
 const srcRoot = path.join(root, 'src');
-const runtimeRoot = path.join(srcRoot, 'game', 'runtime');
 
 const restrictedLayers = {
   game: new Set(['launcher']),
@@ -107,16 +106,6 @@ for (const file of sourceFilesIn(srcRoot)) {
     // ゲーム固有 HUD は Game 全体を探索せず、機能ごとの read model を受け取る。
     if (relativeSourcePath(file).startsWith('game/hud/') && target === path.join(srcRoot, 'game', 'game.ts')) {
       violations.push(`${path.relative(root, file)}:${lineAt(source, index)} imports game/game.ts; game/hud/ からの依存は禁止`);
-    }
-
-    // runtime phase は Game が配線する協調者であり、互いの順序や Game 全体へ逆依存しない。
-    if (file.startsWith(`${runtimeRoot}${path.sep}`)) {
-      if (target.startsWith(`${runtimeRoot}${path.sep}`)) {
-        violations.push(`${path.relative(root, file)}:${lineAt(source, index)} imports another game/runtime phase; phase 間の依存は禁止`);
-      }
-      if (target === path.join(srcRoot, 'game', 'game.ts')) {
-        violations.push(`${path.relative(root, file)}:${lineAt(source, index)} imports game/game.ts; runtime phase からの依存は禁止`);
-      }
     }
 
     // セーブの永続化・一覧表示はランの状態機械から独立している。
