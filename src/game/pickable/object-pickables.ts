@@ -5,7 +5,7 @@ import { objectPickableOf, ObjectPickable } from './object-pickable';
 import { focusTargetId } from '../camera/focus-target';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import { NavTarget } from '../nav-target';
+import type { NavTargetPresenter } from '../nav-target-presenter';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { CameraSystem } from '../camera/camera-system';
 import type { CelestialMarkers } from '../marker/celestial-markers';
@@ -38,7 +38,7 @@ export class ObjectPickables {
     private readonly controlSelection: ControlSelection,
     private readonly roster: EntityRoster,
     private readonly celestialBodies: CelestialBodies,
-    private readonly navTarget: NavTarget,
+    private readonly navTargetPresenter: NavTargetPresenter,
     private readonly cameraSystem: CameraSystem,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly planDisplay: PlanDisplay,
@@ -71,7 +71,7 @@ export class ObjectPickables {
     );
     this._visibilityPolicy = visibilityPolicy;
     this.celestialMarkers.update(displayTime, mapDisplay, visibilityPolicy);
-    this.navTarget.update(
+    this.navTargetPresenter.update(
       this.controlSelection.current, this.roster, this.celestialBodies, displayWindow, this.frameAnchors);
 
     const controlled = this.controlSelection.current;
@@ -96,7 +96,7 @@ export class ObjectPickables {
       const pickable = objectPickableOf(entity);
       if (pickable) append(pickable);
     }
-    for (const node of this.navTarget.pickables()) append(node);
+    for (const node of this.navTargetPresenter.pickables()) append(node);
     for (const apsis of this.planDisplay.apsisMarkers) append(apsis);
     for (const node of this.equatorNodes.pickables) append(node);
   }

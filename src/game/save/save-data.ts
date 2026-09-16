@@ -11,7 +11,7 @@ import type { GamePhase } from '../stages/stage';
 import type { WaveAttackSaveData } from '../stages/stage-utils/wave-attack';
 import type { ProteinSaveData } from '../protein/protein-schema';
 import type { BoosterStackData, BoosterStage } from '../player/booster-stack';
-import type { OrbitGuideSettings } from '../celestial/orbit-guide/orbit-guide-settings';
+import type { OrbitGuideSettings } from '../viewer/orbit-guide-settings';
 
 interface Vec3SaveData {
   readonly x: number;
@@ -266,7 +266,7 @@ export interface CameraSaveData {
   readonly overview: FocusCameraSaveData;
 }
 
-interface NavTargetSaveData {
+export interface NavTargetSaveData {
   readonly id: string;
   readonly name: string;
 }
