@@ -6,7 +6,7 @@ import { Base } from './base';
 import { DetachedBooster } from './detached-booster';
 import { AmmoPickup, RcsFuelPickup } from './pickup';
 import { findEnemyClass } from './enemy-dictionary';
-import { Player } from '../../player/player';
+import { ModularShip } from '../../ship/modular-ship';
 import type { DynamicEntity } from './dynamic-entity';
 import type { EntitySaveDataUnion } from '../../save/save-data';
 import type { SpawnGate } from '../entity-registry';
@@ -36,7 +36,7 @@ export function restorationFor(
     case 'player':
       return {
         gate: null,
-        build: () => new Player(notifier, worldSfx, scene, effects, markers, { saved: data, simTime }),
+        build: () => new ModularShip(notifier, worldSfx, scene, effects, markers, { saved: data, simTime }),
       };
     case 'metal-enemy':
     case 'protein-enemy': {

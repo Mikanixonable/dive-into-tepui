@@ -18,7 +18,7 @@ import type { EntityRegistry } from '../dynamic/entity-registry';
 import { PLAYER_MUZZLE_OFFSETS } from '../../physics/player-shape';
 import { FlashEffects } from '../vfx/flash-effects';
 import type { StageOutcome } from '../stages/stage-outcome';
-import { Player } from './player';
+import type { ModularShip } from '../ship/modular-ship';
 import type { FireSaveData } from '../save/save-data';
 import { HULL_EMISS, ENV_TEMP } from '../dynamic/dynamic-motion';
 import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
@@ -66,7 +66,7 @@ export class FireControl {
   // そのまま排出されるデブリへ移る。
   // 復元するスナップショットか、新規配置の初期積載を受け取る。どちらも省略すれば既定積載。
   constructor(
-    private readonly player: Player,
+    private readonly player: ModularShip,
     private readonly _notifier: Notifier,
     private readonly _worldSfx: WorldSfx,
     private readonly _scene: THREE.Scene,
