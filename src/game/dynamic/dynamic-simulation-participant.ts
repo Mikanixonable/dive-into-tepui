@@ -7,6 +7,7 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import type { SphereHit } from '../../math/triangle-mesh';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { Contact } from './dynamic-entity/contact';
+import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import type { EntityRegistry } from './entity-registry';
 import type { PredictedArc } from './predicted-arc';
 
@@ -17,7 +18,6 @@ export interface DynamicReactionServices {
 }
 
 export interface PredictableMotion {
-  hasFutureReader(canDisplayFuture: boolean): boolean;
   readonly predictsFuture: boolean;
   readonly predicted: DynamicTrajectory | null;
   readonly predictionTruncated: boolean;
@@ -93,6 +93,6 @@ export interface DynamicSimulationRoster {
 export interface SimulationLifecycle extends DynamicSimulationRoster {
   cleanup(
     dt: number, simTime: number, activeStage: StageOutcome,
-    viewerPos: Vec3, atmosphereBodies: readonly CelestialBody[],
+    zones: readonly EngagementZone<EngagementParticipant>[], atmosphereBodies: readonly CelestialBody[],
   ): void;
 }

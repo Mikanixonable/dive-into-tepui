@@ -13,7 +13,7 @@ export interface GameHost {
   // 画面へ重ねるマーカーの装置。
   readonly markers: MarkerDevice;
   readonly sections: FrameSections;
-  // マップ・天球・軌道ガイドの表示設定。
+  // マップ・天球の表示設定と、表示パネルのタブの選択。
   readonly viewOptions: ViewOptionsSettings;
   // 選ばれている配色。3D 描画と canvas へ渡す色の出どころ。
   readonly themePalette: SettingValue<ThemePalette>;

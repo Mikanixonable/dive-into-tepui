@@ -51,6 +51,7 @@ class BaseCollisionBehavior implements DynamicMotionBehavior {
 export class BaseMotion extends DynamicMotion {
   private fuelValue: number;
 
+  // state と attitude はその時刻の初期状態。fuel を省くと満載で始まる。
   public constructor(state: KinematicState, attitude: Attitude, fuel = BASE_MAX_FUEL) {
     super(state, {
       attitude,
@@ -59,7 +60,7 @@ export class BaseMotion extends DynamicMotion {
       collides: true,
       engagementAnchor: true,
       historyDuration: DEFAULT_HISTORY_DURATION,
-      predictedForGhost: true,
+      predictsFuture: true,
       behavior: new BaseCollisionBehavior(),
     });
     this.fuelValue = fuel;

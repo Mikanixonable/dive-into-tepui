@@ -14,6 +14,7 @@ import {
   proteinAssetGate, proteinRenderDefinitionFor, type ProteinAssetId,
 } from '../../protein/protein-asset-loader';
 import type { SpawnGate } from '../entity-registry';
+import type { EntityIdAllocators } from './entity-id';
 import type { ProteinDisplaySettings } from '../../../render/protein/protein-display';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
 import type { ProteinRenderDefinition } from '../../../render/protein/protein-render-definition';
@@ -97,6 +98,7 @@ export class ProteinEnemy extends Enemy {
     init: ProteinEnemyPlacement | EnemyRestore,
     worldSfx: WorldSfx,
     fx: FlashEffects,
+    idAllocators: EntityIdAllocators,
     scene?: THREE.Scene,
   ) {
     const assetId = 'saved' in init ? (init.saved as ProteinEnemySaveData).assetId : init.assetId;
@@ -128,20 +130,15 @@ export class ProteinEnemy extends Enemy {
     // 新規生成のときだけ、タンパク質固有の名称を陣形役割・識別番号などの既存識別子の前へ冠する。
     super(
       'saved' in init ? init : { ...init, name: `${definition.asset.displayName} ${init.name}` },
-      proteinView, PROTEIN_INERTIA, collision.outerRadius, worldSfx, fx, shape,
+      proteinView, PROTEIN_INERTIA, collision.outerRadius, worldSfx, fx, idAllocators, shape,
     );
     this.assetId = assetId;
     this.displaySettings = display;
     this.combat = combat;
   }
 
-  // HP の正本は combat 側なので、艦の既定パーツは積まない。
-  protected override initDefaultParts(): void {}
-
   public override get hp(): number { return this.combat.integrityHp; }
-  public override set hp(_value: number) {}
   public override get maxHp(): number { return this.combat.integrityMaxHp; }
-  public override set maxHp(_value: number) {}
 
   public get display(): ProteinDisplaySettings { return this.displaySettings; }
 
@@ -154,11 +151,10 @@ export class ProteinEnemy extends Enemy {
 
   // 表示設定と、被弾モデルの構造フェーズを共通の表示入力へ足す。
   protected override renderSource(
-    viewFrame: DynamicViewFrame, visible: boolean, active: boolean,
-    orbitReference: OrbitReference | undefined,
+    viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | undefined,
   ): ProteinVisualSource {
     return {
-      ...super.renderSource(viewFrame, visible, active, orbitReference),
+      ...super.renderSource(viewFrame, active, orbitReference),
       display: this.displaySettings,
       phase: this.combat.phase,
     };

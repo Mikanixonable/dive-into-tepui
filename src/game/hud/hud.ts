@@ -4,7 +4,7 @@ import type { RenderStyle } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
 import type { HudLayers } from './hud-layers';
 import type { PanelCollapse } from './panel-shell';
-import type { ViewMode } from '../../render/view-mode';
+import type { ViewMode } from '../view/view-mode';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { VesselPanel, type VesselPanelViewModel } from './panels/vessel-panel';
 import { OrbitPanel, type OrbitPanelViewModel } from './orbit/orbit-panel';
@@ -20,10 +20,9 @@ import { OrbitAnalysisWindow, type OrbitAnalysisSubject } from './orbit/orbit-an
 import type { AnalysisChartSource } from './orbit/orbit-analysis-tab';
 import type { Input } from '../../input/input';
 import type { Vec3 } from '../../math/vec3';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { OverlayLayers } from '../../hud/overlay-layer';
 import type { HudShell } from '../../hud/hud-shell';
-import { TEMP_WINDOW_GROUP, type OverlayManager } from '../../hud/overlay-manager';
+import type { OverlayManager } from '../../hud/overlay-manager';
 import type { HelpPanel } from './windows/help-panel';
 import type { Notifier } from '../../hud/notifier';
 
@@ -101,15 +100,10 @@ export class Hud implements HudLayers, Notifier {
       return;
     }
     const win = new OrbitAnalysisWindow(
-      this.layers.window, ANALYSIS_WINDOW_OPEN_X, ANALYSIS_WINDOW_OPEN_Y, this.overlayManager, TEMP_WINDOW_GROUP,
+      this.layers.window, ANALYSIS_WINDOW_OPEN_X, ANALYSIS_WINDOW_OPEN_Y, this.overlayManager,
     );
     win.onClose = () => { this.orbitAnalysisWindow = null; };
     this.orbitAnalysisWindow = win;
-  }
-
-  // 軌道分析ウィンドウが見ている個体を、このフレームの操作対象・ターゲットへ合わせる。
-  public updateAnalysisReaders(entity: DynamicEntity | null, targetEntity: DynamicEntity | null): void {
-    this.orbitAnalysisWindow?.update(entity, targetEntity);
   }
 
   // ランが畳まれたときに、パネルが掴んでいるランの値と操作の口を落とす。
@@ -151,7 +145,6 @@ export class Hud implements HudLayers, Notifier {
     if (this.chromeView === view) return;
     this.chromeView = view;
     const map = view === 'map';
-    this.helpPanel.setView(view);
     const orbit = this.root.querySelector<HTMLElement>('#hud-orbit');
     const burnManagement = this.root.querySelector<HTMLElement>('#burn-management-panel');
     const leftRail = (map ? this.mapRoot : this.combatRoot)

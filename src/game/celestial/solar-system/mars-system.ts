@@ -3,11 +3,10 @@ import * as THREE from 'three/webgpu';
 import marsTextureUrl from '../../../assets/2k_mars.jpg';
 import phobosTextureUrl from '../../../assets/2k_phobos.jpg';
 import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
-import { PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
+import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
-import { MU_MARS } from './constants';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
 import type { CelestialTexture } from '../../../render/celestial-textures';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
@@ -19,6 +18,9 @@ import { equatorialSatelliteOrbit } from './satellite-orbit-builders';
 
 // 火星系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type MarsSystemBodyId = 'mars' | 'phobos' | 'deimos';
+
+// 衛星の平均運動をケプラー第3法則で出すのに要るので、本体の定義と衛星の軌道が同じ値を読む。
+const MU_MARS = 4.282837e13; // [m^3/s^2]
 
 export const MARS: PlanetDef = {
   id: 'mars',
@@ -85,16 +87,16 @@ export const MARS_SYSTEM_NAMES: Record<MarsSystemBodyId, string> = {
 
 // 火星系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function marsSystem(
-  sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
+  sun: StarMotion, simZeroEt: number,
 ): Record<MarsSystemBodyId, CelestialEntity> {
-  const mars = planetSystem(planetDefForSimZero(MARS, phases, simZeroEt), sun);
+  const mars = planetSystem(planetDefForSimZero(MARS, simZeroEt), sun);
   return {
     mars: new CelestialEntity(
       mars.body, MARS_SYSTEM_NAMES.mars, 'planet',
       new PointCelestialView(CelestialSurface.textured(MARS_TEXTURE), MARS_ATMOSPHERE_OPTICS),
     ),
     phobos: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(PHOBOS, phases, simZeroEt), mars),
+      new SatelliteMotion(satelliteDefForSimZero(PHOBOS, simZeroEt), mars),
       MARS_SYSTEM_NAMES.phobos, 'satellite',
       new SphereCelestialView(
         // 平均輝度 0.2774(A_B は幾何 0.071 x q=0.393)
@@ -102,7 +104,7 @@ export function marsSystem(
       ),
     ),
     deimos: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(DEIMOS, phases, simZeroEt), mars),
+      new SatelliteMotion(satelliteDefForSimZero(DEIMOS, simZeroEt), mars),
       MARS_SYSTEM_NAMES.deimos, 'satellite',
       new SphereCelestialView(
         // A_B=0.027(幾何 0.068 x q=0.393)

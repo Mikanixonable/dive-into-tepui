@@ -1,6 +1,6 @@
 // 戦闘ターゲットの選定と、戦闘対象・弾薬・燃料の画面マーカーの同期。ターゲットに紐づく
 // 表示(方位マーカー・見越し点・的通過マーク)もここが受け持つ。
-import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../math/vec3';
+import { add, addScaled, dot, len, lenSq, norm, scale, sub, Vec3 } from '../math/vec3';
 import { Enemy } from './dynamic/dynamic-entity/enemy';
 import { isBullet } from './dynamic/dynamic-entity/bullet';
 import { bulletReactionOf } from './dynamic/dynamic-entity/bullet-reaction';
@@ -38,14 +38,16 @@ const BOARD_MARK_LIFETIME = 5.0; // 表示時間 [s]
 const MAX_BOARD_MARKS = 1; // 同時に出す通過点の数。増やすと照準の目安として紛らわしい
 const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は記録しない)
 
-// マップ上の弾薬・燃料マーカーが薄れ始める/消える、自機からの距離 [m]。
+// マップ上の弾薬・燃料マーカーが薄れ始める/消える、視点からの距離 [m]。
 const MAP_AMMO_FADE_START = 5e7;
 const MAP_AMMO_FADE_END = 1e8;
 
 const PROTEIN_SITE_MARKER_RANGE = 3000; // タンパク質敵の機能部位マーカーを表示する距離上限 [m]
 
-// マップ上の弾薬・燃料マーカーの不透明度。MAP_AMMO_FADE_START から薄れ、MAP_AMMO_FADE_END で消える。
-function ammoFadeOpacity(distance: number): number {
+// マップ上の弾薬・燃料マーカーの不透明度。視点から MAP_AMMO_FADE_START で薄れ始め、MAP_AMMO_FADE_END で消える。
+function ammoFadeOpacity(pos: Vec3, viewerPos: Vec3 | null): number {
+  if (!viewerPos) return 0;
+  const distance = len(sub(pos, viewerPos));
   return Math.max(0, Math.min(1, (MAP_AMMO_FADE_END - distance) / (MAP_AMMO_FADE_END - MAP_AMMO_FADE_START)));
 }
 
@@ -161,7 +163,8 @@ export class Targeter {
     const view = camera.mode;
     const mapView = view === 'map';
     const project = camera.project;
-    const viewerPos = viewer?.motion.state.r ?? v3();
+    // 視点が居なければ、どの対象も視点から等しく遠く、距離で決まる範囲の外にあるものとして表示する。
+    const viewerPos = viewer?.motion.state.r ?? null;
     this.aliveScratch.length = 0;
     this.markerItemScratch.length = 0;
     for (const tgt of targets) {
@@ -190,7 +193,7 @@ export class Targeter {
       const ds = tgt.motion.alive ? tgt.motion.stateAt(displayTime) : null;
       this.pushProteinSiteMarkers(tgt, ds?.r ?? null, viewerPos, mapView, project, camera.position);
     }
-    // 弾薬・燃料のマーカー。マップでは自機から遠いほど薄れる。
+    // 弾薬・燃料のマーカー。マップでは視点から遠いほど薄れる。
     for (const ammo of ammoPickups) {
       if (!ammo.motion.alive) continue;
       const visibility = visibilityPolicy?.entity('ammo');
@@ -200,7 +203,7 @@ export class Targeter {
       );
       const mapOpacity = mapOccluded
         ? 0
-        : mapView ? ammoFadeOpacity(len(sub(ammo.motion.state.r, viewerPos))) : 1;
+        : mapView ? ammoFadeOpacity(ammo.motion.state.r, viewerPos) : 1;
       this.pushMarkerItem(ammo.markerItem(), viewerPos, mapView, visibility, mapOpacity, mapOccluded);
     }
     for (const fuel of fuelPickups) {
@@ -212,7 +215,7 @@ export class Targeter {
       );
       const mapOpacity = mapOccluded
         ? 0
-        : mapView ? ammoFadeOpacity(len(sub(fuel.motion.state.r, viewerPos))) : 1;
+        : mapView ? ammoFadeOpacity(fuel.motion.state.r, viewerPos) : 1;
       this.pushMarkerItem(fuel.markerItem(), viewerPos, mapView, visibility, mapOpacity, mapOccluded);
     }
     this.combatMarkers.sync(
@@ -225,13 +228,13 @@ export class Targeter {
     this.leadMarkers.sync(shooter, this.aliveScratch, this.aliveTarget, view, project, nowMs);
   }
 
-  // markerItemScratch へ、自機からの距離ラベル・可視性設定(アイコン/名前の個別トグル)・
-  // マップ上のフェード/遮蔽を反映して積む。マップビューでは距離ラベルを出さない。
+  // markerItemScratch へ、視点からの距離ラベル・可視性設定(アイコン/名前の個別トグル)・
+  // マップ上のフェード/遮蔽を反映して積む。マップビュー中と視点が居ない間は距離ラベルを出さない。
   private pushMarkerItem(
-    item: GroupedMarkerItem, viewerPos: Vec3, mapView: boolean,
+    item: GroupedMarkerItem, viewerPos: Vec3 | null, mapView: boolean,
     visibility: MapVisibility | undefined, opacity: number, occluded: boolean,
   ): void {
-    const detail = mapView ? '' : fmtMarkerDist(len(sub(item.pos, viewerPos)));
+    const detail = mapView || !viewerPos ? '' : fmtMarkerDist(len(sub(item.pos, viewerPos)));
     this.markerItemScratch.push(visibility ? {
       ...item,
       sym: visibility.icon ? item.sym : '',
@@ -242,12 +245,14 @@ export class Targeter {
     } : { ...item, detail, opacity, occluded });
   }
 
-  // タンパク質敵が自機から PROTEIN_SITE_MARKER_RANGE 以内にある間、通常の敵マーカーへ加えて
+  // タンパク質敵が視点から PROTEIN_SITE_MARKER_RANGE 以内にある間、通常の敵マーカーへ加えて
   // 各機能部位の HP・名称マーカーを表示する。
   private pushProteinSiteMarkers(
-    enemy: ProteinEnemy, displayPos: Vec3 | null, viewerPos: Vec3, mapView: boolean, project: ProjectFn, cameraPos: Vec3,
+    enemy: ProteinEnemy, displayPos: Vec3 | null, viewerPos: Vec3 | null, mapView: boolean, project: ProjectFn,
+    cameraPos: Vec3,
   ): void {
-    const inRange = !mapView && displayPos !== null && len(sub(displayPos, viewerPos)) <= PROTEIN_SITE_MARKER_RANGE;
+    const inRange = !mapView && displayPos !== null && viewerPos !== null
+      && len(sub(displayPos, viewerPos)) <= PROTEIN_SITE_MARKER_RANGE;
     const sites = enemy.view.siteMarkers(
       displayPos ?? enemy.motion.state.r, enemy.motion.att.q, enemy.combatReadout.sites,
     );
