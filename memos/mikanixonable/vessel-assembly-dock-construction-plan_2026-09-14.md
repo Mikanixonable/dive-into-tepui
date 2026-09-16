@@ -3,7 +3,7 @@
 作成日: 2026-09-14
 実装の現在基準コミット: d3e8291dd
 最終レビュー: 2026-09-16
-状態: 実装中。手順8まで完了し、手順9から進める。
+状態: 実装中。手順10まで完了し、手順11から進める。
 
 ## 目的
 
@@ -305,80 +305,6 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 - 現行のランダム部位ダメージと敵挙動に回帰がない。
 
 ## 実装手順
-
-### 9. dock state、ドッキング、修理を実装する
-
-#### 目的
-
-各 dock と通常 docking_port の接続点を、空、建造中、接続済みの状態機械にし、接近した既存船の接舷と
-再発進を成立させる。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| src/game/ship/ship-dock-state.ts（新規） | empty、building、connected と、接続されたassemblyの状態を持つ。 |
-| src/game/ship/ship-docking.ts（新規） | 位置・軸・相対速度の eligibility、assembly merge、dock分離を実装する。 |
-| src/game/ship/ship-repair.ts（新規） | 健全な dock に接続した統合船体の module HP を最大へ戻す。 |
-| src/game/ship/modular-ship-motion.ts | 接続されたassemblyを一つの質量・形状へ統合し、attach／detach 時に予測を無効化する。 |
-| src/game/dynamic/entity-lifecycle.ts、entity-registry.ts | registry上のShipAssemblyとdock参照の移管を同一フレームで原子的に行う。 |
-| src/game/control-selection.ts | 接舷／発進時の操作対象切替と、対象不在時の既存規則を扱う。 |
-| src/game/pickable/ship-inspection.ts | dock ごとの状態、条件、不成立理由、操作を property row として提供する。 |
-| tests/game/ship-docking.test.ts（新規） | 境界値、assembly merge／split、操作基準cockpit切替、cockpit破壊時の自動切替、target 解除、複数 dock、統合船体喪失を検証する。 |
-| tests/game/ship-repair.test.ts（新規） | dock 健全性、ドッキング条件、全 module HP 回復、自然回復なしを検証する。 |
-
-#### 達成条件と検証
-
-- 距離 1.0 m、角度 10°、相対速度 1.0 m/s の内外で、ドッキング可能条件だけが正しく反転する。
-- 許容誤差内の任意の位置・姿勢から確定しても、ドッキング後の接続点間距離と軸角度のずれが 0 になり、
-  接続された船体間に相対運動を持たない。
-- attach 後に接続前の船体が個別 registry entity として残らず、分離時に各 ShipAssembly が1個ずつ戻る。
-- 4 dock と docking_port が接続されたassemblyを上書きせず、複数のcockpitと能力が一つの船体へ統合される。
-- docking_port 同士を含む全組み合わせで、統合後も接続点のずれがなく、建造・修理は統合船体に含まれる
-  dock から実行できる。
-- 分離後も接続に使った各 docking_port／dock がそれぞれの船体側に残り、再ドッキングに使える。
-- npm run typecheck、npm run test:game、npm run test:physics を通す。
-
-### 10. 戦闘ビューの建造モードとゴースト配置を実装する
-
-#### 目的
-
-選択 dock を起点に、3D 表示を見ながらモジュールを追加・撤去できる最小 UI を作る。
-
-このステップの開始前に /ui-design を起動し、既存の panel shell、property window、overlay manager、
-タッチ規約へ合わせる。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| src/game/ship/ship-construction.ts（新規） | 統合船体内の選択 dock、catalog selection、candidate、配置、撤去、破棄、構造上の完成判定を所有する。 |
-| src/game/hud/panels/ship-construction-panel.ts（新規） | catalog、能力集計、完成条件、操作ボタンを表示する。 |
-| src/game/hud/style/ship-construction-style.ts（新規） | 既存 token と panel shell だけを使って建造 UI を整える。 |
-| src/game/view/combat-view.ts | construction mode を通常の combat pick／target pointer handling より先に処理する。 |
-| src/game/camera/camera-system.ts | 選択 dock への focus、建造中の orbit／zoom、同一フレームの screen ray 入力を提供する。 |
-| src/game/camera/screen-ray.ts（新規） | camera update 後の Viewpoint と viewport 座標から CPU 側の world ray を組み立てる。shader 用 view-ray.ts は流用しない。 |
-| src/game/display-window-manager.ts | 建造開始時に display time を現在へ戻し、終了まで過去／未来表示を固定する。 |
-| src/game/input/game-actions.ts、game-commands.ts、game-input-router.ts | 建造中の world input 遮断と camera／confirm／close の配送を追加する。 |
-| src/game/game.ts | ShipConstruction の生成、update、sync、dispose、pause 所有を配線し、建造 pointer だけを通常の pause return より先に配送する。 |
-| src/game/hud/hud.ts、hud-root.ts、hud-layers.ts | combatRoot の hud rail へ建造 panel を置き、寿命と表示を配線する。 |
-| src/game/hud/windows/menu-actions.ts | dock の建造、修理、接舷、切り離し操作を property window の action として追加する。 |
-| src/render/dynamic/ship/ship-ghost-view.ts | pointer ray と候補状態から ghost を同期する。 |
-| src/render/dynamic/ship/dock-snap-guide-view.ts | 選択 dock の自由端と hover 状態を同期する。 |
-| tests/game/ship-construction.test.ts（新規） | 追加、末尾撤去、側面スロットごとのdock数、cockpitなし完成、操縦不能警告と確認／キャンセル、未完成保持、破棄、pause を検証する。 |
-| tests/game/construction-input-routing.test.ts（新規） | 飛行・射撃・target を遮断し、camera と建造操作だけが通ることを検証する。 |
-| tests/render/ship-construction-ghost.test.ts（新規） | valid／invalid／hidden、snap transform、dispose を検証する。 |
-| tests/render/camera-view.test.ts | perspective／orthographic の screen ray と camera update 直後の一致を検証する。 |
-
-#### 達成条件と検証
-
-- combat view を離れずに統合船体内の任意の空 dock から、cockpitなしを含む構造完成部品集合を作り、分離できる。
-- camera を動かしたフレームでも pointer ray と ghost が同じ camera state を使い、1 フレーム遅れない。
-- 建造中の display time は simTime に一致し、過去／未来の表示位置へ module を確定できない。
-- mouse と touch の両方で catalog 選択、ghost 確定、末尾撤去、終了、破棄ができる。
-- 建造のために停止中でも ghost click は届き、flight command、fire、warp、target change は世界へ
-  漏れず、ESC は共通管理から閉じる。
-- npm run typecheck、npm run test:game、npm run test:render を通す。
 
 ### 11. ship 保存、漂流、CREATIVE 統合を完成させる
 
