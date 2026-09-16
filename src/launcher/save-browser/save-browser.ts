@@ -1,9 +1,8 @@
-// セーブデータブラウザ: 複数のセーブデータ(スロット)とそのスナップショット履歴を
+// セーブデータブラウザ: 複数のセーブデータ(スロット)とその手動セーブの履歴を
 // 一覧・切替・クリップ・書き出し/取り込みするフルスクリーン UI。
-// 一発モーダルで、操作のたびに DOM を組み直す(毎フレーム sync は無い)。
 import { solarSystemBodyName } from '../../game/celestial/solar-system/solar-system';
 import { SaveSlots } from '../save/save-slots';
-import { SnapshotService, type SnapshotCaptureSource } from '../save/snapshot-service';
+import { SnapshotService, type SnapshotSource } from '../save/snapshot-service';
 import { exportSlotToFile, pickAndImportSlot } from '../save/save-transfer';
 import type { SaveSlotMeta } from '../save/slot-data';
 import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
@@ -51,14 +50,12 @@ const STYLE = `
 }
 `;
 
+// いま動いている周回の読み口。周回が無ければ current は null。
 export interface CurrentGameSource {
   readonly current: {
     readonly stageId: string;
-    readonly isPlaying: boolean;
     readonly nameOfBody: (id: string) => string;
-    readonly snapshot: SnapshotCaptureSource;
-    pause(): void;
-    resume(): void;
+    readonly snapshot: SnapshotSource;
   } | null;
 }
 
@@ -73,14 +70,14 @@ export class SaveBrowser implements OverlayHandle {
   // compact 幅でだけ、左右ペインのどちらを表示するか(タブで切り替える)。
   private mobilePane: 'slots' | 'snapshots' = 'slots';
 
-  // スロット切替の実処理は呼び出し側が行う。
+  // アクティブスロットを切り替えて自分を閉じた後に呼ぶ。
   public onSlotSwitched: (() => void) | null = null;
-  // スナップショットのロードは Game を作り直すことで表現するため、実処理は呼び出し側が行う。
+  // 復元する手動セーブが選ばれ、自分を閉じた後に呼ぶ。
   public onLoadSnapshot: ((snapshotId: string) => void) | null = null;
 
   public get visible(): boolean { return this._visible; }
 
-  // モーダルの DOM 骨格だけを組み、非表示で親要素へ差し込む。中身は open のたびに rebuild する。
+  // モーダルの DOM 骨格を組み、非表示で親要素へ差し込む。
   public constructor(
     root: HTMLElement,
     private readonly slots: SaveSlots,
@@ -96,8 +93,7 @@ export class SaveBrowser implements OverlayHandle {
     root.appendChild(this.el);
   }
 
-  // パネルを開く。表示対象スロットは既定でアクティブスロット、ステージタブは既定でいま
-  // プレイ中のステージ。開いている間はゲームを止める。
+  // パネルを開く。開いている間はゲームを止める。
   public open(): void {
     // 表示対象を既定値(アクティブスロット・現在のステージ)へ戻す。
     this.viewedSlotId = this.slots.activeSlotId;
@@ -107,18 +103,16 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
     this.el.style.display = 'flex';
     this._visible = true;
-    // 開いている間は裏のゲームを止め、オーバーレイとして入力を占有する。
-    this.gameSource.current?.pause();
     this.overlayManager.open('save-browser', this, {
-      kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true, exclusiveGroup: 'system-modal',
+      kind: 'modal', closeOnEscape: true, closeOnOutsideClick: false, gatesInput: true,
+      pausesGame: true, exclusiveGroup: 'system-modal',
     });
   }
 
-  // パネルを閉じ、裏のゲームを再開する。
+  // パネルを閉じる。
   public close(): void {
     this.el.style.display = 'none';
     this._visible = false;
-    this.gameSource.current?.resume();
     this.overlayManager.close('save-browser');
   }
 
@@ -132,18 +126,17 @@ export class SaveBrowser implements OverlayHandle {
     this.statusIsError = isError;
   }
 
-  // 決着後(won/lost/timeup)の状態は復元しても操作不能なので撮らせない([F5] と同条件)。
-  // 動いている周回が無い(周回の切り替え中)ときも撮れない。
-  private canCaptureNow(): boolean {
+  // いま手動セーブを残せるか。決着後(won/lost/timeup)の状態は復元しても操作不能なので残せない。
+  private canSaveNow(): boolean {
     const game = this.gameSource.current;
-    return game !== null && this.viewedSlotId === this.slots.activeSlotId && game.isPlaying;
+    return game !== null && this.viewedSlotId === this.slots.activeSlotId && game.snapshot.isPlaying;
   }
 
   private viewedSlot(): SaveSlotMeta | null {
     return this.slots.slots.find((s) => s.id === this.viewedSlotId) ?? null;
   }
 
-  // 現在のスロット一覧・スナップショット一覧を組み直して DOM に反映する。
+  // 現在のスロット一覧・手動セーブの一覧を組み直して DOM に反映する。
   private rebuild(): void {
     this.el.innerHTML = '';
     const panel = document.createElement('div');
@@ -159,10 +152,9 @@ export class SaveBrowser implements OverlayHandle {
     header.appendChild(closeBtn.element);
     panel.appendChild(header);
 
-    // compact 幅だけで見えるペイン切替タブ。表示条件そのものは CSS(#save-browser .sb-mobile-tabs)
-    // が持ち、ここでは常に組んで選択状態だけ渡す。
+    // ペイン切替タブ。compact 幅でだけ見せる判定は CSS が持つので、常に組んで選択状態を渡す。
     const mobileTabs = new TabBar<'slots' | 'snapshots'>(
-      [['slots', 'セーブデータ'], ['snapshots', 'スナップショット']],
+      [['slots', 'セーブデータ'], ['snapshots', '手動セーブ']],
       (pane) => { this.mobilePane = pane; this.rebuild(); },
     );
     mobileTabs.element.classList.add('sb-mobile-tabs');
@@ -184,12 +176,12 @@ export class SaveBrowser implements OverlayHandle {
     slotsPane.classList.toggle('sb-pane-mobile-active', this.mobilePane === 'slots');
     body.appendChild(slotsPane);
     const snapPane = document.createElement('div');
-    snapPane.className = 'sb-pane sb-pane-snapshots';
+    snapPane.className = 'sb-pane';
     snapPane.classList.toggle('sb-pane-mobile-active', this.mobilePane === 'snapshots');
     const game = this.gameSource.current;
     snapPane.appendChild(buildSnapshotPane(
-      this.viewedSlot(), this.viewedStageId, this.slots.activeSlotId, game?.stageId ?? null, this.canCaptureNow(), {
-        onCaptureNow: () => this.handleCaptureNow(),
+      this.viewedSlot(), this.viewedStageId, this.slots.activeSlotId, game?.stageId ?? null, this.canSaveNow(), {
+        onSaveNow: () => this.handleSaveNow(),
         onSelectStage: (id) => { this.viewedStageId = id; this.rebuild(); },
         onLoadSnapshot: (id, loadable) => this.handleLoadSnapshot(id, loadable),
         onTogglePin: (id, pinned) => this.handleTogglePin(id, pinned),
@@ -231,10 +223,9 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
-  // confirm でクリップ済みのみか全件かを尋ねてからファイルへ書き出し、成否をステータス行へ表示する。
+  // スロットをファイルへ書き出し、成否をステータス行へ表示する。
   private handleExportSlot(id: string): void {
-    const pinnedOnly = confirm('クリップ済みのスナップショットだけを書き出しますか?(キャンセルで全件)');
-    const ok = exportSlotToFile(this.slots, id, pinnedOnly);
+    const ok = exportSlotToFile(this.slots, id);
     this.setStatus(ok ? '書き出しました。' : '書き出しに失敗しました。', !ok);
     this.rebuild();
   }
@@ -257,8 +248,7 @@ export class SaveBrowser implements OverlayHandle {
     this.onSlotSwitched?.();
   }
 
-  // モードとステージはまだ決まらない(タイトル画面で選ぶ)ので、空のスロットだけを作って
-  // アクティブにする。実際に何を遊んだかは開始時に SaveSlots.noteLaunch が書き込む。
+  // 遊ぶステージはステージ選択画面で決まるので、空のスロットを作ってアクティブにする。
   private handleNewSlot(): void {
     const name = prompt('新しいセーブデータの名前', '新しいセーブデータ');
     if (!name) return;
@@ -281,16 +271,16 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
-  // 今の状態を手動スナップショットとして記録する。名前は prompt で尋ね、成否をステータス
-  // 行へ表示する。捕捉できない状態(canCaptureNow が false)なら何もしない。
-  private handleCaptureNow(): void {
+  // 今の状態を手動セーブとして残す。名前は prompt で尋ね、成否をステータス行へ表示する。
+  // 残せない状態(canSaveNow が false)なら何もしない。
+  private handleSaveNow(): void {
     const game = this.gameSource.current;
-    if (game === null || !this.canCaptureNow()) return;
-    const name = prompt('スナップショットの名前', '');
-    const snap = this.service.capture(
-      game.snapshot.runSummary(), game.snapshot.serialize(), 'manual', name || null, true,
+    if (game === null || !this.canSaveNow()) return;
+    const name = prompt('セーブの名前', '');
+    const snap = this.service.addManualSave(
+      game.snapshot.runSummary(), game.snapshot.serialize(), name || null,
     );
-    this.setStatus(snap ? 'クリップしました。' : 'クリップに失敗しました。', !snap);
+    this.setStatus(snap ? 'セーブしました。' : 'セーブに失敗しました。', !snap);
     this.rebuild();
   }
 
@@ -298,7 +288,7 @@ export class SaveBrowser implements OverlayHandle {
   // 閉じてから onLoadSnapshot を呼ぶ — 開いたままだと次の周回でも入力を遮断し続ける。
   private handleLoadSnapshot(snapId: string, loadable: boolean): void {
     if (!loadable) {
-      this.setStatus('いま遊んでいるセーブデータ・ステージのスナップショットだけを復元できます。', true);
+      this.setStatus('いま遊んでいるセーブデータ・ステージの手動セーブだけを復元できます。', true);
       this.rebuild();
       return;
     }
@@ -306,44 +296,32 @@ export class SaveBrowser implements OverlayHandle {
     this.onLoadSnapshot?.(snapId);
   }
 
-  // クリップ時は名前を尋ね、解除時はそのまま外す。上限に達している場合はクリップできず、
-  // 理由をステータス行へ表示する。
+  // クリップの印を付け外しする。付けるときは、任意で名前を付けて区別できるようにする。
   private handleTogglePin(snapId: string, currentlyPinned: boolean): void {
-    // 解除は確認なしでそのまま外す。
-    if (currentlyPinned) {
-      this.slots.setPinned(snapId, false);
-      this.rebuild();
-      return;
+    this.slots.setPinned(snapId, !currentlyPinned);
+    if (!currentlyPinned) {
+      const name = prompt('クリップする名前(空欄なら変更しません)', '');
+      if (name) this.slots.renameSnapshot(snapId, name);
     }
-    // クリップは上限に達していれば失敗し、理由をステータス行へ出す。
-    const ok = this.slots.setPinned(snapId, true);
-    if (!ok) {
-      this.setStatus('クリップ上限です。先にどれかのクリップを外してください。', true);
-      this.rebuild();
-      return;
-    }
-    // 成功したら、任意で名前を付けて区別できるようにする。
-    const name = prompt('クリップする名前(空欄なら変更しません)', '');
-    if (name) this.slots.renameSnapshot(snapId, name);
     this.rebuild();
   }
 
-  // 新しい名前を prompt で尋ねてスナップショット名を書き換える。キャンセル・空文字なら何もしない。
+  // 新しい名前を prompt で尋ねて手動セーブ名を書き換える。キャンセル・空文字なら何もしない。
   private handleRenameSnapshot(id: string): void {
-    const name = prompt('スナップショットの名前', '');
+    const name = prompt('セーブの名前', '');
     if (!name) return;
     this.slots.renameSnapshot(id, name);
     this.rebuild();
   }
 
-  // confirm で確認してからスナップショットを削除する。
+  // confirm で確認してから手動セーブを削除する。
   private handleDeleteSnapshot(id: string): void {
-    if (!confirm('このスナップショットを削除します。よろしいですか?')) return;
+    if (!confirm('この手動セーブを削除します。よろしいですか?')) return;
     this.slots.deleteSnapshot(id);
     this.rebuild();
   }
 
-  // 指定したスナップショット時点でスロットを複製(分岐)し、成否をステータス行へ表示する。
+  // 指定した手動セーブの時点でスロットを複製(分岐)し、成否をステータス行へ表示する。
   // 成功したら複製先を表示対象にする。
   private handleBranch(slotId: string, snapId: string): void {
     const dup = this.slots.duplicateSlot(slotId, snapId);
@@ -354,9 +332,5 @@ export class SaveBrowser implements OverlayHandle {
       this.setStatus('分岐に失敗しました。', true);
     }
     this.rebuild();
-  }
-
-  public dispose(): void {
-    this.el.remove();
   }
 }

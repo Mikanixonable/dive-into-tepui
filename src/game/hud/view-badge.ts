@@ -1,6 +1,6 @@
 // トップバー1行目のバッジ: ゲームタイトル・現在のモード・現在のビュー(クリックで遷移メニュー)・
 // 画面全体の見せ方(写実/模式図)を切り替えるトグル・注視/操作/ターゲットの対象名。
-import type { ViewMode } from '../../render/view-mode';
+import type { ViewMode } from '../view/view-mode';
 import { ContextMenu, MenuItem } from './windows/context-menu';
 import type { OverlayManager } from '../../hud/overlay-manager';
 import { Button, ToggleSwitch } from '../../hud/widgets';

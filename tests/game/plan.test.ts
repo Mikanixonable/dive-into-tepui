@@ -1,19 +1,17 @@
 // 計画の区間長・アプシス高度が、その場で最も強く引く天体を中心として求まることの回帰。
 import { motionOf, solarSystemParts, stateOf } from '../physics/test-helpers';
 import * as assert from 'node:assert/strict';
-import { MU_MOON, R_MOON } from '../../src/game/celestial/solar-system/constants';
+import { MU_EARTH, MU_MOON, R_EARTH, R_MOON } from '../../src/game/celestial/solar-system/earth-system';
 import { strongestAttractor } from '../../src/physics/attractor';
-import { orbitalElementsOf } from '../../src/physics/elements';
+import { apsisAltitudes, keplerPeriod, orbitalElementsOf } from '../../src/physics/elements';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/constants';
-import { apsisAltitudes, keplerPeriod } from '../../src/physics/elements';
 import { add, v3 } from '../../src/math/vec3';
 import { orbitPeriodOf, Plan } from '../../src/game/plan/plan';
 import { test } from '../harness';
 
 export function register(): void {
   test('plan: 月周回の区間長・アプシスが月中心の状態と重力定数で求まる', () => {
-    const parts = solarSystemParts({ moon: 0 });
+    const parts = solarSystemParts();
     const system = parts.system;
     const t = 12345;
     const radius = R_MOON + 100_000;
@@ -46,7 +44,7 @@ export function register(): void {
   });
 
   test('plan: 近地点付近の遷移軌道の区間長が近地点半径の円軌道周期に短縮されない', () => {
-    const { system } = solarSystemParts({ sun: 0, moon: 0 });
+    const { system } = solarSystemParts();
     const t = 6789;
     const rp = R_EARTH + 400e3;
     const ra = R_EARTH + 35_000e3;
@@ -64,7 +62,7 @@ export function register(): void {
   });
 
   test('plan: nodeTimeRange は DisplayDurationSource の表示期間にそのまま追従する', () => {
-    const { system } = solarSystemParts({ sun: 0, moon: 0 });
+    const { system } = solarSystemParts();
     const t = 1000;
     const rp = R_EARTH + 400e3;
     const state = kinematicState<'eci'>(t, v3(rp, 0, 0), v3(0, 0, Math.sqrt(MU_EARTH / rp)));

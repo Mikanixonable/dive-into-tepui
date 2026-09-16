@@ -73,7 +73,7 @@ export class MapView implements ViewFrame {
     this.picking = new MapPicking(
       hud, cameraSystem, roster, celestialSystem, celestialMarkers, markers,
       navTarget, frameControls, this.objectPickables, this.linePickables, objectWindows,
-      controlSelection,
+      controlSelection, displayWindowManager,
     );
   }
 
@@ -110,9 +110,9 @@ export class MapView implements ViewFrame {
     this.linePickables.clear();
   }
 
-  // Δv 編集キー([Del]=選択ノード削除・WASDQE・ラッチ)を編集セッションへ配る。
-  public handleInput(input: Input, dt: number): void {
-    this.planEditor.handleInput(input, dt);
+  // 計画キーと Δv 編集キーを編集セッションへ配る。
+  public handleInput(input: Input, dt: number, simTime: number): void {
+    this.planEditor.handleInput(input, dt, simTime);
   }
 
   // クリック・右クリックを、ノード編集と被選択物・軌道線・空域のメニューへ先着順で配る。

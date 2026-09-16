@@ -20,9 +20,6 @@ export interface BearingMarker {
   readonly color: string;
   // 画面外へ出たときに出すか。
   readonly visible: boolean;
-  // 重なったときに残す度合い。
-  // TODO: いまの値は CSS クラス名から偶然決まっている。種別の意味から決め直す。
-  readonly priority: number;
   // 近接まとめでアイコンの扱いが既に決まっている種別か。
   readonly clustered: boolean;
 }
@@ -178,7 +175,7 @@ export class GroupedMarkers {
       front: placement !== null,
       color: bearing.color,
       rotationDeg: placement?.rotationDeg,
-      priority: bearing.priority,
+      priority: m.item.priority,
       clustered: bearing.clustered,
     };
   }
@@ -204,7 +201,7 @@ export class GroupedMarkers {
     }
     // 天体ラベルと画面上で近接している船マーカーはラベルを隠す。ただし船がカメラに著しく
     // 近く天体が著しく遠い(depth-guard)場合は、優先度(天体 > 船)に関わらず船を残す —
-    // 手前の船が奥の天体ラベルに隠され続けることを防ぐ(DEVELOP/SPEC/MAP.md 7.2 節)。
+    // 手前の船が奥の天体ラベルに隠され続けることを防ぐ(SPEC/MARKERS.md「天体ラベル」)。
     const nowHiddenByCelestialLabel = new Set<string>();
     if (celestialLabels.length > 0) {
       for (const m of placed) {

@@ -2,7 +2,8 @@
 // 必要なステージだけ override する。
 import * as THREE from 'three/webgpu';
 import { Enemy } from '../dynamic/dynamic-entity/enemy';
-import { isPlayer, Player, type PlayerInit } from '../player/player';
+import { isPlayer, Player, type PlayerPlacement } from '../player/player';
+import { strongestAttractor } from '../../physics/attractor';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
@@ -22,9 +23,10 @@ import type { ControlSelection } from '../control-selection';
 import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
 import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
+import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
+import { v3 } from '../../math/vec3';
 import { solarSystem } from '../celestial/solar-system/solar-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { PhaseOffsets } from '../../physics/celestial-body-def';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { EntityRegistry, SpawnGate } from '../dynamic/entity-registry';
 
@@ -45,6 +47,11 @@ const ENEMY_LOSS_HINT: Record<Exclude<EnemyDeathCause, 'killed'>, string> = {
 
 const BRIEFING_TOAST_MS = 12000;
 
+// 状態を指定せずに置く自機の既定の円軌道。高度は中心天体の表面半径から、傾斜角は中心天体の
+// 中心に置いた ECI 軸の Y から測る。
+const PLAYER_INITIAL_ALT = 420e3; // [m]
+const PLAYER_INITIAL_INC_DEG = 97.0; // [deg]
+
 // 全ステージ共通の生成引数(セーブデータを除く)。具象ステージは自分のコンストラクタで
 // これをそのまま基底へ渡す。
 export type StageDeps = [
@@ -62,8 +69,7 @@ export type StageDeps = [
 export interface StageClass {
   readonly id: StageId;
   createCelestialSystem(
-    phaseOffsets: PhaseOffsets, earthSpinPhase0: number, epoch: TdbJulianDate,
-    onProgress?: (ratio: number) => void, renderer?: THREE.WebGPURenderer,
+    epoch: TdbJulianDate, onProgress?: (ratio: number) => void, renderer?: THREE.WebGPURenderer,
   ): Promise<CelestialSystem>;
   // simTime=0 に置く絶対時刻。**基底に既定値は無く、全ステージが自分で宣言する** —
   // 置くと宣言し忘れが型検査に落ちなくなり、元期が共有の定数へ静かに戻る。
@@ -74,7 +80,8 @@ export interface StageClass {
   readonly selectLabel: string;
   readonly selectSub: string;
   readonly selectLockedSub: string | undefined;
-  readonly selectKeys: readonly string[];
+  // 行に出し、押されたら選ぶキー。持たないステージは null(SPEC GAME.md 1)。
+  readonly selectKey: string | null;
   readonly selectGroup: string;
   readonly hiddenFromSelect: boolean;
   isUnlocked(clearCounts: ClearCounts): boolean;
@@ -99,19 +106,20 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 近未来/遠未来いずれかの数値暦の期間に入っていれば暦パックを読み込み、どちらにも
   // 入らなければ CELESTIAL.md 2.2 のとおり解析暦だけで組む。
   public static async createCelestialSystem(
-    phaseOffsets: PhaseOffsets, earthSpinPhase0: number, epoch: TdbJulianDate,
-    onProgress?: (ratio: number) => void, renderer?: THREE.WebGPURenderer,
+    epoch: TdbJulianDate, onProgress?: (ratio: number) => void, renderer?: THREE.WebGPURenderer,
   ): Promise<CelestialSystem> {
     const profile = profileAtOrNull(epoch.value);
     const ephemerisPoints = profile === null ? null : await loadEphemerisPoints(
       profile.id, epoch, profile.validEndJdTdb, onProgress,
     );
-    return solarSystem('earth', phaseOffsets, earthSpinPhase0, ephemerisPoints, epoch, renderer);
+    return solarSystem('earth', ephemerisPoints, epoch, renderer);
   }
   // 選択画面でロック中に出す説明。指定が無ければ selectSub をそのまま出す。
   public static readonly selectLockedSub: string | undefined = undefined;
   // タイトルのステージ選択ボタン列に並べない。
   public static readonly hiddenFromSelect: boolean = false;
+  // ショートカットキーを持たない。持つステージだけが宣言する。
+  public static readonly selectKey: string | null = null;
   // 開始前に開始日時の指定画面を挟まない。挟むステージだけが true を宣言する。
   public static readonly picksStartEpoch: boolean = false;
   // 選択画面でこのステージを並べるタブの名前。
@@ -221,13 +229,33 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     return this._dynamicSystem.all().filter(isPlayer).find((p) => p.motion.alive) ?? null;
   }
 
-  // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、
-  // 何隻をどこへ置くかはステージ自身の宣言。
-  protected addPlayer(init?: PlayerInit): Player {
-    const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, init);
+  // 自機を1隻置き、操作対象が居なければそれを操作対象にする。state を省いた新規配置は
+  // 既定の円軌道(defaultPlayerState)に置き、機首と上面はその位置で最も強く引く天体を基準に向ける。
+  // 艦の隻数は0..n隻が一般形で、何隻をどこへ置くかはステージ自身の宣言。
+  protected addPlayer(placement: Partial<PlayerPlacement> = {}): Player {
+    const state = placement.state ?? this.defaultPlayerState();
+    const center = strongestAttractor(state.r, this._celestialSystem.celestialMotions, state.t);
+    const ship = new Player(
+      this._hud, this._worldSfx, this._scene, this._fx, this._dynamicSystem.idAllocators,
+      { ...placement, state, center },
+    );
     this._dynamicSystem.add(ship);
     this._controlSelection.claimIfNone(ship);
     return ship;
+  }
+
+  // 状態を指定しない自機の、いまの simTime における既定の状態: ECI 原点の天体を回る、
+  // 高度 PLAYER_INITIAL_ALT・傾斜角 PLAYER_INITIAL_INC_DEG の円軌道上。
+  private defaultPlayerState(): KinematicState {
+    const t = this._dynamicSystem.simTime;
+    const center = this._celestialSystem.origin.motion;
+    const radius = center.def.radius + PLAYER_INITIAL_ALT;
+    const speed = Math.sqrt(center.def.mu / radius);
+    const inc = (PLAYER_INITIAL_INC_DEG * Math.PI) / 180;
+    const rel = kinematicState<'primaryRel'>(
+      t, v3(radius, 0, 0), v3(0, speed * Math.sin(inc), -speed * Math.cos(inc)),
+    );
+    return addPrimaryRelative(center.stateAt(t), rel);
   }
 
   // 敵を登録し、出撃数をスコアへ記録する。
