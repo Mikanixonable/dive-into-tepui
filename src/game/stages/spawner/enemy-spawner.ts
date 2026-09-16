@@ -6,8 +6,6 @@ import { strongestAttractor } from '../../../physics/attractor';
 import { frameOfCelestialBody, toFrameState } from '../../../physics/frame';
 import { randSym } from '../../../math/random';
 import { add, len, norm, scale } from '../../../math/vec3';
-import { WorldSfx } from '../../../audio/sfx/world-sfx';
-import type { FlashEffects } from '../../vfx/flash-effects';
 import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { generateDriftingEnemy } from './enemy-generator';
 import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
@@ -37,8 +35,6 @@ const STAGE0_JITTER_RADIAL = 350; // 各機の動径方向ばらつき [m]
 export function generateCluster(
   base: KinematicState,
   attractors: readonly CelestialBody[],
-  worldSfx: WorldSfx,
-  fx: FlashEffects,
   scene: THREE.Scene,
   idAllocators: EntityIdAllocators,
   groupCount: number = COLOR_STAGE0_GROUP_ACCENTS.length,
@@ -73,7 +69,7 @@ export function generateCluster(
       if (offLen > safeRange) off = scale(off, safeRange / offLen);
 
       const state: KinematicState = kinematicState<'eci'>(base.t, add(base.r, off), base.v);
-      enemies.push(generateDriftingEnemy(`${label}-${i + 1}`, state, accent, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene, idAllocators, `cluster-${gi}`));
+      enemies.push(generateDriftingEnemy(`${label}-${i + 1}`, state, accent, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators, `cluster-${gi}`));
     }
   }
   return enemies;

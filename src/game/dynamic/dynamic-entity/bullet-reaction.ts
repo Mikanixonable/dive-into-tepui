@@ -1,4 +1,3 @@
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { distSq, type Vec3 } from '../../../math/vec3';
 import type { EngagementParticipant, EngagementZone } from '../engagement-zone';
 import type { DynamicMotion, DynamicMotionBehavior } from '../dynamic-motion';
@@ -29,7 +28,6 @@ export class BulletReaction implements DynamicMotionBehavior {
     public readonly shooter: Shooter,
     public readonly type: BulletType,
     public readonly damage: number,
-    private readonly worldSfx: WorldSfx,
   ) {}
 
   // other と当たるか。弾同士、敵弾と敵機、発射から猶予内の自機の弾と自機を除く。
@@ -52,18 +50,18 @@ export class BulletReaction implements DynamicMotionBehavior {
   }
 
   // 交戦圏 zones の外へ出たか寿命の尽きた弾を消す。zones が空なら寿命だけで消す。敵のプラズマ弾が
-  // 交戦圏の中心の近くを初めて通ると磁気干渉音を鳴らす。
+  // 交戦圏の中心の近くを初めて通り過ぎたことは、その場で記録する。
   public checkLoss(
     self: DynamicMotion,
     _dt: number,
     simTime: number,
-    _services: DynamicReactionServices,
+    services: DynamicReactionServices,
     zones: readonly EngagementZone<EngagementParticipant>[],
   ): void {
     if (!self.alive) return;
     if (this.shooter === 'enemy' && !this.passedClose && nearAnyAnchor(self.state.r, zones)) {
       this.passedClose = true;
-      if (this.type === 'plasma') this.worldSfx.magneticInterference();
+      if (this.type === 'plasma') services.registry.events.record({ kind: 'plasmaPassedClose' });
     }
     const outsideZones = zones.length > 0 && !zones.some((zone) => zone.contains(self.state.r));
     if (outsideZones || simTime >= this.expiresAt) self.alive = false;
