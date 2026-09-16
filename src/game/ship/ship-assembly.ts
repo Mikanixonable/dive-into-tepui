@@ -343,6 +343,15 @@ export class ShipAssembly {
     node.instance.temperature = temperature;
   }
 
+  // 修理・復元・構造操作が module の耐久値を明示的に揃える入口。
+  public setHp(id: string, hp: number): void {
+    const node = this.nodes.get(id);
+    if (node === undefined) throw new Error(`unknown module: ${id}`);
+    if (!Number.isFinite(hp)) throw new Error(`module hp must be finite: ${id}`);
+    const maxHp = this.catalog.require(node.instance.definitionId).maxHp;
+    node.instance.hp = Math.max(0, Math.min(maxHp, hp));
+  }
+
   public get role(): ShipRole {
     const healthy = (kind: ShipModuleInstance['kind']): boolean => [...this.nodes.values()]
       .some(node => node.instance.kind === kind && node.instance.hp > 0);
