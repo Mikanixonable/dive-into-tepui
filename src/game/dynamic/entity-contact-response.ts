@@ -61,21 +61,23 @@ function customContactGeometry(
   if (sweptValid) {
     const sweptA = a.testCustomSweptSphereCollision(
       b.prevState.r, bWork.r, b.radius, a.prevState, aWork,
+      a.prevAtt, a.att,
     );
     if (sweptA !== null) return makeSweptGeometry(sweptA, sweptA.hit.normal);
 
     const sweptB = b.testCustomSweptSphereCollision(
       a.prevState.r, aWork.r, a.radius, b.prevState, bWork,
+      b.prevAtt, b.att,
     );
     if (sweptB !== null) return makeSweptGeometry(sweptB, scale(sweptB.hit.normal, -1));
   }
 
-  const sphereHitA = a.testCustomSphereCollision(bWork.r, b.radius, aWork);
+  const sphereHitA = a.testCustomSphereCollision(bWork.r, b.radius, aWork, a.att);
   if (sphereHitA !== null) {
     return { normal: sphereHitA.normal, toi: 1, pushOut: sphereHitA.depth, contactPoint: sphereHitA.point };
   }
 
-  const sphereHitB = b.testCustomSphereCollision(aWork.r, a.radius, bWork);
+  const sphereHitB = b.testCustomSphereCollision(aWork.r, a.radius, bWork, b.att);
   if (sphereHitB !== null) {
     return { normal: scale(sphereHitB.normal, -1), toi: 1, pushOut: sphereHitB.depth, contactPoint: sphereHitB.point };
   }
