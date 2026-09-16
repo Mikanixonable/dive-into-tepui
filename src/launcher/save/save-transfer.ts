@@ -8,9 +8,7 @@ import {
 } from './slot-data';
 import { SaveSlots } from './save-slots';
 
-// セーブスロットのファイルへの出し入れと、外部から読み込んだ JSON が SlotExport
-// として妥当かどうかの検証だけを担う。索引の操作(SaveSlots)にも永続化
-// (SaveStore)にも属さない責務なので、ここに独立させる。
+// セーブスロットのファイルへの出し入れと、読み込んだ JSON が SlotExport として妥当かどうかの検証。
 
 type ImportResult =
   | { ok: true; slot: SaveSlotMeta }
@@ -47,10 +45,9 @@ function formatTimestamp(d: Date): string {
   return `${date}-${time}`;
 }
 
-// ファイルを読んで検証し、新しいスロットとして取り込む。検証に落ちた場合は
-// slots.importSlot を一切呼ばない。
+// ファイルを読んで検証し、検証を通ったものだけを新しいスロットとして取り込む。
 async function importSlotFromFile(slots: SaveSlots, file: File): Promise<ImportResult> {
-  // パース → 形式検証 → 取り込みの順で、途中で落ちたら以降を実行しない。
+  // パース → 形式検証 → 取り込みの順に進める。
   let text: string;
   try {
     text = await file.text();
@@ -75,9 +72,8 @@ async function importSlotFromFile(slots: SaveSlots, file: File): Promise<ImportR
 
 // ファイル選択ダイアログを開き、選ばれたファイルを importSlotFromFile に渡す。
 export function pickAndImportSlot(slots: SaveSlots): Promise<ImportResult> {
-  // input はダイアログの開閉に必要な間だけ DOM に置き、決着したら取り除く。ダイアログを
-  // 閉じただけでは change が来ない環境があるので、ウィンドウへ戻った時点も終端として扱う
-  // — これが無いと Promise が永久に解決せず、input も残り続ける。
+  // ダイアログを閉じただけでは change が来ない環境があるので、ウィンドウへ戻った時点も終端
+  // として扱う — これが無いと Promise が永久に解決せず、input も DOM に残り続ける。
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -85,6 +81,7 @@ export function pickAndImportSlot(slots: SaveSlots): Promise<ImportResult> {
     input.style.display = 'none';
 
     let settled = false;
+    // 最初の1回だけ効く終端。listener と input を片付けてから解決する。
     const settle = (result: ImportResult | Promise<ImportResult>) => {
       if (settled) return;
       settled = true;
