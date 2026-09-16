@@ -57,6 +57,8 @@ import { MapVisibilityPolicy } from './map/visibility-policy';
 import type { RunSetting } from './run-setting';
 import type { OrbitGuideSettings } from './celestial/orbit-guide/orbit-guide-settings';
 import type { CelestialGridVisibility } from '../render/celestial-grid';
+import { ShipConstruction } from './ship/ship-construction';
+import { gameInputMode } from './input/game-input-router';
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -85,6 +87,7 @@ export class Game {
   public readonly displayWindowManager: DisplayWindowManager;
   private readonly viewManager: ViewManager;
   private readonly objectWindows: ObjectWindows;
+  private readonly shipConstruction: ShipConstruction;
 
   public readonly activeStage: Stage;
   // ポーズ中か。時間倍率とは独立に時間を止める。
@@ -278,11 +281,16 @@ export class Game {
       this.flashEffects, this.markerManager, celestialSystem, this.controlSelection,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
+    this.shipConstruction = new ShipConstruction(
+      this._scene, this._hud.shipConstructionPanel, this._hud.overlayManager,
+      this.displayWindowManager, this.dynamicSystem, this._hud,
+      (ship) => this.cameraSystem.focusConstruction(ship.id, ship.motion.radius),
+    );
     // activeStage を読むのでその後に組む。ビューより先に組み上がるので、現在のビューは遅延評価で渡す。
     this.objectWindows = new ObjectWindows(
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
       this.cameraSystem, () => this.viewManager.activeView, this.pauseMenu,
-      this.controlSelection, this.frameControls, this.activeStage, this.targeter,
+      this.controlSelection, this.frameControls, this.activeStage, this.targeter, this.shipConstruction,
     );
 
     const combatView = new CombatView(
@@ -335,6 +343,7 @@ export class Game {
     this.viewBadge.dispose();
     this.viewManager.dispose();
     this.objectWindows.dispose();
+    this.shipConstruction.dispose();
     this.activeStage.dispose();
     // Hud はこのゲームより長生きするので、書き換えたクラスと差し込んだ参照を元へ戻す。
     this._hud.root.classList.remove('creative-mode');
@@ -369,7 +378,10 @@ export class Game {
     this.handleInput(dt);
     this.sections.exit(SECTION.input);
 
-    if (!this._isPaused && this.activeStage.isPlaying) this.advanceSimulation(dt);
+    const inputMode = gameInputMode(
+      this._isPaused, this._hud.overlayManager.isInputGated(), this.shipConstruction.active,
+    );
+    if (inputMode.simulation && this.activeStage.isPlaying) this.advanceSimulation(dt);
     // ここから先はポーズ中も決着後も通す。決着は積分を止めないので、飛ばすと描画原点になる
     // カメラ位置だけが絶対 ECI に取り残され、追従対象が軌道速度で流れて即フレームアウトする。
     const activeControllable = this.activeControllable;
@@ -464,7 +476,11 @@ export class Game {
   // ポインタ入力を現在のビューへ配る。このフレームの cameraSystem.update が終わって初めて投影が
   // このフレームの値になるので、update の末尾に置く。ポーズ中と入力ゲート中はそのまま戻る。
   private handlePointerInput(viewport: Viewport): void {
-    if (this._isPaused || this._hud.overlayManager.isInputGated()) return;
+    const mode = gameInputMode(
+      this._isPaused, this._hud.overlayManager.isInputGated(), this.shipConstruction.active,
+    );
+    if (mode.construction && this.shipConstruction.handlePointer(this.input, this.cameraSystem, viewport)) return;
+    if (!mode.world) return;
     this.viewManager.activeView.handlePointer(this.dynamicSystem.simTime, viewport);
   }
 
@@ -485,6 +501,7 @@ export class Game {
     // ヘルプや設定など、背景入力をゲートするモーダルが開いた後は、同じフレームの
     // ワープ/ビュー切り替え/計画編集へキーを漏らさない。
     if (this._hud.overlayManager.isInputGated()) return;
+    if (this.shipConstruction.active) return;
     this.simSpeedManager.handleInput(this.input);
     this.viewManager.handleInput(this.input);
     // ビュー固有のキー(戦闘=計画破棄/自動ワープ、マップ=Δv 編集)は現在のビューが持つ。
@@ -513,6 +530,7 @@ export class Game {
       cs.activeViewpoint, cs.clipFovDeg, cs.clipDistance, viewport, cs.view, cs.zoomActive, cs.focusVelocity,
     );
     this.cameraFrame = camera;
+    this.shipConstruction.sync(camera);
     // マップビューのときだけ表示設定パネルを出す。
     this.viewOptions.setVisible(this.viewManager.current === 'map');
     // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。

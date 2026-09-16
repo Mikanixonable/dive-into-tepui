@@ -30,6 +30,7 @@ import { ModuleWindows } from './module-windows';
 import type { InspectedObject, ObjectAuthoring } from './inspected-object';
 import type { PropertyWindowOpener } from './property-window-opener';
 import { objectPickableOf } from './object-pickable';
+import type { ShipConstruction } from '../ship/ship-construction';
 
 // 開いているプロパティウィンドウ本体と、その対象。対象は同じ同一性を保ち続けるので、
 // 行・項目の再導出も消滅の判定もこの参照を経由する。
@@ -68,10 +69,11 @@ export class ObjectWindows implements PropertyWindowOpener {
     private readonly focusSink: FocusSink,
     private readonly activeStage: Stage,
     private readonly targeter: Targeter,
+    construction: ShipConstruction,
   ) {
     this.menu = new ContextMenu<InspectedObject, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => this.runAct(target, act);
-    this.moduleWindows = new ModuleWindows(hud, controlSelection, roster);
+    this.moduleWindows = new ModuleWindows(hud, controlSelection, roster, construction);
     this.hud.enemiesPanel.onSelectRight = (id, clientX, clientY) => {
       const enemy = this.roster.all().filter(isEnemy).find((e) => e.id === id);
       const inspected = enemy ? objectPickableOf(enemy) : null;

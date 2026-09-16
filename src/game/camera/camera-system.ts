@@ -16,6 +16,8 @@ import type { ViewMode } from '../../render/view-mode';
 import type { Viewport } from '../../render/viewport';
 import { CameraSaveData } from '../save/save-data';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import { screenRay } from './screen-ray';
+import type { Ray } from '../../math/ray';
 
 // 戦闘ビューの初期視点: 操作対象の後方やや上から見下ろす(役割フォーカス+姿勢追従)。
 const COMBAT_CAMERA_FOV = 55; // 通常時の垂直画角 [deg]
@@ -140,6 +142,16 @@ export class CameraSystem {
   // アクティブカメラの視点から viewport の画面座標への射影を返す。
   public activeProjection(viewport: Viewport): ProjectFn {
     return screenProjection(this.activeViewpoint, viewport.width, viewport.height);
+  }
+
+  public rayThroughScreen(clientX: number, clientY: number, viewport: Viewport): Ray {
+    return screenRay(this.activeViewpoint, viewport, clientX, clientY);
+  }
+
+  // 建造対象の艦へ戦闘カメラを寄せる。以後の orbit／zoom 操作は通常の FocusCamera が担う。
+  public focusConstruction(shipId: string, radius: number): void {
+    this.combatCamera.setFocusTarget({ kind: 'object', id: shipId });
+    this.combatCamera.setDistance(Math.max(12, radius * 2.5));
   }
 
   // 現在のビューのカメラが注視しているフォーカス対象。

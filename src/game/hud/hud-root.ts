@@ -13,6 +13,7 @@ import { MAP_PANEL_STYLE } from './style/map-panel-style';
 import { STAGE_STATUS_STYLE } from './style/stage-status-style';
 import { COMBAT_VIEW_STYLE } from './style/combat-view-style';
 import { MAP_VIEW_STYLE } from './style/map-view-style';
+import { SHIP_CONSTRUCTION_STYLE } from './style/ship-construction-style';
 import { isCompactViewport } from '../../hud/breakpoints';
 import { startViewportTracking } from '../../hud/viewport';
 import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
@@ -24,7 +25,7 @@ import type { CollapseToggleLabels } from '../../hud/widgets';
 const STYLE =
   LAYOUT_TOKENS_STYLE + SKELETON_STYLE + MARKER_STYLE
   + COMBAT_PANEL_ROWS_STYLE + MAP_PANEL_STYLE + STAGE_STATUS_STYLE
-  + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE;
+  + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE + SHIP_CONSTRUCTION_STYLE;
 
 
 interface HudDomRefs {
@@ -243,6 +244,25 @@ function buildBurnManagementPanel(leftRail: HTMLElement): void {
     <div class="metric-list burn-module-list" data-id="burn-module-list" aria-label="ブースターとデカプラー"></div>`;
 }
 
+function buildShipConstructionPanel(leftRail: HTMLElement): void {
+  const construction = new PanelShell(leftRail, 'ship-construction-panel', '船体建造');
+  configureCombatPanel(construction);
+  construction.body.innerHTML = `
+    <div data-id="construction-controls"></div>
+    <dl class="metric-list">
+      <div class="row metric"><dt class="k">部品数</dt><dd class="v"><output data-id="construction-count">0</output></dd></div>
+      <div class="row metric"><dt class="k">総質量</dt><dd class="v"><output data-id="construction-mass">0 kg</output></dd></div>
+      <div class="row metric"><dt class="k">HP</dt><dd class="v"><output data-id="construction-hp">0 / 0</output></dd></div>
+      <div class="row metric"><dt class="k">能力</dt><dd class="v"><output data-id="construction-capabilities">—</output></dd></div>
+      <div class="row metric"><dt class="k">完成時の役割</dt><dd class="v"><output data-id="construction-role">物資</output></dd></div>
+      <div class="row metric"><dt class="k">完成条件</dt><dd class="v"><output data-id="construction-completion">部品を1個以上配置</output></dd></div>
+    </dl>
+    <p class="construction-warning hidden" data-id="construction-warning"></p>
+    <div class="construction-actions" data-id="construction-actions" role="group" aria-label="船体建造操作"></div>`;
+  construction.el.dataset.id = 'ship-construction-panel';
+  construction.el.classList.add('hidden');
+}
+
 // 常設 TARGET パネルを右レールへ組む。ロック対象が無い間は隠す。
 function buildTargetPanel(rightRail: HTMLElement): void {
   const target = new PanelShell(rightRail, 'hud-target', 'Target');
@@ -301,6 +321,7 @@ function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement): void {
   buildVesselStatusPanel(rightRail);
   buildOrbitInfoPanel(leftRail);
   buildBurnManagementPanel(leftRail);
+  buildShipConstructionPanel(leftRail);
   buildTargetPanel(rightRail);
   buildEnemiesPanel(rightRail);
 }

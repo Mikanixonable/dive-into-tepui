@@ -337,7 +337,7 @@ export class FocusCamera {
   }
 
   // 注視距離 [m] を許容範囲へ収めて設定する。視線の向きは保つ。
-  private setDistance(distance: number): void {
+  public setDistance(distance: number): void {
     const current = this.dist;
     const next = Math.max(this.minDist, Math.min(FOCUS_CAMERA_MAX_DIST, distance));
     if (!(current > 0) || next === current) return;

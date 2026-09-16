@@ -11,6 +11,7 @@ import type { EntityRoster } from '../dynamic/entity-roster';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { Notifier } from '../../hud/notifier';
 import { dockingEligibility } from '../ship/ship-docking';
+import type { ShipConstruction } from '../ship/ship-construction';
 
 interface ModuleWindowEntry {
   readonly win: PropertyWindow<MenuAction>;
@@ -38,12 +39,20 @@ function moduleItems(ship: ModularShip, module: ShipModuleInstance): PropertyWin
     act: 'selectCockpitModule', keepOpen: true,
   }];
   if (module.kind === 'dock' || module.kind === 'docking_port') {
-    return ship.docks.status(ship.assembly, module.id) === 'connected'
+    const status = ship.docks.status(ship.assembly, module.id);
+    return status === 'connected'
       ? [
         { label: '接続船体を修理', act: 'repairDockedModules', keepOpen: true },
         { label: '接続を解除して発進', act: 'undockModule' },
       ]
-      : [{ label: '近傍船を接舷', act: 'dockModule' }];
+      : [
+        ...(module.kind === 'dock'
+          ? [{ label: status === 'building' ? '建造を再開' : '船体を建造', act: 'startConstructionModule' as const }]
+          : []),
+        ...(status === 'empty'
+          ? [{ label: '近傍船を接舷', act: 'dockModule' as const }]
+          : []),
+      ];
   }
   return [];
 }
@@ -51,14 +60,15 @@ function moduleItems(ship: ModularShip, module: ShipModuleInstance): PropertyWin
 export class ModuleWindows {
   private readonly windows = new Map<string, ModuleWindowEntry>();
 
-  constructor(
+  public constructor(
     private readonly hud: HudLayers & Notifier,
     private readonly controlSelection: ControlSelection,
     private readonly roster: EntityRoster & EntityRegistry,
+    private readonly construction: ShipConstruction,
   ) {}
 
   // モジュールのウィンドウを開く。既に開いていればクリック位置へ動かして最前面に出すだけにする。
-  open(ship: ModularShip, moduleId: string, clientX: number, clientY: number): void {
+  public open(ship: ModularShip, moduleId: string, clientX: number, clientY: number): void {
     const module = ship.assembly.module(moduleId);
     if (module === null) return;
     const key = `${ship.id}:${moduleId}`;
@@ -87,6 +97,12 @@ export class ModuleWindows {
         }
       } else if (act === 'dockModule') {
         this.dockNearest(ship, moduleId);
+      } else if (act === 'startConstructionModule') {
+        try {
+          this.construction.start(ship, moduleId);
+        } catch (error) {
+          this.hud.hint(error instanceof Error ? error.message : '建造を開始できません');
+        }
       } else if (act === 'undockModule') {
         try {
           ship.undock(moduleId, this.roster);
@@ -107,14 +123,14 @@ export class ModuleWindows {
   }
 
   // その艦のモジュールウィンドウをすべて畳む。
-  closeFor(shipId: string): void {
+  public closeFor(shipId: string): void {
     for (const entry of [...this.windows.values()]) {
       if (entry.ship.id === shipId) entry.win.close();
     }
   }
 
   // 開いている各ウィンドウの値を最新化する。操作対象から外れた艦・失われたモジュールは閉じる。
-  sync(): void {
+  public sync(): void {
     for (const entry of [...this.windows.values()]) {
       const { ship, moduleId } = entry;
       const module = ship.assembly.module(moduleId);
@@ -132,7 +148,7 @@ export class ModuleWindows {
   }
 
   // 開いているウィンドウをすべて畳む。
-  close(): void {
+  public close(): void {
     for (const entry of [...this.windows.values()]) entry.win.close();
   }
 
