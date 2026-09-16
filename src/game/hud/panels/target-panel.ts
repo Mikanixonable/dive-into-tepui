@@ -3,7 +3,7 @@
 import { fmtDist, fmtSpeed, setElementText } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
 import { relativeInfo } from '../../orbit-info';
-import { ProteinEnemy } from '../../dynamic/dynamic-entity/protein-enemy';
+import { proteinInspectionOf } from '../../pickable/enemy-inspection';
 import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
 import type { ProteinCombatReadout } from '../../protein/protein-schema';
 import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
@@ -59,7 +59,7 @@ export class TargetPanel {
       relativeSpeedMps: relative.relSpeed,
       hp: target.hp,
       maxHp: target.maxHp,
-      protein: target instanceof ProteinEnemy ? target.combatReadout : null,
+      protein: proteinInspectionOf(target)?.combatReadout() ?? null,
     });
   }
 
