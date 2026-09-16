@@ -5,7 +5,7 @@ import { shapeAxes, shapeInscribedRadius, shapeOf } from '../../physics/celestia
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { atmosphereDraws } from '../../render/atmosphere';
 import {
-  STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE, STARLESS_SUN_INTENSITY, STARLESS_SUN_RADIUS, SunLight,
+  REFERENCE_RADIANT_INTENSITY, STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE, STARLESS_SUN_RADIUS, SunLight,
   scaledRadiantIntensity,
 } from '../../render/pipeline/sun-light';
 import { ambientFraction } from '../../render/pipeline/lighting/ambient-source';
@@ -64,7 +64,7 @@ export class CelestialIllumination {
   public get fixedBrightnessScale(): number { return this.targets.exposure.fixedBrightnessScale; }
 
   // 恒星・露出・環境光・天体照・影・大気を、この1フレームの表示状態に同期する。全天体の sync の
-  // 後に呼ぶ。sources は星系の全天体とその表示可否、focusPosition は注視中の天体の ECI 位置
+  // 後に呼ぶ。sources は星系の全天体、focusPosition は注視中の天体の ECI 位置
   // (天体以外を注視中は null)、sunDirection は恒星を持たない星系で光源を置く向き。
   public sync(
     sources: readonly CelestialIlluminationSource[], displayTime: number, camera: CameraFrame,
@@ -80,7 +80,7 @@ export class CelestialIllumination {
     // 露出と天体照の基準点は注視点 — カメラ位置だと、太陽系の外にいるマップビューで露出が発散する。
     const reference = fo.RtoThreeV3(camera.viewpoint.lookTarget);
     const starIntensity = star === null
-      ? STARLESS_SUN_INTENSITY : scaledRadiantIntensity(star.motion.def.radiantIntensity);
+      ? REFERENCE_RADIANT_INTENSITY : scaledRadiantIntensity(star.motion.def.radiantIntensity);
     this.targets.exposure.setReference(reference, sunPos, starIntensity);
     this.targets.sunLight.set(
       sunPos, star?.motion.def.radius ?? STARLESS_SUN_RADIUS,
