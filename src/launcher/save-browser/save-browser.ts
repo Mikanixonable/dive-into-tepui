@@ -1,4 +1,4 @@
-// セーブデータブラウザ: 複数のセーブデータ(スロット)とそのスナップショット履歴を
+// セーブデータブラウザ: 複数のセーブデータ(スロット)とその手動セーブの履歴を
 // 一覧・切替・クリップ・書き出し/取り込みするフルスクリーン UI。
 // 一発モーダルで、操作のたびに DOM を組み直す(毎フレーム sync は無い)。
 import { solarSystemBodyName } from '../../game/celestial/solar-system/solar-system';
@@ -139,7 +139,7 @@ export class SaveBrowser implements OverlayHandle {
     return this.slots.slots.find((s) => s.id === this.viewedSlotId) ?? null;
   }
 
-  // 現在のスロット一覧・スナップショット一覧を組み直して DOM に反映する。
+  // 現在のスロット一覧・手動セーブの一覧を組み直して DOM に反映する。
   private rebuild(): void {
     this.el.innerHTML = '';
     const panel = document.createElement('div');
@@ -227,10 +227,9 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
-  // confirm でクリップ済みのみか全件かを尋ねてからファイルへ書き出し、成否をステータス行へ表示する。
+  // 手動セーブをファイルへ書き出し、成否をステータス行へ表示する。
   private handleExportSlot(id: string): void {
-    const pinnedOnly = confirm('クリップ済みのスナップショットだけを書き出しますか?(キャンセルで全件)');
-    const ok = exportSlotToFile(this.slots, id, pinnedOnly);
+    const ok = exportSlotToFile(this.slots, id);
     this.setStatus(ok ? '書き出しました。' : '書き出しに失敗しました。', !ok);
     this.rebuild();
   }
@@ -294,7 +293,7 @@ export class SaveBrowser implements OverlayHandle {
   // 閉じてから onLoadSnapshot を呼ぶ — 開いたままだと次の周回でも入力を遮断し続ける。
   private handleLoadSnapshot(snapId: string, loadable: boolean): void {
     if (!loadable) {
-      this.setStatus('いま遊んでいるセーブデータ・ステージのスナップショットだけを復元できます。', true);
+      this.setStatus('いま遊んでいるセーブデータ・ステージの手動セーブだけを復元できます。', true);
       this.rebuild();
       return;
     }
@@ -302,44 +301,32 @@ export class SaveBrowser implements OverlayHandle {
     this.onLoadSnapshot?.(snapId);
   }
 
-  // クリップ時は名前を尋ね、解除時はそのまま外す。上限に達している場合はクリップできず、
-  // 理由をステータス行へ表示する。
+  // クリップの印を付け外しする。付けるときは、任意で名前を付けて区別できるようにする。
   private handleTogglePin(snapId: string, currentlyPinned: boolean): void {
-    // 解除は確認なしでそのまま外す。
-    if (currentlyPinned) {
-      this.slots.setPinned(snapId, false);
-      this.rebuild();
-      return;
+    this.slots.setPinned(snapId, !currentlyPinned);
+    if (!currentlyPinned) {
+      const name = prompt('クリップする名前(空欄なら変更しません)', '');
+      if (name) this.slots.renameSnapshot(snapId, name);
     }
-    // クリップは上限に達していれば失敗し、理由をステータス行へ出す。
-    const ok = this.slots.setPinned(snapId, true);
-    if (!ok) {
-      this.setStatus('クリップ上限です。先にどれかのクリップを外してください。', true);
-      this.rebuild();
-      return;
-    }
-    // 成功したら、任意で名前を付けて区別できるようにする。
-    const name = prompt('クリップする名前(空欄なら変更しません)', '');
-    if (name) this.slots.renameSnapshot(snapId, name);
     this.rebuild();
   }
 
-  // 新しい名前を prompt で尋ねてスナップショット名を書き換える。キャンセル・空文字なら何もしない。
+  // 新しい名前を prompt で尋ねて手動セーブ名を書き換える。キャンセル・空文字なら何もしない。
   private handleRenameSnapshot(id: string): void {
-    const name = prompt('スナップショットの名前', '');
+    const name = prompt('セーブの名前', '');
     if (!name) return;
     this.slots.renameSnapshot(id, name);
     this.rebuild();
   }
 
-  // confirm で確認してからスナップショットを削除する。
+  // confirm で確認してから手動セーブを削除する。
   private handleDeleteSnapshot(id: string): void {
-    if (!confirm('このスナップショットを削除します。よろしいですか?')) return;
+    if (!confirm('この手動セーブを削除します。よろしいですか?')) return;
     this.slots.deleteSnapshot(id);
     this.rebuild();
   }
 
-  // 指定したスナップショット時点でスロットを複製(分岐)し、成否をステータス行へ表示する。
+  // 指定した手動セーブの時点でスロットを複製(分岐)し、成否をステータス行へ表示する。
   // 成功したら複製先を表示対象にする。
   private handleBranch(slotId: string, snapId: string): void {
     const dup = this.slots.duplicateSlot(slotId, snapId);

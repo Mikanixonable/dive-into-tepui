@@ -1,6 +1,7 @@
 // セーブブラウザ右ペイン(手動セーブの一覧)の DOM 構築。
 // ステージ切替タブと、カード1件ごとの表示と操作ボタンを組み立てる。
 // 表示対象の状態やクリップ・改名・削除・分岐などの実処理は、コールバックを通じて呼び出し側へ委ねる。
+import { MANUAL_SAVE_LIMIT } from '../save/save-slots';
 import type { SaveSlotMeta, SnapshotMeta } from '../save/slot-data';
 import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud/utils';
 import { Button, Meter, TabBar } from '../../hud/widgets';
@@ -16,13 +17,7 @@ const STYLE = `
 }
 #save-browser .sb-snap-loadable { cursor: pointer; }
 #save-browser .sb-snap-loadable:hover { background: var(--fill-1); }
-#save-browser .sb-snap-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 #save-browser .sb-snap-name { font-size: var(--font-s); }
-#save-browser .sb-snap-badge {
-  font-size: var(--font-xxs); letter-spacing: .5px; padding: 1px var(--space-3); border-radius: var(--radius-l);
-  border: 0; color: var(--text-dim); background: var(--fill-1);
-}
-#save-browser .sb-snap-badge-checkpoint { color: var(--text); }
 #save-browser .sb-snap-row { font-size: var(--font-xs); color: var(--text-dim); }
 /* HP バーは細く、満タンでもオレンジで塗らない — このパネルの主役はセーブ操作であって
    HP 表示ではないため、他の注目要素と競合しないモノトーンに留める(danger 色も使わない)。 */
@@ -36,10 +31,6 @@ const STYLE = `
 function num(v: number): number {
   return Number.isFinite(v) ? v : 0;
 }
-
-const SNAPSHOT_KIND_LABEL: Record<SnapshotMeta['kind'], string> = {
-  auto: '自動', manual: '手動', checkpoint: '決着',
-};
 
 interface SnapshotPaneCallbacks {
   readonly onSaveNow: () => void;
@@ -75,7 +66,7 @@ export function buildSnapshotPane(
 
   const title = document.createElement('div');
   title.className = 'sb-pane-title';
-  title.textContent = `手動セーブ (${manualSaves.length}件)`;
+  title.textContent = `手動セーブ (${manualSaves.length}/${MANUAL_SAVE_LIMIT})`;
   wrap.appendChild(title);
 
   const saveBtn = new Button('今の状態をセーブする', callbacks.onSaveNow, undefined, 'primary');
@@ -121,17 +112,16 @@ function buildSnapshotList(
   return el;
 }
 
-// 1件のスナップショットカードを組み立てる。ダブルクリックでロードを、右側のボタンで
+// 1件の手動セーブのカードを組み立てる。ダブルクリックでロードを、右側のボタンで
 // クリップ切替・改名・削除・分岐を、それぞれコールバックへ委ねる。
 function buildSnapshotCard(
   s: SnapshotMeta, slot: SaveSlotMeta, loadable: boolean, callbacks: SnapshotPaneCallbacks,
 ): HTMLElement {
   // 取り込んだファイル由来のメタは欠けていたり別物だったりし得るので、表示前に必ず均す。
-  const kind = SNAPSHOT_KIND_LABEL[s.kind] ? s.kind : 'auto';
   const hpPct = Math.max(0, Math.min(100, num(s.hpRatio) * 100));
   const loadTitle = loadable
     ? 'ダブルクリックでロード'
-    : 'いま遊んでいるセーブデータ・ステージのスナップショットだけを復元できます';
+    : 'いま遊んでいるセーブデータ・ステージの手動セーブだけを復元できます';
 
   const card = document.createElement('div');
   card.className = 'sb-snap-card';
@@ -144,16 +134,10 @@ function buildSnapshotCard(
     callbacks.onLoadSnapshot(s.id, loadable);
   });
 
-  const head = document.createElement('div');
-  head.className = 'sb-snap-head';
-  const name = document.createElement('span');
+  const name = document.createElement('div');
   name.className = 'sb-snap-name';
   name.textContent = String(s.name ?? '');
-  const badge = document.createElement('span');
-  badge.className = `sb-snap-badge sb-snap-badge-${kind}`;
-  badge.textContent = SNAPSHOT_KIND_LABEL[kind];
-  head.append(name, badge);
-  card.appendChild(head);
+  card.appendChild(name);
 
   const row1 = document.createElement('div');
   row1.className = 'sb-snap-row';
