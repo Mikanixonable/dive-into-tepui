@@ -13,7 +13,6 @@ import {
   casingSweptSphereCollision,
 } from './casing-collision';
 
-const BOOSTER_HARDWARE_LIFETIME = 2.4;
 const CASING_LIFETIME = 1800;
 
 export class DebrisReaction implements DynamicMotionBehavior {
@@ -84,8 +83,6 @@ export class DebrisReaction implements DynamicMotionBehavior {
     if (this.bornSim === null) return null;
     switch (this.kind) {
       case 'casing': return this.bornSim + CASING_LIFETIME;
-      case 'boosterCover':
-      case 'boosterBolt': return this.bornSim + BOOSTER_HARDWARE_LIFETIME;
       default: return null;
     }
   }

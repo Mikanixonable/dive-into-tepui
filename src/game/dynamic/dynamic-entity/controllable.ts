@@ -4,7 +4,7 @@ import type { Attitude } from '../../../physics/attitude';
 import type { Vec3 } from '../../../math/vec3';
 import type { ThrottleSaveData } from '../../save/save-data';
 import type { FireControl } from '../../player/fire-control';
-import type { AttachedBoosters } from '../../player/attached-boosters';
+import type { BurnManagementViewModel } from '../../hud/panels/burn-management-panel';
 import type { AltitudeAlarm } from '../../player/altitude-alarm';
 import type { Input } from '../../../input/input';
 import type { StageOutcome } from '../../stages/stage-outcome';
@@ -67,7 +67,7 @@ export interface NavigationController {
 export interface Controllable extends CombatTarget, FuelConsumer, PilotCommandReceiver, NavigationController {
   readonly throttle: ThrottlePort;
   readonly fire?: FireControl;
-  readonly boosters?: AttachedBoosters;
+  burnManagementViewModel?(): BurnManagementViewModel | null;
   readonly altitudeAlarm?: AltitudeAlarm;
   // 操作対象になったときに出す案内。出すものが無ければ null。
   readonly controlHint: string | null;

@@ -259,11 +259,6 @@ export class Game {
     this.controlSelection = new ControlSelection(
       initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._worldSfx, this._hud,
     );
-    this._hud.burnManagementPanel.setHandlers({
-      onAttach: () => { this.activeControllable?.boosters?.attach(); },
-      onToggleIgnition: () => { this.activeControllable?.boosters?.toggleIgnition(); },
-      onDecouple: () => { this.activeControllable?.boosters?.decouple(this.dynamicSystem); },
-    });
     this.planDisplay = new PlanDisplay(
       this._scene, this.markerManager, celestialSystem, this.displayWindowManager, this.controlSelection,
     );
@@ -344,7 +339,6 @@ export class Game {
     // Hud はこのゲームより長生きするので、書き換えたクラスと差し込んだ参照を元へ戻す。
     this._hud.root.classList.remove('creative-mode');
     this._hud.vesselPanel.setInput(null);
-    this._hud.burnManagementPanel.setHandlers({});
     this._hud.burnManagementPanel.sync(null);
     this._worldSfx.dispose();
     this.touchControls?.dispose();
