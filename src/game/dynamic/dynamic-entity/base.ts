@@ -35,7 +35,6 @@ import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
 import { BASE_THRUST, BaseMotion } from './base-motion';
-import type { PlayerStatusSnapshot } from '../../player/player-status-snapshot';
 
 const BASE_TORQUE = 1.4e8;      // 基地のトルク [N·m]（慣性 1e8 で 1.4 rad/s² — 船の角加速度と同等）
 const BASE_FUEL_RATE = 0.5;     // 基地の燃料消費レート
@@ -83,21 +82,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public get totalMaxFuel(): number { return this.motion.maxFuel; }
   public readonly hp = null;
   public readonly maxHp = null;
-
-  public statusSnapshot(): PlayerStatusSnapshot {
-    return {
-      throttleIdx: this.throttle.throttleIdx,
-      rcsDamp: this.throttle.rcsDamp,
-      progradeHold: this.throttle.progradeHold,
-      fineAttitude: this.fineAttitude,
-      totalFuel: this.totalFuel,
-      totalMaxFuel: this.totalMaxFuel,
-      aero: null,
-      power: null,
-      radiator: null,
-      fire: null,
-    };
-  }
 
   // 燃料を amount だけ使い、要求に対して実際に賄えた割合 [0, 1] を返す。
   public consumeFuel(amount: number): number {

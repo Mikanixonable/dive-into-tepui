@@ -40,7 +40,6 @@ import type { Controllable, PilotCommandFrame } from '../dynamic/dynamic-entity/
 import { PlayerMotion, type PlayerMotionReactions } from './player-motion';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
-import type { PlayerStatusSnapshot } from './player-status-snapshot';
 import type { DamageOutcomeSink } from './damage-outcome';
 import { PlayerInspection } from '../pickable/player-inspection';
 import { DefaultPlayerEffects, type PlayerEffects } from './player-effects';
@@ -235,27 +234,6 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   public get roundsInMag(): number { return this.fire.rounds; }
   public get magsLeft(): number { return this.fire.mags; }
   public get reloadTimer(): number { return this.fire.cooldown; }
-
-  public statusSnapshot(): PlayerStatusSnapshot {
-    return {
-      throttleIdx: this.throttle.throttleIdx,
-      rcsDamp: this.throttle.rcsDamp,
-      progradeHold: this.throttle.progradeHold,
-      fineAttitude: this.fineAttitude,
-      totalFuel: this.totalFuel,
-      totalMaxFuel: this.totalMaxFuel,
-      aero: { qdyn: this.motion.aero.qdyn },
-      power: {
-        chargeJ: this.motion.power.chargeJ,
-        deploy: { up: this.motion.power.deployOf('up'), down: this.motion.power.deployOf('down') },
-      },
-      radiator: {
-        up: { deploy: this.motion.radiator.deployOf('up'), wear: this.motion.radiator.wearOf('up') },
-        down: { deploy: this.motion.radiator.deployOf('down'), wear: this.motion.radiator.wearOf('down') },
-      },
-      fire: { rounds: this.fire.rounds, mags: this.fire.mags, cooldown: this.fire.cooldown },
-    };
-  }
 
   // 弾薬ピックアップで得たマグ数を加算する。
   public onPickup(mags: number): void {
