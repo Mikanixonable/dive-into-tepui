@@ -1,7 +1,6 @@
 import { SnapshotService, type SnapshotCaptureSource } from './snapshot-service';
 
-// 「いつ自動で撮るか」だけを持つ。実際の撮影(GameSaveData の組み立て・永続化)は
-// SnapshotService に委ねる。
+// 「いつ復帰点を更新するか」だけを持つ。
 const AUTOSAVE_INTERVAL_REAL_SEC = 60;
 
 export class AutoSave {
@@ -9,12 +8,12 @@ export class AutoSave {
 
   public constructor(private readonly service: SnapshotService) {}
 
-  // ランが始まったときに呼ぶ。その場で1件撮り、次の撮影までの間隔をここから数え直す。
+  // ランが始まったときに呼ぶ。その場で復帰点を更新し、次までの間隔をここから数え直す。
   public beginRun(source: SnapshotCaptureSource): void {
     this.capture(source, performance.now());
   }
 
-  // 毎フレーム呼ぶ。ラン開始か前回の撮影から AUTOSAVE_INTERVAL_REAL_SEC 秒(実時間)経っていれば1件撮る。
+  // 毎フレーム呼ぶ。ラン開始か前回から AUTOSAVE_INTERVAL_REAL_SEC 秒(実時間)経っていれば更新する。
   public update(source: SnapshotCaptureSource): void {
     const now = performance.now();
     if ((now - this.intervalOriginReal) / 1000 < AUTOSAVE_INTERVAL_REAL_SEC) return;
@@ -23,8 +22,8 @@ export class AutoSave {
 
   private capture(source: SnapshotCaptureSource, now: number): void {
     this.intervalOriginReal = now;
-    // 停止中は状態が動かないうえ、一覧を開いたまま剪定が走ると見ている行が消える。
+    // 停止中は状態が動かない。決着後を残さないのは SAVE.md の規定。
     if (source.isPaused || !source.isPlaying) return;
-    this.service.capture(source.runSummary(), source.serialize(), 'auto', null, false);
+    this.service.writeResumePoint(source.serialize());
   }
 }
