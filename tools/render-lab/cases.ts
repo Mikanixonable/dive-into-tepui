@@ -48,6 +48,7 @@ import type { GpuTimingSink } from '../../src/render/gpu-timings';
 import type { CelestialTexture } from '../../src/render/celestial-textures';
 import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';
 import type { WebGPURenderer } from 'three/webgpu';
+import { SHIP_CASES } from './ship-cases';
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
 export const VIEW_WIDTH = 960;
@@ -1160,6 +1161,7 @@ export const CASES = {
   'sun-5au': () => sunAt(5.2 * AU),
   'sun-30au': () => sunAt(30 * AU),
   'blackbody': blackbody,
+  ...SHIP_CASES,
   ...PROTEIN_CASES,
 } as const satisfies Record<
   string, (style: RenderStyle, ringMaterials: RingMaterials) => LabCase
