@@ -18,6 +18,7 @@ const ALLOWLIST = 'tools/boundary-allowlist.json';
 const DEFINITION = '定義';
 const TIME = '時刻';
 const DEVICE = '装置';
+const VIEWER = '視点';
 
 // 層の対応表。前方一致で当てるので、長い接頭辞を先に置く。ここに当たらないパスが src/ に
 // 現れたらエラーにする — 新しいフォルダが、層の判定から黙って抜けるのを防ぐ。
@@ -33,6 +34,7 @@ const LAYER_TABLE = [
   ['src/audio/', DEVICE],
   ['src/input/', DEVICE],
   ['src/hud/', '表示の導出'],
+  ['src/game/viewer/', VIEWER],
   ['src/game/', '表示の導出'],
   ['src/settings/', 'アプリ寿命の正本'],
   ['src/launcher/', 'アプリの組み立て'],
@@ -43,12 +45,53 @@ const LAYER_TABLE = [
 // うちにパスで先取りする(層の対応表では hud/ も game/ も表示の導出なので、層では出ない)。
 const HUD_FORBIDDEN_ROOTS = ['src/game/', 'src/settings/', 'src/launcher/'];
 
+// モデル層のうち進行の置き場(R4)。
+const PROGRESS_ROOTS = [
+  'src/game/dynamic/',
+  'src/game/player/',
+  'src/game/stages/',
+  'src/game/plan/',
+  'src/game/creative/',
+  'src/game/protein/',
+  'src/game/control-selection.ts',
+];
+
+// 表示の導出だが、置き場がまだ進行のフォルダにあるファイル。動かしたらここも直す — 存在しない
+// パスが残ると検査が落ちる。(暫定 — 段 7 で presentation/ へ移すときに消える)
+const MISPLACED_PRESENTATION_FILES = [
+  'src/game/plan/plan-editor.ts',
+  'src/game/plan/node-gizmo.ts',
+  'src/game/plan/plan-panel.ts',
+  'src/game/plan/plan-axis-drag.ts',
+  'src/game/plan/plan-display.ts',
+  'src/game/creative/object-placer-panel.ts',
+  'src/game/creative/slider-field.ts',
+  'src/game/creative/stage-controls-panel.ts',
+  'src/game/stages/stage-utils/status-panel.ts',
+];
+
+// src/game/ の中にある表示の導出の置き場(1.3)。
+const PRESENTATION_ROOTS = [
+  'src/game/hud/',
+  'src/game/marker/',
+  'src/game/view/',
+  'src/game/pickable/',
+  'src/game/map/',
+  'src/game/lines/',
+  'src/game/input/',
+  'src/game/flash-presenter.ts',
+  'src/game/run-event-presenter.ts',
+];
+
 const RULES = {
   deviceOut: '装置の出ていく import',
   deviceToDevice: '装置どうしの相互 import',
   timeOut: '時刻層の出ていく import',
   definitionOut: '定義層の出ていく import',
   hudOut: 'src/hud/ の出ていく import',
+  progressToViewer: '進行から視点への import',
+  settingsViewer: '設定と視点の相互 import',
+  saveToPresentation: 'セーブから表示の導出への import',
 };
 
 // 禁止パターンの表。段ごとに行を足す。exempt は恒久の例外で、理由は各行のコメントに書く。
@@ -130,7 +173,7 @@ const FORBIDDEN = [
     // (暫定 — 段 5 で層の規則が覆うので、そのとき外す)
     name: 'モデル層が生の入力を読む禁止',
     pattern: /from '.*input\/input'/g,
-    targets: ['src/game/dynamic/', 'src/game/player/', 'src/game/stages/'],
+    targets: ['src/game/dynamic/', 'src/game/player/', 'src/game/stages/', 'src/game/viewer/'],
     exempt: [],
   },
   {
@@ -149,6 +192,7 @@ const FORBIDDEN = [
       'src/game/creative/manual-spawn.ts',
       'src/game/creative/object-placement.ts',
       'src/game/plan/plan-guide.ts',
+      'src/game/viewer/',
     ],
     exempt: [],
   },
@@ -224,28 +268,49 @@ function buildGraph() {
   return { files, sources, texts, edges, layerOf, unclassified, unresolved };
 }
 
+// roots の各要素はフォルダ(末尾が /)かファイルのパスで、前方一致で当てる。
+function isUnder(file, roots) {
+  return roots.some((r) => file.startsWith(r));
+}
+
+// 進行のフォルダにあるファイルのうち、表示の導出を除いたものか。
+function isProgress(file) {
+  return isUnder(file, PROGRESS_ROOTS) && !MISPLACED_PRESENTATION_FILES.includes(file);
+}
+
 function findImportViolations({ edges, layerOf }) {
   const found = [];
   for (const e of edges) {
     if (e.to === null) continue;
+    const flag = (rule) => found.push({ rule, file: e.from, id: e.to, line: e.line });
     const from = layerOf(e.from);
     const to = layerOf(e.to);
     const selfRoot = from === DEVICE ? deviceRootOf(e.from) : null;
     const inSelf = selfRoot !== null && e.to.startsWith(selfRoot);
     if (from === DEVICE && !inSelf && to === DEVICE) {
-      found.push({ rule: RULES.deviceToDevice, file: e.from, id: e.to, line: e.line });
+      flag(RULES.deviceToDevice);
     } else if (from === DEVICE && !inSelf && to !== DEFINITION && to !== TIME) {
-      found.push({ rule: RULES.deviceOut, file: e.from, id: e.to, line: e.line });
+      flag(RULES.deviceOut);
     }
-    if (from === TIME && to !== DEFINITION && to !== TIME) {
-      found.push({ rule: RULES.timeOut, file: e.from, id: e.to, line: e.line });
+    if (from === TIME && to !== DEFINITION && to !== TIME) flag(RULES.timeOut);
+    if (from === DEFINITION && to !== DEFINITION) flag(RULES.definitionOut);
+    if (e.from.startsWith('src/hud/') && isUnder(e.to, HUD_FORBIDDEN_ROOTS)) flag(RULES.hudOut);
+
+    // 以下の3つは層でなくパスで当てる。import を持たない視点のモジュールも、層では定義層に落ちる(R2)。
+    // 進行は視点を import しない、という R4 を当てたもの。
+    // (暫定 — 段 5 で層の規則が覆うので外す)
+    if (isProgress(e.from) && e.to.startsWith('src/game/viewer/')) flag(RULES.progressToViewer);
+    // 視点の値を設定として持つ、またはその逆にすると、ここに辺が生える(R4)。視点 → 設定は段 5 の
+    // モデル層の規則が、設定 → 視点は段 7 の settings/ の規則が覆うので、それぞれの段で外す。
+    if (
+      (e.from.startsWith('src/settings/') && e.to.startsWith('src/game/viewer/')) ||
+      (e.from.startsWith('src/game/viewer/') && e.to.startsWith('src/settings/'))
+    ) {
+      flag(RULES.settingsViewer);
     }
-    if (from === DEFINITION && to !== DEFINITION) {
-      found.push({ rule: RULES.definitionOut, file: e.from, id: e.to, line: e.line });
-    }
-    if (e.from.startsWith('src/hud/') && HUD_FORBIDDEN_ROOTS.some((r) => e.to.startsWith(r))) {
-      found.push({ rule: RULES.hudOut, file: e.from, id: e.to, line: e.line });
-    }
+    // スナップショットはモデル層の直列化で、表示の導出を含めない(R11)。
+    // (暫定 — 段 5 で層の規則が覆うので外す)
+    if (e.from.startsWith('src/game/save/') && isUnder(e.to, PRESENTATION_ROOTS)) flag(RULES.saveToPresentation);
   }
   return found;
 }
@@ -254,7 +319,7 @@ function findPatternViolations({ sources, texts }) {
   const found = [];
   for (const row of FORBIDDEN) {
     for (const f of sources) {
-      if (!row.targets.some((t) => f.startsWith(t)) || row.exempt.includes(f)) continue;
+      if (!isUnder(f, row.targets) || row.exempt.includes(f)) continue;
       for (const m of texts.get(f).matchAll(row.pattern)) {
         found.push({ rule: row.name, file: f, id: m[0], line: lineAt(texts.get(f), m.index) });
       }
@@ -318,6 +383,13 @@ if (graph.unclassified.length > 0) {
   console.log(`層の対応表に無いパス — ${graph.unclassified.length} 件`);
   for (const f of graph.unclassified) console.log(`  ${f}`);
   console.log('  tools/check-boundaries.mjs の LAYER_TABLE へ層を足すこと。');
+  ok = false;
+}
+const missingPresentation = MISPLACED_PRESENTATION_FILES.filter((f) => !graph.files.includes(f));
+if (missingPresentation.length > 0) {
+  console.log(`表示の導出として外す一覧に、存在しないパス — ${missingPresentation.length} 件`);
+  for (const f of missingPresentation) console.log(`  ${f}`);
+  console.log('  tools/check-boundaries.mjs の MISPLACED_PRESENTATION_FILES を直すこと。');
   ok = false;
 }
 if (graph.unresolved.length > 0) {
