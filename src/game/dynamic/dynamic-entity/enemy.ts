@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import type { ViewMode } from '../../../render/view-mode';
+import type { ViewMode } from '../../view/view-mode';
 import { Vessel } from './vessel';
 import { DynamicEntity } from './dynamic-entity';
 import type { Contact } from './contact';
@@ -8,16 +8,17 @@ import { len, sub, Vec3, v3 } from '../../../math/vec3';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import type { Player } from '../../player/player';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
-import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../../render/marker/marker-identity';
+import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import type { Quat } from '../../../math/quat';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { StageOutcome } from '../../stages/stage-outcome';
 import { savedKinematicState, type EnemySaveData } from '../../save/save-data';
-import { MARKER_PRIORITY } from '../../../render/marker/crowding';
+import { MARKER_PRIORITY } from '../../marker/marker-priority';
 import type { CombatTarget } from './combat-target';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { DynamicEntityKind, FormationRole } from './entity-kind';
 import type { EntityRegistry, SpawnGate } from '../entity-registry';
+import type { EntityIdAllocators } from './entity-id';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotion } from '../dynamic-motion';
 import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
@@ -60,7 +61,10 @@ export interface EnemyClass {
   readonly kind: EnemySaveData['kind'];
   // 復元に外部資源の取得が要るなら、それが揃ったかを答える述語。要らなければ null。
   spawnGate(saved: EnemySaveData): SpawnGate | null;
-  new (init: EnemyRestore, worldSfx: WorldSfx, fx: FlashEffects, scene?: THREE.Scene): Enemy;
+  new (
+    init: EnemyRestore, worldSfx: WorldSfx, fx: FlashEffects, idAllocators: EntityIdAllocators,
+    scene?: THREE.Scene,
+  ): Enemy;
 }
 
 // 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、交戦圏
@@ -96,6 +100,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     radius: number,
     protected readonly _worldSfx: WorldSfx,
     protected readonly _fx: FlashEffects,
+    idAllocators: EntityIdAllocators,
     shape?: EnemyCollisionShape,
   ) {
     // 復元と新規配置を同じ形へ均してから基底へ渡す。
@@ -135,7 +140,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
         ),
       }, shape),
       view,
-      placed.id,
+      idAllocators.entity.next(placed.id),
     );
     this.accent = placed.accent;
     this.orbitLineColor = placed.orbitLineColor;
@@ -196,9 +201,9 @@ export abstract class Enemy extends Vessel implements CombatTarget {
 
   // 敵のマーカー表示項目を組み立てる。pos/vel には機体メッシュと同じ表示時刻の状態
   // (stateAt 経由)を渡すこと。
-  public markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode): GroupedMarkerItem {
-    // 代表選出の優先度は、近い個体ほど高くする
-    const dist = len(sub(pos, viewerPos));
+  public markerItem(viewerPos: Vec3 | null, pos: Vec3, vel: Vec3, view: ViewMode): GroupedMarkerItem {
+    // 代表選出の優先度は、同じ種別の中では視点に近い個体ほど高くする
+    const priority = viewerPos ? MARKER_PRIORITY.ENEMY - len(sub(pos, viewerPos)) / 1e9 : MARKER_PRIORITY.ENEMY;
     return {
       key: this.markerKey,
       kind: this.mapKind,
@@ -206,12 +211,13 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       sym: view === 'map' ? this.headingHpMarkerSvg(true) : this.hpMarkerSvg(),
       pos,
       vel,
-      priority: MARKER_PRIORITY.ENEMY - dist / 1e9,
+      priority,
       name: this.name,
       // 敵本体と画面外方位マーカーは同じ色で統一する。
-      bearingColor: COLOR_MARKER_ENEMY,
-      bearingSym: ENTITY_GLYPH.enemyShip,
-      bearingClass: 'mk-dir mk-bearing-triangle',
+      bearing: {
+        cls: 'mk-dir mk-bearing-triangle', sym: ENTITY_GLYPH.enemyShip, color: COLOR_MARKER_ENEMY,
+        visible: true, clustered: false,
+      },
       color: COLOR_MARKER_ENEMY,
       symMarkup: true,
     };

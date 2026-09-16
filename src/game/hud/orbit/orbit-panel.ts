@@ -6,6 +6,8 @@ import type { OrbitReferenceMode } from '../../orbit-reference';
 import { Button, SegmentedControl } from '../../../hud/widgets';
 
 import { getApsisLabelSpec } from './orbit-labels';
+import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/ship';
+import { MAX_DYN_PRESSURE } from '../../player/aero-load';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -16,57 +18,56 @@ const REFERENCE_ITEMS: readonly (readonly [OrbitReferenceMode, string])[] = [
   ['target', '航法ターゲット'],
 ];
 
+// ORBIT パネルが1フレームに映す値と、基準切替が返す操作の口。
+// 軌道要素が求まらない状態(基準が重力中心でない・双曲線軌道)では ap/pe/inc/period が NaN。
 export interface OrbitPanelViewModel {
-  readonly centerName: string;
+  readonly selectedMode: OrbitReferenceMode;
   readonly centerId: string;
-  readonly alt: number;
-  readonly spd: number;
-  readonly apAlt: number;
-  readonly peAlt: number;
-  readonly incDeg: number;
-  readonly period: number;
-  readonly altitudeWarning: boolean;
-  readonly dynamicPressure: number | null;
-  readonly dynamicPressureWarning: boolean;
+  readonly centerName: string;
+  readonly altitudeM: number;
+  readonly descendWarned: boolean;
+  readonly speedMps: number;
+  readonly apAltitudeM: number;
+  readonly peAltitudeM: number;
+  readonly inclinationDeg: number;
+  readonly periodSec: number;
+  // 大気を受けない操作対象では null。
+  readonly dynamicPressurePa: number | null;
   readonly temperatureK: number;
-  readonly temperatureWarning: boolean;
-  readonly referenceMode: OrbitReferenceMode;
-  readonly onReferenceModeChange: (mode: OrbitReferenceMode) => void;
+  setReferenceMode(mode: OrbitReferenceMode): void;
 }
 
 export class OrbitPanel {
   private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
   private readonly referenceControl: SegmentedControl<OrbitReferenceMode>;
-  // 軌道分析パネルの開閉は Hud が持つため、ここでは押されたことだけを伝える。ボタン構築時には
-  // まだ配線されていないので、VesselPanel.setInput と同じ late injection にする。
-  private openAnalysis: (() => void) | null = null;
+  // 直近の sync が受けた値。基準の切替はフレームの外で起きるので、その時点の口をここから引く。
+  private view: OrbitPanelViewModel | null = null;
 
   // 基準切替のセグメントコントロールと軌道分析ボタンを els が指す DOM へ組み込む。
-  public constructor(private readonly els: Map<string, HTMLElement>) {
+  // openAnalysis は軌道分析ボタンが押されたときに呼ぶ口。
+  public constructor(
+    private readonly els: Map<string, HTMLElement>,
+    private readonly openAnalysis: () => void,
+  ) {
     this.referenceControl = new SegmentedControl('基準', REFERENCE_ITEMS, (mode) => {
-      this.onReferenceModeChange?.(mode);
+      this.view?.setReferenceMode(mode);
     });
     this.els.get('reference-row')?.appendChild(this.referenceControl.element);
     this.buildActionButtons();
-  }
-
-  // Hud から軌道分析パネルの開閉ハンドラを受け取る。
-  public setOpenAnalysisHandler(handler: () => void): void {
-    this.openAnalysis = handler;
   }
 
   // 軌道分析パネルを開くボタンを els が指す DOM へ組み込む。
   private buildActionButtons(): void {
     const container = this.els.get('orbit-actions');
     if (!container) return;
-    const button = new Button('軌道分析', () => this.openAnalysis?.());
+    const button = new Button('軌道分析', () => this.openAnalysis());
     container.appendChild(button.element);
   }
 
-  private onReferenceModeChange: ((mode: OrbitReferenceMode) => void) | null = null;
-
   // 操作対象の基準・高度・速度・遠地点/近地点・傾斜角・周期・動圧・機体温度を DOM へ反映する。
-  public sync(view: OrbitPanelViewModel | null): void {
+  // view が null(操作対象が無い)ならパネルごと隠す。
+  public sync(view: OrbitPanelViewModel | null, nowMs: number): void {
+    this.view = view;
     const el = this.els.get('hud-orbit');
     if (!view) {
       el?.classList.add('hidden');
@@ -74,28 +75,28 @@ export class OrbitPanel {
     }
     el?.classList.remove('hidden');
 
-    if (!this.throttle.due()) return;
+    if (!this.throttle.due(nowMs)) return;
 
-    this.referenceControl.setSelected(view.referenceMode);
-    this.onReferenceModeChange = view.onReferenceModeChange;
+    this.referenceControl.setSelected(view.selectedMode);
     const apSpec = getApsisLabelSpec('ap', view.centerId);
     const peSpec = getApsisLabelSpec('pe', view.centerId);
     setElementText(this.els, 'center', view.centerName);
-    setElementText(this.els, 'alt', fmtDist(view.alt));
-    this.els.get('alt')?.classList.toggle('warn-hot', view.altitudeWarning);
-    setElementText(this.els, 'spd', fmtSpeed(view.spd));
+    setElementText(this.els, 'alt', fmtDist(view.altitudeM));
+    this.els.get('alt')?.classList.toggle('warn-hot', view.descendWarned);
+    setElementText(this.els, 'spd', fmtSpeed(view.speedMps));
     setElementText(this.els, 'ap-label', `${apSpec.nameJa} ${apSpec.short}`);
     setElementText(this.els, 'pe-label', `${peSpec.nameJa} ${peSpec.short}`);
-    setElementText(this.els, 'ap', fmtDist(view.apAlt));
-    setElementText(this.els, 'pe', fmtDist(view.peAlt));
-    setElementText(this.els, 'inc', isFinite(view.incDeg) ? `${view.incDeg.toFixed(2)}°` : '---');
-    setElementText(this.els, 'prd', fmtTime(view.period));
+    setElementText(this.els, 'ap', fmtDist(view.apAltitudeM));
+    setElementText(this.els, 'pe', fmtDist(view.peAltitudeM));
+    setElementText(this.els, 'inc', isFinite(view.inclinationDeg) ? `${view.inclinationDeg.toFixed(2)}°` : '---');
+    setElementText(this.els, 'prd', fmtTime(view.periodSec));
     // 動圧・機体温度は閾値超過で警告表示にする。動圧は大気を受ける操作対象だけが持つ。
     const qEl = this.els.get('qdyn');
+    const qdyn = view.dynamicPressurePa;
     if (qEl) {
-      if (view.dynamicPressure !== null) {
-        qEl.textContent = view.dynamicPressure >= 10 ? `${(view.dynamicPressure / 1000).toFixed(2)} kPa` : '0.00 kPa';
-        qEl.classList.toggle('warn-hot', view.dynamicPressureWarning);
+      if (qdyn !== null) {
+        qEl.textContent = qdyn >= 10 ? `${(qdyn / 1000).toFixed(2)} kPa` : '0.00 kPa';
+        qEl.classList.toggle('warn-hot', qdyn > 0.5 * MAX_DYN_PRESSURE);
       } else {
         qEl.textContent = '---';
         qEl.classList.remove('warn-hot');
@@ -104,7 +105,7 @@ export class OrbitPanel {
     const tEl = this.els.get('temp');
     if (tEl) {
       tEl.textContent = `${view.temperatureK.toFixed(0)} K`;
-      tEl.classList.toggle('warn-hot', view.temperatureWarning);
+      tEl.classList.toggle('warn-hot', view.temperatureK > 0.7 * MAX_HULL_TEMP);
     }
   }
 }

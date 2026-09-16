@@ -18,6 +18,7 @@ import {
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import { DynamicEntity } from './dynamic-entity';
 import type { DebrisKind } from './debris-kind';
+import type { EntityIdAllocators } from './entity-id';
 import { DebrisMotion } from './debris-motion';
 import { DebrisReaction } from './debris-reaction';
 
@@ -50,6 +51,7 @@ export class DebrisPiece extends DynamicEntity {
     attitude: Attitude,
     worldSfx: WorldSfx,
     effects: FlashEffects,
+    idAllocators: EntityIdAllocators,
     radius?: number,
     scene?: THREE.Scene,
   ) {
@@ -70,6 +72,7 @@ export class DebrisPiece extends DynamicEntity {
           : undefined,
       }),
       debrisPieceView(debrisKind, scene),
+      idAllocators.entity.next(),
     );
     this.capKind = debrisKind.kind === 'casing' ? 'casing' : 'debris';
   }
@@ -88,6 +91,7 @@ export function buildDestroyFragments(
   spread: number,
   worldSfx: WorldSfx,
   effects: FlashEffects,
+  idAllocators: EntityIdAllocators,
 ): DebrisPiece[] {
   const pieces: DebrisPiece[] = [];
   for (let i = 0; i < count; i++) {
@@ -104,28 +108,29 @@ export function buildDestroyFragments(
       inertia: v3(1, 2.05, 3.0),
     };
     pieces.push(new DebrisPiece(
-      state, { kind: 'fragment', accent, size }, attitude, worldSfx, effects));
+      state, { kind: 'fragment', accent, size }, attitude, worldSfx, effects, idAllocators));
   }
   return pieces;
 }
 
 // 自機の撃破で飛び散る破片。
 export function playerDestroyFragments(
-  state: KinematicState, worldSfx: WorldSfx, effects: FlashEffects,
+  state: KinematicState, worldSfx: WorldSfx, effects: FlashEffects, idAllocators: EntityIdAllocators,
 ): DebrisPiece[] {
   return buildDestroyFragments(
     state.t, state.r, state.v, 11, PLAYER_DESTROY_FRAG_COLOR,
-    DESTROY_FRAG_SIZE_MIN / 3, DESTROY_FRAG_SIZE_MAX / 3, 20.0, worldSfx, effects,
+    DESTROY_FRAG_SIZE_MIN / 3, DESTROY_FRAG_SIZE_MAX / 3, 20.0, worldSfx, effects, idAllocators,
   );
 }
 
 // 敵機の撃破で飛び散る破片。機体メッシュのスケール meshScale へ見合った大きさにする。
 export function enemyDestroyFragments(
   state: KinematicState, meshScale: number, worldSfx: WorldSfx, effects: FlashEffects,
+  idAllocators: EntityIdAllocators,
 ): DebrisPiece[] {
   return buildDestroyFragments(
     state.t, state.r, state.v, 11, ENEMY_DESTROY_FRAG_COLOR,
     (DESTROY_FRAG_SIZE_MIN * meshScale) / 3, (DESTROY_FRAG_SIZE_MAX * meshScale) / 3, 20.0,
-    worldSfx, effects,
+    worldSfx, effects, idAllocators,
   );
 }

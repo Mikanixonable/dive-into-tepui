@@ -130,6 +130,7 @@ export class CelestialSurface implements CelestialSurfaceLike {
     fallbackAttachment: CelestialSurfaceMaterialAttachment,
     public readonly photometry: SurfacePhotometry | null,
     public readonly textureUrl: string | null,
+    public readonly baseColorTexture: THREE.Texture | null,
   ) {
     this.fallbackAttachment = fallbackAttachment;
     this.activeAttachment = fallbackAttachment;
@@ -165,7 +166,7 @@ export class CelestialSurface implements CelestialSurfaceLike {
         material,
         deferred: smoothnessMap === null ? [map] : [map, smoothnessMap],
       },
-      photometryOf(texture), texture.url);
+      photometryOf(texture), texture.url, map.texture);
   }
 
   // テクスチャを持たない天体の単色球面。albedo は線形 RGB の拡散アルベド。
@@ -175,7 +176,7 @@ export class CelestialSurface implements CelestialSurfaceLike {
       roughness: 1, metalness: 0,
     });
     return new CelestialSurface(
-      { material, deferred: [] }, { bondAlbedo: rec709Luminance(albedo), lightSourceAlbedo: albedo }, null);
+      { material, deferred: [] }, { bondAlbedo: rec709Luminance(albedo), lightSourceAlbedo: albedo }, null, null);
   }
 
   public get diagnostics(): CelestialSurfaceDiagnostics | null { return null; }

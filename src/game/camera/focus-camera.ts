@@ -5,7 +5,7 @@ import type { Notifier } from '../../hud/notifier';
 import type { Viewport } from '../../render/viewport';
 import { MouseDelta } from '../../input/input';
 import { metersPerPixelAtDepth, ProjectionMode, Viewpoint } from '../../math/projection';
-import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, frameDir, framePoint, rotationSourceKey, toFrameDir, toInertialDir } from '../../physics/frame';
+import { FrameAnchorSource, ReferenceFrame, FrameDir, FrameRotationSource, FrameTransform, frameDir, framePoint, rotationSourceKey, toFrameDir, toInertialDir } from '../../physics/frame';
 import { bodyAnchorSource, strongestAttractor } from '../../physics/attractor';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -73,17 +73,14 @@ export function defaultMapViewInitial(celestialBodies: CelestialBodies): FocusCa
   };
 }
 
-// セーブデータの rotatingWith を FrameRotationSource へ変換する。文字列は公転対象の id を
-// 直接持つ形式として、公転で受ける。
-function rotationSourceFromSaveData(saved: FrameRotationSourceSaveData | string | null): FrameRotationSource | null {
-  if (saved === null) return null;
-  if (typeof saved === 'string') return { kind: 'revolution', id: saved };
-  return { kind: saved.kind, id: saved.id };
+// セーブデータの rotatingWith を FrameRotationSource へ変換する。
+function rotationSourceFromSaveData(saved: FrameRotationSourceSaveData | null): FrameRotationSource | null {
+  return saved === null ? null : { kind: saved.kind, id: saved.id };
 }
 
 // セーブデータの rotatingWith を CameraRotationFollow へ変換する(姿勢追従も受ける)。
-function rotationFollowFromSaveData(saved: CameraRotationFollowSaveData | string | null): CameraRotationFollow | null {
-  if (saved !== null && typeof saved === 'object' && saved.kind === 'attitude') return { kind: 'attitude' };
+function rotationFollowFromSaveData(saved: CameraRotationFollowSaveData | null): CameraRotationFollow | null {
+  if (saved !== null && saved.kind === 'attitude') return { kind: 'attitude' };
   return rotationSourceFromSaveData(saved);
 }
 
@@ -97,6 +94,11 @@ function frameDirVector(value: FrameDir): Vec3 {
   return v3(value.x, value.y, value.z);
 }
 
+// 座標系相対の方向を、ECI を経由して別の座標系へ読み替える。
+function reframeDir(from: FrameTransform, to: FrameTransform, d: Vec3): Vec3 {
+  return frameDirVector(toFrameDir(to, toInertialDir(from, frameDir(d.x, d.y, d.z))));
+}
+
 export class FocusCamera {
   private fovDeg = FOCUS_CAMERA_FOV;
   private projectionMode: ProjectionMode;
@@ -104,12 +106,8 @@ export class FocusCamera {
   // カメラのローカル(+Z=注視点からカメラ、+Y=画面上)を cameraFrame へ写す向き。
   private readonly orientation: CameraOrientation;
 
-  // offset_r … 注視点 → カメラの相対位置ベクトル(方位・仰角・距離を兼ねる)
-  // pan_r    … focus → 注視点のパン変位
-  // up_r     … カメラの上方向(テンキー0/1のロールで offset_r まわりに回る)
-  private offset_r: FrameDir;
-  private pan_r: FrameDir;
-  private up_r: FrameDir;
+  private _dist: number; // 注視点からカメラまでの距離 [m]
+  private pan: FrameDir; // focus → 注視点のパン変位
   // カメラ視点を固定する座標系。姿勢追従中は慣性系に固定し、姿勢は向きへの合成で掛ける。
   private _cameraFrame: ReferenceFrame;
   // 選択中の追従が選択肢から外れた連続フレーム数。役割・機体の一時的な解決失敗に、
@@ -150,7 +148,7 @@ export class FocusCamera {
   // このフレームの視点。update が毎フレーム組み直す。
   public viewpoint: Viewpoint;
 
-  // 初期視点(offset_r/pan_r/up_r/座標系/フォーカス)を組む。saved があればその値から、
+  // 初期視点(向き・注視距離・パン・座標系・フォーカス)を組む。saved があればその値から、
   // 無ければ config.initial から組む。座標系は必ず frames.frameOf 経由で解決する —
   // ReferenceFrame をリテラルで組むと参照同一性が崩れる。
   public constructor(
@@ -160,7 +158,6 @@ export class FocusCamera {
     saved: FocusCameraSaveData | undefined,
     viewport: Viewport,
   ) {
-    // 向きの解決(eulerPolarAxis)がカメラ位置を読むので、視点は他の初期化より先に置く。
     this.viewpoint = {
       position: v3(),
       lookTarget: v3(),
@@ -177,6 +174,7 @@ export class FocusCamera {
     // 追従の有無は向きの読み方(絶対値か、対象姿勢からの相対値か)を決めるので、
     // CameraOrientation を組むより先に確定させる。
     let followAttitude = false;
+    let rotation: Quat;
     if (saved) {
       const savedFollow = rotationFollowFromSaveData(saved.rotatingWith);
       if (savedFollow?.kind === 'attitude') {
@@ -185,9 +183,11 @@ export class FocusCamera {
       } else {
         this._cameraFrame = frames.frameOf(celestialBodies.originId, savedFollow ?? null);
       }
-      this.offset_r = frameDir(saved.offset.x, saved.offset.y, saved.offset.z);
-      this.pan_r = frameDir(saved.pan.x, saved.pan.y, saved.pan.z);
-      this.up_r = frameDir(saved.up.x, saved.up.y, saved.up.z);
+      // offset の長さが注視距離、offset と up の張る基底が向き。
+      const offset = v3(saved.offset.x, saved.offset.y, saved.offset.z);
+      this._dist = len(offset);
+      this.pan = frameDir(saved.pan.x, saved.pan.y, saved.pan.z);
+      rotation = qFromBasis(offset, v3(saved.up.x, saved.up.y, saved.up.z));
       this._focus = saved.focus.kind === 'object'
         ? { kind: 'object', id: saved.focus.id }
         : {
@@ -200,16 +200,11 @@ export class FocusCamera {
       this._focus = init.focus;
       this._cameraFrame = frames.inertialFrame;
       followAttitude = this.applyInitialFrame(init.follow);
-      const offset = sphericalOffset(init.angles, init.dist);
-      this.offset_r = frameDir(offset.x, offset.y, offset.z);
-      this.pan_r = frameDir(0, 0, 0);
-      this.up_r = frameDir(WORLD_UP.x, WORLD_UP.y, WORLD_UP.z);
+      this._dist = init.dist;
+      this.pan = frameDir(0, 0, 0);
+      rotation = qFromBasis(sphericalOffset(init.angles, 1), WORLD_UP);
     }
-    const initialEulerPolarAxis = followAttitude ? LOCAL_UP : this.eulerPolarAxis();
-    this.orientation = new CameraOrientation(
-      qFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r)),
-      initialEulerPolarAxis, saved?.rotationMode ?? 'euler', followAttitude, null,
-    );
+    this.orientation = new CameraOrientation(rotation, saved?.rotationMode ?? 'euler', followAttitude, null);
     const defaultHalfHeight = this.dist * Math.tan((this.fovDeg * 0.5 * Math.PI) / 180);
     const savedHalfHeight = saved?.orthographicHalfHeight;
     const halfHeight = savedHalfHeight !== undefined && Number.isFinite(savedHalfHeight) ? savedHalfHeight : defaultHalfHeight;
@@ -250,21 +245,13 @@ export class FocusCamera {
 
   // Euler 操作の極を、設定された基準へ揃えてカメラ座標系へ変換する。姿勢追従中の生の回転は
   // 機体座標系にあるので、そのときだけ機体上方向のローカル軸を使う。
-  private eulerPolarAxis(followingAttitude = this.orientation?.followingAttitude ?? false): Vec3 {
+  private eulerPolarAxis(): Vec3 {
     const attitude = this.focusAttitude();
-    if (followingAttitude && attitude !== null) return LOCAL_UP;
+    if (this.orientation.followingAttitude && attitude !== null) return LOCAL_UP;
     const tf = this.celestialBodies.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     const polarEci = this.config.eulerPole === 'attitude' && attitude !== null
       ? qRotate(attitude, LOCAL_UP) : this.referenceUpAxisEci();
     return norm(frameDirVector(toFrameDir(tf, polarEci)));
-  }
-
-  // 実効回転(姿勢追従を掛けた後の向き)を offset/up の基底で置き直す。
-  private setRotationBasis(offset: Vec3, up: Vec3): void {
-    this.orientation.store(qFromBasis(offset, up));
-    this.offset_r = frameDir(offset.x * this.dist, offset.y * this.dist, offset.z * this.dist);
-    this.up_r = frameDir(up.x, up.y, up.z);
-    this.orientation.rebase(this.eulerPolarAxis());
   }
 
   // 基準面の法線(ECI)。月軌道面・赤道面は表示時刻での月の軌道・地球の自転軸から引く。
@@ -283,9 +270,9 @@ export class FocusCamera {
     return ECL_POLE_ECI;
   }
 
-  // 注視点からカメラまでの距離を返す。
+  // 注視点からカメラまでの距離 [m]。
   public get dist(): number {
-    return Math.hypot(this.offset_r.x, this.offset_r.y, this.offset_r.z);
+    return this._dist;
   }
 
   // 垂直画角 [deg]。
@@ -336,21 +323,14 @@ export class FocusCamera {
     this.projectionMode = mode;
   }
 
-  // 注視距離 [m] を許容範囲へ収めて設定する。視線の向きは保つ。
+  // 注視距離 [m] を許容範囲へ収めて設定する。
   private setDistance(distance: number): void {
-    const current = this.dist;
-    const next = Math.max(this.minDist, Math.min(FOCUS_CAMERA_MAX_DIST, distance));
-    if (!(current > 0) || next === current) return;
-    this.offset_r = frameDir(
-      this.offset_r.x * next / current,
-      this.offset_r.y * next / current,
-      this.offset_r.z * next / current,
-    );
+    this._dist = Math.max(this.minDist, Math.min(FOCUS_CAMERA_MAX_DIST, distance));
   }
 
-  // 回転操作の方式(オイラー/クォータニオン)を切り替える。切り替えた瞬間の向きは変えない。
+  // 回転操作の方式(オイラー/クォータニオン)を切り替える。
   public setCameraRotationMode(mode: CameraRotationMode): void {
-    this.orientation.setMode(mode, this.eulerPolarAxis());
+    this.orientation.setRotationMode(mode);
   }
 
   // setReferenceView が真上/真横を取るときの基準面。
@@ -380,9 +360,7 @@ export class FocusCamera {
       if (lenSq(offset) < 1e-8) offset = projectOntoPlane(LOCAL_RIGHT, normal);
       up = normal;
     }
-    offset = norm(offset);
-    up = norm(up);
-    this.setRotationBasis(offset, up);
+    this.orientation.setEffective(qFromBasis(offset, up));
     this.resetPan();
     this._notifier.hint(view === 'above' ? '基準面の真上を表示' : '基準面の真横を表示');
   }
@@ -400,18 +378,15 @@ export class FocusCamera {
   public reset(): void {
     const tf = this.celestialBodies.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
     const offset = qRotate(this.orientation.effective(), LOCAL_FORWARD);
-    const upAxisEci = this.referenceUpAxisEci();
-    const up = norm(frameDirVector(toFrameDir(tf, upAxisEci)));
-    const projectedUp = norm(projectOntoPlane(up, offset));
-    this.setRotationBasis(offset, projectedUp);
+    const up = frameDirVector(toFrameDir(tf, this.referenceUpAxisEci()));
+    this.orientation.setEffective(qFromBasis(offset, up));
     this.resetPan();
     this._notifier.hint('マップビューの視点をリセット');
   }
 
   // パン変位をゼロに戻す。
   private resetPan(): void {
-    const tf = this.celestialBodies.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
-    this.pan_r = toFrameDir(tf, v3());
+    this.pan = frameDir(0, 0, 0);
   }
 
   // 天体 id の運動。登録されていない id(機体・役割トークン・ラグランジュ点)には null。
@@ -486,14 +461,13 @@ export class FocusCamera {
   // 保持していた向きを新しい基準へ読み替える。
   public setRotationFollow(follow: CameraRotationFollow | null): void {
     const valid = follow !== null && this.isFollowAvailable(follow) ? follow : null;
-    this.orientation.endAttitudeFollow(this.eulerPolarAxis());
+    this.orientation.endAttitudeFollow();
     if (valid?.kind === 'attitude') {
       // 姿勢追従は座標系を慣性系に固定し、対象の姿勢を向きへ合成する。
-      const id = focusTargetId(this._focus);
-      const att = id !== undefined ? this.config.attitudeOf(id, this.displayTime) : null;
-      if (att === null) return;
+      const attitude = this.focusAttitude();
+      if (attitude === null) return;
       this.setCameraRotation(null);
-      this.orientation.beginAttitudeFollow(att, LOCAL_UP);
+      this.orientation.beginAttitudeFollow(attitude);
       return;
     }
     this.setCameraRotation(valid);
@@ -502,7 +476,7 @@ export class FocusCamera {
   // フォーカスが機体なら姿勢追従⇄慣性系をトグルして true。姿勢追従を選べなければ false。
   public toggleAttitudeFollow(): boolean {
     if (this.orientation.followingAttitude) {
-      this.orientation.endAttitudeFollow(this.eulerPolarAxis());
+      this.orientation.endAttitudeFollow();
       return true;
     }
     if (!this.isFollowAvailable({ kind: 'attitude' })) return false;
@@ -518,10 +492,8 @@ export class FocusCamera {
     this.missingFocusFrames = 0;
     this.orientation.restoreFollow(this.applyInitialFrame(init.follow));
     // 視点を初期の角度・距離から組み直す。
-    const offset = sphericalOffset(init.angles, init.dist);
-    this.offset_r = frameDir(offset.x, offset.y, offset.z);
-    this.up_r = frameDir(WORLD_UP.x, WORLD_UP.y, WORLD_UP.z);
-    this.orientation.set(qFromBasis(offset, WORLD_UP), this.eulerPolarAxis());
+    this._dist = init.dist;
+    this.orientation.setRaw(qFromBasis(sphericalOffset(init.angles, 1), WORLD_UP));
     this.fovDeg = this.clampFov(init.fovDeg);
     this.resetPan();
   }
@@ -554,10 +526,7 @@ export class FocusCamera {
 
   // 合成に使う姿勢を、いまフォーカスしている対象から引き直す。
   private refreshAttitude(): void {
-    if (!this.orientation.followingAttitude) return;
-    const id = focusTargetId(this._focus);
-    const attitude = id !== undefined ? this.config.attitudeOf(id, this.displayTime) : null;
-    this.orientation.refreshAttitude(attitude, this.eulerPolarAxis());
+    if (this.orientation.followingAttitude) this.orientation.refreshAttitude(this.focusAttitude());
   }
 
   // カメラ視点の回転対象を切り替える。視点ベクトルを新しい座標系へ読み替えるので、ECI での
@@ -567,18 +536,15 @@ export class FocusCamera {
     const frame = frames.frameOf(this.celestialBodies.originId, rotatingWith);
     const from = this._cameraFrame;
     if (frame === from) return;
-    // 旧座標系 → ECI → 新座標系へ視点ベクトルを移す。
+    // 旧座標系 → ECI → 新座標系へ、視線とパンを移す。
     const tfFrom = frames.transformAt(from, this.displayTime, this.frameAnchors);
-    const offEci = toInertialDir(tfFrom, this.offset_r);
-    const panEci = toInertialDir(tfFrom, this.pan_r);
-    const upEci = toInertialDir(tfFrom, this.up_r);
     const tfTo = frames.transformAt(frame, this.displayTime, this.frameAnchors);
-    this.offset_r = toFrameDir(tfTo, offEci);
-    this.pan_r = toFrameDir(tfTo, panEci);
-    this.up_r = toFrameDir(tfTo, upEci);
+    const q = this.orientation.effective();
+    const offset = reframeDir(tfFrom, tfTo, qRotate(q, LOCAL_FORWARD));
+    const up = reframeDir(tfFrom, tfTo, qRotate(q, LOCAL_UP));
+    this.pan = toFrameDir(tfTo, toInertialDir(tfFrom, this.pan));
     this._cameraFrame = frame;
-    this.orientation.set(
-      qFromBasis(frameDirVector(this.offset_r), frameDirVector(this.up_r)), this.eulerPolarAxis());
+    this.orientation.setEffective(qFromBasis(offset, up));
   }
 
   // マウス/キー入力から viewpoint を1フレーム分更新する。displayTime は線・メッシュが描かれる
@@ -599,43 +565,44 @@ export class FocusCamera {
     this.refreshAttitude();
     const focus = this.resolveFocus(candidates, displayTime, frameAnchors);
     const tf = this.celestialBodies.frames.transformAt(this._cameraFrame, displayTime, frameAnchors);
-    // オイラー操作の極軸は座標系の幾何で定義されるので、姿勢追従中はクォータニオン経路で回す。
-    const eulerActive = this.orientation.usesEuler;
-    if (eulerActive) this.orientation.restoreFromEuler(this.eulerPolarAxis());
-    let panEci = toInertialDir(tf, this.pan_r);
+    let panEci = toInertialDir(tf, this.pan);
 
-    // ホイールで距離を、ドラッグ/キーで視点方向を更新する。
+    // ホイールで注視距離(正射影では半高さ)を更新する。
     const zoomFactor = Math.exp(mouse.wheel * WHEEL_ZOOM_RATE);
-    const dist = this.projectionMode === 'orthographic'
-      ? this.dist
-      : Math.max(this.minDist, Math.min(FOCUS_CAMERA_MAX_DIST, this.dist * zoomFactor));
-    if (this.projectionMode === 'orthographic' && mouse.wheel !== 0) {
-      this.orthographicHalfHeight = Math.max(FOCUS_CAMERA_MIN_DIST * 1e-6,
-        Math.min(FOCUS_CAMERA_MAX_DIST, this.orthographicHalfHeight * zoomFactor));
+    if (this.projectionMode === 'orthographic') {
+      if (mouse.wheel !== 0) {
+        this.orthographicHalfHeight = Math.max(FOCUS_CAMERA_MIN_DIST * 1e-6,
+          Math.min(FOCUS_CAMERA_MAX_DIST, this.orthographicHalfHeight * zoomFactor));
+      }
+    } else {
+      this.setDistance(this.dist * zoomFactor);
     }
-    const yaw = mouse.dx * DRAG_RAD_PER_PX - keyYawRad;
-    const pitch = mouse.dy * DRAG_RAD_PER_PX + keyPitchRad;
-    // 回した後の回転。オイラー経路は相対回転を返すため、姿勢追従を合成して実効回転にする。
-    const rotation = eulerActive
-      ? this.orientation.turn(yaw, pitch, mouse.roll, this.eulerPolarAxis())
-      : this.orientation.turnByDrag(
+
+    // ドラッグ/キーで向きを回す。オイラー操作は極軸まわり、クォータニオン操作は画面基準。
+    if (this.orientation.usesEuler) {
+      const yaw = mouse.dx * DRAG_RAD_PER_PX - keyYawRad;
+      const pitch = mouse.dy * DRAG_RAD_PER_PX + keyPitchRad;
+      this.orientation.turn(yaw, pitch, mouse.roll, this.eulerPolarAxis());
+    } else {
+      this.orientation.turnByDrag(
         mouse.dx * DRAG_RAD_PER_PX, -mouse.dy * DRAG_RAD_PER_PX, mouse.roll, keyYawRad, keyPitchRad,
       );
-    const q = eulerActive ? this.orientation.effective() : rotation;
+    }
+    const q = this.orientation.effective();
     const offFrame = qRotate(q, LOCAL_FORWARD);
     const upFrame = qRotate(q, LOCAL_UP);
-    const offEci = scale(toInertialDir(tf, frameDir(offFrame.x, offFrame.y, offFrame.z)), dist);
-    const newDir = norm(offEci);
-    const upEci = norm(projectOntoPlane(toInertialDir(tf, frameDir(upFrame.x, upFrame.y, upFrame.z)), newDir));
+    const offDirEci = toInertialDir(tf, frameDir(offFrame.x, offFrame.y, offFrame.z));
+    const upEci = toInertialDir(tf, frameDir(upFrame.x, upFrame.y, upFrame.z));
+    const offEci = scale(offDirEci, this.dist);
 
     // 中ボタンドラッグ/2本指ドラッグでパン変位を更新する
     if (mouse.panDx !== 0 || mouse.panDy !== 0) {
-      const viewDir = scale(newDir, -1);
+      const viewDir = scale(offDirEci, -1);
       const right = norm(cross(viewDir, upEci));
       const camUp = norm(cross(right, viewDir));
       const metersPerPixel = this.projectionMode === 'orthographic'
         ? (2 * this.orthographicHalfHeight) / Math.max(1, viewport.height)
-        : metersPerPixelAtDepth(this.fovDeg, dist, Math.max(1, viewport.height));
+        : metersPerPixelAtDepth(this.fovDeg, this.dist, Math.max(1, viewport.height));
       panEci = addScaled(panEci, right, -mouse.panDx * metersPerPixel);
       panEci = addScaled(panEci, camUp, mouse.panDy * metersPerPixel);
     }
@@ -651,13 +618,10 @@ export class FocusCamera {
       projection: this.projectionMode,
       orthographicHalfHeight: this.orthographicHalfHeight,
     };
-    this.up_r = toFrameDir(tf, upEci);
-    this.offset_r = toFrameDir(tf, offEci);
-    this.pan_r = toFrameDir(tf, panEci);
-    this.orientation.rebase(this.eulerPolarAxis());
+    this.pan = toFrameDir(tf, panEci);
   }
 
-  // offset_r/pan_r/up_r・視点の座標系・フォーカス対象をセーブデータへ書き出す。
+  // 視点の向き・注視距離・パン・座標系・フォーカス対象をセーブデータへ書き出す。
   public serialize(): FocusCameraSaveData {
     // 固定点フォーカスは、焼き込んだ座標系ごと書き出す。
     const focus: FocusCameraSaveData['focus'] = this._focus.kind === 'object'
@@ -668,10 +632,14 @@ export class FocusCamera {
         rotatingWith: this._focus.frame.rotatingWith,
         point: { x: this._focus.point.x, y: this._focus.point.y, z: this._focus.point.z },
       };
+    // 向きは、注視点 → カメラのオフセットと上方向の対として載せる。
+    const q = this.orientation.effective();
+    const offset = scale(qRotate(q, LOCAL_FORWARD), this._dist);
+    const up = qRotate(q, LOCAL_UP);
     return {
-      offset: { x: this.offset_r.x, y: this.offset_r.y, z: this.offset_r.z },
-      pan: { x: this.pan_r.x, y: this.pan_r.y, z: this.pan_r.z },
-      up: { x: this.up_r.x, y: this.up_r.y, z: this.up_r.z },
+      offset: { x: offset.x, y: offset.y, z: offset.z },
+      pan: { x: this.pan.x, y: this.pan.y, z: this.pan.z },
+      up: { x: up.x, y: up.y, z: up.z },
       rotatingWith: this.orientation.followingAttitude ? { kind: 'attitude' } : this._cameraFrame.rotatingWith,
       focus,
       rotationMode: this.orientation.rotationMode,

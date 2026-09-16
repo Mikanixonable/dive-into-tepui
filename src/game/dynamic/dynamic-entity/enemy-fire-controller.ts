@@ -1,4 +1,3 @@
-import { R_EARTH_EQ } from '../../celestial/solar-system/constants';
 import { sunGlareSpreadScale } from '../../combat/sun-glare-spread';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { Player } from '../../player/player';
@@ -103,15 +102,14 @@ export class EnemyFireController {
     if (leadTime === null || leadTime < 0) leadTime = len(toPlayer) / PLASMA_BULLET_SPEED;
     const predictedRelPos = add(toPlayer, scale(relV, leadTime));
     const aimDir = norm(predictedRelPos);
-    const sunDir = celestialBodies.sunDirFrom(r, simTime);
-    const spreadScale = sunGlareSpreadScale(r, aimDir, sunDir, R_EARTH_EQ);
+    const spreadScale = sunGlareSpreadScale(r, aimDir, celestialBodies, simTime);
     const perp = randPerp(aimDir);
     const spreadAng = (Math.random() * PLASMA_SPREAD_DEG * spreadScale * Math.PI) / 180;
     const actualAim = rotateAxis(aimDir, perp, spreadAng);
     const bV = add(v, scale(actualAim, PLASMA_BULLET_SPEED));
     const bullet = new Bullet(
       kinematicState<'eci'>(simTime, r, bV), PLASMA_LIFETIME, 'enemy', 'plasma',
-      this.port.plasmaDamage(), this.port.worldSfx,
+      this.port.plasmaDamage(), this.port.worldSfx, registry.idAllocators,
     );
     this.port.muzzleEffect(kinematicState<'eci'>(simTime, r, v));
     registry.add(bullet);

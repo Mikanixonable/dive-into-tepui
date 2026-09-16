@@ -1,21 +1,29 @@
 // 軌道分析のドラッグ可能ウィンドウ。高度・接近・投影の3タブのうち、いま選べるものをタブバーへ
-// 出し、選択中のタブへ描画を委ねる。見ている個体(操作対象と接近タブのターゲット)へ
-// analysisPanelReader を立て、戦闘ビューでもその軌道が伸び続けるようにするのもここが持つ。
+// 出し、選択中のタブへ描画を委ねる。
 import { SyncThrottle } from '../sync-throttle';
 import { DraggableWindow } from '../../../hud/windows/draggable-window';
 import { MQ_COMPACT } from '../../../hud/breakpoints';
 import { TabBar } from '../../../hud/widgets';
 import { injectOnce } from '../../../hud/inject-style';
+import { TEMP_WINDOW_GROUP } from '../../../hud/overlay-manager';
 import { AltitudeTab } from './orbit-altitude-tab';
 import { ApproachTab } from './orbit-approach-tab';
 import { ProjectionTab } from './orbit-projection-tab';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
 import type { OverlayManager } from '../../../hud/overlay-manager';
+import type { OrbitReference } from '../../orbit-reference';
 import type { ApproachTargetSource } from './orbit-analysis-data';
 import type { AnalysisChartSource, AnalysisTab } from './orbit-analysis-tab';
-import type { OrbitReference } from '../../orbit-reference';
 
 const SYNC_INTERVAL_MS = 250;
+
+// 軌道分析が描く相手 — 操作対象と、その軌道の基準、接近/投影タブが比べる対象。
+export interface OrbitAnalysisSubject {
+  readonly entity: DynamicEntity;
+  readonly reference: OrbitReference;
+  // 接近/投影タブが扱えない(質量を持たない・未選択)ときは null。
+  readonly target: ApproachTargetSource | null;
+}
 
 const STYLE = `
 #hud .dg-window.orbit-analysis { max-width: 420px; }
@@ -23,25 +31,6 @@ const STYLE = `
   #hud .dg-window.orbit-analysis { max-width: 100%; }
 }
 `;
-
-// analysisPanelReader を prev から降ろして next へ立て、いま立てている側(next)を返す。
-function applyReader(prev: DynamicEntity | null, next: DynamicEntity | null): DynamicEntity | null {
-  if (prev === next) return prev;
-  if (prev) prev.motion.analysisPanelReader = false;
-  if (next) next.motion.analysisPanelReader = true;
-  return next;
-}
-
-export interface OrbitAnalysisReaderView {
-  readonly entity: DynamicEntity | null;
-  readonly targetEntity: DynamicEntity | null;
-}
-
-export interface OrbitAnalysisViewModel extends AnalysisChartSource {
-  readonly entity: DynamicEntity | null;
-  readonly reference: OrbitReference | null;
-  readonly target: ApproachTargetSource | null;
-}
 
 export class OrbitAnalysisWindow {
   private readonly win: DraggableWindow;
@@ -51,9 +40,6 @@ export class OrbitAnalysisWindow {
   private readonly tabs: readonly AnalysisTab[];
   private selected: AnalysisTab = this.altitudeTab;
   private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
-  // analysisPanelReader を立てている個体(操作対象・接近/投影タブのターゲット)。
-  private readerEntity: DynamicEntity | null = null;
-  private readerTargetEntity: DynamicEntity | null = null;
   // 直前に描いた操作対象。切り替わったフレームでタブの表示範囲を開き直す。
   private drawnEntity: DynamicEntity | null = null;
 
@@ -62,13 +48,13 @@ export class OrbitAnalysisWindow {
 
   // (clientX, clientY) にウィンドウを開き、高度タブを選んだ状態にする。
   public constructor(
-    root: HTMLElement, clientX: number, clientY: number,
-    overlayManager: OverlayManager, tempWindowGroup: string,
+    root: HTMLElement, clientX: number, clientY: number, overlayManager: OverlayManager,
   ) {
     // ウィンドウの器。
     injectOnce('orbit-analysis-window', STYLE);
     this.win = new DraggableWindow(
-      root, clientX, clientY, { title: '軌道分析', initiallyClipped: true, tempWindowGroup }, overlayManager,
+      root, clientX, clientY,
+      { title: '軌道分析', initiallyClipped: true, tempWindowGroup: TEMP_WINDOW_GROUP }, overlayManager,
     );
     this.win.element.classList.add('orbit-analysis');
     this.win.onClose = () => this.onClose?.();
@@ -86,44 +72,31 @@ export class OrbitAnalysisWindow {
     this.win.bringToFront();
   }
 
-  // ウィンドウを閉じ、立てていた analysisPanelReader フラグをすべて降ろす。
+  // ウィンドウと各タブの資源を取り除く。以後このインスタンスは使えない。
   public dispose(): void {
-    this.readerEntity = applyReader(this.readerEntity, null);
-    this.readerTargetEntity = applyReader(this.readerTargetEntity, null);
     this.win.dispose();
     for (const tab of this.tabs) tab.dispose();
   }
 
-  // 見ている個体へ analysisPanelReader を立て、外れた個体から降ろす。予測の伸長対象は
-  // このフラグで決まるので、予測を進める前に呼ぶ。
-  public update(view: OrbitAnalysisReaderView): void {
-    this.readerEntity = applyReader(this.readerEntity, view.entity);
-    this.readerTargetEntity = applyReader(this.readerTargetEntity, view.targetEntity);
-  }
-
   // 選べるタブを出し直してから、選択中のタブへ描画を委ねる。
-  public sync(view: OrbitAnalysisViewModel): void {
-    if (!this.throttle.due()) return;
-    const entity = view.entity;
+  // subject が null なら操作対象が無いので、その旨だけを高度タブへ出す。
+  public sync(source: AnalysisChartSource, subject: OrbitAnalysisSubject | null, nowMs: number): void {
+    if (!this.throttle.due(nowMs)) return;
+    const entity = subject?.entity ?? null;
     // 別の対象を見ることになるので、各タブの表示範囲を開き直す。
     if (entity !== this.drawnEntity) {
       for (const tab of this.tabs) tab.resetView();
     }
     this.drawnEntity = entity;
-    if (!entity) {
+    if (!subject) {
       this.offerTabs([this.altitudeTab]);
-      this.altitudeTab.drawMessage('操作対象がありません');
+      this.altitudeTab.drawMessage('操作対象がありません', source.palette);
       return;
     }
 
-    const reference = view.reference;
-    if (reference === null) {
-      this.offerTabs([this.altitudeTab]);
-      this.altitudeTab.drawMessage('基準がありません');
-      return;
-    }
-    this.offerTabs(this.tabs.filter((tab) => tab.available(view, entity, reference, view.target)));
-    this.selected.draw(view, entity, reference, view.target);
+    const { reference, target } = subject;
+    this.offerTabs(this.tabs.filter((tab) => tab.available(source, subject.entity, reference, target)));
+    this.selected.draw(source, subject.entity, reference, target);
   }
 
   // 選べるタブだけをタブバーへ出し、選択中が選べなくなっていたら高度タブへ戻す。

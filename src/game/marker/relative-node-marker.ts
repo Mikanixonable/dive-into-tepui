@@ -1,7 +1,8 @@
 // 自機軌道上の、ターゲットの軌道面に対する昇交点・降交点と、ターゲットへの再接近点を指す、
 // 実体を持たない被選択物。
 import { ORBIT_ELEMENT_LABELS, type OrbitLabelSpec } from '../hud/orbit/orbit-labels';
-import { ORBIT_POINT_GLYPH } from '../../render/marker/marker-identity';
+import { ORBIT_POINT_GLYPH } from './marker-identity';
+import { MARKER_PRIORITY } from './marker-priority';
 import { OrbitPointMarker } from './orbit-point-marker';
 import type { Vec3 } from '../../math/vec3';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
@@ -18,6 +19,7 @@ const RELATIVE_NODE_LABELS = {
 export class RelativeNodeMarker extends OrbitPointMarker {
   public readonly glyph: string;
   protected readonly markerClass = 'mk-node';
+  protected readonly markerPriority = MARKER_PRIORITY.ORBITAL_NODE;
   public readonly markerLabel: string;
   public readonly name: string;
 

@@ -2,14 +2,14 @@
 import type { CelestialMotion } from '../../../physics/celestial-motion';
 import { apsisAltitudes, orbitalElementsOf } from '../../../physics/elements';
 import { len, sub } from '../../../math/vec3';
-import { bodyEntityGlyph } from '../../../render/marker/marker-identity';
-import { MARKER_PRIORITY } from '../../../render/marker/crowding';
+import { bodyEntityGlyph } from '../../marker/marker-identity';
+import { MARKER_PRIORITY } from '../../marker/marker-priority';
 import { bodySearchText } from '../../pickable/body-search-text';
 import { fmtDist, fmtTime } from '../../../hud/utils';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../../hud/orbit/orbit-labels';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { hitsSphere, type Ray } from '../../../math/ray';
-import type { MarkerVisibility } from '../../../render/marker/marker-visibility';
+import type { MarkerVisibility } from '../../../marker/marker-visibility';
 import type { CelestialClass } from './celestial-entity-def';
 import type { Vec3 } from '../../../math/vec3';
 import type {
@@ -45,10 +45,9 @@ export class CelestialEntity implements ObjectPickable {
     this.id = motion.id;
   }
 
-  // この1フレームに、照明・影・大気の源として差し出す運動と表示の組。visible は分類トグルが
-  // 開いているか。
-  public illuminationSource(visible: boolean): CelestialIlluminationSource {
-    return { motion: this.motion, view: this.view, visible };
+  // この1フレームに、照明・影・大気の源として差し出す運動と表示の組。
+  public illuminationSource(): CelestialIlluminationSource {
+    return { motion: this.motion, view: this.view };
   }
 
   // 天体ラベルとしての振る舞い。

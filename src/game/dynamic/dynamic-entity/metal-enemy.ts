@@ -7,6 +7,7 @@ import {
 } from './enemy';
 import { PartBasedEnemy } from './part-based-enemy';
 import { createShipDefaultParts } from './ship-default-parts';
+import type { EntityIdAllocators } from './entity-id';
 import type { MetalEnemySaveData } from '../../save/save-data';
 import { MetalEnemyView, Stage0MetalEnemyView } from '../../../render/dynamic/dynamic-entity/metal-enemy-view';
 
@@ -35,7 +36,7 @@ const TYPED_INERTIA = v3(1, 1, 1);
 // 機体テンプレート番号。
 type MetalEnemyPlacement = EnemyPlacement & { readonly typeIndex: number | null };
 
-// 金属機体の敵。艦と同じパーツ式の被弾モデルを持つ。
+// 金属機体の敵。機体テンプレートが外形と接触半径を決め、被弾は艦と同じパーツ式の被弾モデルへ入る。
 export class MetalEnemy extends PartBasedEnemy {
   public static readonly kind = 'metal-enemy';
   public static spawnGate(): null { return null; }
@@ -47,6 +48,7 @@ export class MetalEnemy extends PartBasedEnemy {
     init: MetalEnemyPlacement | EnemyRestore,
     worldSfx: WorldSfx,
     fx: FlashEffects,
+    idAllocators: EntityIdAllocators,
     scene?: THREE.Scene,
   ) {
     const typeIndex = 'saved' in init ? (init.saved as MetalEnemySaveData).typeIndex : init.typeIndex;
@@ -56,7 +58,8 @@ export class MetalEnemy extends PartBasedEnemy {
       : new Stage0MetalEnemyView(accent, typeIndex, ENEMY_MODEL_SCALE, scene);
     super(
       init, metalView, typeIndex === null ? DRIFTING_INERTIA : TYPED_INERTIA,
-      metalEnemyCollisionRadius(typeIndex), worldSfx, fx, createShipDefaultParts(ENEMY_MAX_HP),
+      metalEnemyCollisionRadius(typeIndex), worldSfx, fx, idAllocators,
+      createShipDefaultParts(ENEMY_MAX_HP),
     );
     this.typeIndex = typeIndex;
     // 部品単位の HP までは保存していないので、既定パーツ構成のまま総 HP を按分して戻す。

@@ -1,7 +1,6 @@
 // 低軌道シューティング: エントリポイント。WebGPU シーン初期化・ステージ選択・
 // rAF ループ(Game.update → sync → render の駆動)を統括する。
-// HUD の書体(ラテン字形の JetBrains Mono、日本語を含む残りの HackGen)を太さ 400 で読み込む。
-// bold 指定はブラウザの合成に任せる。
+// HUD の書体は太さ 400 だけを読み、bold はブラウザの合成に任せる。
 import '@fontsource/jetbrains-mono/latin-400.css';
 import './hackgen-400.css';
 import { createGameScene, GameScene } from './render/scene';
@@ -10,10 +9,13 @@ import { DebugInfoWindow } from './game/hud/windows/debug-info-window';
 import { FrameSections } from './game/frame-sections';
 import { UserSettings } from './settings/user-settings';
 import { browserSettingStorage } from './settings/stored-setting';
-import { themeIdSetting } from './settings/theme-setting';
-import { applyThemePalette } from './theme';
+import { themePresetOf } from './theme';
+import { applyThemeVariables } from './hud/style/theme-variables';
 import { Hud } from './game/hud/hud';
+import { PanelCollapse } from './game/hud/panel-shell';
 import { HudShell } from './hud/hud-shell';
+import { MarkerDevice } from './marker/marker-device';
+import { injectMarkerIdentityStyle } from './game/marker/marker-identity-style';
 import { PauseMenu } from './hud/windows/pause-menu';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
@@ -28,9 +30,10 @@ import { AutoSave } from './launcher/save/autosave';
 import { showLoading, hideLoading } from './launcher/loading-overlay';
 import { showFatalError } from './launcher/fatal-error';
 import type { GameHost } from './game/game-host';
+import type { ViewOptionsSettings } from './game/hud/panels/view-options-control';
 import type { GraphicsSettingsData } from './render/graphics-settings';
 import type { RenderStyle } from './render/render-style';
-import type { SettingValue } from './settings/stored-setting';
+import type { SettingValue } from './settings/setting-value';
 import { gameCommand } from './game/input/game-commands';
 import { KEY_MAPPING as K } from './input/key-mapping';
 
@@ -49,7 +52,7 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
 function startAnimationLoop(
   launcher: Launcher, gs: GameScene,
   graphics: SettingValue<GraphicsSettingsData>, renderStyle: SettingValue<RenderStyle>,
-  debugInfo: DebugInfoWindow, sections: FrameSections,
+  debugInfo: DebugInfoWindow, pauseMenu: PauseMenu, sections: FrameSections,
   autoSave: AutoSave,
   snapshotControls: SnapshotControls,
 ): void {
@@ -62,7 +65,9 @@ function startAnimationLoop(
     // 描画先の寸法はフレームの先頭で1度だけ読む。投影・尺度・ポインタ座標が同じ矩形を見ないと、
     // リサイズしたフレームで画面上の当たり判定がずれる。
     const viewport = browserViewport();
-    gs.syncViewport(viewport);
+    gs.syncFrame(viewport, graphics.current, debugInfo.debugTarget);
+    // 設定面はタイトル画面でも開けるので、周回の有無を見る前に引き直す。
+    pauseMenu.sync();
     const game = launcher.currentGame;
     const current = launcher.current;
     // 周回の切り替え中は Game が無いので、次フレームを予約して抜ける。
@@ -80,8 +85,8 @@ function startAnimationLoop(
         {
           feature: 'snapshot',
           commands: [
-            gameCommand(K.clipSnapshot.code, K.clipSnapshot),
-            gameCommand(K.openSnapshots.code, K.openSnapshots),
+            gameCommand(K.manualSave.code, K.manualSave),
+            gameCommand(K.openSaveBrowser.code, K.openSaveBrowser),
           ],
           handleCommand: command => snapshotControls.handleCommand(command.id, current.snapshot),
         },
@@ -104,7 +109,7 @@ function startAnimationLoop(
       }
       autoSave.update(current.snapshot);
       const t1 = debugInfo.on ? performance.now() : 0;
-      game.sync(graphics.current, renderStyle.current, viewport);
+      game.sync(graphics.current, renderStyle.current, viewport, now);
       const t2 = debugInfo.on ? performance.now() : 0;
       game.render(renderStyle.current);
       const t3 = debugInfo.on ? performance.now() : 0;
@@ -136,26 +141,33 @@ function startAnimationLoop(
 // タイトル(ステージ選択)画面の時点から使えるべき画面と音声を、Game より先に組む。
 // 各部品は設定の現在値を構築時に受け取り、以後の変更は main が配線する。
 function initHud(settings: UserSettings): {
-  shell: HudShell; hud: Hud; audioEngine: AudioEngine; bgm: Bgm;
+  shell: HudShell; hud: Hud; markers: MarkerDevice; audioEngine: AudioEngine; bgm: Bgm;
   pauseMenu: PauseMenu;
 } {
   const shell = new HudShell();
-  const hud = new Hud(shell, settings.renderStyle.current);
+  const panelCollapse = new PanelCollapse(
+    settings.panelCollapsed, (state) => settings.panelCollapsed.set(state),
+  );
+  const hud = new Hud(shell, panelCollapse, settings.renderStyle.current);
+  // マーカーの骨格は装置が、種別ごとの見た目は表示の導出が注入する。骨格を先に置き、
+  // 同じ詳細度なら種別ごとの指定が勝つ順序にする。
+  const markers = new MarkerDevice(shell.layers.marker);
+  injectMarkerIdentityStyle();
   const audioEngine = new AudioEngine();
   const bgm = new Bgm(audioEngine, settings.bgmVolume.current);
   const pauseMenu = new PauseMenu(
-    shell.layers.system, shell.overlayManager, bgm, settings.graphics.current, settings.bgmVolume.current,
+    shell.layers.system, shell.overlayManager, bgm,
+    settings.graphics.current, settings.bgmVolume.current, settings.themePalette.current.id,
   );
-  return { shell, hud, audioEngine, bgm, pauseMenu };
+  return { shell, hud, markers, audioEngine, bgm, pauseMenu };
 }
 
-// 設定の変更を、その値を使う側へ配る。書き換えの入口はどれも設定へ戻し、表示はその通知から引き直す。
+// 設定の変更を、通知から引き直す側へ配る。書き換えの入口はどれも設定へ戻す。
 function bindSettings(
-  settings: UserSettings, gs: GameScene, hud: Hud, bgm: Bgm,
+  settings: UserSettings, hud: Hud, bgm: Bgm,
   pauseMenu: PauseMenu, debugInfo: DebugInfoWindow,
 ): void {
   const settingsView = pauseMenu.settingsView;
-  settings.graphics.subscribe((graphics) => gs.applyGraphics(graphics));
   settingsView.onGraphicsChange = (graphics) => settings.graphics.set(graphics);
 
   settings.renderStyle.subscribe((style) => debugInfo.syncRenderStyle(style));
@@ -170,41 +182,57 @@ function bindSettings(
   pauseMenu.onBgmVolumeChange = (volume) => settings.bgmVolume.set(volume);
   settingsView.onBgmVolumeChange = (volume) => settings.bgmVolume.set(volume);
 
-  // 配色は DOM へ適用できたものだけを選択として残す。
+  // 配色はプリセットに在るものだけを選択として残す。
   settingsView.onThemeIdChange = (id) => {
-    if (applyThemePalette(id)) themeIdSetting.set(id);
+    const palette = themePresetOf(id);
+    if (palette !== null) settings.themePalette.set(palette);
+  };
+}
+
+// 表示パネルが読み書きする設定を、読み取り専用の面と書き換えの口に分けて束ねる。
+function viewOptionSettings(settings: UserSettings): ViewOptionsSettings {
+  return {
+    // 読み取り専用の面。
+    mapDisplay: settings.mapDisplayToggles,
+    grid: settings.gridVisibility,
+    tab: settings.viewOptionsTab,
+    orbitGuideGroupTab: settings.orbitGuideGroupTab,
+    // 書き換えの口。設定の正本へ戻す。
+    onMapDisplayChange: (value) => settings.mapDisplayToggles.set(value),
+    onGridChange: (value) => settings.gridVisibility.set(value),
+    onTabChange: (value) => settings.viewOptionsTab.set(value),
+    onOrbitGuideGroupTabChange: (value) => settings.orbitGuideGroupTab.set(value),
   };
 }
 
 // 起動時に一度だけ走る、全システムの生成と配線。
 async function main() {
-  // セーブと設定を読み、シーンと HUD を組む。
+  // 設定を読み、選ばれている配色を :root へ当ててからでなければ、ローディング表示も
+  // ステージ選択画面も色を引けない。
+  const settings = new UserSettings(browserSettingStorage);
+  settings.themePalette.subscribe((palette) => applyThemeVariables(palette));
+  // セーブを読み、シーンと HUD を組む。
   const unlockManager = new UnlockManager();
   const saveStore = new LocalStorageSaveStore();
   const slots = SaveSlots.load(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
-  const settings = new UserSettings(browserSettingStorage);
+  const autoSave = new AutoSave(snapshotService);
   const gs = await initScene(settings.graphics.current);
-  const { shell, hud, audioEngine, bgm, pauseMenu } = initHud(settings);
+  const { shell, hud, markers, audioEngine, bgm, pauseMenu } = initHud(settings);
   const sections = new FrameSections();
   const host: GameHost = {
-    scene: gs, hud, sections,
-    mapDisplay: settings.mapDisplayToggles,
-    grid: settings.gridVisibility,
-    orbitGuide: settings.orbitGuide,
+    scene: gs, hud, markers, sections,
+    viewOptions: viewOptionSettings(settings),
+    themePalette: settings.themePalette,
   };
 
   // 周回の遷移と、一時停止メニューからの導線。
   const launcher = new Launcher(
     shell, host, audioEngine, bgm, pauseMenu, unlockManager,
-    slots, snapshotService, settings.graphics, settings.renderStyle,
+    slots, snapshotService, autoSave, settings.graphics, settings.renderStyle,
   );
 
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
-  pauseMenu.onPauseMenuOpenChange = (open) => {
-    if (open) launcher.current?.pause();
-    else launcher.current?.resume();
-  };
 
   const saveBrowser = new SaveBrowser(shell.layers.system, slots, snapshotService, launcher, shell.overlayManager);
   saveBrowser.onSlotSwitched = () => launcher.switchSlot();
@@ -217,23 +245,23 @@ async function main() {
 
   // デバッグ情報ウィンドウと、設定の配線。
   const debugInfo = new DebugInfoWindow(
-    shell.layers.window, gs.renderer, sections, gs.gpu, shell.overlayManager, gs.pipeline,
+    shell.layers.window, gs.renderer, sections, gs.gpu, shell.overlayManager,
     settings.renderStyle.current, debugInfoOpenAtStart(),
   );
-  bindSettings(settings, gs, hud, bgm, pauseMenu, debugInfo);
+  bindSettings(settings, hud, bgm, pauseMenu, debugInfo);
   pauseMenu.onOpenDebugInfoWindow = () => {
     pauseMenu.toggle(false);
     debugInfo.open();
   };
 
   const snapshotControls = new SnapshotControls(hud, pauseMenu, saveBrowser, snapshotService);
-  pauseMenu.onSave = () => snapshotControls.captureManual(launcher.current?.snapshot ?? null);
+  pauseMenu.onSave = () => snapshotControls.saveManually(launcher.current?.snapshot ?? null);
 
   // 最初の周回を起こしてから、フレームを回し始める。
   await launcher.start();
   startAnimationLoop(
-    launcher, gs, settings.graphics, settings.renderStyle, debugInfo, sections,
-    new AutoSave(snapshotService), snapshotControls,
+    launcher, gs, settings.graphics, settings.renderStyle, debugInfo, pauseMenu, sections,
+    autoSave, snapshotControls,
   );
 }
 
