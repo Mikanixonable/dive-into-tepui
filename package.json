@@ -15,7 +15,6 @@
     "lint": "eslint --suppressions-location eslint-suppressions.json src tests tools",
     "lint:fix:all": "eslint --fix --suppressions-location eslint-suppressions.json src tests tools",
     "lint:baseline": "eslint --suppress-all --suppressions-location eslint-suppressions.json src tests tools",
-    "check:architecture": "node tools/check-architecture.mjs",
     "smoke:browser": "node tools/browser-smoke.mjs",
     "ci": "node tools/check-three-pin.mjs && npm run verify:source && npm run verify:theme && npm run verify:ui-style && npm run lint && npm run check:boundaries && npm run typecheck && npm run base-collision:check && npm run protein:generate:check && npm run protein:validate && npm run protein:validate-structure && npm run protein:catalog:check && npm run test && npm run build && npm run verify:release && npm run smoke:browser",
     "typecheck": "tsc --noEmit",
