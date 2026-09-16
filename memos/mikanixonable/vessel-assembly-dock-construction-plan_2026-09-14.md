@@ -3,7 +3,7 @@
 作成日: 2026-09-14
 実装の現在基準コミット: d3e8291dd
 最終レビュー: 2026-09-16
-状態: 実装中。手順5まで完了し、手順6から進める。
+状態: 実装中。手順6まで完了し、手順7から進める。
 
 ## 目的
 
@@ -305,46 +305,6 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 - 現行のランダム部位ダメージと敵挙動に回帰がない。
 
 ## 実装手順
-
-### 6. Player を ModularShip へ移す
-
-#### 目的
-
-既定自機の制御・戦闘機能を、player 専用の船体クラスではなく、能力を持つ ModularShip で動かす。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| src/game/ship/modular-ship.ts（新規） | ShipAssembly、motion、view、plan、inspection、既存の player／enemy 判定、module capability を所有する。 |
-| src/game/ship/modular-ship-motion.ts（新規） | assembly 集計を DynamicMotion の質量・推力・接触へ渡す。 |
-| src/game/ship/ship-capabilities.ts（新規） | cockpit、fire、panel、dock、decouple の小さい能力契約を提供する。 |
-| src/game/player/player.ts | 状態と処理を ModularShip と既存の狭い subsystem へ移し、移行完了時に削除する。 |
-| src/game/player/player-motion.ts | ModularShipMotion へ統合し、移行完了時に削除する。 |
-| src/game/player/player-loadout.ts | 既定戦闘船 preset へ置換後に削除し、ship-default-parts.ts は敵専用として残す。 |
-| src/game/player/fire-control.ts、belt.ts、power.ts、radiator.ts、throttle 関連 | 対応 module instance を所有者として読み、未搭載時は能力を公開しない。 |
-| src/game/dynamic/dynamic-entity/controllable.ts | AttachedBoosters 具体型を除き、module capability を読む。 |
-| src/game/dynamic/dynamic-system.ts | isPlayer と instanceof Player を、cockpit能力を持つ ModularShip の player 判定へ置換する。 |
-| src/game/stages/stage.ts、stage0.ts、stage00.ts、stage1.ts、stage2.ts | Player 生成を既定戦闘船 preset の ModularShip 生成へ置換する。 |
-| src/game/stages/stage-utils/logistics.ts | 補給対象を ModularShip の ammo／fuel capability で選ぶ。 |
-| src/game/stages/stage-utils/wave-attack.ts、status-panel.ts | Player 具象型を player 判定とcockpit能力を持つ船体の最小契約へ変える。 |
-| src/game/stages/stage-debug.ts、stage-debug-load.ts、stage-debug-alt-system.ts | debug stage の Player 生成・参照を ModularShip preset へ揃える。 |
-| src/game/dynamic/dynamic-entity/enemy.ts | 追跡対象の Player 型を最小運動契約へ変える。 |
-| src/game/creative/manual-spawn.ts、object-placement.ts | 手動生成と配置を ModularShip preset へ揃える。 |
-| src/game/pickable/player-inspection.ts | ship-inspection.ts へ置換し、部品列と導出役割を表示する。 |
-| src/game/pickable/part-windows.ts、object-windows.ts | Player 具象型を module capability と ship inspection へ置換する。 |
-| src/game/targeter.ts、src/game/marker/lead-markers.ts | ターゲットと偏差表示を player 所属 ModularShip の最小運動契約へ変える。 |
-| src/game/marker/player-markers.ts、ship-marker-renderer.ts | player 判定された ModularShip と導出役割から marker を決める。 |
-| src/game/lines/entity-line-manager.ts | isPlayer／isBase の別ループを ModularShip と既存の player 判定へ統合する。 |
-| tests/game/modular-ship-control.test.ts（新規） | cockpit の有無、既定操作、補給、plan、武装、熱、パネルを検証する。 |
-
-#### 達成条件と検証
-
-- Player クラスへの import が 0 件で、既定ステージと CREATIVE の自機が ModularShip になる。
-- cockpit を失った船は操作対象にできず、thruster／tank の不足は命令を受けても加速を生まない。
-- 既定自機の HUD、射撃、弾薬ベルト、熱、電力、ラジエーター、軌道計画が従来どおり動く。
-- MetalEnemy と ProteinEnemy のファイル・モデル・調整値を変更しない。
-- npm run typecheck、npm run test:game、npm run test:render を通す。
 
 ### 7. Base を基地 preset へ置換する
 
