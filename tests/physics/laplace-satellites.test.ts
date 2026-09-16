@@ -81,7 +81,7 @@ function orbitNormal(parts: SolarSystemParts, id: string, planet: string, t: num
 }
 
 export function register(): void {
-  const parts = solarSystemParts({});
+  const parts = solarSystemParts();
   const windows = parts.system;
 
   test('laplace-satellites: 公転周期(lRate)が JPL の公開周期(日)と一致する', () => {

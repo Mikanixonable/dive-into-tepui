@@ -120,7 +120,6 @@ export class EarthSurface implements CelestialSurfaceLike {
   private readonly projectionCache = new EarthSurfaceProjectionCache();
   private materialSyncValue: ((frame: CelestialSurfaceFrame) => void) | null = null;
   private pendingMaterialValue: EarthSurfaceMaterialAttachment | null = null;
-  private detailedMaterialValue = false;
   private materialFailureReasonValue: (() => string | null) | null = null;
   private statusValue: EarthSurfaceStatus;
   private reasonValue: string | null;
@@ -142,7 +141,7 @@ export class EarthSurface implements CelestialSurfaceLike {
 
   public get status(): EarthSurfaceStatus { return this.statusValue; }
 
-  public get usesDetailedMaterial(): boolean { return this.detailedMaterialValue; }
+  public get usesDetailedMaterial(): boolean { return this.materialSyncValue !== null; }
 
   // 現在の状態。reason は明示の理由・常駐の失敗・材質の失敗のうち最初にあるもの。
   public get diagnostics(): CelestialSurfaceDiagnostics {
@@ -150,7 +149,7 @@ export class EarthSurface implements CelestialSurfaceLike {
       status: this.statusValue,
       reason: this.reasonValue ?? this.coordinatorValue?.failureReason
         ?? this.materialFailureReasonValue?.() ?? null,
-      usesDetailedMaterial: this.detailedMaterialValue,
+      usesDetailedMaterial: this.usesDetailedMaterial,
       residentMaxZ: this.coordinatorValue?.residentMaxZ ?? null,
     };
   }
@@ -237,7 +236,6 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.reasonValue = reason;
     this.materialSyncValue = null;
     this.materialFailureReasonValue = null;
-    this.detailedMaterialValue = false;
     this.clearProjectionCache();
     if (material !== null) {
       this.materialFailureReasonValue = material.failureReason ?? null;
@@ -284,6 +282,5 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.fallback.replaceMaterial(material);
     this.materialSyncValue = material.syncFrame;
     this.materialFailureReasonValue = material.failureReason ?? null;
-    this.detailedMaterialValue = true;
   }
 }

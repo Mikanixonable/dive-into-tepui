@@ -8,14 +8,10 @@ import coastlineData from '../../../assets/earth-coastline.json';
 import moonFeaturesData from '../../../assets/moon-features.json';
 import { AtmosphereDef } from '../../../physics/atmosphere';
 import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
-import { PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
+import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { satelliteOrbit } from '../../../physics/satellite-orbit';
-import {
-  C22_MOON, J2_EARTH, J2_MOON, MOON_OBLIQUITY, MU_EARTH, MU_MOON, R_EARTH, R_EARTH_EQ, R_MOON,
-  R_MOON_GRAVITY, SIDEREAL_DAY,
-} from './constants';
 import { Aurora, type AuroraOptics } from '../../../render/celestial/aurora';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { createEarthSurfaceRuntime } from '../../../render/earth-surface-factory';
@@ -36,6 +32,22 @@ import { AU } from '../../../physics/astronomical-unit';
 
 // 地球系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type EarthSystemBodyId = 'earth' | 'moon';
+
+export const MU_EARTH = 3.986004418e14; // 地球重力定数 [m^3/s^2]
+export const R_EARTH = 6.371e6; // 平均半径 [m]
+export const R_EARTH_EQ = 6.378137e6; // 赤道半径 [m]
+export const SIDEREAL_DAY = 86164.0905; // 恒星日 [s]
+// 2次の重力場係数(非正規化)。正規化係数を収録した外部データで更新する際は換算が要る。
+export const J2_EARTH = 1.08262668e-3;
+
+export const MU_MOON = 4.9048695e12; // [m^3/s^2]
+export const R_MOON = 1.7374e6; // [m]
+// GRAIL による測定値(非正規化)。基準半径 1738.0 km は月の表面半径 R_MOON とは別の量なので分けて持つ。
+export const J2_MOON = 203.3e-6;
+export const C22_MOON = 22.4e-6;
+export const R_MOON_GRAVITY = 1.7380e6; // [m]
+// 月の赤道が黄道に対して傾く角(カッシーニ第2法則)。
+export const MOON_OBLIQUITY = 1.543 * (Math.PI / 180); // [rad]
 
 // 地球の大気。基準楕円体は海面の回転楕円体(WGS84)で、衝突球の半径(radius)や 2 次重力場の
 // 基準半径(refRadius)とは別の理由で選ばれた別の量なので、値が一致していても別に宣言する。
@@ -77,6 +89,11 @@ export const EARTH_ATMOSPHERE: AtmosphereDef = {
   ],
 };
 
+// 元期での地球の自転位相 [deg]。IAU の自転角 W(出典: pck00011.tpc BODY399_PM の定数項 190.147)は
+// 天体赤道と ICRF 赤道の昇交点(赤経 α₀+90°)から測るが、自転軸が ECI の極と重なる地球では交線が
+// 定まらず、位相の原点は春分点(赤経 0)になるので 90° ぶん進んだ角になる。
+const EARTH_W0_DEG = 190.147 + 90;
+
 export const EARTH: PlanetDef = {
   id: 'earth',
   mu: MU_EARTH,
@@ -100,7 +117,7 @@ export const EARTH: PlanetDef = {
     eRatePerCentury: -0.00004392,
     aRatePerCenturyAu: 0.00000562,
   }),
-  pole: { kind: 'eciPole', spinRate: (2 * Math.PI) / SIDEREAL_DAY },
+  pole: { kind: 'eciPole', spinRate: (2 * Math.PI) / SIDEREAL_DAY, w0Deg: EARTH_W0_DEG },
   // 赤道断面の楕円性 C22 は J2 の約 1/690 しかないため軸対称として扱う。
   degree2: { j2: J2_EARTH, c22: 0, refRadius: R_EARTH_EQ },
   atmosphere: EARTH_ATMOSPHERE,
@@ -153,7 +170,7 @@ const MOON_SURFACE_MARKINGS = moonFeaturesData as readonly UnitSphereLoop[];
 // 地球のオーロラ。オーバル緯度は磁極の配置、発光高度は降り込む粒子が大気を励起する層、
 // 色は酸素の緑(557.7nm)と赤(630nm)の輝線による。
 const EARTH_AURORA_OPTICS: AuroraOptics = {
-  bodyRadius: 6.371e6,
+  bodyRadius: R_EARTH,
   ovalLatitudeDeg: 66,
   magneticPoleLatitudeDeg: 80.65,
   magneticPoleLongitudeDeg: -72.68,
@@ -174,7 +191,6 @@ export const EARTH_SYSTEM_NAMES: Record<EarthSystemBodyId, string> = {
   earth: '地球',
   moon: '月',
 };
-
 
 // 両極それぞれ2層のカーテン。同じ極の層は geomSeed を揃えて平行にし、半径・緯度・明滅を
 // ずらして厚みを出す。
@@ -207,18 +223,16 @@ export function earthCloudPresentation(): CloudPresentation {
 }
 
 // 地球系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
-// earthSpinPhase0 は地球の自転初期位相 [rad]。
 export function earthSystem(
-  sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
-  earthSpinPhase0 = 0, renderer?: WebGPURenderer,
+  sun: StarMotion, simZeroEt: number, renderer?: WebGPURenderer,
 ): Record<EarthSystemBodyId, CelestialEntity> {
-  const earth = planetSystem(planetDefForSimZero(EARTH, phases, simZeroEt), sun, earthSpinPhase0);
+  const earth = planetSystem(planetDefForSimZero(EARTH, simZeroEt), sun);
   const earthSurfaceRuntime = createEarthSurfaceRuntime({ renderer });
   const cumulus = earthCloudPresentation();
   const earthSurface = earthSurfaceRuntime.surface;
   return {
     earth: new CelestialEntity(
-    earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
+      earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
       new PointCelestialView(
         earthSurface,
         EARTH_ATMOSPHERE_OPTICS,
@@ -228,7 +242,7 @@ export function earthSystem(
       ),
     ),
     moon: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(MOON, phases, simZeroEt), earth),
+      new SatelliteMotion(satelliteDefForSimZero(MOON, simZeroEt), earth),
       EARTH_SYSTEM_NAMES.moon, 'satellite',
       new SphereCelestialView(
         // 倍率はテクスチャの平均輝度 0.3180 を公表のボンドアルベドへ合わせる値。

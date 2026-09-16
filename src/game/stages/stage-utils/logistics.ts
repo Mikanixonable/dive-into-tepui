@@ -18,16 +18,16 @@ import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
 import type { LogisticsSaveData } from '../../save/save-data';
 
 export const MAX_ACTIVE_AMMO_PICKUPS = 3; // 同時に存在する補給の最大数
-export const STAGE00_LOGISTICS_MIN_DIST = 12.5; // 補給の配置距離 [m](自機から)
-export const STAGE00_LOGISTICS_MAX_DIST = 50;
+export const LOGISTICS_SCRIPTED_MIN_DIST = 12.5; // 台本投入の配置距離(自機軌道上の位相シフト距離)下限 [m]
+export const LOGISTICS_SCRIPTED_MAX_DIST = 50; // 同上限 [m]
 
 const AMMO_PICKUP_MAGS = 6; // 補給 1 個の取り込みで増えるマガジン数
 const LOGISTICS_LOW_MAGS = 7; // 残りマガジンがこれ未満になると付近の軌道に補給を投入
 const LOGISTICS_LOW_FUEL_RATIO = 0.3; // この割合未満になると燃料補給を投入
 const MAX_ACTIVE_RCS_FUEL_PICKUPS = 3; // 同時に存在する燃料補給の最大数
 const LOGISTICS_CHECK_INTERVAL = 20; // 補給投入判定の間隔 [sim s]
-const LOGISTICS_MIN_DIST = 312.5; // 補給投入位置(自機軌道上の位相シフト距離)下限 [m]
-const LOGISTICS_MAX_DIST = 625; // 同上限 [m]
+const LOGISTICS_AUTO_MIN_DIST = 312.5; // 自動投入の配置距離(自機軌道上の位相シフト距離)下限 [m]
+const LOGISTICS_AUTO_MAX_DIST = 625; // 同上限 [m]
 const LOGISTICS_DESPAWN_DIST = 50000; // これ以上自機から離れた補給をデスポーンさせる距離 [m]
 
 export class Logistics {
@@ -55,8 +55,8 @@ export class Logistics {
   // 自機の軌道上、minDist〜maxDist 先の位相に補給を1個投入する。
   public spawnForPlayer(
     player: Player,
-    minDist = LOGISTICS_MIN_DIST,
-    maxDist = LOGISTICS_MAX_DIST,
+    minDist = LOGISTICS_AUTO_MIN_DIST,
+    maxDist = LOGISTICS_AUTO_MAX_DIST,
   ): void {
     // 自機の軌道面内で minDist〜maxDist 先に相当する角度だけ位相をずらす
     const r = player.motion.state.r;
@@ -78,6 +78,7 @@ export class Logistics {
         },
       },
       this._scene,
+      this.dynamicSystem.idAllocators,
     );
     // 投入して演出とヒントを出す
     this.dynamicSystem.add(ammoPickup);
@@ -88,8 +89,8 @@ export class Logistics {
   // 自機の軌道上、minDist〜maxDist 先の位相に RCS 燃料補給を1個投入する。
   public spawnRcsFuelForPlayer(
     player: Player,
-    minDist = LOGISTICS_MIN_DIST,
-    maxDist = LOGISTICS_MAX_DIST,
+    minDist = LOGISTICS_AUTO_MIN_DIST,
+    maxDist = LOGISTICS_AUTO_MAX_DIST,
   ): void {
     // 自機の軌道面内で minDist〜maxDist 先に相当する角度だけ位相をずらす
     const r = player.motion.state.r;
@@ -111,6 +112,7 @@ export class Logistics {
         },
       },
       this._scene,
+      this.dynamicSystem.idAllocators,
     );
     // 投入して演出とヒントを出す
     this.dynamicSystem.add(fuelPickup);
@@ -120,7 +122,7 @@ export class Logistics {
 
   // 近傍の補給を回収し、遠方のものをデスポーンし、残弾・残燃料が少なければ定期的に新規投入する。
   // 回収とデスポーンは投入の可否によらず常に走る。respawnOnDespawn なら、投入できる間は
-  // デスポーンした数だけ近くへ再投入する。
+  // デスポーンした数だけ再投入する。
   public updateLogistics(
     simTime: number, player: Player, simSpeed: SimSpeedManager, respawnOnDespawn = false,
   ): void {
@@ -225,7 +227,7 @@ export class Logistics {
     // 消えた分だけ新たに投入する
     let count = this.liveAmmoPickupCount();
     for (let i = 0; i < respawn && count < MAX_ACTIVE_AMMO_PICKUPS; i++) {
-      this.spawnForPlayer(player, STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST);
+      this.spawnForPlayer(player);
       count++;
     }
   }
@@ -246,7 +248,7 @@ export class Logistics {
     // 消えた分だけ新たに投入する
     let count = this.liveRcsFuelPickupCount();
     for (let i = 0; i < respawn && count < MAX_ACTIVE_RCS_FUEL_PICKUPS; i++) {
-      this.spawnRcsFuelForPlayer(player, STAGE00_LOGISTICS_MIN_DIST, STAGE00_LOGISTICS_MAX_DIST);
+      this.spawnRcsFuelForPlayer(player);
       count++;
     }
   }

@@ -11,7 +11,7 @@ import {
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import { LINE_RENDER_ORDER, LineStyle } from '../../../render/line-style';
 import type { RenderStyle } from '../../../render/render-style';
-import type { ViewMode } from '../../../render/view-mode';
+import type { ViewMode } from '../../view/view-mode';
 import { SCHEMATIC_LINE } from '../../../render/schematic-style';
 import {
   familyGradientColor, familyGradientColorAt, type GuideLineDisplay,
@@ -79,11 +79,10 @@ type GuideLineFamily =
     readonly point: null;
   };
 
-// 表示中の1本ぶん。family の位置(index/count)は色のグラデーションと族範囲の内分に使う。
+// 表示中の1本ぶん。族の中の位置 index は色のグラデーションと族範囲の内分に使う。
 type GuideLineEntry = GuideLineFamily & {
   readonly key: string;
   readonly index: number;
-  readonly count: number;
   // 適応分割の頂点予算。既定でよい線は undefined。
   readonly maxVertices: number | undefined;
   // 表示時刻から引き直すまで、また引けなかった時刻では null(その線は描かれない)。
@@ -107,12 +106,12 @@ function lineStyle(color: number, opacity: number): LineStyle {
 
 // 線1本ぶんの、表示時刻に依らない識別情報。
 function lineEntry(
-  family: GuideLineFamily, index: number, count: number, maxVertices: number | undefined,
+  family: GuideLineFamily, index: number, maxVertices: number | undefined,
 ): GuideLineEntry {
   return {
     ...family,
     key: `${family.familyId}:${family.system}:${family.point ?? '-'}:${index}`,
-    index, count, maxVertices, geometry: null,
+    index, maxVertices, geometry: null,
   };
 }
 
@@ -181,10 +180,10 @@ function activeSystems(settings: OrbitGuideSettings): readonly CatalogSystemId[]
   return ALL_SYSTEMS.filter((id) => settings.systems[id] === true);
 }
 
-// 族の count 本のうち index 番目の線の族位置 s。族範囲を両端込みで等分し、1本なら rangeMin。
-function sValueFor(kind: GuideKindSettings, index: number, count: number): number {
-  if (count <= 1) return kind.rangeMin;
-  return kind.rangeMin + ((kind.rangeMax - kind.rangeMin) * index) / (count - 1);
+// 族の中の index 番目の線の族位置 s。族範囲を両端込みで等分し、1本なら rangeMin。
+function sValueFor(kind: GuideKindSettings, index: number): number {
+  if (kind.count <= 1) return kind.rangeMin;
+  return kind.rangeMin + ((kind.rangeMax - kind.rangeMin) * index) / (kind.count - 1);
 }
 
 // 点列の形を決める設定だけを並べた識別子。色・不透明度などの見た目の設定では変わらない。
@@ -307,7 +306,7 @@ export class OrbitGuideModel {
     if (!kind) return null;
     const system = this.catalog.systemFor(entry.system);
     if (!system) return null;
-    const s = sValueFor(kind, entry.index, entry.count);
+    const s = sValueFor(kind, entry.index);
     const secondary = this.guideFrameOf(entry.system, t);
     if (secondary === null) return null;
     return catalogLoop(secondary, system, entry.familyId, s);
@@ -414,7 +413,7 @@ export class OrbitGuideModel {
     if (!kind) return null;
 
     // 族の中の位置(0〜1)が、線ごとの色と安定度の見せ方を決める。
-    let gradientT = entry.count <= 1 ? 0 : entry.index / (entry.count - 1);
+    let gradientT = kind.count <= 1 ? 0 : entry.index / (kind.count - 1);
     if (kind.reversed) gradientT = 1 - gradientT;
     const stability = entry.geometry?.loop.stability;
     const stable = kind.showStability && stability !== undefined && Math.abs(stability) <= STABILITY_NEUTRAL_THRESHOLD;
@@ -444,7 +443,7 @@ export class OrbitGuideModel {
         // その系に無い族の線は、何も描かれないのに線数の警告だけを膨らませる。
         if (!this.catalog.hasFamily(system, familyId)) continue;
         for (let i = 0; i < kind.count; i++) {
-          this.lines.push(lineEntry({ source: 'catalog', familyId, system, point }, i, kind.count, undefined));
+          this.lines.push(lineEntry({ source: 'catalog', familyId, system, point }, i, undefined));
         }
       }
     }
@@ -456,7 +455,7 @@ export class OrbitGuideModel {
         for (const [flag, point] of points) {
           if (!settings.lissajous[flag]) continue;
           this.lines.push(lineEntry(
-            { source: 'lissajous', familyId: 'lissajous', system, point }, 0, 1, LISSAJOUS_VERTEX_BUDGET,
+            { source: 'lissajous', familyId: 'lissajous', system, point }, 0, LISSAJOUS_VERTEX_BUDGET,
           ));
         }
       }
@@ -465,7 +464,7 @@ export class OrbitGuideModel {
     // 地球専用参照軌道は系トグルの対象外なので system は null。
     for (const kind of REFERENCE_ORBIT_KINDS) {
       if (!settings[kind].on) continue;
-      this.lines.push(lineEntry({ source: 'reference', familyId: kind, system: null, point: null }, 0, 1, undefined));
+      this.lines.push(lineEntry({ source: 'reference', familyId: kind, system: null, point: null }, 0, undefined));
     }
   }
 }

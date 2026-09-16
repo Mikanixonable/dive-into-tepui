@@ -108,6 +108,12 @@ export class SettingsView {
     return header;
   }
 
+  // 設定面の表示を、いま鳴っている試聴へ合わせる。毎フレーム呼ぶ。
+  public sync(): void {
+    if (!this.active) return;
+    this.bgmPanel.sync();
+  }
+
   // 外から音量が変わったときに、BGM タブの表示を引き直す。
   public syncBgmVolume(volume: number): void {
     this.bgmPanel.syncVolume(volume);

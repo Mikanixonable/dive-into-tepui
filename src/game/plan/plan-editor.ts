@@ -167,15 +167,26 @@ export class PlanEditor {
     this.hud.hint('ノードを削除');
   }
 
-  // 選択中のノードを削除する。
-  private deleteSelected(): void {
-    if (this.selectedNodeIdx === null) return;
-    this.deleteNode(this.selectedNodeIdx);
+  // 選択中のノードを削除する。未選択なら計画全体を破棄し、進行中の自動ワープも解く。
+  private deleteSelectedNodeOrPlan(): void {
+    if (this.selectedNodeIdx !== null) {
+      this.deleteNode(this.selectedNodeIdx);
+      return;
+    }
+    const plan = this.plan;
+    if (!plan || plan.nodes.length <= 0) return;
+    plan.clear();
+    this.simSpeedManager.cancelAutoWarp();
+    this.hud.hint('マニューバ計画を破棄');
   }
 
-  // 選択ノードの削除キーと、WASDQE・長押しボタン・ラッチによる Δv 編集を進める。
-  public handleInput(input: Input, dt: number): void {
-    if (input.takeKey(K.deleteNode)) this.deleteSelected();
+  // 計画キー([X] 削除・[N] 直近ノードへの自動ワープ)と、WASDQE・長押しボタン・ラッチによる
+  // Δv 編集を進める。
+  public handleInput(input: Input, dt: number, simTime: number): void {
+    if (input.takeKey(K.deleteNode)) this.deleteSelectedNodeOrPlan();
+    if (input.takeKey(K.autoWarpToNode)) {
+      this.simSpeedManager.toggleAutoWarpToFirstNode(this.plan?.firstNode(), simTime);
+    }
     this.updateEditing(input, dt);
   }
 

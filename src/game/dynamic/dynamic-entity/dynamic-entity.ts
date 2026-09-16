@@ -4,7 +4,6 @@ import { MARKER_VISIBILITY, type MapVisibility, type MapVisibilityPolicy } from 
 import type { EntitySaveDataUnion } from '../../save/save-data';
 import type { OrbitingObject } from './orbiting-object';
 import type { CapKind, DynamicEntityKind } from './entity-kind';
-import { EntityIdAllocator } from './entity-id';
 import type { DynamicMotion } from '../dynamic-motion';
 import type { OrbitReference } from '../../orbit-reference';
 import type {
@@ -15,8 +14,6 @@ export type DynamicMotionFactory = (owner: DynamicEntity) => DynamicMotion;
 
 // 1体ぶんの Motion と View を結び、両者に共通するゲーム上の識別と判断を持つ。
 export class DynamicEntity {
-  private static readonly idAllocator = new EntityIdAllocator('entity-');
-
   public readonly id: string;
   public readonly motion: DynamicMotion;
   public readonly view: DynamicView;
@@ -33,9 +30,9 @@ export class DynamicEntity {
   private nameValue: string;
 
   // 識別、Motion、View を1体の寿命へ束ねる。motionFactory には id を確定させた owner を渡す。
-  // id を省くと基底の採番で発番する。
-  public constructor(motionFactory: DynamicMotionFactory, view: DynamicView, id?: string) {
-    this.id = id ?? DynamicEntity.idAllocator.next();
+  // id は生成する側が採番器から取って渡す。
+  public constructor(motionFactory: DynamicMotionFactory, view: DynamicView, id: string) {
+    this.id = id;
     this.nameValue = this.id;
     this.motion = motionFactory(this);
     this.view = view;
@@ -64,17 +61,15 @@ export class DynamicEntity {
   }
 
   // このフレームの表示入力。派生 Entity は自分の View が読む値を足したものを返す。
-  // visible はこのフレームに本体を出すか、active はこの個体が操作対象か、
-  // orbitReference は軌道の基準として選ばれている天体。
+  // active はこの個体が操作対象か、orbitReference は軌道の基準として選ばれている天体。
   protected renderSource(
-    _viewFrame: DynamicViewFrame, visible: boolean, _active: boolean,
+    _viewFrame: DynamicViewFrame, _active: boolean,
     _orbitReference: OrbitReference | undefined,
   ): DynamicRenderSource {
     const motion = this.motion;
     return {
       id: this.id,
       name: this.name,
-      visible,
       alive: motion.alive,
       stateAt: (t) => motion.stateAt(t),
       attitude: motion.att.q,
@@ -91,10 +86,9 @@ export class DynamicEntity {
 
   // このフレームの表示入力を組み立てて View へ渡す。
   public sync(
-    viewFrame: DynamicViewFrame, visible: boolean, active: boolean,
-    orbitReference: OrbitReference | undefined,
+    viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | undefined,
   ): void {
-    this.view.sync(this.renderSource(viewFrame, visible, active, orbitReference), viewFrame);
+    this.view.sync(this.renderSource(viewFrame, active, orbitReference), viewFrame);
   }
 
   // この個体が所有する View 資源を解放する。

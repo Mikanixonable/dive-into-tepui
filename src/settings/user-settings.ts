@@ -1,7 +1,6 @@
 // ラン跨ぎのユーザー設定の正本。設定ごとの現在値を1つずつ起こし、保存先のどの鍵へ載せるかを決める。
 
 import { formatBgmVolume, parseBgmVolume } from '../audio/bgm/bgm';
-import { formatOrbitGuideSettings, parseOrbitGuideSettings } from '../game/celestial/orbit-guide/orbit-guide-settings';
 import {
   formatOrbitGuideGroupTab, formatPanelCollapsed, formatViewOptionsTab,
   parseOrbitGuideGroupTab, parsePanelCollapsed, parseViewOptionsTab,
@@ -12,7 +11,6 @@ import { formatGraphics, parseGraphics } from '../render/graphics-settings';
 import { formatRenderStyle, parseRenderStyle } from '../render/render-style';
 import { formatThemePalette, parseThemePalette } from '../theme';
 import { StoredSetting } from './stored-setting';
-import type { OrbitGuideSettings } from '../game/celestial/orbit-guide/orbit-guide-settings';
 import type { OrbitGuideGroupTab, PanelCollapsedState, ViewOptionsTab } from '../game/hud/hud-selection';
 import type { MapDisplayToggles } from '../game/map/display-toggles';
 import type { CelestialGridVisibility } from '../render/celestial-grid';
@@ -37,8 +35,6 @@ export class UserSettings {
   public readonly mapDisplayToggles: StoredSetting<MapDisplayToggles>;
   // 天球グリッドの表示。
   public readonly gridVisibility: StoredSetting<CelestialGridVisibility>;
-  // 軌道ガイドの設定。
-  public readonly orbitGuide: StoredSetting<OrbitGuideSettings>;
   // HUD パネルのビュー別折りたたみ状態。
   public readonly panelCollapsed: StoredSetting<PanelCollapsedState>;
   // 表示パネルで選んでいるタブ。
@@ -60,9 +56,6 @@ export class UserSettings {
     );
     this.gridVisibility = new StoredSetting(
       storage, 'tepui.gridVisibility', parseGridVisibility, formatGridVisibility,
-    );
-    this.orbitGuide = new StoredSetting(
-      storage, 'tepui.orbitGuide', parseOrbitGuideSettings, formatOrbitGuideSettings,
     );
     // ランを跨いで残る HUD の選択。
     const legacyPanelCollapsed = storage.read(LEGACY_PANEL_COLLAPSED_KEY);

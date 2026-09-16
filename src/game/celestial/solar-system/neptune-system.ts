@@ -1,11 +1,11 @@
 // 海王星系(海王星・トリトン・ネレイド)。静的事実・運動・見た目を1体につき1箇所で組む。
 import neptuneTextureUrl from '../../../assets/2k_neptune.jpg';
 import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
-import { PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
+import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
-import { GRAVITATIONAL_CONSTANT, MU_NEPTUNE } from './constants';
+import { GRAVITATIONAL_CONSTANT } from '../gravitational-constant';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
 import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
@@ -16,6 +16,9 @@ import { equatorialSatelliteOrbit, jplSatelliteOrbit } from './satellite-orbit-b
 
 // 海王星系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。
 export type NeptuneSystemBodyId = 'neptune' | 'triton' | 'nereid';
+
+// 衛星の平均運動をケプラー第3法則で出すのに要るので、本体の定義と衛星の軌道が同じ値を読む。
+const MU_NEPTUNE = 6.836529e15; // [m^3/s^2]
 
 const NEPTUNE: PlanetDef = {
   id: 'neptune',
@@ -68,9 +71,9 @@ export const NEPTUNE_SYSTEM_NAMES: Record<NeptuneSystemBodyId, string> = {
 
 // 海王星系を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function neptuneSystem(
-  sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
+  sun: StarMotion, simZeroEt: number,
 ): Record<NeptuneSystemBodyId, CelestialEntity> {
-  const neptune = planetSystem(planetDefForSimZero(NEPTUNE, phases, simZeroEt), sun);
+  const neptune = planetSystem(planetDefForSimZero(NEPTUNE, simZeroEt), sun);
   return {
     neptune: new CelestialEntity(
       neptune.body, NEPTUNE_SYSTEM_NAMES.neptune, 'planet',
@@ -80,7 +83,7 @@ export function neptuneSystem(
       ),
     ),
     triton: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(TRITON, phases, simZeroEt), neptune),
+      new SatelliteMotion(satelliteDefForSimZero(TRITON, simZeroEt), neptune),
       NEPTUNE_SYSTEM_NAMES.triton, 'satellite',
       new SphereCelestialView(
         // A_B=0.43(幾何 0.76 x q=0.564)
@@ -88,7 +91,7 @@ export function neptuneSystem(
       ),
     ),
     nereid: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(NEREID, phases, simZeroEt), neptune),
+      new SatelliteMotion(satelliteDefForSimZero(NEREID, simZeroEt), neptune),
       NEPTUNE_SYSTEM_NAMES.nereid, 'satellite',
       new SphereCelestialView(
         // A_B=0.071(幾何 0.155 x q=0.461)

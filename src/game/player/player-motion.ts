@@ -55,7 +55,7 @@ class PlayerBehavior implements DynamicMotionBehavior {
     dt: number,
     atmosphereBody: CelestialBody | null,
     atmospherePivot: number,
-    sunlit: number,
+    sunlight: number,
     sunDir: Vec3,
   ): void {
     const motion = self as PlayerMotion;
@@ -69,7 +69,7 @@ class PlayerBehavior implements DynamicMotionBehavior {
     motion.aero.update(motion.state.r, motion.state.v, atmosphereBody, atmospherePivot);
     this.reactions.updateAltitudeAlarm(dt, motion.state.r, atmosphereBody, atmospherePivot);
     motion.power.update(
-      dt, sunlit, sunDir, motion.att, this.reactions.totalPowerGeneration(),
+      dt, sunlight, sunDir, motion.att, this.reactions.totalPowerGeneration(),
     );
   }
 

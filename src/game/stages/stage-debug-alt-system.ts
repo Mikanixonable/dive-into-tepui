@@ -5,14 +5,13 @@ import * as THREE from 'three/webgpu';
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { OrbitingMotion, SatelliteMotion, StarMotion } from '../../physics/celestial-motion';
-import { PhaseOffsets, PlanetDef, SatelliteDef, StarDef, planetDefForSimZero, satelliteDefForSimZero } from '../../physics/celestial-body-def';
+import { PlanetDef, SatelliteDef, StarDef, planetDefForSimZero, satelliteDefForSimZero } from '../../physics/celestial-body-def';
 import { planetSystem } from '../../physics/planet-system';
 import { planetOrbit, JULIAN_CENTURY } from '../../physics/kepler-orbit';
-import { AU } from '../../physics/astronomical-unit';
+import { AU, SOLAR_CONSTANT } from '../../physics/astronomical-unit';
 import { satelliteOrbit } from '../../physics/satellite-orbit';
 import { keplerPeriod, stateFromOrbitalElements } from '../../physics/elements';
-import { kinematicState } from '../../physics/kinematic-state';
-import { add } from '../../math/vec3';
+import { addPrimaryRelative, kinematicState } from '../../physics/kinematic-state';
 import type { StageSaveData } from '../save/save-data';
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { CelestialSurface } from '../../render/celestial/celestial-surface';
@@ -22,7 +21,6 @@ import { CelestialSystem } from '../celestial/celestial-system';
 import type { TdbJulianDate } from '../../physics/time';
 import { SphereCelestialView } from '../../render/celestial/celestial-entity/sphere-celestial-view';
 import { StarCelestialView } from '../../render/celestial/celestial-entity/star-celestial-view';
-import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../render/pipeline/sun-light';
 import { MAG_ROUNDS } from '../player/ammo-spec';
 import type { CelestialBody } from '../../physics/celestial-body';
 
@@ -31,6 +29,7 @@ const PRIMARY_ID = 'zephyrus';
 const MOON_ID = 'zephyrus-i';
 const STAR_MU = 1.3e20; // [m^3/s^2] (太陽と同程度)
 const STAR_RADIUS = 7e8; // [m]
+const STAR_RADIANT_INTENSITY = SOLAR_CONSTANT * AU * AU; // [W/sr] (太陽と同じ)
 const PRIMARY_MU = 4e13; // [m^3/s^2] (火星と土星の中間程度)
 const PRIMARY_RADIUS = 3e6; // [m]
 
@@ -44,7 +43,9 @@ const ZEPHYRUS_ORBIT = planetOrbit({
 });
 
 // 架空の3体系: 恒星 aeolus + 惑星 zephyrus(原点・重力源)+ その衛星 zephyrus-i(重力源)。
-const AEOLUS: StarDef = { id: STAR_ID, mu: STAR_MU, radius: STAR_RADIUS };
+const AEOLUS: StarDef = {
+  id: STAR_ID, mu: STAR_MU, radius: STAR_RADIUS, radiantIntensity: STAR_RADIANT_INTENSITY,
+};
 const ZEPHYRUS: PlanetDef = {
   id: PRIMARY_ID,
   mu: PRIMARY_MU,
@@ -65,21 +66,19 @@ const ZEPHYRUS_I: SatelliteDef = {
 };
 
 // 架空星系の運動を組む。
-function zephyrusSystemMotions(phases: PhaseOffsets): readonly CelestialBody[] {
+function zephyrusSystemMotions(): readonly CelestialBody[] {
   const aeolus = new StarMotion(AEOLUS);
-  const zephyrus = planetSystem(planetDefForSimZero(ZEPHYRUS, phases, 0), aeolus);
-  const zephyrusI = new SatelliteMotion(satelliteDefForSimZero(ZEPHYRUS_I, phases, 0), zephyrus);
+  const zephyrus = planetSystem(planetDefForSimZero(ZEPHYRUS, 0), aeolus);
+  const zephyrusI = new SatelliteMotion(satelliteDefForSimZero(ZEPHYRUS_I, 0), zephyrus);
   return [aeolus, zephyrus.body, zephyrusI];
 }
 
 // 架空天体の見た目: 恒星なら太陽の見た目、それ以外は単色球。表示名は id をそのまま使う。
 function fallbackEntity(motion: CelestialBody): CelestialEntity {
-  // 色の手がかりを持たない架空の恒星なので、無彩色で目盛りの基準どおりの明るさにする。
+  // 色の手がかりを持たない架空の恒星なので、無彩色にする。
   if (motion instanceof StarMotion) {
     return new CelestialEntity(
-      motion, motion.id, 'star', new StarCelestialView(0xffffff, {
-        color: new THREE.Color(0xffffff), radiantIntensity: REFERENCE_STAR_RADIANT_INTENSITY,
-      }),
+      motion, motion.id, 'star', new StarCelestialView(0xffffff, { color: new THREE.Color(0xffffff) }),
     );
   }
   if (!(motion instanceof OrbitingMotion)) throw new Error(`${motion.id} の運動が OrbitingMotion ではない`);
@@ -93,17 +92,15 @@ export class StageDebugAltSystem extends Stage {
   public static readonly epoch = STORY_EPOCH;
   // 架空の3体を並べ、惑星 zephyrus を原点とする天体系を組む。
   public static async createCelestialSystem(
-    phaseOffsets: PhaseOffsets, _earthSpinPhase0: number, epoch: TdbJulianDate,
-    _onProgress?: (ratio: number) => void, _renderer?: THREE.WebGPURenderer,
+    epoch: TdbJulianDate, _onProgress?: (ratio: number) => void, _renderer?: THREE.WebGPURenderer,
   ): Promise<CelestialSystem> {
-    const bodies = zephyrusSystemMotions(phaseOffsets).map(fallbackEntity);
+    const bodies = zephyrusSystemMotions().map(fallbackEntity);
     const origin = bodies.find((b) => b.id === PRIMARY_ID)!;
-    return new CelestialSystem(bodies, origin, phaseOffsets, epoch);
+    return new CelestialSystem(bodies, origin, epoch);
   }
   public static readonly selectLabel = 'DEBUG(架空星系)';
   public static readonly selectSub = '【デバッグ】架空天体3体だけのレジストリで起動する';
   public static readonly hiddenFromSelect = true;
-  public static readonly selectKeys = ['KeyE'];
 
   // saved があればそこから復元し、無ければ初期配置してステージを始める。
   public constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
@@ -116,14 +113,14 @@ export class StageDebugAltSystem extends Stage {
     return `<b>架空星系デバッグステージ</b><br>${STAR_ID} 系の ${PRIMARY_ID} で起動`;
   }
 
-  // 自機を zephyrus の低軌道へ置く(このレジストリでは既定の地球 LEO に意味が無い)。
+  // 自機を zephyrus の高度 500km の赤道円軌道へ置く。
   protected init(): void {
     const t = this._dynamicSystem.simTime;
     const primary = this._celestialSystem.motionOf(PRIMARY_ID);
     const primaryState = primary.stateAt(t);
     const rel = stateFromOrbitalElements(t, PRIMARY_RADIUS + 5e5, 0, 0, 0, 0, 0, primary.def.mu);
     this.addPlayer({
-      state: kinematicState<'eci'>(t, add(primaryState.r, rel.r), add(primaryState.v, rel.v)),
+      state: addPrimaryRelative(primaryState, kinematicState<'primaryRel'>(t, rel.r, rel.v)),
       ammo: { mags: 20, rounds: MAG_ROUNDS },
     });
   }

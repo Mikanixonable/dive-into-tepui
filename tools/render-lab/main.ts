@@ -3,7 +3,6 @@
 // そのまま組む。
 import { PROTEIN_ASSET_IDS, requestProteinAsset } from '../../src/game/protein/protein-asset-loader';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
-import { AMBIENT_STRONG, AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
 import { withGraphicsOption, type ChoiceValue, type GraphicsOptionKey } from '../../src/render/graphics-settings';
 import { MemorySettingStorage } from '../../src/settings/stored-setting';
@@ -35,8 +34,6 @@ const MAX_SHELL_ALTITUDE = 20e3;
 const HIDDEN_GRAPHICS_KEYS: ReadonlySet<GraphicsOptionKey> = new Set<GraphicsOptionKey>([
   // 描画は 960x540 固定(撮影した PNG の大きさを決め打ちにするため)。
   'resolutionScale',
-  // ビューの種別を持たないので、下の「環境光」が直に強弱を選ぶ。
-  'overviewAmbient', 'combatAmbient',
 ]);
 
 declare global {
@@ -150,16 +147,6 @@ async function init(): Promise<void> {
     view.applyGraphics(graphics);
     panel.sync(graphics);
   });
-
-  // 一様な環境光。ゲーム本体はビューの種別から強弱を決めるが、ここには種別が無いので直に選ぶ。
-  const ambient = new SegmentedControl<number>('強さ', [
-    [0, 'オフ'], [AMBIENT_WEAK, '弱(戦闘ビュー)'], [AMBIENT_STRONG, '強(マップビュー)'],
-  ], (fraction) => {
-    view.setAmbientFraction(fraction);
-    ambient.setSelected(fraction);
-  });
-  document.getElementById('ambient')!.appendChild(ambient.element);
-  ambient.setSelected(view.ambientFraction);
 
   // **仮設**: 積雲の飽和とディザの幅。被覆率が 中央値±半幅 に入る柱だけがディザに掛かるので、
   // 半幅を広げるほど半透明として読める画素が増える。生成側の場へ差し替えたあとにもう一段の

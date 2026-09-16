@@ -13,6 +13,7 @@ import {
 import {
   mapDisplayModeOf,
   nextMapDisplayMode,
+  type MapDisplayCategory,
   type MapDisplayMode,
   type MapDisplayToggles,
 } from '../../map/display-toggles';
@@ -45,18 +46,17 @@ function buildTabBody(tab: ViewOptionsTab): HTMLElement {
 // 非表示だけを循環する。
 interface BodyClassRow {
   readonly label: string;
-  readonly categoryKey: keyof MapDisplayToggles;
-  readonly nameKey: keyof MapDisplayToggles;
+  readonly categoryKey: MapDisplayCategory;
   readonly orbitKey: keyof MapDisplayToggles | null;
 }
 
 // 天体のクラス別トグル。
 const BODY_CLASS_ROWS: readonly BodyClassRow[] = [
-  { label: '惑星', categoryKey: 'planetVisible', nameKey: 'planetName', orbitKey: 'planetOrbit' },
-  { label: '衛星', categoryKey: 'satelliteVisible', nameKey: 'satelliteName', orbitKey: 'satelliteOrbit' },
-  { label: '準惑星', categoryKey: 'dwarfVisible', nameKey: 'dwarfName', orbitKey: 'dwarfOrbit' },
-  { label: '小天体', categoryKey: 'smallBodyVisible', nameKey: 'smallBodyName', orbitKey: 'smallBodyOrbit' },
-  { label: 'ラグランジュ点', categoryKey: 'lagrangeVisible', nameKey: 'lagrangeName', orbitKey: null },
+  { label: '惑星', categoryKey: 'planetVisible', orbitKey: 'planetOrbit' },
+  { label: '衛星', categoryKey: 'satelliteVisible', orbitKey: 'satelliteOrbit' },
+  { label: '準惑星', categoryKey: 'dwarfVisible', orbitKey: 'dwarfOrbit' },
+  { label: '小天体', categoryKey: 'smallBodyVisible', orbitKey: 'smallBodyOrbit' },
+  { label: 'ラグランジュ点', categoryKey: 'lagrangeVisible', orbitKey: null },
 ];
 // このパネル自身の折りたたみトグルの見た目。
 const VIEW_OPTIONS_COLLAPSE_LABELS: CollapseToggleLabels = {
@@ -68,11 +68,11 @@ const VIEW_OPTIONS_COLLAPSE_LABELS: CollapseToggleLabels = {
 
 // 機体と設備のクラス別トグル。
 const ENTITY_ROWS: readonly BodyClassRow[] = [
-  { label: '自艦', categoryKey: 'playerVisible', nameKey: 'playerName', orbitKey: 'playerOrbit' },
-  { label: '敵', categoryKey: 'enemyVisible', nameKey: 'enemyName', orbitKey: 'enemyOrbit' },
-  { label: '弾薬', categoryKey: 'ammoVisible', nameKey: 'ammoName', orbitKey: 'ammoOrbit' },
-  { label: 'RCS燃料', categoryKey: 'fuelVisible', nameKey: 'fuelName', orbitKey: 'fuelOrbit' },
-  { label: '基地', categoryKey: 'baseVisible', nameKey: 'baseName', orbitKey: 'baseOrbit' },
+  { label: '自艦', categoryKey: 'playerVisible', orbitKey: 'playerOrbit' },
+  { label: '敵', categoryKey: 'enemyVisible', orbitKey: 'enemyOrbit' },
+  { label: '弾薬', categoryKey: 'ammoVisible', orbitKey: 'ammoOrbit' },
+  { label: 'RCS燃料', categoryKey: 'fuelVisible', orbitKey: 'fuelOrbit' },
+  { label: '基地', categoryKey: 'baseVisible', orbitKey: 'baseOrbit' },
 ];
 
 // 対象クラスの表示状態を文字ではなく、ラベル・軌道・非表示を連想できる SVG で示す。
@@ -147,7 +147,7 @@ function appendColumnLegend(parent: HTMLElement, columns: readonly ViewOptionCol
 }
 
 export class ViewOptionsPanel {
-  public onBodyClassModeChange: ((key: keyof MapDisplayToggles, mode: MapDisplayMode) => void) | null = null;
+  public onBodyClassModeChange: ((key: MapDisplayCategory, mode: MapDisplayMode) => void) | null = null;
   public onGridToggle: ((key: keyof CelestialGridVisibility, on: boolean) => void) | null = null;
   // 軌道ガイドタブかゼロ速度曲線節を編集するたびに、編集後の軌道ガイド設定全体で呼ばれる。
   public onOrbitGuideChange: ((settings: OrbitGuideSettings) => void) | null = null;
@@ -166,7 +166,7 @@ export class ViewOptionsPanel {
 
   private readonly bodyClassModeButtons: readonly (readonly [BodyClassRow, Button, HTMLElement])[];
   // 各ボタンの現在の表示モードの鏡映し。クリック時に次の状態を決めるのに使う。
-  private readonly bodyClassModes = new Map<keyof MapDisplayToggles, MapDisplayMode>();
+  private readonly bodyClassModes = new Map<MapDisplayCategory, MapDisplayMode>();
 
   private readonly gridButtons: readonly (readonly [keyof CelestialGridVisibility, Button])[];
   private readonly gridCategoryButtons: readonly (readonly [keyof CelestialGridVisibility, Button, HTMLElement])[];
@@ -289,7 +289,7 @@ export class ViewOptionsPanel {
       const title = this.toggleButton(row.label, `${row.label}を表示`, titleKey, this.gridCurrent, (key, on) => this.onGridToggle?.(key, on));
       title.element.classList.add('body-class-title');
       rowEl.appendChild(title.element);
-      if (row.categoryKey === null) gridButtons.push([titleKey, title]);
+      if (row.categoryKey === null) gridButtons.push([row.scaleKey, title]);
       else gridCategories.push([row.categoryKey, title, rowEl]);
 
       const btnsEl = document.createElement('div');
@@ -441,12 +441,12 @@ export class ViewOptionsPanel {
       this.gridCurrent.set(key, on);
       btn.setOn(on);
     }
-    // カテゴリ行の点灯と、全消灯時のグレーアウト。
+    // 行見出しの点灯と、ゲートを閉じた行のグレーアウト。
     for (const [key, category, row] of this.gridCategoryButtons) {
-      const enabled = Boolean(visibility[key]);
-      this.gridCurrent.set(key, enabled);
-      category.setOn(enabled);
-      row.classList.toggle('category-off', !enabled);
+      const on = visibility[key];
+      this.gridCurrent.set(key, on);
+      category.setOn(on);
+      row.classList.toggle('category-off', !on);
     }
   }
 

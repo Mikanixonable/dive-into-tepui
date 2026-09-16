@@ -101,7 +101,8 @@ function buildSlotRow(
   name.textContent = s.name + (active ? ' ▶' : '');
   const meta = document.createElement('span');
   meta.className = 'sb-slot-meta';
-  meta.textContent = `${s.lastStageId === '' ? '未プレイ' : stageLabel(s.lastStageId)} / ${fmtDateTime(s.lastPlayedAtReal / 1000)} / ${totalSnapshots}件`;
+  const lastStage = s.lastRun === null ? '未プレイ' : stageLabel(s.lastRun.stageId);
+  meta.textContent = `${lastStage} / ${fmtDateTime(s.lastPlayedAtReal / 1000)} / ${totalSnapshots}件`;
   info.append(name, meta);
   row.appendChild(info);
 

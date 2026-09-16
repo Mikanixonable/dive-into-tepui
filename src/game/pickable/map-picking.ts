@@ -2,7 +2,7 @@
 // パネルと軌道線のプロパティウィンドウも持つ。
 import type { HudLayers } from '../hud/hud-layers';
 import type { Notifier } from '../../hud/notifier';
-import { pickFrontmostBody, pickNearest, projectMarker } from './object-pickable';
+import { pickFrontmostBody, pickNearest, projectMarker, type ObjectPickable } from './object-pickable';
 import type { MapPickable } from './map-pickable';
 import { pickNearestLine } from './line-pickable';
 import type { LinePickables } from './line-pickables';
@@ -24,6 +24,7 @@ import type { ControlSelection } from '../control-selection';
 import { rayThroughScreen } from '../../math/projection';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { FocusSink } from '../camera/focus-target';
+import type { DisplayWindowManager } from '../display-window-manager';
 
 const OBJECT_PICK_PX_SQ = 600; // 被選択物(ObjectPickable)の右クリック判定半径の2乗 [px^2]
 const ORBIT_LINE_PICK_PX_SQ = 600; // 軌道線(公転軌道・船の軌道・軌道ガイド)の右クリック判定半径の2乗 [px^2]
@@ -50,54 +51,57 @@ export class MapPicking {
     private readonly linePickables: LinePickables,
     private readonly objectWindows: ObjectWindows,
     private readonly controlSelection: ControlSelection,
+    private readonly displayWindowManager: Pick<DisplayWindowManager, 'current'>,
   ) {
     this.listPanel = new PhysicalObjectListPanel(hud.mapRoot, hud.panelCollapse, celestialBodies);
     this.orbitLineWindows = new OrbitLineWindows(
       hud, linePickables, pickables, (id, name) => this.focusOwner(id, name),
       (clientX, clientY, target) => this.objectWindows.open(
-        clientX, clientY, target, this.pickables.lastSimTime),
+        clientX, clientY, target, this.displayWindowManager.current.simTime),
     );
-    // 一覧の行は、マップ上で隠れている対象でも id で操作できる(SPEC/MAP.md §10)。
+    // 一覧の行は、マップ上で隠れている対象でも id で操作できる(SPEC/MAP.md「軌道物体一覧パネル」)。
     this.listPanel.onFocus = (id) => {
       this.focusTarget(id, this.pickables.pickables.find((i) => i.id === id));
     };
     this.listPanel.onNavTarget = (id) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
-      if (target && this.navTarget.canTarget(id, this.roster, this.celestialBodies, this.pickables.lastSimTime)) {
+      if (target && this.navTarget.canTarget(
+        id, this.roster, this.celestialBodies, this.displayWindowManager.current.simTime)) {
         this.navTarget.toggleTarget(id, target.name);
       }
     };
     this.listPanel.onSelectRight = (id, clientX, clientY) => {
       const target = this.pickables.pickables.find((i) => i.id === id);
-      if (target) this.objectWindows.open(clientX, clientY, target, this.pickables.lastSimTime);
+      if (target) this.objectWindows.open(clientX, clientY, target, this.displayWindowManager.current.simTime);
     };
   }
 
-  // 画面上の (x, y) に当たった被選択物を、マーカー段・本体段の順に探す(SPEC/MAP.md §11)。
+  // 画面上の (x, y) に当たった被選択物を、マーカー段・本体段の順に探す(SPEC/MAP.md
+  // 「クリックとピック」)。accept は候補を絞る述語で、どちらの段にも同じく効く。
   // どちらにも当たらなければ null。
-  private pickAt<T extends MapPickable>(
-    candidates: readonly T[], x: number, y: number, viewport: Viewport,
-  ): T | null {
+  private pickAt(
+    accept: (item: ObjectPickable) => boolean, x: number, y: number, viewport: Viewport,
+  ): ObjectPickable | null {
     const project = this.cameraSystem.activeProjection(viewport);
-    const displayTime = this.pickables.lastDisplayTime;
-    // マーカー段: 表示中のマーカーへ一定のピクセル半径で当てる。
+    const displayTime = this.displayWindowManager.current.displayTime;
+    // マーカー段: 画面に出ているマーカーへ一定のピクセル半径で当てる。
     const marker = pickNearest(
-      candidates.filter((item) => item.shownOnMap(this.markers)),
+      this.pickables.markerPickables.filter((item) => accept(item) && item.shownOnMap(this.markers)),
       (item) => projectMarker(item, displayTime, project),
       x, y, pickRadiusSq(OBJECT_PICK_PX_SQ, OBJECT_PICK_PX_SQ_COARSE),
     );
     if (marker !== null) return marker;
-    // 本体段: 描かれている本体へ視線を通す。
+    // 本体段: 描かれている本体へ視線を通す。記号を消した対象もここでは当たる。
     const ray = rayThroughScreen(
       this.cameraSystem.activeViewpoint, x, y, viewport.width, viewport.height);
-    return pickFrontmostBody(candidates, ray, displayTime);
+    return pickFrontmostBody(this.pickables.pickables.filter(accept), ray, displayTime);
   }
 
   // 右クリック位置の被選択物(天体・自艦・他艦・ノード等)のプロパティウィンドウを開く。
   // 当たらなければ消費せず、handleEmptySpaceRightClick へ読み進める。
   public handleRightClick(input: Input, simTime: number, viewport: Viewport): void {
     input.takeRightClicks((p) => {
-      const target = this.pickAt(this.pickables.pickables, p.x, p.y, viewport);
+      const target = this.pickAt(() => true, p.x, p.y, viewport);
       if (!target) return false;
       this.objectWindows.open(p.x, p.y, target, simTime);
       return true;
@@ -105,7 +109,7 @@ export class MapPicking {
   }
 
   // 右クリックを表示中の軌道線(公転軌道・船の軌道・軌道ガイド)へ当て、当たれば軌道の
-  // プロパティウィンドウを開いて消費する。SPEC/MAP.md §11 の判定順に従い、ノードハンドルの
+  // プロパティウィンドウを開いて消費する。SPEC/MAP.md「クリックとピック」の判定順に従い、ノードハンドルの
   // 判定(PlanEditor.handleMapPointer)より後、handleEmptySpaceRightClick より前に呼ぶ。
   public handleLineRightClick(input: Input, viewport: Viewport): void {
     input.takeRightClicks((p) => {
@@ -115,7 +119,7 @@ export class MapPicking {
         this.cameraSystem.activeProjection(viewport),
         pickRadiusSq(ORBIT_LINE_PICK_PX_SQ, ORBIT_LINE_PICK_PX_SQ_COARSE),
         this.cameraSystem.activeCameraPos, this.celestialBodies.celestialMotions,
-        this.pickables.lastDisplayTime,
+        this.displayWindowManager.current.displayTime,
       );
       if (!orbit) return false;
       this.orbitLineWindows.open(p.x, p.y, orbit);
@@ -128,8 +132,7 @@ export class MapPicking {
   // PlanEditor.handleMapPointer より先に呼ぶ。
   public handleLeftClick(input: Input, viewport: Viewport): void {
     input.takeClicks((p) => {
-      const target = this.pickAt(
-        this.pickables.pickables.filter((i) => i.onMapSelect !== null), p.x, p.y, viewport);
+      const target = this.pickAt((i) => i.onMapSelect !== null, p.x, p.y, viewport);
       if (!target) return false;
       target.onMapSelect?.(this.objectWindows, p.x, p.y);
       return true;
@@ -140,7 +143,7 @@ export class MapPicking {
   // 種別を問わず候補列全体から探す。
   public handleDoubleClick(input: Input, viewport: Viewport): void {
     input.takeDoubleClicks((p) => {
-      const target = this.pickAt(this.pickables.pickables, p.x, p.y, viewport);
+      const target = this.pickAt(() => true, p.x, p.y, viewport);
       if (!target) return false;
       this.focusTarget(target.id, target);
       return true;
@@ -161,7 +164,7 @@ export class MapPicking {
     this.hud.hint(`${name} にフォーカス`);
   }
 
-  // マップ視点のフォーカスを id の対象へ移す。対象が自艦なら操作対象にもなる(SPEC/MAP.md §10)。
+  // マップ視点のフォーカスを id の対象へ移す。対象が自艦なら操作対象にもなる(SPEC/MAP.md「軌道物体一覧パネル」)。
   // target は候補列で見つかっていれば渡し、表示名と操作対象の切り替えに使う。
   private focusTarget(id: string, target: MapPickable | undefined): void {
     this.focusSink.setFocus({ kind: 'object', id });
@@ -179,7 +182,7 @@ export class MapPicking {
     }
     this.listPanel.setVisible(true);
     this.listPanel.sync(
-      this.pickables.pickables, focusTargetId(this.cameraSystem.mapCamera.focus),
+      this.pickables.markerPickables, focusTargetId(this.cameraSystem.mapCamera.focus),
       parentOf, viewer, displayTime);
     this.orbitLineWindows.sync();
   }

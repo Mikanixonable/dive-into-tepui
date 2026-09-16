@@ -8,7 +8,8 @@ import { SCHEMATIC_LINE } from './schematic-style';
 import { RenderStyleGate, type RenderStyle } from './render-style';
 import type { Viewport } from './viewport';
 
-// 天球の目安表示(星・黄道/赤道・縮尺グリッド)ごとの表示可否。
+// 天球の目安表示(星・黄道/赤道・縮尺グリッド)ごとの表示可否。ecliptic・equator はその行の
+// 面・極・網を出すかどうかの最終的なゲートで、縮尺グリッドには効かない。
 export interface CelestialGridVisibility {
   readonly stars: boolean;
   readonly ecliptic: boolean;
@@ -25,58 +26,16 @@ export interface CelestialGridVisibility {
   readonly moonEquatorScaleGrid: boolean;
 }
 
-// 既定の表示可否。星を出し、他は隠す。
+// 既定の表示可否。黄道・赤道のゲートは開けておき、面・極・網を ON にすればすぐ出るようにする。
 export const DEFAULT_GRID_VISIBILITY: CelestialGridVisibility = {
   stars: true,
-  ecliptic: false,
-  eclipticPlane: false, eclipticPole: false, eclipticGrid: false,
-  equator: false,
-  equatorPlane: false, equatorPole: false, equatorGrid: false,
+  ecliptic: true, eclipticPlane: false, eclipticPole: false, eclipticGrid: false,
+  equator: true, equatorPlane: false, equatorPole: false, equatorGrid: false,
   eclipticScaleGrid: false,
   equatorScaleGrid: false,
   moonOrbitScaleGrid: false,
   moonEquatorScaleGrid: false,
 };
-
-// 黄道・赤道それぞれのカテゴリトグルと、配下の面・極・グリッドの対応。子が1つでも ON なら
-// カテゴリは ON、全て OFF なら OFF になる。
-interface GridCategory {
-  readonly category: keyof CelestialGridVisibility;
-  readonly children: readonly (keyof CelestialGridVisibility)[];
-}
-
-const GRID_CATEGORIES: readonly GridCategory[] = [
-  { category: 'ecliptic', children: ['eclipticPlane', 'eclipticPole', 'eclipticGrid'] },
-  { category: 'equator', children: ['equatorPlane', 'equatorPole', 'equatorGrid'] },
-];
-
-// キー1つの切り替えを反映した新しい可視状態を返す。current は書き換えない。
-export function applyGridToggle(
-  current: CelestialGridVisibility, key: keyof CelestialGridVisibility, on: boolean,
-): CelestialGridVisibility {
-  // カテゴリキーなら、配下の子を全て同じ値へ揃える。
-  const asCategory = GRID_CATEGORIES.find((c) => c.category === key);
-  if (asCategory !== undefined) {
-    const next = { ...current, [key]: on };
-    for (const child of asCategory.children) next[child] = on;
-    return next;
-  }
-  // 子キーなら、カテゴリを子の状態から計算し直す。
-  const owner = GRID_CATEGORIES.find((c) => c.children.includes(key));
-  if (owner === undefined) return { ...current, [key]: on };
-  const next = { ...current, [key]: on };
-  next[owner.category] = owner.children.some((child) => next[child]);
-  return next;
-}
-
-// カテゴリトグルを子の状態から計算し直した可視状態を返す。外から読み込んだ値はこれを通す。
-export function normalizeGridVisibility(visibility: CelestialGridVisibility): CelestialGridVisibility {
-  const next = { ...visibility };
-  for (const { category, children } of GRID_CATEGORIES) {
-    next[category] = children.some((child) => next[child]);
-  }
-  return next;
-}
 
 // 保存された文字列を可視状態へ読み直す。読めなければ既定値に戻る。
 export function parseGridVisibility(text: string | null): CelestialGridVisibility {
@@ -84,7 +43,7 @@ export function parseGridVisibility(text: string | null): CelestialGridVisibilit
     if (!text) return DEFAULT_GRID_VISIBILITY;
     const parsed: unknown = JSON.parse(text);
     if (typeof parsed !== 'object' || parsed === null) return DEFAULT_GRID_VISIBILITY;
-    return normalizeGridVisibility({ ...DEFAULT_GRID_VISIBILITY, ...parsed });
+    return { ...DEFAULT_GRID_VISIBILITY, ...parsed };
   } catch {
     return DEFAULT_GRID_VISIBILITY;
   }

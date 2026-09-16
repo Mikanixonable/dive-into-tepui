@@ -1,7 +1,7 @@
 // HUD の全オーバーレイ(モーダル・ポップアップ・ウィンドウ)を一つの台帳へ登録し、
 // 重なり順(最前面が誰か)・ESC の配送先・項目ショートカットの配送先・外側クリックでの
-// 自動クローズ・入力ゲートを一元的に決める。登録されたオーバーレイどうしの論理的な順序を
-// 持ち、外側クリックの判定は1箇所のキャプチャリスナに集約する。
+// 自動クローズ・入力ゲート・ゲームの一時停止を一元的に決める。登録されたオーバーレイどうしの
+// 論理的な順序を持ち、外側クリックの判定は1箇所のキャプチャリスナに集約する。
 
 type OverlayKind = 'modal' | 'popup' | 'window';
 
@@ -18,6 +18,8 @@ export interface OverlaySpec {
   readonly gatesInput: boolean;
   // モーダル表示中に背景を暗くするか。省略時はモーダルなら暗くし、背景を見せるモーダルだけ false にする。
   readonly dimsBackground?: boolean;
+  // true の間、この一枚が開いているだけでゲームの時間を止める。省略時は止めない。
+  readonly pausesGame?: boolean;
   // 同じ名前を持つオーバーレイは同時に1つしか開かない — 開けば同グループの他方を閉じる。
   readonly exclusiveGroup?: string;
 }
@@ -69,6 +71,11 @@ export class OverlayManager {
   // 個々のオーバーレイの id を名指しせずに「背景入力を遮るべきか」を答える。
   public isInputGated(): boolean {
     return this.stack.some((e) => e.spec.kind === 'modal' && e.spec.gatesInput);
+  }
+
+  // ゲームの時間を止めるオーバーレイ(pausesGame:true)が1つでも開いているか。
+  public isGamePaused(): boolean {
+    return this.stack.some((e) => e.spec.pausesGame === true);
   }
 
   // handle を id で開く/最前面へ動かす。既に同じ id があれば一旦外してから積み直す。

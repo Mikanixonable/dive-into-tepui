@@ -73,8 +73,6 @@ export class NavTarget {
   // 自艦とターゲットの相対距離が最初に極小になる点。同じ中心天体を周回していない、または
   // 区間内に極小が見つからなければ解けない。
   private readonly closestApproach = new RelativeNodeMarker('ca');
-  // 戦闘ビューでもターゲットの未来の軌道計算を止めないため navTargetReader を立てている個体。
-  private readerEntity: DynamicEntity | null = null;
 
   private readonly declarations: MarkerDeclaration[] = [];
 
@@ -97,16 +95,6 @@ export class NavTarget {
   private setInternal(id: string | null, name: string | null): void {
     this.targetId = id;
     this.targetName = name;
-    // 切り替えた時点で予測の依頼を降ろし、外れた個体に次の update まで負担を残さない。
-    this.setReaderEntity(null);
-  }
-
-  // 未来予測を依頼する個体を entity 一つに絞る。
-  private setReaderEntity(entity: DynamicEntity | null): void {
-    if (entity === this.readerEntity) return;
-    if (this.readerEntity) this.readerEntity.motion.navTargetReader = false;
-    if (entity) entity.motion.navTargetReader = true;
-    this.readerEntity = entity;
   }
 
   // id と現在の設定が同じなら解除、そうでなければ id をターゲットにする。
@@ -170,10 +158,9 @@ export class NavTarget {
     for (const marker of this.nodeMarkers) marker.place(null, null, ownerName, this.name);
     // 相対交点はターゲットと操作対象の両方が揃って初めて定義できる。片方でも欠ければ
     // 出す理由そのものが無い。
-    if (!this.targetId) { this.setReaderEntity(null); this.retireNodeMarkers(); return; }
-    const target = aliveCombatTarget(roster.all(), this.targetId);
-    this.setReaderEntity(target);
+    if (!this.targetId) { this.retireNodeMarkers(); return; }
     if (!controlled) { this.retireNodeMarkers(); return; }
+    const target = aliveCombatTarget(roster.all(), this.targetId);
     const stateCelestialBodies = celestialBodies.celestialMotions;
     const controlledCenter = strongestAttractor(
       controlled.motion.state.r, stateCelestialBodies, simTime,

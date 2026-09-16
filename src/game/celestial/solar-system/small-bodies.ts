@@ -1,11 +1,12 @@
 // 彗星核・小惑星・太陽系外縁天体。静的事実・運動・見た目を1体につき1箇所で組む。
 import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
-import { PhaseOffsets, PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
+import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { keplerPeriod } from '../../../physics/elements';
 import { JULIAN_CENTURY, KeplerOrbit, planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
-import { GRAVITATIONAL_CONSTANT, MU_SUN } from './constants';
+import { GRAVITATIONAL_CONSTANT } from '../gravitational-constant';
+import { MU_SUN } from './sun';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { CelestialEntity } from '../celestial-entity/celestial-entity';
 import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
@@ -211,11 +212,10 @@ const SALACIA: PlanetDef = {
 
 const VARUNA: PlanetDef = {
   id: 'varuna',
-  // 質量は自転による扁平から求めた密度 992 kg/m^3(Lacerda & Jewitt 2007)に、掩蔽で得た
-  // 直径 654 km を掛けたもの。TODO: この半径は古い直径 900 km 由来で質量と整合しない —
-  // 掩蔽由来の半径 327 km へ揃えると、表面重力も外形も現在の観測に合う。
+  // 半径は掩蔽で得た直径 654 km(Sicardy et al. 2010)。質量はそこへ、自転による扁平から
+  // 求めた密度 992 kg/m^3(Lacerda & Jewitt 2007)を掛けたもの。
   mu: GRAVITATIONAL_CONSTANT * 1.45e20,
-  radius: 450000.0,
+  radius: 327000.0,
   orbit: sbdbOrbit({ aAu: 43.2, e: 0.051615, incDeg: 17.1405, raanDeg: 97.2158, lonPeriDeg: 370.5748, l0Deg: 486.2427 }),
 };
 
@@ -422,25 +422,25 @@ export const SMALL_BODY_NAMES: Record<SmallBodyId, string> = {
 
 // 彗星核・小惑星・太陽系外縁天体を組む。宣言順がそのまま重力源配列・一覧の順序になる。
 export function smallBodies(
-  sun: StarMotion, phases: PhaseOffsets, simZeroEt: number,
+  sun: StarMotion, simZeroEt: number,
 ): Record<SmallBodyId, CelestialEntity> {
   // 衛星を持つ天体の運動は、子の主天体として渡すため先に組む。
-  const quaoar = planetSystem(planetDefForSimZero(QUAOAR, phases, simZeroEt), sun);
-  const orcus = planetSystem(planetDefForSimZero(ORCUS, phases, simZeroEt), sun);
+  const quaoar = planetSystem(planetDefForSimZero(QUAOAR, simZeroEt), sun);
+  const orcus = planetSystem(planetDefForSimZero(ORCUS, simZeroEt), sun);
   return {
     // ハレー彗星 A_B=0.016(幾何 0.04 x q=0.393)
     halley: new CelestialEntity(
-      planetSystem(planetDefForSimZero(HALLEY, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(HALLEY, simZeroEt), sun).body,
       SMALL_BODY_NAMES.halley, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0160, 0.0160, 0.0160])),
     ),
     // エンケ彗星 A_B=0.02(幾何 0.05 x q=0.393)
     encke: new CelestialEntity(
-      planetSystem(planetDefForSimZero(ENCKE, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(ENCKE, simZeroEt), sun).body,
       SMALL_BODY_NAMES.encke, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0200, 0.0200, 0.0200])),
     ),
     // セドナ A_B=0.15(幾何 0.32 x q=0.461)
     sedna: new CelestialEntity(
-      planetSystem(planetDefForSimZero(SEDNA, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(SEDNA, simZeroEt), sun).body,
       SMALL_BODY_NAMES.sedna, 'dwarf', new SphereCelestialView(CelestialSurface.solid([0.1759, 0.1453, 0.1203])),
     ),
     // クワオアー A_B=0.05(幾何 0.109 x q=0.461)
@@ -449,32 +449,32 @@ export function smallBodies(
     ),
     // ウェイウォット A_B=0.046(分類既定 幾何 0.10 x q=0.461)
     weywot: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(WEYWOT, phases, simZeroEt), quaoar),
+      new SatelliteMotion(satelliteDefForSimZero(WEYWOT, simZeroEt), quaoar),
       SMALL_BODY_NAMES.weywot, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.0527, 0.0447, 0.0389])),
     ),
     // カリクロー A_B=0.014(幾何 0.035 x q=0.393)
     chariklo: new CelestialEntity(
-      planetSystem(planetDefForSimZero(CHARIKLO, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(CHARIKLO, simZeroEt), sun).body,
       SMALL_BODY_NAMES.chariklo, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0161, 0.0137, 0.0108])),
     ),
     // ヒギエア A_B=0.028(幾何 0.072 x q=0.393)
     hygiea: new CelestialEntity(
-      planetSystem(planetDefForSimZero(HYGIEA, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(HYGIEA, simZeroEt), sun).body,
       SMALL_BODY_NAMES.hygiea, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0301, 0.0278, 0.0239])),
     ),
     // エロス A_B=0.115(幾何 0.25 x q=0.461)
     eros: new CelestialEntity(
-      planetSystem(planetDefForSimZero(EROS, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(EROS, simZeroEt), sun).body,
       SMALL_BODY_NAMES.eros, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.1367, 0.1129, 0.0718])),
     ),
     // リュウグウ A_B=0.018(幾何 0.045 x q=0.393)
     ryugu: new CelestialEntity(
-      planetSystem(planetDefForSimZero(RYUGU, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(RYUGU, simZeroEt), sun).body,
       SMALL_BODY_NAMES.ryugu, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0212, 0.0174, 0.0141])),
     ),
     // ベンヌ A_B=0.017(幾何 0.044 x q=0.393)
     bennu: new CelestialEntity(
-      planetSystem(planetDefForSimZero(BENNU, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(BENNU, simZeroEt), sun).body,
       SMALL_BODY_NAMES.bennu, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0196, 0.0166, 0.0138])),
     ),
     // オルクス A_B=0.106(幾何 0.23 x q=0.461)
@@ -483,117 +483,117 @@ export function smallBodies(
     ),
     // ヴァンス A_B=0.031(幾何 0.08 x q=0.393)
     vanth: new CelestialEntity(
-      new SatelliteMotion(satelliteDefForSimZero(VANTH, phases, simZeroEt), orcus),
+      new SatelliteMotion(satelliteDefForSimZero(VANTH, simZeroEt), orcus),
       SMALL_BODY_NAMES.vanth, 'satellite', new SphereCelestialView(CelestialSurface.solid([0.0355, 0.0301, 0.0262])),
     ),
     // ゴンゴン A_B=0.065(幾何 0.14 x q=0.461)
     gonggong: new CelestialEntity(
-      planetSystem(planetDefForSimZero(GONGGONG, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(GONGGONG, simZeroEt), sun).body,
       SMALL_BODY_NAMES.gonggong, 'dwarf', new SphereCelestialView(CelestialSurface.solid([0.1126, 0.0540, 0.0336])),
     ),
     // サラキア A_B=0.017(幾何 0.042 x q=0.393)
     salacia: new CelestialEntity(
-      planetSystem(planetDefForSimZero(SALACIA, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(SALACIA, simZeroEt), sun).body,
       SMALL_BODY_NAMES.salacia, 'dwarf', new SphereCelestialView(CelestialSurface.solid([0.0151, 0.0171, 0.0216])),
     ),
     // ヴァルナ A_B=0.059(幾何 0.127 x q=0.461)
     varuna: new CelestialEntity(
-      planetSystem(planetDefForSimZero(VARUNA, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(VARUNA, simZeroEt), sun).body,
       SMALL_BODY_NAMES.varuna, 'dwarf', new SphereCelestialView(CelestialSurface.solid([0.0645, 0.0585, 0.0476])),
     ),
     // イクシオン A_B=0.05(幾何 0.108 x q=0.461)
     ixion: new CelestialEntity(
-      planetSystem(planetDefForSimZero(IXION, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(IXION, simZeroEt), sun).body,
       SMALL_BODY_NAMES.ixion, 'dwarf', new SphereCelestialView(CelestialSurface.solid([0.0589, 0.0485, 0.0392])),
     ),
     // アロコス A_B=0.065(幾何 0.165 x q=0.393)
     arrokoth: new CelestialEntity(
-      planetSystem(planetDefForSimZero(ARROKOTH, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(ARROKOTH, simZeroEt), sun).body,
       SMALL_BODY_NAMES.arrokoth, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.1783, 0.0365, 0.0135])),
     ),
     // キロン A_B=0.063(幾何 0.16 x q=0.393)
     chiron: new CelestialEntity(
-      planetSystem(planetDefForSimZero(CHIRON, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(CHIRON, simZeroEt), sun).body,
       SMALL_BODY_NAMES.chiron, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0695, 0.0623, 0.0512])),
     ),
     // インテラムニア A_B=0.029(幾何 0.074 x q=0.393)
     interamnia: new CelestialEntity(
-      planetSystem(planetDefForSimZero(INTERAMNIA, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(INTERAMNIA, simZeroEt), sun).body,
       SMALL_BODY_NAMES.interamnia, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0308, 0.0288, 0.0251])),
     ),
     // エウロパ (52) A_B=0.023(幾何 0.058 x q=0.393)
     europa52: new CelestialEntity(
-      planetSystem(planetDefForSimZero(EUROPA52, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(EUROPA52, simZeroEt), sun).body,
       SMALL_BODY_NAMES.europa52, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0251, 0.0228, 0.0192])),
     ),
     // ダビダ A_B=0.021(幾何 0.054 x q=0.393)
     davida: new CelestialEntity(
-      planetSystem(planetDefForSimZero(DAVIDA, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(DAVIDA, simZeroEt), sun).body,
       SMALL_BODY_NAMES.davida, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0230, 0.0208, 0.0173])),
     ),
     // ジュノー A_B=0.11(幾何 0.238 x q=0.461)
     juno: new CelestialEntity(
-      planetSystem(planetDefForSimZero(JUNO, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(JUNO, simZeroEt), sun).body,
       SMALL_BODY_NAMES.juno, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.1285, 0.1070, 0.0849])),
     ),
     // プシケ A_B=0.055(幾何 0.12 x q=0.461)
     psyche: new CelestialEntity(
-      planetSystem(planetDefForSimZero(PSYCHE, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(PSYCHE, simZeroEt), sun).body,
       SMALL_BODY_NAMES.psyche, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0606, 0.0540, 0.0479])),
     ),
     // エウノミア A_B=0.096(幾何 0.209 x q=0.461)
     eunomia: new CelestialEntity(
-      planetSystem(planetDefForSimZero(EUNOMIA, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(EUNOMIA, simZeroEt), sun).body,
       SMALL_BODY_NAMES.eunomia, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.1125, 0.0942, 0.0654])),
     ),
     // シルビア A_B=0.018(幾何 0.045 x q=0.393)
     sylvia: new CelestialEntity(
-      planetSystem(planetDefForSimZero(SYLVIA, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(SYLVIA, simZeroEt), sun).body,
       SMALL_BODY_NAMES.sylvia, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0198, 0.0177, 0.0157])),
     ),
     // アポフィス A_B=0.161(幾何 0.35 x q=0.461)
     apophis: new CelestialEntity(
-      planetSystem(planetDefForSimZero(APOPHIS, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(APOPHIS, simZeroEt), sun).body,
       SMALL_BODY_NAMES.apophis, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.1698, 0.1595, 0.1496])),
     ),
     // ディディモス A_B=0.069(幾何 0.15 x q=0.461)
     didymos: new CelestialEntity(
-      planetSystem(planetDefForSimZero(DIDYMOS, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(DIDYMOS, simZeroEt), sun).body,
       SMALL_BODY_NAMES.didymos, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0733, 0.0685, 0.0616])),
     ),
     // テンペル第1彗星 A_B=0.016(幾何 0.04 x q=0.393)
     tempel1: new CelestialEntity(
-      planetSystem(planetDefForSimZero(TEMPEL1, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(TEMPEL1, simZeroEt), sun).body,
       SMALL_BODY_NAMES.tempel1, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0160, 0.0160, 0.0160])),
     ),
     // ワイルド第2彗星 A_B=0.012(幾何 0.03 x q=0.393)
     wild2: new CelestialEntity(
-      planetSystem(planetDefForSimZero(WILD2, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(WILD2, simZeroEt), sun).body,
       SMALL_BODY_NAMES.wild2, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0120, 0.0120, 0.0120])),
     ),
     // ハートレー第2彗星 A_B=0.011(幾何 0.028 x q=0.393)
     hartley2: new CelestialEntity(
-      planetSystem(planetDefForSimZero(HARTLEY2, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(HARTLEY2, simZeroEt), sun).body,
       SMALL_BODY_NAMES.hartley2, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0110, 0.0110, 0.0110])),
     ),
     // クルースン A_B=0.069(分類既定 幾何 0.15 x q=0.461)
     cruithne: new CelestialEntity(
-      planetSystem(planetDefForSimZero(CRUITHNE, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(CRUITHNE, simZeroEt), sun).body,
       SMALL_BODY_NAMES.cruithne, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0763, 0.0682, 0.0557])),
     ),
     // カモオアレワ A_B=0.111(幾何 0.24 x q=0.461)
     kamooalewa: new CelestialEntity(
-      planetSystem(planetDefForSimZero(KAMOOALEWA, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(KAMOOALEWA, simZeroEt), sun).body,
       SMALL_BODY_NAMES.kamooalewa, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.1394, 0.1073, 0.0643])),
     ),
     // 2010 TK7 A_B=0.039(分類既定 幾何 0.10 x q=0.393)
     tk7: new CelestialEntity(
-      planetSystem(planetDefForSimZero(TK7, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(TK7, simZeroEt), sun).body,
       SMALL_BODY_NAMES.tk7, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.0432, 0.0383, 0.0337])),
     ),
     // エウレカ A_B=0.18(幾何 0.39 x q=0.461)
     eureka: new CelestialEntity(
-      planetSystem(planetDefForSimZero(EUREKA, phases, simZeroEt), sun).body,
+      planetSystem(planetDefForSimZero(EUREKA, simZeroEt), sun).body,
       SMALL_BODY_NAMES.eureka, 'smallBody', new SphereCelestialView(CelestialSurface.solid([0.2377, 0.1718, 0.0912])),
     ),
   };

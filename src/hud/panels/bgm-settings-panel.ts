@@ -2,8 +2,6 @@ import type { Bgm } from '../../audio/bgm/bgm';
 import { BGM_TRACKS } from '../../audio/bgm/tracks/tracks';
 import { Button, Slider } from '../widgets';
 
-const SEEK_REFRESH_MS = 100; // 試聴の再生位置をシークバーへ写す間隔
-
 // シークバー横の経過時間表示を「分:秒」の書式にする。
 function formatSeekTime(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -27,7 +25,6 @@ export class BgmSettingsPanel {
   private readonly seekSlider: Slider;
   private readonly seekTimeLabel: HTMLSpanElement;
   private seeking = false;
-  private seekRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
   // 音量・再生位置・曲一覧・停止ボタンの4ブロックを縦に並べる。bgm は試聴の音声経路、
   // volume は組み立て時のユーザー音量。
@@ -121,6 +118,14 @@ export class BgmSettingsPanel {
     this.stopButton.setEnabled(false);
   }
 
+  // 試聴の再生位置の表示を、いま鳴っている位置へ合わせる。毎フレーム呼ぶ。
+  public sync(): void {
+    if (this.activeTrack === null || this.seeking) return;
+    const elapsed = this.bgm.auditionElapsedSec();
+    this.seekSlider.setValue(elapsed);
+    this.seekTimeLabel.textContent = formatSeekTime(elapsed);
+  }
+
   // 外から音量が変わったときに、スライダーと百分率表示を引き直す。
   public syncVolume(volume: number): void {
     this.volumeSlider.setValue(volume);
@@ -166,22 +171,5 @@ export class BgmSettingsPanel {
     this.seekSlider.setValue(0);
     this.seekSlider.element.disabled = duration <= 0;
     this.seekTimeLabel.textContent = formatSeekTime(0);
-
-    // 曲替えのたびに、前の曲を追っていた周期タイマーを一旦畳む。
-    if (this.seekRefreshTimer !== null) {
-      clearInterval(this.seekRefreshTimer);
-      this.seekRefreshTimer = null;
-    }
-    if (duration > 0) {
-      this.seekRefreshTimer = setInterval(() => this.refreshSeekPosition(), SEEK_REFRESH_MS);
-    }
-  }
-
-  // 試聴の再生位置を追う。ドラッグ中はユーザーの操作を優先し、上書きしない。
-  private refreshSeekPosition(): void {
-    if (this.seeking) return;
-    const elapsed = this.bgm.auditionElapsedSec();
-    this.seekSlider.setValue(elapsed);
-    this.seekTimeLabel.textContent = formatSeekTime(elapsed);
   }
 }

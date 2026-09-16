@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import type { ViewMode } from '../../../render/view-mode';
+import type { ViewMode } from '../../view/view-mode';
 import { Ship, MUZZLE_SPEED } from './ship';
 import { DynamicEntity } from './dynamic-entity';
 import { bulletReactionOf, type BulletType } from './bullet-reaction';
@@ -7,14 +7,14 @@ import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import { closingSpeed, type Contact } from './contact';
 import { contactDamageSpeed } from './contact-damage';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
-import { add, addScaled, dot, len, lenSq, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../../math/vec3';
+import { add, dot, len, norm, randPerp, rotateAxis, scale, sub, Vec3, v3 } from '../../../math/vec3';
 import { solveLeadTime } from '../../../physics/intercept';
+import { sunlitFactor } from '../../../physics/shadow';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import { enemyDestroyFragments } from './debris-piece';
 import type { Player } from '../../player/player';
 import { Bullet } from './bullet';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
-import { R_EARTH_EQ } from '../../celestial/solar-system/constants';
 import { fmtDist, fmtSpeed } from '../../../hud/utils';
 import { relativeInfo } from '../../orbit-info';
 import { orbitRows } from '../../pickable/orbit-rows';
@@ -38,6 +38,7 @@ import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { OrbitingObject } from './orbiting-object';
 import type { DynamicEntityKind, FormationRole } from './entity-kind';
 import type { EntityRegistry, SpawnGate } from '../entity-registry';
+import type { EntityIdAllocators } from './entity-id';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotion } from '../dynamic-motion';
 import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
@@ -45,8 +46,6 @@ import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
 // 敵機アセットの座標を物理寸法へ直す倍率。機体モデル・撃破時の破片・爆発の大きさは、
 // 全ての敵がこの1つの倍率を共有する。
 export const ENEMY_MODEL_SCALE = 20;
-
-const ENEMY_MAX_HP = 6; // 敵機の総 HP
 
 export const PLASMA_BULLET_DAMAGE = 1.25; // 自機がプラズマ弾で被弾した際のダメージ [HP]
 
@@ -86,22 +85,34 @@ export interface EnemyClass {
   readonly kind: EnemySaveData['kind'];
   // 復元に外部資源の取得が要るなら、それが揃ったかを答える述語。要らなければ null。
   spawnGate(saved: EnemySaveData): SpawnGate | null;
-  new (init: EnemyRestore, worldSfx: WorldSfx, fx: FlashEffects, scene?: THREE.Scene): Enemy;
+  new (
+    init: EnemyRestore, worldSfx: WorldSfx, fx: FlashEffects, idAllocators: EntityIdAllocators,
+    scene?: THREE.Scene,
+  ): Enemy;
 }
 
-// 太陽グレアによるプラズマ弾の散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが甘くなり、
-// 順光では締まる。難易度調整のための経験則であって物理計算ではない。
-// pos が地球の影(簡易円柱モデル)に入っていれば太陽光が届かないので倍率は 1。
-function sunGlareSpreadScale(pos: Vec3, aimDir: Vec3, sunDir: Vec3): number {
-  const along = dot(pos, sunDir);
-  if (along < 0 && lenSq(addScaled(pos, sunDir, -along)) < R_EARTH_EQ * R_EARTH_EQ) return 1;
+// pos で撃つときの、太陽グレアによるプラズマ弾の散布界の倍率。逆光(照準方向に太陽がある)ほど
+// 狙いが甘くなり、順光では締まる。難易度調整のための経験則であって物理計算ではない。
+function sunGlareSpreadScale(
+  pos: Vec3, aimDir: Vec3, celestialBodies: CelestialBodies, t: number,
+): number {
+  const starId = celestialBodies.starId;
+  if (starId === null) return 1;
 
+  const sunDir = celestialBodies.sunDirFrom(pos, t);
   const angle = (Math.acos(Math.max(-1, Math.min(1, dot(aimDir, sunDir)))) * 180) / Math.PI;
-  if (angle <= 5) return 2;
-  if (angle <= 30) return 1 + (30 - angle) / 25;
-  if (angle >= 160) return 0.5;
-  if (angle >= 130) return 1 - ((angle - 130) / 30) * 0.5;
-  return 1;
+  const litScale = angle <= 5 ? 2
+    : angle <= 30 ? 1 + (30 - angle) / 25
+    : angle >= 160 ? 0.5
+    : angle >= 130 ? 1 - ((angle - 130) / 30) * 0.5
+    : 1;
+
+  // 日照率で内挿し、影の中では倍率 1 へ寄せる(SPEC/COMBAT.md「発射」)。しきい値で畳むと
+  // 半影を横切るたびに散布界が跳ぶ。
+  const sunlit = sunlitFactor(
+    pos, celestialBodies.motionOf(starId), celestialBodies.celestialMotions, t,
+  );
+  return 1 + (litScale - 1) * sunlit;
 }
 
 // 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、交戦圏
@@ -110,7 +121,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
   public override readonly mapKind: DynamicEntityKind = 'enemy';
   public override readonly pickable = true;
 
-  public readonly accent: string | number; // マーカー色。同じ色の敵を1つの集団とみなす
+  public readonly accent: string | number; // マーカー色
   public readonly orbitLineColor: string | number;
   public readonly waveId?: number; // 所属するウェーブの番号。ウェーブに属さない敵は undefined
   public readonly formationId?: string;
@@ -133,6 +144,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     radius: number,
     protected readonly _worldSfx: WorldSfx,
     protected readonly _fx: FlashEffects,
+    idAllocators: EntityIdAllocators,
     shape?: EnemyCollisionShape,
   ) {
     // 復元と新規配置を同じ形へ均してから基底へ渡す。
@@ -153,7 +165,6 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     const attitude = { q: placed.q, w: placed.w, inertia };
     super(
       placed.name,
-      ENEMY_MAX_HP,
       owner => new EnemyMotion(placed.state, attitude, radius, {
         receiveEntityContact: (other, contact, services) => (
           (owner as Enemy).receiveEntityContact(
@@ -168,7 +179,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
         ),
       }, shape),
       view,
-      placed.id,
+      idAllocators.entity.next(placed.id),
     );
     this.accent = placed.accent;
     this.orbitLineColor = placed.orbitLineColor;
@@ -210,9 +221,9 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
   // 敵のマーカー表示項目を組み立てる。pos/vel には機体メッシュと同じ表示時刻の状態
   // (stateAt 経由)を渡すこと。
-  public markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode): GroupedMarkerItem {
-    // 代表選出の優先度は、近い個体ほど高くする
-    const dist = len(sub(pos, viewerPos));
+  public markerItem(viewerPos: Vec3 | null, pos: Vec3, vel: Vec3, view: ViewMode): GroupedMarkerItem {
+    // 代表選出の優先度は、同じ種別の中では視点に近い個体ほど高くする
+    const priority = viewerPos ? MARKER_PRIORITY.ENEMY - len(sub(pos, viewerPos)) / 1e9 : MARKER_PRIORITY.ENEMY;
     return {
       key: this.markerKey,
       kind: this.mapKind,
@@ -220,12 +231,12 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
       sym: view === 'map' ? this.headingHpMarkerSvg(true) : this.hpMarkerSvg(),
       pos,
       vel,
-      priority: MARKER_PRIORITY.ENEMY - dist / 1e9,
+      priority,
       name: this.name,
       // 敵本体と画面外方位マーカーは同じ色で統一する。
       bearing: {
         cls: 'mk-dir mk-bearing-triangle', sym: ENTITY_GLYPH.enemyShip, color: COLOR_MARKER_ENEMY,
-        visible: true, priority: MARKER_PRIORITY.NONE, clustered: false,
+        visible: true, clustered: false,
       },
       color: COLOR_MARKER_ENEMY,
       symMarkup: true,
@@ -255,7 +266,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     this._worldSfx.explosion();
     this._fx.spawnEnemyDestroyFlash(this.motion.state, ENEMY_MODEL_SCALE);
     for (const piece of enemyDestroyFragments(
-      this.motion.state, ENEMY_MODEL_SCALE, this._worldSfx, this._fx,
+      this.motion.state, ENEMY_MODEL_SCALE, this._worldSfx, this._fx, registry.idAllocators,
     )) registry.add(piece);
   }
 
@@ -379,11 +390,20 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     this.firePlasma(simTime, player, registry, celestialBodies);
   }
 
-  // enemies のうち、自分と同じ accent でバースト射撃中の個体数を数える。
+  // other が自分と同じ集団か。陣形に属する敵ならその陣形、波状攻撃で湧いた敵ならその波、
+  // どちらにも属さない敵どうしは1つの集団(SPEC/COMBAT.md「AI と射撃」)。
+  private inSameGroup(other: Enemy): boolean {
+    if (this.formationId !== undefined || other.formationId !== undefined) {
+      return this.formationId === other.formationId;
+    }
+    return this.waveId === other.waveId;
+  }
+
+  // enemies のうち、自分と同じ集団でバースト射撃中の個体数を数える。
   private attackingCountInGroup(enemies: readonly Enemy[]): number {
     let n = 0;
     for (const e of enemies) {
-      if (e.motion.alive && e.accent === this.accent && e.burstLeft && e.burstLeft > 0) n++;
+      if (e.motion.alive && this.inSameGroup(e) && e.burstLeft && e.burstLeft > 0) n++;
     }
     return n;
   }
@@ -409,8 +429,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
     const predictedRelPos = add(toPlayer, scale(relV, leadTime));
     const aimDir = norm(predictedRelPos);
 
-    const sunDir = celestialBodies.sunDirFrom(r, simTime);
-    const spreadScale = sunGlareSpreadScale(r, aimDir, sunDir);
+    const spreadScale = sunGlareSpreadScale(r, aimDir, celestialBodies, simTime);
 
     // 散布界をスケール適用
     const perp = randPerp(aimDir);
@@ -422,7 +441,7 @@ export abstract class Enemy extends Ship implements CombatTarget, ObjectPickable
 
     const pb = new Bullet(
       kinematicState<'eci'>(simTime, r, bV), PLASMA_LIFETIME, 'enemy', 'plasma', this.plasmaDamage(),
-      this._worldSfx,
+      this._worldSfx, registry.idAllocators,
     );
     this.muzzleEffect(kinematicState<'eci'>(simTime, r, v));
 

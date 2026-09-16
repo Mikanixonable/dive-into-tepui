@@ -2,7 +2,7 @@
 import { Attitude } from '../../physics/attitude';
 import { LOCAL_UP, qRotate } from '../../math/quat';
 import { Vec3, dot } from '../../math/vec3';
-import { SOLAR_CONSTANT } from '../../physics/srp';
+import { SOLAR_CONSTANT } from '../../physics/astronomical-unit';
 import type { PowerSaveData } from '../save/save-data';
 import { RADIATOR_DEPLOY_TIME } from './radiator';
 
@@ -40,10 +40,11 @@ export class PowerSystem {
     if (p.deployTarget !== target) p.deployTarget = target;
   }
 
-  // 毎フレーム呼ぶ。sunlit は sunlitFactor(0..1)、sunDir は太陽方向の単位ベクトル(world)。
-  // installedGeneration は装備の発電量 [W] で、0 以下なら既定のパネル性能で発電する。
+  // 毎フレーム呼ぶ。sunlight は日照率込みの太陽光の放射照度 [W/m²]、sunDir は太陽方向の単位ベクトル(world)。
+  // installedGeneration は太陽定数の光を正面に受けたときの装備の発電量 [W] で、0 以下なら既定のパネル
+  // 性能で発電する。
   public update(
-    dt: number, sunlit: number, sunDir: Vec3, att: Attitude, installedGeneration: number,
+    dt: number, sunlight: number, sunDir: Vec3, att: Attitude, installedGeneration: number,
   ): void {
     // 展開度の更新
     const step = dt / RADIATOR_DEPLOY_TIME; // 放熱板と同じ展開速度
@@ -60,9 +61,9 @@ export class PowerSystem {
     const cosIncidence = Math.max(0, dot(normal, sunDir));
     // 展開度 deployMult を掛けて、収納時は発電しないようにする
     const basePower = installedGeneration > 0
-      ? installedGeneration
-      : SOLAR_CONSTANT * SOLAR_PANEL_EFFICIENCY * SOLAR_PANEL_AREA;
-    const power = basePower * cosIncidence * sunlit * deployMult;
+      ? installedGeneration * (sunlight / SOLAR_CONSTANT)
+      : sunlight * SOLAR_PANEL_EFFICIENCY * SOLAR_PANEL_AREA;
+    const power = basePower * cosIncidence * deployMult;
     this.charge = Math.min(POWER_CAPACITY, this.charge + power * dt);
   }
 
