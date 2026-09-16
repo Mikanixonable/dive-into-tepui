@@ -130,11 +130,18 @@ export class ShipModuleView {
   }
 
   private syncVisualState(): void {
+    const state = this.visualState;
+    const hinge = this.semanticAnchor('panel-hinge');
+    if (hinge !== null && state.deployed !== null) {
+      // asset は全開位置を 0 とし、収納時は module の長手軸へ90度畳む。
+      hinge.rotation.y = (1 - state.deployed) * Math.PI / 2;
+      hinge.visible = state.hp > 0;
+    }
     this.object.userData.shipModuleId = this.instanceValue.id;
     this.object.userData.shipModuleKind = this.instanceValue.kind;
     this.object.userData.shipModuleModelId = this.definitionValue.modelId;
-    this.object.userData.shipModuleVisualState = this.visualState;
-    this.model.userData.shipModuleVisualState = this.visualState;
+    this.object.userData.shipModuleVisualState = state;
+    this.model.userData.shipModuleVisualState = state;
   }
 
   // model の差し替えは同一 instance id を別 definition へ再利用する場合のために明示的に公開する。
