@@ -113,7 +113,7 @@ export class StageDebugAltSystem extends Stage {
     return `<b>架空星系デバッグステージ</b><br>${STAR_ID} 系の ${PRIMARY_ID} で起動`;
   }
 
-  // 自機を zephyrus の低軌道へ置く(このレジストリでは既定の地球 LEO に意味が無い)。
+  // 自機を zephyrus の高度 500km の赤道円軌道へ置く。
   protected init(): void {
     const t = this._dynamicSystem.simTime;
     const primary = this._celestialSystem.motionOf(PRIMARY_ID);

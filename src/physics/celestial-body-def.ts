@@ -161,7 +161,7 @@ export function spinRateOf(def: CelestialBodyDef): number | null {
   const pole = def.pole;
   if (pole === undefined) return null;
   if (pole.kind === 'eciPole') return pole.spinRate;
-  if (pole.kind === 'iau') return (pole.wRateDegPerDay * Math.PI) / 180 / 86400;
+  if (pole.kind === 'iau') return (pole.wRateDegPerDay * Math.PI) / 180 / SECONDS_PER_DAY;
   // カッシーニ状態の同期回転は衛星だけが持つ。
   return 'kepler' in def.orbit ? def.orbit.kepler.lRate : null;
 }

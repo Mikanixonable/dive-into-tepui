@@ -1,6 +1,6 @@
-import { SnapshotService, type SnapshotCaptureSource } from './snapshot-service';
+// 自動セーブを更新する頃合いを実時間で数え、その時が来た周回の状態を SnapshotService へ渡す。
+import { SnapshotService, type SnapshotSource } from './snapshot-service';
 
-// 「いつ自動セーブを更新するか」だけを持つ。
 const AUTOSAVE_INTERVAL_REAL_SEC = 60;
 
 export class AutoSave {
@@ -9,20 +9,21 @@ export class AutoSave {
   public constructor(private readonly service: SnapshotService) {}
 
   // ランが始まったときに呼ぶ。その場で自動セーブを更新し、次までの間隔をここから数え直す。
-  public beginRun(source: SnapshotCaptureSource): void {
-    this.capture(source, performance.now());
+  public beginRun(source: SnapshotSource): void {
+    this.intervalOriginReal = performance.now();
+    this.writeAutoSave(source);
   }
 
-  // 毎フレーム呼ぶ。ラン開始か前回から AUTOSAVE_INTERVAL_REAL_SEC 秒(実時間)経っていれば更新する。
-  public update(source: SnapshotCaptureSource): void {
+  // 毎フレーム呼ぶ。間隔の起点から AUTOSAVE_INTERVAL_REAL_SEC 秒(実時間)経っていれば更新する。
+  public update(source: SnapshotSource): void {
     const now = performance.now();
     if ((now - this.intervalOriginReal) / 1000 < AUTOSAVE_INTERVAL_REAL_SEC) return;
-    this.capture(source, now);
+    this.intervalOriginReal = now;
+    this.writeAutoSave(source);
   }
 
-  // 間隔の起点を now へ進めたうえで、いま残せる状態なら自動セーブを更新する。
-  private capture(source: SnapshotCaptureSource, now: number): void {
-    this.intervalOriginReal = now;
+  // いま残せる状態であれば、自動セーブをこの瞬間へ差し替える。
+  private writeAutoSave(source: SnapshotSource): void {
     // 停止中は状態が動かない。決着後を残さないのは SAVE.md の規定。
     if (source.isPaused || !source.isPlaying) return;
     this.service.writeAutoSave(source.serialize());

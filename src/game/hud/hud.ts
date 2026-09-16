@@ -22,7 +22,7 @@ import type { Input } from '../../input/input';
 import type { Vec3 } from '../../math/vec3';
 import type { OverlayLayers } from '../../hud/overlay-layer';
 import type { HudShell } from '../../hud/hud-shell';
-import { TEMP_WINDOW_GROUP, type OverlayManager } from '../../hud/overlay-manager';
+import type { OverlayManager } from '../../hud/overlay-manager';
 import type { HelpPanel } from './windows/help-panel';
 import type { Notifier } from '../../hud/notifier';
 
@@ -100,7 +100,7 @@ export class Hud implements HudLayers, Notifier {
       return;
     }
     const win = new OrbitAnalysisWindow(
-      this.layers.window, ANALYSIS_WINDOW_OPEN_X, ANALYSIS_WINDOW_OPEN_Y, this.overlayManager, TEMP_WINDOW_GROUP,
+      this.layers.window, ANALYSIS_WINDOW_OPEN_X, ANALYSIS_WINDOW_OPEN_Y, this.overlayManager,
     );
     win.onClose = () => { this.orbitAnalysisWindow = null; };
     this.orbitAnalysisWindow = win;

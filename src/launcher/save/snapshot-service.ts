@@ -8,7 +8,8 @@ import { newSaveId } from './slot-data';
 import type { GameSaveData } from '../../game/save/save-data';
 import type { SnapshotMeta } from './slot-data';
 
-export interface SnapshotCaptureSource {
+// 記録を1件残すときに、その瞬間の周回から読む口。
+export interface SnapshotSource {
   readonly isPaused: boolean;
   readonly isPlaying: boolean;
   runSummary(): RunSummary;

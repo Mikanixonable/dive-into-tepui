@@ -386,8 +386,7 @@ export class FocusCamera {
 
   // パン変位をゼロに戻す。
   private resetPan(): void {
-    const tf = this.celestialBodies.frames.transformAt(this._cameraFrame, this.displayTime, this.frameAnchors);
-    this.pan = toFrameDir(tf, v3());
+    this.pan = frameDir(0, 0, 0);
   }
 
   // 天体 id の運動。登録されていない id(機体・役割トークン・ラグランジュ点)には null。

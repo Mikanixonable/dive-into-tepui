@@ -128,11 +128,10 @@ export interface OrbitGuideSettings {
   readonly zeroVelocity: ZeroVelocitySettings;
 }
 
-// 種類ごとの設定の既定値。色は群ごとの色相を呼び出し側が与える。
-export function defaultKindSettings(colorStart: number, colorEnd: number): GuideKindSettings {
-  // 非表示・1本・族の途中の範囲から始める。
+// 表示ON/OFFの持ち方を除く、種類と小題に共通の既定値。色は群ごとの色相を呼び出し側が与える。
+function defaultSharedKindSettings(colorStart: number, colorEnd: number): GuideKindSharedSettings {
+  // 族から1本だけを、範囲の途中から控えめな不透明度で描くところから始める。
   return {
-    on: false,
     count: 1,
     rangeMin: 0.15,
     rangeMax: 0.6,
@@ -146,22 +145,14 @@ export function defaultKindSettings(colorStart: number, colorEnd: number): Guide
   };
 }
 
+// 種類ごとの設定の既定値。非表示から始まる。
+export function defaultKindSettings(colorStart: number, colorEnd: number): GuideKindSettings {
+  return { on: false, ...defaultSharedKindSettings(colorStart, colorEnd) };
+}
+
 // 小題の設定の既定値。全軸とも未選択(=何も表示しない)から始まる。
 export function defaultCombinedKindSettings(colorStart: number, colorEnd: number): CombinedKindSettings {
-  // 軸以外は defaultKindSettings と同じ既定値。
-  return {
-    axisValues: {},
-    count: 1,
-    rangeMin: 0.15,
-    rangeMax: 0.6,
-    colorStart,
-    colorEnd,
-    reversed: false,
-    opacity: 0.4,
-    direction: 'none',
-    animate: false,
-    showStability: false,
-  };
+  return { axisValues: {}, ...defaultSharedKindSettings(colorStart, colorEnd) };
 }
 
 export const DEFAULT_ORBIT_GUIDE_SETTINGS: OrbitGuideSettings = {
@@ -284,6 +275,12 @@ export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): Orbit
     revsPerRepeat: Math.max(1, Math.round(s.revsPerRepeat)),
     opacity: clamp(s.opacity, 0, 1),
   });
+  const clampCriticalInclination = (s: CriticalInclinationSettings): CriticalInclinationSettings => ({
+    ...s,
+    perigeeAltitude: Math.max(0, s.perigeeAltitude),
+    raan: ((s.raan % 360) + 360) % 360,
+    opacity: clamp(s.opacity, 0, 1),
+  });
   return {
     ...settings,
     kinds,
@@ -297,8 +294,8 @@ export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): Orbit
     },
     sunSync: clampSunSync(settings.sunSync),
     dawnDusk: clampSunSync(settings.dawnDusk),
-    molniya: { ...settings.molniya, perigeeAltitude: Math.max(0, settings.molniya.perigeeAltitude), raan: ((settings.molniya.raan % 360) + 360) % 360, opacity: clamp(settings.molniya.opacity, 0, 1) },
-    tundra: { ...settings.tundra, perigeeAltitude: Math.max(0, settings.tundra.perigeeAltitude), raan: ((settings.tundra.raan % 360) + 360) % 360, opacity: clamp(settings.tundra.opacity, 0, 1) },
+    molniya: clampCriticalInclination(settings.molniya),
+    tundra: clampCriticalInclination(settings.tundra),
     zeroVelocity: {
       ...zv,
       jacobiMin: Math.min(zv.jacobiMin, zv.jacobiMax),

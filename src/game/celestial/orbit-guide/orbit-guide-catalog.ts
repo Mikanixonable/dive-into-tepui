@@ -39,9 +39,9 @@ export function catalogSystemScale(id: CatalogSystemId): CatalogSystemScale | nu
 export function lagrangePointJacobi(
   system: 'earth-moon' | 'sun-earth' | 'sun-jupiter' | 'sun-saturn', point: LagrangeLabel,
 ): number {
-  const fallback = system === 'earth-moon' ? 0.012150585
-    : catalogSystemScale(system)?.mu ?? 3.003e-6;
-  return lagrangeJacobi(catalogSystemScale(system)?.mu ?? fallback, point);
+  // 索引に諸元が無い系は、地球-月とそれ以外(太陽-惑星)の代表的な質量比で代える。
+  const mu = catalogSystemScale(system)?.mu ?? (system === 'earth-moon' ? 0.012150585 : 3.003e-6);
+  return lagrangeJacobi(mu, point);
 }
 
 // 系ごとの取得関数。系ごとに1個の別ファイルを充てる。
@@ -76,6 +76,7 @@ export class OrbitGuideCatalog {
   // 待たずに読み込み完了した系をすぐ表示へ反映できる。
   public generation = 0;
 
+  // 系の軌道族カタログ。まだ手元に無ければ取得を始めて null を返す。
   public systemFor(id: CatalogSystemId): CatalogSystem | null {
     const existing = this.systems[id];
     if (existing) return existing;
@@ -88,8 +89,10 @@ export class OrbitGuideCatalog {
     return CATALOG_INDEX.familyIndex[system]?.includes(familyId) ?? false;
   }
 
+  // 系の族ファイルの取得を始める。取得の成否によらず、終わった時点で世代を1つ進める。
   private startLoad(id: CatalogSystemId): void {
     this.loadState.set(id, 'loading');
+    // 取得関数を持たない系は、取りに行かずその場で諦める。
     const load = LAZY_IMPORTS[id];
     if (load === undefined) {
       this.loadState.set(id, 'failed');

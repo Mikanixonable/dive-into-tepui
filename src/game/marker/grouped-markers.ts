@@ -201,7 +201,7 @@ export class GroupedMarkers {
     }
     // 天体ラベルと画面上で近接している船マーカーはラベルを隠す。ただし船がカメラに著しく
     // 近く天体が著しく遠い(depth-guard)場合は、優先度(天体 > 船)に関わらず船を残す —
-    // 手前の船が奥の天体ラベルに隠され続けることを防ぐ(DEVELOP/SPEC/MAP.md 7.2 節)。
+    // 手前の船が奥の天体ラベルに隠され続けることを防ぐ(SPEC/MARKERS.md「天体ラベル」)。
     const nowHiddenByCelestialLabel = new Set<string>();
     if (celestialLabels.length > 0) {
       for (const m of placed) {

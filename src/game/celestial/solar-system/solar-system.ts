@@ -85,6 +85,6 @@ export function solarSystem(
 
   return new CelestialSystem(
     entities, originEntity, epoch,
-    new PointFieldView(generatePointField(0, undefined, jupiterMotion.keplerOrbit)),
+    new PointFieldView(generatePointField(jupiterMotion.keplerOrbit)),
     ephemerisPoints);
 }

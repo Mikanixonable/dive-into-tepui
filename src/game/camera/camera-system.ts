@@ -183,7 +183,7 @@ export class CameraSystem {
       * CAM_KEY_PITCH_RATE * dt;
     const keyRollLeft = input.down(K.cameraRollLeft);
     const keyRollRight = input.down(K.cameraRollRight);
-    
+
     // /_ の同時押し（ロール左右の同時入力）でマップカメラのロールをリセット
     if (keyRollLeft && keyRollRight) {
       if (this.mapActive) this.mapCamera.reset();

@@ -149,7 +149,7 @@ export class EarthSurface implements CelestialSurfaceLike {
       status: this.statusValue,
       reason: this.reasonValue ?? this.coordinatorValue?.failureReason
         ?? this.materialFailureReasonValue?.() ?? null,
-      usesDetailedMaterial: this.materialSyncValue !== null,
+      usesDetailedMaterial: this.usesDetailedMaterial,
       residentMaxZ: this.coordinatorValue?.residentMaxZ ?? null,
     };
   }

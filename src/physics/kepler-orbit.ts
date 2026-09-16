@@ -207,12 +207,12 @@ export function keplerOrbitMeanDirection(orbit: KeplerOrbit, t: number): Vec3 {
   return directionFromAngles(orbit, a, a.uMean);
 }
 
-// 惑星: その惑星と衛星の共通重心が太陽まわりに描くケプラー軌道。惑星本体ではなく重心が
-// ケプラー軌道に乗る(地球は月に対し 1:81 と十分に軽くはなく、重心のまわりを 4,673 km の
-// 振幅で回っている)。要素の永年変化は他惑星からの摂動に由来し、世紀あたりの値で入力する。
 const DEG = Math.PI / 180;
 
 // 度・世紀単位で入力された惑星-衛星系重心の軌道要素を、KeplerOrbit のラジアン・秒単位へ変換する。
+// 乗るのは惑星本体ではなく惑星と衛星の共通重心(地球は月に対し 1:81 と十分に軽くはなく、
+// 重心のまわりを 4,673 km の振幅で回っている)。要素の永年変化は他惑星からの摂動に由来し、
+// 世紀あたりの値で入力する。
 export function planetOrbit(p: {
   a: number;
   e: number;

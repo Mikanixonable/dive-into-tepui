@@ -102,9 +102,9 @@ export function helpRows(): readonly HelpRow[] {
     keyRow([K.help], 'このヘルプ', '操作説明を開閉する。'),
     keyRow([K.pauseMenu], 'ESC メニュー', '開いているウィンドウを1つ閉じる。何も開いていなければ ESC メニューを開く。'),
     keyRow(
-      [K.toggleDebugInfoWindow, K.clipSnapshot, K.openSnapshots], 'デバッグ・スナップショット',
-      `${K.toggleDebugInfoWindow.label} でデバッグ表示、${K.clipSnapshot.label} でスナップショット取得、`
-        + `${K.openSnapshots.label} でスナップショット一覧を開く。`,
+      [K.toggleDebugInfoWindow, K.manualSave, K.openSaveBrowser], 'デバッグ・セーブ',
+      `${K.toggleDebugInfoWindow.label} でデバッグ表示、${K.manualSave.label} で手動セーブ、`
+        + `${K.openSaveBrowser.label} でセーブデータ画面を開く。`,
     ),
     keyRow([K.restart], '決着後の再出撃', '決着画面で同じステージへ再出撃する。'),
   ];

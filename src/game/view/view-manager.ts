@@ -69,7 +69,7 @@ export class ViewManager {
       }
       const nodeCount = this.controlSelection.current?.plan.nodes.length ?? 0;
       if (nodeCount > 0) {
-        this.hud.hint(`マニューバ計画 ${nodeCount} 件確定 — [${K.autoWarpToNode.label}] で直近ノードへ自動ワープ`, 4500);
+        this.hud.hint(`マニューバ計画 ${nodeCount} 件確定`, 4500);
       }
       return;
     }

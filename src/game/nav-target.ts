@@ -159,8 +159,8 @@ export class NavTarget {
     // 相対交点はターゲットと操作対象の両方が揃って初めて定義できる。片方でも欠ければ
     // 出す理由そのものが無い。
     if (!this.targetId) { this.retireNodeMarkers(); return; }
-    const target = aliveCombatTarget(roster.all(), this.targetId);
     if (!controlled) { this.retireNodeMarkers(); return; }
+    const target = aliveCombatTarget(roster.all(), this.targetId);
     const stateCelestialBodies = celestialBodies.celestialMotions;
     const controlledCenter = strongestAttractor(
       controlled.motion.state.r, stateCelestialBodies, simTime,

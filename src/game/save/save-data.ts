@@ -219,9 +219,9 @@ export interface CreativeStageSaveData extends StageSaveData {
   readonly waveAttack: WaveAttackSaveData;
 }
 
-// GameSaveData の形式バージョン。上げるのは構造が変わって互換を切るときだけで、上げた時点で
-// それ以前に書かれたスナップショットは読めなくなる — **旧い版からの変換は持たない。**
-// 項目を増やすだけなら版は上げず、省略可能にして読み込み側で基底値を補う(SAVE.md「形式の版」)。
+// GameSaveData の形式バージョン。上げるのは構造が変わって互換を切るときで、上げた時点で
+// それ以前に書かれた記録は読めなくなる。項目を増やすだけなら版は据え置き、省略可能にして
+// 読み込み側で基底値を補う(SAVE.md「形式の版」)。
 export const SAVE_VERSION = 3;
 
 // FrameRotationSource の保存形。

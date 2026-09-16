@@ -3,7 +3,6 @@
 // 駆動し、群を増やすには POINT_FIELD_DEFS に要素を足す。
 import { AU } from '../../../physics/astronomical-unit';
 import { MU_SUN } from './sun';
-import { JUPITER } from './jupiter-system';
 import { mulberry32 } from '../../../math/random';
 import type { PointElements } from '../../../physics/point-orbit';
 import type { PointField } from '../../../render/celestial/point-field-view';
@@ -143,12 +142,10 @@ function sampleInclination(
   return uniform(rand, rand() < 0.35 ? def.incModes[0] : def.incModes[1]);
 }
 
-// 木星の平均黄経 [rad](平均黄経の一次式)。**simZeroEt はこの星系を組んだ元期でなければ
-// ならない** — 畳む量が木星本体(planetDefForSimZero)と食い違うと、トロヤ群が木星から外れる。
-export function jupiterMeanLongitude(
-  t: number, simZeroEt = 0, orbit: PointFieldJupiterReference = JUPITER.orbit,
-): number {
-  return orbit.l0 + orbit.lRate * (t + simZeroEt);
+// 木星の平均黄経 [rad](平均黄経の一次式)。**orbit はこの星系を組んだ元期へ畳んだ木星の軌道で
+// なければならない** — 畳む量が木星本体と食い違うと、トロヤ群が木星から外れる。
+export function jupiterMeanLongitude(t: number, orbit: PointFieldJupiterReference): number {
+  return orbit.l0 + orbit.lRate * t;
 }
 
 // gaps の中心へ近いほど高い確率で棄却しながら、軌道長半径 [AU] を1つ引く。空隙は複数ありうる
@@ -227,13 +224,12 @@ function generatePoint(
   return { a, e, inc, raan, lonPeri, l0, meanMotion };
 }
 
-// seed から点群全体を生成する。同じ seed と同じ元期からは必ず同じ結果になる。
+// seed から点群全体を生成する。同じ seed と同じ木星の基準からは必ず同じ結果になる。
 export function generatePointField(
-  simZeroEt: number, seed: number = ASTEROID_SEED,
-  jupiter: PointFieldJupiterReference = JUPITER.orbit,
+  jupiter: PointFieldJupiterReference, seed: number = ASTEROID_SEED,
 ): PointField {
   const rand = mulberry32(seed);
-  const jupiterLambda0 = jupiterMeanLongitude(0, simZeroEt, jupiter);
+  const jupiterLambda0 = jupiterMeanLongitude(0, jupiter);
   const jupiterLRate = jupiter.lRate;
   return POINT_FIELD_DEFS.map((def) => ({
     id: def.id,

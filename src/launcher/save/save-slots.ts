@@ -243,12 +243,12 @@ export class SaveSlots {
     return true;
   }
 
-  // 全スロット・全履歴を横断してスナップショット id から所属を引く。
-  private findSnapshot(snapshotId: string): { slot: SaveSlotMeta; history: StageHistoryMeta; meta: SnapshotMeta } | null {
+  // 全スロット・全履歴を横断して、手動セーブの id からそのメタと属する履歴を引く。
+  private findSnapshot(snapshotId: string): { history: StageHistoryMeta; meta: SnapshotMeta } | null {
     for (const slot of this.index.slots) {
       for (const history of slot.stages) {
         const meta = history.snapshots.find((m) => m.id === snapshotId);
-        if (meta) return { slot, history, meta };
+        if (meta) return { history, meta };
       }
     }
     return null;
@@ -274,7 +274,8 @@ export class SaveSlots {
   public deleteSnapshot(snapshotId: string): void {
     const found = this.findSnapshot(snapshotId);
     if (!found) return;
-    this.removeSnapshotFrom(found.history, snapshotId);
+    this.store.deleteSnapshot(snapshotId);
+    found.history.snapshots = found.history.snapshots.filter((m) => m.id !== snapshotId);
     this.persist();
   }
 
@@ -368,12 +369,6 @@ export class SaveSlots {
     let n = 2;
     while (existing.has(`${name} (${n})`)) n++;
     return `${name} (${n})`;
-  }
-
-  // 本体を消してから履歴のメタ配列からも外す。
-  private removeSnapshotFrom(history: StageHistoryMeta, snapshotId: string): void {
-    this.store.deleteSnapshot(snapshotId);
-    history.snapshots = history.snapshots.filter((m) => m.id !== snapshotId);
   }
 
   // 索引を store へ書き戻す。書けなくても、この実行の中ではメモリ上の索引が生きる。

@@ -27,7 +27,8 @@ export type MapDisplayCategory =
   | 'planetVisible' | 'dwarfVisible' | 'satelliteVisible' | 'smallBodyVisible' | 'lagrangeVisible'
   | 'playerVisible' | 'enemyVisible' | 'ammoVisible' | 'fuelVisible' | 'baseVisible';
 
-// 既定値(SPEC/MAP.md §4)。準惑星・小天体の軌道線は、数が多く内側太陽系を埋めるので off。
+// 既定値(SPEC/MAP.md「表示するオブジェクトの選択」)。準惑星・小天体の軌道線は、数が多く
+// 内側太陽系を埋めるので off。
 // ラベルは混雑時に間引かれるので全クラス on。
 export const DEFAULT_MAP_DISPLAY_TOGGLES: MapDisplayToggles = {
   planetOrbit: true, planetName: true,

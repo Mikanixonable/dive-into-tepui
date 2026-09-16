@@ -1,3 +1,5 @@
+// 軌道の指定に要る、天体まわりの選択肢と諸元。基準天体とラグランジュ系の候補を登録天体から組み、
+// 主天体間距離と太陽同期軌道の傾斜角を答える。
 import { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
 import { ObjectPickerGroup } from '../hud/windows/object-picker';
 import { OrbitingMotion } from '../../physics/celestial-motion';
@@ -54,9 +56,8 @@ export function primaryDistanceKm(def: CelestialBodyDef): number {
 
 const DEG = Math.PI / 180;
 
-// 太陽同期軌道の傾斜角: その高度の円軌道が J2 摂動で受ける昇交点歳差(dynamics.ts の j2Accel と
-// 同じ式)が、地球の公転角速度(地球の公転要素そのもの)にちょうど一致する条件から
-// 逆算する。retrograde 解(i>90°)が太陽同期の側。
+// 太陽同期軌道の傾斜角: その高度の円軌道が J2 摂動で受ける昇交点歳差が、地球の公転角速度
+// (地球の公転要素そのもの)にちょうど一致する条件から逆算する。retrograde 解(i>90°)が太陽同期の側。
 export function sunSyncInclinationDeg(altKm: number): number {
   const a = R_EARTH + altKm * 1e3;
   const n = Math.sqrt(MU_EARTH / (a * a * a));

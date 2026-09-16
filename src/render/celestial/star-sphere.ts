@@ -5,7 +5,7 @@ import { glowMeanAlpha } from '../glow-texture';
 import { showsPhysicalSphere } from './screen-lod';
 import { CELESTIAL_SHELL_RADIUS, POINT_IMAGE_SIZE } from '../stars';
 
-// 点像を星殻上へ置くための書き込み先。
+// 点像を天球殻上へ置くための書き込み先。
 const POINT_POSITION = new THREE.Vector3();
 // 可視域の太陽型恒星に対する線形周縁減光係数(Van Hamme 1993, AJ 106, 2096)。
 const STELLAR_LIMB_DARKENING = 0.6;
@@ -21,18 +21,12 @@ export function stellarLimbIntensity(mu: number): number {
 export interface StarSphere {
   // 実球体と点像をシーンへ一度だけ登録する。
   addTo(scene: THREE.Scene): void;
-  // 実球体と点像をまとめて表示/非表示にする。
-  setVisible(visible: boolean): void;
-  // 実球体か点像のどちらかが出ているか。
-  readonly visible: boolean;
   // 描画座標 position・実半径 radius [m] の恒星を、見かけ直径 apparentDiameterPx [px] に
   // 応じて実球体か点像のどちらかで描く。
   sync(
     position: THREE.Vector3, radius: number, apparentDiameterPx: number,
     cameraQuaternion: THREE.Quaternion,
   ): void;
-  // 見かけの大きさによらず実球体で描く。
-  syncSphere(position: THREE.Vector3, radius: number, cameraQuaternion: THREE.Quaternion): void;
   // 実球体と点像をどちらも隠す。
   hide(): void;
   // シーンから外し、GPU 資源を解放する。
@@ -67,14 +61,6 @@ class StarSphereObject implements StarSphere {
     scene.add(this.mesh, this.point.mesh);
   }
 
-  // 実球体と点像の可視をまとめて切り替える。
-  public setVisible(visible: boolean): void {
-    this.mesh.visible = visible;
-    this.point.mesh.visible = visible;
-  }
-
-  public get visible(): boolean { return this.mesh.visible || this.point.mesh.visible; }
-
   // 点像の明るさは、球で描いたときと同じ総光量になるよう距離から引く。
   public sync(
     position: THREE.Vector3, radius: number, apparentDiameterPx: number,
@@ -95,7 +81,7 @@ class StarSphereObject implements StarSphere {
   }
 
   // 点像を隠し、実球体を実位置・実半径へ置く。
-  public syncSphere(
+  private syncSphere(
     position: THREE.Vector3, radius: number, cameraQuaternion: THREE.Quaternion,
   ): void {
     this.point.hide();

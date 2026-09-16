@@ -286,7 +286,8 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   public readonly parts: Part[];
 
   // type 別のパーツ参照。parts を入れ替えたら組み直す。値ではなく参照を持つので、パーツの
-  // HP・燃料の変化はそのまま読める。
+  // HP・燃料の変化はそのまま読める。放熱板と太陽電池パドルは機体左右2枚ぶんで、並び順が side に
+  // 対応する。先頭が 'up'(左)、次が 'down'(右)。枚数が足りなければ undefined になる。
   private readonly thrusterPartRefs: ThrusterPart[] = [];
   private readonly rcsTankPartRefs: RcsTankPart[] = [];
   private readonly radiatorPartRefs: [RadiatorPart | undefined, RadiatorPart | undefined] = [undefined, undefined];
@@ -481,17 +482,6 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     return actualAdded;
   }
 
-  // 機体左右2枚の放熱板・太陽電池パドルに対応するパーツ。並び順が side に対応し、
-  // 先頭が 'up'(左)、次が 'down'(右)。枚数が足りなければ undefined になる。
-  public get radiatorParts(): readonly (RadiatorPart | undefined)[] {
-    return this.radiatorPartRefs;
-  }
-
-  // 左右2枚の太陽電池パドルに対応するパーツ。並びは radiatorParts と同じく side 順。
-  public get solarParts(): readonly (SolarPanelPart | undefined)[] {
-    return this.solarPanelPartRefs;
-  }
-
   // 健全な放熱板の冷却率の合計。
   public get totalCoolingRate(): number {
     let total = 0;
@@ -627,7 +617,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
 
   // 放熱板パーツの残 HP から side ごとの損耗率を組む。パーツが欠けている側は全損扱い。
   private radiatorWear(): Record<RadiatorSide, number> {
-    const [up, down] = this.radiatorParts;
+    const [up, down] = this.radiatorPartRefs;
     const wearOf = (part: typeof up): number =>
       part && part.maxHp > 0 ? 1 - part.hp / part.maxHp : 1;
     return { up: wearOf(up), down: wearOf(down) };
@@ -642,7 +632,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
   ): void {
     // 熱とダメージを入れ、放熱板パーツが壊れたらその場で破片を出す
     this.motion.absorbHeat(BULLET_IMPACT_HEAT / PLAYER_MASS);
-    const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
+    const damagedPart = side === null ? undefined : this.radiatorPartRefs[side === 'up' ? 0 : 1];
     this.applyDamage(side === null ? damage : RADIATOR_BULLET_DAMAGE, damagedPart);
     if (side !== null && damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side, registry);
     if (this.hp > 0) {
@@ -720,7 +710,7 @@ export class Player extends Ship implements Controllable, ObjectPickable {
     registry: EntityRegistry,
   ): void {
     // ダメージを入れ、放熱板パーツが壊れたらその場で破片を出す
-    const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
+    const damagedPart = side === null ? undefined : this.radiatorPartRefs[side === 'up' ? 0 : 1];
     if (!this.applyCollisionDamage(damageSpeed, damagedPart)) return;
     if (side !== null && damagedPart && damagedPart.hp <= 0) this.radiatorBreakEffect(side, registry);
     if (this.hp > 0) {

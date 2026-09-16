@@ -3,7 +3,7 @@
 // 一発モーダルで、操作のたびに DOM を組み直す(毎フレーム sync は無い)。
 import { solarSystemBodyName } from '../../game/celestial/solar-system/solar-system';
 import { SaveSlots } from '../save/save-slots';
-import { SnapshotService, type SnapshotCaptureSource } from '../save/snapshot-service';
+import { SnapshotService, type SnapshotSource } from '../save/snapshot-service';
 import { exportSlotToFile, pickAndImportSlot } from '../save/save-transfer';
 import type { SaveSlotMeta } from '../save/slot-data';
 import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
@@ -51,12 +51,12 @@ const STYLE = `
 }
 `;
 
+// いま動いている周回の読み口。周回が無ければ current は null。
 export interface CurrentGameSource {
   readonly current: {
     readonly stageId: string;
-    readonly isPlaying: boolean;
     readonly nameOfBody: (id: string) => string;
-    readonly snapshot: SnapshotCaptureSource;
+    readonly snapshot: SnapshotSource;
   } | null;
 }
 
@@ -132,7 +132,7 @@ export class SaveBrowser implements OverlayHandle {
   // 動いている周回が無い(周回の切り替え中)ときも残せない。
   private canSaveNow(): boolean {
     const game = this.gameSource.current;
-    return game !== null && this.viewedSlotId === this.slots.activeSlotId && game.isPlaying;
+    return game !== null && this.viewedSlotId === this.slots.activeSlotId && game.snapshot.isPlaying;
   }
 
   private viewedSlot(): SaveSlotMeta | null {
@@ -180,7 +180,7 @@ export class SaveBrowser implements OverlayHandle {
     slotsPane.classList.toggle('sb-pane-mobile-active', this.mobilePane === 'slots');
     body.appendChild(slotsPane);
     const snapPane = document.createElement('div');
-    snapPane.className = 'sb-pane sb-pane-snapshots';
+    snapPane.className = 'sb-pane';
     snapPane.classList.toggle('sb-pane-mobile-active', this.mobilePane === 'snapshots');
     const game = this.gameSource.current;
     snapPane.appendChild(buildSnapshotPane(
@@ -337,9 +337,5 @@ export class SaveBrowser implements OverlayHandle {
       this.setStatus('分岐に失敗しました。', true);
     }
     this.rebuild();
-  }
-
-  public dispose(): void {
-    this.el.remove();
   }
 }

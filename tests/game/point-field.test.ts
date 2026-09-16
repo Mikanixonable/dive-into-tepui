@@ -9,10 +9,14 @@ import { AU } from '../../src/physics/astronomical-unit';
 import { eciToEcl } from '../../src/physics/ecliptic';
 import type { PointField } from '../../src/render/celestial/point-field-view';
 import type { Vec3 } from '../../src/math/vec3';
-import { motionOf, orbitingMotionOf, solarSystemParts, TEST_EPOCH, TEST_SIM_ZERO_ET } from '../physics/test-helpers';
-import { createJulianDate, ephemerisSeconds, TdbJulianDate } from '../../src/physics/time';
+import { motionOf, orbitingMotionOf, solarSystemParts, TEST_EPOCH } from '../physics/test-helpers';
+import { createJulianDate, TdbJulianDate } from '../../src/physics/time';
 
 const DEG = Math.PI / 180;
+
+// TEST_EPOCH で組んだ木星の軌道。点群は木星との共鳴で経度方向に偏るので、基準はその星系で
+// 実際に組まれた木星と同じ元期へ畳んだ軌道でなければならない。
+const TEST_JUPITER = orbitingMotionOf(solarSystemParts(TEST_EPOCH), 'jupiter').keplerOrbit;
 
 // ECI(Y=北極)の位置から黄経を取り出す。
 function eclipticLongitude(p: Vec3): number {
@@ -38,15 +42,15 @@ function groupOf(field: PointField, id: string) {
 
 export function register(): void {
   test('point-field: the same seed produces the same field', () => {
-    const a = allPoints(generatePointField(TEST_SIM_ZERO_ET, 12345));
-    const b = allPoints(generatePointField(TEST_SIM_ZERO_ET, 12345));
+    const a = allPoints(generatePointField(TEST_JUPITER, 12345));
+    const b = allPoints(generatePointField(TEST_JUPITER, 12345));
     assert.deepEqual(a, b);
-    const c = allPoints(generatePointField(TEST_SIM_ZERO_ET, 12346));
+    const c = allPoints(generatePointField(TEST_JUPITER, 12346));
     assert.notDeepEqual(a, c);
   });
 
   test('point-field: Kirkwood gaps are depleted relative to their surroundings', () => {
-    const field = generatePointField(TEST_SIM_ZERO_ET);
+    const field = generatePointField(TEST_JUPITER);
     const au = groupOf(field, 'main-belt').points.map((el) => el.a / AU);
     for (const gap of [2.06, 2.5, 2.82, 2.958, 3.28]) {
       const inGap = au.filter((x) => Math.abs(x - gap) < 0.02).length;
@@ -71,10 +75,9 @@ export function register(): void {
     ];
     for (const [label, epoch] of cases) {
       const parts = solarSystemParts(epoch);
-      const simZeroEt = ephemerisSeconds(epoch);
       for (const t of [0, 3.156e7, -3.156e7]) {
         const actual = eclipticLongitude(motionOf(parts, 'jupiter').analyticStateAt(t).r);
-        const mean = jupiterMeanLongitude(t, simZeroEt);
+        const mean = jupiterMeanLongitude(t, orbitingMotionOf(parts, 'jupiter').keplerOrbit);
         const offDeg = Math.abs(wrapPi(actual - mean)) / DEG;
         assert.ok(offDeg <= 6, `${label} t=${t}: 木星の平均黄経の基準が実際と ${offDeg} 度ずれている`);
       }
@@ -82,8 +85,8 @@ export function register(): void {
   });
 
   test('point-field: trojans stay within 35 degrees of L4/L5', () => {
-    const field = generatePointField(TEST_SIM_ZERO_ET);
-    const lj = jupiterMeanLongitude(0, TEST_SIM_ZERO_ET);
+    const field = generatePointField(TEST_JUPITER);
+    const lj = jupiterMeanLongitude(0, TEST_JUPITER);
     for (const [id, lead] of [['trojan-l4', 60], ['trojan-l5', -60]] as const) {
       const points = groupOf(field, id).points;
       assert.ok(points.length > 0);
@@ -95,10 +98,9 @@ export function register(): void {
   });
 
   test('point-field: trojans use the supplied Jupiter reference', () => {
-    const reference = orbitingMotionOf(solarSystemParts(TEST_EPOCH), 'jupiter').keplerOrbit;
-    const custom = { ...reference, a: reference.a * 1.01, l0: reference.l0 + 0.4 };
-    const field = generatePointField(0, 123, custom);
-    const expectedLongitude = jupiterMeanLongitude(0, 0, custom);
+    const custom = { ...TEST_JUPITER, a: TEST_JUPITER.a * 1.01, l0: TEST_JUPITER.l0 + 0.4 };
+    const field = generatePointField(custom, 123);
+    const expectedLongitude = jupiterMeanLongitude(0, custom);
     for (const id of ['trojan-l4', 'trojan-l5']) {
       for (const point of groupOf(field, id).points) {
         assert.equal(point.a, custom.a, `${id} should use the supplied semi-major axis`);
@@ -108,14 +110,14 @@ export function register(): void {
   });
 
   test('point-field: Hilda mean motion is exactly the 3:2 resonance with Jupiter', () => {
-    const jupiterRate = orbitingMotionOf(solarSystemParts(TEST_EPOCH), 'jupiter').keplerOrbit.lRate;
-    for (const point of groupOf(generatePointField(TEST_SIM_ZERO_ET), 'hilda').points) {
+    const jupiterRate = TEST_JUPITER.lRate;
+    for (const point of groupOf(generatePointField(TEST_JUPITER), 'hilda').points) {
       assert.ok(Math.abs(point.meanMotion - (2 / 3) * jupiterRate) / jupiterRate < 1e-14);
     }
   });
 
   test('point-field: Kuiper cold/hot inclination distributions are separated', () => {
-    const field = generatePointField(TEST_SIM_ZERO_ET);
+    const field = generatePointField(TEST_JUPITER);
     const cold = groupOf(field, 'kuiper-cold').points.map((el) => el.inc);
     const hot = groupOf(field, 'kuiper-hot').points.map((el) => el.inc);
     const coldMax = Math.max(...cold);
@@ -124,7 +126,7 @@ export function register(): void {
   });
 
   test('point-field: Kuiper hot inclinations retain two separated modes', () => {
-    const points = groupOf(generatePointField(TEST_SIM_ZERO_ET), 'kuiper-hot').points;
+    const points = groupOf(generatePointField(TEST_JUPITER), 'kuiper-hot').points;
     const bands = new Array(6).fill(0) as number[];
     for (const point of points) bands[Math.min(5, Math.floor(point.inc / (5 * DEG)))]!++;
     assert.ok(bands[0]! > 0, 'hot group should retain a low-inclination mode');
@@ -133,7 +135,7 @@ export function register(): void {
   });
 
   test('point-field: scattered disk perihelion stays within 30-40 AU', () => {
-    const field = generatePointField(TEST_SIM_ZERO_ET);
+    const field = generatePointField(TEST_JUPITER);
     for (const el of groupOf(field, 'scattered-disk').points) {
       const qAu = (el.a * (1 - el.e)) / AU;
       assert.ok(qAu >= 30 - 1e-6 && qAu <= 40 + 1e-6, `perihelion ${qAu} AU out of range`);
@@ -145,10 +147,10 @@ export function register(): void {
   // 3:2 共鳴では点群の平均運動が木星の2/3となるため、遠日点が木星に対して120°おきの3方向で
   // 繰り返し、遠日点付近に長く留まる効果で3箇所に濃淡が出る(頂点は木星の L4/L3/L5)。
   test('point-field: hildas form a triangle in longitude relative to Jupiter', () => {
-    const points = groupOf(generatePointField(TEST_SIM_ZERO_ET), 'hilda').points;
+    const points = groupOf(generatePointField(TEST_JUPITER), 'hilda').points;
     // dσ/dt = 0 になるよう a を選んであるはずなので、t=0 以外でも同じ三角形が保たれる。
     const t = 1e8;
-    const lj = jupiterMeanLongitude(t, TEST_SIM_ZERO_ET);
+    const lj = jupiterMeanLongitude(t, TEST_JUPITER);
     const sunward = pointPositionAt(points[0]!, t);
     assert.ok(Number.isFinite(sunward.x), '位置評価が有限であること');
 

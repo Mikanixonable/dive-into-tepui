@@ -12,7 +12,7 @@ import { findStageClass } from '../game/stages/stage-dictionary';
 import { selectStage } from './stage-select';
 import type { UnlockManager } from './unlock-manager';
 import type { SaveSlots } from './save/save-slots';
-import type { SnapshotCaptureSource, SnapshotService } from './save/snapshot-service';
+import type { SnapshotSource, SnapshotService } from './save/snapshot-service';
 import type { AutoSave } from './save/autosave';
 import type { GameSaveData } from '../game/save/save-data';
 import type { AudioEngine } from '../audio/audio-engine';
@@ -45,8 +45,8 @@ function fallbackResult(phase: GamePhase): StageResult {
   return { win: phase !== 'lost', title: null, detailHtml: '結果の記録がありません' };
 }
 
-// その周回のスナップショットを撮るための読み口。値は撮るたびに game から引く。
-function snapshotSourceOf(game: Game): SnapshotCaptureSource {
+// その周回の記録を残すための読み口。値は残すたびに game から引く。
+function snapshotSourceOf(game: Game): SnapshotSource {
   return {
     get isPaused(): boolean { return game.isPaused; },
     get isPlaying(): boolean { return game.activeStage.isPlaying; },
@@ -73,7 +73,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     if (game === null) return null;
     return {
       stageId: game.activeStage.id,
-      get isPlaying(): boolean { return game.activeStage.isPlaying; },
       nameOfBody: (id) => game.celestialSystem.nameOf(id),
       snapshot: snapshotSourceOf(game),
     };

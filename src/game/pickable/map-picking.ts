@@ -59,7 +59,7 @@ export class MapPicking {
       (clientX, clientY, target) => this.objectWindows.open(
         clientX, clientY, target, this.displayWindowManager.current.simTime),
     );
-    // 一覧の行は、マップ上で隠れている対象でも id で操作できる(SPEC/MAP.md §10)。
+    // 一覧の行は、マップ上で隠れている対象でも id で操作できる(SPEC/MAP.md「軌道物体一覧パネル」)。
     this.listPanel.onFocus = (id) => {
       this.focusTarget(id, this.pickables.pickables.find((i) => i.id === id));
     };
@@ -109,7 +109,7 @@ export class MapPicking {
   }
 
   // 右クリックを表示中の軌道線(公転軌道・船の軌道・軌道ガイド)へ当て、当たれば軌道の
-  // プロパティウィンドウを開いて消費する。SPEC/MAP.md §11 の判定順に従い、ノードハンドルの
+  // プロパティウィンドウを開いて消費する。SPEC/MAP.md「クリックとピック」の判定順に従い、ノードハンドルの
   // 判定(PlanEditor.handleMapPointer)より後、handleEmptySpaceRightClick より前に呼ぶ。
   public handleLineRightClick(input: Input, viewport: Viewport): void {
     input.takeRightClicks((p) => {
@@ -164,7 +164,7 @@ export class MapPicking {
     this.hud.hint(`${name} にフォーカス`);
   }
 
-  // マップ視点のフォーカスを id の対象へ移す。対象が自艦なら操作対象にもなる(SPEC/MAP.md §10)。
+  // マップ視点のフォーカスを id の対象へ移す。対象が自艦なら操作対象にもなる(SPEC/MAP.md「軌道物体一覧パネル」)。
   // target は候補列で見つかっていれば渡し、表示名と操作対象の切り替えに使う。
   private focusTarget(id: string, target: MapPickable | undefined): void {
     this.focusSink.setFocus({ kind: 'object', id });

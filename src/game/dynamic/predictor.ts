@@ -36,7 +36,7 @@ export class Predictor {
   private lastBodies = 0; // 弧が解決した天体の延べ数
   private lastRevisits = 0; // そのうち期限到来で訪問したものの数
 
-  constructor(
+  public constructor(
     private readonly roster: PredictableMotionRoster,
     private readonly celestialBodies: CelestialBodies,
   ) {}
@@ -45,7 +45,7 @@ export class Predictor {
   // 決着後も呼んでよい。simDt はこのフレームの時間送りで、消費される弧の刻み上限を実シミュレー
   // ションと揃えるのに使う。horizon は simTime から先へ予測する長さ [s]。planArcs は時刻順に
   // 並べた計画の弧。
-  update(
+  public update(
     simTime: number, simDt: number, controlled: PredictableMotion | null, horizon: number,
     planArcs: readonly PredictedArc[],
   ): void {
@@ -119,7 +119,7 @@ export class Predictor {
 
   // 直近フレームの予測伸長の集計値。planSteps は計画の弧ぶんの積分step数。horizon は予測の
   // 要求終端までの長さで、先端が届いた個体を数えるのに使う。
-  perfCounts(simTime: number, horizon: number, controlled: PredictableMotion | null): Pick<PerfCounts,
+  public perfCounts(simTime: number, horizon: number, controlled: PredictableMotion | null): Pick<PerfCounts,
   'predicted' | 'predictComplete' | 'predictorSteps' | 'planSteps'
   | 'arcCelestialBodies' | 'arcRevisits' | 'arcLead'> {
     // 先端が要求終端へ届いた個体と、打ち切られた個体を「完了」と数える。

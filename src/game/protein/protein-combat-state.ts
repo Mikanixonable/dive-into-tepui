@@ -92,11 +92,6 @@ export class ProteinCombatState {
     return site;
   }
 
-  // id の部位定義。無ければ null。
-  public site(id: string): ProteinSiteDefinition | null {
-    return this.siteStates.find((site) => site.definition.id === id)?.definition ?? null;
-  }
-
   private modificationState(id: string): string | null { return this.modifications.get(id) ?? null; }
 
   // 修飾スロット id を state にする。スロットか状態が定義に無ければ false を返し、状態を保つ。
