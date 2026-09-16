@@ -102,6 +102,20 @@ const FORBIDDEN = [
     targets: ['src/'],
     exempt: [],
   },
+  {
+    // 生の入力エッジを取るのは adapter 1つだけで、ほかは router が配る命令で受ける。
+    name: '生の入力エッジの受けの禁止',
+    pattern: /\binput\.take(?:Key|Keys)\s*\(/g,
+    targets: ['src/game/', 'src/hud/', 'src/launcher/'],
+    exempt: ['src/game/input/raw-game-input-adapter.ts'],
+  },
+  {
+    // 層の対応表はパッケージの import を解決できないので、定義層・時刻層の three をパスで止める。
+    name: '定義層・時刻層からの three の禁止',
+    pattern: /'three(?:\/[^']*)?'/g,
+    targets: ['src/math/', 'src/physics/'],
+    exempt: [],
+  },
 ];
 
 const IMPORT_RE = /(?:\bfrom\s*|\bimport\s*\(\s*|(?:^|\n)\s*import\s+)['"]([^'"]+)['"]/g;

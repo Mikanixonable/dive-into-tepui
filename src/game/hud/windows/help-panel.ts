@@ -6,7 +6,6 @@ import { CloseButton } from '../../../hud/widgets/close-button';
 import { stopDragPropagation } from '../../../hud/widgets/widget-base';
 import { HELP_PANEL_STYLE } from '../style/help-panel-style';
 import { helpRows } from './help-content';
-import type { Input } from '../../../input/input';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
 
 export class HelpPanel implements OverlayHandle {
@@ -48,9 +47,9 @@ export class HelpPanel implements OverlayHandle {
 
   public get isOpen(): boolean { return this._isOpen; }
 
-  // [H] の押下で開閉を切り替える。毎フレーム呼ぶ。
-  public handleInput(input: Input): void {
-    if (!input.takeKey(K.help)) return;
+  // router から [H] の単発入力を受け取って開閉を切り替える。
+  public handleCommand(commandId: string): void {
+    if (commandId !== K.help.code) return;
     if (this._isOpen) this.close();
     else this.open();
   }

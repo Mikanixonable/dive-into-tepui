@@ -15,6 +15,7 @@ import type { DisplayWindow } from '../display-window-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ViewFrame } from './view-frame';
 import type { ObjectPickable } from '../pickable/object-pickable';
+import { objectPickableOf } from '../pickable/object-pickable';
 import type { PerfCounts } from '../perf-counts';
 import type { CelestialMarkers } from '../marker/celestial-markers';
 
@@ -50,19 +51,22 @@ export class CombatView implements ViewFrame {
 
   public onLeave(): void {}
 
-  public handleInput(): void {}
+  public handleCommand(): void {}
+
+  public updateActions(): void {}
 
   // 照準キーと右クリックを配る。操作対象がいなければ照準先が無いので何もしない。
   public handlePointer(simTime: number, viewport: Viewport): void {
     const controlled = this.controlSelection.current;
     if (!controlled) return;
     const project = this.cameraSystem.activeProjection(viewport);
-    this.targeter.handleTargetSelectKey(this.input, controlled, project, viewport);
+    this.targeter.handleTargetSelect(controlled, project, viewport);
     // 右クリックは実体に当たればそのプロパティウィンドウを、外れれば空域メニューを開く。
     this.input.takeRightClicks((p) => {
       const hit = pickCombatEntityAtPoint(
         this.roster, this.cameraSystem.activeViewpoint, project, p.x, p.y, viewport);
-      if (hit) this.objectWindows.open(p.x, p.y, hit, simTime);
+      const inspected = hit ? objectPickableOf(hit) : null;
+      if (inspected) this.objectWindows.open(p.x, p.y, inspected, simTime);
       else this.objectWindows.openEmptySpaceMenu(p.x, p.y, simTime);
       return true;
     });
