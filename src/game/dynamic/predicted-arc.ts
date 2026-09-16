@@ -35,7 +35,7 @@ const ARC_APPROACH_SAFETY = 0.5;
 const ARC_FINE_STEPS = 512;
 
 export const TRAJECTORY_SAMPLES_PER_REV = 32; // 1周回あたりの保持サンプル数(補間誤差 30m 程度に収まる実測値)
-export const DEFAULT_HISTORY_DURATION = 10 * 86400; // 過去列を持つ種別(Ship・Base)の既定保持時間 [s]
+export const DEFAULT_HISTORY_DURATION = 10 * 86400; // 過去列を持つ船の既定保持時間 [s]
 // 1周回あたりの予測列の積分ステップ数。刻み幅をその場の周期に比例させることで、低軌道でも
 // 遠方の長周期軌道でも精度が一定になる。同時にこれは遅い軌道のコスト上限でもあり、既定の
 // 表示期間では GEO 以遠でこの項が採用値になって、下限だけで刻む場合の 1/14(GEO)〜1/558(日心)
