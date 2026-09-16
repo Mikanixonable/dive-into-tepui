@@ -5,11 +5,12 @@ import type { PropertyWindowContent, PropertyWindowItem } from '../../hud/window
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { ControlSelection } from '../control-selection';
 import type { HudLayers } from '../hud/hud-layers';
-import type { ModularShip } from '../ship/modular-ship';
+import { ModularShip } from '../ship/modular-ship';
 import type { ShipModuleInstance } from '../ship/ship-module-instance';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { Notifier } from '../../hud/notifier';
+import { dockingEligibility } from '../ship/ship-docking';
 
 interface ModuleWindowEntry {
   readonly win: PropertyWindow<MenuAction>;
@@ -23,7 +24,7 @@ function wearText(module: ShipModuleInstance, maxHp: number): string {
 }
 
 // 展開・収納を選べるモジュールにだけ操作項目を出す。
-function moduleItems(module: ShipModuleInstance): PropertyWindowItem<MenuAction>[] {
+function moduleItems(ship: ModularShip, module: ShipModuleInstance): PropertyWindowItem<MenuAction>[] {
   if (module.kind === 'radiator' || module.kind === 'solar_panel') return [
     { label: '展開', act: 'deployModule', keepOpen: true },
     { label: '収納', act: 'stowModule', keepOpen: true },
@@ -32,6 +33,18 @@ function moduleItems(module: ShipModuleInstance): PropertyWindowItem<MenuAction>
     label: module.ignited ? '燃焼停止' : '点火', act: 'toggleBoosterModule', keepOpen: true,
   }];
   if (module.kind === 'decoupler') return [{ label: 'この接続を分離', act: 'decoupleModule' }];
+  if (module.kind === 'cockpit') return [{
+    label: ship.capabilities.operatingCockpitId === module.id ? '操作基準コックピット' : '操作基準に設定',
+    act: 'selectCockpitModule', keepOpen: true,
+  }];
+  if (module.kind === 'dock' || module.kind === 'docking_port') {
+    return ship.docks.status(ship.assembly, module.id) === 'connected'
+      ? [
+        { label: '接続船体を修理', act: 'repairDockedModules', keepOpen: true },
+        { label: '接続を解除して発進', act: 'undockModule' },
+      ]
+      : [{ label: '近傍船を接舷', act: 'dockModule' }];
+  }
   return [];
 }
 
@@ -66,11 +79,28 @@ export class ModuleWindows {
       } else if (act === 'toggleBoosterModule') {
         ship.toggleBoosterIgnition(moduleId);
       } else if (act === 'decoupleModule') {
+        if (typeof globalThis.confirm === 'function' && !globalThis.confirm(`${moduleId} を作動させますか？`)) return;
         try {
           ship.decouple(moduleId, this.roster);
         } catch (error) {
           this.hud.hint(error instanceof Error ? error.message : '分離できません');
         }
+      } else if (act === 'dockModule') {
+        this.dockNearest(ship, moduleId);
+      } else if (act === 'undockModule') {
+        try {
+          ship.undock(moduleId, this.roster);
+        } catch (error) {
+          this.hud.hint(error instanceof Error ? error.message : '発進できません');
+        }
+      } else if (act === 'repairDockedModules') {
+        try {
+          ship.repairAtDock(moduleId);
+        } catch (error) {
+          this.hud.hint(error instanceof Error ? error.message : '修理できません');
+        }
+      } else if (act === 'selectCockpitModule') {
+        if (!ship.capabilities.selectOperatingCockpit(moduleId)) this.hud.hint('全損したコックピットは選択できません');
       }
     };
     win.onClose = () => { this.windows.delete(key); };
@@ -97,7 +127,7 @@ export class ModuleWindows {
       const label = ship.assembly.definition(moduleId)?.name ?? module.definitionId;
       entry.win.syncHeader(label, `取り付け艦: ${ship.name}`);
       entry.win.syncRows(this.content(ship, module).rows);
-      entry.win.syncItems(moduleItems(module));
+      entry.win.syncItems(moduleItems(ship, module));
     }
   }
 
@@ -124,7 +154,35 @@ export class ModuleWindows {
         { key: 'temperature', label: '温度', value: `${module.temperature.toFixed(0)} K` },
         ...resource,
       ],
-      items: moduleItems(module),
+      items: moduleItems(ship, module),
     };
+  }
+
+  private dockNearest(ship: ModularShip, moduleId: string): void {
+    let nearest: { readonly ship: ModularShip; readonly moduleId: string; readonly distance: number } | null = null;
+    let firstReason = '条件を満たす近傍船がありません';
+    for (const entity of this.roster.all()) {
+      if (!(entity instanceof ModularShip) || entity === ship || !entity.motion.alive) continue;
+      for (const module of entity.assembly.modules) {
+        if (module.kind !== 'dock' && module.kind !== 'docking_port') continue;
+        const eligibility = dockingEligibility(ship, moduleId, entity, module.id);
+        if (!eligibility.eligible) {
+          firstReason = eligibility.reasons[0] ?? firstReason;
+          continue;
+        }
+        if (nearest === null || eligibility.distance < nearest.distance) {
+          nearest = { ship: entity, moduleId: module.id, distance: eligibility.distance };
+        }
+      }
+    }
+    if (nearest === null) {
+      this.hud.hint(firstReason);
+      return;
+    }
+    try {
+      ship.dock(nearest.ship, moduleId, nearest.moduleId, this.controlSelection);
+    } catch (error) {
+      this.hud.hint(error instanceof Error ? error.message : '接舷できません');
+    }
   }
 }
