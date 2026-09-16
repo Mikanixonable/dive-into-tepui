@@ -43,9 +43,12 @@ export function register(): void {
     assert.equal(validMaterial.opacity, 0.35);
     assert.equal(validMaterial.depthTest, true);
     assert.equal(validMaterial.depthWrite, false);
+    assert.equal((validMaterial as THREE.MeshBasicMaterial).isMeshBasicMaterial, true);
+    assert.equal(validMaterial.toneMapped, false);
     assert.equal(validMaterial.color?.getHex(), 0x53f089);
     assert.equal(shared.color.getHex(), 0x456789);
     const ghostMesh = ghost.object.getObjectByProperty('isMesh', true) as THREE.Mesh;
+    assert.equal(ghost.object.layers.isEnabled(3), true);
     assert.equal(ghostMesh.layers.isEnabled(3), true);
 
     ghost.sync({ modelId: 'tank-3-main', position: v3(1, 2, 3), rotation: Q_IDENTITY, valid: false });
@@ -74,6 +77,7 @@ export function register(): void {
     assert.deepEqual(guide.object.scale.toArray(), [3, 3, 3]);
     const guideLine = guide.object.children[0] as THREE.Line;
     assert.equal((guideLine.material as THREE.LineBasicMaterial).color.getHex(), 0xff5b63);
+    assert.equal(guide.object.layers.isEnabled(3), true);
     assert.equal(guideLine.layers.isEnabled(3), true);
     guide.dispose();
     guide.dispose();

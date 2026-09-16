@@ -66,6 +66,10 @@ export class ModularShipView {
     return this.modules.get(moduleId)?.semanticAnchor(name) ?? null;
   }
 
+  public semanticAnchors(moduleId: string, prefix: string): readonly THREE.Object3D[] {
+    return this.modules.get(moduleId)?.semanticAnchors(prefix) ?? [];
+  }
+
   public anchor(moduleId: string, name: string): THREE.Object3D | null {
     return this.semanticAnchor(moduleId, name);
   }
