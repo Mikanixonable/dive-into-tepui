@@ -3,7 +3,7 @@
 作成日: 2026-09-14
 実装の現在基準コミット: d3e8291dd
 最終レビュー: 2026-09-16
-状態: 実装中。手順7まで完了し、手順8から進める。
+状態: 実装中。手順8まで完了し、手順9から進める。
 
 ## 目的
 
@@ -305,38 +305,6 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 - 現行のランダム部位ダメージと敵挙動に回帰がない。
 
 ## 実装手順
-
-### 8. AttachedBoosters と DetachedBooster をデカプラー分割へ置換する
-
-#### 目的
-
-専用の段管理をなくし、同じ assembly の一部をデカプラーで 2 隻へ分ける。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| src/game/ship/ship-decoupling.ts（新規） | 対象 decoupler 選択、assembly split、状態分配、分離 impulse、spawn を原子的に行う。 |
-| src/game/player/attached-boosters.ts | ship-decoupling へ置換後に削除する。 |
-| src/game/player/attached-booster-motion.ts | ModularShipMotion へ置換後に削除する。 |
-| src/game/player/booster-stack.ts | booster module の燃焼計算へ移し、移行完了時に削除する。 |
-| src/game/dynamic/dynamic-entity/detached-booster.ts | ModularShip spawn へ置換後に削除する。 |
-| src/game/dynamic/dynamic-entity/detached-booster-motion.ts | ModularShipMotion へ置換後に削除する。 |
-| src/render/dynamic/player/attached-boosters-view.ts | ModularShipView の module 表示へ置換後に削除する。 |
-| src/render/dynamic/dynamic-entity/detached-booster-view.ts | ModularShipView へ置換後に削除する。 |
-| src/render/dynamic/booster-model.ts | module asset へ置換後に削除する。 |
-| tools/model-builder/booster.mjs | ship-modules.mjs へ統合する。 |
-| src/game/game.ts | attach callback を除き、デカプラー直接クリックとブースター点火操作を active ship の decouple／booster capability へ渡す。 |
-| src/input/key-mapping.ts、src/game/hud/windows/help-content.ts | [5]／[6] の割り当て、表示、aria shortcut を削除し、直接操作の説明へ置換する。 |
-| src/game/hud/panels/burn-management-panel.ts | 固定最大 4 段ではなく、現在の decoupler と booster module 列を表示する。 |
-| tests/game/ship-decoupling.test.ts（新規） | 所有権、ID、HP、燃料、点火、重心、運動量、衝突猶予、保存を検証する。 |
-
-#### 達成条件と検証
-
-- AttachedBoosters と DetachedBooster の import が 0 件で、旧互換 facade が残らない。
-- 接続中と分離後が同じ booster module state を 1 回だけ進め、燃料が二重消費されない。
-- 分離直後の二つのassemblyは猶予中に自己衝突せず、猶予後は通常接触へ戻る。
-- npm run typecheck、npm run test:game、npm run test:physics、npm run test:render を通す。
 
 ### 9. dock state、ドッキング、修理を実装する
 
