@@ -454,63 +454,14 @@
 
 **段の後、他の作業へ効くこと**: 遊ぶ人の選択のうち、セーブごとに持つもの(視点)は `game/viewer/` に置き、セーブを跨いで共通のもの(設定)は `settings/` に置く。どちらに置くかは `INVARIANTS.md` §6 が決め、「見え方を決める値か」では決めない。§6 が決めない値は、1つの所有者の状態を両方へ割らない側に置く。進行のコードから `game/viewer/` を import しない。視点への書き込みも、進行への書き込みと同じく命令の列を通す(設定への書き込みは、これまでどおり callback で `settings/` へ返す)。セーブはモデル層の直列化であり、キャッシュを除く全部を載せる。
 
-#### 手順 4-0. 何がセーブに残るかの SPEC を直す
+**手順 4-0(SPEC、`659ed354`)と 4-1(規則、`d3f84718`)は済。** `rg -c "暫定 — 段" DEVELOP/CODING-RULE.md` は 5。R11 の2には、R1 が保存しないと決めた乱数の系列と、需要が残させる軌跡の履歴(`652621bf`、4-4 のユーザー判断)も「セーブしないもの」として書き足した。
 
-**目的**: 段 4 が写す置き場の基準を、先に SPEC で確定させる(K3-5)。`/modify-feature` を通し、`docs(spec):` の単独 commit にする。コードは変えない。
+**手順 4-2(検査、`681bf1d5`)は済。** 計画の指定から次を変えた。
 
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `DEVELOP/SPEC/INVARIANTS.md` §6 | 「特定の物体・天体・空間上の位置に依拠する選択は、そのゲームのセーブに残る」を、そのゲームの空間と時間に依拠する選択へ広げる。時間の側の例として、表示期間と未来ゴーストスライダーの位置を挙げる。「依拠しない選択はブラウザに残る」の全称は、例示(描画品質・見せ方・配色・音量・表示トグル・天球グリッド・パネルの畳みとタブ)へ改める |
-| `DEVELOP/SPEC/SAVE.md`「保存される内容」 | 先頭に「ゲームの進み具合を決める状態は、例外なくすべて保存される」を置き、いまの箇条をその例にする。基地の状態へ計画を足し、時間加速の段と、クリエイティブ・デバッグステージの出現の設定を足す |
-
-書かないもの: 画角と投影の置き場、操作途中の状態を残すか(K7-1・K7-3)。
-
-**達成条件と検証**
-
-- 表示期間・スクラブ位置が §6 のセーブ側の例に入り、画角・投影がどちらの文にも当たらない。
-- SAVE.md に、進行を例外なく保存する文がある。
-- `PLAN.md` §9 の「マップを閉じて戦闘ビューへ戻った直後は未来ゴーストスライダーが原点へ戻る」と矛盾しない(戻った状態がセーブに載るだけ)。
-
-#### 手順 4-1. 段 4 の規則を書く
-
-**目的**: モデル層の中の分かれ目(進行と視点)と、セーブの範囲を正本にする。コードは変えない。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `DEVELOP/CODING-RULE.md` | R4 を全文にする(進行と視点の分類、視点と設定を取り違えないこと、進行は視点を import しない、視点は進行を読んでよい)。R11 の1・2を書く(スナップショットはモデル層の直列化で表示の導出と設定を含めない、モデル層はキャッシュを除いて例外なくセーブする) |
-| 同 — 言い直す既存の文面 | 設定を「ラン跨ぎ」と呼んでいる箇所を「セーブを跨いで共通」へ言い直す。R1 の置き場の判定(「ランを跨ぐならアプリ寿命の正本」)、R5 の「視点か `settings/` に置く」(どちらへ置くかの基準を足す)、R10 の `settings/` の項、1.3 の `settings/` の項と `launcher/` の項の「ラン跨ぎでも、ユーザーが選んだ設定は記録ではないので `settings/` が持つ」(そのゲームの選択は視点としてスナップショットに入る、と言い直す)。**`1e908f1e` の仕様判断をなぞるだけで、覆さない。** 視点もページの読み込み直しを跨いで残る(セーブから再開する)ので、「ランを跨ぐか」では視点と設定を分けられない |
-| 同 — 外す暫定 | 段 2 で置いた「R5 が視点へ置くと言う値は `game/` の所有者が持つ」と、段 3 で置いた「列を通すのは進行に効く値への書き込みだけでよい(視点は DOM のハンドラから直に呼んでよい)」を外す。R3 の列は視点への書き込みにも当たるようになる |
-| 同 — 対応表 | `game/viewer/` の行(モデルのうち視点)を足す |
-| 同 — 書かないもの | R11 の3(時刻層の天体系が保存するもの)は段 6 |
-
-**達成条件と検証**
-
-- R4 の6項と R11 の見出しがあること。`rg -c "暫定 — 段" DEVELOP/CODING-RULE.md` が 5。
-- `rg -n "ラン跨ぎ|ランを跨" DEVELOP/CODING-RULE.md` で出る行のうち、遊ぶ人の選択を指すものが残っていない(ラン跨ぎの記録 — 解放状況・セーブスロット — を指す行は残ってよい)。
-- `npm run typecheck`。
-
-#### 手順 4-2. 段 4 の検査を足す
-
-**目的**: 進行が視点を読まないこと、視点と設定が混ざらないこと、セーブが表示の導出を運ばないことを機械で判定する。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `tools/check-boundaries.mjs` | `game/viewer/` を視点として対応表へ入れる。この段では `game/` の中がまだ割れていないので、**進行のパスから `game/viewer/` への import を禁止パターンで止める**(`game/{dynamic,player,stages,plan,creative,protein,save}` と `game/{control-selection,targeter}.ts`)。表示の導出と視点自身からの import は通す。段 5 で層の規則へ置き換える |
-| 同 — 視点と設定 | **`src/settings/` と `src/game/viewer/` の間の import を、双方向とも止める。** 視点の値を設定として持つ(またはその逆)と、ここに辺が生える。`game/viewer/` → `settings/` は段 5 の R2 のモデル層の項が、`settings/` → `game/viewer/` は段 7 の R10 の `settings/` の項が覆うので、それぞれの段の N-2 で外す |
-| 同 — セーブ | **`src/game/save/` から表示の導出(`game/{hud,marker,view,pickable,map,lines,input}`、`flash-presenter.ts`、`run-event-presenter.ts`)への import を止める**(R11 の1)。いまは 0 件。段 5 で R2 のモデル層の項が覆うので外す。`render/` の語彙の型(`ProteinDisplaySettings`)は装置の語彙で、段 5 の暫定と手順 7-5 が扱うので、ここでは数えない |
-| 同 — 視点はモデル層 | 段 3 の禁止パターン「モデル層が生の入力を読む禁止」「モデル層が出来事の装置を持つ禁止」の対象へ `src/game/viewer/` を足す。カメラの入力の解釈とヒント(手順 4-3)が視点に残ると、ここで出る |
-| `tools/boundary-allowlist.json` | 手順 4-3 が移すあいだの残りを載せる |
-
-**達成条件と検証**
-
-- 自己検証: `game/viewer/` へ空ファイルを置き、次のそれぞれで 1 を返す。`game/dynamic/` から import する。`settings/` から import する。そのファイルから `settings/` を import する。`game/save/` から `game/hud/` を1本 import する。
-- 段の終わりに許可リストが空。
+- **進行のパスから `game/save/` と `targeter.ts` を外した。** `game/save/` はモデル層(進行と視点)全体の保存形式なので、視点の型を引いてよい(R11)。`targeter.ts` は、進行の処理である的面の通過の記録を 4-3 で進行のモジュールへ出すので、残りは表示の導出になる(段 5 のファイル単位の例外へ載せる)。
+- **進行のフォルダにある表示の導出を、名指しで外す一覧 `MISPLACED_PRESENTATION_FILES` を段 4 で作った。** 手順 5-2 の「ファイル単位の例外」はこの一覧を引き継ぐ。いま載っているのは `plan/{plan-editor,node-gizmo,plan-panel,plan-axis-drag,plan-display}.ts`、`creative/{object-placer-panel,slider-field,stage-controls-panel}.ts`、`stages/stage-utils/status-panel.ts`。
+- **視点から出ていく辺(`hud/`・`marker/`・`three`・`render/` の値)は、段 4 では判定しない。** 生の入力と出来事の装置の禁止パターンだけを視点へ当てた。残りは段 5 のモデル層の規則が覆う。それまでは 4-3 の設計(`game/viewer/` は定義層・時刻層・進行・保存形式の型・自分自身だけを引く。`render/` の語彙の型だけは `import type` で許す)をレビューで守る。
+- 検査の実装中に見つかった、段 5 で扱う辺: `creative/manual-spawn.ts`(進行)が `creative/stage-controls-panel.ts`(表示の導出)から `STAGE_CONTROL_ENEMY_SHAPES` を引いている。`plan/plan-path.ts` は計画の区間の予測弧と、描画の宣言(`three` の型)が同居している。
 
 #### 手順 4-3. 視点を `game/viewer/` に集める
 
@@ -553,9 +504,11 @@
 
 **目的**: R11 の1・2を、規則の文面だけでなくコードに満たさせる。モデル層の値を1つずつセーブと突き合わせ、キャッシュ以外で載っていないものは、視点も進行も例外なく載せる(K1-2・K7-4)。既存のセーブの項目は変えず、足すのは省略可能な項目だけにする。
 
+**進行の洗い出しは済んでいる**(`7c7a0d0c` 時点、下の「洗い出しの結果」)。**ユーザー判断(2026-09-17): 過去の軌跡以外は全部載せる。** 過去の軌跡は、残す長さが需要で決まるので R4 の進行の状態に入らず、キャッシュでもない。R11 に「需要が残させている過去の記録」としてセーブしないものへ足した(`652621bf`)。**実施は次のセッションで行う**(このセッションは 4-3 までで止めた)。
+
 **手順**
 
-1. **洗い出す。** `/ownership` を、`game/viewer/` と進行の所有者(`game/{dynamic,player,stages,plan,creative,protein}` と `control-selection.ts`)に当て、ランのあいだ書き換わるフィールドを並べる。深さは所有者の直下まで。これを `GameSaveData` の組み立て(`game.ts:235-248` と各所有者の `serialize`)と突き合わせ、表にする。表は PR 本文へ `git rev-parse --short HEAD` を添えて残す。
+1. **視点の分を洗い出し直す。** 4-3 で `game/viewer/` に集めた所有者に `/ownership` を当て、下の「視点」の一覧に漏れが無いかを見る。進行の分は下の結果を使い、行番号はコードで引き直す。表は PR 本文へ `git rev-parse --short HEAD` を添えて残す。
 2. **振り分けて直す。**
 
    | 表の行 | すること |
@@ -571,12 +524,48 @@
 
 | ファイル | 何をするか |
 | --- | --- |
-| `src/game/save/save-data.ts` — 視点 | 軌道要素の基準と予測パネルの状態を、省略可能な項目として足す。無ければいまの既定で始まる。座標系は中心の id と `FrameRotationSourceSaveData` で表す(カメラの注視点と同じ語彙)。中心は機体や役割でもよいので、読み込み時に解決できなければ既定へ戻す(SAVE.md の航法ターゲットと同じ扱い) |
-| `src/game/save/save-data.ts` — 進行 | ワープ段と `autoWarpUntil`、基地の計画・計画実行モード・`fineAttitude`(自機の `PlayerSaveData` と同じ形)、creative の手動 spawn の距離・表示設定・連番、デバッグステージの状態、採番器の次の番号を、省略可能な項目として足す。無ければいまの既定で始まる |
+| `src/game/save/save-data.ts` — 視点 | 軌道要素の基準、予測パネルの状態(目盛りの表示を含む)、タンパク質の表示(4-3 で視点の1つの値にした。いまは保存された最初のタンパク質敵の `display` から読み直している)を、省略可能な項目として足す。無ければいまの既定で始まる。座標系は中心の id と `FrameRotationSourceSaveData` で表す(カメラの注視点と同じ語彙)。中心は機体や役割でもよいので、読み込み時に解決できなければ既定へ戻す(SAVE.md の航法ターゲットと同じ扱い) |
+| `src/game/save/save-data.ts` — 進行 | 下の「載せるもの」を、省略可能な項目として足す。無ければいまの既定で始まる。弾・破片・待機中の実体は、実体の記録の種別を足す(`EntitySaveDataUnion`)ので、読み込み側の辞書(`entity-dictionary.ts`)にも足す |
 | `game/viewer/` の根 | 視点の組み立てと分解を1か所に持つ |
-| `src/game/dynamic/sim-speed-manager.ts:19-20`、`src/game/dynamic/dynamic-entity/base.ts:204-219`、`src/game/creative/manual-spawn.ts:31-45`、`src/game/stages/{creative-stage,stage-debug}.ts`、`src/game/dynamic/dynamic-entity/entity-id.ts` | それぞれの所有者に組み立てと分解を置く。採番器は、保存した番号と復元した id の大きいほうから続ける |
-| 洗い出しの表でキャッシュに当たる所有者 | キャッシュであることのコメント |
+| 下の「載せるもの」の所有者 | それぞれの所有者に組み立てと分解を置く。採番器は、保存した番号と復元した id の大きいほうから続ける |
+| 下の「キャッシュ」の所有者 | キャッシュであることのコメント。`dynamic-motion.ts:159` のクラス注釈は予測弧を「物理結果を変えうる状態」と呼んでいるので直す |
 | (新規) `tests/game/viewer-save.test.ts` | 視点の保存形の往復 |
+
+**洗い出しの結果**(`7c7a0d0c`。行番号は `src/game/` からの相対。段 4 の 4-3 で `game.ts` の周りは動いているので引き直す)
+
+載せるもの(進行。どれもいまのセーブに無い):
+
+| 所有者 | 値 | 分類 |
+| --- | --- | --- |
+| `DynamicSystem` | 弾(`Bullet`、`BulletReaction.passedClose` を含む)と破片(`DebrisPiece` — 破片・薬莢・砲身・マガジン枠・段間カバー/ボルト)の個体。いまは `serialize` の既定で null になり落ちる(`dynamic-entity.ts:59-61`)。薬莢は 1800 s、破片は寿命なしで残る | 正本 |
+| `DynamicSystem` | アセット待ちの実体 `pendingSpawns`(`dynamic-system.ts:111`)。待機中にセーブすると消える | 正本 |
+| `DynamicMotion` | 敵・補給・分離ブースターの `temperature`(`dynamic-motion.ts:178`。自機は `thermal.hullTemp` で載っている)、全種別の `thermalDeviation`(:179)、吸収待ちの熱 `pendingSpecificHeat`(:191) | 正本 |
+| `SimSpeedManager` | `levelIdx`・`autoWarpUntil`(`sim-speed-manager.ts:19-20`)。構築(`game.ts:310`)がセーブを受けていない。自動ワープ中は `levelIdx` を毎フレーム書き直すので、`autoWarpUntil` があれば導ける | 正本 |
+| `Base` | `plan`(`base.ts:58`)。復元は自機の `addNode` のループ(`player.ts:189-202`)と同じ形 | 正本 |
+| `PowerSystem` | 太陽電池2枚の展開状態 `panels`(`player/power.ts:19`)。放熱板の同じ形のデータは載っている | 正本 |
+| `Throttle` | 並進噴射のラッチ `latchedThrust`(`player/throttle.ts:45`)、`rotationHoldTime`(:43)。自動セーブは一時停止していないときに走るので、ラッチは非空でありうる | 正本 / 作り直すと違う値 |
+| `WeaponState` | `wasFiring`(`player/weapon-state.ts:33`)。射撃中にセーブすると復元後にスピンアップをやり直し、操作精度(`player.ts:449`)にも効く | 作り直すと違う値 |
+| `AltitudeAlarm` | `descendWarned`・`altEma`・`altRateEma`・`warnedThresholds`(`player/altitude-alarm.ts:18-24`)。復元後に同じしきい値をもう一度警告する | 作り直すと違う値 |
+| `BeltController`・`BeltPhysics` | `feed`(`player/belt.ts:10`)、節点の位置・前位置・ねじれ・前の角速度・角加速度・アンカー(`player/belt-physics.ts:38-46`)。節点は接触判定に参加する | 作り直すと違う値 |
+| 金属敵 | 部品ごとの HP。いまは総 HP だけを保存し、復元時に既定構成へ按分し直す(`metal-enemy.ts:61-62`) | 正本 |
+| `EnemyFireController` | `lastFireSim`・`lastBehaviorSim`(`enemy-fire-controller.ts:37,40`) | 作り直すと違う値 |
+| `ProteinCombatState` | 撃つ部位の巡回 `attackSiteCursor`(`protein/protein-combat-state.ts:36`) | 作り直すと違う値 |
+| `ControlSelection` | 未操作の状態。`null` を保存しても、復元時に生存中の先頭を選ぶ(`control-selection.ts:20-22`)。手で操作を外したセーブを読むと、操作対象が付く | 正本(部分的) |
+| 採番器 | `EntityIdAllocators` の5つ(`entity-id.ts:30-35`)、`ManualSpawn` の `enemyNameAllocator`・`formationIdAllocator`(`creative/manual-spawn.ts:32-33`)、`ObjectPlacement.playerIdAllocator`(`creative/object-placement.ts:63`)。陣形の構成員はアセット待ちなので、復元時に FORMATION-0 から数え直して既存の `formationId` と衝突しうる(推測)。採番が戻ると、復元時に id を保持し続ける航法ターゲット(`nav-target.ts:125-130`)が、後から同じ id で生まれた個体を指しうる(推測) | 作り直すと違う値 |
+| `ManualSpawn` | `spawnDistance`(`creative/manual-spawn.ts:31`、既定 2000 m) | 正本 |
+| `StageDebug` | `enemyFireEnabled`・`waveCount`(`stages/stage-debug.ts:23-24`)。`waveCount` が戻ると敵名・`waveId`・`attackGroupId` が既存の敵と重なる | 正本 / 作り直すと違う値 |
+| `PlanGuide` | 接近を通知したノード `approachNotified`(`plan/plan-guide.ts:31`)。復元後に同じ接近をもう一度通知する | 作り直すと違う値 |
+
+載せないもの:
+
+- **過去の軌跡**(`physics/dynamic-trajectory.ts:23` の標本列)— R11(需要が残させている記録)。
+- **`Base.planExecution`・`fineAttitude`**(`base.ts:59-60`)— 構築後に書く経路が無い(`Base.handleCommand` に姿勢の切り替えが無く、`updateTorque` には常に false を渡す)。可変値ではないので、載せる代わりに不変な値にする。
+- **キャッシュ**(コメントを足す): `DynamicMotion.predictedArc`・`prevAtt`・`att.inertia`・`mass`・`requestedHistoryDuration`、`DynamicTrajectory` の `_prevState`・`_extrapolationCenter`、`Vessel._hp`(部品 HP の合計。ただし金属敵の保存する `health` の出どころ)、`PartDamageModel` の参照、`AeroLoad.qdyn`、`RadiatorSystem.wear`、`AttachedBoosterMotion.thrustValue`・`burnRatioValue`、`DetachedBoosterBehavior.burnRatio`、`PredictedArc`・`ArcCelestialBodies`。コメントがすでにあるもの: `_samplesCache`、`PlanPath.samplesCache`、`NextEventTime`、`sharedBVH`、タンパク質アセットのキャッシュ、接触・天体の作業値。
+- **値の性質を確かめてから決めるもの**(4-4 の最初に見る。次の読み手より前に必ず書き直される作業値・世代番号・診断用の旗・他の正本の写しなら載せない。そうでなければ正本として載せる): `DynamicSystem._collectionRevision`・`capsUncheckedSinceAdd`、`Simulator` の `lastSimDt`・`consecutiveZeroSteps`・計測値、`NanWatchdog.tripped`、**`Predictor.cursor`**(どの弧から伸ばすかを通して、弧をなぞる個体の軌道に効くかもしれない)、`DynamicMotion` の `torque`・`_thrust`、`WeaponState.pendingBarrelJoules`・`wasEmptyClick`、`Plan._revision`、`PlanGuide.achievedNotified`、`Stage._result`・`_briefing`、`EnemyFireController.enabled`(`StageDebug.enemyFireEnabled` の写し)、`Player.disposed`。
+
+洗い出しで見つかった別件:
+
+- **復元したデバッグステージには操作パネルが出ない。** トグルとボタンを `init()`(`stages/stage-debug.ts:40-57`)で作っており、`init()` は復元時に走らない(`stage.ts:189-193`)。4-4 でデバッグステージの状態を載せるときに直すか、5-5(ステージのウィジェットを表示の導出へ移す)で直す。
 
 **達成条件と検証**
 
@@ -586,6 +575,7 @@
 - `npm run dev` で次を見る。
   - 軌道要素の基準・表示期間・スライダー位置・計画軌道の座標系を変えて手動セーブする。新しいゲームでは既定から始まり、元のセーブを読み込むと選んだ状態に戻る。同じ操作のあいだ、描画品質などの設定は変わらない。
   - 時間加速中・基地に計画がある状態・creative で出現の距離を変えた状態で手動セーブし、読み込むとそのまま戻る。弾を撃ってから保存して読み込み、新しく出た実体の id が保存前に使った番号と重ならない。
+  - 弾が飛んでいて破片が漂っている瞬間に保存して読み込むと、弾と破片がそのまま続く。creative でタンパク質敵を生成した直後(アセット待ちのうち)に保存して読み込んでも、敵が消えない。
 - 段 1 に着手する前に書き出したセーブが読め、足した項目は既定で補われる。
 
 #### 手順 4-5. 段 4 を main へ送る
@@ -1009,13 +999,13 @@ import を直す外側:
 
 | 段 | 手順 | 分 |
 | --- | --- | --- |
-| 4 | 4-0 SPEC(§6・SAVE.md) | 40 |
-| | 4-1 規則(R4 の全文・R11 の1・2。設定の文言の言い直し +20) | 90 |
-| | 4-2 検査(viewer への片方向。視点と設定・セーブと表示の導出 +20) | 60 |
+| 4 | ~~4-0 SPEC(§6・SAVE.md)~~ 済 | 0 |
+| | ~~4-1 規則(R4 の全文・R11 の1・2。設定の文言の言い直し)~~ 済 | 0 |
+| | ~~4-2 検査~~ 済 | 0 |
 | | 4-3 視点を集める(段 3 から回した視点の列 +120。予測パネルの状態と軌道ガイド +60) | 720 |
-| | 4-4 セーブをモデル層に揃える(洗い出し 60、意味の変更 9 ファイル、往復の検査 40) | 300 |
+| | 4-4 セーブをモデル層に揃える(視点の洗い出し 30、意味の変更 約 35 ファイル — 洗い出しで 9 から増えた、往復の検査 40) | 800 |
 | | 4-5 main へ送る | 120 |
-| | **段 4 計** | **1,330** |
+| | **段 4 計(残り)** | **1,640** |
 | 5 | 5-1 規則(R6・R2 のモデル層。実体と運動の所有の判断 +15) | 105 |
 | | 5-2 検査(対応表を game/ の中まで割る) | 90 |
 | | 5-3 3D の表示担当(運動のフィールドへの代入をやめる場合 +60) | 780 |
