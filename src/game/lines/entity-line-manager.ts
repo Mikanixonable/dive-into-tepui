@@ -7,7 +7,7 @@ import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicLineDisplay } from '../../render/dynamic/dynamic-view';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { isBase } from '../dynamic/dynamic-entity/base';
-import { isPlayer } from '../player/player';
+import { isModularShip } from '../ship/modular-ship';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import { currentThemePalette } from '../../theme';
 import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
@@ -143,7 +143,7 @@ export class EntityLineManager {
     };
 
     // 自艦・敵・基地の順に、種別ごとの色と表示設定で resolve を通す。
-    for (const ship of this.roster.all().filter(isPlayer)) {
+    for (const ship of this.roster.all().filter(isModularShip)) {
       const isActive = ship === active;
       const visibility = visibilityPolicy?.entity('player', isActive);
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);

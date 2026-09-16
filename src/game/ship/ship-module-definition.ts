@@ -24,6 +24,7 @@ export interface ShipModuleAbilities {
   readonly fuelMassPerUnit?: number; // kg / fuel unit
   readonly thrust?: number; // N
   readonly torque?: number; // N m
+  readonly fuelConsumptionRate?: number; // fuel unit/s
   readonly powerGeneration?: number; // W
   readonly radiationArea?: number; // m²
   readonly weaponDamage?: number;

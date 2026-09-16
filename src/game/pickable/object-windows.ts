@@ -19,7 +19,7 @@ import { CameraSystem } from '../camera/camera-system';
 import type { PlanEditor } from '../plan/plan-editor';
 import type { ControlSelection } from '../control-selection';
 import type { Stage } from '../stages/stage';
-import { Player } from '../player/player';
+import { ModularShip } from '../ship/modular-ship';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import type { Targeter } from '../targeter';
 import { EmptySpacePickable } from './empty-space-pickable';
@@ -253,7 +253,7 @@ export class ObjectWindows implements PropertyWindowOpener {
   private relatedItemsFor(target: InspectedObject, pivot: number): readonly PropertyWindowRelatedItem[] {
     const controlled = this.controlSelection.current;
     // 搭載部品を持つのは艦だけなので、操作中の基地では周回物体の一覧へ落ちる。
-    if (controlled instanceof Player && target.id === controlled.id) {
+    if (controlled instanceof ModularShip && target.id === controlled.id) {
       return controlled.inspection.parts.map((part) => ({
         id: part.id,
         label: part.name,
@@ -289,7 +289,7 @@ export class ObjectWindows implements PropertyWindowOpener {
 
   private relatedTitleFor(target: InspectedObject): string {
     const controlled = this.controlSelection.current;
-    return controlled instanceof Player && target.id === controlled.id ? '搭載部品' : '周回物体';
+    return controlled instanceof ModularShip && target.id === controlled.id ? '搭載部品' : '周回物体';
   }
 
   // フォーカスをその対象へ移す。マップは座標系パネル連動(計画中心の追随)込みの経路、

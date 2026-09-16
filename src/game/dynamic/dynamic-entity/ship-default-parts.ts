@@ -10,7 +10,7 @@ const SHIP_MASS = 1000;
 const THRUST_LEVEL_MAX = 400;
 
 export function createShipDefaultParts(maxHp: number): Part[] {
-  const thruster = SHIP_MODULE_CATALOG.require('thruster-standard').abilities;
+  const rcs = SHIP_MODULE_CATALOG.require('rcs-standard').abilities;
   const tank = SHIP_MODULE_CATALOG.require('tank-combat-main').abilities;
   const radiator = SHIP_MODULE_CATALOG.require('radiator-standard').abilities;
   const solar = SHIP_MODULE_CATALOG.require('solar-panel-standard').abilities;
@@ -24,7 +24,7 @@ export function createShipDefaultParts(maxHp: number): Part[] {
     mk('hull', R.hull, { name: 'Basic Hull' }),
     mk('cockpit', R.cockpit, { name: 'Cockpit' }),
     mk('thruster', R.thruster, {
-      name: 'Standard RCS', torque: thruster.torque ?? 0,
+      name: 'Standard RCS', torque: rcs.torque ?? 0,
       thrust: SHIP_MASS * THRUST_LEVEL_MAX, fuelConsumptionRate: 1,
     }),
     mk('rcs_tank', R.rcsTank, {

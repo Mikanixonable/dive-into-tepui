@@ -4,19 +4,21 @@ import {
 
 function moduleDefinition(
   id: string, kind: ShipModuleKind, length: number, maxHp: number, dryMass: number,
-  abilities: ShipModuleDefinition['abilities'] = {}, radius = 3,
+  abilities: ShipModuleDefinition['abilities'] = {}, radius = 3, modelId = id,
 ): ShipModuleDefinition {
   return defineShipModule({
-    id, kind, name: id, length, diameter: 6, dryMass, maxHp, modelId: id,
+    id, kind, name: id, length, diameter: 6, dryMass, maxHp, modelId,
     solidPrimitives: [bodyPrimitive(length, radius)], abilities,
   });
 }
 
 function tank(
   id: string, length: number, fuelKind: FuelKind, capacity: number, dryMass = 250,
-  fuelMassPerUnit = 1,
+  fuelMassPerUnit = 1, modelId = id,
 ): ShipModuleDefinition {
-  return moduleDefinition(id, 'tank', length, 80, dryMass, { fuelKind, fuelCapacity: capacity, fuelMassPerUnit });
+  return moduleDefinition(
+    id, 'tank', length, 80, dryMass, { fuelKind, fuelCapacity: capacity, fuelMassPerUnit }, 3, modelId,
+  );
 }
 
 const definitions: readonly ShipModuleDefinition[] = [
@@ -29,17 +31,24 @@ const definitions: readonly ShipModuleDefinition[] = [
   tank('tank-12-rcs', 12, 'rcs', 320),
   // 旧戦闘船は容量 1,000 のタンクを1個持っていた。標準建造サイズとは別の移行用定義として残す。
   tank('tank-combat-main', 6, 'main', 1_000, 100, 0.6),
-  moduleDefinition('thruster-standard', 'thruster', 1, 80, 50, { thrust: 400_000, torque: 2.24 }),
-  moduleDefinition('rcs-standard', 'rcs', 1, 50, 50, { torque: 2.24 }),
+  // 既定戦闘船の RCS 専用タンク。移行元の総質量を保つため、内容物質量は main 側へ集約する。
+  tank('tank-combat-rcs', 3, 'rcs', 80, 25, 0, 'tank-3-rcs'),
+  moduleDefinition('thruster-standard', 'thruster', 1, 80, 50, {
+    thrust: 400_000, fuelConsumptionRate: 1,
+  }),
+  moduleDefinition('rcs-standard', 'rcs', 1, 50, 50, { torque: 2.24, fuelConsumptionRate: 1 }),
+  moduleDefinition(
+    'rcs-combat', 'rcs', 1, 50, 25, { torque: 2.24, fuelConsumptionRate: 1 }, 3, 'rcs-standard',
+  ),
   moduleDefinition('weapon-gatling', 'weapon', 1, 80, 20, {
     weaponDamage: 1, fireRate: 1 / 0.06, muzzleVelocity: 1_000,
   }),
   moduleDefinition('armor-standard', 'armor', 1, 100, 100, { armorReduction: 0.2 }),
-  moduleDefinition('armor-combat', 'armor', 1, 500, 100, { armorReduction: 0.2 }),
+  moduleDefinition('armor-combat', 'armor', 1, 370, 50, { armorReduction: 0.2 }),
   moduleDefinition('radiator-standard', 'radiator', 1, 50, 10, { radiationArea: 42 }),
   moduleDefinition('solar-panel-standard', 'solar_panel', 1, 30, 5, { powerGeneration: 50 }),
   moduleDefinition('booster-standard', 'booster', 6, 100, 200, {
-    fuelCapacity: 800, fuelMassPerUnit: 1, thrust: 600_000,
+    fuelCapacity: 800, fuelMassPerUnit: 1, thrust: 600_000, fuelConsumptionRate: 80,
   }),
   moduleDefinition('docking-port-standard', 'docking_port', 1, 50, 40),
   moduleDefinition('dock-standard', 'dock', 1, 50, 40),

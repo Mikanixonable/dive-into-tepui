@@ -2,7 +2,7 @@
 // 必要なステージだけ override する。
 import * as THREE from 'three/webgpu';
 import { Enemy } from '../dynamic/dynamic-entity/enemy';
-import { isPlayer, Player, type PlayerInit } from '../player/player';
+import { isModularShip, ModularShip, type ModularShipInit } from '../ship/modular-ship';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
@@ -224,16 +224,16 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
 
   // 台本が相手にする自艦。補給の投入先・敵の追跡先・ステータスパネルの表示対象はどれもこれ。
   // 操作対象が基地でも台本は止まらないので、そのときは生存中の先頭の艦を使う。
-  protected get ship(): Player | null {
+  protected get ship(): ModularShip | null {
     const controlled = this._controlSelection.current;
-    if (controlled instanceof Player) return controlled;
-    return this._dynamicSystem.all().filter(isPlayer).find((p) => p.motion.alive) ?? null;
+    if (controlled instanceof ModularShip) return controlled;
+    return this._dynamicSystem.all().filter(isModularShip).find((p) => p.motion.alive) ?? null;
   }
 
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。艦の隻数は0..n隻が一般形で、
   // 何隻をどこへ置くかはステージ自身の宣言。
-  protected addPlayer(init?: PlayerInit): Player {
-    const ship = new Player(this._hud, this._worldSfx, this._scene, this._fx, this._markers, init);
+  protected addPlayer(init?: ModularShipInit): ModularShip {
+    const ship = new ModularShip(this._hud, this._worldSfx, this._scene, this._fx, this._markers, init);
     this._dynamicSystem.add(ship);
     this._controlSelection.claimIfNone(ship);
     return ship;

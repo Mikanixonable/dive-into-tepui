@@ -8,7 +8,7 @@ import type { ObjectAuthoring, InspectedObject } from './inspected-object';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
-import type { Player } from '../player/player';
+import type { ModularShip } from '../ship/modular-ship';
 import { strongestAttractor } from '../../physics/attractor';
 import { apsisAltitudes } from '../../physics/elements';
 import { fmtDist, fmtEnergy } from '../../hud/utils';
@@ -23,7 +23,7 @@ import type { Part } from '../dynamic/dynamic-entity/parts';
 
 // Player の表示・一覧・検査面をゲーム状態から分離する adapter。
 export class PlayerInspection implements InspectedObject {
-  public constructor(private readonly player: Player) {}
+  public constructor(private readonly player: ModularShip) {}
 
   public get id(): string { return this.player.id; }
   public get name(): string { return this.player.name; }
@@ -49,16 +49,16 @@ export class PlayerInspection implements InspectedObject {
   };
   public readonly onMapFocus = (selection: ControlSelection): void => selection.select(this.player);
 
-  public markerItem(viewerPos: Parameters<Player['markerItem']>[0], pos: Parameters<Player['markerItem']>[1],
-    vel: Parameters<Player['markerItem']>[2], view: ViewMode, isActive: boolean): GroupedMarkerItem {
+  public markerItem(viewerPos: Parameters<ModularShip['markerItem']>[0], pos: Parameters<ModularShip['markerItem']>[1],
+    vel: Parameters<ModularShip['markerItem']>[2], view: ViewMode, isActive: boolean): GroupedMarkerItem {
     return this.player.markerItem(viewerPos, pos, vel, view, isActive);
   }
   public posAt(displayTime: number) { return this.player.motion.stateAt(displayTime)?.r ?? null; }
   public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(`player-${this.player.id}`); }
-  public hitBodyByRay(ray: Parameters<Player['hitBodyByRay']>[0], pos: Parameters<Player['hitBodyByRay']>[1]): boolean {
+  public hitBodyByRay(ray: Parameters<ModularShip['hitBodyByRay']>[0], pos: Parameters<ModularShip['hitBodyByRay']>[1]): boolean {
     return this.player.hitBodyByRay(ray, pos);
   }
-  public mapVisibility(policy: Parameters<Player['mapVisibility']>[0], viewer: OrbitingObject | null) {
+  public mapVisibility(policy: Parameters<ModularShip['mapVisibility']>[0], viewer: OrbitingObject | null) {
     return this.player.mapVisibility(policy, viewer);
   }
   public listCounted(): boolean { return false; }

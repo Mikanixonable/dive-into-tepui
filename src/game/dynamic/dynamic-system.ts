@@ -11,7 +11,7 @@ import type { EntityRegistry, SpawnGate } from './entity-registry';
 import { ENTITY_CAP, type CapKind, type EntityCountKind } from './dynamic-entity/entity-kind';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
 import { isEnemy } from './dynamic-entity/enemy';
-import { isPlayer, Player } from '../player/player';
+import { isModularShip, ModularShip } from '../ship/modular-ship';
 import { restorationFor } from './dynamic-entity/entity-dictionary';
 import { InstancedPools } from '../../render/dynamic/instanced-pools';
 import { BulletPools } from '../../render/dynamic/dynamic-entity/bullet-view';
@@ -317,9 +317,9 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   }
 
   // 敵が追う自艦。操作対象が基地でも敵は止まらないので、そのときは生存中の先頭の艦を使う。
-  private trackedShip(active: Controllable | null): Player | null {
-    if (active instanceof Player) return active;
-    return this.entities.filter(isPlayer).find((p) => p.motion.alive) ?? null;
+  private trackedShip(active: Controllable | null): ModularShip | null {
+    if (active instanceof ModularShip) return active;
+    return this.entities.filter(isModularShip).find((p) => p.motion.alive) ?? null;
   }
 
   // このフレームの表示物を、顔ぶれを1度辿って同期する。

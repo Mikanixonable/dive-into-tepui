@@ -247,8 +247,9 @@ export class Throttle {
     // 燃料残量に応じて実際の角加速度を絞る
     const rotateIntensity = Math.max(Math.abs(inX), Math.abs(inY), Math.abs(inZ));
     if (rotateIntensity > 0) {
-      const consumption = ship.totalFuelConsumptionRate * rotateIntensity * rcsOutputFactor * angScale * simDt;
-      const actualRatio = ship.consumeFuel(consumption);
+      const rate = ship.rcsFuelConsumptionRate ?? ship.totalFuelConsumptionRate;
+      const consumption = rate * rotateIntensity * rcsOutputFactor * angScale * simDt;
+      const actualRatio = ship.consumeRcsFuel?.(consumption) ?? ship.consumeFuel(consumption);
       maxAngAccel *= actualRatio;
     }
     

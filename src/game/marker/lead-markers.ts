@@ -3,7 +3,7 @@ import { leadPoint } from '../../physics/intercept';
 import type { ViewMode } from '../../render/view-mode';
 import type { MarkerSlots } from './marker-slots';
 import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
-import { Player } from '../player/player';
+import { ModularShip } from '../ship/modular-ship';
 import { COLOR_MARKER_ALLY } from './marker-identity';
 import type { ProjectFn } from '../../math/projection';
 
@@ -18,7 +18,7 @@ export class LeadMarkers {
 
   // target の LEAD マーカーを置き、それ以外を片付ける。マップビューでは全て片付ける。
   public sync(
-    player: Player,
+    player: ModularShip,
     targetsArray: readonly CombatTarget[],
     target: CombatTarget | null,
     _simTime: number,

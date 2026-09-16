@@ -11,7 +11,7 @@ import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import type { Notifier } from '../../../hud/notifier';
 import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { UiSfx } from '../../../audio/sfx/ui-sfx';
-import { Player } from '../../player/player';
+import { ModularShip } from '../../ship/modular-ship';
 import type { EntityRoster } from '../../dynamic/entity-roster';
 import type { EntityRegistry } from '../../dynamic/entity-registry';
 import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
@@ -55,7 +55,7 @@ export class Logistics {
 
   // 自機の軌道上、minDist〜maxDist 先の位相に補給を1個投入する。
   public spawnForPlayer(
-    player: Player,
+    player: ModularShip,
     minDist = LOGISTICS_MIN_DIST,
     maxDist = LOGISTICS_MAX_DIST,
   ): void {
@@ -88,7 +88,7 @@ export class Logistics {
 
   // 自機の軌道上、minDist〜maxDist 先の位相に RCS 燃料補給を1個投入する。
   public spawnRcsFuelForPlayer(
-    player: Player,
+    player: ModularShip,
     minDist = LOGISTICS_MIN_DIST,
     maxDist = LOGISTICS_MAX_DIST,
   ): void {
@@ -123,7 +123,7 @@ export class Logistics {
   // 回収とデスポーンは投入の可否によらず常に走る。respawnOnDespawn なら、投入できる間は
   // デスポーンした数だけ近くへ再投入する。
   public updateLogistics(
-    simTime: number, player: Player, simSpeed: SimSpeedManager, respawnOnDespawn = false,
+    simTime: number, player: ModularShip, simSpeed: SimSpeedManager, respawnOnDespawn = false,
   ): void {
     this.absorbNearbyAmmoPickups(player);
     this.absorbNearbyRcsFuelPickups(player);
@@ -173,13 +173,13 @@ export class Logistics {
   }
 
   // 自機が燃料タンクを持ち、残量が LOGISTICS_LOW_FUEL_RATIO 未満か。
-  private shouldResupplyFuel(player: Player): boolean {
+  private shouldResupplyFuel(player: ModularShip): boolean {
     return player.totalMaxFuel > 0
       && player.totalFuel < player.totalMaxFuel * LOGISTICS_LOW_FUEL_RATIO;
   }
 
   // 回収半径内の生存中補給を吸収し、ベルトへ弾を追加する。
-  private absorbNearbyAmmoPickups(player: Player): void {
+  private absorbNearbyAmmoPickups(player: ModularShip): void {
     for (const ammoPickup of this.dynamicSystem.all().filter(isAmmoPickup)) {
       if (!ammoPickup.motion.alive) continue;
       if (
@@ -195,7 +195,7 @@ export class Logistics {
   }
 
   // 回収半径内の生存中 RCS 燃料補給を吸収し、タンクへ燃料を追加する。
-  private absorbNearbyRcsFuelPickups(player: Player): void {
+  private absorbNearbyRcsFuelPickups(player: ModularShip): void {
     for (const pickup of this.dynamicSystem.all().filter(isRcsFuelPickup)) {
       if (!pickup.motion.alive) continue;
       if (
@@ -211,7 +211,7 @@ export class Logistics {
   }
 
   // デスポーン距離を超えた生存中補給を消し、respawnOnDespawn が真なら同時数の上限まで同数を再投入する。
-  private despawnFarAmmoPickups(player: Player, respawnOnDespawn: boolean): void {
+  private despawnFarAmmoPickups(player: ModularShip, respawnOnDespawn: boolean): void {
     let respawn = 0;
     // デスポーン距離を超えた分を消し、再投入すべき数を数える
     for (const ammoPickup of this.dynamicSystem.all().filter(isAmmoPickup)) {
@@ -232,7 +232,7 @@ export class Logistics {
   }
 
   // デスポーン距離を超えた燃料補給を消し、respawnOnDespawn が真なら同時数の上限まで同数を再投入する。
-  private despawnFarRcsFuelPickups(player: Player, respawnOnDespawn: boolean): void {
+  private despawnFarRcsFuelPickups(player: ModularShip, respawnOnDespawn: boolean): void {
     let respawn = 0;
     // デスポーン距離を超えた分を消し、再投入すべき数を数える
     for (const pickup of this.dynamicSystem.all().filter(isRcsFuelPickup)) {
