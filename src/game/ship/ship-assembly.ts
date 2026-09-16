@@ -1,5 +1,7 @@
 import { mulberry32 } from '../../math/random';
-import { Q_IDENTITY, qInvert, qMul, qNormalize, qRotate, type Quat } from '../../math/quat';
+import {
+  LOCAL_RIGHT, Q_IDENTITY, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate, type Quat,
+} from '../../math/quat';
 import { add, v3, type Vec3 } from '../../math/vec3';
 import {
   SHIP_MODULE_CATALOG, ShipModuleCatalog,
@@ -8,7 +10,7 @@ import type { ShipModuleDefinition } from './ship-module-definition';
 import { cloneShipModuleInstance, type ShipModuleInstance } from './ship-module-instance';
 
 export type ShipRole = 'ship' | 'base' | 'material';
-export type ConnectionKind = 'axial' | 'side';
+export type ConnectionKind = 'axial' | 'side' | 'docking';
 
 export interface ModuleTransform {
   readonly position: Vec3;
@@ -26,6 +28,12 @@ export interface ShipConnection {
 export interface ShipAssemblyValidation {
   readonly valid: boolean;
   readonly errors: readonly string[];
+}
+
+export interface DockingMergeResult {
+  readonly assembly: ShipAssembly;
+  readonly connectionId: string;
+  readonly moduleIds: ReadonlyMap<string, string>;
 }
 
 export interface ShipAssemblyTotals {
@@ -86,6 +94,12 @@ function isIdentityRotation(value: Quat): boolean {
 
 function connectionCopy(connection: ShipConnection): ShipConnection {
   return { ...connection, childTransform: copyTransform(connection.childTransform) };
+}
+
+function isDockModule(
+  module: ShipModuleInstance | null,
+): module is ShipModuleInstance & { readonly kind: 'dock' | 'docking_port' } {
+  return module?.kind === 'dock' || module?.kind === 'docking_port';
 }
 
 // 接続グラフと module state を一体で所有する純粋な船体ドメイン。THREE や DynamicMotion は知らない。
@@ -189,6 +203,99 @@ export class ShipAssembly {
     instance: ShipModuleInstance, parentId: string, transform: ModuleTransform, connectionId?: string,
   ): void {
     this.addModule(instance, parentId, transform, 'side', connectionId);
+  }
+
+  /** 二つの接舷部を正対させ、other をこの assembly の dock branch として複製統合する。 */
+  public mergedAtDock(
+    other: ShipAssembly, localPortId: string, otherPortId: string, namespace: string,
+  ): DockingMergeResult {
+    if (other === this) throw new Error('cannot dock an assembly to itself');
+    if (other.catalog !== this.catalog) throw new Error('cannot dock assemblies from different catalogs');
+    const localPort = this.module(localPortId);
+    const otherPort = other.module(otherPortId);
+    if (!isDockModule(localPort) || !isDockModule(otherPort)) throw new Error('docking requires two ports');
+    if (localPort.hp <= 0 || otherPort.hp <= 0) throw new Error('docking port is destroyed');
+    if (this.isDockingPortOccupied(localPortId) || other.isDockingPortOccupied(otherPortId)) {
+      throw new Error('docking port is already occupied');
+    }
+
+    const merged = this.clone();
+    const moduleIds = new Map<string, string>();
+    for (const id of other.moduleIds) {
+      let candidate = id;
+      let suffix = 2;
+      while (merged.nodes.has(candidate) || [...moduleIds.values()].includes(candidate)) {
+        candidate = `${namespace}:${id}${suffix === 2 ? '' : `-${suffix}`}`;
+        suffix++;
+      }
+      moduleIds.set(id, candidate);
+    }
+
+    const otherWorld = new Map(other.moduleIds.map(id => [id, other.worldTransformOf(id)!]));
+    const visited = new Set<string>();
+    const pending: { readonly id: string; readonly parentId: string | null; readonly sourceEdge: ShipConnection | null }[] = [
+      { id: otherPortId, parentId: null, sourceEdge: null },
+    ];
+    const dockRotation = qFromAxisAngle(LOCAL_RIGHT, Math.PI);
+    const localDefinition = this.catalog.require(localPort.definitionId);
+    const otherDefinition = this.catalog.require(otherPort.definitionId);
+    const dockingConnectionId = merged.uniqueConnectionId(`docking-${localPortId}-${moduleIds.get(otherPortId)!}`);
+    while (pending.length > 0) {
+      const current = pending.shift()!;
+      if (visited.has(current.id)) continue;
+      visited.add(current.id);
+      const sourceInstance = other.module(current.id)!;
+      const instance = { ...sourceInstance, id: moduleIds.get(current.id)! } as ShipModuleInstance;
+      if (current.parentId === null) {
+        merged.addModule(instance, localPortId, {
+          position: v3(0, 0, (localDefinition.length + otherDefinition.length) / 2),
+          rotation: dockRotation,
+        }, 'docking', dockingConnectionId);
+      } else {
+        const parentWorld = otherWorld.get(current.parentId)!;
+        const childWorld = otherWorld.get(current.id)!;
+        const inverse = qInvert(parentWorld.rotation);
+        const relative: ModuleTransform = {
+          position: qRotate(inverse, v3(
+            childWorld.position.x - parentWorld.position.x,
+            childWorld.position.y - parentWorld.position.y,
+            childWorld.position.z - parentWorld.position.z,
+          )),
+          rotation: qMul(inverse, childWorld.rotation),
+        };
+        const edgeId = merged.uniqueConnectionId(current.sourceEdge!.id);
+        merged.addModule(
+          instance, moduleIds.get(current.parentId)!, relative, current.sourceEdge!.kind, edgeId,
+        );
+      }
+      for (const edge of other.connections) {
+        const neighbor = edge.parentId === current.id ? edge.childId
+          : edge.childId === current.id ? edge.parentId : null;
+        if (neighbor !== null && !visited.has(neighbor)) {
+          pending.push({ id: neighbor, parentId: current.id, sourceEdge: edge });
+        }
+      }
+    }
+    merged.assertValid();
+    return { assembly: merged, connectionId: dockingConnectionId, moduleIds };
+  }
+
+  public dockingConnections(): readonly ShipConnection[] {
+    return this.graph.filter(connection => connection.kind === 'docking');
+  }
+
+  public isDockingPortOccupied(moduleId: string): boolean {
+    return this.connections.some(connection => connection.kind === 'docking'
+      && (connection.parentId === moduleId || connection.childId === moduleId));
+  }
+
+  private uniqueConnectionId(preferred: string): string {
+    let candidate = preferred;
+    let suffix = 2;
+    while (this.connections.some(connection => connection.id === candidate)) {
+      candidate = `${preferred}-${suffix++}`;
+    }
+    return candidate;
   }
 
   public removeModule(id: string): ShipModuleInstance | null {
@@ -388,7 +495,7 @@ export class ShipAssembly {
         const childDef = this.catalog.get(child.instance.definitionId);
         const expected = (parentDef?.length ?? 0) / 2 + (childDef?.length ?? 0) / 2;
         const p = connection.childTransform.position;
-        if (Math.abs(p.x) > 1e-9 || Math.abs(p.y) > 1e-9 || Math.abs(p.z - expected) > 1e-9
+        if (Math.abs(p.x) > 1e-9 || Math.abs(p.y) > 1e-9 || Math.abs(Math.abs(p.z) - expected) > 1e-9
           || !isIdentityRotation(connection.childTransform.rotation)) errors.push(`invalid axial snap: ${connection.id}`);
       }
     }

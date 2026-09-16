@@ -19,7 +19,11 @@ export type MenuAction =
   | 'deployModule'
   | 'stowModule'
   | 'toggleBoosterModule'
-  | 'decoupleModule';
+  | 'decoupleModule'
+  | 'dockModule'
+  | 'undockModule'
+  | 'repairDockedModules'
+  | 'selectCockpitModule';
 
 // shortcut には KeyboardEvent.code の表記を使う。
 export const MenuCommon = {

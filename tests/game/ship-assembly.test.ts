@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
-import { qFromUnitVectors, LOCAL_FORWARD } from '../../src/math/quat';
-import { v3 } from '../../src/math/vec3';
+import { qFromUnitVectors, qRotate, LOCAL_FORWARD } from '../../src/math/quat';
+import { add, scale, v3 } from '../../src/math/vec3';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
@@ -51,6 +51,31 @@ export function register(): void {
     assembly.connectSide(module('dock-standard', 'dock'), 'root', transform, 'side-edge');
     assert.deepEqual(assembly.transformOf('dock'), transform);
     assert.equal(assembly.graph[0]!.id, 'side-edge');
+  });
+
+  test('ship assembly: docking edge は接舷面を一致させ、重複IDを安定名へ写す', () => {
+    const host = new ShipAssembly(SHIP_MODULE_CATALOG, true);
+    host.addRoot(module('cockpit-standard', 'cockpit'));
+    host.append(module('dock-standard', 'dock'));
+    const guest = new ShipAssembly(SHIP_MODULE_CATALOG, true);
+    guest.addRoot(module('docking-port-standard', 'port'));
+    guest.append(module('cockpit-standard', 'cockpit'));
+    const merged = host.mergedAtDock(guest, 'dock', 'port', 'guest');
+    assert.equal(merged.moduleIds.get('cockpit'), 'guest:cockpit');
+    assert.equal(merged.assembly.validate().valid, true);
+    assert.equal(merged.assembly.graph.find(edge => edge.id === merged.connectionId)?.kind, 'docking');
+    const hostTransform = merged.assembly.worldTransformOf('dock')!;
+    const guestTransform = merged.assembly.worldTransformOf('port')!;
+    const hostPoint = add(hostTransform.position, scale(qRotate(hostTransform.rotation, LOCAL_FORWARD), 0.5));
+    const guestPoint = add(guestTransform.position, scale(qRotate(guestTransform.rotation, LOCAL_FORWARD), 0.5));
+    assert.ok(Math.hypot(
+      hostPoint.x - guestPoint.x, hostPoint.y - guestPoint.y, hostPoint.z - guestPoint.z,
+    ) < 1e-9);
+    const [retained, detached] = merged.assembly.splitAt(merged.connectionId);
+    assert.ok(retained.module('dock'));
+    assert.ok(detached.module('port'));
+    assert.equal(retained.isDockingPortOccupied('dock'), false);
+    assert.equal(detached.isDockingPortOccupied('port'), false);
   });
 
   test('ship assembly: role は健全 cockpit と dock だけから導出し booster では変わらない', () => {

@@ -99,6 +99,14 @@ export class ShipInspection implements InspectedObject {
     else if (act === 'delete') selection.remove(this.ship);
   }
   public propertyRows(bodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number, _displayTime: number): readonly PropertyRow[] {
+    const dockRows: PropertyRow[] = this.ship.assembly.modules
+      .filter(module => module.kind === 'dock' || module.kind === 'docking_port')
+      .map(module => ({
+        key: `dock-${module.id}`,
+        label: `接舷部 ${module.id}`,
+        value: module.hp <= 0 ? '全損' : this.ship.docks.status(this.ship.assembly, module.id),
+        collapsible: true,
+      }));
     return [
       { key: 'role', label: '役割', value: ROLE_LABEL[this.ship.capabilities.role] },
       { key: 'operated', label: '操作対象か', value: this.ship === viewer ? 'はい' : 'いいえ', collapsible: true },
@@ -107,6 +115,7 @@ export class ShipInspection implements InspectedObject {
       { key: 'temp', label: '温度', value: `${this.ship.motion.temperature.toFixed(0)} K` },
       { key: 'power', label: '電力', value: fmtEnergy(this.ship.motion.power.chargeJ) },
       { key: 'ammo', label: '弾薬', value: fmtAmmoStatus(this.ship.roundsInMag, this.ship.magsLeft, this.ship.reloadTimer) },
+      ...dockRows,
       ...orbitRows(this.ship, bodies, simTime),
     ];
   }
