@@ -306,41 +306,6 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 
 ## 実装手順
 
-### 4. compound cylinder と質量特性を追加する
-
-#### 目的
-
-一体剛体を保ったまま、見えているモジュール列を接触、弾、地表、ピックの共通形状にする。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| src/physics/capped-cylinder-contact.ts（新規） | 平坦な両端面を持つ有限円柱同士、円柱対球、ray の正確な接触を返す。 |
-| src/physics/compound-cylinder-contact.ts（新規） | 複数の local capped cylinder に対する接触、掃引、ray の最近傍結果と module id を返す。 |
-| src/physics/ship-mass-properties.ts（新規） | 円筒列と残資源から質量、重心、対角慣性、bounding radius を求める。 |
-| src/physics/cylinder-contact.ts | 薬莢など既存利用者のカプセル近似を維持し、共有できる結果型だけを capped-cylinder-contact.ts と揃える。 |
-| src/math/quat.ts | 回転掃引で使う最短経路の姿勢補間を追加する。 |
-| src/game/dynamic/dynamic-motion.ts、dynamic-simulation-participant.ts | assembly 変更時に質量、慣性、半径、接触形状を原子的に更新できる契約を追加する。 |
-| src/physics/collision-response.ts、src/game/dynamic/entity-contact-response.ts | compound 接触の両側の module id を、当事者の反応まで運ぶ。接触応答自体は既存の並進反発を維持する。 |
-| src/game/dynamic/entity-contact-physics.ts | ModularShip 同士と他物体の compound narrow phase を使う。 |
-| src/physics/surface-contact.ts、src/game/dynamic/surface-contact-physics.ts | 地表との最初の接触を compound shape から求める。 |
-| src/game/dynamic/predictor.ts | bounding radius／shape 更新時に予測を無効化する。 |
-| tests/physics/capped-cylinder-contact.test.ts（新規） | 側面、平坦端面、縁、ray と、カプセルなら当たるが円柱なら当たらない位置を検証する。 |
-| tests/physics/compound-cylinder-contact.test.ts（新規） | 円筒列の接触、掃引、ray、module id、最近傍、隙間なし、偽陽性なしを検証する。 |
-| tests/physics/ship-mass-properties.test.ts（新規） | 追加、燃料消費、分割、ドッキング統合で質量・重心・慣性が有限かつ保存的になることを検証する。 |
-
-#### 達成条件と検証
-
-- 高速弾と高速物体がモジュール間をすり抜けない。
-- 長い船体が高速回転する区間でも、始点・終点だけでなく補間姿勢を含む決定的な adaptive sweep で
-  最初の接触を得る。現行の最大 16 標本・終端軸固定を新船体へ流用しない。
-- 広域球が全 solid primitive を含み、狭域判定が空間だけを理由に接触を返さない。
-- mass、center、inertia、radius が NaN／Infinity にならない。
-- shape と mass properties の世代が同時に切り替わり、broad phase、surface contact、predictor が古い
-  radius と新しい compound shape を混在させない。
-- npm run typecheck、npm run test:math、npm run test:physics、npm run test:game を通す。
-
 ### 5. モジュールモデルと ModularShipView を作る
 
 #### 目的
