@@ -19,12 +19,15 @@ export function scaledRadiantIntensity(radiantIntensity: number): number {
   return radiantIntensity * (SUN_IRRADIANCE_1AU / SOLAR_CONSTANT);
 }
 
+// 目盛りの基準になる放射強度 — 1 天文単位で SUN_IRRADIANCE_1AU を届ける量で、上の目盛りの
+// 定義を放射強度として書き直したもの。恒星を持たない星系の仮光源と、環境光の基準がこれを使う。
+export const REFERENCE_RADIANT_INTENSITY = SUN_IRRADIANCE_1AU * AU * AU;
+
 // 恒星を持たない星系で仮に置く光源。色の手がかりが無いので無彩色で、半径 0(誰も遮らない)で
-// 置き、置いた距離で 1 天文単位ぶんの放射照度 SUN_IRRADIANCE_1AU を届ける。
+// 1 天文単位に置く。
 export const STARLESS_SUN_DISTANCE = AU;
 export const STARLESS_SUN_RADIUS = 0;
 export const STARLESS_SUN_COLOR = new THREE.Color(1, 1, 1);
-export const STARLESS_SUN_INTENSITY = SUN_IRRADIANCE_1AU * STARLESS_SUN_DISTANCE * STARLESS_SUN_DISTANCE;
 
 // 放射強度 intensity の恒星から distance [m] の点が受ける放射照度(CPU 側で引く版)。
 export function irradianceAtDistance(intensity: number, distance: number): number {

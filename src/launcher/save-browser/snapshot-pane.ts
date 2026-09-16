@@ -70,7 +70,7 @@ export function buildSnapshotPane(
   wrap.appendChild(title);
 
   const saveBtn = new Button('今の状態をセーブする', callbacks.onSaveNow, undefined, 'primary');
-  saveBtn.element.id = 'sb-capture-now';
+  saveBtn.element.id = 'sb-save-now';
   saveBtn.element.classList.add('sb-btn');
   saveBtn.setEnabled(canSaveNow);
   saveBtn.element.title = canSaveNow ? '' : '決着後の状態は復元できないため残せません';
@@ -166,7 +166,7 @@ function buildSnapshotCard(
     s.pinned ? '📌 解除' : '📌 クリップ', () => callbacks.onTogglePin(s.id, s.pinned), undefined,
     ['secondary', 'dense'],
   );
-  pinBtn.element.classList.add('sb-btn', 'sb-btn-pin');
+  pinBtn.element.classList.add('sb-btn');
   pinBtn.setOn(s.pinned);
   actions.appendChild(pinBtn.element);
   actions.appendChild(smallBtn('✎', '名前変更', () => callbacks.onRenameSnapshot(s.id)));

@@ -192,7 +192,6 @@ export const EARTH_SYSTEM_NAMES: Record<EarthSystemBodyId, string> = {
   moon: '月',
 };
 
-
 // 両極それぞれ2層のカーテン。同じ極の層は geomSeed を揃えて平行にし、半径・緯度・明滅を
 // ずらして厚みを出す。
 function earthAuroras(): readonly Aurora[] {
@@ -233,7 +232,7 @@ export function earthSystem(
   const earthSurface = earthSurfaceRuntime.surface;
   return {
     earth: new CelestialEntity(
-    earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
+      earth.body, EARTH_SYSTEM_NAMES.earth, 'planet',
       new PointCelestialView(
         earthSurface,
         EARTH_ATMOSPHERE_OPTICS,

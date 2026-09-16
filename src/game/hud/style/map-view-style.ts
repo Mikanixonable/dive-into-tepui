@@ -324,7 +324,7 @@ export const MAP_VIEW_STYLE = `
   background: transparent;
 }
 
-/* Predict: 未来は Accent、隣接する過去範囲は Near accent。Secondary は同期状態用に残す。 */
+/* Predict: 未来は Accent、隣接する過去範囲は Near accent。 */
 #hud .hud-map-root.active #hud-predict .w-btn,
 #hud .hud-map-root.active #hud-predict .w-input {
   border: 0;
