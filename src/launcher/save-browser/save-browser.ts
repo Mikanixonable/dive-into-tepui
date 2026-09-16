@@ -227,10 +227,9 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
-  // confirm でクリップ済みのみか全件かを尋ねてからファイルへ書き出し、成否をステータス行へ表示する。
+  // 手動セーブをファイルへ書き出し、成否をステータス行へ表示する。
   private handleExportSlot(id: string): void {
-    const pinnedOnly = confirm('クリップ済みのスナップショットだけを書き出しますか?(キャンセルで全件)');
-    const ok = exportSlotToFile(this.slots, id, pinnedOnly);
+    const ok = exportSlotToFile(this.slots, id);
     this.setStatus(ok ? '書き出しました。' : '書き出しに失敗しました。', !ok);
     this.rebuild();
   }
@@ -302,25 +301,13 @@ export class SaveBrowser implements OverlayHandle {
     this.onLoadSnapshot?.(snapId);
   }
 
-  // クリップ時は名前を尋ね、解除時はそのまま外す。上限に達している場合はクリップできず、
-  // 理由をステータス行へ表示する。
+  // クリップの印を付け外しする。付けるときは、任意で名前を付けて区別できるようにする。
   private handleTogglePin(snapId: string, currentlyPinned: boolean): void {
-    // 解除は確認なしでそのまま外す。
-    if (currentlyPinned) {
-      this.slots.setPinned(snapId, false);
-      this.rebuild();
-      return;
+    this.slots.setPinned(snapId, !currentlyPinned);
+    if (!currentlyPinned) {
+      const name = prompt('クリップする名前(空欄なら変更しません)', '');
+      if (name) this.slots.renameSnapshot(snapId, name);
     }
-    // クリップは上限に達していれば失敗し、理由をステータス行へ出す。
-    const ok = this.slots.setPinned(snapId, true);
-    if (!ok) {
-      this.setStatus('クリップ上限です。先にどれかのクリップを外してください。', true);
-      this.rebuild();
-      return;
-    }
-    // 成功したら、任意で名前を付けて区別できるようにする。
-    const name = prompt('クリップする名前(空欄なら変更しません)', '');
-    if (name) this.slots.renameSnapshot(snapId, name);
     this.rebuild();
   }
 
