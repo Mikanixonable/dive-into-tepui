@@ -52,7 +52,7 @@ export const SMALL_DEBRIS_MAX_TEMP = 933; // [K]
 // 接触した相手を見分ける種別。
 export type ContactKind =
   | 'generic' | 'player' | 'radiator-fold' | 'belt-section' | 'bullet' | 'base' | 'debris' | 'casing'
-  | 'booster' | 'enemy' | 'ammo' | 'rcs-fuel';
+  | 'enemy' | 'ammo' | 'rcs-fuel';
 
 // 種別ごとに差し込む反応。省いたメソッドは DynamicMotion の既定の振る舞いになる。
 export interface DynamicMotionBehavior {

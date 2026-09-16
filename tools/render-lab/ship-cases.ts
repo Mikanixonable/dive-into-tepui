@@ -7,6 +7,7 @@ import { createShipModuleInstance } from '../../src/game/ship/ship-module-instan
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
+import { splitAtDecoupler } from '../../src/game/ship/ship-decoupling';
 import { DockSnapGuideView } from '../../src/render/dynamic/ship/dock-snap-guide-view';
 import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view';
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
@@ -75,14 +76,9 @@ function constructionGhost(): LabCase {
 
 function separatedShips(): LabCase {
   const source = separationPreset();
-  const decouplerEdge = source.graph.find(edge => edge.childId === 'decoupler');
-  if (decouplerEdge === undefined) throw new Error('render-lab separation preset lacks decoupler edge');
-  const [inner, outerWithDecoupler] = source.splitAt(decouplerEdge.id);
-  outerWithDecoupler.removeModule('booster');
-  const outer = new ShipAssembly(SHIP_MODULE_CATALOG, true);
-  outer.addRoot(module('booster-standard', 'booster-after'));
-  const innerObject = at(shipObject(inner), -5, 0, -30);
-  const outerObject = at(shipObject(outer), 6, 0, -30);
+  const split = splitAtDecoupler(source, 'decoupler');
+  const innerObject = at(shipObject(split.retained), -5, 0, -30);
+  const outerObject = at(shipObject(split.detached), 6, 0, -30);
   return {
     objects: [innerObject, outerObject],
     camera: camera(),
