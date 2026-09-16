@@ -13,6 +13,7 @@ import {
   proteinAssetGate, proteinRenderDefinitionFor, type ProteinAssetId,
 } from '../../protein/protein-asset-loader';
 import type { SpawnGate } from '../entity-registry';
+import type { EntityIdAllocators } from './entity-id';
 import type { ProteinDisplaySettings } from '../../../render/protein/protein-display';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
 import type { ProteinRenderDefinition } from '../../../render/protein/protein-render-definition';
@@ -20,6 +21,7 @@ import type { ProteinCombatReadout } from '../../protein/protein-schema';
 import type { EnemySaveData, ProteinEnemySaveData } from '../../save/save-data';
 import type { FormationRole } from './entity-kind';
 import { ProteinEnemyView } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
+import type { DynamicEntity } from './dynamic-entity';
 import type { EnemyCollisionShape } from './enemy-motion';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
 import type { ProteinVisualSource } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
@@ -96,6 +98,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     init: ProteinEnemyPlacement | EnemyRestore,
     worldSfx: WorldSfx,
     fx: FlashEffects,
+    idAllocators: EntityIdAllocators,
     scene?: THREE.Scene,
   ) {
     const assetId = 'saved' in init ? (init.saved as ProteinEnemySaveData).assetId : init.assetId;
@@ -128,7 +131,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     // 新規生成のときだけ、タンパク質固有の名称を陣形役割・識別番号などの既存識別子の前へ冠する。
     super(
       'saved' in init ? init : { ...init, name: `${definition.asset.displayName} ${init.name}` },
-      proteinView, PROTEIN_INERTIA, collision.outerRadius, worldSfx, fx, shape,
+      proteinView, PROTEIN_INERTIA, collision.outerRadius, worldSfx, fx, idAllocators, shape,
     );
     this.assetId = assetId;
     this.displaySettings = display;
@@ -166,11 +169,10 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
 
   // 表示設定と、被弾モデルの構造フェーズを共通の表示入力へ足す。
   protected override renderSource(
-    viewFrame: DynamicViewFrame, visible: boolean, active: boolean,
-    orbitReference: OrbitReference | undefined,
+    viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | undefined,
   ): ProteinVisualSource {
     return {
-      ...super.renderSource(viewFrame, visible, active, orbitReference),
+      ...super.renderSource(viewFrame, active, orbitReference),
       display: this.displaySettings,
       phase: this.combat.phase,
     };
@@ -184,7 +186,8 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     return energyAvailable && this.combat.isActionEnabled(attackAction.id);
   }
 
-  // 次に撃つ機能部位の ECI 位置。呼ぶたびに撃つ部位を順繰りに進める。
+  // 次に撃つ機能部位の ECI 位置。呼ぶたびに撃つ部位を順繰りに進める。銃口は静止座標で取り、
+  // 表示の揺らぎ(残基変位)は乗せない。
   protected override muzzlePosition(): Vec3 {
     const site = this.combat.nextAttackSite();
     return this.view.siteWorldPositionById(site?.id ?? '', this.motion.state.r, this.motion.att.q);
@@ -236,4 +239,9 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
       protein: this.combat.serialize(),
     };
   }
+}
+
+// この個体がタンパク質構造を持つ敵か。
+export function isProteinEnemy(entity: DynamicEntity): entity is ProteinEnemy {
+  return entity instanceof ProteinEnemy;
 }

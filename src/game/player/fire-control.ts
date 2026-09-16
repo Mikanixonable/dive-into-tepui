@@ -3,7 +3,6 @@ import * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, qRotate, randomQuat } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
-import { R_EARTH_EQ } from '../celestial/solar-system/constants';
 import { randSym } from '../../math/random';
 import { radiativeCooling, stepTemperature, stepThermalDeviation } from '../../physics/thermal';
 import { add, addScaled, norm, randPerp, randVec, scale, v3, Vec3 } from '../../math/vec3';
@@ -52,8 +51,7 @@ const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクー�
 // 艦の初期積載(予備マガジン数・装填済み残弾数)。
 export type AmmoLoad = { readonly mags: number; readonly rounds: number };
 
-// スナップショットからの復元か、新規配置の初期積載か。どちらも省略すればフィールド初期化子の
-// 既定積載で始まる。
+// スナップショットからの復元か、新規配置の初期積載か。
 type FireInit =
   | { readonly saved: FireSaveData }
   | { readonly ammo?: AmmoLoad };
@@ -65,7 +63,7 @@ export class FireControl {
   // 装着している砲身の平均温度 [K] と、薬室側が平均より高い温度差 [K]。交換で切り離すときに
   // そのまま排出されるデブリへ移る。
   // 復元するスナップショットか、新規配置の初期積載を受け取る。どちらも省略すれば既定積載。
-  constructor(
+  public constructor(
     private readonly player: Player,
     private readonly _notifier: Notifier,
     private readonly _worldSfx: WorldSfx,
@@ -105,7 +103,7 @@ export class FireControl {
   }
 
   // 発射入力を1フレーム分処理する。トリガーが引かれ、ワープ速度・弾薬が許せば発射する。
-  updateFireState(
+  public updateFireState(
     dt: number,
     input: Input,
     activeStage: StageOutcome,
@@ -141,7 +139,10 @@ export class FireControl {
       return;
     }
 
-    const projectileEmitter: ProjectileEmitter = { emit: projectile => registry.add(projectile) };
+    const projectileEmitter: ProjectileEmitter = {
+      idAllocators: registry.idAllocators,
+      emit: projectile => registry.add(projectile),
+    };
     this.fireCycle(activeStage, registry, projectileEmitter, celestialBodies);
   }
 
@@ -183,14 +184,14 @@ export class FireControl {
         this.weapon.cooldown = 1 / this.player.totalFireRate;
         return;
       case 'mag-reload':
-        this.spawnEjectedMagazineFrame(this.player, registry);
+        this.spawnEjectedMagazineFrame(registry);
         this.effects.magFeed();
         this.weapon.cooldown = 1 / this.player.totalFireRate;
         return;
       case 'barrel-reload':
-        this.spawnEjectedMagazineFrame(this.player, registry);
+        this.spawnEjectedMagazineFrame(registry);
         this.weapon.cooldown = RELOAD_TIME;
-        this.dropBarrel(this.player, registry);
+        this.dropBarrel(registry);
         this.effects.reload();
         return;
     }
@@ -210,7 +211,7 @@ export class FireControl {
     if (!this.weapon.manualReload()) return false;
     this.weapon.cooldown = RELOAD_TIME;
     this.effects.reload();
-    this.dropBarrel(this.player, registry);
+    this.dropBarrel(registry);
     return true;
   }
 
@@ -240,7 +241,7 @@ export class FireControl {
       this.player.motion.state.r,
       addScaled(this.player.motion.state.v, fwd, -RECOIL_DV),
     );
-    this.dropCasing(this.player, muzzle, registry);
+    this.dropCasing(muzzle, registry);
     this.spawnMuzzleFlash(this.player, muzzle, fwd);
 
     activeStage.scoreCounter.recordShot();
@@ -253,8 +254,7 @@ export class FireControl {
   private spawnBullet(
     ship: Ship, muzzle: Vec3, fwd: Vec3, emitter: ProjectileEmitter, celestialBodies: CelestialBodies,
   ): void {
-    const sunDir = celestialBodies.sunDirFrom(ship.motion.state.r, ship.motion.state.t);
-    const spreadScale = sunGlareSpreadScale(muzzle, fwd, sunDir, R_EARTH_EQ);
+    const spreadScale = sunGlareSpreadScale(muzzle, fwd, celestialBodies, ship.motion.state.t);
     // 機首方向に散布角を加えた発射方向
     const spread = Math.abs(randSym(BULLET_SPREAD)) * spreadScale;
     const dir = norm(addScaled(fwd, randPerp(fwd), spread));
@@ -269,13 +269,15 @@ export class FireControl {
       'normal',
       ship.weaponDamage,
       this._worldSfx,
+      emitter.idAllocators,
     );
     emitter.emit(bullet);
   }
 
   // 薬莢: -X 側へ排出(+X 側はマガジンベルトの給弾があるため)。
   // 初速は抑えてゆっくり漂わせる一方、回転速度は個体ごとに大きくばらつかせる。
-  private dropCasing(ship: Ship, muzzle: Vec3, registry: EntityRegistry): void {
+  private dropCasing(muzzle: Vec3, registry: EntityRegistry): void {
+    const ship = this.player;
     // 機体姿勢基準の左右・上方向
     const right = qRotate(ship.motion.att.q, LOCAL_RIGHT);
     const up = qRotate(ship.motion.att.q, LOCAL_UP);
@@ -294,7 +296,7 @@ export class FireControl {
         w: v3(randSym(6.0), randSym(6.0), randSym(6.0)),
         inertia: v3(0.85, 0.3, 1.15), // 円筒: 長軸(y)が最小。x/z も非対称にしジャニベコフ効果を起こす
       },
-      this._worldSfx, this._fx, CASING_COLLISION_BOUND_RADIUS, this._scene,
+      this._worldSfx, this._fx, registry.idAllocators, CASING_COLLISION_BOUND_RADIUS, this._scene,
     ));
   }
 
@@ -307,7 +309,7 @@ export class FireControl {
 
   // 装着している砲身の温度を dt だけ進める。発砲で入った熱は刻みの分け方に依らず一度だけ
   // 温度へ変わり、薬室側には平均の 2 倍の温度上昇として乗る(SPEC/FLIGHT.md「熱管理」)。
-  stepBarrelThermal(dt: number): void {
+  public stepBarrelThermal(dt: number): void {
     // 放射で冷え、温度差は薄まる。
     const cooling = radiativeCooling(
       this.weapon.barrelTemperature, ENV_TEMP, HULL_EMISS, BARREL_RADIATING_AREA_PER_MASS,
@@ -327,7 +329,8 @@ export class FireControl {
 
   // バレル交換時に円柱アイテムをデブリとして放出する。装着していた砲身の温度は、そのまま
   // 排出されたデブリへ移る。
-  dropBarrel(ship: Ship, registry: EntityRegistry): void {
+  private dropBarrel(registry: EntityRegistry): void {
+    const ship = this.player;
     // 下方に少し勢いをつけて放出
     const down = qRotate(ship.motion.att.q, v3(0, -1, 0));
     registry.add(new DebrisPiece(
@@ -346,7 +349,7 @@ export class FireControl {
         w: v3(randSym(2), randSym(2), randSym(2)),
         inertia: v3(1, 0.2, 1), // 円柱
       },
-      this._worldSfx, this._fx, BARREL_PHYS_RADIUS, this._scene,
+      this._worldSfx, this._fx, registry.idAllocators, BARREL_PHYS_RADIUS, this._scene,
     ));
     this.weapon.barrelTemperature = ENV_TEMP;
     this.weapon.barrelDeviation = 0;
@@ -355,7 +358,8 @@ export class FireControl {
 
   // マガジン1個を撃ち尽くした瞬間、-X 側(薬莢と同じ側)の位置から
   // 空になったマガジンの外枠(弾なし)をデブリとして放出する。
-  private spawnEjectedMagazineFrame(ship: Ship, registry: EntityRegistry): void {
+  private spawnEjectedMagazineFrame(registry: EntityRegistry): void {
+    const ship = this.player;
     // 排出ポートの位置と初速
     const right = qRotate(ship.motion.att.q, LOCAL_RIGHT);
     const portWorld = add(
@@ -376,7 +380,7 @@ export class FireControl {
         w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
         inertia: v3(1, 1.2, 1.4),
       },
-      this._worldSfx, this._fx, EJECTED_MAG_PHYS_RADIUS, this._scene,
+      this._worldSfx, this._fx, registry.idAllocators, EJECTED_MAG_PHYS_RADIUS, this._scene,
     ));
   }
 }

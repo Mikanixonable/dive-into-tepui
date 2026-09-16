@@ -1,12 +1,12 @@
-// CameraOrientation が担保する不変量のテスト。期待値の正本は「二表現が同じ向きを指すこと」
-// 「切替で視点が跳ばないこと」という仕様(SPEC/CONTROLS.md「基準フレーム」)で、コードの
-// 現状ではない。
+// CameraOrientation が担保する不変量のテスト。期待値の正本は「切替で視点が跳ばないこと」
+// 「仰角が真上・真下を越えないこと」という仕様(SPEC/CAMERA.md「視点の操作」「基準フレーム」)で、
+// コードの現状ではない。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { CameraOrientation } from '../../src/game/camera/camera-orientation';
-import { rotationFromEuler } from '../../src/math/polar-euler';
-import { LOCAL_FORWARD, LOCAL_UP, Quat, qFromAxisAngle, qRotate } from '../../src/math/quat';
-import { len, norm, sub, v3 } from '../../src/math/vec3';
+import { POLAR_PITCH_LIMIT, rotationFromEuler } from '../../src/math/polar-euler';
+import { LOCAL_FORWARD, LOCAL_UP, Quat, qFromAxisAngle, qMul, qRotate } from '../../src/math/quat';
+import { dot, len, norm, sub, v3 } from '../../src/math/vec3';
 
 const POLAR = norm(v3(0.2, 0.9, -0.1));
 
@@ -16,75 +16,87 @@ function sameOrientation(a: Quat, b: Quat, tol = 1e-8): boolean {
     && len(sub(qRotate(a, LOCAL_UP), qRotate(b, LOCAL_UP))) < tol;
 }
 
+// 極軸 POLAR を天頂としたときの、視線の仰角 [rad]。
+function pitchOf(rotation: Quat): number {
+  return Math.asin(Math.max(-1, Math.min(1, dot(qRotate(rotation, LOCAL_FORWARD), POLAR))));
+}
+
 function orientation(mode: 'euler' | 'quaternion' = 'euler'): CameraOrientation {
   const q = rotationFromEuler({ yaw: 0.6, pitch: 0.3, roll: -0.2 }, POLAR);
-  return new CameraOrientation(q, POLAR, mode, false, null);
+  return new CameraOrientation(q, mode, false, null);
 }
 
 export function register(): void {
   test('camera-orientation: 回し方を切り替えても向きは変わらない', () => {
     const o = orientation('euler');
     const before = o.effective();
-    o.setMode('quaternion', POLAR);
+    o.setRotationMode('quaternion');
     assert.ok(sameOrientation(o.effective(), before));
-    o.setMode('euler', POLAR);
+    o.setRotationMode('euler');
     assert.ok(sameOrientation(o.effective(), before));
   });
 
-  test('camera-orientation: 極軸を引き直しても向きは変わらない', () => {
+  test('camera-orientation: 入力が無ければオイラー操作は向きを変えない', () => {
     const o = orientation();
     const before = o.effective();
-    o.rebase(v3(0, 1, 0));
+    o.turn(0, 0, 0, POLAR);
     assert.ok(sameOrientation(o.effective(), before));
-    o.restoreFromEuler(v3(0, 1, 0));
-    assert.ok(sameOrientation(o.effective(), before));
+  });
+
+  test('camera-orientation: オイラー操作の仰角は真上を越えない', () => {
+    const o = orientation();
+    // 真上へ押し続けても極軸の手前で止まり、裏返らない。
+    for (let i = 0; i < 10; i++) o.turn(0, 1.0, 0, POLAR);
+    const pitch = pitchOf(o.effective());
+    assert.ok(pitch > 0 && pitch <= POLAR_PITCH_LIMIT + 1e-9, `pitch=${pitch}`);
+    for (let i = 0; i < 20; i++) o.turn(0, -1.0, 0, POLAR);
+    const down = pitchOf(o.effective());
+    assert.ok(down < 0 && down >= -POLAR_PITCH_LIMIT - 1e-9, `pitch=${down}`);
   });
 
   test('camera-orientation: 姿勢追従の開始と解除で視点は跳ばない', () => {
     const o = orientation();
     const before = o.effective();
     const attitude = qFromAxisAngle(norm(v3(1, 2, 3)), 0.9);
-    o.beginAttitudeFollow(attitude, POLAR);
+    o.beginAttitudeFollow(attitude);
     assert.equal(o.followingAttitude, true);
     assert.ok(sameOrientation(o.effective(), before), '追従開始で跳んだ');
-    o.endAttitudeFollow(POLAR);
+    o.endAttitudeFollow();
     assert.equal(o.followingAttitude, false);
     assert.ok(sameOrientation(o.effective(), before), '追従解除で跳んだ');
   });
 
   test('camera-orientation: 追従中は対象の姿勢ぶんだけ実効回転が回る', () => {
     const o = orientation();
-    const relative = o.stored;
-    const attitude = qFromAxisAngle(v3(0, 1, 0), Math.PI / 2);
-    o.beginAttitudeFollow(attitude, POLAR);
-    // 生の値は対象姿勢からの相対値になり、実効回転だけが元の向きを保つ。
-    assert.ok(!sameOrientation(o.stored, relative), '生の値が相対値へ読み替えられていない');
-    o.refreshAttitude(qFromAxisAngle(v3(0, 1, 0), Math.PI), POLAR);
-    const turned = o.effective();
-    assert.ok(!sameOrientation(turned, o.stored), '対象の姿勢が実効回転へ合成されていない');
+    const before = o.effective();
+    o.beginAttitudeFollow(qFromAxisAngle(v3(0, 1, 0), Math.PI / 2));
+    o.refreshAttitude(qFromAxisAngle(v3(0, 1, 0), Math.PI));
+    // 姿勢が 90° 進んだぶんだけ、実効回転も同じ軸まわりに回る。
+    const advanced = qMul(qFromAxisAngle(v3(0, 1, 0), Math.PI / 2), before);
+    assert.ok(sameOrientation(o.effective(), advanced));
   });
 
   test('camera-orientation: 姿勢が引けないフレームは直前の姿勢を保つ', () => {
     const o = orientation();
     const attitude = qFromAxisAngle(v3(0, 0, 1), 0.4);
-    o.beginAttitudeFollow(attitude, POLAR);
+    o.beginAttitudeFollow(attitude);
     const before = o.effective();
-    o.refreshAttitude(null, POLAR);
+    o.refreshAttitude(null);
     assert.ok(sameOrientation(o.effective(), before));
   });
 
   test('camera-orientation: 実効回転を書き戻すと、そのまま読み返せる', () => {
     const o = orientation();
-    o.beginAttitudeFollow(qFromAxisAngle(norm(v3(1, 1, 0)), 1.3), POLAR);
+    o.beginAttitudeFollow(qFromAxisAngle(norm(v3(1, 1, 0)), 1.3));
     const target = rotationFromEuler({ yaw: -1.4, pitch: 0.8, roll: 2.0 }, POLAR);
-    o.store(target);
+    o.setEffective(target);
     assert.ok(sameOrientation(o.effective(), target));
   });
 
   test('camera-orientation: 追従へ戻すとき、追従していなければ基準の姿勢を持ち越さない', () => {
     const o = orientation();
-    o.beginAttitudeFollow(qFromAxisAngle(v3(0, 1, 0), 1.0), POLAR);
-    o.endAttitudeFollow(POLAR);
+    o.beginAttitudeFollow(qFromAxisAngle(v3(0, 1, 0), 1.0));
+    o.endAttitudeFollow();
     const absolute = o.effective();
     // 追従していない状態から追従へ戻すと、姿勢は次の refreshAttitude まで掛からない。
     o.restoreFollow(true);
@@ -94,13 +106,11 @@ export function register(): void {
   test('camera-orientation: 姿勢追従中もオイラー経路を使う', () => {
     const o = orientation('euler');
     assert.equal(o.usesEuler, true);
-    const attitude = qFromAxisAngle(v3(0, 1, 0), 1.0);
-    o.beginAttitudeFollow(attitude, POLAR);
+    o.beginAttitudeFollow(qFromAxisAngle(v3(0, 1, 0), 1.0));
     assert.equal(o.usesEuler, true);
     const before = o.effective();
-    const stored = o.turn(0.2, 0, 0, LOCAL_UP);
+    o.turn(0.2, 0, 0, LOCAL_UP);
     assert.ok(!sameOrientation(o.effective(), before));
-    assert.ok(!sameOrientation(o.effective(), stored), '対象の姿勢が実効回転へ合成されていない');
   });
 
   test('camera-orientation: オイラー入力の往復は元の向きへ戻る', () => {
@@ -114,7 +124,8 @@ export function register(): void {
   test('camera-orientation: 入力が無ければドラッグは向きを変えない', () => {
     const o = orientation('quaternion');
     const before = o.effective();
-    assert.ok(sameOrientation(o.turnByDrag(0, 0, 0, 0, 0), before));
+    o.turnByDrag(0, 0, 0, 0, 0);
+    assert.ok(sameOrientation(o.effective(), before));
   });
 
   test('camera-orientation: 逆向きのドラッグは元の向きへ戻す', () => {
@@ -139,12 +150,14 @@ export function register(): void {
 
   test('camera-orientation: 追従中のドラッグは、対象の姿勢を保ったまま視点だけ回す', () => {
     const o = orientation('quaternion');
-    const attitude = qFromAxisAngle(norm(v3(1, 0, 1)), 0.8);
-    o.beginAttitudeFollow(attitude, POLAR);
+    o.beginAttitudeFollow(qFromAxisAngle(norm(v3(1, 0, 1)), 0.8));
     const before = o.effective();
-    const turned = o.turnByDrag(0.2, 0, 0, 0, 0);
-    // 実効回転は回り、書き戻した生の値から読み返しても同じ向きになる。
+    o.turnByDrag(0.2, 0, 0, 0, 0);
+    const turned = o.effective();
     assert.ok(!sameOrientation(turned, before));
+    assert.equal(o.followingAttitude, true);
+    // 同じ姿勢を引き直しても、回した向きはそのまま読み返せる。
+    o.refreshAttitude(qFromAxisAngle(norm(v3(1, 0, 1)), 0.8));
     assert.ok(sameOrientation(o.effective(), turned));
   });
 }

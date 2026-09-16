@@ -26,16 +26,15 @@ export function ephemerisContextFor(epoch: TdbJulianDate): Readonly<EphemerisCon
 }
 
 // スナップショットの暦情報が、いまのカタログで復元できるか。**元期は照合しない** —
-// 元期はそのランを定義する値で、読み込む側がそれを継ぐ。照合するのは「その元期が選ぶ
-// 暦データが、いま手元にあるものと同じか」だけ。
+// 元期はそのランを定義する値で、読み込む側がそれを継ぐ(SAVE.md「読み込み」)。照合するのは
+// 「その元期が選ぶ暦データが、いま手元にあるものと同じか」。
 export function isEphemerisContextRestorable(saved: unknown): boolean {
-  if (saved === undefined) return true;
   if (!isValidContext(saved)) return false;
-  return isEphemerisContextCompatible(saved, ephemerisContextFor(createJulianDate('TDB', saved.epochJdTdb)));
+  const current = ephemerisContextFor(createJulianDate('TDB', saved.epochJdTdb));
+  return saved.profileId === current.profileId &&
+    saved.packId === current.packId &&
+    saved.packFormatVersion === current.packFormatVersion;
 }
-
-// 'legacy' は暦情報を持たない古いスナップショット。'compatible' はそのまま復元してよい。
-type EphemerisContextStatus = 'legacy' | 'compatible' | 'incompatible';
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
@@ -56,29 +55,4 @@ function isValidContext(value: unknown): value is EphemerisContext {
     typeof context.packFormatVersion === 'number' &&
     Number.isSafeInteger(context.packFormatVersion) &&
     context.packFormatVersion > 0;
-}
-
-// 保存された暦情報を current と照合した結果。
-export function ephemerisContextStatus(
-  saved: unknown,
-  current: Readonly<EphemerisContext>,
-): EphemerisContextStatus {
-  // 不在だけが移行経路。null や壊れた値は「暦情報を持つが読めない」ので legacy へ寄せない。
-  if (saved === undefined) return 'legacy';
-  if (!isValidContext(saved)) return 'incompatible';
-
-  // 元期は継承する値なので比べない(SAVE.md「読み込み」)。
-  return saved.profileId === current.profileId &&
-    saved.packId === current.packId &&
-    saved.packFormatVersion === current.packFormatVersion
-    ? 'compatible'
-    : 'incompatible';
-}
-
-// legacy と compatible をまとめて「復元してよい」と答える。
-export function isEphemerisContextCompatible(
-  saved: unknown,
-  current: Readonly<EphemerisContext>,
-): boolean {
-  return ephemerisContextStatus(saved, current) !== 'incompatible';
 }

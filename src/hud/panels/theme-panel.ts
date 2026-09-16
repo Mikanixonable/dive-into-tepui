@@ -1,4 +1,4 @@
-import { currentThemePalette, THEME_PRESETS } from '../../theme';
+import { THEME_PRESETS } from '../../theme';
 import { Button } from '../widgets';
 
 // 配色の設定面。テーマプリセットをボタン一覧で並べ、選ばれた配色の id を onSelect で外へ返す。
@@ -9,8 +9,8 @@ export class ThemePanel {
   // 配色が選ばれたときに呼ばれる。
   public onSelect: ((id: string) => void) | null = null;
 
-  // 現在適用中のテーマを検出し、プリセットの一覧をボタン化して並べる。
-  public constructor() {
+  // プリセットの一覧をボタン化して並べ、activeId のボタンを点灯させておく。
+  public constructor(activeId: string) {
     this.element = document.createElement('div');
     this.element.className = 'sv-theme-options';
 
@@ -41,7 +41,6 @@ export class ThemePanel {
       themeButtons.set(palette.id, themeButton);
       this.element.appendChild(themeButton.element);
     }
-    // 起動時点で適用されているテーマのボタンを点灯させておく。
-    lightOnly(currentThemePalette().id);
+    lightOnly(activeId);
   }
 }
