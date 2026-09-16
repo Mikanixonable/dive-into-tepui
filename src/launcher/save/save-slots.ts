@@ -233,6 +233,7 @@ export class SaveSlots {
       return false;
     }
 
+    // 本体が置けてから索引へ載せ、遊んだ時刻を履歴とスロットの両方へ反映する。
     history.snapshots.unshift(meta);
     history.lastPlayedAtReal = meta.createdAtReal;
     const slot = this.index.slots.find((s) => s.id === slotId);
@@ -347,6 +348,7 @@ export class SaveSlots {
 
   // 索引のどこからも参照されていない本体キーを消す。
   private pruneOrphans(): void {
+    // 索引が指す本体(手動セーブと復帰点)を集めてから、それ以外のキーを消す。
     const referenced = new Set<string>();
     for (const slot of this.index.slots) {
       for (const history of slot.stages) {
