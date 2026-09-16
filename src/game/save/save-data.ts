@@ -141,6 +141,8 @@ export interface EnemySaveData extends EntitySaveData {
   // マーカー色・集団識別と、マーカー・軌道線の色。
   readonly accent: string | number;
   readonly orbitLineColor: string | number;
+  // 表示色とは独立した、同時発砲数を共有する攻撃グループ。旧セーブには無い。
+  readonly attackGroupId?: string;
   readonly waveId?: number;
   // 陣形に属する敵だけが持つ識別子と役割。無ければ単体敵として復元する。
   readonly formationId?: string;
