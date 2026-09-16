@@ -1,7 +1,6 @@
 import { kinematicState } from '../../../physics/kinematic-state';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import { enemyDestroyFragments } from './debris-piece';
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { DynamicMotion } from '../dynamic-motion';
 import type { EntityRegistry } from '../entity-registry';
 import type { StageOutcome, EnemyDeathCause } from '../../stages/stage-outcome';
@@ -12,7 +11,6 @@ import type { Vec3 } from '../../../math/vec3';
 
 export interface EnemyReactionPort {
   readonly motion: DynamicMotion;
-  readonly worldSfx: WorldSfx;
   readonly effects: FlashEffects;
   readonly modelScale: number;
   applyBulletDamage(damage: number, impactPoint: Vec3): void;
@@ -63,7 +61,7 @@ export class EnemyReactions {
     activeStage.scoreCounter.recordHit();
     this.port.applyBulletDamage(damage, impactPoint);
     if (this.port.hasHealth()) {
-      this.impactEffect(bulletType, impactPoint);
+      this.impactEffect(bulletType, impactPoint, registry);
       return;
     }
     this.port.motion.alive = false;
@@ -71,8 +69,8 @@ export class EnemyReactions {
     this.destroyEffect(registry);
   }
 
-  private impactEffect(bulletType: BulletType, impactPoint: Vec3): void {
-    this.port.worldSfx.enemyHit();
+  private impactEffect(bulletType: BulletType, impactPoint: Vec3, registry: EntityRegistry): void {
+    registry.events.record({ kind: 'enemyStruckByBullet' });
     const state = kinematicState<'eci'>(this.port.motion.state.t, impactPoint, this.port.motion.state.v);
     if (bulletType === 'plasma') this.port.effects.spawnPlasmaFlash(state);
     else this.port.effects.spawnBulletFlash(state);
@@ -85,7 +83,7 @@ export class EnemyReactions {
   ): void {
     if (!this.port.applyImpactDamage(damageSpeed)) return;
     if (this.port.hasHealth()) {
-      this.port.worldSfx.clank();
+      registry.events.record({ kind: 'enemyDamagedByContact' });
       this.port.effects.spawnGasPuff(this.port.motion.state);
       return;
     }
@@ -95,11 +93,10 @@ export class EnemyReactions {
   }
 
   private destroyEffect(registry: EntityRegistry): void {
-    this.port.worldSfx.explosion();
+    registry.events.record({ kind: 'shipExploded' });
     this.port.effects.spawnEnemyDestroyFlash(this.port.motion.state, this.port.modelScale);
     for (const piece of enemyDestroyFragments(
-      this.port.motion.state, this.port.modelScale, this.port.worldSfx, this.port.effects,
-      registry.idAllocators,
+      this.port.motion.state, this.port.modelScale, this.port.effects, registry.idAllocators,
     )) registry.add(piece);
   }
 }
