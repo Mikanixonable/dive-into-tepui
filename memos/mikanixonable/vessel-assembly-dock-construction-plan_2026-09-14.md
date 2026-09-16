@@ -3,7 +3,7 @@
 作成日: 2026-09-14
 実装の現在基準コミット: d3e8291dd
 最終レビュー: 2026-09-16
-状態: 実装中。手順5まで完了し、手順6から進める。
+状態: 実装中。手順8まで完了し、手順9から進める。
 
 ## 目的
 
@@ -305,111 +305,6 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 - 現行のランダム部位ダメージと敵挙動に回帰がない。
 
 ## 実装手順
-
-### 6. Player を ModularShip へ移す
-
-#### 目的
-
-既定自機の制御・戦闘機能を、player 専用の船体クラスではなく、能力を持つ ModularShip で動かす。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| src/game/ship/modular-ship.ts（新規） | ShipAssembly、motion、view、plan、inspection、既存の player／enemy 判定、module capability を所有する。 |
-| src/game/ship/modular-ship-motion.ts（新規） | assembly 集計を DynamicMotion の質量・推力・接触へ渡す。 |
-| src/game/ship/ship-capabilities.ts（新規） | cockpit、fire、panel、dock、decouple の小さい能力契約を提供する。 |
-| src/game/player/player.ts | 状態と処理を ModularShip と既存の狭い subsystem へ移し、移行完了時に削除する。 |
-| src/game/player/player-motion.ts | ModularShipMotion へ統合し、移行完了時に削除する。 |
-| src/game/player/player-loadout.ts | 既定戦闘船 preset へ置換後に削除し、ship-default-parts.ts は敵専用として残す。 |
-| src/game/player/fire-control.ts、belt.ts、power.ts、radiator.ts、throttle 関連 | 対応 module instance を所有者として読み、未搭載時は能力を公開しない。 |
-| src/game/dynamic/dynamic-entity/controllable.ts | AttachedBoosters 具体型を除き、module capability を読む。 |
-| src/game/dynamic/dynamic-system.ts | isPlayer と instanceof Player を、cockpit能力を持つ ModularShip の player 判定へ置換する。 |
-| src/game/stages/stage.ts、stage0.ts、stage00.ts、stage1.ts、stage2.ts | Player 生成を既定戦闘船 preset の ModularShip 生成へ置換する。 |
-| src/game/stages/stage-utils/logistics.ts | 補給対象を ModularShip の ammo／fuel capability で選ぶ。 |
-| src/game/stages/stage-utils/wave-attack.ts、status-panel.ts | Player 具象型を player 判定とcockpit能力を持つ船体の最小契約へ変える。 |
-| src/game/stages/stage-debug.ts、stage-debug-load.ts、stage-debug-alt-system.ts | debug stage の Player 生成・参照を ModularShip preset へ揃える。 |
-| src/game/dynamic/dynamic-entity/enemy.ts | 追跡対象の Player 型を最小運動契約へ変える。 |
-| src/game/creative/manual-spawn.ts、object-placement.ts | 手動生成と配置を ModularShip preset へ揃える。 |
-| src/game/pickable/player-inspection.ts | ship-inspection.ts へ置換し、部品列と導出役割を表示する。 |
-| src/game/pickable/part-windows.ts、object-windows.ts | Player 具象型を module capability と ship inspection へ置換する。 |
-| src/game/targeter.ts、src/game/marker/lead-markers.ts | ターゲットと偏差表示を player 所属 ModularShip の最小運動契約へ変える。 |
-| src/game/marker/player-markers.ts、ship-marker-renderer.ts | player 判定された ModularShip と導出役割から marker を決める。 |
-| src/game/lines/entity-line-manager.ts | isPlayer／isBase の別ループを ModularShip と既存の player 判定へ統合する。 |
-| tests/game/modular-ship-control.test.ts（新規） | cockpit の有無、既定操作、補給、plan、武装、熱、パネルを検証する。 |
-
-#### 達成条件と検証
-
-- Player クラスへの import が 0 件で、既定ステージと CREATIVE の自機が ModularShip になる。
-- cockpit を失った船は操作対象にできず、thruster／tank の不足は命令を受けても加速を生まない。
-- 既定自機の HUD、射撃、弾薬ベルト、熱、電力、ラジエーター、軌道計画が従来どおり動く。
-- MetalEnemy と ProteinEnemy のファイル・モデル・調整値を変更しない。
-- npm run typecheck、npm run test:game、npm run test:render を通す。
-
-### 7. Base を基地 preset へ置換する
-
-#### 目的
-
-Base 特例を削除し、cockpit、tank、solar_panel、radiator、船体側面のdockを持つModularShipのpresetとして基地機能を生じさせる。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| src/game/dynamic/dynamic-entity/base.ts | 生成、保存、inspection を置換後に削除する。 |
-| src/game/dynamic/dynamic-entity/base-motion.ts | ModularShipMotion へ置換後に削除する。 |
-| src/game/dynamic/dynamic-entity/base-collision.ts | compound shape へ置換後に削除する。 |
-| src/render/dynamic/dynamic-entity/base-view.ts | ModularShipView へ置換後に削除する。 |
-| tools/model-builder/base-station.mjs | ship module asset へ置換後に削除する。 |
-| tools/model-builder/export-base-collision.mjs | Base BVH と base-collision check を削除する。 |
-| src/game/creative/object-placement.ts | 「基地」を基地presetの生成へ読み替える。 |
-| src/game/creative/object-placer-panel.ts | kind と class ではなく ship preset を選ぶ入力へ変える。 |
-| src/game/creative/placement-validation.ts | Base 固有の月基準制約を「基地 preset」の配置制約として扱う。 |
-| src/game/dynamic/dynamic-entity/entity-dictionary.ts | base kind の復元を取り除き、基地 preset の ship 経路へ揃える。 |
-| src/game/run-summary.ts | isBase と Base.money 集計を除く。 |
-| src/launcher/save/slot-data.ts、snapshot-service.ts、save-browser/snapshot-pane.ts | money metadata と表示を除く。 |
-| tests/game/base-collision.test.ts | 削除し、compound cylinder と基地 preset の接触テストへ置換する。 |
-| tests/game/creative-placement-validation.test.ts | 「基地」preset の月基準制約と ModularShip 上限判定を検証する。 |
-| package.json | base-collision、base-collision:check と CI 呼び出しを削除する。 |
-
-#### 達成条件と検証
-
-- rg で Base、BaseMotion、BaseView、baseStation、base collision asset の実行時参照が 0 件になる。
-- CREATIVE の「基地」preset は有限質量、HP、燃料を持ち、通常船と同じ操作・接触・喪失経路を使う。
-- preset は健全な cockpitとdockを持つため、導出役割が「基地」になる。標準設備としてtank、solar_panel、radiatorを2個ずつ配置する。
-- npm run typecheck、npm run test:game、npm run test:render を通す。
-
-### 8. AttachedBoosters と DetachedBooster をデカプラー分割へ置換する
-
-#### 目的
-
-専用の段管理をなくし、同じ assembly の一部をデカプラーで 2 隻へ分ける。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| src/game/ship/ship-decoupling.ts（新規） | 対象 decoupler 選択、assembly split、状態分配、分離 impulse、spawn を原子的に行う。 |
-| src/game/player/attached-boosters.ts | ship-decoupling へ置換後に削除する。 |
-| src/game/player/attached-booster-motion.ts | ModularShipMotion へ置換後に削除する。 |
-| src/game/player/booster-stack.ts | booster module の燃焼計算へ移し、移行完了時に削除する。 |
-| src/game/dynamic/dynamic-entity/detached-booster.ts | ModularShip spawn へ置換後に削除する。 |
-| src/game/dynamic/dynamic-entity/detached-booster-motion.ts | ModularShipMotion へ置換後に削除する。 |
-| src/render/dynamic/player/attached-boosters-view.ts | ModularShipView の module 表示へ置換後に削除する。 |
-| src/render/dynamic/dynamic-entity/detached-booster-view.ts | ModularShipView へ置換後に削除する。 |
-| src/render/dynamic/booster-model.ts | module asset へ置換後に削除する。 |
-| tools/model-builder/booster.mjs | ship-modules.mjs へ統合する。 |
-| src/game/game.ts | attach callback を除き、デカプラー直接クリックとブースター点火操作を active ship の decouple／booster capability へ渡す。 |
-| src/input/key-mapping.ts、src/game/hud/windows/help-content.ts | [5]／[6] の割り当て、表示、aria shortcut を削除し、直接操作の説明へ置換する。 |
-| src/game/hud/panels/burn-management-panel.ts | 固定最大 4 段ではなく、現在の decoupler と booster module 列を表示する。 |
-| tests/game/ship-decoupling.test.ts（新規） | 所有権、ID、HP、燃料、点火、重心、運動量、衝突猶予、保存を検証する。 |
-
-#### 達成条件と検証
-
-- AttachedBoosters と DetachedBooster の import が 0 件で、旧互換 facade が残らない。
-- 接続中と分離後が同じ booster module state を 1 回だけ進め、燃料が二重消費されない。
-- 分離直後の二つのassemblyは猶予中に自己衝突せず、猶予後は通常接触へ戻る。
-- npm run typecheck、npm run test:game、npm run test:physics、npm run test:render を通す。
 
 ### 9. dock state、ドッキング、修理を実装する
 
