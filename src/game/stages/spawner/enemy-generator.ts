@@ -11,7 +11,6 @@ import { frameOfCelestialBody, toFrameState } from '../../../physics/frame';
 import { stateFromOrbitalElements } from '../../../physics/elements';
 import { randSym } from '../../../math/random';
 import { addScaled, cross, len, norm, rotateAxis, scale, sub, v3, type Vec3 } from '../../../math/vec3';
-import { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { MetalEnemy } from '../../dynamic/dynamic-entity/metal-enemy';
@@ -36,10 +35,10 @@ function driftingAttitude(): { q: Quat; w: Vec3 } {
 }
 
 // state に、無秩序に漂う金属の敵を生成する。
-export function generateDriftingEnemy(name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number, worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators, attackGroupId?: string): Enemy {
+export function generateDriftingEnemy(name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators, attackGroupId?: string): Enemy {
   return new MetalEnemy(
     { name, state, ...driftingAttitude(), accent, orbitLineColor, attackGroupId, typeIndex: null },
-    worldSfx, fx, idAllocators, scene,
+    fx, idAllocators, scene,
   );
 }
 
@@ -47,7 +46,7 @@ export function generateDriftingEnemy(name: string, state: KinematicState, accen
 // formationId と役割を持ち、属さない個体は単体敵になる。
 export function generateProteinEnemy(
   name: string, state: KinematicState, assetId: ProteinAssetId, display: ProteinDisplaySettings,
-  worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
+  fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
   formationId?: string, formationRole?: FormationRole,
 ): Enemy {
   return new ProteinEnemy(
@@ -56,7 +55,7 @@ export function generateProteinEnemy(
       accent: 0xffffff, orbitLineColor: 0xffffff, attackGroupId: formationId,
       assetId, display, formationId, formationRole,
     },
-    worldSfx, fx, idAllocators, scene,
+    fx, idAllocators, scene,
   );
 }
 
@@ -66,7 +65,7 @@ export function generateProteinEnemy(
 // (SPEC/PROTEIN.md「出現」節)、実体ではなく assetId と build の組を返す。
 export function proteinFormationSpawns(
   name: string, centerState: KinematicState, playerPosition: Vec3, display: ProteinDisplaySettings, formationId: string,
-  worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
+  fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
 ): readonly { assetId: ProteinAssetId; build: () => Enemy }[] {
   // 盾役はプレイヤー側、エネルギー役は反対側へずらした状態に置く
   const towardPlayer = norm(sub(playerPosition, centerState.r));
@@ -76,15 +75,15 @@ export function proteinFormationSpawns(
   return [
     {
       assetId: 'pdb-5i4r',
-      build: () => generateProteinEnemy(`${name}-ATTACKER`, centerState, 'pdb-5i4r', display, worldSfx, fx, scene, idAllocators, formationId, 'attacker'),
+      build: () => generateProteinEnemy(`${name}-ATTACKER`, centerState, 'pdb-5i4r', display, fx, scene, idAllocators, formationId, 'attacker'),
     },
     {
       assetId: 'pdb-8ruc-rubisco',
-      build: () => generateProteinEnemy(`${name}-SHIELD`, shieldState, 'pdb-8ruc-rubisco', display, worldSfx, fx, scene, idAllocators, formationId, 'shield'),
+      build: () => generateProteinEnemy(`${name}-SHIELD`, shieldState, 'pdb-8ruc-rubisco', display, fx, scene, idAllocators, formationId, 'shield'),
     },
     {
       assetId: 'pdb-6n2y-atp-synthase',
-      build: () => generateProteinEnemy(`${name}-ENERGY`, energyState, 'pdb-6n2y-atp-synthase', display, worldSfx, fx, scene, idAllocators, formationId, 'energy'),
+      build: () => generateProteinEnemy(`${name}-ENERGY`, energyState, 'pdb-6n2y-atp-synthase', display, fx, scene, idAllocators, formationId, 'energy'),
     },
   ];
 }
@@ -93,18 +92,18 @@ export function proteinFormationSpawns(
 export function generatePhasedEnemy(
   name: string, base: KinematicState, attractors: readonly CelestialBody[], dAlong: number,
   accent: string | number, orbitLineColor: string | number,
-  worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
+  fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
 ): Enemy {
   const center = strongestAttractor(base.r, attractors, base.t);
   const state = addPrimaryRelative(center.stateAt(base.t), phasedState(base, center, dAlong));
-  return generateDriftingEnemy(name, state, accent, orbitLineColor, worldSfx, fx, scene, idAllocators);
+  return generateDriftingEnemy(name, state, accent, orbitLineColor, fx, scene, idAllocators);
 }
 
 // base から dAlong だけ進め、高度を altitudeOffset ぶんずらした円軌道上に敵を生成する。
 export function generateCoellipticEnemy(
   name: string, base: KinematicState, attractors: readonly CelestialBody[], dAlong: number, altitudeOffset: number,
   accent: string | number, orbitLineColor: string | number,
-  worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
+  fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
 ): Enemy {
   const center = strongestAttractor(base.r, attractors, base.t);
   const phased = phasedState(base, center, dAlong);
@@ -114,31 +113,31 @@ export function generateCoellipticEnemy(
     scale(norm(phased.r), radius),
     scale(norm(phased.v), Math.sqrt(center.def.mu / radius)),
   );
-  return generateDriftingEnemy(name, addPrimaryRelative(center.stateAt(base.t), rel), accent, orbitLineColor, worldSfx, fx, scene, idAllocators);
+  return generateDriftingEnemy(name, addPrimaryRelative(center.stateAt(base.t), rel), accent, orbitLineColor, fx, scene, idAllocators);
 }
 
 // base から dAlong だけ進め、軌道面をわずかに傾けた交差軌道上に敵を生成する。
 export function generateCrossingEnemy(
   name: string, base: KinematicState, attractors: readonly CelestialBody[], dAlong: number,
   accent: string | number, orbitLineColor: string | number,
-  worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
+  fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
 ): Enemy {
   const center = strongestAttractor(base.r, attractors, base.t);
   const phased = phasedState(base, center, dAlong);
   const rel = kinematicState<'primaryRel'>(base.t, phased.r, rotateAxis(phased.v, norm(phased.r), (0.4 * Math.PI) / 180));
-  return generateDriftingEnemy(name, addPrimaryRelative(center.stateAt(base.t), rel), accent, orbitLineColor, worldSfx, fx, scene, idAllocators);
+  return generateDriftingEnemy(name, addPrimaryRelative(center.stateAt(base.t), rel), accent, orbitLineColor, fx, scene, idAllocators);
 }
 
 // base から dAlong だけ進め、速度を増して離心軌道上に敵を生成する。
 export function generateEllipticEnemy(
   name: string, base: KinematicState, attractors: readonly CelestialBody[], dAlong: number,
   accent: string | number, orbitLineColor: string | number,
-  worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
+  fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
 ): Enemy {
   const center = strongestAttractor(base.r, attractors, base.t);
   const phased = phasedState(base, center, dAlong);
   const rel = kinematicState<'primaryRel'>(base.t, phased.r, scale(phased.v, 1.006));
-  return generateDriftingEnemy(name, addPrimaryRelative(center.stateAt(base.t), rel), accent, orbitLineColor, worldSfx, fx, scene, idAllocators);
+  return generateDriftingEnemy(name, addPrimaryRelative(center.stateAt(base.t), rel), accent, orbitLineColor, fx, scene, idAllocators);
 }
 
 // base の位置で最も強く引く天体を回る、base と無関係な軌道要素から作るモルニヤ軌道の敵。
@@ -146,7 +145,7 @@ export function generateEllipticEnemy(
 export function generateMolniyaEnemy(
   name: string, base: KinematicState, attractors: readonly CelestialBody[], raan: number, nu: number,
   accent: string | number, orbitLineColor: string | number,
-  worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
+  fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
 ): Enemy {
   const center = strongestAttractor(base.r, attractors, base.t);
   const rp = center.def.radius + 1200e3;
@@ -155,7 +154,7 @@ export function generateMolniyaEnemy(
   const e = (ra - rp) / (ra + rp);
   const orbit = stateFromOrbitalElements(base.t, a, e, (63.4 * Math.PI) / 180, raan, -Math.PI / 2, nu, center.def.mu);
   const rel = kinematicState<'primaryRel'>(base.t, orbit.r, orbit.v);
-  return generateDriftingEnemy(name, addPrimaryRelative(center.stateAt(base.t), rel), accent, orbitLineColor, worldSfx, fx, scene, idAllocators);
+  return generateDriftingEnemy(name, addPrimaryRelative(center.stateAt(base.t), rel), accent, orbitLineColor, fx, scene, idAllocators);
 }
 
 // 機首を中心天体(state の位置で最も強く引く天体)に対するプログレードへ向け、回転していない
@@ -163,7 +162,7 @@ export function generateMolniyaEnemy(
 export function generateApproachingEnemy(
   name: string, state: KinematicState, attractors: readonly CelestialBody[], accent: number, orbitLineColor: number,
   typeIndex: number, waveId: number | undefined,
-  worldSfx: WorldSfx, fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
+  fx: FlashEffects, scene: THREE.Scene, idAllocators: EntityIdAllocators,
   attackGroupId?: string,
 ): Enemy {
   const center = strongestAttractor(state.r, attractors, state.t);
@@ -181,7 +180,6 @@ export function generateApproachingEnemy(
       waveId,
       typeIndex,
     },
-    worldSfx,
     fx,
     idAllocators,
     scene,

@@ -1,6 +1,5 @@
 import type * as THREE from 'three/webgpu';
 import { v3, type Vec3 } from '../../../math/vec3';
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import {
   ENEMY_MAX_HP, ENEMY_MODEL_SCALE, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore,
@@ -46,7 +45,6 @@ export class MetalEnemy extends PartBasedEnemy {
   // View の機体テンプレートと、それに対応する Motion の接触半径を同じ typeIndex で選ぶ。
   public constructor(
     init: MetalEnemyPlacement | EnemyRestore,
-    worldSfx: WorldSfx,
     fx: FlashEffects,
     idAllocators: EntityIdAllocators,
     scene?: THREE.Scene,
@@ -58,7 +56,7 @@ export class MetalEnemy extends PartBasedEnemy {
       : new Stage0MetalEnemyView(accent, typeIndex, ENEMY_MODEL_SCALE, scene);
     super(
       init, metalView, typeIndex === null ? DRIFTING_INERTIA : TYPED_INERTIA,
-      metalEnemyCollisionRadius(typeIndex), worldSfx, fx, idAllocators,
+      metalEnemyCollisionRadius(typeIndex), fx, idAllocators,
       createShipDefaultParts(ENEMY_MAX_HP),
     );
     this.typeIndex = typeIndex;
