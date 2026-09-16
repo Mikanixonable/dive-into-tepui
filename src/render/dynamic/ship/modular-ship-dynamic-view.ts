@@ -7,7 +7,6 @@ import { PlayerMarkers } from '../../../game/marker/player-markers';
 import type { OrbitReference } from '../../../game/orbit-reference';
 import type { BeltNodes } from '../player/belt-view';
 import { BeltView } from '../player/belt-view';
-import type { RadiatorDisplay, SolarDeploy } from '../player/folding-panels-view';
 import { RcsEffects } from '../player/rcs-effects';
 import { ReentryEffects } from '../player/reentry-effects';
 import { ThrustEffects } from '../player/thrust-effects';
@@ -30,8 +29,6 @@ export interface ModularShipRenderSource extends DynamicRenderSource {
   readonly magsLeft: number;
   readonly roundsInMag: number;
   readonly averageMuzzleVelocity: number;
-  readonly solar: SolarDeploy;
-  readonly radiator: RadiatorDisplay;
   readonly orbitAxesReference: KinematicState | null;
 }
 
@@ -70,11 +67,11 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
   ): void {
     this.modules.sync(source.assembly, source.centerOffset);
     const origin = viewFrame.camera.floatingOrigin;
-    const effectPosition = displayed?.r ?? null;
     const effectVisible = this.object.visible;
     const cameraQuat = viewFrame.camera.camera.quaternion;
     const zoomActive = viewFrame.camera.zoomed;
     const thrustAnchor = this.firstAnchor(source.assembly, ['thruster', 'booster'], 'thrust');
+    const rcsAnchors = this.anchors(source.assembly, 'rcs', 'rcs:');
 
     this.object.updateWorldMatrix(true, true);
     this.thrustEffects.syncFromAnchor(
@@ -87,11 +84,10 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
       viewFrame.style,
       viewFrame.displayTime,
     );
-    this.rcsEffects.sync(
-      origin,
-      effectPosition,
+    this.rcsEffects.syncFromAnchors(
+      this.object,
+      rcsAnchors,
       source.torque,
-      source.attitude,
       effectVisible,
       cameraQuat,
       zoomActive,
@@ -111,6 +107,19 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
       source.orbitAxesReference,
     );
     if (source.active && zoomActive) this.object.visible = false;
+  }
+
+  private anchors(
+    assembly: ShipAssembly,
+    kind: 'rcs',
+    prefix: string,
+  ): readonly THREE.Object3D[] {
+    const anchors: THREE.Object3D[] = [];
+    for (const module of assembly.modules) {
+      if (module.kind !== kind || module.hp <= 0) continue;
+      anchors.push(...this.modules.semanticAnchors(module.id, prefix));
+    }
+    return anchors;
   }
 
   private firstAnchor(

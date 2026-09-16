@@ -588,10 +588,9 @@ export class ModularShip extends Ship implements Controllable {
     orbitReference: OrbitReference | undefined,
   ): ModularShipRenderSource {
     const motion = this.motion;
-    const { belt, power, radiator } = motion;
+    const { belt } = motion;
     // 指令の有無は加速度の大きさで決まるので、噴射していないフレームは null として渡す。
     const thrustAcceleration = this.throttle.thrustAccelVec;
-    const radiatorPanel = (side: RadiatorSide) => ({ wear: radiator.wearOf(side), ...radiator.foldThetas(side) });
     return {
       ...super.renderSource(viewFrame, visible, active, orbitReference),
       assembly: this.assembly,
@@ -606,8 +605,6 @@ export class ModularShip extends Ship implements Controllable {
       magsLeft: this.magsLeft,
       roundsInMag: this.roundsInMag,
       averageMuzzleVelocity: this.averageMuzzleVelocity,
-      solar: { up: power.deployOf('up'), down: power.deployOf('down') },
-      radiator: { up: radiatorPanel('up'), down: radiatorPanel('down') },
       orbitAxesReference: orbitReference?.state ?? null,
     };
   }

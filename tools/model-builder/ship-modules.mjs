@@ -95,7 +95,12 @@ function addKindDetails(root, definition) {
       for (const direction of [
         new THREE.Vector3(1, 0, 0), new THREE.Vector3(-1, 0, 0),
         new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, -1, 0),
-      ]) anchor(root, `rcs:${direction.x},${direction.y}`, direction.x * radius, direction.y * radius, 0, direction);
+      ]) anchor(
+        root, `rcs:${direction.x},${direction.y}`,
+        direction.x * radius, direction.y * radius, definition.length * 0.35, direction,
+      );
+      anchor(root, 'rcs:roll:+', radius, 0, 0, new THREE.Vector3(0, -1, 0));
+      anchor(root, 'rcs:roll:-', radius, 0, 0, new THREE.Vector3(0, 1, 0));
       break;
     case 'weapon':
       cylinderBody(root, definition, materials.dark);
@@ -106,7 +111,7 @@ function addKindDetails(root, definition) {
         root.add(barrel);
         anchor(root, `muzzle:${x > 0 ? 'right' : 'left'}`, x, 0, definition.length / 2 + 1.15);
       }
-      anchor(root, 'belt', 0, -radius * 0.65, 0);
+      anchor(root, 'belt', 0, -radius * 0.65, 0, new THREE.Vector3(1, 0, 0));
       break;
     case 'armor':
       cylinderBody(root, definition, materials.armor, radius * 1.04);

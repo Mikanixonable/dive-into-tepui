@@ -223,4 +223,25 @@ export function register(): void {
     const varied = statesOverTimes(scene, OTHER_DISPLAY_TIMES, syncAt);
     assert.ok(varied.size > 1, '表示時刻を変えても揺らぎが動かない');
   });
+
+  test('dynamic view source: module RCS anchor の位置と向きから噴射を選ぶ', () => {
+    const scene = new THREE.Scene();
+    const effects = new RcsEffects(scene, 'entity-anchor');
+    const root = new THREE.Object3D();
+    root.position.set(10, 20, 30);
+    const anchor = new THREE.Object3D();
+    anchor.position.set(2, 0, 0);
+    // anchor +Z を +Y の排気方向へ向ける。反力は -Y なので -Z torque を生む。
+    anchor.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 1, 0));
+    root.add(anchor);
+    root.updateWorldMatrix(true, true);
+
+    effects.syncFromAnchors(
+      root, [anchor], v3(0, 0, -1), true, new THREE.Quaternion(), false, DISPLAY_TIME,
+    );
+
+    assert.equal(scene.children[0]!.visible, true);
+    assert.deepEqual(scene.children[0]!.position.toArray(), [12, 20.55, 30]);
+    effects.dispose(scene);
+  });
 }

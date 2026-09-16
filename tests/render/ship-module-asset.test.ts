@@ -66,6 +66,7 @@ export function register(): void {
     const expected: Readonly<Record<string, readonly string[]>> = {
       thruster: ['thrust'],
       booster: ['thrust'],
+      rcs: ['rcs:1,0', 'rcs:-1,0', 'rcs:0,1', 'rcs:0,-1', 'rcs:roll:+', 'rcs:roll:-'],
       weapon: ['muzzle:left', 'muzzle:right', 'belt'],
       radiator: ['panel-hinge'],
       solar_panel: ['panel-hinge'],

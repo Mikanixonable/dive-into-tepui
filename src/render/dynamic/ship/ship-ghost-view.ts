@@ -32,6 +32,7 @@ export class ShipGhostView {
   ) {
     this.object.name = 'ship-ghost';
     this.object.visible = false;
+    markOverlay(this.object);
     if (addToScene) scene?.add(this.object);
   }
 
@@ -60,9 +61,9 @@ export class ShipGhostView {
     const model = this.modelFactory(modelId);
     if (!(model instanceof THREE.Object3D)) throw new Error(`ship model factory returned no Object3D: ${modelId}`);
     this.prepareGhostMaterials(model);
-    markOverlay(model);
     model.traverse((object) => { object.renderOrder = 0; });
     this.object.add(model);
+    markOverlay(this.object);
     this.model = model;
     this.modelId = modelId;
   }
@@ -114,15 +115,16 @@ export class ShipGhostView {
   }
 
   private ghostMaterial(source: THREE.Material): THREE.Material {
-    const material = source.clone();
-    material.transparent = true;
-    material.opacity = GHOST_OPACITY;
-    material.depthTest = true;
-    material.depthWrite = false;
-    const colored = material as THREE.Material & { color?: THREE.Color };
-    colored.color?.set(VALID_COLOR);
-    material.needsUpdate = true;
-    return material;
+    return new THREE.MeshBasicMaterial({
+      name: `${source.name}:construction-ghost`,
+      color: VALID_COLOR,
+      transparent: true,
+      opacity: GHOST_OPACITY,
+      depthTest: true,
+      depthWrite: false,
+      side: source.side,
+      toneMapped: false,
+    });
   }
 
   private tint(color: number): void {

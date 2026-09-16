@@ -34,8 +34,8 @@ export class DockSnapGuideView {
     this.object.name = 'dock-snap-guide';
     this.object.visible = false;
     this.line.renderOrder = 1;
-    markOverlay(this.line);
     this.object.add(this.line);
+    markOverlay(this.object);
     if (addToScene) scene?.add(this.object);
   }
 

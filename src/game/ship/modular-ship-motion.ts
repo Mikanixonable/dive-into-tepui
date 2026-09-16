@@ -1,5 +1,5 @@
 import { cross, add, v3, type Vec3 } from '../../math/vec3';
-import { qRotate } from '../../math/quat';
+import { LOCAL_RIGHT, qRotate } from '../../math/quat';
 import type { Attitude } from '../../physics/attitude';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
@@ -211,6 +211,7 @@ export class ModularShipMotion extends DynamicMotion {
       compoundShape: shape.shape,
     });
     this.belt = new BeltController(this, systems.beltLinkCount ?? 18);
+    this.synchronizeBeltMount(shape);
     this.radiator = new RadiatorSystem(
       this,
       (side, other, contact, services) => (
@@ -255,7 +256,29 @@ export class ModularShipMotion extends DynamicMotion {
       compoundShape: next.shape,
     });
     this.physicsShapeValue = next;
+    this.synchronizeBeltMount(next);
     this.reset(nextState);
+  }
+
+  private synchronizeBeltMount(shape: ShipPhysicsShape): void {
+    const weapon = this.assembly.modules.find(module => module.kind === 'weapon' && module.hp > 0);
+    if (weapon === undefined) return;
+    const definition = this.assembly.definition(weapon.id);
+    const transform = this.assembly.worldTransformOf(weapon.id);
+    if (definition === null || transform === null) return;
+    const moduleAnchor = v3(0, -definition.diameter * 0.325, 0);
+    const anchor = add(
+      transform.position,
+      qRotate(transform.rotation, moduleAnchor),
+    );
+    this.belt.setMount(
+      v3(
+        anchor.x - shape.centerOffset.x,
+        anchor.y - shape.centerOffset.y,
+        anchor.z - shape.centerOffset.z,
+      ),
+      qRotate(transform.rotation, LOCAL_RIGHT),
+    );
   }
 }
 

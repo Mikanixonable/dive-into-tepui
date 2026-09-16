@@ -18,7 +18,7 @@ import coastlineData from '../../src/assets/earth-coastline.json';
 import { Curve } from '../../src/render/curve';
 import { createAnnulusRing, RingMaterials } from '../../src/render/celestial/ring';
 import { buildBarrelMesh } from '../../src/render/dynamic/dynamic-entity/ejected-gun-part-view';
-import { buildPlayerShip } from '../../src/render/dynamic/player/player-view';
+import { buildLegacyPlayerShip } from './legacy-player-model';
 import { createStarSphere, type StarSphere } from '../../src/render/celestial/star-sphere';
 import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../src/render/pipeline/sun-light';
 import { SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
@@ -194,7 +194,7 @@ function circle(
 
 // 自機メッシュ 1 隻を、描画座標の position へ置く。rotation を渡すと機体の姿勢を回す。
 function shipAt(position: THREE.Vector3, rotation?: THREE.Euler): THREE.Object3D {
-  const group = buildPlayerShip();
+  const group = buildLegacyPlayerShip();
   group.position.copy(position);
   if (rotation !== undefined) group.rotation.copy(rotation);
   return group;

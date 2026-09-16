@@ -7,6 +7,7 @@ import { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { ModularShipMotion } from '../../src/game/ship/modular-ship-motion';
+import { createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { test } from '../harness';
 
 function module(definitionId: string, id: string) {
@@ -78,5 +79,22 @@ export function register(): void {
     assert.ok(Math.abs(motion.state.v.x - oldVelocity.x - expectedVelocityDelta.x) < 1e-9);
     assert.ok(Math.abs(motion.state.v.y - oldVelocity.y - expectedVelocityDelta.y) < 1e-9);
     assert.ok(Math.abs(motion.state.v.z - oldVelocity.z - expectedVelocityDelta.z) < 1e-9);
+  });
+
+  test('modular ship motion: 給弾ベルトは weapon module の semantic anchor から始まる', () => {
+    const ship = createDefaultCombatPreset();
+    const motion = new ModularShipMotion(ship, kinematicState<'eci'>(0, v3(), v3()), attitude());
+    const transform = ship.worldTransformOf('weapon')!;
+    const definition = ship.definition('weapon')!;
+    const localAnchor = v3(0, -definition.diameter * 0.325, 0);
+    const assemblyAnchor = qRotate(transform.rotation, localAnchor);
+    const expected = v3(
+      transform.position.x + assemblyAnchor.x - motion.centerOffset.x,
+      transform.position.y + assemblyAnchor.y - motion.centerOffset.y,
+      transform.position.z + assemblyAnchor.z - motion.centerOffset.z,
+    );
+    assert.ok(Math.abs(motion.belt.anchor.x - expected.x) < 1e-9);
+    assert.ok(Math.abs(motion.belt.anchor.y - expected.y) < 1e-9);
+    assert.ok(Math.abs(motion.belt.anchor.z - expected.z) < 1e-9);
   });
 }
