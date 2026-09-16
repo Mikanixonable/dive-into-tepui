@@ -16,8 +16,7 @@ export class Stage00 extends Stage {
 
   private readonly waveAttack: WaveAttack;
 
-  // saved の型を StageSaveData に留めるのは stage.ts の StageClass 一覧に
-  // 収める都合(具象ごとの拡張型では構築シグネチャが揃わない)。
+  // 保存があれば波状攻撃の進行を引き継いで始める。
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     this.waveAttack = new WaveAttack(
@@ -43,7 +42,6 @@ export class Stage00 extends Stage {
     for (let i = 0; i < MAX_ACTIVE_AMMO_PICKUPS; i++) {
       this.logistics.spawnForPlayer(player, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST);
     }
-    // 初期状態でもランダムに敵を配置する
     this.waveAttack.spawnWave(player, (enemy) => this.addEnemy(enemy), 'random');
   }
 

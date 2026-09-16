@@ -8,8 +8,7 @@ import { EARTH, J2_EARTH, MU_EARTH, R_EARTH } from '../celestial/solar-system/ea
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { LAGRANGE_MIN_CLEARANCE_RATIO } from '../celestial/lagrange-id';
 
-// ラグランジュ点を持てる天体(惑星 + 衛星)を副天体として列挙する。軌道要素指定の基準天体も
-// これを使う(公転していない恒星を周回の中心には選べない)。
+// ラグランジュ系の副天体・軌道要素の基準天体になれる天体(= 公転しているもの)を列挙する。
 export function orbitingIdsOf(celestialBodies: CelestialBodies): readonly string[] {
   return celestialBodies.celestialMotions.filter((b) => b.kind !== 'star').map((b) => b.id);
 }

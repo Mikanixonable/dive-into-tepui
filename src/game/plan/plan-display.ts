@@ -30,9 +30,8 @@ import type { PerfCounts } from '../perf-counts';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ProjectFn } from '../../math/projection';
 
-// 近地点・遠地点アイコンを出す離心率相当値の下限。両方見つかったときの
-// (遠地点距離-近地点距離)/(遠地点距離+近地点距離) と比較し、これ未満は円に近く
-// アプシスの方向が不定なので両方隠す。
+// 近地点・遠地点アイコンを出す離心率相当値の下限。これ未満は円に近く、アプシスの方向が
+// 不定なので両方隠す。
 const APSIS_MIN_ECC = 0.01;
 
 // 計画軌道上の暦目盛の間隔・本数を決める値。

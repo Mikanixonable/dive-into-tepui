@@ -1,5 +1,4 @@
-// 星野の背景。WebGPU のポイントプリミティブは 1px 固定のため、星は小さな三角形をまとめた
-// 単一ジオメトリで描く(レンダラー非依存で確実)。
+// 星野の背景。視点中心に固定した球殻へ星空を貼り、露出に順応しない明るさで同期する。
 import * as THREE from 'three/webgpu';
 import starsTextureUrl from '../assets/8k_stars.jpg';
 import { DeferredTexture } from './deferred-texture';
@@ -8,8 +7,7 @@ import { WORLD_BACKGROUND_LAYER } from './pipeline/lit-layer';
 
 export const STAR_SHELL_RADIUS = 3.5e7; // [m] 自機中心に固定するので視差は出ない
 
-// 星野・天球グリッド・点像を置く殻の半径 [m]。殻は視点中心なので、半径を拡げても見え方は
-// 変わらない。カメラの近平面・遠平面は、どのズーム段でもこの殻を画面の四隅まで残す。
+// 星野・天球グリッド・点像を置く殻の半径 [m]。殻は視点中心なので、半径を拡げても見え方は変わらない。
 export const CELESTIAL_SHELL_RADIUS = 1.35e10;
 
 // 殻の上へ置く点像の板の一辺 [m]。角の広がりへ殻の半径を掛けたもの。
@@ -61,7 +59,7 @@ export function createStars(brightness: FixedBrightness): Stars {
       // 輝度の目盛りに載っていないため、どこから見ても同じ明るさで写らなければならない。
       mat.color.setScalar(brightness.fixedBrightnessScale);
     },
-    // ジオメトリ・マテリアル・テクスチャを解放する。mesh をシーンから外すのは呼び出し側。
+    // GPU 資源を解放する。mesh をシーンから外すのは呼び出し側。
     dispose(): void {
       geo.dispose();
       mat.dispose();

@@ -1,6 +1,5 @@
 // セーブデータブラウザ: 複数のセーブデータ(スロット)とその手動セーブの履歴を
 // 一覧・切替・クリップ・書き出し/取り込みするフルスクリーン UI。
-// 一発モーダルで、操作のたびに DOM を組み直す(毎フレーム sync は無い)。
 import { solarSystemBodyName } from '../../game/celestial/solar-system/solar-system';
 import { SaveSlots } from '../save/save-slots';
 import { SnapshotService, type SnapshotSource } from '../save/snapshot-service';
@@ -71,14 +70,14 @@ export class SaveBrowser implements OverlayHandle {
   // compact 幅でだけ、左右ペインのどちらを表示するか(タブで切り替える)。
   private mobilePane: 'slots' | 'snapshots' = 'slots';
 
-  // スロット切替の実処理は呼び出し側が行う。
+  // アクティブスロットを切り替えて自分を閉じた後に呼ぶ。
   public onSlotSwitched: (() => void) | null = null;
-  // スナップショットのロードは Game を作り直すことで表現するため、実処理は呼び出し側が行う。
+  // 復元する手動セーブが選ばれ、自分を閉じた後に呼ぶ。
   public onLoadSnapshot: ((snapshotId: string) => void) | null = null;
 
   public get visible(): boolean { return this._visible; }
 
-  // モーダルの DOM 骨格だけを組み、非表示で親要素へ差し込む。中身は open のたびに rebuild する。
+  // モーダルの DOM 骨格を組み、非表示で親要素へ差し込む。
   public constructor(
     root: HTMLElement,
     private readonly slots: SaveSlots,
@@ -94,8 +93,7 @@ export class SaveBrowser implements OverlayHandle {
     root.appendChild(this.el);
   }
 
-  // パネルを開く。表示対象スロットは既定でアクティブスロット、ステージタブは既定でいま
-  // プレイ中のステージ。開いている間はゲームを止める。
+  // パネルを開く。開いている間はゲームを止める。
   public open(): void {
     // 表示対象を既定値(アクティブスロット・現在のステージ)へ戻す。
     this.viewedSlotId = this.slots.activeSlotId;
@@ -128,8 +126,7 @@ export class SaveBrowser implements OverlayHandle {
     this.statusIsError = isError;
   }
 
-  // 決着後(won/lost/timeup)の状態は復元しても操作不能なので残させない。
-  // 動いている周回が無い(周回の切り替え中)ときも残せない。
+  // いま手動セーブを残せるか。決着後(won/lost/timeup)の状態は復元しても操作不能なので残せない。
   private canSaveNow(): boolean {
     const game = this.gameSource.current;
     return game !== null && this.viewedSlotId === this.slots.activeSlotId && game.snapshot.isPlaying;
@@ -155,8 +152,7 @@ export class SaveBrowser implements OverlayHandle {
     header.appendChild(closeBtn.element);
     panel.appendChild(header);
 
-    // compact 幅だけで見えるペイン切替タブ。表示条件そのものは CSS(#save-browser .sb-mobile-tabs)
-    // が持ち、ここでは常に組んで選択状態だけ渡す。
+    // ペイン切替タブ。compact 幅でだけ見せる判定は CSS が持つので、常に組んで選択状態を渡す。
     const mobileTabs = new TabBar<'slots' | 'snapshots'>(
       [['slots', 'セーブデータ'], ['snapshots', '手動セーブ']],
       (pane) => { this.mobilePane = pane; this.rebuild(); },
@@ -227,7 +223,7 @@ export class SaveBrowser implements OverlayHandle {
     this.rebuild();
   }
 
-  // 手動セーブをファイルへ書き出し、成否をステータス行へ表示する。
+  // スロットをファイルへ書き出し、成否をステータス行へ表示する。
   private handleExportSlot(id: string): void {
     const ok = exportSlotToFile(this.slots, id);
     this.setStatus(ok ? '書き出しました。' : '書き出しに失敗しました。', !ok);
@@ -252,8 +248,7 @@ export class SaveBrowser implements OverlayHandle {
     this.onSlotSwitched?.();
   }
 
-  // モードとステージはまだ決まらない(タイトル画面で選ぶ)ので、空のスロットだけを作って
-  // アクティブにする。実際に何を遊んだかは開始時に SaveSlots.noteRunLaunched が書き込む。
+  // 遊ぶステージはステージ選択画面で決まるので、空のスロットを作ってアクティブにする。
   private handleNewSlot(): void {
     const name = prompt('新しいセーブデータの名前', '新しいセーブデータ');
     if (!name) return;

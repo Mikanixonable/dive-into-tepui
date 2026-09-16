@@ -258,7 +258,6 @@ export class Game {
     );
 
     // ビューの正本(ViewManager)はカメラより後に組み上がるため、遅延評価で渡す。
-    // 姿勢は現在値しか持たないため、解決はフォーカス id → 生存エンティティの現在姿勢。
     this.cameraSystem = new CameraSystem(
       this._hud, celestialSystem, () => this.viewManager.current,
       (id, t) => {
@@ -626,6 +625,7 @@ export class Game {
     declarations.length = 0;
     declarations.push(...this._celestialSystem.markerDeclarations);
     declarations.push(...this.activeStage.markerDeclarations);
+    // 長押しは、点が無いフレームでも front: false の宣言として出す。
     const longPress = this.input.longPressPoint;
     declarations.push({
       id: 'longpress', cls: 'mk-longpress', sym: '',

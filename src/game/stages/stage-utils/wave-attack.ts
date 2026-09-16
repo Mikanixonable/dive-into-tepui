@@ -1,5 +1,4 @@
-// 波状攻撃: 弾薬確保待ち(waiting_for_ammo)→ 遅延後の初回湧き(spawning_enemies)→
-// 交戦圏内数に応じた周期湧き(active_combat)の3フェーズを進めるフェーズ機械と、
+// 波状攻撃: 弾薬確保待ち → 遅延後の初回湧き → 交戦圏内数に応じた周期湧きへ進むフェーズ機械と、
 // ウェーブ1回分の隻数・編成・接近軌道の生成。
 import * as THREE from 'three/webgpu';
 import type { CelestialBody } from '../../../physics/celestial-body';
@@ -44,7 +43,6 @@ const STAGE00_FLYBY_SPEED_RAMP = 10; // 波が進むごとのフライパス速�
 const STAGE00_FLYBY_SPEED_MAX = 400.0;
 
 // 敵の軌道が保つべき近地点高度の余裕 [m](大気圏突入高度 REENTRY_ALT に加算する)。
-// スポーン時の Δv はこの高度を割らない範囲まで縮められる(limitFlybyDv)。
 const STAGE00_MIN_PERIGEE_MARGIN = 40e3;
 const STAGE00_FLYBY_LATERAL_SPREAD = 20; // フライパス初速の横ブレ最大 [m/s]
 
@@ -63,7 +61,7 @@ export class WaveAttack {
 
   public get waveCount(): number { return this._waveCount; }
 
-  // saved があればその状態(フェーズ・タイマー・ウェーブ数)から始める。
+  // saved があればその状態から始める。
   public constructor(
     private readonly notifier: Notifier,
     private readonly worldSfx: WorldSfx,
@@ -78,7 +76,7 @@ export class WaveAttack {
     this._waveCount = saved?.waveCount ?? 0;
   }
 
-  // ウェーブ番号を進め、敵を生成して addEnemy 経由でエンティティ管理に登録する。
+  // ウェーブ番号を1つ進め、生成した敵を addEnemy へ渡す。
   public spawnWave(player: Player, addEnemy: (enemy: Enemy) => void, forcedPattern?: 'linear' | 'random'): void {
     const wave = ++this._waveCount;
     const enemies = generateWave(
@@ -187,7 +185,7 @@ function makeFlybyVelocity(player: KinematicState, centerR: Vec3, wave: number):
   const targetPos = add(player.r, scale(missPerp, missDist));
 
   const approachDir = norm(sub(targetPos, centerR));
-  // ウェーブが進むほど接近速度を上げるが、上限を設けないと Δv が軌道を破壊する。
+  // ウェーブが進むほど接近速度を上げる。上限があるのは、速いほど Δv が軌道そのものを壊すため。
   const flybySpeed = Math.min(
     STAGE00_FLYBY_SPEED + (wave - 1) * STAGE00_FLYBY_SPEED_RAMP,
     STAGE00_FLYBY_SPEED_MAX,
@@ -197,7 +195,7 @@ function makeFlybyVelocity(player: KinematicState, centerR: Vec3, wave: number):
   return { approachDir, centerV: add(player.v, add(scale(approachDir, flybySpeed), spread)) };
 }
 
-// 近地点高度が REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN を下回らないよう Δv の大きさを二分探索で縮める。
+// 近地点高度が最低ラインを下回らないよう、Δv の大きさを縮める。
 function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, attractors: readonly CelestialBody[]): Vec3 {
   const minPeAlt = REENTRY_ALT + STAGE00_MIN_PERIGEE_MARGIN;
   const center = strongestAttractor(centerR, attractors, t);
@@ -223,17 +221,14 @@ function limitFlybyDv(playerV: Vec3, centerR: Vec3, centerV: Vec3, t: number, at
 // 基調色: アースカラー7割 / 寒色系2割 / アクセントカラー1割
 function pickWaveBaseHex(): number {
   const randCol = Math.random();
-  // アースカラー帯
   if (randCol < 0.7) {
     const earthColors = [0xc2b280, 0x808080, 0xb2beb5, 0x8b4513, 0xc3b091, 0x556b2f, 0x8f9779, 0x5f9ea0];
     return earthColors[Math.floor(Math.random() * earthColors.length)]!;
   }
-  // 寒色系帯
   if (randCol < 0.9) {
     const coolColors = [0x722f37, 0x8a2be2, 0x0000ff, 0x00ffff, 0x40e0d0, 0x008000, 0x9acd32];
     return coolColors[Math.floor(Math.random() * coolColors.length)]!;
   }
-  // アクセントカラー帯
   const accentColors = [0xffa500, 0xffc0cb, 0xff0000, 0xffffff];
   return accentColors[Math.floor(Math.random() * accentColors.length)]!;
 }

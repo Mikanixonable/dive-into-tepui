@@ -53,7 +53,7 @@ export class AttachedBoosters {
     for (const id of boosterMotion.stageIds) idAllocators.booster.reserve(id);
   }
 
-  // 燃焼管理パネルから標準ブースターを最後尾へ追加する。
+  // 標準ブースターを最後尾へ追加する。
   public attach(): void {
     if (this.boosterMotion.stages.length >= MAX_ATTACHED) {
       this._notifier.hint(`ブースターは最大 ${MAX_ATTACHED} 段です`);
@@ -193,7 +193,7 @@ export class AttachedBoosters {
     }
   }
 
-  // 燃焼管理パネルへ渡す表示状態。操作の可否もここで決めてパネルへ伝える。
+  // 燃焼管理パネルへ渡す表示状態。操作の可否もここで決める。
   public managementViewModel(): BurnManagementViewModel {
     const active = this.activeStage();
     return {

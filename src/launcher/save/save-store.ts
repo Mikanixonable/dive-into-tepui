@@ -9,7 +9,7 @@ export const SAVE_INDEX_VERSION = 2;
 const INDEX_KEY = 'tepui.saveIndex';
 const SNAPSHOT_KEY_PREFIX = 'tepui.snapshot.';
 
-// 索引とスナップショット本体の読み書き。実装は差し替え可能(将来 IndexedDB へ移す)。
+// 索引とスナップショット本体の読み書き。
 export interface SaveStore {
   readIndex(): SaveIndex | null;
   writeIndex(index: SaveIndex): void;
@@ -20,7 +20,7 @@ export interface SaveStore {
 }
 
 export class LocalStorageSaveStore implements SaveStore {
-  // 未保存/JSON破損/version 不一致のいずれでも null を返す(例外は投げない)。
+  // 未保存・JSON 破損・version 不一致は、どれも null を返す。
   public readIndex(): SaveIndex | null {
     let raw: string | null;
     try {
@@ -43,7 +43,7 @@ export class LocalStorageSaveStore implements SaveStore {
     localStorage.setItem(INDEX_KEY, JSON.stringify(index));
   }
 
-  // JSON破損なら null を返す(例外は投げない)。
+  // 未保存・JSON 破損は、どちらも null を返す。
   public readSnapshot(id: string): GameSaveData | null {
     let raw: string | null;
     try {
@@ -69,7 +69,7 @@ export class LocalStorageSaveStore implements SaveStore {
     try {
       localStorage.removeItem(SNAPSHOT_KEY_PREFIX + id);
     } catch {
-      // no-op
+      // 消せなくても、参照されない本体が残るだけ。
     }
   }
 

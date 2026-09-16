@@ -128,13 +128,13 @@ export interface PlanetDef {
   readonly pole?: PoleModel; // 省略時は自転軸を持たない
   readonly degree2?: Degree2GravityDef; // 省略時は質点として扱う
   readonly shape?: ShapeDef; // 省略時は radius による真球
-  readonly atmosphere?: AtmosphereDef; // 省略時は大気を持たない(抗力・焼失ともに起きない)
+  readonly atmosphere?: AtmosphereDef; // 省略時は大気を持たない
   readonly rings?: RingSystemDef; // 省略時は環を持たない
   // ラグランジュ点をフォーカス対象のラベルとして出すかどうか(省略時 = 出さない)。全公転天体で
   // 出すと 5 点 × 天体数のラベルが画面を埋めるので、実際に軌道設計の目標になる系だけを立てる。
   readonly lagrangeLabels?: boolean;
 }
-// 中心は必ず惑星で、その関係は SatelliteMotion が持つ参照が表す。
+// 中心は必ず惑星。
 export type SatelliteDef = Omit<PlanetDef, 'orbit'> & { readonly orbit: SatelliteOrbit };
 export type CelestialBodyDef = StarDef | PlanetDef | SatelliteDef;
 
