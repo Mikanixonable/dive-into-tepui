@@ -1,6 +1,7 @@
 // セーブブラウザ右ペイン(手動セーブの一覧)の DOM 構築。
 // ステージ切替タブと、カード1件ごとの表示と操作ボタンを組み立てる。
 // 表示対象の状態やクリップ・改名・削除・分岐などの実処理は、コールバックを通じて呼び出し側へ委ねる。
+import { MANUAL_SAVE_LIMIT } from '../save/save-slots';
 import type { SaveSlotMeta, SnapshotMeta } from '../save/slot-data';
 import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud/utils';
 import { Button, Meter, TabBar } from '../../hud/widgets';
@@ -66,7 +67,7 @@ export function buildSnapshotPane(
 
   const title = document.createElement('div');
   title.className = 'sb-pane-title';
-  title.textContent = `手動セーブ (${manualSaves.length}件)`;
+  title.textContent = `手動セーブ (${manualSaves.length}/${MANUAL_SAVE_LIMIT})`;
   wrap.appendChild(title);
 
   const saveBtn = new Button('今の状態をセーブする', callbacks.onSaveNow, undefined, 'primary');
