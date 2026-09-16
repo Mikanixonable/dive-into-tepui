@@ -6,6 +6,11 @@ import { SECTION, type FrameSections } from './frame-sections';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import { CameraSystem } from './camera/camera-system';
 import type { Stage, StageClass } from './stages/stage';
+import { CommandQueue } from './command-queue';
+import { controlSelectionCommands, type ControlSelectionCommands } from './control-selection-commands';
+import { simSpeedCommands, type SimSpeedCommands } from './dynamic/sim-speed-commands';
+import { deployableCommands, type DeployableCommands } from './player/deployable-commands';
+import { objectMenuCommands } from './pickable/object-menu-commands';
 import type { MarkerDevice } from '../marker/marker-device';
 import type { MarkerSink } from '../marker/marker-sink';
 import type { MarkerDeclaration } from '../marker/marker-declaration';
@@ -129,6 +134,15 @@ export class Game {
   public readonly displayWindowManager: DisplayWindowManager;
   private readonly viewManager: ViewManager;
   private readonly objectWindows: ObjectWindows;
+
+  // モデル層の外から届いた書き換えを溜める列。進行の位相の先頭で適用する。
+  private readonly commands = new CommandQueue();
+  // 操作対象の差し替えを列へ積む口。
+  private readonly controlSelectionCommands: ControlSelectionCommands;
+  // 時間加速の段の差し替えを列へ積む口。
+  private readonly simSpeedCommands: SimSpeedCommands;
+  // 太陽電池・放熱板の展開/収納を列へ積む口。
+  private readonly deployableCommands: DeployableCommands;
 
   public readonly activeStage: Stage;
   // ポーズ中か。時間倍率とは独立に時間を止める。決着は止めない — 結果画面の裏でも
@@ -285,6 +299,8 @@ export class Game {
     );
     this.celestialMarkers = new CelestialMarkers(this.markers.createGroup(), celestialSystem);
     this.simSpeedManager = new SimSpeedManager(this._hud, uiSfx);
+    this.simSpeedCommands = simSpeedCommands(this.commands, this.simSpeedManager);
+    this.deployableCommands = deployableCommands(this.commands);
     this.navTarget = new NavTarget(this._hud, this.markers.createGroup());
     this.navTarget.restore(initialSave?.navTarget, this.dynamicSystem);
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。update()/sync() の
@@ -307,6 +323,7 @@ export class Game {
     this.controlSelection = new ControlSelection(
       initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._hud,
     );
+    this.controlSelectionCommands = controlSelectionCommands(this.commands, this.controlSelection);
     this.boosterHandlers = {
       onAttach: () => { this.activeControllable?.boosters?.attach(); },
       onToggleIgnition: () => { this.activeControllable?.boosters?.toggleIgnition(); },
@@ -324,7 +341,7 @@ export class Game {
 
     this.activeStage = new stageClass(
       initialSave?.stage, this._hud, this._worldSfx, uiSfx, this._scene, this.dynamicSystem,
-      this.flashEffects, celestialSystem, this.controlSelection,
+      this.flashEffects, celestialSystem, this.controlSelection, this.commands,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage を読むのでその後に組む。ビューより先に組み上がるので、現在のビューは遅延評価で渡す。
@@ -332,6 +349,7 @@ export class Game {
       this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
       this.cameraSystem, () => this.viewManager.activeView, this.pauseMenu,
       this.controlSelection, this.frameControls, this.activeStage, this.targeter, this.displayWindowManager,
+      objectMenuCommands(this.commands, this.controlSelection),
     );
 
     const combatView = new CombatView(
@@ -344,7 +362,8 @@ export class Game {
       this.dynamicSystem, this.equatorNodes, celestialSystem,
       this.celestialMarkers, this.markers, this.targeter.combatMarkers,
       this.displayWindowManager, this.frameControls,
-      this.frameAnchors, this.controlSelection, this.simSpeedManager, this.planDisplay,
+      this.frameAnchors, this.controlSelection, this.controlSelectionCommands,
+      this.simSpeedManager, this.planDisplay,
       this._scene, this._hud, uiSfx, this.navTarget, this.viewOptionSettings.mapDisplay,
     );
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
@@ -471,6 +490,8 @@ export class Game {
     this.handleInput(dt);
     this.sections.exit(SECTION.input);
 
+    // 一時停止中も命令は適用するので、ポーズ判定より前に置く(R8)。
+    this.commands.applyAll();
     // ポーズは開いているオーバーレイからの導出値で「止まった瞬間」が無いので、止まっている
     // 間は毎フレーム連続指令を畳む。
     if (this.isPaused) this.dynamicSystem.pause();
@@ -741,7 +762,7 @@ export class Game {
         isPaused: this.isPaused,
         autoWarpRealRemainSec: this.simSpeedManager.estimatedRealSecondsToWarpEnd(simTime),
         autoWarpSimRemainSec: this.simSpeedManager.remainingSimulationSeconds(simTime),
-        setSimSpeed: (speed) => this.simSpeedManager.setSpeed(speed),
+        setSimSpeed: (speed) => this.simSpeedCommands.setSpeed(speed),
       },
       vessel: combatControlled === null ? null : this.vesselViewModel(combatControlled),
       orbit: controlled === null || orbitRef === undefined
@@ -795,8 +816,8 @@ export class Game {
         down: { deploy: radiator.deployOf('down'), wear: radiator.wearOf('down') },
       },
       tapKey: (key) => this.input.tapKey(key),
-      toggleSolar: (side) => power?.toggle(side),
-      toggleRadiator: (side) => radiator?.toggle(side),
+      toggleSolar: (side) => { if (power !== null) this.deployableCommands.toggleSolar(power, side); },
+      toggleRadiator: (side) => { if (radiator !== null) this.deployableCommands.toggleRadiator(radiator, side); },
     };
   }
 
