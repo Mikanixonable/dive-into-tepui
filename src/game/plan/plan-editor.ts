@@ -173,9 +173,13 @@ export class PlanEditor {
     this.deleteNode(this.selectedNodeIdx);
   }
 
-  // 選択ノードの削除キーと、WASDQE・長押しボタン・ラッチによる Δv 編集を進める。
-  public handleInput(input: Input, dt: number): void {
-    if (input.takeKey(K.deleteNode)) this.deleteSelected();
+  // router から選択ノードの削除キーを受け取る。
+  public handleCommand(commandId: string): void {
+    if (commandId === K.deleteNode.code) this.deleteSelected();
+  }
+
+  // WASDQE・長押しボタン・ラッチによる Δv 編集を進める。
+  public updateActions(input: Input, dt: number): void {
     this.updateEditing(input, dt);
   }
 

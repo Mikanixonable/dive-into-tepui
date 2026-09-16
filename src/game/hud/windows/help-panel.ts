@@ -1,6 +1,5 @@
 // [H] で開閉する操作説明パネル。操作項目・キーボード配列のデータは help-content.ts を参照し、
 // 検索・フィルタ・選択ハイライトの状態遷移と DOM 描画を担当する。
-import type { Input } from '../../../input/input';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { injectOnce } from '../../../hud/inject-style';
 import { injectCommonUiStyle } from '../../../hud/style/common-ui-style';
@@ -125,9 +124,9 @@ export class HelpPanel implements OverlayHandle {
     this.render();
   }
 
-  // [H] キー押下を受け取ってヘルプの開閉を切り替える。毎フレーム呼び出す前提。
-  public handleInput(input: Input): void {
-    if (!input.takeKey(K.help)) return;
+  // router から [H] の単発入力を受け取ってヘルプの開閉を切り替える。
+  public handleCommand(commandId: string): void {
+    if (commandId !== K.help.code) return;
     // 検索欄へ文字を入力している最中の H は、ヘルプの開閉に使わない。
     if (document.activeElement === this.searchInput) return;
     this.toggle();
