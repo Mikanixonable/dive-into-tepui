@@ -26,6 +26,7 @@ export class SnapshotService {
     const slotId = this.slots.activeSlotId;
     if (slotId === null) return null;
 
+    // 一覧が本体を読まずに描けるよう、その瞬間の要約をメタへ写す。
     const meta: SnapshotMeta = {
       id: newSaveId(),
       pinned: false,

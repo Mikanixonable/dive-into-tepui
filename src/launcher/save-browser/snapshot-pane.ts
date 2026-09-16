@@ -17,7 +17,6 @@ const STYLE = `
 }
 #save-browser .sb-snap-loadable { cursor: pointer; }
 #save-browser .sb-snap-loadable:hover { background: var(--fill-1); }
-#save-browser .sb-snap-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 #save-browser .sb-snap-name { font-size: var(--font-s); }
 #save-browser .sb-snap-row { font-size: var(--font-xs); color: var(--text-dim); }
 /* HP バーは細く、満タンでもオレンジで塗らない — このパネルの主役はセーブ操作であって
@@ -135,13 +134,10 @@ function buildSnapshotCard(
     callbacks.onLoadSnapshot(s.id, loadable);
   });
 
-  const head = document.createElement('div');
-  head.className = 'sb-snap-head';
-  const name = document.createElement('span');
+  const name = document.createElement('div');
   name.className = 'sb-snap-name';
   name.textContent = String(s.name ?? '');
-  head.appendChild(name);
-  card.appendChild(head);
+  card.appendChild(name);
 
   const row1 = document.createElement('div');
   row1.className = 'sb-snap-row';
