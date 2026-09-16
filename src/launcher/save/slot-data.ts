@@ -35,8 +35,8 @@ export interface StageHistoryMeta {
   lastPlayedAtReal: number;
   // 手動セーブ。新しい順。
   snapshots: SnapshotMeta[];
-  // 復帰点の本体を指す id。無ければ null。手動セーブとは別の置き場で、一覧には出ない。
-  resumePointId: string | null;
+  // 自動セーブの本体を指す id。無ければ null。手動セーブとは別の置き場で、一覧には出ない。
+  autoSaveId: string | null;
 }
 
 // セーブデータ(歴史線)1件。
