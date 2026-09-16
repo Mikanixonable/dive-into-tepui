@@ -3,7 +3,7 @@
 作成日: 2026-09-14
 実装の現在基準コミット: d3e8291dd
 最終レビュー: 2026-09-16
-状態: 実装中。手順9まで完了し、手順10から進める。
+状態: 実装中。手順10まで完了し、手順11から進める。
 
 ## 目的
 
@@ -305,47 +305,6 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 - 現行のランダム部位ダメージと敵挙動に回帰がない。
 
 ## 実装手順
-
-### 10. 戦闘ビューの建造モードとゴースト配置を実装する
-
-#### 目的
-
-選択 dock を起点に、3D 表示を見ながらモジュールを追加・撤去できる最小 UI を作る。
-
-このステップの開始前に /ui-design を起動し、既存の panel shell、property window、overlay manager、
-タッチ規約へ合わせる。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| src/game/ship/ship-construction.ts（新規） | 統合船体内の選択 dock、catalog selection、candidate、配置、撤去、破棄、構造上の完成判定を所有する。 |
-| src/game/hud/panels/ship-construction-panel.ts（新規） | catalog、能力集計、完成条件、操作ボタンを表示する。 |
-| src/game/hud/style/ship-construction-style.ts（新規） | 既存 token と panel shell だけを使って建造 UI を整える。 |
-| src/game/view/combat-view.ts | construction mode を通常の combat pick／target pointer handling より先に処理する。 |
-| src/game/camera/camera-system.ts | 選択 dock への focus、建造中の orbit／zoom、同一フレームの screen ray 入力を提供する。 |
-| src/game/camera/screen-ray.ts（新規） | camera update 後の Viewpoint と viewport 座標から CPU 側の world ray を組み立てる。shader 用 view-ray.ts は流用しない。 |
-| src/game/display-window-manager.ts | 建造開始時に display time を現在へ戻し、終了まで過去／未来表示を固定する。 |
-| src/game/input/game-actions.ts、game-commands.ts、game-input-router.ts | 建造中の world input 遮断と camera／confirm／close の配送を追加する。 |
-| src/game/game.ts | ShipConstruction の生成、update、sync、dispose、pause 所有を配線し、建造 pointer だけを通常の pause return より先に配送する。 |
-| src/game/hud/hud.ts、hud-root.ts、hud-layers.ts | combatRoot の hud rail へ建造 panel を置き、寿命と表示を配線する。 |
-| src/game/hud/windows/menu-actions.ts | dock の建造、修理、接舷、切り離し操作を property window の action として追加する。 |
-| src/render/dynamic/ship/ship-ghost-view.ts | pointer ray と候補状態から ghost を同期する。 |
-| src/render/dynamic/ship/dock-snap-guide-view.ts | 選択 dock の自由端と hover 状態を同期する。 |
-| tests/game/ship-construction.test.ts（新規） | 追加、末尾撤去、側面スロットごとのdock数、cockpitなし完成、操縦不能警告と確認／キャンセル、未完成保持、破棄、pause を検証する。 |
-| tests/game/construction-input-routing.test.ts（新規） | 飛行・射撃・target を遮断し、camera と建造操作だけが通ることを検証する。 |
-| tests/render/ship-construction-ghost.test.ts（新規） | valid／invalid／hidden、snap transform、dispose を検証する。 |
-| tests/render/camera-view.test.ts | perspective／orthographic の screen ray と camera update 直後の一致を検証する。 |
-
-#### 達成条件と検証
-
-- combat view を離れずに統合船体内の任意の空 dock から、cockpitなしを含む構造完成部品集合を作り、分離できる。
-- camera を動かしたフレームでも pointer ray と ghost が同じ camera state を使い、1 フレーム遅れない。
-- 建造中の display time は simTime に一致し、過去／未来の表示位置へ module を確定できない。
-- mouse と touch の両方で catalog 選択、ghost 確定、末尾撤去、終了、破棄ができる。
-- 建造のために停止中でも ghost click は届き、flight command、fire、warp、target change は世界へ
-  漏れず、ESC は共通管理から閉じる。
-- npm run typecheck、npm run test:game、npm run test:render を通す。
 
 ### 11. ship 保存、漂流、CREATIVE 統合を完成させる
 
