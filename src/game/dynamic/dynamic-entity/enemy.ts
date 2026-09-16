@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import type { ViewMode } from '../../../render/view-mode';
+import type { ViewMode } from '../../view/view-mode';
 import { Ship, MUZZLE_SPEED } from './ship';
 import { DynamicEntity } from './dynamic-entity';
 import { bulletReactionOf, type BulletType } from './bullet-reaction';

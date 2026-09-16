@@ -12,7 +12,7 @@ import { screenProjection, Viewpoint, type ProjectFn } from '../../math/projecti
 import type { FrameAnchorSource } from '../../physics/frame';
 import type { Quat } from '../../math/quat';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { ViewMode } from '../../render/view-mode';
+import type { ViewMode } from '../view/view-mode';
 import type { Viewport } from '../../render/viewport';
 import { CameraSaveData } from '../save/save-data';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
