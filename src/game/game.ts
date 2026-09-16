@@ -28,6 +28,8 @@ import { PlanGuide } from './plan/plan-guide';
 import { DisplayWindowManager, timeLabelSettingOf } from './display-window-manager';
 import { SimSpeedManager } from './dynamic/sim-speed-manager';
 import { DynamicSystem } from './dynamic/dynamic-system';
+import { RunEventLog } from './run-events';
+import { RunEventPresenter } from './run-event-presenter';
 import { FlashEffects } from './vfx/flash-effects';
 import { FlashEffectsView } from '../render/vfx/flash-effects-view';
 import { EntityLineManager } from './lines/entity-line-manager';
@@ -103,6 +105,9 @@ const CONTROLLABLE_COMMANDS = [
   K.reload,
 ].map((binding) => gameCommand(binding.code, binding));
 
+// 新規開始のブリーフィングを出しておく時間 [ms]。
+const BRIEFING_TOAST_MS = 12000;
+
 export class Game {
   private readonly _scene: THREE.Scene;
   private readonly renderer: THREE.WebGPURenderer;
@@ -139,6 +144,10 @@ export class Game {
 
   // モデル層の外から届いた書き換えを溜める列。進行の位相の先頭で適用する。
   private readonly commands = new CommandQueue();
+
+  // 直近の進行で起きた一回きりの出来事の記録と、それを音・通知へ写す読み手。
+  private readonly runEvents = new RunEventLog();
+  private readonly runEventPresenter: RunEventPresenter;
   // 操作対象の差し替えを列へ積む口。
   private readonly controlSelectionCommands: ControlSelectionCommands;
   // 時間加速の段の差し替えを列へ積む口。
@@ -263,6 +272,7 @@ export class Game {
     this.themePalette = host.themePalette;
     this._worldSfx = new WorldSfx(audioEngine);
     const uiSfx = new UiSfx(audioEngine);
+    this.runEventPresenter = new RunEventPresenter(this._worldSfx, uiSfx, this._hud);
     this.pauseMenu = pauseMenu;
 
     this.markers = host.markers;
@@ -272,7 +282,7 @@ export class Game {
     this.flashEffects = new FlashEffects();
     this.flashEffectsView = new FlashEffectsView(this._scene);
     this.dynamicSystem = new DynamicSystem(
-      this._scene, this._hud, this._worldSfx, this.flashEffects, celestialSystem,
+      this._scene, this.flashEffects, this.runEvents, celestialSystem,
       this.sections, initialSave?.simTime ?? 0, initialSave);
     this.entityLines = new EntityLineManager(this.dynamicSystem);
     this.equatorNodes = new EquatorNodeManager(this.dynamicSystem, this.markers.createGroup());
@@ -302,7 +312,7 @@ export class Game {
       initialSave?.camera, host.scene.viewport,
     );
     this.celestialMarkers = new CelestialMarkers(this.markers.createGroup(), celestialSystem);
-    this.simSpeedManager = new SimSpeedManager(this._hud, uiSfx);
+    this.simSpeedManager = new SimSpeedManager(this.runEvents);
     this.simSpeedCommands = simSpeedCommands(this.commands, this.simSpeedManager);
     this.deployableCommands = deployableCommands(this.commands);
     this.navTarget = new NavTarget(this._hud, this.markers.createGroup());
@@ -325,7 +335,7 @@ export class Game {
       this.markers, this.navTarget, this.dynamicSystem, celestialSystem.celestialMotions,
     );
     this.controlSelection = new ControlSelection(
-      initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._hud,
+      initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget,
     );
     this.controlSelectionCommands = controlSelectionCommands(this.commands, this.controlSelection);
     this.boosterCommands = boosterCommands(this.commands, this.dynamicSystem);
@@ -346,7 +356,7 @@ export class Game {
     this.planDisplay = new PlanDisplay(
       this._scene, this.markers.createGroup(), celestialSystem, this.displayWindowManager, this.controlSelection,
     );
-    this.planGuide = new PlanGuide(this._hud, uiSfx, this.markers.createGroup());
+    this.planGuide = new PlanGuide(this.runEvents, this.markers.createGroup());
     this.input = new Input(host.scene.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
     this.input.onPointerKindChange = (kind) => this.touchControls?.setPointerKind(kind);
@@ -354,7 +364,7 @@ export class Game {
     this.predictor = new Predictor(this.dynamicSystem, celestialSystem);
 
     this.activeStage = new stageClass(
-      initialSave?.stage, this._hud, this._worldSfx, uiSfx, this._scene, this.dynamicSystem,
+      initialSave?.stage, this._hud, this._scene, this.dynamicSystem,
       this.flashEffects, celestialSystem, this.controlSelection, this.commands,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
@@ -454,6 +464,12 @@ export class Game {
         ),
       },
     ]);
+
+    // 組み立ての間に積まれた出来事は、最初のフレームの進行が記録を空にすると消えるので、
+    // ここで写しておく。新規開始のブリーフィングもこの場で出す。
+    this.runEventPresenter.present(this.runEvents.recent);
+    const briefing = this.activeStage.briefing;
+    if (briefing !== null) this._hud.toast(briefing, BRIEFING_TOAST_MS);
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -504,7 +520,9 @@ export class Game {
     this.handleInput(dt);
     this.sections.exit(SECTION.input);
 
-    // 一時停止中も命令は適用するので、ポーズ判定より前に置く(R8)。
+    // 一時停止中も命令は適用するので、ポーズ判定より前に置く(R8)。命令の適用そのものが
+    // 出来事を積むので、記録を空にするのはその前。
+    this.runEvents.beginStep();
     this.commands.applyAll();
     // ポーズは開いているオーバーレイからの導出値で「止まった瞬間」が無いので、止まっている
     // 間は毎フレーム連続指令を畳む。
@@ -705,6 +723,8 @@ export class Game {
       timeLabel,
       nowMs,
     );
+    // このフレームの進行が記録した出来事を、音と通知の宣言へ写す。
+    this.runEventPresenter.present(this.runEvents.recent);
     syncControlledLoopSfx(
       this._worldSfx, controlled, displayTime, !this.isPaused && this.activeStage.isPlaying);
     // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraView.sync より後に通す。

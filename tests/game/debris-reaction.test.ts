@@ -1,18 +1,28 @@
 import * as assert from 'node:assert/strict';
-import type { WorldSfx } from '../../src/audio/sfx/world-sfx';
 import { v3 } from '../../src/math/vec3';
 import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
 import { DebrisReaction } from '../../src/game/dynamic/dynamic-entity/debris-reaction';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
+import type { DynamicReactionServices } from '../../src/game/dynamic/dynamic-simulation-participant';
 import type { FlashEffects } from '../../src/game/vfx/flash-effects';
 import type { Contact } from '../../src/game/dynamic/dynamic-entity/contact';
+import type { RunEventBody } from '../../src/game/run-events';
 import { test } from '../harness';
 
-class TestWorldSfx {
-  public clankCount = 0;
+// 記録された金属音の出来事だけを数える、進行の反応が受け取る面の最小の代役。
+class TestServices {
+  public casingContacts = 0;
 
-  public clank(): void {
-    this.clankCount++;
+  public readonly registry = {
+    events: {
+      record: (body: RunEventBody): void => {
+        if (body.kind === 'casingContacted') this.casingContacts++;
+      },
+    },
+  };
+
+  public get services(): DynamicReactionServices {
+    return this as unknown as DynamicReactionServices;
   }
 }
 
@@ -36,27 +46,27 @@ function motion(stateValue: KinematicState<'eci'>, behavior: object): DynamicMot
 
 export function register(): void {
   test('debris-reaction: 薬莢同士の接触音は両側通知から1回だけ鳴る', () => {
-    const sfx = new TestWorldSfx();
+    const services = new TestServices();
     const effects = {} as FlashEffects;
-    const firstReaction = new DebrisReaction('casing', 0, sfx as unknown as WorldSfx, effects);
-    const secondReaction = new DebrisReaction('casing', 0, sfx as unknown as WorldSfx, effects);
+    const firstReaction = new DebrisReaction('casing', 0, effects);
+    const secondReaction = new DebrisReaction('casing', 0, effects);
     const first = motion(state(0), firstReaction);
     const second = motion(state(1), secondReaction);
 
-    firstReaction.onEntityContact(first, second, contact(1, 0, 1));
-    secondReaction.onEntityContact(second, first, contact(-1, 1, 0));
+    firstReaction.onEntityContact(first, second, contact(1, 0, 1), services.services);
+    secondReaction.onEntityContact(second, first, contact(-1, 1, 0), services.services);
 
-    assert.equal(sfx.clankCount, 1);
+    assert.equal(services.casingContacts, 1);
   });
 
   test('debris-reaction: 薬莢と自機の接触音は鳴り続ける', () => {
-    const sfx = new TestWorldSfx();
-    const reaction = new DebrisReaction('casing', 0, sfx as unknown as WorldSfx, {} as FlashEffects);
+    const services = new TestServices();
+    const reaction = new DebrisReaction('casing', 0, {} as FlashEffects);
     const casing = motion(state(0), reaction);
     const player = motion(state(1), { contactKind: 'player' });
 
-    reaction.onEntityContact(casing, player, contact(1, 0, 1));
+    reaction.onEntityContact(casing, player, contact(1, 0, 1), services.services);
 
-    assert.equal(sfx.clankCount, 1);
+    assert.equal(services.casingContacts, 1);
   });
 }

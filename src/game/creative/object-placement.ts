@@ -23,8 +23,6 @@ import {
   type PlacementFieldIssue,
 } from './placement-validation';
 import type * as THREE from 'three/webgpu';
-import type { WorldSfx } from '../../audio/sfx/world-sfx';
-import type { Notifier } from '../../hud/notifier';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { CameraFrame } from '../../render/camera/camera-frame';
@@ -32,6 +30,7 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { EntityRoster } from '../dynamic/entity-roster';
+import type { RunEventSink } from '../run-events';
 import type { HudLayers } from '../hud/hud-layers';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
@@ -69,12 +68,12 @@ export class ObjectPlacement {
 
   // 配置パネルとプレビューの表示資源を組む。
   public constructor(
-    private readonly hud: HudLayers & Notifier,
+    hud: HudLayers,
     private readonly scene: THREE.Scene,
     private readonly roster: EntityRoster,
     private readonly idAllocators: EntityIdAllocators,
+    private readonly events: RunEventSink,
     private readonly celestialSystem: CelestialSystem,
-    private readonly worldSfx: WorldSfx,
     private readonly fx: FlashEffects,
   ) {
     // 以後の新規配置が既存 id と衝突しないよう、復元済みの艦の id を予約する。
@@ -100,7 +99,7 @@ export class ObjectPlacement {
       this.panel.open({ kind: 'form', entityKind, form });
       return;
     }
-    this.hud.hint('この軌道は要素として複製できないため、種類だけを引き継いだ新規配置として開きます');
+    this.events.record({ kind: 'orbitNotDuplicable' });
     this.panel.open({ kind: 'entityKind', entityKind });
   }
 
@@ -159,11 +158,11 @@ export class ObjectPlacement {
   }
 
   // フォームの値を検証して初期状態を組み、置く物体の指定を onPlace へ渡す。
-  // 検証に落ちるか状態を組めなければ、理由をトーストで知らせて何も渡さない。
+  // 検証に落ちるか状態を組めなければ、落ちた理由を記録して何も渡さない。
   private place(name: string, form: ObjectPlacerForm): void {
     // 隻数の上限に掛かることを操作した場で知らせるための先読み。判定の正本は onPlace の受け手。
     if (form.entityKind === 'player' && this.roster.all().filter(isPlayer).length >= MAX_PLACED_SHIPS) {
-      this.hud.hint(`配置数が上限(${MAX_PLACED_SHIPS}隻)に達しています`);
+      this.events.record({ kind: 'shipPlacementLimitReached', limit: MAX_PLACED_SHIPS });
       return;
     }
     try {
@@ -173,7 +172,7 @@ export class ObjectPlacement {
       this.onPlace?.(name, form.entityKind, state);
     } catch (error) {
       const message = error instanceof Error ? error.message : '入力を解釈できません';
-      this.hud.hint(`配置できません: ${message}`, 5000);
+      this.events.record({ kind: 'objectPlacementRejected', reason: message });
     }
   }
 
@@ -188,7 +187,7 @@ export class ObjectPlacement {
         return {
           kind: 'entity',
           entity: generateDriftingEnemy(
-            finalName, state, '#ff6a00', '#ff6a00', this.worldSfx, this.fx, this.scene, this.idAllocators,
+            finalName, state, '#ff6a00', '#ff6a00', this.fx, this.scene, this.idAllocators,
           ),
         };
       case 'ammo':
@@ -204,7 +203,7 @@ export class ObjectPlacement {
       case 'base':
         return {
           kind: 'entity',
-          entity: new Base({ state, name: finalName }, this.scene, this.hud, this.idAllocators),
+          entity: new Base({ state, name: finalName }, this.scene, this.idAllocators),
         };
     }
   }
