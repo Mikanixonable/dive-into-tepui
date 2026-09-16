@@ -1,7 +1,6 @@
 import { Game } from '../game/game';
 import type { GameHost } from '../game/game-host';
 import { LoadingProgress } from '../game/loading-progress';
-import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { PauseMenu } from '../hud/windows/pause-menu';
 import { ResultScreen, type RunTransitions } from './result-screen';
@@ -198,10 +197,9 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     if (activeSlotId !== null) this.slots.noteRunLaunched(activeSlotId, stageClass.id);
   }
 
-  // 決着後の再出撃キーを拾う。game.update が入力エッジを消費した後に呼ぶ。
-  public handleInput(input: Input): void {
-    if (this.game === null || this.game.activeStage.isPlaying) return;
-    if (input.takeKey(K.restart)) this.restart();
+  // router から決着後の再出撃キーを受け取る。
+  public handleCommand(commandId: string): void {
+    if (commandId === K.restart.code && this.game !== null && !this.game.activeStage.isPlaying) this.restart();
   }
 
   // 現在の起動ステージへ作り直す。まだ何も起動していなければ何もしない。
