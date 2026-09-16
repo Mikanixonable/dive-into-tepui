@@ -2,7 +2,7 @@ import { Attitude } from '../../../physics/attitude';
 import { DynamicEntity, type DynamicMotionFactory } from './dynamic-entity';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotionProperties } from '../dynamic-motion';
-import { Part, PartType } from './parts';
+import { Part, PartType, type ShipPartCollection } from './parts';
 import { collisionDamageFraction } from './contact-damage';
 import type {
   ArmorPart,
@@ -56,7 +56,7 @@ export abstract class Ship extends DynamicEntity {
 
   private _hp!: number;
   private _maxHp!: number;
-  private readonly inventory = new PartInventory();
+  private readonly inventory: ShipPartCollection;
   protected get parts(): readonly Part[] { return this.inventory.parts; }
 
   public get hp(): number { return this._hp; }
@@ -81,8 +81,10 @@ export abstract class Ship extends DynamicEntity {
     view: DynamicView,
     id?: string,
     initialParts?: readonly Part[],
+    partCollection: ShipPartCollection = new PartInventory(),
   ) {
     super(motionFactory, view, id);
+    this.inventory = partCollection;
     this.setName(name);
     this.hp = hp;
     this.maxHp = hp;
