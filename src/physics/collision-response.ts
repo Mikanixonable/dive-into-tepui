@@ -35,6 +35,9 @@ export interface CollisionResponse {
   // 種別固有メッシュが返した実接触点。通常の球接触では null とし、呼び出し側が
   // 中心間法線から従来どおり近似する。
   readonly contactPoint: Vec3 | null;
+  // compound 接触の module id。球／従来形状は null のまま通す。
+  readonly moduleIdA: string | null;
+  readonly moduleIdB: string | null;
 }
 
 // 不動な相手との接触の結果。相手には書き込む先が無いので、動く側だけを返す。
@@ -49,7 +52,13 @@ export interface FixedContactResponse {
 
 // 接触の幾何。掃引で解けたなら中心間を separation ちょうどへ揃え、区間終端の重なりを
 // 見つけたなら pushOut だけ離す。normal は a → b、toi は区間内の割合。
-export type ContactGeometry = { readonly normal: Vec3; readonly toi: number; readonly contactPoint?: Vec3 } & (
+export type ContactGeometry = {
+  readonly normal: Vec3;
+  readonly toi: number;
+  readonly contactPoint?: Vec3;
+  readonly moduleIdA?: string | null;
+  readonly moduleIdB?: string | null;
+} & (
   | { readonly separation: number; readonly pushOut?: undefined }
   | {
     readonly pushOut: number;
@@ -134,6 +143,7 @@ export function distributeSphereContact(
       rA, rB, vA: a.state.v, vB: b.state.v, normal, bounced: false, toi,
       specificEnergyLossA: 0, specificEnergyLossB: 0,
       contactPoint: geometry.contactPoint ?? null,
+      moduleIdA: geometry.moduleIdA ?? null, moduleIdB: geometry.moduleIdB ?? null,
     };
   }
   const exchange = (1 + restitution) * vn;
@@ -145,6 +155,7 @@ export function distributeSphereContact(
     specificEnergyLossA: specificEnergyLoss(vn, restitution, wa),
     specificEnergyLossB: specificEnergyLoss(vn, restitution, wb),
     contactPoint: geometry.contactPoint ?? null,
+    moduleIdA: geometry.moduleIdA ?? null, moduleIdB: geometry.moduleIdB ?? null,
   };
 }
 
