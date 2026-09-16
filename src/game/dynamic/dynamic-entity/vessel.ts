@@ -23,8 +23,10 @@ export function shipMotionOptions(
     radius,
     bcInv: SHIP_BCINV,
     srpCoeff: SHIP_SRP_COEFF,
+    // 過去線を保持し、予測も引く
     historyDuration: DEFAULT_HISTORY_DURATION,
     predictsFuture: true,
+    // 熱の物性
     specificHeat: SHIP_SPECIFIC_HEAT,
     bulkDensity: SHIP_BULK_DENSITY,
     radiatingAreaPerMass: SHIP_RADIATING_AREA_PER_MASS,
@@ -34,14 +36,14 @@ export function shipMotionOptions(
 
 export const MUZZLE_SPEED = 1000; // 機関砲初速 [m/s]
 
-// 艦・敵・タンパク質が共有する、識別・寿命・一般HP・本体マーカーの基底。
-// 部品一覧や部品由来の性能はここへ入れず、部品式の Ship 側へ残す。
+// 艦・敵・タンパク質が共有する、識別・寿命・一般 HP・本体マーカーの基底。
 export abstract class Vessel extends DynamicEntity {
   public override readonly combatTarget = true;
-  private readonly markerRenderer = new ShipMarkerRenderer();
+  private readonly markerRenderer: ShipMarkerRenderer;
   private _hp: number;
   private _maxHp: number;
 
+  // hp は満タンの装甲値としても使う。id は採番器が配ったものを渡す。
   public constructor(
     name: string,
     hp: number,
@@ -50,6 +52,7 @@ export abstract class Vessel extends DynamicEntity {
     id: string,
   ) {
     super(motionFactory, view, id);
+    this.markerRenderer = new ShipMarkerRenderer(this.id);
     this.setName(name);
     this._hp = hp;
     this._maxHp = hp;
