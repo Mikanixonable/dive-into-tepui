@@ -1,6 +1,6 @@
 // 直近の進行が記録した出来事を読み、そのフレームに描く一時エフェクト(閃光・ガスパフ)の
-// 宣言を作る。どの出来事がどの見え方の閃光を伴うか、何枚重ねるか、どれだけ保つかはここで決める。
-// これは表示の導出で、段 7 で presentation/ へ移る。
+// 宣言を作る表示の導出。どの出来事がどの見え方の閃光を伴うか、何枚重ねるか、どれだけ保つかを
+// ここで決める。
 import { addScaled } from '../math/vec3';
 import { kinematicState } from '../physics/kinematic-state';
 import type { KinematicState } from '../physics/kinematic-state';
