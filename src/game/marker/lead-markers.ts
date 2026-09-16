@@ -1,7 +1,7 @@
 // LEAD(見越し)マーカー: 自機の弾がその敵に命中する未来位置を示す。
 import { leadPoint } from '../../physics/intercept';
 import type { Vec3 } from '../../math/vec3';
-import type { ViewMode } from '../../render/view-mode';
+import type { ViewMode } from '../view/view-mode';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { MarkerSink } from '../../marker/marker-sink';
 import { MARKER_PRIORITY } from './marker-priority';

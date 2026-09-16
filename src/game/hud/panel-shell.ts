@@ -8,7 +8,7 @@ import {
 } from '../../hud/widgets';
 import type { PanelCollapsedState } from './hud-selection';
 import type { SettingValue } from '../../settings/setting-value';
-import type { ViewMode } from '../../render/view-mode';
+import type { ViewMode } from '../view/view-mode';
 
 // 一度も操作されていないときの畳み状態。ビューや画面幅で変えるなら関数で渡す。
 type PanelDefaultCollapsed = boolean | ((view: ViewMode) => boolean);

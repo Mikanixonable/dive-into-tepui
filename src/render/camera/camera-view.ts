@@ -8,7 +8,7 @@ import {
   metersPerPixel, metersPerPixelAtDistance, screenProjection, Viewpoint,
 } from '../../math/projection';
 import type { CameraFrame } from './camera-frame';
-import type { ViewMode } from '../view-mode';
+import type { ViewMode } from '../../game/view/view-mode';
 import type { Viewport } from '../viewport';
 
 // 近クリップ距離 = 注視距離 / NEAR_RATIO。比を大きくするほど手前がクリップされにくい。

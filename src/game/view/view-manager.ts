@@ -4,7 +4,7 @@ import { TouchControls } from '../hud/touch-controls';
 import type { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { ControlSelection } from '../control-selection';
-import type { ViewMode } from '../../render/view-mode';
+import type { ViewMode } from './view-mode';
 import type { ViewFrame } from './view-frame';
 
 export class ViewManager {

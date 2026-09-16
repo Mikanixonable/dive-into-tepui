@@ -4,7 +4,7 @@ import type { RenderStyle } from '../../render/render-style';
 import { buildHudDom } from './hud-root';
 import type { HudLayers } from './hud-layers';
 import type { PanelCollapse } from './panel-shell';
-import type { ViewMode } from '../../render/view-mode';
+import type { ViewMode } from '../view/view-mode';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { VesselPanel, type VesselPanelViewModel } from './panels/vessel-panel';
 import { OrbitPanel, type OrbitPanelViewModel } from './orbit/orbit-panel';

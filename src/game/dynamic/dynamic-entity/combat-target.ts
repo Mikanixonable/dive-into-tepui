@@ -1,6 +1,6 @@
 // 戦闘の対象になれる個体(自艦・敵艦・基地)が答えるもの。
 import type { Vec3 } from '../../../math/vec3';
-import type { ViewMode } from '../../../render/view-mode';
+import type { ViewMode } from '../../view/view-mode';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { DynamicEntityKind } from './entity-kind';

@@ -77,7 +77,7 @@ import { summarizeRun, type RunSummary } from './run-summary';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { OrbitReference } from './orbit-reference';
 import type { HudPanelViewModels } from './hud/hud';
-import type { ViewMode } from '../render/view-mode';
+import type { ViewMode } from './view/view-mode';
 import type { ApproachTargetSource } from './hud/orbit/orbit-analysis-data';
 import type { EnemyContact } from './hud/panels/enemies-panel';
 import type { VesselPanelViewModel } from './hud/panels/vessel-panel';
