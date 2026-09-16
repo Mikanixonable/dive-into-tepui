@@ -1,7 +1,7 @@
 // 画面上で近接したマーカーのうち、どのラベル・どのアイコンを間引くかを決める。DOM には触れず、
 // 隠す対象のキー集合だけを返す。近接の判定半径は、いったん隠したものを出し直すときだけ緩める。
 // 近接した2つのどちらを残すかの規則そのものは crowding.ts が持つ。
-import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from './crowding';
+import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from '../../render/marker/crowding';
 
 // これより画面上で近いマーカー同士は、優先度の低い側のラベルを間引く [px]
 const MARKER_CROWDING_PX = 40;

@@ -7,7 +7,7 @@ import { Vec3 } from '../../math/vec3';
 import { solveEquatorCrossings } from '../../physics/orbit-solvers';
 import { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarker } from './equator-node-marker';
-import type { MarkerSlots } from './marker-slots';
+import type { MarkerSlots } from '../../render/marker/marker-slots';
 import { ObjectPickable } from '../pickable/object-pickable';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import type { CelestialBodies } from '../celestial/celestial-bodies';

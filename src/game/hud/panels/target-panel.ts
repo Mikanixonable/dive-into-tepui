@@ -2,17 +2,12 @@
 // 接近速度・相対速度を、ターゲットの固定中に表示する。
 import { fmtDist, fmtSpeed, setElementText } from '../../../hud/utils';
 import { SyncThrottle } from '../sync-throttle';
-import { relativeInfo } from '../../orbit-info';
-import { ProteinEnemy } from '../../dynamic/dynamic-entity/protein-enemy';
 import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
 import type { ProteinCombatReadout } from '../../protein/protein-schema';
-import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
-import type { CelestialBodies } from '../../celestial/celestial-bodies';
-import type { Targeter } from '../../targeter';
 
 const SYNC_INTERVAL_MS = 100;
 
-interface TargetPanelData {
+export interface TargetPanelViewModel {
   readonly name: string;
   readonly distanceM: number;
   readonly closingMps: number; // 正 = 近づいている。
@@ -38,33 +33,16 @@ export class TargetPanel {
   }
 
   // 固定対象の有無を毎フレーム反映し、値の更新は間引く。
-  public sync(viewer: Controllable | null, celestialBodies: CelestialBodies, targeter: Targeter): void {
-    const target = viewer ? targeter.aliveTarget : null;
+  public sync(target: TargetPanelViewModel | null): void {
     // 表示/非表示はターゲット固定の有無に直結するので、更新間隔とは別に毎フレーム反映する。
     this.els.get('hud-target')?.classList.toggle('hidden', target === null);
 
     if (!this.throttle.due()) return;
-
-    if (!viewer || !target) {
-      this.syncTarget(null);
-      return;
-    }
-    const relative = relativeInfo(
-      viewer, target, celestialBodies.celestialMotions, viewer.motion.state.t,
-    );
-    this.syncTarget({
-      name: target.name,
-      distanceM: relative.dist,
-      closingMps: relative.closing,
-      relativeSpeedMps: relative.relSpeed,
-      hp: target.hp,
-      maxHp: target.maxHp,
-      protein: target instanceof ProteinEnemy ? target.combatReadout : null,
-    });
+    this.syncTarget(target);
   }
 
   // 値を既存の DOM へ書き込む。target が null なら名前を空欄にし、タンパク質欄を畳む。
-  private syncTarget(target: TargetPanelData | null): void {
+  private syncTarget(target: TargetPanelViewModel | null): void {
     if (!target) {
       setElementText(this.els, 'tgtname', '—');
       this.els.get('tgt-protein')?.classList.add('hidden');

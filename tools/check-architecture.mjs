@@ -30,6 +30,14 @@ function layerOf(file) {
   return relative.split(path.sep)[0];
 }
 
+function relativeSourcePath(file) {
+  return path.relative(srcRoot, file).split(path.sep).join('/');
+}
+
+function isCloudRenderFile(file) {
+  return relativeSourcePath(file).startsWith('render/cloud/');
+}
+
 function resolveSourceImport(file, specifier) {
   const base = path.resolve(path.dirname(file), specifier);
   const candidates = [base, `${base}.ts`, path.join(base, 'index.ts')];
@@ -71,6 +79,24 @@ for (const file of sourceFilesIn(srcRoot)) {
     const targetLayer = layerOf(target);
     if (restricted?.has(targetLayer)) {
       violations.push(`${path.relative(root, file)}:${lineAt(source, index)} imports ${targetLayer}/; ${sourceLayer}/ からの依存は禁止`);
+    }
+
+    // render/ はゲーム状態を知らない。雲の気候・雲場経路だけは、既存の移行計画で
+    // 明示的に対象外としているため、この検査から除く。
+    if (sourceLayer === 'render' && !isCloudRenderFile(file) && targetLayer === 'game') {
+      violations.push(`${path.relative(root, file)}:${lineAt(source, index)} imports game/; cloud 以外の render/ からの依存は禁止`);
+    }
+
+    // ゲーム固有 HUD は Game 全体を探索せず、機能ごとの read model を受け取る。
+    if (relativeSourcePath(file).startsWith('game/hud/') && target === path.join(srcRoot, 'game', 'game.ts')) {
+      violations.push(`${path.relative(root, file)}:${lineAt(source, index)} imports game/game.ts; game/hud/ からの依存は禁止`);
+    }
+
+    // セーブの永続化・一覧表示はランの状態機械から独立している。
+    if ((relativeSourcePath(file).startsWith('launcher/save/')
+      || relativeSourcePath(file).startsWith('launcher/save-browser/'))
+      && target === path.join(srcRoot, 'game', 'game.ts')) {
+      violations.push(`${path.relative(root, file)}:${lineAt(source, index)} imports game/game.ts; launcher の保存層からの依存は禁止`);
     }
   }
 }

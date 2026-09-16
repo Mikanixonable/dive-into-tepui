@@ -15,7 +15,7 @@ import type { EntityRoster } from './dynamic/entity-roster';
 import { aliveCombatTarget, combatTargetById, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import type { Notifier } from '../hud/notifier';
 import { TimeLabelSetting } from './hud/orbit/calendar-ticks';
-import { MarkerSlots } from './marker/marker-slots';
+import { MarkerSlots } from '../render/marker/marker-slots';
 import { RelativeNodeMarker } from './marker/relative-node-marker';
 import type { CameraFrame } from '../render/camera/camera-frame';
 import { ObjectPickable } from './pickable/object-pickable';
