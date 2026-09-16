@@ -7,7 +7,6 @@ import type { KinematicState } from '../../../physics/kinematic-state';
 import { len, sub, Vec3, v3 } from '../../../math/vec3';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import type { Player } from '../../player/player';
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import type { Quat } from '../../../math/quat';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
@@ -62,8 +61,7 @@ export interface EnemyClass {
   // 復元に外部資源の取得が要るなら、それが揃ったかを答える述語。要らなければ null。
   spawnGate(saved: EnemySaveData): SpawnGate | null;
   new (
-    init: EnemyRestore, worldSfx: WorldSfx, fx: FlashEffects, idAllocators: EntityIdAllocators,
-    scene?: THREE.Scene,
+    init: EnemyRestore, fx: FlashEffects, idAllocators: EntityIdAllocators, scene?: THREE.Scene,
   ): Enemy;
 }
 
@@ -98,7 +96,6 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     view: DynamicView,
     inertia: Vec3,
     radius: number,
-    protected readonly _worldSfx: WorldSfx,
     protected readonly _fx: FlashEffects,
     idAllocators: EntityIdAllocators,
     shape?: EnemyCollisionShape,
@@ -151,7 +148,6 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     this.fireController = new EnemyFireController({
       motion: this.motion,
       attackGroupId: this.attackGroupId,
-      worldSfx: this._worldSfx,
       canFire: enemies => this.canFire(enemies),
       muzzlePosition: () => this.muzzlePosition(),
       plasmaDamage: () => this.plasmaDamage(),
@@ -159,7 +155,6 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     });
     this.reactions = new EnemyReactions({
       motion: this.motion,
-      worldSfx: this._worldSfx,
       effects: this._fx,
       modelScale: ENEMY_MODEL_SCALE,
       applyBulletDamage: (damage, impactPoint) => this.applyBulletDamage(damage, impactPoint),

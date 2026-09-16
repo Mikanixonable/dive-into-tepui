@@ -9,8 +9,7 @@ import { add, addScaled, norm, randPerp, randVec, scale, v3, Vec3 } from '../../
 
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import type { Notifier } from '../../hud/notifier';
-import { WorldSfx } from '../../audio/sfx/world-sfx';
+import type { RunEventSink } from '../run-events';
 import { Ship } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { EntityRegistry } from '../dynamic/entity-registry';
@@ -65,8 +64,7 @@ export class FireControl {
   // 復元するスナップショットか、新規配置の初期積載を受け取る。どちらも省略すれば既定積載。
   public constructor(
     private readonly player: Player,
-    private readonly _notifier: Notifier,
-    private readonly _worldSfx: WorldSfx,
+    private readonly events: RunEventSink,
     private readonly _scene: THREE.Scene,
     private readonly _fx: FlashEffects,
     init: FireInit = {},
@@ -75,7 +73,7 @@ export class FireControl {
       'saved' in init ? init.saved : undefined,
       'ammo' in init && init.ammo ? init.ammo : undefined,
     );
-    this.effects = new DefaultWeaponEffects(_worldSfx, _fx);
+    this.effects = new DefaultWeaponEffects(events, _fx);
   }
 
   public get rounds(): number { return this.weapon.rounds; }
@@ -124,7 +122,7 @@ export class FireControl {
     if (this.player.totalFireRate <= 0) {
       if (!this.weapon.wasEmptyClick) {
         this.effects.emptyClick();
-        this._notifier.hint('武装が損傷しており発射できない', 3000);
+        this.events.record({ kind: 'gunDisabled' });
         this.weapon.wasEmptyClick = true;
       }
       return;
@@ -133,7 +131,7 @@ export class FireControl {
     if (!this.left) {
       if (!this.weapon.wasEmptyClick) {
         this.effects.emptyClick();
-        this._notifier.hint('弾薬切れ — 軌道上の補給 ▣ を回収せよ', 3000);
+        this.events.record({ kind: 'gunOutOfAmmo' });
         this.weapon.wasEmptyClick = true;
       }
       return;
@@ -268,7 +266,6 @@ export class FireControl {
       'player',
       'normal',
       ship.weaponDamage,
-      this._worldSfx,
       emitter.idAllocators,
     );
     emitter.emit(bullet);
@@ -296,7 +293,7 @@ export class FireControl {
         w: v3(randSym(6.0), randSym(6.0), randSym(6.0)),
         inertia: v3(0.85, 0.3, 1.15), // 円筒: 長軸(y)が最小。x/z も非対称にしジャニベコフ効果を起こす
       },
-      this._worldSfx, this._fx, registry.idAllocators, CASING_COLLISION_BOUND_RADIUS, this._scene,
+      this._fx, registry.idAllocators, CASING_COLLISION_BOUND_RADIUS, this._scene,
     ));
   }
 
@@ -349,7 +346,7 @@ export class FireControl {
         w: v3(randSym(2), randSym(2), randSym(2)),
         inertia: v3(1, 0.2, 1), // 円柱
       },
-      this._worldSfx, this._fx, registry.idAllocators, BARREL_PHYS_RADIUS, this._scene,
+      this._fx, registry.idAllocators, BARREL_PHYS_RADIUS, this._scene,
     ));
     this.weapon.barrelTemperature = ENV_TEMP;
     this.weapon.barrelDeviation = 0;
@@ -380,7 +377,7 @@ export class FireControl {
         w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
         inertia: v3(1, 1.2, 1.4),
       },
-      this._worldSfx, this._fx, registry.idAllocators, EJECTED_MAG_PHYS_RADIUS, this._scene,
+      this._fx, registry.idAllocators, EJECTED_MAG_PHYS_RADIUS, this._scene,
     ));
   }
 }

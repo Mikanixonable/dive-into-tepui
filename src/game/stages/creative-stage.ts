@@ -17,6 +17,7 @@ import type { ObjectAuthoring } from '../pickable/inspected-object';
 import { creativeStageCommands, type CreativeStageCommands } from './creative-stage-commands';
 import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
+import { queuedEventSink } from '../run-events';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 
 export class CreativeStage extends Stage {
@@ -60,19 +61,21 @@ export class CreativeStage extends Stage {
       ? DEFAULT_PROTEIN_DISPLAY
       : proteinDisplayControllerOf(restoredProtein)?.display ?? DEFAULT_PROTEIN_DISPLAY;
     this.manualSpawn = new ManualSpawn(
-      this._worldSfx, this._fx, this._scene, this._celestialSystem.celestialMotions,
+      this._fx, this._scene, this._celestialSystem.celestialMotions,
       this._dynamicSystem, this._dynamicSystem.idAllocators, restoredDisplay,
     );
 
+    // 配置パネルの確定は DOM のイベントなので、そこで起きたことは列を通して記録する(R8)。
     this.objectPlacement = new ObjectPlacement(
       this._hud, this._scene, this._dynamicSystem, this._dynamicSystem.idAllocators,
-      this._celestialSystem, this._worldSfx, this._fx,
+      queuedEventSink(this._commandQueue, this._dynamicSystem.events),
+      this._celestialSystem, this._fx,
     );
     this.objectPlacement.onPlace = (name, entityKind, state) => this.commands.placeObject(name, entityKind, state);
     this.authoring = this.objectPlacement;
 
     this.waveAttack = new WaveAttack(
-      this._hud, this._worldSfx, this._fx, this._scene, this._celestialSystem.celestialMotions,
+      this._dynamicSystem.events, this._fx, this._scene, this._celestialSystem.celestialMotions,
       this._dynamicSystem.idAllocators, savedCreative?.waveAttack,
     );
     this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
@@ -122,31 +125,31 @@ export class CreativeStage extends Stage {
     }
   }
 
-  // 操作艦の弾薬チェーンへマガジンを1つ追加する。操作艦がいなければトーストで知らせる。
+  // 操作艦の弾薬チェーンへマガジンを1つ追加する。操作艦がいなければ、操作艦が要ることを記録する。
   public addMagazineToShip(): void {
     const player = this.ship;
     if (player === null || !player.motion.alive) {
-      this._hud.hint('操作艦がいないためマガジンを追加できません');
+      this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'addMagazine' });
       return;
     }
     player.onPickup(1);
   }
 
-  // 操作艦の RCS 燃料を満タンにする。操作艦がいなければトーストで知らせる。
+  // 操作艦の RCS 燃料を満タンにする。操作艦がいなければ、操作艦が要ることを記録する。
   public refillShipRcsFuel(): void {
     const player = this.ship;
     if (player === null || !player.motion.alive) {
-      this._hud.hint('操作艦がいないためRCS燃料を補充できません');
+      this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'refillRcsFuel' });
       return;
     }
     player.refuelFuel(player.totalMaxFuel);
   }
 
-  // shape で選んだ形の敵を1体、自機の前方へ出す。操作艦がいなければトーストで知らせる。
+  // shape で選んだ形の敵を1体、自機の前方へ出す。操作艦がいなければ、操作艦が要ることを記録する。
   public spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void {
     const player = this.ship;
     if (player === null || !player.motion.alive) {
-      this._hud.hint('操作艦がいないため敵をスポーンできません');
+      this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'spawnEnemy' });
       return;
     }
     const spawn = this.manualSpawn.enemy(player, shape, colorValue);
@@ -157,13 +160,13 @@ export class CreativeStage extends Stage {
   public spawnProteinFormation(): void {
     const player = this.ship;
     if (player === null || !player.motion.alive) {
-      this._hud.hint('操作艦がいないため敵をスポーンできません');
+      this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'spawnEnemy' });
       return;
     }
     for (const { gate, build } of this.manualSpawn.proteinFormation(player)) this.spawnEnemyWhenReady(gate, build);
   }
 
-  // 検証を通った配置の指定から物体を作り、顔ぶれへ入れて、配置したことをトーストで知らせる。
+  // 検証を通った配置の指定から物体を作り、顔ぶれへ入れて、配置したことを記録する。
   // 自機の隻数が上限に達していれば、作らずに返る(SPEC GAME.md 9.1)。
   public placeObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): void {
     if (entityKind === 'player'
@@ -171,11 +174,11 @@ export class CreativeStage extends Stage {
     const placed = this.objectPlacement.createObject(name, entityKind, state);
     if (placed.kind === 'player') {
       const ship = this.addPlayer(placed.placement);
-      this._hud.hint(`${ship.name} を配置`);
+      this._dynamicSystem.events.record({ kind: 'objectPlaced', name: ship.name });
       return;
     }
     this._dynamicSystem.add(placed.entity);
-    this._hud.hint(`${placed.entity.name} を配置`);
+    this._dynamicSystem.events.record({ kind: 'objectPlaced', name: placed.entity.name });
   }
 
   // ステージ操作パネルは、表示中のビューの右ドックへ追従させる。
@@ -252,9 +255,9 @@ export class CreativeStage extends Stage {
     return false;
   }
 
-  // 艦を喪失したことを、トーストで知らせる。
+  // 艦の喪失を、決着させずに知らせるだけで済ませる。
   public recordPlayerLost(reason: string): void {
-    this._hud.hint(reason);
+    this._dynamicSystem.events.record({ kind: 'shipLost', reason });
   }
 
   // ステータス表示の副題に出す文字列。

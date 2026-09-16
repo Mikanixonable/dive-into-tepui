@@ -4,7 +4,7 @@ import { qRotate } from '../../math/quat';
 import { Vec3, add, norm, scale, v3 } from '../../math/vec3';
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K, KeyBinding } from '../../input/key-mapping';
-import type { Notifier } from '../../hud/notifier';
+import type { RunEventSink } from '../run-events';
 import type { ThrottleSaveData } from '../save/save-data';
 import type { FuelConsumer } from '../dynamic/dynamic-entity/controllable';
 
@@ -70,7 +70,7 @@ export class Throttle {
   private readonly latchedThrustKeys = new Set<string>();
   private readonly lastThrustPressTime: Partial<Record<string, number>> = {};
 
-  public constructor(private readonly _notifier: Notifier, saved?: ThrottleSaveData) {
+  public constructor(saved?: ThrottleSaveData) {
     if (saved) {
       this.throttleIdx = Number.isInteger(saved.throttleIdx)
         && saved.throttleIdx >= 0 && saved.throttleIdx < THROTTLE_LEVELS.length
@@ -81,28 +81,28 @@ export class Throttle {
   }
 
   // RCS 回転制動の ON/OFF を切り替える。
-  public toggleRcsDamp(): void {
+  public toggleRcsDamp(events: RunEventSink): void {
     this.rcsDamp = !this.rcsDamp;
-    this._notifier.hint(`RCS 回転制動: ${this.rcsDamp ? 'ON' : 'OFF'}`);
+    events.record({ kind: 'rcsDampToggled', on: this.rcsDamp });
   }
 
   // プログレードホールドを ON にする。
-  public enableProgradeReset(): void {
+  public enableProgradeReset(events: RunEventSink): void {
     this.progradeHold = true;
-    this._notifier.hint('プログレード姿勢リセット(機首を進行方向へ)');
+    events.record({ kind: 'progradeHoldReset' });
   }
 
   // プログレードホールドの ON/OFF を切り替える。
-  public toggleProgradeHold(): void {
+  public toggleProgradeHold(events: RunEventSink): void {
     this.progradeHold = !this.progradeHold;
-    this._notifier.hint(`進行方向ホールド: ${this.progradeHold ? 'ON (機首をプログレードへ保持)' : 'OFF'}`);
+    events.record({ kind: 'progradeHoldToggled', on: this.progradeHold });
   }
 
-  // 並進出力のプリセットを idx 段階目へ切り替える。
-  public setThrottlePreset(idx: number): void {
+  // 並進出力のプリセットを idx 段階目へ切り替える。段の範囲外なら何もしない。
+  public setThrottlePreset(idx: number, events: RunEventSink): void {
     if (!Number.isInteger(idx) || idx < 0 || idx >= THROTTLE_LEVELS.length) return;
     this.throttleIdx = idx;
-    this._notifier.hint(`並進出力: ${THROTTLE_LABELS[idx]!} (${THROTTLE_LEVELS[idx]!.toFixed(1)} m/s²)`);
+    events.record({ kind: 'throttlePresetSelected', index: idx });
   }
 
   // スラスト方向の表示用状態と噴射ラッチを初期化する。

@@ -86,7 +86,7 @@ export class StageDebug extends Stage {
   private generateWaveAround(player: Player): readonly Enemy[] {
     return generateWave(
       player.motion.state, this.waveCount++, this._celestialSystem.celestialMotions,
-      this._worldSfx, this._fx, this._scene, this._dynamicSystem.idAllocators, 'random',
+      this._fx, this._scene, this._dynamicSystem.idAllocators, 'random',
     );
   }
 

@@ -14,8 +14,7 @@ import type { EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import type { Notifier } from '../../hud/notifier';
-import type { WorldSfx } from '../../audio/sfx/world-sfx';
+import type { RunEventSink } from '../run-events';
 import { generateRandomName } from '../random-name';
 import { Throttle } from './throttle';
 import { FireControl, type AmmoLoad } from './fire-control';
@@ -101,23 +100,19 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   public planExecution: PlanExecutionMode = 'instant';
 
   public fineAttitude = false;
-  // 自機の操作方法は HUD とヘルプが常設で示しているので、選び直しても案内は出さない。
-  public readonly controlHint = null;
-  public readonly releaseHint = null;
   public readonly toggleSolarPanel = (side: 'up' | 'down'): void => this.motion.power.toggle(side);
   public readonly toggleRadiator = (side: 'up' | 'down'): void => this.motion.radiator.toggle(side);
 
   // name を省いた新規艦は無作為な名前になる。id を省いたときは name がそのまま
   // 艦の識別子になるので、複数隻を並べるなら name も分ける。
   public constructor(
-    private readonly notifier: Notifier,
-    worldSfx: WorldSfx,
+    private readonly events: RunEventSink,
     scene: THREE.Scene,
     fx: FlashEffects,
     idAllocators: EntityIdAllocators,
     init: PlayerInit,
   ) {
-    const effects: PlayerEffects = new DefaultPlayerEffects(worldSfx, fx);
+    const effects: PlayerEffects = new DefaultPlayerEffects(events, fx);
     const saved = 'saved' in init ? init.saved : undefined;
     const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
     const state = 'saved' in init ? savedKinematicState(init.saved, init.simTime) : init.state;
@@ -174,12 +169,13 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       id,
       createPlayerParts(PLAYER_MAX_HP),
     );
-    this.throttle = new Throttle(notifier, saved?.throttle);
+    this.throttle = new Throttle(saved?.throttle);
     this.effects = effects;
-    this.fire = new FireControl(this, notifier, worldSfx, scene, fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
-    this.altitudeAlarm = new AltitudeAlarm(notifier, worldSfx);
+    this.fire = new FireControl(
+      this, events, scene, fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
+    this.altitudeAlarm = new AltitudeAlarm(events);
     this.boosters = new AttachedBoosters(
-      this.motion, this.motion.attachedBoosters, idAllocators, notifier, worldSfx, scene, fx,
+      this.motion, this.motion.attachedBoosters, idAllocators, events, scene, fx,
     );
     if (saved) {
       this.planExecution = saved.planExecution ?? 'off';
@@ -205,7 +201,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
           const idx = this.plan.addNode(kinematicState<'eci'>(n.t, v3(n.r.x, n.r.y, n.r.z), v3(n.v.x, n.v.y, n.v.z)), anchor);
           if (idx < 0) rejected++;
         }
-        if (rejected > 0) notifier.hint(`${this.name}: 起点より前のマニューバノード ${rejected} 件を復元できません`);
+        if (rejected > 0) events.record({ kind: 'planNodesDropped', ship: this.name, count: rejected });
       }
     }
   }
@@ -288,14 +284,14 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       case K.thrustDown.code:
         this.throttle.handleThrustPress(commandId);
         return;
-      case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(); return;
-      case K.progradeReset.code: this.throttle.enableProgradeReset(); return;
-      case K.fineAttitudeToggle.code: this.toggleFineAttitude(); return;
-      case K.progradeHoldToggle.code: this.throttle.toggleProgradeHold(); return;
-      case K.throttleLow.code: this.throttle.setThrottlePreset(0); return;
-      case K.throttleMid.code: this.throttle.setThrottlePreset(1); return;
-      case K.throttleHigh.code: this.throttle.setThrottlePreset(2); return;
-      case K.throttleMax.code: this.throttle.setThrottlePreset(3); return;
+      case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(registry.events); return;
+      case K.progradeReset.code: this.throttle.enableProgradeReset(registry.events); return;
+      case K.fineAttitudeToggle.code: this.toggleFineAttitude(registry.events); return;
+      case K.progradeHoldToggle.code: this.throttle.toggleProgradeHold(registry.events); return;
+      case K.throttleLow.code: this.throttle.setThrottlePreset(0, registry.events); return;
+      case K.throttleMid.code: this.throttle.setThrottlePreset(1, registry.events); return;
+      case K.throttleHigh.code: this.throttle.setThrottlePreset(2, registry.events); return;
+      case K.throttleMax.code: this.throttle.setThrottlePreset(3, registry.events); return;
       case K.boosterDecouple.code: this.boosters.decouple(registry); return;
       case K.boosterIgnitionToggle.code: this.boosters.toggleIgnition(); return;
       case K.radiatorDeployLeft.code: this.motion.radiator.toggle('up'); return;
@@ -307,9 +303,9 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   }
 
   // 姿勢微調整モードの ON/OFF を切り替える。
-  private toggleFineAttitude(): void {
+  private toggleFineAttitude(events: RunEventSink): void {
     this.fineAttitude = !this.fineAttitude;
-    this.notifier.hint(`姿勢微調整モード: ${this.fineAttitude ? 'ON' : 'OFF'}`);
+    events.record({ kind: 'fineAttitudeToggled', on: this.fineAttitude });
   }
 
   // 放熱板パーツの残 HP から side ごとの損耗率を組む。パーツが欠けている側は全損扱い。
@@ -470,7 +466,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       dt,
       simDt,
       this,
-      () => this.notifier.hint('進行方向ホールド解除(手動操作)'),
+      () => this.events.record({ kind: 'progradeHoldReleasedByInput' }),
     );
   }
 

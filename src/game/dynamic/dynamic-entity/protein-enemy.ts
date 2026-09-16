@@ -1,7 +1,6 @@
 import type * as THREE from 'three/webgpu';
 import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { v3, type Vec3 } from '../../../math/vec3';
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import { collisionDamageFraction } from './contact-damage';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
@@ -96,7 +95,6 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   // EnemyClass.spawnGate で準備完了を待ってから構築すること。
   public constructor(
     init: ProteinEnemyPlacement | EnemyRestore,
-    worldSfx: WorldSfx,
     fx: FlashEffects,
     idAllocators: EntityIdAllocators,
     scene?: THREE.Scene,
@@ -131,7 +129,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     // 新規生成のときだけ、タンパク質固有の名称を陣形役割・識別番号などの既存識別子の前へ冠する。
     super(
       'saved' in init ? init : { ...init, name: `${definition.asset.displayName} ${init.name}` },
-      proteinView, PROTEIN_INERTIA, collision.outerRadius, worldSfx, fx, idAllocators, shape,
+      proteinView, PROTEIN_INERTIA, collision.outerRadius, fx, idAllocators, shape,
     );
     this.assetId = assetId;
     this.displaySettings = display;

@@ -6,9 +6,8 @@ import type { Attitude } from '../../physics/attitude';
 import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import { kinematicState } from '../../physics/kinematic-state';
 import { add, addScaled, scale, v3, Vec3 } from '../../math/vec3';
-import type { Notifier } from '../../hud/notifier';
-import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { FlashEffects } from '../vfx/flash-effects';
+import type { RunEventSink } from '../run-events';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import { DetachedBooster } from '../dynamic/dynamic-entity/detached-booster';
 import type { BurnManagementViewModel } from '../hud/panels/burn-management-panel';
@@ -45,8 +44,7 @@ export class AttachedBoosters {
     private readonly motion: DynamicMotion,
     private readonly boosterMotion: AttachedBoosterMotion,
     private readonly idAllocators: EntityIdAllocators,
-    private readonly _notifier: Notifier,
-    private readonly _worldSfx: WorldSfx,
+    private readonly events: RunEventSink,
     private readonly _scene: THREE.Scene,
     private readonly _fx: FlashEffects,
   ) {
@@ -56,7 +54,7 @@ export class AttachedBoosters {
   // 標準ブースターを最後尾へ追加する。
   public attach(): void {
     if (this.boosterMotion.stages.length >= MAX_ATTACHED) {
-      this._notifier.hint(`ブースターは最大 ${MAX_ATTACHED} 段です`);
+      this.events.record({ kind: 'boosterLimitReached', limit: MAX_ATTACHED });
       return;
     }
     this.boosterMotion.attach({
@@ -68,27 +66,25 @@ export class AttachedBoosters {
       fuelRate: DEFAULT_FUEL_RATE,
       ignited: false,
     });
-    this._notifier.hint(`ブースターを追加: ${this.boosterMotion.stages.length} 段`);
+    this.events.record({ kind: 'boosterAttached', stages: this.boosterMotion.stages.length });
   }
 
-  // 最後尾段の点火を切り替える。点けられなかった理由は HUD のヒントで返す。
+  // 最後尾段の点火を切り替える。点けられなかった理由は出来事として記録する。
   public toggleIgnition(): void {
     const active = this.activeStage();
     if (!active) {
-      this._notifier.hint('点火できるブースターがありません');
+      this.events.record({ kind: 'boosterIgnitionUnavailable' });
       return;
     }
     const ignited = this.boosterMotion.toggleIgnition();
-    this._notifier.hint(active.fuel <= 0
-      ? '最後尾ブースターは燃料切れです'
-      : `ブースター燃焼: ${ignited ? 'ON' : 'OFF'}`);
+    this.events.record({ kind: 'boosterIgnitionToggled', on: ignited, fuelEmpty: active.fuel <= 0 });
   }
 
   // 最後尾の段だけを独立エンティティへ移し、爆砕ボルトの相対速度を質量比で配る。
   public decouple(registry: EntityRegistry): void {
     const stageIndex = this.boosterMotion.stages.length - 1;
     if (stageIndex < 0) {
-      this._notifier.hint('分離できるブースターがありません');
+      this.events.record({ kind: 'boosterDecoupleUnavailable' });
       return;
     }
     const player = this.motion;
@@ -125,9 +121,8 @@ export class AttachedBoosters {
     }, this._scene, this.idAllocators));
 
     this._fx.spawnGasPuff(kinematicState<'eci'>(t, jointR, player.state.v));
-    this._worldSfx.decouple();
     player.invalidatePrediction();
-    this._notifier.hint(`ブースター分離: 残り ${this.boosterMotion.stages.length} 段`);
+    this.events.record({ kind: 'boosterDecoupled', stages: this.boosterMotion.stages.length });
   }
 
   // 段間カバーと爆砕ボルトを接続点から切り離し、径方向へ散らす。joint は接続面の中心(ECI)。
@@ -166,7 +161,7 @@ export class AttachedBoosters {
         kinematicState<'eci'>(t, coverPosition, coverVelocity),
         { kind: 'boosterCover', segment: i, bornSim: t },
         { q: att.q, w: v3(randSym(0.8), randSym(1.8), randSym(0.8)), inertia: v3(1, 1.7, 2.4) },
-        this._worldSfx, this._fx, this.idAllocators, undefined, this._scene,
+        this._fx, this.idAllocators, undefined, this._scene,
       ));
 
       // 爆砕ボルトは両段の平均速度を基準に、カバーより速く径方向と機軸方向へ。
@@ -188,7 +183,7 @@ export class AttachedBoosters {
         kinematicState<'eci'>(t, boltPosition, boltVelocity),
         { kind: 'boosterBolt', segment: i, bornSim: t },
         { q: att.q, w: v3(randSym(2.5), randSym(2.5), randSym(2.5)), inertia: v3(0.4, 0.5, 0.7) },
-        this._worldSfx, this._fx, this.idAllocators, undefined, this._scene,
+        this._fx, this.idAllocators, undefined, this._scene,
       ));
     }
   }
