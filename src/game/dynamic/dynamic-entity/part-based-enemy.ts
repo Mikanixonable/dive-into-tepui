@@ -14,6 +14,7 @@ import type { PartDamageTarget } from './damage-capabilities';
 export abstract class PartBasedEnemy extends Enemy implements PartDamageTarget {
   private readonly partModel = new PartDamageModel();
 
+  // initialParts の合計が、この敵の装甲値と残 HP の正本になる。
   public constructor(
     init: EnemyPlacement | EnemyRestore,
     view: DynamicView,
@@ -33,16 +34,20 @@ export abstract class PartBasedEnemy extends Enemy implements PartDamageTarget {
 
   public get parts(): readonly Part[] { return this.partModel.parts; }
 
+  // 総 HP を total へ按分して戻す。部品単位の HP を持たない記録からの復元で使う。
   protected setOverallHp(total: number): void {
     this.hp = this.partModel.setOverallHp(total);
   }
 
+  // 接近速度に応じたダメージを入れ、ダメージが出たかを返す。part を指定すると
+  // その部品へ固定し、省略すると健全な部品へ無作為に割り振る。
   protected applyCollisionDamage(closingSpeed: number, part?: Part): boolean {
     const result = this.partModel.applyCollisionDamage(closingSpeed, this.maxHp, part);
     this.hp = result.hp;
     return result.damaged;
   }
 
+  // 装甲の軽減を通したダメージを部品へ入れる。part の扱いは applyCollisionDamage と同じ。
   protected applyDamageToParts(amount: number, part?: Part): void {
     this.hp = this.partModel.applyDamageToParts(amount, part);
   }
