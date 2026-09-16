@@ -7,8 +7,7 @@ import { randSym } from '../../math/random';
 import { radiativeCooling, stepTemperature, stepThermalDeviation } from '../../physics/thermal';
 import { add, addScaled, norm, randPerp, randVec, scale, v3, Vec3 } from '../../math/vec3';
 
-import { Input } from '../../input/input';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
+import type { PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
 import type { RunEventSink } from '../run-events';
 import { Ship } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
@@ -105,18 +104,17 @@ export class FireControl {
     this.weapon.wasFiring = false;
   }
 
-  // 発射入力を1フレーム分処理する。トリガーが引かれ、ワープ速度・弾薬が許せば発射する。
+  // 発射の操作量を1フレーム分処理する。トリガーが引かれ、ワープ速度・弾薬が許せば発射する。
   public updateFireState(
     dt: number,
-    input: Input,
+    controls: PilotControls,
     activeStage: StageOutcome,
     registry: EntityRegistry,
     celestialBodies: CelestialBodies,
   ): void {
     this.tickReloadTimer(dt);
 
-    const keyHeld = input.down(K.fire);
-    if (!keyHeld) {
+    if (!controls.firing) {
       // トリガーを離した時点で連射状態を畳む: wasFiring を立てたままにすると
       // fineAttitude(微調整出力)が恒久的に有効なままになり、次にトリガーを
       // 引いたときもスピンアップ演出(justStartedFiring)が起きなくなる。

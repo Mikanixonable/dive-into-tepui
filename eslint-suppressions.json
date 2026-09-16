@@ -867,7 +867,7 @@
   },
   "src/game/player/fire-control.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 5
+      "count": 4
     },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 7
@@ -883,7 +883,7 @@
   },
   "src/game/player/player.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 4
+      "count": 3
     }
   },
   "src/game/player/power.ts": {
@@ -898,7 +898,7 @@
   },
   "src/game/player/throttle.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 4
+      "count": 2
     },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
