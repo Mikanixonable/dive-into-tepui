@@ -168,14 +168,9 @@ export const GRAPHICS_OPTIONS = {
     items: [[0, 'なし'], [1, '1'], [2, '2']],
     presets: { low: 0, medium: 2, high: 2 },
   },
-  // 面の向きによらない一様な環境光を、マップビューで足すか。読みやすさのため強い。
-  overviewAmbient: {
-    kind: 'toggle', group: 'light', label: '環境光(マップビュー)',
-    presets: { low: true, medium: true, high: true },
-  },
-  // 同じく戦闘ビューで足すか。物理に近い暗さのため弱い。
-  combatAmbient: {
-    kind: 'toggle', group: 'light', label: '環境光(戦闘ビュー)',
+  // 面の向きによらない一様な環境光を足すか。
+  ambient: {
+    kind: 'toggle', group: 'light', label: '環境光',
     presets: { low: true, medium: true, high: true },
   },
   // 艦艇・基地・デブリなどのメッシュが落とす影。天体の球と環が落とす影はこれでは消えない。

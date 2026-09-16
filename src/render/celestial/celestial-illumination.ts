@@ -85,7 +85,7 @@ export class CelestialIllumination {
     this.targets.sunLight.set(
       sunPos, star?.motion.def.radius ?? STARLESS_SUN_RADIUS,
       star?.stellarLight.color ?? STARLESS_SUN_COLOR, starIntensity);
-    this.targets.ambient.setFraction(ambientFraction(camera.mode === 'map', graphics));
+    this.targets.ambient.setFraction(ambientFraction(graphics));
     this.syncPlanetLights(sources, displayTime, camera);
     this.syncShadowSources(sources, fo, displayTime, focusPosition, graphics);
     this.syncAtmosphere(sources, displayTime, camera, graphics);
