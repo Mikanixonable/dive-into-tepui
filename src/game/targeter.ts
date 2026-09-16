@@ -1,11 +1,10 @@
 // 戦闘ターゲットの選定と、戦闘対象・弾薬・燃料の画面マーカーの同期。ターゲットに紐づく
 // 表示(方位マーカー・見越し点・的通過マーク)もここが受け持つ。
 import { add, addScaled, dot, len, lenSq, norm, scale, sub, v3, Vec3 } from '../math/vec3';
-import { Enemy } from './dynamic/dynamic-entity/enemy';
+import { isEnemy, type Enemy } from './dynamic/dynamic-entity/enemy';
 import { isBullet } from './dynamic/dynamic-entity/bullet';
 import { bulletReactionOf } from './dynamic/dynamic-entity/bullet-reaction';
 import { isAmmoPickup, isRcsFuelPickup } from './dynamic/dynamic-entity/pickup';
-import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
 import type { EntityRoster } from './dynamic/entity-roster';
 import { Player } from './player/player';
 import { isCombatTarget, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
@@ -149,7 +148,7 @@ export class Targeter {
       const mapOccluded = mapView && isOccluded(camera.position, ds.r, this.celestialBodies, displayTime);
       const mapOpacity = mapOccluded
         ? 0
-        : tgt instanceof Enemy && mapView
+        : isEnemy(tgt) && mapView
           ? mapPlanetFadeOpacity(nearestPlanetDistance(ds.r, this.celestialBodies, displayTime))
           : 1;
       this.pushMarkerItem(
@@ -158,9 +157,11 @@ export class Targeter {
     }
     // 部位マーカーは死んだ個体まで辿る — 生存個体だけだと撃破直後の部位マーカーが残る。
     for (const tgt of targets) {
-      if (!(tgt instanceof ProteinEnemy)) continue;
+      if (!isEnemy(tgt)) continue;
+      const protein = tgt.inspection.protein;
+      if (protein === null) continue;
       const ds = tgt.motion.alive ? tgt.motion.stateAt(displayTime) : null;
-      this.syncProteinSiteMarkers(tgt, ds?.r ?? null, viewerPos, mapView, project, camera.position);
+      this.syncProteinSiteMarkers(tgt, protein, ds?.r ?? null, viewerPos, mapView, project, camera.position);
     }
     // 弾薬・燃料のマーカー。マップでは自機から遠いほど薄れる。
     for (const ammo of ammoPickups) {
@@ -217,13 +218,13 @@ export class Targeter {
   // タンパク質敵が自機から PROTEIN_SITE_MARKER_RANGE 以内にある間、通常の敵マーカーへ加えて
   // 各機能部位の HP・名称マーカーを表示する。
   private syncProteinSiteMarkers(
-    enemy: ProteinEnemy, displayPos: Vec3 | null, viewerPos: Vec3, mapView: boolean, project: ProjectFn, cameraPos: Vec3,
+    enemy: Enemy, protein: Enemy['inspection']['protein'], displayPos: Vec3 | null,
+    viewerPos: Vec3, mapView: boolean, project: ProjectFn, cameraPos: Vec3,
   ): void {
+    if (protein === null) return;
     // 部位の HP は Entity の読み取り値、変形済みアンカーは View から同じ呼び出しで合成する。
     const inRange = !mapView && displayPos !== null && len(sub(displayPos, viewerPos)) <= PROTEIN_SITE_MARKER_RANGE;
-    const sites = enemy.view.siteMarkers(
-      displayPos ?? enemy.motion.state.r, enemy.motion.att.q, enemy.combatReadout.sites,
-    );
+    const sites = protein.siteMarkers(displayPos ?? enemy.motion.state.r, enemy.motion.att.q);
     // 範囲外でも全既存キーを通り、前フレームの DOM マーカーを確実に隠す。
     for (const site of sites) {
       const key = `psite-${enemy.id}-${site.id}`;

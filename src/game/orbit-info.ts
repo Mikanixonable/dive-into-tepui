@@ -3,7 +3,6 @@ import { strongestAttractor } from '../physics/attractor';
 import { apsisAltitudes } from '../physics/elements';
 import { kinematicState } from '../physics/kinematic-state';
 import { dot, len, sub, Vec3 } from '../math/vec3';
-import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { OrbitReference } from './orbit-reference';
 import type { OrbitingObject } from './dynamic/dynamic-entity/orbiting-object';
 import type { CelestialBody } from '../physics/celestial-body';
@@ -24,7 +23,7 @@ interface OrbitInfo {
 // 中心でない(attractor=null)場合、および要素が求まらない状態(双曲線軌道等)では
 // ap/pe/inc/period を NaN にする。nameOf は天体 id → 表示名(celestialSystem.nameOf)。
 export function orbitInfo(
-  entity: DynamicEntity, reference: OrbitReference, pivot: number, nameOf: (id: string) => string,
+  entity: OrbitingObject, reference: OrbitReference, pivot: number, nameOf: (id: string) => string,
 ): OrbitInfo {
   // reference 系での相対位置・速度(高度・相対速度の元)。
   const state = entity.motion.state;
