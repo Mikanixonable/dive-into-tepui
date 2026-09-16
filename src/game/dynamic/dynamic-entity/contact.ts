@@ -9,6 +9,9 @@ export interface Contact {
   readonly t: number; // 接触時刻 [sim s]
   readonly point: Vec3; // 接触点(ECI)
   readonly normal: Vec3; // self → other 向きの単位法線
+  // compound 接触での self/other 側の module id。球・従来形状・地表接触は null/省略。
+  readonly selfModuleId?: string | null;
+  readonly otherModuleId?: string | null;
   readonly selfState: KinematicState; // 接触直前(反応前)の自分
   readonly otherState: KinematicState; // 接触直前(反応前)の相手
 }
