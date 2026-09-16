@@ -137,12 +137,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // 噴射表現に要る推力・トルクを、共通の表示入力へ足す。
   protected override renderSource(
-    viewFrame: DynamicViewFrame, visible: boolean, active: boolean,
-    orbitReference: OrbitReference | undefined,
+    viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | undefined,
   ): BaseRenderSource {
     const motion = this.motion;
     return {
-      ...super.renderSource(viewFrame, visible, active, orbitReference),
+      ...super.renderSource(viewFrame, active, orbitReference),
       thrust: motion.thrust,
       maximumAcceleration: motion.maximumAcceleration,
       torque: motion.torque,
