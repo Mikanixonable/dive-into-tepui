@@ -108,6 +108,18 @@ export function register(): void {
     assert.equal(response.moduleIdB, 'module-b');
   });
 
+  test('contact: 地表への fixed 応答も実接触点と self module id を保持する', () => {
+    const moving = { state: kinematicState<'eci'>(0, v3(), v3(1, 0, 0)), radius: 4 };
+    const fixed = { state: kinematicState<'eci'>(0, v3(10, 0, 0), v3()), radius: 5 };
+    const point = v3(3, 2, 1);
+    const response = distributeFixedContact(moving, fixed, 0.4, {
+      normal: v3(1, 0, 0), toi: 0.5, pushOut: 0.25,
+      contactPoint: point, moduleIdA: 'hull', moduleIdB: null,
+    });
+    assert.equal(response.moduleIdA, 'hull');
+    assert.deepEqual(response.contactPoint, point);
+  });
+
   test('contact: B側の固有形状は法線と module id を反転し、両側通知へ self/other を渡す', () => {
     const receivedA: Contact[] = [];
     const receivedB: Contact[] = [];

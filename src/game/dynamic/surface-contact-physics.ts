@@ -76,7 +76,10 @@ export class SurfaceContactPhysics {
   private resolveAgainstCandidates(e: SurfaceContactParticipant, services: DynamicReactionServices): void {
     const candidates = this.candidates.into(e, this.nearbyScratch);
     this.candidateBodies += candidates.length;
-    const hit = firstSurfaceContact(e.prevState, e.state, e.radius, candidates, this.pivot);
+    const hit = firstSurfaceContact(
+      e.prevState, e.state, e.radius, candidates, this.pivot,
+      e.compoundShape, e.prevAtt, e.att,
+    );
     if (hit === null) return;
 
     // 天体の状態は個体の区間終端の時刻へ外挿してから渡す — pivot は区間に1つなので、
@@ -97,8 +100,10 @@ export class SurfaceContactPhysics {
     e.absorbHeat(response.specificEnergyLoss);
     e.collideWithCelestialBody(hit.body, {
       t: contactTime(e, response.toi),
-      point: add(response.r, scale(response.normal, e.radius)),
+      point: response.contactPoint ?? add(response.r, scale(response.normal, e.radius)),
       normal: response.normal,
+      selfModuleId: response.moduleIdA,
+      otherModuleId: null,
       selfState: before,
       otherState: hit.body.stateAt(this.pivot),
     }, services);

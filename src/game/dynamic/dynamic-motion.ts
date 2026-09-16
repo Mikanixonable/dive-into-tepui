@@ -239,6 +239,8 @@ export class DynamicMotion {
   public readonly hasAttitude: boolean;
   public readonly behavior: DynamicMotionBehavior;
   public att: Attitude;
+  // compound 接触の掃引始点。各 attitude step の直前に current attitude を退避する。
+  public prevAtt: Attitude;
   public alive = true;
   private _mass: number;
   private _radius: number;
@@ -279,6 +281,7 @@ export class DynamicMotion {
     // 姿勢・質量と接触
     const attitude = options.attitude ?? identityAttitude();
     this.att = { ...attitude, inertia: frozenVec(validateInertia(attitude.inertia)) };
+    this.prevAtt = this.att;
     this.hasAttitude = options.hasAttitude ?? true;
     this._mass = validateMass(options.mass ?? 1);
     this._radius = validateRadius(options.radius ?? 0);
@@ -346,6 +349,7 @@ export class DynamicMotion {
     this._centerOfMass = nextCenterOfMass;
     this._compoundShape = nextShape;
     this.att = { ...this.att, inertia: nextInertia };
+    this.prevAtt = { ...this.prevAtt, inertia: nextInertia };
     this._shapeRevision++;
     this.invalidatePrediction();
   }
@@ -455,7 +459,10 @@ export class DynamicMotion {
       environmentSamples = [environmentSampleAt(
         this.state.t, this.state.r, this.state.v, star, occluders, atmosphereBody, pivot)];
     }
-    if (this.hasAttitude) this.att = stepAttitude(this.att, this.torque, dt);
+    if (this.hasAttitude) {
+      this.prevAtt = this.att;
+      this.att = stepAttitude(this.att, this.torque, dt);
+    }
 
     // 歩のあいだの環境の平均で、種別ごとの環境反応と熱を進める。
     const environment = weightedEnvironment(environmentSamples);
