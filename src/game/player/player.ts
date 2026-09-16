@@ -1,17 +1,17 @@
 import type * as THREE from 'three/webgpu';
-import type { ViewMode } from '../../render/view-mode';
+
+import type { ViewMode } from '../view/view-mode';
 import { Attitude } from '../../physics/attitude';
 import { qFromBasis } from '../../math/quat';
 import { KinematicState, kinematicState } from '../../physics/kinematic-state';
-import { MU_EARTH, R_EARTH } from '../celestial/solar-system/constants';
 import { Vec3, add, v3, len, sub } from '../../math/vec3';
 import { Ship } from '../dynamic/dynamic-entity/ship';
 import { bulletReactionOf, type BulletType, type Shooter } from '../dynamic/dynamic-entity/bullet-reaction';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { EntityRegistry } from '../dynamic/entity-registry';
+import type { EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
-import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
 import { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { Notifier } from '../../hud/notifier';
@@ -24,16 +24,18 @@ import type { FlashEffects } from '../vfx/flash-effects';
 import { PlayerView, type PlayerRenderSource } from '../../render/dynamic/player/player-view';
 import type { DynamicViewFrame } from '../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../orbit-reference';
-import type { MarkerSlots } from '../../render/marker/marker-slots';
 import type { RadiatorSide } from './radiator';
 
 import { Plan, type PlanExecutionMode } from '../plan/plan';
 import { savedAttitude, savedKinematicState, type PlayerSaveData, type PlanSaveData } from '../save/save-data';
 import { partFromSaveData, type AnyPart, type Part } from '../dynamic/dynamic-entity/parts';
-import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../../render/marker/marker-identity';
+import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
+import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
 import { AttachedBoosters } from './attached-boosters';
-import { MARKER_PRIORITY } from '../../render/marker/crowding';
+import { frameOfCelestialBody, toFrameState } from '../../physics/frame';
+import type { CelestialBody } from '../../physics/celestial-body';
+import { MARKER_PRIORITY } from '../marker/marker-priority';
 import type { Controllable, PilotCommandFrame } from '../dynamic/dynamic-entity/controllable';
 import { PlayerMotion, type PlayerMotionReactions } from './player-motion';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
@@ -48,8 +50,6 @@ import type { PartDamageTarget } from '../dynamic/dynamic-entity/damage-capabili
 export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]
 const HULL_START_TEMP = 273; // 初期機体温度 [K]
 
-const INITIAL_ALT = 420e3; // 初期高度 [m]
-const INITIAL_INC_DEG = 97.0; // 初期軌道傾斜角 [deg]
 // 展開中の放熱板に当たった1発が放熱板パーツへ与えるダメージ [HP]。薄く大きい構造物なので
 // 船体への直撃(PLASMA_BULLET_DAMAGE)より軽い。
 const RADIATOR_BULLET_DAMAGE = 0.25;
@@ -58,18 +58,26 @@ const BULLET_IMPACT_HEAT = 3.0e5; // 自機が被弾1発あたりに受ける熱
 
 const ALLY_BEARING_MAX_DISTANCE = 20e3; // 味方機の画面外方位マーカーを表示する上限距離 [m]
 
-const PLAYER_MAX_HP = 1000;
+const PLAYER_MAX_HP = 1000; // 既定パーツ一式へ割り振る装甲値の合計 [HP]
 const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
+
 
 // 給弾ベルトの節点数。たわみ物理の鎖の長さと、表示するリンクメッシュの本数を揃える。
 const BELT_MAX_VISIBLE = 18;
 
 // 軌道計画の実行モードの巡回順。ボタン1つで次のモードへ進める。
-// 新規配置は name/state/id/ammo を任意指定し、省略時は高度 INITIAL_ALT・傾斜 INITIAL_INC_DEG の
-// 円軌道に機首プログレードで初期配置する。スナップショットからの再開は saved を simTime 付きの
-// 状態として展開する。
-export type PlayerInit =
-  | { readonly name?: string; readonly state?: KinematicState; readonly id?: string; readonly ammo?: AmmoLoad }
+// 新規配置の艦。state に機首プログレードで置き、name/id/ammo は任意指定する。
+export type PlayerPlacement = {
+  readonly name?: string;
+  readonly state: KinematicState;
+  readonly id?: string;
+  readonly ammo?: AmmoLoad;
+};
+
+// 艦の生成引数。新規配置には、機首と上面の向きを測る中心天体 center を添える。saved は simTime 付きの
+// 状態として展開するスナップショットからの再開。
+type PlayerInit =
+  | (PlayerPlacement & { readonly center: CelestialBody })
   | { readonly saved: PlayerSaveData; readonly simTime: number };
 
 // プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、被弾・接触の帰結と保存を持つ。
@@ -100,26 +108,24 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   public readonly toggleSolarPanel = (side: 'up' | 'down'): void => this.motion.power.toggle(side);
   public readonly toggleRadiator = (side: 'up' | 'down'): void => this.motion.radiator.toggle(side);
 
-  // init 省略時は無作為な名前と既定軌道の新規艦になる。id を省いたときは name がそのまま
+  // name を省いた新規艦は無作為な名前になる。id を省いたときは name がそのまま
   // 艦の識別子になるので、複数隻を並べるなら name も分ける。
   public constructor(
     private readonly notifier: Notifier,
     worldSfx: WorldSfx,
     scene: THREE.Scene,
     fx: FlashEffects,
-    markers: MarkerSlots,
-    init: PlayerInit = {},
+    idAllocators: EntityIdAllocators,
+    init: PlayerInit,
   ) {
     const effects: PlayerEffects = new DefaultPlayerEffects(worldSfx, fx);
     const saved = 'saved' in init ? init.saved : undefined;
     const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
-    const state = 'saved' in init
-      ? savedKinematicState(init.saved, init.simTime)
-      : (init.state ?? Player.makeInitialState());
-    const id = 'saved' in init ? init.saved.id : (init.id ?? name);
+    const state = 'saved' in init ? savedKinematicState(init.saved, init.simTime) : init.state;
+    const id = idAllocators.entity.next('saved' in init ? init.saved.id : (init.id ?? name));
     const att: Attitude = 'saved' in init
       ? savedAttitude(init.saved, Player.INERTIA)
-      : Player.progradeAttitude(state);
+      : Player.progradeAttitude(state, init.center);
 
     const reactions = (owner: Player): PlayerMotionReactions => ({
       weapon: {
@@ -165,7 +171,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
         saved?.power,
         saved?.boosters,
       ),
-      new PlayerView(scene, id, markers, BELT_MAX_VISIBLE),
+      new PlayerView(scene, id, BELT_MAX_VISIBLE),
       id,
       createPlayerParts(PLAYER_MAX_HP),
     );
@@ -174,14 +180,10 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.fire = new FireControl(this, notifier, worldSfx, scene, fx, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
     this.altitudeAlarm = new AltitudeAlarm(notifier, worldSfx);
     this.boosters = new AttachedBoosters(
-      this.motion, this.motion.attachedBoosters, notifier, worldSfx, scene, fx,
+      this.motion, this.motion.attachedBoosters, idAllocators, notifier, worldSfx, scene, fx,
     );
-
     if (saved) {
-      // 現行のモードでない planExecution は、保存形の followPlan(boolean)から読み替える。
-      this.planExecution = saved.planExecution === 'off' || saved.planExecution === 'instant'
-        ? saved.planExecution
-        : (saved.followPlan ? 'instant' : 'off');
+      this.planExecution = saved.planExecution ?? 'off';
       this.fineAttitude = saved.fineAttitude ?? false;
       this.trajectoryLineVisible = saved.showTrajectoryLine ?? false;
       if (Array.isArray(saved.parts)) {
@@ -209,22 +211,15 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     }
   }
 
-  // 高度 INITIAL_ALT、傾斜角 INITIAL_INC_DEG の円軌道状態を返す。
-  private static makeInitialState(): KinematicState {
-    const r0 = R_EARTH + INITIAL_ALT;
-    const vCirc = Math.sqrt(MU_EARTH / r0);
-    const inc = (INITIAL_INC_DEG * Math.PI) / 180;
-    return kinematicState<'eci'>(0, v3(r0, 0, 0), v3(0, vCirc * Math.sin(inc), -vCirc * Math.cos(inc)));
-  }
-
   // 3軸を非対称にし、中間軸(ピッチ)周りの回転にジャニベコフ効果(中間軸不安定性)が
   // 起こるようにする。ロール軸(機体前後方向)は細長い形状に見合って最小にする。
   private static readonly INERTIA = v3(PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INERTIA_ROLL);
 
-  // state の速度方向を機首、位置方向を上として姿勢を組む。
-  private static progradeAttitude(state: KinematicState): Attitude {
+  // 機首を center に対する速度の向きへ、上面を center から見た位置の向きへ向けた静止姿勢。
+  private static progradeAttitude(state: KinematicState, center: CelestialBody): Attitude {
+    const rel = toFrameState(frameOfCelestialBody(center, state.t), state);
     return {
-      q: qFromBasis(state.v, state.r),
+      q: qFromBasis(rel.v, rel.r),
       w: v3(),
       inertia: Player.INERTIA,
     };
@@ -509,8 +504,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
 
   // 画面マーカー・一覧に出すこの艦の項目。isActive はマップ上で自艦と僚艦を塗り分ける
   // ための操作対象フラグ。
-  public markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode, isActive: boolean): GroupedMarkerItem {
-    const dist = len(sub(pos, viewerPos));
+  public markerItem(viewerPos: Vec3 | null, pos: Vec3, vel: Vec3, view: ViewMode, isActive: boolean): GroupedMarkerItem {
     return {
       key: this.markerKey,
       kind: this.mapKind,
@@ -520,11 +514,12 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       vel,
       priority: MARKER_PRIORITY.PLAYER,
       name: this.name,
-      // 画面外の方位マーカーは ALLY_BEARING_MAX_DISTANCE 以内の艦にだけ出す
-      bearingColor: COLOR_MARKER_ALLY,
-      bearingSym: DIRECTION_GLYPH.allyBearing,
-      bearingClass: 'mk-dir mk-ally-dir',
-      bearingVisible: dist <= ALLY_BEARING_MAX_DISTANCE,
+      // 画面外の方位マーカーは、視点から ALLY_BEARING_MAX_DISTANCE 以内の艦にだけ出す
+      bearing: {
+        cls: 'mk-dir mk-ally-dir', sym: DIRECTION_GLYPH.allyBearing, color: COLOR_MARKER_ALLY,
+        visible: viewerPos !== null && len(sub(pos, viewerPos)) <= ALLY_BEARING_MAX_DISTANCE,
+        clustered: true,
+      },
       color: isActive ? 'var(--color-primary)' : COLOR_MARKER_ALLY,
       symMarkup: true,
     };
@@ -533,8 +528,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   // 自機の View が読む値を、共通の表示入力へ足す。可動部と噴射は Motion の現在値、
   // マーカーの弾数と初速は装備の現在値から、このフレームぶんだけを組む。
   protected override renderSource(
-    viewFrame: DynamicViewFrame, visible: boolean, active: boolean,
-    orbitReference: OrbitReference | undefined,
+    viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | undefined,
   ): PlayerRenderSource {
     const motion = this.motion;
     const { attachedBoosters: boosters, belt, power, radiator } = motion;
@@ -542,7 +536,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     const thrustAcceleration = this.throttle.thrustAccelVec;
     const radiatorPanel = (side: RadiatorSide) => ({ wear: radiator.wearOf(side), ...radiator.foldThetas(side) });
     return {
-      ...super.renderSource(viewFrame, visible, active, orbitReference),
+      ...super.renderSource(viewFrame, active, orbitReference),
       state: motion.state,
       active,
       thrustAcceleration: len(thrustAcceleration) > 0 ? thrustAcceleration : null,
@@ -556,11 +550,8 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       },
       belt: { anchor: belt.anchor, positions: belt.positions, twists: belt.twists },
       magsLeft: this.magsLeft,
-      roundsInMag: this.roundsInMag,
-      averageMuzzleVelocity: this.averageMuzzleVelocity,
       solar: { up: power.deployOf('up'), down: power.deployOf('down') },
       radiator: { up: radiatorPanel('up'), down: radiatorPanel('down') },
-      orbitAxesReference: orbitReference?.state ?? null,
     };
   }
 

@@ -1,18 +1,17 @@
 // クリエイティブモードの物体配置。配置パネルを持ち、フォームの値を検証して初期状態を組み、
 // 置くと決まった物体を onPlace へ渡す。配置プレビューをどの値で出すかもここが決める。
-import { add } from '../../math/vec3';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { orbitalElementsOf, semiMajorFromPeriod, stateFromOrbitalElements, type OrbitalElements } from '../../physics/elements';
 import { haloState, lissajousState } from '../../physics/halo';
-import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
+import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { secondaryFrameOf } from '../../physics/lagrange';
 import { isOccluded } from '../../physics/occlusion';
 import { ObjectPlacementPreviewView } from '../../render/creative/object-placement-preview-view';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import { Base } from '../dynamic/dynamic-entity/base';
-import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
-import { AmmoPickup, isAmmoPickup, isRcsFuelPickup, RcsFuelPickup } from '../dynamic/dynamic-entity/pickup';
-import { isPlayer, type PlayerInit } from '../player/player';
+import { EntityIdAllocator, type EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
+import { AmmoPickup, RcsFuelPickup } from '../dynamic/dynamic-entity/pickup';
+import { isPlayer, type PlayerPlacement } from '../player/player';
 import { generateRandomName } from '../random-name';
 import { generateDriftingEnemy } from '../stages/spawner/enemy-generator';
 import { elementsFormFromState } from './duplicate-form';
@@ -29,13 +28,15 @@ import type { Notifier } from '../../hud/notifier';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { CameraFrame } from '../../render/camera/camera-frame';
-import type { ObjectPlacementPreviewMarker } from '../../render/creative/object-placement-preview-view';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { HudLayers } from '../hud/hud-layers';
-import type { MarkerSlots } from '../../render/marker/marker-slots';
+import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import { MARKER_PRIORITY } from '../marker/marker-priority';
+import { pointPlacement } from '../marker/marker-placement';
+import { COLOR_MARKER_ALLY, ENTITY_GLYPH } from '../marker/marker-identity';
 import type { FlashEffects } from '../vfx/flash-effects';
 
 // 軌道上へ配置できる自機の上限隻数。
@@ -48,18 +49,20 @@ const PREVIEW_LINE_STYLE: LineStyle = {
 
 const DEG = Math.PI / 180;
 
-// 置くと決まった物体。自機は実体ではなく生成引数で表す。name は与えた名前で、
-// 実体が名前を持たない種類(弾薬)でも告知できるよう別に持つ。
+// 配置プレビューの ▷ マーカーの id。
+const PREVIEW_MARKER_ID = 'creative-preview';
+
+// 置くと決まった物体。自機は実体ではなく配置の指定で表す。
 export type PlacedObject =
-  | { readonly kind: 'player'; readonly init: PlayerInit }
-  | { readonly kind: 'entity'; readonly entity: DynamicEntity; readonly name: string };
+  | { readonly kind: 'player'; readonly placement: PlayerPlacement }
+  | { readonly kind: 'entity'; readonly entity: DynamicEntity };
 
 export class ObjectPlacement {
   private readonly panel: ObjectPlacerPanel;
   private readonly previewView: ObjectPlacementPreviewView;
+  // このフレームのプレビュー ▷ マーカーの宣言。
+  private readonly declarations: MarkerDeclaration[] = [];
   private readonly playerIdAllocator = new EntityIdAllocator('creative-player-');
-  private readonly ammoPickupIdAllocator = new EntityIdAllocator('creative-ammo-');
-  private readonly rcsFuelPickupIdAllocator = new EntityIdAllocator('creative-rcs-fuel-');
 
   // 検証を通った物体の渡し先。
   public onPlace: ((placed: PlacedObject) => void) | null = null;
@@ -68,33 +71,28 @@ export class ObjectPlacement {
   public constructor(
     private readonly hud: HudLayers & Notifier,
     private readonly scene: THREE.Scene,
-    private readonly dynamicSystem: EntityRoster,
+    private readonly roster: EntityRoster,
+    private readonly idAllocators: EntityIdAllocators,
     private readonly celestialSystem: CelestialSystem,
-    private readonly markers: MarkerSlots,
     private readonly worldSfx: WorldSfx,
     private readonly fx: FlashEffects,
   ) {
-    // 以後の新規配置が既存 id と衝突しないよう、復元済みの艦・補給の id を予約する。
-    const entities = dynamicSystem.all();
-    for (const p of entities.filter(isPlayer)) this.playerIdAllocator.next(p.id);
-    for (const ammoPickup of entities.filter(isAmmoPickup)) this.ammoPickupIdAllocator.next(ammoPickup.id);
-    for (const pickup of entities.filter(isRcsFuelPickup)) this.rcsFuelPickupIdAllocator.next(pickup.id);
+    // 以後の新規配置が既存 id と衝突しないよう、復元済みの艦の id を予約する。
+    for (const p of roster.all().filter(isPlayer)) this.playerIdAllocator.next(p.id);
 
-    this.previewView = new ObjectPlacementPreviewView(scene, markers, PREVIEW_LINE_STYLE);
+    this.previewView = new ObjectPlacementPreviewView(scene, PREVIEW_LINE_STYLE);
 
     this.panel = new ObjectPlacerPanel(hud.mapRoot, hud.layers.popup, celestialSystem, hud.overlayManager);
     this.panel.onConfirm = (name, form) => this.place(name, form);
   }
 
-  // オブジェクト配置モーダルを開く。focusId はマップの現在フォーカスで、
-  // 基準天体になれる ID なら基準天体の初期選択に使う。
+  // オブジェクト配置モーダルを開く。focusId が基準天体になれる ID なら、基準天体の初期選択に使う。
   public openObjectPlacer(focusId?: string): void {
     this.panel.open(focusId !== undefined ? { kind: 'body', celestialBody: focusId as ReferenceCelestialBody } : undefined);
   }
 
-  // 右クリックメニューの「複製」。state を軌道要素へ逆算でき、基地の基準天体制約も満たす値が
-  // 求まったときは、その値をプリセットして開く。逆算できない軌道(双曲線など)や制約に反する
-  // 複製元では、値を引き継ぐと制約外の軌道が黙って配置できてしまうので、種類だけを引き継ぐ。
+  // 種類と軌道要素を引き継いで配置パネルを開く。引き継ぐのは state を軌道要素へ逆算でき、基地の
+  // 基準天体制約も満たすときだけ — それ以外は種類だけにして、制約外の軌道が黙って置かれるのを防ぐ。
   public openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void {
     const form = elementsFormFromState(
       state, this.celestialSystem, state.t, this.celestialSystem.origin.id);
@@ -110,12 +108,14 @@ export class ObjectPlacement {
   public sync(camera: CameraFrame, displayTime: number): void {
     const form = this.panel.isOpen ? this.panel.getForm() : null;
     const preview = form ? this.computePreview(form) : null;
-    this.previewView.sync(
-      preview?.elements ?? null, this.previewMarker(preview?.pos ?? null, camera, displayTime),
-      PREVIEW_LINE_STYLE, camera,
-    );
+    this.previewView.sync(preview?.elements ?? null, PREVIEW_LINE_STYLE, camera);
+    this.declarations.length = 0;
+    this.declarations.push(this.previewMarker(preview?.pos ?? null, camera, displayTime));
     this.panel.setIssues(form ? this.computeFieldIssues(form) : []);
   }
+
+  // 直近の sync が組んだ、このフレームのマーカーの宣言。
+  public get markerDeclarations(): readonly MarkerDeclaration[] { return this.declarations; }
 
   // このモジュールが持つ表示物とパネルを片付ける。
   public dispose(): void {
@@ -129,7 +129,6 @@ export class ObjectPlacement {
     if (form.placementMode !== 'elements') return null;
     try {
       const state = this.buildInitialState(form);
-      // 楕円はフォームが選んだ基準天体中心で描く。
       const elements = orbitalElementsOf(state, this.referenceCelestialBody(form), state.t);
       return elements ? { elements, pos: state.r } : null;
     } catch {
@@ -137,24 +136,33 @@ export class ObjectPlacement {
     }
   }
 
-  // プレビューの ▷ マーカーをどう出すかを決める。pos はプレビューの ECI 位置で、プレビューを
-  // 出せないフレームでは null。マップ視点で天体に遮られているあいだは位置を示さない。
+  // プレビューの ▷ マーカーの宣言。pos はプレビューの ECI 位置で、プレビューを出せない
+  // フレームでは null。
   private previewMarker(
     pos: Vec3 | null, camera: CameraFrame, displayTime: number,
-  ): ObjectPlacementPreviewMarker {
-    if (pos === null) return { kind: 'fadedOut' };
+  ): MarkerDeclaration {
+    const base = {
+      id: PREVIEW_MARKER_ID, cls: 'mk-self', sym: ENTITY_GLYPH.preview,
+      priority: MARKER_PRIORITY.PLAYER,
+    };
+    // 位置が無いときと、マップ視点で天体に遮られているときは、画面上の位置を示さない。
+    if (pos === null) return { ...base, x: 0, y: 0, front: false, occluded: true };
     if (camera.mode === 'map'
       && isOccluded(camera.position, pos, this.celestialSystem.celestialMotions, displayTime)) {
-      return { kind: 'hidden' };
+      return { ...base, x: 0, y: 0, front: false };
     }
-    return { kind: 'shown', pos };
+    return {
+      ...base,
+      ...pointPlacement(pos, camera.project, camera.position),
+      label: 'PREVIEW', color: COLOR_MARKER_ALLY, rotationDeg: 0,
+    };
   }
 
   // フォームの値を検証して初期状態を組み、置く物体を onPlace へ渡す。
   // 検証に落ちるか状態を組めなければ、理由をトーストで知らせて何も渡さない。
   private place(name: string, form: ObjectPlacerForm): void {
     // 隻数の上限が掛かるのは自機だけ(SPEC GAME.md 9.1)。
-    if (form.entityKind === 'player' && this.dynamicSystem.all().filter(isPlayer).length >= MAX_PLACED_SHIPS) {
+    if (form.entityKind === 'player' && this.roster.all().filter(isPlayer).length >= MAX_PLACED_SHIPS) {
       this.hud.hint(`配置数が上限(${MAX_PLACED_SHIPS}隻)に達しています`);
       return;
     }
@@ -169,37 +177,35 @@ export class ObjectPlacement {
     }
   }
 
-  // 種類ごとに実体を作り、id を採番して、空欄の名前を種類ごとの既定名で埋める。
+  // 空欄の名前を種類ごとの既定名で埋め、種類ごとに実体を作る。
   private createObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): PlacedObject {
-    // 自機は生成引数、それ以外は実体として返す。
+    const finalName = name.trim() || generateRandomName(entityKind);
+    // 自機だけは実体ではなく配置の指定で返す。
     switch (entityKind) {
-      case 'player': {
-        const id = this.playerIdAllocator.next();
-        return { kind: 'player', init: { name: name.trim() || generateRandomName('player'), state, id } };
-      }
-      case 'enemy': {
-        const finalName = name.trim() || generateRandomName('enemy');
-        const enemy = generateDriftingEnemy(finalName, state, '#ff6a00', '#ff6a00', this.worldSfx, this.fx, this.scene);
-        return { kind: 'entity', entity: enemy, name: enemy.name };
-      }
-      case 'ammo': {
-        const id = this.ammoPickupIdAllocator.next();
+      case 'player':
+        return { kind: 'player', placement: { name: finalName, state, id: this.playerIdAllocator.next() } };
+      case 'enemy':
         return {
           kind: 'entity',
-          entity: new AmmoPickup({ state, id }, this.scene),
-          name: name.trim() || generateRandomName('ammo'),
+          entity: generateDriftingEnemy(
+            finalName, state, '#ff6a00', '#ff6a00', this.worldSfx, this.fx, this.scene, this.idAllocators,
+          ),
         };
-      }
-      case 'fuel': {
-        const id = this.rcsFuelPickupIdAllocator.next();
-        const finalName = name.trim() || generateRandomName('fuel');
-        return { kind: 'entity', entity: new RcsFuelPickup({ state, id, name: finalName }, this.scene), name: finalName };
-      }
-      case 'base': {
-        const finalName = name.trim() || generateRandomName('base');
-        const base = new Base({ state, name: finalName }, this.scene, this.hud, this.markers);
-        return { kind: 'entity', entity: base, name: base.name };
-      }
+      case 'ammo':
+        return {
+          kind: 'entity',
+          entity: new AmmoPickup({ state, name: finalName }, this.scene, this.idAllocators),
+        };
+      case 'fuel':
+        return {
+          kind: 'entity',
+          entity: new RcsFuelPickup({ state, name: finalName }, this.scene, this.idAllocators),
+        };
+      case 'base':
+        return {
+          kind: 'entity',
+          entity: new Base({ state, name: finalName }, this.scene, this.hud, this.idAllocators),
+        };
     }
   }
 
@@ -209,19 +215,17 @@ export class ObjectPlacement {
     return this.buildElementsState(form);
   }
 
-  // ラグランジュ点まわりのハロー/リサジュー軌道の初期状態を組む。ハローの面内振幅は
-  // 三次の振幅拘束で面外振幅から決まるので、フォームに面内振幅の欄がない。
+  // ラグランジュ点まわりのハロー/リサジュー軌道の初期状態を組む。
   private buildLagrangeState(form: LagrangeForm): KinematicState {
     const motion = this.celestialSystem.entityOf(form.lagrangeSecondary).motion;
     if (!(motion instanceof OrbitingMotion)) {
       throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} は公転していないのでラグランジュ点を持たない`);
     }
-    const t = this.dynamicSystem.simTime;
+    const t = this.roster.simTime;
     const system = secondaryFrameOf(this.celestialSystem.celestialMotions, t, motion, t);
     if (system === null) {
       throw new Error(`buildLagrangeState: ${form.lagrangeSecondary} の主天体が引けない`);
     }
-    // 面外振幅 az は両方の軌道種が使い、面内振幅 ax はリサジューだけが持つ。
     if (form.lagrangeOrbitKind === 'halo') {
       return haloState(system, { point: form.lagrangePoint, az: form.azKm * 1e3 });
     }
@@ -236,7 +240,7 @@ export class ObjectPlacement {
   // フォームのサイズ/形の指定から軌道要素を組み、基準天体中心の状態を ECI へ直して返す。
   private buildElementsState(form: ElementsForm): KinematicState {
     const center = this.referenceCelestialBody(form);
-    const centerState = center.stateAt(this.dynamicSystem.simTime);
+    const centerState = center.stateAt(this.roster.simTime);
     // サイズの指定方法ごとに長半径と離心率を出す。
     let a: number;
     let e: number;
@@ -253,17 +257,15 @@ export class ObjectPlacement {
       e = form.eccentricity;
     }
 
-    // 基準天体中心の相対状態を組み、基準天体自身の位置・速度を足して ECI にする。
+    // 基準天体中心の相対状態を ECI へ直す。
     const rel = stateFromOrbitalElements(
-      this.dynamicSystem.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG,
+      this.roster.simTime, a, e, form.incDeg * DEG, form.raanDeg * DEG, form.argpDeg * DEG,
       form.nuDeg * DEG, center.def.mu,
     );
-    return kinematicState<'eci'>(
-      this.dynamicSystem.simTime, add(centerState.r, rel.r), add(centerState.v, rel.v));
+    return addPrimaryRelative(centerState, kinematicState<'primaryRel'>(rel.t, rel.r, rel.v));
   }
 
-  // フォーム値をフィールド単位で検証する。assertValidForm と同じ検証を通し、
-  // 入力中の表示と確定時の可否が食い違わないようにする。
+  // フォーム値をフィールド単位で検証する。
   private computeFieldIssues(form: ObjectPlacerForm): PlacementFieldIssue[] {
     // 配置方法によらず効く、種類ごとの基準天体の制約。
     const issues = [...validateBaseReferenceFields(

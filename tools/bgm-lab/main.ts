@@ -3,7 +3,7 @@
 import { BGM_TRACKS } from '../../src/audio/bgm/tracks/tracks';
 import { BgmTrack, PhaseCycle } from '../../src/audio/bgm/tracks/types';
 import { trackCycleSteps } from '../../src/audio/bgm/track-cycle';
-import { LabPlayer } from './lab-player';
+import { LabPlayer, LoopRange } from './lab-player';
 
 const STATE_KEY = 'tepui.bgmLab';
 
@@ -149,18 +149,20 @@ function updateSeekRange(): void {
   seekIn.max = String(seekRangeSteps(track()));
 }
 
+// 繰り返す区間。ループを切ってあれば null。
+function loopRange(): LoopRange | null {
+  return state.loopEnabled ? { from: state.loopFrom, to: state.loopTo } : null;
+}
+
 function applyLoop(): void {
-  player?.setLoop(state.loopEnabled ? { from: state.loopFrom, to: state.loopTo } : null);
+  player?.setLoop(loopRange());
 }
 
 function start(): void {
   if (!audioCtx) audioCtx = new AudioContext();
   void audioCtx.resume();
-  if (!player) player = new LabPlayer(audioCtx);
-  applyLoop();
-  applyMutes();
-  player.setVolume(state.volume);
-  player.play(track(), state.startStep);
+  if (!player) player = new LabPlayer(audioCtx, state.volume);
+  player.play(track(), state.startStep, state.muted, loopRange());
   state.playing = true;
   saveState(state);
   hint.textContent = '';
@@ -173,7 +175,6 @@ function stop(): void {
 }
 
 function refresh(): void {
-  player?.tick();
   const t = track();
   if (!player || !player.isPlaying) {
     readout.textContent = '停止中';
