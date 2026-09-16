@@ -338,11 +338,6 @@
       "count": 1
     }
   },
-  "src/game/dynamic/dynamic-entity/base.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    }
-  },
   "src/game/dynamic/dynamic-entity/casing-collision.ts": {
     "@typescript-eslint/explicit-module-boundary-types": {
       "count": 2
@@ -392,9 +387,6 @@
     }
   },
   "src/game/dynamic/dynamic-motion.ts": {
-    "@typescript-eslint/explicit-module-boundary-types": {
-      "count": 1
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 4
     }
@@ -453,9 +445,6 @@
     }
   },
   "src/game/dynamic/predictor.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
     }
@@ -792,9 +781,6 @@
     }
   },
   "src/game/plan/plan-editor.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 9
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
     }
@@ -845,9 +831,6 @@
     }
   },
   "src/game/player/attached-boosters.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
     }
@@ -866,12 +849,6 @@
     }
   },
   "src/game/player/fire-control.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 4
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 7
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
     }
@@ -897,9 +874,6 @@
     }
   },
   "src/game/player/throttle.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
     }
@@ -1045,11 +1019,6 @@
     },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 10
-    }
-  },
-  "src/game/targeter.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
     }
   },
   "src/game/view/view-manager.ts": {
