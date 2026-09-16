@@ -1,10 +1,10 @@
 // LEAD(見越し)マーカー: 自機の弾がその敵に命中する未来位置を示す。
 import { leadPoint } from '../../physics/intercept';
 import type { ViewMode } from '../../render/view-mode';
-import type { MarkerSlots } from './marker-slots';
+import type { MarkerSlots } from '../../render/marker/marker-slots';
 import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import { Player } from '../player/player';
-import { COLOR_MARKER_ALLY } from './marker-identity';
+import { COLOR_MARKER_ALLY } from '../../render/marker/marker-identity';
 import type { ProjectFn } from '../../math/projection';
 
 const LEAD_MAX_TIME = 25; // 表示する見越し解の、命中までの最長時間 [s]

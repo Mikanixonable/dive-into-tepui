@@ -8,7 +8,7 @@ import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarkerPair, type EquatorNodeInputs } from './equator-node-marker-pair';
-import type { MarkerSlots } from './marker-slots';
+import type { MarkerSlots } from '../../render/marker/marker-slots';
 
 export class EquatorNodeManager {
   private readonly pairs = new Map<string, EquatorNodeMarkerPair>();

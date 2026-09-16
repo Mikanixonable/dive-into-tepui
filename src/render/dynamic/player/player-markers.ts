@@ -1,11 +1,11 @@
 // 自機の姿勢だけから決まる戦闘ビュー専用 HUD マーカー(軌道基準の方向マーカーと機首ボアサイト)。
-import { LOCAL_FORWARD, qRotate, type Quat } from '../../math/quat';
-import type { ViewMode } from '../../render/view-mode';
-import { KinematicState, kinematicState, orbitAxes } from '../../physics/kinematic-state';
-import { scale, sub } from '../../math/vec3';
-import type { MarkerSlots } from './marker-slots';
-import { DIRECTION_GLYPH } from './marker-identity';
-import type { ProjectFn } from '../../math/projection';
+import { LOCAL_FORWARD, qRotate, type Quat } from '../../../math/quat';
+import type { ViewMode } from '../../view-mode';
+import { kinematicState, orbitAxes, type KinematicState } from '../../../physics/kinematic-state';
+import { scale, sub } from '../../../math/vec3';
+import type { MarkerSlots } from '../../marker/marker-slots';
+import { DIRECTION_GLYPH } from '../../marker/marker-identity';
+import type { ProjectFn } from '../../../math/projection';
 
 // 戦闘ビュー専用のマーカー。マップビューではまとめて隠す。
 const COMBAT_KEYS = ['pro', 'retro', 'nrm', 'anm', 'radout', 'radin', 'bore'] as const;

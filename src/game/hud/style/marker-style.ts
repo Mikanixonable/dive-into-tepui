@@ -1,6 +1,6 @@
 // HUD 3D スクリーン投影マーカー CSS (.mk, 各種マーカーシンボル, ラベル, 重なり順).
 import { LIGHT_PALETTE } from '../../../theme';
-import { COLOR_MARKER_ALLY, COLOR_MARKER_NODE, COLOR_MARKER_FUEL, COLOR_BASE } from '../../marker/marker-identity';
+import { COLOR_MARKER_ALLY, COLOR_MARKER_NODE, COLOR_MARKER_FUEL, COLOR_BASE } from '../../../render/marker/marker-identity';
 
 const COLOR_MARKER_TGTDIR = '#ff7ab0';
 const COLOR_MARKER_BOARDPASS = '#ffffff';

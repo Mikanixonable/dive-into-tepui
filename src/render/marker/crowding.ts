@@ -78,7 +78,7 @@ export class CrowdingGrid {
   private readonly hiddenScratchB = new Set<string>();
   private hiddenLastFrame: ReadonlySet<string> = new Set();
 
-  constructor(
+  public constructor(
     private readonly cellSizePx: number,
     private readonly depthGuardRatio: number,
     private readonly depthGuardExitRatio: number,
@@ -86,7 +86,7 @@ export class CrowdingGrid {
 
   // items 内で cellSizePx 未満に近接するペアごとに、距離比(depth-guard)→優先度→深さ→id の順で
   // 隠す側を決め、隠す id の集合を返す。返した集合は次回呼び出しまで有効(内部でダブルバッファ)。
-  compute(items: readonly ProjectedLabel[]): ReadonlySet<string> {
+  public compute(items: readonly ProjectedLabel[]): ReadonlySet<string> {
     const hidden = this.hiddenLastFrame === this.hiddenScratchA ? this.hiddenScratchB : this.hiddenScratchA;
     hidden.clear();
     for (const row of this.cellsScratch.values()) {

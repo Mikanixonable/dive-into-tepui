@@ -9,12 +9,11 @@ import { injectOnce } from '../../../hud/inject-style';
 import { AltitudeTab } from './orbit-altitude-tab';
 import { ApproachTab } from './orbit-approach-tab';
 import { ProjectionTab } from './orbit-projection-tab';
-import type { Game } from '../../game';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
-import { aliveCombatTarget } from '../../dynamic/dynamic-entity/combat-target';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import type { ApproachTargetSource } from './orbit-analysis-data';
 import type { AnalysisChartSource, AnalysisTab } from './orbit-analysis-tab';
+import type { OrbitReference } from '../../orbit-reference';
 
 const SYNC_INTERVAL_MS = 250;
 
@@ -33,15 +32,15 @@ function applyReader(prev: DynamicEntity | null, next: DynamicEntity | null): Dy
   return next;
 }
 
-// 現在の航法ターゲットを、接近・投影タブが扱える形(天体 or 個体)へ解決する。
-// 質量を持たない対象(ラグランジュ点など)と、ターゲット未選択のときは null。
-function resolveApproachTarget(game: Game): ApproachTargetSource | null {
-  const id = game.navTarget.id;
-  if (id === null) return null;
-  const body = game.celestialSystem.find(id)?.motion;
-  if (body !== undefined) return { kind: 'celestialBody', body };
-  const entity = aliveCombatTarget(game.dynamicSystem.all(), id);
-  return entity ? { kind: 'entity', entity } : null;
+export interface OrbitAnalysisReaderView {
+  readonly entity: DynamicEntity | null;
+  readonly targetEntity: DynamicEntity | null;
+}
+
+export interface OrbitAnalysisViewModel extends AnalysisChartSource {
+  readonly entity: DynamicEntity | null;
+  readonly reference: OrbitReference | null;
+  readonly target: ApproachTargetSource | null;
 }
 
 export class OrbitAnalysisWindow {
@@ -97,19 +96,15 @@ export class OrbitAnalysisWindow {
 
   // 見ている個体へ analysisPanelReader を立て、外れた個体から降ろす。予測の伸長対象は
   // このフラグで決まるので、予測を進める前に呼ぶ。
-  public update(game: Game): void {
-    const entity = game.activeControllable;
-    this.readerEntity = applyReader(this.readerEntity, entity);
-    const target = entity ? resolveApproachTarget(game) : null;
-    this.readerTargetEntity = applyReader(
-      this.readerTargetEntity, target?.kind === 'entity' ? target.entity : null,
-    );
+  public update(view: OrbitAnalysisReaderView): void {
+    this.readerEntity = applyReader(this.readerEntity, view.entity);
+    this.readerTargetEntity = applyReader(this.readerTargetEntity, view.targetEntity);
   }
 
   // 選べるタブを出し直してから、選択中のタブへ描画を委ねる。
-  public sync(game: Game): void {
+  public sync(view: OrbitAnalysisViewModel): void {
     if (!this.throttle.due()) return;
-    const entity = game.activeControllable;
+    const entity = view.entity;
     // 別の対象を見ることになるので、各タブの表示範囲を開き直す。
     if (entity !== this.drawnEntity) {
       for (const tab of this.tabs) tab.resetView();
@@ -121,17 +116,14 @@ export class OrbitAnalysisWindow {
       return;
     }
 
-    const target = resolveApproachTarget(game);
-    const reference = game.orbitReference.resolve(
-      entity.motion.state.r, game.celestialSystem.celestialMotions, game.navTarget,
-      game.dynamicSystem, game.celestialSystem, entity.motion.state.t,
-    );
-    const source: AnalysisChartSource = {
-      celestialSystem: game.celestialSystem,
-      windowDurationSec: game.displayWindowManager.current.duration,
-    };
-    this.offerTabs(this.tabs.filter((tab) => tab.available(source, entity, reference, target)));
-    this.selected.draw(source, entity, reference, target);
+    const reference = view.reference;
+    if (reference === null) {
+      this.offerTabs([this.altitudeTab]);
+      this.altitudeTab.drawMessage('基準がありません');
+      return;
+    }
+    this.offerTabs(this.tabs.filter((tab) => tab.available(view, entity, reference, view.target)));
+    this.selected.draw(view, entity, reference, view.target);
   }
 
   // 選べるタブだけをタブバーへ出し、選択中が選べなくなっていたら高度タブへ戻す。

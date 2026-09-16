@@ -3,7 +3,7 @@
 import { getApsisLabelSpec, type OrbitLabelSpec } from '../hud/orbit/orbit-labels';
 import { fmtDist } from '../../hud/utils';
 import { len, sub, type Vec3 } from '../../math/vec3';
-import { ORBIT_POINT_GLYPH } from './marker-identity';
+import { ORBIT_POINT_GLYPH } from '../../render/marker/marker-identity';
 import { OrbitPointMarker } from './orbit-point-marker';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { PropertyRow } from '../../hud/windows/property-window-content';

@@ -12,7 +12,7 @@ import type { EntitySaveDataUnion } from '../../save/save-data';
 import type { SpawnGate } from '../entity-registry';
 import type { FlashEffects } from '../../vfx/flash-effects';
 import type { Notifier } from '../../../hud/notifier';
-import type { MarkerSlots } from '../../marker/marker-slots';
+import type { MarkerSlots } from '../../../render/marker/marker-slots';
 import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 
 // 1体ぶんの復元手順。実体化(build)は、要る外部資源が揃うまで遅らせてよい。

@@ -13,7 +13,7 @@ import { WorldSfx } from '../../audio/sfx/world-sfx';
 import { UiSfx } from '../../audio/sfx/ui-sfx';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
-import type { MarkerSlots } from '../marker/marker-slots';
+import type { MarkerSlots } from '../../render/marker/marker-slots';
 import type { StageSaveData } from '../save/save-data';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { EnemyDeathCause, StageOutcome } from './stage-outcome';

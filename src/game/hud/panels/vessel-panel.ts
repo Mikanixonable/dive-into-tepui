@@ -14,15 +14,21 @@ import type { RadiatorSide } from '../../player/radiator';
 import type { SolarSide } from '../../player/power';
 import { THROTTLE_LEVELS, THROTTLE_LABELS } from '../../player/throttle';
 import { MAX_DYN_PRESSURE } from '../../player/aero-load';
-import type { Controllable } from '../../dynamic/dynamic-entity/controllable';
-import type { Stage } from '../../stages/stage';
-import type { CameraSystem } from '../../camera/camera-system';
 import type { PlayerStatusSnapshot } from '../../player/player-status-snapshot';
 
 const SYNC_INTERVAL_MS = 100;
 
 const THROTTLE_KEYS: readonly KeyBinding[] = [K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax];
 const RADIATOR_HIGH_WEAR = 0.5;
+
+export interface VesselPanelViewModel {
+  readonly status: PlayerStatusSnapshot;
+  readonly isMapView: boolean;
+  readonly isCreative: boolean;
+  readonly cameraFollowsAttitude: boolean;
+  readonly onToggleSolarPanel: ((side: SolarSide) => void) | null;
+  readonly onToggleRadiator: ((side: RadiatorSide) => void) | null;
+}
 
 // side を「左(+X)/右(-X)」ラベルとショートカットキーへ対応させる。
 // (機体の+Zが前なので、後ろから見ると+Xは左になる)
@@ -181,20 +187,18 @@ export class VesselPanel {
   }
 
   // 操作対象の状態を VESSEL パネルへ反映する。操作対象が無ければパネルごと隠す。
-  public sync(
-    target: Controllable | null, activeStage: Stage, cameraSystem: CameraSystem, isMapView: boolean,
-  ): void {
-    this.status = target?.statusSnapshot() ?? null;
-    this.toggleSolarPanel = target?.toggleSolarPanel?.bind(target) ?? null;
-    this.toggleRadiator = target?.toggleRadiator?.bind(target) ?? null;
-    if (!target) {
+  public sync(view: VesselPanelViewModel | null): void {
+    this.status = view?.status ?? null;
+    this.toggleSolarPanel = view?.onToggleSolarPanel ?? null;
+    this.toggleRadiator = view?.onToggleRadiator ?? null;
+    if (!view) {
       this.els.get('hud-vessel-status')?.classList.add('hidden');
       return;
     }
     // 通常のマップビューでは艦固有の情報をプロパティウィンドウで参照するので畳む。
     // クリエイティブでは配置後の艦を常に操作できるため、マップビューでも VESSEL を表示する。
     // CSS 側でも同じ条件を持つが、未配置状態からの復帰時は JS で明示的に戻す。
-    if (!isMapView || activeStage.id === 'creative') {
+    if (!view.isMapView || view.isCreative) {
       this.els.get('hud-vessel-status')?.classList.remove('hidden');
     }
 
@@ -234,7 +238,7 @@ export class VesselPanel {
 
     // 微調整・視点追従・進行方向ホールドの状態語。
     this.syncState('fine', status.fineAttitude, 'near');
-    const cameraFollowsAttitude = cameraSystem.combatCamera.rotationFollow?.kind === 'attitude';
+    const cameraFollowsAttitude = view.cameraFollowsAttitude;
     this.syncState('camfollow', cameraFollowsAttitude, 'signal');
     this.followButton?.setOn(cameraFollowsAttitude);
     this.syncState('prohold', status.progradeHold, 'near');

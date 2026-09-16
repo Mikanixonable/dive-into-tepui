@@ -32,7 +32,7 @@ import type { EntitySaveDataUnion, GameSaveData } from '../save/save-data';
 import type { Notifier } from '../../hud/notifier';
 import type { WorldSfx } from '../../audio/sfx/world-sfx';
 import type { FlashEffects } from '../vfx/flash-effects';
-import type { MarkerSlots } from '../marker/marker-slots';
+import type { MarkerSlots } from '../../render/marker/marker-slots';
 import type { PerfCounts } from '../perf-counts';
 import type { OrbitReference } from '../orbit-reference';
 

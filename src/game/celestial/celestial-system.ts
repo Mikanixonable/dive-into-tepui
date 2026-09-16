@@ -27,7 +27,7 @@ import { OrbitGuideView, type VisibleGuideLine } from '../../render/celestial/or
 import { ZeroVelocityView } from '../../render/celestial/orbit-guide/zero-velocity-view';
 import type { OrbitGuideSettings } from './orbit-guide/orbit-guide-settings';
 import type { TdbJulianDate } from '../../physics/time';
-import type { MarkerSlots } from '../marker/marker-slots';
+import type { MarkerSlots } from '../../render/marker/marker-slots';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { PointFieldView } from '../../render/celestial/point-field-view';

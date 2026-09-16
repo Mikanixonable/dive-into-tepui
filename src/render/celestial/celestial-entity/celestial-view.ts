@@ -16,7 +16,7 @@ import type { CelestialSurfaceDiagnostics } from '../celestial-surface';
 import { withAirglowEnabled } from '../../atmosphere';
 import type { AtmosphereClouds, AtmosphereOptics, AtmosphereCandidate } from '../../atmosphere';
 import type { ShadowCumulus } from '../../pipeline/shadow/cloud-shadow-renderer';
-import type { MarkerSlots } from '../../../game/marker/marker-slots';
+import type { MarkerSlots } from '../../marker/marker-slots';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import { EllipseLine } from '../../lines/ellipse-line';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../line-style';

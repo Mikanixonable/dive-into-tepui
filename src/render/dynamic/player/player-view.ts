@@ -2,13 +2,13 @@ import * as THREE from 'three/webgpu';
 import type { Vec3 } from '../../../math/vec3';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import { memoParseIndependent } from '../baked-model';
-import type { MarkerSlots } from '../../../game/marker/marker-slots';
+import type { MarkerSlots } from '../../marker/marker-slots';
 import {
   DynamicView, type DynamicRenderSource, type DynamicViewFrame,
 } from '../dynamic-view';
 import { AttachedBoostersView, type AttachedBoostersDisplay } from './attached-boosters-view';
 import { BeltView, type BeltNodes } from './belt-view';
-import { PlayerMarkers } from '../../../game/marker/player-markers';
+import { PlayerMarkers } from './player-markers';
 import { FoldingPanelsView, type RadiatorDisplay, type SolarDeploy } from './folding-panels-view';
 import { RcsEffects } from './rcs-effects';
 import { ReentryEffects } from './reentry-effects';

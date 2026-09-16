@@ -20,7 +20,7 @@ import type { Aurora } from '../aurora';
 import type { GeostationaryOverlay } from './geostationary-overlay';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 import type { LineOverlay } from '../line-overlay';
-import type { MarkerSlots } from '../../../game/marker/marker-slots';
+import type { MarkerSlots } from '../../marker/marker-slots';
 import type { ShadowCumulus } from '../../pipeline/shadow/cloud-shadow-renderer';
 import type { RenderStyle } from '../../render-style';
 import type { RingMaterials } from '../ring';

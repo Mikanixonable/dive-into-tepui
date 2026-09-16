@@ -7,7 +7,7 @@ import { RcsEffects } from '../player/rcs-effects';
 import { ThrustEffects } from '../player/thrust-effects';
 import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
 import baseData from '../../../assets/models/base.json';
-import type { MarkerSlots } from '../../../game/marker/marker-slots';
+import type { MarkerSlots } from '../../marker/marker-slots';
 
 // 基地のプルームは自艦より大きく描く倍率。
 const BASE_PLUME_SCALE = 6;

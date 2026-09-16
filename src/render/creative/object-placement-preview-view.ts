@@ -1,11 +1,11 @@
 // 配置プレビューの表示資源。プレビュー楕円の線と ▷ マーカーを所有し、そのフレームに宣言された
 // 表示値へ同期する。
-import { COLOR_MARKER_ALLY, ENTITY_GLYPH } from '../../game/marker/marker-identity';
+import { COLOR_MARKER_ALLY, ENTITY_GLYPH } from '../marker/marker-identity';
 import { EllipseLine } from '../lines/ellipse-line';
 import type * as THREE from 'three/webgpu';
 import type { Vec3 } from '../../math/vec3';
 import type { OrbitalElements } from '../../physics/elements';
-import type { MarkerSlots } from '../../game/marker/marker-slots';
+import type { MarkerSlots } from '../marker/marker-slots';
 import type { CameraFrame } from '../camera/camera-frame';
 import type { LineStyle } from '../line-style';
 
