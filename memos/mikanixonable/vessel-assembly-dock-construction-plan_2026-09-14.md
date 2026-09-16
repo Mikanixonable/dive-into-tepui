@@ -1,9 +1,9 @@
 # 船体統合・軸方向モジュール建造 MVP 要件定義／実装計画
 
 作成日: 2026-09-14
-計画の基準コミット: 081743ce8
+実装の現在基準コミット: d3e8291dd
 最終レビュー: 2026-09-16
-状態: 承認済み。手順1の仕様更新後に実装へ進む。
+状態: 実装中。仕様更新を完了し、手順2から進める。
 
 ## 目的
 
@@ -306,33 +306,6 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 
 ## 実装手順
 
-### 1. 仕様を先に確定する
-
-#### 目的
-
-固定箱型 Player、専用 Base、固定多段ブースターを正本から外し、この計画の MVP 境界を仕様へ
-反映してからコードへ進む。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| DEVELOP/SPEC/FLIGHT.md | 共通船体、直列モジュール、完成条件、デカプラー、集計、ランダム損傷、円筒形状、自然回復廃止を記述する。 |
-| DEVELOP/SPEC/GAME.md | 基地とドックの構成、CREATIVE の建造、再接舷、修理、喪失、漂流を記述する。 |
-| DEVELOP/SPEC/SAVE.md | ship 保存、建造途中／ドッキング状態、v4 非互換、money 廃止を記述する。 |
-| DEVELOP/SPEC/CONTROLS.md | デカプラーの直接クリック操作、ブースター点火操作、建造モードのポインタ・ESC・カメラ操作を記述する。 |
-| DEVELOP/SPEC/UI-DESIGN.md | dock 行、建造パネル、状態色、確認、タッチ、overlay 規則を記述する。 |
-| DEVELOP/SPEC/RENDERING.md | モジュール組立描画、ghost、snap guide、solid geometry と collider の一致を記述する。 |
-| DEVELOP/SPEC/COMBAT.md | Base の別種別を消し、ModularShip の接触重みとランダム部位ダメージ維持を記述する。 |
-| DEVELOP/SPEC/ORBIT.md | compound cylinder、ドッキング中の一体剛体、分離時の連続性を記述する。 |
-
-#### 達成条件と検証
-
-- 「最大 4 段の専用ブースター」「固定箱型自艦」「専用 Base 実体」「CREATIVE 自然回復」が決定仕様に
-  残っていない。
-- 上記の数値条件、MVP 制限、対象外がこの計画と同じ意味で書かれている。
-- SPEC 差分の意味がこの計画から変わる場合はコードへ進まず、差分を合意し直す。
-
 ### 2. 現行挙動を characterization test で固定する
 
 #### 目的
@@ -345,11 +318,11 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 | --- | --- |
 | tests/game/player-systems.test.ts | 既定船の総 HP、推力、燃料、発電、放熱、武装集計と critical part 喪失を追加する。 |
 | tests/game/booster-stack.test.ts | 点火中分離、残燃料、質量比、衝突猶予、イベント境界を追加する。 |
-| tests/game/ship-random-damage.test.ts（新規） | seed 固定で統合船体全体の健全module一様抽選、ラジエーター例外、接続維持を固定する。 |
 
 #### 達成条件と検証
 
 - 現行実装に対して追加テストが成功し、意図する変更以外の数値回帰を検出できる。
+- 旧 critical-part 即死や固定 Player の形のように、今回意図して変える挙動は固定しない。
 - npm run typecheck と npm run test:game を通す。
 
 ### 3. ShipAssembly とモジュールカタログを作る
@@ -372,6 +345,7 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 | src/game/dynamic/dynamic-entity/parts.ts | 既存性能値を module definition から参照できる部品契約へ整理する。 |
 | src/game/dynamic/dynamic-entity/part-inventory.ts | 敵用実装として残し、分離用の浅い replace を使わないことを明示する。 |
 | tests/game/ship-assembly.test.ts（新規） | スナップ座標、集計、役割、完成条件、split、instance 非共有を検証する。 |
+| tests/game/ship-random-damage.test.ts（新規） | seed 固定で統合船体全体の健全module一様抽選、ラジエーター例外、接続維持を検証する。 |
 
 #### 達成条件と検証
 
@@ -395,9 +369,11 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 | src/physics/compound-cylinder-contact.ts（新規） | 複数の local capped cylinder に対する接触、掃引、ray の最近傍結果と module id を返す。 |
 | src/physics/ship-mass-properties.ts（新規） | 円筒列と残資源から質量、重心、対角慣性、bounding radius を求める。 |
 | src/physics/cylinder-contact.ts | 薬莢など既存利用者のカプセル近似を維持し、共有できる結果型だけを capped-cylinder-contact.ts と揃える。 |
-| src/game/dynamic/dynamic-motion.ts | assembly 変更時に質量、慣性、半径、接触形状を原子的に更新できる契約を追加する。 |
+| src/math/quat.ts | 回転掃引で使う最短経路の姿勢補間を追加する。 |
+| src/game/dynamic/dynamic-motion.ts、dynamic-simulation-participant.ts | assembly 変更時に質量、慣性、半径、接触形状を原子的に更新できる契約を追加する。 |
+| src/physics/collision-response.ts、src/game/dynamic/entity-contact-response.ts | compound 接触の両側の module id を、当事者の反応まで運ぶ。接触応答自体は既存の並進反発を維持する。 |
 | src/game/dynamic/entity-contact-physics.ts | ModularShip 同士と他物体の compound narrow phase を使う。 |
-| src/game/dynamic/surface-contact-physics.ts | 地表との最初の接触を compound shape から求める。 |
+| src/physics/surface-contact.ts、src/game/dynamic/surface-contact-physics.ts | 地表との最初の接触を compound shape から求める。 |
 | src/game/dynamic/predictor.ts | bounding radius／shape 更新時に予測を無効化する。 |
 | tests/physics/capped-cylinder-contact.test.ts（新規） | 側面、平坦端面、縁、ray と、カプセルなら当たるが円柱なら当たらない位置を検証する。 |
 | tests/physics/compound-cylinder-contact.test.ts（新規） | 円筒列の接触、掃引、ray、module id、最近傍、隙間なし、偽陽性なしを検証する。 |
@@ -410,7 +386,9 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
   最初の接触を得る。現行の最大 16 標本・終端軸固定を新船体へ流用しない。
 - 広域球が全 solid primitive を含み、狭域判定が空間だけを理由に接触を返さない。
 - mass、center、inertia、radius が NaN／Infinity にならない。
-- npm run typecheck、npm run test:physics、npm run test:game を通す。
+- shape と mass properties の世代が同時に切り替わり、broad phase、surface contact、predictor が古い
+  radius と新しい compound shape を混在させない。
+- npm run typecheck、npm run test:math、npm run test:physics、npm run test:game を通す。
 
 ### 5. モジュールモデルと ModularShipView を作る
 
@@ -481,7 +459,10 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 | src/game/stages/stage-utils/wave-attack.ts、status-panel.ts | Player 具象型を player 判定とcockpit能力を持つ船体の最小契約へ変える。 |
 | src/game/stages/stage-debug.ts、stage-debug-load.ts、stage-debug-alt-system.ts | debug stage の Player 生成・参照を ModularShip preset へ揃える。 |
 | src/game/dynamic/dynamic-entity/enemy.ts | 追跡対象の Player 型を最小運動契約へ変える。 |
+| src/game/creative/manual-spawn.ts、object-placement.ts | 手動生成と配置を ModularShip preset へ揃える。 |
 | src/game/pickable/player-inspection.ts | ship-inspection.ts へ置換し、部品列と導出役割を表示する。 |
+| src/game/pickable/part-windows.ts、object-windows.ts | Player 具象型を module capability と ship inspection へ置換する。 |
+| src/game/targeter.ts、src/game/marker/lead-markers.ts | ターゲットと偏差表示を player 所属 ModularShip の最小運動契約へ変える。 |
 | src/game/marker/player-markers.ts、ship-marker-renderer.ts | player 判定された ModularShip と導出役割から marker を決める。 |
 | src/game/lines/entity-line-manager.ts | isPlayer／isBase の別ループを ModularShip と既存の player 判定へ統合する。 |
 | tests/game/modular-ship-control.test.ts（新規） | cockpit の有無、既定操作、補給、plan、武装、熱、パネルを検証する。 |
@@ -513,6 +494,7 @@ Base 特例を削除し、cockpit、tank、solar_panel、radiator、船体側面
 | src/game/creative/object-placement.ts | 「基地」を基地presetの生成へ読み替える。 |
 | src/game/creative/object-placer-panel.ts | kind と class ではなく ship preset を選ぶ入力へ変える。 |
 | src/game/creative/placement-validation.ts | Base 固有の月基準制約を「基地 preset」の配置制約として扱う。 |
+| src/game/dynamic/dynamic-entity/entity-dictionary.ts | base kind の復元を取り除き、基地 preset の ship 経路へ揃える。 |
 | src/game/run-summary.ts | isBase と Base.money 集計を除く。 |
 | src/launcher/save/slot-data.ts、snapshot-service.ts、save-browser/snapshot-pane.ts | money metadata と表示を除く。 |
 | tests/game/base-collision.test.ts | 削除し、compound cylinder と基地 preset の接触テストへ置換する。 |
@@ -547,6 +529,7 @@ Base 特例を削除し、cockpit、tank、solar_panel、radiator、船体側面
 | src/render/dynamic/booster-model.ts | module asset へ置換後に削除する。 |
 | tools/model-builder/booster.mjs | ship-modules.mjs へ統合する。 |
 | src/game/game.ts | attach callback を除き、デカプラー直接クリックとブースター点火操作を active ship の decouple／booster capability へ渡す。 |
+| src/input/key-mapping.ts、src/game/hud/windows/help-content.ts | [5]／[6] の割り当て、表示、aria shortcut を削除し、直接操作の説明へ置換する。 |
 | src/game/hud/panels/burn-management-panel.ts | 固定最大 4 段ではなく、現在の decoupler と booster module 列を表示する。 |
 | tests/game/ship-decoupling.test.ts（新規） | 所有権、ID、HP、燃料、点火、重心、運動量、衝突猶予、保存を検証する。 |
 
