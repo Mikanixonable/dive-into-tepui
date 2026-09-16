@@ -4,7 +4,7 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { ProjectFn } from '../../math/projection';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import type { MapVisibilityPolicy } from '../map/visibility-policy';
+import { appearsOnMap, type MapVisibilityPolicy } from '../map/visibility-policy';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarkerPair, type EquatorNodeInputs } from './equator-node-marker-pair';
@@ -31,10 +31,10 @@ export class EquatorNodeManager {
     for (const entity of this.roster.all()) {
       retainedIds.add(entity.id);
       const current = this.pairs.get(entity.id);
-      // 表示理由を View に持たせず、ここで category と注目状態を一度だけ判定する。
-      const categoryVisible = entity.mapKind === null || visibilityPolicy === null
-        || visibilityPolicy.entity(entity.mapKind, entity === controlled).category;
-      const visible = entity.motion.alive && categoryVisible
+      // 表示理由を View に持たせず、ここでマップ上の現れ方と注目状態を一度だけ判定する。
+      const onMap = entity.mapKind === null || visibilityPolicy === null
+        || appearsOnMap(visibilityPolicy.entity(entity.mapKind, entity === controlled));
+      const visible = entity.motion.alive && onMap
         && (entity.showsEquatorNodesAlways || entity === controlled || entity.id === navTargetId);
       if (!visible) {
         current?.retire();

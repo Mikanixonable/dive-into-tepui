@@ -13,7 +13,7 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapDisplayToggles } from '../map/display-toggles';
 import type { ObjectPickable } from '../pickable/object-pickable';
-import type { MapVisibilityPolicy } from '../map/visibility-policy';
+import { appearsOnMap, type MapVisibilityPolicy } from '../map/visibility-policy';
 import type { ProjectFn } from '../../math/projection';
 import type { GroupedMarkers } from './grouped-markers';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
@@ -149,7 +149,7 @@ export class CelestialMarkers {
     // ラグランジュ点。回転系が組めない期間は座標を失う。
     if (toggles.lagrangeName) {
       for (const { motion, markers } of this.lagrangeSources) {
-        if (!visibilityPolicy.body(markers[0]!.parentId).category) continue;
+        if (!appearsOnMap(visibilityPolicy.body(markers[0]!.parentId))) continue;
         const frame = secondaryFrameOf(celestialBodies, t, motion, t);
         if (frame === null) { for (const marker of markers) marker.place(null); continue; }
         const solved = lagrangePointsOf(frame);
