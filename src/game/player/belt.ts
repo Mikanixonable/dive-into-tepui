@@ -39,6 +39,10 @@ export class BeltController {
   public get positions(): readonly Vec3[] { return this.physics.positions; }
   public get twists(): readonly number[] { return this.physics.twists; }
 
+  public setMount(anchor: Vec3, direction: Vec3): void {
+    this.physics.setMount(anchor, direction);
+  }
+
   // 各リンクの体軸座標を ECI 絶対状態に変換し、衝突判定用の BeltSection として返す。
   public contactSections(t: number, dt: number, baseR: Vec3, baseV: Vec3, att: Attitude): BeltSection[] {
     return this.physics.contactSections(t, dt, baseR, baseV, att);
