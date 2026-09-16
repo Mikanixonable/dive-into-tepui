@@ -2,6 +2,12 @@
 import { KinematicState } from '../../physics/kinematic-state';
 import { sub, scale, len, type Vec3 } from '../../math/vec3';
 import type { SphereHit } from '../../math/triangle-mesh';
+import type { Attitude } from '../../physics/attitude';
+import {
+  compoundCylinderCompoundContact, compoundCylinderSphereContact,
+  sweptCompoundCylinderCompoundContact, sweptCompoundCylinderSphereContact,
+  type CompoundCylinderContact, type RigidPose,
+} from '../../physics/compound-cylinder-contact';
 import type { EntityContactParticipant } from './dynamic-simulation-participant';
 import {
   CollisionResponse, ContactGeometry,
@@ -18,6 +24,79 @@ function reverseContactGeometry(geometry: ContactGeometry): ContactGeometry {
     moduleIdA: geometry.moduleIdB ?? null,
     moduleIdB: geometry.moduleIdA ?? null,
   };
+}
+
+const IDENTITY_ROTATION = { x: 0, y: 0, z: 0, w: 1 };
+
+// compound shape は DynamicMotion の重心を原点とする。姿勢の履歴は動力学側が提供する
+// optional な prevAtt を優先し、古い参加者実装では終端姿勢を始点にも使う。
+interface AttitudeHistoryParticipant extends EntityContactParticipant {
+  readonly prevAtt?: Attitude;
+}
+
+function poseOf(
+  entity: AttitudeHistoryParticipant, state: KinematicState, previous: boolean,
+): RigidPose {
+  const attitude = previous ? (entity.prevAtt ?? entity.att) : entity.att;
+  return { position: state.r, rotation: attitude?.q ?? IDENTITY_ROTATION };
+}
+
+function compoundGeometry(hit: CompoundCylinderContact & { readonly toi?: number }): ContactGeometry {
+  return {
+    normal: hit.normal,
+    toi: hit.toi ?? 1,
+    pushOut: hit.depth,
+    contactPoint: hit.point,
+    moduleIdA: hit.moduleIdA,
+    moduleIdB: hit.moduleIdB,
+  };
+}
+
+function compoundContactGeometry(
+  a: AttitudeHistoryParticipant, aWork: KinematicState,
+  b: AttitudeHistoryParticipant, bWork: KinematicState,
+  sweptValid: boolean,
+): ContactGeometry | null {
+  const shapeA = a.compoundShape;
+  const shapeB = b.compoundShape;
+  if (shapeA === null && shapeB === null) return null;
+
+  if (shapeA !== null && shapeB !== null) {
+    if (sweptValid) {
+      const swept = sweptCompoundCylinderCompoundContact(
+        shapeA, poseOf(a, a.prevState, true), poseOf(a, aWork, false),
+        shapeB, poseOf(b, b.prevState, true), poseOf(b, bWork, false),
+      );
+      if (swept !== null) return compoundGeometry(swept);
+    }
+    const hit = compoundCylinderCompoundContact(
+      shapeA, poseOf(a, aWork, false), shapeB, poseOf(b, bWork, false),
+    );
+    return hit === null ? null : compoundGeometry(hit);
+  }
+
+  if (shapeA !== null) {
+    if (sweptValid) {
+      const swept = sweptCompoundCylinderSphereContact(
+        shapeA, poseOf(a, a.prevState, true), poseOf(a, aWork, false),
+        b.prevState.r, bWork.r, b.radius,
+      );
+      if (swept !== null) return compoundGeometry(swept);
+    }
+    const hit = compoundCylinderSphereContact(shapeA, poseOf(a, aWork, false), bWork.r, b.radius);
+    return hit === null ? null : compoundGeometry(hit);
+  }
+
+  // primitive が返す B(compound) → A(sphere) を、呼び出し側の A → B へ反転する。
+  if (sweptValid) {
+    const swept = sweptCompoundCylinderSphereContact(
+      shapeB!, poseOf(b, b.prevState, true), poseOf(b, bWork, false),
+      a.prevState.r, aWork.r, a.radius,
+    );
+    if (swept !== null) return reverseContactGeometry(compoundGeometry(swept));
+  }
+  const hit = compoundCylinderSphereContact(shapeB!, poseOf(b, bWork, false), aWork.r, a.radius);
+  return hit === null ? null : reverseContactGeometry(compoundGeometry(hit));
 }
 
 // タンパク質の球列など、球の外接半径ではなく種別固有の当たり形状を持つ側の狭域判定。
@@ -82,6 +161,15 @@ function customContactGeometry(
   if (sphereHitB !== null) {
     return reverseContactGeometry({ normal: sphereHitB.normal, toi: 1, pushOut: sphereHitB.depth, contactPoint: sphereHitB.point });
   }
+
+  // protein／mesh の既存固有形状を優先し、その次に compound の正確な狭域判定を使う。
+  // compound が外れた場合は外接球へ戻さず、形状間の空間を接触にしない。
+  const compound = compoundContactGeometry(
+    a as AttitudeHistoryParticipant, aWork,
+    b as AttitudeHistoryParticipant, bWork,
+    sweptValid,
+  );
+  if (compound !== null || a.compoundShape !== null || b.compoundShape !== null) return compound;
   return null;
 }
 
@@ -100,7 +188,8 @@ export function entityContactResponse(
     && Math.abs(a.prevState.t - b.prevState.t) <= 1e-6 && Math.abs(a.state.t - b.state.t) <= 1e-6;
 
   if (a.usesCustomSphereCollision() || b.usesCustomSphereCollision()
-    || a.usesCustomEntityCollision() || b.usesCustomEntityCollision()) {
+    || a.usesCustomEntityCollision() || b.usesCustomEntityCollision()
+    || a.compoundShape !== null || b.compoundShape !== null) {
     const custom = customContactGeometry(a, aWork, b, bWork, sweptValid);
     return custom === null
       ? null : distributeSphereContact(bodyA, bodyB, CONTACT_RESTITUTION, custom);

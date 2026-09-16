@@ -34,6 +34,8 @@ export interface KinematicParticipant {
   state: KinematicState;
   readonly prevState: KinematicState;
   readonly radius: number;
+  // compound 接触の掃引始点姿勢。球だけの既存参加者は省略できる。
+  readonly prevAtt?: Attitude;
   // 接触側が姿勢と同じ世代の compound を読むための不変スナップショット。
   readonly compoundShape: CompoundCylinderShape | null;
   readonly shapeRevision: number;
@@ -72,6 +74,7 @@ export interface EntityContactParticipant extends KinematicParticipant {
 
 export interface SurfaceContactParticipant extends KinematicParticipant {
   alive: boolean;
+  readonly att?: Attitude;
   readonly attachedTo: EntityContactParticipant | null;
   absorbHeat(specificJoules: number): void;
   collideWithCelestialBody(

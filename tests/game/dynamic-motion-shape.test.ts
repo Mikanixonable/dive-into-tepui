@@ -3,6 +3,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { v3 } from '../../src/math/vec3';
+import { qFromAxisAngle } from '../../src/math/quat';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import type { CompoundCylinderShape } from '../../src/physics/compound-cylinder-contact';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
@@ -97,5 +98,15 @@ export function register(): void {
     }));
     assert.equal(self.shapeRevision, beforeRevision);
     assert.equal(self.compoundShape, null);
+  });
+
+  test('dynamic motion: attitude step は compound sweep 用の直前姿勢を保持する', () => {
+    const before = qFromAxisAngle(v3(0, 1, 0), 0.25);
+    const self = new DynamicMotion(kinematicState<'eci'>(0, v3(), v3()), {
+      attitude: { q: before, w: v3(0, 0.5, 0), inertia: v3(1, 1, 1) },
+    });
+    self.stepSimulation(0.5, [], [], null, null, 0, {} as never);
+    assert.deepEqual(self.prevAtt.q, before);
+    assert.notDeepEqual(self.att.q, before);
   });
 }
