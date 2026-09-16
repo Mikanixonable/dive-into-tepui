@@ -28,7 +28,6 @@ export class SnapshotService {
 
     const meta: SnapshotMeta = {
       id: newSaveId(),
-      kind: 'manual',
       pinned: true,
       name: name && name.length > 0 ? name : autoName(summary),
       createdAtReal: Date.now(),
