@@ -10,7 +10,6 @@ import { fmtDuration } from '../../../hud/utils';
 import { FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from '../../frame-sections';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings, type GpuPassId } from '../../../render/gpu-timings';
 import type { OverlayManager } from '../../../hud/overlay-manager';
-import type { Input } from '../../../input/input';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { ProteinMotionMetricsRecorder } from '../../protein/protein-motion-metrics';
 import { LODS_FINE_TO_COARSE } from '../../../render/protein/protein-display';
@@ -205,9 +204,9 @@ export class DebugInfoWindow {
     else this.open();
   }
 
-  // [F3] を消費して開閉を反転する。
-  public handleInput(input: Input): void {
-    if (input.takeKey(K.toggleDebugInfoWindow)) this.toggle();
+  // router から [F3] の単発入力を受け取って開閉を反転する。
+  public handleCommand(commandId: string): void {
+    if (commandId === K.toggleDebugInfoWindow.code) this.toggle();
   }
 
   // タブを切り替え、選んだ面だけを表示する。

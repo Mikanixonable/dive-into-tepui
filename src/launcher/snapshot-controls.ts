@@ -1,12 +1,10 @@
-import type { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { Notifier } from '../hud/notifier';
 import { PauseMenu } from '../hud/windows/pause-menu';
 import { SaveBrowser } from './save-browser/save-browser';
 import { SnapshotService, type SnapshotCaptureSource } from './save/snapshot-service';
 
-// F5(クリップ)/F9(一覧開閉)の入力を担う。handleInput は Game.update のあとに呼ぶ —
-// その回で Game が消費しなかった入力エッジだけを見る。
+// F5(クリップ)/F9(一覧開閉)のcommandを担う。Game.update のあとにrouterから呼ぶ。
 export class SnapshotControls {
   constructor(
     private readonly notifier: Notifier,
@@ -15,10 +13,10 @@ export class SnapshotControls {
     private readonly service: SnapshotService,
   ) {}
 
-  handleInput(input: Input, source: SnapshotCaptureSource): void {
-    if (input.takeKey(K.clipSnapshot)) this.captureManual(source);
+  handleCommand(commandId: string, source: SnapshotCaptureSource): void {
+    if (commandId === K.clipSnapshot.code) this.captureManual(source);
 
-    if (input.takeKey(K.openSnapshots)) {
+    if (commandId === K.openSnapshots.code) {
       if (this.browser.visible) {
         this.browser.close();
       } else {

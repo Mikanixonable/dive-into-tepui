@@ -251,13 +251,14 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   public update(
     active: Controllable | null, input: Input, operable: boolean,
     dt: number, simDt: number, canEngage: boolean, activeStage: StageOutcome & StageSimulationEvents,
-    stageRules: StageRules,
+    stageRules: StageRules, beforeControllables: () => void = () => {},
   ): void {
     this.nanWatchdog.checkControlled(
       'update(入口)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
     );
     this.sections.enter(SECTION.command);
     this.updateThrusts(simDt);
+    beforeControllables();
     this.updateControllables(active, input, operable, dt, simDt, activeStage, stageRules);
     this.behaveAll(active, operable);
     this.sections.exit(SECTION.command);

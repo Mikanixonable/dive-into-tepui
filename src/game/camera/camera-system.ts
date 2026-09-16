@@ -152,6 +152,16 @@ export class CameraSystem {
     return !this.mapActive && this._zoomActive;
   }
 
+  // router からカメラ固有の単発入力を受け取る。
+  public handleCommand(commandId: string): void {
+    if (commandId !== K.followAttitudeToggle.code) return;
+    const active = this.activeFocusCamera;
+    if (active.toggleAttitudeFollow()) {
+      const on = active.rotationFollow?.kind === 'attitude';
+      this.hud.hint(`視点の姿勢追従: ${on ? 'ON(機体姿勢に追従)' : 'OFF(慣性系)'}`);
+    }
+  }
+
   // 入力から現在のビューのカメラの向き・ズームを更新する。displayTime は線・メッシュと同じ表示
   // 時刻を渡す — ずれると回転系選択時にカメラだけが取り残される。controlled は照準ズームの可否と
   // その視点を決める。
@@ -169,15 +179,6 @@ export class CameraSystem {
       this.resetActiveCamera();
       return true;
     });
-
-    // [G]: フォーカスが機体のとき、姿勢追従⇄慣性系をトグルする(両ビュー)。
-    if (input.takeKey(K.followAttitudeToggle)) {
-      const active = this.activeFocusCamera;
-      if (active.toggleAttitudeFollow()) {
-        const on = active.rotationFollow?.kind === 'attitude';
-        this.hud.hint(`視点の姿勢追従: ${on ? 'ON(機体姿勢に追従)' : 'OFF(慣性系)'}`);
-      }
-    }
 
     // キー/マウスによる旋回入力をまとめる
     const keyYawRad = ((input.down(K.cameraYawLeft) ? 1 : 0) + (input.down(K.cameraYawRight) ? -1 : 0))
