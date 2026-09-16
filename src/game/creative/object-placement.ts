@@ -35,7 +35,7 @@ import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { HudLayers } from '../hud/hud-layers';
-import type { MarkerSlots } from '../marker/marker-slots';
+import type { MarkerSlots } from '../../render/marker/marker-slots';
 import type { FlashEffects } from '../vfx/flash-effects';
 
 // 軌道上へ配置できる自機の上限隻数。
