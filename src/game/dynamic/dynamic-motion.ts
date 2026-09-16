@@ -10,7 +10,11 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { type KinematicState } from '../../physics/kinematic-state';
 import { environmentSampleAt, type DynamicsEnvironmentSample } from '../../physics/dynamics';
-import type { CompoundCylinderShape } from '../../physics/compound-cylinder-contact';
+import {
+  compoundCylinderRaycast,
+  type CompoundCylinderRayHit,
+  type CompoundCylinderShape,
+} from '../../physics/compound-cylinder-contact';
 import { SOLAR_CONSTANT } from '../../physics/srp';
 import {
   aeroHeating, radiativeCooling, solarHeating, sphereNoseRadius, stepTemperature,
@@ -373,7 +377,21 @@ export class DynamicMotion {
 
   // pos に置いた判定形状へ ray が当たるか。既定の形状は半径 radius の球。
   public intersectsRay(ray: Ray, pos: Vec3): boolean {
-    return this.behavior.hitBodyByRay?.(this, ray, pos) ?? hitsSphere(ray, pos, this.radius);
+    const custom = this.behavior.hitBodyByRay;
+    if (custom !== undefined) return custom(this, ray, pos);
+    if (this._compoundShape !== null) return this.raycastCompound(ray, pos) !== null;
+    return hitsSphere(ray, pos, this.radius);
+  }
+
+  // 画面上の直接操作で使う、compound の最近傍 module hit。固定形状と球は module を持たない。
+  public raycastCompound(ray: Ray, pos: Vec3): CompoundCylinderRayHit | null {
+    if (this._compoundShape === null) return null;
+    return compoundCylinderRaycast(
+      this._compoundShape,
+      { position: pos, rotation: this.att.q },
+      ray.origin,
+      ray.dir,
+    );
   }
 
   // 表示のために残す履歴の長さ sec [s] を要求する。既定で履歴を持たない個体では効かない。
