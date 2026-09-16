@@ -16,8 +16,8 @@ export type MenuAction =
   | 'cancel'
   | 'openObjectPlacer'
   | 'openSettings'
-  | 'deployPart'
-  | 'stowPart';
+  | 'deployModule'
+  | 'stowModule';
 
 // shortcut には KeyboardEvent.code の表記を使う。
 export const MenuCommon = {
