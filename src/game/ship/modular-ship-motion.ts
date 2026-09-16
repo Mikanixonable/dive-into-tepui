@@ -10,10 +10,17 @@ import {
 import type { Contact } from '../dynamic/dynamic-entity/contact';
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
 import {
+  MAX_HULL_TEMP,
+  SHIP_RADIATING_AREA_PER_MASS,
   SHIP_BCINV,
   SHIP_SRP_COEFF,
   shipMotionOptions,
 } from '../dynamic/dynamic-entity/ship';
+import type { PowerSaveData, RadiatorSaveData } from '../save/save-data';
+import { AeroLoad } from '../player/aero-load';
+import { BeltController } from '../player/belt';
+import { PowerSystem } from '../player/power';
+import { RadiatorSystem, type RadiatorSide } from '../player/radiator';
 import type { ShipAssembly } from './ship-assembly';
 import { shipPhysicsShape, type ShipPhysicsShape } from './ship-physics-shape';
 
@@ -21,13 +28,33 @@ import { shipPhysicsShape, type ShipPhysicsShape } from './ship-physics-shape';
 const REFERENCE_SHIP_MASS = 1_000;
 
 export interface ModularShipMotionReactions {
+  roundsInMagazine?(): number;
+  stepBarrelThermal?(dt: number): void;
+  thrustAcceleration?(): Vec3;
+  radiatorWear?(): Record<RadiatorSide, number>;
+  totalCoolingRate?(): number;
+  totalPowerGeneration?(): number;
+  updateAltitudeAlarm?(
+    dt: number, position: Vec3, atmosphereBody: CelestialBody | null, atmospherePivot: number,
+  ): void;
   receiveEntityContact?(
     other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void;
   receiveSurfaceContact?(
     body: CelestialBody, contact: Contact, services: DynamicReactionServices,
   ): void;
+  receiveRadiatorContact?(
+    side: RadiatorSide, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
+  ): void;
+  receiveStructuralLoss?(services: DynamicReactionServices): void;
   receiveBurnUp?(services: DynamicReactionServices): void;
+}
+
+export interface ModularShipMotionSystems {
+  readonly temperature?: number;
+  readonly beltLinkCount?: number;
+  readonly radiatorSave?: RadiatorSaveData;
+  readonly powerSave?: PowerSaveData;
 }
 
 class ModularShipBehavior implements DynamicMotionBehavior {
@@ -48,6 +75,64 @@ class ModularShipBehavior implements DynamicMotionBehavior {
     return self.mass > 0 ? SHIP_SRP_COEFF * REFERENCE_SHIP_MASS / self.mass : 0;
   }
 
+  public stepEnvironment(
+    self: DynamicMotion,
+    dt: number,
+    atmosphereBody: CelestialBody | null,
+    atmospherePivot: number,
+    sunlit: number,
+    sunDir: Vec3,
+  ): void {
+    const motion = modularShipMotionOf(self);
+    if (!motion.alive) return;
+    motion.belt.update(
+      dt,
+      this.reactions.roundsInMagazine?.() ?? 0,
+      motion.att,
+      this.reactions.thrustAcceleration?.() ?? v3(),
+    );
+    motion.radiator.update(
+      dt,
+      this.reactions.radiatorWear?.() ?? { up: 1, down: 1 },
+    );
+    this.reactions.stepBarrelThermal?.(dt);
+    motion.aero.update(motion.state.r, motion.state.v, atmosphereBody, atmospherePivot);
+    this.reactions.updateAltitudeAlarm?.(
+      dt, motion.state.r, atmosphereBody, atmospherePivot,
+    );
+    motion.power.update(
+      dt, sunlit, sunDir, motion.att, this.reactions.totalPowerGeneration?.() ?? 0,
+    );
+  }
+
+  public contactProxies(self: DynamicMotion, simTime: number, dt: number): readonly DynamicMotion[] {
+    const motion = modularShipMotionOf(self);
+    return [
+      ...motion.radiator.contactFolds(motion.state.r, motion.state.v, motion.att, simTime),
+      ...motion.belt.contactSections(simTime, dt, motion.state.r, motion.state.v, motion.att),
+    ];
+  }
+
+  public applyContactProxies(self: DynamicMotion, dt: number): void {
+    const motion = modularShipMotionOf(self);
+    motion.belt.applyContactSections(dt, motion.state.r, motion.state.v, motion.att);
+  }
+
+  public radiatingAreaPerMass(self: DynamicMotion): number {
+    const motion = modularShipMotionOf(self);
+    if (motion.mass <= 0) return 0;
+    return SHIP_RADIATING_AREA_PER_MASS * REFERENCE_SHIP_MASS / motion.mass
+      + motion.radiator.radiatingArea(this.reactions.totalCoolingRate?.() ?? 0) / motion.mass;
+  }
+
+  public solarAbsorbAreaPerMass(self: DynamicMotion, sunDir: Vec3): number {
+    const motion = modularShipMotionOf(self);
+    const hullArea = (motion.emissivity * motion.bcInv) / 2.2;
+    return hullArea + motion.radiator.solarAbsorbArea(
+      sunDir, motion.att, this.reactions.totalCoolingRate?.() ?? 0,
+    ) / Math.max(motion.mass, 1e-9);
+  }
+
   public onEntityContact(
     _self: DynamicMotion, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void {
@@ -62,6 +147,17 @@ class ModularShipBehavior implements DynamicMotionBehavior {
 
   public onBurnUp(_self: DynamicMotion, services: DynamicReactionServices): void {
     this.reactions.receiveBurnUp?.(services);
+  }
+
+  public checkLoss(
+    self: DynamicMotion,
+    _dt: number,
+    _simTime: number,
+    services: DynamicReactionServices,
+  ): void {
+    if (modularShipMotionOf(self).aero.overStructuralLimit) {
+      this.reactions.receiveStructuralLoss?.(services);
+    }
   }
 }
 
@@ -83,12 +179,17 @@ function componentwiseAngularMomentumVelocity(
 // 原点との差は centerOffset にだけ保持する。
 export class ModularShipMotion extends DynamicMotion {
   private physicsShapeValue: ShipPhysicsShape;
+  public readonly belt: BeltController;
+  public readonly aero = new AeroLoad();
+  public readonly radiator: RadiatorSystem;
+  public readonly power: PowerSystem;
 
   public constructor(
     public readonly assembly: ShipAssembly,
     state: KinematicState,
     attitude: Attitude,
     reactions: ModularShipMotionReactions = {},
+    systems: ModularShipMotionSystems = {},
   ) {
     const shape = shipPhysicsShape(assembly);
     if (shape === null) throw new Error('modular ship requires a non-empty valid assembly');
@@ -97,6 +198,8 @@ export class ModularShipMotion extends DynamicMotion {
       collides: true,
       engagementAnchor: assembly.playerOwned,
       preciseReentry: true,
+      temperature: systems.temperature,
+      maxTemperature: MAX_HULL_TEMP,
       behavior: new ModularShipBehavior(assembly.playerOwned, reactions),
     }));
     this.physicsShapeValue = shape;
@@ -107,6 +210,15 @@ export class ModularShipMotion extends DynamicMotion {
       inertia: shape.mass.inertia,
       compoundShape: shape.shape,
     });
+    this.belt = new BeltController(this, systems.beltLinkCount ?? 18);
+    this.radiator = new RadiatorSystem(
+      this,
+      (side, other, contact, services) => (
+        reactions.receiveRadiatorContact?.(side, other, contact, services)
+      ),
+      systems.radiatorSave,
+    );
+    this.power = new PowerSystem(systems.powerSave);
   }
 
   public get physicsShape(): ShipPhysicsShape { return this.physicsShapeValue; }
@@ -145,4 +257,15 @@ export class ModularShipMotion extends DynamicMotion {
     this.physicsShapeValue = next;
     this.reset(nextState);
   }
+}
+
+function modularShipMotionOf(motion: DynamicMotion): ModularShipMotion {
+  if (!(motion instanceof ModularShipMotion)) {
+    throw new Error('ModularShipBehavior received a non-modular ship motion');
+  }
+  return motion;
+}
+
+export function isModularShipMotion(motion: DynamicMotion): motion is ModularShipMotion {
+  return motion instanceof ModularShipMotion;
 }
