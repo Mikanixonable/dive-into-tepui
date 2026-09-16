@@ -371,9 +371,6 @@
   "src/game/dynamic/dynamic-entity/enemy.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 3
-    },
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
     }
   },
   "src/game/dynamic/dynamic-entity/entity-dictionary.ts": {
@@ -849,7 +846,7 @@
   },
   "src/game/player/attached-boosters.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 2
+      "count": 1
     },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
@@ -870,7 +867,7 @@
   },
   "src/game/player/fire-control.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 6
+      "count": 5
     },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 7
@@ -1012,7 +1009,7 @@
   },
   "src/game/stages/stage.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 5
+      "count": 4
     },
     "@typescript-eslint/no-unused-vars": {
       "count": 4
@@ -1051,11 +1048,6 @@
     }
   },
   "src/game/targeter.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "src/game/vfx/flash-effects.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
@@ -2171,11 +2163,6 @@
   "tests/game/engagement-zone.test.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 8
-    }
-  },
-  "tests/game/flash-effects.test.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 13
     }
   },
   "tests/game/focus-target.test.ts": {
