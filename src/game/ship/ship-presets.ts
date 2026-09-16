@@ -31,6 +31,8 @@ export function createDefaultCombatPreset(catalog: ShipModuleCatalog = SHIP_MODU
   const assembly = new ShipAssembly(catalog, true);
   assembly.addRoot(instance(catalog, 'cockpit-standard', 'cockpit'));
   assembly.append(instance(catalog, 'tank-combat-main', 'main-tank'));
+  assembly.append(instance(catalog, 'tank-combat-rcs', 'rcs-tank'));
+  assembly.append(instance(catalog, 'rcs-combat', 'rcs'));
   assembly.append(instance(catalog, 'thruster-standard', 'main-thruster'));
   assembly.append(instance(catalog, 'weapon-gatling', 'weapon'));
   assembly.append(instance(catalog, 'armor-combat', 'armor'));

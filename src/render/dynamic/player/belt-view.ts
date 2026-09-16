@@ -1,7 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { LOCAL_RIGHT, Q_IDENTITY, qFromAxisAngle, qFromUnitVectors, qMul, qRotate, type Quat } from '../../../math/quat';
 import { len, scale, sub, type Vec3 } from '../../../math/vec3';
-import { MAG_BELT_ANCHOR_X, MAG_BELT_PITCH } from '../../../physics/player-shape';
 import { memoParseIndependent } from '../baked-model';
 import magazineData from '../../../assets/models/magazine.json';
 
@@ -24,7 +23,6 @@ export class BeltView {
     const group = new THREE.Group();
     for (let i = 0; i < linkCount; i++) {
       const link = parseMagazine();
-      link.position.x = MAG_BELT_ANCHOR_X + (i + 0.5) * MAG_BELT_PITCH;
       group.add(link);
       this.links.push(link);
     }
