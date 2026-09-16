@@ -1,5 +1,4 @@
-// 見出し(h3)+折りたたみトグル+本文の共通パネル外枠と、ビューごとに localStorage へ
-// 永続する折りたたみ状態。
+// 見出し(h3)+折りたたみトグル+本文の共通パネル外枠と、折りたたみトグルの配線役。
 import {
   COLLAPSE_COLLAPSED_GLYPH,
   COLLAPSE_EXPANDED_GLYPH,
@@ -7,107 +6,14 @@ import {
   syncCollapseToggle,
   type CollapseToggleLabels,
 } from '../../hud/widgets';
-import type { ViewMode } from '../../render/view-mode';
+import type { PanelCollapsedState } from './hud-selection';
+import type { SettingValue } from '../../settings/setting-value';
+import type { ViewMode } from '../view/view-mode';
 
-const STORAGE_KEY = 'tepui.panelCollapsed.v2';
-const LEGACY_STORAGE_KEY = 'tepui.panelCollapsed';
-
-type PanelCollapsedBucket = Record<string, boolean>;
-
-interface PanelCollapsedState {
-  combat: PanelCollapsedBucket;
-  map: PanelCollapsedBucket;
-}
-
-type PanelCollapsedViewListener = (view: ViewMode) => void;
+// 一度も操作されていないときの畳み状態。ビューや画面幅で変えるなら関数で渡す。
 type PanelDefaultCollapsed = boolean | ((view: ViewMode) => boolean);
 
-let currentView: ViewMode = 'combat';
-let cachedState: PanelCollapsedState | null = null;
-const viewListeners = new Set<PanelCollapsedViewListener>();
-
-// localStorage から読んだ値のうち、真偽値だけを畳み状態として採る。
-function parseBucketValue(parsed: unknown): PanelCollapsedBucket | null {
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
-  const bucket: PanelCollapsedBucket = {};
-  for (const [id, value] of Object.entries(parsed)) {
-    if (typeof value === 'boolean') bucket[id] = value;
-  }
-  return bucket;
-}
-
-// ビュー1つぶんの畳み状態表を読み出す。読めなければ null。
-function parseBucket(raw: string | null): PanelCollapsedBucket | null {
-  if (!raw) return null;
-  try {
-    return parseBucketValue(JSON.parse(raw));
-  } catch {
-    return null;
-  }
-}
-
-// 保存済みのビュー別折りたたみ状態を返す。新キーが無い既存環境では旧状態を両ビューへ移行する。
-function loadCollapsedState(): PanelCollapsedState {
-  if (cachedState) return cachedState;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw);
-      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-        const source = parsed as Record<string, unknown>;
-        const combat = parseBucketValue(source['combat']) ?? {};
-        const map = parseBucketValue(source['map']) ?? {};
-        cachedState = { combat, map };
-        return cachedState;
-      }
-    }
-  } catch {
-    // 保存先が壊れていても既定値で続行する。
-  }
-  let legacy: PanelCollapsedBucket | null = null;
-  try {
-    legacy = parseBucket(localStorage.getItem(LEGACY_STORAGE_KEY));
-  } catch {
-    // localStorage が利用できない環境では空の状態から始める。
-  }
-  cachedState = { combat: { ...(legacy ?? {}) }, map: { ...(legacy ?? {}) } };
-  return cachedState;
-}
-
-// ビュー別の折りたたみ状態を保存する。
-function saveCollapsedState(state: PanelCollapsedState): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // 保存先が使えない環境では、今回のセッション限りの状態として続行する。
-  }
-}
-
-// 現在のビューを切り替え、登録済みの折りたたみUIへ保存状態を再適用する。
-export function setPanelCollapsedView(view: ViewMode): void {
-  if (currentView === view) return;
-  currentView = view;
-  for (const listener of viewListeners) listener(view);
-}
-
-// 折りたたみUIがビュー切り替えを購読する。戻り値は購読の解除関数。
-function onPanelCollapsedViewChange(listener: PanelCollapsedViewListener): () => void {
-  viewListeners.add(listener);
-  return () => viewListeners.delete(listener);
-}
-
-// id の保存済み折りたたみ状態を現在のビューから返す。一度も操作されていなければ undefined。
-export function loadPanelCollapsed(id: string): boolean | undefined {
-  return loadCollapsedState()[currentView][id];
-}
-
-// id の折りたたみ状態を現在のビューへ保存する。
-export function savePanelCollapsed(id: string, collapsed: boolean): void {
-  const state = loadCollapsedState();
-  state[currentView][id] = collapsed;
-  saveCollapsedState(state);
-}
-
+// 折りたたみトグル1つぶんの配線内容。
 interface PanelCollapseWiring {
   readonly toggleRoot: HTMLElement;
   readonly toggleId: string;
@@ -119,23 +25,60 @@ interface PanelCollapseWiring {
   readonly extraHitEls?: readonly HTMLElement[];
 }
 
-// 折りたたみトグルの配線一式(生成・保存状態の復元・ビュー切替の購読・クリック時の保存)を
-// 1回で行う。defaultCollapsed に関数を渡すと、ビューが切り替わるたびに現在のビューで再評価する。
-// 戻り値はビュー切替の購読の解除関数。
-export function wirePanelCollapse(params: PanelCollapseWiring): () => void {
-  const { toggleRoot, toggleId, toggleClassName, target, labels, storageId, defaultCollapsed = false, extraHitEls = [] } = params;
-  const toggle = buildCollapseToggle(toggleRoot, toggleId, toggleClassName, target, labels, extraHitEls);
-  // 現在ビューの保存値、無ければ既定値を畳み状態として当て直す。
-  const applyCollapsedState = (): void => {
-    const fallback = typeof defaultCollapsed === 'function' ? defaultCollapsed(currentView) : defaultCollapsed;
-    const collapsed = loadPanelCollapsed(storageId) ?? fallback;
-    target.classList.toggle('collapsed', collapsed);
-    syncCollapseToggle(toggle, target, labels);
-  };
-  applyCollapsedState();
-  const unsubscribe = onPanelCollapsedViewChange(applyCollapsedState);
-  toggle.addEventListener('click', () => savePanelCollapsed(storageId, target.classList.contains('collapsed')));
-  return unsubscribe;
+// 折りたたみトグルの配線役。畳み状態はビューごとに分かれるので、いま表に出ているビューを
+// sync で受ける。
+export class PanelCollapse {
+  // 配線済みトグルの当て直し。
+  private readonly appliers = new Set<() => void>();
+  // 直近に当てたビュー。DOM を当て直す差分の鍵。
+  private view: ViewMode = 'combat';
+
+  // state は保存されている畳み状態、onChange は畳み状態を書き換えるときに呼ぶ口。
+  public constructor(
+    private readonly state: SettingValue<PanelCollapsedState>,
+    private readonly onChange: (state: PanelCollapsedState) => void,
+  ) {}
+
+  // 表に出ているビューを受け、切り替わっていれば配線済みのトグルへ保存値を当て直す。
+  public sync(view: ViewMode): void {
+    if (this.view === view) return;
+    this.view = view;
+    for (const apply of this.appliers) apply();
+  }
+
+  // id の保存済み折りたたみ状態。一度も操作されていなければ undefined。
+  public collapsed(id: string): boolean | undefined {
+    return this.state.current[this.view][id];
+  }
+
+  // id の折りたたみ状態を、いま表に出ているビューの分として書き換える。
+  public setCollapsed(id: string, collapsed: boolean): void {
+    const current = this.state.current;
+    this.onChange({ ...current, [this.view]: { ...current[this.view], [id]: collapsed } });
+  }
+
+  // 折りたたみトグルの配線一式(生成・保存状態の復元・ビュー切替への追随・クリック時の保存)を
+  // 1回で行う。defaultCollapsed に関数を渡すと、ビューが切り替わるたびに現在のビューで再評価する。
+  // 戻り値はビュー切替への追随をやめる解除関数。
+  public wire(params: PanelCollapseWiring): () => void {
+    const {
+      toggleRoot, toggleId, toggleClassName, target, labels, storageId,
+      defaultCollapsed = false, extraHitEls = [],
+    } = params;
+    const toggle = buildCollapseToggle(
+      toggleRoot, toggleId, toggleClassName, target, labels, extraHitEls,
+      (collapsed) => this.setCollapsed(storageId, collapsed),
+    );
+    // 現在ビューの保存値、無ければ既定値を畳み状態として当て直す。
+    const apply = (): void => {
+      const fallback = typeof defaultCollapsed === 'function' ? defaultCollapsed(this.view) : defaultCollapsed;
+      target.classList.toggle('collapsed', this.collapsed(storageId) ?? fallback);
+      syncCollapseToggle(toggle, target, labels);
+    };
+    apply();
+    this.appliers.add(apply);
+    return () => this.appliers.delete(apply);
+  }
 }
 
 export class PanelShell {
@@ -145,7 +88,10 @@ export class PanelShell {
 
   // parent の子として id のパネルを組む。title は見出しの初期テキストで、titleEl へ要素(件数
   // バッジ等)を足してよい。折りたたみ状態は現在のビューでのこの id の保存値、無ければ defaultCollapsed。
-  public constructor(parent: HTMLElement, id: string, title: string, defaultCollapsed: PanelDefaultCollapsed = false) {
+  public constructor(
+    parent: HTMLElement, collapse: PanelCollapse, id: string, title: string,
+    defaultCollapsed: PanelDefaultCollapsed = false,
+  ) {
     this.el = document.createElement('div');
     this.el.id = id;
     this.el.dataset['id'] = id;
@@ -164,7 +110,7 @@ export class PanelShell {
     this.el.appendChild(this.body);
 
     // 見出しクリックとトグルの両方から畳めるようにする。
-    wirePanelCollapse({
+    collapse.wire({
       toggleRoot: head,
       toggleId: `${id}-collapse`,
       toggleClassName: 'panel-shell-collapse',

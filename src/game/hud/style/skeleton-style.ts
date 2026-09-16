@@ -27,7 +27,7 @@ body.title-screen-open.hud-overlay-modal-open #hud { z-index: var(--z-hud-title-
 
 /* 選択無効化対象 */
 #hud .ctx-menu-item,
-#hud .mk, #hud .rail-toggle, #hud-chase-reset,
+#hud .rail-toggle, #hud-chase-reset,
 #hud-viewbadge .vb-view-btn { user-select: none; }
 
 ${OVERLAY_LAYER_STYLE}

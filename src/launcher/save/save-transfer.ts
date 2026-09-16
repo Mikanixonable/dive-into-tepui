@@ -8,17 +8,15 @@ import {
 } from './slot-data';
 import { SaveSlots } from './save-slots';
 
-// セーブスロットのファイルへの出し入れと、外部から読み込んだ JSON が SlotExport
-// として妥当かどうかの検証だけを担う。索引の操作(SaveSlots)にも永続化
-// (SaveStore)にも属さない責務なので、ここに独立させる。
+// セーブスロットのファイルへの出し入れと、読み込んだ JSON が SlotExport として妥当かどうかの検証。
 
 type ImportResult =
   | { ok: true; slot: SaveSlotMeta }
   | { ok: false; reason: string };
 
 // slots.exportSlot() の結果をファイルとしてダウンロードさせる。対象スロットが無ければ false。
-export function exportSlotToFile(slots: SaveSlots, slotId: string, pinnedOnly: boolean): boolean {
-  const exp = slots.exportSlot(slotId, pinnedOnly);
+export function exportSlotToFile(slots: SaveSlots, slotId: string): boolean {
+  const exp = slots.exportSlot(slotId);
   if (!exp) return false;
 
   const blob = new Blob([JSON.stringify(exp)], { type: 'application/json' });
@@ -47,10 +45,9 @@ function formatTimestamp(d: Date): string {
   return `${date}-${time}`;
 }
 
-// ファイルを読んで検証し、新しいスロットとして取り込む。検証に落ちた場合は
-// slots.importSlot を一切呼ばない。
+// ファイルを読んで検証し、検証を通ったものだけを新しいスロットとして取り込む。
 async function importSlotFromFile(slots: SaveSlots, file: File): Promise<ImportResult> {
-  // パース → 形式検証 → 取り込みの順で、途中で落ちたら以降を実行しない。
+  // パース → 形式検証 → 取り込みの順に進める。
   let text: string;
   try {
     text = await file.text();
@@ -75,9 +72,8 @@ async function importSlotFromFile(slots: SaveSlots, file: File): Promise<ImportR
 
 // ファイル選択ダイアログを開き、選ばれたファイルを importSlotFromFile に渡す。
 export function pickAndImportSlot(slots: SaveSlots): Promise<ImportResult> {
-  // input はダイアログの開閉に必要な間だけ DOM に置き、決着したら取り除く。ダイアログを
-  // 閉じただけでは change が来ない環境があるので、ウィンドウへ戻った時点も終端として扱う
-  // — これが無いと Promise が永久に解決せず、input も残り続ける。
+  // ダイアログを閉じただけでは change が来ない環境があるので、ウィンドウへ戻った時点も終端
+  // として扱う — これが無いと Promise が永久に解決せず、input も DOM に残り続ける。
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -85,6 +81,7 @@ export function pickAndImportSlot(slots: SaveSlots): Promise<ImportResult> {
     input.style.display = 'none';
 
     let settled = false;
+    // 最初の1回だけ効く終端。listener と input を片付けてから解決する。
     const settle = (result: ImportResult | Promise<ImportResult>) => {
       if (settled) return;
       settled = true;
@@ -124,9 +121,8 @@ function checkSlotExportShape(parsed: unknown): { ok: false; reason: string } | 
     return { ok: false, reason: 'これは Dive into Tepui のセーブファイルではありません' };
   }
 
-  const formatVersion = obj.formatVersion;
-  if (typeof formatVersion !== 'number' || formatVersion < 1 || formatVersion > SLOT_EXPORT_VERSION) {
-    return { ok: false, reason: `対応していない形式のバージョンです (v${String(formatVersion)})` };
+  if (obj.formatVersion !== SLOT_EXPORT_VERSION) {
+    return { ok: false, reason: `対応していない形式のバージョンです (v${String(obj.formatVersion)})` };
   }
 
   const slot = obj.slot;
@@ -156,7 +152,7 @@ function checkSlotExportShape(parsed: unknown): { ok: false; reason: string } | 
 
   const totalKept = filteredStages.reduce((sum, s) => sum + s.snapshots.length, 0);
   if (totalKept === 0) {
-    return { ok: false, reason: '復元できるスナップショットがありません' };
+    return { ok: false, reason: '復元できる手動セーブがありません' };
   }
 
   const keptIds = new Set(filteredStages.flatMap((s) => s.snapshots.map((m) => m.id)));
@@ -165,7 +161,7 @@ function checkSlotExportShape(parsed: unknown): { ok: false; reason: string } | 
 
   const exp: SlotExport = {
     format: SLOT_EXPORT_FORMAT,
-    formatVersion,
+    formatVersion: SLOT_EXPORT_VERSION,
     exportedAtReal: typeof obj.exportedAtReal === 'number' ? obj.exportedAtReal : Date.now(),
     slot: { ...(slot as SaveSlotMeta), stages: filteredStages },
     snapshots: filteredSnapshots as SlotExport['snapshots'],

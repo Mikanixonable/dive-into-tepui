@@ -15,7 +15,8 @@ import type { EntityRoster } from './dynamic/entity-roster';
 import { aliveCombatTarget, combatTargetById, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import type { Notifier } from '../hud/notifier';
 import { TimeLabelSetting } from './hud/orbit/calendar-ticks';
-import { MarkerSlots } from '../render/marker/marker-slots';
+import type { MarkerDeclaration } from '../marker/marker-declaration';
+import type { MarkerSink } from '../marker/marker-sink';
 import { RelativeNodeMarker } from './marker/relative-node-marker';
 import type { CameraFrame } from '../render/camera/camera-frame';
 import { ObjectPickable } from './pickable/object-pickable';
@@ -72,10 +73,13 @@ export class NavTarget {
   // 自艦とターゲットの相対距離が最初に極小になる点。同じ中心天体を周回していない、または
   // 区間内に極小が見つからなければ解けない。
   private readonly closestApproach = new RelativeNodeMarker('ca');
-  // 戦闘ビューでもターゲットの未来の軌道計算を止めないため navTargetReader を立てている個体。
-  private readerEntity: DynamicEntity | null = null;
 
-  public constructor(private readonly _notifier: Notifier, private readonly markers: MarkerSlots) {}
+  private readonly declarations: MarkerDeclaration[] = [];
+
+  public constructor(private readonly _notifier: Notifier, private readonly group: MarkerSink) {}
+
+  // 所有するマーカー群を取り除く。
+  public dispose(): void { this.group.dispose(); }
 
   // 現在のターゲットの id。未設定なら null。
   public get id(): string | null {
@@ -91,16 +95,6 @@ export class NavTarget {
   private setInternal(id: string | null, name: string | null): void {
     this.targetId = id;
     this.targetName = name;
-    // 切り替えた時点で予測の依頼を降ろし、外れた個体に次の update まで負担を残さない。
-    this.setReaderEntity(null);
-  }
-
-  // 未来予測を依頼する個体を entity 一つに絞る。
-  private setReaderEntity(entity: DynamicEntity | null): void {
-    if (entity === this.readerEntity) return;
-    if (this.readerEntity) this.readerEntity.motion.navTargetReader = false;
-    if (entity) entity.motion.navTargetReader = true;
-    this.readerEntity = entity;
   }
 
   // id と現在の設定が同じなら解除、そうでなければ id をターゲットにする。
@@ -164,10 +158,9 @@ export class NavTarget {
     for (const marker of this.nodeMarkers) marker.place(null, null, ownerName, this.name);
     // 相対交点はターゲットと操作対象の両方が揃って初めて定義できる。片方でも欠ければ
     // 出す理由そのものが無い。
-    if (!this.targetId) { this.setReaderEntity(null); this.retireNodeMarkers(); return; }
-    const target = aliveCombatTarget(roster.all(), this.targetId);
-    this.setReaderEntity(target);
+    if (!this.targetId) { this.retireNodeMarkers(); return; }
     if (!controlled) { this.retireNodeMarkers(); return; }
+    const target = aliveCombatTarget(roster.all(), this.targetId);
     const stateCelestialBodies = celestialBodies.celestialMotions;
     const controlledCenter = strongestAttractor(
       controlled.motion.state.r, stateCelestialBodies, simTime,
@@ -284,13 +277,16 @@ export class NavTarget {
   // occluders は遮蔽判定に使う天体で、occludersPivot はその位置を引く時刻。
   public sync(
     camera: CameraFrame, occluders: readonly CelestialBody[],
-    occludersPivot: number, timeLabel: TimeLabelSetting,
+    occludersPivot: number, timeLabel: TimeLabelSetting, nowMs: number,
   ): void {
+    const declarations = this.declarations;
+    declarations.length = 0;
     for (const marker of this.nodeMarkers) {
-      marker.sync(
-        this.markers, camera.project, camera.position,
+      declarations.push(marker.declaration(
+        camera.project, camera.position,
         occluders, occludersPivot, camera.mode === 'map', timeLabel,
-      );
+      ));
     }
+    this.group.sync(declarations, nowMs);
   }
 }

@@ -1,6 +1,5 @@
 // 開いているプロパティウィンドウ(被選択物・搭載部品)と空域メニューの台帳。中身を毎フレーム
 // 最新化し、被選択物が組んだメニュー項目のうちいま選べるものを絞って、選ばれた操作を実行する。
-// どのクリックがどの対象に当たったかは、ビュー側が決めて open() へ渡す。
 import { Hud } from '../hud/hud';
 import { ContextMenu, type MenuItem } from '../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
@@ -29,9 +28,9 @@ import { PartWindows } from './part-windows';
 import type { InspectedObject, ObjectAuthoring } from './inspected-object';
 import type { PropertyWindowOpener } from './property-window-opener';
 import { objectPickableOf } from './object-pickable';
+import type { DisplayWindowManager } from '../display-window-manager';
 
-// 開いているプロパティウィンドウ本体と、その対象。対象は同じ同一性を保ち続けるので、
-// 行・項目の再導出も消滅の判定もこの参照を経由する。
+// 開いているプロパティウィンドウ本体と、その対象。
 interface WindowEntry {
   readonly win: PropertyWindow<MenuAction>;
   readonly target: InspectedObject;
@@ -40,8 +39,7 @@ interface WindowEntry {
 export class ObjectWindows implements PropertyWindowOpener {
   // 宇宙空間そのものはプロパティを持たないので、右クリックの落ち先には ContextMenu を使う。
   private readonly menu: ContextMenu<InspectedObject, MenuAction>;
-  // 開いているプロパティウィンドウ。対象の id でオブジェクト1つにつき高々1枚に保つ
-  // (一時ウィンドウの排他自体は OverlayManager が持つ — ここは対象との対応づけのみ)。
+  // 開いているプロパティウィンドウ。対象の id で、オブジェクト1つにつき高々1枚に保つ。
   private readonly windows = new Map<string, WindowEntry>();
   private readonly partWindows: PartWindows;
   // どの被選択物にも当たらなかった右クリックの落ち先。位置を持たないので1つを使い回す。
@@ -49,9 +47,6 @@ export class ObjectWindows implements PropertyWindowOpener {
   // 直近のマップフォーカス — プロパティウィンドウのバッジ判定に使う。マップを離れている間は
   // 最後にマップ視点だった時点の値のまま据え置く。
   private lastFocusId: string | undefined = undefined;
-  // 直近の sync が受け取った simTime。クリック位置を持たない経路(一覧・パネル)から
-  // ウィンドウを開くときの時刻に使う。
-  private simTime = 0;
 
   // activeView はいまのビュー — 候補列と計画の編集口はビューによって変わるので、
   // 構築時ではなく毎回そこから引く。
@@ -67,25 +62,29 @@ export class ObjectWindows implements PropertyWindowOpener {
     private readonly focusSink: FocusSink,
     private readonly activeStage: Stage,
     private readonly targeter: Targeter,
+    private readonly displayWindowManager: Pick<DisplayWindowManager, 'current'>,
   ) {
     this.menu = new ContextMenu<InspectedObject, MenuAction>(hud.layers.popup, hud.overlayManager);
     this.menu.onSelect = (act, target) => this.runAct(target, act);
     this.partWindows = new PartWindows(hud, controlSelection);
-    this.hud.enemiesPanel.onSelectRight = (id, clientX, clientY) => {
-      const enemy = this.roster.all().filter(isEnemy).find((e) => e.id === id);
-      const inspected = enemy ? objectPickableOf(enemy) : null;
-      if (inspected) this.open(clientX, clientY, inspected, this.simTime);
-    };
-    this.hud.targetPanel.onSelectRight = (clientX, clientY) => {
-      const target = this.targeter.aliveTarget;
-      const inspected = target ? objectPickableOf(target) : null;
-      if (inspected) this.open(clientX, clientY, inspected, this.simTime);
-    };
+  }
+
+  // id で名指しされた敵のプロパティウィンドウを開く。既に消えていれば開かない。
+  public openEnemy(id: string, clientX: number, clientY: number): void {
+    const enemy = this.roster.all().filter(isEnemy).find((e) => e.id === id);
+    const inspected = enemy ? objectPickableOf(enemy) : null;
+    if (inspected) this.open(clientX, clientY, inspected, this.displayWindowManager.current.simTime);
+  }
+
+  // いま固定しているターゲットのプロパティウィンドウを開く。固定していなければ開かない。
+  public openTarget(clientX: number, clientY: number): void {
+    const target = this.targeter.aliveTarget;
+    const inspected = target ? objectPickableOf(target) : null;
+    if (inspected) this.open(clientX, clientY, inspected, this.displayWindowManager.current.simTime);
   }
 
   // 対象1つにつきウィンドウは高々1枚: 既存があればクリック位置へ動かして最前面に出すだけで
-  // 新規には開かない。一時ウィンドウ(非クリップ)どうしの排他は PropertyWindow 自身が
-  // OverlayManager の TEMP_WINDOW_GROUP を通じて保つ。
+  // 新規には開かない。
   open(clientX: number, clientY: number, target: InspectedObject, simTime: number): void {
     const key = target.id;
     const existing = this.windows.get(key);
@@ -102,10 +101,9 @@ export class ObjectWindows implements PropertyWindowOpener {
     this.windows.set(key, entry);
     // 実行時は entry.target(sync のたびに最新化される)を読む — 開いた瞬間の対象を
     // 捕まえたままだと、時刻に依存する操作(ワープ・ノード追加)が古い時刻へ向けて走ってしまう。
-    // 操作項目のクリックは、クリップ済みか keepOpen(排他選択肢の切り替え)なら開いたままにする。
-    // 「削除」は対象自体が消えるのでどちらでも閉じる。
     w.onSelect = (act, keepOpen) => {
       this.runAct(entry.target, act);
+      // 「削除」は対象自体が消えるので、クリップ済みの窓でも閉じる。
       if (act === 'delete' || (!w.clipped && !keepOpen)) this.closeWindow(key);
     };
     w.onClose = () => {
@@ -114,19 +112,18 @@ export class ObjectWindows implements PropertyWindowOpener {
     };
   }
 
-  // 何にも当たらなかった右クリックの落ち先。マップ・戦闘のどちらもここへ落ちる。
+  // 何にも当たらなかった右クリックの落ち先。
   openEmptySpaceMenu(clientX: number, clientY: number, simTime: number): void {
     const target = this.emptySpace;
     this.menu.open(clientX, clientY, target, this.offeredItems(target, simTime));
   }
 
-  // 台帳から外すだけで DOM 破棄はしない — ✕ ボタン自身が dispose 済みのときに呼ぶ経路。
+  // 閉じ終わったウィンドウを台帳から外す。
   private forgetWindow(key: string): void {
     this.windows.delete(key);
   }
 
-  // ✕ ボタン以外の経路(対象消滅・ビュー離脱)で閉じる。close() 自体が onClose を発火するので、
-  // forgetWindow はそちらから呼ばれる。
+  // key のウィンドウを閉じる。開いていなければ何もしない。
   private closeWindow(key: string): void {
     const entry = this.windows.get(key);
     if (!entry) return;
@@ -137,7 +134,6 @@ export class ObjectWindows implements PropertyWindowOpener {
   // (撃破・回収・削除)閉じる — 未来ゴースト時刻で位置が求まらないだけのフレーム
   // (posAt が null)は候補列から外れるだけで消滅ではないので、生存判定は対象の gone で行う。
   sync(simTime: number, displayTime: number): void {
-    this.simTime = simTime;
     if (this.cameraSystem.view === 'map') {
       this.lastFocusId = focusTargetId(this.cameraSystem.mapCamera.focus);
     }
@@ -155,7 +151,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     this.partWindows.sync();
   }
 
-  // 開いたままのメニュー・ウィンドウを畳む。マップビューを離れるときに呼ぶ。
+  // 開いたままのメニュー・ウィンドウを畳む。
   close(): void {
     this.menu.close();
     for (const key of [...this.windows.keys()]) this.closeWindow(key);
@@ -168,8 +164,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     this.menu.dispose();
   }
 
-  // itemsFor の出力をプロパティウィンドウの形へ組み替える: header 項目はタイトル/サブタイトルへ
-  // 抜き出す。開いた直後から sync 時と同じ経路(windowParts)で求める。
+  // 対象から窓1枚ぶんの初期内容を組む。
   private buildContent(target: InspectedObject, simTime: number): PropertyWindowContent<MenuAction> {
     const { title, subtitle, items } = this.windowParts(target, simTime);
     return {
@@ -180,10 +175,8 @@ export class ObjectWindows implements PropertyWindowOpener {
     };
   }
 
-  // タイトル・サブタイトルは到達まで T+… や所持金など、操作項目は操作対象か・追従状態・
-  // 航法ターゲットかなど、どちらも可変な状態に依存するため itemsFor を毎フレーム呼び直す
-  // 必要があるが、呼び出しは1回にまとめる(header 項目からタイトル/サブタイトルを抜き出し、
-  // 残りを操作項目とする)。
+  // 対象が差し出す項目を、窓のタイトル・サブタイトル(header 項目)と操作項目へ振り分ける。
+  // どちらも可変な状態に依存するので、毎フレーム引き直す。
   private windowParts(
     target: InspectedObject, simTime: number,
   ): { title: string; subtitle?: string; items: PropertyWindowItem<MenuAction>[] } {
@@ -203,8 +196,7 @@ export class ObjectWindows implements PropertyWindowOpener {
   }
 
   // 対象が組んだ項目のうち、いま実際に選べるものだけを残す。対象によらない可否
-  // (航法ターゲットにできるか・物体を配置できるか・計画を実行できるステージか)は
-  // 対象ではなくこのランの状態で決まるので、対象には判定させずここで絞る。
+  // (航法ターゲットにできるか・物体を配置できるか・計画を実行できるステージか)はここで判定する。
   private offeredItems(target: InspectedObject, simTime: number): readonly MenuItem<MenuAction>[] {
     const all = target.menuItems(
       this.celestialBodies, this.controlSelection.current, this.navTarget.id);
@@ -242,14 +234,12 @@ export class ObjectWindows implements PropertyWindowOpener {
     return this.cameraSystem.view === 'map' ? this.activeStage.authoring : null;
   }
 
-  // 計画を編集できるならその口。ノードの追加も時間の加速もマップの操作面なので、
-  // 戦闘ビューでは差し出さない。
+  // 計画を編集できるならその口。マップの操作面なので、戦闘ビューでは null。
   private get planEditor(): PlanEditor | null {
     return this.activeView().planEditor;
   }
 
   // 天体プロパティーの先頭に表示する、現在その天体を周回している物体。
-  // 天体は静的な primaryOf、人工物は現在状態から orbitingAttractorOf で判定する。
   private relatedItemsFor(target: InspectedObject, pivot: number): readonly PropertyWindowRelatedItem[] {
     const controlled = this.controlSelection.current;
     // 搭載部品を持つのは艦だけなので、操作中の基地では周回物体の一覧へ落ちる。
@@ -282,11 +272,12 @@ export class ObjectWindows implements PropertyWindowOpener {
       },
       onContextMenu: (clientX, clientY) => {
         const current = this.activeView().pickables.find((candidate) => candidate.id === item.id);
-        if (current) this.open(clientX, clientY, current, this.simTime);
+        if (current) this.open(clientX, clientY, current, this.displayWindowManager.current.simTime);
       },
     }));
   }
 
+  // 関連一覧の見出し。操作中の艦自身を見ているときだけ搭載部品で、それ以外は周回物体。
   private relatedTitleFor(target: InspectedObject): string {
     const controlled = this.controlSelection.current;
     return controlled instanceof Player && target.id === controlled.id ? '搭載部品' : '周回物体';
@@ -303,8 +294,8 @@ export class ObjectWindows implements PropertyWindowOpener {
     this.hud.hint(`${name} にフォーカス`);
   }
 
-  // target のプロパティウィンドウを開く。被選択物が自分の左クリック時の振る舞いから呼ぶ。
+  // target のプロパティウィンドウを開く。
   openProperties(target: InspectedObject, clientX: number, clientY: number): void {
-    this.open(clientX, clientY, target, this.simTime);
+    this.open(clientX, clientY, target, this.displayWindowManager.current.simTime);
   }
 }
