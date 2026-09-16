@@ -6,7 +6,6 @@ import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicLineDisplay } from '../../render/dynamic/dynamic-view';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
-import { isBase } from '../dynamic/dynamic-entity/base';
 import { isModularShip } from '../ship/modular-ship';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import { currentThemePalette } from '../../theme';
@@ -142,19 +141,23 @@ export class EntityLineManager {
       });
     };
 
-    // 自艦・敵・基地の順に、種別ごとの色と表示設定で resolve を通す。
+    // モジュール船と敵の順に、役割・種別ごとの色と表示設定で resolve を通す。
     for (const ship of this.roster.all().filter(isModularShip)) {
       const isActive = ship === active;
-      const visibility = visibilityPolicy?.entity('player', isActive);
+      const isBaseRole = ship.capabilities.role === 'base';
+      const visibility = visibilityPolicy?.entity(isBaseRole ? 'base' : 'player', isActive);
       const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
-      resolve(
-        ship, targetStyleOf(ship), lineVisible,
-        isActive || (view === 'map' && ship.trajectoryLineVisible),
-        {
+      const styles = isBaseRole
+        ? sameTrajectoryStyle(LINE_STYLE.baseLine)
+        : {
           ellipse: playerOrbitStyleOf(isActive),
           predicted: playerPredictedStyleOf(isActive),
           actual: playerActualStyleOf(isActive),
-        },
+        };
+      resolve(
+        ship, targetStyleOf(ship), lineVisible,
+        isActive || (view === 'map' && ship.trajectoryLineVisible),
+        styles,
       );
     }
     for (const enemy of this.roster.all().filter(isEnemy)) {
@@ -165,15 +168,6 @@ export class EntityLineManager {
         enemy, targetStyleOf(enemy), lineVisible,
         view === 'map' && enemy.trajectoryLineVisible,
         sameTrajectoryStyle(enemyLineStyle),
-      );
-    }
-    for (const base of this.roster.all().filter(isBase)) {
-      const visibility = visibilityPolicy?.entity('base');
-      const lineVisible = (visibility?.category ?? true) && (visibility?.orbit ?? true);
-      resolve(
-        base, targetStyleOf(base), lineVisible,
-        view === 'map' && base.trajectoryLineVisible,
-        sameTrajectoryStyle(LINE_STYLE.baseLine),
       );
     }
   }

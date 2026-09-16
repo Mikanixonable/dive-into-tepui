@@ -204,13 +204,16 @@ export function register(): void {
   });
 
   test('dynamic view source: RCS パフの揺らぎは表示時刻だけで決まる', () => {
-    const camera = cameraFrame();
     const scene = new THREE.Scene();
     const effects = new RcsEffects(scene, 'entity-0');
-    const position = v3(7.0e6, 0, 0);
-    const cameraQuat = camera.camera.quaternion;
-    const syncAt = (displayTime: number): void => effects.sync(
-      camera.floatingOrigin, position, v3(0, 1, 0), Q_IDENTITY, true, cameraQuat, false, displayTime,
+    const root = new THREE.Object3D();
+    const anchor = new THREE.Object3D();
+    anchor.position.set(2, 0, 0);
+    anchor.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 1, 0));
+    root.add(anchor);
+    root.updateWorldMatrix(true, true);
+    const syncAt = (displayTime: number): void => effects.syncFromAnchors(
+      root, [anchor], v3(0, 0, -1), true, new THREE.Quaternion(), false, displayTime,
     );
 
     syncAt(DISPLAY_TIME);

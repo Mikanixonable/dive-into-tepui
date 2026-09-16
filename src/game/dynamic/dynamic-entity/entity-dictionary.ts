@@ -2,7 +2,6 @@
 // 敵の具象は enemy-dictionary.ts 越しにしか触らない(直接 import すると
 // enemy.ts → 具象 → enemy.ts の実行時循環に落ちる)。
 import * as THREE from 'three/webgpu';
-import { Base } from './base';
 import { DetachedBooster } from './detached-booster';
 import { AmmoPickup, RcsFuelPickup } from './pickup';
 import { findEnemyClass } from './enemy-dictionary';
@@ -54,11 +53,7 @@ export function restorationFor(
       return { gate: null, build: () => new RcsFuelPickup({ saved: data, simTime }, scene) };
     case 'booster':
       return { gate: null, build: () => new DetachedBooster({ saved: data, simTime }, scene) };
-    case 'base':
-      return {
-        gate: null,
-        build: () => new Base({ saved: data, simTime }, scene, notifier, markers),
-      };
+    case 'base': return null;
     default:
       return skipUnknownKind(data);
   }

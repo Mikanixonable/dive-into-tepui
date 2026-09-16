@@ -6,7 +6,7 @@ import { ShipModuleView, type ShipModuleModelFactory } from './ship-module-view'
 const ZERO = v3();
 
 // ShipAssembly の module ごとの model view を一体で所有する。asset の取得と ship の運動状態は
-// 呼び出し側が渡すため、固定 Player/Base model や DynamicMotion を知らない。
+// 呼び出し側が渡すため、固定船体モデルや DynamicMotion を知らない。
 export class ModularShipView {
   public readonly object = new THREE.Group();
   private readonly modules = new Map<string, ShipModuleView>();

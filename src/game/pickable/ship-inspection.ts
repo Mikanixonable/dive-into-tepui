@@ -17,7 +17,7 @@ import { MenuCommon } from '../hud/windows/menu-actions';
 import { orbitRows } from './orbit-rows';
 import { ENTITY_GLYPH } from '../marker/marker-identity';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
-import { shipMarkerSvg } from '../marker/marker-shapes';
+import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
 import { PLAN_EXECUTION_MODES, planExecutionLabel } from '../player/player-plan-settings';
 import type { ShipModuleInstance } from '../ship/ship-module-instance';
 
@@ -31,12 +31,12 @@ export class ShipInspection implements InspectedObject {
   public get name(): string { return this.ship.name; }
   public get gone(): boolean { return !this.ship.motion.alive; }
   public get orbitState() { return this.ship.motion.state; }
-  public readonly glyph = ENTITY_GLYPH.ship;
-  public get glyphSvg(): string { return shipMarkerSvg(true); }
-  public readonly listSection = 'player' as const;
-  public readonly pickerGenre = '自艦' as const;
+  public get glyph(): string { return this.ship.capabilities.role === 'base' ? ENTITY_GLYPH.base : ENTITY_GLYPH.ship; }
+  public get glyphSvg(): string { return this.ship.capabilities.role === 'base' ? baseMarkerSvg() : shipMarkerSvg(true); }
+  public get listSection(): 'player' | 'base' { return this.ship.capabilities.role === 'base' ? 'base' : 'player'; }
+  public get pickerGenre(): '自艦' | '基地' { return this.ship.capabilities.role === 'base' ? '基地' : '自艦'; }
   public readonly hiddenBehindBodies = true;
-  public readonly onlyInFocusedSystem = true;
+  public get onlyInFocusedSystem(): boolean { return this.ship.capabilities.role !== 'base'; }
   public get modules(): readonly ShipModuleInstance[] { return this.ship.assembly.modules; }
   public hasModule(moduleId: string): boolean { return this.ship.assembly.module(moduleId) !== null; }
   public setModuleDeployment(moduleId: string, deployed: boolean): void {
@@ -59,7 +59,7 @@ export class ShipInspection implements InspectedObject {
     return this.ship.markerItem(viewerPos, pos, vel, view, isActive);
   }
   public posAt(displayTime: number) { return this.ship.motion.stateAt(displayTime)?.r ?? null; }
-  public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(`player-${this.ship.id}`); }
+  public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(this.ship.markerKey); }
   public hitBodyByRay(ray: Parameters<ModularShip['hitBodyByRay']>[0], pos: Parameters<ModularShip['hitBodyByRay']>[1]): boolean {
     return this.ship.hitBodyByRay(ray, pos);
   }
