@@ -8,16 +8,10 @@ export function newSaveId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-// スナップショットの由来。撮られ方であって、保持されるかどうか(SnapshotMeta.pinned)とは
-// 別の軸。クリップは pinned を立てるだけで kind は書き換えない — 由来を塗り替えると
-// どのトリガで撮られたかが失われる。
-export type SnapshotKind = 'auto' | 'manual' | 'checkpoint';
-
-// 一覧 UI がスナップショット本体を読まずに1件を描くための情報。すべて GameSaveData から
+// 一覧 UI が本体を読まずに手動セーブ1件を描くための情報。すべて GameSaveData から
 // 導出でき、正本ではなく索引。
 export interface SnapshotMeta {
   id: string;
-  kind: SnapshotKind;
   pinned: boolean;
   name: string;
   createdAtReal: number;
