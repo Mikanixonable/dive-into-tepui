@@ -11,8 +11,8 @@ import {
 } from './slot-data';
 import { SaveStore, SAVE_INDEX_VERSION } from './save-store';
 
-// 履歴ごとに持てる pinned:true(クリップ済み)の件数の上限。
-export const PINNED_SNAPSHOT_LIMIT = 30;
+// 履歴ごとに持てる手動セーブの件数の上限。
+export const MANUAL_SAVE_LIMIT = 30;
 
 // セーブ索引(SaveIndex)を持ち、スロット/手動セーブ/復帰点のメタを操作する。メタの追加・削除に
 // 合わせて、store 上の本体も書き・消す。
@@ -219,12 +219,12 @@ export class SaveSlots {
     return true;
   }
 
-  // 本体を書き、メタを履歴の先頭へ入れる。クリップ済みが上限に達している履歴へ
-  // pinned:true を足すことはできず、書き込みに失敗したときと合わせて false を返す。
+  // 本体を書き、メタを履歴の先頭へ入れる。履歴が MANUAL_SAVE_LIMIT 件に達しているときと、
+  // 書き込みに失敗したときは false を返す。
   public addManualSave(slotId: string, stageId: string, meta: SnapshotMeta, data: GameSaveData): boolean {
     const history = this.historyFor(slotId, stageId);
     if (!history) return false;
-    if (meta.pinned && history.snapshots.filter((m) => m.pinned).length >= PINNED_SNAPSHOT_LIMIT) return false;
+    if (history.snapshots.length >= MANUAL_SAVE_LIMIT) return false;
 
     try {
       this.store.writeSnapshot(meta.id, data);
@@ -253,20 +253,15 @@ export class SaveSlots {
     return null;
   }
 
-  // クリップ状態を切り替える。PINNED_SNAPSHOT_LIMIT を超える昇格と、無い id では false。
-  public setPinned(snapshotId: string, pinned: boolean): boolean {
+  // クリップの印を付け外しする。無い id なら何もしない。
+  public setPinned(snapshotId: string, pinned: boolean): void {
     const found = this.findSnapshot(snapshotId);
-    if (!found) return false;
-    if (pinned) {
-      const pinnedCount = found.history.snapshots.filter((m) => m.pinned).length;
-      if (pinnedCount >= PINNED_SNAPSHOT_LIMIT) return false;
-    }
+    if (!found) return;
     found.meta.pinned = pinned;
     this.persist();
-    return true;
   }
 
-  // スナップショットの表示名を変える。無い id なら何もしない。
+  // 手動セーブの表示名を変える。無い id なら何もしない。
   public renameSnapshot(snapshotId: string, name: string): void {
     const found = this.findSnapshot(snapshotId);
     if (!found) return;
@@ -282,9 +277,9 @@ export class SaveSlots {
     this.persist();
   }
 
-  // スロットを書き出しの形にする。pinnedOnly なら pinned:true のメタ・本体だけを含める。
-  // 本体が読めなかった件はメタからも落とす。無い slotId では null。
-  public exportSlot(slotId: string, pinnedOnly: boolean): SlotExport | null {
+  // スロットを書き出しの形にする。含めるのは手動セーブで、本体が読めなかった件は
+  // メタからも落とす。無い slotId では null。
+  public exportSlot(slotId: string): SlotExport | null {
     const slot = this.index.slots.find((s) => s.id === slotId);
     if (!slot) return null;
 
@@ -292,9 +287,8 @@ export class SaveSlots {
     const exportedSlot: SaveSlotMeta = { ...slot, stages: [] };
     const snapshots: Record<string, GameSaveData> = {};
     for (const history of slot.stages) {
-      const metas = pinnedOnly ? history.snapshots.filter((m) => m.pinned) : history.snapshots;
       const keptMetas: SnapshotMeta[] = [];
-      for (const meta of metas) {
+      for (const meta of history.snapshots) {
         const data = this.store.readSnapshot(meta.id);
         if (!data) continue;
         snapshots[meta.id] = data;

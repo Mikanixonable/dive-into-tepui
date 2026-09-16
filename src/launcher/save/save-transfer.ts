@@ -17,8 +17,8 @@ type ImportResult =
   | { ok: false; reason: string };
 
 // slots.exportSlot() の結果をファイルとしてダウンロードさせる。対象スロットが無ければ false。
-export function exportSlotToFile(slots: SaveSlots, slotId: string, pinnedOnly: boolean): boolean {
-  const exp = slots.exportSlot(slotId, pinnedOnly);
+export function exportSlotToFile(slots: SaveSlots, slotId: string): boolean {
+  const exp = slots.exportSlot(slotId);
   if (!exp) return false;
 
   const blob = new Blob([JSON.stringify(exp)], { type: 'application/json' });
