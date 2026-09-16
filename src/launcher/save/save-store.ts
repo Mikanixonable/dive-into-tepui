@@ -1,9 +1,9 @@
 import type { GameSaveData } from '../../game/save/save-data';
 import type { SaveIndex } from './slot-data';
 
-// セーブの永続化だけを担う。索引とスナップショット本体の読み書きを Game 非依存の
-// JSON I/O として提供する。
+// セーブの永続化。索引と記録本体の読み書きを JSON I/O として提供する。
 
+// 索引の形式バージョン。上げると、それ以前に書かれた索引は読めなくなる。
 export const SAVE_INDEX_VERSION = 2;
 
 const INDEX_KEY = 'tepui.saveIndex';
@@ -21,7 +21,7 @@ export interface SaveStore {
 
 export class LocalStorageSaveStore implements SaveStore {
   // 未保存/JSON破損/version 不一致のいずれでも null を返す(例外は投げない)。
-  readIndex(): SaveIndex | null {
+  public readIndex(): SaveIndex | null {
     let raw: string | null;
     try {
       raw = localStorage.getItem(INDEX_KEY);
@@ -38,14 +38,13 @@ export class LocalStorageSaveStore implements SaveStore {
     }
   }
 
-  // 失敗(localStorage 不可・容量超過)時は例外を素通しする — 呼び出し側が
-  // QuotaExceededError を捕捉して剪定・再試行するため、ここで握り潰さない。
-  writeIndex(index: SaveIndex): void {
+  // localStorage が使えない・容量を超えたときは、その例外を素通しする。
+  public writeIndex(index: SaveIndex): void {
     localStorage.setItem(INDEX_KEY, JSON.stringify(index));
   }
 
   // JSON破損なら null を返す(例外は投げない)。
-  readSnapshot(id: string): GameSaveData | null {
+  public readSnapshot(id: string): GameSaveData | null {
     let raw: string | null;
     try {
       raw = localStorage.getItem(SNAPSHOT_KEY_PREFIX + id);
@@ -60,14 +59,13 @@ export class LocalStorageSaveStore implements SaveStore {
     }
   }
 
-  // 失敗(localStorage 不可・容量超過)時は例外を素通しする — 呼び出し側が
-  // QuotaExceededError を捕捉して剪定・再試行するため、ここで握り潰さない。
-  writeSnapshot(id: string, data: GameSaveData): void {
+  // localStorage が使えない・容量を超えたときは、その例外を素通しする。
+  public writeSnapshot(id: string, data: GameSaveData): void {
     localStorage.setItem(SNAPSHOT_KEY_PREFIX + id, JSON.stringify(data));
   }
 
   // 対象キーが無くても何もしない。
-  deleteSnapshot(id: string): void {
+  public deleteSnapshot(id: string): void {
     try {
       localStorage.removeItem(SNAPSHOT_KEY_PREFIX + id);
     } catch {
@@ -75,8 +73,8 @@ export class LocalStorageSaveStore implements SaveStore {
     }
   }
 
-  // 索引から参照されない孤児の掃除に使う — 索引に依らず現存するキーを直接走査する。
-  snapshotIds(): readonly string[] {
+  // 現存する本体のキーを、索引に依らず直接走査して返す。
+  public snapshotIds(): readonly string[] {
     const ids: string[] = [];
     try {
       for (let i = 0; i < localStorage.length; i++) {

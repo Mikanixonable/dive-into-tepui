@@ -17,7 +17,6 @@ export class StageDebug extends Stage {
   static readonly hiddenFromSelect = true;
 
   private enemyFireEnabled = false;
-  private fireToggle!: ToggleSwitch;
   private waveCount = 2; // ランダム方向からスポーンさせるため2から開始
 
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
@@ -40,9 +39,9 @@ export class StageDebug extends Stage {
     for (const enemy of enemies) this.addEnemy(enemy);
 
     // 切替は enemyFireEnabled へ入るだけで、敵への反映は update が毎フレーム行う
-    this.fireToggle = new ToggleSwitch('敵射撃', (on) => { this.enemyFireEnabled = on; });
-    this.fireToggle.setOn(false); // デフォルトでオフ
-    this.addStatusPanelWidget(this.fireToggle.element);
+    const fireToggle = new ToggleSwitch('敵射撃', (on) => { this.enemyFireEnabled = on; });
+    fireToggle.setOn(false); // デフォルトでオフ
+    this.addStatusPanelWidget(fireToggle.element);
 
     // 敵集団をスポーンするボタン
     const spawnEnemyBtn = new Button('敵集団をスポーン', () => {

@@ -59,8 +59,8 @@ interface CelestialLabel {
   pos: Vec3;
   showIcon: boolean;
   showLabel: boolean;
-  // 遮蔽・混雑でマーカーを描かなかった対象は掴めない。
-  pickable: boolean;
+  // このフレームにマーカーを描いたか(遮蔽・混雑の間引きを通った結果)。
+  drawn: boolean;
 }
 
 // ラベル1件の投影結果(画面座標と遮蔽の具合)。
@@ -87,7 +87,7 @@ export class CelestialMarkers {
   // このフレームに出すラベルの宣言。サブ行を足すときに同じ列を書き換えて置き直す。
   private readonly declarations: MarkerDeclaration[] = [];
 
-  // このフレームの選択候補に出す天体とラグランジュ点マーカー(表示ポリシーを通ったもの)。
+  // このフレームの選択候補に出す天体とラグランジュ点マーカー。
   private readonly bodyPickableItems: ObjectPickable[] = [];
   // そのうち、このフレームに記号を出す対象の id。ラベルを組む対象はここから引く。
   private readonly labelledIds = new Set<string>();
@@ -125,11 +125,11 @@ export class CelestialMarkers {
     const markersOf = new Map(this.lagrangeSources.map((s) => [s.markers[0]!.parentId, s.markers]));
     const labels: CelestialLabel[] = [];
     for (const { entity, depth } of celestialSystem.orderedEntities) {
-      labels.push({ item: entity, depth, pos: v3(0, 0, 0), showIcon: false, showLabel: false, pickable: true });
+      labels.push({ item: entity, depth, pos: v3(0, 0, 0), showIcon: false, showLabel: false, drawn: true });
       for (const marker of markersOf.get(entity.id) ?? []) {
         labels.push({
           item: marker, depth: depth + 1, pos: v3(0, 0, 0),
-          showIcon: false, showLabel: false, pickable: true,
+          showIcon: false, showLabel: false, drawn: true,
         });
       }
     }
@@ -239,17 +239,17 @@ export class CelestialMarkers {
     };
     const projected = this.frameScratch.get(id);
     if (projected === undefined || projected.opacity <= 0) {
-      label.pickable = false;
+      label.drawn = false;
       return { ...base, x: 0, y: 0, front: false, occluded: projected !== undefined };
     }
     // 名前とアイコンのどちらも残らなければ、マーカーごと畳む。
     const labelVisible = label.showLabel && !hiddenLabels.has(id);
     const iconVisible = label.showIcon && !hiddenIcons.has(id);
     if (!labelVisible && !iconVisible) {
-      label.pickable = false;
+      label.drawn = false;
       return { ...base, x: 0, y: 0, front: false };
     }
-    label.pickable = true;
+    label.drawn = true;
     const { x, y, front, dist } = pointPlacement(label.pos, project, cameraPos);
     if (projected.front) {
       this.activeCelestialLabels.push({
@@ -286,7 +286,7 @@ export class CelestialMarkers {
     const projected = this.frameScratch.get(id);
     return {
       pos: label.pos,
-      shown: label.pickable,
+      shown: label.drawn,
       labelShown: label.showLabel,
       markerClass: label.item.markerClass,
       markerLabel: label.item.markerLabel,
