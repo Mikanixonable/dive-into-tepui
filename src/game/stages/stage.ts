@@ -7,7 +7,6 @@ import { strongestAttractor } from '../../physics/attractor';
 import { Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
-import { FlashEffects } from '../vfx/flash-effects';
 import type { HudLayers } from '../hud/hud-layers';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
@@ -48,7 +47,6 @@ export type StageDeps = [
   hud: HudLayers,
   scene: THREE.Scene,
   dynamicSystem: EntityRegistry & EntityRoster,
-  fx: FlashEffects,
   celestialSystem: CelestialSystem,
   controlSelection: ControlSelection,
   commandQueue: CommandQueue,
@@ -139,7 +137,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
 
   protected readonly _hud: HudLayers;
   protected readonly _scene: THREE.Scene;
-  protected readonly _fx: FlashEffects;
   protected readonly _dynamicSystem: EntityRegistry & EntityRoster;
   protected readonly _celestialSystem: CelestialSystem;
   protected readonly _controlSelection: ControlSelection;
@@ -165,10 +162,9 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
   protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    const [hud, scene, dynamicSystem, fx, celestialSystem, controlSelection, commandQueue] = deps;
+    const [hud, scene, dynamicSystem, celestialSystem, controlSelection, commandQueue] = deps;
     this._hud = hud;
     this._scene = scene;
-    this._fx = fx;
     this._dynamicSystem = dynamicSystem;
     this._celestialSystem = celestialSystem;
     this._controlSelection = controlSelection;
@@ -234,7 +230,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     const state = placement.state ?? this.defaultPlayerState();
     const center = strongestAttractor(state.r, this._celestialSystem.celestialMotions, state.t);
     const ship = new Player(
-      this._dynamicSystem.events, this._scene, this._fx, this._dynamicSystem.idAllocators,
+      this._dynamicSystem.events, this._scene, this._dynamicSystem.idAllocators,
       { ...placement, state, center },
     );
     this._dynamicSystem.add(ship);
