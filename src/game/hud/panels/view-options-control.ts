@@ -1,9 +1,8 @@
-// 表示パネルを持ち、その操作をラン跨ぎ設定の書き換えとして返して、書き戻された値をパネルの
-// 表示状態へ当てる。天体分類・天球グリッド・軌道ガイドとタブの選択をそれぞれ別の設定として扱う。
+// 表示パネルを持ち、その操作を選択の書き換えとして返して、書き戻された値をパネルの表示状態へ当てる。
+// 天体分類・天球グリッドとタブの選択はラン跨ぎの設定として、軌道ガイドはこのランの選択として扱う。
 import { catalogFamilyIndex } from '../../celestial/orbit-guide/orbit-guide-catalog';
 import { normalizeOrbitGuideSettings } from '../../celestial/orbit-guide/orbit-guide-settings';
 import { applyMapDisplayMode } from '../../map/display-toggles';
-import { applyGridToggle } from '../../../render/celestial-grid';
 import { ViewOptionsPanel } from './view-options-panel';
 import type { OrbitGuideSettings } from '../../celestial/orbit-guide/orbit-guide-settings';
 import type { OrbitGuideGroupTab, ViewOptionsTab } from '../hud-selection';
@@ -16,12 +15,10 @@ import type { SettingValue } from '../../../settings/setting-value';
 export interface ViewOptionsSettings {
   readonly mapDisplay: SettingValue<MapDisplayToggles>;
   readonly grid: SettingValue<CelestialGridVisibility>;
-  readonly orbitGuide: SettingValue<OrbitGuideSettings>;
   readonly tab: SettingValue<ViewOptionsTab>;
   readonly orbitGuideGroupTab: SettingValue<OrbitGuideGroupTab>;
   onMapDisplayChange(value: MapDisplayToggles): void;
   onGridChange(value: CelestialGridVisibility): void;
-  onOrbitGuideChange(value: OrbitGuideSettings): void;
   onTabChange(value: ViewOptionsTab): void;
   onOrbitGuideGroupTabChange(value: OrbitGuideGroupTab): void;
 }
@@ -29,9 +26,12 @@ export interface ViewOptionsSettings {
 export class ViewOptionsControl {
   private readonly panel: ViewOptionsPanel;
 
-  // root はパネルを差し込む先、collapse は折りたたみトグルの配線役。settings の現在値を
-  // パネルへ当て、パネルの操作は settings の書き換えとして返す。
-  public constructor(root: HTMLElement, collapse: PanelCollapse, settings: ViewOptionsSettings) {
+  // root はパネルを差し込む先、collapse は折りたたみトグルの配線役。settings の現在値と、このランの
+  // 軌道ガイド orbitGuide をパネルへ当て、パネルの操作は settings の書き換えと onOrbitGuideChange として返す。
+  public constructor(
+    root: HTMLElement, collapse: PanelCollapse, settings: ViewOptionsSettings,
+    orbitGuide: OrbitGuideSettings, onOrbitGuideChange: (value: OrbitGuideSettings) => void,
+  ) {
     this.panel = new ViewOptionsPanel(root, collapse, catalogFamilyIndex());
 
     // 天体クラスの表示。1ボタンが循環する表示状態を、保存される boolean の組へ畳む。
@@ -42,9 +42,9 @@ export class ViewOptionsControl {
     };
     this.panel.setBodyClassToggles(settings.mapDisplay.current);
 
-    // 天球グリッド。親子のトグルの整合を取ってから書き戻す。
+    // 天球グリッド。行見出しと面・極・網は、互いに独立したトグルとして書き戻す。
     this.panel.onGridToggle = (key, on) => {
-      const next = applyGridToggle(settings.grid.current, key, on);
+      const next = { ...settings.grid.current, [key]: on };
       settings.onGridChange(next);
       this.panel.setGridVisibility(next);
     };
@@ -53,10 +53,10 @@ export class ViewOptionsControl {
     // 軌道ガイド(ゼロ速度曲線を含む)。編集結果は範囲・本数を丸めてから書き戻す。
     this.panel.onOrbitGuideChange = (edited) => {
       const next = normalizeOrbitGuideSettings(edited);
-      settings.onOrbitGuideChange(next);
+      onOrbitGuideChange(next);
       this.panel.setOrbitGuideSettings(next);
     };
-    this.panel.setOrbitGuideSettings(settings.orbitGuide.current);
+    this.panel.setOrbitGuideSettings(orbitGuide);
 
     // タブの選択。ランを跨いで残るので、これも設定として書き戻す。
     this.panel.onTabChange = (tab) => {

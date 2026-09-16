@@ -50,7 +50,7 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
 function startAnimationLoop(
   launcher: Launcher, gs: GameScene,
   graphics: SettingValue<GraphicsSettingsData>, renderStyle: SettingValue<RenderStyle>,
-  debugInfo: DebugInfoWindow, sections: FrameSections,
+  debugInfo: DebugInfoWindow, pauseMenu: PauseMenu, sections: FrameSections,
   autoSave: AutoSave,
   snapshotControls: SnapshotControls,
 ): void {
@@ -64,6 +64,8 @@ function startAnimationLoop(
     // リサイズしたフレームで画面上の当たり判定がずれる。
     const viewport = browserViewport();
     gs.syncFrame(viewport, graphics.current, debugInfo.debugTarget);
+    // 設定面はタイトル画面でも開けるので、周回の有無を見る前に引き直す。
+    pauseMenu.sync();
     const game = launcher.currentGame;
     const current = launcher.current;
     // 周回の切り替え中は Game が無いので、次フレームを予約して抜ける。
@@ -173,13 +175,11 @@ function viewOptionSettings(settings: UserSettings): ViewOptionsSettings {
     // 読み取り専用の面。
     mapDisplay: settings.mapDisplayToggles,
     grid: settings.gridVisibility,
-    orbitGuide: settings.orbitGuide,
     tab: settings.viewOptionsTab,
     orbitGuideGroupTab: settings.orbitGuideGroupTab,
     // 書き換えの口。設定の正本へ戻す。
     onMapDisplayChange: (value) => settings.mapDisplayToggles.set(value),
     onGridChange: (value) => settings.gridVisibility.set(value),
-    onOrbitGuideChange: (value) => settings.orbitGuide.set(value),
     onTabChange: (value) => settings.viewOptionsTab.set(value),
     onOrbitGuideGroupTabChange: (value) => settings.orbitGuideGroupTab.set(value),
   };
@@ -196,6 +196,7 @@ async function main() {
   const saveStore = new LocalStorageSaveStore();
   const slots = SaveSlots.load(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
+  const autoSave = new AutoSave(snapshotService);
   const gs = await initScene(settings.graphics.current);
   const { shell, hud, markers, audioEngine, bgm, pauseMenu } = initHud(settings);
   const sections = new FrameSections();
@@ -208,14 +209,10 @@ async function main() {
   // 周回の遷移と、一時停止メニューからの導線。
   const launcher = new Launcher(
     shell, host, audioEngine, bgm, pauseMenu, unlockManager,
-    slots, snapshotService, settings.graphics, settings.renderStyle,
+    slots, snapshotService, autoSave, settings.graphics, settings.renderStyle,
   );
 
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
-  pauseMenu.onPauseMenuOpenChange = (open) => {
-    if (open) launcher.current?.pause();
-    else launcher.current?.resume();
-  };
 
   const saveBrowser = new SaveBrowser(shell.layers.system, slots, snapshotService, launcher, shell.overlayManager);
   saveBrowser.onSlotSwitched = () => launcher.switchSlot();
@@ -238,13 +235,13 @@ async function main() {
   };
 
   const snapshotControls = new SnapshotControls(hud, pauseMenu, saveBrowser, snapshotService);
-  pauseMenu.onSave = () => snapshotControls.captureManual(launcher.current?.snapshot ?? null);
+  pauseMenu.onSave = () => snapshotControls.saveManually(launcher.current?.snapshot ?? null);
 
   // 最初の周回を起こしてから、フレームを回し始める。
   await launcher.start();
   startAnimationLoop(
-    launcher, gs, settings.graphics, settings.renderStyle, debugInfo, sections,
-    new AutoSave(snapshotService), snapshotControls,
+    launcher, gs, settings.graphics, settings.renderStyle, debugInfo, pauseMenu, sections,
+    autoSave, snapshotControls,
   );
 }
 
