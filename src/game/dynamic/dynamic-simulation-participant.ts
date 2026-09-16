@@ -37,6 +37,8 @@ export interface KinematicParticipant {
 
 export interface EntityContactParticipant extends KinematicParticipant {
   alive: boolean;
+  readonly att: Attitude;
+  readonly prevAtt: Attitude;
   readonly engagementAnchor: boolean;
   readonly collides: boolean;
   readonly attachedTo: EntityContactParticipant | null;
@@ -44,10 +46,13 @@ export interface EntityContactParticipant extends KinematicParticipant {
   contactsWith(other: EntityContactParticipant, simTime: number): boolean;
   usesCustomSphereCollision(): boolean;
   usesCustomEntityCollision(): boolean;
-  testCustomSphereCollision(center: Vec3, radius: number, self: KinematicState): SphereHit | null;
+  testCustomSphereCollision(
+    center: Vec3, radius: number, self: KinematicState, selfAttitude: Attitude,
+  ): SphereHit | null;
   testCustomSweptSphereCollision(
     previousCenter: Vec3, center: Vec3, radius: number,
     previousSelf: KinematicState, self: KinematicState,
+    previousSelfAttitude: Attitude, selfAttitude: Attitude,
   ): { readonly hit: SphereHit; readonly toi: number } | null;
   testCustomEntityCollision(
     other: EntityContactParticipant, self: KinematicState, otherState: KinematicState,

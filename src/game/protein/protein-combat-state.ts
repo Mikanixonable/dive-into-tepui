@@ -5,6 +5,8 @@ import type {
 } from './protein-schema';
 import type { ProteinPhase } from '../../render/protein/protein-display';
 
+type ProteinModelPoint = { readonly x: number; readonly y: number; readonly z: number };
+
 // 1回のダメージの結果。
 interface ProteinDamageResult {
   readonly target: 'site' | 'integrity';
@@ -125,9 +127,12 @@ export class ProteinCombatState {
 
   // amount を、localPoint を含む機能部位のうち最も近いものへ当てる。含む部位が無ければ integrity を
   // 直接削る。localPoint は原子の座標 [Å] ではなく、表示の基準倍率を掛けたモデル座標。
-  public applyDamage(amount: number, localPoint: { x: number; y: number; z: number }): ProteinDamageResult {
+  public applyDamage(
+    amount: number, localPoint: ProteinModelPoint,
+    sitePositions?: ReadonlyMap<string, ProteinModelPoint>,
+  ): ProteinDamageResult {
     const previousPhase = this._phase;
-    const candidate = this.closestSite(localPoint);
+    const candidate = this.closestSite(localPoint, sitePositions);
     let siteId: string | null = null;
     let siteDisabled = false;
     let damage = Math.max(0, amount);
@@ -198,17 +203,21 @@ export class ProteinCombatState {
   }
 
   // localPoint を半径の内に含む機能部位のうち、中心が最も近いもの。無ければ null。
-  private closestSite(localPoint: { x: number; y: number; z: number }): SiteState | null {
+  private closestSite(
+    localPoint: ProteinModelPoint, sitePositions?: ReadonlyMap<string, ProteinModelPoint>,
+  ): SiteState | null {
     let closest: SiteState | null = null;
     let closestDistance = Number.POSITIVE_INFINITY;
     // 部位の位置と半径は原子の座標なので、モデル座標へ直して比べる。
     const coordinateScale = this.asset.coordinateScale;
     for (const site of this.siteStates) {
       if (site.disabled) continue;
+      const position = sitePositions?.get(site.definition.id);
       const [x, y, z] = site.definition.position;
-      const dx = localPoint.x - x * coordinateScale;
-      const dy = localPoint.y - y * coordinateScale;
-      const dz = localPoint.z - z * coordinateScale;
+      const anchor = position ?? { x: x * coordinateScale, y: y * coordinateScale, z: z * coordinateScale };
+      const dx = localPoint.x - anchor.x;
+      const dy = localPoint.y - anchor.y;
+      const dz = localPoint.z - anchor.z;
       const distance = Math.hypot(dx, dy, dz);
       const radius = site.definition.radius * coordinateScale;
       if (distance <= radius && distance < closestDistance) {

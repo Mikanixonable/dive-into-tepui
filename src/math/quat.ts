@@ -36,6 +36,35 @@ export function qNormalize(q: Quat): Quat {
   return { x: q.x / l, y: q.y / l, z: q.z / l, w: q.w / l };
 }
 
+// 姿勢を最短経路で補間する。剛体形状の掃引など、フレーム間の姿勢変化を
+// 位置の線分へ近似せずに扱う箇所で使う。
+export function qSlerp(a: Quat, b: Quat, t: number): Quat {
+  let bx = b.x, by = b.y, bz = b.z, bw = b.w;
+  let cosine = a.x * bx + a.y * by + a.z * bz + a.w * bw;
+  if (cosine < 0) {
+    cosine = -cosine;
+    bx = -bx; by = -by; bz = -bz; bw = -bw;
+  }
+  if (cosine > 0.9995) {
+    return qNormalize({
+      x: a.x + (bx - a.x) * t,
+      y: a.y + (by - a.y) * t,
+      z: a.z + (bz - a.z) * t,
+      w: a.w + (bw - a.w) * t,
+    });
+  }
+  const angle = Math.acos(Math.max(-1, Math.min(1, cosine)));
+  const sine = Math.sin(angle);
+  const from = Math.sin((1 - t) * angle) / sine;
+  const to = Math.sin(t * angle) / sine;
+  return {
+    x: a.x * from + bx * to,
+    y: a.y * from + by * to,
+    z: a.z * from + bz * to,
+    w: a.w * from + bw * to,
+  };
+}
+
 // 軸 axis(単位ベクトル)まわりに angle [rad] 回転するクォータニオンを作る。
 export function qFromAxisAngle(axis: Vec3, angle: number): Quat {
   const h = angle / 2;

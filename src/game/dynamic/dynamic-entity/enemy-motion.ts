@@ -4,7 +4,7 @@ import type { KinematicState } from '../../../physics/kinematic-state';
 import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic-simulation-participant';
 import type { Contact } from './contact';
-import { shipMotionOptions } from './ship';
+import { shipMotionOptions } from './vessel';
 
 // 敵機は熱防御を持たないので、自機より低い温度で構造が保たなくなる。
 const ENEMY_MAX_TEMP = 500; // [K]
