@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import { CelestialMotion, OrbitingMotion, PlanetMotion } from '../../physics/celestial-motion';
-import { PhaseOffsets } from '../../physics/celestial-body-def';
+import { isStar, type StarCelestialBody } from '../../physics/celestial-body-def';
 import { attractorAccel, strongestAttractor } from '../../physics/attractor';
 import { EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
 import { EciTransform } from '../../physics/eci-transform';
@@ -35,7 +35,6 @@ import { isOccluded } from '../../physics/occlusion';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { PointFieldView } from '../../render/celestial/point-field-view';
-import type { MapDisplayToggles } from '../map/display-toggles';
 import type { GpuTimingSink } from '../../render/gpu-timings';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialBodies } from './celestial-bodies';
@@ -57,11 +56,6 @@ function bindEphemerides(motions: readonly CelestialMotion[], points: EphemerisP
   for (const system of systems) {
     system.bindEphemeris(ephemerisPointOf(points, system.id, 'systemBarycenter'));
   }
-}
-
-// 天体 id の分類トグルが開いているか。表示ポリシーを持たない戦闘ビューではすべて開いている。
-function categoryVisible(policy: MapVisibilityPolicy | null, id: string): boolean {
-  return policy === null || policy.body(id).category;
 }
 
 // 親を先に、その子を続けて並べた列と、主星を 0 とする階層の深さ。親子関係が循環していても
@@ -101,8 +95,9 @@ export class CelestialSystem implements CelestialBodies {
   public readonly celestialMotions: readonly CelestialMotion[];
   // 親を先に、その子を続けて並べた天体の列と、主星を 0 とする階層の深さ。
   public readonly orderedEntities: readonly { readonly entity: CelestialEntity; readonly depth: number }[];
-  // 主星の個体。恒星を持たない星系では null。
-  private readonly starEntity: CelestialEntity | null;
+  // 主星の運動。恒星を持たない星系では null。
+  private readonly starMotion: StarCelestialBody | null;
+  // 主星が放つ光。恒星を持たないか、主星の表示が光を放たない星系では null。
   private readonly stellarLightSource: StellarLightSource | null;
   // 天体の値を ECI へ移す変換器。原点天体の選択の正本。
   private readonly eciTransform: EciTransform;
@@ -121,13 +116,12 @@ export class CelestialSystem implements CelestialBodies {
   private readonly zeroVelocityModel: ZeroVelocityModel;
   private zeroVelocityView!: ZeroVelocityView;
 
-  // entities はこの星系の全天体(宣言順)、origin はその中の ECI 中心天体。phaseOffsets は motion を
-  // 組んだ初期位相(セーブでそのまま返す)。epoch は simTime=0 が指す絶対時刻。pointFieldView は
-  // 小天体の点群(持たない星系では null)、ephemerisPoints は数値暦が収録している点の一覧。
+  // entities はこの星系の全天体(宣言順)、origin はその中の ECI 中心天体。epoch は simTime=0 が
+  // 指す絶対時刻。pointFieldView は小天体の点群(持たない星系では null)、ephemerisPoints は
+  // 数値暦が収録している点の一覧。
   public constructor(
     public readonly entities: readonly CelestialEntity[],
     public readonly origin: CelestialEntity,
-    private readonly phaseOffsets: PhaseOffsets,
     public readonly epoch: TdbJulianDate,
     private readonly pointFieldView: PointFieldView | null = null,
     ephemerisPoints: EphemerisPoints | null = null,
@@ -144,10 +138,12 @@ export class CelestialSystem implements CelestialBodies {
     if (ephemerisPoints !== null) bindEphemerides(this.celestialMotions, ephemerisPoints);
     this.entitiesById = new Map(entities.map((b) => [b.id, b]));
     this.orderedEntities = orderedEntitiesOf(entities);
-    this.starEntity = entities.find((entity) => entity.view.stellarLight !== null) ?? null;
-    const stellarLight = this.starEntity?.view.stellarLight ?? null;
-    this.stellarLightSource = this.starEntity === null || stellarLight === null
-      ? null : { motion: this.starEntity.motion, stellarLight };
+    const starMotion = this.celestialMotions.find(isStar) ?? null;
+    this.starMotion = starMotion;
+    // 主星に決まった天体の表示が光を放たなければ、主星はあっても光源は置かない。
+    const stellarLight = starMotion === null ? null : this.entityOf(starMotion.id).view.stellarLight;
+    this.stellarLightSource = starMotion === null || stellarLight === null
+      ? null : { motion: starMotion, stellarLight };
     this.orbitGuideModel = new OrbitGuideModel(this);
     this.zeroVelocityModel = new ZeroVelocityModel(this);
   }
@@ -188,7 +184,7 @@ export class CelestialSystem implements CelestialBodies {
   public nameOf(id: string): string { return this.entitiesById.get(id)?.name ?? id; }
 
   // 主星の天体 id。恒星を持たない星系では null。
-  public get starId(): string | null { return this.starEntity?.id ?? null; }
+  public get starId(): string | null { return this.starMotion?.id ?? null; }
 
   // ECI の原点に静止している天体の id。
   public get originId(): string { return this.origin.id; }
@@ -324,14 +320,8 @@ export class CelestialSystem implements CelestialBodies {
 
   // ECI の点 r から見た恒星方向の単位ベクトル。恒星が無い星系では無害な既定方向(+X)を返す。
   public sunDirFrom(r: Vec3, t: number): Vec3 {
-    const star = this.starEntity;
-    return star === null ? v3(1, 0, 0) : norm(sub(this.stateAt(star.id, t).r, r));
-  }
-
-  // 星系の再構築に要る値のスナップショット(セーブ用)。phaseOffsets は構築時に受け取った
-  // record をそのまま返す(明示 0 のキーを落とさない)。
-  public serialize(): { readonly phaseOffsets: PhaseOffsets; readonly earthSpinPhase0: number | undefined } {
-    return { phaseOffsets: { ...this.phaseOffsets }, earthSpinPhase0: this.earthSpinPhase0() };
+    const star = this.starMotion;
+    return star === null ? v3(1, 0, 0) : norm(sub(star.stateAt(t).r, r));
   }
 
   // 天体と地表が答える、デバッグ表示用の狭い計測値をまとめる。
@@ -364,20 +354,10 @@ export class CelestialSystem implements CelestialBodies {
     return this.orbitGuideView.visibleLines(count);
   }
 
-  // ECI の極軸を自転軸とする天体(この座標系を定義している天体)の自転初期位相(セーブ用)。
-  // その天体が星系に無ければ undefined。
-  private earthSpinPhase0(): number | undefined {
-    const pole = this.entities.find(({ motion }) => (
-      'pole' in motion.def && motion.def.pole?.kind === 'eciPole'
-    ));
-    return pole?.motion.spinPhase0;
-  }
-
   // 天体ビュー・星・照明・影・参照線・天球グリッドを、この1フレームの表示状態に同期する。
   // nowMs はこのフレームの実時刻 [ms] で、表示時刻では進まないアニメーション(進行方向マーカー・
-  // 地表タイルのフェード)がこれを読む。mapDisplay・grid・orbitGuide はこのフレームの表示設定。
-  // visibilityPolicy は戦闘ビューでは null で、選べる対象と同じ判定になるよう、同じフレームの
-  // update 位相で確定させたものを渡す。
+  // 地表タイルのフェード)がこれを読む。grid・orbitGuide はこのフレームの表示設定。
+  // visibilityPolicy は軌道線を引く対象を決める。戦闘ビューでは null で、そのときは引かない。
   public sync(
     displayTime: number,
     nowMs: number,
@@ -385,7 +365,6 @@ export class CelestialSystem implements CelestialBodies {
     cameraSystem: CameraSystem,
     graphics: GraphicsSettingsData,
     style: RenderStyle,
-    mapDisplay: MapDisplayToggles,
     grid: CelestialGridVisibility,
     orbitGuide: OrbitGuideSettings,
     visibilityPolicy: MapVisibilityPolicy | null,
@@ -393,10 +372,7 @@ export class CelestialSystem implements CelestialBodies {
     const floatingOrigin = camera.floatingOrigin;
     const star = this.stellarLightSource;
     for (const body of this.entities) {
-      body.view.sync(
-        body.motion, displayTime, nowMs, camera, star, graphics, style,
-        categoryVisible(visibilityPolicy, body.id),
-      );
+      body.view.sync(body.motion, displayTime, nowMs, camera, star, graphics, style);
     }
     // 注視中の天体は、影の濃さをカメラ位置と並べて測る基準点になる。天体でない対象を
     // 注視しているフレームでは持たない。
@@ -404,17 +380,15 @@ export class CelestialSystem implements CelestialBodies {
     const focusPosition = focusId === undefined
       ? null : this.findMotion(focusId)?.positionAt(displayTime) ?? null;
     this.illumination.sync(
-      this.entities.map(
-        (body) => body.illuminationSource(categoryVisible(visibilityPolicy, body.id))),
+      this.entities.map((body) => body.illuminationSource()),
       displayTime, camera, graphics, focusPosition, this.sunDirFrom(floatingOrigin.r, displayTime));
 
     // 露出に順応しない点群は、露出の基準が確定した後の係数を受け取る(星殻は照明から直に引く)。
     const fixedBrightnessScale = this.illumination.fixedBrightnessScale;
-    const starPos = star === null ? null : star.motion.stateAt(displayTime).r;
-    const pointFieldVisible = camera.mode === 'map' && graphics.pointField
-      && mapDisplay.smallBodyVisible;
+    const starPos = this.starMotion?.stateAt(displayTime).r ?? null;
     this.pointFieldView?.sync(
-      pointFieldVisible, floatingOrigin, displayTime, starPos, fixedBrightnessScale);
+      camera.mode === 'map' && graphics.pointField,
+      floatingOrigin, displayTime, starPos, fixedBrightnessScale);
     this.stars.sync(grid.stars);
     this.syncReferenceLines(displayTime, camera, visibilityPolicy);
     // 地球の静止軌道リングなど、天体固有のマップ付随表示。ラベルは全天体で同じ id の
@@ -423,8 +397,7 @@ export class CelestialSystem implements CelestialBodies {
     for (const body of this.entities) {
       overlayLabel = body.view.syncMapOverlay(
         body.motion, displayTime, camera,
-        camera.mode === 'map' && orbitGuide.geostationary
-          && categoryVisible(visibilityPolicy, body.id)) ?? overlayLabel;
+        camera.mode === 'map' && orbitGuide.geostationary) ?? overlayLabel;
     }
     this.overlayDeclarations.length = 0;
     const overlay = this.overlayDeclarationOf(overlayLabel, camera, displayTime);

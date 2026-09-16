@@ -16,7 +16,7 @@ export class Stage2 extends Stage {
   static readonly selectLabel = 'stage 2';
   static readonly selectSub = '【第二ステージ: モルニヤ戦域】 敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モードでの遷移が必須';
   static readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';
-  static readonly selectKeys = ['Digit2'];
+  static readonly selectKey = 'Digit2';
 
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
@@ -44,13 +44,15 @@ export class Stage2 extends Stage {
     const worldSfx = this._worldSfx;
     const fx = this._fx;
     const scene = this._scene;
+    const idAllocators = this._dynamicSystem.idAllocators;
+    const attractors = this._celestialSystem.celestialMotions;
     // 通常軌道の敵
-    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, 1800, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
-    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, -2600, 3000, 0xff7a2d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
+    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, attractors, 1800, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene, idAllocators));
+    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, attractors, -2600, 3000, 0xff7a2d, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene, idAllocators));
     // モルニヤ級の高楕円軌道の敵
-    this.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', base.t, 0.4, 2.6, 0xe0409f, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
-    this.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', base.t, 2.5, 0.9, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
-    this.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', base.t, 4.6, 3.8, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene));
+    this.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', base, attractors, 0.4, 2.6, 0xe0409f, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene, idAllocators));
+    this.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', base, attractors, 2.5, 0.9, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene, idAllocators));
+    this.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', base, attractors, 4.6, 3.8, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, worldSfx, fx, scene, idAllocators));
   }
   // 補給品の湧きを進める。
   update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {

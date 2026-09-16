@@ -1,13 +1,14 @@
 // エンティティの保持・追加・上限管理・寿命回収と、1フレームぶんの前進(指令決定と積分)・描画同期。
 import * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { DynamicMotion } from './dynamic-motion';
+import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import type { EntityRoster } from './entity-roster';
 import type { EntityRegistry, SpawnGate } from './entity-registry';
+import { EntityIdAllocators } from './dynamic-entity/entity-id';
 import { ENTITY_CAP, type CapKind, type EntityCountKind } from './dynamic-entity/entity-kind';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
 import { isEnemy } from './dynamic-entity/enemy';
@@ -23,7 +24,6 @@ import { FrameSections, SECTION } from '../frame-sections';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 import type { Input } from '../../input/input';
-import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import type { RenderStyle } from '../../render/render-style';
 
@@ -37,6 +37,10 @@ import type { OrbitReference } from '../orbit-reference';
 export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 保持する全エンティティを追加順に並べた、顔ぶれの正本。枠ごとの上限はこの並びから導く。
   private readonly entities: DynamicEntity[] = [];
+
+  // このランの id 採番器。復元した顔ぶれの id もここで予約するので、この回の連番は
+  // ランの寿命でしか進まない。
+  public readonly idAllocators = new EntityIdAllocators();
 
   // 操作されうる個体。呼ぶたびに顔ぶれから数え直すので、フレームに何度も読むなら受けた配列を
   // 持ち回る。
@@ -76,9 +80,11 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   private restoreFromSave(
     save: GameSaveData, notifier: Notifier, worldSfx: WorldSfx, flash: FlashEffects, scene: THREE.Scene,
   ): void {
+    // 実体化がゲートで遅れる個体があるので、先に全部の id を押さえてから組み始める。
+    for (const data of save.entities) this.idAllocators.reserve(data.id);
     for (const data of save.entities) {
       const restoration = restorationFor(
-        data, save.simTime, scene, notifier, worldSfx, flash);
+        data, save.simTime, scene, notifier, worldSfx, flash, this.idAllocators);
       if (restoration === null) continue;
       this.spawnWhenReady(restoration.gate, () => restoration.build());
     }
@@ -194,15 +200,15 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
 
   // 全エンティティの寿命判定と上限判定を行い、死亡したものを破棄・除去する。
   public cleanup(
-    dt: number, simTime: number, activeStage: StageOutcome, viewerPos: Vec3,
-    atmosphereBodies: readonly CelestialBody[],
+    dt: number, simTime: number, activeStage: StageOutcome,
+    zones: readonly EngagementZone<EngagementParticipant>[], atmosphereBodies: readonly CelestialBody[],
   ): void {
     this.processPendingSpawns();
     // 判定は開始時の顔ぶれに対して行う。死の演出が破片を足すので、生配列を反復すると
     // 生まれたばかりの個体まで同じパスで判定してしまい、生成が連鎖すれば終わらなくなる。
     for (let i = 0, n = this.entities.length; i < n; i++) {
       this.entities[i]!.motion.checkLoss(
-        dt, simTime, { activeStage, registry: this }, viewerPos, atmosphereBodies);
+        dt, simTime, { activeStage, registry: this }, zones, atmosphereBodies);
     }
     this.enforceCaps();
     this.prune();
@@ -318,19 +324,14 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
 
   // このフレームの表示物を、顔ぶれを1度辿って同期する。
   public sync(
-    displayTime: number, active: Controllable | null,
-    visibilityPolicy: MapVisibilityPolicy | null, camera: CameraFrame, style: RenderStyle,
+    displayTime: number, active: Controllable | null, camera: CameraFrame, style: RenderStyle,
     visual: EntityVisualSettings, orbitRef: OrbitReference | undefined,
   ): void {
     // 全個体が同じ1つのフレーム入力を読むよう、走査の前に組んでおく。
     const viewFrame = { displayTime, camera, style, visual, pools: this.instancedPools };
     // instance pool の受付期間で全 Entity を挟む。
     this.instancedPools.beginFrame();
-    for (const e of this.entities) {
-      // 種別ごとの表示可否はここで解決し、View へは結果だけを渡す。
-      const visible = visibilityPolicy === null || e.mapVisibility(visibilityPolicy, active).category;
-      e.sync(viewFrame, visible, e === active, orbitRef);
-    }
+    for (const e of this.entities) e.sync(viewFrame, e === active, orbitRef);
     this.instancedPools.endFrame();
   }
 

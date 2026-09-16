@@ -6,7 +6,8 @@ import { Fn, exp, float, max, select, uv, vec3 } from 'three/tsl';
 import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
-import { R_EARTH, R_EARTH_EQ, R_SUN } from '../../src/game/celestial/solar-system/constants';
+import { R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
+import { R_SUN, SUN, SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
 import {
   EARTH, EARTH_ATMOSPHERE_OPTICS, earthCloudPresentation,
 } from '../../src/game/celestial/solar-system/earth-system';
@@ -20,8 +21,7 @@ import { createAnnulusRing, RingMaterials } from '../../src/render/celestial/rin
 import { buildBarrelMesh } from '../../src/render/dynamic/dynamic-entity/ejected-gun-part-view';
 import { buildPlayerShip } from '../../src/render/dynamic/player/player-view';
 import { createStarSphere, type StarSphere } from '../../src/render/celestial/star-sphere';
-import { REFERENCE_STAR_RADIANT_INTENSITY } from '../../src/render/pipeline/sun-light';
-import { SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
+import { scaledRadiantIntensity } from '../../src/render/pipeline/sun-light';
 import { InstancedPool } from '../../src/render/instanced-pool';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import {
@@ -78,7 +78,7 @@ function shadowBands(bands: readonly RingBandDef[]): readonly RingBand[] {
 }
 
 // 太陽面の輝度。放射強度を、面が張る立体角(π R²)で割ったもの。
-const SUN_SURFACE_RADIANCE = REFERENCE_STAR_RADIANT_INTENSITY / (Math.PI * R_SUN * R_SUN);
+const SUN_SURFACE_RADIANCE = scaledRadiantIntensity(SUN.radiantIntensity) / (Math.PI * R_SUN * R_SUN);
 
 // 全ケース共通の恒星方向。球の陰影と、呼び出し側が置く光源が同じ向きを使う。
 export const SUN_DIR = new THREE.Vector3(1, 0.35, 0.5).normalize();

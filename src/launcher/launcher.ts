@@ -12,7 +12,8 @@ import { findStageClass } from '../game/stages/stage-dictionary';
 import { selectStage } from './stage-select';
 import type { UnlockManager } from './unlock-manager';
 import type { SaveSlots } from './save/save-slots';
-import type { SnapshotService } from './save/snapshot-service';
+import type { SnapshotSource, SnapshotService } from './save/snapshot-service';
+import type { AutoSave } from './save/autosave';
 import type { GameSaveData } from '../game/save/save-data';
 import type { AudioEngine } from '../audio/audio-engine';
 import type { Bgm } from '../audio/bgm/bgm';
@@ -28,20 +29,29 @@ export function debugInfoOpenAtStart(): boolean {
   return new URLSearchParams(location.search).get('perf') === '1';
 }
 
-// アクティブスロットの直近起動が今も選択可能(ロック解除済み・選択画面から隠されていない)なら、
-// そのステージクラスを返す。再開できる情報が無ければ null。
+// アクティブスロットの直近の周回がまだ終わっておらず、そのステージが今も選択可能(ロック解除済み・
+// 選択画面から隠されていない)なら、そのステージクラスを返す。再開できなければ null。
 function resumableStageClass(unlockManager: UnlockManager, slots: SaveSlots): StageClass | null {
-  const slot = slots.activeSlot();
-  if (slot === null) return null;
-  const stageClass = findStageClass(slot.lastStageId);
+  const lastRun = slots.activeSlot()?.lastRun ?? null;
+  if (lastRun === null || lastRun.ended) return null;
+  const stageClass = findStageClass(lastRun.stageId);
   if (stageClass === null || stageClass.hiddenFromSelect || !unlockManager.isUnlocked(stageClass.id)) return null;
   return stageClass;
 }
 
-// StageResult はセーブに含まれないので、決着済みの phase を持つセーブを読んだときは
-// 見出しだけを phase から復元する。
+// セーブに含まれない StageResult の代わりに、決着した phase から見出しだけを組む。
 function fallbackResult(phase: GamePhase): StageResult {
   return { win: phase !== 'lost', title: null, detailHtml: '結果の記録がありません' };
+}
+
+// その周回の記録を残すための読み口。値は残すたびに game から引く。
+function snapshotSourceOf(game: Game): SnapshotSource {
+  return {
+    get isPaused(): boolean { return game.isPaused; },
+    get isPlaying(): boolean { return game.activeStage.isPlaying; },
+    runSummary: () => game.runSummary(),
+    serialize: () => game.serialize(),
+  };
 }
 
 // 周回の遷移(起動・再出撃・タイトル復帰・スナップショットのロード・スロット切替)を担う。
@@ -55,24 +65,15 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   public get currentGame(): Game | null { return this.game; }
 
-  // 今動いている周回の読み口と一時停止の口。周回が無ければ null。
+  // 今動いている周回の読み口。周回が無ければ null。
   // 状態を表す値は、読むたびにその周回の Game から引く。
   public get current(): CurrentGameSource['current'] {
     const game = this.game;
     if (game === null) return null;
     return {
       stageId: game.activeStage.id,
-      get isPlaying(): boolean { return game.activeStage.isPlaying; },
       nameOfBody: (id) => game.celestialSystem.nameOf(id),
-      // スナップショットの撮影に要る読み口。
-      snapshot: {
-        get isPaused(): boolean { return game.isPaused; },
-        get isPlaying(): boolean { return game.activeStage.isPlaying; },
-        runSummary: () => game.runSummary(),
-        serialize: () => game.serialize(),
-      },
-      pause: () => game.pause(),
-      resume: () => game.resume(),
+      snapshot: snapshotSourceOf(game),
     };
   }
 
@@ -86,6 +87,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     private readonly unlockManager: UnlockManager,
     private readonly slots: SaveSlots,
     private readonly snapshotService: SnapshotService,
+    private readonly autoSave: AutoSave,
     private readonly graphics: SettingValue<GraphicsSettingsData>,
     private readonly renderStyle: SettingValue<RenderStyle>,
   ) {
@@ -99,13 +101,15 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     try {
       const { stageClass, startEpoch } = await this.resolveStage();
       await this.startRun(stageClass, undefined, startEpoch);
+    } catch (err) {
+      this.fail(err);
     } finally {
       this.transitioning = false;
     }
   }
 
   // ?title=1 は選択画面へ強制する。?stage= は共有リンク・デバッグ用の明示指定として最優先。
-  // どちらも無ければアクティブスロットの直近起動を再開し、それも無ければ選択画面を出す。
+  // どちらも無ければアクティブスロットの終わっていない周回を再開し、それも無ければ選択画面を出す。
   private async resolveStage(): Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> {
     const params = new URLSearchParams(location.search);
     if (params.get('title') !== '1') {
@@ -119,7 +123,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // 選択画面を出し、選ばれたステージクラス(クリエイティブなら開始日時も)で解決される Promise を返す。
   private selectStageScreen(): Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> {
-    this.bgm.syncRun(false);
     return selectStage(
       this.unlockManager,
       this.host.themePalette.current,
@@ -129,13 +132,13 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     );
   }
 
-  // 現在の周回を畳む。Game を破棄し、結果画面と一時停止メニューを閉じる。
-  // 何も動いていない状態で呼んでも安全。
+  // 現在の周回を畳む。何も動いていない状態で呼んでも安全。
   private endRun(): void {
     this.game?.dispose();
     this.game = null;
     this.resultScreen.close();
     this.pauseMenu.toggle(false);
+    this.bgm.syncRun(false);
   }
 
   // 現在の周回を畳んだ上で、天体暦の構築から Game の生成までを行い、起動をスロットへ記録する。
@@ -154,13 +157,13 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     }
     const stage = this.game.activeStage;
     stage.onDecided = () => {
-      // クリア回数は決着した瞬間に数える。決着済みのセーブから始めたランはここを通らないので、
-      // 読むたびには増えない。
+      // クリア回数は決着した瞬間に数える。
       if (stage.phase === 'won') this.unlockManager.reportClear(stage.id, this.host.hud);
       this.showResult(stage);
     };
     this.noteLaunched(stageClass);
     this.bgm.syncRun(stage.isPlaying);
+    this.autoSave.beginRun(snapshotSourceOf(this.game));
     // 決着済みのスナップショットから始まったランは decide() を通らないため、ここで締める。
     if (!stage.isPlaying) this.showResult(stage);
   }
@@ -173,28 +176,26 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     this.resultScreen.show(stage.result ?? fallbackResult(stage.phase));
   }
 
-  // 周回の初期セーブ。snapshotId があればそれを、無ければ進行中だった周回の再開(直前起動と同じ
-  // ステージ、かつ開始日時の指定なし)に限り最新スナップショットを復元する。直前起動を読むので
+  // 周回の初期セーブ。snapshotId があればそれを、無ければ終わっていない周回の再開(直近の周回と同じ
+  // ステージ、かつ開始日時の指定なし)に限り自動セーブを復元する。直近の周回を読むので
   // noteLaunched より前に呼ぶ。復元できなければ undefined。
   private initialSaveFor(stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate): GameSaveData | undefined {
     const activeSlotId = this.slots.activeSlotId;
-    const resumesLastLaunchedStage = startEpoch === undefined
-      && activeSlotId !== null && this.slots.activeSlot()?.lastStageId === stageClass.id;
+    const lastRun = this.slots.activeSlot()?.lastRun ?? null;
+    const resumesRunInProgress = startEpoch === undefined && activeSlotId !== null
+      && lastRun !== null && !lastRun.ended && lastRun.stageId === stageClass.id;
     const initialSnapshotId = snapshotId
-      ?? (resumesLastLaunchedStage ? this.slots.latestSnapshot(activeSlotId, stageClass.id)?.id ?? null : null);
-    const initialSave = initialSnapshotId !== null
+      ?? (resumesRunInProgress ? this.slots.autoSaveId(activeSlotId, stageClass.id) : null);
+    return initialSnapshotId !== null
       ? this.snapshotService.load(initialSnapshotId, stageClass.id) ?? undefined
       : undefined;
-    // ロードした時点より後の自動スナップショットは、もう起きなかった未来なので破棄する。
-    if (initialSave && initialSnapshotId !== null) this.slots.discardAfter(initialSnapshotId);
-    return initialSave;
   }
 
   // 実際に遊び始めたステージをスロットへ記録し、作り直しのために覚えておく。
   private noteLaunched(stageClass: StageClass): void {
     this.launchedStage = stageClass;
     const activeSlotId = this.slots.activeSlotId;
-    if (activeSlotId !== null) this.slots.noteLaunch(activeSlotId, stageClass.id);
+    if (activeSlotId !== null) this.slots.noteRunLaunched(activeSlotId, stageClass.id);
   }
 
   // 決着後の再出撃キーを拾う。game.update が入力エッジを消費した後に呼ぶ。
@@ -213,7 +214,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       .finally(() => { this.transitioning = false; });
   }
 
-  // 選択画面を出し直し、選ばれたステージで作り直す。直前起動の記録を消すので、この後に
+  // 選択画面を出し直し、選ばれたステージで作り直す。直近の周回を締めるので、この後に
   // 再読み込みしても選択画面から始まる。
   public returnToTitle(): void {
     if (this.transitioning) return;
@@ -255,7 +256,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
 
   // 周回の遷移の失敗を画面に出す。遷移が失敗すると current が null のまま進まなくなる。
   private fail(err: unknown): void {
-    this.bgm.syncRun(false);
     console.error(err);
     showFatalError(
       '次の周回の開始に失敗しました。',

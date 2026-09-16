@@ -31,7 +31,6 @@ export const MAP_PANEL_STYLE = `
 @media ${MQ_COARSE} {
   #hud span.body-class-icon-btn { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
 }
-#hud .body-class-row.category-off .body-class-icon-btn.on { color: var(--text-dim); font-weight: 700; opacity: .65; }
 @media ${MQ_MEDIUM_DOWN} {
   #hud-plan { min-width: 0; max-width: none; }
 }
@@ -104,8 +103,6 @@ export const MAP_PANEL_STYLE = `
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 #hud-predict .predict-value-input { display: inline-flex; align-items: center; gap: var(--space-2); margin: 0; }
-/* 単位の SegmentedControl は見出しを持たないので、共通規則の見出し幅を出さない。 */
-#hud-predict .predict-value-input .seg-title { display: none; }
 #hud-predict .predict-value-input input[type="number"] { width: 112px; }
 #hud-predict .slider-ticks { position: relative; height: 11px; margin-top: var(--space-1); }
 #hud-predict .slider-ticks span {
