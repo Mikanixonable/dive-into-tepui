@@ -1,20 +1,22 @@
-// プレイヤーの射撃・弾薬(マガジン/リロード)状態。発砲・排莢・バレル交換の演出もここで組み立てる。
-import * as THREE from 'three/webgpu';
+// プレイヤーの射撃・弾薬(マガジン/リロード)状態。発砲・排莢・バレル交換で出る実体と、
+// そのとき起きたことの記録もここで組み立てる。
+import type * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, qRotate, randomQuat } from '../../math/quat';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { randSym } from '../../math/random';
 import { radiativeCooling, stepTemperature, stepThermalDeviation } from '../../physics/thermal';
-import { add, addScaled, norm, randPerp, randVec, scale, v3, Vec3 } from '../../math/vec3';
+import type { Vec3 } from '../../math/vec3';
+import { add, addScaled, norm, randPerp, randVec, scale, v3 } from '../../math/vec3';
 
 import type { PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
 import type { RunEventSink } from '../run-events';
-import { Ship } from '../dynamic/dynamic-entity/ship';
+import type { Ship } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import { PLAYER_MUZZLE_OFFSETS } from '../../physics/player-shape';
 import type { StageOutcome } from '../stages/stage-outcome';
-import { Player } from './player';
+import type { Player } from './player';
 import type { FireSaveData } from '../save/save-data';
 import { HULL_EMISS, ENV_TEMP } from '../dynamic/dynamic-motion';
 import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
@@ -25,7 +27,6 @@ import { CASING_COLLISION_BOUND_RADIUS } from '../dynamic/dynamic-entity/casing-
 import { sunGlareSpreadScale } from '../combat/sun-glare-spread';
 import { WeaponState, type AmmoConsumption, type WeaponFireCommand } from './weapon-state';
 import type { ProjectileEmitter } from './projectile-emitter';
-import { DefaultWeaponEffects, type WeaponEffects } from './weapon-effects';
 
 const BARREL_PHYS_RADIUS = 0.8;
 const EJECTED_MAG_PHYS_RADIUS = 1.4;
@@ -62,10 +63,7 @@ type FireInit =
 
 export class FireControl {
   private readonly weapon: WeaponState;
-  private readonly effects: WeaponEffects;
 
-  // 装着している砲身の平均温度 [K] と、薬室側が平均より高い温度差 [K]。交換で切り離すときに
-  // そのまま排出されるデブリへ移る。
   // 復元するスナップショットか、新規配置の初期積載を受け取る。どちらも省略すれば既定積載。
   public constructor(
     private readonly player: Player,
@@ -77,30 +75,29 @@ export class FireControl {
       'saved' in init ? init.saved : undefined,
       'ammo' in init && init.ammo ? init.ammo : undefined,
     );
-    this.effects = new DefaultWeaponEffects(events);
   }
 
   public get rounds(): number { return this.weapon.rounds; }
   public get mags(): number { return this.weapon.mags; }
   public get barrel(): number { return this.weapon.barrel; }
   public get cooldown(): number { return this.weapon.cooldown; }
-  get isFiring(): boolean { return this.weapon.wasFiring; }
+  public get isFiring(): boolean { return this.weapon.wasFiring; }
 
-  get left(): boolean { return this.weapon.left; }
+  public get left(): boolean { return this.weapon.left; }
 
   // 弾薬・砲身の状態をスナップショットへ落とす。
-  serialize(): FireSaveData {
+  public serialize(): FireSaveData {
     return this.weapon.serialize() as FireSaveData;
   }
 
   // 拾ったマガジン数を加算する。弾切れ中なら即座に1マガジンを装填する。
-  onPickup(mags: number): void {
+  public onPickup(mags: number): void {
     if (!Number.isFinite(mags) || mags <= 0) return;
     this.weapon.addMags(mags);
   }
 
   // 発射状態を強制的に解除する。
-  stopFiring(): void {
+  public stopFiring(): void {
     this.weapon.wasFiring = false;
   }
 
@@ -124,7 +121,7 @@ export class FireControl {
 
     if (this.player.totalFireRate <= 0) {
       if (!this.weapon.wasEmptyClick) {
-        this.effects.emptyClick();
+        this.events.record({ kind: 'gunDryFired' });
         this.events.record({ kind: 'gunDisabled' });
         this.weapon.wasEmptyClick = true;
       }
@@ -133,7 +130,7 @@ export class FireControl {
 
     if (!this.left) {
       if (!this.weapon.wasEmptyClick) {
-        this.effects.emptyClick();
+        this.events.record({ kind: 'gunDryFired' });
         this.events.record({ kind: 'gunOutOfAmmo' });
         this.weapon.wasEmptyClick = true;
       }
@@ -165,7 +162,7 @@ export class FireControl {
 
     // 起動時のタイムラグ
     if (justStartedFiring) {
-      this.effects.spinUp();
+      this.events.record({ kind: 'gunSpunUp' });
       this.weapon.cooldown = SPINUP_TIME;
       return;
     }
@@ -186,39 +183,39 @@ export class FireControl {
         return;
       case 'mag-reload':
         this.spawnEjectedMagazineFrame(registry);
-        this.effects.magFeed();
+        this.events.record({ kind: 'gunMagazineFed' });
         this.weapon.cooldown = 1 / this.player.totalFireRate;
         return;
       case 'barrel-reload':
         this.spawnEjectedMagazineFrame(registry);
         this.weapon.cooldown = RELOAD_TIME;
         this.dropBarrel(registry);
-        this.effects.reload();
+        this.events.record({ kind: 'gunBarrelSwapped' });
         return;
     }
   }
 
   // 1発の消費を試みる。マガジンを撃ち尽くしたら次のマガジンへ(mag-reload)、
   // バレル内の全マガジンを撃ち尽くしたらバレル交換(barrel-reload)を報告する。
-  consume(): AmmoConsumption {
+  public consume(): AmmoConsumption {
     return this.weapon.consume();
   }
 
   // 手動リロードを試みる。開始できたら true。
-  manualReload(registry: EntityRegistry): boolean {
+  public manualReload(registry: EntityRegistry): boolean {
     if (this.weapon.cooldown > 0) return false;
 
     // 予備マガジンがあり、かつ装填中のマガジンに実際に補充の余地があるときだけリロードする
     if (!this.weapon.manualReload()) return false;
     this.weapon.cooldown = RELOAD_TIME;
-    this.effects.reload();
+    this.events.record({ kind: 'gunBarrelSwapped' });
     this.dropBarrel(registry);
     return true;
   }
 
   // ---------------------------------------------------------------- entity管理
 
-  // 1発発射する: 弾丸・薬莢・マズルフラッシュを生成し、発射数を記録する。
+  // 1発発射する: 弾丸と薬莢を出し、反動と熱を艦へ入れ、発射したことを記録する。
   private fireGun(
     command: WeaponFireCommand,
     activeStage: StageOutcome,
@@ -247,7 +244,7 @@ export class FireControl {
     activeStage.scoreCounter.recordShot();
     this.player.motion.absorbHeat(GUN_HEAT_PER_ROUND / Math.max(this.player.motion.mass, 1e-9));
     this.weapon.pendingBarrelJoules += GUN_BARREL_HEAT_PER_ROUND;
-    this.effects.fire(muzzleState(this.player, muzzle, fwd));
+    this.events.record({ kind: 'gunFired', muzzleState: muzzleState(this.player, muzzle, fwd) });
   }
 
   // 弾丸: 機首方向 + 散布界

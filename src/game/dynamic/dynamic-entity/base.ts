@@ -6,8 +6,9 @@ import { DynamicEntity } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
 import type { EntityIdAllocators } from './entity-id';
 import type { KinematicState } from '../../../physics/kinematic-state';
-import { Attitude } from '../../../physics/attitude';
-import { len, sub, v3, Vec3 } from '../../../math/vec3';
+import type { Attitude } from '../../../physics/attitude';
+import type { Vec3 } from '../../../math/vec3';
+import { len, sub, v3 } from '../../../math/vec3';
 import type { MarkerVisibility } from '../../../marker/marker-visibility';
 import { savedAttitude, savedKinematicState, type BaseSaveData } from '../../save/save-data';
 import { Plan, type PlanExecutionMode } from '../../plan/plan';
@@ -146,7 +147,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     }
     this.motion.torque = this.throttle.updateTorque(
       this.motion.att, this.motion.state.r, this.motion.state.v, controls, false, dt, simDt, this,
-      () => {},  // 基地はプログレードホールドが外れたことを知らせない
+      null,
     );
     this.throttle.updateThrustLatches(controls);
     this.motion.thrust = this.throttle.updateThrustState(controls, this.motion.att, simDt, this);

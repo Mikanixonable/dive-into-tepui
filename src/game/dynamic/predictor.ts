@@ -7,7 +7,7 @@
 // と同じ答えでなければならない。
 import type { PredictableMotion, PredictableMotionRoster } from './dynamic-simulation-participant';
 import { simulationMaxStep, SUBSTEP_MAX_DT, SUBSTEP_MAX_COUNT } from './time-step';
-import { PredictedArc } from './predicted-arc';
+import type { PredictedArc } from './predicted-arc';
 import type { TrajectoryDemand } from './trajectory-demand';
 import type { PerfCounts } from '../perf-counts';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
