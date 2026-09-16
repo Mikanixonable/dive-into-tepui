@@ -306,25 +306,6 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 
 ## 実装手順
 
-### 2. 現行挙動を characterization test で固定する
-
-#### 目的
-
-共通化で失いやすいダメージ、推進、分離、入力を、構造変更前のテストとして固定する。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| tests/game/player-systems.test.ts | 既定船の総 HP、推力、燃料、発電、放熱、武装集計と critical part 喪失を追加する。 |
-| tests/game/booster-stack.test.ts | 点火中分離、残燃料、質量比、衝突猶予、イベント境界を追加する。 |
-
-#### 達成条件と検証
-
-- 現行実装に対して追加テストが成功し、意図する変更以外の数値回帰を検出できる。
-- 旧 critical-part 即死や固定 Player の形のように、今回意図して変える挙動は固定しない。
-- npm run typecheck と npm run test:game を通す。
-
 ### 3. ShipAssembly とモジュールカタログを作る
 
 #### 目的
