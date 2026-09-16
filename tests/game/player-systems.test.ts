@@ -8,6 +8,7 @@ import { kinematicState } from '../../src/physics/kinematic-state';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
 import { Ship, SHIP_BCINV, SHIP_SRP_COEFF } from '../../src/game/dynamic/dynamic-entity/ship';
 import { partFromSaveData } from '../../src/game/dynamic/dynamic-entity/parts';
+import { createShipDefaultParts } from '../../src/game/dynamic/dynamic-entity/ship-default-parts';
 import { DynamicView } from '../../src/render/dynamic/dynamic-view';
 import { FireControl } from '../../src/game/player/fire-control';
 import { WeaponState } from '../../src/game/player/weapon-state';
@@ -26,7 +27,10 @@ const quietNotifier: Notifier = { hint() {}, toast() {} };
 
 class TestShip extends Ship {
   public constructor(name: string) {
-    super(name, 100, () => new DynamicMotion(state, { mass: 1_000 }), new NullView());
+    super(
+      name, 1_000, () => new DynamicMotion(state, { mass: 1_000 }), new NullView(),
+      undefined, createShipDefaultParts(1_000),
+    );
   }
 
   public rename(name: string): void { this.setName(name); }
@@ -58,6 +62,24 @@ function reactions(): PlayerMotionReactions {
 }
 
 export function register(): void {
+  test('default ship: 固定ロードアウトの集計値を維持する', () => {
+    const ship = new TestShip('default');
+
+    // FLIGHT.md の既定船: HP 1,000、既定部品の出力・資源・装備を合計した値。
+    assert.equal(ship.hp, 1_000);
+    assert.equal(ship.maxHp, 1_000);
+    assert.equal(ship.totalThrust, 400_000);
+    assert.ok(Math.abs(ship.totalTorque - 2.24) < 1e-12);
+    assert.equal(ship.totalFuel, 1_000);
+    assert.equal(ship.totalMaxFuel, 1_000);
+    assert.equal(ship.totalFuelConsumptionRate, 1);
+    assert.equal(ship.totalPowerGeneration, 100);
+    assert.equal(ship.totalCoolingRate, 84);
+    assert.equal(ship.weaponDamage, 1);
+    assert.equal(ship.totalFireRate, 1 / 0.06);
+    assert.equal(ship.averageMuzzleVelocity, 1_000);
+  });
+
   test('player power: installedGeneration=0 は全損として発電しない', () => {
     const power = new PowerSystem();
     const start = power.chargeJ;

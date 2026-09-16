@@ -3,6 +3,8 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { Vec3, add, dot, len, scale, sub, v3 } from '../../src/math/vec3';
+import { Q_IDENTITY } from '../../src/math/quat';
+import { kinematicState } from '../../src/physics/kinematic-state';
 import {
   BoosterSeparationVelocities,
   BoosterStack,
@@ -10,6 +12,7 @@ import {
   boosterSeparationVelocities,
   type BoosterStage,
 } from '../../src/game/player/booster-stack';
+import { DetachedBoosterMotion } from '../../src/game/dynamic/dynamic-entity/detached-booster-motion';
 
 function close(actual: number, expected: number, epsilon = 1e-9): void {
   assert.ok(Math.abs(actual - expected) <= epsilon, `${actual} != ${expected}`);
@@ -137,6 +140,8 @@ export function register(): void {
     const relative = relativeVelocity(velocities);
     close(len(relative), 8);
     close(dot(relative, forward), -8);
+    close(dot(sub(velocities.player, v3(10, 20, 30)), forward), 8 * 1_000 / 3_000);
+    close(dot(sub(velocities.booster, v3(10, 20, 30)), forward), -8 * 2_000 / 3_000);
   });
 
   test('booster separation: 分離前後の並進運動量を保存する', () => {
@@ -147,5 +152,20 @@ export function register(): void {
     const after = totalMomentum(velocities, playerMass, boosterMass);
     const before = scale(base, playerMass + boosterMass);
     close(len(sub(after, before)), 0, 1e-8);
+  });
+
+  test('detached booster: 分離直後の衝突猶予は境界時刻までで、境界後に接触へ戻る', () => {
+    const motion = new DetachedBoosterMotion(
+      kinematicState<'eci'>(0, v3(), v3()),
+      { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) },
+      stage('detached', 4, true),
+      0.5,
+    );
+
+    // ORBIT.md のイベント境界: 猶予期限までは接触せず、期限を越えた瞬間から通常接触。
+    assert.equal(motion.nextSimulationEventTime(0), 0.5);
+    assert.equal(motion.nextSimulationEventTime(0.5), null);
+    assert.equal(motion.contactsWith(motion, 0.5), false);
+    assert.equal(motion.contactsWith(motion, 0.5 + Number.EPSILON), true);
   });
 }
