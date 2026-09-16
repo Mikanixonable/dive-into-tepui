@@ -3,7 +3,7 @@ import * as THREE from 'three/webgpu';
 import { Billboard, POINT_IMAGE_ANGULAR_SIZE } from '../billboard';
 import { glowMeanAlpha } from '../glow-texture';
 import { showsPhysicalSphere } from './screen-lod';
-import { STAR_SHELL_RADIUS } from '../stars';
+import { CELESTIAL_SHELL_RADIUS, POINT_IMAGE_SIZE } from '../stars';
 
 // 点像を星殻上へ置くための書き込み先。
 const POINT_POSITION = new THREE.Vector3();
@@ -84,11 +84,11 @@ class StarSphereObject implements StarSphere {
       this.syncSphere(position, radius, cameraQuaternion);
       return;
     }
-    // 点像は星殻上へ、向きだけを保って置く。
+    // 点像は天球殻上へ、向きだけを保って置く。
     this.mesh.visible = false;
     this.point.sync(
-      POINT_POSITION.copy(position).setLength(STAR_SHELL_RADIUS),
-      POINT_IMAGE_ANGULAR_SIZE * STAR_SHELL_RADIUS,
+      POINT_POSITION.copy(position).setLength(CELESTIAL_SHELL_RADIUS),
+      POINT_IMAGE_SIZE,
       this.pointBrightness(radius, position.length()),
       cameraQuaternion,
     );
