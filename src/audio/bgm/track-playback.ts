@@ -18,7 +18,7 @@ export class TrackPlayback {
 
   // destination は持ち主のマスターゲイン。最初のステップは startTime から刻み始める。
   // 楽器は曲の頭で一度だけ組み、以降は音符ごとに id で引く。
-  constructor(
+  public constructor(
     private readonly ctx: AudioContext,
     private readonly composer: Composer,
     instruments: InstrumentDef[],
@@ -37,7 +37,7 @@ export class TrackPlayback {
   }
 
   // 次に刻むステップの開始時刻。曲を差し替えるとき、continuous に繋ぐ側がここから始める。
-  get nextStepTime(): number {
+  public get nextStepTime(): number {
     return this.nextTime;
   }
 
@@ -48,19 +48,19 @@ export class TrackPlayback {
 
   // 鳴らしたまま任意のステップへ飛ぶ。すでに予約済みの音は取り消せないので、直前の音と
   // 短く重なることがある。
-  seek(step: number, atTime: number): void {
+  public seek(step: number, atTime: number): void {
     this.step = step;
     this.nextTime = atTime;
     this.lastNoteEnd = atTime;
   }
 
   // これまでにスケジュールした音がすべて消え、この再生を切り離してよくなる時刻。
-  get soundingUntil(): number {
+  public get soundingUntil(): number {
     return this.lastNoteEnd + RELEASE_TAIL_SEC;
   }
 
   // deadline より前に始まる音をすべてスケジュールし、その分ステップを進める。
-  scheduleUntil(deadline: number): void {
+  public scheduleUntil(deadline: number): void {
     while (this.nextTime < deadline) {
       for (const note of this.composer.notesAt(this.step)) this.playNote(note, this.nextTime);
       this.step++;
@@ -69,19 +69,19 @@ export class TrackPlayback {
   }
 
   // 無音から sec 秒かけて立ち上げる。
-  fadeIn(sec: number): void {
+  public fadeIn(sec: number): void {
     const t = this.ctx.currentTime;
     this.gain.gain.setValueAtTime(0.0001, t);
     this.gain.gain.exponentialRampToValueAtTime(1, t + sec);
   }
 
   // sec 秒かけて無音へ落とす。スケジュール済みの音はこのゲインを通って一緒に減衰する。
-  fadeOut(sec: number): void {
+  public fadeOut(sec: number): void {
     this.gain.gain.setTargetAtTime(0.0001, this.ctx.currentTime, sec / 3);
   }
 
   // 音声グラフから自分を切り離す。鳴り終えた(soundingUntil を過ぎた)あとに持ち主が呼ぶ。
-  dispose(): void {
+  public dispose(): void {
     for (const instrument of this.instruments.values()) instrument.dispose();
     this.gain.disconnect();
   }
