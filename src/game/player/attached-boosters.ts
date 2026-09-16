@@ -50,11 +50,11 @@ export class AttachedBoosters {
     private readonly _scene: THREE.Scene,
     private readonly _fx: FlashEffects,
   ) {
-    for (const id of boosterMotion.stageIds) idAllocators.booster.next(id);
+    for (const id of boosterMotion.stageIds) idAllocators.booster.reserve(id);
   }
 
   // 燃焼管理パネルから標準ブースターを最後尾へ追加する。
-  attach(): void {
+  public attach(): void {
     if (this.boosterMotion.stages.length >= MAX_ATTACHED) {
       this._notifier.hint(`ブースターは最大 ${MAX_ATTACHED} 段です`);
       return;
@@ -72,7 +72,7 @@ export class AttachedBoosters {
   }
 
   // 最後尾段の点火を切り替える。点けられなかった理由は HUD のヒントで返す。
-  toggleIgnition(): void {
+  public toggleIgnition(): void {
     const active = this.activeStage();
     if (!active) {
       this._notifier.hint('点火できるブースターがありません');
@@ -85,7 +85,7 @@ export class AttachedBoosters {
   }
 
   // 最後尾の段だけを独立エンティティへ移し、爆砕ボルトの相対速度を質量比で配る。
-  decouple(registry: EntityRegistry): void {
+  public decouple(registry: EntityRegistry): void {
     const stageIndex = this.boosterMotion.stages.length - 1;
     if (stageIndex < 0) {
       this._notifier.hint('分離できるブースターがありません');
@@ -194,7 +194,7 @@ export class AttachedBoosters {
   }
 
   // 燃焼管理パネルへ渡す表示状態。操作の可否もここで決めてパネルへ伝える。
-  managementViewModel(): BurnManagementViewModel {
+  public managementViewModel(): BurnManagementViewModel {
     const active = this.activeStage();
     return {
       stageCount: this.boosterMotion.stages.length,
@@ -210,6 +210,7 @@ export class AttachedBoosters {
     };
   }
 
+  // 点火・分離の対象になる最後尾の段。1段も繋がっていなければ undefined。
   private activeStage(): BoosterStage | undefined {
     const stages = this.boosterMotion.stages;
     return stages[stages.length - 1];

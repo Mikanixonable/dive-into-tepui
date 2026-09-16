@@ -1,5 +1,5 @@
 // クリエイティブモードの「物体配置」パネル: 軌道要素指定とラグランジュ点(ハロー/リサジュー)
-// 指定のどちらかを選び、フォームで値を指定して、確定で1隻分の ShipPlacerForm を通知する。
+// 指定のどちらかを選び、フォームで値を指定して、確定で ObjectPlacerForm を通知する。
 // 値から KinematicState を組み立てるのは物理側(stateFromOrbitalElements/haloState/lissajousState)の
 // 仕事なので、ここでは行わない。
 import {
@@ -17,6 +17,9 @@ import type { PlacementFieldId, PlacementFieldIssue } from './placement-validati
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import { bodyGroupsOf, lagrangeSystemItemsOf, orbitingIdsOf, primaryDistanceKm, sunSyncInclinationDeg } from './orbit-form-fields';
+import {
+  SliderRow, bindAngleSlider, bindEccentricitySlider, bindRelativeSlider, numberField, setFieldVisible, sliderField,
+} from './slider-field';
 
 // ラグランジュ点配置(ハロー/リサジュー)の既定振幅 [km]。
 // 副天体ごとに主天体との距離が3桁近く違うため、妥当なオーダーを副天体ごとに別々に持つ。
@@ -26,9 +29,6 @@ const HALO_AX_EARTH_KM = 200000;
 const HALO_AZ_EARTH_KM = 120000;
 const HALO_AX_JUPITER_KM = 7000000;
 const HALO_AZ_JUPITER_KM = 4000000;
-import {
-  SliderRow, bindAngleSlider, bindEccentricitySlider, bindRelativeSlider, numberField, setFieldVisible, sliderField,
-} from './slider-field';
 
 export type ReferenceCelestialBody = string;
 type SizeShapeMode = 'apsides' | 'semiMajorEcc' | 'periodEcc';
@@ -146,7 +146,6 @@ const PERIOD_REF_FLOOR_HOURS = 0.1;
 
 export class ObjectPlacerPanel implements OverlayHandle {
   onConfirm: ((name: string, form: ObjectPlacerForm) => void) | null = null;
-  onClose: (() => void) | null = null;
 
   private _isOpen = false;
   get isOpen(): boolean { return this._isOpen; }
@@ -192,19 +191,15 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private lagrangePointValue: CollinearPoint = 'L1';
   private lagrangeOrbitKindValue: LagrangeOrbitKind = 'halo';
 
-  // 物体配置パネルの DOM を組み立て、root へ追加する。基準天体・ラグランジュ系の選択肢は
-  // celestialSystem が実際に持つ天体から組む。
-  private readonly celestialSystem: CelestialSystem;
-  // ObjectPicker のポップアップの親。パネル自身の overflow に切られないよう popup レイヤへ置く。
-  private readonly popupRoot: HTMLElement;
-
-  // panelRoot はパネル自体の置き場所、popupRoot は ObjectPicker のポップアップの置き場所。
+  // 物体配置パネルの DOM を組み立てて panelRoot へ追加する。基準天体・ラグランジュ系の選択肢は
+  // celestialSystem が実際に持つ天体から組む。popupRoot は ObjectPicker のポップアップの置き場所で、
+  // パネル自身の overflow に切られないよう popup レイヤを渡す。
   constructor(
-    panelRoot: HTMLElement, popupRoot: HTMLElement, celestialSystem: CelestialSystem,
+    panelRoot: HTMLElement,
+    private readonly popupRoot: HTMLElement,
+    private readonly celestialSystem: CelestialSystem,
     private readonly overlayManager: OverlayManager,
   ) {
-    this.celestialSystem = celestialSystem;
-    this.popupRoot = popupRoot;
     const orbitingIds = orbitingIdsOf(celestialSystem);
     this.celestialBodyItems = orbitingIds.map((id) => [id, celestialSystem.nameOf(id)] as const);
     this.baseCelestialBodyItems = this.celestialBodyItems.filter(([id]) => id === 'moon');
@@ -491,7 +486,6 @@ export class ObjectPlacerPanel implements OverlayHandle {
 
   // フォームの現在値を読み、onConfirm へ通知する。
   private confirm(): void {
-    // 空欄なら確定側(CreativeStage.placeObject)が種別ごとの既定名で自動命名する。
     const name = this.nameInput.value.trim();
     const form = this.getForm();
     this.onConfirm?.(name, form);
@@ -563,8 +557,8 @@ export class ObjectPlacerPanel implements OverlayHandle {
     }
   }
 
-  // 検証結果を差分反映する。CreativeStage.update が毎フレーム導出した issues を渡す想定 —
-  // 前回と同じ内容なら DOM に触らない(該当欄の枠色とメッセージ一覧をまとめて持つ)。
+  // 検証結果を差分反映する。前回と同じ内容なら DOM に触らない(該当欄の枠色とメッセージ一覧を
+  // まとめて持つ)。
   setIssues(issues: readonly PlacementFieldIssue[]): void {
     // sizeModeValue も差分判定に含める: 'eccentricity' が指す行(fieldRowFor)は
     // sizeMode によって変わるため、issues の中身が変わらなくても再反映が要る場合がある。
@@ -609,14 +603,12 @@ export class ObjectPlacerPanel implements OverlayHandle {
     });
   }
 
-  // OverlayHandle 実装も兼ねる。ESC・キャンセルボタン・配置確定のどの経路でもここを通り、
-  // onClose を発火して呼び出し側(CreativeStage)へ通知する。
+  // OverlayHandle 実装も兼ねる。ESC・✕ ボタン・配置確定のどの経路でもここを通る。
   close(): void {
     if (!this._isOpen) return;
     this._isOpen = false;
     this.panel.classList.add('hidden');
     this.overlayManager.close('object-placer');
-    this.onClose?.();
   }
 
   contains(target: Node): boolean {

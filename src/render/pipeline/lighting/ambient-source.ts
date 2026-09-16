@@ -3,15 +3,14 @@
 // (DEVELOP/SPEC/RENDERING.md「地球の描画」)。強さは setFraction() で毎フレーム受ける。
 import * as THREE from 'three/webgpu';
 import { PI, dot, uniform, vec3 } from 'three/tsl';
-import { AU } from '../../../physics/astronomical-unit';
 import type { FloatUniform, Vec3Node } from '../../tsl-types';
-import { SUN_IRRADIANCE_1AU, type SunLight } from '../sun-light';
+import { REFERENCE_RADIANT_INTENSITY, type SunLight } from '../sun-light';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
 import type { ShadingSample } from './shading-sample';
 
 // 1 天文単位で SUN_IRRADIANCE_1AU になる放射照度へ掛ける割合。
-export const AMBIENT_FRACTION = 0.03;
+const AMBIENT_FRACTION = 0.03;
 
 // 描画設定から、この場面で使う割合を選ぶ。切ってあれば 0。
 export function ambientFraction(graphics: GraphicsSettingsData): number {
@@ -41,7 +40,7 @@ export class AmbientSource implements LightSource {
   // して映したもので、粗さによらず一定 — 拡散を持たない金属面が影の中で真っ黒に残らないための項。
   private contribution(sample: ShadingSample): LightContribution {
     const toSun = sample.viewPositionOf(this.sunLight.position).sub(sample.position);
-    const irradiance: Vec3Node = vec3(SUN_IRRADIANCE_1AU * AU * AU)
+    const irradiance: Vec3Node = vec3(REFERENCE_RADIANT_INTENSITY)
       .div(dot(toSun, toSun)).mul(this.fractionUniform);
     return { diffuse: irradiance, specular: irradiance.div(PI) };
   }
