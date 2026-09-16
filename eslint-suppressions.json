@@ -827,12 +827,6 @@
     }
   },
   "src/game/plan/plan.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 13
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
     }

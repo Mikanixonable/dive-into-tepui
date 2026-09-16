@@ -80,9 +80,14 @@ export class SimSpeedManager {
     this._notifier.hint(`時間加速 ×${this.simSpeed}${gated}`);
   }
 
+  // simTime を現在時刻として、時刻 time が自動ワープで目指せる未来かどうか。
+  public canAutoWarpTo(time: number, simTime: number): boolean {
+    return isFinite(time) && time > simTime + NODE_APPROACH_LEAD;
+  }
+
   // 未来の指定時刻まで自動ワープする。既に到達窓へ入った時刻は受け付けない。
   startAutoWarpTo(time: number, simTime: number): boolean {
-    if (!isFinite(time) || time <= simTime + NODE_APPROACH_LEAD) return false;
+    if (!this.canAutoWarpTo(time, simTime)) return false;
     this.autoWarpUntil = time;
     return true;
   }
