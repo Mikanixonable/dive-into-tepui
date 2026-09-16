@@ -31,9 +31,56 @@ export function qMul(a: Quat, b: Quat): Quat {
 
 // クォータニオンを単位長へ正規化する。ノルムがほぼ0なら単位クォータニオンを返す。
 export function qNormalize(q: Quat): Quat {
-  const l = Math.sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
-  if (l < 1e-12) return Q_IDENTITY;
-  return { x: q.x / l, y: q.y / l, z: q.z / l, w: q.w / l };
+  // 先に最大成分で割るので、極端に大きい入力でも二乗が overflow しない。
+  const scale = Math.max(Math.abs(q.x), Math.abs(q.y), Math.abs(q.z), Math.abs(q.w));
+  if (!Number.isFinite(scale) || scale < 1e-12) return Q_IDENTITY;
+  const x = q.x / scale;
+  const y = q.y / scale;
+  const z = q.z / scale;
+  const w = q.w / scale;
+  const l = Math.sqrt(x * x + y * y + z * z + w * w);
+  if (!Number.isFinite(l) || l < 1e-12) return Q_IDENTITY;
+  return { x: x / l, y: y / l, z: z / l, w: w / l };
+}
+
+// a から b へ、同じ回転を表す符号を除いて最短経路で球面線形補間する。
+// 入力と出力は常に単位クォータニオンで、t は補間率(通常は [0, 1])。
+export function qSlerp(a: Quat, b: Quat, t: number): Quat {
+  const start = qNormalize(a);
+  let end = qNormalize(b);
+  let cosine = start.x * end.x + start.y * end.y + start.z * end.z + start.w * end.w;
+
+  // q と -q は同じ回転なので、内積を正にして長い経路を避ける。
+  if (cosine < 0) {
+    end = { x: -end.x, y: -end.y, z: -end.z, w: -end.w };
+    cosine = -cosine;
+  }
+  // 丸め誤差で acos の定義域を出ないようにする。
+  cosine = Math.max(-1, Math.min(1, cosine));
+
+  if (t === 0) return start;
+  if (t === 1) return end;
+
+  // 角度が小さいと sin(theta) による除算が不安定なので、正規化した lerp に退避する。
+  if (cosine > 0.9995) {
+    return qNormalize({
+      x: start.x + (end.x - start.x) * t,
+      y: start.y + (end.y - start.y) * t,
+      z: start.z + (end.z - start.z) * t,
+      w: start.w + (end.w - start.w) * t,
+    });
+  }
+
+  const theta = Math.acos(cosine);
+  const sinTheta = Math.sin(theta);
+  const startWeight = Math.sin((1 - t) * theta) / sinTheta;
+  const endWeight = Math.sin(t * theta) / sinTheta;
+  return qNormalize({
+    x: start.x * startWeight + end.x * endWeight,
+    y: start.y * startWeight + end.y * endWeight,
+    z: start.z * startWeight + end.z * endWeight,
+    w: start.w * startWeight + end.w * endWeight,
+  });
 }
 
 // 軸 axis(単位ベクトル)まわりに angle [rad] 回転するクォータニオンを作る。
