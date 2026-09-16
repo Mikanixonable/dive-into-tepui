@@ -8,7 +8,7 @@ import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { irradianceAtDistance, scaledRadiantIntensity } from '../../src/render/pipeline/sun-light';
 import { R_SUN, SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { planetRadiance } from '../../src/render/pipeline/lighting/planet-light-source';
-import { AMBIENT_WEAK } from '../../src/render/pipeline/lighting/ambient-source';
+import { ambientFraction } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { castsCumulusShadow } from '../../src/render/pipeline/shadow/shadow-select';
 import { atmosphereDraws } from '../../src/render/atmosphere';
@@ -151,7 +151,7 @@ export class LabView {
     const gpu = new GpuTimings(renderer);
     gpu.enabled = true;
     const pipeline = new RenderPipeline(renderer, graphics, gpu);
-    pipeline.ambient.setFraction(AMBIENT_WEAK);
+    pipeline.ambient.setFraction(ambientFraction(graphics));
     return new LabView(renderer, pipeline, gpu, graphics);
   }
 
@@ -193,17 +193,8 @@ export class LabView {
   // 描画品質設定を差し替える。受け取った値をパイプラインへ配り、その場で描き直す。
   public applyGraphics(graphics: GraphicsSettingsData): void {
     this.graphicsData = graphics;
+    this.pipeline.ambient.setFraction(ambientFraction(graphics));
     this.pipeline.rebuildForGraphics(graphics);
-    this.render();
-  }
-
-  // 一様な環境光の割合。ゲーム本体はビューの種別から強弱を決めるが、ここには種別が無いので
-  // 直に選ぶ。起動時は弱(戦闘ビュー)。
-  public get ambientFraction(): number { return this.pipeline.ambient.fraction; }
-
-  // 一様な環境光の割合を差し替え、その場で描き直す。
-  public setAmbientFraction(fraction: number): void {
-    this.pipeline.ambient.setFraction(fraction);
     this.render();
   }
 
