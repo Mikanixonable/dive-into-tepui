@@ -4,7 +4,6 @@ import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 import type { CameraSystem } from './camera/camera-system';
 import type { NavTarget } from './nav-target';
-import type { Notifier } from '../hud/notifier';
 
 export class ControlSelection {
   private _current: Controllable | null;
@@ -16,7 +15,6 @@ export class ControlSelection {
     private readonly dynamicSystem: DynamicSystem,
     private readonly cameraSystem: CameraSystem,
     private readonly navTarget: NavTarget,
-    private readonly notifier?: Notifier,
   ) {
     const candidates = dynamicSystem.controllables;
     this._current = candidates.find((c) => c.id === savedId)
@@ -32,7 +30,8 @@ export class ControlSelection {
     this._current?.clearTransientCommands();
     this._current = target;
     this.navTarget.clear();
-    if (target.controlHint !== null) this.notifier?.hint(target.controlHint);
+    this.dynamicSystem.events.record(
+      { kind: 'controlTargetSelected', target: target.mapKind, name: target.name });
   }
 
   // 未操作状態(全滅、または操作対象の手動解除)へ戻す。
@@ -42,11 +41,11 @@ export class ControlSelection {
     this._current = null;
   }
 
-  // 操作対象を手で外す。外れたときだけ案内を出す(全滅による喪失とは別の経路)。
+  // 操作対象を手で外す。外れたときだけ記録する(全滅による喪失とは別の経路)。
   release(target: Controllable): void {
     if (this._current !== target) return;
     this.clear();
-    if (target.releaseHint !== null) this.notifier?.hint(target.releaseHint);
+    this.dynamicSystem.events.record({ kind: 'controlTargetReleased', target: target.mapKind });
   }
 
   // 操作対象が居ない間に増えたものを、そのまま操作対象にする。既に居れば何もしない。

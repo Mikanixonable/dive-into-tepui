@@ -2,20 +2,17 @@
 import * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, qRotate, randomQuat } from '../../math/quat';
-import { kinematicState } from '../../physics/kinematic-state';
+import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { randSym } from '../../math/random';
 import { radiativeCooling, stepTemperature, stepThermalDeviation } from '../../physics/thermal';
 import { add, addScaled, norm, randPerp, randVec, scale, v3, Vec3 } from '../../math/vec3';
 
-import { Input } from '../../input/input';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
-import type { Notifier } from '../../hud/notifier';
-import { WorldSfx } from '../../audio/sfx/world-sfx';
+import type { PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
+import type { RunEventSink } from '../run-events';
 import { Ship } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import { PLAYER_MUZZLE_OFFSETS } from '../../physics/player-shape';
-import { FlashEffects } from '../vfx/flash-effects';
 import type { StageOutcome } from '../stages/stage-outcome';
 import { Player } from './player';
 import type { FireSaveData } from '../save/save-data';
@@ -39,6 +36,13 @@ const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりに外殻へ入る熱量 [J]
 const GUN_BARREL_HEAT_PER_ROUND = 1.0e6;
 
 const BARREL_MASS = 300; // [kg]
+
+// 砲口の位置とそのときの艦の速度。砲口は機首方向 fwd へ少し先を取る。
+function muzzleState(ship: Ship, muzzle: Vec3, fwd: Vec3): KinematicState {
+  return kinematicState<'eci'>(
+    ship.motion.state.t, addScaled(muzzle, fwd, 1.2), ship.motion.state.v,
+  );
+}
 
 const SPINUP_TIME = 0.15; // 発射開始から実際に撃ち始めるまでの起動遅延 [s]
 const BULLET_SPREAD = 0.002; // 散布界 [rad]
@@ -65,17 +69,15 @@ export class FireControl {
   // 復元するスナップショットか、新規配置の初期積載を受け取る。どちらも省略すれば既定積載。
   public constructor(
     private readonly player: Player,
-    private readonly _notifier: Notifier,
-    private readonly _worldSfx: WorldSfx,
+    private readonly events: RunEventSink,
     private readonly _scene: THREE.Scene,
-    private readonly _fx: FlashEffects,
     init: FireInit = {},
   ) {
     this.weapon = new WeaponState(
       'saved' in init ? init.saved : undefined,
       'ammo' in init && init.ammo ? init.ammo : undefined,
     );
-    this.effects = new DefaultWeaponEffects(_worldSfx, _fx);
+    this.effects = new DefaultWeaponEffects(events);
   }
 
   public get rounds(): number { return this.weapon.rounds; }
@@ -102,18 +104,17 @@ export class FireControl {
     this.weapon.wasFiring = false;
   }
 
-  // 発射入力を1フレーム分処理する。トリガーが引かれ、ワープ速度・弾薬が許せば発射する。
+  // 発射の操作量を1フレーム分処理する。トリガーが引かれ、ワープ速度・弾薬が許せば発射する。
   public updateFireState(
     dt: number,
-    input: Input,
+    controls: PilotControls,
     activeStage: StageOutcome,
     registry: EntityRegistry,
     celestialBodies: CelestialBodies,
   ): void {
     this.tickReloadTimer(dt);
 
-    const keyHeld = input.down(K.fire);
-    if (!keyHeld) {
+    if (!controls.firing) {
       // トリガーを離した時点で連射状態を畳む: wasFiring を立てたままにすると
       // fineAttitude(微調整出力)が恒久的に有効なままになり、次にトリガーを
       // 引いたときもスピンアップ演出(justStartedFiring)が起きなくなる。
@@ -124,7 +125,7 @@ export class FireControl {
     if (this.player.totalFireRate <= 0) {
       if (!this.weapon.wasEmptyClick) {
         this.effects.emptyClick();
-        this._notifier.hint('武装が損傷しており発射できない', 3000);
+        this.events.record({ kind: 'gunDisabled' });
         this.weapon.wasEmptyClick = true;
       }
       return;
@@ -133,7 +134,7 @@ export class FireControl {
     if (!this.left) {
       if (!this.weapon.wasEmptyClick) {
         this.effects.emptyClick();
-        this._notifier.hint('弾薬切れ — 軌道上の補給 ▣ を回収せよ', 3000);
+        this.events.record({ kind: 'gunOutOfAmmo' });
         this.weapon.wasEmptyClick = true;
       }
       return;
@@ -242,12 +243,11 @@ export class FireControl {
       addScaled(this.player.motion.state.v, fwd, -RECOIL_DV),
     );
     this.dropCasing(muzzle, registry);
-    this.spawnMuzzleFlash(this.player, muzzle, fwd);
 
     activeStage.scoreCounter.recordShot();
     this.player.motion.absorbHeat(GUN_HEAT_PER_ROUND / Math.max(this.player.motion.mass, 1e-9));
     this.weapon.pendingBarrelJoules += GUN_BARREL_HEAT_PER_ROUND;
-    this.effects.fire();
+    this.effects.fire(muzzleState(this.player, muzzle, fwd));
   }
 
   // 弾丸: 機首方向 + 散布界
@@ -268,7 +268,6 @@ export class FireControl {
       'player',
       'normal',
       ship.weaponDamage,
-      this._worldSfx,
       emitter.idAllocators,
     );
     emitter.emit(bullet);
@@ -296,14 +295,7 @@ export class FireControl {
         w: v3(randSym(6.0), randSym(6.0), randSym(6.0)),
         inertia: v3(0.85, 0.3, 1.15), // 円筒: 長軸(y)が最小。x/z も非対称にしジャニベコフ効果を起こす
       },
-      this._worldSfx, this._fx, registry.idAllocators, CASING_COLLISION_BOUND_RADIUS, this._scene,
-    ));
-  }
-
-  // マズルフラッシュ: 発射した側の砲口の少し先に出す。
-  private spawnMuzzleFlash(ship: Ship, muzzle: Vec3, fwd: Vec3): void {
-    this.effects.muzzleFlash(kinematicState<'eci'>(
-      ship.motion.state.t, addScaled(muzzle, fwd, 1.2), ship.motion.state.v,
+      registry.idAllocators, CASING_COLLISION_BOUND_RADIUS, this._scene,
     ));
   }
 
@@ -349,7 +341,7 @@ export class FireControl {
         w: v3(randSym(2), randSym(2), randSym(2)),
         inertia: v3(1, 0.2, 1), // 円柱
       },
-      this._worldSfx, this._fx, registry.idAllocators, BARREL_PHYS_RADIUS, this._scene,
+      registry.idAllocators, BARREL_PHYS_RADIUS, this._scene,
     ));
     this.weapon.barrelTemperature = ENV_TEMP;
     this.weapon.barrelDeviation = 0;
@@ -380,7 +372,7 @@ export class FireControl {
         w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
         inertia: v3(1, 1.2, 1.4),
       },
-      this._worldSfx, this._fx, registry.idAllocators, EJECTED_MAG_PHYS_RADIUS, this._scene,
+      registry.idAllocators, EJECTED_MAG_PHYS_RADIUS, this._scene,
     ));
   }
 }

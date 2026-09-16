@@ -1,7 +1,5 @@
 import { kinematicState } from '../../../physics/kinematic-state';
-import type { FlashEffects } from '../../vfx/flash-effects';
 import { enemyDestroyFragments } from './debris-piece';
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import type { DynamicMotion } from '../dynamic-motion';
 import type { EntityRegistry } from '../entity-registry';
 import type { StageOutcome, EnemyDeathCause } from '../../stages/stage-outcome';
@@ -9,13 +7,12 @@ import { bulletReactionOf, type BulletType } from './bullet-reaction';
 import { closingSpeed, type Contact } from './contact';
 import { contactDamageSpeed } from './contact-damage';
 import type { Vec3 } from '../../../math/vec3';
+import type { RunEventSink } from '../../run-events';
 
 export interface EnemyReactionPort {
   readonly motion: DynamicMotion;
-  readonly worldSfx: WorldSfx;
-  readonly effects: FlashEffects;
   readonly modelScale: number;
-  applyBulletDamage(damage: number, impactPoint: Vec3): void;
+  applyBulletDamage(damage: number, impactPoint: Vec3, events: RunEventSink): void;
   applyImpactDamage(damageSpeed: number): boolean;
   hasHealth(): boolean;
   recordDeath(activeStage: StageOutcome, simTime: number, cause: EnemyDeathCause): void;
@@ -46,7 +43,7 @@ export class EnemyReactions {
 
   public receiveBurnUp(activeStage: StageOutcome, registry: EntityRegistry): void {
     this.port.motion.alive = false;
-    this.destroyEffect(registry);
+    this.recordDestroy(registry);
     this.port.recordDeath(activeStage, this.port.motion.state.t, 'burnup');
   }
 
@@ -61,22 +58,23 @@ export class EnemyReactions {
     simTime: number, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     activeStage.scoreCounter.recordHit();
-    this.port.applyBulletDamage(damage, impactPoint);
+    this.port.applyBulletDamage(damage, impactPoint, registry.events);
     if (this.port.hasHealth()) {
-      this.impactEffect(bulletType, impactPoint);
+      this.recordImpact(bulletType, impactPoint, registry);
       return;
     }
     this.port.motion.alive = false;
     this.port.recordDeath(activeStage, simTime, 'killed');
-    this.destroyEffect(registry);
+    this.recordDestroy(registry);
   }
 
-  private impactEffect(bulletType: BulletType, impactPoint: Vec3): void {
-    this.port.worldSfx.enemyHit();
-    const state = kinematicState<'eci'>(this.port.motion.state.t, impactPoint, this.port.motion.state.v);
-    if (bulletType === 'plasma') this.port.effects.spawnPlasmaFlash(state);
-    else this.port.effects.spawnBulletFlash(state);
-    this.port.effects.spawnGasPuff(state);
+  private recordImpact(bulletType: BulletType, impactPoint: Vec3, registry: EntityRegistry): void {
+    registry.events.record({
+      kind: 'enemyStruckByBullet',
+      bullet: bulletType,
+      state: kinematicState<'eci'>(
+        this.port.motion.state.t, impactPoint, this.port.motion.state.v),
+    });
   }
 
   private damagedByContact(
@@ -85,21 +83,20 @@ export class EnemyReactions {
   ): void {
     if (!this.port.applyImpactDamage(damageSpeed)) return;
     if (this.port.hasHealth()) {
-      this.port.worldSfx.clank();
-      this.port.effects.spawnGasPuff(this.port.motion.state);
+      registry.events.record({ kind: 'enemyDamagedByContact', state: this.port.motion.state });
       return;
     }
     this.port.motion.alive = false;
     this.port.recordDeath(activeStage, simTime, cause);
-    this.destroyEffect(registry);
+    this.recordDestroy(registry);
   }
 
-  private destroyEffect(registry: EntityRegistry): void {
-    this.port.worldSfx.explosion();
-    this.port.effects.spawnEnemyDestroyFlash(this.port.motion.state, this.port.modelScale);
+  private recordDestroy(registry: EntityRegistry): void {
+    registry.events.record({
+      kind: 'shipExploded', state: this.port.motion.state, modelScale: this.port.modelScale,
+    });
     for (const piece of enemyDestroyFragments(
-      this.port.motion.state, this.port.modelScale, this.port.worldSfx, this.port.effects,
-      registry.idAllocators,
+      this.port.motion.state, this.port.modelScale, registry.idAllocators,
     )) registry.add(piece);
   }
 }

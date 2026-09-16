@@ -25,12 +25,12 @@ import { ControlSelection } from './control-selection';
 import { Targeter } from './targeter';
 import { PlanDisplay } from './plan/plan-display';
 import { PlanGuide } from './plan/plan-guide';
-import { DisplayWindowManager, timeLabelSettingOf } from './display-window-manager';
+import { DisplayWindowManager, timeLabelSettingOf, trajectoryDemandOf } from './display-window-manager';
 import { SimSpeedManager } from './dynamic/sim-speed-manager';
 import { DynamicSystem } from './dynamic/dynamic-system';
 import { RunEventLog } from './run-events';
 import { RunEventPresenter } from './run-event-presenter';
-import { FlashEffects } from './vfx/flash-effects';
+import { FlashPresenter } from './flash-presenter';
 import { FlashEffectsView } from '../render/vfx/flash-effects-view';
 import { EntityLineManager } from './lines/entity-line-manager';
 import { Predictor } from './dynamic/predictor';
@@ -95,15 +95,11 @@ import type { TargetPanelViewModel } from './hud/panels/target-panel';
 import { GameInputRouter, type GameInputPort } from './input/game-input-router';
 import { gameCommand } from './input/game-commands';
 import { rawGameInputAdapter } from './input/raw-game-input-adapter';
+import { PilotInput } from './input/pilot-input';
+import type { PilotControls } from './dynamic/dynamic-entity/pilot-controls';
 
-const CONTROLLABLE_COMMANDS = [
-  K.thrustForward, K.thrustBackward, K.thrustLeft, K.thrustRight, K.thrustUp, K.thrustDown,
-  K.rcsDampToggle, K.progradeReset, K.fineAttitudeToggle, K.progradeHoldToggle,
-  K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax,
-  K.boosterDecouple, K.boosterIgnitionToggle,
-  K.radiatorDeployLeft, K.radiatorDeployRight, K.solarDeployLeft, K.solarDeployRight,
-  K.reload,
-].map((binding) => gameCommand(binding.code, binding));
+// 新規開始のブリーフィングを出しておく時間 [ms]。
+const BRIEFING_TOAST_MS = 12000;
 
 export class Game {
   private readonly _scene: THREE.Scene;
@@ -178,7 +174,7 @@ export class Game {
   public readonly orbitReference = new OrbitReferenceSelector();
   public readonly dynamicSystem: DynamicSystem;
   // 閃光・ガスパフなど、寿命だけで消えていく一過性の見た目。
-  private readonly flashEffects: FlashEffects;
+  private readonly flashPresenter = new FlashPresenter();
   private readonly flashEffectsView: FlashEffectsView;
   private readonly entityLines: EntityLineManager;
   private readonly equatorNodes: EquatorNodeManager;
@@ -188,6 +184,9 @@ export class Game {
   // 計測区間の境界を打つ先。
   private readonly sections: FrameSections;
   private readonly inputRouter: GameInputRouter;
+  // 生の入力を操作対象の操作量へ解釈する側と、その入力を受け取る口。
+  private readonly pilotInput = new PilotInput();
+  private readonly pilotPorts: readonly GameInputPort[];
 
   // 星系を組んでから、このランを組み立てる。段の切れ目で描画を明け渡すので、
   // 組み立て中の Game は誰にも観測されないまま数フレームをまたぐ。
@@ -217,7 +216,7 @@ export class Game {
     const game = new Game(host, stageClass, audioEngine, pauseMenu, celestialSystem, initialSave);
     // シェーダを組む前に、最初に描かれるフレームと同じ表示状態を時間の進まない1フレームで作る —
     // 天体表面の分割段のように update/sync が決めるまで現れない表示物が、事前コンパイルから漏れる。
-    game.update(0, gs.viewport);
+    game.update(0, 0, gs.viewport);
     game.sync(graphics, renderStyle, gs.viewport, 0);
     await progress.enter('shaders');
     // カメラは直前の sync が確定させたものを使う — 捨てる1フレームと同じ行列で組ませる。
@@ -269,17 +268,16 @@ export class Game {
     this.themePalette = host.themePalette;
     this._worldSfx = new WorldSfx(audioEngine);
     const uiSfx = new UiSfx(audioEngine);
-    this.runEventPresenter = new RunEventPresenter(uiSfx, this._hud);
+    this.runEventPresenter = new RunEventPresenter(this._worldSfx, uiSfx, this._hud);
     this.pauseMenu = pauseMenu;
 
     this.markers = host.markers;
     this.frameMarkers = this.markers.createGroup();
     this.playerMarkers = new PlayerMarkers(this.markers.createGroup());
 
-    this.flashEffects = new FlashEffects();
     this.flashEffectsView = new FlashEffectsView(this._scene);
     this.dynamicSystem = new DynamicSystem(
-      this._scene, this._hud, this._worldSfx, this.flashEffects, this.runEvents, celestialSystem,
+      this._scene, this.runEvents, celestialSystem,
       this.sections, initialSave?.simTime ?? 0, initialSave);
     this.entityLines = new EntityLineManager(this.dynamicSystem);
     this.equatorNodes = new EquatorNodeManager(this.dynamicSystem, this.markers.createGroup());
@@ -332,7 +330,7 @@ export class Game {
       this.markers, this.navTarget, this.dynamicSystem, celestialSystem.celestialMotions,
     );
     this.controlSelection = new ControlSelection(
-      initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget, this._hud,
+      initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget,
     );
     this.controlSelectionCommands = controlSelectionCommands(this.commands, this.controlSelection);
     this.boosterCommands = boosterCommands(this.commands, this.dynamicSystem);
@@ -353,7 +351,7 @@ export class Game {
     this.planDisplay = new PlanDisplay(
       this._scene, this.markers.createGroup(), celestialSystem, this.displayWindowManager, this.controlSelection,
     );
-    this.planGuide = new PlanGuide(this._hud, uiSfx, this.markers.createGroup());
+    this.planGuide = new PlanGuide(this.runEvents, this.markers.createGroup());
     this.input = new Input(host.scene.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
     this.input.onPointerKindChange = (kind) => this.touchControls?.setPointerKind(kind);
@@ -361,8 +359,8 @@ export class Game {
     this.predictor = new Predictor(this.dynamicSystem, celestialSystem);
 
     this.activeStage = new stageClass(
-      initialSave?.stage, this._hud, this._worldSfx, uiSfx, this._scene, this.dynamicSystem,
-      this.flashEffects, celestialSystem, this.controlSelection, this.commands,
+      initialSave?.stage, this._hud, this._scene, this.dynamicSystem,
+      celestialSystem, this.controlSelection, this.commands,
     );
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage を読むのでその後に組む。ビューより先に組み上がるので、現在のビューは遅延評価で渡す。
@@ -461,6 +459,21 @@ export class Game {
         ),
       },
     ]);
+    // 操作対象の入力は、ビュー固有の Δv 編集が押下中キーを確保した後に解釈する。押下エッジを
+    // 拾う口は、命令を適用できないフレームには閉じて他の受け手へ回す。ワープ倍率で決まる可否だけは
+    // ここで見ない — このフレームの倍率は進行の位相の先頭で確定するので、適用の側で見る。
+    this.pilotPorts = [
+      this.pilotInput.actionPort,
+      this.pilotInput.commandPort(
+        () => !this.isPaused && this.activeStage.isPlaying && this.activeControllable !== null,
+      ),
+    ];
+
+    // 組み立ての間に積まれた出来事は、最初のフレームの進行が記録を空にすると消えるので、
+    // ここで写しておく。新規開始のブリーフィングもこの場で出す。
+    this.runEventPresenter.present(this.runEvents.recent);
+    const briefing = this.activeStage.briefing;
+    if (briefing !== null) this._hud.toast(briefing, BRIEFING_TOAST_MS);
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -501,14 +514,14 @@ export class Game {
 
   // ------------------------------------------------------------ update
 
-  // 1フレームぶんの update フェーズ。dtRaw [s] は実時間の経過。ポーズ中もシミュレーション
-  // 以外の更新は通す。
-  public update(dtRaw: number, viewport: Viewport): void {
+  // 1フレームぶんの update フェーズ。dtRaw [s] は実時間の経過、nowMs [ms] はフレームの
+  // 先頭で1度だけ読んだ実時刻。ポーズ中もシミュレーション以外の更新は通す。
+  public update(dtRaw: number, nowMs: number, viewport: Viewport): void {
     this.sections.enter(SECTION.input);
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
     // ポーズ中も Esc・ヘルプなどは効かせるので、入力配分はポーズ判定より前に置く。
-    this.handleInput(dt);
+    this.handleInput(dt, nowMs);
     this.sections.exit(SECTION.input);
 
     // 一時停止中も命令は適用するので、ポーズ判定より前に置く(R8)。命令の適用そのものが
@@ -526,21 +539,29 @@ export class Game {
     const displayWindow = this.displayWindowManager.resolve(
       this.dynamicSystem.simTime, activeControllable, view !== 'map',
     );
-    // 過去表示に要る履歴の長さを要求する。次の積分がサンプルを積むまでに立っていればよいので、
-    // 窓が確定したこの場で渡す。
-    this.dynamicSystem.requestHistoryDuration(displayWindow.pastDuration);
     // このフレームが天体を引く表示時刻を差し込む: 以降の frameTransformAt 呼び出しは
     // すべてこの frameAnchors を通す。
     this.frameAnchors.update(displayWindow.displayTime);
+    // 一時エフェクトと的通過マークは、進行が記録した出来事から表示時刻で組み直す(R5)。
+    // 一時停止中は表示時刻が止まるので、そのまま止まって見える。
+    this.sections.enter(SECTION.effects);
+    this.flashPresenter.present(this.runEvents.recent, displayWindow.displayTime);
+    this.targeter.updateBoardMarks(
+      this.runEvents.recent, activeControllable, displayWindow.displayTime);
+    this.sections.exit(SECTION.effects);
     // 計画表示、予測伸長、選択候補、カメラはこの順序で同じ時刻の状態へ更新する。
     this.sections.enter(SECTION.plan);
     this.planDisplay.update(displayWindow, this.frameAnchors, view);
     this.sections.exit(SECTION.plan);
+    // 表示の選択が進行へ効いてよいのは需要だけ(R4)。どこまで計算してほしいかを1つにまとめ、
+    // 読む側より前に立てる。履歴の長さは、次の積分がサンプルを積むまでに立っていればよい。
+    const demand = trajectoryDemandOf(displayWindow, this.planDisplay.growableArcs());
+    this.dynamicSystem.requestHistoryDuration(demand.historyDuration);
     // ポーズ中・決着後も呼ぶ。simTime が止まっていれば予測は伸び切ったところで止まる。
     this.sections.enter(SECTION.predict);
     this.predictor.update(
       this.dynamicSystem.simTime, this.dynamicSystem.lastSimDt,
-      activeControllable?.motion ?? null, displayWindow.duration, this.planDisplay.growableArcs(),
+      activeControllable?.motion ?? null, demand,
     );
     this.sections.exit(SECTION.predict);
     // 交点を置く先は計画折れ線か解析軌道楕円のどちらかなので、折れ線を組み終えた計画表示と、
@@ -593,17 +614,14 @@ export class Game {
     this.sections.enter(SECTION.stage);
     this.activeStage.update(dt, this.dynamicSystem.simTime, this.simSpeedManager);
     this.sections.exit(SECTION.stage);
+    const controls = this.pilotInput.controls;
     this.dynamicSystem.update(
-      controlled, this.input, canShipAct, dt, simDt, canEngage, this.activeStage, this.activeStage.stageRules,
-      () => this.routeControllableInput(),
+      controlled, controls, canShipAct, dt, simDt, canEngage, this.activeStage, this.activeStage.stageRules,
+      () => this.applyPilotCommands(controls),
     );
 
-    this.targeter.updateBoardMarks(dt, controlled);
+    this.targeter.recordBoardPasses(controlled, this.runEvents);
     this.controlSelection.reclaimDead();
-
-    this.sections.enter(SECTION.effects);
-    this.flashEffects.update(dt, this.dynamicSystem.simTime);
-    this.sections.exit(SECTION.effects);
   }
 
   // ポインタ入力を現在のビューへ配る。このフレームの cameraSystem.update が終わって初めて投影が
@@ -615,27 +633,30 @@ export class Game {
 
   // --------------------------------------------------------------- input
 
-  // 入力エッジを担当モジュールへ先着順で配る。決めるのは優先順位 = 呼ぶ順序だけで、
-  // どのキー/クリックが何をするかは各モジュールが持つ。
-  private handleInput(dt: number): void {
+  // 生の入力を担当モジュールへ先着順で配り、このフレームの操作量を組む。決めるのは
+  // 優先順位 = 呼ぶ順序だけで、どのキー/クリックが何をするかは各モジュールが持つ。
+  private handleInput(dt: number, nowMs: number): void {
     this.inputRouter.beginFrame();
+    // 連打の判定が読むワープ倍率は、直前の進行が確定させたもの — ×4 を超えている間は数えず、
+    // 戻したフレームにワープ中の押下が発火しないようにする(CONTROLS.md)。
+    this.pilotInput.beginFrame(nowMs, this.simSpeedManager.canShipAct);
     this.inputRouter.route();
     // ヘルプや設定など、背景入力をゲートするモーダルが開いた後は、同じフレームの
     // ワープ/ビュー切り替え/計画編集へキーを漏らさない。
-    if (this._hud.overlayManager.isInputGated()) return;
-    // マップの Δv 編集はプレイヤーの入力edgeより先に押下中キーを確保する。
-    this.viewManager.activeView.updateActions(this.input, dt);
+    if (!this._hud.overlayManager.isInputGated()) {
+      // マップの Δv 編集は操作対象の解釈より先に押下中キーを確保する。
+      this.viewManager.activeView.updateActions(this.input, dt);
+    }
+    this.inputRouter.routeAdditional(this.pilotPorts);
   }
 
-  // ステージ更新と自律推力の更新が終わった後、操作対象へ単発入力を配る。
-  private routeControllableInput(): void {
+  // ステージ更新と自律推力の更新が終わった後、このフレームに受け付けた命令を操作対象へ適用する。
+  private applyPilotCommands(controls: PilotControls): void {
     if (this.isPaused || !this.activeStage.isPlaying || !this.simSpeedManager.canShipAct) return;
     if (this.activeControllable === null) return;
-    this.inputRouter.routeAdditional([{
-      feature: 'controllable',
-      commands: CONTROLLABLE_COMMANDS,
-      handleCommand: command => this.activeControllable?.handleInputCommand(command.id, this.dynamicSystem),
-    }]);
+    for (const command of controls.commands) {
+      this.activeControllable?.handleCommand(command, this.dynamicSystem);
+    }
   }
 
   // Game 更新後、Launcher と snapshot の入力を同じ raw edge router へ追加する。
@@ -719,7 +740,7 @@ export class Game {
     syncControlledLoopSfx(
       this._worldSfx, controlled, displayTime, !this.isPaused && this.activeStage.isPlaying);
     // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraView.sync より後に通す。
-    this.flashEffectsView.sync(this.flashEffects.live, camera);
+    this.flashEffectsView.sync(this.flashPresenter.live, camera);
 
     this.targeter.sync(
       controlled, camera, displayTime, visibilityPolicy, this.celestialMarkers.activeLabels, nowMs, palette);
