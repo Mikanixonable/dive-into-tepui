@@ -6,6 +6,8 @@ import { ShipModuleCatalog } from '../../src/game/ship/ship-module-catalog';
 import { defineShipModule } from '../../src/game/ship/ship-module-definition';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
+import { ShipCapabilities } from '../../src/game/ship/ship-capabilities';
+import { createBasePreset } from '../../src/game/ship/ship-presets';
 import { test } from '../harness';
 
 const MULTI_TANK = defineShipModule({
@@ -48,6 +50,23 @@ function primitiveExtentFromCom(
 }
 
 export function register(): void {
+  test('ship physics shape: base preset は有限の compound・質量・HP・燃料を持つ', () => {
+    const assembly = createBasePreset();
+    const physics = shipPhysicsShape(assembly);
+    const capabilities = new ShipCapabilities(assembly);
+    assert.ok(physics !== null);
+    assert.equal(assembly.role, 'base');
+    assert.ok(Number.isFinite(physics.mass.totalMass) && physics.mass.totalMass > 0);
+    assert.ok(Number.isFinite(assembly.maxHp) && assembly.maxHp > 0);
+    assert.ok(Number.isFinite(capabilities.fuel('main')) && capabilities.fuel('main') > 0);
+    assert.ok(Number.isFinite(capabilities.fuel('rcs')) && capabilities.fuel('rcs') > 0);
+    assert.equal(assembly.modules.filter(module => module.kind === 'tank').length, 2);
+    assert.equal(assembly.modules.filter(module => module.kind === 'solar_panel').length, 2);
+    assert.equal(assembly.modules.filter(module => module.kind === 'radiator').length, 2);
+    assert.equal(assembly.modules.filter(module => module.kind === 'dock').length, 2);
+    assert.equal(physics.shape.primitives.length, assembly.size);
+  });
+
   test('ship physics shape: empty assembly は null で、単一 module を COM 原点へ移す', () => {
     assert.equal(shipPhysicsShape(new ShipAssembly()), null);
     const assembly = new ShipAssembly(multiCatalog());
