@@ -11,9 +11,7 @@ import type { DynamicEntity } from './dynamic-entity';
 import type { EntitySaveDataUnion } from '../../save/save-data';
 import type { SpawnGate } from '../entity-registry';
 import type { EntityIdAllocators } from './entity-id';
-import type { FlashEffects } from '../../vfx/flash-effects';
-import type { Notifier } from '../../../hud/notifier';
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
+import type { RunEventSink } from '../../run-events';
 
 // 1体ぶんの復元手順。実体化(build)は、要る外部資源が揃うまで遅らせてよい。
 export interface EntityRestoration {
@@ -27,16 +25,14 @@ export function restorationFor(
   data: EntitySaveDataUnion,
   simTime: number,
   scene: THREE.Scene,
-  notifier: Notifier,
-  worldSfx: WorldSfx,
-  effects: FlashEffects,
+  events: RunEventSink,
   idAllocators: EntityIdAllocators,
 ): EntityRestoration | null {
   switch (data.kind) {
     case 'player':
       return {
         gate: null,
-        build: () => new Player(notifier, worldSfx, scene, effects, idAllocators, { saved: data, simTime }),
+        build: () => new Player(events, scene, idAllocators, { saved: data, simTime }),
       };
     case 'metal-enemy':
     case 'protein-enemy': {
@@ -45,7 +41,7 @@ export function restorationFor(
       if (enemyClass === null) return null;
       return {
         gate: enemyClass.spawnGate(data),
-        build: () => new enemyClass({ saved: data, simTime }, worldSfx, effects, idAllocators, scene),
+        build: () => new enemyClass({ saved: data, simTime }, idAllocators, scene),
       };
     }
     case 'ammo':
@@ -57,7 +53,7 @@ export function restorationFor(
     case 'base':
       return {
         gate: null,
-        build: () => new Base({ saved: data, simTime }, scene, notifier, idAllocators),
+        build: () => new Base({ saved: data, simTime }, scene, idAllocators),
       };
     default:
       return skipUnknownKind(data);

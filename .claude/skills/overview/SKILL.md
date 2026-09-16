@@ -24,8 +24,8 @@ description: 実装の全体像・影響範囲を掴む手順。「どこで何�
 
 ## 2. 起点になるファイル
 
-per-frame の入口は `src/main.ts` の rAF ループ → `src/game/game.ts` の `update` / `sync` /
-`render`。`src/game/` は関心事ごとのフォルダ(`player/` `dynamic/` `camera/`
+per-frame の入口は `src/main.ts` の rAF ループ → `src/game/game.ts`。フレームは R8 の4つの位相
+(入力の解釈 → 進行 → 導出と同期 → 描画)に分かれ、位相の順序を組み立てるのは `game.ts`。`src/game/` は関心事ごとのフォルダ(`player/` `dynamic/` `camera/`
 `plan/` `stages/` `hud/` `marker/` `vfx/` `input/` `celestial/` `map/`)、`src/physics/` は THREE/DOM に
 依存しない純粋な計算、`src/render/` は THREE のメッシュ構築と描画パイプライン。
 

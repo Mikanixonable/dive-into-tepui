@@ -1,4 +1,4 @@
-import type { Vec3 } from '../../math/vec3';
+import { v3, type Vec3 } from '../../math/vec3';
 import type { Attitude } from '../../physics/attitude';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
@@ -14,7 +14,12 @@ import {
   SHIP_SRP_COEFF,
   shipMotionOptions,
 } from '../dynamic/dynamic-entity/ship';
-import { PLAYER_MASS } from './player-loadout';
+import {
+  PLAYER_INERTIA_PITCH,
+  PLAYER_INERTIA_ROLL,
+  PLAYER_INERTIA_YAW,
+  PLAYER_MASS,
+} from './player-loadout';
 import { AeroLoad } from './aero-load';
 import { AttachedBoosterMotion } from './attached-booster-motion';
 import { BeltController } from './belt';
@@ -216,6 +221,22 @@ export class PlayerMotion extends DynamicMotion {
     );
     this.power = new PowerSystem(powerSave);
     this.attachedBoosters = new AttachedBoosterMotion(this, boosterSave);
+  }
+
+  // 接続中ブースターの寄与を受けて、自分の質量と慣性を組み直す。boosterMass は段の合計質量 [kg]。
+  public rebuildMassAndInertia(boosterMass: number, boosterStageCount: number): void {
+    this.mass = PLAYER_MASS + boosterMass;
+    // 慣性は質量比に比例し、ピッチ・ヨーだけは段の列が長いほど増える(ロールは機軸まわり)
+    const massRatio = this.mass / PLAYER_MASS;
+    const lengthFactor = 1 + 0.35 * boosterStageCount ** 2;
+    this.att = {
+      ...this.att,
+      inertia: v3(
+        PLAYER_INERTIA_PITCH * massRatio * lengthFactor,
+        PLAYER_INERTIA_YAW * massRatio * lengthFactor,
+        PLAYER_INERTIA_ROLL * massRatio,
+      ),
+    };
   }
 }
 

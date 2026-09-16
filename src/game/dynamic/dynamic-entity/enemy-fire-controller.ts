@@ -4,12 +4,12 @@ import type { Player } from '../../player/player';
 import { Bullet } from './bullet';
 import type { Enemy } from './enemy';
 import type { EntityRegistry } from '../entity-registry';
+import type { RunEventSink } from '../../run-events';
 import { ENGAGEMENT_RANGE } from '../engagement-zone';
 import { add, len, norm, randPerp, rotateAxis, scale, sub, type Vec3 } from '../../../math/vec3';
 import { solveLeadTime } from '../../../physics/intercept';
 import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { DynamicMotion } from '../dynamic-motion';
-import type { WorldSfx } from '../../../audio/sfx/world-sfx';
 import { MUZZLE_SPEED } from './vessel';
 import { countAttackingEnemiesInGroup } from './enemy-attack-group';
 
@@ -26,11 +26,10 @@ const PLASMA_SPREAD_DEG = 0.05;
 export interface EnemyFireControllerPort {
   readonly motion: DynamicMotion;
   readonly attackGroupId: string;
-  readonly worldSfx: WorldSfx;
   canFire(enemies: readonly Enemy[]): boolean;
   muzzlePosition(): Vec3;
   plasmaDamage(): number;
-  muzzleEffect(muzzleState: KinematicState): void;
+  muzzleEffect(muzzleState: KinematicState, events: RunEventSink): void;
 }
 
 // 敵の射撃判断・バースト進行・弾生成をEnemy本体から分離する。
@@ -109,9 +108,9 @@ export class EnemyFireController {
     const bV = add(v, scale(actualAim, PLASMA_BULLET_SPEED));
     const bullet = new Bullet(
       kinematicState<'eci'>(simTime, r, bV), PLASMA_LIFETIME, 'enemy', 'plasma',
-      this.port.plasmaDamage(), this.port.worldSfx, registry.idAllocators,
+      this.port.plasmaDamage(), registry.idAllocators,
     );
-    this.port.muzzleEffect(kinematicState<'eci'>(simTime, r, v));
+    this.port.muzzleEffect(kinematicState<'eci'>(simTime, r, v), registry.events);
     registry.add(bullet);
   }
 }

@@ -4,11 +4,13 @@ import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { generateWave } from './stage-utils/wave-attack';
 import { Button, ToggleSwitch } from '../../hud/widgets';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import type { StageSaveData } from '../save/save-data';
-import { isEnemy } from '../dynamic/dynamic-entity/enemy';
+import { isEnemy, type Enemy } from '../dynamic/dynamic-entity/enemy';
 import { MAG_ROUNDS } from '../player/ammo-spec';
 import { LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST } from './stage-utils/logistics';
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
+import { stageDebugCommands, type StageDebugCommands } from './stage-debug-commands';
+import type { StageSaveData } from '../save/save-data';
+import type { Player } from '../player/player';
 
 export class StageDebug extends Stage {
   static readonly id = 'debug' as const;
@@ -20,9 +22,12 @@ export class StageDebug extends Stage {
 
   private enemyFireEnabled = false;
   private waveCount = 2; // ランダム方向からスポーンさせるため2から開始
+  // パネルの操作を積む先。
+  private readonly commands: StageDebugCommands;
 
   constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
+    this.commands = stageDebugCommands(this._commandQueue, this);
     this.begin();
   }
 
@@ -34,35 +39,55 @@ export class StageDebug extends Stage {
   // 自機と敵集団1つを置き、射撃切替トグルとスポーンボタン列をステータスウィンドウ左部へ追加する。
   protected init(): void {
     const player = this.addPlayer({ ammo: { mags: 20, rounds: MAG_ROUNDS } });
-    const enemies = generateWave(
-      player.motion.state, this.waveCount++, this._celestialSystem.celestialMotions,
-      this._worldSfx, this._fx, this._scene, this._dynamicSystem.idAllocators, 'random',
-    );
-    for (const enemy of enemies) this.addEnemy(enemy);
+    for (const enemy of this.generateWaveAround(player)) this.addEnemy(enemy);
 
-    const fireToggle = new ToggleSwitch('敵射撃', (on) => { this.enemyFireEnabled = on; });
+    const fireToggle = new ToggleSwitch('敵射撃', (on) => this.commands.setEnemyFireEnabled(on));
     fireToggle.setOn(false);
     this.addStatusPanelWidget(fireToggle.element);
 
     // 以降は、検証を続けるための手動スポーン。
-    const spawnEnemyBtn = new Button('敵集団をスポーン', () => {
-      const newEnemies = generateWave(
-        player.motion.state, this.waveCount++, this._celestialSystem.celestialMotions,
-        this._worldSfx, this._fx, this._scene, this._dynamicSystem.idAllocators, 'random',
-      );
-      for (const enemy of newEnemies) this.addEnemy(enemy);
-    });
+    const spawnEnemyBtn = new Button('敵集団をスポーン', () => this.commands.spawnEnemyWave());
     this.addStatusPanelWidget(spawnEnemyBtn.element);
 
-    const spawnAmmoBtn = new Button('弾薬をスポーン', () => {
-      this.logistics.spawnForPlayer(player, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST);
-    });
+    const spawnAmmoBtn = new Button('弾薬をスポーン', () => this.commands.spawnAmmo());
     this.addStatusPanelWidget(spawnAmmoBtn.element);
 
-    const spawnFuelBtn = new Button('RCS燃料をスポーン', () => {
-      this.logistics.spawnRcsFuelForPlayer(player, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST);
-    });
+    const spawnFuelBtn = new Button('RCS燃料をスポーン', () => this.commands.spawnRcsFuel());
     this.addStatusPanelWidget(spawnFuelBtn.element);
+  }
+
+  // 敵の射撃の可否を切り替える。
+  public setEnemyFireEnabled(on: boolean): void {
+    this.enemyFireEnabled = on;
+  }
+
+  // 敵集団を1つ、自艦のまわりへ出す。自艦がいなければ何も出さない。
+  public spawnEnemyWave(): void {
+    const player = this.ship;
+    if (player === null) return;
+    for (const enemy of this.generateWaveAround(player)) this.addEnemy(enemy);
+  }
+
+  // 弾薬を1つ、自艦の近くへ出す。自艦がいなければ何も出さない。
+  public spawnAmmo(): void {
+    const player = this.ship;
+    if (player === null) return;
+    this.logistics.spawnForPlayer(player, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST);
+  }
+
+  // RCS燃料を1つ、自艦の近くへ出す。自艦がいなければ何も出さない。
+  public spawnRcsFuel(): void {
+    const player = this.ship;
+    if (player === null) return;
+    this.logistics.spawnRcsFuelForPlayer(player, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST);
+  }
+
+  // player のまわりへ出す敵集団を、ランダム方向で1波ぶん組む。
+  private generateWaveAround(player: Player): readonly Enemy[] {
+    return generateWave(
+      player.motion.state, this.waveCount++, this._celestialSystem.celestialMotions,
+      this._scene, this._dynamicSystem.idAllocators, 'random',
+    );
   }
 
   // 射撃許可を毎フレーム自ステージの敵全体へ反映し、補給を進める。
