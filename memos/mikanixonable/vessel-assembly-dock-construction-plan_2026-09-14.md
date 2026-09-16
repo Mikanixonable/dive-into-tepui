@@ -3,7 +3,7 @@
 作成日: 2026-09-14
 実装の現在基準コミット: d3e8291dd
 最終レビュー: 2026-09-16
-状態: 実装中。手順8まで完了し、手順9から進める。
+状態: 実装中。手順9まで完了し、手順10から進める。
 
 ## 目的
 
@@ -305,39 +305,6 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 - 現行のランダム部位ダメージと敵挙動に回帰がない。
 
 ## 実装手順
-
-### 9. dock state、ドッキング、修理を実装する
-
-#### 目的
-
-各 dock と通常 docking_port の接続点を、空、建造中、接続済みの状態機械にし、接近した既存船の接舷と
-再発進を成立させる。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| src/game/ship/ship-dock-state.ts（新規） | empty、building、connected と、接続されたassemblyの状態を持つ。 |
-| src/game/ship/ship-docking.ts（新規） | 位置・軸・相対速度の eligibility、assembly merge、dock分離を実装する。 |
-| src/game/ship/ship-repair.ts（新規） | 健全な dock に接続した統合船体の module HP を最大へ戻す。 |
-| src/game/ship/modular-ship-motion.ts | 接続されたassemblyを一つの質量・形状へ統合し、attach／detach 時に予測を無効化する。 |
-| src/game/dynamic/entity-lifecycle.ts、entity-registry.ts | registry上のShipAssemblyとdock参照の移管を同一フレームで原子的に行う。 |
-| src/game/control-selection.ts | 接舷／発進時の操作対象切替と、対象不在時の既存規則を扱う。 |
-| src/game/pickable/ship-inspection.ts | dock ごとの状態、条件、不成立理由、操作を property row として提供する。 |
-| tests/game/ship-docking.test.ts（新規） | 境界値、assembly merge／split、操作基準cockpit切替、cockpit破壊時の自動切替、target 解除、複数 dock、統合船体喪失を検証する。 |
-| tests/game/ship-repair.test.ts（新規） | dock 健全性、ドッキング条件、全 module HP 回復、自然回復なしを検証する。 |
-
-#### 達成条件と検証
-
-- 距離 1.0 m、角度 10°、相対速度 1.0 m/s の内外で、ドッキング可能条件だけが正しく反転する。
-- 許容誤差内の任意の位置・姿勢から確定しても、ドッキング後の接続点間距離と軸角度のずれが 0 になり、
-  接続された船体間に相対運動を持たない。
-- attach 後に接続前の船体が個別 registry entity として残らず、分離時に各 ShipAssembly が1個ずつ戻る。
-- 4 dock と docking_port が接続されたassemblyを上書きせず、複数のcockpitと能力が一つの船体へ統合される。
-- docking_port 同士を含む全組み合わせで、統合後も接続点のずれがなく、建造・修理は統合船体に含まれる
-  dock から実行できる。
-- 分離後も接続に使った各 docking_port／dock がそれぞれの船体側に残り、再ドッキングに使える。
-- npm run typecheck、npm run test:game、npm run test:physics を通す。
 
 ### 10. 戦闘ビューの建造モードとゴースト配置を実装する
 
