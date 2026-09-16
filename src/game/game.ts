@@ -52,9 +52,13 @@ import type { CelestialSystem } from './celestial/celestial-system';
 import { ViewManager } from './view/view-manager';
 import { CombatView } from './view/combat-view';
 import { MapView } from './view/map-view';
-import { NavTarget } from './nav-target';
+import { NavTargetPresenter } from './nav-target-presenter';
 import { FrameAnchors } from './frame-anchors';
-import { OrbitReferenceSelector } from './orbit-reference';
+import { resolveOrbitReference } from './orbit-reference';
+import { Viewer } from './viewer/viewer';
+import { navTargetCommands, type NavTargetCommands } from './viewer/nav-target-commands';
+import { orbitReferenceCommands, type OrbitReferenceCommands } from './viewer/orbit-reference-commands';
+import { recordTargetBoardPasses } from './dynamic/target-board-passes';
 import { ObjectWindows } from './pickable/object-windows';
 import { SAVE_VERSION, type GameSaveData } from './save/save-data';
 import { ephemerisContextFor } from '../physics/ephemeris/ephemeris-context';
@@ -169,9 +173,15 @@ export class Game {
   private readonly boosterHandlers: BurnManagementPanelHandlers;
 
   public readonly targeter: Targeter;
-  public readonly navTarget: NavTarget;
+  // 遊ぶ人の選択のうち、セーブごとに持つもの。
+  private readonly viewer: Viewer;
+  // 航法ターゲットの差し替えを列へ積む口。
+  private readonly navTargetCommands: NavTargetCommands;
+  // 軌道要素の基準の差し替えを列へ積む口。
+  private readonly orbitReferenceCommands: OrbitReferenceCommands;
+  // 航法ターゲットの解決と、その相対交点・再接近点のマーカー。
+  private readonly navTargetPresenter: NavTargetPresenter;
   private readonly frameAnchors: FrameAnchors;
-  public readonly orbitReference = new OrbitReferenceSelector();
   public readonly dynamicSystem: DynamicSystem;
   // 閃光・ガスパフなど、寿命だけで消えていく一過性の見た目。
   private readonly flashPresenter = new FlashPresenter();
@@ -243,7 +253,7 @@ export class Game {
       stage: this.activeStage.serialize(),
       // 遊ぶ人の選択。
       camera: { view: this.viewManager.current, ...this.cameraSystem.serialize() },
-      navTarget: this.navTarget.id !== null ? { id: this.navTarget.id, name: this.navTarget.name! } : null,
+      ...this.viewer.serialize(),
       orbitGuide: this.orbitGuideSettings,
     };
   }
@@ -300,7 +310,8 @@ export class Game {
         const role = frameRoleOf(id);
         const entity = role === 'controlled' ? this.activeControllable
           : role === 'navTarget'
-            ? this.navTarget.resolveState(this.dynamicSystem, celestialSystem, celestialSystem.celestialMotions, t)?.entity ?? null
+            ? this.navTargetPresenter.resolveState(
+              this.dynamicSystem, celestialSystem, celestialSystem.celestialMotions, t)?.entity ?? null
             : this.dynamicSystem.all().find((e) => e.id === id) ?? null;
         return entity?.motion.alive ? entity.motion.att.q : null;
       },
@@ -310,8 +321,12 @@ export class Game {
     this.simSpeedManager = new SimSpeedManager(this.runEvents);
     this.simSpeedCommands = simSpeedCommands(this.commands, this.simSpeedManager);
     this.deployableCommands = deployableCommands(this.commands);
-    this.navTarget = new NavTarget(this._hud, this.markers.createGroup());
-    this.navTarget.restore(initialSave?.navTarget, this.dynamicSystem);
+    this.controlSelection = new ControlSelection(initialSave?.activeControlledId, this.dynamicSystem);
+    this.controlSelectionCommands = controlSelectionCommands(this.commands, this.controlSelection);
+    this.viewer = new Viewer(initialSave, this.dynamicSystem, this.runEvents);
+    this.navTargetCommands = navTargetCommands(this.commands, this.viewer.navTarget);
+    this.orbitReferenceCommands = orbitReferenceCommands(this.commands, this.viewer.orbitReference);
+    this.navTargetPresenter = new NavTargetPresenter(this.viewer.navTarget, this.markers.createGroup());
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。update()/sync() の
     // 先頭で毎フレーム表示時刻を差し込み、以降のフレーム変換の呼び出しはこれを渡す。
     this.frameAnchors = new FrameAnchors(celestialSystem, {
@@ -319,7 +334,8 @@ export class Game {
         .find((e) => e.id === id && e.motion.alive)
         ?.motion.stateAt(t, celestialSystem) ?? null,
       controlledState: (t) => this.activeControllable?.motion.stateAt(t, celestialSystem) ?? null,
-      navTargetState: (bodies, t) => this.navTarget.resolveState(this.dynamicSystem, celestialSystem, bodies, t)?.state ?? null,
+      navTargetState: (bodies, t) => this.navTargetPresenter.resolveState(
+        this.dynamicSystem, celestialSystem, bodies, t)?.state ?? null,
     });
     this.frameControls = new FrameControls(
       this._hud.mapRoot, this._hud.combatRoot, this._hud.layers.popup,
@@ -327,12 +343,9 @@ export class Game {
       this.displayWindowManager, this._hud.overlayManager, this.frameAnchors,
     );
     this.targeter = new Targeter(
-      this.markers, this.navTarget, this.dynamicSystem, celestialSystem.celestialMotions,
+      this.markers, this.viewer.navTarget, this.navTargetCommands,
+      this.dynamicSystem, celestialSystem.celestialMotions,
     );
-    this.controlSelection = new ControlSelection(
-      initialSave?.activeControlledId, this.dynamicSystem, this.cameraSystem, this.navTarget,
-    );
-    this.controlSelectionCommands = controlSelectionCommands(this.commands, this.controlSelection);
     this.boosterCommands = boosterCommands(this.commands, this.dynamicSystem);
     this.boosterHandlers = {
       onAttach: () => {
@@ -365,7 +378,8 @@ export class Game {
     this._hud.root.classList.toggle('creative-mode', this.activeStage.id === 'creative');
     // activeStage を読むのでその後に組む。ビューより先に組み上がるので、現在のビューは遅延評価で渡す。
     this.objectWindows = new ObjectWindows(
-      this._hud, this.dynamicSystem, celestialSystem, this.navTarget,
+      this._hud, this.dynamicSystem, celestialSystem,
+      this.viewer.navTarget, this.navTargetPresenter, this.navTargetCommands,
       this.cameraSystem, () => this.viewManager.activeView, this.pauseMenu,
       this.controlSelection, this.frameControls, this.activeStage, this.targeter, this.displayWindowManager,
       objectMenuCommands(this.commands, this.controlSelection),
@@ -383,7 +397,8 @@ export class Game {
       this.displayWindowManager, this.frameControls,
       this.frameAnchors, this.controlSelection, this.controlSelectionCommands,
       this.simSpeedManager, this.simSpeedCommands, this.planDisplay, planCommands(this.commands),
-      this._scene, this._hud, uiSfx, this.navTarget, this.viewOptionSettings.mapDisplay,
+      this._scene, this._hud, uiSfx, this.navTargetPresenter, this.navTargetCommands,
+      this.viewOptionSettings.mapDisplay,
     );
     // 初期ビューは世界が組み上がった後にしか決まらない — 攻略ステージの自機は Stage の初期配置で
     // 置かれるので、戦闘ビューへ入れるかどうかはその後でなければ判定できない。
@@ -470,7 +485,8 @@ export class Game {
     ];
 
     // 組み立ての間に積まれた出来事は、最初のフレームの進行が記録を空にすると消えるので、
-    // ここで写しておく。新規開始のブリーフィングもこの場で出す。
+    // ここで視点に当てて写しておく。新規開始のブリーフィングもこの場で出す。
+    this.followProgress();
     this.runEventPresenter.present(this.runEvents.recent);
     const briefing = this.activeStage.briefing;
     if (briefing !== null) this._hud.toast(briefing, BRIEFING_TOAST_MS);
@@ -504,7 +520,7 @@ export class Game {
     this.dynamicSystem.dispose();
     this.flashEffectsView.dispose();
     this.targeter.dispose();
-    this.navTarget.dispose();
+    this.navTargetPresenter.dispose();
     this.celestialMarkers.dispose();
     this.playerMarkers.dispose();
     this.frameMarkers.dispose();
@@ -528,10 +544,13 @@ export class Game {
     // 出来事を積むので、記録を空にするのはその前。
     this.runEvents.beginStep();
     this.commands.applyAll();
+    // 的面の通過をどの対象について記録するかの需要(R4)。命令を適用した後の選択から立てる。
+    const boardTargetId = this.viewer.navTarget.id;
     // ポーズは開いているオーバーレイからの導出値で「止まった瞬間」が無いので、止まっている
     // 間は毎フレーム連続指令を畳む。
     if (this.isPaused) this.dynamicSystem.pause();
-    else this.advanceSimulation(dt);
+    else this.advanceSimulation(dt, boardTargetId);
+    this.followProgress();
     // ここから先はポーズ中も決着後も通す。決着は積分を止めないので、飛ばすと描画原点になる
     // カメラ位置だけが絶対 ECI に取り残され、追従対象が軌道速度で流れて即フレームアウトする。
     const activeControllable = this.activeControllable;
@@ -577,7 +596,7 @@ export class Game {
       celestialBodies: this._celestialSystem,
       frameAnchors: this.frameAnchors,
       paths: this.planDisplay,
-    }, activeControllable, this.navTarget.id, equatorVisibility);
+    }, activeControllable, this.viewer.navTarget.id, equatorVisibility);
     // ノードの期限切れ・達成はビューに依らない計画そのものの規則なので、折れ線を組み終えた
     // 後に毎フレーム通す。
     this.planGuide.update(
@@ -600,8 +619,8 @@ export class Game {
   }
 
   // ステージ → 指令決定 → 積分 → エフェクトの順に1フレーム進める
-  // (残骸・弾の先端時刻はどの状況でも進め続ける)。
-  private advanceSimulation(dt: number): void {
+  // (残骸・弾の先端時刻はどの状況でも進め続ける)。boardTargetId は的面の通過を記録する対象の id。
+  private advanceSimulation(dt: number, boardTargetId: string | null): void {
     // このフレームで使う倍率を最初に一度だけ確定する。燃料消費・操作ゲート・積分が
     // 自動ワープの段階変更を跨いで別の倍率を読むと、同じ区間を表さなくなる。
     this.simSpeedManager.update(this.dynamicSystem.simTime);
@@ -620,8 +639,18 @@ export class Game {
       () => this.applyPilotCommands(controls),
     );
 
-    this.targeter.recordBoardPasses(controlled, this.runEvents);
+    recordTargetBoardPasses(controlled, boardTargetId, this.dynamicSystem, this.runEvents);
     this.controlSelection.reclaimDead();
+  }
+
+  // 進行が今ステップに記録した出来事に視点を合わせる。取り除かれた操作対象候補をマップのカメラが
+  // 注視していれば、注視を戻す(暫定 — カメラが視点へ移るときに視点の規則へ入れる)。
+  private followProgress(): void {
+    const events = this.runEvents.recent;
+    this.viewer.followProgress(events);
+    for (const { body } of events) {
+      if (body.kind === 'controllableRemoved') this.cameraSystem.mapCamera.clearFocusIf(body.id);
+    }
   }
 
   // ポインタ入力を現在のビューへ配る。このフレームの cameraSystem.update が終わって初めて投影が
@@ -681,7 +710,7 @@ export class Game {
       selectableViews: this.viewManager.selectableViews(),
       focusName: this.focusName(),
       controlName: controlled?.name ?? null,
-      targetName: this.navTarget.name,
+      targetName: this.viewer.navTarget.name,
       renderStyle: style,
     });
 
@@ -704,8 +733,8 @@ export class Game {
     const visibilityPolicy = this.viewManager.activeView.visibilityPolicy;
     // 3D 軌道線を軌道パネルと同じ基準で解く。
     const orbitRef = controlled
-      ? this.orbitReference.resolve(
-        controlled.motion.state.r, celestialBodies, this.navTarget,
+      ? resolveOrbitReference(
+        this.viewer.orbitReference.mode, controlled.motion.state.r, celestialBodies, this.navTargetPresenter,
         this.dynamicSystem, this._celestialSystem, controlled.motion.state.t,
       )
       : undefined;
@@ -744,7 +773,7 @@ export class Game {
 
     this.targeter.sync(
       controlled, camera, displayTime, visibilityPolicy, this.celestialMarkers.activeLabels, nowMs, palette);
-    this.navTarget.sync(
+    this.navTargetPresenter.sync(
       camera, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, timeLabel, nowMs);
 
     // 戦闘中に開いたプロパティウィンドウも最新値を表示し続ける必要があるので、ビューに依らず呼ぶ。
@@ -874,11 +903,12 @@ export class Game {
       controlled, reference, controlled.motion.state.t, (id: string) => this._celestialSystem.nameOf(id),
     );
     const motion = controlled.motion;
+    const targetName = this.viewer.navTarget.name;
     // 軌道の数値は基準に対して解き、警告と切替の状態は操作対象から直に引く。
     return {
-      selectedMode: this.orbitReference.selectedMode,
+      selectedMode: this.viewer.orbitReference.mode,
       centerId: info.centerId,
-      centerName: !reference.attractor && this.navTarget.name ? this.navTarget.name : info.centerName,
+      centerName: !reference.attractor && targetName ? targetName : info.centerName,
       altitudeM: info.alt,
       descendWarned: controlled.altitudeAlarm?.descendWarned ?? false,
       speedMps: info.spd,
@@ -888,7 +918,7 @@ export class Game {
       periodSec: info.period,
       dynamicPressurePa: isPlayerMotion(motion) ? motion.aero?.qdyn ?? null : null,
       temperatureK: motion.temperature,
-      setReferenceMode: (mode) => this.orbitReference.setMode(mode),
+      setReferenceMode: (mode) => this.orbitReferenceCommands.setMode(mode),
     };
   }
 
@@ -931,7 +961,7 @@ export class Game {
   // 現在の航法ターゲットを、接近・投影タブが扱える形(天体 or 個体)へ解決する。
   // 質量を持たない対象(ラグランジュ点など)と、ターゲット未選択のときは null。
   private approachTarget(): ApproachTargetSource | null {
-    const id = this.navTarget.id;
+    const id = this.viewer.navTarget.id;
     if (id === null) return null;
     const body = this._celestialSystem.find(id)?.motion;
     if (body !== undefined) return { kind: 'celestialBody', body };

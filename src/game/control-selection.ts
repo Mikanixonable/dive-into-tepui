@@ -1,9 +1,7 @@
-// 操作対象(自機船 0..n 隻と基地のうち、ちょうど1つ)の選択と、それに伴う各所有者への伝播
-// (航法ターゲット、および remove() でのカメラのフォーカス解除)を1箇所へ集める。
+// 操作対象(自機船 0..n 隻と基地のうち、ちょうど1つ)の選択。選び直しと、操作対象候補を世界から
+// 取り除いたことを出来事として記録する。
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import type { DynamicSystem } from './dynamic/dynamic-system';
-import type { CameraSystem } from './camera/camera-system';
-import type { NavTarget } from './nav-target';
 
 export class ControlSelection {
   private _current: Controllable | null;
@@ -13,8 +11,6 @@ export class ControlSelection {
   constructor(
     savedId: string | null | undefined,
     private readonly dynamicSystem: DynamicSystem,
-    private readonly cameraSystem: CameraSystem,
-    private readonly navTarget: NavTarget,
   ) {
     const candidates = dynamicSystem.controllables;
     this._current = candidates.find((c) => c.id === savedId)
@@ -24,12 +20,11 @@ export class ControlSelection {
 
   get current(): Controllable | null { return this._current; }
 
-  // 操作対象(操作・追従カメラ・計画編集の対象)を差し替える。
+  // 操作対象(操作・追従カメラ・計画編集の対象)を差し替え、選び直したことを記録する。
   select(target: Controllable): void {
     if (this._current === target) return;
     this._current?.clearTransientCommands();
     this._current = target;
-    this.navTarget.clear();
     this.dynamicSystem.events.record(
       { kind: 'controlTargetSelected', target: target.mapKind, name: target.name });
   }
@@ -53,11 +48,11 @@ export class ControlSelection {
     if (this._current === null) this.select(target);
   }
 
-  // 世界から取り除く。操作対象だった場合は他の生存個体へ引き継ぐか、無ければ未操作へ戻す。
+  // 世界から取り除き、取り除いたことを記録する。操作対象だった場合は他の生存個体へ引き継ぐか、
+  // 無ければ未操作へ戻す。
   remove(target: Controllable): void {
     const wasActive = this._current === target;
-    this.navTarget.clearIfTargeting(target.id);
-    this.cameraSystem.mapCamera.clearFocusIf(target.id);
+    this.dynamicSystem.events.record({ kind: 'controllableRemoved', id: target.id });
     if (wasActive) {
       target.clearTransientCommands();
       this._current = null;

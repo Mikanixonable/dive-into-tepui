@@ -163,6 +163,14 @@ export type RunEventBody =
   | { readonly kind: 'controlTargetSelected'; readonly target: DynamicEntityKind; readonly name: string }
   // 操作対象から手で外された。
   | { readonly kind: 'controlTargetReleased'; readonly target: DynamicEntityKind }
+  // 操作対象候補が世界から取り除かれた。id は取り除かれた個体の id。
+  | { readonly kind: 'controllableRemoved'; readonly id: string }
+
+  // ---------------------------------------------------------- 航法ターゲット
+  // 航法ターゲットを切り替えた。name は新しいターゲットの表示名で、解除したなら null。
+  | { readonly kind: 'navTargetToggled'; readonly name: string | null }
+  // 航法ターゲットを戦闘対象へ固定した。name は固定した対象の表示名で、固定を外したなら null。
+  | { readonly kind: 'navTargetLocked'; readonly name: string | null }
 
   // ---------------------------------------------------------------- 波状攻撃
   // 自機が弾薬を確保し、敵部隊の接近が始まった。

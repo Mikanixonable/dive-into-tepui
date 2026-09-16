@@ -13,7 +13,9 @@ import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity'
 import { focusTargetId, type FocusSink } from '../camera/focus-target';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import { NavTarget } from '../nav-target';
+import type { NavTargetPresenter } from '../nav-target-presenter';
+import type { NavTargetSource } from '../viewer/nav-target-selection';
+import type { NavTargetCommands } from '../viewer/nav-target-commands';
 import { CameraSystem } from '../camera/camera-system';
 import type { PlanEditor } from '../plan/plan-editor';
 import type { ControlSelection } from '../control-selection';
@@ -55,7 +57,9 @@ export class ObjectWindows implements PropertyWindowOpener {
     private readonly hud: Hud,
     private readonly roster: EntityRoster,
     private readonly celestialBodies: CelestialBodies,
-    private readonly navTarget: NavTarget,
+    private readonly navTarget: NavTargetSource,
+    private readonly navTargetPresenter: NavTargetPresenter,
+    private readonly navTargetCommands: NavTargetCommands,
     private readonly cameraSystem: CameraSystem,
     private readonly activeView: () => ViewFrame,
     private readonly pauseMenu: PauseMenu,
@@ -205,7 +209,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     return all.filter((it) => {
       switch (it.act) {
         case 'target':
-          return this.navTarget.canTarget(
+          return this.navTargetPresenter.canTarget(
             target.id, this.roster, this.celestialBodies, simTime);
         case 'duplicate':
         case 'openObjectPlacer':
@@ -222,7 +226,7 @@ export class ObjectWindows implements PropertyWindowOpener {
   // そのフレームに差し出していた編集口とともに列へ積む。
   private runAct(target: InspectedObject, act: MenuAction): void {
     if (act === 'focus') this.focus(target.id, target.name);
-    else if (act === 'target') this.navTarget.toggleTarget(target.id, target.name);
+    else if (act === 'target') this.navTargetCommands.toggle(target.id, target.name);
     else if (act === 'openSettings') this.pauseMenu.toggle(true);
     else if (act === 'openObjectPlacer') {
       this.authoring?.openObjectPlacer(focusTargetId(this.cameraSystem.mapCamera.focus));

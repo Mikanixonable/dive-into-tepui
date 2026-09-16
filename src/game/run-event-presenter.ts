@@ -231,6 +231,13 @@ export class RunEventPresenter {
         if (body.target === 'base') this.notifier.hint('基地の操作を解除しました');
         return;
 
+      case 'navTargetToggled':
+        this.notifier.hint(body.name === null ? 'ターゲット解除' : `ターゲット: ${body.name}`);
+        return;
+      case 'navTargetLocked':
+        this.notifier.hint(body.name === null ? 'ターゲット固定解除' : `ターゲット固定: ${body.name}`);
+        return;
+
       case 'waveAttackArmed':
         this.notifier.toast('弾薬を確保した。敵部隊が接近中...', 3000);
         return;

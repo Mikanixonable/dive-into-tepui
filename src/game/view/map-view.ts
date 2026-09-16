@@ -15,7 +15,8 @@ import type { CelestialMarkers } from '../marker/celestial-markers';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { GroupedMarkers } from '../marker/grouped-markers';
 import type { EquatorNodeManager } from '../marker/equator-node-manager';
-import type { NavTarget } from '../nav-target';
+import type { NavTargetPresenter } from '../nav-target-presenter';
+import type { NavTargetCommands } from '../viewer/nav-target-commands';
 import { PlanEditor } from '../plan/plan-editor';
 import type { PlanCommands } from '../plan/plan-commands';
 import type { PlanDisplay } from '../plan/plan-display';
@@ -64,7 +65,8 @@ export class MapView implements ViewFrame {
     scene: THREE.Scene,
     hud: HudLayers & Notifier,
     uiSfx: UiSfx,
-    navTarget: NavTarget,
+    navTargetPresenter: NavTargetPresenter,
+    navTargetCommands: NavTargetCommands,
     private readonly mapDisplay: SettingValue<MapDisplayToggles>,
   ) {
     this.planEditor = new PlanEditor(
@@ -72,13 +74,13 @@ export class MapView implements ViewFrame {
       displayWindowManager, frameControls, planDisplay.path, planCommands,
     );
     this.objectPickables = new ObjectPickables(
-      controlSelection, roster, celestialSystem, navTarget, cameraSystem,
+      controlSelection, roster, celestialSystem, navTargetPresenter, cameraSystem,
       celestialMarkers, planDisplay, frameAnchors, equatorNodes,
     );
     this.linePickables = new LinePickables(roster, celestialSystem);
     this.picking = new MapPicking(
       hud, cameraSystem, roster, celestialSystem, celestialMarkers, markers,
-      navTarget, frameControls, this.objectPickables, this.linePickables, objectWindows,
+      navTargetPresenter, navTargetCommands, frameControls, this.objectPickables, this.linePickables, objectWindows,
       controlSelectionCommands, displayWindowManager,
     );
   }
