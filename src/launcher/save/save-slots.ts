@@ -197,8 +197,7 @@ export class SaveSlots {
     const history = this.historyFor(slotId, stageId);
     if (!history) return false;
 
-    // 新しい本体を書いてから索引を差し替え、前の本体は最後に消す。逆順にすると、
-    // 書き込みに失敗した瞬間に自動セーブそのものが失われる。
+    // 前の本体を消すのは最後 — 逆順にすると、書き込みに失敗した瞬間に自動セーブが失われる。
     const id = newSaveId();
     try {
       this.store.writeSnapshot(id, data);
@@ -233,7 +232,7 @@ export class SaveSlots {
       return false;
     }
 
-    // 本体が置けてから索引へ載せ、遊んだ時刻を履歴とスロットの両方へ反映する。
+    // 本体が置けてから索引へ載せる。
     history.snapshots.unshift(meta);
     history.lastPlayedAtReal = meta.createdAtReal;
     const slot = this.index.slots.find((s) => s.id === slotId);
@@ -243,12 +242,12 @@ export class SaveSlots {
     return true;
   }
 
-  // 全スロット・全履歴を横断してスナップショット id から所属を引く。
-  private findSnapshot(snapshotId: string): { slot: SaveSlotMeta; history: StageHistoryMeta; meta: SnapshotMeta } | null {
+  // 全スロット・全履歴を横断して、手動セーブの id からそのメタと属する履歴を引く。
+  private findSnapshot(snapshotId: string): { history: StageHistoryMeta; meta: SnapshotMeta } | null {
     for (const slot of this.index.slots) {
       for (const history of slot.stages) {
         const meta = history.snapshots.find((m) => m.id === snapshotId);
-        if (meta) return { slot, history, meta };
+        if (meta) return { history, meta };
       }
     }
     return null;
@@ -274,7 +273,8 @@ export class SaveSlots {
   public deleteSnapshot(snapshotId: string): void {
     const found = this.findSnapshot(snapshotId);
     if (!found) return;
-    this.removeSnapshotFrom(found.history, snapshotId);
+    this.store.deleteSnapshot(snapshotId);
+    found.history.snapshots = found.history.snapshots.filter((m) => m.id !== snapshotId);
     this.persist();
   }
 
@@ -319,7 +319,7 @@ export class SaveSlots {
       stages: [],
     };
 
-    // 手動セーブも id を振り直して本体を書く。途中で失敗したら書いた本体を消して取りやめる。
+    // 手動セーブも id を振り直して本体を書く。
     const written: string[] = [];
     for (const history of exp.slot.stages) {
       const newHistory: StageHistoryMeta = { ...history, snapshots: [], autoSaveId: null };
@@ -368,12 +368,6 @@ export class SaveSlots {
     let n = 2;
     while (existing.has(`${name} (${n})`)) n++;
     return `${name} (${n})`;
-  }
-
-  // 本体を消してから履歴のメタ配列からも外す。
-  private removeSnapshotFrom(history: StageHistoryMeta, snapshotId: string): void {
-    this.store.deleteSnapshot(snapshotId);
-    history.snapshots = history.snapshots.filter((m) => m.id !== snapshotId);
   }
 
   // 索引を store へ書き戻す。書けなくても、この実行の中ではメモリ上の索引が生きる。

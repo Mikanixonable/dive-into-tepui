@@ -33,13 +33,11 @@ export function syncCollapseToggle(button: HTMLElement, target: HTMLElement, lab
 
 // target の表示/非表示を collapsed クラスで切り替えるボタンを1つ組み、root へ追加して返す。
 // extraHitEls には、button の兄弟であり同じ切り替えを受け付けたい要素(見出しテキストなど)を
-// 渡す。root が画面全体・パネル全体などボタンの置き場を兼ねる広い要素であるときは、既定の
-// 空配列のまま呼び出す。onToggle は、どのヒット要素からの切り替えでも、切り替わった後の畳み
-// 状態を受ける。
+// 渡す。root が画面全体・パネル全体などボタンの置き場を兼ねる広い要素であるときは空配列でよい。
+// onToggle は、どのヒット要素からの切り替えでも、切り替わった後の畳み状態を受ける。
 export function buildCollapseToggle(
   root: HTMLElement, id: string, className: string, target: HTMLElement, labels: CollapseToggleLabels,
-  extraHitEls: readonly HTMLElement[] = [],
-  onToggle?: (collapsed: boolean) => void,
+  extraHitEls: readonly HTMLElement[], onToggle: (collapsed: boolean) => void,
 ): HTMLElement {
   const button = document.createElement('button');
   button.type = 'button';
@@ -51,7 +49,7 @@ export function buildCollapseToggle(
   const toggle = (): void => {
     const collapsed = target.classList.toggle('collapsed');
     syncCollapseToggle(button, target, labels);
-    onToggle?.(collapsed);
+    onToggle(collapsed);
   };
   for (const el of [button, ...extraHitEls]) {
     stopDragPropagation(el);

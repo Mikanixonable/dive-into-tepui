@@ -41,7 +41,6 @@ export class CreativeStage extends Stage {
   }
 
   // 配置・手動スポーンとステージ操作パネルを組み、保存データがあればそこから状態を戻す。
-  // saved の型が StageSaveData なのは、復元の構築シグネチャを全ステージで揃えるため。
   public constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     const savedCreative = saved as CreativeStageSaveData | undefined;
@@ -186,8 +185,7 @@ export class CreativeStage extends Stage {
     }
   }
 
-  // 'instant' の艦が次に消化するノードの時刻。積分をその時刻ちょうどで切らせるために返す。
-  // 待っているノードが1つも無ければ null。
+  // 'instant' の艦が次に消化するノードの時刻。待っているノードが1つも無ければ null。
   public nextSimulationEventTime(simTime: number): number | null {
     let next: number | null = null;
     for (const ship of this._dynamicSystem.all().filter(isPlayer)) {

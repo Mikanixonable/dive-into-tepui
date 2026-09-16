@@ -12,7 +12,7 @@ import { findStageClass } from '../game/stages/stage-dictionary';
 import { selectStage } from './stage-select';
 import type { UnlockManager } from './unlock-manager';
 import type { SaveSlots } from './save/save-slots';
-import type { SnapshotCaptureSource, SnapshotService } from './save/snapshot-service';
+import type { SnapshotSource, SnapshotService } from './save/snapshot-service';
 import type { AutoSave } from './save/autosave';
 import type { GameSaveData } from '../game/save/save-data';
 import type { AudioEngine } from '../audio/audio-engine';
@@ -39,14 +39,13 @@ function resumableStageClass(unlockManager: UnlockManager, slots: SaveSlots): St
   return stageClass;
 }
 
-// StageResult はセーブに含まれないので、決着済みの phase を持つセーブを読んだときは
-// 見出しだけを phase から復元する。
+// セーブに含まれない StageResult の代わりに、決着した phase から見出しだけを組む。
 function fallbackResult(phase: GamePhase): StageResult {
   return { win: phase !== 'lost', title: null, detailHtml: '結果の記録がありません' };
 }
 
-// その周回のスナップショットを撮るための読み口。値は撮るたびに game から引く。
-function snapshotSourceOf(game: Game): SnapshotCaptureSource {
+// その周回の記録を残すための読み口。値は残すたびに game から引く。
+function snapshotSourceOf(game: Game): SnapshotSource {
   return {
     get isPaused(): boolean { return game.isPaused; },
     get isPlaying(): boolean { return game.activeStage.isPlaying; },
@@ -73,7 +72,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     if (game === null) return null;
     return {
       stageId: game.activeStage.id,
-      get isPlaying(): boolean { return game.activeStage.isPlaying; },
       nameOfBody: (id) => game.celestialSystem.nameOf(id),
       snapshot: snapshotSourceOf(game),
     };
@@ -134,8 +132,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     );
   }
 
-  // 現在の周回を畳む。Game を破棄し、結果画面と一時停止メニューを閉じ、BGM を止める。
-  // 何も動いていない状態で呼んでも安全。
+  // 現在の周回を畳む。何も動いていない状態で呼んでも安全。
   private endRun(): void {
     this.game?.dispose();
     this.game = null;
@@ -160,8 +157,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     }
     const stage = this.game.activeStage;
     stage.onDecided = () => {
-      // クリア回数は決着した瞬間に数える。決着済みのセーブから始めたランはここを通らないので、
-      // 読むたびには増えない。
+      // クリア回数は決着した瞬間に数える。
       if (stage.phase === 'won') this.unlockManager.reportClear(stage.id, this.host.hud);
       this.showResult(stage);
     };
