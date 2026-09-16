@@ -12,8 +12,6 @@ import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
-import { Input } from '../../input/input';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { RunEventSink } from '../run-events';
 import { generateRandomName } from '../random-name';
 import { Throttle } from './throttle';
@@ -35,6 +33,7 @@ import { frameOfCelestialBody, toFrameState } from '../../physics/frame';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
 import type { Controllable, PilotCommandFrame } from '../dynamic/dynamic-entity/controllable';
+import type { PilotCommand, PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
 import { PlayerMotion, type PlayerMotionReactions } from './player-motion';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
@@ -234,25 +233,25 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.fire.onPickup(mags);
   }
 
-  // 毎フレーム、全ての自機に対して1度だけ呼ぶ。input が null の艦は、このフレーム操作されない
-  // 艦として畳む。
+  // 毎フレーム、全ての自機に対して1度だけ呼ぶ。controls が null の艦は、このフレーム
+  // 操作されない艦として畳む。
   public updateControls(frame: PilotCommandFrame): void {
-    const { input, dt, simDt, registry, activeStage, stageRules, celestialBodies } = frame;
+    const { controls, dt, simDt, registry, activeStage, stageRules, celestialBodies } = frame;
     if (stageRules.selfRepair) this.hpRegen(dt);
     // ブースターの燃焼は操作の可否によらず進むので、指令を畳んだあとに進める。
-    if (input === null) {
+    if (controls === null) {
       this.clearTransientCommands();
       this.motion.attachedBoosters.step(simDt);
       this.motion.thrust = this.motion.attachedBoosters.thrust;
       return;
     }
     this.motion.attachedBoosters.step(simDt);
-    this.updateTorque(input, dt, simDt);
+    this.updateTorque(controls, dt, simDt);
 
-    this.fire.updateFireState(dt, input, activeStage, registry, celestialBodies);
+    this.fire.updateFireState(dt, controls, activeStage, registry, celestialBodies);
 
-    this.throttle.updateThrustLatches(input);
-    const rcsThrust = this.throttle.updateThrustState(input, this.motion.att, simDt, this);
+    this.throttle.updateThrustLatches(controls);
+    const rcsThrust = this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
     const boosterThrust = this.motion.attachedBoosters.thrust;
     this.motion.thrust = rcsThrust && boosterThrust
       ? add(rcsThrust, boosterThrust)
@@ -271,32 +270,25 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.fire.stopFiring();
   }
 
-  // router から受け取った自機の単発入力をゲーム状態へ適用する。
-  public handleInputCommand(commandId: string, registry: EntityRegistry): void {
-    switch (commandId) {
-      case K.thrustForward.code:
-      case K.thrustBackward.code:
-      case K.thrustLeft.code:
-      case K.thrustRight.code:
-      case K.thrustUp.code:
-      case K.thrustDown.code:
-        this.throttle.handleThrustPress(commandId);
-        return;
-      case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(registry.events); return;
-      case K.progradeReset.code: this.throttle.enableProgradeReset(registry.events); return;
-      case K.fineAttitudeToggle.code: this.toggleFineAttitude(registry.events); return;
-      case K.progradeHoldToggle.code: this.throttle.toggleProgradeHold(registry.events); return;
-      case K.throttleLow.code: this.throttle.setThrottlePreset(0, registry.events); return;
-      case K.throttleMid.code: this.throttle.setThrottlePreset(1, registry.events); return;
-      case K.throttleHigh.code: this.throttle.setThrottlePreset(2, registry.events); return;
-      case K.throttleMax.code: this.throttle.setThrottlePreset(3, registry.events); return;
-      case K.boosterDecouple.code: this.boosters.decouple(registry); return;
-      case K.boosterIgnitionToggle.code: this.boosters.toggleIgnition(); return;
-      case K.radiatorDeployLeft.code: this.motion.radiator.toggle('up'); return;
-      case K.radiatorDeployRight.code: this.motion.radiator.toggle('down'); return;
-      case K.solarDeployLeft.code: this.motion.power.toggle('up'); return;
-      case K.solarDeployRight.code: this.motion.power.toggle('down'); return;
-      case K.reload.code: this.fire.manualReload(registry); return;
+  // 受け付けた単発の命令を自機の状態へ適用する。
+  public handleCommand(command: PilotCommand, registry: EntityRegistry): void {
+    switch (command.kind) {
+      case 'thrustLatchToggle': this.throttle.toggleThrustLatch(command.direction); return;
+      case 'rcsDampToggle': this.throttle.toggleRcsDamp(registry.events); return;
+      case 'progradeReset': this.throttle.enableProgradeReset(registry.events); return;
+      case 'fineAttitudeToggle': this.toggleFineAttitude(registry.events); return;
+      case 'progradeHoldToggle': this.throttle.toggleProgradeHold(registry.events); return;
+      case 'throttleLow': this.throttle.setThrottlePreset(0, registry.events); return;
+      case 'throttleMid': this.throttle.setThrottlePreset(1, registry.events); return;
+      case 'throttleHigh': this.throttle.setThrottlePreset(2, registry.events); return;
+      case 'throttleMax': this.throttle.setThrottlePreset(3, registry.events); return;
+      case 'boosterDecouple': this.boosters.decouple(registry); return;
+      case 'boosterIgnitionToggle': this.boosters.toggleIgnition(); return;
+      case 'radiatorDeployLeft': this.motion.radiator.toggle('up'); return;
+      case 'radiatorDeployRight': this.motion.radiator.toggle('down'); return;
+      case 'solarDeployLeft': this.motion.power.toggle('up'); return;
+      case 'solarDeployRight': this.motion.power.toggle('down'); return;
+      case 'reload': this.fire.manualReload(registry); return;
     }
   }
 
@@ -451,15 +443,15 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     return { playerLost: reason => services.activeStage.recordPlayerLost(reason) };
   }
 
-  // 入力から機体座標系トルクを求めて Motion へ反映し、角速度をクランプする。
-  private updateTorque(input: Input, dt: number, simDt: number): void {
+  // 操作量から機体座標系トルクを求めて Motion へ反映し、角速度をクランプする。
+  private updateTorque(controls: PilotControls, dt: number, simDt: number): void {
     // 発砲中は姿勢微調整と同じ操作精度になる
     const fine = this.fineAttitude || this.fire.isFiring;
     this.motion.torque = this.throttle.updateTorque(
       this.motion.att,
       this.motion.state.r,
       this.motion.state.v,
-      input,
+      controls,
       fine,
       dt,
       simDt,

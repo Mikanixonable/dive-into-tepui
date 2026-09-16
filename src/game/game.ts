@@ -95,15 +95,8 @@ import type { TargetPanelViewModel } from './hud/panels/target-panel';
 import { GameInputRouter, type GameInputPort } from './input/game-input-router';
 import { gameCommand } from './input/game-commands';
 import { rawGameInputAdapter } from './input/raw-game-input-adapter';
-
-const CONTROLLABLE_COMMANDS = [
-  K.thrustForward, K.thrustBackward, K.thrustLeft, K.thrustRight, K.thrustUp, K.thrustDown,
-  K.rcsDampToggle, K.progradeReset, K.fineAttitudeToggle, K.progradeHoldToggle,
-  K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax,
-  K.boosterDecouple, K.boosterIgnitionToggle,
-  K.radiatorDeployLeft, K.radiatorDeployRight, K.solarDeployLeft, K.solarDeployRight,
-  K.reload,
-].map((binding) => gameCommand(binding.code, binding));
+import { PilotInput } from './input/pilot-input';
+import type { PilotControls } from './dynamic/dynamic-entity/pilot-controls';
 
 // 新規開始のブリーフィングを出しておく時間 [ms]。
 const BRIEFING_TOAST_MS = 12000;
@@ -191,6 +184,9 @@ export class Game {
   // 計測区間の境界を打つ先。
   private readonly sections: FrameSections;
   private readonly inputRouter: GameInputRouter;
+  // 生の入力を操作対象の操作量へ解釈する側と、その入力を受け取る口。
+  private readonly pilotInput = new PilotInput();
+  private readonly pilotPorts: readonly GameInputPort[];
 
   // 星系を組んでから、このランを組み立てる。段の切れ目で描画を明け渡すので、
   // 組み立て中の Game は誰にも観測されないまま数フレームをまたぐ。
@@ -220,7 +216,7 @@ export class Game {
     const game = new Game(host, stageClass, audioEngine, pauseMenu, celestialSystem, initialSave);
     // シェーダを組む前に、最初に描かれるフレームと同じ表示状態を時間の進まない1フレームで作る —
     // 天体表面の分割段のように update/sync が決めるまで現れない表示物が、事前コンパイルから漏れる。
-    game.update(0, gs.viewport);
+    game.update(0, 0, gs.viewport);
     game.sync(graphics, renderStyle, gs.viewport, 0);
     await progress.enter('shaders');
     // カメラは直前の sync が確定させたものを使う — 捨てる1フレームと同じ行列で組ませる。
@@ -463,6 +459,15 @@ export class Game {
         ),
       },
     ]);
+    // 操作対象の入力は、ビュー固有の Δv 編集が押下中キーを確保した後に解釈する。押下エッジを
+    // 拾う口は、命令を適用できないフレームには閉じて他の受け手へ回す。ワープ倍率で決まる可否だけは
+    // ここで見ない — このフレームの倍率は進行の位相の先頭で確定するので、適用の側で見る。
+    this.pilotPorts = [
+      this.pilotInput.actionPort,
+      this.pilotInput.commandPort(
+        () => !this.isPaused && this.activeStage.isPlaying && this.activeControllable !== null,
+      ),
+    ];
 
     // 組み立ての間に積まれた出来事は、最初のフレームの進行が記録を空にすると消えるので、
     // ここで写しておく。新規開始のブリーフィングもこの場で出す。
@@ -509,14 +514,14 @@ export class Game {
 
   // ------------------------------------------------------------ update
 
-  // 1フレームぶんの update フェーズ。dtRaw [s] は実時間の経過。ポーズ中もシミュレーション
-  // 以外の更新は通す。
-  public update(dtRaw: number, viewport: Viewport): void {
+  // 1フレームぶんの update フェーズ。dtRaw [s] は実時間の経過、nowMs [ms] はフレームの
+  // 先頭で1度だけ読んだ実時刻。ポーズ中もシミュレーション以外の更新は通す。
+  public update(dtRaw: number, nowMs: number, viewport: Viewport): void {
     this.sections.enter(SECTION.input);
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
     // ポーズ中も Esc・ヘルプなどは効かせるので、入力配分はポーズ判定より前に置く。
-    this.handleInput(dt);
+    this.handleInput(dt, nowMs);
     this.sections.exit(SECTION.input);
 
     // 一時停止中も命令は適用するので、ポーズ判定より前に置く(R8)。命令の適用そのものが
@@ -609,9 +614,10 @@ export class Game {
     this.sections.enter(SECTION.stage);
     this.activeStage.update(dt, this.dynamicSystem.simTime, this.simSpeedManager);
     this.sections.exit(SECTION.stage);
+    const controls = this.pilotInput.controls;
     this.dynamicSystem.update(
-      controlled, this.input, canShipAct, dt, simDt, canEngage, this.activeStage, this.activeStage.stageRules,
-      () => this.routeControllableInput(),
+      controlled, controls, canShipAct, dt, simDt, canEngage, this.activeStage, this.activeStage.stageRules,
+      () => this.applyPilotCommands(controls),
     );
 
     this.targeter.recordBoardPasses(controlled, this.runEvents);
@@ -627,27 +633,30 @@ export class Game {
 
   // --------------------------------------------------------------- input
 
-  // 入力エッジを担当モジュールへ先着順で配る。決めるのは優先順位 = 呼ぶ順序だけで、
-  // どのキー/クリックが何をするかは各モジュールが持つ。
-  private handleInput(dt: number): void {
+  // 生の入力を担当モジュールへ先着順で配り、このフレームの操作量を組む。決めるのは
+  // 優先順位 = 呼ぶ順序だけで、どのキー/クリックが何をするかは各モジュールが持つ。
+  private handleInput(dt: number, nowMs: number): void {
     this.inputRouter.beginFrame();
+    // 連打の判定が読むワープ倍率は、直前の進行が確定させたもの — ×4 を超えている間は数えず、
+    // 戻したフレームにワープ中の押下が発火しないようにする(CONTROLS.md)。
+    this.pilotInput.beginFrame(nowMs, this.simSpeedManager.canShipAct);
     this.inputRouter.route();
     // ヘルプや設定など、背景入力をゲートするモーダルが開いた後は、同じフレームの
     // ワープ/ビュー切り替え/計画編集へキーを漏らさない。
-    if (this._hud.overlayManager.isInputGated()) return;
-    // マップの Δv 編集はプレイヤーの入力edgeより先に押下中キーを確保する。
-    this.viewManager.activeView.updateActions(this.input, dt);
+    if (!this._hud.overlayManager.isInputGated()) {
+      // マップの Δv 編集は操作対象の解釈より先に押下中キーを確保する。
+      this.viewManager.activeView.updateActions(this.input, dt);
+    }
+    this.inputRouter.routeAdditional(this.pilotPorts);
   }
 
-  // ステージ更新と自律推力の更新が終わった後、操作対象へ単発入力を配る。
-  private routeControllableInput(): void {
+  // ステージ更新と自律推力の更新が終わった後、このフレームに受け付けた命令を操作対象へ適用する。
+  private applyPilotCommands(controls: PilotControls): void {
     if (this.isPaused || !this.activeStage.isPlaying || !this.simSpeedManager.canShipAct) return;
     if (this.activeControllable === null) return;
-    this.inputRouter.routeAdditional([{
-      feature: 'controllable',
-      commands: CONTROLLABLE_COMMANDS,
-      handleCommand: command => this.activeControllable?.handleInputCommand(command.id, this.dynamicSystem),
-    }]);
+    for (const command of controls.commands) {
+      this.activeControllable?.handleCommand(command, this.dynamicSystem);
+    }
   }
 
   // Game 更新後、Launcher と snapshot の入力を同じ raw edge router へ追加する。

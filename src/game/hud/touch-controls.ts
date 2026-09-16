@@ -5,6 +5,7 @@
 import { Input, PointerKind } from '../../input/input';
 import type { ViewMode } from '../view/view-mode';
 import { KEY_MAPPING as K, KeyBinding } from '../../input/key-mapping';
+import type { ThrustDirection } from '../dynamic/dynamic-entity/pilot-controls';
 import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from '../../hud/breakpoints';
 import {
   FONT_FAMILY, FONT_XXS, FONT_XL, SPACE_1, TRANSITION_SLOW, Z_TOUCH_UI,
@@ -123,7 +124,7 @@ export class TouchControls {
   // トグル系ボタン: タップの押下フィードバック(.pressed)とは独立に実際のモード状態で光らせる。
   private readonly toggleButtons = new Map<KeyBinding, HTMLElement>();
   // 並進6方向ボタン: ラッチ中かどうかを syncModeButtons が .on で反映する。
-  private readonly thrustButtons = new Map<KeyBinding, HTMLElement>();
+  private readonly thrustButtons = new Map<ThrustDirection, HTMLElement>();
   private readonly releaseCallbacks: (() => void)[] = [];
   // 一度タッチされたら真のまま保つ。以後のマウス操作では半透明にする。
   private shown = false;
@@ -144,12 +145,12 @@ export class TouchControls {
   // トグル系ボタン・推力ラッチの点灯を実際の状態へ合わせる。毎フレーム呼ぶ。
   public syncModeButtons(
     rcsDamp: boolean, fineAttitude: boolean, progradeHold: boolean,
-    isThrustLatched: (key: KeyBinding) => boolean,
+    isThrustLatched: (direction: ThrustDirection) => boolean,
   ): void {
     this.setActive(K.rcsDampToggle, rcsDamp);
     this.setActive(K.fineAttitudeToggle, fineAttitude);
     this.setActive(K.progradeHoldToggle, progradeHold);
-    for (const [key, el] of this.thrustButtons) el.classList.toggle('on', isThrustLatched(key));
+    for (const [direction, el] of this.thrustButtons) el.classList.toggle('on', isThrustLatched(direction));
   }
 
   // key に対応するトグルボタンの点灯状態を on に合わせる。
@@ -210,7 +211,7 @@ export class TouchControls {
   }
 
   // b.key を押しっぱなし操作するボタンを1つ組み立てて parent へ追加する。registry を渡すと
-  // そこへ b.key で登録し、syncModeButtons が点灯対象として読む(トグル・推力ラッチ共通)。
+  // そこへ b.key で登録し、syncModeButtons が点灯対象として読む。
   private makeButton(parent: HTMLElement, b: Btn, id = '', registry?: Map<KeyBinding, HTMLElement>): HTMLElement {
     const e = document.createElement('div');
     e.className = 'tbtn ui-surface-quiet';
@@ -238,37 +239,42 @@ export class TouchControls {
     return e;
   }
 
-  // btns を並べた1つのパッドを id で root へ追加する。
-  private makePad(root: HTMLElement, id: string, btns: Btn[], registry?: Map<KeyBinding, HTMLElement>): void {
+  // ボタンを並べる器となるパッドを1つ id で root へ追加して返す。
+  private makePad(root: HTMLElement, id: string): HTMLElement {
     const pad = document.createElement('div');
     pad.id = id;
     pad.className = 'pad';
     root.appendChild(pad);
-    for (const b of btns) this.makeButton(pad, b, '', registry);
+    return pad;
   }
 
-  // 並進6方向のパッドを組み立てる。
+  // 並進6方向のパッドを組み立てる。ラッチの点灯を反映できるよう、押す方向でボタンを控える。
   private buildTranslationPad(root: HTMLElement): void {
-    this.makePad(root, 'touch-pad-move', [
-      { key: K.thrustUp, glyph: '▲', label: '上' },
-      { key: K.thrustForward, glyph: '●', label: '前' },
-      { key: K.thrustDown, glyph: '▼', label: '下' },
-      { key: K.thrustLeft, glyph: '◀', label: '左' },
-      { key: K.thrustBackward, glyph: '○', label: '後' },
-      { key: K.thrustRight, glyph: '▶', label: '右' },
-    ], this.thrustButtons);
+    const buttons: readonly { readonly direction: ThrustDirection; readonly btn: Btn }[] = [
+      { direction: 'up', btn: { key: K.thrustUp, glyph: '▲', label: '上' } },
+      { direction: 'forward', btn: { key: K.thrustForward, glyph: '●', label: '前' } },
+      { direction: 'down', btn: { key: K.thrustDown, glyph: '▼', label: '下' } },
+      { direction: 'left', btn: { key: K.thrustLeft, glyph: '◀', label: '左' } },
+      { direction: 'backward', btn: { key: K.thrustBackward, glyph: '○', label: '後' } },
+      { direction: 'right', btn: { key: K.thrustRight, glyph: '▶', label: '右' } },
+    ];
+    const pad = this.makePad(root, 'touch-pad-move');
+    for (const { direction, btn } of buttons) this.thrustButtons.set(direction, this.makeButton(pad, btn));
   }
 
   // 回転3軸のパッドを組み立てる。
   private buildRotationPad(root: HTMLElement): void {
-    this.makePad(root, 'touch-pad-rot', [
+    const pad = this.makePad(root, 'touch-pad-rot');
+    for (const b of [
       { key: K.rollLeft, glyph: '⟲', label: 'ロール' },
       { key: K.pitchDown, glyph: '↓', label: '機首下げ' },
       { key: K.rollRight, glyph: '⟳', label: 'ロール' },
       { key: K.yawRight, glyph: '→', label: 'ヨー' },
       { key: K.pitchUp, glyph: '↑', label: '機首上げ' },
       { key: K.yawLeft, glyph: '←', label: 'ヨー' },
-    ]);
+    ]) {
+      this.makeButton(pad, b);
+    }
   }
 
   // 制動・微動のトグルボタン列を組み立てる。

@@ -18,8 +18,8 @@ import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
 import { Throttle } from '../../player/throttle';
 import type { Controllable, PilotCommandFrame } from './controllable';
+import type { PilotCommand } from './pilot-controls';
 import type { EntityRegistry } from '../entity-registry';
-import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { BaseView, type BaseRenderSource } from '../../../render/dynamic/dynamic-entity/base-view';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../../orbit-reference';
@@ -137,19 +137,19 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // --- 操作制御 ---
 
-  // 毎フレーム、全ての基地に対して1度だけ呼ぶ。input が null なら操作されない。
+  // 毎フレーム、全ての基地に対して1度だけ呼ぶ。controls が null なら操作されない。
   public updateControls(frame: PilotCommandFrame): void {
-    const { input, dt, simDt } = frame;
-    if (input === null) {
+    const { controls, dt, simDt } = frame;
+    if (controls === null) {
       this.clearTransientCommands();
       return;
     }
     this.motion.torque = this.throttle.updateTorque(
-      this.motion.att, this.motion.state.r, this.motion.state.v, input, false, dt, simDt, this,
+      this.motion.att, this.motion.state.r, this.motion.state.v, controls, false, dt, simDt, this,
       () => {},  // 基地はプログレードホールドが外れたことを知らせない
     );
-    this.throttle.updateThrustLatches(input);
-    this.motion.thrust = this.throttle.updateThrustState(input, this.motion.att, simDt, this);
+    this.throttle.updateThrustLatches(controls);
+    this.motion.thrust = this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
   }
 
   // 推力・トルクの指令とスロットルの一時状態を解く。
@@ -159,25 +159,18 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     this.throttle.clearTransientState();
   }
 
-  // router から受け取った基地の単発入力をゲーム状態へ適用する。
-  public handleInputCommand(commandId: string, registry: EntityRegistry): void {
+  // 受け付けた単発の命令のうち、基地が備える操作を状態へ適用する。
+  public handleCommand(command: PilotCommand, registry: EntityRegistry): void {
     const events = registry.events;
-    switch (commandId) {
-      case K.thrustForward.code:
-      case K.thrustBackward.code:
-      case K.thrustLeft.code:
-      case K.thrustRight.code:
-      case K.thrustUp.code:
-      case K.thrustDown.code:
-        this.throttle.handleThrustPress(commandId);
-        return;
-      case K.rcsDampToggle.code: this.throttle.toggleRcsDamp(events); return;
-      case K.progradeReset.code: this.throttle.enableProgradeReset(events); return;
-      case K.progradeHoldToggle.code: this.throttle.toggleProgradeHold(events); return;
-      case K.throttleLow.code: this.throttle.setThrottlePreset(0, events); return;
-      case K.throttleMid.code: this.throttle.setThrottlePreset(1, events); return;
-      case K.throttleHigh.code: this.throttle.setThrottlePreset(2, events); return;
-      case K.throttleMax.code: this.throttle.setThrottlePreset(3, events); return;
+    switch (command.kind) {
+      case 'thrustLatchToggle': this.throttle.toggleThrustLatch(command.direction); return;
+      case 'rcsDampToggle': this.throttle.toggleRcsDamp(events); return;
+      case 'progradeReset': this.throttle.enableProgradeReset(events); return;
+      case 'progradeHoldToggle': this.throttle.toggleProgradeHold(events); return;
+      case 'throttleLow': this.throttle.setThrottlePreset(0, events); return;
+      case 'throttleMid': this.throttle.setThrottlePreset(1, events); return;
+      case 'throttleHigh': this.throttle.setThrottlePreset(2, events); return;
+      case 'throttleMax': this.throttle.setThrottlePreset(3, events); return;
     }
   }
 
