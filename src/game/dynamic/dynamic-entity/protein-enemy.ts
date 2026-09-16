@@ -151,11 +151,10 @@ export class ProteinEnemy extends Enemy {
 
   // 表示設定と、被弾モデルの構造フェーズを共通の表示入力へ足す。
   protected override renderSource(
-    viewFrame: DynamicViewFrame, visible: boolean, active: boolean,
-    orbitReference: OrbitReference | undefined,
+    viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | undefined,
   ): ProteinVisualSource {
     return {
-      ...super.renderSource(viewFrame, visible, active, orbitReference),
+      ...super.renderSource(viewFrame, active, orbitReference),
       display: this.displaySettings,
       phase: this.combat.phase,
     };

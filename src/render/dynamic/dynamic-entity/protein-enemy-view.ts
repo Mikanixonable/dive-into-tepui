@@ -112,20 +112,18 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
   }
 
   // 表示設定を反映し、投影サイズから LOD を選んで表示時刻のモード係数を確定させ、変形資源へ渡す。
-  // 本体を出さないフレームは LOD を保ったまま変形を止める。
+  // 表示時刻の状態を引けないフレームは LOD を保ったまま変形を止める。
   protected override syncModel(
     source: ProteinVisualSource,
     displayed: KinematicState | null,
     viewFrame: DynamicViewFrame,
   ): void {
     this.syncDisplay(source.display);
-    // 本体と同じ可視条件で表示時刻の状態を使う。
-    const shown = source.visible ? displayed : null;
     this.motionControllerCpuMs = 0;
-    if (shown !== null) {
+    if (displayed !== null) {
       const projectedDiameterPx = apparentSizePx(
         this.boundingRadius * 2,
-        viewFrame.camera.radialScale(shown.r),
+        viewFrame.camera.radialScale(displayed.r),
       );
       this.lod = proteinMotionLodForProjectedSize(projectedDiameterPx, this.lod);
       if (this.lod !== 'marker') {
@@ -140,7 +138,7 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
       }
     }
     this.runtime.syncVisual({
-      active: shown !== null,
+      active: displayed !== null,
       lod: this.lod,
       sampleTime: this.motionController.sampleTime,
       phase: source.phase,

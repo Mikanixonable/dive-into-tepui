@@ -89,11 +89,6 @@ export class PointCelestialView extends SphereCelestialView {
     this.mapOverlay?.build(scene);
   }
 
-  // 本体ごと非表示のフレームは、group の外に置いた輝点も隠す。
-  protected override syncHidden(): void {
-    this.billboard.hide();
-  }
-
   // 実体を畳んだフレームは積雲の殻とオーロラも隠し、戦闘ビューなら輝点だけを置く。
   protected override syncUnresolved(
     motion: CelestialMotion, pos: Vec3, displayTime: number, camera: CameraFrame,
@@ -149,7 +144,7 @@ export class PointCelestialView extends SphereCelestialView {
   public override cumulusShadowAt(
     motion: DefinedCelestialBody, fo: FloatingOrigin, displayTime: number,
   ): ShadowCumulus | null {
-    if (this.cumulus === null || !this.group.visible || !this.cumulus.visible) return null;
+    if (this.cumulus === null || !this.cumulus.visible) return null;
     // 表示時刻の、描画座標から天体固定の向きへの回転。
     writeBodyFromWorld(this.bodyFromWorld, motion, displayTime);
     return {
@@ -167,7 +162,7 @@ export class PointCelestialView extends SphereCelestialView {
   public override atmosphereCloudsAt(
     motion: DefinedCelestialBody, displayTime: number,
   ): AtmosphereClouds | null {
-    if (this.cumulus === null || !this.group.visible || !this.cumulus.cloudsVisible) return null;
+    if (this.cumulus === null || !this.cumulus.cloudsVisible) return null;
     return {
       field: this.cumulus.binding,
       bodyFromWorld: writeBodyFromWorld(new THREE.Matrix4(), motion, displayTime),
@@ -176,7 +171,7 @@ export class PointCelestialView extends SphereCelestialView {
 
   // 物理球として厚い雲か薄い雲を描くフレームの場だけを、表示時刻へ焼く。
   public override bakeClouds(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
-    if (!this.group.visible || !this.cumulus?.cloudsVisible) return;
+    if (!this.cumulus?.cloudsVisible) return;
     this.cumulus.bake(renderer, displayTime, gpu);
   }
 

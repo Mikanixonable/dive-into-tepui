@@ -35,7 +35,6 @@ import { isOccluded } from '../../physics/occlusion';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { PointFieldView } from '../../render/celestial/point-field-view';
-import { celestialClassVisible, type MapDisplayToggles } from '../map/display-toggles';
 import type { GpuTimingSink } from '../../render/gpu-timings';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialBodies } from './celestial-bodies';
@@ -57,11 +56,6 @@ function bindEphemerides(motions: readonly CelestialMotion[], points: EphemerisP
   for (const system of systems) {
     system.bindEphemeris(ephemerisPointOf(points, system.id, 'systemBarycenter'));
   }
-}
-
-// 天体 id の分類トグルが開いているか。表示ポリシーを持たない戦闘ビューではすべて開いている。
-function categoryVisible(policy: MapVisibilityPolicy | null, id: string): boolean {
-  return policy === null || policy.body(id).category;
 }
 
 // 親を先に、その子を続けて並べた列と、主星を 0 とする階層の深さ。親子関係が循環していても
@@ -362,9 +356,8 @@ export class CelestialSystem implements CelestialBodies {
 
   // 天体ビュー・星・照明・影・参照線・天球グリッドを、この1フレームの表示状態に同期する。
   // nowMs はこのフレームの実時刻 [ms] で、表示時刻では進まないアニメーション(進行方向マーカー・
-  // 地表タイルのフェード)がこれを読む。mapDisplay・grid・orbitGuide はこのフレームの表示設定。
-  // visibilityPolicy は戦闘ビューでは null で、選べる対象と同じ判定になるよう、同じフレームの
-  // update 位相で確定させたものを渡す。
+  // 地表タイルのフェード)がこれを読む。grid・orbitGuide はこのフレームの表示設定。
+  // visibilityPolicy は軌道線を引く対象を決める。戦闘ビューでは null で、そのときは引かない。
   public sync(
     displayTime: number,
     nowMs: number,
@@ -372,7 +365,6 @@ export class CelestialSystem implements CelestialBodies {
     cameraSystem: CameraSystem,
     graphics: GraphicsSettingsData,
     style: RenderStyle,
-    mapDisplay: MapDisplayToggles,
     grid: CelestialGridVisibility,
     orbitGuide: OrbitGuideSettings,
     visibilityPolicy: MapVisibilityPolicy | null,
@@ -380,10 +372,7 @@ export class CelestialSystem implements CelestialBodies {
     const floatingOrigin = camera.floatingOrigin;
     const star = this.stellarLightSource;
     for (const body of this.entities) {
-      body.view.sync(
-        body.motion, displayTime, nowMs, camera, star, graphics, style,
-        categoryVisible(visibilityPolicy, body.id),
-      );
+      body.view.sync(body.motion, displayTime, nowMs, camera, star, graphics, style);
     }
     // 注視中の天体は、影の濃さをカメラ位置と並べて測る基準点になる。天体でない対象を
     // 注視しているフレームでは持たない。
@@ -391,17 +380,15 @@ export class CelestialSystem implements CelestialBodies {
     const focusPosition = focusId === undefined
       ? null : this.findMotion(focusId)?.positionAt(displayTime) ?? null;
     this.illumination.sync(
-      this.entities.map(
-        (body) => body.illuminationSource(categoryVisible(visibilityPolicy, body.id))),
+      this.entities.map((body) => body.illuminationSource()),
       displayTime, camera, graphics, focusPosition, this.sunDirFrom(floatingOrigin.r, displayTime));
 
     // 露出に順応しない点群は、露出の基準が確定した後の係数を受け取る(星殻は照明から直に引く)。
     const fixedBrightnessScale = this.illumination.fixedBrightnessScale;
     const starPos = this.starMotion?.stateAt(displayTime).r ?? null;
-    const pointFieldVisible = camera.mode === 'map' && graphics.pointField
-      && celestialClassVisible('smallBody', mapDisplay);
     this.pointFieldView?.sync(
-      pointFieldVisible, floatingOrigin, displayTime, starPos, fixedBrightnessScale);
+      camera.mode === 'map' && graphics.pointField,
+      floatingOrigin, displayTime, starPos, fixedBrightnessScale);
     this.stars.sync(grid.stars);
     this.syncReferenceLines(displayTime, camera, visibilityPolicy);
     // 地球の静止軌道リングなど、天体固有のマップ付随表示。ラベルは全天体で同じ id の
@@ -410,8 +397,7 @@ export class CelestialSystem implements CelestialBodies {
     for (const body of this.entities) {
       overlayLabel = body.view.syncMapOverlay(
         body.motion, displayTime, camera,
-        camera.mode === 'map' && orbitGuide.geostationary
-          && categoryVisible(visibilityPolicy, body.id)) ?? overlayLabel;
+        camera.mode === 'map' && orbitGuide.geostationary) ?? overlayLabel;
     }
     this.overlayDeclarations.length = 0;
     const overlay = this.overlayDeclarationOf(overlayLabel, camera, displayTime);

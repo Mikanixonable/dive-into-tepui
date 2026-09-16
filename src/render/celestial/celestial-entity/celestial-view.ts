@@ -68,12 +68,10 @@ export interface CelestialIlluminationView {
   ): AtmosphereCandidate | null;
 }
 
-// 天体1体が、この1フレームの照明・影・大気へ差し出す源。visible はそのフレームに大気を
-// 描いてよい天体か。
+// 天体1体が、この1フレームの照明・影・大気へ差し出す源。
 export interface CelestialIlluminationSource {
   readonly motion: DefinedCelestialBody;
   readonly view: CelestialIlluminationView;
-  readonly visible: boolean;
 }
 
 export abstract class CelestialView {
@@ -91,11 +89,10 @@ export abstract class CelestialView {
     motion: CelestialMotion, scene: THREE.Scene, ringMaterials: RingMaterials,
   ): void;
   // displayTime 時点の運動と表示設定へ同期する。nowMs はこのフレームの実時刻 [ms]。
-  // visible が false のフレームは全体を隠す。
   public abstract sync(
     motion: CelestialMotion, displayTime: number, nowMs: number, camera: CameraFrame,
     star: StellarLightSource | null,
-    graphics: GraphicsSettingsData, style: RenderStyle, visible: boolean,
+    graphics: GraphicsSettingsData, style: RenderStyle,
   ): void;
 
   // 大気の表示候補を、描画座標・画面密度・雲殻を含む renderer 入力へ変換する。

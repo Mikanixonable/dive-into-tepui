@@ -565,8 +565,7 @@ export class Game {
 
     this._celestialSystem.sync(
       displayTime, nowMs, camera, this.cameraSystem, graphics, style,
-      this.viewOptionSettings.mapDisplay.current, this.viewOptionSettings.grid.current,
-      this.orbitGuideSettings, visibilityPolicy,
+      this.viewOptionSettings.grid.current, this.orbitGuideSettings, visibilityPolicy,
     );
     // 本数の警告は、天体系がこのフレームに組んだ軌道ガイド線から出す。
     this.viewOptions.setOrbitGuideLineCount(this._celestialSystem.orbitGuide.lineCount);
@@ -574,10 +573,7 @@ export class Game {
 
     // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。
     const timeLabel = timeLabelSettingOf(displayWindow);
-    this.dynamicSystem.sync(
-      displayTime, controlled, visibilityPolicy, camera, style, graphics,
-      orbitRef,
-    );
+    this.dynamicSystem.sync(displayTime, controlled, camera, style, graphics, orbitRef);
     // 操作中の艦の軌道軸・ボアサイトは、機体の同期と同じフレームの状態から置く。
     this.playerMarkers.sync(
       controlled !== null && isPlayer(controlled) ? controlled : null, camera.mode, camera.project,

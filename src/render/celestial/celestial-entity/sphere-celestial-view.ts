@@ -79,15 +79,8 @@ export class SphereCelestialView extends CelestialView {
   public sync(
     motion: CelestialMotion, displayTime: number, nowMs: number, camera: CameraFrame,
     star: StellarLightSource | null,
-    graphics: GraphicsSettingsData, style: RenderStyle, visible: boolean,
+    graphics: GraphicsSettingsData, style: RenderStyle,
   ): void {
-    // category 非表示は本体と独立した環にも同時に反映する。
-    this.group.visible = visible;
-    if (!visible) {
-      this.ring?.hide();
-      this.syncHidden();
-      return;
-    }
     const pos = motion.stateAt(displayTime).r;
     const apparentDiameterPx = apparentSizePx(
       2 * this.outerRadius, camera.radialScale(pos),
@@ -118,9 +111,6 @@ export class SphereCelestialView extends CelestialView {
       style,
     );
   }
-
-  // 本体ごと非表示にしたフレームで、派生が group の外に足した表示物を隠す。
-  protected syncHidden(): void {}
 
   // 見かけ直径が閾値未満で実体と環を畳んだフレームに、派生が足した表示物を同期する。
   // pos は displayTime 時点の ECI 位置 [m]。
