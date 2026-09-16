@@ -59,6 +59,7 @@ import { Viewer } from './viewer/viewer';
 import { navTargetCommands, type NavTargetCommands } from './viewer/nav-target-commands';
 import { orbitReferenceCommands, type OrbitReferenceCommands } from './viewer/orbit-reference-commands';
 import { orbitGuideCommands } from './viewer/orbit-guide-commands';
+import { predictPanelCommands } from './viewer/predict-panel-commands';
 import { recordTargetBoardPasses } from './dynamic/target-board-passes';
 import { ObjectWindows } from './pickable/object-windows';
 import { SAVE_VERSION, type GameSaveData } from './save/save-data';
@@ -287,10 +288,6 @@ export class Game {
       this.sections, initialSave?.simTime ?? 0, initialSave);
     this.entityLines = new EntityLineManager(this.dynamicSystem);
     this.equatorNodes = new EquatorNodeManager(this.dynamicSystem, this.markers.createGroup());
-    this.displayWindowManager = new DisplayWindowManager(
-      this._hud.mapRoot, this._hud.panelCollapse, celestialSystem,
-    );
-
     // ビューの正本(ViewManager)はカメラより後に組み上がるため、遅延評価で渡す。
     this.cameraSystem = new CameraSystem(
       this._hud, celestialSystem, () => this.viewManager.current,
@@ -311,9 +308,14 @@ export class Game {
     this.deployableCommands = deployableCommands(this.commands);
     this.controlSelection = new ControlSelection(initialSave?.activeControlledId, this.dynamicSystem);
     this.controlSelectionCommands = controlSelectionCommands(this.commands, this.controlSelection);
-    this.viewer = new Viewer(initialSave, this.dynamicSystem, this.runEvents);
+    this.viewer = new Viewer(initialSave, this.dynamicSystem, this.runEvents, celestialSystem);
     this.navTargetCommands = navTargetCommands(this.commands, this.viewer.navTarget);
     this.orbitReferenceCommands = orbitReferenceCommands(this.commands, this.viewer.orbitReference);
+    const predictCommands = predictPanelCommands(this.commands, this.viewer.predictPanel);
+    this.displayWindowManager = new DisplayWindowManager(
+      this._hud.mapRoot, this._hud.panelCollapse, celestialSystem,
+      this.viewer.predictPanel, predictCommands,
+    );
     this.navTargetPresenter = new NavTargetPresenter(this.viewer.navTarget, this.markers.createGroup());
     // 表示パネル。左レールの並びはパネルを足した順で決まるので、同じレールへ足す座標系パネル
     // (FrameControls)より先に組む。
@@ -334,7 +336,7 @@ export class Game {
     this.frameControls = new FrameControls(
       this._hud.mapRoot, this._hud.combatRoot, this._hud.layers.popup,
       celestialSystem, this.cameraSystem.mapCamera, this.cameraSystem.combatCamera,
-      this.displayWindowManager, this._hud.overlayManager, this.frameAnchors,
+      this.viewer.predictPanel, predictCommands, this._hud.overlayManager, this.frameAnchors,
     );
     this.targeter = new Targeter(
       this.markers, this.viewer.navTarget, this.navTargetCommands,
@@ -641,7 +643,7 @@ export class Game {
   // 注視していれば、注視を戻す(暫定 — カメラが視点へ移るときに視点の規則へ入れる)。
   private followProgress(): void {
     const events = this.runEvents.recent;
-    this.viewer.followProgress(events);
+    this.viewer.followProgress(events, this.viewManager.current !== 'map');
     for (const { body } of events) {
       if (body.kind === 'controllableRemoved') this.cameraSystem.mapCamera.clearFocusIf(body.id);
     }
