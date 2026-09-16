@@ -5,7 +5,6 @@ import { DynamicEntity } from './dynamic-entity';
 import type { Contact } from './contact';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import { len, sub, Vec3, v3 } from '../../../math/vec3';
-import type { FlashEffects } from '../../vfx/flash-effects';
 import type { Player } from '../../player/player';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import type { Quat } from '../../../math/quat';
@@ -17,6 +16,7 @@ import type { CombatTarget } from './combat-target';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { DynamicEntityKind, FormationRole } from './entity-kind';
 import type { EntityRegistry, SpawnGate } from '../entity-registry';
+import type { RunEventSink } from '../../run-events';
 import type { EntityIdAllocators } from './entity-id';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotion } from '../dynamic-motion';
@@ -60,9 +60,7 @@ export interface EnemyClass {
   readonly kind: EnemySaveData['kind'];
   // 復元に外部資源の取得が要るなら、それが揃ったかを答える述語。要らなければ null。
   spawnGate(saved: EnemySaveData): SpawnGate | null;
-  new (
-    init: EnemyRestore, fx: FlashEffects, idAllocators: EntityIdAllocators, scene?: THREE.Scene,
-  ): Enemy;
+  new (init: EnemyRestore, idAllocators: EntityIdAllocators, scene?: THREE.Scene): Enemy;
 }
 
 // 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、交戦圏
@@ -96,7 +94,6 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     view: DynamicView,
     inertia: Vec3,
     radius: number,
-    protected readonly _fx: FlashEffects,
     idAllocators: EntityIdAllocators,
     shape?: EnemyCollisionShape,
   ) {
@@ -151,13 +148,14 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       canFire: enemies => this.canFire(enemies),
       muzzlePosition: () => this.muzzlePosition(),
       plasmaDamage: () => this.plasmaDamage(),
-      muzzleEffect: muzzleState => this.muzzleEffect(muzzleState),
+      muzzleEffect: (muzzleState, events) => this.muzzleEffect(muzzleState, events),
     });
     this.reactions = new EnemyReactions({
       motion: this.motion,
-      effects: this._fx,
       modelScale: ENEMY_MODEL_SCALE,
-      applyBulletDamage: (damage, impactPoint) => this.applyBulletDamage(damage, impactPoint),
+      applyBulletDamage: (damage, impactPoint, events) => (
+        this.applyBulletDamage(damage, impactPoint, events)
+      ),
       applyImpactDamage: damageSpeed => this.applyImpactDamage(damageSpeed),
       hasHealth: () => this.hp > 0,
       recordDeath: (activeStage, simTime, cause) => activeStage.recordEnemyDeath(this, simTime, cause),
@@ -181,9 +179,13 @@ export abstract class Enemy extends Vessel implements CombatTarget {
   // プラズマ弾1発のダメージ [HP]。
   protected abstract plasmaDamage(): number;
   // 弾の被弾ダメージを当てる。撃破判定は呼び出し側が hp で行う。
-  protected abstract applyBulletDamage(damage: number, impactPoint: Vec3): void;
+  protected abstract applyBulletDamage(
+    damage: number, impactPoint: Vec3, events: RunEventSink,
+  ): void;
   // 接触ダメージを当て、ダメージが発生したかを返す。しきい値未満なら false。
   protected abstract applyImpactDamage(damageSpeed: number): boolean;
+  // 1発撃ったことを記録する。muzzleState は砲口の位置と機体の速度。
+  protected abstract muzzleEffect(muzzleState: KinematicState, events: RunEventSink): void;
 
   // 個体色の CSS 表記。
   public get accentColor(): string {
@@ -245,9 +247,6 @@ export abstract class Enemy extends Vessel implements CombatTarget {
   ): void {
     this.fireController.behave(simTime, player, registry, enemies, operable, celestialBodies);
   }
-
-  // 発砲の演出。既定は空。
-  protected muzzleEffect(_muzzleState: KinematicState): void {}
 
   // 敵に共通する保存項目。具象の serialize() がこれへ自分の項目を足す。
   protected serializeEnemyFields(): EnemySaveData {
