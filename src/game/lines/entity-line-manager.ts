@@ -15,7 +15,7 @@ import type { EntityRoster } from '../dynamic/entity-roster';
 import type { DisplayWindow } from '../display-window-manager';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import { orbitLineBasisOf, type OrbitReference } from '../orbit-reference';
-import { COLOR_BASE } from '../marker/marker-identity';
+import { COLOR_BASE } from '../../render/marker/marker-identity';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 
 export const COLOR_ENEMY_ORBIT_LINE = '#565b63';

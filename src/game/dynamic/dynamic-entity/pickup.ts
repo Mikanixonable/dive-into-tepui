@@ -3,8 +3,8 @@ import { fmtDist } from '../../../hud/utils';
 import { len, sub, v3, type Vec3 } from '../../../math/vec3';
 import { AmmoPickupView, RcsFuelPickupView } from '../../../render/dynamic/dynamic-entity/pickup-view';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
-import { MARKER_PRIORITY } from '../../marker/crowding';
-import { COLOR_MARKER_FUEL, DIRECTION_GLYPH, ENTITY_GLYPH } from '../../marker/marker-identity';
+import { MARKER_PRIORITY } from '../../../render/marker/crowding';
+import { COLOR_MARKER_FUEL, DIRECTION_GLYPH, ENTITY_GLYPH } from '../../../render/marker/marker-identity';
 import { orbitRows } from '../../pickable/orbit-rows';
 import {
   savedAttitude, savedKinematicState, type AmmoPickupSaveData, type RcsFuelPickupSaveData,
@@ -21,7 +21,7 @@ import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { ControlSelection } from '../../control-selection';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
-import type { MarkerVisibility } from '../../marker/marker-visibility';
+import type { MarkerVisibility } from '../../../render/marker/marker-visibility';
 import type { ObjectAuthoring } from '../../pickable/inspected-object';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';

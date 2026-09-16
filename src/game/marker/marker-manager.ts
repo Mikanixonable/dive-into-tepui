@@ -6,12 +6,12 @@ import { Projected, type ProjectFn, type ScaleFn } from '../../math/projection';
 import { GroupedMarkers } from './grouped-markers';
 import { LeadMarkers } from './lead-markers';
 import { isOccluded } from '../../physics/occlusion';
-import { MARKER_PRIORITY } from './crowding';
+import { MARKER_PRIORITY } from '../../render/marker/crowding';
 import { LabelDeclutter, canHideIconClass, isCombatClass } from './label-declutter';
 import { LabelLayout } from './label-layout';
 import { strongestAttractor } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
-import { MARKER_DIR_DIST, type MarkerSlots } from './marker-slots';
+import { MARKER_DIR_DIST, type MarkerSlots } from '../../render/marker/marker-slots';
 
 // 画面外の対象を指す方位マーカーを置く円の半径(画面短辺の半分に対する比)
 const MARKER_BEARING_RING_RATIO = 0.8;

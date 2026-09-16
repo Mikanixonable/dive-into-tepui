@@ -2,14 +2,14 @@
 import type { CelestialMotion } from '../../../physics/celestial-motion';
 import { apsisAltitudes, orbitalElementsOf } from '../../../physics/elements';
 import { len, sub } from '../../../math/vec3';
-import { bodyEntityGlyph } from '../../marker/marker-identity';
-import { MARKER_PRIORITY } from '../../marker/crowding';
+import { bodyEntityGlyph } from '../../../render/marker/marker-identity';
+import { MARKER_PRIORITY } from '../../../render/marker/crowding';
 import { bodySearchText } from '../../pickable/body-search-text';
 import { fmtDist, fmtTime } from '../../../hud/utils';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../../hud/orbit/orbit-labels';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { hitsSphere, type Ray } from '../../../math/ray';
-import type { MarkerVisibility } from '../../marker/marker-visibility';
+import type { MarkerVisibility } from '../../../render/marker/marker-visibility';
 import type { CelestialClass } from './celestial-entity-def';
 import type { Vec3 } from '../../../math/vec3';
 import type {

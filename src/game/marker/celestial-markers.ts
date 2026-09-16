@@ -8,7 +8,7 @@ import { occlusionOpacity } from '../../physics/occlusion';
 import { LAGRANGE_MIN_CLEARANCE_RATIO } from '../celestial/lagrange-id';
 import { LagrangePointMarker } from './lagrange-point-marker';
 import { CelestialSubLabels, type CelestialLabelState } from './celestial-sub-labels';
-import { CrowdingGrid, DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, type ProjectedLabel } from './crowding';
+import { CrowdingGrid, DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, type ProjectedLabel } from '../../render/marker/crowding';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { MapDisplayToggles } from '../map/display-toggles';
@@ -16,7 +16,7 @@ import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { ProjectFn } from '../../math/projection';
 import type { GroupedMarkers } from './grouped-markers';
-import type { MarkerSlots } from './marker-slots';
+import type { MarkerSlots } from '../../render/marker/marker-slots';
 
 // 名前の混雑判定の半径 [px]。これより近い名前どうしは、優先度の低いほうを隠す。
 const LABEL_CROWDING_PX = 40;
