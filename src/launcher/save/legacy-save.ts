@@ -64,7 +64,7 @@ function metaFromSaveData(data: GameSaveData): SnapshotMeta {
     maxHp: 0,
     magazines: 0,
     // 本体の実体一覧から数えられる値。
-    playerCount: data.entities.filter((e) => e.kind === 'player').length,
+    playerCount: data.entities.filter((e) => e.kind === 'ship').length,
     enemyAliveCount: data.entities.filter(
       (e) => (e.kind === 'metal-enemy' || e.kind === 'protein-enemy') && e.alive).length,
     phase: data.stage.phase,

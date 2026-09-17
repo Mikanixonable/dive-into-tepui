@@ -102,8 +102,16 @@ export class ShipConstruction implements OverlayHandle {
     const key = this.key(ship, dockId);
     let draft = this.drafts.get(key);
     if (draft === undefined) {
-      ship.docks.beginBuilding(ship.assembly, dockId);
-      draft = { ship, dockId, addedIds: [], axialTailId: dockId, firstConnectionId: null };
+      let saved = ship.docks.constructionDraft(dockId);
+      if (saved === null) {
+        ship.docks.beginBuilding(ship.assembly, dockId);
+        saved = ship.docks.constructionDraft(dockId);
+      }
+      if (saved === null) throw new Error(`construction draft missing: ${dockId}`);
+      draft = {
+        ship, dockId, addedIds: [...saved.addedIds],
+        axialTailId: saved.axialTailId, firstConnectionId: saved.firstConnectionId,
+      };
       this.drafts.set(key, draft);
     }
     this.current = draft;
@@ -196,6 +204,7 @@ export class ShipConstruction implements OverlayHandle {
     if (draft.firstConnectionId === null) draft.firstConnectionId = connection.id;
     draft.addedIds.push(id);
     if (candidate.kind === 'axial') draft.axialTailId = id;
+    this.persistDraft(draft);
     this.synchronizeShip(draft.ship);
     this.syncPanel();
   }
@@ -214,6 +223,7 @@ export class ShipConstruction implements OverlayHandle {
     draft.firstConnectionId = draft.addedIds.length === 0
       ? null
       : draft.ship.assembly.graph.find(edge => edge.childId === draft.addedIds[0])?.id ?? null;
+    this.persistDraft(draft);
     this.synchronizeShip(draft.ship);
     this.syncPanel();
   }
@@ -314,6 +324,15 @@ export class ShipConstruction implements OverlayHandle {
 
   private synchronizeShip(ship: ModularShip): void {
     ship.synchronizeAssemblyState();
+  }
+
+  private persistDraft(draft: ConstructionDraft): void {
+    draft.ship.docks.updateConstructionDraft({
+      dockId: draft.dockId,
+      addedIds: draft.addedIds,
+      axialTailId: draft.axialTailId,
+      firstConnectionId: draft.firstConnectionId,
+    });
   }
 
   private displayPosition(camera: CameraFrame, position: Vec3): Vec3 {

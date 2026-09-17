@@ -331,24 +331,6 @@
       "count": 1
     }
   },
-  "src/game/dynamic/dynamic-entity/base-collision.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    },
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 9
-    }
-  },
-  "src/game/dynamic/dynamic-entity/base-motion.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "src/game/dynamic/dynamic-entity/base.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    }
-  },
   "src/game/dynamic/dynamic-entity/casing-collision.ts": {
     "@typescript-eslint/explicit-module-boundary-types": {
       "count": 2
@@ -357,16 +339,6 @@
   "src/game/dynamic/dynamic-entity/contact.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
-    }
-  },
-  "src/game/dynamic/dynamic-entity/detached-booster-motion.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
-    }
-  },
-  "src/game/dynamic/dynamic-entity/detached-booster.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
     }
   },
   "src/game/dynamic/dynamic-entity/dynamic-entity.ts": {
@@ -801,22 +773,6 @@
       "count": 7
     }
   },
-  "src/game/pickable/part-windows.ts": {
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 5
-    }
-  },
-  "src/game/pickable/player-inspection.ts": {
-    "@typescript-eslint/explicit-module-boundary-types": {
-      "count": 3
-    },
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
   "src/game/plan/arc-range.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
@@ -905,17 +861,6 @@
       "count": 3
     }
   },
-  "src/game/player/attached-boosters.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 3
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 4
-    },
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
-    }
-  },
   "src/game/player/belt-physics.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 4
@@ -943,11 +888,6 @@
   "src/game/player/player-loadout.ts": {
     "@typescript-eslint/explicit-module-boundary-types": {
       "count": 1
-    }
-  },
-  "src/game/player/player.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 4
     }
   },
   "src/game/player/power.ts": {
@@ -998,11 +938,6 @@
   },
   "src/game/random-name.ts": {
     "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
-    }
-  },
-  "src/game/save/save-data.ts": {
-    "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
   },
@@ -1745,21 +1680,6 @@
       "count": 1
     }
   },
-  "src/render/dynamic/booster-model.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
-    }
-  },
-  "src/render/dynamic/booster-plume.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 2
-    }
-  },
-  "src/render/dynamic/dynamic-entity/base-view.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/render/dynamic/dynamic-entity/bullet-view.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
@@ -1799,19 +1719,6 @@
     }
   },
   "src/render/dynamic/player/belt-view.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 3
-    }
-  },
-  "src/render/dynamic/player/folding-panels-view.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
-    }
-  },
-  "src/render/dynamic/player/player-view.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 3
     }
@@ -2198,19 +2105,6 @@
   "src/types/svg-shims.d.ts": {
     "no-restricted-syntax": {
       "count": 1
-    }
-  },
-  "tests/game/base-collision.test.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    }
-  },
-  "tests/game/booster-stack.test.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    },
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 2
     }
   },
   "tests/game/camera-orientation.test.ts": {
