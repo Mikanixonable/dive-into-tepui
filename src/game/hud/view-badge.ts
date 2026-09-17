@@ -1,6 +1,7 @@
 // トップバー1行目のバッジ: ゲームタイトル・現在のモード・現在のビュー(クリックで遷移メニュー)・
 // 画面全体の見せ方(写実/模式図)を切り替えるトグル・注視/操作/ターゲットの対象名。
 import type { ViewMode } from '../view/view-mode';
+import type { ViewCommands } from '../viewer/view-commands';
 import { ContextMenu, MenuItem } from './windows/context-menu';
 import type { OverlayManager } from '../../hud/overlay-manager';
 import { Button, ToggleSwitch } from '../../hud/widgets';
@@ -56,11 +57,6 @@ export interface ViewBadgeViewModel {
   readonly renderStyle: RenderStyle;
 }
 
-// ビューの切り替えを受ける口。
-export interface ViewBadgeCommands {
-  setView(view: ViewMode): void;
-}
-
 export class ViewBadge {
   private readonly el: HTMLElement;
   private readonly modeEl: HTMLElement;
@@ -81,7 +77,7 @@ export class ViewBadge {
   // 遷移メニューの選択は commands へ返す。見せ方のトグルは sync で合わせる。
   public constructor(
     container: HTMLElement, popupLayer: HTMLElement, overlayManager: OverlayManager,
-    private readonly commands: ViewBadgeCommands,
+    private readonly commands: Pick<ViewCommands, 'select'>,
   ) {
     this.menu = new ContextMenu<true, ViewMode>(popupLayer, overlayManager);
     // タイトル・モード名・ビュー切替ボタンと、現在の対象の欄を横に並べる。
@@ -111,7 +107,7 @@ export class ViewBadge {
     this.targetEl = appendField(container, 'Target');
     this.el = container;
 
-    this.menu.onSelect = (act) => { this.commands.setView(act); };
+    this.menu.onSelect = (act) => { this.commands.select(act); };
     this.menu.onClose = () => this.viewButton.element.setAttribute('aria-expanded', 'false');
   }
 
