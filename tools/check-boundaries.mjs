@@ -57,7 +57,7 @@ const PROGRESS_ROOTS = [
 ];
 
 // 表示の導出だが、置き場がまだ進行のフォルダにあるファイル。動かしたらここも直す — 存在しない
-// パスが残ると検査が落ちる。(暫定 — 段 7 で presentation/ へ移すときに消える)
+// パスが残ると検査が落ちる。(暫定 — 段 8 で presentation/ へ移すときに消える)
 const MISPLACED_PRESENTATION_FILES = [
   'src/game/plan/plan-editor.ts',
   'src/game/plan/node-gizmo.ts',
@@ -162,7 +162,7 @@ const FORBIDDEN = [
   {
     // 表示の選択が進行へ効いてよいのは需要だけ、という R4 を当てたもの。予測の有無と表示窓の
     // 長さは「どこまで計算するか」ではなく「何を見るか」なので、進行が読めば違反になる。
-    // (暫定 — 段 5 で層の規則が覆うので、そのとき外す)
+    // (暫定 — 段 6 で層の規則が覆うので、そのとき外す)
     name: '表示の選択が進行へ漏れる禁止',
     pattern: /predictsFuture|display-window-duration/g,
     targets: ['src/game/dynamic/'],
@@ -170,7 +170,7 @@ const FORBIDDEN = [
   },
   {
     // 生の入力を読むのは入力の解釈の位相だけ、という R8 を当てたもの。進行へは操作量と命令で届く。
-    // (暫定 — 段 5 で層の規則が覆うので、そのとき外す)
+    // (暫定 — 段 6 で層の規則が覆うので、そのとき外す)
     name: 'モデル層が生の入力を読む禁止',
     pattern: /from '.*input\/input'/g,
     targets: ['src/game/dynamic/', 'src/game/player/', 'src/game/stages/', 'src/game/viewer/'],
@@ -179,7 +179,7 @@ const FORBIDDEN = [
   {
     // 一回きりの出来事は進行が記録し、表示の導出が読んで装置へ渡す(R7・R8)。進行が音・通知・
     // 画面効果の装置を持てば、この経路を飛ばして直に鳴らせてしまう。
-    // (暫定 — 段 5 で層の規則が覆うので、そのとき外す)
+    // (暫定 — 段 6 で層の規則が覆うので、そのとき外す)
     name: 'モデル層が出来事の装置を持つ禁止',
     pattern: /WorldSfx|UiSfx|Notifier|FlashEffects/g,
     targets: [
@@ -298,10 +298,10 @@ function findImportViolations({ edges, layerOf }) {
 
     // 以下の3つは層でなくパスで当てる。import を持たない視点のモジュールも、層では定義層に落ちる(R2)。
     // 進行は視点を import しない、という R4 を当てたもの。
-    // (暫定 — 段 5 で層の規則が覆うので外す)
+    // (暫定 — 段 6 で層の規則が覆うので外す)
     if (isProgress(e.from) && e.to.startsWith('src/game/viewer/')) flag(RULES.progressToViewer);
-    // 視点の値を設定として持つ、またはその逆にすると、ここに辺が生える(R4)。視点 → 設定は段 5 の
-    // モデル層の規則が、設定 → 視点は段 7 の settings/ の規則が覆うので、それぞれの段で外す。
+    // 視点の値を設定として持つ、またはその逆にすると、ここに辺が生える(R4)。視点 → 設定は段 6 の
+    // モデル層の規則が、設定 → 視点は段 8 の settings/ の規則が覆うので、それぞれの段で外す。
     if (
       (e.from.startsWith('src/settings/') && e.to.startsWith('src/game/viewer/')) ||
       (e.from.startsWith('src/game/viewer/') && e.to.startsWith('src/settings/'))
@@ -309,7 +309,7 @@ function findImportViolations({ edges, layerOf }) {
       flag(RULES.settingsViewer);
     }
     // スナップショットはモデル層の直列化で、表示の導出を含めない(R11)。
-    // (暫定 — 段 5 で層の規則が覆うので外す)
+    // (暫定 — 段 6 で層の規則が覆うので外す)
     if (e.from.startsWith('src/game/save/') && isUnder(e.to, PRESENTATION_ROOTS)) flag(RULES.saveToPresentation);
   }
   return found;
