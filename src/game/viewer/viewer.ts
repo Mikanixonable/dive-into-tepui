@@ -6,6 +6,7 @@ import { OrbitReferenceSelection } from './orbit-reference-selection';
 import { PredictPanelSelection } from './predict-panel-selection';
 import { ViewSelection, type ViewControlSource } from './view-selection';
 import { CameraSelection, type CameraFrameSamples } from './camera-selection';
+import { EntityDisplaySelection } from './entity-display-selection';
 import { focusTargetId } from './focus-target';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { EntityRoster } from '../dynamic/entity-roster';
@@ -25,6 +26,8 @@ export class Viewer {
   public readonly view: ViewSelection;
   // 戦闘/マップの2台のカメラ視点。
   public readonly camera: CameraSelection;
+  // 実体ごとの表示設定。
+  public readonly entityDisplay: EntityDisplaySelection;
 
   // saved のうち視点の分を戻して組む。saved が無ければ既定から始める。roster と control には
   // 復元と初期配置を終えた進行を渡し、所有者の命令の結果は events へ記録する。
@@ -40,6 +43,7 @@ export class Viewer {
     this.predictPanel = new PredictPanelSelection(celestialBodies.frames, celestialBodies);
     this.view = new ViewSelection(saved?.camera?.view, control, events);
     this.camera = new CameraSelection(celestialBodies, events, saved?.camera);
+    this.entityDisplay = new EntityDisplaySelection(saved?.entities);
     // 復元したマップ注視の登録天体を、予測パネルの初期基準へ反映する。
     this.predictPanel.followCameraFocus(focusTargetId(this.camera.map.focus));
   }
