@@ -5,7 +5,6 @@ import { collisionDamageFraction } from './contact-damage';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
 import { ProteinCombatState } from '../../protein/protein-combat-state';
 import { ProteinSphereCollisionGeometry } from '../../protein/protein-sphere-collision';
-import { DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings } from '../../../render/protein/protein-display';
 import { ENEMY_MODEL_SCALE, Enemy, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore } from './enemy';
 import {
   proteinAssetGate, proteinRenderDefinitionFor, type ProteinAssetId,
@@ -28,16 +27,14 @@ import type { OrbitReference } from '../../orbit-reference';
 import type { ProteinCombatTarget } from './damage-capabilities';
 import type { EnemyProteinInspection } from '../../pickable/enemy-inspection';
 import type { ProteinMotionMetrics } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
-import type { ProteinDisplayController } from './enemy-display-capabilities';
 
 // タンパク質の構造は揺らぐが、判定形状は常に静止した1つに固定するので、慣性も1つでよい。
 // 漂流機体と同じく非対称にして、ジャニベコフ効果(中間軸不安定性)で無秩序に回らせる。
 const PROTEIN_INERTIA = v3(1, 1.1, 1.05);
 
-// 新規配置。表示形態と着色は生成時に決め、以後は Entity の設定として切り替える。
+// 新規配置。敵に共通の配置へ、描くタンパク質のアセットを足す。
 type ProteinEnemyPlacement = EnemyPlacement & {
   readonly assetId: ProteinAssetId;
-  readonly display: ProteinDisplaySettings;
 };
 
 // 同じ陣形に生存中のエネルギー役がいるかを答える。攻撃担当以外と、陣形に属さない敵
@@ -71,12 +68,6 @@ function renderDefinitionFor(assetId: ProteinAssetId): ProteinRenderDefinition {
   return definition;
 }
 
-// セーブ由来の未検証な表示設定を受け、現行の選択肢に無いものは既定へ倒す。
-function displayOf(init: ProteinEnemyPlacement | EnemyRestore): ProteinDisplaySettings {
-  const saved = 'saved' in init ? (init.saved as ProteinEnemySaveData).display : init.display;
-  return isProteinDisplaySettings(saved) ? saved : DEFAULT_PROTEIN_DISPLAY;
-}
-
 // タンパク質の敵。機能部位ごとに破壊できる被弾モデル(ProteinCombatState)が HP の正本で、
 // 判定形状は表示形態によらず、アセットが持つ球列に固定する。
 export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
@@ -88,10 +79,9 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   }
 
   private readonly assetId: ProteinAssetId;
-  private displaySettings: ProteinDisplaySettings;
   private readonly combat: ProteinCombatState;
 
-  // 表示メッシュを組み、アセットが持つ球列へ判定形状を当てる。アセットが未取得なら投げるので、
+  // View を組み、アセットが持つ球列へ判定形状を当てる。アセットが未取得なら投げるので、
   // EnemyClass.spawnGate で準備完了を待ってから構築すること。
   public constructor(
     init: ProteinEnemyPlacement | EnemyRestore,
@@ -100,7 +90,6 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   ) {
     const assetId = 'saved' in init ? (init.saved as ProteinEnemySaveData).assetId : init.assetId;
     const definition = definitionFor(assetId);
-    const display = displayOf(init);
     const id = ('saved' in init ? init.saved.id || init.saved.name : init.id ?? init.name) || assetId;
     const combat = new ProteinCombatState(
       definition.asset,
@@ -111,7 +100,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
       definition.collisionSpheres, ENEMY_MODEL_SCALE,
     );
     const proteinView = new ProteinEnemyView(
-      renderDefinitionFor(assetId), display, ENEMY_MODEL_SCALE, collision.outerRadius, id, scene,
+      renderDefinitionFor(assetId), ENEMY_MODEL_SCALE, collision.outerRadius, id, scene,
     );
     const shape: EnemyCollisionShape = {
       testSphereCollision: (_self, sphereCenter, sphereRadius, selfState, selfAttitude) => (
@@ -131,26 +120,11 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
       proteinView, PROTEIN_INERTIA, collision.outerRadius, idAllocators, shape,
     );
     this.assetId = assetId;
-    this.displaySettings = display;
     this.combat = combat;
   }
 
   public override get hp(): number { return this.combat.integrityHp; }
   public override get maxHp(): number { return this.combat.integrityMaxHp; }
-
-  public get display(): ProteinDisplaySettings { return this.displaySettings; }
-
-  public override get proteinDisplayController(): ProteinDisplayController {
-    return {
-      display: this.displaySettings,
-      setDisplay: display => this.setDisplay(display),
-    };
-  }
-
-  // 表示形態・着色を切り替える。
-  public setDisplay(display: ProteinDisplaySettings): void {
-    this.displaySettings = display;
-  }
 
   public get combatReadout(): ProteinCombatReadout { return this.combat.combatReadout(); }
   public get proteinMotionMetrics(): ProteinMotionMetrics { return this.view.motionMetrics; }
@@ -164,13 +138,12 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     };
   }
 
-  // 表示設定と、被弾モデルの構造フェーズを共通の表示入力へ足す。
+  // 被弾モデルの構造フェーズを共通の表示入力へ足す。
   protected override renderSource(
     viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | undefined,
   ): ProteinVisualSource {
     return {
       ...super.renderSource(viewFrame, active, orbitReference),
-      display: this.displaySettings,
       phase: this.combat.phase,
     };
   }
@@ -228,13 +201,16 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     return true;
   }
 
-  // 敵に共通する保存項目へ、アセット・表示設定・被弾モデルの状態を足す。
-  public override serialize(): ProteinEnemySaveData {
+  // 敵に共通する保存項目へ、アセット・表示設定・被弾モデルの状態を足す。showTrajectoryLine は
+  // この敵の予測線・過去線を出しているか、proteinDisplay はタンパク質の敵に共通の表示形態と着色。
+  public override serialize(
+    showTrajectoryLine: boolean, proteinDisplay: ProteinDisplaySettings,
+  ): ProteinEnemySaveData {
     return {
-      ...this.serializeEnemyFields(),
+      ...this.serializeEnemyFields(showTrajectoryLine),
       kind: ProteinEnemy.kind,
       assetId: this.assetId,
-      display: this.displaySettings,
+      display: proteinDisplay,
       protein: this.combat.serialize(),
     };
   }

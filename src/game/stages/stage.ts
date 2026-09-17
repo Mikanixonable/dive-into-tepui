@@ -13,6 +13,7 @@ import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { StageSaveData } from '../save/save-data';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
+import type { ProteinDisplayControl } from '../creative/stage-controls-panel';
 import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
 import type { StageSimulationEvents } from './stage-simulation-events';
 import type { ControlSelection } from '../control-selection';
@@ -130,6 +131,8 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   public readonly executesPlans: boolean = false;
   // オブジェクトの配置・複製に対応するステージは自身の編集口を返す。既定では非対応。
   public readonly authoring: ObjectAuthoring | null = null;
+  // タンパク質の表示形態と着色を選ぶ UI を持つステージはそれを差し出す。既定では持たない。
+  public readonly proteinDisplayControl: ProteinDisplayControl | null = null;
 
   public readonly scoreCounter: ScoreCounter;
   protected readonly logistics: Logistics;
