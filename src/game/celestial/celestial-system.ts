@@ -13,10 +13,9 @@ import { KinematicState } from '../../physics/kinematic-state';
 import { lenSq, norm, sub, v3, Vec3 } from '../../math/vec3';
 import { CELESTIAL_SHELL_SCALE, createStars, Stars } from '../../render/stars';
 import { CelestialGrid, type CelestialGridVisibility } from '../../render/celestial-grid';
-import type { CameraSystem } from '../camera/camera-system';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { ScaleGridView } from './scale-grid-view';
-import { focusTargetId } from '../camera/focus-target';
+import { focusTargetId } from '../viewer/focus-target';
 import { CelestialIllumination, type IlluminationTargets } from '../../render/celestial/celestial-illumination';
 import { RingMaterials } from '../../render/celestial/ring';
 import { CelestialEntity } from './celestial-entity/celestial-entity';
@@ -38,6 +37,7 @@ import type { PointFieldView } from '../../render/celestial/point-field-view';
 import type { GpuTimingSink } from '../../render/gpu-timings';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialBodies } from './celestial-bodies';
+import type { FocusCameraSource } from '../viewer/focus-camera-selection';
 import type { CelestialClass } from './celestial-entity/celestial-entity-def';
 import type { PerfCounts } from '../perf-counts';
 import { STICKY_MARGIN_SQ } from './nearby-system-tracker';
@@ -362,7 +362,8 @@ export class CelestialSystem implements CelestialBodies {
     displayTime: number,
     nowMs: number,
     camera: CameraFrame,
-    cameraSystem: CameraSystem,
+    mapCamera: Pick<FocusCameraSource, 'focus' | 'distance'>,
+    mapResolvedFocus: Vec3,
     graphics: GraphicsSettingsData,
     style: RenderStyle,
     grid: CelestialGridVisibility,
@@ -376,7 +377,7 @@ export class CelestialSystem implements CelestialBodies {
     }
     // 注視中の天体は、影の濃さをカメラ位置と並べて測る基準点になる。天体でない対象を
     // 注視しているフレームでは持たない。
-    const focusId = focusTargetId(cameraSystem.mapCamera.focus);
+    const focusId = focusTargetId(mapCamera.focus);
     const focusPosition = focusId === undefined
       ? null : this.findMotion(focusId)?.positionAt(displayTime) ?? null;
     this.illumination.sync(
@@ -407,7 +408,7 @@ export class CelestialSystem implements CelestialBodies {
     this.zeroVelocityView.sync(
       this.zeroVelocityModel.displaysAt(orbitGuide.zeroVelocity, displayTime, camera.mode), camera);
     this.celestialGrid.sync(style, grid, camera.camera, CELESTIAL_SHELL_SCALE, camera.viewport);
-    this.scaleGrid.sync(displayTime, camera, cameraSystem, this, grid);
+    this.scaleGrid.sync(displayTime, camera, mapCamera, mapResolvedFocus, this, grid);
   }
 
   // 天体固有のマップ付随表示が、このフレームに出す文字マーカーの宣言。
