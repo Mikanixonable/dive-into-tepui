@@ -3,7 +3,7 @@
 作成日: 2026-09-14
 実装の現在基準コミット: d3e8291dd
 最終レビュー: 2026-09-16
-状態: 実装中。手順10まで完了し、手順11から進める。
+状態: 実装中。手順11まで完了し、手順12から進める。
 
 ## 目的
 
@@ -305,37 +305,6 @@ cockpit を持たない部品集合も構造上の完成条件を満たせば分
 - 現行のランダム部位ダメージと敵挙動に回帰がない。
 
 ## 実装手順
-
-### 11. ship 保存、漂流、CREATIVE 統合を完成させる
-
-#### 目的
-
-すべての役割と中間状態を 1 種類の ship 保存形式で復元し、喪失と燃料切れを分ける。
-
-#### 変更箇所
-
-| ファイル | 変更内容 |
-| --- | --- |
-| src/game/save/save-data.ts | ShipSaveData、ShipAssemblySaveData、module state、dock state を追加し、旧 3 kind と BaseSaveData を削除して version 4 にする。 |
-| src/game/dynamic/dynamic-entity/entity-dictionary.ts | ship の一経路から ModularShip とドッキング中のassemblyを復元する。 |
-| src/game/ship/ship-save.ts（新規） | module／dock の discriminated union validator と serialize／restore を持つ。 |
-| src/game/creative/object-placement.ts、manual-spawn.ts | 既定戦闘船／基地 preset と上限判定を ModularShip へ揃える。 |
-| src/game/stages/creative-stage.ts | 操作対象、補給、波状攻撃、喪失を player 判定とcockpit能力で扱う。 |
-| src/game/dynamic/entity-lifecycle.ts | destroyed と stranded を分け、player 判定された alive ship／物資を距離で除去しない。dock分離時はassemblyを分割する。 |
-| src/game/run-summary.ts | ModularShip 数を集計し、money を除く。 |
-| src/launcher/save/save-transfer.ts、legacy-save.ts、snapshot-service.ts | version 4 と metadata 変更を反映し、v3 を移行しない。 |
-| src/launcher/save-browser/snapshot-pane.ts | 所持金行を除き、船数を新しい集計へ合わせる。 |
-| tests/game/ship-save-roundtrip.test.ts（新規） | free、building、docked、split、stranded の round trip を検証する。 |
-| tests/game/ship-loss-persistence.test.ts（新規） | cockpit全損後の物資化、tankなし物資、全module instance残存中の保存、fuel 0 の生存・保存、全module除去時の喪失、ドッキング中の損失単位を検証する。 |
-
-#### 達成条件と検証
-
-- rg で保存 kind の player、base、booster と BaseSaveData、DetachedBoosterSaveData が 0 件になる。
-- v4 の保存復元前後で module id、entity id、player／enemy 判定、HP、燃料、点火、dock state、導出 role、
-  control が一致する。
-- v3 は壊れたデータではなく「対応しない版」として拒否される。
-- 燃料切れ船を時間経過・ビュー切替・保存復元しても消えない。
-- npm run typecheck と npm run test:game を通す。
 
 ### 12. 旧経路を削除し、統合検証する
 
