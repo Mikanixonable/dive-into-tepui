@@ -1,5 +1,5 @@
 // クリエイティブモードの「ステージ操作」パネル: 補給・波状攻撃のトグルと、手動スポーンの入力
-// (距離・敵の形状/色・タンパク質表示設定)の DOM と UI 状態を持ち、確定した値を onXxx の
+// (距離・敵の形状/色)と、タンパク質の表示設定の DOM と UI 状態を持ち、確定した値を onXxx の
 // コールバックで知らせる。
 import { Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../../hud/widgets';
 import { PROTEIN_ASSET_IDS, requestProteinAsset, type ProteinAssetId } from '../protein/protein-asset-loader';
@@ -27,7 +27,14 @@ const STAGE_CONTROL_ENEMY_COLORS = [
   [0xff4a3d, '赤'], [0xff7a2d, '橙'], [0xe0409f, '桃'], [0xbf3dff, '紫'], [0x3dc6ff, '青'],
 ] as const;
 
-export class StageControlsPanel {
+// タンパク質の表示形態と着色を選ぶ UI。選択は onProteinDisplayChange で返し、現在値は毎フレーム
+// syncProteinDisplay で受ける。
+export interface ProteinDisplayControl {
+  onProteinDisplayChange: ((display: ProteinDisplaySettings) => void) | null;
+  syncProteinDisplay(display: ProteinDisplaySettings): void;
+}
+
+export class StageControlsPanel implements ProteinDisplayControl {
   public readonly element: HTMLElement;
   // setSpawnButtonsEnabled がまとめて有効/無効を切り替える対象。
   private readonly spawnEnemyButtons: readonly Button[];
@@ -45,22 +52,30 @@ export class StageControlsPanel {
   // 入力欄が無効値を弾いたときに直前の有効値へ戻すための保持値。
   private spawnDistance: number;
   // タンパク質型セクションの現在の表示選択。表示形態を切り替えても前回選んだ着色を覚えている。
-  private proteinDisplay: ProteinDisplaySettings;
-  private readonly proteinDisplayByRepresentation: Map<ProteinRepresentation, ProteinDisplaySettings>;
+  private proteinDisplay: ProteinDisplaySettings = DEFAULT_PROTEIN_DISPLAY;
+  private readonly proteinDisplayByRepresentation = new Map<ProteinRepresentation, ProteinDisplaySettings>([
+    ['molecular', defaultProteinDisplayFor('molecular')],
+    ['ribbon', DEFAULT_PROTEIN_DISPLAY],
+    ['silhouette', defaultProteinDisplayFor('silhouette')],
+  ]);
+  // 表示形態と着色の選択。選べる着色は表示形態ごとに異なるので、着色の選択肢は表示形態に
+  // 合わせて差し替える。
+  private readonly representationControl = new SegmentedControl<ProteinRepresentation>(
+    '表示形態',
+    (Object.keys(PROTEIN_DISPLAY_LABELS) as ProteinRepresentation[])
+      .map((representation) => [representation, PROTEIN_DISPLAY_LABELS[representation]] as const),
+    (representation) => this.selectRepresentation(representation),
+  );
+  private readonly colorControl = new SegmentedControl<ProteinColorMode>(
+    '着色', [], (mode) => this.selectColorMode(mode),
+  );
 
   // 各引数はパネルの初期値。以後の変更は onXxx コールバックで知らせる。
   public constructor(
     resupplyEnabled: boolean, rcsFuelResupplyEnabled: boolean, waveAttackEnabled: boolean,
-    initialSpawnDistance: number, initialProteinDisplay: ProteinDisplaySettings,
+    initialSpawnDistance: number,
   ) {
     this.spawnDistance = initialSpawnDistance;
-    this.proteinDisplay = initialProteinDisplay;
-    this.proteinDisplayByRepresentation = new Map<ProteinRepresentation, ProteinDisplaySettings>([
-      ['molecular', defaultProteinDisplayFor('molecular')],
-      ['ribbon', DEFAULT_PROTEIN_DISPLAY],
-      ['silhouette', defaultProteinDisplayFor('silhouette')],
-    ]);
-    this.proteinDisplayByRepresentation.set(initialProteinDisplay.representation, initialProteinDisplay);
 
     // パネルの外枠と、内容をまとめて畳めるコンパクト表示トグル。
     const panel = document.createElement('div');
@@ -90,6 +105,41 @@ export class StageControlsPanel {
   // 操作艦の有無に応じて、敵スポーン系のボタンをまとめて有効/無効にする。
   public setSpawnButtonsEnabled(enabled: boolean): void {
     for (const button of this.spawnEnemyButtons) button.setEnabled(enabled);
+  }
+
+  // 表示形態と着色の選択を display に合わせる。いまの選択と同じなら何もしない。
+  public syncProteinDisplay(display: ProteinDisplaySettings): void {
+    if (display.representation === this.proteinDisplay.representation
+      && display.colorMode === this.proteinDisplay.colorMode) return;
+    this.proteinDisplay = display;
+    this.proteinDisplayByRepresentation.set(display.representation, display);
+    this.showProteinDisplay();
+  }
+
+  // 表示形態を選ぶ。その形態で前回選んだ着色へ戻し、onProteinDisplayChange で知らせる。
+  private selectRepresentation(representation: ProteinRepresentation): void {
+    this.proteinDisplay = this.proteinDisplayByRepresentation.get(representation) ?? defaultProteinDisplayFor(representation);
+    this.proteinDisplayByRepresentation.set(representation, this.proteinDisplay);
+    this.showProteinDisplay();
+    this.onProteinDisplayChange?.(this.proteinDisplay);
+  }
+
+  // いまの表示形態で着色 mode を選び、onProteinDisplayChange で知らせる。選べない着色なら何もしない。
+  private selectColorMode(mode: ProteinColorMode): void {
+    const next = proteinDisplayWithColor(this.proteinDisplay.representation, mode);
+    if (next === null) return;
+    this.proteinDisplay = next;
+    this.proteinDisplayByRepresentation.set(next.representation, next);
+    this.colorControl.setSelected(mode);
+    this.onProteinDisplayChange?.(next);
+  }
+
+  // 表示形態の選択と、着色の選択肢・選択を、いまの表示選択に合わせる。
+  private showProteinDisplay(): void {
+    this.representationControl.setSelected(this.proteinDisplay.representation);
+    const modes = proteinColorModesFor(this.proteinDisplay.representation);
+    this.colorControl.setItems(modes.map((mode) => [mode, PROTEIN_COLOR_LABELS[mode]] as const));
+    this.colorControl.setSelected(this.proteinDisplay.colorMode);
   }
 
   // 補給2種・波状攻撃のトグルと、敵のスポーン距離入力を body へ足す。
@@ -161,7 +211,7 @@ export class StageControlsPanel {
   }
 
   // タンパク質型の敵の形状・表示形態・着色選択と、単体/陣形スポーンボタンをまとめたセクションを
-  // 組み立てる。表示形態・着色の変更は onProteinDisplayChange で即座に知らせる。
+  // 組み立てる。
   private buildProteinEnemySection(): {
     element: HTMLElement; spawnButton: Button; formationButton: Button; requestSelectedAsset: () => void;
   } {
@@ -192,42 +242,12 @@ export class StageControlsPanel {
     shapeControl.setSelected(selectedShape);
     section.appendChild(shapeControl.element);
 
-    // 表示形態の選択。切り替えるたびその形態で前回選んだ着色へ復元し、着色の選択肢を差し替える。
-    const representationItems = (Object.keys(PROTEIN_DISPLAY_LABELS) as ProteinRepresentation[])
-      .map((representation) => [representation, PROTEIN_DISPLAY_LABELS[representation]] as const);
-    const displayControl = new SegmentedControl<ProteinRepresentation>(
-      '表示形態', representationItems,
-      (representation) => {
-        this.proteinDisplay = this.proteinDisplayByRepresentation.get(representation) ?? defaultProteinDisplayFor(representation);
-        this.proteinDisplayByRepresentation.set(representation, this.proteinDisplay);
-        displayControl.setSelected(representation);
-        updateColorItems();
-        this.onProteinDisplayChange?.(this.proteinDisplay);
-      },
-    );
-    displayControl.element.classList.add('stage-control-protein-representation');
-    displayControl.setSelected(this.proteinDisplay.representation);
-    section.appendChild(displayControl.element);
-
-    // 着色の選択。選べる着色モードは表示形態ごとに異なるため、表示形態が変わるたび
-    // updateColorItems で選択肢自体を差し替える。
-    const colorControl = new SegmentedControl<ProteinColorMode>('着色', [], (mode) => {
-      const next = proteinDisplayWithColor(this.proteinDisplay.representation, mode);
-      if (next === null) return;
-      this.proteinDisplay = next;
-      this.proteinDisplayByRepresentation.set(next.representation, next);
-      colorControl.setSelected(mode);
-      this.onProteinDisplayChange?.(next);
-    });
-    colorControl.element.classList.add('stage-control-protein-colors');
-    // 現在の表示形態が選べる着色モードへ colorControl の選択肢を合わせる。
-    const updateColorItems = (): void => {
-      const modes = proteinColorModesFor(this.proteinDisplay.representation);
-      colorControl.setItems(modes.map((mode) => [mode, PROTEIN_COLOR_LABELS[mode]] as const));
-      colorControl.setSelected(this.proteinDisplay.colorMode);
-    };
-    updateColorItems();
-    section.appendChild(colorControl.element);
+    // 表示形態と着色の選択。
+    this.representationControl.element.classList.add('stage-control-protein-representation');
+    section.appendChild(this.representationControl.element);
+    this.colorControl.element.classList.add('stage-control-protein-colors');
+    section.appendChild(this.colorControl.element);
+    this.showProteinDisplay();
 
     // 単体スポーンと陣形スポーンのボタン。
     const spawnButton = new Button('敵をスポーン', () => this.onSpawnEnemy?.(selectedShape, String(0xffffff)));
