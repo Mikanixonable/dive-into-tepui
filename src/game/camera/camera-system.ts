@@ -16,6 +16,7 @@ import type { ViewMode } from '../view/view-mode';
 import type { Viewport } from '../../render/viewport';
 import { CameraSaveData } from '../save/save-data';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { ViewSelectionSource } from '../viewer/view-selection';
 
 // 戦闘ビューの初期視点: 操作対象の後方やや上から見下ろす(役割フォーカス+姿勢追従)。
 const COMBAT_CAMERA_FOV = 55; // 通常時の垂直画角 [deg]
@@ -46,9 +47,9 @@ export class CameraSystem {
   // 戦闘ビューの表示視点。軌道視点とガンサイトの間で fovDeg だけを指数的に遷移させた後の値。
   private combatViewpoint: Viewpoint;
   // 現在のビュー。
-  public get view(): ViewMode { return this.currentView(); }
+  public get view(): ViewMode { return this.viewSelection.current; }
   // マップビューのインスタンスがアクティブか。
-  private get mapActive(): boolean { return this.currentView() === 'map'; }
+  private get mapActive(): boolean { return this.viewSelection.current === 'map'; }
 
   private readonly viewResetBtn: HTMLElement | null;
 
@@ -68,12 +69,12 @@ export class CameraSystem {
     this.hud.hint('視点をリセット');
   }
 
-  // 両カメラを構築し、視点リセットボタンを配線する。currentView は現在のビューを毎回引く
-  // 関数、attitudeOf はフォーカス id の時刻 t の姿勢(引けなければ null)。
+  // 両カメラを構築し、視点リセットボタンを配線する。attitudeOf はフォーカス id の時刻 t の
+  // 姿勢(引けなければ null)。
   public constructor(
     private readonly hud: HudLayers & Notifier,
     celestialBodies: CelestialBodies,
-    private readonly currentView: () => ViewMode,
+    private readonly viewSelection: Pick<ViewSelectionSource, 'current'>,
     attitudeOf: (id: string, t: number) => Quat | null,
     saved: Pick<CameraSaveData, 'chase' | 'overview'> | undefined,
     viewport: Viewport,
