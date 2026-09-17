@@ -1,4 +1,5 @@
 // ゲーム全体のオーケストレーション: 各システムの生成・保持と、フレームごとの呼び出し順序の決定。
+// 段 5 でモデル層の根・表示の導出の根・ランの組み立ての3つへ分けるので、それまで計画の外で分割しない(1.2 の暫定)。
 import * as THREE from 'three/webgpu';
 import type { PerfCounts } from './perf-counts';
 import { proteinMotionFrameSample, type ProteinMotionFrameSample } from './protein/protein-motion-metrics';
