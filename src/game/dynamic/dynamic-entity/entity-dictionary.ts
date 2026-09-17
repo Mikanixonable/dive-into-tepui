@@ -31,7 +31,7 @@ export function restorationFor(
   effects: FlashEffects,
 ): EntityRestoration | null {
   switch (data.kind) {
-    case 'player':
+    case 'ship':
       return {
         gate: null,
         build: () => new ModularShip(notifier, worldSfx, scene, effects, markers, { saved: data, simTime }),
@@ -50,7 +50,6 @@ export function restorationFor(
       return { gate: null, build: () => new AmmoPickup({ saved: data, simTime }, scene) };
     case 'rcs-fuel':
       return { gate: null, build: () => new RcsFuelPickup({ saved: data, simTime }, scene) };
-    case 'base': return null;
     default:
       return skipUnknownKind(data);
   }
