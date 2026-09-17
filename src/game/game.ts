@@ -61,6 +61,7 @@ import { orbitReferenceCommands, type OrbitReferenceCommands } from './viewer/or
 import { orbitGuideCommands } from './viewer/orbit-guide-commands';
 import { predictPanelCommands } from './viewer/predict-panel-commands';
 import { viewCommands } from './viewer/view-commands';
+import { cameraCommands, type CameraCommands } from './viewer/camera-commands';
 import { recordTargetBoardPasses } from './dynamic/target-board-passes';
 import { ObjectWindows } from './pickable/object-windows';
 import { SAVE_VERSION, type GameSaveData } from './save/save-data';
@@ -85,7 +86,7 @@ import { isEnemy } from './dynamic/dynamic-entity/enemy';
 import { isProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
 import { isPlayerMotion } from './player/player-motion';
 import { aliveCombatTarget } from './dynamic/dynamic-entity/combat-target';
-import { focusTargetId } from './camera/focus-target';
+import { focusTargetId } from './viewer/focus-target';
 import { frameRoleName } from './hud/frame/frame-labels';
 import { summarizeRun, type RunSummary } from './run-summary';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
@@ -178,6 +179,8 @@ export class Game {
   private readonly navTargetCommands: NavTargetCommands;
   // 軌道要素の基準の差し替えを列へ積む口。
   private readonly orbitReferenceCommands: OrbitReferenceCommands;
+  // 2台のカメラ視点へ変更を積む口。
+  private readonly cameraCommandPort: CameraCommands;
   // 航法ターゲットの解決と、その相対交点・再接近点のマーカー。
   private readonly navTargetPresenter: NavTargetPresenter;
   private readonly frameAnchors: FrameAnchors;
@@ -251,7 +254,7 @@ export class Game {
       activeControlledId: this.activeControllable?.id ?? null,
       stage: this.activeStage.serialize(),
       // 遊ぶ人の選択。
-      ...this.viewer.serialize(this.cameraSystem.serialize()),
+      ...this.viewer.serialize(),
     };
   }
 
@@ -305,8 +308,9 @@ export class Game {
     const viewSelectionCommands = viewCommands(this.commands, this.viewer.view);
     this.navTargetCommands = navTargetCommands(this.commands, this.viewer.navTarget);
     this.orbitReferenceCommands = orbitReferenceCommands(this.commands, this.viewer.orbitReference);
+    this.cameraCommandPort = cameraCommands(this.commands, this.viewer.camera);
     this.cameraSystem = new CameraSystem(
-      this._hud, celestialSystem, this.viewer.view,
+      this._hud, celestialSystem, this.viewer.camera, this.cameraCommandPort, this.viewer.view,
       (id, t) => {
         const role = frameRoleOf(id);
         const entity = role === 'controlled' ? this.activeControllable
@@ -316,7 +320,7 @@ export class Game {
             : this.dynamicSystem.all().find((e) => e.id === id) ?? null;
         return entity?.motion.alive ? entity.motion.att.q : null;
       },
-      initialSave?.camera, host.scene.viewport,
+      host.scene.viewport,
     );
     const predictCommands = predictPanelCommands(this.commands, this.viewer.predictPanel);
     this.displayWindowManager = new DisplayWindowManager(
@@ -342,7 +346,8 @@ export class Game {
     });
     this.frameControls = new FrameControls(
       this._hud.mapRoot, this._hud.combatRoot, this._hud.layers.popup,
-      celestialSystem, this.cameraSystem.mapCamera, this.cameraSystem.combatCamera,
+      celestialSystem, this.viewer.camera.map, this.viewer.camera.combat,
+      this.cameraCommandPort.map, this.cameraCommandPort.combat, this.cameraSystem,
       this.viewer.predictPanel, predictCommands, this._hud.overlayManager, this.frameAnchors,
     );
     this.targeter = new Targeter(
@@ -378,18 +383,19 @@ export class Game {
     this.objectWindows = new ObjectWindows(
       this._hud, this.dynamicSystem, celestialSystem,
       this.viewer.navTarget, this.navTargetPresenter, this.navTargetCommands,
-      this.cameraSystem, () => this.viewManager.activeView, this.pauseMenu,
-      this.controlSelection, this.frameControls, this.activeStage, this.targeter, this.displayWindowManager,
+      this.viewer.camera, this.viewer.view, () => this.viewManager.activeView, this.pauseMenu,
+      this.controlSelection, this.frameControls, this.cameraCommandPort.combat,
+      this.activeStage, this.targeter, this.displayWindowManager,
       objectMenuCommands(this.commands, this.controlSelection),
     );
 
     const combatView = new CombatView(
-      this.input, this.cameraSystem, this.targeter, this.objectWindows, this.dynamicSystem,
+      this.input, this.targeter, this.objectWindows, this.dynamicSystem,
       this.celestialMarkers, this.touchControls,
       this.controlSelection, this.planDisplay.path, this.planGuide,
     );
     const mapView = new MapView(
-      this.input, this.cameraSystem, this.objectWindows,
+      this.input, this.cameraSystem, this.viewer.camera, this.objectWindows,
       this.dynamicSystem, this.equatorNodes, celestialSystem,
       this.celestialMarkers, this.markers, this.targeter.combatMarkers,
       this.displayWindowManager, this.frameControls,
@@ -407,9 +413,6 @@ export class Game {
       this._hud.viewBadgeRow, this._hud.layers.notify, this._hud.overlayManager, viewSelectionCommands,
     );
     this.viewBadge.onRenderStyleChange = (style) => this._hud.setRenderStyle(style);
-
-    // 復元した focus を、軌道表示の基準系へも通しておく。
-    this.frameControls.setFocus(this.cameraSystem.mapCamera.focus);
 
     this.inputRouter = new GameInputRouter(rawGameInputAdapter(this.input), [
       {
@@ -482,6 +485,11 @@ export class Game {
     // 組み立ての間に積まれた出来事は、最初のフレームの進行が記録を空にすると消えるので、
     // ここで視点に当てて写しておく。新規開始のブリーフィングもこの場で出す。
     this.followProgress();
+    this.frameAnchors.update(this.dynamicSystem.simTime);
+    this.viewer.followCameraProgress(
+      this.runEvents.recent,
+      this.cameraSystem.sampleProgress(this.dynamicSystem.simTime, this.frameAnchors),
+    );
     this.runEventPresenter.present(this.runEvents.recent);
     const briefing = this.activeStage.briefing;
     if (briefing !== null) this._hud.toast(briefing, BRIEFING_TOAST_MS);
@@ -532,7 +540,7 @@ export class Game {
     this.input.update();
     const dt = Math.min(dtRaw, 0.1);
     // ポーズ中も Esc・ヘルプなどは効かせるので、入力配分はポーズ判定より前に置く。
-    this.handleInput(dt, nowMs);
+    this.handleInput(dt, nowMs, viewport);
     this.sections.exit(SECTION.input);
 
     // 一時停止中も命令は適用するので、ポーズ判定より前に置く(R8)。命令の適用そのものが
@@ -557,6 +565,10 @@ export class Game {
     // このフレームが天体を引く表示時刻を差し込む: 以降の frameTransformAt 呼び出しは
     // すべてこの frameAnchors を通す。
     this.frameAnchors.update(displayWindow.displayTime);
+    const cameraSamples = this.cameraSystem.sampleProgress(
+      displayWindow.displayTime, this.frameAnchors,
+    );
+    this.viewer.followCameraProgress(this.runEvents.recent, cameraSamples);
     // 一時エフェクトと的通過マークは、進行が記録した出来事から表示時刻で組み直す(R5)。
     // 一時停止中は表示時刻が止まるので、そのまま止まって見える。
     this.sections.enter(SECTION.effects);
@@ -600,8 +612,7 @@ export class Game {
     this.sections.exit(SECTION.plan);
     this.sections.enter(SECTION.camera);
     this.cameraSystem.update(
-      displayWindow.displayTime, this.input, dt, this.viewManager.activeView.pickables,
-      this.frameAnchors, activeControllable, viewport,
+      this.viewManager.activeView.pickables, activeControllable, viewport, nowMs,
     );
     this.sections.exit(SECTION.camera);
     // カメラ更新の後に置く — 候補列の組み直しは遮蔽判定などにカメラ位置を読むので、先に組むと
@@ -609,9 +620,6 @@ export class Game {
     this.sections.enter(SECTION.mapPick);
     this.viewManager.activeView.update(displayWindow);
     this.sections.exit(SECTION.mapPick);
-    this.sections.enter(SECTION.pointer);
-    this.handlePointerInput(viewport);
-    this.sections.exit(SECTION.pointer);
   }
 
   // ステージ → 指令決定 → 積分 → エフェクトの順に1フレーム進める
@@ -639,28 +647,16 @@ export class Game {
     this.controlSelection.reclaimDead();
   }
 
-  // 進行が今ステップに記録した出来事に視点を合わせる。取り除かれた操作対象候補をマップのカメラが
-  // 注視していれば、注視を戻す(暫定 — カメラが視点へ移るときに視点の規則へ入れる)。
+  // 進行が今ステップに記録した出来事へ、航法ターゲットと予測パネルを合わせる。
   private followProgress(): void {
-    const events = this.runEvents.recent;
-    this.viewer.followProgress(events);
-    for (const { body } of events) {
-      if (body.kind === 'controllableRemoved') this.cameraSystem.mapCamera.clearFocusIf(body.id);
-    }
-  }
-
-  // ポインタ入力を現在のビューへ配る。このフレームの cameraSystem.update が終わって初めて投影が
-  // このフレームの値になるので、update の末尾に置く。ポーズ中と入力ゲート中はそのまま戻る。
-  private handlePointerInput(viewport: Viewport): void {
-    if (this.isPaused || this._hud.overlayManager.isInputGated()) return;
-    this.viewManager.activeView.handlePointer(this.dynamicSystem.simTime, viewport);
+    this.viewer.followProgress(this.runEvents.recent);
   }
 
   // --------------------------------------------------------------- input
 
   // 生の入力を担当モジュールへ先着順で配り、このフレームの操作量を組む。決めるのは
   // 優先順位 = 呼ぶ順序だけで、どのキー/クリックが何をするかは各モジュールが持つ。
-  private handleInput(dt: number, nowMs: number): void {
+  private handleInput(dt: number, nowMs: number, viewport: Viewport): void {
     this.inputRouter.beginFrame();
     // 連打の判定が読むワープ倍率は、直前の進行が確定させたもの — ×4 を超えている間は数えず、
     // 戻したフレームにワープ中の押下が発火しないようにする(CONTROLS.md)。
@@ -673,6 +669,16 @@ export class Game {
       this.viewManager.activeView.updateActions(this.input, dt);
     }
     this.inputRouter.routeAdditional(this.pilotPorts);
+    // カメラ操作は視点所有者への命令へ変え、この直後の applyAll で同じフレームに反映する。
+    // 入力がゼロでも毎フレーム積み、距離・画角のクランプを所有者側で一貫して通す。
+    this.cameraSystem.handleInput(this.input, dt, viewport, this.activeControllable);
+    // ピックは直前の sync が確定した CameraFrame と候補列を使う。これにより入力解釈が、
+    // この後に導出される新しい表示値へ依存しない。
+    if (!this.isPaused && !this._hud.overlayManager.isInputGated() && this.cameraFrame !== null) {
+      this.sections.switchTo(SECTION.input, SECTION.pointer);
+      this.viewManager.activeView.handlePointer(this.dynamicSystem.simTime, this.cameraFrame);
+      this.sections.switchTo(SECTION.pointer, SECTION.input);
+    }
   }
 
   // ステージ更新と自律推力の更新が終わった後、このフレームに受け付けた命令を操作対象へ適用する。
@@ -736,7 +742,8 @@ export class Game {
       : undefined;
 
     this._celestialSystem.sync(
-      displayTime, nowMs, camera, this.cameraSystem, graphics, style,
+      displayTime, nowMs, camera, this.viewer.camera.map, this.cameraSystem.mapResolvedFocus,
+      graphics, style,
       this.viewOptionSettings.grid.current, this.viewer.orbitGuide.settings, visibilityPolicy,
     );
     // 本数の警告は、天体系がこのフレームに組んだ軌道ガイド線から出す。
@@ -848,7 +855,7 @@ export class Game {
       },
       burnManagement: controlled?.boosters?.managementViewModel() ?? null,
       burnHandlers: this.boosterHandlers,
-      mapFocus: this.cameraSystem.mapCamera.resolvedFocus,
+      mapFocus: this.cameraSystem.mapResolvedFocus,
       analysisSource: {
         celestialSystem: this._celestialSystem,
         windowDurationSec: displayWindow.duration,
@@ -873,7 +880,7 @@ export class Game {
       throttleIdx: controlled.throttle.throttleIdx,
       dynamicPressurePa: player?.aero?.qdyn ?? null,
       fineAttitude: controlled.fineAttitude,
-      cameraFollowsAttitude: this.cameraSystem.combatCamera.rotationFollow?.kind === 'attitude',
+      cameraFollowsAttitude: this.viewer.camera.combat.rotationFollow?.kind === 'attitude',
       progradeHold: controlled.throttle.progradeHold,
       totalFuel: controlled.totalFuel,
       totalMaxFuel: controlled.totalMaxFuel,

@@ -5,10 +5,12 @@ import { OrbitGuideSelection } from './orbit-guide-selection';
 import { OrbitReferenceSelection } from './orbit-reference-selection';
 import { PredictPanelSelection } from './predict-panel-selection';
 import { ViewSelection, type ViewControlSource } from './view-selection';
+import { CameraSelection, type CameraFrameSamples } from './camera-selection';
+import { focusTargetId } from './focus-target';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { RunEvent, RunEventSink } from '../run-events';
-import type { CameraSaveData, GameSaveData } from '../save/save-data';
+import type { GameSaveData } from '../save/save-data';
 
 export class Viewer {
   // 航法ターゲットの選択。
@@ -21,6 +23,8 @@ export class Viewer {
   public readonly predictPanel: PredictPanelSelection;
   // 戦闘/マップのビュー選択。
   public readonly view: ViewSelection;
+  // 戦闘/マップの2台のカメラ視点。
+  public readonly camera: CameraSelection;
 
   // saved のうち視点の分を戻して組む。saved が無ければ既定から始める。roster と control には
   // 復元と初期配置を終えた進行を渡し、所有者の命令の結果は events へ記録する。
@@ -35,23 +39,29 @@ export class Viewer {
     this.orbitGuide = new OrbitGuideSelection(saved?.orbitGuide);
     this.predictPanel = new PredictPanelSelection(celestialBodies.frames, celestialBodies);
     this.view = new ViewSelection(saved?.camera?.view, control, events);
+    this.camera = new CameraSelection(celestialBodies, events, saved?.camera);
+    // 復元したマップ注視の登録天体を、予測パネルの初期基準へ反映する。
+    this.predictPanel.followCameraFocus(focusTargetId(this.camera.map.focus));
   }
 
   // セーブのうち視点の分。
-  public serialize(
-    camera: Pick<CameraSaveData, 'chase' | 'overview'>,
-  ): Pick<GameSaveData, 'camera' | 'navTarget' | 'orbitGuide'> {
+  public serialize(): Pick<GameSaveData, 'camera' | 'navTarget' | 'orbitGuide'> {
     return {
-      camera: { view: this.view.current, ...camera },
+      camera: this.camera.serialize(this.view.current),
       navTarget: this.navTarget.serialize(),
       orbitGuide: this.orbitGuide.settings,
     };
   }
 
-  // 進行が今ステップに記録した出来事と、現在表示を求めるビューへ視点を合わせる。
+  // 進行が今ステップに記録した出来事と、現在表示を求めるビューへ各選択を合わせる。
   // 進行の位相の末尾で、一時停止中も毎フレーム呼ぶ。
   public followProgress(events: readonly RunEvent[]): void {
     this.navTarget.followProgress(events);
     this.predictPanel.followProgress(this.view.current !== 'map');
+  }
+
+  // 進行直後の姿勢・座標系と注視対象の生存状態へカメラ視点を合わせる。
+  public followCameraProgress(events: readonly RunEvent[], samples: CameraFrameSamples): void {
+    this.camera.followProgress(events, samples, this.view.current);
   }
 }

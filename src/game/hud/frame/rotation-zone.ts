@@ -5,7 +5,7 @@ import { FrameRole, FrameRotationSource, rotationSourceKey } from '../../../phys
 import { SegmentedControl } from '../../../hud/widgets';
 import { frameRoleName } from './frame-labels';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
-import { rotationFollowKey, type CameraRotationFollow } from '../../camera/focus-camera';
+import { rotationFollowKey, type CameraRotationFollow } from '../../viewer/focus-camera-selection';
 import type { CelestialBody } from '../../../physics/celestial-body';
 
 export class RotationZone {

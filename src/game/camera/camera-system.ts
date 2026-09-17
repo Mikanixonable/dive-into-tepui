@@ -1,84 +1,79 @@
-import type { HudLayers } from '../hud/hud-layers';
-import type { Notifier } from '../../hud/notifier';
-import { GunsightCamera } from './gunsight-camera';
-import { defaultMapViewInitial, FocusCamera } from './focus-camera';
-import type { FocusTarget } from './focus-target';
-import { frameRoleAnchorId } from '../../physics/frame';
-import type { FocusCandidate } from './focus-target';
-import { Input } from '../../input/input';
+// 2台のカメラ視点を入力命令と表示用 Viewpoint へ結び、ガンサイトと画角遷移を重ねる。
+import type { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import { Vec3, v3 } from '../../math/vec3';
-import { screenProjection, Viewpoint, type ProjectFn } from '../../math/projection';
-import type { FrameAnchorSource } from '../../physics/frame';
 import type { Quat } from '../../math/quat';
-import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { ViewMode } from '../view/view-mode';
+import type { Viewpoint } from '../../math/projection';
+import type { Vec3 } from '../../math/vec3';
+import { v3 } from '../../math/vec3';
+import { bodyAnchorSource } from '../../physics/attractor';
+import type { FrameAnchorSource } from '../../physics/frame';
 import type { Viewport } from '../../render/viewport';
-import { CameraSaveData } from '../save/save-data';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { HudLayers } from '../hud/hud-layers';
+import type { ViewMode } from '../view/view-mode';
+import type { CameraCommands } from '../viewer/camera-commands';
+import { COMBAT_CAMERA_FOV, type CameraFrameSamples, type CameraSelectionSource } from '../viewer/camera-selection';
+import type { CameraFrameSample, FocusCameraSource } from '../viewer/focus-camera-selection';
+import { focusTargetId, type FocusTarget } from '../viewer/focus-target';
 import type { ViewSelectionSource } from '../viewer/view-selection';
-
-// 戦闘ビューの初期視点: 操作対象の後方やや上から見下ろす(役割フォーカス+姿勢追従)。
-const COMBAT_CAMERA_FOV = 55; // 通常時の垂直画角 [deg]
-const COMBAT_CAMERA_INIT_ANGLES = { yaw: -Math.PI / 2, pitch: 0.3 - (10 * Math.PI) / 180, roll: 0 };
-const COMBAT_CAMERA_INIT_DIST = 38; // [m]
+import { cameraOperation } from './camera-operator';
+import { CameraRig } from './camera-rig';
+import type { FocusCandidate } from './focus-derivation';
+import { GunsightCamera } from './gunsight-camera';
 
 const ZOOM_LERP_RATE = 9; // ガンサイトとの画角遷移の追従速度 [1/s]
 
-// current から target へ fovDeg を指数的に近づけた Viewpoint を返す。他の成分は target の値。
-function lerpViewpointFov(current: Viewpoint, target: Viewpoint, dt: number): Viewpoint {
-  const k = 1 - Math.exp(-ZOOM_LERP_RATE * dt);
-  return { ...target, fovDeg: current.fovDeg + (target.fovDeg - current.fovDeg) * k };
-}
-
-// 矢印キーでの視点回転 [rad/s]。マウスドラッグと同じ感覚になる値。
-const CAM_KEY_YAW_RATE = 1.4;
-const CAM_KEY_PITCH_RATE = 1.0;
-const CAM_KEY_ROLL_RATE = 1.4; // テンキー0/1での視点ロール [rad/s]
-const CAM_KEY_PAN_RATE = 600; // @/:/;/]での視点平行移動、中クリックドラッグと同じ px/s 換算で加算
-
-// 同じ注視カメラ(FocusCamera)の戦闘用・マップ用の2インスタンスを、ビューに応じて切り替えて
-// 駆動する。戦闘ビューではガンサイトズーム([Z])と画角遷移をその上に重ねる。
 export class CameraSystem {
-  public readonly combatCamera: FocusCamera;
-  public readonly mapCamera: FocusCamera;
+  private readonly combatRig: CameraRig;
+  private readonly mapRig: CameraRig;
   private readonly gunsightCamera: GunsightCamera;
-  private _zoomActive = false;
-  // 戦闘ビューの表示視点。軌道視点とガンサイトの間で fovDeg だけを指数的に遷移させた後の値。
+  private readonly viewResetButton: HTMLElement | null;
+  private samples: CameraFrameSamples;
+  private zoomRequested = false;
+  private useGunsight = false;
   private combatViewpoint: Viewpoint;
-  // 現在のビュー。
+  private transitionStartFov = COMBAT_CAMERA_FOV;
+  private transitionTargetFov = COMBAT_CAMERA_FOV;
+  private transitionStartMs = 0;
+
   public get view(): ViewMode { return this.viewSelection.current; }
-  // マップビューのインスタンスがアクティブか。
-  private get mapActive(): boolean { return this.viewSelection.current === 'map'; }
-
-  private readonly viewResetBtn: HTMLElement | null;
-
-  // 視点リセットボタンの押下を受ける。
-  private readonly handleViewReset = (e: PointerEvent): void => {
-    e.stopPropagation();
-    this.resetActiveCamera();
-  };
-
-  // 現在のビューの視点をリセットする。戦闘は初期視点へ、マップはロールとパンを戻す。
-  private resetActiveCamera(): void {
-    if (this.mapActive) {
-      this.mapCamera.reset();
-      return;
-    }
-    this.combatCamera.resetToInitial();
-    this.hud.hint('視点をリセット');
+  private get activeSource(): FocusCameraSource { return this.cameraSelection.camera(this.view); }
+  public get activeFocus(): FocusTarget { return this.activeSource.focus; }
+  public get activeViewpoint(): Viewpoint {
+    return this.view === 'map' ? this.mapRig.viewpoint : this.combatViewpoint;
+  }
+  public get activeCameraPos(): Vec3 { return this.activeViewpoint.position; }
+  public get mapResolvedFocus(): Vec3 { return this.mapRig.resolvedFocus; }
+  public get zoomActive(): boolean { return this.view === 'combat' && this.zoomRequested; }
+  public get clipFovDeg(): number { return this.activeSource.fov; }
+  public get clipDistance(): number { return this.activeSource.distance; }
+  public get focusVelocity(): Vec3 {
+    const velocity = this.view === 'map' ? this.mapRig.focusVelocity : this.combatRig.focusVelocity;
+    return velocity ?? v3();
   }
 
-  // 両カメラを構築し、視点リセットボタンを配線する。attitudeOf はフォーカス id の時刻 t の
-  // 姿勢(引けなければ null)。
+  // 2台の導出器と入力の受け口を組む。
   public constructor(
-    private readonly hud: HudLayers & Notifier,
+    hud: Pick<HudLayers, 'root'>,
     celestialBodies: CelestialBodies,
+    private readonly cameraSelection: CameraSelectionSource,
+    private readonly commands: CameraCommands,
     private readonly viewSelection: Pick<ViewSelectionSource, 'current'>,
-    attitudeOf: (id: string, t: number) => Quat | null,
-    saved: Pick<CameraSaveData, 'chase' | 'overview'> | undefined,
+    private readonly attitudeOf: (id: string, t: number) => Quat | null,
     viewport: Viewport,
   ) {
+    this.combatRig = new CameraRig(celestialBodies);
+    this.mapRig = new CameraRig(celestialBodies);
+    const initialAnchors = bodyAnchorSource([], 0);
+    const initialSample: CameraFrameSample = {
+      displayTime: 0,
+      frameAnchors: initialAnchors,
+      attitude: null,
+      referenceUp: v3(0, 1, 0),
+      lostFocus: null,
+    };
+    this.samples = { combat: initialSample, map: initialSample };
     this.combatViewpoint = {
       position: v3(),
       up: v3(0, 1, 0),
@@ -87,155 +82,95 @@ export class CameraSystem {
       aspect: viewport.width / viewport.height,
     };
     this.gunsightCamera = new GunsightCamera(viewport);
-    // 戦闘は操作対象の役割 id を注視する — 操作を別の機体へ移しても注視が付いていく。
-    this.combatCamera = new FocusCamera(hud, celestialBodies, {
-      focusLossPolicy: 'hold',
-      initial: {
-        angles: COMBAT_CAMERA_INIT_ANGLES,
-        dist: COMBAT_CAMERA_INIT_DIST,
-        fovDeg: COMBAT_CAMERA_FOV,
-        focus: { kind: 'object', id: frameRoleAnchorId('controlled') },
-        follow: { kind: 'attitude' },
-      },
-      eulerPole: 'attitude',
-      attitudeOf,
-    }, saved?.chase, viewport);
-    this.mapCamera = new FocusCamera(
-      hud, celestialBodies,
-      {
-        focusLossPolicy: 'fallToOrigin',
-        initial: defaultMapViewInitial(celestialBodies),
-        eulerPole: 'reference',
-        attitudeOf,
-      },
-      saved?.overview, viewport,
-    );
-    // 視点リセットボタンは、HUD にあれば配線する。
-    this.viewResetBtn = hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
-    this.viewResetBtn?.addEventListener('pointerdown', this.handleViewReset);
+    this.viewResetButton = hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
+    this.viewResetButton?.addEventListener('pointerdown', this.handleViewReset);
   }
 
-  // 視点リセットボタンへの配線を解く。
-  public dispose(): void {
-    this.viewResetBtn?.removeEventListener('pointerdown', this.handleViewReset);
+  // 現在の進行値から、命令と導出が共有する2台分のフレーム材料を作る。
+  public sampleProgress(displayTime: number, frameAnchors: FrameAnchorSource): CameraFrameSamples {
+    const sample = (source: FocusCameraSource, rig: CameraRig): CameraFrameSample => {
+      const id = focusTargetId(source.focus);
+      const base = { displayTime, frameAnchors };
+      return {
+        ...base,
+        attitude: id === undefined ? null : this.attitudeOf(id, displayTime),
+        referenceUp: rig.referenceUp(base),
+        lostFocus: rig.lostFocus,
+      };
+    };
+    this.samples = {
+      combat: sample(this.cameraSelection.combat, this.combatRig),
+      map: sample(this.cameraSelection.map, this.mapRig),
+    };
+    return this.samples;
   }
 
-  // 現在のビューで駆動するカメラ実体。
-  private get activeFocusCamera(): FocusCamera {
-    return this.mapActive ? this.mapCamera : this.combatCamera;
+  public sample(view: ViewMode): CameraFrameSample {
+    return view === 'map' ? this.samples.map : this.samples.combat;
   }
 
-  // 現在のビューの視点。戦闘ビューはガンサイトとの画角遷移を掛けた後の値。
-  public get activeViewpoint(): Viewpoint {
-    return this.mapActive ? this.mapCamera.viewpoint : this.combatViewpoint;
-  }
-
-  // アクティブカメラの位置。
-  public get activeCameraPos(): Vec3 {
-    return this.activeViewpoint.position;
-  }
-
-  // アクティブカメラの視点から viewport の画面座標への射影を返す。
-  public activeProjection(viewport: Viewport): ProjectFn {
-    return screenProjection(this.activeViewpoint, viewport.width, viewport.height);
-  }
-
-  // 現在のビューのカメラが注視しているフォーカス対象。
-  public get activeFocus(): FocusTarget {
-    return this.activeFocusCamera.focus;
-  }
-
-  // 戦闘ビューでズーム視点(照準ズーム)が有効かどうか。
-  public get zoomActive(): boolean {
-    return !this.mapActive && this._zoomActive;
-  }
-
-  // router からカメラ固有の単発入力を受け取る。
-  public handleCommand(commandId: string): void {
-    if (commandId !== K.followAttitudeToggle.code) return;
-    const active = this.activeFocusCamera;
-    if (active.toggleAttitudeFollow()) {
-      const on = active.rotationFollow?.kind === 'attitude';
-      this.hud.hint(`視点の姿勢追従: ${on ? 'ON(機体姿勢に追従)' : 'OFF(慣性系)'}`);
-    }
-  }
-
-  // 入力から現在のビューのカメラの向き・ズームを更新する。displayTime は線・メッシュと同じ表示
-  // 時刻を渡す — ずれると回転系選択時にカメラだけが取り残される。controlled は照準ズームの可否と
-  // その視点を決める。
-  public update(
-    displayTime: number,
-    input: Input,
-    dt: number,
-    focusCandidates: readonly FocusCandidate[],
-    frameAnchors: FrameAnchorSource,
-    controlled: Controllable | null,
-    viewport: Viewport,
-  ): void {
-    // 中クリックで視点リセット
+  // 入力を現在のビューの視点命令へ変換する。命令は同じフレームの進行先頭で適用される。
+  public handleInput(input: Input, dt: number, viewport: Viewport, controlled: Controllable | null): void {
+    const view = this.view;
+    const commands = this.commands.camera(view);
+    const sample = this.sample(view);
     input.takeMiddleClicks(() => {
-      this.resetActiveCamera();
+      commands.reset(sample);
       return true;
     });
+    this.zoomRequested = input.down(K.gunsightZoom);
+    const suppressMotion = view === 'combat' && this.zoomRequested && controlled?.fire != null;
+    const operation = cameraOperation(input, dt, viewport, suppressMotion);
+    if (operation.rollReset && view === 'map') this.commands.map.reset(this.samples.map);
+    commands.applyInput(operation.input, sample);
+  }
 
-    // キー/マウスによる旋回入力をまとめる
-    const keyYawRad = ((input.down(K.cameraYawLeft) ? 1 : 0) + (input.down(K.cameraYawRight) ? -1 : 0))
-      * CAM_KEY_YAW_RATE * dt;
-    const keyPitchRad = ((input.down(K.cameraPitchDown) ? 1 : 0) + (input.down(K.cameraPitchUp) ? -1 : 0))
-      * CAM_KEY_PITCH_RATE * dt;
-    const keyRollLeft = input.down(K.cameraRollLeft);
-    const keyRollRight = input.down(K.cameraRollRight);
+  // router から姿勢追従の単発入力を受け、現在のビューへ積む。
+  public handleCommand(commandId: string): void {
+    if (commandId !== K.followAttitudeToggle.code) return;
+    this.commands.camera(this.view).toggleAttitudeFollow(this.sample(this.view));
+  }
 
-    // /_ の同時押しでマップカメラのロールをリセット
-    if (keyRollLeft && keyRollRight) {
-      if (this.mapActive) this.mapCamera.reset();
-    }
-    const keyRoll = (keyRollLeft ? 1 : 0) + (keyRollRight ? -1 : 0);
-    const keyPanX = (input.down(K.cameraPanLeft) ? 1 : 0) + (input.down(K.cameraPanRight) ? -1 : 0);
-    const keyPanY = (input.down(K.cameraPanUp) ? 1 : 0) + (input.down(K.cameraPanDown) ? -1 : 0);
-    const mouse = { ...input.mouse() };
-    mouse.panDx += keyPanX * CAM_KEY_PAN_RATE * dt;
-    mouse.panDy += keyPanY * CAM_KEY_PAN_RATE * dt;
-    mouse.roll += keyRoll * CAM_KEY_ROLL_RATE * dt;
-
-    if (this.mapActive) {
-      this.mapCamera.update(mouse, keyYawRad, keyPitchRad, displayTime, focusCandidates, frameAnchors, viewport);
+  // 視点状態と進行値から現在のビューの Viewpoint を導出する。
+  public update(
+    candidates: readonly FocusCandidate[],
+    controlled: Controllable | null,
+    viewport: Viewport,
+    nowMs: number,
+  ): void {
+    if (this.view === 'map') {
+      this.mapRig.update(this.cameraSelection.map, this.samples.map, candidates, viewport);
       return;
     }
-    this._zoomActive = input.down(K.gunsightZoom);
-    // 照準ズームは機関砲の照準器なので、砲を積む操作対象にだけ効く。
-    const useGunsight = this._zoomActive && controlled?.fire != null;
-    // ガンサイト中の視点操作は、覗いていない軌道視点へ届かせない(解除時に視点が跳ぶ)。
-    const stillMouse = { ...mouse, dx: 0, dy: 0, wheel: 0, panDx: 0, panDy: 0, roll: 0 };
-    this.combatCamera.update(
-      useGunsight ? stillMouse : mouse,
-      useGunsight ? 0 : keyYawRad,
-      useGunsight ? 0 : keyPitchRad,
-      displayTime, focusCandidates, frameAnchors, viewport,
-    );
-    if (useGunsight) this.gunsightCamera.update(controlled, viewport);
-    const target = useGunsight ? this.gunsightCamera.viewpoint : this.combatCamera.viewpoint;
-    this.combatViewpoint = lerpViewpointFov(this.combatViewpoint, target, dt);
+    this.combatRig.update(this.cameraSelection.combat, this.samples.combat, candidates, viewport);
+    this.useGunsight = this.zoomRequested && controlled?.fire != null;
+    if (this.useGunsight && controlled !== null) this.gunsightCamera.update(controlled, viewport);
+    const target = this.useGunsight ? this.gunsightCamera.viewpoint : this.combatRig.viewpoint;
+    this.combatViewpoint = { ...target, fovDeg: this.transitionFov(target.fovDeg, nowMs) };
   }
 
-  // 軌道視点の垂直画角 [deg]。ガンサイトへ絞り込む前の値を答える。
-  public get clipFovDeg(): number {
-    return this.activeFocusCamera.fov;
+  public dispose(): void {
+    this.viewResetButton?.removeEventListener('pointerdown', this.handleViewReset);
   }
 
-  // 軌道視点の注視距離 [m]。
-  public get clipDistance(): number {
-    return this.activeFocusCamera.dist;
+  // 実時刻から指数遷移を評価し、フレーム刻みに依存しない画角を返す。
+  private transitionFov(targetFov: number, nowMs: number): number {
+    if (targetFov !== this.transitionTargetFov) {
+      this.transitionStartFov = this.fovAt(nowMs);
+      this.transitionTargetFov = targetFov;
+      this.transitionStartMs = nowMs;
+    }
+    return this.fovAt(nowMs);
   }
 
-  // アクティブカメラが注視している点の ECI 速度。速度を答えられない対象を注視している
-  // あいだはゼロ。
-  public get focusVelocity(): Vec3 {
-    return this.activeFocusCamera.focusVelocity ?? v3();
+  private fovAt(nowMs: number): number {
+    const elapsedSec = Math.max(0, nowMs - this.transitionStartMs) / 1000;
+    const remain = Math.exp(-ZOOM_LERP_RATE * elapsedSec);
+    return this.transitionTargetFov + (this.transitionStartFov - this.transitionTargetFov) * remain;
   }
 
-  // 両サブカメラの視点状態をセーブデータへ書き出す。chase が戦闘ビュー、overview がマップビュー。
-  public serialize(): Pick<CameraSaveData, 'chase' | 'overview'> {
-    return { chase: this.combatCamera.serialize(), overview: this.mapCamera.serialize() };
-  }
+  private readonly handleViewReset = (event: PointerEvent): void => {
+    event.stopPropagation();
+    this.commands.camera(this.view).reset(this.sample(this.view));
+  };
 }

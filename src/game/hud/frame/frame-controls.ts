@@ -1,36 +1,48 @@
-// マップビューの「カメラ」「軌道フレーム」パネルと、戦闘ビューのカメラパネルを所有し、カメラの
-// 視点と未来表示の描画基準を選ばせる。
-import { bodyAnchorSource } from '../../../physics/attractor';
-import { FRAME_ROLES, FrameRole } from '../../../physics/frame';
-import type { FrameAnchorSource } from '../../../physics/frame';
-import { Vec3 } from '../../../math/vec3';
-import type { CelestialBodies } from '../../celestial/celestial-bodies';
-import { FocusCamera } from '../../camera/focus-camera';
-import { focusPoint, focusTargetId, FocusTarget } from '../../camera/focus-target';
-import type { PredictPanelSource } from '../../viewer/predict-panel-selection';
-import type { PredictPanelCommands } from '../../viewer/predict-panel-commands';
+// マップと戦闘のカメラパネル、およびマップの軌道フレームパネルを所有する。
+import { FRAME_ROLES, type FrameAnchorSource, type FrameRole } from '../../../physics/frame';
+import type { Vec3 } from '../../../math/vec3';
 import type { OverlayManager } from '../../../hud/overlay-manager';
-import { CameraFramePanel } from './camera-frame-panel';
+import type { CelestialBodies } from '../../celestial/celestial-bodies';
+import type { ListedObject } from '../../pickable/listed-object';
+import type { FocusCameraCommands } from '../../viewer/camera-commands';
+import type { CameraFrameSample, FocusCameraSource } from '../../viewer/focus-camera-selection';
+import { focusPoint, focusTargetId, type FocusTarget } from '../../viewer/focus-target';
+import type { PredictPanelCommands } from '../../viewer/predict-panel-commands';
+import type { PredictPanelSource } from '../../viewer/predict-panel-selection';
+import { CameraFramePanel, type CameraFrameCommands } from './camera-frame-panel';
 import { CombatCameraPanel } from './combat-camera-panel';
 import { TrajectoryFramePanel } from './trajectory-frame-panel';
-import type { ListedObject } from '../../pickable/listed-object';
+
+interface CameraFramePresentation {
+  readonly mapResolvedFocus: Vec3;
+  sample(view: 'combat' | 'map'): CameraFrameSample;
+}
 
 export class FrameControls {
   private readonly cameraPanel: CameraFramePanel;
   private readonly combatCameraPanel: CombatCameraPanel;
   private readonly trajectoryPanel: TrajectoryFramePanel;
-  // 固定解除は DOM イベント(フレームの外)から起きるので、直近の sync が見た時刻を控える。
-  private lastTime = 0;
 
-  // マップと戦闘のカメラパネル、マップの軌道フレームパネルを組む。各パネルのポップアップは
-  // popupRoot へ出る。
+  // パネル操作を命令の列へ返し、表示値は読み取り面から同期する。
   public constructor(
     mapPanelRoot: HTMLElement,
     combatPanelRoot: HTMLElement,
     popupRoot: HTMLElement,
     private readonly celestialBodies: CelestialBodies,
-    private readonly mapCamera: FocusCamera,
-    private readonly combatCamera: FocusCamera,
+    private readonly mapCamera: Pick<
+      FocusCameraSource,
+      | 'focus'
+      | 'rotationFollow'
+      | 'availableRotationFollows'
+      | 'cameraRotationMode'
+      | 'projection'
+      | 'fov'
+      | 'referencePlane'
+    >,
+    private readonly combatCamera: Pick<FocusCameraSource, 'cameraRotationMode'>,
+    private readonly mapCameraCommands: FocusCameraCommands,
+    combatCameraCommands: Pick<FocusCameraCommands, 'setCameraRotationMode'>,
+    private readonly cameraPresentation: CameraFramePresentation,
     predictPanel: Pick<PredictPanelSource, 'frame' | 'followCamera'>,
     private readonly predictPanelCommands: Pick<
       PredictPanelCommands,
@@ -39,70 +51,78 @@ export class FrameControls {
     overlayManager: OverlayManager,
     private readonly frameAnchors: FrameAnchorSource,
   ) {
+    const mapCommands: CameraFrameCommands = {
+      setRotationFollow: (follow) => mapCameraCommands.setRotationFollow(
+        follow, cameraPresentation.sample('map'),
+      ),
+      setCameraRotationMode: (mode) => mapCameraCommands.setCameraRotationMode(mode),
+      setProjectionMode: (mode) => mapCameraCommands.setProjectionMode(mode),
+      setFovDeg: (fovDeg) => mapCameraCommands.setFovDeg(fovDeg),
+      resetFov: () => mapCameraCommands.resetFov(),
+      setReferencePlane: (plane) => mapCameraCommands.setReferencePlane(plane),
+      setReferenceView: (view) => mapCameraCommands.setReferenceView(
+        view, cameraPresentation.sample('map'),
+      ),
+    };
     this.cameraPanel = new CameraFramePanel(
-      mapPanelRoot, popupRoot, celestialBodies, mapCamera, overlayManager, mapCamera.cameraRotationMode,
+      mapPanelRoot, popupRoot, celestialBodies, mapCommands, overlayManager, mapCamera.cameraRotationMode,
     );
     this.combatCameraPanel = new CombatCameraPanel(
-      combatPanelRoot, combatCamera, combatCamera.cameraRotationMode,
+      combatPanelRoot, combatCameraCommands, combatCamera.cameraRotationMode,
     );
     this.trajectoryPanel = new TrajectoryFramePanel(
       mapPanelRoot, popupRoot, celestialBodies, predictPanel, predictPanelCommands, overlayManager,
     );
-
-    // 注視対象の選択だけは、描画基準の追随も伴うので自分で受ける。
     this.cameraPanel.onSelectCenter = (id) => this.selectCameraCenter(id);
   }
 
-  // 時刻 t に周回軌道を描いている役割を、回転の基準の選択肢として返す。
+  // 時刻 t に周回軌道を描いている役割を、回転基準の選択肢として返す。
   private validRevolutionRoles(t: number): readonly FrameRole[] {
     return FRAME_ROLES.filter((role) => this.frameAnchors.attractorOf(`@${role}`, t) !== null);
   }
 
-  // カメラの基準を選び直す。id が null なら、いま見ている位置を恒星中心の慣性系へ
-  // 焼き込んだ固定点にする。
+  // カメラの基準を選ぶ。null は現在の注視位置を恒星中心慣性系へ固定する。
   private selectCameraCenter(id: string | null): void {
     if (id !== null) {
       this.setFocus({ kind: 'object', id });
       return;
     }
+    const sample = this.cameraPresentation.sample('map');
     const frames = this.celestialBodies.frames;
     const starId = this.celestialBodies.starId;
     const frame = starId !== null ? frames.frameOf(starId, null) : frames.inertialFrame;
-    // 回さないので基準は必ず登録天体で、機体・役割トークンを解く材料が要らない。
     this.setFocus(focusPoint(
-      this.celestialBodies.frames, frame, this.mapCamera.resolvedFocus, this.lastTime, bodyAnchorSource([], this.lastTime),
+      frames,
+      frame,
+      this.cameraPresentation.mapResolvedFocus,
+      sample.displayTime,
+      sample.frameAnchors,
     ));
   }
 
-  // マップカメラのフォーカスを target へ移し、移った先を描画基準の所有者へ伝える。
+  // マップカメラの注視と、追随中の予測パネル基準を同じ命令列へ積む。
   public setFocus(target: FocusTarget): void {
-    this.mapCamera.setFocusTarget(target);
+    this.mapCameraCommands.setFocus(target);
     this.predictPanelCommands.followCameraFocus(focusTargetId(target));
   }
 
-  // 両パネルの選択肢と選択表示を、いまの天体系とカメラ位置へ合わせる。
-  public sync(
-    pickables: readonly ListedObject[], cameraPos: Vec3,
-    simTime: number, displayTime: number,
-  ): void {
-    this.lastTime = simTime;
+  // パネルの選択肢と選択表示を、現在の視点と天体系へ合わせる。
+  public sync(pickables: readonly ListedObject[], cameraPos: Vec3, displayTime: number): void {
     const members = this.celestialBodies.systemMembersAt(cameraPos, displayTime);
-    const camera = this.mapCamera;
-    // マップカメラの現在値を写してから、3つのパネルを同じ候補列で揃える。
+    const sample = this.cameraPresentation.sample('map');
     this.cameraPanel.sync(pickables, members, {
-      focusId: focusTargetId(camera.focus) ?? null,
-      rotationFollow: camera.rotationFollow,
-      availableRotationFollows: camera.availableRotationFollows(displayTime),
-      cameraRotationMode: camera.cameraRotationMode,
-      projection: camera.projection,
-      fovDeg: camera.fov,
-      referencePlane: camera.referencePlane,
+      focusId: focusTargetId(this.mapCamera.focus) ?? null,
+      rotationFollow: this.mapCamera.rotationFollow,
+      availableRotationFollows: this.mapCamera.availableRotationFollows(sample),
+      cameraRotationMode: this.mapCamera.cameraRotationMode,
+      projection: this.mapCamera.projection,
+      fovDeg: this.mapCamera.fov,
+      referencePlane: this.mapCamera.referencePlane,
     });
     this.combatCameraPanel.sync(this.combatCamera.cameraRotationMode);
     this.trajectoryPanel.sync(pickables, members, displayTime, this.validRevolutionRoles(displayTime));
   }
 
-  // 各パネルを片付ける。
   public dispose(): void {
     this.cameraPanel.dispose();
     this.combatCameraPanel.dispose();

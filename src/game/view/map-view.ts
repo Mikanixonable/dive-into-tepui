@@ -3,7 +3,6 @@ import { MapPicking } from '../pickable/map-picking';
 import type { Input } from '../../input/input';
 import type { HudLayers } from '../hud/hud-layers';
 import type { Notifier } from '../../hud/notifier';
-import type { CameraSystem } from '../camera/camera-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { ObjectPickable } from '../pickable/object-pickable';
@@ -31,10 +30,15 @@ import type { FrameControls } from '../hud/frame/frame-controls';
 import type { FrameAnchors } from '../frame-anchors';
 import type { MapDisplayToggles } from '../map/display-toggles';
 import type { SettingValue } from '../../settings/setting-value';
-import type { Viewport } from '../../render/viewport';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ViewFrame } from './view-frame';
 import type { PerfCounts } from '../perf-counts';
+import type { Vec3 } from '../../math/vec3';
+import type { FocusCameraSource } from '../viewer/focus-camera-selection';
+
+interface CameraPositionSource {
+  readonly activeCameraPos: Vec3;
+}
 
 export class MapView implements ViewFrame {
   private readonly picking: MapPicking;
@@ -45,7 +49,8 @@ export class MapView implements ViewFrame {
   // マップ専用の編集口・候補列・クリックの当て先は、受け取った材料からここで組んで持つ。
   public constructor(
     private readonly input: Input,
-    private readonly cameraSystem: CameraSystem,
+    private readonly cameraPresentation: CameraPositionSource,
+    private readonly camera: { readonly map: Pick<FocusCameraSource, 'focus' | 'distance'> },
     private readonly objectWindows: ObjectWindows,
     roster: EntityRoster,
     equatorNodes: EquatorNodeManager,
@@ -74,12 +79,12 @@ export class MapView implements ViewFrame {
       displayWindowManager, frameControls, planDisplay.path, planCommands,
     );
     this.objectPickables = new ObjectPickables(
-      controlSelection, roster, celestialSystem, navTargetPresenter, cameraSystem,
+      controlSelection, roster, celestialSystem, navTargetPresenter, camera,
       celestialMarkers, planDisplay, frameAnchors, equatorNodes,
     );
     this.linePickables = new LinePickables(roster, celestialSystem);
     this.picking = new MapPicking(
-      hud, cameraSystem, roster, celestialSystem, celestialMarkers, markers,
+      hud, camera, roster, celestialSystem, celestialMarkers, markers,
       navTargetPresenter, navTargetCommands, frameControls, this.objectPickables, this.linePickables, objectWindows,
       controlSelectionCommands, displayWindowManager,
     );
@@ -124,18 +129,20 @@ export class MapView implements ViewFrame {
   }
 
   // クリック・右クリックを、ノード編集と被選択物・軌道線・空域のメニューへ先着順で配る。
-  public handlePointer(simTime: number, viewport: Viewport): void {
-    this.picking.handleRightClick(this.input, simTime, viewport);
-    this.picking.handleLeftClick(this.input, viewport);
-    this.picking.handleDoubleClick(this.input, viewport);
+  public handlePointer(simTime: number, camera: CameraFrame): void {
+    this.picking.handleRightClick(this.input, simTime, camera);
+    this.picking.handleLeftClick(this.input, camera);
+    this.picking.handleDoubleClick(this.input, camera);
     this.planEditor.handleMapPointer(this.input);
-    this.picking.handleLineRightClick(this.input, viewport);
+    this.picking.handleLineRightClick(this.input, camera);
     this.picking.handleEmptySpaceRightClick(this.input, simTime);
   }
 
   // 選択候補と可視性ポリシーを組み、時刻に追従する操作パネルを更新する。
   public update(displayWindow: DisplayWindow): void {
-    this.objectPickables.refresh(displayWindow, this.mapDisplay.current);
+    this.objectPickables.refresh(
+      displayWindow, this.mapDisplay.current, this.cameraPresentation.activeCameraPos,
+    );
     this.displayWindowManager.dropStaleRotatingFrame(displayWindow.displayTime, this.frameAnchors);
     this.planEditor.update(displayWindow.simTime);
   }
@@ -152,12 +159,11 @@ export class MapView implements ViewFrame {
   // マップ専用の表示物を、このフレームの表示窓とカメラへ揃える。
   public syncPanels(displayWindow: DisplayWindow, camera: CameraFrame, nowMs: number): void {
     // 編集 UI と常設パネル
-    this.planEditor.sync(this.cameraSystem.mapCamera.dist, camera.floatingOrigin);
+    this.planEditor.sync(this.camera.map.distance, camera.floatingOrigin);
     this.displayWindowManager.sync(this.controlSelection.current);
     this.picking.sync(displayWindow.displayTime, this.controlSelection.current);
     this.frameControls.sync(
-      this.objectPickables.pickables, camera.position,
-      displayWindow.simTime, displayWindow.displayTime,
+      this.objectPickables.pickables, camera.position, displayWindow.displayTime,
     );
     // 天体ラベルのサブ行と、軌道線の右クリック候補
     this.celestialMarkers.syncSubLabels(
