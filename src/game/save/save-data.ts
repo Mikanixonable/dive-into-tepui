@@ -1,5 +1,4 @@
 // セーブの外部形式と、そこから運動状態・姿勢を戻すデコーダ。
-import { AnyPart } from '../dynamic/dynamic-entity/parts';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { v3, type Vec3 } from '../../math/vec3';
 import type { Attitude } from '../../physics/attitude';
@@ -11,24 +10,24 @@ import type { GamePhase } from '../stages/stage';
 import type { WaveAttackSaveData } from '../stages/stage-utils/wave-attack';
 import type { ProteinSaveData } from '../protein/protein-schema';
 
-interface Vec3SaveData {
+export interface Vec3SaveData {
   readonly x: number;
   readonly y: number;
   readonly z: number;
 }
 
-interface QuatSaveData {
+export interface QuatSaveData {
   readonly x: number;
   readonly y: number;
   readonly z: number;
   readonly w: number;
 }
 
-interface EntitySaveData {
+export interface EntitySaveData {
   readonly id: string;
   readonly name?: string;
   // 具象クラスのタグ。
-  readonly kind: 'player' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel' | 'booster' | 'base';
+  readonly kind: 'ship' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel';
   readonly r: Vec3SaveData;
   readonly v: Vec3SaveData;
   readonly q: QuatSaveData;
@@ -93,14 +92,63 @@ export interface ThrottleSaveData {
   readonly progradeHold?: boolean;
 }
 
-export interface PlayerSaveData extends EntitySaveData {
-  readonly kind: 'player';
+export type ShipModuleSaveData = {
+  readonly id: string;
+  readonly definitionId: string;
+  readonly hp: number;
+  readonly temperature: number;
+} & (
+  | { readonly kind: 'cockpit' | 'thruster' | 'rcs' | 'weapon' | 'armor' | 'docking_port' | 'dock' | 'decoupler' }
+  | { readonly kind: 'tank'; readonly fuelKind: 'main' | 'rcs'; readonly fuel: number }
+  | { readonly kind: 'radiator' | 'solar_panel'; readonly deployed: number }
+  | { readonly kind: 'booster'; readonly fuel: number; readonly ignited: boolean }
+);
+
+export interface ShipConnectionSaveData {
+  readonly id: string;
+  readonly parentId: string;
+  readonly childId: string;
+  readonly kind: 'axial' | 'side' | 'docking';
+  readonly position: Vec3SaveData;
+  readonly rotation: QuatSaveData;
+}
+
+export interface ShipAssemblySaveData {
+  readonly playerOwned: boolean;
+  readonly modules: readonly ShipModuleSaveData[];
+  readonly connections: readonly ShipConnectionSaveData[];
+}
+
+export interface ShipConstructionDraftSaveData {
+  readonly dockId: string;
+  readonly addedIds: readonly string[];
+  readonly axialTailId: string;
+  readonly firstConnectionId: string | null;
+}
+
+export interface DockedVesselSaveData {
+  readonly connectionId: string;
+  readonly id: string;
+  readonly name: string;
+}
+
+export interface CollisionGraceSaveData {
+  readonly otherId: string;
+  readonly until: number;
+}
+
+export interface ShipSaveData extends EntitySaveData {
+  readonly kind: 'ship';
+  readonly assembly: ShipAssemblySaveData;
+  readonly dockState: readonly ShipConstructionDraftSaveData[];
+  readonly dockedVessels: readonly DockedVesselSaveData[];
+  readonly collisionGrace: readonly CollisionGraceSaveData[];
+  readonly operatingCockpitId: string | null;
   readonly fire: FireSaveData;
   readonly thermal: ThermalSaveData;
   readonly radiator: RadiatorSaveData;
   readonly power: PowerSaveData;
   readonly throttle: ThrottleSaveData;
-  readonly parts: AnyPart[];
   readonly plan: PlanSaveData | null;
   // 無いか現行のモードでなければ followPlan から読み替える。'powered' は読み込みのために
   // 型へ残す廃止モード。
@@ -109,16 +157,6 @@ export interface PlayerSaveData extends EntitySaveData {
   readonly followPlan?: boolean;
   // 無ければ既定値(false)。
   readonly fineAttitude?: boolean;
-  // プロパティウィンドウの軌道線表示トグル。無ければ false。
-  readonly showTrajectoryLine?: boolean;
-}
-
-export interface BaseSaveData extends EntitySaveData {
-  readonly kind: 'base';
-  readonly money: number;
-  // 基地の燃料。
-  readonly fuel?: number;
-  readonly throttle?: ThrottleSaveData;
   // プロパティウィンドウの軌道線表示トグル。無ければ false。
   readonly showTrajectoryLine?: boolean;
 }
@@ -165,12 +203,11 @@ export interface RcsFuelPickupSaveData extends EntitySaveData {
 
 // 顔ぶれ1体分の保存形。kind で具象を判別する。
 export type EntitySaveDataUnion =
-  | PlayerSaveData
+  | ShipSaveData
   | MetalEnemySaveData
   | ProteinEnemySaveData
   | AmmoPickupSaveData
-  | RcsFuelPickupSaveData
-  | BaseSaveData;
+  | RcsFuelPickupSaveData;
 
 export interface ScoreCounterSaveData {
   readonly shots: number;
@@ -211,7 +248,7 @@ export interface CreativeStageSaveData extends StageSaveData {
 
 // GameSaveData の形式バージョン。値が変わった時点で、それ以前に書かれたスナップショットは
 // 読めなくなる。
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 // chase にこの形が入っている保存データは読み捨て、戦闘視点を既定で組む。
 export interface ChaseSaveDataV1 {

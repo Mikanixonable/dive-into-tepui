@@ -57,7 +57,7 @@ const DEG = Math.PI / 180;
 // 置くと決まった物体。自機は実体ではなく生成引数で表す。name は与えた名前で、
 // 実体が名前を持たない種類(弾薬)でも告知できるよう別に持つ。
 export type PlacedObject =
-  | { readonly kind: 'player'; readonly init: ModularShipInit }
+  | { readonly kind: 'ship'; readonly init: ModularShipInit }
   | { readonly kind: 'entity'; readonly entity: DynamicEntity; readonly name: string };
 
 export class ObjectPlacement {
@@ -183,7 +183,7 @@ export class ObjectPlacement {
     switch (selection) {
       case 'combat-ship': {
         const id = this.playerIdAllocator.next();
-        return { kind: 'player', init: { name: name.trim() || generateRandomName('player'), state, id } };
+        return { kind: 'ship', init: { name: name.trim() || generateRandomName('player'), state, id } };
       }
       case 'enemy': {
         const finalName = name.trim() || generateRandomName('enemy');
@@ -206,7 +206,7 @@ export class ObjectPlacement {
       case 'base-ship': {
         const id = this.playerIdAllocator.next();
         return {
-          kind: 'player',
+          kind: 'ship',
           init: {
             name: name.trim() || generateRandomName('base'), state, id, assembly: createBasePreset(),
           },
