@@ -2,12 +2,12 @@
 import { Stage, type StageDeps, STORY_EPOCH } from './stage';
 import { ManualSpawn } from '../creative/manual-spawn';
 import { MAX_PLACED_SHIPS, ObjectPlacement } from '../creative/object-placement';
-import { StageControlsPanel, type EnemySpawnShape } from '../creative/stage-controls-panel';
+import {
+  StageControlsPanel, type EnemySpawnShape, type ProteinDisplayControl,
+} from '../creative/stage-controls-panel';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
-import { proteinDisplayControllerOf } from '../dynamic/dynamic-entity/enemy-display-capabilities';
 import { hudRail } from '../hud/hud-root';
 import { isPlayer } from '../player/player';
-import { DEFAULT_PROTEIN_DISPLAY, type ProteinDisplaySettings } from '../../render/protein/protein-display';
 import { WaveAttack } from './stage-utils/wave-attack';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { KinematicState } from '../../physics/kinematic-state';
@@ -31,6 +31,7 @@ export class CreativeStage extends Stage {
   public static readonly selectGroup = 'クリエイティブモード';
   public readonly executesPlans = true;
   public readonly authoring: ObjectAuthoring;
+  public readonly proteinDisplayControl: ProteinDisplayControl;
 
   private readonly objectPlacement: ObjectPlacement;
   private readonly manualSpawn: ManualSpawn;
@@ -53,16 +54,9 @@ export class CreativeStage extends Stage {
     this.commands = creativeStageCommands(this._commandQueue, this);
     const savedCreative = saved as CreativeStageSaveData | undefined;
 
-    // 復元済みのタンパク質の敵がいれば、その表示設定を以後のスポーンにも引き継ぐ。
-    const restoredProtein = this._dynamicSystem.all().find((entity) => (
-      isEnemy(entity) && proteinDisplayControllerOf(entity) !== null
-    ));
-    const restoredDisplay = restoredProtein === undefined
-      ? DEFAULT_PROTEIN_DISPLAY
-      : proteinDisplayControllerOf(restoredProtein)?.display ?? DEFAULT_PROTEIN_DISPLAY;
     this.manualSpawn = new ManualSpawn(
       this._scene, this._celestialSystem.celestialMotions,
-      this._dynamicSystem, this._dynamicSystem.idAllocators, restoredDisplay,
+      this._dynamicSystem, this._dynamicSystem.idAllocators,
     );
 
     // 配置パネルの確定は DOM のイベントなので、そこで起きたことは列を通して記録する(R8)。
@@ -81,8 +75,9 @@ export class CreativeStage extends Stage {
     this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
     this.stageControlsPanel = new StageControlsPanel(
       this.logistics.resupplyEnabled, this.logistics.rcsFuelResupplyEnabled, this.waveAttackEnabled,
-      this.manualSpawn.spawnDistance, this.manualSpawn.display,
+      this.manualSpawn.spawnDistance,
     );
+    this.proteinDisplayControl = this.stageControlsPanel;
     this.stageControlsPanel.onToggleResupply = (on) => this.commands.setResupplyEnabled(on);
     this.stageControlsPanel.onToggleFuelResupply = (on) => this.commands.setFuelResupplyEnabled(on);
     this.stageControlsPanel.onToggleWaveAttack = (on) => this.commands.setWaveAttackEnabled(on);
@@ -91,7 +86,6 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.onSpawnDistanceChange = (distance) => this.commands.setSpawnDistance(distance);
     this.stageControlsPanel.onSpawnEnemy = (shape, colorValue) => this.commands.spawnManualEnemy(shape, colorValue);
     this.stageControlsPanel.onSpawnFormation = () => this.commands.spawnProteinFormation();
-    this.stageControlsPanel.onProteinDisplayChange = (display) => this.commands.setProteinDisplay(display);
     hudRail(this._hud.mapRoot, 'right').appendChild(this.stageControlsPanel.element);
 
     this.begin();
@@ -115,14 +109,6 @@ export class CreativeStage extends Stage {
   // 手動スポーンが使う距離 [m] を差し替える。
   public setSpawnDistance(distanceM: number): void {
     this.manualSpawn.spawnDistance = distanceM;
-  }
-
-  // 以後のスポーンと、出ているタンパク質の敵すべてへ、選ばれた表示設定を渡す。
-  public setProteinDisplay(display: ProteinDisplaySettings): void {
-    this.manualSpawn.display = display;
-    for (const entity of this._dynamicSystem.all()) {
-      if (isEnemy(entity)) proteinDisplayControllerOf(entity)?.setDisplay(display);
-    }
   }
 
   // 操作艦の弾薬チェーンへマガジンを1つ追加する。操作艦がいなければ、操作艦が要ることを記録する。

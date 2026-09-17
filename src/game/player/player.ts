@@ -177,7 +177,6 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     if (saved) {
       this.planExecution = saved.planExecution ?? 'off';
       this.fineAttitude = saved.fineAttitude ?? false;
-      this.trajectoryLineVisible = saved.showTrajectoryLine ?? false;
       if (Array.isArray(saved.parts)) {
         const restoredParts = saved.parts.map(partFromSaveData).filter((part) => part !== null);
         // 部品が壊れているスナップショットは、初期部品を残して船体を空にしない。
@@ -527,8 +526,8 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     super.dispose();
   }
 
-  // 現在の艦状態を保存用データへ変換する。
-  public override serialize(): PlayerSaveData {
+  // 現在の艦状態を保存用データへ変換する。showTrajectoryLine はこの艦の予測線・過去線を出しているか。
+  public override serialize(showTrajectoryLine: boolean): PlayerSaveData {
     return {
       id: this.id,
       name: this.name,
@@ -548,7 +547,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       // 操作・表示の設定と計画
       planExecution: this.planExecution,
       fineAttitude: this.fineAttitude,
-      showTrajectoryLine: this.trajectoryLineVisible,
+      showTrajectoryLine,
       plan: this.serializePlan(),
       boosters: this.motion.attachedBoosters.serialize(),
     };

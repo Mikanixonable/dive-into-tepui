@@ -83,9 +83,7 @@ export interface ProteinRenderSource {
 /** 1体ぶんのアセットへ束ねた、表示ツリーの組み立て手順。 */
 export interface ProteinRenderDefinition {
   readonly source: ProteinRenderSource;
-  /** 表示設定に対応する THREE ツリーを新しく組む。 */
-  readonly buildRenderObject: (display: ProteinDisplaySettings, motion?: ProteinMotionBinding) => THREE.Object3D;
-  /** 既に置かれているツリーの中身を、新しい表示設定で組み直したものへ入れ替える。 */
+  /** 置かれているツリーの中身を、表示設定 display で組んだものへ入れ替える。空のツリーにも組める。 */
   readonly recolorRenderObject: (
     target: THREE.Object3D, display: ProteinDisplaySettings, motion?: ProteinMotionBinding,
   ) => void;
@@ -95,7 +93,6 @@ export interface ProteinRenderDefinition {
 export function createProteinRenderDefinition(source: ProteinRenderSource): ProteinRenderDefinition {
   return {
     source,
-    buildRenderObject: (display, motion) => buildProteinEnemyShip(source, display, motion),
     recolorRenderObject: (target, display, motion) => replaceProteinEnemyShip(
       target, buildProteinEnemyShip(source, display, motion),
     ),

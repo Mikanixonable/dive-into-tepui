@@ -17,6 +17,8 @@ import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { NavTargetPresenter } from '../nav-target-presenter';
 import type { NavTargetSource } from '../viewer/nav-target-selection';
 import type { NavTargetCommands } from '../viewer/nav-target-commands';
+import type { EntityDisplaySource } from '../viewer/entity-display-selection';
+import type { EntityDisplayCommands } from '../viewer/entity-display-commands';
 import type { FocusCameraSource } from '../viewer/focus-camera-selection';
 import type { ViewSelectionSource } from '../viewer/view-selection';
 import type { PlanEditor } from '../plan/plan-editor';
@@ -62,6 +64,8 @@ export class ObjectWindows implements PropertyWindowOpener {
     private readonly navTarget: NavTargetSource,
     private readonly navTargetPresenter: NavTargetPresenter,
     private readonly navTargetCommands: NavTargetCommands,
+    private readonly entityDisplay: EntityDisplaySource,
+    private readonly entityDisplayCommands: Pick<EntityDisplayCommands, 'toggleTrajectoryLine'>,
     private readonly camera: { readonly map: Pick<FocusCameraSource, 'focus'> },
     private readonly view: Pick<ViewSelectionSource, 'current'>,
     private readonly activeView: () => ViewFrame,
@@ -209,7 +213,8 @@ export class ObjectWindows implements PropertyWindowOpener {
   // (航法ターゲットにできるか・物体を配置できるか・計画を実行できるステージか)はここで判定する。
   private offeredItems(target: InspectedObject, simTime: number): readonly MenuItem<MenuAction>[] {
     const all = target.menuItems(
-      this.celestialBodies, this.controlSelection.current, this.navTarget.id);
+      this.celestialBodies, this.controlSelection.current, this.navTarget.id,
+      this.entityDisplay.showsTrajectoryLine(target.id));
     return all.filter((it) => {
       switch (it.act) {
         case 'target':
@@ -231,6 +236,7 @@ export class ObjectWindows implements PropertyWindowOpener {
   private runAct(target: InspectedObject, act: MenuAction): void {
     if (act === 'focus') this.focus(target.id, target.name);
     else if (act === 'target') this.navTargetCommands.toggle(target.id, target.name);
+    else if (act === 'toggleTrajectoryLine') this.entityDisplayCommands.toggleTrajectoryLine(target.id);
     else if (act === 'openSettings') this.pauseMenu.toggle(true);
     else if (act === 'openObjectPlacer') {
       this.authoring?.openObjectPlacer(focusTargetId(this.camera.map.focus));

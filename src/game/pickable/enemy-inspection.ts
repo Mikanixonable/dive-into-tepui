@@ -40,7 +40,6 @@ export interface EnemyInspectionSource extends OrbitingObject {
   readonly hp: number;
   readonly maxHp: number;
   readonly pickable: boolean;
-  trajectoryLineVisible: boolean;
   readonly proteinInspection: EnemyProteinInspection | null;
   markerItem(viewerPos: Vec3, pos: Vec3, vel: Vec3, view: ViewMode): GroupedMarkerItem;
   hitBodyByRay(ray: Ray, pos: Vec3): boolean;
@@ -97,15 +96,17 @@ export class EnemyInspection implements InspectedObject {
     return this.listDetail(bodies, viewer, displayTime);
   }
 
-  public menuItems(_bodies: CelestialBodies, _viewer: OrbitingObject | null, navTargetId: string | null): readonly MenuItem<MenuAction>[] {
+  public menuItems(
+    _bodies: CelestialBodies, _viewer: OrbitingObject | null, navTargetId: string | null,
+    trajectoryLineShown: boolean,
+  ): readonly MenuItem<MenuAction>[] {
     return [MenuCommon.target(navTargetId === this.source.id), MenuCommon.focus(),
-      MenuCommon.trajectoryLine(this.source.trajectoryLineVisible), MenuCommon.duplicate(),
+      MenuCommon.trajectoryLine(trajectoryLineShown), MenuCommon.duplicate(),
       { label: '削除', act: 'delete' }, MenuCommon.cancel()];
   }
 
   public runMenu(act: MenuAction, _selection: ControlSelection, authoring: ObjectAuthoring | null): void {
     if (act === 'delete') this.source.motion.alive = false;
-    else if (act === 'toggleTrajectoryLine') this.source.trajectoryLineVisible = !this.source.trajectoryLineVisible;
     else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.source.mapKind, this.source.motion.state);
   }
 
