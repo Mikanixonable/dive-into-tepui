@@ -158,6 +158,22 @@ export type RunEventBody =
   // スナップショットの計画に、起点より前のノードが残っていて復元できなかった。
   | { readonly kind: 'planNodesDropped'; readonly ship: string; readonly count: number }
 
+  // ------------------------------------------------------------------ ビュー
+  // 操作対象が無いため、戦闘ビューへの切り替えを受け付けなかった。
+  | { readonly kind: 'combatViewUnavailable' }
+  // 計画ノードを確定して戦闘ビューへ戻った。nodeCount は確定したノード数。
+  | { readonly kind: 'maneuverPlanConfirmed'; readonly nodeCount: number }
+  // 軌道計画のためにマップビューへ入った。
+  | { readonly kind: 'orbitPlanningOpened' }
+
+  // ------------------------------------------------------------------ カメラ
+  // ビューの視点をリセットした。
+  | { readonly kind: 'cameraViewReset'; readonly view: 'combat' | 'map' }
+  // 姿勢追従を切り替えた。
+  | { readonly kind: 'cameraAttitudeFollowToggled'; readonly on: boolean }
+  // 基準面に対する視点を選んだ。
+  | { readonly kind: 'cameraReferenceViewSelected'; readonly view: 'above' | 'side' }
+
   // -------------------------------------------------------------------- 操作対象
   // 操作対象に選ばれた。
   | { readonly kind: 'controlTargetSelected'; readonly target: DynamicEntityKind; readonly name: string }

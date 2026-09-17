@@ -3,8 +3,6 @@ import { pickCombatEntityAtPoint } from '../pickable/combat-pick';
 import type { PlanGuide } from '../plan/plan-guide';
 import type { Input } from '../../input/input';
 import type { TouchControls } from '../hud/touch-controls';
-import type { CameraSystem } from '../camera/camera-system';
-import type { Viewport } from '../../render/viewport';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { ObjectWindows } from '../pickable/object-windows';
 import type { Targeter } from '../targeter';
@@ -22,7 +20,6 @@ import type { CelestialMarkers } from '../marker/celestial-markers';
 export class CombatView implements ViewFrame {
   public constructor(
     private readonly input: Input,
-    private readonly cameraSystem: CameraSystem,
     private readonly targeter: Targeter,
     private readonly objectWindows: ObjectWindows,
     private readonly roster: EntityRoster,
@@ -42,11 +39,6 @@ export class CombatView implements ViewFrame {
     return { mapMode: false, mapItems: 0, mapLabels: 0 };
   }
 
-  // 戦闘ビューは操作対象(艦または基地)が必要。
-  public canEnter(): boolean {
-    return this.controlSelection.current !== null;
-  }
-
   public onEnter(): void {}
 
   public onLeave(): void {}
@@ -56,15 +48,14 @@ export class CombatView implements ViewFrame {
   public updateActions(): void {}
 
   // 照準キーと右クリックを配る。操作対象がいなければ照準先が無いので何もしない。
-  public handlePointer(simTime: number, viewport: Viewport): void {
+  public handlePointer(simTime: number, camera: CameraFrame): void {
     const controlled = this.controlSelection.current;
     if (!controlled) return;
-    const project = this.cameraSystem.activeProjection(viewport);
-    this.targeter.handleTargetSelect(controlled, project, viewport);
+    this.targeter.handleTargetSelect(controlled, camera.project, camera.viewport);
     // 右クリックは実体に当たればそのプロパティウィンドウを、外れれば空域メニューを開く。
     this.input.takeRightClicks((p) => {
       const hit = pickCombatEntityAtPoint(
-        this.roster, this.cameraSystem.activeViewpoint, project, p.x, p.y, viewport);
+        this.roster, camera.viewpoint, camera.project, p.x, p.y, camera.viewport);
       const inspected = hit ? objectPickableOf(hit) : null;
       if (inspected) this.objectWindows.open(p.x, p.y, inspected, simTime);
       else this.objectWindows.openEmptySpaceMenu(p.x, p.y, simTime);

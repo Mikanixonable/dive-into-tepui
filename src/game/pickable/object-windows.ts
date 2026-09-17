@@ -10,13 +10,17 @@ import type {
 } from '../../hud/windows/property-window-content';
 import { TEMP_WINDOW_GROUP } from '../../hud/overlay-manager';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
-import { focusTargetId, type FocusSink } from '../camera/focus-target';
+import { focusTargetId } from '../viewer/focus-target';
+import type { FocusCameraCommands } from '../viewer/camera-commands';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { NavTargetPresenter } from '../nav-target-presenter';
 import type { NavTargetSource } from '../viewer/nav-target-selection';
 import type { NavTargetCommands } from '../viewer/nav-target-commands';
-import { CameraSystem } from '../camera/camera-system';
+import type { EntityDisplaySource } from '../viewer/entity-display-selection';
+import type { EntityDisplayCommands } from '../viewer/entity-display-commands';
+import type { FocusCameraSource } from '../viewer/focus-camera-selection';
+import type { ViewSelectionSource } from '../viewer/view-selection';
 import type { PlanEditor } from '../plan/plan-editor';
 import type { ControlSelection } from '../control-selection';
 import type { Stage } from '../stages/stage';
@@ -47,9 +51,6 @@ export class ObjectWindows implements PropertyWindowOpener {
   private readonly partWindows: PartWindows;
   // どの被選択物にも当たらなかった右クリックの落ち先。位置を持たないので1つを使い回す。
   private readonly emptySpace: InspectedObject = new EmptySpacePickable();
-  // 直近のマップフォーカス — プロパティウィンドウのバッジ判定に使う。マップを離れている間は
-  // 最後にマップ視点だった時点の値のまま据え置く。
-  private lastFocusId: string | undefined = undefined;
 
   // activeView はいまのビュー — 候補列と計画の編集口はビューによって変わるので、
   // 構築時ではなく毎回そこから引く。
@@ -60,11 +61,15 @@ export class ObjectWindows implements PropertyWindowOpener {
     private readonly navTarget: NavTargetSource,
     private readonly navTargetPresenter: NavTargetPresenter,
     private readonly navTargetCommands: NavTargetCommands,
-    private readonly cameraSystem: CameraSystem,
+    private readonly entityDisplay: EntityDisplaySource,
+    private readonly entityDisplayCommands: Pick<EntityDisplayCommands, 'toggleTrajectoryLine'>,
+    private readonly camera: { readonly map: Pick<FocusCameraSource, 'focus'> },
+    private readonly view: Pick<ViewSelectionSource, 'current'>,
     private readonly activeView: () => ViewFrame,
     private readonly pauseMenu: PauseMenu,
     private readonly controlSelection: ControlSelection,
-    private readonly focusSink: FocusSink,
+    private readonly focusSink: Pick<FocusCameraCommands, 'setFocus'>,
+    private readonly combatFocusCommands: Pick<FocusCameraCommands, 'setFocus'>,
     private readonly activeStage: Stage,
     private readonly targeter: Targeter,
     private readonly displayWindowManager: Pick<DisplayWindowManager, 'current'>,
@@ -140,9 +145,8 @@ export class ObjectWindows implements PropertyWindowOpener {
   // (撃破・回収・削除)閉じる — 未来ゴースト時刻で位置が求まらないだけのフレーム
   // (posAt が null)は候補列から外れるだけで消滅ではないので、生存判定は対象の gone で行う。
   sync(simTime: number, displayTime: number): void {
-    if (this.cameraSystem.view === 'map') {
-      this.lastFocusId = focusTargetId(this.cameraSystem.mapCamera.focus);
-    }
+    // バッジはマップのカメラが注視している対象の窓に付ける。
+    const mapFocusId = focusTargetId(this.camera.map.focus);
     for (const [key, entry] of [...this.windows]) {
       if (entry.target.gone) { this.closeWindow(key); continue; }
       const { title, subtitle, items: menuItems } = this.windowParts(entry.target, simTime);
@@ -152,7 +156,7 @@ export class ObjectWindows implements PropertyWindowOpener {
       entry.win.syncRows(entry.target.propertyRows(
         this.celestialBodies, this.controlSelection.current, simTime, displayTime));
       entry.win.syncItems(menuItems);
-      entry.win.syncBadge(entry.target.id === this.lastFocusId);
+      entry.win.syncBadge(entry.target.id === mapFocusId);
     }
     this.partWindows.sync();
   }
@@ -190,7 +194,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     const header = all.find((it) => it.type === 'header');
     // 戦闘ビューで開いたウィンドウは項目ショートカットを持たせない — [F]/[T] は自機の
     // 進行方向リセット/ターゲット選択が既に使っており、同じキーを両方へは配れない。
-    const showShortcuts = this.cameraSystem.view === 'map';
+    const showShortcuts = this.view.current === 'map';
     const items = all
       .filter((it) => it.type !== 'header' && it.act !== undefined)
       .map((it) => ({
@@ -205,7 +209,8 @@ export class ObjectWindows implements PropertyWindowOpener {
   // (航法ターゲットにできるか・物体を配置できるか・計画を実行できるステージか)はここで判定する。
   private offeredItems(target: InspectedObject, simTime: number): readonly MenuItem<MenuAction>[] {
     const all = target.menuItems(
-      this.celestialBodies, this.controlSelection.current, this.navTarget.id);
+      this.celestialBodies, this.controlSelection.current, this.navTarget.id,
+      this.entityDisplay.showsTrajectoryLine(target.id));
     return all.filter((it) => {
       switch (it.act) {
         case 'target':
@@ -227,9 +232,10 @@ export class ObjectWindows implements PropertyWindowOpener {
   private runAct(target: InspectedObject, act: MenuAction): void {
     if (act === 'focus') this.focus(target.id, target.name);
     else if (act === 'target') this.navTargetCommands.toggle(target.id, target.name);
+    else if (act === 'toggleTrajectoryLine') this.entityDisplayCommands.toggleTrajectoryLine(target.id);
     else if (act === 'openSettings') this.pauseMenu.toggle(true);
     else if (act === 'openObjectPlacer') {
-      this.authoring?.openObjectPlacer(focusTargetId(this.cameraSystem.mapCamera.focus));
+      this.authoring?.openObjectPlacer(focusTargetId(this.camera.map.focus));
     } else {
       this.commands.runMenu(target, act, this.authoring, this.planEditor);
     }
@@ -238,7 +244,7 @@ export class ObjectWindows implements PropertyWindowOpener {
   // 物体の配置・複製を差し出せるならその口。配置パネルはマップの操作面なので、戦闘ビューでは
   // 持っているステージでも差し出さない。
   private get authoring(): ObjectAuthoring | null {
-    return this.cameraSystem.view === 'map' ? this.activeStage.authoring : null;
+    return this.view.current === 'map' ? this.activeStage.authoring : null;
   }
 
   // 計画を編集できるならその口。マップの操作面なので、戦闘ビューでは null。
@@ -293,10 +299,10 @@ export class ObjectWindows implements PropertyWindowOpener {
   // フォーカスをその対象へ移す。マップは座標系パネル連動(計画中心の追随)込みの経路、
   // 戦闘はその場のカメラだけを動かす。
   private focus(id: string, name: string): void {
-    if (this.cameraSystem.view === 'map') {
+    if (this.view.current === 'map') {
       this.focusSink.setFocus({ kind: 'object', id });
     } else {
-      this.cameraSystem.combatCamera.setFocusTarget({ kind: 'object', id });
+      this.combatFocusCommands.setFocus({ kind: 'object', id });
     }
     this.hud.hint(`${name} にフォーカス`);
   }
