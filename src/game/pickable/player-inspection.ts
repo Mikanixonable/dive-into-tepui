@@ -71,22 +71,24 @@ export class PlayerInspection implements InspectedObject {
     return `HP ${Math.round(this.player.hp)}/${Math.round(this.player.maxHp)} · PE ${pe}`;
   }
   public listSearchText(celestialBodies: CelestialBodies): string { return this.listDetail(celestialBodies); }
-  public menuItems(_bodies: CelestialBodies, viewer: OrbitingObject | null, navTargetId: string | null): readonly MenuItem<MenuAction>[] {
+  public menuItems(
+    _bodies: CelestialBodies, viewer: OrbitingObject | null, navTargetId: string | null,
+    trajectoryLineShown: boolean,
+  ): readonly MenuItem<MenuAction>[] {
     const active = this.player === viewer;
     return [
       MenuCommon.target(navTargetId === this.player.id),
       { label: `軌道計画の実行: ${planExecutionLabel(this.player.planExecution)}`, act: 'planExecCycle', keepOpen: true },
       active ? { label: '操作対象を解除', act: 'deactivate' } : { label: '操作対象にする', act: 'activate' },
       MenuCommon.focus(),
-      ...(active ? [] : [MenuCommon.trajectoryLine(this.player.trajectoryLineVisible)]),
+      ...(active ? [] : [MenuCommon.trajectoryLine(trajectoryLineShown)]),
       MenuCommon.duplicate(),
       ...(active ? [] : [{ label: '削除', act: 'delete' as const }]),
       MenuCommon.cancel(),
     ];
   }
   public runMenu(act: MenuAction, selection: ControlSelection, authoring: ObjectAuthoring | null): void {
-    if (act === 'toggleTrajectoryLine') this.player.trajectoryLineVisible = !this.player.trajectoryLineVisible;
-    else if (act === 'activate') selection.select(this.player);
+    if (act === 'activate') selection.select(this.player);
     else if (act === 'deactivate') selection.release(this.player);
     else if (act === 'planExecCycle') {
       const index = PLAN_EXECUTION_MODES.indexOf(this.player.planExecution);
