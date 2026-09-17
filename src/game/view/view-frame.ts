@@ -18,8 +18,6 @@ export interface ViewFrame {
   // このビューの候補列/ラベル数。
   perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'>;
 
-  // このビューへ遷移できるか。
-  canEnter(): boolean;
   // このビューへ入るときの支度。
   onEnter(): void;
   // このビューから出るときの後始末。

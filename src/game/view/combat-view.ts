@@ -42,11 +42,6 @@ export class CombatView implements ViewFrame {
     return { mapMode: false, mapItems: 0, mapLabels: 0 };
   }
 
-  // 戦闘ビューは操作対象(艦または基地)が必要。
-  public canEnter(): boolean {
-    return this.controlSelection.current !== null;
-  }
-
   public onEnter(): void {}
 
   public onLeave(): void {}

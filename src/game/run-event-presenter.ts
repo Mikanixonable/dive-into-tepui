@@ -220,6 +220,19 @@ export class RunEventPresenter {
         this.notifier.hint(`${body.ship}: 起点より前のマニューバノード ${body.count} 件を復元できません`);
         return;
 
+      case 'combatViewUnavailable':
+        this.notifier.hint('操作できる艦または基地がいません');
+        return;
+      case 'maneuverPlanConfirmed':
+        this.notifier.hint(`マニューバ計画 ${body.nodeCount} 件確定`, 4500);
+        return;
+      case 'orbitPlanningOpened':
+        this.notifier.hint(
+          `軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [${K.toggleMapMode.label}] で確定`,
+          5000,
+        );
+        return;
+
       case 'controlTargetSelected':
         // 自機は操作方法を HUD とヘルプが常設で示しているので、選び直しても案内を出さない。
         if (body.target === 'base') {

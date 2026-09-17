@@ -97,11 +97,6 @@ export class MapView implements ViewFrame {
     };
   }
 
-  // マップビューはいつでも入れる。
-  public canEnter(): boolean {
-    return true;
-  }
-
   // ノード未選択で始める。
   public onEnter(): void {
     this.planEditor.selectedNodeIdx = null;
