@@ -86,6 +86,8 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
       if (restoration === null) continue;
       this.spawnWhenReady(restoration.gate, () => restoration.build());
     }
+    const ships = this.entities.filter(isModularShip);
+    for (const ship of ships) ship.restoreCollisionGrace(ships);
   }
 
   // 顔ぶれを保存形へ畳む。保存へ載らない種別は落ちる。
