@@ -233,6 +233,16 @@ export class RunEventPresenter {
         );
         return;
 
+      case 'cameraViewReset':
+        this.notifier.hint(body.view === 'map' ? 'マップビューの視点をリセット' : '視点をリセット');
+        return;
+      case 'cameraAttitudeFollowToggled':
+        this.notifier.hint(`視点の姿勢追従: ${body.on ? 'ON(機体姿勢に追従)' : 'OFF(慣性系)'}`);
+        return;
+      case 'cameraReferenceViewSelected':
+        this.notifier.hint(body.view === 'above' ? '基準面の真上を表示' : '基準面の真横を表示');
+        return;
+
       case 'controlTargetSelected':
         // 自機は操作方法を HUD とヘルプが常設で示しているので、選び直しても案内を出さない。
         if (body.target === 'base') {
