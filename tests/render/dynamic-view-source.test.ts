@@ -10,6 +10,7 @@ import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '..
 import { InstancedPools } from '../../src/render/dynamic/instanced-pools';
 import { ThrustEffects } from '../../src/render/dynamic/player/thrust-effects';
 import { RcsEffects } from '../../src/render/dynamic/player/rcs-effects';
+import { DEFAULT_PROTEIN_DISPLAY } from '../../src/render/protein/protein-display';
 import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
 import { Q_IDENTITY } from '../../src/math/quat';
 import { add, len, sub, v3, type Vec3 } from '../../src/math/vec3';
@@ -62,6 +63,7 @@ function viewFrame(camera: CameraFrame, pools: InstancedPools): DynamicViewFrame
     camera,
     style: 'realistic',
     visual: { proteinVibration: false },
+    proteinDisplay: DEFAULT_PROTEIN_DISPLAY,
     pools,
   };
 }

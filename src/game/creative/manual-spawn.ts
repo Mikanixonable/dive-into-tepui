@@ -1,4 +1,4 @@
-// クリエイティブモードの手動スポーン。形・色・表示設定から、自機の前方へ出す敵の生成を
+// クリエイティブモードの手動スポーン。形・色から、自機の前方へ出す敵の生成を
 // 組み立てる。アセットの取得を待つ形があるので、実体ではなく gate と build の組で表す。
 import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import { addScaled } from '../../math/vec3';
@@ -15,7 +15,6 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { SpawnGate } from '../dynamic/entity-registry';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { Player } from '../player/player';
-import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
 
 // 敵1体の生成。gate が通ってから build を呼ぶ。待つものが無ければ gate は null。
 export interface EnemySpawn {
@@ -38,8 +37,6 @@ export class ManualSpawn {
     private readonly attractors: readonly CelestialBody[],
     roster: EntityRoster,
     private readonly idAllocators: EntityIdAllocators,
-    // 出すタンパク質の表示設定。アセットを待っている個体は、実体化した時点の値で出る。
-    public display: ProteinDisplaySettings,
   ) {
     for (const enemy of roster.all().filter(isEnemy)) {
       this.enemyNameAllocator.next(enemy.name);
@@ -67,7 +64,7 @@ export class ManualSpawn {
       return {
         gate: proteinAssetGate(shapeDefinition.assetId),
         build: () => generateProteinEnemy(
-          name, state, shapeDefinition.assetId, this.display, this.scene, this.idAllocators,
+          name, state, shapeDefinition.assetId, this.scene, this.idAllocators,
         ),
       };
     }
@@ -85,7 +82,7 @@ export class ManualSpawn {
     const state = this.frontOf(player);
     const formationId = this.formationIdAllocator.next();
     const spawns = proteinFormationSpawns(
-      formationId, state, player.motion.state.r, this.display, formationId,
+      formationId, state, player.motion.state.r, formationId,
       this.scene, this.idAllocators,
     );
     return spawns.map(({ assetId, build }) => ({ gate: proteinAssetGate(assetId), build }));

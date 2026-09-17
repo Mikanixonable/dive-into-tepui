@@ -62,6 +62,7 @@ import { orbitGuideCommands } from './viewer/orbit-guide-commands';
 import { predictPanelCommands } from './viewer/predict-panel-commands';
 import { viewCommands } from './viewer/view-commands';
 import { cameraCommands, type CameraCommands } from './viewer/camera-commands';
+import { entityDisplayCommands } from './viewer/entity-display-commands';
 import { recordTargetBoardPasses } from './dynamic/target-board-passes';
 import { ObjectWindows } from './pickable/object-windows';
 import { SAVE_VERSION, type GameSaveData } from './save/save-data';
@@ -250,7 +251,9 @@ export class Game {
       stageId: this.activeStage.id,
       simTime: this.simTime,
       ephemerisContext: { ...ephemerisContextFor(this._celestialSystem.epoch) },
-      entities: this.dynamicSystem.serialize(),
+      entities: this.dynamicSystem.serialize(
+        (id) => this.viewer.entityDisplay.showsTrajectoryLine(id), this.viewer.entityDisplay.proteinDisplay,
+      ),
       activeControlledId: this.activeControllable?.id ?? null,
       stage: this.activeStage.serialize(),
       // 遊ぶ人の選択。
@@ -289,7 +292,6 @@ export class Game {
     this.dynamicSystem = new DynamicSystem(
       this._scene, this.runEvents, celestialSystem,
       this.sections, initialSave?.simTime ?? 0, initialSave);
-    this.entityLines = new EntityLineManager(this.dynamicSystem);
     this.equatorNodes = new EquatorNodeManager(this.dynamicSystem, this.markers.createGroup());
     this.celestialMarkers = new CelestialMarkers(this.markers.createGroup(), celestialSystem);
     this.simSpeedManager = new SimSpeedManager(this.runEvents);
@@ -307,6 +309,12 @@ export class Game {
     );
     const viewSelectionCommands = viewCommands(this.commands, this.viewer.view);
     this.navTargetCommands = navTargetCommands(this.commands, this.viewer.navTarget);
+    const entityDisplayPort = entityDisplayCommands(this.commands, this.viewer.entityDisplay);
+    const proteinDisplayControl = this.activeStage.proteinDisplayControl;
+    if (proteinDisplayControl !== null) {
+      proteinDisplayControl.onProteinDisplayChange = (display) => entityDisplayPort.setProteinDisplay(display);
+    }
+    this.entityLines = new EntityLineManager(this.dynamicSystem, this.viewer.entityDisplay);
     this.orbitReferenceCommands = orbitReferenceCommands(this.commands, this.viewer.orbitReference);
     this.cameraCommandPort = cameraCommands(this.commands, this.viewer.camera);
     this.cameraSystem = new CameraSystem(
@@ -383,6 +391,7 @@ export class Game {
     this.objectWindows = new ObjectWindows(
       this._hud, this.dynamicSystem, celestialSystem,
       this.viewer.navTarget, this.navTargetPresenter, this.navTargetCommands,
+      this.viewer.entityDisplay, entityDisplayPort,
       this.viewer.camera, this.viewer.view, () => this.viewManager.activeView, this.pauseMenu,
       this.controlSelection, this.frameControls, this.cameraCommandPort.combat,
       this.activeStage, this.targeter, this.displayWindowManager,
@@ -752,7 +761,9 @@ export class Game {
 
     // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。
     const timeLabel = timeLabelSettingOf(displayWindow);
-    this.dynamicSystem.sync(displayTime, controlled, camera, style, graphics, orbitRef);
+    this.dynamicSystem.sync(
+      displayTime, controlled, camera, style, graphics, this.viewer.entityDisplay.proteinDisplay, orbitRef,
+    );
     // 操作中の艦の軌道軸・ボアサイトは、機体の同期と同じフレームの状態から置く。
     this.playerMarkers.sync(
       controlled !== null && isPlayer(controlled) ? controlled : null, camera.mode, camera.project,
@@ -792,6 +803,7 @@ export class Game {
     this.viewManager.activeView.syncPanels(displayWindow, camera, nowMs);
 
     this.activeStage.sync(camera, displayTime);
+    this.activeStage.proteinDisplayControl?.syncProteinDisplay(this.viewer.entityDisplay.proteinDisplay);
 
     const view = this.viewManager.current;
     this._hud.syncPanels(view, this.hudPanelViewModels(view, orbitRef, palette), camera, nowMs);
