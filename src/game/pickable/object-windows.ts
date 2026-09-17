@@ -51,9 +51,6 @@ export class ObjectWindows implements PropertyWindowOpener {
   private readonly partWindows: PartWindows;
   // どの被選択物にも当たらなかった右クリックの落ち先。位置を持たないので1つを使い回す。
   private readonly emptySpace: InspectedObject = new EmptySpacePickable();
-  // 直近のマップフォーカス — プロパティウィンドウのバッジ判定に使う。マップを離れている間は
-  // 最後にマップ視点だった時点の値のまま据え置く。
-  private lastFocusId: string | undefined = undefined;
 
   // activeView はいまのビュー — 候補列と計画の編集口はビューによって変わるので、
   // 構築時ではなく毎回そこから引く。
@@ -148,9 +145,8 @@ export class ObjectWindows implements PropertyWindowOpener {
   // (撃破・回収・削除)閉じる — 未来ゴースト時刻で位置が求まらないだけのフレーム
   // (posAt が null)は候補列から外れるだけで消滅ではないので、生存判定は対象の gone で行う。
   sync(simTime: number, displayTime: number): void {
-    if (this.view.current === 'map') {
-      this.lastFocusId = focusTargetId(this.camera.map.focus);
-    }
+    // バッジはマップのカメラが注視している対象の窓に付ける。
+    const mapFocusId = focusTargetId(this.camera.map.focus);
     for (const [key, entry] of [...this.windows]) {
       if (entry.target.gone) { this.closeWindow(key); continue; }
       const { title, subtitle, items: menuItems } = this.windowParts(entry.target, simTime);
@@ -160,7 +156,7 @@ export class ObjectWindows implements PropertyWindowOpener {
       entry.win.syncRows(entry.target.propertyRows(
         this.celestialBodies, this.controlSelection.current, simTime, displayTime));
       entry.win.syncItems(menuItems);
-      entry.win.syncBadge(entry.target.id === this.lastFocusId);
+      entry.win.syncBadge(entry.target.id === mapFocusId);
     }
     this.partWindows.sync();
   }
