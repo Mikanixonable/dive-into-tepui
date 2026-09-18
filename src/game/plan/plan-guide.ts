@@ -67,7 +67,7 @@ export class PlanGuide {
       label: `BURN ${mag.toFixed(1)} m/s → ${fmtSpeed(len(node.v))}`,
       priority: MARKER_PRIORITY.MANEUVER_NODE,
     });
-    // 噴射方向が視界外(背面を含む)なら、敵・弾薬と同じ画面端の方位ガイドを出す。
+    // 噴射方向が視界外(背面を含む)なら、画面端に方位ガイドを出す。
     const burnPoint = project(addScaled(shipPos, norm(burnDir), MARKER_DIR_DIST));
     const placement = bearingPlacement(burnPoint, camera.viewport);
     out.push({
