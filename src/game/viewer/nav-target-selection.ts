@@ -17,11 +17,10 @@ export interface NavTargetSource {
   readonly name: string | null;
 }
 
-// target が指す id をターゲットにできるか。撃墜・破壊されて名簿に残っている敵・自艦・基地を指して
-// いれば false。天体・ラグランジュ点のように消滅しない対象と、名簿に無い id は true。
-function isTargetable(target: SerializedNavTargetSelection, roster: EntityRoster): boolean {
-  const combatTarget = combatTargetById(roster.all(), target.id);
-  return combatTarget === null || combatTarget.motion.alive;
+// id が、撃墜・破壊されて名簿に残っている敵・自艦・基地を指すか。天体・ラグランジュ点・役割のように
+// 消滅しない対象と、名簿に無い id は false。id で対象を指す選択は、復元時にこれが真なら既定へ戻す。
+export function isDestroyedTarget(id: string, roster: EntityRoster): boolean {
+  return combatTargetById(roster.all(), id)?.motion.alive === false;
 }
 
 export class NavTargetSelection implements NavTargetSource {
@@ -36,7 +35,7 @@ export class NavTargetSelection implements NavTargetSource {
   public static deserialize(
     serialized: SerializedNavTargetSelection | null, roster: EntityRoster, events: RunEventSink,
   ): NavTargetSelection {
-    return new NavTargetSelection(events, serialized && isTargetable(serialized, roster) ? serialized : null);
+    return new NavTargetSelection(events, serialized && !isDestroyedTarget(serialized.id, roster) ? serialized : null);
   }
 
   public get id(): string | null { return this.target?.id ?? null; }

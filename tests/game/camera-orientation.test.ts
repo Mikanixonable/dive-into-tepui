@@ -23,7 +23,7 @@ function pitchOf(rotation: Quat): number {
 
 function orientation(mode: 'euler' | 'quaternion' = 'euler'): CameraOrientation {
   const q = rotationFromEuler({ yaw: 0.6, pitch: 0.3, roll: -0.2 }, POLAR);
-  return new CameraOrientation(q, mode, false, null);
+  return new CameraOrientation(q, mode, false);
 }
 
 export function register(): void {

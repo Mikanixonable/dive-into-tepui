@@ -35,14 +35,18 @@ function rotateByScreenDrag(
 }
 
 export class CameraOrientation {
-  // rotation は追従中なら対象姿勢からの相対値。attitude が null の間は絶対値のまま扱い、
-  // 初めて姿勢が引けたときに相対値へ読み替える。
+  // 合成に使う追従対象の姿勢。進行から引き直せるキャッシュで、まだ引けていなければ null。
+  private attitude: Quat | null = null;
+
+  // rotation は追従中なら対象姿勢からの相対値、そうでなければ絶対の向き。
   public constructor(
     private rotation: Quat,
     private mode: CameraRotationMode,
     private following: boolean,
-    private attitude: Quat | null,
   ) {}
+
+  // 生の値。追従中は対象姿勢からの相対値。
+  public get raw(): Quat { return this.rotation; }
 
   public get rotationMode(): CameraRotationMode { return this.mode; }
 
@@ -113,8 +117,6 @@ export class CameraOrientation {
   // 合成に使う姿勢を最新へ。解決できないフレームは直前の姿勢を保つ(視点が跳ねない)。
   public refreshAttitude(attitude: Quat | null): void {
     if (!this.following || attitude === null) return;
-    // 絶対値で持っていた向き(ロード直後)を、初めて引けた姿勢からの相対値へ読み替える。
-    if (this.attitude === null) this.rotation = qNormalize(qMul(qInvert(attitude), this.rotation));
     this.attitude = attitude;
   }
 }

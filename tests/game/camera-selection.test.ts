@@ -2,7 +2,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { bodyAnchorSource } from '../../src/physics/attractor';
-import { qFromAxisAngle } from '../../src/math/quat';
+import { LOCAL_FORWARD, qFromAxisAngle, qFromBasis, qMul, qRotate } from '../../src/math/quat';
 import { len, sub, v3 } from '../../src/math/vec3';
 import { CommandQueue } from '../../src/game/command-queue';
 import { cameraCommands } from '../../src/game/viewer/camera-commands';
@@ -26,6 +26,8 @@ function serializedCamera(
     referencePlane: 'moonOrbit',
     projectionMode: 'orthographic',
     orthographicHalfHeight: 8.9e6,
+    staleFollowFrames: 0,
+    focusReplaced: false,
     ...overrides,
   };
 }
@@ -89,18 +91,21 @@ export function register(): void {
     assert.deepEqual(camera.map.focus, { kind: 'object', id: 'earth' });
   });
 
-  test('camera-selection: ロード後に姿勢基準を受け取っても保存された絶対の向きは跳ばない', () => {
+  test('camera-selection: ロード後に姿勢基準を受け取っても、保存された対象姿勢からの相対の向きは変わらない', () => {
     const combat = serializedCamera({
       rotatingWith: { kind: 'attitude' },
       projectionMode: 'perspective',
     });
     const camera = selection({ combat, map: serializedCamera() });
     const before = camera.combat.serialize();
-    camera.combat.followProgress({
-      ...sample(),
-      attitude: qFromAxisAngle(v3(0, 1, 0), 1.1),
-    });
+    const attitude = qFromAxisAngle(v3(0, 1, 0), 1.1);
+    camera.combat.followProgress({ ...sample(), attitude });
     const after = camera.combat.serialize();
+
+    // 実効の向きは、対象の姿勢に保存した相対の向きを合成したもの。
+    const relative = qFromBasis(v3(combat.offset.x, combat.offset.y, combat.offset.z), v3(0, 1, 0));
+    const expectedForward = qRotate(qMul(attitude, relative), LOCAL_FORWARD);
+    assert.ok(len(sub(qRotate(camera.combat.rotation, LOCAL_FORWARD), expectedForward)) < 1e-9);
 
     const offsetError = len(sub(
       v3(after.offset.x, after.offset.y, after.offset.z),

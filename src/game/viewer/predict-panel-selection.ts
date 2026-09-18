@@ -1,8 +1,10 @@
 // 予測パネルで選ぶ座標系・表示期間・表示時刻・時刻表記を持つ。選択から各方向の表示期間を
 // 求め、カメラの基準と現在のビューに合わせる規則を担う。
+import { isDestroyedTarget } from './nav-target-selection';
 import type { FrameRotationSource, ReferenceFrame } from '../../physics/frame';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ReferenceFrames } from '../celestial/reference-frames';
+import type { EntityRoster } from '../dynamic/entity-roster';
 
 const DISPLAY_DUR_DAY = 86400; // 1日 [s]
 const DISPLAY_DUR_TEN_DAY = 10 * 86400; // 10日 [s]
@@ -55,27 +57,88 @@ export interface PredictPanelSource {
   pastDurationSec(referencePeriod: number): number;
 }
 
-export class PredictPanelSelection implements PredictPanelSource {
-  private _frame: ReferenceFrame;
-  private _durationKey: DisplayDurationKey = 'orbit';
-  private _customDurationSec = DISPLAY_DUR_DAY;
-  private _pastDurationKey: DisplayPastDurationKey = 'none';
-  private _customPastDurationSec = DISPLAY_DUR_DAY;
-  private _sliderT = 0;
-  private _tickLabelMode: TickLabelMode = 'absolute';
-  private _showElementTimes = false;
-  private _followCamera = true;
-  private _showTicks = true;
+export interface SerializedPredictPanelSelection {
+  readonly frame: ReferenceFrame;
+  readonly durationKey: DisplayDurationKey;
+  readonly customDurationSec: number;
+  readonly pastDurationKey: DisplayPastDurationKey;
+  readonly customPastDurationSec: number;
+  readonly sliderT: number;
+  readonly tickLabelMode: TickLabelMode;
+  readonly showElementTimes: boolean;
+  readonly followCamera: boolean;
+  readonly showTicks: boolean;
+}
 
+export class PredictPanelSelection implements PredictPanelSource {
   // frames は座標系の同一性を保つ生成元、celestialBodies はカメラ追随で選べる天体の索引。
-  // cameraFocusId はカメラ追随の初期中心で、登録天体でなければ慣性系から始める。
-  public constructor(
+  // _frame は frames が返した座標系で渡す。
+  private constructor(
     private readonly frames: Pick<ReferenceFrames, 'inertialFrame' | 'frameOf'>,
     private readonly celestialBodies: Pick<CelestialBodies, 'has'>,
+    private _frame: ReferenceFrame = frames.inertialFrame,
+    private _durationKey: DisplayDurationKey = 'orbit',
+    private _customDurationSec = DISPLAY_DUR_DAY,
+    private _pastDurationKey: DisplayPastDurationKey = 'none',
+    private _customPastDurationSec = DISPLAY_DUR_DAY,
+    private _sliderT = 0,
+    private _tickLabelMode: TickLabelMode = 'absolute',
+    private _showElementTimes = false,
+    private _followCamera = true,
+    private _showTicks = true,
+  ) {}
+
+  // 新しいゲームの選択を組む。座標系は、カメラの基準 cameraFocusId が登録天体ならその天体中心から、
+  // そうでなければ慣性系から始める。
+  public static create(
+    frames: Pick<ReferenceFrames, 'inertialFrame' | 'frameOf'>,
+    celestialBodies: Pick<CelestialBodies, 'has'>,
     cameraFocusId: string | undefined,
-  ) {
-    this._frame = frames.inertialFrame;
-    this.followCameraFocus(cameraFocusId);
+  ): PredictPanelSelection {
+    const selection = new PredictPanelSelection(frames, celestialBodies);
+    selection.followCameraFocus(cameraFocusId);
+    return selection;
+  }
+
+  // 直列化した選択から復元する。座標系の中心が撃墜・破壊された対象を指していれば、航法ターゲットと
+  // 同じく既定の座標系から始める。roster は復元を終えた顔ぶれ。
+  public static deserialize(
+    serialized: SerializedPredictPanelSelection,
+    frames: Pick<ReferenceFrames, 'inertialFrame' | 'frameOf'>,
+    celestialBodies: Pick<CelestialBodies, 'has'>,
+    roster: EntityRoster,
+  ): PredictPanelSelection {
+    const { frame } = serialized;
+    return new PredictPanelSelection(
+      frames,
+      celestialBodies,
+      isDestroyedTarget(frame.center, roster) ? undefined : frames.frameOf(frame.center, frame.rotatingWith),
+      serialized.durationKey,
+      serialized.customDurationSec,
+      serialized.pastDurationKey,
+      serialized.customPastDurationSec,
+      serialized.sliderT,
+      serialized.tickLabelMode,
+      serialized.showElementTimes,
+      serialized.followCamera,
+      serialized.showTicks,
+    );
+  }
+
+  // 直列化した形へ畳む。
+  public serialize(): SerializedPredictPanelSelection {
+    return {
+      frame: this._frame,
+      durationKey: this._durationKey,
+      customDurationSec: this._customDurationSec,
+      pastDurationKey: this._pastDurationKey,
+      customPastDurationSec: this._customPastDurationSec,
+      sliderT: this._sliderT,
+      tickLabelMode: this._tickLabelMode,
+      showElementTimes: this._showElementTimes,
+      followCamera: this._followCamera,
+      showTicks: this._showTicks,
+    };
   }
 
   public get frame(): ReferenceFrame { return this._frame; }

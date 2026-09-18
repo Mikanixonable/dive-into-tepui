@@ -4,7 +4,12 @@
 export type OrbitReferenceMode = 'auto' | 'earth' | 'moon' | 'target';
 
 export class OrbitReferenceSelection {
-  private _mode: OrbitReferenceMode = 'auto';
+  public constructor(private _mode: OrbitReferenceMode = 'auto') {}
+
+  // 直列化した基準の選び方から復元する。
+  public static deserialize(serialized: OrbitReferenceMode): OrbitReferenceSelection {
+    return new OrbitReferenceSelection(serialized);
+  }
 
   public get mode(): OrbitReferenceMode { return this._mode; }
 

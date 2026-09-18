@@ -39,6 +39,7 @@ export type CameraRotationFollow = FrameRotationSource | { readonly kind: 'attit
 export type CameraReferencePlane = 'ecliptic' | 'equator' | 'moonOrbit';
 export type CameraReferenceView = 'above' | 'side';
 
+// offset・up の向きは、rotatingWith が姿勢追従なら対象姿勢からの相対値。
 export interface SerializedFocusCameraSelection {
   readonly offset: SerializedVec3;
   readonly pan: SerializedVec3;
@@ -50,6 +51,8 @@ export interface SerializedFocusCameraSelection {
   readonly referencePlane: CameraReferencePlane;
   readonly projectionMode: ProjectionMode;
   readonly orthographicHalfHeight: number;
+  readonly staleFollowFrames: number;
+  readonly focusReplaced: boolean;
 }
 
 // 入力の解釈が1フレーム分のカメラ操作へ換算した値。
@@ -141,9 +144,6 @@ export class FocusCameraSelection implements FocusCameraSource {
   private _orthographicHalfHeight: number;
   private readonly orientation: CameraOrientation;
   private _cameraFrame: ReferenceFrame;
-  private staleFollowFrames = 0;
-  // setFocus で差し替えた注視に、まだ回転追従の可否を当てていないか。
-  private focusReplaced = false;
 
   public get focus(): FocusTarget { return this._focus; }
   public get focusLossPolicy(): 'hold' | 'fallToOrigin' { return this.config.focusLossPolicy; }
@@ -162,7 +162,7 @@ export class FocusCameraSelection implements FocusCameraSource {
   public get referencePlane(): CameraReferencePlane { return this._referencePlane; }
 
   // config のビューのカメラを、渡した視点から組む。省いた値はそのビューの既定の視点で補う。
-  // rotation は rotationFollow が姿勢追従でも絶対の向きで渡す。
+  // rotation は rotationFollow が姿勢追従なら対象姿勢からの相対の向き、そうでなければ絶対の向き。
   public constructor(
     private readonly celestialBodies: CelestialBodies,
     private readonly config: FocusCameraConfig,
@@ -177,9 +177,13 @@ export class FocusCameraSelection implements FocusCameraSource {
     private projectionMode: ProjectionMode = 'perspective',
     orthographicHalfHeight = _distance * tanHalfFov(clampFov(fovDeg)),
     private _referencePlane: CameraReferencePlane = 'equator',
+    // 回転追従が成立しないまま続いたフレーム数。
+    private staleFollowFrames = 0,
+    // setFocus で差し替えた注視に、まだ回転追従の可否を当てていないか。
+    private focusReplaced = false,
   ) {
     this._cameraFrame = this.frameFollowing(rotationFollow);
-    this.orientation = new CameraOrientation(rotation, rotationMode, rotationFollow?.kind === 'attitude', null);
+    this.orientation = new CameraOrientation(rotation, rotationMode, rotationFollow?.kind === 'attitude');
     this.fovDeg = clampFov(fovDeg);
     this._orthographicHalfHeight = clampOrthographicHalfHeight(orthographicHalfHeight);
   }
@@ -215,6 +219,8 @@ export class FocusCameraSelection implements FocusCameraSource {
       Number.isFinite(orthographicHalfHeight) ? orthographicHalfHeight : undefined,
       referencePlane === 'ecliptic' || referencePlane === 'equator' || referencePlane === 'moonOrbit'
         ? referencePlane : undefined,
+      serialized.staleFollowFrames,
+      serialized.focusReplaced,
     );
   }
 
@@ -434,7 +440,7 @@ export class FocusCameraSelection implements FocusCameraSource {
     this.events.record({ kind: 'cameraViewReset', view: this.config.view });
   }
 
-  // 直列化した形へ、姿勢追従を合成した絶対の向きで畳む。
+  // 直列化した形へ畳む。向きは姿勢追従中なら対象姿勢からの相対値のまま書く。
   public serialize(): SerializedFocusCameraSelection {
     const focus: SerializedFocusCameraSelection['focus'] = this._focus.kind === 'object'
       ? { kind: 'object', id: this._focus.id }
@@ -444,20 +450,22 @@ export class FocusCameraSelection implements FocusCameraSource {
         rotatingWith: this._focus.frame.rotatingWith,
         point: { x: this._focus.point.x, y: this._focus.point.y, z: this._focus.point.z },
       };
-    const rotation = this.orientation.effective();
+    const rotation = this.orientation.raw;
     const offset = scale(qRotate(rotation, LOCAL_FORWARD), this._distance);
     const up = qRotate(rotation, LOCAL_UP);
     return {
       offset: { x: offset.x, y: offset.y, z: offset.z },
       pan: { x: this._pan.x, y: this._pan.y, z: this._pan.z },
       up: { x: up.x, y: up.y, z: up.z },
-      rotatingWith: this.orientation.followingAttitude ? { kind: 'attitude' } : this._cameraFrame.rotatingWith,
+      rotatingWith: this.rotationFollow,
       focus,
       rotationMode: this.orientation.rotationMode,
       fovDeg: this.fovDeg,
       projectionMode: this.projectionMode,
       orthographicHalfHeight: this._orthographicHalfHeight,
       referencePlane: this._referencePlane,
+      staleFollowFrames: this.staleFollowFrames,
+      focusReplaced: this.focusReplaced,
     };
   }
 
