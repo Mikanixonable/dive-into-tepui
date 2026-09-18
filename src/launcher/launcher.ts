@@ -1,17 +1,19 @@
-import type { SerializedGame } from '../game/game';
 import { LoadingProgress } from '../game/loading-progress';
 import { Run } from '../run/run';
+import { KEY_MAPPING as K } from '../input/key-mapping';
+import { ResultScreen, type RunTransitions } from './result-screen';
+import { findStageClass } from '../game/stages/stage-dictionary';
+import { selectStage } from './stage-select';
+import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
+import { showFatalError } from './fatal-error';
+import type { SerializedGame } from '../game/game';
 import type { PageDevices } from '../run/page-devices';
 import type { FrameSections } from '../game/frame-sections';
 import type { ViewOptionsSettings } from '../game/hud/panels/view-options-control';
 import type { ThemePalette } from '../theme';
-import { KEY_MAPPING as K } from '../input/key-mapping';
-import { ResultScreen, type RunTransitions } from './result-screen';
 import type { CurrentGameSource } from './save-browser/save-browser';
 import type { HudShell } from '../hud/hud-shell';
 import type { GamePhase, Stage, StageClass, StageResult } from '../game/stages/stage';
-import { findStageClass } from '../game/stages/stage-dictionary';
-import { selectStage } from './stage-select';
 import type { UnlockManager } from './unlock-manager';
 import type { SaveSlots } from './save/save-slots';
 import type { SnapshotService } from './save/snapshot-service';
@@ -20,8 +22,6 @@ import type { Bgm } from '../audio/bgm/bgm';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
 import type { SettingValue } from '../settings/setting-value';
-import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
-import { showFatalError } from './fatal-error';
 import type { TdbJulianDate } from '../physics/time';
 
 // URL に ?perf=1 が付いているか。
@@ -165,7 +165,9 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   // 周回の初期セーブ。snapshotId があればそれを、無ければ終わっていない周回の再開(直近の周回と同じ
   // ステージ、かつ開始日時の指定なし)に限り自動セーブを復元する。直近の周回を読むので
   // noteLaunched より前に呼ぶ。復元できなければ undefined。
-  private initialSaveFor(stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate): SerializedGame | undefined {
+  private initialSaveFor(
+    stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate,
+  ): SerializedGame | undefined {
     const activeSlotId = this.slots.activeSlotId;
     const lastRun = this.slots.activeSlot()?.lastRun ?? null;
     const resumesRunInProgress = startEpoch === undefined && activeSlotId !== null
