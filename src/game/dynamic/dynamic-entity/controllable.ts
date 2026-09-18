@@ -60,8 +60,8 @@ export interface NavigationController {
   fineAttitude: boolean;
 }
 
-// 操作対象(自艦・基地)の共通能力。装備していない機能は null ではなくプロパティ自体を
-// 持たない。HUD や入力側は capability の有無だけを確認して利用する。
+// 操作対象(自艦・基地)の共通能力。装備していない機能はプロパティ自体が無いので、有無を確かめて
+// から使う。
 export interface Controllable extends CombatTarget, FuelConsumer, PilotCommandReceiver, NavigationController {
   readonly throttle: ThrottlePort;
   readonly fire?: FireControl;
@@ -72,7 +72,7 @@ export interface Controllable extends CombatTarget, FuelConsumer, PilotCommandRe
   readonly toggleRadiator?: (side: 'up' | 'down') => void;
 }
 
-// この個体が操作対象になりうるか。顔ぶれから操作対象だけを絞るときに使う。
+// この個体が操作対象になりうるか。
 export function isControllable(entity: DynamicEntity): entity is Controllable {
   return entity.controllable;
 }
