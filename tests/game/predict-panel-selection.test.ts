@@ -1,5 +1,5 @@
 // 予測パネルの選択が命令の列で順序どおり変わり、戦闘ビューでは表示時刻が現在へ戻る規則を
-// 固定する(INVARIANTS.md §6、CODING-RULE R3・R4)。
+// 固定する(INVARIANTS.md §6、ARCHITECTURE R3・R4)。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { CommandQueue } from '../../src/game/command-queue';
