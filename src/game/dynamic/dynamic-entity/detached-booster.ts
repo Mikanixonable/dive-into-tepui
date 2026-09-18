@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { v3 } from '../../../math/vec3';
+import type { Quat } from '../../../math/quat';
+import { v3, type Vec3 } from '../../../math/vec3';
 import { deserializeAttitude, type Attitude } from '../../../physics/attitude';
 import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { BoosterStage } from '../../player/booster-stack';
@@ -55,16 +56,21 @@ export class DetachedBooster extends DynamicEntity {
     this.setName('分離ブースター');
   }
 
-  // 切り離した段 stage を、分離時の状態 state・attitude で新しく飛ばす。collisionEnableAt は親艦との
-  // 接触を許す時刻。
+  // 主慣性モーメント。
+  private static readonly INERTIA = v3(1, 1, 0.4);
+
+  // 切り離した段 stage を、分離時の状態 state・姿勢 q・機体座標系の角速度 w で新しく飛ばす。
+  // collisionEnableAt は親艦との接触を許す時刻。
   public static create(
     stage: BoosterStage,
     state: KinematicState,
-    attitude: Attitude,
+    q: Quat,
+    w: Vec3,
     collisionEnableAt: number,
     scene: THREE.Scene,
     idAllocators: EntityIdAllocators,
   ): DetachedBooster {
+    const attitude = { q, w, inertia: DetachedBooster.INERTIA };
     return new DetachedBooster({ ...stage }, state, attitude, collisionEnableAt, scene, idAllocators);
   }
 
@@ -75,7 +81,7 @@ export class DetachedBooster extends DynamicEntity {
     return new DetachedBooster(
       { ...serialized.stage, id: serialized.id },
       deserializeKinematicState(serialized),
-      deserializeAttitude(serialized, v3(1, 1, 0.4)),
+      deserializeAttitude(serialized, DetachedBooster.INERTIA),
       // 記録に無い接触の猶予は、記録した状態の時刻で切れているとみなす。
       serialized.collisionEnableAt ?? serialized.t,
       scene,
