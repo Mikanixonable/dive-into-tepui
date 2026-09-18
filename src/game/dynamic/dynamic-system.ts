@@ -11,10 +11,10 @@ import type { EntityRegistry, SpawnGate, SpawnRecord } from './entity-registry';
 import { EntityIdAllocators, type SerializedEntityIdAllocators } from './dynamic-entity/entity-id';
 import { ENTITY_CAP, type CapKind, type EntityCountKind } from './dynamic-entity/entity-kind';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
-import { isEnemy } from './dynamic-entity/enemy';
+import { isEnemy, isSerializedEnemy } from './dynamic-entity/enemy';
+import { ProteinEnemy } from './dynamic-entity/protein-enemy';
 import { isPlayer, Player } from '../player/player';
 import { findEntityClass, type SerializedDynamicEntity } from './dynamic-entity/entity-dictionary';
-import { generateProteinEnemy } from '../stages/spawner/enemy-generator';
 import { proteinAssetGate } from '../protein/protein-asset-loader';
 import { InstancedPools } from '../../render/dynamic/instanced-pools';
 import { BulletPools } from '../../render/dynamic/dynamic-entity/bullet-view';
@@ -51,6 +51,11 @@ function readyToSpawn(record: SpawnRecord): boolean {
     ? proteinAssetGate(record.request.assetId)
     : findEntityClass(record.entity.kind)?.spawnGate(record.entity) ?? null;
   return gate === null || gate();
+}
+
+// record が敵の個体の記録か。
+function isEnemyRecord(record: SpawnRecord): boolean {
+  return record.kind === 'protein-enemy' || isSerializedEnemy(record.entity);
 }
 
 export class DynamicSystem implements EntityRegistry, EntityRoster {
@@ -151,6 +156,11 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // その間その個体は顔ぶれのどこにも現れない。
   private readonly pendingSpawns: SpawnRecord[] = [];
 
+  // 待ち行列にいる敵の数。
+  public get pendingEnemyCount(): number {
+    return this.pendingSpawns.filter(isEnemyRecord).length;
+  }
+
   // record の個体を1体足す。実体化に要る外部資源がまだ揃わなければ、揃うまで待ち行列へ回す。
   public spawnWhenReady(record: SpawnRecord): void {
     if (readyToSpawn(record)) this.materialize(record);
@@ -172,7 +182,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // record の個体を組んで顔ぶれへ足す。知らない種別の記録は読み飛ばす。外部資源が揃ってから呼ぶこと。
   private materialize(record: SpawnRecord): void {
     if (record.kind === 'protein-enemy') {
-      this.add(generateProteinEnemy(record.request, this.scene, this.idAllocators));
+      this.add(ProteinEnemy.create(record.request, this.idAllocators, this.scene));
       return;
     }
     const entityClass = findEntityClass(record.entity.kind);

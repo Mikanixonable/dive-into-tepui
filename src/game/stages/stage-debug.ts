@@ -79,7 +79,7 @@ export class StageDebug extends Stage {
 
   // デバッグステージのブリーフィング文言を返す。
   briefingHtml(): string {
-    return `<b>デバッグステージ</b><br>敵集団 ${this.scoreCounter.totalEnemiesSpawned} 機。撃破しても終了しない。ステータスウィンドウ左部から敵の射撃を切替可能`;
+    return `<b>デバッグステージ</b><br>敵集団 ${this.enemiesAppeared} 機。撃破しても終了しない。ステータスウィンドウ左部から敵の射撃を切替可能`;
   }
 
   // 敵の射撃の可否を切り替える。

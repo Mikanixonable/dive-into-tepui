@@ -5,12 +5,13 @@ import { addScaled } from '../../math/vec3';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { EntityIdAllocator, type EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
 import {
-  generateApproachingEnemy, generateDriftingEnemy, proteinFormationRequests, type ProteinEnemyRequest,
+  generateApproachingEnemy, generateDriftingEnemy, proteinFormationRequests,
 } from '../stages/spawner/enemy-generator';
 import { STAGE_CONTROL_ENEMY_SHAPES, type EnemySpawnShape } from './stage-controls-panel';
 import type * as THREE from 'three/webgpu';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { Enemy } from '../dynamic/dynamic-entity/enemy';
+import type { ProteinEnemyRequest } from '../dynamic/dynamic-entity/protein-enemy';
 import type { Player } from '../player/player';
 
 // 手動スポーンで出す敵1体。その場で組んだ敵か、アセットの取得を待つタンパク質の敵の要求。

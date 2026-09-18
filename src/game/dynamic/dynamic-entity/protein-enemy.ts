@@ -1,12 +1,14 @@
 import type * as THREE from 'three/webgpu';
-import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
+import {
+  deserializeKinematicState, KinematicState, kinematicState, type SerializedKinematicState,
+} from '../../../physics/kinematic-state';
 import { v3, type Vec3 } from '../../../math/vec3';
 import { collisionDamageFraction } from './contact-damage';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
 import { ProteinCombatState, type SerializedProteinCombatState } from '../../protein/protein-combat-state';
 import { ProteinSphereCollisionGeometry } from '../../protein/protein-sphere-collision';
 import {
-  ENEMY_MODEL_SCALE, Enemy, PLASMA_BULLET_DAMAGE, deserializeEnemyPlacement,
+  ENEMY_MODEL_SCALE, Enemy, PLASMA_BULLET_DAMAGE, deserializeEnemyPlacement, driftingAttitude,
   type EnemyPlacement, type SerializedEnemy,
 } from './enemy';
 import {
@@ -33,10 +35,15 @@ import type { ProteinMotionMetrics } from '../../../render/dynamic/dynamic-entit
 // 漂流機体と同じく非対称にして、ジャニベコフ効果(中間軸不安定性)で無秩序に回らせる。
 const PROTEIN_INERTIA = v3(1, 1.1, 1.05);
 
-// 敵の配置に、描くタンパク質のアセットを足したもの。
-type ProteinEnemyPlacement = EnemyPlacement & {
+// 新しく置くタンパク質の敵の要求。アセットが揃うまで実体化を待てるよう(SPEC/PROTEIN.md「出現」節)、
+// 直列化できる値だけで表す。陣形に属する個体だけが formationId と役割を持ち、属さない個体は単体敵になる。
+export interface ProteinEnemyRequest {
+  readonly name: string;
+  readonly state: SerializedKinematicState;
   readonly assetId: ProteinAssetId;
-};
+  readonly formationId: string | null;
+  readonly formationRole: FormationRole | null;
+}
 
 // 同じ陣形に生存中のエネルギー役がいるかを答える。攻撃担当以外と、陣形に属さない敵
 // (formationId なし)は常に true。
@@ -129,16 +136,28 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     this.assetId = definition.assetId;
   }
 
-  // placement に新しく置く。名前には、陣形役割・識別番号などの識別子の前へタンパク質固有の名称を冠する。
-  // アセットが未取得なら投げるので、spawnGate で準備完了を待ってから呼ぶこと。
+  // request の敵を、無秩序に漂う姿勢で新しく置く。名前には、陣形役割・識別番号などの識別子の前へ
+  // タンパク質固有の名称を冠する。アセットが未取得なら投げるので、揃ってから呼ぶこと。
   public static create(
-    placement: ProteinEnemyPlacement, idAllocators: EntityIdAllocators, scene?: THREE.Scene,
+    request: ProteinEnemyRequest, idAllocators: EntityIdAllocators, scene?: THREE.Scene,
   ): ProteinEnemy {
-    const definition = definitionFor(placement.assetId);
+    const definition = definitionFor(request.assetId);
+    // 陣形に属する個体は、陣形を攻撃グループとして同時発砲数を共有する。
+    const formationId = request.formationId ?? undefined;
     return new ProteinEnemy(
-      { ...placement, name: `${definition.asset.displayName} ${placement.name}` },
+      {
+        name: `${definition.asset.displayName} ${request.name}`,
+        state: deserializeKinematicState(request.state),
+        ...driftingAttitude(),
+        accent: 0xffffff,
+        orbitLineColor: 0xffffff,
+        attackGroupId: formationId,
+        formationId,
+        formationRole: request.formationRole ?? undefined,
+      },
       definition,
-      (placement.id ?? placement.name) || placement.assetId,
+      // 表示の揺らぎの軌跡を決める識別子。
+      request.name || request.assetId,
       idAllocators,
       scene,
     );

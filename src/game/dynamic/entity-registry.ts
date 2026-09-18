@@ -2,7 +2,7 @@
 import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type { EntityIdAllocators } from './dynamic-entity/entity-id';
 import type { SerializedDynamicEntity } from './dynamic-entity/entity-dictionary';
-import type { ProteinEnemyRequest } from '../stages/spawner/enemy-generator';
+import type { ProteinEnemyRequest } from './dynamic-entity/protein-enemy';
 import type { RunEventSink } from '../run-events';
 
 // 個体を実体化してよいかを答える述語。何を待つかは、待つと決めた側だけが知っていればよい。
@@ -24,4 +24,6 @@ export interface EntityRegistry {
   // record の個体を実体化して add する。実体化に要る外部資源がいま揃っていればその場で、そうで
   // なければ揃ったフレームで入れる。
   spawnWhenReady(record: SpawnRecord): void;
+  // 外部資源が揃うのを待っていて、まだ顔ぶれに入っていない敵の数。
+  readonly pendingEnemyCount: number;
 }
