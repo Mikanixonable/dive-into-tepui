@@ -4,7 +4,7 @@
 import { Button, ToggleSwitch } from '../../../hud/widgets';
 import type { LagrangeLabel } from '../../../physics/lagrange';
 import { lagrangePointJacobi } from '../../celestial/orbit-guide/orbit-guide-catalog';
-import type { ZeroVelocitySettings } from '../../celestial/orbit-guide/orbit-guide-settings';
+import type { ZeroVelocitySettings } from '../../viewer/orbit-guide-settings';
 import {
   JACOBI_MAPPING, OPACITY_MAPPING, ZERO_VELOCITY_COUNT_MAPPING, buildValueField, syncValueField,
   type ValueField,
