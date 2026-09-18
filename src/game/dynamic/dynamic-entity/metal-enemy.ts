@@ -1,12 +1,11 @@
 import type * as THREE from 'three/webgpu';
 import { v3, type Vec3 } from '../../../math/vec3';
 import {
-  ENEMY_MAX_HP, ENEMY_MODEL_SCALE, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore,
+  ENEMY_MAX_HP, ENEMY_MODEL_SCALE, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore, type SerializedEnemy,
 } from './enemy';
 import { PartBasedEnemy } from './part-based-enemy';
 import { createShipDefaultParts } from './ship-default-parts';
 import type { EntityIdAllocators } from './entity-id';
-import type { MetalEnemySaveData } from '../../save/save-data';
 import { MetalEnemyView, Stage0MetalEnemyView } from '../../../render/dynamic/dynamic-entity/metal-enemy-view';
 
 // 各金属機体モデルを ENEMY_MODEL_SCALE 倍したときの外接球半径 [m]。描画テストでアセットの
@@ -30,6 +29,12 @@ export function metalEnemyCollisionRadius(typeIndex: number | null): number {
 const DRIFTING_INERTIA = v3(1, 1.1, 1.05);
 const TYPED_INERTIA = v3(1, 1, 1);
 
+export interface SerializedMetalEnemy extends SerializedEnemy {
+  readonly kind: 'metal-enemy';
+  // 機体テンプレート番号。型番を持たない漂流機体は null。
+  readonly typeIndex: number | null;
+}
+
 // 新規配置。typeIndex が null なら型番を持たない漂流機体、数値なら stage00 ウェーブ敵の
 // 機体テンプレート番号。
 type MetalEnemyPlacement = EnemyPlacement & { readonly typeIndex: number | null };
@@ -47,7 +52,7 @@ export class MetalEnemy extends PartBasedEnemy {
     idAllocators: EntityIdAllocators,
     scene?: THREE.Scene,
   ) {
-    const typeIndex = 'saved' in init ? (init.saved as MetalEnemySaveData).typeIndex : init.typeIndex;
+    const typeIndex = 'saved' in init ? (init.saved as SerializedMetalEnemy).typeIndex : init.typeIndex;
     const accent = 'saved' in init ? init.saved.accent : init.accent;
     const metalView = typeIndex === null
       ? new MetalEnemyView(accent, ENEMY_MODEL_SCALE, scene)
@@ -91,7 +96,7 @@ export class MetalEnemy extends PartBasedEnemy {
   }
 
   // 敵に共通する保存項目へ型番を足す。showTrajectoryLine はこの敵の予測線・過去線を出しているか。
-  public override serialize(showTrajectoryLine: boolean): MetalEnemySaveData {
+  public override serialize(showTrajectoryLine: boolean): SerializedMetalEnemy {
     return {
       ...this.serializeEnemyFields(showTrajectoryLine), kind: MetalEnemy.kind, typeIndex: this.typeIndex,
     };

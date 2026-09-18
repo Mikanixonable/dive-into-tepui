@@ -1,16 +1,15 @@
 import * as THREE from 'three/webgpu';
 import type { ViewMode } from '../../view/view-mode';
 import { Vessel } from './vessel';
-import { DynamicEntity } from './dynamic-entity';
+import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { Contact } from './contact';
-import type { KinematicState } from '../../../physics/kinematic-state';
+import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import { len, sub, Vec3, v3 } from '../../../math/vec3';
 import type { Player } from '../../player/player';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import type { Quat } from '../../../math/quat';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { StageOutcome } from '../../stages/stage-outcome';
-import { savedKinematicState, type EnemySaveData } from '../../save/save-data';
 import { MARKER_PRIORITY } from '../../marker/marker-priority';
 import type { CombatTarget } from './combat-target';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
@@ -35,8 +34,28 @@ export const ENEMY_MAX_HP = 6; // 敵機の総 HP
 export const PLASMA_BULLET_DAMAGE = 1.25; // 自機がプラズマ弾で被弾した際のダメージ [HP]
 
 // 軌道物体一覧で接近中として扱う、自艦との距離 [m]。
+export interface SerializedEnemy extends SerializedDynamicEntityFields {
+  readonly kind: 'metal-enemy' | 'protein-enemy';
+  readonly alive: boolean;
+  readonly health: number;
+  // マーカー色・集団識別と、マーカー・軌道線の色。
+  readonly accent: string | number;
+  readonly orbitLineColor: string | number;
+  // 表示色とは独立した、同時発砲数を共有する攻撃グループ。無ければ formationId・id・name の順に代える。
+  readonly attackGroupId?: string;
+  readonly waveId?: number;
+  // 陣形に属する敵だけが持つ識別子と役割。無ければ単体敵として復元する。
+  readonly formationId?: string;
+  readonly formationRole?: FormationRole;
+  // バースト射撃の残弾・次弾までの残り時間。未着手なら両方 undefined。
+  readonly burstLeft?: number;
+  readonly burstDelay?: number;
+  // プロパティウィンドウの軌道線表示トグル。無ければ false。
+  readonly showTrajectoryLine?: boolean;
+}
+
 // スナップショットからの再開。復元の腕は全具象で共通でなければならない。
-export interface EnemyRestore { readonly saved: EnemySaveData; readonly simTime: number }
+export interface EnemyRestore { readonly saved: SerializedEnemy; readonly simTime: number }
 
 // 新規配置。具象ごとに固有の項目(機体テンプレート番号・タンパク質アセット)を足して使う。
 export interface EnemyPlacement {
@@ -56,9 +75,9 @@ export interface EnemyPlacement {
 // 敵クラスの静的側。セーブからの復元はここから読む。
 export interface EnemyClass {
   // セーブへ書く具象タグ。
-  readonly kind: EnemySaveData['kind'];
+  readonly kind: SerializedEnemy['kind'];
   // 復元に外部資源の取得が要るなら、それが揃ったかを答える述語。要らなければ null。
-  spawnGate(saved: EnemySaveData): SpawnGate | null;
+  spawnGate(saved: SerializedEnemy): SpawnGate | null;
   new (init: EnemyRestore, idAllocators: EntityIdAllocators, scene?: THREE.Scene): Enemy;
 }
 
@@ -99,7 +118,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     const placed: EnemyPlacement = 'saved' in init
       ? {
         name: init.saved.name || '',
-        state: savedKinematicState(init.saved, init.simTime),
+        state: deserializeKinematicState(init.saved, init.simTime),
         q: { ...init.saved.q },
         w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z),
         accent: init.saved.accent,
@@ -247,7 +266,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
 
   // 敵に共通する保存項目。具象の serialize() がこれへ自分の項目を足す。showTrajectoryLine は
   // この敵の予測線・過去線を出しているか。
-  protected serializeEnemyFields(showTrajectoryLine: boolean): EnemySaveData {
+  protected serializeEnemyFields(showTrajectoryLine: boolean): SerializedEnemy {
     const fire = this.fireController.saveState;
     return {
       id: this.id,

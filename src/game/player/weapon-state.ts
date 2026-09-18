@@ -3,10 +3,12 @@ import { MAG_ROUNDS } from './ammo-spec';
 export const MAGS_PER_BARREL = 3;
 export const DEFAULT_BARREL_TEMPERATURE = 255;
 
-export interface WeaponStateData {
+export interface SerializedWeaponState {
   readonly mags: number;
   readonly rounds: number;
   readonly barrel: number;
+  // 装着している砲身の平均温度 [K] と、薬室側が平均より高い温度差 [K]。
+  // 欠けているときは環境温度の等温な砲身として復元する。
   readonly barrelTemperature?: number;
   readonly barrelDeviation?: number;
   readonly cooldown: number;
@@ -34,7 +36,7 @@ export class WeaponState {
   public wasEmptyClick = false;
   public muzzleIdx = 0;
 
-  public constructor(saved?: WeaponStateData, initial?: { readonly mags: number; readonly rounds: number }) {
+  public constructor(saved?: SerializedWeaponState, initial?: { readonly mags: number; readonly rounds: number }) {
     if (saved) {
       this.mags = nonNegativeInteger(saved.mags, this.mags);
       this.rounds = boundedInteger(saved.rounds, 0, MAG_ROUNDS, this.rounds);
@@ -94,7 +96,7 @@ export class WeaponState {
     }
   }
 
-  public serialize(): WeaponStateData {
+  public serialize(): SerializedWeaponState {
     return {
       mags: this.mags,
       rounds: this.rounds,

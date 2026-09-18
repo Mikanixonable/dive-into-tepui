@@ -1,17 +1,28 @@
-// セーブの種別タグから、その1体を組み立て直す手順を引く。
+// 直列化された実体の種別タグから、その1体を組み立て直す手順を引く。
 // 敵の具象は enemy-dictionary.ts 越しにしか触らない(直接 import すると
 // enemy.ts → 具象 → enemy.ts の実行時循環に落ちる)。
 import * as THREE from 'three/webgpu';
-import { Base } from './base';
-import { DetachedBooster } from './detached-booster';
-import { AmmoPickup, RcsFuelPickup } from './pickup';
+import { Base, type SerializedBase } from './base';
+import { DetachedBooster, type SerializedDetachedBooster } from './detached-booster';
+import { AmmoPickup, RcsFuelPickup, type SerializedAmmoPickup, type SerializedRcsFuelPickup } from './pickup';
 import { findEnemyClass } from './enemy-dictionary';
-import { Player } from '../../player/player';
+import { Player, type SerializedPlayer } from '../../player/player';
 import type { DynamicEntity } from './dynamic-entity';
-import type { EntitySaveDataUnion } from '../../save/save-data';
+import type { SerializedMetalEnemy } from './metal-enemy';
+import type { SerializedProteinEnemy } from './protein-enemy';
 import type { SpawnGate } from '../entity-registry';
 import type { EntityIdAllocators } from './entity-id';
 import type { RunEventSink } from '../../run-events';
+
+// 顔ぶれ1体分の直列化した形。kind で具象を判別する。
+export type SerializedDynamicEntity =
+  | SerializedPlayer
+  | SerializedMetalEnemy
+  | SerializedProteinEnemy
+  | SerializedAmmoPickup
+  | SerializedRcsFuelPickup
+  | SerializedDetachedBooster
+  | SerializedBase;
 
 // 1体ぶんの復元手順。実体化(build)は、要る外部資源が揃うまで遅らせてよい。
 export interface EntityRestoration {
@@ -20,9 +31,9 @@ export interface EntityRestoration {
   build(): DynamicEntity;
 }
 
-// セーブ1体分から復元手順を引く。知らない種別なら null。
+// 直列化された1体分から復元手順を引く。知らない種別なら null。
 export function restorationFor(
-  data: EntitySaveDataUnion,
+  data: SerializedDynamicEntity,
   simTime: number,
   scene: THREE.Scene,
   events: RunEventSink,
@@ -60,7 +71,7 @@ export function restorationFor(
   }
 }
 
-// セーブ由来の種別タグは未検証の文字列なので、知らない種別は読み飛ばす。
+// 直列化された種別タグは未検証の文字列なので、知らない種別は読み飛ばす。
 function skipUnknownKind(_data: never): null {
   return null;
 }

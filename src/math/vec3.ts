@@ -9,6 +9,12 @@ export type Vec3 = {
   readonly z: number;
 } & { readonly __tag: "Vec3" };
 
+export interface SerializedVec3 {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+}
+
 // Vec3 を構築する唯一の手段(オブジェクトリテラルを直接 Vec3 として扱わないこと)。
 export function v3(x = 0, y = 0, z = 0): Vec3 {
   return { x, y, z } as Vec3;
