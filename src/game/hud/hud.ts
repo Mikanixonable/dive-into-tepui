@@ -105,8 +105,15 @@ export class Hud implements HudLayers, Notifier {
     this.orbitAnalysisWindow = win;
   }
 
-  // ランが畳まれたときに、パネルが掴んでいるランの値と操作の口を落とす。
+  // HUD の見た目を、始まったランのステージ stageId に合わせる。creative ステージでは、マップにも
+  // 艦の状態パネルを出す。
+  public beginRun(stageId: string): void {
+    this.root.classList.toggle('creative-mode', stageId === 'creative');
+  }
+
+  // ランが畳まれたときに、ランの見た目とパネルが掴んでいるランの値・操作の口を落とす。
   public clearRunPanels(): void {
+    this.root.classList.remove('creative-mode');
     this.topBar.sync(null, 0);
     this.vesselPanel.sync(null, 0);
     this.orbitPanel.sync(null, 0);

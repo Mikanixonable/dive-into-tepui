@@ -1,22 +1,25 @@
 import type * as THREE from 'three/webgpu';
-import { KinematicState, kinematicState } from '../../../physics/kinematic-state';
+import {
+  deserializeKinematicState, kinematicState, type KinematicState, type SerializedKinematicState,
+} from '../../../physics/kinematic-state';
 import { v3, type Vec3 } from '../../../math/vec3';
 import { collisionDamageFraction } from './contact-damage';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
-import { ProteinCombatState } from '../../protein/protein-combat-state';
+import { ProteinCombatState, type SerializedProteinCombatState } from '../../protein/protein-combat-state';
 import { ProteinSphereCollisionGeometry } from '../../protein/protein-sphere-collision';
-import { ENEMY_MODEL_SCALE, Enemy, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore } from './enemy';
+import {
+  ENEMY_MODEL_SCALE, Enemy, PLASMA_BULLET_DAMAGE, deserializeEnemyPlacement, driftingAttitude,
+  type EnemyPlacement, type SerializedEnemy,
+} from './enemy';
 import {
   proteinAssetGate, proteinRenderDefinitionFor, type ProteinAssetId,
 } from '../../protein/protein-asset-loader';
-import type { SpawnGate } from '../entity-registry';
+import type { EntityRegistry, SpawnGate } from '../entity-registry';
 import type { RunEventSink } from '../../run-events';
 import type { EntityIdAllocators } from './entity-id';
-import type { ProteinDisplaySettings } from '../../../render/protein/protein-display';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
 import type { ProteinRenderDefinition } from '../../../render/protein/protein-render-definition';
 import type { ProteinCombatReadout } from '../../protein/protein-schema';
-import type { EnemySaveData, ProteinEnemySaveData } from '../../save/save-data';
 import type { FormationRole } from './entity-kind';
 import { ProteinEnemyView } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
 import type { DynamicEntity } from './dynamic-entity';
@@ -32,10 +35,15 @@ import type { ProteinMotionMetrics } from '../../../render/dynamic/dynamic-entit
 // 漂流機体と同じく非対称にして、ジャニベコフ効果(中間軸不安定性)で無秩序に回らせる。
 const PROTEIN_INERTIA = v3(1, 1.1, 1.05);
 
-// 新規配置。敵に共通の配置へ、描くタンパク質のアセットを足す。
-type ProteinEnemyPlacement = EnemyPlacement & {
+// 新しく置くタンパク質の敵の要求。アセットが揃うまで実体化を待てるよう(SPEC/PROTEIN.md「出現」節)、
+// 直列化できる値だけで表す。陣形に属する個体だけが formationId と役割を持ち、属さない個体は単体敵になる。
+export interface ProteinEnemyRequest {
+  readonly name: string;
+  readonly state: SerializedKinematicState;
   readonly assetId: ProteinAssetId;
-};
+  readonly formationId: string | null;
+  readonly formationRole: FormationRole | null;
+}
 
 // 同じ陣形に生存中のエネルギー役がいるかを答える。攻撃担当以外と、陣形に属さない敵
 // (formationId なし)は常に true。
@@ -68,39 +76,46 @@ function renderDefinitionFor(assetId: ProteinAssetId): ProteinRenderDefinition {
   return definition;
 }
 
+export interface SerializedProteinEnemy extends SerializedEnemy {
+  readonly kind: 'protein-enemy';
+  readonly assetId: ProteinAssetId;
+  // 機能部位の HP・フェーズ・修飾。
+  readonly protein: SerializedProteinCombatState;
+}
+
 // タンパク質の敵。機能部位ごとに破壊できる被弾モデル(ProteinCombatState)が HP の正本で、
 // 判定形状は表示形態によらず、アセットが持つ球列に固定する。
 export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   public static readonly kind = 'protein-enemy';
   public declare readonly view: ProteinEnemyView;
   // その体のアセットの取得を起こし、実体化してよいかを答える関門を返す。
-  public static spawnGate(saved: EnemySaveData): SpawnGate {
-    return proteinAssetGate((saved as ProteinEnemySaveData).assetId);
+  public static spawnGate(serialized: SerializedProteinEnemy): SpawnGate {
+    return proteinAssetGate(serialized.assetId);
   }
 
   private readonly assetId: ProteinAssetId;
-  private readonly combat: ProteinCombatState;
 
-  // View を組み、アセットが持つ球列へ判定形状を当てる。アセットが未取得なら投げるので、
-  // EnemyClass.spawnGate で準備完了を待ってから構築すること。
-  public constructor(
-    init: ProteinEnemyPlacement | EnemyRestore,
+  // View を組み、definition のアセットが持つ球列へ判定形状を当てる。motionSeed は表示の揺らぎの軌跡を
+  // 決める識別子、combat は被弾モデルで、省けば無傷から始める。
+  private constructor(
+    placement: EnemyPlacement,
+    definition: ProteinEnemyDefinition,
+    motionSeed: string,
     idAllocators: EntityIdAllocators,
-    scene?: THREE.Scene,
+    scene: THREE.Scene | undefined,
+    private readonly combat = new ProteinCombatState(definition.asset),
+    alive?: boolean,
+    burstLeft?: number | null,
+    burstDelay?: number | null,
+    lastFireSim?: number | null,
+    lastBehaviorSim?: number | null,
   ) {
-    const assetId = 'saved' in init ? (init.saved as ProteinEnemySaveData).assetId : init.assetId;
-    const definition = definitionFor(assetId);
-    const id = ('saved' in init ? init.saved.id || init.saved.name : init.id ?? init.name) || assetId;
-    const combat = new ProteinCombatState(
-      definition.asset,
-      'saved' in init ? (init.saved as ProteinEnemySaveData).protein : undefined,
-    );
     // 表示が原子模型へ切り替わっても、判定形状は常に同じ球列に固定する。
     const collision = new ProteinSphereCollisionGeometry(
       definition.collisionSpheres, ENEMY_MODEL_SCALE,
     );
     const proteinView = new ProteinEnemyView(
-      renderDefinitionFor(assetId), ENEMY_MODEL_SCALE, collision.outerRadius, id, scene,
+      renderDefinitionFor(definition.assetId), ENEMY_MODEL_SCALE, collision.outerRadius, motionSeed, scene,
     );
     const shape: EnemyCollisionShape = {
       testSphereCollision: (_self, sphereCenter, sphereRadius, selfState, selfAttitude) => (
@@ -114,13 +129,60 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
         previousSelfState, selfState, previousSelfAttitude.q, selfAttitude.q,
       ),
     };
-    // 新規生成のときだけ、タンパク質固有の名称を陣形役割・識別番号などの既存識別子の前へ冠する。
     super(
-      'saved' in init ? init : { ...init, name: `${definition.asset.displayName} ${init.name}` },
-      proteinView, PROTEIN_INERTIA, collision.outerRadius, idAllocators, shape,
+      placement, proteinView, PROTEIN_INERTIA, collision.outerRadius, idAllocators, shape,
+      alive, burstLeft, burstDelay, lastFireSim, lastBehaviorSim,
     );
-    this.assetId = assetId;
-    this.combat = combat;
+    this.assetId = definition.assetId;
+  }
+
+  // request の敵を、無秩序に漂う姿勢で新しく置く。名前には、陣形役割・識別番号などの識別子の前へ
+  // タンパク質固有の名称を冠する。アセットが未取得なら投げるので、揃ってから呼ぶこと。
+  public static create(
+    request: ProteinEnemyRequest, idAllocators: EntityIdAllocators, scene?: THREE.Scene,
+  ): ProteinEnemy {
+    const definition = definitionFor(request.assetId);
+    // 陣形に属する個体は、陣形を攻撃グループとして同時発砲数を共有する。
+    const formationId = request.formationId ?? undefined;
+    return new ProteinEnemy(
+      {
+        name: `${definition.asset.displayName} ${request.name}`,
+        state: deserializeKinematicState(request.state),
+        ...driftingAttitude(),
+        accent: 0xffffff,
+        orbitLineColor: 0xffffff,
+        attackGroupId: formationId,
+        formationId,
+        formationRole: request.formationRole ?? undefined,
+      },
+      definition,
+      // 表示の揺らぎの軌跡を決める識別子。
+      request.name || request.assetId,
+      idAllocators,
+      scene,
+    );
+  }
+
+  // 直列化した敵を復元する。HP は被弾モデルの記録から戻す。アセットが未取得なら投げるので、
+  // spawnGate で準備完了を待ってから呼ぶこと。
+  public static deserialize(
+    serialized: SerializedProteinEnemy, registry: EntityRegistry, scene?: THREE.Scene,
+  ): ProteinEnemy {
+    const definition = definitionFor(serialized.assetId);
+    return new ProteinEnemy(
+      deserializeEnemyPlacement(serialized),
+      definition,
+      serialized.id || serialized.name || serialized.assetId,
+      registry.idAllocators,
+      scene,
+      serialized.protein ? ProteinCombatState.deserialize(serialized.protein, definition.asset) : undefined,
+      // 記録に無い生死は、新しく置いたときと違って撃破済みとして読む。
+      serialized.alive ?? false,
+      serialized.fireController.burstLeft,
+      serialized.fireController.burstDelay,
+      serialized.fireController.lastFireSim,
+      serialized.fireController.lastBehaviorSim,
+    );
   }
 
   public override get hp(): number { return this.combat.integrityHp; }
@@ -129,6 +191,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   public get combatReadout(): ProteinCombatReadout { return this.combat.combatReadout(); }
   public get proteinMotionMetrics(): ProteinMotionMetrics { return this.view.motionMetrics; }
 
+  // 機能部位の状態と、表示位置に置いた部位マーカーを答える面。
   public override get proteinInspection(): EnemyProteinInspection {
     return {
       combatReadout: () => this.combatReadout,
@@ -177,6 +240,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   protected override applyBulletDamage(
     damage: number, impactPoint: Vec3, events: RunEventSink,
   ): void {
+    // 着弾点と各部位の位置を、同じ模型座標で比べる
     const localPoint = this.view.localImpactPoint(
       impactPoint, this.motion.state.r, this.motion.att.q,
     );
@@ -184,6 +248,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
       this.combat.combatReadout().sites.map((site) => [site.id, this.view.siteModelPositionById(site.id)] as const),
     );
     const result = this.combat.applyDamage(damage, localPoint, sitePositions);
+    // 部位が止まるか構造フェーズが変わったら、着弾点の出来事として記録する
     if (result.siteDisabled || result.phaseChanged) {
       events.record({
         kind: 'proteinStateChanged',
@@ -201,16 +266,12 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     return true;
   }
 
-  // 敵に共通する保存項目へ、アセット・表示設定・被弾モデルの状態を足す。showTrajectoryLine は
-  // この敵の予測線・過去線を出しているか、proteinDisplay はタンパク質の敵に共通の表示形態と着色。
-  public override serialize(
-    showTrajectoryLine: boolean, proteinDisplay: ProteinDisplaySettings,
-  ): ProteinEnemySaveData {
+  // 敵に共通する直列化の項目へ、アセットと被弾モデルの状態を足す。
+  public override serialize(): SerializedProteinEnemy {
     return {
-      ...this.serializeEnemyFields(showTrajectoryLine),
+      ...this.serializeEnemyFields(),
       kind: ProteinEnemy.kind,
       assetId: this.assetId,
-      display: proteinDisplay,
       protein: this.combat.serialize(),
     };
   }

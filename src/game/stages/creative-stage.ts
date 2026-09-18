@@ -1,24 +1,38 @@
 // クリエイティブモード: 勝敗判定を発生させず、物体配置と軌道計画を自由に試すためのステージ。
-import { Stage, type StageDeps, STORY_EPOCH } from './stage';
-import { ManualSpawn } from '../creative/manual-spawn';
-import { MAX_PLACED_SHIPS, ObjectPlacement } from '../creative/object-placement';
+import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
+import { ManualSpawn, type SerializedManualSpawn } from '../creative/manual-spawn';
+import { MAX_PLACED_SHIPS, ObjectPlacement, type SerializedObjectPlacement } from '../creative/object-placement';
 import {
   StageControlsPanel, type EnemySpawnShape, type ProteinDisplayControl,
 } from '../creative/stage-controls-panel';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { hudRail } from '../hud/hud-root';
 import { isPlayer } from '../player/player';
-import { WaveAttack } from './stage-utils/wave-attack';
+import { WaveAttack, type SerializedWaveAttack } from './stage-utils/wave-attack';
+import { creativeStageCommands, type CreativeStageCommands } from './creative-stage-commands';
+import { FREE_PLAY_STAGE_RULES } from './stage-rules';
+import { queuedEventSink, type RunEventSink } from '../run-events';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
-import { creativeStageCommands, type CreativeStageCommands } from './creative-stage-commands';
-import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
-import { FREE_PLAY_STAGE_RULES } from './stage-rules';
-import { queuedEventSink } from '../run-events';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
+
+// クリエイティブモードの内訳。波状攻撃のトグルと進行状態を持ち、進行状態はトグルが OFF の間も
+// 保つ(ON に戻したとき波数を続きから再開する)。手動スポーンと物体配置の設定・連番も持つ。
+export interface SerializedCreativeStage extends SerializedStage {
+  readonly waveAttackEnabled: boolean;
+  readonly waveAttack: SerializedWaveAttack;
+  readonly manualSpawn: SerializedManualSpawn;
+  readonly objectPlacement: SerializedObjectPlacement;
+}
+
+// 配置が記録する出来事の行き先。配置パネルの確定は DOM のイベントなので、列を通して記録する(R8)。
+function placementEventSink(deps: StageDeps): RunEventSink {
+  const [, , dynamicSystem, , , commandQueue] = deps;
+  return queuedEventSink(commandQueue, dynamicSystem.events);
+}
 
 export class CreativeStage extends Stage {
   public static readonly id = 'creative' as const;
@@ -38,8 +52,6 @@ export class CreativeStage extends Stage {
   // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。
   private readonly stageControlsPanel: StageControlsPanel;
   private readonly waveAttack: WaveAttack;
-  // 敵の波状攻撃を発生させるかどうか(既定 OFF)。
-  private waveAttackEnabled: boolean;
   // パネルの操作を積む先。
   private readonly commands: CreativeStageCommands;
 
@@ -48,31 +60,37 @@ export class CreativeStage extends Stage {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
   }
 
-  // 配置・手動スポーンとステージ操作パネルを組み、保存データがあればそこから状態を戻す。
-  public constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
-    super(saved, ...deps);
+  // 波状攻撃の進行・トグル、手動スポーン、配置と共通の状態から、ステージ操作パネルを組む。
+  // 省いた波状攻撃・手動スポーン・配置は新しいランの初期値から始まる。
+  private constructor(
+    deps: StageDeps,
+    waveAttack?: WaveAttack,
+    // 敵の波状攻撃を発生させるかどうか。
+    private waveAttackEnabled = false,
+    manualSpawn?: ManualSpawn,
+    objectPlacement?: ObjectPlacement,
+    ...common: CommonStageState
+  ) {
+    super(deps, ...common);
     this.commands = creativeStageCommands(this._commandQueue, this);
-    const savedCreative = saved as CreativeStageSaveData | undefined;
 
-    this.manualSpawn = new ManualSpawn(
-      this._scene, this._celestialSystem.celestialMotions,
-      this._dynamicSystem, this._dynamicSystem.idAllocators,
+    // 手動スポーン・配置・波状攻撃。配置の確定は命令として積む。
+    this.manualSpawn = manualSpawn ?? ManualSpawn.create(
+      this._scene, this._celestialSystem.celestialMotions, this._dynamicSystem.idAllocators,
     );
 
-    // 配置パネルの確定は DOM のイベントなので、そこで起きたことは列を通して記録する(R8)。
-    this.objectPlacement = new ObjectPlacement(
+    this.objectPlacement = objectPlacement ?? ObjectPlacement.create(
       this._hud, this._scene, this._dynamicSystem, this._dynamicSystem.idAllocators,
-      queuedEventSink(this._commandQueue, this._dynamicSystem.events),
-      this._celestialSystem,
+      placementEventSink(deps), this._celestialSystem,
     );
     this.objectPlacement.onPlace = (name, entityKind, state) => this.commands.placeObject(name, entityKind, state);
     this.authoring = this.objectPlacement;
 
-    this.waveAttack = new WaveAttack(
+    this.waveAttack = waveAttack ?? new WaveAttack(
       this._dynamicSystem.events, this._scene, this._celestialSystem.celestialMotions,
-      this._dynamicSystem.idAllocators, savedCreative?.waveAttack,
+      this._dynamicSystem.idAllocators,
     );
-    this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
+    // ステージ操作パネル。操作は命令として積む。
     this.stageControlsPanel = new StageControlsPanel(
       this.logistics.resupplyEnabled, this.logistics.rcsFuelResupplyEnabled, this.waveAttackEnabled,
       this.manualSpawn.spawnDistance,
@@ -87,18 +105,45 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.onSpawnEnemy = (shape, colorValue) => this.commands.spawnManualEnemy(shape, colorValue);
     this.stageControlsPanel.onSpawnFormation = () => this.commands.spawnProteinFormation();
     hudRail(this._hud.mapRoot, 'right').appendChild(this.stageControlsPanel.element);
+  }
 
-    this.begin();
+  // 新しいランのステージを組む。
+  public static create(...deps: StageDeps): CreativeStage {
+    const stage = new CreativeStage(deps);
+    stage.composeBriefing();
+    return stage;
+  }
+
+  // 直列化した形から復元する。
+  public static deserialize(serialized: SerializedCreativeStage, ...deps: StageDeps): CreativeStage {
+    const [hud, scene, dynamicSystem, celestialSystem] = deps;
+    const { waveAttack, waveAttackEnabled, manualSpawn, objectPlacement } = serialized;
+    return new CreativeStage(
+      deps,
+      // null も欠けと同じく新しいランの初期値から始める(既定引数は undefined でしか働かない)。
+      waveAttack == null ? undefined : WaveAttack.deserialize(
+        waveAttack, dynamicSystem.events, scene, celestialSystem.celestialMotions, dynamicSystem.idAllocators,
+      ),
+      waveAttackEnabled ?? undefined,
+      manualSpawn == null ? undefined : ManualSpawn.deserialize(
+        manualSpawn, scene, celestialSystem.celestialMotions, dynamicSystem.idAllocators,
+      ),
+      objectPlacement == null ? undefined : ObjectPlacement.deserialize(
+        objectPlacement, hud, scene, dynamicSystem, dynamicSystem.idAllocators,
+        placementEventSink(deps), celestialSystem,
+      ),
+      ...Stage.deserializeCommonState(serialized, deps, CreativeStage.stageRules),
+    );
   }
 
   // 弾薬の自動投入の可否を切り替える。
   public setResupplyEnabled(on: boolean): void {
-    this.logistics.resupplyEnabled = on;
+    this.logistics.setResupplyEnabled(on);
   }
 
   // RCS燃料の自動投入の可否を切り替える。
   public setFuelResupplyEnabled(on: boolean): void {
-    this.logistics.rcsFuelResupplyEnabled = on;
+    this.logistics.setFuelResupplyEnabled(on);
   }
 
   // 敵の波状攻撃の可否を切り替える。
@@ -108,7 +153,7 @@ export class CreativeStage extends Stage {
 
   // 手動スポーンが使う距離 [m] を差し替える。
   public setSpawnDistance(distanceM: number): void {
-    this.manualSpawn.spawnDistance = distanceM;
+    this.manualSpawn.setSpawnDistance(distanceM);
   }
 
   // 操作艦の弾薬チェーンへマガジンを1つ追加する。操作艦がいなければ、操作艦が要ることを記録する。
@@ -139,7 +184,9 @@ export class CreativeStage extends Stage {
       return;
     }
     const spawn = this.manualSpawn.enemy(player, shape, colorValue);
-    if (spawn !== null) this.spawnEnemyWhenReady(spawn.gate, spawn.build);
+    if (spawn === null) return;
+    if (spawn.kind === 'enemy') this.addEnemy(spawn.enemy);
+    else this.addProteinEnemy(spawn.request);
   }
 
   // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機前方に一括スポーンする。
@@ -149,7 +196,7 @@ export class CreativeStage extends Stage {
       this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'spawnEnemy' });
       return;
     }
-    for (const { gate, build } of this.manualSpawn.proteinFormation(player)) this.spawnEnemyWhenReady(gate, build);
+    for (const request of this.manualSpawn.proteinFormation(player)) this.addProteinEnemy(request);
   }
 
   // 検証を通った配置の指定から物体を作り、顔ぶれへ入れて、配置したことを記録する。
@@ -157,6 +204,7 @@ export class CreativeStage extends Stage {
   public placeObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): void {
     if (entityKind === 'player'
       && this._dynamicSystem.all().filter(isPlayer).length >= MAX_PLACED_SHIPS) return;
+    // 自機は配置の指定から艦として置き、それ以外は作った実体をそのまま顔ぶれへ入れる。
     const placed = this.objectPlacement.createObject(name, entityKind, state);
     if (placed.kind === 'player') {
       const ship = this.addPlayer(placed.placement);
@@ -189,6 +237,7 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.element.classList.remove('hidden');
   }
 
+  // 直近の sync が組んだ、配置プレビューのマーカーの宣言。
   public override get markerDeclarations(): readonly MarkerDeclaration[] {
     return this.objectPlacement.markerDeclarations;
   }
@@ -241,7 +290,7 @@ export class CreativeStage extends Stage {
     return false;
   }
 
-  // 艦の喪失を、決着させずに知らせるだけで済ませる。
+  // 艦の喪失を出来事として記録する。
   public recordPlayerLost(reason: string): void {
     this._dynamicSystem.events.record({ kind: 'shipLost', reason });
   }
@@ -258,12 +307,14 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.element.remove();
   }
 
-  // 共通のステージ保存データへ、波状攻撃のトグルと進行状況を足して返す。
-  public serialize(): CreativeStageSaveData {
+  // 共通の内訳へ、波状攻撃のトグルと進行状況、手動スポーンと配置を足して直列化する。
+  public serialize(): SerializedCreativeStage {
     return {
       ...super.serialize(),
       waveAttackEnabled: this.waveAttackEnabled,
       waveAttack: this.waveAttack.serialize(),
+      manualSpawn: this.manualSpawn.serialize(),
+      objectPlacement: this.objectPlacement.serialize(),
     };
   }
 }
