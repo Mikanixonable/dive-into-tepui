@@ -684,31 +684,9 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
   - 戦闘ビューのまま操作を外したセーブは、マップビューで戻る(戦闘ビューは操作対象がいるときだけ選べる、の規則による)。
 - **実行時の確認はまだ**(段の終わりにまとめて見る)。
 
-#### 手順 5-6. 段 5 の層のテストを整える
+#### 手順 5-6 — 済(`c979cbac`・`e7719203`)
 
-**目的**: K8-6 のとおり、段 5 が触った層(進行・視点・launcher のセーブ)のテストを 4.1 に照らして整える。構造や調整値を固定していた B の箇所を消し、5-2〜5-5 で組めるようになった不変条件を足す。`src/` は変えない。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| K8 の調査で B とした箇所 | 1つずつ 4.1 で判定し直し、B なら消す(置き場は移さない)。対象: `attractors:77`(最高ワープ段の写し)、`base-collision:221-222`、`contact:35-52`(委譲だけの経路)、`engagement-zone:55-58`、`plan:64-81,103-118`、`player-systems:97,112-116,122-123,135-137,147-150,157-161`、`predicted-arc:91-106,136-152,197-208`、`predict-panel-selection:63`、`protein-combat-state:36-38,73,81,94-100,107-108,186`、`protein-sphere-collision:76`、`surface-candidates:139`、`view-selection:50,57-59,65`、`camera-selection:76,84-88`(5-4 で残っていれば) |
-| `tests/game/debris-reaction.test.ts:60` | テスト名を中身(1回だけ記録する)に合わせる |
-| (新規) `tests/game/viewer-serialization.test.ts` | `Viewer.deserialize(viewer.serialize(), …).serialize()` が `viewer.serialize()` と等しい。5-5 で足した項目(軌道要素の基準・予測パネル・タンパク質の表示)を既定と違う値にして確かめる。記録に無い項目は既定で補われる(SAVE.md「形式の版」・§6) |
-| (新規) `tests/game/progress-serialization.test.ts` | 表示物を持たずに組める進行の部品(`Throttle`・`PowerSystem`・`RadiatorSystem`・`WeaponState`・`BoosterStack`・`ProteinCombatState`・`Plan`・`ScoreCounter`・`SimSpeedManager`・`AltitudeAlarm`)の往復を、1つの表で回す。いまある `booster-stack` と `protein-combat-state` の往復はここへ寄せる(SAVE.md「保存される内容」) |
-| (新規) `tests/game/entity-id.test.ts` | 復元した採番器が、保存前に払い出した番号を再び出さない(R11) |
-| (新規) `tests/game/nav-target-restore.test.ts` | 存在しない実体を指す記録からは未選択で戻り、天体のように消えない対象は戻る(SAVE.md「保存される内容」) |
-| (新規) `tests/game/command-queue.test.ts` | 受け付けた順に1回だけ適用し、適用の途中で積まれた命令は次の適用へ回る(R3) |
-| (新規) `tests/game/run-events.test.ts` | `beginStep` で記録が空になり、通し番号は続く。`RunEventPresenter` は同じ番号を二度扱わない(R7) |
-| `tests/game/trajectory-demand.test.ts` | 需要の変え方に、履歴の長さと計画の弧を足す。推力のある個体でも、状態(履歴を除く)が変わらないことを足す(R4) |
-| (新規) `tests/launcher/snapshot-service.test.ts`・`save-slots.test.ts` | 版が一致しない記録は読み込まない。手動セーブは、同じステージ履歴で 30 件に達したら拒否する(SAVE.md「記録」「形式の版」)。メモリ上の `SaveStore` で組む |
-| `tests/run.ts`、`tsconfig.test.json`、`package.json`、`CLAUDE.md` | `launcher` 層(`npm run test:launcher`)を足す。`tsconfig.test.json` が名指ししている、存在しない `src/game/camera/focus-target.ts` を消す。CLAUDE.md のコマンド表に `test:settings` と `test:launcher` を足す |
-
-**達成条件と検証**
-
-- `npm run test`(`launcher` を含む全層)と `npm run typecheck` が通る。
-- 新しいテストの期待値の出どころが、SAVE.md・INVARIANTS.md・R 番号のどれかである(実装を走らせて得た値を書いていない)。
-- 消したアサーションの一覧を、4.1 のどれに当たるかと一緒に PR 本文に書く。
+**手順は実施したので落とした。** 消したアサーションと足した不変条件の一覧は PR 本文へ移す。`npm run test` は launcher 層を含めて 1003 本。往復の表(`tests/game/progress-serialization.test.ts`)は、既定と違う値の記録を入力と期待値にする形(本物を組んで往復させる形は `serialize` 側の取りこぼしを検出しない)。THREE と DOM が要る所有者(`Logistics`・`WaveAttack`・`ManualSpawn`・`StageDebug`・`ControlSelection`・`DynamicSystem`・`ObjectPlacement`)の往復は、段 7 の 7-4 で `Game` の往復と一緒に扱う。
 
 #### 手順 5-7. 段 5 を main へ送る
 
