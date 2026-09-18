@@ -2,7 +2,7 @@ import { v3, type Vec3 } from '../../math/vec3';
 import type { Attitude } from '../../physics/attitude';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { SerializedBoosterStack } from './booster-stack';
+import { BoosterStack } from './booster-stack';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
 import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
@@ -22,8 +22,11 @@ import {
 import { AeroLoad } from './aero-load';
 import { AttachedBoosterMotion } from './attached-booster-motion';
 import { BeltController } from './belt';
-import { PowerSystem, type SerializedPowerSystem } from './power';
-import { RadiatorSystem, type RadiatorSide, type SerializedRadiatorSystem } from './radiator';
+import { PowerSystem } from './power';
+import { RadiatorSystem, type RadiatorSide } from './radiator';
+import type { DeployablePanelState } from './deployable-panel-state';
+
+const HULL_START_TEMP = 273; // 初期機体温度 [K]
 
 // 自機の Motion が Entity 側から読む値と、接触・喪失を通知する先。
 export interface PlayerMotionWeaponPort {
@@ -185,20 +188,22 @@ export class PlayerMotion extends DynamicMotion {
   public readonly belt: BeltController;
   public readonly aero = new AeroLoad();
   public readonly radiator: RadiatorSystem;
-  public readonly power: PowerSystem;
   public readonly attachedBoosters: AttachedBoosterMotion;
 
-  // beltLinkCount は給弾ベルトの節点数で、表示するリンクメッシュの数と揃える。
+  // beltLinkCount は給弾ベルトの節点数で、表示するリンクメッシュの数と揃える。temperature は外殻の
+  // 温度 [K]、radiatorUp・radiatorDown は放熱板の展開状態、boosters は接続中の段。省いた付随物理系は
+  // 新しく作ったときの状態で始める。
   public constructor(
     state: KinematicState,
     attitude: Attitude,
     radius: number,
-    temperature: number,
     beltLinkCount: number,
     reactions: PlayerMotionReactions,
-    radiatorSave?: SerializedRadiatorSystem,
-    powerSave?: SerializedPowerSystem,
-    boosterSave?: SerializedBoosterStack,
+    temperature = HULL_START_TEMP,
+    radiatorUp?: DeployablePanelState,
+    radiatorDown?: DeployablePanelState,
+    public readonly power = new PowerSystem(),
+    boosters = new BoosterStack(),
   ) {
     super(state, shipMotionOptions(attitude, radius, {
       mass: PLAYER_MASS,
@@ -209,17 +214,19 @@ export class PlayerMotion extends DynamicMotion {
       maxTemperature: MAX_HULL_TEMP,
       behavior: new PlayerBehavior(reactions),
     }));
-    // 付随物理系は、この Motion を本体として組む。保存があればその状態から戻す。
+    // 付随物理系は、この Motion を本体として組む。
     this.belt = new BeltController(this, beltLinkCount);
     this.radiator = new RadiatorSystem(
       this,
       (side, other, contact, services) => (
         reactions.contact.receiveRadiatorContact(side, other, contact, services)
       ),
-      radiatorSave,
+      radiatorUp,
+      radiatorDown,
     );
-    this.power = new PowerSystem(powerSave);
-    this.attachedBoosters = new AttachedBoosterMotion(this, boosterSave);
+    this.attachedBoosters = new AttachedBoosterMotion(this, boosters);
+    // 接続中の段の寄与を、自分の質量と慣性へ入れる
+    this.rebuildMassAndInertia(boosters.totalMass, boosters.stages.length);
   }
 
   // 接続中ブースターの寄与を受けて、自分の質量と慣性を組み直す。boosterMass は段の合計質量 [kg]。

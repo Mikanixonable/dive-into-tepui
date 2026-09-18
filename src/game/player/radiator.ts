@@ -83,29 +83,21 @@ export interface SerializedRadiatorSystem {
 }
 
 export class RadiatorSystem {
-  private readonly panels: Record<RadiatorSide, DeployablePanelState> = {
-    up: new DeployablePanelState(0, 0), down: new DeployablePanelState(0, 0),
-  };
+  private readonly panels: Record<RadiatorSide, DeployablePanelState>;
   // side ごとの損耗率(0=無傷, 1=全損)。
   private wear: Record<RadiatorSide, number> = { up: 0, down: 0 };
   // side ごとの接触代理。折り数まで遅延生成し、以後は使い回す。
   private readonly foldProxies: Record<RadiatorSide, RadiatorFold[]> = { up: [], down: [] };
 
-  // 艦本体へ接触代理を結び、接触後のゲーム上の反応を受け取る。saved があれば展開状態を復元する。
+  // 艦本体へ接触代理を結び、接触後のゲーム上の反応を受け取る。up・down は各側の展開状態で、
+  // 省いた側は収納から始める。
   public constructor(
     private readonly owner: DynamicMotion,
     private readonly onContact: RadiatorContactReaction,
-    saved?: SerializedRadiatorSystem,
+    up = new DeployablePanelState(0, 0),
+    down = new DeployablePanelState(0, 0),
   ) {
-    if (saved) {
-      for (const side of ['up', 'down'] as const) {
-        const savedPanel = saved[side];
-        if (!savedPanel) continue;
-        this.panels[side].target = savedPanel.deployTarget === 1 ? 1 : 0;
-        this.panels[side].value = typeof savedPanel.deploy === 'number'
-          && Number.isFinite(savedPanel.deploy) ? Math.max(0, Math.min(1, savedPanel.deploy)) : 0;
-      }
-    }
+    this.panels = { up, down };
   }
 
   // side の展開/収納を切り替える。
@@ -207,11 +199,8 @@ export class RadiatorSystem {
   public deployOf(side: RadiatorSide): number { return this.panels[side].value; }
   public wearOf(side: RadiatorSide): number { return this.wear[side]; }
 
-  // 保存するのは side ごとの展開目標と展開度。
+  // side ごとの展開目標と展開度の直列化。
   public serialize(): SerializedRadiatorSystem {
-    return {
-      up: { deployTarget: this.panels.up.target, deploy: this.panels.up.value },
-      down: { deployTarget: this.panels.down.target, deploy: this.panels.down.value },
-    };
+    return { up: this.panels.up.serialize(), down: this.panels.down.serialize() };
   }
 }

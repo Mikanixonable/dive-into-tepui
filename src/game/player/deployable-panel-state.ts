@@ -15,6 +15,20 @@ export class DeployablePanelState {
     this.value = Math.max(0, Math.min(1, value));
   }
 
+  // 直列化した展開目標と展開度から復元する。壊れた値は収納へ落とす。
+  public static deserialize(serialized: SerializedDeployablePanelState): DeployablePanelState {
+    const { deployTarget, deploy } = serialized;
+    return new DeployablePanelState(
+      deployTarget === 1 ? 1 : 0,
+      typeof deploy === 'number' && Number.isFinite(deploy) ? deploy : 0,
+    );
+  }
+
+  // 展開目標と展開度の直列化。
+  public serialize(): SerializedDeployablePanelState {
+    return { deployTarget: this.target, deploy: this.value };
+  }
+
   public toggle(): void {
     this.target = this.target === 0 ? 1 : 0;
   }

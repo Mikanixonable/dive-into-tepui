@@ -43,7 +43,7 @@ export function restorationFor(
     case 'player':
       return {
         gate: null,
-        build: () => new Player(events, scene, idAllocators, { saved: data, simTime }),
+        build: () => Player.deserialize(data, simTime, events, idAllocators, scene),
       };
     case 'metal-enemy':
     case 'protein-enemy': {

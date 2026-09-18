@@ -32,7 +32,7 @@ export function register(): void {
     const expected = keplerPeriod(radius, MU_MOON);
     assert.ok(Math.abs(orbitPeriodOf(state, celestialBodies, t) - expected) / expected < 1e-10);
 
-    const plan = new Plan();
+    const plan = Plan.create();
     const orbitDisplayDuration = { durationSec: (referencePeriod: number) => referencePeriod };
     assert.ok(Math.abs(plan.nodeTimeRange(0, state, system.celestialMotions, orbitDisplayDuration).max - (t + expected)) < 1e-6);
 
@@ -69,7 +69,7 @@ export function register(): void {
     const celestialBodies = system.celestialMotions;
     const period = orbitPeriodOf(state, celestialBodies, t);
 
-    const plan = new Plan();
+    const plan = Plan.create();
 
     // 'orbit' 相当のスタブ: 参照期間(起点の軌道周期)をそのまま返す
     const orbitDuration = { durationSec: (referencePeriod: number) => referencePeriod };
@@ -83,33 +83,32 @@ export function register(): void {
   test('plan: 起点が凍結されるのはノードがある間だけ', () => {
     const ship = kinematicState<'eci'>(0, v3(R_EARTH + 400e3, 0, 0), v3(0, 0, 7670));
     const later = kinematicState<'eci'>(100, v3(R_EARTH + 500e3, 0, 0), v3(0, 0, 7600));
-    const plan = new Plan();
+    const plan = Plan.create();
 
     // ノードが1件も無い間は、起点は毎回渡された自機状態そのもの。
     assert.equal(plan.anchorOr(ship), ship);
-    assert.equal(plan.frozenData(), null);
+    assert.equal(plan.serialize(), null);
 
     // 1件目を置いた時点で起点が凍結し、以降 anchorOr の引数は無視される。
     assert.equal(plan.addNode(kinematicState<'eci'>(50, ship.r, ship.v), ship), 0);
     assert.equal(plan.anchorOr(later), ship);
-    assert.equal(plan.frozenData()?.anchor, ship);
 
     // 最後のノードが消えると起点も一緒に落ちる。
     plan.removeNode(0);
-    assert.equal(plan.frozenData(), null);
+    assert.equal(plan.serialize(), null);
     assert.equal(plan.anchorOr(later), later);
   });
 
   test('plan: 全ノードを消化すると起点も落ち、revision は空を跨いでも増え続ける', () => {
     const ship = kinematicState<'eci'>(0, v3(R_EARTH + 400e3, 0, 0), v3(0, 0, 7670));
     const reached = kinematicState<'eci'>(60, v3(R_EARTH + 410e3, 0, 0), v3(0, 0, 7660));
-    const plan = new Plan();
+    const plan = Plan.create();
     plan.addNode(kinematicState<'eci'>(50, ship.r, ship.v), ship);
     const revAfterAdd = plan.revision;
 
     assert.equal(plan.consumeNodesUpTo(55, reached), 1);
     assert.equal(plan.nodes.length, 0);
-    assert.equal(plan.frozenData(), null);
+    assert.equal(plan.serialize(), null);
     assert.ok(plan.revision > revAfterAdd);
 
     // 空にしてから積み直しても世代値は単調に増える(キャッシュ鍵として衝突しない)。
@@ -119,7 +118,7 @@ export function register(): void {
 
   test('plan: nodeIndexFor は挿入位置を先に答え、起点以前なら -1 を返す', () => {
     const ship = kinematicState<'eci'>(0, v3(R_EARTH + 400e3, 0, 0), v3(0, 0, 7670));
-    const plan = new Plan();
+    const plan = Plan.create();
 
     // ノードが1件も無い計画では、起点より後はどの時刻も先頭になる。
     assert.equal(plan.nodeIndexFor(50, plan.anchorOr(ship)), 0);

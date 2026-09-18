@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { v3 } from '../../../math/vec3';
 import { deserializeAttitude, type Attitude } from '../../../physics/attitude';
 import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
-import type { BoosterStage, SerializedBoosterStage } from '../../player/booster-stack';
+import type { BoosterStage } from '../../player/booster-stack';
 import { DetachedBoosterMotion } from './detached-booster-motion';
 import {
   DetachedBoosterView, type DetachedBoosterRenderSource,
@@ -19,7 +19,7 @@ const BURN_DISPLAY_EPS = 1e-6;
 // 分離後も独立して燃焼・慣性飛行するブースター。接続中の段は SerializedPlayer 側へ保存する。
 export interface SerializedDetachedBooster extends SerializedDynamicEntityFields {
   readonly kind: 'booster';
-  readonly stage: SerializedBoosterStage;
+  readonly stage: BoosterStage;
   // 分離直後の親艦との再接触を避ける猶予の期限。無ければ即時に接触できる。
   readonly collisionEnableAt?: number;
 }
