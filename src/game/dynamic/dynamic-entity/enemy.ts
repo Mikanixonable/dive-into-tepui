@@ -6,7 +6,8 @@ import { deserializeKinematicState, type KinematicState } from '../../../physics
 import { len, sub, Vec3, v3 } from '../../../math/vec3';
 import type { Player } from '../../player/player';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
-import type { Quat } from '../../../math/quat';
+import { randomQuat, type Quat } from '../../../math/quat';
+import { randSym } from '../../../math/random';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { StageOutcome } from '../../stages/stage-outcome';
 import { MARKER_PRIORITY } from '../../marker/marker-priority';
@@ -16,7 +17,7 @@ import type { DynamicEntityKind, FormationRole } from './entity-kind';
 import type { EntityRegistry } from '../entity-registry';
 import type { RunEventSink } from '../../run-events';
 import type { EntityIdAllocators } from './entity-id';
-import type { DynamicEntityClass } from './entity-dictionary';
+import type { DynamicEntityClass, SerializedDynamicEntity } from './entity-dictionary';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotion, DynamicMotionThermal } from '../dynamic-motion';
 import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
@@ -52,6 +53,14 @@ export interface SerializedEnemy extends SerializedDynamicEntityFields {
   readonly fireController: SerializedEnemyFireController;
 }
 
+// 敵の直列化した形が取る種別タグ。
+const SERIALIZED_ENEMY_KINDS: Record<SerializedEnemy['kind'], true> = { 'metal-enemy': true, 'protein-enemy': true };
+
+// 直列化した実体が敵のものか。
+export function isSerializedEnemy(serialized: SerializedDynamicEntity): boolean {
+  return Object.hasOwn(SERIALIZED_ENEMY_KINDS, serialized.kind);
+}
+
 // 敵を置く識別・色・陣形所属と運動状態。新しく置くときは、具象ごとに固有の項目(機体テンプレート
 // 番号・タンパク質アセット)を足して使う。id を省くと採番器が発番し、thermal を省くと環境温度から
 // 始める。
@@ -68,6 +77,11 @@ export interface EnemyPlacement {
   readonly id?: string;
   readonly formationId?: string;
   readonly formationRole?: FormationRole;
+}
+
+// 自由回転で漂う敵に共通の初期姿勢: ランダムな姿勢・角速度を与える。
+export function driftingAttitude(): { q: Quat; w: Vec3 } {
+  return { q: randomQuat(), w: v3(randSym(0.12), randSym(0.12), randSym(0.12)) };
 }
 
 // 直列化した敵に共通する項目を、配置として読む。
