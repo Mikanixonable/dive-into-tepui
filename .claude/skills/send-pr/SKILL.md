@@ -86,7 +86,7 @@ grep -nE "run:|env:|\|\|" .github/workflows/build.yml
 
 ```text
 ## 目的
-なぜこの変更が要るのか。何をやめて何にするのか。規約に基づく整理なら CODING-RULE の節番号を、
+なぜこの変更が要るのか。何をやめて何にするのか。規約に基づく整理なら CODING-RULE の節番号か ARCHITECTURE の R 番号を、
 仕様に基づく変更なら SPEC のどこを先に更新したかを添える。
 
 ## 変更
