@@ -1,6 +1,6 @@
 import type * as THREE from 'three/webgpu';
 import {
-  deserializeKinematicState, KinematicState, kinematicState, type SerializedKinematicState,
+  deserializeKinematicState, kinematicState, type KinematicState, type SerializedKinematicState,
 } from '../../../physics/kinematic-state';
 import { v3, type Vec3 } from '../../../math/vec3';
 import { collisionDamageFraction } from './contact-damage';
@@ -105,10 +105,10 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     scene: THREE.Scene | undefined,
     private readonly combat = new ProteinCombatState(definition.asset),
     alive?: boolean,
-    burstLeft?: number,
-    burstDelay?: number,
-    lastFireSim?: number,
-    lastBehaviorSim?: number,
+    burstLeft?: number | null,
+    burstDelay?: number | null,
+    lastFireSim?: number | null,
+    lastBehaviorSim?: number | null,
   ) {
     // 表示が原子模型へ切り替わっても、判定形状は常に同じ球列に固定する。
     const collision = new ProteinSphereCollisionGeometry(
@@ -178,10 +178,10 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
       serialized.protein ? ProteinCombatState.deserialize(serialized.protein, definition.asset) : undefined,
       // 記録に無い生死は、新しく置いたときと違って撃破済みとして読む。
       serialized.alive ?? false,
-      serialized.fireController.burstLeft ?? undefined,
-      serialized.fireController.burstDelay ?? undefined,
-      serialized.fireController.lastFireSim ?? undefined,
-      serialized.fireController.lastBehaviorSim ?? undefined,
+      serialized.fireController.burstLeft,
+      serialized.fireController.burstDelay,
+      serialized.fireController.lastFireSim,
+      serialized.fireController.lastBehaviorSim,
     );
   }
 
@@ -191,6 +191,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   public get combatReadout(): ProteinCombatReadout { return this.combat.combatReadout(); }
   public get proteinMotionMetrics(): ProteinMotionMetrics { return this.view.motionMetrics; }
 
+  // 機能部位の状態と、表示位置に置いた部位マーカーを答える面。
   public override get proteinInspection(): EnemyProteinInspection {
     return {
       combatReadout: () => this.combatReadout,
@@ -239,6 +240,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   protected override applyBulletDamage(
     damage: number, impactPoint: Vec3, events: RunEventSink,
   ): void {
+    // 着弾点と各部位の位置を、同じ模型座標で比べる
     const localPoint = this.view.localImpactPoint(
       impactPoint, this.motion.state.r, this.motion.att.q,
     );
@@ -246,6 +248,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
       this.combat.combatReadout().sites.map((site) => [site.id, this.view.siteModelPositionById(site.id)] as const),
     );
     const result = this.combat.applyDamage(damage, localPoint, sitePositions);
+    // 部位が止まるか構造フェーズが変わったら、着弾点の出来事として記録する
     if (result.siteDisabled || result.phaseChanged) {
       events.record({
         kind: 'proteinStateChanged',

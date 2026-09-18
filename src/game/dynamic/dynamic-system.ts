@@ -30,7 +30,6 @@ import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
 import type { StageRules } from '../stages/stage-rules';
-
 import type { PerfCounts } from '../perf-counts';
 import type { RunEventSink } from '../run-events';
 import type { OrbitReference } from '../orbit-reference';
@@ -126,13 +125,11 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     return system;
   }
 
-  // 顔ぶれと実体化を待つ個体、採番を直列化した形へ畳む。直列化しない種別は落ちる。
+  // 顔ぶれと実体化を待つ個体、採番を直列化した形へ畳む。
   public serialize(): SerializedDynamicSystem {
     return {
       simTime: this.simTime,
-      entities: this.entities
-        .map((e) => e.serialize())
-        .filter((data): data is SerializedDynamicEntity => data !== null),
+      entities: this.entities.map((e) => e.serialize()),
       pendingSpawns: [...this.pendingSpawns],
       idAllocators: this.idAllocators.serialize(),
     };

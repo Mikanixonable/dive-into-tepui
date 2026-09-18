@@ -3,7 +3,7 @@ import { Vessel } from './vessel';
 import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { Contact } from './contact';
 import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
-import { len, sub, Vec3, v3 } from '../../../math/vec3';
+import { len, sub, v3, type Vec3 } from '../../../math/vec3';
 import type { Player } from '../../player/player';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import { randomQuat, type Quat } from '../../../math/quat';
@@ -34,7 +34,7 @@ export const ENEMY_MAX_HP = 6; // 敵機の総 HP
 
 export const PLASMA_BULLET_DAMAGE = 1.25; // 自機がプラズマ弾で被弾した際のダメージ [HP]
 
-// 軌道物体一覧で接近中として扱う、自艦との距離 [m]。
+// 敵に共通する直列化の項目。具象の直列化した形がこれを継ぐ。
 export interface SerializedEnemy extends SerializedDynamicEntityFields {
   readonly kind: 'metal-enemy' | 'protein-enemy';
   readonly name: string;
@@ -131,22 +131,21 @@ export abstract class Enemy extends Vessel implements CombatTarget {
   public set fireEnabled(value: boolean) { this.fireController.enabled = value; }
   public get isBursting(): boolean { return this.fireController.isBursting; }
 
-  // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径・判定形状)を受けて、
-  // placement の識別・色・陣形所属と運動状態で置く。alive は生死、burstLeft・burstDelay はバースト
-  // 射撃の途中経過、lastFireSim・lastBehaviorSim は最後に射撃の機会が巡った時刻と最後に行動した時刻で、
-  // 省けば新しく置いたときの状態で始める。
+  // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径・判定形状)を
+  // placement に置く。alive は生死、burstLeft から後ろは射撃の途中経過と時刻で、省けば新しく置いた
+  // ときの状態で始める。
   protected constructor(
     placement: EnemyPlacement,
     view: DynamicView,
     inertia: Vec3,
     radius: number,
     idAllocators: EntityIdAllocators,
-    shape: EnemyCollisionShape | undefined,
+    shape: EnemyCollisionShape | null,
     alive = true,
-    burstLeft?: number,
-    burstDelay?: number,
-    lastFireSim?: number,
-    lastBehaviorSim?: number,
+    burstLeft?: number | null,
+    burstDelay?: number | null,
+    lastFireSim?: number | null,
+    lastBehaviorSim?: number | null,
   ) {
     // 運動の接触・焼失をこの敵へ通知させ、識別を採番する
     const attitude = { q: placement.q, w: placement.w, inertia };
@@ -251,27 +250,31 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     };
   }
 
+  // 他の個体と触れたときの帰結を受ける。
   private receiveEntityContact(
     other: DynamicMotion, contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     this.reactions.receiveEntityContact(other, contact, activeStage, registry);
   }
 
+  // 天体の固体表面へ触れたときの帰結を受ける。
   private receiveSurfaceContact(
     contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     this.reactions.receiveSurfaceContact(contact, activeStage, registry);
   }
 
+  // 交戦圏を離れて消す。撃破によらない喪失として activeStage へ記録する。
   public despawn(simTime: number, activeStage: StageOutcome): void {
     this.reactions.despawn(simTime, activeStage);
   }
 
+  // 大気で焼失したときの帰結を受ける。
   private receiveBurnUp(activeStage: StageOutcome, registry: EntityRegistry): void {
     this.reactions.receiveBurnUp(activeStage, registry);
   }
 
-  // 行動関数。射撃の時系列は EnemyFireController が所有する。
+  // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。
   public behave(
     simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
     operable: boolean, celestialBodies: CelestialBodies,
@@ -295,7 +298,6 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       fireController: this.fireController.serialize(),
     };
   }
-
 }
 
 // entity を敵へ絞り込む型ガード。
