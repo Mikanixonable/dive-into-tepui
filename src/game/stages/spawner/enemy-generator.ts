@@ -4,22 +4,17 @@
 // 高度はその天体の表面半径の球面から測る(扁平な天体の基準楕円体とのずれ — 地球の極で 21km — は
 // 出現高度の余裕に埋もれる)。
 import * as THREE from 'three/webgpu';
-import { qFromForwardUp, randomQuat, type Quat } from '../../../math/quat';
-import {
-  addPrimaryRelative, deserializeKinematicState, KinematicState, kinematicState, type SerializedKinematicState,
-} from '../../../physics/kinematic-state';
+import { qFromForwardUp, randomQuat } from '../../../math/quat';
+import { addPrimaryRelative, KinematicState, kinematicState } from '../../../physics/kinematic-state';
 import { strongestAttractor } from '../../../physics/attractor';
 import { frameOfCelestialBody, toFrameState } from '../../../physics/frame';
 import { stateFromOrbitalElements } from '../../../physics/elements';
-import { randSym } from '../../../math/random';
 import { addScaled, cross, len, norm, rotateAxis, scale, sub, v3, type Vec3 } from '../../../math/vec3';
-import { Enemy } from '../../dynamic/dynamic-entity/enemy';
+import { driftingAttitude, Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { MetalEnemy } from '../../dynamic/dynamic-entity/metal-enemy';
-import { ProteinEnemy } from '../../dynamic/dynamic-entity/protein-enemy';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
-import type { FormationRole } from '../../dynamic/dynamic-entity/entity-kind';
-import type { ProteinAssetId } from '../../protein/protein-asset-loader';
+import type { ProteinEnemyRequest } from '../../dynamic/dynamic-entity/protein-enemy';
 
 // 自機軌道(base)を、中心天体 center まわりの軌道面内で弧長 dAlong [m] だけ進めた、center 相対の状態。
 function phasedState(base: KinematicState, center: CelestialBody, dAlong: number): KinematicState<'primaryRel'> {
@@ -29,40 +24,10 @@ function phasedState(base: KinematicState, center: CelestialBody, dAlong: number
   return kinematicState<'primaryRel'>(base.t, rotateAxis(rel.r, hHat, ang), rotateAxis(rel.v, hHat, ang));
 }
 
-// 自由回転で漂う敵に共通の初期姿勢: ランダムな姿勢・角速度を与える。
-function driftingAttitude(): { q: Quat; w: Vec3 } {
-  return { q: randomQuat(), w: v3(randSym(0.12), randSym(0.12), randSym(0.12)) };
-}
-
 // state に、無秩序に漂う金属の敵を生成する。
 export function generateDriftingEnemy(name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number, scene: THREE.Scene, idAllocators: EntityIdAllocators, attackGroupId?: string): Enemy {
   return MetalEnemy.create(
     { name, state, ...driftingAttitude(), accent, orbitLineColor, attackGroupId, typeIndex: null },
-    idAllocators, scene,
-  );
-}
-
-// 新しく置くタンパク質の敵の要求。アセットが揃うまで実体化を待てるよう(SPEC/PROTEIN.md「出現」節)、
-// 直列化できる値だけで表す。陣形に属する個体だけが formationId と役割を持ち、属さない個体は単体敵になる。
-export interface ProteinEnemyRequest {
-  readonly name: string;
-  readonly state: SerializedKinematicState;
-  readonly assetId: ProteinAssetId;
-  readonly formationId: string | null;
-  readonly formationRole: FormationRole | null;
-}
-
-// request のタンパク質の敵を、無秩序に漂う姿勢で生成する。アセットが揃ってから呼ぶこと。
-export function generateProteinEnemy(
-  request: ProteinEnemyRequest, scene: THREE.Scene, idAllocators: EntityIdAllocators,
-): Enemy {
-  const formationId = request.formationId ?? undefined;
-  return ProteinEnemy.create(
-    {
-      name: request.name, state: deserializeKinematicState(request.state), ...driftingAttitude(),
-      accent: 0xffffff, orbitLineColor: 0xffffff, attackGroupId: formationId,
-      assetId: request.assetId, formationId, formationRole: request.formationRole ?? undefined,
-    },
     idAllocators, scene,
   );
 }
