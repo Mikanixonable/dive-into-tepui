@@ -1,14 +1,14 @@
 // スロットとスナップショットの索引の形。一覧 UI と入出力がここだけを読んで済むように、
-// ランの直列化形(GameSaveData)からは切り離して持つ。
+// ランの直列化形(SerializedGame)からは切り離して持つ。
 import type { GamePhase } from '../../game/stages/stage';
-import type { GameSaveData } from '../../game/save/save-data';
+import type { SerializedGame } from '../../game/game';
 
 // 索引が指す id を1つ作る。同一ミリ秒内の連続生成でも衝突しないよう、時刻にランダム部を足す。
 export function newSaveId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-// 一覧 UI が本体を読まずに手動セーブ1件を描くための情報。すべて GameSaveData から
+// 一覧 UI が本体を読まずに手動セーブ1件を描くための情報。すべて SerializedGame から
 // 導出でき、正本ではなく索引。
 export interface SnapshotMeta {
   id: string;
@@ -72,5 +72,5 @@ export interface SlotExport {
   exportedAtReal: number;
   slot: SaveSlotMeta;
   // スナップショット id → 本体。
-  snapshots: Record<string, GameSaveData>;
+  snapshots: Record<string, SerializedGame>;
 }

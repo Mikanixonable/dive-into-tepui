@@ -17,7 +17,6 @@ import type { EntityRegistry } from '../dynamic/entity-registry';
 import { PLAYER_MUZZLE_OFFSETS } from '../../physics/player-shape';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { Player } from './player';
-import type { FireSaveData } from '../save/save-data';
 import { HULL_EMISS, ENV_TEMP } from '../dynamic/dynamic-motion';
 import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
 import {
@@ -25,7 +24,9 @@ import {
 } from '../dynamic/dynamic-entity/debris-motion';
 import { CASING_COLLISION_BOUND_RADIUS } from '../dynamic/dynamic-entity/casing-collision';
 import { sunGlareSpreadScale } from '../combat/sun-glare-spread';
-import { WeaponState, type AmmoConsumption, type WeaponFireCommand } from './weapon-state';
+import {
+  WeaponState, type AmmoConsumption, type SerializedWeaponState, type WeaponFireCommand,
+} from './weapon-state';
 import type { ProjectileEmitter } from './projectile-emitter';
 
 const BARREL_PHYS_RADIUS = 0.8;
@@ -56,9 +57,11 @@ const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクー�
 // 艦の初期積載(予備マガジン数・装填済み残弾数)。
 export type AmmoLoad = { readonly mags: number; readonly rounds: number };
 
+export type SerializedFireControl = SerializedWeaponState;
+
 // スナップショットからの復元か、新規配置の初期積載か。
 type FireInit =
-  | { readonly saved: FireSaveData }
+  | { readonly saved: SerializedFireControl }
   | { readonly ammo?: AmmoLoad };
 
 export class FireControl {
@@ -86,8 +89,8 @@ export class FireControl {
   public get left(): boolean { return this.weapon.left; }
 
   // 弾薬・砲身の状態をスナップショットへ落とす。
-  public serialize(): FireSaveData {
-    return this.weapon.serialize() as FireSaveData;
+  public serialize(): SerializedFireControl {
+    return this.weapon.serialize();
   }
 
   // 拾ったマガジン数を加算する。弾切れ中なら即座に1マガジンを装填する。

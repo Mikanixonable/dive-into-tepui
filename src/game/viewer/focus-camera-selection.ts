@@ -6,7 +6,7 @@ import type { PolarEuler } from '../../math/polar-euler';
 import { sphericalOffset } from '../../math/polar-euler';
 import { metersPerPixelAtDepth, tanHalfFov, type ProjectionMode } from '../../math/projection';
 import {
-  addScaled, cross, len, lenSq, norm, projectOntoPlane, scale, type Vec3, v3,
+  addScaled, cross, len, lenSq, norm, projectOntoPlane, scale, type SerializedVec3, type Vec3, v3,
 } from '../../math/vec3';
 import { ECI_POLE, ECL_POLE_ECI, ECL_VERNAL } from '../../physics/ecliptic';
 import {
@@ -23,12 +23,9 @@ import {
 } from '../../physics/frame';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type {
-  CameraRotationFollowSaveData, FocusCameraSaveData, FrameRotationSourceSaveData,
-} from '../save/save-data';
 import type { RunEventSink } from '../run-events';
 import { CameraOrientation, type CameraRotationMode } from './camera-orientation';
-import type { FocusTarget } from './focus-target';
+import type { FocusTarget, SerializedFocusTarget } from './focus-target';
 
 const FOCUS_CAMERA_MIN_DIST = 1e3; // 天体フォーカス時の注視距離の下限 [m]
 export const FOCUS_CAMERA_FOV_MIN = 15; // 最小垂直画角 [deg]
@@ -37,9 +34,26 @@ const FOCUS_CAMERA_MAX_DIST = 1e14; // 注視距離の上限 [m]
 const ENTITY_MIN_DIST = 12; // 機体・固定点フォーカスでの最小注視距離 [m]
 const FOCUS_CAMERA_FOV = 50; // 既定の垂直画角 [deg]
 
+// 'attitude' はフォーカス機体の姿勢追従(対象は id でなくフォーカスから決まる)。
 export type CameraRotationFollow = FrameRotationSource | { readonly kind: 'attitude' };
 export type CameraReferencePlane = 'ecliptic' | 'equator' | 'moonOrbit';
 export type CameraReferenceView = 'above' | 'side';
+
+export interface SerializedFocusCameraSelection {
+  readonly offset: SerializedVec3;
+  readonly pan: SerializedVec3;
+  readonly up: SerializedVec3;
+  readonly rotatingWith: CameraRotationFollow | null;
+  readonly focus: SerializedFocusTarget;
+  // 無ければ既定のオイラー操作。
+  readonly rotationMode?: 'quaternion' | 'euler';
+  // 無ければ既定の FOV。
+  readonly fovDeg?: number;
+  // 無ければ赤道面。
+  readonly referencePlane?: 'ecliptic' | 'equator' | 'moonOrbit';
+  readonly projectionMode?: 'perspective' | 'orthographic';
+  readonly orthographicHalfHeight?: number;
+}
 
 // 入力の解釈が1フレーム分のカメラ操作へ換算した値。
 export interface CameraInput {
@@ -102,17 +116,6 @@ export function rotationFollowKey(follow: CameraRotationFollow | null): string {
   return follow.kind === 'attitude' ? 'attitude' : rotationSourceKey(follow);
 }
 
-// 保存形の回転源を、実行時の形へ戻す。null はどこにも追従しない。
-function rotationSourceFromSaveData(saved: FrameRotationSourceSaveData | null): FrameRotationSource | null {
-  return saved === null ? null : { kind: saved.kind, id: saved.id };
-}
-
-// 保存形の回転追従を実行時の形へ戻す。姿勢追従だけ回転源を持たない別の形になる。
-function rotationFollowFromSaveData(saved: CameraRotationFollowSaveData | null): CameraRotationFollow | null {
-  if (saved !== null && saved.kind === 'attitude') return { kind: 'attitude' };
-  return rotationSourceFromSaveData(saved);
-}
-
 // 正射影の半高さ [m] を許容範囲へ収める。
 function clampOrthographicHalfHeight(halfHeight: number): number {
   return Math.max(FOCUS_CAMERA_MIN_DIST * 1e-6, Math.min(FOCUS_CAMERA_MAX_DIST, halfHeight));
@@ -163,7 +166,7 @@ export class FocusCameraSelection implements FocusCameraSource {
     private readonly celestialBodies: CelestialBodies,
     private readonly config: FocusCameraConfig,
     private readonly events: RunEventSink,
-    saved: FocusCameraSaveData | undefined,
+    saved: SerializedFocusCameraSelection | undefined,
   ) {
     const frames = celestialBodies.frames;
     this.projectionMode = saved?.projectionMode === 'orthographic' ? 'orthographic' : 'perspective';
@@ -174,12 +177,12 @@ export class FocusCameraSelection implements FocusCameraSource {
     let followAttitude = false;
     let rotation: Quat;
     if (saved !== undefined) {
-      const savedFollow = rotationFollowFromSaveData(saved.rotatingWith);
-      if (savedFollow?.kind === 'attitude') {
+      const savedFollow = saved.rotatingWith;
+      if (savedFollow !== null && savedFollow.kind === 'attitude') {
         this._cameraFrame = frames.inertialFrame;
         followAttitude = true;
       } else {
-        this._cameraFrame = frames.frameOf(celestialBodies.originId, savedFollow ?? null);
+        this._cameraFrame = frames.frameOf(celestialBodies.originId, savedFollow);
       }
       const offset = v3(saved.offset.x, saved.offset.y, saved.offset.z);
       this._distance = len(offset);
@@ -189,7 +192,7 @@ export class FocusCameraSelection implements FocusCameraSource {
         ? { kind: 'object', id: saved.focus.id }
         : {
           kind: 'point',
-          frame: frames.frameOf(saved.focus.center, rotationSourceFromSaveData(saved.focus.rotatingWith)),
+          frame: frames.frameOf(saved.focus.center, saved.focus.rotatingWith),
           point: framePoint(saved.focus.point.x, saved.focus.point.y, saved.focus.point.z),
         };
     } else {
@@ -426,9 +429,9 @@ export class FocusCameraSelection implements FocusCameraSource {
     this.events.record({ kind: 'cameraViewReset', view: this.config.view });
   }
 
-  // 保存形式へ、姿勢追従を合成した絶対の向きで畳む。
-  public serialize(): FocusCameraSaveData {
-    const focus: FocusCameraSaveData['focus'] = this._focus.kind === 'object'
+  // 直列化した形へ、姿勢追従を合成した絶対の向きで畳む。
+  public serialize(): SerializedFocusCameraSelection {
+    const focus: SerializedFocusCameraSelection['focus'] = this._focus.kind === 'object'
       ? { kind: 'object', id: this._focus.id }
       : {
         kind: 'point',
