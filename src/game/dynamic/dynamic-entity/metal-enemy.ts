@@ -36,7 +36,7 @@ export interface SerializedMetalEnemy extends SerializedEnemy {
   readonly kind: 'metal-enemy';
   // 機体テンプレート番号。型番を持たない漂流機体は null。
   readonly typeIndex: number | null;
-  readonly parts: SerializedPart[];
+  readonly parts: readonly SerializedPart[];
 }
 
 // 敵の配置に機体テンプレート番号を足したもの。typeIndex が null なら型番を持たない漂流機体、数値なら
@@ -58,10 +58,10 @@ export class MetalEnemy extends PartBasedEnemy {
     scene: THREE.Scene | undefined,
     parts: readonly Part[] = createShipDefaultParts(ENEMY_MAX_HP),
     alive?: boolean,
-    burstLeft?: number,
-    burstDelay?: number,
-    lastFireSim?: number,
-    lastBehaviorSim?: number,
+    burstLeft?: number | null,
+    burstDelay?: number | null,
+    lastFireSim?: number | null,
+    lastBehaviorSim?: number | null,
   ) {
     const { typeIndex, accent } = placement;
     const metalView = typeIndex === null
@@ -93,10 +93,10 @@ export class MetalEnemy extends PartBasedEnemy {
       deserializeParts(serialized.parts),
       // 記録に無い生死は、新しく置いたときと違って撃破済みとして読む。
       serialized.alive ?? false,
-      serialized.fireController.burstLeft ?? undefined,
-      serialized.fireController.burstDelay ?? undefined,
-      serialized.fireController.lastFireSim ?? undefined,
-      serialized.fireController.lastBehaviorSim ?? undefined,
+      serialized.fireController.burstLeft,
+      serialized.fireController.burstDelay,
+      serialized.fireController.lastFireSim,
+      serialized.fireController.lastBehaviorSim,
     );
   }
 

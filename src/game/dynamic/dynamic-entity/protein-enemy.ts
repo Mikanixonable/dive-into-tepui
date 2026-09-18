@@ -1,6 +1,6 @@
 import type * as THREE from 'three/webgpu';
 import {
-  deserializeKinematicState, KinematicState, kinematicState, type SerializedKinematicState,
+  deserializeKinematicState, kinematicState, type KinematicState, type SerializedKinematicState,
 } from '../../../physics/kinematic-state';
 import { v3, type Vec3 } from '../../../math/vec3';
 import { collisionDamageFraction } from './contact-damage';
@@ -105,10 +105,10 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     scene: THREE.Scene | undefined,
     private readonly combat = new ProteinCombatState(definition.asset),
     alive?: boolean,
-    burstLeft?: number,
-    burstDelay?: number,
-    lastFireSim?: number,
-    lastBehaviorSim?: number,
+    burstLeft?: number | null,
+    burstDelay?: number | null,
+    lastFireSim?: number | null,
+    lastBehaviorSim?: number | null,
   ) {
     // 表示が原子模型へ切り替わっても、判定形状は常に同じ球列に固定する。
     const collision = new ProteinSphereCollisionGeometry(
@@ -178,10 +178,10 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
       serialized.protein ? ProteinCombatState.deserialize(serialized.protein, definition.asset) : undefined,
       // 記録に無い生死は、新しく置いたときと違って撃破済みとして読む。
       serialized.alive ?? false,
-      serialized.fireController.burstLeft ?? undefined,
-      serialized.fireController.burstDelay ?? undefined,
-      serialized.fireController.lastFireSim ?? undefined,
-      serialized.fireController.lastBehaviorSim ?? undefined,
+      serialized.fireController.burstLeft,
+      serialized.fireController.burstDelay,
+      serialized.fireController.lastFireSim,
+      serialized.fireController.lastBehaviorSim,
     );
   }
 
