@@ -51,12 +51,10 @@ export interface SerializedKinematicState {
   readonly v: SerializedVec3;
 }
 
-// 直列化された位置・速度を、復元時刻 simTime の ECI 運動状態へ戻す。
-export function deserializeKinematicState(
-  serialized: Pick<SerializedKinematicState, 'r' | 'v'>, simTime: number,
-): KinematicState<'eci'> {
-  const { r, v } = serialized;
-  return kinematicState<'eci'>(simTime, v3(r.x, r.y, r.z), v3(v.x, v.y, v.z));
+// 直列化された時刻・位置・速度を、ECI 運動状態へ戻す。
+export function deserializeKinematicState(serialized: SerializedKinematicState): KinematicState<'eci'> {
+  const { t, r, v } = serialized;
+  return kinematicState<'eci'>(t, v3(r.x, r.y, r.z), v3(v.x, v.y, v.z));
 }
 
 // 主天体を原点に置き直した状態。**両者は同じ原点で測られていなければならない**(同じ F)。

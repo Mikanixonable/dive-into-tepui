@@ -8,9 +8,8 @@ export interface SerializedWeaponState {
   readonly rounds: number;
   readonly barrel: number;
   // 装着している砲身の平均温度 [K] と、薬室側が平均より高い温度差 [K]。
-  // 欠けているときは環境温度の等温な砲身として復元する。
-  readonly barrelTemperature?: number;
-  readonly barrelDeviation?: number;
+  readonly barrelTemperature: number;
+  readonly barrelDeviation: number;
   readonly cooldown: number;
   readonly muzzleIdx: number;
 }

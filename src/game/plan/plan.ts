@@ -78,12 +78,12 @@ export class Plan {
   // 直列化した計画を復元する。ノードは addNode と同じ規則で順に置き直すので、起点の時刻以前の
   // ノード(droppedNodeCount が数える)は捨てられ、実行時刻の戻ったノードはそれ以降を置き換える。
   public static deserialize(serialized: SerializedPlan): Plan {
-    const anchor = deserializeKinematicState(serialized.anchor, serialized.anchor.t);
+    const anchor = deserializeKinematicState(serialized.anchor);
     const nodes: KinematicState[] = [];
     for (const node of serialized.nodes) {
       if (node.t <= anchor.t) continue;
       nodes.length = nodes.filter((kept) => kept.t < node.t).length;
-      nodes.push(deserializeKinematicState(node, node.t));
+      nodes.push(deserializeKinematicState(node));
     }
     return new Plan(nodes.length > 0 ? { anchor, nodes } : null);
   }
