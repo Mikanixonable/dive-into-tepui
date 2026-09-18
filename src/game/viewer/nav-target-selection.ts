@@ -17,24 +17,26 @@ export interface NavTargetSource {
   readonly name: string | null;
 }
 
-// saved が指す id をターゲットへ戻せるか。撃墜・破壊されて名簿に残っている敵・自艦・基地を指して
+// target が指す id をターゲットへ戻せるか。撃墜・破壊されて名簿に残っている敵・自艦・基地を指して
 // いれば false。天体・ラグランジュ点のように消滅しない対象と、名簿に無い id は true。
-function isRestorable(saved: SerializedNavTargetSelection, roster: EntityRoster): boolean {
-  const combatTarget = combatTargetById(roster.all(), saved.id);
+function isRestorable(target: SerializedNavTargetSelection, roster: EntityRoster): boolean {
+  const combatTarget = combatTargetById(roster.all(), target.id);
   return combatTarget === null || combatTarget.motion.alive;
 }
 
 export class NavTargetSelection implements NavTargetSource {
-  // ターゲットの id と、選んだ時点の表示名。
-  private target: SerializedNavTargetSelection | null;
-
-  // saved を戻せるなら戻して始める。roster は復元した時点の顔ぶれ。命令の結果は events へ記録する。
+  // 命令の結果は events へ記録する。
   public constructor(
-    saved: SerializedNavTargetSelection | null | undefined,
-    roster: EntityRoster,
     private readonly events: RunEventSink,
-  ) {
-    this.target = saved && isRestorable(saved, roster) ? saved : null;
+    // ターゲットの id と、選んだ時点の表示名。
+    private target: SerializedNavTargetSelection | null = null,
+  ) {}
+
+  // 直列化したターゲットを、戻せるなら戻して始める。roster は復元した時点の顔ぶれ。
+  public static deserialize(
+    serialized: SerializedNavTargetSelection | null, roster: EntityRoster, events: RunEventSink,
+  ): NavTargetSelection {
+    return new NavTargetSelection(events, serialized && isRestorable(serialized, roster) ? serialized : null);
   }
 
   public get id(): string | null { return this.target?.id ?? null; }
