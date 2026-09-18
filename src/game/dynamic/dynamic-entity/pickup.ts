@@ -7,7 +7,7 @@ import { MARKER_PRIORITY } from '../../marker/marker-priority';
 import { COLOR_MARKER_FUEL, DIRECTION_GLYPH, ENTITY_GLYPH } from '../../marker/marker-identity';
 import { orbitRows } from '../../pickable/orbit-rows';
 import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
-import type { EntityIdAllocator, EntityIdAllocators } from './entity-id';
+import type { EntityIdAllocators } from './entity-id';
 import { PickupMotion, type PickupKind } from './pickup-motion';
 import type * as THREE from 'three/webgpu';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
@@ -42,16 +42,30 @@ export interface SerializedRcsFuelPickup extends SerializedDynamicEntityFields {
 
 type SerializedPickup = SerializedAmmoPickup | SerializedRcsFuelPickup;
 
-// 新規配置の初期状態。state/att をそのまま使い、name を省略すると種別の既定名で名乗る。
+// 補給物を置く運動状態と表示名。att を省くと既定の姿勢、name を省くと種別の既定名で名乗り、id を
+// 省くと採番器が発番する。
 interface PickupPlacement {
   readonly state: KinematicState;
   readonly att?: Attitude;
   readonly name?: string;
+  readonly id?: string;
 }
 
-// 軌道上の補給物に共通するもの — 配置と復元、表示名、保存、画面マーカー、被選択物としての一覧・
+// 直列化した補給物に共通する項目を、時刻 simTime の配置として読む。
+function deserializePickupPlacement(serialized: SerializedPickup, simTime: number): PickupPlacement {
+  return {
+    state: deserializeKinematicState(serialized, simTime),
+    att: deserializeAttitude(serialized, v3(1, 1, 1)),
+    name: serialized.name || undefined,
+    id: serialized.id || undefined,
+  };
+}
+
+// 軌道上の補給物に共通するもの — 配置、表示名、直列化、画面マーカー、被選択物としての一覧・
 // メニュー・プロパティ。何を補給するか(種別の識別・既定名・見た目・字形・取り込み距離)は具象が与える。
 export abstract class Pickup extends DynamicEntity implements ObjectPickable {
+  public static spawnGate(): null { return null; }
+
   public abstract override readonly mapKind: DynamicEntityKind;
   public override readonly pickable = true;
 
@@ -62,30 +76,20 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
   // 自艦がこの補給物を取り込める距離 [m]。
   protected abstract readonly pickupRadius: number;
 
-  // 新規配置はそのまま、スナップショットからの再開は saved を simTime 付きの状態として展開する。
-  // 表示名が与えられていなければ defaultName で名乗る。id は idAllocator が採る。pickupKind は
-  // 接触の種別・マーカーキーの接頭辞・保存形の種別タグを兼ねる。
+  // placement に置き、表示名が与えられていなければ defaultName で名乗る。id は採番器が配った識別子。
+  // pickupKind は接触の種別・マーカーキーの接頭辞・直列化の種別タグを兼ねる。
   protected constructor(
-    init: PickupPlacement | { readonly saved: SerializedPickup; readonly simTime: number },
+    placement: PickupPlacement,
     view: DynamicView,
-    idAllocator: EntityIdAllocator,
+    id: string,
     defaultName: string,
     private readonly pickupKind: PickupKind,
   ) {
-    // 復元と新規配置を同じ形へ均してから基底へ渡す。
-    const { state, att, id, name } = 'saved' in init
-      ? {
-        state: deserializeKinematicState(init.saved, init.simTime),
-        att: deserializeAttitude(init.saved, v3(1, 1, 1)),
-        id: init.saved.id || undefined,
-        name: init.saved.name || defaultName,
-      }
-      : { state: init.state, att: init.att, id: undefined, name: init.name ?? defaultName };
-    super(() => new PickupMotion(state, att, pickupKind), view, idAllocator.next(id));
-    this.setName(name);
+    super(() => new PickupMotion(placement.state, placement.att, pickupKind), view, id);
+    this.setName(placement.name ?? defaultName);
   }
 
-  // セーブデータへ変換する。
+  // 直列化した形へ変換する。
   public override serialize(): SerializedPickup {
     return {
       id: this.id,
@@ -208,6 +212,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
 
 // 軌道上の弾薬補給(接近すると取り込んでベルトを延長できる)。
 export class AmmoPickup extends Pickup {
+  public static readonly kind = 'ammo';
   public override readonly mapKind: DynamicEntityKind = 'ammo';
   public override readonly glyph = ENTITY_GLYPH.ammo;
   public override readonly listSection: MapListSection = 'ammo';
@@ -217,17 +222,26 @@ export class AmmoPickup extends Pickup {
   protected override readonly pickupRadius = AMMO_PICKUP_RADIUS;
 
   // 弾薬補給の見た目・採番器・既定名で組む。
-  public constructor(
-    init: PickupPlacement | { readonly saved: SerializedAmmoPickup; readonly simTime: number },
-    scene: THREE.Scene,
-    idAllocators: EntityIdAllocators,
-  ) {
-    super(init, new AmmoPickupView(scene), idAllocators.ammoPickup, '弾薬', 'ammo');
+  private constructor(placement: PickupPlacement, scene: THREE.Scene, idAllocators: EntityIdAllocators) {
+    super(placement, new AmmoPickupView(scene), idAllocators.ammoPickup.next(placement.id), '弾薬', AmmoPickup.kind);
+  }
+
+  // placement に新しく置く。
+  public static create(placement: PickupPlacement, scene: THREE.Scene, idAllocators: EntityIdAllocators): AmmoPickup {
+    return new AmmoPickup(placement, scene, idAllocators);
+  }
+
+  // 直列化した弾薬補給を、時刻 simTime の状態として復元する。
+  public static deserialize(
+    serialized: SerializedAmmoPickup, simTime: number, idAllocators: EntityIdAllocators, scene: THREE.Scene,
+  ): AmmoPickup {
+    return new AmmoPickup(deserializePickupPlacement(serialized, simTime), scene, idAllocators);
   }
 }
 
 // 軌道上の RCS 燃料補給。接近すると燃料を艦のタンクへ移す。
 export class RcsFuelPickup extends Pickup {
+  public static readonly kind = 'rcs-fuel';
   public override readonly mapKind: DynamicEntityKind = 'fuel';
   public override readonly glyph = ENTITY_GLYPH.fuel;
   public override readonly listSection: MapListSection = 'fuel';
@@ -237,12 +251,25 @@ export class RcsFuelPickup extends Pickup {
   protected override readonly pickupRadius = RCS_FUEL_PICKUP_RADIUS;
 
   // RCS 燃料補給の見た目・採番器・既定名で組む。
-  public constructor(
-    init: PickupPlacement | { readonly saved: SerializedRcsFuelPickup; readonly simTime: number },
-    scene: THREE.Scene,
-    idAllocators: EntityIdAllocators,
-  ) {
-    super(init, new RcsFuelPickupView(scene), idAllocators.rcsFuelPickup, 'RCS燃料', 'rcs-fuel');
+  private constructor(placement: PickupPlacement, scene: THREE.Scene, idAllocators: EntityIdAllocators) {
+    super(
+      placement, new RcsFuelPickupView(scene), idAllocators.rcsFuelPickup.next(placement.id), 'RCS燃料',
+      RcsFuelPickup.kind,
+    );
+  }
+
+  // placement に新しく置く。
+  public static create(
+    placement: PickupPlacement, scene: THREE.Scene, idAllocators: EntityIdAllocators,
+  ): RcsFuelPickup {
+    return new RcsFuelPickup(placement, scene, idAllocators);
+  }
+
+  // 直列化した RCS 燃料補給を、時刻 simTime の状態として復元する。
+  public static deserialize(
+    serialized: SerializedRcsFuelPickup, simTime: number, idAllocators: EntityIdAllocators, scene: THREE.Scene,
+  ): RcsFuelPickup {
+    return new RcsFuelPickup(deserializePickupPlacement(serialized, simTime), scene, idAllocators);
   }
 
   // 1 個の取り込みで増える燃料の量。

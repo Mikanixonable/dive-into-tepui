@@ -1,4 +1,4 @@
-// 1台の注視カメラについて、保存される視点とその変更規則を持つ。
+// 1台の注視カメラについて、直列化される視点とその変更規則を持つ。
 import {
   LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, type Quat, qFromBasis, qRotate,
 } from '../../math/quat';
