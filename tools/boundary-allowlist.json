@@ -131,24 +131,5 @@
     "src/game/viewer/viewer.ts": [
       "saved"
     ]
-  },
-  "モデル層の根が表示の導出を持つ禁止": {
-    "src/game/game.ts": [
-      "from './camera/",
-      "from './pickable/",
-      "from '../marker/",
-      "from './marker/",
-      "from './run-event-presenter'",
-      "from './flash-presenter'",
-      "from './lines/",
-      "from '../input/",
-      "from './hud/",
-      "from '../audio/",
-      "from './view/",
-      "from './controlled-loop-sfx'",
-      "from './map/",
-      "from './orbit-info'",
-      "from './input/"
-    ]
   }
 }
