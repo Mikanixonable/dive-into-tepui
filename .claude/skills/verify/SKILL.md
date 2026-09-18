@@ -25,7 +25,7 @@ Chrome は自力で探し、静的配信も自前で持つので、追加の環�
 3. `Page.navigate` で `http://localhost:8080/?stage=1&perf=1` を開き、起動の完了を**時間でなく条件で**
    待つ: `document.documentElement.dataset.gameReady === 'true'`(例外なく60フレーム完走した印)。
    失敗時は `#fatal-error-overlay` の有無で切り分ける。
-   - `?stage=N` で選択画面スキップ。`?perf=1` は負荷表示ウィンドウ(`.prop-window`)を最初から開く。
+   - `?stage=N` で選択画面スキップ。`?perf=1` は負荷表示ウィンドウ(`.property-window`)を最初から開く。
      エンティティ数(`players/enemies/bullets/casings/debris/ammos/asteroids/bases`)はその中の
      `.prop-window-row` にあり、グループのたたみ状態に関わらず DOM には出ているのでそのまま読める。
 4. `Input.dispatchKeyEvent`(`rawKeyDown`/`keyUp`、`code` 必須)で入力を与える。**入力はゲーム側の
