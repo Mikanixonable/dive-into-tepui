@@ -1,7 +1,6 @@
 // ビュー(戦闘/マップ)固有のフレーム処理と遷移フックの口。
 import type { DisplayWindow } from '../display-window-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
-import type { Input } from '../../input/input';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { PlanEditor } from '../plan/plan-editor';
@@ -24,7 +23,7 @@ export interface ViewFrame {
   // router からビュー固有の単発入力を受け取る。
   handleCommand(commandId: string, simTime: number): void;
   // 押下中の連続操作をこのビューへ配る。
-  updateActions(input: Input, dt: number): void;
+  updateActions(dt: number): void;
   // ポーズ・入力ゲートの判定後に呼ばれる。ポインタ入力の配分。
   handlePointer(simTime: number, camera: CameraFrame): void;
   // update フェーズ: カメラ更新の後。選択候補と可視性ポリシーの確定。

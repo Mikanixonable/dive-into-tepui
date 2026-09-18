@@ -1,9 +1,21 @@
 // タンパク質の敵1体の被弾モデル。機能部位ごとの HP と、構造全体の integrity・修飾の状態を持ち、
 // 部位の機能停止とフェーズはそこから導く。
 import type {
-  ProteinActionDefinition, ProteinAssetDefinition, ProteinCombatReadout, ProteinSaveData, ProteinSiteDefinition,
+  ProteinActionDefinition, ProteinAssetDefinition, ProteinCombatReadout, ProteinSiteDefinition,
 } from './protein-schema';
 import type { ProteinPhase } from '../../render/protein/protein-display';
+
+interface SerializedProteinSite {
+  readonly id: string;
+  readonly hp: number;
+}
+
+export interface SerializedProteinCombatState {
+  readonly integrityHp: number;
+  readonly sites: SerializedProteinSite[];
+  readonly modifications: Record<string, string>;
+  readonly attackSiteCursor: number;
+}
 
 type ProteinModelPoint = { readonly x: number; readonly y: number; readonly z: number };
 
@@ -30,23 +42,44 @@ function isDisabled(site: SiteState): boolean { return site.hp <= 0; }
 
 export class ProteinCombatState {
   public readonly integrityMaxHp: number;
-  private _integrityHp: number;
   private readonly siteStates: SiteState[];
   private readonly modifications = new Map<string, string>();
-  private attackSiteCursor = 0;
 
-  // asset の定義から戦闘状態を組む。saved があれば、その integrity・部位 HP・修飾の状態から戻す。
-  public constructor(public readonly asset: ProteinAssetDefinition, saved?: ProteinSaveData) {
+  // asset の定義から戦闘状態を組む。_integrityHp は構造全体の残り HP、siteHps・modificationStates は
+  // 部位 id ごとの HP と修飾スロット id ごとの状態で、値の無い部位と修飾は定義の初期値から始める。
+  // attackSiteCursor は次に撃つ部位を、機能している攻撃部位の並びの何番目から選ぶか。
+  public constructor(
+    public readonly asset: ProteinAssetDefinition,
+    private _integrityHp = asset.integrity.maxHp,
+    siteHps: ReadonlyMap<string, number | undefined> = new Map(),
+    modificationStates: ReadonlyMap<string, string | undefined> = new Map(),
+    private attackSiteCursor = 0,
+  ) {
     this.integrityMaxHp = asset.integrity.maxHp;
-    this._integrityHp = saved?.integrityHp ?? this.integrityMaxHp;
-    // 部位と修飾は定義の並びで組み、保存に無い項目は定義の初期値にする。
-    this.siteStates = asset.sites.map((definition) => {
-      const old = saved?.sites.find((site) => site.id === definition.id);
-      return { definition, hp: old?.hp ?? definition.maxHp };
-    });
+    // 部位と修飾は定義の並びで組む
+    this.siteStates = asset.sites.map((definition) => ({
+      definition, hp: siteHps.get(definition.id) ?? definition.maxHp,
+    }));
     for (const slot of asset.modificationSlots) {
-      this.modifications.set(slot.id, saved?.modifications[slot.id] ?? slot.defaultState);
+      this.modifications.set(slot.id, modificationStates.get(slot.id) ?? slot.defaultState);
     }
+  }
+
+  // 直列化した integrity・部位 HP・修飾の状態と撃つ部位の巡回を、asset の定義の部位と修飾スロットに
+  // ついて読んで復元する。
+  public static deserialize(
+    serialized: SerializedProteinCombatState, asset: ProteinAssetDefinition,
+  ): ProteinCombatState {
+    return new ProteinCombatState(
+      asset,
+      // null も欠けと同じく既定へ落とす(既定引数は undefined でしか働かない)。
+      serialized.integrityHp ?? undefined,
+      new Map(asset.sites.map((definition) => [
+        definition.id, serialized.sites.find((site) => site.id === definition.id)?.hp,
+      ])),
+      new Map(asset.modificationSlots.map((slot) => [slot.id, serialized.modifications[slot.id]])),
+      serialized.attackSiteCursor,
+    );
   }
 
   public get integrityHp(): number { return this._integrityHp; }
@@ -167,14 +200,14 @@ export class ProteinCombatState {
     };
   }
 
-  // いまの integrity・部位 HP・修飾の状態を保存形にする。
-  public serialize(): ProteinSaveData {
+  // いまの integrity・部位 HP・修飾の状態と撃つ部位の巡回を直列化した形にする。
+  public serialize(): SerializedProteinCombatState {
     const sites = this.siteStates.map((site) => ({ id: site.definition.id, hp: site.hp }));
     return {
-      schemaVersion: 1,
       integrityHp: this._integrityHp,
       sites,
       modifications: Object.fromEntries(this.modifications),
+      attackSiteCursor: this.attackSiteCursor,
     };
   }
 

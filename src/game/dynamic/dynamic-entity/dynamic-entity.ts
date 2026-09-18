@@ -1,20 +1,31 @@
 import type { Ray } from '../../../math/ray';
-import type { Vec3 } from '../../../math/vec3';
+import type { Quat } from '../../../math/quat';
+import type { SerializedVec3, Vec3 } from '../../../math/vec3';
+import { serializeKinematicState, type SerializedKinematicState } from '../../../physics/kinematic-state';
 import { MARKER_VISIBILITY, type MapVisibility, type MapVisibilityPolicy } from '../../map/visibility-policy';
-import type { EntitySaveDataUnion } from '../../save/save-data';
 import type { OrbitingObject } from './orbiting-object';
 import type { CapKind, DynamicEntityKind } from './entity-kind';
+import type { SerializedDynamicEntity } from './entity-dictionary';
 import type { DynamicMotion } from '../dynamic-motion';
 import type { OrbitReference } from '../../orbit-reference';
 import type {
   DynamicView, DynamicRenderSource, DynamicViewFrame,
 } from '../../../render/dynamic/dynamic-view';
-import type { ProteinDisplaySettings } from '../../../render/protein/protein-display';
 
 export type DynamicMotionFactory = (owner: DynamicEntity) => DynamicMotion;
 
+// 実体の直列化に共通する項目。t・r・v は運動状態、q・w は姿勢と角速度。
+export interface SerializedDynamicEntityFields extends SerializedKinematicState {
+  readonly id: string;
+  // 具象クラスのタグ。
+  readonly kind:
+    | 'player' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel' | 'booster' | 'base' | 'bullet' | 'debris';
+  readonly q: Quat;
+  readonly w: SerializedVec3;
+}
+
 // 1体ぶんの Motion と View を結び、両者に共通するゲーム上の識別と判断を持つ。
-export class DynamicEntity {
+export abstract class DynamicEntity {
   public readonly id: string;
   public readonly motion: DynamicMotion;
   public readonly view: DynamicView;
@@ -54,12 +65,21 @@ export class DynamicEntity {
     return this.motion.intersectsRay(ray, pos);
   }
 
-  // セーブデータへ変換する。永続化しない種別は null。showTrajectoryLine はこの個体の予測線・
-  // 過去線を出しているか、proteinDisplay はタンパク質の敵に共通の表示形態と着色。
-  public serialize(
-    _showTrajectoryLine: boolean, _proteinDisplay: ProteinDisplaySettings,
-  ): EntitySaveDataUnion | null {
-    return null;
+  // 直列化した形へ変換する。
+  public abstract serialize(): SerializedDynamicEntity;
+
+  // 実体に共通する直列化の項目。kind は具象のタグ。具象の serialize() がこれへ自分の項目を足す。
+  protected serializeEntityFields<K extends SerializedDynamicEntityFields['kind']>(
+    kind: K,
+  ): SerializedDynamicEntityFields & { readonly kind: K } {
+    const { state, att } = this.motion;
+    return {
+      id: this.id,
+      kind,
+      ...serializeKinematicState(state),
+      q: { ...att.q },
+      w: { ...att.w },
+    };
   }
 
   // このフレームの表示入力。派生 Entity は自分の View が読む値を足したものを返す。

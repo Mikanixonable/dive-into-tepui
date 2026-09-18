@@ -38,6 +38,7 @@ const LAYER_TABLE = [
   ['src/game/', '表示の導出'],
   ['src/settings/', 'アプリ寿命の正本'],
   ['src/launcher/', 'アプリの組み立て'],
+  ['src/run/', 'アプリの組み立て'],
   ['src/main.ts', 'アプリの組み立て'],
 ];
 
@@ -56,14 +57,19 @@ const PROGRESS_ROOTS = [
   'src/game/control-selection.ts',
 ];
 
-// 表示の導出だが、置き場がまだ進行のフォルダにあるファイル。動かしたらここも直す — 存在しない
-// パスが残ると検査が落ちる。(暫定 — 段 8 で presentation/ へ移すときに消える)
+// モデル層の置き場。進行と視点と、モデル層の根。
+const MODEL_ROOTS = [...PROGRESS_ROOTS, 'src/game/viewer/', 'src/game/game.ts'];
+
+// 表示の導出だが、置き場がまだ進行のフォルダか、モデル層の根の隣にあるファイル。動かしたらここも
+// 直す — 存在しないパスが残ると検査が落ちる。(暫定 — 段 8 で presentation/ へ移すときに消える)
 const MISPLACED_PRESENTATION_FILES = [
+  'src/game/game-presentation.ts',
   'src/game/plan/plan-editor.ts',
   'src/game/plan/node-gizmo.ts',
   'src/game/plan/plan-panel.ts',
   'src/game/plan/plan-axis-drag.ts',
   'src/game/plan/plan-display.ts',
+  'src/game/plan/plan-guide.ts',
   'src/game/creative/object-placer-panel.ts',
   'src/game/creative/slider-field.ts',
   'src/game/creative/stage-controls-panel.ts',
@@ -91,7 +97,7 @@ const RULES = {
   hudOut: 'src/hud/ の出ていく import',
   progressToViewer: '進行から視点への import',
   settingsViewer: '設定と視点の相互 import',
-  saveToPresentation: 'セーブから表示の導出への import',
+  serializationToPresentation: '直列化の根の型から表示の導出への import',
 };
 
 // 禁止パターンの表。段ごとに行を足す。exempt は恒久の例外で、理由は各行のコメントに書く。
@@ -186,14 +192,45 @@ const FORBIDDEN = [
       'src/game/dynamic/',
       'src/game/player/',
       'src/game/stages/',
-      'src/game/save/',
       'src/game/protein/',
       'src/game/control-selection.ts',
       'src/game/creative/manual-spawn.ts',
       'src/game/creative/object-placement.ts',
-      'src/game/plan/plan-guide.ts',
+      'src/game/plan/plan-node-rules.ts',
       'src/game/viewer/',
     ],
+    exempt: [],
+  },
+  {
+    // モデル層が知るのは直列化だけで、直列化された形は SerializedT と呼ぶ(R12)。
+    name: '直列化の語彙の禁止',
+    pattern: /\b\w+SaveData\b|\bWeaponStateData\b|\bBoosterStackData\b|\bSAVE_VERSION\b/g,
+    targets: ['src/'],
+    exempt: [],
+  },
+  {
+    // 復元は静的な deserialize が行い、構築した後で保存値を流し込まない(R12)。
+    name: '復元の流し込みの禁止',
+    pattern: /\brestore\w*\s*\(|\bimportData\s*\(|\bsaveState\b/g,
+    targets: MODEL_ROOTS,
+    exempt: [],
+  },
+  {
+    // コンストラクタは直列化された形を受けず、新規と復元で分岐しない(R12)。引数が複数行に
+    // 渡っても当たるよう、ファイル全体に対して引数名を探す。
+    name: '直列化された形をコンストラクタで受ける禁止',
+    pattern: /(?<=\bconstructor\s*\([^)]*)\b(?:saved|initialSave)\w*(?=\??\s*:)|'saved'\s+in\b/g,
+    targets: MODEL_ROOTS,
+    exempt: [],
+  },
+  {
+    // game.ts はモデル層の根で、表示の導出の根と並べて組むのはランの組み立て(R10・R13)。
+    // ./hud/hud-layers の型だけは外す — ステージのパネルの置き場を Stage へ渡すため。
+    // (暫定 — 段 6 の 6-5 で外す)
+    name: 'モデル層の根が表示の導出を持つ禁止',
+    pattern:
+      /from '\.\/(?:hud\/(?!hud-layers')|(?:marker|view|pickable|map|lines|input|camera)\/)|from '\.\/(?:game-presentation|flash-presenter|run-event-presenter|controlled-loop-sfx|orbit-info)'|from '\.\.\/(?:audio|input|marker)\//g,
+    targets: ['src/game/game.ts'],
     exempt: [],
   },
 ];
@@ -308,9 +345,11 @@ function findImportViolations({ edges, layerOf }) {
     ) {
       flag(RULES.settingsViewer);
     }
-    // スナップショットはモデル層の直列化で、表示の導出を含めない(R11)。
-    // (暫定 — 段 6 で層の規則が覆うので外す)
-    if (e.from.startsWith('src/game/save/') && isUnder(e.to, PRESENTATION_ROOTS)) flag(RULES.saveToPresentation);
+    // スナップショットはモデル層の直列化で、表示の導出を含めない(R11)。実体の直列化の根の型を
+    // 置く辞書へ当てる。(暫定 — 段 6 で層の規則が覆うので外す)
+    if (e.from === 'src/game/dynamic/dynamic-entity/entity-dictionary.ts' && isUnder(e.to, PRESENTATION_ROOTS)) {
+      flag(RULES.serializationToPresentation);
+    }
   }
   return found;
 }

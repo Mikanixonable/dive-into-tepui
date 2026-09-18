@@ -3,7 +3,11 @@
 import { combatTargetById, type CombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { RunEvent, RunEventSink } from '../run-events';
-import type { NavTargetSaveData } from '../save/save-data';
+
+export interface SerializedNavTargetSelection {
+  readonly id: string;
+  readonly name: string;
+}
 
 // 航法ターゲットを読む口。
 export interface NavTargetSource {
@@ -13,32 +17,33 @@ export interface NavTargetSource {
   readonly name: string | null;
 }
 
-// saved が指す id をターゲットへ戻せるか。撃墜・破壊されて名簿に残っている敵・自艦・基地を指して
-// いれば false。天体・ラグランジュ点のように消滅しない対象と、名簿に無い id は true。
-function isRestorable(saved: NavTargetSaveData, roster: EntityRoster): boolean {
-  const combatTarget = combatTargetById(roster.all(), saved.id);
-  return combatTarget === null || combatTarget.motion.alive;
+// id が、撃墜・破壊されて名簿に残っている敵・自艦・基地を指すか。天体・ラグランジュ点・役割のように
+// 消滅しない対象と、名簿に無い id は false。id で対象を指す選択は、復元時にこれが真なら既定へ戻す。
+export function isDestroyedTarget(id: string, roster: EntityRoster): boolean {
+  return combatTargetById(roster.all(), id)?.motion.alive === false;
 }
 
 export class NavTargetSelection implements NavTargetSource {
-  // ターゲットの id と、選んだ時点の表示名。
-  private target: NavTargetSaveData | null;
-
-  // saved を戻せるなら戻して始める。roster は復元した時点の顔ぶれ。命令の結果は events へ記録する。
+  // 命令の結果は events へ記録する。
   public constructor(
-    saved: NavTargetSaveData | null | undefined,
-    roster: EntityRoster,
     private readonly events: RunEventSink,
-  ) {
-    this.target = saved && isRestorable(saved, roster) ? saved : null;
+    // ターゲットの id と、選んだ時点の表示名。
+    private target: SerializedNavTargetSelection | null = null,
+  ) {}
+
+  // 直列化したターゲットを、戻せるなら戻して始める。roster は復元した時点の顔ぶれ。
+  public static deserialize(
+    serialized: SerializedNavTargetSelection | null, roster: EntityRoster, events: RunEventSink,
+  ): NavTargetSelection {
+    return new NavTargetSelection(events, serialized && !isDestroyedTarget(serialized.id, roster) ? serialized : null);
   }
 
   public get id(): string | null { return this.target?.id ?? null; }
 
   public get name(): string | null { return this.target?.name ?? null; }
 
-  // セーブのうち航法ターゲットの分。未設定なら null。
-  public serialize(): NavTargetSaveData | null {
+  // 航法ターゲットを直列化した形。未設定なら null。
+  public serialize(): SerializedNavTargetSelection | null {
     return this.target;
   }
 
