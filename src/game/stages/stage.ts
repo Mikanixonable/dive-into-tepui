@@ -254,10 +254,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   protected addPlayer(placement: Partial<PlayerPlacement> = {}): Player {
     const state = placement.state ?? this.defaultPlayerState();
     const center = strongestAttractor(state.r, this._celestialSystem.celestialMotions, state.t);
-    const ship = Player.create(
-      { ...placement, state }, center,
-      this._dynamicSystem.events, this._dynamicSystem.idAllocators, this._scene,
-    );
+    const ship = Player.create({ ...placement, state }, center, this._dynamicSystem, this._scene);
     this._dynamicSystem.add(ship);
     this._controlSelection.claimIfNone(ship);
     return ship;
