@@ -171,6 +171,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       this.clearTransientCommands();
       return;
     }
+    // 操作量から姿勢のトルクと推力を決める
     this.motion.torque = this.throttle.updateTorque(
       this.motion.att, this.motion.state.r, this.motion.state.v, controls, false, dt, simDt, this,
       null,
@@ -189,6 +190,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // 受け付けた単発の命令のうち、基地が備える操作を状態へ適用する。
   public handleCommand(command: PilotCommand, registry: EntityRegistry): void {
     const events = registry.events;
+    // 命令の種類ごとにスロットルの操作へ写す
     switch (command.kind) {
       case 'thrustLatchToggle': this.throttle.toggleThrustLatch(command.direction); return;
       case 'rcsDampToggle': this.throttle.toggleRcsDamp(events); return;
@@ -300,7 +302,6 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public runMenu(
     act: MenuAction, controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
   ): void {
-    // 操作対象の切り替えと削除は controlSelection へ、複製は authoring へ依頼する
     if (act === 'activate') {
       controlSelection.select(this);
     } else if (act === 'deactivate') {

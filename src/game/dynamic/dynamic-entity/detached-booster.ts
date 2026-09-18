@@ -18,7 +18,7 @@ import type { OrbitReference } from '../../orbit-reference';
 // 表示時刻を「現在」とみなす許容差 [sim s]。
 const BURN_DISPLAY_EPS = 1e-6;
 
-// 分離後も独立して燃焼・慣性飛行するブースター。接続中の段は SerializedPlayer 側に直列化される。
+// 分離後も独立して燃焼・慣性飛行するブースター1基の直列化した形。
 export interface SerializedDetachedBooster extends SerializedDynamicEntityFields {
   readonly kind: 'booster';
   readonly thermal: DynamicMotionThermal;

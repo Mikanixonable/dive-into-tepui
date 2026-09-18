@@ -23,6 +23,7 @@ const ENEMY_ATTACK_CHANCE = 0.6;
 const ENEMY_BURST_COUNTS = [3, 5, 7, 20];
 const PLASMA_SPREAD_DEG = 0.05;
 
+// 撃つ敵が、射撃の判断と弾の生成に差し出す面。
 export interface EnemyFireControllerPort {
   readonly motion: DynamicMotion;
   readonly attackGroupId: string;
@@ -41,8 +42,9 @@ export interface SerializedEnemyFireController {
   readonly lastBehaviorSim: number | null;
 }
 
-// 敵の射撃判断・バースト進行・弾生成をEnemy本体から分離する。
+// 敵1体の射撃判断・バースト進行・弾の生成。
 export class EnemyFireController {
+  // 射撃を許すか。直列化せず、ステージの設定から書き直すキャッシュ。
   public enabled = true;
 
   // port は撃つ敵。burstLeft・burstDelay はバースト射撃の残弾と次弾までの残り時間で、未着手なら
@@ -68,6 +70,8 @@ export class EnemyFireController {
     };
   }
 
+  // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。operable が偽の
+  // 間は撃たない。
   public behave(
     simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
     operable: boolean, celestialBodies: CelestialBodies,
@@ -80,9 +84,11 @@ export class EnemyFireController {
       this.burstDelay = null;
       return;
     }
+    // 交戦距離の内にいる間だけ撃つ
     const dist = len(sub(player.motion.state.r, this.port.motion.state.r));
     if (!(dist < ENGAGEMENT_RANGE && dist > ENEMY_AI_MIN_RANGE)) return;
 
+    // バーストの途中なら、次弾の時刻が来たら続きを撃つ
     if (this.isBursting) {
       this.burstDelay = (this.burstDelay ?? 0) - behaviorDt;
       if (this.burstDelay <= 0) {
@@ -94,6 +100,7 @@ export class EnemyFireController {
       return;
     }
 
+    // 射撃の機会が巡ったら、攻撃グループの同時発砲数と確率で新しいバーストを始める
     if (this.lastFireSim === null) this.lastFireSim = simTime - Math.random() * ENEMY_FIRE_INTERVAL;
     if (simTime - this.lastFireSim <= ENEMY_FIRE_INTERVAL) return;
     this.lastFireSim = simTime;
@@ -105,6 +112,7 @@ export class EnemyFireController {
     this.firePlasma(simTime, player, registry, celestialBodies);
   }
 
+  // player の未来位置を狙ってプラズマ弾を1発撃ち、発砲を記録する。
   private firePlasma(
     simTime: number, player: Player, registry: EntityRegistry, celestialBodies: CelestialBodies,
   ): void {
@@ -112,10 +120,12 @@ export class EnemyFireController {
     const v = this.port.motion.state.v;
     const toPlayer = sub(player.motion.state.r, r);
     const relV = sub(player.motion.state.v, v);
+    // 相対運動から迎撃時刻を解き、解けなければ直線距離で代える
     let leadTime = solveLeadTime(toPlayer, relV, PLASMA_BULLET_SPEED);
     if (leadTime === null || leadTime < 0) leadTime = len(toPlayer) / PLASMA_BULLET_SPEED;
     const predictedRelPos = add(toPlayer, scale(relV, leadTime));
     const aimDir = norm(predictedRelPos);
+    // 太陽の眩しさで広がる散布界を狙いに足す
     const spreadScale = sunGlareSpreadScale(r, aimDir, celestialBodies, simTime);
     const perp = randPerp(aimDir);
     const spreadAng = (Math.random() * PLASMA_SPREAD_DEG * spreadScale * Math.PI) / 180;

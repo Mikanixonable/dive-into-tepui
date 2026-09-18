@@ -1,7 +1,5 @@
-// 1本の積分弧が引く天体の一覧と、その維持。候補(レジストリの全天体)を毎歩ぜんぶ
-// 解決する代わりに、いま効きうる天体だけを成員として保持する。成員は解決するついでに抜ける
-// 条件を見る。成員でない候補は「最短でもこの時刻までは効き得ない」期限を持ち、その時刻が
-// 来たときだけ解決して入る条件を見る。
+// 1本の積分弧が引く天体の一覧。候補(レジストリの全天体)のうち、いま効きうる天体だけを成員として
+// 保ち、成員でない候補は効き得ない期限が来たときに見直す。
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { len, sub } from '../../math/vec3';
@@ -80,6 +78,7 @@ export class ArcCelestialBodies {
   // 候補の顔ぶれを構築時に確定させ、以後は1体ぶんの状態だけを sources へ問う。
   public constructor(sources: readonly CelestialBody[]) {
     const candidates = sources.map((m) => m.def);
+    // 最も重い天体は、寄与が無視できても成員に留める。
     const pinnedId = heaviestGravityId(candidates);
     this.watches = sources.map((motion) => ({
       motion,

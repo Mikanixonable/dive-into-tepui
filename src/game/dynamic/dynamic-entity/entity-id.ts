@@ -23,7 +23,7 @@ export class EntityIdAllocator {
     if (Number.isFinite(n) && n >= this.counter) this.counter = n + 1;
   }
 
-  // 次に発番する連番。直列化した形を兼ね、復元ではコンストラクタの counter へ渡す。
+  // 次に発番する連番を、直列化した形として返す。
   public serialize(): number {
     return this.counter;
   }
@@ -38,8 +38,7 @@ export interface SerializedEntityIdAllocators {
   readonly booster: number;
 }
 
-// 種別ごとに独立した連番を持つ、ラン1つぶんの採番器。ランの寿命を持つオブジェクトが1つ持ち、
-// 生成する側へ配る。
+// 種別ごとに独立した連番を持つ、ラン1つぶんの採番器。
 export class EntityIdAllocators {
   public readonly entity: EntityIdAllocator;
   public readonly base: EntityIdAllocator;
@@ -73,8 +72,8 @@ export class EntityIdAllocators {
     };
   }
 
-  // 復元する id を、実体を組む前に押さえる。素材待ちでゲートに掛かった個体の id を、
-  // その間の新規発番が追い越さないようにする。持ち主は接頭辞で決まるので種別を知らなくてよい。
+  // 復元する id を、その接頭辞を持つ採番器で押さえる。実体化を待つ個体の id を、その間の新規発番が
+  // 追い越さないよう、実体を組む前に呼ぶ。
   public reserve(id: string): void {
     for (const allocator of [this.entity, this.base, this.ammoPickup, this.rcsFuelPickup, this.booster]) {
       allocator.reserve(id);

@@ -6,8 +6,7 @@ import { Enemy, type EnemyPlacement } from './enemy';
 import type { EntityIdAllocators } from './entity-id';
 import type { PartDamageTarget } from './damage-capabilities';
 
-// 敵AIと部品式の被弾モデルを組み合わせるための薄い接続層。
-// 共通の敵寿命は Enemy、部品の実体と性能は PartDamageModel が所有する。
+// 部品式の被弾モデルを持つ敵に共通するもの。
 export abstract class PartBasedEnemy extends Enemy implements PartDamageTarget {
   private readonly partModel: PartDamageModel;
 

@@ -191,6 +191,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   public get combatReadout(): ProteinCombatReadout { return this.combat.combatReadout(); }
   public get proteinMotionMetrics(): ProteinMotionMetrics { return this.view.motionMetrics; }
 
+  // 機能部位の状態と、表示位置に置いた部位マーカーを答える面。
   public override get proteinInspection(): EnemyProteinInspection {
     return {
       combatReadout: () => this.combatReadout,
@@ -239,6 +240,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   protected override applyBulletDamage(
     damage: number, impactPoint: Vec3, events: RunEventSink,
   ): void {
+    // 着弾点と各部位の位置を、同じ模型座標で比べる
     const localPoint = this.view.localImpactPoint(
       impactPoint, this.motion.state.r, this.motion.att.q,
     );
@@ -246,6 +248,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
       this.combat.combatReadout().sites.map((site) => [site.id, this.view.siteModelPositionById(site.id)] as const),
     );
     const result = this.combat.applyDamage(damage, localPoint, sitePositions);
+    // 部位が止まるか構造フェーズが変わったら、着弾点の出来事として記録する
     if (result.siteDisabled || result.phaseChanged) {
       events.record({
         kind: 'proteinStateChanged',

@@ -4,14 +4,13 @@ import type { Part, RadiatorPart, SolarPanelPart } from './parts';
 import { PartDamageModel } from './part-damage-model';
 import { Vessel } from './vessel';
 
-// 既存の利用者には部品式機体のモジュールから提供し続ける。
+// TODO: 艦の物性は vessel.ts が持つ。利用者を vessel.ts へ向け、この再エクスポートを消す(1.6)。
 export {
   MAX_HULL_TEMP, MUZZLE_SPEED, SHIP_BCINV, SHIP_RADIATING_AREA_PER_MASS, SHIP_SRP_COEFF,
   shipMotionOptions,
 } from './vessel';
 
-// パーツ式の被弾モデルを持つ艦(自機・金属敵)。寿命・一般HP・マーカーは Vessel が持ち、
-// ここでは部品構成と、部品から導かれる性能だけを扱う。
+// 部品式の被弾モデルを持つ艦。部品構成と、部品から導かれる性能を扱う。
 export abstract class Ship extends Vessel {
   private readonly partModel: PartDamageModel;
   protected get parts(): readonly Part[] { return this.partModel.parts; }

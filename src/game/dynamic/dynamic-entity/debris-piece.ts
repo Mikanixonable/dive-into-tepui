@@ -78,6 +78,7 @@ export class DebrisPiece extends DynamicEntity {
     super(
       () => new DebrisMotion(state, attitude, {
         kind: debrisKind.kind,
+        // 発生時刻を持つ種別だけが、寿命の起点を反応へ渡す
         behavior: new DebrisReaction(
           debrisKind.kind,
           'bornSim' in debrisKind ? debrisKind.bornSim : null,
