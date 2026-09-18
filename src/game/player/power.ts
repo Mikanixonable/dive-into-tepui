@@ -80,7 +80,7 @@ export class PowerSystem {
 
   public deployOf(side: SolarSide): number { return this.panels[side].value; }
 
-  // 蓄電量の保存形。
+  // 蓄電量の直列化した形。
   public serialize(): SerializedPowerSystem {
     return { charge: this.charge };
   }

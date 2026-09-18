@@ -24,12 +24,10 @@ export class Run implements SnapshotSource, PerfCountSource {
   // 畳まれた後か。入力の途中で畳まれたフレームを、そこで打ち切るのに読む。
   private disposed = false;
 
-  // 星系とモデル層を組み、表示の導出を繋いでから、最初に描かれるフレームで描画資源を組む。
-  // initialSave は再開する記録(新しく始めるなら undefined)、startEpoch は選ばれた開始日時。
-  // viewOptions はマップ・天球の表示設定と表示パネルのタブの選択、themePalette は選ばれている配色。
+  // stageClass の新しいランを組む。startEpoch は選ばれた開始日時。viewOptions はマップ・天球の表示設定と
+  // 表示パネルのタブの選択、themePalette は選ばれている配色。
   public static async create(
     stageClass: StageClass,
-    initialSave: SerializedGame | undefined,
     startEpoch: TdbJulianDate | undefined,
     devices: PageDevices,
     viewOptions: ViewOptionsSettings,
@@ -42,9 +40,50 @@ export class Run implements SnapshotSource, PerfCountSource {
   ): Promise<Run> {
     const warmUpGraphics = graphics.current;
     const warmUpStyle = renderStyle.current;
-    const game = await Game.create(
-      stageClass, initialSave, startEpoch, devices.scene, devices.hud, sections, progress,
+    const game = await Game.create(stageClass, startEpoch, devices.scene, devices.hud, sections, progress);
+    return Run.launch(
+      game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle, sections,
+      autoSave, progress,
     );
+  }
+
+  // 直列化したラン serialized を、stageClass のランとして再開する。ほかの引数は create と同じ。
+  public static async resume(
+    serialized: SerializedGame,
+    stageClass: StageClass,
+    devices: PageDevices,
+    viewOptions: ViewOptionsSettings,
+    themePalette: SettingValue<ThemePalette>,
+    graphics: SettingValue<GraphicsSettingsData>,
+    renderStyle: SettingValue<RenderStyle>,
+    sections: FrameSections,
+    autoSave: AutoSave,
+    progress: LoadingProgress,
+  ): Promise<Run> {
+    const warmUpGraphics = graphics.current;
+    const warmUpStyle = renderStyle.current;
+    const game = await Game.deserialize(serialized, stageClass, devices.scene, devices.hud, sections, progress);
+    return Run.launch(
+      game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle, sections,
+      autoSave, progress,
+    );
+  }
+
+  // 組み上がったモデル層 game に表示の導出を繋ぎ、最初に描かれるフレームで描画資源を組む。
+  // warmUpGraphics・warmUpStyle は、ランを組み始めた時点の描画設定。
+  private static async launch(
+    game: Game,
+    warmUpGraphics: GraphicsSettingsData,
+    warmUpStyle: RenderStyle,
+    devices: PageDevices,
+    viewOptions: ViewOptionsSettings,
+    themePalette: SettingValue<ThemePalette>,
+    graphics: SettingValue<GraphicsSettingsData>,
+    renderStyle: SettingValue<RenderStyle>,
+    sections: FrameSections,
+    autoSave: AutoSave,
+    progress: LoadingProgress,
+  ): Promise<Run> {
     const presentation = new GamePresentation(game, devices, viewOptions, themePalette, sections);
     const run = new Run(game, presentation, devices, graphics, renderStyle, sections, autoSave);
     // 組み立ての間に積まれた出来事は、最初のフレームの進行が記録を空にすると消えるので、
