@@ -82,7 +82,7 @@ export class DisplayWindowManager {
   private _current: DisplayWindow;
 
   // 操作パネルを構築し、期間選択・スライダー・任意期間入力・T+ジャンプ入力を命令口へ繋ぐ。
-  constructor(
+  public constructor(
     hudRoot: HTMLElement,
     collapse: PanelCollapse,
     private readonly celestialBodies: CelestialBodies,
@@ -110,7 +110,7 @@ export class DisplayWindowManager {
   }
 
   // 軌道フレームが選んでいる役割の公転が成立しなくなったら、慣性系へ落とす。
-  dropStaleRotatingFrame(displayTime: number, frameAnchors: FrameAnchorSource): void {
+  public dropStaleRotatingFrame(displayTime: number, frameAnchors: FrameAnchorSource): void {
     const rotatingWith = this.selection.frame.rotatingWith;
     if (rotatingWith === null || rotatingWith.kind !== 'revolution') return;
     const role = frameRoleOf(rotatingWith.id);
@@ -119,20 +119,20 @@ export class DisplayWindowManager {
   }
 
   // 直近の resolve() が確定させた表示窓。
-  get current(): DisplayWindow {
+  public get current(): DisplayWindow {
     return this._current;
   }
 
   // 選んだ期間の秒数を返す。'orbit' では referencePeriod をそのまま返し、それが有限な正数で
   // なければ APERIODIC_ARC_DURATION へ落とす。どの軌道の周期を参照するかは呼び出し側の文脈で
   // 決まるので、このクラス自身は軌道周期を持たない。
-  durationSec(referencePeriod: number): number {
+  public durationSec(referencePeriod: number): number {
     return this.selection.durationSec(referencePeriod);
   }
 
   // このフレームの表示窓を確定させて返す。表示時刻はスライダーが立っている間だけ未来を指し、
   // forceCurrent または原点では simTime そのもの。
-  resolve(simTime: number, controlled: DynamicEntity | null, forceCurrent: boolean): DisplayWindow {
+  public resolve(simTime: number, controlled: DynamicEntity | null, forceCurrent: boolean): DisplayWindow {
     const referencePeriod = this.currentOrbitPeriod(controlled, simTime);
     const duration = this.durationSec(referencePeriod);
     const sliderT = this.selection.sliderT;
@@ -152,7 +152,7 @@ export class DisplayWindowManager {
   }
 
   // 毎フレーム呼ぶ。操作パネル(期間・スクラバー・目盛り)の表示/非表示と内容を押し出す。
-  sync(controlled: DynamicEntity | null): void {
+  public sync(controlled: DynamicEntity | null): void {
     this.panel.render({
       visible: !this._current.forceCurrent,
       durationKey: this.selection.durationKey,
@@ -193,7 +193,7 @@ export class DisplayWindowManager {
   }
 
   // 操作パネルの DOM を片付ける。
-  dispose(): void {
+  public dispose(): void {
     this.panel.dispose();
   }
 }
