@@ -183,6 +183,7 @@ export class DynamicMotion {
   public readonly contactDamageWeight: number;
   // 本体に取り付けた付属物なら、その本体。
   public attachedTo: DynamicMotion | null = null;
+  // 姿勢の積分に加えるトルク。指令から積分の前に毎フレーム書き直すキャッシュ。
   public torque: Vec3 = v3();
   private readonly fixedBcInv: number;
   private readonly fixedSrpCoeff: number;
@@ -202,6 +203,7 @@ export class DynamicMotion {
   // 需要が求める履歴の長さ [s](キャッシュ)。
   private requestedHistoryDuration = 0;
   private pendingSpecificHeat: number;
+  // 推力。指令から積分の前に毎フレーム書き直すキャッシュ。
   private _thrust: Vec3 | null = null;
 
   // state から始まる軌道を組む。options で省いた物性は既定値になる。

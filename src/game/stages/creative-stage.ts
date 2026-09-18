@@ -1,7 +1,7 @@
 // クリエイティブモード: 勝敗判定を発生させず、物体配置と軌道計画を自由に試すためのステージ。
 import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
-import { ManualSpawn } from '../creative/manual-spawn';
-import { MAX_PLACED_SHIPS, ObjectPlacement } from '../creative/object-placement';
+import { ManualSpawn, type SerializedManualSpawn } from '../creative/manual-spawn';
+import { MAX_PLACED_SHIPS, ObjectPlacement, type SerializedObjectPlacement } from '../creative/object-placement';
 import {
   StageControlsPanel, type EnemySpawnShape, type ProteinDisplayControl,
 } from '../creative/stage-controls-panel';
@@ -16,14 +16,22 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import { creativeStageCommands, type CreativeStageCommands } from './creative-stage-commands';
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
-import { queuedEventSink } from '../run-events';
+import { queuedEventSink, type RunEventSink } from '../run-events';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 
 // クリエイティブモードの内訳。波状攻撃のトグルと進行状態を持ち、進行状態はトグルが OFF の間も
-// 保つ(ON に戻したとき波数を続きから再開する)。
+// 保つ(ON に戻したとき波数を続きから再開する)。手動スポーンと物体配置の設定・連番も持つ。
 export interface SerializedCreativeStage extends SerializedStage {
   readonly waveAttackEnabled: boolean;
   readonly waveAttack: SerializedWaveAttack;
+  readonly manualSpawn: SerializedManualSpawn;
+  readonly objectPlacement: SerializedObjectPlacement;
+}
+
+// 配置が記録する出来事の行き先。配置パネルの確定は DOM のイベントなので、列を通して記録する(R8)。
+function placementEventSink(deps: StageDeps): RunEventSink {
+  const [, , dynamicSystem, , , commandQueue] = deps;
+  return queuedEventSink(commandQueue, dynamicSystem.events);
 }
 
 export class CreativeStage extends Stage {
@@ -52,28 +60,28 @@ export class CreativeStage extends Stage {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
   }
 
-  // 波状攻撃の進行・トグルと共通の状態から、配置・手動スポーンとステージ操作パネルを組む。
-  // 省いた波状攻撃は新しい進行から始まる。
+  // 波状攻撃の進行・トグル、手動スポーン、配置と共通の状態から、ステージ操作パネルを組む。
+  // 省いた波状攻撃・手動スポーン・配置は新しいランの初期値から始まる。
   private constructor(
     deps: StageDeps,
     waveAttack?: WaveAttack,
     // 敵の波状攻撃を発生させるかどうか(既定 OFF)。
     private waveAttackEnabled = false,
+    manualSpawn?: ManualSpawn,
+    objectPlacement?: ObjectPlacement,
     ...common: CommonStageState
   ) {
     super(deps, ...common);
     this.commands = creativeStageCommands(this._commandQueue, this);
 
-    this.manualSpawn = new ManualSpawn(
-      this._scene, this._celestialSystem.celestialMotions,
-      this._dynamicSystem, this._dynamicSystem.idAllocators,
+    // 手動スポーン・配置・波状攻撃。配置の確定は命令として積む。
+    this.manualSpawn = manualSpawn ?? ManualSpawn.create(
+      this._scene, this._celestialSystem.celestialMotions, this._dynamicSystem.idAllocators,
     );
 
-    // 配置パネルの確定は DOM のイベントなので、そこで起きたことは列を通して記録する(R8)。
-    this.objectPlacement = new ObjectPlacement(
+    this.objectPlacement = objectPlacement ?? ObjectPlacement.create(
       this._hud, this._scene, this._dynamicSystem, this._dynamicSystem.idAllocators,
-      queuedEventSink(this._commandQueue, this._dynamicSystem.events),
-      this._celestialSystem,
+      placementEventSink(deps), this._celestialSystem,
     );
     this.objectPlacement.onPlace = (name, entityKind, state) => this.commands.placeObject(name, entityKind, state);
     this.authoring = this.objectPlacement;
@@ -82,6 +90,7 @@ export class CreativeStage extends Stage {
       this._dynamicSystem.events, this._scene, this._celestialSystem.celestialMotions,
       this._dynamicSystem.idAllocators,
     );
+    // ステージ操作パネル。操作は命令として積む。
     this.stageControlsPanel = new StageControlsPanel(
       this.logistics.resupplyEnabled, this.logistics.rcsFuelResupplyEnabled, this.waveAttackEnabled,
       this.manualSpawn.spawnDistance,
@@ -107,8 +116,8 @@ export class CreativeStage extends Stage {
 
   // 直列化した形から復元する。
   public static deserialize(serialized: SerializedCreativeStage, ...deps: StageDeps): CreativeStage {
-    const [, scene, dynamicSystem, celestialSystem] = deps;
-    const { waveAttack, waveAttackEnabled } = serialized;
+    const [hud, scene, dynamicSystem, celestialSystem] = deps;
+    const { waveAttack, waveAttackEnabled, manualSpawn, objectPlacement } = serialized;
     return new CreativeStage(
       deps,
       // null も欠けと同じく新しいランの初期値から始める(既定引数は undefined でしか働かない)。
@@ -116,6 +125,13 @@ export class CreativeStage extends Stage {
         waveAttack, dynamicSystem.events, scene, celestialSystem.celestialMotions, dynamicSystem.idAllocators,
       ),
       waveAttackEnabled ?? undefined,
+      manualSpawn == null ? undefined : ManualSpawn.deserialize(
+        manualSpawn, scene, celestialSystem.celestialMotions, dynamicSystem.idAllocators,
+      ),
+      objectPlacement == null ? undefined : ObjectPlacement.deserialize(
+        objectPlacement, hud, scene, dynamicSystem, dynamicSystem.idAllocators,
+        placementEventSink(deps), celestialSystem,
+      ),
       ...Stage.deserializeCommonState(serialized, deps, CreativeStage.stageRules),
     );
   }
@@ -168,7 +184,9 @@ export class CreativeStage extends Stage {
       return;
     }
     const spawn = this.manualSpawn.enemy(player, shape, colorValue);
-    if (spawn !== null) this.spawnEnemyWhenReady(spawn.gate, spawn.build);
+    if (spawn === null) return;
+    if (spawn.kind === 'enemy') this.addEnemy(spawn.enemy);
+    else this.addProteinEnemy(spawn.request);
   }
 
   // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機前方に一括スポーンする。
@@ -178,7 +196,7 @@ export class CreativeStage extends Stage {
       this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'spawnEnemy' });
       return;
     }
-    for (const { gate, build } of this.manualSpawn.proteinFormation(player)) this.spawnEnemyWhenReady(gate, build);
+    for (const request of this.manualSpawn.proteinFormation(player)) this.addProteinEnemy(request);
   }
 
   // 検証を通った配置の指定から物体を作り、顔ぶれへ入れて、配置したことを記録する。
@@ -287,12 +305,14 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.element.remove();
   }
 
-  // 共通の内訳へ、波状攻撃のトグルと進行状況を足して直列化する。
+  // 共通の内訳へ、波状攻撃のトグルと進行状況、手動スポーンと配置を足して直列化する。
   public serialize(): SerializedCreativeStage {
     return {
       ...super.serialize(),
       waveAttackEnabled: this.waveAttackEnabled,
       waveAttack: this.waveAttack.serialize(),
+      manualSpawn: this.manualSpawn.serialize(),
+      objectPlacement: this.objectPlacement.serialize(),
     };
   }
 }

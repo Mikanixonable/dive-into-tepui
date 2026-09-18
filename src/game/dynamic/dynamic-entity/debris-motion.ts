@@ -10,6 +10,7 @@ import {
   SMALL_DEBRIS_RADIATING_AREA_PER_MASS,
   SMALL_DEBRIS_SPECIFIC_HEAT,
   SMALL_DEBRIS_SRP_COEFF,
+  type DynamicMotionThermal,
 } from '../dynamic-motion';
 
 const BARREL_BULK_DENSITY = 7850;
@@ -17,12 +18,12 @@ const BARREL_MAX_TEMP = 1700;
 export const BARREL_SPECIFIC_HEAT = 500;
 export const BARREL_RADIATING_AREA_PER_MASS = 0.047;
 
+// 破片の種別・振る舞い・接触半径 [m] と熱の状態。熱の状態で省いた項目は環境温度の既定から始める。
 interface DebrisMotionProperties {
   readonly kind: DebrisKind['kind'];
   readonly behavior: DynamicMotionBehavior;
   readonly radius?: number;
-  readonly temperature?: number;
-  readonly thermalDeviation?: number;
+  readonly thermal: Partial<DynamicMotionThermal>;
 }
 
 interface DebrisThermal {
@@ -52,6 +53,7 @@ function debrisThermal(kind: DebrisKind['kind']): DebrisThermal {
 
 // 破片・薬莢・分離金物の物性、熱、接触可否、寿命境界を所有する。
 export class DebrisMotion extends DynamicMotion {
+  // state・attitude から始まる破片を、種別ごとの物性で組む。
   public constructor(
     state: KinematicState,
     attitude: Attitude,
@@ -68,8 +70,7 @@ export class DebrisMotion extends DynamicMotion {
       contactDamageWeight: 0,
       bcInv: SMALL_DEBRIS_BCINV,
       srpCoeff: SMALL_DEBRIS_SRP_COEFF,
-      temperature: options.temperature,
-      thermalDeviation: options.thermalDeviation,
+      ...options.thermal,
       specificHeat: thermal.specificHeat,
       bulkDensity: thermal.bulkDensity,
       radiatingAreaPerMass: thermal.radiatingAreaPerMass,
