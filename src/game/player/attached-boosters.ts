@@ -106,18 +106,20 @@ export class AttachedBoosters {
     const t = player.state.t;
     player.state = kinematicState<'eci'>(t, player.state.r, separated.player);
     this.scatterInterstageHardware(t, jointR, separated.player, separated.booster, player.att, registry);
-    registry.add(new DetachedBooster({
-      stage: detachedStage,
-      state: kinematicState<'eci'>(t, boosterR, separated.booster),
-      att: {
+    registry.add(DetachedBooster.create(
+      detachedStage,
+      kinematicState<'eci'>(t, boosterR, separated.booster),
+      {
         // 爆砕ボルトは中心軸上でトルクを与えない。姿勢モデルの inertia は操縦応答用の
         // 相対値で kg·m² ではないため、分離時は角速度をそのまま引き継ぐ。
         q: player.att.q,
         w: player.att.w,
         inertia: v3(1, 1, 0.4),
       },
-      collisionEnableAt: t + COLLISION_GRACE,
-    }, this._scene, this.idAllocators));
+      t + COLLISION_GRACE,
+      this._scene,
+      this.idAllocators,
+    ));
 
     player.invalidatePrediction();
     this.events.record({

@@ -1,4 +1,4 @@
-// 戦闘・マップの2台のカメラ視点を所有し、進行に合わせる規則と保存をまとめる。
+// 戦闘・マップの2台のカメラ視点を所有し、進行に合わせる規則と直列化をまとめる。
 import { frameRoleAnchorId } from '../../physics/frame';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { RunEvent, RunEventSink } from '../run-events';

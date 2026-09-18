@@ -13,7 +13,7 @@ import { ENTITY_CAP, type CapKind, type EntityCountKind } from './dynamic-entity
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
 import { isEnemy } from './dynamic-entity/enemy';
 import { isPlayer, Player } from '../player/player';
-import { restorationFor, type SerializedDynamicEntity } from './dynamic-entity/entity-dictionary';
+import { findEntityClass, type SerializedDynamicEntity } from './dynamic-entity/entity-dictionary';
 import { InstancedPools } from '../../render/dynamic/instanced-pools';
 import { BulletPools } from '../../render/dynamic/dynamic-entity/bullet-view';
 import { CasingPool } from '../../render/dynamic/dynamic-entity/casing-view';
@@ -33,13 +33,16 @@ import type { PerfCounts } from '../perf-counts';
 import type { RunEventSink } from '../run-events';
 import type { OrbitReference } from '../orbit-reference';
 
+// 顔ぶれと、それを進めた先端時刻の直列化した形。
+export interface SerializedDynamicSystem {
+  readonly simTime: number;
+  // 顔ぶれ。種別は各要素の kind が持つ。
+  readonly entities: readonly SerializedDynamicEntity[];
+}
+
 export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 保持する全エンティティを追加順に並べた、顔ぶれの正本。枠ごとの上限はこの並びから導く。
   private readonly entities: DynamicEntity[] = [];
-
-  // このランの id 採番器。復元した顔ぶれの id もここで予約するので、この回の連番は
-  // ランの寿命でしか進まない。
-  public readonly idAllocators = new EntityIdAllocators();
 
   // 操作されうる個体。呼ぶたびに顔ぶれから数え直すので、フレームに何度も読むなら受けた配列を
   // 持ち回る。
@@ -54,47 +57,65 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 個体の状態が非有限値に汚染された瞬間を捕まえる見張り。
   private readonly nanWatchdog: NanWatchdog;
 
-  // 描画資源のプールと前進の機構を組んでから、saved があればその顔ぶれを復元する。
-  public constructor(
+  // 描画資源のプールと前進の機構を、顔ぶれが空のまま simTime [s] から組む。idAllocators はこの
+  // ランの id 採番器で、省けば連番の初めから発番する。
+  private constructor(
     scene: THREE.Scene,
     public readonly events: RunEventSink,
     private readonly celestialBodies: CelestialBodies,
     private readonly sections: FrameSections,
-    initialSimTime: number,
-    saved?: { readonly simTime: number; readonly entities: readonly SerializedDynamicEntity[] },
+    simTime = 0,
+    public readonly idAllocators = new EntityIdAllocators(),
   ) {
     this.instancedPools = new InstancedPools([
       new BulletPools(scene, ENTITY_CAP.bullet),
       new CasingPool(scene, ENTITY_CAP.casing),
       new DebrisFragmentPools(scene, ENTITY_CAP.debris),
     ]);
-    this.simulator = new Simulator(this, this, this, celestialBodies, sections, initialSimTime);
+    this.simulator = new Simulator(this, this, this, celestialBodies, sections, simTime);
     this.nanWatchdog = new NanWatchdog(events);
-    if (saved) this.restoreFromSave(saved, scene);
   }
 
-  // スナップショットの顔ぶれを復元する。知らない種別は読み飛ばす。
-  private restoreFromSave(
-    save: { readonly simTime: number; readonly entities: readonly SerializedDynamicEntity[] }, scene: THREE.Scene,
-  ): void {
+  // 新しいランの空の顔ぶれを組む。
+  public static create(
+    scene: THREE.Scene, events: RunEventSink, celestialBodies: CelestialBodies, sections: FrameSections,
+  ): DynamicSystem {
+    return new DynamicSystem(scene, events, celestialBodies, sections);
+  }
+
+  // 直列化した顔ぶれを、その先端時刻から復元する。知らない種別は読み飛ばす。
+  public static deserialize(
+    serialized: SerializedDynamicSystem,
+    scene: THREE.Scene,
+    events: RunEventSink,
+    celestialBodies: CelestialBodies,
+    sections: FrameSections,
+  ): DynamicSystem {
+    const { simTime, entities } = serialized;
     // 実体化がゲートで遅れる個体があるので、先に全部の id を押さえてから組み始める。
-    for (const data of save.entities) this.idAllocators.reserve(data.id);
-    for (const data of save.entities) {
-      const restoration = restorationFor(
-        data, save.simTime, scene, this.events, this.idAllocators);
-      if (restoration === null) continue;
-      this.spawnWhenReady(restoration.gate, () => restoration.build());
+    const idAllocators = new EntityIdAllocators();
+    for (const entity of entities) idAllocators.reserve(entity.id);
+    // null の先端時刻も欠けと同じく 0 から始める(既定引数は undefined でしか働かない)。
+    const system = new DynamicSystem(scene, events, celestialBodies, sections, simTime ?? undefined, idAllocators);
+    for (const entity of entities) {
+      const entityClass = findEntityClass(entity.kind);
+      if (entityClass === null) continue;
+      system.spawnWhenReady(
+        entityClass.spawnGate(entity),
+        () => entityClass.deserialize(entity, simTime, idAllocators, scene, events),
+      );
     }
+    return system;
   }
 
-  // 顔ぶれを直列化した形へ畳む。保存へ載らない種別は落ちる。showsTrajectoryLine は id の個体の
-  // 予測線・過去線を出しているか、proteinDisplay はタンパク質の敵に共通の表示形態と着色。
-  public serialize(
-    showsTrajectoryLine: (id: string) => boolean, proteinDisplay: ProteinDisplaySettings,
-  ): SerializedDynamicEntity[] {
-    return this.entities
-      .map((e) => e.serialize(showsTrajectoryLine(e.id), proteinDisplay))
-      .filter((data): data is SerializedDynamicEntity => data !== null);
+  // 顔ぶれを直列化した形へ畳む。直列化しない種別は落ちる。
+  public serialize(): SerializedDynamicSystem {
+    return {
+      simTime: this.simTime,
+      entities: this.entities
+        .map((e) => e.serialize())
+        .filter((data): data is SerializedDynamicEntity => data !== null),
+    };
   }
 
   private _collectionRevision = 0;
