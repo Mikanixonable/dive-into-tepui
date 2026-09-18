@@ -90,8 +90,11 @@ export interface SerializedPlayer extends SerializedDynamicEntityFields {
   readonly boosters?: SerializedBoosterStack;
 }
 
-// プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、被弾・接触の帰結と保存を持つ。
+// プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、被弾・接触の帰結と直列化を持つ。
 export class Player extends Ship implements Controllable, PartDamageTarget {
+  public static readonly kind = 'player';
+  public static spawnGate(): null { return null; }
+
   public override readonly mapKind: DynamicEntityKind = 'player';
   public override readonly controllable = true;
   public override readonly pickable = true;
@@ -215,9 +218,9 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   public static deserialize(
     serialized: SerializedPlayer,
     simTime: number,
-    events: RunEventSink,
     idAllocators: EntityIdAllocators,
     scene: THREE.Scene,
+    events: RunEventSink,
   ): Player {
     const { radiator, plan } = serialized;
     const parts = Array.isArray(serialized.parts)
@@ -573,12 +576,12 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     super.dispose();
   }
 
-  // 現在の艦状態を保存用データへ変換する。showTrajectoryLine はこの艦の予測線・過去線を出しているか。
-  public override serialize(showTrajectoryLine: boolean): SerializedPlayer {
+  // 現在の艦状態を直列化した形へ変換する。
+  public override serialize(): SerializedPlayer {
     return {
       id: this.id,
       name: this.name,
-      kind: 'player',
+      kind: Player.kind,
       // 運動状態
       r: { ...this.motion.state.r },
       v: { ...this.motion.state.v },
@@ -591,10 +594,9 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       power: this.motion.power.serialize(),
       throttle: this.throttle.serialize(),
       parts: this.parts.map(p => ({ ...p })) as SerializedPart[],
-      // 操作・表示の設定と計画
+      // 操作の設定と計画
       planExecution: this.planExecution,
       fineAttitude: this.fineAttitude,
-      showTrajectoryLine,
       plan: this.plan.serialize(),
       boosters: this.motion.attachedBoosters.serialize(),
     };

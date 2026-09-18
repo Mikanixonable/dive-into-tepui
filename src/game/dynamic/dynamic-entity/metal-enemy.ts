@@ -131,10 +131,8 @@ export class MetalEnemy extends PartBasedEnemy {
     return this.applyCollisionDamage(damageSpeed);
   }
 
-  // 敵に共通する直列化の項目へ型番を足す。showTrajectoryLine はこの敵の予測線・過去線を出しているか。
-  public override serialize(showTrajectoryLine: boolean): SerializedMetalEnemy {
-    return {
-      ...this.serializeEnemyFields(showTrajectoryLine), kind: MetalEnemy.kind, typeIndex: this.typeIndex,
-    };
+  // 敵に共通する直列化の項目へ型番を足す。
+  public override serialize(): SerializedMetalEnemy {
+    return { ...this.serializeEnemyFields(), kind: MetalEnemy.kind, typeIndex: this.typeIndex };
   }
 }

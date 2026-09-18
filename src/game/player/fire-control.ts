@@ -73,7 +73,7 @@ export class FireControl {
 
   public get left(): boolean { return this.weapon.left; }
 
-  // 弾薬・砲身の状態をスナップショットへ落とす。
+  // 弾薬・砲身の状態を直列化した形へ落とす。
   public serialize(): SerializedFireControl {
     return this.weapon.serialize();
   }
