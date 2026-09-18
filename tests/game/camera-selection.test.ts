@@ -2,18 +2,19 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { bodyAnchorSource } from '../../src/physics/attractor';
-import { qFromAxisAngle } from '../../src/math/quat';
+import { LOCAL_FORWARD, qFromAxisAngle, qFromBasis, qMul, qRotate } from '../../src/math/quat';
 import { len, sub, v3 } from '../../src/math/vec3';
 import { CommandQueue } from '../../src/game/command-queue';
 import { cameraCommands } from '../../src/game/viewer/camera-commands';
-import { CameraSelection } from '../../src/game/viewer/camera-selection';
-import type { CameraFrameSample } from '../../src/game/viewer/focus-camera-selection';
-import type { CameraSaveData, FocusCameraSaveData } from '../../src/game/save/save-data';
+import { CameraSelection, type SerializedCameraSelection } from '../../src/game/viewer/camera-selection';
+import type {
+  CameraFrameSample, SerializedFocusCameraSelection,
+} from '../../src/game/viewer/focus-camera-selection';
 import { solarSystemParts } from '../physics/test-helpers';
 
-function savedCamera(
-  overrides: Partial<FocusCameraSaveData> = {},
-): FocusCameraSaveData {
+function serializedCamera(
+  overrides: Partial<SerializedFocusCameraSelection> = {},
+): SerializedFocusCameraSelection {
   return {
     offset: { x: 1.2e7, y: 2.3e7, z: -3.4e7 },
     pan: { x: 1234, y: -5678, z: 9012 },
@@ -25,12 +26,14 @@ function savedCamera(
     referencePlane: 'moonOrbit',
     projectionMode: 'orthographic',
     orthographicHalfHeight: 8.9e6,
+    staleFollowFrames: 0,
+    focusReplaced: false,
     ...overrides,
   };
 }
 
-function selection(saved?: CameraSaveData): CameraSelection {
-  return new CameraSelection(solarSystemParts().system, { record: () => {} }, saved);
+function selection(serialized: SerializedCameraSelection): CameraSelection {
+  return CameraSelection.deserialize(serialized, solarSystemParts().system, { record: () => {} });
 }
 
 function sample(lostFocus: CameraFrameSample['lostFocus'] = null): CameraFrameSample {
@@ -45,23 +48,22 @@ function sample(lostFocus: CameraFrameSample['lostFocus'] = null): CameraFrameSa
 
 export function register(): void {
   test('camera-selection: 復元したマップの pan・追従・既存保存項目を変えずに書き戻す', () => {
-    const overview = savedCamera({ rotatingWith: { kind: 'revolution', id: 'moon' } });
-    const saved: CameraSaveData = { view: 'map', chase: savedCamera(), overview };
-    const camera = selection(saved);
-    const restored = camera.serialize('map');
+    const map = serializedCamera({ rotatingWith: { kind: 'revolution', id: 'moon' } });
+    const camera = selection({ combat: serializedCamera(), map });
+    const restored = camera.map.serialize();
 
-    assert.deepEqual(restored.overview.pan, overview.pan);
-    assert.deepEqual(restored.overview.rotatingWith, overview.rotatingWith);
-    assert.deepEqual(restored.overview.focus, overview.focus);
-    assert.equal(restored.overview.rotationMode, overview.rotationMode);
-    assert.equal(restored.overview.fovDeg, overview.fovDeg);
-    assert.equal(restored.overview.referencePlane, overview.referencePlane);
-    assert.equal(restored.overview.projectionMode, overview.projectionMode);
-    assert.equal(restored.overview.orthographicHalfHeight, overview.orthographicHalfHeight);
+    assert.deepEqual(restored.pan, map.pan);
+    assert.deepEqual(restored.rotatingWith, map.rotatingWith);
+    assert.deepEqual(restored.focus, map.focus);
+    assert.equal(restored.rotationMode, map.rotationMode);
+    assert.equal(restored.fovDeg, map.fovDeg);
+    assert.equal(restored.referencePlane, map.referencePlane);
+    assert.equal(restored.projectionMode, map.projectionMode);
+    assert.equal(restored.orthographicHalfHeight, map.orthographicHalfHeight);
   });
 
   test('camera-selection: DOM相当の注視命令は列を適用するまで pan と注視を変えない', () => {
-    const camera = selection({ view: 'map', chase: savedCamera(), overview: savedCamera() });
+    const camera = selection({ combat: serializedCamera(), map: serializedCamera() });
     const queue = new CommandQueue();
     const commands = cameraCommands(queue, camera);
     const beforeFocus = camera.map.focus;
@@ -76,31 +78,28 @@ export function register(): void {
     assert.deepEqual(camera.map.pan, { x: 0, y: 0, z: 0 });
   });
 
-  test('camera-selection: 注視喪失は同じ内容の別値ではなく FocusTarget の同一性で判定する', () => {
-    const camera = selection({ view: 'map', chase: savedCamera(), overview: savedCamera() });
-    const focus = camera.map.focus;
-    assert.equal(focus.kind, 'object');
+  test('camera-selection: マップの注視を見失うと原点天体へ戻る', () => {
+    const camera = selection({ combat: serializedCamera(), map: serializedCamera() });
 
-    camera.map.followProgress(sample({ kind: 'object', id: focus.kind === 'object' ? focus.id : '' }));
-    assert.equal(camera.map.focus, focus);
-
-    camera.map.followProgress(sample(focus));
-    assert.notEqual(camera.map.focus, focus);
+    camera.map.followProgress(sample(camera.map.focus));
     assert.deepEqual(camera.map.focus, { kind: 'object', id: 'earth' });
   });
 
-  test('camera-selection: ロード後に姿勢基準を受け取っても保存された絶対の向きは跳ばない', () => {
-    const chase = savedCamera({
+  test('camera-selection: ロード後に姿勢基準を受け取っても、保存された対象姿勢からの相対の向きは変わらない', () => {
+    const combat = serializedCamera({
       rotatingWith: { kind: 'attitude' },
       projectionMode: 'perspective',
     });
-    const camera = selection({ view: 'combat', chase, overview: savedCamera() });
+    const camera = selection({ combat, map: serializedCamera() });
     const before = camera.combat.serialize();
-    camera.combat.followProgress({
-      ...sample(),
-      attitude: qFromAxisAngle(v3(0, 1, 0), 1.1),
-    });
+    const attitude = qFromAxisAngle(v3(0, 1, 0), 1.1);
+    camera.combat.followProgress({ ...sample(), attitude });
     const after = camera.combat.serialize();
+
+    // 実効の向きは、対象の姿勢に保存した相対の向きを合成したもの。
+    const relative = qFromBasis(v3(combat.offset.x, combat.offset.y, combat.offset.z), v3(0, 1, 0));
+    const expectedForward = qRotate(qMul(attitude, relative), LOCAL_FORWARD);
+    assert.ok(len(sub(qRotate(camera.combat.rotation, LOCAL_FORWARD), expectedForward)) < 1e-9);
 
     const offsetError = len(sub(
       v3(after.offset.x, after.offset.y, after.offset.z),
