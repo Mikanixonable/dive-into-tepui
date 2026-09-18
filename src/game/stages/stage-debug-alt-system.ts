@@ -140,7 +140,7 @@ export class StageDebugAltSystem extends Stage {
     this.logistics.updateLogistics(simTime, player, simSpeed);
   }
 
-  // 検証を継続できるよう、勝敗を発生させない(クリア回数にも入らない)。
+  // 検証を継続できるよう、勝敗を発生させない。
   protected checkWin(): boolean {
     return false;
   }

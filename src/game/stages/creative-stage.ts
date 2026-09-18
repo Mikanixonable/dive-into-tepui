@@ -65,7 +65,7 @@ export class CreativeStage extends Stage {
   private constructor(
     deps: StageDeps,
     waveAttack?: WaveAttack,
-    // 敵の波状攻撃を発生させるかどうか(既定 OFF)。
+    // 敵の波状攻撃を発生させるかどうか。
     private waveAttackEnabled = false,
     manualSpawn?: ManualSpawn,
     objectPlacement?: ObjectPlacement,
@@ -204,6 +204,7 @@ export class CreativeStage extends Stage {
   public placeObject(name: string, entityKind: DynamicEntityKind, state: KinematicState): void {
     if (entityKind === 'player'
       && this._dynamicSystem.all().filter(isPlayer).length >= MAX_PLACED_SHIPS) return;
+    // 自機は配置の指定から艦として置き、それ以外は作った実体をそのまま顔ぶれへ入れる。
     const placed = this.objectPlacement.createObject(name, entityKind, state);
     if (placed.kind === 'player') {
       const ship = this.addPlayer(placed.placement);
@@ -236,6 +237,7 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.element.classList.remove('hidden');
   }
 
+  // 直近の sync が組んだ、配置プレビューのマーカーの宣言。
   public override get markerDeclarations(): readonly MarkerDeclaration[] {
     return this.objectPlacement.markerDeclarations;
   }
@@ -288,7 +290,7 @@ export class CreativeStage extends Stage {
     return false;
   }
 
-  // 艦の喪失を、決着させずに知らせるだけで済ませる。
+  // 艦の喪失を出来事として記録する。
   public recordPlayerLost(reason: string): void {
     this._dynamicSystem.events.record({ kind: 'shipLost', reason });
   }

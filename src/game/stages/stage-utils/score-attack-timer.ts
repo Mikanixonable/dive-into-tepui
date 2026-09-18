@@ -1,3 +1,4 @@
+// 残り時間 [s]。
 export type SerializedScoreAttackTimer = number;
 
 // スコアアタックの残り時間を管理する。

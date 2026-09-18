@@ -11,12 +11,12 @@ import { addScaled, cross, norm, scale, type Vec3 } from '../../math/vec3';
 export type CameraRotationMode = 'quaternion' | 'euler';
 
 // 画面ドラッグと回転キーを、いまの向き rotation へ積む。すべて [rad] で受け、感度の換算は
-// 呼び出し側が済ませておく。ヨー/ピッチは固定のワールド軸ではなく現在の上軸/右軸まわりに
-// 回すので、ロールで上方向が傾いても画面上の動きと入力方向が一致し続ける。
+// 呼び出し側が済ませておく。
 function rotateByScreenDrag(
   rotation: Quat, dragRight: number, dragUp: number, roll: number, keyYaw: number, keyPitch: number,
 ): Quat {
   let q = rotation;
+  // ヨー/ピッチは現在の上軸/右軸まわりに回す — ロールで上方向が傾いても画面上の動きと入力方向が揃う。
   if (keyYaw !== 0) q = qNormalize(qMul(qFromAxisAngle(qRotate(q, LOCAL_UP), -keyYaw), q));
   if (keyPitch !== 0) {
     const right = norm(cross(norm(qRotate(q, LOCAL_FORWARD)), qRotate(q, LOCAL_UP)));
@@ -52,7 +52,7 @@ export class CameraOrientation {
 
   public get followingAttitude(): boolean { return this.following; }
 
-  // 入力をオイラー角として積むか。姿勢追従中は生の相対回転へ積み、実効回転で姿勢を合成する。
+  // 入力をオイラー角として積むか。
   public get usesEuler(): boolean { return this.mode === 'euler'; }
 
   // 姿勢追従を掛けた、描画・入力に使う実効回転。

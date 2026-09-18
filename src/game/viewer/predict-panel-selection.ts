@@ -100,8 +100,8 @@ export class PredictPanelSelection implements PredictPanelSource {
     return selection;
   }
 
-  // 直列化した選択から復元する。座標系の中心が撃墜・破壊された対象を指していれば、航法ターゲットと
-  // 同じく既定の座標系から始める。roster は復元を終えた顔ぶれ。
+  // 直列化した選択から復元する。座標系の中心が撃墜・破壊された対象を指していれば、既定の座標系から
+  // 始める。roster は復元を終えた顔ぶれ。
   public static deserialize(
     serialized: SerializedPredictPanelSelection,
     frames: Pick<ReferenceFrames, 'inertialFrame' | 'frameOf'>,

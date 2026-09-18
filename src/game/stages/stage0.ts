@@ -89,6 +89,7 @@ export class Stage0 extends Stage {
     }
   }
 
+  // 撃破数では決着させず、制限時間切れを決着とする。
   protected checkWin(): boolean { return false; }
   protected onWin(): void { }
 

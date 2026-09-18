@@ -75,6 +75,7 @@ export class Stage00 extends Stage {
     );
   }
 
+  // 撃破数では決着させず、自機の喪失まで続ける。
   protected checkWin(): boolean { return false; }
   protected onWin(): void { }
 

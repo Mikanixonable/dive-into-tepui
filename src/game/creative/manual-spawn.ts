@@ -84,7 +84,7 @@ export class ManualSpawn {
     const color = Number(colorValue);
     const state = this.frontOf(player);
     const name = this.enemyNameAllocator.next();
-    // 形ごとに生成器が違い、タンパク質はアセットが揃うのを待ってから出す。
+    // 形ごとに生成器が違う。タンパク質はアセットの取得を待つので、要求で返す。
     const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
     if (shapeDefinition === undefined) return null;
     if (shapeDefinition.kind === 'protein') {
