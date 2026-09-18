@@ -40,12 +40,13 @@ export class Viewer {
   ) {
     this.navTarget = new NavTargetSelection(saved?.navTarget, roster, events);
     this.orbitGuide = new OrbitGuideSelection(saved?.orbitGuide);
-    this.predictPanel = new PredictPanelSelection(celestialBodies.frames, celestialBodies);
     this.view = new ViewSelection(saved?.camera?.view, control, events);
     this.camera = new CameraSelection(celestialBodies, events, saved?.camera);
+    // 予測パネルの初期基準は、復元したマップ注視の登録天体から始まる。
+    this.predictPanel = new PredictPanelSelection(
+      celestialBodies.frames, celestialBodies, focusTargetId(this.camera.map.focus),
+    );
     this.entityDisplay = new EntityDisplaySelection(saved?.entities);
-    // 復元したマップ注視の登録天体を、予測パネルの初期基準へ反映する。
-    this.predictPanel.followCameraFocus(focusTargetId(this.camera.map.focus));
   }
 
   // セーブのうち視点の分。

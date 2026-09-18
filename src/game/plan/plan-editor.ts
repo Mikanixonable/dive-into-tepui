@@ -98,7 +98,7 @@ export class PlanEditor {
     scene: THREE.Scene,
     private readonly controlSelection: ControlSelection,
     private readonly displayDuration: DisplayDurationSource,
-    private readonly focusSink: Pick<FocusCameraCommands, 'setFocus'>,
+    private readonly mapFocusCommands: Pick<FocusCameraCommands, 'setFocus'>,
     private readonly path: PlanPath,
     private readonly planCommands: PlanCommands,
   ) {
@@ -163,7 +163,7 @@ export class PlanEditor {
       const n = this.plan?.nodes[idx];
       if (!n) return;
       const frames = this.celestialBodies.frames;
-      this.focusSink.setFocus(focusPoint(frames, frames.inertialFrame, n.r, n.t, bodyAnchorSource([], n.t)));
+      this.mapFocusCommands.setFocus(focusPoint(frames, frames.inertialFrame, n.r, n.t, bodyAnchorSource([], n.t)));
     };
   }
 

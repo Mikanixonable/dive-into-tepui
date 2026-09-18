@@ -34,7 +34,7 @@ import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ViewFrame } from './view-frame';
 import type { PerfCounts } from '../perf-counts';
 import type { Vec3 } from '../../math/vec3';
-import type { FocusCameraSource } from '../viewer/focus-camera-selection';
+import type { MapCameraSource } from '../viewer/camera-selection';
 
 interface CameraPositionSource {
   readonly activeCameraPos: Vec3;
@@ -50,7 +50,7 @@ export class MapView implements ViewFrame {
   public constructor(
     private readonly input: Input,
     private readonly cameraPresentation: CameraPositionSource,
-    private readonly camera: { readonly map: Pick<FocusCameraSource, 'focus' | 'distance'> },
+    private readonly camera: MapCameraSource,
     private readonly objectWindows: ObjectWindows,
     roster: EntityRoster,
     equatorNodes: EquatorNodeManager,

@@ -70,6 +70,11 @@ export function screenProjection(view: Viewpoint, width: number, height: number)
 // depth の下限。視点上・視点の背後の点で 0 や負の尺度を返さないための床。
 export const MIN_DEPTH = 1e-6;
 
+// 垂直画角 fovDeg の半分の tan。画角と、注視距離・正射影の半高さ・1px の実距離との換算はこれを通る。
+export function tanHalfFov(fovDeg: number): number {
+  return Math.tan((fovDeg * Math.PI) / 360);
+}
+
 // metersPerPixelAtDepth の、垂直画角を半分の tan で受け取る版。
 export function metersPerPixelFromTanHalfFov(tanHalfFov: number, depth: number, viewportHeight: number): number {
   return (2 * Math.max(MIN_DEPTH, depth) * tanHalfFov) / viewportHeight;
@@ -78,7 +83,7 @@ export function metersPerPixelFromTanHalfFov(tanHalfFov: number, depth: number, 
 // 垂直画角 fovDeg のピンホールカメラで、視点から視線方向に depth 離れた点における
 // 画面1ピクセル相当の実距離 [m]。depth は MIN_DEPTH で床打ちする。
 export function metersPerPixelAtDepth(fovDeg: number, depth: number, viewportHeight: number): number {
-  return metersPerPixelFromTanHalfFov(Math.tan((fovDeg * Math.PI) / 360), depth, viewportHeight);
+  return metersPerPixelFromTanHalfFov(tanHalfFov(fovDeg), depth, viewportHeight);
 }
 
 // 世界空間の長さ [m] が、その位置の metersPerPixel の下で画面上何 px になるか。
