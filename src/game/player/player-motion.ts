@@ -13,7 +13,7 @@ import {
   SHIP_RADIATING_AREA_PER_MASS,
   SHIP_SRP_COEFF,
   shipMotionOptions,
-} from '../dynamic/dynamic-entity/ship';
+} from '../dynamic/dynamic-entity/vessel';
 import {
   PLAYER_INERTIA_PITCH,
   PLAYER_INERTIA_ROLL,

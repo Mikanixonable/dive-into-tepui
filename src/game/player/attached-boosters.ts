@@ -111,13 +111,10 @@ export class AttachedBoosters {
     this.registry.add(DetachedBooster.create(
       detachedStage,
       kinematicState<'eci'>(t, boosterR, separated.booster),
-      {
-        // 爆砕ボルトは中心軸上でトルクを与えない。姿勢モデルの inertia は操縦応答用の
-        // 相対値で kg·m² ではないため、分離時は角速度をそのまま引き継ぐ。
-        q: player.att.q,
-        w: player.att.w,
-        inertia: v3(1, 1, 0.4),
-      },
+      // 爆砕ボルトは中心軸上でトルクを与えない。姿勢モデルの inertia は操縦応答用の
+      // 相対値で kg·m² ではないため、分離時は角速度をそのまま引き継ぐ。
+      player.att.q,
+      player.att.w,
       t + COLLISION_GRACE,
       this.scene,
       this.registry.idAllocators,
