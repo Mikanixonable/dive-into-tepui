@@ -114,7 +114,9 @@ export class Game {
       initialSave?.stage, hud, scene.scene, this.dynamicSystem,
       celestialSystem, this.controlSelection, this.commands,
     );
-    this.viewer = new Viewer(initialSave, this.dynamicSystem, this.controlSelection, this.events, celestialSystem);
+    this.viewer = initialSave === undefined
+      ? Viewer.create(this.controlSelection, this.events, celestialSystem)
+      : Viewer.deserialize(initialSave, this.dynamicSystem, this.controlSelection, this.events, celestialSystem);
     // 進行の末尾で通す、予測と計画の規則。
     this.planNodeRules = new PlanNodeRules(this.events);
     this.predictor = new Predictor(this.dynamicSystem, celestialSystem);

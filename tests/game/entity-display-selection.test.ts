@@ -38,7 +38,7 @@ export function register(): void {
     const base: SerializedBase = {
       id: 'base-0', kind: 'base', r: ZERO, v: ZERO, q: IDENTITY, w: ZERO, money: 0, showTrajectoryLine: true,
     };
-    const selection = new EntityDisplaySelection([
+    const selection = EntityDisplaySelection.deserialize([
       metalEnemy('entity-0', true), metalEnemy('entity-1', false), metalEnemy('entity-2'), ammo, base,
     ]);
 
@@ -48,31 +48,33 @@ export function register(): void {
     assert.equal(selection.showsTrajectoryLine('entity-2'), false);
     assert.equal(selection.showsTrajectoryLine('ammo-0'), false);
     assert.equal(selection.showsTrajectoryLine('entity-9'), false);
-    assert.equal(new EntityDisplaySelection(undefined).showsTrajectoryLine('entity-0'), false);
+    assert.equal(new EntityDisplaySelection().showsTrajectoryLine('entity-0'), false);
   });
 
   test('entity-display-selection: タンパク質の表示は最初のタンパク質の敵の記録から戻す', () => {
     const silhouette: ProteinDisplaySettings = { representation: 'silhouette', colorMode: 'hydrophobicity' };
     const molecular: ProteinDisplaySettings = { representation: 'molecular', colorMode: 'element' };
-    const selection = new EntityDisplaySelection([
+    const selection = EntityDisplaySelection.deserialize([
       metalEnemy('entity-0'), proteinEnemy('entity-1', silhouette), proteinEnemy('entity-2', molecular),
     ]);
 
     assert.deepEqual(selection.proteinDisplay, silhouette);
   });
 
-  test('entity-display-selection: 不正な表示や保存が無いときは既定の表示から始める', () => {
+  test('entity-display-selection: 不正な表示や新しいゲームでは既定の表示から始める', () => {
     const invalid = { representation: 'molecular', colorMode: 'chain' };
 
     assert.deepEqual(
-      new EntityDisplaySelection([proteinEnemy('entity-0', invalid)]).proteinDisplay, DEFAULT_PROTEIN_DISPLAY,
+      EntityDisplaySelection.deserialize([proteinEnemy('entity-0', invalid)]).proteinDisplay, DEFAULT_PROTEIN_DISPLAY,
     );
-    assert.deepEqual(new EntityDisplaySelection([metalEnemy('entity-0')]).proteinDisplay, DEFAULT_PROTEIN_DISPLAY);
-    assert.deepEqual(new EntityDisplaySelection(undefined).proteinDisplay, DEFAULT_PROTEIN_DISPLAY);
+    assert.deepEqual(
+      EntityDisplaySelection.deserialize([metalEnemy('entity-0')]).proteinDisplay, DEFAULT_PROTEIN_DISPLAY,
+    );
+    assert.deepEqual(new EntityDisplaySelection().proteinDisplay, DEFAULT_PROTEIN_DISPLAY);
   });
 
   test('entity-display-selection: toggleTrajectoryLine は出す・消すを往復する', () => {
-    const selection = new EntityDisplaySelection([metalEnemy('entity-0', true)]);
+    const selection = EntityDisplaySelection.deserialize([metalEnemy('entity-0', true)]);
 
     selection.toggleTrajectoryLine('entity-1');
     assert.equal(selection.showsTrajectoryLine('entity-1'), true);

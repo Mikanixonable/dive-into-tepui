@@ -105,7 +105,7 @@ export class CameraOrientation {
   }
 
   // 追従の選択だけを差し替える。向きは読み替えず、追従中に追従へ戻す場合だけ基準の姿勢を持ち越す。
-  public restoreFollow(following: boolean): void {
+  public resetFollow(following: boolean): void {
     this.attitude = following && this.following ? this.attitude : null;
     this.following = following;
   }

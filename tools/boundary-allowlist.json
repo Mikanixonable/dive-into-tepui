@@ -16,12 +16,6 @@
     ],
     "src/game/player/booster-stack.ts": [
       "importData("
-    ],
-    "src/game/viewer/camera-orientation.ts": [
-      "restoreFollow("
-    ],
-    "src/game/viewer/focus-camera-selection.ts": [
-      "restoreFollow("
     ]
   },
   "直列化された形をコンストラクタで受ける禁止": {
@@ -111,24 +105,6 @@
       "saved"
     ],
     "src/game/stages/stage2.ts": [
-      "saved"
-    ],
-    "src/game/viewer/camera-selection.ts": [
-      "saved"
-    ],
-    "src/game/viewer/entity-display-selection.ts": [
-      "saved"
-    ],
-    "src/game/viewer/focus-camera-selection.ts": [
-      "saved"
-    ],
-    "src/game/viewer/nav-target-selection.ts": [
-      "saved"
-    ],
-    "src/game/viewer/orbit-guide-selection.ts": [
-      "saved"
-    ],
-    "src/game/viewer/viewer.ts": [
       "saved"
     ]
   }

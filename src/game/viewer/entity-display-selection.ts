@@ -13,25 +13,23 @@ export interface EntityDisplaySource {
   readonly proteinDisplay: ProteinDisplaySettings;
 }
 
-// saved のうち最初のタンパク質の敵が持つ表示設定。その敵がいないか、値が不正なら既定。
-function savedProteinDisplay(saved: readonly SerializedDynamicEntity[]): ProteinDisplaySettings {
-  const protein = saved.find((data): data is SerializedProteinEnemy => data.kind === 'protein-enemy');
-  return isProteinDisplaySettings(protein?.display) ? protein.display : DEFAULT_PROTEIN_DISPLAY;
-}
-
 export class EntityDisplaySelection implements EntityDisplaySource {
-  // 予測線・過去線を出す実体の id。アセット待ちで顔ぶれにまだいない個体の id も持つ。
-  private readonly trajectoryLineIds: Set<string>;
-  private _proteinDisplay: ProteinDisplaySettings;
+  public constructor(
+    // 予測線・過去線を出す実体の id。アセット待ちで顔ぶれにまだいない個体の id も持つ。
+    private readonly trajectoryLineIds: Set<string> = new Set(),
+    private _proteinDisplay: ProteinDisplaySettings = DEFAULT_PROTEIN_DISPLAY,
+  ) {}
 
-  // 保存された実体の記録 saved から、線を出す実体とタンパク質の表示設定を戻して始める。
-  // saved が無ければ既定から始める。
-  public constructor(saved: readonly SerializedDynamicEntity[] | undefined) {
-    const entities = saved ?? [];
-    this.trajectoryLineIds = new Set(entities
-      .filter((data) => 'showTrajectoryLine' in data && data.showTrajectoryLine === true)
-      .map((data) => data.id));
-    this._proteinDisplay = savedProteinDisplay(entities);
+  // 直列化した実体の記録 entities から、線を出す実体とタンパク質の表示設定を戻す。タンパク質の
+  // 表示は最初のタンパク質の敵の記録から採り、その敵がいないか値が不正なら既定から始める。
+  public static deserialize(entities: readonly SerializedDynamicEntity[]): EntityDisplaySelection {
+    const protein = entities.find((data): data is SerializedProteinEnemy => data.kind === 'protein-enemy');
+    return new EntityDisplaySelection(
+      new Set(entities
+        .filter((data) => 'showTrajectoryLine' in data && data.showTrajectoryLine === true)
+        .map((data) => data.id)),
+      isProteinDisplaySettings(protein?.display) ? protein.display : undefined,
+    );
   }
 
   public showsTrajectoryLine(id: string): boolean { return this.trajectoryLineIds.has(id); }
