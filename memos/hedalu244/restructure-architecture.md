@@ -658,87 +658,18 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 - **dep-metrics**: ctx2 の平均は 2368 → 2353 で、5-2 で増えた分は戻った。
 - **実行時の確認**: `npm run build` のあとの `npm run smoke:browser`(stage 00)は最後まで通る。creative の smoke は起動の 60 フレームで時間切れになることが多く(分割前は4回とも)、「mk-earth の右クリックでプロパティ窓が開く」の段は分割の前後とも必ず落ちる。退行ではなく、smoke が 2026-08-22(f28d533a)に消えたクラス `.prop-window` を待っていたため。`.property-window` へ直すと、分割の前後とも creative の smoke は最後まで通った(起動待ちを延ばして各3回)。セレクタは段 5 の中で直す。**`npm run smoke:browser` はビルドしない(`docs/` を配信する)ので、先に `npm run build` を走らせる。**
 
-#### 手順 5-4. 復元を `deserialize` へ揃える
+#### 手順 5-4 — 済(群 a〜g: `5d1835e7`・`bf1dcb17`・`048997da`・`3ca961a3`・`962fecd5`・`32c62861`・`abb89bff`)
 
-**目的**: R12 の構築の項と R13 をコードに当てる。やることは次の3つ。
+**手順は実施したので落とした。** 後の手順が前提にしてよい結果だけを残す。
 
-- コンストラクタから保存値と、新規か復元かの分岐を外す。復元は静的な `deserialize` に、多態の復元はタグ辞書の静的側に揃える。
-- 二段初期化(`restore*`、`importData`、`begin()`/`init()` の分岐、`replaceParts` の上書き)をなくす。
-- 同じ協力者を受ける経路を1つにする。
-
-**挙動は変えない**(復元したデバッグステージの操作パネルだけ直す)。
-
-**進め方**: 下の群 a〜g を1つずつ commit する。子から親へ進め、群 f で全体の復元経路を繋ぐ。各群で、その群の型を組んでいたテストを書き直す。
-
-**新しい形**
-
-```ts
-// 葉の所有者の形(例: Throttle)。記録に無い項目は undefined のまま渡り、既定引数(= 新規の初期値)で補われる。
-class Throttle {
-  public constructor(latchedThrust = /* 新規の初期値 */, rotationHoldTime = 0);
-  public serialize(): SerializedThrottle;
-  public static deserialize(serialized: SerializedThrottle): Throttle;
-}
-
-// 実体のタグ辞書の静的側(1.6)。全具象で揃える。新しく作る引数は具象の create が持ち、辞書を通さない。
-interface DynamicEntityClass {
-  readonly kind: SerializedDynamicEntity['kind'];
-  spawnGate(serialized: SerializedDynamicEntity): SpawnGate | null;
-  deserialize(
-    serialized: SerializedDynamicEntity, restoreTime: number,
-    events: RunEventSink, idAllocators: EntityIdAllocators,
-    scene: THREE.Scene, // 暫定(6-3 で外す)
-  ): DynamicEntity;
-}
-
-// ステージの静的側。いまの静的な項目(id・stageRules・createCelestialSystem・epoch・選択画面の項目・isUnlocked)はそのまま。
-interface StageClass {
-  create(...deps: StageDeps): Stage;
-  deserialize(serialized: SerializedStage, ...deps: StageDeps): Stage;
-}
-
-class Viewer {
-  public static create(roster: EntityRoster, control: ControlSelection, events: RunEventLog, celestialBodies: CelestialBodies): Viewer;
-  public static deserialize(serialized: SerializedViewer, roster: EntityRoster, control: ControlSelection,
-    events: RunEventLog, celestialBodies: CelestialBodies): Viewer;
-}
-
-class Game {
-  public static async create(stageClass: StageClass, startEpoch: TdbJulianDate | undefined,
-    scene: GameScene, hud: HudLayers, sections: FrameSections, progress: LoadingProgress): Promise<Game>;
-  public static async deserialize(serialized: SerializedGame, stageClass: StageClass,
-    scene: GameScene, hud: HudLayers, sections: FrameSections, progress: LoadingProgress): Promise<Game>;
-}
-
-class Run {
-  public static async create(stageClass: StageClass, startEpoch: TdbJulianDate | undefined, /* 以下 5-3 と同じ */): Promise<Run>;
-  public static async resume(serialized: SerializedGame, stageClass: StageClass, /* 以下 5-3 と同じ */): Promise<Run>;
-}
-```
-
-構築の順序(`DynamicSystem` → `ControlSelection` → `Stage` → `Viewer`)は、`Game.create`・`Game.deserialize` の中でも崩さない。`Game.deserialize` の元期は `serialized.ephemerisContext` から取る(いまの `game.ts:221-222` の優先順を、`create` は開始日時 → ステージの宣言、`deserialize` は保存値だけに分ける)。
-
-**変更が必要な箇所**
-
-| 群 | 対象 | 要点 |
-| --- | --- | --- |
-| a | 値の型の補助と部品 | `deserializeKinematicState`・`deserializeAttitude`・`deserializePart`(項目ごとの検証と既定への落とし方はいまのまま)・`deserializeOrbitGuideSettings` |
-| b | 視点 | `Viewer`、`NavTargetSelection`、`ViewSelection`、`CameraSelection`、`FocusCameraSelection`(`if (saved !== undefined)` の分岐 `:171-198` を `deserialize` へ)、`CameraOrientation`、`EntityDisplaySelection`、`OrbitGuideSelection`、`PredictPanelSelection`、`OrbitReferenceSelection`。`CameraOrientation.restoreFollow` は復元ではなく視点のリセットなので、`resetFollow` へ改名する。「読み込み直後は絶対値で持ち、最初に姿勢が引けたフレームで相対値へ読み替える」(`camera-orientation.ts:38-39,115-120`)は、復元の時点で姿勢が引けないための遅延で、外から流し込む二段初期化ではないので残す |
-| c | ステージ | `StageClass` の静的側を `create`・`deserialize` にする。`Stage.restored`・`begin()`・`init()` の分岐(`stage.ts:162-196`)を消し、新規の初期配置は `create` へ移す。具象が `saved as Stage0SaveData` のように下向きにキャストしている所(`stage0.ts:34`・`stage00.ts:24`・`creative-stage.ts:55`)は、具象の `deserialize(serialized: SerializedStage0, …)` にする。`ScoreCounter`・`Logistics`・`WaveAttack`(Stage00 の平坦な保存値と Creative の入れ子の両方を `deserialize` が読む)・`ScoreAttackTimer` も揃える。**`StageDebug` のトグルとボタン(`stage-debug.ts:40-57`)を、新規と復元の両方で作る**(直す挙動。ステージの表示へ移すのは 6-5) |
-| d | 自機 | `Player`・`PlayerMotion`・`AttachedBoosterMotion`・`BoosterStack`・`Throttle`・`PowerSystem`・`RadiatorSystem`・`FireControl`・`WeaponState`・`Plan`・部品。個別の要点は次のとおり。<br>- `AttachedBoosterMotion`: 親の質量と慣性を構築途中に書き戻す形(`attached-booster-motion.ts:28`)をやめ、親が子を作った後に自分で組む。<br>- `BoosterStack`: `exportData`/`importData` を `serialize`/`deserialize` にする。<br>- `RadiatorSystem`: `DeployablePanelState` を構築後に書く形(`radiator.ts:96-104`)をやめる。<br>- `Plan`: `Player.serializePlan` と `addNode` の繰り返し(`player.ts:188-202`)を、`Plan.serialize`/`deserialize` にする。<br>- 部品: 既定の部品で組んでから `replaceParts` する形(`player.ts:180-186`)をやめ、復元した部品で組む。<br>- `planExecution`: 欠けたときの `'off'`(`player.ts:178`)は、新規の初期値 `'instant'` と違うので、`deserialize` に明示して残す |
-| e | 敵 | `Enemy`・`PartBasedEnemy`・`MetalEnemy`・`ProteinEnemy`・`ProteinCombatState`・`EnemyFireController`。<br>- 引数の和 `EnemyPlacement \| EnemyRestore` をやめ、`create(placement, …)` と `deserialize(serialized, restoreTime, …)` に分ける。<br>- `MetalEnemy`: 総 HP を按分し直す `setOverallHp`(`metal-enemy.ts:62`)は、按分した部品を `deserialize` が作って渡す形にする。<br>- `EnemyFireController`: `saveState`/`restore` を `serialize`/`deserialize` にする。<br>- `serializeEnemyFields` は、基底の `serialize` の一部にする |
-| f | そのほかの実体と全体の経路 | `Base`・`Pickup`・`DetachedBooster`・`DynamicSystem`・`entity-dictionary.ts`・`enemy-dictionary.ts`・`ControlSelection`・`Game`・`Run`・`launcher.ts` の `startRun`。<br>- `DynamicSystem`: `restoreFromSave` を `deserialize` にする。`initialSimTime` を `serialized.simTime` と別に受ける二重もやめる。<br>- `entity-dictionary.ts`: `restorationFor` の `switch` を、全具象の `DynamicEntityClass` を引く辞書にする。知らない種別を読み飛ばす `skipUnknownKind` は残す。<br>- `enemy-dictionary.ts`: 実体の辞書へ畳む。<br>- `launcher.ts` の `startRun`: 新規か再開かをここで選び、`Run.create` と `Run.resume` を呼び分ける。<br>- 視点の値(軌道線のトグル・タンパク質の表示)を実体の `serialize` へ渡すのをやめ、`Game.serialize` が記録へ合成する(R12)。<br>- モデル層に残る `save`/`restore` の名前を直す(`EntityIdAllocator.next(restoredId?)` の引数名、`isRestorable` など) |
-| g | 協力者と後始末 | 同じ協力者の2経路を1つにする(`Player`・`FireControl`・`AttachedBoosters` の `events` と `registry`。R13)。呼び出し元の無い `PartInventory.serialize` を消す。`EntityRegistry` のコメントを実装(gate が無いか、その場で通れば加える)に合わせる |
-| — | テスト | 書き直す: `camera-selection`、`entity-display-selection`、`view-selection`、`predict-panel-selection`、`orbit-guide-settings`、`player-systems`(`Ship` の派生の組み方)、`protein-combat-state`、`stage-rules`(`Logistics` の組み方)。<br>4.1 で判定し直し、B なら消す: `camera-orientation:96-114`(`restoreFollow` の内部と旗)、`booster-stack:104-119`(段の型を readonly にして型で保証できるなら) |
-
-**達成条件と検証**
-
-- `npm run check:boundaries` で、5-1 の「復元の流し込みの禁止」と「直列化された形をコンストラクタで受ける禁止」が 0。許可リストに段 5 の分が残っていない。
-- `rg -n "saved\?\.|initialSave|restorationFor|serializeEnemyFields|serializePlan|exportData|importData" src/game src/run` が 0 件(`launcher/` の `initialSaveFor` はセーブの語彙なので残してよい)。
-- `rg -n "\bserialize\([^)]" src/game` が 0 件(`serialize` は引数を受けない。視点の値は `Viewer` と `Game` が合成する。`CameraSelection.serialize(view)` の `view` も `Viewer` が記録へ合成する)。
-- `npm run typecheck`、`npm run test:game`、`npm run test:physics`、`npm run test:render`。
-- 保存形式が変わっていない: 段 1 の前に書き出したセーブと、この手順の前に書き出したセーブを `npm run dev` で読み込み、すぐ書き出す。書き出した記録のキーと値が、元の記録と一致する(元の記録に無かった項目は除く)。
-- `npm run dev` で、各ステージを新規で始めて保存・読み込みし、次が戻ることを見る: 位置、操作対象、カメラ、ターゲット、軌道線の表示、タンパク質の表示、基地の所持金、スコア。creative とデバッグステージは、復元しても操作パネルが出る(直した挙動)。
+- **形**: モデル層の所有者はどれも「既定引数を含む private コンストラクタ(新規の初期値)」「`static create`(入力の要る新規)」「`static deserialize(serialized, …)`(復元)」で組む。`deserialize` は記録に無い項目を `undefined` のまま渡し、`null` を欠けと同じに扱うところは `?? undefined` に1行のコメントを付ける。持ち主を参照する部品(`FireControl`・`RadiatorSystem`・`EnemyFireController`)は `deserialize` を持たず、持ち主のコンストラクタが復元済みの値から作る(R13)。値の型の補助(`deserializeKinematicState`・`deserializeAttitude`・`deserializePart`・`deserializeOrbitGuideSettings`)は関数のまま。
+- **実体の辞書**: `entity-dictionary.ts` の `ENTITY_CLASSES`(Player・MetalEnemy・ProteinEnemy・AmmoPickup・RcsFuelPickup・DetachedBooster・Base)を `findEntityClass(kind)` で引く。`DynamicEntityClass.deserialize(serialized, simTime, registry, scene)` — 計画の `events, idAllocators` は、自機が registry を構築時に持つ形にしたので registry 1つにした(群 g)。`enemy-dictionary.ts` は畳んだ。知らない種別は `findEntityClass` が `null` を返して読み飛ばす。
+- **根**: `Game.create(stageClass, startEpoch, …)` / `Game.deserialize(serialized, stageClass, …)`、`Run.create` / `Run.resume`。`launcher.startRun` が呼び分ける。構築の順序は両方とも `DynamicSystem` → `SimSpeedManager` → `ControlSelection` → `Stage` → `Viewer`。ステージの初期配置は各ステージの `create` が行う。
+- **R12 の文面を1つ広げた**(`7a36ce80`): `deserialize` が `serialized` の後ろに受けてよいものへ「どの種類として組むかを呼び手が決める不変な定義(カメラの設定・種別ごとの慣性など)」を足した。
+- **残した名前**: `serializeEnemyFields`(基底 `Enemy` が `serialize()` を override すると `DynamicEntity.serialize` の閉じた和の戻り値に代入できないので、共通の項目を組む protected の補助として残す。引数なし)。
+- **挙動の差**(どれも壊れた記録か、直すと決めたもの): 復元したデバッグステージに操作パネルが出る。カメラの記録に `rotatingWith` が無い・記録に `stage` が無い・基地に `money` が無い記録は、例外や `undefined` でなく新規の初期値で読む。敵の `alive` が無い・`null` の記録は `false` として読む(ゲーム中の扱いは同じ)。保存形式は変えていない(群 f が変更前後の木をそれぞれコンパイルし、8ステージの記録の往復が一致することを確かめた。違いは JSON のキーの順序だけ)。
+- **消したもの**: `PartInventory.serialize`、`ProjectileEmitter`(registry を構築時に持つ火器の中で、呼ぶたびに registry から組んでいた)、`Ship.setOverallHp`・`PartDamageModel.setOverallHp`、`Stage.begin()`/`init()`/`restored`。
+- **実行時の確認はまだ**(`npm run dev` の目視)。段の終わり(5-7 の前)にまとめて見る。
 
 #### 手順 5-5. セーブの版を上げ、形式をモデル層へ揃える
 
