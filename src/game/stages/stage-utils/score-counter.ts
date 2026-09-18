@@ -1,4 +1,10 @@
-import type { ScoreCounterSaveData } from '../../save/save-data';
+export interface SerializedScoreCounter {
+  readonly shots: number;
+  readonly hits: number;
+  readonly kills: number;
+  readonly losses: number;
+  readonly totalEnemiesSpawned: number;
+}
 
 // 発射・命中・撃破・自然喪失の集計(純粋なカウンタ)。saved があればその値から始める。
 export class ScoreCounter {
@@ -9,7 +15,7 @@ export class ScoreCounter {
   public losses: number;
   public totalEnemiesSpawned: number;
 
-  public constructor(saved?: ScoreCounterSaveData) {
+  public constructor(saved?: SerializedScoreCounter) {
     this.shots = saved?.shots ?? 0;
     this.hits = saved?.hits ?? 0;
     this.kills = saved?.kills ?? 0;
@@ -23,7 +29,7 @@ export class ScoreCounter {
   public recordEnemyLoss(): void { this.losses++; }
   public recordSpawnEnemy(): void { this.totalEnemiesSpawned++; }
 
-  public serialize(): ScoreCounterSaveData {
+  public serialize(): SerializedScoreCounter {
     return {
       shots: this.shots,
       hits: this.hits,

@@ -1,7 +1,6 @@
 // 2台のカメラ視点を入力命令と表示用 Viewpoint へ結び、ガンサイトと画角遷移を重ねる。
 import type { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import type { Quat } from '../../math/quat';
 import type { Viewpoint } from '../../math/projection';
 import type { Vec3 } from '../../math/vec3';
 import { v3 } from '../../math/vec3';
@@ -9,6 +8,7 @@ import { bodyAnchorSource } from '../../physics/attractor';
 import type { FrameAnchorSource } from '../../physics/frame';
 import type { Viewport } from '../../render/viewport';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
+import type { AnchorEntities } from '../frame-anchors';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { HudLayers } from '../hud/hud-layers';
 import type { ViewMode } from '../view/view-mode';
@@ -60,7 +60,7 @@ export class CameraSystem {
     private readonly cameraSelection: CameraSelectionSource,
     private readonly commands: CameraCommands,
     private readonly viewSelection: Pick<ViewSelectionSource, 'current'>,
-    private readonly attitudeOf: (id: string, t: number) => Quat | null,
+    private readonly anchorEntities: Pick<AnchorEntities, 'attitudeOf'>,
     viewport: Viewport,
   ) {
     this.combatRig = new CameraRig(celestialBodies);
@@ -93,7 +93,7 @@ export class CameraSystem {
       const base = { displayTime, frameAnchors };
       return {
         ...base,
-        attitude: id === undefined ? null : this.attitudeOf(id, displayTime),
+        attitude: id === undefined ? null : this.anchorEntities.attitudeOf(id, displayTime),
         referenceUp: rig.referenceUp(base),
         lostFocus: rig.lostFocus,
       };

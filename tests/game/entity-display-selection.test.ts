@@ -3,15 +3,16 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { EntityDisplaySelection } from '../../src/game/viewer/entity-display-selection';
 import { DEFAULT_PROTEIN_DISPLAY, type ProteinDisplaySettings } from '../../src/render/protein/protein-display';
-import type {
-  AmmoPickupSaveData, BaseSaveData, MetalEnemySaveData, ProteinEnemySaveData,
-} from '../../src/game/save/save-data';
+import type { SerializedAmmoPickup } from '../../src/game/dynamic/dynamic-entity/pickup';
+import type { SerializedBase } from '../../src/game/dynamic/dynamic-entity/base';
+import type { SerializedMetalEnemy } from '../../src/game/dynamic/dynamic-entity/metal-enemy';
+import type { SerializedProteinEnemy } from '../../src/game/dynamic/dynamic-entity/protein-enemy';
 
 const ZERO = { x: 0, y: 0, z: 0 };
 const IDENTITY = { x: 0, y: 0, z: 0, w: 1 };
 
 // id の金属の敵の記録。showTrajectoryLine を省くと項目ごと持たない。
-function metalEnemy(id: string, showTrajectoryLine?: boolean): MetalEnemySaveData {
+function metalEnemy(id: string, showTrajectoryLine?: boolean): SerializedMetalEnemy {
   return {
     id, kind: 'metal-enemy', r: ZERO, v: ZERO, q: IDENTITY, w: ZERO,
     alive: true, health: 1, accent: 0, orbitLineColor: 0, typeIndex: null,
@@ -20,7 +21,7 @@ function metalEnemy(id: string, showTrajectoryLine?: boolean): MetalEnemySaveDat
 }
 
 // id のタンパク質の敵の記録。display は検証前の保存値として受ける。
-function proteinEnemy(id: string, display: unknown): ProteinEnemySaveData {
+function proteinEnemy(id: string, display: unknown): SerializedProteinEnemy {
   return {
     id, kind: 'protein-enemy', r: ZERO, v: ZERO, q: IDENTITY, w: ZERO,
     alive: true, health: 1, accent: 0, orbitLineColor: 0,
@@ -33,8 +34,8 @@ function proteinEnemy(id: string, display: unknown): ProteinEnemySaveData {
 // 実体ごとの表示設定の規則を登録する。
 export function register(): void {
   test('entity-display-selection: 保存で showTrajectoryLine が true の id だけ線を出す', () => {
-    const ammo: AmmoPickupSaveData = { id: 'ammo-0', kind: 'ammo', r: ZERO, v: ZERO, q: IDENTITY, w: ZERO };
-    const base: BaseSaveData = {
+    const ammo: SerializedAmmoPickup = { id: 'ammo-0', kind: 'ammo', r: ZERO, v: ZERO, q: IDENTITY, w: ZERO };
+    const base: SerializedBase = {
       id: 'base-0', kind: 'base', r: ZERO, v: ZERO, q: IDENTITY, w: ZERO, money: 0, showTrajectoryLine: true,
     };
     const selection = new EntityDisplaySelection([

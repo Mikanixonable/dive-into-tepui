@@ -9,7 +9,6 @@ import {
 } from '../dynamic/dynamic-entity/pilot-controls';
 import type { PilotControls, ThrustDirection } from '../dynamic/dynamic-entity/pilot-controls';
 import type { RunEventSink } from '../run-events';
-import type { ThrottleSaveData } from '../save/save-data';
 import type { FuelConsumer } from '../dynamic/dynamic-entity/controllable';
 
 // 並進推力(全 6 方向で共通)の出力 4 段階 [m/s^2]。方向の操作量が立っている間だけ
@@ -34,6 +33,13 @@ const FINE_ATTITUDE_SCALE = 0.5;
 const PROGRADE_HOLD_KP = 3.2; // 姿勢誤差角に対する比例ゲイン
 const PROGRADE_HOLD_KD = 2.6; // 角速度に対する減衰ゲイン
 
+export interface SerializedThrottle {
+  readonly throttleIdx: number;
+  // 無ければ既定値(true)。
+  readonly rcsDamp?: boolean;
+  readonly progradeHold?: boolean;
+}
+
 export class Throttle {
   public rcsDamp = true;
   public throttleIdx = THROTTLE_DEFAULT_IDX;
@@ -45,7 +51,7 @@ export class Throttle {
   private readonly latchedThrust = new Set<ThrustDirection>();
 
   // saved を渡すとその段・制動・ホールドを復元する。壊れた値は既定へ落とす。
-  public constructor(saved?: ThrottleSaveData) {
+  public constructor(saved?: SerializedThrottle) {
     if (saved) {
       this.throttleIdx = Number.isInteger(saved.throttleIdx)
         && saved.throttleIdx >= 0 && saved.throttleIdx < THROTTLE_LEVELS.length
@@ -92,7 +98,7 @@ export class Throttle {
   }
 
   // 段・制動・ホールドをスナップショットへ落とす。
-  public serialize(): ThrottleSaveData {
+  public serialize(): SerializedThrottle {
     return { throttleIdx: this.throttleIdx, rcsDamp: this.rcsDamp, progradeHold: this.progradeHold };
   }
 
