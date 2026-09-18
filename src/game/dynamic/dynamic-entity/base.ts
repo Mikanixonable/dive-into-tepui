@@ -44,12 +44,11 @@ const BASE_INITIAL_MONEY = 100000; // 新規配置の基地の所持金 [Cr]
 
 export interface SerializedBase extends SerializedDynamicEntityFields {
   readonly kind: 'base';
+  readonly name: string;
   readonly money: number;
-  // 基地の燃料。
-  readonly fuel?: number;
-  readonly throttle?: SerializedThrottle;
-  // プロパティウィンドウの軌道線表示トグル。無ければ false。
-  readonly showTrajectoryLine?: boolean;
+  // 基地の燃料 [kg]。
+  readonly fuel: number;
+  readonly throttle: SerializedThrottle;
 }
 
 // 基地を新しく置く運動状態と表示名。id を省くと採番器が発番する。
@@ -121,17 +120,16 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     );
   }
 
-  // 直列化した基地を、時刻 simTime の状態として復元する。
+  // 直列化した基地を復元する。
   public static deserialize(
-    serialized: SerializedBase, simTime: number, registry: EntityRegistry, scene: THREE.Scene,
+    serialized: SerializedBase, registry: EntityRegistry, scene: THREE.Scene,
   ): Base {
-    const state = deserializeKinematicState(serialized, simTime);
     return new Base(
       scene,
       registry.idAllocators.base.next(serialized.id),
       // 記録に無い名前は、新しく置いたときと違って無作為に選ばず「基地」と名乗る。
       serialized.name || '基地',
-      state,
+      deserializeKinematicState(serialized),
       deserializeAttitude(serialized, Base.INERTIA),
       // null の所持金も欠けと同じく既定へ落とす(既定引数は undefined でしか働かない)。
       serialized.money ?? undefined,
@@ -223,14 +221,8 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // 直列化した形へ変換する。
   public override serialize(): SerializedBase {
     return {
-      id: this.id,
-      kind: Base.kind,
+      ...this.serializeEntityFields(Base.kind),
       name: this.name,
-      // 運動状態
-      r: { ...this.motion.state.r },
-      v: { ...this.motion.state.v },
-      q: { ...this.motion.att.q },
-      w: { ...this.motion.att.w },
       // 基地の資源と、操作の設定
       money: this._money,
       fuel: this.motion.fuel,

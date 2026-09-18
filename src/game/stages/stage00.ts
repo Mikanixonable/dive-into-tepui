@@ -6,7 +6,8 @@ import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { WaveAttack, type SerializedWaveAttack } from './stage-utils/wave-attack';
 import { MAX_ACTIVE_AMMO_PICKUPS, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST } from './stage-utils/logistics';
 
-export interface SerializedStage00 extends SerializedStage, SerializedWaveAttack {
+export interface SerializedStage00 extends SerializedStage {
+  readonly waveAttack: SerializedWaveAttack;
 }
 
 export class Stage00 extends Stage {
@@ -39,13 +40,15 @@ export class Stage00 extends Stage {
     return stage;
   }
 
-  // 直列化した形から復元する。波状攻撃の進行は、共通の内訳と同じ段に並んでいる。
+  // 直列化した形から復元する。
   public static deserialize(serialized: SerializedStage00, ...deps: StageDeps): Stage00 {
     const [, scene, dynamicSystem, celestialSystem] = deps;
+    const { waveAttack } = serialized;
     return new Stage00(
       deps,
-      WaveAttack.deserialize(
-        serialized, dynamicSystem.events, scene, celestialSystem.celestialMotions, dynamicSystem.idAllocators,
+      // null も欠けと同じく新しい進行から始める。
+      waveAttack == null ? undefined : WaveAttack.deserialize(
+        waveAttack, dynamicSystem.events, scene, celestialSystem.celestialMotions, dynamicSystem.idAllocators,
       ),
       ...Stage.deserializeCommonState(serialized, deps, Stage00.stageRules),
     );
@@ -78,11 +81,11 @@ export class Stage00 extends Stage {
     return `第${this.waveAttack.waveCount}波`;
   }
 
-  // 共通の内訳と同じ段へ、波状攻撃の進行を並べて直列化する。
+  // 共通の内訳に、波状攻撃の進行を足して直列化する。
   serialize(): SerializedStage00 {
     return {
       ...super.serialize(),
-      ...this.waveAttack.serialize(),
+      waveAttack: this.waveAttack.serialize(),
     };
   }
 }
