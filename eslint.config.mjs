@@ -35,10 +35,11 @@ export default defineConfig([
       '@typescript-eslint/consistent-type-imports': [
         'error',
         {
-          fixStyle: 'separate-type-imports',
+          fixStyle: 'inline-type-imports',
           prefer: 'type-imports',
         },
       ],
+      '@typescript-eslint/no-import-type-side-effects': 'error',
       '@typescript-eslint/explicit-member-accessibility': [
         'error',
         {
