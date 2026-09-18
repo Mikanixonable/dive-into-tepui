@@ -656,7 +656,7 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 - **暫定の受け口**: `Game.create` は `GameScene`・`HudLayers`・`FrameSections` を受ける。「モデル層の根が表示の導出を持つ禁止」は `./hud/hud-layers` の型 import だけを外してあり、`tools/check-boundaries.mjs` のその箇所に `(暫定 — 段 6 の 6-5 で外す)` がある。
 - **検査**: 「モデル層の根が表示の導出を持つ禁止」の許可リストは空。`MISPLACED_PRESENTATION_FILES` に `game-presentation.ts` と `plan-guide.ts` を足した。「モデル層が出来事の装置を持つ禁止」の対象を `plan-guide.ts` から `plan-node-rules.ts` へ差し替えた。
 - **dep-metrics**: ctx2 の平均は 2368 → 2353 で、5-2 で増えた分は戻った。
-- **実行時の確認**: `npm run build` のあとの `npm run smoke:browser`(stage 00)は最後まで通る。creative の smoke は起動の 60 フレームで時間切れになることが多く(分割前は4回とも)、分割後は起動した2回のうち2回とも「mk-earth の右クリックでプロパティ窓が開く」で落ちた — 退行かどうかを調べている(結果はこの節に書き足す)。**`npm run smoke:browser` はビルドしない(`docs/` を配信する)ので、先に `npm run build` を走らせる。**
+- **実行時の確認**: `npm run build` のあとの `npm run smoke:browser`(stage 00)は最後まで通る。creative の smoke は起動の 60 フレームで時間切れになることが多く(分割前は4回とも)、「mk-earth の右クリックでプロパティ窓が開く」の段は分割の前後とも必ず落ちる。退行ではなく、smoke が 2026-08-22(f28d533a)に消えたクラス `.prop-window` を待っていたため。`.property-window` へ直すと、分割の前後とも creative の smoke は最後まで通った(起動待ちを延ばして各3回)。セレクタは段 5 の中で直す。**`npm run smoke:browser` はビルドしない(`docs/` を配信する)ので、先に `npm run build` を走らせる。**
 
 #### 手順 5-4. 復元を `deserialize` へ揃える
 
