@@ -1,7 +1,7 @@
 import { MAG_ROUNDS } from './ammo-spec';
 
-export const MAGS_PER_BARREL = 3;
-export const DEFAULT_BARREL_TEMPERATURE = 255;
+export const MAGS_PER_BARREL = 3; // 砲身1本で撃ち切るマガジン数
+export const DEFAULT_BARREL_TEMPERATURE = 255; // 新しく作った武装の砲身の温度 [K]
 
 export interface SerializedWeaponState {
   readonly mags: number;
@@ -26,9 +26,9 @@ export interface WeaponFireCommand {
   readonly muzzleIndex: number;
 }
 
-// 弾薬・砲身・クールダウン・砲口交互状態だけを所有する純粋な状態機械。
-// 発射に伴う弾体・音・閃光・得点などの副作用はここへ持ち込まない。
+// 弾薬・砲身(温度を含む)・クールダウン・交互に撃つ砲口の状態機械。
 export class WeaponState {
+  // 発砲で砲身へ入り、まだ温度へ変えていない熱量 [J]。
   public pendingBarrelJoules = 0;
 
   // barrel は装着中の砲身に残るマガジン数、barrelTemperature・barrelDeviation は砲身の平均温度と
@@ -53,6 +53,7 @@ export class WeaponState {
 
   // 直列化した弾薬・砲身の状態から復元する。壊れた値は既定へ落とす。
   public static deserialize(serialized: SerializedWeaponState): WeaponState {
+    // 壊れた値は undefined として渡し、コンストラクタの既定引数に補わせる
     return new WeaponState(
       nonNegativeInteger(serialized.mags),
       boundedInteger(serialized.rounds, 0, MAG_ROUNDS),
@@ -66,17 +67,22 @@ export class WeaponState {
     );
   }
 
+  // 装填中か予備に弾が残っているか。
   public get left(): boolean { return this.rounds > 0 || this.mags > 0; }
 
+  // クールダウンを dt 秒ぶん減らす。0 で止まる。
   public tickCooldown(dt: number): void {
     if (this.cooldown > 0) this.cooldown = Math.max(0, this.cooldown - Math.max(0, dt));
   }
 
+  // 1発を消費する。マガジンを撃ち尽くせば次のマガジンを装填し(mag-reload)、砲身の全マガジンを
+  // 撃ち尽くせば砲身を替える(barrel-reload)。
   private consume(): AmmoConsumption {
     if (!this.left) return 'empty';
     this.rounds--;
     if (this.rounds > 0) return 'normal';
     if (this.mags <= 0) return 'normal';
+    // 予備のマガジンを装填し、この砲身で撃てる残りのマガジン数を減らす
     this.mags--;
     this.rounds = MAG_ROUNDS;
     this.barrel--;
@@ -85,7 +91,7 @@ export class WeaponState {
     return 'barrel-reload';
   }
 
-  // 状態遷移の結果だけを射撃側へ渡す。弾体や演出はこの型へ持ち込まない。
+  // muzzleCount 本の砲口を交互に使って1発を消費し、消費の結果と撃つ砲口を返す。撃てなければ null。
   public beginShot(muzzleCount: number): WeaponFireCommand | null {
     if (muzzleCount <= 0 || !this.left) return null;
     const consumption = this.consume();
@@ -94,6 +100,8 @@ export class WeaponState {
     return { consumption, muzzleIndex };
   }
 
+  // クールダウン中でなく、予備があり装填中のマガジンに補充の余地があれば、マガジンと砲身を替えて
+  // true を返す。
   public manualReload(): boolean {
     if (this.cooldown > 0 || this.mags <= 0 || this.rounds >= MAG_ROUNDS) return false;
     this.mags--;
@@ -102,6 +110,7 @@ export class WeaponState {
     return true;
   }
 
+  // mags が有限な正の数なら予備へ足し、弾切れならそのうち1個をそのまま装填する。
   public addMags(mags: number): void {
     if (!Number.isFinite(mags) || mags <= 0) return;
     this.mags += mags;
@@ -121,6 +130,7 @@ export class WeaponState {
       barrelDeviation: this.barrelDeviation,
       cooldown: this.cooldown,
       muzzleIdx: this.muzzleIdx,
+      // トリガーを引き続けているか、撃てないまま引いたことを記録済みか
       wasFiring: this.wasFiring,
       wasEmptyClick: this.wasEmptyClick,
     };

@@ -86,7 +86,6 @@ export interface SerializedPlayer extends SerializedDynamicEntityFields {
   readonly plan: SerializedPlan | null;
   readonly planExecution: PlanExecutionMode;
   readonly fineAttitude: boolean;
-  // 接続中のブースター。
   readonly boosters: SerializedBoosterStack;
 }
 
@@ -313,6 +312,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   public handleCommand(command: PilotCommand): void {
     const events = this.registry.events;
     switch (command.kind) {
+      // 操縦の設定
       case 'thrustLatchToggle': this.throttle.toggleThrustLatch(command.direction); return;
       case 'rcsDampToggle': this.throttle.toggleRcsDamp(events); return;
       case 'progradeReset': this.throttle.enableProgradeReset(events); return;
@@ -322,6 +322,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       case 'throttleMid': this.throttle.setThrottlePreset(1, events); return;
       case 'throttleHigh': this.throttle.setThrottlePreset(2, events); return;
       case 'throttleMax': this.throttle.setThrottlePreset(3, events); return;
+      // 装備の操作
       case 'boosterDecouple': this.boosters.decouple(); return;
       case 'boosterIgnitionToggle': this.boosters.toggleIgnition(); return;
       case 'radiatorDeployLeft': this.motion.radiator.toggle('up'); return;
