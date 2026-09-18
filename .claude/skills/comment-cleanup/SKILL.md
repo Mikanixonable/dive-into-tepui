@@ -64,7 +64,10 @@ description: 既存コードのコメントを一括で点検し、過剰なも�
 
 - **コードは変えない。** クリンナップで挙動を変えない。コードの問題(不要な処理・悪い命名など)に
   気づいたら、直さずに報告する。
-- **仕上げ。** `npm run typecheck` を通す。触った層があれば触った層の回帰テスト(`npm run test:physics` / `test:math` / `test:game` / `test:render`)も。
+- **仕上げ。** `npx eslint --prune-suppressions <触ったファイル>` と `npm run typecheck` を通す。
+  コメントを消すと lint が落ちることがある — コメントだけの空ブロックは `no-empty` を通るが、
+  消すと空になる。`--fix` は付けない(コードを変える)。
+  触った層があれば触った層の回帰テスト(`npm run test:physics` / `test:math` / `test:game` / `test:render`)も。
   コメントだけの変更なので `DEVELOP/SPEC/` の更新は原則不要だが、**コメントに書かれていた
   仕様や理由を消す場合は、それが `DEVELOP/SPEC/` に残っているかを確認してから消す。**
 - **新しい冗長パターン・新しい不足パターンを見つけたら、`DEVELOP/CODING-RULE.md` の 3.3 へ
