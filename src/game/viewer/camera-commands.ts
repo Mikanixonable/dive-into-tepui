@@ -35,6 +35,7 @@ export interface CameraCommands {
   camera(view: ViewMode): FocusCameraCommands;
 }
 
+// selection への命令を queue へ積むだけの口を組む。
 function focusCameraCommands(
   queue: CommandQueue,
   selection: FocusCameraSelection,
