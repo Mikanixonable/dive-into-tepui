@@ -1,14 +1,21 @@
 // 全ステージ共通の骨格。撃破数による勝利判定・常時解放・HUD補助表示なしを既定実装として持ち、
 // 必要なステージだけ override する。
-import * as THREE from 'three/webgpu';
-import { Enemy } from '../dynamic/dynamic-entity/enemy';
 import { isPlayer, Player, type PlayerPlacement } from '../player/player';
 import { strongestAttractor } from '../../physics/attractor';
 import { Logistics, type SerializedLogistics } from './stage-utils/logistics';
 import { ScoreCounter, type SerializedScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
+import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
+import { profileAtOrNull } from '../../physics/ephemeris/profile';
+import { calendarDateToJulianDate, parseCalendarDate, type TdbJulianDate } from '../../physics/time';
+import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
+import { v3 } from '../../math/vec3';
+import { solarSystem } from '../celestial/solar-system/solar-system';
+import { CAMPAIGN_STAGE_RULES, type StageRules } from './stage-rules';
+import type * as THREE from 'three/webgpu';
+import type { Enemy } from '../dynamic/dynamic-entity/enemy';
 import type { HudLayers } from '../hud/hud-layers';
-import { SimSpeedManager } from '../dynamic/sim-speed-manager';
+import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
@@ -17,17 +24,10 @@ import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
 import type { StageSimulationEvents } from './stage-simulation-events';
 import type { ControlSelection } from '../control-selection';
 import type { CommandQueue } from '../command-queue';
-import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
-import { profileAtOrNull } from '../../physics/ephemeris/profile';
-import { calendarDateToJulianDate, parseCalendarDate, TdbJulianDate } from '../../physics/time';
-import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
-import { v3 } from '../../math/vec3';
-import { solarSystem } from '../celestial/solar-system/solar-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { ProteinEnemyRequest } from '../dynamic/dynamic-entity/protein-enemy';
-import { CAMPAIGN_STAGE_RULES, type StageRules } from './stage-rules';
 
 // 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。各ステージが
 // 自分の epoch としてこれを宣言する。ステージの宣言以外から読まない(元期は共有の定数ではなく、
