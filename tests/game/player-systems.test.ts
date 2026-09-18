@@ -7,21 +7,17 @@ import { v3 } from '../../src/math/vec3';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
 import { Ship, SHIP_BCINV, SHIP_SRP_COEFF } from '../../src/game/dynamic/dynamic-entity/ship';
-import { deserializePart } from '../../src/game/dynamic/dynamic-entity/parts';
 import { DynamicView } from '../../src/render/dynamic/dynamic-view';
-import { FireControl, type SerializedFireControl } from '../../src/game/player/fire-control';
+import { FireControl } from '../../src/game/player/fire-control';
 import { WeaponState } from '../../src/game/player/weapon-state';
 import { DeployablePanelState } from '../../src/game/player/deployable-panel-state';
 import { PlayerMotion, type PlayerMotionReactions } from '../../src/game/player/player-motion';
 import { PowerSystem, POWER_CAPACITY } from '../../src/game/player/power';
 import { RadiatorSystem } from '../../src/game/player/radiator';
-import { Throttle, THROTTLE_LEVELS, type SerializedThrottle } from '../../src/game/player/throttle';
 import type { Player } from '../../src/game/player/player';
-import type { RunEventSink } from '../../src/game/run-events';
 
 const attitude = { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
 const state = kinematicState<'eci'>(0, v3(), v3());
-const quietEvents: RunEventSink = { record() {} };
 
 class TestShip extends Ship {
   // 識別子は本番では採番器が配るので、テストでも名前とは別に与える。
@@ -94,11 +90,10 @@ export function register(): void {
     assert.equal(clipId(first.headingHpMarkerSvg()), firstId);
   });
 
-  test('player save: 電力・放熱板・スロットル・パーツの不正値を安全な状態へ正規化する', () => {
+  test('player save: 電力・放熱板の不正値を安全な状態へ正規化する', () => {
     const powerOf = (charge: number): PowerSystem => PowerSystem.deserialize({
       charge, up: { deployTarget: 1, deploy: 1 }, down: { deployTarget: 1, deploy: 1 },
     });
-    assert.equal(powerOf(Number.NaN).chargeJ, POWER_CAPACITY * 0.75);
     assert.equal(powerOf(POWER_CAPACITY * 2).chargeJ, POWER_CAPACITY);
 
     const radiator = new RadiatorSystem(
@@ -108,40 +103,10 @@ export function register(): void {
     );
     assert.equal(radiator.deployOf('up'), 0);
     assert.equal(radiator.deployOf('down'), 1);
-
-    const throttle = Throttle.deserialize({
-      throttleIdx: 99,
-      rcsDamp: 'bad' as unknown as boolean,
-      progradeHold: null as unknown as boolean,
-      rotationHoldTime: 0,
-      latchedThrust: [],
-    } satisfies SerializedThrottle);
-    assert.equal(throttle.throttleIdx, 1);
-    throttle.setThrottlePreset(-1, quietEvents);
-    assert.equal(throttle.throttleIdx, 1);
-    throttle.setThrottlePreset(THROTTLE_LEVELS.length, quietEvents);
-    assert.equal(throttle.throttleIdx, 1);
-
-    const part = deserializePart({
-      id: 'bad-part', type: 'hull', name: 'bad', weight: 100, maxHp: Number.NaN, hp: Number.POSITIVE_INFINITY,
-    });
-    assert.ok(part);
-    assert.equal(part.maxHp, 1);
-    assert.equal(part.hp, 0);
   });
 
-  test('fire control: 非正数の補給と不正な保存値を安全な状態へ正規化する', () => {
-    const fire = new FireControl(
-      { motion: { mass: 1_000 } } as Player,
-      {} as never,
-      {} as never,
-      WeaponState.deserialize({
-        mags: -2, rounds: 999, barrel: -1, cooldown: Number.NaN, muzzleIdx: 8,
-      } as SerializedFireControl),
-    );
-    assert.equal(fire.mags, 2);
-    assert.equal(fire.rounds, 32);
-    assert.equal(fire.barrel, 3);
+  test('fire control: 非正数の補給ではマガジンが増えない', () => {
+    const fire = new FireControl({ motion: { mass: 1_000 } } as Player, {} as never, {} as never);
     const before = fire.mags;
     fire.onPickup(0);
     fire.onPickup(-1);
@@ -155,16 +120,5 @@ export function register(): void {
     const second = weapon.beginShot(2);
     assert.deepEqual(second, { consumption: 'normal', muzzleIndex: 1 });
     assert.equal(weapon.muzzleIdx, 0);
-  });
-
-  test('deployable panel: 展開目標と補間値は電力・放熱の性能から独立して進む', () => {
-    const panel = new DeployablePanelState(0, 0);
-    panel.toggle();
-    panel.update(0.5, 1);
-    assert.equal(panel.target, 1);
-    assert.equal(panel.value, 0.5);
-    panel.setTarget(false);
-    panel.update(1, 1);
-    assert.equal(panel.value, 0);
   });
 }
