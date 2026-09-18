@@ -102,7 +102,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
       if (entityClass === null) continue;
       system.spawnWhenReady(
         entityClass.spawnGate(entity),
-        () => entityClass.deserialize(entity, simTime, system, scene),
+        () => entityClass.deserialize(entity, system, scene),
       );
     }
     return system;

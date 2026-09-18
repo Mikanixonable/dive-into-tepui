@@ -1,6 +1,6 @@
 // 軌道上の補給物(接近した自艦が取り込む漂流物)と、その種別ごとの具象。
 import { fmtDist } from '../../../hud/utils';
-import { len, sub, v3, type Vec3 } from '../../../math/vec3';
+import { len, sub, v3, type SerializedVec3, type Vec3 } from '../../../math/vec3';
 import { AmmoPickupView, RcsFuelPickupView } from '../../../render/dynamic/dynamic-entity/pickup-view';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { MARKER_PRIORITY } from '../../marker/marker-priority';
@@ -15,6 +15,7 @@ import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import { deserializeAttitude, type Attitude } from '../../../physics/attitude';
 import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
+import type { DynamicMotionThermal } from '../dynamic-motion';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { ControlSelection } from '../../control-selection';
 import type { MenuItem } from '../../hud/windows/context-menu';
@@ -33,30 +34,40 @@ export const RCS_FUEL_PICKUP_RADIUS = 100;
 // 1 個の取り込みで増える RCS 燃料 [kg]。
 export const RCS_FUEL_PICKUP_AMOUNT = 1000;
 
-export interface SerializedAmmoPickup extends SerializedDynamicEntityFields {
+// 補給物に共通する直列化の項目。慣性は作る場所ごとに違い、種別からは決まらないので記録に持つ。
+interface SerializedPickupFields extends SerializedDynamicEntityFields {
+  readonly name: string;
+  readonly inertia: SerializedVec3;
+  readonly thermal: DynamicMotionThermal;
+}
+
+export interface SerializedAmmoPickup extends SerializedPickupFields {
   readonly kind: 'ammo';
 }
 
-export interface SerializedRcsFuelPickup extends SerializedDynamicEntityFields {
+export interface SerializedRcsFuelPickup extends SerializedPickupFields {
   readonly kind: 'rcs-fuel';
 }
 
 type SerializedPickup = SerializedAmmoPickup | SerializedRcsFuelPickup;
 
-// 補給物を置く運動状態と表示名。att を省くと既定の姿勢、name を省くと種別の既定名で名乗り、id を
-// 省くと採番器が発番する。
+// 補給物を置く運動状態と表示名。att を省くと既定の姿勢、thermal を省くと環境温度、name を省くと
+// 種別の既定名で名乗り、id を省くと採番器が発番する。
 interface PickupPlacement {
   readonly state: KinematicState;
   readonly att?: Attitude;
+  readonly thermal?: DynamicMotionThermal;
   readonly name?: string;
   readonly id?: string;
 }
 
-// 直列化した補給物に共通する項目を、時刻 simTime の配置として読む。
-function deserializePickupPlacement(serialized: SerializedPickup, simTime: number): PickupPlacement {
+// 直列化した補給物に共通する項目を、配置として読む。
+function deserializePickupPlacement(serialized: SerializedPickup): PickupPlacement {
+  const { inertia } = serialized;
   return {
-    state: deserializeKinematicState(serialized, simTime),
-    att: deserializeAttitude(serialized, v3(1, 1, 1)),
+    state: deserializeKinematicState(serialized),
+    att: deserializeAttitude(serialized, v3(inertia.x, inertia.y, inertia.z)),
+    thermal: serialized.thermal,
     name: serialized.name || undefined,
     id: serialized.id || undefined,
   };
@@ -86,20 +97,18 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
     defaultName: string,
     private readonly pickupKind: PickupKind,
   ) {
-    super(() => new PickupMotion(placement.state, placement.att, pickupKind), view, id);
+    super(() => new PickupMotion(placement.state, placement.att, pickupKind, placement.thermal), view, id);
     this.setName(placement.name ?? defaultName);
   }
 
   // 直列化した形へ変換する。
   public override serialize(): SerializedPickup {
+    const { inertia } = this.motion.att;
     return {
-      id: this.id,
+      ...this.serializeEntityFields(this.pickupKind),
       name: this.name,
-      kind: this.pickupKind,
-      r: { ...this.motion.state.r },
-      v: { ...this.motion.state.v },
-      q: { ...this.motion.att.q },
-      w: { ...this.motion.att.w },
+      inertia: { x: inertia.x, y: inertia.y, z: inertia.z },
+      thermal: this.motion.thermal,
     };
   }
 
@@ -232,11 +241,11 @@ export class AmmoPickup extends Pickup {
     return new AmmoPickup(placement, scene, idAllocators);
   }
 
-  // 直列化した弾薬補給を、時刻 simTime の状態として復元する。
+  // 直列化した弾薬補給を復元する。
   public static deserialize(
-    serialized: SerializedAmmoPickup, simTime: number, registry: EntityRegistry, scene: THREE.Scene,
+    serialized: SerializedAmmoPickup, registry: EntityRegistry, scene: THREE.Scene,
   ): AmmoPickup {
-    return new AmmoPickup(deserializePickupPlacement(serialized, simTime), scene, registry.idAllocators);
+    return new AmmoPickup(deserializePickupPlacement(serialized), scene, registry.idAllocators);
   }
 }
 
@@ -266,11 +275,11 @@ export class RcsFuelPickup extends Pickup {
     return new RcsFuelPickup(placement, scene, idAllocators);
   }
 
-  // 直列化した RCS 燃料補給を、時刻 simTime の状態として復元する。
+  // 直列化した RCS 燃料補給を復元する。
   public static deserialize(
-    serialized: SerializedRcsFuelPickup, simTime: number, registry: EntityRegistry, scene: THREE.Scene,
+    serialized: SerializedRcsFuelPickup, registry: EntityRegistry, scene: THREE.Scene,
   ): RcsFuelPickup {
-    return new RcsFuelPickup(deserializePickupPlacement(serialized, simTime), scene, registry.idAllocators);
+    return new RcsFuelPickup(deserializePickupPlacement(serialized), scene, registry.idAllocators);
   }
 
   // 1 個の取り込みで増える燃料の量。

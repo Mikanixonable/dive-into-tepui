@@ -70,7 +70,9 @@ export function register(): void {
   });
 
   test('player motion: 接続ブースターの質量で空力・輻射圧の質量あたり値が下がる', () => {
-    const motion = new PlayerMotion(state, attitude, 2.6, 0, reactions(), 300);
+    const motion = new PlayerMotion(
+      state, attitude, 2.6, 0, reactions(), { temperature: 300, thermalDeviation: 0, pendingSpecificHeat: 0 },
+    );
     motion.attachedBoosters.attach({
       id: 'test-booster', dryMass: 200, fuel: 800, maxFuel: 800,
       thrust: 600_000, fuelRate: 80, ignited: false,
