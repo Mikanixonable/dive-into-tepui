@@ -12,7 +12,7 @@ import type {
 } from '../../src/game/viewer/focus-camera-selection';
 import { solarSystemParts } from '../physics/test-helpers';
 
-function savedCamera(
+function serializedCamera(
   overrides: Partial<SerializedFocusCameraSelection> = {},
 ): SerializedFocusCameraSelection {
   return {
@@ -30,8 +30,8 @@ function savedCamera(
   };
 }
 
-function selection(saved?: SerializedCameraSelection): CameraSelection {
-  return new CameraSelection(solarSystemParts().system, { record: () => {} }, saved);
+function selection(serialized: SerializedCameraSelection): CameraSelection {
+  return CameraSelection.deserialize(serialized, solarSystemParts().system, { record: () => {} });
 }
 
 function sample(lostFocus: CameraFrameSample['lostFocus'] = null): CameraFrameSample {
@@ -46,23 +46,22 @@ function sample(lostFocus: CameraFrameSample['lostFocus'] = null): CameraFrameSa
 
 export function register(): void {
   test('camera-selection: 復元したマップの pan・追従・既存保存項目を変えずに書き戻す', () => {
-    const overview = savedCamera({ rotatingWith: { kind: 'revolution', id: 'moon' } });
-    const saved: SerializedCameraSelection = { view: 'map', chase: savedCamera(), overview };
-    const camera = selection(saved);
-    const restored = camera.serialize('map');
+    const overview = serializedCamera({ rotatingWith: { kind: 'revolution', id: 'moon' } });
+    const camera = selection({ chase: serializedCamera(), overview });
+    const restored = camera.map.serialize();
 
-    assert.deepEqual(restored.overview.pan, overview.pan);
-    assert.deepEqual(restored.overview.rotatingWith, overview.rotatingWith);
-    assert.deepEqual(restored.overview.focus, overview.focus);
-    assert.equal(restored.overview.rotationMode, overview.rotationMode);
-    assert.equal(restored.overview.fovDeg, overview.fovDeg);
-    assert.equal(restored.overview.referencePlane, overview.referencePlane);
-    assert.equal(restored.overview.projectionMode, overview.projectionMode);
-    assert.equal(restored.overview.orthographicHalfHeight, overview.orthographicHalfHeight);
+    assert.deepEqual(restored.pan, overview.pan);
+    assert.deepEqual(restored.rotatingWith, overview.rotatingWith);
+    assert.deepEqual(restored.focus, overview.focus);
+    assert.equal(restored.rotationMode, overview.rotationMode);
+    assert.equal(restored.fovDeg, overview.fovDeg);
+    assert.equal(restored.referencePlane, overview.referencePlane);
+    assert.equal(restored.projectionMode, overview.projectionMode);
+    assert.equal(restored.orthographicHalfHeight, overview.orthographicHalfHeight);
   });
 
   test('camera-selection: DOM相当の注視命令は列を適用するまで pan と注視を変えない', () => {
-    const camera = selection({ view: 'map', chase: savedCamera(), overview: savedCamera() });
+    const camera = selection({ chase: serializedCamera(), overview: serializedCamera() });
     const queue = new CommandQueue();
     const commands = cameraCommands(queue, camera);
     const beforeFocus = camera.map.focus;
@@ -78,7 +77,7 @@ export function register(): void {
   });
 
   test('camera-selection: 注視喪失は同じ内容の別値ではなく FocusTarget の同一性で判定する', () => {
-    const camera = selection({ view: 'map', chase: savedCamera(), overview: savedCamera() });
+    const camera = selection({ chase: serializedCamera(), overview: serializedCamera() });
     const focus = camera.map.focus;
     assert.equal(focus.kind, 'object');
 
@@ -91,11 +90,11 @@ export function register(): void {
   });
 
   test('camera-selection: ロード後に姿勢基準を受け取っても保存された絶対の向きは跳ばない', () => {
-    const chase = savedCamera({
+    const chase = serializedCamera({
       rotatingWith: { kind: 'attitude' },
       projectionMode: 'perspective',
     });
-    const camera = selection({ view: 'combat', chase, overview: savedCamera() });
+    const camera = selection({ chase, overview: serializedCamera() });
     const before = camera.combat.serialize();
     camera.combat.followProgress({
       ...sample(),

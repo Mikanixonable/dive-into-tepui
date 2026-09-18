@@ -15,7 +15,7 @@ export function register(): void {
   test('view-selection: 戦闘ビューへ入れない復元値はマップへ戻す', () => {
     const events = new RunEventLog();
     const control: MutableViewControlSource = { current: null };
-    const selection = new ViewSelection('combat', control, events);
+    const selection = ViewSelection.deserialize('combat', control, events);
 
     assert.equal(selection.current, 'map');
     assert.equal(selection.canSelect('combat'), false);
@@ -26,7 +26,7 @@ export function register(): void {
   test('view-selection: 外部命令は列の適用までビューを変えない', () => {
     const events = new RunEventLog();
     const control: MutableViewControlSource = { current: { plan: { nodes: [] } } };
-    const selection = new ViewSelection('combat', control, events);
+    const selection = new ViewSelection(control, events);
     const queue = new CommandQueue();
     const commands = viewCommands(queue, selection);
 
@@ -40,7 +40,7 @@ export function register(): void {
   test('view-selection: キー切替の適用結果を進行の出来事へ記録する', () => {
     const events = new RunEventLog();
     const control: MutableViewControlSource = { current: null };
-    const selection = new ViewSelection('map', control, events);
+    const selection = ViewSelection.deserialize('map', control, events);
     const queue = new CommandQueue();
     const commands = viewCommands(queue, selection);
 

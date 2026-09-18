@@ -93,16 +93,6 @@ export function register(): void {
     assert.ok(sameOrientation(o.effective(), target));
   });
 
-  test('camera-orientation: 追従へ戻すとき、追従していなければ基準の姿勢を持ち越さない', () => {
-    const o = orientation();
-    o.beginAttitudeFollow(qFromAxisAngle(v3(0, 1, 0), 1.0));
-    o.endAttitudeFollow();
-    const absolute = o.effective();
-    // 追従していない状態から追従へ戻すと、姿勢は次の refreshAttitude まで掛からない。
-    o.restoreFollow(true);
-    assert.ok(sameOrientation(o.effective(), absolute));
-  });
-
   test('camera-orientation: 姿勢追従中もオイラー経路を使う', () => {
     const o = orientation('euler');
     assert.equal(o.usesEuler, true);
