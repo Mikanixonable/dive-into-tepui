@@ -4,7 +4,7 @@ import { LOCAL_UP, qRotate } from '../../math/quat';
 import { Vec3, dot } from '../../math/vec3';
 import { SOLAR_CONSTANT } from '../../physics/astronomical-unit';
 import { RADIATOR_DEPLOY_TIME } from './radiator';
-import { DeployablePanelState } from './deployable-panel-state';
+import { DeployablePanelState, type SerializedDeployablePanelState } from './deployable-panel-state';
 
 export const POWER_CAPACITY = 1.5e6; // 蓄電容量 [J]
 const SOLAR_PANEL_AREA = 7.2; // 発電面積 [m^2](左右2枚合計)
@@ -14,21 +14,30 @@ export type SolarSide = 'up' | 'down';
 
 export interface SerializedPowerSystem {
   readonly charge: number;
+  readonly up: SerializedDeployablePanelState;
+  readonly down: SerializedDeployablePanelState;
 }
 
 export class PowerSystem {
-  private readonly panels: Record<SolarSide, DeployablePanelState> = {
-    up: new DeployablePanelState(1, 1), down: new DeployablePanelState(1, 1),
-  };
+  private readonly panels: Record<SolarSide, DeployablePanelState>;
 
-  // charge は蓄電量 [J]、0..POWER_CAPACITY。
-  public constructor(private charge = POWER_CAPACITY * 0.75) {}
+  // charge は蓄電量 [J]、0..POWER_CAPACITY。up・down は各側のパネルの展開状態で、省いた側は展開から
+  // 始める。
+  public constructor(
+    private charge = POWER_CAPACITY * 0.75,
+    up = new DeployablePanelState(1, 1),
+    down = new DeployablePanelState(1, 1),
+  ) {
+    this.panels = { up, down };
+  }
 
-  // 直列化した蓄電量から復元する。有限でない値は既定へ落とし、容量の範囲へ収める。
+  // 直列化した蓄電量とパネルの展開状態から復元する。有限でない蓄電量は既定へ落とし、容量の範囲へ収める。
   public static deserialize(serialized: SerializedPowerSystem): PowerSystem {
-    const { charge } = serialized;
+    const { charge, up, down } = serialized;
     return new PowerSystem(
       typeof charge === 'number' && Number.isFinite(charge) ? Math.max(0, Math.min(POWER_CAPACITY, charge)) : undefined,
+      up ? DeployablePanelState.deserialize(up) : undefined,
+      down ? DeployablePanelState.deserialize(down) : undefined,
     );
   }
 
@@ -80,8 +89,8 @@ export class PowerSystem {
 
   public deployOf(side: SolarSide): number { return this.panels[side].value; }
 
-  // 蓄電量の直列化した形。
+  // 蓄電量とパネルの展開状態の直列化した形。
   public serialize(): SerializedPowerSystem {
-    return { charge: this.charge };
+    return { charge: this.charge, up: this.panels.up.serialize(), down: this.panels.down.serialize() };
   }
 }
