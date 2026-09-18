@@ -60,14 +60,16 @@ const PROGRESS_ROOTS = [
 // モデル層の置き場。進行と視点と、モデル層の根。
 const MODEL_ROOTS = [...PROGRESS_ROOTS, 'src/game/viewer/', 'src/game/game.ts'];
 
-// 表示の導出だが、置き場がまだ進行のフォルダにあるファイル。動かしたらここも直す — 存在しない
-// パスが残ると検査が落ちる。(暫定 — 段 8 で presentation/ へ移すときに消える)
+// 表示の導出だが、置き場がまだ進行のフォルダか、モデル層の根の隣にあるファイル。動かしたらここも
+// 直す — 存在しないパスが残ると検査が落ちる。(暫定 — 段 8 で presentation/ へ移すときに消える)
 const MISPLACED_PRESENTATION_FILES = [
+  'src/game/game-presentation.ts',
   'src/game/plan/plan-editor.ts',
   'src/game/plan/node-gizmo.ts',
   'src/game/plan/plan-panel.ts',
   'src/game/plan/plan-axis-drag.ts',
   'src/game/plan/plan-display.ts',
+  'src/game/plan/plan-guide.ts',
   'src/game/creative/object-placer-panel.ts',
   'src/game/creative/slider-field.ts',
   'src/game/creative/stage-controls-panel.ts',
@@ -194,7 +196,7 @@ const FORBIDDEN = [
       'src/game/control-selection.ts',
       'src/game/creative/manual-spawn.ts',
       'src/game/creative/object-placement.ts',
-      'src/game/plan/plan-guide.ts',
+      'src/game/plan/plan-node-rules.ts',
       'src/game/viewer/',
     ],
     exempt: [],
@@ -223,9 +225,11 @@ const FORBIDDEN = [
   },
   {
     // game.ts はモデル層の根で、表示の導出の根と並べて組むのはランの組み立て(R10・R13)。
+    // ./hud/hud-layers の型だけは外す — ステージのパネルの置き場を Stage へ渡すため。
+    // (暫定 — 段 6 の 6-5 で外す)
     name: 'モデル層の根が表示の導出を持つ禁止',
     pattern:
-      /from '\.\/(?:hud|marker|view|pickable|map|lines|input|camera)\/|from '\.\/(?:game-presentation|flash-presenter|run-event-presenter|controlled-loop-sfx|orbit-info)'|from '\.\.\/(?:audio|input|marker)\//g,
+      /from '\.\/(?:hud\/(?!hud-layers')|(?:marker|view|pickable|map|lines|input|camera)\/)|from '\.\/(?:game-presentation|flash-presenter|run-event-presenter|controlled-loop-sfx|orbit-info)'|from '\.\.\/(?:audio|input|marker)\//g,
     targets: ['src/game/game.ts'],
     exempt: [],
   },

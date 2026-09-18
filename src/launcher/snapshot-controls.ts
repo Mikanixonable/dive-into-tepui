@@ -4,8 +4,8 @@ import { PauseMenu } from '../hud/windows/pause-menu';
 import { SaveBrowser } from './save-browser/save-browser';
 import { SnapshotService, type SnapshotSource } from './save/snapshot-service';
 
-// F5(手動セーブ)/F9(一覧開閉)の単発入力を担う。router へは Game.update のあとに足す —
-// その回で Game が消費しなかった入力エッジだけを見る。
+// F5(手動セーブ)/F9(一覧開閉)の単発入力を担う。router へはランの入力の解釈のあとに足す —
+// その回でランが消費しなかった入力エッジだけを見る。
 export class SnapshotControls {
   public constructor(
     private readonly notifier: Notifier,
