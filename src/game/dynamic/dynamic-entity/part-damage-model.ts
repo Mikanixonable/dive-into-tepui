@@ -7,40 +7,31 @@ import { PartInventory } from './part-inventory';
 // 部品式機体が共有する、部品一覧・部品HP・部品由来の性能をまとめるモデル。
 // 機体の寿命や敵AIは持たず、Shipと部品式の敵から同じように利用する。
 export class PartDamageModel {
-  private readonly inventory = new PartInventory();
-  // 以下は部品一覧から組み直すキャッシュ(性能と致死判定で使う参照、装甲値)。
+  private readonly inventory: PartInventory;
+  // 以下は部品一覧から組むキャッシュ(性能と致死判定で使う参照、装甲値)。
   private readonly radiatorPartRefs: [RadiatorPart | undefined, RadiatorPart | undefined] = [undefined, undefined];
   private readonly solarPanelPartRefs: [SolarPanelPart | undefined, SolarPanelPart | undefined] = [undefined, undefined];
   private readonly weaponPartRefs: WeaponPart[] = [];
   private readonly armorPartRefs: ArmorPart[] = [];
   private hullPart: Part | undefined;
   private cockpitPart: CockpitPart | undefined;
-  private _maxHp = 0;
+  public readonly maxHp: number;
+
+  // parts を積んだ機体の被弾モデルを組む。
+  public constructor(parts: readonly Part[]) {
+    this.inventory = new PartInventory(parts);
+    this.collectPartReferences();
+    this.maxHp = this.parts.reduce((total, part) => total + part.maxHp, 0);
+  }
 
   public get parts(): readonly Part[] { return this.inventory.parts; }
-  public get maxHp(): number { return this._maxHp; }
-
-  public replaceParts(parts: readonly Part[]): void {
-    this.inventory.replace(parts);
-    this.rebuildPartReferences();
-    this._maxHp = this.parts.reduce((total, part) => total + part.maxHp, 0);
-  }
 
   public hasPart(part: Part): boolean { return this.inventory.has(part); }
 
-  // 部品を入れ替えたときに、性能と致死判定で使う参照を組み直す。
-  private rebuildPartReferences(): void {
-    this.weaponPartRefs.length = 0;
-    this.armorPartRefs.length = 0;
+  // 性能と致死判定で使う部品を、種別ごとの参照へ振り分ける。
+  private collectPartReferences(): void {
     let radiatorIndex = 0;
     let solarPanelIndex = 0;
-    this.radiatorPartRefs[0] = undefined;
-    this.radiatorPartRefs[1] = undefined;
-    this.solarPanelPartRefs[0] = undefined;
-    this.solarPanelPartRefs[1] = undefined;
-    this.hullPart = undefined;
-    this.cockpitPart = undefined;
-
     for (const part of this.parts) {
       switch (part.type) {
         case 'hull': if (!this.hullPart) this.hullPart = part; break;
@@ -59,14 +50,15 @@ export class PartDamageModel {
     }
   }
 
-  public applyCollisionDamage(closingSpeed: number, totalHp: number, part?: Part): { damaged: boolean; hp: number } {
+  public applyCollisionDamage(closingSpeed: number, totalHp: number, part?: Part): boolean {
     const fraction = collisionDamageFraction(closingSpeed);
-    if (fraction <= 0) return { damaged: false, hp: this.overallHp() };
-    return { damaged: true, hp: this.applyDamageToParts(totalHp * fraction, part) };
+    if (fraction <= 0) return false;
+    this.applyDamageToParts(totalHp * fraction, part);
+    return true;
   }
 
-  public applyDamageToParts(amount: number, part?: Part): number {
-    if (this.parts.length === 0) return Math.max(0, this.overallHp() - amount);
+  public applyDamageToParts(amount: number, part?: Part): void {
+    if (this.parts.length === 0) return;
 
     let reduction = 0;
     let hasArmor = false;
@@ -93,17 +85,15 @@ export class PartDamageModel {
       } else target = this.parts[targetIndex];
     }
     if (target) target.hp = Math.max(0, target.hp - effectiveDamage);
-    return this.overallHp();
   }
 
-  public selfRepair(amount: number): number {
+  public selfRepair(amount: number): void {
     const targets = this.parts.filter(
       part => part.hp > 0 && part.hp < part.maxHp && !PartDamageModel.SELF_REPAIR_EXCLUDED.includes(part.type),
     );
-    if (targets.length === 0) return this.overallHp();
+    if (targets.length === 0) return;
     const share = amount / targets.length;
     for (const part of targets) part.hp = Math.min(part.maxHp, part.hp + share);
-    return this.overallHp();
   }
 
   // 船体かコックピットを失った時点で、他の部品が無事でも機体を全損とする。

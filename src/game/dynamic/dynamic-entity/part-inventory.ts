@@ -1,12 +1,16 @@
 import type { AnyPart, Part, PartType } from './parts';
 
-// 船体へ搭載されている部品の正本。外部へ可変配列を渡さず、構成の置換と所属判定だけを公開する。
+// 船体へ搭載されている部品の正本。外部へ可変配列を渡さず、所属判定と種別ごとの集計を公開する。
 export class PartInventory {
-  private items: AnyPart[] = [];
+  private readonly items: readonly AnyPart[];
+
+  // parts を積んだ構成で組む。
+  public constructor(parts: readonly Part[]) {
+    this.items = [...parts] as AnyPart[];
+  }
 
   public get parts(): readonly AnyPart[] { return this.items; }
 
-  public replace(parts: readonly Part[]): void { this.items = [...parts] as AnyPart[]; }
   public has(part: Part): boolean { return this.items.includes(part as AnyPart); }
   public ofType<T extends PartType>(type: T): readonly Extract<AnyPart, { type: T }>[] {
     return this.items.filter(
