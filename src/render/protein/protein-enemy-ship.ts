@@ -4,7 +4,7 @@ import {
   buildProteinAtoms,
   buildProteinLigands,
 } from './protein-atom-view';
-import { type ProteinMotionBinding } from './protein-motion-material';
+import type { ProteinMotionBinding } from './protein-motion-material';
 import { disposeOwnedRenderResources } from '../dispose-owned-render-resources';
 import { markLitOpaque, markShadowCaster } from '../pipeline/lit-layer';
 import { buildProteinSilhouette } from './protein-silhouette-view';

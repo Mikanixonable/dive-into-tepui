@@ -466,10 +466,11 @@ export class GamePresentation {
   // 直前の sync が確定させたカメラでシェーダを組む — 捨てる1フレームと同じ行列で組ませる。
   // sync を1度も通していなければ組めない。
   public async compile(style: RenderStyle, progress: LoadingProgress): Promise<void> {
+    if (this.cameraFrame === null) throw new Error('GamePresentation.compile: sync has not run yet');
     const { scene } = this.devices;
     await scene.pipeline.compile(
       scene.scene,
-      this.cameraFrame!.camera,
+      this.cameraFrame.camera,
       style,
       (name, done, total) => progress.within(done / total, `シェーダを準備中: ${name}`),
     );
