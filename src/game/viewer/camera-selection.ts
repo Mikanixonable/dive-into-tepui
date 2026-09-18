@@ -18,6 +18,12 @@ export interface CameraFrameSamples {
   readonly map: CameraFrameSample;
 }
 
+// マップのカメラだけを読む面。マップ上の当たり判定・窓・計画編集・マップビューは、
+// 2台ぶんではなくこれを受ける。
+export interface MapCameraSource {
+  readonly map: Pick<FocusCameraSource, 'focus' | 'distance'>;
+}
+
 // 2台のカメラ視点を読む面。
 export interface CameraSelectionSource {
   readonly combat: FocusCameraSource;
@@ -63,6 +69,7 @@ export class CameraSelection implements CameraSelectionSource {
     }, events, saved?.overview);
   }
 
+  // view が表に出ているときに使う1台。
   public camera(view: ViewMode): FocusCameraSelection {
     return view === 'map' ? this.map : this.combat;
   }

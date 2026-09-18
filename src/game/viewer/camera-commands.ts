@@ -10,6 +10,7 @@ import type {
   CameraReferencePlane,
   CameraReferenceView,
   CameraRotationFollow,
+  FocusCameraSelection,
 } from './focus-camera-selection';
 import type { FocusTarget } from './focus-target';
 
@@ -34,9 +35,10 @@ export interface CameraCommands {
   camera(view: ViewMode): FocusCameraCommands;
 }
 
+// selection への命令を queue へ積むだけの口を組む。
 function focusCameraCommands(
   queue: CommandQueue,
-  selection: ReturnType<CameraSelection['camera']>,
+  selection: FocusCameraSelection,
 ): FocusCameraCommands {
   return {
     setFocus: (target) => queue.submit(() => selection.setFocus(target)),
