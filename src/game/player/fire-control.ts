@@ -54,31 +54,16 @@ const RECOIL_DV = 0.04; // 反動 [m/s]
 
 const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクールダウン [s]
 
-// 艦の初期積載(予備マガジン数・装填済み残弾数)。
-export type AmmoLoad = { readonly mags: number; readonly rounds: number };
-
 export type SerializedFireControl = SerializedWeaponState;
 
-// スナップショットからの復元か、新規配置の初期積載か。
-type FireInit =
-  | { readonly saved: SerializedFireControl }
-  | { readonly ammo?: AmmoLoad };
-
 export class FireControl {
-  private readonly weapon: WeaponState;
-
-  // 復元するスナップショットか、新規配置の初期積載を受け取る。どちらも省略すれば既定積載。
+  // player が撃つ。weapon は弾薬・砲身の状態で、省けば既定の積載で始める。
   public constructor(
     private readonly player: Player,
     private readonly events: RunEventSink,
     private readonly _scene: THREE.Scene,
-    init: FireInit = {},
-  ) {
-    this.weapon = new WeaponState(
-      'saved' in init ? init.saved : undefined,
-      'ammo' in init && init.ammo ? init.ammo : undefined,
-    );
-  }
+    private readonly weapon = new WeaponState(),
+  ) {}
 
   public get rounds(): number { return this.weapon.rounds; }
   public get mags(): number { return this.weapon.mags; }

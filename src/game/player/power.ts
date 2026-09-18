@@ -17,17 +17,19 @@ export interface SerializedPowerSystem {
 }
 
 export class PowerSystem {
-  private charge = POWER_CAPACITY * 0.75; // 蓄電量 [J]、0..POWER_CAPACITY
-
   private readonly panels: Record<SolarSide, DeployablePanelState> = {
     up: new DeployablePanelState(1, 1), down: new DeployablePanelState(1, 1),
   };
 
-  // saved があれば蓄電量を復元する。
-  public constructor(saved?: SerializedPowerSystem) {
-    if (saved && typeof saved.charge === 'number' && Number.isFinite(saved.charge)) {
-      this.charge = Math.max(0, Math.min(POWER_CAPACITY, saved.charge));
-    }
+  // charge は蓄電量 [J]、0..POWER_CAPACITY。
+  public constructor(private charge = POWER_CAPACITY * 0.75) {}
+
+  // 直列化した蓄電量から復元する。有限でない値は既定へ落とし、容量の範囲へ収める。
+  public static deserialize(serialized: SerializedPowerSystem): PowerSystem {
+    const { charge } = serialized;
+    return new PowerSystem(
+      typeof charge === 'number' && Number.isFinite(charge) ? Math.max(0, Math.min(POWER_CAPACITY, charge)) : undefined,
+    );
   }
 
   // side のパネルの展開/収納目標を反転する。
