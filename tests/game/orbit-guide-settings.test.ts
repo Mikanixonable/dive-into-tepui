@@ -19,7 +19,7 @@ export function register(): void {
   });
 
   test('orbit-guide-settings: セーブに無い項目だけが既定で埋まる', () => {
-    assert.deepEqual(deserializeOrbitGuideSettings(undefined), DEFAULT_ORBIT_GUIDE_SETTINGS);
+    assert.deepEqual(deserializeOrbitGuideSettings({}), DEFAULT_ORBIT_GUIDE_SETTINGS);
     // 入れ子の項目が欠けた記録。
     const saved: Partial<OrbitGuideSettings> = JSON.parse('{"geostationary":false,"zeroVelocity":{"count":3}}');
     const restored = deserializeOrbitGuideSettings(saved);
