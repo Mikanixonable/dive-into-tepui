@@ -15,14 +15,14 @@ import { THROTTLE_LEVELS } from '../player/throttle';
 export class PlanGuide {
   private readonly declarations: MarkerDeclaration[] = [];
 
-  constructor(private readonly group: MarkerSink) {}
+  public constructor(private readonly group: MarkerSink) {}
 
   // 所有するマーカー群を取り除く。
-  dispose(): void { this.group.dispose(); }
+  public dispose(): void { this.group.dispose(); }
 
   // 直近ノードの NODE・BURN マーカーを同期する。位置と方向は path の表示変換を通す —
   // 同じ計画を描いた折れ線とマーカーが同じ座標系に載っていなければ、線の上に立たない。
-  sync(
+  public sync(
     controlled: Controllable | null, simTime: number, camera: CameraFrame, path: PlanPath,
     nowMs: number,
   ): void {
@@ -67,7 +67,7 @@ export class PlanGuide {
       label: `BURN ${mag.toFixed(1)} m/s → ${fmtSpeed(len(node.v))}`,
       priority: MARKER_PRIORITY.MANEUVER_NODE,
     });
-    // 噴射方向が視界外(背面を含む)なら、敵・弾薬と同じ画面端の方位ガイドを出す。
+    // 噴射方向が視界外(背面を含む)なら、画面端に方位ガイドを出す。
     const burnPoint = project(addScaled(shipPos, norm(burnDir), MARKER_DIR_DIST));
     const placement = bearingPlacement(burnPoint, camera.viewport);
     out.push({

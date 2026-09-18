@@ -68,14 +68,12 @@ class RadiatorFold extends DynamicMotion {
 }
 
 // 折りへの接触を艦側のゲーム上の反応へ渡す口。side は当たった放熱板。
-interface RadiatorContactReaction {
-  (
-    side: RadiatorSide,
-    other: DynamicMotion,
-    contact: Contact,
-    services: DynamicReactionServices,
-  ): void;
-}
+type RadiatorContactReaction = (
+  side: RadiatorSide,
+  other: DynamicMotion,
+  contact: Contact,
+  services: DynamicReactionServices,
+) => void;
 
 export interface SerializedRadiatorSystem {
   readonly up: SerializedDeployablePanelState;
