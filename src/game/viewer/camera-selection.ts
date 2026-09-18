@@ -5,6 +5,7 @@ import type { RunEvent, RunEventSink } from '../run-events';
 import type { ViewMode } from '../view/view-mode';
 import {
   type CameraFrameSample,
+  type FocusCameraConfig,
   FocusCameraSelection,
   type FocusCameraSource,
   type SerializedFocusCameraSelection,
@@ -14,11 +15,10 @@ export const COMBAT_CAMERA_FOV = 55; // 通常時の垂直画角 [deg]
 const COMBAT_CAMERA_INIT_DIST = 38; // 注視距離 [m]
 
 export interface SerializedCameraSelection {
-  readonly view: 'combat' | 'map';
-  // 戦闘ビューの視点。
-  readonly chase: SerializedFocusCameraSelection;
-  // マップビューの視点。
-  readonly overview: SerializedFocusCameraSelection;
+  // 戦闘ビューの視点。無ければ既定の視点から始まる。
+  readonly chase?: SerializedFocusCameraSelection;
+  // マップビューの視点。無ければ既定の視点から始まる。
+  readonly overview?: SerializedFocusCameraSelection;
 }
 
 export interface CameraFrameSamples {
@@ -39,42 +39,62 @@ export interface CameraSelectionSource {
   camera(view: ViewMode): FocusCameraSource;
 }
 
-export class CameraSelection implements CameraSelectionSource {
-  public readonly combat: FocusCameraSelection;
-  public readonly map: FocusCameraSelection;
+// 戦闘ビューのカメラの既定と規則。操作対象を後方から見て、その姿勢に追従する。
+function combatCameraConfig(): FocusCameraConfig {
+  return {
+    view: 'combat',
+    focusLossPolicy: 'hold',
+    initial: {
+      angles: { yaw: -Math.PI / 2, pitch: 0.3 - (10 * Math.PI) / 180, roll: 0 },
+      dist: COMBAT_CAMERA_INIT_DIST,
+      fovDeg: COMBAT_CAMERA_FOV,
+      focus: { kind: 'object', id: frameRoleAnchorId('controlled') },
+      follow: { kind: 'attitude' },
+    },
+    eulerPole: 'attitude',
+    reset: 'initial',
+  };
+}
 
-  // 保存状態またはビューごとの既定から2台の視点を組む。
+// マップビューのカメラの既定と規則。原点天体 originId を慣性系で見る。
+function mapCameraConfig(originId: string): FocusCameraConfig {
+  return {
+    view: 'map',
+    focusLossPolicy: 'fallToOrigin',
+    initial: {
+      angles: { yaw: 0.7, pitch: 0.45, roll: 0 },
+      dist: 4.5e7,
+      fovDeg: 50,
+      focus: { kind: 'object', id: originId },
+      follow: null,
+    },
+    eulerPole: 'reference',
+    reset: 'orientation',
+  };
+}
+
+export class CameraSelection implements CameraSelectionSource {
+  // 2台の視点から組む。省いた視点はビューごとの既定から始まる。
   public constructor(
     celestialBodies: CelestialBodies,
     events: RunEventSink,
-    saved: SerializedCameraSelection | undefined,
-  ) {
-    this.combat = new FocusCameraSelection(celestialBodies, {
-      view: 'combat',
-      focusLossPolicy: 'hold',
-      initial: {
-        angles: { yaw: -Math.PI / 2, pitch: 0.3 - (10 * Math.PI) / 180, roll: 0 },
-        dist: COMBAT_CAMERA_INIT_DIST,
-        fovDeg: COMBAT_CAMERA_FOV,
-        focus: { kind: 'object', id: frameRoleAnchorId('controlled') },
-        follow: { kind: 'attitude' },
-      },
-      eulerPole: 'attitude',
-      reset: 'initial',
-    }, events, saved?.chase);
-    this.map = new FocusCameraSelection(celestialBodies, {
-      view: 'map',
-      focusLossPolicy: 'fallToOrigin',
-      initial: {
-        angles: { yaw: 0.7, pitch: 0.45, roll: 0 },
-        dist: 4.5e7,
-        fovDeg: 50,
-        focus: { kind: 'object', id: celestialBodies.originId },
-        follow: null,
-      },
-      eulerPole: 'reference',
-      reset: 'orientation',
-    }, events, saved?.overview);
+    public readonly combat = new FocusCameraSelection(celestialBodies, combatCameraConfig(), events),
+    public readonly map = new FocusCameraSelection(celestialBodies, mapCameraConfig(celestialBodies.originId), events),
+  ) {}
+
+  // 直列化した2台の視点から復元する。
+  public static deserialize(
+    serialized: SerializedCameraSelection, celestialBodies: CelestialBodies, events: RunEventSink,
+  ): CameraSelection {
+    const { chase, overview } = serialized;
+    const combatConfig = combatCameraConfig();
+    const mapConfig = mapCameraConfig(celestialBodies.originId);
+    return new CameraSelection(
+      celestialBodies,
+      events,
+      chase === undefined ? undefined : FocusCameraSelection.deserialize(chase, celestialBodies, combatConfig, events),
+      overview === undefined ? undefined : FocusCameraSelection.deserialize(overview, celestialBodies, mapConfig, events),
+    );
   }
 
   // view が表に出ているときに使う1台。
@@ -92,7 +112,7 @@ export class CameraSelection implements CameraSelectionSource {
   }
 
   // 2台分を直列化した形へ畳む。
-  public serialize(view: ViewMode): SerializedCameraSelection {
-    return { view, chase: this.combat.serialize(), overview: this.map.serialize() };
+  public serialize(): SerializedCameraSelection {
+    return { chase: this.combat.serialize(), overview: this.map.serialize() };
   }
 }
