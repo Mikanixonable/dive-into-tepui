@@ -26,7 +26,9 @@ import { PowerSystem, type SerializedPowerSystem } from './power';
 import { BoosterStack, type SerializedBoosterStack } from './booster-stack';
 
 import { Plan, type PlanExecutionMode, type SerializedPlan } from '../plan/plan';
-import { deserializeParts, type Part, type SerializedPart } from '../dynamic/dynamic-entity/parts';
+import {
+  deserializeParts, type Part, type RadiatorPart, type SerializedPart,
+} from '../dynamic/dynamic-entity/parts';
 import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
@@ -106,9 +108,6 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   public readonly boosters: AttachedBoosters;
   private readonly effects: PlayerEffects;
   public override get parts(): readonly Part[] { return super.parts; }
-
-  public readonly toggleSolarPanel = (side: 'up' | 'down'): void => this.motion.power.toggle(side);
-  public readonly toggleRadiator = (side: 'up' | 'down'): void => this.motion.radiator.toggle(side);
 
   // registry は出来事と生んだ実体を積む先。name は表示名、id は採番器が配った識別子、state と
   // attitude は運動状態。weapon から後ろは下位系の状態と部品で、省いたものは新しく作ったときの
@@ -356,12 +355,8 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   ): void {
     // 熱とダメージを入れ、放熱板パーツが壊れたらその場で破片を出す
     this.motion.absorbHeat(BULLET_IMPACT_HEAT / Math.max(this.motion.mass, 1e-9));
-    const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
-    this.applyDamageToParts(side === null ? damage : RADIATOR_BULLET_DAMAGE, damagedPart);
-    if (side !== null && damagedPart && damagedPart.hp <= 0) {
-      const tip = this.motion.radiator.tipWorldPosition(side, this.motion.state.r, this.motion.att);
-      this.effects.radiatorBreak(this.motion.state, tip);
-    }
+    this.applyDamageToParts(side === null ? damage : RADIATOR_BULLET_DAMAGE, this.radiatorPartOf(side));
+    this.scatterBrokenRadiator(side);
     if (this.hp > 0) {
       this.effects.impact(bulletType, this.motion.state, impactPoint);
       return;
@@ -429,12 +424,8 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     damageSpeed: number, side: RadiatorSide | null, lossReason: string, outcome: DamageOutcomeSink,
   ): void {
     // ダメージを入れ、放熱板パーツが壊れたらその場で破片を出す
-    const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
-    if (!this.applyCollisionDamage(damageSpeed, damagedPart)) return;
-    if (side !== null && damagedPart && damagedPart.hp <= 0) {
-      const tip = this.motion.radiator.tipWorldPosition(side, this.motion.state.r, this.motion.att);
-      this.effects.radiatorBreak(this.motion.state, tip);
-    }
+    if (!this.applyCollisionDamage(damageSpeed, this.radiatorPartOf(side))) return;
+    this.scatterBrokenRadiator(side);
     if (this.hp > 0) {
       this.effects.contact(this.motion.state);
       return;
@@ -444,6 +435,19 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.motion.alive = false;
     outcome.playerLost(lossReason);
     this.effects.destroy(this.motion.state);
+  }
+
+  // side の放熱板パーツ。side が null(船体)か、パーツが欠けていれば undefined。
+  private radiatorPartOf(side: RadiatorSide | null): RadiatorPart | undefined {
+    return side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
+  }
+
+  // side の放熱板パーツが全損していれば、そのパネル先端から破片を出す。
+  private scatterBrokenRadiator(side: RadiatorSide | null): void {
+    const part = this.radiatorPartOf(side);
+    if (side === null || !part || part.hp > 0) return;
+    const tip = this.motion.radiator.tipWorldPosition(side, this.motion.state.r, this.motion.att);
+    this.effects.radiatorBreak(this.motion.state, tip);
   }
 
   // 動圧が構造限界を超えたことによる喪失。
