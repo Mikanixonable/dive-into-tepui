@@ -7,15 +7,15 @@ import {
   generateEllipticEnemy,
   generatePhasedEnemy,
 } from './spawner/enemy-generator';
-import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { COLOR_ENEMY_ORBIT_LINE } from '../lines/entity-line-manager';
+import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 
 export class Stage1 extends Stage {
-  static readonly id = '1' as const;
-  static readonly epoch = STORY_EPOCH;
-  static readonly selectLabel = 'stage 1';
-  static readonly selectSub = '【第一ステージ: LEO戦域】 高度420kmの低軌道。敵5機はすべて近傍軌道に分布';
-  static readonly selectKey = 'Digit1';
+  public static readonly id = '1' as const;
+  public static readonly epoch = STORY_EPOCH;
+  public static readonly selectLabel = 'stage 1';
+  public static readonly selectSub = '【第一ステージ: LEO戦域】 高度420kmの低軌道。敵5機はすべて近傍軌道に分布';
+  public static readonly selectKey = 'Digit1';
 
   // 自機と5機の敵を初期配置して始める。
   public static create(...deps: StageDeps): Stage1 {
@@ -41,7 +41,7 @@ export class Stage1 extends Stage {
   }
 
   // 開始ブリーフィングの HTML を組み立てる。
-  briefingHtml(): string {
+  protected briefingHtml(): string {
     return (
       `<b>作戦目標: 敵機 ${this.enemiesAppeared} 機を全機撃破せよ</b><br>` +
       `敵を右クリックでターゲット固定 → 機首を向けて並進で接近 → [${K.warpSlower.label}]/[${K.warpFaster.label}] 時間加速で会合を短縮<br>` +
@@ -50,7 +50,7 @@ export class Stage1 extends Stage {
   }
 
   // 1フレーム分、補給ロジスティクスを進める。
-  update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
+  public update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
 
