@@ -126,7 +126,7 @@ export function register(): void {
   test('fire control: 非正数の補給と不正な保存値を安全な状態へ正規化する', () => {
     const fire = new FireControl(
       { motion: { mass: 1_000 } } as Player,
-      quietEvents,
+      {} as never,
       {} as never,
       WeaponState.deserialize({
         mags: -2, rounds: 999, barrel: -1, cooldown: Number.NaN, muzzleIdx: 8,
