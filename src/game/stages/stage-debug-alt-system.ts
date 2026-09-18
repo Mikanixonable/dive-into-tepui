@@ -103,27 +103,32 @@ export class StageDebugAltSystem extends Stage {
   public static readonly selectSub = '【デバッグ】架空天体3体だけのレジストリで起動する';
   public static readonly hiddenFromSelect = true;
 
-  // saved があればそこから復元し、無ければ初期配置してステージを始める。
-  public constructor(saved: SerializedStage | undefined, ...deps: StageDeps) {
-    super(saved, ...deps);
-    this.begin();
+  // 自機を zephyrus の高度 500km の赤道円軌道へ置いて始める。
+  public static create(...deps: StageDeps): StageDebugAltSystem {
+    const stage = new StageDebugAltSystem(deps);
+    // zephyrus に対する円軌道の相対状態を、ECI の絶対状態へ直して置く
+    const t = stage._dynamicSystem.simTime;
+    const primary = stage._celestialSystem.motionOf(PRIMARY_ID);
+    const primaryState = primary.stateAt(t);
+    const rel = stateFromOrbitalElements(t, PRIMARY_RADIUS + 5e5, 0, 0, 0, 0, 0, primary.def.mu);
+    stage.addPlayer({
+      state: addPrimaryRelative(primaryState, kinematicState<'primaryRel'>(t, rel.r, rel.v)),
+      ammo: { mags: 20, rounds: MAG_ROUNDS },
+    });
+    stage.composeBriefing();
+    return stage;
+  }
+
+  // 直列化した形から復元する。
+  public static deserialize(serialized: SerializedStage, ...deps: StageDeps): StageDebugAltSystem {
+    return new StageDebugAltSystem(
+      deps, ...Stage.deserializeCommonState(serialized, deps, StageDebugAltSystem.stageRules),
+    );
   }
 
   // ステージ開始時に出すブリーフィングの本文(HTML)。
   protected briefingHtml(): string {
     return `<b>架空星系デバッグステージ</b><br>${STAR_ID} 系の ${PRIMARY_ID} で起動`;
-  }
-
-  // 自機を zephyrus の高度 500km の赤道円軌道へ置く。
-  protected init(): void {
-    const t = this._dynamicSystem.simTime;
-    const primary = this._celestialSystem.motionOf(PRIMARY_ID);
-    const primaryState = primary.stateAt(t);
-    const rel = stateFromOrbitalElements(t, PRIMARY_RADIUS + 5e5, 0, 0, 0, 0, 0, primary.def.mu);
-    this.addPlayer({
-      state: addPrimaryRelative(primaryState, kinematicState<'primaryRel'>(t, rel.r, rel.v)),
-      ammo: { mags: 20, rounds: MAG_ROUNDS },
-    });
   }
 
   // 補給を1フレーム分進める。自艦がいなければ何もしない。

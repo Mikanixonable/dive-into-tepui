@@ -17,9 +17,28 @@ export class Stage2 extends Stage {
   static readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';
   static readonly selectKey = 'Digit2';
 
-  constructor(saved: SerializedStage | undefined, ...deps: StageDeps) {
-    super(saved, ...deps);
-    this.begin();
+  // 自機を置き、通常軌道の敵とモルニヤ級軌道の敵を混成配置して始める。
+  public static create(...deps: StageDeps): Stage2 {
+    const stage = new Stage2(deps);
+    const player = stage.addPlayer();
+    const base = player.motion.state;
+    const scene = stage._scene;
+    const idAllocators = stage._dynamicSystem.idAllocators;
+    const attractors = stage._celestialSystem.celestialMotions;
+    // 通常軌道の敵
+    stage.addEnemy(generatePhasedEnemy('HOSTILE-α', base, attractors, 1800, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    stage.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, attractors, -2600, 3000, 0xff7a2d, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    // モルニヤ級の高楕円軌道の敵
+    stage.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', base, attractors, 0.4, 2.6, 0xe0409f, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    stage.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', base, attractors, 2.5, 0.9, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    stage.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', base, attractors, 4.6, 3.8, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    stage.composeBriefing();
+    return stage;
+  }
+
+  // 直列化した形から復元する。
+  public static deserialize(serialized: SerializedStage, ...deps: StageDeps): Stage2 {
+    return new Stage2(deps, ...Stage.deserializeCommonState(serialized, deps, Stage2.stageRules));
   }
 
   // 第一ステージのクリア実績があれば解放。
@@ -36,21 +55,6 @@ export class Stage2 extends Stage {
     );
   }
 
-  // 自機を置き、通常軌道の敵とモルニヤ級軌道の敵を混成配置する。
-  protected init(): void {
-    const player = this.addPlayer();
-    const base = player.motion.state;
-    const scene = this._scene;
-    const idAllocators = this._dynamicSystem.idAllocators;
-    const attractors = this._celestialSystem.celestialMotions;
-    // 通常軌道の敵
-    this.addEnemy(generatePhasedEnemy('HOSTILE-α', base, attractors, 1800, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
-    this.addEnemy(generateCoellipticEnemy('HOSTILE-β', base, attractors, -2600, 3000, 0xff7a2d, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
-    // モルニヤ級の高楕円軌道の敵
-    this.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', base, attractors, 0.4, 2.6, 0xe0409f, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
-    this.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', base, attractors, 2.5, 0.9, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
-    this.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', base, attractors, 4.6, 3.8, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
-  }
   // 補給品の湧きを進める。
   update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
