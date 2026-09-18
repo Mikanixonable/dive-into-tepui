@@ -27,11 +27,31 @@ git diff --stat HEAD -- src/
 
 ## 2. 機械的に見つかるものから当たる
 
-`src/**/*.ts` を編集すると PostToolUse フック(`.claude/hooks/check-boundaries.mjs`)が、
-フレームの位相の混線・`physics/` の依存汚染・配線で占められたモジュールへの実装の混入を指摘する。
-点検時はまとめて確認する:
+**lint を最初に通す。** 構文だけで判定できる規則は `eslint.config.mjs` が当てている。何を当てて
+いるかはそのファイルで確かめ、**3 ではそれらを読んで確かめ直さない。**
 
-- 500行を超えるモジュール、100行を超える関数を洗い出す。
+```
+npx eslint --fix --prune-suppressions <点検範囲の .ts。同じ変更セットが触った tests/ tools/ も含める>
+npm run check:boundaries
+```
+
+- `--fix` が自動で直せるもの(`import type` など)を直し、`--prune-suppressions` が直って要らなく
+  なった suppressions を消す。**両方を付ける** — `--fix` だけだと、次の `npm run lint` が
+  「使われていない suppressions」で落ちる。
+- 残った error は手で直す。**`eslint-suppressions.json` へ載せても、`eslint-disable` を書いても
+  通さない。** 件数は減らすだけで、増やしてよいのは規則を足したときだけ(`eslint.config.mjs` の冒頭)。
+- **移動・改名したファイルは、lint を走らせる前に `eslint-suppressions.json` の鍵を新しいパスへ
+  書き換える(件数はそのまま)。** 移動・改名は、1 で範囲を決めたのと同じ比較を `git diff -M
+  --name-status` で取った `R` 行で分かる。先に走らせると旧パスの鍵が消え、移動しただけの既存の
+  違反が新しい違反として浮く。
+- warning(`max-lines` / `max-lines-per-function`)は違反ではなく診断の入口。当たったら 1.2「長い
+  モジュールは、まず原因を診断する」で診断し、分ける線が無ければそのままにする。
+- `check:boundaries` は層と境界の判定。`src/**/*.ts` を編集するたびに PostToolUse フック
+  (`.claude/hooks/check-boundaries.mjs`)も位相の混線・`physics/` の依存汚染・配線で占められた
+  モジュールへの実装の混入を指摘するが、点検時はまとめて通す。
+
+lint の外で機械的に当たれるもの:
+
 - 同じ形の式・同じ形の処理が複数のモジュールに散っていないか、特徴的な識別子・演算・定数で grep する。
 - 旧名の残骸が無いか。改名した名前をリポジトリ全文検索して 0 件を確認する。
 
@@ -41,17 +61,17 @@ git diff --stat HEAD -- src/
 
 | 見るもの | 節 |
 | --- | --- |
-| モジュール・関数の大きさ、責務の有無、たらい回し | 1.2 モジュール化 |
+| 責務の有無、たらい回し、2 で長さの warning が出たものの診断 | 1.2 モジュール化 |
 | 層をまたぐ依存(math/ physics/ render/ marker/ audio/ input/ hud/ game/ settings/ launcher/)、接触の帰結の置き場 | 1.3 層と境界 |
 | 置き場所が適切か(依存関係だけを見る) | 1.4 責務分割の見つけ方 |
 | 重複実装か、早急な一般化か | 1.5 重複実装の禁止と早急な一般化の分かれ目 |
-| 状態の重複、導出可能なステート、整合性責務の漏洩、フラグの合成 | 1.6 データ構造 |
+| 状態の重複、導出可能なステート、整合性責務の漏洩、フラグの合成、`?:` で表した不在(`\| undefined` は lint が見る) | 1.6 データ構造 |
 | 中身を差し替えて転用しているオブジェクト | 1.7 オブジェクトの流用の禁止 |
 | 座標系の取り違え、生の Vec3 への非 ECI 値の混入 | 1.8 座標系の境界 |
 | シミュレーション時刻と実時刻の取り違え | 1.9 時刻軸の境界 |
 | フレームの位相(入力の解釈・進行・導出と同期・描画)の混線 | 1.10 フレームの位相 |
 | 旧名・互換エイリアスの残骸 | 1.11 改名・移動 |
-| TypeScript の書き方、公開範囲、二段初期化 | 1.12 |
+| TypeScript の書き方のうち lint が当てていないもの(状態を更新して値を返す関数、クロージャ注入、受け手の面、`readonly`、`as` の前提、import の順、公開範囲の選び方)、二段初期化 | 1.12 |
 | CSS のリテラル直書き | 1.13 |
 | 命名 | 2. 命名規則 |
 | コメント | 3. コメント規約(一括点検は `/comment-cleanup`) |
@@ -70,7 +90,7 @@ git diff --stat HEAD -- src/
 
 ## 5. 仕上げ
 
-- `npm run typecheck`。触った層の回帰テスト(`npm run test:physics` / `test:math` / `test:game` / `test:render`)も。
+- `npx eslint --prune-suppressions <点検範囲>` を error 0 で通し、`npm run typecheck`。触った層の回帰テスト(`npm run test:physics` / `test:math` / `test:game` / `test:render`)も。
 - **何を直したかを、規則の節番号つきで報告する。** 「見つけたが直さなかったもの」と、
   その理由も述べる。
 - **リファクタリングでは `DEVELOP/SPEC/` を更新しない。** 挙動を変える必要が出たなら、それは
