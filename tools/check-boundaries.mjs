@@ -1,5 +1,5 @@
 // src/ の import グラフを層の対応表へ当て、境界の規則に反する辺と、禁止パターンに当たる行を
-// 数える。判定は DEVELOP/CODING-RULE.md の層の規則が正本で、ここにあるのはその機械判定。
+// 数える。判定は DEVELOP/ARCHITECTURE.md の規則が正本で、ここにあるのはその機械判定。
 //
 // 同名の .claude/hooks/check-boundaries.mjs は別物で、あちらは編集直後に1ファイルだけ見る。
 //
