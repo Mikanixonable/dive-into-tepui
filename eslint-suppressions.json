@@ -119,26 +119,6 @@
       "count": 16
     }
   },
-  "src/game/camera/camera-orientation.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "src/game/camera/camera-system.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 4
-    }
-  },
-  "src/game/camera/focus-camera.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 8
-    }
-  },
-  "src/game/camera/focus-target.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    }
-  },
   "src/game/camera/gunsight-camera.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
@@ -169,7 +149,7 @@
   },
   "src/game/celestial/orbit-guide/orbit-guide-model.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 5
+      "count": 4
     },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
@@ -177,7 +157,7 @@
   },
   "src/game/celestial/orbit-guide/zero-velocity-model.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 3
+      "count": 2
     },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 7
@@ -194,11 +174,6 @@
     },
     "@typescript-eslint/explicit-member-accessibility": {
       "count": 6
-    }
-  },
-  "src/game/celestial/scale-grid-view.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
     }
   },
   "src/game/celestial/solar-system/dwarf-planets.ts": {
@@ -276,11 +251,6 @@
       "count": 2
     }
   },
-  "src/game/control-selection.ts": {
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 8
-    }
-  },
   "src/game/creative/duplicate-form.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 3
@@ -297,27 +267,9 @@
       "count": 1
     }
   },
-  "src/game/creative/orbit-form-fields.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    }
-  },
   "src/game/creative/stage-controls-panel.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
-    }
-  },
-  "src/game/display-window-manager.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 16
-    }
-  },
-  "src/game/dynamic/arc-celestial-bodies.ts": {
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 4
     }
   },
   "src/game/dynamic/attractors.ts": {
@@ -364,24 +316,6 @@
     }
   },
   "src/game/dynamic/dynamic-entity/enemy.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 3
-    }
-  },
-  "src/game/dynamic/dynamic-entity/entity-dictionary.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "src/game/dynamic/dynamic-entity/protein-enemy.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "src/game/dynamic/dynamic-entity/ship.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
     }
@@ -436,26 +370,12 @@
       "count": 1
     }
   },
-  "src/game/dynamic/predicted-arc.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 15
-    }
-  },
   "src/game/dynamic/predictor.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
     }
   },
   "src/game/dynamic/sim-speed-manager.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 15
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 4
     }
@@ -492,9 +412,6 @@
   "src/game/frame-anchors.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 6
     }
   },
   "src/game/frame-sections.ts": {
@@ -505,14 +422,6 @@
       "count": 6
     }
   },
-  "src/game/game.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 2
-    }
-  },
   "src/game/hud/frame/anchor-zone.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
@@ -521,11 +430,6 @@
   "src/game/hud/frame/camera-frame-panel.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
-    }
-  },
-  "src/game/hud/frame/frame-controls.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 4
     }
   },
   "src/game/hud/frame/frame-labels.ts": {
@@ -683,14 +587,6 @@
       "count": 1
     }
   },
-  "src/game/nav-target.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 6
-    },
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 4
-    }
-  },
   "src/game/orbit-info.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
@@ -699,9 +595,6 @@
   "src/game/orbit-reference.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 3
     }
   },
   "src/game/pickable/enemy-inspection.ts": {
@@ -724,15 +617,12 @@
   },
   "src/game/pickable/object-pickables.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 4
+      "count": 2
     }
   },
   "src/game/pickable/object-windows.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 3
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 7
+      "count": 1
     }
   },
   "src/game/pickable/part-windows.ts": {
@@ -787,10 +677,7 @@
   },
   "src/game/plan/plan-guide.ts": {
     "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 4
+      "count": 1
     }
   },
   "src/game/plan/plan-panel.ts": {
@@ -817,17 +704,11 @@
   "src/game/player/aero-load.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 4
     }
   },
   "src/game/player/altitude-alarm.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 3
     }
   },
   "src/game/player/attached-boosters.ts": {
@@ -908,16 +789,6 @@
       "count": 1
     }
   },
-  "src/game/save/save-data.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "src/game/stages/spawner/enemy-generator.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 3
-    }
-  },
   "src/game/stages/spawner/enemy-spawner.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 3
@@ -927,9 +798,6 @@
     }
   },
   "src/game/stages/stage-debug-alt-system.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
     },
@@ -937,32 +805,9 @@
       "count": 2
     }
   },
-  "src/game/stages/stage-debug-load.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
-  "src/game/stages/stage-debug.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 11
-    }
-  },
   "src/game/stages/stage-dictionary.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
-    }
-  },
-  "src/game/stages/stage-utils/logistics.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
-    }
-  },
-  "src/game/stages/stage-utils/score-attack-timer.ts": {
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 4
     }
   },
   "src/game/stages/stage-utils/status-panel.ts": {
@@ -974,56 +819,13 @@
     }
   },
   "src/game/stages/stage-utils/wave-attack.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 4
-    },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 4
     }
   },
   "src/game/stages/stage.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 4
-    },
     "@typescript-eslint/no-unused-vars": {
       "count": 4
-    }
-  },
-  "src/game/stages/stage0.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 12
-    }
-  },
-  "src/game/stages/stage00.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 12
-    }
-  },
-  "src/game/stages/stage1.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 8
-    }
-  },
-  "src/game/stages/stage2.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    },
-    "@typescript-eslint/explicit-member-accessibility": {
-      "count": 10
-    }
-  },
-  "src/game/view/view-manager.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 2
     }
   },
   "src/hud/overlay-manager.ts": {
@@ -1678,11 +1480,6 @@
       "count": 1
     }
   },
-  "src/render/dynamic/dynamic-entity/protein-enemy-view.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 1
-    }
-  },
   "src/render/dynamic/dynamic-view.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 1
@@ -2106,9 +1903,6 @@
   "tests/game/booster-stack.test.ts": {
     "@typescript-eslint/consistent-type-imports": {
       "count": 2
-    },
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 2
     }
   },
   "tests/game/camera-orientation.test.ts": {
@@ -2131,15 +1925,7 @@
   },
   "tests/game/engagement-zone.test.ts": {
     "@typescript-eslint/no-non-null-assertion": {
-      "count": 8
-    }
-  },
-  "tests/game/focus-target.test.ts": {
-    "@typescript-eslint/consistent-type-imports": {
-      "count": 4
-    },
-    "@typescript-eslint/no-unused-vars": {
-      "count": 2
+      "count": 7
     }
   },
   "tests/game/frame-anchors.test.ts": {

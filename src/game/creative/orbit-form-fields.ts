@@ -1,9 +1,9 @@
 // 軌道の指定に要る、天体まわりの選択肢と諸元。基準天体とラグランジュ系の候補を登録天体から組み、
 // 主天体間距離と太陽同期軌道の傾斜角を答える。
-import { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
-import { ObjectPickerGroup } from '../hud/windows/object-picker';
+import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
+import type { ObjectPickerGroup } from '../hud/windows/object-picker';
 import { OrbitingMotion } from '../../physics/celestial-motion';
-import { type CelestialBodyDef } from '../../physics/celestial-body-def';
+import type { CelestialBodyDef } from '../../physics/celestial-body-def';
 import { EARTH, J2_EARTH, MU_EARTH, R_EARTH } from '../celestial/solar-system/earth-system';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { LAGRANGE_MIN_CLEARANCE_RATIO } from '../celestial/lagrange-id';

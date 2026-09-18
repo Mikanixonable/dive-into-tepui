@@ -2,7 +2,7 @@
 import {
   deserializeKinematicState, serializeKinematicState, type KinematicState, type SerializedKinematicState,
 } from '../../physics/kinematic-state';
-import { OrbitalElements, orbitalElementsOf } from '../../physics/elements';
+import { type OrbitalElements, orbitalElementsOf } from '../../physics/elements';
 import { strongestAttractor } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { dot, sameVec } from '../../math/vec3';

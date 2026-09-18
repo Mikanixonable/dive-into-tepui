@@ -1,24 +1,24 @@
 // 航法ターゲット(任意の ObjectPickable — 月・ラグランジュ点なども含む)の、位置・速度と軌道面への
 // 解決と、自機軌道との相対 AN/DN(昇交点・降交点)・再接近点の算出・マーカー表示・被選択物としての公開。
-import { Vec3, add, len, sub } from '../math/vec3';
+import { type Vec3, add, len, sub } from '../math/vec3';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
 import { strongestAttractor } from '../physics/attractor';
 import { OrbitingMotion } from '../physics/celestial-motion';
 import type { CelestialBody } from '../physics/celestial-body';
-import { FrameAnchorSource, frameOfCelestialBody, toFrameState, unbakeToDisplayPoint } from '../physics/frame';
-import { LagrangeLabel, lagrangeStateOf, secondaryFrameOf } from '../physics/lagrange';
+import { type FrameAnchorSource, frameOfCelestialBody, toFrameState, unbakeToDisplayPoint } from '../physics/frame';
+import { type LagrangeLabel, lagrangeStateOf, secondaryFrameOf } from '../physics/lagrange';
 import { LOCAL_FORWARD, qRotate } from '../math/quat';
 import { goldenSectionMin } from '../math/optimize';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
-import { DisplayWindow } from './display-window-manager';
+import type { DisplayWindow } from './display-window-manager';
 import type { EntityRoster } from './dynamic/entity-roster';
 import { aliveCombatTarget } from './dynamic/dynamic-entity/combat-target';
-import { TimeLabelSetting } from './hud/orbit/calendar-ticks';
+import type { TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import type { MarkerDeclaration } from '../marker/marker-declaration';
 import type { MarkerSink } from '../marker/marker-sink';
 import { RelativeNodeMarker } from './marker/relative-node-marker';
 import type { CameraFrame } from '../render/camera/camera-frame';
-import { ObjectPickable } from './pickable/object-pickable';
+import type { ObjectPickable } from './pickable/object-pickable';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import { lagrangePointOf } from './celestial/lagrange-id';
@@ -46,20 +46,21 @@ function findClosestApproach(
     return p && q ? len(sub(p.r, q.r)) : null;
   };
   const step = CLOSEST_APPROACH_SPAN_SEC / CLOSEST_APPROACH_SAMPLES;
-  const samples: number[] = [];
-  for (let i = 0; i <= CLOSEST_APPROACH_SAMPLES; i++) {
-    const d = distAt(simTime + i * step);
-    if (d === null) break;
-    samples.push(d);
-  }
   // 隣接3点が谷型(前後より小さい)になった最初の位置を極小の挟み込み区間として使う。
-  for (let i = 1; i < samples.length - 1; i++) {
-    if (samples[i]! >= samples[i - 1]! || samples[i]! >= samples[i + 1]!) continue;
-    const lo = simTime + (i - 1) * step;
-    const hi = simTime + (i + 1) * step;
-    const tMin = goldenSectionMin(lo, hi, (t) => distAt(t) ?? Infinity, CLOSEST_APPROACH_REFINE_ITERATIONS);
-    const p = controlled.motion.stateAt(tMin, celestialBodies);
-    return p ? { pos: p.r, t: tMin } : null;
+  let before: number | null = null;
+  let here: number | null = null;
+  for (let i = 0; i <= CLOSEST_APPROACH_SAMPLES; i++) {
+    const after = distAt(simTime + i * step);
+    if (after === null) break;
+    if (before !== null && here !== null && !(here >= before || here >= after)) {
+      const lo = simTime + (i - 2) * step;
+      const hi = simTime + i * step;
+      const tMin = goldenSectionMin(lo, hi, (t) => distAt(t) ?? Infinity, CLOSEST_APPROACH_REFINE_ITERATIONS);
+      const p = controlled.motion.stateAt(tMin, celestialBodies);
+      return p ? { pos: p.r, t: tMin } : null;
+    }
+    before = here;
+    here = after;
   }
   return null;
 }
