@@ -23,7 +23,7 @@ import type { ControlSelectionCommands } from '../control-selection-commands';
 import { rayThroughScreen } from '../../math/projection';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { FocusCameraCommands } from '../viewer/camera-commands';
-import type { FocusCameraSource } from '../viewer/focus-camera-selection';
+import type { MapCameraSource } from '../viewer/camera-selection';
 import type { DisplayWindowManager } from '../display-window-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 
@@ -41,14 +41,14 @@ export class MapPicking {
   // 一覧パネルと軌道線ウィンドウを組み、一覧の行操作を注視・ターゲット・ウィンドウへ繋ぐ。
   public constructor(
     private readonly hud: HudLayers & Notifier,
-    private readonly camera: { readonly map: Pick<FocusCameraSource, 'focus'> },
+    private readonly camera: MapCameraSource,
     private readonly roster: EntityRoster,
     private readonly celestialBodies: CelestialBodies,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly markers: MarkerVisibility,
     private readonly navTargetPresenter: NavTargetPresenter,
     private readonly navTargetCommands: NavTargetCommands,
-    private readonly focusSink: Pick<FocusCameraCommands, 'setFocus'>,
+    private readonly mapFocusCommands: Pick<FocusCameraCommands, 'setFocus'>,
     private readonly pickables: ObjectPickables,
     private readonly linePickables: LinePickables,
     private readonly objectWindows: ObjectWindows,
@@ -162,14 +162,14 @@ export class MapPicking {
 
   // 軌道線ウィンドウの「所属」欄から、その持ち主へ注視を移す。
   private focusOwner(id: string, name: string): void {
-    this.focusSink.setFocus({ kind: 'object', id });
+    this.mapFocusCommands.setFocus({ kind: 'object', id });
     this.hud.hint(`${name} にフォーカス`);
   }
 
   // マップ視点のフォーカスを id の対象へ移す。対象が自艦なら操作対象にもなる(SPEC/MAP.md「軌道物体一覧パネル」)。
   // target は候補列で見つかっていれば渡し、表示名と操作対象の切り替えに使う。
   private focusTarget(id: string, target: MapPickable | undefined): void {
-    this.focusSink.setFocus({ kind: 'object', id });
+    this.mapFocusCommands.setFocus({ kind: 'object', id });
     this.hud.hint(`${target?.name ?? id} にフォーカス`);
     target?.onMapFocus?.(this.controlCommands);
   }

@@ -4,7 +4,7 @@ import {
 } from '../../math/quat';
 import type { PolarEuler } from '../../math/polar-euler';
 import { sphericalOffset } from '../../math/polar-euler';
-import type { ProjectionMode } from '../../math/projection';
+import { metersPerPixelAtDepth, tanHalfFov, type ProjectionMode } from '../../math/projection';
 import {
   addScaled, cross, len, lenSq, norm, projectOntoPlane, scale, type Vec3, v3,
 } from '../../math/vec3';
@@ -30,7 +30,7 @@ import type { RunEventSink } from '../run-events';
 import { CameraOrientation, type CameraRotationMode } from './camera-orientation';
 import type { FocusTarget } from './focus-target';
 
-export const FOCUS_CAMERA_MIN_DIST = 1e3; // 天体フォーカス時の注視距離の下限 [m]
+const FOCUS_CAMERA_MIN_DIST = 1e3; // 天体フォーカス時の注視距離の下限 [m]
 export const FOCUS_CAMERA_FOV_MIN = 15; // 最小垂直画角 [deg]
 export const FOCUS_CAMERA_FOV_MAX = 120; // 最大垂直画角 [deg]
 const FOCUS_CAMERA_MAX_DIST = 1e14; // 注視距離の上限 [m]
@@ -191,13 +191,14 @@ export class FocusCameraSelection implements FocusCameraSource {
       const initial = config.initial;
       this._focus = initial.focus;
       this._cameraFrame = frames.inertialFrame;
-      followAttitude = this.applyInitialFrame(initial.follow);
+      followAttitude = initial.follow?.kind === 'attitude';
+      this.applyInitialFrame(initial.follow);
       this._distance = initial.dist;
       this._pan = frameDir(0, 0, 0);
       rotation = qFromBasis(sphericalOffset(initial.angles, 1), v3(0, 1, 0));
     }
     this.orientation = new CameraOrientation(rotation, saved?.rotationMode ?? 'euler', followAttitude, null);
-    const defaultHalfHeight = this.distance * Math.tan((this.fovDeg * 0.5 * Math.PI) / 180);
+    const defaultHalfHeight = this.distance * tanHalfFov(this.fovDeg);
     const savedHalfHeight = saved?.orthographicHalfHeight;
     const halfHeight = savedHalfHeight !== undefined && Number.isFinite(savedHalfHeight)
       ? savedHalfHeight : defaultHalfHeight;
@@ -330,7 +331,7 @@ export class FocusCameraSelection implements FocusCameraSource {
     const cameraUp = norm(cross(right, viewDir));
     const metersPerPixel = this.projectionMode === 'orthographic'
       ? (2 * this._orthographicHalfHeight) / Math.max(1, input.viewportHeight)
-      : 2 * this.distance * Math.tan((this.fovDeg * 0.5 * Math.PI) / 180) / Math.max(1, input.viewportHeight);
+      : metersPerPixelAtDepth(this.fovDeg, this.distance, Math.max(1, input.viewportHeight));
     let panEci = toInertialDir(transform, this._pan);
     panEci = addScaled(panEci, right, -input.panDx * metersPerPixel);
     panEci = addScaled(panEci, cameraUp, input.panDy * metersPerPixel);
@@ -342,8 +343,8 @@ export class FocusCameraSelection implements FocusCameraSource {
     const nextFov = this.clampFov(fovDeg);
     if (nextFov === this.fovDeg) return;
     if (this.projectionMode === 'perspective') {
-      const oldScale = Math.tan((this.fovDeg * 0.5 * Math.PI) / 180);
-      const newScale = Math.tan((nextFov * 0.5 * Math.PI) / 180);
+      const oldScale = tanHalfFov(this.fovDeg);
+      const newScale = tanHalfFov(nextFov);
       this.setDistance(this.distance * newScale / oldScale);
     }
     this.fovDeg = nextFov;
@@ -357,9 +358,9 @@ export class FocusCameraSelection implements FocusCameraSource {
   public setProjectionMode(mode: ProjectionMode): void {
     if (mode === this.projectionMode) return;
     if (mode === 'orthographic') {
-      this._orthographicHalfHeight = this.distance * Math.tan((this.fovDeg * 0.5 * Math.PI) / 180);
+      this._orthographicHalfHeight = this.distance * tanHalfFov(this.fovDeg);
     } else {
-      this.setDistance(this._orthographicHalfHeight / Math.tan((this.fovDeg * 0.5 * Math.PI) / 180));
+      this.setDistance(this._orthographicHalfHeight / tanHalfFov(this.fovDeg));
     }
     this.projectionMode = mode;
   }
@@ -505,20 +506,19 @@ export class FocusCameraSelection implements FocusCameraSource {
   private resetToInitial(): void {
     const initial = this.config.initial;
     this._focus = initial.focus;
-    this.orientation.restoreFollow(this.applyInitialFrame(initial.follow));
+    this.applyInitialFrame(initial.follow);
+    this.orientation.restoreFollow(initial.follow?.kind === 'attitude');
     this._distance = initial.dist;
     this.orientation.setRaw(qFromBasis(sphericalOffset(initial.angles, 1), v3(0, 1, 0)));
     this.fovDeg = this.clampFov(initial.fovDeg);
     this.resetPan();
   }
 
-  private applyInitialFrame(follow: CameraRotationFollow | null): boolean {
+  // 初期の回転追従に対応する座標系を据える。姿勢追従は慣性系で持ち、それ以外は原点の座標系。
+  private applyInitialFrame(follow: CameraRotationFollow | null): void {
     this.staleFollowFrames = 0;
-    if (follow?.kind === 'attitude') {
-      this._cameraFrame = this.celestialBodies.frames.inertialFrame;
-      return true;
-    }
-    this._cameraFrame = this.celestialBodies.frames.frameOf(this.celestialBodies.originId, follow ?? null);
-    return false;
+    this._cameraFrame = follow?.kind === 'attitude'
+      ? this.celestialBodies.frames.inertialFrame
+      : this.celestialBodies.frames.frameOf(this.celestialBodies.originId, follow ?? null);
   }
 }
