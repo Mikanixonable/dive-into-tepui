@@ -1,6 +1,7 @@
 import type { Ray } from '../../../math/ray';
 import type { Quat } from '../../../math/quat';
 import type { SerializedVec3, Vec3 } from '../../../math/vec3';
+import type { SerializedKinematicState } from '../../../physics/kinematic-state';
 import { MARKER_VISIBILITY, type MapVisibility, type MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { OrbitingObject } from './orbiting-object';
 import type { CapKind, DynamicEntityKind } from './entity-kind';
@@ -13,14 +14,11 @@ import type {
 
 export type DynamicMotionFactory = (owner: DynamicEntity) => DynamicMotion;
 
-// 実体の直列化に共通する項目。
-export interface SerializedDynamicEntityFields {
+// 実体の直列化に共通する項目。t・r・v は運動状態、q・w は姿勢と角速度。
+export interface SerializedDynamicEntityFields extends SerializedKinematicState {
   readonly id: string;
-  readonly name?: string;
   // 具象クラスのタグ。
   readonly kind: 'player' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel' | 'booster' | 'base';
-  readonly r: SerializedVec3;
-  readonly v: SerializedVec3;
   readonly q: Quat;
   readonly w: SerializedVec3;
 }
@@ -69,6 +67,22 @@ export class DynamicEntity {
   // 直列化した形へ変換する。直列化しない種別は null。
   public serialize(): SerializedDynamicEntity | null {
     return null;
+  }
+
+  // 実体に共通する直列化の項目。kind は具象のタグ。具象の serialize() がこれへ自分の項目を足す。
+  protected serializeEntityFields<K extends SerializedDynamicEntityFields['kind']>(
+    kind: K,
+  ): SerializedDynamicEntityFields & { readonly kind: K } {
+    const { state, att } = this.motion;
+    return {
+      id: this.id,
+      kind,
+      t: state.t,
+      r: { ...state.r },
+      v: { ...state.v },
+      q: { ...att.q },
+      w: { ...att.w },
+    };
   }
 
   // このフレームの表示入力。派生 Entity は自分の View が読む値を足したものを返す。

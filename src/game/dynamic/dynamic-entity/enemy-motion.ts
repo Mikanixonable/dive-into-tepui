@@ -1,7 +1,7 @@
 import type { Attitude } from '../../../physics/attitude';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { KinematicState } from '../../../physics/kinematic-state';
-import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic-motion';
+import { DynamicMotion, type DynamicMotionBehavior, type DynamicMotionThermal } from '../dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic-simulation-participant';
 import type { Contact } from './contact';
 import { shipMotionOptions } from './vessel';
@@ -62,18 +62,20 @@ class EnemyBehavior implements DynamicMotionBehavior {
 
 // 敵機の軌道・姿勢・物性・判定形状を所有し、ゲーム上の接触結果を注入先へ通知する。
 export class EnemyMotion extends DynamicMotion {
-  // shape を省くと、判定は半径 radius の球になる。
+  // shape を省くと、判定は半径 radius の球になる。thermal は熱の状態で、省くと環境温度から始める。
   public constructor(
     state: KinematicState,
     attitude: Attitude,
     radius: number,
     reactions: EnemyMotionReactions,
     shape?: EnemyCollisionShape,
+    thermal?: DynamicMotionThermal,
   ) {
     super(state, shipMotionOptions(attitude, radius, {
       mass: ENEMY_MASS,
       collides: true,
       preciseReentry: true,
+      ...thermal,
       maxTemperature: ENEMY_MAX_TEMP,
       behavior: new EnemyBehavior(reactions, shape),
     }));
