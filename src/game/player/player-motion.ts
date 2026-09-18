@@ -120,7 +120,7 @@ class PlayerBehavior implements DynamicMotionBehavior {
       motion.state.r, motion.state.v, motion.att, simTime,
     ));
     this.contactProxyScratch.push(...motion.belt.contactSections(
-      simTime, dt, motion.state.r, motion.state.v, motion.att,
+      motion, simTime, dt, motion.state.r, motion.state.v, motion.att,
     ));
     return this.contactProxyScratch;
   }
@@ -185,14 +185,13 @@ class PlayerBehavior implements DynamicMotionBehavior {
 
 // 自機の軌道・姿勢・物性と、機体に付随する物理系を一体として管理する。
 export class PlayerMotion extends DynamicMotion {
-  public readonly belt: BeltController;
   public readonly aero = new AeroLoad();
   public readonly radiator: RadiatorSystem;
   public readonly attachedBoosters: AttachedBoosterMotion;
 
   // beltLinkCount は給弾ベルトの節点数で、表示するリンクメッシュの数と揃える。thermal は熱の
-  // 状態、radiatorUp・radiatorDown は放熱板の展開状態、boosters は接続中の段。省いた付随物理系は
-  // 新しく作ったときの状態で始める。
+  // 状態、radiatorUp・radiatorDown は放熱板の展開状態、boosters は接続中の段、belt は給弾ベルト。
+  // 省いた付随物理系は新しく作ったときの状態で始める。
   public constructor(
     state: KinematicState,
     attitude: Attitude,
@@ -204,6 +203,7 @@ export class PlayerMotion extends DynamicMotion {
     radiatorDown?: DeployablePanelState,
     public readonly power = new PowerSystem(),
     boosters = new BoosterStack(),
+    public readonly belt = BeltController.create(beltLinkCount),
   ) {
     super(state, shipMotionOptions(attitude, radius, {
       mass: PLAYER_MASS,
@@ -215,7 +215,6 @@ export class PlayerMotion extends DynamicMotion {
       behavior: new PlayerBehavior(reactions),
     }));
     // 付随物理系は、この Motion を本体として組む。
-    this.belt = new BeltController(this, beltLinkCount);
     this.radiator = new RadiatorSystem(
       this,
       (side, other, contact, services) => (

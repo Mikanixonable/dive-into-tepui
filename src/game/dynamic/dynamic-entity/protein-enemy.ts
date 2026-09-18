@@ -100,6 +100,8 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     alive?: boolean,
     burstLeft?: number,
     burstDelay?: number,
+    lastFireSim?: number,
+    lastBehaviorSim?: number,
   ) {
     // 表示が原子模型へ切り替わっても、判定形状は常に同じ球列に固定する。
     const collision = new ProteinSphereCollisionGeometry(
@@ -122,7 +124,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     };
     super(
       placement, proteinView, PROTEIN_INERTIA, collision.outerRadius, idAllocators, shape,
-      alive, burstLeft, burstDelay,
+      alive, burstLeft, burstDelay, lastFireSim, lastBehaviorSim,
     );
     this.assetId = definition.assetId;
   }
@@ -159,6 +161,8 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
       serialized.alive ?? false,
       serialized.fireController.burstLeft ?? undefined,
       serialized.fireController.burstDelay ?? undefined,
+      serialized.fireController.lastFireSim ?? undefined,
+      serialized.fireController.lastBehaviorSim ?? undefined,
     );
   }
 
