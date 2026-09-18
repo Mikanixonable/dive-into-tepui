@@ -1,7 +1,8 @@
 // タッチデバイス用の仮想操作パッド。DOM ボタンを画面下部に重ね、
 // Input.setVirtualKey へ物理キーボードと同じキーコードを流し込む。
 // 押しっぱなし系(並進・回転・射撃・ズーム)とエッジトリガ系(トグル類)を同じ仕組みで扱える。
-// 常設で構築し、表示そのものは setPointerKind が渡す直近の入力種別に従う。
+// 常設で構築し、表示そのものは setPointerKind が渡す直近の入力種別に従う。長押しの手応えの
+// マーカーの宣言も組む。
 import { Input, PointerKind } from '../../input/input';
 import type { ViewMode } from '../view/view-mode';
 import { KEY_MAPPING as K, KeyBinding } from '../../input/key-mapping';
@@ -11,6 +12,8 @@ import {
   FONT_FAMILY, FONT_XXS, FONT_XL, SPACE_1, TRANSITION_SLOW, Z_TOUCH_UI,
 } from '../../theme';
 import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
+import { MARKER_PRIORITY } from '../marker/marker-priority';
+import type { MarkerDeclaration } from '../../marker/marker-declaration';
 
 const STYLE = `
 /* システムウィンドウ(ESC メニュー・終了画面・ヘルプ)より下に置く。
@@ -151,6 +154,16 @@ export class TouchControls {
     this.setActive(K.fineAttitudeToggle, fineAttitude);
     this.setActive(K.progradeHoldToggle, progradeHold);
     for (const [direction, el] of this.thrustButtons) el.classList.toggle('on', isThrustLatched(direction));
+  }
+
+  // 長押しの手応えのマーカーの宣言。長押し中の点が無いフレームも、伏せた宣言として返す。
+  public longPressDeclaration(): MarkerDeclaration {
+    const point = this.input.longPressPoint;
+    return {
+      id: 'longpress', cls: 'mk-longpress', sym: '',
+      x: point?.x ?? 0, y: point?.y ?? 0, front: point !== null,
+      priority: MARKER_PRIORITY.NONE,
+    };
   }
 
   // key に対応するトグルボタンの点灯状態を on に合わせる。

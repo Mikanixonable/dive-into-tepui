@@ -76,7 +76,7 @@ function runFrames(horizon: number): FrameRun {
   const states: KinematicState[] = [];
   let followed = 0;
   for (let i = 0; i < FRAMES; i++) {
-    // 位相の順序は game.ts と同じ — 需要を先に立て、予測器が弧を伸ばしてから1歩進める。
+    // 位相の順序は run.ts と同じ — 需要を先に立て、予測器が弧を伸ばしてから1歩進める。
     predictor.update(motion.state.t, SIM_DT, motion, demand);
     const integrated = motion.stepSimulation(SIM_DT, bodies, bodies, null, null, PIVOT, services);
     if (!integrated) followed++;

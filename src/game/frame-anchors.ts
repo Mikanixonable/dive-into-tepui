@@ -5,8 +5,12 @@
 import { orbitingAttractorOf } from '../physics/attractor';
 import { FrameAnchorSource, FrameRole, frameRoleOf } from '../physics/frame';
 import { KinematicState } from '../physics/kinematic-state';
+import type { Quat } from '../math/quat';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import type { CelestialBody } from '../physics/celestial-body';
+import type { Controllable } from './dynamic/dynamic-entity/controllable';
+import type { EntityRoster } from './dynamic/entity-roster';
+import type { NavTargetPresenter } from './nav-target-presenter';
 
 // 解決に要る問い合わせをまとめた受け口。いずれも ECI 状態を答える。
 interface AnchorTargets {
@@ -97,5 +101,43 @@ export class FrameAnchors implements FrameAnchorSource {
     if (hold.misses <= 1) return hold.state;
     hold.state = null;
     return null;
+  }
+}
+
+// 基準 id・役割トークンが指す実体を、このランの顔ぶれ・操作対象・航法ターゲットから引く。
+export class AnchorEntities implements AnchorTargets {
+  public constructor(
+    private readonly roster: EntityRoster,
+    private readonly control: { readonly current: Controllable | null },
+    private readonly navTarget: NavTargetPresenter,
+    private readonly celestialBodies: CelestialBodies,
+  ) {}
+
+  // 顔ぶれのうち生存中の id の、時刻 t における状態。
+  public entityState(id: string, t: number): KinematicState | null {
+    return this.roster.all()
+      .find((e) => e.id === id && e.motion.alive)
+      ?.motion.stateAt(t, this.celestialBodies) ?? null;
+  }
+
+  // いまの操作対象の、時刻 t における状態。
+  public controlledState(t: number): KinematicState | null {
+    return this.control.current?.motion.stateAt(t, this.celestialBodies) ?? null;
+  }
+
+  // 航法ターゲットを bodies に対して解決した、時刻 t における状態。
+  public navTargetState(bodies: readonly CelestialBody[], t: number): KinematicState | null {
+    return this.navTarget.resolveState(this.roster, this.celestialBodies, bodies, t)?.state ?? null;
+  }
+
+  // 基準 id が指す実体の時刻 t における姿勢。実体が無い・生存していなければ null。
+  public attitudeOf(id: string, t: number): Quat | null {
+    const role = frameRoleOf(id);
+    const entity = role === 'controlled' ? this.control.current
+      : role === 'navTarget'
+        ? this.navTarget.resolveState(
+          this.roster, this.celestialBodies, this.celestialBodies.celestialMotions, t)?.entity ?? null
+        : this.roster.all().find((e) => e.id === id) ?? null;
+    return entity?.motion.alive ? entity.motion.att.q : null;
   }
 }
