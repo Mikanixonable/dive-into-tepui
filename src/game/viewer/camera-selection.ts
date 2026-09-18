@@ -19,13 +19,13 @@ export interface SerializedCameraSelection {
   readonly map: SerializedFocusCameraSelection;
 }
 
+// 2台のカメラそれぞれの、進行直後の追従の材料。
 export interface CameraFrameSamples {
   readonly combat: CameraFrameSample;
   readonly map: CameraFrameSample;
 }
 
-// マップのカメラだけを読む面。マップ上の当たり判定・窓・計画編集・マップビューは、
-// 2台ぶんではなくこれを受ける。
+// マップのカメラの注視と距離を読む面。
 export interface MapCameraSource {
   readonly map: Pick<FocusCameraSource, 'focus' | 'distance'>;
 }
