@@ -2,18 +2,19 @@
 import type { GameScene } from '../render/scene';
 import { SECTION, type FrameSections } from './frame-sections';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
-import type { SerializedStage, Stage, StageClass, StageDeps } from './stages/stage';
+import type { SerializedStage, Stage, StageClass } from './stages/stage';
 import type { HudLayers } from './hud/hud-layers';
 import { CommandQueue } from './command-queue';
-import { ControlSelection } from './control-selection';
+import { ControlSelection, type SerializedControlSelection } from './control-selection';
 import { PlanNodeRules } from './plan/plan-node-rules';
 import { SimSpeedManager } from './dynamic/sim-speed-manager';
-import { DynamicSystem } from './dynamic/dynamic-system';
+import { DynamicSystem, type SerializedDynamicSystem } from './dynamic/dynamic-system';
 import { RunEventLog } from './run-events';
 import { Predictor } from './dynamic/predictor';
 import { recordTargetBoardPasses } from './dynamic/target-board-passes';
 import type { CelestialSystem } from './celestial/celestial-system';
 import { Viewer, type SerializedViewer } from './viewer/viewer';
+import type { EntityDisplaySource } from './viewer/entity-display-selection';
 import { ephemerisContextFor, type EphemerisContext } from '../physics/ephemeris/ephemeris-context';
 import { createJulianDate, type TdbJulianDate } from '../physics/time';
 import { summarizeRun, type RunSummary } from './run-summary';
@@ -28,113 +29,153 @@ import type { CameraFrameSamples } from './viewer/camera-selection';
 // 読み込み側で基底値を補う(SAVE.md「形式の版」)。
 export const SERIALIZATION_VERSION = 3;
 
-// 1ランの直列化した形。視点の分は SerializedViewer の項目がそのまま並ぶ。
-export interface SerializedGame extends SerializedViewer {
+// 1ランの直列化した形。顔ぶれと視点の分は、SerializedDynamicSystem と SerializedViewer の項目が
+// そのまま並ぶ。
+export interface SerializedGame extends SerializedDynamicSystem, SerializedViewer {
   readonly version: number;
   readonly stageId: string;
-  readonly simTime: number;
   /**
    * そのランの元期と、それが選ぶ暦データの識別。元期は読み込み側が継承する値で、照合するのは
    * 暦データの識別。
    */
   readonly ephemerisContext: EphemerisContext;
-  // 顔ぶれ。種別は各要素の kind が持つ。
-  readonly entities: SerializedDynamicEntity[];
-  readonly activeControlledId: string | null;
+  readonly activeControlledId: SerializedControlSelection;
   readonly stage: SerializedStage;
 }
 
+// 実体の記録へ、視点が持つその実体の表示設定を書き足す。直列化の形は、軌道線の表示を艦・基地・
+// 敵の記録に、タンパク質の表示をタンパク質の敵の記録に同居させている。
+function withEntityDisplay(entity: SerializedDynamicEntity, display: EntityDisplaySource): SerializedDynamicEntity {
+  switch (entity.kind) {
+    case 'player':
+    case 'base':
+    case 'metal-enemy':
+      return { ...entity, showTrajectoryLine: display.showsTrajectoryLine(entity.id) };
+    case 'protein-enemy':
+      return {
+        ...entity, showTrajectoryLine: display.showsTrajectoryLine(entity.id), display: display.proteinDisplay,
+      };
+    // 補給と分離ブースターの記録は、軌道線の表示を持たない。
+    case 'ammo':
+    case 'rcs-fuel':
+    case 'booster':
+      return entity;
+  }
+}
+
 export class Game {
-  // モデル層の外から届いた書き換えを溜める列。進行の位相の先頭で適用する。
-  public readonly commands = new CommandQueue();
-  // 直近の進行で起きた一回きりの出来事の記録。
-  public readonly events = new RunEventLog();
-  public readonly celestialSystem: CelestialSystem;
-  public readonly dynamicSystem: DynamicSystem;
-  public readonly simSpeedManager: SimSpeedManager;
-  // 操作対象(艦 0..n 隻と基地のうちどれを操作するか)の切替を持つ。
-  public readonly controlSelection: ControlSelection;
-  public readonly activeStage: Stage;
-  // 遊ぶ人の選択のうち、セーブごとに持つもの。
-  public readonly viewer: Viewer;
-  // 顔ぶれの予測軌道。需要が求める長さまで伸ばす。
-  public readonly predictor: Predictor;
   // 直近ノードの消化と、接近・達成の記録。
   private readonly planNodeRules: PlanNodeRules;
-  // 計測区間の境界を打つ先。
-  private readonly sections: FrameSections;
+  // 顔ぶれの予測軌道。需要が求める長さまで伸ばす。
+  public readonly predictor: Predictor;
 
   // いま操作している対象。操作しているものが無ければ null。
   public get activeControllable(): Controllable | null { return this.controlSelection.current; }
   public get simTime(): number { return this.dynamicSystem.simTime; }
 
-  // 星系を組んでから、このランのモデル層を組む。段の切れ目で描画を明け渡すので、組み立て中の
-  // Game は誰にも観測されないまま数フレームをまたぐ。scene は天体系と実体の表示物の置き場、
-  // hud はステージのパネルの置き場。
+  // 組み上がった各所有者から組む。星系は実体化済みで渡る。
+  private constructor(
+    public readonly celestialSystem: CelestialSystem,
+    // 計測区間の境界を打つ先。
+    private readonly sections: FrameSections,
+    // モデル層の外から届いた書き換えを溜める列。進行の位相の先頭で適用する。
+    public readonly commands: CommandQueue,
+    // 直近の進行で起きた一回きりの出来事の記録。
+    public readonly events: RunEventLog,
+    public readonly dynamicSystem: DynamicSystem,
+    public readonly simSpeedManager: SimSpeedManager,
+    // 操作対象(艦 0..n 隻と基地のうちどれを操作するか)の切替を持つ。
+    public readonly controlSelection: ControlSelection,
+    public readonly activeStage: Stage,
+    // 遊ぶ人の選択のうち、セーブごとに持つもの。
+    public readonly viewer: Viewer,
+  ) {
+    // 進行の末尾で通す、予測と計画の規則。
+    this.planNodeRules = new PlanNodeRules(events);
+    this.predictor = new Predictor(dynamicSystem, celestialSystem);
+  }
+
+  // stageClass の新しいランを組む。元期は開始日時 startEpoch、無ければステージの宣言から採る。
+  // 段の切れ目で描画を明け渡すので、組み立て中の Game は誰にも観測されないまま数フレームをまたぐ。
+  // scene は天体系と実体の表示物の置き場、hud はステージのパネルの置き場。
   public static async create(
     stageClass: StageClass,
-    initialSave: SerializedGame | undefined,
     startEpoch: TdbJulianDate | undefined,
     scene: GameScene,
     hud: HudLayers,
     sections: FrameSections,
     progress: LoadingProgress,
   ): Promise<Game> {
+    const celestialSystem = await Game.buildCelestialSystem(
+      stageClass, startEpoch ?? stageClass.epoch, scene, progress,
+    );
+    const commands = new CommandQueue();
+    const events = new RunEventLog();
+    // 顔ぶれを先に組む — 操作対象の選択・ステージの初期配置・視点は、組み上がった顔ぶれを読む。
+    const dynamicSystem = DynamicSystem.create(scene.scene, events, celestialSystem, sections);
+    const simSpeedManager = new SimSpeedManager(events);
+    const controlSelection = ControlSelection.create(dynamicSystem);
+    const stage = stageClass.create(hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands);
+    const viewer = Viewer.create(controlSelection, events, celestialSystem);
+    return new Game(
+      celestialSystem, sections, commands, events, dynamicSystem, simSpeedManager, controlSelection, stage, viewer,
+    );
+  }
+
+  // 直列化したラン serialized を、stageClass のランとして復元する。元期は記録から採る — 記録の
+  // simTime はその元期からの経過秒なので、別の元期で組むと全天体がずれる。scene・hud は create と同じ。
+  public static async deserialize(
+    serialized: SerializedGame,
+    stageClass: StageClass,
+    scene: GameScene,
+    hud: HudLayers,
+    sections: FrameSections,
+    progress: LoadingProgress,
+  ): Promise<Game> {
+    const celestialSystem = await Game.buildCelestialSystem(
+      stageClass, createJulianDate('TDB', serialized.ephemerisContext.epochJdTdb), scene, progress,
+    );
+    const commands = new CommandQueue();
+    const events = new RunEventLog();
+    // 顔ぶれを先に組む — 操作対象の選択・ステージ・視点は、復元を終えた顔ぶれを読む。
+    const dynamicSystem = DynamicSystem.deserialize(serialized, scene.scene, events, celestialSystem, sections);
+    const simSpeedManager = new SimSpeedManager(events);
+    const controlSelection = ControlSelection.deserialize(serialized.activeControlledId, dynamicSystem);
+    const stage = stageClass.deserialize(
+      // 記録にステージの内訳が無い・null なら、空の記録として新しいランの初期値で補う(初期配置はしない)。
+      serialized.stage ?? ({} as SerializedStage),
+      hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands,
+    );
+    const viewer = Viewer.deserialize(serialized, dynamicSystem, controlSelection, events, celestialSystem);
+    return new Game(
+      celestialSystem, sections, commands, events, dynamicSystem, simSpeedManager, controlSelection, stage, viewer,
+    );
+  }
+
+  // 元期 epoch の星系を組み、表示物を scene へ実体化する。
+  private static async buildCelestialSystem(
+    stageClass: StageClass, epoch: TdbJulianDate, scene: GameScene, progress: LoadingProgress,
+  ): Promise<CelestialSystem> {
     await progress.enter('system');
-    // このランの元期。セーブの元期、開始日時の指定、ステージの宣言の順に採る — 保存された simTime
-    // はセーブの元期からの経過秒なので、別の元期で組むと全天体がずれる。
-    const savedJdTdb = initialSave?.ephemerisContext.epochJdTdb;
-    const epoch = savedJdTdb !== undefined ? createJulianDate('TDB', savedJdTdb) : startEpoch ?? stageClass.epoch;
     const celestialSystem = await stageClass.createCelestialSystem(
       epoch, (ratio) => progress.within(ratio), scene.renderer,
     );
     await progress.enter('bodies');
     celestialSystem.build(scene.scene, scene.pipeline);
     await progress.enter('run');
-    return new Game(stageClass, celestialSystem, scene, hud, sections, initialSave);
-  }
-
-  // 各所有者を、互いの依存関係が満たせる順に組む。星系は実体化済みで渡る。
-  private constructor(
-    stageClass: StageClass,
-    celestialSystem: CelestialSystem,
-    scene: GameScene,
-    hud: HudLayers,
-    sections: FrameSections,
-    initialSave?: SerializedGame,
-  ) {
-    this.celestialSystem = celestialSystem;
-    this.sections = sections;
-    // 顔ぶれを先に組む — 操作対象の選択・ステージの初期配置・視点は、組み上がった顔ぶれを読む。
-    this.dynamicSystem = new DynamicSystem(
-      scene.scene, this.events, celestialSystem, sections, initialSave?.simTime ?? 0, initialSave);
-    this.simSpeedManager = new SimSpeedManager(this.events);
-    this.controlSelection = new ControlSelection(initialSave?.activeControlledId, this.dynamicSystem);
-    const stageDeps: StageDeps = [
-      hud, scene.scene, this.dynamicSystem, celestialSystem, this.controlSelection, this.commands,
-    ];
-    this.activeStage = initialSave === undefined
-      ? stageClass.create(...stageDeps)
-      : stageClass.deserialize(initialSave.stage, ...stageDeps);
-    this.viewer = initialSave === undefined
-      ? Viewer.create(this.controlSelection, this.events, celestialSystem)
-      : Viewer.deserialize(initialSave, this.dynamicSystem, this.controlSelection, this.events, celestialSystem);
-    // 進行の末尾で通す、予測と計画の規則。
-    this.planNodeRules = new PlanNodeRules(this.events);
-    this.predictor = new Predictor(this.dynamicSystem, celestialSystem);
+    return celestialSystem;
   }
 
   // このランを直列化した形へ畳む。
   public serialize(): SerializedGame {
+    const { simTime, entities } = this.dynamicSystem.serialize();
     return {
       version: SERIALIZATION_VERSION,
       stageId: this.activeStage.id,
-      simTime: this.simTime,
+      simTime,
       ephemerisContext: { ...ephemerisContextFor(this.celestialSystem.epoch) },
-      entities: this.dynamicSystem.serialize(
-        (id) => this.viewer.entityDisplay.showsTrajectoryLine(id), this.viewer.entityDisplay.proteinDisplay,
-      ),
-      activeControlledId: this.activeControllable?.id ?? null,
+      entities: entities.map((entity) => withEntityDisplay(entity, this.viewer.entityDisplay)),
+      activeControlledId: this.controlSelection.serialize(),
       stage: this.activeStage.serialize(),
       // 遊ぶ人の選択。
       ...this.viewer.serialize(),

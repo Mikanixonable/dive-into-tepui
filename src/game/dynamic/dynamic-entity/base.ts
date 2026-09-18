@@ -52,13 +52,18 @@ export interface SerializedBase extends SerializedDynamicEntityFields {
   readonly showTrajectoryLine?: boolean;
 }
 
-// 新規配置は state/name/att をそのまま使い、スナップショットからの再開は saved を
-// simTime 付きの状態として展開する。
-type BaseInit =
-  | { readonly state: KinematicState; readonly name?: string; readonly att?: Attitude; readonly id?: string }
-  | { readonly saved: SerializedBase; readonly simTime: number };
+// 基地を新しく置く運動状態と表示名。id を省くと採番器が発番する。
+export interface BasePlacement {
+  readonly state: KinematicState;
+  readonly name?: string;
+  readonly att?: Attitude;
+  readonly id?: string;
+}
 
 export class Base extends DynamicEntity implements Controllable, ObjectPickable {
+  public static readonly kind = 'base';
+  public static spawnGate(): null { return null; }
+
   public override readonly mapKind: DynamicEntityKind = 'base';
   public override readonly combatTarget = true;
   public override readonly controllable = true;
@@ -72,13 +77,11 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   // 基地は常設の軌道構造物なので、選択の有無に関わらず赤道交点マーカーを出す。
   public override readonly showsEquatorNodesAlways = true;
   // 所持金 [Cr]。
-  private readonly _money: number;
   public get money(): number { return this._money; }
 
   public declare readonly motion: BaseMotion;
 
   // --- Controllable 実装 ---
-  public readonly throttle: Throttle;
   public get totalThrust(): number { return BASE_THRUST; }
   public get totalTorque(): number { return BASE_TORQUE; }
   public get totalFuelConsumptionRate(): number { return BASE_FUEL_RATE; }
@@ -93,41 +96,52 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     return this.motion.consumeFuel(amount);
   }
 
-  // 基地を組む。復元時は操作状態・所持金も戻す。
-  public constructor(
-    init: BaseInit,
+  // 基地 name を state・attitude に置く。id は採番器が配った識別子。_money から後ろは所持金 [Cr]・
+  // 燃料・操作状態で、省いたものは新しく置いたときの状態で始める。
+  private constructor(
     scene: THREE.Scene,
-    idAllocators: EntityIdAllocators,
+    id: string,
+    name: string,
+    state: KinematicState,
+    attitude: Attitude,
+    private readonly _money = BASE_INITIAL_MONEY,
+    fuel?: number,
+    public readonly throttle = new Throttle(),
   ) {
-    // 復元と新規配置を同じ形へ均してから基底へ渡す。
-    const { state, name, att, id } = 'saved' in init
-      ? {
-        state: deserializeKinematicState(init.saved, init.simTime),
-        name: init.saved.name || '基地',
-        att: undefined,
-        id: init.saved.id,
-      }
-      : { state: init.state, name: init.name ?? generateRandomName('base'), att: init.att, id: init.id };
-    const savedAtt: Attitude | undefined = 'saved' in init
-      ? deserializeAttitude(init.saved, v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z))
-      : undefined;
-    const attitude = savedAtt ?? att ?? {
-      q: { x: 0, y: 0, z: 0, w: 1 },
-      w: v3(),
-      inertia: v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z),
-    };
-    const fuel = 'saved' in init && init.saved.fuel !== undefined ? init.saved.fuel : undefined;
-    const entityId = idAllocators.base.next(id);
-    super(
-      () => new BaseMotion(state, attitude, fuel),
-      new BaseView(scene, entityId),
-      entityId,
-    );
+    super(() => new BaseMotion(state, attitude, fuel), new BaseView(scene, id), id);
     this.setName(name);
-    this.throttle = 'saved' in init && init.saved.throttle
-      ? Throttle.deserialize(init.saved.throttle) : new Throttle();
-    this._money = 'saved' in init ? init.saved.money : BASE_INITIAL_MONEY;
   }
+
+  // placement に新しく置く。name を省くと無作為な名前、att を省くと静止した姿勢で置く。
+  public static create(placement: BasePlacement, scene: THREE.Scene, idAllocators: EntityIdAllocators): Base {
+    const name = placement.name ?? generateRandomName('base');
+    return new Base(
+      scene, idAllocators.base.next(placement.id), name, placement.state,
+      placement.att ?? { q: { x: 0, y: 0, z: 0, w: 1 }, w: v3(), inertia: Base.INERTIA },
+    );
+  }
+
+  // 直列化した基地を、時刻 simTime の状態として復元する。
+  public static deserialize(
+    serialized: SerializedBase, simTime: number, idAllocators: EntityIdAllocators, scene: THREE.Scene,
+  ): Base {
+    const state = deserializeKinematicState(serialized, simTime);
+    return new Base(
+      scene,
+      idAllocators.base.next(serialized.id),
+      // 記録に無い名前は、新しく置いたときと違って無作為に選ばず「基地」と名乗る。
+      serialized.name || '基地',
+      state,
+      deserializeAttitude(serialized, Base.INERTIA),
+      // null の所持金も欠けと同じく既定へ落とす(既定引数は undefined でしか働かない)。
+      serialized.money ?? undefined,
+      serialized.fuel,
+      serialized.throttle ? Throttle.deserialize(serialized.throttle) : undefined,
+    );
+  }
+
+  // 主慣性モーメント。
+  private static readonly INERTIA = v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z);
 
   // 噴射表現に要る推力・トルクを、共通の表示入力へ足す。
   protected override renderSource(
@@ -206,22 +220,21 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     };
   }
 
-  // セーブデータへ変換する。showTrajectoryLine はこの基地の予測線・過去線を出しているか。
-  public override serialize(showTrajectoryLine: boolean): SerializedBase {
+  // 直列化した形へ変換する。
+  public override serialize(): SerializedBase {
     return {
       id: this.id,
-      kind: 'base',
+      kind: Base.kind,
       name: this.name,
       // 運動状態
       r: { ...this.motion.state.r },
       v: { ...this.motion.state.v },
       q: { ...this.motion.att.q },
       w: { ...this.motion.att.w },
-      // 基地の資源と、操作・表示の設定
+      // 基地の資源と、操作の設定
       money: this._money,
       fuel: this.motion.fuel,
       throttle: this.throttle.serialize(),
-      showTrajectoryLine,
     };
   }
 

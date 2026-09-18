@@ -101,7 +101,7 @@ export class Throttle {
     this.thrustAccelVec = v3();
   }
 
-  // 段・制動・ホールドをスナップショットへ落とす。
+  // 段・制動・ホールドを直列化した形へ落とす。
   public serialize(): SerializedThrottle {
     return { throttleIdx: this.throttleIdx, rcsDamp: this.rcsDamp, progradeHold: this.progradeHold };
   }

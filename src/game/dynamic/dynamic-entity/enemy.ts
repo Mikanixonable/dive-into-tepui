@@ -1,4 +1,3 @@
-import * as THREE from 'three/webgpu';
 import type { ViewMode } from '../../view/view-mode';
 import { Vessel } from './vessel';
 import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
@@ -14,9 +13,10 @@ import { MARKER_PRIORITY } from '../../marker/marker-priority';
 import type { CombatTarget } from './combat-target';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { DynamicEntityKind, FormationRole } from './entity-kind';
-import type { EntityRegistry, SpawnGate } from '../entity-registry';
+import type { EntityRegistry } from '../entity-registry';
 import type { RunEventSink } from '../../run-events';
 import type { EntityIdAllocators } from './entity-id';
+import type { DynamicEntityClass } from './entity-dictionary';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotion } from '../dynamic-motion';
 import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
@@ -88,16 +88,9 @@ export function deserializeEnemyPlacement(serialized: SerializedEnemy, simTime: 
   };
 }
 
-// 敵クラスの静的側。直列化した敵の復元はここから引く。
-export interface EnemyClass {
-  // 直列化した形の具象タグ。
+// 敵クラスの静的側。直列化のタグを敵の種別に絞る。
+export interface EnemyClass extends DynamicEntityClass {
   readonly kind: SerializedEnemy['kind'];
-  // 復元に外部資源の取得が要るなら、それが揃ったかを答える述語。要らなければ null。
-  spawnGate(serialized: SerializedEnemy): SpawnGate | null;
-  // serialized を、時刻 simTime の状態として復元する。
-  deserialize(
-    serialized: SerializedEnemy, simTime: number, idAllocators: EntityIdAllocators, scene?: THREE.Scene,
-  ): Enemy;
 }
 
 // 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、交戦圏
@@ -268,9 +261,8 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     this.fireController.behave(simTime, player, registry, enemies, operable, celestialBodies);
   }
 
-  // 敵に共通する直列化の項目。具象の serialize() がこれへ自分の項目を足す。showTrajectoryLine は
-  // この敵の予測線・過去線を出しているか。
-  protected serializeEnemyFields(showTrajectoryLine: boolean): SerializedEnemy {
+  // 敵に共通する直列化の項目。具象の serialize() がこれへ自分の項目を足す。
+  protected serializeEnemyFields(): SerializedEnemy {
     return {
       id: this.id,
       name: this.name,
@@ -289,7 +281,6 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       ...(this.formationId === undefined ? {} : { formationId: this.formationId }),
       ...(this.formationRole === undefined ? {} : { formationRole: this.formationRole }),
       ...this.fireController.serialize(),
-      showTrajectoryLine,
     };
   }
 

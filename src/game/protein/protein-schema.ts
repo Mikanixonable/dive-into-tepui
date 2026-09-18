@@ -1,4 +1,4 @@
-// タンパク質アセット(意味論定義・モーション)の型とその検証、および保存形と戦闘の読み取り値の型。
+// タンパク質アセット(意味論定義・モーション)の型とその検証、および戦闘の読み取り値の型。
 import type { ProteinPhase } from '../../render/protein/protein-display';
 
 type ProteinVec3 = readonly [number, number, number];

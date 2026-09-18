@@ -81,7 +81,7 @@ export class Logistics {
     const hHat = orbitAxes(player.motion.state).nrm;
     const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
     // ずらした位置・速度と、ランダムな姿勢で補給エンティティを作る
-    const ammoPickup = new AmmoPickup(
+    const ammoPickup = AmmoPickup.create(
       {
         state: kinematicState<'eci'>(
           player.motion.state.t,
@@ -114,7 +114,7 @@ export class Logistics {
     const hHat = orbitAxes(player.motion.state).nrm;
     const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
     // ずらした位置・速度と、ランダムな姿勢で燃料補給エンティティを作る
-    const fuelPickup = new RcsFuelPickup(
+    const fuelPickup = RcsFuelPickup.create(
       {
         state: kinematicState<'eci'>(
           player.motion.state.t,

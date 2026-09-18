@@ -191,17 +191,17 @@ export class ObjectPlacement {
       case 'ammo':
         return {
           kind: 'entity',
-          entity: new AmmoPickup({ state, name: finalName }, this.scene, this.idAllocators),
+          entity: AmmoPickup.create({ state, name: finalName }, this.scene, this.idAllocators),
         };
       case 'fuel':
         return {
           kind: 'entity',
-          entity: new RcsFuelPickup({ state, name: finalName }, this.scene, this.idAllocators),
+          entity: RcsFuelPickup.create({ state, name: finalName }, this.scene, this.idAllocators),
         };
       case 'base':
         return {
           kind: 'entity',
-          entity: new Base({ state, name: finalName }, this.scene, this.idAllocators),
+          entity: Base.create({ state, name: finalName }, this.scene, this.idAllocators),
         };
     }
   }

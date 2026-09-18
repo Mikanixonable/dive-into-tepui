@@ -73,7 +73,8 @@ function renderDefinitionFor(assetId: ProteinAssetId): ProteinRenderDefinition {
 export interface SerializedProteinEnemy extends SerializedEnemy {
   readonly kind: 'protein-enemy';
   readonly assetId: ProteinAssetId;
-  readonly display: ProteinDisplaySettings;
+  // タンパク質の敵に共通の表示形態と着色。無いか不正なら既定の表示で読む。
+  readonly display?: ProteinDisplaySettings;
   // 機能部位の HP・フェーズ・修飾。
   readonly protein: SerializedProteinCombatState;
 }
@@ -242,16 +243,12 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     return true;
   }
 
-  // 敵に共通する直列化の項目へ、アセット・表示設定・被弾モデルの状態を足す。showTrajectoryLine は
-  // この敵の予測線・過去線を出しているか、proteinDisplay はタンパク質の敵に共通の表示形態と着色。
-  public override serialize(
-    showTrajectoryLine: boolean, proteinDisplay: ProteinDisplaySettings,
-  ): SerializedProteinEnemy {
+  // 敵に共通する直列化の項目へ、アセットと被弾モデルの状態を足す。
+  public override serialize(): SerializedProteinEnemy {
     return {
-      ...this.serializeEnemyFields(showTrajectoryLine),
+      ...this.serializeEnemyFields(),
       kind: ProteinEnemy.kind,
       assetId: this.assetId,
-      display: proteinDisplay,
       protein: this.combat.serialize(),
     };
   }

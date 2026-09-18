@@ -1,17 +1,17 @@
 // エンティティ id の採番。
 
-// `${prefix}${連番}` で発番し、復元 id を渡された場合はそれをそのまま採用しつつ、
+// `${prefix}${連番}` で発番し、id を渡された場合はそれをそのまま採用しつつ、
 // 以後の新規発番と衝突しないようカウンタをその番号の次まで進める。
 export class EntityIdAllocator {
   private counter = 0;
 
   public constructor(private readonly prefix: string) {}
 
-  // restoredId を渡せばそれを採用し、省略時は新規に発番する。
-  public next(restoredId?: string): string {
-    if (restoredId !== undefined) {
-      this.reserve(restoredId);
-      return restoredId;
+  // id を渡せばそれを採用し、省略時は新規に発番する。
+  public next(id?: string): string {
+    if (id !== undefined) {
+      this.reserve(id);
+      return id;
     }
     return `${this.prefix}${this.counter++}`;
   }

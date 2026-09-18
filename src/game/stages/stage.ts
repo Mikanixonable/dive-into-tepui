@@ -209,7 +209,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
 
   private _briefing: string | null = null;
 
-  // 新規開始のランで1度だけ出すブリーフィングの本文(HTML)。再開したランでは null。
+  // 新規開始のランで1度だけ出すブリーフィングの本文(HTML)。復元したランでは null。
   public get briefing(): string | null { return this._briefing; }
 
   // ブリーフィングの本文を、いまの状態から組む。新しいランのステージで、初期配置を終えた後に1度だけ呼ぶ。

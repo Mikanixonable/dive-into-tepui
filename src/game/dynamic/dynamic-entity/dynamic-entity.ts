@@ -10,7 +10,6 @@ import type { OrbitReference } from '../../orbit-reference';
 import type {
   DynamicView, DynamicRenderSource, DynamicViewFrame,
 } from '../../../render/dynamic/dynamic-view';
-import type { ProteinDisplaySettings } from '../../../render/protein/protein-display';
 
 export type DynamicMotionFactory = (owner: DynamicEntity) => DynamicMotion;
 
@@ -67,11 +66,8 @@ export class DynamicEntity {
     return this.motion.intersectsRay(ray, pos);
   }
 
-  // 直列化した形へ変換する。永続化しない種別は null。showTrajectoryLine はこの個体の予測線・
-  // 過去線を出しているか、proteinDisplay はタンパク質の敵に共通の表示形態と着色。
-  public serialize(
-    _showTrajectoryLine: boolean, _proteinDisplay: ProteinDisplaySettings,
-  ): SerializedDynamicEntity | null {
+  // 直列化した形へ変換する。直列化しない種別は null。
+  public serialize(): SerializedDynamicEntity | null {
     return null;
   }
 
