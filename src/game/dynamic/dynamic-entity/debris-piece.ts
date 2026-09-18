@@ -1,9 +1,9 @@
 import type * as THREE from 'three/webgpu';
 import { randomQuat } from '../../../math/quat';
 import { randSym } from '../../../math/random';
-import { add, randVec, type Vec3, v3 } from '../../../math/vec3';
-import type { Attitude } from '../../../physics/attitude';
-import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
+import { add, randVec, type SerializedVec3, type Vec3, v3 } from '../../../math/vec3';
+import { deserializeAttitude, type Attitude } from '../../../physics/attitude';
+import { deserializeKinematicState, kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { CapKind } from './entity-kind';
 import {
   BoosterExplosiveBoltView, BoosterInterstageCoverPanelView,
@@ -14,9 +14,11 @@ import {
   BarrelView, MagazineFrameView,
 } from '../../../render/dynamic/dynamic-entity/ejected-gun-part-view';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
-import { DynamicEntity } from './dynamic-entity';
+import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { DebrisKind } from './debris-kind';
 import type { EntityIdAllocators } from './entity-id';
+import type { EntityRegistry } from '../entity-registry';
+import type { DynamicMotionThermal } from '../dynamic-motion';
 import { DebrisMotion } from './debris-motion';
 import { DebrisReaction } from './debris-reaction';
 
@@ -39,17 +41,39 @@ function debrisPieceView(debrisKind: DebrisKind, scene?: THREE.Scene): DynamicVi
   }
 }
 
+// 新しく出した破片の熱の状態。砲身の破片は外れた時点の温度と温度差を引き継ぎ、ほかは環境温度から
+// 始める。
+function initialThermal(debrisKind: DebrisKind): Partial<DynamicMotionThermal> {
+  if (debrisKind.kind !== 'barrel') return {};
+  return { temperature: debrisKind.bornTemperature, thermalDeviation: debrisKind.bornThermalDeviation };
+}
+
+// 破片1個の直列化した形。慣性と接触半径は出す場所ごとに違い、種別からは決まらないので記録に持つ。
+export interface SerializedDebrisPiece extends SerializedDynamicEntityFields {
+  readonly kind: 'debris';
+  readonly debrisKind: DebrisKind;
+  readonly inertia: SerializedVec3;
+  readonly radius: number;
+  readonly thermal: DynamicMotionThermal;
+}
+
 export class DebrisPiece extends DynamicEntity {
+  public static readonly kind = 'debris';
+  public static spawnGate(): null { return null; }
+
   public override readonly capKind: CapKind;
 
-  // 破片1個を、種別 debrisKind に応じた View と Motion で組み立てる。
+  // 破片1個を、種別 debrisKind に応じた View と Motion で組み立てる。radius は接触半径 [m] で、省くと
+  // 0。thermal は熱の状態、id は採番器が配った識別子で、省けばいま出した破片として組む。
   public constructor(
     state: KinematicState,
-    debrisKind: DebrisKind,
+    private readonly debrisKind: DebrisKind,
     attitude: Attitude,
     idAllocators: EntityIdAllocators,
     radius?: number,
     scene?: THREE.Scene,
+    thermal = initialThermal(debrisKind),
+    id?: string,
   ) {
     super(
       () => new DebrisMotion(state, attitude, {
@@ -59,16 +83,41 @@ export class DebrisPiece extends DynamicEntity {
           'bornSim' in debrisKind ? debrisKind.bornSim : null,
         ),
         radius,
-        // 砲身の破片は、外れた時点の温度と温度差を引き継ぐ
-        temperature: debrisKind.kind === 'barrel' ? debrisKind.bornTemperature : undefined,
-        thermalDeviation: debrisKind.kind === 'barrel'
-          ? debrisKind.bornThermalDeviation
-          : undefined,
+        thermal,
       }),
       debrisPieceView(debrisKind, scene),
-      idAllocators.entity.next(),
+      idAllocators.entity.next(id),
     );
     this.capKind = debrisKind.kind === 'casing' ? 'casing' : 'debris';
+  }
+
+  // 直列化した破片を、記録した時刻の状態として復元する。
+  public static deserialize(
+    serialized: SerializedDebrisPiece, registry: EntityRegistry, scene: THREE.Scene,
+  ): DebrisPiece {
+    const { inertia } = serialized;
+    return new DebrisPiece(
+      deserializeKinematicState(serialized),
+      serialized.debrisKind,
+      deserializeAttitude(serialized, v3(inertia.x, inertia.y, inertia.z)),
+      registry.idAllocators,
+      serialized.radius,
+      scene,
+      serialized.thermal,
+      serialized.id,
+    );
+  }
+
+  // 運動状態と種別・慣性・接触半径・熱を直列化した形へ変換する。
+  public override serialize(): SerializedDebrisPiece {
+    const { inertia } = this.motion.att;
+    return {
+      ...this.serializeEntityFields(DebrisPiece.kind),
+      debrisKind: this.debrisKind,
+      inertia: { x: inertia.x, y: inertia.y, z: inertia.z },
+      radius: this.motion.radius,
+      thermal: this.motion.thermal,
+    };
   }
 }
 
