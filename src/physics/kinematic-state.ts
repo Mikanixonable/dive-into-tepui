@@ -45,6 +45,7 @@ export function kinematicState<F extends FrameTag>(t: number, r: Vec3, v: Vec3):
   return { t, r, v } as KinematicState<F>;
 }
 
+// 直列化した ECI の運動状態。
 export interface SerializedKinematicState {
   readonly t: number;
   readonly r: SerializedVec3;
