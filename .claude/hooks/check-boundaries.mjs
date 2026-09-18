@@ -181,8 +181,8 @@ process.stdin.on('end', async () => {
         additionalContext:
           `【責務境界の点検】${posix}` +
           section((v) => v.strict,
-            '■ 違反。DEVELOP/CODING-RULE.md の該当節を読んで直す。ルールに例外を足して正当化しない。' +
-            '誤検出だと判断した場合はその理由を述べること。') +
+            '■ 違反。括弧が指す規則(DEVELOP/ARCHITECTURE.md・CODING-RULE.md)を読み、目的に照らしてコードを直す。' +
+            '規則・フックに例外を足して通さない。誤検出だと判断したら、フックを書き換えずに理由を述べること。') +
           section((v) => !v.strict,
             '■ 疑い(程度問題)。該当節を読み、当てはまるかを自分で判断する。' +
             '当てはまらないと判断したならその理由を述べ、直さずに進めてよい。'),

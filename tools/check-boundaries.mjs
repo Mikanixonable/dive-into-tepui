@@ -89,21 +89,23 @@ const PRESENTATION_ROOTS = [
   'src/game/run-event-presenter.ts',
 ];
 
+// 判定の名前と、その目的を書いた規則(ref)。違反の行に ref を添え、読む先を示す。
 const RULES = {
-  deviceOut: '装置の出ていく import',
-  deviceToDevice: '装置どうしの相互 import',
-  timeOut: '時刻層の出ていく import',
-  definitionOut: '定義層の出ていく import',
-  hudOut: 'src/hud/ の出ていく import',
-  progressToViewer: '進行から視点への import',
-  settingsViewer: '設定と視点の相互 import',
-  serializationToPresentation: '直列化の根の型から表示の導出への import',
+  deviceOut: { name: '装置の出ていく import', ref: 'ARCHITECTURE R2' },
+  deviceToDevice: { name: '装置どうしの相互 import', ref: 'ARCHITECTURE R2' },
+  timeOut: { name: '時刻層の出ていく import', ref: 'ARCHITECTURE R2' },
+  definitionOut: { name: '定義層の出ていく import', ref: 'ARCHITECTURE R2' },
+  hudOut: { name: 'src/hud/ の出ていく import', ref: 'ARCHITECTURE R2' },
+  progressToViewer: { name: '進行から視点への import', ref: 'ARCHITECTURE R4' },
+  settingsViewer: { name: '設定と視点の相互 import', ref: 'ARCHITECTURE R4' },
+  serializationToPresentation: { name: '直列化の根の型から表示の導出への import', ref: 'ARCHITECTURE R11' },
 };
 
 // 禁止パターンの表。段ごとに行を足す。exempt は恒久の例外で、理由は各行のコメントに書く。
 const FORBIDDEN = [
   {
     name: '命令 API の禁止',
+    ref: 'ARCHITECTURE R7',
     pattern: /ensureStarted|\.unlock\(|setThrust|setRcs|applyGraphics|setFixedBrightnessScale|MarkerSlots/g,
     targets: ['src/'],
     exempt: [],
@@ -111,6 +113,7 @@ const FORBIDDEN = [
   {
     // R5 の「実時刻はフレームの先頭で1度だけ読み、入力として配る」を導出層へ当てたもの。
     name: '導出層の壁時計の禁止',
+    ref: 'ARCHITECTURE R5',
     pattern: /performance\.now|Date\.now/g,
     targets: ['src/render/', 'src/marker/', 'src/hud/', 'src/game/hud/'],
     // 自分の処理にかかった時間を測るための壁時計は、表示する時刻ではないので恒久の例外にする。
@@ -121,18 +124,21 @@ const FORBIDDEN = [
   },
   {
     name: '保存先を直に触る禁止',
+    ref: 'ARCHITECTURE R10',
     pattern: /localStorage/g,
     targets: ['src/game/', 'src/theme.ts'],
     exempt: [],
   },
   {
     name: '書き換えられる設定の受け渡しの禁止',
+    ref: 'ARCHITECTURE R10',
     pattern: /RunSetting/g,
     targets: ['src/'],
     exempt: [],
   },
   {
     name: 'HUD のモデル丸受けの禁止',
+    ref: 'ARCHITECTURE R3',
     pattern: /import .*\bGame\b/g,
     targets: ['src/game/hud/'],
     exempt: [],
@@ -141,12 +147,14 @@ const FORBIDDEN = [
     // モジュール直下の可変値は、定義層では R1 に、導出層では R5 に反する。判定を src/game/
     // 全体へ広げると段 3 以降で直すぶんまで許可リストへ載るので、段 2 で消す2つだけを当てる。
     name: 'モジュール直下の可変値の禁止',
+    ref: 'ARCHITECTURE R1・R5',
     pattern: /^let |^export let /gm,
     targets: ['src/theme.ts', 'src/game/hud/panel-shell.ts'],
     exempt: [],
   },
   {
     name: '二段初期化の禁止',
+    ref: 'CODING-RULE 1.11',
     pattern: /setInput\(|setHandlers\(|setOpenAnalysisHandler\(/g,
     targets: ['src/'],
     exempt: [],
@@ -154,6 +162,7 @@ const FORBIDDEN = [
   {
     // 生の入力エッジを取るのは adapter 1つだけで、ほかは router が配る命令で受ける。
     name: '生の入力エッジの受けの禁止',
+    ref: 'ARCHITECTURE R8',
     pattern: /\binput\.take(?:Key|Keys)\s*\(/g,
     targets: ['src/game/', 'src/hud/', 'src/launcher/'],
     exempt: ['src/game/input/raw-game-input-adapter.ts'],
@@ -161,6 +170,7 @@ const FORBIDDEN = [
   {
     // 層の対応表はパッケージの import を解決できないので、定義層・時刻層の three をパスで止める。
     name: '定義層・時刻層からの three の禁止',
+    ref: 'ARCHITECTURE R2',
     pattern: /'three(?:\/[^']*)?'/g,
     targets: ['src/math/', 'src/physics/'],
     exempt: [],
@@ -170,6 +180,7 @@ const FORBIDDEN = [
     // 長さは「どこまで計算するか」ではなく「何を見るか」なので、進行が読めば違反になる。
     // (暫定 — 段 6 で層の規則が覆うので、そのとき外す)
     name: '表示の選択が進行へ漏れる禁止',
+    ref: 'ARCHITECTURE R4',
     pattern: /predictsFuture|display-window-duration/g,
     targets: ['src/game/dynamic/'],
     exempt: [],
@@ -178,6 +189,7 @@ const FORBIDDEN = [
     // 生の入力を読むのは入力の解釈の位相だけ、という R8 を当てたもの。進行へは操作量と命令で届く。
     // (暫定 — 段 6 で層の規則が覆うので、そのとき外す)
     name: 'モデル層が生の入力を読む禁止',
+    ref: 'ARCHITECTURE R8',
     pattern: /from '.*input\/input'/g,
     targets: ['src/game/dynamic/', 'src/game/player/', 'src/game/stages/', 'src/game/viewer/'],
     exempt: [],
@@ -187,6 +199,7 @@ const FORBIDDEN = [
     // 画面効果の装置を持てば、この経路を飛ばして直に鳴らせてしまう。
     // (暫定 — 段 6 で層の規則が覆うので、そのとき外す)
     name: 'モデル層が出来事の装置を持つ禁止',
+    ref: 'ARCHITECTURE R7',
     pattern: /WorldSfx|UiSfx|Notifier|FlashEffects/g,
     targets: [
       'src/game/dynamic/',
@@ -204,6 +217,7 @@ const FORBIDDEN = [
   {
     // モデル層が知るのは直列化だけで、直列化された形は SerializedT と呼ぶ(R12)。
     name: '直列化の語彙の禁止',
+    ref: 'ARCHITECTURE R12',
     pattern: /\b\w+SaveData\b|\bWeaponStateData\b|\bBoosterStackData\b|\bSAVE_VERSION\b/g,
     targets: ['src/'],
     exempt: [],
@@ -211,6 +225,7 @@ const FORBIDDEN = [
   {
     // 復元は静的な deserialize が行い、構築した後で保存値を流し込まない(R12)。
     name: '復元の流し込みの禁止',
+    ref: 'ARCHITECTURE R12',
     pattern: /\brestore\w*\s*\(|\bimportData\s*\(|\bsaveState\b/g,
     targets: MODEL_ROOTS,
     exempt: [],
@@ -219,6 +234,7 @@ const FORBIDDEN = [
     // コンストラクタは直列化された形を受けず、新規と復元で分岐しない(R12)。引数が複数行に
     // 渡っても当たるよう、ファイル全体に対して引数名を探す。
     name: '直列化された形をコンストラクタで受ける禁止',
+    ref: 'ARCHITECTURE R12',
     pattern: /(?<=\bconstructor\s*\([^)]*)\b(?:saved|initialSave)\w*(?=\??\s*:)|'saved'\s+in\b/g,
     targets: MODEL_ROOTS,
     exempt: [],
@@ -228,6 +244,7 @@ const FORBIDDEN = [
     // ./hud/hud-layers の型だけは外す — ステージのパネルの置き場を Stage へ渡すため。
     // (暫定 — 段 6 の 6-5 で外す)
     name: 'モデル層の根が表示の導出を持つ禁止',
+    ref: 'ARCHITECTURE R10・R13',
     pattern:
       /from '\.\/(?:hud\/(?!hud-layers')|(?:marker|view|pickable|map|lines|input|camera)\/)|from '\.\/(?:game-presentation|flash-presenter|run-event-presenter|controlled-loop-sfx|orbit-info)'|from '\.\.\/(?:audio|input|marker)\//g,
     targets: ['src/game/game.ts'],
@@ -319,7 +336,7 @@ function findImportViolations({ edges, layerOf }) {
   const found = [];
   for (const e of edges) {
     if (e.to === null) continue;
-    const flag = (rule) => found.push({ rule, file: e.from, id: e.to, line: e.line });
+    const flag = (rule) => found.push({ rule: rule.name, file: e.from, id: e.to, line: e.line });
     const from = layerOf(e.from);
     const to = layerOf(e.to);
     const selfRoot = from === DEVICE ? deviceRootOf(e.from) : null;
@@ -396,15 +413,15 @@ function keyOf(v) {
 }
 
 function report(violations, listed) {
-  const ruleNames = [...Object.values(RULES), ...FORBIDDEN.map((r) => r.name)];
+  const rules = [...Object.values(RULES), ...FORBIDDEN];
   const allowed = new Set(listed.map(keyOf));
   const unlisted = violations.filter((v) => !allowed.has(keyOf(v)));
   const live = new Set(violations.map(keyOf));
   const stale = listed.filter((v) => !live.has(keyOf(v)));
-  for (const rule of ruleNames) {
-    const mine = unlisted.filter((v) => v.rule === rule);
-    const allowedCount = violations.filter((v) => v.rule === rule && allowed.has(keyOf(v))).length;
-    console.log(`${rule} — 違反 ${mine.length} 件 / 許可リスト ${allowedCount} 件`);
+  for (const { name, ref } of rules) {
+    const mine = unlisted.filter((v) => v.rule === name);
+    const allowedCount = violations.filter((v) => v.rule === name && allowed.has(keyOf(v))).length;
+    console.log(`${name}(${ref})— 違反 ${mine.length} 件 / 許可リスト ${allowedCount} 件`);
     for (const v of mine.sort((a, b) => a.file.localeCompare(b.file))) {
       console.log(`  ${v.file}:${v.lines.join(',')} → ${v.id}`);
     }
@@ -421,14 +438,16 @@ let ok = true;
 if (graph.unclassified.length > 0) {
   console.log(`層の対応表に無いパス — ${graph.unclassified.length} 件`);
   for (const f of graph.unclassified) console.log(`  ${f}`);
-  console.log('  tools/check-boundaries.mjs の LAYER_TABLE へ層を足すこと。');
+  console.log('  置き場を ARCHITECTURE R2 の対応表から選び直す。新しいフォルダが要るなら、その層をユーザーに問い、');
+  console.log('  対応表と tools/check-boundaries.mjs の LAYER_TABLE へ一緒に足す。');
   ok = false;
 }
 const missingPresentation = MISPLACED_PRESENTATION_FILES.filter((f) => !graph.files.includes(f));
 if (missingPresentation.length > 0) {
   console.log(`表示の導出として外す一覧に、存在しないパス — ${missingPresentation.length} 件`);
   for (const f of missingPresentation) console.log(`  ${f}`);
-  console.log('  tools/check-boundaries.mjs の MISPLACED_PRESENTATION_FILES を直すこと。');
+  console.log('  tools/check-boundaries.mjs の MISPLACED_PRESENTATION_FILES で、移したものは移した先へ書き換え、');
+  console.log('  消したものは消す。新しいファイルを足して判定から外さない。');
   ok = false;
 }
 if (graph.unresolved.length > 0) {
@@ -437,5 +456,11 @@ if (graph.unresolved.length > 0) {
   ok = false;
 }
 if (!report(group([...findImportViolations(graph), ...findPatternViolations(graph)]), readAllowlist())) ok = false;
-console.log(ok ? '\n境界の検査を通った。' : '\n境界の検査に落ちた。');
+if (ok) {
+  console.log('\n境界の検査を通った。');
+} else {
+  console.log('\n境界の検査に落ちた。各判定の括弧が、その目的を書いた規則(DEVELOP/ARCHITECTURE.md・CODING-RULE.md)。');
+  console.log('読んで、目的に照らしてコードを直す。規則・判定・exempt・許可リストを書き換えて通さない。規則か判定が');
+  console.log('目的を外していると判断したら、理由を添えてユーザーに問う(ARCHITECTURE.md「違反が出たとき」)。');
+}
 process.exit(ok ? 0 : 1);
