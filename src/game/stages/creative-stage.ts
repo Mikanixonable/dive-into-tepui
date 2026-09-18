@@ -1,5 +1,5 @@
 // クリエイティブモード: 勝敗判定を発生させず、物体配置と軌道計画を自由に試すためのステージ。
-import { Stage, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
+import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { ManualSpawn } from '../creative/manual-spawn';
 import { MAX_PLACED_SHIPS, ObjectPlacement } from '../creative/object-placement';
 import {
@@ -44,8 +44,6 @@ export class CreativeStage extends Stage {
   // 補給の自動投入・敵の波状攻撃を切り替えるトグルを載せたパネル。
   private readonly stageControlsPanel: StageControlsPanel;
   private readonly waveAttack: WaveAttack;
-  // 敵の波状攻撃を発生させるかどうか(既定 OFF)。
-  private waveAttackEnabled: boolean;
   // パネルの操作を積む先。
   private readonly commands: CreativeStageCommands;
 
@@ -54,11 +52,17 @@ export class CreativeStage extends Stage {
     return '<b>クリエイティブモード</b><br>マップから艦艇を配置して軌道を眺められる。';
   }
 
-  // 配置・手動スポーンとステージ操作パネルを組み、保存データがあればそこから状態を戻す。
-  public constructor(saved: SerializedStage | undefined, ...deps: StageDeps) {
-    super(saved, ...deps);
+  // 波状攻撃の進行・トグルと共通の状態から、配置・手動スポーンとステージ操作パネルを組む。
+  // 省いた波状攻撃は新しい進行から始まる。
+  private constructor(
+    deps: StageDeps,
+    waveAttack?: WaveAttack,
+    // 敵の波状攻撃を発生させるかどうか(既定 OFF)。
+    private waveAttackEnabled = false,
+    ...common: CommonStageState
+  ) {
+    super(deps, ...common);
     this.commands = creativeStageCommands(this._commandQueue, this);
-    const savedCreative = saved as SerializedCreativeStage | undefined;
 
     this.manualSpawn = new ManualSpawn(
       this._scene, this._celestialSystem.celestialMotions,
@@ -74,11 +78,10 @@ export class CreativeStage extends Stage {
     this.objectPlacement.onPlace = (name, entityKind, state) => this.commands.placeObject(name, entityKind, state);
     this.authoring = this.objectPlacement;
 
-    this.waveAttack = new WaveAttack(
+    this.waveAttack = waveAttack ?? new WaveAttack(
       this._dynamicSystem.events, this._scene, this._celestialSystem.celestialMotions,
-      this._dynamicSystem.idAllocators, savedCreative?.waveAttack,
+      this._dynamicSystem.idAllocators,
     );
-    this.waveAttackEnabled = savedCreative?.waveAttackEnabled ?? false;
     this.stageControlsPanel = new StageControlsPanel(
       this.logistics.resupplyEnabled, this.logistics.rcsFuelResupplyEnabled, this.waveAttackEnabled,
       this.manualSpawn.spawnDistance,
@@ -93,8 +96,28 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.onSpawnEnemy = (shape, colorValue) => this.commands.spawnManualEnemy(shape, colorValue);
     this.stageControlsPanel.onSpawnFormation = () => this.commands.spawnProteinFormation();
     hudRail(this._hud.mapRoot, 'right').appendChild(this.stageControlsPanel.element);
+  }
 
-    this.begin();
+  // 新しいランのステージを組む。
+  public static create(...deps: StageDeps): CreativeStage {
+    const stage = new CreativeStage(deps);
+    stage.composeBriefing();
+    return stage;
+  }
+
+  // 直列化した形から復元する。
+  public static deserialize(serialized: SerializedCreativeStage, ...deps: StageDeps): CreativeStage {
+    const [, scene, dynamicSystem, celestialSystem] = deps;
+    const { waveAttack, waveAttackEnabled } = serialized;
+    return new CreativeStage(
+      deps,
+      // null も欠けと同じく新しいランの初期値から始める(既定引数は undefined でしか働かない)。
+      waveAttack == null ? undefined : WaveAttack.deserialize(
+        waveAttack, dynamicSystem.events, scene, celestialSystem.celestialMotions, dynamicSystem.idAllocators,
+      ),
+      waveAttackEnabled ?? undefined,
+      ...Stage.deserializeCommonState(serialized, deps, CreativeStage.stageRules),
+    );
   }
 
   // 弾薬の自動投入の可否を切り替える。
@@ -264,7 +287,7 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.element.remove();
   }
 
-  // 共通のステージ保存データへ、波状攻撃のトグルと進行状況を足して返す。
+  // 共通の内訳へ、波状攻撃のトグルと進行状況を足して直列化する。
   public serialize(): SerializedCreativeStage {
     return {
       ...super.serialize(),

@@ -53,23 +53,32 @@ export interface SerializedWaveAttack {
 }
 
 export class WaveAttack {
-  private waveState: WaveState;
-  private spawnTimer: number;
-  private _waveCount: number;
-
   public get waveCount(): number { return this._waveCount; }
 
-  // saved があればその状態から始める。
+  // 渡した進行から始める。省いた進行は、弾薬の確保を待つ第0波から始まる。
   public constructor(
     private readonly events: RunEventSink,
     private readonly scene: THREE.Scene,
     private readonly attractors: readonly CelestialBody[],
     private readonly idAllocators: EntityIdAllocators,
-    saved?: SerializedWaveAttack,
-  ) {
-    this.waveState = saved?.waveState ?? 'waiting_for_ammo';
-    this.spawnTimer = saved?.spawnTimer ?? 0;
-    this._waveCount = saved?.waveCount ?? 0;
+    private waveState: WaveState = 'waiting_for_ammo',
+    private spawnTimer = 0,
+    private _waveCount = 0,
+  ) {}
+
+  // 直列化した進行から復元する。
+  public static deserialize(
+    serialized: SerializedWaveAttack,
+    events: RunEventSink,
+    scene: THREE.Scene,
+    attractors: readonly CelestialBody[],
+    idAllocators: EntityIdAllocators,
+  ): WaveAttack {
+    const { waveState, spawnTimer, waveCount } = serialized;
+    // null も欠けと同じく新しい進行の初期値から始める(既定引数は undefined でしか働かない)。
+    return new WaveAttack(
+      events, scene, attractors, idAllocators, waveState ?? undefined, spawnTimer ?? undefined, waveCount ?? undefined,
+    );
   }
 
   // ウェーブ番号を1つ進め、生成した敵を addEnemy へ渡す。
@@ -129,6 +138,7 @@ export class WaveAttack {
     this.events.record({ kind: 'waveSpawned', wave: this._waveCount });
   }
 
+  // 進行を直列化した形へ畳む。
   public serialize(): SerializedWaveAttack {
     return { waveState: this.waveState, spawnTimer: this.spawnTimer, waveCount: this._waveCount };
   }
