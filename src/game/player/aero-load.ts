@@ -1,5 +1,4 @@
-// 自機が浴びている空力荷重。動圧と、それが構造限界を超えたかどうかを持つ。**熱ではない** —
-// 外殻の熱収支は DynamicEntity の温度が受け持つ。
+// 自機が浴びている空力荷重。動圧と、それが構造限界を超えたか・空力加熱が効く流れの中にいるかを答える。
 import { airflow } from '../../physics/atmosphere';
 import { Vec3, sub } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -34,8 +33,7 @@ export class AeroLoad {
     return this.qdyn > MAX_DYN_PRESSURE;
   }
 
-  // 空力加熱が効いている流れの中にいるか。これを下回る動圧では空力加熱は放射冷却に対して桁で
-  // 小さく、そこで温度が上がったなら理由は艦の内部にしかない。
+  // 空力加熱が効いている流れの中にいるか(動圧が AERO_HEATING_MIN_Q 以上か)。
   public get heatingAerodynamically(): boolean {
     return this.qdyn >= AERO_HEATING_MIN_Q;
   }
