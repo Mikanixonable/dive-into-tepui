@@ -4,14 +4,13 @@ import * as THREE from 'three/webgpu';
 import { Enemy } from '../dynamic/dynamic-entity/enemy';
 import { isPlayer, Player, type PlayerPlacement } from '../player/player';
 import { strongestAttractor } from '../../physics/attractor';
-import { Logistics } from './stage-utils/logistics';
-import { ScoreCounter } from './stage-utils/score-counter';
+import { Logistics, type SerializedLogistics } from './stage-utils/logistics';
+import { ScoreCounter, type SerializedScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
 import type { HudLayers } from '../hud/hud-layers';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
-import type { StageSaveData } from '../save/save-data';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { ProteinDisplayControl } from '../creative/stage-controls-panel';
 import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
@@ -74,13 +73,21 @@ export interface StageClass {
   readonly selectGroup: string;
   readonly hiddenFromSelect: boolean;
   isUnlocked(clearCounts: ClearCounts): boolean;
-  new (saved: StageSaveData | undefined, ...deps: StageDeps): Stage;
+  new (saved: SerializedStage | undefined, ...deps: StageDeps): Stage;
 }
 
 // ステージ ID → クリア回数(周回数によるアンロックに備えて、クリアの有無でなく回数で持つ)。
 export type ClearCounts = Readonly<Record<string, number>>;
 
 export type GamePhase = 'playing' | 'won' | 'lost' | 'timeup';
+
+// 全ステージ共通の内訳(スコア・決着状態・補給タイマー)。ステージ固有の内訳は、これを拡張した
+// 型に持つ。
+export interface SerializedStage {
+  readonly scoreCounter: SerializedScoreCounter;
+  readonly phase: GamePhase;
+  readonly logistics: SerializedLogistics;
+}
 
 // 決着した周回の結果画面に出す内容。
 export interface StageResult {
@@ -164,7 +171,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // saved が undefined ならスナップショットからの再開ではない新規開始で、スコア0・進行中・
   // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
   // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
-  protected constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+  protected constructor(saved: SerializedStage | undefined, ...deps: StageDeps) {
     const [hud, scene, dynamicSystem, celestialSystem, controlSelection, commandQueue] = deps;
     this._hud = hud;
     this._scene = scene;
@@ -323,9 +330,9 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.statusPanel.dispose();
   }
 
-  // スコア・決着状態・補給タイマーをセーブデータへ変換する。固有の内訳を持つ具象ステージは
+  // スコア・決着状態・補給タイマーを直列化した形へ変換する。固有の内訳を持つ具象ステージは
   // これを拡張した戻り値型で override する。
-  public serialize(): StageSaveData {
+  public serialize(): SerializedStage {
     return {
       scoreCounter: this.scoreCounter.serialize(),
       phase: this._phase,

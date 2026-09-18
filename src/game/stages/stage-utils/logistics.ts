@@ -12,7 +12,13 @@ import { Player } from '../../player/player';
 import type { EntityRoster } from '../../dynamic/entity-roster';
 import type { EntityRegistry } from '../../dynamic/entity-registry';
 import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
-import type { LogisticsSaveData } from '../../save/save-data';
+
+export interface SerializedLogistics {
+  readonly resupplyCheckAt: number;
+  readonly resupplyEnabled: boolean;
+  // 無ければ自動投入を有効にする。
+  readonly rcsFuelResupplyEnabled?: boolean;
+}
 
 export const MAX_ACTIVE_AMMO_PICKUPS = 3; // 同時に存在する補給の最大数
 export const LOGISTICS_SCRIPTED_MIN_DIST = 12.5; // 台本投入の配置距離(自機軌道上の位相シフト距離)下限 [m]
@@ -39,7 +45,7 @@ export class Logistics {
   public constructor(
     private readonly _scene: THREE.Scene,
     private readonly dynamicSystem: EntityRegistry & EntityRoster,
-    saved?: LogisticsSaveData,
+    saved?: SerializedLogistics,
     automaticResupply = true,
   ) {
     this.resupplyCheckAt = saved?.resupplyCheckAt ?? 0;
@@ -140,7 +146,7 @@ export class Logistics {
   }
 
   // 次回投入判定時刻と、自動投入の有効/無効の保存形。
-  public serialize(): LogisticsSaveData {
+  public serialize(): SerializedLogistics {
     return {
       resupplyCheckAt: this.resupplyCheckAt,
       resupplyEnabled: this.resupplyEnabled,

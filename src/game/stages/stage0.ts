@@ -1,11 +1,10 @@
 // Stage 0: 近傍の色分けクラスタを制限時間内に何機撃墜できるかのスコアアタック。タイムアップで終了。
-import { Stage, type StageDeps, STORY_EPOCH } from './stage';
+import { Stage, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { generateCluster, STAGE0_PER_GROUP, STAGE0_MAX_RANGE, COLOR_STAGE0_GROUP_ACCENTS } from './spawner/enemy-spawner';
-import { ScoreAttackTimer } from './stage-utils/score-attack-timer';
+import { ScoreAttackTimer, type SerializedScoreAttackTimer } from './stage-utils/score-attack-timer';
 import type { ScoreCounter } from './stage-utils/score-counter';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import type { Stage0SaveData, StageSaveData } from '../save/save-data';
 
 // 制限時間 [実秒]。
 const STAGE0_TIME_LIMIT = 120;
@@ -15,6 +14,10 @@ const STAGE0_LOGISTICS_MAX_DIST = 225;
 
 // 制限時間を分単位で表す。
 const stage0TimeLimitMinutes = (): number => Math.floor(STAGE0_TIME_LIMIT / 60);
+
+export interface SerializedStage0 extends SerializedStage {
+  readonly timeLeft: SerializedScoreAttackTimer;
+}
 
 export class Stage0 extends Stage {
   static readonly id = '0' as const;
@@ -29,9 +32,9 @@ export class Stage0 extends Stage {
   private readonly timer: ScoreAttackTimer;
 
   // 保存があれば残り時間を引き継いでタイマーを組む。
-  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+  constructor(saved: SerializedStage | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
-    this.timer = new ScoreAttackTimer((saved as Stage0SaveData | undefined)?.timeLeft ?? STAGE0_TIME_LIMIT);
+    this.timer = new ScoreAttackTimer((saved as SerializedStage0 | undefined)?.timeLeft ?? STAGE0_TIME_LIMIT);
     this.begin();
   }
 
@@ -77,7 +80,7 @@ export class Stage0 extends Stage {
     return `残り時間: ${Math.ceil(this.timer.timeLeft)}秒`;
   }
 
-  serialize(): Stage0SaveData {
+  serialize(): SerializedStage0 {
     return { ...super.serialize(), timeLeft: this.timer.serialize() };
   }
 }

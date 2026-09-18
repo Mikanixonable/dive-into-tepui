@@ -13,7 +13,7 @@ import { ENTITY_CAP, type CapKind, type EntityCountKind } from './dynamic-entity
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
 import { isEnemy } from './dynamic-entity/enemy';
 import { isPlayer, Player } from '../player/player';
-import { restorationFor } from './dynamic-entity/entity-dictionary';
+import { restorationFor, type SerializedDynamicEntity } from './dynamic-entity/entity-dictionary';
 import { InstancedPools } from '../../render/dynamic/instanced-pools';
 import { BulletPools } from '../../render/dynamic/dynamic-entity/bullet-view';
 import { CasingPool } from '../../render/dynamic/dynamic-entity/casing-view';
@@ -29,7 +29,6 @@ import type { RenderStyle } from '../../render/render-style';
 import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
 import type { StageRules } from '../stages/stage-rules';
 
-import type { EntitySaveDataUnion, GameSaveData } from '../save/save-data';
 import type { PerfCounts } from '../perf-counts';
 import type { RunEventSink } from '../run-events';
 import type { OrbitReference } from '../orbit-reference';
@@ -62,7 +61,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     private readonly celestialBodies: CelestialBodies,
     private readonly sections: FrameSections,
     initialSimTime: number,
-    saved?: GameSaveData,
+    saved?: { readonly simTime: number; readonly entities: readonly SerializedDynamicEntity[] },
   ) {
     this.instancedPools = new InstancedPools([
       new BulletPools(scene, ENTITY_CAP.bullet),
@@ -75,7 +74,9 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   }
 
   // スナップショットの顔ぶれを復元する。知らない種別は読み飛ばす。
-  private restoreFromSave(save: GameSaveData, scene: THREE.Scene): void {
+  private restoreFromSave(
+    save: { readonly simTime: number; readonly entities: readonly SerializedDynamicEntity[] }, scene: THREE.Scene,
+  ): void {
     // 実体化がゲートで遅れる個体があるので、先に全部の id を押さえてから組み始める。
     for (const data of save.entities) this.idAllocators.reserve(data.id);
     for (const data of save.entities) {
@@ -86,14 +87,14 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     }
   }
 
-  // 顔ぶれを保存形へ畳む。保存へ載らない種別は落ちる。showsTrajectoryLine は id の個体の
+  // 顔ぶれを直列化した形へ畳む。保存へ載らない種別は落ちる。showsTrajectoryLine は id の個体の
   // 予測線・過去線を出しているか、proteinDisplay はタンパク質の敵に共通の表示形態と着色。
   public serialize(
     showsTrajectoryLine: (id: string) => boolean, proteinDisplay: ProteinDisplaySettings,
-  ): EntitySaveDataUnion[] {
+  ): SerializedDynamicEntity[] {
     return this.entities
       .map((e) => e.serialize(showsTrajectoryLine(e.id), proteinDisplay))
-      .filter((data): data is EntitySaveDataUnion => data !== null);
+      .filter((data): data is SerializedDynamicEntity => data !== null);
   }
 
   private _collectionRevision = 0;
