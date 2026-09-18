@@ -6,7 +6,7 @@
 // **弧は大気による焼失を判定しない。** 姿勢も熱の蓄積状態も運ばないので、実体がどこで
 // 失われるかを原理的に当てられない。当てられない量を近似で埋めると、その近似の値を実体側と
 // 揃え続ける保守が発生する。弧が答えるのは「この自由落下の経路が固体表面へ到達するか」だけ。
-import { KinematicState, hermiteInterpolate } from '../../physics/kinematic-state';
+import { hermiteInterpolate, type KinematicState } from '../../physics/kinematic-state';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import { nearestAtmosphereBody, strongestAttractor } from '../../physics/attractor';
 import { firstSurfaceContact } from '../../physics/surface-contact';
@@ -83,10 +83,10 @@ export class PredictedArc {
   private _decimation = 0;
 
   // 所有者が毎フレーム書く。積分先端が到達すべき絶対時刻と、保持窓の左端。
-  requiredEnd: number;
-  retainFrom: number;
+  public requiredEnd: number;
+  public retainFrom: number;
   // 実シミュレーションのサブステップ幅の上限 [s]。消費される弧はこれに刻みを揃える。
-  simulationMaxStep = SUBSTEP_MAX_DT;
+  public simulationMaxStep = SUBSTEP_MAX_DT;
 
   // state0 を起点に先端を構築する。requiredEnd/retainFrom は state0.t で初期化され、
   // 所有者が書き換えるまで needsGrowth は偽のまま。radius はこの弧が表す物体の接触半径で、
@@ -95,8 +95,8 @@ export class PredictedArc {
   // 次のノードを置くと、実際に積分し直した結果と繋がらなくなるため)。consumable は
   // 実シミュレーションがこの弧から状態を引くか — 引く弧は刻みと間引きを実シミュレーション側に
   // 合わせ、表示期間由来の項を使わない。
-  constructor(
-    readonly state0: KinematicState,
+  public constructor(
+    public readonly state0: KinematicState,
     sources: readonly CelestialBody[],
     private readonly radius: number,
     private readonly bcInv: number,
@@ -111,16 +111,16 @@ export class PredictedArc {
   }
 
   // 直近の1歩が解決した天体の数と、そのうち期限到来で訪問したものの数。
-  get lastResolvedBodies(): number { return this.bodies.lastResolved; }
-  get lastRevisitedBodies(): number { return this.bodies.lastRevisited; }
+  public get lastResolvedBodies(): number { return this.bodies.lastResolved; }
+  public get lastRevisitedBodies(): number { return this.bodies.lastRevisited; }
 
-  get trajectory(): DynamicTrajectory { return this._trajectory; }
-  get truncated(): boolean { return this._truncated; }
-  get impact(): BodyImpact | null { return this._impact; }
-  get apsides(): ApsisTrack | null { return this._apsides; }
+  public get trajectory(): DynamicTrajectory { return this._trajectory; }
+  public get truncated(): boolean { return this._truncated; }
+  public get impact(): BodyImpact | null { return this._impact; }
+  public get apsides(): ApsisTrack | null { return this._apsides; }
   // 打ち切られておらず、先端がまだ requiredEnd に届いていないか。
-  get needsGrowth(): boolean { return !this._truncated && this._trajectory.state.t < this.requiredEnd; }
-  get decimation(): number { return this._decimation; }
+  public get needsGrowth(): boolean { return !this._truncated && this._trajectory.state.t < this.requiredEnd; }
+  public get decimation(): number { return this._decimation; }
 
   // この弧が (state0, end) を持つ区間をそのまま表せるか(= 作り直さずに使い回せるか)。起点は
   // 同一参照で判定する — 計画のノードは不変オブジェクトで、編集は必ず別オブジェクトへの
@@ -130,14 +130,14 @@ export class PredictedArc {
   // ので表せないと答える。比べるのは間引き下限どうしで、実際のサンプル間隔ではない — 間隔は
   // 刻み幅(ARC_STEPS_PER_REV)でも決まり、そちらは作り直しても同じ値になるので、間隔を下限と
   // 比べると縮めようのない粗さを理由に毎フレーム作り直すことになる。
-  represents(state0: KinematicState, end: number): boolean {
+  public represents(state0: KinematicState, end: number): boolean {
     const sampleInterval = (end - this.state0.t) / ARC_MAX_SAMPLES;
     if (this._decimation > sampleInterval * ARC_MAX_SAMPLE_COARSENING) return false;
     return state0 === this.state0;
   }
 
   // 1歩伸ばす。伸ばせなければ(既に requiredEnd に達している/打ち切り済みなら)false。
-  step(): boolean {
+  public step(): boolean {
     if (!this.needsGrowth) return false;
     const tip = this._trajectory.state;
     const span = Math.max(0, this.requiredEnd - this.retainFrom);

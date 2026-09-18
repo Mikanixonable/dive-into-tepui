@@ -3,7 +3,7 @@ import { Vessel } from './vessel';
 import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { Contact } from './contact';
 import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
-import { len, sub, Vec3, v3 } from '../../../math/vec3';
+import { len, sub, v3, type Vec3 } from '../../../math/vec3';
 import type { Player } from '../../player/player';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import { randomQuat, type Quat } from '../../../math/quat';
@@ -141,12 +141,12 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     inertia: Vec3,
     radius: number,
     idAllocators: EntityIdAllocators,
-    shape: EnemyCollisionShape | undefined,
+    shape: EnemyCollisionShape | null,
     alive = true,
-    burstLeft?: number,
-    burstDelay?: number,
-    lastFireSim?: number,
-    lastBehaviorSim?: number,
+    burstLeft?: number | null,
+    burstDelay?: number | null,
+    lastFireSim?: number | null,
+    lastBehaviorSim?: number | null,
   ) {
     // 運動の接触・焼失をこの敵へ通知させ、識別を採番する
     const attitude = { q: placement.q, w: placement.w, inertia };
@@ -295,7 +295,6 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       fireController: this.fireController.serialize(),
     };
   }
-
 }
 
 // entity を敵へ絞り込む型ガード。
