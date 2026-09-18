@@ -646,148 +646,17 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 - **暫定の形(5-4・5-5 で作り直す)**: `SerializedGame`(`game.ts`)は `SerializedViewer` を継ぐ平坦な形。`DynamicSystem` は `{ simTime; entities }` の無名の型、`Viewer` は `SerializedViewer & { entities }` を受ける(`SerializedGame` を import すると `game.ts` との型の循環になるため)。
 - **dep-metrics**: 辺は 3769 → 3733、型の最大の強連結成分は 113 → 98 ファイル。ctx2 の平均だけ 2357 → 2368 と増えた。`launcher/save/*` が `SerializedGame` のために 1040 行の `game.ts` を読むようになったためで、5-3 で `game.ts` が縮めば戻る(5-3 の検証で見る)。
 
-#### 手順 5-3. `game.ts` をモデル層の根・表示の導出の根・ランの組み立てに分ける
+#### 手順 5-3 — 済(`ea5562ad`)
 
-**目的**: K8-5 のとおり、1040 行・import 105 行の `game.ts` を3つの根に分ける。
+**手順は実施したので落とした。** 後の手順が前提にしてよい結果だけを残す。
 
-- モデル層の根 `Game` は、ランの正本を所有する。
-- 表示の導出の根 `GamePresentation` は、ランの寿命の表示・装置の実体・入力の解釈を所有する。
-- `Run` が2つを組み、位相の順序を持つ。
-
-`main.ts` と `launcher/` は `Run` を起こして呼ぶだけになる。**この時点で挙動は変えない**(直列化の形は 5-4、足す値は 5-5 で扱う)。
-
-**新しい API**(引数の型は既存の名前。`PageDevices` だけが新しい)
-
-```ts
-// src/game/game.ts — モデル層の根(進行と視点)。
-export class Game {
-  // 5-4 で create(新規)と deserialize(復元)に分ける。この手順では、いまの Game.create と同じく保存値を受ける。
-  public static async create(
-    stageClass: StageClass,
-    initialSave: SerializedGame | undefined,
-    startEpoch: TdbJulianDate | undefined,
-    scene: GameScene,        // 暫定: 天体系の生成と build(7-3 で外す)、DynamicSystem と Stage へ渡す scene(6-3・6-5 で外す)
-    hud: HudLayers,          // 暫定: Stage の StatusPanel とパネル(6-5 で外す)
-    sections: FrameSections, // 計測。置き場は 8-6 で決める
-    progress: LoadingProgress,
-  ): Promise<Game>;
-  // 表示の導出が読むもの。いま game.ts が表示の導出へ渡している値を、同じ型のまま公開する(面を狭めるのは段 6〜7)。
-  public readonly commands: CommandQueue;
-  public readonly events: RunEventLog;
-  public readonly celestialSystem: CelestialSystem;
-  public readonly dynamicSystem: DynamicSystem;
-  public readonly activeStage: Stage;
-  public readonly controlSelection: ControlSelection;
-  public readonly simSpeedManager: SimSpeedManager;
-  public readonly viewer: Viewer;
-  public get simTime(): number;
-  public get activeControllable(): Controllable | null;
-  public serialize(): SerializedGame;
-  // 位相 2: 出来事の記録を空にし、命令を適用し、一時停止でなければ操作量と dt で進め、視点を進行に合わせる。
-  public advance(dt: number, controls: PilotControls, paused: boolean): void;
-  // 位相 2 の末尾: 表示の導出が進行の結果から作った材料を受ける(R8)。
-  public followCamera(samples: CameraFrameSamples): void;
-  // 履歴の保持長、予測の延長、計画ノードの期限切れと達成の規則(折れ線と予測を伸ばした後に通す)。
-  public extendPredictions(demand: TrajectoryDemand): void;
-  public dispose(): void;
-}
-
-// src/run/page-devices.ts — ページの寿命の装置の束(1.3「同じ寿命のものと束ねて1つの引数にする」)。
-export interface PageDevices {
-  readonly scene: GameScene;
-  readonly hud: Hud;
-  readonly markers: MarkerDevice;
-  readonly audioEngine: AudioEngine;
-  readonly pauseMenu: PauseMenu;
-}
-
-// src/game/game-presentation.ts — 表示の導出の根(8-3 で src/presentation/ へ)。
-export class GamePresentation {
-  public constructor(
-    game: Game, devices: PageDevices,
-    viewOptions: ViewOptionsSettings, themePalette: SettingValue<ThemePalette>, sections: FrameSections,
-  );
-  public get pilotControls(): PilotControls;
-  public interpretInput(dt: number, nowMs: number, viewport: Viewport): void; // 位相 1
-  public resolveFrame(): void;                  // ビューの切替・表示窓・座標系の錨
-  public cameraSamples(): CameraFrameSamples;
-  public presentProgress(): void;               // 閃光・的の印・計画表示
-  public trajectoryDemand(): TrajectoryDemand;
-  public update(nowMs: number, viewport: Viewport): void; // 赤道交点・カメラ・候補列
-  public routeInput(ports: readonly GameInputPort[]): void;
-  public sync(graphics: GraphicsSettingsData, style: RenderStyle, viewport: Viewport, nowMs: number): void; // 位相 3
-  public render(style: RenderStyle): void;      // 位相 4
-  public dispose(): void;
-}
-
-// src/run/run.ts — 1ランの組み立てと位相の順序。
-export class Run {
-  // 5-4 で create(新規)と resume(serialized: SerializedGame, …)に分ける。
-  public static async create(
-    stageClass: StageClass, initialSave: SerializedGame | undefined, startEpoch: TdbJulianDate | undefined,
-    devices: PageDevices, viewOptions: ViewOptionsSettings, themePalette: SettingValue<ThemePalette>,
-    graphics: SettingValue<GraphicsSettingsData>, renderStyle: SettingValue<RenderStyle>,
-    sections: FrameSections, autoSave: AutoSave, progress: LoadingProgress,
-  ): Promise<Run>;
-  public readonly game: Game;
-  public get isPaused(): boolean;
-  public get snapshot(): SnapshotSource;
-  public frame(dtRaw: number, nowMs: number, viewport: Viewport, ports: readonly GameInputPort[]): void;
-  public dispose(): void;
-}
-```
-
-**`Run.frame` の順序**(左の番号の順に呼ぶ。「いま」は分割前の呼び出し位置)
-
-| 順 | 呼ぶもの | いま |
-| --- | --- | --- |
-| 1 | `sections.beginFrame()`、`dt = min(dtRaw, 0.1)` | `main.ts:80`、`game.ts:550` |
-| 2 | 入力の解釈 `presentation.interpretInput(dt, nowMs, viewport)` | `game.ts:548-553` |
-| 3 | 進行 `game.advance(dt, presentation.pilotControls, isPaused)` | `game.ts:555-565` |
-| 4 | `presentation.resolveFrame()`(`viewManager.sync`・表示窓の解決・`FrameAnchors.update`) | `game.ts:566-576` |
-| 5 | `game.followCamera(presentation.cameraSamples())` | `game.ts:577-580` |
-| 6 | `presentation.presentProgress()`(閃光・的の印・`planDisplay.update`) | `game.ts:583-592` |
-| 7 | `game.extendPredictions(presentation.trajectoryDemand())`(履歴の保持長・予測・計画ノードの規則) | `game.ts:594-603, 619-620` |
-| 8 | `presentation.update(nowMs, viewport)`(赤道交点・カメラ・候補列) | `game.ts:606-617, 622-631` |
-| 9 | `sections.endFrame()`、`presentation.routeInput(ports)`。入力の途中でランが畳まれたら(再出撃キー)ここで抜ける | `main.ts:82-109` |
-| 10 | 自動セーブ `autoSave.update(this.snapshot)` | `main.ts:110` |
-| 11 | 導出と同期 `presentation.sync(…)`、描画 `presentation.render(…)`、t0〜t3 の計測 | `main.ts:78,111-116` |
-
-- **いまの順序から動かすのは1つだけ**: 赤道交点の更新(いま `game.ts:611`)が、計画ノードの規則(いま `:619`)の後ろへ回る。着手時に `/callstack` で、赤道交点が計画ノードを直に読まず、構築済みの折れ線(`planDisplay`)と予測だけを読むことを確かめる。読むなら、`extendPredictions` から計画ノードの規則を `applyPlanRules()` として分け、いまの順序のまま呼ぶ。
-- 構築の末尾(`game.ts:494-504`: 視点の規則 → 座標系の錨 → カメラの追従 → 構築中の出来事の表示 → ブリーフィング)と暖機(`game.ts:232-243`)も、`Run.create` が同じ順で呼ぶ。
-- 段 3 の5項目(「段 1〜3 — 済」の節)は崩さない。
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/game.ts` | モデル層の根だけを残す。残すもの: `commands`・`runEvents`・天体系・`DynamicSystem`・`SimSpeedManager`・`ControlSelection`・ステージ・`Viewer`・`Predictor`・計画ノードの規則、`serialize`、`advanceSimulation`(`:634-657`)、`applyPilotCommands`(`:693-700`。一時停止は引数で受ける)、`followProgress`。進行の命令の口(`simSpeedCommands`・`deployableCommands`・`controlSelectionCommands`・`boosterCommands`・`planCommands`)と視点の命令の口は、表示の導出が `game.commands` と所有者から組む |
-| (新規) `src/game/game-presentation.ts` | 調査で表示の導出・装置とした構築の全件(`game.ts:129,190,201,282-296,317-424`)、入力の解釈(`:664-705`)、update の中の導出のうちモデル層を書かないもの、`sync`(`:707-830`)、`render`(`:1009-1015`)、`dispose` の表示の分(`:507-539`)を移す |
-| (新規) `src/game/hud/hud-panel-view-models.ts` | 「HUD へ渡す値」の節(`game.ts:832-1007`)を移し、コメントの「暫定 — 段 8」を消す。`game/hud` は `Game` を import できない(段 2 の判定)ので、読む所有者の面を個別に受ける。`runSummary`(`:1002-1007`)は、読む値がモデル層だけなら `Game` へ置く |
-| (新規) `src/game/input/game-input-ports.ts` | 入力ポートの表と有効条件(`game.ts:426-492`)を移す |
-| `game.ts` の配線以外の実装 | 関心を持つモジュールへ出す(1.2)。対象: 姿勢を解決する閉包(`:322-330`)、`FrameAnchors` への問い合わせ(`:347-354`)、`boosterHandlers`(`:366-379`)、`MapVisibilityPolicy` を作る条件(`:606-610`)、長押しの宣言(`:822-828`)、creative の分岐(`:306`) |
-| `src/game/plan/plan-guide.ts` | ノードの期限切れと達成、出来事の記録(進行)を `Game` 側に、マーカー(`MarkerSink` と、`CombatView` から呼ばれる `sync`)を表示の導出側に分ける |
-| (新規) `src/run/run.ts`、`src/run/page-devices.ts` | 2つの根を組み、上の順序で呼ぶ。`SnapshotSource`・`CurrentGameSource`・`PerfCountSource` の実装を持つ(デバッグ用の `perfCounts`・`proteinMotionFrameSample`、`game.ts:1017-1039` もここへ) |
-| `src/game/game-host.ts` | 消す(`PageDevices` と個別の引数へ) |
-| `src/main.ts:62-134,215-230` | ランの部分を `launcher.current?.run.frame(…)` の1呼び出しにする。`GameHost` の組み立てを `PageDevices` に。`autoSave` は launcher 経由で `Run` へ渡す |
-| `src/launcher/launcher.ts:1,47-54,73-74,135-170` | `Game.create` を `Run.create` にする。`activeStage`・`serialize`・`isPaused`・`runSummary`・`celestialSystem.nameOf` は `run` と `run.game` から読む。`onDecided` の配線はいまのまま(8-6) |
-| `src/launcher/save/{snapshot-service,autosave}.ts`、`src/launcher/save-browser/save-browser.ts`、`src/launcher/snapshot-controls.ts`、`src/game/hud/windows/debug-info-window.ts`、`src/game/perf-counts.ts` | 読み手の実装元を `Run` へ |
-| `tools/check-boundaries.mjs` | `src/game/game-presentation.ts` を `MISPLACED_PRESENTATION_FILES` へ足し、`src/run/` の対応表の行が実在のフォルダを指すようにする。5-1 の「モデル層の根が表示の導出を持つ禁止」の許可リストを空にする |
-
-**達成条件と検証**
-
-- `src/game/game-host.ts` が無い。`rg -n "\.advance\(|\.interpretInput\(|\.presentProgress\(|\.extendPredictions\(" src/main.ts src/launcher` が 0 件(位相を呼ぶのは `Run` だけ)。
-- `npm run check:boundaries` で「モデル層の根が表示の導出を持つ禁止」が 0。
-- `wc -l src/game/game.ts src/game/game-presentation.ts src/run/run.ts` がどれも 500 以下。超えるなら 1.2 の診断を PR 本文に書く。3つのコンストラクタは配線だけで、上の表の「配線以外の実装」が残っていない。
-- `node tools/dep-metrics.mjs --file src/game/game.ts` の import 先に、表示の導出と装置の実体が無い(暫定の型 `GameScene`・`HudLayers`・`FrameSections` を除く)。
-- `/callstack` で `Run.frame` の呼び出し順を、分割前の `main.ts` → `Game.update`/`sync`/`render` と突き合わせる。違いは赤道交点の1つだけ。
-- `npm run typecheck`、`npm run test:game`、`npm run test:render`。
-- `npm run dev` で次を見る。
-  - 新規開始、セーブの読み込み、F5 の手動セーブ、自動セーブ
-  - 決着後の再出撃キー(入力の途中でランが畳まれる経路)
-  - 一時停止中のカメラ操作と命令の適用、ビュー切替
-  - 表示期間を変えた直後の予測の伸び、計画ノードの達成の通知と赤道交点
-  - 負荷表示ウィンドウの数値
+- **3つの根**: `Game`(`src/game/game.ts`、231 行)はモデル層の根で、`advance(dt, controls, paused)`・`followProgress()`・`followCamera(samples)`・`extendPredictions(demand)`・`serialize()`・`runSummary()` を持つ。`GamePresentation`(`src/game/game-presentation.ts`、487 行)は表示の導出の根。`Run`(`src/run/run.ts`、167 行)が2つを組み、`frame()` が位相の順序を持つ(入力の途中でランが畳まれたら `false` を返し、自動セーブ・sync・render を走らせない)。`PageDevices`(`src/run/page-devices.ts`)は計画の5項目に `debugInfo` を足した(t0〜t3 の計測を `Run.frame` が持つため)。`Run` は launcher の読み口(`SnapshotSource`・`CurrentGameSource`・`PerfCountSource`)を実装する。
+- **動かした順序は1つだけ**: 赤道交点の更新が計画ノードの規則の後ろへ回った。赤道交点が読むのは顔ぶれ・予測・`planDisplay` の折れ線(`displayedPathOf` は `displayedPlan === null` と `sources`・`displayFrom/To` だけを読む)で、規則が書く `plan.data` を読まないので、挙動は変わらない。
+- **切り出したもの**: 「HUD へ渡す値」はビューバッジと一緒に `src/game/hud/hud-panel-presenter.ts`(`HudPanelViewModels` は `hud.ts` の型名なので `*Presenter` にした)。入力ポートの表は `src/game/input/game-input-ports.ts`。計画ノードの規則(進行)は `src/game/plan/plan-node-rules.ts` の `PlanNodeRules` で `Game` が持ち、`PlanGuide` はマーカーだけの表示の導出になった。姿勢の閉包と錨の問い合わせは `frame-anchors.ts` の `AnchorEntities`、`MapVisibilityPolicy` の条件は `EquatorNodeManager.update`、長押しの宣言は `TouchControls.longPressDeclaration()`、creative の分岐は `Hud.beginRun(stageId)` へ。
+- **暫定の受け口**: `Game.create` は `GameScene`・`HudLayers`・`FrameSections` を受ける。「モデル層の根が表示の導出を持つ禁止」は `./hud/hud-layers` の型 import だけを外してあり、`tools/check-boundaries.mjs` のその箇所に `(暫定 — 段 6 の 6-5 で外す)` がある。
+- **検査**: 「モデル層の根が表示の導出を持つ禁止」の許可リストは空。`MISPLACED_PRESENTATION_FILES` に `game-presentation.ts` と `plan-guide.ts` を足した。「モデル層が出来事の装置を持つ禁止」の対象を `plan-guide.ts` から `plan-node-rules.ts` へ差し替えた。
+- **dep-metrics**: ctx2 の平均は 2368 → 2353 で、5-2 で増えた分は戻った。
+- **実行時の確認**: `npm run build` のあとの `npm run smoke:browser`(stage 00)は最後まで通る。creative の smoke は起動の 60 フレームで時間切れになることが多く(分割前は4回とも)、分割後は起動した2回のうち2回とも「mk-earth の右クリックでプロパティ窓が開く」で落ちた — 退行かどうかを調べている(結果はこの節に書き足す)。**`npm run smoke:browser` はビルドしない(`docs/` を配信する)ので、先に `npm run build` を走らせる。**
 
 #### 手順 5-4. 復元を `deserialize` へ揃える
 
