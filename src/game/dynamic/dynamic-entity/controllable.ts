@@ -2,7 +2,6 @@ import type { Plan, PlanExecutionMode } from '../../plan/plan';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { Attitude } from '../../../physics/attitude';
 import type { Vec3 } from '../../../math/vec3';
-import type { ThrottleSaveData } from '../../save/save-data';
 import type { FireControl } from '../../player/fire-control';
 import type { AttachedBoosters } from '../../player/attached-boosters';
 import type { AltitudeAlarm } from '../../player/altitude-alarm';
@@ -27,7 +26,6 @@ export interface ThrottlePort {
   toggleThrustLatch(direction: ThrustDirection): void;
   isThrustLatched(direction: ThrustDirection): boolean;
   clearTransientState(): void;
-  serialize(): ThrottleSaveData;
 }
 
 export interface FuelConsumer {

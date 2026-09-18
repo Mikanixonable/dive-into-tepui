@@ -1,21 +1,28 @@
 import * as THREE from 'three/webgpu';
 import { v3 } from '../../../math/vec3';
-import type { Attitude } from '../../../physics/attitude';
-import type { KinematicState } from '../../../physics/kinematic-state';
-import { savedAttitude, savedKinematicState, type DetachedBoosterSaveData } from '../../save/save-data';
-import type { BoosterStage } from '../../player/booster-stack';
+import { deserializeAttitude, type Attitude } from '../../../physics/attitude';
+import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
+import type { BoosterStage, SerializedBoosterStage } from '../../player/booster-stack';
 import { DetachedBoosterMotion } from './detached-booster-motion';
 import {
   DetachedBoosterView, type DetachedBoosterRenderSource,
 } from '../../../render/dynamic/dynamic-entity/detached-booster-view';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
-import { DynamicEntity } from './dynamic-entity';
+import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
 import type { EntityIdAllocators } from './entity-id';
 import type { OrbitReference } from '../../orbit-reference';
 
 // 表示時刻を「現在」とみなす許容差 [sim s]。
 const BURN_DISPLAY_EPS = 1e-6;
+
+// 分離後も独立して燃焼・慣性飛行するブースター。接続中の段は SerializedPlayer 側へ保存する。
+export interface SerializedDetachedBooster extends SerializedDynamicEntityFields {
+  readonly kind: 'booster';
+  readonly stage: SerializedBoosterStage;
+  // 分離直後の親艦との再接触を避ける猶予の期限。無ければ即時に接触できる。
+  readonly collisionEnableAt?: number;
+}
 
 type DetachedBoosterInit =
   | {
@@ -24,7 +31,7 @@ type DetachedBoosterInit =
     readonly att: Attitude;
     readonly collisionEnableAt: number;
   }
-  | { readonly saved: DetachedBoosterSaveData; readonly simTime: number };
+  | { readonly saved: SerializedDetachedBooster; readonly simTime: number };
 
 // 分離ブースターの識別情報、運動、表示を一体として所有する。
 export class DetachedBooster extends DynamicEntity {
@@ -38,8 +45,8 @@ export class DetachedBooster extends DynamicEntity {
     // 復元と新規の分離を同じ形へ均してから基底へ渡す。
     const restored = 'saved' in init;
     const stage = restored ? { ...init.saved.stage, id: init.saved.id } : { ...init.stage };
-    const state = restored ? savedKinematicState(init.saved, init.simTime) : init.state;
-    const attitude: Attitude = restored ? savedAttitude(init.saved, v3(1, 1, 0.4)) : init.att;
+    const state = restored ? deserializeKinematicState(init.saved, init.simTime) : init.state;
+    const attitude: Attitude = restored ? deserializeAttitude(init.saved, v3(1, 1, 0.4)) : init.att;
     const collisionEnableAt = restored
       ? (init.saved.collisionEnableAt ?? init.simTime)
       : init.collisionEnableAt;
@@ -65,8 +72,8 @@ export class DetachedBooster extends DynamicEntity {
     };
   }
 
-  // 運動状態と残存段をセーブ用データへ変換する。
-  public override serialize(): DetachedBoosterSaveData {
+  // 運動状態と残存段を直列化した形へ変換する。
+  public override serialize(): SerializedDetachedBooster {
     const motion = this.motion;
     return {
       id: this.id,
