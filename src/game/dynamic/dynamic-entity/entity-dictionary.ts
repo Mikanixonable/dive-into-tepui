@@ -52,7 +52,7 @@ export function restorationFor(
       if (enemyClass === null) return null;
       return {
         gate: enemyClass.spawnGate(data),
-        build: () => new enemyClass({ saved: data, simTime }, idAllocators, scene),
+        build: () => enemyClass.deserialize(data, simTime, idAllocators, scene),
       };
     }
     case 'ammo':

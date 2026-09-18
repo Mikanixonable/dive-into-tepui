@@ -58,12 +58,6 @@ export class PartDamageModel {
     }
   }
 
-  public setOverallHp(total: number): number {
-    const ratio = this._maxHp > 0 ? Math.max(0, Math.min(1, total / this._maxHp)) : 0;
-    for (const part of this.parts) part.hp = part.maxHp * ratio;
-    return this.overallHp();
-  }
-
   public applyCollisionDamage(closingSpeed: number, totalHp: number, part?: Part): { damaged: boolean; hp: number } {
     const fraction = collisionDamageFraction(closingSpeed);
     if (fraction <= 0) return { damaged: false, hp: this.overallHp() };

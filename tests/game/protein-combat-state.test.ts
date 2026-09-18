@@ -181,7 +181,7 @@ export function register(): void {
   test('protein combat: save round-trip preserves sites and modification', () => {
     const state = new ProteinCombatState(asset);
     const serialized = state.serialize();
-    const restored = new ProteinCombatState(asset, serialized);
+    const restored = ProteinCombatState.deserialize(serialized, asset);
     assert.deepEqual(restored.serialize(), serialized);
     assert.equal(restored.serialize().modifications['phosphate-1'], 'phosphorylated');
   });
