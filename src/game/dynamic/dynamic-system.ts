@@ -30,7 +30,6 @@ import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
 import type { StageRules } from '../stages/stage-rules';
-
 import type { PerfCounts } from '../perf-counts';
 import type { RunEventSink } from '../run-events';
 import type { OrbitReference } from '../orbit-reference';

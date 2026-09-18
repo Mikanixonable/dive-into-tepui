@@ -46,25 +46,25 @@ export class EnemyFireController {
   public enabled = true;
 
   // port は撃つ敵。burstLeft・burstDelay はバースト射撃の残弾と次弾までの残り時間で、未着手なら
-  // 両方 undefined。lastFireSim・lastBehaviorSim は最後に射撃の機会が巡った時刻と最後に行動した
-  // 時刻で、まだなら undefined。
+  // 両方 null。lastFireSim・lastBehaviorSim は最後に射撃の機会が巡った時刻と最後に行動した
+  // 時刻で、まだなら null。
   public constructor(
     private readonly port: EnemyFireControllerPort,
-    private burstLeft?: number,
-    private burstDelay?: number,
-    private lastFireSim?: number,
-    private lastBehaviorSim?: number,
+    private burstLeft: number | null = null,
+    private burstDelay: number | null = null,
+    private lastFireSim: number | null = null,
+    private lastBehaviorSim: number | null = null,
   ) {}
 
-  public get isBursting(): boolean { return this.burstLeft !== undefined && this.burstLeft > 0; }
+  public get isBursting(): boolean { return this.burstLeft !== null && this.burstLeft > 0; }
 
   // バースト射撃の途中経過と、射撃の機会・行動の時刻の直列化。
   public serialize(): SerializedEnemyFireController {
     return {
-      burstLeft: this.burstLeft ?? null,
-      burstDelay: this.burstDelay ?? null,
-      lastFireSim: this.lastFireSim ?? null,
-      lastBehaviorSim: this.lastBehaviorSim ?? null,
+      burstLeft: this.burstLeft,
+      burstDelay: this.burstDelay,
+      lastFireSim: this.lastFireSim,
+      lastBehaviorSim: this.lastBehaviorSim,
     };
   }
 
@@ -72,12 +72,12 @@ export class EnemyFireController {
     simTime: number, player: Player, registry: EntityRegistry, enemies: readonly Enemy[],
     operable: boolean, celestialBodies: CelestialBodies,
   ): void {
-    const behaviorDt = this.lastBehaviorSim === undefined ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
+    const behaviorDt = this.lastBehaviorSim === null ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
     this.lastBehaviorSim = simTime;
     if (!operable || !this.enabled) return;
     if (!this.port.canFire(enemies)) {
-      this.burstLeft = undefined;
-      this.burstDelay = undefined;
+      this.burstLeft = null;
+      this.burstDelay = null;
       return;
     }
     const dist = len(sub(player.motion.state.r, this.port.motion.state.r));
@@ -88,13 +88,13 @@ export class EnemyFireController {
       if (this.burstDelay <= 0) {
         this.firePlasma(simTime, player, registry, celestialBodies);
         const burstLeft = this.burstLeft;
-        this.burstLeft = burstLeft === undefined ? undefined : burstLeft - 1;
+        this.burstLeft = burstLeft === null ? null : burstLeft - 1;
         this.burstDelay = ENEMY_BURST_INTERVAL;
       }
       return;
     }
 
-    if (this.lastFireSim === undefined) this.lastFireSim = simTime - Math.random() * ENEMY_FIRE_INTERVAL;
+    if (this.lastFireSim === null) this.lastFireSim = simTime - Math.random() * ENEMY_FIRE_INTERVAL;
     if (simTime - this.lastFireSim <= ENEMY_FIRE_INTERVAL) return;
     this.lastFireSim = simTime;
     const countInGroup = countAttackingEnemiesInGroup(enemies, this.port.attackGroupId);

@@ -8,7 +8,7 @@ import { airflow } from '../../physics/atmosphere';
 import { localOrbitPeriod } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
-import { type KinematicState } from '../../physics/kinematic-state';
+import type { KinematicState } from '../../physics/kinematic-state';
 import { environmentSampleAt, type DynamicsEnvironmentSample } from '../../physics/dynamics';
 import { isStar } from '../../physics/celestial-body-def';
 import {
