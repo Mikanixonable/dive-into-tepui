@@ -12,6 +12,8 @@ export interface SerializedWeaponState {
   readonly barrelDeviation: number;
   readonly cooldown: number;
   readonly muzzleIdx: number;
+  readonly wasFiring: boolean;
+  readonly wasEmptyClick: boolean;
 }
 
 // 艦の初期積載(予備マガジン数・装填済み残弾数)。
@@ -28,11 +30,10 @@ export interface WeaponFireCommand {
 // 発射に伴う弾体・音・閃光・得点などの副作用はここへ持ち込まない。
 export class WeaponState {
   public pendingBarrelJoules = 0;
-  public wasFiring = false;
-  public wasEmptyClick = false;
 
   // barrel は装着中の砲身に残るマガジン数、barrelTemperature・barrelDeviation は砲身の平均温度と
-  // 薬室側の温度差 [K]、muzzleIdx は次に撃つ砲口。
+  // 薬室側の温度差 [K]、muzzleIdx は次に撃つ砲口。wasFiring はトリガーを引き続けているか、
+  // wasEmptyClick は撃てないまま引いたことを記録済みか。
   public constructor(
     public mags = MAGS_PER_BARREL - 1,
     public rounds = MAG_ROUNDS,
@@ -41,6 +42,8 @@ export class WeaponState {
     public barrelDeviation = 0,
     public cooldown = 0,
     public muzzleIdx = 0,
+    public wasFiring = false,
+    public wasEmptyClick = false,
   ) {}
 
   // 初期積載 ammo を積んで新しく作る。整数でないか範囲を外れた数は、既定の積載へ落とす。
@@ -58,6 +61,8 @@ export class WeaponState {
       finiteNumber(serialized.barrelDeviation),
       nonNegativeNumber(serialized.cooldown),
       boundedInteger(serialized.muzzleIdx, 0, 1),
+      booleanValue(serialized.wasFiring),
+      booleanValue(serialized.wasEmptyClick),
     );
   }
 
@@ -106,6 +111,7 @@ export class WeaponState {
     }
   }
 
+  // 弾薬・砲身・砲口と、トリガーの引き続けの直列化。
   public serialize(): SerializedWeaponState {
     return {
       mags: this.mags,
@@ -115,8 +121,15 @@ export class WeaponState {
       barrelDeviation: this.barrelDeviation,
       cooldown: this.cooldown,
       muzzleIdx: this.muzzleIdx,
+      wasFiring: this.wasFiring,
+      wasEmptyClick: this.wasEmptyClick,
     };
   }
+}
+
+// 真偽値ならその値、そうでなければ既定へ落とすための undefined。
+function booleanValue(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
 }
 
 // 有限な数ならその値、そうでなければ既定へ落とすための undefined。

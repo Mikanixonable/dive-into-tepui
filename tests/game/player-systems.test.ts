@@ -95,8 +95,11 @@ export function register(): void {
   });
 
   test('player save: 電力・放熱板・スロットル・パーツの不正値を安全な状態へ正規化する', () => {
-    assert.equal(PowerSystem.deserialize({ charge: Number.NaN }).chargeJ, POWER_CAPACITY * 0.75);
-    assert.equal(PowerSystem.deserialize({ charge: POWER_CAPACITY * 2 }).chargeJ, POWER_CAPACITY);
+    const powerOf = (charge: number): PowerSystem => PowerSystem.deserialize({
+      charge, up: { deployTarget: 1, deploy: 1 }, down: { deployTarget: 1, deploy: 1 },
+    });
+    assert.equal(powerOf(Number.NaN).chargeJ, POWER_CAPACITY * 0.75);
+    assert.equal(powerOf(POWER_CAPACITY * 2).chargeJ, POWER_CAPACITY);
 
     const radiator = new RadiatorSystem(
       new DynamicMotion(state), () => {},
@@ -110,6 +113,8 @@ export function register(): void {
       throttleIdx: 99,
       rcsDamp: 'bad' as unknown as boolean,
       progradeHold: null as unknown as boolean,
+      rotationHoldTime: 0,
+      latchedThrust: [],
     } satisfies SerializedThrottle);
     assert.equal(throttle.throttleIdx, 1);
     throttle.setThrottlePreset(-1, quietEvents);

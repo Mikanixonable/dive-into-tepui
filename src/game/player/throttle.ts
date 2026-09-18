@@ -37,30 +37,40 @@ export interface SerializedThrottle {
   readonly throttleIdx: number;
   readonly rcsDamp: boolean;
   readonly progradeHold: boolean;
+  readonly rotationHoldTime: number;
+  readonly latchedThrust: ThrustDirection[];
 }
 
 export class Throttle {
   public thrustAccelVec: Vec3 = v3();
 
-  private rotationHoldTime = 0;
   // ラッチ中の並進方向。押しっぱなしと同じに扱う。
-  private readonly latchedThrust = new Set<ThrustDirection>();
+  private readonly latchedThrust: Set<ThrustDirection>;
 
-  // throttleIdx は THROTTLE_LEVELS の段。
+  // throttleIdx は THROTTLE_LEVELS の段、rotationHoldTime は手動回転を握り続けている実時間 [s]、
+  // latchedThrust はラッチ中の並進方向。
   public constructor(
     public throttleIdx = THROTTLE_DEFAULT_IDX,
     public rcsDamp = true,
     public progradeHold = true,
-  ) {}
+    private rotationHoldTime = 0,
+    latchedThrust: readonly ThrustDirection[] = [],
+  ) {
+    this.latchedThrust = new Set(latchedThrust);
+  }
 
-  // 直列化した段・制動・ホールドから復元する。壊れた値は既定へ落とす。
+  // 直列化した段・制動・ホールド・回転の保持時間・噴射ラッチから復元する。壊れた値は既定へ落とし、
+  // 知らない方向のラッチは捨てる。
   public static deserialize(serialized: SerializedThrottle): Throttle {
-    const { throttleIdx, rcsDamp, progradeHold } = serialized;
+    const { throttleIdx, rcsDamp, progradeHold, rotationHoldTime, latchedThrust } = serialized;
     return new Throttle(
       Number.isInteger(throttleIdx) && throttleIdx >= 0 && throttleIdx < THROTTLE_LEVELS.length
         ? throttleIdx : undefined,
       typeof rcsDamp === 'boolean' ? rcsDamp : undefined,
       typeof progradeHold === 'boolean' ? progradeHold : undefined,
+      Number.isFinite(rotationHoldTime) && rotationHoldTime >= 0 ? rotationHoldTime : undefined,
+      Array.isArray(latchedThrust)
+        ? latchedThrust.filter(direction => THRUST_DIRECTIONS.includes(direction)) : undefined,
     );
   }
 
@@ -100,9 +110,15 @@ export class Throttle {
     this.thrustAccelVec = v3();
   }
 
-  // 段・制動・ホールドを直列化した形へ落とす。
+  // 段・制動・ホールド・回転の保持時間・噴射ラッチを直列化した形へ落とす。
   public serialize(): SerializedThrottle {
-    return { throttleIdx: this.throttleIdx, rcsDamp: this.rcsDamp, progradeHold: this.progradeHold };
+    return {
+      throttleIdx: this.throttleIdx,
+      rcsDamp: this.rcsDamp,
+      progradeHold: this.progradeHold,
+      rotationHoldTime: this.rotationHoldTime,
+      latchedThrust: [...this.latchedThrust],
+    };
   }
 
   // 操作量から機体座標系の推力加速度を組み立てて返す。噴射しないフレームは null。

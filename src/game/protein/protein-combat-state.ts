@@ -14,6 +14,7 @@ export interface SerializedProteinCombatState {
   integrityHp: number;
   sites: SerializedProteinSite[];
   modifications: Record<string, string>;
+  attackSiteCursor: number;
 }
 
 type ProteinModelPoint = { readonly x: number; readonly y: number; readonly z: number };
@@ -43,15 +44,16 @@ export class ProteinCombatState {
   public readonly integrityMaxHp: number;
   private readonly siteStates: SiteState[];
   private readonly modifications = new Map<string, string>();
-  private attackSiteCursor = 0;
 
   // asset の定義から戦闘状態を組む。_integrityHp は構造全体の残り HP、siteHps・modificationStates は
   // 部位 id ごとの HP と修飾スロット id ごとの状態で、値の無い部位と修飾は定義の初期値から始める。
+  // attackSiteCursor は次に撃つ部位を、機能している攻撃部位の並びの何番目から選ぶか。
   public constructor(
     public readonly asset: ProteinAssetDefinition,
     private _integrityHp = asset.integrity.maxHp,
     siteHps: ReadonlyMap<string, number | undefined> = new Map(),
     modificationStates: ReadonlyMap<string, string | undefined> = new Map(),
+    private attackSiteCursor = 0,
   ) {
     this.integrityMaxHp = asset.integrity.maxHp;
     // 部位と修飾は定義の並びで組む
@@ -63,7 +65,8 @@ export class ProteinCombatState {
     }
   }
 
-  // 直列化した integrity・部位 HP・修飾の状態を、asset の定義の部位と修飾スロットについて読んで復元する。
+  // 直列化した integrity・部位 HP・修飾の状態と撃つ部位の巡回を、asset の定義の部位と修飾スロットに
+  // ついて読んで復元する。
   public static deserialize(
     serialized: SerializedProteinCombatState, asset: ProteinAssetDefinition,
   ): ProteinCombatState {
@@ -75,6 +78,7 @@ export class ProteinCombatState {
         definition.id, serialized.sites.find((site) => site.id === definition.id)?.hp,
       ])),
       new Map(asset.modificationSlots.map((slot) => [slot.id, serialized.modifications[slot.id]])),
+      serialized.attackSiteCursor,
     );
   }
 
@@ -196,13 +200,14 @@ export class ProteinCombatState {
     };
   }
 
-  // いまの integrity・部位 HP・修飾の状態を直列化した形にする。
+  // いまの integrity・部位 HP・修飾の状態と撃つ部位の巡回を直列化した形にする。
   public serialize(): SerializedProteinCombatState {
     const sites = this.siteStates.map((site) => ({ id: site.definition.id, hp: site.hp }));
     return {
       integrityHp: this._integrityHp,
       sites,
       modifications: Object.fromEntries(this.modifications),
+      attackSiteCursor: this.attackSiteCursor,
     };
   }
 
