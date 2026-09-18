@@ -2,18 +2,18 @@
 // 自動的に加速する」機能を担う。
 // マップビューの計画データそのものには依存しない — [N] キーの受け口と
 // どのノード時刻へ自動ワープするかは呼び出し側が決めて渡す。
-import { KinematicState } from '../../physics/kinematic-state';
+import type { KinematicState } from '../../physics/kinematic-state';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { NODE_APPROACH_LEAD } from '../plan/plan';
 import type { RunEventSink } from '../run-events';
 
-// [N] 自動ワープ: 残り時間 / MARGIN 以下の最大シミュレーション速度を選び、STOP 秒前に解除。
+// 選べるワープ倍率の段。
 export const SIM_SPEED_LEVELS = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 131072, 524288, 2097152, 8388608, 33554432];
 // 推進・射撃・交戦圏・敵AIが有効な最大タイムワープ(下の can* が参照)。
 export const MAX_PHYS_SIM_SPEED = 4;
 
+// 自動ワープは、残り時間 / AUTOWARP_MARGIN 以下の最大の段を選ぶ。
 const AUTOWARP_MARGIN = 2;
-const AUTOWARP_STOP = 10;
 
 // 時間加速の直列化した形。
 export interface SerializedSimSpeedManager {
@@ -30,7 +30,7 @@ export class SimSpeedManager {
     private readonly events: RunEventSink,
     private levelIdx = 0,
     private autoWarpUntil: number | null = null,
-  ) { }
+  ) {}
 
   // 等倍・自動ワープなしで始める。
   public static create(events: RunEventSink): SimSpeedManager {
@@ -48,18 +48,18 @@ export class SimSpeedManager {
   }
 
   // 現在のワープ倍率。
-  get simSpeed(): number {
+  public get simSpeed(): number {
     return SIM_SPEED_LEVELS[this.levelIdx]!;
   }
 
   // 自動ワープ中かどうか。
-  get isAutoWarping(): boolean {
+  public get isAutoWarping(): boolean {
     return this.autoWarpUntil !== null;
   }
 
   // ノード自動ワープの到達時刻までの残りシミュレーション時間 [s]。
   // 表示用であり、自動ワープの段階制御は update() が担当する。
-  remainingSimulationSeconds(simTime: number): number | null {
+  public remainingSimulationSeconds(simTime: number): number | null {
     if (this.autoWarpUntil === null) return null;
     return Math.max(0, this.autoWarpUntil - simTime);
   }
@@ -67,31 +67,31 @@ export class SimSpeedManager {
   // 現在のワープ倍率で自機の行動(推進・射撃・姿勢制御指令)と
   // 敵の射撃が成立するかどうか。呼び出し側は simSpeed そのものを受け取って
   // 閾値判定するのではなく、ここを見る。
-  get canShipAct(): boolean {
+  public get canShipAct(): boolean {
     return this.simSpeed <= MAX_PHYS_SIM_SPEED;
   }
 
   // 現在のワープ倍率で交戦圏が存在するかどうか。
-  get canEngage(): boolean {
+  public get canEngage(): boolean {
     return this.simSpeed <= MAX_PHYS_SIM_SPEED;
   }
 
   // 現在のワープ倍率で補給を投入してよいかどうか。等倍(実時間)のときだけ投入するのは、
   // 補給が「接近して回収する」操作を前提にした投入であり、時間を進めている間も投入だけが
   // 続くと、回収されないまま軌道上に溜まり続けるため。
-  get canResupplyAmmo(): boolean {
+  public get canResupplyAmmo(): boolean {
     return this.simSpeed === 1;
   }
 
   // ワープ段を step 分だけ変更する。上下限を超える変更は無視する。
-  shift(step: number): void {
+  private shift(step: number): void {
     const next = this.levelIdx + step;
     if (next < 0 || next >= SIM_SPEED_LEVELS.length) return;
     this.setSpeed(SIM_SPEED_LEVELS[next]!);
   }
 
   // UI のプルダウンから選ばれた時間加速倍率を適用する。
-  setSpeed(speed: number): void {
+  public setSpeed(speed: number): void {
     const next = SIM_SPEED_LEVELS.indexOf(speed);
     if (next < 0 || next === this.levelIdx) return;
     this.cancelAutoWarp();
@@ -105,25 +105,25 @@ export class SimSpeedManager {
   }
 
   // 未来の指定時刻まで自動ワープする。既に到達窓へ入った時刻は受け付けない。
-  startAutoWarpTo(time: number, simTime: number): boolean {
+  public startAutoWarpTo(time: number, simTime: number): boolean {
     if (!this.canAutoWarpTo(time, simTime)) return false;
     this.autoWarpUntil = time;
     return true;
   }
 
   // 自動ワープを解除する。
-  cancelAutoWarp(): void {
+  public cancelAutoWarp(): void {
     this.autoWarpUntil = null;
   }
 
   // router から [,]/[.] の単発入力を受け取ってワープ段を上下する。
-  handleCommand(commandId: string): void {
+  public handleCommand(commandId: string): void {
     if (commandId === K.warpSlower.code) this.shift(-1);
     if (commandId === K.warpFaster.code) this.shift(1);
   }
 
   // 直近ノードの実行時刻までの自動ワープをトグルする。
-  toggleAutoWarpToFirstNode(firstNode: KinematicState | undefined, simTime: number): void {
+  public toggleAutoWarpToFirstNode(firstNode: KinematicState | undefined, simTime: number): void {
     // ノードがなければ、起こせなかったこととその理由だけを記録する
     if (!firstNode) {
       this.events.record({ kind: 'autoWarpUnavailable', reason: 'noNode' });
@@ -142,7 +142,7 @@ export class SimSpeedManager {
 
   // 残り時間に応じてシミュレーション速度を自動的に段階調整し、
   // 実行の窓に入ったら等倍へ戻して解除する。
-  update(simTime: number): void {
+  public update(simTime: number): void {
     if (this.autoWarpUntil === null) return;
     const tRem = this.autoWarpUntil - simTime;
     if (tRem <= NODE_APPROACH_LEAD) {
@@ -164,15 +164,15 @@ export class SimSpeedManager {
   // (tRem/AUTOWARP_MARGIN 以下の最大段)のもとで、残りシミュレーション時間を消化する間に
   // 段が繰り返し下がっていく過程を積算する — 現在の段のまま進むと仮定した単純な tRem/simSpeed
   // では、高倍率区間が短く低倍率区間が長い実態から大きく外れるため。自動ワープ中でなければ null。
-  estimatedRealSecondsToWarpEnd(simTime: number): number | null {
+  public estimatedRealSecondsToWarpEnd(simTime: number): number | null {
     if (this.autoWarpUntil === null) return null;
     let tRem = this.autoWarpUntil - simTime;
-    if (tRem <= AUTOWARP_STOP) return 0;
+    if (tRem <= NODE_APPROACH_LEAD) return 0;
     let realSec = 0;
     for (let i = SIM_SPEED_LEVELS.length - 1; i >= 0; i--) {
       const s = SIM_SPEED_LEVELS[i]!;
       if (s > tRem / AUTOWARP_MARGIN) continue;
-      const lowerBound = Math.max(AUTOWARP_STOP, s * AUTOWARP_MARGIN);
+      const lowerBound = Math.max(NODE_APPROACH_LEAD, s * AUTOWARP_MARGIN);
       if (tRem <= lowerBound) continue;
       realSec += (tRem - lowerBound) / s;
       tRem = lowerBound;
