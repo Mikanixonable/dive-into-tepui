@@ -16,8 +16,7 @@ import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
 export interface SerializedLogistics {
   readonly resupplyCheckAt: number;
   readonly resupplyEnabled: boolean;
-  // 無ければ自動投入を有効にする。
-  readonly rcsFuelResupplyEnabled?: boolean;
+  readonly rcsFuelResupplyEnabled: boolean;
 }
 
 export const MAX_ACTIVE_AMMO_PICKUPS = 3; // 同時に存在する補給の最大数

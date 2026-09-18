@@ -25,7 +25,7 @@ import { PowerSystem, type SerializedPowerSystem } from './power';
 import { BoosterStack, type SerializedBoosterStack } from './booster-stack';
 
 import { Plan, type PlanExecutionMode, type SerializedPlan } from '../plan/plan';
-import { deserializePart, type Part, type SerializedPart } from '../dynamic/dynamic-entity/parts';
+import { deserializeParts, type Part, type SerializedPart } from '../dynamic/dynamic-entity/parts';
 import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
@@ -36,7 +36,7 @@ import { MARKER_PRIORITY } from '../marker/marker-priority';
 import type { Controllable, PilotCommandFrame } from '../dynamic/dynamic-entity/controllable';
 import type { PilotCommand, PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
 import { PlayerMotion, type PlayerMotionReactions } from './player-motion';
-import type { DynamicMotion, SerializedDynamicMotionThermal } from '../dynamic/dynamic-motion';
+import type { DynamicMotion, DynamicMotionThermal } from '../dynamic/dynamic-motion';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { DamageOutcomeSink } from './damage-outcome';
 import { PlayerInspection } from '../pickable/player-inspection';
@@ -71,21 +71,18 @@ export type PlayerPlacement = {
 
 export interface SerializedPlayer extends SerializedDynamicEntityFields {
   readonly kind: 'player';
+  readonly name: string;
+  readonly thermal: DynamicMotionThermal;
   readonly fire: SerializedFireControl;
-  readonly thermal: SerializedDynamicMotionThermal;
   readonly radiator: SerializedRadiatorSystem;
   readonly power: SerializedPowerSystem;
   readonly throttle: SerializedThrottle;
   readonly parts: SerializedPart[];
   readonly plan: SerializedPlan | null;
-  // 無ければ実行しない。
-  readonly planExecution?: 'off' | 'instant';
-  // 無ければ既定値(false)。
-  readonly fineAttitude?: boolean;
-  // プロパティウィンドウの軌道線表示トグル。無ければ false。
-  readonly showTrajectoryLine?: boolean;
-  // 接続中のブースター。無ければ空スタック。
-  readonly boosters?: SerializedBoosterStack;
+  readonly planExecution: PlanExecutionMode;
+  readonly fineAttitude: boolean;
+  // 接続中のブースター。
+  readonly boosters: SerializedBoosterStack;
 }
 
 // プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、被弾・接触の帰結と直列化を持つ。
@@ -122,7 +119,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     state: KinematicState,
     attitude: Attitude,
     weapon?: WeaponState,
-    hullTemperature?: number,
+    thermal?: DynamicMotionThermal,
     radiatorUp?: DeployablePanelState,
     radiatorDown?: DeployablePanelState,
     power?: PowerSystem,
@@ -174,7 +171,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
         PLAYER_HULL_RADIUS,
         BELT_MAX_VISIBLE,
         reactions(owner as Player),
-        hullTemperature,
+        thermal,
         radiatorUp,
         radiatorDown,
         power,
@@ -207,34 +204,29 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     );
   }
 
-  // 直列化した艦を、時刻 simTime の状態として復元する。計画のうち起点より前のノードは戻せないので、
-  // その数を registry の出来事へ記録する。
+  // 直列化した艦を復元する。計画のうち起点より前のノードは戻せないので、その数を registry の出来事へ
+  // 記録する。
   public static deserialize(
     serialized: SerializedPlayer,
-    simTime: number,
     registry: EntityRegistry,
     scene: THREE.Scene,
   ): Player {
     const { radiator, plan } = serialized;
-    const parts = Array.isArray(serialized.parts)
-      ? serialized.parts.map(deserializePart).filter((part) => part !== null)
-      : [];
     const player = new Player(
       registry, scene,
       serialized.name || serialized.id,
       registry.idAllocators.entity.next(serialized.id),
-      deserializeKinematicState(serialized, simTime),
+      deserializeKinematicState(serialized),
       deserializeAttitude(serialized, Player.INERTIA),
       serialized.fire ? WeaponState.deserialize(serialized.fire) : undefined,
       // null も欠けと同じく既定へ落とす(既定引数は undefined でしか働かない)。
-      serialized.thermal.hullTemp ?? undefined,
+      serialized.thermal ?? undefined,
       radiator?.up ? DeployablePanelState.deserialize(radiator.up) : undefined,
       radiator?.down ? DeployablePanelState.deserialize(radiator.down) : undefined,
       serialized.power ? PowerSystem.deserialize(serialized.power) : undefined,
       serialized.boosters ? BoosterStack.deserialize(serialized.boosters) : undefined,
       serialized.throttle ? Throttle.deserialize(serialized.throttle) : undefined,
-      // 部品が壊れている記録は、既定の部品で組んで船体を空にしない。
-      parts.length > 0 ? parts : undefined,
+      deserializeParts(serialized.parts),
       plan ? Plan.deserialize(plan) : undefined,
       // 記録に無い計画の実行は、新しく作ったときと違って止めておく。
       serialized.planExecution ?? 'off',
@@ -563,17 +555,11 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   // 現在の艦状態を直列化した形へ変換する。
   public override serialize(): SerializedPlayer {
     return {
-      id: this.id,
+      ...this.serializeEntityFields(Player.kind),
       name: this.name,
-      kind: Player.kind,
-      // 運動状態
-      r: { ...this.motion.state.r },
-      v: { ...this.motion.state.v },
-      q: { ...this.motion.att.q },
-      w: { ...this.motion.att.w },
+      thermal: this.motion.thermal,
       // 下位系の状態
       fire: this.fire.serialize(),
-      thermal: { hullTemp: this.motion.temperature },
       radiator: this.motion.radiator.serialize(),
       power: this.motion.power.serialize(),
       throttle: this.throttle.serialize(),

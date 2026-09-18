@@ -15,11 +15,37 @@ export const MAX_PHYS_SIM_SPEED = 4;
 const AUTOWARP_MARGIN = 2;
 const AUTOWARP_STOP = 10;
 
-export class SimSpeedManager {
-  private levelIdx = 0;
-  private autoWarpUntil: number | null = null;
+// 時間加速の直列化した形。
+export interface SerializedSimSpeedManager {
+  // SIM_SPEED_LEVELS の添字。
+  readonly levelIdx: number;
+  // 自動ワープの到達時刻 [simTime s]。自動ワープ中でなければ null。
+  readonly autoWarpUntil: number | null;
+}
 
-  constructor(private readonly events: RunEventSink) { }
+export class SimSpeedManager {
+  // events は段の変更を記録する先。levelIdx から後ろは加速の段と自動ワープの到達時刻で、省いたものは
+  // 等倍・自動ワープなしで始める。
+  private constructor(
+    private readonly events: RunEventSink,
+    private levelIdx = 0,
+    private autoWarpUntil: number | null = null,
+  ) { }
+
+  // 等倍・自動ワープなしで始める。
+  public static create(events: RunEventSink): SimSpeedManager {
+    return new SimSpeedManager(events);
+  }
+
+  // 直列化した時間加速を復元する。
+  public static deserialize(serialized: SerializedSimSpeedManager, events: RunEventSink): SimSpeedManager {
+    return new SimSpeedManager(events, serialized.levelIdx, serialized.autoWarpUntil);
+  }
+
+  // 直列化した形へ変換する。
+  public serialize(): SerializedSimSpeedManager {
+    return { levelIdx: this.levelIdx, autoWarpUntil: this.autoWarpUntil };
+  }
 
   // 現在のワープ倍率。
   get simSpeed(): number {

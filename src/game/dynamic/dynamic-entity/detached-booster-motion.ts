@@ -16,6 +16,7 @@ import {
   SMALL_DEBRIS_SPECIFIC_HEAT,
   SMALL_DEBRIS_SRP_COEFF,
   type DynamicMotionBehavior,
+  type DynamicMotionThermal,
 } from '../dynamic-motion';
 
 const BOOSTER_COLLISION_RADIUS = 4.2; // 長さ8mの段を包む接触球 [m]
@@ -23,6 +24,7 @@ const BOOSTER_COLLISION_RADIUS = 4.2; // 長さ8mの段を包む接触球 [m]
 class DetachedBoosterBehavior implements DynamicMotionBehavior {
   public readonly contactKind = 'booster';
   public readonly stack: BoosterStack;
+  // 直近の刻みの燃焼比(キャッシュ)。
   public burnRatio = 0;
 
   public constructor(stage: BoosterStage, private readonly collisionEnableAt: number) {
@@ -56,15 +58,19 @@ class DetachedBoosterBehavior implements DynamicMotionBehavior {
 export class DetachedBoosterMotion extends DynamicMotion {
   private readonly booster: DetachedBoosterBehavior;
 
+  // 段 stage を state・attitude で飛ばし、collisionEnableAt まで接触させない。thermal は熱の状態で、
+  // 省くと環境温度から始める。
   public constructor(
     state: KinematicState,
     attitude: Attitude,
     stage: BoosterStage,
     public readonly collisionEnableAt: number,
+    thermal?: DynamicMotionThermal,
   ) {
     const behavior = new DetachedBoosterBehavior(stage, collisionEnableAt);
     super(state, {
       attitude,
+      ...thermal,
       mass: behavior.stack.totalMass,
       radius: BOOSTER_COLLISION_RADIUS,
       collides: true,
