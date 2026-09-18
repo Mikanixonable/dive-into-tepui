@@ -43,7 +43,7 @@ export class Stage1 extends Stage {
   // 開始ブリーフィングの HTML を組み立てる。
   briefingHtml(): string {
     return (
-      `<b>作戦目標: 敵機 ${this.scoreCounter.totalEnemiesSpawned} 機を全機撃破せよ</b><br>` +
+      `<b>作戦目標: 敵機 ${this.enemiesAppeared} 機を全機撃破せよ</b><br>` +
       `敵を右クリックでターゲット固定 → 機首を向けて並進で接近 → [${K.warpSlower.label}]/[${K.warpFaster.label}] 時間加速で会合を短縮<br>` +
       `[${K.help.label}] キーで操作方法を表示`
     );

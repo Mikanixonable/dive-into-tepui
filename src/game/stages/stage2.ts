@@ -49,7 +49,7 @@ export class Stage2 extends Stage {
   // 作戦目標と操作方法を示すブリーフィング文面を組む。
   briefingHtml(): string {
     return (
-      `<b>作戦目標: 敵機 ${this.scoreCounter.totalEnemiesSpawned} 機を全機撃破せよ</b><br>` +
+      `<b>作戦目標: 敵機 ${this.enemiesAppeared} 機を全機撃破せよ</b><br>` +
       `敵の一部はモルニヤ級の高楕円軌道上にいる — [${K.toggleMapMode.label}] 軌道計画モードで遷移を計画せよ<br>` +
       `[${K.help.label}] キーで操作方法を表示`
     );
