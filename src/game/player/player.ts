@@ -15,7 +15,8 @@ import { generateRandomName } from '../random-name';
 import { Throttle, type SerializedThrottle } from './throttle';
 import { FireControl, type SerializedFireControl } from './fire-control';
 import { WeaponState, type AmmoLoad } from './weapon-state';
-import { AltitudeAlarm } from './altitude-alarm';
+import { AltitudeAlarm, type SerializedAltitudeAlarm } from './altitude-alarm';
+import { BeltController, type SerializedBeltController } from './belt';
 import { PlayerView, type PlayerRenderSource } from '../../render/dynamic/player/player-view';
 import type { DynamicViewFrame } from '../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../orbit-reference';
@@ -76,7 +77,9 @@ export interface SerializedPlayer extends SerializedDynamicEntityFields {
   readonly fire: SerializedFireControl;
   readonly radiator: SerializedRadiatorSystem;
   readonly power: SerializedPowerSystem;
+  readonly belt: SerializedBeltController;
   readonly throttle: SerializedThrottle;
+  readonly altitudeAlarm: SerializedAltitudeAlarm;
   readonly parts: SerializedPart[];
   readonly plan: SerializedPlan | null;
   readonly planExecution: PlanExecutionMode;
@@ -100,7 +103,6 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
 
   public declare readonly motion: PlayerMotion;
   public readonly fire: FireControl;
-  public readonly altitudeAlarm: AltitudeAlarm;
   public readonly boosters: AttachedBoosters;
   private readonly effects: PlayerEffects;
   public override get parts(): readonly Part[] { return super.parts; }
@@ -124,7 +126,9 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     radiatorDown?: DeployablePanelState,
     power?: PowerSystem,
     boosters?: BoosterStack,
+    belt?: BeltController,
     public readonly throttle = new Throttle(),
+    public readonly altitudeAlarm = new AltitudeAlarm(registry.events),
     parts: readonly Part[] = createPlayerParts(PLAYER_MAX_HP),
     public readonly plan = Plan.create(),
     public planExecution: PlanExecutionMode = 'instant',
@@ -176,6 +180,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
         radiatorDown,
         power,
         boosters,
+        belt,
       ),
       new PlayerView(scene, id, BELT_MAX_VISIBLE),
       id,
@@ -183,7 +188,6 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     );
     this.effects = new PlayerEffects(registry);
     this.fire = new FireControl(this, registry, scene, weapon);
-    this.altitudeAlarm = new AltitudeAlarm(registry.events);
     this.boosters = new AttachedBoosters(this.motion, this.motion.attachedBoosters, registry, scene);
   }
 
@@ -211,7 +215,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     registry: EntityRegistry,
     scene: THREE.Scene,
   ): Player {
-    const { radiator, plan } = serialized;
+    const { radiator, plan, belt, altitudeAlarm } = serialized;
     const player = new Player(
       registry, scene,
       serialized.name || serialized.id,
@@ -225,7 +229,9 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       radiator?.down ? DeployablePanelState.deserialize(radiator.down) : undefined,
       serialized.power ? PowerSystem.deserialize(serialized.power) : undefined,
       serialized.boosters ? BoosterStack.deserialize(serialized.boosters) : undefined,
+      belt ? BeltController.deserialize(belt) : undefined,
       serialized.throttle ? Throttle.deserialize(serialized.throttle) : undefined,
+      altitudeAlarm ? AltitudeAlarm.deserialize(altitudeAlarm, registry.events) : undefined,
       deserializeParts(serialized.parts),
       plan ? Plan.deserialize(plan) : undefined,
       // 記録に無い計画の実行は、新しく作ったときと違って止めておく。
@@ -562,7 +568,9 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       fire: this.fire.serialize(),
       radiator: this.motion.radiator.serialize(),
       power: this.motion.power.serialize(),
+      belt: this.motion.belt.serialize(),
       throttle: this.throttle.serialize(),
+      altitudeAlarm: this.altitudeAlarm.serialize(),
       parts: this.parts.map(p => ({ ...p })) as SerializedPart[],
       // 操作の設定と計画
       planExecution: this.planExecution,
