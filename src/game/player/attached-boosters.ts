@@ -43,7 +43,7 @@ export class AttachedBoosters {
     private readonly motion: DynamicMotion,
     private readonly boosterMotion: AttachedBoosterMotion,
     private readonly registry: EntityRegistry,
-    private readonly _scene: THREE.Scene,
+    private readonly scene: THREE.Scene,
   ) {
     for (const id of boosterMotion.stageIds) registry.idAllocators.booster.reserve(id);
   }
@@ -115,7 +115,7 @@ export class AttachedBoosters {
         inertia: v3(1, 1, 0.4),
       },
       t + COLLISION_GRACE,
-      this._scene,
+      this.scene,
       this.registry.idAllocators,
     ));
 
@@ -162,7 +162,7 @@ export class AttachedBoosters {
         kinematicState<'eci'>(t, coverPosition, coverVelocity),
         { kind: 'boosterCover', segment: i, bornSim: t },
         { q: att.q, w: v3(randSym(0.8), randSym(1.8), randSym(0.8)), inertia: v3(1, 1.7, 2.4) },
-        this.registry.idAllocators, undefined, this._scene,
+        this.registry.idAllocators, undefined, this.scene,
       ));
 
       // 爆砕ボルトは両段の平均速度を基準に、カバーより速く径方向と機軸方向へ。
@@ -184,7 +184,7 @@ export class AttachedBoosters {
         kinematicState<'eci'>(t, boltPosition, boltVelocity),
         { kind: 'boosterBolt', segment: i, bornSim: t },
         { q: att.q, w: v3(randSym(2.5), randSym(2.5), randSym(2.5)), inertia: v3(0.4, 0.5, 0.7) },
-        this.registry.idAllocators, undefined, this._scene,
+        this.registry.idAllocators, undefined, this.scene,
       ));
     }
   }

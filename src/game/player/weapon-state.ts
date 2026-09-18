@@ -72,7 +72,7 @@ export class WeaponState {
     if (this.cooldown > 0) this.cooldown = Math.max(0, this.cooldown - Math.max(0, dt));
   }
 
-  public consume(): AmmoConsumption {
+  private consume(): AmmoConsumption {
     if (!this.left) return 'empty';
     this.rounds--;
     if (this.rounds > 0) return 'normal';

@@ -183,7 +183,6 @@ export class Plan {
 
   // 全ノードを削除する。
   public clear(): void {
-    if (!this.data) return;
     this.data = null;
   }
 

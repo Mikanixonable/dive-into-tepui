@@ -23,9 +23,7 @@ import {
 } from '../dynamic/dynamic-entity/debris-motion';
 import { CASING_COLLISION_BOUND_RADIUS } from '../dynamic/dynamic-entity/casing-collision';
 import { sunGlareSpreadScale } from '../combat/sun-glare-spread';
-import {
-  WeaponState, type AmmoConsumption, type SerializedWeaponState, type WeaponFireCommand,
-} from './weapon-state';
+import { WeaponState, type SerializedWeaponState, type WeaponFireCommand } from './weapon-state';
 
 const BARREL_PHYS_RADIUS = 0.8;
 const EJECTED_MAG_PHYS_RADIUS = 1.4;
@@ -60,17 +58,14 @@ export class FireControl {
   public constructor(
     private readonly player: Player,
     private readonly registry: EntityRegistry,
-    private readonly _scene: THREE.Scene,
+    private readonly scene: THREE.Scene,
     private readonly weapon = new WeaponState(),
   ) {}
 
   public get rounds(): number { return this.weapon.rounds; }
   public get mags(): number { return this.weapon.mags; }
-  public get barrel(): number { return this.weapon.barrel; }
   public get cooldown(): number { return this.weapon.cooldown; }
   public get isFiring(): boolean { return this.weapon.wasFiring; }
-
-  public get left(): boolean { return this.weapon.left; }
 
   // 弾薬・砲身の状態を直列化した形へ落とす。
   public serialize(): SerializedFireControl {
@@ -79,7 +74,6 @@ export class FireControl {
 
   // 拾ったマガジン数を加算する。弾切れ中なら即座に1マガジンを装填する。
   public onPickup(mags: number): void {
-    if (!Number.isFinite(mags) || mags <= 0) return;
     this.weapon.addMags(mags);
   }
 
@@ -95,7 +89,7 @@ export class FireControl {
     activeStage: StageOutcome,
     celestialBodies: CelestialBodies,
   ): void {
-    this.tickReloadTimer(dt);
+    this.weapon.tickCooldown(dt);
 
     if (!controls.firing) {
       // トリガーを離した時点で連射状態を畳む: wasFiring を立てたままにすると
@@ -114,7 +108,7 @@ export class FireControl {
       return;
     }
 
-    if (!this.left) {
+    if (!this.weapon.left) {
       if (!this.weapon.wasEmptyClick) {
         this.registry.events.record({ kind: 'gunDryFired' });
         this.registry.events.record({ kind: 'gunOutOfAmmo' });
@@ -124,11 +118,6 @@ export class FireControl {
     }
 
     this.fireCycle(activeStage, celestialBodies);
-  }
-
-  // クールダウンタイマーを dt だけ減らす。
-  private tickReloadTimer(dt: number): void {
-    this.weapon.tickCooldown(dt);
   }
 
   // クールダウン込みの発射サイクルを1回進める。スピンアップ中・クールダウン中は発射しない。
@@ -172,17 +161,8 @@ export class FireControl {
     }
   }
 
-  // 1発の消費を試みる。マガジンを撃ち尽くしたら次のマガジンへ(mag-reload)、
-  // バレル内の全マガジンを撃ち尽くしたらバレル交換(barrel-reload)を報告する。
-  public consume(): AmmoConsumption {
-    return this.weapon.consume();
-  }
-
   // 手動リロードを試みる。開始できたら true。
   public manualReload(): boolean {
-    if (this.weapon.cooldown > 0) return false;
-
-    // 予備マガジンがあり、かつ装填中のマガジンに実際に補充の余地があるときだけリロードする
     if (!this.weapon.manualReload()) return false;
     this.weapon.cooldown = RELOAD_TIME;
     this.registry.events.record({ kind: 'gunBarrelSwapped' });
@@ -265,7 +245,7 @@ export class FireControl {
         w: v3(randSym(6.0), randSym(6.0), randSym(6.0)),
         inertia: v3(0.85, 0.3, 1.15), // 円筒: 長軸(y)が最小。x/z も非対称にしジャニベコフ効果を起こす
       },
-      this.registry.idAllocators, CASING_COLLISION_BOUND_RADIUS, this._scene,
+      this.registry.idAllocators, CASING_COLLISION_BOUND_RADIUS, this.scene,
     ));
   }
 
@@ -311,7 +291,7 @@ export class FireControl {
         w: v3(randSym(2), randSym(2), randSym(2)),
         inertia: v3(1, 0.2, 1), // 円柱
       },
-      this.registry.idAllocators, BARREL_PHYS_RADIUS, this._scene,
+      this.registry.idAllocators, BARREL_PHYS_RADIUS, this.scene,
     ));
     this.weapon.barrelTemperature = ENV_TEMP;
     this.weapon.barrelDeviation = 0;
@@ -342,7 +322,7 @@ export class FireControl {
         w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
         inertia: v3(1, 1.2, 1.4),
       },
-      this.registry.idAllocators, EJECTED_MAG_PHYS_RADIUS, this._scene,
+      this.registry.idAllocators, EJECTED_MAG_PHYS_RADIUS, this.scene,
     ));
   }
 }

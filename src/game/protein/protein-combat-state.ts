@@ -6,15 +6,15 @@ import type {
 import type { ProteinPhase } from '../../render/protein/protein-display';
 
 interface SerializedProteinSite {
-  id: string;
-  hp: number;
+  readonly id: string;
+  readonly hp: number;
 }
 
 export interface SerializedProteinCombatState {
-  integrityHp: number;
-  sites: SerializedProteinSite[];
-  modifications: Record<string, string>;
-  attackSiteCursor: number;
+  readonly integrityHp: number;
+  readonly sites: SerializedProteinSite[];
+  readonly modifications: Record<string, string>;
+  readonly attackSiteCursor: number;
 }
 
 type ProteinModelPoint = { readonly x: number; readonly y: number; readonly z: number };
