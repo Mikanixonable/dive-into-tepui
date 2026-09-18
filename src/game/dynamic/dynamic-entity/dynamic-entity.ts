@@ -1,7 +1,7 @@
 import type { Ray } from '../../../math/ray';
 import type { Quat } from '../../../math/quat';
 import type { SerializedVec3, Vec3 } from '../../../math/vec3';
-import type { SerializedKinematicState } from '../../../physics/kinematic-state';
+import { serializeKinematicState, type SerializedKinematicState } from '../../../physics/kinematic-state';
 import { MARKER_VISIBILITY, type MapVisibility, type MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { OrbitingObject } from './orbiting-object';
 import type { CapKind, DynamicEntityKind } from './entity-kind';
@@ -25,7 +25,7 @@ export interface SerializedDynamicEntityFields extends SerializedKinematicState 
 }
 
 // 1体ぶんの Motion と View を結び、両者に共通するゲーム上の識別と判断を持つ。
-export class DynamicEntity {
+export abstract class DynamicEntity {
   public readonly id: string;
   public readonly motion: DynamicMotion;
   public readonly view: DynamicView;
@@ -65,10 +65,8 @@ export class DynamicEntity {
     return this.motion.intersectsRay(ray, pos);
   }
 
-  // 直列化した形へ変換する。直列化しない種別は null。
-  public serialize(): SerializedDynamicEntity | null {
-    return null;
-  }
+  // 直列化した形へ変換する。
+  public abstract serialize(): SerializedDynamicEntity;
 
   // 実体に共通する直列化の項目。kind は具象のタグ。具象の serialize() がこれへ自分の項目を足す。
   protected serializeEntityFields<K extends SerializedDynamicEntityFields['kind']>(
@@ -78,9 +76,7 @@ export class DynamicEntity {
     return {
       id: this.id,
       kind,
-      t: state.t,
-      r: { ...state.r },
-      v: { ...state.v },
+      ...serializeKinematicState(state),
       q: { ...att.q },
       w: { ...att.w },
     };
