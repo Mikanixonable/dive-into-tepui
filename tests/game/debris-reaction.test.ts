@@ -57,7 +57,7 @@ export function register(): void {
     assert.equal(services.casingContacts, 1);
   });
 
-  test('debris-reaction: 薬莢と自機の接触音は鳴り続ける', () => {
+  test('debris-reaction: 薬莢と自機の接触音は、薬莢側の1回の通知から1回だけ記録する', () => {
     const services = new TestServices();
     const reaction = new DebrisReaction('casing', 0);
     const casing = motion(state(0), reaction);

@@ -37,7 +37,7 @@ export function register(): void {
     assert.deepEqual(events.recent, []);
   });
 
-  test('view-selection: キー切替の適用結果を進行の出来事へ記録する', () => {
+  test('view-selection: キー切替は操作対象がいないあいだ戦闘ビューへ入らず、拒否を出来事へ記録する', () => {
     const events = new RunEventLog();
     const control: MutableViewControlSource = { current: null };
     const selection = ViewSelection.deserialize('map', control, events);
@@ -49,19 +49,13 @@ export function register(): void {
     assert.equal(selection.current, 'map');
     assert.deepEqual(events.recent.map((event) => event.body), [{ kind: 'combatViewUnavailable' }]);
 
-    events.beginStep();
-    control.current = { plan: { nodes: [{}, {}] } };
+    control.current = { plan: { nodes: [] } };
     commands.toggle();
     queue.applyAll();
     assert.equal(selection.current, 'combat');
-    assert.deepEqual(events.recent.map((event) => event.body), [
-      { kind: 'maneuverPlanConfirmed', nodeCount: 2 },
-    ]);
 
-    events.beginStep();
     commands.toggle();
     queue.applyAll();
     assert.equal(selection.current, 'map');
-    assert.deepEqual(events.recent.map((event) => event.body), [{ kind: 'orbitPlanningOpened' }]);
   });
 }

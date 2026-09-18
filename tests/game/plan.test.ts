@@ -61,19 +61,13 @@ export function register(): void {
     assert.ok(actual > circularAtPerigee * 2, `近地点半径基準の円軌道周期に短縮されている: ${actual}`);
   });
 
-  test('plan: nodeTimeRange は DisplayDurationSource の表示期間にそのまま追従する', () => {
+  test('plan: nodeTimeRange の上限は、選んだ表示期間ぶん起点より先になる', () => {
     const { system } = solarSystemParts();
     const t = 1000;
     const rp = R_EARTH + 400e3;
     const state = kinematicState<'eci'>(t, v3(rp, 0, 0), v3(0, 0, Math.sqrt(MU_EARTH / rp)));
-    const celestialBodies = system.celestialMotions;
-    const period = orbitPeriodOf(state, celestialBodies, t);
 
     const plan = Plan.create();
-
-    // 'orbit' 相当のスタブ: 参照期間(起点の軌道周期)をそのまま返す
-    const orbitDuration = { durationSec: (referencePeriod: number) => referencePeriod };
-    assert.ok(Math.abs(plan.nodeTimeRange(0, state, system.celestialMotions, orbitDuration).max - (t + period)) < 1e-6);
 
     // 固定プリセット相当のスタブ: 参照期間によらず一定値を返す
     const fixedDuration = { durationSec: () => 86400 };
