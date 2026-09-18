@@ -41,24 +41,28 @@ export interface SerializedThrottle {
 }
 
 export class Throttle {
-  public rcsDamp = true;
-  public throttleIdx = THROTTLE_DEFAULT_IDX;
-  public progradeHold = true;
   public thrustAccelVec: Vec3 = v3();
 
   private rotationHoldTime = 0;
   // ラッチ中の並進方向。押しっぱなしと同じに扱う。
   private readonly latchedThrust = new Set<ThrustDirection>();
 
-  // saved を渡すとその段・制動・ホールドを復元する。壊れた値は既定へ落とす。
-  public constructor(saved?: SerializedThrottle) {
-    if (saved) {
-      this.throttleIdx = Number.isInteger(saved.throttleIdx)
-        && saved.throttleIdx >= 0 && saved.throttleIdx < THROTTLE_LEVELS.length
-        ? saved.throttleIdx : THROTTLE_DEFAULT_IDX;
-      this.rcsDamp = typeof saved.rcsDamp === 'boolean' ? saved.rcsDamp : true;
-      this.progradeHold = typeof saved.progradeHold === 'boolean' ? saved.progradeHold : true;
-    }
+  // throttleIdx は THROTTLE_LEVELS の段。
+  public constructor(
+    public throttleIdx = THROTTLE_DEFAULT_IDX,
+    public rcsDamp = true,
+    public progradeHold = true,
+  ) {}
+
+  // 直列化した段・制動・ホールドから復元する。壊れた値は既定へ落とす。
+  public static deserialize(serialized: SerializedThrottle): Throttle {
+    const { throttleIdx, rcsDamp, progradeHold } = serialized;
+    return new Throttle(
+      Number.isInteger(throttleIdx) && throttleIdx >= 0 && throttleIdx < THROTTLE_LEVELS.length
+        ? throttleIdx : undefined,
+      typeof rcsDamp === 'boolean' ? rcsDamp : undefined,
+      typeof progradeHold === 'boolean' ? progradeHold : undefined,
+    );
   }
 
   // RCS 回転制動の ON/OFF を切り替える。
