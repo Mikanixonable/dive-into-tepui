@@ -70,42 +70,6 @@
     ],
     "src/game/protein/protein-combat-state.ts": [
       "saved"
-    ],
-    "src/game/stages/creative-stage.ts": [
-      "saved"
-    ],
-    "src/game/stages/stage-debug-alt-system.ts": [
-      "saved"
-    ],
-    "src/game/stages/stage-debug-load.ts": [
-      "saved"
-    ],
-    "src/game/stages/stage-debug.ts": [
-      "saved"
-    ],
-    "src/game/stages/stage-utils/logistics.ts": [
-      "saved"
-    ],
-    "src/game/stages/stage-utils/score-counter.ts": [
-      "saved"
-    ],
-    "src/game/stages/stage-utils/wave-attack.ts": [
-      "saved"
-    ],
-    "src/game/stages/stage.ts": [
-      "saved"
-    ],
-    "src/game/stages/stage0.ts": [
-      "saved"
-    ],
-    "src/game/stages/stage00.ts": [
-      "saved"
-    ],
-    "src/game/stages/stage1.ts": [
-      "saved"
-    ],
-    "src/game/stages/stage2.ts": [
-      "saved"
     ]
   }
 }
