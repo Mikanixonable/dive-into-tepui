@@ -4,6 +4,8 @@
 
 **段 5 は 2026-09-18 に新設した**(K8-7)。当初の段 4 は R4(モデル層を進行と視点に分ける)と R11(セーブの規格化)を載せていたが、後者が繋ぎ方の設計(K8)で7手順に膨らんだので、そこで段を切った。以前の段 5〜7 は、番号が1つずつ繰り下がって段 6〜8 になっている。
 
+**規則の書き込み先は `DEVELOP/ARCHITECTURE.md`**(2026-09-19 に CODING-RULE から分けた)。R1〜R13 と、CODING-RULE の 1.3・1.10・1.6「多態を保存し、復元する」・2.2 の `entity` / `motion` / `view` がそちらへ移り、CODING-RULE の 1.11〜1.13 は 1.10〜1.12 へ繰り上がった。`physics/` の正確さは CODING-RULE 1.1、「下位が自決できるものは下位が決める」は 1.4 に残る。**済んだ段の記録にある節番号とファイル名は、当時の CODING-RULE のもの。**
+
 調査時点: 当初の洗い出しは `workspace4` @ `3ee0aeb3`。**文書中の `path:line` は、`restructure-architecture` @ `57fba6fa`(段 3 の終わり)で引き直してある。ただし K8 と手順 5-1〜5-6 の `path:line` は `65146de8`(4-3 の終わり)で引いた。段 4 の規約点検(`0e92d4ca`)で、`focus-camera-selection.ts` と `camera-*.ts` の行番号は少しずれている。**
 指す先が変わっていたものは、行番号だけでなく本文も直した。
 実施時はコードで引き直す。
@@ -37,7 +39,7 @@
   - 主星の決定を描画 View の `stellarLight` から引いている。
 - ループ音の停止が呼び出し側に散らばっている。そのうち決着時の停止は、次の sync で上書きされて効いていない。
 
-修正後に期待する状態は、以下の規則が `DEVELOP/CODING-RULE.md` の正本になり、コードがそれに従っていること。
+修正後に期待する状態は、以下の規則が `DEVELOP/ARCHITECTURE.md` の正本になり、コードがそれに従っていること。
 
 ## 進め方 — 規則は段の中でだけ先行させ、段ごとに main へ送る
 
@@ -59,11 +61,11 @@
 - **置き場を仮に認める。** 例: 表示の導出は当面 `src/game/` の中に置く。
 - **層の代わりにパスで禁止する。** 層の対応表がまだ割れていない場所を、禁止パターンで代用する。
 
-`rg -c "暫定 — 段" DEVELOP/CODING-RULE.md` が段ごとに変わり(段 1 で 3、段 2 で 4、段 3 で 7、段 4 で 6、段 5 で 4、段 5.5 で 4、段 6 で 6、段 7 で 4)、段 8 で 0 になる。**いまは 4**(段 5 の終わり)。
+`rg -c "暫定 — 段" DEVELOP/ARCHITECTURE.md` が段ごとに変わり(段 1 で 3、段 2 で 4、段 3 で 7、段 4 で 6、段 5 で 4、段 5.5 で 4、段 6 で 6、段 7 で 4)、段 8 で 0 になる。**いまは 4**(段 5 の終わり)。
 
 ### 書き込む規則(最終形)
 
-段 8 の終わりに、`DEVELOP/CODING-RULE.md` が下の R1〜R13 を正本として持つ。置き換わるのは 1.3 のフォルダ境界と「設定の正本を consumer へ渡さない」「launcher/」の各節、1.6「配列に対して外部から対応付けを行う設計を避ける」の具体例の段落、1.6「多態を保存し、復元する」の3点目(復元のコンストラクタ・シグネチャ)、1.10 の全体、2.2 の `entity` / `motion` / `view` の節。1.3 のうち `physics/` の正確さ・調整値・接触の各節は、層の中身の規則としてそのまま残す。R1〜R11 は層の切り方、R12・R13 は繋ぎ方(K8)を決める。
+段 8 の終わりに、`DEVELOP/ARCHITECTURE.md` が下の R1〜R13 を正本として持つ。これから置き換わるのは、ARCHITECTURE の「`launcher/` が `game/` を見てよいのは…」と `entity` / `motion` / `view` の節、CODING-RULE 1.6「配列に対して外部から対応付けを行う設計を避ける」の具体例の段落。ARCHITECTURE の `physics/` の調整値・接触の各節と、CODING-RULE 1.1 の `physics/` の正確さは、層の中身の規則としてそのまま残す。R1〜R11 は層の切り方、R12・R13 は繋ぎ方(K8)を決める。
 
 **どの段でどれを書くかは「規則を段へ振り分ける」の表**で、段ごとの文面の指定は各段の N-1 の手順にある。
 
@@ -205,10 +207,10 @@
 | ~~3~~ 済 | R3、R7 の出来事の段落、R8、R4 の需要の2項 | 1.10 の全体 | 位相の順序は `game/game.ts` が持つ(段 8)、モデル層の禁止は層でなくパスで当てる(段 6)、視点への書き込みは列を通さなくてよい(段 4) | 表示の選択が進行へ漏れる禁止、モデル層が生の入力を読む禁止、モデル層が出来事の装置を持つ禁止(どれもパス指定) |
 | ~~4~~ 済 | R4 の全文、R11 の1。R1・R5・R10 の「ラン跨ぎ」を「セーブを跨いで共通」へ言い直した。**4-1 で先に書いた R11 の2は、4-4 で落として段 5 へ回した**(K8-7) | — | **`game.ts` は段 5 まで分割しない**(4-4。段 5 で外す) | `game/viewer/` への片方向、`settings/` と `game/viewer/` の相互 import、セーブの型から表示の導出への import(以上 4-2 で済。落とす判定は無い) |
 | ~~5~~ 済 | **R12、R13、R8 の言い直し(進行の末尾の追従・位相の順序の置き場)、R10 のランの組み立ての項、R2 の表の `run/`、段 4 で落とした R11 の2**(5-1) | 1.6「多態を保存し、復元する」の3点目、1.10 の暫定「位相の順序を組み立てるのは `game.ts`」、4-4 の `game.ts` の暫定 | (R11 の3は段 7 で足す) | `run/` を組み立てとして対応表へ、直列化の語彙・復元の流し込み・直列化された形を受けるコンストラクタの禁止パターン、モデル層の根が表示の導出を持つ禁止(5-1) |
-| 5.5(臨時) | 新しい規則は無い。**R3 の言い直し**(所有者は欄を宣言したクラス、モデル層の口は命令・読み取り面・出来事、整合性は所有者が命令の中で保つ、可変な public 欄と `set` を持たない)と、2.2 の `motion` の基準(K10) | 1.3 の `physics/` の「状態を持つクラスを置いてもよい」、1.12 の「mutable な public フィールドは禁止しない」のモデル層への適用 | なし(洗い出しで直さずに残すと決めたものが出たときだけ置く) | **R3 を構文木で判定**。「命令 API の禁止」の名前の列を外す。コンストラクタの判定を引数の型(`Serialized*`)へ |
-| 6 | R6(dynamic の族とステージ)、R2 のモデル層の項 | 1.6 の具体例の段落、2.2 の `entity` / `motion` / `view` | R6 を天体の族に当てない(段 7)、`game/celestial/` は未分類(段 7)、モデル層の根は天体系の描画のために `GameScene` を受けてよい(段 7)、`render/` の語彙の型 import を許す(段 8) | 対応表を `game/` の中まで割り、モデル層の出ていく import と `three` を判定 |
+| 5.5(臨時) | 新しい規則は無い。**R3 の言い直し**(所有者は欄を宣言したクラス、モデル層の口は命令・読み取り面・出来事、整合性は所有者が命令の中で保つ、可変な public 欄と `set` を持たない)と、ARCHITECTURE の `motion` の基準(K10) | ARCHITECTURE の層の中身の `physics/` の「状態を持つクラスを置いてもよい」、CODING-RULE 1.11 の「mutable な public フィールドは禁止しない」のモデル層への適用 | なし(洗い出しで直さずに残すと決めたものが出たときだけ置く) | **R3 を構文木で判定**。「命令 API の禁止」の名前の列を外す。コンストラクタの判定を引数の型(`Serialized*`)へ |
+| 6 | R6(dynamic の族とステージ)、R2 のモデル層の項 | CODING-RULE 1.6 の具体例の段落、ARCHITECTURE の `entity` / `motion` / `view` | R6 を天体の族に当てない(段 7)、`game/celestial/` は未分類(段 7)、モデル層の根は天体系の描画のために `GameScene` を受けてよい(段 7)、`render/` の語彙の型 import を許す(段 8) | 対応表を `game/` の中まで割り、モデル層の出ていく import と `three` を判定 |
 | 7 | R6 の全域、R11 の3 | — | 時刻層は `game/celestial/` にある(段 8) | 時刻層の規則を `game/celestial/` へ当てる |
-| 8 | R2 の最終の対応表、R9、R10 の全文 | 1.3「`launcher/` が `game/` を見てよいのは…」 | なし(残る4つをすべて外す) | 最終の対応表、`hud/` を装置として判定、`settings/` の import 規則、許可リストを空にする |
+| 8 | R2 の最終の対応表、R9、R10 の全文 | ARCHITECTURE「`launcher/` が `game/` を見てよいのは…」 | なし(残る4つをすべて外す) | 最終の対応表、`hud/` を装置として判定、`settings/` の import 規則、許可リストを空にする |
 
 **段の切り方は「規則が完結する単位」で決めた。** R7 は装置3つ(`render/`・`marker/`・`audio/`)が揃って宣言的になるまで書けないので、段 1 はその3つを含む。R6 は表示担当が族ごとに揃うまで書けないので、dynamic の族(段 6)と天体の族(段 7)に分かれる。R12・R13 は段 5 に入れた — 手順 5-5 で足す直列化のコードを、新しい形で一度だけ書くためである。同じ理由で、`game.ts` の分割(5-3)も段 5 で済ませる(K8-5)。**手順を段の間で動かすなら、その手順が満たす規則も一緒に動かす。**
 
@@ -506,7 +508,7 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 - **名前の判定は形を判定しない。** `setThrust` を `applyControl` と呼び替えても副作用の形は変わらず、検査だけが通る。単なる代入でも、所有者が保つ整合性(予測弧の破棄)でも、呼び手から見れば副作用である点は同じ。
 - **過去に、名前を替えて検査を通した例は無かった**(名前で当てる各行について、導入した commit から、当たった名前を消した commit を全部辿った)。
   - 改名だけのものは5件あった。4件は誤検出か、行の目的が命名そのもの(R12 の語彙)。形を残したまま名前を替えたのは、装置の内部の `RenderPipeline.applyGraphics` → `rebuildForGraphics` の1件だけ。
-  - `DynamicMotion` の `set thrust` は禁止の導入(09-13)より前(`fd8b3922`、08-19)からあり、回避ではない。ただし 1.12(副作用があるなら代入でなくメソッドにする)に従って直すときの自然な名前 `setThrust` を、`src/` 全体への禁止が塞いでいた。
+  - `DynamicMotion` の `set thrust` は禁止の導入(09-13)より前(`fd8b3922`、08-19)からあり、回避ではない。ただし CODING-RULE 1.11(副作用があるなら代入でなくメソッドにする)に従って直すときの自然な名前 `setThrust` を、`src/` 全体への禁止が塞いでいた。
   - **害は逆向きに出ていた。名前の列に無い命令は、R7 に反していても素通りしている。** `WorldSfx` の単発音(`fire()`・`playReload()` ほか。`run-event-presenter.ts` が出来事1件ごとに命令する)、`Bgm.setVolume`(`main.ts` が設定の購読から呼ぶ。段 1 が `applyGraphics` で消したのと同じ形)と試聴の `beginAudition`/`playAudition`/`stopAudition`/`endAudition`。R7 も段 1 から main に書かれている規則である。
   - 同じ洗い出しで、R12 の疑いも2件出た。`DynamicSystem.deserialize` が空のまま構築してから、記録を命令 `spawnWhenReady` で流し込む(アセット待ちの関門を理由にできるかは未判定)。版の刻印 `SERIALIZATION_VERSION` がモデル層の根 `game.ts` にある(R12 は版の照合を launcher の語彙としている)。
 - **R3 は段 3 で書いたが、判定を1本も足していない**(手順 3-2 が足したのはパス指定の3本だけ)。K6 の横断検査も、「派生値をステートに持つ」は洗ったが「他人のフィールドへの代入」は洗っていない。その結果、
@@ -547,7 +549,7 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 
 **未決(ユーザーが決める)**
 
-1. **6 の基準で揃っていない2つ(`power`・接続中ブースターの段)を実体側へ移すか。** 基準は 5.5-1 で 2.2 に書くので、書いた段の中で揃えるなら 5.5-4 で移す(計画はこの前提で組んだ)。移さないなら、2.2 の `motion` の基準に「毎サブステップの環境で進む部品は運動に置いてよい」を足すことになり、砲身の熱と流儀が割れたままになる。
+1. **6 の基準で揃っていない2つ(`power`・接続中ブースターの段)を実体側へ移すか。** 基準は 5.5-1 で ARCHITECTURE の `motion` に書くので、書いた段の中で揃えるなら 5.5-4 で移す(計画はこの前提で組んだ)。移さないなら、`motion` の基準に「毎サブステップの環境で進む部品は運動に置いてよい」を足すことになり、砲身の熱と流儀が割れたままになる。
 2. **タンパク質の部位の SPEC(監査報告の 4)と、実体の幾何の置き場の流儀(監査報告の 5)。** どちらも 5.5-9 で実施する。R4 は段 4 で書いた規則なので、前者は段 5.5 で直す。
 3. **命令の名前**: 退場は `kill()`、状態の置き換えはいまの `reset` を使う。
 
@@ -562,7 +564,7 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 ### どの段でも、main へ送る前に満たすもの
 
 1. **その段までに書いた規則を、コードが満たしている。** 判定のある規則は、`npm run check:boundaries` が**空の許可リスト**で終了コード 0 を返すこと(と `tsc`・テスト)で確かめる。判定の無い規則は、段の終わりに下の表の「洗い出す」列を行って確かめる。**許可リストが空であることを、判定の無い規則まで満たした根拠にしない**(K10)。
-2. `DEVELOP/CODING-RULE.md` に残る `(暫定 — 段 N で外す)` が、N がその段より後のものだけになっている。
+2. `DEVELOP/ARCHITECTURE.md` に残る `(暫定 — 段 N で外す)` が、N がその段より後のものだけになっている。
 3. **セーブが読める。** 基準は段で変わる(K9)。
    - **段 4 まで**: 保存形式の互換が保たれている。既存の項目は変えず、足すのは省略可能な項目だけ(SAVE.md「形式の版」により版は据え置く)。段 1 に着手する前に書き出したセーブが読め、同じ位置・同じ操作対象・同じカメラで再開する。
    - **段 5**: 形式の版を上げる。段 4 までの記録は読めなくなり、拒まれるだけで画面も起動も壊れない。
@@ -596,7 +598,7 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 | 5.5(臨時) | 段 5 までの規則(R3 は構文の判定つき) | R3 の判定(モデル層の可変な public 欄・`set`・export する型の可変な欄)が 0 件。`invalidatePrediction` が `dynamic-motion.ts` の外に無い。`src/physics/dynamic-trajectory.ts` が無い。`rg -n "onDecided" src` と `rg -n "KEY_MAPPING" src/game/dynamic` が 0 件。音の装置が単発の命令を公開しない。振り分けの表(5.5-3 で足した行を含む)の全行が「直した」か「残す理由がある」。段 5 で書き出したセーブが読める |
 | 6 | R6(dynamic の族とステージ) | モデル層の実体が表示物・装置を持たない。`Game.create`/`Game.deserialize` が `HudLayers` と `THREE.Scene` を受けない。`rg -n "DynamicView\|WorldSfx\|UiSfx\|Notifier\|MarkerSlots\|FlashEffects\|from 'three" src/game/dynamic src/game/player src/game/stages src/game/creative` が 0 件 |
 | 7 | R6(全域)・R11 の3 | `Game.create`/`Game.deserialize` が `GameScene` を受けず、THREE と DOM なしでテストから組める。時刻層に残った天体のファイルから、`render/`・`three`・`hud/`・`game/(camera\|marker\|map\|pickable\|hud\|dynamic)` への import が 0 件。天体系の構築関数の引数が構築値ひとつになる |
-| 8 | R2(最終の対応表)・R9・R10(全文) | `src/game/game.ts`(モデル層の根)から `render/`・`three`・`hud/`・`presentation/`・`run/` への import が 0 件。`src/celestial/` が存在し、そこから `physics/` と `math/` 以外への import が 0 件。`rg -n "game/celestial" src tests tools DEVELOP CLAUDE.md .claude/skills` が 0 件。`rg -n "from '.*render/" src/game` が 0 件。`rg -c "暫定 — 段" DEVELOP/CODING-RULE.md` が 0 |
+| 8 | R2(最終の対応表)・R9・R10(全文) | `src/game/game.ts`(モデル層の根)から `render/`・`three`・`hud/`・`presentation/`・`run/` への import が 0 件。`src/celestial/` が存在し、そこから `physics/` と `math/` 以外への import が 0 件。`rg -n "game/celestial" src tests tools DEVELOP CLAUDE.md .claude/skills` が 0 件。`rg -n "from '.*render/" src/game` が 0 件。`rg -c "暫定 — 段" DEVELOP/ARCHITECTURE.md` が 0 |
 
 ## 手順
 
@@ -716,7 +718,7 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 
 **2026-09-19 に新設した**(K10、ユーザー判断)。段 6 の未決事項を洗う途中で、段 1〜5 で書いた規則(R3・R7・R8・R12 ほか)に反するコードが main にあると分かった。後の段へ回した残件にも、書いた規則の未達が混ざっていた。これらは段 6 の規則(R6)の作業ではないので、**段 6 の PR に混ぜず、この段で全部片づけて1本の PR で main へ送る。** 段 6〜8 の番号は変えない。
 
-**この段で書く規則**: 新しい規則は書かない。段 5 までの規則の意図を、判定できる形に書き直す — R3 の言い直し(所有者・口・整合性・可変な public 欄)、1.12 のモデル層への適用、1.3 の `physics/`、2.2 の `motion`(K10)。
+**この段で書く規則**: 新しい規則は書かない。段 5 までの規則の意図を、判定できる形に書き直す — R3 の言い直し(所有者・口・整合性・可変な public 欄)、CODING-RULE 1.11 のモデル層への適用、ARCHITECTURE の層の中身の `physics/`、ARCHITECTURE の `motion`(K10)。
 
 **段の後、他の作業へ効くこと**: 段 5 までに書いた規則を、main のコードが本当に満たしている。モデル層の欄は宣言したクラスだけが書き、外からは命令で変える(`tsc` が止める)。`physics/` は純関数と容器だけを持つ。装置は単発の命令を公開しない。
 
@@ -737,7 +739,7 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 | R8: `SimSpeedManager` がキーコードを比べる(以前は 8-6) | 5.5-7 | 生の入力の解釈がモデル層にある |
 | R12: `Stage.onDecided` を構築後に差す(以前は 8-6)、`DynamicSystem.deserialize` の流し込み、`SERIALIZATION_VERSION` の置き場 | 5.5-7 | K10-9 |
 | R5: `simTime` の二重経路、`frame-controls` の `lastTime`、`plan-editor` の `simTime`(K6 の保留 2。以前は 8-6) | 5.5-7 | 同じフレームに引数で来る値を写して持っている |
-| 1.12: `ProteinEnemy.muzzlePosition`・`BoosterStack.step` ほか燃料の関数が、状態を進めて値を返す。`DynamicSystem.update` が閉包を注入される | 5.5-8 | 段 5 の未割り当て |
+| 1.11: `ProteinEnemy.muzzlePosition`・`BoosterStack.step` ほか燃料の関数が、状態を進めて値を返す。`DynamicSystem.update` が閉包を注入される | 5.5-8 | 段 5 の未割り当て |
 | 1.6: 敵の `waveId` などの不在を `undefined` で表す(記録では `null`) | 5.5-8 | 「不在は `T \| null`」 |
 | 1.2: `focus-camera-selection.ts` が 563 行 | 5.5-8 | 原因を診断してから割る |
 | 段 5 が上げた版の扱い: セーブデータ画面が版 3 の手動セーブを読み込めるものとして並べ、ダブルクリックすると黙って新しいランが始まる | 5.5-8 | 段 5 が持ち込んだ振る舞い |
@@ -758,15 +760,15 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 
 | ファイル | 何をするか |
 | --- | --- |
-| `DEVELOP/CODING-RULE.md` — R3 | K10 の 1〜3 を書く。**所有者はその欄を宣言したクラス**で、所有の木(実体と運動、運動と behavior、持ち主と部品)の中でも他のクラスの欄へ代入しない(継承した欄を `this` で書くのは自分の欄)。**モデル層の口は命令・読み取り面・出来事の3つ**で、命令 API の禁止(R7)は装置の規則であってモデル層には当てない。**整合性は所有者が命令の中で保ち**、呼び手に世話(キャッシュの破棄など)の口を公開しない。**モデル層のクラスは可変な public 欄と `set` アクセサを持たず、export する型も可変な欄を持たない** — 代入の形は、それが命令であることを呼び手から隠し、書き手を1つに保てなくする |
-| 同 — 1.12 | 「mutable な public フィールドは禁止しないが…」に、モデル層では R3 が禁じることを書き足す |
-| 同 — 1.3 `physics/` | 「THREE 非依存であれば状態を持つクラスを置いてもよい」を、R1 の時刻層に合わせて「純関数と、意味を持たない容器(`StateQueue`。インスタンスの可変な値は、それを持つ者の層に属する)」へ直す。履歴に依存する可変な記録はモデル層に置く(K10-7) |
-| 同 — 2.2 `motion`・`entity` | `motion` に K10-6 の基準を書く — 運動はシミュレーションの参加者で、機構(Simulator・接触解決・Predictor)が読み書きする値と機構が回す処理だけを持つ。実体 → 運動は命令、運動 → 実体は構築時に注入した反応。`entity` の「動きの正本は自分では持たず(`CelestialMotion` / `DynamicTrajectory`)」を、軌跡が運動の記録になるので直す。`entity` と `view` の残り(表示物を表示担当が持つ)は R6 と一緒に 6-1 で書く |
+| `DEVELOP/ARCHITECTURE.md` — R3 | K10 の 1〜3 を書く。**所有者はその欄を宣言したクラス**で、所有の木(実体と運動、運動と behavior、持ち主と部品)の中でも他のクラスの欄へ代入しない(継承した欄を `this` で書くのは自分の欄)。**モデル層の口は命令・読み取り面・出来事の3つ**で、命令 API の禁止(R7)は装置の規則であってモデル層には当てない。**整合性は所有者が命令の中で保ち**、呼び手に世話(キャッシュの破棄など)の口を公開しない。**モデル層のクラスは可変な public 欄と `set` アクセサを持たず、export する型も可変な欄を持たない** — 代入の形は、それが命令であることを呼び手から隠し、書き手を1つに保てなくする |
+| `DEVELOP/CODING-RULE.md` — 1.11 | 「mutable な public フィールドは禁止しないが…」に、モデル層では R3 が禁じることを書き足す |
+| `DEVELOP/ARCHITECTURE.md` — 層の中身の `physics/` | 「THREE 非依存であれば状態を持つクラスを置いてもよい」を、R1 の時刻層に合わせて「純関数と、意味を持たない容器(`StateQueue`。インスタンスの可変な値は、それを持つ者の層に属する)」へ直す。履歴に依存する可変な記録はモデル層に置く(K10-7) |
+| 同 — `entity` / `motion` / `view` の `motion`・`entity` | `motion` に K10-6 の基準を書く — 運動はシミュレーションの参加者で、機構(Simulator・接触解決・Predictor)が読み書きする値と機構が回す処理だけを持つ。実体 → 運動は命令、運動 → 実体は構築時に注入した反応。`entity` の「動きの正本は自分では持たず(`CelestialMotion` / `DynamicTrajectory`)」を、軌跡が運動の記録になるので直す。`entity` と `view` の残り(表示物を表示担当が持つ)は R6 と一緒に 6-1 で書く |
 
 **達成条件と検証**
 
 - R3 に「宣言したクラス」「命令・読み取り面・出来事」「可変な public 欄と `set` アクセサを持たない」が書かれていること。
-- `rg -c "暫定 — 段" DEVELOP/CODING-RULE.md` が 4 のまま(この段は暫定を置かない。5.5-3 の洗い出しで、直さずに残すと決めたものが出たときだけ置く)。
+- `rg -c "暫定 — 段" DEVELOP/ARCHITECTURE.md` が 4 のまま(この段は暫定を置かない。5.5-3 の洗い出しで、直さずに残すと決めたものが出たときだけ置く)。
 - `npm run typecheck`。
 
 #### 手順 5.5-2. 検査を直す
@@ -777,7 +779,7 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 
 | ファイル | 何をするか |
 | --- | --- |
-| `tools/check-boundaries.mjs` — R3 の判定 | TypeScript の構文木(`typescript` パッケージの parser)で、モデル層(いまの `MODEL_ROOTS` から `MISPLACED_PRESENTATION_FILES` を除いたもの。段 6 の 6-2 で対応表を割ったら、層で当てる)の class が持つ可変な public 欄(コンストラクタ引数の欄を含む)と `set` アクセサ(可視性を問わない)、export する interface と型リテラルの可変な欄を数える。**名前では判定しない。** 違反の識別子は「型名.欄名」。`Stage.onDecided` も当たり、5.5-7 で消える |
+| `tools/check-boundaries.mjs` — R3 の判定 | TypeScript の構文木(`typescript` パッケージの parser)で、モデル層(いまの `MODEL_ROOTS` から `MISPLACED_PRESENTATION_FILES` を除いたもの。段 6 の 6-2 で対応表を割ったら、層で当てる)の class が持つ可変な public 欄(コンストラクタ引数の欄を含む)と `set` アクセサ(可視性を問わない)、export する interface と型リテラルの可変な欄を数える。**名前では判定しない。** 違反の識別子は「型名.欄名」。`Stage.onDecided` も当たり、5.5-7 で消える。ほかの判定と同じく、目的の規則(`ref: 'ARCHITECTURE R3'`)を付ける |
 | 同 — 名前で当てる行を見直す | 「命令 API の禁止」を外す(K10-5)。特定の API の呼び手を限る行(壁時計・`localStorage`・生の入力エッジ・定義層と時刻層の `three`・`RunSetting`・HUD の `Game`)と、R12 の語彙の行は残す。形を名前で代用している行のうち、「直列化された形をコンストラクタで受ける禁止」は、引数名 `saved*` ではなく**引数の型に `Serialized*` が現れるか**で判定する(型の名前は語彙の行が保証する。`nav-target-selection.ts` のように不変な素の値の型をそのまま直列化に使うものは R12 の例外として除く)。「二段初期化の禁止」「復元の流し込みの禁止」は代用のまま残し、規則と判定の対応表では洗い出しの側に置く |
 | `tools/boundary-allowlist.json` | R3 の判定の当たりを載せる(着手時点で class の欄と `set` が 52 件、export する型が 13 件)。5.5-4〜5.5-7 が消し、段の終わりに空にする |
 
@@ -887,7 +889,7 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 | ファイル | 何をするか |
 | --- | --- |
 | `src/game/dynamic/sim-speed-manager.ts`、`sim-speed-commands.ts`、`src/game/input/game-input-ports.ts` | 時間加速の段の上下が、まだキーコードを命令の id として受けている(`handleCommand(commandId)` が `K.warpSlower.code`/`K.warpFaster.code` と比べる)。「段を1つ上げる/下げる」という領域の命令にし、`sim-speed-manager.ts` から `KEY_MAPPING` の import を消す(R8)。キーの解釈は入力の解釈へ |
-| `src/launcher/launcher.ts`、`src/game/stages/stage.ts`、`src/run/run.ts` | 構築の後に `stage.onDecided` を差す配線をやめる(R12・1.12 の二段初期化)。決着は進行が出来事として記録し、launcher は `Run.frame` の後にそれを読んで、解放記録・BGM・結果画面を動かす |
+| `src/launcher/launcher.ts`、`src/game/stages/stage.ts`、`src/run/run.ts` | 構築の後に `stage.onDecided` を差す配線をやめる(R12・CODING-RULE 1.11 の二段初期化)。決着は進行が出来事として記録し、launcher は `Run.frame` の後にそれを読んで、解放記録・BGM・結果画面を動かす |
 | `src/game/dynamic/dynamic-system.ts` | `deserialize` が空のまま構築してから記録を `spawnWhenReady` で流し込む形を判定する。アセット待ちの関門のためなら、待ちの記録を構築の引数で受け、流し込みの口を持たない形にする(R12) |
 | `src/game/game.ts`、`src/launcher/save/*` | 版の刻印 `SERIALIZATION_VERSION` の置き場を判定する。版の照合は launcher の語彙(R12)なので、モデル層の直列化が版を知る必要が無ければ launcher へ移す。**保存形式(版の値と位置)は変えない**(K9) |
 | `src/game/pickable/object-windows.ts`、`src/game/pickable/map-picking.ts`、`src/game/view/view-frame.ts`、`src/game/hud/frame/frame-controls.ts`、`src/game/plan/plan-editor.ts` | `simTime` を引数で配る経路を落とし、表示時刻の所有者から読む1本にする(K6 の保留 2)。`frame-controls` の `lastTime` と `plan-editor` の `simTime` も同じく所有者から読む |
@@ -908,8 +910,8 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 
 | ファイル | 何をするか |
 | --- | --- |
-| `src/game/dynamic/dynamic-entity/protein-enemy.ts`(`muzzlePosition`)、`src/game/player/booster-stack.ts`(`step`)ほか燃料の関数 | 状態を進める命令と、値を返す問い合わせに分ける(1.12)。`muzzlePosition` は監査報告の 4 と同じ所を触るので、5.5-9 の SPEC の判断と一緒に行う |
-| `src/game/dynamic/dynamic-system.ts`(`update` の `beforeControllables`) | 閉包の注入をやめる(1.12)。呼び手が順に呼べば足りるなら、そうする |
+| `src/game/dynamic/dynamic-entity/protein-enemy.ts`(`muzzlePosition`)、`src/game/player/booster-stack.ts`(`step`)ほか燃料の関数 | 状態を進める命令と、値を返す問い合わせに分ける(CODING-RULE 1.11)。`muzzlePosition` は監査報告の 4 と同じ所を触るので、5.5-9 の SPEC の判断と一緒に行う |
+| `src/game/dynamic/dynamic-system.ts`(`update` の `beforeControllables`) | 閉包の注入をやめる(CODING-RULE 1.11)。呼び手が順に呼べば足りるなら、そうする |
 | `src/game/dynamic/dynamic-entity/enemy.ts`、`src/game/hud/hud-panel-presenter.ts`、`src/game/hud/panels/enemies-panel.ts` | `waveId` などの不在を `null` で表す(1.6)。同じ形の欄を洗い、まとめて揃える |
 | `src/game/viewer/focus-camera-selection.ts`(563 行) | 1.2 のとおり、まず原因を診断する。責務が複数なら分け、一つなら理由を書いて残す |
 | `src/launcher/save-browser/*` | 版の合わない記録を、読み込めるものとして並べない。開こうとしたら、読めないことを知らせる(SAVE.md「形式の版」。`/ui-design` を通す) |
@@ -955,7 +957,8 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 
 | ファイル | 何をするか |
 | --- | --- |
-| `DEVELOP/CODING-RULE.md` | R6 を新しい節として書く。1.6「配列に対して外部から対応付けを行う設計を避ける」のうち、物体に付随する表示物が物体自身のフィールドであるという具体例の段落を R6 へ差し替え、**原則の段落は残す。** 2.2 の `entity` / `motion` / `view` を R4・R6・R7 に合わせて書き換える(`entity` はモデル層の「動きとゲーム上の意味」の統合、表示物は表示担当が持つ)。`motion` と、`entity` のうち軌跡に触れる文は 5.5-1 で書き直してある(実体は運動の所有者とみなさない。K10)。R2 に「モデル層が import してよいのは定義層・時刻層と自分自身だけ」を足す |
+| `DEVELOP/ARCHITECTURE.md` | R6 を新しい節として書く。`entity` / `motion` / `view` を R4・R6・R7 に合わせて書き換える(`entity` はモデル層の「動きとゲーム上の意味」の統合、表示物は表示担当が持つ)。`motion` と、`entity` のうち軌跡に触れる文は 5.5-1 で書き直してある(実体は運動の所有者とみなさない。K10)。R2 に「モデル層が import してよいのは定義層・時刻層と自分自身だけ」を足す |
+| `DEVELOP/CODING-RULE.md` | 1.6「配列に対して外部から対応付けを行う設計を避ける」のうち、物体に付随する表示物が物体自身のフィールドであるという具体例の段落を、ARCHITECTURE の R6 を指す1文へ差し替え、**原則の段落は残す。** |
 | 同 — 暫定の文面を直す | 段 8 まで残る「表示の導出の置き場は `src/game/` の中」の列挙に `input`(入力の解釈。段 3 で `game/input/` に集まった)を足す |
 | 同 — 外す暫定 | 段 1 で置いた「`game/` の中を割らない」と、段 3 で置いた「モデル層の禁止はパスで当てる」を外す |
 | 同 — 置く暫定 | **R6 を天体の族に当てない**(段 7)。**`game/celestial/` は未分類**(段 7)。**モデル層の根(`game/game.ts`)は、天体系の描画のために `GameScene` を受けてよい**(段 7)。**`render/` で定義された語彙の型 import だけはモデル層に許す**(段 8) |
@@ -963,7 +966,7 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 **達成条件と検証**
 
 - R6 の見出しがあること。1.6 の原則の段落が残り、具体例だけが変わっていること。
-- `rg -c "暫定 — 段" DEVELOP/CODING-RULE.md` が 6。
+- `rg -c "暫定 — 段" DEVELOP/ARCHITECTURE.md` が 6。
 - `npm run typecheck`。
 
 #### 手順 6-2. 段 6 の検査を足す
@@ -1093,14 +1096,14 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 
 | ファイル | 何をするか |
 | --- | --- |
-| `DEVELOP/CODING-RULE.md` | R6 の「天体の族に当てない」暫定を外し、「集合が構築後に変わらない族(天体)は突き合わせず、構築時に1度だけ作る」を本文にする。R11 に3(時刻層の天体系は、構築に使った immutable な値だけを保存する)を足す |
+| `DEVELOP/ARCHITECTURE.md` | R6 の「天体の族に当てない」暫定を外し、「集合が構築後に変わらない族(天体)は突き合わせず、構築時に1度だけ作る」を本文にする。R11 に3(時刻層の天体系は、構築に使った immutable な値だけを保存する)を足す |
 | 同 — 外す暫定 | 「`game/celestial/` は未分類」を外し、対応表で時刻層にする。「モデル層の根は、天体系の描画のために `GameScene` を受けてよい」を外す |
 | 同 — 置く暫定 | **時刻層の天体は当面 `game/celestial/` にある**(段 8 で `src/celestial/` へ移す) |
 
 **達成条件と検証**
 
 - R6 に天体の項があること。R11 が3項になっていること。
-- `rg -c "暫定 — 段" DEVELOP/CODING-RULE.md` が 4。
+- `rg -c "暫定 — 段" DEVELOP/ARCHITECTURE.md` が 4。
 - `npm run typecheck`。
 
 #### 手順 7-2. 段 7 の検査を足す
@@ -1190,14 +1193,14 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 
 | ファイル | 何をするか |
 | --- | --- |
-| `DEVELOP/CODING-RULE.md` | R2 の対応表を最終形にする(`presentation/`・`celestial/`・`game/viewer/`・`run/` を含み、`hud/` を装置とする)。R9 を新しい節として書く。1.3「`launcher/` が `game/` を見てよいのは、ランを起こすときだけ」を R10 の全文で置き換える(`launcher/`・`main.ts`・モデル層は `settings/`・`launcher/`・`run/` を import しない・`settings/` が import してよい範囲。ランの組み立ての項は 5-1 で書いた) |
+| `DEVELOP/ARCHITECTURE.md` | R2 の対応表を最終形にする(`presentation/`・`celestial/`・`game/viewer/`・`run/` を含み、`hud/` を装置とする)。R9 を新しい節として書く。「`launcher/` が `game/` を見てよいのは、ランを起こすときだけ」を R10 の全文で置き換える(`launcher/`・`main.ts`・モデル層は `settings/`・`launcher/`・`run/` を import しない・`settings/` が import してよい範囲。ランの組み立ての項は 5-1 で書いた) |
 | 同 — 外す暫定 | 残る4つ(`hud/` の扱い、表示の導出の置き場、`render/` の語彙の型、天体の置き場)をすべて外す |
 | `.claude/skills/**/SKILL.md`、`CLAUDE.md` | 層の名前とフォルダが最終形になったので、参照を揃える |
 
 **達成条件と検証**
 
-- `rg -c "暫定 — 段" DEVELOP/CODING-RULE.md` が 0。
-- R1〜R13 の見出しが揃っていること: `rg -n "^\*\*R([1-9]|1[0-3])\." DEVELOP/CODING-RULE.md` が 13 件。
+- `rg -c "暫定 — 段" DEVELOP/ARCHITECTURE.md` が 0。
+- R1〜R13 の見出しが揃っていること: `rg -n "^\*\*R([1-9]|1[0-3])\." DEVELOP/ARCHITECTURE.md` が 13 件。
 - `npm run typecheck`。
 
 #### 手順 8-2. 検査を最終形にする
@@ -1342,7 +1345,7 @@ import を直す外側:
 **手順と達成条件**: 「段を main へ送る(共通)」のとおり。加えて、この段でだけ確かめるものがある。
 
 - `tools/boundary-allowlist.json` が空で、対応表が R2 の最終形と一致している。
-- `rg -c "暫定 — 段" DEVELOP/CODING-RULE.md` が 0。
+- `rg -c "暫定 — 段" DEVELOP/ARCHITECTURE.md` が 0。
 - 「達成目標」の最終の行がすべて満たされている。
 - PR 本文に、R1〜R13 が正本になったことと、`check:boundaries` が何を判定するかを書く。
 
@@ -1358,7 +1361,7 @@ import を直す外側:
 
 | 段 | 手順 | 分 |
 | --- | --- | --- |
-| 5.5 | 5.5-1 規則(R3・1.12・1.3 の `physics/`・2.2 の `motion`) | 75 |
+| 5.5 | 5.5-1 規則(R3・CODING-RULE 1.11・層の中身の `physics/`・`motion`) | 75 |
 | | 5.5-2 検査(R3 の構文の判定 +40、名前で当てる行の見直しと型の判定 +20) | 90 |
 | | 5.5-3 洗い出し(規則ごとに配る。R1〜R5・R7・R8・R11〜R13) | 150 |
 | | 5.5-4 運動の書き手と軌跡(34 ファイル × 20 + 検証 20、`PilotCommandFrame` の分割 +60、`power` と接続中ブースターの段 8 ファイル × 20) | 920 |
