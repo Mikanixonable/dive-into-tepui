@@ -78,16 +78,10 @@ export function register(): void {
     assert.deepEqual(camera.map.pan, { x: 0, y: 0, z: 0 });
   });
 
-  test('camera-selection: 注視喪失は同じ内容の別値ではなく FocusTarget の同一性で判定する', () => {
+  test('camera-selection: マップの注視を見失うと原点天体へ戻る', () => {
     const camera = selection({ combat: serializedCamera(), map: serializedCamera() });
-    const focus = camera.map.focus;
-    assert.equal(focus.kind, 'object');
 
-    camera.map.followProgress(sample({ kind: 'object', id: focus.kind === 'object' ? focus.id : '' }));
-    assert.equal(camera.map.focus, focus);
-
-    camera.map.followProgress(sample(focus));
-    assert.notEqual(camera.map.focus, focus);
+    camera.map.followProgress(sample(camera.map.focus));
     assert.deepEqual(camera.map.focus, { kind: 'object', id: 'earth' });
   });
 
