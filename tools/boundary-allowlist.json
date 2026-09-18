@@ -1,13 +1,5 @@
 {
   "復元の流し込みの禁止": {
-    "src/game/dynamic/dynamic-entity/enemy-fire-controller.ts": [
-      "restore(",
-      "saveState"
-    ],
-    "src/game/dynamic/dynamic-entity/enemy.ts": [
-      "restore(",
-      "saveState"
-    ],
     "src/game/dynamic/dynamic-system.ts": [
       "restoreFromSave("
     ]
@@ -22,17 +14,8 @@
     "src/game/dynamic/dynamic-entity/detached-booster.ts": [
       "'saved' in"
     ],
-    "src/game/dynamic/dynamic-entity/enemy.ts": [
-      "'saved' in"
-    ],
-    "src/game/dynamic/dynamic-entity/metal-enemy.ts": [
-      "'saved' in"
-    ],
     "src/game/dynamic/dynamic-entity/pickup.ts": [
       "saved",
-      "'saved' in"
-    ],
-    "src/game/dynamic/dynamic-entity/protein-enemy.ts": [
       "'saved' in"
     ],
     "src/game/dynamic/dynamic-system.ts": [
@@ -40,9 +23,6 @@
     ],
     "src/game/game.ts": [
       "initialSave"
-    ],
-    "src/game/protein/protein-combat-state.ts": [
-      "saved"
     ]
   }
 }
