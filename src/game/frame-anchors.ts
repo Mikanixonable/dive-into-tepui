@@ -27,31 +27,31 @@ interface AnchorTargets {
 type RoleHold = { state: KinematicState | null; misses: number; missFrame: number };
 
 export class FrameAnchors implements FrameAnchorSource {
-  // bodies の位置を厳密に引く時刻 [s]。
-  bodiesPivot = 0;
-
+  private _bodiesPivot = 0;
   private readonly roleHolds = new Map<FrameRole, RoleHold>();
   // フレームごとに進む通し番号。役割トークンの猶予とキャッシュの有効範囲をフレームで区切る。
   private frameIndex = 0;
   private attractorCacheKey: string | null = null;
   private attractorCacheValue: string | null = null;
 
-  constructor(
+  public constructor(
     private readonly celestialBodies: CelestialBodies,
     private readonly targets: AnchorTargets,
   ) {}
 
-  get bodies(): readonly CelestialBody[] { return this.celestialBodies.celestialMotions; }
+  public get bodies(): readonly CelestialBody[] { return this.celestialBodies.celestialMotions; }
+  // bodies の位置を厳密に引く時刻 [s]。
+  public get bodiesPivot(): number { return this._bodiesPivot; }
 
   // このフレームが天体の位置を厳密に引く表示時刻を差し込む。フレームの先頭で1度だけ呼ぶ —
   // 役割トークンの猶予とキャッシュの区切りがこの呼び出し回数で決まる。
-  update(bodiesPivot: number): void {
-    this.bodiesPivot = bodiesPivot;
+  public update(bodiesPivot: number): void {
+    this._bodiesPivot = bodiesPivot;
     this.frameIndex++;
   }
 
   // 基準 id の ECI 状態。役割トークン・機体・重力天体のいずれとしても解決できなければ null。
-  stateOf(id: string, t: number): KinematicState | null {
+  public stateOf(id: string, t: number): KinematicState | null {
     const role = frameRoleOf(id);
     if (role !== null) return this.heldRoleState(role, this.resolveRoleState(role, t));
     return this.targets.entityState(id, t)
@@ -60,7 +60,7 @@ export class FrameAnchors implements FrameAnchorSource {
 
   // 基準 id が公転している主天体。離心率1未満の周回軌道にないなら null。
   // 直近1件だけ憶える — 同じ id が同一フレーム内で重ねて問われ、探索は天体数に線形に効く。
-  attractorOf(id: string, t: number): string | null {
+  public attractorOf(id: string, t: number): string | null {
     // 天体を引く時刻はフレームごとに動くので、キャッシュもフレームで区切る。
     const key = `${this.frameIndex}|${id}|${t}`;
     if (this.attractorCacheKey === key) return this.attractorCacheValue;
