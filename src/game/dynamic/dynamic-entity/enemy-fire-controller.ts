@@ -32,31 +32,40 @@ export interface EnemyFireControllerPort {
   muzzleEffect(muzzleState: KinematicState, events: RunEventSink): void;
 }
 
-// バースト射撃の残弾と次弾までの残り時間 [s]。未着手なら両方 null。
+// バースト射撃の残弾と次弾までの残り時間 [s](未着手なら両方 null)、最後に射撃の機会が巡った時刻と
+// 最後に行動した時刻 [sim s](まだなら null)。
 export interface SerializedEnemyFireController {
   readonly burstLeft: number | null;
   readonly burstDelay: number | null;
+  readonly lastFireSim: number | null;
+  readonly lastBehaviorSim: number | null;
 }
 
 // 敵の射撃判断・バースト進行・弾生成をEnemy本体から分離する。
 export class EnemyFireController {
-  private lastFireSim?: number;
-  private lastBehaviorSim?: number;
   public enabled = true;
 
   // port は撃つ敵。burstLeft・burstDelay はバースト射撃の残弾と次弾までの残り時間で、未着手なら
-  // 両方 undefined。
+  // 両方 undefined。lastFireSim・lastBehaviorSim は最後に射撃の機会が巡った時刻と最後に行動した
+  // 時刻で、まだなら undefined。
   public constructor(
     private readonly port: EnemyFireControllerPort,
     private burstLeft?: number,
     private burstDelay?: number,
+    private lastFireSim?: number,
+    private lastBehaviorSim?: number,
   ) {}
 
   public get isBursting(): boolean { return this.burstLeft !== undefined && this.burstLeft > 0; }
 
-  // バースト射撃の途中経過の直列化。
+  // バースト射撃の途中経過と、射撃の機会・行動の時刻の直列化。
   public serialize(): SerializedEnemyFireController {
-    return { burstLeft: this.burstLeft ?? null, burstDelay: this.burstDelay ?? null };
+    return {
+      burstLeft: this.burstLeft ?? null,
+      burstDelay: this.burstDelay ?? null,
+      lastFireSim: this.lastFireSim ?? null,
+      lastBehaviorSim: this.lastBehaviorSim ?? null,
+    };
   }
 
   public behave(

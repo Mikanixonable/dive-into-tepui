@@ -25,7 +25,8 @@ import { v3 } from '../../math/vec3';
 import { solarSystem } from '../celestial/solar-system/solar-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { EntityRoster } from '../dynamic/entity-roster';
-import type { EntityRegistry, SpawnGate } from '../dynamic/entity-registry';
+import type { EntityRegistry } from '../dynamic/entity-registry';
+import type { ProteinEnemyRequest } from './spawner/enemy-generator';
 import { CAMPAIGN_STAGE_RULES, type StageRules } from './stage-rules';
 
 // 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。各ステージが
@@ -280,10 +281,11 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.scoreCounter.recordSpawnEnemy();
   }
 
-  // 外部資源の取得待ちで実体化を遅らせうる敵を登録する。gate が通り次第登録され、
-  // そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
-  protected spawnEnemyWhenReady(gate: SpawnGate | null, build: () => Enemy): void {
-    this._dynamicSystem.spawnWhenReady(gate, build, () => this.scoreCounter.recordSpawnEnemy());
+  // タンパク質の敵を要求し、出撃数をスコアへ記録する。敵はアセットが揃い次第実体化する
+  // (SPEC/PROTEIN.md「出現」節)が、出撃数には要求した時点で数える。
+  protected addProteinEnemy(request: ProteinEnemyRequest): void {
+    this._dynamicSystem.spawnWhenReady({ kind: 'protein-enemy', request });
+    this.scoreCounter.recordSpawnEnemy();
   }
 
   // ステージごとのブリーフィングの本文(HTML)。初期配置を終えた状態から組む。
