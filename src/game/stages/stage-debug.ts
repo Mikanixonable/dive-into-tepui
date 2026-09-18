@@ -11,6 +11,12 @@ import { FREE_PLAY_STAGE_RULES } from './stage-rules';
 import { stageDebugCommands, type StageDebugCommands } from './stage-debug-commands';
 import type { Player } from '../player/player';
 
+// デバッグステージの内訳。敵の射撃の可否と、次に出す敵集団の通し番号を持つ。
+export interface SerializedStageDebug extends SerializedStage {
+  readonly enemyFireEnabled: boolean;
+  readonly waveCount: number;
+}
+
 export class StageDebug extends Stage {
   static readonly id = 'debug' as const;
   static readonly stageRules = FREE_PLAY_STAGE_RULES;
@@ -19,13 +25,18 @@ export class StageDebug extends Stage {
   static readonly selectSub = '【デバッグ】敵集団1つ・撃破しても終了しない・敵の射撃を実行中に切替可能';
   static readonly hiddenFromSelect = true;
 
-  private enemyFireEnabled = false;
-  private waveCount = 2; // ランダム方向からスポーンさせるため2から開始
   // パネルの操作を積む先。
   private readonly commands: StageDebugCommands;
 
-  // 共通の状態から組み、射撃切替トグルとスポーンボタン列をステータスウィンドウ左部へ追加する。
-  private constructor(deps: StageDeps, ...common: CommonStageState) {
+  // 敵の射撃の可否・次に出す敵集団の通し番号と共通の状態から組み、射撃切替トグルとスポーンボタン列を
+  // ステータスウィンドウ左部へ追加する。省いた値は新しいランの初期値から始まる。
+  private constructor(
+    deps: StageDeps,
+    private enemyFireEnabled = false,
+    // ランダム方向からスポーンさせるため2から開始
+    private waveCount = 2,
+    ...common: CommonStageState
+  ) {
     super(deps, ...common);
     this.commands = stageDebugCommands(this._commandQueue, this);
 
@@ -54,8 +65,16 @@ export class StageDebug extends Stage {
   }
 
   // 直列化した形から復元する。
-  public static deserialize(serialized: SerializedStage, ...deps: StageDeps): StageDebug {
-    return new StageDebug(deps, ...Stage.deserializeCommonState(serialized, deps, StageDebug.stageRules));
+  public static deserialize(serialized: SerializedStageDebug, ...deps: StageDeps): StageDebug {
+    return new StageDebug(
+      deps, serialized.enemyFireEnabled, serialized.waveCount,
+      ...Stage.deserializeCommonState(serialized, deps, StageDebug.stageRules),
+    );
+  }
+
+  // 共通の内訳に、敵の射撃の可否と敵集団の通し番号を足して直列化する。
+  public override serialize(): SerializedStageDebug {
+    return { ...super.serialize(), enemyFireEnabled: this.enemyFireEnabled, waveCount: this.waveCount };
   }
 
   // デバッグステージのブリーフィング文言を返す。

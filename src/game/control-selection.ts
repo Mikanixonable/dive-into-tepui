@@ -18,9 +18,10 @@ export class ControlSelection {
     return new ControlSelection(dynamicSystem);
   }
 
-  // 直列化した id の操作対象を、復元を終えた顔ぶれから選び直して始める。顔ぶれに無ければ
-  // 新しく始めたときと同じく生存中の先頭を選ぶ。
+  // 直列化した id の操作対象を、復元を終えた顔ぶれから選び直して始める。null なら未操作のまま
+  // 始める。顔ぶれに無い id なら、新しく始めたときと同じく生存中の先頭を選ぶ。
   public static deserialize(serialized: SerializedControlSelection, dynamicSystem: DynamicSystem): ControlSelection {
+    if (serialized === null) return new ControlSelection(dynamicSystem, null);
     return new ControlSelection(dynamicSystem, dynamicSystem.controllables.find((c) => c.id === serialized));
   }
 
