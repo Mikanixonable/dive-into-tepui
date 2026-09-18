@@ -1,14 +1,14 @@
 // focus-derivation.ts の回帰テスト。振動バグの本体は「機体 id は候補配列ではなく
 // frameAnchors.stateOf を返す」ケース(resolveFocusTarget は候補配列を先に見ると壊れる)。
-import { motionOf, motionOf as motionInParts, solarSystemParts } from '../physics/test-helpers';
+import { solarSystemParts } from '../physics/test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
   type FocusCandidate, type FocusResolveState, resolveFocusTarget,
 } from '../../src/game/camera/focus-derivation';
-import { FrameAnchorSource } from '../../src/physics/frame';
-import { CelestialMotion } from '../../src/physics/celestial-motion';
-import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
+import type { FrameAnchorSource } from '../../src/physics/frame';
+import type { CelestialMotion } from '../../src/physics/celestial-motion';
+import { type KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/math/vec3';
 
 const ORIGIN_STATE: FocusResolveState = { missingFocusFrames: 0, lastResolvedFocus: v3(1, 2, 3) };
