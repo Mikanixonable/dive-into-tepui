@@ -19,7 +19,7 @@ import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import type { UiSfx } from '../../audio/sfx/ui-sfx';
 import type { Input } from '../../input/input';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import { focusPoint } from '../camera/focus-target';
+import { focusPoint } from '../viewer/focus-target';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { AxisHandleSpec, NodeHandleSpec } from './node-gizmo';
 import { NodeGizmo } from './node-gizmo';
@@ -34,7 +34,7 @@ import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ControlSelection } from '../control-selection';
 import type { PlanPath } from './plan-path';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { FocusSink } from '../camera/focus-target';
+import type { FocusCameraCommands } from '../viewer/camera-commands';
 
 const NODE_PICK_PX = 30; // 軌道クリック判定の許容距離 [px]
 
@@ -98,7 +98,7 @@ export class PlanEditor {
     scene: THREE.Scene,
     private readonly controlSelection: ControlSelection,
     private readonly displayDuration: DisplayDurationSource,
-    private readonly focusSink: FocusSink,
+    private readonly mapFocusCommands: Pick<FocusCameraCommands, 'setFocus'>,
     private readonly path: PlanPath,
     private readonly planCommands: PlanCommands,
   ) {
@@ -163,7 +163,7 @@ export class PlanEditor {
       const n = this.plan?.nodes[idx];
       if (!n) return;
       const frames = this.celestialBodies.frames;
-      this.focusSink.setFocus(focusPoint(frames, frames.inertialFrame, n.r, n.t, bodyAnchorSource([], n.t)));
+      this.mapFocusCommands.setFocus(focusPoint(frames, frames.inertialFrame, n.r, n.t, bodyAnchorSource([], n.t)));
     };
   }
 

@@ -1,9 +1,11 @@
-// focus-target.ts の回帰テスト。振動バグの本体は「機体 id は候補配列ではなく
+// focus-derivation.ts の回帰テスト。振動バグの本体は「機体 id は候補配列ではなく
 // frameAnchors.stateOf を返す」ケース(resolveFocusTarget は候補配列を先に見ると壊れる)。
 import { motionOf, motionOf as motionInParts, solarSystemParts } from '../physics/test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { FocusCandidate, FocusResolveState, resolveFocusTarget } from '../../src/game/camera/focus-target';
+import {
+  type FocusCandidate, type FocusResolveState, resolveFocusTarget,
+} from '../../src/game/camera/focus-derivation';
 import { FrameAnchorSource } from '../../src/physics/frame';
 import { CelestialMotion } from '../../src/physics/celestial-motion';
 import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
@@ -69,22 +71,22 @@ export function register(): void {
     assert.equal(result.vel, null);
   });
 
-  test('focus-target: 2フレーム連続で全経路が null なら fallToOrigin', () => {
+  test('focus-target: 2フレーム連続で全経路が null なら喪失を返す', () => {
     const anchors = stubAnchors({});
     const first = resolveFocusTarget(
       { kind: 'object', id: 'nowhere' }, [], 0, anchors, frames, motionOf, stateOf, ORIGIN_STATE);
-    assert.equal(first.fallToOrigin, false);
+    assert.equal(first.lost, false);
     assert.equal(first.missingFocusFrames, 1);
     const second = resolveFocusTarget({ kind: 'object', id: 'nowhere' }, [], 0, anchors, frames, motionOf, stateOf, first);
-    assert.equal(second.fallToOrigin, true);
+    assert.equal(second.lost, true);
     assert.equal(second.missingFocusFrames, 2);
   });
 
-  test('focus-target: 1フレームだけ解決失敗なら lastResolvedFocus を保ち fallToOrigin にならない', () => {
+  test('focus-target: 1フレームだけ解決失敗なら lastResolvedFocus を保ち喪失にならない', () => {
     const anchors = stubAnchors({});
     const result = resolveFocusTarget(
       { kind: 'object', id: 'nowhere' }, [], 0, anchors, frames, motionOf, stateOf, ORIGIN_STATE);
-    assert.equal(result.fallToOrigin, false);
+    assert.equal(result.lost, false);
     assert.deepEqual(result.pos, ORIGIN_STATE.lastResolvedFocus);
     assert.deepEqual(result.lastResolvedFocus, ORIGIN_STATE.lastResolvedFocus);
   });
