@@ -6,6 +6,7 @@ import { BoosterStack } from './booster-stack';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
 import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
+import type { StageOutcome } from '../stages/stage-outcome';
 import {
   MAX_HULL_TEMP,
   SHIP_BCINV,
@@ -48,18 +49,16 @@ export interface AltitudeAlarmPort {
 }
 
 export interface PlayerMotionContactPort {
-  receiveEntityContact(
-    other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
-  ): void;
+  receiveEntityContact(other: DynamicMotion, contact: Contact, activeStage: StageOutcome): void;
   receiveRadiatorContact(
-    side: RadiatorSide, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
+    side: RadiatorSide, other: DynamicMotion, contact: Contact, activeStage: StageOutcome,
   ): void;
-  receiveSurfaceContact(contact: Contact, services: DynamicReactionServices): void;
+  receiveSurfaceContact(contact: Contact, activeStage: StageOutcome): void;
 }
 
 export interface PlayerMotionLossPort {
-  receiveStructuralLoss(services: DynamicReactionServices): void;
-  receiveBurnUp(services: DynamicReactionServices): void;
+  receiveStructuralLoss(activeStage: StageOutcome): void;
+  receiveBurnUp(activeStage: StageOutcome): void;
 }
 
 export interface PlayerMotionReactions {
@@ -152,7 +151,7 @@ class PlayerBehavior implements DynamicMotionBehavior {
   public onEntityContact(
     _self: DynamicMotion, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
   ): void {
-    this.reactions.contact.receiveEntityContact(other, contact, services);
+    this.reactions.contact.receiveEntityContact(other, contact, services.activeStage);
   }
 
   // 天体表面への接触を reactions へ渡す。
@@ -162,12 +161,12 @@ class PlayerBehavior implements DynamicMotionBehavior {
     contact: Contact,
     services: DynamicReactionServices,
   ): void {
-    this.reactions.contact.receiveSurfaceContact(contact, services);
+    this.reactions.contact.receiveSurfaceContact(contact, services.activeStage);
   }
 
   // 温度上限を超えた焼失を reactions へ渡す。
   public onBurnUp(_self: DynamicMotion, services: DynamicReactionServices): void {
-    this.reactions.loss.receiveBurnUp(services);
+    this.reactions.loss.receiveBurnUp(services.activeStage);
   }
 
   // 空力荷重が構造限界を超えていれば、構造喪失を reactions へ渡す。
@@ -178,7 +177,7 @@ class PlayerBehavior implements DynamicMotionBehavior {
     services: DynamicReactionServices,
   ): void {
     if (playerMotionOf(self).aero.overStructuralLimit) {
-      this.reactions.loss.receiveStructuralLoss(services);
+      this.reactions.loss.receiveStructuralLoss(services.activeStage);
     }
   }
 }
@@ -219,7 +218,7 @@ export class PlayerMotion extends DynamicMotion {
     this.radiator = new RadiatorSystem(
       this,
       (side, other, contact, services) => (
-        reactions.contact.receiveRadiatorContact(side, other, contact, services)
+        reactions.contact.receiveRadiatorContact(side, other, contact, services.activeStage)
       ),
       radiatorUp,
       radiatorDown,

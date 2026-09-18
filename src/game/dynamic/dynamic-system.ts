@@ -102,7 +102,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
       if (entityClass === null) continue;
       system.spawnWhenReady(
         entityClass.spawnGate(entity),
-        () => entityClass.deserialize(entity, simTime, idAllocators, scene, events),
+        () => entityClass.deserialize(entity, simTime, system, scene),
       );
     }
     return system;
@@ -319,7 +319,6 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
         controls: controllable === active && operable ? controls : null,
         dt,
         simDt,
-        registry: this,
         activeStage,
         stageRules,
         celestialBodies: this.celestialBodies,

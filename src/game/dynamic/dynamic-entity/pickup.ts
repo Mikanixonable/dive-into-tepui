@@ -8,6 +8,7 @@ import { COLOR_MARKER_FUEL, DIRECTION_GLYPH, ENTITY_GLYPH } from '../../marker/m
 import { orbitRows } from '../../pickable/orbit-rows';
 import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { EntityIdAllocators } from './entity-id';
+import type { EntityRegistry } from '../entity-registry';
 import { PickupMotion, type PickupKind } from './pickup-motion';
 import type * as THREE from 'three/webgpu';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
@@ -233,9 +234,9 @@ export class AmmoPickup extends Pickup {
 
   // 直列化した弾薬補給を、時刻 simTime の状態として復元する。
   public static deserialize(
-    serialized: SerializedAmmoPickup, simTime: number, idAllocators: EntityIdAllocators, scene: THREE.Scene,
+    serialized: SerializedAmmoPickup, simTime: number, registry: EntityRegistry, scene: THREE.Scene,
   ): AmmoPickup {
-    return new AmmoPickup(deserializePickupPlacement(serialized, simTime), scene, idAllocators);
+    return new AmmoPickup(deserializePickupPlacement(serialized, simTime), scene, registry.idAllocators);
   }
 }
 
@@ -267,9 +268,9 @@ export class RcsFuelPickup extends Pickup {
 
   // 直列化した RCS 燃料補給を、時刻 simTime の状態として復元する。
   public static deserialize(
-    serialized: SerializedRcsFuelPickup, simTime: number, idAllocators: EntityIdAllocators, scene: THREE.Scene,
+    serialized: SerializedRcsFuelPickup, simTime: number, registry: EntityRegistry, scene: THREE.Scene,
   ): RcsFuelPickup {
-    return new RcsFuelPickup(deserializePickupPlacement(serialized, simTime), scene, idAllocators);
+    return new RcsFuelPickup(deserializePickupPlacement(serialized, simTime), scene, registry.idAllocators);
   }
 
   // 1 個の取り込みで増える燃料の量。

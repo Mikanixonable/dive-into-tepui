@@ -124,8 +124,8 @@ export class MapView implements ViewFrame {
   }
 
   // Δv 編集の押下中操作を編集セッションへ配る。
-  public updateActions(input: Input, dt: number): void {
-    this.planEditor.updateActions(input, dt);
+  public updateActions(dt: number): void {
+    this.planEditor.updateActions(this.input, dt);
   }
 
   // クリック・右クリックを、ノード編集と被選択物・軌道線・空域のメニューへ先着順で配る。

@@ -13,7 +13,7 @@ export interface EntityRegistry {
   readonly events: RunEventSink;
   // 個体をいまの顔ぶれへ入れる。枠の上限を超えたぶんは持ち主が古いものから落とす。
   add(entity: DynamicEntity): void;
-  // gate が真を返したフレームで build を1度だけ呼び、できた個体を add する。gate が null なら
-  // 次のフレームで生む。onSpawned は add の後に1度だけ呼ばれる。
+  // build を1度だけ呼び、できた個体を add する。gate が null か、いま真を返すならその場で、そうで
+  // なければ gate が真を返したフレームで呼ぶ。onSpawned は add の後に1度だけ呼ばれる。
   spawnWhenReady(gate: SpawnGate | null, build: () => DynamicEntity, onSpawned?: () => void): void;
 }

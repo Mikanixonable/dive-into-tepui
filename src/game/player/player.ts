@@ -10,9 +10,7 @@ import { bulletReactionOf, type BulletType, type Shooter } from '../dynamic/dyna
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { DynamicEntity, SerializedDynamicEntityFields } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { EntityRegistry } from '../dynamic/entity-registry';
-import type { EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
-import type { RunEventSink } from '../run-events';
 import { generateRandomName } from '../random-name';
 import { Throttle, type SerializedThrottle } from './throttle';
 import { FireControl, type SerializedFireControl } from './fire-control';
@@ -39,7 +37,7 @@ import type { Controllable, PilotCommandFrame } from '../dynamic/dynamic-entity/
 import type { PilotCommand, PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
 import { PlayerMotion, type PlayerMotionReactions } from './player-motion';
 import type { DynamicMotion, SerializedDynamicMotionThermal } from '../dynamic/dynamic-motion';
-import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
+import type { StageOutcome } from '../stages/stage-outcome';
 import type { DamageOutcomeSink } from './damage-outcome';
 import { PlayerInspection } from '../pickable/player-inspection';
 import { PlayerEffects } from './player-effects';
@@ -113,13 +111,12 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   public readonly toggleSolarPanel = (side: 'up' | 'down'): void => this.motion.power.toggle(side);
   public readonly toggleRadiator = (side: 'up' | 'down'): void => this.motion.radiator.toggle(side);
 
-  // name は表示名、id は採番器が配った識別子、state と attitude は運動状態。weapon から後ろは
-  // 下位系の状態と部品で、省いたものは新しく作ったときの状態で始める。plan はこの艦自身の
-  // マニューバ計画。
+  // registry は出来事と生んだ実体を積む先。name は表示名、id は採番器が配った識別子、state と
+  // attitude は運動状態。weapon から後ろは下位系の状態と部品で、省いたものは新しく作ったときの
+  // 状態で始める。plan はこの艦自身のマニューバ計画。
   private constructor(
-    private readonly events: RunEventSink,
+    private readonly registry: EntityRegistry,
     scene: THREE.Scene,
-    idAllocators: EntityIdAllocators,
     name: string,
     id: string,
     state: KinematicState,
@@ -154,17 +151,17 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
         ),
       },
       contact: {
-        receiveEntityContact: (other, contact, services) => (
-          owner.receiveEntityContact(other, contact, services)
+        receiveEntityContact: (other, contact, activeStage) => (
+          owner.receiveEntityContact(other, contact, activeStage)
         ),
-        receiveRadiatorContact: (side, other, contact, services) => (
-          owner.receiveRadiatorContact(side, other, contact, services)
+        receiveRadiatorContact: (side, other, contact, activeStage) => (
+          owner.receiveRadiatorContact(side, other, contact, activeStage)
         ),
-        receiveSurfaceContact: (contact, services) => owner.receiveSurfaceContact(contact, services),
+        receiveSurfaceContact: (contact, activeStage) => owner.receiveSurfaceContact(contact, activeStage),
       },
       loss: {
-        receiveStructuralLoss: services => owner.receiveStructuralLoss(services),
-        receiveBurnUp: services => owner.receiveBurnUp(services),
+        receiveStructuralLoss: activeStage => owner.receiveStructuralLoss(activeStage),
+        receiveBurnUp: activeStage => owner.receiveBurnUp(activeStage),
       },
     });
     // 運動・表示・部品を組んでから、この艦を参照する下位系を組む
@@ -187,12 +184,10 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       id,
       parts,
     );
-    this.effects = new PlayerEffects(events);
-    this.fire = new FireControl(this, events, scene, weapon);
-    this.altitudeAlarm = new AltitudeAlarm(events);
-    this.boosters = new AttachedBoosters(
-      this.motion, this.motion.attachedBoosters, idAllocators, events, scene,
-    );
+    this.effects = new PlayerEffects(registry);
+    this.fire = new FireControl(this, registry, scene, weapon);
+    this.altitudeAlarm = new AltitudeAlarm(registry.events);
+    this.boosters = new AttachedBoosters(this.motion, this.motion.attachedBoosters, registry, scene);
   }
 
   // placement に新しく置く。機首は center に対する速度の向き、上面は center から見た位置の向き。
@@ -201,35 +196,33 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   public static create(
     placement: PlayerPlacement,
     center: CelestialBody,
-    events: RunEventSink,
-    idAllocators: EntityIdAllocators,
+    registry: EntityRegistry,
     scene: THREE.Scene,
   ): Player {
     const name = placement.name ?? generateRandomName('player');
     return new Player(
-      events, scene, idAllocators, name, idAllocators.entity.next(placement.id ?? name),
+      registry, scene, name, registry.idAllocators.entity.next(placement.id ?? name),
       placement.state, Player.progradeAttitude(placement.state, center),
       placement.ammo ? WeaponState.create(placement.ammo) : undefined,
     );
   }
 
   // 直列化した艦を、時刻 simTime の状態として復元する。計画のうち起点より前のノードは戻せないので、
-  // その数を events へ記録する。
+  // その数を registry の出来事へ記録する。
   public static deserialize(
     serialized: SerializedPlayer,
     simTime: number,
-    idAllocators: EntityIdAllocators,
+    registry: EntityRegistry,
     scene: THREE.Scene,
-    events: RunEventSink,
   ): Player {
     const { radiator, plan } = serialized;
     const parts = Array.isArray(serialized.parts)
       ? serialized.parts.map(deserializePart).filter((part) => part !== null)
       : [];
     const player = new Player(
-      events, scene, idAllocators,
+      registry, scene,
       serialized.name || serialized.id,
-      idAllocators.entity.next(serialized.id),
+      registry.idAllocators.entity.next(serialized.id),
       deserializeKinematicState(serialized, simTime),
       deserializeAttitude(serialized, Player.INERTIA),
       serialized.fire ? WeaponState.deserialize(serialized.fire) : undefined,
@@ -248,7 +241,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       serialized.fineAttitude ?? undefined,
     );
     const dropped = plan ? Plan.droppedNodeCount(plan) : 0;
-    if (dropped > 0) events.record({ kind: 'planNodesDropped', ship: player.name, count: dropped });
+    if (dropped > 0) registry.events.record({ kind: 'planNodesDropped', ship: player.name, count: dropped });
     return player;
   }
 
@@ -285,7 +278,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   // 毎フレーム、全ての自機に対して1度だけ呼ぶ。controls が null の艦は、このフレーム
   // 操作されない艦として畳む。
   public updateControls(frame: PilotCommandFrame): void {
-    const { controls, dt, simDt, registry, activeStage, stageRules, celestialBodies } = frame;
+    const { controls, dt, simDt, activeStage, stageRules, celestialBodies } = frame;
     if (stageRules.selfRepair) this.hpRegen(dt);
     // ブースターの燃焼は操作の可否によらず進むので、指令を畳んだあとに進める。
     if (controls === null) {
@@ -297,7 +290,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.motion.attachedBoosters.step(simDt);
     this.updateTorque(controls, dt, simDt);
 
-    this.fire.updateFireState(dt, controls, activeStage, registry, celestialBodies);
+    this.fire.updateFireState(dt, controls, activeStage, celestialBodies);
 
     this.throttle.updateThrustLatches(controls);
     const rcsThrust = this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
@@ -320,31 +313,32 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   }
 
   // 受け付けた単発の命令を自機の状態へ適用する。
-  public handleCommand(command: PilotCommand, registry: EntityRegistry): void {
+  public handleCommand(command: PilotCommand): void {
+    const events = this.registry.events;
     switch (command.kind) {
       case 'thrustLatchToggle': this.throttle.toggleThrustLatch(command.direction); return;
-      case 'rcsDampToggle': this.throttle.toggleRcsDamp(registry.events); return;
-      case 'progradeReset': this.throttle.enableProgradeReset(registry.events); return;
-      case 'fineAttitudeToggle': this.toggleFineAttitude(registry.events); return;
-      case 'progradeHoldToggle': this.throttle.toggleProgradeHold(registry.events); return;
-      case 'throttleLow': this.throttle.setThrottlePreset(0, registry.events); return;
-      case 'throttleMid': this.throttle.setThrottlePreset(1, registry.events); return;
-      case 'throttleHigh': this.throttle.setThrottlePreset(2, registry.events); return;
-      case 'throttleMax': this.throttle.setThrottlePreset(3, registry.events); return;
-      case 'boosterDecouple': this.boosters.decouple(registry); return;
+      case 'rcsDampToggle': this.throttle.toggleRcsDamp(events); return;
+      case 'progradeReset': this.throttle.enableProgradeReset(events); return;
+      case 'fineAttitudeToggle': this.toggleFineAttitude(); return;
+      case 'progradeHoldToggle': this.throttle.toggleProgradeHold(events); return;
+      case 'throttleLow': this.throttle.setThrottlePreset(0, events); return;
+      case 'throttleMid': this.throttle.setThrottlePreset(1, events); return;
+      case 'throttleHigh': this.throttle.setThrottlePreset(2, events); return;
+      case 'throttleMax': this.throttle.setThrottlePreset(3, events); return;
+      case 'boosterDecouple': this.boosters.decouple(); return;
       case 'boosterIgnitionToggle': this.boosters.toggleIgnition(); return;
       case 'radiatorDeployLeft': this.motion.radiator.toggle('up'); return;
       case 'radiatorDeployRight': this.motion.radiator.toggle('down'); return;
       case 'solarDeployLeft': this.motion.power.toggle('up'); return;
       case 'solarDeployRight': this.motion.power.toggle('down'); return;
-      case 'reload': this.fire.manualReload(registry); return;
+      case 'reload': this.fire.manualReload(); return;
     }
   }
 
   // 姿勢微調整モードの ON/OFF を切り替える。
-  private toggleFineAttitude(events: RunEventSink): void {
+  private toggleFineAttitude(): void {
     this.fineAttitude = !this.fineAttitude;
-    events.record({ kind: 'fineAttitudeToggled', on: this.fineAttitude });
+    this.registry.events.record({ kind: 'fineAttitudeToggled', on: this.fineAttitude });
   }
 
   // 放熱板パーツの残 HP から side ごとの損耗率を組む。パーツが欠けている側は全損扱い。
@@ -359,7 +353,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   // 無作為なパーツへダメージが入る。
   private attackedByBullet(
     bulletType: BulletType, shooter: Shooter, damage: number, impactPoint: Vec3,
-    outcome: DamageOutcomeSink, registry: EntityRegistry,
+    outcome: DamageOutcomeSink,
     side: RadiatorSide | null = null,
   ): void {
     // 熱とダメージを入れ、放熱板パーツが壊れたらその場で破片を出す
@@ -368,7 +362,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.applyDamageToParts(side === null ? damage : RADIATOR_BULLET_DAMAGE, damagedPart);
     if (side !== null && damagedPart && damagedPart.hp <= 0) {
       const tip = this.motion.radiator.tipWorldPosition(side, this.motion.state.r, this.motion.att);
-      this.effects.radiatorBreak(this.motion.state, tip, registry);
+      this.effects.radiatorBreak(this.motion.state, tip);
     }
     if (this.hp > 0) {
       this.effects.impact(bulletType, this.motion.state, impactPoint);
@@ -379,45 +373,40 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     this.motion.alive = false;
     const reason = shooter === 'player' ? '自弾の被弾により機体を喪失した' : '敵のエネルギー弾により機体を喪失した';
     outcome.playerLost(reason);
-    this.effects.destroy(this.motion.state, registry);
+    this.effects.destroy(this.motion.state);
   }
 
   // 他の動体との接触の帰結。弾なら武装のダメージを、それ以外は接近速度と相手の種別を根拠に
   // 無作為なパーツへダメージを入れる(ゲームバランスの量)。
-  private receiveEntityContact(
-    other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
-  ): void {
+  private receiveEntityContact(other: DynamicMotion, contact: Contact, activeStage: StageOutcome): void {
     if (!this.motion.alive) return;
 
     // 弾の命中
     const bullet = bulletReactionOf(other);
     if (bullet !== null) {
       this.attackedByBullet(
-        bullet.type, bullet.shooter, bullet.damage, contact.point,
-        this.outcomeOf(services), services.registry,
+        bullet.type, bullet.shooter, bullet.damage, contact.point, this.outcomeOf(activeStage),
       );
       return;
     }
 
     // 弾以外との衝突
     this.damagedByContact(
-      contactDamageSpeed(other, contact), null, '高速接触により機体を喪失した',
-      this.outcomeOf(services), services.registry,
+      contactDamageSpeed(other, contact), null, '高速接触により機体を喪失した', this.outcomeOf(activeStage),
     );
   }
 
   // 天体の固体表面への接触。相手の種別による重みが無いので接近速度がそのまま根拠になる。
-  private receiveSurfaceContact(contact: Contact, services: DynamicReactionServices): void {
+  private receiveSurfaceContact(contact: Contact, activeStage: StageOutcome): void {
     if (!this.motion.alive) return;
     this.damagedByContact(
-      closingSpeed(contact), null, '天体の地表へ到達し機体は失われた',
-      this.outcomeOf(services), services.registry,
+      closingSpeed(contact), null, '天体の地表へ到達し機体は失われた', this.outcomeOf(activeStage),
     );
   }
 
   // 放熱板の接触代理(RadiatorFold)からの帰結。ダメージは side の放熱板パーツへ入る。
   private receiveRadiatorContact(
-    side: RadiatorSide, other: DynamicMotion, contact: Contact, services: DynamicReactionServices,
+    side: RadiatorSide, other: DynamicMotion, contact: Contact, activeStage: StageOutcome,
   ): void {
     if (!this.motion.alive) return;
 
@@ -425,16 +414,14 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     const bullet = bulletReactionOf(other);
     if (bullet !== null) {
       this.attackedByBullet(
-        bullet.type, bullet.shooter, bullet.damage, contact.point,
-        this.outcomeOf(services), services.registry, side,
+        bullet.type, bullet.shooter, bullet.damage, contact.point, this.outcomeOf(activeStage), side,
       );
       return;
     }
 
     // 弾以外との衝突
     this.damagedByContact(
-      contactDamageSpeed(other, contact), side, '高速接触により機体を喪失した',
-      this.outcomeOf(services), services.registry,
+      contactDamageSpeed(other, contact), side, '高速接触により機体を喪失した', this.outcomeOf(activeStage),
     );
   }
 
@@ -442,14 +429,13 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   // パーツへダメージが入る。
   private damagedByContact(
     damageSpeed: number, side: RadiatorSide | null, lossReason: string, outcome: DamageOutcomeSink,
-    registry: EntityRegistry,
   ): void {
     // ダメージを入れ、放熱板パーツが壊れたらその場で破片を出す
     const damagedPart = side === null ? undefined : this.radiatorParts[side === 'up' ? 0 : 1];
     if (!this.applyCollisionDamage(damageSpeed, damagedPart)) return;
     if (side !== null && damagedPart && damagedPart.hp <= 0) {
       const tip = this.motion.radiator.tipWorldPosition(side, this.motion.state.r, this.motion.att);
-      this.effects.radiatorBreak(this.motion.state, tip, registry);
+      this.effects.radiatorBreak(this.motion.state, tip);
     }
     if (this.hp > 0) {
       this.effects.contact(this.motion.state);
@@ -459,37 +445,35 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     // HP が尽きたら喪失させる
     this.motion.alive = false;
     outcome.playerLost(lossReason);
-    this.effects.destroy(this.motion.state, registry);
+    this.effects.destroy(this.motion.state);
   }
 
   // 動圧が構造限界を超えたことによる喪失。
-  private receiveStructuralLoss(services: DynamicReactionServices): void {
+  private receiveStructuralLoss(activeStage: StageOutcome): void {
     if (!this.motion.alive) return;
-    this.lose(
-      '動圧が構造限界を超え、機体は空力的に分解した',
-      this.outcomeOf(services), services.registry,
-    );
+    this.lose('動圧が構造限界を超え、機体は空力的に分解した', this.outcomeOf(activeStage));
   }
 
   // 外殻の温度が上限を超えたときの喪失。理由は、そこで空力加熱が効いていたかで分ける。
-  private receiveBurnUp(services: DynamicReactionServices): void {
+  private receiveBurnUp(activeStage: StageOutcome): void {
     this.lose(
       this.motion.aero.heatingAerodynamically
         ? '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した'
         : '排熱が追いつかず、機体は熱で機能不全に陥った',
-      this.outcomeOf(services), services.registry,
+      this.outcomeOf(activeStage),
     );
   }
 
   // 喪失の共通処理。reason はステージの記録に残す喪失理由。
-  private lose(reason: string, outcome: DamageOutcomeSink, registry: EntityRegistry): void {
+  private lose(reason: string, outcome: DamageOutcomeSink): void {
     this.motion.alive = false;
-    this.effects.destroy(this.motion.state, registry);
+    this.effects.destroy(this.motion.state);
     outcome.playerLost(reason);
   }
 
-  private outcomeOf(services: DynamicReactionServices): DamageOutcomeSink {
-    return { playerLost: reason => services.activeStage.recordPlayerLost(reason) };
+  // 機体の喪失を activeStage の記録へ届ける通知先。
+  private outcomeOf(activeStage: StageOutcome): DamageOutcomeSink {
+    return { playerLost: reason => activeStage.recordPlayerLost(reason) };
   }
 
   // 操作量から機体座標系トルクを求めて Motion へ反映し、角速度をクランプする。
@@ -505,7 +489,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       dt,
       simDt,
       this,
-      this.events,
+      this.registry.events,
     );
   }
 

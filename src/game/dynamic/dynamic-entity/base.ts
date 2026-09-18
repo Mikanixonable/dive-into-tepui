@@ -123,12 +123,12 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
 
   // 直列化した基地を、時刻 simTime の状態として復元する。
   public static deserialize(
-    serialized: SerializedBase, simTime: number, idAllocators: EntityIdAllocators, scene: THREE.Scene,
+    serialized: SerializedBase, simTime: number, registry: EntityRegistry, scene: THREE.Scene,
   ): Base {
     const state = deserializeKinematicState(serialized, simTime);
     return new Base(
       scene,
-      idAllocators.base.next(serialized.id),
+      registry.idAllocators.base.next(serialized.id),
       // 記録に無い名前は、新しく置いたときと違って無作為に選ばず「基地」と名乗る。
       serialized.name || '基地',
       state,

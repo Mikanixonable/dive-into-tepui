@@ -12,7 +12,7 @@ import {
 import {
   proteinAssetGate, proteinRenderDefinitionFor, type ProteinAssetId,
 } from '../../protein/protein-asset-loader';
-import type { SpawnGate } from '../entity-registry';
+import type { EntityRegistry, SpawnGate } from '../entity-registry';
 import type { RunEventSink } from '../../run-events';
 import type { EntityIdAllocators } from './entity-id';
 import type { ProteinDisplaySettings } from '../../../render/protein/protein-display';
@@ -148,14 +148,14 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   // 直列化した敵を、時刻 simTime の状態として復元する。HP は被弾モデルの記録から戻す。アセットが
   // 未取得なら投げるので、spawnGate で準備完了を待ってから呼ぶこと。
   public static deserialize(
-    serialized: SerializedProteinEnemy, simTime: number, idAllocators: EntityIdAllocators, scene?: THREE.Scene,
+    serialized: SerializedProteinEnemy, simTime: number, registry: EntityRegistry, scene?: THREE.Scene,
   ): ProteinEnemy {
     const definition = definitionFor(serialized.assetId);
     return new ProteinEnemy(
       deserializeEnemyPlacement(serialized, simTime),
       definition,
       serialized.id || serialized.name || serialized.assetId,
-      idAllocators,
+      registry.idAllocators,
       scene,
       serialized.protein ? ProteinCombatState.deserialize(serialized.protein, definition.asset) : undefined,
       // 記録に無い生死は、新しく置いたときと違って撃破済みとして読む。

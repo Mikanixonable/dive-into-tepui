@@ -265,7 +265,7 @@ export class GamePresentation {
     // ワープ/ビュー切り替え/計画編集へキーを漏らさない。
     if (!overlays.isInputGated()) {
       // マップの Δv 編集は操作対象の解釈より先に押下中キーを確保する。
-      this.viewManager.activeView.updateActions(this.input, dt);
+      this.viewManager.activeView.updateActions(dt);
     }
     this.inputRouter.routeAdditional(this.pilotPorts);
     // カメラ操作は視点所有者への命令へ変え、直後の進行で同じフレームに反映する。入力がゼロでも
