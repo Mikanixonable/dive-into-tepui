@@ -106,11 +106,12 @@ export class Run implements SnapshotSource, PerfCountSource {
     private readonly autoSave: AutoSave,
   ) {}
 
-  // シェーダを組む前に、最初に描かれるフレームと同じ表示状態を時間の進まない1フレームで作る —
+  // シェーダを組む前に、最初に描かれるフレームと同じ表示状態を、進行の後の導出と同期で作る —
   // 天体表面の分割段のように導出と同期が決めるまで現れない表示物が、事前コンパイルから漏れる。
   private async warmUp(graphics: GraphicsSettingsData, style: RenderStyle, progress: LoadingProgress): Promise<void> {
     const viewport = this.devices.scene.viewport;
-    this.advanceFrame(0, 0, viewport);
+    // 進行を通すと、読み込んだ記録が保存した瞬間の状態から続かなくなる(SAVE.md「保存される内容」)。
+    this.deriveAfterProgress(0, viewport);
     this.presentation.sync(graphics, style, viewport, 0);
     await progress.enter('shaders');
     await this.presentation.compile(style, progress);
@@ -155,6 +156,12 @@ export class Run implements SnapshotSource, PerfCountSource {
     const { game, presentation } = this;
     presentation.interpretInput(dt, nowMs, viewport);
     game.advance(dt, presentation.pilotControls, presentation.isPaused);
+    this.deriveAfterProgress(nowMs, viewport);
+  }
+
+  // 進行の結果へ表示窓とカメラ視点を合わせ、予測を伸ばし、表示の値を組む。nowMs [ms] はフレームの実時刻。
+  private deriveAfterProgress(nowMs: number, viewport: Viewport): void {
+    const { game, presentation } = this;
     presentation.resolveFrame();
     game.followCamera(presentation.cameraSamples());
     presentation.presentProgress();
