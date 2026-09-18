@@ -24,7 +24,7 @@ import type { CameraFrameSamples } from './viewer/camera-selection';
 
 // SerializedGame の形式バージョン。上げるのは構造が変わって互換を切るときで、上げた時点で
 // それ以前に書かれた記録は読めなくなる。項目を増やすだけなら版は据え置き、省略可能にして
-// 読み込み側で基底値を補う(SAVE.md「形式の版」)。
+// 欠けた項目は復元で新しく作ったときの初期値で補う(SAVE.md「形式の版」)。
 export const SERIALIZATION_VERSION = 4;
 
 // 1ランの直列化した形。進行と視点を分けて持つ(R4)。
@@ -200,8 +200,7 @@ export class Game {
     this.commands.applyAll();
     // 的面の通過をどの対象について記録するかの需要(R4)。命令を適用した後の選択から立てる。
     const boardTargetId = this.viewer.navTarget.id;
-    // ポーズは開いているオーバーレイからの導出値で「止まった瞬間」が無いので、止まっている
-    // 間は毎フレーム連続指令を畳む。
+    // ポーズには「止まった瞬間」の知らせが無いので、止まっている間は毎フレーム連続指令を畳む。
     if (paused) this.dynamicSystem.pause();
     else this.advanceSimulation(dt, controls, boardTargetId);
     this.followProgress();
@@ -218,7 +217,7 @@ export class Game {
   }
 
   // 需要 demand が求める長さまで履歴を残し予測を伸ばしてから、計画ノードの規則を通す。一時停止中・
-  // 決着後も毎フレーム呼ぶ。simTime が止まっていれば予測は伸び切ったところで止まる。
+  // 決着後も毎フレーム呼ぶ。
   public extendPredictions(demand: TrajectoryDemand): void {
     const controlled = this.activeControllable;
     this.dynamicSystem.requestHistoryDuration(demand.historyDuration);
@@ -233,8 +232,8 @@ export class Game {
     this.sections.exit(SECTION.plan);
   }
 
-  // ステージ → 指令決定 → 積分 → エフェクトの順に1フレーム進める
-  // (残骸・弾の先端時刻はどの状況でも進め続ける)。boardTargetId は的面の通過を記録する対象の id。
+  // ステージ・顔ぶれ・操作対象の選択を、操作量 controls と dt [s] で1フレーム進める。boardTargetId は
+  // 的面の通過を記録する対象の id。
   private advanceSimulation(dt: number, controls: PilotControls, boardTargetId: string | null): void {
     // このフレームで使う倍率を最初に一度だけ確定する。燃料消費・操作ゲート・積分が
     // 自動ワープの段階変更を跨いで別の倍率を読むと、同じ区間を表さなくなる。
