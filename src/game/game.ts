@@ -604,7 +604,7 @@ export class Game {
     // 交点を置く先は計画折れ線か解析軌道楕円のどちらかなので、折れ線を組み終えた計画表示と、
     // 楕円が引く予測列を伸ばした後に通す。
     this.sections.enter(SECTION.plan);
-    const equatorVisibility = this.cameraSystem.view === 'map'
+    const equatorVisibility = this.viewManager.current === 'map'
       ? new MapVisibilityPolicy(
         this._celestialSystem, this.viewOptionSettings.mapDisplay.current,
       )
@@ -733,7 +733,7 @@ export class Game {
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
     const cs = this.cameraSystem;
     const camera = this.cameraView.sync(
-      cs.activeViewpoint, cs.clipFovDeg, cs.clipDistance, viewport, cs.view, cs.zoomActive, cs.focusVelocity,
+      cs.activeViewpoint, cs.clipFovDeg, cs.clipDistance, viewport, this.viewManager.current, cs.zoomActive, cs.focusVelocity,
     );
     this.cameraFrame = camera;
     this.viewOptions.setVisible(this.viewManager.current === 'map');
@@ -831,7 +831,7 @@ export class Game {
   }
 
   // ------------------------------------------------------- HUD へ渡す値
-  // 値を束ねる場所は、ここが持ち物を全部知っている間の暫定(暫定 — 段 7 で Game を分解する)。
+  // 値を束ねる場所は、ここが持ち物を全部知っている間の暫定(暫定 — 段 5 で Game を3つの根へ分けるときに解く)。
 
   // 常設パネルの値をこのランの状態から束ねる。view は表に出ているビューで、
   // そこに出るパネルのぶんだけを組む。
