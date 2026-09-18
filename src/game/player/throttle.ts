@@ -180,7 +180,7 @@ export class Throttle {
     const consumption = ship.totalFuelConsumptionRate * presetScale * simDt;
     const actualRatio = ship.consumeFuel(consumption);
     thrustAccel *= actualRatio;
-    
+
     if (thrustAccel <= 0) return null;
 
     const dir = norm(v3(axX, axY, axZ));
@@ -222,7 +222,7 @@ export class Throttle {
       RCS_MANUAL_OUTPUT_MIN +
       RCS_MANUAL_OUTPUT_RAMP *
       (Math.min(RCS_MANUAL_RAMP_TIME, this.rotationHoldTime) / RCS_MANUAL_RAMP_TIME);
-      
+
     const baseAngAccel = ship.totalTorque > 0
       ? ship.totalTorque / Math.max(inertia.x, inertia.y, inertia.z)
       : MAX_ANG_ACCEL;
@@ -237,7 +237,7 @@ export class Throttle {
       const actualRatio = ship.consumeFuel(consumption);
       maxAngAccel *= actualRatio;
     }
-    
+
     const manualTorque = v3(
       inX * maxAngAccel * inertia.x,
       inY * maxAngAccel * inertia.y,
