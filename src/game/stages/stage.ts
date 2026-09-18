@@ -41,8 +41,7 @@ export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt
 const PLAYER_INITIAL_ALT = 420e3; // [m]
 const PLAYER_INITIAL_INC_DEG = 97.0; // [deg]
 
-// 全ステージ共通の生成引数(セーブデータを除く)。具象ステージは自分のコンストラクタで
-// これをそのまま基底へ渡す。
+// 全ステージ共通の協力者。create・deserialize が受け、基底のコンストラクタへそのまま渡す。
 export type StageDeps = [
   hud: HudLayers,
   scene: THREE.Scene,
@@ -51,6 +50,10 @@ export type StageDeps = [
   controlSelection: ControlSelection,
   commandQueue: CommandQueue,
 ];
+
+// 全ステージ共通の状態(スコア・決着状態・補給)。基底のコンストラクタが deps の後ろに受け、
+// 省いたものは新しいランの初期値から始まる。
+export type CommonStageState = [scoreCounter?: ScoreCounter, phase?: GamePhase, logistics?: Logistics];
 
 // ステージクラスの静的側。起動時の設定はここから読む。
 export interface StageClass {
@@ -73,7 +76,10 @@ export interface StageClass {
   readonly selectGroup: string;
   readonly hiddenFromSelect: boolean;
   isUnlocked(clearCounts: ClearCounts): boolean;
-  new (saved: SerializedStage | undefined, ...deps: StageDeps): Stage;
+  // 新しいランのステージを組み、初期配置を置く。
+  create(...deps: StageDeps): Stage;
+  // このステージクラスが直列化した形 serialized から復元する。
+  deserialize(serialized: SerializedStage, ...deps: StageDeps): Stage;
 }
 
 // ステージ ID → クリア回数(周回数によるアンロックに備えて、クリアの有無でなく回数で持つ)。
@@ -141,7 +147,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // タンパク質の表示形態と着色を選ぶ UI を持つステージはそれを差し出す。既定では持たない。
   public readonly proteinDisplayControl: ProteinDisplayControl | null = null;
 
-  public readonly scoreCounter: ScoreCounter;
   protected readonly logistics: Logistics;
   private readonly statusPanel: StatusPanel;
 
@@ -153,7 +158,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // モデル層の外から届いた書き換えを積む先。ステージ固有の命令の口はここへ積む。
   protected readonly _commandQueue: CommandQueue;
 
-  private _phase: GamePhase;
   public get phase(): GamePhase { return this._phase; }
   public get isPlaying(): boolean { return this._phase === 'playing'; }
   private _result: StageResult | null = null;
@@ -166,12 +170,15 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this._result = result;
     this.onDecided?.();
   }
-  private readonly restored: boolean;
-
-  // saved が undefined ならスナップショットからの再開ではない新規開始で、スコア0・進行中・
-  // 補給タイマー未経過から始まり begin() が初期配置を行う。固有の内訳を持つ具象ステージは
-  // 自分のコンストラクタで super(saved, ...deps) を呼んでから自分の分を組み立て、末尾で begin() を呼ぶ。
-  protected constructor(saved: SerializedStage | undefined, ...deps: StageDeps) {
+  // 協力者 deps と全ステージ共通の状態から組む。省いた状態は新しいランの初期値(スコア 0・進行中・
+  // 補給タイマー未経過)から始まる。固有の状態を持つ具象ステージは、自分の分を deps の直後に受け、
+  // 共通の状態を末尾で受けてここへ渡す。
+  protected constructor(
+    deps: StageDeps,
+    public readonly scoreCounter = new ScoreCounter(),
+    private _phase: GamePhase = 'playing',
+    logistics?: Logistics,
+  ) {
     const [hud, scene, dynamicSystem, celestialSystem, controlSelection, commandQueue] = deps;
     this._hud = hud;
     this._scene = scene;
@@ -179,14 +186,25 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this._celestialSystem = celestialSystem;
     this._controlSelection = controlSelection;
     this._commandQueue = commandQueue;
-    // 進行状態は saved から復元し、無ければ新規開始の既定値で始める。
-    this.scoreCounter = new ScoreCounter(saved?.scoreCounter);
-    this._phase = saved?.phase ?? 'playing';
-    this.restored = saved !== undefined;
-    this.logistics = new Logistics(
-      scene, dynamicSystem, saved?.logistics, this.stageRules.automaticResupply,
-    );
+    this.logistics = logistics ?? new Logistics(scene, dynamicSystem, this.stageRules.automaticResupply);
     this.statusPanel = new StatusPanel(hud.combatRoot);
+  }
+
+  // 直列化した共通の内訳 serialized から、全ステージ共通の状態を戻す。具象の deserialize が自分の
+  // コンストラクタの末尾へ渡す。rules はそのステージクラスの規則。
+  protected static deserializeCommonState(
+    serialized: SerializedStage, deps: StageDeps, rules: StageRules,
+  ): CommonStageState {
+    const [, scene, dynamicSystem] = deps;
+    const { scoreCounter, phase, logistics } = serialized;
+    // null も欠けと同じく新しいランの初期値から始める(既定引数は undefined でしか働かない)。
+    return [
+      scoreCounter == null ? undefined : ScoreCounter.deserialize(scoreCounter),
+      phase ?? undefined,
+      logistics == null
+        ? undefined
+        : Logistics.deserialize(logistics, scene, dynamicSystem, rules.automaticResupply),
+    ];
   }
 
   private _briefing: string | null = null;
@@ -194,11 +212,8 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 新規開始のランで1度だけ出すブリーフィングの本文(HTML)。再開したランでは null。
   public get briefing(): string | null { return this._briefing; }
 
-  // 新規開始なら初期配置を行い、ブリーフィングの本文を組む。具象ステージは自分のコンストラクタの
-  // 末尾で必ずこれを呼ぶ — 初期配置は具象側のフィールドが揃ってからでないと走らせられない。
-  protected begin(): void {
-    if (this.restored) return;
-    this.init();
+  // ブリーフィングの本文を、いまの状態から組む。新しいランのステージで、初期配置を終えた後に1度だけ呼ぶ。
+  protected composeBriefing(): void {
     this._briefing = this.briefingHtml();
   }
 
@@ -274,10 +289,8 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this._dynamicSystem.spawnWhenReady(gate, build, () => this.scoreCounter.recordSpawnEnemy());
   }
 
-  // ステージごとのブリーフィングの本文(HTML)。init() を終えた状態から組む。
+  // ステージごとのブリーフィングの本文(HTML)。初期配置を終えた状態から組む。
   protected abstract briefingHtml(): string;
-  // 初期配置。既定では何も置かない。
-  protected init(): void { }
   // 毎フレーム呼ぶ。台本が相手にする自艦は this.ship から引く。
   public abstract update(dt: number, simTime: number, simSpeed: SimSpeedManager): void;
 

@@ -34,23 +34,39 @@ const LOGISTICS_AUTO_MAX_DIST = 625; // 同上限 [m]
 const LOGISTICS_DESPAWN_DIST = 50000; // これ以上自機から離れた補給をデスポーンさせる距離 [m]
 
 export class Logistics {
-  private resupplyCheckAt: number;
-
   // 弾薬補給の自動投入を行うかどうか。回収・デスポーンはこの値によらず走る。
   public resupplyEnabled: boolean;
   // RCS燃料の自動投入を行うかどうか。弾薬のトグルとは独立している。
   public rcsFuelResupplyEnabled: boolean;
 
-  // saved があればその状態(次回投入判定時刻・自動投入の有効/無効)から始める。
+  // 次回投入判定時刻 resupplyCheckAt [sim s] と自動投入の有効/無効から始める。省いた値は新しいランの
+  // 初期値(すぐ判定する・どちらも有効)。automaticResupply はステージの規則で、偽なら自動投入は
+  // 渡した有効/無効によらず無効で始まる。
   public constructor(
     private readonly _scene: THREE.Scene,
     private readonly dynamicSystem: EntityRegistry & EntityRoster,
-    saved?: SerializedLogistics,
-    automaticResupply = true,
+    automaticResupply: boolean,
+    private resupplyCheckAt = 0,
+    resupplyEnabled = true,
+    rcsFuelResupplyEnabled = true,
   ) {
-    this.resupplyCheckAt = saved?.resupplyCheckAt ?? 0;
-    this.resupplyEnabled = automaticResupply && (saved?.resupplyEnabled ?? true);
-    this.rcsFuelResupplyEnabled = automaticResupply && (saved?.rcsFuelResupplyEnabled ?? true);
+    this.resupplyEnabled = automaticResupply && resupplyEnabled;
+    this.rcsFuelResupplyEnabled = automaticResupply && rcsFuelResupplyEnabled;
+  }
+
+  // 直列化した状態から復元する。automaticResupply はステージの規則。
+  public static deserialize(
+    serialized: SerializedLogistics,
+    scene: THREE.Scene,
+    dynamicSystem: EntityRegistry & EntityRoster,
+    automaticResupply: boolean,
+  ): Logistics {
+    const { resupplyCheckAt, resupplyEnabled, rcsFuelResupplyEnabled } = serialized;
+    // null も欠けと同じく新しいランの初期値から始める(既定引数は undefined でしか働かない)。
+    return new Logistics(
+      scene, dynamicSystem, automaticResupply,
+      resupplyCheckAt ?? undefined, resupplyEnabled ?? undefined, rcsFuelResupplyEnabled ?? undefined,
+    );
   }
 
   // 自機の軌道上、minDist〜maxDist 先の位相に補給を1個投入する。
@@ -145,7 +161,7 @@ export class Logistics {
     }
   }
 
-  // 次回投入判定時刻と、自動投入の有効/無効の保存形。
+  // 次回投入判定時刻と、自動投入の有効/無効を直列化した形へ畳む。
   public serialize(): SerializedLogistics {
     return {
       resupplyCheckAt: this.resupplyCheckAt,

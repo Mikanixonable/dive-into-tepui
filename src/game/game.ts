@@ -2,7 +2,7 @@
 import type { GameScene } from '../render/scene';
 import { SECTION, type FrameSections } from './frame-sections';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
-import type { SerializedStage, Stage, StageClass } from './stages/stage';
+import type { SerializedStage, Stage, StageClass, StageDeps } from './stages/stage';
 import type { HudLayers } from './hud/hud-layers';
 import { CommandQueue } from './command-queue';
 import { ControlSelection } from './control-selection';
@@ -110,10 +110,12 @@ export class Game {
       scene.scene, this.events, celestialSystem, sections, initialSave?.simTime ?? 0, initialSave);
     this.simSpeedManager = new SimSpeedManager(this.events);
     this.controlSelection = new ControlSelection(initialSave?.activeControlledId, this.dynamicSystem);
-    this.activeStage = new stageClass(
-      initialSave?.stage, hud, scene.scene, this.dynamicSystem,
-      celestialSystem, this.controlSelection, this.commands,
-    );
+    const stageDeps: StageDeps = [
+      hud, scene.scene, this.dynamicSystem, celestialSystem, this.controlSelection, this.commands,
+    ];
+    this.activeStage = initialSave === undefined
+      ? stageClass.create(...stageDeps)
+      : stageClass.deserialize(initialSave.stage, ...stageDeps);
     this.viewer = initialSave === undefined
       ? Viewer.create(this.controlSelection, this.events, celestialSystem)
       : Viewer.deserialize(initialSave, this.dynamicSystem, this.controlSelection, this.events, celestialSystem);

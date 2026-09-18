@@ -1,5 +1,5 @@
 // Stage 0: 近傍の色分けクラスタを制限時間内に何機撃墜できるかのスコアアタック。タイムアップで終了。
-import { Stage, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
+import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { generateCluster, STAGE0_PER_GROUP, STAGE0_MAX_RANGE, COLOR_STAGE0_GROUP_ACCENTS } from './spawner/enemy-spawner';
 import { ScoreAttackTimer, type SerializedScoreAttackTimer } from './stage-utils/score-attack-timer';
@@ -29,13 +29,42 @@ export class Stage0 extends Stage {
     `制限時間${stage0TimeLimitMinutes()}分の撃墜数スコアアタック`;
   static readonly selectKey = 'KeyT';
 
-  private readonly timer: ScoreAttackTimer;
+  // 制限時間のタイマーと共通の状態から組む。省いたタイマーは制限時間いっぱいから始まる。
+  private constructor(
+    deps: StageDeps,
+    private readonly timer = new ScoreAttackTimer(STAGE0_TIME_LIMIT),
+    ...common: CommonStageState
+  ) {
+    super(deps, ...common);
+  }
 
-  // 保存があれば残り時間を引き継いでタイマーを組む。
-  constructor(saved: SerializedStage | undefined, ...deps: StageDeps) {
-    super(saved, ...deps);
-    this.timer = new ScoreAttackTimer((saved as SerializedStage0 | undefined)?.timeLeft ?? STAGE0_TIME_LIMIT);
-    this.begin();
+  // 弾薬ゼロの自機を置き、初期補給と敵クラスタを配置して始める。
+  public static create(...deps: StageDeps): Stage0 {
+    const stage = new Stage0(deps);
+    // 弾切れの自機のまわりに補給を浮かべる
+    const player = stage.addPlayer({ ammo: { mags: 0, rounds: 0 } });
+    for (let i = 0; i < STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
+      stage.logistics.spawnForPlayer(player, STAGE0_LOGISTICS_MIN_DIST, STAGE0_LOGISTICS_MAX_DIST);
+    }
+    // 自機の近傍に色分けクラスタを置く
+    const enemies = generateCluster(
+      player.motion.state, stage._celestialSystem.celestialMotions,
+      stage._scene, stage._dynamicSystem.idAllocators,
+    );
+    for (const enemy of enemies) stage.addEnemy(enemy);
+    stage.composeBriefing();
+    return stage;
+  }
+
+  // 直列化した形から復元する。
+  public static deserialize(serialized: SerializedStage0, ...deps: StageDeps): Stage0 {
+    const { timeLeft } = serialized;
+    return new Stage0(
+      deps,
+      // null も欠けと同じく制限時間いっぱいから始める(既定引数は undefined でしか働かない)。
+      timeLeft == null ? undefined : ScoreAttackTimer.deserialize(timeLeft),
+      ...Stage.deserializeCommonState(serialized, deps, Stage0.stageRules),
+    );
   }
 
   // ステージ開始時のブリーフィング文言を返す。
@@ -48,18 +77,6 @@ export class Stage0 extends Stage {
     );
   }
 
-  // 弾薬ゼロの自機を置き、初期補給と敵クラスタを配置する。
-  protected init(): void {
-    const player = this.addPlayer({ ammo: { mags: 0, rounds: 0 } });
-    for (let i = 0; i < STAGE0_LOGISTICS_INITIAL_AMMO; i++) {
-      this.logistics.spawnForPlayer(player, STAGE0_LOGISTICS_MIN_DIST, STAGE0_LOGISTICS_MAX_DIST);
-    }
-    const enemies = generateCluster(
-      player.motion.state, this._celestialSystem.celestialMotions,
-      this._scene, this._dynamicSystem.idAllocators,
-    );
-    for (const enemy of enemies) this.addEnemy(enemy);
-  }
   // 補給と制限時間を1フレーム分進める。
   update(dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
@@ -80,6 +97,7 @@ export class Stage0 extends Stage {
     return `残り時間: ${Math.ceil(this.timer.timeLeft)}秒`;
   }
 
+  // 共通の内訳へ残り時間を足して直列化する。
   serialize(): SerializedStage0 {
     return { ...super.serialize(), timeLeft: this.timer.serialize() };
   }

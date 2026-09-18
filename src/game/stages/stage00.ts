@@ -1,5 +1,5 @@
 // Stage 00: 無限耐久サバイバル。弾薬確保後、波状攻撃が自機破壊まで無限に続く。
-import { Stage, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
+import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
@@ -18,14 +18,37 @@ export class Stage00 extends Stage {
 
   private readonly waveAttack: WaveAttack;
 
-  // 保存があれば波状攻撃の進行を引き継いで始める。
-  constructor(saved: SerializedStage | undefined, ...deps: StageDeps) {
-    super(saved, ...deps);
-    this.waveAttack = new WaveAttack(
+  // 波状攻撃の進行と共通の状態から組む。省いた波状攻撃は新しい進行から始まる。
+  private constructor(deps: StageDeps, waveAttack?: WaveAttack, ...common: CommonStageState) {
+    super(deps, ...common);
+    this.waveAttack = waveAttack ?? new WaveAttack(
       this._dynamicSystem.events, this._scene, this._celestialSystem.celestialMotions,
-      this._dynamicSystem.idAllocators, saved as SerializedStage00 | undefined,
+      this._dynamicSystem.idAllocators,
     );
-    this.begin();
+  }
+
+  // 自機・弾薬ピックアップ・初期の敵ウェーブを配置して始める。
+  public static create(...deps: StageDeps): Stage00 {
+    const stage = new Stage00(deps);
+    const player = stage.addPlayer();
+    for (let i = 0; i < MAX_ACTIVE_AMMO_PICKUPS; i++) {
+      stage.logistics.spawnForPlayer(player, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST);
+    }
+    stage.waveAttack.spawnWave(player, (enemy) => stage.addEnemy(enemy), 'random');
+    stage.composeBriefing();
+    return stage;
+  }
+
+  // 直列化した形から復元する。波状攻撃の進行は、共通の内訳と同じ段に並んでいる。
+  public static deserialize(serialized: SerializedStage00, ...deps: StageDeps): Stage00 {
+    const [, scene, dynamicSystem, celestialSystem] = deps;
+    return new Stage00(
+      deps,
+      WaveAttack.deserialize(
+        serialized, dynamicSystem.events, scene, celestialSystem.celestialMotions, dynamicSystem.idAllocators,
+      ),
+      ...Stage.deserializeCommonState(serialized, deps, Stage00.stageRules),
+    );
   }
 
   // ミッション概要のブリーフィング文(HTML)を返す。
@@ -36,15 +59,6 @@ export class Stage00 extends Stage {
       '補給マガジンが近くに浮いている — 弾切れ時は回収せよ<br>' +
       `[${K.help.label}] キーで操作方法を表示`
     );
-  }
-
-  // 自機・弾薬ピックアップ・初期の敵ウェーブを配置する。
-  protected init(): void {
-    const player = this.addPlayer();
-    for (let i = 0; i < MAX_ACTIVE_AMMO_PICKUPS; i++) {
-      this.logistics.spawnForPlayer(player, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST);
-    }
-    this.waveAttack.spawnWave(player, (enemy) => this.addEnemy(enemy), 'random');
   }
 
   // 補給と波状攻撃の更新を行う。
@@ -64,6 +78,7 @@ export class Stage00 extends Stage {
     return `第${this.waveAttack.waveCount}波`;
   }
 
+  // 共通の内訳と同じ段へ、波状攻撃の進行を並べて直列化する。
   serialize(): SerializedStage00 {
     return {
       ...super.serialize(),
