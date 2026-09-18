@@ -118,8 +118,9 @@ export abstract class Enemy extends Vessel implements CombatTarget {
   public get isBursting(): boolean { return this.fireController.isBursting; }
 
   // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径・判定形状)を受けて、
-  // placement の識別・色・陣形所属と運動状態で置く。alive・burstLeft・burstDelay は生死とバースト
-  // 射撃の途中経過で、省けば新しく置いたときの状態で始める。
+  // placement の識別・色・陣形所属と運動状態で置く。alive は生死、burstLeft・burstDelay はバースト
+  // 射撃の途中経過、lastFireSim・lastBehaviorSim は最後に射撃の機会が巡った時刻と最後に行動した時刻で、
+  // 省けば新しく置いたときの状態で始める。
   protected constructor(
     placement: EnemyPlacement,
     view: DynamicView,
@@ -130,6 +131,8 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     alive = true,
     burstLeft?: number,
     burstDelay?: number,
+    lastFireSim?: number,
+    lastBehaviorSim?: number,
   ) {
     // 運動の接触・焼失をこの敵へ通知させ、識別を採番する
     const attitude = { q: placement.q, w: placement.w, inertia };
@@ -167,7 +170,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       muzzlePosition: () => this.muzzlePosition(),
       plasmaDamage: () => this.plasmaDamage(),
       muzzleEffect: (muzzleState, events) => this.muzzleEffect(muzzleState, events),
-    }, burstLeft, burstDelay);
+    }, burstLeft, burstDelay, lastFireSim, lastBehaviorSim);
     this.reactions = new EnemyReactions({
       motion: this.motion,
       modelScale: ENEMY_MODEL_SCALE,

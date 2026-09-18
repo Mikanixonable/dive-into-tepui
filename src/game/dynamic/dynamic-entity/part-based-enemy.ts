@@ -22,8 +22,13 @@ export abstract class PartBasedEnemy extends Enemy implements PartDamageTarget {
     alive?: boolean,
     burstLeft?: number,
     burstDelay?: number,
+    lastFireSim?: number,
+    lastBehaviorSim?: number,
   ) {
-    super(placement, view, inertia, radius, idAllocators, undefined, alive, burstLeft, burstDelay);
+    super(
+      placement, view, inertia, radius, idAllocators, undefined, alive,
+      burstLeft, burstDelay, lastFireSim, lastBehaviorSim,
+    );
     this.partModel.replaceParts(parts);
     this.maxHp = this.partModel.maxHp;
     this.hp = this.partModel.overallHp();
