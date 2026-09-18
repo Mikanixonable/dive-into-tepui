@@ -69,6 +69,7 @@ export class CameraSelection implements CameraSelectionSource {
     }, events, saved?.overview);
   }
 
+  // view が表に出ているときに使う1台。
   public camera(view: ViewMode): FocusCameraSelection {
     return view === 'map' ? this.map : this.combat;
   }
