@@ -3,7 +3,7 @@ import type * as THREE from 'three/webgpu';
 import type { ViewMode } from '../view/view-mode';
 import { Attitude, deserializeAttitude } from '../../physics/attitude';
 import { qFromBasis } from '../../math/quat';
-import { KinematicState, deserializeKinematicState, kinematicState } from '../../physics/kinematic-state';
+import { KinematicState, deserializeKinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, v3, len, sub } from '../../math/vec3';
 import { Ship } from '../dynamic/dynamic-entity/ship';
 import { bulletReactionOf, type BulletType, type Shooter } from '../dynamic/dynamic-entity/bullet-reaction';
@@ -15,14 +15,16 @@ import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
 import type { RunEventSink } from '../run-events';
 import { generateRandomName } from '../random-name';
 import { Throttle, type SerializedThrottle } from './throttle';
-import { FireControl, type AmmoLoad, type SerializedFireControl } from './fire-control';
+import { FireControl, type SerializedFireControl } from './fire-control';
+import { WeaponState, type AmmoLoad } from './weapon-state';
 import { AltitudeAlarm } from './altitude-alarm';
 import { PlayerView, type PlayerRenderSource } from '../../render/dynamic/player/player-view';
 import type { DynamicViewFrame } from '../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../orbit-reference';
 import type { RadiatorSide, SerializedRadiatorSystem } from './radiator';
-import type { SerializedPowerSystem } from './power';
-import type { SerializedBoosterStack } from './booster-stack';
+import { DeployablePanelState } from './deployable-panel-state';
+import { PowerSystem, type SerializedPowerSystem } from './power';
+import { BoosterStack, type SerializedBoosterStack } from './booster-stack';
 
 import { Plan, type PlanExecutionMode, type SerializedPlan } from '../plan/plan';
 import { deserializePart, type Part, type SerializedPart } from '../dynamic/dynamic-entity/parts';
@@ -45,7 +47,6 @@ import { createPlayerParts, PLAYER_INERTIA_PITCH, PLAYER_INERTIA_YAW, PLAYER_INE
 import type { PartDamageTarget } from '../dynamic/dynamic-entity/damage-capabilities';
 
 export const PLAYER_HULL_RADIUS = 2.6; // 剛体接触(被弾判定を含む)に使う実寸に近い半径 [m]
-const HULL_START_TEMP = 273; // 初期機体温度 [K]
 
 // 展開中の放熱板に当たった1発が放熱板パーツへ与えるダメージ [HP]。薄く大きい構造物なので
 // 船体への直撃(PLASMA_BULLET_DAMAGE)より軽い。
@@ -62,7 +63,6 @@ const HP_REGEN_RATE = 1; // HP自動回復速度 [HP/s]
 // 給弾ベルトの節点数。たわみ物理の鎖の長さと、表示するリンクメッシュの本数を揃える。
 const BELT_MAX_VISIBLE = 18;
 
-// 軌道計画の実行モードの巡回順。ボタン1つで次のモードへ進める。
 // 新規配置の艦。state に機首プログレードで置き、name/id/ammo は任意指定する。
 export type PlayerPlacement = {
   readonly name?: string;
@@ -90,12 +90,6 @@ export interface SerializedPlayer extends SerializedDynamicEntityFields {
   readonly boosters?: SerializedBoosterStack;
 }
 
-// 艦の生成引数。新規配置には、機首と上面の向きを測る中心天体 center を添える。saved は simTime 付きの
-// 状態として展開するスナップショットからの再開。
-type PlayerInit =
-  | (PlayerPlacement & { readonly center: CelestialBody })
-  | { readonly saved: SerializedPlayer; readonly simTime: number };
-
 // プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、被弾・接触の帰結と保存を持つ。
 export class Player extends Ship implements Controllable, PartDamageTarget {
   public override readonly mapKind: DynamicEntityKind = 'player';
@@ -107,37 +101,39 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   public override readonly reclaimedByOwner = true;
 
   public declare readonly motion: PlayerMotion;
-  public readonly throttle: Throttle;
   public readonly fire: FireControl;
   public readonly altitudeAlarm: AltitudeAlarm;
   public readonly boosters: AttachedBoosters;
   private readonly effects: PlayerEffects;
   public override get parts(): readonly Part[] { return super.parts; }
-  // この艦自身のマニューバ計画。
-  public readonly plan = new Plan();
-  public planExecution: PlanExecutionMode = 'instant';
 
-  public fineAttitude = false;
   public readonly toggleSolarPanel = (side: 'up' | 'down'): void => this.motion.power.toggle(side);
   public readonly toggleRadiator = (side: 'up' | 'down'): void => this.motion.radiator.toggle(side);
 
-  // name を省いた新規艦は無作為な名前になる。id を省いたときは name がそのまま
-  // 艦の識別子になるので、複数隻を並べるなら name も分ける。
-  public constructor(
+  // name は表示名、id は採番器が配った識別子、state と attitude は運動状態。weapon から後ろは
+  // 下位系の状態と部品で、省いたものは新しく作ったときの状態で始める。plan はこの艦自身の
+  // マニューバ計画。
+  private constructor(
     private readonly events: RunEventSink,
     scene: THREE.Scene,
     idAllocators: EntityIdAllocators,
-    init: PlayerInit,
+    name: string,
+    id: string,
+    state: KinematicState,
+    attitude: Attitude,
+    weapon?: WeaponState,
+    hullTemperature?: number,
+    radiatorUp?: DeployablePanelState,
+    radiatorDown?: DeployablePanelState,
+    power?: PowerSystem,
+    boosters?: BoosterStack,
+    public readonly throttle = new Throttle(),
+    parts: readonly Part[] = createPlayerParts(PLAYER_MAX_HP),
+    public readonly plan = Plan.create(),
+    public planExecution: PlanExecutionMode = 'instant',
+    public fineAttitude = false,
   ) {
-    const effects = new PlayerEffects(events);
-    const saved = 'saved' in init ? init.saved : undefined;
-    const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
-    const state = 'saved' in init ? deserializeKinematicState(init.saved, init.simTime) : init.state;
-    const id = idAllocators.entity.next('saved' in init ? init.saved.id : (init.id ?? name));
-    const att: Attitude = 'saved' in init
-      ? deserializeAttitude(init.saved, Player.INERTIA)
-      : Player.progradeAttitude(state, init.center);
-
+    // Motion が読む値と、接触・喪失の通知先をこの艦へ結ぶ
     const reactions = (owner: Player): PlayerMotionReactions => ({
       weapon: {
         roundsInMagazine: () => owner.fire.rounds,
@@ -168,58 +164,89 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
         receiveBurnUp: services => owner.receiveBurnUp(services),
       },
     });
+    // 運動・表示・部品を組んでから、この艦を参照する下位系を組む
     super(
       name,
       PLAYER_MAX_HP,
       owner => new PlayerMotion(
         state,
-        att,
+        attitude,
         PLAYER_HULL_RADIUS,
-        saved?.thermal.hullTemp ?? HULL_START_TEMP,
         BELT_MAX_VISIBLE,
         reactions(owner as Player),
-        saved?.radiator,
-        saved?.power,
-        saved?.boosters,
+        hullTemperature,
+        radiatorUp,
+        radiatorDown,
+        power,
+        boosters,
       ),
       new PlayerView(scene, id, BELT_MAX_VISIBLE),
       id,
-      createPlayerParts(PLAYER_MAX_HP),
+      parts,
     );
-    this.throttle = new Throttle(saved?.throttle);
-    this.effects = effects;
-    this.fire = new FireControl(
-      this, events, scene, 'saved' in init ? { saved: init.saved.fire } : { ammo: init.ammo });
+    this.effects = new PlayerEffects(events);
+    this.fire = new FireControl(this, events, scene, weapon);
     this.altitudeAlarm = new AltitudeAlarm(events);
     this.boosters = new AttachedBoosters(
       this.motion, this.motion.attachedBoosters, idAllocators, events, scene,
     );
-    if (saved) {
-      this.planExecution = saved.planExecution ?? 'off';
-      this.fineAttitude = saved.fineAttitude ?? false;
-      if (Array.isArray(saved.parts)) {
-        const restoredParts = saved.parts.map(deserializePart).filter((part) => part !== null);
-        // 部品が壊れているスナップショットは、初期部品を残して船体を空にしない。
-        if (restoredParts.length > 0) {
-          this.replaceParts(restoredParts);
-        }
-      }
+  }
 
-      if (saved.plan) {
-        // 計画を保存時の起点から組み直す。起点より前のノードは復元できない。
-        const anchor = kinematicState<'eci'>(
-          saved.plan.anchor.t,
-          v3(saved.plan.anchor.r.x, saved.plan.anchor.r.y, saved.plan.anchor.r.z),
-          v3(saved.plan.anchor.v.x, saved.plan.anchor.v.y, saved.plan.anchor.v.z),
-        );
-        let rejected = 0;
-        for (const n of saved.plan.nodes) {
-          const idx = this.plan.addNode(kinematicState<'eci'>(n.t, v3(n.r.x, n.r.y, n.r.z), v3(n.v.x, n.v.y, n.v.z)), anchor);
-          if (idx < 0) rejected++;
-        }
-        if (rejected > 0) events.record({ kind: 'planNodesDropped', ship: this.name, count: rejected });
-      }
-    }
+  // placement に新しく置く。機首は center に対する速度の向き、上面は center から見た位置の向き。
+  // name を省くと無作為な名前になる。id を省くと name がそのまま艦の識別子になるので、複数隻を
+  // 並べるなら name も分ける。
+  public static create(
+    placement: PlayerPlacement,
+    center: CelestialBody,
+    events: RunEventSink,
+    idAllocators: EntityIdAllocators,
+    scene: THREE.Scene,
+  ): Player {
+    const name = placement.name ?? generateRandomName('player');
+    return new Player(
+      events, scene, idAllocators, name, idAllocators.entity.next(placement.id ?? name),
+      placement.state, Player.progradeAttitude(placement.state, center),
+      placement.ammo ? WeaponState.create(placement.ammo) : undefined,
+    );
+  }
+
+  // 直列化した艦を、時刻 simTime の状態として復元する。計画のうち起点より前のノードは戻せないので、
+  // その数を events へ記録する。
+  public static deserialize(
+    serialized: SerializedPlayer,
+    simTime: number,
+    events: RunEventSink,
+    idAllocators: EntityIdAllocators,
+    scene: THREE.Scene,
+  ): Player {
+    const { radiator, plan } = serialized;
+    const parts = Array.isArray(serialized.parts)
+      ? serialized.parts.map(deserializePart).filter((part) => part !== null)
+      : [];
+    const player = new Player(
+      events, scene, idAllocators,
+      serialized.name || serialized.id,
+      idAllocators.entity.next(serialized.id),
+      deserializeKinematicState(serialized, simTime),
+      deserializeAttitude(serialized, Player.INERTIA),
+      serialized.fire ? WeaponState.deserialize(serialized.fire) : undefined,
+      // null も欠けと同じく既定へ落とす(既定引数は undefined でしか働かない)。
+      serialized.thermal.hullTemp ?? undefined,
+      radiator?.up ? DeployablePanelState.deserialize(radiator.up) : undefined,
+      radiator?.down ? DeployablePanelState.deserialize(radiator.down) : undefined,
+      serialized.power ? PowerSystem.deserialize(serialized.power) : undefined,
+      serialized.boosters ? BoosterStack.deserialize(serialized.boosters) : undefined,
+      serialized.throttle ? Throttle.deserialize(serialized.throttle) : undefined,
+      // 部品が壊れている記録は、既定の部品で組んで船体を空にしない。
+      parts.length > 0 ? parts : undefined,
+      plan ? Plan.deserialize(plan) : undefined,
+      // 記録に無い計画の実行は、新しく作ったときと違って止めておく。
+      serialized.planExecution ?? 'off',
+      serialized.fineAttitude ?? undefined,
+    );
+    const dropped = plan ? Plan.droppedNodeCount(plan) : 0;
+    if (dropped > 0) events.record({ kind: 'planNodesDropped', ship: player.name, count: dropped });
+    return player;
   }
 
   // 3軸を非対称にし、中間軸(ピッチ)周りの回転にジャニベコフ効果(中間軸不安定性)が
@@ -568,19 +595,8 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       planExecution: this.planExecution,
       fineAttitude: this.fineAttitude,
       showTrajectoryLine,
-      plan: this.serializePlan(),
+      plan: this.plan.serialize(),
       boosters: this.motion.attachedBoosters.serialize(),
-    };
-  }
-
-  // 計画の保存形。凍結された計画が無ければ null。
-  private serializePlan(): SerializedPlan | null {
-    const frozen = this.plan.frozenData();
-    if (!frozen) return null;
-    const { anchor, nodes } = frozen;
-    return {
-      anchor: { t: anchor.t, r: { ...anchor.r }, v: { ...anchor.v } },
-      nodes: nodes.map((n) => ({ t: n.t, r: { ...n.r }, v: { ...n.v } })),
     };
   }
 

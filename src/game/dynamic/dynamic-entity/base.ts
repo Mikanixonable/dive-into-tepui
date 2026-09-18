@@ -64,7 +64,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   public override readonly controllable = true;
   public override readonly pickable = true;
 
-  public readonly plan = new Plan();
+  public readonly plan = Plan.create();
   public planExecution: PlanExecutionMode = 'off';
   public fineAttitude = false;
   // 除去の前に注視・操作対象の参照を引き継ぐ必要があるので、所有者側に回収させる。
@@ -124,7 +124,8 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
       entityId,
     );
     this.setName(name);
-    this.throttle = new Throttle('saved' in init ? init.saved.throttle : undefined);
+    this.throttle = 'saved' in init && init.saved.throttle
+      ? Throttle.deserialize(init.saved.throttle) : new Throttle();
     this._money = 'saved' in init ? init.saved.money : BASE_INITIAL_MONEY;
   }
 

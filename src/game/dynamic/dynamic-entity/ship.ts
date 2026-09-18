@@ -40,11 +40,6 @@ export abstract class Ship extends Vessel {
 
   public hasPart(part: Part): boolean { return this.partModel.hasPart(part); }
 
-  // 総 HP を total へ按分して戻す。部品単位の HP を持たない記録からの復元で使う。
-  protected setOverallHp(total: number): void {
-    this.hp = this.partModel.setOverallHp(total);
-  }
-
   // 接近速度に応じたダメージを入れ、ダメージが出たかを返す。part を指定すると
   // その部品へ固定し、省略すると健全な部品へ無作為に割り振る。
   protected applyCollisionDamage(closingSpeed: number, part?: Part): boolean {
