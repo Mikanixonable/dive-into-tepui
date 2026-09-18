@@ -17,18 +17,42 @@ function nearAnyAnchor(r: Vec3, zones: readonly EngagementZone<EngagementPartici
 export type Shooter = 'player' | 'enemy';
 export type BulletType = 'normal' | 'plasma';
 
+// 弾1発の発射時刻・寿命・撃ち手・弾種・ダメージと、敵弾が交戦圏の中心の近くを通ったか。
+export interface SerializedBulletReaction {
+  readonly bornSim: number;
+  readonly lifetime: number;
+  readonly shooter: Shooter;
+  readonly type: BulletType;
+  readonly damage: number;
+  readonly passedClose: boolean;
+}
+
 // 弾1発の当たる相手・寿命・消滅の判定。
 export class BulletReaction implements DynamicMotionBehavior {
   public readonly contactKind = 'bullet';
-  private passedClose = false;
 
+  // bornSim [sim s] に撃たれ lifetime [sim s] だけ飛ぶ弾。damage は命中した相手へ与えるダメージ
+  // [HP]、passedClose は交戦圏の中心の近くを通ったことを記録済みか。
   public constructor(
     private readonly bornSim: number,
     private readonly lifetime: number,
     public readonly shooter: Shooter,
     public readonly type: BulletType,
     public readonly damage: number,
+    private passedClose = false,
   ) {}
+
+  // 直列化した形へ変換する。
+  public serialize(): SerializedBulletReaction {
+    return {
+      bornSim: this.bornSim,
+      lifetime: this.lifetime,
+      shooter: this.shooter,
+      type: this.type,
+      damage: this.damage,
+      passedClose: this.passedClose,
+    };
+  }
 
   // other と当たるか。弾同士、敵弾と敵機、発射から猶予内の自機の弾と自機を除く。
   public contactsWith(_self: DynamicMotion, other: DynamicMotion, simTime: number): boolean {

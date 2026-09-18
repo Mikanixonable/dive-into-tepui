@@ -4,7 +4,7 @@
 import type { Player } from '../../player/player';
 import { fmtEnergy } from '../../../hud/utils';
 import { Meter } from '../../../hud/widgets';
-import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/ship';
+import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/vessel';
 import { POWER_CAPACITY } from '../../player/power';
 
 const LOW_HP_RATIO = 0.3;

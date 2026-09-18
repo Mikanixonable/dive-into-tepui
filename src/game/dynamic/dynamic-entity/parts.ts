@@ -58,6 +58,8 @@ export type AnyPart = HullPart | CockpitPart | ArmorPart | ThrusterPart | RcsTan
 
 type ExtractPart<TType extends PartType> = Extract<AnyPart, { type: TType }>;
 
+export type SerializedPart = Readonly<AnyPart>;
+
 // type の既定値に overrides を重ねてパーツを作る。id は呼び出しごとにランダム発行される。
 export function createPart<TType extends PartType>(
   type: TType,
@@ -74,59 +76,64 @@ export function createPart<TType extends PartType>(
   return { ...base, ...overrides } as unknown as ExtractPart<TType>;
 }
 
-// セーブされた AnyPart の生データを createPart 経由で組み立てる。id も引き継ぐので、
-// セーブ前後でパーツの同一性(id)が保たれる。
 const PART_TYPES: readonly PartType[] = [
   'hull', 'cockpit', 'armor', 'thruster', 'rcs_tank', 'radiator', 'solar_panel', 'weapon',
 ];
 
+// 有限な数なら 0 以上へ切り詰めた値、それ以外は 0。
 function nonNegative(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
-export function partFromSaveData(data: AnyPart): AnyPart | null {
-  if (data === null || typeof data !== 'object'
-    || !PART_TYPES.includes(data.type as PartType)) return null;
-  const maxHp = typeof data.maxHp === 'number' && Number.isFinite(data.maxHp) && data.maxHp > 0
-    ? data.maxHp : 1;
-  const hp = typeof data.hp === 'number' && Number.isFinite(data.hp)
-    ? Math.max(0, Math.min(maxHp, data.hp)) : 0;
+// 直列化された部品を復元する。id も引き継ぐので、直列化の前後で部品の同一性(id)が保たれる。
+// 種別が不正なら null。ほかの項目が不正なら、その項目だけを安全な値へ落とす。
+export function deserializePart(serialized: SerializedPart): AnyPart | null {
+  if (serialized === null || typeof serialized !== 'object'
+    || !PART_TYPES.includes(serialized.type as PartType)) return null;
+  // 種別に共通の項目。
+  const maxHp = typeof serialized.maxHp === 'number' && Number.isFinite(serialized.maxHp) && serialized.maxHp > 0
+    ? serialized.maxHp : 1;
+  const hp = typeof serialized.hp === 'number' && Number.isFinite(serialized.hp)
+    ? Math.max(0, Math.min(maxHp, serialized.hp)) : 0;
   const common = {
-    id: typeof data.id === 'string' && data.id.length > 0 ? data.id : Math.random().toString(36).slice(2),
-    name: typeof data.name === 'string' ? data.name : 'Unknown Part',
-    weight: nonNegative(data.weight),
+    id: typeof serialized.id === 'string' && serialized.id.length > 0
+      ? serialized.id : Math.random().toString(36).slice(2),
+    name: typeof serialized.name === 'string' ? serialized.name : 'Unknown Part',
+    weight: nonNegative(serialized.weight),
     maxHp,
     hp,
   };
-  switch (data.type) {
+  // 種別ごとの項目。
+  switch (serialized.type) {
     case 'armor':
       return createPart('armor', {
         ...common,
-        damageReduction: typeof data.damageReduction === 'number' && Number.isFinite(data.damageReduction)
-          ? Math.max(0, Math.min(1, data.damageReduction)) : 0,
+        damageReduction: typeof serialized.damageReduction === 'number' && Number.isFinite(serialized.damageReduction)
+          ? Math.max(0, Math.min(1, serialized.damageReduction)) : 0,
       });
     case 'thruster':
       return createPart('thruster', {
         ...common,
-        torque: nonNegative(data.torque),
-        thrust: nonNegative(data.thrust),
-        fuelConsumptionRate: nonNegative(data.fuelConsumptionRate),
+        torque: nonNegative(serialized.torque),
+        thrust: nonNegative(serialized.thrust),
+        fuelConsumptionRate: nonNegative(serialized.fuelConsumptionRate),
       });
     case 'rcs_tank': {
-      const maxFuel = nonNegative(data.maxFuel);
-      return createPart('rcs_tank', { ...common, maxFuel, fuel: Math.min(maxFuel, nonNegative(data.fuel)) });
+      const maxFuel = nonNegative(serialized.maxFuel);
+      return createPart('rcs_tank', { ...common, maxFuel, fuel: Math.min(maxFuel, nonNegative(serialized.fuel)) });
     }
     case 'radiator':
-      return createPart('radiator', { ...common, coolingRate: nonNegative(data.coolingRate) });
+      return createPart('radiator', { ...common, coolingRate: nonNegative(serialized.coolingRate) });
     case 'solar_panel':
-      return createPart('solar_panel', { ...common, powerGeneration: nonNegative(data.powerGeneration) });
+      return createPart('solar_panel', { ...common, powerGeneration: nonNegative(serialized.powerGeneration) });
     case 'weapon':
       return createPart('weapon', {
         ...common,
-        weaponType: data.weaponType === 'cannon' || data.weaponType === 'missile' ? data.weaponType : 'gatling',
-        fireRate: nonNegative(data.fireRate),
-        damage: nonNegative(data.damage),
-        muzzleVelocity: nonNegative(data.muzzleVelocity),
+        weaponType: serialized.weaponType === 'cannon' || serialized.weaponType === 'missile'
+          ? serialized.weaponType : 'gatling',
+        fireRate: nonNegative(serialized.fireRate),
+        damage: nonNegative(serialized.damage),
+        muzzleVelocity: nonNegative(serialized.muzzleVelocity),
       });
     case 'hull':
       return createPart('hull', common);
@@ -135,4 +142,13 @@ export function partFromSaveData(data: AnyPart): AnyPart | null {
     default:
       return null;
   }
+}
+
+// 直列化された部品の一覧を復元する。種別が不正な部品は落とし、1つも残らなければ、空の機体でなく
+// 既定の構成で組ませるために undefined を返す。
+export function deserializeParts(serialized: readonly SerializedPart[]): AnyPart[] | undefined {
+  const parts = Array.isArray(serialized)
+    ? serialized.map(deserializePart).filter((part) => part !== null)
+    : [];
+  return parts.length > 0 ? parts : undefined;
 }

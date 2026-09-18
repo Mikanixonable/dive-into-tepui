@@ -8,7 +8,7 @@ import { airflow } from '../../physics/atmosphere';
 import { localOrbitPeriod } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
-import { type KinematicState } from '../../physics/kinematic-state';
+import type { KinematicState } from '../../physics/kinematic-state';
 import { environmentSampleAt, type DynamicsEnvironmentSample } from '../../physics/dynamics';
 import { isStar } from '../../physics/celestial-body-def';
 import {
@@ -113,6 +113,7 @@ export interface DynamicMotionProperties {
   readonly srpCoeff?: number;
   readonly temperature?: number;
   readonly thermalDeviation?: number;
+  readonly pendingSpecificHeat?: number;
   readonly specificHeat?: number;
   readonly bulkDensity?: number;
   readonly radiatingAreaPerMass?: number;
@@ -156,14 +157,24 @@ function identityAttitude(): Attitude {
   return { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
 }
 
-// 1体の物理結果を変えうる状態(軌道・姿勢・熱・予測弧)をすべて所有する。
+// 熱の状態。直列化の形を兼ね、復元では DynamicMotionProperties の同名の項目として渡す。
+export interface DynamicMotionThermal {
+  readonly temperature: number; // 平均温度 [K]
+  readonly thermalDeviation: number; // 平均からの温度差 [K]
+  readonly pendingSpecificHeat: number; // 次の熱の歩で温度へ足す熱量 [J/kg]
+}
+
+// 1体の軌道・姿勢・熱を所有し、予測の弧をキャッシュとして持つ。
 export class DynamicMotion {
   public readonly actual: DynamicTrajectory;
   public readonly hasAttitude: boolean;
   public readonly behavior: DynamicMotionBehavior;
+  // 姿勢・角速度と主慣性モーメント。慣性は、種別と構成から決まる個体ではキャッシュ。
   public att: Attitude;
+  // 直前の刻みの姿勢(キャッシュ)。
   public prevAtt: Attitude;
   public alive = true;
+  // 質量 [kg]。種別と構成から決まるキャッシュ。
   public mass: number;
   public readonly radius: number;
   public readonly collides: boolean;
@@ -172,6 +183,7 @@ export class DynamicMotion {
   public readonly contactDamageWeight: number;
   // 本体に取り付けた付属物なら、その本体。
   public attachedTo: DynamicMotion | null = null;
+  // 姿勢の積分に加えるトルク。指令から積分の前に毎フレーム書き直すキャッシュ。
   public torque: Vec3 = v3();
   private readonly fixedBcInv: number;
   private readonly fixedSrpCoeff: number;
@@ -186,9 +198,12 @@ export class DynamicMotion {
 
   private readonly fixedRadiatingAreaPerMass: number;
   private readonly baseHistoryDuration: number;
+  // 予測の弧。実状態から引き直すキャッシュ。
   private predictedArc: PredictedArc | null = null;
+  // 需要が求める履歴の長さ [s](キャッシュ)。
   private requestedHistoryDuration = 0;
-  private pendingSpecificHeat = 0;
+  private pendingSpecificHeat: number;
+  // 推力。指令から積分の前に毎フレーム書き直すキャッシュ。
   private _thrust: Vec3 | null = null;
 
   // state から始まる軌道を組む。options で省いた物性は既定値になる。
@@ -210,6 +225,7 @@ export class DynamicMotion {
     // 熱
     this.temperature = options.temperature ?? ENV_TEMP;
     this.thermalDeviation = options.thermalDeviation ?? 0;
+    this.pendingSpecificHeat = options.pendingSpecificHeat ?? 0;
     this.specificHeat = options.specificHeat ?? 0;
     this.bulkDensity = options.bulkDensity ?? SMALL_DEBRIS_BULK_DENSITY;
     this.fixedRadiatingAreaPerMass = options.radiatingAreaPerMass ?? 0;
@@ -234,6 +250,14 @@ export class DynamicMotion {
   public get contactKind(): ContactKind { return this.behavior.contactKind ?? 'generic'; }
   public get contactMass(): number { return this.behavior.contactMass?.(this) ?? this.mass; }
   public get thrust(): Vec3 | null { return this._thrust; }
+  // いまの熱の状態の写し。
+  public get thermal(): DynamicMotionThermal {
+    return {
+      temperature: this.temperature,
+      thermalDeviation: this.thermalDeviation,
+      pendingSpecificHeat: this.pendingSpecificHeat,
+    };
+  }
   // 推力を与えると予測弧を捨てる。null は無推力。
   public set thrust(thrust: Vec3 | null) {
     this._thrust = thrust;

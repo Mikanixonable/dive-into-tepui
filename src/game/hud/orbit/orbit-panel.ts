@@ -6,7 +6,7 @@ import type { OrbitReferenceMode } from '../../viewer/orbit-reference-selection'
 import { Button, SegmentedControl } from '../../../hud/widgets';
 
 import { getApsisLabelSpec } from './orbit-labels';
-import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/ship';
+import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/vessel';
 import { MAX_DYN_PRESSURE } from '../../player/aero-load';
 
 const SYNC_INTERVAL_MS = 100;

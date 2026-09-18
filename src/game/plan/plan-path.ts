@@ -18,7 +18,7 @@ import { BodyImpact, PredictedArc } from '../dynamic/predicted-arc';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import { clipSamplesTo, samplesInRange, stateAt, withinEnd } from './arc-range';
 import { goldenSectionMin } from '../../math/optimize';
-import { SHIP_BCINV, SHIP_SRP_COEFF } from '../dynamic/dynamic-entity/ship';
+import { SHIP_BCINV, SHIP_SRP_COEFF } from '../dynamic/dynamic-entity/vessel';
 import { PLAYER_HULL_RADIUS } from '../player/player';
 
 // 折れ線が自分自身に重なる(周回を跨いで表示期間が延びた)場合、最短画面距離からこの
