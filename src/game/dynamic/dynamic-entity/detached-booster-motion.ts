@@ -21,12 +21,14 @@ import {
 
 const BOOSTER_COLLISION_RADIUS = 4.2; // 長さ8mの段を包む接触球 [m]
 
+// 分離ブースターの燃焼と、分離直後の接触の猶予。
 class DetachedBoosterBehavior implements DynamicMotionBehavior {
   public readonly contactKind = 'booster';
   public readonly stack: BoosterStack;
   // 直近の刻みの燃焼比(キャッシュ)。
   public burnRatio = 0;
 
+  // 段 stage 1つを燃やし、collisionEnableAt [sim s] まで接触させない。
   public constructor(stage: BoosterStage, private readonly collisionEnableAt: number) {
     this.stack = new BoosterStack([stage]);
   }
@@ -68,6 +70,7 @@ export class DetachedBoosterMotion extends DynamicMotion {
     thermal?: DynamicMotionThermal,
   ) {
     const behavior = new DetachedBoosterBehavior(stage, collisionEnableAt);
+    // 質量は残った段から、熱の物性は小さな金属片の値で決める
     super(state, {
       attitude,
       ...thermal,
@@ -88,10 +91,12 @@ export class DetachedBoosterMotion extends DynamicMotion {
     this.booster = behavior;
   }
 
+  // 燃やしている段。
   public get stage(): BoosterStage {
     return this.booster.stack.stages[0]!;
   }
 
+  // 直近の刻みの燃焼比。
   public get burnRatio(): number {
     return this.booster.burnRatio;
   }

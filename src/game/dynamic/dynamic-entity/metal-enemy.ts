@@ -64,6 +64,7 @@ export class MetalEnemy extends PartBasedEnemy {
     lastBehaviorSim?: number | null,
   ) {
     const { typeIndex, accent } = placement;
+    // 型番の有無で見た目と慣性を選ぶ
     const metalView = typeIndex === null
       ? new MetalEnemyView(accent, ENEMY_MODEL_SCALE, scene)
       : new Stage0MetalEnemyView(accent, typeIndex, ENEMY_MODEL_SCALE, scene);
