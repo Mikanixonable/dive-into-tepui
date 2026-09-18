@@ -36,7 +36,7 @@ function rotateByScreenDrag(
 
 export class CameraOrientation {
   // rotation は追従中なら対象姿勢からの相対値。attitude が null の間は絶対値のまま扱い、
-  // 初めて姿勢が引けたときに相対値へ読み替える(ロード直後がこの状態)。
+  // 初めて姿勢が引けたときに相対値へ読み替える。
   public constructor(
     private rotation: Quat,
     private mode: CameraRotationMode,
@@ -104,8 +104,7 @@ export class CameraOrientation {
     this.attitude = null;
   }
 
-  // 追従の選択だけを差し替える(向きは読み替えない)。初期状態へ戻すときに使い、
-  // 追従中に追従へ戻す場合だけ基準の姿勢を持ち越す。
+  // 追従の選択だけを差し替える。向きは読み替えず、追従中に追従へ戻す場合だけ基準の姿勢を持ち越す。
   public restoreFollow(following: boolean): void {
     this.attitude = following && this.following ? this.attitude : null;
     this.following = following;
