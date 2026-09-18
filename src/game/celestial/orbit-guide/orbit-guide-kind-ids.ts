@@ -1,6 +1,6 @@
 // 焼き込みカタログの族 id(`lyapunov-L1` `halo-L2-N` `axial-L1#2` `resonant-12` など)の命名規則。
 // id を base/point/branch/ew/区間へ分解し、押された軸値の組み合わせから候補 id を組む。
-import type { GuideGroupId } from './orbit-guide-settings';
+import type { GuideGroupId } from './orbit-guide-groups';
 
 // 区間番号を本体から区切る印。
 const SEGMENT_MARK = '#';
