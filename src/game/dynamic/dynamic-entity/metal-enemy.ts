@@ -7,6 +7,7 @@ import {
 import { PartBasedEnemy } from './part-based-enemy';
 import { createShipDefaultParts } from './ship-default-parts';
 import type { EntityIdAllocators } from './entity-id';
+import type { EntityRegistry } from '../entity-registry';
 import type { Part } from './parts';
 import { MetalEnemyView, Stage0MetalEnemyView } from '../../../render/dynamic/dynamic-entity/metal-enemy-view';
 
@@ -88,11 +89,11 @@ export class MetalEnemy extends PartBasedEnemy {
 
   // 直列化した敵を、時刻 simTime の状態として復元する。
   public static deserialize(
-    serialized: SerializedMetalEnemy, simTime: number, idAllocators: EntityIdAllocators, scene?: THREE.Scene,
+    serialized: SerializedMetalEnemy, simTime: number, registry: EntityRegistry, scene?: THREE.Scene,
   ): MetalEnemy {
     return new MetalEnemy(
       { ...deserializeEnemyPlacement(serialized, simTime), typeIndex: serialized.typeIndex },
-      idAllocators,
+      registry.idAllocators,
       scene,
       // 部品ごとの HP は記録に無いので、既定の部品構成へ総 HP を按分する。
       defaultPartsWithOverallHp(serialized.health),
@@ -131,10 +132,8 @@ export class MetalEnemy extends PartBasedEnemy {
     return this.applyCollisionDamage(damageSpeed);
   }
 
-  // 敵に共通する直列化の項目へ型番を足す。showTrajectoryLine はこの敵の予測線・過去線を出しているか。
-  public override serialize(showTrajectoryLine: boolean): SerializedMetalEnemy {
-    return {
-      ...this.serializeEnemyFields(showTrajectoryLine), kind: MetalEnemy.kind, typeIndex: this.typeIndex,
-    };
+  // 敵に共通する直列化の項目へ型番を足す。
+  public override serialize(): SerializedMetalEnemy {
+    return { ...this.serializeEnemyFields(), kind: MetalEnemy.kind, typeIndex: this.typeIndex };
   }
 }

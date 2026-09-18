@@ -209,7 +209,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
 
   private _briefing: string | null = null;
 
-  // 新規開始のランで1度だけ出すブリーフィングの本文(HTML)。再開したランでは null。
+  // 新規開始のランで1度だけ出すブリーフィングの本文(HTML)。復元したランでは null。
   public get briefing(): string | null { return this._briefing; }
 
   // ブリーフィングの本文を、いまの状態から組む。新しいランのステージで、初期配置を終えた後に1度だけ呼ぶ。
@@ -254,10 +254,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   protected addPlayer(placement: Partial<PlayerPlacement> = {}): Player {
     const state = placement.state ?? this.defaultPlayerState();
     const center = strongestAttractor(state.r, this._celestialSystem.celestialMotions, state.t);
-    const ship = Player.create(
-      { ...placement, state }, center,
-      this._dynamicSystem.events, this._dynamicSystem.idAllocators, this._scene,
-    );
+    const ship = Player.create({ ...placement, state }, center, this._dynamicSystem, this._scene);
     this._dynamicSystem.add(ship);
     this._controlSelection.claimIfNone(ship);
     return ship;

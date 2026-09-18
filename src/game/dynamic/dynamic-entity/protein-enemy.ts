@@ -12,7 +12,7 @@ import {
 import {
   proteinAssetGate, proteinRenderDefinitionFor, type ProteinAssetId,
 } from '../../protein/protein-asset-loader';
-import type { SpawnGate } from '../entity-registry';
+import type { EntityRegistry, SpawnGate } from '../entity-registry';
 import type { RunEventSink } from '../../run-events';
 import type { EntityIdAllocators } from './entity-id';
 import type { ProteinDisplaySettings } from '../../../render/protein/protein-display';
@@ -73,7 +73,8 @@ function renderDefinitionFor(assetId: ProteinAssetId): ProteinRenderDefinition {
 export interface SerializedProteinEnemy extends SerializedEnemy {
   readonly kind: 'protein-enemy';
   readonly assetId: ProteinAssetId;
-  readonly display: ProteinDisplaySettings;
+  // タンパク質の敵に共通の表示形態と着色。無いか不正なら既定の表示で読む。
+  readonly display?: ProteinDisplaySettings;
   // 機能部位の HP・フェーズ・修飾。
   readonly protein: SerializedProteinCombatState;
 }
@@ -147,14 +148,14 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   // 直列化した敵を、時刻 simTime の状態として復元する。HP は被弾モデルの記録から戻す。アセットが
   // 未取得なら投げるので、spawnGate で準備完了を待ってから呼ぶこと。
   public static deserialize(
-    serialized: SerializedProteinEnemy, simTime: number, idAllocators: EntityIdAllocators, scene?: THREE.Scene,
+    serialized: SerializedProteinEnemy, simTime: number, registry: EntityRegistry, scene?: THREE.Scene,
   ): ProteinEnemy {
     const definition = definitionFor(serialized.assetId);
     return new ProteinEnemy(
       deserializeEnemyPlacement(serialized, simTime),
       definition,
       serialized.id || serialized.name || serialized.assetId,
-      idAllocators,
+      registry.idAllocators,
       scene,
       serialized.protein ? ProteinCombatState.deserialize(serialized.protein, definition.asset) : undefined,
       // 記録に無い生死は、新しく置いたときと違って撃破済みとして読む。
@@ -242,16 +243,12 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     return true;
   }
 
-  // 敵に共通する直列化の項目へ、アセット・表示設定・被弾モデルの状態を足す。showTrajectoryLine は
-  // この敵の予測線・過去線を出しているか、proteinDisplay はタンパク質の敵に共通の表示形態と着色。
-  public override serialize(
-    showTrajectoryLine: boolean, proteinDisplay: ProteinDisplaySettings,
-  ): SerializedProteinEnemy {
+  // 敵に共通する直列化の項目へ、アセットと被弾モデルの状態を足す。
+  public override serialize(): SerializedProteinEnemy {
     return {
-      ...this.serializeEnemyFields(showTrajectoryLine),
+      ...this.serializeEnemyFields(),
       kind: ProteinEnemy.kind,
       assetId: this.assetId,
-      display: proteinDisplay,
       protein: this.combat.serialize(),
     };
   }

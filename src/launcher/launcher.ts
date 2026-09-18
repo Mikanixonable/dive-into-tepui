@@ -122,17 +122,22 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     this.bgm.syncRun(false);
   }
 
-  // 現在の周回を畳んだ上で、天体暦の構築から Run の生成までを行い、起動をスロットへ記録する。
+  // 現在の周回を畳んだ上で、再開する記録があればそこから、無ければ新しく Run を組み、起動をスロットへ記録する。
   private async startRun(stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate): Promise<void> {
     this.endRun();
     const initialSave = this.initialSaveFor(stageClass, snapshotId, startEpoch);
     showLoading();
     try {
-      this.run = await Run.create(
-        stageClass, initialSave, startEpoch, this.devices, this.viewOptions, this.themePalette,
-        this.graphics, this.renderStyle, this.sections, this.autoSave,
-        new LoadingProgress(setLoadingProgress),
-      );
+      const progress = new LoadingProgress(setLoadingProgress);
+      this.run = initialSave === undefined
+        ? await Run.create(
+          stageClass, startEpoch, this.devices, this.viewOptions, this.themePalette,
+          this.graphics, this.renderStyle, this.sections, this.autoSave, progress,
+        )
+        : await Run.resume(
+          initialSave, stageClass, this.devices, this.viewOptions, this.themePalette,
+          this.graphics, this.renderStyle, this.sections, this.autoSave, progress,
+        );
     } finally {
       hideLoading();
     }
