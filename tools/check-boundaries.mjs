@@ -38,6 +38,7 @@ const LAYER_TABLE = [
   ['src/game/', '表示の導出'],
   ['src/settings/', 'アプリ寿命の正本'],
   ['src/launcher/', 'アプリの組み立て'],
+  ['src/run/', 'アプリの組み立て'],
   ['src/main.ts', 'アプリの組み立て'],
 ];
 
@@ -55,6 +56,9 @@ const PROGRESS_ROOTS = [
   'src/game/protein/',
   'src/game/control-selection.ts',
 ];
+
+// モデル層の置き場。進行と視点と、モデル層の根。
+const MODEL_ROOTS = [...PROGRESS_ROOTS, 'src/game/viewer/', 'src/game/game.ts'];
 
 // 表示の導出だが、置き場がまだ進行のフォルダにあるファイル。動かしたらここも直す — 存在しない
 // パスが残ると検査が落ちる。(暫定 — 段 8 で presentation/ へ移すときに消える)
@@ -194,6 +198,36 @@ const FORBIDDEN = [
       'src/game/plan/plan-guide.ts',
       'src/game/viewer/',
     ],
+    exempt: [],
+  },
+  {
+    // モデル層が知るのは直列化だけで、直列化された形は SerializedT と呼ぶ(R12)。
+    name: '直列化の語彙の禁止',
+    pattern: /\b\w+SaveData\b|\bWeaponStateData\b|\bBoosterStackData\b|\bSAVE_VERSION\b/g,
+    targets: ['src/'],
+    exempt: [],
+  },
+  {
+    // 復元は静的な deserialize が行い、構築した後で保存値を流し込まない(R12)。
+    name: '復元の流し込みの禁止',
+    pattern: /\brestore\w*\s*\(|\bimportData\s*\(|\bsaveState\b/g,
+    targets: MODEL_ROOTS,
+    exempt: [],
+  },
+  {
+    // コンストラクタは直列化された形を受けず、新規と復元で分岐しない(R12)。引数が複数行に
+    // 渡っても当たるよう、ファイル全体に対して引数名を探す。
+    name: '直列化された形をコンストラクタで受ける禁止',
+    pattern: /(?<=\bconstructor\s*\([^)]*)\b(?:saved|initialSave)\w*(?=\??\s*:)|'saved'\s+in\b/g,
+    targets: MODEL_ROOTS,
+    exempt: [],
+  },
+  {
+    // game.ts はモデル層の根で、表示の導出の根と並べて組むのはランの組み立て(R10・R13)。
+    name: 'モデル層の根が表示の導出を持つ禁止',
+    pattern:
+      /from '\.\/(?:hud|marker|view|pickable|map|lines|input|camera)\/|from '\.\/(?:game-presentation|flash-presenter|run-event-presenter|controlled-loop-sfx|orbit-info)'|from '\.\.\/(?:audio|input|marker)\//g,
+    targets: ['src/game/game.ts'],
     exempt: [],
   },
 ];
