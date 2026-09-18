@@ -123,6 +123,7 @@ export class FrameControls {
     this.trajectoryPanel.sync(pickables, members, displayTime, this.validRevolutionRoles(displayTime));
   }
 
+  // 持っている3枚のパネルを畳む。
   public dispose(): void {
     this.cameraPanel.dispose();
     this.combatCameraPanel.dispose();

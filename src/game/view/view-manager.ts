@@ -9,8 +9,6 @@ export class ViewManager {
 
   public get current(): ViewMode { return this.source.current; }
 
-  public get isMapView(): boolean { return this.source.current === 'map'; }
-
   // 現在のビューの実装。ビューによるフレーム処理の分岐はこの1箇所に閉じる。
   public get activeView(): ViewFrame { return this.views[this.source.current]; }
 

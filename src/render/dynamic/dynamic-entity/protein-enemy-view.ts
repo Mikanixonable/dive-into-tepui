@@ -83,7 +83,7 @@ export class ProteinEnemyView extends DynamicView<ProteinVisualSource> {
       && display.representation === this.renderedDisplay.representation
       && display.colorMode === this.renderedDisplay.colorMode) return;
     this.runtime.clearVisuals();
-    this.definition.recolorRenderObject(this.object, display, this.runtime.motionBinding ?? undefined);
+    this.definition.buildRenderObjectInto(this.object, display, this.runtime.motionBinding ?? undefined);
     this.runtime.rebuildVisuals();
     this.renderedDisplay = { ...display };
   }

@@ -7,7 +7,7 @@ import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { NavTargetPresenter } from '../nav-target-presenter';
 import type { FrameAnchorSource } from '../../physics/frame';
-import type { FocusCameraSource } from '../viewer/focus-camera-selection';
+import type { MapCameraSource } from '../viewer/camera-selection';
 import type { CelestialMarkers } from '../marker/celestial-markers';
 import { PlanDisplay } from '../plan/plan-display';
 import type { ControlSelection } from '../control-selection';
@@ -40,7 +40,7 @@ export class ObjectPickables {
     private readonly roster: EntityRoster,
     private readonly celestialBodies: CelestialBodies,
     private readonly navTargetPresenter: NavTargetPresenter,
-    private readonly camera: { readonly map: Pick<FocusCameraSource, 'focus'> },
+    private readonly camera: MapCameraSource,
     private readonly celestialMarkers: CelestialMarkers,
     private readonly planDisplay: PlanDisplay,
     private readonly frameAnchors: FrameAnchorSource,

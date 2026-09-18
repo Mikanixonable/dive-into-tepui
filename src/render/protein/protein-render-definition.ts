@@ -84,7 +84,7 @@ export interface ProteinRenderSource {
 export interface ProteinRenderDefinition {
   readonly source: ProteinRenderSource;
   /** 置かれているツリーの中身を、表示設定 display で組んだものへ入れ替える。空のツリーにも組める。 */
-  readonly recolorRenderObject: (
+  readonly buildRenderObjectInto: (
     target: THREE.Object3D, display: ProteinDisplaySettings, motion?: ProteinMotionBinding,
   ) => void;
 }
@@ -93,7 +93,7 @@ export interface ProteinRenderDefinition {
 export function createProteinRenderDefinition(source: ProteinRenderSource): ProteinRenderDefinition {
   return {
     source,
-    recolorRenderObject: (target, display, motion) => replaceProteinEnemyShip(
+    buildRenderObjectInto: (target, display, motion) => replaceProteinEnemyShip(
       target, buildProteinEnemyShip(source, display, motion),
     ),
   };

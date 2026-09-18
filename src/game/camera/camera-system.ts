@@ -37,7 +37,7 @@ export class CameraSystem {
   private transitionTargetFov = COMBAT_CAMERA_FOV;
   private transitionStartMs = 0;
 
-  public get view(): ViewMode { return this.viewSelection.current; }
+  private get view(): ViewMode { return this.viewSelection.current; }
   private get activeSource(): FocusCameraSource { return this.cameraSelection.camera(this.view); }
   public get activeFocus(): FocusTarget { return this.activeSource.focus; }
   public get activeViewpoint(): Viewpoint {

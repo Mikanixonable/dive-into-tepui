@@ -9,9 +9,7 @@ import type { ReferenceFrames } from '../celestial/reference-frames';
 import type { FocusTarget } from '../viewer/focus-target';
 
 // 注視点の候補。ObjectPickable はこの形を構造的に満たすので、呼び出し側はそのまま渡せる。
-// **ObjectPickable 型そのものを受け取ってはいけない** — 窓の面が plan-editor と stage を
-// 型 import しており、それが three/webgpu を引き込む。tsconfig.test.json の include へ
-// object-pickable.ts が入ると型検査が DOM 定義を要求して壊れる。
+// ObjectPickable 型を直に受けると three/webgpu を引き込み、DOM 定義の無い型検査が壊れる。
 export interface FocusCandidate {
   readonly id: string;
   // 表示時刻の ECI 位置。求まらないフレームは null。

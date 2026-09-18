@@ -19,7 +19,7 @@ import type { NavTargetSource } from '../viewer/nav-target-selection';
 import type { NavTargetCommands } from '../viewer/nav-target-commands';
 import type { EntityDisplaySource } from '../viewer/entity-display-selection';
 import type { EntityDisplayCommands } from '../viewer/entity-display-commands';
-import type { FocusCameraSource } from '../viewer/focus-camera-selection';
+import type { MapCameraSource } from '../viewer/camera-selection';
 import type { ViewSelectionSource } from '../viewer/view-selection';
 import type { PlanEditor } from '../plan/plan-editor';
 import type { ControlSelection } from '../control-selection';
@@ -54,7 +54,7 @@ export class ObjectWindows implements PropertyWindowOpener {
 
   // activeView はいまのビュー — 候補列と計画の編集口はビューによって変わるので、
   // 構築時ではなく毎回そこから引く。
-  constructor(
+  public constructor(
     private readonly hud: Hud,
     private readonly roster: EntityRoster,
     private readonly celestialBodies: CelestialBodies,
@@ -63,12 +63,12 @@ export class ObjectWindows implements PropertyWindowOpener {
     private readonly navTargetCommands: NavTargetCommands,
     private readonly entityDisplay: EntityDisplaySource,
     private readonly entityDisplayCommands: Pick<EntityDisplayCommands, 'toggleTrajectoryLine'>,
-    private readonly camera: { readonly map: Pick<FocusCameraSource, 'focus'> },
+    private readonly camera: MapCameraSource,
     private readonly view: Pick<ViewSelectionSource, 'current'>,
     private readonly activeView: () => ViewFrame,
     private readonly pauseMenu: PauseMenu,
     private readonly controlSelection: ControlSelection,
-    private readonly focusSink: Pick<FocusCameraCommands, 'setFocus'>,
+    private readonly mapFocusCommands: Pick<FocusCameraCommands, 'setFocus'>,
     private readonly combatFocusCommands: Pick<FocusCameraCommands, 'setFocus'>,
     private readonly activeStage: Stage,
     private readonly targeter: Targeter,
@@ -96,7 +96,7 @@ export class ObjectWindows implements PropertyWindowOpener {
 
   // 対象1つにつきウィンドウは高々1枚: 既存があればクリック位置へ動かして最前面に出すだけで
   // 新規には開かない。
-  open(clientX: number, clientY: number, target: InspectedObject, simTime: number): void {
+  public open(clientX: number, clientY: number, target: InspectedObject, simTime: number): void {
     const key = target.id;
     const existing = this.windows.get(key);
     if (existing) {
@@ -124,7 +124,7 @@ export class ObjectWindows implements PropertyWindowOpener {
   }
 
   // 何にも当たらなかった右クリックの落ち先。
-  openEmptySpaceMenu(clientX: number, clientY: number, simTime: number): void {
+  public openEmptySpaceMenu(clientX: number, clientY: number, simTime: number): void {
     const target = this.emptySpace;
     this.menu.open(clientX, clientY, target, this.offeredItems(target, simTime));
   }
@@ -144,7 +144,7 @@ export class ObjectWindows implements PropertyWindowOpener {
   // 開いている全プロパティウィンドウの値を最新化する。対象そのものが消滅していれば
   // (撃破・回収・削除)閉じる — 未来ゴースト時刻で位置が求まらないだけのフレーム
   // (posAt が null)は候補列から外れるだけで消滅ではないので、生存判定は対象の gone で行う。
-  sync(simTime: number, displayTime: number): void {
+  public sync(simTime: number, displayTime: number): void {
     // バッジはマップのカメラが注視している対象の窓に付ける。
     const mapFocusId = focusTargetId(this.camera.map.focus);
     for (const [key, entry] of [...this.windows]) {
@@ -162,14 +162,14 @@ export class ObjectWindows implements PropertyWindowOpener {
   }
 
   // 開いたままのメニュー・ウィンドウを畳む。
-  close(): void {
+  public close(): void {
     this.menu.close();
     for (const key of [...this.windows.keys()]) this.closeWindow(key);
     this.partWindows.close();
   }
 
   // 開いているメニュー・ウィンドウを畳んだうえで、自身のメニューを取り除く。
-  dispose(): void {
+  public dispose(): void {
     this.close();
     this.menu.dispose();
   }
@@ -280,7 +280,7 @@ export class ObjectWindows implements PropertyWindowOpener {
       id: item.id,
       label,
       onFocus: () => {
-        this.focusSink.setFocus({ kind: 'object', id: item.id });
+        this.mapFocusCommands.setFocus({ kind: 'object', id: item.id });
         this.hud.hint(`${label} にフォーカス`);
       },
       onContextMenu: (clientX, clientY) => {
@@ -300,7 +300,7 @@ export class ObjectWindows implements PropertyWindowOpener {
   // 戦闘はその場のカメラだけを動かす。
   private focus(id: string, name: string): void {
     if (this.view.current === 'map') {
-      this.focusSink.setFocus({ kind: 'object', id });
+      this.mapFocusCommands.setFocus({ kind: 'object', id });
     } else {
       this.combatFocusCommands.setFocus({ kind: 'object', id });
     }
@@ -308,7 +308,7 @@ export class ObjectWindows implements PropertyWindowOpener {
   }
 
   // target のプロパティウィンドウを開く。
-  openProperties(target: InspectedObject, clientX: number, clientY: number): void {
+  public openProperties(target: InspectedObject, clientX: number, clientY: number): void {
     this.open(clientX, clientY, target, this.displayWindowManager.current.simTime);
   }
 }
