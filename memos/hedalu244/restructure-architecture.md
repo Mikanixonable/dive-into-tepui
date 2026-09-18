@@ -671,117 +671,18 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 - **消したもの**: `PartInventory.serialize`、`ProjectileEmitter`(registry を構築時に持つ火器の中で、呼ぶたびに registry から組んでいた)、`Ship.setOverallHp`・`PartDamageModel.setOverallHp`、`Stage.begin()`/`init()`/`restored`。
 - **実行時の確認はまだ**(`npm run dev` の目視)。段の終わり(5-7 の前)にまとめて見る。
 
-#### 手順 5-5. セーブの版を上げ、形式をモデル層へ揃える
+#### 手順 5-5 — 済(`66d1cc57`・`4bb20727`・`7bf6f1e3`・`168f879f`・`38f653ba`・`4a3a0685`・`be25fc2f` ・キャッシュのコメント `b3352e6f`)
 
-**目的**: R11 の1・2を、規則の文面だけでなくコードに満たさせる。やることは2つある。
+**手順は実施したので落とした。** 後の段が前提にしてよい結果だけを残す。洗い出しの表は PR 本文へ移す(scratchpad の調査を `962fecd5` の時点として添える)。
 
-- **形式の歪みを直す**(K9)。保存の項目名と入れ子を、所有者の語彙と所有の木に揃える。**形式の版を上げるので、段 4 までに書き出した記録は読めなくなる。**
-- **載っていない値を載せる。** モデル層の値を1つずつセーブと突き合わせ、キャッシュ以外で載っていないものは、視点も進行も例外なく載せる(K1-2・K7-4)。
-
-**互換を切るので、足す項目を省略可能にする必要はない。** 新しい版では、その時点のモデル層の値をすべて必須の項目として書く。以後に項目を足すときは、R12 のとおり省略可能にしてコンストラクタの既定引数で補う(SAVE.md「保存する項目が増えただけでは版を上げない」)。
-
-**進行の洗い出しは済んでいる**(`7c7a0d0c` 時点、下の「洗い出しの結果」)。**ユーザー判断(2026-09-17): 過去の軌跡以外は全部載せる。** 過去の軌跡は、残す長さが需要で決まるので R4 の進行の状態に入らず、キャッシュでもない。R11 に「需要が残させている過去の記録」としてセーブしないものへ足した(`652621bf`)。**5-1〜5-4 を終えてから行う。**
-
-**洗い出しの引き直しと判断(2026-09-18、`962fecd5` で調べた。表は PR 本文へ残す)**
-
-- **「値の性質を確かめてから決めるもの」は、`WeaponState.wasEmptyClick` だけを載せる。** トリガーを離しても下りない旗で、復元で下りると空撃ちの音とヒントがもう一度出る。ほかはどれも、次の読み手より前に必ず書き直される作業値・世代番号・計測値・写しか、保存の時点で常に同じ値(セーブは決着前にしか起きないので `Stage._result` は常に null、など)。`Predictor.cursor` は、効くのが弧をなぞるか直接積分するかの選択だけで、差は K3-4 の近似の範囲に収まり、弧そのものを保存しないので載せても保存前の経路は戻らない — キャッシュ(弧)の作業値として載せない。
-- **読み手の無い値は消す**: `Plan._revision`(読むのはテストだけ)、`PlanNodeRules.achievedNotified`(記録した直後に同じノードを計画から落とすので、比較が真になる場面が無い)。
-- **計画の表から外す**: `BeltPhysics.angularAccel`(毎回 `prevShipW` から作り直す)と `anchorValue`(`feed` から作る)。
-- **表に足す**:
-  - 実体の状態の時刻 `t`。アセット待ちから実体化した個体は、追いつくまで要求時の時刻の状態を持つので、全個体を保存時刻の状態として組むと時刻が飛ぶ。
-  - 補給と破片の慣性。作る場所ごとに違い、種別からも保存値からも決まらない(補給の自動投入は (1,1.4,1.2)、復元はいつも (1,1,1))。敵・基地・分離ブースター・自機の慣性は種別と構成から決まるのでキャッシュ。
-  - 視点の `FocusCameraSelection.staleFollowFrames`・`focusReplaced`。性質は表示を安定させる猶予だが、置き場はモデル層なので R11 のとおり載せる。
-- **カメラの向きは正本を保存する(直す挙動)。** 姿勢は表示中のカメラにしか更新されないので、マップビュー中に保存すると、戦闘カメラ(既定で姿勢追従)の向きが古い姿勢と合成された絶対値で書かれ、復元して戦闘ビューへ戻ると、マップにいたあいだに機体が回った分だけ機体に対する向きがずれる。姿勢追従中の正本は機体からの相対の向きなので、それを保存する。これで「読み込み直後は絶対値で持ち、最初に姿勢が引けたフレームで相対値へ読み替える」遅延も要らなくなるなら消す。§6 の「同じカメラで再開」に沿う。
-- **アセット待ちの実体はデータとして持つ。** `pendingSpawns` の閉包を、種別つきの直列化できる記録(セーブから復元した個体の記録 / creative の手動スポーンと陣形の配置)に置き換える。実体化で呼んでいた `onSpawned`(出撃数へ数える)は消し、数は導く: `ScoreCounter` は要求した時点で数えた総数を持ち、表示と勝ちの判定が読む数は、そこからいまアセット待ちの敵の数を引いた値にする。PROTEIN.md「出現」が、準備が整っていない敵は残存機カウントのいずれにも存在しないと定めているので、見え方は段 5 の前と同じ(当初は要求した時点で数える形にしたが、SPEC に反するので改めた)。要求から `ProteinEnemy` を組む処理は実体の所有者に置き、`dynamic/` から `stages/` への辺を作らない。
-- **進め方**: 形式の骨格(最上位の分割・視点の入れ子・実体の共通の項目・敵の記録の分割・WaveAttack の入れ子・版)を 5-5a として1本で先に通し、所有者ごとの値の追加を 5-5b として所有者の群(視点 / 自機の下位系 / 敵 / 実体の系とスポーン / ランとステージ)ごとに並行させる。群どうしでファイルを重ねない。
-
-**手順**
-
-1. **形式を作り直す**(下の「形式の歪み」の表)。`SERIALIZATION_VERSION` を上げる。
-2. **視点の分を洗い出し直す。** 4-3 で `game/viewer/` に集めた所有者に `/ownership` を当て、下の「視点」の一覧に漏れが無いかを見る。進行の分は下の結果を使い、行番号はコードで引き直す。表は PR 本文へ `git rev-parse --short HEAD` を添えて残す。
-3. **振り分けて直す。**
-
-   | 表の行 | すること |
-   | --- | --- |
-   | 視点か進行で、セーブに無い | セーブへ載せる。いま分かっているのは K2 で「手順 5-5 でセーブへ載せる」とした行 |
-   | 正本から計算し直すキャッシュ(予測の弧など) | 載せない。所有者のコメントにキャッシュであることを書く(R11)。作り直すと数値計算の近似を超えて違う値になるなら、キャッシュではないので載せる |
-   | 設定なのにモデル層にある、またはセーブに入っている | 手順 4-3 の取りこぼし。`settings/` へ移す |
-   | 表示の導出の値なのにセーブに入っている | セーブから外し、導出元のモデル層の値から作り直す |
-
-4. **往復の検査は 5-6 で足す。** 進行の往復は、`Game` を THREE と DOM なしで組めるようになる段 7 の終わり(7-4)でテストにする。それまでは `npm run dev` で見る。
-
-**形式の歪み**(K9。直す対象。どれも所有者の語彙と食い違っている)
-
-| いまの形式 | 直した形 |
-| --- | --- |
-| 最上位が平坦で、進行の値(`simTime`・`entities`・`activeControlledId`・`stage`・`stageId`・`ephemerisContext`)と視点の値(`camera`・`navTarget`・`orbitGuide`)が並ぶ | `{ version, progress: SerializedProgress, viewer: SerializedViewer }` に分ける。R4 の区別が形式から読め、`Viewer.serialize` の `Pick<…>` も要らなくなる |
-| カメラの記録が `chase`/`overview`。所有者は `combat`/`map`(`camera-selection.ts:38,51`) | 所有者と同じ `combat`/`map` にする |
-| ビューの選択(`ViewSelection` の値)が `CameraSaveData.view` の中にある | 視点の直下(`viewer.view`)に出す |
-| 実体の記録に視点の値が混ざる(軌道線のトグル、タンパク質の表示)。タンパク質の表示はタンパク質の敵が 0 体だと失われ、Pickup と DetachedBooster はトグルを書かない | 視点の側(`viewer.entityDisplay`)に、id の一覧と1つの表示設定として持つ。実体の記録からは外す。**R12 の「1つの記録に2つの所有者の値を混ぜない」がこれで満たせる** |
-| WaveAttack の記録が、Stage00 では平坦・Creative では入れ子(`save-data.ts:214,221`) | どちらも所有者と同じ入れ子にする |
-| 金属敵は総 HP `health` だけを保存し、復元時に既定構成へ按分し直す(`metal-enemy.ts:61-62`) | 部品ごとの HP を保存する(5-4 で `deserialize` が部品を組む形にしてある) |
-| `SerializedEnemy.health` を ProteinEnemy は読まない(HP は被弾モデルから引く) | 種別ごとの記録へ分け、読まない項目を持たせない |
-| `SerializedProteinCombatState.schemaVersion` が 1 の直書きで、読む側が照合しない | 形式の版に一本化して消す |
-| `FireSaveData` と `WeaponStateData` が同じ形で二重(5-2 で型は1つにする) | 記録も1つにする |
-
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `SerializedGame`(`game/game.ts`) | 上の形式へ組み直し、`SERIALIZATION_VERSION` を上げる |
-| 視点の所有者の `Serialized…`(5-2 で `game/viewer/` へ移した型) | 軌道要素の基準、予測パネルの状態(目盛りの表示を含む)、タンパク質の表示、実体ごとの軌道線のトグルを載せる。座標系は、中心の id と `FrameRotationSource` で表す(カメラの注視点と同じ語彙)。中心は機体や役割でもよいので、読み込み時に解決できなければ既定へ戻す(SAVE.md の航法ターゲットと同じ扱い) |
-| 進行の所有者の `Serialized…` | 下の「載せるもの」を足す。弾・破片・待機中の実体は `SerializedDynamicEntity` に種別を足し、それぞれの具象に `DynamicEntityClass` の静的側を持たせて辞書(`entity-dictionary.ts`)に載せる |
-| 下の「載せるもの」の所有者 | それぞれの `serialize` と `deserialize` に足す。採番器は、保存した番号と復元した id の大きいほうから続ける |
-| 下の「キャッシュ」の所有者 | キャッシュであることのコメント。`dynamic-motion.ts:159` のクラス注釈は予測弧を「物理結果を変えうる状態」と呼んでいるので直す |
-| `src/launcher/save/{snapshot-service,save-store,save-transfer}.ts` | 版が違う記録を拒む経路が、新しい版でも同じに働くことを見る(`snapshot-service.ts:63-72`、`save-transfer.ts:124,146-149`)。**版の違いで落ちるのは読み込みだけで、セーブデータ画面の一覧・ページの再読み込み・新しいランの開始は壊れない** |
-
-**洗い出しの結果**(`7c7a0d0c`。行番号は `src/game/` からの相対。段 4 の 4-3 で `game.ts` の周りは動いているので引き直す)
-
-載せるもの(進行。どれもいまのセーブに無い):
-
-| 所有者 | 値 | 分類 |
-| --- | --- | --- |
-| `DynamicSystem` | 弾(`Bullet`、`BulletReaction.passedClose` を含む)と破片(`DebrisPiece` — 破片・薬莢・砲身・マガジン枠・段間カバー/ボルト)の個体。いまは `serialize` の既定で null になり落ちる(`dynamic-entity.ts:59-61`)。薬莢は 1800 s、破片は寿命なしで残る | 正本 |
-| `DynamicSystem` | アセット待ちの実体 `pendingSpawns`(`dynamic-system.ts:111`)。待機中にセーブすると消える | 正本 |
-| `DynamicMotion` | 敵・補給・分離ブースターの `temperature`(`dynamic-motion.ts:178`。自機は `thermal.hullTemp` で載っている)、全種別の `thermalDeviation`(:179)、吸収待ちの熱 `pendingSpecificHeat`(:191) | 正本 |
-| `SimSpeedManager` | `levelIdx`・`autoWarpUntil`(`sim-speed-manager.ts:19-20`)。構築(`game.ts:310`)がセーブを受けていない。自動ワープ中は `levelIdx` を毎フレーム書き直すので、`autoWarpUntil` があれば導ける | 正本 |
-| `Base` | `plan`(`base.ts:58`)。復元は自機の `addNode` のループ(`player.ts:189-202`)と同じ形 | 正本 |
-| `PowerSystem` | 太陽電池2枚の展開状態 `panels`(`player/power.ts:19`)。放熱板の同じ形のデータは載っている | 正本 |
-| `Throttle` | 並進噴射のラッチ `latchedThrust`(`player/throttle.ts:45`)、`rotationHoldTime`(:43)。自動セーブは一時停止していないときに走るので、ラッチは非空でありうる | 正本 / 作り直すと違う値 |
-| `WeaponState` | `wasFiring`(`player/weapon-state.ts:33`)。射撃中にセーブすると復元後にスピンアップをやり直し、操作精度(`player.ts:449`)にも効く | 作り直すと違う値 |
-| `AltitudeAlarm` | `descendWarned`・`altEma`・`altRateEma`・`warnedThresholds`(`player/altitude-alarm.ts:18-24`)。復元後に同じしきい値をもう一度警告する | 作り直すと違う値 |
-| `BeltController`・`BeltPhysics` | `feed`(`player/belt.ts:10`)、節点の位置・前位置・ねじれ・前の角速度・角加速度・アンカー(`player/belt-physics.ts:38-46`)。節点は接触判定に参加する | 作り直すと違う値 |
-| 金属敵 | 部品ごとの HP。いまは総 HP だけを保存し、復元時に既定構成へ按分し直す(`metal-enemy.ts:61-62`) | 正本 |
-| `EnemyFireController` | `lastFireSim`・`lastBehaviorSim`(`enemy-fire-controller.ts:37,40`) | 作り直すと違う値 |
-| `ProteinCombatState` | 撃つ部位の巡回 `attackSiteCursor`(`protein/protein-combat-state.ts:36`) | 作り直すと違う値 |
-| `ControlSelection` | 未操作の状態。`null` を保存しても、復元時に生存中の先頭を選ぶ(`control-selection.ts:20-22`)。手で操作を外したセーブを読むと、操作対象が付く | 正本(部分的) |
-| 採番器 | `EntityIdAllocators` の5つ(`entity-id.ts:30-35`)、`ManualSpawn` の `enemyNameAllocator`・`formationIdAllocator`(`creative/manual-spawn.ts:32-33`)、`ObjectPlacement.playerIdAllocator`(`creative/object-placement.ts:63`)。陣形の構成員はアセット待ちなので、復元時に FORMATION-0 から数え直して既存の `formationId` と衝突しうる(推測)。採番が戻ると、復元時に id を保持し続ける航法ターゲット(`nav-target.ts:125-130`)が、後から同じ id で生まれた個体を指しうる(推測) | 作り直すと違う値 |
-| `ManualSpawn` | `spawnDistance`(`creative/manual-spawn.ts:31`、既定 2000 m) | 正本 |
-| `StageDebug` | `enemyFireEnabled`・`waveCount`(`stages/stage-debug.ts:23-24`)。`waveCount` が戻ると敵名・`waveId`・`attackGroupId` が既存の敵と重なる | 正本 / 作り直すと違う値 |
-| `PlanGuide` | 接近を通知したノード `approachNotified`(`plan/plan-guide.ts:31`)。復元後に同じ接近をもう一度通知する | 作り直すと違う値 |
-
-載せないもの:
-
-- **過去の軌跡**(`physics/dynamic-trajectory.ts:23` の標本列)— R11(需要が残させている記録)。
-- **`Base.planExecution`・`fineAttitude`**(`base.ts:59-60`)— 構築後に書く経路が無い(`Base.handleCommand` に姿勢の切り替えが無く、`updateTorque` には常に false を渡す)。可変値ではないので、載せる代わりに不変な値にする。
-- **キャッシュ**(コメントを足す): `DynamicMotion.predictedArc`・`prevAtt`・`att.inertia`・`mass`・`requestedHistoryDuration`、`DynamicTrajectory` の `_prevState`・`_extrapolationCenter`、`Vessel._hp`(部品 HP の合計。ただし金属敵の保存する `health` の出どころ)、`PartDamageModel` の参照、`AeroLoad.qdyn`、`RadiatorSystem.wear`、`AttachedBoosterMotion.thrustValue`・`burnRatioValue`、`DetachedBoosterBehavior.burnRatio`、`PredictedArc`・`ArcCelestialBodies`。コメントがすでにあるもの: `_samplesCache`、`PlanPath.samplesCache`、`NextEventTime`、`sharedBVH`、タンパク質アセットのキャッシュ、接触・天体の作業値。
-- **値の性質を確かめてから決めるもの**(5-5 の最初に見る。次の読み手より前に必ず書き直される作業値・世代番号・診断用の旗・他の正本の写しなら載せない。そうでなければ正本として載せる。K8 の調査で足したもの: Pickup と DetachedBooster の `alive`(保存していない)、DetachedBooster の名前(保存しているが読まない)、`SerializedEnemy.health`(ProteinEnemy は読まず、被弾モデルから引く)、`SerializedProteinCombatState.schemaVersion`(1 の直書きで照合されない)): `DynamicSystem._collectionRevision`・`capsUncheckedSinceAdd`、`Simulator` の `lastSimDt`・`consecutiveZeroSteps`・計測値、`NanWatchdog.tripped`、**`Predictor.cursor`**(どの弧から伸ばすかを通して、弧をなぞる個体の軌道に効くかもしれない)、`DynamicMotion` の `torque`・`_thrust`、`WeaponState.pendingBarrelJoules`・`wasEmptyClick`、`Plan._revision`、`PlanGuide.achievedNotified`、`Stage._result`・`_briefing`、`EnemyFireController.enabled`(`StageDebug.enemyFireEnabled` の写し)、`Player.disposed`。
-
-洗い出しで見つかった別件:
-
-- **復元したデバッグステージには操作パネルが出ない。** トグルとボタンを `init()`(`stages/stage-debug.ts:40-57`)で作っており、`init()` は復元時に走らない(`stage.ts:189-193`)。5-4 で、新規と復元の両方で作る形に直す。ステージの表示へ移すのは 6-5。
-
-**達成条件と検証**
-
-- 洗い出しの表の全行が、「セーブに載っている」か「キャッシュである」のどちらかになる。TODO は残さない。
-- `npm run check:boundaries` で、根の型の置き場から表示の導出への import が 0 件(5-2 で差し替えた判定)。
-- `npm run typecheck`、`npm run test:game`。
-- `npm run dev` で次を見る。
-  - 軌道要素の基準・表示期間・スライダー位置・計画軌道の座標系を変えて手動セーブする。新しいゲームでは既定から始まり、元のセーブを読み込むと選んだ状態に戻る。同じ操作のあいだ、描画品質などの設定は変わらない。
-  - 時間加速中・基地に計画がある状態・creative で出現の距離を変えた状態で手動セーブし、読み込むとそのまま戻る。弾を撃ってから保存して読み込み、新しく出た実体の id が保存前に使った番号と重ならない。
-  - 弾が飛んでいて破片が漂っている瞬間に保存して読み込むと、弾と破片がそのまま続く。creative でタンパク質敵を生成した直後(アセット待ちのうち)に保存して読み込んでも、敵が消えない。
-  - **古い版の記録の扱い**(K9): 段 4 までに書き出したセーブを読もうとすると、読み込みだけが拒まれる。セーブデータ画面の一覧は出る。書き出したファイルの取り込みも、版が違うものとして拒まれる。古い自動セーブが残ったままページを読み込み直しても、タイトルか新しいランへ進めて、起動が壊れない。
-- **この段より後の検証は、「段 5 で書き出したセーブ」を基準にする**(段 1 の前のセーブは、もう読めない)。
+- **形式(版 4)**: `SerializedGame = { version, progress, viewer }`。`progress` は `Game` 自身の値(`stageId`・`ephemerisContext`)と、所有者ごとの入れ子(`dynamicSystem`・`controlSelection`・`stage`・`simSpeedManager`・`planNodeRules`)。`viewer` は `view`・`camera: { combat, map }`・`navTarget`・`orbitGuide`・`entityDisplay`・`orbitReference`・`predictPanel`。実体の記録は状態の時刻 `t` を持ち、視点の値を持たない。版 3 までの記録は読み込みも取り込みも拒まれ、例外にはならない。**段 6 以降は版を上げない**(K9)。
+- **載せた値**: 計画の表のすべて(弾・破片・アセット待ちの実体・熱・時間加速・基地の計画・太陽電池・スロットルのラッチ・射撃の旗・高度警報・ベルト・金属敵の部品 HP・敵の射撃の時系列・タンパク質の攻撃部位の巡回・未操作の状態・採番器・creative の出現の設定と連番・デバッグステージ・計画ノードの接近の記録)と、引き直しで足したもの(状態の時刻・補給と破片の慣性・カメラの2つの猶予・`wasEmptyClick`)。視点の軌道要素の基準・予測パネルの10項目も載った。
+- **消した値**: `Plan._revision`、`PlanNodeRules.achievedNotified`、`BeltPhysics.angularAccel`・`anchorValue`(作り直す値にした)。`Base.planExecution`・`fineAttitude` は不変な値にした。
+- **形の判断**: アセット待ちの実体は種別つきの記録 `SpawnRecord`(`entity-registry.ts`)で、実体化は `DynamicSystem` が `ProteinEnemy.create(request, …)` を呼ぶ。出撃数は要求した時点で数え、表示と勝ちの判定は `Stage.enemiesAppeared`(出撃数 − アセット待ちの敵)を読む(PROTEIN.md「出現」)。ベルトは持ち主を参照しない部品にした(吊り元は呼ぶたびに受ける)。計画ノードの接近の記録は、ノードの同一性でなく値の一致で比べる。
+- **見た目が変わること**:
+  - 新しいゲームの戦闘カメラは、機体に対して後方見下ろしから始まる(以前は既定の角度を慣性系の向きとして読んでいた)。姿勢追従を外した状態の視点リセットも後方見下ろしへ戻る(CAMERA.md §2)。マップビュー中に保存しても、戦闘カメラの機体に対する向きが保たれる。
+  - 戦闘ビューのまま操作を外したセーブは、マップビューで戻る(戦闘ビューは操作対象がいるときだけ選べる、の規則による)。
+- **実行時の確認はまだ**(段の終わりにまとめて見る)。
 
 #### 手順 5-6. 段 5 の層のテストを整える
 
