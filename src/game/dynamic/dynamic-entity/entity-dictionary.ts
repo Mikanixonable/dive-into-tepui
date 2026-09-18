@@ -8,9 +8,7 @@ import { MetalEnemy, type SerializedMetalEnemy } from './metal-enemy';
 import { ProteinEnemy, type SerializedProteinEnemy } from './protein-enemy';
 import { Player, type SerializedPlayer } from '../../player/player';
 import type { DynamicEntity } from './dynamic-entity';
-import type { SpawnGate } from '../entity-registry';
-import type { EntityIdAllocators } from './entity-id';
-import type { RunEventSink } from '../../run-events';
+import type { EntityRegistry, SpawnGate } from '../entity-registry';
 
 // 顔ぶれ1体分の直列化した形。kind で具象を判別する。
 export type SerializedDynamicEntity =
@@ -28,10 +26,10 @@ export interface DynamicEntityClass {
   readonly kind: SerializedDynamicEntity['kind'];
   // 復元に外部資源の取得が要るなら、それが揃ったかを答える述語。要らなければ null。
   spawnGate(serialized: SerializedDynamicEntity): SpawnGate | null;
-  // serialized を、時刻 simTime の状態として復元する。gate があるなら、それが通ってから呼ぶこと。
+  // serialized を、時刻 simTime の状態として復元する。id は registry の採番器から取り直す。gate が
+  // あるなら、それが通ってから呼ぶこと。
   deserialize(
-    serialized: SerializedDynamicEntity, simTime: number, idAllocators: EntityIdAllocators,
-    scene: THREE.Scene, events: RunEventSink,
+    serialized: SerializedDynamicEntity, simTime: number, registry: EntityRegistry, scene: THREE.Scene,
   ): DynamicEntity;
 }
 

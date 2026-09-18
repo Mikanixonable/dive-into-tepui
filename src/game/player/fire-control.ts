@@ -10,7 +10,6 @@ import type { Vec3 } from '../../math/vec3';
 import { add, addScaled, norm, randPerp, randVec, scale, v3 } from '../../math/vec3';
 
 import type { PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
-import type { RunEventSink } from '../run-events';
 import type { Ship } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { EntityRegistry } from '../dynamic/entity-registry';
@@ -27,7 +26,6 @@ import { sunGlareSpreadScale } from '../combat/sun-glare-spread';
 import {
   WeaponState, type AmmoConsumption, type SerializedWeaponState, type WeaponFireCommand,
 } from './weapon-state';
-import type { ProjectileEmitter } from './projectile-emitter';
 
 const BARREL_PHYS_RADIUS = 0.8;
 const EJECTED_MAG_PHYS_RADIUS = 1.4;
@@ -57,10 +55,11 @@ const RELOAD_TIME = 1.0; // 手動/自動リロード(バレル交換)のクー�
 export type SerializedFireControl = SerializedWeaponState;
 
 export class FireControl {
-  // player が撃つ。weapon は弾薬・砲身の状態で、省けば既定の積載で始める。
+  // player が撃つ。発砲で出る実体と出来事は registry へ積む。weapon は弾薬・砲身の状態で、省けば
+  // 既定の積載で始める。
   public constructor(
     private readonly player: Player,
-    private readonly events: RunEventSink,
+    private readonly registry: EntityRegistry,
     private readonly _scene: THREE.Scene,
     private readonly weapon = new WeaponState(),
   ) {}
@@ -94,7 +93,6 @@ export class FireControl {
     dt: number,
     controls: PilotControls,
     activeStage: StageOutcome,
-    registry: EntityRegistry,
     celestialBodies: CelestialBodies,
   ): void {
     this.tickReloadTimer(dt);
@@ -109,8 +107,8 @@ export class FireControl {
 
     if (this.player.totalFireRate <= 0) {
       if (!this.weapon.wasEmptyClick) {
-        this.events.record({ kind: 'gunDryFired' });
-        this.events.record({ kind: 'gunDisabled' });
+        this.registry.events.record({ kind: 'gunDryFired' });
+        this.registry.events.record({ kind: 'gunDisabled' });
         this.weapon.wasEmptyClick = true;
       }
       return;
@@ -118,18 +116,14 @@ export class FireControl {
 
     if (!this.left) {
       if (!this.weapon.wasEmptyClick) {
-        this.events.record({ kind: 'gunDryFired' });
-        this.events.record({ kind: 'gunOutOfAmmo' });
+        this.registry.events.record({ kind: 'gunDryFired' });
+        this.registry.events.record({ kind: 'gunOutOfAmmo' });
         this.weapon.wasEmptyClick = true;
       }
       return;
     }
 
-    const projectileEmitter: ProjectileEmitter = {
-      idAllocators: registry.idAllocators,
-      emit: projectile => registry.add(projectile),
-    };
-    this.fireCycle(activeStage, registry, projectileEmitter, celestialBodies);
+    this.fireCycle(activeStage, celestialBodies);
   }
 
   // クールダウンタイマーを dt だけ減らす。
@@ -138,19 +132,14 @@ export class FireControl {
   }
 
   // クールダウン込みの発射サイクルを1回進める。スピンアップ中・クールダウン中は発射しない。
-  private fireCycle(
-    activeStage: StageOutcome,
-    registry: EntityRegistry,
-    projectileEmitter: ProjectileEmitter,
-    celestialBodies: CelestialBodies,
-  ): void {
+  private fireCycle(activeStage: StageOutcome, celestialBodies: CelestialBodies): void {
     const justStartedFiring = !this.weapon.wasFiring;
     this.weapon.wasFiring = true;
     this.weapon.wasEmptyClick = false;
 
     // 起動時のタイムラグ
     if (justStartedFiring) {
-      this.events.record({ kind: 'gunSpunUp' });
+      this.registry.events.record({ kind: 'gunSpunUp' });
       this.weapon.cooldown = SPINUP_TIME;
       return;
     }
@@ -163,22 +152,22 @@ export class FireControl {
     const command = this.weapon.beginShot(PLAYER_MUZZLE_OFFSETS.length);
     if (command === null) return;
 
-    this.fireGun(command, activeStage, registry, projectileEmitter, celestialBodies);
+    this.fireGun(command, activeStage, celestialBodies);
     switch (command.consumption) {
       case 'empty':
       case 'normal':
         this.weapon.cooldown = 1 / this.player.totalFireRate;
         return;
       case 'mag-reload':
-        this.spawnEjectedMagazineFrame(registry);
-        this.events.record({ kind: 'gunMagazineFed' });
+        this.spawnEjectedMagazineFrame();
+        this.registry.events.record({ kind: 'gunMagazineFed' });
         this.weapon.cooldown = 1 / this.player.totalFireRate;
         return;
       case 'barrel-reload':
-        this.spawnEjectedMagazineFrame(registry);
+        this.spawnEjectedMagazineFrame();
         this.weapon.cooldown = RELOAD_TIME;
-        this.dropBarrel(registry);
-        this.events.record({ kind: 'gunBarrelSwapped' });
+        this.dropBarrel();
+        this.registry.events.record({ kind: 'gunBarrelSwapped' });
         return;
     }
   }
@@ -190,14 +179,14 @@ export class FireControl {
   }
 
   // 手動リロードを試みる。開始できたら true。
-  public manualReload(registry: EntityRegistry): boolean {
+  public manualReload(): boolean {
     if (this.weapon.cooldown > 0) return false;
 
     // 予備マガジンがあり、かつ装填中のマガジンに実際に補充の余地があるときだけリロードする
     if (!this.weapon.manualReload()) return false;
     this.weapon.cooldown = RELOAD_TIME;
-    this.events.record({ kind: 'gunBarrelSwapped' });
-    this.dropBarrel(registry);
+    this.registry.events.record({ kind: 'gunBarrelSwapped' });
+    this.dropBarrel();
     return true;
   }
 
@@ -207,8 +196,6 @@ export class FireControl {
   private fireGun(
     command: WeaponFireCommand,
     activeStage: StageOutcome,
-    registry: EntityRegistry,
-    projectileEmitter: ProjectileEmitter,
     celestialBodies: CelestialBodies,
   ): void {
     const fwd = qRotate(this.player.motion.att.q, LOCAL_FORWARD);
@@ -220,30 +207,29 @@ export class FireControl {
       qRotate(this.player.motion.att.q, v3(mo.x, mo.y, mo.z)),
     );
 
-    this.spawnBullet(this.player, muzzle, fwd, projectileEmitter, celestialBodies);
+    this.spawnBullet(muzzle, fwd, celestialBodies);
     // 反動(運動量保存の風味): 発射方向と逆に微小 Δv(瞬間的な速度変更なので時刻は据え置き)
     this.player.motion.state = kinematicState<'eci'>(
       this.player.motion.state.t,
       this.player.motion.state.r,
       addScaled(this.player.motion.state.v, fwd, -RECOIL_DV),
     );
-    this.dropCasing(muzzle, registry);
+    this.dropCasing(muzzle);
 
     activeStage.scoreCounter.recordShot();
     this.player.motion.absorbHeat(GUN_HEAT_PER_ROUND / Math.max(this.player.motion.mass, 1e-9));
     this.weapon.pendingBarrelJoules += GUN_BARREL_HEAT_PER_ROUND;
-    this.events.record({ kind: 'gunFired', muzzleState: muzzleState(this.player, muzzle, fwd) });
+    this.registry.events.record({ kind: 'gunFired', muzzleState: muzzleState(this.player, muzzle, fwd) });
   }
 
   // 弾丸: 機首方向 + 散布界
-  private spawnBullet(
-    ship: Ship, muzzle: Vec3, fwd: Vec3, emitter: ProjectileEmitter, celestialBodies: CelestialBodies,
-  ): void {
+  private spawnBullet(muzzle: Vec3, fwd: Vec3, celestialBodies: CelestialBodies): void {
+    const ship = this.player;
     const spreadScale = sunGlareSpreadScale(muzzle, fwd, celestialBodies, ship.motion.state.t);
     // 機首方向に散布角を加えた発射方向
     const spread = Math.abs(randSym(BULLET_SPREAD)) * spreadScale;
     const dir = norm(addScaled(fwd, randPerp(fwd), spread));
-    const bullet = new Bullet(
+    this.registry.add(new Bullet(
       kinematicState<'eci'>(
         ship.motion.state.t,
         addScaled(muzzle, fwd, 1.5),
@@ -253,19 +239,18 @@ export class FireControl {
       'player',
       'normal',
       ship.weaponDamage,
-      emitter.idAllocators,
-    );
-    emitter.emit(bullet);
+      this.registry.idAllocators,
+    ));
   }
 
   // 薬莢: -X 側へ排出(+X 側はマガジンベルトの給弾があるため)。
   // 初速は抑えてゆっくり漂わせる一方、回転速度は個体ごとに大きくばらつかせる。
-  private dropCasing(muzzle: Vec3, registry: EntityRegistry): void {
+  private dropCasing(muzzle: Vec3): void {
     const ship = this.player;
     // 機体姿勢基準の左右・上方向
     const right = qRotate(ship.motion.att.q, LOCAL_RIGHT);
     const up = qRotate(ship.motion.att.q, LOCAL_UP);
-    registry.add(new DebrisPiece(
+    this.registry.add(new DebrisPiece(
       kinematicState<'eci'>(
         ship.motion.state.t,
         add(muzzle, scale(right, -1.4)),
@@ -280,7 +265,7 @@ export class FireControl {
         w: v3(randSym(6.0), randSym(6.0), randSym(6.0)),
         inertia: v3(0.85, 0.3, 1.15), // 円筒: 長軸(y)が最小。x/z も非対称にしジャニベコフ効果を起こす
       },
-      registry.idAllocators, CASING_COLLISION_BOUND_RADIUS, this._scene,
+      this.registry.idAllocators, CASING_COLLISION_BOUND_RADIUS, this._scene,
     ));
   }
 
@@ -306,11 +291,11 @@ export class FireControl {
 
   // バレル交換時に円柱アイテムをデブリとして放出する。装着していた砲身の温度は、そのまま
   // 排出されたデブリへ移る。
-  private dropBarrel(registry: EntityRegistry): void {
+  private dropBarrel(): void {
     const ship = this.player;
     // 下方に少し勢いをつけて放出
     const down = qRotate(ship.motion.att.q, v3(0, -1, 0));
-    registry.add(new DebrisPiece(
+    this.registry.add(new DebrisPiece(
       kinematicState<'eci'>(
         ship.motion.state.t,
         add(ship.motion.state.r, qRotate(ship.motion.att.q, v3(0, -1, 1.5))), // 機首下部あたりから
@@ -326,7 +311,7 @@ export class FireControl {
         w: v3(randSym(2), randSym(2), randSym(2)),
         inertia: v3(1, 0.2, 1), // 円柱
       },
-      registry.idAllocators, BARREL_PHYS_RADIUS, this._scene,
+      this.registry.idAllocators, BARREL_PHYS_RADIUS, this._scene,
     ));
     this.weapon.barrelTemperature = ENV_TEMP;
     this.weapon.barrelDeviation = 0;
@@ -335,14 +320,14 @@ export class FireControl {
 
   // マガジン1個を撃ち尽くした瞬間、-X 側(薬莢と同じ側)の位置から
   // 空になったマガジンの外枠(弾なし)をデブリとして放出する。
-  private spawnEjectedMagazineFrame(registry: EntityRegistry): void {
+  private spawnEjectedMagazineFrame(): void {
     const ship = this.player;
     // 排出ポートの位置と初速
     const right = qRotate(ship.motion.att.q, LOCAL_RIGHT);
     const portWorld = add(
       ship.motion.state.r, qRotate(ship.motion.att.q, v3(-0.9, 0, 0)),
     );
-    registry.add(new DebrisPiece(
+    this.registry.add(new DebrisPiece(
       kinematicState<'eci'>(
         ship.motion.state.t,
         portWorld,
@@ -357,7 +342,7 @@ export class FireControl {
         w: v3(randSym(0.2), randSym(0.2), randSym(0.2)),
         inertia: v3(1, 1.2, 1.4),
       },
-      registry.idAllocators, EJECTED_MAG_PHYS_RADIUS, this._scene,
+      this.registry.idAllocators, EJECTED_MAG_PHYS_RADIUS, this._scene,
     ));
   }
 }
