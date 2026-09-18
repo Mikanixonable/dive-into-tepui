@@ -11,7 +11,7 @@ export const MAX_DYN_PRESSURE = 35e3; // 超過で空力破壊 [Pa]
 const AERO_HEATING_MIN_Q = 1;
 
 export class AeroLoad {
-  // いま浴びている動圧 [Pa]。
+  // いま浴びている動圧 [Pa]。位置・速度と大気から求め直すキャッシュ。
   qdyn = 0;
 
   // 位置 r・速度 v の機体が浴びる動圧を求め直す。atmosphereBody は抗力を及ぼすただ1体の
