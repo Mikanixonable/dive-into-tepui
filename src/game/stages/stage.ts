@@ -25,7 +25,8 @@ import { v3 } from '../../math/vec3';
 import { solarSystem } from '../celestial/solar-system/solar-system';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { EntityRoster } from '../dynamic/entity-roster';
-import type { EntityRegistry, SpawnGate } from '../dynamic/entity-registry';
+import type { EntityRegistry } from '../dynamic/entity-registry';
+import type { ProteinEnemyRequest } from '../dynamic/dynamic-entity/protein-enemy';
 import { CAMPAIGN_STAGE_RULES, type StageRules } from './stage-rules';
 
 // 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。各ステージが
@@ -280,10 +281,15 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.scoreCounter.recordSpawnEnemy();
   }
 
-  // 外部資源の取得待ちで実体化を遅らせうる敵を登録する。gate が通り次第登録され、
-  // そのときに出撃数をスコアへ記録する(SPEC/PROTEIN.md「出現」節)。
-  protected spawnEnemyWhenReady(gate: SpawnGate | null, build: () => Enemy): void {
-    this._dynamicSystem.spawnWhenReady(gate, build, () => this.scoreCounter.recordSpawnEnemy());
+  // タンパク質の敵を要求し、出撃数をスコアへ記録する。敵はアセットが揃い次第実体化する。
+  protected addProteinEnemy(request: ProteinEnemyRequest): void {
+    this._dynamicSystem.spawnWhenReady({ kind: 'protein-enemy', request });
+    this.scoreCounter.recordSpawnEnemy();
+  }
+
+  // 戦場に現れた敵の数。アセットを待つ敵は、実体化した時点から数える(SPEC/PROTEIN.md「出現」節)。
+  public get enemiesAppeared(): number {
+    return this.scoreCounter.totalEnemiesSpawned - this._dynamicSystem.pendingEnemyCount;
   }
 
   // ステージごとのブリーフィングの本文(HTML)。初期配置を終えた状態から組む。
@@ -297,14 +303,14 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
 
   // 残存敵数が 0 以下なら勝利。
   protected checkWin(): boolean {
-    return this.scoreCounter.totalEnemiesSpawned - this.scoreCounter.kills - this.scoreCounter.losses <= 0;
+    return this.enemiesAppeared - this.scoreCounter.kills - this.scoreCounter.losses <= 0;
   }
   // 決着を「勝利」で確定させる。
   protected onWin(simTime: number): void {
     this.decide('won', {
       win: true,
       title: null,
-      detailHtml: winDetailHtml(this.scoreCounter, this.scoreCounter.totalEnemiesSpawned, simTime),
+      detailHtml: winDetailHtml(this.scoreCounter, this.enemiesAppeared, simTime),
     });
   }
 
@@ -330,7 +336,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.decide('lost', {
       win: false,
       title: null,
-      detailHtml: `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.scoreCounter.totalEnemiesSpawned} 機`,
+      detailHtml: `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.enemiesAppeared} 機`,
     });
   }
 

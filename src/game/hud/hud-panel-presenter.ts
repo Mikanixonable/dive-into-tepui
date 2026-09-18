@@ -143,7 +143,6 @@ export class HudPanelPresenter {
     // 戦闘ビューにしか出ないパネルは、マップでは値を組まない。
     const combatControlled = view === 'map' ? null : controlled;
     const { simTime } = displayWindow;
-    const scoreCounter = this.stage.scoreCounter;
     // 操作対象が要るパネルは、対象が無い間 null で畳む。
     return {
       topBar: {
@@ -161,8 +160,8 @@ export class HudPanelPresenter {
         : this.orbitViewModel(controlled, orbitRef),
       target: this.targetViewModel(combatControlled),
       enemies: combatControlled === null ? null : {
-        remainingCount: scoreCounter.totalEnemiesSpawned - scoreCounter.kills,
-        totalCount: scoreCounter.totalEnemiesSpawned,
+        remainingCount: this.stage.enemiesAppeared - this.stage.scoreCounter.kills,
+        totalCount: this.stage.enemiesAppeared,
         contacts: this.enemyContacts(combatControlled),
         onSelectRight: (id, x, y) => this.objectWindows.openEnemy(id, x, y),
       },
