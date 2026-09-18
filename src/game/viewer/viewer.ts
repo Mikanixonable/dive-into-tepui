@@ -65,6 +65,7 @@ export class Viewer {
     celestialBodies: CelestialBodies,
   ): Viewer {
     const { navTarget, orbitGuide, camera, entityDisplay, orbitReference, predictPanel } = serialized;
+    // 記録に無い所有者は undefined のまま渡し、新しいゲームの既定から始める。
     return new Viewer(
       control,
       events,
