@@ -4,12 +4,6 @@ import type { Part, RadiatorPart, SolarPanelPart } from './parts';
 import { PartDamageModel } from './part-damage-model';
 import { Vessel } from './vessel';
 
-// TODO: 艦の物性は vessel.ts が持つ。利用者を vessel.ts へ向け、この再エクスポートを消す(1.6)。
-export {
-  MAX_HULL_TEMP, MUZZLE_SPEED, SHIP_BCINV, SHIP_RADIATING_AREA_PER_MASS, SHIP_SRP_COEFF,
-  shipMotionOptions,
-} from './vessel';
-
 // 部品式の被弾モデルを持つ艦。部品構成と、部品から導かれる性能を扱う。
 export abstract class Ship extends Vessel {
   private readonly partModel: PartDamageModel;

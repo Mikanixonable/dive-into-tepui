@@ -6,7 +6,8 @@ import { Q_IDENTITY } from '../../src/math/quat';
 import { v3 } from '../../src/math/vec3';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
-import { Ship, SHIP_BCINV, SHIP_SRP_COEFF } from '../../src/game/dynamic/dynamic-entity/ship';
+import { Ship } from '../../src/game/dynamic/dynamic-entity/ship';
+import { SHIP_BCINV, SHIP_SRP_COEFF } from '../../src/game/dynamic/dynamic-entity/vessel';
 import { DynamicView } from '../../src/render/dynamic/dynamic-view';
 import { FireControl } from '../../src/game/player/fire-control';
 import { WeaponState } from '../../src/game/player/weapon-state';
@@ -15,6 +16,7 @@ import { PlayerMotion, type PlayerMotionReactions } from '../../src/game/player/
 import { PowerSystem, POWER_CAPACITY } from '../../src/game/player/power';
 import { RadiatorSystem } from '../../src/game/player/radiator';
 import type { Player } from '../../src/game/player/player';
+import type { SerializedDynamicEntity } from '../../src/game/dynamic/dynamic-entity/entity-dictionary';
 
 const attitude = { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
 const state = kinematicState<'eci'>(0, v3(), v3());
@@ -26,6 +28,11 @@ class TestShip extends Ship {
   }
 
   public rename(name: string): void { this.setName(name); }
+
+  // 試験用の艦には直列化した形の種別が無いので、呼ぶと例外を投げる。
+  public override serialize(): SerializedDynamicEntity {
+    throw new Error('TestShip は直列化できない');
+  }
 }
 
 class NullView extends DynamicView {

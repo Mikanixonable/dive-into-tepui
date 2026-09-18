@@ -1,6 +1,6 @@
 // 直近ノードの実行の規則: 実行時刻を過ぎたノードの消化と、接近・達成の記録。
 import {
-  deserializeKinematicState, type KinematicState, type SerializedKinematicState,
+  deserializeKinematicState, serializeKinematicState, type KinematicState, type SerializedKinematicState,
 } from '../../physics/kinematic-state';
 import { OrbitalElements, orbitalElementsOf } from '../../physics/elements';
 import { strongestAttractor } from '../../physics/attractor';
@@ -45,7 +45,7 @@ export class PlanNodeRules {
   // 直列化した形へ変換する。
   public serialize(): SerializedPlanNodeRules {
     const node = this.approachNotified;
-    return { approachNotified: node && { t: node.t, r: { ...node.r }, v: { ...node.v } } };
+    return { approachNotified: node && serializeKinematicState(node) };
   }
 
   // 実行時刻を過ぎたノードを計画から落とし、直近ノードへの接近と計画軌道の達成を
