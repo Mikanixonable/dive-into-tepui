@@ -43,7 +43,6 @@ export interface PilotCommandFrame {
   readonly controls: PilotControls | null;
   readonly dt: number;
   readonly simDt: number;
-  readonly registry: EntityRegistry;
   readonly activeStage: StageOutcome;
   readonly stageRules: StageRules;
   readonly celestialBodies: CelestialBodies;
