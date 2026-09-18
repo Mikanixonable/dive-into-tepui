@@ -40,21 +40,21 @@ export interface SerializedEnemyFireController {
 // 敵の射撃判断・バースト進行・弾生成をEnemy本体から分離する。
 export class EnemyFireController {
   private lastFireSim?: number;
-  private burstLeft?: number;
-  private burstDelay?: number;
   private lastBehaviorSim?: number;
   public enabled = true;
 
-  public constructor(private readonly port: EnemyFireControllerPort) {}
+  // port は撃つ敵。burstLeft・burstDelay はバースト射撃の残弾と次弾までの残り時間で、未着手なら
+  // 両方 undefined。
+  public constructor(
+    private readonly port: EnemyFireControllerPort,
+    private burstLeft?: number,
+    private burstDelay?: number,
+  ) {}
 
   public get isBursting(): boolean { return this.burstLeft !== undefined && this.burstLeft > 0; }
 
-  public restore(burstLeft: number | undefined, burstDelay: number | undefined): void {
-    this.burstLeft = burstLeft;
-    this.burstDelay = burstDelay;
-  }
-
-  public get saveState(): SerializedEnemyFireController {
+  // バースト射撃の途中経過の直列化。
+  public serialize(): SerializedEnemyFireController {
     return { burstLeft: this.burstLeft, burstDelay: this.burstDelay };
   }
 

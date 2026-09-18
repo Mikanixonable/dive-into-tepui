@@ -54,10 +54,8 @@ export interface SerializedEnemy extends SerializedDynamicEntityFields {
   readonly showTrajectoryLine?: boolean;
 }
 
-// スナップショットからの再開。復元の腕は全具象で共通でなければならない。
-export interface EnemyRestore { readonly saved: SerializedEnemy; readonly simTime: number }
-
-// 新規配置。具象ごとに固有の項目(機体テンプレート番号・タンパク質アセット)を足して使う。
+// 敵を置く識別・色・陣形所属と運動状態。新しく置くときは、具象ごとに固有の項目(機体テンプレート
+// 番号・タンパク質アセット)を足して使う。id を省くと採番器が発番する。
 export interface EnemyPlacement {
   readonly name: string;
   readonly state: KinematicState;
@@ -72,13 +70,34 @@ export interface EnemyPlacement {
   readonly formationRole?: FormationRole;
 }
 
-// 敵クラスの静的側。セーブからの復元はここから読む。
+// 直列化した敵に共通する項目を、時刻 simTime の配置として読む。
+export function deserializeEnemyPlacement(serialized: SerializedEnemy, simTime: number): EnemyPlacement {
+  return {
+    name: serialized.name || '',
+    state: deserializeKinematicState(serialized, simTime),
+    q: { ...serialized.q },
+    w: v3(serialized.w.x, serialized.w.y, serialized.w.z),
+    accent: serialized.accent,
+    orbitLineColor: serialized.orbitLineColor,
+    // 攻撃グループの無い記録は、陣形・id・名前の順に代える
+    attackGroupId: serialized.attackGroupId ?? serialized.formationId ?? serialized.id ?? serialized.name,
+    waveId: serialized.waveId,
+    id: serialized.id || undefined,
+    formationId: serialized.formationId,
+    formationRole: serialized.formationRole,
+  };
+}
+
+// 敵クラスの静的側。直列化した敵の復元はここから引く。
 export interface EnemyClass {
-  // セーブへ書く具象タグ。
+  // 直列化した形の具象タグ。
   readonly kind: SerializedEnemy['kind'];
   // 復元に外部資源の取得が要るなら、それが揃ったかを答える述語。要らなければ null。
-  spawnGate(saved: SerializedEnemy): SpawnGate | null;
-  new (init: EnemyRestore, idAllocators: EntityIdAllocators, scene?: THREE.Scene): Enemy;
+  spawnGate(serialized: SerializedEnemy): SpawnGate | null;
+  // serialized を、時刻 simTime の状態として復元する。
+  deserialize(
+    serialized: SerializedEnemy, simTime: number, idAllocators: EntityIdAllocators, scene?: THREE.Scene,
+  ): Enemy;
 }
 
 // 敵に共通するもの — 識別・色・陣形所属、バースト射撃の AI、マーカー、被弾と撃破の演出、交戦圏
@@ -104,40 +123,26 @@ export abstract class Enemy extends Vessel implements CombatTarget {
   public set fireEnabled(value: boolean) { this.fireController.enabled = value; }
   public get isBursting(): boolean { return this.fireController.isBursting; }
 
-  // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径)を受けて、
-  // 敵に共通する識別・色・陣形所属を初期化する。復元時は保存済みの生死・バースト状態も戻す。
+  // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径・判定形状)を受けて、
+  // placement の識別・色・陣形所属と運動状態で置く。alive・burstLeft・burstDelay は生死とバースト
+  // 射撃の途中経過で、省けば新しく置いたときの状態で始める。
   protected constructor(
-    init: EnemyPlacement | EnemyRestore,
+    placement: EnemyPlacement,
     view: DynamicView,
     inertia: Vec3,
     radius: number,
     idAllocators: EntityIdAllocators,
-    shape?: EnemyCollisionShape,
+    shape: EnemyCollisionShape | undefined,
+    alive = true,
+    burstLeft?: number,
+    burstDelay?: number,
   ) {
-    // 復元と新規配置を同じ形へ均してから基底へ渡す。
-    const placed: EnemyPlacement = 'saved' in init
-      ? {
-        name: init.saved.name || '',
-        state: deserializeKinematicState(init.saved, init.simTime),
-        q: { ...init.saved.q },
-        w: v3(init.saved.w.x, init.saved.w.y, init.saved.w.z),
-        accent: init.saved.accent,
-        orbitLineColor: init.saved.orbitLineColor,
-        attackGroupId: init.saved.attackGroupId
-          ?? init.saved.formationId
-          ?? init.saved.id
-          ?? init.saved.name,
-        waveId: init.saved.waveId,
-        id: init.saved.id || undefined,
-        formationId: init.saved.formationId,
-        formationRole: init.saved.formationRole,
-      }
-      : init;
-    const attitude = { q: placed.q, w: placed.w, inertia };
+    // 運動の接触・焼失をこの敵へ通知させ、識別を採番する
+    const attitude = { q: placement.q, w: placement.w, inertia };
     super(
-      placed.name,
+      placement.name,
       ENEMY_MAX_HP,
-      owner => new EnemyMotion(placed.state, attitude, radius, {
+      owner => new EnemyMotion(placement.state, attitude, radius, {
         receiveEntityContact: (other, contact, services) => (
           (owner as Enemy).receiveEntityContact(
             other, contact, services.activeStage, services.registry,
@@ -151,14 +156,16 @@ export abstract class Enemy extends Vessel implements CombatTarget {
         ),
       }, shape),
       view,
-      idAllocators.entity.next(placed.id),
+      idAllocators.entity.next(placement.id),
     );
-    this.accent = placed.accent;
-    this.orbitLineColor = placed.orbitLineColor;
-    this.attackGroupId = placed.attackGroupId ?? placed.formationId ?? this.id;
-    this.waveId = placed.waveId;
-    this.formationId = placed.formationId;
-    this.formationRole = placed.formationRole;
+    // 色と所属
+    this.accent = placement.accent;
+    this.orbitLineColor = placement.orbitLineColor;
+    this.attackGroupId = placement.attackGroupId ?? placement.formationId ?? this.id;
+    this.waveId = placement.waveId;
+    this.formationId = placement.formationId;
+    this.formationRole = placement.formationRole;
+    // 射撃と被弾の反応は、具象の機体を読む
     this.fireController = new EnemyFireController({
       motion: this.motion,
       attackGroupId: this.attackGroupId,
@@ -166,7 +173,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       muzzlePosition: () => this.muzzlePosition(),
       plasmaDamage: () => this.plasmaDamage(),
       muzzleEffect: (muzzleState, events) => this.muzzleEffect(muzzleState, events),
-    });
+    }, burstLeft, burstDelay);
     this.reactions = new EnemyReactions({
       motion: this.motion,
       modelScale: ENEMY_MODEL_SCALE,
@@ -177,13 +184,10 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       hasHealth: () => this.hp > 0,
       recordDeath: (activeStage, simTime, cause) => activeStage.recordEnemyDeath(this, simTime, cause),
     });
-    if ('saved' in init) {
-      this.fireController.restore(init.saved.burstLeft, init.saved.burstDelay);
-      this.motion.alive = init.saved.alive;
-    }
+    this.motion.alive = alive;
   }
 
-  // 自身のクラス。復元タグはここから読む。
+  // 自身のクラス。直列化のタグはここから読む。
   public get enemyClass(): EnemyClass {
     return this.constructor as unknown as EnemyClass;
   }
@@ -264,10 +268,9 @@ export abstract class Enemy extends Vessel implements CombatTarget {
     this.fireController.behave(simTime, player, registry, enemies, operable, celestialBodies);
   }
 
-  // 敵に共通する保存項目。具象の serialize() がこれへ自分の項目を足す。showTrajectoryLine は
+  // 敵に共通する直列化の項目。具象の serialize() がこれへ自分の項目を足す。showTrajectoryLine は
   // この敵の予測線・過去線を出しているか。
   protected serializeEnemyFields(showTrajectoryLine: boolean): SerializedEnemy {
-    const fire = this.fireController.saveState;
     return {
       id: this.id,
       name: this.name,
@@ -285,8 +288,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
       // 陣形所属は無所属の単体敵も多いため、値がある場合だけキーを持たせる。
       ...(this.formationId === undefined ? {} : { formationId: this.formationId }),
       ...(this.formationRole === undefined ? {} : { formationRole: this.formationRole }),
-      burstLeft: fire.burstLeft,
-      burstDelay: fire.burstDelay,
+      ...this.fireController.serialize(),
       showTrajectoryLine,
     };
   }
