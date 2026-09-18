@@ -8,6 +8,7 @@ import { PartInventory } from './part-inventory';
 // 機体の寿命や敵AIは持たず、Shipと部品式の敵から同じように利用する。
 export class PartDamageModel {
   private readonly inventory = new PartInventory();
+  // 以下は部品一覧から組み直すキャッシュ(性能と致死判定で使う参照、装甲値)。
   private readonly radiatorPartRefs: [RadiatorPart | undefined, RadiatorPart | undefined] = [undefined, undefined];
   private readonly solarPanelPartRefs: [SolarPanelPart | undefined, SolarPanelPart | undefined] = [undefined, undefined];
   private readonly weaponPartRefs: WeaponPart[] = [];

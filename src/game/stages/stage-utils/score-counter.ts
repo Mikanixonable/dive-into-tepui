@@ -15,6 +15,7 @@ export class ScoreCounter {
     public kills = 0,
     // 非プレイヤー起因の喪失数(再突入・空力分解等)。
     public losses = 0,
+    // ステージが出した敵の総数。アセットを待っていて、まだ実体化していない敵も数える。
     public totalEnemiesSpawned = 0,
   ) {}
 
