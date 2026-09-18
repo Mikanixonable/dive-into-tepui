@@ -53,9 +53,9 @@ export class PowerSystem {
     p.setTarget(deployed);
   }
 
-  // 毎フレーム呼ぶ。sunlight は日照率込みの太陽光の放射照度 [W/m²]、sunDir は太陽方向の単位ベクトル(world)。
-  // installedGeneration は太陽定数の光を正面に受けたときの装備の発電量 [W]。省略時だけ既定のパネル
-  // 性能を使い、0 は装備の全損として扱う。
+  // 展開度と蓄電量を dt 秒ぶん進める。sunlight は日照率込みの太陽光の放射照度 [W/m²]、sunDir は
+  // 太陽方向の単位ベクトル(world)。installedGeneration は太陽定数の光を正面に受けたときの装備の
+  // 発電量 [W] で、省略時だけ既定のパネル性能を使い、0 は装備の全損として扱う。
   public update(
     dt: number, sunlight: number, sunDir: Vec3, att: Attitude, installedGeneration?: number,
   ): void {

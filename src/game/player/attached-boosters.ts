@@ -50,10 +50,12 @@ export class AttachedBoosters {
 
   // 標準ブースターを最後尾へ追加する。
   public attach(): void {
+    // 段数の上限に達していれば、繋げなかったことを記録する
     if (this.boosterMotion.stages.length >= MAX_ATTACHED) {
       this.registry.events.record({ kind: 'boosterLimitReached', limit: MAX_ATTACHED });
       return;
     }
+    // 満タンで未点火の標準段を採番して繋ぐ
     this.boosterMotion.attach({
       id: this.registry.idAllocators.booster.next(),
       dryMass: DEFAULT_DRY_MASS,
@@ -84,6 +86,7 @@ export class AttachedBoosters {
       this.registry.events.record({ kind: 'boosterDecoupleUnavailable' });
       return;
     }
+    // 最後尾段の接続面と中心の位置(ECI)を求めてから、段を外す
     const player = this.motion;
     const frontZ = BOOSTER_MOUNT_Z - stageIndex * BOOSTER_STAGE_DIMENSIONS.length;
     const centerZ = frontZ
@@ -93,6 +96,7 @@ export class AttachedBoosters {
     const detachedStage = this.boosterMotion.detachOutermost()!;
     const boosterMass = detachedStage.dryMass + detachedStage.fuel;
 
+    // 分離後の速度を両者へ配り、段間の部品と外した段を実体として顔ぶれへ入れる
     const forward = qRotate(player.att.q, LOCAL_FORWARD);
     const separated = boosterSeparationVelocities(
       player.state.v,
@@ -198,6 +202,7 @@ export class AttachedBoosters {
       totalMass: this.motion.mass,
       activeFuel: active?.fuel ?? 0,
       activeFuelMax: active?.maxFuel ?? 0,
+      // 燃焼の段階と操作の可否は、最後尾の段の有無・燃料・点火で決まる
       burnState: !active ? 'idle' : active.fuel <= 0 ? 'empty' : active.ignited ? 'burning' : 'ready',
       ignitionOn: active?.ignited ?? false,
       canAttach: this.boosterMotion.stages.length < MAX_ATTACHED,

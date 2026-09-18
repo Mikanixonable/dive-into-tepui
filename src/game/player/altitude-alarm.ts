@@ -1,5 +1,5 @@
 // 自機の高度低下の監視と警告。離心率による短周期の高度振動で誤反応しないよう、高度も変化率も
-// 指数移動平均で平滑化する。**熱ではない** — 温度も動圧も見ない。
+// 指数移動平均で平滑化する。
 import type { CelestialBody } from '../../physics/celestial-body';
 import { ellipsoidAltitude } from '../../physics/atmosphere';
 import { Vec3, sub } from '../../math/vec3';

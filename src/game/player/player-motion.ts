@@ -245,6 +245,7 @@ export class PlayerMotion extends DynamicMotion {
   }
 }
 
+// PlayerBehavior が受けた self を自機の Motion として読む。自機の Motion でなければ例外を投げる。
 function playerMotionOf(motion: DynamicMotion): PlayerMotion {
   if (!(motion instanceof PlayerMotion)) throw new Error('PlayerBehavior received a non-player motion');
   return motion;

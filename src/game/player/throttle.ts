@@ -42,6 +42,8 @@ export interface SerializedThrottle {
 }
 
 export class Throttle {
+  // 直近の操作で出した並進の推力加速度(ECI)[m/s^2]。噴射していなければ零ベクトル。操作量から
+  // 毎フレーム求め直すキャッシュ。
   public thrustAccelVec: Vec3 = v3();
 
   // ラッチ中の並進方向。押しっぱなしと同じに扱う。
@@ -63,6 +65,7 @@ export class Throttle {
   // 知らない方向のラッチは捨てる。
   public static deserialize(serialized: SerializedThrottle): Throttle {
     const { throttleIdx, rcsDamp, progradeHold, rotationHoldTime, latchedThrust } = serialized;
+    // 壊れた値は undefined として渡し、コンストラクタの既定引数に補わせる
     return new Throttle(
       Number.isInteger(throttleIdx) && throttleIdx >= 0 && throttleIdx < THROTTLE_LEVELS.length
         ? throttleIdx : undefined,
@@ -121,8 +124,8 @@ export class Throttle {
     };
   }
 
-  // 操作量から機体座標系の推力加速度を組み立てて返す。噴射しないフレームは null。
-  // ベルト物理が使う推力加速度の表示用状態も併せて更新する。
+  // 操作量から推力加速度(ECI)を組み立てて thrustAccelVec へ置き、それを返す。噴射しないフレームは
+  // null で、thrustAccelVec は零ベクトルになる。噴射のぶんの燃料を ship から消費する。
   public updateThrustState(controls: PilotControls, att: Attitude, simDt: number, ship: FuelConsumer): Vec3 | null {
     const thrust = this.buildThrust(controls, att.q, ship, simDt);
     if (!thrust) {
@@ -157,12 +160,12 @@ export class Throttle {
     return controls.thrust.has(direction) || this.latchedThrust.has(direction);
   }
 
-  // その方向の噴射がラッチ中かどうかを返す(タッチパッドの点灯表示用)。
+  // その方向の噴射がラッチ中かどうかを返す。
   public isThrustLatched(direction: ThrustDirection): boolean {
     return this.latchedThrust.has(direction);
   }
 
-  // 6方向の並進の操作量から機体座標系の推力加速度ベクトルを求める。噴射しないなら null。
+  // 6方向の並進の操作量から推力加速度(ECI)を求め、そのぶんの燃料を ship から消費する。噴射しないなら null。
   private buildThrust(controls: PilotControls, q: Attitude['q'], ship: FuelConsumer, simDt: number): Vec3 | null {
     if (thrustKillSwitchActive(controls.thrust)) return null;
     const axX = (this.isThrustHeld(controls, 'left') ? 1 : 0) + (this.isThrustHeld(controls, 'right') ? -1 : 0);
@@ -187,11 +190,9 @@ export class Throttle {
     return qRotate(q, scale(dir, thrustAccel));
   }
 
-  // 手動回転・RCS制動・プログレードホールドを合成したボディフレームトルクを返す。
-  // r/v は軌道の位置・速度で、プログレードホールドの目標姿勢(進行方向)を組むのに使う。
-  // 時計を2つ取る: 出力ランプは「何秒握り続けたか」という操作感の量なので実時間 dt、
-  // 燃料消費はトルクが積分されるぶんに比例する物理量なのでシミュレーション時間 simDt。
-  // events が null なら、手動操作でホールドが外れたことを記録しない。
+  // 手動回転・RCS制動・プログレードホールドを合成した機体座標系のトルクを返す。r・v はホールドの目標
+  // 姿勢(進行方向)を組む軌道の位置・速度。出力ランプは操作感の量なので実時間 dt、燃料消費は物理量なので
+  // simDt で数える。回転の入力はホールドを外し、events があればそれを記録する。
   public updateTorque(
     att: Attitude,
     r: Vec3,

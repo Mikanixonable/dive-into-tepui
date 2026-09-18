@@ -82,7 +82,7 @@ export class FireControl {
     this.weapon.wasFiring = false;
   }
 
-  // 発射の操作量を1フレーム分処理する。トリガーが引かれ、ワープ速度・弾薬が許せば発射する。
+  // 発射の操作量を1フレーム分処理する。トリガーが引かれ、火器が生きていて弾が残っていれば発射する。
   public updateFireState(
     dt: number,
     controls: PilotControls,
@@ -92,13 +92,13 @@ export class FireControl {
     this.weapon.tickCooldown(dt);
 
     if (!controls.firing) {
-      // トリガーを離した時点で連射状態を畳む: wasFiring を立てたままにすると
-      // fineAttitude(微調整出力)が恒久的に有効なままになり、次にトリガーを
-      // 引いたときもスピンアップ演出(justStartedFiring)が起きなくなる。
+      // トリガーを離したら連射状態を畳む。畳まないと微調整出力が有効なまま残り、次に引いたときの
+      // スピンアップも起きない。
       this.weapon.wasFiring = false;
       return;
     }
 
+    // 火器が全損しているか弾が尽きていれば、撃てなかったことを次に撃てるまでに1度だけ記録する
     if (this.player.totalFireRate <= 0) {
       if (!this.weapon.wasEmptyClick) {
         this.registry.events.record({ kind: 'gunDryFired' });
@@ -142,6 +142,7 @@ export class FireControl {
     if (command === null) return;
 
     this.fireGun(command, activeStage, celestialBodies);
+    // 装填の段階に応じて、次の発射までの間隔と排出物を決める
     switch (command.consumption) {
       case 'empty':
       case 'normal':
