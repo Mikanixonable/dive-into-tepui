@@ -7,11 +7,9 @@ export interface SerializedDeployablePanelState {
 }
 
 export class DeployablePanelState {
-  public target: 0 | 1;
   public value: number;
 
-  public constructor(target: 0 | 1, value: number) {
-    this.target = target;
+  public constructor(public target: 0 | 1, value: number) {
     this.value = Math.max(0, Math.min(1, value));
   }
 
