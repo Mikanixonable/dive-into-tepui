@@ -636,80 +636,15 @@ R1〜R11 は層の切り方を決めたが、層と層・持ち主と部品を�
 - セーブの形式の版を上げる。**段 4 までに書き出した記録は読めなくなる**(SAVE.md「形式の版」: 版が一致しない記録は読み込めず、変換もしない)。拒否されるだけで、セーブデータ画面もページの再読み込みも壊れない。
 - 新しい版では、保存の項目名と入れ子が所有者の語彙と一致し、モデル層の値がキャッシュを除いてすべて載る。
 
-#### 手順 5-1. 繋ぎ方の規則と検査を足す
+#### 手順 5-1・5-2 — 済(`361005e2`・`bed54eda`・`9acf2853`)
 
-**目的**: K8 の決定を正本にし、5-2〜5-4 の変更を機械で判定できるようにする。コードは変えない。規則の commit(`docs(rule):`)と検査の commit(`chore(tools):`)を分ける。
+**手順は実施したので落とした。** 後の手順が前提にしてよい結果だけを残す。
 
-**変更が必要な箇所**
-
-| ファイル | 何をするか |
-| --- | --- |
-| `DEVELOP/CODING-RULE.md` 1.3 | R12・R13 を新しい節として書く(文面は「書き込む規則(最終形)」)。R2 の表の「アプリの組み立て」に `run/` を足す。R10 に、ランの組み立ての項と「`main.ts` は位相の順序を持たない」を足す |
-| 同 1.3 の R11 | 4-4 で落とした2つ目の項(モデル層の値は例外なくすべてセーブする。セーブしないのはキャッシュ・乱数の系列・需要が残させる軌跡の履歴の3つだけ)を書き直す。満たすのは 5-5 |
-| 同 1.10 | R8 を言い直す: 需要を入力の解釈の出力から外し、進行の末尾で追従の材料と需要を受けると書く。暫定「位相の順序を組み立てるのは `src/game/game.ts`(段 5 でランの組み立てへ移す)」を、最終の文面「位相の順序はランの組み立て(`src/run/`)が持つ」へ置き換える |
-| 同 1.2 — 外す暫定 | 4-4 で置いた「`game.ts` は段 5 まで 500 行を超えたままにし、計画の外で分割しない」を外す(満たすのは 5-3) |
-| 同 1.6「多態を保存し、復元する」 | 静的側インターフェースが宣言するものを「タグと構築シグネチャ」から「タグと静的な `deserialize`」へ変える。3点目を「`deserialize` のシグネチャを全具象で揃える(直列化された形・復元時刻・協力者)。新しく作る引数は具象ごとに違ってよく、辞書を通さない」に置き換える |
-| 同 1.12「二段初期化を作らない」 | 「復元も同じで、構築した後で保存値を流し込まない(R12)」を足す |
-| 同 1.2「配線で占められたモジュールに実装を書かない」の例外 | 持ち主にしか書けないもの(生成・後始末・直列化)に、復元(`deserialize`)を足す |
-| 同 2.2 | `serialize` / `deserialize` / `SerializedT` の語と、`save` / `restore` を使ってよい層(launcher と SPEC)の区別を、語の使い分けとして足す |
-| `tools/check-boundaries.mjs` — 対応表 | `src/run/` をアプリの組み立てとして足す(フォルダはまだ無いので、無いフォルダを許す書き方にするか、5-3 と同じ commit で足す) |
-| `tools/check-boundaries.mjs` — 禁止パターン | 下の表の4本を足す |
-| `tools/boundary-allowlist.json` | 5-2〜5-4 で消す残りを載せる |
-
-足す禁止パターン:
-
-| 判定 | 対象 | パターン | 空にする手順 |
-| --- | --- | --- | --- |
-| 直列化の語彙の禁止 | `src/` | `\b\w+SaveData\b`、`WeaponStateData`、`BoosterStackData`、`SAVE_VERSION` | 5-2 |
-| 復元の流し込みの禁止 | モデル層のパス(`PROGRESS_ROOTS`・`src/game/viewer/`・`src/game/game.ts`) | `\brestore\w*\s*\(`、`\bimportData\s*\(`、`\bsaveState\b` | 5-4 |
-| 直列化された形をコンストラクタで受ける禁止 | 同上 | `constructor\s*\([^)]*\b(saved\|initialSave)\w*\??\s*:`、`'saved'\s+in\b` | 5-4 |
-| モデル層の根が表示の導出を持つ禁止 | `src/game/game.ts` | `from '\./(hud\|marker\|view\|pickable\|map\|lines\|input\|camera)/`、`from '\./(game-presentation\|flash-presenter\|run-event-presenter\|controlled-loop-sfx\|orbit-info)'`、`from '\.\./(audio\|input\|marker)/` | 5-3 |
-
-**達成条件と検証**
-
-- `rg -n "^\*\*R1[23]\." DEVELOP/CODING-RULE.md` が2件。R11 が2項に戻っている(`rg -n "例外なくすべてセーブ" DEVELOP/CODING-RULE.md` が1件)。
-- `rg -c "暫定 — 段" DEVELOP/CODING-RULE.md` が 4(4-4 で置いた `game.ts` の 500 行の例外と、位相の順序の印が外れる)。
-- 自己検証: モデル層のパスに `constructor(saved?: X)` を1本足すと `npm run check:boundaries` が 1 を返し、足した行を消すと 0 に戻る。複数行にまたがるコンストラクタの引数でも当たることを見る。
-- `npm run check:boundaries`(許可リストに載せた残りで 0)、`npm run typecheck`。
-
-#### 手順 5-2. 直列化の型を改名し、所有者へ移す
-
-**目的**: K8-1 の語彙をコードに当てる。`*SaveData` と不規則な名前を `SerializedT` に揃え、`game/save/save-data.ts` の型を所有者のモジュールへ移して、ファイルごと解体する。型の中身と JSON のキーは変えない。メソッドの改名(`serializePlan` など)は、形を変える 5-4 で行う。**この時点で挙動は変えない。**
-
-**変更が必要な箇所**
-
-| いまの名前(`save-data.ts` の行、またはいまの置き場) | 改名後 | 置き場 |
-| --- | --- | --- |
-| `GameSaveData`(:274)、`SAVE_VERSION`(:227) | `SerializedGame`、`SERIALIZATION_VERSION` | `game/game.ts` |
-| `EntitySaveDataUnion`(:178) | `SerializedDynamicEntity` | `dynamic/dynamic-entity/entity-dictionary.ts`(全具象を知るのは辞書だけ) |
-| `EntitySaveData`(:29、実体の共通の項目) | `SerializedDynamicEntityFields` | `dynamic/dynamic-entity/dynamic-entity.ts` |
-| `PlayerSaveData`(:98)、`PlanSaveData`(:56) | `SerializedPlayer`、`SerializedPlan` | `player/player.ts`、`plan/plan.ts` |
-| `FireSaveData`(:61)と `WeaponStateData`(`weapon-state.ts:6`) | `SerializedWeaponState` の1つにまとめる。`FireControl` の直列化はその別名 `SerializedFireControl` | `player/weapon-state.ts`、`player/fire-control.ts` |
-| `ThrottleSaveData`(:91)、`PowerSaveData`(:87)、`RadiatorSaveData`(:82)、`RadiatorPanelSaveData`(:77)、`ThermalSaveData`(:73) | `SerializedThrottle`、`SerializedPowerSystem`、`SerializedRadiatorSystem`、`SerializedDeployablePanelState`、`Serialized` + 熱の所有者の名前 | 各所有者 |
-| `BoosterStackData`・`BoosterStage`(`booster-stack.ts:17,6`) | `SerializedBoosterStack`・`SerializedBoosterStage`(段の型は可変なので、実行時の型とは分ける) | `player/booster-stack.ts` |
-| `AnyPart[]`(実行時の型をそのまま) | 部品が不変で JSON の素の値だけから成るなら据え置き、そうでなければ `SerializedPart` | `dynamic/dynamic-entity/parts.ts` |
-| `BaseSaveData`(:125)、`DetachedBoosterSaveData`(:118)、`AmmoPickupSaveData`・`RcsFuelPickupSaveData`(:169,173、`pickup.ts:38` の別名 `PickupSaveData`) | `SerializedBase`、`SerializedDetachedBooster`、`SerializedAmmoPickup`・`SerializedRcsFuelPickup`(`SerializedPickup`) | 各所有者 |
-| `EnemySaveData`・`MetalEnemySaveData`・`ProteinEnemySaveData`(:135,155,161) | `SerializedEnemy`・`SerializedMetalEnemy`・`SerializedProteinEnemy` | 各所有者 |
-| `ProteinSaveData`・`ProteinSiteSaveData`(`protein-schema.ts:141,146`) | `SerializedProteinCombatState`・`SerializedProteinSite` | `protein/protein-combat-state.ts` |
-| `StageSaveData`・`Stage0SaveData`・`Stage00SaveData`・`CreativeStageSaveData`(:204-219)、`ScoreCounterSaveData`(:187)、`LogisticsSaveData`(:195)、`WaveAttackSaveData`(`wave-attack.ts:49`) | `SerializedStage`・`SerializedStage0`・`SerializedStage00`・`SerializedCreativeStage`・`SerializedScoreCounter`・`SerializedLogistics`・`SerializedWaveAttack` | 各所有者(`save-data.ts` ↔ `stage.ts` の型の循環が消える) |
-| `ScoreAttackTimer.serialize(): number` | `SerializedScoreAttackTimer`(`number` の別名) | `stages/stage-utils/score-attack-timer.ts` |
-| `EnemyFireController.saveState` の無名の型 | `SerializedEnemyFireController` | `dynamic/.../enemy-fire-controller.ts` |
-| `CameraSaveData`(:261)、`FocusCameraSaveData`(:245)、`NavTargetSaveData`(:269)、`FocusTargetSaveData`(:241) | `SerializedCameraSelection`、`SerializedFocusCameraSelection`、`SerializedNavTargetSelection`、`SerializedFocusTarget` | `game/viewer/` の各所有者 |
-| `FrameRotationSourceSaveData`(:230)、`CameraRotationFollowSaveData`(:237) | 実行時の `FrameRotationSource`(`physics/frame.ts:32`)・`CameraRotationFollow`(`focus-camera-selection.ts:40`)と情報量が同じなら、それを使って消す(R12)。違うなら `Serialized…` | — |
-| `Viewer.serialize` の `Pick<GameSaveData, 'camera' \| 'navTarget' \| 'orbitGuide'>` | `SerializedViewer`(interface。形式は平坦なままなので、この時点では `SerializedGame` がこれを継ぐ。5-5 で `SerializedGame.viewer` の入れ子にする) | `game/viewer/viewer.ts` |
-| `Vec3SaveData`・`QuatSaveData`・`KinematicStateSaveData`(:16,22,50)、補助 `savedKinematicState`・`savedAttitude`(:41-48) | `SerializedVec3`・`SerializedQuat`・`SerializedKinematicState`、`deserializeKinematicState`・`deserializeAttitude` | 値の型の所有者(`math/vec3.ts`・`physics/`) |
-| `partFromSaveData`(`parts.ts:87`)、`savedOrbitGuideSettings`(`orbit-guide-settings.ts:304`) | `deserializePart`、`deserializeOrbitGuideSettings` | 据え置き |
-| `OrbitGuideSettings`・`EphemerisContext`・`ProteinDisplaySettings`・`GamePhase` | 不変で JSON の素の値なので、そのまま直列化の形に使う(R12) | 据え置き |
-| 使う側(`tests/dist` を除いて約 50 ファイル。`launcher/save/*`・`physics/ephemeris/ephemeris-context.ts`・`tests/game` の4本を含む) | import と名前を直す | — |
-| `tools/check-boundaries.mjs` | 4-2 の「セーブの型から表示の導出への禁止」は対象の `src/game/save/` が無くなるので、`src/game/game.ts` と `src/game/dynamic/dynamic-entity/entity-dictionary.ts`(根の型の置き場)へ差し替える(着手時に 0 件であることを確かめる)。所有者へ移した型は、移した先のファイルに新しい import を足さない。モデル層全体は 6-2 の規則が覆う |
-
-**達成条件と検証**
-
-- `rg -n "\w+SaveData\b|WeaponStateData|BoosterStackData|SAVE_VERSION|savedKinematicState|partFromSaveData" src tests --glob '!tests/dist/**'` が 0 件。
-- `src/game/save/` が無い。`npm run check:boundaries` で「直列化の語彙の禁止」が 0。
-- 型の本体(項目名と型)が変わっていないことを `git diff` で見る。移した先のファイルに import が増えていない(値型の補助を除く)。
-- `node tools/dep-metrics.mjs --against HEAD~1` で、型の循環と ctx2 の合計が増えていない。
-- `npm run typecheck`、`npm run test:game`、`npm run test:physics`。
+- **規則**: R12・R13 を 1.3 に書き、R8(1.10)・R10・R11 の2を最終形へ言い直した。1.2 の `game.ts` の暫定と 1.10 の位相の暫定は外れ、`rg -c "暫定 — 段"` は 4。R4 の「需要を作るのは入力の解釈の位相」の項は、言い直した R8 と矛盾するので消した。
+- **検査**: 4判定を足した(`MODEL_ROOTS` = 進行のパス + `src/game/viewer/` + `src/game/game.ts`)。コンストラクタの判定はファイル全体に後読みで当て、引数名(`saved…`・`initialSave…`)だけを識別子として許可リストに載せる。**5-2 の後の許可リスト**: 復元の流し込み 9、直列化された形をコンストラクタで受ける 36(5-4 で空にする)、モデル層の根が表示の導出を持つ 15(5-3 で空にする)。「セーブの型から表示の導出」の判定は、`entity-dictionary.ts` だけへ差し替えた(`game.ts` は「モデル層の根」の判定が同じ違反を覆うので、二重に数えない)。
+- **型**: 改名表のとおり。表と違えたもの: `QuatSaveData` は `Quat`(readonly で JSON の素の値)をそのまま使って消した。`FrameRotationSource`・`CameraRotationFollow` は実行時の型をそのまま使う。熱の型は `SerializedDynamicMotionThermal`(`dynamic-motion.ts`)。`SerializedPart = Readonly<AnyPart>`。`ThrottlePort.serialize` は呼び手が無いので消した。
+- **暫定の形(5-4・5-5 で作り直す)**: `SerializedGame`(`game.ts`)は `SerializedViewer` を継ぐ平坦な形。`DynamicSystem` は `{ simTime; entities }` の無名の型、`Viewer` は `SerializedViewer & { entities }` を受ける(`SerializedGame` を import すると `game.ts` との型の循環になるため)。
+- **dep-metrics**: 辺は 3769 → 3733、型の最大の強連結成分は 113 → 98 ファイル。ctx2 の平均だけ 2357 → 2368 と増えた。`launcher/save/*` が `SerializedGame` のために 1040 行の `game.ts` を読むようになったためで、5-3 で `game.ts` が縮めば戻る(5-3 の検証で見る)。
 
 #### 手順 5-3. `game.ts` をモデル層の根・表示の導出の根・ランの組み立てに分ける
 
