@@ -64,8 +64,6 @@ export interface PlanData {
 const NO_NODES: readonly KinematicState[] = [];
 
 export class Plan {
-  private _revision = 0;
-
   // data は起点とノード列。PlanData に「null ⟺ ノードが1件も無い」を足したもので、その対応を保つのが
   // Plan の責務。ノードが1件も無い計画の起点は自機の現在状態そのものなので、Plan は持たない。
   private constructor(private data: { anchor: KinematicState; nodes: KinematicState[] } | null = null) {}
@@ -102,12 +100,6 @@ export class Plan {
       anchor: { t: anchor.t, r: { ...anchor.r }, v: { ...anchor.v } },
       nodes: nodes.map((n) => ({ t: n.t, r: { ...n.r }, v: { ...n.v } })),
     };
-  }
-
-  // 編集でノード列または起点が実際に変化するたびに増える世代値。data の外に置く —
-  // 空になってから作り直しても単調に増え続けなければ、キャッシュ鍵として衝突する。
-  public get revision(): number {
-    return this._revision;
   }
 
   // ノード列を実行時刻順で返す。ノードが1件も無ければ空。
@@ -148,7 +140,6 @@ export class Plan {
     const data = this.data;
     const idx = this.nodeIndexFor(postState.t, this.anchorOr(from));
     if (idx < 0) return idx;
-    this._revision++;
     // 1件目は起点の凍結を伴う。
     if (!data) {
       this.data = { anchor: from, nodes: [postState] };
@@ -167,7 +158,6 @@ export class Plan {
     if (!data?.nodes[idx]) return;
     if (idx === 0) this.data = null;
     else data.nodes.length = idx;
-    this._revision++;
   }
 
   // 実行時刻が t 以前のノードを実行済みとして取り除き、取り除いた件数を返す。
@@ -188,7 +178,6 @@ export class Plan {
     while (nodes[dropped] && nodes[dropped]!.t <= actualState.t) dropped++;
     nodes.splice(0, dropped);
     this.data = nodes.length > 0 ? { anchor: actualState, nodes } : null;
-    this._revision++;
     return dropped;
   }
 
@@ -196,7 +185,6 @@ export class Plan {
   public clear(): void {
     if (!this.data) return;
     this.data = null;
-    this._revision++;
   }
 
   // idx 番目のノードを置ける実行時刻の範囲。直前の状態(前のノード、無ければ起点)の時刻から、
@@ -218,6 +206,5 @@ export class Plan {
     // 意味を失う。
     data.nodes.length = idx + 1;
     data.nodes[idx] = postState;
-    this._revision++;
   }
 }

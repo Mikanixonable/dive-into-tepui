@@ -6,8 +6,8 @@ import type { SerializedStage, Stage, StageClass } from './stages/stage';
 import type { HudLayers } from './hud/hud-layers';
 import { CommandQueue } from './command-queue';
 import { ControlSelection, type SerializedControlSelection } from './control-selection';
-import { PlanNodeRules } from './plan/plan-node-rules';
-import { SimSpeedManager } from './dynamic/sim-speed-manager';
+import { PlanNodeRules, type SerializedPlanNodeRules } from './plan/plan-node-rules';
+import { SimSpeedManager, type SerializedSimSpeedManager } from './dynamic/sim-speed-manager';
 import { DynamicSystem, type SerializedDynamicSystem } from './dynamic/dynamic-system';
 import { RunEventLog } from './run-events';
 import { Predictor } from './dynamic/predictor';
@@ -43,14 +43,14 @@ export interface SerializedProgress {
    */
   readonly ephemerisContext: EphemerisContext;
   readonly dynamicSystem: SerializedDynamicSystem;
+  readonly simSpeedManager: SerializedSimSpeedManager;
   readonly controlSelection: SerializedControlSelection;
   readonly stage: SerializedStage;
+  readonly planNodeRules: SerializedPlanNodeRules;
 }
 
 export class Game {
-  // 直近ノードの消化と、接近・達成の記録。
-  private readonly planNodeRules: PlanNodeRules;
-  // 顔ぶれの予測軌道。需要が求める長さまで伸ばす。
+  // 顔ぶれの予測軌道のキャッシュ。需要が求める長さまで伸ばす。
   public readonly predictor: Predictor;
 
   // いま操作している対象。操作しているものが無ければ null。
@@ -71,11 +71,11 @@ export class Game {
     // 操作対象(艦 0..n 隻と基地のうちどれを操作するか)の切替を持つ。
     public readonly controlSelection: ControlSelection,
     public readonly activeStage: Stage,
+    // 直近ノードの消化と、接近・達成の記録。進行の末尾で通す。
+    private readonly planNodeRules: PlanNodeRules,
     // 遊ぶ人の選択のうち、セーブごとに持つもの。
     public readonly viewer: Viewer,
   ) {
-    // 進行の末尾で通す、予測と計画の規則。
-    this.planNodeRules = new PlanNodeRules(events);
     this.predictor = new Predictor(dynamicSystem, celestialSystem);
   }
 
@@ -97,12 +97,14 @@ export class Game {
     const events = new RunEventLog();
     // 顔ぶれを先に組む — 操作対象の選択・ステージの初期配置・視点は、組み上がった顔ぶれを読む。
     const dynamicSystem = DynamicSystem.create(scene.scene, events, celestialSystem, sections);
-    const simSpeedManager = new SimSpeedManager(events);
+    const simSpeedManager = SimSpeedManager.create(events);
     const controlSelection = ControlSelection.create(dynamicSystem);
     const stage = stageClass.create(hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands);
+    const planNodeRules = PlanNodeRules.create(events);
     const viewer = Viewer.create(controlSelection, events, celestialSystem);
     return new Game(
-      celestialSystem, sections, commands, events, dynamicSystem, simSpeedManager, controlSelection, stage, viewer,
+      celestialSystem, sections, commands, events, dynamicSystem, simSpeedManager, controlSelection, stage,
+      planNodeRules, viewer,
     );
   }
 
@@ -126,16 +128,18 @@ export class Game {
     const dynamicSystem = DynamicSystem.deserialize(
       serializedProgress.dynamicSystem, scene.scene, events, celestialSystem, sections,
     );
-    const simSpeedManager = new SimSpeedManager(events);
+    const simSpeedManager = SimSpeedManager.deserialize(serializedProgress.simSpeedManager, events);
     const controlSelection = ControlSelection.deserialize(serializedProgress.controlSelection, dynamicSystem);
     const stage = stageClass.deserialize(
       // 記録にステージの内訳が無い・null なら、空の記録として新しいランの初期値で補う(初期配置はしない)。
       serializedProgress.stage ?? ({} as SerializedStage),
       hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands,
     );
+    const planNodeRules = PlanNodeRules.deserialize(serializedProgress.planNodeRules, events);
     const viewer = Viewer.deserialize(serialized.viewer, dynamicSystem, controlSelection, events, celestialSystem);
     return new Game(
-      celestialSystem, sections, commands, events, dynamicSystem, simSpeedManager, controlSelection, stage, viewer,
+      celestialSystem, sections, commands, events, dynamicSystem, simSpeedManager, controlSelection, stage,
+      planNodeRules, viewer,
     );
   }
 
@@ -161,8 +165,10 @@ export class Game {
         stageId: this.activeStage.id,
         ephemerisContext: { ...ephemerisContextFor(this.celestialSystem.epoch) },
         dynamicSystem: this.dynamicSystem.serialize(),
+        simSpeedManager: this.simSpeedManager.serialize(),
         controlSelection: this.controlSelection.serialize(),
         stage: this.activeStage.serialize(),
+        planNodeRules: this.planNodeRules.serialize(),
       },
       viewer: this.viewer.serialize(),
     };

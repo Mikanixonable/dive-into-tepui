@@ -99,21 +99,15 @@ export function register(): void {
     assert.equal(plan.anchorOr(later), later);
   });
 
-  test('plan: 全ノードを消化すると起点も落ち、revision は空を跨いでも増え続ける', () => {
+  test('plan: 全ノードを消化すると起点も落ちる', () => {
     const ship = kinematicState<'eci'>(0, v3(R_EARTH + 400e3, 0, 0), v3(0, 0, 7670));
     const reached = kinematicState<'eci'>(60, v3(R_EARTH + 410e3, 0, 0), v3(0, 0, 7660));
     const plan = Plan.create();
     plan.addNode(kinematicState<'eci'>(50, ship.r, ship.v), ship);
-    const revAfterAdd = plan.revision;
 
     assert.equal(plan.consumeNodesUpTo(55, reached), 1);
     assert.equal(plan.nodes.length, 0);
     assert.equal(plan.serialize(), null);
-    assert.ok(plan.revision > revAfterAdd);
-
-    // 空にしてから積み直しても世代値は単調に増える(キャッシュ鍵として衝突しない)。
-    plan.addNode(kinematicState<'eci'>(200, ship.r, ship.v), ship);
-    assert.ok(plan.revision > revAfterAdd + 1);
   });
 
   test('plan: nodeIndexFor は挿入位置を先に答え、起点以前なら -1 を返す', () => {
