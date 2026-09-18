@@ -8,7 +8,7 @@ import { PartBasedEnemy } from './part-based-enemy';
 import { createShipDefaultParts } from './ship-default-parts';
 import type { EntityIdAllocators } from './entity-id';
 import type { EntityRegistry } from '../entity-registry';
-import type { Part } from './parts';
+import { deserializeParts, type Part, type SerializedPart } from './parts';
 import { MetalEnemyView, Stage0MetalEnemyView } from '../../../render/dynamic/dynamic-entity/metal-enemy-view';
 
 // 各金属機体モデルを ENEMY_MODEL_SCALE 倍したときの外接球半径 [m]。描画テストでアセットの
@@ -36,20 +36,12 @@ export interface SerializedMetalEnemy extends SerializedEnemy {
   readonly kind: 'metal-enemy';
   // 機体テンプレート番号。型番を持たない漂流機体は null。
   readonly typeIndex: number | null;
+  readonly parts: SerializedPart[];
 }
 
 // 敵の配置に機体テンプレート番号を足したもの。typeIndex が null なら型番を持たない漂流機体、数値なら
 // stage00 ウェーブ敵の機体テンプレート番号。
 type MetalEnemyPlacement = EnemyPlacement & { readonly typeIndex: number | null };
-
-// 既定の部品構成へ、総 HP health を各部品の最大 HP の比で按分する。
-function defaultPartsWithOverallHp(health: number): Part[] {
-  const parts = createShipDefaultParts(ENEMY_MAX_HP);
-  const maxHp = parts.reduce((total, part) => total + part.maxHp, 0);
-  const ratio = Math.max(0, Math.min(1, health / maxHp));
-  for (const part of parts) part.hp = part.maxHp * ratio;
-  return parts;
-}
 
 // 金属機体の敵。機体テンプレートが外形と接触半径を決め、被弾は艦と同じパーツ式の被弾モデルへ入る。
 export class MetalEnemy extends PartBasedEnemy {
@@ -87,20 +79,19 @@ export class MetalEnemy extends PartBasedEnemy {
     return new MetalEnemy(placement, idAllocators, scene);
   }
 
-  // 直列化した敵を、時刻 simTime の状態として復元する。
+  // 直列化した敵を復元する。
   public static deserialize(
-    serialized: SerializedMetalEnemy, simTime: number, registry: EntityRegistry, scene?: THREE.Scene,
+    serialized: SerializedMetalEnemy, registry: EntityRegistry, scene?: THREE.Scene,
   ): MetalEnemy {
     return new MetalEnemy(
-      { ...deserializeEnemyPlacement(serialized, simTime), typeIndex: serialized.typeIndex },
+      { ...deserializeEnemyPlacement(serialized), typeIndex: serialized.typeIndex },
       registry.idAllocators,
       scene,
-      // 部品ごとの HP は記録に無いので、既定の部品構成へ総 HP を按分する。
-      defaultPartsWithOverallHp(serialized.health),
+      deserializeParts(serialized.parts),
       // 記録に無い生死は、新しく置いたときと違って撃破済みとして読む。
       serialized.alive ?? false,
-      serialized.burstLeft,
-      serialized.burstDelay,
+      serialized.fireController.burstLeft ?? undefined,
+      serialized.fireController.burstDelay ?? undefined,
     );
   }
 
@@ -132,8 +123,13 @@ export class MetalEnemy extends PartBasedEnemy {
     return this.applyCollisionDamage(damageSpeed);
   }
 
-  // 敵に共通する直列化の項目へ型番を足す。
+  // 敵に共通する直列化の項目へ、型番と部品を足す。
   public override serialize(): SerializedMetalEnemy {
-    return { ...this.serializeEnemyFields(), kind: MetalEnemy.kind, typeIndex: this.typeIndex };
+    return {
+      ...this.serializeEnemyFields(),
+      kind: MetalEnemy.kind,
+      typeIndex: this.typeIndex,
+      parts: this.parts.map(p => ({ ...p })) as SerializedPart[],
+    };
   }
 }

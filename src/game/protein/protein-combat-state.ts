@@ -11,7 +11,6 @@ interface SerializedProteinSite {
 }
 
 export interface SerializedProteinCombatState {
-  schemaVersion: number;
   integrityHp: number;
   sites: SerializedProteinSite[];
   modifications: Record<string, string>;
@@ -201,7 +200,6 @@ export class ProteinCombatState {
   public serialize(): SerializedProteinCombatState {
     const sites = this.siteStates.map((site) => ({ id: site.definition.id, hp: site.hp }));
     return {
-      schemaVersion: 1,
       integrityHp: this._integrityHp,
       sites,
       modifications: Object.fromEntries(this.modifications),

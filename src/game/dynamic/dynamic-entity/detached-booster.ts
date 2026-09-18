@@ -4,6 +4,7 @@ import { deserializeAttitude, type Attitude } from '../../../physics/attitude';
 import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { BoosterStage } from '../../player/booster-stack';
 import { DetachedBoosterMotion } from './detached-booster-motion';
+import type { DynamicMotionThermal } from '../dynamic-motion';
 import {
   DetachedBoosterView, type DetachedBoosterRenderSource,
 } from '../../../render/dynamic/dynamic-entity/detached-booster-view';
@@ -20,9 +21,10 @@ const BURN_DISPLAY_EPS = 1e-6;
 // 分離後も独立して燃焼・慣性飛行するブースター。接続中の段は SerializedPlayer 側に直列化される。
 export interface SerializedDetachedBooster extends SerializedDynamicEntityFields {
   readonly kind: 'booster';
+  readonly thermal: DynamicMotionThermal;
   readonly stage: BoosterStage;
-  // 分離直後の親艦との再接触を避ける猶予の期限。無ければ即時に接触できる。
-  readonly collisionEnableAt?: number;
+  // 分離直後の親艦との再接触を避ける猶予の期限 [sim s]。
+  readonly collisionEnableAt: number;
 }
 
 // 分離ブースターの識別情報、運動、表示を一体として所有する。
@@ -35,7 +37,7 @@ export class DetachedBooster extends DynamicEntity {
   public declare readonly motion: DetachedBoosterMotion;
 
   // 切り離した段 stage を、state・attitude で飛ばす。collisionEnableAt は親艦との接触を許す時刻。
-  // id は段の id を引き継ぐ。
+  // id は段の id を引き継ぐ。thermal は熱の状態で、省くと環境温度から始める。
   private constructor(
     stage: BoosterStage,
     state: KinematicState,
@@ -43,9 +45,10 @@ export class DetachedBooster extends DynamicEntity {
     collisionEnableAt: number,
     scene: THREE.Scene,
     idAllocators: EntityIdAllocators,
+    thermal?: DynamicMotionThermal,
   ) {
     super(
-      () => new DetachedBoosterMotion(state, attitude, stage, collisionEnableAt),
+      () => new DetachedBoosterMotion(state, attitude, stage, collisionEnableAt, thermal),
       new DetachedBoosterView(scene),
       idAllocators.booster.next(stage.id),
     );
@@ -65,18 +68,19 @@ export class DetachedBooster extends DynamicEntity {
     return new DetachedBooster({ ...stage }, state, attitude, collisionEnableAt, scene, idAllocators);
   }
 
-  // 直列化した分離ブースターを、時刻 simTime の状態として復元する。
+  // 直列化した分離ブースターを復元する。
   public static deserialize(
-    serialized: SerializedDetachedBooster, simTime: number, registry: EntityRegistry, scene: THREE.Scene,
+    serialized: SerializedDetachedBooster, registry: EntityRegistry, scene: THREE.Scene,
   ): DetachedBooster {
     return new DetachedBooster(
       { ...serialized.stage, id: serialized.id },
-      deserializeKinematicState(serialized, simTime),
+      deserializeKinematicState(serialized),
       deserializeAttitude(serialized, v3(1, 1, 0.4)),
-      // 記録に無い接触の猶予は、復元した時刻で切れているとみなす。
-      serialized.collisionEnableAt ?? simTime,
+      // 記録に無い接触の猶予は、記録した状態の時刻で切れているとみなす。
+      serialized.collisionEnableAt ?? serialized.t,
       scene,
       registry.idAllocators,
+      serialized.thermal,
     );
   }
 
@@ -98,13 +102,8 @@ export class DetachedBooster extends DynamicEntity {
   public override serialize(): SerializedDetachedBooster {
     const motion = this.motion;
     return {
-      id: this.id,
-      name: this.name,
-      kind: DetachedBooster.kind,
-      r: { ...motion.state.r },
-      v: { ...motion.state.v },
-      q: { ...motion.att.q },
-      w: { ...motion.att.w },
+      ...this.serializeEntityFields(DetachedBooster.kind),
+      thermal: motion.thermal,
       // 段の ID はエンティティの ID に揃えて直列化する
       stage: { ...motion.stage, id: this.id },
       collisionEnableAt: motion.collisionEnableAt,
