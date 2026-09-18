@@ -75,7 +75,7 @@ export function register(): void {
   // 区間の途中で到達量の内側へ入ってくる天体を取りこぼす。区間は最高段の時間加速で 60 fps の
   // 1フレームが進む時間送り。
   test('attractors: フレームに1組だけ組んだ分類は、区間内のどの時刻の分類も覆う', () => {
-    const FRAME = SIM_SPEED_LEVELS[SIM_SPEED_LEVELS.length - 1]! / 60;
+    const FRAME = Math.max(...SIM_SPEED_LEVELS) / 60;
     for (const site of SITES) {
       for (const t0 of SAMPLE_TIMES) {
         const frame = classifyAttractors(SYSTEM.gravityMotions, t0 + FRAME / 2, t0, t0 + FRAME);
