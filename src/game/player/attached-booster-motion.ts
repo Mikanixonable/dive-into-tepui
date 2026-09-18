@@ -18,6 +18,7 @@ export interface BoosterHostMotion {
 
 // 接続中ブースターの段、燃料、推力を管理し、段を変えるたびに寄与を機体の質量・慣性へ反映させる。
 export class AttachedBoosterMotion {
+  // 直近の区間の推力と燃焼率。段を燃やすたびに求め直すキャッシュ。
   private thrustValue: Vec3 | null = null;
   private burnRatioValue = 0;
 

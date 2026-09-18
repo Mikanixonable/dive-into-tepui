@@ -84,7 +84,7 @@ export interface SerializedRadiatorSystem {
 
 export class RadiatorSystem {
   private readonly panels: Record<RadiatorSide, DeployablePanelState>;
-  // side ごとの損耗率(0=無傷, 1=全損)。
+  // side ごとの損耗率(0=無傷, 1=全損)。放熱板部品の残 HP から求め直すキャッシュ。
   private wear: Record<RadiatorSide, number> = { up: 0, down: 0 };
   // side ごとの接触代理。折り数まで遅延生成し、以後は使い回す。
   private readonly foldProxies: Record<RadiatorSide, RadiatorFold[]> = { up: [], down: [] };
