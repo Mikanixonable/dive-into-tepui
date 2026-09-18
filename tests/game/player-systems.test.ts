@@ -70,7 +70,7 @@ export function register(): void {
   });
 
   test('player motion: 接続ブースターの質量で空力・輻射圧の質量あたり値が下がる', () => {
-    const motion = new PlayerMotion(state, attitude, 2.6, 300, 0, reactions());
+    const motion = new PlayerMotion(state, attitude, 2.6, 0, reactions(), 300);
     motion.attachedBoosters.attach({
       id: 'test-booster', dryMass: 200, fuel: 800, maxFuel: 800,
       thrust: 600_000, fuelRate: 80, ignited: false,
@@ -93,17 +93,18 @@ export function register(): void {
   });
 
   test('player save: 電力・放熱板・スロットル・パーツの不正値を安全な状態へ正規化する', () => {
-    assert.equal(new PowerSystem({ charge: Number.NaN }).chargeJ, POWER_CAPACITY * 0.75);
-    assert.equal(new PowerSystem({ charge: POWER_CAPACITY * 2 }).chargeJ, POWER_CAPACITY);
+    assert.equal(PowerSystem.deserialize({ charge: Number.NaN }).chargeJ, POWER_CAPACITY * 0.75);
+    assert.equal(PowerSystem.deserialize({ charge: POWER_CAPACITY * 2 }).chargeJ, POWER_CAPACITY);
 
-    const radiator = new RadiatorSystem(new DynamicMotion(state), () => {}, {
-      up: { deployTarget: 7 as 0 | 1, deploy: Number.NaN },
-      down: { deployTarget: 0, deploy: 2 },
-    });
+    const radiator = new RadiatorSystem(
+      new DynamicMotion(state), () => {},
+      DeployablePanelState.deserialize({ deployTarget: 7 as 0 | 1, deploy: Number.NaN }),
+      DeployablePanelState.deserialize({ deployTarget: 0, deploy: 2 }),
+    );
     assert.equal(radiator.deployOf('up'), 0);
     assert.equal(radiator.deployOf('down'), 1);
 
-    const throttle = new Throttle({
+    const throttle = Throttle.deserialize({
       throttleIdx: 99,
       rcsDamp: 'bad' as unknown as boolean,
       progradeHold: null as unknown as boolean,
@@ -127,9 +128,9 @@ export function register(): void {
       { motion: { mass: 1_000 } } as Player,
       quietEvents,
       {} as never,
-      { saved: {
+      WeaponState.deserialize({
         mags: -2, rounds: 999, barrel: -1, cooldown: Number.NaN, muzzleIdx: 8,
-      } as SerializedFireControl },
+      } as SerializedFireControl),
     );
     assert.equal(fire.mags, 2);
     assert.equal(fire.rounds, 32);
@@ -141,7 +142,7 @@ export function register(): void {
   });
 
   test('weapon state: 弾薬遷移と砲口交互状態は副作用なしに再現できる', () => {
-    const weapon = new WeaponState(undefined, { mags: 1, rounds: 1 });
+    const weapon = WeaponState.create({ mags: 1, rounds: 1 });
     const first = weapon.beginShot(2);
     assert.deepEqual(first, { consumption: 'mag-reload', muzzleIndex: 0 });
     const second = weapon.beginShot(2);

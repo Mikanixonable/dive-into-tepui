@@ -15,6 +15,9 @@ export interface SerializedWeaponState {
   readonly muzzleIdx: number;
 }
 
+// 艦の初期積載(予備マガジン数・装填済み残弾数)。
+export type AmmoLoad = { readonly mags: number; readonly rounds: number };
+
 export type AmmoConsumption = 'empty' | 'normal' | 'mag-reload' | 'barrel-reload';
 
 export interface WeaponFireCommand {
@@ -25,30 +28,38 @@ export interface WeaponFireCommand {
 // 弾薬・砲身・クールダウン・砲口交互状態だけを所有する純粋な状態機械。
 // 発射に伴う弾体・音・閃光・得点などの副作用はここへ持ち込まない。
 export class WeaponState {
-  public rounds = MAG_ROUNDS;
-  public mags = MAGS_PER_BARREL - 1;
-  public barrel = MAGS_PER_BARREL;
-  public barrelTemperature = DEFAULT_BARREL_TEMPERATURE;
-  public barrelDeviation = 0;
   public pendingBarrelJoules = 0;
-  public cooldown = 0;
   public wasFiring = false;
   public wasEmptyClick = false;
-  public muzzleIdx = 0;
 
-  public constructor(saved?: SerializedWeaponState, initial?: { readonly mags: number; readonly rounds: number }) {
-    if (saved) {
-      this.mags = nonNegativeInteger(saved.mags, this.mags);
-      this.rounds = boundedInteger(saved.rounds, 0, MAG_ROUNDS, this.rounds);
-      this.barrel = boundedInteger(saved.barrel, 0, MAGS_PER_BARREL, this.barrel);
-      this.barrelTemperature = finiteNumber(saved.barrelTemperature, DEFAULT_BARREL_TEMPERATURE);
-      this.barrelDeviation = finiteNumber(saved.barrelDeviation, 0);
-      this.cooldown = nonNegativeNumber(saved.cooldown, 0);
-      this.muzzleIdx = boundedInteger(saved.muzzleIdx, 0, 1, 0);
-    } else if (initial) {
-      this.mags = nonNegativeInteger(initial.mags, this.mags);
-      this.rounds = boundedInteger(initial.rounds, 0, MAG_ROUNDS, this.rounds);
-    }
+  // barrel は装着中の砲身に残るマガジン数、barrelTemperature・barrelDeviation は砲身の平均温度と
+  // 薬室側の温度差 [K]、muzzleIdx は次に撃つ砲口。
+  public constructor(
+    public mags = MAGS_PER_BARREL - 1,
+    public rounds = MAG_ROUNDS,
+    public barrel = MAGS_PER_BARREL,
+    public barrelTemperature = DEFAULT_BARREL_TEMPERATURE,
+    public barrelDeviation = 0,
+    public cooldown = 0,
+    public muzzleIdx = 0,
+  ) {}
+
+  // 初期積載 ammo を積んで新しく作る。整数でないか範囲を外れた数は、既定の積載へ落とす。
+  public static create(ammo: AmmoLoad): WeaponState {
+    return new WeaponState(nonNegativeInteger(ammo.mags), boundedInteger(ammo.rounds, 0, MAG_ROUNDS));
+  }
+
+  // 直列化した弾薬・砲身の状態から復元する。壊れた値は既定へ落とす。
+  public static deserialize(serialized: SerializedWeaponState): WeaponState {
+    return new WeaponState(
+      nonNegativeInteger(serialized.mags),
+      boundedInteger(serialized.rounds, 0, MAG_ROUNDS),
+      boundedInteger(serialized.barrel, 0, MAGS_PER_BARREL),
+      finiteNumber(serialized.barrelTemperature),
+      finiteNumber(serialized.barrelDeviation),
+      nonNegativeNumber(serialized.cooldown),
+      boundedInteger(serialized.muzzleIdx, 0, 1),
+    );
   }
 
   public get left(): boolean { return this.rounds > 0 || this.mags > 0; }
@@ -109,21 +120,25 @@ export class WeaponState {
   }
 }
 
-function finiteNumber(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+// 有限な数ならその値、そうでなければ既定へ落とすための undefined。
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-function nonNegativeNumber(value: unknown, fallback: number): number {
-  const number = finiteNumber(value, fallback);
-  return number >= 0 ? number : fallback;
+// 有限な非負の数ならその値、そうでなければ undefined。
+function nonNegativeNumber(value: unknown): number | undefined {
+  const number = finiteNumber(value);
+  return number !== undefined && number >= 0 ? number : undefined;
 }
 
-function nonNegativeInteger(value: unknown, fallback: number): number {
-  const number = nonNegativeNumber(value, fallback);
-  return Number.isInteger(number) ? number : fallback;
+// 非負の整数ならその値、そうでなければ undefined。
+function nonNegativeInteger(value: unknown): number | undefined {
+  const number = nonNegativeNumber(value);
+  return number !== undefined && Number.isInteger(number) ? number : undefined;
 }
 
-function boundedInteger(value: unknown, min: number, max: number, fallback: number): number {
-  const number = nonNegativeInteger(value, fallback);
-  return number >= min && number <= max ? number : fallback;
+// min..max の整数ならその値、そうでなければ undefined。
+function boundedInteger(value: unknown, min: number, max: number): number | undefined {
+  const number = nonNegativeInteger(value);
+  return number !== undefined && number >= min && number <= max ? number : undefined;
 }

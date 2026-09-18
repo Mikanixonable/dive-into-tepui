@@ -1,6 +1,8 @@
 // 軌道計画(ノード列)とその起点アンカー。ノードは噴射直後の絶対 KinematicState として凍結し、
 // Δv は導出値。上流ノードを編集すると下流を破棄する。計画軌道の計算・キャッシュは持たない。
-import type { KinematicState, SerializedKinematicState } from '../../physics/kinematic-state';
+import {
+  deserializeKinematicState, type KinematicState, type SerializedKinematicState,
+} from '../../physics/kinematic-state';
 import { strongestAttractor } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { orbitalElementsOf } from '../../physics/elements';
@@ -62,10 +64,45 @@ export interface PlanData {
 const NO_NODES: readonly KinematicState[] = [];
 
 export class Plan {
-  // 起点とノード列。PlanData に「null ⟺ ノードが1件も無い」を足したもので、その対応を保つのが
-  // Plan の責務。ノードが1件も無い計画の起点は自機の現在状態そのものなので、Plan は持たない。
-  private data: { anchor: KinematicState; nodes: KinematicState[] } | null = null;
   private _revision = 0;
+
+  // data は起点とノード列。PlanData に「null ⟺ ノードが1件も無い」を足したもので、その対応を保つのが
+  // Plan の責務。ノードが1件も無い計画の起点は自機の現在状態そのものなので、Plan は持たない。
+  private constructor(private data: { anchor: KinematicState; nodes: KinematicState[] } | null = null) {}
+
+  // ノードが1件も無い計画を作る。
+  public static create(): Plan {
+    return new Plan();
+  }
+
+  // 直列化した計画を復元する。ノードは addNode と同じ規則で順に置き直すので、起点の時刻以前の
+  // ノード(droppedNodeCount が数える)は捨てられ、実行時刻の戻ったノードはそれ以降を置き換える。
+  public static deserialize(serialized: SerializedPlan): Plan {
+    const anchor = deserializeKinematicState(serialized.anchor, serialized.anchor.t);
+    const nodes: KinematicState[] = [];
+    for (const node of serialized.nodes) {
+      if (node.t <= anchor.t) continue;
+      nodes.length = nodes.filter((kept) => kept.t < node.t).length;
+      nodes.push(deserializeKinematicState(node, node.t));
+    }
+    return new Plan(nodes.length > 0 ? { anchor, nodes } : null);
+  }
+
+  // 直列化した計画のうち、起点の時刻以前にあって deserialize が捨てるノードの数。
+  public static droppedNodeCount(serialized: SerializedPlan): number {
+    return serialized.nodes.filter((node) => node.t <= serialized.anchor.t).length;
+  }
+
+  // 凍結した起点とノード列の直列化。ノードが1件も無ければ null — そのときの起点は自機そのもの
+  // なので、直列化すべき計画は存在しない。
+  public serialize(): SerializedPlan | null {
+    if (!this.data) return null;
+    const { anchor, nodes } = this.data;
+    return {
+      anchor: { t: anchor.t, r: { ...anchor.r }, v: { ...anchor.v } },
+      nodes: nodes.map((n) => ({ t: n.t, r: { ...n.r }, v: { ...n.v } })),
+    };
+  }
 
   // 編集でノード列または起点が実際に変化するたびに増える世代値。data の外に置く —
   // 空になってから作り直しても単調に増え続けなければ、キャッシュ鍵として衝突する。
@@ -88,12 +125,6 @@ export class Plan {
   // 折れ線の材料。起点の借り方は anchorOr と同じ。
   public displayData(shipState: KinematicState): PlanData {
     return this.data ?? { anchor: shipState, nodes: NO_NODES };
-  }
-
-  // 凍結済みの起点とノード列。ノードが1件も無ければ null — そのときの起点は自機そのものなので、
-  // 保存すべき計画は存在しない。
-  public frozenData(): PlanData | null {
-    return this.data;
   }
 
   // 最初に実行されるノードを返す。ノードが無ければ undefined。
