@@ -95,7 +95,7 @@ const RULES = {
   hudOut: 'src/hud/ の出ていく import',
   progressToViewer: '進行から視点への import',
   settingsViewer: '設定と視点の相互 import',
-  saveToPresentation: 'セーブから表示の導出への import',
+  serializationToPresentation: '直列化の根の型から表示の導出への import',
 };
 
 // 禁止パターンの表。段ごとに行を足す。exempt は恒久の例外で、理由は各行のコメントに書く。
@@ -190,7 +190,6 @@ const FORBIDDEN = [
       'src/game/dynamic/',
       'src/game/player/',
       'src/game/stages/',
-      'src/game/save/',
       'src/game/protein/',
       'src/game/control-selection.ts',
       'src/game/creative/manual-spawn.ts',
@@ -342,9 +341,11 @@ function findImportViolations({ edges, layerOf }) {
     ) {
       flag(RULES.settingsViewer);
     }
-    // スナップショットはモデル層の直列化で、表示の導出を含めない(R11)。
-    // (暫定 — 段 6 で層の規則が覆うので外す)
-    if (e.from.startsWith('src/game/save/') && isUnder(e.to, PRESENTATION_ROOTS)) flag(RULES.saveToPresentation);
+    // スナップショットはモデル層の直列化で、表示の導出を含めない(R11)。実体の直列化の根の型を
+    // 置く辞書へ当てる。(暫定 — 段 6 で層の規則が覆うので外す)
+    if (e.from === 'src/game/dynamic/dynamic-entity/entity-dictionary.ts' && isUnder(e.to, PRESENTATION_ROOTS)) {
+      flag(RULES.serializationToPresentation);
+    }
   }
   return found;
 }

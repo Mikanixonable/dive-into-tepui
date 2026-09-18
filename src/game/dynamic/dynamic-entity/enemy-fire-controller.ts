@@ -32,6 +32,11 @@ export interface EnemyFireControllerPort {
   muzzleEffect(muzzleState: KinematicState, events: RunEventSink): void;
 }
 
+export interface SerializedEnemyFireController {
+  readonly burstLeft?: number;
+  readonly burstDelay?: number;
+}
+
 // 敵の射撃判断・バースト進行・弾生成をEnemy本体から分離する。
 export class EnemyFireController {
   private lastFireSim?: number;
@@ -49,7 +54,7 @@ export class EnemyFireController {
     this.burstDelay = burstDelay;
   }
 
-  public get saveState(): { readonly burstLeft?: number; readonly burstDelay?: number } {
+  public get saveState(): SerializedEnemyFireController {
     return { burstLeft: this.burstLeft, burstDelay: this.burstDelay };
   }
 

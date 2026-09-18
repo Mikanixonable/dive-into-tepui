@@ -156,6 +156,10 @@ function identityAttitude(): Attitude {
   return { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
 }
 
+export interface SerializedDynamicMotionThermal {
+  readonly hullTemp: number;
+}
+
 // 1体の物理結果を変えうる状態(軌道・姿勢・熱・予測弧)をすべて所有する。
 export class DynamicMotion {
   public readonly actual: DynamicTrajectory;
