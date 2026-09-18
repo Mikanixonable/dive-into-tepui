@@ -67,9 +67,6 @@ export interface Controllable extends CombatTarget, FuelConsumer, PilotCommandRe
   readonly fire?: FireControl;
   readonly boosters?: AttachedBoosters;
   readonly altitudeAlarm?: AltitudeAlarm;
-  // 装備を持つ操作対象だけが実装する入力命令。未搭載はメソッド自体を持たない。
-  readonly toggleSolarPanel?: (side: 'up' | 'down') => void;
-  readonly toggleRadiator?: (side: 'up' | 'down') => void;
 }
 
 // この個体が操作対象になりうるか。

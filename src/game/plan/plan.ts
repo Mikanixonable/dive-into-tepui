@@ -1,7 +1,7 @@
 // 軌道計画(ノード列)とその起点アンカー。ノードは噴射直後の絶対 KinematicState として凍結し、
 // Δv は導出値。上流ノードを編集すると下流を破棄する。
 import {
-  deserializeKinematicState, type KinematicState, type SerializedKinematicState,
+  deserializeKinematicState, serializeKinematicState, type KinematicState, type SerializedKinematicState,
 } from '../../physics/kinematic-state';
 import { strongestAttractor } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -95,8 +95,8 @@ export class Plan {
     if (!this.data) return null;
     const { anchor, nodes } = this.data;
     return {
-      anchor: { t: anchor.t, r: { ...anchor.r }, v: { ...anchor.v } },
-      nodes: nodes.map((n) => ({ t: n.t, r: { ...n.r }, v: { ...n.v } })),
+      anchor: serializeKinematicState(anchor),
+      nodes: nodes.map(serializeKinematicState),
     };
   }
 
