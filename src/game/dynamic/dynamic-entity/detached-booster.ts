@@ -11,6 +11,7 @@ import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
 import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
 import type { EntityIdAllocators } from './entity-id';
+import type { EntityRegistry } from '../entity-registry';
 import type { OrbitReference } from '../../orbit-reference';
 
 // 表示時刻を「現在」とみなす許容差 [sim s]。
@@ -66,7 +67,7 @@ export class DetachedBooster extends DynamicEntity {
 
   // 直列化した分離ブースターを、時刻 simTime の状態として復元する。
   public static deserialize(
-    serialized: SerializedDetachedBooster, simTime: number, idAllocators: EntityIdAllocators, scene: THREE.Scene,
+    serialized: SerializedDetachedBooster, simTime: number, registry: EntityRegistry, scene: THREE.Scene,
   ): DetachedBooster {
     return new DetachedBooster(
       { ...serialized.stage, id: serialized.id },
@@ -75,7 +76,7 @@ export class DetachedBooster extends DynamicEntity {
       // 記録に無い接触の猶予は、復元した時刻で切れているとみなす。
       serialized.collisionEnableAt ?? simTime,
       scene,
-      idAllocators,
+      registry.idAllocators,
     );
   }
 
