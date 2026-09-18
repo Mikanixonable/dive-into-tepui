@@ -1,6 +1,11 @@
 // 展開式パネルに共通する、目標値への線形補間状態。
 // 発電量・冷却量・接触形状などの性能計算は各所有者が持ち、ここは状態遷移だけを担う。
 
+export interface SerializedDeployablePanelState {
+  readonly deployTarget: 0 | 1;
+  readonly deploy: number;
+}
+
 export class DeployablePanelState {
   public target: 0 | 1;
   public value: number;

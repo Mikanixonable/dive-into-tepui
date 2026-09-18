@@ -1,4 +1,4 @@
-import type { GameSaveData } from '../../game/save/save-data';
+import type { SerializedGame } from '../../game/game';
 import type { SaveIndex } from './slot-data';
 
 // セーブの永続化。索引と記録本体の読み書きを JSON I/O として提供する。
@@ -13,8 +13,8 @@ const SNAPSHOT_KEY_PREFIX = 'tepui.snapshot.';
 export interface SaveStore {
   readIndex(): SaveIndex | null;
   writeIndex(index: SaveIndex): void;
-  readSnapshot(id: string): GameSaveData | null;
-  writeSnapshot(id: string, data: GameSaveData): void;
+  readSnapshot(id: string): SerializedGame | null;
+  writeSnapshot(id: string, data: SerializedGame): void;
   deleteSnapshot(id: string): void;
   snapshotIds(): readonly string[];
 }
@@ -44,7 +44,7 @@ export class LocalStorageSaveStore implements SaveStore {
   }
 
   // 未保存・JSON 破損は、どちらも null を返す。
-  public readSnapshot(id: string): GameSaveData | null {
+  public readSnapshot(id: string): SerializedGame | null {
     let raw: string | null;
     try {
       raw = localStorage.getItem(SNAPSHOT_KEY_PREFIX + id);
@@ -53,14 +53,14 @@ export class LocalStorageSaveStore implements SaveStore {
     }
     if (raw === null) return null;
     try {
-      return JSON.parse(raw) as GameSaveData;
+      return JSON.parse(raw) as SerializedGame;
     } catch {
       return null;
     }
   }
 
   // localStorage が使えない・容量を超えたときは、その例外を素通しする。
-  public writeSnapshot(id: string, data: GameSaveData): void {
+  public writeSnapshot(id: string, data: SerializedGame): void {
     localStorage.setItem(SNAPSHOT_KEY_PREFIX + id, JSON.stringify(data));
   }
 

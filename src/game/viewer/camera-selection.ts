@@ -2,16 +2,24 @@
 import { frameRoleAnchorId } from '../../physics/frame';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { RunEvent, RunEventSink } from '../run-events';
-import type { CameraSaveData } from '../save/save-data';
 import type { ViewMode } from '../view/view-mode';
 import {
   type CameraFrameSample,
   FocusCameraSelection,
   type FocusCameraSource,
+  type SerializedFocusCameraSelection,
 } from './focus-camera-selection';
 
 export const COMBAT_CAMERA_FOV = 55; // 通常時の垂直画角 [deg]
 const COMBAT_CAMERA_INIT_DIST = 38; // 注視距離 [m]
+
+export interface SerializedCameraSelection {
+  readonly view: 'combat' | 'map';
+  // 戦闘ビューの視点。
+  readonly chase: SerializedFocusCameraSelection;
+  // マップビューの視点。
+  readonly overview: SerializedFocusCameraSelection;
+}
 
 export interface CameraFrameSamples {
   readonly combat: CameraFrameSample;
@@ -39,7 +47,7 @@ export class CameraSelection implements CameraSelectionSource {
   public constructor(
     celestialBodies: CelestialBodies,
     events: RunEventSink,
-    saved: CameraSaveData | undefined,
+    saved: SerializedCameraSelection | undefined,
   ) {
     this.combat = new FocusCameraSelection(celestialBodies, {
       view: 'combat',
@@ -83,8 +91,8 @@ export class CameraSelection implements CameraSelectionSource {
     this.camera(view).followProgress(view === 'map' ? samples.map : samples.combat);
   }
 
-  // CameraSaveData へ2台分を畳む。
-  public serialize(view: ViewMode): CameraSaveData {
+  // 2台分を直列化した形へ畳む。
+  public serialize(view: ViewMode): SerializedCameraSelection {
     return { view, chase: this.combat.serialize(), overview: this.map.serialize() };
   }
 }

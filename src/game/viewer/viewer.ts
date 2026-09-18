@@ -1,17 +1,27 @@
 // 視点の根。遊ぶ人の選択のうちセーブごとに持つものの所有者を組み、セーブとの行き来と、
 // 進行が記録した出来事に視点を合わせる規則を1か所に持つ(R4)。
-import { NavTargetSelection } from './nav-target-selection';
+import { NavTargetSelection, type SerializedNavTargetSelection } from './nav-target-selection';
 import { OrbitGuideSelection } from './orbit-guide-selection';
 import { OrbitReferenceSelection } from './orbit-reference-selection';
 import { PredictPanelSelection } from './predict-panel-selection';
 import { ViewSelection, type ViewControlSource } from './view-selection';
-import { CameraSelection, type CameraFrameSamples } from './camera-selection';
+import { CameraSelection, type CameraFrameSamples, type SerializedCameraSelection } from './camera-selection';
 import { EntityDisplaySelection } from './entity-display-selection';
 import { focusTargetId } from './focus-target';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { RunEvent, RunEventSink } from '../run-events';
-import type { GameSaveData } from '../save/save-data';
+import type { OrbitGuideSettings } from './orbit-guide-settings';
+import type { SerializedDynamicEntity } from '../dynamic/dynamic-entity/entity-dictionary';
+
+export interface SerializedViewer {
+  // 無ければ視点は既定のまま始まる。
+  readonly camera?: SerializedCameraSelection;
+  // 無ければターゲット未選択のまま始まる。
+  readonly navTarget?: SerializedNavTargetSelection | null;
+  // 無ければ既定の軌道ガイドで始まる。
+  readonly orbitGuide?: OrbitGuideSettings;
+}
 
 export class Viewer {
   // 航法ターゲットの選択。
@@ -32,7 +42,7 @@ export class Viewer {
   // saved のうち視点の分を戻して組む。saved が無ければ既定から始める。roster と control には
   // 復元と初期配置を終えた進行を渡し、所有者の命令の結果は events へ記録する。
   public constructor(
-    saved: GameSaveData | undefined,
+    saved: (SerializedViewer & { readonly entities: readonly SerializedDynamicEntity[] }) | undefined,
     roster: EntityRoster,
     control: ViewControlSource,
     events: RunEventSink,
@@ -49,8 +59,8 @@ export class Viewer {
     this.entityDisplay = new EntityDisplaySelection(saved?.entities);
   }
 
-  // セーブのうち視点の分。
-  public serialize(): Pick<GameSaveData, 'camera' | 'navTarget' | 'orbitGuide'> {
+  // 直列化した形のうち視点の分。
+  public serialize(): SerializedViewer {
     return {
       camera: this.camera.serialize(this.view.current),
       navTarget: this.navTarget.serialize(),

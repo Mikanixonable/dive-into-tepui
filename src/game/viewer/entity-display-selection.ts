@@ -2,7 +2,8 @@
 import {
   DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings, type ProteinDisplaySettings,
 } from '../../render/protein/protein-display';
-import type { EntitySaveDataUnion, ProteinEnemySaveData } from '../save/save-data';
+import type { SerializedDynamicEntity } from '../dynamic/dynamic-entity/entity-dictionary';
+import type { SerializedProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
 
 // 実体ごとの表示設定を読む面。
 export interface EntityDisplaySource {
@@ -13,8 +14,8 @@ export interface EntityDisplaySource {
 }
 
 // saved のうち最初のタンパク質の敵が持つ表示設定。その敵がいないか、値が不正なら既定。
-function savedProteinDisplay(saved: readonly EntitySaveDataUnion[]): ProteinDisplaySettings {
-  const protein = saved.find((data): data is ProteinEnemySaveData => data.kind === 'protein-enemy');
+function savedProteinDisplay(saved: readonly SerializedDynamicEntity[]): ProteinDisplaySettings {
+  const protein = saved.find((data): data is SerializedProteinEnemy => data.kind === 'protein-enemy');
   return isProteinDisplaySettings(protein?.display) ? protein.display : DEFAULT_PROTEIN_DISPLAY;
 }
 
@@ -25,7 +26,7 @@ export class EntityDisplaySelection implements EntityDisplaySource {
 
   // 保存された実体の記録 saved から、線を出す実体とタンパク質の表示設定を戻して始める。
   // saved が無ければ既定から始める。
-  public constructor(saved: readonly EntitySaveDataUnion[] | undefined) {
+  public constructor(saved: readonly SerializedDynamicEntity[] | undefined) {
     const entities = saved ?? [];
     this.trajectoryLineIds = new Set(entities
       .filter((data) => 'showTrajectoryLine' in data && data.showTrajectoryLine === true)
