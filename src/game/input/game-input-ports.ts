@@ -75,9 +75,7 @@ export function gameInputPorts(
         gameCommand(K.deleteNode.code, K.deleteNode),
         gameCommand(K.autoWarpToNode.code, K.autoWarpToNode),
       ],
-      handleCommand: command => viewManager.activeView.handleCommand(
-        command.id, game.dynamicSystem.simTime,
-      ),
+      handleCommand: command => viewManager.activeView.handleCommand(command.id, game.simTime),
     },
   ];
 }

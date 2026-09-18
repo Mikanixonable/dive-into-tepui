@@ -20,6 +20,9 @@ import type { SettingValue } from '../settings/setting-value';
 import type { ThemePalette } from '../theme';
 import type { TdbJulianDate } from '../physics/time';
 
+// 1フレームで進める実時間の上限 [s]。
+const MAX_FRAME_DT = 0.1;
+
 export class Run implements SnapshotSource, PerfCountSource {
   // 畳まれた後か。入力の途中で畳まれたフレームを、そこで打ち切るのに読む。
   private disposed = false;
@@ -133,7 +136,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     const debugInfo = this.devices.debugInfo;
     const t0 = debugInfo.on ? performance.now() : 0;
     this.sections.beginFrame();
-    this.advanceFrame(Math.min(dtRaw, 0.1), nowMs, viewport);
+    this.advanceFrame(Math.min(dtRaw, MAX_FRAME_DT), nowMs, viewport);
     this.sections.endFrame();
     this.presentation.routeInput(ports);
     if (this.disposed) return false;

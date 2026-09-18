@@ -1,9 +1,5 @@
 // 1ランのモデル層の根: 進行と視点を所有し、直列化と進行の位相を持つ。
-import type { GameScene } from '../render/scene';
 import { SECTION, type FrameSections } from './frame-sections';
-import type { Controllable } from './dynamic/dynamic-entity/controllable';
-import type { SerializedStage, Stage, StageClass } from './stages/stage';
-import type { HudLayers } from './hud/hud-layers';
 import { CommandQueue } from './command-queue';
 import { ControlSelection, type SerializedControlSelection } from './control-selection';
 import { PlanNodeRules, type SerializedPlanNodeRules } from './plan/plan-node-rules';
@@ -12,11 +8,15 @@ import { DynamicSystem, type SerializedDynamicSystem } from './dynamic/dynamic-s
 import { RunEventLog } from './run-events';
 import { Predictor } from './dynamic/predictor';
 import { recordTargetBoardPasses } from './dynamic/target-board-passes';
-import type { CelestialSystem } from './celestial/celestial-system';
 import { Viewer, type SerializedViewer } from './viewer/viewer';
 import { ephemerisContextFor, type EphemerisContext } from '../physics/ephemeris/ephemeris-context';
 import { createJulianDate, type TdbJulianDate } from '../physics/time';
 import { summarizeRun, type RunSummary } from './run-summary';
+import type { GameScene } from '../render/scene';
+import type { Controllable } from './dynamic/dynamic-entity/controllable';
+import type { SerializedStage, Stage, StageClass } from './stages/stage';
+import type { HudLayers } from './hud/hud-layers';
+import type { CelestialSystem } from './celestial/celestial-system';
 import type { LoadingProgress } from './loading-progress';
 import type { PilotControls } from './dynamic/dynamic-entity/pilot-controls';
 import type { TrajectoryDemand } from './dynamic/trajectory-demand';
@@ -260,9 +260,8 @@ export class Game {
   // ステージ更新と自律推力の更新が終わった後、このフレームに受け付けた命令を操作対象へ適用する。
   private applyPilotCommands(controls: PilotControls): void {
     if (!this.activeStage.isPlaying || !this.simSpeedManager.canShipAct) return;
-    if (this.activeControllable === null) return;
-    for (const command of controls.commands) {
-      this.activeControllable?.handleCommand(command, this.dynamicSystem);
-    }
+    const controlled = this.activeControllable;
+    if (controlled === null) return;
+    for (const command of controls.commands) controlled.handleCommand(command, this.dynamicSystem);
   }
 }

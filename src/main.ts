@@ -29,12 +29,12 @@ import { SnapshotService } from './launcher/save/snapshot-service';
 import { AutoSave } from './launcher/save/autosave';
 import { showLoading, hideLoading } from './launcher/loading-overlay';
 import { showFatalError } from './launcher/fatal-error';
+import { gameCommand } from './game/input/game-commands';
+import { KEY_MAPPING as K } from './input/key-mapping';
 import type { PageDevices } from './run/page-devices';
 import type { ViewOptionsSettings } from './game/hud/panels/view-options-control';
 import type { GraphicsSettingsData } from './render/graphics-settings';
 import type { SettingValue } from './settings/setting-value';
-import { gameCommand } from './game/input/game-commands';
-import { KEY_MAPPING as K } from './input/key-mapping';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
 async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {

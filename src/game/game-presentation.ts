@@ -137,7 +137,9 @@ export class GamePresentation {
     const cameraCommandPort = cameraCommands(commands, viewer.camera);
     const targetCommands = navTargetCommands(commands, viewer.navTarget);
     this.navTargetPresenter = new NavTargetPresenter(viewer.navTarget, markers.createGroup());
-    const anchorEntities = new AnchorEntities(dynamicSystem, controlSelection, this.navTargetPresenter, celestialSystem);
+    const anchorEntities = new AnchorEntities(
+      dynamicSystem, controlSelection, this.navTargetPresenter, celestialSystem,
+    );
     this.cameraSystem = new CameraSystem(
       hud, celestialSystem, viewer.camera, cameraCommandPort, viewer.view, anchorEntities, scene.viewport,
     );
@@ -373,7 +375,8 @@ export class GamePresentation {
     // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
     const cs = this.cameraSystem;
     const camera = this.cameraView.sync(
-      cs.activeViewpoint, cs.clipFovDeg, cs.clipDistance, viewport, this.viewManager.current, cs.zoomActive, cs.focusVelocity,
+      cs.activeViewpoint, cs.clipFovDeg, cs.clipDistance, viewport, this.viewManager.current,
+      cs.zoomActive, cs.focusVelocity,
     );
     this.cameraFrame = camera;
     this.viewOptions.setVisible(this.viewManager.current === 'map');
@@ -417,14 +420,17 @@ export class GamePresentation {
     // このフレームの進行が記録した出来事を、音と通知の宣言へ写す。
     this.runEventPresenter.present(this.game.events.recent);
     syncControlledLoopSfx(
-      this.worldSfx, controlled, displayTime, !this.isPaused && activeStage.isPlaying);
+      this.worldSfx, controlled, displayTime, !this.isPaused && activeStage.isPlaying,
+    );
     // ビルボードはこのフレームのカメラ姿勢へ向けるので、cameraView.sync より後に通す。
     this.flashEffectsView.sync(this.flashPresenter.live, camera);
 
     this.targeter.sync(
-      controlled, camera, displayTime, visibilityPolicy, this.celestialMarkers.activeLabels, nowMs, palette);
+      controlled, camera, displayTime, visibilityPolicy, this.celestialMarkers.activeLabels, nowMs, palette,
+    );
     this.navTargetPresenter.sync(
-      camera, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, timeLabel, nowMs);
+      camera, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, timeLabel, nowMs,
+    );
 
     // 戦闘中に開いたプロパティウィンドウも最新値を表示し続ける必要があるので、ビューに依らず呼ぶ。
     this.objectWindows.sync(simTime, displayTime);
@@ -433,7 +439,8 @@ export class GamePresentation {
     // 計画軌道の折れ線と同じ座標系で描かないと、同一画面上で並べたときに比較にならない。
     this.entityLines.sync(
       controlled, this.targeter.aliveTarget, this.viewManager.current, displayWindow, visibilityPolicy, orbitRef,
-      camera, this.frameAnchors, celestialSystem, palette);
+      camera, this.frameAnchors, celestialSystem, palette,
+    );
     // ビュー専用のパネル・表示物と軌道線の右クリック候補。軌道線が今フレーム焼いたサンプルを
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
     this.viewManager.activeView.syncPanels(displayWindow, camera, nowMs);
