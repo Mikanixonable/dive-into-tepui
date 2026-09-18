@@ -60,6 +60,8 @@ export class MetalEnemy extends PartBasedEnemy {
     alive?: boolean,
     burstLeft?: number,
     burstDelay?: number,
+    lastFireSim?: number,
+    lastBehaviorSim?: number,
   ) {
     const { typeIndex, accent } = placement;
     const metalView = typeIndex === null
@@ -67,7 +69,8 @@ export class MetalEnemy extends PartBasedEnemy {
       : new Stage0MetalEnemyView(accent, typeIndex, ENEMY_MODEL_SCALE, scene);
     super(
       placement, metalView, typeIndex === null ? DRIFTING_INERTIA : TYPED_INERTIA,
-      metalEnemyCollisionRadius(typeIndex), idAllocators, parts, alive, burstLeft, burstDelay,
+      metalEnemyCollisionRadius(typeIndex), idAllocators, parts, alive,
+      burstLeft, burstDelay, lastFireSim, lastBehaviorSim,
     );
     this.typeIndex = typeIndex;
   }
@@ -92,6 +95,8 @@ export class MetalEnemy extends PartBasedEnemy {
       serialized.alive ?? false,
       serialized.fireController.burstLeft ?? undefined,
       serialized.fireController.burstDelay ?? undefined,
+      serialized.fireController.lastFireSim ?? undefined,
+      serialized.fireController.lastBehaviorSim ?? undefined,
     );
   }
 
