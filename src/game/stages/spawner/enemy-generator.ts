@@ -5,7 +5,9 @@
 // 出現高度の余裕に埋もれる)。
 import * as THREE from 'three/webgpu';
 import { qFromForwardUp, randomQuat, type Quat } from '../../../math/quat';
-import { addPrimaryRelative, KinematicState, kinematicState } from '../../../physics/kinematic-state';
+import {
+  addPrimaryRelative, deserializeKinematicState, KinematicState, kinematicState, type SerializedKinematicState,
+} from '../../../physics/kinematic-state';
 import { strongestAttractor } from '../../../physics/attractor';
 import { frameOfCelestialBody, toFrameState } from '../../../physics/frame';
 import { stateFromOrbitalElements } from '../../../physics/elements';
@@ -40,31 +42,37 @@ export function generateDriftingEnemy(name: string, state: KinematicState, accen
   );
 }
 
-// 登録されたタンパク質アセットを描画する敵。陣形に属する個体だけが formationId と役割を持ち、
-// 属さない個体は単体敵になる。
+// 新しく置くタンパク質の敵の要求。アセットが揃うまで実体化を待てるよう(SPEC/PROTEIN.md「出現」節)、
+// 直列化できる値だけで表す。陣形に属する個体だけが formationId と役割を持ち、属さない個体は単体敵になる。
+export interface ProteinEnemyRequest {
+  readonly name: string;
+  readonly state: SerializedKinematicState;
+  readonly assetId: ProteinAssetId;
+  readonly formationId: string | null;
+  readonly formationRole: FormationRole | null;
+}
+
+// request のタンパク質の敵を、無秩序に漂う姿勢で生成する。アセットが揃ってから呼ぶこと。
 export function generateProteinEnemy(
-  name: string, state: KinematicState, assetId: ProteinAssetId,
-  scene: THREE.Scene, idAllocators: EntityIdAllocators,
-  formationId?: string, formationRole?: FormationRole,
+  request: ProteinEnemyRequest, scene: THREE.Scene, idAllocators: EntityIdAllocators,
 ): Enemy {
+  const formationId = request.formationId ?? undefined;
   return ProteinEnemy.create(
     {
-      name, state, ...driftingAttitude(),
+      name: request.name, state: deserializeKinematicState(request.state), ...driftingAttitude(),
       accent: 0xffffff, orbitLineColor: 0xffffff, attackGroupId: formationId,
-      assetId, formationId, formationRole,
+      assetId: request.assetId, formationId, formationRole: request.formationRole ?? undefined,
     },
     idAllocators, scene,
   );
 }
 
-// タンパク質陣形の 3 役(SPEC COMBAT.md「タンパク質陣形」節)を、共通の時刻・速度で組む。
+// タンパク質陣形の 3 役(SPEC COMBAT.md「タンパク質陣形」節)の要求を、共通の時刻・速度で組む。
 // centerState を中心に、攻撃担当(5I4R)はその場、盾役(ルビスコ)はプレイヤー方向へ 450 m、
-// エネルギー役(ATPシンテターゼ)は反対方向へ 450 m 離す。役ごとに準備完了を待てるよう
-// (SPEC/PROTEIN.md「出現」節)、実体ではなく assetId と build の組を返す。
-export function proteinFormationSpawns(
+// エネルギー役(ATPシンテターゼ)は反対方向へ 450 m 離す。
+export function proteinFormationRequests(
   name: string, centerState: KinematicState, playerPosition: Vec3, formationId: string,
-  scene: THREE.Scene, idAllocators: EntityIdAllocators,
-): readonly { assetId: ProteinAssetId; build: () => Enemy }[] {
+): readonly ProteinEnemyRequest[] {
   // 盾役はプレイヤー側、エネルギー役は反対側へずらした状態に置く
   const towardPlayer = norm(sub(playerPosition, centerState.r));
   const offset = 450;
@@ -72,16 +80,16 @@ export function proteinFormationSpawns(
   const energyState = kinematicState<'eci'>(centerState.t, addScaled(centerState.r, towardPlayer, -offset), centerState.v);
   return [
     {
-      assetId: 'pdb-5i4r',
-      build: () => generateProteinEnemy(`${name}-ATTACKER`, centerState, 'pdb-5i4r', scene, idAllocators, formationId, 'attacker'),
+      name: `${name}-ATTACKER`, state: centerState, assetId: 'pdb-5i4r',
+      formationId, formationRole: 'attacker',
     },
     {
-      assetId: 'pdb-8ruc-rubisco',
-      build: () => generateProteinEnemy(`${name}-SHIELD`, shieldState, 'pdb-8ruc-rubisco', scene, idAllocators, formationId, 'shield'),
+      name: `${name}-SHIELD`, state: shieldState, assetId: 'pdb-8ruc-rubisco',
+      formationId, formationRole: 'shield',
     },
     {
-      assetId: 'pdb-6n2y-atp-synthase',
-      build: () => generateProteinEnemy(`${name}-ENERGY`, energyState, 'pdb-6n2y-atp-synthase', scene, idAllocators, formationId, 'energy'),
+      name: `${name}-ENERGY`, state: energyState, assetId: 'pdb-6n2y-atp-synthase',
+      formationId, formationRole: 'energy',
     },
   ];
 }

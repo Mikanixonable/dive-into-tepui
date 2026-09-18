@@ -18,7 +18,8 @@ export type DynamicMotionFactory = (owner: DynamicEntity) => DynamicMotion;
 export interface SerializedDynamicEntityFields extends SerializedKinematicState {
   readonly id: string;
   // 具象クラスのタグ。
-  readonly kind: 'player' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel' | 'booster' | 'base';
+  readonly kind:
+    | 'player' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel' | 'booster' | 'base' | 'bullet' | 'debris';
   readonly q: Quat;
   readonly w: SerializedVec3;
 }
