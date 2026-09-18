@@ -2,8 +2,7 @@
 import {
   LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, type Quat, qFromBasis, qRotate,
 } from '../../math/quat';
-import type { PolarEuler } from '../../math/polar-euler';
-import { sphericalOffset } from '../../math/polar-euler';
+import { sphericalOffset, type PolarEuler } from '../../math/polar-euler';
 import { metersPerPixelAtDepth, tanHalfFov, type ProjectionMode } from '../../math/projection';
 import {
   addScaled, cross, len, lenSq, norm, projectOntoPlane, scale, type SerializedVec3, type Vec3, v3,
@@ -22,9 +21,9 @@ import {
   toInertialDir,
 } from '../../physics/frame';
 import { OrbitingMotion } from '../../physics/celestial-motion';
+import { CameraOrientation, type CameraRotationMode } from './camera-orientation';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { RunEventSink } from '../run-events';
-import { CameraOrientation, type CameraRotationMode } from './camera-orientation';
 import type { FocusTarget, SerializedFocusTarget } from './focus-target';
 
 const FOCUS_CAMERA_MIN_DIST = 1e3; // 天体フォーカス時の注視距離の下限 [m]
@@ -33,6 +32,7 @@ export const FOCUS_CAMERA_FOV_MAX = 120; // 最大垂直画角 [deg]
 const FOCUS_CAMERA_MAX_DIST = 1e14; // 注視距離の上限 [m]
 const ENTITY_MIN_DIST = 12; // 機体・固定点フォーカスでの最小注視距離 [m]
 const FOCUS_CAMERA_FOV = 50; // 既定の垂直画角 [deg]
+const STALE_FOLLOW_FRAMES_TO_DROP = 2; // 回転追従が成立しないフレームがこの数だけ続いたら外す
 
 // 'attitude' はフォーカス機体の姿勢追従(対象は id でなくフォーカスから決まる)。
 export type CameraRotationFollow = FrameRotationSource | { readonly kind: 'attitude' };
@@ -258,7 +258,7 @@ export class FocusCameraSelection implements FocusCameraSource {
     }
     // 対象が一時的に解決できないだけのフレームでは外さない。
     this.staleFollowFrames++;
-    if (!focusReplaced && this.staleFollowFrames < 2) return;
+    if (!focusReplaced && this.staleFollowFrames < STALE_FOLLOW_FRAMES_TO_DROP) return;
     this.staleFollowFrames = 0;
     this.setRotationFollow(null, sample);
   }
