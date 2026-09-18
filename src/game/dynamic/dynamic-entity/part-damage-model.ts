@@ -4,43 +4,35 @@ import type {
 } from './parts';
 import { PartInventory } from './part-inventory';
 
-// 部品式機体が共有する、部品一覧・部品HP・部品由来の性能をまとめるモデル。
-// 機体の寿命や敵AIは持たず、Shipと部品式の敵から同じように利用する。
+// 部品式機体の被弾モデル。部品一覧・部品 HP・部品由来の性能をまとめる。
 export class PartDamageModel {
-  private readonly inventory = new PartInventory();
+  private readonly inventory: PartInventory;
+  // 以下は部品一覧から組むキャッシュ(性能と致死判定で使う参照、装甲値)。
   private readonly radiatorPartRefs: [RadiatorPart | undefined, RadiatorPart | undefined] = [undefined, undefined];
   private readonly solarPanelPartRefs: [SolarPanelPart | undefined, SolarPanelPart | undefined] = [undefined, undefined];
   private readonly weaponPartRefs: WeaponPart[] = [];
   private readonly armorPartRefs: ArmorPart[] = [];
   private hullPart: Part | undefined;
   private cockpitPart: CockpitPart | undefined;
-  private _maxHp = 0;
+  public readonly maxHp: number;
+
+  // parts を積んだ機体の被弾モデルを組む。
+  public constructor(parts: readonly Part[]) {
+    this.inventory = new PartInventory(parts);
+    this.collectPartReferences();
+    this.maxHp = this.parts.reduce((total, part) => total + part.maxHp, 0);
+  }
 
   public get parts(): readonly Part[] { return this.inventory.parts; }
-  public get maxHp(): number { return this._maxHp; }
-
-  public replaceParts(parts: readonly Part[]): void {
-    this.inventory.replace(parts);
-    this.rebuildPartReferences();
-    this._maxHp = this.parts.reduce((total, part) => total + part.maxHp, 0);
-  }
 
   public hasPart(part: Part): boolean { return this.inventory.has(part); }
 
-  // 部品を入れ替えたときに、性能と致死判定で使う参照を組み直す。
-  private rebuildPartReferences(): void {
-    this.weaponPartRefs.length = 0;
-    this.armorPartRefs.length = 0;
+  // 性能と致死判定で使う部品を、種別ごとの参照へ振り分ける。
+  private collectPartReferences(): void {
     let radiatorIndex = 0;
     let solarPanelIndex = 0;
-    this.radiatorPartRefs[0] = undefined;
-    this.radiatorPartRefs[1] = undefined;
-    this.solarPanelPartRefs[0] = undefined;
-    this.solarPanelPartRefs[1] = undefined;
-    this.hullPart = undefined;
-    this.cockpitPart = undefined;
-
     for (const part of this.parts) {
+      // 船体とコックピットは最初の1つ、放熱板と太陽電池は先頭の2枚まで
       switch (part.type) {
         case 'hull': if (!this.hullPart) this.hullPart = part; break;
         case 'cockpit': if (!this.cockpitPart) this.cockpitPart = part as CockpitPart; break;
@@ -58,21 +50,21 @@ export class PartDamageModel {
     }
   }
 
-  public setOverallHp(total: number): number {
-    const ratio = this._maxHp > 0 ? Math.max(0, Math.min(1, total / this._maxHp)) : 0;
-    for (const part of this.parts) part.hp = part.maxHp * ratio;
-    return this.overallHp();
-  }
-
-  public applyCollisionDamage(closingSpeed: number, totalHp: number, part?: Part): { damaged: boolean; hp: number } {
+  // 接近速度 closingSpeed に応じて、totalHp のその割合のダメージを部品へ入れる。part の扱いは
+  // applyDamageToParts と同じ。ダメージが出たかを返す。
+  public applyCollisionDamage(closingSpeed: number, totalHp: number, part?: Part): boolean {
     const fraction = collisionDamageFraction(closingSpeed);
-    if (fraction <= 0) return { damaged: false, hp: this.overallHp() };
-    return { damaged: true, hp: this.applyDamageToParts(totalHp * fraction, part) };
+    if (fraction <= 0) return false;
+    this.applyDamageToParts(totalHp * fraction, part);
+    return true;
   }
 
-  public applyDamageToParts(amount: number, part?: Part): number {
-    if (this.parts.length === 0) return Math.max(0, this.overallHp() - amount);
+  // 装甲の軽減を通した amount を部品へ入れる。part を指定するとその部品へ固定し、省くと健全な
+  // 部品(無ければ全部品)から無作為に選ぶ。
+  public applyDamageToParts(amount: number, part?: Part): void {
+    if (this.parts.length === 0) return;
 
+    // 健全な装甲のうち最も大きい軽減率を掛ける
     let reduction = 0;
     let hasArmor = false;
     for (const armor of this.armorPartRefs) {
@@ -81,6 +73,7 @@ export class PartDamageModel {
       hasArmor = true;
     }
     const effectiveDamage = amount * (1 - reduction);
+    // 当てる部品を選ぶ
     let aliveCount = 0;
     for (const current of this.parts) if (current.hp > 0) aliveCount++;
     let target = part;
@@ -98,17 +91,16 @@ export class PartDamageModel {
       } else target = this.parts[targetIndex];
     }
     if (target) target.hp = Math.max(0, target.hp - effectiveDamage);
-    return this.overallHp();
   }
 
-  public selfRepair(amount: number): number {
+  // 損傷した部品へ amount を均等に配って回復させる。放熱板と太陽電池は対象から外れる。
+  public selfRepair(amount: number): void {
     const targets = this.parts.filter(
       part => part.hp > 0 && part.hp < part.maxHp && !PartDamageModel.SELF_REPAIR_EXCLUDED.includes(part.type),
     );
-    if (targets.length === 0) return this.overallHp();
+    if (targets.length === 0) return;
     const share = amount / targets.length;
     for (const part of targets) part.hp = Math.min(part.maxHp, part.hp + share);
-    return this.overallHp();
   }
 
   // 船体かコックピットを失った時点で、他の部品が無事でも機体を全損とする。
@@ -128,20 +120,25 @@ export class PartDamageModel {
 
   public get radiatorParts(): readonly (RadiatorPart | undefined)[] { return this.radiatorPartRefs; }
   public get solarParts(): readonly (SolarPanelPart | undefined)[] { return this.solarPanelPartRefs; }
+  // 健全な放熱板の実効放熱面積の合計 [m^2]。
   public get totalCoolingRate(): number {
     return this.radiatorPartRefs.reduce((total, part) => total + (part && part.hp > 0 ? part.coolingRate : 0), 0);
   }
+  // 健全な太陽電池の発電量の合計 [W]。
   public get totalPowerGeneration(): number {
     return this.solarPanelPartRefs.reduce((total, part) => total + (part && part.hp > 0 ? part.powerGeneration : 0), 0);
   }
+  // 健全な武装のうち最大の、命中1回あたりのダメージ。
   public get weaponDamage(): number {
     let damage = 0;
     for (const part of this.weaponPartRefs) if (part.hp > 0) damage = Math.max(damage, part.damage);
     return damage;
   }
+  // 健全な武装の発射レートの合計 [rounds/s]。
   public get totalFireRate(): number {
     return this.weaponPartRefs.reduce((total, part) => total + (part.hp > 0 ? part.fireRate : 0), 0);
   }
+  // 健全な武装の初速の平均 [m/s]。武装が残っていなければ 0。
   public get averageMuzzleVelocity(): number {
     const healthy = this.weaponPartRefs.filter(part => part.hp > 0);
     return healthy.length === 0

@@ -116,6 +116,8 @@ CI が生成するので、**手で触らない。** 変更は main / release �
 | `npm run test:math` | `src/math/` の回帰テスト | `src/math/` を触ったとき |
 | `npm run test:game` | `src/game/` の回帰テスト | `src/game/` を触ったとき |
 | `npm run test:render` | `src/render/` の回帰テスト | `src/render/` を触ったとき |
+| `npm run test:settings` | `src/settings/` の回帰テスト | `src/settings/` を触ったとき |
+| `npm run test:launcher` | `src/launcher/` の回帰テスト | `src/launcher/` を触ったとき |
 | `npm run dev` | 開発サーバ(http://localhost:8080) | 実機で動かすとき |
 | `npm run smoke:browser` | ヘッドレスでの起動・操作スモーク | 実行時の確認を求められたとき |
 | `npm run build` | `docs/` への本番ビルド | **main へ送る前**(`/send-pr`)。公開は CI が行う |
