@@ -67,6 +67,7 @@ export interface BodyImpact {
   readonly state: KinematicState;
 }
 
+// 起点状態と天体から積分し直せるキャッシュ。
 export class PredictedArc {
   private readonly _trajectory: DynamicTrajectory;
   private _truncated = false;
