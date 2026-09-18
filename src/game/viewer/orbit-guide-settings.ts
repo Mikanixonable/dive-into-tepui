@@ -1,5 +1,5 @@
 // 軌道ガイド(表示パネルの軌道ガイドタブ)の設定値。参照として描く軌道の種類ごとに、表示の
-// 可否・本数・族の範囲・色・進行方向マーカー・安定度の見せ方と、セーブからの読み直しを持つ。
+// 可否・本数・族の範囲・色・進行方向マーカー・安定度の見せ方と、直列化された形からの読み直しを持つ。
 import type { CatalogSystemId } from '../../physics/orbit-catalog';
 import type { DirectionMarkerMode } from '../../render/celestial/orbit-guide/direction-markers';
 
@@ -235,7 +235,7 @@ function clamp(value: number, lo: number, hi: number): number {
   return Number.isFinite(value) ? Math.min(hi, Math.max(lo, value)) : lo;
 }
 
-// 保存データ・外部入力を安全な形に整える。範囲の上下が入れ替わっていれば直し、本数は正の整数へ丸める。
+// 復元した値・外部入力を安全な形に整える。範囲の上下が入れ替わっていれば直し、本数は正の整数へ丸める。
 export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): OrbitGuideSettings {
   // 族・小題: 範囲の上下を揃え、本数と不透明度を丸める。
   const kinds: Record<string, GuideKindSettings> = {};
@@ -300,21 +300,20 @@ export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): Orbit
   };
 }
 
-// 直列化された設定を読み直す。無ければ既定値で、欠けた入れ子の項目は既定値で埋めてから丸める。
-export function deserializeOrbitGuideSettings(saved: Partial<OrbitGuideSettings> | undefined): OrbitGuideSettings {
-  if (saved === undefined) return DEFAULT_ORBIT_GUIDE_SETTINGS;
+// 直列化された設定を読み直す。欠けた項目は入れ子の中まで既定値で埋めてから丸める。
+export function deserializeOrbitGuideSettings(serialized: Partial<OrbitGuideSettings>): OrbitGuideSettings {
   // 浅く重ねるだけでは入れ子の欠けが埋まらないので、入れ子ごとに既定値へ重ねる。
   return normalizeOrbitGuideSettings({
     ...DEFAULT_ORBIT_GUIDE_SETTINGS,
-    ...saved,
-    systems: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.systems, ...saved.systems },
-    kinds: { ...saved.kinds },
-    combinedKinds: { ...saved.combinedKinds },
-    lissajous: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.lissajous, ...saved.lissajous },
-    sunSync: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.sunSync, ...saved.sunSync },
-    dawnDusk: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.dawnDusk, ...saved.dawnDusk },
-    molniya: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.molniya, ...saved.molniya },
-    tundra: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.tundra, ...saved.tundra },
-    zeroVelocity: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.zeroVelocity, ...saved.zeroVelocity },
+    ...serialized,
+    systems: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.systems, ...serialized.systems },
+    kinds: { ...serialized.kinds },
+    combinedKinds: { ...serialized.combinedKinds },
+    lissajous: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.lissajous, ...serialized.lissajous },
+    sunSync: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.sunSync, ...serialized.sunSync },
+    dawnDusk: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.dawnDusk, ...serialized.dawnDusk },
+    molniya: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.molniya, ...serialized.molniya },
+    tundra: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.tundra, ...serialized.tundra },
+    zeroVelocity: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.zeroVelocity, ...serialized.zeroVelocity },
   });
 }
