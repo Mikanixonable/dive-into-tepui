@@ -69,6 +69,7 @@ function heaviestGravityId(candidates: readonly Pick<CelestialBodyDef, 'id' | 'm
   return id;
 }
 
+// 予測の弧のキャッシュの一部。弧と一緒に候補の天体から組み直せる。
 export class ArcCelestialBodies {
   // 候補1体につき1つ。顔ぶれは弧の一生を通じて同じなので、構築時に組んで持ち続ける。
   private readonly watches: readonly Watch[];
