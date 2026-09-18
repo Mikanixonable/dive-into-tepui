@@ -6,22 +6,21 @@ import { OrbitReferenceSelection } from './orbit-reference-selection';
 import { PredictPanelSelection } from './predict-panel-selection';
 import { ViewSelection, type ViewControlSource } from './view-selection';
 import { CameraSelection, type CameraFrameSamples, type SerializedCameraSelection } from './camera-selection';
-import { EntityDisplaySelection } from './entity-display-selection';
+import { EntityDisplaySelection, type SerializedEntityDisplaySelection } from './entity-display-selection';
 import { focusTargetId } from './focus-target';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { RunEvent, RunEventSink } from '../run-events';
 import type { ViewMode } from '../view/view-mode';
 import type { OrbitGuideSettings } from './orbit-guide-settings';
-import type { SerializedDynamicEntity } from '../dynamic/dynamic-entity/entity-dictionary';
 
 export interface SerializedViewer {
-  // 無ければ視点は既定のまま始まる。ビューの選択はカメラの記録に同居する。
-  readonly camera?: SerializedCameraSelection & { readonly view: ViewMode };
-  // 無ければターゲット未選択のまま始まる。
-  readonly navTarget?: SerializedNavTargetSelection | null;
-  // 無ければ既定の軌道ガイドで始まる。
-  readonly orbitGuide?: OrbitGuideSettings;
+  readonly view: ViewMode;
+  readonly camera: SerializedCameraSelection;
+  // ターゲット未選択なら null。
+  readonly navTarget: SerializedNavTargetSelection | null;
+  readonly orbitGuide: OrbitGuideSettings;
+  readonly entityDisplay: SerializedEntityDisplaySelection;
 }
 
 export class Viewer {
@@ -58,34 +57,35 @@ export class Viewer {
     return new Viewer(control, events, celestialBodies);
   }
 
-  // 直列化した形から視点を復元する。entities は直列化した実体の記録で、実体ごとの表示設定をそこから
-  // 戻す。roster は復元を終えた顔ぶれ。
+  // 直列化した形から視点を復元する。roster は復元を終えた顔ぶれ。
   public static deserialize(
-    serialized: SerializedViewer & { readonly entities: readonly SerializedDynamicEntity[] },
+    serialized: SerializedViewer,
     roster: EntityRoster,
     control: ViewControlSource,
     events: RunEventSink,
     celestialBodies: CelestialBodies,
   ): Viewer {
-    const { navTarget, orbitGuide, camera } = serialized;
+    const { navTarget, orbitGuide, camera, entityDisplay } = serialized;
     return new Viewer(
       control,
       events,
       celestialBodies,
       navTarget === undefined ? undefined : NavTargetSelection.deserialize(navTarget, roster, events),
       orbitGuide === undefined ? undefined : OrbitGuideSelection.deserialize(orbitGuide),
-      camera === undefined ? undefined : ViewSelection.deserialize(camera.view, control, events),
+      ViewSelection.deserialize(serialized.view, control, events),
       camera === undefined ? undefined : CameraSelection.deserialize(camera, celestialBodies, events),
-      EntityDisplaySelection.deserialize(serialized.entities),
+      entityDisplay === undefined ? undefined : EntityDisplaySelection.deserialize(entityDisplay),
     );
   }
 
-  // 直列化した形のうち視点の分。
+  // 直列化した形へ畳む。
   public serialize(): SerializedViewer {
     return {
-      camera: { view: this.view.current, ...this.camera.serialize() },
+      view: this.view.current,
+      camera: this.camera.serialize(),
       navTarget: this.navTarget.serialize(),
       orbitGuide: this.orbitGuide.settings,
+      entityDisplay: this.entityDisplay.serialize(),
     };
   }
 

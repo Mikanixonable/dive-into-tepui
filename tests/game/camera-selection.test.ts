@@ -46,22 +46,22 @@ function sample(lostFocus: CameraFrameSample['lostFocus'] = null): CameraFrameSa
 
 export function register(): void {
   test('camera-selection: 復元したマップの pan・追従・既存保存項目を変えずに書き戻す', () => {
-    const overview = serializedCamera({ rotatingWith: { kind: 'revolution', id: 'moon' } });
-    const camera = selection({ chase: serializedCamera(), overview });
+    const map = serializedCamera({ rotatingWith: { kind: 'revolution', id: 'moon' } });
+    const camera = selection({ combat: serializedCamera(), map });
     const restored = camera.map.serialize();
 
-    assert.deepEqual(restored.pan, overview.pan);
-    assert.deepEqual(restored.rotatingWith, overview.rotatingWith);
-    assert.deepEqual(restored.focus, overview.focus);
-    assert.equal(restored.rotationMode, overview.rotationMode);
-    assert.equal(restored.fovDeg, overview.fovDeg);
-    assert.equal(restored.referencePlane, overview.referencePlane);
-    assert.equal(restored.projectionMode, overview.projectionMode);
-    assert.equal(restored.orthographicHalfHeight, overview.orthographicHalfHeight);
+    assert.deepEqual(restored.pan, map.pan);
+    assert.deepEqual(restored.rotatingWith, map.rotatingWith);
+    assert.deepEqual(restored.focus, map.focus);
+    assert.equal(restored.rotationMode, map.rotationMode);
+    assert.equal(restored.fovDeg, map.fovDeg);
+    assert.equal(restored.referencePlane, map.referencePlane);
+    assert.equal(restored.projectionMode, map.projectionMode);
+    assert.equal(restored.orthographicHalfHeight, map.orthographicHalfHeight);
   });
 
   test('camera-selection: DOM相当の注視命令は列を適用するまで pan と注視を変えない', () => {
-    const camera = selection({ chase: serializedCamera(), overview: serializedCamera() });
+    const camera = selection({ combat: serializedCamera(), map: serializedCamera() });
     const queue = new CommandQueue();
     const commands = cameraCommands(queue, camera);
     const beforeFocus = camera.map.focus;
@@ -77,7 +77,7 @@ export function register(): void {
   });
 
   test('camera-selection: 注視喪失は同じ内容の別値ではなく FocusTarget の同一性で判定する', () => {
-    const camera = selection({ chase: serializedCamera(), overview: serializedCamera() });
+    const camera = selection({ combat: serializedCamera(), map: serializedCamera() });
     const focus = camera.map.focus;
     assert.equal(focus.kind, 'object');
 
@@ -90,11 +90,11 @@ export function register(): void {
   });
 
   test('camera-selection: ロード後に姿勢基準を受け取っても保存された絶対の向きは跳ばない', () => {
-    const chase = serializedCamera({
+    const combat = serializedCamera({
       rotatingWith: { kind: 'attitude' },
       projectionMode: 'perspective',
     });
-    const camera = selection({ chase, overview: serializedCamera() });
+    const camera = selection({ combat, map: serializedCamera() });
     const before = camera.combat.serialize();
     camera.combat.followProgress({
       ...sample(),

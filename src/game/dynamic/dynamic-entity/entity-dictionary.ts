@@ -26,11 +26,9 @@ export interface DynamicEntityClass {
   readonly kind: SerializedDynamicEntity['kind'];
   // 復元に外部資源の取得が要るなら、それが揃ったかを答える述語。要らなければ null。
   spawnGate(serialized: SerializedDynamicEntity): SpawnGate | null;
-  // serialized を、時刻 simTime の状態として復元する。id は registry の採番器から取り直す。gate が
+  // serialized を、記録した時刻の状態として復元する。id は registry の採番器から取り直す。gate が
   // あるなら、それが通ってから呼ぶこと。
-  deserialize(
-    serialized: SerializedDynamicEntity, simTime: number, registry: EntityRegistry, scene: THREE.Scene,
-  ): DynamicEntity;
+  deserialize(serialized: SerializedDynamicEntity, registry: EntityRegistry, scene: THREE.Scene): DynamicEntity;
 }
 
 const ENTITY_CLASSES: readonly DynamicEntityClass[] = [

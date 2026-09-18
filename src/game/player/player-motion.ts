@@ -4,7 +4,7 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { BoosterStack } from './booster-stack';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
-import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic/dynamic-motion';
+import { DynamicMotion, type DynamicMotionBehavior, type DynamicMotionThermal } from '../dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
 import type { StageOutcome } from '../stages/stage-outcome';
 import {
@@ -27,7 +27,8 @@ import { PowerSystem } from './power';
 import { RadiatorSystem, type RadiatorSide } from './radiator';
 import type { DeployablePanelState } from './deployable-panel-state';
 
-const HULL_START_TEMP = 273; // 初期機体温度 [K]
+// 新しく作った艦の熱の状態。外殻は 273 K の等温から始める。
+const HULL_START_THERMAL: DynamicMotionThermal = { temperature: 273, thermalDeviation: 0, pendingSpecificHeat: 0 };
 
 // 自機の Motion が Entity 側から読む値と、接触・喪失を通知する先。
 export interface PlayerMotionWeaponPort {
@@ -189,8 +190,8 @@ export class PlayerMotion extends DynamicMotion {
   public readonly radiator: RadiatorSystem;
   public readonly attachedBoosters: AttachedBoosterMotion;
 
-  // beltLinkCount は給弾ベルトの節点数で、表示するリンクメッシュの数と揃える。temperature は外殻の
-  // 温度 [K]、radiatorUp・radiatorDown は放熱板の展開状態、boosters は接続中の段。省いた付随物理系は
+  // beltLinkCount は給弾ベルトの節点数で、表示するリンクメッシュの数と揃える。thermal は熱の
+  // 状態、radiatorUp・radiatorDown は放熱板の展開状態、boosters は接続中の段。省いた付随物理系は
   // 新しく作ったときの状態で始める。
   public constructor(
     state: KinematicState,
@@ -198,7 +199,7 @@ export class PlayerMotion extends DynamicMotion {
     radius: number,
     beltLinkCount: number,
     reactions: PlayerMotionReactions,
-    temperature = HULL_START_TEMP,
+    thermal = HULL_START_THERMAL,
     radiatorUp?: DeployablePanelState,
     radiatorDown?: DeployablePanelState,
     public readonly power = new PowerSystem(),
@@ -209,7 +210,7 @@ export class PlayerMotion extends DynamicMotion {
       collides: true,
       engagementAnchor: true,
       preciseReentry: true,
-      temperature,
+      ...thermal,
       maxTemperature: MAX_HULL_TEMP,
       behavior: new PlayerBehavior(reactions),
     }));

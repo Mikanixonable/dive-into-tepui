@@ -15,7 +15,6 @@ import {
 import type { EntityRegistry, SpawnGate } from '../entity-registry';
 import type { RunEventSink } from '../../run-events';
 import type { EntityIdAllocators } from './entity-id';
-import type { ProteinDisplaySettings } from '../../../render/protein/protein-display';
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
 import type { ProteinRenderDefinition } from '../../../render/protein/protein-render-definition';
 import type { ProteinCombatReadout } from '../../protein/protein-schema';
@@ -73,8 +72,6 @@ function renderDefinitionFor(assetId: ProteinAssetId): ProteinRenderDefinition {
 export interface SerializedProteinEnemy extends SerializedEnemy {
   readonly kind: 'protein-enemy';
   readonly assetId: ProteinAssetId;
-  // タンパク質の敵に共通の表示形態と着色。無いか不正なら既定の表示で読む。
-  readonly display?: ProteinDisplaySettings;
   // 機能部位の HP・フェーズ・修飾。
   readonly protein: SerializedProteinCombatState;
 }
@@ -145,14 +142,14 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     );
   }
 
-  // 直列化した敵を、時刻 simTime の状態として復元する。HP は被弾モデルの記録から戻す。アセットが
-  // 未取得なら投げるので、spawnGate で準備完了を待ってから呼ぶこと。
+  // 直列化した敵を復元する。HP は被弾モデルの記録から戻す。アセットが未取得なら投げるので、
+  // spawnGate で準備完了を待ってから呼ぶこと。
   public static deserialize(
-    serialized: SerializedProteinEnemy, simTime: number, registry: EntityRegistry, scene?: THREE.Scene,
+    serialized: SerializedProteinEnemy, registry: EntityRegistry, scene?: THREE.Scene,
   ): ProteinEnemy {
     const definition = definitionFor(serialized.assetId);
     return new ProteinEnemy(
-      deserializeEnemyPlacement(serialized, simTime),
+      deserializeEnemyPlacement(serialized),
       definition,
       serialized.id || serialized.name || serialized.assetId,
       registry.idAllocators,
@@ -160,8 +157,8 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
       serialized.protein ? ProteinCombatState.deserialize(serialized.protein, definition.asset) : undefined,
       // 記録に無い生死は、新しく置いたときと違って撃破済みとして読む。
       serialized.alive ?? false,
-      serialized.burstLeft,
-      serialized.burstDelay,
+      serialized.fireController.burstLeft ?? undefined,
+      serialized.fireController.burstDelay ?? undefined,
     );
   }
 

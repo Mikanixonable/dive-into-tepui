@@ -32,9 +32,10 @@ export interface EnemyFireControllerPort {
   muzzleEffect(muzzleState: KinematicState, events: RunEventSink): void;
 }
 
+// バースト射撃の残弾と次弾までの残り時間 [s]。未着手なら両方 null。
 export interface SerializedEnemyFireController {
-  readonly burstLeft?: number;
-  readonly burstDelay?: number;
+  readonly burstLeft: number | null;
+  readonly burstDelay: number | null;
 }
 
 // 敵の射撃判断・バースト進行・弾生成をEnemy本体から分離する。
@@ -55,7 +56,7 @@ export class EnemyFireController {
 
   // バースト射撃の途中経過の直列化。
   public serialize(): SerializedEnemyFireController {
-    return { burstLeft: this.burstLeft, burstDelay: this.burstDelay };
+    return { burstLeft: this.burstLeft ?? null, burstDelay: this.burstDelay ?? null };
   }
 
   public behave(

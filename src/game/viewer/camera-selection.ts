@@ -15,10 +15,8 @@ export const COMBAT_CAMERA_FOV = 55; // 通常時の垂直画角 [deg]
 const COMBAT_CAMERA_INIT_DIST = 38; // 注視距離 [m]
 
 export interface SerializedCameraSelection {
-  // 戦闘ビューの視点。無ければ既定の視点から始まる。
-  readonly chase?: SerializedFocusCameraSelection;
-  // マップビューの視点。無ければ既定の視点から始まる。
-  readonly overview?: SerializedFocusCameraSelection;
+  readonly combat: SerializedFocusCameraSelection;
+  readonly map: SerializedFocusCameraSelection;
 }
 
 export interface CameraFrameSamples {
@@ -86,14 +84,14 @@ export class CameraSelection implements CameraSelectionSource {
   public static deserialize(
     serialized: SerializedCameraSelection, celestialBodies: CelestialBodies, events: RunEventSink,
   ): CameraSelection {
-    const { chase, overview } = serialized;
+    const { combat, map } = serialized;
     const combatConfig = combatCameraConfig();
     const mapConfig = mapCameraConfig(celestialBodies.originId);
     return new CameraSelection(
       celestialBodies,
       events,
-      chase === undefined ? undefined : FocusCameraSelection.deserialize(chase, celestialBodies, combatConfig, events),
-      overview === undefined ? undefined : FocusCameraSelection.deserialize(overview, celestialBodies, mapConfig, events),
+      combat === undefined ? undefined : FocusCameraSelection.deserialize(combat, celestialBodies, combatConfig, events),
+      map === undefined ? undefined : FocusCameraSelection.deserialize(map, celestialBodies, mapConfig, events),
     );
   }
 
@@ -113,6 +111,6 @@ export class CameraSelection implements CameraSelectionSource {
 
   // 2台分を直列化した形へ畳む。
   public serialize(): SerializedCameraSelection {
-    return { chase: this.combat.serialize(), overview: this.map.serialize() };
+    return { combat: this.combat.serialize(), map: this.map.serialize() };
   }
 }

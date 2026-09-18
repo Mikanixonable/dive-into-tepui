@@ -14,11 +14,9 @@ import { Predictor } from './dynamic/predictor';
 import { recordTargetBoardPasses } from './dynamic/target-board-passes';
 import type { CelestialSystem } from './celestial/celestial-system';
 import { Viewer, type SerializedViewer } from './viewer/viewer';
-import type { EntityDisplaySource } from './viewer/entity-display-selection';
 import { ephemerisContextFor, type EphemerisContext } from '../physics/ephemeris/ephemeris-context';
 import { createJulianDate, type TdbJulianDate } from '../physics/time';
 import { summarizeRun, type RunSummary } from './run-summary';
-import type { SerializedDynamicEntity } from './dynamic/dynamic-entity/entity-dictionary';
 import type { LoadingProgress } from './loading-progress';
 import type { PilotControls } from './dynamic/dynamic-entity/pilot-controls';
 import type { TrajectoryDemand } from './dynamic/trajectory-demand';
@@ -27,40 +25,26 @@ import type { CameraFrameSamples } from './viewer/camera-selection';
 // SerializedGame の形式バージョン。上げるのは構造が変わって互換を切るときで、上げた時点で
 // それ以前に書かれた記録は読めなくなる。項目を増やすだけなら版は据え置き、省略可能にして
 // 読み込み側で基底値を補う(SAVE.md「形式の版」)。
-export const SERIALIZATION_VERSION = 3;
+export const SERIALIZATION_VERSION = 4;
 
-// 1ランの直列化した形。顔ぶれと視点の分は、SerializedDynamicSystem と SerializedViewer の項目が
-// そのまま並ぶ。
-export interface SerializedGame extends SerializedDynamicSystem, SerializedViewer {
+// 1ランの直列化した形。進行と視点を分けて持つ(R4)。
+export interface SerializedGame {
   readonly version: number;
+  readonly progress: SerializedProgress;
+  readonly viewer: SerializedViewer;
+}
+
+// 進行の直列化した形。Game 自身の値と、Game が持つ進行の所有者ごとの記録から成る。
+export interface SerializedProgress {
   readonly stageId: string;
   /**
    * そのランの元期と、それが選ぶ暦データの識別。元期は読み込み側が継承する値で、照合するのは
    * 暦データの識別。
    */
   readonly ephemerisContext: EphemerisContext;
-  readonly activeControlledId: SerializedControlSelection;
+  readonly dynamicSystem: SerializedDynamicSystem;
+  readonly controlSelection: SerializedControlSelection;
   readonly stage: SerializedStage;
-}
-
-// 実体の記録へ、視点が持つその実体の表示設定を書き足す。直列化の形は、軌道線の表示を艦・基地・
-// 敵の記録に、タンパク質の表示をタンパク質の敵の記録に同居させている。
-function withEntityDisplay(entity: SerializedDynamicEntity, display: EntityDisplaySource): SerializedDynamicEntity {
-  switch (entity.kind) {
-    case 'player':
-    case 'base':
-    case 'metal-enemy':
-      return { ...entity, showTrajectoryLine: display.showsTrajectoryLine(entity.id) };
-    case 'protein-enemy':
-      return {
-        ...entity, showTrajectoryLine: display.showsTrajectoryLine(entity.id), display: display.proteinDisplay,
-      };
-    // 補給と分離ブースターの記録は、軌道線の表示を持たない。
-    case 'ammo':
-    case 'rcs-fuel':
-    case 'booster':
-      return entity;
-  }
 }
 
 export class Game {
@@ -132,21 +116,24 @@ export class Game {
     sections: FrameSections,
     progress: LoadingProgress,
   ): Promise<Game> {
+    const { progress: serializedProgress } = serialized;
     const celestialSystem = await Game.buildCelestialSystem(
-      stageClass, createJulianDate('TDB', serialized.ephemerisContext.epochJdTdb), scene, progress,
+      stageClass, createJulianDate('TDB', serializedProgress.ephemerisContext.epochJdTdb), scene, progress,
     );
     const commands = new CommandQueue();
     const events = new RunEventLog();
     // 顔ぶれを先に組む — 操作対象の選択・ステージ・視点は、復元を終えた顔ぶれを読む。
-    const dynamicSystem = DynamicSystem.deserialize(serialized, scene.scene, events, celestialSystem, sections);
+    const dynamicSystem = DynamicSystem.deserialize(
+      serializedProgress.dynamicSystem, scene.scene, events, celestialSystem, sections,
+    );
     const simSpeedManager = new SimSpeedManager(events);
-    const controlSelection = ControlSelection.deserialize(serialized.activeControlledId, dynamicSystem);
+    const controlSelection = ControlSelection.deserialize(serializedProgress.controlSelection, dynamicSystem);
     const stage = stageClass.deserialize(
       // 記録にステージの内訳が無い・null なら、空の記録として新しいランの初期値で補う(初期配置はしない)。
-      serialized.stage ?? ({} as SerializedStage),
+      serializedProgress.stage ?? ({} as SerializedStage),
       hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands,
     );
-    const viewer = Viewer.deserialize(serialized, dynamicSystem, controlSelection, events, celestialSystem);
+    const viewer = Viewer.deserialize(serialized.viewer, dynamicSystem, controlSelection, events, celestialSystem);
     return new Game(
       celestialSystem, sections, commands, events, dynamicSystem, simSpeedManager, controlSelection, stage, viewer,
     );
@@ -168,17 +155,16 @@ export class Game {
 
   // このランを直列化した形へ畳む。
   public serialize(): SerializedGame {
-    const { simTime, entities } = this.dynamicSystem.serialize();
     return {
       version: SERIALIZATION_VERSION,
-      stageId: this.activeStage.id,
-      simTime,
-      ephemerisContext: { ...ephemerisContextFor(this.celestialSystem.epoch) },
-      entities: entities.map((entity) => withEntityDisplay(entity, this.viewer.entityDisplay)),
-      activeControlledId: this.controlSelection.serialize(),
-      stage: this.activeStage.serialize(),
-      // 遊ぶ人の選択。
-      ...this.viewer.serialize(),
+      progress: {
+        stageId: this.activeStage.id,
+        ephemerisContext: { ...ephemerisContextFor(this.celestialSystem.epoch) },
+        dynamicSystem: this.dynamicSystem.serialize(),
+        controlSelection: this.controlSelection.serialize(),
+        stage: this.activeStage.serialize(),
+      },
+      viewer: this.viewer.serialize(),
     };
   }
 

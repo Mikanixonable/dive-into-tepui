@@ -18,11 +18,11 @@ import type { RunEventSink } from '../../run-events';
 import type { EntityIdAllocators } from './entity-id';
 import type { DynamicEntityClass } from './entity-dictionary';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
-import type { DynamicMotion } from '../dynamic-motion';
+import type { DynamicMotion, DynamicMotionThermal } from '../dynamic-motion';
 import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
 import { EnemyInspection } from '../../pickable/enemy-inspection';
 import type { EnemyProteinInspection } from '../../pickable/enemy-inspection';
-import { EnemyFireController } from './enemy-fire-controller';
+import { EnemyFireController, type SerializedEnemyFireController } from './enemy-fire-controller';
 import { EnemyReactions } from './enemy-reactions';
 
 // 敵機アセットの座標を物理寸法へ直す倍率。機体モデル・撃破時の破片・爆発の大きさは、
@@ -36,31 +36,31 @@ export const PLASMA_BULLET_DAMAGE = 1.25; // 自機がプラズマ弾で被弾�
 // 軌道物体一覧で接近中として扱う、自艦との距離 [m]。
 export interface SerializedEnemy extends SerializedDynamicEntityFields {
   readonly kind: 'metal-enemy' | 'protein-enemy';
+  readonly name: string;
   readonly alive: boolean;
-  readonly health: number;
+  readonly thermal: DynamicMotionThermal;
   // マーカー色・集団識別と、マーカー・軌道線の色。
   readonly accent: string | number;
   readonly orbitLineColor: string | number;
-  // 表示色とは独立した、同時発砲数を共有する攻撃グループ。無ければ formationId・id・name の順に代える。
-  readonly attackGroupId?: string;
-  readonly waveId?: number;
-  // 陣形に属する敵だけが持つ識別子と役割。無ければ単体敵として復元する。
-  readonly formationId?: string;
-  readonly formationRole?: FormationRole;
-  // バースト射撃の残弾・次弾までの残り時間。未着手なら両方 undefined。
-  readonly burstLeft?: number;
-  readonly burstDelay?: number;
-  // プロパティウィンドウの軌道線表示トグル。無ければ false。
-  readonly showTrajectoryLine?: boolean;
+  // 表示色とは独立した、同時発砲数を共有する攻撃グループ。
+  readonly attackGroupId: string;
+  // 所属するウェーブの番号。ウェーブに属さない敵は null。
+  readonly waveId: number | null;
+  // 陣形に属する敵だけが持つ識別子と役割。単体敵は null。
+  readonly formationId: string | null;
+  readonly formationRole: FormationRole | null;
+  readonly fireController: SerializedEnemyFireController;
 }
 
 // 敵を置く識別・色・陣形所属と運動状態。新しく置くときは、具象ごとに固有の項目(機体テンプレート
-// 番号・タンパク質アセット)を足して使う。id を省くと採番器が発番する。
+// 番号・タンパク質アセット)を足して使う。id を省くと採番器が発番し、thermal を省くと環境温度から
+// 始める。
 export interface EnemyPlacement {
   readonly name: string;
   readonly state: KinematicState;
   readonly q: Quat;
   readonly w: Vec3;
+  readonly thermal?: DynamicMotionThermal;
   readonly accent: string | number;
   readonly orbitLineColor: string | number;
   readonly attackGroupId?: string;
@@ -70,21 +70,22 @@ export interface EnemyPlacement {
   readonly formationRole?: FormationRole;
 }
 
-// 直列化した敵に共通する項目を、時刻 simTime の配置として読む。
-export function deserializeEnemyPlacement(serialized: SerializedEnemy, simTime: number): EnemyPlacement {
+// 直列化した敵に共通する項目を、配置として読む。
+export function deserializeEnemyPlacement(serialized: SerializedEnemy): EnemyPlacement {
   return {
     name: serialized.name || '',
-    state: deserializeKinematicState(serialized, simTime),
+    state: deserializeKinematicState(serialized),
     q: { ...serialized.q },
     w: v3(serialized.w.x, serialized.w.y, serialized.w.z),
+    thermal: serialized.thermal,
     accent: serialized.accent,
     orbitLineColor: serialized.orbitLineColor,
     // 攻撃グループの無い記録は、陣形・id・名前の順に代える
     attackGroupId: serialized.attackGroupId ?? serialized.formationId ?? serialized.id ?? serialized.name,
-    waveId: serialized.waveId,
+    waveId: serialized.waveId ?? undefined,
     id: serialized.id || undefined,
-    formationId: serialized.formationId,
-    formationRole: serialized.formationRole,
+    formationId: serialized.formationId ?? undefined,
+    formationRole: serialized.formationRole ?? undefined,
   };
 }
 
@@ -147,7 +148,7 @@ export abstract class Enemy extends Vessel implements CombatTarget {
         receiveBurnUp: services => (
           (owner as Enemy).receiveBurnUp(services.activeStage, services.registry)
         ),
-      }, shape),
+      }, shape, placement.thermal),
       view,
       idAllocators.entity.next(placement.id),
     );
@@ -264,23 +265,17 @@ export abstract class Enemy extends Vessel implements CombatTarget {
   // 敵に共通する直列化の項目。具象の serialize() がこれへ自分の項目を足す。
   protected serializeEnemyFields(): SerializedEnemy {
     return {
-      id: this.id,
+      ...this.serializeEntityFields(this.enemyClass.kind),
       name: this.name,
-      kind: this.enemyClass.kind,
-      r: { ...this.motion.state.r },
-      v: { ...this.motion.state.v },
-      q: { ...this.motion.att.q },
-      w: { ...this.motion.att.w },
       alive: this.motion.alive,
-      health: this.hp,
+      thermal: this.motion.thermal,
       accent: this.accent,
       orbitLineColor: this.orbitLineColor,
       attackGroupId: this.attackGroupId,
-      waveId: this.waveId,
-      // 陣形所属は無所属の単体敵も多いため、値がある場合だけキーを持たせる。
-      ...(this.formationId === undefined ? {} : { formationId: this.formationId }),
-      ...(this.formationRole === undefined ? {} : { formationRole: this.formationRole }),
-      ...this.fireController.serialize(),
+      waveId: this.waveId ?? null,
+      formationId: this.formationId ?? null,
+      formationRole: this.formationRole ?? null,
+      fireController: this.fireController.serialize(),
     };
   }
 

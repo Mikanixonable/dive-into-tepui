@@ -35,9 +35,8 @@ const PROGRADE_HOLD_KD = 2.6; // 角速度に対する減衰ゲイン
 
 export interface SerializedThrottle {
   readonly throttleIdx: number;
-  // 無ければ既定値(true)。
-  readonly rcsDamp?: boolean;
-  readonly progradeHold?: boolean;
+  readonly rcsDamp: boolean;
+  readonly progradeHold: boolean;
 }
 
 export class Throttle {

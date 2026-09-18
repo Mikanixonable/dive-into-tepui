@@ -45,14 +45,11 @@ export interface SerializedFocusCameraSelection {
   readonly up: SerializedVec3;
   readonly rotatingWith: CameraRotationFollow | null;
   readonly focus: SerializedFocusTarget;
-  // 無ければ既定のオイラー操作。
-  readonly rotationMode?: 'quaternion' | 'euler';
-  // 無ければ既定の FOV。
-  readonly fovDeg?: number;
-  // 無ければ赤道面。
-  readonly referencePlane?: 'ecliptic' | 'equator' | 'moonOrbit';
-  readonly projectionMode?: 'perspective' | 'orthographic';
-  readonly orthographicHalfHeight?: number;
+  readonly rotationMode: CameraRotationMode;
+  readonly fovDeg: number;
+  readonly referencePlane: CameraReferencePlane;
+  readonly projectionMode: ProjectionMode;
+  readonly orthographicHalfHeight: number;
 }
 
 // 入力の解釈が1フレーム分のカメラ操作へ換算した値。

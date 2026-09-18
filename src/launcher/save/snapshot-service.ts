@@ -45,8 +45,8 @@ export class SnapshotService {
       phase: summary.phase,
     };
 
-    if (!this.slots.addManualSave(slotId, save.stageId, meta, save)) return null;
-    this.slots.writeAutoSave(slotId, save.stageId, save);
+    if (!this.slots.addManualSave(slotId, save.progress.stageId, meta, save)) return null;
+    this.slots.writeAutoSave(slotId, save.progress.stageId, save);
     return meta;
   }
 
@@ -54,7 +54,7 @@ export class SnapshotService {
   public writeAutoSave(save: SerializedGame): void {
     const slotId = this.slots.activeSlotId;
     if (slotId === null) return;
-    this.slots.writeAutoSave(slotId, save.stageId, save);
+    this.slots.writeAutoSave(slotId, save.progress.stageId, save);
   }
 
   // snapshotId の本体を取得する。本体欠損・バージョン不一致・
@@ -62,11 +62,12 @@ export class SnapshotService {
   public load(snapshotId: string, expectedStageId: string): SerializedGame | null {
     const data = this.store.readSnapshot(snapshotId);
     if (data === null) return null;
+    // 版を先に照合する — 版の違う記録は形が違うので、ほかの項目を読まない。
     if (data.version !== SERIALIZATION_VERSION) return null;
-    if (expectedStageId !== data.stageId) return null;
+    if (expectedStageId !== data.progress.stageId) return null;
     // 元期は継承するので照合しないが、その元期が選ぶ暦データがいま手元にあるものと違うなら、
     // 絶対天体状態が曖昧になるので拒否する。
-    if (!isEphemerisContextRestorable(data.ephemerisContext)) return null;
+    if (!isEphemerisContextRestorable(data.progress.ephemerisContext)) return null;
     return data;
   }
 }
