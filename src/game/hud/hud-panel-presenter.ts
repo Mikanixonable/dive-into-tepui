@@ -74,7 +74,7 @@ export class HudPanelPresenter {
     this.deployableCommands = deployableCommands(commands);
     this.orbitReferenceCommands = orbitReferenceCommands(commands, viewer.orbitReference);
     // ブースターの操作は、押された時点の操作対象のブースターへ積む。
-    const boosters = boosterCommands(commands, dynamicSystem);
+    const boosters = boosterCommands(commands);
     this.burnHandlers = {
       onAttach: () => {
         const attached = this.controlSelection.current?.boosters;
