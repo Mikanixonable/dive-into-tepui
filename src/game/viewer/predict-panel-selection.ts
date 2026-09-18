@@ -68,11 +68,14 @@ export class PredictPanelSelection implements PredictPanelSource {
   private _showTicks = true;
 
   // frames は座標系の同一性を保つ生成元、celestialBodies はカメラ追随で選べる天体の索引。
+  // cameraFocusId はカメラ追随の初期中心で、登録天体でなければ慣性系から始める。
   public constructor(
     private readonly frames: Pick<ReferenceFrames, 'inertialFrame' | 'frameOf'>,
     private readonly celestialBodies: Pick<CelestialBodies, 'has'>,
+    cameraFocusId: string | undefined,
   ) {
     this._frame = frames.inertialFrame;
+    this.followCameraFocus(cameraFocusId);
   }
 
   public get frame(): ReferenceFrame { return this._frame; }

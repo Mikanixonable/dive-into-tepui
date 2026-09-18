@@ -10,7 +10,7 @@ import type { RunEventSink } from '../run-events';
 const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は記録しない)
 
 // targetId が指す生存中の戦闘対象に的を置き、通常弾が viewer 側から的を通過したことを events へ記録する。
-// 的の半径から外れた通過は記録しない。どの対象について記録するかは、表示の導出が需要として渡す(R4)。
+// targetId が null か、それが指す対象が居なければ何も記録しない。的の半径から外れた通過も記録しない。
 export function recordTargetBoardPasses(
   viewer: OrbitingObject | null, targetId: string | null, roster: EntityRoster, events: RunEventSink,
 ): void {
