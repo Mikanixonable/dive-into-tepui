@@ -2,7 +2,7 @@
 // 惑星1体・衛星1体の最小構成で、輻射源・日照率・点群などの経路が任意のレジストリで動くことを
 // 確かめる。
 import * as THREE from 'three/webgpu';
-import { Stage, type StageDeps, STORY_EPOCH } from './stage';
+import { Stage, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { OrbitingMotion, SatelliteMotion, StarMotion } from '../../physics/celestial-motion';
 import { PlanetDef, SatelliteDef, StarDef, planetDefForSimZero, satelliteDefForSimZero } from '../../physics/celestial-body-def';
@@ -12,7 +12,6 @@ import { AU, SOLAR_CONSTANT } from '../../physics/astronomical-unit';
 import { satelliteOrbit } from '../../physics/satellite-orbit';
 import { keplerPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { addPrimaryRelative, kinematicState } from '../../physics/kinematic-state';
-import type { StageSaveData } from '../save/save-data';
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { CelestialSurface } from '../../render/celestial/celestial-surface';
 import { celestialClassOfKind } from '../celestial/celestial-entity/celestial-entity-def';
@@ -105,7 +104,7 @@ export class StageDebugAltSystem extends Stage {
   public static readonly hiddenFromSelect = true;
 
   // saved があればそこから復元し、無ければ初期配置してステージを始める。
-  public constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+  public constructor(saved: SerializedStage | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     this.begin();
   }

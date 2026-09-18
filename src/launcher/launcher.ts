@@ -1,4 +1,4 @@
-import { Game } from '../game/game';
+import { Game, type SerializedGame } from '../game/game';
 import type { GameHost } from '../game/game-host';
 import { LoadingProgress } from '../game/loading-progress';
 import { KEY_MAPPING as K } from '../input/key-mapping';
@@ -13,7 +13,6 @@ import type { UnlockManager } from './unlock-manager';
 import type { SaveSlots } from './save/save-slots';
 import type { SnapshotSource, SnapshotService } from './save/snapshot-service';
 import type { AutoSave } from './save/autosave';
-import type { GameSaveData } from '../game/save/save-data';
 import type { AudioEngine } from '../audio/audio-engine';
 import type { Bgm } from '../audio/bgm/bgm';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
@@ -178,7 +177,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   // 周回の初期セーブ。snapshotId があればそれを、無ければ終わっていない周回の再開(直近の周回と同じ
   // ステージ、かつ開始日時の指定なし)に限り自動セーブを復元する。直近の周回を読むので
   // noteLaunched より前に呼ぶ。復元できなければ undefined。
-  private initialSaveFor(stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate): GameSaveData | undefined {
+  private initialSaveFor(stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate): SerializedGame | undefined {
     const activeSlotId = this.slots.activeSlotId;
     const lastRun = this.slots.activeSlot()?.lastRun ?? null;
     const resumesRunInProgress = startEpoch === undefined && activeSlotId !== null

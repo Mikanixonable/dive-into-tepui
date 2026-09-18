@@ -6,7 +6,7 @@ import { proteinMotionFrameSample, type ProteinMotionFrameSample } from './prote
 import { SECTION, type FrameSections } from './frame-sections';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import { CameraSystem } from './camera/camera-system';
-import type { Stage, StageClass } from './stages/stage';
+import type { SerializedStage, Stage, StageClass } from './stages/stage';
 import { CommandQueue } from './command-queue';
 import { controlSelectionCommands, type ControlSelectionCommands } from './control-selection-commands';
 import { simSpeedCommands, type SimSpeedCommands } from './dynamic/sim-speed-commands';
@@ -56,7 +56,7 @@ import { MapView } from './view/map-view';
 import { NavTargetPresenter } from './nav-target-presenter';
 import { FrameAnchors } from './frame-anchors';
 import { resolveOrbitReference } from './orbit-reference';
-import { Viewer } from './viewer/viewer';
+import { Viewer, type SerializedViewer } from './viewer/viewer';
 import { navTargetCommands, type NavTargetCommands } from './viewer/nav-target-commands';
 import { orbitReferenceCommands, type OrbitReferenceCommands } from './viewer/orbit-reference-commands';
 import { orbitGuideCommands } from './viewer/orbit-guide-commands';
@@ -66,8 +66,8 @@ import { cameraCommands, type CameraCommands } from './viewer/camera-commands';
 import { entityDisplayCommands } from './viewer/entity-display-commands';
 import { recordTargetBoardPasses } from './dynamic/target-board-passes';
 import { ObjectWindows } from './pickable/object-windows';
-import { SAVE_VERSION, type GameSaveData } from './save/save-data';
-import { ephemerisContextFor } from '../physics/ephemeris/ephemeris-context';
+import { ephemerisContextFor, type EphemerisContext } from '../physics/ephemeris/ephemeris-context';
+import type { SerializedDynamicEntity } from './dynamic/dynamic-entity/entity-dictionary';
 import type { LoadingProgress } from './loading-progress';
 import type { GameHost } from './game-host';
 import { createJulianDate, type TdbJulianDate } from '../physics/time';
@@ -105,6 +105,27 @@ import { gameCommand } from './input/game-commands';
 import { rawGameInputAdapter } from './input/raw-game-input-adapter';
 import { PilotInput } from './input/pilot-input';
 import type { PilotControls } from './dynamic/dynamic-entity/pilot-controls';
+
+// SerializedGame の形式バージョン。上げるのは構造が変わって互換を切るときで、上げた時点で
+// それ以前に書かれた記録は読めなくなる。項目を増やすだけなら版は据え置き、省略可能にして
+// 読み込み側で基底値を補う(SAVE.md「形式の版」)。
+export const SERIALIZATION_VERSION = 3;
+
+// 1ランの直列化した形。視点の分は SerializedViewer の項目がそのまま並ぶ。
+export interface SerializedGame extends SerializedViewer {
+  readonly version: number;
+  readonly stageId: string;
+  readonly simTime: number;
+  /**
+   * そのランの元期と、それが選ぶ暦データの識別。元期は読み込み側が継承する値で、照合するのは
+   * 暦データの識別。
+   */
+  readonly ephemerisContext: EphemerisContext;
+  // 顔ぶれ。種別は各要素の kind が持つ。
+  readonly entities: SerializedDynamicEntity[];
+  readonly activeControlledId: string | null;
+  readonly stage: SerializedStage;
+}
 
 // 新規開始のブリーフィングを出しておく時間 [ms]。
 const BRIEFING_TOAST_MS = 12000;
@@ -209,7 +230,7 @@ export class Game {
     stageClass: StageClass,
     audioEngine: AudioEngine,
     pauseMenu: PauseMenu,
-    initialSave: GameSaveData | undefined,
+    initialSave: SerializedGame | undefined,
     startEpoch: TdbJulianDate | undefined,
     graphics: GraphicsSettingsData,
     renderStyle: RenderStyle,
@@ -245,10 +266,10 @@ export class Game {
     return game;
   }
 
-  // このランを1件ぶんのセーブ本体へ畳む。
-  public serialize(): GameSaveData {
+  // このランを直列化した形へ畳む。
+  public serialize(): SerializedGame {
     return {
-      version: SAVE_VERSION,
+      version: SERIALIZATION_VERSION,
       stageId: this.activeStage.id,
       simTime: this.simTime,
       ephemerisContext: { ...ephemerisContextFor(this._celestialSystem.epoch) },
@@ -269,7 +290,7 @@ export class Game {
     audioEngine: AudioEngine,
     pauseMenu: PauseMenu,
     celestialSystem: CelestialSystem,
-    initialSave?: GameSaveData,
+    initialSave?: SerializedGame,
   ) {
     this.sections = host.sections;
     this._scene = host.scene.scene;

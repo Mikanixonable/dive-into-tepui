@@ -3,9 +3,11 @@ import { KinematicState, kinematicState } from '../../../physics/kinematic-state
 import { v3, type Vec3 } from '../../../math/vec3';
 import { collisionDamageFraction } from './contact-damage';
 import { proteinEnemyDefinitionFor } from '../../protein/protein-enemy-registry';
-import { ProteinCombatState } from '../../protein/protein-combat-state';
+import { ProteinCombatState, type SerializedProteinCombatState } from '../../protein/protein-combat-state';
 import { ProteinSphereCollisionGeometry } from '../../protein/protein-sphere-collision';
-import { ENEMY_MODEL_SCALE, Enemy, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore } from './enemy';
+import {
+  ENEMY_MODEL_SCALE, Enemy, PLASMA_BULLET_DAMAGE, type EnemyPlacement, type EnemyRestore, type SerializedEnemy,
+} from './enemy';
 import {
   proteinAssetGate, proteinRenderDefinitionFor, type ProteinAssetId,
 } from '../../protein/protein-asset-loader';
@@ -16,7 +18,6 @@ import type { ProteinDisplaySettings } from '../../../render/protein/protein-dis
 import type { ProteinEnemyDefinition } from '../../protein/protein-enemy-registry';
 import type { ProteinRenderDefinition } from '../../../render/protein/protein-render-definition';
 import type { ProteinCombatReadout } from '../../protein/protein-schema';
-import type { EnemySaveData, ProteinEnemySaveData } from '../../save/save-data';
 import type { FormationRole } from './entity-kind';
 import { ProteinEnemyView } from '../../../render/dynamic/dynamic-entity/protein-enemy-view';
 import type { DynamicEntity } from './dynamic-entity';
@@ -68,14 +69,22 @@ function renderDefinitionFor(assetId: ProteinAssetId): ProteinRenderDefinition {
   return definition;
 }
 
+export interface SerializedProteinEnemy extends SerializedEnemy {
+  readonly kind: 'protein-enemy';
+  readonly assetId: ProteinAssetId;
+  readonly display: ProteinDisplaySettings;
+  // 機能部位の HP・フェーズ・修飾。
+  readonly protein: SerializedProteinCombatState;
+}
+
 // タンパク質の敵。機能部位ごとに破壊できる被弾モデル(ProteinCombatState)が HP の正本で、
 // 判定形状は表示形態によらず、アセットが持つ球列に固定する。
 export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   public static readonly kind = 'protein-enemy';
   public declare readonly view: ProteinEnemyView;
   // その体のアセットの取得を起こし、実体化してよいかを答える関門を返す。
-  public static spawnGate(saved: EnemySaveData): SpawnGate {
-    return proteinAssetGate((saved as ProteinEnemySaveData).assetId);
+  public static spawnGate(saved: SerializedEnemy): SpawnGate {
+    return proteinAssetGate((saved as SerializedProteinEnemy).assetId);
   }
 
   private readonly assetId: ProteinAssetId;
@@ -88,12 +97,12 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     idAllocators: EntityIdAllocators,
     scene?: THREE.Scene,
   ) {
-    const assetId = 'saved' in init ? (init.saved as ProteinEnemySaveData).assetId : init.assetId;
+    const assetId = 'saved' in init ? (init.saved as SerializedProteinEnemy).assetId : init.assetId;
     const definition = definitionFor(assetId);
     const id = ('saved' in init ? init.saved.id || init.saved.name : init.id ?? init.name) || assetId;
     const combat = new ProteinCombatState(
       definition.asset,
-      'saved' in init ? (init.saved as ProteinEnemySaveData).protein : undefined,
+      'saved' in init ? (init.saved as SerializedProteinEnemy).protein : undefined,
     );
     // 表示が原子模型へ切り替わっても、判定形状は常に同じ球列に固定する。
     const collision = new ProteinSphereCollisionGeometry(
@@ -205,7 +214,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
   // この敵の予測線・過去線を出しているか、proteinDisplay はタンパク質の敵に共通の表示形態と着色。
   public override serialize(
     showTrajectoryLine: boolean, proteinDisplay: ProteinDisplaySettings,
-  ): ProteinEnemySaveData {
+  ): SerializedProteinEnemy {
     return {
       ...this.serializeEnemyFields(showTrajectoryLine),
       kind: ProteinEnemy.kind,

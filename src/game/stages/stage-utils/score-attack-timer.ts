@@ -1,3 +1,5 @@
+export type SerializedScoreAttackTimer = number;
+
 // スコアアタックの残り時間を管理する。
 export class ScoreAttackTimer {
   timeLeft: number;
@@ -15,7 +17,7 @@ export class ScoreAttackTimer {
     return true;
   }
 
-  serialize(): number {
+  serialize(): SerializedScoreAttackTimer {
     return this.timeLeft;
   }
 }

@@ -1,9 +1,10 @@
 import type { Ray } from '../../../math/ray';
-import type { Vec3 } from '../../../math/vec3';
+import type { Quat } from '../../../math/quat';
+import type { SerializedVec3, Vec3 } from '../../../math/vec3';
 import { MARKER_VISIBILITY, type MapVisibility, type MapVisibilityPolicy } from '../../map/visibility-policy';
-import type { EntitySaveDataUnion } from '../../save/save-data';
 import type { OrbitingObject } from './orbiting-object';
 import type { CapKind, DynamicEntityKind } from './entity-kind';
+import type { SerializedDynamicEntity } from './entity-dictionary';
 import type { DynamicMotion } from '../dynamic-motion';
 import type { OrbitReference } from '../../orbit-reference';
 import type {
@@ -12,6 +13,18 @@ import type {
 import type { ProteinDisplaySettings } from '../../../render/protein/protein-display';
 
 export type DynamicMotionFactory = (owner: DynamicEntity) => DynamicMotion;
+
+// 実体の直列化に共通する項目。
+export interface SerializedDynamicEntityFields {
+  readonly id: string;
+  readonly name?: string;
+  // 具象クラスのタグ。
+  readonly kind: 'player' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel' | 'booster' | 'base';
+  readonly r: SerializedVec3;
+  readonly v: SerializedVec3;
+  readonly q: Quat;
+  readonly w: SerializedVec3;
+}
 
 // 1体ぶんの Motion と View を結び、両者に共通するゲーム上の識別と判断を持つ。
 export class DynamicEntity {
@@ -54,11 +67,11 @@ export class DynamicEntity {
     return this.motion.intersectsRay(ray, pos);
   }
 
-  // セーブデータへ変換する。永続化しない種別は null。showTrajectoryLine はこの個体の予測線・
+  // 直列化した形へ変換する。永続化しない種別は null。showTrajectoryLine はこの個体の予測線・
   // 過去線を出しているか、proteinDisplay はタンパク質の敵に共通の表示形態と着色。
   public serialize(
     _showTrajectoryLine: boolean, _proteinDisplay: ProteinDisplaySettings,
-  ): EntitySaveDataUnion | null {
+  ): SerializedDynamicEntity | null {
     return null;
   }
 

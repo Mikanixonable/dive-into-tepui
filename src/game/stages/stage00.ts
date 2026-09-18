@@ -1,11 +1,13 @@
 // Stage 00: 無限耐久サバイバル。弾薬確保後、波状攻撃が自機破壊まで無限に続く。
-import { Stage, type StageDeps, STORY_EPOCH } from './stage';
+import { Stage, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
-import { WaveAttack } from './stage-utils/wave-attack';
-import type { Stage00SaveData, StageSaveData } from '../save/save-data';
+import { WaveAttack, type SerializedWaveAttack } from './stage-utils/wave-attack';
 import { MAX_ACTIVE_AMMO_PICKUPS, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST } from './stage-utils/logistics';
+
+export interface SerializedStage00 extends SerializedStage, SerializedWaveAttack {
+}
 
 export class Stage00 extends Stage {
   static readonly id = '00' as const;
@@ -17,11 +19,11 @@ export class Stage00 extends Stage {
   private readonly waveAttack: WaveAttack;
 
   // 保存があれば波状攻撃の進行を引き継いで始める。
-  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+  constructor(saved: SerializedStage | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     this.waveAttack = new WaveAttack(
       this._dynamicSystem.events, this._scene, this._celestialSystem.celestialMotions,
-      this._dynamicSystem.idAllocators, saved as Stage00SaveData | undefined,
+      this._dynamicSystem.idAllocators, saved as SerializedStage00 | undefined,
     );
     this.begin();
   }
@@ -62,7 +64,7 @@ export class Stage00 extends Stage {
     return `第${this.waveAttack.waveCount}波`;
   }
 
-  serialize(): Stage00SaveData {
+  serialize(): SerializedStage00 {
     return {
       ...super.serialize(),
       ...this.waveAttack.serialize(),

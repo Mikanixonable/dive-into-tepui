@@ -46,7 +46,7 @@ const STAGE00_FLYBY_LATERAL_SPREAD = 20; // フライパス初速の横ブレ最
 
 type WaveState = 'waiting_for_ammo' | 'spawning_enemies' | 'active_combat';
 
-export interface WaveAttackSaveData {
+export interface SerializedWaveAttack {
   waveState: WaveState;
   spawnTimer: number;
   waveCount: number;
@@ -65,7 +65,7 @@ export class WaveAttack {
     private readonly scene: THREE.Scene,
     private readonly attractors: readonly CelestialBody[],
     private readonly idAllocators: EntityIdAllocators,
-    saved?: WaveAttackSaveData,
+    saved?: SerializedWaveAttack,
   ) {
     this.waveState = saved?.waveState ?? 'waiting_for_ammo';
     this.spawnTimer = saved?.spawnTimer ?? 0;
@@ -129,7 +129,7 @@ export class WaveAttack {
     this.events.record({ kind: 'waveSpawned', wave: this._waveCount });
   }
 
-  public serialize(): WaveAttackSaveData {
+  public serialize(): SerializedWaveAttack {
     return { waveState: this.waveState, spawnTimer: this.spawnTimer, waveCount: this._waveCount };
   }
 }

@@ -1,6 +1,6 @@
 // 軌道計画(ノード列)とその起点アンカー。ノードは噴射直後の絶対 KinematicState として凍結し、
 // Δv は導出値。上流ノードを編集すると下流を破棄する。計画軌道の計算・キャッシュは持たない。
-import type { KinematicState } from '../../physics/kinematic-state';
+import type { KinematicState, SerializedKinematicState } from '../../physics/kinematic-state';
 import { strongestAttractor } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { orbitalElementsOf } from '../../physics/elements';
@@ -8,6 +8,11 @@ import { orbitalElementsOf } from '../../physics/elements';
 // 計画をどう実行するか。'off': ノードを消化しない。
 // 'instant': ノード時刻ちょうどで絶対状態へ乗り移る(自動実行)。
 export type PlanExecutionMode = 'off' | 'instant';
+
+export interface SerializedPlan {
+  readonly anchor: SerializedKinematicState;
+  readonly nodes: SerializedKinematicState[];
+}
 
 // ノード実行時刻の何秒前から「実行の窓」とみなすか [s]。噴射準備の通知・達成判定の開始・
 // 自動ワープの解除がこの1点を共有する。

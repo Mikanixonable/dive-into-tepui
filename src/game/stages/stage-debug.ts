@@ -1,6 +1,6 @@
 // デバッグ用ステージ: 敵集団1つのみを配置し、勝敗を発生させずに検証を続けられる。
 // 敵の射撃 ON/OFF をパネルから切り替えられる。
-import { Stage, type StageDeps, STORY_EPOCH } from './stage';
+import { Stage, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { generateWave } from './stage-utils/wave-attack';
 import { Button, ToggleSwitch } from '../../hud/widgets';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
@@ -9,7 +9,6 @@ import { MAG_ROUNDS } from '../player/ammo-spec';
 import { LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST } from './stage-utils/logistics';
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
 import { stageDebugCommands, type StageDebugCommands } from './stage-debug-commands';
-import type { StageSaveData } from '../save/save-data';
 import type { Player } from '../player/player';
 
 export class StageDebug extends Stage {
@@ -25,7 +24,7 @@ export class StageDebug extends Stage {
   // パネルの操作を積む先。
   private readonly commands: StageDebugCommands;
 
-  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+  constructor(saved: SerializedStage | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     this.commands = stageDebugCommands(this._commandQueue, this);
     this.begin();

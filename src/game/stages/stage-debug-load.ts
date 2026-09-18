@@ -1,5 +1,5 @@
 // デバッグ用ステージ: 破片を多数配置し、積分するエンティティ数の高負荷を常時再現する。
-import { Stage, type StageDeps, STORY_EPOCH } from './stage';
+import { Stage, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import {
   DebrisPiece, DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN,
@@ -8,7 +8,6 @@ import { randomQuat } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
 import { mulberry32 } from '../../math/random';
 import { add, v3, Vec3 } from '../../math/vec3';
-import type { StageSaveData } from '../save/save-data';
 import { MAG_ROUNDS } from '../player/ammo-spec';
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
 
@@ -27,7 +26,7 @@ export class StageDebugLoad extends Stage {
   public static readonly hiddenFromSelect = true;
 
   // saved があればそこから復元し、無ければ初期配置してステージを始める。
-  public constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+  public constructor(saved: SerializedStage | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     this.begin();
   }

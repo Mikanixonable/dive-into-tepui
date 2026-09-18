@@ -1,4 +1,4 @@
-import type { AnyPart, Part, PartType } from './parts';
+import type { AnyPart, Part, PartType, SerializedPart } from './parts';
 
 // 船体へ搭載されている部品の正本。外部へ可変配列を渡さず、構成の置換と所属判定だけを公開する。
 export class PartInventory {
@@ -61,5 +61,5 @@ export class PartInventory {
     }
     return added;
   }
-  public serialize(): AnyPart[] { return this.items.map((part) => ({ ...part })); }
+  public serialize(): SerializedPart[] { return this.items.map((part) => ({ ...part })); }
 }

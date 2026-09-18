@@ -2,22 +2,21 @@
 import type * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { OrbitingObject } from './orbiting-object';
-import { DynamicEntity } from './dynamic-entity';
+import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { DynamicEntityKind } from './entity-kind';
 import type { EntityIdAllocators } from './entity-id';
-import type { KinematicState } from '../../../physics/kinematic-state';
-import type { Attitude } from '../../../physics/attitude';
+import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
+import { deserializeAttitude, type Attitude } from '../../../physics/attitude';
 import type { Vec3 } from '../../../math/vec3';
 import { len, sub, v3 } from '../../../math/vec3';
 import type { MarkerVisibility } from '../../../marker/marker-visibility';
-import { savedAttitude, savedKinematicState, type BaseSaveData } from '../../save/save-data';
 import { Plan, type PlanExecutionMode } from '../../plan/plan';
 import { generateRandomName } from '../../random-name';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import { fmtDist } from '../../../hud/utils';
 import { ENTITY_GLYPH, COLOR_MARKER_ALLY } from '../../marker/marker-identity';
 import { baseMarkerSvg } from '../../marker/marker-shapes';
-import { Throttle } from '../../player/throttle';
+import { Throttle, type SerializedThrottle } from '../../player/throttle';
 import type { Controllable, PilotCommandFrame } from './controllable';
 import type { PilotCommand } from './pilot-controls';
 import type { EntityRegistry } from '../entity-registry';
@@ -43,11 +42,21 @@ const BASE_INERTIA_Y = 1e8;
 const BASE_INERTIA_Z = 1.2e8;   // 長軸方向はやや大きい
 const BASE_INITIAL_MONEY = 100000; // 新規配置の基地の所持金 [Cr]
 
+export interface SerializedBase extends SerializedDynamicEntityFields {
+  readonly kind: 'base';
+  readonly money: number;
+  // 基地の燃料。
+  readonly fuel?: number;
+  readonly throttle?: SerializedThrottle;
+  // プロパティウィンドウの軌道線表示トグル。無ければ false。
+  readonly showTrajectoryLine?: boolean;
+}
+
 // 新規配置は state/name/att をそのまま使い、スナップショットからの再開は saved を
 // simTime 付きの状態として展開する。
 type BaseInit =
   | { readonly state: KinematicState; readonly name?: string; readonly att?: Attitude; readonly id?: string }
-  | { readonly saved: BaseSaveData; readonly simTime: number };
+  | { readonly saved: SerializedBase; readonly simTime: number };
 
 export class Base extends DynamicEntity implements Controllable, ObjectPickable {
   public override readonly mapKind: DynamicEntityKind = 'base';
@@ -93,14 +102,14 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
     // 復元と新規配置を同じ形へ均してから基底へ渡す。
     const { state, name, att, id } = 'saved' in init
       ? {
-        state: savedKinematicState(init.saved, init.simTime),
+        state: deserializeKinematicState(init.saved, init.simTime),
         name: init.saved.name || '基地',
         att: undefined,
         id: init.saved.id,
       }
       : { state: init.state, name: init.name ?? generateRandomName('base'), att: init.att, id: init.id };
     const savedAtt: Attitude | undefined = 'saved' in init
-      ? savedAttitude(init.saved, v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z))
+      ? deserializeAttitude(init.saved, v3(BASE_INERTIA_X, BASE_INERTIA_Y, BASE_INERTIA_Z))
       : undefined;
     const attitude = savedAtt ?? att ?? {
       q: { x: 0, y: 0, z: 0, w: 1 },
@@ -197,7 +206,7 @@ export class Base extends DynamicEntity implements Controllable, ObjectPickable 
   }
 
   // セーブデータへ変換する。showTrajectoryLine はこの基地の予測線・過去線を出しているか。
-  public override serialize(showTrajectoryLine: boolean): BaseSaveData {
+  public override serialize(showTrajectoryLine: boolean): SerializedBase {
     return {
       id: this.id,
       kind: 'base',

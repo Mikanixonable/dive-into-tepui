@@ -1,5 +1,5 @@
 // Stage 2: 第二ステージ(モルニヤ戦域)。ステージ1クリアで解放。
-import { Stage, type ClearCounts, type StageDeps, STORY_EPOCH } from './stage';
+import { Stage, type ClearCounts, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import {
   generateCoellipticEnemy,
@@ -7,7 +7,6 @@ import {
   generatePhasedEnemy,
 } from './spawner/enemy-generator';
 import { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import type { StageSaveData } from '../save/save-data';
 import { COLOR_ENEMY_ORBIT_LINE } from '../lines/entity-line-manager';
 
 export class Stage2 extends Stage {
@@ -18,7 +17,7 @@ export class Stage2 extends Stage {
   static readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';
   static readonly selectKey = 'Digit2';
 
-  constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+  constructor(saved: SerializedStage | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     this.begin();
   }

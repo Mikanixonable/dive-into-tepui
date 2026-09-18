@@ -6,14 +6,15 @@ import { qFromAxisAngle } from '../../src/math/quat';
 import { len, sub, v3 } from '../../src/math/vec3';
 import { CommandQueue } from '../../src/game/command-queue';
 import { cameraCommands } from '../../src/game/viewer/camera-commands';
-import { CameraSelection } from '../../src/game/viewer/camera-selection';
-import type { CameraFrameSample } from '../../src/game/viewer/focus-camera-selection';
-import type { CameraSaveData, FocusCameraSaveData } from '../../src/game/save/save-data';
+import { CameraSelection, type SerializedCameraSelection } from '../../src/game/viewer/camera-selection';
+import type {
+  CameraFrameSample, SerializedFocusCameraSelection,
+} from '../../src/game/viewer/focus-camera-selection';
 import { solarSystemParts } from '../physics/test-helpers';
 
 function savedCamera(
-  overrides: Partial<FocusCameraSaveData> = {},
-): FocusCameraSaveData {
+  overrides: Partial<SerializedFocusCameraSelection> = {},
+): SerializedFocusCameraSelection {
   return {
     offset: { x: 1.2e7, y: 2.3e7, z: -3.4e7 },
     pan: { x: 1234, y: -5678, z: 9012 },
@@ -29,7 +30,7 @@ function savedCamera(
   };
 }
 
-function selection(saved?: CameraSaveData): CameraSelection {
+function selection(saved?: SerializedCameraSelection): CameraSelection {
   return new CameraSelection(solarSystemParts().system, { record: () => {} }, saved);
 }
 
@@ -46,7 +47,7 @@ function sample(lostFocus: CameraFrameSample['lostFocus'] = null): CameraFrameSa
 export function register(): void {
   test('camera-selection: 復元したマップの pan・追従・既存保存項目を変えずに書き戻す', () => {
     const overview = savedCamera({ rotatingWith: { kind: 'revolution', id: 'moon' } });
-    const saved: CameraSaveData = { view: 'map', chase: savedCamera(), overview };
+    const saved: SerializedCameraSelection = { view: 'map', chase: savedCamera(), overview };
     const camera = selection(saved);
     const restored = camera.serialize('map');
 

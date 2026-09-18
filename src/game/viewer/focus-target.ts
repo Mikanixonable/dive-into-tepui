@@ -1,13 +1,18 @@
 // カメラの注視対象。対象を id で指す形と、座標系へ焼き込んだ固定点を表す形を持つ。
-import type { Vec3 } from '../../math/vec3';
+import type { SerializedVec3, Vec3 } from '../../math/vec3';
 import {
-  type FrameAnchorSource, type FramePoint, type ReferenceFrame, toFramePoint,
+  type FrameAnchorSource, type FramePoint, type FrameRotationSource, type ReferenceFrame, toFramePoint,
 } from '../../physics/frame';
 import type { ReferenceFrames } from '../celestial/reference-frames';
 
 export type FocusTarget =
   | { readonly kind: 'object'; readonly id: string }
   | { readonly kind: 'point'; readonly frame: ReferenceFrame; readonly point: FramePoint };
+
+// 'point' は焼き込み先の座標系(center/rotatingWith)と、その座標系相対の点をそのまま持つ。
+export type SerializedFocusTarget =
+  | { kind: 'object'; id: string }
+  | { kind: 'point'; center: string; rotatingWith: FrameRotationSource | null; point: SerializedVec3 };
 
 // 天体・実体・役割を指す対象なら id を返す。固定点には対応する id が無い。
 export function focusTargetId(target: FocusTarget): string | undefined {

@@ -58,6 +58,8 @@ export type AnyPart = HullPart | CockpitPart | ArmorPart | ThrusterPart | RcsTan
 
 type ExtractPart<TType extends PartType> = Extract<AnyPart, { type: TType }>;
 
+export type SerializedPart = Readonly<AnyPart>;
+
 // type の既定値に overrides を重ねてパーツを作る。id は呼び出しごとにランダム発行される。
 export function createPart<TType extends PartType>(
   type: TType,
@@ -74,8 +76,6 @@ export function createPart<TType extends PartType>(
   return { ...base, ...overrides } as unknown as ExtractPart<TType>;
 }
 
-// セーブされた AnyPart の生データを createPart 経由で組み立てる。id も引き継ぐので、
-// セーブ前後でパーツの同一性(id)が保たれる。
 const PART_TYPES: readonly PartType[] = [
   'hull', 'cockpit', 'armor', 'thruster', 'rcs_tank', 'radiator', 'solar_panel', 'weapon',
 ];
@@ -84,7 +84,9 @@ function nonNegative(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
-export function partFromSaveData(data: AnyPart): AnyPart | null {
+// 直列化された部品を createPart 経由で組み立てる。id も引き継ぐので、直列化の前後で部品の
+// 同一性(id)が保たれる。種別が不正なら null。
+export function deserializePart(data: SerializedPart): AnyPart | null {
   if (data === null || typeof data !== 'object'
     || !PART_TYPES.includes(data.type as PartType)) return null;
   const maxHp = typeof data.maxHp === 'number' && Number.isFinite(data.maxHp) && data.maxHp > 0

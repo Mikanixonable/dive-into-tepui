@@ -1,5 +1,5 @@
 // クリエイティブモード: 勝敗判定を発生させず、物体配置と軌道計画を自由に試すためのステージ。
-import { Stage, type StageDeps, STORY_EPOCH } from './stage';
+import { Stage, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { ManualSpawn } from '../creative/manual-spawn';
 import { MAX_PLACED_SHIPS, ObjectPlacement } from '../creative/object-placement';
 import {
@@ -8,17 +8,23 @@ import {
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { hudRail } from '../hud/hud-root';
 import { isPlayer } from '../player/player';
-import { WaveAttack } from './stage-utils/wave-attack';
+import { WaveAttack, type SerializedWaveAttack } from './stage-utils/wave-attack';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import { creativeStageCommands, type CreativeStageCommands } from './creative-stage-commands';
-import type { CreativeStageSaveData, StageSaveData } from '../save/save-data';
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
 import { queuedEventSink } from '../run-events';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
+
+// クリエイティブモードの内訳。波状攻撃のトグルと進行状態を持ち、進行状態はトグルが OFF の間も
+// 保つ(ON に戻したとき波数を続きから再開する)。
+export interface SerializedCreativeStage extends SerializedStage {
+  readonly waveAttackEnabled: boolean;
+  readonly waveAttack: SerializedWaveAttack;
+}
 
 export class CreativeStage extends Stage {
   public static readonly id = 'creative' as const;
@@ -49,10 +55,10 @@ export class CreativeStage extends Stage {
   }
 
   // 配置・手動スポーンとステージ操作パネルを組み、保存データがあればそこから状態を戻す。
-  public constructor(saved: StageSaveData | undefined, ...deps: StageDeps) {
+  public constructor(saved: SerializedStage | undefined, ...deps: StageDeps) {
     super(saved, ...deps);
     this.commands = creativeStageCommands(this._commandQueue, this);
-    const savedCreative = saved as CreativeStageSaveData | undefined;
+    const savedCreative = saved as SerializedCreativeStage | undefined;
 
     this.manualSpawn = new ManualSpawn(
       this._scene, this._celestialSystem.celestialMotions,
@@ -259,7 +265,7 @@ export class CreativeStage extends Stage {
   }
 
   // 共通のステージ保存データへ、波状攻撃のトグルと進行状況を足して返す。
-  public serialize(): CreativeStageSaveData {
+  public serialize(): SerializedCreativeStage {
     return {
       ...super.serialize(),
       waveAttackEnabled: this.waveAttackEnabled,

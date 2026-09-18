@@ -138,18 +138,6 @@ export interface ProteinAssetDefinition {
   readonly modificationSlots: readonly ProteinModificationDefinition[];
 }
 
-interface ProteinSiteSaveData {
-  id: string;
-  hp: number;
-}
-
-export interface ProteinSaveData {
-  schemaVersion: number;
-  integrityHp: number;
-  sites: ProteinSiteSaveData[];
-  modifications: Record<string, string>;
-}
-
 /** 戦闘状態の、そのときの読み取り値。 */
 export interface ProteinCombatReadout {
   readonly phase: ProteinPhase;

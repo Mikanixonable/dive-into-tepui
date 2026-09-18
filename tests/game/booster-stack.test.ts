@@ -93,10 +93,10 @@ export function register(): void {
     assert.deepEqual(stack.stages.map((s) => s.id), ['inner']);
   });
 
-  test('booster stack: セーブ用 plain data は独立コピーでラウンドトリップする', () => {
+  test('booster stack: 直列化した形は独立コピーでラウンドトリップする', () => {
     const stack = new BoosterStack([stage('inner'), stage('outer', 4, true)]);
     const data = stack.exportData();
-    data.stages[1]!.fuel = 0;
+    (data.stages[1] as BoosterStage).fuel = 0;
     assert.equal(stack.stages[1]?.fuel, 4);
 
     const restored = BoosterStack.importData(stack.exportData());

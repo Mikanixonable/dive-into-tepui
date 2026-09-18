@@ -11,10 +11,9 @@ import {
   RADIATOR_SEGMENT_LENGTH,
 } from '../../physics/player-shape';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
-import type { RadiatorSaveData } from '../save/save-data';
 import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
-import { DeployablePanelState } from './deployable-panel-state';
+import { DeployablePanelState, type SerializedDeployablePanelState } from './deployable-panel-state';
 
 export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
@@ -78,6 +77,11 @@ interface RadiatorContactReaction {
   ): void;
 }
 
+export interface SerializedRadiatorSystem {
+  readonly up: SerializedDeployablePanelState;
+  readonly down: SerializedDeployablePanelState;
+}
+
 export class RadiatorSystem {
   private readonly panels: Record<RadiatorSide, DeployablePanelState> = {
     up: new DeployablePanelState(0, 0), down: new DeployablePanelState(0, 0),
@@ -91,7 +95,7 @@ export class RadiatorSystem {
   public constructor(
     private readonly owner: DynamicMotion,
     private readonly onContact: RadiatorContactReaction,
-    saved?: RadiatorSaveData,
+    saved?: SerializedRadiatorSystem,
   ) {
     if (saved) {
       for (const side of ['up', 'down'] as const) {
@@ -204,7 +208,7 @@ export class RadiatorSystem {
   public wearOf(side: RadiatorSide): number { return this.wear[side]; }
 
   // 保存するのは side ごとの展開目標と展開度。
-  public serialize(): RadiatorSaveData {
+  public serialize(): SerializedRadiatorSystem {
     return {
       up: { deployTarget: this.panels.up.target, deploy: this.panels.up.value },
       down: { deployTarget: this.panels.down.target, deploy: this.panels.down.value },

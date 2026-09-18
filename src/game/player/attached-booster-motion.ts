@@ -3,7 +3,7 @@ import { scale, type Vec3 } from '../../math/vec3';
 import {
   BoosterStack,
   boosterAverageAcceleration,
-  type BoosterStackData,
+  type SerializedBoosterStack,
   type BoosterStage,
 } from './booster-stack';
 import type { Attitude } from '../../physics/attitude';
@@ -23,7 +23,7 @@ export class AttachedBoosterMotion {
   private burnRatioValue = 0;
 
   // ship の質量・慣性に段を反映して始める。saved があれば段スタックを復元する。
-  public constructor(private readonly ship: BoosterHostMotion, saved?: BoosterStackData) {
+  public constructor(private readonly ship: BoosterHostMotion, saved?: SerializedBoosterStack) {
     this.stack = saved ? BoosterStack.importData(saved) : new BoosterStack();
     this.ship.rebuildMassAndInertia(this.stack.totalMass, this.stack.stages.length);
   }
@@ -79,7 +79,7 @@ export class AttachedBoosterMotion {
   }
 
   // 段スタックの保存形。
-  public serialize(): BoosterStackData {
+  public serialize(): SerializedBoosterStack {
     return this.stack.exportData();
   }
 }

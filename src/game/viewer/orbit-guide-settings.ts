@@ -300,8 +300,8 @@ export function normalizeOrbitGuideSettings(settings: OrbitGuideSettings): Orbit
   };
 }
 
-// セーブに残っていた設定を読み直す。無ければ既定値で、セーブに欠けた入れ子の項目は既定値で埋めてから丸める。
-export function savedOrbitGuideSettings(saved: Partial<OrbitGuideSettings> | undefined): OrbitGuideSettings {
+// 直列化された設定を読み直す。無ければ既定値で、欠けた入れ子の項目は既定値で埋めてから丸める。
+export function deserializeOrbitGuideSettings(saved: Partial<OrbitGuideSettings> | undefined): OrbitGuideSettings {
   if (saved === undefined) return DEFAULT_ORBIT_GUIDE_SETTINGS;
   // 浅く重ねるだけでは入れ子の欠けが埋まらないので、入れ子ごとに既定値へ重ねる。
   return normalizeOrbitGuideSettings({

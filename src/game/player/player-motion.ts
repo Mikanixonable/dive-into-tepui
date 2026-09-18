@@ -2,8 +2,7 @@ import { v3, type Vec3 } from '../../math/vec3';
 import type { Attitude } from '../../physics/attitude';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { BoosterStackData } from './booster-stack';
-import type { PowerSaveData, RadiatorSaveData } from '../save/save-data';
+import type { SerializedBoosterStack } from './booster-stack';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
 import { DynamicMotion, type DynamicMotionBehavior } from '../dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
@@ -23,8 +22,8 @@ import {
 import { AeroLoad } from './aero-load';
 import { AttachedBoosterMotion } from './attached-booster-motion';
 import { BeltController } from './belt';
-import { PowerSystem } from './power';
-import { RadiatorSystem, type RadiatorSide } from './radiator';
+import { PowerSystem, type SerializedPowerSystem } from './power';
+import { RadiatorSystem, type RadiatorSide, type SerializedRadiatorSystem } from './radiator';
 
 // 自機の Motion が Entity 側から読む値と、接触・喪失を通知する先。
 export interface PlayerMotionWeaponPort {
@@ -197,9 +196,9 @@ export class PlayerMotion extends DynamicMotion {
     temperature: number,
     beltLinkCount: number,
     reactions: PlayerMotionReactions,
-    radiatorSave?: RadiatorSaveData,
-    powerSave?: PowerSaveData,
-    boosterSave?: BoosterStackData,
+    radiatorSave?: SerializedRadiatorSystem,
+    powerSave?: SerializedPowerSystem,
+    boosterSave?: SerializedBoosterStack,
   ) {
     super(state, shipMotionOptions(attitude, radius, {
       mass: PLAYER_MASS,

@@ -3,7 +3,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
-  DEFAULT_ORBIT_GUIDE_SETTINGS, savedOrbitGuideSettings,
+  DEFAULT_ORBIT_GUIDE_SETTINGS, deserializeOrbitGuideSettings,
 } from '../../src/game/viewer/orbit-guide-settings';
 import type { OrbitGuideSettings } from '../../src/game/viewer/orbit-guide-settings';
 
@@ -15,14 +15,14 @@ export function register(): void {
       systems: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.systems, 'sun-mars': true },
       molniya: { ...DEFAULT_ORBIT_GUIDE_SETTINGS.molniya, on: true, raan: 45 },
     };
-    assert.deepEqual(savedOrbitGuideSettings(JSON.parse(JSON.stringify(chosen))), chosen);
+    assert.deepEqual(deserializeOrbitGuideSettings(JSON.parse(JSON.stringify(chosen))), chosen);
   });
 
   test('orbit-guide-settings: セーブに無い項目だけが既定で埋まる', () => {
-    assert.deepEqual(savedOrbitGuideSettings(undefined), DEFAULT_ORBIT_GUIDE_SETTINGS);
+    assert.deepEqual(deserializeOrbitGuideSettings(undefined), DEFAULT_ORBIT_GUIDE_SETTINGS);
     // 入れ子の項目が欠けた記録。
     const saved: Partial<OrbitGuideSettings> = JSON.parse('{"geostationary":false,"zeroVelocity":{"count":3}}');
-    const restored = savedOrbitGuideSettings(saved);
+    const restored = deserializeOrbitGuideSettings(saved);
     assert.equal(restored.geostationary, false);
     assert.equal(restored.zeroVelocity.count, 3);
     assert.equal(restored.zeroVelocity.jacobi, DEFAULT_ORBIT_GUIDE_SETTINGS.zeroVelocity.jacobi);

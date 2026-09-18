@@ -2,12 +2,11 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import { CAMPAIGN_STAGE_RULES, FREE_PLAY_STAGE_RULES } from '../../src/game/stages/stage-rules';
-import { Logistics } from '../../src/game/stages/stage-utils/logistics';
+import { Logistics, type SerializedLogistics } from '../../src/game/stages/stage-utils/logistics';
 import type { EntityRegistry } from '../../src/game/dynamic/entity-registry';
 import type { EntityRoster } from '../../src/game/dynamic/entity-roster';
-import type { LogisticsSaveData } from '../../src/game/save/save-data';
 
-const saved: LogisticsSaveData = {
+const saved: SerializedLogistics = {
   resupplyCheckAt: 0,
   resupplyEnabled: true,
   rcsFuelResupplyEnabled: true,

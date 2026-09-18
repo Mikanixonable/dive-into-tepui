@@ -3,7 +3,6 @@ import { Attitude } from '../../physics/attitude';
 import { LOCAL_UP, qRotate } from '../../math/quat';
 import { Vec3, dot } from '../../math/vec3';
 import { SOLAR_CONSTANT } from '../../physics/astronomical-unit';
-import type { PowerSaveData } from '../save/save-data';
 import { RADIATOR_DEPLOY_TIME } from './radiator';
 import { DeployablePanelState } from './deployable-panel-state';
 
@@ -13,6 +12,10 @@ const SOLAR_PANEL_EFFICIENCY = 0.25; // 太陽光→電力の変換効率
 
 export type SolarSide = 'up' | 'down';
 
+export interface SerializedPowerSystem {
+  readonly charge: number;
+}
+
 export class PowerSystem {
   private charge = POWER_CAPACITY * 0.75; // 蓄電量 [J]、0..POWER_CAPACITY
 
@@ -21,7 +24,7 @@ export class PowerSystem {
   };
 
   // saved があれば蓄電量を復元する。
-  public constructor(saved?: PowerSaveData) {
+  public constructor(saved?: SerializedPowerSystem) {
     if (saved && typeof saved.charge === 'number' && Number.isFinite(saved.charge)) {
       this.charge = Math.max(0, Math.min(POWER_CAPACITY, saved.charge));
     }
@@ -76,7 +79,7 @@ export class PowerSystem {
   public deployOf(side: SolarSide): number { return this.panels[side].value; }
 
   // 蓄電量の保存形。
-  public serialize(): PowerSaveData {
+  public serialize(): SerializedPowerSystem {
     return { charge: this.charge };
   }
 }

@@ -13,9 +13,18 @@ export interface BoosterStage {
   ignited: boolean;
 }
 
-/** セーブデータに使うスタック全体の plain data。 */
-export interface BoosterStackData {
-  readonly stages: BoosterStage[];
+export interface SerializedBoosterStage {
+  readonly id: string;
+  readonly dryMass: number;
+  readonly fuel: number;
+  readonly maxFuel: number;
+  readonly thrust: number;
+  readonly fuelRate: number;
+  readonly ignited: boolean;
+}
+
+export interface SerializedBoosterStack {
+  readonly stages: SerializedBoosterStage[];
 }
 
 /** 1 回の step で最後尾段が発生した燃焼結果。 */
@@ -85,7 +94,7 @@ function finiteNonNegative(value: number, name: string): void {
 }
 
 // 段データを検証して複製する。不正な値には TypeError / RangeError を投げる。
-function cloneStage(data: BoosterStage): BoosterStage {
+function cloneStage(data: SerializedBoosterStage): BoosterStage {
   if (typeof data.id !== 'string' || data.id.length === 0) {
     throw new TypeError('booster stage id must be a non-empty string');
   }
@@ -201,13 +210,13 @@ export class BoosterStack {
     return this._stages.pop() ?? null;
   }
 
-  /** セーブ用 plain data(内部状態の複製)。 */
-  public exportData(): BoosterStackData {
+  /** 直列化した形(内部状態の複製)。 */
+  public exportData(): SerializedBoosterStack {
     return { stages: this._stages.map((stage) => ({ ...stage })) };
   }
 
-  /** セーブ用 plain data から新しいスタックを復元する。 */
-  public static importData(data: BoosterStackData): BoosterStack {
+  /** 直列化した形から新しいスタックを復元する。 */
+  public static importData(data: SerializedBoosterStack): BoosterStack {
     if (!data || !Array.isArray(data.stages)) throw new TypeError('booster stack data must contain a stages array');
     return new BoosterStack(data.stages);
   }

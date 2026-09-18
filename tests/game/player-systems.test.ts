@@ -7,16 +7,15 @@ import { v3 } from '../../src/math/vec3';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
 import { Ship, SHIP_BCINV, SHIP_SRP_COEFF } from '../../src/game/dynamic/dynamic-entity/ship';
-import { partFromSaveData } from '../../src/game/dynamic/dynamic-entity/parts';
+import { deserializePart } from '../../src/game/dynamic/dynamic-entity/parts';
 import { DynamicView } from '../../src/render/dynamic/dynamic-view';
-import { FireControl } from '../../src/game/player/fire-control';
+import { FireControl, type SerializedFireControl } from '../../src/game/player/fire-control';
 import { WeaponState } from '../../src/game/player/weapon-state';
 import { DeployablePanelState } from '../../src/game/player/deployable-panel-state';
 import { PlayerMotion, type PlayerMotionReactions } from '../../src/game/player/player-motion';
 import { PowerSystem, POWER_CAPACITY } from '../../src/game/player/power';
 import { RadiatorSystem } from '../../src/game/player/radiator';
-import { Throttle, THROTTLE_LEVELS } from '../../src/game/player/throttle';
-import type { FireSaveData, ThrottleSaveData } from '../../src/game/save/save-data';
+import { Throttle, THROTTLE_LEVELS, type SerializedThrottle } from '../../src/game/player/throttle';
 import type { Player } from '../../src/game/player/player';
 import type { RunEventSink } from '../../src/game/run-events';
 
@@ -108,14 +107,14 @@ export function register(): void {
       throttleIdx: 99,
       rcsDamp: 'bad' as unknown as boolean,
       progradeHold: null as unknown as boolean,
-    } satisfies ThrottleSaveData);
+    } satisfies SerializedThrottle);
     assert.equal(throttle.throttleIdx, 1);
     throttle.setThrottlePreset(-1, quietEvents);
     assert.equal(throttle.throttleIdx, 1);
     throttle.setThrottlePreset(THROTTLE_LEVELS.length, quietEvents);
     assert.equal(throttle.throttleIdx, 1);
 
-    const part = partFromSaveData({
+    const part = deserializePart({
       id: 'bad-part', type: 'hull', name: 'bad', weight: 100, maxHp: Number.NaN, hp: Number.POSITIVE_INFINITY,
     });
     assert.ok(part);
@@ -130,7 +129,7 @@ export function register(): void {
       {} as never,
       { saved: {
         mags: -2, rounds: 999, barrel: -1, cooldown: Number.NaN, muzzleIdx: 8,
-      } as FireSaveData },
+      } as SerializedFireControl },
     );
     assert.equal(fire.mags, 2);
     assert.equal(fire.rounds, 32);

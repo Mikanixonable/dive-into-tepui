@@ -1,30 +1,31 @@
 import type * as THREE from 'three/webgpu';
 
 import type { ViewMode } from '../view/view-mode';
-import { Attitude } from '../../physics/attitude';
+import { Attitude, deserializeAttitude } from '../../physics/attitude';
 import { qFromBasis } from '../../math/quat';
-import { KinematicState, kinematicState } from '../../physics/kinematic-state';
+import { KinematicState, deserializeKinematicState, kinematicState } from '../../physics/kinematic-state';
 import { Vec3, add, v3, len, sub } from '../../math/vec3';
 import { Ship } from '../dynamic/dynamic-entity/ship';
 import { bulletReactionOf, type BulletType, type Shooter } from '../dynamic/dynamic-entity/bullet-reaction';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity, SerializedDynamicEntityFields } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
 import { closingSpeed, type Contact } from '../dynamic/dynamic-entity/contact';
 import type { RunEventSink } from '../run-events';
 import { generateRandomName } from '../random-name';
-import { Throttle } from './throttle';
-import { FireControl, type AmmoLoad } from './fire-control';
+import { Throttle, type SerializedThrottle } from './throttle';
+import { FireControl, type AmmoLoad, type SerializedFireControl } from './fire-control';
 import { AltitudeAlarm } from './altitude-alarm';
 import { PlayerView, type PlayerRenderSource } from '../../render/dynamic/player/player-view';
 import type { DynamicViewFrame } from '../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../orbit-reference';
-import type { RadiatorSide } from './radiator';
+import type { RadiatorSide, SerializedRadiatorSystem } from './radiator';
+import type { SerializedPowerSystem } from './power';
+import type { SerializedBoosterStack } from './booster-stack';
 
-import { Plan, type PlanExecutionMode } from '../plan/plan';
-import { savedAttitude, savedKinematicState, type PlayerSaveData, type PlanSaveData } from '../save/save-data';
-import { partFromSaveData, type AnyPart, type Part } from '../dynamic/dynamic-entity/parts';
+import { Plan, type PlanExecutionMode, type SerializedPlan } from '../plan/plan';
+import { deserializePart, type Part, type SerializedPart } from '../dynamic/dynamic-entity/parts';
 import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
@@ -35,7 +36,7 @@ import { MARKER_PRIORITY } from '../marker/marker-priority';
 import type { Controllable, PilotCommandFrame } from '../dynamic/dynamic-entity/controllable';
 import type { PilotCommand, PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
 import { PlayerMotion, type PlayerMotionReactions } from './player-motion';
-import type { DynamicMotion } from '../dynamic/dynamic-motion';
+import type { DynamicMotion, SerializedDynamicMotionThermal } from '../dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../dynamic/dynamic-simulation-participant';
 import type { DamageOutcomeSink } from './damage-outcome';
 import { PlayerInspection } from '../pickable/player-inspection';
@@ -70,11 +71,30 @@ export type PlayerPlacement = {
   readonly ammo?: AmmoLoad;
 };
 
+export interface SerializedPlayer extends SerializedDynamicEntityFields {
+  readonly kind: 'player';
+  readonly fire: SerializedFireControl;
+  readonly thermal: SerializedDynamicMotionThermal;
+  readonly radiator: SerializedRadiatorSystem;
+  readonly power: SerializedPowerSystem;
+  readonly throttle: SerializedThrottle;
+  readonly parts: SerializedPart[];
+  readonly plan: SerializedPlan | null;
+  // 無ければ実行しない。
+  readonly planExecution?: 'off' | 'instant';
+  // 無ければ既定値(false)。
+  readonly fineAttitude?: boolean;
+  // プロパティウィンドウの軌道線表示トグル。無ければ false。
+  readonly showTrajectoryLine?: boolean;
+  // 接続中のブースター。無ければ空スタック。
+  readonly boosters?: SerializedBoosterStack;
+}
+
 // 艦の生成引数。新規配置には、機首と上面の向きを測る中心天体 center を添える。saved は simTime 付きの
 // 状態として展開するスナップショットからの再開。
 type PlayerInit =
   | (PlayerPlacement & { readonly center: CelestialBody })
-  | { readonly saved: PlayerSaveData; readonly simTime: number };
+  | { readonly saved: SerializedPlayer; readonly simTime: number };
 
 // プレイヤー機: 操縦・射撃・ブースターなどの下位系を合成し、被弾・接触の帰結と保存を持つ。
 export class Player extends Ship implements Controllable, PartDamageTarget {
@@ -112,10 +132,10 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
     const effects = new PlayerEffects(events);
     const saved = 'saved' in init ? init.saved : undefined;
     const name = 'saved' in init ? (init.saved.name || init.saved.id) : (init.name ?? generateRandomName('player'));
-    const state = 'saved' in init ? savedKinematicState(init.saved, init.simTime) : init.state;
+    const state = 'saved' in init ? deserializeKinematicState(init.saved, init.simTime) : init.state;
     const id = idAllocators.entity.next('saved' in init ? init.saved.id : (init.id ?? name));
     const att: Attitude = 'saved' in init
-      ? savedAttitude(init.saved, Player.INERTIA)
+      ? deserializeAttitude(init.saved, Player.INERTIA)
       : Player.progradeAttitude(state, init.center);
 
     const reactions = (owner: Player): PlayerMotionReactions => ({
@@ -178,7 +198,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       this.planExecution = saved.planExecution ?? 'off';
       this.fineAttitude = saved.fineAttitude ?? false;
       if (Array.isArray(saved.parts)) {
-        const restoredParts = saved.parts.map(partFromSaveData).filter((part) => part !== null);
+        const restoredParts = saved.parts.map(deserializePart).filter((part) => part !== null);
         // 部品が壊れているスナップショットは、初期部品を残して船体を空にしない。
         if (restoredParts.length > 0) {
           this.replaceParts(restoredParts);
@@ -527,7 +547,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   }
 
   // 現在の艦状態を保存用データへ変換する。showTrajectoryLine はこの艦の予測線・過去線を出しているか。
-  public override serialize(showTrajectoryLine: boolean): PlayerSaveData {
+  public override serialize(showTrajectoryLine: boolean): SerializedPlayer {
     return {
       id: this.id,
       name: this.name,
@@ -543,7 +563,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
       radiator: this.motion.radiator.serialize(),
       power: this.motion.power.serialize(),
       throttle: this.throttle.serialize(),
-      parts: this.parts.map(p => ({ ...p })) as AnyPart[],
+      parts: this.parts.map(p => ({ ...p })) as SerializedPart[],
       // 操作・表示の設定と計画
       planExecution: this.planExecution,
       fineAttitude: this.fineAttitude,
@@ -554,7 +574,7 @@ export class Player extends Ship implements Controllable, PartDamageTarget {
   }
 
   // 計画の保存形。凍結された計画が無ければ null。
-  private serializePlan(): PlanSaveData | null {
+  private serializePlan(): SerializedPlan | null {
     const frozen = this.plan.frozenData();
     if (!frozen) return null;
     const { anchor, nodes } = frozen;

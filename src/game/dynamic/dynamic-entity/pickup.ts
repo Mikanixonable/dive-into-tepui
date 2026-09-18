@@ -6,16 +6,13 @@ import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { MARKER_PRIORITY } from '../../marker/marker-priority';
 import { COLOR_MARKER_FUEL, DIRECTION_GLYPH, ENTITY_GLYPH } from '../../marker/marker-identity';
 import { orbitRows } from '../../pickable/orbit-rows';
-import {
-  savedAttitude, savedKinematicState, type AmmoPickupSaveData, type RcsFuelPickupSaveData,
-} from '../../save/save-data';
-import { DynamicEntity } from './dynamic-entity';
+import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { EntityIdAllocator, EntityIdAllocators } from './entity-id';
 import { PickupMotion, type PickupKind } from './pickup-motion';
 import type * as THREE from 'three/webgpu';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
-import type { Attitude } from '../../../physics/attitude';
-import type { KinematicState } from '../../../physics/kinematic-state';
+import { deserializeAttitude, type Attitude } from '../../../physics/attitude';
+import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { ControlSelection } from '../../control-selection';
@@ -35,7 +32,15 @@ export const RCS_FUEL_PICKUP_RADIUS = 100;
 // 1 個の取り込みで増える RCS 燃料 [kg]。
 export const RCS_FUEL_PICKUP_AMOUNT = 1000;
 
-type PickupSaveData = AmmoPickupSaveData | RcsFuelPickupSaveData;
+export interface SerializedAmmoPickup extends SerializedDynamicEntityFields {
+  readonly kind: 'ammo';
+}
+
+export interface SerializedRcsFuelPickup extends SerializedDynamicEntityFields {
+  readonly kind: 'rcs-fuel';
+}
+
+type SerializedPickup = SerializedAmmoPickup | SerializedRcsFuelPickup;
 
 // 新規配置の初期状態。state/att をそのまま使い、name を省略すると種別の既定名で名乗る。
 interface PickupPlacement {
@@ -61,7 +66,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
   // 表示名が与えられていなければ defaultName で名乗る。id は idAllocator が採る。pickupKind は
   // 接触の種別・マーカーキーの接頭辞・保存形の種別タグを兼ねる。
   protected constructor(
-    init: PickupPlacement | { readonly saved: PickupSaveData; readonly simTime: number },
+    init: PickupPlacement | { readonly saved: SerializedPickup; readonly simTime: number },
     view: DynamicView,
     idAllocator: EntityIdAllocator,
     defaultName: string,
@@ -70,8 +75,8 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
     // 復元と新規配置を同じ形へ均してから基底へ渡す。
     const { state, att, id, name } = 'saved' in init
       ? {
-        state: savedKinematicState(init.saved, init.simTime),
-        att: savedAttitude(init.saved, v3(1, 1, 1)),
+        state: deserializeKinematicState(init.saved, init.simTime),
+        att: deserializeAttitude(init.saved, v3(1, 1, 1)),
         id: init.saved.id || undefined,
         name: init.saved.name || defaultName,
       }
@@ -81,7 +86,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
   }
 
   // セーブデータへ変換する。
-  public override serialize(): PickupSaveData {
+  public override serialize(): SerializedPickup {
     return {
       id: this.id,
       name: this.name,
@@ -213,7 +218,7 @@ export class AmmoPickup extends Pickup {
 
   // 弾薬補給の見た目・採番器・既定名で組む。
   public constructor(
-    init: PickupPlacement | { readonly saved: AmmoPickupSaveData; readonly simTime: number },
+    init: PickupPlacement | { readonly saved: SerializedAmmoPickup; readonly simTime: number },
     scene: THREE.Scene,
     idAllocators: EntityIdAllocators,
   ) {
@@ -233,7 +238,7 @@ export class RcsFuelPickup extends Pickup {
 
   // RCS 燃料補給の見た目・採番器・既定名で組む。
   public constructor(
-    init: PickupPlacement | { readonly saved: RcsFuelPickupSaveData; readonly simTime: number },
+    init: PickupPlacement | { readonly saved: SerializedRcsFuelPickup; readonly simTime: number },
     scene: THREE.Scene,
     idAllocators: EntityIdAllocators,
   ) {
