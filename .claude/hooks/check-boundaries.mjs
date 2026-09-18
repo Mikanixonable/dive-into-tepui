@@ -1,5 +1,6 @@
 // PostToolUse フック: 横断的な責務境界のうち、機械的に見つかるものを編集直後に
-// 指摘する。見るのは以下の4つだけで、基準そのものは DEVELOP/CODING-RULE.md が正本。
+// 指摘する。見るのは以下の4つだけで、基準そのものは DEVELOP/ARCHITECTURE.md(1〜3)と
+// DEVELOP/CODING-RULE.md(4)が正本。
 //
 //   1. sync が update を呼ぶ / 論理値を書き換える
 //   2. update が THREE・DOM に触る / sync を呼ぶ
@@ -21,10 +22,10 @@ const ORCHESTRATORS = new Map([
 
 // 持ち主にしか書けないもの。何をいくつ持っているかを知っているのは持ち主だけなので、
 // 生成・後始末・直列化は constructor と同格に本人が書く。二段初期化を避けるための
-// 静的な非同期ファクトリ(CODING-RULE 1.3)も同じ。
+// 静的な非同期ファクトリ(CODING-RULE 1.4)も同じ。
 const OWNER_LIFECYCLE = ['constructor', 'create', 'dispose', 'serialize'];
 
-// 毎フレームの位相(CODING-RULE 1.10)。
+// 毎フレームの位相(ARCHITECTURE R8)。
 const FRAME_PHASES = ['update', 'sync', 'render', 'build'];
 
 // sync の中にあってはいけないもの(論理値の前進・積分・寿命判定・update 呼び出し)。
@@ -108,18 +109,18 @@ function findViolations(posix, src) {
 
   if (/(^|\/)src\/physics\//.test(posix)) {
     for (const [re, msg] of PHYSICS_FORBIDDEN) {
-      if (re.test(src)) out.push({ strict: true, text: `${msg}(CODING-RULE 1.3 層と境界)` });
+      if (re.test(src)) out.push({ strict: true, text: `${msg}(ARCHITECTURE「physics/ に物理でないものを持ち込まない」)` });
     }
   }
 
   for (const { name, body } of methodBodies(src, 'sync\\w*')) {
     for (const [re, msg] of SYNC_FORBIDDEN) {
-      if (re.test(body)) out.push({ strict: true, text: `${name}(): ${msg}(CODING-RULE 1.10 フレーム処理の位相)` });
+      if (re.test(body)) out.push({ strict: true, text: `${name}(): ${msg}(ARCHITECTURE R8 フレームの位相)` });
     }
   }
   for (const { name, body } of methodBodies(src, 'update\\w*|behave')) {
     for (const [re, msg] of UPDATE_FORBIDDEN) {
-      if (re.test(body)) out.push({ strict: true, text: `${name}(): ${msg}(CODING-RULE 1.10 フレーム処理の位相)` });
+      if (re.test(body)) out.push({ strict: true, text: `${name}(): ${msg}(ARCHITECTURE R8 フレームの位相)` });
     }
   }
 
